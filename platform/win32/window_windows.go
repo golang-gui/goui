@@ -139,9 +139,16 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		LParam:  lParam,
 	}
 
-	// TODO: translate events
-
 	switch message {
+	case winapi.WM_CLOSE:
+		closeEvent := new(events.CloseEvent)
+		closeEvent.Window = window
+		closeEvent.Native = nativeEvent
+		window.onEvent(closeEvent)
+		if closeEvent.Accepted() {
+			return 0
+		}
+
 	case winapi.WM_DESTROY:
 		window.onEvent(nativeEvent)
 		delete(windowMap, hwnd)
@@ -155,9 +162,10 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 
 	default:
 		window.onEvent(nativeEvent)
-		if nativeEvent.Accepted() {
-			return nativeEvent.Result
-		}
+	}
+
+	if nativeEvent.Accepted() {
+		return nativeEvent.Result
 	}
 
 	return winapi.DefWindowProc(hwnd, message, wParam, lParam)
