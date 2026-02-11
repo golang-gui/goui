@@ -6,7 +6,6 @@ import (
 
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
-	"github.com/golang-gui/goui/platform/win32/winapi"
 )
 
 func TestWindow(t *testing.T) {
@@ -22,8 +21,7 @@ func TestWindow(t *testing.T) {
 
 	var win common.Window
 	onEvent := func(event events.Event) {
-		nativeEvent := event.(*Event)
-		if nativeEvent.Message == winapi.WM_CLOSE {
+		if event.Type() == events.Close {
 			t.Log("window close")
 			win.Destroy()
 			quit = true
