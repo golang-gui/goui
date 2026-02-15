@@ -1,6 +1,8 @@
 package events
 
-import "github.com/golang-gui/goui/platform/common"
+import (
+	"github.com/golang-gui/goui/platform/common"
+)
 
 type WindowEventBase struct {
 	EventBase
@@ -24,4 +26,12 @@ type SizeEvent struct {
 
 func (e SizeEvent) Type() EventType {
 	return Size
+}
+
+type PaintEvent struct {
+	WindowEventBase
+}
+
+func (e PaintEvent) Type() EventType {
+	return Paint
 }

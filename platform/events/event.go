@@ -14,6 +14,7 @@ const (
 	Native EventType = iota
 	Close
 	Size
+	Paint
 )
 
 type EventHandler func(event Event)

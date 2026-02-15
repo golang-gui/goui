@@ -108,7 +108,8 @@ func registerWindow() (err error) {
 		windowMap = make(map[winapi.HWND]*Window)
 		arrowCursor, _ := winapi.LoadCursor(0, winapi.IDC_ARROW)
 		wndClass := winapi.WNDCLASSEX{
-			Size:       winapi.Sizeof_WNDCLASSEX,
+			Size: winapi.Sizeof_WNDCLASSEX,
+			//Style:      winapi.CS_HREDRAW | winapi.CS_VREDRAW,
 			WndProc:    winapi.MakeWindowProc(windowProc),
 			Instance:   instance,
 			Cursor:     arrowCursor,
@@ -139,11 +140,16 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		LParam:  lParam,
 	}
 
+	windowEvent := events.WindowEventBase{
+		Window: window,
+		Native: nativeEvent,
+	}
+
 	switch message {
 	case winapi.WM_CLOSE:
-		closeEvent := new(events.CloseEvent)
-		closeEvent.Window = window
-		closeEvent.Native = nativeEvent
+		closeEvent := &events.CloseEvent{
+			WindowEventBase: windowEvent,
+		}
 		window.onEvent(closeEvent)
 		if closeEvent.Accepted() {
 			return 0
@@ -154,17 +160,21 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		delete(windowMap, hwnd)
 
 	case winapi.WM_SIZE:
-		sizeEvent := new(events.SizeEvent)
-		sizeEvent.Window = window
-		sizeEvent.Native = nativeEvent
-		sizeEvent.Width = int(lParam & 0xFFFF)
-		sizeEvent.Height = int((lParam & 0xFFFF0000) >> 16)
+		winapi.InvalidateRect(hwnd, nil, winapi.FALSE)
+		sizeEvent := &events.SizeEvent{
+			WindowEventBase: windowEvent,
+			Width:           int(lParam & 0xFFFF),
+			Height:          int((lParam & 0xFFFF0000) >> 16),
+		}
 		window.onEvent(sizeEvent)
 
 	case winapi.WM_PAINT:
 		var ps winapi.PAINTSTRUCT
 		winapi.BeginPaint(hwnd, &ps)
-		window.onEvent(nativeEvent)
+		paintEvent := &events.PaintEvent{
+			WindowEventBase: windowEvent,
+		}
+		window.onEvent(paintEvent)
 		winapi.EndPaint(hwnd, &ps)
 		return 0
 
