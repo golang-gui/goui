@@ -134,6 +134,14 @@ func GetClientRect(wnd HWND, rect LPRECT) error {
 	return nil
 }
 
+func InvalidateRect(wnd HWND, rect LPRECT, erase BOOL) error {
+	ret, _, err := syscall.SyscallN(procInvalidateRect.Addr(), uintptr(wnd), uintptr(unsafe.Pointer(rect)), uintptr(erase))
+	if ret == FALSE {
+		return err
+	}
+	return nil
+}
+
 func FlashWindowEx(pfwi PFLASHWINFO) BOOL {
 	ret, _, _ := syscall.SyscallN(procFlashWindowEx.Addr(), uintptr(unsafe.Pointer(pfwi)))
 	return BOOL(ret)
@@ -214,6 +222,22 @@ func PostQuitMessage(code int) {
 func DefWindowProc(wnd HWND, message UINT, wParam WPARAM, lParam LPARAM) LRESULT {
 	ret, _, _ := syscall.SyscallN(procDefWindowProcW.Addr(), uintptr(wnd), uintptr(message), uintptr(wParam), uintptr(lParam))
 	return LRESULT(ret)
+}
+
+func GetDC(hwnd HWND) (HDC, error) {
+	ret, _, err := syscall.SyscallN(procGetDC.Addr(), uintptr(hwnd))
+	if ret == 0 {
+		return 0, err
+	}
+	return HDC(ret), nil
+}
+
+func ReleaseDC(hdc HDC) error {
+	ret, _, err := syscall.SyscallN(procReleaseDC.Addr(), uintptr(hdc))
+	if ret == 0 {
+		return err
+	}
+	return nil
 }
 
 func CreateCompatibleDC(hdc HDC) HDC {

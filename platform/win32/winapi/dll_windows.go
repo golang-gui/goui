@@ -25,6 +25,7 @@ var (
 	procSetWindowTextW       = user32Dll.NewProc("SetWindowTextW")
 	procBringWindowToTop     = user32Dll.NewProc("BringWindowToTop")
 	procGetClientRect        = user32Dll.NewProc("GetClientRect")
+	procInvalidateRect       = user32Dll.NewProc("InvalidateRect")
 	procFlashWindowEx        = user32Dll.NewProc("FlashWindowEx")
 	procCloseWindow          = user32Dll.NewProc("CloseWindow")
 
@@ -40,6 +41,9 @@ var (
 
 	procBeginPaint = user32Dll.NewProc("BeginPaint")
 	procEndPaint   = user32Dll.NewProc("EndPaint")
+
+	procGetDC     = user32Dll.NewProc("GetDC")
+	procReleaseDC = user32Dll.NewProc("ReleaseDC")
 
 	// Resource
 	procLoadCursorW = user32Dll.NewProc("LoadCursorW")
