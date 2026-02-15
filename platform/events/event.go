@@ -13,6 +13,7 @@ type EventType int
 const (
 	Native EventType = iota
 	Close
+	Size
 )
 
 type EventHandler func(event Event)

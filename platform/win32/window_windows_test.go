@@ -4,7 +4,6 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 )
 
@@ -19,17 +18,21 @@ func TestWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var win common.Window
 	onEvent := func(event events.Event) {
-		if event.Type() == events.Close {
+		switch event.Type() {
+		case events.Close:
+			ce := event.(*events.CloseEvent)
 			t.Log("window close")
-			win.Destroy()
+			ce.Window.Destroy()
 			quit = true
 			q.Post()
+		case events.Size:
+			se := event.(*events.SizeEvent)
+			t.Logf("window size %dx%d", se.Width, se.Height)
 		}
 	}
 
-	win, err = newWindow(onEvent)
+	win, err := newWindow(onEvent)
 	if err != nil {
 		t.Fatal(err)
 	}

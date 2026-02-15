@@ -15,3 +15,13 @@ type CloseEvent struct {
 func (e CloseEvent) Type() EventType {
 	return Close
 }
+
+type SizeEvent struct {
+	WindowEventBase
+	Width  int
+	Height int
+}
+
+func (e SizeEvent) Type() EventType {
+	return Size
+}

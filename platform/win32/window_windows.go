@@ -153,6 +153,14 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		window.onEvent(nativeEvent)
 		delete(windowMap, hwnd)
 
+	case winapi.WM_SIZE:
+		sizeEvent := new(events.SizeEvent)
+		sizeEvent.Window = window
+		sizeEvent.Native = nativeEvent
+		sizeEvent.Width = int(lParam & 0xFFFF)
+		sizeEvent.Height = int((lParam & 0xFFFF0000) >> 16)
+		window.onEvent(sizeEvent)
+
 	case winapi.WM_PAINT:
 		var ps winapi.PAINTSTRUCT
 		winapi.BeginPaint(hwnd, &ps)
