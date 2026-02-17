@@ -92,6 +92,10 @@ func (w *Window) Close() error {
 	return nil
 }
 
+func (w *Window) Draw(img common.Image) error {
+	return w.drawImage(img)
+}
+
 var (
 	registerOnce sync.Once
 	instance     winapi.HMODULE
@@ -187,4 +191,57 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 	}
 
 	return winapi.DefWindowProc(hwnd, message, wParam, lParam)
+}
+
+func (w *Window) drawImage(img common.Image) error {
+	var rect winapi.RECT
+	winapi.GetClientRect(w.hwnd, &rect)
+	if rect.Right == 0 || rect.Bottom == 0 {
+		return nil
+	}
+
+	hdc, err := winapi.GetDC(w.hwnd)
+	if err != nil {
+		return err
+	}
+	defer winapi.ReleaseDC(hdc)
+
+	mdc := winapi.CreateCompatibleDC(hdc)
+	mBitmap := winapi.CreateCompatibleBitmap(hdc, rect.Right, rect.Bottom)
+	mOldObj := winapi.SelectObject(mdc, mBitmap)
+
+	{
+		bounds := img.Bounds()
+
+		tdc := winapi.CreateCompatibleDC(hdc)
+		width, height := winapi.INT(bounds.Dx()), winapi.INT(bounds.Dy())
+		tBitmap := winapi.CreateCompatibleBitmap(hdc, width, height)
+		tOldObj := winapi.SelectObject(tdc, tBitmap)
+
+		bgra := ToBGRAImage(img)
+
+		info := winapi.BITMAPINFO{
+			Header: winapi.BITMAPINFOHEADER{
+				Size:     winapi.Sizeof_BITMAPINFOHEADER,
+				Width:    width,
+				Height:   -height,
+				Planes:   1,
+				BitCount: 32, //RGBA
+			},
+		}
+		winapi.SetDIBits(tdc, tBitmap, 0, winapi.UINT(height), winapi.LPVOID(&bgra.Pix[0]), &info, 0 /*DIB_RGB_COLORS*/)
+
+		winapi.BitBlt(mdc, winapi.INT(bounds.Min.X), winapi.INT(bounds.Min.Y), width, height, tdc, 0, 0, 0x00CC0020 /*SRCCOPY*/)
+		winapi.SelectObject(tdc, tOldObj)
+		winapi.DeleteObject(tBitmap)
+
+		winapi.DeleteDC(tdc)
+	}
+
+	winapi.BitBlt(hdc, 0, 0, rect.Right, rect.Bottom, mdc, 0, 0, 0x00CC0020 /*SRCCOPY*/)
+	winapi.SelectObject(mdc, mOldObj)
+	winapi.DeleteObject(mBitmap)
+	winapi.DeleteDC(mdc)
+
+	return nil
 }

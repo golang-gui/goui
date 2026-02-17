@@ -3,6 +3,7 @@ package win32
 import (
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
+	"image"
 )
 
 type Platform struct {
@@ -26,4 +27,8 @@ func (p Platform) NewEventQueue() (common.EventQueue, error) {
 
 func (p Platform) NewWindow(handler events.EventHandler) (common.Window, error) {
 	return newWindow(handler)
+}
+
+func (p Platform) NewImage(width, height int) (common.Image, error) {
+	return NewBGRAImage(image.Rect(0, 0, width, height)), nil
 }

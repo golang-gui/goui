@@ -6,6 +6,7 @@ import (
 )
 
 type (
+	Image        = common.Image
 	Window       = common.Window
 	EventQueue   = common.EventQueue
 	EventHandler = events.EventHandler

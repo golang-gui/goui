@@ -9,4 +9,5 @@ type Window interface {
 	SetTitle(title string) error
 	Show() error
 	Close() error
+	Draw(img Image) error
 }
