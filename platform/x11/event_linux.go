@@ -1,6 +1,18 @@
 package x11
 
-import "github.com/jezek/xgb"
+import (
+	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/x11/libx"
+)
+
+type Event struct {
+	events.EventBase
+	Event libx.Event
+}
+
+func (e *Event) Type() events.EventType {
+	return events.Native
+}
 
 type EventQueue struct {
 	emptyChan chan bool
@@ -8,7 +20,7 @@ type EventQueue struct {
 }
 
 func newEventQueue() (q EventQueue, err error) {
-	q.eventChan = platform.getEventChan()
+	q.eventChan = libx.GetEventChan(platform.display)
 	q.emptyChan = make(chan bool, 5000)
 	return
 }
@@ -40,9 +52,10 @@ func (q EventQueue) Wait() {
 
 func (q EventQueue) processEventOrError(everr any) {
 	switch everr.(type) {
-	case xgb.Event:
+	case libx.Event:
+		handleEvent(everr.(libx.Event))
 
-	case xgb.Error:
+	case libx.Error:
 
 	case error:
 		// c.conn read error

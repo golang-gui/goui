@@ -1,16 +1,13 @@
 package x11
 
 import (
-	"sync"
-
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
-
-	"github.com/jezek/xgb/xproto"
+	"github.com/golang-gui/goui/platform/x11/libx"
 )
 
 type Window struct {
-	wid     xproto.Window
+	wid     libx.Window
 	parent  common.Window
 	onEvent events.EventHandler
 }
@@ -20,14 +17,28 @@ func newWindow(onEvent events.EventHandler) (w common.Window, err error) {
 		onEvent: onEvent,
 	}
 
-	win.wid, err = xproto.NewWindowId(platform.xConn)
+	defScreen := libx.DefaultScreen(platform.display)
+	screen := libx.ScreenOfDisplay(platform.display, defScreen)
+	visual := libx.DefaultVisual(platform.display, defScreen)
+
+	attr := libx.SetWindowAttributes{
+		EventMask: libx.EventMaskExposure | libx.EventMaskPropertyChange,
+	}
+
+	win.wid, err = libx.CreateWindow(platform.display, screen.Root,
+		0, 0, 800, 600, 0,
+		screen.RootDepth, libx.WindowClassInputOutput, visual, libx.CwEventMask, attr)
+
 	if err != nil {
 		return nil, err
 	}
 
-	screen := platform.setup.DefaultScreen(platform.xConn)
-	xproto.CreateWindow(platform.xConn, screen.RootDepth, win.wid, screen.Root, 0, 0, 800, 600, 0, xproto.WindowClassInputOutput, screen.RootVisual, 0, []uint32{})
+	// declare WM protocols
+	if platform.atoms.WM_PROTOCOLS != 0 {
+		libx.SetWMProtocols(platform.display, win.wid, []libx.Atom{platform.atoms.WM_DELETE_WINDOW})
+	}
 
+	windowMap[win.wid] = win
 	return win, nil
 }
 
@@ -36,7 +47,7 @@ func (w *Window) NativeHandle() uintptr {
 }
 
 func (w *Window) Destroy() {
-	xproto.DestroyWindow(platform.xConn, w.wid)
+	libx.DestroyWindow(platform.display, w.wid)
 }
 
 func (w *Window) Parent() common.Window {
@@ -56,16 +67,45 @@ func (w *Window) SetTitle(title string) (err error) {
 }
 
 func (w *Window) Show() error {
-	return xproto.MapWindowChecked(platform.xConn, w.wid).Check()
+	return libx.MapWindow(platform.display, w.wid)
 }
 
 func (w *Window) Close() error {
 	panic("impl")
 }
 
-var (
-	initOnce  sync.Once
-	windowMap map[xproto.Window]*Window
-)
+func (w *Window) Draw(img common.Image) error {
+	panic("impl")
+}
+
+var windowMap = map[libx.Window]*Window{}
 
 // TODO: process window event
+func handleEvent(event libx.Event) {
+	nativeEvent := &Event{
+		Event: event,
+	}
+	switch ev := event.(type) {
+	case libx.ClientMessageEvent:
+		if ev.Type == platform.atoms.WM_PROTOCOLS && len(ev.Data.Data32) != 0 {
+			if libx.Atom(ev.Data.Data32[0]) == platform.atoms.WM_DELETE_WINDOW {
+				if window, ok := windowMap[ev.Window]; ok {
+					closeEvent := &events.CloseEvent{
+						WindowEventBase: events.WindowEventBase{
+							Window: window,
+							Native: nativeEvent,
+						},
+					}
+					window.onEvent(closeEvent)
+				}
+			}
+		}
+	// close ping dnd
+	case libx.ConfigureNotifyEvent:
+		// size
+	case libx.ExposeEvent:
+		// paint
+	case libx.PropertyNotifyEvent:
+		// state
+	}
+}

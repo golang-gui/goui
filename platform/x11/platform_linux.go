@@ -1,19 +1,23 @@
 package x11
 
 import (
-	"net"
 	"sync"
-	"unsafe"
 
 	"github.com/golang-gui/goui/platform/common"
-
-	"github.com/jezek/xgb"
-	"github.com/jezek/xgb/xproto"
+	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/x11/libx"
 )
 
 type Platform struct {
-	xConn *xgb.Conn
-	setup *xproto.SetupInfo
+	display *libx.Display
+	atoms   struct {
+		WM_STATE          libx.Atom
+		WM_PROTOCOLS      libx.Atom
+		WM_DELETE_WINDOW  libx.Atom
+		_NET_WM_NAME      libx.Atom
+		_NET_WM_ICON      libx.Atom
+		_NET_WM_ICON_NAME libx.Atom
+	}
 }
 
 var (
@@ -24,40 +28,48 @@ var (
 func NewPlatform() (p *Platform, err error) {
 	newOnce.Do(func() {
 		p = new(Platform)
-		p.xConn, err = xgb.NewConn()
+		p.display, err = libx.OpenDisplay("")
 		if err != nil {
 			return
 		}
-		p.setup = xproto.Setup(p.xConn)
+
+		// intern atoms
+		internAtom := func(name string) libx.Atom {
+			atom, _ := libx.InternAtom(p.display, name, false)
+			return atom
+		}
+
+		p.atoms.WM_STATE = internAtom("WM_STATE")
+		p.atoms.WM_PROTOCOLS = internAtom("WM_PROTOCOLS")
+		p.atoms.WM_DELETE_WINDOW = internAtom("WM_DELETE_WINDOW")
+		p.atoms._NET_WM_NAME = internAtom("_NET_WM_NAME")
+		p.atoms._NET_WM_ICON = internAtom("_NET_WM_ICON")
+		p.atoms._NET_WM_ICON_NAME = internAtom("_NET_WM_ICON_NAME")
+
 		platform = p
 	})
-	return
+	if err != nil {
+		return nil, err
+	}
+	return platform, nil
 }
 
 func (p *Platform) Name() string {
 	return "x11"
 }
 
+func (p *Platform) Destroy() {
+
+}
+
 func (p *Platform) NewEventQueue() (common.EventQueue, error) {
 	return newEventQueue()
 }
 
-//func (p *Platform) NewWindow(handler events.EventHandler) (common.Window, error) {
-//	return newWindow(handler)
-//}
+func (p *Platform) NewWindow(handler events.EventHandler) (common.Window, error) {
+	return newWindow(handler)
+}
 
-func (p *Platform) getEventChan() (eventChan <-chan any) {
-	type hackXConn struct {
-		host                string
-		conn                net.Conn
-		display             string
-		DisplayNumber       int
-		DefaultScreen       int
-		SetupBytes          []byte
-		setupResourceIdBase uint32
-		setupResourceIdMask uint32
-		eventChan           chan any
-	}
-	conn := (*hackXConn)(unsafe.Pointer(p.xConn))
-	return conn.eventChan
+func (p *Platform) NewImage(width, height int) (common.Image, error) {
+	panic("TODO impl")
 }
