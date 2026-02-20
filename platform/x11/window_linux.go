@@ -120,7 +120,15 @@ func handleEvent(event libx.Event) {
 		}
 
 	case libx.ExposeEvent:
-		// paint
+		if window, ok := windowMap[ev.Window]; ok {
+			paintEvent := &events.PaintEvent{
+				WindowEventBase: events.WindowEventBase{
+					Window: window,
+					Native: nativeEvent,
+				},
+			}
+			window.onEvent(paintEvent)
+		}
 	case libx.PropertyNotifyEvent:
 		// state
 	}

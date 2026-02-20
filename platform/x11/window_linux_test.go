@@ -29,6 +29,8 @@ func TestWindow(t *testing.T) {
 		case events.Size:
 			se := event.(*events.SizeEvent)
 			fmt.Printf("window size %dx%d\n", se.Width, se.Height)
+		case events.Paint:
+			fmt.Println("window paint")
 		}
 	})
 	if err != nil {
