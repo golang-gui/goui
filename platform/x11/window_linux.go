@@ -10,6 +10,8 @@ type Window struct {
 	wid     libx.Window
 	parent  common.Window
 	onEvent events.EventHandler
+	width   uint16
+	height  uint16
 }
 
 func newWindow(onEvent events.EventHandler) (w common.Window, err error) {
@@ -22,7 +24,7 @@ func newWindow(onEvent events.EventHandler) (w common.Window, err error) {
 	visual := libx.DefaultVisual(platform.display, defScreen)
 
 	attr := libx.SetWindowAttributes{
-		EventMask: libx.EventMaskExposure | libx.EventMaskPropertyChange,
+		EventMask: libx.EventMaskStructureNotify | libx.EventMaskExposure | libx.EventMaskPropertyChange,
 	}
 
 	win.wid, err = libx.CreateWindow(platform.display, screen.Root,
@@ -100,9 +102,23 @@ func handleEvent(event libx.Event) {
 				}
 			}
 		}
-	// close ping dnd
+	// ping dnd
 	case libx.ConfigureNotifyEvent:
-		// size
+		if window, ok := windowMap[ev.Window]; ok {
+			if ev.Width != window.width || ev.Height != window.height {
+				window.width, window.height = ev.Width, ev.Height
+				sizeEvent := &events.SizeEvent{
+					WindowEventBase: events.WindowEventBase{
+						Window: window,
+						Native: nativeEvent,
+					},
+					Width:  int(ev.Width),
+					Height: int(ev.Height),
+				}
+				window.onEvent(sizeEvent)
+			}
+		}
+
 	case libx.ExposeEvent:
 		// paint
 	case libx.PropertyNotifyEvent:
