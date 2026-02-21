@@ -1,9 +1,10 @@
 package common
 
 import (
-	"github.com/golang-gui/goui/platform/internal"
 	"image"
 	"image/color"
+
+	"github.com/golang-gui/goui/platform/internal"
 )
 
 type Image interface {
@@ -17,7 +18,6 @@ type BGRAImage struct {
 	Pix    []uint8
 	Stride int
 	Rect   image.Rectangle
-	IsSub  bool
 }
 
 func NewBGRAImage(r image.Rectangle) *BGRAImage {
@@ -51,7 +51,7 @@ func (img *BGRAImage) Destroy() {
 }
 
 func (img *BGRAImage) ColorModel() color.Model {
-	return color.RGBAModel
+	return BGRAModel
 }
 
 func (img *BGRAImage) Bounds() image.Rectangle {
@@ -85,19 +85,19 @@ func (img *BGRAImage) Set(x, y int, c color.Color) {
 	s[3] = c1.A
 }
 
-func (img *BGRAImage) SubImage(r image.Rectangle) image.Image {
-	r = r.Intersect(img.Rect)
-	if r.Empty() {
-		return &BGRAImage{}
-	}
-	i := img.PixOffset(r.Min.X, r.Min.Y)
-	return &BGRAImage{
-		Pix:    img.Pix[i:],
-		Stride: img.Stride,
-		Rect:   r,
-		IsSub:  true,
-	}
-}
+//func (img *BGRAImage) SubImage(r image.Rectangle) image.Image {
+//	r = r.Intersect(img.Rect)
+//	if r.Empty() {
+//		return &BGRAImage{}
+//	}
+//	i := img.PixOffset(r.Min.X, r.Min.Y)
+//	return &BGRAImage{
+//		Pix:    img.Pix[i:],
+//		Stride: img.Stride,
+//		Rect:   r,
+//		IsSub:  true,
+//	}
+//}
 
 func (img *BGRAImage) PixOffset(x, y int) int {
 	return (y-img.Rect.Min.Y)*img.Stride + (x-img.Rect.Min.X)*4

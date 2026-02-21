@@ -12,6 +12,7 @@ type Window struct {
 	onEvent events.EventHandler
 	width   uint16
 	height  uint16
+	gc      libx.Gcontext
 }
 
 func newWindow(onEvent events.EventHandler) (w common.Window, err error) {
@@ -19,9 +20,7 @@ func newWindow(onEvent events.EventHandler) (w common.Window, err error) {
 		onEvent: onEvent,
 	}
 
-	defScreen := libx.DefaultScreen(platform.display)
-	screen := libx.ScreenOfDisplay(platform.display, defScreen)
-	visual := libx.DefaultVisual(platform.display, defScreen)
+	screen := platform.defScreen
 
 	attr := libx.SetWindowAttributes{
 		EventMask: libx.EventMaskStructureNotify | libx.EventMaskExposure | libx.EventMaskPropertyChange,
@@ -29,7 +28,7 @@ func newWindow(onEvent events.EventHandler) (w common.Window, err error) {
 
 	win.wid, err = libx.CreateWindow(platform.display, screen.Root,
 		0, 0, 800, 600, 0,
-		screen.RootDepth, libx.WindowClassInputOutput, visual, libx.CwEventMask, attr)
+		screen.RootDepth, libx.WindowClassInputOutput, screen.RootVisual, libx.CwEventMask, attr)
 
 	if err != nil {
 		return nil, err
@@ -77,7 +76,7 @@ func (w *Window) Close() error {
 }
 
 func (w *Window) Draw(img common.Image) error {
-	panic("impl")
+	return w.drawImage(common.ToBGRAImage(img))
 }
 
 var windowMap = map[libx.Window]*Window{}
@@ -132,4 +131,51 @@ func handleEvent(event libx.Event) {
 	case libx.PropertyNotifyEvent:
 		// state
 	}
+}
+
+func (w *Window) drawImage(img *common.BGRAImage) (err error) {
+	if w.gc == 0 {
+		w.gc, err = libx.CreateGC(platform.display, libx.Drawable(w.wid), 0, nil)
+		if err != nil {
+			return err
+		}
+	}
+
+	//width, height := img.Bounds().Dx(), img.Bounds().Dy()
+	//return libx.PutBGRAImage(platform.display, libx.Drawable(w.wid), w.gc, uint(width), uint(height), 0, 0, img.Pix)
+
+	width := img.Bounds().Dx()
+	data := img.Pix
+
+	const MaxReqSize = (1 << 16) * 4
+	rowsPer := (MaxReqSize - 28) / (width * 4)
+	bytesPer := rowsPer * width * 4
+
+	xpos := 0
+	ypos := 0
+
+	heightPer := 0
+	start, end := 0, 0
+
+	var toSend []byte
+
+	for end < len(data) {
+		end = start + bytesPer
+		if end > len(data) {
+			end = len(data)
+		}
+
+		toSend = data[start:end]
+		heightPer = len(toSend) / 4 / width
+
+		err = libx.PutBGRAImage(platform.display, libx.Drawable(w.wid), w.gc, uint(width), uint(heightPer), xpos, ypos, toSend)
+		if err != nil {
+			return err
+		}
+
+		start = end
+		ypos += rowsPer
+	}
+
+	return nil
 }

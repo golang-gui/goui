@@ -45,6 +45,8 @@ type (
 	Visualid = xproto.Visualid
 	Atom     = xproto.Atom
 	Window   = xproto.Window
+	Drawable = xproto.Drawable
+	Gcontext = xproto.Gcontext
 	Pixmap   = xproto.Pixmap
 	Colormap = xproto.Colormap
 	Cursor   = xproto.Cursor
@@ -219,7 +221,7 @@ const (
 	EventMaskOwnerGrabButton      = xproto.EventMaskOwnerGrabButton
 )
 
-func CreateWindow(display *Display, parent Window, x, y, width, height, borderWidth int, depth, class byte, visual Visualid, valueMask uint32, attrs SetWindowAttributes) (Window, error) {
+func CreateWindow(display *Display, parent Window, x, y int, width, height, borderWidth uint, depth, class byte, visual Visualid, valueMask uint32, attrs SetWindowAttributes) (Window, error) {
 	wid, err := xproto.NewWindowId(display.conn)
 	if err != nil {
 		return 0, err
@@ -234,6 +236,11 @@ func CreateWindow(display *Display, parent Window, x, y, width, height, borderWi
 
 func DestroyWindow(display *Display, window Window) error {
 	return xproto.DestroyWindowChecked(display.conn, window).Check()
+}
+
+func ChangeWindowAttributes(display *Display, window Window, valueMask uint32, attributes SetWindowAttributes) error {
+	values := attributes.process(valueMask)
+	return xproto.ChangeWindowAttributesChecked(display.conn, window, valueMask, values).Check()
 }
 
 func MapWindow(display *Display, window Window) error {
@@ -257,6 +264,50 @@ const (
 
 func ImageByteOrder(display *Display) ImageByteOrderType {
 	return ImageByteOrderType(display.setup.ImageByteOrder)
+}
+
+type GCValues struct {
+	// TODO
+}
+
+func CreateGC(display *Display, drawable Drawable, valueMask uint32, values *GCValues) (Gcontext, error) {
+	gc, err := xproto.NewGcontextId(display.conn)
+	if err != nil {
+		return 0, err
+	}
+	err = xproto.CreateGCChecked(display.conn, gc, drawable, 0, nil).Check()
+	if err != nil {
+		return 0, err
+	}
+	return gc, nil
+}
+
+func FreeGC(display *Display, gc Gcontext) error {
+	return xproto.FreeGCChecked(display.conn, gc).Check()
+}
+
+func CreatePixmap(display *Display, drawable Drawable, width, height, depth uint) (Pixmap, error) {
+	pid, err := xproto.NewPixmapId(display.conn)
+	if err != nil {
+		return 0, nil
+	}
+	err = xproto.CreatePixmapChecked(display.conn, byte(depth), pid, drawable, uint16(width), uint16(height)).Check()
+	if err != nil {
+		return 0, nil
+	}
+	return pid, nil
+}
+
+func FreePixmap(display *Display, pixmap Pixmap) error {
+	return xproto.FreePixmapChecked(display.conn, pixmap).Check()
+}
+
+func PutBGRAImage(display *Display, drawable Drawable, gc Gcontext, width, height uint, dstX, dstY int, pix []byte) error {
+	return xproto.PutImageChecked(
+		display.conn, xproto.ImageFormatZPixmap,
+		drawable, gc,
+		uint16(width), uint16(height), int16(dstX), int16(dstY),
+		0, 24, pix).Check()
 }
 
 type PropertyChangeMode byte

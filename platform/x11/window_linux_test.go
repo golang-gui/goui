@@ -1,38 +1,90 @@
 package x11
 
 import (
-	"fmt"
+	"image/color"
+	"image/draw"
+	"math/rand"
+	"runtime"
 	"testing"
 
 	"github.com/golang-gui/goui/platform/events"
 )
 
-func TestWindow(t *testing.T) {
-	plat, err := NewPlatform()
-	if err != nil {
-		t.Fatal(err)
+func randColors(count int) []color.Color {
+	colors := make([]color.Color, count)
+	for i := range colors {
+		colors[i] = color.RGBA{
+			R: uint8(rand.Intn(255)),
+			G: uint8(rand.Intn(255)),
+			B: uint8(rand.Intn(255)),
+			A: 255,
+		}
+	}
+	return colors
+}
+
+func drawColors(img draw.Image, colors []color.Color) {
+	bounds := img.Bounds()
+
+	inter := bounds.Dx() / len(colors)
+	selColor := func(x int) color.Color {
+		for i := range colors {
+			if i*inter <= x && x < (i+1)*inter {
+				return colors[i]
+			}
+		}
+		return colors[0]
 	}
 
-	eventQueue, err := plat.NewEventQueue()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			img.Set(x, y, selColor(x))
+		}
+	}
+}
+
+func TestWindow(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	plat, err := NewPlatform()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	quit := false
 
-	win, err := plat.NewWindow(func(event events.Event) {
+	eventQueue, err := plat.NewEventQueue()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var width, height uint
+	colors := randColors(7)
+
+	onEvent := func(event events.Event) {
 		switch event.Type() {
 		case events.Close:
+			ce := event.(*events.CloseEvent)
+			t.Log("window close")
+			ce.Window.Destroy()
 			quit = true
 			eventQueue.Post()
-			println("window close")
 		case events.Size:
 			se := event.(*events.SizeEvent)
-			fmt.Printf("window size %dx%d\n", se.Width, se.Height)
+			t.Logf("window size %dx%d", se.Width, se.Height)
+			width, height = se.Width, se.Height
 		case events.Paint:
-			fmt.Println("window paint")
+			pe := event.(*events.PaintEvent)
+			t.Logf("window paint %dx%d", width, height)
+			img, _ := plat.NewImage(width, height)
+			drawColors(img, colors)
+			pe.Window.Draw(img)
+			pe.Accept()
 		}
-	})
+	}
+
+	win, err := newWindow(onEvent)
 	if err != nil {
 		t.Fatal(err)
 	}

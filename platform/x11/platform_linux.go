@@ -1,6 +1,7 @@
 package x11
 
 import (
+	"image"
 	"sync"
 
 	"github.com/golang-gui/goui/platform/common"
@@ -18,6 +19,7 @@ type Platform struct {
 		_NET_WM_ICON      libx.Atom
 		_NET_WM_ICON_NAME libx.Atom
 	}
+	defScreen *libx.Screen
 }
 
 var (
@@ -46,6 +48,8 @@ func NewPlatform() (p *Platform, err error) {
 		p.atoms._NET_WM_ICON = internAtom("_NET_WM_ICON")
 		p.atoms._NET_WM_ICON_NAME = internAtom("_NET_WM_ICON_NAME")
 
+		p.defScreen = libx.ScreenOfDisplay(p.display, libx.DefaultScreen(p.display))
+
 		platform = p
 	})
 	if err != nil {
@@ -59,7 +63,7 @@ func (p *Platform) Name() string {
 }
 
 func (p *Platform) Destroy() {
-
+	// TODO
 }
 
 func (p *Platform) NewEventQueue() (common.EventQueue, error) {
@@ -70,6 +74,6 @@ func (p *Platform) NewWindow(handler events.EventHandler) (common.Window, error)
 	return newWindow(handler)
 }
 
-func (p *Platform) NewImage(width, height int) (common.Image, error) {
-	panic("TODO impl")
+func (p *Platform) NewImage(width, height uint) (common.Image, error) {
+	return common.NewBGRAImage(image.Rect(0, 0, int(width), int(height))), nil
 }
