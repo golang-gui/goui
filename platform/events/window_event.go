@@ -20,8 +20,8 @@ func (e CloseEvent) Type() EventType {
 
 type SizeEvent struct {
 	WindowEventBase
-	Width  int
-	Height int
+	Width  uint
+	Height uint
 }
 
 func (e SizeEvent) Type() EventType {

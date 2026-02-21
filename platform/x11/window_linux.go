@@ -112,8 +112,8 @@ func handleEvent(event libx.Event) {
 						Window: window,
 						Native: nativeEvent,
 					},
-					Width:  int(ev.Width),
-					Height: int(ev.Height),
+					Width:  uint(ev.Width),
+					Height: uint(ev.Height),
 				}
 				window.onEvent(sizeEvent)
 			}

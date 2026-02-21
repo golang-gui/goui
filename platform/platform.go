@@ -9,7 +9,7 @@ import (
 type Platform interface {
 	Destroy()
 	Name() string
-	NewImage(width, height int) (common.Image, error)
+	NewImage(width, height uint) (common.Image, error)
 	NewWindow(handler EventHandler) (Window, error)
 	NewEventQueue() (EventQueue, error)
 }

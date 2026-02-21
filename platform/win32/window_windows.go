@@ -167,8 +167,8 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		winapi.InvalidateRect(hwnd, nil, winapi.FALSE)
 		sizeEvent := &events.SizeEvent{
 			WindowEventBase: windowEvent,
-			Width:           int(lParam & 0xFFFF),
-			Height:          int((lParam & 0xFFFF0000) >> 16),
+			Width:           uint(lParam & 0xFFFF),
+			Height:          uint((lParam & 0xFFFF0000) >> 16),
 		}
 		window.onEvent(sizeEvent)
 

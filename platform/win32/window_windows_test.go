@@ -59,7 +59,7 @@ func TestWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	width, height := 0, 0
+	var width, height uint
 	colors := randColors(7)
 
 	onEvent := func(event events.Event) {
