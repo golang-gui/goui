@@ -30,5 +30,5 @@ func (p Platform) NewWindow(handler events.EventHandler) (common.Window, error) 
 }
 
 func (p Platform) NewImage(width, height int) (common.Image, error) {
-	return NewBGRAImage(image.Rect(0, 0, width, height)), nil
+	return common.NewBGRAImage(image.Rect(0, 0, width, height)), nil
 }

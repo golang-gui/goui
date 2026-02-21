@@ -93,7 +93,7 @@ func (w *Window) Close() error {
 }
 
 func (w *Window) Draw(img common.Image) error {
-	return w.drawImage(img)
+	return w.drawImage(common.ToBGRAImage(img))
 }
 
 var (
@@ -193,7 +193,7 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 	return winapi.DefWindowProc(hwnd, message, wParam, lParam)
 }
 
-func (w *Window) drawImage(img common.Image) error {
+func (w *Window) drawImage(img *common.BGRAImage) error {
 	var rect winapi.RECT
 	winapi.GetClientRect(w.hwnd, &rect)
 	if rect.Right == 0 || rect.Bottom == 0 {
@@ -218,8 +218,6 @@ func (w *Window) drawImage(img common.Image) error {
 		tBitmap := winapi.CreateCompatibleBitmap(hdc, width, height)
 		tOldObj := winapi.SelectObject(tdc, tBitmap)
 
-		bgra := ToBGRAImage(img)
-
 		info := winapi.BITMAPINFO{
 			Header: winapi.BITMAPINFOHEADER{
 				Size:     winapi.Sizeof_BITMAPINFOHEADER,
@@ -229,7 +227,7 @@ func (w *Window) drawImage(img common.Image) error {
 				BitCount: 32, //RGBA
 			},
 		}
-		winapi.SetDIBits(tdc, tBitmap, 0, winapi.UINT(height), winapi.LPVOID(&bgra.Pix[0]), &info, 0 /*DIB_RGB_COLORS*/)
+		winapi.SetDIBits(tdc, tBitmap, 0, winapi.UINT(height), winapi.LPVOID(&img.Pix[0]), &info, 0 /*DIB_RGB_COLORS*/)
 
 		winapi.BitBlt(mdc, winapi.INT(bounds.Min.X), winapi.INT(bounds.Min.Y), width, height, tdc, 0, 0, 0x00CC0020 /*SRCCOPY*/)
 		winapi.SelectObject(tdc, tOldObj)
