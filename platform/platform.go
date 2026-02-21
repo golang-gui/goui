@@ -24,6 +24,8 @@ func DefaultName() string {
 	switch runtime.GOOS {
 	case "windows":
 		return "win32"
+	case "linux":
+		return "x11"
 	}
 	return ""
 }
