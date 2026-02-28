@@ -10,4 +10,5 @@ type Window interface {
 	Show() error
 	Close() error
 	Draw(img Image) error
+	ScaleFactor() (float64, error)
 }

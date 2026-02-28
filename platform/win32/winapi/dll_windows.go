@@ -26,6 +26,7 @@ var (
 	procBringWindowToTop     = user32Dll.NewProc("BringWindowToTop")
 	procGetClientRect        = user32Dll.NewProc("GetClientRect")
 	procInvalidateRect       = user32Dll.NewProc("InvalidateRect")
+	procGetDpiForWindow      = user32Dll.NewProc("GetDpiForWindow")
 	procFlashWindowEx        = user32Dll.NewProc("FlashWindowEx")
 	procCloseWindow          = user32Dll.NewProc("CloseWindow")
 

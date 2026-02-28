@@ -142,6 +142,17 @@ func InvalidateRect(wnd HWND, rect LPRECT, erase BOOL) error {
 	return nil
 }
 
+func GetDpiForWindow(wnd HWND) (UINT, error) {
+	if err := procGetDpiForWindow.Find(); err != nil {
+		return 96, nil
+	}
+	ret, _, err := syscall.SyscallN(procGetDpiForWindow.Addr(), uintptr(wnd))
+	if ret == 0 {
+		return 0, err
+	}
+	return UINT(ret), nil
+}
+
 func FlashWindowEx(pfwi PFLASHWINFO) BOOL {
 	ret, _, _ := syscall.SyscallN(procFlashWindowEx.Addr(), uintptr(unsafe.Pointer(pfwi)))
 	return BOOL(ret)

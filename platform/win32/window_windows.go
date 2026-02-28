@@ -96,6 +96,14 @@ func (w *Window) Draw(img common.Image) error {
 	return w.drawImage(common.ToBGRAImage(img))
 }
 
+func (w *Window) ScaleFactor() (float64, error) {
+	dpi, err := winapi.GetDpiForWindow(w.hwnd)
+	if err != nil {
+		return 0, err
+	}
+	return float64(dpi) / 96, nil
+}
+
 var (
 	registerOnce sync.Once
 	instance     winapi.HMODULE

@@ -89,6 +89,9 @@ func TestWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	scale, _ := win.ScaleFactor()
+	t.Log("scale:", scale)
+
 	win.SetTitle("TestWindow")
 	win.Show()
 
