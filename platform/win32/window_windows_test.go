@@ -63,24 +63,23 @@ func TestWindow(t *testing.T) {
 	colors := randColors(7)
 
 	onEvent := func(event events.Event) {
-		switch event.Type() {
-		case events.Close:
-			ce := event.(*events.CloseEvent)
+		switch ev := event.(type) {
+		case *events.CloseEvent:
 			t.Log("window close")
-			ce.Window.Destroy()
+			ev.Window.Destroy()
 			quit = true
 			eventQueue.Post()
-		case events.Size:
-			se := event.(*events.SizeEvent)
-			t.Logf("window size %dx%d", se.Width, se.Height)
-			width, height = se.Width, se.Height
-		case events.Paint:
-			pe := event.(*events.PaintEvent)
+		case *events.SizeEvent:
+			t.Logf("window size %dx%d", ev.Width, ev.Height)
+			width, height = ev.Width, ev.Height
+		case *events.PaintEvent:
 			t.Logf("window paint %dx%d", width, height)
 			img, _ := plat.NewImage(width, height)
 			drawColors(img, colors)
-			pe.Window.Draw(img)
-			pe.Accept()
+			ev.Window.Draw(img)
+			ev.Accept()
+		case *events.ScaleEvent:
+			t.Log("window scale", ev.ScaleFactor)
 		}
 	}
 

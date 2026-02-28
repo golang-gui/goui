@@ -26,9 +26,12 @@ var (
 	procBringWindowToTop     = user32Dll.NewProc("BringWindowToTop")
 	procGetClientRect        = user32Dll.NewProc("GetClientRect")
 	procInvalidateRect       = user32Dll.NewProc("InvalidateRect")
-	procGetDpiForWindow      = user32Dll.NewProc("GetDpiForWindow")
 	procFlashWindowEx        = user32Dll.NewProc("FlashWindowEx")
 	procCloseWindow          = user32Dll.NewProc("CloseWindow")
+
+	// DPI
+	procGetDpiForWindow               = user32Dll.NewProc("GetDpiForWindow")
+	procSetProcessDpiAwarenessContext = user32Dll.NewProc("SetProcessDpiAwarenessContext")
 
 	//Message
 	procGetMessageW      = user32Dll.NewProc("GetMessageW")

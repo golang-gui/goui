@@ -35,3 +35,12 @@ type PaintEvent struct {
 func (e PaintEvent) Type() EventType {
 	return Paint
 }
+
+type ScaleEvent struct {
+	WindowEventBase
+	ScaleFactor float64
+}
+
+func (e ScaleEvent) Type() EventType {
+	return Scale
+}

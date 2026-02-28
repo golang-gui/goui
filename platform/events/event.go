@@ -15,6 +15,7 @@ const (
 	Close
 	Size
 	Paint
+	Scale
 )
 
 type EventHandler func(event Event)

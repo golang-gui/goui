@@ -190,6 +190,19 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		winapi.EndPaint(hwnd, &ps)
 		return 0
 
+	case winapi.WM_DPICHANGED:
+		dpi := wParam & 0xFFFF
+		scaleEvent := &events.ScaleEvent{
+			WindowEventBase: windowEvent,
+			ScaleFactor:     float64(dpi) / 96,
+		}
+		window.onEvent(scaleEvent)
+		rect := (*winapi.RECT)(unsafe.Pointer(uintptr(lParam)))
+		winapi.SetWindowPos(hwnd, 0,
+			int(rect.Left), int(rect.Top),
+			int(rect.Right-rect.Left), int(rect.Bottom-rect.Top),
+			winapi.SWP_NOZORDER|winapi.SWP_NOACTIVATE)
+
 	default:
 		window.onEvent(nativeEvent)
 	}

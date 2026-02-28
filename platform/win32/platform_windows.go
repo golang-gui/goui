@@ -3,6 +3,7 @@ package win32
 import (
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/win32/winapi"
 	"image"
 )
 
@@ -10,6 +11,9 @@ type Platform struct {
 }
 
 func NewPlatform() (Platform, error) {
+	if err := winapi.SetProcessDpiAwarenessContext(winapi.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2); err != nil {
+		return Platform{}, err
+	}
 	return Platform{}, nil
 }
 

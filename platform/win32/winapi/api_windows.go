@@ -142,6 +142,11 @@ func InvalidateRect(wnd HWND, rect LPRECT, erase BOOL) error {
 	return nil
 }
 
+func FlashWindowEx(pfwi PFLASHWINFO) BOOL {
+	ret, _, _ := syscall.SyscallN(procFlashWindowEx.Addr(), uintptr(unsafe.Pointer(pfwi)))
+	return BOOL(ret)
+}
+
 func GetDpiForWindow(wnd HWND) (UINT, error) {
 	if err := procGetDpiForWindow.Find(); err != nil {
 		return 96, nil
@@ -153,9 +158,15 @@ func GetDpiForWindow(wnd HWND) (UINT, error) {
 	return UINT(ret), nil
 }
 
-func FlashWindowEx(pfwi PFLASHWINFO) BOOL {
-	ret, _, _ := syscall.SyscallN(procFlashWindowEx.Addr(), uintptr(unsafe.Pointer(pfwi)))
-	return BOOL(ret)
+func SetProcessDpiAwarenessContext(value DPI_AWARENESS_CONTEXT) error {
+	if err := procSetProcessDpiAwarenessContext.Find(); err != nil {
+		return nil
+	}
+	ret, _, err := syscall.SyscallN(procSetProcessDpiAwarenessContext.Addr(), uintptr(value))
+	if ret == FALSE {
+		return err
+	}
+	return nil
 }
 
 func BeginPaint(wnd HWND, paint LPPAINTSTRUCT) HDC {
