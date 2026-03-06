@@ -60,6 +60,11 @@ func CSlice[S ~[]E, E any](s S) unsafe.Pointer {
 	return unsafe.Pointer(&s[0])
 }
 
+func GoBool[T comparable](v T) bool {
+	var zero T
+	return v != zero
+}
+
 func CString(s string) unsafe.Pointer {
 	buf := make([]byte, len(s)+1)
 	copy(buf, s)
