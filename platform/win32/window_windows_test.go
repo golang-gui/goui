@@ -83,7 +83,7 @@ func TestWindow(t *testing.T) {
 		}
 	}
 
-	win, err := newWindow(onEvent)
+	win, err := plat.NewWindow(onEvent)
 	if err != nil {
 		t.Fatal(err)
 	}

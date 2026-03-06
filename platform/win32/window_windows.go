@@ -2,7 +2,6 @@ package win32
 
 import (
 	"runtime"
-	"sync"
 	"syscall"
 	"unsafe"
 
@@ -17,19 +16,15 @@ type Window struct {
 	onEvent events.EventHandler
 }
 
-func newWindow(onEvent events.EventHandler) (common.Window, error) {
-	err := registerWindow()
-	if err != nil {
-		return nil, err
-	}
+func newWindow(onEvent events.EventHandler) (w *Window, err error) {
 	win := &Window{
 		onEvent: onEvent,
 	}
 
-	win.hwnd, err = winapi.CreateWindowEx(0, windowClass, windowTitle, winapi.WS_OVERLAPPEDWINDOW,
+	win.hwnd, err = winapi.CreateWindowEx(0, platform.windowClass, platform.windowTitle, winapi.WS_OVERLAPPEDWINDOW,
 		winapi.CW_USEDEFAULT, winapi.CW_USEDEFAULT,
 		winapi.CW_USEDEFAULT, winapi.CW_USEDEFAULT,
-		0, 0, instance,
+		0, 0, platform.instance,
 		unsafe.Pointer(win))
 
 	if err != nil {
@@ -104,34 +99,7 @@ func (w *Window) ScaleFactor() (float64, error) {
 	return float64(dpi) / 96, nil
 }
 
-var (
-	registerOnce sync.Once
-	instance     winapi.HMODULE
-	windowClass  winapi.LPWSTR
-	windowTitle  winapi.LPWSTR
-	windowMap    map[winapi.HWND]*Window
-)
-
-func registerWindow() (err error) {
-	registerOnce.Do(func() {
-		instance, _ = winapi.GetModuleHandle(nil)
-		windowClass, _ = syscall.UTF16PtrFromString("GOUI window")
-		windowTitle, _ = syscall.UTF16PtrFromString("Window")
-		windowMap = make(map[winapi.HWND]*Window)
-		arrowCursor, _ := winapi.LoadCursor(0, winapi.IDC_ARROW)
-		wndClass := winapi.WNDCLASSEX{
-			Size: winapi.Sizeof_WNDCLASSEX,
-			//Style:      winapi.CS_HREDRAW | winapi.CS_VREDRAW,
-			WndProc:    winapi.MakeWindowProc(windowProc),
-			Instance:   instance,
-			Cursor:     arrowCursor,
-			ClassName:  windowClass,
-			Background: winapi.HBRUSH(winapi.COLOR_WINDOWFRAME),
-		}
-		_, err = winapi.RegisterClassEx(&wndClass)
-	})
-	return
-}
+var windowMap = map[winapi.HWND]*Window{}
 
 func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lParam winapi.LPARAM) winapi.LRESULT {
 	window, has := windowMap[hwnd]
