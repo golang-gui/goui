@@ -6,7 +6,13 @@ import (
 )
 
 func TestEventQueue(t *testing.T) {
-	q, err := newEventQueue()
+	plat, err := NewPlatform()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer plat.Destroy()
+
+	q, err := plat.NewEventQueue()
 	if err != nil {
 		t.Fatal(err)
 	}
