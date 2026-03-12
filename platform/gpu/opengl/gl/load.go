@@ -275,7 +275,11 @@ func loadGlFuncs(loadFn LoadFunc, callFn CallFunc) (err error) {
 }
 
 func loadGlFunc(name string) (fn uintptr, err error) {
-	fn = load(name)
+	fn, err = load(name)
+	if err != nil {
+		err = fmt.Errorf("gl: load %s err: %v", name, err)
+		return
+	}
 	if fn == 0 {
 		err = fmt.Errorf("gl: can not load %s", name)
 	}

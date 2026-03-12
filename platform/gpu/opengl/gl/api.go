@@ -8,7 +8,7 @@ import (
 )
 
 type (
-	LoadFunc func(symbol string) (fn uintptr)
+	LoadFunc func(symbol string) (fn uintptr, err error)
 	CallFunc func(fn uintptr, args ...uintptr) uintptr
 )
 
@@ -25,9 +25,15 @@ func BindTexture(target Enum, texture Uint) {
 	call(glBindTexture, uintptr(target), uintptr(texture))
 }
 
-func DeleteTextures(textures []Uint) {
+func GenTexture() (texture Uint) {
+	//glGenTextures(GLsizei n, GLuint *textures)
+	call(glGenTextures, 1, uintptr(cgo.Pointer(&texture)))
+	return
+}
+
+func DeleteTexture(texture Uint) {
 	//glDeleteTextures(GLsizei n, const GLuint *textures)
-	call(glDeleteTextures, uintptr(len(textures)), uintptr(cgo.CSlice(textures)))
+	call(glDeleteTextures, 1, uintptr(cgo.Pointer(&texture)))
 }
 
 func GenTextures(n Sizei) (textures []Uint) {
@@ -36,6 +42,11 @@ func GenTextures(n Sizei) (textures []Uint) {
 	call(glGenTextures, uintptr(len(textures)), uintptr(cgo.CSlice(textures)))
 	runtime.KeepAlive(textures)
 	return
+}
+
+func DeleteTextures(textures []Uint) {
+	//glDeleteTextures(GLsizei n, const GLuint *textures)
+	call(glDeleteTextures, uintptr(len(textures)), uintptr(cgo.CSlice(textures)))
 }
 
 func ActiveTexture(texture Enum) {
@@ -155,6 +166,17 @@ func GetShaderiv(shader Uint, name Enum) (value Int) {
 	return
 }
 
+func GenVertexArray() (array Uint) {
+	//glGenVertexArrays(GLsizei n, GLuint *arrays)
+	call(glGenVertexArrays, 1, uintptr(cgo.Pointer(&array)))
+	return
+}
+
+func DeleteVertexArray(array Uint) {
+	//glDeleteVertexArrays(GLsizei n, const GLuint *arrays)
+	call(glDeleteVertexArrays, 1, uintptr(cgo.Pointer(&array)))
+}
+
 func GenVertexArrays(n Sizei) (arrays []Uint) {
 	//glGenVertexArrays(GLsizei n, GLuint *arrays)
 	arrays = make([]Uint, n)
@@ -163,33 +185,13 @@ func GenVertexArrays(n Sizei) (arrays []Uint) {
 	return
 }
 
+func DeleteVertexArrays(arrays []Uint) {
+	//glDeleteVertexArrays(GLsizei n, const GLuint *arrays)
+	call(glDeleteVertexArrays, uintptr(len(arrays)), uintptr(cgo.CSlice(arrays)))
+}
+
 func BindVertexArray(array Uint) {
 	call(glBindVertexArray, uintptr(array))
-}
-
-func GenBuffers(n Sizei) (buffers []Uint) {
-	//glGenBuffers(GLsizei n, GLuint *buffers)
-	buffers = make([]Uint, n)
-	call(glGenBuffers, uintptr(len(buffers)), uintptr(cgo.CSlice(buffers)))
-	runtime.KeepAlive(buffers)
-	return
-}
-
-func BindBuffer(target Enum, buffer Uint) {
-	call(glBindBuffer, uintptr(target), uintptr(buffer))
-}
-
-func DeleteBuffers(buffers []Uint) {
-	//glDeleteBuffers(GLsizei n, const GLuint *buffers)
-	call(glDeleteBuffers, uintptr(len(buffers)), uintptr(cgo.CSlice(buffers)))
-	runtime.KeepAlive(buffers)
-}
-
-func BufferData[T any](target Enum, data []T, usage Enum) {
-	//void glBufferData(GLenum target, GLsizeiptr size, const void *data, GLenum usage)
-	var zero T
-	call(glBufferData, uintptr(target), uintptr(len(data))*unsafe.Sizeof(zero), uintptr(cgo.CSlice(data)), uintptr(usage))
-	runtime.KeepAlive(data)
 }
 
 func EnableVertexAttribArray(index Uint) {
@@ -204,9 +206,40 @@ func VertexAttribPointer(index Uint, size Int, typ Enum, normalized bool, stride
 	call(glVertexAttribPointer, uintptr(index), uintptr(size), uintptr(typ), uintptr(cgo.CBool(normalized)), uintptr(stride), pointer)
 }
 
-func DeleteVertexArrays(arrays []Uint) {
-	//glDeleteVertexArrays(GLsizei n, const GLuint *arrays)
-	call(glDeleteVertexArrays, uintptr(len(arrays)), uintptr(cgo.CSlice(arrays)))
+func GenBuffer() (buffer Uint) {
+	//glGenBuffers(GLsizei n, GLuint *buffers)
+	call(glGenBuffers, 1, uintptr(cgo.Pointer(&buffer)))
+	return
+}
+
+func DeleteBuffer(buffer Uint) {
+	//glDeleteBuffers(GLsizei n, const GLuint *buffers)
+	call(glDeleteBuffers, 1, uintptr(cgo.Pointer(&buffer)))
+}
+
+func GenBuffers(n Sizei) (buffers []Uint) {
+	//glGenBuffers(GLsizei n, GLuint *buffers)
+	buffers = make([]Uint, n)
+	call(glGenBuffers, uintptr(len(buffers)), uintptr(cgo.CSlice(buffers)))
+	runtime.KeepAlive(buffers)
+	return
+}
+
+func DeleteBuffers(buffers []Uint) {
+	//glDeleteBuffers(GLsizei n, const GLuint *buffers)
+	call(glDeleteBuffers, uintptr(len(buffers)), uintptr(cgo.CSlice(buffers)))
+	runtime.KeepAlive(buffers)
+}
+
+func BindBuffer(target Enum, buffer Uint) {
+	call(glBindBuffer, uintptr(target), uintptr(buffer))
+}
+
+func BufferData[T any](target Enum, data []T, usage Enum) {
+	//void glBufferData(GLenum target, GLsizeiptr size, const void *data, GLenum usage)
+	var zero T
+	call(glBufferData, uintptr(target), uintptr(len(data))*unsafe.Sizeof(zero), uintptr(cgo.CSlice(data)), uintptr(usage))
+	runtime.KeepAlive(data)
 }
 
 func PixelStorei(name Enum, param Int) {
