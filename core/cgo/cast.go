@@ -57,7 +57,7 @@ func GoStringN(s unsafe.Pointer, n int) string {
 }
 
 func CSlice[S ~[]E, E any](s S) unsafe.Pointer {
-	return unsafe.Pointer(&s[0])
+	return unsafe.Pointer(unsafe.SliceData(s))
 }
 
 func GoBool[T comparable](v T) bool {
