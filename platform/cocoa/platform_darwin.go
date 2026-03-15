@@ -5,6 +5,7 @@ import (
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/appkit"
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/foundation"
 	"github.com/golang-gui/goui/platform/common"
+	"github.com/golang-gui/goui/platform/events"
 )
 
 type Platform struct {
@@ -31,11 +32,19 @@ func (p *Platform) Destroy() {
 }
 
 func (p *Platform) Name() string {
-	return "win32"
+	return "cocoa"
 }
 
 func (p *Platform) NewEventQueue() (common.EventQueue, error) {
 	return newEventQueue()
+}
+
+func (p *Platform) NewImage(width, height uint) (common.Image, error) {
+	return common.NewRGBAImage(width, height), nil
+}
+
+func (p *Platform) NewWindow(onEvent events.EventHandler) (common.Window, error) {
+	return newWindow(onEvent)
 }
 
 func newPlatform() (p *Platform, err error) {
@@ -44,10 +53,14 @@ func newPlatform() (p *Platform, err error) {
 		return
 	}
 
-	p = new(Platform)
+	err = initWindowClass()
+	if err != nil {
+		return
+	}
 
+	p = new(Platform)
 	foundation.AutoReleasePool(func() {
-		appkit.NSApplication_SharedApplication()
+		appkit.NSApplicationClassId.SharedApplication()
 	})
 	return
 }

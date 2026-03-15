@@ -3,6 +3,7 @@ package common
 import (
 	"image"
 	"image/color"
+	"unsafe"
 
 	"github.com/golang-gui/goui/platform/internal"
 )
@@ -137,4 +138,21 @@ func bgraModel(c color.Color) color.Color {
 		R: uint8(r >> 8),
 		A: uint8(a >> 8),
 	}
+}
+
+type RGBAImage struct {
+	image.RGBA
+}
+
+func NewRGBAImage(width, height uint) *RGBAImage {
+	rgba := image.NewRGBA(image.Rect(0, 0, int(width), int(height)))
+	return (*RGBAImage)(unsafe.Pointer(rgba))
+}
+
+func (RGBAImage) IsImage() internal.Tag {
+	return 0
+}
+
+func (RGBAImage) Destroy() {
+
 }

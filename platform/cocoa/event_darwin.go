@@ -18,7 +18,7 @@ func (q EventQueue) Destroy() {
 
 func (q EventQueue) Post() {
 	foundation.AutoReleasePool(func() {
-		event := appkit.NSEvent_otherEventWithType(appkit.NSEventTypeApplicationDefined, foundation.NSPoint{}, 0, 0, 0, 0, 0, 0, 0)
+		event := appkit.NSEventClassId.OtherEventWithType(appkit.NSEventTypeApplicationDefined, foundation.NSPoint{}, 0, 0, 0, 0, 0, 0, 0)
 		appkit.NSApp.PostEvent(event, true)
 	})
 }
@@ -26,7 +26,7 @@ func (q EventQueue) Post() {
 func (q EventQueue) Poll() {
 	foundation.AutoReleasePool(func() {
 		for {
-			event := appkit.NSApp.NextEvent(appkit.NSEventMaskAny, foundation.NSDate_DistantPast(), foundation.NSDefaultRunLoopMode, true)
+			event := appkit.NSApp.NextEvent(appkit.NSEventMaskAny, foundation.NSDateClassId.DistantPast(), foundation.NSDefaultRunLoopMode, true)
 			if event == 0 {
 				break
 			}
@@ -37,7 +37,7 @@ func (q EventQueue) Poll() {
 
 func (q EventQueue) Wait() {
 	foundation.AutoReleasePool(func() {
-		event := appkit.NSApp.NextEvent(appkit.NSEventMaskAny, foundation.NSDate_DistantFuture(), foundation.NSDefaultRunLoopMode, true)
+		event := appkit.NSApp.NextEvent(appkit.NSEventMaskAny, foundation.NSDateClassId.DistantFuture(), foundation.NSDefaultRunLoopMode, true)
 		appkit.NSApp.SendEvent(event)
 		q.Poll()
 	})
