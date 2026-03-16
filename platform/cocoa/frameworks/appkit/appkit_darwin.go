@@ -289,6 +289,9 @@ func initNSWindow() {
 	NSWindowSel.BackingScaleFactor = objc.RegisterName("backingScaleFactor")
 	NSWindowSel.MakeFirstResponder = objc.RegisterName("makeFirstResponder:")
 	NSWindowSel.OrderFront = objc.RegisterName("orderFront:")
+	NSWindowSel.OrderOut = objc.RegisterName("orderOut:")
+	NSWindowSel.PerformClose = objc.RegisterName("performClose:")
+	NSWindowSel.Close = objc.RegisterName("close")
 	NSWindowSel.CanBecomeKeyWindow = objc.RegisterName("canBecomeKeyWindow")
 	NSWindowSel.CanBecomeMainWindow = objc.RegisterName("canBecomeMainWindow")
 }
@@ -308,6 +311,9 @@ var (
 		BackingScaleFactor         objc.SEL
 		MakeFirstResponder         objc.SEL
 		OrderFront                 objc.SEL
+		OrderOut                   objc.SEL
+		PerformClose               objc.SEL
+		Close                      objc.SEL
 		CanBecomeKeyWindow         objc.SEL
 		CanBecomeMainWindow        objc.SEL
 	}
@@ -400,6 +406,18 @@ func (w NSWindow) MakeFirstResponder(responder NSResponder) bool {
 
 func (w NSWindow) OrderFront(sender objc.ID) {
 	objc.ID(w).Send(NSWindowSel.OrderFront, sender)
+}
+
+func (w NSWindow) OrderOut(sender objc.ID) {
+	objc.ID(w).Send(NSWindowSel.OrderOut, sender)
+}
+
+func (w NSWindow) PerformClose(sender objc.ID) {
+	objc.ID(w).Send(NSWindowSel.PerformClose, sender)
+}
+
+func (w NSWindow) Close() {
+	objc.ID(w).Send(NSWindowSel.Close)
 }
 
 // NSWindowDelegate
