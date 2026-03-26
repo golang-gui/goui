@@ -250,19 +250,33 @@ func GenerateMipmap(target Enum) {
 	call(glGenerateMipmap, uintptr(target))
 }
 
-func Uniform1i(location, v1 Int) {
-	call(glUniform1i, uintptr(location), uintptr(v1))
+func Uniform1i(location, value Int) {
+	call(glUniform1i, uintptr(location), uintptr(value))
 }
 
-func Uniform2fv(location Int, values []Float) {
-	//glUniform2fv(GLint location, GLsizei count, const GLfloat *value)
-	call(glUniform2fv, uintptr(location), uintptr(len(values)), uintptr(cgo.CSlice(values)))
+func Uniform1fv(location Int, values []Float) {
+	//glUniform1fv(GLint location, GLsizei count, const GLfloat *value)
+	call(glUniform1fv, uintptr(location), uintptr(len(values)), uintptr(cgo.CSlice(values)))
 	runtime.KeepAlive(values)
 }
 
-func Uniform4fv(location Int, values []Float) {
+func Uniform2f(location Int, v0, v1 Float) {
+	Uniform2fv(location, 1, []Float{v0, v1})
+}
+
+func Uniform2fv(location Int, count Sizei, values []Float) {
+	//glUniform2fv(GLint location, GLsizei count, const GLfloat *value)
+	call(glUniform2fv, uintptr(location), uintptr(count), uintptr(cgo.CSlice(values)))
+	runtime.KeepAlive(values)
+}
+
+func Uniform4f(location Int, v0, v1, v2, v3 Float) {
+	Uniform4fv(location, 1, []Float{v0, v1, v2, v3})
+}
+
+func Uniform4fv(location Int, count Sizei, values []Float) {
 	//glUniform4fv(GLint location, GLsizei count, const GLfloat *value)
-	call(glUniform4fv, uintptr(location), uintptr(len(values)), uintptr(cgo.CSlice(values)))
+	call(glUniform4fv, uintptr(location), uintptr(count), uintptr(cgo.CSlice(values)))
 	runtime.KeepAlive(values)
 }
 
@@ -316,4 +330,10 @@ func Viewport(x, y Int, width, height Sizei) {
 
 func Clear(mask Bitfield) {
 	call(glClear, uintptr(mask))
+}
+
+func ClearBufferfv(buffer Enum, drawBuffer Int, values []Float) {
+	//glClearBufferfv(GLenum buffer, GLint drawbuffer, const GLfloat *value)
+	call(glClearBufferfv, uintptr(buffer), uintptr(drawBuffer), uintptr(cgo.CSlice(values)))
+	runtime.KeepAlive(values)
 }

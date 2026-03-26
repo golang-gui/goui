@@ -43,6 +43,7 @@ var (
 	glPixelStorei              uintptr
 	glGenerateMipmap           uintptr
 	glUniform1i                uintptr
+	glUniform1fv               uintptr
 	glUniform2fv               uintptr
 	glUniform4fv               uintptr
 	glEnable                   uintptr
@@ -58,6 +59,7 @@ var (
 	glFinish                   uintptr
 	glViewport                 uintptr
 	glClear                    uintptr
+	glClearBufferfv            uintptr
 )
 
 func loadGlFuncs(loadFn LoadFunc, callFn CallFunc) (err error) {
@@ -210,6 +212,10 @@ func loadGlFuncs(loadFn LoadFunc, callFn CallFunc) (err error) {
 	if err != nil {
 		return
 	}
+	glUniform1fv, err = loadGlFunc("glUniform1fv")
+	if err != nil {
+		return
+	}
 	glUniform2fv, err = loadGlFunc("glUniform2fv")
 	if err != nil {
 		return
@@ -267,6 +273,10 @@ func loadGlFuncs(loadFn LoadFunc, callFn CallFunc) (err error) {
 		return
 	}
 	glClear, err = loadGlFunc("glClear")
+	if err != nil {
+		return
+	}
+	glClearBufferfv, err = loadGlFunc("glClearBufferfv")
 	if err != nil {
 		return
 	}
