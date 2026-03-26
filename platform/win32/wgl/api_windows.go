@@ -169,23 +169,12 @@ func DeleteContext(rc HGLRC) error {
 	return nil
 }
 
-func GetProcAddress(symbol string) (uintptr, error) {
-	s := cgo.CString(symbol)
-	ret, _, err := syscall.SyscallN(wglGetProcAddress.Addr(), uintptr(s))
-	if ret == 0 {
-		return 0, err
+func GetProcAddress(symbol string) (fn uintptr, err error) {
+	fn, err = getProcAddress(symbol)
+	if err != nil || fn == 0 {
+		return getProcAddressOpengl32(symbol)
 	}
-	runtime.KeepAlive(s)
-	return ret, nil
-}
-
-func GetProcAddressOpengl32(symbol string) (uintptr, error) {
-	proc := opengl32.NewProc(symbol)
-	err := proc.Find()
-	if err != nil {
-		return 0, err
-	}
-	return proc.Addr(), nil
+	return
 }
 
 func GetCurrentDC() winapi.HDC {
@@ -212,6 +201,25 @@ func ShareLists(share, rc HGLRC) error {
 		return err
 	}
 	return nil
+}
+
+func getProcAddress(symbol string) (uintptr, error) {
+	s := cgo.CString(symbol)
+	ret, _, err := syscall.SyscallN(wglGetProcAddress.Addr(), uintptr(s))
+	if ret == 0 {
+		return 0, err
+	}
+	runtime.KeepAlive(s)
+	return ret, nil
+}
+
+func getProcAddressOpengl32(symbol string) (uintptr, error) {
+	proc := opengl32.NewProc(symbol)
+	err := proc.Find()
+	if err != nil {
+		return 0, err
+	}
+	return proc.Addr(), nil
 }
 
 // Dynamic functions
