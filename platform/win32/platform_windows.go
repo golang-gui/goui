@@ -6,6 +6,8 @@ import (
 
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/graphics/opengl/gl"
+	"github.com/golang-gui/goui/platform/win32/wgl"
 	"github.com/golang-gui/goui/platform/win32/winapi"
 )
 
@@ -14,6 +16,7 @@ type Platform struct {
 	helperWindow winapi.HWND
 	windowClass  winapi.LPWSTR
 	windowTitle  winapi.LPWSTR
+	glContext    GlContext
 }
 
 var platform *Platform
@@ -73,6 +76,7 @@ func newPlatform() (p *Platform, err error) {
 }
 
 func (p *Platform) createHelperWindow() (err error) {
+	// TODO: return detail error
 	cls, _ := syscall.UTF16PtrFromString("GOUI Helper")
 	wdc := winapi.WNDCLASSEX{
 		Size:      winapi.Sizeof_WNDCLASSEX,
@@ -107,6 +111,10 @@ func (p *Platform) createHelperWindow() (err error) {
 		winapi.DispatchMessage(&msg)
 	}
 
+	err = p.initOpenGl()
+	if err != nil {
+		// TODO: log
+	}
 	return nil
 }
 
@@ -132,5 +140,28 @@ func (p *Platform) registerWindow() (err error) {
 		Background: winapi.HBRUSH(winapi.COLOR_WINDOWFRAME),
 	}
 	_, err = winapi.RegisterClassEx(&wdc)
+	return
+}
+
+func (p *Platform) initOpenGl() (err error) {
+	hdc, err := winapi.GetDC(p.helperWindow)
+	if err != nil {
+		return
+	}
+
+	err = wgl.Init(hdc)
+	if err != nil {
+		return
+	}
+
+	p.glContext, err = newGlContext(hdc, nil)
+	if err != nil {
+		return
+	}
+
+	p.glContext.MakeCurrent()
+	defer p.glContext.ClearCurrent()
+
+	err = gl.Init(wgl.GetProcAddress)
 	return
 }
