@@ -1,69 +1,71 @@
 package gl
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/golang-gui/goui/core/cgo"
+)
 
 var (
 	load LoadFunc
-	call CallFunc
 
-	glGetError                 uintptr
-	glBindTexture              uintptr
-	glDeleteTextures           uintptr
-	glGenTextures              uintptr
-	glActiveTexture            uintptr
-	glTexImage2D               uintptr
-	glTexSubImage2D            uintptr
-	glTexParameteri            uintptr
-	glBlendFuncSeparate        uintptr
-	glCreateProgram            uintptr
-	glDeleteProgram            uintptr
-	glGetProgramiv             uintptr
-	glGetProgramInfoLog        uintptr
-	glAttachShader             uintptr
-	glBindAttribLocation       uintptr
-	glLinkProgram              uintptr
-	glUseProgram               uintptr
-	glGetUniformLocation       uintptr
-	glCreateShader             uintptr
-	glDeleteShader             uintptr
-	glGetShaderInfoLog         uintptr
-	glShaderSource             uintptr
-	glCompileShader            uintptr
-	glGetShaderiv              uintptr
-	glGenVertexArrays          uintptr
-	glBindVertexArray          uintptr
-	glGenBuffers               uintptr
-	glBindBuffer               uintptr
-	glDeleteBuffers            uintptr
-	glBufferData               uintptr
-	glEnableVertexAttribArray  uintptr
-	glDisableVertexAttribArray uintptr
-	glVertexAttribPointer      uintptr
-	glDeleteVertexArrays       uintptr
-	glPixelStorei              uintptr
-	glGenerateMipmap           uintptr
-	glUniform1i                uintptr
-	glUniform1fv               uintptr
-	glUniform2fv               uintptr
-	glUniform4fv               uintptr
-	glEnable                   uintptr
-	glDisable                  uintptr
-	glColorMask                uintptr
-	glStencilMask              uintptr
-	glStencilFunc              uintptr
-	glStencilOp                uintptr
-	glStencilOpSeparate        uintptr
-	glDrawArrays               uintptr
-	glCullFace                 uintptr
-	glFrontFace                uintptr
-	glFinish                   uintptr
-	glViewport                 uintptr
-	glClear                    uintptr
-	glClearBufferfv            uintptr
+	glGetError                 cgo.Symbol
+	glBindTexture              cgo.Symbol
+	glDeleteTextures           cgo.Symbol
+	glGenTextures              cgo.Symbol
+	glActiveTexture            cgo.Symbol
+	glTexImage2D               cgo.Symbol
+	glTexSubImage2D            cgo.Symbol
+	glTexParameteri            cgo.Symbol
+	glBlendFuncSeparate        cgo.Symbol
+	glCreateProgram            cgo.Symbol
+	glDeleteProgram            cgo.Symbol
+	glGetProgramiv             cgo.Symbol
+	glGetProgramInfoLog        cgo.Symbol
+	glAttachShader             cgo.Symbol
+	glBindAttribLocation       cgo.Symbol
+	glLinkProgram              cgo.Symbol
+	glUseProgram               cgo.Symbol
+	glGetUniformLocation       cgo.Symbol
+	glCreateShader             cgo.Symbol
+	glDeleteShader             cgo.Symbol
+	glGetShaderInfoLog         cgo.Symbol
+	glShaderSource             cgo.Symbol
+	glCompileShader            cgo.Symbol
+	glGetShaderiv              cgo.Symbol
+	glGenVertexArrays          cgo.Symbol
+	glBindVertexArray          cgo.Symbol
+	glGenBuffers               cgo.Symbol
+	glBindBuffer               cgo.Symbol
+	glDeleteBuffers            cgo.Symbol
+	glBufferData               cgo.Symbol
+	glEnableVertexAttribArray  cgo.Symbol
+	glDisableVertexAttribArray cgo.Symbol
+	glVertexAttribPointer      cgo.Symbol
+	glDeleteVertexArrays       cgo.Symbol
+	glPixelStorei              cgo.Symbol
+	glGenerateMipmap           cgo.Symbol
+	glUniform1i                cgo.Symbol
+	glUniform1fv               cgo.Symbol
+	glUniform2fv               cgo.Symbol
+	glUniform4fv               cgo.Symbol
+	glEnable                   cgo.Symbol
+	glDisable                  cgo.Symbol
+	glColorMask                cgo.Symbol
+	glStencilMask              cgo.Symbol
+	glStencilFunc              cgo.Symbol
+	glStencilOp                cgo.Symbol
+	glStencilOpSeparate        cgo.Symbol
+	glDrawArrays               cgo.Symbol
+	glCullFace                 cgo.Symbol
+	glFrontFace                cgo.Symbol
+	glFinish                   cgo.Symbol
+	glViewport                 cgo.Symbol
+	glClear                    cgo.Symbol
+	glClearBufferfv            cgo.Symbol
 )
 
-func loadGlFuncs(loadFn LoadFunc, callFn CallFunc) (err error) {
-	load, call = loadFn, callFn
+func loadGlFuncs(loadFn LoadFunc) (err error) {
+	load = loadFn
 	glGetError, err = loadGlFunc("glGetError")
 	if err != nil {
 		return
@@ -284,8 +286,8 @@ func loadGlFuncs(loadFn LoadFunc, callFn CallFunc) (err error) {
 	return nil
 }
 
-func loadGlFunc(name string) (fn uintptr, err error) {
-	fn, err = load(name)
+func loadGlFunc(name string) (symbol cgo.Symbol, err error) {
+	fn, err := load(name)
 	if err != nil {
 		err = fmt.Errorf("gl: load %s err: %v", name, err)
 		return
@@ -293,5 +295,10 @@ func loadGlFunc(name string) (fn uintptr, err error) {
 	if fn == 0 {
 		err = fmt.Errorf("gl: can not load %s", name)
 	}
+	return cgo.Symbol(fn), nil
+}
+
+func call(fn cgo.Symbol, args ...uintptr) (ret uintptr) {
+	ret, _, _ = fn.Call(args...)
 	return
 }

@@ -7,13 +7,10 @@ import (
 	"github.com/golang-gui/goui/core/cgo"
 )
 
-type (
-	LoadFunc func(symbol string) (fn uintptr, err error)
-	CallFunc func(fn uintptr, args ...uintptr) uintptr
-)
+type LoadFunc func(symbol string) (fn uintptr, err error)
 
-func Init(loadFn LoadFunc, callFn CallFunc) (err error) {
-	return loadGlFuncs(loadFn, callFn)
+func Init(loadFn LoadFunc) (err error) {
+	return loadGlFuncs(loadFn)
 }
 
 func GetError() Enum {
