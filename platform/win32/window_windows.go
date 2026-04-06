@@ -99,11 +99,6 @@ func (w *Window) ScaleFactor() (float64, error) {
 	return float64(dpi) / 96, nil
 }
 
-func (w *Window) NewGlContext() (common.GlContext, error) {
-	// TODO: share opengl context
-	return NewGlContext(w, nil)
-}
-
 var windowMap = map[winapi.HWND]*Window{}
 
 func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lParam winapi.LPARAM) winapi.LRESULT {
