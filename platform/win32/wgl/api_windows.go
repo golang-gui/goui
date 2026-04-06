@@ -5,7 +5,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/golang-gui/goui/core/cgo"
+	"github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/platform/win32/winapi"
 )
 
