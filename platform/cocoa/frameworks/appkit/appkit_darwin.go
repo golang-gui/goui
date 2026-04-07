@@ -2,7 +2,7 @@ package appkit
 
 import (
 	"github.com/ebitengine/purego/objc"
-	"github.com/golang-gui/goui/core/cgo"
+	"github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/common"
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/core_graphics"
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/foundation"

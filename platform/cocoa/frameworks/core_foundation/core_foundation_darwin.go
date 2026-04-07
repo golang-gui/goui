@@ -1,7 +1,7 @@
 package core_foundation
 
 import (
-	"github.com/golang-gui/goui/core/cgo"
+	"github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/common"
 )
 
