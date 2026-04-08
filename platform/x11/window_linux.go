@@ -1,18 +1,21 @@
 package x11
 
 import (
+	"errors"
+	"github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
-	"github.com/golang-gui/goui/platform/x11/libx"
+	"github.com/golang-gui/goui/platform/x11/libs/xlib"
 )
 
 type Window struct {
-	wid     libx.Window
+	wid     xlib.Window
 	parent  common.Window
 	onEvent events.EventHandler
-	width   uint16
-	height  uint16
-	gc      libx.Gcontext
+	width   int32
+	height  int32
+	title   string
+	gc      xlib.GC
 }
 
 func newWindow(onEvent events.EventHandler) (w common.Window, err error) {
@@ -22,21 +25,21 @@ func newWindow(onEvent events.EventHandler) (w common.Window, err error) {
 
 	screen := platform.defScreen
 
-	attr := libx.SetWindowAttributes{
-		EventMask: libx.EventMaskStructureNotify | libx.EventMaskExposure | libx.EventMaskPropertyChange,
+	attr := xlib.SetWindowAttributes{
+		EventMask: xlib.EventMaskStructureNotify | xlib.EventMaskExposure | xlib.EventMaskPropertyChange,
 	}
 
-	win.wid, err = libx.CreateWindow(platform.display, screen.Root,
-		0, 0, 800, 600, 0,
-		screen.RootDepth, libx.WindowClassInputOutput, screen.RootVisual, libx.CwEventMask, attr)
+	win.wid = platform.display.CreateWindow(screen.Root,
+		0, 0, 1600, 1200, 0,
+		int(screen.RootDepth), xlib.WindowClassInputOutput, screen.RootVisual, xlib.CwEventMask, &attr)
 
-	if err != nil {
-		return nil, err
+	if win.wid == 0 {
+		return nil, errors.New("create x11 window failed")
 	}
 
 	// declare WM protocols
 	if platform.atoms.WM_PROTOCOLS != 0 {
-		libx.SetWMProtocols(platform.display, win.wid, []libx.Atom{platform.atoms.WM_DELETE_WINDOW})
+		platform.display.SetWMProtocols(win.wid, []xlib.Atom{platform.atoms.WM_DELETE_WINDOW})
 	}
 
 	windowMap[win.wid] = win
@@ -48,48 +51,90 @@ func (w *Window) NativeHandle() uintptr {
 }
 
 func (w *Window) Destroy() {
-	libx.DestroyWindow(platform.display, w.wid)
+	platform.display.DestroyWindow(w.wid)
 }
 
 func (w *Window) Parent() common.Window {
-	panic("impl")
+	return w.parent
 }
 
 func (w *Window) SetParent(parent common.Window) error {
-	panic("impl")
+	if parent != nil {
+		w.parent = parent
+		platform.display.SetTransientForHint(w.wid, xlib.Window(parent.NativeHandle()))
+	} else {
+		w.parent = nil
+		platform.display.DeleteProperty(w.wid, xlib.AtomWmTransientFor)
+	}
+	return nil
 }
 
 func (w *Window) Title() string {
-	panic("impl")
+	return w.title
 }
 
 func (w *Window) SetTitle(title string) (err error) {
-	panic("impl")
+	if len(title) != 0 {
+		w.title = title
+		cTitle := cgo.CString(title)
+		platform.display.ChangeProperty(w.wid, platform.atoms._NET_WM_NAME, platform.atoms.UTF8_STRING, 8,
+			xlib.PropModeReplace, cTitle, len(title))
+		platform.display.StoreName(w.wid, cgo.GoStringNTemp(cTitle, len(title)+1))
+	} else {
+		w.title = ""
+		platform.display.DeleteProperty(w.wid, platform.atoms._NET_WM_NAME)
+		platform.display.DeleteProperty(w.wid, xlib.AtomWmName)
+	}
+	return nil
 }
 
 func (w *Window) Show() error {
-	return libx.MapWindow(platform.display, w.wid)
+	platform.display.MapWindow(w.wid)
+	platform.display.Flush()
+	return nil
+}
+
+func (w *Window) Hide() error {
+	platform.display.UnmapWindow(w.wid)
+	platform.display.Flush()
+	return nil
 }
 
 func (w *Window) Close() error {
-	panic("impl")
+	var event Event
+	closeEvent := event.Event.ClientMessageEvent()
+	closeEvent.Type = xlib.ClientMessage
+	closeEvent.MessageType = platform.atoms.WM_PROTOCOLS
+	closeEvent.L[0] = int64(platform.atoms.WM_DELETE_WINDOW)
+	w.onEvent(&events.CloseEvent{
+		WindowEventBase: events.WindowEventBase{
+			Window: w,
+			Native: &event,
+		},
+	})
+	return nil
 }
 
 func (w *Window) Draw(img common.Image) error {
 	return w.drawImage(common.ToBGRAImage(img))
 }
 
-var windowMap = map[libx.Window]*Window{}
+func (w *Window) ScaleFactor() (float64, error) {
+	panic("TODO impl")
+}
+
+var windowMap = map[xlib.Window]*Window{}
 
 // TODO: process window event
-func handleEvent(event libx.Event) {
+func handleEvent(event xlib.Event) {
 	nativeEvent := &Event{
 		Event: event,
 	}
-	switch ev := event.(type) {
-	case libx.ClientMessageEvent:
-		if ev.Type == platform.atoms.WM_PROTOCOLS && len(ev.Data.Data32) != 0 {
-			if libx.Atom(ev.Data.Data32[0]) == platform.atoms.WM_DELETE_WINDOW {
+	switch event.Type {
+	case xlib.ClientMessage:
+		ev := event.ClientMessageEvent()
+		if ev.MessageType == platform.atoms.WM_PROTOCOLS && ev.L[0] != 0 {
+			if xlib.Atom(ev.L[0]) == platform.atoms.WM_DELETE_WINDOW {
 				if window, ok := windowMap[ev.Window]; ok {
 					closeEvent := &events.CloseEvent{
 						WindowEventBase: events.WindowEventBase{
@@ -102,7 +147,8 @@ func handleEvent(event libx.Event) {
 			}
 		}
 	// ping dnd
-	case libx.ConfigureNotifyEvent:
+	case xlib.ConfigureNotify:
+		ev := event.ConfigureEvent()
 		if window, ok := windowMap[ev.Window]; ok {
 			if ev.Width != window.width || ev.Height != window.height {
 				window.width, window.height = ev.Width, ev.Height
@@ -118,7 +164,8 @@ func handleEvent(event libx.Event) {
 			}
 		}
 
-	case libx.ExposeEvent:
+	case xlib.Expose:
+		ev := event.ExposeEvent()
 		if window, ok := windowMap[ev.Window]; ok {
 			paintEvent := &events.PaintEvent{
 				WindowEventBase: events.WindowEventBase{
@@ -128,54 +175,28 @@ func handleEvent(event libx.Event) {
 			}
 			window.onEvent(paintEvent)
 		}
-	case libx.PropertyNotifyEvent:
+	case xlib.PropertyNotify:
 		// state
 	}
 }
 
 func (w *Window) drawImage(img *common.BGRAImage) (err error) {
 	if w.gc == 0 {
-		w.gc, err = libx.CreateGC(platform.display, libx.Drawable(w.wid), 0, nil)
-		if err != nil {
-			return err
+		w.gc = platform.display.CreateGC(xlib.Drawable(w.wid), 0, nil)
+		if w.gc == 0 {
+			return errors.New("create GC failed")
 		}
 	}
 
-	//width, height := img.Bounds().Dx(), img.Bounds().Dy()
-	//return libx.PutBGRAImage(platform.display, libx.Drawable(w.wid), w.gc, uint(width), uint(height), 0, 0, img.Pix)
+	width, height := img.Bounds().Dx(), img.Bounds().Dy()
 
-	width := img.Bounds().Dx()
-	data := img.Pix
-
-	const MaxReqSize = (1 << 16) * 4
-	rowsPer := (MaxReqSize - 28) / (width * 4)
-	bytesPer := rowsPer * width * 4
-
-	xpos := 0
-	ypos := 0
-
-	heightPer := 0
-	start, end := 0, 0
-
-	var toSend []byte
-
-	for end < len(data) {
-		end = start + bytesPer
-		if end > len(data) {
-			end = len(data)
-		}
-
-		toSend = data[start:end]
-		heightPer = len(toSend) / 4 / width
-
-		err = libx.PutBGRAImage(platform.display, libx.Drawable(w.wid), w.gc, uint(width), uint(heightPer), xpos, ypos, toSend)
-		if err != nil {
-			return err
-		}
-
-		start = end
-		ypos += rowsPer
+	image := platform.display.CreateImage(platform.defScreen.RootVisual, int(platform.defScreen.RootDepth), xlib.ImageFormatZPixmap, 0, cgo.CSlice(img.Pix), width, height, 32, img.Stride)
+	if image == nil {
+		return errors.New("create XImage failed")
 	}
+	defer image.Destroy()
 
+	platform.display.PutImage(xlib.Drawable(w.wid), w.gc, image, 0, 0, 0, 0, width, height)
+	image.Data = nil
 	return nil
 }
