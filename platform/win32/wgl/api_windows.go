@@ -214,12 +214,11 @@ func getProcAddress(symbol string) (uintptr, error) {
 }
 
 func getProcAddressOpengl32(symbol string) (uintptr, error) {
-	proc := opengl32.NewProc(symbol)
-	err := proc.Find()
+	err := opengl32.Load()
 	if err != nil {
 		return 0, err
 	}
-	return proc.Addr(), nil
+	return cgo.Dlsym(opengl32.Handle(), symbol)
 }
 
 // Dynamic functions
