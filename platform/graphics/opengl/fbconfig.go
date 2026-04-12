@@ -7,13 +7,14 @@ type FBConfig struct {
 	Handle uintptr
 }
 
-func ChooseFBConfig(desired PixelFormat, alternatives []FBConfig) (closest FBConfig) {
+func ChooseFBConfig(desired PixelFormat, alternatives []FBConfig) (closest *FBConfig) {
 	var missing, colorDiff, extraDiff uint32
 	var leastMissing uint32 = math.MaxUint32
 	var leastColorDiff uint32 = math.MaxUint32
 	var leastExtraDiff uint32 = math.MaxUint32
 
-	for _, current := range alternatives {
+	for i := range alternatives {
+		current := &alternatives[i]
 		if desired.Stereo && !current.Stereo {
 			// Stereo is a hard constraint
 			continue

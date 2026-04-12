@@ -210,10 +210,10 @@ func (p *wglPlatform) choosePixelFormat(hdc winapi.HDC, format PixelFormat) (pix
 			attrs[attrsCount] = attr
 			attrsCount++
 		}
-		findAttrValue = func(attr int32) int32 {
+		findAttrValue = func(attr int32) int {
 			for i := 0; i < attrsCount; i++ {
 				if attrs[i] == attr {
-					return values[i]
+					return int(values[i])
 				}
 			}
 			return 0

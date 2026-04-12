@@ -23,41 +23,38 @@ type Config struct {
 	PixelFormat PixelFormat
 }
 
-func DefaultConfig() Config {
-	return Config{
-		PixelFormat: DefaultPixelFormat(),
-	}
+var DefaultConfig = Config{
+	PixelFormat: DefaultPixelFormat,
 }
 
 type PixelFormat struct {
-	RedBits        int32
-	GreenBits      int32
-	BlueBits       int32
-	AlphaBits      int32
-	DepthBits      int32
-	StencilBits    int32
-	AccumRedBits   int32
-	AccumGreenBits int32
-	AccumBlueBits  int32
-	AccumAlphaBits int32
-	AuxBuffers     int32
-	Samples        int32
+	RedBits        int
+	GreenBits      int
+	BlueBits       int
+	AlphaBits      int
+	DepthBits      int
+	StencilBits    int
+	AccumRedBits   int
+	AccumGreenBits int
+	AccumBlueBits  int
+	AccumAlphaBits int
+	AuxBuffers     int
+	Samples        int
 	Stereo         bool
 	DoubleBuffer   bool
 	Transparent    bool
 	SRGB           bool
 }
 
-func DefaultPixelFormat() PixelFormat {
-	return PixelFormat{
-		RedBits:      8,
-		GreenBits:    8,
-		BlueBits:     8,
-		AlphaBits:    8,
-		DepthBits:    24,
-		StencilBits:  8,
-		DoubleBuffer: true,
-	}
+var DefaultPixelFormat = PixelFormat{
+	RedBits:      8,
+	GreenBits:    8,
+	BlueBits:     8,
+	AlphaBits:    8,
+	DepthBits:    24,
+	StencilBits:  8,
+	Samples:      4,
+	DoubleBuffer: true,
 }
 
 const DontCare = -1
