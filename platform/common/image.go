@@ -4,15 +4,12 @@ import (
 	"image"
 	"image/color"
 	"unsafe"
-
-	"github.com/golang-gui/goui/platform/internal"
 )
 
 type Image interface {
-	IsImage() internal.Tag
-	Destroy()
 	image.Image
 	Set(x, y int, c color.Color)
+	SubImage(rect image.Rectangle) Image
 }
 
 type BGRAImage struct {
@@ -41,14 +38,6 @@ func ToBGRAImage(src image.Image) (dst *BGRAImage) {
 		}
 	}
 	return dst
-}
-
-func (img *BGRAImage) IsImage() internal.Tag {
-	return 0
-}
-
-func (img *BGRAImage) Destroy() {
-
 }
 
 func (img *BGRAImage) ColorModel() color.Model {
@@ -86,19 +75,18 @@ func (img *BGRAImage) Set(x, y int, c color.Color) {
 	s[3] = c1.A
 }
 
-//func (img *BGRAImage) SubImage(r image.Rectangle) image.Image {
-//	r = r.Intersect(img.Rect)
-//	if r.Empty() {
-//		return &BGRAImage{}
-//	}
-//	i := img.PixOffset(r.Min.X, r.Min.Y)
-//	return &BGRAImage{
-//		Pix:    img.Pix[i:],
-//		Stride: img.Stride,
-//		Rect:   r,
-//		IsSub:  true,
-//	}
-//}
+func (img *BGRAImage) SubImage(r image.Rectangle) Image {
+	r = r.Intersect(img.Rect)
+	if r.Empty() {
+		return nil
+	}
+	i := img.PixOffset(r.Min.X, r.Min.Y)
+	return &BGRAImage{
+		Pix:    img.Pix[i:],
+		Stride: img.Stride,
+		Rect:   r,
+	}
+}
 
 func (img *BGRAImage) PixOffset(x, y int) int {
 	return (y-img.Rect.Min.Y)*img.Stride + (x-img.Rect.Min.X)*4
@@ -144,15 +132,28 @@ type RGBAImage struct {
 	image.RGBA
 }
 
-func NewRGBAImage(width, height uint) *RGBAImage {
-	rgba := image.NewRGBA(image.Rect(0, 0, int(width), int(height)))
+func NewRGBAImage(r image.Rectangle) *RGBAImage {
+	rgba := image.NewRGBA(r)
 	return (*RGBAImage)(unsafe.Pointer(rgba))
 }
 
-func (RGBAImage) IsImage() internal.Tag {
-	return 0
+func ToRGBAImage(src image.Image) (dst *RGBAImage) {
+	if img, ok := src.(*RGBAImage); ok {
+		return img
+	}
+	if img, ok := src.(*image.RGBA); ok {
+		return (*RGBAImage)(unsafe.Pointer(img))
+	}
+	bounds := src.Bounds()
+	dst = NewRGBAImage(bounds)
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			dst.Set(x, y, src.At(x, y))
+		}
+	}
+	return dst
 }
 
-func (RGBAImage) Destroy() {
-
+func (img *RGBAImage) SubImage(r image.Rectangle) Image {
+	return img.RGBA.SubImage(r).(Image)
 }
