@@ -2,10 +2,12 @@ package x11
 
 import (
 	"errors"
+	"image"
+
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/graphics/opengl"
 	"github.com/golang-gui/goui/platform/x11/libs/xlib"
-	"image"
 )
 
 type Platform struct {
@@ -49,6 +51,11 @@ func NewPlatform() (_ *Platform, err error) {
 
 	p.helper = p.display.CreateWindow(p.defScreen.Root, 0, 0, 1, 1, 0,
 		int(p.defScreen.RootDepth), xlib.WindowClassInputOutput, p.defScreen.RootVisual, 0, nil)
+
+	err = opengl.InitGLX(p.display)
+	if err != nil {
+		// TODO: add log
+	}
 
 	platform = p
 	return platform, nil

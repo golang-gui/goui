@@ -5,11 +5,15 @@ import (
 	"github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/graphics/opengl"
+	"github.com/golang-gui/goui/platform/x11/libs/glx"
 	"github.com/golang-gui/goui/platform/x11/libs/xlib"
 )
 
 type Window struct {
 	wid     xlib.Window
+	fb      glx.FBConfig
+	cmap    xlib.Colormap
 	parent  common.Window
 	onEvent events.EventHandler
 	width   int32
@@ -23,15 +27,35 @@ func newWindow(onEvent events.EventHandler) (w common.Window, err error) {
 		onEvent: onEvent,
 	}
 
-	screen := platform.defScreen
+	visual := platform.defScreen.RootVisual
+	depth := int(platform.defScreen.RootDepth)
+
+	fbConfig := opengl.FBConfig{
+		PixelFormat: opengl.DefaultConfig.PixelFormat,
+	}
+
+	if fb, err := opengl.ChooseGLXFBConfig(fbConfig); err == nil {
+		vi := glx.GetVisualFromFBConfig(platform.display, fb)
+		if vi != nil {
+			defer xlib.Free(vi)
+
+			win.fb = fb
+			visual = vi.Visual
+			depth = int(vi.Depth)
+		}
+		// TODO: add error log
+	}
+
+	win.cmap = platform.display.CreateColormap(platform.defScreen.Root, visual, xlib.ColormapAllocNone)
 
 	attr := xlib.SetWindowAttributes{
+		Colormap:  win.cmap,
 		EventMask: xlib.EventMaskStructureNotify | xlib.EventMaskExposure | xlib.EventMaskPropertyChange,
 	}
 
-	win.wid = platform.display.CreateWindow(screen.Root,
-		0, 0, 1600, 1200, 0,
-		int(screen.RootDepth), xlib.WindowClassInputOutput, screen.RootVisual, xlib.CwEventMask, &attr)
+	win.wid = platform.display.CreateWindow(platform.defScreen.Root,
+		0, 0, 800, 600, 0,
+		depth, xlib.WindowClassInputOutput, visual, xlib.CwColormap|xlib.CwEventMask, &attr)
 
 	if win.wid == 0 {
 		return nil, errors.New("create x11 window failed")
@@ -48,6 +72,10 @@ func newWindow(onEvent events.EventHandler) (w common.Window, err error) {
 
 func (w *Window) NativeHandle() uintptr {
 	return uintptr(w.wid)
+}
+
+func (w *Window) NativeFBConfig() glx.FBConfig {
+	return w.fb
 }
 
 func (w *Window) Destroy() {
