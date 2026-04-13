@@ -7,7 +7,6 @@ import (
 	"github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/common"
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/core_graphics"
-	"github.com/golang-gui/goui/platform/cocoa/frameworks/objcrt"
 )
 
 var handle uintptr
@@ -18,6 +17,7 @@ func Init(load common.LoadFunc) (err error) {
 		return
 	}
 
+	initNSObject()
 	initNSDate()
 	initNSString()
 	initNSNotification()
@@ -52,10 +52,96 @@ func NSMakeRect(x, y, w, h core_graphics.CGFloat) (r NSRect) {
 	}
 }
 
+func initNSObject() {
+	NSObjectClassId = NSObjectClass{objc.GetClass("NSObject")}
+	NSObjectSel.Alloc = objc.RegisterName("alloc")
+	NSObjectSel.Init = objc.RegisterName("init")
+	NSObjectSel.New = objc.RegisterName("new")
+	NSObjectSel.Retain = objc.RegisterName("retain")
+	NSObjectSel.Release = objc.RegisterName("release")
+	NSObjectSel.Autorelease = objc.RegisterName("autorelease")
+	NSObjectSel.RetainCount = objc.RegisterName("retainCount")
+	NSObjectSel.RespondsToSelector = objc.RegisterName("respondsToSelector:")
+}
+
+var (
+	NSObjectClassId NSObjectClass
+	NSObjectSel     struct {
+		Alloc              objc.SEL
+		Init               objc.SEL
+		New                objc.SEL
+		Retain             objc.SEL
+		Release            objc.SEL
+		Autorelease        objc.SEL
+		RetainCount        objc.SEL
+		RespondsToSelector objc.SEL
+	}
+)
+
+type (
+	NSObjectClass struct {
+		objc.Class
+	}
+	NSObject struct {
+		objc.ID
+	}
+	extendNSObject interface {
+		isNSObject()
+	}
+)
+
+func (c NSObjectClass) ID() objc.ID {
+	return objc.ID(c.Class)
+}
+
+func (c NSObjectClass) Send(sel objc.SEL, args ...any) objc.ID {
+	return objc.ID(c.Class).Send(sel, args...)
+}
+
+func (c NSObjectClass) Alloc() (o NSObject) {
+	return Cast[NSObject](c.Send(NSObjectSel.Alloc))
+}
+
+func Cast[T extendNSObject](id objc.ID) (obj T) {
+	(*NSObject)(cgo.Pointer(&obj)).ID = id
+	return
+}
+
+func (o NSObject) isNSObject() {}
+
+func (o NSObject) IsNil() bool {
+	return o.ID == 0
+}
+
+func (o NSObject) Valid() bool {
+	return o.ID != 0
+}
+
+func (o NSObject) Retain() {
+	o.Send(NSObjectSel.Retain)
+}
+
+func (o NSObject) Release() {
+	o.Send(NSObjectSel.Release)
+}
+
+func (o NSObject) AutoRelease() {
+	o.Send(NSObjectSel.Autorelease)
+}
+
+func (o NSObject) RetainCount() uint {
+	ret := o.Send(NSObjectSel.RetainCount)
+	return uint(ret)
+}
+
+func (o NSObject) RespondsToSelector(sel string) bool {
+	return objc.Send[bool](o.ID, NSObjectSel.RespondsToSelector, objc.RegisterName(sel))
+}
+
 // NSDate
 
 func initNSDate() {
-	NSDateClassId = NSDateClass(objc.GetClass("NSDate"))
+	NSDateClassId.Class = objc.GetClass("NSDate")
 	NSDateSel.DistantFuture = objc.RegisterName("distantFuture")
 	NSDateSel.DistantPast = objc.RegisterName("distantPast")
 }
@@ -69,16 +155,18 @@ var (
 )
 
 type (
-	NSDate      objcrt.NSObject
-	NSDateClass objc.Class
+	NSDate      struct{ NSObject }
+	NSDateClass struct{ NSObjectClass }
 )
 
-func (c NSDateClass) DistantFuture() NSDate {
-	return NSDate(objc.ID(c).Send(NSDateSel.DistantFuture))
+func (c NSDateClass) DistantFuture() (date NSDate) {
+	date.ID = c.Send(NSDateSel.DistantFuture)
+	return
 }
 
-func (c NSDateClass) DistantPast() NSDate {
-	return NSDate(objc.ID(c).Send(NSDateSel.DistantPast))
+func (c NSDateClass) DistantPast() (date NSDate) {
+	date.ID = objc.ID(c.Class).Send(NSDateSel.DistantPast)
+	return
 }
 
 type NSTimeInterval = float64
@@ -86,7 +174,7 @@ type NSTimeInterval = float64
 // NSString
 
 func initNSString() {
-	NSStringClassId = NSStringClass(objc.GetClass("NSString"))
+	NSStringClassId.Class = objc.GetClass("NSString")
 	NSStringSel.InitWithBytes = objc.RegisterName("initWithBytes:length:encoding:")
 	NSStringSel.Utf8String = objc.RegisterName("UTF8String")
 }
@@ -100,21 +188,20 @@ var (
 )
 
 type (
-	NSString      objcrt.NSObject
-	NSStringClass objc.Class
+	NSString      struct{ NSObject }
+	NSStringClass struct{ NSObjectClass }
 )
 
 func (c NSStringClass) Alloc() NSString {
-	return (NSString)(objc.ID(c).Send(objcrt.NSObjectSel.Alloc))
+	return Cast[NSString](c.NSObjectClass.Alloc().ID)
 }
 
 func (s NSString) InitWithBytes(bytes []byte, encoding NSStringEncoding) NSString {
-	ret := objc.ID(s).Send(NSStringSel.InitWithBytes, cgo.CSlice(bytes), len(bytes), encoding)
-	return NSString(ret)
+	return Cast[NSString](s.Send(NSStringSel.InitWithBytes, cgo.CSlice(bytes), len(bytes), encoding))
 }
 
 func (s NSString) UTF8String() string {
-	cStr := objc.ID(s).Send(NSStringSel.Utf8String)
+	cStr := s.Send(NSStringSel.Utf8String)
 	if cStr != 0 {
 		return cgo.GoString(cgo.Pointer(cStr))
 	}
@@ -122,8 +209,8 @@ func (s NSString) UTF8String() string {
 }
 
 func ToNSString(s string) NSString {
-	ns := objc.ID(NSStringClassId.Alloc()).Send(NSStringSel.InitWithBytes, unsafe.StringData(s), len(s), NSUTF8StringEncoding)
-	return NSString(ns)
+	ns := NSStringClassId.Alloc().Send(NSStringSel.InitWithBytes, unsafe.StringData(s), len(s), NSUTF8StringEncoding)
+	return Cast[NSString](ns)
 }
 
 type NSStringEncoding NSUInteger
@@ -133,19 +220,24 @@ const NSUTF8StringEncoding NSStringEncoding = 4
 // NSNotification
 
 func initNSNotification() {
-	_NSNotification.Class = objc.GetClass("NSNotification")
-	_NSNotification.object = objc.RegisterName("object")
+	NSNotificationClassId.Class = objc.GetClass("NSNotification")
+	NSNotificationSel.Object = objc.RegisterName("object")
 }
 
-var _NSNotification struct {
-	objc.Class
-	object objc.SEL
-}
+var (
+	NSNotificationSel struct {
+		Object objc.SEL
+	}
+	NSNotificationClassId NSNotificationClass
+)
 
-type NSNotification objcrt.NSObject
+type (
+	NSNotification      struct{ NSObject }
+	NSNotificationClass struct{ NSObjectClass }
+)
 
 func (n NSNotification) Object() objc.ID {
-	return objc.ID(n).Send(_NSNotification.object)
+	return n.Send(NSNotificationSel.Object)
 }
 
 // AutoReleasePool

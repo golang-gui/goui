@@ -6,11 +6,9 @@ import (
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/core_foundation"
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/core_graphics"
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/foundation"
-	"github.com/golang-gui/goui/platform/cocoa/frameworks/objcrt"
 )
 
 func Init() (err error) {
-	objcrt.Init()
 	err = core_foundation.Init(common.LoadSystemFramework)
 	if err != nil {
 		return

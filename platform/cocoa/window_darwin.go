@@ -6,7 +6,6 @@ import (
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/core_foundation"
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/core_graphics"
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/foundation"
-	"github.com/golang-gui/goui/platform/cocoa/frameworks/objcrt"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 )
@@ -25,12 +24,21 @@ func newWindow(onEvent events.EventHandler) (w *Window, err error) {
 	foundation.AutoReleasePool(func() {
 		win.delegate = delegateClass.Alloc()
 		win.view = viewClass.Alloc().Init()
-		win.window = windowClass.Alloc().InitWith(foundation.NSMakeRect(0, 0, 300, 200),
-			appkit.NSWindowStyleMaskTitled|appkit.NSWindowStyleMaskClosable|appkit.NSWindowStyleMaskResizable,
+
+		styleMask := appkit.NSWindowStyleMaskMiniaturizable |
+			appkit.NSWindowStyleMaskTitled |
+			appkit.NSWindowStyleMaskClosable |
+			appkit.NSWindowStyleMaskResizable
+
+		win.window = windowClass.Alloc().InitWith(foundation.NSMakeRect(0, 0, 300, 200), styleMask,
 			appkit.NSBackingStoreBuffered, false)
-		win.window.SetDelegate(win.delegate)
+
+		win.window.SetCollectionBehavior(appkit.NSWindowCollectionBehaviorFullScreenPrimary | appkit.NSWindowCollectionBehaviorManaged)
 		win.window.SetContentView(win.view)
-		win.window.MakeFirstResponder(appkit.NSResponder(win.view))
+		win.window.MakeFirstResponder(win.view.NSResponder)
+		win.window.SetDelegate(win.delegate)
+		win.window.SetAcceptsMouseMovedEvents(true)
+		win.window.SetRestorable(false)
 	})
 	windowMap[win.window] = win
 	win.sendCreatedEvents()
@@ -38,15 +46,15 @@ func newWindow(onEvent events.EventHandler) (w *Window, err error) {
 }
 
 func (w *Window) NativeHandle() uintptr {
-	return uintptr(w.window)
+	return uintptr(w.window.ID)
 }
 
 func (w *Window) Destroy() {
 	foundation.AutoReleasePool(func() {
-		w.window.OrderOut(objcrt.Nil)
-		w.window.SetDelegate(objcrt.Nil)
-		objcrt.NSObject(w.delegate).Release()
-		objcrt.NSObject(w.view).Release()
+		w.window.OrderOut(0)
+		w.window.SetDelegate(appkit.NSWindowDelegate{})
+		w.delegate.Release()
+		w.view.Release()
 		w.window.Close()
 	})
 }
@@ -151,7 +159,7 @@ func windowShouldClose(self appkit.NSWindowDelegate, sender appkit.NSWindow) boo
 }
 
 func windowDidResize(self appkit.NSWindowDelegate, notification foundation.NSNotification) {
-	if window, has := windowMap[appkit.NSWindow(notification.Object())]; has {
+	if window, has := windowMap[foundation.Cast[appkit.NSWindow](notification.Object())]; has {
 		rect := window.view.Frame()
 		sizeEvent := &events.SizeEvent{
 			WindowEventBase: events.WindowEventBase{

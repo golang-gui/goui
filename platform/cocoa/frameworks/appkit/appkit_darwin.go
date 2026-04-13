@@ -6,7 +6,6 @@ import (
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/common"
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/core_graphics"
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/foundation"
-	"github.com/golang-gui/goui/platform/cocoa/frameworks/objcrt"
 )
 
 var handle uintptr
@@ -30,7 +29,7 @@ func Init(load common.LoadFunc) (err error) {
 // NSApplication
 
 func initNSApplication() {
-	NSApplicationClassId = NSApplicationClass(objc.GetClass("NSApplication"))
+	NSApplicationClassId.Class = objc.GetClass("NSApplication")
 	NSApplicationSel.SharedApplication = objc.RegisterName("sharedApplication")
 	NSApplicationSel.SendEvent = objc.RegisterName("sendEvent:")
 	NSApplicationSel.PostEvent = objc.RegisterName("postEvent:atStart:")
@@ -48,34 +47,34 @@ var (
 )
 
 type (
-	NSApplication      objc.ID
-	NSApplicationClass objc.Class
+	NSApplication      struct{ foundation.NSObject }
+	NSApplicationClass struct{ foundation.NSObjectClass }
 )
 
 var NSApp NSApplication
 
-func (c NSApplicationClass) SharedApplication() NSApplication {
-	NSApp = NSApplication(objc.ID(NSApplicationClassId).Send(NSApplicationSel.SharedApplication))
+func (c NSApplicationClass) SharedApplication() (res NSApplication) {
+	NSApp.ID = c.Send(NSApplicationSel.SharedApplication)
 	return NSApp
 }
 
 func (a NSApplication) SendEvent(event NSEvent) {
-	objc.ID(a).Send(NSApplicationSel.SendEvent, event)
+	a.Send(NSApplicationSel.SendEvent, event)
 }
 
 func (a NSApplication) PostEvent(event NSEvent, atStart bool) {
-	objc.ID(a).Send(NSApplicationSel.PostEvent, event, atStart)
+	a.Send(NSApplicationSel.PostEvent, event, atStart)
 }
 
-func (a NSApplication) NextEvent(mask NSEventMask, untilDate foundation.NSDate, inMode foundation.NSRunLoopMode, dequeue bool) NSEvent {
-	event := objc.ID(a).Send(NSApplicationSel.NextEvent, mask, untilDate, inMode, dequeue)
-	return NSEvent(event)
+func (a NSApplication) NextEvent(mask NSEventMask, untilDate foundation.NSDate, inMode foundation.NSRunLoopMode, dequeue bool) (res NSEvent) {
+	res.ID = a.Send(NSApplicationSel.NextEvent, mask, untilDate, inMode, dequeue)
+	return
 }
 
 // NSGraphicsContext
 
 func initNSGraphicsContext() {
-	NSGraphicsContextClassId = NSGraphicsContextClass(objc.GetClass("NSGraphicsContext"))
+	NSGraphicsContextClassId.Class = objc.GetClass("NSGraphicsContext")
 	NSGraphicsContextDef.CurrentContext = objc.RegisterName("currentContext")
 	NSGraphicsContextDef.CGContext = objc.RegisterName("CGContext")
 }
@@ -89,22 +88,23 @@ var (
 )
 
 type (
-	NSGraphicsContext      objcrt.NSObject
-	NSGraphicsContextClass objc.Class
+	NSGraphicsContext      struct{ foundation.NSObject }
+	NSGraphicsContextClass struct{ foundation.NSObjectClass }
 )
 
-func (c NSGraphicsContextClass) CurrentContext() NSGraphicsContext {
-	return NSGraphicsContext(objc.ID(c).Send(NSGraphicsContextDef.CurrentContext))
+func (c NSGraphicsContextClass) CurrentContext() (res NSGraphicsContext) {
+	res.ID = c.Send(NSGraphicsContextDef.CurrentContext)
+	return
 }
 
 func (c NSGraphicsContext) CGContext() core_graphics.CGContextRef {
-	return core_graphics.CGContextRef(objc.ID(c).Send(NSGraphicsContextDef.CGContext))
+	return core_graphics.CGContextRef(c.Send(NSGraphicsContextDef.CGContext))
 }
 
 // NSEvent
 
 func initNSEvent() {
-	NSEventClassId = NSEventClass(objc.GetClass("NSEvent"))
+	NSEventClassId.Class = objc.GetClass("NSEvent")
 	NSEventSel.OtherEventWithType = objc.RegisterName("otherEventWithType:location:modifierFlags:timestamp:windowNumber:context:subtype:data1:data2:")
 }
 
@@ -116,8 +116,8 @@ var (
 )
 
 type (
-	NSEvent      objcrt.NSObject
-	NSEventClass objc.Class
+	NSEvent      struct{ foundation.NSObject }
+	NSEventClass struct{ foundation.NSObjectClass }
 )
 
 type NSEventType foundation.NSUInteger
@@ -127,9 +127,9 @@ const NSEventTypeApplicationDefined NSEventType = 15
 
 type NSEventModifierFlags int
 
-func (c NSEventClass) OtherEventWithType(eventType NSEventType, location foundation.NSPoint, modifierFlags NSEventModifierFlags, timestamp foundation.NSTimeInterval, windowNumber foundation.NSInteger, context NSGraphicsContext, subtype cgo.Short, data1, data2 foundation.NSInteger) NSEvent {
-	event := objc.ID(c).Send(NSEventSel.OtherEventWithType, eventType, location, modifierFlags, timestamp, windowNumber, context, subtype, data1, data2)
-	return NSEvent(event)
+func (c NSEventClass) OtherEventWithType(eventType NSEventType, location foundation.NSPoint, modifierFlags NSEventModifierFlags, timestamp foundation.NSTimeInterval, windowNumber foundation.NSInteger, context NSGraphicsContext, subtype cgo.Short, data1, data2 foundation.NSInteger) (res NSEvent) {
+	res.ID = c.Send(NSEventSel.OtherEventWithType, eventType, location, modifierFlags, timestamp, windowNumber, context, subtype, data1, data2)
+	return
 }
 
 type NSEventMask uint
@@ -140,17 +140,20 @@ const NSEventMaskAny NSEventMask = (9223372036854775807*2 + 1)
 // NSResponder
 
 func initNSResponder() {
-	NSResponderClassId = objc.GetClass("NSResponder")
+	NSResponderClassId.Class = objc.GetClass("NSResponder")
 }
 
-type NSResponder objcrt.NSObject
+type (
+	NSResponder      struct{ foundation.NSObject }
+	NSResponderClass struct{ foundation.NSObjectClass }
+)
 
-var NSResponderClassId objc.Class
+var NSResponderClassId foundation.NSObjectClass
 
 // NSView
 
 func initNSView() {
-	NSViewClassId = NSViewClass(objc.GetClass("NSView"))
+	NSViewClassId.Class = objc.GetClass("NSView")
 	NSViewSel.Window = objc.RegisterName("window")
 	NSViewSel.Frame = objc.RegisterName("frame")
 	NSViewSel.Bounds = objc.RegisterName("bounds")
@@ -180,8 +183,8 @@ var (
 )
 
 type (
-	NSView         NSResponder
-	NSViewClass    objc.Class
+	NSView         struct{ NSResponder }
+	NSViewClass    struct{ NSResponderClass }
 	NSViewOverride struct {
 		CanBecomeKeyView               func(self NSView) bool
 		AcceptsFirstResponder          func(self NSView) bool
@@ -198,7 +201,7 @@ func ImplementNSView(className string, override NSViewOverride) (class NSViewCla
 		methods = append(methods, objc.MethodDef{
 			Cmd: NSViewSel.CanBecomeKeyView,
 			Fn: func(self objc.ID, cmd objc.SEL) bool {
-				return override.CanBecomeKeyView(NSView(self))
+				return override.CanBecomeKeyView(foundation.Cast[NSView](self))
 			},
 		})
 	}
@@ -206,7 +209,7 @@ func ImplementNSView(className string, override NSViewOverride) (class NSViewCla
 		methods = append(methods, objc.MethodDef{
 			Cmd: NSViewSel.AcceptsFirstResponder,
 			Fn: func(self objc.ID, cmd objc.SEL) bool {
-				return override.AcceptsFirstResponder(NSView(self))
+				return override.AcceptsFirstResponder(foundation.Cast[NSView](self))
 			},
 		})
 	}
@@ -214,7 +217,7 @@ func ImplementNSView(className string, override NSViewOverride) (class NSViewCla
 		methods = append(methods, objc.MethodDef{
 			Cmd: NSViewSel.WantsUpdateLayer,
 			Fn: func(self objc.ID, cmd objc.SEL) bool {
-				return override.WantsUpdateLayer(NSView(self))
+				return override.WantsUpdateLayer(foundation.Cast[NSView](self))
 			},
 		})
 	}
@@ -222,61 +225,59 @@ func ImplementNSView(className string, override NSViewOverride) (class NSViewCla
 		methods = append(methods, objc.MethodDef{
 			Cmd: NSViewSel.UpdateLayer,
 			Fn: func(self objc.ID, cmd objc.SEL) {
-				override.UpdateLayer(NSView(self))
+				override.UpdateLayer(foundation.Cast[NSView](self))
 			},
 		})
 	}
 	if override.DrawRect != nil {
 		methods = append(methods, objc.MethodDef{
 			Cmd: NSViewSel.DrawRect,
-			Fn:  MakeIMP_NSView_DrawRect(override.DrawRect),
+			Fn:  makeNSViewDrawRect(override.DrawRect),
 		})
 	}
 	if override.ViewDidChangeBackingProperties != nil {
 		methods = append(methods, objc.MethodDef{
 			Cmd: NSViewSel.ViewDidChangeBackingProperties,
 			Fn: func(self objc.ID, cmd objc.SEL) {
-				override.ViewDidChangeBackingProperties(NSView(self))
+				override.ViewDidChangeBackingProperties(foundation.Cast[NSView](self))
 			},
 		})
 	}
-	cls, err := objc.RegisterClass(className, objc.Class(NSViewClassId), nil, nil, methods)
-	if err != nil {
-		return
-	}
-	return NSViewClass(cls), nil
+	class.Class, err = objc.RegisterClass(className, NSViewClassId.Class, nil, nil, methods)
+	return
 }
 
-func (c NSViewClass) Alloc() NSView {
-	return objc.Send[NSView](objc.ID(c), objcrt.NSObjectSel.Alloc)
+func (c NSViewClass) Alloc() (res NSView) {
+	res.NSObject = c.NSResponderClass.Alloc()
+	return
 }
 
-func (v NSView) Init() NSView {
-	objc.ID(v).Send(objcrt.NSObjectSel.Init)
-	return v
+func (v NSView) Init() (res NSView) {
+	res.ID = v.Send(foundation.NSObjectSel.Init)
+	return
 }
 
-func (v NSView) Window() NSWindow {
-	win := objc.ID(v).Send(NSViewSel.Window)
-	return NSWindow(win)
+func (v NSView) Window() (res NSWindow) {
+	res.ID = v.Send(NSViewSel.Window)
+	return
 }
 
 func (v NSView) Frame() foundation.NSRect {
-	return objc.Send[foundation.NSRect](objc.ID(v), NSViewSel.Frame)
+	return objc.Send[foundation.NSRect](v.ID, NSViewSel.Frame)
 }
 
 func (v NSView) Bounds() foundation.NSRect {
-	return objc.Send[foundation.NSRect](objc.ID(v), NSViewSel.Bounds)
+	return objc.Send[foundation.NSRect](v.ID, NSViewSel.Bounds)
 }
 
 func (v NSView) ConvertRectToBacking(rect foundation.NSRect) foundation.NSRect {
-	return objc.Send[foundation.NSRect](objc.ID(v), NSViewSel.ConvertRectToBacking, rect)
+	return objc.Send[foundation.NSRect](v.ID, NSViewSel.ConvertRectToBacking, rect)
 }
 
 // NSWindow
 
 func initNSWindow() {
-	NSWindowClassId = NSWindowClass(objc.GetClass("NSWindow"))
+	NSWindowClassId.Class = objc.GetClass("NSWindow")
 	NSWindowSel.InitWith = objc.RegisterName("initWithContentRect:styleMask:backing:defer:")
 	NSWindowSel.Center = objc.RegisterName("center")
 	NSWindowSel.Title = objc.RegisterName("title")
@@ -286,6 +287,7 @@ func initNSWindow() {
 	NSWindowSel.SetContentView = objc.RegisterName("setContentView:")
 	NSWindowSel.SetCollectionBehavior = objc.RegisterName("setCollectionBehavior:")
 	NSWindowSel.SetAcceptsMouseMovedEvents = objc.RegisterName("setAcceptsMouseMovedEvents:")
+	NSWindowSel.SetRestorable = objc.RegisterName("setRestorable:")
 	NSWindowSel.BackingScaleFactor = objc.RegisterName("backingScaleFactor")
 	NSWindowSel.MakeFirstResponder = objc.RegisterName("makeFirstResponder:")
 	NSWindowSel.OrderFront = objc.RegisterName("orderFront:")
@@ -308,6 +310,7 @@ var (
 		SetContentView             objc.SEL
 		SetCollectionBehavior      objc.SEL
 		SetAcceptsMouseMovedEvents objc.SEL
+		SetRestorable              objc.SEL
 		BackingScaleFactor         objc.SEL
 		MakeFirstResponder         objc.SEL
 		OrderFront                 objc.SEL
@@ -320,8 +323,8 @@ var (
 )
 
 type (
-	NSWindow         objc.ID
-	NSWindowClass    objc.Class
+	NSWindow         struct{ foundation.NSObject }
+	NSWindowClass    struct{ foundation.NSObjectClass }
 	NSWindowOverride struct {
 		CanBecomeKeyWindow  func(self NSWindow) bool
 		CanBecomeMainWindow func(self NSWindow) bool
@@ -334,7 +337,7 @@ func ImplementNSWindow(className string, override NSWindowOverride) (class NSWin
 		methods = append(methods, objc.MethodDef{
 			Cmd: NSWindowSel.CanBecomeKeyWindow,
 			Fn: func(self objc.ID, cmd objc.SEL) bool {
-				return override.CanBecomeKeyWindow(NSWindow(self))
+				return override.CanBecomeKeyWindow(foundation.Cast[NSWindow](self))
 			},
 		})
 	}
@@ -342,88 +345,91 @@ func ImplementNSWindow(className string, override NSWindowOverride) (class NSWin
 		methods = append(methods, objc.MethodDef{
 			Cmd: NSWindowSel.CanBecomeMainWindow,
 			Fn: func(self objc.ID, cmd objc.SEL) bool {
-				return override.CanBecomeMainWindow(NSWindow(self))
+				return override.CanBecomeMainWindow(foundation.Cast[NSWindow](self))
 			},
 		})
 	}
-	cls, err := objc.RegisterClass(className, objc.Class(NSWindowClassId), nil, nil, methods)
-	if err != nil {
-		return
-	}
-	return NSWindowClass(cls), nil
+	class.Class, err = objc.RegisterClass(className, NSWindowClassId.Class, nil, nil, methods)
+	return
 }
 
-func (c NSWindowClass) Alloc() NSWindow {
-	win := objc.ID(c).Send(objcrt.NSObjectSel.Alloc)
-	return NSWindow(win)
+func (c NSWindowClass) Alloc() (res NSWindow) {
+	res.NSObject = c.NSObjectClass.Alloc()
+	return
 }
 
-func (w NSWindow) InitWith(contentRect foundation.NSRect, styleMask NSWindowStyleMask, backing NSBackingStoreType, defer_ bool) NSWindow {
-	objc.ID(w).Send(NSWindowSel.InitWith, contentRect, styleMask, backing, defer_)
-	return w
+func (w NSWindow) InitWith(contentRect foundation.NSRect, styleMask NSWindowStyleMask, backing NSBackingStoreType, defer_ bool) (res NSWindow) {
+	res.ID = w.Send(NSWindowSel.InitWith, contentRect, styleMask, backing, defer_)
+	return
 }
 
 func (w NSWindow) Center() {
-	objc.ID(w).Send(NSWindowSel.Center)
+	w.Send(NSWindowSel.Center)
 }
 
 func (w NSWindow) Title() string {
-	title := foundation.NSString(objc.ID(w).Send(NSWindowSel.Title))
+	var title foundation.NSString
+	title.ID = w.Send(NSWindowSel.Title)
 	return title.UTF8String()
 }
 
 func (w NSWindow) SetTitle(title string) {
-	objc.ID(w).Send(NSWindowSel.SetTitle, foundation.ToNSString(title))
+	w.Send(NSWindowSel.SetTitle, foundation.ToNSString(title))
 }
 
-func (w NSWindow) ContentView() NSView {
-	return objc.Send[NSView](objc.ID(w), NSWindowSel.ContentView)
+func (w NSWindow) ContentView() (res NSView) {
+	res.ID = w.Send(NSWindowSel.ContentView)
+	return
 }
 
 func (w NSWindow) SetContentView(view NSView) {
-	objc.ID(w).Send(NSWindowSel.SetContentView, view)
+	w.Send(NSWindowSel.SetContentView, view)
 }
 
 func (w NSWindow) SetDelegate(delegate NSWindowDelegate) {
-	objc.ID(w).Send(NSWindowSel.SetDelegate, delegate)
+	w.Send(NSWindowSel.SetDelegate, delegate)
 }
 
 func (w NSWindow) SetCollectionBehavior(behavior NSWindowCollectionBehavior) {
-	objc.ID(w).Send(NSWindowSel.SetCollectionBehavior, behavior)
+	w.Send(NSWindowSel.SetCollectionBehavior, behavior)
 }
 
 func (w NSWindow) SetAcceptsMouseMovedEvents(v bool) {
-	objc.ID(w).Send(NSWindowSel.SetAcceptsMouseMovedEvents, v)
+	w.Send(NSWindowSel.SetAcceptsMouseMovedEvents, v)
+}
+
+func (w NSWindow) SetRestorable(v bool) {
+	w.Send(NSWindowSel.SetRestorable, v)
 }
 
 func (w NSWindow) BackingScaleFactor() core_graphics.CGFloat {
-	return objc.Send[core_graphics.CGFloat](objc.ID(w), NSWindowSel.BackingScaleFactor)
+	return objc.Send[core_graphics.CGFloat](w.ID, NSWindowSel.BackingScaleFactor)
 }
 
 func (w NSWindow) MakeFirstResponder(responder NSResponder) bool {
-	return objc.Send[bool](objc.ID(w), NSWindowSel.MakeFirstResponder, responder)
+	return objc.Send[bool](w.ID, NSWindowSel.MakeFirstResponder, responder)
 }
 
 func (w NSWindow) OrderFront(sender objc.ID) {
-	objc.ID(w).Send(NSWindowSel.OrderFront, sender)
+	w.Send(NSWindowSel.OrderFront, sender)
 }
 
 func (w NSWindow) OrderOut(sender objc.ID) {
-	objc.ID(w).Send(NSWindowSel.OrderOut, sender)
+	w.Send(NSWindowSel.OrderOut, sender)
 }
 
 func (w NSWindow) PerformClose(sender objc.ID) {
-	objc.ID(w).Send(NSWindowSel.PerformClose, sender)
+	w.Send(NSWindowSel.PerformClose, sender)
 }
 
 func (w NSWindow) Close() {
-	objc.ID(w).Send(NSWindowSel.Close)
+	w.Send(NSWindowSel.Close)
 }
 
 // NSWindowDelegate
 
 func initNSWindowDelegate() {
-	NSWindowDelegateClassId = NSWindowDelegateClass(objc.GetClass("NSWindowDelegate"))
+	NSWindowDelegateClassId.Class = objc.GetClass("NSWindowDelegate")
 	NSWindowDelegateSel.WindowShouldClose = objc.RegisterName("windowShouldClose:")
 	NSWindowDelegateSel.WindowDidResize = objc.RegisterName("windowDidResize:")
 }
@@ -437,8 +443,8 @@ var (
 )
 
 type (
-	NSWindowDelegate         objcrt.NSObject
-	NSWindowDelegateClass    objc.Class
+	NSWindowDelegate         struct{ foundation.NSObject }
+	NSWindowDelegateClass    struct{ foundation.NSObjectClass }
 	NSWindowDelegateOverride struct {
 		WindowShouldClose func(self NSWindowDelegate, sender NSWindow) bool
 		WindowDidResize   func(self NSWindowDelegate, notification foundation.NSNotification)
@@ -452,7 +458,7 @@ func ImplementNSWindowDelegate(className string, override NSWindowDelegateOverri
 			Cmd: NSWindowDelegateSel.WindowShouldClose,
 			Fn: func(self objc.ID, cmd objc.SEL, arg objc.ID) bool {
 				if override.WindowShouldClose != nil {
-					return override.WindowShouldClose(NSWindowDelegate(self), NSWindow(arg))
+					return override.WindowShouldClose(foundation.Cast[NSWindowDelegate](self), foundation.Cast[NSWindow](arg))
 				}
 				return true
 			},
@@ -463,20 +469,18 @@ func ImplementNSWindowDelegate(className string, override NSWindowDelegateOverri
 			Cmd: NSWindowDelegateSel.WindowDidResize,
 			Fn: func(self objc.ID, cmd objc.SEL, arg objc.ID) {
 				if override.WindowDidResize != nil {
-					override.WindowDidResize(NSWindowDelegate(self), foundation.NSNotification(arg))
+					override.WindowDidResize(foundation.Cast[NSWindowDelegate](self), foundation.Cast[foundation.NSNotification](arg))
 				}
 			},
 		})
 	}
-	cls, err := objc.RegisterClass(className, objc.Class(objcrt.NSObjectClassId), nil, nil, methods)
-	if err != nil {
-		return
-	}
-	return NSWindowDelegateClass(cls), nil
+	class.Class, err = objc.RegisterClass(className, foundation.NSObjectClassId.Class, nil, nil, methods)
+	return
 }
 
-func (c NSWindowDelegateClass) Alloc() NSWindowDelegate {
-	return objc.Send[NSWindowDelegate](objc.ID(c), objcrt.NSObjectSel.Alloc)
+func (c NSWindowDelegateClass) Alloc() (res NSWindowDelegate) {
+	res.NSObject = c.NSObjectClass.Alloc()
+	return
 }
 
 type NSWindowStyleMask foundation.NSUInteger
