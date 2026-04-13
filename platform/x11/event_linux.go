@@ -1,7 +1,9 @@
 package x11
 
 import (
+	"errors"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/x11/libs/libc"
 	"github.com/golang-gui/goui/platform/x11/libs/xlib"
 )
 
@@ -15,66 +17,70 @@ func (e *Event) Type() events.EventType {
 }
 
 type EventQueue struct {
-	syncChan  chan bool
-	emptyChan chan bool
-	eventChan chan xlib.Event
-	wake      xlib.Event
+	pipe  [2]int32
+	event int32
+	empty [4]byte
+	dummy [32]byte
 }
 
 func newEventQueue() (q *EventQueue, err error) {
 	q = new(EventQueue)
-	q.syncChan = make(chan bool, 1)
-	q.emptyChan = make(chan bool, 1024)
-	q.eventChan = make(chan xlib.Event, 1024)
+	err = libc.Pipe(&q.pipe)
+	if err != nil {
+		return nil, err
+	}
 
-	event := q.wake.ClientMessageEvent()
-	event.Type = xlib.ClientMessage
-	event.Window = platform.helper
-	event.MessageType = platform.display.InternAtom("GOUI_WAKEUP", false)
-	event.Format = 32
-	event.L[0] = 0
+	for _, fd := range q.pipe {
+		sf := libc.Fcntl(fd, libc.F_GETFL, 0)
+		df := libc.Fcntl(fd, libc.F_GETFD, 0)
 
-	q.syncChan <- true
-	go q.doGetEvent()
+		if sf != -1 && df != -1 {
+			if libc.Fcntl(fd, libc.F_SETFL, uintptr(sf)|libc.O_NONBLOCK) == -1 ||
+				libc.Fcntl(fd, libc.F_SETFD, uintptr(df)|libc.FD_CLOEXEC) == -1 {
+				return nil, errors.New("set flags for empty event pipe failed")
+			}
+		}
+	}
+	q.event = platform.display.ConnectionNumber()
 	return
 }
 
 func (q *EventQueue) Destroy() {
-	close(q.syncChan)
-	platform.display.SendEvent(platform.helper, false, 0, &q.wake)
+	libc.Close(q.pipe[0])
+	libc.Close(q.pipe[1])
 }
 
 func (q *EventQueue) Post() {
-	select {
-	case q.emptyChan <- true:
-	default:
+	for {
+		result, errno := libc.Write(q.pipe[1], q.empty[:1])
+		if result == 1 || (result == -1 && errno != libc.EINTR) {
+			break
+		}
 	}
 }
 
 func (q *EventQueue) Poll() {
-	select {
-	case event, ok := <-q.eventChan:
-		if ok {
-			if event.AnyEvent().Window != platform.helper {
-				handleEvent(event)
-			}
-			q.syncChan <- true
-		}
-	case <-q.emptyChan:
-	default:
+	q.readEmpty()
+
+	platform.display.Pending()
+	if platform.display.QLength() != 0 {
+		q.getEvent()
 	}
+	platform.display.Flush()
 }
 
 func (q *EventQueue) Wait() {
-	select {
-	case event, ok := <-q.eventChan:
-		if ok {
-			if event.AnyEvent().Window != platform.helper {
-				handleEvent(event)
-			}
-			q.syncChan <- true
+	q.pollRead(-1)
+	q.Poll()
+}
+
+func (q *EventQueue) readEmpty() {
+	var dummy [64]byte
+	for {
+		result, errno := libc.Read(q.pipe[0], dummy[:])
+		if result == -1 && errno != libc.EINTR {
+			break
 		}
-	case <-q.emptyChan:
 	}
 }
 
@@ -85,10 +91,27 @@ func (q *EventQueue) getEvent() {
 	}
 }
 
-func (q *EventQueue) doGetEvent() {
-	defer close(q.eventChan)
-	for range q.syncChan {
-		event := platform.display.NextEvent()
-		q.eventChan <- event
+func (q *EventQueue) pollRead(timeout int) {
+	fds := []libc.PollFd{
+		{
+			Fd:     q.event,
+			Events: libc.POLLIN,
+		},
+		{
+			Fd:     q.pipe[0],
+			Events: libc.POLLIN,
+		},
+	}
+
+	for platform.display.Pending() == 0 {
+		ret, errno := libc.Poll(fds, timeout)
+		if ret == -1 && errno != libc.EINTR && errno != libc.EAGAIN {
+			return
+		}
+		for _, pfd := range fds {
+			if pfd.REvents&libc.POLLIN != 0 {
+				return
+			}
+		}
 	}
 }
