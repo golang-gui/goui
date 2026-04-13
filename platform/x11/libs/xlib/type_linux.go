@@ -128,6 +128,19 @@ type Visual struct {
 	MapEntries int32
 }
 
+type VisualInfo struct {
+	Visual       *Visual
+	VisualId     VisualID
+	Screen       int32
+	Depth        int32
+	Class        int32
+	RedMask      uint64
+	GreenMask    uint64
+	BlueMask     uint64
+	ColormapSize int32
+	BitsPerRgb   int32
+}
+
 type Depth struct {
 	Depth    int32
 	NVisuals int32
@@ -239,6 +252,13 @@ const (
 )
 
 type Colormap ID
+
+type ColormapAlloc int
+
+const (
+	ColormapAllocNone ColormapAlloc = iota
+	ColormapAllocAll
+)
 
 type Cursor ID
 

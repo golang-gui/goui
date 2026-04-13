@@ -10,6 +10,7 @@ var (
 
 	xOpenDisplay            = libx11.NewSymbol("XOpenDisplay")
 	xCloseDisplay           = libx11.NewSymbol("XCloseDisplay")
+	xConnectionNumber       = libx11.NewSymbol("XConnectionNumber")
 	xPending                = libx11.NewSymbol("XPending")
 	xQLength                = libx11.NewSymbol("XQLength")
 	xFlush                  = libx11.NewSymbol("XFlush")
@@ -32,6 +33,8 @@ var (
 	xDeleteProperty         = libx11.NewSymbol("XDeleteProperty")
 	xChangeProperty         = libx11.NewSymbol("XChangeProperty")
 	xChangeWindowAttributes = libx11.NewSymbol("XChangeWindowAttributes")
+	xCreateColormap         = libx11.NewSymbol("XCreateColormap")
+	xFreeColormap           = libx11.NewSymbol("XFreeColormap")
 	xCreateGC               = libx11.NewSymbol("XCreateGC")
 	xFreeGC                 = libx11.NewSymbol("XFreeGC")
 	xCreatePixmap           = libx11.NewSymbol("XCreatePixmap")
@@ -39,6 +42,7 @@ var (
 	xCreateImage            = libx11.NewSymbol("XCreateImage")
 	xDestroyImage           = libx11.NewSymbol("XDestroyImage")
 	xPutImage               = libx11.NewSymbol("XPutImage")
+	xFree                   = libx11.NewSymbol("XFree")
 )
 
 func OpenDisplay(name string) Display {
@@ -53,7 +57,7 @@ func (d Display) Close() {
 }
 
 func (d Display) ConnectionNumber() int32 {
-	ret, _, _ := xQLength.CallRaw(uintptr(d))
+	ret, _, _ := xConnectionNumber.CallRaw(uintptr(d))
 	return int32(ret)
 }
 
@@ -162,6 +166,15 @@ func (d Display) SetWMProtocols(w Window, protocols []Atom) Status {
 	return Status(ret)
 }
 
+func (d Display) CreateColormap(w Window, visual *Visual, alloc ColormapAlloc) Colormap {
+	ret, _, _ := xCreateColormap.CallRaw(uintptr(d), uintptr(w), uintptr(cgo.Pointer(visual)), uintptr(alloc))
+	return Colormap(ret)
+}
+
+func (d Display) FreeColormap(c Colormap) {
+	xFreeColormap.CallRaw(uintptr(d), uintptr(c))
+}
+
 func (d Display) CreateGC(drawable Drawable, valueMask uint, values *GCValues) GC {
 	ret, _, _ := xCreateGC.CallRaw(uintptr(d), uintptr(drawable), uintptr(valueMask), uintptr(cgo.Pointer(values)))
 	return GC(ret)
@@ -191,4 +204,8 @@ func (d Display) PutImage(drawable Drawable, gc GC, image *Image, srcX, srcY, ds
 
 func (img *Image) Destroy() {
 	xDestroyImage.CallRaw(uintptr(cgo.Pointer(img)))
+}
+
+func Free[T any](p *T) {
+	xFree.CallRaw(uintptr(cgo.Pointer(p)))
 }
