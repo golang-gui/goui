@@ -1,6 +1,8 @@
 package cocoa
 
 import (
+	"image"
+
 	"github.com/golang-gui/goui/platform/cocoa/frameworks"
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/appkit"
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/foundation"
@@ -40,7 +42,7 @@ func (p *Platform) NewEventQueue() (common.EventQueue, error) {
 }
 
 func (p *Platform) NewImage(width, height uint) (common.Image, error) {
-	return common.NewRGBAImage(width, height), nil
+	return common.NewRGBAImage(image.Rect(0, 0, int(width), int(height))), nil
 }
 
 func (p *Platform) NewWindow(onEvent events.EventHandler) (common.Window, error) {
