@@ -26,6 +26,8 @@ func DefaultName() string {
 		return "win32"
 	case "linux":
 		return "x11"
+	case "darwin":
+		return "cocoa"
 	}
 	return ""
 }
