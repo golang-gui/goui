@@ -26,12 +26,10 @@ func (q EventQueue) Post() {
 
 func (q EventQueue) Poll() {
 	foundation.AutoReleasePool(func() {
-		for {
-			event := appkit.NSApp.NextEvent(appkit.NSEventMaskAny, foundation.NSDateClassId.DistantPast(),
-				foundation.NSDefaultRunLoopMode, true)
-			if event.Valid() {
-				appkit.NSApp.SendEvent(event)
-			}
+		event := appkit.NSApp.NextEvent(appkit.NSEventMaskAny, foundation.NSDateClassId.DistantPast(),
+			foundation.NSDefaultRunLoopMode, true)
+		if event.Valid() {
+			appkit.NSApp.SendEvent(event)
 		}
 	})
 }
