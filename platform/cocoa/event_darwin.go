@@ -39,6 +39,5 @@ func (q EventQueue) Wait() {
 		event := appkit.NSApp.NextEvent(appkit.NSEventMaskAny, foundation.NSDateClassId.DistantFuture(),
 			foundation.NSDefaultRunLoopMode, true)
 		appkit.NSApp.SendEvent(event)
-		q.Poll()
 	})
 }
