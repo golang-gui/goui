@@ -34,10 +34,7 @@ func (q EventQueue) Post() {
 
 func (q EventQueue) Poll() {
 	var msg winapi.MSG
-	for {
-		if ok, _ := winapi.PeekMessage(&msg, 0, 0, 0, winapi.PM_REMOVE); ok != winapi.TRUE {
-			break
-		}
+	if ok, _ := winapi.PeekMessage(&msg, 0, 0, 0, winapi.PM_REMOVE); ok != winapi.TRUE {
 		if msg.Message != winapi.WM_QUIT {
 			winapi.TranslateMessage(&msg)
 			winapi.DispatchMessage(&msg)
@@ -46,7 +43,9 @@ func (q EventQueue) Poll() {
 }
 
 func (q EventQueue) Wait() {
-	if ok, _ := winapi.WaitMessage(); ok != winapi.FALSE {
-		q.Poll()
+	var msg winapi.MSG
+	if ok, _ := winapi.GetMessage(&msg, 0, 0, 0); ok != winapi.FALSE {
+		winapi.TranslateMessage(&msg)
+		winapi.DispatchMessage(&msg)
 	}
 }
