@@ -15,6 +15,7 @@ type Window struct {
 	delegate appkit.NSWindowDelegate
 	view     appkit.NSView
 	onEvent  events.EventHandler
+	parent   common.Window
 }
 
 func newWindow(onEvent events.EventHandler) (w *Window, err error) {
@@ -60,11 +61,26 @@ func (w *Window) Destroy() {
 }
 
 func (w *Window) Parent() common.Window {
-	panic("impl")
+	return w.parent
 }
 
 func (w *Window) SetParent(parent common.Window) error {
-	panic("impl")
+	foundation.AutoReleasePool(func() {
+		if w.parent != parent {
+			if w.parent != nil {
+				var window appkit.NSWindow
+				window.ID = foundation.ID(w.parent.NativeHandle())
+				window.RemoveChildWindow(w.window)
+			}
+			if parent != nil {
+				var window appkit.NSWindow
+				window.ID = foundation.ID(parent.NativeHandle())
+				window.AddChildWindow(w.window, appkit.NSWindowAbove)
+			}
+			w.parent = parent
+		}
+	})
+	return nil
 }
 
 func (w *Window) Title() (v string) {
@@ -89,11 +105,14 @@ func (w *Window) Show() error {
 }
 
 func (w *Window) Close() error {
-	panic("impl")
+	foundation.AutoReleasePool(func() {
+		w.window.Close()
+	})
+	return nil
 }
 
 func (w *Window) ScaleFactor() (float64, error) {
-	panic("impl")
+	return w.window.BackingScaleFactor(), nil
 }
 
 func (w *Window) Draw(img common.Image) error {
