@@ -1,13 +1,13 @@
 package d2d1
 
 import (
-	"github.com/golang-gui/goui/platform/win32/sdk/wic"
 	"runtime"
 	"syscall"
 
 	"github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/platform/win32/sdk/com"
 	"github.com/golang-gui/goui/platform/win32/sdk/dwrite"
+	"github.com/golang-gui/goui/platform/win32/sdk/wic"
 )
 
 var (
@@ -185,7 +185,13 @@ type RenderTarget struct {
 	Resource
 }
 
-// TODO: more method
+// TODO: more method?
+
+func (this *RenderTarget) CreateBitmapFromWicBitmap(wicBitmapSource *wic.BitmapSource, properties *BitmapProperties) (bitmap *Bitmap, hr com.HRESULT) {
+	ret, _, _ := this.class().CreateBitmapFromWicBitmap.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(wicBitmapSource)), uintptr(cgo.Pointer(properties)), uintptr(cgo.Pointer(&bitmap)))
+	hr = com.HRESULT(ret)
+	return
+}
 
 func (this *RenderTarget) CreateSolidColorBrush(color *ColorF, brushProperties *BrushProperties) (solidColorBrush *SolidColorBrush, hr com.HRESULT) {
 	ret, _, _ := this.class().CreateSolidColorBrush.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(color)), uintptr(cgo.Pointer(brushProperties)), uintptr(cgo.Pointer(&solidColorBrush)))
@@ -200,6 +206,10 @@ func (this *RenderTarget) BeginDraw() {
 func (this *RenderTarget) EndDraw(tag1, tag2 *Tag) com.HRESULT {
 	ret, _, _ := this.class().EndDraw.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(tag1)), uintptr(cgo.Pointer(tag2)))
 	return com.HRESULT(ret)
+}
+
+func (this *RenderTarget) SetDpi(dpiX, dpiY float32) {
+	cgo.Call(this.class().SetDpi, this, dpiX, dpiY)
 }
 
 func (this *RenderTarget) Clear(color *ColorF) {
@@ -218,12 +228,28 @@ func (this *RenderTarget) FillEllipse(ellipse *Ellipse, brush *Brush) {
 	this.class().FillEllipse.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(ellipse)), uintptr(cgo.Pointer(brush)))
 }
 
-func (this *RenderTarget) FillGeometry(geometry *Geometry, brush *Brush, opacityBrush *Brush) {
+func (this *RenderTarget) FillGeometry(geometry *Geometry, brush, opacityBrush *Brush) {
 	this.class().FillGeometry.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(geometry)), uintptr(cgo.Pointer(brush)), uintptr(cgo.Pointer(opacityBrush)))
 }
 
 func (this *RenderTarget) DrawLine(p0, p1 Point2F, brush *Brush, strokeWidth float32, strokeStyle *StrokeStyle) {
-	cgo.Call(this.class().DrawLine, p0, p1, brush, strokeWidth, strokeStyle)
+	cgo.Call(this.class().DrawLine, this, p0, p1, brush, strokeWidth, strokeStyle)
+}
+
+func (this *RenderTarget) DrawRectangle(rect *RectF, brush *Brush, strokeWidth float32, strokeStyle *StrokeStyle) {
+	cgo.Call(this.class().DrawRectangle, this, rect, brush, strokeWidth, strokeStyle)
+}
+
+func (this *RenderTarget) DrawRoundedRectangle(roundRect *RoundRect, brush *Brush, strokeWidth float32, strokeStyle *StrokeStyle) {
+	cgo.Call(this.class().DrawRoundedRectangle, this, roundRect, brush, strokeWidth, strokeStyle)
+}
+
+func (this *RenderTarget) DrawEllipse(ellipse *Ellipse, brush *Brush, strokeWidth float32, strokeStyle *StrokeStyle) {
+	cgo.Call(this.class().DrawEllipse, this, ellipse, brush, strokeWidth, strokeStyle)
+}
+
+func (this *RenderTarget) DrawGeometry(geometry *Geometry, brush *Brush, strokeWidth float32, strokeStyle *StrokeStyle) {
+	cgo.Call(this.class().DrawGeometry, this, geometry, brush, strokeWidth, strokeStyle)
 }
 
 func (this *RenderTarget) DrawText(text string, format *dwrite.TextFormat, layoutRect *RectF, foreBrush *Brush, options DrawTextOptions, measuringMode dwrite.MeasuringMode) {
@@ -234,6 +260,10 @@ func (this *RenderTarget) DrawText(text string, format *dwrite.TextFormat, layou
 
 func (this *RenderTarget) DrawTextLayout(origin Point2F, layout *dwrite.TextLayout, foreBrush *Brush, options DrawTextOptions) {
 	cgo.Call(this.class().DrawTextLayout, this, origin, layout, foreBrush, options)
+}
+
+func (this *RenderTarget) DrawBitmap(bitmap *Bitmap, dstRect *RectF, opacity float32, interMode BitmapInterpolationMode, srcRect *RectF) {
+	cgo.Call(this.class().DrawBitmap, this, bitmap, dstRect, opacity, interMode, srcRect)
 }
 
 func (this *RenderTarget) class() *RenderTargetClass {
@@ -402,8 +432,20 @@ func (this *GeometrySink) AddLine(point Point2F) {
 	cgo.Call(this.class().AddLine, this, point)
 }
 
+func (this *GeometrySink) AddBezier(bezier *BezierSegment) {
+	this.class().AddBezier.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(bezier)))
+}
+
+func (this *GeometrySink) AddArc(arc *ArcSegment) {
+	this.class().AddArc.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(arc)))
+}
+
 func (this *GeometrySink) class() *GeometrySinkClass {
 	return (*GeometrySinkClass)(this.Class)
+}
+
+type Bitmap struct {
+	com.Unknown
 }
 
 type StrokeStyle struct {

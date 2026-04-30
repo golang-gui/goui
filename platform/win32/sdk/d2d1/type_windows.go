@@ -130,6 +130,34 @@ type BrushProperties struct {
 	Transform Matrix3x2F
 }
 
+type BezierSegment struct {
+	Point1 Point2F
+	Point2 Point2F
+	Point3 Point2F
+}
+
+type ArcSegment struct {
+	Point          Point2F
+	Size           SizeF
+	RotationAngle  float32
+	SweepDirection SweepDirection
+	ArcSize        ArcSize
+}
+
+type ArcSize uint32
+
+const (
+	D2D1_ARC_SIZE_SMALL ArcSize = 0
+	D2D1_ARC_SIZE_LARGE ArcSize = 1
+)
+
+type SweepDirection uint32
+
+const (
+	D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE SweepDirection = 0
+	D2D1_SWEEP_DIRECTION_CLOCKWISE         SweepDirection = 1
+)
+
 type StrokeStyleProperties struct {
 	StartCap   CapStyle
 	EndCap     CapStyle
@@ -244,4 +272,40 @@ const (
 	D2D1_DRAW_TEXT_OPTIONS_DISABLE_COLOR_BITMAP_SNAPPING DrawTextOptions = 0x00000008
 	D2D1_DRAW_TEXT_OPTIONS_NONE                          DrawTextOptions = 0x00000000
 	D2D1_DRAW_TEXT_OPTIONS_FORCE_DWORD                   DrawTextOptions = 0xffffffff
+)
+
+type BitmapProperties struct {
+	PixelFormat PixelFormat
+	DpiX        float32
+	DpiY        float32
+}
+
+type BitmapInterpolationMode uint32
+
+const (
+	/// <summary>
+	/// Nearest Neighbor filtering. Also known as nearest pixel or nearest point
+	/// sampling.
+	/// </summary>
+	D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR = BitmapInterpolationMode(D2D1_INTERPOLATION_MODE_DEFINITION_NEAREST_NEIGHBOR)
+
+	/// <summary>
+	/// Linear filtering.
+	/// </summary>
+	D2D1_BITMAP_INTERPOLATION_MODE_LINEAR = BitmapInterpolationMode(D2D1_INTERPOLATION_MODE_DEFINITION_LINEAR)
+)
+
+// / <summary>
+// / This defines the superset of interpolation mode supported by D2D APIs
+// / and built-in effects
+// / </summary>
+const (
+	D2D1_INTERPOLATION_MODE_DEFINITION_NEAREST_NEIGHBOR    = 0
+	D2D1_INTERPOLATION_MODE_DEFINITION_LINEAR              = 1
+	D2D1_INTERPOLATION_MODE_DEFINITION_CUBIC               = 2
+	D2D1_INTERPOLATION_MODE_DEFINITION_MULTI_SAMPLE_LINEAR = 3
+	D2D1_INTERPOLATION_MODE_DEFINITION_ANISOTROPIC         = 4
+	D2D1_INTERPOLATION_MODE_DEFINITION_HIGH_QUALITY_CUBIC  = 5
+	D2D1_INTERPOLATION_MODE_DEFINITION_FANT                = 6
+	D2D1_INTERPOLATION_MODE_DEFINITION_MIPMAP_LINEAR       = 7
 )
