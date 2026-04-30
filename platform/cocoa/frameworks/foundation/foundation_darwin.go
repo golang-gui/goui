@@ -38,6 +38,8 @@ func Init(load common.LoadFunc) (err error) {
 // Types
 
 type (
+	ID = objc.ID
+
 	NSInteger  = int
 	NSUInteger = uint
 	NSPoint    = core_graphics.CGPoint

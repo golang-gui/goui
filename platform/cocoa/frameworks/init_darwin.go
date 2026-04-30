@@ -6,6 +6,7 @@ import (
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/core_foundation"
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/core_graphics"
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/foundation"
+	"github.com/golang-gui/goui/platform/cocoa/frameworks/opengl"
 )
 
 func Init() (err error) {
@@ -22,6 +23,10 @@ func Init() (err error) {
 		return
 	}
 	err = appkit.Init(common.LoadSystemFramework)
+	if err != nil {
+		return
+	}
+	err = opengl.Init(common.LoadSystemFramework)
 	if err != nil {
 		return
 	}

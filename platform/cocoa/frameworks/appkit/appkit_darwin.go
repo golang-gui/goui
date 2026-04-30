@@ -292,6 +292,8 @@ func initNSWindow() {
 	NSWindowSel.MakeFirstResponder = objc.RegisterName("makeFirstResponder:")
 	NSWindowSel.OrderFront = objc.RegisterName("orderFront:")
 	NSWindowSel.OrderOut = objc.RegisterName("orderOut:")
+	NSWindowSel.AddChildWindow = objc.RegisterName("addChildWindow:ordered:")
+	NSWindowSel.RemoveChildWindow = objc.RegisterName("removeChildWindow:")
 	NSWindowSel.PerformClose = objc.RegisterName("performClose:")
 	NSWindowSel.Close = objc.RegisterName("close")
 	NSWindowSel.CanBecomeKeyWindow = objc.RegisterName("canBecomeKeyWindow")
@@ -315,6 +317,8 @@ var (
 		MakeFirstResponder         objc.SEL
 		OrderFront                 objc.SEL
 		OrderOut                   objc.SEL
+		AddChildWindow             objc.SEL
+		RemoveChildWindow          objc.SEL
 		PerformClose               objc.SEL
 		Close                      objc.SEL
 		CanBecomeKeyWindow         objc.SEL
@@ -416,6 +420,14 @@ func (w NSWindow) OrderFront(sender objc.ID) {
 
 func (w NSWindow) OrderOut(sender objc.ID) {
 	w.Send(NSWindowSel.OrderOut, sender)
+}
+
+func (w NSWindow) AddChildWindow(childWin NSWindow, ordered NSWindowOrderingMode) {
+	w.Send(NSWindowSel.AddChildWindow, childWin, ordered)
+}
+
+func (w NSWindow) RemoveChildWindow(childWin NSWindow) {
+	w.Send(NSWindowSel.RemoveChildWindow, childWin)
 }
 
 func (w NSWindow) PerformClose(sender objc.ID) {
@@ -528,4 +540,12 @@ const (
 	//NSWindowCollectionBehaviorPrimary  __attribute__((availability(macos,introduced=13.0))) = 1 << 16,
 	//NSWindowCollectionBehaviorAuxiliary  __attribute__((availability(macos,introduced=13.0))) = 1 << 17,
 	//NSWindowCollectionBehaviorCanJoinAllApplications  __attribute__((availability(macos,introduced=13.0))) = 1 << 18,
+)
+
+type NSWindowOrderingMode foundation.NSInteger
+
+const (
+	NSWindowAbove NSWindowOrderingMode = 1
+	NSWindowBelow NSWindowOrderingMode = -1
+	NSWindowOut   NSWindowOrderingMode = 0
 )
