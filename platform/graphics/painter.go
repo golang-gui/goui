@@ -22,5 +22,5 @@ type Painter interface {
 	DrawPath(path Path, strokeWidth float32, brush Brush)
 	DrawText(rect Rectangle, text string, format typography.TextFormat, brush Brush)
 	DrawTextLayout(origin Point, layout typography.TextLayout, brush Brush)
-	DrawImage(rect, src Rectangle, img image.Image)
+	DrawImage(rect, img image.Image)
 }
