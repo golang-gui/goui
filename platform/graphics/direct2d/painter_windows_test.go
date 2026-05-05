@@ -4,6 +4,7 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
+	"github.com/golang-gui/goui/platform/typography/directwrite"
 	"github.com/golang-gui/goui/platform/win32"
 	"runtime"
 	"testing"
@@ -25,7 +26,7 @@ func render(width, height uint) {
 			LineAlign: typography.LineAlignCenter,
 		}, graphics.RGBA(200, 200, 200, 255))
 
-		painter.DrawPath(graphics.MoveTo(100, 50).QuadBezierTo(150, 150, 200, 50), 2, graphics.RGBA(100, 0, 0, 255))
+		painter.DrawPath(graphics.MoveTo(200, 50).QuadBezierTo(250, 150, 300, 50), 2, graphics.RGBA(100, 0, 0, 255))
 	}
 	painter.End()
 }
@@ -60,7 +61,12 @@ func Test_Direct2DPainter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	painter, err = NewPainter(win)
+	typo, err := directwrite.NewContext()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	painter, err = NewPainter(win, typo)
 	if err != nil {
 		t.Fatal(err)
 	}

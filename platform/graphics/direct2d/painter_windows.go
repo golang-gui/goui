@@ -7,12 +7,15 @@ import (
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/directwrite"
+
 	"github.com/golang-gui/goui/platform/win32/sdk/com"
 	"github.com/golang-gui/goui/platform/win32/sdk/d2d1"
 	"github.com/golang-gui/goui/platform/win32/sdk/dwrite"
 )
 
 type Painter struct {
+	typoCtx    typography.Context
+	dwTypo     *directwrite.Context
 	factory    *d2d1.Factory
 	render     *d2d1.HwndRenderTarget
 	colorBrush *d2d1.SolidColorBrush
@@ -21,16 +24,16 @@ type Painter struct {
 	rect       d2d1.RectF
 	roundRect  d2d1.RoundRect
 	ellipse    d2d1.Ellipse
-
-	dwFactory *dwrite.Factory
 }
 
 type NativeWindow interface {
 	NativeHandle() uintptr
 }
 
-func NewPainter(win NativeWindow) (_ *Painter, err error) {
+func NewPainter(win NativeWindow, typoCtx typography.Context) (_ *Painter, err error) {
 	p := new(Painter)
+	p.typoCtx = typoCtx
+	p.dwTypo, _ = typoCtx.(*directwrite.Context)
 
 	p.factory, err = d2d1.CreateFactory[d2d1.Factory](d2d1.D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d1.IID_ID2D1Factory, nil)
 	if err != nil {
@@ -62,10 +65,6 @@ func (p *Painter) Name() string {
 }
 
 func (p *Painter) Destroy() {
-	if p.dwFactory != nil {
-		p.dwFactory.Release()
-		p.dwFactory = nil
-	}
 	if p.colorBrush != nil {
 		p.colorBrush.Release()
 		p.colorBrush = nil
@@ -171,45 +170,33 @@ func (p *Painter) DrawPath(path graphics.Path, strokeWidth float32, brush graphi
 }
 
 func (p *Painter) DrawText(rect graphics.Rectangle, text string, format typography.TextFormat, brush graphics.Brush) {
-	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		textFormat, err := p.createTextFormat(format)
-		if err == nil {
-			defer textFormat.Release()
-			p.setRect(rect)
-			p.render.DrawText(text, textFormat, &p.rect, d2dBrush, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT, dwrite.DWRITE_MEASURING_MODE_NATURAL)
-		}
-	}
-}
-
-func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLayout, brush graphics.Brush) {
-	if dwTextLayout, ok := layout.(*directwrite.TextLayout); ok {
+	if p.dwTypo != nil {
 		if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-			point := d2d1.Point2F{X: origin.X, Y: origin.Y}
-			directwrite.RenderTextLayout(&p.render.RenderTarget, point, dwTextLayout, d2dBrush, d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP|d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT)
+			textFormat, err := p.dwTypo.CreateTextFormat(format)
+			if err == nil {
+				defer textFormat.Release()
+				p.setRect(rect)
+				p.render.DrawText(text, textFormat, &p.rect, d2dBrush, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT, dwrite.DWRITE_MEASURING_MODE_NATURAL)
+			}
 		}
 	}
 
 	// TODO: draw text layout rendered bitmap
 }
 
-func (p *Painter) DrawImage(rect, src graphics.Rectangle, img image.Image) {
-	panic("TODO: impl")
-}
-
-func (p *Painter) createTextFormat(format typography.TextFormat) (textFormat *dwrite.TextFormat, err error) {
-	if p.dwFactory == nil {
-		p.dwFactory, err = dwrite.CreateFactory[dwrite.Factory](dwrite.DWRITE_FACTORY_TYPE_SHARED, dwrite.IID_IDWriteFactory)
-		if err != nil {
-			return nil, fmt.Errorf("create dwrite factory err: %v", err)
+func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLayout, brush graphics.Brush) {
+	if textLayout, ok := layout.(*directwrite.TextLayout); ok {
+		if d2dBrush := p.setBrush(brush); d2dBrush != nil {
+			point := d2d1.Point2F{X: origin.X, Y: origin.Y}
+			textLayout.Draw(&p.render.RenderTarget, point, d2dBrush, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP)
 		}
 	}
 
-	textFormat, err = directwrite.CreateTextFormat(p.dwFactory, format)
-	if err != nil {
-		return nil, fmt.Errorf("create dwrite text format err: %v", err)
-	}
+	// TODO: draw text layout rendered bitmap
+}
 
-	return
+func (p *Painter) DrawImage(rect graphics.Rectangle, img image.Image) {
+	panic("TODO impl")
 }
 
 func (p *Painter) createPathGeometry(path graphics.Path, fill bool) (geometry *d2d1.Geometry, err error) {
