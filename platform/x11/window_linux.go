@@ -5,6 +5,7 @@ import (
 	"github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/opengl"
 	"github.com/golang-gui/goui/platform/x11/libs/glx"
 	"github.com/golang-gui/goui/platform/x11/libs/xlib"
@@ -144,7 +145,11 @@ func (w *Window) Close() error {
 }
 
 func (w *Window) Draw(img common.Image) error {
-	return w.drawImage(common.ToBGRAImage(img))
+	bmp, ok := graphics.ToBitmap(img, graphics.PixelFormatBGRA)
+	if !ok {
+		bmp = graphics.CopyToBitmap(img, graphics.PixelFormatBGRA, nil)
+	}
+	return w.drawImage(bmp)
 }
 
 func (w *Window) ScaleFactor() (float64, error) {
@@ -208,7 +213,7 @@ func handleEvent(event xlib.Event) {
 	}
 }
 
-func (w *Window) drawImage(img *common.BGRAImage) (err error) {
+func (w *Window) drawImage(img graphics.Bitmap) (err error) {
 	if w.gc == 0 {
 		w.gc = platform.display.CreateGC(xlib.Drawable(w.wid), 0, nil)
 		if w.gc == 0 {
@@ -218,7 +223,7 @@ func (w *Window) drawImage(img *common.BGRAImage) (err error) {
 
 	width, height := img.Bounds().Dx(), img.Bounds().Dy()
 
-	image := platform.display.CreateImage(platform.defScreen.RootVisual, int(platform.defScreen.RootDepth), xlib.ImageFormatZPixmap, 0, cgo.CSlice(img.Pix), width, height, 32, img.Stride)
+	image := platform.display.CreateImage(platform.defScreen.RootVisual, int(platform.defScreen.RootDepth), xlib.ImageFormatZPixmap, 0, cgo.CSlice(img.Pixels), width, height, 32, img.Stride)
 	if image == nil {
 		return errors.New("create XImage failed")
 	}

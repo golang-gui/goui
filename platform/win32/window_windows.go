@@ -1,6 +1,7 @@
 package win32
 
 import (
+	"github.com/golang-gui/goui/platform/graphics"
 	"runtime"
 	"syscall"
 	"unsafe"
@@ -88,7 +89,11 @@ func (w *Window) Close() error {
 }
 
 func (w *Window) Draw(img common.Image) error {
-	return w.drawImage(common.ToBGRAImage(img))
+	bmp, ok := graphics.ToBitmap(img, graphics.PixelFormatBGRA)
+	if !ok {
+		bmp = graphics.CopyToBitmap(img, graphics.PixelFormatBGRA, nil)
+	}
+	return w.drawImage(bmp)
 }
 
 func (w *Window) ScaleFactor() (float64, error) {
@@ -182,7 +187,7 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 	return winapi.DefWindowProc(hwnd, message, wParam, lParam)
 }
 
-func (w *Window) drawImage(img *common.BGRAImage) error {
+func (w *Window) drawImage(img graphics.Bitmap) error {
 	var rect winapi.RECT
 	winapi.GetClientRect(w.hwnd, &rect)
 	if rect.Right == 0 || rect.Bottom == 0 {
@@ -216,7 +221,7 @@ func (w *Window) drawImage(img *common.BGRAImage) error {
 				BitCount: 32, //RGBA
 			},
 		}
-		winapi.SetDIBits(tdc, tBitmap, 0, winapi.UINT(height), winapi.LPVOID(&img.Pix[0]), &info, 0 /*DIB_RGB_COLORS*/)
+		winapi.SetDIBits(tdc, tBitmap, 0, winapi.UINT(height), winapi.LPVOID(&img.Pixels[0]), &info, 0 /*DIB_RGB_COLORS*/)
 
 		winapi.BitBlt(mdc, winapi.INT(bounds.Min.X), winapi.INT(bounds.Min.Y), width, height, tdc, 0, 0, 0x00CC0020 /*SRCCOPY*/)
 		winapi.SelectObject(tdc, tOldObj)

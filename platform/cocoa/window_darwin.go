@@ -8,6 +8,7 @@ import (
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/foundation"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/graphics"
 )
 
 type Window struct {
@@ -116,7 +117,11 @@ func (w *Window) ScaleFactor() (float64, error) {
 }
 
 func (w *Window) Draw(img common.Image) error {
-	return w.drawImage(img.(*common.RGBAImage))
+	bmp, ok := graphics.ToBitmap(img, graphics.PixelFormatRGBA)
+	if !ok {
+		bmp = graphics.CopyToBitmap(img, graphics.PixelFormatRGBA, nil)
+	}
+	return w.drawImage(bmp)
 }
 
 var (
@@ -241,11 +246,11 @@ func (w *Window) sendCreatedEvents() {
 	w.onEvent(sizeEvent)
 }
 
-func (w *Window) drawImage(img *common.RGBAImage) (err error) {
-	if width, height := img.Rect.Dx(), img.Rect.Dy(); width != 0 && height != 0 {
+func (w *Window) drawImage(img graphics.Bitmap) (err error) {
+	if width, height := img.Width, img.Height; width != 0 && height != 0 {
 		context := appkit.NSGraphicsContextClassId.CurrentContext().CGContext()
 
-		data := core_foundation.CFDataCreate(0, img.Pix)
+		data := core_foundation.CFDataCreate(0, img.Pixels)
 		defer core_foundation.CFRelease(data)
 
 		dataProvider := core_graphics.CGDataProviderCreateWithCFData(data)

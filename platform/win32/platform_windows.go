@@ -1,11 +1,11 @@
 package win32
 
 import (
-	"image"
 	"syscall"
 
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/win32/winapi"
 )
 
@@ -49,7 +49,7 @@ func (p *Platform) NewWindow(handler events.EventHandler) (common.Window, error)
 }
 
 func (p *Platform) NewImage(width, height uint) (common.Image, error) {
-	return common.NewBGRAImage(image.Rect(0, 0, int(width), int(height))), nil
+	return graphics.MakeBitmap(0, 0, int(width), int(height), graphics.PixelFormatBGRA, nil), nil
 }
 
 func newPlatform() (p *Platform, err error) {

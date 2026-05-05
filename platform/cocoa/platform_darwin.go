@@ -1,13 +1,12 @@
 package cocoa
 
 import (
-	"image"
-
 	"github.com/golang-gui/goui/platform/cocoa/frameworks"
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/appkit"
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/foundation"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/graphics"
 )
 
 type Platform struct {
@@ -42,7 +41,7 @@ func (p *Platform) NewEventQueue() (common.EventQueue, error) {
 }
 
 func (p *Platform) NewImage(width, height uint) (common.Image, error) {
-	return common.NewRGBAImage(image.Rect(0, 0, int(width), int(height))), nil
+	return graphics.MakeBitmap(0, 0, int(width), int(height), graphics.PixelFormatRGBA, nil), nil
 }
 
 func (p *Platform) NewWindow(onEvent events.EventHandler) (common.Window, error) {
