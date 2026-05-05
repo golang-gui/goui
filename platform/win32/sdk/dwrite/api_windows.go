@@ -687,14 +687,29 @@ type TextFormat struct {
 	com.Unknown
 }
 
+func (this *TextFormat) GetTextAlignment() (alignment TextAlignment) {
+	ret, _, _ := this.class().GetTextAlignment.CallRaw(uintptr(cgo.Pointer(this)))
+	return TextAlignment(ret)
+}
+
 func (this *TextFormat) SetTextAlignment(alignment TextAlignment) com.HRESULT {
 	ret, _, _ := this.class().SetTextAlignment.CallRaw(uintptr(cgo.Pointer(this)), uintptr(alignment))
 	return com.HRESULT(ret)
 }
 
+func (this *TextFormat) GetParagraphAlignment() (alignment ParagraphAlignment) {
+	ret, _, _ := this.class().GetParagraphAlignment.CallRaw(uintptr(cgo.Pointer(this)))
+	return ParagraphAlignment(ret)
+}
+
 func (this *TextFormat) SetParagraphAlignment(alignment ParagraphAlignment) com.HRESULT {
 	ret, _, _ := this.class().SetParagraphAlignment.CallRaw(uintptr(cgo.Pointer(this)), uintptr(alignment))
 	return com.HRESULT(ret)
+}
+
+func (this *TextFormat) GetWordWrapping() (wrapping WordWrapping) {
+	ret, _, _ := this.class().GetWordWrapping.CallRaw(uintptr(cgo.Pointer(this)))
+	return WordWrapping(ret)
 }
 
 func (this *TextFormat) SetWordWrapping(wrapping WordWrapping) com.HRESULT {

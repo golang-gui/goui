@@ -27,6 +27,10 @@ type RectF struct {
 	Left, Top, Right, Bottom float32
 }
 
+type RectU struct {
+	Left, Top, Right, Bottom uint32
+}
+
 type RoundRect struct {
 	Rect    RectF
 	RadiusX float32

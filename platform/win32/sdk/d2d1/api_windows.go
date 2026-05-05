@@ -187,6 +187,11 @@ type RenderTarget struct {
 
 // TODO: more method?
 
+func (this *RenderTarget) CreateBitmap(size SizeU, data []byte, stride int, properties *BitmapProperties) (bitmap *Bitmap, hr com.HRESULT) {
+	hr = cgo.CallRet[com.HRESULT](this.class().CreateBitmap, this, size, cgo.CSlice(data), stride, properties, &bitmap)
+	return
+}
+
 func (this *RenderTarget) CreateBitmapFromWicBitmap(wicBitmapSource *wic.BitmapSource, properties *BitmapProperties) (bitmap *Bitmap, hr com.HRESULT) {
 	ret, _, _ := this.class().CreateBitmapFromWicBitmap.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(wicBitmapSource)), uintptr(cgo.Pointer(properties)), uintptr(cgo.Pointer(&bitmap)))
 	hr = com.HRESULT(ret)
@@ -444,8 +449,31 @@ func (this *GeometrySink) class() *GeometrySinkClass {
 	return (*GeometrySinkClass)(this.Class)
 }
 
+var IID_ID2D1Bitmap = com.DefineGuid(0xa2296057, 0xea42, 0x4099, 0x98, 0x3b, 0x53, 0x9f, 0xb6, 0x50, 0x54, 0x26)
+
+type BitmapClass struct {
+	com.UnknownClass
+
+	GetSize              cgo.Symbol //D2D1_SIZE_F(ID2D1Bitmap *This)
+	GetPixelSize         cgo.Symbol //D2D1_SIZE_U(ID2D1Bitmap *This)
+	GetPixelFormat       cgo.Symbol //D2D1_PIXEL_FORMAT(ID2D1Bitmap *This)
+	GetDpi               cgo.Symbol //void(ID2D1Bitmap *This, FLOAT *dpiX, FLOAT *dpiY)
+	CopyFromBitmap       cgo.Symbol // HRESULT(ID2D1Bitmap *This, const D2D1_POINT_2U *destPoint, ID2D1Bitmap *bitmap, const D2D1_RECT_U *srcRect)
+	CopyFromRenderTarget cgo.Symbol // HRESULT(ID2D1Bitmap *This, const D2D1_POINT_2U *destPoint, ID2D1RenderTarget *renderTarget, const D2D1_RECT_U *srcRect)
+	CopyFromMemory       cgo.Symbol // HRESULT(ID2D1Bitmap *This, const D2D1_RECT_U *dstRect, const void *srcData, UINT32 pitch)
+}
+
 type Bitmap struct {
 	com.Unknown
+}
+
+func (this *Bitmap) CopyFromMemory(rect *RectU, data []byte, stride int) com.HRESULT {
+	ret, _, _ := this.class().CopyFromMemory.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(rect)), uintptr(cgo.CSlice(data)), uintptr(stride))
+	return com.HRESULT(ret)
+}
+
+func (this *Bitmap) class() *BitmapClass {
+	return (*BitmapClass)(this.Class)
 }
 
 type StrokeStyle struct {
