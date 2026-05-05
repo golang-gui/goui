@@ -3,6 +3,7 @@ package graphics
 import (
 	"image"
 	"image/color"
+	"slices"
 )
 
 type PixelFormat int
@@ -14,23 +15,23 @@ const (
 	PixelFormatGray
 )
 
-func (f PixelFormat) BytesPerPixel() (bs int) {
-	bs = 4
+func (f PixelFormat) BytesPerPixel() (bytes int) {
 	if f == PixelFormatGray {
-		bs = 1
+		return 1
 	}
-	return
+	return 4
 }
 
-func (f PixelFormat) BitsPerPixel() (bs int) {
-	bs = 32
+func (f PixelFormat) BitsPerPixel() (bits int) {
 	if f == PixelFormatGray {
-		bs = 8
+		return 8
 	}
-	return
+	return 32
 }
 
 type Bitmap struct {
+	X      int
+	Y      int
 	Width  int
 	Height int
 	Stride int
@@ -38,55 +39,70 @@ type Bitmap struct {
 	Pixels []byte
 }
 
-func MakeBitmap(width, height int, format PixelFormat) Bitmap {
+func MakeBitmap(x, y, width, height int, format PixelFormat, buf []byte) Bitmap {
 	stride := width * format.BytesPerPixel()
+	byteSize := stride * height
+	if cap(buf) < byteSize {
+		buf = slices.Grow(buf, byteSize)
+	}
 	return Bitmap{
+		X:      x,
+		Y:      y,
 		Width:  width,
 		Height: height,
 		Stride: stride,
 		Format: format,
-		Pixels: make([]byte, stride*height),
+		Pixels: buf[:byteSize],
 	}
 }
 
-func ToBitmap(src image.Image, dstFormat PixelFormat) (dst Bitmap) {
+func ToBitmap(src image.Image, dstFormat PixelFormat) (dst Bitmap, ok bool) {
 	if bmp, ok := src.(Bitmap); ok {
 		if bmp.Format == dstFormat {
-			return bmp
+			return bmp, true
 		}
-		return CopyToBitmap(src, dstFormat)
+		return dst, false
 	}
-
-	dst.Width = src.Bounds().Dx()
-	dst.Height = src.Bounds().Dy()
-	dst.Stride = dst.Width * dstFormat.BytesPerPixel()
-	dst.Format = dstFormat
 
 	switch img := src.(type) {
 	case *image.RGBA:
-		if img.Stride == dst.Stride {
+		if dstFormat == PixelFormatRGBA {
+			dst.X = img.Rect.Min.X
+			dst.Y = img.Rect.Min.Y
+			dst.Width = img.Rect.Dx()
+			dst.Height = img.Rect.Dy()
+			dst.Stride = img.Stride
+			dst.Format = dstFormat
 			dst.Pixels = img.Pix
-			return
+			return dst, true
 		}
 
 	case *image.Gray:
-		if img.Stride == dst.Stride {
+		if dstFormat == PixelFormatGray {
+			dst.X = img.Rect.Min.X
+			dst.Y = img.Rect.Min.Y
+			dst.Width = img.Rect.Dx()
+			dst.Height = img.Rect.Dy()
+			dst.Stride = img.Stride
+			dst.Format = dstFormat
 			dst.Pixels = img.Pix
-			return
+			return dst, true
 		}
 	}
 
-	return CopyToBitmap(src, dstFormat)
+	return dst, false
 }
 
-func CopyToBitmap(src image.Image, dstFormat PixelFormat) (dst Bitmap) {
+func CopyToBitmap(src image.Image, dstFormat PixelFormat, buf []byte) (dst Bitmap) {
 	if bmp, ok := src.(Bitmap); ok && bmp.Format == dstFormat {
 		dst = bmp
-		dst.Pixels = append([]byte{}, bmp.Pixels...)
+		dst.Pixels = make([]byte, len(bmp.Pixels))
+		copy(dst.Pixels, bmp.Pixels)
 		return
 	}
 
-	dst = MakeBitmap(src.Bounds().Dx(), src.Bounds().Dy(), dstFormat)
+	bounds := src.Bounds()
+	dst = MakeBitmap(bounds.Min.X, bounds.Min.Y, bounds.Dx(), bounds.Dy(), dstFormat, buf)
 
 	switch img := src.(type) {
 	case *image.RGBA:
@@ -100,14 +116,75 @@ func CopyToBitmap(src image.Image, dstFormat PixelFormat) (dst Bitmap) {
 			copy(dst.Pixels, img.Pix)
 			return
 		}
+
+	case Bitmap:
+		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+			for x := bounds.Min.X; x < bounds.Max.X; x++ {
+				r, g, b, a := img.GetPixel(x, y)
+				dst.SetPixel(x, y, r, g, b, a)
+			}
+		}
+		return
+
+	case *Bitmap:
+		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+			for x := bounds.Min.X; x < bounds.Max.X; x++ {
+				r, g, b, a := img.GetPixel(x, y)
+				dst.SetPixel(x, y, r, g, b, a)
+			}
+		}
+		return
 	}
 
-	for y := 0; y < dst.Height; y++ {
-		for x := 0; x < dst.Width; x++ {
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
 			dst.Set(x, y, src.At(x, y))
 		}
 	}
 
+	return
+}
+
+func (img Bitmap) GetPixel(x, y int) (r, g, b, a byte) {
+	if image.Pt(x, y).In(img.Bounds()) {
+		index := img.PixOffset(x, y)
+		switch img.Format {
+		case PixelFormatRGBA:
+			r = img.Pixels[index]
+			g = img.Pixels[index+1]
+			b = img.Pixels[index+2]
+			a = img.Pixels[index+3]
+		case PixelFormatBGRA:
+			b = img.Pixels[index]
+			g = img.Pixels[index+1]
+			r = img.Pixels[index+2]
+			a = img.Pixels[index+3]
+		case PixelFormatGray:
+			r = img.Pixels[index]
+			g, b, a = r, r, 255
+		}
+	}
+	return
+}
+
+func (img Bitmap) SetPixel(x, y int, r, g, b, a byte) {
+	if image.Pt(x, y).In(img.Bounds()) {
+		index := img.PixOffset(x, y)
+		switch img.Format {
+		case PixelFormatRGBA:
+			img.Pixels[index] = r
+			img.Pixels[index+1] = g
+			img.Pixels[index+2] = b
+			img.Pixels[index+3] = a
+		case PixelFormatBGRA:
+			img.Pixels[index] = b
+			img.Pixels[index+1] = g
+			img.Pixels[index+2] = r
+			img.Pixels[index+3] = a
+		case PixelFormatGray:
+			img.Pixels[index] = r
+		}
+	}
 	return
 }
 
@@ -125,11 +202,11 @@ func (img Bitmap) ColorModel() color.Model {
 }
 
 func (img Bitmap) Bounds() image.Rectangle {
-	return image.Rect(0, 0, img.Width, img.Height)
+	return image.Rect(img.X, img.Y, img.X+img.Width, img.Y+img.Height)
 }
 
 func (img Bitmap) At(x, y int) color.Color {
-	if x < img.Width && y < img.Height {
+	if image.Pt(x, y).In(img.Bounds()) {
 		index := img.PixOffset(x, y)
 		return img.toColor(img.Pixels[index:])
 	}
@@ -137,16 +214,8 @@ func (img Bitmap) At(x, y int) color.Color {
 }
 
 func (img Bitmap) Set(x, y int, c color.Color) {
-	if x < img.Width && y < img.Height {
-		b1, b2, b3, b4 := img.toPixel(c)
-		index := img.PixOffset(x, y)
-		img.Pixels[index] = b1
-		if img.Format != PixelFormatGray {
-			img.Pixels[index+1] = b2
-			img.Pixels[index+2] = b3
-			img.Pixels[index+4] = b4
-		}
-	}
+	b1, b2, b3, b4 := img.toPixel(c)
+	img.SetPixel(x, y, b1, b2, b3, b4)
 }
 
 func (img Bitmap) SubImage(r image.Rectangle) image.Image {
@@ -156,6 +225,8 @@ func (img Bitmap) SubImage(r image.Rectangle) image.Image {
 	}
 	i := img.PixOffset(r.Min.X, r.Min.Y)
 	return Bitmap{
+		X:      r.Min.X,
+		Y:      r.Min.Y,
 		Width:  r.Dx(),
 		Height: r.Dy(),
 		Stride: img.Stride,
@@ -165,13 +236,15 @@ func (img Bitmap) SubImage(r image.Rectangle) image.Image {
 }
 
 func (img Bitmap) PixOffset(x, y int) int {
-	return y*img.Stride + x*img.Format.BytesPerPixel()
+	return (y-img.Y)*img.Stride + (x-img.X)*img.Format.BytesPerPixel()
 }
 
 func (img Bitmap) toPixel(c color.Color) (p1, p2, p3, p4 byte) {
 	r32, g32, b32, a32 := c.RGBA()
 	if img.Format == PixelFormatBGRA {
 		return byte(b32), byte(g32), byte(r32), byte(a32)
+	} else if img.Format == PixelFormatGray {
+		r32, g32, b32, a32 = color.GrayModel.Convert(c).RGBA()
 	}
 	return byte(r32), byte(g32), byte(b32), byte(a32)
 }
