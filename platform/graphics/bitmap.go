@@ -214,8 +214,8 @@ func (img Bitmap) At(x, y int) color.Color {
 }
 
 func (img Bitmap) Set(x, y int, c color.Color) {
-	b1, b2, b3, b4 := img.toPixel(c)
-	img.SetPixel(x, y, b1, b2, b3, b4)
+	r, g, b, a := img.toPixel(c)
+	img.SetPixel(x, y, r, g, b, a)
 }
 
 func (img Bitmap) SubImage(r image.Rectangle) image.Image {
@@ -239,11 +239,9 @@ func (img Bitmap) PixOffset(x, y int) int {
 	return (y-img.Y)*img.Stride + (x-img.X)*img.Format.BytesPerPixel()
 }
 
-func (img Bitmap) toPixel(c color.Color) (p1, p2, p3, p4 byte) {
+func (img Bitmap) toPixel(c color.Color) (r, g, b, a byte) {
 	r32, g32, b32, a32 := c.RGBA()
-	if img.Format == PixelFormatBGRA {
-		return byte(b32), byte(g32), byte(r32), byte(a32)
-	} else if img.Format == PixelFormatGray {
+	if img.Format == PixelFormatGray {
 		r32, g32, b32, a32 = color.GrayModel.Convert(c).RGBA()
 	}
 	return byte(r32), byte(g32), byte(b32), byte(a32)
