@@ -1,16 +1,19 @@
 package typography
 
 type TextLayout interface {
-	Name() string
 	Destroy()
+	Name() string
+	Text() string
+	Format() TextFormat
+	Size() (maxWidth, maxHeight float32)
 	SetSize(maxWidth, maxHeight float32)
 	SetTextAlignment(align TextAlignment)
 	SetLineAlignment(align LineAlignment)
 	SetWordWrap(wrap WrapMode)
+	Attributes() []TextAttribute
 	SetAttribute(attr TextAttribute)
-	GetAttributes() []TextAttribute
-	GetLineRuns() ([]TextLine, []TextRun)
-	Measure() (width, height float32)
+	MeasureRect() (x, y, width, height float32)
+	MeasureLines() (lines []TextLine, runs []TextRun)
 }
 
 type TextLine struct {
