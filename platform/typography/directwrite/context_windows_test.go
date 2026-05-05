@@ -24,7 +24,9 @@ func Test_TextLayout(t *testing.T) {
 			Family: "Microsoft YaHei",
 			Size:   32,
 		},
-		WordWrap: typography.WrapWordChar,
+		WordWrap:  typography.WrapWordChar,
+		TextAlign: typography.TextAlignCenter,
+		LineAlign: typography.LineAlignCenter,
 	}
 
 	text := "abc中国中文👨‍👩‍👧‍👦 مشروع "
@@ -41,20 +43,20 @@ func Test_TextLayout(t *testing.T) {
 		Value:  graphics.RGBA(60, 0, 0, 255),
 	})
 
-	width, height := layout.Measure()
-	t.Logf("%fx%f", width, height)
+	x, y, width, height := layout.MeasureRect()
+	t.Logf("%f-%f %fx%f", x, y, width, height)
 
-	lines, runs := layout.GetLineRuns()
+	lines, runs := layout.MeasureLines()
 	t.Logf("lines=%d runs=%d", len(lines), len(runs))
 
-	bitmap, err := layout.(*TextLayout).Render(graphics.Color{R: 1, G: 1, B: 1, A: 1}, nil)
+	bitmap, err := c.DrawTextLayout(layout, graphics.Color{R: 1, G: 1, B: 1, A: 1}, graphics.PixelFormatRGBA, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	var buf bytes.Buffer
-	buf.Grow(bitmap.Width * bitmap.Height)
-	err = png.Encode(&buf, bitmap)
+	buf.Grow(bitmap.Bitmap.Width * bitmap.Bitmap.Height)
+	err = png.Encode(&buf, bitmap.Bitmap)
 	if err != nil {
 		t.Fatal(err)
 	}

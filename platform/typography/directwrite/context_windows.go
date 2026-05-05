@@ -9,7 +9,9 @@ import (
 
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
+	"github.com/golang-gui/goui/platform/typography/typodraw"
 	"github.com/golang-gui/goui/platform/typography/utils"
+
 	"github.com/golang-gui/goui/platform/win32/sdk/com"
 	"github.com/golang-gui/goui/platform/win32/sdk/d2d1"
 	"github.com/golang-gui/goui/platform/win32/sdk/dwrite"
@@ -18,7 +20,9 @@ import (
 )
 
 type Context struct {
-	dwFactory *dwrite.Factory
+	dwFactory  *dwrite.Factory
+	d2dFactory *d2d1.Factory
+	imgFactory *wic.ImagingFactory
 }
 
 func NewContext() (_ *Context, err error) {
@@ -31,6 +35,7 @@ func NewContext() (_ *Context, err error) {
 }
 
 func (c *Context) Destroy() {
+	c.destroyDraw()
 	if c.dwFactory != nil {
 		c.dwFactory.Release()
 		c.dwFactory = nil
@@ -46,7 +51,7 @@ func (c *Context) AddFont(fontFile string) error {
 }
 
 func (c *Context) NewTextLayout(text string, format typography.TextFormat, width, height float32) (typography.TextLayout, error) {
-	textFormat, err := CreateTextFormat(c.dwFactory, format)
+	textFormat, err := c.CreateTextFormat(format)
 	if err != nil {
 		return nil, fmt.Errorf("create dwrite text format err: %v", err)
 	}
@@ -56,83 +61,202 @@ func (c *Context) NewTextLayout(text string, format typography.TextFormat, width
 		return nil, fmt.Errorf("create dwrite text layout err: %v", hr)
 	}
 
-	return newTextLayout(text, textLayout), nil
+	return newTextLayout(c, textLayout, text, format, width, height), nil
+}
+
+func (c *Context) DrawText(text string, format typography.TextFormat, brush graphics.Brush, size graphics.Size, pixelFormat graphics.PixelFormat, buf []byte) (bitmap typodraw.TextBitmap, err error) {
+	if err = c.prepareDraw(); err != nil {
+		return
+	}
+
+	fgColor, ok := brush.(graphics.Color)
+	if !ok {
+		return bitmap, errors.New("unsupported brush")
+	}
+
+	var painter textPainter
+	err = painter.Init(c.d2dFactory, c.imgFactory, graphics.Rectangle{Size: size}, pixelFormat, fgColor)
+	if err != nil {
+		return
+	}
+	defer painter.Destroy()
+
+	textFormat, err := c.CreateTextFormat(format)
+	if err != nil {
+		return bitmap, fmt.Errorf("create dwrite text format err: %v", err)
+	}
+	defer textFormat.Release()
+
+	return painter.DrawText(text, textFormat, buf)
+}
+
+func (c *Context) DrawTextLayout(layout typography.TextLayout, brush graphics.Brush, pixelFormat graphics.PixelFormat, buf []byte) (bitmap typodraw.TextBitmap, err error) {
+	if err = c.prepareDraw(); err != nil {
+		return
+	}
+	return layout.(*TextLayout).DrawBitmap(brush, pixelFormat, buf)
+}
+
+func (c *Context) CreateTextFormat(format typography.TextFormat) (textFormat *dwrite.TextFormat, err error) {
+	textFormat, hr := c.dwFactory.CreateTextFormat(format.Font.Family, nil, dwrite.DWRITE_FONT_WEIGHT_NORMAL, dwrite.DWRITE_FONT_STYLE_NORMAL, dwrite.DWRITE_FONT_STRETCH_NORMAL, format.Font.Size, "")
+	if hr.Failed() {
+		return nil, hr
+	}
+
+	switch format.WordWrap {
+	case typography.WrapNone:
+		textFormat.SetWordWrapping(dwrite.DWRITE_WORD_WRAPPING_NO_WRAP)
+	case typography.WrapWord:
+		textFormat.SetWordWrapping(dwrite.DWRITE_WORD_WRAPPING_WHOLE_WORD)
+	case typography.WrapChar:
+		textFormat.SetWordWrapping(dwrite.DWRITE_WORD_WRAPPING_CHARACTER)
+	case typography.WrapWordChar:
+		textFormat.SetWordWrapping(dwrite.DWRITE_WORD_WRAPPING_EMERGENCY_BREAK)
+	}
+
+	switch format.TextAlign {
+	case typography.TextAlignBegin:
+		textFormat.SetTextAlignment(dwrite.DWRITE_TEXT_ALIGNMENT_LEADING)
+	case typography.TextAlignEnd:
+		textFormat.SetTextAlignment(dwrite.DWRITE_TEXT_ALIGNMENT_TRAILING)
+	case typography.TextAlignCenter:
+		textFormat.SetTextAlignment(dwrite.DWRITE_TEXT_ALIGNMENT_CENTER)
+	case typography.TextAlignFill:
+		textFormat.SetTextAlignment(dwrite.DWRITE_TEXT_ALIGNMENT_JUSTIFIED)
+	}
+
+	switch format.LineAlign {
+	case typography.LineAlignBegin:
+		textFormat.SetParagraphAlignment(dwrite.DWRITE_PARAGRAPH_ALIGNMENT_NEAR)
+	case typography.LineAlignEnd:
+		textFormat.SetParagraphAlignment(dwrite.DWRITE_PARAGRAPH_ALIGNMENT_FAR)
+	case typography.LineAlignCenter:
+		textFormat.SetParagraphAlignment(dwrite.DWRITE_PARAGRAPH_ALIGNMENT_CENTER)
+	}
+
+	return
+}
+
+func (c *Context) prepareDraw() (err error) {
+	if c.d2dFactory == nil {
+		c.d2dFactory, err = d2d1.CreateFactory[d2d1.Factory](d2d1.D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d1.IID_ID2D1Factory1, nil)
+		if err != nil {
+			return fmt.Errorf("create d2d factory err: %v", err)
+		}
+	}
+	if c.imgFactory == nil {
+		c.imgFactory, err = wic.CreateImagingFactory[wic.ImagingFactory](wic.CLSID_WICImagingFactory2, wic.IID_IWICImagingFactory)
+		if err != nil {
+			return fmt.Errorf("create wic factory err: %v", err)
+		}
+	}
+	return nil
+}
+
+func (c *Context) destroyDraw() {
+	if c.d2dFactory != nil {
+		c.d2dFactory.Release()
+		c.d2dFactory = nil
+	}
+	if c.imgFactory != nil {
+		c.imgFactory.Release()
+		c.imgFactory = nil
+	}
 }
 
 type TextLayout struct {
-	*dwrite.TextLayout
+	ctx      *Context
+	layout   *dwrite.TextLayout
 	text     string
+	format   typography.TextFormat
+	width    float32
+	height   float32
 	position utils.StringPosition
 	attrs    []typography.TextAttribute
 
-	width      int
-	height     int
-	d2dFactory *d2d1.Factory1
-	imgFactory *wic.ImagingFactory
-	bitmap     *wic.Bitmap
-	render     *d2d1.RenderTarget
-	brush      *d2d1.SolidColorBrush
+	rect    graphics.Rectangle
+	painter textPainter
 }
 
-func newTextLayout(text string, layout *dwrite.TextLayout) (t *TextLayout) {
+func newTextLayout(ctx *Context, layout *dwrite.TextLayout, text string, format typography.TextFormat, width, height float32) (t *TextLayout) {
 	t = new(TextLayout)
-	t.TextLayout = layout
+	t.layout = layout
+	t.ctx = ctx
 	t.text = text
+	t.format = format
+	t.width = width
+	t.height = height
 	t.position = utils.CalcStringPosition(text)
 	return
 }
 
 func (t *TextLayout) Destroy() {
-	if t.TextLayout != nil {
-		t.TextLayout.Release()
-		t.TextLayout = nil
+	if t.layout != nil {
+		t.layout.Release()
+		t.layout = nil
 	}
-	t.destroyRender()
+	t.painter.Destroy()
 }
 
 func (*TextLayout) Name() string {
 	return "DirectWrite"
 }
 
+func (t *TextLayout) Text() string {
+	return t.text
+}
+
+func (t *TextLayout) Format() typography.TextFormat {
+	return t.format
+}
+
+func (t *TextLayout) Size() (maxWidth, maxHeight float32) {
+	return t.width, t.height
+}
+
 func (t *TextLayout) SetSize(maxWidth, maxHeight float32) {
-	t.TextLayout.SetMaxWidth(maxWidth)
-	t.TextLayout.SetMaxHeight(maxHeight)
+	t.width, t.height = maxWidth, maxHeight
+	t.layout.SetMaxWidth(maxWidth)
+	t.layout.SetMaxHeight(maxHeight)
 }
 
 func (t *TextLayout) SetTextAlignment(align typography.TextAlignment) {
+	t.format.TextAlign = align
 	switch align {
 	case typography.TextAlignBegin:
-		t.TextLayout.SetTextAlignment(dwrite.DWRITE_TEXT_ALIGNMENT_LEADING)
+		t.layout.SetTextAlignment(dwrite.DWRITE_TEXT_ALIGNMENT_LEADING)
 	case typography.TextAlignEnd:
-		t.TextLayout.SetTextAlignment(dwrite.DWRITE_TEXT_ALIGNMENT_TRAILING)
+		t.layout.SetTextAlignment(dwrite.DWRITE_TEXT_ALIGNMENT_TRAILING)
 	case typography.TextAlignCenter:
-		t.TextLayout.SetTextAlignment(dwrite.DWRITE_TEXT_ALIGNMENT_CENTER)
+		t.layout.SetTextAlignment(dwrite.DWRITE_TEXT_ALIGNMENT_CENTER)
 	case typography.TextAlignFill:
-		t.TextLayout.SetTextAlignment(dwrite.DWRITE_TEXT_ALIGNMENT_JUSTIFIED)
+		t.layout.SetTextAlignment(dwrite.DWRITE_TEXT_ALIGNMENT_JUSTIFIED)
 	}
 }
 
 func (t *TextLayout) SetLineAlignment(align typography.LineAlignment) {
+	t.format.LineAlign = align
 	switch align {
 	case typography.LineAlignBegin:
-		t.TextLayout.SetParagraphAlignment(dwrite.DWRITE_PARAGRAPH_ALIGNMENT_NEAR)
+		t.layout.SetParagraphAlignment(dwrite.DWRITE_PARAGRAPH_ALIGNMENT_NEAR)
 	case typography.LineAlignEnd:
-		t.TextLayout.SetParagraphAlignment(dwrite.DWRITE_PARAGRAPH_ALIGNMENT_FAR)
+		t.layout.SetParagraphAlignment(dwrite.DWRITE_PARAGRAPH_ALIGNMENT_FAR)
 	case typography.LineAlignCenter:
-		t.TextLayout.SetParagraphAlignment(dwrite.DWRITE_PARAGRAPH_ALIGNMENT_CENTER)
+		t.layout.SetParagraphAlignment(dwrite.DWRITE_PARAGRAPH_ALIGNMENT_CENTER)
 	}
 }
 
 func (t *TextLayout) SetWordWrap(wrap typography.WrapMode) {
+	t.format.WordWrap = wrap
 	switch wrap {
 	case typography.WrapNone:
-		t.TextLayout.SetWordWrapping(dwrite.DWRITE_WORD_WRAPPING_NO_WRAP)
+		t.layout.SetWordWrapping(dwrite.DWRITE_WORD_WRAPPING_NO_WRAP)
 	case typography.WrapWord:
-		t.TextLayout.SetWordWrapping(dwrite.DWRITE_WORD_WRAPPING_WHOLE_WORD)
+		t.layout.SetWordWrapping(dwrite.DWRITE_WORD_WRAPPING_WHOLE_WORD)
 	case typography.WrapChar:
-		t.TextLayout.SetWordWrapping(dwrite.DWRITE_WORD_WRAPPING_CHARACTER)
+		t.layout.SetWordWrapping(dwrite.DWRITE_WORD_WRAPPING_CHARACTER)
 	case typography.WrapWordChar:
-		t.TextLayout.SetWordWrapping(dwrite.DWRITE_WORD_WRAPPING_EMERGENCY_BREAK)
+		t.layout.SetWordWrapping(dwrite.DWRITE_WORD_WRAPPING_EMERGENCY_BREAK)
 	}
 }
 
@@ -159,35 +283,40 @@ func (t *TextLayout) SetAttribute(attr typography.TextAttribute) {
 		switch attr.Type {
 		case typography.TextFont:
 			font := attr.Value.(typography.FontInfo)
-			t.TextLayout.SetFontFamilyName(font.Family, textRange)
-			t.TextLayout.SetFontSize(font.Size, textRange)
+			t.layout.SetFontFamilyName(font.Family, textRange)
+			t.layout.SetFontSize(font.Size, textRange)
 			// TODO: set other font arg: weight, kern ...
 		case typography.TextFgColor, typography.TextBgColor:
 			// lazy to render
 		case typography.TextUnderline:
 			underline := attr.Value.(bool)
-			t.TextLayout.SetUnderline(underline, textRange)
+			t.layout.SetUnderline(underline, textRange)
 		case typography.TextStrike:
 			strike := attr.Value.(bool)
-			t.TextLayout.SetStrikethrough(strike, textRange)
+			t.layout.SetStrikethrough(strike, textRange)
 		}
 
 		t.attrs = append(t.attrs, attr)
 	}
 }
 
-func (t *TextLayout) GetAttributes() []typography.TextAttribute {
+func (t *TextLayout) Attributes() []typography.TextAttribute {
 	return slices.Clone(t.attrs)
 }
 
-func (t *TextLayout) GetLineRuns() (lines []typography.TextLine, runs []typography.TextRun) {
-	lineMetrics, _ := t.TextLayout.GetLineMetrics()
+func (t *TextLayout) MeasureLines() (lines []typography.TextLine, runs []typography.TextRun) {
+	startX, startY, _, _ := t.MeasureRect()
+
+	lineMetrics, _ := t.layout.GetLineMetrics()
 	lines = make([]typography.TextLine, 0, len(lineMetrics))
 
-	clusters, _ := t.TextLayout.GetClusterMetrics()
+	clusters, _ := t.layout.GetClusterMetrics()
 	runs = make([]typography.TextRun, 0, len(clusters))
 
-	var lastLine typography.TextLine
+	lastLine := typography.TextLine{
+		Y: startY,
+	}
+
 	pos := 0
 	index := 0
 	start := 0
@@ -201,7 +330,9 @@ func (t *TextLayout) GetLineRuns() (lines []typography.TextLine, runs []typograp
 		line.Height = metrics.Height
 		line.Baseline = metrics.Baseline
 
-		var lastRun typography.TextRun
+		lastRun := typography.TextRun{
+			X: startX,
+		}
 		runsBeg := runsCount
 
 		end := start + int(metrics.Length)
@@ -242,174 +373,28 @@ func (t *TextLayout) GetLineRuns() (lines []typography.TextLine, runs []typograp
 	return
 }
 
-func (t *TextLayout) Measure() (width, height float32) {
-	metrics, _ := t.GetMetrics()
-	width, height = metrics.WidthIncludingTrailingWhitespace, metrics.Height
-	return
-}
-
-func (t *TextLayout) Render(brush graphics.Brush, buf []byte) (bitmap graphics.Bitmap, err error) {
-	fgColor, ok := brush.(graphics.Color)
-	if !ok {
-		return bitmap, errors.New("unsupported brush")
-	}
-
-	width, height := t.Measure()
-	bitmap.Width = roundPixel(width)
-	bitmap.Height = roundPixel(height)
-	bitmap.Format = graphics.PixelFormatBGRA
-	bitmap.Stride = bitmap.Width * bitmap.Format.BytesPerPixel()
-
-	if bitmap.Width == 0 || bitmap.Height == 0 {
-		return bitmap, nil
-	}
-
-	err = t.prepareRender(bitmap.Width, bitmap.Height, fgColor)
-	if err != nil {
+func (t *TextLayout) MeasureRect() (x, y, width, height float32) {
+	hitMetrics, hr := t.layout.HitTestTextRange(0, -1, 0, 0)
+	if hr.Failed() {
 		return
 	}
-
-	t.render.BeginDraw()
-	t.render.Clear(&d2d1.ColorF{})
-	RenderTextLayout(t.render, d2d1.Point2F{}, t, &t.brush.Brush, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP)
-	t.render.EndDraw(nil, nil)
-
-	byteSize := bitmap.Stride * bitmap.Height
-	bitmap.Pixels = slices.Grow(buf, byteSize)[:byteSize]
-	hr := t.bitmap.CopyPixels(nil, bitmap.Stride, bitmap.Pixels)
-	if hr.Failed() {
-		return bitmap, hr
+	startX := float32(math.MaxFloat32)
+	startY := float32(math.MaxFloat32)
+	endX := float32(0)
+	endY := float32(0)
+	for _, metrics := range hitMetrics {
+		startX = min(startX, metrics.Left)
+		startY = min(startY, metrics.Top)
+		endX = max(endX, metrics.Left+metrics.Width)
+		endY = max(endY, metrics.Top+metrics.Height)
 	}
-
-	return bitmap, nil
+	return startX, startY, endX - startX, endY - startY
 }
 
-func (t *TextLayout) prepareRender(width, height int, fgColor graphics.Color) (err error) {
-	if t.d2dFactory == nil {
-		t.d2dFactory, err = d2d1.CreateFactory[d2d1.Factory1](d2d1.D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d1.IID_ID2D1Factory1, nil)
-		if err != nil {
-			return fmt.Errorf("create d2d factory err: %v", err)
-		}
-
-		t.imgFactory, err = wic.CreateImagingFactory[wic.ImagingFactory](wic.CLSID_WICImagingFactory2, wic.IID_IWICImagingFactory)
-		if err != nil {
-			t.d2dFactory.Release()
-			t.d2dFactory = nil
-			return fmt.Errorf("create wic factory err: %v", err)
-		}
-	}
-
-	if t.width != width || t.height != height {
-		t.destroyBitmapRender()
-		t.width, t.height = width, height
-
-		var hr com.HRESULT
-		t.bitmap, hr = t.imgFactory.CreateBitmap(width, height, wic.GUID_WICPixelFormat32bppPBGRA, wic.WICBitmapCacheOnLoad)
-		if hr.Failed() {
-			return fmt.Errorf("create wic bitmap err: %v", hr)
-		}
-
-		props := d2d1.RenderTargetProperties{
-			PixelFormat: d2d1.PixelFormat{
-				Format:    dxgi.DXGI_FORMAT_B8G8R8A8_UNORM,
-				AlphaMode: d2d1.D2D1_ALPHA_MODE_PREMULTIPLIED,
-			},
-			DpiX: 96,
-			DpiY: 96,
-		}
-
-		t.render, hr = t.d2dFactory.CreateWicBitmapRenderTarget(t.bitmap, &props)
-		if hr.Failed() {
-			return fmt.Errorf("create d2d wic bitmap render target err: %v", hr)
-		}
-
-		t.brush, hr = t.render.CreateSolidColorBrush(&d2d1.ColorF{R: fgColor.R, G: fgColor.G, B: fgColor.B, A: fgColor.A}, nil)
-		if hr.Failed() {
-			return fmt.Errorf("create d2d color brush err: %v", hr)
-		}
-
-		return nil
-	}
-
-	t.brush.SetColor(&d2d1.ColorF{R: fgColor.R, G: fgColor.G, B: fgColor.B, A: fgColor.A})
-	return nil
-}
-
-func (t *TextLayout) destroyRender() {
-	t.destroyBitmapRender()
-	if t.imgFactory != nil {
-		t.imgFactory.Release()
-		t.imgFactory = nil
-	}
-	if t.d2dFactory != nil {
-		t.d2dFactory.Release()
-		t.d2dFactory = nil
-	}
-}
-
-func (t *TextLayout) destroyBitmapRender() {
-	if t.brush != nil {
-		t.brush.Release()
-		t.brush = nil
-	}
-	if t.render != nil {
-		t.render.Release()
-		t.render = nil
-	}
-	if t.bitmap != nil {
-		t.bitmap.Release()
-		t.bitmap = nil
-	}
-}
-
-func roundPixel(v float32) int {
-	return int(v + 0.99)
-}
-
-func CreateTextFormat(factory *dwrite.Factory, format typography.TextFormat) (textFormat *dwrite.TextFormat, err error) {
-	textFormat, hr := factory.CreateTextFormat(format.Font.Family, nil, dwrite.DWRITE_FONT_WEIGHT_NORMAL, dwrite.DWRITE_FONT_STYLE_NORMAL, dwrite.DWRITE_FONT_STRETCH_NORMAL, format.Font.Size, "")
-	if hr.Failed() {
-		return nil, hr
-	}
-
-	switch format.WordWrap {
-	case typography.WrapNone:
-		textFormat.SetWordWrapping(dwrite.DWRITE_WORD_WRAPPING_NO_WRAP)
-	case typography.WrapWord:
-		textFormat.SetWordWrapping(dwrite.DWRITE_WORD_WRAPPING_WHOLE_WORD)
-	case typography.WrapChar:
-		textFormat.SetWordWrapping(dwrite.DWRITE_WORD_WRAPPING_CHARACTER)
-	case typography.WrapWordChar:
-		textFormat.SetWordWrapping(dwrite.DWRITE_WORD_WRAPPING_EMERGENCY_BREAK)
-	}
-
-	switch format.TextAlign {
-	case typography.TextAlignBegin:
-		textFormat.SetTextAlignment(dwrite.DWRITE_TEXT_ALIGNMENT_LEADING)
-	case typography.TextAlignEnd:
-		textFormat.SetTextAlignment(dwrite.DWRITE_TEXT_ALIGNMENT_TRAILING)
-	case typography.TextAlignCenter:
-		textFormat.SetTextAlignment(dwrite.DWRITE_TEXT_ALIGNMENT_CENTER)
-	case typography.TextAlignFill:
-		textFormat.SetTextAlignment(dwrite.DWRITE_TEXT_ALIGNMENT_JUSTIFIED)
-	}
-
-	switch format.LineAlign {
-	case typography.LineAlignBegin:
-		textFormat.SetParagraphAlignment(dwrite.DWRITE_PARAGRAPH_ALIGNMENT_NEAR)
-	case typography.LineAlignEnd:
-		textFormat.SetParagraphAlignment(dwrite.DWRITE_PARAGRAPH_ALIGNMENT_FAR)
-	case typography.LineAlignCenter:
-		textFormat.SetParagraphAlignment(dwrite.DWRITE_PARAGRAPH_ALIGNMENT_CENTER)
-	}
-
-	return
-}
-
-func RenderTextLayout(render *d2d1.RenderTarget, origin d2d1.Point2F, layout *TextLayout, brush *d2d1.Brush, drawOptions d2d1.DrawTextOptions) (err error) {
-	fgColorAttrs := make([]typography.TextAttribute, 0, len(layout.attrs))
-	bgColorAttrs := make([]typography.TextAttribute, 0, len(layout.attrs))
-	for _, attr := range layout.attrs {
+func (t *TextLayout) Draw(render *d2d1.RenderTarget, origin d2d1.Point2F, brush *d2d1.Brush, drawOptions d2d1.DrawTextOptions) (err error) {
+	fgColorAttrs := make([]typography.TextAttribute, 0, len(t.attrs))
+	bgColorAttrs := make([]typography.TextAttribute, 0, len(t.attrs))
+	for _, attr := range t.attrs {
 		switch attr.Type {
 		case typography.TextFgColor:
 			fgColorAttrs = append(fgColorAttrs, attr)
@@ -447,14 +432,14 @@ func RenderTextLayout(render *d2d1.RenderTarget, origin d2d1.Point2F, layout *Te
 		for _, attr := range fgColorAttrs {
 			gColor := attr.Value.(graphics.Color)
 
-			start := layout.position.ToUtf16(attr.Start)
+			start := t.position.ToUtf16(attr.Start)
 			if start < 0 {
 				// TODO: error
 				continue
 			}
-			end := layout.position.ToUtf16(attr.Start + attr.Length)
+			end := t.position.ToUtf16(attr.Start + attr.Length)
 			if end < 0 {
-				end = layout.position.ToUtf16(len(layout.text))
+				end = t.position.ToUtf16(len(t.text))
 			}
 
 			d2dBrush, err := getColorBrush(gColor)
@@ -466,12 +451,12 @@ func RenderTextLayout(render *d2d1.RenderTarget, origin d2d1.Point2F, layout *Te
 				StartPosition: uint32(start),
 				Length:        uint32(end - start),
 			}
-			layout.TextLayout.SetDrawingEffect(&d2dBrush.Unknown, textRange)
+			t.layout.SetDrawingEffect(&d2dBrush.Unknown, textRange)
 		}
 
 		if len(bgColorAttrs) != 0 {
 			var rect d2d1.RectF
-			lines, _ := layout.GetLineRuns()
+			lines, _ := t.MeasureLines()
 			for _, line := range lines {
 				for _, attr := range bgColorAttrs {
 					gColor := attr.Value.(graphics.Color)
@@ -503,6 +488,135 @@ func RenderTextLayout(render *d2d1.RenderTarget, origin d2d1.Point2F, layout *Te
 		}
 	}
 
-	render.DrawTextLayout(origin, layout.TextLayout, brush, drawOptions)
+	render.DrawTextLayout(origin, t.layout, brush, drawOptions)
 	return nil
+}
+
+func (t *TextLayout) DrawBitmap(brush graphics.Brush, pixelFormat graphics.PixelFormat, buf []byte) (bitmap typodraw.TextBitmap, err error) {
+	fgColor, ok := brush.(graphics.Color)
+	if !ok {
+		return bitmap, errors.New("unsupported brush")
+	}
+
+	x, y, width, height := t.MeasureRect()
+	if width == 0 || height == 0 {
+		return
+	}
+
+	rect := graphics.Rect(x, y, width, height)
+	if t.rect != rect {
+		t.rect = rect
+		t.painter.Destroy()
+		err = t.painter.Init(t.ctx.d2dFactory, t.ctx.imgFactory, rect, pixelFormat, fgColor)
+		if err != nil {
+			return
+		}
+	}
+
+	return t.painter.DrawTextLayout(t, buf)
+}
+
+func roundPixel(v float32) int {
+	return int(v + 0.99)
+}
+
+type textPainter struct {
+	rect   graphics.Rectangle
+	format graphics.PixelFormat
+	bitmap *wic.Bitmap
+	render *d2d1.RenderTarget
+	brush  *d2d1.SolidColorBrush
+}
+
+func (p *textPainter) Init(d2dFactory *d2d1.Factory, imgFactory *wic.ImagingFactory, rect graphics.Rectangle, pixelFormat graphics.PixelFormat, fgColor graphics.Color) (err error) {
+	p.rect = rect
+	p.format = pixelFormat
+
+	wicPixelFormat := wic.GUID_WICPixelFormat32bppPBGRA
+	d2dPixelFormat := d2d1.PixelFormat{
+		Format:    dxgi.DXGI_FORMAT_B8G8R8A8_UNORM,
+		AlphaMode: d2d1.D2D1_ALPHA_MODE_PREMULTIPLIED,
+	}
+	switch pixelFormat {
+	case graphics.PixelFormatRGBA:
+		wicPixelFormat = wic.GUID_WICPixelFormat32bppPRGBA
+		d2dPixelFormat.Format = dxgi.DXGI_FORMAT_R8G8B8A8_UNORM
+	case graphics.PixelFormatGray:
+		wicPixelFormat = wic.GUID_WICPixelFormat8bppGray
+		d2dPixelFormat.Format = dxgi.DXGI_FORMAT_A8_UNORM
+	}
+
+	var hr com.HRESULT
+	p.bitmap, hr = imgFactory.CreateBitmap(roundPixel(rect.X+rect.Width), roundPixel(rect.Y+rect.Height), wicPixelFormat, wic.WICBitmapCacheOnLoad)
+	if hr.Failed() {
+		return fmt.Errorf("create wic bitmap err: %v", hr)
+	}
+
+	props := d2d1.RenderTargetProperties{
+		PixelFormat: d2dPixelFormat,
+		DpiX:        96,
+		DpiY:        96,
+	}
+
+	p.render, hr = d2dFactory.CreateWicBitmapRenderTarget(p.bitmap, &props)
+	if hr.Failed() {
+		return fmt.Errorf("create d2d wic bitmap render target err: %v", hr)
+	}
+
+	p.brush, hr = p.render.CreateSolidColorBrush(&d2d1.ColorF{R: fgColor.R, G: fgColor.G, B: fgColor.B, A: fgColor.A}, nil)
+	if hr.Failed() {
+		return fmt.Errorf("create d2d color brush err: %v", hr)
+	}
+
+	return nil
+}
+
+func (p *textPainter) Destroy() {
+	if p.brush != nil {
+		p.brush.Release()
+		p.brush = nil
+	}
+	if p.render != nil {
+		p.render.Release()
+		p.render = nil
+	}
+	if p.bitmap != nil {
+		p.bitmap.Release()
+		p.bitmap = nil
+	}
+}
+
+func (p *textPainter) DrawText(text string, format *dwrite.TextFormat, buf []byte) (typodraw.TextBitmap, error) {
+	p.render.BeginDraw()
+	p.render.Clear(&d2d1.ColorF{})
+	p.render.DrawText(text, format, &d2d1.RectF{Right: p.rect.Width, Bottom: p.rect.Height}, &p.brush.Brush, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT, 0)
+	p.render.EndDraw(nil, nil)
+	return p.getBitmap(buf)
+}
+
+func (p *textPainter) DrawTextLayout(layout *TextLayout, buf []byte) (bitmap typodraw.TextBitmap, err error) {
+	p.render.BeginDraw()
+	p.render.Clear(&d2d1.ColorF{})
+	err = layout.Draw(p.render, d2d1.Point2F{}, &p.brush.Brush, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP)
+	p.render.EndDraw(nil, nil)
+	if err != nil {
+		return
+	}
+	return p.getBitmap(buf)
+}
+
+func (p *textPainter) getBitmap(buf []byte) (bitmap typodraw.TextBitmap, err error) {
+	bitmap.Bitmap = graphics.MakeBitmap(0, 0, roundPixel(p.rect.Width), roundPixel(p.rect.Height), p.format, buf)
+	rect := wic.Rect{
+		X:      int32(p.rect.X),
+		Y:      int32(p.rect.Y),
+		Width:  int32(bitmap.Bitmap.Width),
+		Height: int32(bitmap.Bitmap.Height),
+	}
+	hr := p.bitmap.CopyPixels(&rect, bitmap.Bitmap.Stride, bitmap.Bitmap.Pixels)
+	if hr.Failed() {
+		return bitmap, hr
+	}
+
+	return bitmap, nil
 }
