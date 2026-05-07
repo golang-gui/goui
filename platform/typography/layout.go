@@ -2,7 +2,6 @@ package typography
 
 type TextLayout interface {
 	Destroy()
-	Name() string
 	Text() string
 	Format() TextFormat
 	Size() (maxWidth, maxHeight float32)
@@ -10,10 +9,9 @@ type TextLayout interface {
 	SetTextAlignment(align TextAlignment)
 	SetLineAlignment(align LineAlignment)
 	SetWordWrap(wrap WrapMode)
-	Attributes() []TextAttribute
-	SetAttribute(attr TextAttribute)
+	SetTextFont(start, length int, font FontInfo)
 	MeasureRect() (x, y, width, height float32)
-	MeasureLines() (lines []TextLine, runs []TextRun)
+	MeasureMetrics() (lines []TextLine, clusters []TextCluster)
 }
 
 type TextLine struct {
@@ -24,35 +22,19 @@ type TextLine struct {
 	Width    float32
 	Height   float32
 	Baseline float32
-	Runs     []TextRun
+	Clusters []TextCluster
 }
 
-type TextRun struct {
+type TextCluster struct {
 	Start     int
 	Length    int
 	X         float32
 	Y         float32
 	Width     float32
 	Height    float32
+	LineIndex int
 	Direction TextDirection
 }
-
-type TextAttribute struct {
-	Start  int
-	Length int
-	Type   TextAttributeType
-	Value  any
-}
-
-type TextAttributeType int
-
-const (
-	TextFont TextAttributeType = iota
-	TextFgColor
-	TextBgColor
-	TextUnderline
-	TextStrike
-)
 
 type TextDirection int
 

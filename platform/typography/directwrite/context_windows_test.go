@@ -36,18 +36,11 @@ func Test_TextLayout(t *testing.T) {
 	}
 	defer layout.Destroy()
 
-	layout.SetAttribute(typography.TextAttribute{
-		Start:  0,
-		Length: len(text),
-		Type:   typography.TextBgColor,
-		Value:  graphics.RGBA(60, 0, 0, 255),
-	})
-
 	x, y, width, height := layout.MeasureRect()
 	t.Logf("%f-%f %fx%f", x, y, width, height)
 
-	lines, runs := layout.MeasureLines()
-	t.Logf("lines=%d runs=%d", len(lines), len(runs))
+	lines, clusters := layout.MeasureMetrics()
+	t.Logf("lines=%d clusters=%d", len(lines), len(clusters))
 
 	bitmap, err := c.DrawTextLayout(layout, graphics.Color{R: 1, G: 1, B: 1, A: 1}, graphics.PixelFormatRGBA, nil)
 	if err != nil {

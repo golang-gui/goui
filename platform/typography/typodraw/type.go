@@ -10,6 +10,12 @@ type Context interface {
 	DrawTextLayout(layout typography.TextLayout, brush graphics.Brush, pixelFormat graphics.PixelFormat, buf []byte) (bitmap TextBitmap, err error)
 }
 
+type TextLayout interface {
+	SetTextColor(start, length int, color graphics.Color)
+	SetUnderline(start, length int, underline bool)
+	SetStrikethrough(start, length int, strike bool)
+}
+
 type TextBitmap struct {
 	Offset graphics.Pos
 	Bitmap graphics.Bitmap

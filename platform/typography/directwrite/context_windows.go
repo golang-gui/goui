@@ -3,9 +3,7 @@ package directwrite
 import (
 	"errors"
 	"fmt"
-	"image/color"
 	"math"
-	"slices"
 
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
@@ -172,10 +170,15 @@ type TextLayout struct {
 	width    float32
 	height   float32
 	position utils.StringPosition
-	attrs    []typography.TextAttribute
+	colors   []textColorAttr
 
 	rect    graphics.Rectangle
 	painter textPainter
+}
+
+type textColorAttr struct {
+	Range dwrite.TextRange
+	Color graphics.Color
 }
 
 func newTextLayout(ctx *Context, layout *dwrite.TextLayout, text string, format typography.TextFormat, width, height float32) (t *TextLayout) {
@@ -260,111 +263,136 @@ func (t *TextLayout) SetWordWrap(wrap typography.WrapMode) {
 	}
 }
 
-func (t *TextLayout) SetAttribute(attr typography.TextAttribute) {
-	existed := slices.ContainsFunc(t.attrs, func(elem typography.TextAttribute) bool {
-		return elem.Start == attr.Start && elem.Length == attr.Length && elem.Type == attr.Type
-	})
-	if !existed {
-		start := t.position.ToUtf16(attr.Start)
-		if start < 0 {
-			// TODO: error
-			return
-		}
-		end := t.position.ToUtf16(attr.Start + attr.Length)
-		if end < 0 {
-			end = t.position.ToUtf16(len(t.text))
+func (t *TextLayout) SetTextFont(start, length int, font typography.FontInfo) {
+	if 0 <= start && 0 < length && (len(font.Family) != 0 || font.Size != 0) {
+		startPos := t.position.ToUtf16(start)
+		endPos := t.position.ToUtf16(start + length)
+		if endPos < 0 {
+			endPos = t.position.ToUtf16(len(t.text))
 		}
 
 		textRange := dwrite.TextRange{
-			StartPosition: uint32(start),
-			Length:        uint32(end - start),
+			StartPosition: uint32(startPos),
+			Length:        uint32(endPos - startPos),
 		}
 
-		switch attr.Type {
-		case typography.TextFont:
-			font := attr.Value.(typography.FontInfo)
+		if len(font.Family) != 0 {
 			t.layout.SetFontFamilyName(font.Family, textRange)
-			t.layout.SetFontSize(font.Size, textRange)
-			// TODO: set other font arg: weight, kern ...
-		case typography.TextFgColor, typography.TextBgColor:
-			// lazy to render
-		case typography.TextUnderline:
-			underline := attr.Value.(bool)
-			t.layout.SetUnderline(underline, textRange)
-		case typography.TextStrike:
-			strike := attr.Value.(bool)
-			t.layout.SetStrikethrough(strike, textRange)
 		}
-
-		t.attrs = append(t.attrs, attr)
+		if font.Size != 0 {
+			t.layout.SetFontSize(font.Size, textRange)
+		}
 	}
 }
 
-func (t *TextLayout) Attributes() []typography.TextAttribute {
-	return slices.Clone(t.attrs)
+func (t *TextLayout) SetTextColor(start, length int, color graphics.Color) {
+	if 0 <= start && 0 < length {
+		startPos := t.position.ToUtf16(start)
+		endPos := t.position.ToUtf16(start + length)
+		if endPos < 0 {
+			endPos = t.position.ToUtf16(len(t.text))
+		}
+
+		textRange := dwrite.TextRange{
+			StartPosition: uint32(startPos),
+			Length:        uint32(endPos - startPos),
+		}
+
+		t.colors = append(t.colors, textColorAttr{
+			Range: textRange,
+			Color: color,
+		})
+	}
 }
 
-func (t *TextLayout) MeasureLines() (lines []typography.TextLine, runs []typography.TextRun) {
-	startX, startY, _, _ := t.MeasureRect()
+func (t *TextLayout) SetUnderline(start, length int, underline bool) {
+	if 0 <= start && 0 < length {
+		startPos := t.position.ToUtf16(start)
+		endPos := t.position.ToUtf16(start + length)
+		if endPos < 0 {
+			endPos = t.position.ToUtf16(len(t.text))
+		}
 
+		textRange := dwrite.TextRange{
+			StartPosition: uint32(startPos),
+			Length:        uint32(endPos - startPos),
+		}
+
+		t.layout.SetUnderline(underline, textRange)
+	}
+}
+
+func (t *TextLayout) SetStrikethrough(start, length int, strike bool) {
+	if 0 <= start && 0 < length {
+		startPos := t.position.ToUtf16(start)
+		endPos := t.position.ToUtf16(start + length)
+		if endPos < 0 {
+			endPos = t.position.ToUtf16(len(t.text))
+		}
+
+		textRange := dwrite.TextRange{
+			StartPosition: uint32(startPos),
+			Length:        uint32(endPos - startPos),
+		}
+
+		t.layout.SetStrikethrough(strike, textRange)
+	}
+}
+
+func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []typography.TextCluster) {
 	lineMetrics, _ := t.layout.GetLineMetrics()
 	lines = make([]typography.TextLine, 0, len(lineMetrics))
 
-	clusters, _ := t.layout.GetClusterMetrics()
-	runs = make([]typography.TextRun, 0, len(clusters))
-
-	lastLine := typography.TextLine{
-		Y: startY,
-	}
+	clusterMetrics, _ := t.layout.GetClusterMetrics()
+	clusters = make([]typography.TextCluster, 0, len(clusterMetrics))
 
 	pos := 0
 	index := 0
 	start := 0
-	runsCount := 0
+	clustersEnd := 0
 
 	for _, metrics := range lineMetrics {
 		var line typography.TextLine
+		endPos := pos + int(metrics.Length)
 		line.Start = t.position.ToUtf8(pos)
-		line.X = math.MaxFloat32
-		line.Y = lastLine.Y + lastLine.Height
+		line.Length = t.position.ToUtf8(endPos) - line.Start
+		line.X, line.Y, _, _ = t.layout.HitTestTextPosition(pos, false)
+		endX, _, _, _ := t.layout.HitTestTextPosition(endPos-1, true)
+		line.Width = endX - line.X
 		line.Height = metrics.Height
 		line.Baseline = metrics.Baseline
 
-		lastRun := typography.TextRun{
-			X: startX,
+		lastCluster := typography.TextCluster{
+			X: line.X,
 		}
-		runsBeg := runsCount
+		clustersBeg := clustersEnd
 
 		end := start + int(metrics.Length)
-		for ; index < len(clusters); index++ {
+		for ; index < len(clusterMetrics); index++ {
 			if pos < end {
-				cluster := clusters[index]
-				if cluster.Width != 0 {
-					var run typography.TextRun
-					run.Start = t.position.ToUtf8(pos)
-					run.Length = t.position.ToUtf8(pos+int(cluster.Length)) - run.Start
-					run.X = lastRun.X + lastRun.Width
-					run.Y = line.Y
-					run.Width = cluster.Width
-					run.Height = line.Height
-					if cluster.IsRightToLeft() {
-						run.Direction = typography.TextRightToLeft
+				dwCluster := clusterMetrics[index]
+				if dwCluster.Width != 0 {
+					var cluster typography.TextCluster
+					cluster.Start = t.position.ToUtf8(pos)
+					cluster.Length = t.position.ToUtf8(pos+int(dwCluster.Length)) - cluster.Start
+					cluster.X = lastCluster.X + lastCluster.Width
+					cluster.Y = line.Y
+					cluster.Width = dwCluster.Width
+					cluster.Height = line.Height
+					if dwCluster.IsRightToLeft() {
+						cluster.Direction = typography.TextRightToLeft
 					}
-					lastRun = run
+					lastCluster = cluster
 
-					line.Length += run.Length
-					line.X = min(line.X, run.X)
-					line.Width = run.X + run.Width
-					runs = append(runs, run)
-					runsCount++
+					clusters = append(clusters, cluster)
+					clustersEnd++
 				}
-				pos += int(cluster.Length)
+				pos += int(dwCluster.Length)
 				continue
 			}
 			break
 		}
-		line.Runs = runs[runsBeg:runsCount]
-		lastLine = line
+		line.Clusters = clusters[clustersBeg:clustersEnd]
 		lines = append(lines, line)
 
 		start = end
@@ -392,34 +420,25 @@ func (t *TextLayout) MeasureRect() (x, y, width, height float32) {
 }
 
 func (t *TextLayout) Draw(render *d2d1.RenderTarget, origin d2d1.Point2F, brush *d2d1.Brush, drawOptions d2d1.DrawTextOptions) (err error) {
-	fgColorAttrs := make([]typography.TextAttribute, 0, len(t.attrs))
-	bgColorAttrs := make([]typography.TextAttribute, 0, len(t.attrs))
-	for _, attr := range t.attrs {
-		switch attr.Type {
-		case typography.TextFgColor:
-			fgColorAttrs = append(fgColorAttrs, attr)
-		case typography.TextBgColor:
-			bgColorAttrs = append(bgColorAttrs, attr)
-		}
-	}
-	if len(fgColorAttrs)+len(bgColorAttrs) != 0 {
+	if len(t.colors) != 0 {
+		type RGBA struct{ R, G, B, A byte }
 		var (
-			rgba     color.RGBA
+			rgba     RGBA
 			d2dColor d2d1.ColorF
 		)
 
-		brushs := make(map[color.RGBA]*d2d1.Brush, len(fgColorAttrs)+len(bgColorAttrs))
+		brushs := make(map[RGBA]*d2d1.Brush, len(t.colors))
 		defer func() {
 			for _, b := range brushs {
 				b.Release()
 			}
 		}()
 
-		getColorBrush := func(gColor graphics.Color) (*d2d1.Brush, error) {
-			rgba.R, rgba.G, rgba.B, rgba.A = gColor.RGBA8()
+		getColorBrush := func(color graphics.Color) (*d2d1.Brush, error) {
+			rgba.R, rgba.G, rgba.B, rgba.A = color.RGBA8()
 			d2dBrush, exist := brushs[rgba]
 			if !exist {
-				d2dColor.R, d2dColor.G, d2dColor.B, d2dColor.A = gColor.R, gColor.G, gColor.B, gColor.A
+				d2dColor.R, d2dColor.G, d2dColor.B, d2dColor.A = color.R, color.G, color.B, color.A
 				b, hr := render.CreateSolidColorBrush(&d2dColor, nil)
 				if hr.Failed() {
 					return nil, fmt.Errorf("create d2d solid color brush err: %v", err)
@@ -429,62 +448,12 @@ func (t *TextLayout) Draw(render *d2d1.RenderTarget, origin d2d1.Point2F, brush 
 			return d2dBrush, nil
 		}
 
-		for _, attr := range fgColorAttrs {
-			gColor := attr.Value.(graphics.Color)
-
-			start := t.position.ToUtf16(attr.Start)
-			if start < 0 {
-				// TODO: error
-				continue
-			}
-			end := t.position.ToUtf16(attr.Start + attr.Length)
-			if end < 0 {
-				end = t.position.ToUtf16(len(t.text))
-			}
-
-			d2dBrush, err := getColorBrush(gColor)
+		for _, attr := range t.colors {
+			d2dBrush, err := getColorBrush(attr.Color)
 			if err != nil {
 				return err
 			}
-
-			textRange := dwrite.TextRange{
-				StartPosition: uint32(start),
-				Length:        uint32(end - start),
-			}
-			t.layout.SetDrawingEffect(&d2dBrush.Unknown, textRange)
-		}
-
-		if len(bgColorAttrs) != 0 {
-			var rect d2d1.RectF
-			lines, _ := t.MeasureLines()
-			for _, line := range lines {
-				for _, attr := range bgColorAttrs {
-					gColor := attr.Value.(graphics.Color)
-					end := attr.Start + attr.Length
-					var fillX float32 = math.MaxFloat32
-					var fillY float32 = math.MaxFloat32
-					var fillW, fillH float32
-					for _, run := range line.Runs {
-						if attr.Start <= run.Start && run.Start+run.Length <= end {
-							fillX = min(fillX, run.X)
-							fillY = min(fillY, run.Y)
-							fillW += run.Width
-							fillH = max(run.Height)
-						}
-					}
-					if fillW != 0 {
-						rect.Left = origin.X + fillX
-						rect.Top = origin.Y + fillY
-						rect.Right = rect.Left + fillW
-						rect.Bottom = rect.Top + fillH
-						d2dBrush, err := getColorBrush(gColor)
-						if err != nil {
-							return err
-						}
-						render.FillRectangle(&rect, d2dBrush)
-					}
-				}
-			}
+			t.layout.SetDrawingEffect(&d2dBrush.Unknown, attr.Range)
 		}
 	}
 
@@ -589,7 +558,7 @@ func (p *textPainter) Destroy() {
 func (p *textPainter) DrawText(text string, format *dwrite.TextFormat, buf []byte) (typodraw.TextBitmap, error) {
 	p.render.BeginDraw()
 	p.render.Clear(&d2d1.ColorF{})
-	p.render.DrawText(text, format, &d2d1.RectF{Right: p.rect.Width, Bottom: p.rect.Height}, &p.brush.Brush, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT, 0)
+	p.render.DrawText(text, format, &d2d1.RectF{Right: p.rect.Width, Bottom: p.rect.Height}, &p.brush.Brush, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP, 0)
 	p.render.EndDraw(nil, nil)
 	return p.getBitmap(buf)
 }
