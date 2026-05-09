@@ -351,16 +351,20 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 	start := 0
 	clustersEnd := 0
 
-	for _, metrics := range lineMetrics {
+	for lineIndex, metrics := range lineMetrics {
 		var line typography.TextLine
 		endPos := pos + int(metrics.Length)
+		endU8Pos := t.position.ToUtf8(endPos)
+		if endU8Pos == -1 {
+			endU8Pos = len(t.text)
+		}
 		line.Start = t.position.ToUtf8(pos)
-		line.Length = t.position.ToUtf8(endPos) - line.Start
+		line.Length = endU8Pos - line.Start
 		line.X, line.Y, _, _ = t.layout.HitTestTextPosition(pos, false)
 		endX, _, _, _ := t.layout.HitTestTextPosition(endPos-1, true)
 		line.Width = endX - line.X
 		line.Height = metrics.Height
-		line.Baseline = metrics.Baseline
+		line.Baseline = line.Y + metrics.Baseline
 
 		lastCluster := typography.TextCluster{
 			X: line.X,
@@ -379,6 +383,7 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 					cluster.Y = line.Y
 					cluster.Width = dwCluster.Width
 					cluster.Height = line.Height
+					cluster.LineIndex = lineIndex
 					if dwCluster.IsRightToLeft() {
 						cluster.Direction = typography.TextRightToLeft
 					}

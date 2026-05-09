@@ -30,7 +30,7 @@ func Test_TextLayout(t *testing.T) {
 	}
 
 	text := "abc中国中文👨‍👩‍👧‍👦 مشروع "
-	layout, err := c.NewTextLayout(text, format, 200, 300)
+	layout, err := c.NewTextLayout(text, format, 200, 50)
 	if err != nil {
 		t.Fatal(err)
 	}
