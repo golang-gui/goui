@@ -2,9 +2,9 @@ package directwrite
 
 import (
 	"bytes"
-	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/win32/sdk/com"
+	"image/color"
 	"image/png"
 	"os"
 	"testing"
@@ -42,14 +42,14 @@ func Test_TextLayout(t *testing.T) {
 	lines, clusters := layout.MeasureMetrics()
 	t.Logf("lines=%d clusters=%d", len(lines), len(clusters))
 
-	bitmap, err := c.DrawTextLayout(layout, graphics.Color{R: 1, G: 1, B: 1, A: 1}, graphics.PixelFormatRGBA, nil)
+	bitmap, err := c.DrawTextLayout(layout, color.White, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	var buf bytes.Buffer
-	buf.Grow(bitmap.Bitmap.Width * bitmap.Bitmap.Height)
-	err = png.Encode(&buf, bitmap.Bitmap)
+	buf.Grow(bitmap.Width * bitmap.Height)
+	err = png.Encode(&buf, bitmap)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,13 +1,11 @@
 package directwrite
 
 import (
-	"errors"
 	"fmt"
+	"image/color"
 	"math"
 
-	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
-	"github.com/golang-gui/goui/platform/typography/typodraw"
 	"github.com/golang-gui/goui/platform/typography/utils"
 
 	"github.com/golang-gui/goui/platform/win32/sdk/com"
@@ -62,18 +60,13 @@ func (c *Context) NewTextLayout(text string, format typography.TextFormat, width
 	return newTextLayout(c, textLayout, text, format, width, height), nil
 }
 
-func (c *Context) DrawText(text string, format typography.TextFormat, brush graphics.Brush, size graphics.Size, pixelFormat graphics.PixelFormat, buf []byte) (bitmap typodraw.TextBitmap, err error) {
+func (c *Context) DrawText(text string, format typography.TextFormat, width, height float32, fgColor color.Color, buf []byte) (bitmap typography.TextBitmap, err error) {
 	if err = c.prepareDraw(); err != nil {
 		return
 	}
 
-	fgColor, ok := brush.(graphics.Color)
-	if !ok {
-		return bitmap, errors.New("unsupported brush")
-	}
-
 	var painter textPainter
-	err = painter.Init(c.d2dFactory, c.imgFactory, graphics.Rectangle{Size: size}, pixelFormat, fgColor)
+	err = painter.Init(c.d2dFactory, c.imgFactory, width, height, fgColor)
 	if err != nil {
 		return
 	}
@@ -85,14 +78,14 @@ func (c *Context) DrawText(text string, format typography.TextFormat, brush grap
 	}
 	defer textFormat.Release()
 
-	return painter.DrawText(text, textFormat, buf)
+	return painter.DrawText(text, textFormat, width, height, buf)
 }
 
-func (c *Context) DrawTextLayout(layout typography.TextLayout, brush graphics.Brush, pixelFormat graphics.PixelFormat, buf []byte) (bitmap typodraw.TextBitmap, err error) {
+func (c *Context) DrawTextLayout(layout typography.TextLayout, fgColor color.Color, buf []byte) (bitmap typography.TextBitmap, err error) {
 	if err = c.prepareDraw(); err != nil {
 		return
 	}
-	return layout.(*TextLayout).DrawBitmap(brush, pixelFormat, buf)
+	return layout.(*TextLayout).DrawBitmap(fgColor, buf)
 }
 
 func (c *Context) CreateTextFormat(format typography.TextFormat) (textFormat *dwrite.TextFormat, err error) {
@@ -171,14 +164,12 @@ type TextLayout struct {
 	height   float32
 	position utils.StringPosition
 	colors   []textColorAttr
-
-	rect    graphics.Rectangle
-	painter textPainter
+	painter  textPainter
 }
 
 type textColorAttr struct {
 	Range dwrite.TextRange
-	Color graphics.Color
+	Color color.RGBA
 }
 
 func newTextLayout(ctx *Context, layout *dwrite.TextLayout, text string, format typography.TextFormat, width, height float32) (t *TextLayout) {
@@ -285,7 +276,7 @@ func (t *TextLayout) SetTextFont(start, length int, font typography.FontInfo) {
 	}
 }
 
-func (t *TextLayout) SetTextColor(start, length int, color graphics.Color) {
+func (t *TextLayout) SetTextColor(start, length int, color color.Color) {
 	if 0 <= start && 0 < length {
 		startPos := t.position.ToUtf16(start)
 		endPos := t.position.ToUtf16(start + length)
@@ -300,7 +291,7 @@ func (t *TextLayout) SetTextColor(start, length int, color graphics.Color) {
 
 		t.colors = append(t.colors, textColorAttr{
 			Range: textRange,
-			Color: color,
+			Color: toRGBAColor(color),
 		})
 	}
 }
@@ -426,24 +417,19 @@ func (t *TextLayout) MeasureRect() (x, y, width, height float32) {
 
 func (t *TextLayout) Draw(render *d2d1.RenderTarget, origin d2d1.Point2F, brush *d2d1.Brush, drawOptions d2d1.DrawTextOptions) (err error) {
 	if len(t.colors) != 0 {
-		type RGBA struct{ R, G, B, A byte }
-		var (
-			rgba     RGBA
-			d2dColor d2d1.ColorF
-		)
+		var d2dColor d2d1.ColorF
 
-		brushs := make(map[RGBA]*d2d1.Brush, len(t.colors))
+		brushs := make(map[color.RGBA]*d2d1.Brush, len(t.colors))
 		defer func() {
 			for _, b := range brushs {
 				b.Release()
 			}
 		}()
 
-		getColorBrush := func(color graphics.Color) (*d2d1.Brush, error) {
-			rgba.R, rgba.G, rgba.B, rgba.A = color.RGBA8()
+		getColorBrush := func(rgba color.RGBA) (*d2d1.Brush, error) {
 			d2dBrush, exist := brushs[rgba]
 			if !exist {
-				d2dColor.R, d2dColor.G, d2dColor.B, d2dColor.A = color.R, color.G, color.B, color.A
+				d2dColor = toD2dColor(rgba)
 				b, hr := render.CreateSolidColorBrush(&d2dColor, nil)
 				if hr.Failed() {
 					return nil, fmt.Errorf("create d2d solid color brush err: %v", err)
@@ -466,28 +452,21 @@ func (t *TextLayout) Draw(render *d2d1.RenderTarget, origin d2d1.Point2F, brush 
 	return nil
 }
 
-func (t *TextLayout) DrawBitmap(brush graphics.Brush, pixelFormat graphics.PixelFormat, buf []byte) (bitmap typodraw.TextBitmap, err error) {
-	fgColor, ok := brush.(graphics.Color)
-	if !ok {
-		return bitmap, errors.New("unsupported brush")
-	}
-
-	x, y, width, height := t.MeasureRect()
+func (t *TextLayout) DrawBitmap(fgColor color.Color, buf []byte) (bitmap typography.TextBitmap, err error) {
+	_, _, width, height := t.MeasureRect()
 	if width == 0 || height == 0 {
 		return
 	}
 
-	rect := graphics.Rect(x, y, width, height)
-	if t.rect != rect {
-		t.rect = rect
+	if t.painter.width < width || t.painter.height < height {
 		t.painter.Destroy()
-		err = t.painter.Init(t.ctx.d2dFactory, t.ctx.imgFactory, rect, pixelFormat, fgColor)
+		err = t.painter.Init(t.ctx.d2dFactory, t.ctx.imgFactory, width, height, fgColor)
 		if err != nil {
 			return
 		}
 	}
 
-	return t.painter.DrawTextLayout(t, buf)
+	return t.painter.DrawTextLayout(t, width, height, buf)
 }
 
 func roundPixel(v float32) int {
@@ -495,33 +474,26 @@ func roundPixel(v float32) int {
 }
 
 type textPainter struct {
-	rect   graphics.Rectangle
-	format graphics.PixelFormat
+	width  float32
+	height float32
+	colorf d2d1.ColorF
 	bitmap *wic.Bitmap
 	render *d2d1.RenderTarget
 	brush  *d2d1.SolidColorBrush
 }
 
-func (p *textPainter) Init(d2dFactory *d2d1.Factory, imgFactory *wic.ImagingFactory, rect graphics.Rectangle, pixelFormat graphics.PixelFormat, fgColor graphics.Color) (err error) {
-	p.rect = rect
-	p.format = pixelFormat
-
-	wicPixelFormat := wic.GUID_WICPixelFormat32bppPBGRA
+func (p *textPainter) Init(d2dFactory *d2d1.Factory, imgFactory *wic.ImagingFactory, width, height float32, fgColor color.Color) (err error) {
+	p.width = width
+	p.height = height
+	p.colorf = toD2dColor(fgColor)
+	wicPixelFormat := wic.GUID_WICPixelFormat32bppPRGBA
 	d2dPixelFormat := d2d1.PixelFormat{
-		Format:    dxgi.DXGI_FORMAT_B8G8R8A8_UNORM,
+		Format:    dxgi.DXGI_FORMAT_R8G8B8A8_UNORM,
 		AlphaMode: d2d1.D2D1_ALPHA_MODE_PREMULTIPLIED,
-	}
-	switch pixelFormat {
-	case graphics.PixelFormatRGBA:
-		wicPixelFormat = wic.GUID_WICPixelFormat32bppPRGBA
-		d2dPixelFormat.Format = dxgi.DXGI_FORMAT_R8G8B8A8_UNORM
-	case graphics.PixelFormatGray:
-		wicPixelFormat = wic.GUID_WICPixelFormat8bppGray
-		d2dPixelFormat.Format = dxgi.DXGI_FORMAT_A8_UNORM
 	}
 
 	var hr com.HRESULT
-	p.bitmap, hr = imgFactory.CreateBitmap(roundPixel(rect.X+rect.Width), roundPixel(rect.Y+rect.Height), wicPixelFormat, wic.WICBitmapCacheOnLoad)
+	p.bitmap, hr = imgFactory.CreateBitmap(roundPixel(width), roundPixel(height), wicPixelFormat, wic.WICBitmapCacheOnLoad)
 	if hr.Failed() {
 		return fmt.Errorf("create wic bitmap err: %v", hr)
 	}
@@ -537,7 +509,7 @@ func (p *textPainter) Init(d2dFactory *d2d1.Factory, imgFactory *wic.ImagingFact
 		return fmt.Errorf("create d2d wic bitmap render target err: %v", hr)
 	}
 
-	p.brush, hr = p.render.CreateSolidColorBrush(&d2d1.ColorF{R: fgColor.R, G: fgColor.G, B: fgColor.B, A: fgColor.A}, nil)
+	p.brush, hr = p.render.CreateSolidColorBrush(&p.colorf, nil)
 	if hr.Failed() {
 		return fmt.Errorf("create d2d color brush err: %v", hr)
 	}
@@ -560,15 +532,15 @@ func (p *textPainter) Destroy() {
 	}
 }
 
-func (p *textPainter) DrawText(text string, format *dwrite.TextFormat, buf []byte) (typodraw.TextBitmap, error) {
+func (p *textPainter) DrawText(text string, format *dwrite.TextFormat, width, height float32, buf []byte) (typography.TextBitmap, error) {
 	p.render.BeginDraw()
 	p.render.Clear(&d2d1.ColorF{})
-	p.render.DrawText(text, format, &d2d1.RectF{Right: p.rect.Width, Bottom: p.rect.Height}, &p.brush.Brush, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP, 0)
+	p.render.DrawText(text, format, &d2d1.RectF{Right: width, Bottom: height}, &p.brush.Brush, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP, 0)
 	p.render.EndDraw(nil, nil)
-	return p.getBitmap(buf)
+	return p.getBitmap(width, height, buf)
 }
 
-func (p *textPainter) DrawTextLayout(layout *TextLayout, buf []byte) (bitmap typodraw.TextBitmap, err error) {
+func (p *textPainter) DrawTextLayout(layout *TextLayout, width, height float32, buf []byte) (bitmap typography.TextBitmap, err error) {
 	p.render.BeginDraw()
 	p.render.Clear(&d2d1.ColorF{})
 	err = layout.Draw(p.render, d2d1.Point2F{}, &p.brush.Brush, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP)
@@ -576,21 +548,42 @@ func (p *textPainter) DrawTextLayout(layout *TextLayout, buf []byte) (bitmap typ
 	if err != nil {
 		return
 	}
-	return p.getBitmap(buf)
+	return p.getBitmap(width, height, buf)
 }
 
-func (p *textPainter) getBitmap(buf []byte) (bitmap typodraw.TextBitmap, err error) {
-	bitmap.Bitmap = graphics.MakeBitmap(0, 0, roundPixel(p.rect.Width), roundPixel(p.rect.Height), p.format, buf)
-	rect := wic.Rect{
-		X:      int32(p.rect.X),
-		Y:      int32(p.rect.Y),
-		Width:  int32(bitmap.Bitmap.Width),
-		Height: int32(bitmap.Bitmap.Height),
+func (p *textPainter) getBitmap(width, height float32, buf []byte) (bitmap typography.TextBitmap, err error) {
+	bitmap.Width = roundPixel(width)
+	bitmap.Height = roundPixel(height)
+	bitmap.Stride = bitmap.Width * 4
+	byteSize := bitmap.Stride * bitmap.Height
+	if byteSize <= cap(buf) {
+		bitmap.Pixels = buf[:byteSize]
+	} else {
+		bitmap.Pixels = make([]byte, byteSize)
 	}
-	hr := p.bitmap.CopyPixels(&rect, bitmap.Bitmap.Stride, bitmap.Bitmap.Pixels)
+
+	rect := wic.Rect{
+		Width:  int32(bitmap.Width),
+		Height: int32(bitmap.Height),
+	}
+	hr := p.bitmap.CopyPixels(&rect, bitmap.Stride, bitmap.Pixels)
 	if hr.Failed() {
 		return bitmap, hr
 	}
 
 	return bitmap, nil
+}
+
+func toD2dColor(c color.Color) (d2dColor d2d1.ColorF) {
+	r32, g32, b32, a32 := c.RGBA()
+	return d2d1.ColorF{
+		R: float32(r32) / 65535,
+		G: float32(g32) / 65535,
+		B: float32(b32) / 65535,
+		A: float32(a32) / 65535,
+	}
+}
+
+func toRGBAColor(c color.Color) (rgba color.RGBA) {
+	return color.RGBAModel.Convert(c).(color.RGBA)
 }
