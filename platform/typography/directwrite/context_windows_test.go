@@ -46,6 +46,7 @@ func Test_TextLayout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Logf("bitmap=%dx%d", bitmap.Width, bitmap.Height)
 
 	var buf bytes.Buffer
 	buf.Grow(bitmap.Width * bitmap.Height)

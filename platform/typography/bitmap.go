@@ -6,8 +6,6 @@ import (
 )
 
 type TextBitmap struct {
-	X      float32
-	Y      float32
 	Width  int
 	Height int
 	Stride int

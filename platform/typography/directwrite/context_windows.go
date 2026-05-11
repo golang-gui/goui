@@ -78,7 +78,12 @@ func (c *Context) DrawText(text string, format typography.TextFormat, width, hei
 	}
 	defer textFormat.Release()
 
-	return painter.DrawText(text, textFormat, width, height, buf)
+	err = painter.DrawText(text, textFormat)
+	if err != nil {
+		return
+	}
+
+	return painter.GetBitmap(width, height, buf)
 }
 
 func (c *Context) DrawTextLayout(layout typography.TextLayout, fgColor color.Color, buf []byte) (bitmap typography.TextBitmap, err error) {
@@ -453,9 +458,15 @@ func (t *TextLayout) Draw(render *d2d1.RenderTarget, origin d2d1.Point2F, brush 
 }
 
 func (t *TextLayout) DrawBitmap(fgColor color.Color, buf []byte) (bitmap typography.TextBitmap, err error) {
-	_, _, width, height := t.MeasureRect()
+	x, y, width, height := t.MeasureRect()
 	if width == 0 || height == 0 {
 		return
+	}
+	if x > 0 {
+		width += x
+	}
+	if y > 0 {
+		height += y
 	}
 
 	if t.painter.width < width || t.painter.height < height {
@@ -466,7 +477,12 @@ func (t *TextLayout) DrawBitmap(fgColor color.Color, buf []byte) (bitmap typogra
 		}
 	}
 
-	return t.painter.DrawTextLayout(t, width, height, buf)
+	err = t.painter.DrawTextLayout(t)
+	if err != nil {
+		return
+	}
+
+	return t.painter.GetBitmap(width, height, buf)
 }
 
 func roundPixel(v float32) int {
@@ -532,26 +548,32 @@ func (p *textPainter) Destroy() {
 	}
 }
 
-func (p *textPainter) DrawText(text string, format *dwrite.TextFormat, width, height float32, buf []byte) (typography.TextBitmap, error) {
+func (p *textPainter) DrawText(text string, format *dwrite.TextFormat) error {
 	p.render.BeginDraw()
 	p.render.Clear(&d2d1.ColorF{})
-	p.render.DrawText(text, format, &d2d1.RectF{Right: width, Bottom: height}, &p.brush.Brush, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP, 0)
-	p.render.EndDraw(nil, nil)
-	return p.getBitmap(width, height, buf)
+	p.render.DrawText(text, format, &d2d1.RectF{Right: p.width, Bottom: p.height}, &p.brush.Brush, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP, 0)
+	hr := p.render.EndDraw(nil, nil)
+	if hr.Failed() {
+		return fmt.Errorf("directwrite end draw err: %w", hr)
+	}
+	return nil
 }
 
-func (p *textPainter) DrawTextLayout(layout *TextLayout, width, height float32, buf []byte) (bitmap typography.TextBitmap, err error) {
+func (p *textPainter) DrawTextLayout(layout *TextLayout) (err error) {
 	p.render.BeginDraw()
 	p.render.Clear(&d2d1.ColorF{})
 	err = layout.Draw(p.render, d2d1.Point2F{}, &p.brush.Brush, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP)
-	p.render.EndDraw(nil, nil)
+	hr := p.render.EndDraw(nil, nil)
 	if err != nil {
-		return
+		return fmt.Errorf("directwrite draw text err: %w", err)
 	}
-	return p.getBitmap(width, height, buf)
+	if hr.Failed() {
+		return fmt.Errorf("directwrite end draw err: %w", hr)
+	}
+	return nil
 }
 
-func (p *textPainter) getBitmap(width, height float32, buf []byte) (bitmap typography.TextBitmap, err error) {
+func (p *textPainter) GetBitmap(width, height float32, buf []byte) (bitmap typography.TextBitmap, err error) {
 	bitmap.Width = roundPixel(width)
 	bitmap.Height = roundPixel(height)
 	bitmap.Stride = bitmap.Width * 4
@@ -568,7 +590,7 @@ func (p *textPainter) getBitmap(width, height float32, buf []byte) (bitmap typog
 	}
 	hr := p.bitmap.CopyPixels(&rect, bitmap.Stride, bitmap.Pixels)
 	if hr.Failed() {
-		return bitmap, hr
+		return bitmap, fmt.Errorf("copy bitmap pixels err: %w", err)
 	}
 
 	return bitmap, nil
