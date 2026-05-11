@@ -1,5 +1,7 @@
 package typography
 
+import "image/color"
+
 type TextLayout interface {
 	Destroy()
 	Text() string
@@ -10,6 +12,9 @@ type TextLayout interface {
 	SetLineAlignment(align LineAlignment)
 	SetWordWrap(wrap WrapMode)
 	SetTextFont(start, length int, font FontInfo)
+	SetTextColor(start, length int, c color.Color)
+	SetUnderline(start, length int, underline bool)
+	SetStrikethrough(start, length int, strike bool)
 	MeasureRect() (x, y, width, height float32)
 	MeasureMetrics() (lines []TextLine, clusters []TextCluster)
 }
