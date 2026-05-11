@@ -1,13 +1,11 @@
 package opengl
 
 import (
-	"errors"
 	"fmt"
 	"image"
 
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
-	"github.com/golang-gui/goui/platform/typography/typodraw"
 
 	"github.com/golang-gui/nanovgo"
 	"github.com/golang-gui/nanovgo/gl"
@@ -18,18 +16,13 @@ import (
 type Painter struct {
 	ctx  Context
 	vg   *nanovgo.Context
-	typo typodraw.Context
+	typo typography.Context
 	imgs []int
 }
 
 func NewPainter(win NativeWindow, typoCtx typography.Context) (_ *Painter, err error) {
-	if typoCtx != nil {
-		if _, ok := typoCtx.(typodraw.Context); !ok {
-			return nil, errors.New("typoCtx is not a typodraw.Context")
-		}
-	}
-
 	p := new(Painter)
+	p.typo = typoCtx
 	p.ctx, err = NewContext(win, nil, DefaultConfig)
 	if err != nil {
 		return nil, fmt.Errorf("create opengl context err: %v", err)
@@ -46,7 +39,6 @@ func NewPainter(win NativeWindow, typoCtx typography.Context) (_ *Painter, err e
 		return nil, fmt.Errorf("create nanovgo context err: %v", err)
 	}
 
-	p.typo, _ = typoCtx.(typodraw.Context)
 	p.imgs = make([]int, 0, 512)
 	return p, nil
 }
@@ -174,23 +166,35 @@ func (p *Painter) DrawPath(path graphics.Path, strokeWidth float32, brush graphi
 }
 
 func (p *Painter) DrawText(rect graphics.Rectangle, text string, format typography.TextFormat, brush graphics.Brush) {
-	if p.typo != nil {
-		textBitmap, err := p.typo.DrawText(text, format, brush, rect.Size, graphics.PixelFormatRGBA, nil)
+	if color, ok := brush.(graphics.Color); ok && p.typo != nil {
+		textBitmap, err := p.typo.DrawText(text, format, rect.Width, rect.Height, color, nil)
 		if err == nil {
-			pos := rect.Pos.Add(textBitmap.Offset)
-			size := graphics.Size{Width: float32(textBitmap.Bitmap.Width), Height: float32(textBitmap.Bitmap.Height)}
-			p.drawBitmap(graphics.Rectangle{Pos: pos, Size: size}, textBitmap.Bitmap)
+			drawRect := graphics.Rect(rect.X+textBitmap.X, rect.Y+textBitmap.Y, float32(textBitmap.Width), float32(textBitmap.Height))
+			bitmap := graphics.Bitmap{
+				Width:  textBitmap.Width,
+				Height: textBitmap.Height,
+				Stride: textBitmap.Stride,
+				Format: graphics.PixelFormatRGBA,
+				Pixels: textBitmap.Pixels,
+			}
+			p.drawBitmap(drawRect, bitmap)
 		}
 	}
 }
 
 func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLayout, brush graphics.Brush) {
-	if p.typo != nil {
-		textBitmap, err := p.typo.DrawTextLayout(layout, brush, graphics.PixelFormatRGBA, nil)
+	if color, ok := brush.(graphics.Color); ok && p.typo != nil {
+		textBitmap, err := p.typo.DrawTextLayout(layout, color, nil)
 		if err == nil {
-			pos := origin.Add(textBitmap.Offset)
-			size := graphics.Size{Width: float32(textBitmap.Bitmap.Width), Height: float32(textBitmap.Bitmap.Height)}
-			p.drawBitmap(graphics.Rectangle{Pos: pos, Size: size}, textBitmap.Bitmap)
+			drawRect := graphics.Rect(origin.X+textBitmap.X, origin.Y+textBitmap.Y, float32(textBitmap.Width), float32(textBitmap.Height))
+			bitmap := graphics.Bitmap{
+				Width:  textBitmap.Width,
+				Height: textBitmap.Height,
+				Stride: textBitmap.Stride,
+				Format: graphics.PixelFormatRGBA,
+				Pixels: textBitmap.Pixels,
+			}
+			p.drawBitmap(drawRect, bitmap)
 		}
 	}
 }
@@ -208,7 +212,7 @@ func (p *Painter) drawBitmap(rect graphics.Rectangle, bitmap graphics.Bitmap) {
 	if img != 0 {
 		p.imgs = append(p.imgs, img)
 		p.vg.BeginPath()
-		p.vg.SetFillPaint(nanovgo.ImagePattern(rect.X, rect.Y, float32(bitmap.Width), float32(bitmap.Height), 0, img, 1.0))
+		p.vg.SetFillPaint(nanovgo.ImagePattern(rect.X, rect.Y, rect.Width, rect.Height, 0, img, 1.0))
 		p.vg.Rect(rect.X, rect.Y, rect.Width, rect.Height)
 		p.vg.Fill()
 	}
