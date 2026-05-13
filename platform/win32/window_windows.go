@@ -1,6 +1,7 @@
 package win32
 
 import (
+	"fmt"
 	"image"
 	"runtime"
 	"syscall"
@@ -11,6 +12,8 @@ import (
 	"github.com/golang-gui/goui/platform/graphics"
 
 	"github.com/golang-gui/goui/platform/win32/winapi"
+
+	"github.com/goexlib/cgo"
 )
 
 type Window struct {
@@ -190,8 +193,12 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 }
 
 func (w *Window) drawImage(img graphics.Bitmap) error {
+	if img.Width == 0 || img.Height == 0 {
+		return nil
+	}
+
 	var rect winapi.RECT
-	winapi.GetClientRect(w.hwnd, &rect)
+	_ = winapi.GetClientRect(w.hwnd, &rect)
 	if rect.Right == 0 || rect.Bottom == 0 {
 		return nil
 	}
@@ -202,40 +209,32 @@ func (w *Window) drawImage(img graphics.Bitmap) error {
 	}
 	defer winapi.ReleaseDC(hdc)
 
-	mdc := winapi.CreateCompatibleDC(hdc)
-	mBitmap := winapi.CreateCompatibleBitmap(hdc, rect.Right, rect.Bottom)
-	mOldObj := winapi.SelectObject(mdc, mBitmap)
+	width := winapi.INT(img.Width)
+	height := winapi.INT(img.Height)
 
-	{
-		bounds := img.Bounds()
-
-		tdc := winapi.CreateCompatibleDC(hdc)
-		width, height := winapi.INT(bounds.Dx()), winapi.INT(bounds.Dy())
-		tBitmap := winapi.CreateCompatibleBitmap(hdc, width, height)
-		tOldObj := winapi.SelectObject(tdc, tBitmap)
-
-		info := winapi.BITMAPINFO{
-			Header: winapi.BITMAPINFOHEADER{
-				Size:     winapi.Sizeof_BITMAPINFOHEADER,
-				Width:    width,
-				Height:   -height,
-				Planes:   1,
-				BitCount: 32, //RGBA
-			},
-		}
-		winapi.SetDIBits(tdc, tBitmap, 0, winapi.UINT(height), winapi.LPVOID(&img.Pixels[0]), &info, 0 /*DIB_RGB_COLORS*/)
-
-		winapi.BitBlt(mdc, winapi.INT(bounds.Min.X), winapi.INT(bounds.Min.Y), width, height, tdc, 0, 0, 0x00CC0020 /*SRCCOPY*/)
-		winapi.SelectObject(tdc, tOldObj)
-		winapi.DeleteObject(tBitmap)
-
-		winapi.DeleteDC(tdc)
+	bmi := winapi.BITMAPINFO{
+		Header: winapi.BITMAPINFOHEADER{
+			Size:     winapi.Sizeof_BITMAPINFOHEADER,
+			Width:    width,
+			Height:   -height,
+			Planes:   1,
+			BitCount: 32, //RGBA
+		},
 	}
 
-	winapi.BitBlt(hdc, 0, 0, rect.Right, rect.Bottom, mdc, 0, 0, 0x00CC0020 /*SRCCOPY*/)
-	winapi.SelectObject(mdc, mOldObj)
-	winapi.DeleteObject(mBitmap)
-	winapi.DeleteDC(mdc)
-
+	ret := winapi.StretchDIBits(hdc, 0, 0, width, height, 0, 0, width, height, cgo.CSlice(img.Pixels), &bmi, winapi.DIB_RGB_COLORS, winapi.SRCCOPY)
+	if ret == 0 {
+		byteSize := img.Stride * img.Height
+		bits := winapi.LocalAlloc(0, uint(byteSize))
+		if bits == nil {
+			return fmt.Errorf("alloc local image memeory failed")
+		}
+		defer winapi.LocalFree(bits)
+		copy(cgo.GoSliceNTemp[byte](bits, byteSize), img.Pixels)
+		ret = winapi.StretchDIBits(hdc, 0, 0, width, height, 0, 0, width, height, bits, &bmi, winapi.DIB_RGB_COLORS, winapi.SRCCOPY)
+		if ret == 0 {
+			return fmt.Errorf("draw image failed")
+		}
+	}
 	return nil
 }

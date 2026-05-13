@@ -157,6 +157,11 @@ type BITMAPINFO struct {
 	Colors RGBQUAD
 }
 
+const (
+	DIB_RGB_COLORS = 0
+	SRCCOPY        = 0x00CC0020
+)
+
 type RGBQUAD struct {
 	Blue     BYTE
 	Green    BYTE

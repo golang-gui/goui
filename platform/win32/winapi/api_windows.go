@@ -10,10 +10,12 @@ var (
 	kernel32Dll = syscall.NewLazyDLL("kernel32.dll")
 	gdi32Dll    = syscall.NewLazyDLL("gdi32.dll")
 
-	//Kernel
+	// Kernel
 	procGetModuleHandleW = kernel32Dll.NewProc("GetModuleHandleW")
+	procLocalAlloc       = kernel32Dll.NewProc("LocalAlloc")
+	procLocalFree        = kernel32Dll.NewProc("LocalFree")
 
-	//Window
+	// Window
 	procRegisterClassExW     = user32Dll.NewProc("RegisterClassExW")
 	procCreateWindowExW      = user32Dll.NewProc("CreateWindowExW")
 	procDestroyWindow        = user32Dll.NewProc("DestroyWindow")
@@ -36,7 +38,7 @@ var (
 	procGetDpiForWindow               = user32Dll.NewProc("GetDpiForWindow")
 	procSetProcessDpiAwarenessContext = user32Dll.NewProc("SetProcessDpiAwarenessContext")
 
-	//Message
+	// Message
 	procGetMessageW      = user32Dll.NewProc("GetMessageW")
 	procWaitMessage      = user32Dll.NewProc("WaitMessage")
 	procPeekMessageW     = user32Dll.NewProc("PeekMessageW")
@@ -55,7 +57,7 @@ var (
 	// Resource
 	procLoadCursorW = user32Dll.NewProc("LoadCursorW")
 
-	//GDI
+	// GDI
 	procCreateCompatibleDC = gdi32Dll.NewProc("CreateCompatibleDC")
 	procDeleteDC           = gdi32Dll.NewProc("DeleteDC")
 
@@ -63,11 +65,11 @@ var (
 	procSelectObject           = gdi32Dll.NewProc("SelectObject")
 	procDeleteObject           = gdi32Dll.NewProc("DeleteObject")
 
-	procCreateDIBitmap = gdi32Dll.NewProc("CreateDIBitmap")
-	procSetDIBits      = gdi32Dll.NewProc("SetDIBits")
+	procSetDIBits         = gdi32Dll.NewProc("SetDIBits")
+	procSetDIBitsToDevice = gdi32Dll.NewProc("SetDIBitsToDevice")
 
-	procBitBlt     = gdi32Dll.NewProc("BitBlt")
-	procStretchBlt = gdi32Dll.NewProc("StretchBlt")
+	procBitBlt        = gdi32Dll.NewProc("BitBlt")
+	procStretchDIBits = gdi32Dll.NewProc("StretchDIBits")
 
 	procSetPixelFormat      = gdi32Dll.NewProc("SetPixelFormat")
 	procChoosePixelFormat   = gdi32Dll.NewProc("ChoosePixelFormat")
@@ -91,6 +93,15 @@ func GetModuleHandle(name LPCWSTR) (HMODULE, error) {
 		return 0, err
 	}
 	return HMODULE(ret), nil
+}
+
+func LocalAlloc(flags UINT, byteSize uint) unsafe.Pointer {
+	ret, _, _ := syscall.SyscallN(procLocalAlloc.Addr(), uintptr(flags), uintptr(byteSize))
+	return unsafe.Pointer(ret)
+}
+
+func LocalFree(ptr unsafe.Pointer) {
+	procLocalFree.Call(uintptr(ptr))
 }
 
 func RegisterClassEx(cls *WNDCLASSEX) (ATOM, error) {
@@ -381,6 +392,16 @@ func BitBlt(hdc HDC, x, y, cx, cy INT, src HDC, x1, y1 INT, op DWORD) error {
 	}
 
 	return nil
+}
+
+func SetDIBitsToDevice(hdc HDC, xDest, yDest, width, height, xSrc, ySrc, startScan, lines INT, bits LPVOID, bmi *BITMAPINFO, colorUse UINT) INT {
+	ret, _, _ := syscall.SyscallN(procSetDIBitsToDevice.Addr(), uintptr(hdc), uintptr(xDest), uintptr(yDest), uintptr(width), uintptr(height), uintptr(xSrc), uintptr(ySrc), uintptr(startScan), uintptr(lines), uintptr(bits), uintptr(unsafe.Pointer(bmi)), uintptr(colorUse))
+	return INT(ret)
+}
+
+func StretchDIBits(hdc HDC, xDest, yDest, destWidth, destHeight, xSrc, ySrc, srcWidth, srcHeight INT, bits LPVOID, bmi *BITMAPINFO, usage UINT, rop DWORD) INT {
+	ret, _, _ := syscall.SyscallN(procStretchDIBits.Addr(), uintptr(hdc), uintptr(xDest), uintptr(yDest), uintptr(destWidth), uintptr(destHeight), uintptr(xSrc), uintptr(ySrc), uintptr(srcWidth), uintptr(srcHeight), uintptr(bits), uintptr(unsafe.Pointer(bmi)), uintptr(usage), uintptr(rop))
+	return INT(ret)
 }
 
 func ChoosePixelFormat(hdc HDC, pfd LPPIXELFORMATDESCRIPTOR) (INT, error) {
