@@ -2,13 +2,17 @@ package x11
 
 import (
 	"errors"
-	"github.com/goexlib/cgo"
+	"image"
+
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/opengl"
+
 	"github.com/golang-gui/goui/platform/x11/libs/glx"
 	"github.com/golang-gui/goui/platform/x11/libs/xlib"
+
+	"github.com/goexlib/cgo"
 )
 
 type Window struct {
@@ -144,7 +148,7 @@ func (w *Window) Close() error {
 	return nil
 }
 
-func (w *Window) Draw(img common.Image) error {
+func (w *Window) Draw(img image.Image) error {
 	bmp, ok := graphics.ToBitmap(img, graphics.PixelFormatBGRA)
 	if !ok {
 		bmp = graphics.CopyToBitmap(img, graphics.PixelFormatBGRA, nil)

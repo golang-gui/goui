@@ -2,13 +2,16 @@ package cocoa
 
 import (
 	"fmt"
+	"image"
+
+	"github.com/golang-gui/goui/platform/common"
+	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/graphics"
+
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/appkit"
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/core_foundation"
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/core_graphics"
 	"github.com/golang-gui/goui/platform/cocoa/frameworks/foundation"
-	"github.com/golang-gui/goui/platform/common"
-	"github.com/golang-gui/goui/platform/events"
-	"github.com/golang-gui/goui/platform/graphics"
 )
 
 type Window struct {
@@ -116,7 +119,7 @@ func (w *Window) ScaleFactor() (float64, error) {
 	return w.window.BackingScaleFactor(), nil
 }
 
-func (w *Window) Draw(img common.Image) error {
+func (w *Window) Draw(img image.Image) error {
 	bmp, ok := graphics.ToBitmap(img, graphics.PixelFormatRGBA)
 	if !ok {
 		bmp = graphics.CopyToBitmap(img, graphics.PixelFormatRGBA, nil)

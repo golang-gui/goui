@@ -1,13 +1,15 @@
 package win32
 
 import (
-	"github.com/golang-gui/goui/platform/graphics"
+	"image"
 	"runtime"
 	"syscall"
 	"unsafe"
 
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/graphics"
+
 	"github.com/golang-gui/goui/platform/win32/winapi"
 )
 
@@ -88,7 +90,7 @@ func (w *Window) Close() error {
 	return nil
 }
 
-func (w *Window) Draw(img common.Image) error {
+func (w *Window) Draw(img image.Image) error {
 	bmp, ok := graphics.ToBitmap(img, graphics.PixelFormatBGRA)
 	if !ok {
 		bmp = graphics.CopyToBitmap(img, graphics.PixelFormatBGRA, nil)

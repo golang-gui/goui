@@ -1,5 +1,7 @@
 package common
 
+import "image"
+
 type Window interface {
 	NativeHandle() uintptr
 	Destroy()
@@ -9,6 +11,6 @@ type Window interface {
 	SetTitle(title string) error
 	Show() error
 	Close() error
-	Draw(img Image) error
+	Draw(img image.Image) error
 	ScaleFactor() (float64, error)
 }
