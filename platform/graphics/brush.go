@@ -8,6 +8,15 @@ type Color struct {
 	R, G, B, A float32
 }
 
+func RGB(r, g, b byte) Color {
+	return Color{
+		R: float32(r) / 255,
+		G: float32(g) / 255,
+		B: float32(b) / 255,
+		A: 1.0,
+	}
+}
+
 func RGBA(r, g, b, a byte) Color {
 	return Color{
 		R: float32(r) / 255,
