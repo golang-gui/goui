@@ -3,7 +3,6 @@ package directwrite
 import (
 	"bytes"
 	"github.com/golang-gui/goui/platform/typography"
-	"github.com/golang-gui/goui/platform/win32/sdk/com"
 	"image/color"
 	"image/png"
 	"os"
@@ -11,8 +10,6 @@ import (
 )
 
 func Test_TextLayout(t *testing.T) {
-	com.Initialize(0)
-
 	c, err := NewContext()
 	if err != nil {
 		t.Fatal(err)

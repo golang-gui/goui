@@ -22,6 +22,11 @@ type Context struct {
 }
 
 func NewContext() (_ *Context, err error) {
+	hr := com.Initialize(com.COINIT_MULTITHREADED)
+	if hr.Failed() {
+		return nil, fmt.Errorf("com initialize err: %v", hr)
+	}
+
 	c := new(Context)
 	c.dwFactory, err = dwrite.CreateFactory[dwrite.Factory](dwrite.DWRITE_FACTORY_TYPE_SHARED, dwrite.IID_IDWriteFactory)
 	if err != nil {
@@ -36,6 +41,7 @@ func (c *Context) Destroy() {
 		c.dwFactory.Release()
 		c.dwFactory = nil
 	}
+	com.Uninitialize()
 }
 
 func (c *Context) Name() string {
