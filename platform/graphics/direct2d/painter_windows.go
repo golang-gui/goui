@@ -40,7 +40,10 @@ func NewPainter(win NativeWindow, typoCtx typography.Context) (_ *Painter, err e
 		return nil, fmt.Errorf("create d2d factory err: %v", err)
 	}
 
-	props := d2d1.RenderTargetProperties{}
+	props := d2d1.RenderTargetProperties{
+		DpiX: 96,
+		DpiY: 96,
+	}
 	hwndProps := d2d1.HwndRenderTargetProperties{
 		Hwnd: win.NativeHandle(),
 	}
@@ -79,10 +82,7 @@ func (p *Painter) Destroy() {
 	}
 }
 
-func (p *Painter) Begin(width, height, scale float32) {
-	dpi := 96 * scale
-	p.render.SetDpi(dpi, dpi)
-
+func (p *Painter) Begin(width, height uint) {
 	p.sizeU.Width = uint32(width)
 	p.sizeU.Height = uint32(height)
 	p.render.Resize(&p.sizeU)

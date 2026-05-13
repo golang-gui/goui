@@ -8,7 +8,7 @@ import (
 type Painter interface {
 	Name() string
 	Destroy()
-	Begin(width, height, scale float32)
+	Begin(width, height uint)
 	End()
 	Clear(color Color)
 	FillRect(rect Rectangle, brush Brush)

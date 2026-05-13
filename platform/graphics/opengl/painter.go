@@ -58,11 +58,11 @@ func (p *Painter) Destroy() {
 	}
 }
 
-func (p *Painter) Begin(width, height, scale float32) {
+func (p *Painter) Begin(width, height uint) {
 	p.ctx.MakeCurrent()
 	gl.Viewport(0, 0, int(width), int(height))
 	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT)
-	p.vg.BeginFrame(int(width), int(height), scale)
+	p.vg.BeginFrame(int(width), int(height), 1.0)
 }
 
 func (p *Painter) End() {

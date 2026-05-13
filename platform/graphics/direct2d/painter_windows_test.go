@@ -13,7 +13,7 @@ import (
 var painter *Painter
 
 func render(width, height uint) {
-	painter.Begin(float32(width), float32(height), 1.0)
+	painter.Begin(width, height)
 	{
 		painter.Clear(graphics.RGBA(180, 180, 180, 255))
 		painter.FillRoundRect(graphics.Rect(50, 50, 100, 60), 12, graphics.RGBA(100, 100, 100, 255))
