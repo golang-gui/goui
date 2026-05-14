@@ -163,11 +163,11 @@ func GetProcAddress(name string) (proc uintptr, err error) {
 	if err != nil {
 		proc, _, err = glXGetProcAddressARB.CallRaw(uintptr(cName))
 		if err != nil {
-			handle, err := libgl.Handle()
+			err = libgl.Load()
 			if err != nil {
 				return 0, err
 			}
-			return cgo.Dlsym(handle, cgo.GoStringNTemp(cName, len(name)+1))
+			return cgo.Dlsym(libgl.Handle(), cgo.GoStringNTemp(cName, len(name)+1))
 		}
 	}
 	runtime.KeepAlive(cName)

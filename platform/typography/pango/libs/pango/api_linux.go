@@ -489,8 +489,7 @@ func (fd FontDescription) SetSize(size int) {
 
 func (fd FontDescription) SetAbsoluteSize(size float64) {
 	//void pango_font_description_set_absolute_size(PangoFontDescription* desc, double size)
-	addr, _ := pangoFontDescriptionSetAbsoluteSize.Addr()
-	cgo.Call(addr, fd, size)
+	cgo.Call(pangoFontDescriptionSetAbsoluteSize.Addr(), fd, size)
 }
 
 // --- PangoContext ---

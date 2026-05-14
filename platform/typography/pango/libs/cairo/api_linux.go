@@ -83,17 +83,13 @@ func (cr Context) Destroy() {
 // SetSourceRGB sets the source pattern to an opaque color.
 func (cr Context) SetSourceRGB(r, g, b float64) {
 	// void cairo_set_source_rgb(cairo_t* cr, double red, double green, double blue)
-	_ = cairoSetSourceRgb.Find()
-	addr, _ := cairoSetSourceRgb.Addr()
-	cgo.Call(addr, uintptr(cr), r, g, b)
+	cgo.Call(cairoSetSourceRgb.Addr(), uintptr(cr), r, g, b)
 }
 
 // SetSourceRGBA sets the source pattern to a translucent color.
 func (cr Context) SetSourceRGBA(r, g, b, a float64) {
 	// void cairo_set_source_rgba(cairo_t* cr, double red, double green, double blue, double alpha)
-	_ = cairoSetSourceRgba.Find()
-	addr, _ := cairoSetSourceRgba.Addr()
-	cgo.Call(addr, uintptr(cr), r, g, b, a)
+	cgo.Call(cairoSetSourceRgba.Addr(), uintptr(cr), r, g, b, a)
 }
 
 // Paint paints the current source everywhere within the current clip region.
@@ -105,17 +101,13 @@ func (cr Context) Paint() {
 // MoveTo begins a new sub-path.
 func (cr Context) MoveTo(x, y float64) {
 	// void cairo_move_to(cairo_t* cr, double x, double y)
-	_ = cairoMoveTo.Find()
-	addr, _ := cairoMoveTo.Addr()
-	cgo.Call(addr, uintptr(cr), x, y)
+	cgo.Call(cairoMoveTo.Addr(), uintptr(cr), x, y)
 }
 
 // LineTo adds a line to the path from the current point to (x, y).
 func (cr Context) LineTo(x, y float64) {
 	// void cairo_line_to(cairo_t* cr, double x, double y)
-	_ = cairoLineTo.Find()
-	addr, _ := cairoLineTo.Addr()
-	cgo.Call(addr, uintptr(cr), x, y)
+	cgo.Call(cairoLineTo.Addr(), uintptr(cr), x, y)
 }
 
 // Stroke strokes the current path according to the current line width, line join, line cap, and dash settings.
@@ -127,9 +119,7 @@ func (cr Context) Stroke() {
 // SetLineWidth sets the current line width within the cairo context.
 func (cr Context) SetLineWidth(width float64) {
 	// void cairo_set_line_width(cairo_t* cr, double width)
-	_ = cairoSetLineWidth.Find()
-	addr, _ := cairoSetLineWidth.Addr()
-	cgo.Call(addr, uintptr(cr), width)
+	cgo.Call(cairoSetLineWidth.Addr(), uintptr(cr), width)
 }
 
 // SetFontOptions sets a set of custom font rendering options for the cairo context.
