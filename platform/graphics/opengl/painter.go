@@ -2,10 +2,10 @@ package opengl
 
 import (
 	"fmt"
-	"github.com/golang-gui/goui/platform/graphics/utils"
 	"image"
 
 	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/graphics/utils"
 	"github.com/golang-gui/goui/platform/typography"
 
 	"github.com/golang-gui/nanovgo"
