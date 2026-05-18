@@ -44,11 +44,11 @@ func newContext(win NativeWindow, share Context, config Config) (_ Context, err 
 	}
 
 	if config.PixelFormat.DepthBits != DontCare {
-		setAttrib(opengl.NSOpenGLPFAAlphaSize, config.PixelFormat.DepthBits)
+		setAttrib(opengl.NSOpenGLPFADepthSize, config.PixelFormat.DepthBits)
 	}
 
 	if config.PixelFormat.StencilBits != DontCare {
-		setAttrib(opengl.NSOpenGLPFAAlphaSize, config.PixelFormat.StencilBits)
+		setAttrib(opengl.NSOpenGLPFAStencilSize, config.PixelFormat.StencilBits)
 	}
 
 	if config.PixelFormat.Stereo {
