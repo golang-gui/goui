@@ -21,7 +21,7 @@ func Test_TextLayout(t *testing.T) {
 			Family: "Microsoft YaHei",
 			Size:   32,
 		},
-		WordWrap:  typography.WrapWordChar,
+		WrapMode:  typography.WrapWordChar,
 		TextAlign: typography.TextAlignCenter,
 		LineAlign: typography.LineAlignCenter,
 	}

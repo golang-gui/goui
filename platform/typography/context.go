@@ -13,7 +13,7 @@ type Context interface {
 
 type TextFormat struct {
 	Font      FontInfo
-	WordWrap  WrapMode
+	WrapMode  WrapMode
 	TextAlign TextAlignment
 	LineAlign LineAlignment
 }
@@ -29,7 +29,6 @@ type WrapMode int
 
 const (
 	WrapNone WrapMode = iota
-	WrapWord
 	WrapChar
 	WrapWordChar
 )

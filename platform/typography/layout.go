@@ -10,7 +10,7 @@ type TextLayout interface {
 	SetSize(maxWidth, maxHeight float32)
 	SetTextAlignment(align TextAlignment)
 	SetLineAlignment(align LineAlignment)
-	SetWordWrap(wrap WrapMode)
+	SetWrapMode(wrap WrapMode)
 	SetTextFont(start, length int, font FontInfo)
 	SetTextColor(start, length int, c color.Color)
 	SetUnderline(start, length int, underline bool)

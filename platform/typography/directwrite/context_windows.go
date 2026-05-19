@@ -105,11 +105,9 @@ func (c *Context) CreateTextFormat(format typography.TextFormat) (textFormat *dw
 		return nil, hr
 	}
 
-	switch format.WordWrap {
+	switch format.WrapMode {
 	case typography.WrapNone:
 		textFormat.SetWordWrapping(dwrite.DWRITE_WORD_WRAPPING_NO_WRAP)
-	case typography.WrapWord:
-		textFormat.SetWordWrapping(dwrite.DWRITE_WORD_WRAPPING_WHOLE_WORD)
 	case typography.WrapChar:
 		textFormat.SetWordWrapping(dwrite.DWRITE_WORD_WRAPPING_CHARACTER)
 	case typography.WrapWordChar:
@@ -251,13 +249,11 @@ func (t *TextLayout) SetLineAlignment(align typography.LineAlignment) {
 	}
 }
 
-func (t *TextLayout) SetWordWrap(wrap typography.WrapMode) {
-	t.format.WordWrap = wrap
+func (t *TextLayout) SetWrapMode(wrap typography.WrapMode) {
+	t.format.WrapMode = wrap
 	switch wrap {
 	case typography.WrapNone:
 		t.layout.SetWordWrapping(dwrite.DWRITE_WORD_WRAPPING_NO_WRAP)
-	case typography.WrapWord:
-		t.layout.SetWordWrapping(dwrite.DWRITE_WORD_WRAPPING_WHOLE_WORD)
 	case typography.WrapChar:
 		t.layout.SetWordWrapping(dwrite.DWRITE_WORD_WRAPPING_CHARACTER)
 	case typography.WrapWordChar:
