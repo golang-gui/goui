@@ -1,6 +1,6 @@
 package platform
 
-import "github.com/golang-gui/goui/platform/cocoa"
+import "github.com/golang-gui/goui/platform/darwin/cocoa"
 
 func newPlatform(name string) (Platform, error) {
 	if name != "cocoa" {

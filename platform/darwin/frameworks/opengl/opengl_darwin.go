@@ -1,17 +1,17 @@
 package opengl
 
 import (
+	. "github.com/golang-gui/goui/platform/darwin/frameworks/appkit"
+	. "github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
+	"github.com/golang-gui/goui/platform/darwin/frameworks/utils"
+
 	"github.com/ebitengine/purego/objc"
-	"github.com/goexlib/cgo"
-	"github.com/golang-gui/goui/platform/cocoa/frameworks/appkit"
-	"github.com/golang-gui/goui/platform/cocoa/frameworks/common"
-	"github.com/golang-gui/goui/platform/cocoa/frameworks/foundation"
 )
 
-var handle uintptr
+var framework utils.Framework
 
-func Init(load common.LoadFunc) (err error) {
-	handle, err = load("OpenGL")
+func InitOpenGL() (err error) {
+	framework, err = utils.LoadSystemFramework("OpenGL")
 	if err != nil {
 		return
 	}
@@ -22,7 +22,7 @@ func Init(load common.LoadFunc) (err error) {
 }
 
 func GetProcAddress(name string) (fn uintptr, err error) {
-	return cgo.Dlsym(handle, name)
+	return framework.GetSymbol(name)
 }
 
 func initNSOpenGLContext() {
@@ -52,8 +52,8 @@ var (
 )
 
 type (
-	NSOpenGLContextClass struct{ foundation.NSObjectClass }
-	NSOpenGLContext      struct{ foundation.NSObject }
+	NSOpenGLContextClass struct{ NSObjectClass }
+	NSOpenGLContext      struct{ NSObject }
 )
 
 func (c NSOpenGLContextClass) Alloc() (inst NSOpenGLContext) {
@@ -80,7 +80,7 @@ func (self NSOpenGLContext) SetValue(value int, forParameter NSOpenGLContextPara
 	return
 }
 
-func (self NSOpenGLContext) SetView(view appkit.NSView) {
+func (self NSOpenGLContext) SetView(view NSView) {
 	self.Send(NSOpenGLContextSel.SetView, view)
 	return
 }
@@ -113,8 +113,8 @@ var (
 )
 
 type (
-	NSOpenGLPixelFormatClass struct{ foundation.NSObjectClass }
-	NSOpenGLPixelFormat      struct{ foundation.NSObject }
+	NSOpenGLPixelFormatClass struct{ NSObjectClass }
+	NSOpenGLPixelFormat      struct{ NSObject }
 )
 
 func (c NSOpenGLPixelFormatClass) Alloc() (inst NSOpenGLPixelFormat) {
@@ -127,7 +127,7 @@ func (self NSOpenGLPixelFormat) InitWithAttributes(attribs []NSOpenGLPixelFormat
 	return
 }
 
-type NSOpenGLContextParameter foundation.NSInteger
+type NSOpenGLContextParameter NSInteger
 
 const (
 	NSOpenGLContextParameterSwapInterval           NSOpenGLContextParameter = 222

@@ -3,16 +3,17 @@ package foundation
 import (
 	"unsafe"
 
+	. "github.com/golang-gui/goui/platform/darwin/frameworks/core_graphics"
+	"github.com/golang-gui/goui/platform/darwin/frameworks/utils"
+
 	"github.com/ebitengine/purego/objc"
 	"github.com/goexlib/cgo"
-	"github.com/golang-gui/goui/platform/cocoa/frameworks/common"
-	"github.com/golang-gui/goui/platform/cocoa/frameworks/core_graphics"
 )
 
-var handle uintptr
+var framework utils.Framework
 
-func Init(load common.LoadFunc) (err error) {
-	handle, err = load("Foundation")
+func InitFoundation() (err error) {
+	framework, err = utils.LoadSystemFramework("Foundation")
 	if err != nil {
 		return
 	}
@@ -42,12 +43,12 @@ type (
 
 	NSInteger  = int
 	NSUInteger = uint
-	NSPoint    = core_graphics.CGPoint
-	NSSize     = core_graphics.CGSize
-	NSRect     = core_graphics.CGRect
+	NSPoint    = CGPoint
+	NSSize     = CGSize
+	NSRect     = CGRect
 )
 
-func NSMakeRect(x, y, w, h core_graphics.CGFloat) (r NSRect) {
+func NSMakeRect(x, y, w, h CGFloat) (r NSRect) {
 	return NSRect{
 		Origin: NSPoint{x, y},
 		Size:   NSSize{w, h},
@@ -245,11 +246,10 @@ func (n NSNotification) Object() objc.ID {
 // AutoReleasePool
 
 func initAutoReleasePool() (err error) {
-	err = cgo.RegisterLibFunc(&objc_autoreleasePoolPush, handle, "objc_autoreleasePoolPush")
-	if err != nil {
-		return
-	}
-	return cgo.RegisterLibFunc(&objc_autoreleasePoolPop, handle, "objc_autoreleasePoolPop")
+	return framework.LoadFunctions([]utils.Function{
+		{Name: "objc_autoreleasePoolPush", PFunc: &objc_autoreleasePoolPush},
+		{Name: "objc_autoreleasePoolPop", PFunc: &objc_autoreleasePoolPop},
+	})
 }
 
 var (
@@ -267,13 +267,9 @@ func AutoReleasePool(block func()) {
 // NSRunLoopMode
 
 func initNSRunLoopMode() (err error) {
-	var pv *NSRunLoopMode
-	if pv, err = cgo.GetExternVariant[NSRunLoopMode](handle, "NSDefaultRunLoopMode"); err != nil {
-		return
-	}
-
-	NSDefaultRunLoopMode = *pv
-	return nil
+	return framework.LoadConstants([]utils.Constant{
+		utils.Const[NSRunLoopMode]{Name: "NSDefaultRunLoopMode", PVar: &NSDefaultRunLoopMode},
+	})
 }
 
 type NSRunLoopMode NSString

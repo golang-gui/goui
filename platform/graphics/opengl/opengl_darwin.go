@@ -2,9 +2,9 @@ package opengl
 
 import (
 	"errors"
-	"github.com/golang-gui/goui/platform/cocoa/frameworks/appkit"
-	"github.com/golang-gui/goui/platform/cocoa/frameworks/foundation"
-	"github.com/golang-gui/goui/platform/cocoa/frameworks/opengl"
+	"github.com/golang-gui/goui/platform/darwin/frameworks/appkit"
+	"github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
+	"github.com/golang-gui/goui/platform/darwin/frameworks/opengl"
 )
 
 type nsglContext struct {

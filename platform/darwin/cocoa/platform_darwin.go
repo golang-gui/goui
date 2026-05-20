@@ -1,12 +1,13 @@
 package cocoa
 
 import (
-	"github.com/golang-gui/goui/platform/cocoa/frameworks"
-	"github.com/golang-gui/goui/platform/cocoa/frameworks/appkit"
-	"github.com/golang-gui/goui/platform/cocoa/frameworks/foundation"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
+
+	"github.com/golang-gui/goui/platform/darwin/frameworks"
+	"github.com/golang-gui/goui/platform/darwin/frameworks/appkit"
+	"github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
 )
 
 type Platform struct {

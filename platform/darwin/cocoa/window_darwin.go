@@ -8,10 +8,10 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 
-	"github.com/golang-gui/goui/platform/cocoa/frameworks/appkit"
-	"github.com/golang-gui/goui/platform/cocoa/frameworks/core_foundation"
-	"github.com/golang-gui/goui/platform/cocoa/frameworks/core_graphics"
-	"github.com/golang-gui/goui/platform/cocoa/frameworks/foundation"
+	"github.com/golang-gui/goui/platform/darwin/frameworks/appkit"
+	"github.com/golang-gui/goui/platform/darwin/frameworks/core_foundation"
+	"github.com/golang-gui/goui/platform/darwin/frameworks/core_graphics"
+	"github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
 )
 
 type Window struct {
