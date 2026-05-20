@@ -6,7 +6,7 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/opengl"
-	"github.com/golang-gui/goui/platform/x11/libs/xlib"
+	"github.com/golang-gui/goui/platform/linux/libs/xlib"
 )
 
 type Platform struct {

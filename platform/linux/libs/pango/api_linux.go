@@ -2,7 +2,7 @@ package pango
 
 import (
 	"github.com/goexlib/cgo"
-	"github.com/golang-gui/goui/platform/typography/pango/libs/glib"
+	"github.com/golang-gui/goui/platform/linux/libs/glib"
 	"runtime"
 )
 

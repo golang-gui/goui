@@ -3,8 +3,8 @@ package x11
 import (
 	"errors"
 	"github.com/golang-gui/goui/platform/events"
-	"github.com/golang-gui/goui/platform/x11/libs/libc"
-	"github.com/golang-gui/goui/platform/x11/libs/xlib"
+	"github.com/golang-gui/goui/platform/linux/libs/libc"
+	"github.com/golang-gui/goui/platform/linux/libs/xlib"
 )
 
 type Event struct {

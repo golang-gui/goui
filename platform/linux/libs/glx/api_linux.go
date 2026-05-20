@@ -2,7 +2,7 @@ package glx
 
 import (
 	"github.com/goexlib/cgo"
-	"github.com/golang-gui/goui/platform/x11/libs/xlib"
+	"github.com/golang-gui/goui/platform/linux/libs/xlib"
 	"runtime"
 )
 

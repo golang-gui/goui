@@ -1,6 +1,6 @@
 package platform
 
-import "github.com/golang-gui/goui/platform/x11"
+import "github.com/golang-gui/goui/platform/linux/x11"
 
 func newPlatform(name string) (Platform, error) {
 	if name != "x11" {

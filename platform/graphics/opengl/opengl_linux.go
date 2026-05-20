@@ -4,8 +4,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/golang-gui/goui/platform/x11/libs/glx"
-	"github.com/golang-gui/goui/platform/x11/libs/xlib"
+	"github.com/golang-gui/goui/platform/linux/libs/glx"
+	"github.com/golang-gui/goui/platform/linux/libs/xlib"
 )
 
 func InitGLX(display xlib.Display) error {

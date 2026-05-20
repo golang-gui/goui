@@ -9,8 +9,8 @@ import (
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/opengl"
 
-	"github.com/golang-gui/goui/platform/x11/libs/glx"
-	"github.com/golang-gui/goui/platform/x11/libs/xlib"
+	"github.com/golang-gui/goui/platform/linux/libs/glx"
+	"github.com/golang-gui/goui/platform/linux/libs/xlib"
 
 	"github.com/goexlib/cgo"
 )

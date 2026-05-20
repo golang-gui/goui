@@ -11,9 +11,9 @@ import (
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
 
-	"github.com/golang-gui/goui/platform/typography/pango/libs/cairo"
-	"github.com/golang-gui/goui/platform/typography/pango/libs/pango"
-	"github.com/golang-gui/goui/platform/typography/pango/libs/pango_cairo"
+	"github.com/golang-gui/goui/platform/linux/libs/cairo"
+	"github.com/golang-gui/goui/platform/linux/libs/pango"
+	"github.com/golang-gui/goui/platform/linux/libs/pango_cairo"
 )
 
 type Context struct {
