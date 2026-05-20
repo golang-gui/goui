@@ -2,7 +2,7 @@ package wic
 
 import (
 	"github.com/goexlib/cgo"
-	"github.com/golang-gui/goui/platform/win32/sdk/com"
+	"github.com/golang-gui/goui/platform/windows/sdk/com"
 )
 
 var (

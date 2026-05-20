@@ -11,7 +11,7 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 
-	"github.com/golang-gui/goui/platform/win32/winapi"
+	"github.com/golang-gui/goui/platform/windows/sdk/winapi"
 
 	"github.com/goexlib/cgo"
 )

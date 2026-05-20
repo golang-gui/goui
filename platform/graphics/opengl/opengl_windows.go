@@ -5,8 +5,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/golang-gui/goui/platform/win32/wgl"
-	"github.com/golang-gui/goui/platform/win32/winapi"
+	"github.com/golang-gui/goui/platform/windows/sdk/wgl"
+	"github.com/golang-gui/goui/platform/windows/sdk/winapi"
 )
 
 type wglContext struct {

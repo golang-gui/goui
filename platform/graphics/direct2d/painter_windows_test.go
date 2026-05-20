@@ -5,7 +5,7 @@ import (
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/directwrite"
-	"github.com/golang-gui/goui/platform/win32"
+	"github.com/golang-gui/goui/platform/windows/win32"
 	"runtime"
 	"testing"
 )

@@ -8,9 +8,9 @@ import (
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/directwrite"
 
-	"github.com/golang-gui/goui/platform/win32/sdk/com"
-	"github.com/golang-gui/goui/platform/win32/sdk/d2d1"
-	"github.com/golang-gui/goui/platform/win32/sdk/dwrite"
+	"github.com/golang-gui/goui/platform/windows/sdk/com"
+	"github.com/golang-gui/goui/platform/windows/sdk/d2d1"
+	"github.com/golang-gui/goui/platform/windows/sdk/dwrite"
 )
 
 type Painter struct {

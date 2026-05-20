@@ -5,8 +5,8 @@ import (
 	"syscall"
 
 	"github.com/goexlib/cgo"
-	"github.com/golang-gui/goui/platform/win32/sdk/com"
-	"github.com/golang-gui/goui/platform/win32/winapi"
+	"github.com/golang-gui/goui/platform/windows/sdk/com"
+	"github.com/golang-gui/goui/platform/windows/sdk/winapi"
 )
 
 var (

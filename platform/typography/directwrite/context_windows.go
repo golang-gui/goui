@@ -8,11 +8,11 @@ import (
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/utils"
 
-	"github.com/golang-gui/goui/platform/win32/sdk/com"
-	"github.com/golang-gui/goui/platform/win32/sdk/d2d1"
-	"github.com/golang-gui/goui/platform/win32/sdk/dwrite"
-	"github.com/golang-gui/goui/platform/win32/sdk/dxgi"
-	"github.com/golang-gui/goui/platform/win32/sdk/wic"
+	"github.com/golang-gui/goui/platform/windows/sdk/com"
+	"github.com/golang-gui/goui/platform/windows/sdk/d2d1"
+	"github.com/golang-gui/goui/platform/windows/sdk/dwrite"
+	"github.com/golang-gui/goui/platform/windows/sdk/dxgi"
+	"github.com/golang-gui/goui/platform/windows/sdk/wic"
 )
 
 type Context struct {

@@ -6,7 +6,7 @@ import (
 	"unsafe"
 
 	"github.com/goexlib/cgo"
-	"github.com/golang-gui/goui/platform/win32/winapi"
+	"github.com/golang-gui/goui/platform/windows/sdk/winapi"
 )
 
 var (

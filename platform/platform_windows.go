@@ -1,6 +1,6 @@
 package platform
 
-import "github.com/golang-gui/goui/platform/win32"
+import "github.com/golang-gui/goui/platform/windows/win32"
 
 func newPlatform(name string) (Platform, error) {
 	if name != "win32" {
