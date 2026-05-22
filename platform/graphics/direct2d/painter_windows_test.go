@@ -1,16 +1,17 @@
 package direct2d
 
 import (
+	"runtime"
+	"testing"
+
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/directwrite"
 	"github.com/golang-gui/goui/platform/windows/win32"
-	"runtime"
-	"testing"
 )
 
-var painter *Painter
+var painter graphics.Painter
 
 func render(width, height uint) {
 	painter.Begin(width, height)

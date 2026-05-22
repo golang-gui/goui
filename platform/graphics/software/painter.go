@@ -32,7 +32,7 @@ type Drawable interface {
 	Draw(img image.Image) error
 }
 
-func NewPainter(drawable Drawable, typo typography.Context) (*Painter, error) {
+func NewPainter(drawable Drawable, typo typography.Context) (graphics.Painter, error) {
 	p := new(Painter)
 	p.drawable = drawable
 	p.typo = typo
@@ -251,6 +251,13 @@ func (p *Painter) DrawImage(rect graphics.Rectangle, img image.Image) {
 		bitmap = graphics.CopyToBitmap(img, graphics.PixelFormatRGBA, nil)
 	}
 	p.drawBitmap(rect, bitmap)
+}
+
+func (p *Painter) SetClipRect(rect graphics.Rectangle) {
+	p.scanner.SetClip(image.Rectangle{})
+	if rect.X != 0 || rect.Y != 0 || rect.Width != 0 || rect.Height != 0 {
+		p.scanner.SetClip(toClipRect(rect.X, rect.Y, rect.Width, rect.Height))
+	}
 }
 
 func (p *Painter) drawBitmap(rect graphics.Rectangle, bitmap graphics.Bitmap) {

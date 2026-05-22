@@ -24,13 +24,14 @@ type Painter struct {
 	rect       d2d1.RectF
 	roundRect  d2d1.RoundRect
 	ellipse    d2d1.Ellipse
+	clip       d2d1.RectF
 }
 
 type NativeWindow interface {
 	NativeHandle() uintptr
 }
 
-func NewPainter(win NativeWindow, typoCtx typography.Context) (_ *Painter, err error) {
+func NewPainter(win NativeWindow, typoCtx typography.Context) (_ graphics.Painter, err error) {
 	p := new(Painter)
 	p.typoCtx = typoCtx
 	p.dwTypo, _ = typoCtx.(*directwrite.Context)
@@ -197,6 +198,21 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 
 func (p *Painter) DrawImage(rect graphics.Rectangle, img image.Image) {
 	panic("TODO impl")
+}
+
+func (p *Painter) SetClipRect(rect graphics.Rectangle) {
+	var zero d2d1.RectF
+	if p.clip != zero {
+		p.render.PopAxisAlignedClip()
+		p.clip = zero
+	}
+	if rect.X != 0 || rect.Y != 0 || rect.Width != 0 || rect.Height != 0 {
+		p.clip.Left = rect.X
+		p.clip.Top = rect.Y
+		p.clip.Right = rect.X + rect.Width
+		p.clip.Bottom = rect.Y + rect.Height
+		p.render.PushAxisAlignedClip(&p.clip, d2d1.D2D1_ANTIALIAS_MODE_ALIASED)
+	}
 }
 
 func (p *Painter) createPathGeometry(path graphics.Path, fill bool) (geometry *d2d1.Geometry, err error) {

@@ -271,6 +271,14 @@ func (this *RenderTarget) DrawBitmap(bitmap *Bitmap, dstRect *RectF, opacity flo
 	cgo.Call(this.class().DrawBitmap, this, bitmap, dstRect, opacity, interMode, srcRect)
 }
 
+func (this *RenderTarget) PushAxisAlignedClip(clipRect *RectF, antialiasMode AntialiasMode) {
+	this.class().PushAxisAlignedClip.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(clipRect)), uintptr(antialiasMode))
+}
+
+func (this *RenderTarget) PopAxisAlignedClip() {
+	this.class().PopAxisAlignedClip.CallRaw(uintptr(cgo.Pointer(this)))
+}
+
 func (this *RenderTarget) class() *RenderTargetClass {
 	return (*RenderTargetClass)(this.Class)
 }

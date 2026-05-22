@@ -1,8 +1,9 @@
 package graphics
 
 import (
-	"github.com/golang-gui/goui/platform/typography"
 	"image"
+
+	"github.com/golang-gui/goui/platform/typography"
 )
 
 type Painter interface {
@@ -23,4 +24,5 @@ type Painter interface {
 	DrawText(rect Rectangle, text string, format typography.TextFormat, brush Brush)
 	DrawTextLayout(origin Point, layout typography.TextLayout, brush Brush)
 	DrawImage(rect Rectangle, img image.Image)
+	SetClipRect(rect Rectangle)
 }

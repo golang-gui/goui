@@ -299,10 +299,10 @@ const (
 	D2D1_BITMAP_INTERPOLATION_MODE_LINEAR = BitmapInterpolationMode(D2D1_INTERPOLATION_MODE_DEFINITION_LINEAR)
 )
 
-// / <summary>
-// / This defines the superset of interpolation mode supported by D2D APIs
-// / and built-in effects
-// / </summary>
+// <summary>
+// This defines the superset of interpolation mode supported by D2D APIs
+// and built-in effects
+// </summary>
 const (
 	D2D1_INTERPOLATION_MODE_DEFINITION_NEAREST_NEIGHBOR    = 0
 	D2D1_INTERPOLATION_MODE_DEFINITION_LINEAR              = 1
@@ -312,4 +312,14 @@ const (
 	D2D1_INTERPOLATION_MODE_DEFINITION_HIGH_QUALITY_CUBIC  = 5
 	D2D1_INTERPOLATION_MODE_DEFINITION_FANT                = 6
 	D2D1_INTERPOLATION_MODE_DEFINITION_MIPMAP_LINEAR       = 7
+)
+
+type AntialiasMode int32
+
+const (
+	// The edges of each primitive are antialiased sequentially.
+	D2D1_ANTIALIAS_MODE_PER_PRIMITIVE AntialiasMode = 0
+
+	// Each pixel is rendered if its pixel center is contained by the geometry.
+	D2D1_ANTIALIAS_MODE_ALIASED AntialiasMode = 1
 )

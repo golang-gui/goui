@@ -19,7 +19,7 @@ type Painter struct {
 	imgs []int
 }
 
-func NewPainter(win NativeWindow, typoCtx typography.Context) (_ *Painter, err error) {
+func NewPainter(win NativeWindow, typoCtx typography.Context) (_ graphics.Painter, err error) {
 	p := new(Painter)
 	p.typo = typoCtx
 	p.ctx, err = NewContext(win, nil, DefaultConfig)
@@ -204,6 +204,13 @@ func (p *Painter) DrawImage(rect graphics.Rectangle, img image.Image) {
 		bitmap = graphics.CopyToBitmap(img, graphics.PixelFormatRGBA, nil)
 	}
 	p.drawBitmap(rect, bitmap)
+}
+
+func (p *Painter) SetClipRect(rect graphics.Rectangle) {
+	p.vg.ResetScissor()
+	if rect.X != 0 || rect.Y != 0 || rect.Width != 0 || rect.Height != 0 {
+		p.vg.Scissor(rect.X, rect.Y, rect.Width, rect.Height)
+	}
 }
 
 func (p *Painter) drawBitmap(rect graphics.Rectangle, bitmap graphics.Bitmap) {
