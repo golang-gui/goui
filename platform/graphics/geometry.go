@@ -1,23 +1,13 @@
 package graphics
 
-type Point struct {
-	X, Y float32
-}
+import "github.com/golang-gui/goui/core/geometry"
 
-type Pos = Point
-
-func (p Point) Add(q Point) Point {
-	return Point{p.X + q.X, p.Y + q.Y}
-}
-
-type Size struct {
-	Width, Height float32
-}
-
-type Rectangle struct {
-	Pos
-	Size
-}
+type (
+	Point     = geometry.Point
+	Pos       = geometry.Pos
+	Size      = geometry.Size
+	Rectangle = geometry.Rectangle
+)
 
 func Rect(x, y, w, h float32) Rectangle {
 	return Rectangle{
@@ -30,41 +20,4 @@ func Rect(x, y, w, h float32) Rectangle {
 			Height: h,
 		},
 	}
-}
-
-func (r Rectangle) LeftTop() Point {
-	return r.Pos
-}
-
-func (r Rectangle) RightTop() Point {
-	return Point{
-		X: r.X + r.Width,
-		Y: r.Y,
-	}
-}
-
-func (r Rectangle) RightBottom() Point {
-	return Point{
-		X: r.X + r.Width,
-		Y: r.Y + r.Height,
-	}
-}
-
-func (r Rectangle) LeftBottom() Point {
-	return Point{
-		X: r.X,
-		Y: r.Y + r.Height,
-	}
-}
-
-func (r Rectangle) Center() Point {
-	return Point{
-		X: r.X + r.Width/2,
-		Y: r.Y + r.Height/2,
-	}
-}
-
-func (r Rectangle) Contains(r2 Rectangle) bool {
-	return r.Pos.X <= r2.Pos.X && r.Pos.Y <= r2.Pos.Y &&
-		r.Width >= r2.Width && r.Height >= r2.Height
 }
