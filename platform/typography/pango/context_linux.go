@@ -8,6 +8,7 @@ import (
 	"slices"
 	"unicode/utf8"
 
+	"github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
 
@@ -141,6 +142,9 @@ func (t *TextLayout) Size() (maxWidth, maxHeight float32) {
 func (t *TextLayout) SetSize(maxWidth, maxHeight float32) {
 	t.size.Width = maxWidth
 	t.size.Height = maxHeight
+	if t.format.WrapMode != typography.WrapNone {
+		t.layout.SetWidth(roundToPixel(t.size.Width) * pango.Scale)
+	}
 }
 
 func (t *TextLayout) SetTextAlignment(align typography.TextAlignment) {
@@ -438,9 +442,7 @@ func (p *textPainter) Destroy() {
 
 func (p *textPainter) DrawTextLayout(t *TextLayout, fgColor color.Color, x, y float32) (err error) {
 	gColor := toColor(fgColor)
-	p.context.SetSourceRGBA(0, 0, 0, 0)
-	p.context.Paint()
-	p.context.MoveTo(0, 0)
+	cgo.Memset(cgo.CSlice(p.bitmap.Pixels), 0, cgo.Sizet(len(p.bitmap.Pixels)))
 	p.context.SetSourceRGBA(float64(gColor.R), float64(gColor.G), float64(gColor.B), float64(gColor.A))
 	p.context.MoveTo(float64(x), float64(y))
 	pango_cairo.UpdateLayout(p.context, t.layout)
