@@ -4,6 +4,10 @@ import (
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/graphics/opengl"
+	"github.com/golang-gui/goui/platform/graphics/software"
+	"github.com/golang-gui/goui/platform/typography"
+	"github.com/golang-gui/goui/platform/typography/coretext"
 
 	"github.com/golang-gui/goui/platform/darwin/frameworks"
 	"github.com/golang-gui/goui/platform/darwin/frameworks/appkit"
@@ -47,6 +51,19 @@ func (p *Platform) NewImage(width, height uint) (common.Image, error) {
 
 func (p *Platform) NewWindow(onEvent events.EventHandler) (common.Window, error) {
 	return newWindow(onEvent)
+}
+
+func (p *Platform) NewTypography() (typography.Context, error) {
+	return coretext.NewContext()
+}
+
+func (p *Platform) NewPainter(win common.Window, typo typography.Context) (painter graphics.Painter, err error) {
+	painter, err = opengl.NewPainter(win, typo)
+	if err != nil {
+		// TODO: error log
+		painter, err = software.NewPainter(win, typo)
+	}
+	return
 }
 
 func newPlatform() (p *Platform, err error) {

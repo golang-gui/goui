@@ -2,11 +2,15 @@ package x11
 
 import (
 	"errors"
+
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/opengl"
+	"github.com/golang-gui/goui/platform/graphics/software"
 	"github.com/golang-gui/goui/platform/linux/libs/xlib"
+	"github.com/golang-gui/goui/platform/typography"
+	"github.com/golang-gui/goui/platform/typography/pango"
 )
 
 type Platform struct {
@@ -78,4 +82,17 @@ func (p *Platform) NewWindow(handler events.EventHandler) (common.Window, error)
 
 func (p *Platform) NewImage(width, height uint) (common.Image, error) {
 	return graphics.MakeBitmap(0, 0, int(width), int(height), graphics.PixelFormatBGRA, nil), nil
+}
+
+func (p *Platform) NewTypography() (typography.Context, error) {
+	return pango.NewContext()
+}
+
+func (p *Platform) NewPainter(win common.Window, typo typography.Context) (painter graphics.Painter, err error) {
+	// TODO: error log
+	painter, err = opengl.NewPainter(win, typo)
+	if err != nil {
+		return software.NewPainter(win, typo)
+	}
+	return
 }

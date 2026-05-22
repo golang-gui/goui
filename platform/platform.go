@@ -2,8 +2,11 @@ package platform
 
 import (
 	"errors"
-	"github.com/golang-gui/goui/platform/common"
 	"runtime"
+
+	"github.com/golang-gui/goui/platform/common"
+	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/typography"
 )
 
 type Platform interface {
@@ -12,6 +15,8 @@ type Platform interface {
 	NewImage(width, height uint) (common.Image, error)
 	NewWindow(handler EventHandler) (Window, error)
 	NewEventQueue() (EventQueue, error)
+	NewTypography() (typography.Context, error)
+	NewPainter(win Window, typo typography.Context) (graphics.Painter, error)
 }
 
 var ErrUnsupported = errors.New("unsupported platform")
