@@ -2,12 +2,13 @@ package pango
 
 import (
 	"bytes"
-	"github.com/golang-gui/goui/platform/graphics"
-	"github.com/golang-gui/goui/platform/typography"
 	"image/color"
 	"image/png"
 	"os"
 	"testing"
+
+	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/typography"
 )
 
 func Test_TextLayout(t *testing.T) {
@@ -24,7 +25,6 @@ func Test_TextLayout(t *testing.T) {
 		},
 		WrapMode:  typography.WrapWordChar,
 		TextAlign: typography.TextAlignCenter,
-		LineAlign: typography.LineAlignCenter,
 	}
 
 	text := "abc中国中文👨‍👩‍👧‍👦 مشروع "

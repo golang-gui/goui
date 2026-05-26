@@ -9,7 +9,6 @@ type TextLayout interface {
 	Size() (maxWidth, maxHeight float32)
 	SetSize(maxWidth, maxHeight float32)
 	SetTextAlignment(align TextAlignment)
-	SetLineAlignment(align LineAlignment)
 	SetWrapMode(wrap WrapMode)
 	SetTextFont(start, length int, font FontInfo)
 	SetTextColor(start, length int, c color.Color)
@@ -55,12 +54,4 @@ const (
 	TextAlignEnd
 	TextAlignCenter
 	TextAlignFill
-)
-
-type LineAlignment int
-
-const (
-	LineAlignBegin LineAlignment = iota
-	LineAlignEnd
-	LineAlignCenter
 )

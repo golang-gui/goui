@@ -125,15 +125,6 @@ func (c *Context) CreateTextFormat(format typography.TextFormat) (textFormat *dw
 		textFormat.SetTextAlignment(dwrite.DWRITE_TEXT_ALIGNMENT_JUSTIFIED)
 	}
 
-	switch format.LineAlign {
-	case typography.LineAlignBegin:
-		textFormat.SetParagraphAlignment(dwrite.DWRITE_PARAGRAPH_ALIGNMENT_NEAR)
-	case typography.LineAlignEnd:
-		textFormat.SetParagraphAlignment(dwrite.DWRITE_PARAGRAPH_ALIGNMENT_FAR)
-	case typography.LineAlignCenter:
-		textFormat.SetParagraphAlignment(dwrite.DWRITE_PARAGRAPH_ALIGNMENT_CENTER)
-	}
-
 	return
 }
 
@@ -234,18 +225,6 @@ func (t *TextLayout) SetTextAlignment(align typography.TextAlignment) {
 		t.layout.SetTextAlignment(dwrite.DWRITE_TEXT_ALIGNMENT_CENTER)
 	case typography.TextAlignFill:
 		t.layout.SetTextAlignment(dwrite.DWRITE_TEXT_ALIGNMENT_JUSTIFIED)
-	}
-}
-
-func (t *TextLayout) SetLineAlignment(align typography.LineAlignment) {
-	t.format.LineAlign = align
-	switch align {
-	case typography.LineAlignBegin:
-		t.layout.SetParagraphAlignment(dwrite.DWRITE_PARAGRAPH_ALIGNMENT_NEAR)
-	case typography.LineAlignEnd:
-		t.layout.SetParagraphAlignment(dwrite.DWRITE_PARAGRAPH_ALIGNMENT_FAR)
-	case typography.LineAlignCenter:
-		t.layout.SetParagraphAlignment(dwrite.DWRITE_PARAGRAPH_ALIGNMENT_CENTER)
 	}
 }
 

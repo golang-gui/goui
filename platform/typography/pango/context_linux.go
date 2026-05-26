@@ -112,7 +112,6 @@ func newTextLayout(c *Context, layout pango.Layout, text string, format typograp
 	}
 	t.SetSize(width, height)
 	t.SetTextAlignment(format.TextAlign)
-	t.SetLineAlignment(format.LineAlign)
 	t.SetWrapMode(format.WrapMode)
 	t.layout.SetAttributes(t.attrs)
 	return
@@ -158,10 +157,6 @@ func (t *TextLayout) SetTextAlignment(align typography.TextAlignment) {
 		t.layout.SetAlignment(pango.AlignCenter)
 	}
 	t.layout.SetJustify(align == typography.TextAlignFill)
-}
-
-func (t *TextLayout) SetLineAlignment(align typography.LineAlignment) {
-	t.format.LineAlign = align
 }
 
 func (t *TextLayout) SetWrapMode(wrap typography.WrapMode) {
@@ -375,13 +370,6 @@ func (t *TextLayout) getExtents() (x, y, width, height, xOffset, yOffset float32
 			xOffset = (t.size.Width - width) / 2
 		} else if t.format.TextAlign == typography.TextAlignEnd {
 			xOffset = t.size.Width - width
-		}
-	}
-	if t.format.LineAlign != typography.LineAlignBegin {
-		if t.format.LineAlign == typography.LineAlignCenter {
-			yOffset = (t.size.Height - height) / 2
-		} else {
-			yOffset = t.size.Height - height
 		}
 	}
 	return

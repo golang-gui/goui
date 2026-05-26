@@ -15,7 +15,6 @@ type TextFormat struct {
 	Font      FontInfo
 	WrapMode  WrapMode
 	TextAlign TextAlignment
-	LineAlign LineAlignment
 }
 
 type FontInfo struct {
