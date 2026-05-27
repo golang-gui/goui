@@ -391,12 +391,6 @@ func (t *TextLayout) DrawBitmap(fgColor color.Color, buf []byte) (bitmap typogra
 	if width == 0 || height == 0 {
 		return
 	}
-	if x > 0 {
-		width += x
-	}
-	if y > 0 {
-		height += y
-	}
 
 	width = min(width, t.width)
 	height = min(height, t.height)
@@ -409,7 +403,7 @@ func (t *TextLayout) DrawBitmap(fgColor color.Color, buf []byte) (bitmap typogra
 		}
 	}
 
-	err = t.painter.DrawTextLayout(t, fgColor)
+	err = t.painter.DrawTextLayout(t, fgColor, x, y)
 	if err != nil {
 		return
 	}
@@ -501,16 +495,18 @@ func (t *TextLayout) getExtents() (x, y, width, height float32) {
 	for _, line := range t.lines {
 		ox := float32(line.origin.X)
 		oy := float32(t.layoutSize.Height - (line.origin.Y + line.ascent + line.leading))
+		lineRight := ox + float32(line.width)
+		lineBottom := oy + float32(line.ascent+line.descent+line.leading)
 		minX = min(minX, ox)
 		minY = min(minY, oy)
-		maxX = max(maxX, ox)
-		maxY = max(maxY, oy)
+		maxX = max(maxX, lineRight)
+		maxY = max(maxY, lineBottom)
 	}
 
 	x = minX
 	y = minY
-	width = float32(t.layoutSize.Width)
-	height = float32(t.layoutSize.Height)
+	width = maxX - minX
+	height = maxY - minY
 
 	return
 }
@@ -570,7 +566,7 @@ func (p *textPainter) Destroy() {
 	}
 }
 
-func (p *textPainter) DrawTextLayout(t *TextLayout, fgColor color.Color) error {
+func (p *textPainter) DrawTextLayout(t *TextLayout, fgColor color.Color, x, y float32) error {
 	// Clear the bitmap
 	CGContextClearRect(p.cgCtx, CGRectMake(0, 0, float64(p.bitmap.Width), float64(p.bitmap.Height)))
 
@@ -583,12 +579,19 @@ func (p *textPainter) DrawTextLayout(t *TextLayout, fgColor color.Color) error {
 		float64(a32)/65535.0,
 	)
 
-	//x, y, _, _ := t.getExtents()
-	//CGContextSetTextPosition(p.cgCtx, float64(x), float64(y))
+	CGContextSaveGState(p.cgCtx)
+	// Translate coordinate system to crop text content tightly.
+	// CoreText uses bottom-up Y axis. The frame was created in layoutSize space.
+	// Text occupies (x, y) to (x+width, y+height) in top-down space.
+	// In bottom-up space, text bottom = layoutSize.Height - (y + height).
+	// We need to shift so text bottom aligns with bitmap bottom (0).
+	CGContextTranslateCTM(p.cgCtx,
+		float64(-x),
+		-(t.layoutSize.Height - float64(y) - float64(p.height)),
+	)
 	CGContextSetTextMatrix(p.cgCtx, CGAffineTransformIdentity)
-	//CGContextTranslateCTM(p.cgCtx, 1.0, float64(p.height))
-	//CGContextScaleCTM(p.cgCtx, 1.0, -1.0)
 	CTFrameDraw(t.frame, p.cgCtx)
+	CGContextRestoreGState(p.cgCtx)
 
 	return nil
 }

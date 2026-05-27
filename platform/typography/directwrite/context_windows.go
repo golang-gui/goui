@@ -443,12 +443,6 @@ func (t *TextLayout) DrawBitmap(fgColor color.Color, buf []byte) (bitmap typogra
 	if width == 0 || height == 0 {
 		return
 	}
-	if x > 0 {
-		width += x
-	}
-	if y > 0 {
-		height += y
-	}
 
 	if t.painter.width < width || t.painter.height < height {
 		t.painter.Destroy()
@@ -458,7 +452,7 @@ func (t *TextLayout) DrawBitmap(fgColor color.Color, buf []byte) (bitmap typogra
 		}
 	}
 
-	err = t.painter.DrawTextLayout(t)
+	err = t.painter.DrawTextLayout(t, d2d1.Point2F{X: -x, Y: -y})
 	if err != nil {
 		return
 	}
@@ -540,10 +534,10 @@ func (p *textPainter) DrawText(text string, format *dwrite.TextFormat) error {
 	return nil
 }
 
-func (p *textPainter) DrawTextLayout(layout *TextLayout) (err error) {
+func (p *textPainter) DrawTextLayout(layout *TextLayout, origin d2d1.Point2F) (err error) {
 	p.render.BeginDraw()
 	p.render.Clear(&d2d1.ColorF{})
-	err = layout.Draw(p.render, d2d1.Point2F{}, &p.brush.Brush, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP)
+	err = layout.Draw(p.render, origin, &p.brush.Brush, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP)
 	hr := p.render.EndDraw(nil, nil)
 	if err != nil {
 		return fmt.Errorf("directwrite draw text err: %w", err)

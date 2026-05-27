@@ -320,24 +320,10 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 }
 
 func (t *TextLayout) DrawBitmap(fgColor color.Color, buf []byte) (bitmap typography.TextBitmap, err error) {
-	x, y, width, height, xOffset, yOffset := t.getExtents()
+	x, y, width, height, _, _ := t.getExtents()
 	if width == 0 || height == 0 {
 		return
 	}
-	if x > 0 {
-		width += x
-		x = 0
-	}
-	if y > 0 {
-		height += y
-		y = 0
-	}
-
-	width += xOffset
-	x += xOffset
-
-	height += yOffset
-	y += yOffset
 
 	width = min(width, t.size.Width)
 	height = min(height, t.size.Height)
@@ -350,7 +336,7 @@ func (t *TextLayout) DrawBitmap(fgColor color.Color, buf []byte) (bitmap typogra
 		}
 	}
 
-	err = t.painter.DrawTextLayout(t, fgColor, x, y)
+	err = t.painter.DrawTextLayout(t, fgColor, -x, -y)
 	if err != nil {
 		return
 	}
