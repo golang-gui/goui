@@ -1,10 +1,10 @@
 package core_graphics
 
 import (
-	"unsafe"
-
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/core_foundation"
 	"github.com/golang-gui/goui/platform/darwin/frameworks/utils"
+
+	"github.com/goexlib/cgo"
 )
 
 var framework utils.Framework
@@ -80,7 +80,7 @@ func CGColorCreate(space CGColorSpaceRef, components []CGFloat) CGColorRef {
 	if len(components) == 0 {
 		return 0
 	}
-	return fnCGColorCreate(space, unsafe.Pointer(&components[0]))
+	return fnCGColorCreate(space, cgo.Pointer(&components[0]))
 }
 
 func CGColorRelease(color CGColorRef) {
@@ -139,11 +139,11 @@ const (
 	CGTextClip
 )
 
-func CGBitmapContextCreate(data unsafe.Pointer, width, height, bitsPerComponent, bytesPerRow uint, space CGColorSpaceRef, bitmapInfo CGBitmapInfo) CGContextRef {
-	return fnCGBitmapContextCreate(data, width, height, bitsPerComponent, bytesPerRow, space, bitmapInfo)
+func CGBitmapContextCreate(data []byte, width, height, bitsPerComponent, bytesPerRow int, space CGColorSpaceRef, bitmapInfo CGBitmapInfo) CGContextRef {
+	return fnCGBitmapContextCreate(cgo.CSlice(data), width, height, bitsPerComponent, bytesPerRow, space, bitmapInfo)
 }
 
-func CGBitmapContextGetData(ctx CGContextRef) unsafe.Pointer {
+func CGBitmapContextGetData(ctx CGContextRef) cgo.Pointer {
 	return fnCGBitmapContextGetData(ctx)
 }
 
@@ -328,7 +328,7 @@ var (
 	fnCGColorSpaceCreateDeviceRGB func() CGColorSpaceRef
 	fnCGColorSpaceRelease         func(p CGColorSpaceRef)
 
-	fnCGColorCreate  func(space CGColorSpaceRef, components unsafe.Pointer) CGColorRef
+	fnCGColorCreate  func(space CGColorSpaceRef, components cgo.Pointer) CGColorRef
 	fnCGColorRelease func(color CGColorRef)
 
 	fnCGImageCreate  func(width, height, bitsPerComponent, bitsPerPixel, bytesPerRow uint, space CGColorSpaceRef, bitmapInfo CGBitmapInfo, provider CGDataProviderRef, decode *CGFloat, shouldInterpolate bool, intent CGColorRenderingIntent) CGImageRef
@@ -339,8 +339,8 @@ var (
 	fnCGPathAddRect        func(path CGMutablePathRef, transform *CGAffineTransform, rect CGRect)
 	fnCGPathRelease        func(path CGPathRef)
 
-	fnCGBitmapContextCreate  func(data unsafe.Pointer, width, height, bitsPerComponent, bytesPerRow uint, space CGColorSpaceRef, bitmapInfo CGBitmapInfo) CGContextRef
-	fnCGBitmapContextGetData func(ctx CGContextRef) unsafe.Pointer
+	fnCGBitmapContextCreate  func(data cgo.Pointer, width, height, bitsPerComponent, bytesPerRow int, space CGColorSpaceRef, bitmapInfo CGBitmapInfo) CGContextRef
+	fnCGBitmapContextGetData func(ctx CGContextRef) cgo.Pointer
 
 	fnCGContextRelease                        func(ctx CGContextRef)
 	fnCGContextTranslateCTM                   func(ctx CGContextRef, tx, ty CGFloat)
