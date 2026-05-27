@@ -230,9 +230,10 @@ func (p *Painter) DrawText(rect graphics.Rectangle, text string, format typograp
 
 func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLayout, brush graphics.Brush) {
 	if color, ok := brush.(graphics.Color); ok && p.typo != nil {
+		xOffset, yOffset, _, _ := layout.MeasureRect()
 		textBitmap, err := p.typo.DrawTextLayout(layout, color, nil)
 		if err == nil {
-			drawRect := graphics.Rect(origin.X, origin.Y, float32(textBitmap.Width), float32(textBitmap.Height))
+			drawRect := graphics.Rect(origin.X+xOffset, origin.Y+yOffset, float32(textBitmap.Width), float32(textBitmap.Height))
 			bitmap := graphics.Bitmap{
 				Width:  textBitmap.Width,
 				Height: textBitmap.Height,
