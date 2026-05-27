@@ -338,8 +338,12 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 		line.Start = t.position.ToUtf8(pos)
 		line.Length = endU8Pos - line.Start
 		line.X, line.Y, _, _ = t.layout.HitTestTextPosition(pos, false)
-		endX, _, _, _ := t.layout.HitTestTextPosition(endPos-1, true)
-		line.Width = endX - line.X
+		lineRangeMetrics, _ := t.layout.HitTestTextRange(pos, 1, 0, 0)
+		for _, rangeMetrics := range lineRangeMetrics {
+			line.Y = min(line.Y, rangeMetrics.Top)
+		}
+		lineEndX, _, _, _ := t.layout.HitTestTextPosition(endPos-1, true)
+		line.Width = lineEndX - line.X
 		line.Height = metrics.Height
 		line.Baseline = line.Y + metrics.Baseline
 

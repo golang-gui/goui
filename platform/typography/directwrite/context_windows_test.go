@@ -2,11 +2,14 @@ package directwrite
 
 import (
 	"bytes"
+	"image"
 	"image/color"
 	"image/png"
 	"os"
 	"testing"
 
+	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/graphics/software"
 	"github.com/golang-gui/goui/platform/typography"
 )
 
