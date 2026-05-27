@@ -72,7 +72,7 @@ func (c *Context) DrawText(text string, format typography.TextFormat, width, hei
 	}
 
 	var painter textPainter
-	err = painter.Init(c.d2dFactory, c.imgFactory, width, height, fgColor)
+	err = painter.Init(c.d2dFactory, c.imgFactory, width, height)
 	if err != nil {
 		return
 	}
@@ -84,7 +84,7 @@ func (c *Context) DrawText(text string, format typography.TextFormat, width, hei
 	}
 	defer textFormat.Release()
 
-	err = painter.DrawText(text, textFormat)
+	err = painter.DrawText(text, textFormat, fgColor)
 	if err != nil {
 		return
 	}
@@ -446,13 +446,13 @@ func (t *TextLayout) DrawBitmap(fgColor color.Color, buf []byte) (bitmap typogra
 
 	if t.painter.width < width || t.painter.height < height {
 		t.painter.Destroy()
-		err = t.painter.Init(t.ctx.d2dFactory, t.ctx.imgFactory, width, height, fgColor)
+		err = t.painter.Init(t.ctx.d2dFactory, t.ctx.imgFactory, width, height)
 		if err != nil {
 			return
 		}
 	}
 
-	err = t.painter.DrawTextLayout(t, d2d1.Point2F{X: -x, Y: -y})
+	err = t.painter.DrawTextLayout(t, d2d1.Point2F{X: -x, Y: -y}, fgColor)
 	if err != nil {
 		return
 	}
@@ -473,10 +473,9 @@ type textPainter struct {
 	brush  *d2d1.SolidColorBrush
 }
 
-func (p *textPainter) Init(d2dFactory *d2d1.Factory, imgFactory *wic.ImagingFactory, width, height float32, fgColor color.Color) (err error) {
+func (p *textPainter) Init(d2dFactory *d2d1.Factory, imgFactory *wic.ImagingFactory, width, height float32) (err error) {
 	p.width = width
 	p.height = height
-	p.colorf = toD2dColor(fgColor)
 	wicPixelFormat := wic.GUID_WICPixelFormat32bppPRGBA
 	d2dPixelFormat := d2d1.PixelFormat{
 		Format:    dxgi.DXGI_FORMAT_R8G8B8A8_UNORM,
@@ -523,9 +522,12 @@ func (p *textPainter) Destroy() {
 	}
 }
 
-func (p *textPainter) DrawText(text string, format *dwrite.TextFormat) error {
+func (p *textPainter) DrawText(text string, format *dwrite.TextFormat, fgColor color.Color) error {
 	p.render.BeginDraw()
-	p.render.Clear(&d2d1.ColorF{})
+	p.colorf = d2d1.ColorF{}
+	p.render.Clear(&p.colorf)
+	p.colorf = toD2dColor(fgColor)
+	p.brush.SetColor(&p.colorf)
 	p.render.DrawText(text, format, &d2d1.RectF{Right: p.width, Bottom: p.height}, &p.brush.Brush, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP, 0)
 	hr := p.render.EndDraw(nil, nil)
 	if hr.Failed() {
@@ -534,9 +536,12 @@ func (p *textPainter) DrawText(text string, format *dwrite.TextFormat) error {
 	return nil
 }
 
-func (p *textPainter) DrawTextLayout(layout *TextLayout, origin d2d1.Point2F) (err error) {
+func (p *textPainter) DrawTextLayout(layout *TextLayout, origin d2d1.Point2F, fgColor color.Color) (err error) {
 	p.render.BeginDraw()
-	p.render.Clear(&d2d1.ColorF{})
+	p.colorf = d2d1.ColorF{}
+	p.render.Clear(&p.colorf)
+	p.colorf = toD2dColor(fgColor)
+	p.brush.SetColor(&p.colorf)
 	err = layout.Draw(p.render, origin, &p.brush.Brush, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP)
 	hr := p.render.EndDraw(nil, nil)
 	if err != nil {
