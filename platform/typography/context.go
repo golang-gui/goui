@@ -7,14 +7,15 @@ type Context interface {
 	Destroy()
 	AddFont(fontFile string) error
 	NewTextLayout(text string, format TextFormat, width, height float32) (TextLayout, error)
-	DrawText(text string, format TextFormat, width, height float32, foreground color.Color, buf []byte) (bitmap TextBitmap, err error)
-	DrawTextLayout(layout TextLayout, foreground color.Color, buf []byte) (bitmap TextBitmap, err error)
+	DrawText(text string, format TextFormat, width, height float32, buf []byte) (bitmap TextBitmap, err error)
+	DrawTextLayout(layout TextLayout, buf []byte) (bitmap TextBitmap, err error)
 }
 
 type TextFormat struct {
 	Font      FontInfo
 	WrapMode  WrapMode
 	TextAlign TextAlignment
+	TextColor color.Color
 }
 
 type FontInfo struct {
@@ -31,3 +32,7 @@ const (
 	WrapChar
 	WrapWordChar
 )
+
+func DefaultTextColor() color.Color {
+	return color.Black
+}

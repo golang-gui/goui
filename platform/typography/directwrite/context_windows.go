@@ -21,7 +21,7 @@ type Context struct {
 	imgFactory *wic.ImagingFactory
 }
 
-func NewContext() (_ *Context, err error) {
+func NewContext() (_ typography.Context, err error) {
 	hr := com.Initialize(com.COINIT_MULTITHREADED)
 	if hr.Failed() {
 		return nil, fmt.Errorf("com initialize err: %v", hr)
@@ -66,7 +66,7 @@ func (c *Context) NewTextLayout(text string, format typography.TextFormat, width
 	return newTextLayout(c, textLayout, text, format, width, height), nil
 }
 
-func (c *Context) DrawText(text string, format typography.TextFormat, width, height float32, fgColor color.Color, buf []byte) (bitmap typography.TextBitmap, err error) {
+func (c *Context) DrawText(text string, format typography.TextFormat, width, height float32, buf []byte) (bitmap typography.TextBitmap, err error) {
 	if err = c.prepareDraw(); err != nil {
 		return
 	}
@@ -84,7 +84,7 @@ func (c *Context) DrawText(text string, format typography.TextFormat, width, hei
 	}
 	defer textFormat.Release()
 
-	err = painter.DrawText(text, textFormat, fgColor)
+	err = painter.DrawText(text, textFormat, format.TextColor)
 	if err != nil {
 		return
 	}
@@ -92,11 +92,11 @@ func (c *Context) DrawText(text string, format typography.TextFormat, width, hei
 	return painter.GetBitmap(width, height, buf)
 }
 
-func (c *Context) DrawTextLayout(layout typography.TextLayout, fgColor color.Color, buf []byte) (bitmap typography.TextBitmap, err error) {
+func (c *Context) DrawTextLayout(layout typography.TextLayout, buf []byte) (bitmap typography.TextBitmap, err error) {
 	if err = c.prepareDraw(); err != nil {
 		return
 	}
-	return layout.(*TextLayout).DrawBitmap(fgColor, buf)
+	return layout.(*TextLayout).DrawBitmap(buf)
 }
 
 func (c *Context) CreateTextFormat(format typography.TextFormat) (textFormat *dwrite.TextFormat, err error) {
@@ -405,44 +405,47 @@ func (t *TextLayout) MeasureRect() (x, y, width, height float32) {
 	return startX, startY, endX - startX, endY - startY
 }
 
-func (t *TextLayout) Draw(render *d2d1.RenderTarget, origin d2d1.Point2F, brush *d2d1.Brush, drawOptions d2d1.DrawTextOptions) (err error) {
-	if len(t.colors) != 0 {
-		var d2dColor d2d1.ColorF
+func (t *TextLayout) Draw(render *d2d1.RenderTarget, origin d2d1.Point2F, drawOptions d2d1.DrawTextOptions) (err error) {
+	var d2dColor d2d1.ColorF
 
-		brushs := make(map[color.RGBA]*d2d1.Brush, len(t.colors))
-		defer func() {
-			for _, b := range brushs {
-				b.Release()
-			}
-		}()
-
-		getColorBrush := func(rgba color.RGBA) (*d2d1.Brush, error) {
-			d2dBrush, exist := brushs[rgba]
-			if !exist {
-				d2dColor = toD2dColor(rgba)
-				b, hr := render.CreateSolidColorBrush(&d2dColor, nil)
-				if hr.Failed() {
-					return nil, fmt.Errorf("create d2d solid color brush err: %v", err)
-				}
-				d2dBrush = &b.Brush
-			}
-			return d2dBrush, nil
+	brushs := make(map[color.RGBA]*d2d1.Brush, len(t.colors))
+	defer func() {
+		for _, b := range brushs {
+			b.Release()
 		}
+	}()
 
-		for _, attr := range t.colors {
-			d2dBrush, err := getColorBrush(attr.Color)
-			if err != nil {
-				return err
+	getColorBrush := func(rgba color.RGBA) (*d2d1.Brush, error) {
+		d2dBrush, exist := brushs[rgba]
+		if !exist {
+			d2dColor = toD2dColor(rgba)
+			b, hr := render.CreateSolidColorBrush(&d2dColor, nil)
+			if hr.Failed() {
+				return nil, fmt.Errorf("create d2d solid color brush err: %v", err)
 			}
-			t.layout.SetDrawingEffect(&d2dBrush.Unknown, attr.Range)
+			d2dBrush = &b.Brush
 		}
+		return d2dBrush, nil
 	}
 
-	render.DrawTextLayout(origin, t.layout, brush, drawOptions)
+	fgColorBrush, err := getColorBrush(toRGBAColor(t.format.TextColor))
+	if err != nil {
+		return err
+	}
+
+	for _, attr := range t.colors {
+		d2dBrush, err := getColorBrush(attr.Color)
+		if err != nil {
+			return err
+		}
+		t.layout.SetDrawingEffect(&d2dBrush.Unknown, attr.Range)
+	}
+
+	render.DrawTextLayout(origin, t.layout, fgColorBrush, drawOptions)
 	return nil
 }
 
-func (t *TextLayout) DrawBitmap(fgColor color.Color, buf []byte) (bitmap typography.TextBitmap, err error) {
+func (t *TextLayout) DrawBitmap(buf []byte) (bitmap typography.TextBitmap, err error) {
 	x, y, width, height := t.MeasureRect()
 	if width == 0 || height == 0 {
 		return
@@ -456,7 +459,7 @@ func (t *TextLayout) DrawBitmap(fgColor color.Color, buf []byte) (bitmap typogra
 		}
 	}
 
-	err = t.painter.DrawTextLayout(t, d2d1.Point2F{X: -x, Y: -y}, fgColor)
+	err = t.painter.DrawTextLayout(t, d2d1.Point2F{X: -x, Y: -y})
 	if err != nil {
 		return
 	}
@@ -540,13 +543,13 @@ func (p *textPainter) DrawText(text string, format *dwrite.TextFormat, fgColor c
 	return nil
 }
 
-func (p *textPainter) DrawTextLayout(layout *TextLayout, origin d2d1.Point2F, fgColor color.Color) (err error) {
+func (p *textPainter) DrawTextLayout(layout *TextLayout, origin d2d1.Point2F) (err error) {
 	p.render.BeginDraw()
 	p.colorf = d2d1.ColorF{}
 	p.render.Clear(&p.colorf)
-	p.colorf = toD2dColor(fgColor)
+	p.colorf = toD2dColor(layout.format.TextColor)
 	p.brush.SetColor(&p.colorf)
-	err = layout.Draw(p.render, origin, &p.brush.Brush, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP)
+	err = layout.Draw(p.render, origin, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP)
 	hr := p.render.EndDraw(nil, nil)
 	if err != nil {
 		return fmt.Errorf("directwrite draw text err: %w", err)
@@ -581,15 +584,18 @@ func (p *textPainter) GetBitmap(width, height float32, buf []byte) (bitmap typog
 }
 
 func toD2dColor(c color.Color) (d2dColor d2d1.ColorF) {
-	r32, g32, b32, a32 := c.RGBA()
+	rgba := toRGBAColor(c)
 	return d2d1.ColorF{
-		R: float32(r32) / 65535,
-		G: float32(g32) / 65535,
-		B: float32(b32) / 65535,
-		A: float32(a32) / 65535,
+		R: float32(rgba.R) / 255,
+		G: float32(rgba.G) / 255,
+		B: float32(rgba.B) / 255,
+		A: float32(rgba.A) / 255,
 	}
 }
 
 func toRGBAColor(c color.Color) (rgba color.RGBA) {
+	if c == nil {
+		c = typography.DefaultTextColor()
+	}
 	return color.RGBAModel.Convert(c).(color.RGBA)
 }

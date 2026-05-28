@@ -3,7 +3,6 @@ package coretext
 import (
 	"errors"
 	"fmt"
-
 	"image/color"
 	"math"
 	"slices"
@@ -21,7 +20,7 @@ type Context struct {
 	fonts []CTFontRef // registered custom fonts (for cleanup if needed)
 }
 
-func NewContext() (*Context, error) {
+func NewContext() (typography.Context, error) {
 	err := frameworks.Init()
 	if err != nil {
 		return nil, err
@@ -63,17 +62,17 @@ func (c *Context) NewTextLayout(text string, format typography.TextFormat, width
 	return newTextLayout(c, text, format, width, height)
 }
 
-func (c *Context) DrawText(text string, format typography.TextFormat, width, height float32, foreground color.Color, buf []byte) (bitmap typography.TextBitmap, err error) {
+func (c *Context) DrawText(text string, format typography.TextFormat, width, height float32, buf []byte) (bitmap typography.TextBitmap, err error) {
 	layout, err := c.NewTextLayout(text, format, width, height)
 	if err != nil {
 		return
 	}
 	defer layout.Destroy()
-	return c.DrawTextLayout(layout, foreground, buf)
+	return c.DrawTextLayout(layout, buf)
 }
 
-func (c *Context) DrawTextLayout(layout typography.TextLayout, foreground color.Color, buf []byte) (bitmap typography.TextBitmap, err error) {
-	return layout.(*TextLayout).DrawBitmap(foreground, buf)
+func (c *Context) DrawTextLayout(layout typography.TextLayout, buf []byte) (bitmap typography.TextBitmap, err error) {
+	return layout.(*TextLayout).DrawBitmap(buf)
 }
 
 // TextLayout implements typography.TextLayout using Core Text.
@@ -87,6 +86,8 @@ type TextLayout struct {
 
 	attrString CFMutableAttributedStringRef
 	textLength int // UTF-16 length
+
+	colorSpace CGColorSpaceRef
 
 	painter textPainter
 
@@ -110,21 +111,15 @@ type lineInfo struct {
 func newTextLayout(c *Context, text string, format typography.TextFormat, width, height float32) (*TextLayout, error) {
 	textStr := CFStringCreateWithString(text)
 	if textStr == 0 {
-		return nil, errors.New("create CFString failed")
+		return nil, errors.New("create text string failed")
 	}
 	defer CFRelease(textStr)
 
 	ctFont := createCTFont(format.Font)
 	if ctFont == 0 {
-		return nil, errors.New("create CTFont failed")
+		return nil, errors.New("create font failed")
 	}
 	defer CFRelease(ctFont)
-
-	useForeColor := CFNumberCreateInt(1)
-	if useForeColor == 0 {
-		return nil, errors.New("create CFNumber failed")
-	}
-	defer CFRelease(useForeColor)
 
 	t := &TextLayout{
 		ctx:      c,
@@ -136,9 +131,20 @@ func newTextLayout(c *Context, text string, format typography.TextFormat, width,
 		dirty:    true,
 	}
 
+	t.colorSpace = CGColorSpaceCreateDeviceRGB()
+	if t.colorSpace == 0 {
+		return nil, errors.New("create device RGB color space failed ")
+	}
+
+	fgColor := createCGColor(t.colorSpace, toRGBAColor(format.TextColor))
+	if fgColor == 0 {
+		return nil, errors.New("create text color failed")
+	}
+	defer CGColorRelease(fgColor)
+
 	t.attrString = CFAttributedStringCreateMutable(0, 0)
 	if t.attrString == 0 {
-		return nil, errors.New("create CFMutableAttributedString failed")
+		return nil, errors.New("create attributed string failed")
 	}
 
 	CFAttributedStringReplaceString(t.attrString, CFRangeMake(0, 0), textStr)
@@ -148,7 +154,7 @@ func newTextLayout(c *Context, text string, format typography.TextFormat, width,
 
 	CFAttributedStringBeginEditing(t.attrString)
 	CFAttributedStringSetAttribute(t.attrString, textRange, KCTFontAttributeName, ctFont)
-	CFAttributedStringSetAttribute(t.attrString, textRange, KCTForegroundColorFromContextAttributeName, useForeColor)
+	CFAttributedStringSetAttribute(t.attrString, textRange, KCTForegroundColorAttributeName, fgColor)
 	CFAttributedStringEndEditing(t.attrString)
 
 	t.updateParagraphStyle()
@@ -161,6 +167,10 @@ func (t *TextLayout) Destroy() {
 	if t.attrString != 0 {
 		CFRelease(t.attrString)
 		t.attrString = 0
+	}
+	if t.colorSpace != 0 {
+		CGColorSpaceRelease(t.colorSpace)
+		t.colorSpace = 0
 	}
 	t.painter.Destroy()
 }
@@ -219,16 +229,11 @@ func (t *TextLayout) SetTextColor(start, length int, c color.Color) {
 			u16End = t.textLength
 		}
 
-		rgba := toRGBAColor(c)
-		// Create a CGColor and set it as the foreground color attribute
-		cgCS := CGColorSpaceCreateDeviceRGB()
-		defer CGColorSpaceRelease(cgCS)
-
-		cgColor := createCGColor(cgCS, rgba)
-		if cgColor != 0 {
-			defer CFRelease(cgColor)
+		fgColor := createCGColor(t.colorSpace, toRGBAColor(c))
+		if fgColor != 0 {
+			defer CFRelease(fgColor)
 			CFAttributedStringBeginEditing(t.attrString)
-			CFAttributedStringSetAttribute(t.attrString, CFRangeMake(u16Start, u16End-u16Start), KCTForegroundColorAttributeName, cgColor)
+			CFAttributedStringSetAttribute(t.attrString, CFRangeMake(u16Start, u16End-u16Start), KCTForegroundColorAttributeName, fgColor)
 			CFAttributedStringEndEditing(t.attrString)
 			t.dirty = true
 		}
@@ -248,11 +253,13 @@ func (t *TextLayout) SetUnderline(start, length int, underline bool) {
 			style = KCTUnderlineStyleSingle
 		}
 		cfNum := CFNumberCreateInt32(int32(style))
-		defer CFRelease(cfNum)
-		CFAttributedStringBeginEditing(t.attrString)
-		CFAttributedStringSetAttribute(t.attrString, CFRangeMake(u16Start, u16End-u16Start), KCTUnderlineStyleAttributeName, cfNum)
-		CFAttributedStringEndEditing(t.attrString)
-		t.dirty = true
+		if cfNum != 0 {
+			defer CFRelease(cfNum)
+			CFAttributedStringBeginEditing(t.attrString)
+			CFAttributedStringSetAttribute(t.attrString, CFRangeMake(u16Start, u16End-u16Start), KCTUnderlineStyleAttributeName, cfNum)
+			CFAttributedStringEndEditing(t.attrString)
+			t.dirty = true
+		}
 	}
 }
 
@@ -269,11 +276,13 @@ func (t *TextLayout) SetStrikethrough(start, length int, strike bool) {
 			val = int32(KCTUnderlineStyleSingle)
 		}
 		cfNum := CFNumberCreateInt32(val)
-		defer CFRelease(cfNum)
-		CFAttributedStringBeginEditing(t.attrString)
-		CFAttributedStringSetAttribute(t.attrString, CFRangeMake(u16Start, u16End-u16Start), KCTStrikethroughStyleAttributeName, cfNum)
-		CFAttributedStringEndEditing(t.attrString)
-		t.dirty = true
+		if cfNum != 0 {
+			defer CFRelease(cfNum)
+			CFAttributedStringBeginEditing(t.attrString)
+			CFAttributedStringSetAttribute(t.attrString, CFRangeMake(u16Start, u16End-u16Start), KCTStrikethroughStyleAttributeName, cfNum)
+			CFAttributedStringEndEditing(t.attrString)
+			t.dirty = true
+		}
 	}
 }
 
@@ -384,7 +393,7 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 	return
 }
 
-func (t *TextLayout) DrawBitmap(fgColor color.Color, buf []byte) (bitmap typography.TextBitmap, err error) {
+func (t *TextLayout) DrawBitmap(buf []byte) (bitmap typography.TextBitmap, err error) {
 	t.ensureFrame()
 
 	x, y, width, height := t.getExtents()
@@ -403,7 +412,7 @@ func (t *TextLayout) DrawBitmap(fgColor color.Color, buf []byte) (bitmap typogra
 		}
 	}
 
-	err = t.painter.DrawTextLayout(t, fgColor, x, y)
+	err = t.painter.DrawTextLayout(t, t.format.TextColor, x, y)
 	if err != nil {
 		return
 	}
@@ -537,21 +546,15 @@ func (p *textPainter) Init(width, height float32) (err error) {
 		8,
 		p.bitmap.Stride,
 		p.cs,
-		CGImageAlphaPremultipliedLast|CGBitmapByteOrder32Big, // RGBA
+		CGImageAlphaPremultipliedLast, // RGBA
 	)
 	if p.cgCtx == 0 {
 		p.Destroy()
-		return errors.New("failed to create CGBitmapContext")
+		return errors.New("failed to create bitmap context")
 	}
 
-	// Configure antialiasing: grayscale (no subpixel smoothing)
 	CGContextSetShouldAntialias(p.cgCtx, true)
 	CGContextSetAllowsAntialiasing(p.cgCtx, true)
-	CGContextSetShouldSmoothFonts(p.cgCtx, false)
-	CGContextSetAllowsFontSmoothing(p.cgCtx, false)
-	CGContextSetShouldSubpixelPositionFonts(p.cgCtx, true)
-	CGContextSetShouldSubpixelQuantizeFonts(p.cgCtx, true)
-
 	return nil
 }
 
@@ -571,27 +574,16 @@ func (p *textPainter) DrawTextLayout(t *TextLayout, fgColor color.Color, x, y fl
 	CGContextClearRect(p.cgCtx, CGRectMake(0, 0, float64(p.bitmap.Width), float64(p.bitmap.Height)))
 
 	// Set fill color
-	r32, g32, b32, a32 := fgColor.RGBA()
+	r, g, b, a := toRGBAColor(fgColor).RGBA()
 	CGContextSetRGBFillColor(p.cgCtx,
-		float64(r32)/65535.0,
-		float64(g32)/65535.0,
-		float64(b32)/65535.0,
-		float64(a32)/65535.0,
+		float64(r)/65535.0,
+		float64(g)/65535.0,
+		float64(b)/65535.0,
+		float64(a)/65535.0,
 	)
 
-	CGContextSaveGState(p.cgCtx)
-	// Translate coordinate system to crop text content tightly.
-	// CoreText uses bottom-up Y axis. The frame was created in layoutSize space.
-	// Text occupies (x, y) to (x+width, y+height) in top-down space.
-	// In bottom-up space, text bottom = layoutSize.Height - (y + height).
-	// We need to shift so text bottom aligns with bitmap bottom (0).
-	CGContextTranslateCTM(p.cgCtx,
-		float64(-x),
-		-(t.layoutSize.Height - float64(y) - float64(p.height)),
-	)
 	CGContextSetTextMatrix(p.cgCtx, CGAffineTransformIdentity)
 	CTFrameDraw(t.frame, p.cgCtx)
-	CGContextRestoreGState(p.cgCtx)
 
 	return nil
 }
@@ -678,6 +670,9 @@ func convertLineBreakMode(wrap typography.WrapMode) CTLineBreakMode {
 }
 
 func toRGBAColor(c color.Color) color.RGBA {
+	if c == nil {
+		c = typography.DefaultTextColor()
+	}
 	return color.RGBAModel.Convert(c).(color.RGBA)
 }
 

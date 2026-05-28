@@ -22,7 +22,7 @@ type Context struct {
 	context pango.Context
 }
 
-func NewContext() (_ *Context, err error) {
+func NewContext() (_ typography.Context, err error) {
 	c := new(Context)
 	c.fontMap = pango_cairo.FontMapNew()
 	if c.fontMap.IsNull() {
@@ -77,16 +77,16 @@ func (c *Context) NewTextLayout(text string, format typography.TextFormat, width
 	return newTextLayout(c, layout, text, format, width, height), nil
 }
 
-func (c *Context) DrawText(text string, format typography.TextFormat, width, height float32, foreground color.Color, buf []byte) (bitmap typography.TextBitmap, err error) {
+func (c *Context) DrawText(text string, format typography.TextFormat, width, height float32, buf []byte) (bitmap typography.TextBitmap, err error) {
 	layout, err := c.NewTextLayout(text, format, width, height)
 	if err != nil {
 		return
 	}
-	return c.DrawTextLayout(layout, foreground, buf)
+	return c.DrawTextLayout(layout, buf)
 }
 
-func (c *Context) DrawTextLayout(layout typography.TextLayout, foreground color.Color, buf []byte) (bitmap typography.TextBitmap, err error) {
-	return layout.(*TextLayout).DrawBitmap(foreground, buf)
+func (c *Context) DrawTextLayout(layout typography.TextLayout, buf []byte) (bitmap typography.TextBitmap, err error) {
+	return layout.(*TextLayout).DrawBitmap(buf)
 }
 
 type TextLayout struct {
@@ -319,7 +319,7 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 	return
 }
 
-func (t *TextLayout) DrawBitmap(fgColor color.Color, buf []byte) (bitmap typography.TextBitmap, err error) {
+func (t *TextLayout) DrawBitmap(buf []byte) (bitmap typography.TextBitmap, err error) {
 	x, y, width, height, _, _ := t.getExtents()
 	if width == 0 || height == 0 {
 		return
@@ -336,7 +336,7 @@ func (t *TextLayout) DrawBitmap(fgColor color.Color, buf []byte) (bitmap typogra
 		}
 	}
 
-	err = t.painter.DrawTextLayout(t, fgColor, -x, -y)
+	err = t.painter.DrawTextLayout(t, -x, -y)
 	if err != nil {
 		return
 	}
@@ -414,8 +414,8 @@ func (p *textPainter) Destroy() {
 	}
 }
 
-func (p *textPainter) DrawTextLayout(t *TextLayout, fgColor color.Color, x, y float32) (err error) {
-	gColor := toColor(fgColor)
+func (p *textPainter) DrawTextLayout(t *TextLayout, x, y float32) (err error) {
+	gColor := toColor(t.format.TextColor)
 	cgo.Memset(cgo.CSlice(p.bitmap.Pixels), 0, cgo.Sizet(len(p.bitmap.Pixels)))
 	p.context.SetSourceRGBA(float64(gColor.R), float64(gColor.G), float64(gColor.B), float64(gColor.A))
 	p.context.MoveTo(float64(x), float64(y))
@@ -442,7 +442,10 @@ func roundToPixel(num float32) int {
 }
 
 func toColor(c color.Color) graphics.Color {
-	r, g, b, a := c.RGBA()
+	if c == nil {
+		c = typography.DefaultTextColor()
+	}
+	r, g, b, a := color.RGBAModel.Convert(c).RGBA()
 	return graphics.Color{
 		R: float32(r) / 65535,
 		G: float32(g) / 65535,
