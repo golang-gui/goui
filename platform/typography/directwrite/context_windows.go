@@ -53,7 +53,7 @@ func (c *Context) AddFont(fontFile string) error {
 }
 
 func (c *Context) NewTextLayout(text string, format typography.TextFormat, width, height float32) (typography.TextLayout, error) {
-	textFormat, err := c.CreateTextFormat(format)
+	textFormat, err := c.createTextFormat(format)
 	if err != nil {
 		return nil, fmt.Errorf("create dwrite text format err: %v", err)
 	}
@@ -66,32 +66,6 @@ func (c *Context) NewTextLayout(text string, format typography.TextFormat, width
 	return newTextLayout(c, textLayout, text, format, width, height), nil
 }
 
-func (c *Context) DrawText(text string, format typography.TextFormat, width, height float32, buf []byte) (bitmap typography.TextBitmap, err error) {
-	if err = c.prepareDraw(); err != nil {
-		return
-	}
-
-	var painter textPainter
-	err = painter.Init(c.d2dFactory, c.imgFactory, width, height)
-	if err != nil {
-		return
-	}
-	defer painter.Destroy()
-
-	textFormat, err := c.CreateTextFormat(format)
-	if err != nil {
-		return bitmap, fmt.Errorf("create dwrite text format err: %v", err)
-	}
-	defer textFormat.Release()
-
-	err = painter.DrawText(text, textFormat, format.TextColor)
-	if err != nil {
-		return
-	}
-
-	return painter.GetBitmap(width, height, buf)
-}
-
 func (c *Context) DrawTextLayout(layout typography.TextLayout, buf []byte) (bitmap typography.TextBitmap, err error) {
 	if err = c.prepareDraw(); err != nil {
 		return
@@ -99,7 +73,7 @@ func (c *Context) DrawTextLayout(layout typography.TextLayout, buf []byte) (bitm
 	return layout.(*TextLayout).DrawBitmap(buf)
 }
 
-func (c *Context) CreateTextFormat(format typography.TextFormat) (textFormat *dwrite.TextFormat, err error) {
+func (c *Context) createTextFormat(format typography.TextFormat) (textFormat *dwrite.TextFormat, err error) {
 	textFormat, hr := c.dwFactory.CreateTextFormat(format.Font.Family, nil, dwrite.DWRITE_FONT_WEIGHT_NORMAL, dwrite.DWRITE_FONT_STYLE_NORMAL, dwrite.DWRITE_FONT_STRETCH_NORMAL, format.Font.Size, "")
 	if hr.Failed() {
 		return nil, hr
@@ -527,20 +501,6 @@ func (p *textPainter) Destroy() {
 		p.bitmap.Release()
 		p.bitmap = nil
 	}
-}
-
-func (p *textPainter) DrawText(text string, format *dwrite.TextFormat, fgColor color.Color) error {
-	p.render.BeginDraw()
-	p.colorf = d2d1.ColorF{}
-	p.render.Clear(&p.colorf)
-	p.colorf = toD2dColor(fgColor)
-	p.brush.SetColor(&p.colorf)
-	p.render.DrawText(text, format, &d2d1.RectF{Right: p.width, Bottom: p.height}, &p.brush.Brush, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP, 0)
-	hr := p.render.EndDraw(nil, nil)
-	if hr.Failed() {
-		return fmt.Errorf("directwrite end draw err: %w", hr)
-	}
-	return nil
 }
 
 func (p *textPainter) DrawTextLayout(layout *TextLayout, origin d2d1.Point2F) (err error) {

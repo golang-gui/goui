@@ -62,15 +62,6 @@ func (c *Context) NewTextLayout(text string, format typography.TextFormat, width
 	return newTextLayout(c, text, format, width, height)
 }
 
-func (c *Context) DrawText(text string, format typography.TextFormat, width, height float32, buf []byte) (bitmap typography.TextBitmap, err error) {
-	layout, err := c.NewTextLayout(text, format, width, height)
-	if err != nil {
-		return
-	}
-	defer layout.Destroy()
-	return c.DrawTextLayout(layout, buf)
-}
-
 func (c *Context) DrawTextLayout(layout typography.TextLayout, buf []byte) (bitmap typography.TextBitmap, err error) {
 	return layout.(*TextLayout).DrawBitmap(buf)
 }

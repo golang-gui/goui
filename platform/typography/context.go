@@ -7,7 +7,6 @@ type Context interface {
 	Destroy()
 	AddFont(fontFile string) error
 	NewTextLayout(text string, format TextFormat, width, height float32) (TextLayout, error)
-	DrawText(text string, format TextFormat, width, height float32, buf []byte) (bitmap TextBitmap, err error)
 	DrawTextLayout(layout TextLayout, buf []byte) (bitmap TextBitmap, err error)
 }
 

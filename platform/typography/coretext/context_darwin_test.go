@@ -75,7 +75,7 @@ func Test_TextLayout(t *testing.T) {
 	painter.Begin(200, 100)
 	painter.Clear(graphics.RGB(180, 180, 180))
 	painter.DrawRect(graphics.Rect(x, y, width, height), 1, graphics.RGB(0, 160, 0))
-	painter.DrawTextLayout(graphics.Point{}, layout, graphics.RGB(0, 0, 60))
+	painter.DrawTextLayout(graphics.Point{}, layout)
 
 	for _, line := range lines {
 		//p0 := geometry.Point{line.X, line.Y}
