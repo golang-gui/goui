@@ -1,11 +1,23 @@
 package graphics
 
+import "image/color"
+
 type Brush interface {
 	isBrush()
 }
 
 type Color struct {
 	R, G, B, A float32
+}
+
+func ColorOf(c color.Color) Color {
+	r, g, b, a := color.RGBAModel.Convert(c).RGBA()
+	return Color{
+		R: float32(r) / 65535,
+		G: float32(g) / 65535,
+		B: float32(b) / 65535,
+		A: float32(a) / 65535,
+	}
 }
 
 func RGB(r, g, b byte) Color {
