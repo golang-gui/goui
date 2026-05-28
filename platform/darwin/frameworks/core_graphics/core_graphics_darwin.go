@@ -74,13 +74,13 @@ func CGColorSpaceRelease(colorSpace CGColorSpaceRef) {
 
 // CGColor
 
-type CGColorRef uintptr
+type CGColorRef = CFTypeRef
 
 func CGColorCreate(space CGColorSpaceRef, components []CGFloat) CGColorRef {
 	if len(components) == 0 {
 		return 0
 	}
-	return fnCGColorCreate(space, cgo.Pointer(&components[0]))
+	return fnCGColorCreate(space, cgo.CSlice(components))
 }
 
 func CGColorRelease(color CGColorRef) {

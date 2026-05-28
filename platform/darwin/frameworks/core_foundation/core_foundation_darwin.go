@@ -223,6 +223,8 @@ func CFDictionaryCreate(keys []CFTypeRef, values []CFTypeRef) CFDictionaryRef {
 	return fnCFDictionaryCreate(0, unsafe.Pointer(&keys[0]), unsafe.Pointer(&values[0]), count, kCFTypeDictionaryKeyCallBacks, kCFTypeDictionaryValueCallBacks)
 }
 
+type CFBooleanRef = CFTypeRef
+
 // constants
 
 var (
@@ -232,6 +234,11 @@ var (
 	KCFAllocatorMallocZone    CFAllocatorRef
 	KCFAllocatorNull          CFAllocatorRef
 	KCFAllocatorUseContext    CFAllocatorRef
+)
+
+var (
+	KCFBooleanTrue  CFBooleanRef
+	KCFBooleanFalse CFBooleanRef
 )
 
 var (
@@ -248,6 +255,9 @@ var constants = []utils.Constant{
 	utils.Const[CFAllocatorRef]{Name: "kCFAllocatorMallocZone", PVar: &KCFAllocatorMallocZone},
 	utils.Const[CFAllocatorRef]{Name: "kCFAllocatorNull", PVar: &KCFAllocatorNull},
 	utils.Const[CFAllocatorRef]{Name: "kCFAllocatorUseContext", PVar: &KCFAllocatorUseContext},
+
+	utils.Const[CFBooleanRef]{Name: "kCFBooleanTrue", PVar: &KCFBooleanTrue},
+	utils.Const[CFBooleanRef]{Name: "kCFBooleanFalse", PVar: &KCFBooleanFalse},
 
 	utils.Const[uintptr]{Name: "kCFTypeDictionaryKeyCallBacks", PVar: &kCFTypeDictionaryKeyCallBacks},
 	utils.Const[uintptr]{Name: "kCFTypeDictionaryValueCallBacks", PVar: &kCFTypeDictionaryValueCallBacks},
