@@ -252,6 +252,31 @@ const (
 	D2D1_DASH_STYLE_CUSTOM       DashStyle = 5
 )
 
+type TextAntialiasMode uint32
+
+const (
+
+	/// <summary>
+	/// Render text using the current system setting.
+	/// </summary>
+	D2D1_TEXT_ANTIALIAS_MODE_DEFAULT TextAntialiasMode = 0
+
+	/// <summary>
+	/// Render text using ClearType.
+	/// </summary>
+	D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE TextAntialiasMode = 1
+
+	/// <summary>
+	/// Render text using gray-scale.
+	/// </summary>
+	D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE TextAntialiasMode = 2
+
+	/// <summary>
+	/// Render text aliased.
+	/// </summary>
+	D2D1_TEXT_ANTIALIAS_MODE_ALIASED TextAntialiasMode = 3
+)
+
 type DrawTextOptions uint32
 
 const (

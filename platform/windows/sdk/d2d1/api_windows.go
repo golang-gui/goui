@@ -217,6 +217,10 @@ func (this *RenderTarget) SetDpi(dpiX, dpiY float32) {
 	cgo.Call(this.class().SetDpi, this, dpiX, dpiY)
 }
 
+func (this *RenderTarget) SetTextAntialiasMode(textAntialiasMode TextAntialiasMode) {
+	this.class().SetTextAntialiasMode.CallRaw(uintptr(cgo.Pointer(this)), uintptr(textAntialiasMode))
+}
+
 func (this *RenderTarget) Clear(color *ColorF) {
 	this.class().Clear.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(color)))
 }
