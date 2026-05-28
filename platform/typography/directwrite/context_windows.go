@@ -451,7 +451,6 @@ type textPainter struct {
 	colorf d2d1.ColorF
 	bitmap *wic.Bitmap
 	render *d2d1.RenderTarget
-	brush  *d2d1.SolidColorBrush
 }
 
 func (p *textPainter) Init(d2dFactory *d2d1.Factory, imgFactory *wic.ImagingFactory, width, height float32) (err error) {
@@ -480,19 +479,11 @@ func (p *textPainter) Init(d2dFactory *d2d1.Factory, imgFactory *wic.ImagingFact
 		return fmt.Errorf("create d2d wic bitmap render target err: %v", hr)
 	}
 
-	p.brush, hr = p.render.CreateSolidColorBrush(&p.colorf, nil)
-	if hr.Failed() {
-		return fmt.Errorf("create d2d color brush err: %v", hr)
-	}
-
+	p.render.SetTextAntialiasMode(d2d1.D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE)
 	return nil
 }
 
 func (p *textPainter) Destroy() {
-	if p.brush != nil {
-		p.brush.Release()
-		p.brush = nil
-	}
 	if p.render != nil {
 		p.render.Release()
 		p.render = nil
@@ -505,10 +496,7 @@ func (p *textPainter) Destroy() {
 
 func (p *textPainter) DrawTextLayout(layout *TextLayout, origin d2d1.Point2F) (err error) {
 	p.render.BeginDraw()
-	p.colorf = d2d1.ColorF{}
 	p.render.Clear(&p.colorf)
-	p.colorf = toD2dColor(layout.format.TextColor)
-	p.brush.SetColor(&p.colorf)
 	err = layout.Draw(p.render, origin, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP)
 	hr := p.render.EndDraw(nil, nil)
 	if err != nil {
