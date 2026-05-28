@@ -11,6 +11,7 @@ type Painter interface {
 	Destroy()
 	Begin(width, height uint)
 	End()
+	SetClipRect(rect Rectangle)
 	Clear(color Color)
 	FillRect(rect Rectangle, brush Brush)
 	FillRoundRect(rect Rectangle, radius float32, brush Brush)
@@ -21,8 +22,6 @@ type Painter interface {
 	DrawRoundRect(rect Rectangle, radius, strokeWidth float32, brush Brush)
 	DrawEllipse(center Point, xRadius, yRadius, strokeWidth float32, brush Brush)
 	DrawPath(path Path, strokeWidth float32, brush Brush)
-	DrawText(rect Rectangle, text string, format typography.TextFormat, brush Brush)
-	DrawTextLayout(origin Point, layout typography.TextLayout, brush Brush)
+	DrawTextLayout(origin Point, layout typography.TextLayout)
 	DrawImage(rect Rectangle, img image.Image)
-	SetClipRect(rect Rectangle)
 }

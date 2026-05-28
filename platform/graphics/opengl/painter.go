@@ -164,28 +164,12 @@ func (p *Painter) DrawPath(path graphics.Path, strokeWidth float32, brush graphi
 	}
 }
 
-func (p *Painter) DrawText(rect graphics.Rectangle, text string, format typography.TextFormat, brush graphics.Brush) {
-	if color, ok := brush.(graphics.Color); ok && p.typo != nil {
-		textBitmap, err := p.typo.DrawText(text, format, rect.Width, rect.Height, color, nil)
+func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLayout) {
+	if p.typo != nil {
+		textBitmap, err := p.typo.DrawTextLayout(layout, nil)
 		if err == nil {
-			drawRect := graphics.Rect(rect.X, rect.Y, float32(textBitmap.Width), float32(textBitmap.Height))
-			bitmap := graphics.Bitmap{
-				Width:  textBitmap.Width,
-				Height: textBitmap.Height,
-				Stride: textBitmap.Stride,
-				Format: graphics.PixelFormatRGBA,
-				Pixels: textBitmap.Pixels,
-			}
-			p.drawBitmap(drawRect, bitmap)
-		}
-	}
-}
-
-func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLayout, brush graphics.Brush) {
-	if color, ok := brush.(graphics.Color); ok && p.typo != nil {
-		textBitmap, err := p.typo.DrawTextLayout(layout, color, nil)
-		if err == nil {
-			drawRect := graphics.Rect(origin.X, origin.Y, float32(textBitmap.Width), float32(textBitmap.Height))
+			xOffset, yOffset, _, _ := layout.MeasureRect()
+			drawRect := graphics.Rect(origin.X+xOffset, origin.Y+yOffset, float32(textBitmap.Width), float32(textBitmap.Height))
 			bitmap := graphics.Bitmap{
 				Width:  textBitmap.Width,
 				Height: textBitmap.Height,

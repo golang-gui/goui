@@ -11,21 +11,30 @@ import (
 	"github.com/golang-gui/goui/platform/windows/win32"
 )
 
-var painter graphics.Painter
+var (
+	typo    typography.Context
+	painter graphics.Painter
+)
 
 func render(width, height uint) {
 	painter.Begin(width, height)
 	{
 		painter.Clear(graphics.RGBA(180, 180, 180, 255))
 		painter.FillRoundRect(graphics.Rect(50, 50, 100, 60), 12, graphics.RGBA(100, 100, 100, 255))
-		painter.DrawText(graphics.Rect(50, 50, 100, 60), "🎁按钮", typography.TextFormat{
-			Font: typography.FontInfo{
-				Family: "Microsoft YaHei",
-				Size:   18,
-			},
-			TextAlign: typography.TextAlignCenter,
-			LineAlign: typography.LineAlignCenter,
-		}, graphics.RGBA(200, 200, 200, 255))
+
+		if typo != nil {
+			textLayout, err := typo.NewTextLayout("🎁按钮", typography.TextFormat{
+				Font: typography.FontInfo{
+					Family: "Microsoft YaHei",
+					Size:   18,
+				},
+				TextColor: graphics.RGBA(200, 200, 200, 255),
+			}, 100, 60)
+			if err != nil {
+				panic(err)
+			}
+			painter.DrawTextLayout(graphics.Point{X: 50, Y: 50}, textLayout)
+		}
 
 		painter.DrawPath(graphics.MoveTo(200, 50).QuadBezierTo(250, 150, 300, 50), 2, graphics.RGBA(100, 0, 0, 255))
 	}
@@ -62,7 +71,7 @@ func Test_Direct2DPainter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	typo, err := directwrite.NewContext()
+	typo, err = directwrite.NewContext()
 	if err != nil {
 		t.Fatal(err)
 	}

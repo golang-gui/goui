@@ -10,7 +10,6 @@ import (
 
 	"github.com/golang-gui/goui/platform/windows/sdk/com"
 	"github.com/golang-gui/goui/platform/windows/sdk/d2d1"
-	"github.com/golang-gui/goui/platform/windows/sdk/dwrite"
 )
 
 type Painter struct {
@@ -170,26 +169,11 @@ func (p *Painter) DrawPath(path graphics.Path, strokeWidth float32, brush graphi
 	}
 }
 
-func (p *Painter) DrawText(rect graphics.Rectangle, text string, format typography.TextFormat, brush graphics.Brush) {
-	if p.dwTypo != nil {
-		if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-			textFormat, err := p.dwTypo.CreateTextFormat(format)
-			if err == nil {
-				defer textFormat.Release()
-				p.setRect(rect)
-				p.render.DrawText(text, textFormat, &p.rect, d2dBrush, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT, dwrite.DWRITE_MEASURING_MODE_NATURAL)
-			}
-		}
-	}
-
-	// TODO: draw text layout rendered bitmap
-}
-
-func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLayout, brush graphics.Brush) {
-	if textLayout, ok := layout.(*directwrite.TextLayout); ok {
-		if d2dBrush := p.setBrush(brush); d2dBrush != nil {
+func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLayout) {
+	if p.typoCtx != nil {
+		if textLayout, ok := layout.(*directwrite.TextLayout); ok {
 			point := d2d1.Point2F{X: origin.X, Y: origin.Y}
-			textLayout.Draw(&p.render.RenderTarget, point, d2dBrush, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP)
+			textLayout.Draw(&p.render.RenderTarget, point, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP)
 		}
 	}
 
