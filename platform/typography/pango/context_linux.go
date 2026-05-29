@@ -244,10 +244,8 @@ func (t *TextLayout) SetStrikethrough(start, length int, strike bool) {
 	}
 }
 
-func (t *TextLayout) MeasureRect() (x, y, width, height float32) {
-	x, y, width, height, xOffset, yOffset := t.getExtents()
-	x += xOffset
-	y += yOffset
+func (t *TextLayout) MeasureSize() (width, height float32) {
+	_, _, width, height = t.getExtents()
 	return
 }
 
@@ -256,7 +254,8 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 	if lineCount != 0 {
 		lines = make([]typography.TextLine, 0, lineCount)
 		clusters = make([]typography.TextCluster, 0, t.chars)
-		_, _, _, _, xOffset, yOffset := t.getExtents()
+		xOffset, _, _, _ := t.getExtents()
+		// TODO: yOffset?
 
 		iter := t.layout.GetIter()
 		var clustersBeg, clustersEnd int
@@ -277,11 +276,11 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 				lines = append(lines, typography.TextLine{
 					Start:    int(line.StartIndex),
 					Length:   int(line.Length),
-					X:        xOffset + float32(lineRect.X)/pango.Scale,
-					Y:        yOffset + float32(lineRect.Y)/pango.Scale,
+					X:        (float32(lineRect.X) / pango.Scale) - xOffset,
+					Y:        float32(lineRect.Y) / pango.Scale,
 					Width:    float32(lineRect.Width) / pango.Scale,
 					Height:   float32(lineRect.Height) / pango.Scale,
-					Baseline: yOffset + float32(baseline)/pango.Scale,
+					Baseline: float32(baseline) / pango.Scale,
 				})
 				lastLine = line
 			}
@@ -294,7 +293,7 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 			currentLine := &lines[lineIndex]
 			clusters = append(clusters, typography.TextCluster{
 				Start:     index,
-				X:         xOffset + float32(clusterRect.X)/pango.Scale,
+				X:         (float32(clusterRect.X) / pango.Scale) - xOffset,
 				Y:         currentLine.Y,
 				Width:     float32(clusterRect.Width) / pango.Scale,
 				Height:    currentLine.Height,
@@ -320,7 +319,7 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 }
 
 func (t *TextLayout) DrawBitmap(buf []byte) (bitmap typography.TextBitmap, err error) {
-	x, y, width, height, _, _ := t.getExtents()
+	x, y, width, height := t.getExtents()
 	if width == 0 || height == 0 {
 		return
 	}
@@ -344,20 +343,12 @@ func (t *TextLayout) DrawBitmap(buf []byte) (bitmap typography.TextBitmap, err e
 	return t.painter.GetBitmap(width, height, buf), nil
 }
 
-func (t *TextLayout) getExtents() (x, y, width, height, xOffset, yOffset float32) {
+func (t *TextLayout) getExtents() (x, y, width, height float32) {
 	_, rect := t.layout.GetExtents()
 	x = float32(rect.X) / pango.Scale
 	y = float32(rect.Y) / pango.Scale
 	width = float32(rect.Width) / pango.Scale
 	height = float32(rect.Height) / pango.Scale
-
-	if t.format.WrapMode == typography.WrapNone {
-		if t.format.TextAlign == typography.TextAlignCenter {
-			xOffset = (t.size.Width - width) / 2
-		} else if t.format.TextAlign == typography.TextAlignEnd {
-			xOffset = t.size.Width - width
-		}
-	}
 	return
 }
 
