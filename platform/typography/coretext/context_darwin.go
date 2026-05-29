@@ -392,9 +392,6 @@ func (t *TextLayout) DrawBitmap(buf []byte) (bitmap typography.TextBitmap, err e
 		return
 	}
 
-	width = min(width, t.width)
-	height = min(height, t.height)
-
 	if t.painter.width < width || t.painter.height < height {
 		t.painter.Destroy()
 		err = t.painter.Init(width, height)
@@ -407,6 +404,9 @@ func (t *TextLayout) DrawBitmap(buf []byte) (bitmap typography.TextBitmap, err e
 	if err != nil {
 		return
 	}
+
+	width = min(width, t.width)
+	height = min(height, t.height)
 
 	return t.painter.GetBitmap(width, height, buf), nil
 }
@@ -580,8 +580,20 @@ func (p *textPainter) DrawTextLayout(t *TextLayout, fgColor color.Color, x, y fl
 }
 
 func (p *textPainter) GetBitmap(width, height float32, buf []byte) (bitmap typography.TextBitmap) {
-	bitmap = p.bitmap
-	bitmap.Pixels = append([]byte{}, p.bitmap.Pixels...)
+	bitmap.Width = min(roundToPixel(width), p.bitmap.Width)
+	bitmap.Height = min(roundToPixel(height), p.bitmap.Height)
+	bitmap.Stride = bitmap.Width * 4
+	byteSize := bitmap.Stride * bitmap.Height
+	if byteSize <= cap(buf) {
+		bitmap.Pixels = buf[:byteSize]
+	} else {
+		bitmap.Pixels = make([]byte, byteSize)
+	}
+	for y := 0; y < bitmap.Height; y++ {
+		dstOffset := bitmap.PixOffset(0, y)
+		srcOffset := p.bitmap.PixOffset(0, y)
+		copy(bitmap.Pixels[dstOffset:dstOffset+bitmap.Stride], p.bitmap.Pixels[srcOffset:])
+	}
 	return
 }
 
