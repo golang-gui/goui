@@ -14,7 +14,7 @@ type TextLayout interface {
 	SetTextColor(start, length int, c color.Color)
 	SetUnderline(start, length int, underline bool)
 	SetStrikethrough(start, length int, strike bool)
-	MeasureRect() (x, y, width, height float32)
+	MeasureSize() (width, height float32)
 	MeasureMetrics() (lines []TextLine, clusters []TextCluster)
 }
 
