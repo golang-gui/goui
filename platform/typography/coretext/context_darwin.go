@@ -277,9 +277,9 @@ func (t *TextLayout) SetStrikethrough(start, length int, strike bool) {
 	}
 }
 
-func (t *TextLayout) MeasureRect() (x, y, width, height float32) {
+func (t *TextLayout) MeasureSize() (width, height float32) {
 	t.ensureFrame()
-	x, y, width, height = t.getExtents()
+	_, _, width, height = t.getExtents()
 	return
 }
 
@@ -387,7 +387,7 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 func (t *TextLayout) DrawBitmap(buf []byte) (bitmap typography.TextBitmap, err error) {
 	t.ensureFrame()
 
-	x, y, width, height := t.getExtents()
+	_, _, width, height := t.getExtents()
 	if width == 0 || height == 0 {
 		return
 	}
@@ -400,7 +400,7 @@ func (t *TextLayout) DrawBitmap(buf []byte) (bitmap typography.TextBitmap, err e
 		}
 	}
 
-	err = t.painter.DrawTextLayout(t, t.format.TextColor, x, y)
+	err = t.painter.DrawTextLayout(t, t.format.TextColor)
 	if err != nil {
 		return
 	}
@@ -560,7 +560,7 @@ func (p *textPainter) Destroy() {
 	}
 }
 
-func (p *textPainter) DrawTextLayout(t *TextLayout, fgColor color.Color, x, y float32) error {
+func (p *textPainter) DrawTextLayout(t *TextLayout, fgColor color.Color) error {
 	// Clear the bitmap
 	CGContextClearRect(p.cgCtx, CGRectMake(0, 0, float64(p.bitmap.Width), float64(p.bitmap.Height)))
 

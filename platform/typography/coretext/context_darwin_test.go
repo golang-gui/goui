@@ -46,8 +46,8 @@ func Test_TextLayout(t *testing.T) {
 	layout.SetUnderline(0, 1, true)
 	layout.SetStrikethrough(1, 2, true)
 
-	x, y, width, height := layout.MeasureRect()
-	t.Logf("%f-%f %fx%f", x, y, width, height)
+	width, height := layout.MeasureSize()
+	t.Logf("size=%fx%f", width, height)
 
 	lines, clusters := layout.MeasureMetrics()
 	t.Logf("lines=%d clusters=%d", len(lines), len(clusters))
@@ -74,7 +74,7 @@ func Test_TextLayout(t *testing.T) {
 
 	painter.Begin(200, 100)
 	painter.Clear(graphics.RGB(180, 180, 180))
-	painter.DrawRect(graphics.Rect(x, y, width, height), 1, graphics.RGB(0, 160, 0))
+	painter.DrawRect(graphics.Rect(0, 0, width, height), 1, graphics.RGB(0, 160, 0))
 	painter.DrawTextLayout(graphics.Point{}, layout)
 
 	for _, line := range lines {
