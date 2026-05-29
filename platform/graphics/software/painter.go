@@ -213,10 +213,9 @@ func (p *Painter) DrawPath(path graphics.Path, strokeWidth float32, brush graphi
 
 func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLayout) {
 	if p.typo != nil {
-		xOffset, yOffset, _, _ := layout.MeasureRect()
 		textBitmap, err := p.typo.DrawTextLayout(layout, nil)
 		if err == nil {
-			drawRect := graphics.Rect(origin.X+xOffset, origin.Y+yOffset, float32(textBitmap.Width), float32(textBitmap.Height))
+			drawRect := graphics.Rect(origin.X, origin.Y, float32(textBitmap.Width), float32(textBitmap.Height))
 			bitmap := graphics.Bitmap{
 				Width:  textBitmap.Width,
 				Height: textBitmap.Height,

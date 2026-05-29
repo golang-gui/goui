@@ -168,8 +168,7 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 	if p.typo != nil {
 		textBitmap, err := p.typo.DrawTextLayout(layout, nil)
 		if err == nil {
-			xOffset, yOffset, _, _ := layout.MeasureRect()
-			drawRect := graphics.Rect(origin.X+xOffset, origin.Y+yOffset, float32(textBitmap.Width), float32(textBitmap.Height))
+			drawRect := graphics.Rect(origin.X, origin.Y, float32(textBitmap.Width), float32(textBitmap.Height))
 			bitmap := graphics.Bitmap{
 				Width:  textBitmap.Width,
 				Height: textBitmap.Height,
