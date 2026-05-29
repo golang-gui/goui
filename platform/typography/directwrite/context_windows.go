@@ -2,11 +2,9 @@ package directwrite
 
 import (
 	"fmt"
-	"image/color"
-	"math"
-
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/utils"
+	"image/color"
 
 	"github.com/golang-gui/goui/platform/windows/sdk/com"
 	"github.com/golang-gui/goui/platform/windows/sdk/d2d1"
@@ -302,6 +300,8 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 	start := 0
 	clustersEnd := 0
 
+	xOffset, _, _, _ := t.getExtends()
+
 	for lineIndex, metrics := range lineMetrics {
 		var line typography.TextLine
 		endPos := pos + int(metrics.Length)
@@ -311,13 +311,16 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 		}
 		line.Start = t.position.ToUtf8(pos)
 		line.Length = endU8Pos - line.Start
-		line.X, line.Y, _, _ = t.layout.HitTestTextPosition(pos, false)
+		lineX, lineY, _, _ := t.layout.HitTestTextPosition(pos, false)
 		lineRangeMetrics, _ := t.layout.HitTestTextRange(pos, 1, 0, 0)
 		for _, rangeMetrics := range lineRangeMetrics {
-			line.Y = min(line.Y, rangeMetrics.Top)
+			lineX = min(lineX, rangeMetrics.Left)
+			lineY = min(lineY, rangeMetrics.Top)
 		}
 		lineEndX, _, _, _ := t.layout.HitTestTextPosition(endPos-1, true)
-		line.Width = lineEndX - line.X
+		line.X = lineX - xOffset
+		line.Y = lineY
+		line.Width = lineEndX - lineX
 		line.Height = metrics.Height
 		line.Baseline = line.Y + metrics.Baseline
 
@@ -361,22 +364,9 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 	return
 }
 
-func (t *TextLayout) MeasureRect() (x, y, width, height float32) {
-	hitMetrics, hr := t.layout.HitTestTextRange(0, -1, 0, 0)
-	if hr.Failed() {
-		return
-	}
-	startX := float32(math.MaxFloat32)
-	startY := float32(math.MaxFloat32)
-	endX := float32(0)
-	endY := float32(0)
-	for _, metrics := range hitMetrics {
-		startX = min(startX, metrics.Left)
-		startY = min(startY, metrics.Top)
-		endX = max(endX, metrics.Left+metrics.Width)
-		endY = max(endY, metrics.Top+metrics.Height)
-	}
-	return startX, startY, endX - startX, endY - startY
+func (t *TextLayout) MeasureSize() (width, height float32) {
+	_, _, width, height = t.getExtends()
+	return
 }
 
 func (t *TextLayout) Draw(render *d2d1.RenderTarget, origin d2d1.Point2F, drawOptions d2d1.DrawTextOptions) (err error) {
@@ -415,12 +405,17 @@ func (t *TextLayout) Draw(render *d2d1.RenderTarget, origin d2d1.Point2F, drawOp
 		t.layout.SetDrawingEffect(&d2dBrush.Unknown, attr.Range)
 	}
 
-	render.DrawTextLayout(origin, t.layout, fgColorBrush, drawOptions)
+	x, y, _, _ := t.getExtends()
+	pos := d2d1.Point2F{
+		X: origin.X - x,
+		Y: origin.Y - y,
+	}
+	render.DrawTextLayout(pos, t.layout, fgColorBrush, drawOptions)
 	return nil
 }
 
 func (t *TextLayout) DrawBitmap(buf []byte) (bitmap typography.TextBitmap, err error) {
-	x, y, width, height := t.MeasureRect()
+	_, _, width, height := t.getExtends()
 	if width == 0 || height == 0 {
 		return
 	}
@@ -433,12 +428,21 @@ func (t *TextLayout) DrawBitmap(buf []byte) (bitmap typography.TextBitmap, err e
 		}
 	}
 
-	err = t.painter.DrawTextLayout(t, d2d1.Point2F{X: -x, Y: -y})
+	err = t.painter.DrawTextLayout(t)
 	if err != nil {
 		return
 	}
 
 	return t.painter.GetBitmap(width, height, buf)
+}
+
+func (t *TextLayout) getExtends() (x, y, width, height float32) {
+	metrics, _ := t.layout.GetMetrics()
+	x = metrics.Left
+	y = metrics.Top
+	width = metrics.Width
+	height = metrics.Height
+	return
 }
 
 func roundPixel(v float32) int {
@@ -494,10 +498,10 @@ func (p *textPainter) Destroy() {
 	}
 }
 
-func (p *textPainter) DrawTextLayout(layout *TextLayout, origin d2d1.Point2F) (err error) {
+func (p *textPainter) DrawTextLayout(layout *TextLayout) (err error) {
 	p.render.BeginDraw()
 	p.render.Clear(&p.colorf)
-	err = layout.Draw(p.render, origin, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP)
+	err = layout.Draw(p.render, d2d1.Point2F{}, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP)
 	hr := p.render.EndDraw(nil, nil)
 	if err != nil {
 		return fmt.Errorf("directwrite draw text err: %w", err)
