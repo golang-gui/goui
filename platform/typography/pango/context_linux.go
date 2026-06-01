@@ -8,13 +8,14 @@ import (
 	"slices"
 	"unicode/utf8"
 
-	"github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
 
 	"github.com/golang-gui/goui/platform/linux/libs/cairo"
 	"github.com/golang-gui/goui/platform/linux/libs/pango"
 	"github.com/golang-gui/goui/platform/linux/libs/pango_cairo"
+
+	"github.com/goexlib/cgo"
 )
 
 type Context struct {
@@ -53,7 +54,11 @@ func (c *Context) Destroy() {
 }
 
 func (c *Context) AddFont(fontFile string) error {
-	return errors.New("not implement")
+	ok := c.fontMap.GetConfig().AppFontAddFile(fontFile)
+	if !ok {
+		return errors.New("add font file failed")
+	}
+	return nil
 }
 
 func (c *Context) NewTextLayout(text string, format typography.TextFormat, width, height float32) (typography.TextLayout, error) {

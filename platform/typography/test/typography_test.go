@@ -26,6 +26,11 @@ func TestTypography(t *testing.T) {
 	}
 	defer ctx.Destroy()
 
+	err = ctx.AddFont("testdata/MiSansLatin-Normal.ttf")
+	if err != nil {
+		t.Log(err)
+	}
+
 	red := graphics.RGB(180, 0, 0)
 	green := graphics.RGB(0, 180, 0)
 	blue := graphics.RGB(0, 0, 180)
@@ -141,7 +146,7 @@ func savePng(filename string, img image.Image) (err error) {
 }
 
 func newRichTextLayout(ctx typography.Context, width, height int, font string, wrap typography.WrapMode, align typography.TextAlignment, textColor graphics.Color) (typography.TextLayout, error) {
-	text := "abc中国中文👨‍👩‍👧‍👦 مشروع "
+	text := "abp中国中文👨‍👩‍👧‍👦 مشروع "
 	format := typography.TextFormat{
 		Font: typography.FontInfo{
 			Family: font,
