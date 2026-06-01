@@ -3,13 +3,12 @@ package pango
 import (
 	"errors"
 	"fmt"
-	"image"
 	"image/color"
 	"slices"
 	"unicode/utf8"
 
-	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
+	"github.com/golang-gui/goui/platform/typography/utils"
 
 	"github.com/golang-gui/goui/platform/linux/libs/cairo"
 	"github.com/golang-gui/goui/platform/linux/libs/pango"
@@ -99,7 +98,8 @@ type TextLayout struct {
 	layout  pango.Layout
 	text    string
 	format  typography.TextFormat
-	size    graphics.Size
+	width   float32
+	height  float32
 	attrs   pango.AttrList
 	painter textPainter
 	chars   int
@@ -111,7 +111,8 @@ func newTextLayout(c *Context, layout pango.Layout, text string, format typograp
 		layout: layout,
 		text:   text,
 		format: format,
-		size:   graphics.Size{Width: width, Height: height},
+		width:  width,
+		height: height,
 		attrs:  pango.AttrListNew(),
 		chars:  utf8.RuneCountInString(text),
 	}
@@ -140,14 +141,14 @@ func (t *TextLayout) Format() typography.TextFormat {
 }
 
 func (t *TextLayout) Size() (maxWidth, maxHeight float32) {
-	return t.size.Width, t.size.Height
+	return t.width, t.height
 }
 
 func (t *TextLayout) SetSize(maxWidth, maxHeight float32) {
-	t.size.Width = maxWidth
-	t.size.Height = maxHeight
+	t.width = maxWidth
+	t.height = maxHeight
 	if t.format.WrapMode != typography.WrapNone {
-		t.layout.SetWidth(roundToPixel(t.size.Width) * pango.Scale)
+		t.layout.SetWidth(roundToPixel(t.width) * pango.Scale)
 	}
 }
 
@@ -173,7 +174,7 @@ func (t *TextLayout) SetWrapMode(wrap typography.WrapMode) {
 		t.layout.SetWrap(pango.WrapWordChar)
 	}
 	if wrap != typography.WrapNone {
-		t.layout.SetWidth(roundToPixel(t.size.Width) * pango.Scale)
+		t.layout.SetWidth(roundToPixel(t.width) * pango.Scale)
 	} else {
 		t.layout.SetWidth(-1)
 	}
@@ -329,8 +330,8 @@ func (t *TextLayout) DrawBitmap(buf []byte) (bitmap typography.TextBitmap, err e
 		return
 	}
 
-	width = min(width, t.size.Width)
-	height = min(height, t.size.Height)
+	width = min(width, t.width)
+	height = min(height, t.height)
 
 	if t.painter.width < width || t.painter.height < height {
 		t.painter.Destroy()
@@ -360,7 +361,7 @@ func (t *TextLayout) getExtents() (x, y, width, height float32) {
 type textPainter struct {
 	width   float32
 	height  float32
-	bitmap  graphics.Bitmap
+	bitmap  typography.TextBitmap
 	surface cairo.Surface
 	context cairo.Context
 	options cairo.FontOptions
@@ -372,7 +373,6 @@ func (p *textPainter) Init(width, height float32) (err error) {
 	p.bitmap.Width = roundToPixel(width)
 	p.bitmap.Height = roundToPixel(height)
 	p.bitmap.Stride = p.bitmap.Width * 4
-	p.bitmap.Format = graphics.PixelFormatBGRA
 	p.bitmap.Pixels = make([]byte, p.bitmap.Stride*p.bitmap.Height)
 	p.surface = cairo.ImageSurfaceCreateForData(p.bitmap.Pixels, cairo.FormatARGB32, p.bitmap.Width, p.bitmap.Height, p.bitmap.Stride)
 	if status := p.surface.Status(); status != 0 {
@@ -411,9 +411,9 @@ func (p *textPainter) Destroy() {
 }
 
 func (p *textPainter) DrawTextLayout(t *TextLayout, x, y float32) (err error) {
-	gColor := toColor(t.format.TextColor)
 	cgo.Memset(cgo.CSlice(p.bitmap.Pixels), 0, cgo.Sizet(len(p.bitmap.Pixels)))
-	p.context.SetSourceRGBA(float64(gColor.R), float64(gColor.G), float64(gColor.B), float64(gColor.A))
+	r, g, b, a := toColor(t.format.TextColor)
+	p.context.SetSourceRGBA(r, g, b, a)
 	p.context.MoveTo(float64(x), float64(y))
 	pango_cairo.UpdateLayout(p.context, t.layout)
 	pango_cairo.ShowLayout(p.context, t.layout)
@@ -424,12 +424,10 @@ func (p *textPainter) DrawTextLayout(t *TextLayout, x, y float32) (err error) {
 }
 
 func (p *textPainter) GetBitmap(width, height float32, buf []byte) (bitmap typography.TextBitmap) {
-	subImage := p.bitmap.SubImage(image.Rect(0, 0, roundToPixel(width), roundToPixel(height)))
-	bmp := graphics.CopyToBitmap(subImage, graphics.PixelFormatRGBA, buf)
-	bitmap.Width = bmp.Width
-	bitmap.Height = bmp.Height
-	bitmap.Stride = bmp.Stride
-	bitmap.Pixels = bmp.Pixels
+	bitmap.Width = roundToPixel(width)
+	bitmap.Height = roundToPixel(height)
+	bitmap = utils.CopyBitmap(p.bitmap, bitmap.Width, bitmap.Height, buf)
+	utils.ReverseBitmap(bitmap)
 	return
 }
 
@@ -437,15 +435,14 @@ func roundToPixel(num float32) int {
 	return int(num + 0.99)
 }
 
-func toColor(c color.Color) graphics.Color {
+func toColor(c color.Color) (r, g, b, a float64) {
 	if c == nil {
 		c = typography.DefaultTextColor()
 	}
-	r, g, b, a := color.RGBAModel.Convert(c).RGBA()
-	return graphics.Color{
-		R: float32(r) / 65535,
-		G: float32(g) / 65535,
-		B: float32(b) / 65535,
-		A: float32(a) / 65535,
-	}
+	r32, g32, b32, a32 := color.RGBAModel.Convert(c).RGBA()
+	r = float64(r32) / 65535.0
+	g = float64(g32) / 65535.0
+	b = float64(b32) / 65535.0
+	a = float64(a32) / 65535.0
+	return
 }
