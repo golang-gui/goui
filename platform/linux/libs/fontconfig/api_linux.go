@@ -1,9 +1,10 @@
 package fontconfig
 
 import (
-	"github.com/goexlib/cgo"
 	"runtime"
 	"unsafe"
+
+	"github.com/goexlib/cgo"
 )
 
 var (
@@ -49,12 +50,12 @@ func (c Config) ParseAndLoad(file string, complain bool) Bool {
 
 // AppFontAddFile adds an application-specific font file to the configuration.
 // Returns true if the font was successfully added.
-func (c Config) AppFontAddFile(file string) Bool {
+func (c Config) AppFontAddFile(file string) bool {
 	// FcBool FcConfigAppFontAddFile(FcConfig* config, const FcChar8* file)
 	cFile := cgo.CString(file)
 	ret, _, _ := fcConfigAppFontAddFile.CallRaw(uintptr(c), uintptr(cFile))
 	runtime.KeepAlive(cFile)
-	return Bool(ret)
+	return ret != 0
 }
 
 // Destroy destroys a pattern, freeing all memory associated with it.

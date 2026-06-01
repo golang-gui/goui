@@ -1,9 +1,11 @@
 package pango
 
 import (
-	"github.com/goexlib/cgo"
-	"github.com/golang-gui/goui/platform/linux/libs/glib"
 	"runtime"
+
+	"github.com/goexlib/cgo"
+	"github.com/golang-gui/goui/platform/linux/libs/fontconfig"
+	"github.com/golang-gui/goui/platform/linux/libs/glib"
 )
 
 var (
@@ -78,6 +80,7 @@ var (
 
 	// PangoFontMap
 	pangoFontMapCreateContext = libpango.NewSymbol("pango_font_map_create_context")
+	pangoFcFontMapGetConfig   = libpango.NewSymbol("pango_fc_font_map_get_config")
 	pangoFcFontMapSetConfig   = libpango.NewSymbol("pango_fc_font_map_set_config")
 )
 
@@ -546,12 +549,17 @@ func (fm FontMap) CreateContext() (c Context) {
 	return
 }
 
+func (fm FontMap) GetConfig() fontconfig.Config {
+	ret, _, _ := pangoFcFontMapGetConfig.CallRaw(fm.GObject)
+	return fontconfig.Config(ret)
+}
+
 // FontMapSetConfig sets the FcConfig for a PangoCairoFontMap created with FontMapNewForFontType(cairo.FontTypeFT).
 // The fontMap must be a PangoFcFontMap (i.e. created with FontTypeFT).
 // config is an *FcConfig from the fontconfig package (passed as uintptr).
-func (fm FontMap) SetConfig(config uintptr) {
+func (fm FontMap) SetConfig(config fontconfig.Config) {
 	// void pango_fc_font_map_set_config(PangoFcFontMap* fcfontmap, FcConfig* fcconfig)
-	pangoFcFontMapSetConfig.CallRaw(fm.GObject, config)
+	pangoFcFontMapSetConfig.CallRaw(fm.GObject, uintptr(config))
 }
 
 func goPointer[T any](ptr uintptr) *T {
