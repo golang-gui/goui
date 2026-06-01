@@ -1,6 +1,7 @@
 package winapi
 
 import (
+	"runtime"
 	"syscall"
 	"unsafe"
 )
@@ -70,6 +71,8 @@ var (
 
 	procBitBlt        = gdi32Dll.NewProc("BitBlt")
 	procStretchDIBits = gdi32Dll.NewProc("StretchDIBits")
+
+	procAddFontResourceExW = gdi32Dll.NewProc("AddFontResourceExW")
 
 	procSetPixelFormat      = gdi32Dll.NewProc("SetPixelFormat")
 	procChoosePixelFormat   = gdi32Dll.NewProc("ChoosePixelFormat")
@@ -402,6 +405,13 @@ func SetDIBitsToDevice(hdc HDC, xDest, yDest, width, height, xSrc, ySrc, startSc
 func StretchDIBits(hdc HDC, xDest, yDest, destWidth, destHeight, xSrc, ySrc, srcWidth, srcHeight INT, bits LPVOID, bmi *BITMAPINFO, usage UINT, rop DWORD) INT {
 	ret, _, _ := syscall.SyscallN(procStretchDIBits.Addr(), uintptr(hdc), uintptr(xDest), uintptr(yDest), uintptr(destWidth), uintptr(destHeight), uintptr(xSrc), uintptr(ySrc), uintptr(srcWidth), uintptr(srcHeight), uintptr(bits), uintptr(unsafe.Pointer(bmi)), uintptr(usage), uintptr(rop))
 	return INT(ret)
+}
+
+func AddFontResourceEx(name string, flag DWORD) int {
+	wName, _ := syscall.UTF16PtrFromString(name)
+	ret, _, _ := procAddFontResourceExW.Call(uintptr(unsafe.Pointer(wName)), uintptr(flag), 0)
+	runtime.KeepAlive(wName)
+	return int(ret)
 }
 
 func ChoosePixelFormat(hdc HDC, pfd LPPIXELFORMATDESCRIPTOR) (INT, error) {

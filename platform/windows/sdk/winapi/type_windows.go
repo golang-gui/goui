@@ -169,6 +169,11 @@ type RGBQUAD struct {
 	Reserved BYTE
 }
 
+const (
+	FR_PRIVATE  = 0x10
+	FR_NOT_ENUM = 0x20
+)
+
 type PIXELFORMATDESCRIPTOR struct {
 	Size           WORD
 	Version        WORD
