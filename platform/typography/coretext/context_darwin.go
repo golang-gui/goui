@@ -48,14 +48,7 @@ func (c *Context) AddFont(fontFile string) error {
 	}
 	defer CFRelease(fontURL)
 
-	ok, cfErr := CTFontManagerRegisterFontsForURL(fontURL, KCTFontManagerScopeProcess)
-	if !ok {
-		if cfErr != 0 {
-			CFRelease(cfErr)
-		}
-		return fmt.Errorf("failed to register font: %s", fontFile)
-	}
-	return nil
+	return CTFontManagerRegisterFontsForURL(fontURL, KCTFontManagerScopeProcess)
 }
 
 func (c *Context) NewTextLayout(text string, format typography.TextFormat, width, height float32) (typography.TextLayout, error) {
