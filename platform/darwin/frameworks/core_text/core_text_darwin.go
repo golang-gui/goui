@@ -1,6 +1,8 @@
 package core_text
 
 import (
+	"errors"
+	"fmt"
 	"unsafe"
 
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/core_foundation"
@@ -259,10 +261,17 @@ const (
 	KCTFontManagerScopeSession    CTFontManagerScope = 3
 )
 
-func CTFontManagerRegisterFontsForURL(fontURL CFURLRef, scope CTFontManagerScope) (bool, CFTypeRef) {
-	var cfErr CFTypeRef
-	ok := fnCTFontManagerRegisterFontsForURL(fontURL, scope, &cfErr)
-	return ok, cfErr
+func CTFontManagerRegisterFontsForURL(fontURL CFURLRef, scope CTFontManagerScope) error {
+	var err CFErrorRef
+	ok := fnCTFontManagerRegisterFontsForURL(fontURL, scope, &err)
+	if err != 0 {
+		defer CFRelease(err)
+		return fmt.Errorf("register err: %d", CFErrorGetCode(err))
+	}
+	if !ok {
+		return errors.New("register failed")
+	}
+	return nil
 }
 
 type CTParagraphStyleRef = CFTypeRef
@@ -504,7 +513,7 @@ var (
 	fnCTTypesetterSuggestClusterBreak        func(typesetter CTTypesetterRef, startIndex CFIndex, width CGFloat) CFIndex
 	fnCTTypesetterCreateLine                 func(typesetter CTTypesetterRef, stringRange CFRange) CTLineRef
 
-	fnCTFontManagerRegisterFontsForURL func(fontURL CFURLRef, scope CTFontManagerScope, error *CFTypeRef) bool
+	fnCTFontManagerRegisterFontsForURL func(fontURL CFURLRef, scope CTFontManagerScope, err *CFTypeRef) bool
 
 	fnCTParagraphStyleCreate func(settings unsafe.Pointer, settingCount uint) CTParagraphStyleRef
 )

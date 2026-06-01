@@ -225,6 +225,12 @@ func CFDictionaryCreate(keys []CFTypeRef, values []CFTypeRef) CFDictionaryRef {
 
 type CFBooleanRef = CFTypeRef
 
+type CFErrorRef = CFTypeRef
+
+func CFErrorGetCode(err CFErrorRef) CFIndex {
+	return fnCFErrorGetCode(err)
+}
+
 // constants
 
 var (
@@ -295,6 +301,8 @@ var functions = []utils.Function{
 	{Name: "CFArrayGetValueAtIndex", PFunc: &fnCFArrayGetValueAtIndex},
 
 	{Name: "CFURLCreateWithFileSystemPath", PFunc: &fnCFURLCreateWithFileSystemPath},
+
+	{Name: "CFErrorGetCode", PFunc: &fnCFErrorGetCode},
 }
 
 var (
@@ -325,4 +333,6 @@ var (
 	fnCFArrayGetValueAtIndex func(theArray CFArrayRef, idx CFIndex) unsafe.Pointer
 
 	fnCFURLCreateWithFileSystemPath func(allocator CFAllocatorRef, filePath CFStringRef, pathStyle CFURLPathStyle, isDirectory bool) CFURLRef
+
+	fnCFErrorGetCode func(err CFErrorRef) CFIndex
 )
