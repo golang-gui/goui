@@ -1,16 +1,19 @@
 package directwrite
 
 import (
+	"errors"
 	"fmt"
+	"image/color"
+
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/utils"
-	"image/color"
 
 	"github.com/golang-gui/goui/platform/windows/sdk/com"
 	"github.com/golang-gui/goui/platform/windows/sdk/d2d1"
 	"github.com/golang-gui/goui/platform/windows/sdk/dwrite"
 	"github.com/golang-gui/goui/platform/windows/sdk/dxgi"
 	"github.com/golang-gui/goui/platform/windows/sdk/wic"
+	"github.com/golang-gui/goui/platform/windows/sdk/winapi"
 )
 
 type Context struct {
@@ -47,7 +50,11 @@ func (c *Context) Name() string {
 }
 
 func (c *Context) AddFont(fontFile string) error {
-	return fmt.Errorf("not implement")
+	num := winapi.AddFontResourceEx(fontFile, winapi.FR_PRIVATE)
+	if num == 0 {
+		return errors.New("add font resource failed")
+	}
+	return nil
 }
 
 func (c *Context) NewTextLayout(text string, format typography.TextFormat, width, height float32) (typography.TextLayout, error) {
