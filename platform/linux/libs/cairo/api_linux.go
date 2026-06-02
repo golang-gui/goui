@@ -13,6 +13,7 @@ var (
 	cairoCreate                      = libcairo.NewSymbol("cairo_create")
 	cairoStatus                      = libcairo.NewSymbol("cairo_status")
 	cairoDestroy                     = libcairo.NewSymbol("cairo_destroy")
+	cairoScale                       = libcairo.NewSymbol("cairo_scale")
 	cairoSetSourceRgb                = libcairo.NewSymbol("cairo_set_source_rgb")
 	cairoSetSourceRgba               = libcairo.NewSymbol("cairo_set_source_rgba")
 	cairoPaint                       = libcairo.NewSymbol("cairo_paint")
@@ -78,6 +79,10 @@ func (cr Context) Status() Status {
 func (cr Context) Destroy() {
 	// void cairo_destroy(cairo_t* cr)
 	cairoDestroy.CallRaw(uintptr(cr))
+}
+
+func (cr Context) Scale(sx, sy float64) {
+	cgo.Call(cairoScale.Addr(), uintptr(cr), sx, sy)
 }
 
 // SetSourceRGB sets the source pattern to an opaque color.
