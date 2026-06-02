@@ -427,6 +427,9 @@ func (t *TextLayout) DrawBitmap(buf []byte) (bitmap typography.TextBitmap, err e
 		return
 	}
 
+	width = min(width, t.width)
+	height = min(height, t.height)
+
 	if t.painter.width < width || t.painter.height < height {
 		t.painter.Destroy()
 		err = t.painter.Init(t.ctx.d2dFactory, t.ctx.imgFactory, width, height)
