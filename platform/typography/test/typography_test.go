@@ -37,9 +37,37 @@ func TestTypography(t *testing.T) {
 	gray := graphics.RGB(160, 160, 160)
 	white := graphics.RGB(250, 250, 250)
 
-	fontName := "Microsoft YaHei"
+	fontName := "MiSans Latin Normal"
 	wrap := typography.WrapWordChar
 	align := typography.TextAlignEnd
+
+	t.Run("text", func(t *testing.T) {
+		layout, err := newRichTextLayout(ctx, 200, 100, fontName, wrap, align, white)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer layout.Destroy()
+
+		bitmap, err := ctx.DrawTextLayout(layout, 1.0, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = savePng("text-1x.png", bitmap)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		bitmap, err = ctx.DrawTextLayout(layout, 2.0, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = savePng("text-2x.png", bitmap)
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
 
 	t.Run("normal", func(t *testing.T) {
 		layout, err := newRichTextLayout(ctx, 200, 100, fontName, wrap, align, white)
@@ -47,7 +75,7 @@ func TestTypography(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		bitmap, err := ctx.DrawTextLayout(layout, nil)
+		bitmap, err := ctx.DrawTextLayout(layout, 1.0, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -78,7 +106,7 @@ func TestTypography(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		bitmap, err := ctx.DrawTextLayout(layout, nil)
+		bitmap, err := ctx.DrawTextLayout(layout, 1.0, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -109,7 +137,7 @@ func TestTypography(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		bitmap, err := ctx.DrawTextLayout(layout, nil)
+		bitmap, err := ctx.DrawTextLayout(layout, 1.0, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -162,10 +190,10 @@ func newRichTextLayout(ctx typography.Context, width, height int, font string, w
 		return nil, err
 	}
 
-	layout.SetTextFont(0, 3, typography.FontInfo{
-		Family: "mono sans",
-		Size:   24,
-	})
+	//layout.SetTextFont(0, 3, typography.FontInfo{
+	//	Family: "mono sans",
+	//	Size:   24,
+	//})
 	layout.SetTextColor(0, 3, color.RGBA{R: 160, A: 255})
 	layout.SetUnderline(0, 1, true)
 	layout.SetStrikethrough(1, 2, true)

@@ -71,11 +71,11 @@ func (c *Context) NewTextLayout(text string, format typography.TextFormat, width
 	return newTextLayout(c, textLayout, text, format, width, height), nil
 }
 
-func (c *Context) DrawTextLayout(layout typography.TextLayout, buf []byte) (bitmap typography.TextBitmap, err error) {
+func (c *Context) DrawTextLayout(layout typography.TextLayout, scale float32, buf []byte) (bitmap typography.TextBitmap, err error) {
 	if err = c.prepareDraw(); err != nil {
 		return
 	}
-	return layout.(*TextLayout).DrawBitmap(buf)
+	return layout.(*TextLayout).DrawBitmap(scale, buf)
 }
 
 func (c *Context) createTextFormat(format typography.TextFormat) (textFormat *dwrite.TextFormat, err error) {
@@ -421,14 +421,14 @@ func (t *TextLayout) Draw(render *d2d1.RenderTarget, origin d2d1.Point2F, drawOp
 	return nil
 }
 
-func (t *TextLayout) DrawBitmap(buf []byte) (bitmap typography.TextBitmap, err error) {
+func (t *TextLayout) DrawBitmap(scale float32, buf []byte) (bitmap typography.TextBitmap, err error) {
 	_, _, width, height := t.getExtends()
 	if width == 0 || height == 0 {
 		return
 	}
 
-	width = min(width, t.width)
-	height = min(height, t.height)
+	width = min(width, t.width) * scale
+	height = min(height, t.height) * scale
 
 	if t.painter.width < width || t.painter.height < height {
 		t.painter.Destroy()
@@ -438,7 +438,7 @@ func (t *TextLayout) DrawBitmap(buf []byte) (bitmap typography.TextBitmap, err e
 		}
 	}
 
-	err = t.painter.DrawTextLayout(t)
+	err = t.painter.DrawTextLayout(t, scale)
 	if err != nil {
 		return
 	}
@@ -508,7 +508,9 @@ func (p *textPainter) Destroy() {
 	}
 }
 
-func (p *textPainter) DrawTextLayout(layout *TextLayout) (err error) {
+func (p *textPainter) DrawTextLayout(layout *TextLayout, scale float32) (err error) {
+	dpi := scale * 96
+	p.render.SetDpi(dpi, dpi)
 	p.render.BeginDraw()
 	p.render.Clear(&p.colorf)
 	err = layout.Draw(p.render, d2d1.Point2F{}, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP)

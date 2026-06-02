@@ -55,8 +55,8 @@ func (c *Context) NewTextLayout(text string, format typography.TextFormat, width
 	return newTextLayout(c, text, format, width, height)
 }
 
-func (c *Context) DrawTextLayout(layout typography.TextLayout, buf []byte) (bitmap typography.TextBitmap, err error) {
-	return layout.(*TextLayout).DrawBitmap(buf)
+func (c *Context) DrawTextLayout(layout typography.TextLayout, scale float32, buf []byte) (bitmap typography.TextBitmap, err error) {
+	return layout.(*TextLayout).DrawBitmap(scale, buf)
 }
 
 // TextLayout implements typography.TextLayout using Core Text.
@@ -377,13 +377,16 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 	return
 }
 
-func (t *TextLayout) DrawBitmap(buf []byte) (bitmap typography.TextBitmap, err error) {
+func (t *TextLayout) DrawBitmap(scale float32, buf []byte) (bitmap typography.TextBitmap, err error) {
 	t.ensureFrame()
 
 	_, _, width, height := t.getExtents()
 	if width == 0 || height == 0 {
 		return
 	}
+
+	width *= scale
+	height *= scale
 
 	if t.painter.width < width || t.painter.height < height {
 		t.painter.Destroy()
@@ -393,13 +396,13 @@ func (t *TextLayout) DrawBitmap(buf []byte) (bitmap typography.TextBitmap, err e
 		}
 	}
 
-	err = t.painter.DrawTextLayout(t, t.format.TextColor)
+	err = t.painter.DrawTextLayout(t, scale)
 	if err != nil {
 		return
 	}
 
-	width = min(width, t.width)
-	height = min(height, t.height)
+	width = min(width, t.width*scale)
+	height = min(height, t.height*scale)
 
 	return t.painter.GetBitmap(width, height, buf), nil
 }
@@ -553,22 +556,11 @@ func (p *textPainter) Destroy() {
 	}
 }
 
-func (p *textPainter) DrawTextLayout(t *TextLayout, fgColor color.Color) error {
-	// Clear the bitmap
+func (p *textPainter) DrawTextLayout(t *TextLayout, scale float32) error {
 	CGContextClearRect(p.cgCtx, CGRectMake(0, 0, float64(p.bitmap.Width), float64(p.bitmap.Height)))
-
-	// Set fill color
-	r, g, b, a := toRGBAColor(fgColor).RGBA()
-	CGContextSetRGBFillColor(p.cgCtx,
-		float64(r)/65535.0,
-		float64(g)/65535.0,
-		float64(b)/65535.0,
-		float64(a)/65535.0,
-	)
-
+	CGContextScaleCTM(p.cgCtx, float64(scale), float64(scale))
 	CGContextSetTextMatrix(p.cgCtx, CGAffineTransformIdentity)
 	CTFrameDraw(t.frame, p.cgCtx)
-
 	return nil
 }
 

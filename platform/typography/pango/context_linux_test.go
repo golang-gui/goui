@@ -47,7 +47,7 @@ func Test_TextLayout(t *testing.T) {
 	lines, clusters := layout.MeasureMetrics()
 	t.Logf("lines=%d clusters=%d", len(lines), len(clusters))
 
-	bitmap, err := c.DrawTextLayout(layout, nil)
+	bitmap, err := c.DrawTextLayout(layout, 2.0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

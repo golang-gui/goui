@@ -81,16 +81,8 @@ func (c *Context) NewTextLayout(text string, format typography.TextFormat, width
 	return newTextLayout(c, layout, text, format, width, height), nil
 }
 
-func (c *Context) DrawText(text string, format typography.TextFormat, width, height float32, buf []byte) (bitmap typography.TextBitmap, err error) {
-	layout, err := c.NewTextLayout(text, format, width, height)
-	if err != nil {
-		return
-	}
-	return c.DrawTextLayout(layout, buf)
-}
-
-func (c *Context) DrawTextLayout(layout typography.TextLayout, buf []byte) (bitmap typography.TextBitmap, err error) {
-	return layout.(*TextLayout).DrawBitmap(buf)
+func (c *Context) DrawTextLayout(layout typography.TextLayout, scale float32, buf []byte) (bitmap typography.TextBitmap, err error) {
+	return layout.(*TextLayout).DrawBitmap(scale, buf)
 }
 
 type TextLayout struct {
@@ -324,14 +316,14 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 	return
 }
 
-func (t *TextLayout) DrawBitmap(buf []byte) (bitmap typography.TextBitmap, err error) {
+func (t *TextLayout) DrawBitmap(scale float32, buf []byte) (bitmap typography.TextBitmap, err error) {
 	x, y, width, height := t.getExtents()
 	if width == 0 || height == 0 {
 		return
 	}
 
-	width = min(width, t.width)
-	height = min(height, t.height)
+	width = min(width, t.width) * scale
+	height = min(height, t.height) * scale
 
 	if t.painter.width < width || t.painter.height < height {
 		t.painter.Destroy()
@@ -341,7 +333,7 @@ func (t *TextLayout) DrawBitmap(buf []byte) (bitmap typography.TextBitmap, err e
 		}
 	}
 
-	err = t.painter.DrawTextLayout(t, -x, -y)
+	err = t.painter.DrawTextLayout(t, -x, -y, scale)
 	if err != nil {
 		return
 	}
@@ -410,9 +402,10 @@ func (p *textPainter) Destroy() {
 	}
 }
 
-func (p *textPainter) DrawTextLayout(t *TextLayout, x, y float32) (err error) {
+func (p *textPainter) DrawTextLayout(t *TextLayout, x, y, scale float32) (err error) {
 	cgo.Memset(cgo.CSlice(p.bitmap.Pixels), 0, cgo.Sizet(len(p.bitmap.Pixels)))
 	r, g, b, a := toColor(t.format.TextColor)
+	p.context.Scale(float64(scale), float64(scale))
 	p.context.SetSourceRGBA(r, g, b, a)
 	p.context.MoveTo(float64(x), float64(y))
 	pango_cairo.UpdateLayout(p.context, t.layout)

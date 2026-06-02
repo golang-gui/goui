@@ -7,7 +7,7 @@ type Context interface {
 	Destroy()
 	AddFont(fontFile string) error
 	NewTextLayout(text string, format TextFormat, width, height float32) (TextLayout, error)
-	DrawTextLayout(layout TextLayout, buf []byte) (bitmap TextBitmap, err error)
+	DrawTextLayout(layout TextLayout, scale float32, buf []byte) (bitmap TextBitmap, err error)
 }
 
 type TextFormat struct {
