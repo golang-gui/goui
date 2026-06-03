@@ -6,7 +6,7 @@ require (
 	github.com/ebitengine/purego v0.10.0
 	github.com/goexlib/cgo v0.0.7
 	github.com/goexlib/mathx v0.0.1
-	github.com/golang-gui/nanovgo v0.0.5
+	github.com/golang-gui/nanovgo v0.0.6
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef
 	github.com/srwiley/scanFT v0.0.0-20220128184157-0d1ee492111f
 )
