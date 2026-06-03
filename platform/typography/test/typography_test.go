@@ -90,7 +90,7 @@ func TestTypography(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		painter.Begin(200, 100)
+		painter.Begin(200, 100, 1.0)
 		drawLayoutMetrics(painter, layout, green, blue, gray, red)
 		painter.End()
 
@@ -121,7 +121,7 @@ func TestTypography(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		painter.Begin(200, 100)
+		painter.Begin(200, 100, 1.0)
 		drawLayoutMetrics(painter, layout, green, blue, gray, red)
 		painter.End()
 
@@ -152,7 +152,7 @@ func TestTypography(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		painter.Begin(400, 400)
+		painter.Begin(400, 400, 1.0)
 		drawLayoutMetrics(painter, layout, green, blue, gray, red)
 		painter.End()
 
