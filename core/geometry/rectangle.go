@@ -99,3 +99,7 @@ func (r Rectangle) Intersect(r2 Rectangle) Rectangle {
 	}
 	return Rect(x0, y0, x1-x0, y1-y0)
 }
+
+func (r Rectangle) Scale(factor float32) Rectangle {
+	return Rect(r.X*factor, r.Y*factor, r.Width*factor, r.Height*factor)
+}
