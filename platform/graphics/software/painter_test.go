@@ -25,7 +25,7 @@ func TestPainter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	painter.Begin(800, 600)
+	painter.Begin(800, 600, 2.0)
 	painter.Clear(graphics.RGBA(90, 160, 200, 255))
 	painter.FillRoundRect(graphics.Rect(50, 50, 100, 60), 12, graphics.RGBA(90, 50, 50, 255))
 	painter.DrawPath(graphics.MoveTo(200, 50).QuadBezierTo(250, 100, 300, 50), 2, graphics.RGBA(100, 0, 0, 255))

@@ -26,6 +26,7 @@ type Painter struct {
 	stroker  *rasterx.Stroker
 	pixelBuf []byte
 	lineBuf  []byte
+	scale    float32
 }
 
 type Drawable interface {
@@ -47,8 +48,9 @@ func (p *Painter) Destroy() {
 
 }
 
-func (p *Painter) Begin(width, height uint) {
-	viewport := graphics.Rect(0, 0, float32(width), float32(height))
+func (p *Painter) Begin(width, height, scale float32) {
+	// TODO: scale
+	viewport := graphics.Rect(0, 0, width, height)
 	if p.viewport.Width != viewport.Width || p.viewport.Height != viewport.Height {
 		p.viewport = viewport
 		initRGBA(&p.bgra, int(width), int(height), p.pixelBuf)
@@ -58,9 +60,9 @@ func (p *Painter) Begin(width, height uint) {
 		p.lineBuf = p.line.Pix
 
 		p.scanner = scanFT.NewScannerFT(int(width), int(height), scanFT.NewRGBAPainter(&p.bgra))
-		//p.scanner = rasterx.NewScannerGV(int(width), int(height), &p.bgra, p.bgra.Rect)
 		p.filler = rasterx.NewFiller(int(width), int(height), p.scanner)
 		p.stroker = rasterx.NewStroker(int(width), int(height), p.scanner)
+		p.scale = scale
 	}
 	p.filler.Clear()
 	p.stroker.Clear()
@@ -86,6 +88,7 @@ func (p *Painter) Clear(color graphics.Color) {
 }
 
 func (p *Painter) FillRect(rect graphics.Rectangle, brush graphics.Brush) {
+	rect = rect.Scale(p.scale)
 	if color, ok := brush.(graphics.Color); ok {
 		if rect.Contains(p.viewport) {
 			p.Clear(color)
@@ -103,6 +106,8 @@ func (p *Painter) FillRect(rect graphics.Rectangle, brush graphics.Brush) {
 }
 
 func (p *Painter) FillRoundRect(rect graphics.Rectangle, radius float32, brush graphics.Brush) {
+	rect = rect.Scale(p.scale)
+	radius *= p.scale
 	if color, ok := brush.(graphics.Color); ok {
 		defer p.filler.Clear()
 		p.filler.SetClip(toClipRect(rect.X, rect.Y, rect.Width, rect.Height))
@@ -115,6 +120,9 @@ func (p *Painter) FillRoundRect(rect graphics.Rectangle, radius float32, brush g
 }
 
 func (p *Painter) FillEllipse(center graphics.Point, xRadius, yRadius float32, brush graphics.Brush) {
+	center = center.Scale(p.scale)
+	xRadius *= p.scale
+	yRadius *= p.scale
 	if color, ok := brush.(graphics.Color); ok {
 		defer p.filler.Clear()
 		p.filler.SetClip(toClipRect(center.X-xRadius, center.Y-yRadius, center.X+xRadius, center.Y+yRadius))
@@ -140,6 +148,9 @@ func (p *Painter) FillPath(path graphics.Path, brush graphics.Brush) {
 }
 
 func (p *Painter) DrawLine(p0, p1 graphics.Point, strokeWidth float32, brush graphics.Brush) {
+	p0 = p0.Scale(p.scale)
+	p1 = p1.Scale(p.scale)
+	strokeWidth *= p.scale
 	if color, ok := brush.(graphics.Color); ok {
 		defer p.stroker.Clear()
 		p.stroker.SetClip(toClipRect(min(p0.X, p1.X), min(p0.Y, p1.Y), mathx.Abs(p1.X-p0.X), mathx.Abs(p1.Y-p0.Y)).Inset(-uptoPixel(strokeWidth)))
@@ -156,6 +167,8 @@ func (p *Painter) DrawLine(p0, p1 graphics.Point, strokeWidth float32, brush gra
 }
 
 func (p *Painter) DrawRect(rect graphics.Rectangle, strokeWidth float32, brush graphics.Brush) {
+	rect = rect.Scale(p.scale)
+	strokeWidth *= p.scale
 	if color, ok := brush.(graphics.Color); ok {
 		defer p.stroker.Clear()
 		p.stroker.SetClip(toClipRect(rect.X, rect.Y, rect.Width, rect.Height).Inset(-uptoPixel(strokeWidth)))
@@ -169,6 +182,9 @@ func (p *Painter) DrawRect(rect graphics.Rectangle, strokeWidth float32, brush g
 }
 
 func (p *Painter) DrawRoundRect(rect graphics.Rectangle, radius, strokeWidth float32, brush graphics.Brush) {
+	rect = rect.Scale(p.scale)
+	radius *= p.scale
+	strokeWidth *= p.scale
 	if color, ok := brush.(graphics.Color); ok {
 		defer p.stroker.Clear()
 		p.stroker.SetClip(toClipRect(rect.X, rect.Y, rect.Width, rect.Height).Inset(-uptoPixel(strokeWidth)))
@@ -182,6 +198,9 @@ func (p *Painter) DrawRoundRect(rect graphics.Rectangle, radius, strokeWidth flo
 }
 
 func (p *Painter) DrawEllipse(center graphics.Point, xRadius, yRadius, strokeWidth float32, brush graphics.Brush) {
+	center = center.Scale(p.scale)
+	xRadius *= p.scale
+	yRadius *= p.scale
 	if color, ok := brush.(graphics.Color); ok {
 		defer p.stroker.Clear()
 		p.stroker.SetClip(toClipRect(center.X-xRadius, center.Y-yRadius, center.X+xRadius, center.Y+yRadius).Inset(-uptoPixel(strokeWidth)))
@@ -194,6 +213,7 @@ func (p *Painter) DrawEllipse(center graphics.Point, xRadius, yRadius, strokeWid
 }
 
 func (p *Painter) DrawPath(path graphics.Path, strokeWidth float32, brush graphics.Brush) {
+	strokeWidth *= p.scale
 	if color, ok := brush.(graphics.Color); ok {
 		defer p.stroker.Clear()
 		p.stroker.SetStroke(toFixedI(strokeWidth), toFixedI(4), rasterx.ButtCap, nil, rasterx.FlatGap, rasterx.MiterClip)
@@ -212,8 +232,9 @@ func (p *Painter) DrawPath(path graphics.Path, strokeWidth float32, brush graphi
 }
 
 func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLayout) {
+	origin = origin.Scale(p.scale)
 	if p.typo != nil {
-		textBitmap, err := p.typo.DrawTextLayout(layout, nil)
+		textBitmap, err := p.typo.DrawTextLayout(layout, p.scale, nil)
 		if err == nil {
 			drawRect := graphics.Rect(origin.X, origin.Y, float32(textBitmap.Width), float32(textBitmap.Height))
 			bitmap := graphics.Bitmap{
@@ -229,6 +250,7 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 }
 
 func (p *Painter) DrawImage(rect graphics.Rectangle, img image.Image) {
+	// TODO: scale image?
 	bitmap, ok := graphics.ToBitmap(img, graphics.PixelFormatRGBA)
 	if !ok {
 		bitmap = graphics.CopyToBitmap(img, graphics.PixelFormatRGBA, nil)
@@ -237,6 +259,7 @@ func (p *Painter) DrawImage(rect graphics.Rectangle, img image.Image) {
 }
 
 func (p *Painter) SetClipRect(rect graphics.Rectangle) {
+	rect = rect.Scale(p.scale)
 	p.scanner.SetClip(image.Rectangle{})
 	if rect.X != 0 || rect.Y != 0 || rect.Width != 0 || rect.Height != 0 {
 		p.scanner.SetClip(toClipRect(rect.X, rect.Y, rect.Width, rect.Height))
@@ -297,22 +320,22 @@ func (p *Painter) doPath(add rasterx.Adder, path graphics.Path) (closed bool, cl
 	path.Range(func(op graphics.PathOperation, args []float32) (stop bool) {
 		switch op {
 		case graphics.PathMoveTo:
-			x, y := args[0], args[1]
+			x, y := args[0]*p.scale, args[1]*p.scale
 			add.Start(toFixedP(x, y))
 			px, py = x, y
 			sx, sy = x, y
 			updateBounds(x, y)
 
 		case graphics.PathLineTo:
-			x, y := args[0], args[1]
+			x, y := args[0]*p.scale, args[1]*p.scale
 			add.Line(toFixedP(x, y))
 			updateBounds(x, y)
 			px, py = x, y
 
 		case graphics.PathArcTo:
-			rx, ry := args[0], args[1]
+			rx, ry := args[0]*p.scale, args[1]*p.scale
 			angle, large, sweep := args[2], args[3], args[4]
-			x, y := args[5], args[6]
+			x, y := args[5]*p.scale, args[6]*p.scale
 			p.arcTo(add, px, py, rx, ry, angle, large, sweep, x, y)
 
 			updateBounds(px, py)
@@ -331,9 +354,9 @@ func (p *Painter) doPath(add rasterx.Adder, path graphics.Path) (closed bool, cl
 			px, py = x, y
 
 		case graphics.PathBezierTo:
-			x0, y0 := args[0], args[1]
-			x1, y1 := args[2], args[3]
-			x, y := args[4], args[5]
+			x0, y0 := args[0]*p.scale, args[1]*p.scale
+			x1, y1 := args[2]*p.scale, args[3]*p.scale
+			x, y := args[4]*p.scale, args[5]*p.scale
 			add.CubeBezier(toFixedP(x0, y0), toFixedP(x1, y1), toFixedP(x, y))
 			// 控制点 + 终点
 			updateBounds(x0, y0)

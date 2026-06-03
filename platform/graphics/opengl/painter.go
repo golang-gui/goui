@@ -13,16 +13,28 @@ import (
 )
 
 type Painter struct {
-	ctx  Context
-	vg   *nanovgo.Context
-	typo typography.Context
-	imgs []int
+	ctx   Context
+	vg    *nanovgo.Context
+	typo  typography.Context
+	imgs  []int
+	scale float32
 }
 
 func NewPainter(win NativeWindow, typoCtx typography.Context) (_ graphics.Painter, err error) {
 	p := new(Painter)
 	p.typo = typoCtx
-	p.ctx, err = NewContext(win, nil, DefaultConfig)
+	p.ctx, err = NewContext(win, nil, Config{
+		PixelFormat: PixelFormat{
+			RedBits:      8,
+			GreenBits:    8,
+			BlueBits:     8,
+			AlphaBits:    0,
+			DepthBits:    24,
+			StencilBits:  8,
+			Samples:      0,
+			DoubleBuffer: true,
+		},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("create opengl context err: %v", err)
 	}
@@ -57,11 +69,12 @@ func (p *Painter) Destroy() {
 	}
 }
 
-func (p *Painter) Begin(width, height uint) {
+func (p *Painter) Begin(width, height, scale float32) {
 	p.ctx.MakeCurrent()
 	gl.Viewport(0, 0, int(width), int(height))
 	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT)
-	p.vg.BeginFrame(int(width), int(height), 1.0)
+	p.vg.BeginFrame(int(width/scale), int(height/scale), scale)
+	p.scale = scale
 }
 
 func (p *Painter) End() {
@@ -166,9 +179,9 @@ func (p *Painter) DrawPath(path graphics.Path, strokeWidth float32, brush graphi
 
 func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLayout) {
 	if p.typo != nil {
-		textBitmap, err := p.typo.DrawTextLayout(layout, nil)
+		textBitmap, err := p.typo.DrawTextLayout(layout, p.scale, nil)
 		if err == nil {
-			drawRect := graphics.Rect(origin.X, origin.Y, float32(textBitmap.Width), float32(textBitmap.Height))
+			drawRect := graphics.Rect(origin.X, origin.Y, float32(textBitmap.Width)/p.scale, float32(textBitmap.Height)/p.scale)
 			bitmap := graphics.Bitmap{
 				Width:  textBitmap.Width,
 				Height: textBitmap.Height,

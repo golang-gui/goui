@@ -9,7 +9,7 @@ import (
 type Painter interface {
 	Name() string
 	Destroy()
-	Begin(width, height uint)
+	Begin(width, height, scale float32)
 	End()
 	SetClipRect(rect Rectangle)
 	Clear(color Color)

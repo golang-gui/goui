@@ -82,10 +82,12 @@ func (p *Painter) Destroy() {
 	}
 }
 
-func (p *Painter) Begin(width, height uint) {
+func (p *Painter) Begin(width, height, scale float32) {
 	p.sizeU.Width = uint32(width)
 	p.sizeU.Height = uint32(height)
 	p.render.Resize(&p.sizeU)
+	dpi := 96 * scale
+	p.render.SetDpi(dpi, dpi)
 	p.render.BeginDraw()
 }
 
