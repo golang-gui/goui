@@ -10,6 +10,7 @@ import (
 
 	"github.com/golang-gui/goui/platform/windows/sdk/com"
 	"github.com/golang-gui/goui/platform/windows/sdk/d2d1"
+	"github.com/golang-gui/goui/platform/windows/sdk/dxgi"
 )
 
 type Painter struct {
@@ -24,6 +25,7 @@ type Painter struct {
 	roundRect  d2d1.RoundRect
 	ellipse    d2d1.Ellipse
 	clip       d2d1.RectF
+	imageBuf   []byte
 }
 
 type NativeWindow interface {
@@ -177,13 +179,17 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 			point := d2d1.Point2F{X: origin.X, Y: origin.Y}
 			textLayout.Draw(&p.render.RenderTarget, point, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP)
 		}
+		// TODO: draw text layout rendered bitmap
 	}
-
-	// TODO: draw text layout rendered bitmap
 }
 
 func (p *Painter) DrawImage(rect graphics.Rectangle, img image.Image) {
-	panic("TODO impl")
+	bitmap, ok := graphics.ToBitmap(img, graphics.PixelFormatBGRA)
+	if !ok {
+		bitmap = graphics.CopyToBitmap(img, graphics.PixelFormatBGRA, p.imageBuf)
+		p.imageBuf = bitmap.Pixels
+	}
+	p.drawBitmap(rect, bitmap)
 }
 
 func (p *Painter) SetClipRect(rect graphics.Rectangle) {
@@ -301,4 +307,34 @@ func makeBezierSegment(c1x, c1y, c2x, c2y, x, y float32) d2d1.BezierSegment {
 		Point2: d2d1.Point2F{X: c2x, Y: c2y},
 		Point3: d2d1.Point2F{X: x, Y: y},
 	}
+}
+
+func (p *Painter) drawBitmap(rect graphics.Rectangle, bitmap graphics.Bitmap) {
+	if bitmap.Width <= 0 || bitmap.Height <= 0 {
+		return
+	}
+
+	size := d2d1.SizeU{Width: uint32(bitmap.Width), Height: uint32(bitmap.Height)}
+	props := d2d1.BitmapProperties{
+		PixelFormat: d2d1.PixelFormat{
+			Format:    dxgi.DXGI_FORMAT_B8G8R8A8_UNORM,
+			AlphaMode: d2d1.D2D1_ALPHA_MODE_PREMULTIPLIED,
+		},
+		DpiX: 96,
+		DpiY: 96,
+	}
+
+	d2dBitmap, hr := p.render.CreateBitmap(size, bitmap.Pixels, bitmap.Stride, &props)
+	if hr.Failed() {
+		return
+	}
+	defer d2dBitmap.Release()
+
+	dstRect := d2d1.RectF{
+		Left:   rect.X,
+		Top:    rect.Y,
+		Right:  rect.X + rect.Width,
+		Bottom: rect.Y + rect.Height,
+	}
+	p.render.DrawBitmap(d2dBitmap, &dstRect, 1, d2d1.D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, nil)
 }
