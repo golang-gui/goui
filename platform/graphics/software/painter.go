@@ -250,7 +250,7 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 }
 
 func (p *Painter) DrawImage(rect graphics.Rectangle, img image.Image) {
-	// TODO: scale image?
+	rect = rect.Scale(p.scale)
 	bitmap, ok := graphics.ToBitmap(img, graphics.PixelFormatRGBA)
 	if !ok {
 		bitmap = graphics.CopyToBitmap(img, graphics.PixelFormatRGBA, nil)
@@ -270,10 +270,17 @@ func (p *Painter) drawBitmap(rect graphics.Rectangle, bitmap graphics.Bitmap) {
 	defer p.stroker.Clear()
 	p.filler.SetClip(toClipRect(rect.X, rect.Y, rect.Width, rect.Height))
 	defer p.filler.SetClip(image.Rectangle{})
-	bitmap.X = int(mathx.Round(rect.X))
-	bitmap.Y = int(mathx.Round(rect.Y))
+
+	// Calculate scaling factors from destination rect to source bitmap
+	srcBounds := bitmap.Bounds()
+	scaleX := float32(srcBounds.Dx()) / rect.Width
+	scaleY := float32(srcBounds.Dy()) / rect.Height
+
 	p.filler.SetColor(rasterx.ColorFunc(func(x, y int) color.Color {
-		return reverseColor(bitmap.At(x, y))
+		// Map destination pixel (x, y) to source bitmap coordinates
+		srcX := srcBounds.Min.X + int(float32(x-int(rect.X))*scaleX)
+		srcY := srcBounds.Min.Y + int(float32(y-int(rect.Y))*scaleY)
+		return reverseColor(bitmap.At(srcX, srcY))
 	}))
 	p1 := rect.RightBottom()
 	rasterx.AddRect(float64(rect.X), float64(rect.Y), float64(p1.X), float64(p1.Y), 0, p.filler)
