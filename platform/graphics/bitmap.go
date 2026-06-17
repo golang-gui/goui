@@ -240,11 +240,12 @@ func (img Bitmap) PixOffset(x, y int) int {
 }
 
 func (img Bitmap) toPixel(c color.Color) (r, g, b, a byte) {
-	r32, g32, b32, a32 := c.RGBA()
-	if img.Format == PixelFormatGray {
-		r32, g32, b32, a32 = color.GrayModel.Convert(c).RGBA()
+	if img.Format != PixelFormatGray {
+		rgba := color.RGBAModel.Convert(c).(color.RGBA)
+		return rgba.R, rgba.G, rgba.B, rgba.A
 	}
-	return byte(r32), byte(g32), byte(b32), byte(a32)
+	gray := color.GrayModel.Convert(c).(color.Gray)
+	return gray.Y, gray.Y, gray.Y, 255
 }
 
 func (img Bitmap) toColor(pix []byte) color.Color {
