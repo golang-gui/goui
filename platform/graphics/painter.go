@@ -6,6 +6,7 @@ import (
 	"github.com/golang-gui/goui/platform/typography"
 )
 
+// Painter is thread-affine and not safe for concurrent use.
 type Painter interface {
 	Name() string
 	Destroy()

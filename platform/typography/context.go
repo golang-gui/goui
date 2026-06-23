@@ -2,6 +2,7 @@ package typography
 
 import "image/color"
 
+// Context is thread-affine and not safe for concurrent use.
 type Context interface {
 	Name() string
 	Destroy()
