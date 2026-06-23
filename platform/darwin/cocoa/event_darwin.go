@@ -1,43 +1,92 @@
 package cocoa
 
 import (
-	"github.com/golang-gui/goui/platform/darwin/frameworks/appkit"
-	"github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
+	"errors"
+
+	. "github.com/golang-gui/goui/platform/darwin/frameworks/appkit"
+	. "github.com/golang-gui/goui/platform/darwin/frameworks/core_foundation"
+	"github.com/golang-gui/goui/platform/internal/eventloop"
+
+	"github.com/ebitengine/purego/objc"
 )
 
-type EventQueue struct {
+const eventLoopTimerInterval = CFTimeInterval(24 * 60 * 60)
+
+type EventLoop struct {
+	state   eventloop.State
+	runLoop CFRunLoopRef
+	timer   CFRunLoopTimerRef
+	handler objc.Block
 }
 
-func newEventQueue() (q EventQueue, err error) {
-	return
-}
+func newEventLoop() (l *EventLoop, err error) {
+	l = new(EventLoop)
+	l.runLoop = CFRunLoopGetMain()
+	if l.runLoop == 0 {
+		return nil, errors.New("get main run loop failed")
+	}
 
-func (q EventQueue) Destroy() {
-
-}
-
-func (q EventQueue) Post() {
-	foundation.AutoReleasePool(func() {
-		event := appkit.NSEventClassId.OtherEventWithType(appkit.NSEventTypeApplicationDefined, foundation.NSPoint{},
-			0, 0, 0, appkit.NSGraphicsContext{}, 0, 0, 0)
-		appkit.NSApp.PostEvent(event, true)
+	l.handler = objc.NewBlock(func(_ objc.Block, _ CFRunLoopTimerRef) {
+		l.runTasks()
 	})
+
+	fireDate := CFAbsoluteTimeGetCurrent() + eventLoopTimerInterval
+	l.timer = CFRunLoopTimerCreateWithHandler(fireDate, eventLoopTimerInterval, l.handler)
+	if l.timer == 0 {
+		l.handler.Release()
+		return nil, errors.New("create event loop timer failed")
+	}
+
+	CFRunLoopAddTimer(l.runLoop, l.timer, KCFRunLoopCommonModes)
+	return l, nil
 }
 
-func (q EventQueue) Poll() {
-	foundation.AutoReleasePool(func() {
-		event := appkit.NSApp.NextEvent(appkit.NSEventMaskAny, foundation.NSDateClassId.DistantPast(),
-			foundation.NSDefaultRunLoopMode, true)
-		if event.Valid() {
-			appkit.NSApp.SendEvent(event)
-		}
-	})
+func (l *EventLoop) Post(task func()) {
+	if l.state.Post(task) {
+		l.wake()
+	}
 }
 
-func (q EventQueue) Wait() {
-	foundation.AutoReleasePool(func() {
-		event := appkit.NSApp.NextEvent(appkit.NSEventMaskAny, foundation.NSDateClassId.DistantFuture(),
-			foundation.NSDefaultRunLoopMode, true)
-		appkit.NSApp.SendEvent(event)
-	})
+func (l *EventLoop) Run() {
+	defer l.state.Quit()
+	if l.state.Destroyed() || l.state.Quitting() {
+		return
+	}
+	NSApp.Run()
+}
+
+func (l *EventLoop) Quit() {
+	if l.state.Quit() {
+		l.wake()
+	}
+}
+
+func (l *EventLoop) Destroy() {
+	if l.timer == 0 {
+		return
+	}
+
+	l.state.Destroy()
+	CFRunLoopTimerInvalidate(l.timer)
+	CFRelease(l.timer)
+	l.timer = 0
+	if l.handler != 0 {
+		l.handler.Release()
+		l.handler = 0
+	}
+}
+
+func (l *EventLoop) wake() {
+	if l.timer == 0 {
+		return
+	}
+	CFRunLoopTimerSetNextFireDate(l.timer, CFAbsoluteTimeGetCurrent())
+	CFRunLoopWakeUp(l.runLoop)
+}
+
+func (l *EventLoop) runTasks() {
+	eventloop.RunTasks(&l.state)
+	if l.state.Quitting() {
+		NSApp.Stop()
+	}
 }

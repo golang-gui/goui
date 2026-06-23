@@ -8,7 +8,7 @@ import (
 type (
 	Image        = common.Image
 	Window       = common.Window
-	EventQueue   = common.EventQueue
+	EventLoop    = common.EventLoop
 	EventHandler = events.EventHandler
 
 	Event = events.Event

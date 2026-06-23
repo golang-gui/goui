@@ -2,6 +2,7 @@ package win32
 
 import (
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/internal/eventloop"
 	"github.com/golang-gui/goui/platform/windows/sdk/winapi"
 )
 
@@ -18,34 +19,55 @@ func (e *Event) Type() events.EventType {
 	return events.Native
 }
 
-type EventQueue struct{}
+const eventLoopWakeMessage = winapi.WM_APP
 
-func newEventQueue() (q EventQueue, err error) {
-	return
+type EventLoop struct {
+	state eventloop.State
 }
 
-func (q EventQueue) Destroy() {
-
+func newEventLoop() (*EventLoop, error) {
+	return new(EventLoop), nil
 }
 
-func (q EventQueue) Post() {
-	winapi.PostMessage(platform.helperWindow, winapi.WM_NULL, 0, 0)
-}
-
-func (q EventQueue) Poll() {
-	var msg winapi.MSG
-	if ok, _ := winapi.PeekMessage(&msg, 0, 0, 0, winapi.PM_REMOVE); ok != winapi.TRUE {
-		if msg.Message != winapi.WM_QUIT {
-			winapi.TranslateMessage(&msg)
-			winapi.DispatchMessage(&msg)
-		}
+func (l *EventLoop) Post(task func()) {
+	if l.state.Post(task) {
+		l.wake()
 	}
 }
 
-func (q EventQueue) Wait() {
-	var msg winapi.MSG
-	if ok, _ := winapi.GetMessage(&msg, 0, 0, 0); ok != winapi.FALSE {
+func (l *EventLoop) Run() {
+	defer l.state.Quit()
+	if l.state.Destroyed() {
+		return
+	}
+
+	for !l.state.Quitting() {
+		var msg winapi.MSG
+		result, _ := winapi.GetMessage(&msg, 0, 0, 0)
+		if result == winapi.FALSE || result == -1 {
+			return
+		}
+
+		if msg.Hwnd == platform.helperWindow && msg.Message == eventLoopWakeMessage {
+			eventloop.RunTasks(&l.state)
+			continue
+		}
+
 		winapi.TranslateMessage(&msg)
 		winapi.DispatchMessage(&msg)
 	}
+}
+
+func (l *EventLoop) Quit() {
+	if l.state.Quit() {
+		l.wake()
+	}
+}
+
+func (l *EventLoop) Destroy() {
+	l.state.Destroy()
+}
+
+func (l *EventLoop) wake() {
+	_ = winapi.PostMessage(platform.helperWindow, eventLoopWakeMessage, 0, 0)
 }

@@ -10,8 +10,8 @@ import (
 	"github.com/golang-gui/goui/platform/typography/coretext"
 
 	"github.com/golang-gui/goui/platform/darwin/frameworks"
-	"github.com/golang-gui/goui/platform/darwin/frameworks/appkit"
-	"github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
+	. "github.com/golang-gui/goui/platform/darwin/frameworks/appkit"
+	. "github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
 )
 
 type Platform struct {
@@ -41,8 +41,8 @@ func (p *Platform) Name() string {
 	return "cocoa"
 }
 
-func (p *Platform) NewEventQueue() (common.EventQueue, error) {
-	return newEventQueue()
+func (p *Platform) NewEventLoop() (common.EventLoop, error) {
+	return newEventLoop()
 }
 
 func (p *Platform) NewImage(width, height uint) (common.Image, error) {
@@ -78,8 +78,8 @@ func newPlatform() (p *Platform, err error) {
 	}
 
 	p = new(Platform)
-	foundation.AutoReleasePool(func() {
-		appkit.NSApplicationClassId.SharedApplication()
+	AutoReleasePool(func() {
+		NSApplicationClassId.SharedApplication()
 	})
 	return
 }

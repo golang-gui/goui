@@ -9,12 +9,15 @@ import (
 	"github.com/golang-gui/goui/platform/typography"
 )
 
+// Platform owns low-level operating-system resources. It and every object
+// created from it must be used on the same OS thread, except for EventLoop.Post
+// and EventLoop.Quit.
 type Platform interface {
 	Destroy()
 	Name() string
 	NewImage(width, height uint) (common.Image, error)
 	NewWindow(handler EventHandler) (Window, error)
-	NewEventQueue() (EventQueue, error)
+	NewEventLoop() (EventLoop, error)
 	NewTypography() (typography.Context, error)
 	NewPainter(win Window, typo typography.Context) (graphics.Painter, error)
 }

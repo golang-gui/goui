@@ -2,6 +2,8 @@ package common
 
 import "image"
 
+// Window is thread-affine. All methods must be called on the thread that owns
+// the platform.
 type Window interface {
 	NativeHandle() uintptr
 	Destroy()

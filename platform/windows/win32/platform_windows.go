@@ -45,8 +45,8 @@ func (p *Platform) Name() string {
 	return "win32"
 }
 
-func (p *Platform) NewEventQueue() (common.EventQueue, error) {
-	return newEventQueue()
+func (p *Platform) NewEventLoop() (common.EventLoop, error) {
+	return newEventLoop()
 }
 
 func (p *Platform) NewWindow(handler events.EventHandler) (common.Window, error) {
