@@ -2,29 +2,30 @@ package opengl
 
 import (
 	"errors"
-	"github.com/golang-gui/goui/platform/darwin/frameworks/appkit"
-	"github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
-	"github.com/golang-gui/goui/platform/darwin/frameworks/opengl"
+
+	. "github.com/golang-gui/goui/platform/darwin/frameworks/appkit"
+	. "github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
+	. "github.com/golang-gui/goui/platform/darwin/frameworks/opengl"
 )
 
 type nsglContext struct {
-	object      opengl.NSOpenGLContext
-	pixelFormat opengl.NSOpenGLPixelFormat
+	object      NSOpenGLContext
+	pixelFormat NSOpenGLPixelFormat
 }
 
 func newContext(win NativeWindow, share Context, config Config) (_ Context, err error) {
-	attribs := make([]opengl.NSOpenGLPixelFormatAttribute, 0, 40)
-	addAttrib := func(attr opengl.NSOpenGLPixelFormatAttribute) {
+	attribs := make([]NSOpenGLPixelFormatAttribute, 0, 40)
+	addAttrib := func(attr NSOpenGLPixelFormatAttribute) {
 		attribs = append(attribs, attr)
 	}
-	setAttrib := func(attr opengl.NSOpenGLPixelFormatAttribute, value int) {
-		attribs = append(attribs, attr, opengl.NSOpenGLPixelFormatAttribute(value))
+	setAttrib := func(attr NSOpenGLPixelFormatAttribute, value int) {
+		attribs = append(attribs, attr, NSOpenGLPixelFormatAttribute(value))
 	}
 
-	addAttrib(opengl.NSOpenGLPFAAccelerated)
-	addAttrib(opengl.NSOpenGLPFAClosestPolicy)
+	addAttrib(NSOpenGLPFAAccelerated)
+	addAttrib(NSOpenGLPFAClosestPolicy)
 
-	setAttrib(opengl.NSOpenGLPFAOpenGLProfile, opengl.NSOpenGLProfileVersion3_2Core)
+	setAttrib(NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion3_2Core)
 
 	if config.PixelFormat.RedBits != DontCare &&
 		config.PixelFormat.GreenBits != DontCare &&
@@ -36,19 +37,19 @@ func newContext(win NativeWindow, share Context, config Config) (_ Context, err 
 		} else if colorBits < 15 {
 			colorBits = 15
 		}
-		setAttrib(opengl.NSOpenGLPFAColorSize, colorBits)
+		setAttrib(NSOpenGLPFAColorSize, colorBits)
 	}
 
 	if config.PixelFormat.AlphaBits != DontCare {
-		setAttrib(opengl.NSOpenGLPFAAlphaSize, config.PixelFormat.AlphaBits)
+		setAttrib(NSOpenGLPFAAlphaSize, config.PixelFormat.AlphaBits)
 	}
 
 	if config.PixelFormat.DepthBits != DontCare {
-		setAttrib(opengl.NSOpenGLPFADepthSize, config.PixelFormat.DepthBits)
+		setAttrib(NSOpenGLPFADepthSize, config.PixelFormat.DepthBits)
 	}
 
 	if config.PixelFormat.StencilBits != DontCare {
-		setAttrib(opengl.NSOpenGLPFAStencilSize, config.PixelFormat.StencilBits)
+		setAttrib(NSOpenGLPFAStencilSize, config.PixelFormat.StencilBits)
 	}
 
 	if config.PixelFormat.Stereo {
@@ -56,38 +57,38 @@ func newContext(win NativeWindow, share Context, config Config) (_ Context, err 
 	}
 
 	if config.PixelFormat.DoubleBuffer {
-		addAttrib(opengl.NSOpenGLPFADoubleBuffer)
+		addAttrib(NSOpenGLPFADoubleBuffer)
 	}
 
 	if config.PixelFormat.Samples != DontCare {
 		if config.PixelFormat.Samples == 0 {
-			setAttrib(opengl.NSOpenGLPFASampleBuffers, 0)
+			setAttrib(NSOpenGLPFASampleBuffers, 0)
 		} else {
-			setAttrib(opengl.NSOpenGLPFASampleBuffers, 1)
-			setAttrib(opengl.NSOpenGLPFASamples, config.PixelFormat.Samples)
+			setAttrib(NSOpenGLPFASampleBuffers, 1)
+			setAttrib(NSOpenGLPFASamples, config.PixelFormat.Samples)
 		}
 	}
 
 	addAttrib(0)
 
-	pixelFormat := opengl.NSOpenGLPixelFormatClassId.Alloc().InitWithAttributes(attribs)
+	pixelFormat := NSOpenGLPixelFormatClassId.Alloc().InitWithAttributes(attribs)
 	if pixelFormat.IsNil() {
 		return nil, errors.New("NSGL: Failed to find a suitable pixel format")
 	}
 
-	var shareContext opengl.NSOpenGLContext
+	var shareContext NSOpenGLContext
 	if share != nil {
 		shareContext = share.(nsglContext).object
 	}
 
-	object := opengl.NSOpenGLContextClassId.Alloc().InitWithFormat(pixelFormat, shareContext)
+	object := NSOpenGLContextClassId.Alloc().InitWithFormat(pixelFormat, shareContext)
 	if object.IsNil() {
 		pixelFormat.Release()
 		return nil, errors.New("NSGL: Failed to create OpenGL contex")
 	}
 
-	var window appkit.NSWindow
-	window.ID = foundation.ID(win.NativeHandle())
+	var window NSWindow
+	window.ID = ID(win.NativeHandle())
 	object.SetView(window.ContentView())
 
 	return nsglContext{
@@ -101,7 +102,7 @@ func (c nsglContext) Name() string {
 }
 
 func (c nsglContext) Destroy() {
-	foundation.AutoReleasePool(func() {
+	AutoReleasePool(func() {
 		if !c.pixelFormat.IsNil() {
 			c.pixelFormat.Release()
 			c.pixelFormat.ID = 0
@@ -114,7 +115,7 @@ func (c nsglContext) Destroy() {
 }
 
 func (c nsglContext) MakeCurrent() error {
-	foundation.AutoReleasePool(func() {
+	AutoReleasePool(func() {
 		c.object.MakeCurrentContext()
 		c.object.Update()
 	})
@@ -122,14 +123,14 @@ func (c nsglContext) MakeCurrent() error {
 }
 
 func (c nsglContext) ClearCurrent() error {
-	foundation.AutoReleasePool(func() {
-		opengl.NSOpenGLContextClassId.ClearCurrentContext()
+	AutoReleasePool(func() {
+		NSOpenGLContextClassId.ClearCurrentContext()
 	})
 	return nil
 }
 
 func (c nsglContext) SwapBuffers() error {
-	foundation.AutoReleasePool(func() {
+	AutoReleasePool(func() {
 		// TODO: occluded state check?
 		c.object.FlushBuffer()
 	})
@@ -137,14 +138,14 @@ func (c nsglContext) SwapBuffers() error {
 }
 
 func (c nsglContext) SwapInterval(interval int) error {
-	foundation.AutoReleasePool(func() {
-		c.object.SetValue(interval, opengl.NSOpenGLContextParameterSwapInterval)
+	AutoReleasePool(func() {
+		c.object.SetValue(interval, NSOpenGLContextParameterSwapInterval)
 	})
 	return nil
 }
 
 func (c nsglContext) GetProcAddress(name string) (uintptr, error) {
-	return opengl.GetProcAddress(name)
+	return GetProcAddress(name)
 }
 
 func (c nsglContext) GetExtensions() string {
