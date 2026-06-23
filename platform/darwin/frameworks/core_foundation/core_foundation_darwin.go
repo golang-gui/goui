@@ -6,6 +6,7 @@ import (
 
 	"github.com/golang-gui/goui/platform/darwin/frameworks/utils"
 
+	"github.com/ebitengine/purego/objc"
 	"github.com/goexlib/cgo"
 )
 
@@ -39,6 +40,46 @@ type CFTypeRef uintptr
 
 func CFRelease(ref CFTypeRef) {
 	fnCFRelease(ref)
+}
+
+type (
+	CFAbsoluteTime = float64
+	CFTimeInterval = float64
+	CFOptionFlags  = uint
+)
+
+type (
+	CFRunLoopRef      = CFTypeRef
+	CFRunLoopTimerRef = CFTypeRef
+	CFRunLoopMode     = CFStringRef
+)
+
+func CFAbsoluteTimeGetCurrent() CFAbsoluteTime {
+	return fnCFAbsoluteTimeGetCurrent()
+}
+
+func CFRunLoopGetMain() CFRunLoopRef {
+	return fnCFRunLoopGetMain()
+}
+
+func CFRunLoopWakeUp(runLoop CFRunLoopRef) {
+	fnCFRunLoopWakeUp(runLoop)
+}
+
+func CFRunLoopTimerCreateWithHandler(fireDate CFAbsoluteTime, interval CFTimeInterval, handler objc.Block) CFRunLoopTimerRef {
+	return fnCFRunLoopTimerCreateWithHandler(KCFAllocatorDefault, fireDate, interval, 0, 0, handler)
+}
+
+func CFRunLoopTimerSetNextFireDate(timer CFRunLoopTimerRef, fireDate CFAbsoluteTime) {
+	fnCFRunLoopTimerSetNextFireDate(timer, fireDate)
+}
+
+func CFRunLoopTimerInvalidate(timer CFRunLoopTimerRef) {
+	fnCFRunLoopTimerInvalidate(timer)
+}
+
+func CFRunLoopAddTimer(runLoop CFRunLoopRef, timer CFRunLoopTimerRef, mode CFRunLoopMode) {
+	fnCFRunLoopAddTimer(runLoop, timer, mode)
 }
 
 type (
@@ -254,6 +295,8 @@ var (
 
 var kCFTypeArrayCallBacks uintptr
 
+var KCFRunLoopCommonModes CFRunLoopMode
+
 var constants = []utils.Constant{
 	utils.Const[CFAllocatorRef]{Name: "kCFAllocatorDefault", PVar: &KCFAllocatorDefault},
 	utils.Const[CFAllocatorRef]{Name: "kCFAllocatorSystemDefault", PVar: &KCFAllocatorSystemDefault},
@@ -269,6 +312,7 @@ var constants = []utils.Constant{
 	utils.Const[uintptr]{Name: "kCFTypeDictionaryValueCallBacks", PVar: &kCFTypeDictionaryValueCallBacks},
 
 	utils.Const[uintptr]{Name: "kCFTypeArrayCallBacks", PVar: &kCFTypeArrayCallBacks},
+	utils.Const[CFRunLoopMode]{Name: "kCFRunLoopCommonModes", PVar: &KCFRunLoopCommonModes},
 }
 
 // functions
@@ -276,6 +320,13 @@ var constants = []utils.Constant{
 var functions = []utils.Function{
 	{Name: "CFRelease", PFunc: &fnCFRelease},
 	{Name: "CFDataCreate", PFunc: &fnCFDataCreate},
+	{Name: "CFAbsoluteTimeGetCurrent", PFunc: &fnCFAbsoluteTimeGetCurrent},
+	{Name: "CFRunLoopGetMain", PFunc: &fnCFRunLoopGetMain},
+	{Name: "CFRunLoopWakeUp", PFunc: &fnCFRunLoopWakeUp},
+	{Name: "CFRunLoopTimerCreateWithHandler", PFunc: &fnCFRunLoopTimerCreateWithHandler},
+	{Name: "CFRunLoopTimerSetNextFireDate", PFunc: &fnCFRunLoopTimerSetNextFireDate},
+	{Name: "CFRunLoopTimerInvalidate", PFunc: &fnCFRunLoopTimerInvalidate},
+	{Name: "CFRunLoopAddTimer", PFunc: &fnCFRunLoopAddTimer},
 
 	{Name: "CFNumberCreate", PFunc: &fnCFNumberCreate},
 
@@ -308,6 +359,14 @@ var functions = []utils.Function{
 var (
 	fnCFRelease    func(ref CFTypeRef)
 	fnCFDataCreate func(allocator CFAllocatorRef, bytes cgo.Pointer, length CFIndex) CFDataRef
+
+	fnCFAbsoluteTimeGetCurrent        func() CFAbsoluteTime
+	fnCFRunLoopGetMain                func() CFRunLoopRef
+	fnCFRunLoopWakeUp                 func(runLoop CFRunLoopRef)
+	fnCFRunLoopTimerCreateWithHandler func(allocator CFAllocatorRef, fireDate CFAbsoluteTime, interval CFTimeInterval, flags CFOptionFlags, order CFIndex, handler objc.Block) CFRunLoopTimerRef
+	fnCFRunLoopTimerSetNextFireDate   func(timer CFRunLoopTimerRef, fireDate CFAbsoluteTime)
+	fnCFRunLoopTimerInvalidate        func(timer CFRunLoopTimerRef)
+	fnCFRunLoopAddTimer               func(runLoop CFRunLoopRef, timer CFRunLoopTimerRef, mode CFRunLoopMode)
 
 	fnCFNumberCreate func(allocator CFAllocatorRef, theType CFNumberType, valuePtr unsafe.Pointer) CFNumberRef
 

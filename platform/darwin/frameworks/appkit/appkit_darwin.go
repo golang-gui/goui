@@ -35,6 +35,8 @@ func initNSApplication() {
 	NSApplicationSel.SendEvent = objc.RegisterName("sendEvent:")
 	NSApplicationSel.PostEvent = objc.RegisterName("postEvent:atStart:")
 	NSApplicationSel.NextEvent = objc.RegisterName("nextEventMatchingMask:untilDate:inMode:dequeue:")
+	NSApplicationSel.Run = objc.RegisterName("run")
+	NSApplicationSel.Stop = objc.RegisterName("stop:")
 }
 
 var (
@@ -44,6 +46,8 @@ var (
 		SendEvent         objc.SEL
 		PostEvent         objc.SEL
 		NextEvent         objc.SEL
+		Run               objc.SEL
+		Stop              objc.SEL
 	}
 )
 
@@ -70,6 +74,14 @@ func (a NSApplication) PostEvent(event NSEvent, atStart bool) {
 func (a NSApplication) NextEvent(mask NSEventMask, untilDate NSDate, inMode NSRunLoopMode, dequeue bool) (res NSEvent) {
 	res.ID = a.Send(NSApplicationSel.NextEvent, mask, untilDate, inMode, dequeue)
 	return
+}
+
+func (a NSApplication) Run() {
+	a.Send(NSApplicationSel.Run)
+}
+
+func (a NSApplication) Stop() {
+	a.Send(NSApplicationSel.Stop, 0)
 }
 
 // NSGraphicsContext
