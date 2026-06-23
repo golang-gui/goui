@@ -5,6 +5,7 @@ import (
 
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/appkit"
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/core_foundation"
+	. "github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
 	"github.com/golang-gui/goui/platform/internal/eventloop"
 
 	"github.com/ebitengine/purego/objc"
@@ -52,6 +53,13 @@ func (l *EventLoop) Run() {
 	if l.state.Destroyed() || l.state.Quitting() {
 		return
 	}
+
+	// A wake requested before NSApplication starts running cannot interrupt
+	// its event wait. Drain those tasks before entering the native loop.
+	l.runTasks()
+	if l.state.Destroyed() || l.state.Quitting() {
+		return
+	}
 	NSApp.Run()
 }
 
@@ -82,11 +90,33 @@ func (l *EventLoop) wake() {
 	}
 	CFRunLoopTimerSetNextFireDate(l.timer, CFAbsoluteTimeGetCurrent())
 	CFRunLoopWakeUp(l.runLoop)
+	l.postWakeEvent()
 }
 
 func (l *EventLoop) runTasks() {
 	eventloop.RunTasks(&l.state)
 	if l.state.Quitting() {
 		NSApp.Stop()
+		l.postWakeEvent()
 	}
+}
+
+// NSApplication may wait for NSEvent independently of the Core Foundation run
+// loop. The timer executes posted tasks in every common run-loop mode, while
+// this application-defined event only interrupts AppKit's event wait.
+func (l *EventLoop) postWakeEvent() {
+	AutoReleasePool(func() {
+		event := NSEventClassId.OtherEventWithType(
+			NSEventTypeApplicationDefined,
+			NSPoint{},
+			0,
+			0,
+			0,
+			NSGraphicsContext{},
+			0,
+			0,
+			0,
+		)
+		NSApp.PostEvent(event, true)
+	})
 }
