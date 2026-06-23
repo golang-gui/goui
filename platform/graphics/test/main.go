@@ -115,16 +115,17 @@ func main() {
 	plat, err := platform.NewPlatform(platform.DefaultName())
 	panicIf(err)
 
-	queue, err := plat.NewEventQueue()
+	eventLoop, err := plat.NewEventLoop()
 	panicIf(err)
+	defer eventLoop.Destroy()
 
-	quit := false
 	var width, height uint
 
 	win, err := plat.NewWindow(func(event events.Event) {
 		switch ev := event.(type) {
 		case *events.CloseEvent:
-			quit = true
+			ev.Window.Destroy()
+			eventLoop.Quit()
 		case *events.SizeEvent:
 			width, height = ev.Width, ev.Height
 		case *events.PaintEvent:
@@ -142,7 +143,5 @@ func main() {
 	win.SetTitle("Painter test")
 	win.Show()
 
-	for !quit {
-		queue.Wait()
-	}
+	eventLoop.Run()
 }
