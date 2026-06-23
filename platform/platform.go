@@ -5,8 +5,17 @@ import (
 	"runtime"
 
 	"github.com/golang-gui/goui/platform/common"
+	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
+)
+
+type (
+	Event        = events.Event
+	Image        = common.Image
+	Window       = common.Window
+	EventLoop    = common.EventLoop
+	EventHandler = events.EventHandler
 )
 
 // Platform owns low-level operating-system resources. It and every object
