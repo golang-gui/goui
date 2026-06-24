@@ -19,6 +19,7 @@ const (
 	PointerMove
 	PointerDown
 	PointerUp
+	Wheel
 )
 
 type EventHandler func(event Event)

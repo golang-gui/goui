@@ -48,4 +48,29 @@ func (e PointerEvent) Type() EventType {
 
 func (e PointerEvent) isEvent() {}
 
-var _ Event = PointerEvent{}
+type WheelDeltaMode uint8
+
+const (
+	WheelDeltaPixel WheelDeltaMode = iota
+	WheelDeltaLine
+)
+
+type WheelEvent struct {
+	Position  geometry.Point
+	DeltaX    float32
+	DeltaY    float32
+	Mode      WheelDeltaMode
+	Buttons   PointerButtons
+	Modifiers Modifiers
+}
+
+func (e WheelEvent) Type() EventType {
+	return Wheel
+}
+
+func (e WheelEvent) isEvent() {}
+
+var (
+	_ Event = PointerEvent{}
+	_ Event = WheelEvent{}
+)
