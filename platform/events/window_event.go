@@ -37,9 +37,20 @@ func (e ScaleEvent) Type() EventType {
 
 func (e ScaleEvent) isEvent() {}
 
+type FocusEvent struct {
+	Focused bool
+}
+
+func (e FocusEvent) Type() EventType {
+	return Focus
+}
+
+func (e FocusEvent) isEvent() {}
+
 var (
 	_ Event = CloseEvent{}
 	_ Event = SizeEvent{}
 	_ Event = PaintEvent{}
 	_ Event = ScaleEvent{}
+	_ Event = FocusEvent{}
 )

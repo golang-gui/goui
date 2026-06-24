@@ -22,6 +22,7 @@ const (
 	Wheel
 	KeyDown
 	KeyUp
+	Focus
 )
 
 type EventHandler func(event Event)
