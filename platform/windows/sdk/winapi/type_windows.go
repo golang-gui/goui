@@ -53,6 +53,69 @@ const (
 )
 
 const (
+	VK_CANCEL     = 0x03
+	VK_BACK       = 0x08
+	VK_TAB        = 0x09
+	VK_RETURN     = 0x0D
+	VK_SHIFT      = 0x10
+	VK_CONTROL    = 0x11
+	VK_MENU       = 0x12
+	VK_PAUSE      = 0x13
+	VK_CAPITAL    = 0x14
+	VK_ESCAPE     = 0x1B
+	VK_SPACE      = 0x20
+	VK_PRIOR      = 0x21
+	VK_NEXT       = 0x22
+	VK_END        = 0x23
+	VK_HOME       = 0x24
+	VK_LEFT       = 0x25
+	VK_UP         = 0x26
+	VK_RIGHT      = 0x27
+	VK_DOWN       = 0x28
+	VK_INSERT     = 0x2D
+	VK_DELETE     = 0x2E
+	VK_SNAPSHOT   = 0x2C
+	VK_LWIN       = 0x5B
+	VK_RWIN       = 0x5C
+	VK_NUMPAD0    = 0x60
+	VK_NUMPAD1    = 0x61
+	VK_NUMPAD2    = 0x62
+	VK_NUMPAD3    = 0x63
+	VK_NUMPAD4    = 0x64
+	VK_NUMPAD5    = 0x65
+	VK_NUMPAD6    = 0x66
+	VK_NUMPAD7    = 0x67
+	VK_NUMPAD8    = 0x68
+	VK_NUMPAD9    = 0x69
+	VK_MULTIPLY   = 0x6A
+	VK_ADD        = 0x6B
+	VK_SUBTRACT   = 0x6D
+	VK_DECIMAL    = 0x6E
+	VK_DIVIDE     = 0x6F
+	VK_F1         = 0x70
+	VK_F24        = 0x87
+	VK_NUMLOCK    = 0x90
+	VK_SCROLL     = 0x91
+	VK_LSHIFT     = 0xA0
+	VK_RSHIFT     = 0xA1
+	VK_LCONTROL   = 0xA2
+	VK_RCONTROL   = 0xA3
+	VK_LMENU      = 0xA4
+	VK_RMENU      = 0xA5
+	VK_OEM_1      = 0xBA
+	VK_OEM_PLUS   = 0xBB
+	VK_OEM_COMMA  = 0xBC
+	VK_OEM_MINUS  = 0xBD
+	VK_OEM_PERIOD = 0xBE
+	VK_OEM_2      = 0xBF
+	VK_OEM_3      = 0xC0
+	VK_OEM_4      = 0xDB
+	VK_OEM_5      = 0xDC
+	VK_OEM_6      = 0xDD
+	VK_OEM_7      = 0xDE
+)
+
+const (
 	XBUTTON1 = 0x0001
 	XBUTTON2 = 0x0002
 )
