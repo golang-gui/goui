@@ -289,6 +289,18 @@ func (e *Event) ClientMessageEvent() *ClientMessageEvent {
 	return (*ClientMessageEvent)(cgo.Pointer(e))
 }
 
+func (e *Event) ButtonEvent() *ButtonEvent {
+	return (*ButtonEvent)(cgo.Pointer(e))
+}
+
+func (e *Event) MotionEvent() *MotionEvent {
+	return (*MotionEvent)(cgo.Pointer(e))
+}
+
+func (e *Event) CrossingEvent() *CrossingEvent {
+	return (*CrossingEvent)(cgo.Pointer(e))
+}
+
 type AnyEvent struct {
 	Type      EventType
 	Serial    uint64
@@ -335,6 +347,62 @@ type ConfigureEvent struct {
 	BorderWidth      int32
 	Above            Window
 	OverrideRedirect Bool
+}
+
+type ButtonEvent struct {
+	Type       EventType
+	Serial     uint64
+	SendEvent  Bool
+	Display    Display
+	Window     Window
+	Root       Window
+	SubWindow  Window
+	Time       Time
+	X          int32
+	Y          int32
+	XRoot      int32
+	YRoot      int32
+	State      uint32
+	Button     uint32
+	SameScreen Bool
+}
+
+type MotionEvent struct {
+	Type       EventType
+	Serial     uint64
+	SendEvent  Bool
+	Display    Display
+	Window     Window
+	Root       Window
+	SubWindow  Window
+	Time       Time
+	X          int32
+	Y          int32
+	XRoot      int32
+	YRoot      int32
+	State      uint32
+	IsHint     byte
+	SameScreen Bool
+}
+
+type CrossingEvent struct {
+	Type       EventType
+	Serial     uint64
+	SendEvent  Bool
+	Display    Display
+	Window     Window
+	Root       Window
+	SubWindow  Window
+	Time       Time
+	X          int32
+	Y          int32
+	XRoot      int32
+	YRoot      int32
+	Mode       int32
+	Detail     int32
+	SameScreen Bool
+	Focus      Bool
+	State      uint32
 }
 
 type ClientMessageEvent struct {
@@ -385,6 +453,23 @@ const (
 	ClientMessage    EventType = 33
 	MappingNotify    EventType = 34
 	GenericEvent     EventType = 35
+)
+
+const (
+	ShiftMask   = 1 << 0
+	ControlMask = 1 << 2
+	Mod1Mask    = 1 << 3
+	Button1Mask = 1 << 8
+	Button2Mask = 1 << 9
+	Button3Mask = 1 << 10
+)
+
+const (
+	Button1 = 1
+	Button2 = 2
+	Button3 = 3
+	Button8 = 8
+	Button9 = 9
 )
 
 const (
