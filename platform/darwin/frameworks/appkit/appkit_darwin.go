@@ -123,15 +123,21 @@ func initNSEvent() {
 	NSEventSel.LocationInWindow = objc.RegisterName("locationInWindow")
 	NSEventSel.ModifierFlags = objc.RegisterName("modifierFlags")
 	NSEventSel.ButtonNumber = objc.RegisterName("buttonNumber")
+	NSEventSel.ScrollingDeltaX = objc.RegisterName("scrollingDeltaX")
+	NSEventSel.ScrollingDeltaY = objc.RegisterName("scrollingDeltaY")
+	NSEventSel.HasPreciseScrollingDeltas = objc.RegisterName("hasPreciseScrollingDeltas")
 }
 
 var (
 	NSEventClassId NSEventClass
 	NSEventSel     struct {
-		OtherEventWithType objc.SEL
-		LocationInWindow   objc.SEL
-		ModifierFlags      objc.SEL
-		ButtonNumber       objc.SEL
+		OtherEventWithType        objc.SEL
+		LocationInWindow          objc.SEL
+		ModifierFlags             objc.SEL
+		ButtonNumber              objc.SEL
+		ScrollingDeltaX           objc.SEL
+		ScrollingDeltaY           objc.SEL
+		HasPreciseScrollingDeltas objc.SEL
 	}
 )
 
@@ -162,6 +168,18 @@ func (e NSEvent) ModifierFlags() NSEventModifierFlags {
 
 func (e NSEvent) ButtonNumber() NSInteger {
 	return objc.Send[NSInteger](e.ID, NSEventSel.ButtonNumber)
+}
+
+func (e NSEvent) ScrollingDeltaX() CGFloat {
+	return objc.Send[CGFloat](e.ID, NSEventSel.ScrollingDeltaX)
+}
+
+func (e NSEvent) ScrollingDeltaY() CGFloat {
+	return objc.Send[CGFloat](e.ID, NSEventSel.ScrollingDeltaY)
+}
+
+func (e NSEvent) HasPreciseScrollingDeltas() bool {
+	return objc.Send[bool](e.ID, NSEventSel.HasPreciseScrollingDeltas)
 }
 
 const (
@@ -221,6 +239,7 @@ func initNSView() {
 	NSViewSel.OtherMouseDown = objc.RegisterName("otherMouseDown:")
 	NSViewSel.OtherMouseUp = objc.RegisterName("otherMouseUp:")
 	NSViewSel.OtherMouseDragged = objc.RegisterName("otherMouseDragged:")
+	NSViewSel.ScrollWheel = objc.RegisterName("scrollWheel:")
 }
 
 var (
@@ -252,6 +271,7 @@ var (
 		OtherMouseDown                 objc.SEL
 		OtherMouseUp                   objc.SEL
 		OtherMouseDragged              objc.SEL
+		ScrollWheel                    objc.SEL
 	}
 )
 
@@ -278,11 +298,12 @@ type (
 		OtherMouseDown                 func(self NSView, event NSEvent)
 		OtherMouseUp                   func(self NSView, event NSEvent)
 		OtherMouseDragged              func(self NSView, event NSEvent)
+		ScrollWheel                    func(self NSView, event NSEvent)
 	}
 )
 
 func ImplementNSView(className string, override NSViewOverride) (class NSViewClass, err error) {
-	methods := make([]objc.MethodDef, 0, 20)
+	methods := make([]objc.MethodDef, 0, 21)
 	if override.CanBecomeKeyView != nil {
 		methods = append(methods, objc.MethodDef{
 			Cmd: NSViewSel.CanBecomeKeyView,
@@ -359,6 +380,7 @@ func ImplementNSView(className string, override NSViewOverride) (class NSViewCla
 	addEventMethod(NSViewSel.OtherMouseDown, override.OtherMouseDown)
 	addEventMethod(NSViewSel.OtherMouseUp, override.OtherMouseUp)
 	addEventMethod(NSViewSel.OtherMouseDragged, override.OtherMouseDragged)
+	addEventMethod(NSViewSel.ScrollWheel, override.ScrollWheel)
 	class.Class, err = objc.RegisterClass(className, NSViewClassId.Class, nil, nil, methods)
 	return
 }
