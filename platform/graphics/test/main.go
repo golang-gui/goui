@@ -119,16 +119,17 @@ func main() {
 	panicIf(err)
 	defer eventLoop.Destroy()
 
+	var win platform.Window
 	var width, height uint
 
-	win, err := plat.NewWindow(func(event events.Event) {
+	win, err = plat.NewWindow(func(event events.Event) {
 		switch ev := event.(type) {
-		case *events.CloseEvent:
-			ev.Window.Destroy()
+		case events.CloseEvent:
+			win.Destroy()
 			eventLoop.Quit()
-		case *events.SizeEvent:
+		case events.SizeEvent:
 			width, height = ev.Width, ev.Height
-		case *events.PaintEvent:
+		case events.PaintEvent:
 			render(width, height)
 		}
 	})

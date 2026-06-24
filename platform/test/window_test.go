@@ -25,6 +25,8 @@ func TestWindow(t *testing.T) {
 		window    platform.Window
 		paintErr  error
 		painted   bool
+		closeSent int
+		closeSeen int
 		destroyed bool
 		title     string
 	)
@@ -37,25 +39,44 @@ func TestWindow(t *testing.T) {
 
 		var finishPaint sync.Once
 		window, err = plat.NewWindow(func(event platform.Event) {
-			paintEvent, ok := event.(*events.PaintEvent)
-			if !ok {
-				return
-			}
+			switch event.(type) {
+			case events.PaintEvent:
+				finishPaint.Do(func() {
+					img := image.NewRGBA(image.Rect(0, 0, 64, 64))
+					draw.Draw(img, img.Bounds(), &image.Uniform{
+						C: color.RGBA{R: 0x28, G: 0x78, B: 0xd4, A: 0xff},
+					}, image.Point{}, draw.Src)
+					paintErr = window.Draw(img)
+					painted = true
 
-			finishPaint.Do(func() {
-				img := image.NewRGBA(image.Rect(0, 0, 64, 64))
-				draw.Draw(img, img.Bounds(), &image.Uniform{
-					C: color.RGBA{R: 0x28, G: 0x78, B: 0xd4, A: 0xff},
-				}, image.Point{}, draw.Src)
-				paintErr = paintEvent.Window.Draw(img)
-				painted = true
-
-				eventLoop.Post(func() {
-					paintEvent.Window.Destroy()
-					destroyed = true
-					eventLoop.Quit()
+					eventLoop.Post(func() {
+						closeSent++
+						if requestErr := window.RequestClose(); requestErr != nil {
+							paintErr = requestErr
+							window.Destroy()
+							destroyed = true
+							eventLoop.Quit()
+						}
+					})
 				})
-			})
+			case events.CloseEvent:
+				closeSeen++
+				if closeSeen == 1 {
+					eventLoop.Post(func() {
+						closeSent++
+						if requestErr := window.RequestClose(); requestErr != nil {
+							paintErr = requestErr
+							window.Destroy()
+							destroyed = true
+							eventLoop.Quit()
+						}
+					})
+					return
+				}
+				window.Destroy()
+				destroyed = true
+				eventLoop.Quit()
+			}
 		})
 		if err != nil {
 			return
@@ -101,6 +122,15 @@ func TestWindow(t *testing.T) {
 	}
 	if !painted {
 		t.Fatal("window did not receive a paint event")
+	}
+	if closeSent != 2 {
+		t.Fatalf("expected 2 window close requests, got %d", closeSent)
+	}
+	if closeSeen != 2 {
+		t.Fatalf("expected 2 close request events, got %d", closeSeen)
+	}
+	if !destroyed {
+		t.Fatal("window was not destroyed after the close request")
 	}
 	if paintErr != nil {
 		t.Fatal(paintErr)
