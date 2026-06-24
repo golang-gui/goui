@@ -22,6 +22,7 @@ type Window struct {
 	onEvent      events.EventHandler
 	parent       common.Window
 	buttons      events.PointerButtons
+	modifiers    events.Modifiers
 }
 
 func newWindow(onEvent events.EventHandler) (w *Window, err error) {
@@ -197,6 +198,9 @@ func initWindowClass() (err error) {
 		OtherMouseUp:                   otherMouseUp,
 		OtherMouseDragged:              otherMouseDragged,
 		ScrollWheel:                    scrollWheel,
+		KeyDown:                        keyDown,
+		KeyUp:                          keyUp,
+		FlagsChanged:                   flagsChanged,
 	})
 	if err != nil {
 		return fmt.Errorf("implement NSView err: %v", err)

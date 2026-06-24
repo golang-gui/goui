@@ -25,6 +25,7 @@ type Window struct {
 	lastPointerY  float32
 	lastButtons   events.PointerButtons
 	lastModifiers events.Modifiers
+	modifiers     events.Modifiers
 }
 
 func newWindow(onEvent events.EventHandler) (w *Window, err error) {
@@ -213,6 +214,14 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 
 	case winapi.WM_MOUSEHWHEEL:
 		window.handleWheel(true, wParam, lParam)
+		return 0
+
+	case winapi.WM_KEYDOWN, winapi.WM_SYSKEYDOWN:
+		window.handleKey(events.KeyDown, wParam, lParam)
+		return 0
+
+	case winapi.WM_KEYUP, winapi.WM_SYSKEYUP:
+		window.handleKey(events.KeyUp, wParam, lParam)
 		return 0
 	}
 

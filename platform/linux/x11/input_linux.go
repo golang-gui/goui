@@ -59,6 +59,18 @@ func (w *Window) handleButton(eventType events.EventType, event *xlib.ButtonEven
 	})
 }
 
+func (w *Window) handleKey(eventType events.EventType, event *xlib.KeyEvent) {
+	key, location := keyFromKeysym(xlib.LookupKeysym(event, 0))
+	w.onEvent(events.KeyEvent{
+		EventType: eventType,
+		Key:       key,
+		Code:      events.KeyCodeUnknown,
+		Location:  location,
+		Modifiers: keyModifiers(eventType, key, event.State),
+		Repeat:    false,
+	})
+}
+
 func wheelEvent(event *xlib.ButtonEvent, buttons events.PointerButtons) (events.WheelEvent, bool) {
 	wheel := events.WheelEvent{
 		Position:  point(event.X, event.Y),
@@ -148,4 +160,168 @@ func modifiersFromState(state uint32) events.Modifiers {
 		mods |= events.ModifierAlt
 	}
 	return mods
+}
+
+func keyModifiers(eventType events.EventType, key events.Key, state uint32) events.Modifiers {
+	mods := keyModifiersFromState(state)
+	bit := modifierForKey(key)
+	if bit == 0 {
+		return mods
+	}
+	switch key {
+	case events.KeyShift, events.KeyControl, events.KeyAlt, events.KeySuper:
+		if eventType == events.KeyDown {
+			mods |= bit
+		} else {
+			mods &^= bit
+		}
+	}
+	return mods
+}
+
+func keyModifiersFromState(state uint32) events.Modifiers {
+	mods := modifiersFromState(state)
+	if state&xlib.Mod4Mask != 0 {
+		mods |= events.ModifierSuper
+	}
+	return mods
+}
+
+func modifierForKey(key events.Key) events.Modifiers {
+	switch key {
+	case events.KeyShift:
+		return events.ModifierShift
+	case events.KeyControl:
+		return events.ModifierControl
+	case events.KeyAlt:
+		return events.ModifierAlt
+	case events.KeySuper:
+		return events.ModifierSuper
+	default:
+		return 0
+	}
+}
+
+func keyFromKeysym(keysym xlib.KeySym) (events.Key, events.KeyLocation) {
+	if 'a' <= keysym && keysym <= 'z' {
+		return events.Key(int(events.KeyA) + int(keysym-'a')), events.KeyLocationStandard
+	}
+	if 'A' <= keysym && keysym <= 'Z' {
+		return events.Key(int(events.KeyA) + int(keysym-'A')), events.KeyLocationStandard
+	}
+	if '0' <= keysym && keysym <= '9' {
+		return events.Key(int(events.Key0) + int(keysym-'0')), events.KeyLocationStandard
+	}
+	if xlib.XK_F1 <= keysym && keysym <= xlib.XK_F24 {
+		return events.Key(int(events.KeyF1) + int(keysym-xlib.XK_F1)), events.KeyLocationStandard
+	}
+	if xlib.XK_KP_0 <= keysym && keysym <= xlib.XK_KP_9 {
+		return events.Key(int(events.KeyNumpad0) + int(keysym-xlib.XK_KP_0)), events.KeyLocationNumpad
+	}
+
+	switch keysym {
+	case xlib.XK_Escape:
+		return events.KeyEscape, events.KeyLocationStandard
+	case xlib.XK_Print:
+		return events.KeyPrintScreen, events.KeyLocationStandard
+	case xlib.XK_Scroll_Lock:
+		return events.KeyScrollLock, events.KeyLocationStandard
+	case xlib.XK_Pause, xlib.XK_Break:
+		return events.KeyPause, events.KeyLocationStandard
+	case xlib.XK_Return:
+		return events.KeyEnter, events.KeyLocationStandard
+	case xlib.XK_KP_Enter:
+		return events.KeyNumpadEnter, events.KeyLocationNumpad
+	case xlib.XK_Tab:
+		return events.KeyTab, events.KeyLocationStandard
+	case xlib.XK_BackSpace:
+		return events.KeyBackspace, events.KeyLocationStandard
+	case xlib.XK_Delete:
+		return events.KeyDelete, events.KeyLocationStandard
+	case xlib.XK_Insert:
+		return events.KeyInsert, events.KeyLocationStandard
+	case xlib.XK_Left, xlib.XK_KP_Left:
+		return events.KeyArrowLeft, keyLocationForKeypad(keysym)
+	case xlib.XK_Right, xlib.XK_KP_Right:
+		return events.KeyArrowRight, keyLocationForKeypad(keysym)
+	case xlib.XK_Up, xlib.XK_KP_Up:
+		return events.KeyArrowUp, keyLocationForKeypad(keysym)
+	case xlib.XK_Down, xlib.XK_KP_Down:
+		return events.KeyArrowDown, keyLocationForKeypad(keysym)
+	case xlib.XK_Home, xlib.XK_KP_Home:
+		return events.KeyHome, keyLocationForKeypad(keysym)
+	case xlib.XK_End, xlib.XK_KP_End:
+		return events.KeyEnd, keyLocationForKeypad(keysym)
+	case xlib.XK_Page_Up, xlib.XK_KP_Page_Up:
+		return events.KeyPageUp, keyLocationForKeypad(keysym)
+	case xlib.XK_Page_Down, xlib.XK_KP_Page_Down:
+		return events.KeyPageDown, keyLocationForKeypad(keysym)
+	case xlib.XK_KP_Insert:
+		return events.KeyInsert, events.KeyLocationNumpad
+	case xlib.XK_KP_Delete:
+		return events.KeyDelete, events.KeyLocationNumpad
+	case xlib.XK_Shift_L:
+		return events.KeyShift, events.KeyLocationLeft
+	case xlib.XK_Shift_R:
+		return events.KeyShift, events.KeyLocationRight
+	case xlib.XK_Control_L:
+		return events.KeyControl, events.KeyLocationLeft
+	case xlib.XK_Control_R:
+		return events.KeyControl, events.KeyLocationRight
+	case xlib.XK_Alt_L:
+		return events.KeyAlt, events.KeyLocationLeft
+	case xlib.XK_Alt_R:
+		return events.KeyAlt, events.KeyLocationRight
+	case xlib.XK_Super_L:
+		return events.KeySuper, events.KeyLocationLeft
+	case xlib.XK_Super_R:
+		return events.KeySuper, events.KeyLocationRight
+	case xlib.XK_Caps_Lock:
+		return events.KeyCapsLock, events.KeyLocationStandard
+	case xlib.XK_Num_Lock:
+		return events.KeyNumLock, events.KeyLocationNumpad
+	case ' ':
+		return events.KeySpace, events.KeyLocationStandard
+	case '-':
+		return events.KeyMinus, events.KeyLocationStandard
+	case '=':
+		return events.KeyEqual, events.KeyLocationStandard
+	case '[':
+		return events.KeyBracketLeft, events.KeyLocationStandard
+	case ']':
+		return events.KeyBracketRight, events.KeyLocationStandard
+	case '\\':
+		return events.KeyBackslash, events.KeyLocationStandard
+	case ';':
+		return events.KeySemicolon, events.KeyLocationStandard
+	case '\'':
+		return events.KeyQuote, events.KeyLocationStandard
+	case ',':
+		return events.KeyComma, events.KeyLocationStandard
+	case '.':
+		return events.KeyPeriod, events.KeyLocationStandard
+	case '/':
+		return events.KeySlash, events.KeyLocationStandard
+	case '`':
+		return events.KeyBackquote, events.KeyLocationStandard
+	case xlib.XK_KP_Add:
+		return events.KeyNumpadAdd, events.KeyLocationNumpad
+	case xlib.XK_KP_Subtract:
+		return events.KeyNumpadSubtract, events.KeyLocationNumpad
+	case xlib.XK_KP_Multiply:
+		return events.KeyNumpadMultiply, events.KeyLocationNumpad
+	case xlib.XK_KP_Divide:
+		return events.KeyNumpadDivide, events.KeyLocationNumpad
+	case xlib.XK_KP_Decimal:
+		return events.KeyNumpadDecimal, events.KeyLocationNumpad
+	default:
+		return events.KeyUnknown, events.KeyLocationStandard
+	}
+}
+
+func keyLocationForKeypad(keysym xlib.KeySym) events.KeyLocation {
+	if xlib.XK_KP_Home <= keysym && keysym <= xlib.XK_KP_Delete {
+		return events.KeyLocationNumpad
+	}
+	return events.KeyLocationStandard
 }

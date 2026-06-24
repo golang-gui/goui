@@ -59,6 +59,8 @@ func newWindow(onEvent events.EventHandler) (w common.Window, err error) {
 		EventMask: xlib.EventMaskStructureNotify |
 			xlib.EventMaskExposure |
 			xlib.EventMaskPropertyChange |
+			xlib.EventMaskKeyPress |
+			xlib.EventMaskKeyRelease |
 			xlib.EventMaskButtonPress |
 			xlib.EventMaskButtonRelease |
 			xlib.EventMaskPointerMotion |
@@ -234,6 +236,16 @@ func handleEvent(event xlib.Event) {
 		ev := event.ButtonEvent()
 		if window, ok := windowMap[ev.Window]; ok {
 			window.handleButton(events.PointerUp, ev)
+		}
+	case xlib.KeyPress:
+		ev := event.KeyEvent()
+		if window, ok := windowMap[ev.Window]; ok {
+			window.handleKey(events.KeyDown, ev)
+		}
+	case xlib.KeyRelease:
+		ev := event.KeyEvent()
+		if window, ok := windowMap[ev.Window]; ok {
+			window.handleKey(events.KeyUp, ev)
 		}
 	}
 }
