@@ -20,6 +20,8 @@ const (
 	PointerDown
 	PointerUp
 	Wheel
+	KeyDown
+	KeyUp
 )
 
 type EventHandler func(event Event)
