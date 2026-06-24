@@ -43,6 +43,7 @@ var (
 	xDestroyImage           = libx11.NewSymbol("XDestroyImage")
 	xPutImage               = libx11.NewSymbol("XPutImage")
 	xFree                   = libx11.NewSymbol("XFree")
+	xLookupKeysym           = libx11.NewSymbol("XLookupKeysym")
 )
 
 func OpenDisplay(name string) Display {
@@ -208,4 +209,9 @@ func (img *Image) Destroy() {
 
 func Free[T any](p *T) {
 	xFree.CallRaw(uintptr(cgo.Pointer(p)))
+}
+
+func LookupKeysym(event *KeyEvent, index int) KeySym {
+	ret, _, _ := xLookupKeysym.CallRaw(uintptr(cgo.Pointer(event)), uintptr(index))
+	return KeySym(ret)
 }

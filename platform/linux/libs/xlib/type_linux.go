@@ -264,6 +264,8 @@ type Cursor ID
 
 type Time int
 
+type KeySym ID
+
 type Event struct {
 	Type    EventType
 	padding [32]uintptr
@@ -287,6 +289,10 @@ func (e *Event) PropertyEvent() *PropertyEvent {
 
 func (e *Event) ClientMessageEvent() *ClientMessageEvent {
 	return (*ClientMessageEvent)(cgo.Pointer(e))
+}
+
+func (e *Event) KeyEvent() *KeyEvent {
+	return (*KeyEvent)(cgo.Pointer(e))
 }
 
 func (e *Event) ButtonEvent() *ButtonEvent {
@@ -347,6 +353,24 @@ type ConfigureEvent struct {
 	BorderWidth      int32
 	Above            Window
 	OverrideRedirect Bool
+}
+
+type KeyEvent struct {
+	Type       EventType
+	Serial     uint64
+	SendEvent  Bool
+	Display    Display
+	Window     Window
+	Root       Window
+	SubWindow  Window
+	Time       Time
+	X          int32
+	Y          int32
+	XRoot      int32
+	YRoot      int32
+	State      uint32
+	KeyCode    uint32
+	SameScreen Bool
 }
 
 type ButtonEvent struct {
@@ -457,11 +481,73 @@ const (
 
 const (
 	ShiftMask   = 1 << 0
+	LockMask    = 1 << 1
 	ControlMask = 1 << 2
 	Mod1Mask    = 1 << 3
+	Mod2Mask    = 1 << 4
+	Mod4Mask    = 1 << 6
 	Button1Mask = 1 << 8
 	Button2Mask = 1 << 9
 	Button3Mask = 1 << 10
+)
+
+const (
+	XK_Scroll_Lock  KeySym = 0xff14
+	XK_Pause        KeySym = 0xff13
+	XK_BackSpace    KeySym = 0xff08
+	XK_Tab          KeySym = 0xff09
+	XK_Return       KeySym = 0xff0d
+	XK_Escape       KeySym = 0xff1b
+	XK_Print        KeySym = 0xff61
+	XK_Break        KeySym = 0xff6b
+	XK_Delete       KeySym = 0xffff
+	XK_Home         KeySym = 0xff50
+	XK_Left         KeySym = 0xff51
+	XK_Up           KeySym = 0xff52
+	XK_Right        KeySym = 0xff53
+	XK_Down         KeySym = 0xff54
+	XK_Page_Up      KeySym = 0xff55
+	XK_Page_Down    KeySym = 0xff56
+	XK_End          KeySym = 0xff57
+	XK_Insert       KeySym = 0xff63
+	XK_Num_Lock     KeySym = 0xff7f
+	XK_KP_Enter     KeySym = 0xff8d
+	XK_KP_Home      KeySym = 0xff95
+	XK_KP_Left      KeySym = 0xff96
+	XK_KP_Up        KeySym = 0xff97
+	XK_KP_Right     KeySym = 0xff98
+	XK_KP_Down      KeySym = 0xff99
+	XK_KP_Page_Up   KeySym = 0xff9a
+	XK_KP_Page_Down KeySym = 0xff9b
+	XK_KP_End       KeySym = 0xff9c
+	XK_KP_Insert    KeySym = 0xff9e
+	XK_KP_Delete    KeySym = 0xff9f
+	XK_KP_Multiply  KeySym = 0xffaa
+	XK_KP_Add       KeySym = 0xffab
+	XK_KP_Subtract  KeySym = 0xffad
+	XK_KP_Decimal   KeySym = 0xffae
+	XK_KP_Divide    KeySym = 0xffaf
+	XK_KP_0         KeySym = 0xffb0
+	XK_KP_1         KeySym = 0xffb1
+	XK_KP_2         KeySym = 0xffb2
+	XK_KP_3         KeySym = 0xffb3
+	XK_KP_4         KeySym = 0xffb4
+	XK_KP_5         KeySym = 0xffb5
+	XK_KP_6         KeySym = 0xffb6
+	XK_KP_7         KeySym = 0xffb7
+	XK_KP_8         KeySym = 0xffb8
+	XK_KP_9         KeySym = 0xffb9
+	XK_F1           KeySym = 0xffbe
+	XK_F24          KeySym = 0xffd5
+	XK_Shift_L      KeySym = 0xffe1
+	XK_Shift_R      KeySym = 0xffe2
+	XK_Control_L    KeySym = 0xffe3
+	XK_Control_R    KeySym = 0xffe4
+	XK_Caps_Lock    KeySym = 0xffe5
+	XK_Alt_L        KeySym = 0xffe9
+	XK_Alt_R        KeySym = 0xffea
+	XK_Super_L      KeySym = 0xffeb
+	XK_Super_R      KeySym = 0xffec
 )
 
 const (
