@@ -115,6 +115,8 @@ type Screen struct {
 
 type Window ID
 
+type KeyCode byte
+
 type VisualID ID
 
 type Visual struct {
@@ -265,6 +267,18 @@ type Cursor ID
 type Time int
 
 type KeySym ID
+
+type ModifierKeymap struct {
+	MaxKeypermod int32
+	Modifiermap  *KeyCode
+}
+
+func (m *ModifierKeymap) Keycodes() []KeyCode {
+	if m == nil || m.Modifiermap == nil || m.MaxKeypermod <= 0 {
+		return nil
+	}
+	return cgo.GoSliceN[KeyCode](cgo.Pointer(m.Modifiermap), int(m.MaxKeypermod)*8)
+}
 
 type Event struct {
 	Type    EventType
@@ -485,7 +499,9 @@ const (
 	ControlMask = 1 << 2
 	Mod1Mask    = 1 << 3
 	Mod2Mask    = 1 << 4
+	Mod3Mask    = 1 << 5
 	Mod4Mask    = 1 << 6
+	Mod5Mask    = 1 << 7
 	Button1Mask = 1 << 8
 	Button2Mask = 1 << 9
 	Button3Mask = 1 << 10
@@ -520,6 +536,7 @@ const (
 	XK_KP_Page_Up   KeySym = 0xff9a
 	XK_KP_Page_Down KeySym = 0xff9b
 	XK_KP_End       KeySym = 0xff9c
+	XK_KP_Begin     KeySym = 0xff9d
 	XK_KP_Insert    KeySym = 0xff9e
 	XK_KP_Delete    KeySym = 0xff9f
 	XK_KP_Multiply  KeySym = 0xffaa

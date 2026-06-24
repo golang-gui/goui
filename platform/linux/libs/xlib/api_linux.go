@@ -44,6 +44,9 @@ var (
 	xPutImage               = libx11.NewSymbol("XPutImage")
 	xFree                   = libx11.NewSymbol("XFree")
 	xLookupKeysym           = libx11.NewSymbol("XLookupKeysym")
+	xKeysymToKeycode        = libx11.NewSymbol("XKeysymToKeycode")
+	xGetModifierMapping     = libx11.NewSymbol("XGetModifierMapping")
+	xFreeModifiermap        = libx11.NewSymbol("XFreeModifiermap")
 )
 
 func OpenDisplay(name string) Display {
@@ -214,4 +217,19 @@ func Free[T any](p *T) {
 func LookupKeysym(event *KeyEvent, index int) KeySym {
 	ret, _, _ := xLookupKeysym.CallRaw(uintptr(cgo.Pointer(event)), uintptr(index))
 	return KeySym(ret)
+}
+
+func (d Display) KeysymToKeycode(keysym KeySym) KeyCode {
+	ret, _, _ := xKeysymToKeycode.CallRaw(uintptr(d), uintptr(keysym))
+	return KeyCode(ret)
+}
+
+func (d Display) GetModifierMapping() *ModifierKeymap {
+	ret, _, _ := xGetModifierMapping.CallRaw(uintptr(d))
+	return (*ModifierKeymap)(cgo.Pointer(ret))
+}
+
+func FreeModifiermap(mapping *ModifierKeymap) int {
+	ret, _, _ := xFreeModifiermap.CallRaw(uintptr(cgo.Pointer(mapping)))
+	return int(ret)
 }
