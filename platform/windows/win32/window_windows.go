@@ -17,9 +17,14 @@ import (
 )
 
 type Window struct {
-	hwnd    winapi.HWND
-	parent  common.Window
-	onEvent events.EventHandler
+	hwnd          winapi.HWND
+	parent        common.Window
+	onEvent       events.EventHandler
+	trackingMouse bool
+	lastPointerX  float32
+	lastPointerY  float32
+	lastButtons   events.PointerButtons
+	lastModifiers events.Modifiers
 }
 
 func newWindow(onEvent events.EventHandler) (w *Window, err error) {
@@ -161,6 +166,46 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 			int(rect.Left), int(rect.Top),
 			int(rect.Right-rect.Left), int(rect.Bottom-rect.Top),
 			winapi.SWP_NOZORDER|winapi.SWP_NOACTIVATE)
+
+	case winapi.WM_MOUSEMOVE:
+		window.handlePointerMove(wParam, lParam)
+		return 0
+
+	case winapi.WM_MOUSELEAVE:
+		window.handlePointerLeave()
+		return 0
+
+	case winapi.WM_LBUTTONDOWN:
+		window.handlePointerButton(events.PointerDown, events.PointerButtonLeft, wParam, lParam)
+		return 0
+
+	case winapi.WM_LBUTTONUP:
+		window.handlePointerButton(events.PointerUp, events.PointerButtonLeft, wParam, lParam)
+		return 0
+
+	case winapi.WM_RBUTTONDOWN:
+		window.handlePointerButton(events.PointerDown, events.PointerButtonRight, wParam, lParam)
+		return 0
+
+	case winapi.WM_RBUTTONUP:
+		window.handlePointerButton(events.PointerUp, events.PointerButtonRight, wParam, lParam)
+		return 0
+
+	case winapi.WM_MBUTTONDOWN:
+		window.handlePointerButton(events.PointerDown, events.PointerButtonMiddle, wParam, lParam)
+		return 0
+
+	case winapi.WM_MBUTTONUP:
+		window.handlePointerButton(events.PointerUp, events.PointerButtonMiddle, wParam, lParam)
+		return 0
+
+	case winapi.WM_XBUTTONDOWN:
+		window.handlePointerButton(events.PointerDown, xButton(wParam), wParam, lParam)
+		return winapi.LRESULT(winapi.TRUE)
+
+	case winapi.WM_XBUTTONUP:
+		window.handlePointerButton(events.PointerUp, xButton(wParam), wParam, lParam)
+		return winapi.LRESULT(winapi.TRUE)
 	}
 
 	return winapi.DefWindowProc(hwnd, message, wParam, lParam)

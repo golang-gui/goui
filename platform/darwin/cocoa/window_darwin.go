@@ -15,11 +15,13 @@ import (
 )
 
 type Window struct {
-	window   NSWindow
-	delegate NSWindowDelegate
-	view     NSView
-	onEvent  events.EventHandler
-	parent   common.Window
+	window       NSWindow
+	delegate     NSWindowDelegate
+	view         NSView
+	trackingArea NSTrackingArea
+	onEvent      events.EventHandler
+	parent       common.Window
+	buttons      events.PointerButtons
 }
 
 func newWindow(onEvent events.EventHandler) (w *Window, err error) {
@@ -46,6 +48,7 @@ func newWindow(onEvent events.EventHandler) (w *Window, err error) {
 		win.window.SetRestorable(false)
 	})
 	windowMap[win.window] = win
+	win.updateTrackingArea()
 	win.sendCreatedEvents()
 	return win, nil
 }
@@ -61,6 +64,10 @@ func (w *Window) Destroy() {
 
 	AutoReleasePool(func() {
 		delete(windowMap, w.window)
+		if w.trackingArea.Valid() {
+			w.view.RemoveTrackingArea(w.trackingArea)
+			w.trackingArea = NSTrackingArea{}
+		}
 		w.window.OrderOut(0)
 		w.window.SetDelegate(NSWindowDelegate{})
 		w.delegate.Release()
@@ -176,6 +183,19 @@ func initWindowClass() (err error) {
 		},
 		ViewDidChangeBackingProperties: viewDidChangeBackingProperties,
 		DrawRect:                       drawRect,
+		UpdateTrackingAreas:            updateTrackingAreas,
+		MouseEntered:                   mouseEntered,
+		MouseExited:                    mouseExited,
+		MouseMoved:                     mouseMoved,
+		MouseDragged:                   mouseDragged,
+		MouseDown:                      mouseDown,
+		MouseUp:                        mouseUp,
+		RightMouseDown:                 rightMouseDown,
+		RightMouseUp:                   rightMouseUp,
+		RightMouseDragged:              rightMouseDragged,
+		OtherMouseDown:                 otherMouseDown,
+		OtherMouseUp:                   otherMouseUp,
+		OtherMouseDragged:              otherMouseDragged,
 	})
 	if err != nil {
 		return fmt.Errorf("implement NSView err: %v", err)

@@ -25,6 +25,7 @@ type Window struct {
 	height  int32
 	title   string
 	gc      xlib.GC
+	buttons events.PointerButtons
 }
 
 func newWindow(onEvent events.EventHandler) (w common.Window, err error) {
@@ -54,8 +55,15 @@ func newWindow(onEvent events.EventHandler) (w common.Window, err error) {
 	win.cmap = platform.display.CreateColormap(platform.defScreen.Root, visual, xlib.ColormapAllocNone)
 
 	attr := xlib.SetWindowAttributes{
-		Colormap:  win.cmap,
-		EventMask: xlib.EventMaskStructureNotify | xlib.EventMaskExposure | xlib.EventMaskPropertyChange,
+		Colormap: win.cmap,
+		EventMask: xlib.EventMaskStructureNotify |
+			xlib.EventMaskExposure |
+			xlib.EventMaskPropertyChange |
+			xlib.EventMaskButtonPress |
+			xlib.EventMaskButtonRelease |
+			xlib.EventMaskPointerMotion |
+			xlib.EventMaskEnterWindow |
+			xlib.EventMaskLeaveWindow,
 	}
 
 	win.wid = platform.display.CreateWindow(platform.defScreen.Root,
@@ -202,6 +210,31 @@ func handleEvent(event xlib.Event) {
 		}
 	case xlib.PropertyNotify:
 		// state
+	case xlib.MotionNotify:
+		ev := event.MotionEvent()
+		if window, ok := windowMap[ev.Window]; ok {
+			window.handlePointerMove(ev)
+		}
+	case xlib.EnterNotify:
+		ev := event.CrossingEvent()
+		if window, ok := windowMap[ev.Window]; ok {
+			window.handlePointerCrossing(events.PointerEnter, ev)
+		}
+	case xlib.LeaveNotify:
+		ev := event.CrossingEvent()
+		if window, ok := windowMap[ev.Window]; ok {
+			window.handlePointerCrossing(events.PointerLeave, ev)
+		}
+	case xlib.ButtonPress:
+		ev := event.ButtonEvent()
+		if window, ok := windowMap[ev.Window]; ok {
+			window.handleButton(events.PointerDown, ev)
+		}
+	case xlib.ButtonRelease:
+		ev := event.ButtonEvent()
+		if window, ok := windowMap[ev.Window]; ok {
+			window.handleButton(events.PointerUp, ev)
+		}
 	}
 }
 
