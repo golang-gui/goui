@@ -168,8 +168,10 @@ func initWindowClass() (err error) {
 	}
 
 	delegateClass, err = ImplementNSWindowDelegate("GouiWindowDelegate", NSWindowDelegateOverride{
-		WindowShouldClose: windowShouldClose,
-		WindowDidResize:   windowDidResize,
+		WindowShouldClose:  windowShouldClose,
+		WindowDidResize:    windowDidResize,
+		WindowDidBecomeKey: windowDidBecomeKey,
+		WindowDidResignKey: windowDidResignKey,
 	})
 	if err != nil {
 		return fmt.Errorf("implement NSWindowDelegate err: %v", err)
@@ -230,6 +232,24 @@ func windowDidResize(self NSWindowDelegate, notification NSNotification) {
 			Width:  uint(rect.Size.Width),
 			Height: uint(rect.Size.Height),
 		})
+	}
+}
+
+func windowDidBecomeKey(self NSWindowDelegate, notification NSNotification) {
+	self.Retain()
+	defer self.Release()
+
+	if window, has := windowMap[Cast[NSWindow](notification.Object())]; has {
+		window.onEvent(events.FocusEvent{Focused: true})
+	}
+}
+
+func windowDidResignKey(self NSWindowDelegate, notification NSNotification) {
+	self.Retain()
+	defer self.Release()
+
+	if window, has := windowMap[Cast[NSWindow](notification.Object())]; has {
+		window.onEvent(events.FocusEvent{Focused: false})
 	}
 }
 

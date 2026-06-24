@@ -143,6 +143,14 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		window.hwnd = 0
 		return 0
 
+	case winapi.WM_SETFOCUS:
+		window.onEvent(events.FocusEvent{Focused: true})
+		return 0
+
+	case winapi.WM_KILLFOCUS:
+		window.onEvent(events.FocusEvent{Focused: false})
+		return 0
+
 	case winapi.WM_SIZE:
 		winapi.InvalidateRect(hwnd, nil, winapi.FALSE)
 		window.onEvent(events.SizeEvent{

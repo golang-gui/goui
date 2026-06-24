@@ -61,6 +61,7 @@ func newWindow(onEvent events.EventHandler) (w common.Window, err error) {
 			xlib.EventMaskPropertyChange |
 			xlib.EventMaskKeyPress |
 			xlib.EventMaskKeyRelease |
+			xlib.EventMaskFocusChange |
 			xlib.EventMaskButtonPress |
 			xlib.EventMaskButtonRelease |
 			xlib.EventMaskPointerMotion |
@@ -212,6 +213,16 @@ func handleEvent(event xlib.Event) {
 		}
 	case xlib.PropertyNotify:
 		// state
+	case xlib.FocusIn:
+		ev := event.AnyEvent()
+		if window, ok := windowMap[ev.Window]; ok {
+			window.onEvent(events.FocusEvent{Focused: true})
+		}
+	case xlib.FocusOut:
+		ev := event.AnyEvent()
+		if window, ok := windowMap[ev.Window]; ok {
+			window.onEvent(events.FocusEvent{Focused: false})
+		}
 	case xlib.MotionNotify:
 		ev := event.MotionEvent()
 		if window, ok := windowMap[ev.Window]; ok {
