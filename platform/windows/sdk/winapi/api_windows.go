@@ -34,6 +34,7 @@ var (
 	procInvalidateRect       = user32Dll.NewProc("InvalidateRect")
 	procFlashWindowEx        = user32Dll.NewProc("FlashWindowEx")
 	procCloseWindow          = user32Dll.NewProc("CloseWindow")
+	procTrackMouseEvent      = user32Dll.NewProc("TrackMouseEvent")
 
 	// DPI
 	procGetDpiForWindow               = user32Dll.NewProc("GetDpiForWindow")
@@ -232,6 +233,11 @@ func InvalidateRect(wnd HWND, rect LPRECT, erase BOOL) error {
 
 func FlashWindowEx(pfwi PFLASHWINFO) BOOL {
 	ret, _, _ := syscall.SyscallN(procFlashWindowEx.Addr(), uintptr(unsafe.Pointer(pfwi)))
+	return BOOL(ret)
+}
+
+func TrackMouseEvent(event *TRACKMOUSEEVENT) BOOL {
+	ret, _, _ := syscall.SyscallN(procTrackMouseEvent.Addr(), uintptr(unsafe.Pointer(event)))
 	return BOOL(ret)
 }
 
