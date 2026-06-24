@@ -60,7 +60,7 @@ func (w *Window) handleButton(eventType events.EventType, event *xlib.ButtonEven
 }
 
 func (w *Window) handleKey(eventType events.EventType, event *xlib.KeyEvent) {
-	key, location := keyFromKeysym(xlib.LookupKeysym(event, 0))
+	key, location := keyFromKeysym(xlib.LookupKeysym(event, 0), event.State, platform.numLockMask)
 	w.onEvent(events.KeyEvent{
 		EventType: eventType,
 		Key:       key,
@@ -202,7 +202,7 @@ func modifierForKey(key events.Key) events.Modifiers {
 	}
 }
 
-func keyFromKeysym(keysym xlib.KeySym) (events.Key, events.KeyLocation) {
+func keyFromKeysym(keysym xlib.KeySym, state, numLockMask uint32) (events.Key, events.KeyLocation) {
 	if 'a' <= keysym && keysym <= 'z' {
 		return events.Key(int(events.KeyA) + int(keysym-'a')), events.KeyLocationStandard
 	}
@@ -240,26 +240,44 @@ func keyFromKeysym(keysym xlib.KeySym) (events.Key, events.KeyLocation) {
 		return events.KeyDelete, events.KeyLocationStandard
 	case xlib.XK_Insert:
 		return events.KeyInsert, events.KeyLocationStandard
-	case xlib.XK_Left, xlib.XK_KP_Left:
-		return events.KeyArrowLeft, keyLocationForKeypad(keysym)
-	case xlib.XK_Right, xlib.XK_KP_Right:
-		return events.KeyArrowRight, keyLocationForKeypad(keysym)
-	case xlib.XK_Up, xlib.XK_KP_Up:
-		return events.KeyArrowUp, keyLocationForKeypad(keysym)
-	case xlib.XK_Down, xlib.XK_KP_Down:
-		return events.KeyArrowDown, keyLocationForKeypad(keysym)
-	case xlib.XK_Home, xlib.XK_KP_Home:
-		return events.KeyHome, keyLocationForKeypad(keysym)
-	case xlib.XK_End, xlib.XK_KP_End:
-		return events.KeyEnd, keyLocationForKeypad(keysym)
-	case xlib.XK_Page_Up, xlib.XK_KP_Page_Up:
-		return events.KeyPageUp, keyLocationForKeypad(keysym)
-	case xlib.XK_Page_Down, xlib.XK_KP_Page_Down:
-		return events.KeyPageDown, keyLocationForKeypad(keysym)
+	case xlib.XK_Left:
+		return events.KeyArrowLeft, events.KeyLocationStandard
+	case xlib.XK_Right:
+		return events.KeyArrowRight, events.KeyLocationStandard
+	case xlib.XK_Up:
+		return events.KeyArrowUp, events.KeyLocationStandard
+	case xlib.XK_Down:
+		return events.KeyArrowDown, events.KeyLocationStandard
+	case xlib.XK_Home:
+		return events.KeyHome, events.KeyLocationStandard
+	case xlib.XK_End:
+		return events.KeyEnd, events.KeyLocationStandard
+	case xlib.XK_Page_Up:
+		return events.KeyPageUp, events.KeyLocationStandard
+	case xlib.XK_Page_Down:
+		return events.KeyPageDown, events.KeyLocationStandard
+	case xlib.XK_KP_Home:
+		return keypadNavigationKey(events.KeyHome, events.KeyNumpad7, state, numLockMask)
+	case xlib.XK_KP_Up:
+		return keypadNavigationKey(events.KeyArrowUp, events.KeyNumpad8, state, numLockMask)
+	case xlib.XK_KP_Page_Up:
+		return keypadNavigationKey(events.KeyPageUp, events.KeyNumpad9, state, numLockMask)
+	case xlib.XK_KP_Left:
+		return keypadNavigationKey(events.KeyArrowLeft, events.KeyNumpad4, state, numLockMask)
+	case xlib.XK_KP_Begin:
+		return events.KeyNumpad5, events.KeyLocationNumpad
+	case xlib.XK_KP_Right:
+		return keypadNavigationKey(events.KeyArrowRight, events.KeyNumpad6, state, numLockMask)
+	case xlib.XK_KP_End:
+		return keypadNavigationKey(events.KeyEnd, events.KeyNumpad1, state, numLockMask)
+	case xlib.XK_KP_Down:
+		return keypadNavigationKey(events.KeyArrowDown, events.KeyNumpad2, state, numLockMask)
+	case xlib.XK_KP_Page_Down:
+		return keypadNavigationKey(events.KeyPageDown, events.KeyNumpad3, state, numLockMask)
 	case xlib.XK_KP_Insert:
-		return events.KeyInsert, events.KeyLocationNumpad
+		return keypadNavigationKey(events.KeyInsert, events.KeyNumpad0, state, numLockMask)
 	case xlib.XK_KP_Delete:
-		return events.KeyDelete, events.KeyLocationNumpad
+		return keypadNavigationKey(events.KeyDelete, events.KeyNumpadDecimal, state, numLockMask)
 	case xlib.XK_Shift_L:
 		return events.KeyShift, events.KeyLocationLeft
 	case xlib.XK_Shift_R:
@@ -319,9 +337,9 @@ func keyFromKeysym(keysym xlib.KeySym) (events.Key, events.KeyLocation) {
 	}
 }
 
-func keyLocationForKeypad(keysym xlib.KeySym) events.KeyLocation {
-	if xlib.XK_KP_Home <= keysym && keysym <= xlib.XK_KP_Delete {
-		return events.KeyLocationNumpad
+func keypadNavigationKey(navigationKey, numlockKey events.Key, state, numLockMask uint32) (events.Key, events.KeyLocation) {
+	if numLockMask != 0 && state&numLockMask != 0 {
+		return numlockKey, events.KeyLocationNumpad
 	}
-	return events.KeyLocationStandard
+	return navigationKey, events.KeyLocationNumpad
 }

@@ -24,8 +24,9 @@ type Platform struct {
 		_NET_WM_ICON      xlib.Atom
 		_NET_WM_ICON_NAME xlib.Atom
 	}
-	defScreen *xlib.Screen
-	helper    xlib.Window
+	defScreen   *xlib.Screen
+	helper      xlib.Window
+	numLockMask uint32
 }
 
 var platform *Platform
@@ -51,6 +52,7 @@ func NewPlatform() (_ *Platform, err error) {
 	p.atoms._NET_WM_ICON_NAME = p.display.InternAtom("_NET_WM_ICON_NAME", false)
 
 	p.defScreen = p.display.DefaultScreenOfDisplay()
+	p.numLockMask = p.detectNumLockMask()
 
 	p.helper = p.display.CreateWindow(p.defScreen.Root, 0, 0, 1, 1, 0,
 		int(p.defScreen.RootDepth), xlib.WindowClassInputOutput, p.defScreen.RootVisual, 0, nil)
@@ -62,6 +64,45 @@ func NewPlatform() (_ *Platform, err error) {
 
 	platform = p
 	return platform, nil
+}
+
+func (p *Platform) detectNumLockMask() uint32 {
+	keycode := p.display.KeysymToKeycode(xlib.XK_Num_Lock)
+	if keycode == 0 {
+		return xlib.Mod2Mask
+	}
+
+	mapping := p.display.GetModifierMapping()
+	if mapping == nil {
+		return xlib.Mod2Mask
+	}
+	defer xlib.FreeModifiermap(mapping)
+
+	keycodes := mapping.Keycodes()
+	if len(keycodes) == 0 {
+		return xlib.Mod2Mask
+	}
+
+	masks := [...]uint32{
+		xlib.ShiftMask,
+		xlib.LockMask,
+		xlib.ControlMask,
+		xlib.Mod1Mask,
+		xlib.Mod2Mask,
+		xlib.Mod3Mask,
+		xlib.Mod4Mask,
+		xlib.Mod5Mask,
+	}
+	maxKeypermod := int(mapping.MaxKeypermod)
+	for modifier, mask := range masks {
+		for index := 0; index < maxKeypermod; index++ {
+			if keycodes[modifier*maxKeypermod+index] == keycode {
+				return mask
+			}
+		}
+	}
+
+	return xlib.Mod2Mask
 }
 
 func (p *Platform) Name() string {
