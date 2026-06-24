@@ -654,13 +654,17 @@ func initNSWindowDelegate() {
 	NSWindowDelegateClassId.Class = objc.GetClass("NSWindowDelegate")
 	NSWindowDelegateSel.WindowShouldClose = objc.RegisterName("windowShouldClose:")
 	NSWindowDelegateSel.WindowDidResize = objc.RegisterName("windowDidResize:")
+	NSWindowDelegateSel.WindowDidBecomeKey = objc.RegisterName("windowDidBecomeKey:")
+	NSWindowDelegateSel.WindowDidResignKey = objc.RegisterName("windowDidResignKey:")
 }
 
 var (
 	NSWindowDelegateClassId NSWindowDelegateClass
 	NSWindowDelegateSel     struct {
-		WindowShouldClose objc.SEL
-		WindowDidResize   objc.SEL
+		WindowShouldClose  objc.SEL
+		WindowDidResize    objc.SEL
+		WindowDidBecomeKey objc.SEL
+		WindowDidResignKey objc.SEL
 	}
 )
 
@@ -668,13 +672,15 @@ type (
 	NSWindowDelegate         struct{ NSObject }
 	NSWindowDelegateClass    struct{ NSObjectClass }
 	NSWindowDelegateOverride struct {
-		WindowShouldClose func(self NSWindowDelegate, sender NSWindow) bool
-		WindowDidResize   func(self NSWindowDelegate, notification NSNotification)
+		WindowShouldClose  func(self NSWindowDelegate, sender NSWindow) bool
+		WindowDidResize    func(self NSWindowDelegate, notification NSNotification)
+		WindowDidBecomeKey func(self NSWindowDelegate, notification NSNotification)
+		WindowDidResignKey func(self NSWindowDelegate, notification NSNotification)
 	}
 )
 
 func ImplementNSWindowDelegate(className string, override NSWindowDelegateOverride) (class NSWindowDelegateClass, err error) {
-	methods := make([]objc.MethodDef, 0, 2)
+	methods := make([]objc.MethodDef, 0, 4)
 	if override.WindowShouldClose != nil {
 		methods = append(methods, objc.MethodDef{
 			Cmd: NSWindowDelegateSel.WindowShouldClose,
@@ -692,6 +698,26 @@ func ImplementNSWindowDelegate(className string, override NSWindowDelegateOverri
 			Fn: func(self objc.ID, cmd objc.SEL, arg objc.ID) {
 				if override.WindowDidResize != nil {
 					override.WindowDidResize(Cast[NSWindowDelegate](self), Cast[NSNotification](arg))
+				}
+			},
+		})
+	}
+	if override.WindowDidBecomeKey != nil {
+		methods = append(methods, objc.MethodDef{
+			Cmd: NSWindowDelegateSel.WindowDidBecomeKey,
+			Fn: func(self objc.ID, cmd objc.SEL, arg objc.ID) {
+				if override.WindowDidBecomeKey != nil {
+					override.WindowDidBecomeKey(Cast[NSWindowDelegate](self), Cast[NSNotification](arg))
+				}
+			},
+		})
+	}
+	if override.WindowDidResignKey != nil {
+		methods = append(methods, objc.MethodDef{
+			Cmd: NSWindowDelegateSel.WindowDidResignKey,
+			Fn: func(self objc.ID, cmd objc.SEL, arg objc.ID) {
+				if override.WindowDidResignKey != nil {
+					override.WindowDidResignKey(Cast[NSWindowDelegate](self), Cast[NSNotification](arg))
 				}
 			},
 		})
