@@ -23,6 +23,7 @@ func InitAppKit() (err error) {
 	initNSWindowDelegate()
 	initNSResponder()
 	initNSView()
+	initNSTrackingArea()
 	initNSGraphicsContext()
 	return
 }
@@ -119,12 +120,18 @@ func (c NSGraphicsContext) CGContext() CGContextRef {
 func initNSEvent() {
 	NSEventClassId.Class = objc.GetClass("NSEvent")
 	NSEventSel.OtherEventWithType = objc.RegisterName("otherEventWithType:location:modifierFlags:timestamp:windowNumber:context:subtype:data1:data2:")
+	NSEventSel.LocationInWindow = objc.RegisterName("locationInWindow")
+	NSEventSel.ModifierFlags = objc.RegisterName("modifierFlags")
+	NSEventSel.ButtonNumber = objc.RegisterName("buttonNumber")
 }
 
 var (
 	NSEventClassId NSEventClass
 	NSEventSel     struct {
 		OtherEventWithType objc.SEL
+		LocationInWindow   objc.SEL
+		ModifierFlags      objc.SEL
+		ButtonNumber       objc.SEL
 	}
 )
 
@@ -144,6 +151,27 @@ func (c NSEventClass) OtherEventWithType(eventType NSEventType, location NSPoint
 	res.ID = c.Send(NSEventSel.OtherEventWithType, eventType, location, modifierFlags, timestamp, windowNumber, context, subtype, data1, data2)
 	return
 }
+
+func (e NSEvent) LocationInWindow() NSPoint {
+	return objc.Send[NSPoint](e.ID, NSEventSel.LocationInWindow)
+}
+
+func (e NSEvent) ModifierFlags() NSEventModifierFlags {
+	return objc.Send[NSEventModifierFlags](e.ID, NSEventSel.ModifierFlags)
+}
+
+func (e NSEvent) ButtonNumber() NSInteger {
+	return objc.Send[NSInteger](e.ID, NSEventSel.ButtonNumber)
+}
+
+const (
+	NSEventModifierFlagCapsLock   NSEventModifierFlags = 1 << 16
+	NSEventModifierFlagShift      NSEventModifierFlags = 1 << 17
+	NSEventModifierFlagControl    NSEventModifierFlags = 1 << 18
+	NSEventModifierFlagOption     NSEventModifierFlags = 1 << 19
+	NSEventModifierFlagCommand    NSEventModifierFlags = 1 << 20
+	NSEventModifierFlagNumericPad NSEventModifierFlags = 1 << 21
+)
 
 type NSEventMask uint
 
@@ -171,12 +199,28 @@ func initNSView() {
 	NSViewSel.Frame = objc.RegisterName("frame")
 	NSViewSel.Bounds = objc.RegisterName("bounds")
 	NSViewSel.ConvertRectToBacking = objc.RegisterName("convertRectToBacking:")
+	NSViewSel.ConvertPointFromView = objc.RegisterName("convertPoint:fromView:")
+	NSViewSel.AddTrackingArea = objc.RegisterName("addTrackingArea:")
+	NSViewSel.RemoveTrackingArea = objc.RegisterName("removeTrackingArea:")
 	NSViewSel.CanBecomeKeyView = objc.RegisterName("canBecomeKeyView")
 	NSViewSel.AcceptsFirstResponder = objc.RegisterName("acceptsFirstResponder")
 	NSViewSel.WantsUpdateLayer = objc.RegisterName("wantsUpdateLayer")
 	NSViewSel.UpdateLayer = objc.RegisterName("updateLayer")
 	NSViewSel.DrawRect = objc.RegisterName("drawRect:")
 	NSViewSel.ViewDidChangeBackingProperties = objc.RegisterName("viewDidChangeBackingProperties")
+	NSViewSel.UpdateTrackingAreas = objc.RegisterName("updateTrackingAreas")
+	NSViewSel.MouseEntered = objc.RegisterName("mouseEntered:")
+	NSViewSel.MouseExited = objc.RegisterName("mouseExited:")
+	NSViewSel.MouseMoved = objc.RegisterName("mouseMoved:")
+	NSViewSel.MouseDragged = objc.RegisterName("mouseDragged:")
+	NSViewSel.MouseDown = objc.RegisterName("mouseDown:")
+	NSViewSel.MouseUp = objc.RegisterName("mouseUp:")
+	NSViewSel.RightMouseDown = objc.RegisterName("rightMouseDown:")
+	NSViewSel.RightMouseUp = objc.RegisterName("rightMouseUp:")
+	NSViewSel.RightMouseDragged = objc.RegisterName("rightMouseDragged:")
+	NSViewSel.OtherMouseDown = objc.RegisterName("otherMouseDown:")
+	NSViewSel.OtherMouseUp = objc.RegisterName("otherMouseUp:")
+	NSViewSel.OtherMouseDragged = objc.RegisterName("otherMouseDragged:")
 }
 
 var (
@@ -186,12 +230,28 @@ var (
 		Frame                          objc.SEL
 		Bounds                         objc.SEL
 		ConvertRectToBacking           objc.SEL
+		ConvertPointFromView           objc.SEL
+		AddTrackingArea                objc.SEL
+		RemoveTrackingArea             objc.SEL
 		CanBecomeKeyView               objc.SEL
 		AcceptsFirstResponder          objc.SEL
 		WantsUpdateLayer               objc.SEL
 		UpdateLayer                    objc.SEL
 		DrawRect                       objc.SEL
 		ViewDidChangeBackingProperties objc.SEL
+		UpdateTrackingAreas            objc.SEL
+		MouseEntered                   objc.SEL
+		MouseExited                    objc.SEL
+		MouseMoved                     objc.SEL
+		MouseDragged                   objc.SEL
+		MouseDown                      objc.SEL
+		MouseUp                        objc.SEL
+		RightMouseDown                 objc.SEL
+		RightMouseUp                   objc.SEL
+		RightMouseDragged              objc.SEL
+		OtherMouseDown                 objc.SEL
+		OtherMouseUp                   objc.SEL
+		OtherMouseDragged              objc.SEL
 	}
 )
 
@@ -205,11 +265,24 @@ type (
 		UpdateLayer                    func(self NSView)
 		DrawRect                       func(self NSView, rect NSRect)
 		ViewDidChangeBackingProperties func(self NSView)
+		UpdateTrackingAreas            func(self NSView)
+		MouseEntered                   func(self NSView, event NSEvent)
+		MouseExited                    func(self NSView, event NSEvent)
+		MouseMoved                     func(self NSView, event NSEvent)
+		MouseDragged                   func(self NSView, event NSEvent)
+		MouseDown                      func(self NSView, event NSEvent)
+		MouseUp                        func(self NSView, event NSEvent)
+		RightMouseDown                 func(self NSView, event NSEvent)
+		RightMouseUp                   func(self NSView, event NSEvent)
+		RightMouseDragged              func(self NSView, event NSEvent)
+		OtherMouseDown                 func(self NSView, event NSEvent)
+		OtherMouseUp                   func(self NSView, event NSEvent)
+		OtherMouseDragged              func(self NSView, event NSEvent)
 	}
 )
 
 func ImplementNSView(className string, override NSViewOverride) (class NSViewClass, err error) {
-	methods := make([]objc.MethodDef, 0, 6)
+	methods := make([]objc.MethodDef, 0, 20)
 	if override.CanBecomeKeyView != nil {
 		methods = append(methods, objc.MethodDef{
 			Cmd: NSViewSel.CanBecomeKeyView,
@@ -256,6 +329,36 @@ func ImplementNSView(className string, override NSViewOverride) (class NSViewCla
 			},
 		})
 	}
+	if override.UpdateTrackingAreas != nil {
+		methods = append(methods, objc.MethodDef{
+			Cmd: NSViewSel.UpdateTrackingAreas,
+			Fn: func(self objc.ID, cmd objc.SEL) {
+				override.UpdateTrackingAreas(Cast[NSView](self))
+			},
+		})
+	}
+	addEventMethod := func(sel objc.SEL, fn func(NSView, NSEvent)) {
+		if fn != nil {
+			methods = append(methods, objc.MethodDef{
+				Cmd: sel,
+				Fn: func(self objc.ID, cmd objc.SEL, event objc.ID) {
+					fn(Cast[NSView](self), Cast[NSEvent](event))
+				},
+			})
+		}
+	}
+	addEventMethod(NSViewSel.MouseEntered, override.MouseEntered)
+	addEventMethod(NSViewSel.MouseExited, override.MouseExited)
+	addEventMethod(NSViewSel.MouseMoved, override.MouseMoved)
+	addEventMethod(NSViewSel.MouseDragged, override.MouseDragged)
+	addEventMethod(NSViewSel.MouseDown, override.MouseDown)
+	addEventMethod(NSViewSel.MouseUp, override.MouseUp)
+	addEventMethod(NSViewSel.RightMouseDown, override.RightMouseDown)
+	addEventMethod(NSViewSel.RightMouseUp, override.RightMouseUp)
+	addEventMethod(NSViewSel.RightMouseDragged, override.RightMouseDragged)
+	addEventMethod(NSViewSel.OtherMouseDown, override.OtherMouseDown)
+	addEventMethod(NSViewSel.OtherMouseUp, override.OtherMouseUp)
+	addEventMethod(NSViewSel.OtherMouseDragged, override.OtherMouseDragged)
 	class.Class, err = objc.RegisterClass(className, NSViewClassId.Class, nil, nil, methods)
 	return
 }
@@ -285,6 +388,54 @@ func (v NSView) Bounds() NSRect {
 
 func (v NSView) ConvertRectToBacking(rect NSRect) NSRect {
 	return objc.Send[NSRect](v.ID, NSViewSel.ConvertRectToBacking, rect)
+}
+
+func (v NSView) ConvertPointFromView(point NSPoint, view NSView) NSPoint {
+	return objc.Send[NSPoint](v.ID, NSViewSel.ConvertPointFromView, point, view)
+}
+
+func (v NSView) AddTrackingArea(area NSTrackingArea) {
+	v.Send(NSViewSel.AddTrackingArea, area)
+}
+
+func (v NSView) RemoveTrackingArea(area NSTrackingArea) {
+	v.Send(NSViewSel.RemoveTrackingArea, area)
+}
+
+// NSTrackingArea
+
+func initNSTrackingArea() {
+	NSTrackingAreaClassId.Class = objc.GetClass("NSTrackingArea")
+	NSTrackingAreaSel.InitWith = objc.RegisterName("initWithRect:options:owner:userInfo:")
+}
+
+var (
+	NSTrackingAreaClassId NSTrackingAreaClass
+	NSTrackingAreaSel     struct {
+		InitWith objc.SEL
+	}
+)
+
+type (
+	NSTrackingArea        struct{ NSObject }
+	NSTrackingAreaClass   struct{ NSObjectClass }
+	NSTrackingAreaOptions NSUInteger
+)
+
+const (
+	NSTrackingMouseEnteredAndExited NSTrackingAreaOptions = 1 << 0
+	NSTrackingMouseMoved            NSTrackingAreaOptions = 1 << 1
+	NSTrackingActiveAlways          NSTrackingAreaOptions = 1 << 7
+	NSTrackingInVisibleRect         NSTrackingAreaOptions = 1 << 9
+)
+
+func (c NSTrackingAreaClass) Alloc() (res NSTrackingArea) {
+	res.NSObject = c.NSObjectClass.Alloc()
+	return
+}
+
+func (a NSTrackingArea) InitWith(rect NSRect, options NSTrackingAreaOptions, owner NSView, userInfo NSObject) NSTrackingArea {
+	return Cast[NSTrackingArea](a.Send(NSTrackingAreaSel.InitWith, rect, options, owner, userInfo))
 }
 
 // NSWindow
