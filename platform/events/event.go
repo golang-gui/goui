@@ -14,6 +14,11 @@ const (
 	Size
 	Paint
 	Scale
+	PointerEnter
+	PointerLeave
+	PointerMove
+	PointerDown
+	PointerUp
 )
 
 type EventHandler func(event Event)
