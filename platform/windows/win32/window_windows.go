@@ -206,6 +206,14 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 	case winapi.WM_XBUTTONUP:
 		window.handlePointerButton(events.PointerUp, xButton(wParam), wParam, lParam)
 		return winapi.LRESULT(winapi.TRUE)
+
+	case winapi.WM_MOUSEWHEEL:
+		window.handleWheel(false, wParam, lParam)
+		return 0
+
+	case winapi.WM_MOUSEHWHEEL:
+		window.handleWheel(true, wParam, lParam)
+		return 0
 	}
 
 	return winapi.DefWindowProc(hwnd, message, wParam, lParam)

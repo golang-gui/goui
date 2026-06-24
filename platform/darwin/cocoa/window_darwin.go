@@ -196,6 +196,7 @@ func initWindowClass() (err error) {
 		OtherMouseDown:                 otherMouseDown,
 		OtherMouseUp:                   otherMouseUp,
 		OtherMouseDragged:              otherMouseDragged,
+		ScrollWheel:                    scrollWheel,
 	})
 	if err != nil {
 		return fmt.Errorf("implement NSView err: %v", err)

@@ -29,6 +29,13 @@ func (w *Window) handlePointerCrossing(eventType events.EventType, event *xlib.C
 }
 
 func (w *Window) handleButton(eventType events.EventType, event *xlib.ButtonEvent) {
+	if event.Type == xlib.ButtonPress {
+		if wheel, ok := wheelEvent(event, buttonsFromState(event.State, w.buttons)); ok {
+			w.onEvent(wheel)
+			return
+		}
+	}
+
 	button := pointerButton(event.Button)
 	if button == events.PointerButtonNone {
 		return
@@ -50,6 +57,28 @@ func (w *Window) handleButton(eventType events.EventType, event *xlib.ButtonEven
 		Buttons:   buttons,
 		Modifiers: modifiersFromState(event.State),
 	})
+}
+
+func wheelEvent(event *xlib.ButtonEvent, buttons events.PointerButtons) (events.WheelEvent, bool) {
+	wheel := events.WheelEvent{
+		Position:  point(event.X, event.Y),
+		Mode:      events.WheelDeltaLine,
+		Buttons:   buttons,
+		Modifiers: modifiersFromState(event.State),
+	}
+	switch event.Button {
+	case xlib.Button4:
+		wheel.DeltaY = -1
+	case xlib.Button5:
+		wheel.DeltaY = 1
+	case xlib.Button6:
+		wheel.DeltaX = -1
+	case xlib.Button7:
+		wheel.DeltaX = 1
+	default:
+		return events.WheelEvent{}, false
+	}
+	return wheel, true
 }
 
 func point(x, y int32) geometry.Point {

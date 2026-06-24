@@ -32,6 +32,23 @@ func (w *Window) handlePointerButton(eventType events.EventType, button events.P
 	w.emitPointer(eventType, button, clientPoint(lParam), pointerButtons(wParam), pointerModifiers(wParam))
 }
 
+func (w *Window) handleWheel(horizontal bool, wParam winapi.WPARAM, lParam winapi.LPARAM) {
+	position := screenPointToClient(w.hwnd, lParam)
+	delta := float32(int16(highWord(uintptr(wParam)))) / float32(winapi.WHEEL_DELTA)
+	event := events.WheelEvent{
+		Position:  position,
+		Mode:      events.WheelDeltaLine,
+		Buttons:   pointerButtons(wParam),
+		Modifiers: pointerModifiers(wParam),
+	}
+	if horizontal {
+		event.DeltaX = delta
+	} else {
+		event.DeltaY = -delta
+	}
+	w.onEvent(event)
+}
+
 func (w *Window) emitPointer(eventType events.EventType, button events.PointerButton, position geometry.Point, buttons events.PointerButtons, modifiers events.Modifiers) {
 	w.lastPointerX = position.X
 	w.lastPointerY = position.Y
@@ -61,6 +78,18 @@ func clientPoint(lParam winapi.LPARAM) geometry.Point {
 	return geometry.Point{
 		X: float32(int16(lowWord(uintptr(lParam)))),
 		Y: float32(int16(highWord(uintptr(lParam)))),
+	}
+}
+
+func screenPointToClient(hwnd winapi.HWND, lParam winapi.LPARAM) geometry.Point {
+	point := winapi.POINT{
+		X: winapi.LONG(int16(lowWord(uintptr(lParam)))),
+		Y: winapi.LONG(int16(highWord(uintptr(lParam)))),
+	}
+	winapi.ScreenToClient(hwnd, &point)
+	return geometry.Point{
+		X: float32(point.X),
+		Y: float32(point.Y),
 	}
 }
 

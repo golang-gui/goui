@@ -80,6 +80,23 @@ func otherMouseUp(self NSView, event NSEvent) {
 	}
 }
 
+func scrollWheel(self NSView, event NSEvent) {
+	if window := windowForView(self); window != nil {
+		mode := events.WheelDeltaLine
+		if event.HasPreciseScrollingDeltas() {
+			mode = events.WheelDeltaPixel
+		}
+		window.onEvent(events.WheelEvent{
+			Position:  positionInView(self, event),
+			DeltaX:    float32(event.ScrollingDeltaX()),
+			DeltaY:    -float32(event.ScrollingDeltaY()),
+			Mode:      mode,
+			Buttons:   window.buttons,
+			Modifiers: modifiersFromFlags(event.ModifierFlags()),
+		})
+	}
+}
+
 func (w *Window) updateTrackingArea() {
 	if !w.view.Valid() {
 		return
