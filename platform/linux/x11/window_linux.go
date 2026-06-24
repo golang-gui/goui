@@ -84,7 +84,22 @@ func (w *Window) NativeFBConfig() glx.FBConfig {
 }
 
 func (w *Window) Destroy() {
+	if w.wid == 0 {
+		return
+	}
+
+	delete(windowMap, w.wid)
+	if w.gc != 0 {
+		platform.display.FreeGC(w.gc)
+		w.gc = 0
+	}
 	platform.display.DestroyWindow(w.wid)
+	if w.cmap != 0 {
+		platform.display.FreeColormap(w.cmap)
+		w.cmap = 0
+	}
+	platform.display.Flush()
+	w.wid = 0
 }
 
 func (w *Window) Parent() common.Window {
@@ -133,18 +148,11 @@ func (w *Window) Hide() error {
 	return nil
 }
 
-func (w *Window) Close() error {
-	var event Event
-	closeEvent := event.Event.ClientMessageEvent()
-	closeEvent.Type = xlib.ClientMessage
-	closeEvent.MessageType = platform.atoms.WM_PROTOCOLS
-	closeEvent.L[0] = int64(platform.atoms.WM_DELETE_WINDOW)
-	w.onEvent(&events.CloseEvent{
-		WindowEventBase: events.WindowEventBase{
-			Window: w,
-			Native: &event,
-		},
-	})
+func (w *Window) RequestClose() error {
+	if w.wid == 0 {
+		return nil
+	}
+	w.onEvent(events.CloseEvent{})
 	return nil
 }
 
@@ -164,22 +172,13 @@ var windowMap = map[xlib.Window]*Window{}
 
 // TODO: process window event
 func handleEvent(event xlib.Event) {
-	nativeEvent := &Event{
-		Event: event,
-	}
 	switch event.Type {
 	case xlib.ClientMessage:
 		ev := event.ClientMessageEvent()
 		if ev.MessageType == platform.atoms.WM_PROTOCOLS && ev.L[0] != 0 {
 			if xlib.Atom(ev.L[0]) == platform.atoms.WM_DELETE_WINDOW {
 				if window, ok := windowMap[ev.Window]; ok {
-					closeEvent := &events.CloseEvent{
-						WindowEventBase: events.WindowEventBase{
-							Window: window,
-							Native: nativeEvent,
-						},
-					}
-					window.onEvent(closeEvent)
+					window.onEvent(events.CloseEvent{})
 				}
 			}
 		}
@@ -189,28 +188,17 @@ func handleEvent(event xlib.Event) {
 		if window, ok := windowMap[ev.Window]; ok {
 			if ev.Width != window.width || ev.Height != window.height {
 				window.width, window.height = ev.Width, ev.Height
-				sizeEvent := &events.SizeEvent{
-					WindowEventBase: events.WindowEventBase{
-						Window: window,
-						Native: nativeEvent,
-					},
+				window.onEvent(events.SizeEvent{
 					Width:  uint(ev.Width),
 					Height: uint(ev.Height),
-				}
-				window.onEvent(sizeEvent)
+				})
 			}
 		}
 
 	case xlib.Expose:
 		ev := event.ExposeEvent()
 		if window, ok := windowMap[ev.Window]; ok {
-			paintEvent := &events.PaintEvent{
-				WindowEventBase: events.WindowEventBase{
-					Window: window,
-					Native: nativeEvent,
-				},
-			}
-			window.onEvent(paintEvent)
+			window.onEvent(events.PaintEvent{})
 		}
 	case xlib.PropertyNotify:
 		// state

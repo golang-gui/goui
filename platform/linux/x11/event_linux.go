@@ -3,20 +3,9 @@ package x11
 import (
 	"errors"
 
-	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/internal/eventloop"
 	"github.com/golang-gui/goui/platform/linux/libs/libc"
-	"github.com/golang-gui/goui/platform/linux/libs/xlib"
 )
-
-type Event struct {
-	events.EventBase
-	Event xlib.Event
-}
-
-func (e *Event) Type() events.EventType {
-	return events.Native
-}
 
 type EventLoop struct {
 	state eventloop.State

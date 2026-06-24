@@ -55,12 +55,20 @@ func (w *Window) NativeHandle() uintptr {
 }
 
 func (w *Window) Destroy() {
+	if !w.window.Valid() {
+		return
+	}
+
 	AutoReleasePool(func() {
+		delete(windowMap, w.window)
 		w.window.OrderOut(0)
 		w.window.SetDelegate(NSWindowDelegate{})
 		w.delegate.Release()
 		w.view.Release()
 		w.window.Close()
+		w.window = NSWindow{}
+		w.delegate = NSWindowDelegate{}
+		w.view = NSView{}
 	})
 }
 
@@ -108,9 +116,13 @@ func (w *Window) Show() error {
 	return nil
 }
 
-func (w *Window) Close() error {
+func (w *Window) RequestClose() error {
+	if !w.window.Valid() {
+		return nil
+	}
+
 	AutoReleasePool(func() {
-		w.window.Close()
+		w.window.PerformClose(0)
 	})
 	return nil
 }
@@ -173,56 +185,50 @@ func initWindowClass() (err error) {
 }
 
 func windowShouldClose(self NSWindowDelegate, sender NSWindow) bool {
+	self.Retain()
+	defer self.Release()
+
 	if window, has := windowMap[sender]; has {
-		closeEvent := &events.CloseEvent{
-			WindowEventBase: events.WindowEventBase{
-				Window: window,
-			},
-		}
-		window.onEvent(closeEvent)
-		return closeEvent.Accepted()
+		window.onEvent(events.CloseEvent{})
+		return false
 	}
-	return true // will close
+	return true
 }
 
 func windowDidResize(self NSWindowDelegate, notification NSNotification) {
+	self.Retain()
+	defer self.Release()
+
 	if window, has := windowMap[Cast[NSWindow](notification.Object())]; has {
 		rect := window.view.Frame()
-		sizeEvent := &events.SizeEvent{
-			WindowEventBase: events.WindowEventBase{
-				Window: window,
-			},
+		window.onEvent(events.SizeEvent{
 			Width:  uint(rect.Size.Width),
 			Height: uint(rect.Size.Height),
-		}
-		window.onEvent(sizeEvent)
+		})
 	}
 }
 
 func viewDidChangeBackingProperties(self NSView) {
+	self.Retain()
+	defer self.Release()
+
 	if window, has := windowMap[self.Window()]; has {
 		rect := self.Frame()
 		fbRect := self.ConvertRectToBacking(rect)
 		scaleFactor := fbRect.Size.Width / rect.Size.Width
 
-		scaleEvent := &events.ScaleEvent{
-			WindowEventBase: events.WindowEventBase{
-				Window: window,
-			},
+		window.onEvent(events.ScaleEvent{
 			ScaleFactor: scaleFactor,
-		}
-		window.onEvent(scaleEvent)
+		})
 	}
 }
 
 func drawRect(self NSView, rect NSRect) {
+	self.Retain()
+	defer self.Release()
+
 	if window, has := windowMap[self.Window()]; has {
-		paintEvent := &events.PaintEvent{
-			WindowEventBase: events.WindowEventBase{
-				Window: window,
-			},
-		}
-		window.onEvent(paintEvent)
+		window.onEvent(events.PaintEvent{})
 	}
 }
 
@@ -231,22 +237,13 @@ func (w *Window) sendCreatedEvents() {
 	fbRect := w.view.ConvertRectToBacking(rect)
 
 	scaleFactor := fbRect.Size.Width / rect.Size.Width
-	scaleEvent := &events.ScaleEvent{
-		WindowEventBase: events.WindowEventBase{
-			Window: w,
-		},
+	w.onEvent(events.ScaleEvent{
 		ScaleFactor: scaleFactor,
-	}
-	w.onEvent(scaleEvent)
-
-	sizeEvent := &events.SizeEvent{
-		WindowEventBase: events.WindowEventBase{
-			Window: w,
-		},
+	})
+	w.onEvent(events.SizeEvent{
 		Width:  uint(rect.Size.Width),
 		Height: uint(rect.Size.Height),
-	}
-	w.onEvent(sizeEvent)
+	})
 }
 
 func (w *Window) drawImage(img graphics.Bitmap) (err error) {

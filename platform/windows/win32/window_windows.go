@@ -46,7 +46,9 @@ func (w *Window) NativeHandle() uintptr {
 }
 
 func (w *Window) Destroy() {
-	winapi.DestroyWindow(w.hwnd)
+	if w.hwnd != 0 {
+		winapi.DestroyWindow(w.hwnd)
+	}
 }
 
 func (w *Window) Parent() common.Window {
@@ -88,9 +90,11 @@ func (w *Window) Show() error {
 	return nil
 }
 
-func (w *Window) Close() error {
-	winapi.CloseWindow(w.hwnd)
-	return nil
+func (w *Window) RequestClose() error {
+	if w.hwnd == 0 {
+		return nil
+	}
+	return winapi.PostMessage(w.hwnd, winapi.WM_CLOSE, 0, 0)
 }
 
 func (w *Window) Draw(img image.Image) error {
@@ -123,70 +127,40 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		}
 	}
 
-	nativeEvent := &Event{
-		Hwnd:    hwnd,
-		Message: message,
-		WParam:  wParam,
-		LParam:  lParam,
-	}
-
-	windowEvent := events.WindowEventBase{
-		Window: window,
-		Native: nativeEvent,
-	}
-
 	switch message {
 	case winapi.WM_CLOSE:
-		closeEvent := &events.CloseEvent{
-			WindowEventBase: windowEvent,
-		}
-		window.onEvent(closeEvent)
-		if closeEvent.Accepted() {
-			return 0
-		}
+		window.onEvent(events.CloseEvent{})
+		return 0
 
 	case winapi.WM_DESTROY:
-		window.onEvent(nativeEvent)
 		delete(windowMap, hwnd)
+		window.hwnd = 0
+		return 0
 
 	case winapi.WM_SIZE:
 		winapi.InvalidateRect(hwnd, nil, winapi.FALSE)
-		sizeEvent := &events.SizeEvent{
-			WindowEventBase: windowEvent,
-			Width:           uint(lParam & 0xFFFF),
-			Height:          uint((lParam & 0xFFFF0000) >> 16),
-		}
-		window.onEvent(sizeEvent)
+		window.onEvent(events.SizeEvent{
+			Width:  uint(lParam & 0xFFFF),
+			Height: uint((lParam & 0xFFFF0000) >> 16),
+		})
 
 	case winapi.WM_PAINT:
 		var ps winapi.PAINTSTRUCT
 		winapi.BeginPaint(hwnd, &ps)
-		paintEvent := &events.PaintEvent{
-			WindowEventBase: windowEvent,
-		}
-		window.onEvent(paintEvent)
+		window.onEvent(events.PaintEvent{})
 		winapi.EndPaint(hwnd, &ps)
 		return 0
 
 	case winapi.WM_DPICHANGED:
 		dpi := wParam & 0xFFFF
-		scaleEvent := &events.ScaleEvent{
-			WindowEventBase: windowEvent,
-			ScaleFactor:     float64(dpi) / 96,
-		}
-		window.onEvent(scaleEvent)
+		window.onEvent(events.ScaleEvent{
+			ScaleFactor: float64(dpi) / 96,
+		})
 		rect := (*winapi.RECT)(unsafe.Pointer(uintptr(lParam)))
 		winapi.SetWindowPos(hwnd, 0,
 			int(rect.Left), int(rect.Top),
 			int(rect.Right-rect.Left), int(rect.Bottom-rect.Top),
 			winapi.SWP_NOZORDER|winapi.SWP_NOACTIVATE)
-
-	default:
-		window.onEvent(nativeEvent)
-	}
-
-	if nativeEvent.Accepted() {
-		return nativeEvent.Result
 	}
 
 	return winapi.DefWindowProc(hwnd, message, wParam, lParam)
