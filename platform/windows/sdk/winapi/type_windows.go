@@ -61,6 +61,10 @@ const (
 	TME_LEAVE = 0x00000002
 )
 
+const (
+	WHEEL_DELTA = 120
+)
+
 // Windows API Objects
 type (
 	WPARAM = UINT_PTR

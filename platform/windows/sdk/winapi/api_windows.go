@@ -35,6 +35,7 @@ var (
 	procFlashWindowEx        = user32Dll.NewProc("FlashWindowEx")
 	procCloseWindow          = user32Dll.NewProc("CloseWindow")
 	procTrackMouseEvent      = user32Dll.NewProc("TrackMouseEvent")
+	procScreenToClient       = user32Dll.NewProc("ScreenToClient")
 
 	// DPI
 	procGetDpiForWindow               = user32Dll.NewProc("GetDpiForWindow")
@@ -238,6 +239,11 @@ func FlashWindowEx(pfwi PFLASHWINFO) BOOL {
 
 func TrackMouseEvent(event *TRACKMOUSEEVENT) BOOL {
 	ret, _, _ := syscall.SyscallN(procTrackMouseEvent.Addr(), uintptr(unsafe.Pointer(event)))
+	return BOOL(ret)
+}
+
+func ScreenToClient(wnd HWND, point *POINT) BOOL {
+	ret, _, _ := syscall.SyscallN(procScreenToClient.Addr(), uintptr(wnd), uintptr(unsafe.Pointer(point)))
 	return BOOL(ret)
 }
 
