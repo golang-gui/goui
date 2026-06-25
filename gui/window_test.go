@@ -37,6 +37,33 @@ func TestWindowRequestPaintWithoutPlatformWindow(t *testing.T) {
 	}
 }
 
+func TestWindowDispatchEventHandlesSizeAndScale(t *testing.T) {
+	win := &window{}
+
+	if err := win.DispatchEvent(events.SizeEvent{Width: 320, Height: 240}); err != nil {
+		t.Fatal(err)
+	}
+	if win.width != 320 || win.height != 240 {
+		t.Fatalf("unexpected window size: %dx%d", win.width, win.height)
+	}
+	if !win.layoutDirty || !win.paintDirty {
+		t.Fatal("size event did not request layout and paint")
+	}
+
+	win.layoutDirty = false
+	win.paintDirty = false
+
+	if err := win.DispatchEvent(events.ScaleEvent{ScaleFactor: 0}); err != nil {
+		t.Fatal(err)
+	}
+	if win.scale != 1 {
+		t.Fatalf("unexpected scale: %v", win.scale)
+	}
+	if !win.layoutDirty || !win.paintDirty {
+		t.Fatal("scale event did not request layout and paint")
+	}
+}
+
 func TestWindowPaintPerformsPendingLayoutBeforePainting(t *testing.T) {
 	painter := new(testGraphicsPainter)
 	win := &window{
@@ -60,7 +87,9 @@ func TestWindowPaintPerformsPendingLayoutBeforePainting(t *testing.T) {
 		t.Fatal("request layout did not request paint")
 	}
 
-	win.onEvent(events.PaintEvent{})
+	if err := win.DispatchEvent(events.PaintEvent{}); err != nil {
+		t.Fatal(err)
+	}
 
 	if root.measures != 1 {
 		t.Fatalf("expected one measure before paint, got %d", root.measures)
@@ -99,7 +128,9 @@ func TestWindowCloseRequestCanPreventDestroy(t *testing.T) {
 		destroyed = true
 	})
 
-	win.onEvent(events.CloseEvent{})
+	if err := win.DispatchEvent(events.CloseEvent{}); err != nil {
+		t.Fatal(err)
+	}
 
 	if destroyed {
 		t.Fatal("destroy signal fired after close request was prevented")
@@ -117,7 +148,9 @@ func TestWindowCloseRequestAllowsDestroy(t *testing.T) {
 		destroyed = true
 	})
 
-	win.onEvent(events.CloseEvent{})
+	if err := win.DispatchEvent(events.CloseEvent{}); err != nil {
+		t.Fatal(err)
+	}
 
 	if !destroyed {
 		t.Fatal("destroy signal did not fire")

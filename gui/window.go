@@ -194,18 +194,6 @@ func (w *window) Snapshot() WindowInfo {
 }
 
 func (w *window) DispatchEvent(event events.Event) error {
-	return w.dispatcher.DispatchEvent(w, event)
-}
-
-func (w *window) ConnectCloseRequest(fn func(*bool)) signal.Handle {
-	return w.closeRequest.Connect(fn)
-}
-
-func (w *window) ConnectDestroy(fn func()) signal.Handle {
-	return w.destroy.Connect(fn)
-}
-
-func (w *window) onEvent(event events.Event) {
 	switch event := event.(type) {
 	case events.CloseEvent:
 		allow := true
@@ -226,8 +214,21 @@ func (w *window) onEvent(event events.Event) {
 	case events.PaintEvent:
 		w.paint()
 	default:
-		_ = w.DispatchEvent(event)
+		return w.dispatcher.DispatchEvent(w, event)
 	}
+	return nil
+}
+
+func (w *window) ConnectCloseRequest(fn func(*bool)) signal.Handle {
+	return w.closeRequest.Connect(fn)
+}
+
+func (w *window) ConnectDestroy(fn func()) signal.Handle {
+	return w.destroy.Connect(fn)
+}
+
+func (w *window) onEvent(event events.Event) {
+	_ = w.DispatchEvent(event)
 }
 
 func (w *window) paint() {
