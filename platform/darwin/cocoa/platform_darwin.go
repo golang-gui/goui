@@ -79,7 +79,9 @@ func newPlatform() (p *Platform, err error) {
 
 	p = new(Platform)
 	AutoReleasePool(func() {
-		NSApplicationClassId.SharedApplication()
+		app := NSApplicationClassId.SharedApplication()
+		app.SetActivationPolicy(NSApplicationActivationPolicyRegular)
+		app.FinishLaunching()
 	})
 	return
 }

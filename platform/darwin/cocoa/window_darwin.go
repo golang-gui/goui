@@ -119,7 +119,9 @@ func (w *Window) SetTitle(title string) (err error) {
 
 func (w *Window) Show() error {
 	AutoReleasePool(func() {
-		w.window.OrderFront(0)
+		NSApp.ActivateIgnoringOtherApps(true)
+		w.window.MakeKeyAndOrderFront(0)
+		w.window.MakeFirstResponder(w.view.NSResponder)
 	})
 	return nil
 }
