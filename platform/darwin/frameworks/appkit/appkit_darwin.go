@@ -256,6 +256,7 @@ func initNSView() {
 	NSViewSel.Bounds = objc.RegisterName("bounds")
 	NSViewSel.ConvertRectToBacking = objc.RegisterName("convertRectToBacking:")
 	NSViewSel.ConvertPointFromView = objc.RegisterName("convertPoint:fromView:")
+	NSViewSel.SetNeedsDisplay = objc.RegisterName("setNeedsDisplay:")
 	NSViewSel.AddTrackingArea = objc.RegisterName("addTrackingArea:")
 	NSViewSel.RemoveTrackingArea = objc.RegisterName("removeTrackingArea:")
 	NSViewSel.CanBecomeKeyView = objc.RegisterName("canBecomeKeyView")
@@ -291,6 +292,7 @@ var (
 		Bounds                         objc.SEL
 		ConvertRectToBacking           objc.SEL
 		ConvertPointFromView           objc.SEL
+		SetNeedsDisplay                objc.SEL
 		AddTrackingArea                objc.SEL
 		RemoveTrackingArea             objc.SEL
 		CanBecomeKeyView               objc.SEL
@@ -464,6 +466,10 @@ func (v NSView) ConvertRectToBacking(rect NSRect) NSRect {
 
 func (v NSView) ConvertPointFromView(point NSPoint, view NSView) NSPoint {
 	return objc.Send[NSPoint](v.ID, NSViewSel.ConvertPointFromView, point, view)
+}
+
+func (v NSView) SetNeedsDisplay(needsDisplay bool) {
+	v.Send(NSViewSel.SetNeedsDisplay, needsDisplay)
 }
 
 func (v NSView) AddTrackingArea(area NSTrackingArea) {
