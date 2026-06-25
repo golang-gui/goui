@@ -17,6 +17,9 @@ type Window interface {
 	// RequestClose sends a close request notification. It does not destroy the
 	// window; the event handler decides whether to call Destroy.
 	RequestClose() error
+	// RequestPaint asks the platform to schedule a paint notification. It does
+	// not draw immediately, and multiple requests may be coalesced.
+	RequestPaint() error
 	Draw(img image.Image) error
 	ScaleFactor() (float64, error)
 }

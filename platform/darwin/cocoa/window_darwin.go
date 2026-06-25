@@ -137,6 +137,17 @@ func (w *Window) RequestClose() error {
 	return nil
 }
 
+func (w *Window) RequestPaint() error {
+	if !w.window.Valid() {
+		return nil
+	}
+
+	AutoReleasePool(func() {
+		w.view.SetNeedsDisplay(true)
+	})
+	return nil
+}
+
 func (w *Window) ScaleFactor() (float64, error) {
 	return w.window.BackingScaleFactor(), nil
 }

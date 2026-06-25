@@ -167,6 +167,15 @@ func (w *Window) RequestClose() error {
 	return nil
 }
 
+func (w *Window) RequestPaint() error {
+	if w.wid == 0 {
+		return nil
+	}
+	platform.display.ClearArea(w.wid, 0, 0, 0, 0, true)
+	platform.display.Flush()
+	return nil
+}
+
 func (w *Window) Draw(img image.Image) error {
 	bmp, ok := graphics.ToBitmap(img, graphics.PixelFormatBGRA)
 	if !ok {

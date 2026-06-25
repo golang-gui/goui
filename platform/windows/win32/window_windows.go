@@ -103,6 +103,13 @@ func (w *Window) RequestClose() error {
 	return winapi.PostMessage(w.hwnd, winapi.WM_CLOSE, 0, 0)
 }
 
+func (w *Window) RequestPaint() error {
+	if w.hwnd == 0 {
+		return nil
+	}
+	return winapi.InvalidateRect(w.hwnd, nil, winapi.FALSE)
+}
+
 func (w *Window) Draw(img image.Image) error {
 	bmp, ok := graphics.ToBitmap(img, graphics.PixelFormatBGRA)
 	if !ok {
