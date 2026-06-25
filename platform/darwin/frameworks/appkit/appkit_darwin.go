@@ -33,6 +33,9 @@ func InitAppKit() (err error) {
 func initNSApplication() {
 	NSApplicationClassId.Class = objc.GetClass("NSApplication")
 	NSApplicationSel.SharedApplication = objc.RegisterName("sharedApplication")
+	NSApplicationSel.SetActivationPolicy = objc.RegisterName("setActivationPolicy:")
+	NSApplicationSel.FinishLaunching = objc.RegisterName("finishLaunching")
+	NSApplicationSel.ActivateIgnoringOtherApps = objc.RegisterName("activateIgnoringOtherApps:")
 	NSApplicationSel.SendEvent = objc.RegisterName("sendEvent:")
 	NSApplicationSel.PostEvent = objc.RegisterName("postEvent:atStart:")
 	NSApplicationSel.NextEvent = objc.RegisterName("nextEventMatchingMask:untilDate:inMode:dequeue:")
@@ -43,12 +46,15 @@ func initNSApplication() {
 var (
 	NSApplicationClassId NSApplicationClass
 	NSApplicationSel     struct {
-		SharedApplication objc.SEL
-		SendEvent         objc.SEL
-		PostEvent         objc.SEL
-		NextEvent         objc.SEL
-		Run               objc.SEL
-		Stop              objc.SEL
+		SharedApplication         objc.SEL
+		SetActivationPolicy       objc.SEL
+		FinishLaunching           objc.SEL
+		ActivateIgnoringOtherApps objc.SEL
+		SendEvent                 objc.SEL
+		PostEvent                 objc.SEL
+		NextEvent                 objc.SEL
+		Run                       objc.SEL
+		Stop                      objc.SEL
 	}
 )
 
@@ -57,11 +63,31 @@ type (
 	NSApplicationClass struct{ NSObjectClass }
 )
 
+type NSApplicationActivationPolicy NSInteger
+
+const (
+	NSApplicationActivationPolicyRegular    NSApplicationActivationPolicy = 0
+	NSApplicationActivationPolicyAccessory  NSApplicationActivationPolicy = 1
+	NSApplicationActivationPolicyProhibited NSApplicationActivationPolicy = 2
+)
+
 var NSApp NSApplication
 
 func (c NSApplicationClass) SharedApplication() (res NSApplication) {
 	NSApp.ID = c.Send(NSApplicationSel.SharedApplication)
 	return NSApp
+}
+
+func (a NSApplication) SetActivationPolicy(policy NSApplicationActivationPolicy) bool {
+	return objc.Send[bool](a.ID, NSApplicationSel.SetActivationPolicy, policy)
+}
+
+func (a NSApplication) FinishLaunching() {
+	a.Send(NSApplicationSel.FinishLaunching)
+}
+
+func (a NSApplication) ActivateIgnoringOtherApps(flag bool) {
+	a.Send(NSApplicationSel.ActivateIgnoringOtherApps, flag)
 }
 
 func (a NSApplication) SendEvent(event NSEvent) {
@@ -500,6 +526,7 @@ func initNSWindow() {
 	NSWindowSel.SetRestorable = objc.RegisterName("setRestorable:")
 	NSWindowSel.BackingScaleFactor = objc.RegisterName("backingScaleFactor")
 	NSWindowSel.MakeFirstResponder = objc.RegisterName("makeFirstResponder:")
+	NSWindowSel.MakeKeyAndOrderFront = objc.RegisterName("makeKeyAndOrderFront:")
 	NSWindowSel.OrderFront = objc.RegisterName("orderFront:")
 	NSWindowSel.OrderOut = objc.RegisterName("orderOut:")
 	NSWindowSel.AddChildWindow = objc.RegisterName("addChildWindow:ordered:")
@@ -525,6 +552,7 @@ var (
 		SetRestorable              objc.SEL
 		BackingScaleFactor         objc.SEL
 		MakeFirstResponder         objc.SEL
+		MakeKeyAndOrderFront       objc.SEL
 		OrderFront                 objc.SEL
 		OrderOut                   objc.SEL
 		AddChildWindow             objc.SEL
@@ -622,6 +650,10 @@ func (w NSWindow) BackingScaleFactor() CGFloat {
 
 func (w NSWindow) MakeFirstResponder(responder NSResponder) bool {
 	return objc.Send[bool](w.ID, NSWindowSel.MakeFirstResponder, responder)
+}
+
+func (w NSWindow) MakeKeyAndOrderFront(sender objc.ID) {
+	w.Send(NSWindowSel.MakeKeyAndOrderFront, sender)
 }
 
 func (w NSWindow) OrderFront(sender objc.ID) {
