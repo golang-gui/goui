@@ -1,0 +1,274 @@
+package gui
+
+import (
+	"fmt"
+	"testing"
+
+	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/platform/events"
+)
+
+func TestEventDispatcherDispatchesPointerEventThroughThreePhases(t *testing.T) {
+	root := newTestWidget()
+	parent := newTestWidget()
+	target := newTestWidget()
+	root.SetID("root")
+	parent.SetID("parent")
+	target.SetID("target")
+	root.Arrange(geometry.Rect(0, 0, 100, 100))
+	parent.Arrange(geometry.Rect(10, 10, 80, 80))
+	target.Arrange(geometry.Rect(5, 5, 30, 30))
+	root.AddChild(parent)
+	parent.AddChild(target)
+
+	var calls []string
+	root.AddEventController(newRecordingController("root-capture", PhaseCapture, &calls, nil))
+	parent.AddEventController(newRecordingController("parent-capture", PhaseCapture, &calls, nil))
+	target.AddEventController(newRecordingController("target-capture", PhaseCapture, &calls, nil))
+	target.AddEventController(newRecordingController("target", PhaseTarget, &calls, nil))
+	target.AddEventController(newRecordingController("target-bubble", PhaseBubble, &calls, nil))
+	parent.AddEventController(newRecordingController("parent-bubble", PhaseBubble, &calls, nil))
+	root.AddEventController(newRecordingController("root-bubble", PhaseBubble, &calls, nil))
+
+	win := &window{root: root}
+	event := events.PointerEvent{
+		EventType: events.PointerDown,
+		Position:  geometry.Point{X: 20, Y: 20},
+	}
+
+	if err := win.DispatchEvent(event); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{
+		"root-capture current=root target=target phase=0 type=7",
+		"parent-capture current=parent target=target phase=0 type=7",
+		"target current=target target=target phase=1 type=7",
+		"parent-bubble current=parent target=target phase=2 type=7",
+		"root-bubble current=root target=target phase=2 type=7",
+	}
+	assertStrings(t, calls, want)
+}
+
+func TestEventDispatcherStopsPropagation(t *testing.T) {
+	root := newTestWidget()
+	parent := newTestWidget()
+	target := newTestWidget()
+	root.SetID("root")
+	parent.SetID("parent")
+	target.SetID("target")
+	root.Arrange(geometry.Rect(0, 0, 100, 100))
+	parent.Arrange(geometry.Rect(10, 10, 80, 80))
+	target.Arrange(geometry.Rect(5, 5, 30, 30))
+	root.AddChild(parent)
+	parent.AddChild(target)
+
+	var calls []string
+	root.AddEventController(newRecordingController("root-capture", PhaseCapture, &calls, nil))
+	parent.AddEventController(newRecordingController("parent-capture", PhaseCapture, &calls, func(ctx *EventContext) {
+		ctx.StopPropagation()
+	}))
+	target.AddEventController(newRecordingController("target", PhaseTarget, &calls, nil))
+	root.AddEventController(newRecordingController("root-bubble", PhaseBubble, &calls, nil))
+
+	win := &window{root: root}
+	event := events.PointerEvent{
+		EventType: events.PointerDown,
+		Position:  geometry.Point{X: 20, Y: 20},
+	}
+
+	if err := win.DispatchEvent(event); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{
+		"root-capture current=root target=target phase=0 type=7",
+		"parent-capture current=parent target=target phase=0 type=7",
+	}
+	assertStrings(t, calls, want)
+}
+
+func TestEventDispatcherHitTestUsesLastVisibleChild(t *testing.T) {
+	root := newTestWidget()
+	bottom := newTestWidget()
+	top := newTestWidget()
+	root.SetID("root")
+	bottom.SetID("bottom")
+	top.SetID("top")
+	root.Arrange(geometry.Rect(0, 0, 100, 100))
+	bottom.Arrange(geometry.Rect(10, 10, 40, 40))
+	top.Arrange(geometry.Rect(10, 10, 40, 40))
+	root.AddChild(bottom)
+	root.AddChild(top)
+
+	var calls []string
+	bottom.AddEventController(newRecordingController("bottom", PhaseTarget, &calls, nil))
+	top.AddEventController(newRecordingController("top", PhaseTarget, &calls, nil))
+
+	win := &window{root: root}
+	event := events.PointerEvent{
+		EventType: events.PointerDown,
+		Position:  geometry.Point{X: 20, Y: 20},
+	}
+
+	if err := win.DispatchEvent(event); err != nil {
+		t.Fatal(err)
+	}
+
+	assertStrings(t, calls, []string{
+		"top current=top target=top phase=1 type=7",
+	})
+
+	top.SetVisible(false)
+	calls = nil
+
+	if err := win.DispatchEvent(event); err != nil {
+		t.Fatal(err)
+	}
+
+	assertStrings(t, calls, []string{
+		"bottom current=bottom target=bottom phase=1 type=7",
+	})
+}
+
+func TestEventDispatcherDispatchesWheelByPosition(t *testing.T) {
+	root := newTestWidget()
+	child := newTestWidget()
+	root.SetID("root")
+	child.SetID("child")
+	root.Arrange(geometry.Rect(0, 0, 100, 100))
+	child.Arrange(geometry.Rect(10, 10, 40, 40))
+	root.AddChild(child)
+
+	var calls []string
+	child.AddEventController(newRecordingController("child", PhaseTarget, &calls, nil))
+
+	win := &window{root: root}
+	event := events.WheelEvent{
+		Position: geometry.Point{X: 20, Y: 20},
+		DeltaY:   -1,
+		Mode:     events.WheelDeltaLine,
+	}
+
+	if err := win.DispatchEvent(event); err != nil {
+		t.Fatal(err)
+	}
+
+	assertStrings(t, calls, []string{
+		"child current=child target=child phase=1 type=9",
+	})
+}
+
+func TestEventDispatcherDispatchesKeyToRootBeforeFocusModel(t *testing.T) {
+	root := newTestWidget()
+	child := newTestWidget()
+	root.SetID("root")
+	child.SetID("child")
+	root.Arrange(geometry.Rect(0, 0, 100, 100))
+	child.Arrange(geometry.Rect(10, 10, 40, 40))
+	root.AddChild(child)
+
+	var calls []string
+	root.AddEventController(newRecordingController("root", PhaseTarget, &calls, nil))
+	child.AddEventController(newRecordingController("child", PhaseTarget, &calls, nil))
+
+	win := &window{root: root}
+	event := events.KeyEvent{
+		EventType: events.KeyDown,
+		Key:       events.KeyA,
+	}
+
+	if err := win.DispatchEvent(event); err != nil {
+		t.Fatal(err)
+	}
+
+	assertStrings(t, calls, []string{
+		"root current=root target=root phase=1 type=10",
+	})
+}
+
+func TestEventDispatcherIgnoresEventsWithoutTarget(t *testing.T) {
+	root := newTestWidget()
+	root.Arrange(geometry.Rect(0, 0, 100, 100))
+
+	var calls []string
+	root.AddEventController(newRecordingController("root", PhaseTarget, &calls, nil))
+
+	win := &window{root: root}
+	event := events.PointerEvent{
+		EventType: events.PointerDown,
+		Position:  geometry.Point{X: 120, Y: 20},
+	}
+
+	if err := win.DispatchEvent(event); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 0 {
+		t.Fatalf("unexpected calls: %v", calls)
+	}
+}
+
+type recordingController struct {
+	name   string
+	phase  PropagationPhase
+	calls  *[]string
+	handle func(ctx *EventContext)
+	widget Widget
+}
+
+func newRecordingController(name string, phase PropagationPhase, calls *[]string, handle func(ctx *EventContext)) *recordingController {
+	return &recordingController{
+		name:   name,
+		phase:  phase,
+		calls:  calls,
+		handle: handle,
+	}
+}
+
+func (c *recordingController) Phase() PropagationPhase {
+	return c.phase
+}
+
+func (c *recordingController) Widget() Widget {
+	return c.widget
+}
+
+func (c *recordingController) SetWidget(widget Widget) {
+	c.widget = widget
+}
+
+func (c *recordingController) HandleEvent(ctx *EventContext, event events.Event) {
+	*c.calls = append(*c.calls, fmt.Sprintf(
+		"%s current=%s target=%s phase=%d type=%d",
+		c.name,
+		widgetID(ctx.Current()),
+		widgetID(ctx.Target()),
+		ctx.Phase(),
+		event.Type(),
+	))
+	if c.handle != nil {
+		c.handle(ctx)
+	}
+}
+
+func widgetID(widget Widget) string {
+	if widget == nil {
+		return "<nil>"
+	}
+	if widget.ID() == "" {
+		return "<unnamed>"
+	}
+	return widget.ID()
+}
+
+func assertStrings(t *testing.T, got, want []string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("unexpected call count:\ngot  %v\nwant %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("unexpected call %d:\ngot  %q\nwant %q\nall got: %v", i, got[i], want[i], got)
+		}
+	}
+}
