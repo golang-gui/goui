@@ -27,6 +27,7 @@ var (
 	xDestroyWindow          = libx11.NewSymbol("XDestroyWindow")
 	xMapWindow              = libx11.NewSymbol("XMapWindow")
 	xUnmapWindow            = libx11.NewSymbol("XUnmapWindow")
+	xClearArea              = libx11.NewSymbol("XClearArea")
 	xStoreName              = libx11.NewSymbol("XStoreName")
 	xSetTransientForHint    = libx11.NewSymbol("XSetTransientForHint")
 	xSetWMProtocols         = libx11.NewSymbol("XSetWMProtocols")
@@ -141,6 +142,10 @@ func (d Display) MapWindow(w Window) {
 
 func (d Display) UnmapWindow(w Window) {
 	xUnmapWindow.CallRaw(uintptr(d), uintptr(w))
+}
+
+func (d Display) ClearArea(w Window, x, y int, width, height uint, exposures bool) {
+	xClearArea.CallRaw(uintptr(d), uintptr(w), uintptr(x), uintptr(y), uintptr(width), uintptr(height), uintptr(cgo.CBool(exposures)))
 }
 
 func (d Display) StoreName(w Window, name string) {
