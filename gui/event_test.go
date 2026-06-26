@@ -273,7 +273,6 @@ type recordingController struct {
 	phase  PropagationPhase
 	calls  *[]string
 	handle func(ctx *EventContext)
-	widget Widget
 }
 
 func newRecordingController(name string, phase PropagationPhase, calls *[]string, handle func(ctx *EventContext)) *recordingController {
@@ -287,14 +286,6 @@ func newRecordingController(name string, phase PropagationPhase, calls *[]string
 
 func (c *recordingController) Phase() PropagationPhase {
 	return c.phase
-}
-
-func (c *recordingController) Widget() Widget {
-	return c.widget
-}
-
-func (c *recordingController) SetWidget(widget Widget) {
-	c.widget = widget
 }
 
 func (c *recordingController) HandleEvent(ctx *EventContext, event events.Event) {

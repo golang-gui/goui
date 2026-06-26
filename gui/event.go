@@ -17,8 +17,6 @@ const (
 
 type EventController interface {
 	Phase() PropagationPhase
-	Widget() Widget
-	SetWidget(Widget)
 	HandleEvent(ctx *EventContext, event events.Event)
 }
 

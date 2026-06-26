@@ -93,19 +93,10 @@ func (b *Button) backgroundColor() graphics.Color {
 
 type buttonHoverController struct {
 	button *Button
-	widget Widget
 }
 
 func (c *buttonHoverController) Phase() PropagationPhase {
 	return PhaseTarget
-}
-
-func (c *buttonHoverController) Widget() Widget {
-	return c.widget
-}
-
-func (c *buttonHoverController) SetWidget(widget Widget) {
-	c.widget = widget
 }
 
 func (c *buttonHoverController) HandleEvent(ctx *EventContext, event events.Event) {
@@ -125,19 +116,10 @@ func (c *buttonHoverController) HandleEvent(ctx *EventContext, event events.Even
 type buttonClickController struct {
 	button *Button
 	phase  PropagationPhase
-	widget Widget
 }
 
 func (c *buttonClickController) Phase() PropagationPhase {
 	return c.phase
-}
-
-func (c *buttonClickController) Widget() Widget {
-	return c.widget
-}
-
-func (c *buttonClickController) SetWidget(widget Widget) {
-	c.widget = widget
 }
 
 func (c *buttonClickController) HandleEvent(ctx *EventContext, event events.Event) {

@@ -145,7 +145,6 @@ func (w *WidgetBase) AddEventController(controller EventController) {
 		return
 	}
 	w.controllers = append(w.controllers, controller)
-	controller.SetWidget(w.self())
 }
 
 func (w *WidgetBase) RemoveEventController(controller EventController) {
@@ -154,7 +153,6 @@ func (w *WidgetBase) RemoveEventController(controller EventController) {
 		return
 	}
 	w.controllers = slices.Delete(w.controllers, index, index+1)
-	controller.SetWidget(nil)
 }
 
 func (w *WidgetBase) LayoutManager() layout.LayoutManager {
@@ -241,9 +239,6 @@ func (w *WidgetBase) setWindow(win *window) {
 		return
 	}
 	w.window = win
-	for _, controller := range w.controllers {
-		controller.SetWidget(w.self())
-	}
 	for _, child := range w.children {
 		child.Base().setWindow(win)
 	}

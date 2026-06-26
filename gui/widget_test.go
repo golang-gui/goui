@@ -147,37 +147,21 @@ func TestWidgetBaseEventControllers(t *testing.T) {
 
 	widget.AddEventController(controller)
 
-	if controller.Widget() != widget {
-		t.Fatal("controller widget was not set")
-	}
 	if controllers := widget.EventControllers(); len(controllers) != 1 || controllers[0] != controller {
 		t.Fatalf("unexpected controllers: %v", controllers)
 	}
 
 	widget.RemoveEventController(controller)
 
-	if controller.Widget() != nil {
-		t.Fatal("controller widget was not cleared")
-	}
 	if controllers := widget.EventControllers(); len(controllers) != 0 {
 		t.Fatalf("expected no controllers, got %d", len(controllers))
 	}
 }
 
-type testControllerAdapter struct {
-	widget Widget
-}
+type testControllerAdapter struct{}
 
 func (c *testControllerAdapter) Phase() PropagationPhase {
 	return PhaseTarget
-}
-
-func (c *testControllerAdapter) Widget() Widget {
-	return c.widget
-}
-
-func (c *testControllerAdapter) SetWidget(widget Widget) {
-	c.widget = widget
 }
 
 func (c *testControllerAdapter) HandleEvent(ctx *EventContext, event events.Event) {}
