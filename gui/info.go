@@ -29,6 +29,8 @@ type Role string
 const (
 	RoleWidget Role = "widget"
 	RoleBox    Role = "box"
+	RoleHBox   Role = "hbox"
+	RoleVBox   Role = "vbox"
 	RoleLabel  Role = "label"
 	RoleButton Role = "button"
 )

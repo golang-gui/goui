@@ -81,8 +81,14 @@ func TestLinearBoxSnapshot(t *testing.T) {
 	if info.ID != "content" {
 		t.Fatalf("unexpected snapshot id: %q", info.ID)
 	}
-	if info.Role != RoleBox {
+	if info.Role != RoleHBox {
 		t.Fatalf("unexpected snapshot role: %q", info.Role)
+	}
+
+	box.SetDirection(layout.DirectionVertical)
+	info = box.Snapshot()
+	if info.Role != RoleVBox {
+		t.Fatalf("unexpected vertical snapshot role: %q", info.Role)
 	}
 }
 

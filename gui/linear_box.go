@@ -51,6 +51,10 @@ func (b *LinearBox) SetSpacing(spacing float32) {
 
 func (b *LinearBox) Snapshot() WidgetInfo {
 	info := b.WidgetBase.Snapshot()
-	info.Role = RoleBox
+	if b.Direction() == layout.DirectionVertical {
+		info.Role = RoleVBox
+	} else {
+		info.Role = RoleHBox
+	}
 	return info
 }
