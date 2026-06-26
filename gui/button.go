@@ -1,13 +1,16 @@
 package gui
 
 import (
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/graphics"
 )
 
 type Button struct {
 	WidgetBase
+	hovered bool
 	pressed bool
 	clicked signal.Signal0
 }
@@ -16,6 +19,7 @@ func NewButton() *Button {
 	button := new(Button)
 	button.Init(button)
 	button.SetLayoutManager(layout.NewFillLayout())
+	button.AddEventController(&buttonHoverController{button: button})
 	button.AddEventController(&buttonClickController{
 		button: button,
 		phase:  PhaseTarget,
@@ -25,6 +29,14 @@ func NewButton() *Button {
 		phase:  PhaseBubble,
 	})
 	return button
+}
+
+func (b *Button) Paint(p Painter) {
+	if !b.Visible() {
+		return
+	}
+	p.FillRoundRect(geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height), 4, b.backgroundColor())
+	b.PaintChildren(p)
 }
 
 func (b *Button) Snapshot() WidgetInfo {
@@ -42,13 +54,71 @@ func (b *Button) emitClicked() {
 	b.clicked.Emit()
 }
 
+func (b *Button) setHovered(hovered bool) {
+	if b.hovered == hovered {
+		return
+	}
+	b.hovered = hovered
+	if !hovered && b.pressed {
+		b.setPressed(false)
+		return
+	}
+	b.requestPaint()
+}
+
 func (b *Button) setPressed(pressed bool) {
 	if b.pressed == pressed {
 		return
 	}
 	b.pressed = pressed
+	b.requestPaint()
+}
+
+func (b *Button) requestPaint() {
 	if b.window != nil {
 		b.window.requestPaint()
+	}
+}
+
+func (b *Button) backgroundColor() graphics.Color {
+	switch {
+	case b.pressed:
+		return graphics.RGB(180, 180, 180)
+	case b.hovered:
+		return graphics.RGB(230, 230, 230)
+	default:
+		return graphics.RGB(210, 210, 210)
+	}
+}
+
+type buttonHoverController struct {
+	button *Button
+	widget Widget
+}
+
+func (c *buttonHoverController) Phase() PropagationPhase {
+	return PhaseTarget
+}
+
+func (c *buttonHoverController) Widget() Widget {
+	return c.widget
+}
+
+func (c *buttonHoverController) SetWidget(widget Widget) {
+	c.widget = widget
+}
+
+func (c *buttonHoverController) HandleEvent(ctx *EventContext, event events.Event) {
+	pointerEvent, ok := event.(events.PointerEvent)
+	if !ok {
+		return
+	}
+
+	switch pointerEvent.EventType {
+	case events.PointerEnter:
+		c.button.setHovered(true)
+	case events.PointerLeave:
+		c.button.setHovered(false)
 	}
 }
 
