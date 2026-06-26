@@ -55,6 +55,18 @@ func TestButtonUsesWidgetBaseLayoutAndPaint(t *testing.T) {
 	}
 }
 
+func TestButtonDefaultFillLayoutArrangesContent(t *testing.T) {
+	button := NewButton()
+	child := newTestWidget()
+	button.AddChild(child)
+
+	button.Arrange(geometry.Rect(0, 0, 80, 30))
+
+	if child.Rect() != geometry.Rect(0, 0, 80, 30) {
+		t.Fatalf("unexpected child rect: %+v", child.Rect())
+	}
+}
+
 func TestButtonClickedSignal(t *testing.T) {
 	button := NewButton()
 	button.Arrange(geometry.Rect(0, 0, 80, 30))

@@ -2,6 +2,7 @@ package gui
 
 import (
 	"github.com/golang-gui/goui/core/signal"
+	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/events"
 )
 
@@ -14,6 +15,7 @@ type Button struct {
 func NewButton() *Button {
 	button := new(Button)
 	button.Init(button)
+	button.SetLayoutManager(layout.NewFillLayout())
 	button.AddEventController(&buttonClickController{
 		button: button,
 		phase:  PhaseTarget,
