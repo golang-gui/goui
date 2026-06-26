@@ -199,7 +199,7 @@ func (w *WidgetBase) Snapshot() WidgetInfo {
 	info := WidgetInfo{
 		ID:      w.ID(),
 		Role:    RoleWidget,
-		Bounds:  w.Rect(),
+		Bounds:  w.windowRect(),
 		Visible: w.Visible(),
 		Enabled: true,
 	}
@@ -207,6 +207,16 @@ func (w *WidgetBase) Snapshot() WidgetInfo {
 		info.Children = append(info.Children, child.Snapshot())
 	}
 	return info
+}
+
+func (w *WidgetBase) windowRect() geometry.Rectangle {
+	rect := w.rect
+	for parent := w.parent; parent != nil; parent = parent.Parent() {
+		parentRect := parent.Rect()
+		rect.X += parentRect.X
+		rect.Y += parentRect.Y
+	}
+	return rect
 }
 
 func (w *WidgetBase) RequestLayout() {

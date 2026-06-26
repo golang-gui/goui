@@ -89,8 +89,25 @@ func TestWidgetBaseArrangeAndSnapshot(t *testing.T) {
 	if len(info.Children) != 1 {
 		t.Fatalf("expected 1 child snapshot, got %d", len(info.Children))
 	}
-	if info.Children[0].ID != "child" || info.Children[0].Bounds != geometry.Rect(3, 4, 10, 20) {
+	if info.Children[0].ID != "child" || info.Children[0].Bounds != geometry.Rect(4, 6, 10, 20) {
 		t.Fatalf("unexpected child snapshot: %+v", info.Children[0])
+	}
+}
+
+func TestWidgetBaseSnapshotBoundsAreWindowLocal(t *testing.T) {
+	root := newTestWidget()
+	parent := newTestWidget()
+	child := newTestWidget()
+	root.AddChild(parent)
+	parent.AddChild(child)
+
+	root.Arrange(geometry.Rect(10, 20, 100, 100))
+	parent.Arrange(geometry.Rect(3, 4, 50, 50))
+	child.Arrange(geometry.Rect(5, 6, 10, 10))
+
+	info := child.Snapshot()
+	if info.Bounds != geometry.Rect(18, 30, 10, 10) {
+		t.Fatalf("unexpected child window-local bounds: %+v", info.Bounds)
 	}
 }
 
