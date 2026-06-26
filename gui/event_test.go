@@ -18,8 +18,8 @@ func TestEventDispatcherDispatchesPointerEventThroughThreePhases(t *testing.T) {
 	root.Arrange(geometry.Rect(0, 0, 100, 100))
 	parent.Arrange(geometry.Rect(10, 10, 80, 80))
 	target.Arrange(geometry.Rect(5, 5, 30, 30))
-	root.AddChild(parent)
-	parent.AddChild(target)
+	AddChild(root, parent)
+	AddChild(parent, target)
 
 	var calls []string
 	root.AddEventController(newRecordingController("root-capture", PhaseCapture, &calls, nil))
@@ -60,8 +60,8 @@ func TestEventDispatcherStopsPropagation(t *testing.T) {
 	root.Arrange(geometry.Rect(0, 0, 100, 100))
 	parent.Arrange(geometry.Rect(10, 10, 80, 80))
 	target.Arrange(geometry.Rect(5, 5, 30, 30))
-	root.AddChild(parent)
-	parent.AddChild(target)
+	AddChild(root, parent)
+	AddChild(parent, target)
 
 	var calls []string
 	root.AddEventController(newRecordingController("root-capture", PhaseCapture, &calls, nil))
@@ -98,8 +98,8 @@ func TestEventDispatcherHitTestUsesLastVisibleChild(t *testing.T) {
 	root.Arrange(geometry.Rect(0, 0, 100, 100))
 	bottom.Arrange(geometry.Rect(10, 10, 40, 40))
 	top.Arrange(geometry.Rect(10, 10, 40, 40))
-	root.AddChild(bottom)
-	root.AddChild(top)
+	AddChild(root, bottom)
+	AddChild(root, top)
 
 	var calls []string
 	bottom.AddEventController(newRecordingController("bottom", PhaseTarget, &calls, nil))
@@ -138,7 +138,7 @@ func TestEventDispatcherDispatchesWheelByPosition(t *testing.T) {
 	child.SetID("child")
 	root.Arrange(geometry.Rect(0, 0, 100, 100))
 	child.Arrange(geometry.Rect(10, 10, 40, 40))
-	root.AddChild(child)
+	AddChild(root, child)
 
 	var calls []string
 	child.AddEventController(newRecordingController("child", PhaseTarget, &calls, nil))
@@ -169,8 +169,8 @@ func TestEventDispatcherSynthesizesWidgetHoverEvents(t *testing.T) {
 	root.Arrange(geometry.Rect(0, 0, 100, 100))
 	first.Arrange(geometry.Rect(0, 0, 40, 40))
 	second.Arrange(geometry.Rect(50, 0, 40, 40))
-	root.AddChild(first)
-	root.AddChild(second)
+	AddChild(root, first)
+	AddChild(root, second)
 
 	var calls []string
 	root.AddEventController(newRecordingController("root", PhaseTarget, &calls, nil))
@@ -226,7 +226,7 @@ func TestEventDispatcherDispatchesKeyToRootBeforeFocusModel(t *testing.T) {
 	child.SetID("child")
 	root.Arrange(geometry.Rect(0, 0, 100, 100))
 	child.Arrange(geometry.Rect(10, 10, 40, 40))
-	root.AddChild(child)
+	AddChild(root, child)
 
 	var calls []string
 	root.AddEventController(newRecordingController("root", PhaseTarget, &calls, nil))

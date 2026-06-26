@@ -37,7 +37,7 @@ func TestButtonUsesWidgetBaseLayoutAndPaint(t *testing.T) {
 		measureSize: geometry.Size{Width: 30, Height: 20},
 	}
 	button.SetLayoutManager(manager)
-	button.AddChild(child)
+	AddChild(button, child)
 
 	size := button.Measure(geometry.Size{Width: 100, Height: 50})
 	if size != (geometry.Size{Width: 30, Height: 20}) {
@@ -61,7 +61,7 @@ func TestButtonUsesWidgetBaseLayoutAndPaint(t *testing.T) {
 func TestButtonDefaultFillLayoutArrangesContent(t *testing.T) {
 	button := NewButton()
 	child := newTestWidget()
-	button.AddChild(child)
+	AddChild(button, child)
 
 	button.Arrange(geometry.Rect(0, 0, 80, 30))
 
@@ -174,7 +174,7 @@ func TestButtonClickedSignal(t *testing.T) {
 func TestButtonClickedSignalThroughChildContent(t *testing.T) {
 	button := NewButton()
 	child := newTestWidget()
-	button.AddChild(child)
+	AddChild(button, child)
 	button.Arrange(geometry.Rect(0, 0, 80, 30))
 	child.Arrange(geometry.Rect(0, 0, 80, 30))
 	win := &window{}
@@ -268,9 +268,7 @@ type paintCountingWidget struct {
 }
 
 func newPaintCountingWidget() *paintCountingWidget {
-	w := new(paintCountingWidget)
-	w.Init(w)
-	return w
+	return new(paintCountingWidget)
 }
 
 func (w *paintCountingWidget) Paint(p Painter) {

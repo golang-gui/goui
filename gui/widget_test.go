@@ -13,46 +13,63 @@ type testWidget struct {
 }
 
 func newTestWidget() *testWidget {
-	w := new(testWidget)
-	w.Init(w)
-	return w
+	return new(testWidget)
+}
+
+func TestWidgetBaseZeroValueIsVisible(t *testing.T) {
+	widget := newTestWidget()
+
+	if !widget.Visible() {
+		t.Fatal("zero value widget should be visible")
+	}
+
+	widget.SetVisible(false)
+	if widget.Visible() {
+		t.Fatal("widget should be hidden")
+	}
 }
 
 func TestWidgetBaseChildTree(t *testing.T) {
 	parent := newTestWidget()
 	child := newTestWidget()
 
-	parent.AddChild(child)
+	AddChild(parent, child)
 
-	if child.Parent() != parent {
+	if Parent(child) != parent {
 		t.Fatal("child parent was not set")
 	}
-	if children := parent.Children(); len(children) != 1 || children[0] != child {
+	if children := GetChildren(parent); len(children) != 1 || children[0] != child {
 		t.Fatalf("unexpected children: %v", children)
 	}
 
-	parent.RemoveChild(child)
+	RemoveChild(parent, child)
 
-	if child.Parent() != nil {
+	if Parent(child) != nil {
 		t.Fatal("child parent was not cleared")
 	}
-	if children := parent.Children(); len(children) != 0 {
+	if children := GetChildren(parent); len(children) != 0 {
 		t.Fatalf("expected no children, got %d", len(children))
 	}
 }
 
-func TestWidgetBaseSetWindowPropagatesToChildren(t *testing.T) {
+func TestWidgetBaseSetRootPropagatesToChildren(t *testing.T) {
 	win := &window{}
 	parent := newTestWidget()
 	child := newTestWidget()
-	parent.AddChild(child)
+	AddChild(parent, child)
 
-	parent.setWindow(win)
+	win.SetWidget(parent)
 
-	if parent.Window() != win {
+	if GetRoot(parent) != win {
+		t.Fatal("parent root was not set")
+	}
+	if GetRoot(child) != win {
+		t.Fatal("child root was not set")
+	}
+	if GetWindow(parent) != win {
 		t.Fatal("parent window was not set")
 	}
-	if child.Window() != win {
+	if GetWindow(child) != win {
 		t.Fatal("child window was not set")
 	}
 }
@@ -60,7 +77,7 @@ func TestWidgetBaseSetWindowPropagatesToChildren(t *testing.T) {
 func TestWidgetBaseRequestLayoutMarksWindowDirty(t *testing.T) {
 	win := &window{}
 	widget := newTestWidget()
-	widget.setWindow(win)
+	win.SetWidget(widget)
 
 	widget.RequestLayout()
 
@@ -77,7 +94,7 @@ func TestWidgetBaseArrangeAndSnapshot(t *testing.T) {
 	parent.SetID("parent")
 	child := newTestWidget()
 	child.SetID("child")
-	parent.AddChild(child)
+	AddChild(parent, child)
 
 	parent.Arrange(geometry.Rect(1, 2, 30, 40))
 	child.Arrange(geometry.Rect(3, 4, 10, 20))
@@ -98,8 +115,8 @@ func TestWidgetBaseSnapshotBoundsAreWindowLocal(t *testing.T) {
 	root := newTestWidget()
 	parent := newTestWidget()
 	child := newTestWidget()
-	root.AddChild(parent)
-	parent.AddChild(child)
+	AddChild(root, parent)
+	AddChild(parent, child)
 
 	root.Arrange(geometry.Rect(10, 20, 100, 100))
 	parent.Arrange(geometry.Rect(3, 4, 50, 50))
@@ -116,8 +133,8 @@ func TestWidgetBaseLayoutManagerUsesVisibleChildren(t *testing.T) {
 	visible := newTestWidget()
 	hidden := newTestWidget()
 	hidden.SetVisible(false)
-	parent.AddChild(visible)
-	parent.AddChild(hidden)
+	AddChild(parent, visible)
+	AddChild(parent, hidden)
 
 	manager := &testLayoutManager{
 		measureSize: geometry.Size{Width: 11, Height: 12},
@@ -158,6 +175,123 @@ func TestWidgetBaseEventControllers(t *testing.T) {
 	}
 }
 
+func TestWidgetBaseLifecycleMountsAndUnmountsSubtree(t *testing.T) {
+	var calls []string
+	win := &window{}
+	parent := newLifecycleWidget("parent", &calls)
+	child := newLifecycleWidget("child", &calls)
+	AddChild(parent, child)
+
+	if len(calls) != 0 {
+		t.Fatalf("lifecycle fired before mount: %v", calls)
+	}
+
+	win.SetWidget(parent)
+	assertStrings(t, calls, []string{
+		"parent mount",
+		"child mount",
+	})
+
+	calls = nil
+	win.SetWidget(nil)
+	assertStrings(t, calls, []string{
+		"child unmount",
+		"parent unmount",
+	})
+}
+
+func TestWidgetBaseLifecycleMountsChildAddedToMountedParent(t *testing.T) {
+	var calls []string
+	win := &window{}
+	parent := newLifecycleWidget("parent", &calls)
+	child := newLifecycleWidget("child", &calls)
+	win.SetWidget(parent)
+
+	calls = nil
+	AddChild(parent, child)
+	assertStrings(t, calls, []string{"child mount"})
+	if GetWindow(child) != win {
+		t.Fatal("child window was not set")
+	}
+
+	calls = nil
+	RemoveChild(parent, child)
+	assertStrings(t, calls, []string{"child unmount"})
+	if GetWindow(child) != nil {
+		t.Fatal("child window was not cleared")
+	}
+	if Parent(child) != nil {
+		t.Fatal("child parent was not cleared")
+	}
+}
+
+func TestSetParentReparentsWithinSameRootWithoutLifecycle(t *testing.T) {
+	var calls []string
+	win := &window{}
+	root := newLifecycleWidget("root", &calls)
+	first := newLifecycleWidget("first", &calls)
+	second := newLifecycleWidget("second", &calls)
+	child := newLifecycleWidget("child", &calls)
+	AddChild(root, first)
+	AddChild(root, second)
+	AddChild(first, child)
+	win.SetWidget(root)
+
+	calls = nil
+	SetParent(child, second)
+
+	if Parent(child) != second {
+		t.Fatal("child was not reparented")
+	}
+	if children := GetChildren(first); len(children) != 0 {
+		t.Fatalf("old parent still has children: %v", children)
+	}
+	if children := GetChildren(second); len(children) != 1 || children[0] != child {
+		t.Fatalf("new parent children unexpected: %v", children)
+	}
+	if GetRoot(child) != win {
+		t.Fatal("child root changed unexpectedly")
+	}
+	if len(calls) != 0 {
+		t.Fatalf("same-root reparent should not fire lifecycle: %v", calls)
+	}
+}
+
+func TestDestroyWidgetUnmountsAndClearsSubtreeOnce(t *testing.T) {
+	var calls []string
+	win := &window{}
+	root := newLifecycleWidget("root", &calls)
+	child := newLifecycleWidget("child", &calls)
+	AddChild(root, child)
+	win.SetWidget(root)
+
+	calls = nil
+	destroyWidget(root)
+	assertStrings(t, calls, []string{
+		"child unmount",
+		"root unmount",
+	})
+	if win.Widget() != nil {
+		t.Fatal("destroyed root was not removed from window")
+	}
+	if GetWindow(root) != nil || GetWindow(child) != nil {
+		t.Fatal("destroyed widgets still have a window")
+	}
+	if Parent(child) != nil {
+		t.Fatal("destroyed child still has a parent")
+	}
+	if len(GetChildren(root)) != 0 {
+		t.Fatal("destroyed root still has children")
+	}
+
+	calls = nil
+	destroyWidget(root)
+	destroyWidget(child)
+	if len(calls) != 0 {
+		t.Fatalf("destroy unmounted more than once: %v", calls)
+	}
+}
+
 type testControllerAdapter struct{}
 
 func (c *testControllerAdapter) Phase() PropagationPhase {
@@ -165,6 +299,26 @@ func (c *testControllerAdapter) Phase() PropagationPhase {
 }
 
 func (c *testControllerAdapter) HandleEvent(ctx *EventContext, event events.Event) {}
+
+type lifecycleWidget struct {
+	WidgetBase
+	name  string
+	calls *[]string
+}
+
+func newLifecycleWidget(name string, calls *[]string) *lifecycleWidget {
+	w := &lifecycleWidget{
+		name:  name,
+		calls: calls,
+	}
+	w.ConnectMount(func() {
+		*w.calls = append(*w.calls, w.name+" mount")
+	})
+	w.ConnectUnmount(func() {
+		*w.calls = append(*w.calls, w.name+" unmount")
+	})
+	return w
+}
 
 type testLayoutManager struct {
 	measureSize geometry.Size

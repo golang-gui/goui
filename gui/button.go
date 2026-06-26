@@ -17,7 +17,6 @@ type Button struct {
 
 func NewButton() *Button {
 	button := new(Button)
-	button.Init(button)
 	button.SetLayoutManager(layout.NewFillLayout())
 	button.AddEventController(&buttonHoverController{button: button})
 	button.AddEventController(&buttonClickController{
@@ -75,8 +74,8 @@ func (b *Button) setPressed(pressed bool) {
 }
 
 func (b *Button) requestPaint() {
-	if b.window != nil {
-		b.window.requestPaint()
+	if win := GetWindow(b); win != nil {
+		_ = win.RequestPaint()
 	}
 }
 

@@ -189,7 +189,7 @@ func hitTest(widget Widget, point geometry.Point) Widget {
 	}
 
 	localPoint := subtractPoint(point, widget.Rect().Pos)
-	children := widget.Children()
+	children := GetChildren(widget)
 	for i := len(children) - 1; i >= 0; i-- {
 		if target := hitTest(children[i], localPoint); target != nil {
 			return target
@@ -213,7 +213,7 @@ func widgetPath(root, target Widget) []Widget {
 		return nil
 	}
 	var path []Widget
-	for widget := target; widget != nil; widget = widget.Parent() {
+	for widget := target; widget != nil; widget = Parent(widget) {
 		path = append(path, widget)
 		if widget == root {
 			slices.Reverse(path)

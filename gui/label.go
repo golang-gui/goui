@@ -21,7 +21,6 @@ func NewLabel(text string) *Label {
 		text:   text,
 		format: DefaultLabelTextFormat(),
 	}
-	label.Init(label)
 	return label
 }
 

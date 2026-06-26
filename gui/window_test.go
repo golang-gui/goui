@@ -19,12 +19,12 @@ func TestWindowSetWidget(t *testing.T) {
 	if win.Widget() != root {
 		t.Fatal("window root widget was not set")
 	}
-	if root.Window() != win {
+	if GetWindow(root) != win {
 		t.Fatal("root widget window was not set")
 	}
 
 	win.SetWidget(nil)
-	if root.Window() != nil {
+	if GetWindow(root) != nil {
 		t.Fatal("old root widget window was not cleared")
 	}
 }
@@ -160,6 +160,26 @@ func TestWindowCloseRequestAllowsDestroy(t *testing.T) {
 	}
 }
 
+func TestWindowDestroyDestroysRootWidget(t *testing.T) {
+	var calls []string
+	win := &window{}
+	root := newLifecycleWidget("root", &calls)
+	child := newLifecycleWidget("child", &calls)
+	AddChild(root, child)
+	win.SetWidget(root)
+
+	calls = nil
+	win.Destroy()
+
+	assertStrings(t, calls, []string{
+		"child unmount",
+		"root unmount",
+	})
+	if win.Widget() != nil {
+		t.Fatal("destroyed window still has a root widget")
+	}
+}
+
 func TestWindowSnapshot(t *testing.T) {
 	win := &window{
 		id:     "main",
@@ -191,9 +211,7 @@ type layoutPassWidget struct {
 }
 
 func newLayoutPassWidget() *layoutPassWidget {
-	w := new(layoutPassWidget)
-	w.Init(w)
-	return w
+	return new(layoutPassWidget)
 }
 
 func (w *layoutPassWidget) Measure(available geometry.Size) geometry.Size {

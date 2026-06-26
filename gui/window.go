@@ -11,22 +11,20 @@ import (
 )
 
 type Window interface {
+	Root
+
 	ID() string
 	SetID(string)
+	SetWidget(Widget)
 
 	Title() string
 	SetTitle(string) error
 
-	Widget() Widget
-	SetWidget(Widget)
-
 	Show() error
-	RequestPaint() error
 
 	RequestClose() error
 	Destroy()
 
-	Dispatcher() *EventDispatcher
 	Snapshot() WindowInfo
 	DispatchEvent(event events.Event) error
 
@@ -115,13 +113,20 @@ func (w *window) SetWidget(widget Widget) {
 	if w.root == widget {
 		return
 	}
-	if w.root != nil {
-		w.root.Base().setWindow(nil)
+	if widget != nil && widget.base().destroyed {
+		return
 	}
-	w.root = widget
 	if w.root != nil {
-		w.root.Base().parent = nil
-		w.root.Base().setWindow(w)
+		detachRoot(w.root)
+	}
+	if widget != nil {
+		oldRoot := GetRoot(widget)
+		detachWidget(widget)
+		if oldRoot != nil {
+			emitUnmountSubtree(widget)
+		}
+		w.root = widget
+		attachRoot(w, widget)
 	}
 	w.requestLayout()
 }
@@ -156,8 +161,9 @@ func (w *window) Destroy() {
 	w.destroy.Emit()
 
 	if w.root != nil {
-		w.root.Base().setWindow(nil)
-		w.root = nil
+		root := w.root
+		detachRoot(root)
+		destroyWidget(root)
 	}
 	if w.painter != nil {
 		w.painter.Destroy()
@@ -170,10 +176,6 @@ func (w *window) Destroy() {
 	if w.app != nil {
 		w.app.removeWindow(w)
 	}
-}
-
-func (w *window) Dispatcher() *EventDispatcher {
-	return &w.dispatcher
 }
 
 func (w *window) Snapshot() WindowInfo {
