@@ -49,7 +49,9 @@ func (c *EventContext) PropagationStopped() bool {
 	return c.stopped
 }
 
-type EventDispatcher struct{}
+type EventDispatcher struct {
+	hoverPath []Widget
+}
 
 func (d *EventDispatcher) DispatchEvent(window Window, event events.Event) error {
 	if window == nil {
@@ -59,6 +61,19 @@ func (d *EventDispatcher) DispatchEvent(window Window, event events.Event) error
 	root := window.Widget()
 	if root == nil {
 		return nil
+	}
+
+	if pointerEvent, ok := event.(events.PointerEvent); ok {
+		switch pointerEvent.EventType {
+		case events.PointerEnter, events.PointerMove:
+			d.updateHover(root, pointerEvent)
+			if pointerEvent.EventType == events.PointerEnter {
+				return nil
+			}
+		case events.PointerLeave:
+			d.clearHover(pointerEvent)
+			return nil
+		}
 	}
 
 	target := d.target(root, event)
@@ -121,6 +136,55 @@ func (d *EventDispatcher) dispatchPhase(ctx *EventContext, widgets []Widget, pha
 	}
 }
 
+func (d *EventDispatcher) updateHover(root Widget, event events.PointerEvent) {
+	target := hitTest(root, event.Position)
+	path := widgetPath(root, target)
+	common := commonWidgetPrefix(d.hoverPath, path)
+
+	leaveEvent := event
+	leaveEvent.EventType = events.PointerLeave
+	for i := len(d.hoverPath) - 1; i >= common; i-- {
+		d.dispatchDirect(d.hoverPath[i], leaveEvent)
+	}
+
+	enterEvent := event
+	enterEvent.EventType = events.PointerEnter
+	for _, widget := range path[common:] {
+		d.dispatchDirect(widget, enterEvent)
+	}
+
+	d.hoverPath = path
+}
+
+func (d *EventDispatcher) clearHover(event events.PointerEvent) {
+	event.EventType = events.PointerLeave
+	for i := len(d.hoverPath) - 1; i >= 0; i-- {
+		d.dispatchDirect(d.hoverPath[i], event)
+	}
+	d.hoverPath = nil
+}
+
+func (d *EventDispatcher) dispatchDirect(widget Widget, event events.Event) {
+	if widget == nil {
+		return
+	}
+
+	ctx := &EventContext{
+		target:  widget,
+		current: widget,
+		phase:   PhaseTarget,
+	}
+	for _, controller := range widget.EventControllers() {
+		if controller == nil || controller.Phase() != PhaseTarget {
+			continue
+		}
+		controller.HandleEvent(ctx, event)
+		if ctx.PropagationStopped() {
+			return
+		}
+	}
+}
+
 func hitTest(widget Widget, point geometry.Point) Widget {
 	if widget == nil || !widget.Visible() || !containsPoint(widget.Rect(), point) {
 		return nil
@@ -136,7 +200,20 @@ func hitTest(widget Widget, point geometry.Point) Widget {
 	return widget
 }
 
+func commonWidgetPrefix(a, b []Widget) int {
+	count := min(len(a), len(b))
+	for i := 0; i < count; i++ {
+		if a[i] != b[i] {
+			return i
+		}
+	}
+	return count
+}
+
 func widgetPath(root, target Widget) []Widget {
+	if root == nil || target == nil {
+		return nil
+	}
 	var path []Widget
 	for widget := target; widget != nil; widget = widget.Parent() {
 		path = append(path, widget)

@@ -159,6 +159,66 @@ func TestEventDispatcherDispatchesWheelByPosition(t *testing.T) {
 	})
 }
 
+func TestEventDispatcherSynthesizesWidgetHoverEvents(t *testing.T) {
+	root := newTestWidget()
+	first := newTestWidget()
+	second := newTestWidget()
+	root.SetID("root")
+	first.SetID("first")
+	second.SetID("second")
+	root.Arrange(geometry.Rect(0, 0, 100, 100))
+	first.Arrange(geometry.Rect(0, 0, 40, 40))
+	second.Arrange(geometry.Rect(50, 0, 40, 40))
+	root.AddChild(first)
+	root.AddChild(second)
+
+	var calls []string
+	root.AddEventController(newRecordingController("root", PhaseTarget, &calls, nil))
+	first.AddEventController(newRecordingController("first", PhaseTarget, &calls, nil))
+	second.AddEventController(newRecordingController("second", PhaseTarget, &calls, nil))
+
+	win := &window{root: root}
+	if err := win.DispatchEvent(events.PointerEvent{
+		EventType: events.PointerMove,
+		Position:  geometry.Point{X: 10, Y: 10},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	assertStrings(t, calls, []string{
+		"root current=root target=root phase=1 type=4",
+		"first current=first target=first phase=1 type=4",
+		"first current=first target=first phase=1 type=6",
+	})
+
+	calls = nil
+	if err := win.DispatchEvent(events.PointerEvent{
+		EventType: events.PointerMove,
+		Position:  geometry.Point{X: 60, Y: 10},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	assertStrings(t, calls, []string{
+		"first current=first target=first phase=1 type=5",
+		"second current=second target=second phase=1 type=4",
+		"second current=second target=second phase=1 type=6",
+	})
+
+	calls = nil
+	if err := win.DispatchEvent(events.PointerEvent{
+		EventType: events.PointerLeave,
+		Position:  geometry.Point{X: 60, Y: 10},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	assertStrings(t, calls, []string{
+		"second current=second target=second phase=1 type=5",
+		"root current=root target=root phase=1 type=5",
+	})
+}
+
 func TestEventDispatcherDispatchesKeyToRootBeforeFocusModel(t *testing.T) {
 	root := newTestWidget()
 	child := newTestWidget()
