@@ -96,6 +96,7 @@ func TestWidgetBaseRequestLayoutMarksWindowDirty(t *testing.T) {
 func TestWidgetBaseArrangeAndSnapshot(t *testing.T) {
 	parent := newTestWidget()
 	parent.SetID("parent")
+	parent.SetFocusable(true)
 	child := newTestWidget()
 	child.SetID("child")
 	parent.AddChild(child)
@@ -106,6 +107,9 @@ func TestWidgetBaseArrangeAndSnapshot(t *testing.T) {
 	info := parent.Snapshot()
 	if info.ID != "parent" || info.Bounds != geometry.Rect(1, 2, 30, 40) {
 		t.Fatalf("unexpected parent snapshot: %+v", info)
+	}
+	if !info.Focusable {
+		t.Fatal("snapshot did not include focusable state")
 	}
 	if len(info.Children) != 1 {
 		t.Fatalf("expected 1 child snapshot, got %d", len(info.Children))
@@ -176,6 +180,63 @@ func TestWidgetBaseEventControllers(t *testing.T) {
 
 	if controllers := widget.EventControllers(); len(controllers) != 0 {
 		t.Fatalf("expected no controllers, got %d", len(controllers))
+	}
+}
+
+func TestWidgetBaseFocusStateAndSignal(t *testing.T) {
+	win := &window{}
+	widget := newTestWidget()
+	win.SetWidget(widget)
+
+	var calls []bool
+	var focusableAtChange []bool
+	widget.ConnectFocusChanged(func(focused bool) {
+		calls = append(calls, focused)
+		focusableAtChange = append(focusableAtChange, widget.Focusable())
+	})
+
+	widget.SetFocusable(true)
+	if !win.SetFocusedWidget(widget) {
+		t.Fatal("focusable widget should accept focus")
+	}
+	if win.FocusedWidget() != widget || !widget.Focused() {
+		t.Fatal("focused state was not set")
+	}
+	info := widget.Snapshot()
+	if !info.Focusable || !info.Focused {
+		t.Fatalf("snapshot missing focus state: %+v", info)
+	}
+
+	widget.SetFocusable(false)
+	if win.FocusedWidget() != nil || widget.Focused() {
+		t.Fatal("removing focusable state should clear focus")
+	}
+	if len(calls) != 2 || !calls[0] || calls[1] {
+		t.Fatalf("unexpected focus changed calls: %v", calls)
+	}
+	if len(focusableAtChange) != 2 || !focusableAtChange[0] || focusableAtChange[1] {
+		t.Fatalf("focus callbacks saw stale focusable state: %v", focusableAtChange)
+	}
+}
+
+func TestWidgetBaseHidingFocusedSubtreeClearsFocus(t *testing.T) {
+	win := &window{}
+	root := newTestWidget()
+	parent := newTestWidget()
+	child := newTestWidget()
+	child.SetFocusable(true)
+	root.AddChild(parent)
+	parent.AddChild(child)
+	win.SetWidget(root)
+	win.SetFocusedWidget(child)
+
+	parent.SetVisible(false)
+
+	if win.FocusedWidget() != nil {
+		t.Fatalf("focused widget was not cleared: %v", win.FocusedWidget())
+	}
+	if child.Focused() {
+		t.Fatal("child focused state was not cleared")
 	}
 }
 
@@ -289,6 +350,51 @@ func TestAddChildReparentsWithinSameRootWithoutLifecycle(t *testing.T) {
 	}
 	if len(calls) != 0 {
 		t.Fatalf("same-root reparent should not fire lifecycle: %v", calls)
+	}
+}
+
+func TestAddChildReparentsWithinSameRootKeepsFocus(t *testing.T) {
+	win := &window{}
+	root := newTestWidget()
+	first := newTestWidget()
+	second := newTestWidget()
+	child := newTestWidget()
+	child.SetFocusable(true)
+	root.AddChild(first)
+	root.AddChild(second)
+	first.AddChild(child)
+	win.SetWidget(root)
+	win.SetFocusedWidget(child)
+
+	second.AddChild(child)
+
+	if win.FocusedWidget() != child || !child.Focused() {
+		t.Fatal("same-root reparent should keep focused widget")
+	}
+}
+
+func TestRemoveChildClearsFocusedSubtreeAfterUnmount(t *testing.T) {
+	win := &window{}
+	parent := newTestWidget()
+	child := newTestWidget()
+	child.SetFocusable(true)
+	parent.AddChild(child)
+	win.SetWidget(parent)
+	win.SetFocusedWidget(child)
+
+	child.ConnectUnmount(func() {
+		if child.Window() != win || child.Parent() != parent {
+			t.Fatalf("unmount saw invalid relationship: window=%v parent=%v", child.Window(), child.Parent())
+		}
+		if win.FocusedWidget() != child || !child.Focused() {
+			t.Fatal("focus should still be visible during unmount signal")
+		}
+	})
+
+	parent.RemoveChild(child)
+
+	if win.FocusedWidget() != nil || child.Focused() {
+		t.Fatal("focused subtree was not cleared after remove")
 	}
 }
 

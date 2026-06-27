@@ -26,6 +26,11 @@ type Widget interface {
 	Visible() bool
 	SetVisible(bool)
 
+	Focusable() bool
+	SetFocusable(bool)
+	Focused() bool
+	ConnectFocusChanged(func(bool)) signal.Handle
+
 	Rect() geometry.Rectangle
 
 	EventControllers() []EventController
@@ -58,6 +63,8 @@ type Container interface {
 type WidgetBase struct {
 	id            string
 	hidden        bool
+	focusable     bool
+	focused       bool
 	rect          geometry.Rectangle
 	parentWidget  Widget
 	parentRoot    Root
@@ -66,6 +73,7 @@ type WidgetBase struct {
 	layoutManager layout.LayoutManager
 	mount         signal.Signal0
 	unmount       signal.Signal0
+	focusChanged  signal.Signal1[bool]
 	destroyed     bool
 }
 
@@ -92,9 +100,39 @@ func (w *WidgetBase) SetVisible(visible bool) {
 	hidden := !visible
 	if w.hidden != hidden {
 		w.hidden = hidden
+		if hidden {
+			if win := w.window(); win != nil && win.focusWithinBase(w) {
+				win.SetFocusedWidget(nil)
+			}
+		}
 		w.RequestLayout()
 		w.requestSemanticUpdate()
 	}
+}
+
+func (w *WidgetBase) Focusable() bool {
+	return w.focusable
+}
+
+func (w *WidgetBase) SetFocusable(focusable bool) {
+	if w.focusable == focusable {
+		return
+	}
+	w.focusable = focusable
+	if !focusable {
+		if win := w.window(); win != nil && win.focusIsBase(w) {
+			win.SetFocusedWidget(nil)
+		}
+	}
+	w.requestSemanticUpdate()
+}
+
+func (w *WidgetBase) Focused() bool {
+	return w.focused
+}
+
+func (w *WidgetBase) ConnectFocusChanged(fn func(bool)) signal.Handle {
+	return w.focusChanged.Connect(fn)
 }
 
 func (w *WidgetBase) Rect() geometry.Rectangle {
@@ -181,11 +219,13 @@ func (w *WidgetBase) PaintChildren(p Painter) {
 
 func (w *WidgetBase) Snapshot() WidgetInfo {
 	info := WidgetInfo{
-		ID:      w.ID(),
-		Role:    RoleWidget,
-		Bounds:  w.windowRect(),
-		Visible: w.Visible(),
-		Enabled: true,
+		ID:        w.ID(),
+		Role:      RoleWidget,
+		Bounds:    w.windowRect(),
+		Visible:   w.Visible(),
+		Enabled:   true,
+		Focusable: w.Focusable(),
+		Focused:   w.Focused(),
 	}
 	for _, child := range w.children {
 		info.Children = append(info.Children, child.Snapshot())
@@ -269,6 +309,9 @@ func (w *WidgetBase) setParent(child, parent Widget) {
 
 	if rootChanged && oldRoot != nil {
 		w.emitUnmountSubtree(child)
+		if win, ok := oldRoot.(*window); ok && win.focusWithinWidget(child) {
+			win.SetFocusedWidget(nil)
+		}
 	}
 	w.detach(child)
 
@@ -314,6 +357,9 @@ func (w *WidgetBase) detachRoot(child Widget) {
 	oldRoot := child.Root()
 	if oldRoot != nil {
 		w.emitUnmountSubtree(child)
+		if win, ok := oldRoot.(*window); ok && win.focusWithinWidget(child) {
+			win.SetFocusedWidget(nil)
+		}
 	}
 	w.detach(child)
 }
@@ -364,6 +410,9 @@ func (w *WidgetBase) destroy(widget Widget) {
 	oldRoot := widget.Root()
 	if oldRoot != nil {
 		w.emitUnmountSubtree(widget)
+		if win, ok := oldRoot.(*window); ok && win.focusWithinWidget(widget) {
+			win.SetFocusedWidget(nil)
+		}
 	}
 	w.detach(widget)
 
@@ -405,6 +454,15 @@ func (w *WidgetBase) isDescendant(widget, ancestor Widget) bool {
 		widget = widget.Parent()
 	}
 	return false
+}
+
+func (w *WidgetBase) setFocused(focused bool) {
+	if w.focused == focused {
+		return
+	}
+	w.focused = focused
+	w.focusChanged.Emit(focused)
+	w.requestSemanticUpdate()
 }
 
 func (w *WidgetBase) visibleChildren() []layout.Child {

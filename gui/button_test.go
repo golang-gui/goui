@@ -22,6 +22,9 @@ func TestButtonSnapshot(t *testing.T) {
 	if info.Role != RoleButton {
 		t.Fatalf("unexpected snapshot role: %q", info.Role)
 	}
+	if !info.Focusable {
+		t.Fatal("button should be focusable")
+	}
 	if info.Text != "" {
 		t.Fatalf("button should not own content text, got %q", info.Text)
 	}

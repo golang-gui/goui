@@ -20,6 +20,10 @@ type Window interface {
 	Title() string
 	SetTitle(string) error
 
+	Focused() bool
+	FocusedWidget() Widget
+	SetFocusedWidget(Widget) bool
+
 	Show() error
 
 	RequestClose() error
@@ -30,6 +34,7 @@ type Window interface {
 
 	ConnectCloseRequest(func(*bool)) signal.Handle
 	ConnectDestroy(func()) signal.Handle
+	ConnectFocusChanged(func(bool)) signal.Handle
 }
 
 type window struct {
@@ -45,9 +50,12 @@ type window struct {
 	scale          float64
 	layoutDirty    bool
 	paintDirty     bool
+	focused        bool
+	focusedWidget  Widget
 	destroyed      bool
 	closeRequest   signal.Signal1[*bool]
 	destroy        signal.Signal0
+	focusChanged   signal.Signal1[bool]
 }
 
 func newWindow(app *application) (*window, error) {
@@ -105,6 +113,30 @@ func (w *window) SetTitle(title string) error {
 	return nil
 }
 
+func (w *window) Focused() bool {
+	return w.focused
+}
+
+func (w *window) FocusedWidget() Widget {
+	return w.focusedWidget
+}
+
+func (w *window) SetFocusedWidget(widget Widget) bool {
+	if widget == nil {
+		w.setFocusedWidget(nil)
+		return true
+	}
+	if widget.Window() != w || !widget.Focusable() || !visibleInTree(widget) {
+		return false
+	}
+	if w.focusedWidget == widget {
+		return true
+	}
+
+	w.setFocusedWidget(widget)
+	return true
+}
+
 func (w *window) Widget() Widget {
 	return w.root
 }
@@ -123,6 +155,9 @@ func (w *window) SetWidget(widget Widget) {
 		oldRoot := widget.Root()
 		if oldRoot != nil {
 			widget.base().emitUnmountSubtree(widget)
+			if win, ok := oldRoot.(*window); ok && win.focusWithinWidget(widget) {
+				win.SetFocusedWidget(nil)
+			}
 		}
 		widget.base().detach(widget)
 		w.root = widget
@@ -213,6 +248,8 @@ func (w *window) DispatchEvent(event events.Event) error {
 			w.scale = 1
 		}
 		w.requestLayout()
+	case events.FocusEvent:
+		w.setFocused(event.Focused)
 	case events.PaintEvent:
 		w.paint()
 	default:
@@ -227,6 +264,10 @@ func (w *window) ConnectCloseRequest(fn func(*bool)) signal.Handle {
 
 func (w *window) ConnectDestroy(fn func()) signal.Handle {
 	return w.destroy.Connect(fn)
+}
+
+func (w *window) ConnectFocusChanged(fn func(bool)) signal.Handle {
+	return w.focusChanged.Connect(fn)
 }
 
 func (w *window) onEvent(event events.Event) {
@@ -270,4 +311,64 @@ func (w *window) requestPaint() {
 	if w.platformWindow != nil {
 		_ = w.platformWindow.RequestPaint()
 	}
+}
+
+func (w *window) setFocused(focused bool) {
+	if w.focused == focused {
+		return
+	}
+	w.focused = focused
+	w.focusChanged.Emit(focused)
+}
+
+func (w *window) setFocusedWidget(widget Widget) {
+	if w.focusedWidget == widget {
+		return
+	}
+	old := w.focusedWidget
+	w.focusedWidget = widget
+	if old != nil {
+		old.base().setFocused(false)
+	}
+	if widget != nil {
+		widget.base().setFocused(true)
+	}
+	w.requestPaint()
+}
+
+func (w *window) focusWithinWidget(widget Widget) bool {
+	return widgetContains(w.focusedWidget, widget)
+}
+
+func (w *window) focusWithinBase(base *WidgetBase) bool {
+	for widget := w.focusedWidget; widget != nil; widget = widget.Parent() {
+		if widget.base() == base {
+			return true
+		}
+	}
+	return false
+}
+
+func (w *window) focusIsBase(base *WidgetBase) bool {
+	return w.focusedWidget != nil && w.focusedWidget.base() == base
+}
+
+func visibleInTree(widget Widget) bool {
+	for widget != nil {
+		if !widget.Visible() {
+			return false
+		}
+		widget = widget.Parent()
+	}
+	return true
+}
+
+func widgetContains(widget, ancestor Widget) bool {
+	for widget != nil {
+		if widget == ancestor {
+			return true
+		}
+		widget = widget.Parent()
+	}
+	return false
 }

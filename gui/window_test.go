@@ -64,6 +64,65 @@ func TestWindowDispatchEventHandlesSizeAndScale(t *testing.T) {
 	}
 }
 
+func TestWindowDispatchEventHandlesFocus(t *testing.T) {
+	win := &window{}
+	var calls []bool
+	win.ConnectFocusChanged(func(focused bool) {
+		calls = append(calls, focused)
+	})
+
+	if err := win.DispatchEvent(events.FocusEvent{Focused: true}); err != nil {
+		t.Fatal(err)
+	}
+	if !win.Focused() {
+		t.Fatal("window focus was not set")
+	}
+
+	if err := win.DispatchEvent(events.FocusEvent{Focused: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := win.DispatchEvent(events.FocusEvent{Focused: false}); err != nil {
+		t.Fatal(err)
+	}
+	if win.Focused() {
+		t.Fatal("window focus was not cleared")
+	}
+
+	if len(calls) != 2 || !calls[0] || calls[1] {
+		t.Fatalf("unexpected focus changed calls: %v", calls)
+	}
+}
+
+func TestWindowSetFocusedWidgetValidatesTarget(t *testing.T) {
+	win := &window{}
+	root := newTestWidget()
+	child := newTestWidget()
+	root.AddChild(child)
+	win.SetWidget(root)
+
+	if win.SetFocusedWidget(child) {
+		t.Fatal("non-focusable widget should not be focused")
+	}
+	child.SetFocusable(true)
+	if !win.SetFocusedWidget(child) {
+		t.Fatal("focusable child should be focused")
+	}
+	if win.FocusedWidget() != child || !child.Focused() {
+		t.Fatal("focused widget state was not set")
+	}
+
+	other := newTestWidget()
+	other.SetFocusable(true)
+	if win.SetFocusedWidget(other) {
+		t.Fatal("unmounted widget should not be focused")
+	}
+
+	child.SetVisible(false)
+	if win.SetFocusedWidget(child) {
+		t.Fatal("hidden widget should not be focused")
+	}
+}
+
 func TestWindowPaintPerformsPendingLayoutBeforePainting(t *testing.T) {
 	painter := new(testGraphicsPainter)
 	win := &window{

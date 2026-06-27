@@ -74,7 +74,7 @@ func (d *EventDispatcher) DispatchEvent(window Window, event events.Event) error
 		}
 	}
 
-	target := d.target(root, event)
+	target := d.target(window, root, event)
 	if target == nil {
 		return nil
 	}
@@ -103,19 +103,34 @@ func (d *EventDispatcher) DispatchEvent(window Window, event events.Event) error
 	return nil
 }
 
-func (d *EventDispatcher) target(root Widget, event events.Event) Widget {
+func (d *EventDispatcher) target(window Window, root Widget, event events.Event) Widget {
 	switch event := event.(type) {
 	case events.PointerEvent:
-		return hitTest(root, event.Position)
+		target := hitTest(root, event.Position)
+		if event.EventType == events.PointerDown {
+			focusNearest(window, target)
+		}
+		return target
 	case events.WheelEvent:
 		return hitTest(root, event.Position)
 	case events.KeyEvent:
-		// GUI focus is introduced in a later slice. Until then, key events are
-		// delivered to the top-level widget so controllers can still be tested.
+		if focused := window.FocusedWidget(); focused != nil {
+			return focused
+		}
 		return root
 	default:
 		return nil
 	}
+}
+
+func focusNearest(window Window, target Widget) {
+	for widget := target; widget != nil; widget = widget.Parent() {
+		if widget.Focusable() {
+			_ = window.SetFocusedWidget(widget)
+			return
+		}
+	}
+	_ = window.SetFocusedWidget(nil)
 }
 
 func (d *EventDispatcher) dispatchPhase(ctx *EventContext, widgets []Widget, phase PropagationPhase, event events.Event) {

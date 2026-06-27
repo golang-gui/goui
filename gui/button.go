@@ -17,6 +17,7 @@ type Button struct {
 
 func NewButton() *Button {
 	button := new(Button)
+	button.SetFocusable(true)
 	button.SetLayoutManager(layout.NewFillLayout())
 	button.AddEventController(&buttonHoverController{button: button})
 	button.AddEventController(&buttonClickController{

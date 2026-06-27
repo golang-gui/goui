@@ -219,7 +219,38 @@ func TestEventDispatcherSynthesizesWidgetHoverEvents(t *testing.T) {
 	})
 }
 
-func TestEventDispatcherDispatchesKeyToRootBeforeFocusModel(t *testing.T) {
+func TestEventDispatcherDispatchesKeyToFocusedWidget(t *testing.T) {
+	root := newTestWidget()
+	child := newTestWidget()
+	root.SetID("root")
+	child.SetID("child")
+	root.Arrange(geometry.Rect(0, 0, 100, 100))
+	child.Arrange(geometry.Rect(10, 10, 40, 40))
+	root.AddChild(child)
+	child.SetFocusable(true)
+
+	var calls []string
+	root.AddEventController(newRecordingController("root", PhaseTarget, &calls, nil))
+	child.AddEventController(newRecordingController("child", PhaseTarget, &calls, nil))
+
+	win := &window{}
+	win.SetWidget(root)
+	win.SetFocusedWidget(child)
+	event := events.KeyEvent{
+		EventType: events.KeyDown,
+		Key:       events.KeyA,
+	}
+
+	if err := win.DispatchEvent(event); err != nil {
+		t.Fatal(err)
+	}
+
+	assertStrings(t, calls, []string{
+		"child current=child target=child phase=1 type=10",
+	})
+}
+
+func TestEventDispatcherDispatchesKeyToRootWithoutFocusedWidget(t *testing.T) {
 	root := newTestWidget()
 	child := newTestWidget()
 	root.SetID("root")
@@ -245,6 +276,48 @@ func TestEventDispatcherDispatchesKeyToRootBeforeFocusModel(t *testing.T) {
 	assertStrings(t, calls, []string{
 		"root current=root target=root phase=1 type=10",
 	})
+}
+
+func TestEventDispatcherPointerDownFocusesNearestFocusableWidget(t *testing.T) {
+	root := newTestWidget()
+	parent := newTestWidget()
+	child := newTestWidget()
+	root.Arrange(geometry.Rect(0, 0, 100, 100))
+	parent.Arrange(geometry.Rect(10, 10, 80, 80))
+	child.Arrange(geometry.Rect(5, 5, 30, 30))
+	root.AddChild(parent)
+	parent.AddChild(child)
+	parent.SetFocusable(true)
+
+	win := &window{}
+	win.SetWidget(root)
+
+	if err := win.DispatchEvent(events.PointerEvent{
+		EventType: events.PointerDown,
+		Position:  geometry.Point{X: 20, Y: 20},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if win.FocusedWidget() != parent {
+		t.Fatalf("pointer down focused %v, want parent", win.FocusedWidget())
+	}
+	if !parent.Focused() {
+		t.Fatal("parent focused state was not set")
+	}
+
+	if err := win.DispatchEvent(events.PointerEvent{
+		EventType: events.PointerDown,
+		Position:  geometry.Point{X: 1, Y: 1},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if win.FocusedWidget() != nil {
+		t.Fatalf("non-focusable target should clear focus, got %v", win.FocusedWidget())
+	}
+	if parent.Focused() {
+		t.Fatal("parent focused state was not cleared")
+	}
 }
 
 func TestEventDispatcherIgnoresEventsWithoutTarget(t *testing.T) {
