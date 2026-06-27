@@ -12,6 +12,10 @@ type testWidget struct {
 	WidgetBase
 }
 
+func (w *testWidget) AddChild(child Widget) {
+	w.WidgetBase.AddChild(w, child)
+}
+
 func newTestWidget() *testWidget {
 	return new(testWidget)
 }
@@ -33,21 +37,21 @@ func TestWidgetBaseChildTree(t *testing.T) {
 	parent := newTestWidget()
 	child := newTestWidget()
 
-	AddChild(parent, child)
+	parent.AddChild(child)
 
-	if Parent(child) != parent {
+	if child.Parent() != parent {
 		t.Fatal("child parent was not set")
 	}
-	if children := GetChildren(parent); len(children) != 1 || children[0] != child {
+	if children := parent.Children(); len(children) != 1 || children[0] != child {
 		t.Fatalf("unexpected children: %v", children)
 	}
 
-	RemoveChild(parent, child)
+	parent.RemoveChild(child)
 
-	if Parent(child) != nil {
+	if child.Parent() != nil {
 		t.Fatal("child parent was not cleared")
 	}
-	if children := GetChildren(parent); len(children) != 0 {
+	if children := parent.Children(); len(children) != 0 {
 		t.Fatalf("expected no children, got %d", len(children))
 	}
 }
@@ -56,20 +60,20 @@ func TestWidgetBaseSetRootPropagatesToChildren(t *testing.T) {
 	win := &window{}
 	parent := newTestWidget()
 	child := newTestWidget()
-	AddChild(parent, child)
+	parent.AddChild(child)
 
 	win.SetWidget(parent)
 
-	if GetRoot(parent) != win {
+	if parent.Root() != win {
 		t.Fatal("parent root was not set")
 	}
-	if GetRoot(child) != win {
+	if child.Root() != win {
 		t.Fatal("child root was not set")
 	}
-	if GetWindow(parent) != win {
+	if parent.Window() != win {
 		t.Fatal("parent window was not set")
 	}
-	if GetWindow(child) != win {
+	if child.Window() != win {
 		t.Fatal("child window was not set")
 	}
 }
@@ -94,7 +98,7 @@ func TestWidgetBaseArrangeAndSnapshot(t *testing.T) {
 	parent.SetID("parent")
 	child := newTestWidget()
 	child.SetID("child")
-	AddChild(parent, child)
+	parent.AddChild(child)
 
 	parent.Arrange(geometry.Rect(1, 2, 30, 40))
 	child.Arrange(geometry.Rect(3, 4, 10, 20))
@@ -115,8 +119,8 @@ func TestWidgetBaseSnapshotBoundsAreWindowLocal(t *testing.T) {
 	root := newTestWidget()
 	parent := newTestWidget()
 	child := newTestWidget()
-	AddChild(root, parent)
-	AddChild(parent, child)
+	root.AddChild(parent)
+	parent.AddChild(child)
 
 	root.Arrange(geometry.Rect(10, 20, 100, 100))
 	parent.Arrange(geometry.Rect(3, 4, 50, 50))
@@ -133,8 +137,8 @@ func TestWidgetBaseLayoutManagerUsesVisibleChildren(t *testing.T) {
 	visible := newTestWidget()
 	hidden := newTestWidget()
 	hidden.SetVisible(false)
-	AddChild(parent, visible)
-	AddChild(parent, hidden)
+	parent.AddChild(visible)
+	parent.AddChild(hidden)
 
 	manager := &testLayoutManager{
 		measureSize: geometry.Size{Width: 11, Height: 12},
@@ -180,7 +184,27 @@ func TestWidgetBaseLifecycleMountsAndUnmountsSubtree(t *testing.T) {
 	win := &window{}
 	parent := newLifecycleWidget("parent", &calls)
 	child := newLifecycleWidget("child", &calls)
-	AddChild(parent, child)
+	parent.AddChild(child)
+	parent.ConnectMount(func() {
+		if parent.Window() != win || parent.Root() != win || parent.Parent() != nil {
+			t.Fatalf("parent mount saw invalid relationship: window=%v root=%v parent=%v", parent.Window(), parent.Root(), parent.Parent())
+		}
+	})
+	child.ConnectMount(func() {
+		if child.Window() != win || child.Root() != win || child.Parent() != parent {
+			t.Fatalf("child mount saw invalid relationship: window=%v root=%v parent=%v", child.Window(), child.Root(), child.Parent())
+		}
+	})
+	parent.ConnectUnmount(func() {
+		if parent.Window() != win || parent.Root() != win || parent.Parent() != nil {
+			t.Fatalf("parent unmount saw invalid relationship: window=%v root=%v parent=%v", parent.Window(), parent.Root(), parent.Parent())
+		}
+	})
+	child.ConnectUnmount(func() {
+		if child.Window() != win || child.Root() != win || child.Parent() != parent {
+			t.Fatalf("child unmount saw invalid relationship: window=%v root=%v parent=%v", child.Window(), child.Root(), child.Parent())
+		}
+	})
 
 	if len(calls) != 0 {
 		t.Fatalf("lifecycle fired before mount: %v", calls)
@@ -198,6 +222,12 @@ func TestWidgetBaseLifecycleMountsAndUnmountsSubtree(t *testing.T) {
 		"child unmount",
 		"parent unmount",
 	})
+	if parent.Window() != nil || parent.Root() != nil {
+		t.Fatal("parent relationship was not cleared after unmount")
+	}
+	if child.Window() != nil || child.Root() != nil || child.Parent() != parent {
+		t.Fatal("child subtree relationship unexpected after root unmount")
+	}
 }
 
 func TestWidgetBaseLifecycleMountsChildAddedToMountedParent(t *testing.T) {
@@ -208,48 +238,53 @@ func TestWidgetBaseLifecycleMountsChildAddedToMountedParent(t *testing.T) {
 	win.SetWidget(parent)
 
 	calls = nil
-	AddChild(parent, child)
+	parent.AddChild(child)
 	assertStrings(t, calls, []string{"child mount"})
-	if GetWindow(child) != win {
+	if child.Window() != win {
 		t.Fatal("child window was not set")
 	}
 
 	calls = nil
-	RemoveChild(parent, child)
+	child.ConnectUnmount(func() {
+		if child.Window() != win || child.Root() != win || child.Parent() != parent {
+			t.Fatalf("child unmount saw invalid relationship: window=%v root=%v parent=%v", child.Window(), child.Root(), child.Parent())
+		}
+	})
+	parent.RemoveChild(child)
 	assertStrings(t, calls, []string{"child unmount"})
-	if GetWindow(child) != nil {
+	if child.Window() != nil {
 		t.Fatal("child window was not cleared")
 	}
-	if Parent(child) != nil {
+	if child.Parent() != nil {
 		t.Fatal("child parent was not cleared")
 	}
 }
 
-func TestSetParentReparentsWithinSameRootWithoutLifecycle(t *testing.T) {
+func TestAddChildReparentsWithinSameRootWithoutLifecycle(t *testing.T) {
 	var calls []string
 	win := &window{}
 	root := newLifecycleWidget("root", &calls)
 	first := newLifecycleWidget("first", &calls)
 	second := newLifecycleWidget("second", &calls)
 	child := newLifecycleWidget("child", &calls)
-	AddChild(root, first)
-	AddChild(root, second)
-	AddChild(first, child)
+	root.AddChild(first)
+	root.AddChild(second)
+	first.AddChild(child)
 	win.SetWidget(root)
 
 	calls = nil
-	SetParent(child, second)
+	second.AddChild(child)
 
-	if Parent(child) != second {
+	if child.Parent() != second {
 		t.Fatal("child was not reparented")
 	}
-	if children := GetChildren(first); len(children) != 0 {
+	if children := first.Children(); len(children) != 0 {
 		t.Fatalf("old parent still has children: %v", children)
 	}
-	if children := GetChildren(second); len(children) != 1 || children[0] != child {
+	if children := second.Children(); len(children) != 1 || children[0] != child {
 		t.Fatalf("new parent children unexpected: %v", children)
 	}
-	if GetRoot(child) != win {
+	if child.Root() != win {
 		t.Fatal("child root changed unexpectedly")
 	}
 	if len(calls) != 0 {
@@ -262,11 +297,11 @@ func TestDestroyWidgetUnmountsAndClearsSubtreeOnce(t *testing.T) {
 	win := &window{}
 	root := newLifecycleWidget("root", &calls)
 	child := newLifecycleWidget("child", &calls)
-	AddChild(root, child)
+	root.AddChild(child)
 	win.SetWidget(root)
 
 	calls = nil
-	destroyWidget(root)
+	root.base().destroy(root)
 	assertStrings(t, calls, []string{
 		"child unmount",
 		"root unmount",
@@ -274,19 +309,19 @@ func TestDestroyWidgetUnmountsAndClearsSubtreeOnce(t *testing.T) {
 	if win.Widget() != nil {
 		t.Fatal("destroyed root was not removed from window")
 	}
-	if GetWindow(root) != nil || GetWindow(child) != nil {
+	if root.Window() != nil || child.Window() != nil {
 		t.Fatal("destroyed widgets still have a window")
 	}
-	if Parent(child) != nil {
+	if child.Parent() != nil {
 		t.Fatal("destroyed child still has a parent")
 	}
-	if len(GetChildren(root)) != 0 {
+	if len(root.Children()) != 0 {
 		t.Fatal("destroyed root still has children")
 	}
 
 	calls = nil
-	destroyWidget(root)
-	destroyWidget(child)
+	root.base().destroy(root)
+	child.base().destroy(child)
 	if len(calls) != 0 {
 		t.Fatalf("destroy unmounted more than once: %v", calls)
 	}
@@ -304,6 +339,10 @@ type lifecycleWidget struct {
 	WidgetBase
 	name  string
 	calls *[]string
+}
+
+func (w *lifecycleWidget) AddChild(child Widget) {
+	w.WidgetBase.AddChild(w, child)
 }
 
 func newLifecycleWidget(name string, calls *[]string) *lifecycleWidget {

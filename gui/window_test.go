@@ -19,12 +19,12 @@ func TestWindowSetWidget(t *testing.T) {
 	if win.Widget() != root {
 		t.Fatal("window root widget was not set")
 	}
-	if GetWindow(root) != win {
+	if root.Window() != win {
 		t.Fatal("root widget window was not set")
 	}
 
 	win.SetWidget(nil)
-	if GetWindow(root) != nil {
+	if root.Window() != nil {
 		t.Fatal("old root widget window was not cleared")
 	}
 }
@@ -165,7 +165,7 @@ func TestWindowDestroyDestroysRootWidget(t *testing.T) {
 	win := &window{}
 	root := newLifecycleWidget("root", &calls)
 	child := newLifecycleWidget("child", &calls)
-	AddChild(root, child)
+	root.AddChild(child)
 	win.SetWidget(root)
 
 	calls = nil

@@ -117,16 +117,16 @@ func (w *window) SetWidget(widget Widget) {
 		return
 	}
 	if w.root != nil {
-		detachRoot(w.root)
+		w.root.base().detachRoot(w.root)
 	}
 	if widget != nil {
-		oldRoot := GetRoot(widget)
-		detachWidget(widget)
+		oldRoot := widget.Root()
 		if oldRoot != nil {
-			emitUnmountSubtree(widget)
+			widget.base().emitUnmountSubtree(widget)
 		}
+		widget.base().detach(widget)
 		w.root = widget
-		attachRoot(w, widget)
+		widget.base().attachRoot(w, widget)
 	}
 	w.requestLayout()
 }
@@ -162,8 +162,8 @@ func (w *window) Destroy() {
 
 	if w.root != nil {
 		root := w.root
-		detachRoot(root)
-		destroyWidget(root)
+		root.base().detachRoot(root)
+		root.base().destroy(root)
 	}
 	if w.painter != nil {
 		w.painter.Destroy()

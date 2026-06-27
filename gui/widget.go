@@ -16,6 +16,10 @@ type Root interface {
 type Widget interface {
 	base() *WidgetBase
 
+	Parent() Widget
+	Root() Root
+	Window() Window
+
 	ID() string
 	SetID(string)
 
@@ -33,12 +37,22 @@ type Widget interface {
 
 	Measure(available geometry.Size) geometry.Size
 	Arrange(rect geometry.Rectangle)
+
 	Paint(p Painter)
 	RequestLayout()
+
 	ConnectMount(func()) signal.Handle
 	ConnectUnmount(func()) signal.Handle
 
 	Snapshot() WidgetInfo
+}
+
+type Container interface {
+	Widget
+
+	AddChild(Widget)
+	RemoveChild(Widget)
+	Children() []Widget
 }
 
 type WidgetBase struct {
@@ -85,6 +99,27 @@ func (w *WidgetBase) SetVisible(visible bool) {
 
 func (w *WidgetBase) Rect() geometry.Rectangle {
 	return w.rect
+}
+
+func (w *WidgetBase) Parent() Widget {
+	return w.parentWidget
+}
+
+func (w *WidgetBase) RemoveChild(child Widget) {
+	w.removeChild(child)
+}
+
+func (w *WidgetBase) Children() []Widget {
+	return slices.Clone(w.children)
+}
+
+func (w *WidgetBase) Root() Root {
+	return w.root()
+}
+
+func (w *WidgetBase) Window() Window {
+	win, _ := w.root().(Window)
+	return win
 }
 
 func (w *WidgetBase) EventControllers() []EventController {
@@ -160,7 +195,7 @@ func (w *WidgetBase) Snapshot() WidgetInfo {
 
 func (w *WidgetBase) windowRect() geometry.Rectangle {
 	rect := w.rect
-	for parent := w.parentWidget; parent != nil; parent = Parent(parent) {
+	for parent := w.parentWidget; parent != nil; parent = parent.Parent() {
 		parentRect := parent.Rect()
 		rect.X += parentRect.X
 		rect.Y += parentRect.Y
@@ -169,7 +204,7 @@ func (w *WidgetBase) windowRect() geometry.Rectangle {
 }
 
 func (w *WidgetBase) RequestLayout() {
-	if win := getWindowFromBase(w); win != nil {
+	if win := w.window(); win != nil {
 		win.requestLayout()
 	}
 }
@@ -186,55 +221,31 @@ func (w *WidgetBase) requestSemanticUpdate() {
 	// Reserved for the inspector and automation layers.
 }
 
-func baseOf(widget Widget) *WidgetBase {
-	if widget == nil {
-		return nil
+func (w *WidgetBase) AddChild(parent, child Widget) {
+	if parent == nil || parent.base() != w {
+		return
 	}
-	return widget.base()
+	if child == nil {
+		return
+	}
+	child.base().setParent(child, parent)
 }
 
-func Parent(widget Widget) Widget {
-	if base := baseOf(widget); base != nil {
-		return base.parentWidget
+func (w *WidgetBase) removeChild(child Widget) {
+	if child == nil || child.base().parentWidget == nil || child.base().parentWidget.base() != w {
+		return
 	}
-	return nil
+	child.base().setParent(child, nil)
 }
 
-func GetRoot(widget Widget) Root {
-	for widget != nil {
-		base := baseOf(widget)
-		if base == nil {
-			return nil
-		}
-		if base.parentRoot != nil {
-			return base.parentRoot
-		}
-		widget = base.parentWidget
+func (w *WidgetBase) setParent(child, parent Widget) {
+	if child == nil || child.base() != w {
+		return
 	}
-	return nil
-}
-
-func GetWindow(widget Widget) Window {
-	root := GetRoot(widget)
-	if root == nil {
-		return nil
-	}
-	win, _ := root.(Window)
-	return win
-}
-
-func GetChildren(widget Widget) []Widget {
-	if base := baseOf(widget); base != nil {
-		return slices.Clone(base.children)
-	}
-	return nil
-}
-
-func SetParent(child, parent Widget) {
 	if child == nil || child == parent {
 		return
 	}
-	if parent != nil && isDescendant(parent, child) {
+	if parent != nil && parent.base().isDescendant(parent, child) {
 		return
 	}
 
@@ -249,94 +260,95 @@ func SetParent(child, parent Widget) {
 		return
 	}
 
-	oldRoot := GetRoot(child)
-	newRoot := GetRoot(parent)
+	oldRoot := child.Root()
+	var newRoot Root
+	if parent != nil {
+		newRoot = parent.Root()
+	}
 	rootChanged := oldRoot != newRoot
 
-	detachWidget(child)
 	if rootChanged && oldRoot != nil {
-		emitUnmountSubtree(child)
+		w.emitUnmountSubtree(child)
 	}
+	w.detach(child)
 
 	if parent != nil {
-		attachChild(parent, child)
+		w.attachChild(parent, child)
 	}
 	if rootChanged && newRoot != nil {
-		emitMountSubtree(child)
+		w.emitMountSubtree(child)
 	}
 }
 
-func AddChild(parent, child Widget) {
-	if parent == nil {
-		return
-	}
-	SetParent(child, parent)
-}
-
-func RemoveChild(parent, child Widget) {
-	if parent == nil || child == nil || Parent(child) != parent {
-		return
-	}
-	SetParent(child, nil)
-}
-
-func rootOfBase(base *WidgetBase) Root {
-	if base == nil {
+func (w *WidgetBase) root() Root {
+	if w == nil {
 		return nil
 	}
-	if base.parentRoot != nil {
-		return base.parentRoot
+	if w.parentRoot != nil {
+		return w.parentRoot
 	}
-	return GetRoot(base.parentWidget)
+	if w.parentWidget != nil {
+		return w.parentWidget.Root()
+	}
+	return nil
 }
 
-func getWindowFromBase(base *WidgetBase) *window {
-	win, _ := rootOfBase(base).(*window)
+func (w *WidgetBase) window() *window {
+	win, _ := w.root().(*window)
 	return win
 }
 
-func attachRoot(root Root, child Widget) {
-	base := child.base()
-	base.parentWidget = nil
-	base.parentRoot = root
-	emitMountSubtree(child)
-}
-
-func detachRoot(child Widget) {
-	oldRoot := GetRoot(child)
-	detachWidget(child)
-	if oldRoot != nil {
-		emitUnmountSubtree(child)
+func (w *WidgetBase) attachRoot(root Root, child Widget) {
+	if child == nil || child.base() != w {
+		return
 	}
+	w.parentWidget = nil
+	w.parentRoot = root
+	w.emitMountSubtree(child)
 }
 
-func attachChild(parent, child Widget) {
+func (w *WidgetBase) detachRoot(child Widget) {
+	if child == nil || child.base() != w {
+		return
+	}
+	oldRoot := child.Root()
+	if oldRoot != nil {
+		w.emitUnmountSubtree(child)
+	}
+	w.detach(child)
+}
+
+func (w *WidgetBase) attachChild(parent, child Widget) {
+	if child == nil || child.base() != w {
+		return
+	}
 	parentBase := parent.base()
-	childBase := child.base()
-	childBase.parentWidget = parent
-	childBase.parentRoot = nil
+	w.parentWidget = parent
+	w.parentRoot = nil
 	parentBase.children = append(parentBase.children, child)
 	parent.RequestLayout()
 	parentBase.requestSemanticUpdate()
 }
 
-func detachWidget(child Widget) {
-	base := child.base()
-	if base.parentWidget != nil {
-		parent := base.parentWidget
+func (w *WidgetBase) detach(child Widget) {
+	if child == nil || child.base() != w {
+		return
+	}
+	if w.parentWidget != nil {
+		parent := w.parentWidget
 		parentBase := parent.base()
 		index := slices.Index(parentBase.children, child)
 		if index >= 0 {
 			parentBase.children = slices.Delete(parentBase.children, index, index+1)
 		}
-		base.parentWidget = nil
+		w.parentWidget = nil
 		parent.RequestLayout()
 		parentBase.requestSemanticUpdate()
 		return
 	}
-	if base.parentRoot != nil {
-		root := base.parentRoot
-		base.parentRoot = nil
+	if w.parentRoot != nil {
+		root := w.parentRoot
+		w.parentRoot = nil
 		if win, ok := root.(*window); ok && win.root == child {
 			win.root = nil
 			win.requestLayout()
@@ -344,50 +356,53 @@ func detachWidget(child Widget) {
 	}
 }
 
-func destroyWidget(widget Widget) {
-	base := widget.base()
-	if base.destroyed {
+func (w *WidgetBase) destroy(widget Widget) {
+	if widget == nil || widget.base() != w || w.destroyed {
 		return
 	}
 
-	oldRoot := GetRoot(widget)
-	detachWidget(widget)
+	oldRoot := widget.Root()
 	if oldRoot != nil {
-		emitUnmountSubtree(widget)
+		w.emitUnmountSubtree(widget)
+	}
+	w.detach(widget)
+
+	w.destroyed = true
+	for _, child := range slices.Clone(w.children) {
+		child.base().destroy(child)
 	}
 
-	base.destroyed = true
-	for _, child := range slices.Clone(base.children) {
-		destroyWidget(child)
-	}
-
-	base.children = nil
-	base.controllers = nil
-	base.layoutManager = nil
+	w.children = nil
+	w.controllers = nil
+	w.layoutManager = nil
 }
 
-func emitMountSubtree(widget Widget) {
-	base := widget.base()
-	base.mount.Emit()
-	for _, child := range slices.Clone(base.children) {
-		emitMountSubtree(child)
+func (w *WidgetBase) emitMountSubtree(widget Widget) {
+	if widget == nil || widget.base() != w {
+		return
+	}
+	w.mount.Emit()
+	for _, child := range slices.Clone(w.children) {
+		child.base().emitMountSubtree(child)
 	}
 }
 
-func emitUnmountSubtree(widget Widget) {
-	base := widget.base()
-	for _, child := range slices.Clone(base.children) {
-		emitUnmountSubtree(child)
+func (w *WidgetBase) emitUnmountSubtree(widget Widget) {
+	if widget == nil || widget.base() != w {
+		return
 	}
-	base.unmount.Emit()
+	for _, child := range slices.Clone(w.children) {
+		child.base().emitUnmountSubtree(child)
+	}
+	w.unmount.Emit()
 }
 
-func isDescendant(widget, ancestor Widget) bool {
+func (w *WidgetBase) isDescendant(widget, ancestor Widget) bool {
 	for widget != nil {
 		if widget == ancestor {
 			return true
 		}
-		widget = Parent(widget)
+		widget = widget.Parent()
 	}
 	return false
 }

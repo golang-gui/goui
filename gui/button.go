@@ -30,6 +30,10 @@ func NewButton() *Button {
 	return button
 }
 
+func (b *Button) AddChild(child Widget) {
+	b.WidgetBase.AddChild(b, child)
+}
+
 func (b *Button) Paint(p Painter) {
 	if !b.Visible() {
 		return
@@ -74,7 +78,7 @@ func (b *Button) setPressed(pressed bool) {
 }
 
 func (b *Button) requestPaint() {
-	if win := GetWindow(b); win != nil {
+	if win := b.Window(); win != nil {
 		_ = win.RequestPaint()
 	}
 }

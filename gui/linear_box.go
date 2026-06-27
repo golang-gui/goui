@@ -15,6 +15,10 @@ func NewLinearBox(direction layout.Direction) *LinearBox {
 	return box
 }
 
+func (b *LinearBox) AddChild(child Widget) {
+	b.WidgetBase.AddChild(b, child)
+}
+
 func (b *LinearBox) SetLayoutManager(manager layout.LayoutManager) {
 	linear, ok := manager.(*layout.LinearLayout)
 	if !ok {
