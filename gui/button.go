@@ -12,7 +12,7 @@ type Button struct {
 	hovered bool
 	pressed bool
 	clicked signal.Signal0
-	hover   *HoverEventController
+	motion  *MotionEventController
 	click   *ClickEventController
 }
 
@@ -21,14 +21,9 @@ func NewButton() *Button {
 	button.SetFocusable(true)
 	button.SetLayoutManager(layout.NewFillLayout())
 
-	button.hover = NewHoverEventController()
-	button.hover.ConnectEnter(func() {
-		button.setHovered(true)
-	})
-	button.hover.ConnectLeave(func() {
-		button.setHovered(false)
-	})
-	button.AddEventController(button.hover)
+	button.motion = NewMotionEventController()
+	button.motion.ConnectContainsHover(button.setHovered)
+	button.AddEventController(button.motion)
 
 	button.click = NewClickEventController()
 	button.click.ConnectPressed(func(ctx EventContext, pressed bool) {

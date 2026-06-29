@@ -5,7 +5,6 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/layout"
-	"github.com/golang-gui/goui/platform/events"
 )
 
 type testWidget struct {
@@ -441,7 +440,9 @@ func (c *testControllerAdapter) Phase() PropagationPhase {
 
 func (c *testControllerAdapter) Reset() {}
 
-func (c *testControllerAdapter) HandleEvent(ctx EventContext, event events.Event) {}
+func (c *testControllerAdapter) HandleEvent(ctx EventContext) {}
+
+func (c *testControllerAdapter) HandleCrossing(ctx CrossingContext) {}
 
 type lifecycleWidget struct {
 	WidgetBase
