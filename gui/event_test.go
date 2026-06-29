@@ -41,13 +41,13 @@ func TestEventDispatcherDispatchesPointerEventThroughThreePhases(t *testing.T) {
 	}
 
 	want := []string{
-		"root-capture current=root target=target phase=0 type=7",
-		"parent-capture current=parent target=target phase=0 type=7",
-		"target-capture current=target target=target phase=0 type=7",
-		"target current=target target=target phase=1 type=7",
-		"target-bubble current=target target=target phase=2 type=7",
-		"parent-bubble current=parent target=target phase=2 type=7",
-		"root-bubble current=root target=target phase=2 type=7",
+		"root-capture phase=0 type=7",
+		"parent-capture phase=0 type=7",
+		"target-capture phase=0 type=7",
+		"target phase=1 type=7",
+		"target-bubble phase=2 type=7",
+		"parent-bubble phase=2 type=7",
+		"root-bubble phase=2 type=7",
 	}
 	assertStrings(t, calls, want)
 }
@@ -84,8 +84,8 @@ func TestEventDispatcherStopsPropagation(t *testing.T) {
 	}
 
 	want := []string{
-		"root-capture current=root target=target phase=0 type=7",
-		"parent-capture current=parent target=target phase=0 type=7",
+		"root-capture phase=0 type=7",
+		"parent-capture phase=0 type=7",
 	}
 	assertStrings(t, calls, want)
 }
@@ -118,7 +118,7 @@ func TestEventDispatcherHitTestUsesLastVisibleChild(t *testing.T) {
 	}
 
 	assertStrings(t, calls, []string{
-		"top current=top target=top phase=1 type=7",
+		"top phase=1 type=7",
 	})
 
 	top.SetVisible(false)
@@ -129,7 +129,7 @@ func TestEventDispatcherHitTestUsesLastVisibleChild(t *testing.T) {
 	}
 
 	assertStrings(t, calls, []string{
-		"bottom current=bottom target=bottom phase=1 type=7",
+		"bottom phase=1 type=7",
 	})
 }
 
@@ -157,11 +157,56 @@ func TestEventDispatcherDispatchesWheelByPosition(t *testing.T) {
 	}
 
 	assertStrings(t, calls, []string{
-		"child current=child target=child phase=1 type=9",
+		"child phase=1 type=9",
 	})
 }
 
-func TestEventDispatcherSynthesizesWidgetHoverEvents(t *testing.T) {
+func TestEventContextPositionIsLocalToCurrentWidget(t *testing.T) {
+	root := newTestWidget()
+	child := newTestWidget()
+	root.Arrange(geometry.Rect(0, 0, 100, 100))
+	child.Arrange(geometry.Rect(10, 20, 40, 40))
+	root.AddChild(child)
+
+	var positions []geometry.Point
+	child.AddEventController(newRecordingController("child", PhaseTarget, new([]string), func(ctx EventContext) {
+		position, ok := ctx.Position()
+		if !ok {
+			t.Fatal("pointer event should provide a position")
+		}
+		positions = append(positions, position)
+	}))
+
+	win := &window{root: root}
+	if err := win.DispatchEvent(events.PointerEvent{
+		EventType: events.PointerDown,
+		Position:  geometry.Point{X: 15, Y: 27},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(positions) != 1 || positions[0] != (geometry.Point{X: 5, Y: 7}) {
+		t.Fatalf("unexpected local positions: %+v", positions)
+	}
+}
+
+func TestEventContextPositionIsAbsentForKeyEvent(t *testing.T) {
+	root := newTestWidget()
+	root.Arrange(geometry.Rect(0, 0, 100, 100))
+
+	root.AddEventController(newRecordingController("root", PhaseTarget, new([]string), func(ctx EventContext) {
+		if _, ok := ctx.Position(); ok {
+			t.Fatal("key event should not provide a position")
+		}
+	}))
+
+	win := &window{root: root}
+	if err := win.DispatchEvent(events.KeyEvent{EventType: events.KeyDown}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEventDispatcherDoesNotPropagatePointerCrossingAsPlatformEvents(t *testing.T) {
 	root := newTestWidget()
 	first := newTestWidget()
 	second := newTestWidget()
@@ -188,9 +233,7 @@ func TestEventDispatcherSynthesizesWidgetHoverEvents(t *testing.T) {
 	}
 
 	assertStrings(t, calls, []string{
-		"root current=root target=root phase=1 type=4",
-		"first current=first target=first phase=1 type=4",
-		"first current=first target=first phase=1 type=6",
+		"first phase=1 type=6",
 	})
 
 	calls = nil
@@ -202,9 +245,7 @@ func TestEventDispatcherSynthesizesWidgetHoverEvents(t *testing.T) {
 	}
 
 	assertStrings(t, calls, []string{
-		"first current=first target=first phase=1 type=5",
-		"second current=second target=second phase=1 type=4",
-		"second current=second target=second phase=1 type=6",
+		"second phase=1 type=6",
 	})
 
 	calls = nil
@@ -215,10 +256,86 @@ func TestEventDispatcherSynthesizesWidgetHoverEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assertStrings(t, calls, []string{
-		"second current=second target=second phase=1 type=5",
-		"root current=root target=root phase=1 type=5",
-	})
+	assertStrings(t, calls, nil)
+}
+
+func TestEventDispatcherUpdatesMotionHoverStates(t *testing.T) {
+	root := newTestWidget()
+	parent := newTestWidget()
+	child := newTestWidget()
+	root.Arrange(geometry.Rect(0, 0, 100, 100))
+	parent.Arrange(geometry.Rect(10, 10, 80, 80))
+	child.Arrange(geometry.Rect(10, 10, 20, 20))
+	root.AddChild(parent)
+	parent.AddChild(child)
+
+	parentMotion := NewMotionEventController()
+	childMotion := NewMotionEventController()
+	parent.AddEventController(parentMotion)
+	child.AddEventController(childMotion)
+
+	win := &window{root: root}
+	if err := win.DispatchEvent(events.PointerEvent{
+		EventType: events.PointerMove,
+		Position:  geometry.Point{X: 15, Y: 15},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !parentMotion.IsHover() || !parentMotion.ContainsHover() {
+		t.Fatalf("parent should be directly hovered: is=%v contains=%v", parentMotion.IsHover(), parentMotion.ContainsHover())
+	}
+	if childMotion.IsHover() || childMotion.ContainsHover() {
+		t.Fatalf("child should not be hovered: is=%v contains=%v", childMotion.IsHover(), childMotion.ContainsHover())
+	}
+
+	if err := win.DispatchEvent(events.PointerEvent{
+		EventType: events.PointerMove,
+		Position:  geometry.Point{X: 25, Y: 25},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if parentMotion.IsHover() || !parentMotion.ContainsHover() {
+		t.Fatalf("parent should contain hover through child: is=%v contains=%v", parentMotion.IsHover(), parentMotion.ContainsHover())
+	}
+	if !childMotion.IsHover() || !childMotion.ContainsHover() {
+		t.Fatalf("child should be directly hovered: is=%v contains=%v", childMotion.IsHover(), childMotion.ContainsHover())
+	}
+
+	if err := win.DispatchEvent(events.PointerEvent{
+		EventType: events.PointerMove,
+		Position:  geometry.Point{X: 95, Y: 95},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if parentMotion.IsHover() || parentMotion.ContainsHover() || childMotion.IsHover() || childMotion.ContainsHover() {
+		t.Fatalf("hover states were not cleared: parent is=%v contains=%v child is=%v contains=%v",
+			parentMotion.IsHover(), parentMotion.ContainsHover(), childMotion.IsHover(), childMotion.ContainsHover())
+	}
+}
+
+func TestEventDispatcherHoverStateIgnoresStoppedPointerMove(t *testing.T) {
+	root := newTestWidget()
+	child := newTestWidget()
+	root.Arrange(geometry.Rect(0, 0, 100, 100))
+	child.Arrange(geometry.Rect(10, 10, 40, 40))
+	root.AddChild(child)
+
+	motion := NewMotionEventController()
+	child.AddEventController(motion)
+	child.AddEventController(newRecordingController("stop", PhaseTarget, new([]string), func(ctx EventContext) {
+		ctx.StopPropagation()
+	}))
+
+	win := &window{root: root}
+	if err := win.DispatchEvent(events.PointerEvent{
+		EventType: events.PointerMove,
+		Position:  geometry.Point{X: 20, Y: 20},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !motion.IsHover() || !motion.ContainsHover() {
+		t.Fatalf("hover state should update before propagation stop: is=%v contains=%v", motion.IsHover(), motion.ContainsHover())
+	}
 }
 
 func TestEventDispatcherDispatchesKeyToFocusedWidget(t *testing.T) {
@@ -248,7 +365,7 @@ func TestEventDispatcherDispatchesKeyToFocusedWidget(t *testing.T) {
 	}
 
 	assertStrings(t, calls, []string{
-		"child current=child target=child phase=1 type=10",
+		"child phase=1 type=10",
 	})
 }
 
@@ -276,7 +393,7 @@ func TestEventDispatcherDispatchesKeyToRootWithoutFocusedWidget(t *testing.T) {
 	}
 
 	assertStrings(t, calls, []string{
-		"root current=root target=root phase=1 type=10",
+		"root phase=1 type=10",
 	})
 }
 
@@ -365,29 +482,19 @@ func (c *recordingController) Phase() PropagationPhase {
 
 func (c *recordingController) Reset() {}
 
-func (c *recordingController) HandleEvent(ctx EventContext, event events.Event) {
+func (c *recordingController) HandleEvent(ctx EventContext) {
 	*c.calls = append(*c.calls, fmt.Sprintf(
-		"%s current=%s target=%s phase=%d type=%d",
+		"%s phase=%d type=%d",
 		c.name,
-		widgetID(ctx.Current()),
-		widgetID(ctx.Target()),
-		ctx.Phase(),
-		event.Type(),
+		c.phase,
+		ctx.Event().Type(),
 	))
 	if c.handle != nil {
 		c.handle(ctx)
 	}
 }
 
-func widgetID(widget Widget) string {
-	if widget == nil {
-		return "<nil>"
-	}
-	if widget.ID() == "" {
-		return "<unnamed>"
-	}
-	return widget.ID()
-}
+func (c *recordingController) HandleCrossing(ctx CrossingContext) {}
 
 func assertStrings(t *testing.T, got, want []string) {
 	t.Helper()

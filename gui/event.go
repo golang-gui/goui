@@ -18,34 +18,86 @@ const (
 type EventController interface {
 	Phase() PropagationPhase
 	Reset()
-	HandleEvent(ctx EventContext, event events.Event)
+	HandleEvent(ctx EventContext)
+	HandleCrossing(ctx CrossingContext)
 }
 
 type EventContext interface {
-	Target() Widget
-	Current() Widget
-	Phase() PropagationPhase
+	Event() events.Event
+	Position() (geometry.Point, bool)
 	StopPropagation()
 	PropagationStopped() bool
 }
 
+type CrossingType int
+
+const (
+	CrossingPointer CrossingType = iota
+	CrossingFocus
+)
+
+type CrossingMode int
+
+const (
+	CrossingTarget CrossingMode = iota
+	CrossingContains
+)
+
+type CrossingDirection int
+
+const (
+	CrossingEnter CrossingDirection = iota
+	CrossingLeave
+)
+
+type CrossingContext interface {
+	Type() CrossingType
+	Mode() CrossingMode
+	Direction() CrossingDirection
+	Position() (geometry.Point, bool)
+}
+
+type EventControllerBase struct {
+	phase PropagationPhase
+}
+
+func NewEventControllerBase(phase PropagationPhase) EventControllerBase {
+	return EventControllerBase{phase: phase}
+}
+
+func (b *EventControllerBase) Phase() PropagationPhase {
+	return b.phase
+}
+
+func (b *EventControllerBase) SetPhase(phase PropagationPhase) {
+	b.phase = phase
+}
+
+func (b *EventControllerBase) Reset() {}
+
+func (b *EventControllerBase) HandleEvent(ctx EventContext) {}
+
+func (b *EventControllerBase) HandleCrossing(ctx CrossingContext) {}
+
 type eventContext struct {
-	target  Widget
-	current Widget
-	phase   PropagationPhase
-	stopped bool
+	event            events.Event
+	target           Widget
+	current          Widget
+	position         geometry.Point
+	hasPosition      bool
+	explicitPosition bool
+	stopped          bool
 }
 
-func (c *eventContext) Target() Widget {
-	return c.target
+func (c *eventContext) Event() events.Event {
+	return c.event
 }
 
-func (c *eventContext) Current() Widget {
-	return c.current
-}
-
-func (c *eventContext) Phase() PropagationPhase {
-	return c.phase
+func (c *eventContext) Position() (geometry.Point, bool) {
+	if c.explicitPosition {
+		return c.position, c.hasPosition
+	}
+	return eventLocalPosition(c.current, c.event)
 }
 
 func (c *eventContext) StopPropagation() {
@@ -54,6 +106,30 @@ func (c *eventContext) StopPropagation() {
 
 func (c *eventContext) PropagationStopped() bool {
 	return c.stopped
+}
+
+type crossingContext struct {
+	crossingType CrossingType
+	mode         CrossingMode
+	direction    CrossingDirection
+	position     geometry.Point
+	hasPosition  bool
+}
+
+func (c *crossingContext) Type() CrossingType {
+	return c.crossingType
+}
+
+func (c *crossingContext) Mode() CrossingMode {
+	return c.mode
+}
+
+func (c *crossingContext) Direction() CrossingDirection {
+	return c.direction
+}
+
+func (c *crossingContext) Position() (geometry.Point, bool) {
+	return c.position, c.hasPosition
 }
 
 type EventDispatcher struct {
@@ -72,7 +148,7 @@ func (d *EventDispatcher) DispatchEvent(window Window, event events.Event) error
 
 	if pointerEvent, ok := event.(events.PointerEvent); ok {
 		switch pointerEvent.EventType {
-		case events.PointerEnter, events.PointerMove:
+		case events.PointerEnter, events.PointerMove, events.PointerDown, events.PointerUp:
 			d.updateHover(root, pointerEvent)
 			if pointerEvent.EventType == events.PointerEnter {
 				return nil
@@ -94,6 +170,7 @@ func (d *EventDispatcher) DispatchEvent(window Window, event events.Event) error
 	}
 
 	ctx := &eventContext{
+		event:  event,
 		target: target,
 	}
 
@@ -145,12 +222,11 @@ func focusNearest(window Window, target Widget) {
 func (d *EventDispatcher) dispatchPhase(ctx *eventContext, widgets []Widget, phase PropagationPhase, event events.Event) {
 	for _, widget := range widgets {
 		ctx.current = widget
-		ctx.phase = phase
 		for _, controller := range widget.EventControllers() {
 			if controller == nil || controller.Phase() != phase {
 				continue
 			}
-			controller.HandleEvent(ctx, event)
+			controller.HandleEvent(ctx)
 			if ctx.PropagationStopped() {
 				return
 			}
@@ -161,49 +237,54 @@ func (d *EventDispatcher) dispatchPhase(ctx *eventContext, widgets []Widget, pha
 func (d *EventDispatcher) updateHover(root Widget, event events.PointerEvent) {
 	target := hitTest(root, event.Position)
 	path := widgetPath(root, target)
-	common := commonWidgetPrefix(d.hoverPath, path)
+	d.updatePointerHoverPath(path, event)
+}
 
-	leaveEvent := event
-	leaveEvent.EventType = events.PointerLeave
-	for i := len(d.hoverPath) - 1; i >= common; i-- {
-		d.dispatchDirect(d.hoverPath[i], leaveEvent)
+func (d *EventDispatcher) updatePointerHoverPath(path []Widget, event events.PointerEvent) {
+	common := commonWidgetPrefix(d.hoverPath, path)
+	oldTarget := pathTarget(d.hoverPath)
+	newTarget := pathTarget(path)
+
+	if oldTarget != newTarget {
+		d.notifyPointerCrossing(oldTarget, CrossingTarget, CrossingLeave, event)
 	}
 
-	enterEvent := event
-	enterEvent.EventType = events.PointerEnter
+	for i := len(d.hoverPath) - 1; i >= common; i-- {
+		d.notifyPointerCrossing(d.hoverPath[i], CrossingContains, CrossingLeave, event)
+	}
+
 	for _, widget := range path[common:] {
-		d.dispatchDirect(widget, enterEvent)
+		d.notifyPointerCrossing(widget, CrossingContains, CrossingEnter, event)
+	}
+
+	if oldTarget != newTarget {
+		d.notifyPointerCrossing(newTarget, CrossingTarget, CrossingEnter, event)
 	}
 
 	d.hoverPath = path
 }
 
 func (d *EventDispatcher) clearHover(event events.PointerEvent) {
-	event.EventType = events.PointerLeave
-	for i := len(d.hoverPath) - 1; i >= 0; i-- {
-		d.dispatchDirect(d.hoverPath[i], event)
-	}
-	d.hoverPath = nil
+	d.updatePointerHoverPath(nil, event)
 }
 
-func (d *EventDispatcher) dispatchDirect(widget Widget, event events.Event) {
+func (d *EventDispatcher) notifyPointerCrossing(widget Widget, mode CrossingMode, direction CrossingDirection, event events.PointerEvent) {
 	if widget == nil {
 		return
 	}
 
-	ctx := &eventContext{
-		target:  widget,
-		current: widget,
-		phase:   PhaseTarget,
+	ctx := &crossingContext{
+		crossingType: CrossingPointer,
+		mode:         mode,
+		direction:    direction,
+		position:     widgetLocalPoint(widget, event.Position),
+		hasPosition:  true,
 	}
 	for _, controller := range widget.EventControllers() {
-		if controller == nil || controller.Phase() != PhaseTarget {
+		if controller == nil {
 			continue
 		}
-		controller.HandleEvent(ctx, event)
-		if ctx.PropagationStopped() {
-			return
-		}
+		controller.HandleCrossing(ctx)
 	}
 }
 
@@ -260,5 +341,34 @@ func subtractPoint(p, q geometry.Point) geometry.Point {
 	return geometry.Point{
 		X: p.X - q.X,
 		Y: p.Y - q.Y,
+	}
+}
+
+func pathTarget(path []Widget) Widget {
+	if len(path) == 0 {
+		return nil
+	}
+	return path[len(path)-1]
+}
+
+func eventLocalPosition(widget Widget, event events.Event) (geometry.Point, bool) {
+	switch event := event.(type) {
+	case events.PointerEvent:
+		return widgetLocalPoint(widget, event.Position), true
+	case events.WheelEvent:
+		return widgetLocalPoint(widget, event.Position), true
+	default:
+		return geometry.Point{}, false
+	}
+}
+
+func widgetLocalPoint(widget Widget, point geometry.Point) geometry.Point {
+	if widget == nil {
+		return point
+	}
+	rect := widget.base().windowRect()
+	return geometry.Point{
+		X: point.X - rect.X,
+		Y: point.Y - rect.Y,
 	}
 }
