@@ -216,3 +216,70 @@ func TestClickEventControllerResetsPressOnPointerContainsLeave(t *testing.T) {
 		t.Fatalf("unexpected pressed calls: %v", pressed)
 	}
 }
+
+func TestKeyEventControllerEmitsKeyDownAndKeyUp(t *testing.T) {
+	controller := NewKeyEventController()
+	var downs []events.KeyEvent
+	var ups []events.KeyEvent
+	controller.ConnectKeyDown(func(ctx EventContext, event events.KeyEvent) {
+		downs = append(downs, event)
+	})
+	controller.ConnectKeyUp(func(ctx EventContext, event events.KeyEvent) {
+		ups = append(ups, event)
+	})
+
+	down := events.KeyEvent{EventType: events.KeyDown, Key: events.KeyA, Modifiers: events.ModifierShift}
+	up := events.KeyEvent{EventType: events.KeyUp, Key: events.KeyA}
+	controller.HandleEvent(&eventContext{event: down})
+	controller.HandleEvent(&eventContext{event: up})
+
+	if len(downs) != 1 || downs[0] != down {
+		t.Fatalf("unexpected key down calls: %v", downs)
+	}
+	if len(ups) != 1 || ups[0] != up {
+		t.Fatalf("unexpected key up calls: %v", ups)
+	}
+}
+
+func TestKeyEventControllerSignalsCanStopPropagation(t *testing.T) {
+	controller := NewKeyEventController()
+	controller.ConnectKeyDown(func(ctx EventContext, event events.KeyEvent) {
+		ctx.StopPropagation()
+	})
+
+	ctx := &eventContext{event: events.KeyEvent{EventType: events.KeyDown, Key: events.KeyA}}
+	controller.HandleEvent(ctx)
+
+	if !ctx.PropagationStopped() {
+		t.Fatal("key down signal did not stop propagation")
+	}
+}
+
+func TestKeyEventControllerDefaultsToTargetPhaseAndCanSetPhase(t *testing.T) {
+	controller := NewKeyEventController()
+	if controller.Phase() != PhaseTarget {
+		t.Fatalf("unexpected default phase: %v", controller.Phase())
+	}
+
+	controller.SetPhase(PhaseBubble)
+	if controller.Phase() != PhaseBubble {
+		t.Fatalf("unexpected phase: %v", controller.Phase())
+	}
+}
+
+func TestKeyEventControllerIgnoresNonKeyEvents(t *testing.T) {
+	controller := NewKeyEventController()
+	calls := 0
+	controller.ConnectKeyDown(func(ctx EventContext, event events.KeyEvent) {
+		calls++
+	})
+	controller.ConnectKeyUp(func(ctx EventContext, event events.KeyEvent) {
+		calls++
+	})
+
+	controller.HandleEvent(&eventContext{event: events.PointerEvent{EventType: events.PointerDown}})
+
+	if calls != 0 {
+		t.Fatalf("unexpected key calls: %d", calls)
+	}
+}

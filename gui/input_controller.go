@@ -198,3 +198,49 @@ func (c *ClickEventController) setPressed(ctx EventContext, pressed bool) {
 	c.pressed = pressed
 	c.press.Emit(ctx, pressed)
 }
+
+type KeyEventController struct {
+	phase   PropagationPhase
+	keyDown signal.Signal2[EventContext, events.KeyEvent]
+	keyUp   signal.Signal2[EventContext, events.KeyEvent]
+}
+
+func NewKeyEventController() *KeyEventController {
+	return &KeyEventController{
+		phase: PhaseTarget,
+	}
+}
+
+func (c *KeyEventController) Phase() PropagationPhase {
+	return c.phase
+}
+
+func (c *KeyEventController) SetPhase(phase PropagationPhase) {
+	c.phase = phase
+}
+
+func (c *KeyEventController) Reset() {}
+
+func (c *KeyEventController) ConnectKeyDown(fn func(ctx EventContext, event events.KeyEvent)) signal.Handle {
+	return c.keyDown.Connect(fn)
+}
+
+func (c *KeyEventController) ConnectKeyUp(fn func(ctx EventContext, event events.KeyEvent)) signal.Handle {
+	return c.keyUp.Connect(fn)
+}
+
+func (c *KeyEventController) HandleEvent(ctx EventContext) {
+	keyEvent, ok := ctx.Event().(events.KeyEvent)
+	if !ok {
+		return
+	}
+
+	switch keyEvent.EventType {
+	case events.KeyDown:
+		c.keyDown.Emit(ctx, keyEvent)
+	case events.KeyUp:
+		c.keyUp.Emit(ctx, keyEvent)
+	}
+}
+
+func (c *KeyEventController) HandleCrossing(ctx CrossingContext) {}
