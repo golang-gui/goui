@@ -43,7 +43,9 @@ func TestEventDispatcherDispatchesPointerEventThroughThreePhases(t *testing.T) {
 	want := []string{
 		"root-capture current=root target=target phase=0 type=7",
 		"parent-capture current=parent target=target phase=0 type=7",
+		"target-capture current=target target=target phase=0 type=7",
 		"target current=target target=target phase=1 type=7",
+		"target-bubble current=target target=target phase=2 type=7",
 		"parent-bubble current=parent target=target phase=2 type=7",
 		"root-bubble current=root target=target phase=2 type=7",
 	}

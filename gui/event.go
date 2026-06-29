@@ -88,7 +88,7 @@ func (d *EventDispatcher) DispatchEvent(window Window, event events.Event) error
 		target: target,
 	}
 
-	d.dispatchPhase(ctx, path[:len(path)-1], PhaseCapture, event)
+	d.dispatchPhase(ctx, path, PhaseCapture, event)
 	if ctx.PropagationStopped() {
 		return nil
 	}
@@ -98,8 +98,8 @@ func (d *EventDispatcher) DispatchEvent(window Window, event events.Event) error
 		return nil
 	}
 
-	slices.Reverse(path[:len(path)-1])
-	d.dispatchPhase(ctx, path[:len(path)-1], PhaseBubble, event)
+	slices.Reverse(path)
+	d.dispatchPhase(ctx, path, PhaseBubble, event)
 	return nil
 }
 
