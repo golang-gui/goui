@@ -209,6 +209,43 @@ func TestButtonClickedSignalThroughChildContent(t *testing.T) {
 	}
 }
 
+func TestButtonClickHandlesChildDownAndButtonUp(t *testing.T) {
+	button := NewButton()
+	child := newTestWidget()
+	button.AddChild(child)
+	button.Arrange(geometry.Rect(0, 0, 80, 30))
+	child.Arrange(geometry.Rect(0, 0, 80, 30))
+	win := &window{}
+	win.SetWidget(button)
+
+	clicked := 0
+	button.ConnectClicked(func() {
+		clicked++
+	})
+
+	if err := win.DispatchEvent(events.PointerEvent{
+		EventType: events.PointerDown,
+		Position:  geometry.Point{X: 10, Y: 10},
+		Button:    events.PointerButtonLeft,
+		Buttons:   events.PointerButtonLeftDown,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	child.SetVisible(false)
+	if err := win.DispatchEvent(events.PointerEvent{
+		EventType: events.PointerUp,
+		Position:  geometry.Point{X: 10, Y: 10},
+		Button:    events.PointerButtonLeft,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if clicked != 1 {
+		t.Fatalf("unexpected clicked count: %d", clicked)
+	}
+}
+
 func TestButtonDoesNotClickWithoutPointerDown(t *testing.T) {
 	button := NewButton()
 	button.Arrange(geometry.Rect(0, 0, 80, 30))

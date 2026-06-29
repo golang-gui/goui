@@ -4,7 +4,6 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/layout"
-	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 )
 
@@ -13,21 +12,35 @@ type Button struct {
 	hovered bool
 	pressed bool
 	clicked signal.Signal0
+	hover   *HoverEventController
+	click   *ClickEventController
 }
 
 func NewButton() *Button {
 	button := new(Button)
 	button.SetFocusable(true)
 	button.SetLayoutManager(layout.NewFillLayout())
-	button.AddEventController(&buttonHoverController{button: button})
-	button.AddEventController(&buttonClickController{
-		button: button,
-		phase:  PhaseTarget,
+
+	button.hover = NewHoverEventController()
+	button.hover.ConnectEnter(func() {
+		button.setHovered(true)
 	})
-	button.AddEventController(&buttonClickController{
-		button: button,
-		phase:  PhaseBubble,
+	button.hover.ConnectLeave(func() {
+		button.setHovered(false)
 	})
+	button.AddEventController(button.hover)
+
+	button.click = NewClickEventController()
+	button.click.ConnectPressed(func(ctx EventContext, pressed bool) {
+		button.setPressed(pressed)
+		ctx.StopPropagation()
+	})
+	button.click.ConnectClicked(func(ctx EventContext) {
+		button.emitClicked()
+		ctx.StopPropagation()
+	})
+	button.AddEventController(button.click)
+
 	return button
 }
 
@@ -92,58 +105,5 @@ func (b *Button) backgroundColor() graphics.Color {
 		return graphics.RGB(230, 230, 230)
 	default:
 		return graphics.RGB(210, 210, 210)
-	}
-}
-
-type buttonHoverController struct {
-	button *Button
-}
-
-func (c *buttonHoverController) Phase() PropagationPhase {
-	return PhaseTarget
-}
-
-func (c *buttonHoverController) HandleEvent(ctx *EventContext, event events.Event) {
-	pointerEvent, ok := event.(events.PointerEvent)
-	if !ok {
-		return
-	}
-
-	switch pointerEvent.EventType {
-	case events.PointerEnter:
-		c.button.setHovered(true)
-	case events.PointerLeave:
-		c.button.setHovered(false)
-	}
-}
-
-type buttonClickController struct {
-	button *Button
-	phase  PropagationPhase
-}
-
-func (c *buttonClickController) Phase() PropagationPhase {
-	return c.phase
-}
-
-func (c *buttonClickController) HandleEvent(ctx *EventContext, event events.Event) {
-	pointerEvent, ok := event.(events.PointerEvent)
-	if !ok {
-		return
-	}
-	if pointerEvent.Button != events.PointerButtonLeft {
-		return
-	}
-
-	switch pointerEvent.EventType {
-	case events.PointerDown:
-		c.button.setPressed(true)
-		ctx.StopPropagation()
-	case events.PointerUp:
-		if c.button.pressed {
-			c.button.setPressed(false)
-			c.button.emitClicked()
-			ctx.StopPropagation()
-		}
 	}
 }
