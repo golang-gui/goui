@@ -30,13 +30,14 @@ type WidgetInfo struct {
 type Role string
 
 const (
-	RoleWidget Role = "widget"
-	RoleBox    Role = "box"
-	RoleHBox   Role = "hbox"
-	RoleVBox   Role = "vbox"
-	RoleLabel  Role = "label"
-	RoleButton Role = "button"
-	RoleImage  Role = "image"
+	RoleWidget    Role = "widget"
+	RoleBox       Role = "box"
+	RoleHBox      Role = "hbox"
+	RoleVBox      Role = "vbox"
+	RoleLabel     Role = "label"
+	RoleButton    Role = "button"
+	RoleImage     Role = "image"
+	RoleTextInput Role = "textinput"
 )
 
 type Action string

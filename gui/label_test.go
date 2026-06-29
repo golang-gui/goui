@@ -156,6 +156,8 @@ type textLayoutCall struct {
 
 type testTypography struct {
 	measureSize geometry.Size
+	lines       []typography.TextLine
+	clusters    []typography.TextCluster
 	calls       []textLayoutCall
 	layouts     []*testTextLayout
 }
@@ -183,6 +185,8 @@ func (c *testTypography) NewTextLayout(text string, format typography.TextFormat
 		width:       width,
 		height:      height,
 		measureSize: c.measureSize,
+		lines:       c.lines,
+		clusters:    c.clusters,
 	}
 	c.layouts = append(c.layouts, layout)
 	return layout, nil
@@ -198,6 +202,8 @@ type testTextLayout struct {
 	width       float32
 	height      float32
 	measureSize geometry.Size
+	lines       []typography.TextLine
+	clusters    []typography.TextCluster
 	destroyed   bool
 }
 
@@ -247,7 +253,7 @@ func (l *testTextLayout) MeasureSize() (width, height float32) {
 }
 
 func (l *testTextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []typography.TextCluster) {
-	return nil, nil
+	return l.lines, l.clusters
 }
 
 type testLabelPainter struct {
