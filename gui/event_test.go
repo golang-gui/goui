@@ -67,7 +67,7 @@ func TestEventDispatcherStopsPropagation(t *testing.T) {
 
 	var calls []string
 	root.AddEventController(newRecordingController("root-capture", PhaseCapture, &calls, nil))
-	parent.AddEventController(newRecordingController("parent-capture", PhaseCapture, &calls, func(ctx *EventContext) {
+	parent.AddEventController(newRecordingController("parent-capture", PhaseCapture, &calls, func(ctx EventContext) {
 		ctx.StopPropagation()
 	}))
 	target.AddEventController(newRecordingController("target", PhaseTarget, &calls, nil))
@@ -347,10 +347,10 @@ type recordingController struct {
 	name   string
 	phase  PropagationPhase
 	calls  *[]string
-	handle func(ctx *EventContext)
+	handle func(ctx EventContext)
 }
 
-func newRecordingController(name string, phase PropagationPhase, calls *[]string, handle func(ctx *EventContext)) *recordingController {
+func newRecordingController(name string, phase PropagationPhase, calls *[]string, handle func(ctx EventContext)) *recordingController {
 	return &recordingController{
 		name:   name,
 		phase:  phase,
@@ -363,7 +363,9 @@ func (c *recordingController) Phase() PropagationPhase {
 	return c.phase
 }
 
-func (c *recordingController) HandleEvent(ctx *EventContext, event events.Event) {
+func (c *recordingController) Reset() {}
+
+func (c *recordingController) HandleEvent(ctx EventContext, event events.Event) {
 	*c.calls = append(*c.calls, fmt.Sprintf(
 		"%s current=%s target=%s phase=%d type=%d",
 		c.name,

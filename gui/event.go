@@ -17,33 +17,42 @@ const (
 
 type EventController interface {
 	Phase() PropagationPhase
-	HandleEvent(ctx *EventContext, event events.Event)
+	Reset()
+	HandleEvent(ctx EventContext, event events.Event)
 }
 
-type EventContext struct {
+type EventContext interface {
+	Target() Widget
+	Current() Widget
+	Phase() PropagationPhase
+	StopPropagation()
+	PropagationStopped() bool
+}
+
+type eventContext struct {
 	target  Widget
 	current Widget
 	phase   PropagationPhase
 	stopped bool
 }
 
-func (c *EventContext) Target() Widget {
+func (c *eventContext) Target() Widget {
 	return c.target
 }
 
-func (c *EventContext) Current() Widget {
+func (c *eventContext) Current() Widget {
 	return c.current
 }
 
-func (c *EventContext) Phase() PropagationPhase {
+func (c *eventContext) Phase() PropagationPhase {
 	return c.phase
 }
 
-func (c *EventContext) StopPropagation() {
+func (c *eventContext) StopPropagation() {
 	c.stopped = true
 }
 
-func (c *EventContext) PropagationStopped() bool {
+func (c *eventContext) PropagationStopped() bool {
 	return c.stopped
 }
 
@@ -84,7 +93,7 @@ func (d *EventDispatcher) DispatchEvent(window Window, event events.Event) error
 		return nil
 	}
 
-	ctx := &EventContext{
+	ctx := &eventContext{
 		target: target,
 	}
 
@@ -133,7 +142,7 @@ func focusNearest(window Window, target Widget) {
 	_ = window.SetFocusedWidget(nil)
 }
 
-func (d *EventDispatcher) dispatchPhase(ctx *EventContext, widgets []Widget, phase PropagationPhase, event events.Event) {
+func (d *EventDispatcher) dispatchPhase(ctx *eventContext, widgets []Widget, phase PropagationPhase, event events.Event) {
 	for _, widget := range widgets {
 		ctx.current = widget
 		ctx.phase = phase
@@ -182,7 +191,7 @@ func (d *EventDispatcher) dispatchDirect(widget Widget, event events.Event) {
 		return
 	}
 
-	ctx := &EventContext{
+	ctx := &eventContext{
 		target:  widget,
 		current: widget,
 		phase:   PhaseTarget,

@@ -439,7 +439,9 @@ func (c *testControllerAdapter) Phase() PropagationPhase {
 	return PhaseTarget
 }
 
-func (c *testControllerAdapter) HandleEvent(ctx *EventContext, event events.Event) {}
+func (c *testControllerAdapter) Reset() {}
+
+func (c *testControllerAdapter) HandleEvent(ctx EventContext, event events.Event) {}
 
 type lifecycleWidget struct {
 	WidgetBase
