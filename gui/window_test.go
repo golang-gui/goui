@@ -107,7 +107,7 @@ func TestWindowSetFocusedWidgetValidatesTarget(t *testing.T) {
 	if !win.SetFocusedWidget(child) {
 		t.Fatal("focusable child should be focused")
 	}
-	if win.FocusedWidget() != child || !child.Focused() {
+	if win.FocusedWidget() != child || !child.Focused() || !child.ContainsFocus() || !root.ContainsFocus() {
 		t.Fatal("focused widget state was not set")
 	}
 

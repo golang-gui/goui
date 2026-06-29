@@ -29,7 +29,9 @@ type Widget interface {
 	Focusable() bool
 	SetFocusable(bool)
 	Focused() bool
-	ConnectFocusChanged(func(bool)) signal.Handle
+	ContainsFocus() bool
+	ConnectFocused(func(focused bool)) signal.Handle
+	ConnectContainsFocus(func(focused bool)) signal.Handle
 
 	Rect() geometry.Rectangle
 
@@ -61,20 +63,22 @@ type Container interface {
 }
 
 type WidgetBase struct {
-	id            string
-	hidden        bool
-	focusable     bool
-	focused       bool
-	rect          geometry.Rectangle
-	parentWidget  Widget
-	parentRoot    Root
-	children      []Widget
-	controllers   []EventController
-	layoutManager layout.LayoutManager
-	mount         signal.Signal0
-	unmount       signal.Signal0
-	focusChanged  signal.Signal1[bool]
-	destroyed     bool
+	id                  string
+	hidden              bool
+	focusable           bool
+	focused             bool
+	containsFocus       bool
+	rect                geometry.Rectangle
+	parentWidget        Widget
+	parentRoot          Root
+	children            []Widget
+	controllers         []EventController
+	layoutManager       layout.LayoutManager
+	mount               signal.Signal0
+	unmount             signal.Signal0
+	focusedSignal       signal.Signal1[bool]
+	containsFocusSignal signal.Signal1[bool]
+	destroyed           bool
 }
 
 func (w *WidgetBase) base() *WidgetBase {
@@ -131,8 +135,16 @@ func (w *WidgetBase) Focused() bool {
 	return w.focused
 }
 
-func (w *WidgetBase) ConnectFocusChanged(fn func(bool)) signal.Handle {
-	return w.focusChanged.Connect(fn)
+func (w *WidgetBase) ContainsFocus() bool {
+	return w.containsFocus
+}
+
+func (w *WidgetBase) ConnectFocused(fn func(bool)) signal.Handle {
+	return w.focusedSignal.Connect(fn)
+}
+
+func (w *WidgetBase) ConnectContainsFocus(fn func(bool)) signal.Handle {
+	return w.containsFocusSignal.Connect(fn)
 }
 
 func (w *WidgetBase) Rect() geometry.Rectangle {
@@ -219,13 +231,14 @@ func (w *WidgetBase) PaintChildren(p Painter) {
 
 func (w *WidgetBase) Snapshot() WidgetInfo {
 	info := WidgetInfo{
-		ID:        w.ID(),
-		Role:      RoleWidget,
-		Bounds:    w.windowRect(),
-		Visible:   w.Visible(),
-		Enabled:   true,
-		Focusable: w.Focusable(),
-		Focused:   w.Focused(),
+		ID:            w.ID(),
+		Role:          RoleWidget,
+		Bounds:        w.windowRect(),
+		Visible:       w.Visible(),
+		Enabled:       true,
+		Focusable:     w.Focusable(),
+		Focused:       w.Focused(),
+		ContainsFocus: w.ContainsFocus(),
 	}
 	for _, child := range w.children {
 		info.Children = append(info.Children, child.Snapshot())
@@ -317,6 +330,11 @@ func (w *WidgetBase) setParent(child, parent Widget) {
 
 	if parent != nil {
 		w.attachChild(parent, child)
+	}
+	if !rootChanged && oldRoot != nil {
+		if win, ok := oldRoot.(*window); ok && win.focusWithinWidget(child) {
+			win.SetFocusedWidget(win.FocusedWidget())
+		}
 	}
 	if rootChanged && newRoot != nil {
 		w.emitMountSubtree(child)
@@ -461,8 +479,29 @@ func (w *WidgetBase) setFocused(focused bool) {
 		return
 	}
 	w.focused = focused
-	w.focusChanged.Emit(focused)
+	w.focusedSignal.Emit(focused)
 	w.requestSemanticUpdate()
+}
+
+func (w *WidgetBase) setContainsFocus(containsFocus bool) {
+	if w.containsFocus == containsFocus {
+		return
+	}
+	w.containsFocus = containsFocus
+	w.containsFocusSignal.Emit(containsFocus)
+	w.requestSemanticUpdate()
+}
+
+func (w *WidgetBase) handleCrossing(ctx CrossingContext) {
+	if ctx.Type() != CrossingFocus {
+		return
+	}
+	switch ctx.Mode() {
+	case CrossingTarget:
+		w.setFocused(ctx.Direction() == CrossingEnter)
+	case CrossingContains:
+		w.setContainsFocus(ctx.Direction() == CrossingEnter)
+	}
 }
 
 func (w *WidgetBase) visibleChildren() []layout.Child {

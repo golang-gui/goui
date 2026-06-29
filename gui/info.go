@@ -14,16 +14,17 @@ type WindowInfo struct {
 }
 
 type WidgetInfo struct {
-	ID        string
-	Role      Role
-	Text      string
-	Bounds    geometry.Rectangle
-	Visible   bool
-	Enabled   bool
-	Focusable bool
-	Focused   bool
-	Actions   []Action
-	Children  []WidgetInfo
+	ID            string
+	Role          Role
+	Text          string
+	Bounds        geometry.Rectangle
+	Visible       bool
+	Enabled       bool
+	Focusable     bool
+	Focused       bool
+	ContainsFocus bool
+	Actions       []Action
+	Children      []WidgetInfo
 }
 
 type Role string

@@ -189,7 +189,7 @@ func TestWidgetBaseFocusStateAndSignal(t *testing.T) {
 
 	var calls []bool
 	var focusableAtChange []bool
-	widget.ConnectFocusChanged(func(focused bool) {
+	widget.ConnectFocused(func(focused bool) {
 		calls = append(calls, focused)
 		focusableAtChange = append(focusableAtChange, widget.Focusable())
 	})
@@ -202,7 +202,7 @@ func TestWidgetBaseFocusStateAndSignal(t *testing.T) {
 		t.Fatal("focused state was not set")
 	}
 	info := widget.Snapshot()
-	if !info.Focusable || !info.Focused {
+	if !info.Focusable || !info.Focused || !info.ContainsFocus {
 		t.Fatalf("snapshot missing focus state: %+v", info)
 	}
 
@@ -215,6 +215,53 @@ func TestWidgetBaseFocusStateAndSignal(t *testing.T) {
 	}
 	if len(focusableAtChange) != 2 || !focusableAtChange[0] || focusableAtChange[1] {
 		t.Fatalf("focus callbacks saw stale focusable state: %v", focusableAtChange)
+	}
+}
+
+func TestWidgetBaseContainsFocusStateAndSignal(t *testing.T) {
+	win := &window{}
+	parent := newTestWidget()
+	child := newTestWidget()
+	child.SetFocusable(true)
+	parent.AddChild(child)
+	win.SetWidget(parent)
+
+	var parentFocused []bool
+	var parentContainsFocus []bool
+	var childFocused []bool
+	parent.ConnectFocused(func(focused bool) {
+		parentFocused = append(parentFocused, focused)
+	})
+	parent.ConnectContainsFocus(func(containsFocus bool) {
+		parentContainsFocus = append(parentContainsFocus, containsFocus)
+	})
+	child.ConnectFocused(func(focused bool) {
+		childFocused = append(childFocused, focused)
+	})
+
+	if !win.SetFocusedWidget(child) {
+		t.Fatal("focusable child should accept focus")
+	}
+	if parent.Focused() || !parent.ContainsFocus() {
+		t.Fatalf("unexpected parent focus state: focused=%v contains=%v", parent.Focused(), parent.ContainsFocus())
+	}
+	if !child.Focused() || !child.ContainsFocus() {
+		t.Fatalf("unexpected child focus state: focused=%v contains=%v", child.Focused(), child.ContainsFocus())
+	}
+
+	win.SetFocusedWidget(nil)
+	if parent.Focused() || parent.ContainsFocus() || child.Focused() || child.ContainsFocus() {
+		t.Fatalf("focus state was not cleared: parent focused=%v contains=%v child focused=%v contains=%v",
+			parent.Focused(), parent.ContainsFocus(), child.Focused(), child.ContainsFocus())
+	}
+	if len(parentFocused) != 0 {
+		t.Fatalf("parent should not receive target focused changes: %v", parentFocused)
+	}
+	if len(parentContainsFocus) != 2 || !parentContainsFocus[0] || parentContainsFocus[1] {
+		t.Fatalf("unexpected parent contains focus calls: %v", parentContainsFocus)
+	}
+	if len(childFocused) != 2 || !childFocused[0] || childFocused[1] {
+		t.Fatalf("unexpected child focused calls: %v", childFocused)
 	}
 }
 
@@ -234,7 +281,7 @@ func TestWidgetBaseHidingFocusedSubtreeClearsFocus(t *testing.T) {
 	if win.FocusedWidget() != nil {
 		t.Fatalf("focused widget was not cleared: %v", win.FocusedWidget())
 	}
-	if child.Focused() {
+	if child.Focused() || child.ContainsFocus() || parent.ContainsFocus() {
 		t.Fatal("child focused state was not cleared")
 	}
 }
@@ -367,8 +414,11 @@ func TestAddChildReparentsWithinSameRootKeepsFocus(t *testing.T) {
 
 	second.AddChild(child)
 
-	if win.FocusedWidget() != child || !child.Focused() {
+	if win.FocusedWidget() != child || !child.Focused() || !child.ContainsFocus() || !second.ContainsFocus() {
 		t.Fatal("same-root reparent should keep focused widget")
+	}
+	if first.ContainsFocus() {
+		t.Fatal("old parent should not contain focus after same-root reparent")
 	}
 }
 
@@ -385,14 +435,14 @@ func TestRemoveChildClearsFocusedSubtreeAfterUnmount(t *testing.T) {
 		if child.Window() != win || child.Parent() != parent {
 			t.Fatalf("unmount saw invalid relationship: window=%v parent=%v", child.Window(), child.Parent())
 		}
-		if win.FocusedWidget() != child || !child.Focused() {
+		if win.FocusedWidget() != child || !child.Focused() || !child.ContainsFocus() {
 			t.Fatal("focus should still be visible during unmount signal")
 		}
 	})
 
 	parent.RemoveChild(child)
 
-	if win.FocusedWidget() != nil || child.Focused() {
+	if win.FocusedWidget() != nil || child.Focused() || child.ContainsFocus() || parent.ContainsFocus() {
 		t.Fatal("focused subtree was not cleared after remove")
 	}
 }

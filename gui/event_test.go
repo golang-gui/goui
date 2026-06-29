@@ -281,11 +281,11 @@ func TestEventDispatcherUpdatesMotionHoverStates(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if !parentMotion.IsHover() || !parentMotion.ContainsHover() {
-		t.Fatalf("parent should be directly hovered: is=%v contains=%v", parentMotion.IsHover(), parentMotion.ContainsHover())
+	if !parentMotion.Hover() || !parentMotion.ContainsHover() {
+		t.Fatalf("parent should be directly hovered: is=%v contains=%v", parentMotion.Hover(), parentMotion.ContainsHover())
 	}
-	if childMotion.IsHover() || childMotion.ContainsHover() {
-		t.Fatalf("child should not be hovered: is=%v contains=%v", childMotion.IsHover(), childMotion.ContainsHover())
+	if childMotion.Hover() || childMotion.ContainsHover() {
+		t.Fatalf("child should not be hovered: is=%v contains=%v", childMotion.Hover(), childMotion.ContainsHover())
 	}
 
 	if err := win.DispatchEvent(events.PointerEvent{
@@ -294,11 +294,11 @@ func TestEventDispatcherUpdatesMotionHoverStates(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if parentMotion.IsHover() || !parentMotion.ContainsHover() {
-		t.Fatalf("parent should contain hover through child: is=%v contains=%v", parentMotion.IsHover(), parentMotion.ContainsHover())
+	if parentMotion.Hover() || !parentMotion.ContainsHover() {
+		t.Fatalf("parent should contain hover through child: is=%v contains=%v", parentMotion.Hover(), parentMotion.ContainsHover())
 	}
-	if !childMotion.IsHover() || !childMotion.ContainsHover() {
-		t.Fatalf("child should be directly hovered: is=%v contains=%v", childMotion.IsHover(), childMotion.ContainsHover())
+	if !childMotion.Hover() || !childMotion.ContainsHover() {
+		t.Fatalf("child should be directly hovered: is=%v contains=%v", childMotion.Hover(), childMotion.ContainsHover())
 	}
 
 	if err := win.DispatchEvent(events.PointerEvent{
@@ -307,9 +307,9 @@ func TestEventDispatcherUpdatesMotionHoverStates(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if parentMotion.IsHover() || parentMotion.ContainsHover() || childMotion.IsHover() || childMotion.ContainsHover() {
+	if parentMotion.Hover() || parentMotion.ContainsHover() || childMotion.Hover() || childMotion.ContainsHover() {
 		t.Fatalf("hover states were not cleared: parent is=%v contains=%v child is=%v contains=%v",
-			parentMotion.IsHover(), parentMotion.ContainsHover(), childMotion.IsHover(), childMotion.ContainsHover())
+			parentMotion.Hover(), parentMotion.ContainsHover(), childMotion.Hover(), childMotion.ContainsHover())
 	}
 }
 
@@ -333,8 +333,8 @@ func TestEventDispatcherHoverStateIgnoresStoppedPointerMove(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if !motion.IsHover() || !motion.ContainsHover() {
-		t.Fatalf("hover state should update before propagation stop: is=%v contains=%v", motion.IsHover(), motion.ContainsHover())
+	if !motion.Hover() || !motion.ContainsHover() {
+		t.Fatalf("hover state should update before propagation stop: is=%v contains=%v", motion.Hover(), motion.ContainsHover())
 	}
 }
 
@@ -394,6 +394,49 @@ func TestEventDispatcherDispatchesKeyToRootWithoutFocusedWidget(t *testing.T) {
 
 	assertStrings(t, calls, []string{
 		"root phase=1 type=10",
+	})
+}
+
+func TestEventDispatcherDispatchesFocusCrossing(t *testing.T) {
+	root := newTestWidget()
+	parent := newTestWidget()
+	child := newTestWidget()
+	root.SetID("root")
+	parent.SetID("parent")
+	child.SetID("child")
+	child.SetFocusable(true)
+	root.AddChild(parent)
+	parent.AddChild(child)
+
+	var calls []string
+	root.AddEventController(newCrossingRecordingController("root", &calls))
+	parent.AddEventController(newCrossingRecordingController("parent", &calls))
+	child.AddEventController(newCrossingRecordingController("child", &calls))
+
+	win := &window{}
+	win.SetWidget(root)
+	if !win.SetFocusedWidget(child) {
+		t.Fatal("focusable child should accept focus")
+	}
+
+	assertStrings(t, calls, []string{
+		"root type=1 mode=1 direction=0 pos=false",
+		"parent type=1 mode=1 direction=0 pos=false",
+		"child type=1 mode=1 direction=0 pos=false",
+		"child type=1 mode=0 direction=0 pos=false",
+	})
+	if root.Focused() || !root.ContainsFocus() || parent.Focused() || !parent.ContainsFocus() || !child.Focused() || !child.ContainsFocus() {
+		t.Fatalf("unexpected focus state: root=%v/%v parent=%v/%v child=%v/%v",
+			root.Focused(), root.ContainsFocus(), parent.Focused(), parent.ContainsFocus(), child.Focused(), child.ContainsFocus())
+	}
+
+	calls = nil
+	win.SetFocusedWidget(nil)
+	assertStrings(t, calls, []string{
+		"child type=1 mode=0 direction=1 pos=false",
+		"child type=1 mode=1 direction=1 pos=false",
+		"parent type=1 mode=1 direction=1 pos=false",
+		"root type=1 mode=1 direction=1 pos=false",
 	})
 }
 
@@ -495,6 +538,35 @@ func (c *recordingController) HandleEvent(ctx EventContext) {
 }
 
 func (c *recordingController) HandleCrossing(ctx CrossingContext) {}
+
+type crossingRecordingController struct {
+	name  string
+	calls *[]string
+}
+
+func newCrossingRecordingController(name string, calls *[]string) *crossingRecordingController {
+	return &crossingRecordingController{name: name, calls: calls}
+}
+
+func (c *crossingRecordingController) Phase() PropagationPhase {
+	return PhaseTarget
+}
+
+func (c *crossingRecordingController) Reset() {}
+
+func (c *crossingRecordingController) HandleEvent(ctx EventContext) {}
+
+func (c *crossingRecordingController) HandleCrossing(ctx CrossingContext) {
+	_, hasPosition := ctx.Position()
+	*c.calls = append(*c.calls, fmt.Sprintf(
+		"%s type=%d mode=%d direction=%d pos=%v",
+		c.name,
+		ctx.Type(),
+		ctx.Mode(),
+		ctx.Direction(),
+		hasPosition,
+	))
+}
 
 func assertStrings(t *testing.T, got, want []string) {
 	t.Helper()

@@ -130,6 +130,7 @@ func (w *window) SetFocusedWidget(widget Widget) bool {
 		return false
 	}
 	if w.focusedWidget == widget {
+		w.setFocusedWidget(widget)
 		return true
 	}
 
@@ -250,6 +251,7 @@ func (w *window) DispatchEvent(event events.Event) error {
 		w.requestLayout()
 	case events.FocusEvent:
 		w.setFocused(event.Focused)
+		return w.dispatcher.DispatchEvent(w, event)
 	case events.PaintEvent:
 		w.paint()
 	default:
@@ -323,16 +325,11 @@ func (w *window) setFocused(focused bool) {
 
 func (w *window) setFocusedWidget(widget Widget) {
 	if w.focusedWidget == widget {
+		_ = w.dispatcher.DispatchEvent(w, events.FocusEvent{Focused: w.focused})
 		return
 	}
-	old := w.focusedWidget
 	w.focusedWidget = widget
-	if old != nil {
-		old.base().setFocused(false)
-	}
-	if widget != nil {
-		widget.base().setFocused(true)
-	}
+	_ = w.dispatcher.DispatchEvent(w, events.FocusEvent{Focused: w.focused})
 	w.requestPaint()
 }
 

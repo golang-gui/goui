@@ -13,7 +13,7 @@ type MotionInfo struct {
 
 type MotionEventController struct {
 	phase                PropagationPhase
-	isHover              bool
+	hover                bool
 	containsHover        bool
 	motion               signal.Signal1[MotionInfo]
 	hoverChanged         signal.Signal1[bool]
@@ -35,12 +35,12 @@ func (c *MotionEventController) SetPhase(phase PropagationPhase) {
 }
 
 func (c *MotionEventController) Reset() {
-	c.setIsHover(false)
+	c.setHover(false)
 	c.setContainsHover(false)
 }
 
-func (c *MotionEventController) IsHover() bool {
-	return c.isHover
+func (c *MotionEventController) Hover() bool {
+	return c.hover
 }
 
 func (c *MotionEventController) ContainsHover() bool {
@@ -81,18 +81,18 @@ func (c *MotionEventController) HandleCrossing(ctx CrossingContext) {
 	}
 	switch ctx.Mode() {
 	case CrossingTarget:
-		c.setIsHover(ctx.Direction() == CrossingEnter)
+		c.setHover(ctx.Direction() == CrossingEnter)
 	case CrossingContains:
 		c.setContainsHover(ctx.Direction() == CrossingEnter)
 	}
 }
 
-func (c *MotionEventController) setIsHover(isHover bool) {
-	if c.isHover == isHover {
+func (c *MotionEventController) setHover(hover bool) {
+	if c.hover == hover {
 		return
 	}
-	c.isHover = isHover
-	c.hoverChanged.Emit(isHover)
+	c.hover = hover
+	c.hoverChanged.Emit(hover)
 }
 
 func (c *MotionEventController) setContainsHover(containsHover bool) {

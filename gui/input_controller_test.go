@@ -9,10 +9,10 @@ import (
 
 func TestMotionEventControllerTracksHoverStates(t *testing.T) {
 	controller := NewMotionEventController()
-	var isHover []bool
+	var hover []bool
 	var containsHover []bool
 	controller.ConnectHover(func(value bool) {
-		isHover = append(isHover, value)
+		hover = append(hover, value)
 	})
 	controller.ConnectContainsHover(func(value bool) {
 		containsHover = append(containsHover, value)
@@ -21,16 +21,16 @@ func TestMotionEventControllerTracksHoverStates(t *testing.T) {
 	controller.HandleCrossing(&crossingContext{crossingType: CrossingPointer, mode: CrossingContains, direction: CrossingEnter})
 	controller.HandleCrossing(&crossingContext{crossingType: CrossingPointer, mode: CrossingTarget, direction: CrossingEnter})
 	controller.HandleCrossing(&crossingContext{crossingType: CrossingPointer, mode: CrossingTarget, direction: CrossingEnter})
-	if !controller.IsHover() || !controller.ContainsHover() {
-		t.Fatalf("unexpected hover state: is=%v contains=%v", controller.IsHover(), controller.ContainsHover())
+	if !controller.Hover() || !controller.ContainsHover() {
+		t.Fatalf("unexpected hover state: is=%v contains=%v", controller.Hover(), controller.ContainsHover())
 	}
 
 	controller.Reset()
-	if controller.IsHover() || controller.ContainsHover() {
-		t.Fatalf("reset did not clear hover state: is=%v contains=%v", controller.IsHover(), controller.ContainsHover())
+	if controller.Hover() || controller.ContainsHover() {
+		t.Fatalf("reset did not clear hover state: is=%v contains=%v", controller.Hover(), controller.ContainsHover())
 	}
-	if len(isHover) != 2 || !isHover[0] || isHover[1] {
-		t.Fatalf("unexpected is hover calls: %v", isHover)
+	if len(hover) != 2 || !hover[0] || hover[1] {
+		t.Fatalf("unexpected hover calls: %v", hover)
 	}
 	if len(containsHover) != 2 || !containsHover[0] || containsHover[1] {
 		t.Fatalf("unexpected contains hover calls: %v", containsHover)

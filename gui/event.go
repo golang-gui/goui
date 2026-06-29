@@ -134,6 +134,7 @@ func (c *crossingContext) Position() (geometry.Point, bool) {
 
 type EventDispatcher struct {
 	hoverPath []Widget
+	focusPath []Widget
 }
 
 func (d *EventDispatcher) DispatchEvent(window Window, event events.Event) error {
@@ -143,6 +144,11 @@ func (d *EventDispatcher) DispatchEvent(window Window, event events.Event) error
 
 	root := window.Widget()
 	if root == nil {
+		return nil
+	}
+
+	if _, ok := event.(events.FocusEvent); ok {
+		d.updateFocus(root, window.FocusedWidget())
 		return nil
 	}
 
@@ -241,45 +247,63 @@ func (d *EventDispatcher) updateHover(root Widget, event events.PointerEvent) {
 }
 
 func (d *EventDispatcher) updatePointerHoverPath(path []Widget, event events.PointerEvent) {
-	common := commonWidgetPrefix(d.hoverPath, path)
-	oldTarget := pathTarget(d.hoverPath)
-	newTarget := pathTarget(path)
-
-	if oldTarget != newTarget {
-		d.notifyPointerCrossing(oldTarget, CrossingTarget, CrossingLeave, event)
-	}
-
-	for i := len(d.hoverPath) - 1; i >= common; i-- {
-		d.notifyPointerCrossing(d.hoverPath[i], CrossingContains, CrossingLeave, event)
-	}
-
-	for _, widget := range path[common:] {
-		d.notifyPointerCrossing(widget, CrossingContains, CrossingEnter, event)
-	}
-
-	if oldTarget != newTarget {
-		d.notifyPointerCrossing(newTarget, CrossingTarget, CrossingEnter, event)
-	}
-
+	d.updateCrossingPath(CrossingPointer, d.hoverPath, path, event.Position, true)
 	d.hoverPath = path
+}
+
+func (d *EventDispatcher) updateFocus(root, target Widget) {
+	d.updateFocusPath(widgetPath(root, target))
+}
+
+func (d *EventDispatcher) updateFocusPath(path []Widget) {
+	d.updateCrossingPath(CrossingFocus, d.focusPath, path, geometry.Point{}, false)
+	d.focusPath = path
+}
+
+func (d *EventDispatcher) updateCrossingPath(crossingType CrossingType, oldPath, newPath []Widget, position geometry.Point, hasPosition bool) {
+	oldTarget := pathTarget(oldPath)
+	newTarget := pathTarget(newPath)
+
+	if oldTarget != newTarget {
+		d.notifyCrossing(oldTarget, crossingType, CrossingTarget, CrossingLeave, position, hasPosition)
+	}
+
+	for i := len(oldPath) - 1; i >= 0; i-- {
+		if !slices.Contains(newPath, oldPath[i]) {
+			d.notifyCrossing(oldPath[i], crossingType, CrossingContains, CrossingLeave, position, hasPosition)
+		}
+	}
+
+	for _, widget := range newPath {
+		if !slices.Contains(oldPath, widget) {
+			d.notifyCrossing(widget, crossingType, CrossingContains, CrossingEnter, position, hasPosition)
+		}
+	}
+
+	if oldTarget != newTarget {
+		d.notifyCrossing(newTarget, crossingType, CrossingTarget, CrossingEnter, position, hasPosition)
+	}
 }
 
 func (d *EventDispatcher) clearHover(event events.PointerEvent) {
 	d.updatePointerHoverPath(nil, event)
 }
 
-func (d *EventDispatcher) notifyPointerCrossing(widget Widget, mode CrossingMode, direction CrossingDirection, event events.PointerEvent) {
+func (d *EventDispatcher) notifyCrossing(widget Widget, crossingType CrossingType, mode CrossingMode, direction CrossingDirection, position geometry.Point, hasPosition bool) {
 	if widget == nil {
 		return
 	}
 
 	ctx := &crossingContext{
-		crossingType: CrossingPointer,
+		crossingType: crossingType,
 		mode:         mode,
 		direction:    direction,
-		position:     widgetLocalPoint(widget, event.Position),
-		hasPosition:  true,
+		hasPosition:  hasPosition,
 	}
+	if hasPosition {
+		ctx.position = widgetLocalPoint(widget, position)
+	}
+	widget.base().handleCrossing(ctx)
 	for _, controller := range widget.EventControllers() {
 		if controller == nil {
 			continue
@@ -303,16 +327,6 @@ func hitTest(widget Widget, point geometry.Point) Widget {
 		}
 	}
 	return widget
-}
-
-func commonWidgetPrefix(a, b []Widget) int {
-	count := min(len(a), len(b))
-	for i := 0; i < count; i++ {
-		if a[i] != b[i] {
-			return i
-		}
-	}
-	return count
 }
 
 func widgetPath(root, target Widget) []Widget {
