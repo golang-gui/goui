@@ -36,6 +36,7 @@ const (
 	RoleVBox   Role = "vbox"
 	RoleLabel  Role = "label"
 	RoleButton Role = "button"
+	RoleImage  Role = "image"
 )
 
 type Action string
