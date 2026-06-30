@@ -4,8 +4,12 @@ import (
 	"image"
 	"testing"
 
+	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/platform"
+	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/typography"
 )
 
 func TestRootCreatesAndUpdatesLabel(t *testing.T) {
@@ -229,4 +233,283 @@ func TestRootUnmountClearsWidget(t *testing.T) {
 	if root.Widget() != nil {
 		t.Fatal("unmount should clear root widget")
 	}
+}
+
+func TestMountWindowUpdatesImmediately(t *testing.T) {
+	win := newTestWindow()
+	builds := 0
+
+	root := MountWindow(win, func() View {
+		builds++
+		return Label("first")
+	})
+
+	label, ok := win.Widget().(*gui.Label)
+	if !ok {
+		t.Fatalf("mounted %T, want *gui.Label", win.Widget())
+	}
+	if root.Widget() != label || label.Text() != "first" || builds != 1 {
+		t.Fatalf("unexpected mount state: widget=%T text=%q builds=%d", root.Widget(), label.Text(), builds)
+	}
+}
+
+func TestRootUpdateNowRebuildsMountedView(t *testing.T) {
+	win := newTestWindow()
+	text := "first"
+	root := MountWindow(win, func() View {
+		return Label(text)
+	})
+	label := win.Widget().(*gui.Label)
+
+	text = "second"
+	updated := root.UpdateNow()
+
+	if updated != label {
+		t.Fatal("UpdateNow should reuse the mounted widget at the same root slot")
+	}
+	if label.Text() != "second" {
+		t.Fatalf("mounted view was not rebuilt: %q", label.Text())
+	}
+}
+
+func TestRootRequestUpdateCoalescesThroughApplicationPost(t *testing.T) {
+	app := newTestApplication()
+	useTestApplication(t, app)
+
+	win := newTestWindow()
+	text := "first"
+	root := MountWindow(win, func() View {
+		return Label(text)
+	})
+	label := win.Widget().(*gui.Label)
+
+	text = "second"
+	root.RequestUpdate()
+	root.RequestUpdate()
+
+	if len(app.posts) != 1 {
+		t.Fatalf("expected one posted update, got %d", len(app.posts))
+	}
+	if label.Text() != "first" {
+		t.Fatalf("RequestUpdate should not rebuild synchronously: %q", label.Text())
+	}
+
+	app.runPosted()
+	if label.Text() != "second" {
+		t.Fatalf("posted update did not rebuild mounted view: %q", label.Text())
+	}
+}
+
+func TestRootUpdateNowCancelsPendingRequest(t *testing.T) {
+	app := newTestApplication()
+	useTestApplication(t, app)
+
+	win := newTestWindow()
+	builds := 0
+	text := "first"
+	root := MountWindow(win, func() View {
+		builds++
+		return Label(text)
+	})
+
+	text = "second"
+	root.RequestUpdate()
+	root.UpdateNow()
+	app.runPosted()
+
+	label := win.Widget().(*gui.Label)
+	if label.Text() != "second" {
+		t.Fatalf("UpdateNow did not rebuild mounted view: %q", label.Text())
+	}
+	if builds != 2 {
+		t.Fatalf("posted update should be cancelled after UpdateNow, got %d builds", builds)
+	}
+}
+
+func TestRootUnmountDetachesMountedWindow(t *testing.T) {
+	win := newTestWindow()
+	root := MountWindow(win, func() View {
+		return VBox(Label("child"))
+	})
+	if win.Widget() == nil {
+		t.Fatal("expected mounted window widget")
+	}
+
+	root.Unmount()
+
+	if root.Widget() != nil {
+		t.Fatal("root widget should be cleared after unmount")
+	}
+	if win.Widget() != nil {
+		t.Fatal("mounted window widget should be detached after unmount")
+	}
+}
+
+func TestRootWindowDestroyUnmountsWithoutDetachingWidget(t *testing.T) {
+	win := newTestWindow()
+	root := MountWindow(win, func() View {
+		return Button(Label("OK")).OnClick(func() {})
+	})
+	widget := win.Widget()
+
+	win.Destroy()
+
+	if root.Widget() != nil {
+		t.Fatal("root widget should be cleared after window destroy")
+	}
+	if win.Widget() != widget {
+		t.Fatal("window destroy handler should not detach the widget tree before Window destroys it")
+	}
+}
+
+func useTestApplication(t *testing.T, app gui.Application) {
+	t.Helper()
+
+	old := gui.App
+	gui.App = app
+	t.Cleanup(func() {
+		gui.App = old
+	})
+}
+
+type testApplication struct {
+	posts []func()
+}
+
+func newTestApplication() *testApplication {
+	return new(testApplication)
+}
+
+func (a *testApplication) Platform() platform.Platform {
+	return nil
+}
+
+func (a *testApplication) Typography() typography.Context {
+	return nil
+}
+
+func (a *testApplication) NewWindow() (gui.Window, error) {
+	return nil, nil
+}
+
+func (a *testApplication) Run() {}
+
+func (a *testApplication) Quit() {}
+
+func (a *testApplication) Post(task func()) {
+	a.posts = append(a.posts, task)
+}
+
+func (a *testApplication) Windows() []gui.Window {
+	return nil
+}
+
+func (a *testApplication) Snapshot() gui.ApplicationInfo {
+	return gui.ApplicationInfo{}
+}
+
+func (a *testApplication) DispatchWindowEvent(string, events.Event) error {
+	return nil
+}
+
+func (a *testApplication) runPosted() {
+	posts := a.posts
+	a.posts = nil
+	for _, post := range posts {
+		post()
+	}
+}
+
+type testWindow struct {
+	id            string
+	title         string
+	widget        gui.Widget
+	focused       bool
+	focusedWidget gui.Widget
+	closeRequest  signal.Signal1[*bool]
+	destroy       signal.Signal0
+	focusChanged  signal.Signal1[bool]
+}
+
+func newTestWindow() *testWindow {
+	return new(testWindow)
+}
+
+func (w *testWindow) Widget() gui.Widget {
+	return w.widget
+}
+
+func (w *testWindow) RequestPaint() error {
+	return nil
+}
+
+func (w *testWindow) ID() string {
+	return w.id
+}
+
+func (w *testWindow) SetID(id string) {
+	w.id = id
+}
+
+func (w *testWindow) SetWidget(widget gui.Widget) {
+	w.widget = widget
+}
+
+func (w *testWindow) Title() string {
+	return w.title
+}
+
+func (w *testWindow) SetTitle(title string) error {
+	w.title = title
+	return nil
+}
+
+func (w *testWindow) Focused() bool {
+	return w.focused
+}
+
+func (w *testWindow) FocusedWidget() gui.Widget {
+	return w.focusedWidget
+}
+
+func (w *testWindow) SetFocusedWidget(widget gui.Widget) bool {
+	w.focusedWidget = widget
+	return true
+}
+
+func (w *testWindow) Show() error {
+	return nil
+}
+
+func (w *testWindow) RequestClose() error {
+	allow := true
+	w.closeRequest.Emit(&allow)
+	if allow {
+		w.Destroy()
+	}
+	return nil
+}
+
+func (w *testWindow) Destroy() {
+	w.destroy.Emit()
+}
+
+func (w *testWindow) Snapshot() gui.WindowInfo {
+	return gui.WindowInfo{}
+}
+
+func (w *testWindow) DispatchEvent(events.Event) error {
+	return nil
+}
+
+func (w *testWindow) ConnectCloseRequest(fn func(*bool)) signal.Handle {
+	return w.closeRequest.Connect(fn)
+}
+
+func (w *testWindow) ConnectDestroy(fn func()) signal.Handle {
+	return w.destroy.Connect(fn)
+}
+
+func (w *testWindow) ConnectFocusChanged(fn func(bool)) signal.Handle {
+	return w.focusChanged.Connect(fn)
 }
