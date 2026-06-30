@@ -260,6 +260,9 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 		var lastLine *pango.LayoutLine
 		for {
 			line := iter.GetLineReadonly()
+			if line == nil {
+				break
+			}
 			if line != lastLine {
 				if linesCount := len(lines); linesCount != 0 {
 					last := &lines[linesCount-1]
@@ -284,21 +287,22 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 			}
 
 			run := iter.GetRunReadonly()
-
-			index := iter.GetIndex()
-			_, clusterRect := iter.GetClusterExtents()
 			lineIndex := len(lines) - 1
 			currentLine := &lines[lineIndex]
-			clusters = append(clusters, typography.TextCluster{
-				Start:     index,
-				X:         (float32(clusterRect.X) / pango.Scale) - xOffset,
-				Y:         currentLine.Y,
-				Width:     float32(clusterRect.Width) / pango.Scale,
-				Height:    currentLine.Height,
-				LineIndex: lineIndex,
-				Direction: typography.TextDirection(run.Item.Analysis.Level),
-			})
-			clustersEnd++
+			if run != nil && run.Item != nil {
+				index := iter.GetIndex()
+				_, clusterRect := iter.GetClusterExtents()
+				clusters = append(clusters, typography.TextCluster{
+					Start:     index,
+					X:         (float32(clusterRect.X) / pango.Scale) - xOffset,
+					Y:         currentLine.Y,
+					Width:     float32(clusterRect.Width) / pango.Scale,
+					Height:    currentLine.Height,
+					LineIndex: lineIndex,
+					Direction: typography.TextDirection(run.Item.Analysis.Level),
+				})
+				clustersEnd++
+			}
 
 			if !iter.NextCluster() {
 				currentLine.Clusters = clusters[clustersBeg:clustersEnd]

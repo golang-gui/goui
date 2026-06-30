@@ -61,3 +61,30 @@ func Test_TextLayout(t *testing.T) {
 
 	os.WriteFile("text.png", buf.Bytes(), 0666)
 }
+
+func TestTextLayoutEmptyMeasureMetrics(t *testing.T) {
+	c, err := NewContext()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Destroy()
+
+	format := typography.TextFormat{
+		Font: typography.FontInfo{
+			Family: "Microsoft YaHei",
+			Size:   32,
+		},
+		WrapMode: typography.WrapWordChar,
+	}
+
+	layout, err := c.NewTextLayout("", format, 200, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer layout.Destroy()
+
+	_, clusters := layout.MeasureMetrics()
+	if len(clusters) != 0 {
+		t.Fatalf("empty text should not produce clusters, got %d", len(clusters))
+	}
+}
