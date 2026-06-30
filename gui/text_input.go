@@ -88,13 +88,20 @@ func (t *TextInput) Paint(p Painter) {
 	p.FillRect(rect, graphics.RGB(255, 255, 255))
 	p.DrawRect(rect, textInputBorderWidth, t.borderColor())
 
+	origin := geometry.Point{X: textInputPaddingX, Y: textInputPaddingY}
+	if len(t.text) == 0 {
+		if t.Focused() {
+			t.paintCaretRect(p, origin, t.defaultCaretRect())
+		}
+		return
+	}
+
 	textLayout := t.newTextLayout(t.textSize(size))
 	if textLayout == nil {
 		return
 	}
 	defer textLayout.Destroy()
 
-	origin := geometry.Point{X: textInputPaddingX, Y: textInputPaddingY}
 	p.DrawTextLayout(origin, textLayout)
 	if t.Focused() {
 		t.paintCaret(p, origin, textLayout)
@@ -235,6 +242,10 @@ func (t *TextInput) borderColor() graphics.Color {
 
 func (t *TextInput) paintCaret(p Painter, origin geometry.Point, layout typography.TextLayout) {
 	rect := t.caretRect(layout)
+	t.paintCaretRect(p, origin, rect)
+}
+
+func (t *TextInput) paintCaretRect(p Painter, origin geometry.Point, rect geometry.Rectangle) {
 	x := origin.X + rect.X
 	y0 := origin.Y + rect.Y
 	y1 := y0 + rect.Height
@@ -250,7 +261,7 @@ func (t *TextInput) caretRect(layout typography.TextLayout) geometry.Rectangle {
 	caret := clampCaret(t.text, t.caret)
 	lines, clusters := layout.MeasureMetrics()
 	if len(lines) == 0 {
-		return geometry.Rect(0, 0, textInputCaretWidth, defaultTextInputHeight-textInputPaddingY*2)
+		return t.defaultCaretRect()
 	}
 
 	line := lines[0]
@@ -283,6 +294,14 @@ func (t *TextInput) caretRect(layout typography.TextLayout) geometry.Rectangle {
 		height = defaultTextInputHeight - textInputPaddingY*2
 	}
 	return geometry.Rect(x, line.Y, textInputCaretWidth, height)
+}
+
+func (t *TextInput) defaultCaretRect() geometry.Rectangle {
+	height := t.textSize(t.Rect().Size).Height
+	if height <= 0 {
+		height = defaultTextInputHeight - textInputPaddingY*2
+	}
+	return geometry.Rect(0, 0, textInputCaretWidth, height)
 }
 
 func keyEventText(event events.KeyEvent) (string, bool) {

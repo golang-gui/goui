@@ -137,6 +137,36 @@ func TestTextInputPaintSkipsCaretWhenNotFocused(t *testing.T) {
 	}
 }
 
+func TestTextInputPaintEmptyFocusedSkipsTextLayoutAndDrawsCaret(t *testing.T) {
+	typo := &testTypography{}
+	setTestApplication(t, typo)
+
+	win := &window{}
+	input := NewTextInput()
+	input.Arrange(geometry.Rect(0, 0, 100, 24))
+	win.SetWidget(input)
+	if !win.SetFocusedWidget(input) {
+		t.Fatal("text input should accept focus")
+	}
+
+	painter := new(testTextInputPainter)
+	input.Paint(painter)
+
+	if len(typo.calls) != 0 {
+		t.Fatalf("empty text should not create text layout, got %d calls", len(typo.calls))
+	}
+	if painter.textLayout != nil {
+		t.Fatal("empty text should not draw a text layout")
+	}
+	if painter.drawLines != 1 {
+		t.Fatalf("expected one caret draw, got %d", painter.drawLines)
+	}
+	if painter.lineP0 != (geometry.Point{X: textInputPaddingX, Y: textInputPaddingY}) ||
+		painter.lineP1 != (geometry.Point{X: textInputPaddingX, Y: defaultTextInputHeight - textInputPaddingY}) {
+		t.Fatalf("unexpected caret line: p0=%+v p1=%+v", painter.lineP0, painter.lineP1)
+	}
+}
+
 func TestTextInputEditsFocusedWidgetFromKeyEvents(t *testing.T) {
 	win := &window{}
 	root := newTestWidget()
