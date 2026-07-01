@@ -233,6 +233,10 @@ func (p *Painter) DrawPath(path graphics.Path, strokeWidth float32, brush graphi
 
 func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLayout) {
 	origin = origin.Scale(p.scale)
+	// Snap the text bitmap origin to the device pixel grid so the pre-rasterized
+	// glyphs land 1:1 on physical pixels instead of being resampled (blurred).
+	origin.X = float32(math.Round(float64(origin.X)))
+	origin.Y = float32(math.Round(float64(origin.Y)))
 	if p.typo != nil {
 		textBitmap, err := p.typo.DrawTextLayout(layout, p.scale, nil)
 		if err == nil {
