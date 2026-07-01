@@ -19,11 +19,15 @@ func InitAppKit() (err error) {
 
 	initNSEvent()
 	initNSApplication()
+	initNSAppearance()
 	initNSWindow()
 	initNSWindowDelegate()
 	initNSResponder()
 	initNSView()
 	initNSTrackingArea()
+	initNSColorSpace()
+	initNSColor()
+	initNSFont()
 	initNSGraphicsContext()
 	return
 }
@@ -36,6 +40,7 @@ func initNSApplication() {
 	NSApplicationSel.SetActivationPolicy = objc.RegisterName("setActivationPolicy:")
 	NSApplicationSel.FinishLaunching = objc.RegisterName("finishLaunching")
 	NSApplicationSel.ActivateIgnoringOtherApps = objc.RegisterName("activateIgnoringOtherApps:")
+	NSApplicationSel.EffectiveAppearance = objc.RegisterName("effectiveAppearance")
 	NSApplicationSel.SendEvent = objc.RegisterName("sendEvent:")
 	NSApplicationSel.PostEvent = objc.RegisterName("postEvent:atStart:")
 	NSApplicationSel.NextEvent = objc.RegisterName("nextEventMatchingMask:untilDate:inMode:dequeue:")
@@ -50,6 +55,7 @@ var (
 		SetActivationPolicy       objc.SEL
 		FinishLaunching           objc.SEL
 		ActivateIgnoringOtherApps objc.SEL
+		EffectiveAppearance       objc.SEL
 		SendEvent                 objc.SEL
 		PostEvent                 objc.SEL
 		NextEvent                 objc.SEL
@@ -90,6 +96,11 @@ func (a NSApplication) ActivateIgnoringOtherApps(flag bool) {
 	a.Send(NSApplicationSel.ActivateIgnoringOtherApps, flag)
 }
 
+func (a NSApplication) EffectiveAppearance() (appearance NSAppearance) {
+	appearance.ID = a.Send(NSApplicationSel.EffectiveAppearance)
+	return
+}
+
 func (a NSApplication) SendEvent(event NSEvent) {
 	a.Send(NSApplicationSel.SendEvent, event)
 }
@@ -109,6 +120,144 @@ func (a NSApplication) Run() {
 
 func (a NSApplication) Stop() {
 	a.Send(NSApplicationSel.Stop, 0)
+}
+
+// NSAppearance
+
+func initNSAppearance() {
+	NSAppearanceClassId.Class = objc.GetClass("NSAppearance")
+	NSAppearanceSel.Name = objc.RegisterName("name")
+}
+
+var (
+	NSAppearanceClassId NSAppearanceClass
+	NSAppearanceSel     struct {
+		Name objc.SEL
+	}
+)
+
+type (
+	NSAppearance      struct{ NSObject }
+	NSAppearanceClass struct{ NSObjectClass }
+)
+
+func (a NSAppearance) Name() string {
+	return Cast[NSString](a.Send(NSAppearanceSel.Name)).UTF8String()
+}
+
+// NSColorSpace
+
+func initNSColorSpace() {
+	NSColorSpaceClassId.Class = objc.GetClass("NSColorSpace")
+	NSColorSpaceSel.SRGBColorSpace = objc.RegisterName("sRGBColorSpace")
+}
+
+var (
+	NSColorSpaceClassId NSColorSpaceClass
+	NSColorSpaceSel     struct {
+		SRGBColorSpace objc.SEL
+	}
+)
+
+type (
+	NSColorSpace      struct{ NSObject }
+	NSColorSpaceClass struct{ NSObjectClass }
+)
+
+func (c NSColorSpaceClass) SRGBColorSpace() (space NSColorSpace) {
+	space.ID = c.Send(NSColorSpaceSel.SRGBColorSpace)
+	return
+}
+
+// NSColor
+
+func initNSColor() {
+	NSColorClassId.Class = objc.GetClass("NSColor")
+	NSColorSel.ControlAccentColor = objc.RegisterName("controlAccentColor")
+	NSColorSel.ColorUsingColorSpace = objc.RegisterName("colorUsingColorSpace:")
+	NSColorSel.RedComponent = objc.RegisterName("redComponent")
+	NSColorSel.GreenComponent = objc.RegisterName("greenComponent")
+	NSColorSel.BlueComponent = objc.RegisterName("blueComponent")
+	NSColorSel.AlphaComponent = objc.RegisterName("alphaComponent")
+}
+
+var (
+	NSColorClassId NSColorClass
+	NSColorSel     struct {
+		ControlAccentColor   objc.SEL
+		ColorUsingColorSpace objc.SEL
+		RedComponent         objc.SEL
+		GreenComponent       objc.SEL
+		BlueComponent        objc.SEL
+		AlphaComponent       objc.SEL
+	}
+)
+
+type (
+	NSColor      struct{ NSObject }
+	NSColorClass struct{ NSObjectClass }
+)
+
+func (c NSColorClass) ControlAccentColor() (color NSColor) {
+	color.ID = c.Send(NSColorSel.ControlAccentColor)
+	return
+}
+
+func (c NSColor) ColorUsingColorSpace(space NSColorSpace) (color NSColor) {
+	color.ID = c.Send(NSColorSel.ColorUsingColorSpace, space)
+	return
+}
+
+func (c NSColor) RedComponent() CGFloat {
+	return objc.Send[CGFloat](c.ID, NSColorSel.RedComponent)
+}
+
+func (c NSColor) GreenComponent() CGFloat {
+	return objc.Send[CGFloat](c.ID, NSColorSel.GreenComponent)
+}
+
+func (c NSColor) BlueComponent() CGFloat {
+	return objc.Send[CGFloat](c.ID, NSColorSel.BlueComponent)
+}
+
+func (c NSColor) AlphaComponent() CGFloat {
+	return objc.Send[CGFloat](c.ID, NSColorSel.AlphaComponent)
+}
+
+// NSFont
+
+func initNSFont() {
+	NSFontClassId.Class = objc.GetClass("NSFont")
+	NSFontSel.SystemFontOfSize = objc.RegisterName("systemFontOfSize:")
+	NSFontSel.FamilyName = objc.RegisterName("familyName")
+	NSFontSel.PointSize = objc.RegisterName("pointSize")
+}
+
+var (
+	NSFontClassId NSFontClass
+	NSFontSel     struct {
+		SystemFontOfSize objc.SEL
+		FamilyName       objc.SEL
+		PointSize        objc.SEL
+	}
+)
+
+type (
+	NSFont      struct{ NSObject }
+	NSFontClass struct{ NSObjectClass }
+)
+
+func (c NSFontClass) SystemFontOfSize(size CGFloat) (font NSFont) {
+	font.ID = c.Send(NSFontSel.SystemFontOfSize, size)
+	return
+}
+
+func (f NSFont) FamilyName() string {
+	return Cast[NSString](f.Send(NSFontSel.FamilyName)).UTF8String()
+}
+
+func (f NSFont) PointSize() CGFloat {
+	return objc.Send[CGFloat](f.ID, NSFontSel.PointSize)
 }
 
 // NSGraphicsContext
