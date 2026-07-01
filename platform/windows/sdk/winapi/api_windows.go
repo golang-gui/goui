@@ -10,6 +10,8 @@ var (
 	user32Dll   = syscall.NewLazyDLL("user32.dll")
 	kernel32Dll = syscall.NewLazyDLL("kernel32.dll")
 	gdi32Dll    = syscall.NewLazyDLL("gdi32.dll")
+	advapi32Dll = syscall.NewLazyDLL("advapi32.dll")
+	dwmapiDll   = syscall.NewLazyDLL("dwmapi.dll")
 
 	// Kernel
 	procGetModuleHandleW = kernel32Dll.NewProc("GetModuleHandleW")
@@ -40,6 +42,7 @@ var (
 	// DPI
 	procGetDpiForWindow               = user32Dll.NewProc("GetDpiForWindow")
 	procSetProcessDpiAwarenessContext = user32Dll.NewProc("SetProcessDpiAwarenessContext")
+	procSystemParametersInfoW         = user32Dll.NewProc("SystemParametersInfoW")
 
 	// Message
 	procGetMessageW      = user32Dll.NewProc("GetMessageW")
@@ -75,11 +78,18 @@ var (
 	procStretchDIBits = gdi32Dll.NewProc("StretchDIBits")
 
 	procAddFontResourceExW = gdi32Dll.NewProc("AddFontResourceExW")
+	procGetDeviceCaps      = gdi32Dll.NewProc("GetDeviceCaps")
 
 	procSetPixelFormat      = gdi32Dll.NewProc("SetPixelFormat")
 	procChoosePixelFormat   = gdi32Dll.NewProc("ChoosePixelFormat")
 	procDescribePixelFormat = gdi32Dll.NewProc("DescribePixelFormat")
 	procSwapBuffers         = gdi32Dll.NewProc("SwapBuffers")
+
+	procRegOpenKeyExW    = advapi32Dll.NewProc("RegOpenKeyExW")
+	procRegQueryValueExW = advapi32Dll.NewProc("RegQueryValueExW")
+	procRegCloseKey      = advapi32Dll.NewProc("RegCloseKey")
+
+	procDwmGetColorizationColor = dwmapiDll.NewProc("DwmGetColorizationColor")
 )
 
 type WindowProcFunc func(wnd HWND, message UINT, wParam WPARAM, lParam LPARAM) LRESULT
@@ -269,6 +279,20 @@ func SetProcessDpiAwarenessContext(value DPI_AWARENESS_CONTEXT) error {
 	return nil
 }
 
+func SystemParametersInfo(action UINT, param UINT, data LPVOID, flags UINT) error {
+	ret, _, err := syscall.SyscallN(
+		procSystemParametersInfoW.Addr(),
+		uintptr(action),
+		uintptr(param),
+		uintptr(data),
+		uintptr(flags),
+	)
+	if ret == FALSE {
+		return err
+	}
+	return nil
+}
+
 func BeginPaint(wnd HWND, paint LPPAINTSTRUCT) HDC {
 	ret, _, _ := syscall.SyscallN(procBeginPaint.Addr(), uintptr(wnd), uintptr(unsafe.Pointer(paint)))
 	return HDC(ret)
@@ -354,8 +378,8 @@ func GetDC(hwnd HWND) (HDC, error) {
 	return HDC(ret), nil
 }
 
-func ReleaseDC(hdc HDC) error {
-	ret, _, err := syscall.SyscallN(procReleaseDC.Addr(), uintptr(hdc))
+func ReleaseDC(hwnd HWND, hdc HDC) error {
+	ret, _, err := syscall.SyscallN(procReleaseDC.Addr(), uintptr(hwnd), uintptr(hdc))
 	if ret == 0 {
 		return err
 	}
@@ -426,6 +450,11 @@ func AddFontResourceEx(name string, flag DWORD) int {
 	return int(ret)
 }
 
+func GetDeviceCaps(hdc HDC, index INT) INT {
+	ret, _, _ := syscall.SyscallN(procGetDeviceCaps.Addr(), uintptr(hdc), uintptr(index))
+	return INT(ret)
+}
+
 func ChoosePixelFormat(hdc HDC, pfd LPPIXELFORMATDESCRIPTOR) (INT, error) {
 	ret, _, err := syscall.SyscallN(procChoosePixelFormat.Addr(), uintptr(hdc), uintptr(unsafe.Pointer(pfd)))
 	if ret == 0 {
@@ -454,6 +483,60 @@ func SwapBuffers(hdc HDC) error {
 	ret, _, err := syscall.SyscallN(procSwapBuffers.Addr(), uintptr(hdc))
 	if ret == 0 {
 		return err
+	}
+	return nil
+}
+
+func RegOpenKeyEx(key HKEY, subKey LPCWSTR, options DWORD, access DWORD, result *HKEY) error {
+	ret, _, _ := syscall.SyscallN(
+		procRegOpenKeyExW.Addr(),
+		uintptr(key),
+		uintptr(unsafe.Pointer(subKey)),
+		uintptr(options),
+		uintptr(access),
+		uintptr(unsafe.Pointer(result)),
+	)
+	if ret != 0 {
+		return syscall.Errno(ret)
+	}
+	return nil
+}
+
+func RegQueryValueEx(key HKEY, name LPCWSTR, reserved *DWORD, typ *DWORD, data *BYTE, dataSize *DWORD) error {
+	ret, _, _ := syscall.SyscallN(
+		procRegQueryValueExW.Addr(),
+		uintptr(key),
+		uintptr(unsafe.Pointer(name)),
+		uintptr(unsafe.Pointer(reserved)),
+		uintptr(unsafe.Pointer(typ)),
+		uintptr(unsafe.Pointer(data)),
+		uintptr(unsafe.Pointer(dataSize)),
+	)
+	if ret != 0 {
+		return syscall.Errno(ret)
+	}
+	return nil
+}
+
+func RegCloseKey(key HKEY) error {
+	ret, _, _ := syscall.SyscallN(procRegCloseKey.Addr(), uintptr(key))
+	if ret != 0 {
+		return syscall.Errno(ret)
+	}
+	return nil
+}
+
+func DwmGetColorizationColor(colorization *DWORD, opaqueBlend *BOOL) error {
+	if err := procDwmGetColorizationColor.Find(); err != nil {
+		return err
+	}
+	ret, _, _ := syscall.SyscallN(
+		procDwmGetColorizationColor.Addr(),
+		uintptr(unsafe.Pointer(colorization)),
+		uintptr(unsafe.Pointer(opaqueBlend)),
+	)
+	if ret != 0 {
+		return syscall.Errno(ret)
 	}
 	return nil
 }
