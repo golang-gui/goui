@@ -122,9 +122,8 @@ type TextInputView struct {
 }
 
 type textInputState struct {
-	onText   func(string)
-	text     signal.Handle
-	updating bool
+	onText func(string)
+	text   signal.Handle
 }
 
 func TextInput() TextInputView {
@@ -155,7 +154,7 @@ func (v TextInputView) Mount(ctx BuildContext) gui.Widget {
 	input := gui.NewTextInput()
 	state := &textInputState{}
 	state.text = input.ConnectText(func(text string) {
-		if !state.updating && state.onText != nil {
+		if state.onText != nil {
 			state.onText(text)
 		}
 	})
@@ -168,9 +167,11 @@ func (v TextInputView) Update(ctx BuildContext, widget gui.Widget) {
 	state := ctx.State().(*textInputState)
 	input.SetID(v.name)
 	input.SetVisible(!v.hidden)
-	state.updating = true
-	input.SetText(v.text)
-	state.updating = false
+	func() {
+		state.text.Block()
+		defer state.text.Unblock()
+		input.SetText(v.text)
+	}()
 	state.onText = v.onText
 }
 
