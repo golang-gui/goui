@@ -64,12 +64,16 @@ var (
 
 	// PangoFontDescription
 	pangoFontDescriptionNew             = libpango.NewSymbol("pango_font_description_new")
+	pangoFontDescriptionFromString      = libpango.NewSymbol("pango_font_description_from_string")
 	pangoFontDescriptionFree            = libpango.NewSymbol("pango_font_description_free")
 	pangoFontDescriptionSetFamily       = libpango.NewSymbol("pango_font_description_set_family")
 	pangoFontDescriptionSetSize         = libpango.NewSymbol("pango_font_description_set_size")
 	pangoFontDescriptionSetAbsoluteSize = libpango.NewSymbol("pango_font_description_set_absolute_size")
+	pangoFontDescriptionGetFamily       = libpango.NewSymbol("pango_font_description_get_family")
+	pangoFontDescriptionGetSize         = libpango.NewSymbol("pango_font_description_get_size")
 
 	// PangoContext
+	pangoContextGetFontDescription = libpango.NewSymbol("pango_context_get_font_description")
 	pangoContextSetFontDescription = libpango.NewSymbol("pango_context_set_font_description")
 	pangoContextSetLanguage        = libpango.NewSymbol("pango_context_set_language")
 	pangoContextSetBaseDir         = libpango.NewSymbol("pango_context_set_base_dir")
@@ -469,6 +473,14 @@ func FontDescriptionNew() FontDescription {
 	return FontDescription(ret)
 }
 
+func FontDescriptionFromString(desc string) FontDescription {
+	// PangoFontDescription* pango_font_description_from_string(const char* str)
+	cDesc := cgo.CString(desc)
+	ret, _, _ := pangoFontDescriptionFromString.CallRaw(uintptr(cDesc))
+	runtime.KeepAlive(cDesc)
+	return FontDescription(ret)
+}
+
 // Free frees a font description.
 func (fd FontDescription) Free() {
 	// void pango_font_description_free(PangoFontDescription* desc)
@@ -495,10 +507,31 @@ func (fd FontDescription) SetAbsoluteSize(size float64) {
 	cgo.Call(pangoFontDescriptionSetAbsoluteSize.Addr(), fd, size)
 }
 
+func (fd FontDescription) GetFamily() string {
+	// const char* pango_font_description_get_family(const PangoFontDescription* desc)
+	ret, _, _ := pangoFontDescriptionGetFamily.CallRaw(uintptr(fd))
+	if ret == 0 {
+		return ""
+	}
+	return cgo.GoString(cgo.Pointer(ret))
+}
+
+func (fd FontDescription) GetSize() int {
+	// gint pango_font_description_get_size(const PangoFontDescription* desc)
+	ret, _, _ := pangoFontDescriptionGetSize.CallRaw(uintptr(fd))
+	return int(ret)
+}
+
 // --- PangoContext ---
 
 type Context struct {
 	glib.Object
+}
+
+func (c Context) GetFontDescription() FontDescription {
+	// const PangoFontDescription* pango_context_get_font_description(PangoContext* context)
+	ret, _, _ := pangoContextGetFontDescription.CallRaw(c.GObject)
+	return FontDescription(ret)
 }
 
 // SetFontDescription sets the default font description for a context.
