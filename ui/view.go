@@ -33,22 +33,29 @@ func (v LabelView) Text(text string) LabelView {
 	return v
 }
 
-func (v LabelView) Build(ctx BuildContext, old gui.Widget) gui.Widget {
-	label, _ := old.(*gui.Label)
-	if label == nil {
-		label = gui.NewLabel(v.text)
-	}
+func (v LabelView) Mount(BuildContext) gui.Widget {
+	return gui.NewLabel(v.text)
+}
+
+func (v LabelView) Update(_ BuildContext, widget gui.Widget) {
+	label := widget.(*gui.Label)
 	label.SetID(v.name)
 	label.SetVisible(!v.hidden)
 	label.SetText(v.text)
-	return label
 }
+
+func (v LabelView) Unmount(BuildContext, gui.Widget) {}
 
 type ButtonView struct {
 	name    string
 	hidden  bool
 	child   View
 	onClick func()
+}
+
+type buttonState struct {
+	onClick func()
+	click   signal.Handle
 }
 
 func Button(child View) ButtonView {
@@ -75,11 +82,22 @@ func (v ButtonView) OnClick(fn func()) ButtonView {
 	return v
 }
 
-func (v ButtonView) Build(ctx BuildContext, old gui.Widget) gui.Widget {
-	button, _ := old.(*gui.Button)
-	if button == nil {
-		button = gui.NewButton()
-	}
+func (v ButtonView) Mount(ctx BuildContext) gui.Widget {
+	button := gui.NewButton()
+	state := &buttonState{}
+	state.click = button.ConnectClicked(func() {
+		if state.onClick != nil {
+			state.onClick()
+		}
+	})
+	ctx.SetState(state)
+	return button
+}
+
+func (v ButtonView) Update(ctx BuildContext, widget gui.Widget) {
+	button := widget.(*gui.Button)
+	state := ctx.State().(*buttonState)
+	state.onClick = v.onClick
 	button.SetID(v.name)
 	button.SetVisible(!v.hidden)
 	if v.child == nil {
@@ -87,13 +105,13 @@ func (v ButtonView) Build(ctx BuildContext, old gui.Widget) gui.Widget {
 	} else {
 		ctx.UpdateChildren(button, []View{v.child})
 	}
-	ctx.Connect(button, "click", func() signal.Handle {
-		if v.onClick == nil {
-			return nil
-		}
-		return button.ConnectClicked(v.onClick)
-	})
-	return button
+}
+
+func (v ButtonView) Unmount(ctx BuildContext, _ gui.Widget) {
+	state, _ := ctx.State().(*buttonState)
+	if state != nil && state.click != nil {
+		state.click.Disconnect()
+	}
 }
 
 type TextInputView struct {
@@ -101,6 +119,12 @@ type TextInputView struct {
 	hidden bool
 	text   string
 	onText func(string)
+}
+
+type textInputState struct {
+	onText   func(string)
+	text     signal.Handle
+	updating bool
 }
 
 func TextInput() TextInputView {
@@ -127,22 +151,34 @@ func (v TextInputView) OnText(fn func(string)) TextInputView {
 	return v
 }
 
-func (v TextInputView) Build(ctx BuildContext, old gui.Widget) gui.Widget {
-	input, _ := old.(*gui.TextInput)
-	if input == nil {
-		input = gui.NewTextInput()
-	}
+func (v TextInputView) Mount(ctx BuildContext) gui.Widget {
+	input := gui.NewTextInput()
+	state := &textInputState{}
+	state.text = input.ConnectText(func(text string) {
+		if !state.updating && state.onText != nil {
+			state.onText(text)
+		}
+	})
+	ctx.SetState(state)
+	return input
+}
+
+func (v TextInputView) Update(ctx BuildContext, widget gui.Widget) {
+	input := widget.(*gui.TextInput)
+	state := ctx.State().(*textInputState)
 	input.SetID(v.name)
 	input.SetVisible(!v.hidden)
-	ctx.Connect(input, "text", nil)
+	state.updating = true
 	input.SetText(v.text)
-	ctx.Connect(input, "text", func() signal.Handle {
-		if v.onText == nil {
-			return nil
-		}
-		return input.ConnectText(v.onText)
-	})
-	return input
+	state.updating = false
+	state.onText = v.onText
+}
+
+func (v TextInputView) Unmount(ctx BuildContext, _ gui.Widget) {
+	state, _ := ctx.State().(*textInputState)
+	if state != nil && state.text != nil {
+		state.text.Disconnect()
+	}
 }
 
 type ImageView struct {
@@ -170,16 +206,18 @@ func (v ImageView) Image(img image.Image) ImageView {
 	return v
 }
 
-func (v ImageView) Build(ctx BuildContext, old gui.Widget) gui.Widget {
-	imageWidget, _ := old.(*gui.Image)
-	if imageWidget == nil {
-		imageWidget = gui.NewImage(v.img)
-	}
+func (v ImageView) Mount(BuildContext) gui.Widget {
+	return gui.NewImage(v.img)
+}
+
+func (v ImageView) Update(_ BuildContext, widget gui.Widget) {
+	imageWidget := widget.(*gui.Image)
 	imageWidget.SetID(v.name)
 	imageWidget.SetVisible(!v.hidden)
 	imageWidget.SetImage(v.img)
-	return imageWidget
 }
+
+func (v ImageView) Unmount(BuildContext, gui.Widget) {}
 
 type BoxView struct {
 	name      string
@@ -223,15 +261,17 @@ func (v BoxView) Children(children ...View) BoxView {
 	return v
 }
 
-func (v BoxView) Build(ctx BuildContext, old gui.Widget) gui.Widget {
-	box, _ := old.(*gui.LinearBox)
-	if box == nil {
-		box = gui.NewLinearBox(v.direction)
-	}
+func (v BoxView) Mount(BuildContext) gui.Widget {
+	return gui.NewLinearBox(v.direction)
+}
+
+func (v BoxView) Update(ctx BuildContext, widget gui.Widget) {
+	box := widget.(*gui.LinearBox)
 	box.SetID(v.name)
 	box.SetVisible(!v.hidden)
 	box.SetDirection(v.direction)
 	box.SetSpacing(v.spacing)
 	ctx.UpdateChildren(box, v.children)
-	return box
 }
+
+func (v BoxView) Unmount(BuildContext, gui.Widget) {}

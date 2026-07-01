@@ -4,6 +4,7 @@ import (
 	"image"
 	"testing"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
@@ -150,7 +151,35 @@ func TestRootUpdatesButtonChild(t *testing.T) {
 	}
 }
 
-func TestRootReconnectsTextInputHandler(t *testing.T) {
+func TestButtonViewUpdatesClickHandlerThroughState(t *testing.T) {
+	root := NewRoot()
+	firstCalls := 0
+	secondCalls := 0
+
+	button := root.Update(Button(nil).OnClick(func() {
+		firstCalls++
+	})).(*gui.Button)
+	triggerButtonClick(button)
+	if firstCalls != 1 || secondCalls != 0 {
+		t.Fatalf("unexpected first click calls: first=%d second=%d", firstCalls, secondCalls)
+	}
+
+	root.Update(Button(nil).OnClick(func() {
+		secondCalls++
+	}))
+	triggerButtonClick(button)
+	if firstCalls != 1 || secondCalls != 1 {
+		t.Fatalf("handler was not updated through state: first=%d second=%d", firstCalls, secondCalls)
+	}
+
+	root.Unmount()
+	triggerButtonClick(button)
+	if firstCalls != 1 || secondCalls != 1 {
+		t.Fatalf("unmounted click handler should be disconnected: first=%d second=%d", firstCalls, secondCalls)
+	}
+}
+
+func TestRootUpdatesTextInputHandlerThroughState(t *testing.T) {
 	root := NewRoot()
 	firstCalls := 0
 	secondCalls := 0
@@ -219,6 +248,50 @@ func TestRootUpdatesImageAndCommonFields(t *testing.T) {
 	}
 	if imageWidget.ID() != "logo2" || imageWidget.Image() != second || imageWidget.Visible() {
 		t.Fatalf("image fields were not updated: id=%q visible=%v", imageWidget.ID(), imageWidget.Visible())
+	}
+}
+
+func TestRootPreservesViewStateAcrossUpdatesAndUnmounts(t *testing.T) {
+	root := NewRoot()
+	tracker := &lifecycleTracker{}
+
+	widget := root.Update(lifecycleView{text: "first", tracker: tracker})
+	label := widget.(*gui.Label)
+	updated := root.Update(lifecycleView{text: "second", tracker: tracker})
+
+	if updated != label {
+		t.Fatal("same view type should reuse the mounted widget")
+	}
+	if tracker.mounts != 1 || tracker.updates != 2 || tracker.unmounts != 0 {
+		t.Fatalf("unexpected lifecycle before unmount: mounts=%d updates=%d unmounts=%d", tracker.mounts, tracker.updates, tracker.unmounts)
+	}
+	if label.Text() != "second" {
+		t.Fatalf("view update did not update widget text: %q", label.Text())
+	}
+
+	root.Update(Label("replacement"))
+
+	if tracker.unmounts != 1 {
+		t.Fatalf("expected one unmount, got %d", tracker.unmounts)
+	}
+	if tracker.unmountedStateUpdates != 2 || tracker.unmountedText != "second" {
+		t.Fatalf("unmount did not see preserved state/widget: state updates=%d text=%q", tracker.unmountedStateUpdates, tracker.unmountedText)
+	}
+}
+
+func TestTextInputViewDisconnectsHandlerOnUnmount(t *testing.T) {
+	root := NewRoot()
+	calls := 0
+
+	input := root.Update(TextInput().OnText(func(string) {
+		calls++
+	})).(*gui.TextInput)
+
+	root.Unmount()
+	input.SetText("after-unmount")
+
+	if calls != 0 {
+		t.Fatalf("unmounted text handler should be disconnected, got %d calls", calls)
 	}
 }
 
@@ -360,6 +433,83 @@ func TestRootWindowDestroyUnmountsWithoutDetachingWidget(t *testing.T) {
 	if win.Widget() != widget {
 		t.Fatal("window destroy handler should not detach the widget tree before Window destroys it")
 	}
+}
+
+type testEventContext struct {
+	event   events.Event
+	stopped bool
+}
+
+func (c *testEventContext) Event() events.Event {
+	return c.event
+}
+
+func (c *testEventContext) Position() (geometry.Point, bool) {
+	return geometry.Point{}, false
+}
+
+func (c *testEventContext) StopPropagation() {
+	c.stopped = true
+}
+
+func (c *testEventContext) PropagationStopped() bool {
+	return c.stopped
+}
+
+func triggerButtonClick(button *gui.Button) {
+	for _, controller := range button.EventControllers() {
+		click, ok := controller.(*gui.ClickEventController)
+		if !ok {
+			continue
+		}
+		click.HandleEvent(&testEventContext{event: events.PointerEvent{
+			EventType: events.PointerDown,
+			Button:    events.PointerButtonLeft,
+			Buttons:   events.PointerButtonLeftDown,
+		}})
+		click.HandleEvent(&testEventContext{event: events.PointerEvent{
+			EventType: events.PointerUp,
+			Button:    events.PointerButtonLeft,
+		}})
+		return
+	}
+}
+
+type lifecycleTracker struct {
+	mounts                int
+	updates               int
+	unmounts              int
+	unmountedStateUpdates int
+	unmountedText         string
+}
+
+type lifecycleState struct {
+	updates int
+}
+
+type lifecycleView struct {
+	text    string
+	tracker *lifecycleTracker
+}
+
+func (v lifecycleView) Mount(ctx BuildContext) gui.Widget {
+	v.tracker.mounts++
+	ctx.SetState(&lifecycleState{})
+	return gui.NewLabel("")
+}
+
+func (v lifecycleView) Update(ctx BuildContext, widget gui.Widget) {
+	v.tracker.updates++
+	state := ctx.State().(*lifecycleState)
+	state.updates++
+	widget.(*gui.Label).SetText(v.text)
+}
+
+func (v lifecycleView) Unmount(ctx BuildContext, widget gui.Widget) {
+	v.tracker.unmounts++
+	state := ctx.State().(*lifecycleState)
+	v.tracker.unmountedStateUpdates = state.updates
+	v.tracker.unmountedText = widget.(*gui.Label).Text()
 }
 
 func useTestApplication(t *testing.T, app gui.Application) {
