@@ -13,9 +13,16 @@ import (
 type (
 	Event        = events.Event
 	Image        = common.Image
+	Settings     = common.Settings
+	ColorScheme  = common.ColorScheme
 	Window       = common.Window
 	EventLoop    = common.EventLoop
 	EventHandler = events.EventHandler
+)
+
+const (
+	ColorSchemeLight = common.ColorSchemeLight
+	ColorSchemeDark  = common.ColorSchemeDark
 )
 
 // Platform owns low-level operating-system resources. It and every object
@@ -24,11 +31,12 @@ type (
 type Platform interface {
 	Destroy()
 	Name() string
-	NewImage(width, height uint) (common.Image, error)
+	NewImage(width, height uint) (Image, error)
 	NewWindow(handler EventHandler) (Window, error)
 	NewEventLoop() (EventLoop, error)
 	NewTypography() (typography.Context, error)
 	NewPainter(win Window, typo typography.Context) (graphics.Painter, error)
+	NewSettings(onChanged func()) (Settings, error)
 }
 
 var ErrUnsupported = errors.New("unsupported platform")

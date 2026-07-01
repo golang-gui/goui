@@ -73,6 +73,10 @@ func (p *Platform) NewPainter(win common.Window, typo typography.Context) (paint
 	return
 }
 
+func (p *Platform) NewSettings(onChanged func()) (common.Settings, error) {
+	return newSettings(onChanged)
+}
+
 func newPlatform() (p *Platform, err error) {
 	p = new(Platform)
 	p.instance, _ = winapi.GetModuleHandle(nil)
