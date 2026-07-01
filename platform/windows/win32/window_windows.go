@@ -258,7 +258,7 @@ func (w *Window) drawImage(img graphics.Bitmap) error {
 	if err != nil {
 		return err
 	}
-	defer winapi.ReleaseDC(hdc)
+	defer winapi.ReleaseDC(w.hwnd, hdc)
 
 	width := winapi.INT(img.Width)
 	height := winapi.INT(img.Height)
