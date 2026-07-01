@@ -9,12 +9,15 @@ import (
 )
 
 type View interface {
-	Build(ctx BuildContext, old gui.Widget) gui.Widget
+	Mount(ctx BuildContext) gui.Widget
+	Update(ctx BuildContext, widget gui.Widget)
+	Unmount(ctx BuildContext, widget gui.Widget)
 }
 
 type BuildContext interface {
+	State() any
+	SetState(any)
 	UpdateChildren(container gui.Container, children []View)
-	Connect(widget gui.Widget, name string, connect func() signal.Handle)
 }
 
 type Root struct {
@@ -28,14 +31,10 @@ type Root struct {
 
 type node struct {
 	viewType reflect.Type
+	view     View
 	widget   gui.Widget
+	state    any
 	children []*node
-	handles  map[connectionKey]signal.Handle
-}
-
-type connectionKey struct {
-	widget gui.Widget
-	name   string
 }
 
 type buildContext struct {
@@ -171,7 +170,7 @@ func (r *Root) unmount(detachWindow bool) {
 	if destroyHandle != nil {
 		destroyHandle.Disconnect()
 	}
-	r.release(oldRoot)
+	r.release(oldRoot, true)
 
 	if detachWindow && window != nil && oldWidget != nil && window.Widget() == oldWidget {
 		window.SetWidget(nil)
@@ -192,82 +191,77 @@ func (r *Root) unmountForWindowDestroy() {
 	if destroyHandle != nil {
 		destroyHandle.Disconnect()
 	}
-	r.releaseHandles(oldRoot)
+	r.release(oldRoot, false)
 }
 
 func (r *Root) updateNode(old *node, view View) *node {
 	if view == nil {
-		r.release(old)
+		r.release(old, true)
 		return nil
 	}
 
 	viewType := reflect.TypeOf(view)
 	if old != nil && old.viewType != viewType {
-		r.release(old)
+		r.release(old, true)
 		old = nil
 	}
 
 	current := old
 	if current == nil {
-		current = &node{viewType: viewType}
+		current = &node{
+			viewType: viewType,
+			view:     view,
+		}
+		ctx := &buildContext{root: r, node: current}
+		current.widget = view.Mount(ctx)
+		if current.widget == nil {
+			return nil
+		}
 	}
 
-	ctx := &buildContext{
-		root: r,
-		node: current,
-	}
-	var oldWidget gui.Widget
-	if old != nil {
-		oldWidget = old.widget
-	}
-	widget := view.Build(ctx, oldWidget)
-	if widget == nil {
-		r.release(current)
-		return nil
-	}
-
+	ctx := &buildContext{root: r, node: current}
 	current.viewType = viewType
-	current.widget = widget
+	current.view = view
+	view.Update(ctx, current.widget)
 	return current
 }
 
-func (r *Root) release(n *node) {
+func (r *Root) release(n *node, detachWidgets bool) {
 	if n == nil {
 		return
 	}
-	if container, ok := n.widget.(gui.Container); ok {
+
+	container, _ := n.widget.(gui.Container)
+	for _, child := range n.children {
+		childWidget := child.widget
+		r.release(child, detachWidgets)
+		if detachWidgets && container != nil && childWidget != nil {
+			container.RemoveChild(childWidget)
+		}
+	}
+	n.children = nil
+
+	if detachWidgets && container != nil {
 		for _, child := range container.Children() {
 			container.RemoveChild(child)
 		}
 	}
-	for _, child := range n.children {
-		r.release(child)
-	}
-	n.children = nil
 
-	for key, handle := range n.handles {
-		if handle != nil {
-			handle.Disconnect()
-		}
-		delete(n.handles, key)
+	if n.view != nil && n.widget != nil {
+		ctx := &buildContext{root: r, node: n}
+		n.view.Unmount(ctx, n.widget)
 	}
+	n.view = nil
+	n.widget = nil
+	n.state = nil
 }
 
-func (r *Root) releaseHandles(n *node) {
-	if n == nil {
-		return
-	}
-	for _, child := range n.children {
-		r.releaseHandles(child)
-	}
-	n.children = nil
+func (ctx *buildContext) State() any {
+	return ctx.node.state
+}
 
-	for key, handle := range n.handles {
-		if handle != nil {
-			handle.Disconnect()
-		}
-		delete(n.handles, key)
-	}
+func (ctx *buildContext) SetState(state any) {
+	ctx.node.state = state
 }
 
 func (ctx *buildContext) UpdateChildren(container gui.Container, children []View) {
@@ -286,8 +280,13 @@ func (ctx *buildContext) UpdateChildren(container gui.Container, children []View
 		}
 		child := ctx.root.updateNode(oldNodes[index], children[index])
 		if child == nil || child.widget == nil {
-			if oldNodes[index] != nil && oldNodes[index].widget != nil {
-				container.RemoveChild(oldNodes[index].widget)
+			var oldWidget gui.Widget
+			if oldNodes[index] != nil {
+				oldWidget = oldNodes[index].widget
+			}
+			ctx.root.release(oldNodes[index], true)
+			if oldWidget != nil {
+				container.RemoveChild(oldWidget)
 			}
 			index++
 			continue
@@ -297,10 +296,14 @@ func (ctx *buildContext) UpdateChildren(container gui.Container, children []View
 	}
 
 	for _, old := range oldNodes[index:] {
-		if old != nil && old.widget != nil {
-			container.RemoveChild(old.widget)
+		var oldWidget gui.Widget
+		if old != nil {
+			oldWidget = old.widget
 		}
-		ctx.root.release(old)
+		ctx.root.release(old, true)
+		if oldWidget != nil {
+			container.RemoveChild(oldWidget)
+		}
 	}
 
 	for _, childView := range children[index:] {
@@ -313,30 +316,6 @@ func (ctx *buildContext) UpdateChildren(container gui.Container, children []View
 	}
 
 	ctx.node.children = newNodes
-}
-
-func (ctx *buildContext) Connect(widget gui.Widget, name string, connect func() signal.Handle) {
-	if widget == nil || name == "" {
-		return
-	}
-	if ctx.node.handles == nil {
-		ctx.node.handles = make(map[connectionKey]signal.Handle)
-	}
-	key := connectionKey{
-		widget: widget,
-		name:   name,
-	}
-	if handle := ctx.node.handles[key]; handle != nil {
-		handle.Disconnect()
-		delete(ctx.node.handles, key)
-	}
-	if connect == nil {
-		return
-	}
-	handle := connect()
-	if handle != nil {
-		ctx.node.handles[key] = handle
-	}
 }
 
 func sameViewType(old *node, view View) bool {
