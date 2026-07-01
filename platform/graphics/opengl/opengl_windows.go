@@ -10,8 +10,9 @@ import (
 )
 
 type wglContext struct {
-	hdc winapi.HDC
-	hrc wgl.HGLRC
+	hwnd winapi.HWND
+	hdc  winapi.HDC
+	hrc  wgl.HGLRC
 }
 
 func newContext(win NativeWindow, share Context, config Config) (_ Context, err error) {
@@ -20,7 +21,8 @@ func newContext(win NativeWindow, share Context, config Config) (_ Context, err 
 		return
 	}
 
-	hdc, err := winapi.GetDC(winapi.HWND(win.NativeHandle()))
+	hwnd := winapi.HWND(win.NativeHandle())
+	hdc, err := winapi.GetDC(hwnd)
 	if err != nil {
 		return
 	}
@@ -59,8 +61,9 @@ func newContext(win NativeWindow, share Context, config Config) (_ Context, err 
 		}
 
 		return wglContext{
-			hdc: hdc,
-			hrc: hrc,
+			hwnd: hwnd,
+			hdc:  hdc,
+			hrc:  hrc,
 		}, nil
 	}
 
@@ -76,7 +79,7 @@ func (c wglContext) Destroy() {
 		wgl.DeleteContext(c.hrc)
 	}
 	if c.hdc != 0 {
-		winapi.ReleaseDC(c.hdc)
+		winapi.ReleaseDC(c.hwnd, c.hdc)
 	}
 }
 
