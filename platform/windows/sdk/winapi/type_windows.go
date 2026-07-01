@@ -144,6 +144,7 @@ type (
 	HICON     = syscall.Handle
 	HCURSOR   = syscall.Handle
 	HBRUSH    = syscall.Handle
+	HKEY      = syscall.Handle
 )
 
 //Windows API Structs
@@ -200,6 +201,46 @@ type WNDCLASSEX struct {
 }
 
 const Sizeof_WNDCLASSEX = 80
+
+type LOGFONT struct {
+	Height         LONG
+	Width          LONG
+	Escapement     LONG
+	Orientation    LONG
+	Weight         LONG
+	Italic         BYTE
+	Underline      BYTE
+	StrikeOut      BYTE
+	CharSet        BYTE
+	OutPrecision   BYTE
+	ClipPrecision  BYTE
+	Quality        BYTE
+	PitchAndFamily BYTE
+	FaceName       [LF_FACESIZE]WCHAR
+}
+
+const LF_FACESIZE = 32
+
+type NONCLIENTMETRICS struct {
+	Size               UINT
+	BorderWidth        INT
+	ScrollWidth        INT
+	ScrollHeight       INT
+	CaptionWidth       INT
+	CaptionHeight      INT
+	CaptionFont        LOGFONT
+	SmallCaptionWidth  INT
+	SmallCaptionHeight INT
+	SmallCaptionFont   LOGFONT
+	MenuWidth          INT
+	MenuHeight         INT
+	MenuFont           LOGFONT
+	StatusFont         LOGFONT
+	MessageFont        LOGFONT
+	PaddedBorderWidth  INT
+}
+
+const Sizeof_NONCLIENTMETRICS = 504
 
 type CREATESTRUCT struct {
 	CreateParams LPVOID
@@ -347,6 +388,21 @@ const (
 	DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE    = DPI_AWARENESS_CONTEXT(-3)
 	DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = DPI_AWARENESS_CONTEXT(-4)
 	DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED    = DPI_AWARENESS_CONTEXT(-5)
+)
+
+const (
+	SPI_GETNONCLIENTMETRICS = 0x0029
+)
+
+const (
+	LOGPIXELSY = 90
+)
+
+const (
+	HKEY_CURRENT_USER HKEY = 0x80000001
+
+	KEY_READ  = 0x20019
+	REG_DWORD = 4
 )
 
 // Class styles
