@@ -1,9 +1,9 @@
 ---
 name: Bug report
 about: Create a report to help us improve
-title: ''
-labels: bug, documentation, help wanted
-assignees: xuges
+title: 'BUG: '
+labels: ''
+assignees: ''
 
 ---
 
