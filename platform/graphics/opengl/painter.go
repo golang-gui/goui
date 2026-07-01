@@ -3,6 +3,7 @@ package opengl
 import (
 	"fmt"
 	"image"
+	"math"
 
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/utils"
@@ -181,7 +182,11 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 	if p.typo != nil {
 		textBitmap, err := p.typo.DrawTextLayout(layout, p.scale, nil)
 		if err == nil {
-			drawRect := graphics.Rect(origin.X, origin.Y, float32(textBitmap.Width)/p.scale, float32(textBitmap.Height)/p.scale)
+			// Snap the text bitmap origin to the device pixel grid so the pre-rasterized
+			// glyphs land 1:1 on physical pixels instead of being resampled (blurred).
+			x := float32(math.Round(float64(origin.X*p.scale))) / p.scale
+			y := float32(math.Round(float64(origin.Y*p.scale))) / p.scale
+			drawRect := graphics.Rect(x, y, float32(textBitmap.Width)/p.scale, float32(textBitmap.Height)/p.scale)
 			bitmap := graphics.Bitmap{
 				Width:  textBitmap.Width,
 				Height: textBitmap.Height,
