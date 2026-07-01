@@ -137,3 +137,7 @@ func (p *Platform) NewPainter(win common.Window, typo typography.Context) (paint
 	}
 	return
 }
+
+func (p *Platform) NewSettings(onChanged func()) (common.Settings, error) {
+	return newSettings(onChanged)
+}
