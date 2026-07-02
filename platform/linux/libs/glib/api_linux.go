@@ -47,6 +47,14 @@ func (o Object) BoolProperty(name string) (bool, error) {
 	return value != 0, err
 }
 
+func (o Object) IntProperty(name string) (int32, error) {
+	cName := cgo.CString(name)
+	var value int32
+	_, _, err := gObjectGet.CallRaw(o.GObject, uintptr(cName), uintptr(unsafe.Pointer(&value)), 0)
+	runtime.KeepAlive(cName)
+	return value, err
+}
+
 func (o Object) StringProperty(name string) (string, error) {
 	cName := cgo.CString(name)
 	var value uintptr
