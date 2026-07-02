@@ -3,6 +3,11 @@ package ui
 import "github.com/golang-gui/goui/gui"
 
 type View interface {
+	Build() View
+}
+
+type WidgetView interface {
+	View
 	Mount(ctx BuildContext) gui.Widget
 	Update(ctx BuildContext, widget gui.Widget)
 	Unmount(ctx BuildContext, widget gui.Widget)
