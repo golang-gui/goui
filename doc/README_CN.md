@@ -2,36 +2,223 @@
 
 goui 是一个 Go 原生、AI 友好的声明式 UI 框架。
 
-## 声明式 UI
+## 预置控件声明式 UI
 
 ```go
 import . "github.com/golang-gui/goui/ui"
 
-var (
-    root *Root
-    text string
-    input string
-)
+func main() {
+    text := MakeState("Hello GOUI!")
+    input := ""
 
-root = MountWindow(win, func() View {
-    return VBox(
-        Label(text),
-        HBox(
-            Label("Input:"),
-            TextInput().Text(input).OnText(func(value string) {
-                input = value
-                text = value
-            }),
-        ),
-        Button(Label("Submit")).OnClick(func() {
-            text = input
-            root.RequestUpdate()
-        }),
-    )
-})
+    App.Run(func() RootView {
+        return Window("main").
+            Title("Main Window").
+            Content(
+                VBox(
+                    Label(text.Get()),
+                    HBox(
+                        Label("Please input: "),
+                        TextInput().
+                            Text(input).
+                            OnText(func(value string) {
+                                input = value
+                            }),
+                    ),
+                    HBox(Button("Submit").OnClick(func() {
+                        text.Set(input)
+                    })),
+                ),
+            )
+    })
+}
 ```
 
-MVP 已经证明，Go 可以用普通值和链式方法表达清晰的声明式 UI。
+`ui` 包是声明式的。View 是普通 Go 值，通过链式方法配置；`ui.App`
+负责命令式运行时操作；`State.Set` 会请求一次合并后的 UI 重建。
+
+## 组合式 UI
+
+简单组合可以直接写成返回 `ui.View` 的函数：
+
+```go
+func Login(username, password string, onLogin func()) View {
+    return VBox(
+        HBox(Label("Username: "), TextInput().Text(username)),
+        HBox(Label("Password: "), TextInput().Text(password)),
+        HBox(Button("Login").OnClick(onLogin)),
+    ).Spacing(8)
+}
+```
+
+更复杂的组合可以定义值类型，通过链式方法设置属性，并实现
+`Build() View`：
+
+```go
+type LoginView struct {
+    username string
+    password string
+    onLogin  func()
+}
+
+func Login2() LoginView {
+    return LoginView{}
+}
+
+func (v LoginView) Username(value string) LoginView {
+    v.username = value
+    return v
+}
+
+func (v LoginView) Password(value string) LoginView {
+    v.password = value
+    return v
+}
+
+func (v LoginView) OnLogin(fn func()) LoginView {
+    v.onLogin = fn
+    return v
+}
+
+func (v LoginView) Build() View {
+    return VBox(
+        HBox(Label("Username: "), TextInput().Text(v.username)),
+        HBox(Label("Password: "), TextInput().Text(v.password)),
+        HBox(Button("Login").OnClick(v.onLogin)),
+    )
+}
+```
+
+组合 View 会被自动展开，因此可以像预置控件一样使用：
+
+```go
+VBox(
+    Login2().
+        Username("xuges").
+        Password("123456").
+        OnLogin(func() {
+            text.Set("Login success.")
+        }),
+    Label(text.Get()),
+)
+```
+
+## 自定义 View 与 Widget
+
+自定义 `ui.WidgetView` 是声明式 `ui.View` 和命令式 `gui.Widget` 的桥。
+下面的例子包装了一个 `gui.Label`，并把最新回调保存在 reconciler state
+里：
+
+```go
+type HyperlinkView struct {
+    url     string
+    onClick func()
+}
+
+func Hyperlink(url string) HyperlinkView {
+    return HyperlinkView{url: url}
+}
+
+func (v HyperlinkView) Url(value string) HyperlinkView {
+    v.url = value
+    return v
+}
+
+func (v HyperlinkView) OnClick(fn func()) HyperlinkView {
+    v.onClick = fn
+    return v
+}
+
+func (v HyperlinkView) Build() View {
+    return v
+}
+
+type hyperlinkState struct {
+    onClick func()
+}
+
+func (v HyperlinkView) Mount(ctx BuildContext) gui.Widget {
+    state := &hyperlinkState{onClick: v.onClick}
+    click := gui.NewClickEventController()
+    click.ConnectClicked(func(gui.EventContext) {
+        if state.onClick != nil {
+            state.onClick()
+        }
+    })
+
+    label := gui.NewLabel(v.url)
+    label.AddEventController(click)
+    ctx.SetState(state)
+    return label
+}
+
+func (v HyperlinkView) Update(ctx BuildContext, widget gui.Widget) {
+    ctx.State().(*hyperlinkState).onClick = v.onClick
+    widget.(*gui.Label).SetText(v.url)
+}
+
+func (v HyperlinkView) Unmount(BuildContext, gui.Widget) {}
+```
+
+如果需要完全自定义 `gui.Widget`，通常嵌入 `gui.WidgetBase`，并按需实现
+测量、绘制和语义快照等行为：
+
+```go
+type BadgeWidget struct {
+    gui.WidgetBase
+    text string
+}
+
+func NewBadgeWidget(text string) *BadgeWidget {
+    return &BadgeWidget{text: text}
+}
+
+func (w *BadgeWidget) SetText(text string) {
+    if w.text == text {
+        return
+    }
+    w.text = text
+    w.RequestLayout()
+}
+
+func (w *BadgeWidget) Measure(geometry.Size) geometry.Size {
+    return geometry.Size{Width: 72, Height: 24}
+}
+
+func (w *BadgeWidget) Paint(p gui.Painter) {
+    if !w.Visible() {
+        return
+    }
+    size := w.Rect().Size
+    p.FillRoundRect(
+        geometry.Rect(0, 0, size.Width, size.Height),
+        12,
+        graphics.RGB(40, 110, 220),
+    )
+}
+
+type BadgeView struct {
+    text string
+}
+
+func Badge(text string) BadgeView {
+    return BadgeView{text: text}
+}
+
+func (v BadgeView) Build() View {
+    return v
+}
+
+func (v BadgeView) Mount(BuildContext) gui.Widget {
+    return NewBadgeWidget(v.text)
+}
+
+func (v BadgeView) Update(_ BuildContext, widget gui.Widget) {
+    widget.(*BadgeWidget).SetText(v.text)
+}
+
+func (v BadgeView) Unmount(BuildContext, gui.Widget) {}
+```
 
 ## 核心思想
 
@@ -77,7 +264,7 @@ AI 支持是架构的一部分，不是后期附加功能。
 
 ## 当前状态
 
-MVP 已完成架构验证。当前已经包含平台事件、命令式 GUI 层、基础控件、最小声明式 `ui` 层，以及通过 `ui.Root.RequestUpdate` 进行的更新调度。
+MVP 已完成架构验证。当前已经包含平台事件、命令式 GUI 层、基础控件、最小声明式 `ui` 层，以及通过 `ui.App.RequestUpdate` 进行的更新调度。
 
 **API 仍未稳定，goui 暂时不能用于生产环境。**
 
