@@ -14,9 +14,9 @@ import (
 )
 
 func TestRootCreatesAndUpdatesLabel(t *testing.T) {
-	root := NewRoot()
+	root := newRoot()
 
-	widget := root.Update(Label("hello").Name("title"))
+	widget := root.update(Label("hello").Name("title"))
 	label, ok := widget.(*gui.Label)
 	if !ok {
 		t.Fatalf("updated %T, want *gui.Label", widget)
@@ -25,7 +25,7 @@ func TestRootCreatesAndUpdatesLabel(t *testing.T) {
 		t.Fatalf("unexpected label state: id=%q text=%q", label.ID(), label.Text())
 	}
 
-	updated := root.Update(Label("world").Name("title2"))
+	updated := root.update(Label("world").Name("title2"))
 	if updated != label {
 		t.Fatal("label at the same root slot and type should be reused")
 	}
@@ -35,10 +35,10 @@ func TestRootCreatesAndUpdatesLabel(t *testing.T) {
 }
 
 func TestRootReplacesDifferentViewType(t *testing.T) {
-	root := NewRoot()
+	root := newRoot()
 
-	label := root.Update(Label("name").Name("field"))
-	input := root.Update(TextInput().Name("field").Text("name"))
+	label := root.update(Label("name").Name("field"))
+	input := root.update(TextInput().Name("field").Text("name"))
 
 	if input == label {
 		t.Fatal("different view types should not reuse the same widget")
@@ -53,9 +53,9 @@ func TestRootReplacesDifferentViewType(t *testing.T) {
 }
 
 func TestRootUpdatesBoxChildrenByPositionAndType(t *testing.T) {
-	root := NewRoot()
+	root := newRoot()
 
-	widget := root.Update(VBox().
+	widget := root.update(VBox().
 		Name("root").
 		Spacing(6).
 		Children(
@@ -73,7 +73,7 @@ func TestRootUpdatesBoxChildrenByPositionAndType(t *testing.T) {
 	first := children[0].(*gui.Label)
 	second := children[1].(*gui.Label)
 
-	root.Update(VBox().
+	root.update(VBox().
 		Spacing(8).
 		Children(
 			Label("ONE").Name("first-updated"),
@@ -100,15 +100,15 @@ func TestRootUpdatesBoxChildrenByPositionAndType(t *testing.T) {
 }
 
 func TestRootRebuildsTailOnChildTypeMismatch(t *testing.T) {
-	root := NewRoot()
+	root := newRoot()
 
-	box := root.Update(VBox(
+	box := root.update(VBox(
 		Label("first"),
 		TextInput().Text("second"),
 	)).(*gui.LinearBox)
 	oldChildren := box.Children()
 
-	root.Update(VBox(
+	root.update(VBox(
 		Label("FIRST"),
 		Label("inserted"),
 		TextInput().Text("second"),
@@ -130,33 +130,33 @@ func TestRootRebuildsTailOnChildTypeMismatch(t *testing.T) {
 }
 
 func TestRootUpdatesButtonChild(t *testing.T) {
-	root := NewRoot()
+	root := newRoot()
 
-	button := root.Update(Button(Label("OK"))).(*gui.Button)
+	button := root.update(Button(Label("OK"))).(*gui.Button)
 	children := button.Children()
 	if len(children) != 1 || children[0].(*gui.Label).Text() != "OK" {
 		t.Fatalf("unexpected button child: %v", children)
 	}
 	child := children[0]
 
-	root.Update(Button(Label("Cancel")))
+	root.update(Button(Label("Cancel")))
 	children = button.Children()
 	if len(children) != 1 || children[0] != child || children[0].(*gui.Label).Text() != "Cancel" {
 		t.Fatalf("button child was not updated in place: %v", children)
 	}
 
-	root.Update(Button(nil))
+	root.update(Button(nil))
 	if children := button.Children(); len(children) != 0 {
 		t.Fatalf("button child was not removed: %v", children)
 	}
 }
 
 func TestButtonViewUpdatesClickHandlerThroughState(t *testing.T) {
-	root := NewRoot()
+	root := newRoot()
 	firstCalls := 0
 	secondCalls := 0
 
-	button := root.Update(Button(nil).OnClick(func() {
+	button := root.update(Button(nil).OnClick(func() {
 		firstCalls++
 	})).(*gui.Button)
 	triggerButtonClick(button)
@@ -164,7 +164,7 @@ func TestButtonViewUpdatesClickHandlerThroughState(t *testing.T) {
 		t.Fatalf("unexpected first click calls: first=%d second=%d", firstCalls, secondCalls)
 	}
 
-	root.Update(Button(nil).OnClick(func() {
+	root.update(Button(nil).OnClick(func() {
 		secondCalls++
 	}))
 	triggerButtonClick(button)
@@ -172,7 +172,7 @@ func TestButtonViewUpdatesClickHandlerThroughState(t *testing.T) {
 		t.Fatalf("handler was not updated through state: first=%d second=%d", firstCalls, secondCalls)
 	}
 
-	root.Unmount()
+	root.unmountWindow()
 	triggerButtonClick(button)
 	if firstCalls != 1 || secondCalls != 1 {
 		t.Fatalf("unmounted click handler should be disconnected: first=%d second=%d", firstCalls, secondCalls)
@@ -180,11 +180,11 @@ func TestButtonViewUpdatesClickHandlerThroughState(t *testing.T) {
 }
 
 func TestRootUpdatesTextInputHandlerThroughState(t *testing.T) {
-	root := NewRoot()
+	root := newRoot()
 	firstCalls := 0
 	secondCalls := 0
 
-	widget := root.Update(TextInput().
+	widget := root.update(TextInput().
 		Text("a").
 		OnText(func(string) {
 			firstCalls++
@@ -196,7 +196,7 @@ func TestRootUpdatesTextInputHandlerThroughState(t *testing.T) {
 		t.Fatalf("unexpected first handler calls: first=%d second=%d", firstCalls, secondCalls)
 	}
 
-	root.Update(TextInput().
+	root.update(TextInput().
 		Text("c").
 		OnText(func(string) {
 			secondCalls++
@@ -212,10 +212,10 @@ func TestRootUpdatesTextInputHandlerThroughState(t *testing.T) {
 }
 
 func TestRootClearsConnectionWhenHandlerRemoved(t *testing.T) {
-	root := NewRoot()
+	root := newRoot()
 	calls := 0
 
-	input := root.Update(TextInput().
+	input := root.update(TextInput().
 		OnText(func(string) {
 			calls++
 		})).(*gui.TextInput)
@@ -224,7 +224,7 @@ func TestRootClearsConnectionWhenHandlerRemoved(t *testing.T) {
 		t.Fatalf("expected first handler call, got %d", calls)
 	}
 
-	root.Update(TextInput())
+	root.update(TextInput())
 	input.SetText("b")
 	if calls != 1 {
 		t.Fatalf("removed handler should not be called, got %d", calls)
@@ -232,17 +232,17 @@ func TestRootClearsConnectionWhenHandlerRemoved(t *testing.T) {
 }
 
 func TestRootUpdatesImageAndCommonFields(t *testing.T) {
-	root := NewRoot()
+	root := newRoot()
 	first := image.NewRGBA(image.Rect(0, 0, 10, 10))
 	second := image.NewRGBA(image.Rect(0, 0, 20, 20))
 
-	widget := root.Update(Image(first).Name("logo"))
+	widget := root.update(Image(first).Name("logo"))
 	imageWidget := widget.(*gui.Image)
 	if imageWidget.ID() != "logo" || imageWidget.Image() != first || !imageWidget.Visible() {
 		t.Fatalf("unexpected image state: id=%q visible=%v", imageWidget.ID(), imageWidget.Visible())
 	}
 
-	updated := root.Update(Image(second).Name("logo2").Hidden(true))
+	updated := root.update(Image(second).Name("logo2").Hidden(true))
 	if updated != imageWidget {
 		t.Fatal("image at the same root slot and type should be reused")
 	}
@@ -252,12 +252,12 @@ func TestRootUpdatesImageAndCommonFields(t *testing.T) {
 }
 
 func TestRootPreservesViewStateAcrossUpdatesAndUnmounts(t *testing.T) {
-	root := NewRoot()
+	root := newRoot()
 	tracker := &lifecycleTracker{}
 
-	widget := root.Update(lifecycleView{text: "first", tracker: tracker})
+	widget := root.update(lifecycleView{text: "first", tracker: tracker})
 	label := widget.(*gui.Label)
-	updated := root.Update(lifecycleView{text: "second", tracker: tracker})
+	updated := root.update(lifecycleView{text: "second", tracker: tracker})
 
 	if updated != label {
 		t.Fatal("same view type should reuse the mounted widget")
@@ -269,7 +269,7 @@ func TestRootPreservesViewStateAcrossUpdatesAndUnmounts(t *testing.T) {
 		t.Fatalf("view update did not update widget text: %q", label.Text())
 	}
 
-	root.Update(Label("replacement"))
+	root.update(Label("replacement"))
 
 	if tracker.unmounts != 1 {
 		t.Fatalf("expected one unmount, got %d", tracker.unmounts)
@@ -280,14 +280,14 @@ func TestRootPreservesViewStateAcrossUpdatesAndUnmounts(t *testing.T) {
 }
 
 func TestTextInputViewDisconnectsHandlerOnUnmount(t *testing.T) {
-	root := NewRoot()
+	root := newRoot()
 	calls := 0
 
-	input := root.Update(TextInput().OnText(func(string) {
+	input := root.update(TextInput().OnText(func(string) {
 		calls++
 	})).(*gui.TextInput)
 
-	root.Unmount()
+	root.unmountWindow()
 	input.SetText("after-unmount")
 
 	if calls != 0 {
@@ -296,142 +296,15 @@ func TestTextInputViewDisconnectsHandlerOnUnmount(t *testing.T) {
 }
 
 func TestRootUnmountClearsWidget(t *testing.T) {
-	root := NewRoot()
-	root.Update(VBox(Label("child")))
-	if root.Widget() == nil {
+	root := newRoot()
+	root.update(VBox(Label("child")))
+	if root.widget() == nil {
 		t.Fatal("expected rendered widget")
 	}
 
-	root.Unmount()
-	if root.Widget() != nil {
+	root.unmountWindow()
+	if root.widget() != nil {
 		t.Fatal("unmount should clear root widget")
-	}
-}
-
-func TestMountWindowUpdatesImmediately(t *testing.T) {
-	win := newTestWindow()
-	builds := 0
-
-	root := MountWindow(win, func() View {
-		builds++
-		return Label("first")
-	})
-
-	label, ok := win.Widget().(*gui.Label)
-	if !ok {
-		t.Fatalf("mounted %T, want *gui.Label", win.Widget())
-	}
-	if root.Widget() != label || label.Text() != "first" || builds != 1 {
-		t.Fatalf("unexpected mount state: widget=%T text=%q builds=%d", root.Widget(), label.Text(), builds)
-	}
-}
-
-func TestRootUpdateNowRebuildsMountedView(t *testing.T) {
-	win := newTestWindow()
-	text := "first"
-	root := MountWindow(win, func() View {
-		return Label(text)
-	})
-	label := win.Widget().(*gui.Label)
-
-	text = "second"
-	updated := root.UpdateNow()
-
-	if updated != label {
-		t.Fatal("UpdateNow should reuse the mounted widget at the same root slot")
-	}
-	if label.Text() != "second" {
-		t.Fatalf("mounted view was not rebuilt: %q", label.Text())
-	}
-}
-
-func TestRootRequestUpdateCoalescesThroughApplicationPost(t *testing.T) {
-	app := newTestApplication()
-	useTestApplication(t, app)
-
-	win := newTestWindow()
-	text := "first"
-	root := MountWindow(win, func() View {
-		return Label(text)
-	})
-	label := win.Widget().(*gui.Label)
-
-	text = "second"
-	root.RequestUpdate()
-	root.RequestUpdate()
-
-	if len(app.posts) != 1 {
-		t.Fatalf("expected one posted update, got %d", len(app.posts))
-	}
-	if label.Text() != "first" {
-		t.Fatalf("RequestUpdate should not rebuild synchronously: %q", label.Text())
-	}
-
-	app.runPosted()
-	if label.Text() != "second" {
-		t.Fatalf("posted update did not rebuild mounted view: %q", label.Text())
-	}
-}
-
-func TestRootUpdateNowCancelsPendingRequest(t *testing.T) {
-	app := newTestApplication()
-	useTestApplication(t, app)
-
-	win := newTestWindow()
-	builds := 0
-	text := "first"
-	root := MountWindow(win, func() View {
-		builds++
-		return Label(text)
-	})
-
-	text = "second"
-	root.RequestUpdate()
-	root.UpdateNow()
-	app.runPosted()
-
-	label := win.Widget().(*gui.Label)
-	if label.Text() != "second" {
-		t.Fatalf("UpdateNow did not rebuild mounted view: %q", label.Text())
-	}
-	if builds != 2 {
-		t.Fatalf("posted update should be cancelled after UpdateNow, got %d builds", builds)
-	}
-}
-
-func TestRootUnmountDetachesMountedWindow(t *testing.T) {
-	win := newTestWindow()
-	root := MountWindow(win, func() View {
-		return VBox(Label("child"))
-	})
-	if win.Widget() == nil {
-		t.Fatal("expected mounted window widget")
-	}
-
-	root.Unmount()
-
-	if root.Widget() != nil {
-		t.Fatal("root widget should be cleared after unmount")
-	}
-	if win.Widget() != nil {
-		t.Fatal("mounted window widget should be detached after unmount")
-	}
-}
-
-func TestRootWindowDestroyUnmountsWithoutDetachingWidget(t *testing.T) {
-	win := newTestWindow()
-	root := MountWindow(win, func() View {
-		return Button(Label("OK")).OnClick(func() {})
-	})
-	widget := win.Widget()
-
-	win.Destroy()
-
-	if root.Widget() != nil {
-		t.Fatal("root widget should be cleared after window destroy")
-	}
-	if win.Widget() != widget {
-		t.Fatal("window destroy handler should not detach the widget tree before Window destroys it")
 	}
 }
 
@@ -574,6 +447,8 @@ type testWindow struct {
 	id            string
 	title         string
 	widget        gui.Widget
+	shows         int
+	destroyed     bool
 	focused       bool
 	focusedWidget gui.Widget
 	closeRequest  signal.Signal1[*bool]
@@ -628,6 +503,7 @@ func (w *testWindow) SetFocusedWidget(widget gui.Widget) bool {
 }
 
 func (w *testWindow) Show() error {
+	w.shows++
 	return nil
 }
 
@@ -641,6 +517,10 @@ func (w *testWindow) RequestClose() error {
 }
 
 func (w *testWindow) Destroy() {
+	if w.destroyed {
+		return
+	}
+	w.destroyed = true
 	w.destroy.Emit()
 }
 

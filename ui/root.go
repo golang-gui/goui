@@ -8,19 +8,7 @@ import (
 	"github.com/golang-gui/goui/gui"
 )
 
-type View interface {
-	Mount(ctx BuildContext) gui.Widget
-	Update(ctx BuildContext, widget gui.Widget)
-	Unmount(ctx BuildContext, widget gui.Widget)
-}
-
-type BuildContext interface {
-	State() any
-	SetState(any)
-	UpdateChildren(container gui.Container, children []View)
-}
-
-type Root struct {
+type root struct {
 	mu            sync.Mutex
 	root          *node
 	window        gui.Window
@@ -38,41 +26,35 @@ type node struct {
 }
 
 type buildContext struct {
-	root *Root
+	root *root
 	node *node
 }
 
-func NewRoot() *Root {
-	return &Root{}
+func newRoot() *root {
+	return &root{}
 }
 
-func MountWindow(window gui.Window, build func() View) *Root {
-	root := NewRoot()
-	root.MountWindow(window, build)
-	return root
-}
-
-func (r *Root) Widget() gui.Widget {
+func (r *root) widget() gui.Widget {
 	if r.root == nil {
 		return nil
 	}
 	return r.root.widget
 }
 
-func (r *Root) Update(view View) gui.Widget {
+func (r *root) update(view View) gui.Widget {
 	r.root = r.updateNode(r.root, view)
-	return r.Widget()
+	return r.widget()
 }
 
-func (r *Root) UpdateWindow(window gui.Window, view View) gui.Widget {
-	widget := r.Update(view)
+func (r *root) updateWindow(window gui.Window, view View) gui.Widget {
+	widget := r.update(view)
 	if window != nil {
 		window.SetWidget(widget)
 	}
 	return widget
 }
 
-func (r *Root) MountWindow(window gui.Window, build func() View) {
+func (r *root) mountWindow(window gui.Window, build func() View) {
 	r.unmount(true)
 
 	var destroyHandle signal.Handle
@@ -89,10 +71,10 @@ func (r *Root) MountWindow(window gui.Window, build func() View) {
 	r.destroyHandle = destroyHandle
 	r.mu.Unlock()
 
-	r.UpdateNow()
+	r.updateNow()
 }
 
-func (r *Root) RequestUpdate() {
+func (r *root) requestUpdate() {
 	r.mu.Lock()
 	if r.build == nil || r.updatePending {
 		r.mu.Unlock()
@@ -103,7 +85,7 @@ func (r *Root) RequestUpdate() {
 	r.mu.Unlock()
 
 	if app == nil {
-		r.UpdateNow()
+		r.updateNow()
 		return
 	}
 	app.Post(func() {
@@ -111,7 +93,7 @@ func (r *Root) RequestUpdate() {
 	})
 }
 
-func (r *Root) UpdateNow() gui.Widget {
+func (r *root) updateNow() gui.Widget {
 	r.mu.Lock()
 	r.updatePending = false
 	r.mu.Unlock()
@@ -119,11 +101,11 @@ func (r *Root) UpdateNow() gui.Widget {
 	return r.updateMounted()
 }
 
-func (r *Root) Unmount() {
+func (r *root) unmountWindow() {
 	r.unmount(true)
 }
 
-func (r *Root) runPendingUpdate() {
+func (r *root) runPendingUpdate() {
 	r.mu.Lock()
 	if !r.updatePending {
 		r.mu.Unlock()
@@ -135,23 +117,23 @@ func (r *Root) runPendingUpdate() {
 	r.updateMounted()
 }
 
-func (r *Root) updateMounted() gui.Widget {
+func (r *root) updateMounted() gui.Widget {
 	r.mu.Lock()
 	window := r.window
 	build := r.build
 	r.mu.Unlock()
 
 	if build == nil {
-		return r.Widget()
+		return r.widget()
 	}
 	view := build()
 	if window != nil {
-		return r.UpdateWindow(window, view)
+		return r.updateWindow(window, view)
 	}
-	return r.Update(view)
+	return r.update(view)
 }
 
-func (r *Root) unmount(detachWindow bool) {
+func (r *root) unmount(detachWindow bool) {
 	r.mu.Lock()
 	window := r.window
 	destroyHandle := r.destroyHandle
@@ -177,7 +159,7 @@ func (r *Root) unmount(detachWindow bool) {
 	}
 }
 
-func (r *Root) unmountForWindowDestroy() {
+func (r *root) unmountForWindowDestroy() {
 	r.mu.Lock()
 	destroyHandle := r.destroyHandle
 	oldRoot := r.root
@@ -194,7 +176,7 @@ func (r *Root) unmountForWindowDestroy() {
 	r.release(oldRoot, false)
 }
 
-func (r *Root) updateNode(old *node, view View) *node {
+func (r *root) updateNode(old *node, view View) *node {
 	if view == nil {
 		r.release(old, true)
 		return nil
@@ -226,7 +208,7 @@ func (r *Root) updateNode(old *node, view View) *node {
 	return current
 }
 
-func (r *Root) release(n *node, detachWidgets bool) {
+func (r *root) release(n *node, detachWidgets bool) {
 	if n == nil {
 		return
 	}
