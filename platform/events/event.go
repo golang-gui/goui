@@ -13,7 +13,6 @@ const (
 	CloseRequest EventType = iota
 	Size
 	Paint
-	Scale
 	PointerEnter
 	PointerLeave
 	PointerMove

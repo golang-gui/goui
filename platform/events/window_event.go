@@ -9,8 +9,13 @@ func (e CloseEvent) Type() EventType {
 func (e CloseEvent) isEvent() {}
 
 type SizeEvent struct {
-	Width  uint
-	Height uint
+	// Width, Height are the logical (DIP) size used for layout and hit-testing.
+	Width  float32
+	Height float32
+	// PixelWidth, PixelHeight are the exact physical (backing) pixel size used
+	// for the painter surface. scale = PixelWidth / Width.
+	PixelWidth  float32
+	PixelHeight float32
 }
 
 func (e SizeEvent) Type() EventType {
@@ -27,16 +32,6 @@ func (e PaintEvent) Type() EventType {
 
 func (e PaintEvent) isEvent() {}
 
-type ScaleEvent struct {
-	ScaleFactor float64
-}
-
-func (e ScaleEvent) Type() EventType {
-	return Scale
-}
-
-func (e ScaleEvent) isEvent() {}
-
 type FocusEvent struct {
 	Focused bool
 }
@@ -51,6 +46,5 @@ var (
 	_ Event = CloseEvent{}
 	_ Event = SizeEvent{}
 	_ Event = PaintEvent{}
-	_ Event = ScaleEvent{}
 	_ Event = FocusEvent{}
 )

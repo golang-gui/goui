@@ -185,7 +185,7 @@ func (w *Window) Draw(img image.Image) error {
 }
 
 func (w *Window) ScaleFactor() (float64, error) {
-	panic("TODO impl")
+	return float64(currentScale()), nil
 }
 
 var windowMap = map[xlib.Window]*Window{}
@@ -208,9 +208,12 @@ func handleEvent(event xlib.Event) {
 		if window, ok := windowMap[ev.Window]; ok {
 			if ev.Width != window.width || ev.Height != window.height {
 				window.width, window.height = ev.Width, ev.Height
+				scale := currentScale()
 				window.onEvent(events.SizeEvent{
-					Width:  uint(ev.Width),
-					Height: uint(ev.Height),
+					Width:       float32(ev.Width) / scale,
+					Height:      float32(ev.Height) / scale,
+					PixelWidth:  float32(ev.Width),
+					PixelHeight: float32(ev.Height),
 				})
 			}
 		}

@@ -8,8 +8,18 @@ import (
 	"github.com/golang-gui/goui/platform/windows/sdk/winapi"
 )
 
+// logicalPoint converts a physical client pixel position to logical (DIP)
+// coordinates so pointer events share the gui layout coordinate space.
+func (w *Window) logicalPoint(p geometry.Point) geometry.Point {
+	s := w.scale
+	if s <= 0 {
+		s = 1
+	}
+	return geometry.Point{X: p.X / s, Y: p.Y / s}
+}
+
 func (w *Window) handlePointerMove(wParam winapi.WPARAM, lParam winapi.LPARAM) {
-	position := clientPoint(lParam)
+	position := w.logicalPoint(clientPoint(lParam))
 	buttons := pointerButtons(wParam)
 	modifiers := pointerModifiers(wParam)
 	if !w.trackingMouse {
@@ -29,11 +39,11 @@ func (w *Window) handlePointerLeave() {
 }
 
 func (w *Window) handlePointerButton(eventType events.EventType, button events.PointerButton, wParam winapi.WPARAM, lParam winapi.LPARAM) {
-	w.emitPointer(eventType, button, clientPoint(lParam), pointerButtons(wParam), pointerModifiers(wParam))
+	w.emitPointer(eventType, button, w.logicalPoint(clientPoint(lParam)), pointerButtons(wParam), pointerModifiers(wParam))
 }
 
 func (w *Window) handleWheel(horizontal bool, wParam winapi.WPARAM, lParam winapi.LPARAM) {
-	position := screenPointToClient(w.hwnd, lParam)
+	position := w.logicalPoint(screenPointToClient(w.hwnd, lParam))
 	delta := float32(int16(highWord(uintptr(wParam)))) / float32(winapi.WHEEL_DELTA)
 	event := events.WheelEvent{
 		Position:  position,
