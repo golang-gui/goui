@@ -8,6 +8,8 @@ import (
 
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
+	"github.com/golang-gui/goui/gui/dev"
+
 	"github.com/xuges/gothread"
 )
 
@@ -20,13 +22,16 @@ var (
 	ErrWindowDuplicate = errors.New("ui window id is duplicated")
 )
 
-type app struct{}
+type app struct {
+	devAddr string
+}
 
 type appRuntime struct {
 	mu            sync.Mutex
 	gui           gui.Application
 	build         func() RootView
 	windows       map[string]*windowMount
+	devServer     *dev.Server
 	updatePending bool
 	stopping      bool
 	err           error
@@ -49,7 +54,12 @@ var activeAppRuntime struct {
 	runtime *appRuntime
 }
 
-func (app) Run(build func() RootView) error {
+func (a app) DevPort(addr string) app {
+	a.devAddr = addr
+	return a
+}
+
+func (a app) Run(build func() RootView) error {
 	if build == nil {
 		return ErrAppBuildNil
 	}
@@ -69,6 +79,14 @@ func (app) Run(build func() RootView) error {
 		return err
 	}
 	defer clearActiveAppRuntime(rt)
+
+	if len(a.devAddr) != 0 {
+		rt.devServer, err = dev.ListenAndServe(guiApp, a.devAddr)
+		if err != nil {
+			return err
+		}
+		defer rt.stopDevServer()
+	}
 
 	if err := rt.rebuild(); err != nil {
 		rt.destroyAll()
@@ -373,6 +391,15 @@ func (rt *appRuntime) destroyAll() {
 		delete(rt.windows, id)
 		mount.destroy()
 	}
+}
+
+func (rt *appRuntime) stopDevServer() {
+	if rt == nil || rt.devServer == nil {
+		return
+	}
+	dev := rt.devServer
+	rt.devServer = nil
+	_ = dev.Close()
 }
 
 func (rt *appRuntime) fail(err error) {
