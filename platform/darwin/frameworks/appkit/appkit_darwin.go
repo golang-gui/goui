@@ -406,6 +406,7 @@ func initNSView() {
 	NSViewSel.ConvertRectToBacking = objc.RegisterName("convertRectToBacking:")
 	NSViewSel.ConvertPointFromView = objc.RegisterName("convertPoint:fromView:")
 	NSViewSel.SetNeedsDisplay = objc.RegisterName("setNeedsDisplay:")
+	NSViewSel.SetWantsBestResolutionOpenGLSurface = objc.RegisterName("setWantsBestResolutionOpenGLSurface:")
 	NSViewSel.AddTrackingArea = objc.RegisterName("addTrackingArea:")
 	NSViewSel.RemoveTrackingArea = objc.RegisterName("removeTrackingArea:")
 	NSViewSel.CanBecomeKeyView = objc.RegisterName("canBecomeKeyView")
@@ -436,37 +437,38 @@ func initNSView() {
 var (
 	NSViewClassId NSViewClass
 	NSViewSel     struct {
-		Window                         objc.SEL
-		Frame                          objc.SEL
-		Bounds                         objc.SEL
-		ConvertRectToBacking           objc.SEL
-		ConvertPointFromView           objc.SEL
-		SetNeedsDisplay                objc.SEL
-		AddTrackingArea                objc.SEL
-		RemoveTrackingArea             objc.SEL
-		CanBecomeKeyView               objc.SEL
-		AcceptsFirstResponder          objc.SEL
-		WantsUpdateLayer               objc.SEL
-		UpdateLayer                    objc.SEL
-		DrawRect                       objc.SEL
-		ViewDidChangeBackingProperties objc.SEL
-		UpdateTrackingAreas            objc.SEL
-		MouseEntered                   objc.SEL
-		MouseExited                    objc.SEL
-		MouseMoved                     objc.SEL
-		MouseDragged                   objc.SEL
-		MouseDown                      objc.SEL
-		MouseUp                        objc.SEL
-		RightMouseDown                 objc.SEL
-		RightMouseUp                   objc.SEL
-		RightMouseDragged              objc.SEL
-		OtherMouseDown                 objc.SEL
-		OtherMouseUp                   objc.SEL
-		OtherMouseDragged              objc.SEL
-		ScrollWheel                    objc.SEL
-		KeyDown                        objc.SEL
-		KeyUp                          objc.SEL
-		FlagsChanged                   objc.SEL
+		Window                              objc.SEL
+		Frame                               objc.SEL
+		Bounds                              objc.SEL
+		ConvertRectToBacking                objc.SEL
+		ConvertPointFromView                objc.SEL
+		SetNeedsDisplay                     objc.SEL
+		SetWantsBestResolutionOpenGLSurface objc.SEL
+		AddTrackingArea                     objc.SEL
+		RemoveTrackingArea                  objc.SEL
+		CanBecomeKeyView                    objc.SEL
+		AcceptsFirstResponder               objc.SEL
+		WantsUpdateLayer                    objc.SEL
+		UpdateLayer                         objc.SEL
+		DrawRect                            objc.SEL
+		ViewDidChangeBackingProperties      objc.SEL
+		UpdateTrackingAreas                 objc.SEL
+		MouseEntered                        objc.SEL
+		MouseExited                         objc.SEL
+		MouseMoved                          objc.SEL
+		MouseDragged                        objc.SEL
+		MouseDown                           objc.SEL
+		MouseUp                             objc.SEL
+		RightMouseDown                      objc.SEL
+		RightMouseUp                        objc.SEL
+		RightMouseDragged                   objc.SEL
+		OtherMouseDown                      objc.SEL
+		OtherMouseUp                        objc.SEL
+		OtherMouseDragged                   objc.SEL
+		ScrollWheel                         objc.SEL
+		KeyDown                             objc.SEL
+		KeyUp                               objc.SEL
+		FlagsChanged                        objc.SEL
 	}
 )
 
@@ -619,6 +621,13 @@ func (v NSView) ConvertPointFromView(point NSPoint, view NSView) NSPoint {
 
 func (v NSView) SetNeedsDisplay(needsDisplay bool) {
 	v.Send(NSViewSel.SetNeedsDisplay, needsDisplay)
+}
+
+// SetWantsBestResolutionOpenGLSurface makes an OpenGL-backed view render at the
+// full backing (Retina) pixel resolution instead of a point-sized surface that
+// the window server would upscale.
+func (v NSView) SetWantsBestResolutionOpenGLSurface(flag bool) {
+	v.Send(NSViewSel.SetWantsBestResolutionOpenGLSurface, flag)
 }
 
 func (v NSView) AddTrackingArea(area NSTrackingArea) {
