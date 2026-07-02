@@ -11,4 +11,9 @@ require (
 	github.com/srwiley/scanFT v0.0.0-20220128184157-0d1ee492111f
 )
 
-require golang.org/x/image v0.0.0-20211028202545-6944b10bf410
+require (
+	github.com/xuges/gothread v0.0.1
+	golang.org/x/image v0.0.0-20211028202545-6944b10bf410
+)
+
+require golang.org/x/sys v0.28.0 // indirect
