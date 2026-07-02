@@ -1,8 +1,8 @@
 package geometry
 
 type Point struct {
-	X float32
-	Y float32
+	X float32 `json:"x"`
+	Y float32 `json:"y"`
 }
 
 type Pos = Point
@@ -22,8 +22,8 @@ func (p Point) Scale(factor float32) Point {
 }
 
 type Size struct {
-	Width  float32
-	Height float32
+	Width  float32 `json:"width"`
+	Height float32 `json:"height"`
 }
 
 func (s Size) Add(q Size) Size {
