@@ -93,10 +93,13 @@ func wheelEvent(event *xlib.ButtonEvent, buttons events.PointerButtons) (events.
 	return wheel, true
 }
 
+// point converts physical X11 pixel coordinates to logical (DIP) coordinates so
+// pointer/wheel events share the gui layout coordinate space.
 func point(x, y int32) geometry.Point {
+	s := currentScale()
 	return geometry.Point{
-		X: float32(x),
-		Y: float32(y),
+		X: float32(x) / s,
+		Y: float32(y) / s,
 	}
 }
 

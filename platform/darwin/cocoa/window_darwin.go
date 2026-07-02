@@ -235,16 +235,25 @@ func windowShouldClose(self NSWindowDelegate, sender NSWindow) bool {
 	return true
 }
 
+// makeSizeEvent builds a SizeEvent carrying both the logical (point) size and
+// the physical (backing pixel) size of the view.
+func makeSizeEvent(view NSView) events.SizeEvent {
+	rect := view.Frame()
+	fbRect := view.ConvertRectToBacking(rect)
+	return events.SizeEvent{
+		Width:       float32(rect.Size.Width),
+		Height:      float32(rect.Size.Height),
+		PixelWidth:  float32(fbRect.Size.Width),
+		PixelHeight: float32(fbRect.Size.Height),
+	}
+}
+
 func windowDidResize(self NSWindowDelegate, notification NSNotification) {
 	self.Retain()
 	defer self.Release()
 
 	if window, has := windowMap[Cast[NSWindow](notification.Object())]; has {
-		rect := window.view.Frame()
-		window.onEvent(events.SizeEvent{
-			Width:  uint(rect.Size.Width),
-			Height: uint(rect.Size.Height),
-		})
+		window.onEvent(makeSizeEvent(window.view))
 	}
 }
 
@@ -271,13 +280,9 @@ func viewDidChangeBackingProperties(self NSView) {
 	defer self.Release()
 
 	if window, has := windowMap[self.Window()]; has {
-		rect := self.Frame()
-		fbRect := self.ConvertRectToBacking(rect)
-		scaleFactor := fbRect.Size.Width / rect.Size.Width
-
-		window.onEvent(events.ScaleEvent{
-			ScaleFactor: scaleFactor,
-		})
+		// Backing scale changed: logical size is unchanged but the physical
+		// pixel size differs, so a fresh SizeEvent carries the new scale.
+		window.onEvent(makeSizeEvent(self))
 	}
 }
 
@@ -291,17 +296,7 @@ func drawRect(self NSView, rect NSRect) {
 }
 
 func (w *Window) sendCreatedEvents() {
-	rect := w.view.Frame()
-	fbRect := w.view.ConvertRectToBacking(rect)
-
-	scaleFactor := fbRect.Size.Width / rect.Size.Width
-	w.onEvent(events.ScaleEvent{
-		ScaleFactor: scaleFactor,
-	})
-	w.onEvent(events.SizeEvent{
-		Width:  uint(rect.Size.Width),
-		Height: uint(rect.Size.Height),
-	})
+	w.onEvent(makeSizeEvent(w.view))
 }
 
 func (w *Window) drawImage(img graphics.Bitmap) (err error) {
@@ -321,7 +316,11 @@ func (w *Window) drawImage(img graphics.Bitmap) (err error) {
 		cgImage := CGImageCreate(uint(width), uint(height), 8, 32, uint(img.Stride), colorSpace, bitmapInfo, dataProvider, nil, false, CGRenderingIntentDefault)
 		if cgImage != 0 {
 			defer CGImageRelease(cgImage)
-			CGContextDrawImage(context, NSMakeRect(0, 0, CGFloat(width), CGFloat(height)), cgImage)
+			// The bitmap is in physical (backing) pixels; draw it into the view's
+			// logical point rect so the retina CGContext maps it 1:1 onto the
+			// backing store instead of upscaling a point-sized image.
+			frame := w.view.Frame()
+			CGContextDrawImage(context, NSMakeRect(0, 0, frame.Size.Width, frame.Size.Height), cgImage)
 		}
 	}
 	return nil

@@ -26,11 +26,13 @@ type Window struct {
 	lastButtons   events.PointerButtons
 	lastModifiers events.Modifiers
 	modifiers     events.Modifiers
+	scale         float32 // cached device scale; updated on WM_SIZE
 }
 
 func newWindow(onEvent events.EventHandler) (w *Window, err error) {
 	win := &Window{
 		onEvent: onEvent,
+		scale:   1,
 	}
 
 	win.hwnd, err = winapi.CreateWindowEx(0, platform.windowClass, platform.windowTitle, winapi.WS_OVERLAPPEDWINDOW,
@@ -126,6 +128,16 @@ func (w *Window) ScaleFactor() (float64, error) {
 	return float64(dpi) / 96, nil
 }
 
+// scaleFactor returns the window scale, falling back to 1 on error. Used to
+// normalize physical pixels (client rect, pointer coords) to logical (DIP).
+func (w *Window) scaleFactor() float32 {
+	dpi, err := winapi.GetDpiForWindow(w.hwnd)
+	if err != nil || dpi == 0 {
+		return 1
+	}
+	return float32(dpi) / 96
+}
+
 var windowMap = map[winapi.HWND]*Window{}
 
 func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lParam winapi.LPARAM) winapi.LRESULT {
@@ -160,9 +172,15 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 
 	case winapi.WM_SIZE:
 		winapi.InvalidateRect(hwnd, nil, winapi.FALSE)
+		pw := float32(lParam & 0xFFFF)
+		ph := float32((lParam & 0xFFFF0000) >> 16)
+		scale := window.scaleFactor()
+		window.scale = scale
 		window.onEvent(events.SizeEvent{
-			Width:  uint(lParam & 0xFFFF),
-			Height: uint((lParam & 0xFFFF0000) >> 16),
+			Width:       pw / scale,
+			Height:      ph / scale,
+			PixelWidth:  pw,
+			PixelHeight: ph,
 		})
 
 	case winapi.WM_PAINT:
@@ -173,10 +191,8 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		return 0
 
 	case winapi.WM_DPICHANGED:
-		dpi := wParam & 0xFFFF
-		window.onEvent(events.ScaleEvent{
-			ScaleFactor: float64(dpi) / 96,
-		})
+		// Resize to the suggested rect; the resulting WM_SIZE carries the new
+		// scale (logical + physical) via SizeEvent.
 		rect := (*winapi.RECT)(unsafe.Pointer(uintptr(lParam)))
 		winapi.SetWindowPos(hwnd, 0,
 			int(rect.Left), int(rect.Top),
