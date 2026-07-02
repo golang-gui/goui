@@ -41,13 +41,13 @@ func TestEventDispatcherDispatchesPointerEventThroughThreePhases(t *testing.T) {
 	}
 
 	want := []string{
-		"root-capture phase=0 type=7",
-		"parent-capture phase=0 type=7",
-		"target-capture phase=0 type=7",
-		"target phase=1 type=7",
-		"target-bubble phase=2 type=7",
-		"parent-bubble phase=2 type=7",
-		"root-bubble phase=2 type=7",
+		"root-capture phase=0 type=6",
+		"parent-capture phase=0 type=6",
+		"target-capture phase=0 type=6",
+		"target phase=1 type=6",
+		"target-bubble phase=2 type=6",
+		"parent-bubble phase=2 type=6",
+		"root-bubble phase=2 type=6",
 	}
 	assertStrings(t, calls, want)
 }
@@ -84,8 +84,8 @@ func TestEventDispatcherStopsPropagation(t *testing.T) {
 	}
 
 	want := []string{
-		"root-capture phase=0 type=7",
-		"parent-capture phase=0 type=7",
+		"root-capture phase=0 type=6",
+		"parent-capture phase=0 type=6",
 	}
 	assertStrings(t, calls, want)
 }
@@ -118,7 +118,7 @@ func TestEventDispatcherHitTestUsesLastVisibleChild(t *testing.T) {
 	}
 
 	assertStrings(t, calls, []string{
-		"top phase=1 type=7",
+		"top phase=1 type=6",
 	})
 
 	top.SetVisible(false)
@@ -129,7 +129,7 @@ func TestEventDispatcherHitTestUsesLastVisibleChild(t *testing.T) {
 	}
 
 	assertStrings(t, calls, []string{
-		"bottom phase=1 type=7",
+		"bottom phase=1 type=6",
 	})
 }
 
@@ -157,7 +157,7 @@ func TestEventDispatcherDispatchesWheelByPosition(t *testing.T) {
 	}
 
 	assertStrings(t, calls, []string{
-		"child phase=1 type=9",
+		"child phase=1 type=8",
 	})
 }
 
@@ -233,7 +233,7 @@ func TestEventDispatcherDoesNotPropagatePointerCrossingAsPlatformEvents(t *testi
 	}
 
 	assertStrings(t, calls, []string{
-		"first phase=1 type=6",
+		"first phase=1 type=5",
 	})
 
 	calls = nil
@@ -245,7 +245,7 @@ func TestEventDispatcherDoesNotPropagatePointerCrossingAsPlatformEvents(t *testi
 	}
 
 	assertStrings(t, calls, []string{
-		"second phase=1 type=6",
+		"second phase=1 type=5",
 	})
 
 	calls = nil
@@ -365,7 +365,7 @@ func TestEventDispatcherDispatchesKeyToFocusedWidget(t *testing.T) {
 	}
 
 	assertStrings(t, calls, []string{
-		"child phase=1 type=10",
+		"child phase=1 type=9",
 	})
 }
 
@@ -393,7 +393,7 @@ func TestEventDispatcherDispatchesKeyToRootWithoutFocusedWidget(t *testing.T) {
 	}
 
 	assertStrings(t, calls, []string{
-		"root phase=1 type=10",
+		"root phase=1 type=9",
 	})
 }
 

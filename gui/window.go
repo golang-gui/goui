@@ -45,9 +45,10 @@ type window struct {
 	painter        graphics.Painter
 	root           Widget
 	dispatcher     EventDispatcher
-	width          uint
-	height         uint
-	scale          float64
+	width          float32 // logical (DIP)
+	height         float32 // logical (DIP)
+	pixelWidth     float32 // physical (backing) pixels
+	pixelHeight    float32 // physical (backing) pixels
 	layoutDirty    bool
 	paintDirty     bool
 	focused        bool
@@ -61,7 +62,6 @@ type window struct {
 func newWindow(app *application) (*window, error) {
 	win := &window{
 		app:         app,
-		scale:       1,
 		layoutDirty: true,
 		paintDirty:  true,
 	}
@@ -221,8 +221,8 @@ func (w *window) Snapshot() WindowInfo {
 		Bounds: geometry.Rect(
 			0,
 			0,
-			float32(w.width),
-			float32(w.height),
+			w.width,
+			w.height,
 		),
 	}
 	if w.root != nil {
@@ -242,12 +242,8 @@ func (w *window) DispatchEvent(event events.Event) error {
 	case events.SizeEvent:
 		w.width = event.Width
 		w.height = event.Height
-		w.requestLayout()
-	case events.ScaleEvent:
-		w.scale = event.ScaleFactor
-		if w.scale == 0 {
-			w.scale = 1
-		}
+		w.pixelWidth = event.PixelWidth
+		w.pixelHeight = event.PixelHeight
 		w.requestLayout()
 	case events.FocusEvent:
 		w.setFocused(event.Focused)
@@ -282,8 +278,8 @@ func (w *window) paint() {
 	}
 
 	size := geometry.Size{
-		Width:  float32(w.width),
-		Height: float32(w.height),
+		Width:  w.width,
+		Height: w.height,
 	}
 	if w.layoutDirty {
 		w.root.Measure(size)
@@ -291,12 +287,16 @@ func (w *window) paint() {
 		w.layoutDirty = false
 	}
 
-	scale := float32(w.scale)
-	if scale == 0 {
-		scale = 1
+	// Begin takes the physical (backing) pixel size; scale = physical / logical.
+	pixelWidth, pixelHeight := w.pixelWidth, w.pixelHeight
+	scale := float32(1)
+	if w.width > 0 && w.pixelWidth > 0 {
+		scale = w.pixelWidth / w.width
+	} else {
+		pixelWidth, pixelHeight = size.Width, size.Height
 	}
 
-	w.painter.Begin(size.Width, size.Height, scale)
+	w.painter.Begin(pixelWidth, pixelHeight, scale)
 	w.painter.Clear(graphics.RGB(255, 255, 255))
 	w.root.Paint(SubPainter(w.painter, w.root.Rect()))
 	w.painter.End()
