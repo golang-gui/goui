@@ -36,6 +36,10 @@ func (v TextInputView) OnText(fn func(string)) TextInputView {
 	return v
 }
 
+func (v TextInputView) Build() View {
+	return v
+}
+
 type textInputState struct {
 	onText func(string)
 	text   signal.Handle

@@ -52,6 +52,43 @@ func TestRootReplacesDifferentViewType(t *testing.T) {
 	}
 }
 
+func TestRootExpandsCompositionViewBeforeDiff(t *testing.T) {
+	root := newRoot()
+	builds := 0
+
+	widget := root.update(testCompositionView{
+		view:   Label("first"),
+		builds: &builds,
+	})
+	label := widget.(*gui.Label)
+	if label.Text() != "first" || builds != 1 {
+		t.Fatalf("unexpected initial composition state: text=%q builds=%d", label.Text(), builds)
+	}
+
+	updated := root.update(testCompositionView{
+		view:   Label("second"),
+		builds: &builds,
+	})
+	if updated != label {
+		t.Fatal("composition view should reuse the same expanded widget type")
+	}
+	if label.Text() != "second" || builds != 2 {
+		t.Fatalf("unexpected updated composition state: text=%q builds=%d", label.Text(), builds)
+	}
+
+	replaced := root.update(testCompositionView{
+		view:   TextInput().Text("third"),
+		builds: &builds,
+	})
+	if replaced == label {
+		t.Fatal("composition view should replace widget when the expanded type changes")
+	}
+	input := replaced.(*gui.TextInput)
+	if input.Text() != "third" || builds != 3 {
+		t.Fatalf("unexpected replaced composition state: text=%q builds=%d", input.Text(), builds)
+	}
+}
+
 func TestRootUpdatesBoxChildrenByPositionAndType(t *testing.T) {
 	root := newRoot()
 
@@ -132,20 +169,20 @@ func TestRootRebuildsTailOnChildTypeMismatch(t *testing.T) {
 func TestRootUpdatesButtonChild(t *testing.T) {
 	root := newRoot()
 
-	button := root.update(Button(Label("OK"))).(*gui.Button)
+	button := root.update(Button().Content(Label("OK"))).(*gui.Button)
 	children := button.Children()
 	if len(children) != 1 || children[0].(*gui.Label).Text() != "OK" {
 		t.Fatalf("unexpected button child: %v", children)
 	}
 	child := children[0]
 
-	root.update(Button(Label("Cancel")))
+	root.update(Button("Cancel"))
 	children = button.Children()
 	if len(children) != 1 || children[0] != child || children[0].(*gui.Label).Text() != "Cancel" {
 		t.Fatalf("button child was not updated in place: %v", children)
 	}
 
-	root.update(Button(nil))
+	root.update(Button())
 	if children := button.Children(); len(children) != 0 {
 		t.Fatalf("button child was not removed: %v", children)
 	}
@@ -156,7 +193,7 @@ func TestButtonViewUpdatesClickHandlerThroughState(t *testing.T) {
 	firstCalls := 0
 	secondCalls := 0
 
-	button := root.update(Button(nil).OnClick(func() {
+	button := root.update(Button().OnClick(func() {
 		firstCalls++
 	})).(*gui.Button)
 	triggerButtonClick(button)
@@ -164,7 +201,7 @@ func TestButtonViewUpdatesClickHandlerThroughState(t *testing.T) {
 		t.Fatalf("unexpected first click calls: first=%d second=%d", firstCalls, secondCalls)
 	}
 
-	root.update(Button(nil).OnClick(func() {
+	root.update(Button().OnClick(func() {
 		secondCalls++
 	}))
 	triggerButtonClick(button)
@@ -363,6 +400,22 @@ type lifecycleState struct {
 type lifecycleView struct {
 	text    string
 	tracker *lifecycleTracker
+}
+
+type testCompositionView struct {
+	view   View
+	builds *int
+}
+
+func (v testCompositionView) Build() View {
+	if v.builds != nil {
+		*v.builds = *v.builds + 1
+	}
+	return v.view
+}
+
+func (v lifecycleView) Build() View {
+	return v
 }
 
 func (v lifecycleView) Mount(ctx BuildContext) gui.Widget {

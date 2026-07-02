@@ -17,8 +17,14 @@ type buttonState struct {
 	click   signal.Handle
 }
 
-func Button(child View) ButtonView {
-	return ButtonView{child: child}
+func Button(text ...string) ButtonView {
+	if len(text) > 1 {
+		panic("ui: Button accepts at most one text argument")
+	}
+	if len(text) == 0 {
+		return ButtonView{}
+	}
+	return ButtonView{child: Label(text[0])}
 }
 
 func (v ButtonView) Name(name string) ButtonView {
@@ -31,13 +37,25 @@ func (v ButtonView) Hidden(hidden bool) ButtonView {
 	return v
 }
 
-func (v ButtonView) Child(child View) ButtonView {
-	v.child = child
+func (v ButtonView) Text(text string) ButtonView {
+	return v.Content(Label(text))
+}
+
+func (v ButtonView) Content(content View) ButtonView {
+	v.child = content
 	return v
+}
+
+func (v ButtonView) Child(child View) ButtonView {
+	return v.Content(child)
 }
 
 func (v ButtonView) OnClick(fn func()) ButtonView {
 	v.onClick = fn
+	return v
+}
+
+func (v ButtonView) Build() View {
 	return v
 }
 

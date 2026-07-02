@@ -19,7 +19,7 @@ type root struct {
 
 type node struct {
 	viewType reflect.Type
-	view     View
+	view     WidgetView
 	widget   gui.Widget
 	state    any
 	children []*node
@@ -177,6 +177,11 @@ func (r *root) unmountForWindowDestroy() {
 }
 
 func (r *root) updateNode(old *node, view View) *node {
+	widgetView := normalizeView(view)
+	return r.updateWidgetNode(old, widgetView)
+}
+
+func (r *root) updateWidgetNode(old *node, view WidgetView) *node {
 	if view == nil {
 		r.release(old, true)
 		return nil
@@ -257,10 +262,11 @@ func (ctx *buildContext) UpdateChildren(container gui.Container, children []View
 
 	index := 0
 	for index < len(oldNodes) && index < len(children) {
-		if !sameViewType(oldNodes[index], children[index]) {
+		childView := normalizeView(children[index])
+		if !sameWidgetViewType(oldNodes[index], childView) {
 			break
 		}
-		child := ctx.root.updateNode(oldNodes[index], children[index])
+		child := ctx.root.updateWidgetNode(oldNodes[index], childView)
 		if child == nil || child.widget == nil {
 			var oldWidget gui.Widget
 			if oldNodes[index] != nil {
@@ -289,7 +295,7 @@ func (ctx *buildContext) UpdateChildren(container gui.Container, children []View
 	}
 
 	for _, childView := range children[index:] {
-		child := ctx.root.updateNode(nil, childView)
+		child := ctx.root.updateWidgetNode(nil, normalizeView(childView))
 		if child == nil || child.widget == nil {
 			continue
 		}
@@ -300,7 +306,7 @@ func (ctx *buildContext) UpdateChildren(container gui.Container, children []View
 	ctx.node.children = newNodes
 }
 
-func sameViewType(old *node, view View) bool {
+func sameWidgetViewType(old *node, view WidgetView) bool {
 	return old != nil && view != nil && old.viewType == reflect.TypeOf(view)
 }
 
@@ -315,4 +321,17 @@ func compactViews(views []View) []View {
 		}
 	}
 	return compacted
+}
+
+func normalizeView(view View) WidgetView {
+	for depth := 0; view != nil; depth++ {
+		if widgetView, ok := view.(WidgetView); ok {
+			return widgetView
+		}
+		if depth >= 64 {
+			panic("ui: view build depth exceeded")
+		}
+		view = view.Build()
+	}
+	return nil
 }

@@ -31,6 +31,10 @@ func (v ImageView) Image(img image.Image) ImageView {
 	return v
 }
 
+func (v ImageView) Build() View {
+	return v
+}
+
 func (v ImageView) Mount(BuildContext) gui.Widget {
 	return gui.NewImage(v.img)
 }
