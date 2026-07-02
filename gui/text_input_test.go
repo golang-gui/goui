@@ -269,7 +269,7 @@ func TestTextInputStopsPropagationWhenEditing(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	assertStrings(t, calls, []string{"root-bubble phase=2 type=10"})
+	assertStrings(t, calls, []string{"root-bubble phase=2 type=9"})
 }
 
 func TestKeyEventTextMapsAsciiKeys(t *testing.T) {

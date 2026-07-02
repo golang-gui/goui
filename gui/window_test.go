@@ -37,30 +37,25 @@ func TestWindowRequestPaintWithoutPlatformWindow(t *testing.T) {
 	}
 }
 
-func TestWindowDispatchEventHandlesSizeAndScale(t *testing.T) {
+func TestWindowDispatchEventHandlesSize(t *testing.T) {
 	win := &window{}
 
-	if err := win.DispatchEvent(events.SizeEvent{Width: 320, Height: 240}); err != nil {
+	// SizeEvent carries both logical (DIP) and physical (pixel) size; scale is
+	// derived as PixelWidth/Width (here 2x).
+	if err := win.DispatchEvent(events.SizeEvent{
+		Width: 320, Height: 240,
+		PixelWidth: 640, PixelHeight: 480,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if win.width != 320 || win.height != 240 {
-		t.Fatalf("unexpected window size: %dx%d", win.width, win.height)
+		t.Fatalf("unexpected logical size: %gx%g", win.width, win.height)
+	}
+	if win.pixelWidth != 640 || win.pixelHeight != 480 {
+		t.Fatalf("unexpected physical size: %gx%g", win.pixelWidth, win.pixelHeight)
 	}
 	if !win.layoutDirty || !win.paintDirty {
 		t.Fatal("size event did not request layout and paint")
-	}
-
-	win.layoutDirty = false
-	win.paintDirty = false
-
-	if err := win.DispatchEvent(events.ScaleEvent{ScaleFactor: 0}); err != nil {
-		t.Fatal(err)
-	}
-	if win.scale != 1 {
-		t.Fatalf("unexpected scale: %v", win.scale)
-	}
-	if !win.layoutDirty || !win.paintDirty {
-		t.Fatal("scale event did not request layout and paint")
 	}
 }
 
@@ -126,10 +121,11 @@ func TestWindowSetFocusedWidgetValidatesTarget(t *testing.T) {
 func TestWindowPaintPerformsPendingLayoutBeforePainting(t *testing.T) {
 	painter := new(testGraphicsPainter)
 	win := &window{
-		painter: painter,
-		width:   320,
-		height:  240,
-		scale:   2,
+		painter:     painter,
+		width:       320,
+		height:      240,
+		pixelWidth:  640,
+		pixelHeight: 480,
 	}
 	root := newLayoutPassWidget()
 	win.SetWidget(root)
