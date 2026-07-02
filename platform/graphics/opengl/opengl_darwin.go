@@ -89,7 +89,11 @@ func newContext(win NativeWindow, share Context, config Config) (_ Context, err 
 
 	var window NSWindow
 	window.ID = ID(win.NativeHandle())
-	object.SetView(window.ContentView())
+	contentView := window.ContentView()
+	// Render at the full backing (Retina) resolution instead of a point-sized
+	// surface that the window server would upscale (blurring the output).
+	contentView.SetWantsBestResolutionOpenGLSurface(true)
+	object.SetView(contentView)
 
 	return nsglContext{
 		object:      object,
