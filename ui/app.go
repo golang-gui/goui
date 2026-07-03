@@ -54,7 +54,7 @@ var activeAppRuntime struct {
 	runtime *appRuntime
 }
 
-func (a app) DevPort(addr string) app {
+func (a app) SetDevPort(addr string) app {
 	a.devAddr = addr
 	return a
 }
