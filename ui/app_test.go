@@ -220,6 +220,10 @@ func (a *windowTestApplication) Clipboard() platform.Clipboard {
 	return nil
 }
 
+func (a *windowTestApplication) Settings() *gui.Settings {
+	return nil
+}
+
 func (a *windowTestApplication) NewWindow() (gui.Window, error) {
 	win := newTestWindow()
 	a.windows = append(a.windows, win)

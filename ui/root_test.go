@@ -468,6 +468,10 @@ func (a *testApplication) Clipboard() platform.Clipboard {
 	return nil
 }
 
+func (a *testApplication) Settings() *gui.Settings {
+	return nil
+}
+
 func (a *testApplication) NewWindow() (gui.Window, error) {
 	return nil, nil
 }
