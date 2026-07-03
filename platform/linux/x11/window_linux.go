@@ -184,10 +184,6 @@ func (w *Window) Draw(img image.Image) error {
 	return w.drawImage(bmp)
 }
 
-func (w *Window) ScaleFactor() (float64, error) {
-	return float64(currentScale()), nil
-}
-
 var windowMap = map[xlib.Window]*Window{}
 
 // TODO: process window event
