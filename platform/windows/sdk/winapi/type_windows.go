@@ -37,6 +37,16 @@ type (
 	LPVOID   = Cvoidptr
 )
 
+type (
+	HANDLE  = syscall.Handle
+	HGLOBAL = syscall.Handle
+)
+
+const (
+	CF_UNICODETEXT = 13
+	GMEM_MOVEABLE  = 0x0002
+)
+
 const (
 	FALSE = 0
 	TRUE  = 1

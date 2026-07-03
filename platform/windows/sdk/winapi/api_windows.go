@@ -85,11 +85,24 @@ var (
 	procDescribePixelFormat = gdi32Dll.NewProc("DescribePixelFormat")
 	procSwapBuffers         = gdi32Dll.NewProc("SwapBuffers")
 
+	// Registry
 	procRegOpenKeyExW    = advapi32Dll.NewProc("RegOpenKeyExW")
 	procRegQueryValueExW = advapi32Dll.NewProc("RegQueryValueExW")
 	procRegCloseKey      = advapi32Dll.NewProc("RegCloseKey")
 
+	// DWN
 	procDwmGetColorizationColor = dwmapiDll.NewProc("DwmGetColorizationColor")
+
+	// Clipboard
+	procOpenClipboard    = user32Dll.NewProc("OpenClipboard")
+	procCloseClipboard   = user32Dll.NewProc("CloseClipboard")
+	procEmptyClipboard   = user32Dll.NewProc("EmptyClipboard")
+	procGetClipboardData = user32Dll.NewProc("GetClipboardData")
+	procSetClipboardData = user32Dll.NewProc("SetClipboardData")
+
+	procGlobalAlloc  = kernel32Dll.NewProc("GlobalAlloc")
+	procGlobalLock   = kernel32Dll.NewProc("GlobalLock")
+	procGlobalUnlock = kernel32Dll.NewProc("GlobalUnlock")
 )
 
 type WindowProcFunc func(wnd HWND, message UINT, wParam WPARAM, lParam LPARAM) LRESULT
@@ -539,4 +552,44 @@ func DwmGetColorizationColor(colorization *DWORD, opaqueBlend *BOOL) error {
 		return syscall.Errno(ret)
 	}
 	return nil
+}
+
+func OpenClipboard(wnd HWND) bool {
+	ret, _, _ := syscall.SyscallN(procOpenClipboard.Addr(), uintptr(wnd))
+	return ret != 0
+}
+
+func CloseClipboard() bool {
+	ret, _, _ := syscall.SyscallN(procCloseClipboard.Addr())
+	return ret != 0
+}
+
+func EmptyClipboard() bool {
+	ret, _, _ := syscall.SyscallN(procEmptyClipboard.Addr())
+	return ret != 0
+}
+
+func GetClipboardData(format UINT) HANDLE {
+	ret, _, _ := syscall.SyscallN(procGetClipboardData.Addr(), uintptr(format))
+	return HANDLE(ret)
+}
+
+func SetClipboardData(format UINT, mem HANDLE) HANDLE {
+	ret, _, _ := syscall.SyscallN(procSetClipboardData.Addr(), uintptr(format), uintptr(mem))
+	return HANDLE(ret)
+}
+
+func GlobalAlloc(flags UINT, byteSize uintptr) HGLOBAL {
+	ret, _, _ := syscall.SyscallN(procGlobalAlloc.Addr(), uintptr(flags), byteSize)
+	return HGLOBAL(ret)
+}
+
+func GlobalLock(mem HGLOBAL) unsafe.Pointer {
+	ret, _, _ := syscall.SyscallN(procGlobalLock.Addr(), uintptr(mem))
+	return unsafe.Pointer(ret)
+}
+
+func GlobalUnlock(mem HGLOBAL) bool {
+	ret, _, _ := syscall.SyscallN(procGlobalUnlock.Addr(), uintptr(mem))
+	return ret != 0
 }
