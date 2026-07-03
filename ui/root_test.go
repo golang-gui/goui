@@ -464,6 +464,10 @@ func (a *testApplication) Typography() typography.Context {
 	return nil
 }
 
+func (a *testApplication) Clipboard() platform.Clipboard {
+	return nil
+}
+
 func (a *testApplication) NewWindow() (gui.Window, error) {
 	return nil, nil
 }
