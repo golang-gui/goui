@@ -84,21 +84,17 @@ func newApplication() (*application, error) {
 		clip = nil
 	}
 
-	// Settings is read-only and always usable: getters fall back to gui defaults.
-	settings := newSettings()
-	platformSettings, settingsErr := plat.NewSettings()
+	settings, settingsErr := plat.NewSettings()
 	if settingsErr != nil {
-		platformSettings = nil // getters then always fall back
+		settings = nil // getters then always fall back
 	}
-	settings.platform = platformSettings
-	settings.watch(loop)
 
 	return &application{
 		platform:  plat,
 		loop:      loop,
 		typo:      typo,
 		clipboard: clip,
-		settings:  settings,
+		settings:  newSettings(settings, loop),
 	}, nil
 }
 
