@@ -4,7 +4,15 @@ import (
 	"image/color"
 
 	"github.com/golang-gui/goui/gui"
-	"github.com/golang-gui/goui/platform"
+)
+
+// ColorScheme re-exports the gui color scheme so ui consumers use ui types only,
+// without importing the gui or platform packages.
+type ColorScheme = gui.ColorScheme
+
+const (
+	ColorSchemeLight = gui.ColorSchemeLight
+	ColorSchemeDark  = gui.ColorSchemeDark
 )
 
 // Settings is the thread-safe UI-layer view of system settings. Getters run on
@@ -17,8 +25,8 @@ func (app) Settings() Settings {
 	return Settings{}
 }
 
-func (Settings) ColorScheme() platform.ColorScheme {
-	var v platform.ColorScheme
+func (Settings) ColorScheme() ColorScheme {
+	var v ColorScheme
 	App.Sync(func() { v = guiSettings().ColorScheme() })
 	return v
 }
