@@ -13,6 +13,8 @@ import (
 type Application interface {
 	Platform() platform.Platform
 	Typography() typography.Context
+	// Clipboard returns the system clipboard, or nil if it is unavailable.
+	Clipboard() platform.Clipboard
 	NewWindow() (Window, error)
 	Run()
 	Quit()
@@ -41,10 +43,11 @@ func NewApplication() (Application, error) {
 }
 
 type application struct {
-	platform platform.Platform
-	loop     platform.EventLoop
-	typo     typography.Context
-	windows  []*window
+	platform  platform.Platform
+	loop      platform.EventLoop
+	typo      typography.Context
+	clipboard platform.Clipboard
+	windows   []*window
 }
 
 func newApplication() (*application, error) {
@@ -66,10 +69,19 @@ func newApplication() (*application, error) {
 		return nil, fmt.Errorf("create typography: %w", err)
 	}
 
+	// Clipboard is optional: unlike typography, the application remains usable
+	// without one, so a creation failure is non-fatal — keep it nil and carry on.
+	// TODO: log the error once the framework has logging.
+	clip, clipErr := plat.NewClipboard()
+	if clipErr != nil {
+		clip = nil
+	}
+
 	return &application{
-		platform: plat,
-		loop:     loop,
-		typo:     typo,
+		platform:  plat,
+		loop:      loop,
+		typo:      typo,
+		clipboard: clip,
 	}, nil
 }
 
@@ -79,6 +91,10 @@ func (a *application) Platform() platform.Platform {
 
 func (a *application) Typography() typography.Context {
 	return a.typo
+}
+
+func (a *application) Clipboard() platform.Clipboard {
+	return a.clipboard
 }
 
 func (a *application) NewWindow() (Window, error) {
