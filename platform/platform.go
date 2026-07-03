@@ -17,6 +17,7 @@ type (
 	ColorScheme  = common.ColorScheme
 	Window       = common.Window
 	EventLoop    = common.EventLoop
+	Clipboard    = common.Clipboard
 	EventHandler = events.EventHandler
 )
 
@@ -37,6 +38,7 @@ type Platform interface {
 	NewTypography() (typography.Context, error)
 	NewPainter(win Window, typo typography.Context) (graphics.Painter, error)
 	NewSettings(onChanged func()) (Settings, error)
+	NewClipboard() (Clipboard, error)
 }
 
 var ErrUnsupported = errors.New("unsupported platform")

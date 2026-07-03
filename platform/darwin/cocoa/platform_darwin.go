@@ -70,6 +70,12 @@ func (p *Platform) NewSettings(onChanged func()) (common.Settings, error) {
 	return newSettings(onChanged)
 }
 
+func (p *Platform) NewClipboard() (common.Clipboard, error) {
+	// The cocoa clipboard is stateless (talks to the shared general pasteboard),
+	// so a fresh instance per call is safe.
+	return newClipboard()
+}
+
 func newPlatform() (p *Platform, err error) {
 	err = frameworks.Init()
 	if err != nil {
