@@ -33,6 +33,10 @@ var (
 	xSetWMProtocols         = libx11.NewSymbol("XSetWMProtocols")
 	xDeleteProperty         = libx11.NewSymbol("XDeleteProperty")
 	xChangeProperty         = libx11.NewSymbol("XChangeProperty")
+	xGetWindowProperty      = libx11.NewSymbol("XGetWindowProperty")
+	xSetSelectionOwner      = libx11.NewSymbol("XSetSelectionOwner")
+	xGetSelectionOwner      = libx11.NewSymbol("XGetSelectionOwner")
+	xConvertSelection       = libx11.NewSymbol("XConvertSelection")
 	xChangeWindowAttributes = libx11.NewSymbol("XChangeWindowAttributes")
 	xCreateColormap         = libx11.NewSymbol("XCreateColormap")
 	xFreeColormap           = libx11.NewSymbol("XFreeColormap")
@@ -168,6 +172,45 @@ func (d Display) DeleteProperty(w Window, property Atom) {
 
 func (d Display) ChangeProperty(w Window, property, typ Atom, format byte, mode PropertyChangeMode, data cgo.Pointer, nelements int) {
 	xChangeProperty.CallRaw(uintptr(d), uintptr(w), uintptr(property), uintptr(typ), uintptr(format), uintptr(mode), uintptr(data), uintptr(nelements))
+}
+
+func (d Display) SetSelectionOwner(selection Atom, owner Window, time Time) {
+	xSetSelectionOwner.CallRaw(uintptr(d), uintptr(selection), uintptr(owner), uintptr(time))
+}
+
+func (d Display) GetSelectionOwner(selection Atom) Window {
+	ret, _, _ := xGetSelectionOwner.CallRaw(uintptr(d), uintptr(selection))
+	return Window(ret)
+}
+
+func (d Display) ConvertSelection(selection, target, property Atom, requestor Window, time Time) {
+	xConvertSelection.CallRaw(uintptr(d), uintptr(selection), uintptr(target), uintptr(property), uintptr(requestor), uintptr(time))
+}
+
+// GetWindowPropertyBytes reads a window property as raw bytes (format 8),
+// copies them into Go memory, frees the X buffer, and returns the data plus the
+// property's actual type. Reads up to 64 MiB in one shot (no INCR support).
+func (d Display) GetWindowPropertyBytes(w Window, property, reqType Atom) ([]byte, Atom) {
+	var (
+		actualType   Atom
+		actualFormat int32
+		nitems       uint64
+		bytesAfter   uint64
+		prop         uintptr
+	)
+	xGetWindowProperty.CallRaw(uintptr(d), uintptr(w), uintptr(property),
+		uintptr(0), uintptr(1<<24), uintptr(cgo.CBool(false)), uintptr(reqType),
+		uintptr(cgo.Pointer(&actualType)), uintptr(cgo.Pointer(&actualFormat)),
+		uintptr(cgo.Pointer(&nitems)), uintptr(cgo.Pointer(&bytesAfter)), uintptr(cgo.Pointer(&prop)))
+	if prop == 0 {
+		return nil, actualType
+	}
+	out := make([]byte, nitems)
+	if nitems > 0 {
+		copy(out, []byte(cgo.GoStringN(cgo.Pointer(prop), int(nitems))))
+	}
+	Free((*byte)(cgo.Pointer(prop)))
+	return out, actualType
 }
 
 func (d Display) SetWMProtocols(w Window, protocols []Atom) Status {
