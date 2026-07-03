@@ -29,6 +29,7 @@ func InitAppKit() (err error) {
 	initNSColor()
 	initNSFont()
 	initNSGraphicsContext()
+	initNSPasteboard()
 	return
 }
 
@@ -167,6 +168,48 @@ type (
 func (c NSColorSpaceClass) SRGBColorSpace() (space NSColorSpace) {
 	space.ID = c.Send(NSColorSpaceSel.SRGBColorSpace)
 	return
+}
+
+// NSPasteboard
+
+func initNSPasteboard() {
+	NSPasteboardClassId.Class = objc.GetClass("NSPasteboard")
+	NSPasteboardSel.GeneralPasteboard = objc.RegisterName("generalPasteboard")
+	NSPasteboardSel.ClearContents = objc.RegisterName("clearContents")
+	NSPasteboardSel.SetStringForType = objc.RegisterName("setString:forType:")
+	NSPasteboardSel.StringForType = objc.RegisterName("stringForType:")
+}
+
+var (
+	NSPasteboardClassId NSPasteboardClass
+	NSPasteboardSel     struct {
+		GeneralPasteboard objc.SEL
+		ClearContents     objc.SEL
+		SetStringForType  objc.SEL
+		StringForType     objc.SEL
+	}
+)
+
+type (
+	NSPasteboard      struct{ NSObject }
+	NSPasteboardClass struct{ NSObjectClass }
+)
+
+func (c NSPasteboardClass) GeneralPasteboard() (pb NSPasteboard) {
+	pb.ID = c.Send(NSPasteboardSel.GeneralPasteboard)
+	return
+}
+
+func (p NSPasteboard) ClearContents() {
+	p.Send(NSPasteboardSel.ClearContents)
+}
+
+func (p NSPasteboard) SetStringForType(str, dataType NSString) bool {
+	return objc.Send[bool](p.ID, NSPasteboardSel.SetStringForType, str, dataType)
+}
+
+func (p NSPasteboard) StringForType(dataType NSString) NSString {
+	return Cast[NSString](p.Send(NSPasteboardSel.StringForType, dataType))
 }
 
 // NSColor
