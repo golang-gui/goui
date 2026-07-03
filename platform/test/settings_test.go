@@ -4,10 +4,7 @@ import (
 	"errors"
 	"image/color"
 	"math"
-	"os"
-	"sync"
 	"testing"
-	"time"
 
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/common"
@@ -23,7 +20,7 @@ func TestSettings(t *testing.T) {
 
 	var settings platform.Settings
 	runOnMainThread(func() {
-		settings, err = plat.NewSettings(nil)
+		settings, err = plat.NewSettings()
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -100,42 +97,6 @@ func TestSettings(t *testing.T) {
 
 	if supported == 0 {
 		t.Fatal("all platform settings are unsupported")
-	}
-}
-
-func TestSettingsChangedCallback(t *testing.T) {
-	if os.Getenv("GOUI_TEST_SETTINGS_CHANGE") == "" {
-		t.Skip("set GOUI_TEST_SETTINGS_CHANGE=1 and change a system setting to verify onChanged")
-	}
-	skipWithoutDisplay(t)
-
-	plat, err := getPlatform()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	changed := make(chan struct{})
-	var once sync.Once
-	var settings platform.Settings
-	runOnMainThread(func() {
-		settings, err = plat.NewSettings(func() {
-			once.Do(func() {
-				close(changed)
-			})
-		})
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if settings == nil {
-		t.Fatal("NewSettings returned nil")
-	}
-
-	t.Log("change color scheme, accent color, font family, or font size within 30 seconds")
-	select {
-	case <-changed:
-	case <-time.After(30 * time.Second):
-		t.Fatal("settings change callback was not called")
 	}
 }
 

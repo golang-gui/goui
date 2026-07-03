@@ -1,11 +1,9 @@
 package x11
 
 import (
-	"errors"
 	"image/color"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/graphics"
@@ -14,9 +12,7 @@ import (
 	"github.com/golang-gui/goui/platform/linux/libs/pango_cairo"
 )
 
-type Settings struct {
-	onChanged func()
-}
+type Settings struct{}
 
 var gtkInit struct {
 	once sync.Once
@@ -24,12 +20,8 @@ var gtkInit struct {
 	err  error
 }
 
-func newSettings(onChanged func()) (common.Settings, error) {
-	s := &Settings{onChanged: onChanged}
-	if onChanged != nil {
-		go s.watch()
-	}
-	return s, nil
+func newSettings() (common.Settings, error) {
+	return &Settings{}, nil
 }
 
 func (Settings) ColorScheme() (common.ColorScheme, error) {
@@ -188,77 +180,4 @@ func fontFromDescription(desc pango.FontDescription) (family string, size float3
 		return "", 0, common.ErrSettingUnsupported
 	}
 	return family, size, nil
-}
-
-func (s *Settings) watch() {
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-
-	prev := s.snapshot()
-	for range ticker.C {
-		next := s.snapshot()
-		if next == prev {
-			continue
-		}
-		prev = next
-		s.onChanged()
-	}
-}
-
-type settingsSnapshot struct {
-	ColorScheme    common.ColorScheme
-	ColorSchemeErr string
-	AccentR        uint32
-	AccentG        uint32
-	AccentB        uint32
-	AccentA        uint32
-	AccentErr      string
-	FontFamily     string
-	FontFamilyErr  string
-	FontSize       float32
-	FontSizeErr    string
-}
-
-func (s *Settings) snapshot() settingsSnapshot {
-	var snapshot settingsSnapshot
-
-	snapshot.ColorScheme, snapshot.ColorSchemeErr = snapshotColorScheme(s.ColorScheme())
-	snapshot.AccentR, snapshot.AccentG, snapshot.AccentB, snapshot.AccentA, snapshot.AccentErr = snapshotColor(s.AccentColor())
-	snapshot.FontFamily, snapshot.FontFamilyErr = snapshotString(s.FontFamily())
-	snapshot.FontSize, snapshot.FontSizeErr = snapshotFloat32(s.FontSize())
-
-	return snapshot
-}
-
-func snapshotColorScheme(value common.ColorScheme, err error) (common.ColorScheme, string) {
-	return value, snapshotError(err)
-}
-
-func snapshotColor(value color.Color, err error) (uint32, uint32, uint32, uint32, string) {
-	if err != nil {
-		return 0, 0, 0, 0, snapshotError(err)
-	}
-	if value == nil {
-		return 0, 0, 0, 0, "<nil>"
-	}
-	r, g, b, a := value.RGBA()
-	return r, g, b, a, ""
-}
-
-func snapshotString(value string, err error) (string, string) {
-	return value, snapshotError(err)
-}
-
-func snapshotFloat32(value float32, err error) (float32, string) {
-	return value, snapshotError(err)
-}
-
-func snapshotError(err error) string {
-	if err == nil {
-		return ""
-	}
-	if errors.Is(err, common.ErrSettingUnsupported) {
-		return common.ErrSettingUnsupported.Error()
-	}
-	return err.Error()
 }

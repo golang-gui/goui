@@ -37,7 +37,7 @@ type Platform interface {
 	NewEventLoop() (EventLoop, error)
 	NewTypography() (typography.Context, error)
 	NewPainter(win Window, typo typography.Context) (graphics.Painter, error)
-	NewSettings(onChanged func()) (Settings, error)
+	NewSettings() (Settings, error)
 	NewClipboard() (Clipboard, error)
 }
 
