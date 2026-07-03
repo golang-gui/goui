@@ -321,6 +321,18 @@ func (e *Event) CrossingEvent() *CrossingEvent {
 	return (*CrossingEvent)(cgo.Pointer(e))
 }
 
+func (e *Event) SelectionClearEvent() *SelectionClearEvent {
+	return (*SelectionClearEvent)(cgo.Pointer(e))
+}
+
+func (e *Event) SelectionRequestEvent() *SelectionRequestEvent {
+	return (*SelectionRequestEvent)(cgo.Pointer(e))
+}
+
+func (e *Event) SelectionEvent() *SelectionEvent {
+	return (*SelectionEvent)(cgo.Pointer(e))
+}
+
 type AnyEvent struct {
 	Type      EventType
 	Serial    uint64
@@ -351,6 +363,41 @@ type PropertyEvent struct {
 	Atom      Atom
 	Time      Time
 	State     int32
+}
+
+type SelectionClearEvent struct {
+	Type      EventType
+	Serial    uint64
+	SendEvent Bool
+	Display   Display
+	Window    Window
+	Selection Atom
+	Time      Time
+}
+
+type SelectionRequestEvent struct {
+	Type      EventType
+	Serial    uint64
+	SendEvent Bool
+	Display   Display
+	Owner     Window
+	Requestor Window
+	Selection Atom
+	Target    Atom
+	Property  Atom
+	Time      Time
+}
+
+type SelectionEvent struct {
+	Type      EventType
+	Serial    uint64
+	SendEvent Bool
+	Display   Display
+	Requestor Window
+	Selection Atom
+	Target    Atom
+	Property  Atom
+	Time      Time
 }
 
 type ConfigureEvent struct {
