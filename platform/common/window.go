@@ -21,5 +21,4 @@ type Window interface {
 	// not draw immediately, and multiple requests may be coalesced.
 	RequestPaint() error
 	Draw(img image.Image) error
-	ScaleFactor() (float64, error)
 }

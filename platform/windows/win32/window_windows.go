@@ -120,14 +120,6 @@ func (w *Window) Draw(img image.Image) error {
 	return w.drawImage(bmp)
 }
 
-func (w *Window) ScaleFactor() (float64, error) {
-	dpi, err := winapi.GetDpiForWindow(w.hwnd)
-	if err != nil {
-		return 0, err
-	}
-	return float64(dpi) / 96, nil
-}
-
 // scaleFactor returns the window scale, falling back to 1 on error. Used to
 // normalize physical pixels (client rect, pointer coords) to logical (DIP).
 func (w *Window) scaleFactor() float32 {

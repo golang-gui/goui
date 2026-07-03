@@ -28,7 +28,7 @@ func getTextRange(text, subText string) (start, length int) {
 	return start, len(subText)
 }
 
-func render(width, height uint) {
+func render(width, height float32) {
 	runtime.LockOSThread()
 
 	beg := time.Now()
@@ -36,7 +36,7 @@ func render(width, height uint) {
 		log.Printf("render cost: %v", time.Since(beg))
 	}()
 
-	painter.Begin(float32(width), float32(height), 2.0)
+	painter.Begin(width, height, 2.0)
 	{
 		painter.Clear(graphics.RGBA(90, 160, 200, 255))
 		painter.FillRoundRect(graphics.Rect(50, 50, 100, 60), 12, graphics.RGBA(90, 50, 50, 255))
@@ -120,7 +120,7 @@ func main() {
 	defer eventLoop.Destroy()
 
 	var win platform.Window
-	var width, height uint
+	var width, height float32
 
 	win, err = plat.NewWindow(func(event events.Event) {
 		switch ev := event.(type) {
@@ -128,7 +128,7 @@ func main() {
 			win.Destroy()
 			eventLoop.Quit()
 		case events.SizeEvent:
-			width, height = ev.Width, ev.Height
+			width, height = ev.PixelWidth, ev.PixelHeight
 		case events.PaintEvent:
 			render(width, height)
 		}

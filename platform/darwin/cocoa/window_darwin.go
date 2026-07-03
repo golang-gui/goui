@@ -148,10 +148,6 @@ func (w *Window) RequestPaint() error {
 	return nil
 }
 
-func (w *Window) ScaleFactor() (float64, error) {
-	return w.window.BackingScaleFactor(), nil
-}
-
 func (w *Window) Draw(img image.Image) error {
 	bmp, ok := graphics.ToBitmap(img, graphics.PixelFormatRGBA)
 	if !ok {
