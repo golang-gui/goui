@@ -1,6 +1,6 @@
 package ui
 
-import "github.com/golang-gui/goui/platform"
+import "github.com/golang-gui/goui/gui"
 
 // Clipboard is the thread-safe UI-layer view of the system clipboard. It is
 // always usable: operations run on the UI thread automatically, and when the
@@ -17,7 +17,7 @@ func (app) Clipboard() Clipboard {
 // and is best-effort: failures are ignored (the clipboard may be unavailable).
 func (Clipboard) SetText(text string) {
 	App.Sync(func() {
-		if pc := currentPlatformClipboard(); pc != nil {
+		if pc := currentClipboard(); pc != nil {
 			_ = pc.SetText(text) // TODO: log the error once the framework has logging.
 		}
 	})
@@ -30,7 +30,7 @@ func (Clipboard) RequestText(callback func(text string, ok bool)) {
 		return
 	}
 	App.Sync(func() {
-		pc := currentPlatformClipboard()
+		pc := currentClipboard()
 		if pc == nil {
 			callback("", false)
 			return
@@ -39,7 +39,7 @@ func (Clipboard) RequestText(callback func(text string, ok bool)) {
 	})
 }
 
-func currentPlatformClipboard() platform.Clipboard {
+func currentClipboard() gui.Clipboard {
 	rt := currentAppRuntime()
 	if rt == nil || rt.gui == nil {
 		return nil
