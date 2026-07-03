@@ -10,11 +10,15 @@ import (
 	"github.com/golang-gui/goui/platform/typography"
 )
 
+// Clipboard re-exports the platform clipboard so gui consumers use gui types
+// only, without importing the platform package.
+type Clipboard = platform.Clipboard
+
 type Application interface {
 	Platform() platform.Platform
 	Typography() typography.Context
 	// Clipboard returns the system clipboard, or nil if it is unavailable.
-	Clipboard() platform.Clipboard
+	Clipboard() Clipboard
 	// Settings returns system settings as usable values. Never nil.
 	Settings() *Settings
 	NewWindow() (Window, error)
@@ -48,7 +52,7 @@ type application struct {
 	platform  platform.Platform
 	loop      platform.EventLoop
 	typo      typography.Context
-	clipboard platform.Clipboard
+	clipboard Clipboard
 	settings  *Settings
 	windows   []*window
 }
@@ -81,16 +85,13 @@ func newApplication() (*application, error) {
 	}
 
 	// Settings is read-only and always usable: getters fall back to gui defaults.
-	// The platform change callback fires on a background thread, so marshal it
-	// onto the UI thread before emitting.
 	settings := newSettings()
-	platformSettings, settingsErr := plat.NewSettings(func() {
-		loop.Post(settings.emitChanged)
-	})
+	platformSettings, settingsErr := plat.NewSettings()
 	if settingsErr != nil {
 		platformSettings = nil // getters then always fall back
 	}
 	settings.platform = platformSettings
+	settings.watch(loop)
 
 	return &application{
 		platform:  plat,
@@ -109,7 +110,7 @@ func (a *application) Typography() typography.Context {
 	return a.typo
 }
 
-func (a *application) Clipboard() platform.Clipboard {
+func (a *application) Clipboard() Clipboard {
 	return a.clipboard
 }
 
