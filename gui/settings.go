@@ -32,7 +32,7 @@ var (
 // as directly usable values, substituting gui defaults when the platform cannot
 // report a value.
 type Settings struct {
-	platform platform.Settings // may be nil; getters then always fall back
+	settings platform.Settings // may be nil; getters then always fall back
 	changed  signal.Signal0
 
 	// Change detection state, accessed only on the UI thread (see watch).
@@ -40,13 +40,17 @@ type Settings struct {
 	snapReady bool
 }
 
-func newSettings() *Settings {
-	return &Settings{}
+func newSettings(settings platform.Settings, loop platform.EventLoop) (s *Settings) {
+	s = &Settings{settings: settings}
+	if settings != nil {
+		s.watch(loop)
+	}
+	return
 }
 
 func (s *Settings) ColorScheme() ColorScheme {
-	if s.platform != nil {
-		if v, err := s.platform.ColorScheme(); err == nil {
+	if s.settings != nil {
+		if v, err := s.settings.ColorScheme(); err == nil {
 			return v
 		}
 	}
@@ -54,8 +58,8 @@ func (s *Settings) ColorScheme() ColorScheme {
 }
 
 func (s *Settings) AccentColor() color.Color {
-	if s.platform != nil {
-		if v, err := s.platform.AccentColor(); err == nil && v != nil {
+	if s.settings != nil {
+		if v, err := s.settings.AccentColor(); err == nil && v != nil {
 			return v
 		}
 	}
@@ -63,8 +67,8 @@ func (s *Settings) AccentColor() color.Color {
 }
 
 func (s *Settings) FontFamily() string {
-	if s.platform != nil {
-		if v, err := s.platform.FontFamily(); err == nil && v != "" {
+	if s.settings != nil {
+		if v, err := s.settings.FontFamily(); err == nil && v != "" {
 			return v
 		}
 	}
@@ -72,8 +76,8 @@ func (s *Settings) FontFamily() string {
 }
 
 func (s *Settings) FontSize() float32 {
-	if s.platform != nil {
-		if v, err := s.platform.FontSize(); err == nil && v > 0 {
+	if s.settings != nil {
+		if v, err := s.settings.FontSize(); err == nil && v > 0 {
 			return v
 		}
 	}
@@ -110,11 +114,11 @@ func (s *Settings) snapshot() settingsSnapshot {
 // watch drives system-setting change detection.
 // posts checkChanged onto the event loop so every read happens on the UI thread.
 func (s *Settings) watch(loop platform.EventLoop) {
-	if s.platform == nil {
+	if s.settings == nil {
 		return // nothing to observe; getters always fall back
 	}
 	go func() {
-		ticker := time.NewTicker(time.Second)
+		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
 			loop.Post(s.checkChanged)
