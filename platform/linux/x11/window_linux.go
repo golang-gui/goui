@@ -221,6 +221,18 @@ func handleEvent(event xlib.Event) {
 		}
 	case xlib.PropertyNotify:
 		// state
+	case xlib.SelectionClear:
+		if platform.clipboard != nil {
+			platform.clipboard.handleSelectionClear(event.SelectionClearEvent())
+		}
+	case xlib.SelectionRequest:
+		if platform.clipboard != nil {
+			platform.clipboard.handleSelectionRequest(event.SelectionRequestEvent())
+		}
+	case xlib.SelectionNotify:
+		if platform.clipboard != nil {
+			platform.clipboard.handleSelectionNotify(event.SelectionEvent())
+		}
 	case xlib.FocusIn:
 		ev := event.AnyEvent()
 		if window, ok := windowMap[ev.Window]; ok {

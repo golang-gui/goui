@@ -111,9 +111,7 @@ func (l *EventLoop) readWake() {
 
 func (l *EventLoop) getEvent() {
 	event := platform.display.NextEvent()
-	if event.AnyEvent().Window != platform.helper {
-		handleEvent(event)
-	}
+	handleEvent(event)
 }
 
 func (l *EventLoop) wait() bool {

@@ -23,9 +23,13 @@ type Platform struct {
 		_NET_WM_NAME      xlib.Atom
 		_NET_WM_ICON      xlib.Atom
 		_NET_WM_ICON_NAME xlib.Atom
+		CLIPBOARD         xlib.Atom
+		TARGETS           xlib.Atom
+		GOUI_CLIPBOARD    xlib.Atom
 	}
 	defScreen   *xlib.Screen
 	helper      xlib.Window
+	clipboard   *clipboard
 	numLockMask uint32
 }
 
@@ -50,6 +54,9 @@ func NewPlatform() (_ *Platform, err error) {
 	p.atoms._NET_WM_NAME = p.display.InternAtom("_NET_WM_NAME", false)
 	p.atoms._NET_WM_ICON = p.display.InternAtom("_NET_WM_ICON", false)
 	p.atoms._NET_WM_ICON_NAME = p.display.InternAtom("_NET_WM_ICON_NAME", false)
+	p.atoms.CLIPBOARD = p.display.InternAtom("CLIPBOARD", false)
+	p.atoms.TARGETS = p.display.InternAtom("TARGETS", false)
+	p.atoms.GOUI_CLIPBOARD = p.display.InternAtom("GOUI_CLIPBOARD", false)
 
 	p.defScreen = p.display.DefaultScreenOfDisplay()
 	p.numLockMask = p.detectNumLockMask()
@@ -140,4 +147,11 @@ func (p *Platform) NewPainter(win common.Window, typo typography.Context) (paint
 
 func (p *Platform) NewSettings(onChanged func()) (common.Settings, error) {
 	return newSettings(onChanged)
+}
+
+func (p *Platform) NewClipboard() (common.Clipboard, error) {
+	if p.clipboard == nil {
+		p.clipboard = newClipboard()
+	}
+	return p.clipboard, nil
 }
