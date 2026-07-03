@@ -15,6 +15,8 @@ type Application interface {
 	Typography() typography.Context
 	// Clipboard returns the system clipboard, or nil if it is unavailable.
 	Clipboard() platform.Clipboard
+	// Settings returns system settings as usable values. Never nil.
+	Settings() *Settings
 	NewWindow() (Window, error)
 	Run()
 	Quit()
@@ -47,6 +49,7 @@ type application struct {
 	loop      platform.EventLoop
 	typo      typography.Context
 	clipboard platform.Clipboard
+	settings  *Settings
 	windows   []*window
 }
 
@@ -77,11 +80,24 @@ func newApplication() (*application, error) {
 		clip = nil
 	}
 
+	// Settings is read-only and always usable: getters fall back to gui defaults.
+	// The platform change callback fires on a background thread, so marshal it
+	// onto the UI thread before emitting.
+	settings := newSettings()
+	platformSettings, settingsErr := plat.NewSettings(func() {
+		loop.Post(settings.emitChanged)
+	})
+	if settingsErr != nil {
+		platformSettings = nil // getters then always fall back
+	}
+	settings.platform = platformSettings
+
 	return &application{
 		platform:  plat,
 		loop:      loop,
 		typo:      typo,
 		clipboard: clip,
+		settings:  settings,
 	}, nil
 }
 
@@ -95,6 +111,10 @@ func (a *application) Typography() typography.Context {
 
 func (a *application) Clipboard() platform.Clipboard {
 	return a.clipboard
+}
+
+func (a *application) Settings() *Settings {
+	return a.settings
 }
 
 func (a *application) NewWindow() (Window, error) {
