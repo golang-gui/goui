@@ -130,6 +130,16 @@ func (w *Window) scaleFactor() float32 {
 	return float32(dpi) / 96
 }
 
+// scaleFactor returns the window scale, falling back to 1 on error. Used to
+// normalize physical pixels (client rect, pointer coords) to logical (DIP).
+func (w *Window) scaleFactor() float32 {
+	dpi, err := winapi.GetDpiForWindow(w.hwnd)
+	if err != nil || dpi == 0 {
+		return 1
+	}
+	return float32(dpi) / 96
+}
+
 var windowMap = map[winapi.HWND]*Window{}
 
 func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lParam winapi.LPARAM) winapi.LRESULT {
