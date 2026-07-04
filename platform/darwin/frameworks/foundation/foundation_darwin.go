@@ -1,6 +1,7 @@
 package foundation
 
 import (
+	"runtime"
 	"unsafe"
 
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/core_graphics"
@@ -257,8 +258,18 @@ var (
 	objc_autoreleasePoolPop  func(pool uintptr)
 )
 
-// @autoreleasepooll
+// @autoreleasepool
+//
+// The autorelease pool is thread-local: the token returned by push must be
+// handed to pop on the same OS thread. A goroutine that has not locked its OS
+// thread can be migrated between threads at any cgo-call boundary (including the
+// calls inside block), so pin it for the pool's lifetime. Without this, pop may
+// run on a different thread than push, corrupt that thread's pool stack, and
+// crash inside objc_autoreleasePoolPop. LockOSThread nests safely, so callers
+// already on a locked thread (e.g. the main UI thread) are unaffected.
 func AutoReleasePool(block func()) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	pool := objc_autoreleasePoolPush()
 	defer objc_autoreleasePoolPop(pool)
 	block()
