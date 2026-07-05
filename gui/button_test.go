@@ -2,12 +2,14 @@ package gui
 
 import (
 	"image"
+	"image/color"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
+	"github.com/golang-gui/goui/style"
 )
 
 func TestButtonSnapshot(t *testing.T) {
@@ -139,6 +141,34 @@ func TestButtonPaintsBackgroundForPointerStates(t *testing.T) {
 	button.Paint(painter)
 	if painter.brush != graphics.RGB(210, 210, 210) {
 		t.Fatalf("unexpected pressed leave background: %+v", painter.brush)
+	}
+}
+
+func TestButtonUsesLocalStyleForPaint(t *testing.T) {
+	button := NewButton()
+	button.SetStyleRules(
+		style.Default().
+			BackgroundColor(color.RGBA{R: 10, G: 20, B: 30, A: 255}).
+			BorderColor(color.RGBA{R: 90, G: 80, B: 70, A: 255}).
+			BorderWidth(2).
+			Radius(7),
+	)
+	button.Arrange(geometry.Rect(0, 0, 80, 30))
+
+	painter := new(testButtonBackgroundPainter)
+	button.Paint(painter)
+
+	if painter.rect != geometry.Rect(0, 0, 80, 30) || painter.radius != 7 {
+		t.Fatalf("unexpected fill geometry: rect=%+v radius=%v", painter.rect, painter.radius)
+	}
+	if painter.brush != graphics.ColorOf(color.RGBA{R: 10, G: 20, B: 30, A: 255}) {
+		t.Fatalf("unexpected fill brush: %+v", painter.brush)
+	}
+	if painter.drawRect != geometry.Rect(0, 0, 80, 30) || painter.drawRadius != 7 || painter.drawStrokeWidth != 2 {
+		t.Fatalf("unexpected border geometry: rect=%+v radius=%v width=%v", painter.drawRect, painter.drawRadius, painter.drawStrokeWidth)
+	}
+	if painter.drawBrush != graphics.ColorOf(color.RGBA{R: 90, G: 80, B: 70, A: 255}) {
+		t.Fatalf("unexpected border brush: %+v", painter.drawBrush)
 	}
 }
 
@@ -386,18 +416,27 @@ func (w *paintCountingWidget) Paint(p Painter) {
 }
 
 type testButtonBackgroundPainter struct {
-	rect  geometry.Rectangle
-	brush graphics.Brush
+	rect            geometry.Rectangle
+	radius          float32
+	brush           graphics.Brush
+	drawRect        geometry.Rectangle
+	drawRadius      float32
+	drawStrokeWidth float32
+	drawBrush       graphics.Brush
 }
 
 func (p *testButtonBackgroundPainter) SetClipRect(rect geometry.Rectangle) {}
 
 func (p *testButtonBackgroundPainter) Clear(color graphics.Color) {}
 
-func (p *testButtonBackgroundPainter) FillRect(rect geometry.Rectangle, brush graphics.Brush) {}
+func (p *testButtonBackgroundPainter) FillRect(rect geometry.Rectangle, brush graphics.Brush) {
+	p.rect = rect
+	p.brush = brush
+}
 
 func (p *testButtonBackgroundPainter) FillRoundRect(rect geometry.Rectangle, radius float32, brush graphics.Brush) {
 	p.rect = rect
+	p.radius = radius
 	p.brush = brush
 }
 
@@ -410,9 +449,16 @@ func (p *testButtonBackgroundPainter) DrawLine(p0, p1 geometry.Point, strokeWidt
 }
 
 func (p *testButtonBackgroundPainter) DrawRect(rect geometry.Rectangle, strokeWidth float32, brush graphics.Brush) {
+	p.drawRect = rect
+	p.drawStrokeWidth = strokeWidth
+	p.drawBrush = brush
 }
 
 func (p *testButtonBackgroundPainter) DrawRoundRect(rect geometry.Rectangle, radius, strokeWidth float32, brush graphics.Brush) {
+	p.drawRect = rect
+	p.drawRadius = radius
+	p.drawStrokeWidth = strokeWidth
+	p.drawBrush = brush
 }
 
 func (p *testButtonBackgroundPainter) DrawEllipse(center geometry.Point, xRadius, yRadius, strokeWidth float32, brush graphics.Brush) {

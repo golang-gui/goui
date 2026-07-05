@@ -5,9 +5,11 @@ import (
 	"image/color"
 	"testing"
 
+	"github.com/golang-gui/goui/core/colors"
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
+	"github.com/golang-gui/goui/style"
 )
 
 func TestLabelTextSnapshotAndRequestLayout(t *testing.T) {
@@ -120,6 +122,40 @@ func TestLabelPaintDrawsTextLayout(t *testing.T) {
 	}
 	if !typo.layouts[0].destroyed {
 		t.Fatal("paint did not destroy text layout")
+	}
+}
+
+func TestLabelUsesStyleForTextFormat(t *testing.T) {
+	typo := &testTypography{
+		measureSize: geometry.Size{Width: 42, Height: 18},
+	}
+	foreground := color.RGBA{R: 90, G: 20, B: 10, A: 255}
+	oldApp := App
+	App = &application{
+		typo: typo,
+		style: style.Sheet(
+			style.Name(styleNameLabel).
+				ForegroundColor(foreground).
+				FontFamily("Custom Sans").
+				FontSize(20),
+		),
+	}
+	t.Cleanup(func() {
+		App = oldApp
+	})
+
+	label := NewLabel("hello")
+	_ = label.Measure(geometry.Size{Width: 100, Height: 30})
+
+	if len(typo.calls) != 1 {
+		t.Fatalf("expected one text layout call, got %d", len(typo.calls))
+	}
+	format := typo.calls[0].format
+	if format.Font.Family != "Custom Sans" || format.Font.Size != 20 {
+		t.Fatalf("unexpected styled font: %+v", format.Font)
+	}
+	if !colors.Equal(format.TextColor, foreground) {
+		t.Fatalf("unexpected styled text color: %v", format.TextColor)
 	}
 }
 

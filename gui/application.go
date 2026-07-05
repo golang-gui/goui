@@ -8,6 +8,7 @@ import (
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/typography"
+	"github.com/golang-gui/goui/style"
 )
 
 // Clipboard re-exports the platform clipboard so gui consumers use gui types
@@ -21,6 +22,8 @@ type Application interface {
 	Clipboard() Clipboard
 	// Settings returns system settings as usable values. Never nil.
 	Settings() *Settings
+	StyleSheet() style.StyleSheet
+	SetStyleSheet(style.StyleSheet)
 	NewWindow() (Window, error)
 	Run()
 	Quit()
@@ -49,12 +52,14 @@ func NewApplication() (Application, error) {
 }
 
 type application struct {
-	platform  platform.Platform
-	loop      platform.EventLoop
-	typo      typography.Context
-	clipboard Clipboard
-	settings  *Settings
-	windows   []*window
+	platform     platform.Platform
+	loop         platform.EventLoop
+	typo         typography.Context
+	clipboard    Clipboard
+	settings     *Settings
+	style        style.StyleSheet
+	defaultStyle style.StyleSheet
+	windows      []*window
 }
 
 func newApplication() (*application, error) {
@@ -89,13 +94,16 @@ func newApplication() (*application, error) {
 		settings = nil // getters then always fall back
 	}
 
-	return &application{
+	app := &application{
 		platform:  plat,
 		loop:      loop,
 		typo:      typo,
 		clipboard: clip,
 		settings:  newSettings(settings, loop),
-	}, nil
+	}
+	app.rebuildDefaultStyle()
+	app.settings.ConnectChanged(app.onSettingsChanged)
+	return app, nil
 }
 
 func (a *application) Platform() platform.Platform {
@@ -112,6 +120,40 @@ func (a *application) Clipboard() Clipboard {
 
 func (a *application) Settings() *Settings {
 	return a.settings
+}
+
+func (a *application) StyleSheet() style.StyleSheet {
+	return a.style
+}
+
+func (a *application) SetStyleSheet(sheet style.StyleSheet) {
+	a.style = sheet
+	for _, win := range a.windows {
+		win.requestLayout()
+	}
+}
+
+// resolvedStyleSheet returns the sheet used to resolve widget styles: the
+// user-set full sheet when present, otherwise the settings-derived default.
+func (a *application) resolvedStyleSheet() style.StyleSheet {
+	if a.style != nil {
+		return a.style
+	}
+	return a.defaultStyle
+}
+
+// rebuildDefaultStyle rebuilds the cached default sheet from current settings.
+func (a *application) rebuildDefaultStyle() {
+	a.defaultStyle = style.Sheet(defaultStyleRules(a.settings)...)
+}
+
+// onSettingsChanged rebuilds the default sheet and relayouts windows when a
+// system setting (accent color, UI font, ...) changes.
+func (a *application) onSettingsChanged() {
+	a.rebuildDefaultStyle()
+	for _, win := range a.windows {
+		win.requestLayout()
+	}
 }
 
 func (a *application) NewWindow() (Window, error) {

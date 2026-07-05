@@ -1,10 +1,12 @@
 package gui
 
 import (
+	"image/color"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/style"
 )
 
 type testWidget struct {
@@ -29,6 +31,43 @@ func TestWidgetBaseZeroValueIsVisible(t *testing.T) {
 	widget.SetVisible(false)
 	if widget.Visible() {
 		t.Fatal("widget should be hidden")
+	}
+}
+
+func TestWidgetBaseStyleNameAndRules(t *testing.T) {
+	win := &window{}
+	widget := newTestWidget()
+	win.SetWidget(widget)
+	win.layoutDirty = false
+	win.paintDirty = false
+
+	if widget.StyleName() != styleNameWidget {
+		t.Fatalf("unexpected default style name: %q", widget.StyleName())
+	}
+	widget.SetStyleName("custom")
+	if widget.StyleName() != "custom" {
+		t.Fatalf("style name was not set: %q", widget.StyleName())
+	}
+	if !win.layoutDirty || !win.paintDirty {
+		t.Fatal("setting style name did not request layout")
+	}
+
+	rules := []style.Rule{
+		style.Default().BackgroundColor(color.RGBA{R: 1, A: 255}),
+	}
+	win.layoutDirty = false
+	win.paintDirty = false
+	widget.SetStyleRules(rules...)
+	if !style.SameRules(widget.StyleRules(), rules) {
+		t.Fatalf("style rules were not stored: %+v", widget.StyleRules())
+	}
+	if !win.layoutDirty || !win.paintDirty {
+		t.Fatal("setting style rules did not request layout")
+	}
+
+	rules[0] = style.Default().BackgroundColor(color.RGBA{R: 2, A: 255})
+	if style.SameRules(widget.StyleRules(), rules) {
+		t.Fatal("style rules should be cloned")
 	}
 }
 

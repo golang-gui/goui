@@ -12,7 +12,9 @@ type Image struct {
 }
 
 func NewImage(img image.Image) *Image {
-	return &Image{img: img}
+	image := &Image{img: img}
+	image.SetStyleName(styleNameImage)
+	return image
 }
 
 func (i *Image) Image() image.Image {
