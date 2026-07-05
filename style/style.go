@@ -3,6 +3,8 @@ package style
 import (
 	"image/color"
 	"slices"
+
+	"github.com/golang-gui/goui/core/colors"
 )
 
 type State int
@@ -296,21 +298,12 @@ func sameRule(a, b Rule) bool {
 
 func sameStyle(a, b Style) bool {
 	return a.fields == b.fields &&
-		sameColor(a.backgroundColor, b.backgroundColor) &&
-		sameColor(a.foregroundColor, b.foregroundColor) &&
-		sameColor(a.borderColor, b.borderColor) &&
+		colors.Equal(a.backgroundColor, b.backgroundColor) &&
+		colors.Equal(a.foregroundColor, b.foregroundColor) &&
+		colors.Equal(a.borderColor, b.borderColor) &&
 		a.borderWidth == b.borderWidth &&
 		a.radius == b.radius &&
 		a.fontFamily == b.fontFamily &&
 		a.fontSize == b.fontSize &&
 		a.padding == b.padding
-}
-
-func sameColor(a, b color.Color) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-	ar, ag, ab, aa := a.RGBA()
-	br, bg, bb, ba := b.RGBA()
-	return ar == br && ag == bg && ab == bb && aa == ba
 }

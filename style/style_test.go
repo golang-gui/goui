@@ -3,6 +3,8 @@ package style
 import (
 	"image/color"
 	"testing"
+
+	"github.com/golang-gui/goui/core/colors"
 )
 
 func TestResolveUsesSimpleStateFallback(t *testing.T) {
@@ -19,13 +21,13 @@ func TestResolveUsesSimpleStateFallback(t *testing.T) {
 
 	normal := sheet.Resolve(Sel{Name: "button", State: Normal}, nil)
 	normalColor, ok := normal.BackgroundColor()
-	if !ok || !sameColor(normalColor, normalBackground) {
+	if !ok || !colors.Equal(normalColor, normalBackground) {
 		t.Fatalf("unexpected normal background: %v ok=%v", normalColor, ok)
 	}
 
 	hover := sheet.Resolve(Sel{Name: "button", State: Hovered}, nil)
 	hoverColor, ok := hover.BackgroundColor()
-	if !ok || !sameColor(hoverColor, hoverBackground) {
+	if !ok || !colors.Equal(hoverColor, hoverBackground) {
 		t.Fatalf("unexpected hover background: %v ok=%v", hoverColor, ok)
 	}
 	radius, ok := hover.Radius()
@@ -35,7 +37,7 @@ func TestResolveUsesSimpleStateFallback(t *testing.T) {
 
 	focused := sheet.Resolve(Sel{Name: "button", State: Focused}, nil)
 	focusedColor, ok := focused.BackgroundColor()
-	if !ok || !sameColor(focusedColor, normalColor) {
+	if !ok || !colors.Equal(focusedColor, normalColor) {
 		t.Fatalf("focused should fall back to normal background: %v ok=%v", focusedColor, ok)
 	}
 }
@@ -57,11 +59,11 @@ func TestResolveUsesPartFallback(t *testing.T) {
 	}, nil)
 
 	background, ok := resolved.BackgroundColor()
-	if !ok || !sameColor(background, hoverColor) {
+	if !ok || !colors.Equal(background, hoverColor) {
 		t.Fatalf("unexpected selection hover background: %v ok=%v", background, ok)
 	}
 	foreground, ok := resolved.ForegroundColor()
-	if !ok || !sameColor(foreground, selectionColor) {
+	if !ok || !colors.Equal(foreground, selectionColor) {
 		t.Fatalf("selection hover should keep selection normal foreground: %v ok=%v", foreground, ok)
 	}
 	padding, ok := resolved.Padding()
@@ -85,13 +87,13 @@ func TestResolveRequiresFullSelectorMatch(t *testing.T) {
 	if !ok {
 		t.Fatal("button hover background was not resolved")
 	}
-	if sameColor(background, red) {
+	if colors.Equal(background, red) {
 		t.Fatal("button hover default part should not match button icon rule")
 	}
-	if sameColor(background, blue) {
+	if colors.Equal(background, blue) {
 		t.Fatal("button hover should not match label hover rule")
 	}
-	if !sameColor(background, hover) {
+	if !colors.Equal(background, hover) {
 		t.Fatalf("unexpected button hover background: %v", background)
 	}
 }
@@ -118,7 +120,7 @@ func TestResolveAppliesLocalRulesOverGlobalFallback(t *testing.T) {
 		t.Fatalf("local normal font should override global normal font: %v ok=%v", fontSize, ok)
 	}
 	background, ok := resolved.BackgroundColor()
-	if !ok || !sameColor(background, localBackground) {
+	if !ok || !colors.Equal(background, localBackground) {
 		t.Fatalf("local hover background should override global hover background: %v ok=%v", background, ok)
 	}
 }
@@ -147,7 +149,7 @@ func TestResolvePreservesExplicitZeroValues(t *testing.T) {
 		t.Fatalf("explicit zero padding was not preserved: ok=%v value=%v", ok, padding)
 	}
 	background, ok := resolved.BackgroundColor()
-	if !ok || !sameColor(background, color.Transparent) {
+	if !ok || !colors.Equal(background, color.Transparent) {
 		t.Fatalf("explicit transparent background was not preserved: %v ok=%v", background, ok)
 	}
 }
