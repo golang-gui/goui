@@ -1,12 +1,15 @@
 package gui
 
 import (
+	"image/color"
 	"testing"
 
+	"github.com/golang-gui/goui/core/colors"
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
+	"github.com/golang-gui/goui/style"
 )
 
 func TestTextInputSnapshotAndFocusability(t *testing.T) {
@@ -98,10 +101,10 @@ func TestTextInputPaintDrawsChromeTextAndCaret(t *testing.T) {
 		t.Fatalf("expected one text layout call, got %d", len(typo.calls))
 	}
 	call := typo.calls[0]
-	if call.text != "abc" || call.width != 92 || call.height != 18 {
+	if call.text != "abc" || call.width != 92 || call.height != 16 {
 		t.Fatalf("unexpected text layout call: %+v", call)
 	}
-	if painter.textOrigin != (geometry.Point{X: textInputPaddingX, Y: textInputPaddingY}) {
+	if painter.textOrigin != (geometry.Point{X: textInputPadding, Y: textInputPadding}) {
 		t.Fatalf("unexpected text origin: %+v", painter.textOrigin)
 	}
 	if painter.textLayout != typo.layouts[0] {
@@ -113,7 +116,7 @@ func TestTextInputPaintDrawsChromeTextAndCaret(t *testing.T) {
 	if painter.drawLines != 1 {
 		t.Fatalf("expected one caret draw, got %d", painter.drawLines)
 	}
-	if painter.lineP0 != (geometry.Point{X: 24, Y: 4}) || painter.lineP1 != (geometry.Point{X: 24, Y: 22}) {
+	if painter.lineP0 != (geometry.Point{X: 24, Y: 5}) || painter.lineP1 != (geometry.Point{X: 24, Y: 23}) {
 		t.Fatalf("unexpected caret line: p0=%+v p1=%+v", painter.lineP0, painter.lineP1)
 	}
 }
@@ -161,9 +164,59 @@ func TestTextInputPaintEmptyFocusedSkipsTextLayoutAndDrawsCaret(t *testing.T) {
 	if painter.drawLines != 1 {
 		t.Fatalf("expected one caret draw, got %d", painter.drawLines)
 	}
-	if painter.lineP0 != (geometry.Point{X: textInputPaddingX, Y: textInputPaddingY}) ||
-		painter.lineP1 != (geometry.Point{X: textInputPaddingX, Y: defaultTextInputHeight - textInputPaddingY}) {
+	if painter.lineP0 != (geometry.Point{X: textInputPadding, Y: textInputPadding}) ||
+		painter.lineP1 != (geometry.Point{X: textInputPadding, Y: defaultTextInputHeight - textInputPadding}) {
 		t.Fatalf("unexpected caret line: p0=%+v p1=%+v", painter.lineP0, painter.lineP1)
+	}
+}
+
+func TestTextInputUsesLocalStyleForChromeAndText(t *testing.T) {
+	typo := &testTypography{}
+	setTestApplication(t, typo)
+
+	background := color.RGBA{R: 10, G: 20, B: 30, A: 255}
+	border := color.RGBA{R: 40, G: 50, B: 60, A: 255}
+	foreground := color.RGBA{R: 70, G: 80, B: 90, A: 255}
+
+	input := NewTextInput()
+	input.SetStyleRules(
+		style.Default().
+			BackgroundColor(background).
+			BorderColor(border).
+			BorderWidth(2).
+			Radius(3).
+			ForegroundColor(foreground).
+			FontFamily("Mono").
+			FontSize(18).
+			Padding(6),
+	)
+	input.SetText("abc")
+	input.Arrange(geometry.Rect(0, 0, 100, 24))
+
+	painter := new(testTextInputPainter)
+	input.Paint(painter)
+
+	if painter.fillRect != geometry.Rect(0, 0, 100, 24) || painter.fillRadius != 3 || painter.fillBrush != graphics.ColorOf(background) {
+		t.Fatalf("unexpected styled fill: rect=%+v radius=%v brush=%+v", painter.fillRect, painter.fillRadius, painter.fillBrush)
+	}
+	if painter.drawRect != geometry.Rect(0, 0, 100, 24) || painter.drawRadius != 3 || painter.drawRectStrokeWidth != 2 || painter.drawRectBrush != graphics.ColorOf(border) {
+		t.Fatalf("unexpected styled border: rect=%+v radius=%v width=%v brush=%+v", painter.drawRect, painter.drawRadius, painter.drawRectStrokeWidth, painter.drawRectBrush)
+	}
+	if len(typo.calls) != 1 {
+		t.Fatalf("expected one text layout call, got %d", len(typo.calls))
+	}
+	call := typo.calls[0]
+	if call.width != 88 || call.height != 12 {
+		t.Fatalf("unexpected styled text bounds: %gx%g", call.width, call.height)
+	}
+	if painter.textOrigin != (geometry.Point{X: 6, Y: 6}) {
+		t.Fatalf("unexpected styled text origin: %+v", painter.textOrigin)
+	}
+	if call.format.Font.Family != "Mono" || call.format.Font.Size != 18 {
+		t.Fatalf("unexpected styled text font: %+v", call.format.Font)
+	}
+	if !colors.Equal(call.format.TextColor, foreground) {
+		t.Fatalf("unexpected styled text color: %v", call.format.TextColor)
 	}
 }
 
@@ -313,8 +366,10 @@ func dispatchKey(t *testing.T, win Window, key events.Key, modifiers events.Modi
 type testTextInputPainter struct {
 	testLabelPainter
 	fillRect            geometry.Rectangle
+	fillRadius          float32
 	fillBrush           graphics.Brush
 	drawRect            geometry.Rectangle
+	drawRadius          float32
 	drawRectStrokeWidth float32
 	drawRectBrush       graphics.Brush
 	drawLines           int
@@ -329,8 +384,21 @@ func (p *testTextInputPainter) FillRect(rect geometry.Rectangle, brush graphics.
 	p.fillBrush = brush
 }
 
+func (p *testTextInputPainter) FillRoundRect(rect geometry.Rectangle, radius float32, brush graphics.Brush) {
+	p.fillRect = rect
+	p.fillRadius = radius
+	p.fillBrush = brush
+}
+
 func (p *testTextInputPainter) DrawRect(rect geometry.Rectangle, strokeWidth float32, brush graphics.Brush) {
 	p.drawRect = rect
+	p.drawRectStrokeWidth = strokeWidth
+	p.drawRectBrush = brush
+}
+
+func (p *testTextInputPainter) DrawRoundRect(rect geometry.Rectangle, radius, strokeWidth float32, brush graphics.Brush) {
+	p.drawRect = rect
+	p.drawRadius = radius
 	p.drawRectStrokeWidth = strokeWidth
 	p.drawRectBrush = brush
 }

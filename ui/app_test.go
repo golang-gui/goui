@@ -8,6 +8,7 @@ import (
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/typography"
+	"github.com/golang-gui/goui/style"
 )
 
 func TestAppRuntimeMountsAndUpdatesWindow(t *testing.T) {
@@ -215,6 +216,12 @@ func (a *windowTestApplication) Platform() platform.Platform {
 func (a *windowTestApplication) Typography() typography.Context {
 	return nil
 }
+
+func (a *windowTestApplication) StyleSheet() style.StyleSheet {
+	return nil
+}
+
+func (a *windowTestApplication) SetStyleSheet(style.StyleSheet) {}
 
 func (a *windowTestApplication) Clipboard() platform.Clipboard {
 	return nil

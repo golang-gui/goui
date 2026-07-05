@@ -8,6 +8,7 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
+	"github.com/golang-gui/goui/style"
 )
 
 const (
@@ -15,6 +16,7 @@ const (
 	defaultTextInputHeight = 24
 	textInputPaddingX      = 4
 	textInputPaddingY      = 3
+	textInputPadding       = 4
 	textInputBorderWidth   = 1
 	textInputCaretWidth    = 1
 )
@@ -24,6 +26,7 @@ type TextInput struct {
 	text       string
 	caret      int
 	format     typography.TextFormat
+	formatSet  bool
 	key        *KeyEventController
 	textSignal signal.Signal1[string]
 }
@@ -32,6 +35,7 @@ func NewTextInput() *TextInput {
 	input := &TextInput{
 		format: DefaultTextInputTextFormat(),
 	}
+	input.SetStyleName(styleNameTextInput)
 	input.SetFocusable(true)
 	input.key = NewKeyEventController()
 	input.key.ConnectKeyDown(input.handleKeyDown)
@@ -61,6 +65,7 @@ func (t *TextInput) SetTextFormat(format typography.TextFormat) {
 		return
 	}
 	t.format = format
+	t.formatSet = true
 	t.RequestLayout()
 }
 
@@ -83,20 +88,24 @@ func (t *TextInput) Paint(p Painter) {
 		return
 	}
 
+	s := t.resolvedStyle()
 	size := t.Rect().Size
 	rect := geometry.Rect(0, 0, size.Width, size.Height)
-	p.FillRect(rect, graphics.RGB(255, 255, 255))
-	p.DrawRect(rect, textInputBorderWidth, t.borderColor())
+	paintStyledBox(p, rect, s)
 
-	origin := geometry.Point{X: textInputPaddingX, Y: textInputPaddingY}
+	padding := stylePadding(s)
+	origin := geometry.Point{X: padding, Y: padding}
+	format := t.styleTextFormat(s)
+	caretColor := graphics.ColorOf(format.TextColor)
+
 	if len(t.text) == 0 {
 		if t.Focused() {
-			t.paintCaretRect(p, origin, t.defaultCaretRect())
+			t.paintCaretRect(p, origin, t.defaultCaretRect(padding), caretColor)
 		}
 		return
 	}
 
-	textLayout := t.newTextLayout(t.textSize(size))
+	textLayout := t.newTextLayout(size.Inset(padding), format)
 	if textLayout == nil {
 		return
 	}
@@ -104,7 +113,7 @@ func (t *TextInput) Paint(p Painter) {
 
 	p.DrawTextLayout(origin, textLayout)
 	if t.Focused() {
-		t.paintCaret(p, origin, textLayout)
+		t.paintCaret(p, origin, textLayout, padding, caretColor)
 	}
 }
 
@@ -208,7 +217,7 @@ func (t *TextInput) requestPaint() {
 	}
 }
 
-func (t *TextInput) newTextLayout(size geometry.Size) typography.TextLayout {
+func (t *TextInput) newTextLayout(size geometry.Size, format typography.TextFormat) typography.TextLayout {
 	if App == nil {
 		return nil
 	}
@@ -216,38 +225,37 @@ func (t *TextInput) newTextLayout(size geometry.Size) typography.TextLayout {
 	if typo == nil {
 		return nil
 	}
-	textLayout, err := typo.NewTextLayout(t.text, normalizeLabelTextFormat(t.format), size.Width, size.Height)
+	textLayout, err := typo.NewTextLayout(t.text, format, size.Width, size.Height)
 	if err != nil {
 		return nil
 	}
 	return textLayout
 }
 
-func (t *TextInput) textSize(size geometry.Size) geometry.Size {
-	width := size.Width - textInputPaddingX*2
-	if width < 0 {
-		width = 0
+func (t *TextInput) styleTextFormat(s style.Style) typography.TextFormat {
+	if t.formatSet {
+		return normalizeLabelTextFormat(t.format)
 	}
-	height := size.Height - textInputPaddingY*2
-	if height < 0 {
-		height = 0
-	}
-	return geometry.Size{Width: width, Height: height}
+	return textFormatWithStyle(DefaultTextInputTextFormat(), s)
 }
 
-func (t *TextInput) borderColor() graphics.Color {
+func (t *TextInput) resolvedStyle() style.Style {
+	return resolveStyle(t, style.PartDefault, t.styleState())
+}
+
+func (t *TextInput) styleState() style.State {
 	if t.Focused() {
-		return graphics.RGB(70, 130, 220)
+		return style.Focused
 	}
-	return graphics.RGB(180, 180, 180)
+	return style.Normal
 }
 
-func (t *TextInput) paintCaret(p Painter, origin geometry.Point, layout typography.TextLayout) {
-	rect := t.caretRect(layout)
-	t.paintCaretRect(p, origin, rect)
+func (t *TextInput) paintCaret(p Painter, origin geometry.Point, layout typography.TextLayout, padding float32, caretColor graphics.Color) {
+	rect := t.caretRect(layout, padding)
+	t.paintCaretRect(p, origin, rect, caretColor)
 }
 
-func (t *TextInput) paintCaretRect(p Painter, origin geometry.Point, rect geometry.Rectangle) {
+func (t *TextInput) paintCaretRect(p Painter, origin geometry.Point, rect geometry.Rectangle, caretColor graphics.Color) {
 	x := origin.X + rect.X
 	y0 := origin.Y + rect.Y
 	y1 := y0 + rect.Height
@@ -255,15 +263,15 @@ func (t *TextInput) paintCaretRect(p Painter, origin geometry.Point, rect geomet
 		geometry.Point{X: x, Y: y0},
 		geometry.Point{X: x, Y: y1},
 		textInputCaretWidth,
-		graphics.RGB(20, 20, 20),
+		caretColor,
 	)
 }
 
-func (t *TextInput) caretRect(layout typography.TextLayout) geometry.Rectangle {
+func (t *TextInput) caretRect(layout typography.TextLayout, padding float32) geometry.Rectangle {
 	caret := clampCaret(t.text, t.caret)
 	lines, clusters := layout.MeasureMetrics()
 	if len(lines) == 0 {
-		return t.defaultCaretRect()
+		return t.defaultCaretRect(padding)
 	}
 
 	line := lines[0]
@@ -293,15 +301,15 @@ func (t *TextInput) caretRect(layout typography.TextLayout) geometry.Rectangle {
 
 	height := line.Height
 	if height <= 0 {
-		height = defaultTextInputHeight - textInputPaddingY*2
+		height = defaultTextInputHeight - padding*2
 	}
 	return geometry.Rect(x, line.Y, textInputCaretWidth, height)
 }
 
-func (t *TextInput) defaultCaretRect() geometry.Rectangle {
-	height := t.textSize(t.Rect().Size).Height
+func (t *TextInput) defaultCaretRect(padding float32) geometry.Rectangle {
+	height := t.Rect().Size.Inset(padding).Height
 	if height <= 0 {
-		height = defaultTextInputHeight - textInputPaddingY*2
+		height = defaultTextInputHeight - padding*2
 	}
 	return geometry.Rect(0, 0, textInputCaretWidth, height)
 }

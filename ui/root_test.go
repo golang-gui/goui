@@ -11,6 +11,7 @@ import (
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/typography"
+	"github.com/golang-gui/goui/style"
 )
 
 func TestRootCreatesAndUpdatesLabel(t *testing.T) {
@@ -463,6 +464,12 @@ func (a *testApplication) Platform() platform.Platform {
 func (a *testApplication) Typography() typography.Context {
 	return nil
 }
+
+func (a *testApplication) StyleSheet() style.StyleSheet {
+	return nil
+}
+
+func (a *testApplication) SetStyleSheet(style.StyleSheet) {}
 
 func (a *testApplication) Clipboard() platform.Clipboard {
 	return nil

@@ -11,6 +11,7 @@ func NewLinearBox(direction layout.Direction) *LinearBox {
 	box := &LinearBox{
 		layout: layout.NewLinearLayout(direction),
 	}
+	box.SetStyleName(styleNameBox)
 	box.SetLayoutManager(box.layout)
 	return box
 }

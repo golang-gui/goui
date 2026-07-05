@@ -4,7 +4,7 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/layout"
-	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/style"
 )
 
 type Button struct {
@@ -18,6 +18,7 @@ type Button struct {
 
 func NewButton() *Button {
 	button := new(Button)
+	button.SetStyleName(styleNameButton)
 	button.SetFocusable(true)
 	button.SetLayoutManager(layout.NewFillLayout())
 
@@ -43,11 +44,35 @@ func (b *Button) AddChild(child Widget) {
 	b.WidgetBase.AddChild(b, child)
 }
 
+func (b *Button) Measure(available geometry.Size) geometry.Size {
+	if !b.Visible() {
+		return geometry.Size{}
+	}
+	padding := stylePadding(b.resolvedStyle())
+	manager := b.LayoutManager()
+	if manager == nil {
+		return geometry.Size{Width: padding * 2, Height: padding * 2}
+	}
+	size := manager.Measure(b.visibleChildren(), available.Inset(padding))
+	return size.Inset(-padding)
+}
+
+func (b *Button) Arrange(rect geometry.Rectangle) {
+	b.rect = rect
+	manager := b.LayoutManager()
+	if manager == nil {
+		return
+	}
+	padding := stylePadding(b.resolvedStyle())
+	manager.Arrange(b.visibleChildren(), geometry.Rect(0, 0, rect.Width, rect.Height).Inset(padding))
+}
+
 func (b *Button) Paint(p Painter) {
 	if !b.Visible() {
 		return
 	}
-	p.FillRoundRect(geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height), 4, b.backgroundColor())
+	rect := geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height)
+	paintStyledBox(p, rect, b.resolvedStyle())
 	b.PaintChildren(p)
 }
 
@@ -94,13 +119,16 @@ func (b *Button) requestPaint() {
 	}
 }
 
-func (b *Button) backgroundColor() graphics.Color {
-	switch {
-	case b.pressed:
-		return graphics.RGB(180, 180, 180)
-	case b.hovered:
-		return graphics.RGB(230, 230, 230)
-	default:
-		return graphics.RGB(210, 210, 210)
+func (b *Button) resolvedStyle() style.Style {
+	return resolveStyle(b, style.PartDefault, b.styleState())
+}
+
+func (b *Button) styleState() style.State {
+	if b.pressed {
+		return style.Pressed
 	}
+	if b.hovered {
+		return style.Hovered
+	}
+	return style.Normal
 }

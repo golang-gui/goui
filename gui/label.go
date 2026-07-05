@@ -1,19 +1,21 @@
 package gui
 
 import (
-	"image/color"
 	"runtime"
 
+	"github.com/golang-gui/goui/core/colors"
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/typography"
+	"github.com/golang-gui/goui/style"
 )
 
 const labelMeasureExtent = 1 << 20
 
 type Label struct {
 	WidgetBase
-	text   string
-	format typography.TextFormat
+	text      string
+	format    typography.TextFormat
+	formatSet bool
 }
 
 func NewLabel(text string) *Label {
@@ -21,6 +23,7 @@ func NewLabel(text string) *Label {
 		text:   text,
 		format: DefaultLabelTextFormat(),
 	}
+	label.SetStyleName(styleNameLabel)
 	return label
 }
 
@@ -59,6 +62,7 @@ func (l *Label) SetTextFormat(format typography.TextFormat) {
 		return
 	}
 	l.format = format
+	l.formatSet = true
 	l.RequestLayout()
 }
 
@@ -106,11 +110,18 @@ func (l *Label) newTextLayout(size geometry.Size) typography.TextLayout {
 	if typo == nil {
 		return nil
 	}
-	textLayout, err := typo.NewTextLayout(l.text, normalizeLabelTextFormat(l.format), size.Width, size.Height)
+	textLayout, err := typo.NewTextLayout(l.text, l.resolvedTextFormat(), size.Width, size.Height)
 	if err != nil {
 		return nil
 	}
 	return textLayout
+}
+
+func (l *Label) resolvedTextFormat() typography.TextFormat {
+	if l.formatSet {
+		return normalizeLabelTextFormat(l.format)
+	}
+	return textFormatWithStyle(DefaultLabelTextFormat(), resolveStyle(l, style.PartDefault, style.Normal))
 }
 
 func normalizeLabelTextFormat(format typography.TextFormat) typography.TextFormat {
@@ -151,14 +162,5 @@ func sameTextFormat(a, b typography.TextFormat) bool {
 	return a.Font == b.Font &&
 		a.WrapMode == b.WrapMode &&
 		a.TextAlign == b.TextAlign &&
-		sameColor(a.TextColor, b.TextColor)
-}
-
-func sameColor(a, b color.Color) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-	ar, ag, ab, aa := a.RGBA()
-	br, bg, bb, ba := b.RGBA()
-	return ar == br && ag == bg && ab == bb && aa == ba
+		colors.Equal(a.TextColor, b.TextColor)
 }

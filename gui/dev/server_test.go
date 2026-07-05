@@ -13,6 +13,7 @@ import (
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/typography"
+	"github.com/golang-gui/goui/style"
 )
 
 func TestNormalizeAddr(t *testing.T) {
@@ -159,6 +160,14 @@ type testApplication struct {
 	dispatchErr error
 }
 
+func (a *testApplication) Clipboard() gui.Clipboard {
+	panic("unimplemented")
+}
+
+func (a *testApplication) Settings() *gui.Settings {
+	panic("unimplemented")
+}
+
 type testDispatch struct {
 	window string
 	event  events.Event
@@ -175,6 +184,12 @@ func (a *testApplication) Platform() platform.Platform {
 func (a *testApplication) Typography() typography.Context {
 	return nil
 }
+
+func (a *testApplication) StyleSheet() style.StyleSheet {
+	return nil
+}
+
+func (a *testApplication) SetStyleSheet(style.StyleSheet) {}
 
 func (a *testApplication) NewWindow() (gui.Window, error) {
 	return nil, nil
