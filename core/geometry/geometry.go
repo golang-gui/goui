@@ -39,3 +39,17 @@ func (s Size) Scale(factor float32) Size {
 		Height: s.Height * factor,
 	}
 }
+
+// Inset shrinks the size by n on every edge (2n per axis), clamping each axis
+// at 0. Pass a negative n to outset (grow); growth is not clamped.
+func (s Size) Inset(n float32) Size {
+	s.Width -= 2 * n
+	if s.Width < 0 {
+		s.Width = 0
+	}
+	s.Height -= 2 * n
+	if s.Height < 0 {
+		s.Height = 0
+	}
+	return s
+}
