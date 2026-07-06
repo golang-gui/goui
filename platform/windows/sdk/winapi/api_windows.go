@@ -42,6 +42,7 @@ var (
 
 	// DPI
 	procGetDpiForWindow               = user32Dll.NewProc("GetDpiForWindow")
+	procGetDpiForSystem               = user32Dll.NewProc("GetDpiForSystem")
 	procSetProcessDpiAwarenessContext = user32Dll.NewProc("SetProcessDpiAwarenessContext")
 	procSystemParametersInfoW         = user32Dll.NewProc("SystemParametersInfoW")
 
@@ -285,6 +286,19 @@ func GetDpiForWindow(wnd HWND) (UINT, error) {
 		return 0, err
 	}
 	return UINT(ret), nil
+}
+
+// GetDpiForSystem returns the system DPI, falling back to 96 (1x) when the API
+// is unavailable. Used to estimate scale before a window exists.
+func GetDpiForSystem() UINT {
+	if err := procGetDpiForSystem.Find(); err != nil {
+		return 96
+	}
+	ret, _, _ := syscall.SyscallN(procGetDpiForSystem.Addr())
+	if ret == 0 {
+		return 96
+	}
+	return UINT(ret)
 }
 
 func SetProcessDpiAwarenessContext(value DPI_AWARENESS_CONTEXT) error {
