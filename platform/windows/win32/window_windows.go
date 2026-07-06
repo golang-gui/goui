@@ -98,6 +98,14 @@ func (w *Window) Show() error {
 	return nil
 }
 
+func (w *Window) Hide() error {
+	if w.hwnd == 0 {
+		return nil
+	}
+	winapi.ShowWindow(w.hwnd, winapi.SW_HIDE)
+	return nil
+}
+
 func (w *Window) RequestClose() error {
 	if w.hwnd == 0 {
 		return nil

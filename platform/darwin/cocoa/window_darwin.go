@@ -25,7 +25,11 @@ type Window struct {
 	modifiers    events.Modifiers
 }
 
-func newWindow(onEvent events.EventHandler) (w *Window, err error) {
+// newNativeWindow creates the NSWindow shared by top-level windows and popups:
+// it allocates the delegate/view, initializes the window with the given style
+// and rect, wires the content view and delegate, and registers it for event
+// routing. Callers apply role-specific setup (collection behavior / level).
+func newNativeWindow(onEvent events.EventHandler, styleMask NSWindowStyleMask, rect NSRect) *Window {
 	win := &Window{
 		onEvent: onEvent,
 	}
@@ -33,15 +37,8 @@ func newWindow(onEvent events.EventHandler) (w *Window, err error) {
 		win.delegate = delegateClass.Alloc()
 		win.view = viewClass.Alloc().Init()
 
-		styleMask := NSWindowStyleMaskMiniaturizable |
-			NSWindowStyleMaskTitled |
-			NSWindowStyleMaskClosable |
-			NSWindowStyleMaskResizable
+		win.window = windowClass.Alloc().InitWith(rect, styleMask, NSBackingStoreBuffered, false)
 
-		win.window = windowClass.Alloc().InitWith(NSMakeRect(0, 0, 300, 200), styleMask,
-			NSBackingStoreBuffered, false)
-
-		win.window.SetCollectionBehavior(NSWindowCollectionBehaviorFullScreenPrimary | NSWindowCollectionBehaviorManaged)
 		win.window.SetContentView(win.view)
 		win.window.MakeFirstResponder(win.view.NSResponder)
 		win.window.SetDelegate(win.delegate)
@@ -51,6 +48,20 @@ func newWindow(onEvent events.EventHandler) (w *Window, err error) {
 	windowMap[win.window] = win
 	win.updateTrackingArea()
 	win.sendCreatedEvents()
+	return win
+}
+
+func newWindow(onEvent events.EventHandler) (*Window, error) {
+	styleMask := NSWindowStyleMaskMiniaturizable |
+		NSWindowStyleMaskTitled |
+		NSWindowStyleMaskClosable |
+		NSWindowStyleMaskResizable
+
+	win := newNativeWindow(onEvent, styleMask, NSMakeRect(0, 0, 300, 200))
+
+	AutoReleasePool(func() {
+		win.window.SetCollectionBehavior(NSWindowCollectionBehaviorFullScreenPrimary | NSWindowCollectionBehaviorManaged)
+	})
 	return win, nil
 }
 
@@ -122,6 +133,16 @@ func (w *Window) Show() error {
 		NSApp.ActivateIgnoringOtherApps(true)
 		w.window.MakeKeyAndOrderFront(0)
 		w.window.MakeFirstResponder(w.view.NSResponder)
+	})
+	return nil
+}
+
+func (w *Window) Hide() error {
+	if !w.window.Valid() {
+		return nil
+	}
+	AutoReleasePool(func() {
+		w.window.OrderOut(0)
 	})
 	return nil
 }
