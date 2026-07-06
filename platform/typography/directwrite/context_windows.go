@@ -79,7 +79,8 @@ func (c *Context) DrawTextLayout(layout typography.TextLayout, scale float32, bu
 }
 
 func (c *Context) createTextFormat(format typography.TextFormat) (textFormat *dwrite.TextFormat, err error) {
-	textFormat, hr := c.dwFactory.CreateTextFormat(format.Font.Family, nil, dwrite.DWRITE_FONT_WEIGHT_NORMAL, dwrite.DWRITE_FONT_STYLE_NORMAL, dwrite.DWRITE_FONT_STRETCH_NORMAL, format.Font.Size, "")
+	fontSize := ptToDip(format.Font.Size)
+	textFormat, hr := c.dwFactory.CreateTextFormat(format.Font.Family, nil, dwrite.DWRITE_FONT_WEIGHT_NORMAL, dwrite.DWRITE_FONT_STYLE_NORMAL, dwrite.DWRITE_FONT_STRETCH_NORMAL, fontSize, "")
 	if hr.Failed() {
 		return nil, hr
 	}
@@ -236,7 +237,8 @@ func (t *TextLayout) SetTextFont(start, length int, font typography.FontInfo) {
 			t.layout.SetFontFamilyName(font.Family, textRange)
 		}
 		if font.Size != 0 {
-			t.layout.SetFontSize(font.Size, textRange)
+			fontSize := ptToDip(font.Size)
+			t.layout.SetFontSize(fontSize, textRange)
 		}
 	}
 }
@@ -453,6 +455,12 @@ func (t *TextLayout) getExtends() (x, y, width, height float32) {
 	width = metrics.Width
 	height = metrics.Height
 	return
+}
+
+func ptToDip(pt float32) float32 {
+	// DirectWrite font sizes are in DIPs (1 DIP = 1/96 inch); Font.Size is in
+	// typographic points (1 pt = 1/72 inch), so 1 pt = 96/72 DIP.
+	return pt * 96.0 / 72.0
 }
 
 func roundPixel(v float32) int {
