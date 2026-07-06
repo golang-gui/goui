@@ -38,6 +38,7 @@ var (
 	procCloseWindow          = user32Dll.NewProc("CloseWindow")
 	procTrackMouseEvent      = user32Dll.NewProc("TrackMouseEvent")
 	procScreenToClient       = user32Dll.NewProc("ScreenToClient")
+	procClientToScreen       = user32Dll.NewProc("ClientToScreen")
 
 	// DPI
 	procGetDpiForWindow               = user32Dll.NewProc("GetDpiForWindow")
@@ -267,6 +268,11 @@ func TrackMouseEvent(event *TRACKMOUSEEVENT) BOOL {
 
 func ScreenToClient(wnd HWND, point *POINT) BOOL {
 	ret, _, _ := syscall.SyscallN(procScreenToClient.Addr(), uintptr(wnd), uintptr(unsafe.Pointer(point)))
+	return BOOL(ret)
+}
+
+func ClientToScreen(wnd HWND, point *POINT) BOOL {
+	ret, _, _ := syscall.SyscallN(procClientToScreen.Addr(), uintptr(wnd), uintptr(unsafe.Pointer(point)))
 	return BOOL(ret)
 }
 
