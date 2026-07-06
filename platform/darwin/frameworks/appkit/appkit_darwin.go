@@ -742,6 +742,11 @@ func initNSWindow() {
 	NSWindowSel.Close = objc.RegisterName("close")
 	NSWindowSel.CanBecomeKeyWindow = objc.RegisterName("canBecomeKeyWindow")
 	NSWindowSel.CanBecomeMainWindow = objc.RegisterName("canBecomeMainWindow")
+	NSWindowSel.Frame = objc.RegisterName("frame")
+	NSWindowSel.ContentRectForFrameRect = objc.RegisterName("contentRectForFrameRect:")
+	NSWindowSel.SetFrameTopLeftPoint = objc.RegisterName("setFrameTopLeftPoint:")
+	NSWindowSel.SetContentSize = objc.RegisterName("setContentSize:")
+	NSWindowSel.SetLevel = objc.RegisterName("setLevel:")
 }
 
 var (
@@ -768,6 +773,11 @@ var (
 		Close                      objc.SEL
 		CanBecomeKeyWindow         objc.SEL
 		CanBecomeMainWindow        objc.SEL
+		Frame                      objc.SEL
+		ContentRectForFrameRect    objc.SEL
+		SetFrameTopLeftPoint       objc.SEL
+		SetContentSize             objc.SEL
+		SetLevel                   objc.SEL
 	}
 )
 
@@ -885,6 +895,26 @@ func (w NSWindow) PerformClose(sender objc.ID) {
 
 func (w NSWindow) Close() {
 	w.Send(NSWindowSel.Close)
+}
+
+func (w NSWindow) Frame() NSRect {
+	return objc.Send[NSRect](w.ID, NSWindowSel.Frame)
+}
+
+func (w NSWindow) ContentRectForFrameRect(frame NSRect) NSRect {
+	return objc.Send[NSRect](w.ID, NSWindowSel.ContentRectForFrameRect, frame)
+}
+
+func (w NSWindow) SetFrameTopLeftPoint(point NSPoint) {
+	w.Send(NSWindowSel.SetFrameTopLeftPoint, point)
+}
+
+func (w NSWindow) SetContentSize(size NSSize) {
+	w.Send(NSWindowSel.SetContentSize, size)
+}
+
+func (w NSWindow) SetLevel(level NSInteger) {
+	w.Send(NSWindowSel.SetLevel, level)
 }
 
 // NSWindowDelegate
