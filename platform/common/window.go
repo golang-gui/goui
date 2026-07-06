@@ -14,6 +14,9 @@ type Window interface {
 	Title() string
 	SetTitle(title string) error
 	Show() error
+	// Hide unmaps the native window without destroying it, so it can be shown
+	// again later.
+	Hide() error
 	// RequestClose sends a close request notification. It does not destroy the
 	// window; the event handler decides whether to call Destroy.
 	RequestClose() error

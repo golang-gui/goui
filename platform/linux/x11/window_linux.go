@@ -28,7 +28,11 @@ type Window struct {
 	buttons events.PointerButtons
 }
 
-func newWindow(onEvent events.EventHandler) (w common.Window, err error) {
+// newNativeWindow creates the X11 InputOutput window shared by both top-level
+// windows and popups: it picks a GL-capable visual, creates the colormap, and
+// registers the window for event routing. overrideRedirect makes a borderless,
+// WM-bypassing surface (popups); width/height is the initial size in pixels.
+func newNativeWindow(onEvent events.EventHandler, overrideRedirect bool, width, height int) (*Window, error) {
 	win := &Window{
 		onEvent: onEvent,
 	}
@@ -69,20 +73,35 @@ func newWindow(onEvent events.EventHandler) (w common.Window, err error) {
 			xlib.EventMaskLeaveWindow,
 	}
 
+	valueMask := uint(xlib.CwColormap | xlib.CwEventMask)
+	if overrideRedirect {
+		attr.OverrideRedirect = 1
+		valueMask |= xlib.CwOverrideRedirect
+	}
+
 	win.wid = platform.display.CreateWindow(platform.defScreen.Root,
-		0, 0, 800, 600, 0,
-		depth, xlib.WindowClassInputOutput, visual, xlib.CwColormap|xlib.CwEventMask, &attr)
+		0, 0, width, height, 0,
+		depth, xlib.WindowClassInputOutput, visual, valueMask, &attr)
 
 	if win.wid == 0 {
 		return nil, errors.New("create x11 window failed")
 	}
 
-	// declare WM protocols
+	windowMap[win.wid] = win
+	return win, nil
+}
+
+func newWindow(onEvent events.EventHandler) (common.Window, error) {
+	win, err := newNativeWindow(onEvent, false, 800, 600)
+	if err != nil {
+		return nil, err
+	}
+
+	// declare WM protocols (top-level only; override-redirect popups bypass the WM)
 	if platform.atoms.WM_PROTOCOLS != 0 {
 		platform.display.SetWMProtocols(win.wid, []xlib.Atom{platform.atoms.WM_DELETE_WINDOW})
 	}
 
-	windowMap[win.wid] = win
 	return win, nil
 }
 
