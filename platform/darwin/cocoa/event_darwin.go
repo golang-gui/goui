@@ -61,6 +61,7 @@ func (l *EventLoop) Run() {
 		return
 	}
 	NSApp.Run()
+	l.state.RunTasks()
 }
 
 func (l *EventLoop) Quit() {
@@ -94,7 +95,7 @@ func (l *EventLoop) wake() {
 }
 
 func (l *EventLoop) runTasks() {
-	eventloop.RunTasks(&l.state)
+	l.state.RunTasks()
 	if l.state.Quitting() {
 		NSApp.Stop()
 		l.postWakeEvent()
