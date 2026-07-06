@@ -27,6 +27,9 @@ var (
 	xDestroyWindow          = libx11.NewSymbol("XDestroyWindow")
 	xMapWindow              = libx11.NewSymbol("XMapWindow")
 	xUnmapWindow            = libx11.NewSymbol("XUnmapWindow")
+	xMoveWindow             = libx11.NewSymbol("XMoveWindow")
+	xResizeWindow           = libx11.NewSymbol("XResizeWindow")
+	xTranslateCoordinates   = libx11.NewSymbol("XTranslateCoordinates")
 	xClearArea              = libx11.NewSymbol("XClearArea")
 	xStoreName              = libx11.NewSymbol("XStoreName")
 	xSetTransientForHint    = libx11.NewSymbol("XSetTransientForHint")
@@ -146,6 +149,25 @@ func (d Display) MapWindow(w Window) {
 
 func (d Display) UnmapWindow(w Window) {
 	xUnmapWindow.CallRaw(uintptr(d), uintptr(w))
+}
+
+func (d Display) MoveWindow(w Window, x, y int) {
+	xMoveWindow.CallRaw(uintptr(d), uintptr(w), uintptr(x), uintptr(y))
+}
+
+func (d Display) ResizeWindow(w Window, width, height uint) {
+	xResizeWindow.CallRaw(uintptr(d), uintptr(w), uintptr(width), uintptr(height))
+}
+
+// TranslateCoordinates maps (srcX, srcY) in src to the dest window's coordinate
+// space. Used to place a popup at an owner-window-local point in root coords.
+func (d Display) TranslateCoordinates(src, dest Window, srcX, srcY int) (destX, destY int) {
+	var dx, dy int32
+	var child Window
+	xTranslateCoordinates.CallRaw(uintptr(d), uintptr(src), uintptr(dest),
+		uintptr(srcX), uintptr(srcY),
+		uintptr(cgo.Pointer(&dx)), uintptr(cgo.Pointer(&dy)), uintptr(cgo.Pointer(&child)))
+	return int(dx), int(dy)
 }
 
 func (d Display) ClearArea(w Window, x, y int, width, height uint, exposures bool) {
