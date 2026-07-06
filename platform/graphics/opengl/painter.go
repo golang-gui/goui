@@ -14,11 +14,13 @@ import (
 )
 
 type Painter struct {
-	ctx   Context
-	vg    *nanovgo.Context
-	typo  typography.Context
-	imgs  []int
-	scale float32
+	ctx        Context
+	vg         *nanovgo.Context
+	typo       typography.Context
+	imgs       []int
+	scale      float32
+	lastWidth  float32 // physical size of the last frame; 0 until the first Begin
+	lastHeight float32
 }
 
 func NewPainter(win NativeWindow, typoCtx typography.Context) (_ graphics.Painter, err error) {
@@ -72,6 +74,15 @@ func (p *Painter) Destroy() {
 
 func (p *Painter) Begin(width, height, scale float32) {
 	p.ctx.MakeCurrent()
+	if width != p.lastWidth || height != p.lastHeight {
+		// The GLX/DRI back buffer is reallocated only one SwapBuffers after the
+		// drawable is resized. Without priming, the first frame at a new size
+		// renders into the stale buffer — e.g. a popup created 1x1 then SetSize'd
+		// collapses its content into a single pixel. Swap once to force the
+		// reallocation before rendering the real content.
+		p.ctx.SwapBuffers()
+		p.lastWidth, p.lastHeight = width, height
+	}
 	gl.Viewport(0, 0, int(width), int(height))
 	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT)
 	p.vg.BeginFrame(int(width/scale), int(height/scale), scale)
