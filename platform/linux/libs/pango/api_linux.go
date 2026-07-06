@@ -55,6 +55,7 @@ var (
 	pangoAttributeDestroy     = libpango.NewSymbol("pango_attribute_destroy")
 	pangoAttrFamilyNew        = libpango.NewSymbol("pango_attr_family_new")
 	pangoAttrSizeNewAbsolute  = libpango.NewSymbol("pango_attr_size_new_absolute")
+	pangoAttrSizeNew          = libpango.NewSymbol("pango_attr_size_new")
 	pangoAttrWeightNew        = libpango.NewSymbol("pango_attr_weight_new")
 	pangoAttrStretchNew       = libpango.NewSymbol("pango_attr_stretch_new")
 	pangoAttrFontFeaturesNew  = libpango.NewSymbol("pango_attr_font_features_new")
@@ -430,6 +431,16 @@ func AttrFamilyNew(family string) *Attribute {
 func AttrSizeNewAbsolute(size int) *Attribute {
 	// PangoAttribute* pango_attr_size_new(int size)
 	ret, _, _ := pangoAttrSizeNewAbsolute.CallRaw(uintptr(size))
+	return goPointer[Attribute](ret)
+}
+
+// AttrSizeNew creates a new font-size attribute in fractional points. Unlike the
+// absolute variant, the size is scaled by the context resolution (96 DPI for
+// pango-cairo) at layout time, matching FontDescription.SetSize.
+// size is in Pango units (points * Scale).
+func AttrSizeNew(size int) *Attribute {
+	// PangoAttribute* pango_attr_size_new(int size)
+	ret, _, _ := pangoAttrSizeNew.CallRaw(uintptr(size))
 	return goPointer[Attribute](ret)
 }
 
