@@ -49,6 +49,16 @@ func (s *State) Quit() bool {
 	return true
 }
 
+// WakeFailed reverts the pending-wake flag after a backend's wake attempt fails
+// to reach the native loop, so the next Post or Quit requests a fresh wake
+// instead of assuming one is already scheduled. Already-queued tasks stay
+// queued and run on that next successful wake.
+func (s *State) WakeFailed() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.wakePending = false
+}
+
 func (s *State) Destroy() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -81,16 +91,13 @@ func (s *State) Destroyed() bool {
 	return s.destroyed
 }
 
-func RunTasks(state *State) {
-	tasks, quitting := state.Take()
-	if quitting {
-		return
-	}
-
+// RunTasks drains and runs every task taken from the queue. It does not stop on
+// quit: a quit drains the backlog queued before it, and the loop stops pumping
+// via Quitting(). Tasks posted after quit are dropped at Post; Destroy clears
+// the queue outright.
+func (s *State) RunTasks() {
+	tasks, _ := s.Take()
 	for _, task := range tasks {
 		task()
-		if state.Quitting() {
-			return
-		}
 	}
 }
