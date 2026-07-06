@@ -51,15 +51,16 @@ func (l *EventLoop) Run() {
 
 	for !l.state.Quitting() {
 		if !l.wait() {
-			return
+			break
 		}
 		l.readWake()
-		eventloop.RunTasks(&l.state)
+		l.state.RunTasks()
 		if l.state.Quitting() {
-			return
+			break
 		}
 		l.processEvents()
 	}
+	l.state.RunTasks()
 }
 
 func (l *EventLoop) Quit() {
