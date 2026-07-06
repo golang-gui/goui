@@ -19,13 +19,14 @@ type Platform struct {
 	helperWindow winapi.HWND
 	windowClass  winapi.LPWSTR
 	windowTitle  winapi.LPWSTR
+	wakeHandler  func()
 }
 
 var platform *Platform
 
 func NewPlatform() (p *Platform, err error) {
 	if platform != nil {
-		return p, nil
+		return platform, nil
 	}
 
 	p, err = newPlatform()
@@ -46,7 +47,13 @@ func (p *Platform) Name() string {
 }
 
 func (p *Platform) NewEventLoop() (common.EventLoop, error) {
-	return newEventLoop()
+	return newEventLoop(p)
+}
+
+// setWakeHandler lets the event loop inject its task-draining callback, which
+// the helper window procedure invokes when the loop is woken.
+func (p *Platform) setWakeHandler(fn func()) {
+	p.wakeHandler = fn
 }
 
 func (p *Platform) NewWindow(handler events.EventHandler) (common.Window, error) {
@@ -109,7 +116,7 @@ func (p *Platform) createHelperWindow() (err error) {
 	wdc := winapi.WNDCLASSEX{
 		Size:      winapi.Sizeof_WNDCLASSEX,
 		Style:     winapi.CS_OWNDC,
-		WndProc:   winapi.GetDefWindowProc(),
+		WndProc:   winapi.MakeWindowProc(helperWindowProc),
 		Instance:  p.instance,
 		ClassName: cls,
 	}
@@ -140,6 +147,19 @@ func (p *Platform) createHelperWindow() (err error) {
 	}
 
 	return nil
+}
+
+// helperWindowProc invokes the injected wake handler when the event loop wakes
+// the helper window. It stays independent of the event loop's internals so the
+// native wake mechanism and task draining are cleanly separated.
+func helperWindowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lParam winapi.LPARAM) winapi.LRESULT {
+	if message == eventLoopWakeMessage {
+		if platform != nil && platform.wakeHandler != nil {
+			platform.wakeHandler()
+		}
+		return 0
+	}
+	return winapi.DefWindowProc(hwnd, message, wParam, lParam)
 }
 
 func (p *Platform) registerWindow() (err error) {

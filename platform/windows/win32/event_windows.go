@@ -11,8 +11,13 @@ type EventLoop struct {
 	state eventloop.State
 }
 
-func newEventLoop() (*EventLoop, error) {
-	return new(EventLoop), nil
+func newEventLoop(p *Platform) (*EventLoop, error) {
+	l := new(EventLoop)
+	// Inject task draining into the helper window's wake handler so tasks run
+	// under any message pump — the main loop or a nested modal loop (window
+	// move/resize, menus, dialogs) — that dispatches the wake message.
+	p.setWakeHandler(l.runTasks)
+	return l, nil
 }
 
 func (l *EventLoop) Post(task func()) {
@@ -31,17 +36,13 @@ func (l *EventLoop) Run() {
 		var msg winapi.MSG
 		result, _ := winapi.GetMessage(&msg, 0, 0, 0)
 		if result == winapi.FALSE || result == -1 {
-			return
-		}
-
-		if msg.Hwnd == platform.helperWindow && msg.Message == eventLoopWakeMessage {
-			eventloop.RunTasks(&l.state)
-			continue
+			break
 		}
 
 		winapi.TranslateMessage(&msg)
 		winapi.DispatchMessage(&msg)
 	}
+	l.state.RunTasks()
 }
 
 func (l *EventLoop) Quit() {
@@ -55,5 +56,13 @@ func (l *EventLoop) Destroy() {
 }
 
 func (l *EventLoop) wake() {
-	_ = winapi.PostMessage(platform.helperWindow, eventLoopWakeMessage, 0, 0)
+	// If the wake message cannot be queued, un-arm the pending flag so the next
+	// Post requests a fresh wake instead of assuming one is already scheduled.
+	if winapi.PostMessage(platform.helperWindow, eventLoopWakeMessage, 0, 0) != nil {
+		l.state.WakeFailed()
+	}
+}
+
+func (l *EventLoop) runTasks() {
+	l.state.RunTasks()
 }
