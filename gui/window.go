@@ -59,6 +59,14 @@ type window struct {
 	focusChanged   signal.Signal1[bool]
 }
 
+// defaultWindowWidth/Height is the preferred initial size (logical/DIP) passed
+// to the platform as a hint. TODO(layout): derive from the widget tree / let the
+// caller specify once the layout system threads sizing.
+const (
+	defaultWindowWidth  = 800
+	defaultWindowHeight = 600
+)
+
 func newWindow(app *application) (*window, error) {
 	win := &window{
 		app:         app,
@@ -66,7 +74,7 @@ func newWindow(app *application) (*window, error) {
 		paintDirty:  true,
 	}
 
-	platformWindow, err := app.platform.NewWindow(win.onEvent)
+	platformWindow, err := app.platform.NewWindow(defaultWindowWidth, defaultWindowHeight, win.onEvent)
 	if err != nil {
 		return nil, fmt.Errorf("create platform window: %w", err)
 	}

@@ -38,7 +38,7 @@ func TestWindow(t *testing.T) {
 		}
 
 		var finishPaint sync.Once
-		window, err = plat.NewWindow(func(event platform.Event) {
+		window, err = plat.NewWindow(800, 600, func(event platform.Event) {
 			switch event.(type) {
 			case events.PaintEvent:
 				finishPaint.Do(func() {
@@ -161,7 +161,7 @@ func TestWindowRequestPaint(t *testing.T) {
 			return
 		}
 
-		window, err = plat.NewWindow(func(event platform.Event) {
+		window, err = plat.NewWindow(800, 600, func(event platform.Event) {
 			switch event.(type) {
 			case events.PaintEvent:
 				img := image.NewRGBA(image.Rect(0, 0, 64, 64))

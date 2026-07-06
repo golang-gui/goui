@@ -49,7 +49,7 @@ func TestFocusEventsManual(t *testing.T) {
 			return
 		}
 
-		window, err = plat.NewWindow(func(event platform.Event) {
+		window, err = plat.NewWindow(800, 600, func(event platform.Event) {
 			switch event := event.(type) {
 			case events.FocusEvent:
 				select {

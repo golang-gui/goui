@@ -51,13 +51,15 @@ func newNativeWindow(onEvent events.EventHandler, styleMask NSWindowStyleMask, r
 	return win
 }
 
-func newWindow(onEvent events.EventHandler) (*Window, error) {
+func newWindow(width, height float32, onEvent events.EventHandler) (*Window, error) {
 	styleMask := NSWindowStyleMaskMiniaturizable |
 		NSWindowStyleMaskTitled |
 		NSWindowStyleMaskClosable |
 		NSWindowStyleMaskResizable
 
-	win := newNativeWindow(onEvent, styleMask, NSMakeRect(0, 0, 300, 200))
+	// NSWindow content is measured in points, which already equal goui logical
+	// units, so pass the logical size straight through (no scale conversion).
+	win := newNativeWindow(onEvent, styleMask, NSMakeRect(0, 0, CGFloat(width), CGFloat(height)))
 
 	AutoReleasePool(func() {
 		win.window.SetCollectionBehavior(NSWindowCollectionBehaviorFullScreenPrimary | NSWindowCollectionBehaviorManaged)
