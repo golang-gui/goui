@@ -91,8 +91,9 @@ func newNativeWindow(onEvent events.EventHandler, overrideRedirect bool, width, 
 	return win, nil
 }
 
-func newWindow(onEvent events.EventHandler) (common.Window, error) {
-	win, err := newNativeWindow(onEvent, false, 800, 600)
+func newWindow(width, height float32, onEvent events.EventHandler) (common.Window, error) {
+	scale := currentScale()
+	win, err := newNativeWindow(onEvent, false, physical(width, scale), physical(height, scale))
 	if err != nil {
 		return nil, err
 	}

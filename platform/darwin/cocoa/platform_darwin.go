@@ -49,19 +49,23 @@ func (p *Platform) NewImage(width, height uint) (common.Image, error) {
 	return graphics.MakeBitmap(0, 0, int(width), int(height), graphics.PixelFormatRGBA, nil), nil
 }
 
-func (p *Platform) NewWindow(onEvent events.EventHandler) (common.Window, error) {
-	return newWindow(onEvent)
+func (p *Platform) NewWindow(width, height float32, onEvent events.EventHandler) (common.Window, error) {
+	return newWindow(width, height, onEvent)
+}
+
+func (p *Platform) NewPopup(owner common.Window, width, height float32, onEvent events.EventHandler) (common.Popup, error) {
+	return newPopup(owner, width, height, onEvent)
 }
 
 func (p *Platform) NewTypography() (typography.Context, error) {
 	return coretext.NewContext()
 }
 
-func (p *Platform) NewPainter(win common.Window, typo typography.Context) (painter graphics.Painter, err error) {
-	painter, err = opengl.NewPainter(win, typo)
+func (p *Platform) NewPainter(surface common.Surface, typo typography.Context) (painter graphics.Painter, err error) {
+	painter, err = opengl.NewPainter(surface, typo)
 	if err != nil {
 		// TODO: error log
-		painter, err = software.NewPainter(win, typo)
+		painter, err = software.NewPainter(surface, typo)
 	}
 	return
 }

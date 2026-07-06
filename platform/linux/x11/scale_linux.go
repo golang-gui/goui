@@ -23,6 +23,14 @@ func currentScale() float32 {
 	return scaleCache.value
 }
 
+// physical converts a logical size to a physical pixel count, clamped to >= 1.
+func physical(logical, scale float32) int {
+	if p := int(logical * scale); p >= 1 {
+		return p
+	}
+	return 1
+}
+
 func detectScale() float32 {
 	// Explicit override, honoring the common GDK_SCALE convention.
 	if v := os.Getenv("GDK_SCALE"); v != "" {

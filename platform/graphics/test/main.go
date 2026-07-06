@@ -122,7 +122,7 @@ func main() {
 	var win platform.Window
 	var width, height float32
 
-	win, err = plat.NewWindow(func(event events.Event) {
+	win, err = plat.NewWindow(800, 600, func(event events.Event) {
 		switch ev := event.(type) {
 		case events.CloseEvent:
 			win.Destroy()

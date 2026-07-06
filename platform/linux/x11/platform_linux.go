@@ -124,8 +124,12 @@ func (p *Platform) NewEventLoop() (common.EventLoop, error) {
 	return newEventLoop()
 }
 
-func (p *Platform) NewWindow(handler events.EventHandler) (common.Window, error) {
-	return newWindow(handler)
+func (p *Platform) NewWindow(width, height float32, handler events.EventHandler) (common.Window, error) {
+	return newWindow(width, height, handler)
+}
+
+func (p *Platform) NewPopup(owner common.Window, width, height float32, handler events.EventHandler) (common.Popup, error) {
+	return newPopup(owner, width, height, handler)
 }
 
 func (p *Platform) NewImage(width, height uint) (common.Image, error) {
@@ -136,11 +140,11 @@ func (p *Platform) NewTypography() (typography.Context, error) {
 	return pango.NewContext()
 }
 
-func (p *Platform) NewPainter(win common.Window, typo typography.Context) (painter graphics.Painter, err error) {
+func (p *Platform) NewPainter(surface common.Surface, typo typography.Context) (painter graphics.Painter, err error) {
 	// TODO: error log
-	painter, err = opengl.NewPainter(win, typo)
+	painter, err = opengl.NewPainter(surface, typo)
 	if err != nil {
-		return software.NewPainter(win, typo)
+		return software.NewPainter(surface, typo)
 	}
 	return
 }

@@ -29,15 +29,19 @@ type Window struct {
 	scale         float32 // cached device scale; updated on WM_SIZE
 }
 
-func newWindow(onEvent events.EventHandler) (w *Window, err error) {
+func newWindow(width, height float32, onEvent events.EventHandler) (w *Window, err error) {
 	win := &Window{
 		onEvent: onEvent,
 		scale:   1,
 	}
 
+	// No window exists yet to query per-monitor DPI, so estimate with the system
+	// DPI; WM_SIZE reports the authoritative client size afterwards. Size is the
+	// outer window (frame included) — good enough for an advisory hint.
+	scale := float32(winapi.GetDpiForSystem()) / 96
 	win.hwnd, err = winapi.CreateWindowEx(0, platform.windowClass, platform.windowTitle, winapi.WS_OVERLAPPEDWINDOW,
 		winapi.CW_USEDEFAULT, winapi.CW_USEDEFAULT,
-		winapi.CW_USEDEFAULT, winapi.CW_USEDEFAULT,
+		int(width*scale), int(height*scale),
 		0, 0, platform.instance,
 		unsafe.Pointer(win))
 
