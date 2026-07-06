@@ -68,7 +68,7 @@ func (c *Context) NewTextLayout(text string, format typography.TextFormat, width
 	defer desc.Free()
 
 	desc.SetFamily(format.Font.Family)
-	desc.SetAbsoluteSize(float64(format.Font.Size) * pango.Scale)
+	desc.SetSize(int(format.Font.Size * pango.Scale))
 	// TODO: other font param
 
 	layout := pango.LayoutNew(c.context)
@@ -183,7 +183,7 @@ func (t *TextLayout) SetTextFont(start, length int, font typography.FontInfo) {
 		familyAttr.EndIndex = uint32(start + length)
 		t.attrs.Insert(familyAttr)
 
-		sizeAttr := pango.AttrSizeNewAbsolute(int(font.Size * pango.Scale))
+		sizeAttr := pango.AttrSizeNew(int(font.Size * pango.Scale))
 		sizeAttr.StartIndex = uint32(start)
 		sizeAttr.EndIndex = uint32(start + length)
 		t.attrs.Insert(sizeAttr)
