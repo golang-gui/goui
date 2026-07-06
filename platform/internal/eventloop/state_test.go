@@ -17,7 +17,7 @@ func TestStateRunsTasksInOrder(t *testing.T) {
 		t.Fatal("queued tasks must share the pending wake")
 	}
 
-	RunTasks(&state)
+	state.RunTasks()
 
 	if len(order) != 2 || order[0] != 1 || order[1] != 2 {
 		t.Fatalf("unexpected task order: %v", order)
@@ -34,33 +34,57 @@ func TestStatePostWhileRunningRequestsAnotherWake(t *testing.T) {
 		}
 	})
 
-	RunTasks(&state)
+	state.RunTasks()
 	if ranSecond {
 		t.Fatal("task posted while running must not run in the current batch")
 	}
 
-	RunTasks(&state)
+	state.RunTasks()
 	if !ranSecond {
 		t.Fatal("second task did not run")
 	}
 }
 
-func TestStateQuitStopsQueuedTasks(t *testing.T) {
+func TestStateQuitDrainsQueuedTasks(t *testing.T) {
 	var state State
 	var ran bool
 
 	state.Post(func() { ran = true })
 	state.Quit()
-	RunTasks(&state)
+	state.RunTasks()
 
-	if ran {
-		t.Fatal("queued task ran after quit")
+	if !ran {
+		t.Fatal("quit must drain the queued backlog")
 	}
 	if !state.Quitting() {
 		t.Fatal("state must remain quitting")
 	}
 	if state.Post(func() {}) {
 		t.Fatal("post after quit must be ignored")
+	}
+}
+
+func TestStateWakeFailedRearmsWake(t *testing.T) {
+	var state State
+	var ran int
+
+	if !state.Post(func() { ran++ }) {
+		t.Fatal("first post must request a wake")
+	}
+	if state.Post(func() { ran++ }) {
+		t.Fatal("queued task must share the pending wake")
+	}
+
+	// The backend could not deliver the wake; re-arm so the next post retries.
+	state.WakeFailed()
+
+	if !state.Post(func() { ran++ }) {
+		t.Fatal("post after a failed wake must request a fresh wake")
+	}
+
+	state.RunTasks()
+	if ran != 3 {
+		t.Fatalf("all queued tasks should run once woken, got %d", ran)
 	}
 }
 
@@ -81,7 +105,7 @@ func TestStateConcurrentPost(t *testing.T) {
 	}
 	wait.Wait()
 
-	RunTasks(&state)
+	state.RunTasks()
 	if count.Load() != taskCount {
 		t.Fatalf("expected %d tasks, got %d", taskCount, count.Load())
 	}
@@ -94,7 +118,7 @@ func TestStateDestroy(t *testing.T) {
 	state.Post(func() { ran = true })
 	state.Destroy()
 	state.Destroy()
-	RunTasks(&state)
+	state.RunTasks()
 
 	if ran {
 		t.Fatal("queued task ran after destroy")
