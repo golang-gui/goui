@@ -3,6 +3,7 @@ package ui
 import (
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/style"
 )
 
 type BoxView struct {
@@ -11,6 +12,7 @@ type BoxView struct {
 	direction layout.Direction
 	spacing   float32
 	children  []View
+	rules     []style.Rule
 }
 
 func HBox(children ...View) BoxView {
@@ -47,6 +49,11 @@ func (v BoxView) Children(children ...View) BoxView {
 	return v
 }
 
+func (v BoxView) Style(rules ...style.Rule) BoxView {
+	v.rules = rules
+	return v
+}
+
 func (v BoxView) Build() View {
 	return v
 }
@@ -59,6 +66,7 @@ func (v BoxView) Update(ctx BuildContext, widget gui.Widget) {
 	box := widget.(*gui.LinearBox)
 	box.SetID(v.name)
 	box.SetVisible(!v.hidden)
+	box.SetStyleRules(v.rules...)
 	box.SetDirection(v.direction)
 	box.SetSpacing(v.spacing)
 	ctx.UpdateChildren(box, v.children)

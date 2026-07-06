@@ -1,11 +1,15 @@
 package ui
 
-import "github.com/golang-gui/goui/gui"
+import (
+	"github.com/golang-gui/goui/gui"
+	"github.com/golang-gui/goui/style"
+)
 
 type LabelView struct {
 	name   string
 	hidden bool
 	text   string
+	rules  []style.Rule
 }
 
 func Label(text string) LabelView {
@@ -27,6 +31,11 @@ func (v LabelView) Text(text string) LabelView {
 	return v
 }
 
+func (v LabelView) Style(rules ...style.Rule) LabelView {
+	v.rules = rules
+	return v
+}
+
 func (v LabelView) Build() View {
 	return v
 }
@@ -40,6 +49,7 @@ func (v LabelView) Update(_ BuildContext, widget gui.Widget) {
 	label.SetID(v.name)
 	label.SetVisible(!v.hidden)
 	label.SetText(v.text)
+	label.SetStyleRules(v.rules...)
 }
 
 func (v LabelView) Unmount(BuildContext, gui.Widget) {}

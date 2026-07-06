@@ -3,6 +3,7 @@ package ui
 import (
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
+	"github.com/golang-gui/goui/style"
 )
 
 type ButtonView struct {
@@ -10,6 +11,7 @@ type ButtonView struct {
 	hidden  bool
 	child   View
 	onClick func()
+	rules   []style.Rule
 }
 
 type buttonState struct {
@@ -55,6 +57,11 @@ func (v ButtonView) OnClick(fn func()) ButtonView {
 	return v
 }
 
+func (v ButtonView) Style(rules ...style.Rule) ButtonView {
+	v.rules = rules
+	return v
+}
+
 func (v ButtonView) Build() View {
 	return v
 }
@@ -77,6 +84,7 @@ func (v ButtonView) Update(ctx BuildContext, widget gui.Widget) {
 	state.onClick = v.onClick
 	button.SetID(v.name)
 	button.SetVisible(!v.hidden)
+	button.SetStyleRules(v.rules...)
 	if v.child == nil {
 		ctx.UpdateChildren(button, nil)
 	} else {

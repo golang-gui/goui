@@ -4,12 +4,14 @@ import (
 	"image"
 
 	"github.com/golang-gui/goui/gui"
+	"github.com/golang-gui/goui/style"
 )
 
 type ImageView struct {
 	name   string
 	hidden bool
 	img    image.Image
+	rules  []style.Rule
 }
 
 func Image(img image.Image) ImageView {
@@ -31,6 +33,11 @@ func (v ImageView) Image(img image.Image) ImageView {
 	return v
 }
 
+func (v ImageView) Style(rules ...style.Rule) ImageView {
+	v.rules = rules
+	return v
+}
+
 func (v ImageView) Build() View {
 	return v
 }
@@ -43,6 +50,7 @@ func (v ImageView) Update(_ BuildContext, widget gui.Widget) {
 	imageWidget := widget.(*gui.Image)
 	imageWidget.SetID(v.name)
 	imageWidget.SetVisible(!v.hidden)
+	imageWidget.SetStyleRules(v.rules...)
 	imageWidget.SetImage(v.img)
 }
 

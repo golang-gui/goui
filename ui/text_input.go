@@ -3,6 +3,7 @@ package ui
 import (
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
+	"github.com/golang-gui/goui/style"
 )
 
 type TextInputView struct {
@@ -10,6 +11,7 @@ type TextInputView struct {
 	hidden bool
 	text   string
 	onText func(string)
+	rules  []style.Rule
 }
 
 func TextInput() TextInputView {
@@ -33,6 +35,11 @@ func (v TextInputView) Text(text string) TextInputView {
 
 func (v TextInputView) OnText(fn func(string)) TextInputView {
 	v.onText = fn
+	return v
+}
+
+func (v TextInputView) Style(rules ...style.Rule) TextInputView {
+	v.rules = rules
 	return v
 }
 
@@ -62,6 +69,7 @@ func (v TextInputView) Update(ctx BuildContext, widget gui.Widget) {
 	state := ctx.State().(*textInputState)
 	input.SetID(v.name)
 	input.SetVisible(!v.hidden)
+	input.SetStyleRules(v.rules...)
 	func() {
 		state.text.Block()
 		defer state.text.Unblock()
