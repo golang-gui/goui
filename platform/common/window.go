@@ -1,11 +1,10 @@
 package common
 
-import "image"
-
 // Window is thread-affine. All methods must be called on the thread that owns
 // the platform.
 type Window interface {
-	NativeHandle() uintptr
+	// Surface provides NativeHandle and Draw: a Window is a paint target.
+	Surface
 	// Destroy closes the native window and releases its resources without
 	// sending a close request.
 	Destroy()
@@ -23,5 +22,4 @@ type Window interface {
 	// RequestPaint asks the platform to schedule a paint notification. It does
 	// not draw immediately, and multiple requests may be coalesced.
 	RequestPaint() error
-	Draw(img image.Image) error
 }
