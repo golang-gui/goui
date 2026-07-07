@@ -3,7 +3,6 @@ package gui
 import (
 	"runtime"
 
-	"github.com/golang-gui/goui/core/colors"
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/style"
@@ -11,32 +10,37 @@ import (
 
 const labelMeasureExtent = 1 << 20
 
+// WrapMode and TextAlign re-export the typography enums so gui consumers use gui
+// types only, without importing the platform typography package.
+type (
+	WrapMode  = typography.WrapMode
+	TextAlign = typography.TextAlignment
+)
+
+const (
+	WrapNone     = typography.WrapNone
+	WrapChar     = typography.WrapChar
+	WrapWordChar = typography.WrapWordChar
+)
+
+const (
+	TextAlignBegin  = typography.TextAlignBegin
+	TextAlignEnd    = typography.TextAlignEnd
+	TextAlignCenter = typography.TextAlignCenter
+	TextAlignFill   = typography.TextAlignFill
+)
+
 type Label struct {
 	WidgetBase
 	text      string
-	format    typography.TextFormat
-	formatSet bool
+	wrapMode  WrapMode
+	textAlign TextAlign
 }
 
 func NewLabel(text string) *Label {
-	label := &Label{
-		text:   text,
-		format: DefaultLabelTextFormat(),
-	}
+	label := &Label{text: text}
 	label.SetStyleName(styleNameLabel)
 	return label
-}
-
-func DefaultLabelTextFormat() typography.TextFormat {
-	return typography.TextFormat{
-		Font: typography.FontInfo{
-			Family: defaultLabelFontFamily(),
-			Size:   14,
-		},
-		WrapMode:  typography.WrapNone,
-		TextAlign: typography.TextAlignBegin,
-		TextColor: typography.DefaultTextColor(),
-	}
 }
 
 func (l *Label) Text() string {
@@ -52,17 +56,27 @@ func (l *Label) SetText(text string) {
 	l.requestSemanticUpdate()
 }
 
-func (l *Label) TextFormat() typography.TextFormat {
-	return l.format
+func (l *Label) WrapMode() WrapMode {
+	return l.wrapMode
 }
 
-func (l *Label) SetTextFormat(format typography.TextFormat) {
-	format = normalizeLabelTextFormat(format)
-	if sameTextFormat(l.format, format) {
+func (l *Label) SetWrapMode(mode WrapMode) {
+	if l.wrapMode == mode {
 		return
 	}
-	l.format = format
-	l.formatSet = true
+	l.wrapMode = mode
+	l.RequestLayout()
+}
+
+func (l *Label) TextAlign() TextAlign {
+	return l.textAlign
+}
+
+func (l *Label) SetTextAlign(align TextAlign) {
+	if l.textAlign == align {
+		return
+	}
+	l.textAlign = align
 	l.RequestLayout()
 }
 
@@ -70,24 +84,25 @@ func (l *Label) Measure(available geometry.Size) geometry.Size {
 	if !l.Visible() {
 		return geometry.Size{}
 	}
-	textLayout := l.newTextLayout(measureTextSize(available))
+	format := l.resolvedTextFormat()
+	textLayout := l.newTextLayout(format, measureTextSize(available))
 	if textLayout == nil {
 		return geometry.Size{}
 	}
 	defer textLayout.Destroy()
 
 	width, height := textLayout.MeasureSize()
-	return geometry.Size{
-		Width:  width,
-		Height: height,
+	if height <= 0 {
+		height = textLineHeight(format.Font.Size)
 	}
+	return geometry.Size{Width: width, Height: height}
 }
 
 func (l *Label) Paint(p Painter) {
 	if !l.Visible() {
 		return
 	}
-	textLayout := l.newTextLayout(l.Rect().Size)
+	textLayout := l.newTextLayout(l.resolvedTextFormat(), l.Rect().Size)
 	if textLayout != nil {
 		p.DrawTextLayout(geometry.Point{}, textLayout)
 		textLayout.Destroy()
@@ -102,7 +117,7 @@ func (l *Label) Snapshot() WidgetInfo {
 	return info
 }
 
-func (l *Label) newTextLayout(size geometry.Size) typography.TextLayout {
+func (l *Label) newTextLayout(format typography.TextFormat, size geometry.Size) typography.TextLayout {
 	if App == nil {
 		return nil
 	}
@@ -110,7 +125,7 @@ func (l *Label) newTextLayout(size geometry.Size) typography.TextLayout {
 	if typo == nil {
 		return nil
 	}
-	textLayout, err := typo.NewTextLayout(l.text, l.resolvedTextFormat(), size.Width, size.Height)
+	textLayout, err := typo.NewTextLayout(l.text, format, size.Width, size.Height)
 	if err != nil {
 		return nil
 	}
@@ -118,23 +133,7 @@ func (l *Label) newTextLayout(size geometry.Size) typography.TextLayout {
 }
 
 func (l *Label) resolvedTextFormat() typography.TextFormat {
-	if l.formatSet {
-		return normalizeLabelTextFormat(l.format)
-	}
-	return textFormatWithStyle(DefaultLabelTextFormat(), resolveStyle(l, style.PartDefault, style.Normal))
-}
-
-func normalizeLabelTextFormat(format typography.TextFormat) typography.TextFormat {
-	if format.Font.Family == "" {
-		format.Font.Family = defaultLabelFontFamily()
-	}
-	if format.Font.Size <= 0 {
-		format.Font.Size = 14
-	}
-	if format.TextColor == nil {
-		format.TextColor = typography.DefaultTextColor()
-	}
-	return format
+	return textFormatFromStyle(resolveStyle(l, style.PartDefault, style.Normal), l.wrapMode, l.textAlign)
 }
 
 func measureTextSize(available geometry.Size) geometry.Size {
@@ -156,11 +155,4 @@ func defaultLabelFontFamily() string {
 	default:
 		return ""
 	}
-}
-
-func sameTextFormat(a, b typography.TextFormat) bool {
-	return a.Font == b.Font &&
-		a.WrapMode == b.WrapMode &&
-		a.TextAlign == b.TextAlign &&
-		colors.Equal(a.TextColor, b.TextColor)
 }

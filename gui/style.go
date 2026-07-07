@@ -118,18 +118,27 @@ func widgetStyleSheet(widget Widget) style.StyleSheet {
 	return DefaultStyleSheet()
 }
 
-func textFormatWithStyle(format typography.TextFormat, s style.Style) typography.TextFormat {
-	format = normalizeLabelTextFormat(format)
-	if family, ok := s.FontFamily(); ok {
-		format.Font.Family = family
+// textFormatFromStyle builds a text format from a resolved style plus the
+// caller-owned wrap mode and alignment. Font family, size and color come
+// entirely from the style; the widget carries no font defaults of its own. An
+// unset color is left nil for the renderer to default.
+func textFormatFromStyle(s style.Style, wrap typography.WrapMode, align typography.TextAlignment) typography.TextFormat {
+	family, _ := s.FontFamily()
+	size, _ := s.FontSize()
+	foreground, _ := s.ForegroundColor()
+	return typography.TextFormat{
+		Font:      typography.FontInfo{Family: family, Size: size},
+		WrapMode:  wrap,
+		TextAlign: align,
+		TextColor: foreground,
 	}
-	if size, ok := s.FontSize(); ok {
-		format.Font.Size = size
-	}
-	if foreground, ok := s.ForegroundColor(); ok {
-		format.TextColor = foreground
-	}
-	return normalizeLabelTextFormat(format)
+}
+
+// textLineHeight approximates one text line's height in logical pixels from a
+// point size. Logical pixels are 96 DPI, so 1 pt (1/72") is 96/72 logical px.
+// Used as the fallback line height when there is no text to measure.
+func textLineHeight(sizePt float32) float32 {
+	return sizePt * 96.0 / 72.0
 }
 
 // paintStyledBox paints a widget's background and border from its resolved

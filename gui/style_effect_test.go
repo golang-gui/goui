@@ -7,7 +7,6 @@ import (
 	"github.com/golang-gui/goui/core/colors"
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/graphics"
-	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/style"
 )
 
@@ -242,32 +241,6 @@ func TestLabelLocalRuleDrivesTextFormat(t *testing.T) {
 	}
 	if !colors.Equal(format.TextColor, foreground) {
 		t.Fatalf("unexpected local styled text color: %v", format.TextColor)
-	}
-}
-
-// TestLabelExplicitFormatIgnoresStyle checks that an explicitly set text format
-// wins over any resolved style (controlled vs. style-driven text format).
-func TestLabelExplicitFormatIgnoresStyle(t *testing.T) {
-	typo := &testTypography{measureSize: geometry.Size{Width: 10, Height: 10}}
-	useTestApplication(t, &application{
-		typo:  typo,
-		style: style.Sheet(style.Name(styleNameLabel).FontFamily("SheetFont").FontSize(40)),
-	})
-
-	label := NewLabel("hi")
-	label.SetTextFormat(typography.TextFormat{
-		Font:      typography.FontInfo{Family: "Explicit", Size: 9},
-		TextColor: color.RGBA{A: 255},
-	})
-
-	_ = label.Measure(geometry.Size{Width: 100, Height: 30})
-
-	if len(typo.calls) != 1 {
-		t.Fatalf("expected one text layout call, got %d", len(typo.calls))
-	}
-	format := typo.calls[0].format
-	if format.Font.Family != "Explicit" || format.Font.Size != 9 {
-		t.Fatalf("explicit text format should ignore style, got %+v", format.Font)
 	}
 }
 
