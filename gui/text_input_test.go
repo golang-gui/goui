@@ -94,7 +94,7 @@ func TestTextInputPaintDrawsChromeTextAndCaret(t *testing.T) {
 	if painter.fillRect != geometry.Rect(0, 0, 100, 24) || painter.fillBrush != graphics.RGB(255, 255, 255) {
 		t.Fatalf("unexpected fill: rect=%+v brush=%+v", painter.fillRect, painter.fillBrush)
 	}
-	if painter.drawRect != geometry.Rect(0, 0, 100, 24) || painter.drawRectStrokeWidth != textInputBorderWidth || painter.drawRectBrush != graphics.RGB(70, 130, 220) {
+	if painter.drawRect != geometry.Rect(0, 0, 100, 24) || painter.drawRectStrokeWidth != 1 || painter.drawRectBrush != graphics.RGB(70, 130, 220) {
 		t.Fatalf("unexpected border: rect=%+v width=%v brush=%+v", painter.drawRect, painter.drawRectStrokeWidth, painter.drawRectBrush)
 	}
 	if len(typo.calls) != 1 {
@@ -104,7 +104,7 @@ func TestTextInputPaintDrawsChromeTextAndCaret(t *testing.T) {
 	if call.text != "abc" || call.width != 92 || call.height != 16 {
 		t.Fatalf("unexpected text layout call: %+v", call)
 	}
-	if painter.textOrigin != (geometry.Point{X: textInputPadding, Y: textInputPadding}) {
+	if painter.textOrigin != (geometry.Point{X: 4, Y: 4}) {
 		t.Fatalf("unexpected text origin: %+v", painter.textOrigin)
 	}
 	if painter.textLayout != typo.layouts[0] {
@@ -164,8 +164,10 @@ func TestTextInputPaintEmptyFocusedSkipsTextLayoutAndDrawsCaret(t *testing.T) {
 	if painter.drawLines != 1 {
 		t.Fatalf("expected one caret draw, got %d", painter.drawLines)
 	}
-	if painter.lineP0 != (geometry.Point{X: textInputPadding, Y: textInputPadding}) ||
-		painter.lineP1 != (geometry.Point{X: textInputPadding, Y: defaultTextInputHeight - textInputPadding}) {
+	// Empty input arranged 100x24 with default padding 4: caret spans the
+	// content box, y from padding (4) to height-padding (24-4=20).
+	if painter.lineP0 != (geometry.Point{X: 4, Y: 4}) ||
+		painter.lineP1 != (geometry.Point{X: 4, Y: 20}) {
 		t.Fatalf("unexpected caret line: p0=%+v p1=%+v", painter.lineP0, painter.lineP1)
 	}
 }

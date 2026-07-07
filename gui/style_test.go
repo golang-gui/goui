@@ -27,7 +27,7 @@ func TestDefaultStyleSheetResolvesBuiltInStyles(t *testing.T) {
 		t.Fatalf("unexpected focused text input border: %v ok=%v", borderColor, ok)
 	}
 	padding, ok := input.Padding()
-	if !ok || padding != textInputPadding {
+	if !ok || padding != 4 {
 		t.Fatalf("unexpected text input padding: %v ok=%v", padding, ok)
 	}
 }

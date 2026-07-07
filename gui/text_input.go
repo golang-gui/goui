@@ -12,39 +12,26 @@ import (
 )
 
 const (
-	defaultTextInputWidth  = 160
-	defaultTextInputHeight = 24
-	textInputPaddingX      = 4
-	textInputPaddingY      = 3
-	textInputPadding       = 4
-	textInputBorderWidth   = 1
-	textInputCaretWidth    = 1
+	defaultTextInputWidth = 160
+	textInputCaretWidth   = 1
 )
 
 type TextInput struct {
 	WidgetBase
 	text       string
 	caret      int
-	format     typography.TextFormat
-	formatSet  bool
 	key        *KeyEventController
 	textSignal signal.Signal1[string]
 }
 
 func NewTextInput() *TextInput {
-	input := &TextInput{
-		format: DefaultTextInputTextFormat(),
-	}
+	input := new(TextInput)
 	input.SetStyleName(styleNameTextInput)
 	input.SetFocusable(true)
 	input.key = NewKeyEventController()
 	input.key.ConnectKeyDown(input.handleKeyDown)
 	input.AddEventController(input.key)
 	return input
-}
-
-func DefaultTextInputTextFormat() typography.TextFormat {
-	return DefaultLabelTextFormat()
 }
 
 func (t *TextInput) Text() string {
@@ -55,20 +42,6 @@ func (t *TextInput) SetText(text string) {
 	t.setText(text, len(text))
 }
 
-func (t *TextInput) TextFormat() typography.TextFormat {
-	return t.format
-}
-
-func (t *TextInput) SetTextFormat(format typography.TextFormat) {
-	format = normalizeLabelTextFormat(format)
-	if sameTextFormat(t.format, format) {
-		return
-	}
-	t.format = format
-	t.formatSet = true
-	t.RequestLayout()
-}
-
 func (t *TextInput) ConnectText(fn func(string)) signal.Handle {
 	return t.textSignal.Connect(fn)
 }
@@ -77,9 +50,12 @@ func (t *TextInput) Measure(available geometry.Size) geometry.Size {
 	if !t.Visible() {
 		return geometry.Size{}
 	}
+	s := t.resolvedStyle()
+	size, _ := s.FontSize()
+	padding := stylePadding(s)
 	return geometry.Size{
 		Width:  defaultTextInputWidth,
-		Height: defaultTextInputHeight,
+		Height: textLineHeight(size) + padding*2,
 	}
 }
 
@@ -95,12 +71,12 @@ func (t *TextInput) Paint(p Painter) {
 
 	padding := stylePadding(s)
 	origin := geometry.Point{X: padding, Y: padding}
-	format := t.styleTextFormat(s)
-	caretColor := graphics.ColorOf(format.TextColor)
+	format := t.textFormat(s)
+	lineHeight := textLineHeight(format.Font.Size)
 
 	if len(t.text) == 0 {
-		if t.Focused() {
-			t.paintCaretRect(p, origin, t.defaultCaretRect(padding), caretColor)
+		if caretColor, ok := t.caretColor(format); ok && t.Focused() {
+			t.paintCaretRect(p, origin, t.defaultCaretRect(padding, lineHeight), caretColor)
 		}
 		return
 	}
@@ -112,9 +88,19 @@ func (t *TextInput) Paint(p Painter) {
 	defer textLayout.Destroy()
 
 	p.DrawTextLayout(origin, textLayout)
-	if t.Focused() {
-		t.paintCaret(p, origin, textLayout, padding, caretColor)
+	if caretColor, ok := t.caretColor(format); ok && t.Focused() {
+		t.paintCaret(p, origin, textLayout, padding, lineHeight, caretColor)
 	}
+}
+
+// caretColor returns the caret color taken from the style foreground. When the
+// style leaves the foreground unset there is nothing to draw the caret with, so
+// ok is false and the caret is skipped (see the unset-skips-drawing rule).
+func (t *TextInput) caretColor(format typography.TextFormat) (graphics.Color, bool) {
+	if format.TextColor == nil {
+		return graphics.Color{}, false
+	}
+	return graphics.ColorOf(format.TextColor), true
 }
 
 func (t *TextInput) Snapshot() WidgetInfo {
@@ -232,11 +218,11 @@ func (t *TextInput) newTextLayout(size geometry.Size, format typography.TextForm
 	return textLayout
 }
 
-func (t *TextInput) styleTextFormat(s style.Style) typography.TextFormat {
-	if t.formatSet {
-		return normalizeLabelTextFormat(t.format)
-	}
-	return textFormatWithStyle(DefaultTextInputTextFormat(), s)
+// textFormat builds the single-line text format from the resolved style. Font
+// family, size and color come from the style; wrapping and alignment are fixed
+// for a single-line field.
+func (t *TextInput) textFormat(s style.Style) typography.TextFormat {
+	return textFormatFromStyle(s, WrapNone, TextAlignBegin)
 }
 
 func (t *TextInput) resolvedStyle() style.Style {
@@ -250,8 +236,8 @@ func (t *TextInput) styleState() style.State {
 	return style.Normal
 }
 
-func (t *TextInput) paintCaret(p Painter, origin geometry.Point, layout typography.TextLayout, padding float32, caretColor graphics.Color) {
-	rect := t.caretRect(layout, padding)
+func (t *TextInput) paintCaret(p Painter, origin geometry.Point, layout typography.TextLayout, padding, lineHeight float32, caretColor graphics.Color) {
+	rect := t.caretRect(layout, padding, lineHeight)
 	t.paintCaretRect(p, origin, rect, caretColor)
 }
 
@@ -267,11 +253,11 @@ func (t *TextInput) paintCaretRect(p Painter, origin geometry.Point, rect geomet
 	)
 }
 
-func (t *TextInput) caretRect(layout typography.TextLayout, padding float32) geometry.Rectangle {
+func (t *TextInput) caretRect(layout typography.TextLayout, padding, lineHeight float32) geometry.Rectangle {
 	caret := clampCaret(t.text, t.caret)
 	lines, clusters := layout.MeasureMetrics()
 	if len(lines) == 0 {
-		return t.defaultCaretRect(padding)
+		return t.defaultCaretRect(padding, lineHeight)
 	}
 
 	line := lines[0]
@@ -301,15 +287,15 @@ func (t *TextInput) caretRect(layout typography.TextLayout, padding float32) geo
 
 	height := line.Height
 	if height <= 0 {
-		height = defaultTextInputHeight - padding*2
+		height = lineHeight
 	}
 	return geometry.Rect(x, line.Y, textInputCaretWidth, height)
 }
 
-func (t *TextInput) defaultCaretRect(padding float32) geometry.Rectangle {
+func (t *TextInput) defaultCaretRect(padding, lineHeight float32) geometry.Rectangle {
 	height := t.Rect().Size.Inset(padding).Height
 	if height <= 0 {
-		height = defaultTextInputHeight - padding*2
+		height = lineHeight
 	}
 	return geometry.Rect(0, 0, textInputCaretWidth, height)
 }
