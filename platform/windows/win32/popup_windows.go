@@ -21,8 +21,9 @@ type Popup struct {
 
 func newPopup(owner common.Window, width, height float32, onEvent events.EventHandler) (common.Popup, error) {
 	win := &Window{
-		onEvent: onEvent,
-		scale:   1,
+		onEvent:    onEvent,
+		scale:      1,
+		noActivate: true, // clicking the popup must not steal focus from its owner
 	}
 
 	ownerHwnd := winapi.HWND(owner.NativeHandle())
