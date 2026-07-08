@@ -54,6 +54,7 @@ type window struct {
 	focused        bool
 	focusedWidget  Widget
 	destroyed      bool
+	popover        *popover // the one open popover this window hosts (v1: single)
 	closeRequest   signal.Signal1[*bool]
 	destroy        signal.Signal0
 	focusChanged   signal.Signal1[bool]
@@ -240,6 +241,9 @@ func (w *window) Snapshot() WindowInfo {
 }
 
 func (w *window) DispatchEvent(event events.Event) error {
+	if w.forwardToPopover(event) {
+		return nil
+	}
 	switch event := event.(type) {
 	case events.CloseEvent:
 		allow := true
@@ -278,6 +282,50 @@ func (w *window) ConnectFocusChanged(fn func(bool)) signal.Handle {
 
 func (w *window) onEvent(event events.Event) {
 	_ = w.DispatchEvent(event)
+}
+
+// setPopover records the window's open popover, superseding any previous one.
+func (w *window) setPopover(p *popover) {
+	if w.popover != nil && w.popover != p {
+		w.popover.dismissRequest.Emit()
+	}
+	w.popover = p
+}
+
+func (w *window) clearPopover(p *popover) {
+	if w.popover == p {
+		w.popover = nil
+	}
+}
+
+// forwardToPopover routes the window's own input to its open popover (§7): the
+// popover has no native focus, so keyboard is forwarded here; an outside click
+// (the owner only ever receives clicks outside the popover) / Esc / focus loss
+// requests dismissal. Returns true when it consumes the event.
+func (w *window) forwardToPopover(event events.Event) bool {
+	if w.popover == nil || !w.popover.visible {
+		return false
+	}
+	switch e := event.(type) {
+	case events.KeyEvent:
+		if e.EventType == events.KeyDown && e.Key == events.KeyEscape {
+			w.popover.dismissRequest.Emit()
+			return true
+		}
+		_ = w.popover.dispatcher.DispatchEvent(w.popover, event)
+		return true
+	case events.PointerEvent:
+		if e.EventType == events.PointerDown {
+			w.popover.dismissRequest.Emit()
+		}
+		return true // swallow the window's own pointer while a popover is open
+	case events.FocusEvent:
+		if !e.Focused {
+			w.popover.dismissRequest.Emit()
+		}
+		return false // window still handles its own focus normally
+	}
+	return false
 }
 
 func (w *window) paint() {
