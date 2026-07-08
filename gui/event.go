@@ -137,18 +137,27 @@ type EventDispatcher struct {
 	focusPath []Widget
 }
 
-func (d *EventDispatcher) DispatchEvent(window Window, event events.Event) error {
-	if window == nil {
+// EventTarget is a widget-tree host the dispatcher propagates events into — a
+// window or a popover. It exposes only what propagation needs, keeping the
+// dispatcher independent of the concrete host type.
+type EventTarget interface {
+	Widget() Widget
+	FocusedWidget() Widget
+	SetFocusedWidget(Widget) bool
+}
+
+func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) error {
+	if host == nil {
 		return nil
 	}
 
-	root := window.Widget()
+	root := host.Widget()
 	if root == nil {
 		return nil
 	}
 
 	if _, ok := event.(events.FocusEvent); ok {
-		d.updateFocus(root, window.FocusedWidget())
+		d.updateFocus(root, host.FocusedWidget())
 		return nil
 	}
 
@@ -165,7 +174,7 @@ func (d *EventDispatcher) DispatchEvent(window Window, event events.Event) error
 		}
 	}
 
-	target := d.target(window, root, event)
+	target := d.target(host, root, event)
 	if target == nil {
 		return nil
 	}
@@ -195,18 +204,18 @@ func (d *EventDispatcher) DispatchEvent(window Window, event events.Event) error
 	return nil
 }
 
-func (d *EventDispatcher) target(window Window, root Widget, event events.Event) Widget {
+func (d *EventDispatcher) target(host EventTarget, root Widget, event events.Event) Widget {
 	switch event := event.(type) {
 	case events.PointerEvent:
 		target := hitTest(root, event.Position)
 		if event.EventType == events.PointerDown {
-			focusNearest(window, target)
+			focusNearest(host, target)
 		}
 		return target
 	case events.WheelEvent:
 		return hitTest(root, event.Position)
 	case events.KeyEvent:
-		if focused := window.FocusedWidget(); focused != nil {
+		if focused := host.FocusedWidget(); focused != nil {
 			return focused
 		}
 		return root
@@ -215,14 +224,14 @@ func (d *EventDispatcher) target(window Window, root Widget, event events.Event)
 	}
 }
 
-func focusNearest(window Window, target Widget) {
+func focusNearest(host EventTarget, target Widget) {
 	for widget := target; widget != nil; widget = widget.Parent() {
 		if widget.Focusable() {
-			_ = window.SetFocusedWidget(widget)
+			_ = host.SetFocusedWidget(widget)
 			return
 		}
 	}
-	_ = window.SetFocusedWidget(nil)
+	_ = host.SetFocusedWidget(nil)
 }
 
 func (d *EventDispatcher) dispatchPhase(ctx *eventContext, widgets []Widget, phase PropagationPhase, event events.Event) {
