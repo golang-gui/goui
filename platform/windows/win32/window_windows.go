@@ -27,6 +27,7 @@ type Window struct {
 	lastModifiers events.Modifiers
 	modifiers     events.Modifiers
 	scale         float32 // cached device scale; updated on WM_SIZE
+	noActivate    bool    // popups: decline activation/focus on click (WM_MOUSEACTIVATE)
 }
 
 func newWindow(width, height float32, onEvent events.EventHandler) (w *Window, err error) {
@@ -157,6 +158,16 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 	}
 
 	switch message {
+	case winapi.WM_MOUSEACTIVATE:
+		if window.noActivate {
+			// Decline activation AND keyboard focus so a click inside a popup does
+			// not steal focus from (and thus dismiss, via the owner's WM_KILLFOCUS)
+			// its owner window. The click itself is still delivered. WS_EX_NOACTIVATE
+			// alone blocks activation but not same-thread focus transfer.
+			return winapi.MA_NOACTIVATE
+		}
+		return winapi.DefWindowProc(hwnd, message, wParam, lParam)
+
 	case winapi.WM_CLOSE:
 		window.onEvent(events.CloseEvent{})
 		return 0
