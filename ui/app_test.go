@@ -135,7 +135,9 @@ func TestAppRuntimeCloseRequestCanPreventDestroy(t *testing.T) {
 	if !win.destroyed {
 		t.Fatal("window was not destroyed after close request was allowed")
 	}
-	if destroys != 1 || app.quits != 1 {
+	// The ui runtime destroys the window but does not decide to quit — that is
+	// gui.Application's QuitOnLastWindowClosed policy, so app.quits stays 0.
+	if destroys != 1 || app.quits != 0 {
 		t.Fatalf("unexpected destroy handling: destroys=%d quits=%d", destroys, app.quits)
 	}
 	if len(rt.windows) != 0 {
@@ -242,6 +244,10 @@ func (a *windowTestApplication) Run() {}
 func (a *windowTestApplication) Quit() {
 	a.quits++
 }
+
+func (a *windowTestApplication) QuitOnLastWindowClosed() bool { return true }
+
+func (a *windowTestApplication) SetQuitOnLastWindowClosed(bool) {}
 
 func (a *windowTestApplication) Post(task func()) {
 	a.posts = append(a.posts, task)

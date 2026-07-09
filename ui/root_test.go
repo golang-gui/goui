@@ -489,6 +489,10 @@ func (a *testApplication) Run() {}
 
 func (a *testApplication) Quit() {}
 
+func (a *testApplication) QuitOnLastWindowClosed() bool { return true }
+
+func (a *testApplication) SetQuitOnLastWindowClosed(bool) {}
+
 func (a *testApplication) Post(task func()) {
 	a.posts = append(a.posts, task)
 }
