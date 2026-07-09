@@ -381,9 +381,8 @@ func (rt *appRuntime) windowDestroyed(mount *windowMount) {
 	if mount.view.onDestroy != nil {
 		mount.view.onDestroy()
 	}
-	if len(rt.windows) == 0 {
-		rt.quit()
-	}
+	// Quitting when the last window closes is gui.Application's policy
+	// (QuitOnLastWindowClosed); the ui runtime does not decide it.
 }
 
 func (rt *appRuntime) destroyAll() {
