@@ -39,10 +39,10 @@ func TestWindowForwardsToPopover(t *testing.T) {
 	var popCalls []string
 	content.AddEventController(newRecordingController("pop", PhaseTarget, &popCalls, nil))
 
-	p := &popover{modal: true} // menu-style: occupies the window's input slot
+	p := &popover{modal: true} // menu-style: intercepts the window's input
 	p.SetWidget(content)
 	p.visible = true
-	win.popover = p
+	win.SetModalTarget(p) // what Show() does for a modal popover
 
 	dismisses := 0
 	p.dismissRequest.Connect(func() { dismisses++ })
@@ -81,22 +81,39 @@ func TestWindowForwardsToPopover(t *testing.T) {
 	}
 }
 
-// setPopover superseding a previous popover requests the old one's dismissal.
-func TestWindowSetPopoverSupersedes(t *testing.T) {
-	win := &window{root: newTestWidget()}
+// A widget hosted in a popover reaches the popover as its host for repaint and
+// layout requests — Window() is nil there, so those must go through Root.
+func TestPopoverHostsWidgetForRepaintAndLayout(t *testing.T) {
+	p := &popover{}
+	content := newTestWidget()
+	p.SetWidget(content)
 
-	old := &popover{visible: true}
-	oldDismissed := 0
-	old.dismissRequest.Connect(func() { oldDismissed++ })
-	win.setPopover(old)
-
-	newP := &popover{visible: true}
-	win.setPopover(newP)
-
-	if oldDismissed != 1 {
-		t.Fatalf("old popover should get a dismiss request when superseded, got %d", oldDismissed)
+	if content.Root() != Root(p) {
+		t.Fatalf("content.Root() should be the popover")
 	}
-	if win.popover != newP {
-		t.Fatalf("window should track the new popover")
+	if content.Window() != nil {
+		t.Fatalf("content.Window() should be nil for a popover-hosted widget")
+	}
+
+	p.layoutDirty = false
+	content.RequestLayout()
+	if !p.layoutDirty {
+		t.Fatalf("RequestLayout on popover content should reach the popover (mark it dirty)")
+	}
+}
+
+// A modal popover registers itself as the window's modal target and resigns when
+// it stops being modal — through the public Window.SetModalTarget API only.
+func TestPopoverModalTogglesWindowModalTarget(t *testing.T) {
+	win := &window{root: newTestWidget()}
+	p := &popover{owner: win, visible: true}
+
+	p.becomeModalTarget()
+	if win.modalTarget == nil {
+		t.Fatalf("a modal popover should register itself as the owner's modal target")
+	}
+	p.resignModalTarget()
+	if win.modalTarget != nil {
+		t.Fatalf("resigning should clear the window's modal target")
 	}
 }
