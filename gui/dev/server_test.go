@@ -191,6 +191,10 @@ func (a *testApplication) StyleSheet() style.StyleSheet {
 
 func (a *testApplication) SetStyleSheet(style.StyleSheet) {}
 
+func (a *testApplication) QuitOnLastWindowClosed() bool { return true }
+
+func (a *testApplication) SetQuitOnLastWindowClosed(bool) {}
+
 func (a *testApplication) NewWindow() (gui.Window, error) {
 	return nil, nil
 }
