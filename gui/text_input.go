@@ -201,8 +201,10 @@ func (t *TextInput) setText(text string, caret int) {
 }
 
 func (t *TextInput) requestPaint() {
-	if win := t.Window(); win != nil {
-		_ = win.RequestPaint()
+	// Root is the widget host (window or popover); Window() is nil for a
+	// popover-hosted widget, which would drop the repaint request.
+	if r := t.Root(); r != nil {
+		_ = r.RequestPaint()
 	}
 }
 
