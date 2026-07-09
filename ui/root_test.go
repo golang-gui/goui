@@ -529,6 +529,14 @@ func (w *testWindow) RequestPaint() error {
 	return nil
 }
 
+func (w *testWindow) RequestLayout() {}
+
+func (w *testWindow) PlatformWindow() platform.Window {
+	return nil
+}
+
+func (w *testWindow) SetModalTarget(gui.ModalTarget) {}
+
 func (w *testWindow) ID() string {
 	return w.id
 }
