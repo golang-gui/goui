@@ -27,6 +27,10 @@ type Application interface {
 	NewWindow() (Window, error)
 	Run()
 	Quit()
+	// QuitOnLastWindowClosed reports whether the app quits when its last window
+	// is closed (default true).
+	QuitOnLastWindowClosed() bool
+	SetQuitOnLastWindowClosed(bool)
 	Post(func())
 	Windows() []Window
 	Snapshot() ApplicationInfo
@@ -60,6 +64,8 @@ type application struct {
 	style        style.StyleSheet
 	defaultStyle style.StyleSheet
 	windows      []*window
+
+	quitOnLastWindowClosed bool
 }
 
 func newApplication() (*application, error) {
@@ -100,6 +106,8 @@ func newApplication() (*application, error) {
 		typo:      typo,
 		clipboard: clip,
 		settings:  newSettings(settings, loop),
+
+		quitOnLastWindowClosed: true,
 	}
 	app.rebuildDefaultStyle()
 	app.settings.ConnectChanged(app.onSettingsChanged)
@@ -173,6 +181,14 @@ func (a *application) Quit() {
 	a.loop.Quit()
 }
 
+func (a *application) QuitOnLastWindowClosed() bool {
+	return a.quitOnLastWindowClosed
+}
+
+func (a *application) SetQuitOnLastWindowClosed(v bool) {
+	a.quitOnLastWindowClosed = v
+}
+
 func (a *application) Post(task func()) {
 	a.loop.Post(task)
 }
@@ -208,5 +224,8 @@ func (a *application) removeWindow(win *window) {
 	index := slices.Index(a.windows, win)
 	if index >= 0 {
 		a.windows = slices.Delete(a.windows, index, index+1)
+	}
+	if a.quitOnLastWindowClosed && len(a.windows) == 0 {
+		a.loop.Quit()
 	}
 }
