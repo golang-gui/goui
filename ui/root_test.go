@@ -57,7 +57,7 @@ func TestRootExpandsCompositionViewBeforeDiff(t *testing.T) {
 	root := newRoot()
 	builds := 0
 
-	widget := root.update(testCompositionView{
+	widget := root.update(&testCompositionView{
 		view:   Label("first"),
 		builds: &builds,
 	})
@@ -66,7 +66,7 @@ func TestRootExpandsCompositionViewBeforeDiff(t *testing.T) {
 		t.Fatalf("unexpected initial composition state: text=%q builds=%d", label.Text(), builds)
 	}
 
-	updated := root.update(testCompositionView{
+	updated := root.update(&testCompositionView{
 		view:   Label("second"),
 		builds: &builds,
 	})
@@ -77,7 +77,7 @@ func TestRootExpandsCompositionViewBeforeDiff(t *testing.T) {
 		t.Fatalf("unexpected updated composition state: text=%q builds=%d", label.Text(), builds)
 	}
 
-	replaced := root.update(testCompositionView{
+	replaced := root.update(&testCompositionView{
 		view:   TextInput().Text("third"),
 		builds: &builds,
 	})
@@ -293,9 +293,9 @@ func TestRootPreservesViewStateAcrossUpdatesAndUnmounts(t *testing.T) {
 	root := newRoot()
 	tracker := &lifecycleTracker{}
 
-	widget := root.update(lifecycleView{text: "first", tracker: tracker})
+	widget := root.update(&lifecycleView{text: "first", tracker: tracker})
 	label := widget.(*gui.Label)
-	updated := root.update(lifecycleView{text: "second", tracker: tracker})
+	updated := root.update(&lifecycleView{text: "second", tracker: tracker})
 
 	if updated != label {
 		t.Fatal("same view type should reuse the mounted widget")
@@ -399,40 +399,42 @@ type lifecycleState struct {
 }
 
 type lifecycleView struct {
+	viewBase
 	text    string
 	tracker *lifecycleTracker
 }
 
 type testCompositionView struct {
+	viewBase
 	view   View
 	builds *int
 }
 
-func (v testCompositionView) Build() View {
+func (v *testCompositionView) Build() View {
 	if v.builds != nil {
 		*v.builds = *v.builds + 1
 	}
 	return v.view
 }
 
-func (v lifecycleView) Build() View {
+func (v *lifecycleView) Build() View {
 	return v
 }
 
-func (v lifecycleView) Mount(ctx BuildContext) gui.Widget {
+func (v *lifecycleView) Mount(ctx BuildContext) gui.Widget {
 	v.tracker.mounts++
 	ctx.SetState(&lifecycleState{})
 	return gui.NewLabel("")
 }
 
-func (v lifecycleView) Update(ctx BuildContext, widget gui.Widget) {
+func (v *lifecycleView) Update(ctx BuildContext, widget gui.Widget) {
 	v.tracker.updates++
 	state := ctx.State().(*lifecycleState)
 	state.updates++
 	widget.(*gui.Label).SetText(v.text)
 }
 
-func (v lifecycleView) Unmount(ctx BuildContext, widget gui.Widget) {
+func (v *lifecycleView) Unmount(ctx BuildContext, widget gui.Widget) {
 	v.tracker.unmounts++
 	state := ctx.State().(*lifecycleState)
 	v.tracker.unmountedStateUpdates = state.updates
