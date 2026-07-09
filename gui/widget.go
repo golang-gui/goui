@@ -8,9 +8,12 @@ import (
 	"github.com/golang-gui/goui/layout"
 )
 
+// Root is the host a widget lives in — a window or a popover. Widgets reach it
+// via Root() and depend only on this interface, never on the concrete host type.
 type Root interface {
 	Widget() Widget
 	RequestPaint() error
+	RequestLayout()
 }
 
 type Widget interface {
@@ -105,8 +108,8 @@ func (w *WidgetBase) SetVisible(visible bool) {
 	if w.hidden != hidden {
 		w.hidden = hidden
 		if hidden {
-			if win := w.window(); win != nil && win.focusWithinBase(w) {
-				win.SetFocusedWidget(nil)
+			if h, ok := w.root().(EventTarget); ok && focusWithin(h, w) {
+				h.SetFocusedWidget(nil)
 			}
 		}
 		w.RequestLayout()
@@ -124,8 +127,10 @@ func (w *WidgetBase) SetFocusable(focusable bool) {
 	}
 	w.focusable = focusable
 	if !focusable {
-		if win := w.window(); win != nil && win.focusIsBase(w) {
-			win.SetFocusedWidget(nil)
+		if h, ok := w.root().(EventTarget); ok {
+			if f := h.FocusedWidget(); f != nil && f.base() == w {
+				h.SetFocusedWidget(nil)
+			}
 		}
 	}
 	w.requestSemanticUpdate()
@@ -257,9 +262,32 @@ func (w *WidgetBase) windowRect() geometry.Rectangle {
 }
 
 func (w *WidgetBase) RequestLayout() {
-	if win := w.window(); win != nil {
-		win.requestLayout()
+	// Reach the host through the Root interface (window or popover) — never the
+	// concrete *window, which is nil for a popover-hosted widget.
+	if r := w.root(); r != nil {
+		r.RequestLayout()
 	}
+}
+
+// liveRoot returns root, or nil if it has been destroyed — letting a host drop
+// its root pointer once the widget's lifecycle ends, without a host-specific
+// callback interface.
+func liveRoot(root Widget) Widget {
+	if root != nil && root.base().destroyed {
+		return nil
+	}
+	return root
+}
+
+// focusWithin reports whether the host's focused widget is base or a descendant
+// of it. Works for any host (window or popover) via the EventTarget interface.
+func focusWithin(host EventTarget, base *WidgetBase) bool {
+	for widget := host.FocusedWidget(); widget != nil; widget = widget.Parent() {
+		if widget.base() == base {
+			return true
+		}
+	}
+	return false
 }
 
 func (w *WidgetBase) ConnectMount(fn func()) signal.Handle {
@@ -322,8 +350,8 @@ func (w *WidgetBase) setParent(child, parent Widget) {
 
 	if rootChanged && oldRoot != nil {
 		w.emitUnmountSubtree(child)
-		if win, ok := oldRoot.(*window); ok && win.focusWithinWidget(child) {
-			win.SetFocusedWidget(nil)
+		if h, ok := oldRoot.(EventTarget); ok && focusWithin(h, child.base()) {
+			h.SetFocusedWidget(nil)
 		}
 	}
 	w.detach(child)
@@ -332,8 +360,8 @@ func (w *WidgetBase) setParent(child, parent Widget) {
 		w.attachChild(parent, child)
 	}
 	if !rootChanged && oldRoot != nil {
-		if win, ok := oldRoot.(*window); ok && win.focusWithinWidget(child) {
-			win.SetFocusedWidget(win.FocusedWidget())
+		if h, ok := oldRoot.(EventTarget); ok && focusWithin(h, child.base()) {
+			h.SetFocusedWidget(h.FocusedWidget())
 		}
 	}
 	if rootChanged && newRoot != nil {
@@ -354,11 +382,6 @@ func (w *WidgetBase) root() Root {
 	return nil
 }
 
-func (w *WidgetBase) window() *window {
-	win, _ := w.root().(*window)
-	return win
-}
-
 func (w *WidgetBase) attachRoot(root Root, child Widget) {
 	if child == nil || child.base() != w {
 		return
@@ -375,8 +398,8 @@ func (w *WidgetBase) detachRoot(child Widget) {
 	oldRoot := child.Root()
 	if oldRoot != nil {
 		w.emitUnmountSubtree(child)
-		if win, ok := oldRoot.(*window); ok && win.focusWithinWidget(child) {
-			win.SetFocusedWidget(nil)
+		if h, ok := oldRoot.(EventTarget); ok && focusWithin(h, child.base()) {
+			h.SetFocusedWidget(nil)
 		}
 	}
 	w.detach(child)
@@ -411,12 +434,9 @@ func (w *WidgetBase) detach(child Widget) {
 		return
 	}
 	if w.parentRoot != nil {
-		root := w.parentRoot
+		// A host's root widget is owned by the host and managed through its
+		// SetWidget; detaching it any other way just severs the back-link here.
 		w.parentRoot = nil
-		if win, ok := root.(*window); ok && win.root == child {
-			win.root = nil
-			win.requestLayout()
-		}
 	}
 }
 
@@ -428,8 +448,8 @@ func (w *WidgetBase) destroy(widget Widget) {
 	oldRoot := widget.Root()
 	if oldRoot != nil {
 		w.emitUnmountSubtree(widget)
-		if win, ok := oldRoot.(*window); ok && win.focusWithinWidget(widget) {
-			win.SetFocusedWidget(nil)
+		if h, ok := oldRoot.(EventTarget); ok && focusWithin(h, widget.base()) {
+			h.SetFocusedWidget(nil)
 		}
 	}
 	w.detach(widget)

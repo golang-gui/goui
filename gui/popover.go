@@ -58,7 +58,7 @@ type popover struct {
 	anchor        Widget
 	widget        Widget // content
 	position      geometry.Point
-	owner         *window
+	owner         Window // resolved from the anchor; only the public Window API is used
 	platformPopup platform.Popup
 	painter       graphics.Painter
 	dispatcher    EventDispatcher
@@ -79,7 +79,10 @@ type popover struct {
 
 // --- Root + EventTarget (widget host) ---
 
-func (p *popover) Widget() Widget { return p.widget }
+func (p *popover) Widget() Widget {
+	p.widget = liveRoot(p.widget)
+	return p.widget
+}
 
 func (p *popover) RequestPaint() error {
 	p.requestPaint()
@@ -111,11 +114,11 @@ func (p *popover) SetModal(v bool) {
 		return
 	}
 	p.modal = v
-	if p.visible && p.owner != nil {
+	if p.visible {
 		if v {
-			p.owner.setPopover(p)
+			p.becomeModalTarget()
 		} else {
-			p.owner.clearPopover(p)
+			p.resignModalTarget()
 		}
 	}
 }
@@ -152,6 +155,31 @@ func (p *popover) ConnectDismissRequest(fn func()) signal.Handle {
 	return p.dismissRequest.Connect(fn)
 }
 
+// becomeModalTarget / resignModalTarget register this popover as its owner
+// window's modal input target while it is a visible modal (menu-style). Modeless
+// popovers never intercept the window. Both use only the public Window API.
+func (p *popover) becomeModalTarget() {
+	if p.owner != nil {
+		p.owner.SetModalTarget(p)
+	}
+}
+
+func (p *popover) resignModalTarget() {
+	if p.owner != nil {
+		p.owner.SetModalTarget(nil)
+	}
+}
+
+// DispatchEvent routes an event the owner window forwards (keyboard nav, since
+// the popover has no native focus) to the popover's content. Part of ModalTarget.
+func (p *popover) DispatchEvent(event events.Event) error {
+	return p.dispatcher.DispatchEvent(p, event)
+}
+
+// RequestDismiss fires the dismiss-request signal so the controlling code can
+// hide/destroy the popover. Part of ModalTarget; also fine to call directly.
+func (p *popover) RequestDismiss() { p.dismissRequest.Emit() }
+
 func (p *popover) Show() error {
 	win, ok := anchorWindow(p.anchor)
 	if !ok {
@@ -170,9 +198,9 @@ func (p *popover) Show() error {
 	p.reposition()
 	p.visible = true
 	if p.modal {
-		// Only a modal (menu) popover occupies the window's input slot; modeless
+		// Only a modal (menu) popover intercepts the window's input; modeless
 		// tooltips/panels leave the window's own input untouched.
-		win.setPopover(p)
+		p.becomeModalTarget()
 	}
 	return p.platformPopup.Show()
 }
@@ -182,8 +210,8 @@ func (p *popover) Hide() {
 		return
 	}
 	p.visible = false
-	if p.owner != nil {
-		p.owner.clearPopover(p)
+	if p.modal {
+		p.resignModalTarget()
 	}
 	if p.platformPopup != nil {
 		_ = p.platformPopup.Hide()
@@ -200,16 +228,21 @@ func (p *popover) Destroy() {
 
 // --- native resource lifecycle (belongs to the window) ---
 
-func (p *popover) createNative(win *window) error {
+func (p *popover) createNative(win Window) error {
+	if App == nil {
+		return fmt.Errorf("popover: application is not created")
+	}
 	p.owner = win
-	p.measureAndSize() // needs owner set; sizes p.width/height from content
+	p.measureAndSize() // sizes p.width/height from content
 
-	pp, err := win.app.platform.NewPopup(win.platformWindow, p.width, p.height, p.onEvent)
+	// Platform + typography come from the app (global escape hatches); the owner
+	// platform window comes from the host's PlatformWindow escape hatch.
+	pp, err := App.Platform().NewPopup(win.PlatformWindow(), p.width, p.height, p.onEvent)
 	if err != nil {
 		p.owner = nil
 		return fmt.Errorf("create platform popup: %w", err)
 	}
-	painter, err := win.app.platform.NewPainter(pp, win.app.typo)
+	painter, err := App.Platform().NewPainter(pp, App.Typography())
 	if err != nil {
 		pp.Destroy()
 		p.owner = nil
@@ -238,8 +271,8 @@ func (p *popover) releaseNative() {
 		p.hWinGone.Disconnect()
 		p.hWinGone = nil
 	}
-	if p.owner != nil {
-		p.owner.clearPopover(p)
+	if p.modal {
+		p.resignModalTarget()
 	}
 	if p.painter != nil {
 		p.painter.Destroy()
@@ -253,11 +286,13 @@ func (p *popover) releaseNative() {
 // measureAndSize sizes the popover to its content (content-driven), using the
 // owner window's size as the available constraint, and resizes the native face.
 func (p *popover) measureAndSize() {
-	if p.owner == nil || p.widget == nil {
+	if p.widget == nil {
 		return
 	}
-	avail := geometry.Size{Width: p.owner.width, Height: p.owner.height}
-	size := p.widget.Measure(avail)
+	// Content-driven: measure with a loose (effectively unbounded) constraint so
+	// the popover sizes to its content, independent of the owner window's size.
+	const loose = 1 << 14
+	size := p.widget.Measure(geometry.Size{Width: loose, Height: loose})
 	p.width, p.height = size.Width, size.Height
 	if p.width < 1 {
 		p.width = 1
@@ -295,6 +330,7 @@ func (p *popover) onEvent(event platform.Event) {
 }
 
 func (p *popover) paint() {
+	p.widget = liveRoot(p.widget)
 	if p.painter == nil || p.widget == nil {
 		return
 	}
@@ -320,6 +356,9 @@ func (p *popover) paint() {
 	p.paintDirty = false
 }
 
+// RequestLayout satisfies Root: schedule a relayout of this host.
+func (p *popover) RequestLayout() { p.requestLayout() }
+
 func (p *popover) requestLayout() {
 	p.layoutDirty = true
 	p.requestPaint()
@@ -334,12 +373,12 @@ func (p *popover) requestPaint() {
 
 // anchorWindow resolves the *window hosting anchor, or false if anchor is not
 // mounted in a window.
-func anchorWindow(anchor Widget) (*window, bool) {
+func anchorWindow(anchor Widget) (Window, bool) {
 	if anchor == nil {
 		return nil, false
 	}
-	win, ok := anchor.Window().(*window)
-	if !ok || win == nil {
+	win := anchor.Window()
+	if win == nil {
 		return nil, false
 	}
 	return win, true

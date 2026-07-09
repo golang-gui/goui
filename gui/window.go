@@ -26,6 +26,16 @@ type Window interface {
 
 	Show() error
 
+	// PlatformWindow returns the underlying platform window.
+	PlatformWindow() platform.Window
+
+	// SetModalTarget makes target intercept this window's input: the window
+	// forwards its keyboard to target and calls target.RequestDismiss() when it
+	// sees a dismiss-worthy interaction (outside click / Esc / focus loss). A nil
+	// target clears it. Any modal element can be a target; the window needs only
+	// the two ModalTarget methods and never learns the concrete type.
+	SetModalTarget(ModalTarget)
+
 	RequestClose() error
 	Destroy()
 
@@ -35,6 +45,16 @@ type Window interface {
 	ConnectCloseRequest(func(*bool)) signal.Handle
 	ConnectDestroy(func()) signal.Handle
 	ConnectFocusChanged(func(bool)) signal.Handle
+}
+
+// ModalTarget is a modal element a window forwards its input to (see
+// Window.SetModalTarget). The window drives it: it dispatches forwarded keyboard
+// via DispatchEvent and calls RequestDismiss on a dismiss-worthy interaction.
+// A popover implements it, but so can any element — the window depends only on
+// these two methods, never on a concrete type.
+type ModalTarget interface {
+	DispatchEvent(events.Event) error
+	RequestDismiss()
 }
 
 type window struct {
@@ -54,7 +74,7 @@ type window struct {
 	focused        bool
 	focusedWidget  Widget
 	destroyed      bool
-	popover        *popover // the one open popover this window hosts (v1: single)
+	modalTarget    ModalTarget // the modal element intercepting this window's input; nil when none
 	closeRequest   signal.Signal1[*bool]
 	destroy        signal.Signal0
 	focusChanged   signal.Signal1[bool]
@@ -148,6 +168,7 @@ func (w *window) SetFocusedWidget(widget Widget) bool {
 }
 
 func (w *window) Widget() Widget {
+	w.root = liveRoot(w.root)
 	return w.root
 }
 
@@ -165,8 +186,8 @@ func (w *window) SetWidget(widget Widget) {
 		oldRoot := widget.Root()
 		if oldRoot != nil {
 			widget.base().emitUnmountSubtree(widget)
-			if win, ok := oldRoot.(*window); ok && win.focusWithinWidget(widget) {
-				win.SetFocusedWidget(nil)
+			if h, ok := oldRoot.(EventTarget); ok && focusWithin(h, widget.base()) {
+				h.SetFocusedWidget(nil)
 			}
 		}
 		widget.base().detach(widget)
@@ -241,7 +262,7 @@ func (w *window) Snapshot() WindowInfo {
 }
 
 func (w *window) DispatchEvent(event events.Event) error {
-	if w.forwardToPopover(event) {
+	if w.routeToModalTarget(event) {
 		return nil
 	}
 	switch event := event.(type) {
@@ -284,44 +305,36 @@ func (w *window) onEvent(event events.Event) {
 	_ = w.DispatchEvent(event)
 }
 
-// setPopover records the window's open popover, superseding any previous one.
-func (w *window) setPopover(p *popover) {
-	if w.popover != nil && w.popover != p {
-		w.popover.dismissRequest.Emit()
-	}
-	w.popover = p
+// SetModalTarget installs (or with nil clears) the window's modal input target.
+// See the Window interface.
+func (w *window) SetModalTarget(target ModalTarget) {
+	w.modalTarget = target
 }
 
-func (w *window) clearPopover(p *popover) {
-	if w.popover == p {
-		w.popover = nil
-	}
-}
-
-// forwardToPopover routes the window's own input to its open popover (§7): the
-// popover has no native focus, so keyboard is forwarded here; an outside click
-// (the owner only ever receives clicks outside the popover) / Esc / focus loss
-// requests dismissal. Returns true when it consumes the event.
-func (w *window) forwardToPopover(event events.Event) bool {
-	if w.popover == nil || !w.popover.visible {
+// routeToModalTarget forwards the window's input to its modal target (§7): the
+// target has no native focus, so the window drives the modal policy — keyboard
+// goes to the target, and an outside click / Esc / focus loss asks it to
+// dismiss. Returns true when it consumes the event.
+func (w *window) routeToModalTarget(event events.Event) bool {
+	if w.modalTarget == nil {
 		return false
 	}
 	switch e := event.(type) {
 	case events.KeyEvent:
 		if e.EventType == events.KeyDown && e.Key == events.KeyEscape {
-			w.popover.dismissRequest.Emit()
-			return true
+			w.modalTarget.RequestDismiss()
+		} else {
+			_ = w.modalTarget.DispatchEvent(event)
 		}
-		_ = w.popover.dispatcher.DispatchEvent(w.popover, event)
 		return true
 	case events.PointerEvent:
 		if e.EventType == events.PointerDown {
-			w.popover.dismissRequest.Emit()
+			w.modalTarget.RequestDismiss() // the owner only ever sees clicks outside the target
 		}
-		return true // swallow the window's own pointer while a popover is open
+		return true // swallow the window's own pointer while a modal target is open
 	case events.FocusEvent:
 		if !e.Focused {
-			w.popover.dismissRequest.Emit()
+			w.modalTarget.RequestDismiss()
 		}
 		return false // window still handles its own focus normally
 	}
@@ -329,6 +342,7 @@ func (w *window) forwardToPopover(event events.Event) bool {
 }
 
 func (w *window) paint() {
+	w.root = liveRoot(w.root)
 	if w.painter == nil || w.root == nil {
 		return
 	}
@@ -358,6 +372,12 @@ func (w *window) paint() {
 	w.painter.End()
 	w.paintDirty = false
 }
+
+// PlatformWindow is the escape hatch to the underlying platform window.
+func (w *window) PlatformWindow() platform.Window { return w.platformWindow }
+
+// RequestLayout satisfies Root: schedule a relayout of this host.
+func (w *window) RequestLayout() { w.requestLayout() }
 
 func (w *window) requestLayout() {
 	w.layoutDirty = true
@@ -389,23 +409,6 @@ func (w *window) setFocusedWidget(widget Widget) {
 	w.requestPaint()
 }
 
-func (w *window) focusWithinWidget(widget Widget) bool {
-	return widgetContains(w.focusedWidget, widget)
-}
-
-func (w *window) focusWithinBase(base *WidgetBase) bool {
-	for widget := w.focusedWidget; widget != nil; widget = widget.Parent() {
-		if widget.base() == base {
-			return true
-		}
-	}
-	return false
-}
-
-func (w *window) focusIsBase(base *WidgetBase) bool {
-	return w.focusedWidget != nil && w.focusedWidget.base() == base
-}
-
 func visibleInTree(widget Widget) bool {
 	for widget != nil {
 		if !widget.Visible() {
@@ -414,14 +417,4 @@ func visibleInTree(widget Widget) bool {
 		widget = widget.Parent()
 	}
 	return true
-}
-
-func widgetContains(widget, ancestor Widget) bool {
-	for widget != nil {
-		if widget == ancestor {
-			return true
-		}
-		widget = widget.Parent()
-	}
-	return false
 }
