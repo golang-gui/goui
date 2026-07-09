@@ -3,47 +3,31 @@ package ui
 import (
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
-	"github.com/golang-gui/goui/style"
 )
 
 type TextInputView struct {
-	name   string
-	hidden bool
+	ViewBase[TextInputView]
 	text   string
 	onText func(string)
-	rules  []style.Rule
 }
 
-func TextInput() TextInputView {
-	return TextInputView{}
-}
-
-func (v TextInputView) Name(name string) TextInputView {
-	v.name = name
+func TextInput() *TextInputView {
+	v := &TextInputView{}
+	v.Self = v
 	return v
 }
 
-func (v TextInputView) Hidden(hidden bool) TextInputView {
-	v.hidden = hidden
-	return v
-}
-
-func (v TextInputView) Text(text string) TextInputView {
+func (v *TextInputView) Text(text string) *TextInputView {
 	v.text = text
 	return v
 }
 
-func (v TextInputView) OnText(fn func(string)) TextInputView {
+func (v *TextInputView) OnText(fn func(string)) *TextInputView {
 	v.onText = fn
 	return v
 }
 
-func (v TextInputView) Style(rules ...style.Rule) TextInputView {
-	v.rules = rules
-	return v
-}
-
-func (v TextInputView) Build() View {
+func (v *TextInputView) Build() View {
 	return v
 }
 
@@ -52,7 +36,7 @@ type textInputState struct {
 	text   signal.Handle
 }
 
-func (v TextInputView) Mount(ctx BuildContext) gui.Widget {
+func (v *TextInputView) Mount(ctx BuildContext) gui.Widget {
 	input := gui.NewTextInput()
 	state := &textInputState{}
 	state.text = input.ConnectText(func(text string) {
@@ -64,12 +48,9 @@ func (v TextInputView) Mount(ctx BuildContext) gui.Widget {
 	return input
 }
 
-func (v TextInputView) Update(ctx BuildContext, widget gui.Widget) {
+func (v *TextInputView) Update(ctx BuildContext, widget gui.Widget) {
 	input := widget.(*gui.TextInput)
 	state := ctx.State().(*textInputState)
-	input.SetID(v.name)
-	input.SetVisible(!v.hidden)
-	input.SetStyleRules(v.rules...)
 	func() {
 		state.text.Block()
 		defer state.text.Unblock()
@@ -78,7 +59,7 @@ func (v TextInputView) Update(ctx BuildContext, widget gui.Widget) {
 	state.onText = v.onText
 }
 
-func (v TextInputView) Unmount(ctx BuildContext, _ gui.Widget) {
+func (v *TextInputView) Unmount(ctx BuildContext, _ gui.Widget) {
 	state, _ := ctx.State().(*textInputState)
 	if state != nil && state.text != nil {
 		state.text.Disconnect()

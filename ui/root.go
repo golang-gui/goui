@@ -210,6 +210,7 @@ func (r *root) updateWidgetNode(old *node, view WidgetView) *node {
 	current.viewType = viewType
 	current.view = view
 	view.Update(ctx, current.widget)
+	view.base().apply(current.widget) // shared id/visibility/style, framework-driven
 	return current
 }
 
