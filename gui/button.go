@@ -87,8 +87,10 @@ func (b *Button) setPressed(pressed bool) {
 }
 
 func (b *Button) requestPaint() {
-	if win := b.Window(); win != nil {
-		_ = win.RequestPaint()
+	// Root is the widget host (a window or a popover); Window() would be nil for a
+	// widget hosted in a popover, so a repaint request would be dropped.
+	if r := b.Root(); r != nil {
+		_ = r.RequestPaint()
 	}
 }
 
