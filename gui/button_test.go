@@ -39,14 +39,16 @@ func TestButtonSnapshot(t *testing.T) {
 func TestButtonUsesWidgetBaseLayoutAndPaint(t *testing.T) {
 	button := NewButton()
 	child := newPaintCountingWidget()
+	// Sized well above the skeleton floor so this test isolates the delegate +
+	// padding behavior. The default button padding is 6, added on every side.
 	manager := &testLayoutManager{
-		measureSize: geometry.Size{Width: 30, Height: 20},
+		measureSize: geometry.Size{Width: 120, Height: 60},
 	}
 	button.SetLayoutManager(manager)
 	button.AddChild(child)
 
-	size := button.Measure(layout.Loose(geometry.Size{Width: 100, Height: 50}))
-	if size != (geometry.Size{Width: 30, Height: 20}) {
+	size := button.Measure(layout.Loose(geometry.Size{Width: 300, Height: 200}))
+	if size != (geometry.Size{Width: 132, Height: 72}) {
 		t.Fatalf("unexpected measured size: %+v", size)
 	}
 	if len(manager.measured) != 1 || manager.measured[0] != child {
@@ -54,7 +56,7 @@ func TestButtonUsesWidgetBaseLayoutAndPaint(t *testing.T) {
 	}
 
 	button.Arrange(geometry.Rect(0, 0, 80, 30))
-	if manager.arrangeRect != geometry.Rect(0, 0, 80, 30) {
+	if manager.arrangeRect != geometry.Rect(6, 6, 68, 18) {
 		t.Fatalf("unexpected layout arrange rect: %+v", manager.arrangeRect)
 	}
 
@@ -71,8 +73,24 @@ func TestButtonDefaultFillLayoutArrangesContent(t *testing.T) {
 
 	button.Arrange(geometry.Rect(0, 0, 80, 30))
 
-	if child.Rect() != geometry.Rect(0, 0, 80, 30) {
+	// Content is inset by the default button padding (6) on every side.
+	if child.Rect() != geometry.Rect(6, 6, 68, 18) {
 		t.Fatalf("unexpected child rect: %+v", child.Rect())
+	}
+}
+
+func TestButtonEmptyKeepsVisibleSkeleton(t *testing.T) {
+	// A button with no content must not collapse to zero; it keeps at least a
+	// font-derived skeleton so it stays visible and clickable (no user SetMinSize
+	// needed). The floor is a line-height square, so it never drops below the
+	// line height on either axis regardless of padding.
+	button := NewButton()
+
+	size := button.Measure(layout.Loose(geometry.Size{Width: 500, Height: 500}))
+
+	minSkeleton := textLineHeight(defaultFontSize)
+	if size.Width < minSkeleton || size.Height < minSkeleton {
+		t.Fatalf("empty button collapsed: %+v (want at least %v on each axis)", size, minSkeleton)
 	}
 }
 

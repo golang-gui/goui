@@ -48,13 +48,23 @@ func (b *Button) Measure(c layout.Constraint) geometry.Size {
 	if !b.Visible() {
 		return geometry.Size{}
 	}
-	padding := stylePadding(b.resolvedStyle())
-	manager := b.LayoutManager()
-	if manager == nil {
-		return b.constrain(c, geometry.Size{Width: padding * 2, Height: padding * 2})
+	s := b.resolvedStyle()
+	padding := stylePadding(s)
+
+	var content geometry.Size
+	if manager := b.LayoutManager(); manager != nil {
+		content = manager.Measure(b.visibleChildren(), layout.Loose(c.Max.Inset(padding))).Inset(-padding)
 	}
-	size := manager.Measure(b.visibleChildren(), layout.Loose(c.Max.Inset(padding)))
-	return b.constrain(c, size.Inset(-padding))
+
+	// A button keeps a font-derived skeleton (one line-height square) so an empty
+	// or icon-only button stays a visible, clickable box instead of collapsing to
+	// zero. This is the widget's own intrinsic floor, not a user override; a
+	// user's SetMin/MaxSize still wins because constrain runs last (DesignLayout).
+	fontSize, _ := s.FontSize()
+	floor := textLineHeight(fontSize) + padding*2
+	content.Width = max(content.Width, floor)
+	content.Height = max(content.Height, floor)
+	return b.constrain(c, content)
 }
 
 func (b *Button) Arrange(rect geometry.Rectangle) {
