@@ -53,6 +53,30 @@ func (b *LinearBox) SetSpacing(spacing float32) {
 	b.RequestLayout()
 }
 
+func (b *LinearBox) MainAlign() layout.MainAlign {
+	return b.layout.MainAlign
+}
+
+func (b *LinearBox) SetMainAlign(align layout.MainAlign) {
+	if b.layout.MainAlign == align {
+		return
+	}
+	b.layout.MainAlign = align
+	b.RequestLayout()
+}
+
+func (b *LinearBox) CrossAlign() layout.CrossAlign {
+	return b.layout.CrossAlign
+}
+
+func (b *LinearBox) SetCrossAlign(align layout.CrossAlign) {
+	if b.layout.CrossAlign == align {
+		return
+	}
+	b.layout.CrossAlign = align
+	b.RequestLayout()
+}
+
 func (b *LinearBox) Snapshot() WidgetInfo {
 	info := b.WidgetBase.Snapshot()
 	if b.Direction() == layout.DirectionVertical {

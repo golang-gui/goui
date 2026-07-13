@@ -45,6 +45,10 @@ func clamp(v, lo, hi float32) float32 {
 type Child interface {
 	Measure(c Constraint) geometry.Size
 	Arrange(rect geometry.Rectangle)
+	// MainWeight is the child's share of leftover main-axis space (0 = hug).
+	// Linear-style layouts honor it; fill ignores it. It is the one universal
+	// per-child layout hint carried on the Child contract.
+	MainWeight() float32
 }
 
 type LayoutManager interface {
@@ -57,4 +61,26 @@ type Direction int
 const (
 	DirectionHorizontal Direction = iota
 	DirectionVertical
+)
+
+// MainAlign places children as a block along the main axis when free space is
+// left and no MainWeight consumes it. Container-level (see DesignLayout §12).
+type MainAlign int
+
+const (
+	MainStart        MainAlign = iota // pack at the start, reading order; default
+	MainCenter                        // center the block
+	MainEnd                           // pack at the end
+	MainSpaceBetween                  // first at start, last at end, gaps split evenly
+)
+
+// CrossAlign sizes/positions each child on the cross axis. Container-level
+// default; the hug-vs-fill knob (relative axis, unlike GTK's absolute h/v).
+type CrossAlign int
+
+const (
+	CrossStart   CrossAlign = iota // child hugs, sits at the cross start; default
+	CrossCenter                    // child hugs, centered on the cross axis
+	CrossEnd                       // child hugs, at the cross end
+	CrossStretch                   // child fills the whole cross extent
 )
