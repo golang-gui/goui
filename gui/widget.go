@@ -50,6 +50,16 @@ type Widget interface {
 	LayoutManager() layout.LayoutManager
 	SetLayoutManager(layout.LayoutManager)
 
+	// Size preference (min/max) clamped by the parent constraint during Measure.
+	// A 0 max means unbounded. There is no fixed "Width"/"Height": everything is
+	// a preference the parent can override (see DesignLayout §9).
+	SetMinWidth(float32)
+	SetMaxWidth(float32)
+	SetMinHeight(float32)
+	SetMaxHeight(float32)
+	SetMinSize(geometry.Size)
+	SetMaxSize(geometry.Size)
+
 	Measure(c layout.Constraint) geometry.Size
 	Arrange(rect geometry.Rectangle)
 
@@ -84,6 +94,8 @@ type WidgetBase struct {
 	children            []Widget
 	controllers         []EventController
 	layoutManager       layout.LayoutManager
+	minWidth, minHeight float32 // self size preference; 0 = no min
+	maxWidth, maxHeight float32 // self size preference; 0 = unbounded
 	mount               signal.Signal0
 	unmount             signal.Signal0
 	focusedSignal       signal.Signal1[bool]
@@ -243,10 +255,57 @@ func (w *WidgetBase) Measure(c layout.Constraint) geometry.Size {
 	if w.hidden {
 		return geometry.Size{}
 	}
+	var intrinsic geometry.Size
 	if w.layoutManager != nil {
-		return w.layoutManager.Measure(w.visibleChildren(), c)
+		intrinsic = w.layoutManager.Measure(w.visibleChildren(), c)
 	}
-	return geometry.Size{}
+	return w.constrain(c, intrinsic)
+}
+
+// selfConstraint is the widget's own size preference (min/max). A 0 max means
+// unbounded.
+func (w *WidgetBase) selfConstraint() layout.Constraint {
+	maxW, maxH := w.maxWidth, w.maxHeight
+	if maxW <= 0 {
+		maxW = layout.Inf
+	}
+	if maxH <= 0 {
+		maxH = layout.Inf
+	}
+	return layout.Constraint{
+		Min: geometry.Size{Width: w.minWidth, Height: w.minHeight},
+		Max: geometry.Size{Width: maxW, Height: maxH},
+	}
+}
+
+// constrain applies the widget's own size preference then the parent constraint
+// to an intrinsic size. The parent constraint is applied last so it always wins
+// (§9 DesignLayout): a child min never breaks the parent max — it overflows.
+func (w *WidgetBase) constrain(c layout.Constraint, intrinsic geometry.Size) geometry.Size {
+	return c.Clamp(w.selfConstraint().Clamp(intrinsic))
+}
+
+func (w *WidgetBase) SetMinWidth(v float32)  { w.setSizePref(&w.minWidth, v) }
+func (w *WidgetBase) SetMaxWidth(v float32)  { w.setSizePref(&w.maxWidth, v) }
+func (w *WidgetBase) SetMinHeight(v float32) { w.setSizePref(&w.minHeight, v) }
+func (w *WidgetBase) SetMaxHeight(v float32) { w.setSizePref(&w.maxHeight, v) }
+
+func (w *WidgetBase) SetMinSize(s geometry.Size) {
+	w.SetMinWidth(s.Width)
+	w.SetMinHeight(s.Height)
+}
+
+func (w *WidgetBase) SetMaxSize(s geometry.Size) {
+	w.SetMaxWidth(s.Width)
+	w.SetMaxHeight(s.Height)
+}
+
+func (w *WidgetBase) setSizePref(field *float32, v float32) {
+	if *field == v {
+		return
+	}
+	*field = v
+	w.RequestLayout()
 }
 
 func (w *WidgetBase) Arrange(rect geometry.Rectangle) {

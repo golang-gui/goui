@@ -96,7 +96,7 @@ func (l *Label) Measure(c layout.Constraint) geometry.Size {
 	if height <= 0 {
 		height = textLineHeight(format.Font.Size)
 	}
-	return geometry.Size{Width: width, Height: height}
+	return l.constrain(c, geometry.Size{Width: width, Height: height})
 }
 
 func (l *Label) Paint(p Painter) {
