@@ -1,6 +1,11 @@
 package ui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/layout"
+)
 
 // Every widget-view constructor must wire ViewBase.Self so the shared chain
 // modifiers (Name/Hidden/Style) return the concrete view instead of panicking on
@@ -25,5 +30,16 @@ func TestViewConstructorsWireSelf(t *testing.T) {
 		if view.base().name == "" {
 			t.Fatalf("%s: shared Name modifier did not apply", c.name)
 		}
+	}
+}
+
+// A view's size modifiers flow through apply() to the gui widget's size
+// constraint (an empty VBox has zero intrinsic size, so MinSize alone drives it).
+func TestViewSizeModifiersApplyToWidget(t *testing.T) {
+	root := newRoot()
+	w := root.update(VBox().MinSize(120, 80))
+	got := w.Measure(layout.Loose(geometry.Size{Width: 1000, Height: 1000}))
+	if got != (geometry.Size{Width: 120, Height: 80}) {
+		t.Fatalf("view MinSize not applied to widget: %+v (want 120x80)", got)
 	}
 }

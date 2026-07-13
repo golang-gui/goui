@@ -7,9 +7,11 @@ import (
 
 type BoxView struct {
 	ViewBase[BoxView]
-	direction layout.Direction
-	spacing   float32
-	children  []View
+	direction  layout.Direction
+	spacing    float32
+	mainAlign  layout.MainAlign
+	crossAlign layout.CrossAlign
+	children   []View
 }
 
 func HBox(children ...View) *BoxView {
@@ -35,6 +37,21 @@ func (v *BoxView) Spacing(spacing float32) *BoxView {
 	return v
 }
 
+// MainAlign sets how children are packed along the main axis (the flow
+// direction): Start / Center / End / SpaceBetween. Container-level.
+func (v *BoxView) MainAlign(align layout.MainAlign) *BoxView {
+	v.mainAlign = align
+	return v
+}
+
+// CrossAlign sets how each child sits on the cross axis: Start / Center / End /
+// Stretch. Default Start hugs; Stretch is the one-liner that fills (e.g. equal
+// width form rows). Container-level default.
+func (v *BoxView) CrossAlign(align layout.CrossAlign) *BoxView {
+	v.crossAlign = align
+	return v
+}
+
 func (v *BoxView) Children(children ...View) *BoxView {
 	v.children = compactViews(children)
 	return v
@@ -52,6 +69,8 @@ func (v *BoxView) Update(ctx BuildContext, widget gui.Widget) {
 	box := widget.(*gui.LinearBox)
 	box.SetDirection(v.direction)
 	box.SetSpacing(v.spacing)
+	box.SetMainAlign(v.mainAlign)
+	box.SetCrossAlign(v.crossAlign)
 	ctx.UpdateChildren(box, v.children)
 }
 
