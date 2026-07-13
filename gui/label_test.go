@@ -7,6 +7,7 @@ import (
 
 	"github.com/golang-gui/goui/core/colors"
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/style"
@@ -58,7 +59,7 @@ func TestLabelMeasureUsesTypography(t *testing.T) {
 	setTestApplication(t, typo)
 	label := NewLabel("hello")
 
-	size := label.Measure(geometry.Size{Width: 100, Height: 50})
+	size := label.Measure(layout.Loose(geometry.Size{Width: 100, Height: 50}))
 
 	if size != (geometry.Size{Width: 42, Height: 18}) {
 		t.Fatalf("unexpected measured size: %+v", size)
@@ -85,7 +86,7 @@ func TestLabelMeasureUsesUnboundedExtentForZeroAvailableSize(t *testing.T) {
 	setTestApplication(t, typo)
 	label := NewLabel("hello")
 
-	_ = label.Measure(geometry.Size{})
+	_ = label.Measure(layout.Loose(geometry.Size{}))
 
 	if len(typo.calls) != 1 {
 		t.Fatalf("expected one text layout call, got %d", len(typo.calls))
@@ -145,7 +146,7 @@ func TestLabelUsesStyleForTextFormat(t *testing.T) {
 	})
 
 	label := NewLabel("hello")
-	_ = label.Measure(geometry.Size{Width: 100, Height: 30})
+	_ = label.Measure(layout.Loose(geometry.Size{Width: 100, Height: 30}))
 
 	if len(typo.calls) != 1 {
 		t.Fatalf("expected one text layout call, got %d", len(typo.calls))
@@ -162,7 +163,7 @@ func TestLabelUsesStyleForTextFormat(t *testing.T) {
 func TestLabelWithoutTypographyDoesNotMeasureOrPaint(t *testing.T) {
 	setTestApplication(t, nil)
 	label := NewLabel("hello")
-	size := label.Measure(geometry.Size{Width: 100, Height: 50})
+	size := label.Measure(layout.Loose(geometry.Size{Width: 100, Height: 50}))
 	if size != (geometry.Size{}) {
 		t.Fatalf("unexpected measured size: %+v", size)
 	}

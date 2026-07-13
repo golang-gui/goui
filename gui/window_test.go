@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
@@ -269,10 +270,10 @@ func newLayoutPassWidget() *layoutPassWidget {
 	return new(layoutPassWidget)
 }
 
-func (w *layoutPassWidget) Measure(available geometry.Size) geometry.Size {
+func (w *layoutPassWidget) Measure(c layout.Constraint) geometry.Size {
 	w.measures++
-	w.measuredAvailable = available
-	return available
+	w.measuredAvailable = c.Max
+	return c.Max
 }
 
 func (w *layoutPassWidget) Arrange(rect geometry.Rectangle) {

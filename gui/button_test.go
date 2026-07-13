@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
@@ -44,7 +45,7 @@ func TestButtonUsesWidgetBaseLayoutAndPaint(t *testing.T) {
 	button.SetLayoutManager(manager)
 	button.AddChild(child)
 
-	size := button.Measure(geometry.Size{Width: 100, Height: 50})
+	size := button.Measure(layout.Loose(geometry.Size{Width: 100, Height: 50}))
 	if size != (geometry.Size{Width: 30, Height: 20}) {
 		t.Fatalf("unexpected measured size: %+v", size)
 	}

@@ -44,7 +44,7 @@ func (b *Button) AddChild(child Widget) {
 	b.WidgetBase.AddChild(b, child)
 }
 
-func (b *Button) Measure(available geometry.Size) geometry.Size {
+func (b *Button) Measure(c layout.Constraint) geometry.Size {
 	if !b.Visible() {
 		return geometry.Size{}
 	}
@@ -53,7 +53,7 @@ func (b *Button) Measure(available geometry.Size) geometry.Size {
 	if manager == nil {
 		return geometry.Size{Width: padding * 2, Height: padding * 2}
 	}
-	size := manager.Measure(b.visibleChildren(), available.Inset(padding))
+	size := manager.Measure(b.visibleChildren(), layout.Loose(c.Max.Inset(padding)))
 	return size.Inset(-padding)
 }
 

@@ -13,25 +13,26 @@ func NewLinearLayout(direction Direction) *LinearLayout {
 	}
 }
 
-func (l *LinearLayout) Measure(children []Child, available geometry.Size) geometry.Size {
+func (l *LinearLayout) Measure(children []Child, c Constraint) geometry.Size {
 	if len(children) == 0 {
-		return geometry.Size{}
+		return c.Clamp(geometry.Size{})
 	}
 
+	inner := Loose(c.Max)
 	var size geometry.Size
 	count := 0
 	for _, child := range children {
 		if child == nil {
 			continue
 		}
-		childSize := child.Measure(available)
+		childSize := child.Measure(inner)
 		if count > 0 {
 			l.addSpacing(&size)
 		}
 		l.addChildSize(&size, childSize)
 		count++
 	}
-	return size
+	return c.Clamp(size)
 }
 
 func (l *LinearLayout) Arrange(children []Child, rect geometry.Rectangle) {
@@ -44,7 +45,7 @@ func (l *LinearLayout) Arrange(children []Child, rect geometry.Rectangle) {
 		if count > 0 {
 			offset += l.Spacing
 		}
-		childSize := child.Measure(l.childAvailable(rect, offset))
+		childSize := child.Measure(Loose(l.childAvailable(rect, offset)))
 		child.Arrange(l.childRect(rect, offset, childSize))
 		offset += l.mainSize(childSize)
 		count++

@@ -8,17 +8,18 @@ func NewFillLayout() *FillLayout {
 	return new(FillLayout)
 }
 
-func (l *FillLayout) Measure(children []Child, available geometry.Size) geometry.Size {
+func (l *FillLayout) Measure(children []Child, c Constraint) geometry.Size {
+	inner := Loose(c.Max)
 	var size geometry.Size
 	for _, child := range children {
 		if child == nil {
 			continue
 		}
-		childSize := child.Measure(available)
+		childSize := child.Measure(inner)
 		size.Width = max(size.Width, childSize.Width)
 		size.Height = max(size.Height, childSize.Height)
 	}
-	return size
+	return c.Clamp(size)
 }
 
 func (l *FillLayout) Arrange(children []Child, rect geometry.Rectangle) {

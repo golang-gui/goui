@@ -4,6 +4,7 @@ import (
 	"runtime"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/style"
 )
@@ -80,12 +81,12 @@ func (l *Label) SetTextAlign(align TextAlign) {
 	l.RequestLayout()
 }
 
-func (l *Label) Measure(available geometry.Size) geometry.Size {
+func (l *Label) Measure(c layout.Constraint) geometry.Size {
 	if !l.Visible() {
 		return geometry.Size{}
 	}
 	format := l.resolvedTextFormat()
-	textLayout := l.newTextLayout(format, measureTextSize(available))
+	textLayout := l.newTextLayout(format, measureTextSize(c.Max))
 	if textLayout == nil {
 		return geometry.Size{}
 	}
