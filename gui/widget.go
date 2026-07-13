@@ -60,6 +60,11 @@ type Widget interface {
 	SetMinSize(geometry.Size)
 	SetMaxSize(geometry.Size)
 
+	// MainWeight is this widget's share of leftover main-axis space in a linear
+	// parent (0 = hug). It is also the layout.Child hint the parent reads.
+	MainWeight() float32
+	SetMainWeight(float32)
+
 	Measure(c layout.Constraint) geometry.Size
 	Arrange(rect geometry.Rectangle)
 
@@ -96,6 +101,7 @@ type WidgetBase struct {
 	layoutManager       layout.LayoutManager
 	minWidth, minHeight float32 // self size preference; 0 = no min
 	maxWidth, maxHeight float32 // self size preference; 0 = unbounded
+	mainWeight          float32 // main-axis extra-space share in a linear parent; 0 = hug
 	mount               signal.Signal0
 	unmount             signal.Signal0
 	focusedSignal       signal.Signal1[bool]
@@ -307,6 +313,10 @@ func (w *WidgetBase) setSizePref(field *float32, v float32) {
 	*field = v
 	w.RequestLayout()
 }
+
+func (w *WidgetBase) MainWeight() float32 { return w.mainWeight }
+
+func (w *WidgetBase) SetMainWeight(v float32) { w.setSizePref(&w.mainWeight, v) }
 
 func (w *WidgetBase) Arrange(rect geometry.Rectangle) {
 	w.rect = rect
