@@ -6,6 +6,7 @@ import (
 
 	"github.com/golang-gui/goui/core/colors"
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/style"
 )
@@ -230,7 +231,7 @@ func TestLabelLocalRuleDrivesTextFormat(t *testing.T) {
 			ForegroundColor(foreground),
 	)
 
-	_ = label.Measure(geometry.Size{Width: 100, Height: 30})
+	_ = label.Measure(layout.Loose(geometry.Size{Width: 100, Height: 30}))
 
 	if len(typo.calls) != 1 {
 		t.Fatalf("expected one text layout call, got %d", len(typo.calls))

@@ -5,6 +5,7 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
+	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
@@ -46,7 +47,7 @@ func (t *TextInput) ConnectText(fn func(string)) signal.Handle {
 	return t.textSignal.Connect(fn)
 }
 
-func (t *TextInput) Measure(available geometry.Size) geometry.Size {
+func (t *TextInput) Measure(_ layout.Constraint) geometry.Size {
 	if !t.Visible() {
 		return geometry.Size{}
 	}

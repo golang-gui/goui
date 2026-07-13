@@ -17,7 +17,7 @@ func TestLinearLayoutMeasureHorizontal(t *testing.T) {
 		&testChild{size: geometry.Size{Width: 5, Height: 25}},
 	}
 
-	size := layout.Measure(children, geometry.Size{Width: 100, Height: 50})
+	size := layout.Measure(children, Loose(geometry.Size{Width: 100, Height: 50}))
 
 	if size != (geometry.Size{Width: 51, Height: 25}) {
 		t.Fatalf("unexpected measured size: %+v", size)
@@ -35,7 +35,7 @@ func TestLinearLayoutMeasureSkipsNilChildren(t *testing.T) {
 		&testChild{size: geometry.Size{Width: 30, Height: 15}},
 	}
 
-	size := layout.Measure(children, geometry.Size{Width: 100, Height: 50})
+	size := layout.Measure(children, Loose(geometry.Size{Width: 100, Height: 50}))
 
 	if size != (geometry.Size{Width: 43, Height: 20}) {
 		t.Fatalf("unexpected measured size: %+v", size)
@@ -52,7 +52,7 @@ func TestLinearLayoutMeasureVertical(t *testing.T) {
 		&testChild{size: geometry.Size{Width: 30, Height: 15}},
 	}
 
-	size := layout.Measure(children, geometry.Size{Width: 100, Height: 50})
+	size := layout.Measure(children, Loose(geometry.Size{Width: 100, Height: 50}))
 
 	if size != (geometry.Size{Width: 30, Height: 39}) {
 		t.Fatalf("unexpected measured size: %+v", size)
@@ -115,8 +115,8 @@ type testChild struct {
 	available geometry.Size
 }
 
-func (c *testChild) Measure(available geometry.Size) geometry.Size {
-	c.available = available
+func (c *testChild) Measure(cs Constraint) geometry.Size {
+	c.available = cs.Max
 	return c.size
 }
 

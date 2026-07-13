@@ -15,7 +15,7 @@ func TestLinearBoxDefaultsToLinearLayout(t *testing.T) {
 	box.AddChild(first)
 	box.AddChild(second)
 
-	size := box.Measure(geometry.Size{Width: 100, Height: 50})
+	size := box.Measure(layout.Loose(geometry.Size{Width: 100, Height: 50}))
 	if size != (geometry.Size{Width: 42, Height: 20}) {
 		t.Fatalf("unexpected measured size: %+v", size)
 	}
@@ -104,6 +104,6 @@ func newSizedWidget(size geometry.Size) *sizedWidget {
 	return w
 }
 
-func (w *sizedWidget) Measure(available geometry.Size) geometry.Size {
+func (w *sizedWidget) Measure(_ layout.Constraint) geometry.Size {
 	return w.size
 }

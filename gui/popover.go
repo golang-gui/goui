@@ -5,6 +5,7 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
+	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
@@ -289,10 +290,10 @@ func (p *popover) measureAndSize() {
 	if p.widget == nil {
 		return
 	}
-	// Content-driven: measure with a loose (effectively unbounded) constraint so
-	// the popover sizes to its content, independent of the owner window's size.
+	// Popup is intrinsic: measure with a loose constraint so the popover sizes to
+	// its content, independent of the owner window's size.
 	const loose = 1 << 14
-	size := p.widget.Measure(geometry.Size{Width: loose, Height: loose})
+	size := p.widget.Measure(layout.Loose(geometry.Size{Width: loose, Height: loose}))
 	p.width, p.height = size.Width, size.Height
 	if p.width < 1 {
 		p.width = 1
@@ -336,7 +337,7 @@ func (p *popover) paint() {
 	}
 	size := geometry.Size{Width: p.width, Height: p.height}
 	if p.layoutDirty {
-		p.widget.Measure(size)
+		p.widget.Measure(layout.Tight(size)) // lay out content at the resolved popover size.
 		p.widget.Arrange(geometry.Rect(0, 0, size.Width, size.Height))
 		p.layoutDirty = false
 	}

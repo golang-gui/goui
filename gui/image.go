@@ -4,6 +4,7 @@ import (
 	"image"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/layout"
 )
 
 type Image struct {
@@ -30,7 +31,7 @@ func (i *Image) SetImage(img image.Image) {
 	i.requestSemanticUpdate()
 }
 
-func (i *Image) Measure(available geometry.Size) geometry.Size {
+func (i *Image) Measure(_ layout.Constraint) geometry.Size {
 	if !i.Visible() || i.img == nil {
 		return geometry.Size{}
 	}

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/layout"
 )
 
 func TestImageSnapshot(t *testing.T) {
@@ -29,7 +30,7 @@ func TestImageMeasureUsesNaturalSize(t *testing.T) {
 	img := image.NewRGBA(image.Rect(2, 3, 18, 12))
 	view := NewImage(img)
 
-	size := view.Measure(geometry.Size{Width: 100, Height: 100})
+	size := view.Measure(layout.Loose(geometry.Size{Width: 100, Height: 100}))
 
 	if size != (geometry.Size{Width: 16, Height: 9}) {
 		t.Fatalf("unexpected measured size: %+v", size)
@@ -38,13 +39,13 @@ func TestImageMeasureUsesNaturalSize(t *testing.T) {
 
 func TestImageMeasureSkipsNilAndHiddenImage(t *testing.T) {
 	view := NewImage(nil)
-	if size := view.Measure(geometry.Size{Width: 100, Height: 100}); size != (geometry.Size{}) {
+	if size := view.Measure(layout.Loose(geometry.Size{Width: 100, Height: 100})); size != (geometry.Size{}) {
 		t.Fatalf("nil image measured non-zero size: %+v", size)
 	}
 
 	view.SetImage(image.NewRGBA(image.Rect(0, 0, 16, 8)))
 	view.SetVisible(false)
-	if size := view.Measure(geometry.Size{Width: 100, Height: 100}); size != (geometry.Size{}) {
+	if size := view.Measure(layout.Loose(geometry.Size{Width: 100, Height: 100})); size != (geometry.Size{}) {
 		t.Fatalf("hidden image measured non-zero size: %+v", size)
 	}
 }

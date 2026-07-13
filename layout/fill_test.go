@@ -14,7 +14,7 @@ func TestFillLayoutMeasure(t *testing.T) {
 		&testChild{size: geometry.Size{Width: 30, Height: 15}},
 	}
 
-	size := layout.Measure(children, geometry.Size{Width: 100, Height: 50})
+	size := layout.Measure(children, Loose(geometry.Size{Width: 100, Height: 50}))
 
 	if size != (geometry.Size{Width: 30, Height: 20}) {
 		t.Fatalf("unexpected measured size: %+v", size)

@@ -187,7 +187,7 @@ func TestWidgetBaseLayoutManagerUsesVisibleChildren(t *testing.T) {
 	}
 	parent.SetLayoutManager(manager)
 
-	size := parent.Measure(geometry.Size{Width: 100, Height: 80})
+	size := parent.Measure(layout.Loose(geometry.Size{Width: 100, Height: 80}))
 	if size != (geometry.Size{Width: 11, Height: 12}) {
 		t.Fatalf("unexpected measured size: %+v", size)
 	}
@@ -564,7 +564,7 @@ type testLayoutManager struct {
 	arrangeRect geometry.Rectangle
 }
 
-func (l *testLayoutManager) Measure(children []layout.Child, available geometry.Size) geometry.Size {
+func (l *testLayoutManager) Measure(children []layout.Child, _ layout.Constraint) geometry.Size {
 	l.measured = append([]layout.Child(nil), children...)
 	return l.measureSize
 }

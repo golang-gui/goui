@@ -5,6 +5,7 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
+	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
@@ -352,7 +353,7 @@ func (w *window) paint() {
 		Height: w.height,
 	}
 	if w.layoutDirty {
-		w.root.Measure(size)
+		w.root.Measure(layout.Tight(size)) // Window is extrinsic: root fills the window.
 		w.root.Arrange(geometry.Rect(0, 0, size.Width, size.Height))
 		w.layoutDirty = false
 	}

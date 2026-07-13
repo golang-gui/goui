@@ -50,7 +50,7 @@ type Widget interface {
 	LayoutManager() layout.LayoutManager
 	SetLayoutManager(layout.LayoutManager)
 
-	Measure(available geometry.Size) geometry.Size
+	Measure(c layout.Constraint) geometry.Size
 	Arrange(rect geometry.Rectangle)
 
 	Paint(p Painter)
@@ -239,12 +239,12 @@ func (w *WidgetBase) SetLayoutManager(l layout.LayoutManager) {
 	w.RequestLayout()
 }
 
-func (w *WidgetBase) Measure(available geometry.Size) geometry.Size {
+func (w *WidgetBase) Measure(c layout.Constraint) geometry.Size {
 	if w.hidden {
 		return geometry.Size{}
 	}
 	if w.layoutManager != nil {
-		return w.layoutManager.Measure(w.visibleChildren(), available)
+		return w.layoutManager.Measure(w.visibleChildren(), c)
 	}
 	return geometry.Size{}
 }
