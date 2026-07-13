@@ -63,7 +63,7 @@ func defaultStyleRules(s *Settings) []style.Rule {
 			Radius(4).
 			FontFamily(family).
 			FontSize(size).
-			Padding(0),
+			Padding(6),
 		style.Name(styleNameButton).
 			State(style.Hovered).
 			BackgroundColor(color.RGBA{R: 230, G: 230, B: 230, A: 255}),
