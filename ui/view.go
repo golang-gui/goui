@@ -29,9 +29,12 @@ type BuildContext interface {
 // reconciler reads it via View.base after each Update and writes it onto the
 // mounted widget, so controls never apply these themselves.
 type viewBase struct {
-	name   string
-	hidden bool
-	rules  []style.Rule
+	name                string
+	hidden              bool
+	rules               []style.Rule
+	minWidth, minHeight float32 // size preference; 0 = no min
+	maxWidth, maxHeight float32 // size preference; 0 = unbounded
+	mainWeight          float32 // main-axis extra-space share; 0 = hug
 }
 
 func (b *viewBase) base() *viewBase { return b }
@@ -43,6 +46,11 @@ func (b *viewBase) apply(widget gui.Widget) {
 	widget.SetID(b.name)
 	widget.SetVisible(!b.hidden)
 	widget.SetStyleRules(b.rules...)
+	widget.SetMinWidth(b.minWidth)
+	widget.SetMaxWidth(b.maxWidth)
+	widget.SetMinHeight(b.minHeight)
+	widget.SetMaxHeight(b.maxHeight)
+	widget.SetMainWeight(b.mainWeight)
 }
 
 // ViewBase is embedded as ViewBase[ConcreteView] by every declarative view. Its
@@ -78,5 +86,29 @@ func (b *ViewBase[T]) Hidden(hidden bool) *T {
 
 func (b *ViewBase[T]) Style(rules ...style.Rule) *T {
 	b.rules = rules
+	return b.self()
+}
+
+// Size preference (min/max). There is no fixed Width/Height: these are
+// preferences the parent constraint can override (DesignLayout §9).
+func (b *ViewBase[T]) MinWidth(v float32) *T  { b.minWidth = v; return b.self() }
+func (b *ViewBase[T]) MaxWidth(v float32) *T  { b.maxWidth = v; return b.self() }
+func (b *ViewBase[T]) MinHeight(v float32) *T { b.minHeight = v; return b.self() }
+func (b *ViewBase[T]) MaxHeight(v float32) *T { b.maxHeight = v; return b.self() }
+
+func (b *ViewBase[T]) MinSize(w, h float32) *T {
+	b.minWidth, b.minHeight = w, h
+	return b.self()
+}
+
+func (b *ViewBase[T]) MaxSize(w, h float32) *T {
+	b.maxWidth, b.maxHeight = w, h
+	return b.self()
+}
+
+// MainWeight sets this view's share of leftover main-axis space in a linear
+// parent (0 = hug). Two siblings with weights 1 and 2 split the free space 1:2.
+func (b *ViewBase[T]) MainWeight(w float32) *T {
+	b.mainWeight = w
 	return b.self()
 }
