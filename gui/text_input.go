@@ -47,17 +47,17 @@ func (t *TextInput) ConnectText(fn func(string)) signal.Handle {
 	return t.textSignal.Connect(fn)
 }
 
-func (t *TextInput) Measure(_ layout.Constraint) geometry.Size {
+func (t *TextInput) Measure(c layout.Constraint) geometry.Size {
 	if !t.Visible() {
 		return geometry.Size{}
 	}
 	s := t.resolvedStyle()
 	size, _ := s.FontSize()
 	padding := stylePadding(s)
-	return geometry.Size{
+	return t.constrain(c, geometry.Size{
 		Width:  defaultTextInputWidth,
 		Height: textLineHeight(size) + padding*2,
-	}
+	})
 }
 
 func (t *TextInput) Paint(p Painter) {

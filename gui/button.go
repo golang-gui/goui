@@ -51,10 +51,10 @@ func (b *Button) Measure(c layout.Constraint) geometry.Size {
 	padding := stylePadding(b.resolvedStyle())
 	manager := b.LayoutManager()
 	if manager == nil {
-		return geometry.Size{Width: padding * 2, Height: padding * 2}
+		return b.constrain(c, geometry.Size{Width: padding * 2, Height: padding * 2})
 	}
 	size := manager.Measure(b.visibleChildren(), layout.Loose(c.Max.Inset(padding)))
-	return size.Inset(-padding)
+	return b.constrain(c, size.Inset(-padding))
 }
 
 func (b *Button) Arrange(rect geometry.Rectangle) {
