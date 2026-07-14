@@ -5,6 +5,7 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/style"
 )
 
 func TestLinearBoxDefaultsToLinearLayout(t *testing.T) {
@@ -27,6 +28,25 @@ func TestLinearBoxDefaultsToLinearLayout(t *testing.T) {
 	}
 	if second.Rect() != geometry.Rect(12, 0, 30, 15) {
 		t.Fatalf("unexpected second rect: %+v", second.Rect())
+	}
+}
+
+func TestLinearBoxPaddingInsetsContent(t *testing.T) {
+	// Container padding is handled on the WidgetBase common path, so a plain box
+	// (no custom Measure) gets it: content is inset in Arrange and added in Measure.
+	box := NewLinearBox(layout.DirectionVertical)
+	box.SetStyleRules(style.Name(styleNameBox).Padding(10))
+	child := newSizedWidget(geometry.Size{Width: 30, Height: 20})
+	box.AddChild(child)
+
+	size := box.Measure(layout.Loose(geometry.Size{Width: 500, Height: 500}))
+	if size != (geometry.Size{Width: 50, Height: 40}) { // 30+2*10, 20+2*10
+		t.Fatalf("padding not added in measure: %+v", size)
+	}
+
+	box.Arrange(geometry.Rect(0, 0, 100, 80))
+	if child.Rect() != geometry.Rect(10, 10, 30, 20) { // hugged child, offset by padding
+		t.Fatalf("padding not applied in arrange: %+v", child.Rect())
 	}
 }
 
