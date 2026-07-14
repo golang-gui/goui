@@ -5,7 +5,6 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/layout"
-	"github.com/golang-gui/goui/style"
 )
 
 func TestLinearBoxDefaultsToLinearLayout(t *testing.T) {
@@ -32,10 +31,10 @@ func TestLinearBoxDefaultsToLinearLayout(t *testing.T) {
 }
 
 func TestLinearBoxPaddingInsetsContent(t *testing.T) {
-	// Container padding is handled on the WidgetBase common path, so a plain box
-	// (no custom Measure) gets it: content is inset in Arrange and added in Measure.
+	// Padding is a layout field handled on the WidgetBase common path, so a plain
+	// box (no custom Measure) gets it: content is inset in Arrange, added in Measure.
 	box := NewLinearBox(layout.DirectionVertical)
-	box.SetStyleRules(style.Name(styleNameBox).Padding(10))
+	box.SetPadding(10)
 	child := newSizedWidget(geometry.Size{Width: 30, Height: 20})
 	box.AddChild(child)
 

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
 )
 
@@ -41,5 +42,27 @@ func TestViewSizeModifiersApplyToWidget(t *testing.T) {
 	got := w.Measure(layout.Loose(geometry.Size{Width: 1000, Height: 1000}))
 	if got != (geometry.Size{Width: 120, Height: 80}) {
 		t.Fatalf("view MinSize not applied to widget: %+v (want 120x80)", got)
+	}
+}
+
+func TestViewPaddingApplies(t *testing.T) {
+	root := newRoot()
+	w := root.update(VBox().Padding(16))
+	got := w.Measure(layout.Loose(geometry.Size{Width: 500, Height: 500}))
+	if got != (geometry.Size{Width: 32, Height: 32}) { // empty box, padding on both sides
+		t.Fatalf("view Padding not applied: %+v (want 32x32)", got)
+	}
+}
+
+func TestViewPaddingUnsetKeepsControlDefault(t *testing.T) {
+	// A button has a non-zero built-in padding (6); a view that never calls
+	// .Padding must not overwrite it to 0 — that is what paddingSet guards.
+	root := newRoot()
+	if b := root.update(Button("x")).(*gui.Button); b.Padding() != 6 {
+		t.Fatalf("unset padding overwrote control default: %v (want 6)", b.Padding())
+	}
+	root2 := newRoot()
+	if b := root2.update(Button("y").Padding(10)).(*gui.Button); b.Padding() != 10 {
+		t.Fatalf("explicit padding not applied: %v (want 10)", b.Padding())
 	}
 }

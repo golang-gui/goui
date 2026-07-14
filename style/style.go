@@ -33,7 +33,6 @@ type Style struct {
 	radius          float32
 	fontFamily      string
 	fontSize        float32
-	padding         float32
 	fields          fields
 }
 
@@ -47,7 +46,6 @@ const (
 	fieldRadius
 	fieldFontFamily
 	fieldFontSize
-	fieldPadding
 )
 
 func (s Style) BackgroundColor() (color.Color, bool) {
@@ -76,10 +74,6 @@ func (s Style) FontFamily() (string, bool) {
 
 func (s Style) FontSize() (float32, bool) {
 	return s.fontSize, s.fields&fieldFontSize != 0
-}
-
-func (s Style) Padding() (float32, bool) {
-	return s.padding, s.fields&fieldPadding != 0
 }
 
 func (s *Style) setBackgroundColor(c color.Color) {
@@ -117,11 +111,6 @@ func (s *Style) setFontSize(size float32) {
 	s.fields |= fieldFontSize
 }
 
-func (s *Style) setPadding(padding float32) {
-	s.padding = padding
-	s.fields |= fieldPadding
-}
-
 func (s Style) merge(override Style) Style {
 	if override.fields&fieldBackgroundColor != 0 {
 		s.setBackgroundColor(override.backgroundColor)
@@ -143,9 +132,6 @@ func (s Style) merge(override Style) Style {
 	}
 	if override.fields&fieldFontSize != 0 {
 		s.setFontSize(override.fontSize)
-	}
-	if override.fields&fieldPadding != 0 {
-		s.setPadding(override.padding)
 	}
 	return s
 }
@@ -225,11 +211,6 @@ func (r Rule) FontSize(size float32) Rule {
 	return r
 }
 
-func (r Rule) Padding(padding float32) Rule {
-	r.Style.setPadding(padding)
-	return r
-}
-
 type StyleSheet interface {
 	Resolve(sel Sel, local []Rule) Style
 }
@@ -304,6 +285,5 @@ func sameStyle(a, b Style) bool {
 		a.borderWidth == b.borderWidth &&
 		a.radius == b.radius &&
 		a.fontFamily == b.fontFamily &&
-		a.fontSize == b.fontSize &&
-		a.padding == b.padding
+		a.fontSize == b.fontSize
 }

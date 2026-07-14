@@ -7,8 +7,10 @@ import (
 
 type TextInputView struct {
 	ViewBase[TextInputView]
-	text   string
-	onText func(string)
+	text       string
+	onText     func(string)
+	padding    float32
+	paddingSet bool
 }
 
 func TextInput() *TextInputView {
@@ -24,6 +26,14 @@ func (v *TextInputView) Text(text string) *TextInputView {
 
 func (v *TextInputView) OnText(fn func(string)) *TextInputView {
 	v.onText = fn
+	return v
+}
+
+// Padding sets the text input's inner padding. Unset leaves the built-in
+// default (4) untouched.
+func (v *TextInputView) Padding(padding float32) *TextInputView {
+	v.padding = padding
+	v.paddingSet = true
 	return v
 }
 
@@ -51,6 +61,9 @@ func (v *TextInputView) Mount(ctx BuildContext) gui.Widget {
 func (v *TextInputView) Update(ctx BuildContext, widget gui.Widget) {
 	input := widget.(*gui.TextInput)
 	state := ctx.State().(*textInputState)
+	if v.paddingSet {
+		input.SetPadding(v.padding)
+	}
 	func() {
 		state.text.Block()
 		defer state.text.Unblock()

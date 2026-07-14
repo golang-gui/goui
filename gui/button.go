@@ -9,6 +9,7 @@ import (
 
 type Button struct {
 	WidgetBase
+	padding float32 // self-held: button overrides Measure/Arrange (skeleton floor)
 	hovered bool
 	pressed bool
 	clicked signal.Signal0
@@ -16,10 +17,13 @@ type Button struct {
 	click   *ClickEventController
 }
 
+const defaultButtonPadding = 6
+
 func NewButton() *Button {
 	button := new(Button)
 	button.SetStyleName(styleNameButton)
 	button.SetFocusable(true)
+	button.padding = defaultButtonPadding
 	button.SetLayoutManager(layout.NewFillLayout())
 
 	button.motion = NewMotionEventController()
@@ -44,12 +48,21 @@ func (b *Button) AddChild(child Widget) {
 	b.WidgetBase.AddChild(b, child)
 }
 
+func (b *Button) Padding() float32 { return b.padding }
+
+func (b *Button) SetPadding(padding float32) {
+	if b.padding == padding {
+		return
+	}
+	b.padding = padding
+	b.RequestLayout()
+}
+
 func (b *Button) Measure(c layout.Constraint) geometry.Size {
 	if !b.Visible() {
 		return geometry.Size{}
 	}
-	s := b.resolvedStyle()
-	padding := stylePadding(s)
+	padding := b.padding
 
 	var content geometry.Size
 	if manager := b.LayoutManager(); manager != nil {
@@ -60,7 +73,7 @@ func (b *Button) Measure(c layout.Constraint) geometry.Size {
 	// or icon-only button stays a visible, clickable box instead of collapsing to
 	// zero. This is the widget's own intrinsic floor, not a user override; a
 	// user's SetMin/MaxSize still wins because constrain runs last (DesignLayout).
-	fontSize, _ := s.FontSize()
+	fontSize, _ := b.resolvedStyle().FontSize()
 	floor := textLineHeight(fontSize) + padding*2
 	content.Width = max(content.Width, floor)
 	content.Height = max(content.Height, floor)
@@ -73,8 +86,7 @@ func (b *Button) Arrange(rect geometry.Rectangle) {
 	if manager == nil {
 		return
 	}
-	padding := stylePadding(b.resolvedStyle())
-	manager.Arrange(b.visibleChildren(), geometry.Rect(0, 0, rect.Width, rect.Height).Inset(padding))
+	manager.Arrange(b.visibleChildren(), geometry.Rect(0, 0, rect.Width, rect.Height).Inset(b.padding))
 }
 
 func (b *Button) Paint(p Painter) {

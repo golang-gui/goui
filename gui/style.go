@@ -46,14 +46,12 @@ func defaultStyleRules(s *Settings) []style.Rule {
 			BorderWidth(0).
 			Radius(0).
 			FontFamily(family).
-			FontSize(size).
-			Padding(0),
+			FontSize(size),
 
 		style.Name(styleNameLabel).
 			ForegroundColor(color.Black).
 			FontFamily(family).
-			FontSize(size).
-			Padding(0),
+			FontSize(size),
 
 		style.Name(styleNameButton).
 			BackgroundColor(color.RGBA{R: 210, G: 210, B: 210, A: 255}).
@@ -62,8 +60,7 @@ func defaultStyleRules(s *Settings) []style.Rule {
 			BorderWidth(0).
 			Radius(4).
 			FontFamily(family).
-			FontSize(size).
-			Padding(6),
+			FontSize(size),
 		style.Name(styleNameButton).
 			State(style.Hovered).
 			BackgroundColor(color.RGBA{R: 230, G: 230, B: 230, A: 255}),
@@ -78,14 +75,10 @@ func defaultStyleRules(s *Settings) []style.Rule {
 			BorderWidth(1).
 			Radius(0).
 			FontFamily(family).
-			FontSize(size).
-			Padding(4),
+			FontSize(size),
 		style.Name(styleNameTextInput).
 			State(style.Focused).
 			BorderColor(accent),
-
-		style.Name(styleNameBox).Padding(0),
-		style.Name(styleNameImage).Padding(0),
 	}
 }
 
@@ -170,10 +163,4 @@ func paintStyledBox(p Painter, rect geometry.Rectangle, s style.Style) {
 	} else {
 		p.DrawRect(rect, width, stroke)
 	}
-}
-
-// stylePadding returns the resolved padding, or 0 when it is unset.
-func stylePadding(s style.Style) float32 {
-	padding, _ := s.Padding()
-	return padding
 }

@@ -26,10 +26,6 @@ func TestDefaultStyleSheetResolvesBuiltInStyles(t *testing.T) {
 	if !ok || !colors.Equal(borderColor, defaultAccentColor) {
 		t.Fatalf("unexpected focused text input border: %v ok=%v", borderColor, ok)
 	}
-	padding, ok := input.Padding()
-	if !ok || padding != 4 {
-		t.Fatalf("unexpected text input padding: %v ok=%v", padding, ok)
-	}
 }
 
 func TestApplicationStyleSheetDefaultsToNilAndRequestsLayoutOnSet(t *testing.T) {
@@ -43,7 +39,7 @@ func TestApplicationStyleSheetDefaultsToNilAndRequestsLayoutOnSet(t *testing.T) 
 	win.layoutDirty = false
 	win.paintDirty = false
 
-	app.SetStyleSheet(style.Sheet(style.Name(styleNameButton).Padding(6)))
+	app.SetStyleSheet(style.Sheet(style.Name(styleNameButton).Radius(6)))
 	if app.StyleSheet() == nil {
 		t.Fatal("application style sheet was not stored")
 	}
