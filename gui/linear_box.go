@@ -53,6 +53,18 @@ func (b *LinearBox) SetSpacing(spacing float32) {
 	b.RequestLayout()
 }
 
+func (b *LinearBox) Padding() float32 {
+	return b.layout.Padding
+}
+
+func (b *LinearBox) SetPadding(padding float32) {
+	if b.layout.Padding == padding {
+		return
+	}
+	b.layout.Padding = padding
+	b.RequestLayout()
+}
+
 func (b *LinearBox) MainAlign() layout.MainAlign {
 	return b.layout.MainAlign
 }

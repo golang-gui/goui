@@ -11,7 +11,7 @@ import (
 // TestViewStyleWiredForAllStyledViews checks every styled view forwards its
 // local rules to the mounted widget through SetStyleRules.
 func TestViewStyleWiredForAllStyledViews(t *testing.T) {
-	rules := []style.Rule{style.Default().Padding(5)}
+	rules := []style.Rule{style.Default().Radius(5)}
 	cases := []struct {
 		name string
 		view View
@@ -40,7 +40,7 @@ func TestViewStyleUpdatesAndClears(t *testing.T) {
 	root := newRoot()
 
 	rules := []style.Rule{
-		style.Default().Padding(8),
+		style.Default().Radius(8),
 		style.Default().State(style.Hovered).BackgroundColor(color.RGBA{R: 200, A: 255}),
 	}
 	widget := root.update(Button("Save").Style(rules...))
@@ -52,7 +52,7 @@ func TestViewStyleUpdatesAndClears(t *testing.T) {
 		t.Fatalf("button did not receive local style rules: %+v", button.StyleRules())
 	}
 
-	newRules := []style.Rule{style.Default().Padding(4)}
+	newRules := []style.Rule{style.Default().Radius(4)}
 	updated := root.update(Button("Save").Style(newRules...))
 	if updated != button {
 		t.Fatal("button at the same slot and type should be reused")

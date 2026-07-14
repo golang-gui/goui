@@ -7,8 +7,10 @@ import (
 
 type ButtonView struct {
 	ViewBase[ButtonView]
-	child   View
-	onClick func()
+	child      View
+	onClick    func()
+	padding    float32
+	paddingSet bool
 }
 
 type buttonState struct {
@@ -46,6 +48,14 @@ func (v *ButtonView) OnClick(fn func()) *ButtonView {
 	return v
 }
 
+// Padding sets the button's inner padding. Unset leaves the button's built-in
+// default (6) untouched.
+func (v *ButtonView) Padding(padding float32) *ButtonView {
+	v.padding = padding
+	v.paddingSet = true
+	return v
+}
+
 func (v *ButtonView) Build() View {
 	return v
 }
@@ -66,6 +76,9 @@ func (v *ButtonView) Update(ctx BuildContext, widget gui.Widget) {
 	button := widget.(*gui.Button)
 	state := ctx.State().(*buttonState)
 	state.onClick = v.onClick
+	if v.paddingSet {
+		button.SetPadding(v.padding)
+	}
 	if v.child == nil {
 		ctx.UpdateChildren(button, nil)
 	} else {

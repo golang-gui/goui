@@ -5,6 +5,7 @@ import "github.com/golang-gui/goui/core/geometry"
 type LinearLayout struct {
 	Direction  Direction
 	Spacing    float32
+	Padding    float32 // inner box padding, inset before laying out children
 	MainAlign  MainAlign
 	CrossAlign CrossAlign
 }
@@ -16,11 +17,7 @@ func NewLinearLayout(direction Direction) *LinearLayout {
 }
 
 func (l *LinearLayout) Measure(children []Child, c Constraint) geometry.Size {
-	if len(children) == 0 {
-		return c.Clamp(geometry.Size{})
-	}
-
-	inner := Loose(c.Max)
+	inner := Loose(c.Max.Inset(l.Padding))
 	var size geometry.Size
 	count := 0
 	for _, child := range children {
@@ -34,10 +31,13 @@ func (l *LinearLayout) Measure(children []Child, c Constraint) geometry.Size {
 		l.addChildSize(&size, childSize)
 		count++
 	}
-	return c.Clamp(size)
+	// Add padding back onto the content size (empty box → 2*padding).
+	return c.Clamp(size.Inset(-l.Padding))
 }
 
 func (l *LinearLayout) Arrange(children []Child, rect geometry.Rectangle) {
+	rect = rect.Inset(l.Padding) // content area inside the padding
+
 	items := make([]Child, 0, len(children))
 	for _, child := range children {
 		if child != nil {

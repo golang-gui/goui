@@ -43,11 +43,11 @@ func TestResolveUsesSimpleStateFallback(t *testing.T) {
 }
 
 func TestResolveUsesPartFallback(t *testing.T) {
-	defaultPadding := float32(4)
+	defaultRadius := float32(4)
 	selectionColor := color.RGBA{R: 40, G: 90, B: 180, A: 255}
 	hoverColor := color.RGBA{R: 50, G: 120, B: 220, A: 255}
 	sheet := Sheet(
-		Name("text-input").Padding(defaultPadding),
+		Name("text-input").Radius(defaultRadius),
 		Name("text-input").Part("selection").ForegroundColor(selectionColor),
 		Name("text-input").Part("selection").State(Hovered).BackgroundColor(hoverColor),
 	)
@@ -66,9 +66,9 @@ func TestResolveUsesPartFallback(t *testing.T) {
 	if !ok || !colors.Equal(foreground, selectionColor) {
 		t.Fatalf("selection hover should keep selection normal foreground: %v ok=%v", foreground, ok)
 	}
-	padding, ok := resolved.Padding()
-	if !ok || padding != defaultPadding {
-		t.Fatalf("selection should fall back to text input default padding: %v ok=%v", padding, ok)
+	radius, ok := resolved.Radius()
+	if !ok || radius != defaultRadius {
+		t.Fatalf("selection should fall back to text input default radius: %v ok=%v", radius, ok)
 	}
 }
 
@@ -127,7 +127,7 @@ func TestResolveAppliesLocalRulesOverGlobalFallback(t *testing.T) {
 
 func TestResolvePreservesExplicitZeroValues(t *testing.T) {
 	sheet := Sheet(
-		Name("button").BorderWidth(2).Padding(8),
+		Name("button").BorderWidth(2).Radius(8),
 	)
 
 	resolved := sheet.Resolve(
@@ -135,7 +135,7 @@ func TestResolvePreservesExplicitZeroValues(t *testing.T) {
 		[]Rule{
 			Default().
 				BorderWidth(0).
-				Padding(0).
+				Radius(0).
 				BackgroundColor(color.Transparent),
 		},
 	)
@@ -144,9 +144,9 @@ func TestResolvePreservesExplicitZeroValues(t *testing.T) {
 	if !ok || borderWidth != 0 {
 		t.Fatalf("explicit zero border width was not preserved: ok=%v value=%v", ok, borderWidth)
 	}
-	padding, ok := resolved.Padding()
-	if !ok || padding != 0 {
-		t.Fatalf("explicit zero padding was not preserved: ok=%v value=%v", ok, padding)
+	radius, ok := resolved.Radius()
+	if !ok || radius != 0 {
+		t.Fatalf("explicit zero radius was not preserved: ok=%v value=%v", ok, radius)
 	}
 	background, ok := resolved.BackgroundColor()
 	if !ok || !colors.Equal(background, color.Transparent) {
@@ -156,13 +156,13 @@ func TestResolvePreservesExplicitZeroValues(t *testing.T) {
 
 func TestSameRulesComparesStyleValues(t *testing.T) {
 	a := []Rule{
-		Name("button").BackgroundColor(color.RGBA{R: 1, A: 255}).Padding(4),
+		Name("button").BackgroundColor(color.RGBA{R: 1, A: 255}).Radius(4),
 	}
 	b := []Rule{
-		Name("button").BackgroundColor(color.RGBA{R: 1, A: 255}).Padding(4),
+		Name("button").BackgroundColor(color.RGBA{R: 1, A: 255}).Radius(4),
 	}
 	c := []Rule{
-		Name("button").BackgroundColor(color.RGBA{R: 2, A: 255}).Padding(4),
+		Name("button").BackgroundColor(color.RGBA{R: 2, A: 255}).Radius(4),
 	}
 
 	if !SameRules(a, b) {

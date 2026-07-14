@@ -9,6 +9,7 @@ type BoxView struct {
 	ViewBase[BoxView]
 	direction  layout.Direction
 	spacing    float32
+	padding    float32
 	mainAlign  layout.MainAlign
 	crossAlign layout.CrossAlign
 	children   []View
@@ -34,6 +35,12 @@ func VBox(children ...View) *BoxView {
 
 func (v *BoxView) Spacing(spacing float32) *BoxView {
 	v.spacing = spacing
+	return v
+}
+
+// Padding sets the box's inner padding (a layout scalar, not style).
+func (v *BoxView) Padding(padding float32) *BoxView {
+	v.padding = padding
 	return v
 }
 
@@ -69,6 +76,7 @@ func (v *BoxView) Update(ctx BuildContext, widget gui.Widget) {
 	box := widget.(*gui.LinearBox)
 	box.SetDirection(v.direction)
 	box.SetSpacing(v.spacing)
+	box.SetPadding(v.padding)
 	box.SetMainAlign(v.mainAlign)
 	box.SetCrossAlign(v.crossAlign)
 	ctx.UpdateChildren(box, v.children)

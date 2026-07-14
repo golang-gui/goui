@@ -13,12 +13,14 @@ import (
 )
 
 const (
-	defaultTextInputWidth = 160
-	textInputCaretWidth   = 1
+	defaultTextInputWidth   = 160
+	defaultTextInputPadding = 4
+	textInputCaretWidth     = 1
 )
 
 type TextInput struct {
 	WidgetBase
+	padding    float32 // self-held: text input self-draws content with an inner inset
 	text       string
 	caret      int
 	key        *KeyEventController
@@ -29,10 +31,21 @@ func NewTextInput() *TextInput {
 	input := new(TextInput)
 	input.SetStyleName(styleNameTextInput)
 	input.SetFocusable(true)
+	input.padding = defaultTextInputPadding
 	input.key = NewKeyEventController()
 	input.key.ConnectKeyDown(input.handleKeyDown)
 	input.AddEventController(input.key)
 	return input
+}
+
+func (t *TextInput) Padding() float32 { return t.padding }
+
+func (t *TextInput) SetPadding(padding float32) {
+	if t.padding == padding {
+		return
+	}
+	t.padding = padding
+	t.RequestLayout()
 }
 
 func (t *TextInput) Text() string {
@@ -51,9 +64,8 @@ func (t *TextInput) Measure(c layout.Constraint) geometry.Size {
 	if !t.Visible() {
 		return geometry.Size{}
 	}
-	s := t.resolvedStyle()
-	size, _ := s.FontSize()
-	padding := stylePadding(s)
+	size, _ := t.resolvedStyle().FontSize()
+	padding := t.padding
 	return t.constrain(c, geometry.Size{
 		Width:  defaultTextInputWidth,
 		Height: textLineHeight(size) + padding*2,
@@ -70,7 +82,7 @@ func (t *TextInput) Paint(p Painter) {
 	rect := geometry.Rect(0, 0, size.Width, size.Height)
 	paintStyledBox(p, rect, s)
 
-	padding := stylePadding(s)
+	padding := t.padding
 	origin := geometry.Point{X: padding, Y: padding}
 	format := t.textFormat(s)
 	lineHeight := textLineHeight(format.Font.Size)

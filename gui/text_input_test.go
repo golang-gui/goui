@@ -181,6 +181,7 @@ func TestTextInputUsesLocalStyleForChromeAndText(t *testing.T) {
 	foreground := color.RGBA{R: 70, G: 80, B: 90, A: 255}
 
 	input := NewTextInput()
+	input.SetPadding(6) // padding is a layout field now, not style
 	input.SetStyleRules(
 		style.Default().
 			BackgroundColor(background).
@@ -189,8 +190,7 @@ func TestTextInputUsesLocalStyleForChromeAndText(t *testing.T) {
 			Radius(3).
 			ForegroundColor(foreground).
 			FontFamily("Mono").
-			FontSize(18).
-			Padding(6),
+			FontSize(18),
 	)
 	input.SetText("abc")
 	input.Arrange(geometry.Rect(0, 0, 100, 24))
