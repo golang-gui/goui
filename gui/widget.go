@@ -263,9 +263,20 @@ func (w *WidgetBase) Measure(c layout.Constraint) geometry.Size {
 	}
 	var intrinsic geometry.Size
 	if w.layoutManager != nil {
-		intrinsic = w.layoutManager.Measure(w.visibleChildren(), c)
+		padding := w.contentPadding()
+		content := w.layoutManager.Measure(w.visibleChildren(), layout.Loose(c.Max.Inset(padding)))
+		intrinsic = content.Inset(-padding)
 	}
 	return w.constrain(c, intrinsic)
+}
+
+// contentPadding is the widget's resolved box padding (normal state): the inset
+// between the widget's own rect and the area handed to its layout manager. It
+// lives here on the common path so every container gets padding without
+// re-implementing it, and so the layout package never has to know about style —
+// padding is resolved from style here, in the widget layer.
+func (w *WidgetBase) contentPadding() float32 {
+	return stylePadding(resolveStyle(w, style.PartDefault, style.Normal))
 }
 
 // selfConstraint is the widget's own size preference (min/max). A 0 max means
@@ -321,7 +332,8 @@ func (w *WidgetBase) SetMainWeight(v float32) { w.setSizePref(&w.mainWeight, v) 
 func (w *WidgetBase) Arrange(rect geometry.Rectangle) {
 	w.rect = rect
 	if w.layoutManager != nil {
-		w.layoutManager.Arrange(w.visibleChildren(), geometry.Rect(0, 0, rect.Width, rect.Height))
+		content := geometry.Rect(0, 0, rect.Width, rect.Height).Inset(w.contentPadding())
+		w.layoutManager.Arrange(w.visibleChildren(), content)
 	}
 }
 
