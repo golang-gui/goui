@@ -17,7 +17,7 @@ type Application interface {
 	// Clipboard returns the system clipboard, or nil if it is unavailable.
 	Clipboard() Clipboard
 	// Settings returns system settings as usable values. Never nil.
-	Settings() *Settings
+	Settings() Settings
 	StyleSheet() style.StyleSheet
 	SetStyleSheet(style.StyleSheet)
 	NewWindow() (Window, error)
@@ -32,8 +32,6 @@ type Application interface {
 	Snapshot() ApplicationInfo
 	DispatchWindowEvent(windowID string, event events.Event) error
 }
-
-type Clipboard = platform.Clipboard
 
 var (
 	App       Application
@@ -58,7 +56,7 @@ type application struct {
 	loop      platform.EventLoop
 	typo      typography.Context
 	clipboard Clipboard
-	settings  *Settings
+	settings  Settings
 	style     style.StyleSheet
 	windows   []*window
 
@@ -86,23 +84,22 @@ func newApplication() (*application, error) {
 
 	// Clipboard is optional: unlike typography, the application remains usable
 	// without one, so a creation failure is non-fatal — keep it nil and carry on.
-	// TODO: log the error once the framework has logging.
-	clip, clipErr := plat.NewClipboard()
+	platClip, clipErr := plat.NewClipboard()
 	if clipErr != nil {
-		clip = nil
+		// TODO: log the error once the framework has logging.
 	}
 
-	settings, settingsErr := plat.NewSettings()
+	platSettings, settingsErr := plat.NewSettings()
 	if settingsErr != nil {
-		settings = nil // getters then always fall back
+		platSettings = nil // getters then always fall back
 	}
 
 	app := &application{
 		platform:  plat,
 		loop:      loop,
 		typo:      typo,
-		clipboard: clip,
-		settings:  newSettings(settings, loop),
+		clipboard: newClipboard(platClip),
+		settings:  newSettings(platSettings, loop),
 
 		quitOnLastWindowClosed: true,
 	}
@@ -121,7 +118,7 @@ func (a *application) Clipboard() Clipboard {
 	return a.clipboard
 }
 
-func (a *application) Settings() *Settings {
+func (a *application) Settings() Settings {
 	return a.settings
 }
 

@@ -28,10 +28,15 @@ var (
 	defaultFontSize    float32     = 14
 )
 
-// Settings exposes system settings (appearance, and later locale/timezone/etc.)
-// as directly usable values, substituting gui defaults when the platform cannot
-// report a value.
-type Settings struct {
+type Settings interface {
+	ColorScheme() ColorScheme
+	AccentColor() color.Color
+	FontFamily() string
+	FontSize() float32
+	ConnectChanged(fn func()) signal.Handle
+}
+
+type settings struct {
 	settings platform.Settings // may be nil; getters then always fall back
 	changed  signal.Signal0
 
@@ -40,15 +45,15 @@ type Settings struct {
 	snapReady bool
 }
 
-func newSettings(settings platform.Settings, loop platform.EventLoop) (s *Settings) {
-	s = &Settings{settings: settings}
-	if settings != nil {
+func newSettings(platSettings platform.Settings, loop platform.EventLoop) (s *settings) {
+	s = &settings{settings: platSettings}
+	if platSettings != nil {
 		s.watch(loop)
 	}
 	return
 }
 
-func (s *Settings) ColorScheme() ColorScheme {
+func (s *settings) ColorScheme() ColorScheme {
 	if s.settings != nil {
 		if v, err := s.settings.ColorScheme(); err == nil {
 			return v
@@ -57,7 +62,7 @@ func (s *Settings) ColorScheme() ColorScheme {
 	return defaultColorScheme
 }
 
-func (s *Settings) AccentColor() color.Color {
+func (s *settings) AccentColor() color.Color {
 	if s.settings != nil {
 		if v, err := s.settings.AccentColor(); err == nil && v != nil {
 			return v
@@ -66,7 +71,7 @@ func (s *Settings) AccentColor() color.Color {
 	return defaultAccentColor
 }
 
-func (s *Settings) FontFamily() string {
+func (s *settings) FontFamily() string {
 	if s.settings != nil {
 		if v, err := s.settings.FontFamily(); err == nil && v != "" {
 			return v
@@ -75,7 +80,7 @@ func (s *Settings) FontFamily() string {
 	return defaultFontFamily
 }
 
-func (s *Settings) FontSize() float32 {
+func (s *settings) FontSize() float32 {
 	if s.settings != nil {
 		if v, err := s.settings.FontSize(); err == nil && v > 0 {
 			return v
@@ -86,7 +91,7 @@ func (s *Settings) FontSize() float32 {
 
 // ConnectChanged registers a listener fired when a system setting changes. The
 // listener runs on the UI thread.
-func (s *Settings) ConnectChanged(fn func()) signal.Handle {
+func (s *settings) ConnectChanged(fn func()) signal.Handle {
 	return s.changed.Connect(fn)
 }
 
@@ -98,7 +103,7 @@ type settingsSnapshot struct {
 	size           float32
 }
 
-func (s *Settings) snapshot() settingsSnapshot {
+func (s *settings) snapshot() settingsSnapshot {
 	ar, ag, ab, aa := s.AccentColor().RGBA()
 	return settingsSnapshot{
 		scheme: s.ColorScheme(),
@@ -113,7 +118,7 @@ func (s *Settings) snapshot() settingsSnapshot {
 
 // watch drives system-setting change detection.
 // posts checkChanged onto the event loop so every read happens on the UI thread.
-func (s *Settings) watch(loop platform.EventLoop) {
+func (s *settings) watch(loop platform.EventLoop) {
 	if s.settings == nil {
 		return // nothing to observe; getters always fall back
 	}
@@ -127,7 +132,7 @@ func (s *Settings) watch(loop platform.EventLoop) {
 }
 
 // checkChanged runs on the UI thread: snapshot, compare, emit on change.
-func (s *Settings) checkChanged() {
+func (s *settings) checkChanged() {
 	next := s.snapshot()
 	changed := s.snapReady && next != s.snapPrev
 	s.snapPrev = next

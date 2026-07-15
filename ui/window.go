@@ -1,8 +1,40 @@
 package ui
 
+import "github.com/golang-gui/goui/style"
+
 // RootView is the root declarative view.
 type RootView interface {
 	rootView()
+}
+
+// RootNode is the optional application-level declarative node. It carries app-wide
+// declarations (currently the style sheet) plus the set of windows. Return it from
+// the Run build closure when you need app-level configuration; otherwise return a
+// WindowView directly.
+type RootNode struct {
+	styleSheet style.StyleSheet
+	windows    []WindowView
+}
+
+// Root creates an application-level root node.
+func Root() RootNode {
+	return RootNode{}
+}
+
+func (r RootNode) rootView() {}
+
+// StyleSheet sets the application style sheet. It is reconciled onto the running
+// application on each rebuild, so swapping it re-skins the app at runtime; a nil
+// sheet reverts to the built-in default.
+func (r RootNode) StyleSheet(sheet style.StyleSheet) RootNode {
+	r.styleSheet = sheet
+	return r
+}
+
+// Windows sets the top-level windows of the application.
+func (r RootNode) Windows(windows ...WindowView) RootNode {
+	r.windows = windows
+	return r
 }
 
 // WindowView describes one top-level window.

@@ -473,11 +473,11 @@ func (a *testApplication) StyleSheet() style.StyleSheet {
 
 func (a *testApplication) SetStyleSheet(style.StyleSheet) {}
 
-func (a *testApplication) Clipboard() platform.Clipboard {
+func (a *testApplication) Clipboard() gui.Clipboard {
 	return nil
 }
 
-func (a *testApplication) Settings() *gui.Settings {
+func (a *testApplication) Settings() gui.Settings {
 	return nil
 }
 

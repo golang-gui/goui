@@ -24,5 +24,9 @@ func (s *State[T]) Connect(fn func()) signal.Handle {
 
 func (s *State[T]) Set(value T) {
 	s.state.Set(value)
-	App.RequestUpdate()
+	// State lives in the view tree with no App handle in scope, so it reaches the
+	// running app through the active-runtime singleton — the one internal use of it.
+	if rt := currentApp(); rt != nil {
+		rt.RequestUpdate()
+	}
 }
