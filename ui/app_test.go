@@ -11,11 +11,11 @@ import (
 	"github.com/golang-gui/goui/style"
 )
 
-func TestAppRuntimeMountsAndUpdatesWindow(t *testing.T) {
+func TestAppMountsAndUpdatesWindow(t *testing.T) {
 	app := newWindowTestApplication()
 	text := "first"
 	builds := 0
-	rt := newAppRuntime(app, func() RootView {
+	rt := newApp(app, func() RootView {
 		builds++
 		return Window("main").
 			Title("Main").
@@ -39,8 +39,8 @@ func TestAppRuntimeMountsAndUpdatesWindow(t *testing.T) {
 	}
 
 	text = "second"
-	rt.requestUpdate()
-	rt.requestUpdate()
+	rt.RequestUpdate()
+	rt.RequestUpdate()
 
 	if len(app.posts) != 1 {
 		t.Fatalf("expected one coalesced post, got %d", len(app.posts))
@@ -58,10 +58,10 @@ func TestAppRuntimeMountsAndUpdatesWindow(t *testing.T) {
 	}
 }
 
-func TestAppRuntimeReplacesWindowWhenIDChanges(t *testing.T) {
+func TestAppReplacesWindowWhenIDChanges(t *testing.T) {
 	app := newWindowTestApplication()
 	id := "first"
-	rt := newAppRuntime(app, func() RootView {
+	rt := newApp(app, func() RootView {
 		return Window(id).Content(Label(id))
 	})
 
@@ -93,11 +93,11 @@ func TestAppRuntimeReplacesWindowWhenIDChanges(t *testing.T) {
 	}
 }
 
-func TestAppRuntimeCloseRequestCanPreventDestroy(t *testing.T) {
+func TestAppCloseRequestCanPreventDestroy(t *testing.T) {
 	app := newWindowTestApplication()
 	preventClose := true
 	destroys := 0
-	rt := newAppRuntime(app, func() RootView {
+	rt := newApp(app, func() RootView {
 		return Window("main").
 			Content(Label("main")).
 			OnCloseRequest(func(allow *bool) {
@@ -126,7 +126,7 @@ func TestAppRuntimeCloseRequestCanPreventDestroy(t *testing.T) {
 	}
 
 	preventClose = false
-	rt.requestUpdate()
+	rt.RequestUpdate()
 	app.runPosted()
 
 	if err := win.RequestClose(); err != nil {
@@ -145,9 +145,9 @@ func TestAppRuntimeCloseRequestCanPreventDestroy(t *testing.T) {
 	}
 }
 
-func TestAppRuntimeRejectsInvalidWindowIDs(t *testing.T) {
+func TestAppRejectsInvalidWindowIDs(t *testing.T) {
 	app := newWindowTestApplication()
-	rt := newAppRuntime(app, func() RootView {
+	rt := newApp(app, func() RootView {
 		return Window("").Content(Label("bad"))
 	})
 
@@ -156,22 +156,60 @@ func TestAppRuntimeRejectsInvalidWindowIDs(t *testing.T) {
 	}
 }
 
-func TestAppSingletonUsesActiveRuntime(t *testing.T) {
+func TestAppAppliesRootStyleSheetOnChange(t *testing.T) {
+	app := newWindowTestApplication()
+	sheetA := style.Sheet(style.Name("button").Radius(4))
+	sheetB := style.Sheet(style.Name("button").Radius(8))
+	current := sheetA
+	rt := newApp(app, func() RootView {
+		return Root().
+			StyleSheet(current).
+			Windows(Window("main").Content(Label("x")))
+	})
+
+	if err := rt.rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	if len(app.sheets) != 1 {
+		t.Fatalf("expected the root sheet applied once, got %d", len(app.sheets))
+	}
+	if r, ok := app.sheets[0].Resolve(style.Sel{Name: "button"}).Radius(); !ok || r != 4 {
+		t.Fatalf("applied the wrong sheet: radius=%v ok=%v", r, ok)
+	}
+
+	// An identical sheet on the next rebuild must not re-apply: that would trigger a
+	// redundant app-wide relayout every rebuild.
+	if err := rt.rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	if len(app.sheets) != 1 {
+		t.Fatalf("identical sheet should not re-apply, got %d applications", len(app.sheets))
+	}
+
+	// Swapping to a different sheet applies the new one (runtime re-skin).
+	current = sheetB
+	if err := rt.rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	if len(app.sheets) != 2 {
+		t.Fatalf("swapped sheet should re-apply, got %d applications", len(app.sheets))
+	}
+	if r, ok := app.sheets[1].Resolve(style.Sel{Name: "button"}).Radius(); !ok || r != 8 {
+		t.Fatalf("applied the wrong swapped sheet: radius=%v ok=%v", r, ok)
+	}
+}
+
+func TestAppHandleRunsThroughRuntime(t *testing.T) {
 	app := newWindowTestApplication()
 	builds := 0
-	rt := newAppRuntime(app, func() RootView {
+	// The App handle passed into the build closure is the runtime itself.
+	var handle App = newApp(app, func() RootView {
 		builds++
 		return Window("main").Content(Label("main"))
 	})
-	if err := setActiveAppRuntime(rt); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		clearActiveAppRuntime(rt)
-	})
 
 	posted := false
-	App.Post(func() {
+	handle.Post(func() {
 		posted = true
 	})
 	if posted {
@@ -179,31 +217,32 @@ func TestAppSingletonUsesActiveRuntime(t *testing.T) {
 	}
 	app.runPosted()
 	if !posted {
-		t.Fatal("Post did not run through the active runtime")
+		t.Fatal("Post did not run through the runtime")
 	}
 
 	synced := false
-	App.Sync(func() {
+	handle.Sync(func() {
 		synced = true
 	})
 	if !synced {
-		t.Fatal("Sync should run directly on the UI goroutine")
+		t.Fatal("Sync should run inline on the UI goroutine")
 	}
 
-	App.RequestUpdate()
-	App.RequestUpdate()
+	handle.RequestUpdate()
+	handle.RequestUpdate()
 	if len(app.posts) != 1 {
 		t.Fatalf("expected one coalesced update post, got %d", len(app.posts))
 	}
 	app.runPosted()
 	if builds != 1 {
-		t.Fatalf("expected one rebuild through App.RequestUpdate, got %d", builds)
+		t.Fatalf("expected one rebuild through RequestUpdate, got %d", builds)
 	}
 }
 
 type windowTestApplication struct {
 	posts   []func()
 	windows []*testWindow
+	sheets  []style.StyleSheet
 	quits   int
 }
 
@@ -223,13 +262,15 @@ func (a *windowTestApplication) StyleSheet() style.StyleSheet {
 	return nil
 }
 
-func (a *windowTestApplication) SetStyleSheet(style.StyleSheet) {}
+func (a *windowTestApplication) SetStyleSheet(sheet style.StyleSheet) {
+	a.sheets = append(a.sheets, sheet)
+}
 
-func (a *windowTestApplication) Clipboard() platform.Clipboard {
+func (a *windowTestApplication) Clipboard() gui.Clipboard {
 	return nil
 }
 
-func (a *windowTestApplication) Settings() *gui.Settings {
+func (a *windowTestApplication) Settings() gui.Settings {
 	return nil
 }
 

@@ -8,14 +8,14 @@ import (
 
 func TestStateSetRequestsUpdateWithoutGet(t *testing.T) {
 	app := newWindowTestApplication()
-	rt := newAppRuntime(app, func() RootView {
+	rt := newApp(app, func() RootView {
 		return Window("main").Content(Label("main"))
 	})
-	if err := setActiveAppRuntime(rt); err != nil {
+	if err := setActiveApp(rt); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		clearActiveAppRuntime(rt)
+		clearActiveApp(rt)
 	})
 
 	state := MakeState("unused")
@@ -29,14 +29,14 @@ func TestStateSetRequestsUpdateWithoutGet(t *testing.T) {
 
 func TestZeroStateSetRequestsUpdate(t *testing.T) {
 	app := newWindowTestApplication()
-	rt := newAppRuntime(app, func() RootView {
+	rt := newApp(app, func() RootView {
 		return Window("main").Content(Label("main"))
 	})
-	if err := setActiveAppRuntime(rt); err != nil {
+	if err := setActiveApp(rt); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		clearActiveAppRuntime(rt)
+		clearActiveApp(rt)
 	})
 
 	var state State[int]
@@ -58,15 +58,15 @@ func TestStateSetRebuildsMountedWindow(t *testing.T) {
 	app := newWindowTestApplication()
 	title := MakeState("first")
 	builds := 0
-	rt := newAppRuntime(app, func() RootView {
+	rt := newApp(app, func() RootView {
 		builds++
 		return Window("main").Content(Label(title.Get()))
 	})
-	if err := setActiveAppRuntime(rt); err != nil {
+	if err := setActiveApp(rt); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		clearActiveAppRuntime(rt)
+		clearActiveApp(rt)
 	})
 
 	if err := rt.rebuild(); err != nil {

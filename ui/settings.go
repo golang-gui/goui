@@ -15,47 +15,51 @@ const (
 	ColorSchemeDark  = gui.ColorSchemeDark
 )
 
-// Settings is the thread-safe UI-layer view of system settings. Getters run on
-// the UI thread automatically and always return usable values (the gui layer
-// applies fallback), so callers need no nil checks or thread handling.
-type Settings struct{}
-
-// Settings returns the system settings. It is never nil.
-func (app) Settings() Settings {
-	return Settings{}
+// Settings is the thread-safe UI-layer view of system settings, obtained via
+// App.Settings(). Getters run on the UI thread automatically and always return
+// usable values (the gui layer applies fallback), so callers need no nil checks or
+// thread handling.
+type Settings struct {
+	current  *app
+	settings gui.Settings
 }
 
-func (Settings) ColorScheme() ColorScheme {
-	var v ColorScheme
-	App.Sync(func() { v = guiSettings().ColorScheme() })
-	return v
-}
-
-func (Settings) AccentColor() color.Color {
-	var v color.Color
-	App.Sync(func() { v = guiSettings().AccentColor() })
-	return v
-}
-
-func (Settings) FontFamily() string {
-	var v string
-	App.Sync(func() { v = guiSettings().FontFamily() })
-	return v
-}
-
-func (Settings) FontSize() float32 {
-	var v float32
-	App.Sync(func() { v = guiSettings().FontSize() })
-	return v
-}
-
-// guiSettings returns the gui settings, or a default (all-fallback) instance
-// when there is no active runtime, so getters are always usable.
-func guiSettings() *gui.Settings {
-	if rt := currentAppRuntime(); rt != nil && rt.gui != nil {
-		if s := rt.gui.Settings(); s != nil {
-			return s
-		}
+// Settings returns the system settings view. It is never nil.
+func (a *app) Settings() Settings {
+	return Settings{
+		current:  a,
+		settings: a.gui.Settings(),
 	}
-	return &gui.Settings{}
+}
+
+func (s Settings) ColorScheme() (v ColorScheme) {
+	if s.current == nil {
+		return v
+	}
+	s.current.Sync(func() { v = s.settings.ColorScheme() })
+	return
+}
+
+func (s Settings) AccentColor() (v color.Color) {
+	if s.current == nil {
+		return v
+	}
+	s.current.Sync(func() { v = s.settings.AccentColor() })
+	return
+}
+
+func (s Settings) FontFamily() (v string) {
+	if s.current == nil {
+		return v
+	}
+	s.current.Sync(func() { v = s.settings.FontFamily() })
+	return
+}
+
+func (s Settings) FontSize() (v float32) {
+	if s.current == nil {
+		return v
+	}
+	s.current.Sync(func() { v = s.settings.FontSize() })
+	return
 }

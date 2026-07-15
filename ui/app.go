@@ -3,17 +3,36 @@ package ui
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"runtime"
 	"sync"
 
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
-	"github.com/golang-gui/goui/gui/dev"
+	"github.com/golang-gui/goui/style"
 
 	"github.com/xuges/gothread"
 )
 
-var App app
+// App is the running application handle passed into the Run build closure. It is
+// the running *app itself: valid for the whole run and safe to stash,
+// capture in handlers, or call from any goroutine (after Quit its methods are safe
+// no-ops).
+type App interface {
+	// Post runs f on the UI thread asynchronously.
+	Post(func())
+	// Sync runs f on the UI thread and waits, running inline when already on the
+	// UI thread.
+	Sync(func())
+	// Quit asks the running app to stop.
+	Quit()
+	// RequestUpdate coalesces a declarative rebuild on the UI thread.
+	RequestUpdate()
+	// Clipboard returns the system clipboard view (never nil).
+	Clipboard() Clipboard
+	// Settings returns the system settings view (never nil).
+	Settings() Settings
+}
 
 var (
 	ErrAppRunning      = errors.New("ui app is already running")
@@ -22,48 +41,14 @@ var (
 	ErrWindowDuplicate = errors.New("ui window id is duplicated")
 )
 
-type app struct {
-	devAddr string
-}
-
-type appRuntime struct {
-	mu            sync.Mutex
-	gui           gui.Application
-	build         func() RootView
-	windows       map[string]*windowMount
-	devServer     *dev.Server
-	updatePending bool
-	stopping      bool
-	err           error
-	uiThread      int
-}
-
-type windowMount struct {
-	runtime       *appRuntime
-	id            string
-	window        gui.Window
-	root          *root
-	view          WindowView
-	closeHandle   signal.Handle
-	destroyHandle signal.Handle
-	destroying    bool
-}
-
-var activeAppRuntime struct {
-	sync.Mutex
-	runtime *appRuntime
-}
-
-func (a app) SetDevPort(addr string) app {
-	a.devAddr = addr
-	return a
-}
-
-func (a app) Run(build func() RootView) error {
+// Run creates the application, mounts the declarative tree returned by build, and
+// runs the event loop until the app quits. build receives the App handle, which it
+// may stash, capture in handlers, or call from other goroutines.
+func Run(build func(app App) RootView) error {
 	if build == nil {
 		return ErrAppBuildNil
 	}
-	if currentAppRuntime() != nil {
+	if currentApp() != nil {
 		return ErrAppRunning
 	}
 
@@ -74,78 +59,106 @@ func (a app) Run(build func() RootView) error {
 		return err
 	}
 
-	rt := newAppRuntime(guiApp, build)
-	if err := setActiveAppRuntime(rt); err != nil {
+	var a *app
+	a = newApp(guiApp, func() RootView { return build(a) })
+	if err := setActiveApp(a); err != nil {
 		return err
 	}
-	defer clearActiveAppRuntime(rt)
+	defer clearActiveApp(a)
 
-	if len(a.devAddr) != 0 {
-		rt.devServer, err = dev.ListenAndServe(guiApp, a.devAddr)
-		if err != nil {
-			return err
-		}
-		defer rt.stopDevServer()
-	}
-
-	if err := rt.rebuild(); err != nil {
-		rt.destroyAll()
+	if err := a.rebuild(); err != nil {
+		a.destroyAll()
 		return err
 	}
 
 	guiApp.Run()
-	return rt.error()
+	return a.error()
 }
 
-func (app) Post(f func()) {
+// Post runs f on the UI thread asynchronously; it is dropped after the app stops.
+func (a *app) Post(f func()) {
+	if f != nil {
+		a.postTask(f)
+	}
+}
+
+// Sync runs f on the UI thread and waits. It runs f inline when already on the UI
+// thread; after the app stops it is a no-op.
+func (a *app) Sync(f func()) {
 	if f == nil {
 		return
 	}
-	rt := currentAppRuntime()
-	if rt == nil {
-		return
-	}
-	rt.post(f)
-}
-
-func (app) Sync(f func()) {
-	if f == nil {
-		return
-	}
-	rt := currentAppRuntime()
-	if rt == nil || rt.onUI() {
+	if a.onUI() {
 		f()
 		return
 	}
 
-	done := make(chan struct{})
-	if !rt.post(func() {
-		defer close(done)
+	var wg sync.WaitGroup
+	if !a.postTask(func() {
+		defer wg.Done()
 		f()
 	}) {
 		return
 	}
-	<-done
+	wg.Wait()
 }
 
-func (app) RequestUpdate() {
-	rt := currentAppRuntime()
-	if rt == nil {
-		return
+type app struct {
+	mu            sync.Mutex
+	gui           gui.Application
+	build         func() RootView
+	windows       map[string]*windowMount
+	appliedSheet  style.StyleSheet
+	updatePending bool
+	stopping      bool
+	err           error
+	uiThread      int
+}
+
+type windowMount struct {
+	runtime       *app
+	id            string
+	window        gui.Window
+	root          *root
+	view          WindowView
+	closeHandle   signal.Handle
+	destroyHandle signal.Handle
+	destroying    bool
+}
+
+var activeApp struct {
+	sync.Mutex
+	current *app
+}
+
+func setActiveApp(a *app) error {
+	activeApp.Lock()
+	defer activeApp.Unlock()
+
+	if activeApp.current != nil {
+		return ErrAppRunning
 	}
-	rt.requestUpdate()
+	activeApp.current = a
+	return nil
 }
 
-func (app) Quit() {
-	rt := currentAppRuntime()
-	if rt == nil {
-		return
+func clearActiveApp(a *app) {
+	activeApp.Lock()
+	defer activeApp.Unlock()
+
+	if activeApp.current == a {
+		activeApp.current = nil
 	}
-	rt.quit()
 }
 
-func newAppRuntime(guiApp gui.Application, build func() RootView) *appRuntime {
-	return &appRuntime{
+func currentApp() *app {
+	activeApp.Lock()
+	defer activeApp.Unlock()
+	return activeApp.current
+}
+
+func newApp(guiApp gui.Application, build func() RootView) *app {
+	return &app{
 		gui:      guiApp,
 		build:    build,
 		windows:  make(map[string]*windowMount),
@@ -153,108 +166,113 @@ func newAppRuntime(guiApp gui.Application, build func() RootView) *appRuntime {
 	}
 }
 
-func setActiveAppRuntime(rt *appRuntime) error {
-	activeAppRuntime.Lock()
-	defer activeAppRuntime.Unlock()
-
-	if activeAppRuntime.runtime != nil {
-		return ErrAppRunning
-	}
-	activeAppRuntime.runtime = rt
-	return nil
+func (a *app) onUI() bool {
+	return a.uiThread != 0 && a.uiThread == gothread.GetId()
 }
 
-func clearActiveAppRuntime(rt *appRuntime) {
-	activeAppRuntime.Lock()
-	defer activeAppRuntime.Unlock()
-
-	if activeAppRuntime.runtime == rt {
-		activeAppRuntime.runtime = nil
-	}
-}
-
-func currentAppRuntime() *appRuntime {
-	activeAppRuntime.Lock()
-	defer activeAppRuntime.Unlock()
-	return activeAppRuntime.runtime
-}
-
-func (rt *appRuntime) onUI() bool {
-	return rt.uiThread != 0 && rt.uiThread == gothread.GetId()
-}
-
-func (rt *appRuntime) post(f func()) bool {
-	if rt.isStopping() {
+func (a *app) postTask(f func()) bool {
+	if a.isStopping() {
 		return false
 	}
-	if rt.gui == nil {
+	if a.gui == nil {
 		f()
 		return true
 	}
-	rt.gui.Post(f)
+	a.gui.Post(f)
 	return true
 }
 
-func (rt *appRuntime) requestUpdate() {
-	rt.mu.Lock()
-	if rt.updatePending {
-		rt.mu.Unlock()
+// RequestUpdate coalesces a declarative rebuild onto the UI thread.
+func (a *app) RequestUpdate() {
+	a.mu.Lock()
+	if a.updatePending {
+		a.mu.Unlock()
 		return
 	}
-	rt.updatePending = true
-	rt.mu.Unlock()
+	a.updatePending = true
+	a.mu.Unlock()
 
-	if !rt.post(func() {
-		rt.runPendingUpdate()
+	if !a.postTask(func() {
+		a.runPendingUpdate()
 	}) {
-		rt.mu.Lock()
-		rt.updatePending = false
-		rt.mu.Unlock()
+		a.mu.Lock()
+		a.updatePending = false
+		a.mu.Unlock()
 	}
 }
 
-func (rt *appRuntime) runPendingUpdate() {
-	rt.mu.Lock()
-	if !rt.updatePending {
-		rt.mu.Unlock()
+func (a *app) runPendingUpdate() {
+	a.mu.Lock()
+	if !a.updatePending {
+		a.mu.Unlock()
 		return
 	}
-	rt.updatePending = false
-	rt.mu.Unlock()
+	a.updatePending = false
+	a.mu.Unlock()
 
-	if err := rt.rebuild(); err != nil {
-		rt.fail(err)
+	if err := a.rebuild(); err != nil {
+		a.fail(err)
 	}
 }
 
-func (rt *appRuntime) rebuild() error {
-	if rt.build == nil {
+func (a *app) rebuild() error {
+	if a.build == nil {
 		return ErrAppBuildNil
 	}
-	windows, err := rootWindows(rt.build())
+	windows, sheet, err := resolveRoot(a.build())
 	if err != nil {
 		return err
 	}
-	return rt.reconcileWindows(windows)
+	a.applyStyleSheet(sheet)
+	return a.reconcileWindows(windows)
 }
 
-func rootWindows(root RootView) ([]WindowView, error) {
+// resolveRoot extracts the windows and the optional application style sheet from
+// the declarative root: a bare WindowView is one window with no app-level sheet; a
+// RootNode carries both.
+func resolveRoot(root RootView) ([]WindowView, style.StyleSheet, error) {
 	switch root := root.(type) {
 	case nil:
-		return nil, nil
+		return nil, nil, nil
 	case WindowView:
-		return []WindowView{root}, nil
+		return []WindowView{root}, nil, nil
 	case *WindowView:
 		if root == nil {
-			return nil, nil
+			return nil, nil, nil
 		}
-		return []WindowView{*root}, nil
+		return []WindowView{*root}, nil, nil
+	case RootNode:
+		return root.windows, root.styleSheet, nil
+	case *RootNode:
+		if root == nil {
+			return nil, nil, nil
+		}
+		return root.windows, root.styleSheet, nil
 	default:
-		return nil, fmt.Errorf("unsupported ui root view %T", root)
+		return nil, nil, fmt.Errorf("unsupported ui root view %T", root)
 	}
 }
 
-func (rt *appRuntime) reconcileWindows(views []WindowView) error {
+// applyStyleSheet reconciles the application style sheet onto gui when it changed
+// since the last rebuild. A nil sheet reverts to gui's built-in default. The diff
+// avoids a redundant app-wide relayout on every rebuild; sheets are compared by
+// content because they are value types (== is unsafe on them).
+func (a *app) applyStyleSheet(sheet style.StyleSheet) {
+	if a.gui == nil || sameSheet(a.appliedSheet, sheet) {
+		return
+	}
+	a.appliedSheet = sheet
+	a.gui.SetStyleSheet(sheet)
+}
+
+func sameSheet(a, b style.StyleSheet) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return reflect.DeepEqual(a, b)
+}
+
+func (a *app) reconcileWindows(views []WindowView) error {
 	seen := make(map[string]WindowView, len(views))
 	for _, view := range views {
 		if view.id == "" {
@@ -267,14 +285,14 @@ func (rt *appRuntime) reconcileWindows(views []WindowView) error {
 	}
 
 	for id, view := range seen {
-		mount := rt.windows[id]
+		mount := a.windows[id]
 		if mount == nil {
 			var err error
-			mount, err = rt.createWindow(view)
+			mount, err = a.createWindow(view)
 			if err != nil {
 				return err
 			}
-			rt.windows[id] = mount
+			a.windows[id] = mount
 			continue
 		}
 		if err := mount.update(view); err != nil {
@@ -282,28 +300,28 @@ func (rt *appRuntime) reconcileWindows(views []WindowView) error {
 		}
 	}
 
-	for id, mount := range rt.windows {
+	for id, mount := range a.windows {
 		if _, exists := seen[id]; exists {
 			continue
 		}
-		delete(rt.windows, id)
+		delete(a.windows, id)
 		mount.destroy()
 	}
 	return nil
 }
 
-func (rt *appRuntime) createWindow(view WindowView) (*windowMount, error) {
-	if rt.gui == nil {
+func (a *app) createWindow(view WindowView) (*windowMount, error) {
+	if a.gui == nil {
 		return nil, gui.ErrAppNil
 	}
 
-	window, err := rt.gui.NewWindow()
+	window, err := a.gui.NewWindow()
 	if err != nil {
 		return nil, err
 	}
 
 	mount := &windowMount{
-		runtime: rt,
+		runtime: a,
 		id:      view.id,
 		window:  window,
 		root:    newRoot(),
@@ -372,9 +390,9 @@ func (m *windowMount) disconnect() {
 	}
 }
 
-func (rt *appRuntime) windowDestroyed(mount *windowMount) {
-	if current := rt.windows[mount.id]; current == mount {
-		delete(rt.windows, mount.id)
+func (a *app) windowDestroyed(mount *windowMount) {
+	if current := a.windows[mount.id]; current == mount {
+		delete(a.windows, mount.id)
 	}
 
 	mount.disconnect()
@@ -385,58 +403,50 @@ func (rt *appRuntime) windowDestroyed(mount *windowMount) {
 	// (QuitOnLastWindowClosed); the ui runtime does not decide it.
 }
 
-func (rt *appRuntime) destroyAll() {
-	for id, mount := range rt.windows {
-		delete(rt.windows, id)
+func (a *app) destroyAll() {
+	for id, mount := range a.windows {
+		delete(a.windows, id)
 		mount.destroy()
 	}
 }
 
-func (rt *appRuntime) stopDevServer() {
-	if rt == nil || rt.devServer == nil {
-		return
-	}
-	dev := rt.devServer
-	rt.devServer = nil
-	_ = dev.Close()
-}
-
-func (rt *appRuntime) fail(err error) {
+func (a *app) fail(err error) {
 	if err == nil {
 		return
 	}
 
-	rt.mu.Lock()
-	if rt.err == nil {
-		rt.err = err
+	a.mu.Lock()
+	if a.err == nil {
+		a.err = err
 	}
-	rt.mu.Unlock()
+	a.mu.Unlock()
 
-	rt.quit()
+	a.Quit()
 }
 
-func (rt *appRuntime) quit() {
-	rt.mu.Lock()
-	if rt.stopping {
-		rt.mu.Unlock()
+// Quit asks the running app to stop; it is idempotent.
+func (a *app) Quit() {
+	a.mu.Lock()
+	if a.stopping {
+		a.mu.Unlock()
 		return
 	}
-	rt.stopping = true
-	rt.mu.Unlock()
+	a.stopping = true
+	a.mu.Unlock()
 
-	if rt.gui != nil {
-		rt.gui.Quit()
+	if a.gui != nil {
+		a.gui.Quit()
 	}
 }
 
-func (rt *appRuntime) isStopping() bool {
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
-	return rt.stopping
+func (a *app) isStopping() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.stopping
 }
 
-func (rt *appRuntime) error() error {
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
-	return rt.err
+func (a *app) error() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.err
 }
