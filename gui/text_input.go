@@ -29,7 +29,6 @@ type TextInput struct {
 
 func NewTextInput() *TextInput {
 	input := new(TextInput)
-	input.SetStyleName(styleNameTextInput)
 	input.SetFocusable(true)
 	input.padding = defaultTextInputPadding
 	input.key = NewKeyEventController()
@@ -239,7 +238,11 @@ func (t *TextInput) textFormat(s style.Style) typography.TextFormat {
 }
 
 func (t *TextInput) resolvedStyle() style.Style {
-	return resolveStyle(t, style.PartDefault, t.styleState())
+	name := t.StyleName()
+	if name == "" {
+		name = styleNameTextInput
+	}
+	return ResolveStyle(name, style.PartDefault, t.styleState())
 }
 
 func (t *TextInput) styleState() style.State {

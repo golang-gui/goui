@@ -172,26 +172,27 @@ func TestTextInputPaintEmptyFocusedSkipsTextLayoutAndDrawsCaret(t *testing.T) {
 	}
 }
 
-func TestTextInputUsesLocalStyleForChromeAndText(t *testing.T) {
+func TestTextInputUsesStyleSheetForChromeAndText(t *testing.T) {
 	typo := &testTypography{}
-	setTestApplication(t, typo)
-
 	background := color.RGBA{R: 10, G: 20, B: 30, A: 255}
 	border := color.RGBA{R: 40, G: 50, B: 60, A: 255}
 	foreground := color.RGBA{R: 70, G: 80, B: 90, A: 255}
+	useTestApplication(t, &application{
+		typo: typo,
+		style: style.Sheet(
+			style.Name(styleNameTextInput).
+				BackgroundColor(background).
+				BorderColor(border).
+				BorderWidth(2).
+				Radius(3).
+				ForegroundColor(foreground).
+				FontFamily("Mono").
+				FontSize(18),
+		),
+	})
 
 	input := NewTextInput()
-	input.SetPadding(6) // padding is a layout field now, not style
-	input.SetStyleRules(
-		style.Default().
-			BackgroundColor(background).
-			BorderColor(border).
-			BorderWidth(2).
-			Radius(3).
-			ForegroundColor(foreground).
-			FontFamily("Mono").
-			FontSize(18),
-	)
+	input.SetPadding(6) // padding is a layout field, not style
 	input.SetText("abc")
 	input.Arrange(geometry.Rect(0, 0, 100, 24))
 

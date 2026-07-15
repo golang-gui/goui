@@ -212,7 +212,7 @@ func (r Rule) FontSize(size float32) Rule {
 }
 
 type StyleSheet interface {
-	Resolve(sel Sel, local []Rule) Style
+	Resolve(sel Sel) Style
 }
 
 func Sheet(rules ...Rule) StyleSheet {
@@ -223,19 +223,17 @@ type sheet struct {
 	rules []Rule
 }
 
-func (s sheet) Resolve(sel Sel, local []Rule) Style {
-	base := resolveRules(sel, s.rules, false, Style{})
-	return resolveRules(sel, local, true, base)
+func (s sheet) Resolve(sel Sel) Style {
+	return resolveRules(sel, s.rules, Style{})
 }
 
-func resolveRules(sel Sel, rules []Rule, local bool, base Style) Style {
+// resolveRules accumulates every rule that matches a step of the fallback chain,
+// later (more specific) matches merging over earlier ones. There is no local
+// override list anymore: local code names a style, it does not supply rules.
+func resolveRules(sel Sel, rules []Rule, base Style) Style {
 	for _, candidate := range fallbackChain(sel) {
 		for _, rule := range rules {
-			ruleSel := rule.Sel
-			if local && ruleSel.Name == "" {
-				ruleSel.Name = candidate.Name
-			}
-			if ruleSel == candidate {
+			if rule.Sel == candidate {
 				base = base.merge(rule.Style)
 			}
 		}

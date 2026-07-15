@@ -6,7 +6,6 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/layout"
-	"github.com/golang-gui/goui/style"
 )
 
 // Root is the host a widget lives in — a window or a popover. Widgets reach it
@@ -26,10 +25,8 @@ type Widget interface {
 
 	ID() string
 	SetID(string)
-	StyleName() string
+	StyleName() string // explicit style override, "" when unset
 	SetStyleName(string)
-	StyleRules() []style.Rule
-	SetStyleRules(...style.Rule)
 
 	Visible() bool
 	SetVisible(bool)
@@ -87,8 +84,7 @@ type Container interface {
 
 type WidgetBase struct {
 	id                  string
-	styleName           string
-	styleRules          []style.Rule
+	styleName           string // style override; "" = the control resolves with its own default name
 	hidden              bool
 	focusable           bool
 	focused             bool
@@ -124,10 +120,8 @@ func (w *WidgetBase) SetID(id string) {
 	}
 }
 
+// StyleName is the explicit style override, empty when unset.
 func (w *WidgetBase) StyleName() string {
-	if w.styleName == "" {
-		return styleNameWidget
-	}
 	return w.styleName
 }
 
@@ -136,18 +130,6 @@ func (w *WidgetBase) SetStyleName(name string) {
 		return
 	}
 	w.styleName = name
-	w.RequestLayout()
-}
-
-func (w *WidgetBase) StyleRules() []style.Rule {
-	return slices.Clone(w.styleRules)
-}
-
-func (w *WidgetBase) SetStyleRules(rules ...style.Rule) {
-	if style.SameRules(w.styleRules, rules) {
-		return
-	}
-	w.styleRules = slices.Clone(rules)
 	w.RequestLayout()
 }
 
@@ -567,7 +549,6 @@ func (w *WidgetBase) destroy(widget Widget) {
 	w.children = nil
 	w.controllers = nil
 	w.layoutManager = nil
-	w.styleRules = nil
 }
 
 func (w *WidgetBase) emitMountSubtree(widget Widget) {
