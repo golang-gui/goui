@@ -42,8 +42,8 @@ func TestNormalizeAddr(t *testing.T) {
 	}
 
 	_, err = normalizeAddr("")
-	if !errors.Is(err, ErrAddrEmpty) {
-		t.Fatalf("expected ErrAddrEmpty, got %v", err)
+	if !errors.Is(err, errAddrEmpty) {
+		t.Fatalf("expected errAddrEmpty, got %v", err)
 	}
 }
 
@@ -68,7 +68,7 @@ func TestHandlerSnapshotReturnsApplicationSnapshot(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, SnapshotPath, nil)
-	NewHandler(app).ServeHTTP(rec, req)
+	newHandler(func() gui.Application { return app }).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("unexpected status %d: %s", rec.Code, rec.Body.String())
@@ -104,7 +104,7 @@ func TestHandlerDispatchesPointerEvent(t *testing.T) {
 	}`)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, EventPath, body)
-	NewHandler(app).ServeHTTP(rec, req)
+	newHandler(func() gui.Application { return app }).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("unexpected status %d: %s", rec.Code, rec.Body.String())
@@ -164,7 +164,7 @@ func (a *testApplication) Clipboard() gui.Clipboard {
 	panic("unimplemented")
 }
 
-func (a *testApplication) Settings() *gui.Settings {
+func (a *testApplication) Settings() gui.Settings {
 	panic("unimplemented")
 }
 
