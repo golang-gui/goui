@@ -21,7 +21,6 @@ const defaultButtonPadding = 6
 
 func NewButton() *Button {
 	button := new(Button)
-	button.SetStyleName(styleNameButton)
 	button.SetFocusable(true)
 	button.padding = defaultButtonPadding
 	button.SetLayoutManager(layout.NewFillLayout())
@@ -142,7 +141,11 @@ func (b *Button) requestPaint() {
 }
 
 func (b *Button) resolvedStyle() style.Style {
-	return resolveStyle(b, style.PartDefault, b.styleState())
+	name := b.StyleName()
+	if name == "" {
+		name = styleNameButton
+	}
+	return ResolveStyle(name, style.PartDefault, b.styleState())
 }
 
 func (b *Button) styleState() style.State {

@@ -2,7 +2,6 @@ package gui
 
 import (
 	"image"
-	"image/color"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -10,7 +9,6 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
-	"github.com/golang-gui/goui/style"
 )
 
 func TestButtonSnapshot(t *testing.T) {
@@ -162,35 +160,6 @@ func TestButtonPaintsBackgroundForPointerStates(t *testing.T) {
 		t.Fatalf("unexpected pressed leave background: %+v", painter.brush)
 	}
 }
-
-func TestButtonUsesLocalStyleForPaint(t *testing.T) {
-	button := NewButton()
-	button.SetStyleRules(
-		style.Default().
-			BackgroundColor(color.RGBA{R: 10, G: 20, B: 30, A: 255}).
-			BorderColor(color.RGBA{R: 90, G: 80, B: 70, A: 255}).
-			BorderWidth(2).
-			Radius(7),
-	)
-	button.Arrange(geometry.Rect(0, 0, 80, 30))
-
-	painter := new(testButtonBackgroundPainter)
-	button.Paint(painter)
-
-	if painter.rect != geometry.Rect(0, 0, 80, 30) || painter.radius != 7 {
-		t.Fatalf("unexpected fill geometry: rect=%+v radius=%v", painter.rect, painter.radius)
-	}
-	if painter.brush != graphics.ColorOf(color.RGBA{R: 10, G: 20, B: 30, A: 255}) {
-		t.Fatalf("unexpected fill brush: %+v", painter.brush)
-	}
-	if painter.drawRect != geometry.Rect(0, 0, 80, 30) || painter.drawRadius != 7 || painter.drawStrokeWidth != 2 {
-		t.Fatalf("unexpected border geometry: rect=%+v radius=%v width=%v", painter.drawRect, painter.drawRadius, painter.drawStrokeWidth)
-	}
-	if painter.drawBrush != graphics.ColorOf(color.RGBA{R: 90, G: 80, B: 70, A: 255}) {
-		t.Fatalf("unexpected border brush: %+v", painter.drawBrush)
-	}
-}
-
 func TestButtonHoverUsesContainedChildHover(t *testing.T) {
 	button := NewButton()
 	child := newTestWidget()

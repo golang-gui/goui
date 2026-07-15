@@ -11,7 +11,7 @@ import (
 func TestDefaultStyleSheetResolvesBuiltInStyles(t *testing.T) {
 	sheet := DefaultStyleSheet()
 
-	button := sheet.Resolve(style.Sel{Name: styleNameButton, State: style.Hovered}, nil)
+	button := sheet.Resolve(style.Sel{Name: styleNameButton, State: style.Hovered})
 	background, ok := button.BackgroundColor()
 	if !ok || !colors.Equal(background, color.RGBA{R: 230, G: 230, B: 230, A: 255}) {
 		t.Fatalf("unexpected button hover background: %v ok=%v", background, ok)
@@ -21,7 +21,7 @@ func TestDefaultStyleSheetResolvesBuiltInStyles(t *testing.T) {
 		t.Fatalf("unexpected button radius: %v ok=%v", radius, ok)
 	}
 
-	input := sheet.Resolve(style.Sel{Name: styleNameTextInput, State: style.Focused}, nil)
+	input := sheet.Resolve(style.Sel{Name: styleNameTextInput, State: style.Focused})
 	borderColor, ok := input.BorderColor()
 	if !ok || !colors.Equal(borderColor, defaultAccentColor) {
 		t.Fatalf("unexpected focused text input border: %v ok=%v", borderColor, ok)

@@ -14,29 +14,22 @@ const (
 	styleNameLabel     = "label"
 	styleNameButton    = "button"
 	styleNameTextInput = "text-input"
-	styleNameBox       = "box"
-	styleNameImage     = "image"
 )
 
+// DefaultStyleSheet is the bare fallback sheet used when the application has no
+// custom sheet — enough to make widgets visible, not a theme.
 func DefaultStyleSheet() style.StyleSheet {
-	return style.Sheet(defaultStyleRules(nil)...)
+	return defaultStyleSheet
 }
 
-// defaultStyleRules builds the built-in style sheet from the given settings so
-// the default appearance tracks the system accent color and UI font. A nil
-// settings value falls back to gui defaults. The palette is light-only for now;
-// dark-mode selection by settings.ColorScheme() is future work.
-func defaultStyleRules(s *Settings) []style.Rule {
+// defaultStyleSheet is the bare fallback sheet: built once (it never changes —
+// accent/font do not track settings; the real theme is a separate package).
+var defaultStyleSheet = style.Sheet(defaultStyleRules()...)
+
+func defaultStyleRules() []style.Rule {
 	accent := defaultAccentColor
 	family := defaultLabelFontFamily()
 	size := defaultFontSize
-	if s != nil {
-		accent = s.AccentColor()
-		if f := s.FontFamily(); f != "" {
-			family = f
-		}
-		size = s.FontSize()
-	}
 
 	return []style.Rule{
 		style.Name(styleNameWidget).
@@ -82,33 +75,16 @@ func defaultStyleRules(s *Settings) []style.Rule {
 	}
 }
 
-func resolveStyle(widget Widget, part string, state style.State) style.Style {
-	if widget == nil {
-		return style.Style{}
-	}
-	sheet := widgetStyleSheet(widget)
-	if sheet == nil {
-		return style.Style{}
-	}
-	return sheet.Resolve(style.Sel{
-		Name:  widget.StyleName(),
-		Part:  part,
-		State: state,
-	}, widget.StyleRules())
-}
-
-func widgetStyleSheet(widget Widget) style.StyleSheet {
-	if win, ok := widget.Window().(*window); ok && win != nil && win.app != nil {
-		if sheet := win.app.resolvedStyleSheet(); sheet != nil {
-			return sheet
+// ResolveStyle resolves (name, part, state) against the application's current
+// style sheet, falling back to the built-in default when there is none.
+func ResolveStyle(name, part string, state style.State) style.Style {
+	sheet := DefaultStyleSheet()
+	if App != nil {
+		if s := App.StyleSheet(); s != nil {
+			sheet = s
 		}
 	}
-	if app, ok := App.(*application); ok && app != nil {
-		if sheet := app.resolvedStyleSheet(); sheet != nil {
-			return sheet
-		}
-	}
-	return DefaultStyleSheet()
+	return sheet.Resolve(style.Sel{Name: name, Part: part, State: state})
 }
 
 // textFormatFromStyle builds a text format from a resolved style plus the

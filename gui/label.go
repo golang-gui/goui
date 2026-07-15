@@ -40,7 +40,6 @@ type Label struct {
 
 func NewLabel(text string) *Label {
 	label := &Label{text: text}
-	label.SetStyleName(styleNameLabel)
 	return label
 }
 
@@ -134,7 +133,11 @@ func (l *Label) newTextLayout(format typography.TextFormat, size geometry.Size) 
 }
 
 func (l *Label) resolvedTextFormat() typography.TextFormat {
-	return textFormatFromStyle(resolveStyle(l, style.PartDefault, style.Normal), l.wrapMode, l.textAlign)
+	name := l.StyleName()
+	if name == "" {
+		name = styleNameLabel
+	}
+	return textFormatFromStyle(ResolveStyle(name, style.PartDefault, style.Normal), l.wrapMode, l.textAlign)
 }
 
 func measureTextSize(available geometry.Size) geometry.Size {

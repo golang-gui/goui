@@ -14,7 +14,6 @@ type Image struct {
 
 func NewImage(img image.Image) *Image {
 	image := &Image{img: img}
-	image.SetStyleName(styleNameImage)
 	return image
 }
 

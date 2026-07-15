@@ -19,13 +19,13 @@ func TestResolveUsesSimpleStateFallback(t *testing.T) {
 			BackgroundColor(hoverBackground),
 	)
 
-	normal := sheet.Resolve(Sel{Name: "button", State: Normal}, nil)
+	normal := sheet.Resolve(Sel{Name: "button", State: Normal})
 	normalColor, ok := normal.BackgroundColor()
 	if !ok || !colors.Equal(normalColor, normalBackground) {
 		t.Fatalf("unexpected normal background: %v ok=%v", normalColor, ok)
 	}
 
-	hover := sheet.Resolve(Sel{Name: "button", State: Hovered}, nil)
+	hover := sheet.Resolve(Sel{Name: "button", State: Hovered})
 	hoverColor, ok := hover.BackgroundColor()
 	if !ok || !colors.Equal(hoverColor, hoverBackground) {
 		t.Fatalf("unexpected hover background: %v ok=%v", hoverColor, ok)
@@ -35,7 +35,7 @@ func TestResolveUsesSimpleStateFallback(t *testing.T) {
 		t.Fatalf("hover should keep normal radius, got %v ok=%v", radius, ok)
 	}
 
-	focused := sheet.Resolve(Sel{Name: "button", State: Focused}, nil)
+	focused := sheet.Resolve(Sel{Name: "button", State: Focused})
 	focusedColor, ok := focused.BackgroundColor()
 	if !ok || !colors.Equal(focusedColor, normalColor) {
 		t.Fatalf("focused should fall back to normal background: %v ok=%v", focusedColor, ok)
@@ -56,7 +56,7 @@ func TestResolveUsesPartFallback(t *testing.T) {
 		Name:  "text-input",
 		Part:  "selection",
 		State: Hovered,
-	}, nil)
+	})
 
 	background, ok := resolved.BackgroundColor()
 	if !ok || !colors.Equal(background, hoverColor) {
@@ -82,7 +82,7 @@ func TestResolveRequiresFullSelectorMatch(t *testing.T) {
 		Name("label").State(Hovered).BackgroundColor(blue),
 	)
 
-	resolved := sheet.Resolve(Sel{Name: "button", State: Hovered}, nil)
+	resolved := sheet.Resolve(Sel{Name: "button", State: Hovered})
 	background, ok := resolved.BackgroundColor()
 	if !ok {
 		t.Fatal("button hover background was not resolved")
@@ -98,47 +98,18 @@ func TestResolveRequiresFullSelectorMatch(t *testing.T) {
 	}
 }
 
-func TestResolveAppliesLocalRulesOverGlobalFallback(t *testing.T) {
-	globalFont := float32(15)
-	localFont := float32(20)
-	localBackground := color.RGBA{R: 10, G: 20, B: 30, A: 255}
-	sheet := Sheet(
-		Name("label").FontSize(globalFont),
-		Name("label").State(Hovered).BackgroundColor(color.RGBA{R: 200, A: 255}),
-	)
-
-	resolved := sheet.Resolve(
-		Sel{Name: "label", State: Hovered},
-		[]Rule{
-			Default().FontSize(localFont),
-			Default().State(Hovered).BackgroundColor(localBackground),
-		},
-	)
-
-	fontSize, ok := resolved.FontSize()
-	if !ok || fontSize != localFont {
-		t.Fatalf("local normal font should override global normal font: %v ok=%v", fontSize, ok)
-	}
-	background, ok := resolved.BackgroundColor()
-	if !ok || !colors.Equal(background, localBackground) {
-		t.Fatalf("local hover background should override global hover background: %v ok=%v", background, ok)
-	}
-}
-
 func TestResolvePreservesExplicitZeroValues(t *testing.T) {
+	// A more-specific rule that sets an explicit zero/transparent value overrides
+	// a non-zero base along the fallback chain (the optional-field model).
 	sheet := Sheet(
 		Name("button").BorderWidth(2).Radius(8),
+		Name("button").State(Hovered).
+			BorderWidth(0).
+			Radius(0).
+			BackgroundColor(color.Transparent),
 	)
 
-	resolved := sheet.Resolve(
-		Sel{Name: "button"},
-		[]Rule{
-			Default().
-				BorderWidth(0).
-				Radius(0).
-				BackgroundColor(color.Transparent),
-		},
-	)
+	resolved := sheet.Resolve(Sel{Name: "button", State: Hovered})
 
 	borderWidth, ok := resolved.BorderWidth()
 	if !ok || borderWidth != 0 {

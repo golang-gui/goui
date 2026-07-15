@@ -6,7 +6,6 @@ import (
 
 	"github.com/golang-gui/goui/core/colors"
 	"github.com/golang-gui/goui/core/geometry"
-	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/style"
 )
@@ -59,87 +58,6 @@ func TestApplicationStyleSheetChangesButtonPaint(t *testing.T) {
 // TestWindowApplicationStyleSheetOverridesGlobal covers the two-tier lookup in
 // widgetStyleSheet: a widget mounted in a window whose application has its own
 // sheet uses that sheet, not the global one.
-func TestWindowApplicationStyleSheetOverridesGlobal(t *testing.T) {
-	globalBackground := color.RGBA{R: 1, G: 2, B: 3, A: 255}
-	windowBackground := color.RGBA{R: 9, G: 8, B: 7, A: 255}
-	useTestApplication(t, &application{
-		style: style.Sheet(style.Name(styleNameButton).BackgroundColor(globalBackground).Radius(2)),
-	})
-
-	winApp := &application{
-		style: style.Sheet(style.Name(styleNameButton).BackgroundColor(windowBackground).Radius(2)),
-	}
-	win := &window{app: winApp}
-	button := NewButton()
-	win.SetWidget(button)
-	button.Arrange(geometry.Rect(0, 0, 80, 30))
-
-	painter := new(testButtonBackgroundPainter)
-	button.Paint(painter)
-
-	if painter.brush != graphics.ColorOf(windowBackground) {
-		t.Fatalf("window application sheet should win over global: %+v", painter.brush)
-	}
-}
-
-// TestLocalRulesOverrideApplicationStyleSheet checks that local rules override
-// only the fields they set, while unset fields keep resolving against the
-// application sheet (base = global, override = local).
-func TestLocalRulesOverrideApplicationStyleSheet(t *testing.T) {
-	appBackground := color.RGBA{R: 100, A: 255}
-	localBackground := color.RGBA{B: 100, A: 255}
-	useTestApplication(t, &application{
-		style: style.Sheet(style.Name(styleNameButton).BackgroundColor(appBackground).Radius(9)),
-	})
-
-	button := NewButton()
-	button.SetStyleRules(style.Default().BackgroundColor(localBackground))
-	button.Arrange(geometry.Rect(0, 0, 80, 30))
-
-	painter := new(testButtonBackgroundPainter)
-	button.Paint(painter)
-
-	if painter.brush != graphics.ColorOf(localBackground) {
-		t.Fatalf("local background should override application background: %+v", painter.brush)
-	}
-	if painter.radius != 9 {
-		t.Fatalf("unset local field should keep application radius, got %v", painter.radius)
-	}
-}
-
-// TestLocalExplicitZeroOverridesApplicationStyleSheet proves the optional-field
-// model works end to end: an explicit zero/transparent local value overrides a
-// non-zero base instead of being treated as "unset".
-func TestLocalExplicitZeroOverridesApplicationStyleSheet(t *testing.T) {
-	useTestApplication(t, &application{
-		style: style.Sheet(
-			style.Name(styleNameButton).
-				BackgroundColor(color.RGBA{R: 200, A: 255}).
-				BorderColor(color.RGBA{B: 200, A: 255}).
-				BorderWidth(3).
-				Radius(0),
-		),
-	})
-
-	button := NewButton()
-	button.SetStyleRules(
-		style.Default().
-			BackgroundColor(color.Transparent).
-			BorderWidth(0),
-	)
-	button.Arrange(geometry.Rect(0, 0, 80, 30))
-
-	painter := new(testButtonBackgroundPainter)
-	button.Paint(painter)
-
-	if painter.brush != graphics.ColorOf(color.Transparent) {
-		t.Fatalf("explicit transparent local background should override opaque base: %+v", painter.brush)
-	}
-	if painter.drawStrokeWidth != 0 || painter.drawRect != (geometry.Rectangle{}) {
-		t.Fatalf("explicit zero border width should suppress the border draw: width=%v rect=%+v", painter.drawStrokeWidth, painter.drawRect)
-	}
-}
-
 // TestButtonHoverBackgroundFromApplicationStyleSheet checks that the widget's
 // current state selects the matching rule from the application sheet, and falls
 // back to normal when the state clears.
@@ -216,81 +134,43 @@ func TestTextInputFocusedBorderFromApplicationStyleSheet(t *testing.T) {
 	}
 }
 
-// TestLabelLocalRuleDrivesTextFormat covers the local-rule path for text format
-// (the existing label test only exercises the global sheet).
-func TestLabelLocalRuleDrivesTextFormat(t *testing.T) {
-	typo := &testTypography{measureSize: geometry.Size{Width: 10, Height: 10}}
-	setTestApplication(t, typo)
+// TestStyleNameSelectsRuleSet exercises StyleName routing: the widget's style
+// name is what selects which rules apply, and changing it changes resolution.
+// TestResolveFallsBackToDefaultStyleName proves StyleName() is explicit (empty
+// when unset) while resolveStyle falls back to the widget's type default name.
+func TestResolveFallsBackToDefaultStyleName(t *testing.T) {
+	buttonBg := color.RGBA{R: 7, G: 8, B: 9, A: 255}
+	useTestApplication(t, &application{
+		style: style.Sheet(style.Name(styleNameButton).BackgroundColor(buttonBg)),
+	})
 
-	foreground := color.RGBA{R: 12, G: 34, B: 56, A: 255}
-	label := NewLabel("hi")
-	label.SetStyleRules(
-		style.Default().
-			FontFamily("LocalMono").
-			FontSize(22).
-			ForegroundColor(foreground),
-	)
-
-	_ = label.Measure(layout.Loose(geometry.Size{Width: 100, Height: 30}))
-
-	if len(typo.calls) != 1 {
-		t.Fatalf("expected one text layout call, got %d", len(typo.calls))
+	button := NewButton()
+	if button.StyleName() != "" {
+		t.Fatalf("unset style override should be empty (explicit getter), got %q", button.StyleName())
 	}
-	format := typo.calls[0].format
-	if format.Font.Family != "LocalMono" || format.Font.Size != 22 {
-		t.Fatalf("unexpected local styled font: %+v", format.Font)
-	}
-	if !colors.Equal(format.TextColor, foreground) {
-		t.Fatalf("unexpected local styled text color: %v", format.TextColor)
+
+	bg, ok := ResolveStyle(styleNameButton, style.PartDefault, style.Normal).BackgroundColor()
+	if !ok || !colors.Equal(bg, buttonBg) {
+		t.Fatalf("button default name should resolve the button style: %v ok=%v", bg, ok)
 	}
 }
 
-// TestStyleNameSelectsRuleSet exercises StyleName routing: the widget's style
-// name is what selects which rules apply, and changing it changes resolution.
 func TestStyleNameSelectsRuleSet(t *testing.T) {
 	setTestApplication(t, nil)
 
-	widget := newTestWidget()
-
-	background, ok := resolveStyle(widget, style.PartDefault, style.Normal).BackgroundColor()
+	// ResolveStyle routes purely by name: the generic widget name resolves the
+	// base (transparent) style, a different name selects a different ruleset.
+	background, ok := ResolveStyle(styleNameWidget, style.PartDefault, style.Normal).BackgroundColor()
 	if !ok || !colors.Equal(background, color.Transparent) {
-		t.Fatalf("default widget style name should resolve transparent background: %v ok=%v", background, ok)
+		t.Fatalf("widget style name should resolve transparent background: %v ok=%v", background, ok)
 	}
 
-	widget.SetStyleName(styleNameButton)
-	resolved := resolveStyle(widget, style.PartDefault, style.Normal)
+	resolved := ResolveStyle(styleNameButton, style.PartDefault, style.Normal)
 	background, ok = resolved.BackgroundColor()
 	if !ok || !colors.Equal(background, color.RGBA{R: 210, G: 210, B: 210, A: 255}) {
 		t.Fatalf("button style name should resolve button background: %v ok=%v", background, ok)
 	}
 	if radius, ok := resolved.Radius(); !ok || radius != 4 {
 		t.Fatalf("button style name should resolve button radius: %v ok=%v", radius, ok)
-	}
-}
-
-// TestClearingLocalRulesRestoresApplicationStyle checks that removing local
-// rules re-resolves against the application sheet.
-func TestClearingLocalRulesRestoresApplicationStyle(t *testing.T) {
-	appBackground := color.RGBA{R: 33, G: 66, B: 99, A: 255}
-	localBackground := color.RGBA{R: 1, G: 1, B: 1, A: 255}
-	useTestApplication(t, &application{
-		style: style.Sheet(style.Name(styleNameButton).BackgroundColor(appBackground).Radius(5)),
-	})
-
-	button := NewButton()
-	button.Arrange(geometry.Rect(0, 0, 80, 30))
-
-	button.SetStyleRules(style.Default().BackgroundColor(localBackground))
-	painter := new(testButtonBackgroundPainter)
-	button.Paint(painter)
-	if painter.brush != graphics.ColorOf(localBackground) {
-		t.Fatalf("local rule should apply before clearing: %+v", painter.brush)
-	}
-
-	button.SetStyleRules()
-	painter = new(testButtonBackgroundPainter)
-	button.Paint(painter)
-	if painter.brush != graphics.ColorOf(appBackground) {
-		t.Fatalf("clearing local rules should restore application style: %+v", painter.brush)
 	}
 }
