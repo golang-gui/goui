@@ -47,6 +47,11 @@ type (
 	NSPoint    = CGPoint
 	NSSize     = CGSize
 	NSRect     = CGRect
+
+	NSRange struct {
+		Location NSUInteger
+		Length   NSUInteger
+	}
 )
 
 func NSMakeRect(x, y, w, h CGFloat) (r NSRect) {
