@@ -131,9 +131,16 @@ MVP. Stable identity for dynamic lists can be added later when the need is
 concrete.
 
 The declarative syntax should be Go-friendly. Chain methods are acceptable when
-they produce clearer code than struct literals. The API should avoid unsafe
-self-referential tricks, embedded Props structures, and abstractions that only
-exist to mimic other languages.
+they produce clearer code than struct literals. The API should avoid embedded
+Props structures and abstractions that exist only to mimic other languages.
+
+Self-reference is not banned outright. A generic base whose chain methods return
+the concrete `*T` (through a `Self` back-pointer) is an acceptable, deliberate
+exception when it removes real duplication of shared modifiers across controls,
+provided its one unsafe edge — the `Self` wiring done at construction — is fenced
+by a panic-on-nil guard plus a test. The line is payoff-with-guardrails, not
+self-reference for its own sake or to mimic another language. See
+`doc/DesignUI.md` §3 for the concrete `viewBase` / `ViewBase[T]` design.
 
 The declarative layer should hide signal handles from normal application code.
 Application authors should write OnXXX callbacks and request updates. The ui
