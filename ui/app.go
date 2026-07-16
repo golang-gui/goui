@@ -35,7 +35,7 @@ type App interface {
 }
 
 var (
-	ErrAppRunning      = errors.New("ui app is already running")
+	ErrAppRunOnce      = errors.New("ui: Run may be called only once per process")
 	ErrAppBuildNil     = errors.New("ui app build function is nil")
 	ErrWindowIDEmpty   = errors.New("ui window id is empty")
 	ErrWindowDuplicate = errors.New("ui window id is duplicated")
@@ -48,8 +48,8 @@ func Run(build func(app App) RootView) error {
 	if build == nil {
 		return ErrAppBuildNil
 	}
-	if currentApp() != nil {
-		return ErrAppRunning
+	if err := activeRun(); err != nil {
+		return err
 	}
 
 	runtime.LockOSThread()
@@ -61,10 +61,8 @@ func Run(build func(app App) RootView) error {
 
 	var a *app
 	a = newApp(guiApp, func() RootView { return build(a) })
-	if err := setActiveApp(a); err != nil {
-		return err
-	}
-	defer clearActiveApp(a)
+	setActiveApp(a)
+	defer clearActiveApp()
 
 	if err := a.rebuild(); err != nil {
 		a.destroyAll()
@@ -129,26 +127,40 @@ type windowMount struct {
 var activeApp struct {
 	sync.Mutex
 	current *app
+	ran     bool // one-shot: set on the first Run, never cleared (the loop is consumed)
 }
 
-func setActiveApp(a *app) error {
+// activeRun claims the process-wide, one-shot Run. ui.Run may run only once: the
+// platform event loop is consumed when Run returns and cannot be restarted, and on
+// Wayland/Android/web the app cannot own a restartable loop at all (see DesignApp).
+// A second call — concurrent or after the first returned — fails here. To show a
+// different UI, change state and let the tree rebuild within the single Run.
+func activeRun() error {
 	activeApp.Lock()
 	defer activeApp.Unlock()
 
-	if activeApp.current != nil {
-		return ErrAppRunning
+	if activeApp.ran {
+		return ErrAppRunOnce
 	}
-	activeApp.current = a
+	activeApp.ran = true
 	return nil
 }
 
-func clearActiveApp(a *app) {
+// setActiveApp records the running runtime so State.Set can reach it — the one
+// internal caller with no App handle in scope. It does not gate re-runs (activeRun
+// does), so tests may install/clear a runtime without tripping the one-shot latch.
+func setActiveApp(a *app) {
 	activeApp.Lock()
 	defer activeApp.Unlock()
+	activeApp.current = a
+}
 
-	if activeApp.current == a {
-		activeApp.current = nil
-	}
+// clearActiveApp drops the active runtime after Run returns; the ran latch
+// stays set so no later Run can start.
+func clearActiveApp() {
+	activeApp.Lock()
+	defer activeApp.Unlock()
+	activeApp.current = nil
 }
 
 func currentApp() *app {

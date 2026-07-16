@@ -199,6 +199,23 @@ func TestAppAppliesRootStyleSheetOnChange(t *testing.T) {
 	}
 }
 
+func TestBeginRunIsOneShot(t *testing.T) {
+	// activeRun sets a package-global latch that never clears; reset it so this test
+	// does not consume Run for the rest of the package.
+	t.Cleanup(func() {
+		activeApp.Lock()
+		activeApp.ran = false
+		activeApp.Unlock()
+	})
+
+	if err := activeRun(); err != nil {
+		t.Fatalf("first activeRun should succeed, got %v", err)
+	}
+	if err := activeRun(); !errors.Is(err, ErrAppRunOnce) {
+		t.Fatalf("second activeRun should return ErrAppRunOnce, got %v", err)
+	}
+}
+
 func TestAppHandleRunsThroughRuntime(t *testing.T) {
 	app := newWindowTestApplication()
 	builds := 0
