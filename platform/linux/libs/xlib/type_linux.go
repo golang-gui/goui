@@ -682,3 +682,33 @@ const (
 	ConfigWindowSibling     = 32
 	ConfigWindowStackMode   = 64
 )
+
+// XIM (input method) and XIC (input context) are opaque libX11 pointers. One XIM
+// is opened per display; one XIC is created per top-level window. See
+// doc/DesignIME.md for how the platform/gui layers cooperate.
+type (
+	XIM ID
+	XIC ID
+)
+
+// XPoint mirrors the X11 XPoint (short x, y). Used for XNSpotLocation.
+type XPoint struct {
+	X int16
+	Y int16
+}
+
+// Lookup status values returned by Xutf8LookupString.
+const (
+	XBufferOverflow Status = -1
+	XLookupNone     Status = 1
+	XLookupChars    Status = 2
+	XLookupKeySym   Status = 3
+	XLookupBoth     Status = 4
+)
+
+// Input-context styles. Root style keeps preedit/status in the input method's
+// own UI; it is the simplest portable choice (see DesignIME §9).
+const (
+	ximPreeditNothing = 0x0008
+	ximStatusNothing  = 0x0400
+)
