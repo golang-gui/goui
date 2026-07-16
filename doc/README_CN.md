@@ -11,7 +11,7 @@ func main() {
     text := MakeState("Hello GOUI!")
     input := ""
 
-    App.Run(func() RootView {
+    Run(func(app App) RootView {
         return Window("main").
             Title("Main Window").
             Content(
@@ -34,8 +34,10 @@ func main() {
 }
 ```
 
-`ui` 包是声明式的。View 是普通 Go 值，通过链式方法配置；`ui.App`
-负责命令式运行时操作；`State.Set` 会请求一次合并后的 UI 重建。
+`ui` 包是声明式的。View 是普通 Go 值，通过链式方法配置。`Run` 把一个稳定的 `App`
+句柄递进 build 闭包——它承载命令式运行时操作（`Post` / `Sync` / `Quit` /
+`RequestUpdate`）以及只读的 `Clipboard()` / `Settings()`；`State.Set` 请求一次合并后的
+UI 重建。`Run` 每进程只跑一次；要换界面就改 state 让树重建。
 
 ## 组合式 UI
 
@@ -181,8 +183,8 @@ func (w *BadgeWidget) SetText(text string) {
     w.RequestLayout()
 }
 
-func (w *BadgeWidget) Measure(geometry.Size) geometry.Size {
-    return geometry.Size{Width: 72, Height: 24}
+func (w *BadgeWidget) Measure(c layout.Constraint) geometry.Size {
+    return c.Clamp(geometry.Size{Width: 72, Height: 24})
 }
 
 func (w *BadgeWidget) Paint(p gui.Painter) {
@@ -264,15 +266,18 @@ AI 支持是架构的一部分，不是后期附加功能。
 
 ## 当前状态
 
-MVP 已完成架构验证。当前已经包含平台事件、命令式 GUI 层、基础控件、最小声明式 `ui` 层，以及通过 `ui.App.RequestUpdate` 进行的更新调度。
+MVP 已完成架构验证。当前已经包含平台事件、命令式 GUI 层、基础控件、声明式 `ui` 层、基于约束的布局系统、语义化样式系统、HiDPI 缩放、剪贴板与系统设置，以及通过 `State.Set` / `App.RequestUpdate` 进行的更新调度。
 
 **API 仍未稳定，goui 暂时不能用于生产环境。**
 
 ## 后续路线
 
-- 设计轻量的样式和系统设置机制。
-- 继续验证 IME、剪贴板、无障碍、系统设置等平台能力。
-- 暴露稳定的检查与自动化协议。
+- 补齐弹出层:菜单、tooltip、对话框。
+- IME / 文本组合输入(CJK)。
+- 拖放。
+- 基于原生 painter 的保留式场景图,做缓存与局部重绘,解锁高效滚动与列表视图。
+- 跟随系统设置的内置明暗主题。
+- 稳定的检查与自动化协议。
 - 其他平台的支持。
 
 

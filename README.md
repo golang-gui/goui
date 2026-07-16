@@ -15,7 +15,7 @@ func main() {
     text := MakeState("Hello GOUI!")
     input := ""
 
-    App.Run(func() RootView {
+    Run(func(app App) RootView {
         return Window("main").
             Title("Main Window").
             Content(
@@ -39,8 +39,11 @@ func main() {
 ```
 
 The `ui` package is declarative. Views are ordinary Go values with chainable
-configuration methods. `ui.App` owns the command-style runtime operations, and
-`State.Set` requests one coalesced UI rebuild.
+configuration methods. `Run` passes a stable `App` handle into the build
+closure — it owns the command-style runtime operations (`Post` / `Sync` /
+`Quit` / `RequestUpdate`) plus read-only `Clipboard()` / `Settings()`, and
+`State.Set` requests one coalesced UI rebuild. `Run` runs once per process; to
+show a different UI, change state and let the tree rebuild.
 
 ## Composition Views
 
@@ -188,8 +191,8 @@ func (w *BadgeWidget) SetText(text string) {
     w.RequestLayout()
 }
 
-func (w *BadgeWidget) Measure(geometry.Size) geometry.Size {
-    return geometry.Size{Width: 72, Height: 24}
+func (w *BadgeWidget) Measure(c layout.Constraint) geometry.Size {
+    return c.Clamp(geometry.Size{Width: 72, Height: 24})
 }
 
 func (w *BadgeWidget) Paint(p gui.Painter) {
@@ -278,17 +281,22 @@ event path used by real users.
 ## Status
 
 The MVP is complete as an architecture validation. It includes platform events,
-an imperative GUI layer, basic widgets, a minimal declarative `ui` layer, and
-update scheduling through `ui.App.RequestUpdate`.
+an imperative GUI layer, basic widgets, a declarative `ui` layer, a
+constraint-based layout system, a semantic style system, HiDPI scaling,
+clipboard and system settings, and update scheduling through `State.Set` /
+`App.RequestUpdate`.
 
 **The API is still unstable and goui is not ready for production use.**
 
 ## Roadmap
 
-- Design a lightweight style and settings system.
-- Continue platform validation for IME, clipboard, accessibility, and system
-  settings.
-- Expose a stable inspection and automation protocol.
+- Finish the popup line: menus, tooltips, and dialogs.
+- IME / text composition for CJK input.
+- Drag and drop.
+- A retained scene graph over the native painter for caching and partial
+  repaint, unlocking efficient scrolling and list views.
+- A built-in light/dark theme that follows system settings.
+- A stable inspection and automation protocol.
 - More platform support.
 
 ## License
