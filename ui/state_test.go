@@ -11,12 +11,8 @@ func TestStateSetRequestsUpdateWithoutGet(t *testing.T) {
 	rt := newApp(app, func() RootView {
 		return Window("main").Content(Label("main"))
 	})
-	if err := setActiveApp(rt); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		clearActiveApp(rt)
-	})
+	setActiveApp(rt)
+	t.Cleanup(clearActiveApp)
 
 	state := MakeState("unused")
 	state.Set("changed")
@@ -32,12 +28,8 @@ func TestZeroStateSetRequestsUpdate(t *testing.T) {
 	rt := newApp(app, func() RootView {
 		return Window("main").Content(Label("main"))
 	})
-	if err := setActiveApp(rt); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		clearActiveApp(rt)
-	})
+	setActiveApp(rt)
+	t.Cleanup(clearActiveApp)
 
 	var state State[int]
 	if got := state.Get(); got != 0 {
@@ -62,12 +54,8 @@ func TestStateSetRebuildsMountedWindow(t *testing.T) {
 		builds++
 		return Window("main").Content(Label(title.Get()))
 	})
-	if err := setActiveApp(rt); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		clearActiveApp(rt)
-	})
+	setActiveApp(rt)
+	t.Cleanup(clearActiveApp)
 
 	if err := rt.rebuild(); err != nil {
 		t.Fatal(err)
