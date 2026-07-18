@@ -26,6 +26,7 @@ type Window struct {
 	title   string
 	gc      xlib.GC
 	buttons events.PointerButtons
+	im      *inputMethod // this window's IME (nil when none); the key loop consults it
 }
 
 // newNativeWindow creates the X11 InputOutput window shared by both top-level
@@ -120,6 +121,9 @@ func (w *Window) Destroy() {
 	}
 
 	delete(windowMap, w.wid)
+	if w.im != nil {
+		w.im.Destroy()
+	}
 	if w.gc != 0 {
 		platform.display.FreeGC(w.gc)
 		w.gc = 0
@@ -208,6 +212,13 @@ var windowMap = map[xlib.Window]*Window{}
 
 // TODO: process window event
 func handleEvent(event xlib.Event) {
+	// Give the input method first refusal on every event: during composition it
+	// consumes the keys it needs (candidate navigation, preedit editing) and we
+	// must drop them. Unconsumed keys fall through to normal handling below.
+	if platform != nil && platform.im != 0 && xlib.FilterEvent(&event, 0) {
+		return
+	}
+
 	switch event.Type {
 	case xlib.ClientMessage:
 		ev := event.ClientMessageEvent()

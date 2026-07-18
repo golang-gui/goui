@@ -98,9 +98,18 @@ func scrollWheel(self NSView, event NSEvent) {
 }
 
 func keyDown(self NSView, event NSEvent) {
-	if window := windowForView(self); window != nil {
-		window.emitKey(events.KeyDown, event, event.IsARepeat())
+	window := windowForView(self)
+	if window == nil {
+		return
 	}
+	// While a text widget is focused, route through the input context: text
+	// becomes insertText/setMarkedText (commit/preedit); other keys come back via
+	// doCommandBySelector and are re-emitted as KeyEvents (see doc/DesignIME.md).
+	if window.im != nil && window.im.enabled {
+		window.im.interpret(self, event)
+		return
+	}
+	window.emitKey(events.KeyDown, event, event.IsARepeat())
 }
 
 func keyUp(self NSView, event NSEvent) {

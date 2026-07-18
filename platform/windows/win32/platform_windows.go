@@ -84,6 +84,10 @@ func (p *Platform) NewPainter(surface common.Surface, typo typography.Context) (
 	return
 }
 
+func (p *Platform) NewInputMethod(window common.Window, handler common.InputMethodHandler) (common.InputMethod, error) {
+	return newInputMethod(window, handler)
+}
+
 func (p *Platform) NewSettings() (common.Settings, error) {
 	return newSettings()
 }

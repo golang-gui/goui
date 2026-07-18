@@ -26,8 +26,9 @@ type Window struct {
 	lastButtons   events.PointerButtons
 	lastModifiers events.Modifiers
 	modifiers     events.Modifiers
-	scale         float32 // cached device scale; updated on WM_SIZE
-	noActivate    bool    // popups: decline activation/focus on click (WM_MOUSEACTIVATE)
+	scale         float32      // cached device scale; updated on WM_SIZE
+	noActivate    bool         // popups: decline activation/focus on click (WM_MOUSEACTIVATE)
+	im            *inputMethod // this window's IME (nil when none); WndProc routes WM_IME_* to it
 }
 
 func newWindow(width, height float32, onEvent events.EventHandler) (w *Window, err error) {
@@ -263,12 +264,36 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		return 0
 
 	case winapi.WM_KEYDOWN, winapi.WM_SYSKEYDOWN:
-		window.handleKey(events.KeyDown, wParam, lParam)
+		// While the IME is processing a key (composition/candidate navigation) the
+		// virtual key is VK_PROCESSKEY; drop it so it does not double up with the
+		// committed text delivered via WM_IME_COMPOSITION.
+		if wParam != winapi.VK_PROCESSKEY {
+			window.handleKey(events.KeyDown, wParam, lParam)
+		}
 		return 0
 
 	case winapi.WM_KEYUP, winapi.WM_SYSKEYUP:
 		window.handleKey(events.KeyUp, wParam, lParam)
 		return 0
+
+	case winapi.WM_IME_STARTCOMPOSITION:
+		if window.im != nil {
+			// Suppress the default composition window; preedit is rendered inline
+			// via the input method's Preedit handler.
+			return 0
+		}
+
+	case winapi.WM_IME_COMPOSITION:
+		if window.im != nil {
+			window.im.handleComposition(lParam)
+			return 0
+		}
+
+	case winapi.WM_IME_ENDCOMPOSITION:
+		if window.im != nil {
+			window.im.endComposition()
+			return 0
+		}
 	}
 
 	return winapi.DefWindowProc(hwnd, message, wParam, lParam)
