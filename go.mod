@@ -4,7 +4,7 @@ go 1.24
 
 require (
 	github.com/ebitengine/purego v0.10.0
-	github.com/goexlib/cgo v0.0.7
+	github.com/goexlib/cgo v0.0.9
 	github.com/goexlib/mathx v0.0.1
 	github.com/golang-gui/nanovgo v0.0.6
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef
