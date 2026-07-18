@@ -1,6 +1,7 @@
 package appkit
 
 import (
+	"fmt"
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/core_graphics"
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
 	"github.com/golang-gui/goui/platform/darwin/frameworks/utils"
@@ -24,6 +25,8 @@ func InitAppKit() (err error) {
 	initNSWindowDelegate()
 	initNSResponder()
 	initNSView()
+	initNSTextInputContext()
+	initNSTextInputClient()
 	initNSTrackingArea()
 	initNSColorSpace()
 	initNSColor()
@@ -475,6 +478,8 @@ func initNSView() {
 	NSViewSel.KeyDown = objc.RegisterName("keyDown:")
 	NSViewSel.KeyUp = objc.RegisterName("keyUp:")
 	NSViewSel.FlagsChanged = objc.RegisterName("flagsChanged:")
+	NSViewSel.InputContext = objc.RegisterName("inputContext")
+	NSViewSel.ConvertRectToView = objc.RegisterName("convertRect:toView:")
 }
 
 var (
@@ -512,6 +517,8 @@ var (
 		KeyDown                             objc.SEL
 		KeyUp                               objc.SEL
 		FlagsChanged                        objc.SEL
+		InputContext                        objc.SEL
+		ConvertRectToView                   objc.SEL
 	}
 )
 
@@ -627,8 +634,189 @@ func ImplementNSView(className string, override NSViewOverride) (class NSViewCla
 	addEventMethod(NSViewSel.KeyDown, override.KeyDown)
 	addEventMethod(NSViewSel.KeyUp, override.KeyUp)
 	addEventMethod(NSViewSel.FlagsChanged, override.FlagsChanged)
+
 	class.Class, err = objc.RegisterClass(className, NSViewClassId.Class, nil, nil, methods)
+	if err != nil {
+		return
+	}
 	return
+}
+
+// NSTextInputClient — protocol binding for IME.
+//
+// NSTextInputClient is a protocol, not an NSView method. ImplementNSTextInputClient
+// adds it to an already-registered NSView subclass via AddProtocol + AddMethod,
+// keeping NSView and NSTextInputClient independently composable.
+
+func initNSTextInputClient() {
+	NSTextInputClientSel.InsertText = objc.RegisterName("insertText:replacementRange:")
+	NSTextInputClientSel.SetMarkedText = objc.RegisterName("setMarkedText:selectedRange:replacementRange:")
+	NSTextInputClientSel.UnmarkText = objc.RegisterName("unmarkText")
+	NSTextInputClientSel.HasMarkedText = objc.RegisterName("hasMarkedText")
+	NSTextInputClientSel.MarkedRange = objc.RegisterName("markedRange")
+	NSTextInputClientSel.SelectedRange = objc.RegisterName("selectedRange")
+	NSTextInputClientSel.FirstRectForCharacterRange = objc.RegisterName("firstRectForCharacterRange:actualRange:")
+	NSTextInputClientSel.AttributedSubstringForProposedRange = objc.RegisterName("attributedSubstringForProposedRange:actualRange:")
+	NSTextInputClientSel.ValidAttributesForMarkedText = objc.RegisterName("validAttributesForMarkedText")
+	NSTextInputClientSel.CharacterIndexForPoint = objc.RegisterName("characterIndexForPoint:")
+	NSTextInputClientSel.DoCommandBySelector = objc.RegisterName("doCommandBySelector:")
+}
+
+var NSTextInputClientSel struct {
+	InsertText                          objc.SEL
+	SetMarkedText                       objc.SEL
+	UnmarkText                          objc.SEL
+	HasMarkedText                       objc.SEL
+	MarkedRange                         objc.SEL
+	SelectedRange                       objc.SEL
+	FirstRectForCharacterRange          objc.SEL
+	AttributedSubstringForProposedRange objc.SEL
+	ValidAttributesForMarkedText        objc.SEL
+	CharacterIndexForPoint              objc.SEL
+	DoCommandBySelector                 objc.SEL
+}
+
+type NSTextInputClientOverride struct {
+	InsertText                   func(self NSView, text string, replacementRange NSRange)
+	SetMarkedText                func(self NSView, text string, selectedRange, replacementRange NSRange)
+	UnmarkText                   func(self NSView)
+	HasMarkedText                func(self NSView) bool
+	MarkedRange                  func(self NSView) NSRange
+	SelectedRange                func(self NSView) NSRange
+	FirstRectForCharacterRange   func(self NSView, characterRange NSRange, actualRange uintptr) NSRect
+	AttributedSubstring          func(self NSView, characterRange NSRange, actualRange uintptr) objc.ID
+	ValidAttributesForMarkedText func(self NSView) objc.ID
+	CharacterIndexForPoint       func(self NSView, point NSPoint) uint
+	DoCommandBySelector          func(self NSView, selector objc.SEL)
+}
+
+// ImplementNSTextInputClient adds the NSTextInputClient protocol and its methods
+// to an already-registered NSView subclass. If no methods are set, it's a no-op.
+func ImplementNSTextInputClient(cls NSViewClass, override NSTextInputClientOverride) error {
+	if !hasNSTextInputClient(override) {
+		return nil
+	}
+	protocol := objc.GetProtocol("NSTextInputClient")
+	if protocol == nil {
+		return fmt.Errorf("NSTextInputClient protocol not found")
+	}
+	if !cls.Class.AddProtocol(protocol) {
+		return fmt.Errorf("couldn't add NSTextInputClient protocol to %s", "NSView subclass")
+	}
+
+	add := func(sel objc.SEL, types string, imp uintptr) {
+		cls.Class.AddMethod(sel, objc.IMP(imp), types)
+	}
+
+	if fn := override.InsertText; fn != nil {
+		add(NSTextInputClientSel.InsertText, "v@:@{_NSRange=QQ}",
+			cgo.NewCallback(func(self objc.ID, cmd objc.SEL, str objc.ID, replace NSRange) {
+				fn(Cast[NSView](self), StringFromObject(str), replace)
+			}))
+	}
+	if fn := override.SetMarkedText; fn != nil {
+		add(NSTextInputClientSel.SetMarkedText, "v@:@{_NSRange=QQ}{_NSRange=QQ}",
+			cgo.NewCallback(func(self objc.ID, cmd objc.SEL, str objc.ID, selected, replace NSRange) {
+				fn(Cast[NSView](self), StringFromObject(str), selected, replace)
+			}))
+	}
+	if fn := override.UnmarkText; fn != nil {
+		add(NSTextInputClientSel.UnmarkText, "v@:",
+			cgo.NewCallback(func(self objc.ID, cmd objc.SEL) { fn(Cast[NSView](self)) }))
+	}
+	if fn := override.HasMarkedText; fn != nil {
+		add(NSTextInputClientSel.HasMarkedText, "B@:",
+			cgo.NewCallback(func(self objc.ID, cmd objc.SEL) bool { return fn(Cast[NSView](self)) }))
+	}
+	if fn := override.MarkedRange; fn != nil {
+		add(NSTextInputClientSel.MarkedRange, "{_NSRange=QQ}@:",
+			cgo.NewCallback(func(self objc.ID, cmd objc.SEL) NSRange { return fn(Cast[NSView](self)) }))
+	}
+	if fn := override.SelectedRange; fn != nil {
+		add(NSTextInputClientSel.SelectedRange, "{_NSRange=QQ}@:",
+			cgo.NewCallback(func(self objc.ID, cmd objc.SEL) NSRange { return fn(Cast[NSView](self)) }))
+	}
+	if fn := override.FirstRectForCharacterRange; fn != nil {
+		add(NSTextInputClientSel.FirstRectForCharacterRange, "{CGRect={CGPoint=dd}{CGSize=dd}}@:{_NSRange=QQ}^{_NSRange=QQ}",
+			cgo.NewCallback(func(self objc.ID, cmd objc.SEL, r NSRange, actual uintptr) NSRect {
+				return fn(Cast[NSView](self), r, actual)
+			}))
+	}
+	if fn := override.AttributedSubstring; fn != nil {
+		add(NSTextInputClientSel.AttributedSubstringForProposedRange, "@@:{_NSRange=QQ}^{_NSRange=QQ}",
+			cgo.NewCallback(func(self objc.ID, cmd objc.SEL, r NSRange, actual uintptr) objc.ID {
+				return fn(Cast[NSView](self), r, actual)
+			}))
+	}
+	if fn := override.ValidAttributesForMarkedText; fn != nil {
+		add(NSTextInputClientSel.ValidAttributesForMarkedText, "@@:",
+			cgo.NewCallback(func(self objc.ID, cmd objc.SEL) objc.ID { return fn(Cast[NSView](self)) }))
+	}
+	if fn := override.CharacterIndexForPoint; fn != nil {
+		add(NSTextInputClientSel.CharacterIndexForPoint, "Q@:{CGPoint=dd}",
+			cgo.NewCallback(func(self objc.ID, cmd objc.SEL, p NSPoint) uint { return fn(Cast[NSView](self), p) }))
+	}
+	if fn := override.DoCommandBySelector; fn != nil {
+		add(NSTextInputClientSel.DoCommandBySelector, "v@::",
+			cgo.NewCallback(func(self objc.ID, cmd objc.SEL, aSelector objc.SEL) { fn(Cast[NSView](self), aSelector) }))
+	}
+	return nil
+}
+
+func hasNSTextInputClient(o NSTextInputClientOverride) bool {
+	return o.InsertText != nil || o.SetMarkedText != nil || o.UnmarkText != nil ||
+		o.HasMarkedText != nil || o.MarkedRange != nil || o.SelectedRange != nil ||
+		o.FirstRectForCharacterRange != nil || o.AttributedSubstring != nil ||
+		o.ValidAttributesForMarkedText != nil || o.CharacterIndexForPoint != nil ||
+		o.DoCommandBySelector != nil
+}
+
+// NSTextInputContext
+
+func initNSTextInputContext() {
+	NSTextInputContextSel.HandleEvent = objc.RegisterName("handleEvent:")
+	NSTextInputContextSel.Activate = objc.RegisterName("activate")
+	NSTextInputContextSel.Deactivate = objc.RegisterName("deactivate")
+	NSTextInputContextSel.DiscardMarkedText = objc.RegisterName("discardMarkedText")
+}
+
+var NSTextInputContextSel struct {
+	HandleEvent       objc.SEL
+	Activate          objc.SEL
+	Deactivate        objc.SEL
+	DiscardMarkedText objc.SEL
+}
+
+type NSTextInputContext struct{ NSObject }
+
+// InputContext returns the view's input context, or a zero context (Valid()==false)
+// if the view is not an active text input client.
+func (v NSView) InputContext() (res NSTextInputContext) {
+	res.ID = v.Send(NSViewSel.InputContext)
+	return
+}
+
+func (c NSTextInputContext) Valid() bool { return c.ID != 0 }
+
+// HandleEvent feeds a key event to the input method, which routes it to the
+// client's insertText/setMarkedText/doCommandBySelector. Returns true if handled.
+func (c NSTextInputContext) HandleEvent(event NSEvent) bool {
+	return objc.Send[bool](c.ID, NSTextInputContextSel.HandleEvent, event.ID)
+}
+
+func (c NSTextInputContext) Activate()          { c.Send(NSTextInputContextSel.Activate) }
+func (c NSTextInputContext) Deactivate()        { c.Send(NSTextInputContextSel.Deactivate) }
+func (c NSTextInputContext) DiscardMarkedText() { c.Send(NSTextInputContextSel.DiscardMarkedText) }
+
+// ConvertRectToWindow converts rect from the view's coordinates to its window's
+// coordinates (convertRect:toView:nil).
+func (v NSView) ConvertRectToWindow(rect NSRect) NSRect {
+	return objc.Send[NSRect](v.ID, NSViewSel.ConvertRectToView, rect, objc.ID(0))
+}
+
+// ConvertRectToScreen converts rect from window coordinates to screen coordinates.
+func (w NSWindow) ConvertRectToScreen(rect NSRect) NSRect {
+	return objc.Send[NSRect](w.ID, NSWindowSel.ConvertRectToScreen, rect)
 }
 
 func (c NSViewClass) Alloc() (res NSView) {
@@ -747,6 +935,7 @@ func initNSWindow() {
 	NSWindowSel.SetFrameTopLeftPoint = objc.RegisterName("setFrameTopLeftPoint:")
 	NSWindowSel.SetContentSize = objc.RegisterName("setContentSize:")
 	NSWindowSel.SetLevel = objc.RegisterName("setLevel:")
+	NSWindowSel.ConvertRectToScreen = objc.RegisterName("convertRectToScreen:")
 }
 
 var (
@@ -778,6 +967,7 @@ var (
 		SetFrameTopLeftPoint       objc.SEL
 		SetContentSize             objc.SEL
 		SetLevel                   objc.SEL
+		ConvertRectToScreen        objc.SEL
 	}
 )
 
