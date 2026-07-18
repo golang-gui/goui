@@ -40,7 +40,8 @@ func InitFoundation() (err error) {
 // Types
 
 type (
-	ID = objc.ID
+	ID  = objc.ID
+	SEL = objc.SEL
 
 	NSInteger  = int
 	NSUInteger = uint
@@ -220,6 +221,19 @@ func (s NSString) UTF8String() string {
 func ToNSString(s string) NSString {
 	ns := NSStringClassId.Alloc().Send(NSStringSel.InitWithBytes, unsafe.StringData(s), len(s), NSUTF8StringEncoding)
 	return Cast[NSString](ns)
+}
+
+// StringFromObject reads a Go string from an NSString or NSAttributedString (an
+// NSAttributedString responds to -string, an NSString does not).
+func StringFromObject(obj ID) string {
+	if obj == 0 {
+		return ""
+	}
+	o := NSObject{ID: obj}
+	if o.RespondsToSelector("string") {
+		return Cast[NSString](o.Send(objc.RegisterName("string"))).UTF8String()
+	}
+	return Cast[NSString](obj).UTF8String()
 }
 
 type NSStringEncoding NSUInteger
