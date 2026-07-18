@@ -55,6 +55,9 @@ type (
 	}
 )
 
+// NSNotFound is Foundation's sentinel for "not found" (NSIntegerMax).
+const NSNotFound = 0x7FFFFFFFFFFFFFFF
+
 func NSMakeRect(x, y, w, h CGFloat) (r NSRect) {
 	return NSRect{
 		Origin: NSPoint{x, y},
