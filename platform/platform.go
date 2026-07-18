@@ -11,21 +11,28 @@ import (
 )
 
 type (
-	Event        = events.Event
-	Image        = common.Image
-	Settings     = common.Settings
-	ColorScheme  = common.ColorScheme
-	Surface      = common.Surface
-	Window       = common.Window
-	Popup        = common.Popup
-	EventLoop    = common.EventLoop
-	Clipboard    = common.Clipboard
-	EventHandler = events.EventHandler
+	Event              = events.Event
+	Image              = common.Image
+	Settings           = common.Settings
+	ColorScheme        = common.ColorScheme
+	Surface            = common.Surface
+	Window             = common.Window
+	Popup              = common.Popup
+	EventLoop          = common.EventLoop
+	Clipboard          = common.Clipboard
+	InputMethod        = common.InputMethod
+	InputMethodHandler = common.InputMethodHandler
+	InputMethodResult  = common.InputMethodResult
+	InputMethodKind    = common.InputMethodKind
+	EventHandler       = events.EventHandler
 )
 
 const (
 	ColorSchemeLight = common.ColorSchemeLight
 	ColorSchemeDark  = common.ColorSchemeDark
+
+	InputMethodCommit  = common.InputMethodCommit
+	InputMethodPreedit = common.InputMethodPreedit
 )
 
 // Platform owns low-level operating-system resources. It and every object
@@ -48,6 +55,10 @@ type Platform interface {
 	NewPainter(surface Surface, typo typography.Context) (graphics.Painter, error)
 	NewSettings() (Settings, error)
 	NewClipboard() (Clipboard, error)
+	// NewInputMethod creates the text-composition (IME) capability for window.
+	// handler receives committed/preedit text. Returns ErrUnsupported when the
+	// platform or window does not support input methods.
+	NewInputMethod(window Window, handler InputMethodHandler) (InputMethod, error)
 }
 
 var ErrUnsupported = errors.New("unsupported platform")

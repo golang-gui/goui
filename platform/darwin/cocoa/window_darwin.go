@@ -23,6 +23,7 @@ type Window struct {
 	parent       common.Window
 	buttons      events.PointerButtons
 	modifiers    events.Modifiers
+	im           *inputMethod // this window's IME (nil when none); keyDown routes to it
 }
 
 // newNativeWindow creates the NSWindow shared by top-level windows and popups:
@@ -238,6 +239,23 @@ func initWindowClass() (err error) {
 	})
 	if err != nil {
 		return fmt.Errorf("implement NSView err: %v", err)
+	}
+
+	err = ImplementNSTextInputClient(viewClass, NSTextInputClientOverride{
+		InsertText:                   imInsertText,
+		SetMarkedText:                imSetMarkedText,
+		UnmarkText:                   imUnmarkText,
+		HasMarkedText:                imHasMarkedText,
+		MarkedRange:                  imMarkedRange,
+		SelectedRange:                imSelectedRange,
+		FirstRectForCharacterRange:   imFirstRect,
+		AttributedSubstring:          imAttributedSubstring,
+		ValidAttributesForMarkedText: imValidAttributes,
+		CharacterIndexForPoint:       imCharacterIndexForPoint,
+		DoCommandBySelector:          imDoCommandBySelector,
+	})
+	if err != nil {
+		return fmt.Errorf("implement NSTextInputClient err: %v", err)
 	}
 
 	return

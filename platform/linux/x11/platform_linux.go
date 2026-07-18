@@ -8,6 +8,7 @@ import (
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/opengl"
 	"github.com/golang-gui/goui/platform/graphics/software"
+	"github.com/golang-gui/goui/platform/linux/libs/libc"
 	"github.com/golang-gui/goui/platform/linux/libs/xlib"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/pango"
@@ -31,6 +32,7 @@ type Platform struct {
 	helper      xlib.Window
 	clipboard   *clipboard
 	numLockMask uint32
+	im          xlib.XIM // display input method; 0 when none is available
 }
 
 var platform *Platform
@@ -60,6 +62,13 @@ func NewPlatform() (_ *Platform, err error) {
 
 	p.defScreen = p.display.DefaultScreenOfDisplay()
 	p.numLockMask = p.detectNumLockMask()
+
+	// Input method (IME): set the C locale from the environment, wire the
+	// XMODIFIERS-based input-method selection, then open the display's IM. A nil
+	// IM (no server / unset XMODIFIERS) degrades to plain keysym translation.
+	libc.SetLocale(libc.LC_CTYPE, "")
+	xlib.SetLocaleModifiers("")
+	p.im = xlib.OpenIM(p.display)
 
 	p.helper = p.display.CreateWindow(p.defScreen.Root, 0, 0, 1, 1, 0,
 		int(p.defScreen.RootDepth), xlib.WindowClassInputOutput, p.defScreen.RootVisual, 0, nil)
@@ -147,6 +156,10 @@ func (p *Platform) NewPainter(surface common.Surface, typo typography.Context) (
 		return software.NewPainter(surface, typo)
 	}
 	return
+}
+
+func (p *Platform) NewInputMethod(window common.Window, handler common.InputMethodHandler) (common.InputMethod, error) {
+	return p.newInputMethod(window, handler)
 }
 
 func (p *Platform) NewSettings() (common.Settings, error) {

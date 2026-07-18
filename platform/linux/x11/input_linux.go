@@ -60,6 +60,15 @@ func (w *Window) handleButton(eventType events.EventType, event *xlib.ButtonEven
 }
 
 func (w *Window) handleKey(eventType events.EventType, event *xlib.KeyEvent) {
+	// When a text widget is focused, run key-downs through the input method: it
+	// turns them into committed text (handler.Commit) or, for keys it does not
+	// consume, a plain KeyEvent (see doc/DesignIME.md §4). Key-ups and the
+	// no-IME case take the plain path below.
+	if eventType == events.KeyDown && w.im != nil && w.im.enabled {
+		w.im.handleKey(event)
+		return
+	}
+
 	key, location := keyFromKeysym(xlib.LookupKeysym(event, 0), event.State, platform.numLockMask)
 	w.onEvent(events.KeyEvent{
 		EventType: eventType,
