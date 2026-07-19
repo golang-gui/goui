@@ -20,21 +20,72 @@ const (
 
 type TextInput struct {
 	WidgetBase
-	padding    float32 // self-held: text input self-draws content with an inner inset
-	text       string
-	caret      int
-	key        *KeyEventController
-	textSignal signal.Signal1[string]
+	padding      float32 // self-held: text input self-draws content with an inner inset
+	text         string
+	caret        int
+	preedit      string // active input-method composition, not part of text
+	preeditCaret int    // caret byte offset within preedit
+	im           IMContext
+	key          *KeyEventController
+	textSignal   signal.Signal1[string]
 }
 
 func NewTextInput() *TextInput {
 	input := new(TextInput)
 	input.SetFocusable(true)
 	input.padding = defaultTextInputPadding
+	input.im = NewIMContext()
+	input.im.ConnectCommit(input.onCommit)
+	input.im.ConnectPreedit(input.onPreedit)
 	input.key = NewKeyEventController()
 	input.key.ConnectKeyDown(input.handleKeyDown)
 	input.AddEventController(input.key)
 	return input
+}
+
+// IMContext satisfies IMClient: the window binds this context to the native
+// input method while the field is focused (see doc/DesignIME.md §6).
+func (t *TextInput) IMContext() IMContext { return t.im }
+
+// onCommit inserts input-method-committed text at the caret and clears any
+// preedit. This is the field's real text-insertion path.
+func (t *TextInput) onCommit(text string) {
+	t.setPreedit("", 0)
+	t.insertText(text)
+}
+
+// onPreedit updates the in-progress composition shown inline before the caret.
+func (t *TextInput) onPreedit(text string, caret int) {
+	t.setPreedit(text, caret)
+}
+
+func (t *TextInput) setPreedit(text string, caret int) {
+	if t.preedit == text && t.preeditCaret == caret {
+		return
+	}
+	t.preedit = text
+	t.preeditCaret = caret
+	t.RequestLayout()
+}
+
+// displayText is the committed text with the active preedit spliced in at the
+// caret. Text() still returns committed text only.
+func (t *TextInput) displayText() string {
+	if t.preedit == "" {
+		return t.text
+	}
+	caret := clampCaret(t.text, t.caret)
+	return t.text[:caret] + t.preedit + t.text[caret:]
+}
+
+// displayCaret is the visible caret byte offset within displayText — inside the
+// preedit while composing.
+func (t *TextInput) displayCaret() int {
+	caret := clampCaret(t.text, t.caret)
+	if t.preedit == "" {
+		return caret
+	}
+	return caret + clampCaret(t.preedit, t.preeditCaret)
 }
 
 func (t *TextInput) Padding() float32 { return t.padding }
@@ -86,9 +137,13 @@ func (t *TextInput) Paint(p Painter) {
 	format := t.textFormat(s)
 	lineHeight := textLineHeight(format.Font.Size)
 
-	if len(t.text) == 0 {
-		if caretColor, ok := t.caretColor(format); ok && t.Focused() {
-			t.paintCaretRect(p, origin, t.defaultCaretRect(padding, lineHeight), caretColor)
+	if len(t.displayText()) == 0 {
+		if t.Focused() {
+			caret := t.defaultCaretRect(padding, lineHeight)
+			t.reportCaret(origin, caret)
+			if caretColor, ok := t.caretColor(format); ok {
+				t.paintCaretRect(p, origin, caret, caretColor)
+			}
 		}
 		return
 	}
@@ -100,9 +155,43 @@ func (t *TextInput) Paint(p Painter) {
 	defer textLayout.Destroy()
 
 	p.DrawTextLayout(origin, textLayout)
-	if caretColor, ok := t.caretColor(format); ok && t.Focused() {
-		t.paintCaret(p, origin, textLayout, padding, lineHeight, caretColor)
+	if caretColor, ok := t.caretColor(format); ok {
+		if t.preedit != "" {
+			t.paintPreeditUnderline(p, origin, textLayout, padding, lineHeight, caretColor)
+		}
+		if t.Focused() {
+			caret := t.caretRect(textLayout, padding, lineHeight)
+			t.reportCaret(origin, caret)
+			t.paintCaretRect(p, origin, caret, caretColor)
+		}
 	}
+}
+
+// reportCaret hands the caret rectangle (in widget-local coordinates) to the
+// input method so it can position the candidate window near the caret.
+func (t *TextInput) reportCaret(origin geometry.Point, rect geometry.Rectangle) {
+	t.im.SetCaretRect(geometry.Rect(
+		origin.X+rect.X,
+		origin.Y+rect.Y,
+		rect.Width,
+		rect.Height,
+	))
+}
+
+// paintPreeditUnderline underlines the composing region so the user can tell
+// uncommitted text apart from committed text.
+func (t *TextInput) paintPreeditUnderline(p Painter, origin geometry.Point, layout typography.TextLayout, padding, lineHeight float32, color graphics.Color) {
+	start := clampCaret(t.text, t.caret)
+	end := start + len(t.preedit)
+	from := t.caretRectAt(layout, start, padding, lineHeight)
+	to := t.caretRectAt(layout, end, padding, lineHeight)
+	y := origin.Y + from.Y + from.Height - textInputCaretWidth
+	p.DrawLine(
+		geometry.Point{X: origin.X + from.X, Y: y},
+		geometry.Point{X: origin.X + to.X, Y: y},
+		textInputCaretWidth,
+		color,
+	)
 }
 
 // caretColor returns the caret color taken from the style foreground. When the
@@ -223,7 +312,7 @@ func (t *TextInput) newTextLayout(size geometry.Size, format typography.TextForm
 	if typo == nil {
 		return nil
 	}
-	textLayout, err := typo.NewTextLayout(t.text, format, size.Width, size.Height)
+	textLayout, err := typo.NewTextLayout(t.displayText(), format, size.Width, size.Height)
 	if err != nil {
 		return nil
 	}
@@ -252,11 +341,6 @@ func (t *TextInput) styleState() style.State {
 	return style.Normal
 }
 
-func (t *TextInput) paintCaret(p Painter, origin geometry.Point, layout typography.TextLayout, padding, lineHeight float32, caretColor graphics.Color) {
-	rect := t.caretRect(layout, padding, lineHeight)
-	t.paintCaretRect(p, origin, rect, caretColor)
-}
-
 func (t *TextInput) paintCaretRect(p Painter, origin geometry.Point, rect geometry.Rectangle, caretColor graphics.Color) {
 	x := origin.X + rect.X
 	y0 := origin.Y + rect.Y
@@ -270,7 +354,10 @@ func (t *TextInput) paintCaretRect(p Painter, origin geometry.Point, rect geomet
 }
 
 func (t *TextInput) caretRect(layout typography.TextLayout, padding, lineHeight float32) geometry.Rectangle {
-	caret := clampCaret(t.text, t.caret)
+	return t.caretRectAt(layout, t.displayCaret(), padding, lineHeight)
+}
+
+func (t *TextInput) caretRectAt(layout typography.TextLayout, caret int, padding, lineHeight float32) geometry.Rectangle {
 	lines, clusters := layout.MeasureMetrics()
 	if len(lines) == 0 {
 		return t.defaultCaretRect(padding, lineHeight)

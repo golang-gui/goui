@@ -74,6 +74,8 @@ type window struct {
 	paintDirty     bool
 	focused        bool
 	focusedWidget  Widget
+	activeIM       IMContext            // the focused text widget's context bound to the native IME; nil when none
+	inputMethod    platform.InputMethod // this window's platform IME; nil when the platform has none
 	destroyed      bool
 	modalTarget    ModalTarget // the modal element intercepting this window's input; nil when none
 	closeRequest   signal.Signal1[*bool]
@@ -110,7 +112,27 @@ func newWindow(app *application) (*window, error) {
 	}
 
 	win.title = platformWindow.Title()
+
+	// Text input (IME) is an optional platform capability; a nil result (the
+	// platform has no input method) just means text widgets fall back to plain
+	// key events. Commit/preedit are routed to the focused widget's IMContext.
+	win.inputMethod, _ = app.platform.NewInputMethod(platformWindow, win.onInputMethod)
+
 	return win, nil
+}
+
+// onInputMethod is the window's platform.InputMethodHandler: it routes native
+// input-method output to the focused widget's IMContext (see doc/DesignIME.md §3).
+func (w *window) onInputMethod(r platform.InputMethodResult) {
+	if w.activeIM == nil {
+		return
+	}
+	switch r.Kind {
+	case platform.InputMethodCommit:
+		w.activeIM.emitCommit(r.Text)
+	case platform.InputMethodPreedit:
+		w.activeIM.emitPreedit(r.Text, r.Caret)
+	}
 }
 
 func (w *window) ID() string {
@@ -231,6 +253,10 @@ func (w *window) Destroy() {
 		root := w.root
 		root.base().detachRoot(root)
 		root.base().destroy(root)
+	}
+	if w.inputMethod != nil {
+		w.inputMethod.Destroy() // release the native input context before the window
+		w.inputMethod = nil
 	}
 	if w.painter != nil {
 		w.painter.Destroy()
@@ -406,8 +432,72 @@ func (w *window) setFocusedWidget(widget Widget) {
 		return
 	}
 	w.focusedWidget = widget
+	w.updateInputMethod(widget)
 	_ = w.dispatcher.DispatchEvent(w, events.FocusEvent{Focused: w.focused})
 	w.requestPaint()
+}
+
+// updateInputMethod rebinds the window's single native IME to the newly focused
+// widget. The outgoing context is finished and unbound first (so a trailing
+// commit lands on the old widget), then the incoming widget's IMContext — if it
+// is an IMClient — is bound and the IME enabled; a non-text widget just disables
+// it. Widget authors do nothing here (see doc/DesignIME.md §5).
+func (w *window) updateInputMethod(focused Widget) {
+	if w.activeIM != nil {
+		w.imReset()
+		w.activeIM.setWindow(nil)
+		w.activeIM = nil
+	}
+	im := imContextOf(focused)
+	if im == nil {
+		w.imSetEnabled(false)
+		return
+	}
+	w.activeIM = im
+	im.setWindow(w)
+	w.imSetEnabled(true)
+	// The caret rect is pushed by the focused widget's next paint (setFocusedWidget
+	// requests one), so the window need not read it back here.
+}
+
+func (w *window) imSetEnabled(enabled bool) {
+	if w.inputMethod != nil {
+		w.inputMethod.SetEnabled(enabled)
+	}
+}
+
+func imContextOf(widget Widget) IMContext {
+	client, ok := widget.(IMClient)
+	if !ok {
+		return nil
+	}
+	im := client.IMContext()
+	if im == nil {
+		return nil
+	}
+	return im
+}
+
+// imSetCaretRect is called by the active IMContext: it offsets the context's
+// widget-local caret rect into window coordinates and forwards it to the platform.
+func (w *window) imSetCaretRect(local geometry.Rectangle) {
+	if w.inputMethod == nil || w.focusedWidget == nil {
+		return
+	}
+	origin := w.focusedWidget.base().windowRect().Pos
+	w.inputMethod.SetCaretRect(geometry.Rect(
+		local.X+origin.X,
+		local.Y+origin.Y,
+		local.Width,
+		local.Height,
+	))
+}
+
+// imReset asks the platform to cancel any in-progress composition.
+func (w *window) imReset() {
+	if w.inputMethod != nil {
+		w.inputMethod.Reset()
+	}
 }
 
 func visibleInTree(widget Widget) bool {
