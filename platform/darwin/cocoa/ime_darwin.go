@@ -22,7 +22,7 @@ type inputMethod struct {
 	handler      common.InputMethodHandler
 	enabled      bool
 	marked       string  // current preedit
-	caret        NSRect  // caret rect in screen coordinates
+	caret        NSRect  // caret rect in view-local coordinates (recomputed to screen on demand)
 	pending      NSEvent // key being interpreted, re-emitted from doCommandBySelector
 	pendingValid bool
 }
@@ -73,7 +73,7 @@ func (im *inputMethod) SetCaretRect(rect geometry.Rectangle) {
 		CGFloat(rect.Width),
 		CGFloat(rect.Height),
 	)
-	im.caret = im.window.window.ConvertRectToScreen(view.ConvertRectToWindow(local))
+	im.caret = local
 }
 
 func (im *inputMethod) Reset() {
@@ -179,10 +179,12 @@ func imSelectedRange(self NSView) NSRange {
 
 func imFirstRect(self NSView, r NSRange, actual uintptr) NSRect {
 	im := imForView(self)
-	if im == nil {
+	if im == nil || im.window == nil {
 		return NSRect{}
 	}
-	return im.caret
+	// Recompute screen coordinates on demand so the position stays correct
+	// after the window is dragged.
+	return im.window.window.ConvertRectToScreen(im.window.view.ConvertRectToWindow(im.caret))
 }
 
 func imAttributedSubstring(self NSView, r NSRange, actual uintptr) ID { return 0 }
