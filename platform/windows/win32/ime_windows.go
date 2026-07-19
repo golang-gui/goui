@@ -50,7 +50,9 @@ func (im *inputMethod) SetEnabled(enabled bool) {
 }
 
 // SetCaretRect positions the composition and candidate windows at the caret.
-// rect is window-logical; IMM wants client physical pixels at the caret bottom.
+// rect is window-logical; IMM wants client physical pixels.
+// Composition (inline preedit) sits at the caret bottom; the candidate window
+// sits at the caret top so it doesn't drift below the text line.
 func (im *inputMethod) SetCaretRect(rect geometry.Rectangle) {
 	if im.window == nil || im.window.hwnd == 0 || !im.enabled {
 		return
@@ -60,11 +62,12 @@ func (im *inputMethod) SetCaretRect(rect geometry.Rectangle) {
 		scale = 1
 	}
 	x := int32(rect.X * scale)
-	y := int32((rect.Y + rect.Height) * scale)
-	if im.spotSet && x == im.spotX && y == im.spotY {
+	yTop := int32(rect.Y * scale)
+	yBottom := int32((rect.Y + rect.Height) * scale)
+	if im.spotSet && x == im.spotX && yBottom == im.spotY {
 		return
 	}
-	im.spotX, im.spotY, im.spotSet = x, y, true
+	im.spotX, im.spotY, im.spotSet = x, yBottom, true
 
 	himc := winapi.ImmGetContext(im.window.hwnd)
 	if himc == 0 {
@@ -72,14 +75,13 @@ func (im *inputMethod) SetCaretRect(rect geometry.Rectangle) {
 	}
 	defer winapi.ImmReleaseContext(im.window.hwnd, himc)
 
-	pos := winapi.POINT{X: winapi.LONG(x), Y: winapi.LONG(y)}
 	winapi.ImmSetCompositionWindow(himc, &winapi.COMPOSITIONFORM{
 		DwStyle:      winapi.CFS_POINT | winapi.CFS_FORCE_POSITION,
-		PtCurrentPos: pos,
+		PtCurrentPos: winapi.POINT{X: winapi.LONG(x), Y: winapi.LONG(yBottom)},
 	})
 	winapi.ImmSetCandidateWindow(himc, &winapi.CANDIDATEFORM{
 		DwStyle:      winapi.CFS_CANDIDATEPOS,
-		PtCurrentPos: pos,
+		PtCurrentPos: winapi.POINT{X: winapi.LONG(x), Y: winapi.LONG(yTop)},
 	})
 }
 
