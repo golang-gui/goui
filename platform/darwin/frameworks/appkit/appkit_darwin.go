@@ -586,12 +586,6 @@ func ImplementNSView(className string, override NSViewOverride) (class NSViewCla
 			},
 		})
 	}
-	if override.DrawRect != nil {
-		methods = append(methods, objc.MethodDef{
-			Cmd: NSViewSel.DrawRect,
-			Fn:  makeNSViewDrawRect(override.DrawRect),
-		})
-	}
 	if override.ViewDidChangeBackingProperties != nil {
 		methods = append(methods, objc.MethodDef{
 			Cmd: NSViewSel.ViewDidChangeBackingProperties,
@@ -638,6 +632,14 @@ func ImplementNSView(className string, override NSViewOverride) (class NSViewCla
 	class.Class, err = objc.RegisterClass(className, NSViewClassId.Class, nil, nil, methods)
 	if err != nil {
 		return
+	}
+	if override.DrawRect != nil {
+		class.Class.AddMethod(NSViewSel.DrawRect, objc.IMP(
+			cgo.NewCallback(func(self objc.ID, cmd objc.SEL, rect NSRect) {
+				override.DrawRect(Cast[NSView](self), rect)
+			})),
+			"v@:{CGRect={CGPoint=dd}{CGSize=dd}}",
+		)
 	}
 	return
 }
