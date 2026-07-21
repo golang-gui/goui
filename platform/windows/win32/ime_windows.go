@@ -15,8 +15,7 @@ type inputMethod struct {
 	handler  common.InputMethodHandler
 	enabled  bool
 	savedIMC winapi.HIMC // context detached while IME is disabled (non-text focus)
-	spotX    int32       // last pushed candidate spot (physical px), deduped
-	spotY    int32
+	spot     winapi.RECT // last pushed caret rect (client physical px), deduped
 	spotSet  bool
 }
 
@@ -51,8 +50,17 @@ func (im *inputMethod) SetEnabled(enabled bool) {
 
 // SetCaretRect positions the composition and candidate windows at the caret.
 // rect is window-logical; IMM wants client physical pixels.
-// Composition (inline preedit) sits at the caret bottom; the candidate window
-// sits at the caret top so it doesn't drift below the text line.
+//
+// The candidate window uses CFS_EXCLUDE: rcArea is the whole caret line, which
+// the IME treats as a region it must not cover, so it places the candidate list
+// just outside that rect — below the line by default, auto-flipping above when
+// near the screen bottom. This matches Chromium/Firefox and keeps the list off
+// the text instead of overlapping it (the earlier CFS_CANDIDATEPOS-at-top
+// anchor pinned the list to the line top, which read as "too high").
+//
+// The composition window anchors at the caret top-left, where inline preedit is
+// drawn; goui suppresses the default composition UI, but some IMEs still read
+// this point when placing candidates, so it must agree with the caret.
 func (im *inputMethod) SetCaretRect(rect geometry.Rectangle) {
 	if im.window == nil || im.window.hwnd == 0 || !im.enabled {
 		return
@@ -61,13 +69,16 @@ func (im *inputMethod) SetCaretRect(rect geometry.Rectangle) {
 	if scale == 0 {
 		scale = 1
 	}
-	x := int32(rect.X * scale)
-	yTop := int32(rect.Y * scale)
-	yBottom := int32((rect.Y + rect.Height) * scale)
-	if im.spotSet && x == im.spotX && yBottom == im.spotY {
+	area := winapi.RECT{
+		Left:   winapi.LONG(rect.X * scale),
+		Top:    winapi.LONG(rect.Y * scale),
+		Right:  winapi.LONG((rect.X + rect.Width) * scale),
+		Bottom: winapi.LONG((rect.Y + rect.Height) * scale),
+	}
+	if im.spotSet && area == im.spot {
 		return
 	}
-	im.spotX, im.spotY, im.spotSet = x, yBottom, true
+	im.spot, im.spotSet = area, true
 
 	himc := winapi.ImmGetContext(im.window.hwnd)
 	if himc == 0 {
@@ -75,13 +86,15 @@ func (im *inputMethod) SetCaretRect(rect geometry.Rectangle) {
 	}
 	defer winapi.ImmReleaseContext(im.window.hwnd, himc)
 
+	topLeft := winapi.POINT{X: area.Left, Y: area.Top}
 	winapi.ImmSetCompositionWindow(himc, &winapi.COMPOSITIONFORM{
 		DwStyle:      winapi.CFS_POINT | winapi.CFS_FORCE_POSITION,
-		PtCurrentPos: winapi.POINT{X: winapi.LONG(x), Y: winapi.LONG(yBottom)},
+		PtCurrentPos: topLeft,
 	})
 	winapi.ImmSetCandidateWindow(himc, &winapi.CANDIDATEFORM{
-		DwStyle:      winapi.CFS_CANDIDATEPOS,
-		PtCurrentPos: winapi.POINT{X: winapi.LONG(x), Y: winapi.LONG(yTop)},
+		DwStyle:      winapi.CFS_EXCLUDE,
+		PtCurrentPos: winapi.POINT{X: area.Left, Y: area.Bottom},
+		RcArea:       area,
 	})
 }
 
