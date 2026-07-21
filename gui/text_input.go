@@ -16,6 +16,12 @@ const (
 	defaultTextInputWidth   = 160
 	defaultTextInputPadding = 4
 	textInputCaretWidth     = 1
+	textInputMeasureExtent  = 1 << 20
+	// textInputHeightSample includes a Latin ascender (A), a Latin descender
+	// (g) and a CJK rune so the measured line height covers every script the
+	// field may show. CJK glyphs have larger ascent/descent than Latin, so
+	// sizing the box from a Latin-only estimate clips CJK text.
+	textInputHeightSample = "Ag中"
 )
 
 type TextInput struct {
@@ -114,12 +120,32 @@ func (t *TextInput) Measure(c layout.Constraint) geometry.Size {
 	if !t.Visible() {
 		return geometry.Size{}
 	}
-	size, _ := t.resolvedStyle().FontSize()
 	padding := t.padding
+	lineHeight := t.contentLineHeight(t.textFormat(t.resolvedStyle()))
 	return t.constrain(c, geometry.Size{
 		Width:  defaultTextInputWidth,
-		Height: textLineHeight(size) + padding*2,
+		Height: lineHeight + padding*2,
 	})
+}
+
+// contentLineHeight returns the field's content line height for the given
+// format. It measures a fixed mixed-script sample so the height is stable
+// regardless of what the user has typed (a Latin-only field and a CJK field
+// get the same box height), and falls back to the point-size estimate when no
+// typography context is available (e.g. in tests).
+func (t *TextInput) contentLineHeight(format typography.TextFormat) float32 {
+	if App != nil {
+		if typo := App.Typography(); typo != nil {
+			sample, err := typo.NewTextLayout(textInputHeightSample, format, textInputMeasureExtent, textInputMeasureExtent)
+			if err == nil {
+				defer sample.Destroy()
+				if _, height := sample.MeasureSize(); height > 0 {
+					return height
+				}
+			}
+		}
+	}
+	return textLineHeight(format.Font.Size)
 }
 
 func (t *TextInput) Paint(p Painter) {
@@ -154,6 +180,12 @@ func (t *TextInput) Paint(p Painter) {
 	}
 	defer textLayout.Destroy()
 
+	// Center the rendered text vertically within the content area. The box is
+	// sized to a mixed-script sample line, so a shorter line (e.g. Latin text
+	// in a CJK-sized field) would otherwise cling to the top; a full-height CJK
+	// line centers to offset 0 and stays put.
+	origin.Y += t.verticalTextOffset(size, padding, textLayout)
+
 	p.DrawTextLayout(origin, textLayout)
 	if caretColor, ok := t.caretColor(format); ok {
 		if t.preedit != "" {
@@ -165,6 +197,21 @@ func (t *TextInput) Paint(p Painter) {
 			t.paintCaretRect(p, origin, caret, caretColor)
 		}
 	}
+}
+
+// verticalTextOffset is the extra Y inset that centers a single text line
+// within the content area. It returns 0 when the line is as tall as (or taller
+// than) the content box, keeping the text top-aligned rather than pushing it up
+// past the top padding.
+func (t *TextInput) verticalTextOffset(size geometry.Size, padding float32, textLayout typography.TextLayout) float32 {
+	_, textHeight := textLayout.MeasureSize()
+	if textHeight <= 0 {
+		return 0
+	}
+	if offset := (size.Height - padding*2 - textHeight) / 2; offset > 0 {
+		return offset
+	}
+	return 0
 }
 
 // reportCaret hands the caret rectangle (in widget-local coordinates) to the
