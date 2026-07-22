@@ -641,6 +641,9 @@ const (
 	MA_NOACTIVATEANDEAT = 4
 	WM_QUEUESYNC        = 0x0023
 
+	// HTCLIENT is the WM_SETCURSOR low-word hit-test code for the client area.
+	HTCLIENT = 1
+
 	WM_GETMINMAXINFO = 0x0024
 
 	WM_PAINTICON      = 0x0026
