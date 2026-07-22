@@ -33,6 +33,7 @@ func InitAppKit() (err error) {
 	initNSFont()
 	initNSGraphicsContext()
 	initNSPasteboard()
+	initNSCursor()
 	return
 }
 
@@ -1246,3 +1247,77 @@ const (
 	NSWindowBelow NSWindowOrderingMode = -1
 	NSWindowOut   NSWindowOrderingMode = 0
 )
+
+// NSCursor
+
+func initNSCursor() {
+	NSCursorClassId.Class = objc.GetClass("NSCursor")
+	NSCursorSel.ArrowCursor = objc.RegisterName("arrowCursor")
+	NSCursorSel.IBeamCursor = objc.RegisterName("IBeamCursor")
+	NSCursorSel.PointingHandCursor = objc.RegisterName("pointingHandCursor")
+	NSCursorSel.CrosshairCursor = objc.RegisterName("crosshairCursor")
+	NSCursorSel.OperationNotAllowedCursor = objc.RegisterName("operationNotAllowedCursor")
+	NSCursorSel.Set = objc.RegisterName("set")
+	NSCursorSel.Hide = objc.RegisterName("hide")
+	NSCursorSel.Unhide = objc.RegisterName("unhide")
+}
+
+var (
+	NSCursorClassId NSCursorClass
+	NSCursorSel     struct {
+		ArrowCursor               objc.SEL
+		IBeamCursor               objc.SEL
+		PointingHandCursor        objc.SEL
+		CrosshairCursor           objc.SEL
+		OperationNotAllowedCursor objc.SEL
+		Set                       objc.SEL
+		Hide                      objc.SEL
+		Unhide                    objc.SEL
+	}
+)
+
+type (
+	NSCursor      struct{ NSObject }
+	NSCursorClass struct{ NSObjectClass }
+)
+
+func (c NSCursorClass) ArrowCursor() (cursor NSCursor) {
+	cursor.ID = c.Send(NSCursorSel.ArrowCursor)
+	return
+}
+
+func (c NSCursorClass) IBeamCursor() (cursor NSCursor) {
+	cursor.ID = c.Send(NSCursorSel.IBeamCursor)
+	return
+}
+
+func (c NSCursorClass) PointingHandCursor() (cursor NSCursor) {
+	cursor.ID = c.Send(NSCursorSel.PointingHandCursor)
+	return
+}
+
+func (c NSCursorClass) CrosshairCursor() (cursor NSCursor) {
+	cursor.ID = c.Send(NSCursorSel.CrosshairCursor)
+	return
+}
+
+func (c NSCursorClass) OperationNotAllowedCursor() (cursor NSCursor) {
+	cursor.ID = c.Send(NSCursorSel.OperationNotAllowedCursor)
+	return
+}
+
+// Hide hides the cursor. Calls are counted: each Hide must be balanced by an
+// Unhide for the cursor to reappear.
+func (c NSCursorClass) Hide() {
+	c.Send(NSCursorSel.Hide)
+}
+
+// Unhide balances a prior Hide, decrementing the hidden count.
+func (c NSCursorClass) Unhide() {
+	c.Send(NSCursorSel.Unhide)
+}
+
+// Set makes this cursor the current cursor.
+func (c NSCursor) Set() {
+	c.Send(NSCursorSel.Set)
+}
