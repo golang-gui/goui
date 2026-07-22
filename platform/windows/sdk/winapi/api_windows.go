@@ -64,6 +64,7 @@ var (
 
 	// Resource
 	procLoadCursorW = user32Dll.NewProc("LoadCursorW")
+	procSetCursor   = user32Dll.NewProc("SetCursor")
 
 	// GDI
 	procCreateCompatibleDC = gdi32Dll.NewProc("CreateCompatibleDC")
@@ -342,6 +343,13 @@ func LoadCursor(inst HINSTANCE, name LPCWSTR) (HCURSOR, error) {
 		return FALSE, err
 	}
 	return HCURSOR(ret), nil
+}
+
+// SetCursor sets the cursor shape shown for the current thread. It must be
+// re-applied on each WM_SETCURSOR over the client area, since DefWindowProc
+// otherwise resets the cursor to the window class cursor.
+func SetCursor(cursor HCURSOR) {
+	syscall.SyscallN(procSetCursor.Addr(), uintptr(cursor))
 }
 
 func GetMessage(msg LPMSG, wnd HWND, filterMin, filterMax UINT) (BOOL, error) {
