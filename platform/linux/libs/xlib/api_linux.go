@@ -55,6 +55,12 @@ var (
 	xKeysymToKeycode        = libx11.NewSymbol("XKeysymToKeycode")
 	xGetModifierMapping     = libx11.NewSymbol("XGetModifierMapping")
 	xFreeModifiermap        = libx11.NewSymbol("XFreeModifiermap")
+	xCreateFontCursor       = libx11.NewSymbol("XCreateFontCursor")
+	xCreatePixmapCursor     = libx11.NewSymbol("XCreatePixmapCursor")
+	xDefineCursor           = libx11.NewSymbol("XDefineCursor")
+	xUndefineCursor         = libx11.NewSymbol("XUndefineCursor")
+	xFreeCursor             = libx11.NewSymbol("XFreeCursor")
+	xCreateBitmapFromData   = libx11.NewSymbol("XCreateBitmapFromData")
 )
 
 func OpenDisplay(name string) Display {
@@ -302,4 +308,57 @@ func (d Display) GetModifierMapping() *ModifierKeymap {
 func FreeModifiermap(mapping *ModifierKeymap) int {
 	ret, _, _ := xFreeModifiermap.CallRaw(uintptr(cgo.Pointer(mapping)))
 	return int(ret)
+}
+
+// CreateFontCursor creates a cursor from the X standard cursor font (cursorfont.h).
+// The shape parameter is a font index (e.g., XC_xterm = 152, XC_hand2 = 60).
+func (d Display) CreateFontCursor(shape uint) Cursor {
+	ret, _, _ := xCreateFontCursor.CallRaw(uintptr(d), uintptr(shape))
+	return Cursor(ret)
+}
+
+// CreatePixmapCursor creates a custom cursor from source/mask pixmaps and colors.
+// Used to create transparent (hidden) cursors: pass a 1x1 transparent bitmap for both.
+func (d Display) CreatePixmapCursor(source, mask Pixmap, foreground, background *XColor, x, y uint) Cursor {
+	ret, _, _ := xCreatePixmapCursor.CallRaw(
+		uintptr(d),
+		uintptr(source),
+		uintptr(mask),
+		uintptr(cgo.Pointer(foreground)),
+		uintptr(cgo.Pointer(background)),
+		uintptr(x),
+		uintptr(y),
+	)
+	return Cursor(ret)
+}
+
+// CreateBitmapFromData creates a 1-bit depth pixmap from bitmap data.
+// Used for cursor masks. Data is a byte slice where each byte is a row of 8 bits.
+func (d Display) CreateBitmapFromData(drawable Drawable, data []byte, width, height uint) Pixmap {
+	ret, _, _ := xCreateBitmapFromData.CallRaw(
+		uintptr(d),
+		uintptr(drawable),
+		uintptr(cgo.Pointer(&data[0])),
+		uintptr(width),
+		uintptr(height),
+	)
+	return Pixmap(ret)
+}
+
+// DefineCursor sets the cursor for the window. The cursor is displayed when the
+// pointer is in the window.
+func (d Display) DefineCursor(w Window, cursor Cursor) {
+	xDefineCursor.CallRaw(uintptr(d), uintptr(w), uintptr(cursor))
+}
+
+// UndefineCursor removes the cursor definition for the window, reverting to the
+// parent window's cursor.
+func (d Display) UndefineCursor(w Window) {
+	xUndefineCursor.CallRaw(uintptr(d), uintptr(w))
+}
+
+// FreeCursor deletes the cursor and frees its storage. Do not free cursors that
+// are still defined on any window.
+func (d Display) FreeCursor(cursor Cursor) {
+	xFreeCursor.CallRaw(uintptr(d), uintptr(cursor))
 }
