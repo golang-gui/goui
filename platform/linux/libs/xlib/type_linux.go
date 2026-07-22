@@ -712,3 +712,23 @@ const (
 	ximPreeditNothing = 0x0008
 	ximStatusNothing  = 0x0400
 )
+
+// XColor represents a color in X11. Used when creating pixmap cursors.
+type XColor struct {
+	Pixel uint64
+	Red   uint16
+	Green uint16
+	Blue  uint16
+	Flags uint8
+	Pad   uint8
+}
+
+// Cursor font constants from <X11/cursorfont.h>. Used with CreateFontCursor.
+const (
+	XC_X_cursor  = 0   // X-shaped "not allowed" cursor
+	XC_arrow     = 2   // standard arrow
+	XC_left_ptr  = 68  // standard arrow (preferred name)
+	XC_hand2     = 60  // pointing hand (link/clickable)
+	XC_xterm     = 152 // text I-beam
+	XC_crosshair = 34  // crosshair (precision)
+)
