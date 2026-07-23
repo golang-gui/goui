@@ -27,6 +27,7 @@ type Window struct {
 	gc      xlib.GC
 	buttons events.PointerButtons
 	im      *inputMethod // this window's IME (nil when none); the key loop consults it
+	cursor  *cursor      // this window's cursor capability (nil when none)
 }
 
 // newNativeWindow creates the X11 InputOutput window shared by both top-level

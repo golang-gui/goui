@@ -162,6 +162,11 @@ func (p *Platform) NewInputMethod(window common.Window, handler common.InputMeth
 	return p.newInputMethod(window, handler)
 }
 
+// NewCursor creates an x11 cursor capability for window.
+func (p *Platform) NewCursor(window common.Window) (common.Cursor, error) {
+	return p.newCursor(window)
+}
+
 func (p *Platform) NewSettings() (common.Settings, error) {
 	return newSettings()
 }

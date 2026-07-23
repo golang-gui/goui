@@ -24,6 +24,8 @@ type (
 	InputMethodHandler = common.InputMethodHandler
 	InputMethodResult  = common.InputMethodResult
 	InputMethodKind    = common.InputMethodKind
+	Cursor             = common.Cursor
+	CursorShape        = common.CursorShape
 	EventHandler       = events.EventHandler
 )
 
@@ -33,6 +35,13 @@ const (
 
 	InputMethodCommit  = common.InputMethodCommit
 	InputMethodPreedit = common.InputMethodPreedit
+
+	CursorDefault   = common.CursorDefault
+	CursorText      = common.CursorText
+	CursorPointing  = common.CursorPointing
+	CursorCrosshair = common.CursorCrosshair
+	CursorForbidden = common.CursorForbidden
+	CursorNone      = common.CursorNone
 )
 
 // Platform owns low-level operating-system resources. It and every object
@@ -59,6 +68,10 @@ type Platform interface {
 	// handler receives committed/preedit text. Returns ErrUnsupported when the
 	// platform or window does not support input methods.
 	NewInputMethod(window Window, handler InputMethodHandler) (InputMethod, error)
+	// NewCursor creates the mouse-cursor capability for window, used to change
+	// the window's current cursor shape. Returns ErrUnsupported when the platform
+	// or window does not support cursor control.
+	NewCursor(window Window) (Cursor, error)
 }
 
 var ErrUnsupported = errors.New("unsupported platform")

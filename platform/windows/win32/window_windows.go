@@ -29,6 +29,7 @@ type Window struct {
 	scale         float32      // cached device scale; updated on WM_SIZE
 	noActivate    bool         // popups: decline activation/focus on click (WM_MOUSEACTIVATE)
 	im            *inputMethod // this window's IME (nil when none); WndProc routes WM_IME_* to it
+	cursor        *cursor      // this window's cursor (nil when none); WndProc consults it on WM_SETCURSOR
 }
 
 func newWindow(width, height float32, onEvent events.EventHandler) (w *Window, err error) {
@@ -214,6 +215,15 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 			int(rect.Left), int(rect.Top),
 			int(rect.Right-rect.Left), int(rect.Bottom-rect.Top),
 			winapi.SWP_NOZORDER|winapi.SWP_NOACTIVATE)
+
+	case winapi.WM_SETCURSOR:
+		// Over the client area, apply our cursor and claim the message so
+		// DefWindowProc does not reset it to the (NULL) class cursor. Elsewhere
+		// (borders, resize edges) let the system pick the cursor.
+		if window.cursor != nil && (lParam&0xFFFF) == winapi.HTCLIENT {
+			window.cursor.apply()
+			return winapi.TRUE
+		}
 
 	case winapi.WM_MOUSEMOVE:
 		window.handlePointerMove(wParam, lParam)
