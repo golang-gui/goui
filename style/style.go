@@ -4,6 +4,7 @@ import (
 	"image/color"
 	"slices"
 
+	"github.com/golang-gui/goui/core/bits"
 	"github.com/golang-gui/goui/core/colors"
 )
 
@@ -33,13 +34,11 @@ type Style struct {
 	radius          float32
 	fontFamily      string
 	fontSize        float32
-	fields          fields
+	fields          bits.Bitmap[uint64]
 }
 
-type fields uint64
-
 const (
-	fieldBackgroundColor fields = 1 << iota
+	fieldBackgroundColor = iota
 	fieldForegroundColor
 	fieldBorderColor
 	fieldBorderWidth
@@ -49,88 +48,88 @@ const (
 )
 
 func (s Style) BackgroundColor() (color.Color, bool) {
-	return s.backgroundColor, s.fields&fieldBackgroundColor != 0
+	return s.backgroundColor, s.fields.Check(fieldBackgroundColor)
 }
 
 func (s Style) ForegroundColor() (color.Color, bool) {
-	return s.foregroundColor, s.fields&fieldForegroundColor != 0
+	return s.foregroundColor, s.fields.Check(fieldForegroundColor)
 }
 
 func (s Style) BorderColor() (color.Color, bool) {
-	return s.borderColor, s.fields&fieldBorderColor != 0
+	return s.borderColor, s.fields.Check(fieldBorderColor)
 }
 
 func (s Style) BorderWidth() (float32, bool) {
-	return s.borderWidth, s.fields&fieldBorderWidth != 0
+	return s.borderWidth, s.fields.Check(fieldBorderWidth)
 }
 
 func (s Style) Radius() (float32, bool) {
-	return s.radius, s.fields&fieldRadius != 0
+	return s.radius, s.fields.Check(fieldRadius)
 }
 
 func (s Style) FontFamily() (string, bool) {
-	return s.fontFamily, s.fields&fieldFontFamily != 0
+	return s.fontFamily, s.fields.Check(fieldFontFamily)
 }
 
 func (s Style) FontSize() (float32, bool) {
-	return s.fontSize, s.fields&fieldFontSize != 0
+	return s.fontSize, s.fields.Check(fieldFontSize)
 }
 
 func (s *Style) setBackgroundColor(c color.Color) {
 	s.backgroundColor = c
-	s.fields |= fieldBackgroundColor
+	s.fields.Set(fieldBackgroundColor, true)
 }
 
 func (s *Style) setForegroundColor(c color.Color) {
 	s.foregroundColor = c
-	s.fields |= fieldForegroundColor
+	s.fields.Set(fieldForegroundColor, true)
 }
 
 func (s *Style) setBorderColor(c color.Color) {
 	s.borderColor = c
-	s.fields |= fieldBorderColor
+	s.fields.Set(fieldBorderColor, true)
 }
 
 func (s *Style) setBorderWidth(width float32) {
 	s.borderWidth = width
-	s.fields |= fieldBorderWidth
+	s.fields.Set(fieldBorderWidth, true)
 }
 
 func (s *Style) setRadius(radius float32) {
 	s.radius = radius
-	s.fields |= fieldRadius
+	s.fields.Set(fieldRadius, true)
 }
 
 func (s *Style) setFontFamily(family string) {
 	s.fontFamily = family
-	s.fields |= fieldFontFamily
+	s.fields.Set(fieldFontFamily, true)
 }
 
 func (s *Style) setFontSize(size float32) {
 	s.fontSize = size
-	s.fields |= fieldFontSize
+	s.fields.Set(fieldFontSize, true)
 }
 
 func (s Style) merge(override Style) Style {
-	if override.fields&fieldBackgroundColor != 0 {
+	if override.fields.Check(fieldBackgroundColor) {
 		s.setBackgroundColor(override.backgroundColor)
 	}
-	if override.fields&fieldForegroundColor != 0 {
+	if override.fields.Check(fieldForegroundColor) {
 		s.setForegroundColor(override.foregroundColor)
 	}
-	if override.fields&fieldBorderColor != 0 {
+	if override.fields.Check(fieldBorderColor) {
 		s.setBorderColor(override.borderColor)
 	}
-	if override.fields&fieldBorderWidth != 0 {
+	if override.fields.Check(fieldBorderWidth) {
 		s.setBorderWidth(override.borderWidth)
 	}
-	if override.fields&fieldRadius != 0 {
+	if override.fields.Check(fieldRadius) {
 		s.setRadius(override.radius)
 	}
-	if override.fields&fieldFontFamily != 0 {
+	if override.fields.Check(fieldFontFamily) {
 		s.setFontFamily(override.fontFamily)
 	}
-	if override.fields&fieldFontSize != 0 {
+	if override.fields.Check(fieldFontSize) {
 		s.setFontSize(override.fontSize)
 	}
 	return s
