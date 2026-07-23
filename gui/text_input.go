@@ -39,6 +39,7 @@ type TextInput struct {
 func NewTextInput() *TextInput {
 	input := new(TextInput)
 	input.SetFocusable(true)
+	input.SetCursor(CursorText)
 	input.padding = defaultTextInputPadding
 	input.im = NewIMContext()
 	input.im.ConnectCommit(input.onCommit)

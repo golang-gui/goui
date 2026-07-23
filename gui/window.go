@@ -76,6 +76,8 @@ type window struct {
 	focusedWidget  Widget
 	activeIM       IMContext            // the focused text widget's context bound to the native IME; nil when none
 	inputMethod    platform.InputMethod // this window's platform IME; nil when the platform has none
+	cursor         platform.Cursor      // this window's platform cursor capability; nil when the platform has none
+	lastCursor     platform.CursorShape // last shape applied to cursor; dedupes redundant native calls
 	destroyed      bool
 	modalTarget    ModalTarget // the modal element intercepting this window's input; nil when none
 	closeRequest   signal.Signal1[*bool]
@@ -117,6 +119,10 @@ func newWindow(app *application) (*window, error) {
 	// platform has no input method) just means text widgets fall back to plain
 	// key events. Commit/preedit are routed to the focused widget's IMContext.
 	win.inputMethod, _ = app.platform.NewInputMethod(platformWindow, win.onInputMethod)
+
+	// Cursor is an optional platform capability; nil means the platform controls
+	// the cursor itself (no dynamic per-widget cursor support).
+	win.cursor, _ = app.platform.NewCursor(platformWindow)
 
 	return win, nil
 }
@@ -235,6 +241,9 @@ func (w *window) RequestPaint() error {
 	return w.platformWindow.RequestPaint()
 }
 
+// RequestCursorUpdate re-resolves the cursor shape from the hover path and
+// applies it. Widgets call this via Root when they change their cursor and are
+// being hovered over.
 func (w *window) RequestClose() error {
 	if w.platformWindow == nil {
 		return nil
@@ -257,6 +266,10 @@ func (w *window) Destroy() {
 	if w.inputMethod != nil {
 		w.inputMethod.Destroy() // release the native input context before the window
 		w.inputMethod = nil
+	}
+	if w.cursor != nil {
+		w.cursor.Destroy()
+		w.cursor = nil
 	}
 	if w.painter != nil {
 		w.painter.Destroy()
@@ -310,6 +323,14 @@ func (w *window) DispatchEvent(event events.Event) error {
 		return w.dispatcher.DispatchEvent(w, event)
 	case events.PaintEvent:
 		w.paint()
+	case events.PointerEvent:
+		err := w.dispatcher.DispatchEvent(w, event)
+		w.applyCursor() // re-resolve cursor after hover path changes
+		return err
+	case events.KeyEvent:
+		err := w.dispatcher.DispatchEvent(w, event)
+		w.applyCursor() // re-resolve in case the focused widget changed its cursor (e.g., hide-on-typing)
+		return err
 	default:
 		return w.dispatcher.DispatchEvent(w, event)
 	}
@@ -498,6 +519,36 @@ func (w *window) imReset() {
 	if w.inputMethod != nil {
 		w.inputMethod.Reset()
 	}
+}
+
+// applyCursor resolves the cursor shape from the dispatcher's hover path
+// (innermost non-Default widget wins, falling back to CursorDefault) and
+// applies it. Called when the hover path changes or a hovered widget changes
+// its cursor. Redundant same-shape calls are skipped.
+func (w *window) applyCursor() {
+	if w.cursor == nil {
+		return
+	}
+	var resolved Cursor = CursorDefault
+	path := w.dispatcher.hoverPath
+	for i := len(path) - 1; i >= 0; i-- {
+		if c := path[i].Cursor(); c != nil && c != CursorDefault {
+			resolved = c
+			break
+		}
+	}
+	// MVP: only CursorShape is supported; future custom cursors will need their
+	// own resolution (image → fallback shape if platform rejects).
+	shape, ok := resolved.(CursorShape)
+	if !ok {
+		shape = CursorDefault
+	}
+	platformShape := platform.CursorShape(shape)
+	if platformShape == w.lastCursor {
+		return
+	}
+	w.lastCursor = platformShape
+	w.cursor.SetShape(platformShape)
 }
 
 func visibleInTree(widget Widget) bool {
