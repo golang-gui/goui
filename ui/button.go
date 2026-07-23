@@ -1,16 +1,16 @@
 package ui
 
 import (
+	"github.com/golang-gui/goui/core/optional"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
 )
 
 type ButtonView struct {
 	ViewBase[ButtonView]
-	child      View
-	onClick    func()
-	padding    float32
-	paddingSet bool
+	child   View
+	onClick func()
+	padding optional.Optional[float32]
 }
 
 type buttonState struct {
@@ -51,8 +51,7 @@ func (v *ButtonView) OnClick(fn func()) *ButtonView {
 // Padding sets the button's inner padding. Unset leaves the button's built-in
 // default (6) untouched.
 func (v *ButtonView) Padding(padding float32) *ButtonView {
-	v.padding = padding
-	v.paddingSet = true
+	v.padding.SetValue(padding)
 	return v
 }
 
@@ -76,8 +75,8 @@ func (v *ButtonView) Update(ctx BuildContext, widget gui.Widget) {
 	button := widget.(*gui.Button)
 	state := ctx.State().(*buttonState)
 	state.onClick = v.onClick
-	if v.paddingSet {
-		button.SetPadding(v.padding)
+	if v.padding.HasValue() {
+		button.SetPadding(v.padding.Value())
 	}
 	if v.child == nil {
 		ctx.UpdateChildren(button, nil)
