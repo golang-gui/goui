@@ -17,6 +17,7 @@ func updateTrackingAreas(self NSView) {
 func mouseEntered(self NSView, event NSEvent) {
 	if window := windowForView(self); window != nil {
 		window.emitPointer(events.PointerEnter, events.PointerButtonNone, event)
+		window.reapplyCursor()
 	}
 }
 
@@ -29,6 +30,7 @@ func mouseExited(self NSView, event NSEvent) {
 func mouseMoved(self NSView, event NSEvent) {
 	if window := windowForView(self); window != nil {
 		window.emitPointer(events.PointerMove, events.PointerButtonNone, event)
+		window.reapplyCursor()
 	}
 }
 
@@ -151,6 +153,15 @@ func (w *Window) updateTrackingArea() {
 	w.view.AddTrackingArea(area)
 	area.Release()
 	w.trackingArea = area
+}
+
+// reapplyCursor re-sets the window's current cursor after a pointer event, so
+// it survives AppKit's own cursor resets during motion. No-op when the window
+// has no cursor capability.
+func (w *Window) reapplyCursor() {
+	if w.cursor != nil {
+		w.cursor.reapply()
+	}
 }
 
 func (w *Window) emitPointer(eventType events.EventType, button events.PointerButton, event NSEvent) {

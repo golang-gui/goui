@@ -24,6 +24,7 @@ type Window struct {
 	buttons      events.PointerButtons
 	modifiers    events.Modifiers
 	im           *inputMethod // this window's IME (nil when none); keyDown routes to it
+	cursor       *cursor      // this window's cursor capability (nil when none)
 }
 
 // newNativeWindow creates the NSWindow shared by top-level windows and popups:

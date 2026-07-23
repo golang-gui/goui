@@ -88,6 +88,10 @@ func (p *Platform) NewInputMethod(window common.Window, handler common.InputMeth
 	return newInputMethod(window, handler)
 }
 
+func (p *Platform) NewCursor(window common.Window) (common.Cursor, error) {
+	return newCursor(window)
+}
+
 func (p *Platform) NewSettings() (common.Settings, error) {
 	return newSettings()
 }
