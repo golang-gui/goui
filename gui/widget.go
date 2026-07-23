@@ -38,6 +38,9 @@ type Widget interface {
 	ConnectFocused(func(focused bool)) signal.Handle
 	ConnectContainsFocus(func(focused bool)) signal.Handle
 
+	Cursor() Cursor
+	SetCursor(Cursor)
+
 	Rect() geometry.Rectangle
 
 	EventControllers() []EventController
@@ -98,6 +101,7 @@ type WidgetBase struct {
 	minWidth, minHeight float32 // self size preference; 0 = no min
 	maxWidth, maxHeight float32 // self size preference; 0 = unbounded
 	mainWeight          float32 // main-axis extra-space share in a linear parent; 0 = hug
+	cursor              Cursor
 	mount               signal.Signal0
 	unmount             signal.Signal0
 	focusedSignal       signal.Signal1[bool]
@@ -172,6 +176,14 @@ func (w *WidgetBase) SetFocusable(focusable bool) {
 
 func (w *WidgetBase) Focused() bool {
 	return w.focused
+}
+
+func (w *WidgetBase) Cursor() Cursor {
+	return w.cursor
+}
+
+func (w *WidgetBase) SetCursor(cursor Cursor) {
+	w.cursor = cursor
 }
 
 func (w *WidgetBase) ContainsFocus() bool {
