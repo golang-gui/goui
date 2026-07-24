@@ -70,6 +70,7 @@ type Widget interface {
 
 	Paint(p Painter)
 	RequestLayout()
+	RequestPaint()
 
 	ConnectMount(func()) signal.Handle
 	ConnectUnmount(func()) signal.Handle
@@ -365,6 +366,13 @@ func (w *WidgetBase) RequestLayout() {
 	// concrete *window, which is nil for a popover-hosted widget.
 	if r := w.root(); r != nil {
 		r.RequestLayout()
+	}
+}
+
+func (w *WidgetBase) RequestPaint() {
+	// Same as RequestLayout: reach the host through Root, never through Window().
+	if r := w.root(); r != nil {
+		_ = r.RequestPaint()
 	}
 }
 
