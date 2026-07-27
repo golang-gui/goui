@@ -58,6 +58,7 @@ func TestLabelMeasureUsesTypography(t *testing.T) {
 	}
 	setTestApplication(t, typo)
 	label := NewLabel("hello")
+	t.Cleanup(label.releaseLayout)
 
 	size := label.Measure(layout.Loose(geometry.Size{Width: 100, Height: 50}))
 
@@ -74,8 +75,9 @@ func TestLabelMeasureUsesTypography(t *testing.T) {
 	if call.width != 100 || call.height != 50 {
 		t.Fatalf("unexpected layout size: %gx%g", call.width, call.height)
 	}
-	if !typo.layouts[0].destroyed {
-		t.Fatal("measure did not destroy text layout")
+	// With caching, the layout is NOT destroyed after Measure — it's reused for Paint.
+	if typo.layouts[0].destroyed {
+		t.Fatal("measure should cache text layout for reuse")
 	}
 }
 
@@ -85,6 +87,7 @@ func TestLabelMeasureUsesUnboundedExtentForZeroAvailableSize(t *testing.T) {
 	}
 	setTestApplication(t, typo)
 	label := NewLabel("hello")
+	t.Cleanup(label.releaseLayout)
 
 	_ = label.Measure(layout.Loose(geometry.Size{}))
 
@@ -104,6 +107,7 @@ func TestLabelPaintDrawsTextLayout(t *testing.T) {
 	setTestApplication(t, typo)
 	label := NewLabel("hello")
 	label.Arrange(geometry.Rect(10, 20, 80, 30))
+	t.Cleanup(label.releaseLayout)
 
 	painter := new(testLabelPainter)
 	label.Paint(painter)
@@ -121,8 +125,9 @@ func TestLabelPaintDrawsTextLayout(t *testing.T) {
 	if painter.textLayout != typo.layouts[0] {
 		t.Fatal("painter did not receive label text layout")
 	}
-	if !typo.layouts[0].destroyed {
-		t.Fatal("paint did not destroy text layout")
+	// With caching, the layout is NOT destroyed after Paint — it lives until unmount/setter.
+	if typo.layouts[0].destroyed {
+		t.Fatal("paint should cache text layout for reuse")
 	}
 }
 
@@ -146,6 +151,7 @@ func TestLabelUsesStyleForTextFormat(t *testing.T) {
 	})
 
 	label := NewLabel("hello")
+	t.Cleanup(label.releaseLayout)
 	_ = label.Measure(layout.Loose(geometry.Size{Width: 100, Height: 30}))
 
 	if len(typo.calls) != 1 {
@@ -163,6 +169,7 @@ func TestLabelUsesStyleForTextFormat(t *testing.T) {
 func TestLabelWithoutTypographyDoesNotMeasureOrPaint(t *testing.T) {
 	setTestApplication(t, nil)
 	label := NewLabel("hello")
+	t.Cleanup(label.releaseLayout)
 	size := label.Measure(layout.Loose(geometry.Size{Width: 100, Height: 50}))
 	if size != (geometry.Size{}) {
 		t.Fatalf("unexpected measured size: %+v", size)

@@ -110,8 +110,9 @@ func TestTextInputPaintDrawsChromeTextAndCaret(t *testing.T) {
 	if painter.textLayout != typo.layouts[0] {
 		t.Fatal("painter did not receive text input layout")
 	}
-	if !typo.layouts[0].destroyed {
-		t.Fatal("paint did not destroy text layout")
+	// With caching, the layout is NOT destroyed after Paint — it lives until unmount/setter.
+	if typo.layouts[0].destroyed {
+		t.Fatal("paint should cache text layout for reuse")
 	}
 	if painter.drawLines != 1 {
 		t.Fatalf("expected one caret draw, got %d", painter.drawLines)
