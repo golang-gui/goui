@@ -24,9 +24,9 @@ func DefaultStyleSheet() style.StyleSheet {
 
 // defaultStyleSheet is the bare fallback sheet: built once (it never changes —
 // accent/font do not track settings; the real theme is a separate package).
-var defaultStyleSheet = style.Sheet(defaultStyleRules()...)
+var defaultStyleSheet = style.Sheet(DefaultStyleRules()...)
 
-func defaultStyleRules() []style.Rule {
+func DefaultStyleRules() []style.Rule {
 	accent := defaultAccentColor
 	family := defaultLabelFontFamily()
 	size := defaultFontSize
