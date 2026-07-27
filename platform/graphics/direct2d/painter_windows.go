@@ -94,6 +94,10 @@ func (p *Painter) Begin(width, height, scale float32) {
 }
 
 func (p *Painter) End() {
+	// Defensive: pop any clip the GUI layer forgot to restore. D2D requires
+	// the clip stack to be balanced before EndDraw; an unbalanced stack fails
+	// the draw and leaves the window blank.
+	p.SetClipRect(graphics.Rectangle{})
 	p.render.EndDraw(nil, nil)
 }
 
