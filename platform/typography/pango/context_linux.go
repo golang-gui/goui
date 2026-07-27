@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"image/color"
-	"log"
 	"slices"
 	"unicode/utf8"
 
@@ -353,10 +352,8 @@ func (t *TextLayout) DrawBitmap(scale float32, buf []byte) (bitmap typography.Te
 	// Cache hit: return cached pixels without re-rasterizing.
 	if !t.bmpDirty && t.cachedPixels != nil &&
 		t.cachedScale == scale && t.cachedWidth == pw && t.cachedHeight == ph {
-		log.Printf("%s hit cache", t.text)
 		return t.copyCached(pw, ph, buf), nil
 	}
-	log.Printf("%s re-paint", t.text)
 
 	// Cache miss: full rasterization.
 	if t.painter.width < width || t.painter.height < height {
