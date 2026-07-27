@@ -36,10 +36,22 @@ type Label struct {
 	text      string
 	wrapMode  WrapMode
 	textAlign TextAlign
+
+	// TextLayout cache. Reused across Measure and Paint. Invalidated by
+	// SetText / SetWrapMode / SetTextAlign / SetStyleName. Released on unmount.
+	cachedLayout    typography.TextLayout
+	cachedText      string
+	cachedWrapMode  WrapMode
+	cachedTextAlign TextAlign
+	cachedStyleName string
+	cachedWidth     float32
+	cachedHeight    float32
+	layoutValid     bool
 }
 
 func NewLabel(text string) *Label {
 	label := &Label{text: text}
+	label.ConnectUnmount(label.releaseLayout)
 	return label
 }
 
@@ -52,6 +64,7 @@ func (l *Label) SetText(text string) {
 		return
 	}
 	l.text = text
+	l.invalidateLayout()
 	l.RequestLayout()
 	l.requestSemanticUpdate()
 }
@@ -65,6 +78,7 @@ func (l *Label) SetWrapMode(mode WrapMode) {
 		return
 	}
 	l.wrapMode = mode
+	l.invalidateLayout()
 	l.RequestLayout()
 }
 
@@ -77,6 +91,7 @@ func (l *Label) SetTextAlign(align TextAlign) {
 		return
 	}
 	l.textAlign = align
+	l.invalidateLayout()
 	l.RequestLayout()
 }
 
@@ -84,15 +99,14 @@ func (l *Label) Measure(c layout.Constraint) geometry.Size {
 	if !l.Visible() {
 		return geometry.Size{}
 	}
-	format := l.resolvedTextFormat()
-	textLayout := l.newTextLayout(format, measureTextSize(c.Max))
+	textLayout := l.ensureLayout(measureTextSize(c.Max))
 	if textLayout == nil {
 		return geometry.Size{}
 	}
-	defer textLayout.Destroy()
 
 	width, height := textLayout.MeasureSize()
 	if height <= 0 {
+		format := l.resolvedTextFormat()
 		height = textLineHeight(format.Font.Size)
 	}
 	return l.constrain(c, geometry.Size{Width: width, Height: height})
@@ -102,10 +116,9 @@ func (l *Label) Paint(p Painter) {
 	if !l.Visible() {
 		return
 	}
-	textLayout := l.newTextLayout(l.resolvedTextFormat(), l.Rect().Size)
+	textLayout := l.ensureLayout(l.Rect().Size)
 	if textLayout != nil {
 		p.DrawTextLayout(geometry.Point{}, textLayout)
-		textLayout.Destroy()
 	}
 	l.PaintChildren(p)
 }
@@ -115,6 +128,49 @@ func (l *Label) Snapshot() WidgetInfo {
 	info.Role = RoleLabel
 	info.Text = l.text
 	return info
+}
+
+func (l *Label) invalidateLayout() {
+	l.layoutValid = false
+}
+
+func (l *Label) ensureLayout(size geometry.Size) typography.TextLayout {
+	styleName := l.StyleName()
+	if !l.layoutValid ||
+		l.cachedLayout == nil ||
+		l.cachedText != l.text ||
+		l.cachedWrapMode != l.wrapMode ||
+		l.cachedTextAlign != l.textAlign ||
+		l.cachedStyleName != styleName {
+		l.releaseLayout()
+		l.cachedLayout = l.newTextLayout(l.resolvedTextFormat(), size)
+		if l.cachedLayout == nil {
+			return nil
+		}
+		l.cachedText = l.text
+		l.cachedWrapMode = l.wrapMode
+		l.cachedTextAlign = l.textAlign
+		l.cachedStyleName = styleName
+		l.layoutValid = true
+		l.cachedWidth = 0
+		l.cachedHeight = 0
+	}
+
+	if l.cachedWidth != size.Width || l.cachedHeight != size.Height {
+		l.cachedLayout.SetSize(size.Width, size.Height)
+		l.cachedWidth = size.Width
+		l.cachedHeight = size.Height
+	}
+
+	return l.cachedLayout
+}
+
+func (l *Label) releaseLayout() {
+	if l.cachedLayout != nil {
+		l.cachedLayout.Destroy()
+		l.cachedLayout = nil
+	}
+	l.layoutValid = false
 }
 
 func (l *Label) newTextLayout(format typography.TextFormat, size geometry.Size) typography.TextLayout {

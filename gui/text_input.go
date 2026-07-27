@@ -34,6 +34,14 @@ type TextInput struct {
 	im           IMContext
 	key          *KeyEventController
 	textSignal   signal.Signal1[string]
+
+	// TextLayout cache. Reused across Paint calls. Invalidated by setText /
+	// setPreedit / SetPadding / SetStyleName. Released on unmount.
+	cachedLayout    typography.TextLayout
+	cachedDisplay   string
+	cachedPadding   float32
+	cachedStyleName string
+	layoutValid     bool
 }
 
 func NewTextInput() *TextInput {
@@ -47,6 +55,7 @@ func NewTextInput() *TextInput {
 	input.key = NewKeyEventController()
 	input.key.ConnectKeyDown(input.handleKeyDown)
 	input.AddEventController(input.key)
+	input.ConnectUnmount(input.releaseLayout)
 	return input
 }
 
@@ -72,6 +81,7 @@ func (t *TextInput) setPreedit(text string, caret int) {
 	}
 	t.preedit = text
 	t.preeditCaret = caret
+	t.invalidateLayout()
 	t.RequestLayout()
 }
 
@@ -102,6 +112,7 @@ func (t *TextInput) SetPadding(padding float32) {
 		return
 	}
 	t.padding = padding
+	t.invalidateLayout()
 	t.RequestLayout()
 }
 
@@ -175,11 +186,10 @@ func (t *TextInput) Paint(p Painter) {
 		return
 	}
 
-	textLayout := t.newTextLayout(size.Inset(padding), format)
+	textLayout := t.ensureLayout(size.Inset(padding), format)
 	if textLayout == nil {
 		return
 	}
-	defer textLayout.Destroy()
 
 	// Center the rendered text vertically within the content area. The box is
 	// sized to a mixed-script sample line, so a shorter line (e.g. Latin text
@@ -337,6 +347,7 @@ func (t *TextInput) setText(text string, caret int) {
 	t.caret = caret
 	if textChanged {
 		t.textSignal.Emit(text)
+		t.invalidateLayout()
 		t.RequestLayout()
 		t.requestSemanticUpdate()
 		return
@@ -365,6 +376,38 @@ func (t *TextInput) newTextLayout(size geometry.Size, format typography.TextForm
 		return nil
 	}
 	return textLayout
+}
+
+func (t *TextInput) invalidateLayout() {
+	t.layoutValid = false
+}
+
+func (t *TextInput) ensureLayout(size geometry.Size, format typography.TextFormat) typography.TextLayout {
+	styleName := t.StyleName()
+	if !t.layoutValid ||
+		t.cachedLayout == nil ||
+		t.cachedDisplay != t.displayText() ||
+		t.cachedPadding != t.padding ||
+		t.cachedStyleName != styleName {
+		t.releaseLayout()
+		t.cachedLayout = t.newTextLayout(size, format)
+		if t.cachedLayout == nil {
+			return nil
+		}
+		t.cachedDisplay = t.displayText()
+		t.cachedPadding = t.padding
+		t.cachedStyleName = styleName
+		t.layoutValid = true
+	}
+	return t.cachedLayout
+}
+
+func (t *TextInput) releaseLayout() {
+	if t.cachedLayout != nil {
+		t.cachedLayout.Destroy()
+		t.cachedLayout = nil
+	}
+	t.layoutValid = false
 }
 
 // textFormat builds the single-line text format from the resolved style. Font
