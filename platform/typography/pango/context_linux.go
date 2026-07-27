@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"image/color"
+	"log"
 	"slices"
 	"unicode/utf8"
 
@@ -95,6 +96,13 @@ type TextLayout struct {
 	attrs   pango.AttrList
 	painter textPainter
 	chars   int
+
+	// Text bitmap cache. Invalidated by any setter that affects rendering.
+	cachedPixels []byte
+	cachedWidth  int
+	cachedHeight int
+	cachedScale  float32
+	bmpDirty     bool
 }
 
 func newTextLayout(c *Context, layout pango.Layout, text string, format typography.TextFormat, width, height float32) (t *TextLayout) {
@@ -137,11 +145,15 @@ func (t *TextLayout) Size() (maxWidth, maxHeight float32) {
 }
 
 func (t *TextLayout) SetSize(maxWidth, maxHeight float32) {
+	if t.width == maxWidth && t.height == maxHeight {
+		return
+	}
 	t.width = maxWidth
 	t.height = maxHeight
 	if t.format.WrapMode != typography.WrapNone {
 		t.layout.SetWidth(roundToPixel(t.width) * pango.Scale)
 	}
+	t.bmpDirty = true
 }
 
 func (t *TextLayout) SetTextAlignment(align typography.TextAlignment) {
@@ -155,6 +167,7 @@ func (t *TextLayout) SetTextAlignment(align typography.TextAlignment) {
 		t.layout.SetAlignment(pango.AlignCenter)
 	}
 	t.layout.SetJustify(align == typography.TextAlignFill)
+	t.bmpDirty = true
 }
 
 func (t *TextLayout) SetWrapMode(wrap typography.WrapMode) {
@@ -170,6 +183,7 @@ func (t *TextLayout) SetWrapMode(wrap typography.WrapMode) {
 	} else {
 		t.layout.SetWidth(-1)
 	}
+	t.bmpDirty = true
 }
 
 func (t *TextLayout) SetTextFont(start, length int, font typography.FontInfo) {
@@ -189,6 +203,7 @@ func (t *TextLayout) SetTextFont(start, length int, font typography.FontInfo) {
 		t.attrs.Insert(sizeAttr)
 
 		t.layout.ContextChanged()
+		t.bmpDirty = true
 	}
 }
 
@@ -205,6 +220,7 @@ func (t *TextLayout) SetTextColor(start, length int, foreground color.Color) {
 		t.attrs.Insert(attr)
 
 		t.layout.ContextChanged()
+		t.bmpDirty = true
 	}
 }
 
@@ -224,6 +240,7 @@ func (t *TextLayout) SetUnderline(start, length int, underline bool) {
 		t.attrs.Insert(attr)
 
 		t.layout.ContextChanged()
+		t.bmpDirty = true
 	}
 }
 
@@ -239,6 +256,7 @@ func (t *TextLayout) SetStrikethrough(start, length int, strike bool) {
 		t.attrs.Insert(attr)
 
 		t.layout.ContextChanged()
+		t.bmpDirty = true
 	}
 }
 
@@ -329,6 +347,18 @@ func (t *TextLayout) DrawBitmap(scale float32, buf []byte) (bitmap typography.Te
 	width = min(width, t.width) * scale
 	height = min(height, t.height) * scale
 
+	pw := roundToPixel(width)
+	ph := roundToPixel(height)
+
+	// Cache hit: return cached pixels without re-rasterizing.
+	if !t.bmpDirty && t.cachedPixels != nil &&
+		t.cachedScale == scale && t.cachedWidth == pw && t.cachedHeight == ph {
+		log.Printf("%s hit cache", t.text)
+		return t.copyCached(pw, ph, buf), nil
+	}
+	log.Printf("%s re-paint", t.text)
+
+	// Cache miss: full rasterization.
 	if t.painter.width < width || t.painter.height < height {
 		t.painter.Destroy()
 		err = t.painter.Init(width, height)
@@ -342,7 +372,42 @@ func (t *TextLayout) DrawBitmap(scale float32, buf []byte) (bitmap typography.Te
 		return
 	}
 
-	return t.painter.GetBitmap(width, height, buf), nil
+	bitmap = t.painter.GetBitmap(width, height, buf)
+	t.storeCached(scale, pw, ph, bitmap.Pixels)
+
+	return bitmap, nil
+}
+
+func (t *TextLayout) copyCached(pw, ph int, buf []byte) typography.TextBitmap {
+	stride := pw * 4
+	byteSize := stride * ph
+	var out []byte
+	if byteSize <= cap(buf) {
+		out = buf[:byteSize]
+	} else {
+		out = make([]byte, byteSize)
+	}
+	copy(out, t.cachedPixels)
+	return typography.TextBitmap{
+		Width:  pw,
+		Height: ph,
+		Stride: stride,
+		Pixels: out,
+	}
+}
+
+func (t *TextLayout) storeCached(scale float32, pw, ph int, pixels []byte) {
+	byteSize := pw * 4 * ph
+	if byteSize <= cap(t.cachedPixels) {
+		t.cachedPixels = t.cachedPixels[:byteSize]
+	} else {
+		t.cachedPixels = make([]byte, byteSize)
+	}
+	copy(t.cachedPixels, pixels)
+	t.cachedWidth = pw
+	t.cachedHeight = ph
+	t.cachedScale = scale
+	t.bmpDirty = false
 }
 
 func (t *TextLayout) getExtents() (x, y, width, height float32) {

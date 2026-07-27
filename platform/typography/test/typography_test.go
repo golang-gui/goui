@@ -41,6 +41,54 @@ func TestTypography(t *testing.T) {
 	wrap := typography.WrapWordChar
 	align := typography.TextAlignEnd
 
+	t.Run("bitmap-cache", func(t *testing.T) {
+		layout, err := newRichTextLayout(ctx, 200, 100, fontName, wrap, align, white)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer layout.Destroy()
+
+		// First call: rasterize and populate the cache.
+		bmp1, err := ctx.DrawTextLayout(layout, 1.0, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bmp1.Pixels == nil {
+			t.Fatal("first call should return pixels")
+		}
+
+		// Second call with same params: cache hit — pixels identical.
+		bmp2, err := ctx.DrawTextLayout(layout, 1.0, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(bmp1.Pixels, bmp2.Pixels) {
+			t.Fatal("cache-hit pixels should match the first call")
+		}
+
+		// Different scale: cache miss — dimensions differ.
+		bmp3, err := ctx.DrawTextLayout(layout, 2.0, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bmp3.Pixels == nil {
+			t.Fatal("different-scale call should return pixels")
+		}
+		if bmp3.Width == bmp1.Width {
+			t.Fatal("different scale should produce different width")
+		}
+
+		// Mutate text color: cache invalidated — pixels change.
+		layout.SetTextColor(0, 3, color.RGBA{R: 160, A: 255})
+		bmp4, err := ctx.DrawTextLayout(layout, 1.0, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Equal(bmp1.Pixels, bmp4.Pixels) {
+			t.Fatal("pixels should change after setter invalidates cache")
+		}
+	})
+
 	t.Run("text", func(t *testing.T) {
 		layout, err := newRichTextLayout(ctx, 200, 100, fontName, wrap, align, white)
 		if err != nil {

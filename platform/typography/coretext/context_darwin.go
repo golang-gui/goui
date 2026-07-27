@@ -79,6 +79,13 @@ type TextLayout struct {
 	frame      CTFrameRef
 	layoutSize CGSize
 	lines      []lineInfo
+
+	// Text bitmap cache. Invalidated by any setter that affects rendering.
+	cachedPixels []byte
+	cachedWidth  int
+	cachedHeight int
+	cachedScale  float32
+	bmpDirty     bool
 }
 
 type lineInfo struct {
@@ -172,18 +179,24 @@ func (t *TextLayout) Size() (maxWidth, maxHeight float32) {
 }
 
 func (t *TextLayout) SetSize(maxWidth, maxHeight float32) {
+	if t.width == maxWidth && t.height == maxHeight {
+		return
+	}
 	t.width, t.height = maxWidth, maxHeight
 	t.dirty = true
+	t.bmpDirty = true
 }
 
 func (t *TextLayout) SetTextAlignment(align typography.TextAlignment) {
 	t.format.TextAlign = align
 	t.updateParagraphStyle()
+	t.bmpDirty = true
 }
 
 func (t *TextLayout) SetWrapMode(wrap typography.WrapMode) {
 	t.format.WrapMode = wrap
 	t.updateParagraphStyle()
+	t.bmpDirty = true
 }
 
 func (t *TextLayout) SetTextFont(start, length int, font typography.FontInfo) {
@@ -201,6 +214,7 @@ func (t *TextLayout) SetTextFont(start, length int, font typography.FontInfo) {
 			CFAttributedStringSetAttribute(t.attrString, CFRangeMake(u16Start, u16End-u16Start), KCTFontAttributeName, ctFont)
 			CFAttributedStringEndEditing(t.attrString)
 			t.dirty = true
+			t.bmpDirty = true
 		}
 	}
 }
@@ -220,6 +234,7 @@ func (t *TextLayout) SetTextColor(start, length int, c color.Color) {
 			CFAttributedStringSetAttribute(t.attrString, CFRangeMake(u16Start, u16End-u16Start), KCTForegroundColorAttributeName, fgColor)
 			CFAttributedStringEndEditing(t.attrString)
 			t.dirty = true
+			t.bmpDirty = true
 		}
 	}
 }
@@ -243,6 +258,7 @@ func (t *TextLayout) SetUnderline(start, length int, underline bool) {
 			CFAttributedStringSetAttribute(t.attrString, CFRangeMake(u16Start, u16End-u16Start), KCTUnderlineStyleAttributeName, cfNum)
 			CFAttributedStringEndEditing(t.attrString)
 			t.dirty = true
+			t.bmpDirty = true
 		}
 	}
 }
@@ -266,6 +282,7 @@ func (t *TextLayout) SetStrikethrough(start, length int, strike bool) {
 			CFAttributedStringSetAttribute(t.attrString, CFRangeMake(u16Start, u16End-u16Start), KCTStrikethroughStyleAttributeName, cfNum)
 			CFAttributedStringEndEditing(t.attrString)
 			t.dirty = true
+			t.bmpDirty = true
 		}
 	}
 }
@@ -388,6 +405,16 @@ func (t *TextLayout) DrawBitmap(scale float32, buf []byte) (bitmap typography.Te
 	width *= scale
 	height *= scale
 
+	pw := roundToPixel(width)
+	ph := roundToPixel(height)
+
+	// Cache hit: return cached pixels without re-rasterizing.
+	if !t.bmpDirty && t.cachedPixels != nil &&
+		t.cachedScale == scale && t.cachedWidth == pw && t.cachedHeight == ph {
+		return t.copyCached(pw, ph, buf), nil
+	}
+
+	// Cache miss: full rasterization.
 	if t.painter.width < width || t.painter.height < height {
 		t.painter.Destroy()
 		err = t.painter.Init(width, height)
@@ -401,10 +428,42 @@ func (t *TextLayout) DrawBitmap(scale float32, buf []byte) (bitmap typography.Te
 		return
 	}
 
-	width = min(width, t.width*scale)
-	height = min(height, t.height*scale)
+	bitmap = t.painter.GetBitmap(width, height, buf)
+	t.storeCached(scale, pw, ph, bitmap.Pixels)
 
-	return t.painter.GetBitmap(width, height, buf), nil
+	return bitmap, nil
+}
+
+func (t *TextLayout) copyCached(pw, ph int, buf []byte) typography.TextBitmap {
+	stride := pw * 4
+	byteSize := stride * ph
+	var out []byte
+	if byteSize <= cap(buf) {
+		out = buf[:byteSize]
+	} else {
+		out = make([]byte, byteSize)
+	}
+	copy(out, t.cachedPixels)
+	return typography.TextBitmap{
+		Width:  pw,
+		Height: ph,
+		Stride: stride,
+		Pixels: out,
+	}
+}
+
+func (t *TextLayout) storeCached(scale float32, pw, ph int, pixels []byte) {
+	byteSize := pw * 4 * ph
+	if byteSize <= cap(t.cachedPixels) {
+		t.cachedPixels = t.cachedPixels[:byteSize]
+	} else {
+		t.cachedPixels = make([]byte, byteSize)
+	}
+	copy(t.cachedPixels, pixels)
+	t.cachedWidth = pw
+	t.cachedHeight = ph
+	t.cachedScale = scale
+	t.bmpDirty = false
 }
 
 func (t *TextLayout) updateParagraphStyle() {
@@ -417,6 +476,7 @@ func (t *TextLayout) updateParagraphStyle() {
 		CFAttributedStringSetAttribute(t.attrString, CFRangeMake(0, t.textLength), KCTParagraphStyleAttributeName, paraStyle)
 		CFAttributedStringEndEditing(t.attrString)
 		t.dirty = true
+		t.bmpDirty = true
 	}
 }
 
