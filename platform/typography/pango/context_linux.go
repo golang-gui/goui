@@ -470,6 +470,15 @@ func (p *textPainter) Destroy() {
 
 func (p *textPainter) DrawTextLayout(t *TextLayout, x, y, scale float32) (err error) {
 	cgo.Memset(cgo.CSlice(p.bitmap.Pixels), 0, cgo.Sizet(len(p.bitmap.Pixels)))
+	p.context.Save()
+	defer func() {
+		p.context.Restore()
+		// UpdateLayout copies cairo's transform and font options into the Pango
+		// context. Restore those inputs after rasterization so retained layouts
+		// continue to measure in logical coordinates.
+		pango_cairo.UpdateLayout(p.context, t.layout)
+	}()
+
 	r, g, b, a := toColor(t.format.TextColor)
 	p.context.Scale(float64(scale), float64(scale))
 	p.context.SetSourceRGBA(r, g, b, a)
