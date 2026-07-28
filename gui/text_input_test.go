@@ -94,7 +94,7 @@ func TestTextInputPaintDrawsChromeTextAndCaret(t *testing.T) {
 	if painter.fillRect != geometry.Rect(0, 0, 100, 24) || painter.fillBrush != graphics.RGB(255, 255, 255) {
 		t.Fatalf("unexpected fill: rect=%+v brush=%+v", painter.fillRect, painter.fillBrush)
 	}
-	if painter.drawRect != geometry.Rect(0, 0, 100, 24) || painter.drawRectStrokeWidth != 1 || painter.drawRectBrush != graphics.RGB(70, 130, 220) {
+	if painter.drawRect != geometry.Rect(0.5, 0.5, 99, 23) || painter.drawRectStrokeWidth != 1 || painter.drawRectBrush != graphics.RGB(70, 130, 220) {
 		t.Fatalf("unexpected border: rect=%+v width=%v brush=%+v", painter.drawRect, painter.drawRectStrokeWidth, painter.drawRectBrush)
 	}
 	if len(typo.calls) != 1 {
@@ -203,7 +203,7 @@ func TestTextInputUsesStyleSheetForChromeAndText(t *testing.T) {
 	if painter.fillRect != geometry.Rect(0, 0, 100, 24) || painter.fillRadius != 3 || painter.fillBrush != graphics.ColorOf(background) {
 		t.Fatalf("unexpected styled fill: rect=%+v radius=%v brush=%+v", painter.fillRect, painter.fillRadius, painter.fillBrush)
 	}
-	if painter.drawRect != geometry.Rect(0, 0, 100, 24) || painter.drawRadius != 3 || painter.drawRectStrokeWidth != 2 || painter.drawRectBrush != graphics.ColorOf(border) {
+	if painter.drawRect != geometry.Rect(1, 1, 98, 22) || painter.drawRadius != 2 || painter.drawRectStrokeWidth != 2 || painter.drawRectBrush != graphics.ColorOf(border) {
 		t.Fatalf("unexpected styled border: rect=%+v radius=%v width=%v brush=%+v", painter.drawRect, painter.drawRadius, painter.drawRectStrokeWidth, painter.drawRectBrush)
 	}
 	if len(typo.calls) != 1 {
