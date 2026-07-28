@@ -402,8 +402,8 @@ func (t *TextLayout) DrawBitmap(scale float32, buf []byte) (bitmap typography.Te
 		return
 	}
 
-	width *= scale
-	height *= scale
+	width = min(width, t.width) * scale
+	height = min(height, t.height) * scale
 
 	pw := roundToPixel(width)
 	ph := roundToPixel(height)
@@ -617,6 +617,9 @@ func (p *textPainter) Destroy() {
 }
 
 func (p *textPainter) DrawTextLayout(t *TextLayout, scale float32) error {
+	CGContextSaveGState(p.cgCtx)
+	defer CGContextRestoreGState(p.cgCtx)
+
 	CGContextClearRect(p.cgCtx, CGRectMake(0, 0, float64(p.bitmap.Width), float64(p.bitmap.Height)))
 	CGContextScaleCTM(p.cgCtx, float64(scale), float64(scale))
 	CGContextSetTextMatrix(p.cgCtx, CGAffineTransformIdentity)

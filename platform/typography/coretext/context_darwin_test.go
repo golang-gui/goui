@@ -62,3 +62,95 @@ func Test_TextLayout(t *testing.T) {
 
 	os.WriteFile("text.png", buf.Bytes(), 0666)
 }
+
+func TestTextLayoutRasterScaleDoesNotAccumulate(t *testing.T) {
+	c, err := NewContext()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Destroy()
+
+	format := typography.TextFormat{
+		Font: typography.FontInfo{
+			Family: ".AppleSystemUIFont",
+			Size:   18,
+		},
+		WrapMode:  typography.WrapNone,
+		TextAlign: typography.TextAlignBegin,
+		TextColor: color.Black,
+	}
+
+	layout, err := c.NewTextLayout("scale", format, 200, 80)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer layout.Destroy()
+
+	first2x, err := c.DrawTextLayout(layout, 2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Invalidate the bitmap without changing the visual output. The retained
+	// CGContext must start the next rasterization with an identity CTM.
+	layout.SetTextAlignment(format.TextAlign)
+	second2x, err := c.DrawTextLayout(layout, 2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSameBitmap(t, first2x, second2x)
+
+	actual1x, err := c.DrawTextLayout(layout, 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := c.NewTextLayout("scale", format, 200, 80)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fresh.Destroy()
+	want1x, err := c.DrawTextLayout(fresh, 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSameBitmap(t, want1x, actual1x)
+}
+
+func TestTextLayoutBitmapRespectsSize(t *testing.T) {
+	c, err := NewContext()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Destroy()
+
+	format := typography.TextFormat{
+		Font:      typography.FontInfo{Family: ".AppleSystemUIFont", Size: 32},
+		WrapMode:  typography.WrapNone,
+		TextAlign: typography.TextAlignBegin,
+		TextColor: color.Black,
+	}
+	layout, err := c.NewTextLayout("a long line that exceeds its bounds", format, 40, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer layout.Destroy()
+
+	bitmap, err := c.DrawTextLayout(layout, 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bitmap.Width > 40 || bitmap.Height > 20 {
+		t.Fatalf("bitmap exceeds layout size: got %dx%d, max 40x20", bitmap.Width, bitmap.Height)
+	}
+}
+
+func assertSameBitmap(t *testing.T, want, got typography.TextBitmap) {
+	t.Helper()
+	if want.Width != got.Width || want.Height != got.Height || want.Stride != got.Stride {
+		t.Fatalf("bitmap dimensions differ: want=%dx%d/%d got=%dx%d/%d",
+			want.Width, want.Height, want.Stride, got.Width, got.Height, got.Stride)
+	}
+	if !bytes.Equal(want.Pixels, got.Pixels) {
+		t.Fatal("bitmap pixels differ")
+	}
+}
