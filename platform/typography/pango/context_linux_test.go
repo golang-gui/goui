@@ -88,3 +88,67 @@ func TestTextLayoutEmptyMeasureMetrics(t *testing.T) {
 		t.Fatalf("empty text should not produce clusters, got %d", len(clusters))
 	}
 }
+
+func TestTextLayoutRasterScaleDoesNotAccumulate(t *testing.T) {
+	c, err := NewContext()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Destroy()
+
+	format := typography.TextFormat{
+		Font: typography.FontInfo{
+			Family: "sans",
+			Size:   18,
+		},
+		WrapMode:  typography.WrapNone,
+		TextAlign: typography.TextAlignBegin,
+		TextColor: color.Black,
+	}
+
+	layout, err := c.NewTextLayout("scale", format, 200, 80)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer layout.Destroy()
+
+	first2x, err := c.DrawTextLayout(layout, 2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Invalidate the bitmap without changing the visual output. The retained
+	// cairo context must start the next rasterization with an identity CTM.
+	layout.SetTextAlignment(format.TextAlign)
+	second2x, err := c.DrawTextLayout(layout, 2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSameBitmap(t, first2x, second2x)
+
+	actual1x, err := c.DrawTextLayout(layout, 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := c.NewTextLayout("scale", format, 200, 80)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fresh.Destroy()
+	want1x, err := c.DrawTextLayout(fresh, 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSameBitmap(t, want1x, actual1x)
+}
+
+func assertSameBitmap(t *testing.T, want, got typography.TextBitmap) {
+	t.Helper()
+	if want.Width != got.Width || want.Height != got.Height || want.Stride != got.Stride {
+		t.Fatalf("bitmap dimensions differ: want=%dx%d/%d got=%dx%d/%d",
+			want.Width, want.Height, want.Stride, got.Width, got.Height, got.Stride)
+	}
+	if !bytes.Equal(want.Pixels, got.Pixels) {
+		t.Fatal("bitmap pixels differ")
+	}
+}
