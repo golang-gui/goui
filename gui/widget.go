@@ -329,7 +329,7 @@ func (w *WidgetBase) Paint(p Painter) {
 func (w *WidgetBase) PaintChildren(p Painter) {
 	for _, child := range w.children {
 		if child.Visible() {
-			child.Paint(SubPainter(p, child.Rect()))
+			paintWidget(child, SubPainter(p, child.Rect()))
 		}
 	}
 }

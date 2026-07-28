@@ -413,6 +413,10 @@ type testButtonBackgroundPainter struct {
 	drawBrush       graphics.Brush
 }
 
+func (p *testButtonBackgroundPainter) Begin() {}
+
+func (p *testButtonBackgroundPainter) End() {}
+
 func (p *testButtonBackgroundPainter) SetClipRect(rect geometry.Rectangle) {}
 
 func (p *testButtonBackgroundPainter) Clear(color graphics.Color) {}

@@ -415,9 +415,10 @@ func (w *window) paint() {
 	}
 
 	w.painter.Begin(pixelWidth, pixelHeight, scale)
+	defer w.painter.End()
 	w.painter.Clear(graphics.RGB(255, 255, 255))
-	w.root.Paint(SubPainter(w.painter, w.root.Rect()))
-	w.painter.End()
+	guiPainter := newPainter(w.painter, geometry.Rect(0, 0, size.Width, size.Height))
+	paintWidget(w.root, SubPainter(guiPainter, w.root.Rect()))
 	w.paintDirty = false
 }
 
