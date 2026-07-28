@@ -151,6 +151,14 @@ func CGContextRelease(ctx CGContextRef) {
 	fnCGContextRelease(ctx)
 }
 
+func CGContextSaveGState(ctx CGContextRef) {
+	fnCGContextSaveGState(ctx)
+}
+
+func CGContextRestoreGState(ctx CGContextRef) {
+	fnCGContextRestoreGState(ctx)
+}
+
 func CGContextTranslateCTM(ctx CGContextRef, tx, ty CGFloat) {
 	fnCGContextTranslateCTM(ctx, tx, ty)
 }
@@ -301,6 +309,8 @@ var functions = []utils.Function{
 	{Name: "CGBitmapContextGetData", PFunc: &fnCGBitmapContextGetData},
 
 	{Name: "CGContextRelease", PFunc: &fnCGContextRelease},
+	{Name: "CGContextSaveGState", PFunc: &fnCGContextSaveGState},
+	{Name: "CGContextRestoreGState", PFunc: &fnCGContextRestoreGState},
 	{Name: "CGContextTranslateCTM", PFunc: &fnCGContextTranslateCTM},
 	{Name: "CGContextScaleCTM", PFunc: &fnCGContextScaleCTM},
 	{Name: "CGContextConcatCTM", PFunc: &fnCGContextConcatCTM},
@@ -343,6 +353,8 @@ var (
 	fnCGBitmapContextGetData func(ctx CGContextRef) cgo.Pointer
 
 	fnCGContextRelease                        func(ctx CGContextRef)
+	fnCGContextSaveGState                     func(ctx CGContextRef)
+	fnCGContextRestoreGState                  func(ctx CGContextRef)
 	fnCGContextTranslateCTM                   func(ctx CGContextRef, tx, ty CGFloat)
 	fnCGContextScaleCTM                       func(ctx CGContextRef, sx, sy CGFloat)
 	fnCGContextConcatCTM                      func(ctx CGContextRef, transform CGAffineTransform)
