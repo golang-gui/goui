@@ -351,9 +351,10 @@ func (p *popover) paint() {
 	}
 
 	p.painter.Begin(pixelWidth, pixelHeight, scale)
+	defer p.painter.End()
 	p.painter.Clear(graphics.RGB(255, 255, 255))
-	p.widget.Paint(SubPainter(p.painter, p.widget.Rect()))
-	p.painter.End()
+	guiPainter := newPainter(p.painter, geometry.Rect(0, 0, size.Width, size.Height))
+	paintWidget(p.widget, SubPainter(guiPainter, p.widget.Rect()))
 	p.paintDirty = false
 }
 

@@ -305,6 +305,10 @@ type testLabelPainter struct {
 	textLayout typography.TextLayout
 }
 
+func (p *testLabelPainter) Begin() {}
+
+func (p *testLabelPainter) End() {}
+
 func (p *testLabelPainter) SetClipRect(rect geometry.Rectangle) {}
 
 func (p *testLabelPainter) Clear(color graphics.Color) {}

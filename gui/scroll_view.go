@@ -78,7 +78,5 @@ func (sv *ScrollView) Paint(p Painter) {
 	if !sv.Visible() {
 		return
 	}
-	viewport := geometry.Rect(0, 0, sv.Rect().Width, sv.Rect().Height)
-	p.SetClipRect(viewport)
 	sv.PaintChildren(p)
 }
