@@ -62,6 +62,7 @@ func (c *Context) NewTextLayout(text string, format typography.TextFormat, width
 	if err != nil {
 		return nil, fmt.Errorf("create dwrite text format err: %v", err)
 	}
+	defer textFormat.Release()
 
 	textLayout, hr := c.dwFactory.CreateTextLayout(text, textFormat, width, height)
 	if hr.Failed() {
@@ -394,9 +395,10 @@ func (t *TextLayout) Draw(render *d2d1.RenderTarget, origin d2d1.Point2F, drawOp
 			d2dColor = toD2dColor(rgba)
 			b, hr := render.CreateSolidColorBrush(&d2dColor, nil)
 			if hr.Failed() {
-				return nil, fmt.Errorf("create d2d solid color brush err: %v", err)
+				return nil, fmt.Errorf("create d2d solid color brush err: %v", hr)
 			}
 			d2dBrush = &b.Brush
+			brushs[rgba] = d2dBrush
 		}
 		return d2dBrush, nil
 	}
