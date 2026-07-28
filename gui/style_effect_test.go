@@ -50,8 +50,29 @@ func TestApplicationStyleSheetChangesButtonPaint(t *testing.T) {
 	if painter.brush != graphics.ColorOf(background) {
 		t.Fatalf("unexpected fill brush: %+v", painter.brush)
 	}
-	if painter.drawRadius != 6 || painter.drawStrokeWidth != 2 || painter.drawBrush != graphics.ColorOf(border) {
+	if painter.drawRect != geometry.Rect(1, 1, 78, 28) || painter.drawRadius != 5 || painter.drawStrokeWidth != 2 || painter.drawBrush != graphics.ColorOf(border) {
 		t.Fatalf("unexpected border: radius=%v width=%v brush=%+v", painter.drawRadius, painter.drawStrokeWidth, painter.drawBrush)
+	}
+}
+
+func TestStyledBoxClampsBorderRadiusAfterInset(t *testing.T) {
+	border := color.RGBA{R: 40, G: 50, B: 60, A: 255}
+	useTestApplication(t, &application{
+		style: style.Sheet(
+			style.Name(styleNameButton).
+				BorderColor(border).
+				BorderWidth(4).
+				Radius(1),
+		),
+	})
+
+	button := NewButton()
+	button.Arrange(geometry.Rect(0, 0, 80, 30))
+	painter := new(testButtonBackgroundPainter)
+	button.Paint(painter)
+
+	if painter.drawRect != geometry.Rect(2, 2, 76, 26) || painter.drawRadius != 0 || painter.drawStrokeWidth != 4 {
+		t.Fatalf("unexpected inset border: rect=%+v radius=%v width=%v", painter.drawRect, painter.drawRadius, painter.drawStrokeWidth)
 	}
 }
 

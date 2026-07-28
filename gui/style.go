@@ -134,9 +134,14 @@ func paintStyledBox(p Painter, rect geometry.Rectangle, s style.Style) {
 		return
 	}
 	stroke := graphics.ColorOf(bc)
-	if radius > 0 {
-		p.DrawRoundRect(rect, radius, width, stroke)
+	// Stroke primitives are centered on their path. Keep the complete border
+	// inside the Widget's clip by moving its centerline inward by half its width.
+	halfWidth := width / 2
+	borderRect := rect.Inset(halfWidth)
+	borderRadius := max(radius-halfWidth, 0)
+	if borderRadius > 0 {
+		p.DrawRoundRect(borderRect, borderRadius, width, stroke)
 	} else {
-		p.DrawRect(rect, width, stroke)
+		p.DrawRect(borderRect, width, stroke)
 	}
 }
