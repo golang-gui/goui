@@ -13,6 +13,8 @@ var (
 	cairoCreate                      = libcairo.NewSymbol("cairo_create")
 	cairoStatus                      = libcairo.NewSymbol("cairo_status")
 	cairoDestroy                     = libcairo.NewSymbol("cairo_destroy")
+	cairoSave                        = libcairo.NewSymbol("cairo_save")
+	cairoRestore                     = libcairo.NewSymbol("cairo_restore")
 	cairoScale                       = libcairo.NewSymbol("cairo_scale")
 	cairoSetSourceRgb                = libcairo.NewSymbol("cairo_set_source_rgb")
 	cairoSetSourceRgba               = libcairo.NewSymbol("cairo_set_source_rgba")
@@ -79,6 +81,18 @@ func (cr Context) Status() Status {
 func (cr Context) Destroy() {
 	// void cairo_destroy(cairo_t* cr)
 	cairoDestroy.CallRaw(uintptr(cr))
+}
+
+// Save pushes a copy of the current drawing state onto the context stack.
+func (cr Context) Save() {
+	// void cairo_save(cairo_t* cr)
+	cairoSave.CallRaw(uintptr(cr))
+}
+
+// Restore replaces the current drawing state with the most recently saved one.
+func (cr Context) Restore() {
+	// void cairo_restore(cairo_t* cr)
+	cairoRestore.CallRaw(uintptr(cr))
 }
 
 func (cr Context) Scale(sx, sy float64) {
