@@ -4,6 +4,8 @@ import (
 	"os"
 	"strconv"
 	"sync"
+
+	"github.com/golang-gui/goui/platform/common"
 )
 
 // X11 has no per-window scale factor. We derive a single display-global scale
@@ -32,6 +34,10 @@ func physical(logical, scale float32) int {
 }
 
 func detectScale() float32 {
+	// Explicit override via environment variable.
+	if scale := common.GetPreferScale(); scale > 0 {
+		return scale
+	}
 	// Explicit override, honoring the common GDK_SCALE convention.
 	if v := os.Getenv("GDK_SCALE"); v != "" {
 		if f, err := strconv.ParseFloat(v, 32); err == nil && f > 0 {
