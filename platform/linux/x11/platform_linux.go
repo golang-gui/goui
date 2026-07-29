@@ -150,12 +150,15 @@ func (p *Platform) NewTypography() (typography.Context, error) {
 }
 
 func (p *Platform) NewPainter(surface common.Surface, typo typography.Context) (painter graphics.Painter, err error) {
-	// TODO: error log
-	painter, err = opengl.NewPainter(surface, typo)
-	if err != nil {
+	switch common.GetPreferPainter() {
+	case "software":
 		return software.NewPainter(surface, typo)
+	default:
+		if painter, err = opengl.NewPainter(surface, typo); err != nil {
+			return software.NewPainter(surface, typo)
+		}
+		return
 	}
-	return
 }
 
 func (p *Platform) NewInputMethod(window common.Window, handler common.InputMethodHandler) (common.InputMethod, error) {

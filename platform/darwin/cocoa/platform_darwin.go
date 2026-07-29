@@ -10,8 +10,6 @@ import (
 	"github.com/golang-gui/goui/platform/typography/coretext"
 
 	"github.com/golang-gui/goui/platform/darwin/frameworks"
-	. "github.com/golang-gui/goui/platform/darwin/frameworks/appkit"
-	. "github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
 )
 
 type Platform struct {
@@ -62,12 +60,15 @@ func (p *Platform) NewTypography() (typography.Context, error) {
 }
 
 func (p *Platform) NewPainter(surface common.Surface, typo typography.Context) (painter graphics.Painter, err error) {
-	painter, err = opengl.NewPainter(surface, typo)
-	if err != nil {
-		// TODO: error log
-		painter, err = software.NewPainter(surface, typo)
+	switch common.GetPreferPainter() {
+	case "software":
+		return software.NewPainter(surface, typo)
+	default:
+		if painter, err = opengl.NewPainter(surface, typo); err != nil {
+			return software.NewPainter(surface, typo)
+		}
+		return
 	}
-	return
 }
 
 func (p *Platform) NewInputMethod(window common.Window, handler common.InputMethodHandler) (common.InputMethod, error) {
