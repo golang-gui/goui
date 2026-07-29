@@ -278,6 +278,16 @@ func windowShouldClose(self NSWindowDelegate, sender NSWindow) bool {
 func makeSizeEvent(view NSView) events.SizeEvent {
 	rect := view.Frame()
 	fbRect := view.ConvertRectToBacking(rect)
+	// Apply scale override: if GOUI_PLAT_SCALE is set, use it to compute
+	// the physical pixel size instead of the native backing scale.
+	if scale := common.GetPreferScale(); scale > 0 {
+		return events.SizeEvent{
+			Width:       float32(rect.Size.Width),
+			Height:      float32(rect.Size.Height),
+			PixelWidth:  float32(rect.Size.Width) * scale,
+			PixelHeight: float32(rect.Size.Height) * scale,
+		}
+	}
 	return events.SizeEvent{
 		Width:       float32(rect.Size.Width),
 		Height:      float32(rect.Size.Height),
