@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/directwrite"
@@ -349,14 +350,25 @@ func (p *Painter) drawBitmap(rect graphics.Rectangle, bitmap graphics.Bitmap) {
 }
 
 func (p *Painter) snap(x float32) float32 {
-	return mathx.Round(x*p.scale) / p.scale
+	// D2D strokes the center of a path. For a stroke to fall entirely within
+	// a single physical pixel, its center must align to a pixel center, which
+	// in D2D is at half-integer coordinates (0.5, 1.5, 2.5...). Snap to pixel
+	// center rather than pixel edge; otherwise a 1px border at an integer
+	// coordinate straddles two pixels and appears blurred.
+	return (mathx.Floor(x*p.scale) + 0.5) / p.scale
 }
 
-func (p *Painter) snapRect(rect graphics.Rectangle) graphics.Rectangle {
+func (p *Painter) snapRect(rect graphics.Rectangle) geometry.Rectangle {
+	// Snap the top-left corner to pixel center, then compute width/height so
+	// the bottom-right corner also lands on a pixel center. Snapping width and
+	// height independently would misalign the far edge (snap(X)+snap(W) !=
+	// snap(X+W)).
+	right := rect.X + rect.Width
+	bottom := rect.Y + rect.Height
 	rect.X = p.snap(rect.X)
 	rect.Y = p.snap(rect.Y)
-	rect.Width = p.snap(rect.Width)
-	rect.Height = p.snap(rect.Height)
+	rect.Width = p.snap(right) - rect.X
+	rect.Height = p.snap(bottom) - rect.Y
 	return rect
 }
 
