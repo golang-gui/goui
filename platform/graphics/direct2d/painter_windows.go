@@ -121,14 +121,14 @@ func (p *Painter) FillRect(rect graphics.Rectangle, brush graphics.Brush) {
 func (p *Painter) FillRoundRect(rect graphics.Rectangle, radius float32, brush graphics.Brush) {
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
 		rect = p.snapRect(rect)
-		p.setRoundRect(rect, p.snap(radius))
+		p.setRoundRect(rect, radius)
 		p.render.FillRoundedRectangle(&p.roundRect, d2dBrush)
 	}
 }
 
 func (p *Painter) FillEllipse(center graphics.Point, xRadius, yRadius float32, brush graphics.Brush) {
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		p.setEllipse(p.snapPoint(center), p.snap(xRadius), p.snap(yRadius))
+		p.setEllipse(p.snapPoint(center), xRadius, yRadius)
 		p.render.FillEllipse(&p.ellipse, d2dBrush)
 	}
 }
@@ -147,29 +147,29 @@ func (p *Painter) DrawLine(p0, p1 graphics.Point, strokeWidth float32, brush gra
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
 		point0 := d2d1.Point2F{X: p.snap(p0.X), Y: p.snap(p0.Y)}
 		point1 := d2d1.Point2F{X: p.snap(p1.X), Y: p.snap(p1.Y)}
-		p.render.DrawLine(point0, point1, d2dBrush, p.snap(strokeWidth), nil) // TODO: strokeStyle
+		p.render.DrawLine(point0, point1, d2dBrush, strokeWidth, nil) // TODO: strokeStyle
 	}
 }
 
 func (p *Painter) DrawRect(rect graphics.Rectangle, strokeWidth float32, brush graphics.Brush) {
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
 		p.setRect(p.snapRect(rect))
-		p.render.DrawRectangle(&p.rect, d2dBrush, p.snap(strokeWidth), nil)
+		p.render.DrawRectangle(&p.rect, d2dBrush, strokeWidth, nil)
 	}
 }
 
 func (p *Painter) DrawRoundRect(rect graphics.Rectangle, radius, strokeWidth float32, brush graphics.Brush) {
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
 		rect = p.snapRect(rect)
-		p.setRoundRect(rect, p.snap(radius))
-		p.render.DrawRoundedRectangle(&p.roundRect, d2dBrush, p.snap(strokeWidth), nil)
+		p.setRoundRect(rect, radius)
+		p.render.DrawRoundedRectangle(&p.roundRect, d2dBrush, strokeWidth, nil)
 	}
 }
 
 func (p *Painter) DrawEllipse(center graphics.Point, xRadius, yRadius, strokeWidth float32, brush graphics.Brush) {
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		p.setEllipse(p.snapPoint(center), p.snap(xRadius), p.snap(yRadius))
-		p.render.DrawEllipse(&p.ellipse, d2dBrush, p.snap(strokeWidth), nil)
+		p.setEllipse(p.snapPoint(center), xRadius, yRadius)
+		p.render.DrawEllipse(&p.ellipse, d2dBrush, strokeWidth, nil)
 	}
 }
 
@@ -178,7 +178,7 @@ func (p *Painter) DrawPath(path graphics.Path, strokeWidth float32, brush graphi
 		geometry, err := p.createPathGeometry(p.snapPath(path), false)
 		if err == nil {
 			defer geometry.Release()
-			p.render.DrawGeometry(geometry, d2dBrush, p.snap(strokeWidth), nil)
+			p.render.DrawGeometry(geometry, d2dBrush, strokeWidth, nil)
 		}
 	}
 }
