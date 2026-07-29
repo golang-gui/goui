@@ -11,6 +11,8 @@ import (
 	"github.com/golang-gui/goui/platform/windows/sdk/com"
 	"github.com/golang-gui/goui/platform/windows/sdk/d2d1"
 	"github.com/golang-gui/goui/platform/windows/sdk/dxgi"
+
+	"github.com/goexlib/mathx"
 )
 
 type Painter struct {
@@ -26,6 +28,7 @@ type Painter struct {
 	ellipse    d2d1.Ellipse
 	clip       d2d1.RectF
 	imageBuf   []byte
+	scale      float32
 }
 
 type NativeWindow interface {
@@ -91,6 +94,7 @@ func (p *Painter) Begin(width, height, scale float32) {
 	dpi := 96 * scale
 	p.render.SetDpi(dpi, dpi)
 	p.render.BeginDraw()
+	p.scale = scale
 }
 
 func (p *Painter) End() {
@@ -108,29 +112,29 @@ func (p *Painter) Clear(color graphics.Color) {
 
 func (p *Painter) FillRect(rect graphics.Rectangle, brush graphics.Brush) {
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		p.setRect(rect)
+		p.setRect(p.snapRect(rect))
 		p.render.FillRectangle(&p.rect, d2dBrush)
 	}
-	// TODO: error?
 }
 
 func (p *Painter) FillRoundRect(rect graphics.Rectangle, radius float32, brush graphics.Brush) {
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		p.setRoundRect(rect, radius)
+		rect = p.snapRect(rect)
+		p.setRoundRect(rect, p.snap(radius))
 		p.render.FillRoundedRectangle(&p.roundRect, d2dBrush)
 	}
 }
 
 func (p *Painter) FillEllipse(center graphics.Point, xRadius, yRadius float32, brush graphics.Brush) {
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		p.setEllipse(center, xRadius, yRadius)
+		p.setEllipse(p.snapPoint(center), p.snap(xRadius), p.snap(yRadius))
 		p.render.FillEllipse(&p.ellipse, d2dBrush)
 	}
 }
 
 func (p *Painter) FillPath(path graphics.Path, brush graphics.Brush) {
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		geometry, err := p.createPathGeometry(path, true)
+		geometry, err := p.createPathGeometry(p.snapPath(path), true)
 		if err == nil {
 			defer geometry.Release()
 			p.render.FillGeometry(geometry, d2dBrush, nil)
@@ -140,39 +144,40 @@ func (p *Painter) FillPath(path graphics.Path, brush graphics.Brush) {
 
 func (p *Painter) DrawLine(p0, p1 graphics.Point, strokeWidth float32, brush graphics.Brush) {
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		point0 := d2d1.Point2F{X: p0.X, Y: p0.Y}
-		point1 := d2d1.Point2F{X: p1.X, Y: p1.Y}
-		p.render.DrawLine(point0, point1, d2dBrush, strokeWidth, nil) // TODO: strokeStyle
+		point0 := d2d1.Point2F{X: p.snap(p0.X), Y: p.snap(p0.Y)}
+		point1 := d2d1.Point2F{X: p.snap(p1.X), Y: p.snap(p1.Y)}
+		p.render.DrawLine(point0, point1, d2dBrush, p.snap(strokeWidth), nil) // TODO: strokeStyle
 	}
 }
 
 func (p *Painter) DrawRect(rect graphics.Rectangle, strokeWidth float32, brush graphics.Brush) {
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		p.setRect(rect)
-		p.render.DrawRectangle(&p.rect, d2dBrush, strokeWidth, nil)
+		p.setRect(p.snapRect(rect))
+		p.render.DrawRectangle(&p.rect, d2dBrush, p.snap(strokeWidth), nil)
 	}
 }
 
 func (p *Painter) DrawRoundRect(rect graphics.Rectangle, radius, strokeWidth float32, brush graphics.Brush) {
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		p.setRoundRect(rect, radius)
-		p.render.DrawRoundedRectangle(&p.roundRect, d2dBrush, strokeWidth, nil)
+		rect = p.snapRect(rect)
+		p.setRoundRect(rect, p.snap(radius))
+		p.render.DrawRoundedRectangle(&p.roundRect, d2dBrush, p.snap(strokeWidth), nil)
 	}
 }
 
 func (p *Painter) DrawEllipse(center graphics.Point, xRadius, yRadius, strokeWidth float32, brush graphics.Brush) {
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		p.setEllipse(center, xRadius, yRadius)
-		p.render.DrawEllipse(&p.ellipse, d2dBrush, strokeWidth, nil)
+		p.setEllipse(p.snapPoint(center), p.snap(xRadius), p.snap(yRadius))
+		p.render.DrawEllipse(&p.ellipse, d2dBrush, p.snap(strokeWidth), nil)
 	}
 }
 
 func (p *Painter) DrawPath(path graphics.Path, strokeWidth float32, brush graphics.Brush) {
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		geometry, err := p.createPathGeometry(path, false)
+		geometry, err := p.createPathGeometry(p.snapPath(path), false)
 		if err == nil {
 			defer geometry.Release()
-			p.render.DrawGeometry(geometry, d2dBrush, strokeWidth, nil)
+			p.render.DrawGeometry(geometry, d2dBrush, p.snap(strokeWidth), nil)
 		}
 	}
 }
@@ -180,7 +185,7 @@ func (p *Painter) DrawPath(path graphics.Path, strokeWidth float32, brush graphi
 func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLayout) {
 	if p.typoCtx != nil {
 		if textLayout, ok := layout.(*directwrite.TextLayout); ok {
-			point := d2d1.Point2F{X: origin.X, Y: origin.Y}
+			point := d2d1.Point2F{X: p.snap(origin.X), Y: p.snap(origin.Y)}
 			textLayout.Draw(&p.render.RenderTarget, point, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP)
 		}
 		// TODO: draw text layout rendered bitmap
@@ -193,7 +198,7 @@ func (p *Painter) DrawImage(rect graphics.Rectangle, img image.Image) {
 		bitmap = graphics.CopyToBitmap(img, graphics.PixelFormatBGRA, p.imageBuf)
 		p.imageBuf = bitmap.Pixels
 	}
-	p.drawBitmap(rect, bitmap)
+	p.drawBitmap(p.snapRect(rect), bitmap)
 }
 
 func (p *Painter) SetClipRect(rect graphics.Rectangle) {
@@ -341,4 +346,60 @@ func (p *Painter) drawBitmap(rect graphics.Rectangle, bitmap graphics.Bitmap) {
 		Bottom: rect.Y + rect.Height,
 	}
 	p.render.DrawBitmap(d2dBitmap, &dstRect, 1, d2d1.D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, nil)
+}
+
+func (p *Painter) snap(x float32) float32 {
+	return mathx.Round(x*p.scale) / p.scale
+}
+
+func (p *Painter) snapRect(rect graphics.Rectangle) graphics.Rectangle {
+	rect.X = p.snap(rect.X)
+	rect.Y = p.snap(rect.Y)
+	rect.Width = p.snap(rect.Width)
+	rect.Height = p.snap(rect.Height)
+	return rect
+}
+
+func (p *Painter) snapPoint(pt graphics.Point) graphics.Point {
+	pt.X = p.snap(pt.X)
+	pt.Y = p.snap(pt.Y)
+	return pt
+}
+
+func (p *Painter) snapPath(path graphics.Path) graphics.Path {
+	var snapped graphics.Path
+	empty := true
+	path.Range(func(op graphics.PathOperation, args []float32) (stop bool) {
+		switch op {
+		case graphics.PathMoveTo:
+			snapped = graphics.MoveTo(p.snap(args[0]), p.snap(args[1]))
+			empty = false
+		case graphics.PathLineTo:
+			if empty {
+				snapped = graphics.MoveTo(p.snap(args[0]), p.snap(args[1]))
+				empty = false
+			}
+			snapped = snapped.LineTo(p.snap(args[0]), p.snap(args[1]))
+		case graphics.PathArcTo:
+			if empty {
+				snapped = graphics.MoveTo(p.snap(args[5]), p.snap(args[6]))
+				empty = false
+			}
+			snapped = snapped.ArcTo(p.snap(args[0]), p.snap(args[1]), p.snap(args[2]), p.snap(args[3]), p.snap(args[4]), p.snap(args[5]), p.snap(args[6]))
+		case graphics.PathBezierTo:
+			if empty {
+				snapped = graphics.MoveTo(p.snap(args[4]), p.snap(args[5]))
+				empty = false
+			}
+			snapped = snapped.BezierTo(
+				p.snap(args[0]), p.snap(args[1]),
+				p.snap(args[2]), p.snap(args[3]),
+				p.snap(args[4]), p.snap(args[5]),
+			)
+		case graphics.PathClose:
+			snapped = snapped.Close()
+		}
+		return false
+	})
+	return snapped
 }
