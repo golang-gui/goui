@@ -227,20 +227,31 @@ func (p *Painter) DrawImage(rect graphics.Rectangle, img image.Image) {
 }
 
 func (p *Painter) SetClipRect(rect graphics.Rectangle) {
+	// NanoVG's Scissor is transformed by the current transform. Since the
+	// clip rect is already in window-local coordinates (the transform's
+	// offset has been applied by the GUI layer), we must set the scissor in
+	// identity transform space. Save and restore the transform manually
+	// (NOT via vg.Save/Restore, which would also revert the scissor we just
+	// set).
+	xform := p.vg.CurrentTransform()
+	p.vg.ResetTransform()
 	p.vg.ResetScissor()
 	if rect.X != 0 || rect.Y != 0 || rect.Width != 0 || rect.Height != 0 {
 		p.vg.Scissor(rect.X, rect.Y, rect.Width, rect.Height)
 	}
+	p.vg.SetTransformByValue(xform[0], xform[1], xform[2], xform[3], xform[4], xform[5])
 }
 
 func (p *Painter) drawBitmap(rect graphics.Rectangle, bitmap graphics.Bitmap) {
 	img := p.vg.CreateImageRGBA(bitmap.Width, bitmap.Height, nanovgo.ImagePreMultiplied, bitmap.Pixels)
 	if img != 0 {
 		p.imgs = append(p.imgs, img)
+		p.vg.Save()
 		p.vg.BeginPath()
 		p.vg.SetFillPaint(nanovgo.ImagePattern(rect.X, rect.Y, rect.Width, rect.Height, 0, img, 1.0))
 		p.vg.Rect(rect.X, rect.Y, rect.Width, rect.Height)
 		p.vg.Fill()
+		p.vg.Restore()
 	}
 	// TODO: add error log
 }
