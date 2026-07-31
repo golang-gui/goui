@@ -226,7 +226,7 @@ func newRichTextLayout(ctx typography.Context, width, height int, font string, w
 	format := typography.TextFormat{
 		Font: typography.FontInfo{
 			Family: font,
-			Size:   32,
+			Size:   12,
 		},
 		WrapMode:  wrap,
 		TextAlign: align,
