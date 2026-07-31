@@ -36,7 +36,7 @@ func Rotate(degrees float32) Transform {
 	rad := degrees * math.Pi / 180
 	c := mathx.Cos(rad)
 	s := mathx.Sin(rad)
-	return Transform{A11: c, A12: -s, A21: s, A22: c}
+	return Transform{A11: c, A12: s, A21: -s, A22: c}
 }
 
 // Multiply returns t * o (apply o first, then t).
