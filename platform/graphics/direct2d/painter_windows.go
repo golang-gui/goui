@@ -98,7 +98,7 @@ func (p *Painter) Begin(width, height, scale float32) {
 	p.render.BeginDraw()
 	p.scale = scale
 	// Reset transform to identity at the start of each frame.
-	p.Transform(geometry.Identity())
+	p.SetTransform(geometry.Identity())
 }
 
 func (p *Painter) End() {
@@ -196,7 +196,7 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 	}
 }
 
-func (p *Painter) Transform(t geometry.Transform) {
+func (p *Painter) SetTransform(t geometry.Transform) {
 	p.matrix = d2d1.Matrix3x2F{
 		M11: t.A11, M12: t.A12,
 		M21: t.A21, M22: t.A22,

@@ -14,6 +14,7 @@ type Painter interface {
 	Begin(width, height, scale float32)
 	End()
 	SetClipRect(rect Rectangle)
+	SetTransform(transform geometry.Transform)
 	Clear(color Color)
 	FillRect(rect Rectangle, brush Brush)
 	FillRoundRect(rect Rectangle, radius float32, brush Brush)
@@ -26,5 +27,4 @@ type Painter interface {
 	DrawPath(path Path, strokeWidth float32, brush Brush)
 	DrawTextLayout(origin Point, layout typography.TextLayout)
 	DrawImage(rect Rectangle, img image.Image)
-	Transform(transform geometry.Transform)
 }

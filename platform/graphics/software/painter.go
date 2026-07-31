@@ -262,7 +262,7 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 	}
 }
 
-func (p *Painter) Transform(t geometry.Transform) {
+func (p *Painter) SetTransform(t geometry.Transform) {
 	p.transform = t
 }
 

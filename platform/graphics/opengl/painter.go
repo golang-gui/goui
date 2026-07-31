@@ -211,7 +211,7 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 	}
 }
 
-func (p *Painter) Transform(t geometry.Transform) {
+func (p *Painter) SetTransform(t geometry.Transform) {
 	// NanoVG's SetTransform pre-multiplies the current transform. To set an
 	// absolute transform, reset first, then apply.
 	p.vg.ResetTransform()
