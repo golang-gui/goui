@@ -463,3 +463,4 @@ func (p *testButtonBackgroundPainter) DrawTextLayout(origin geometry.Point, layo
 }
 
 func (p *testButtonBackgroundPainter) DrawImage(rect geometry.Rectangle, img image.Image) {}
+func (p *testButtonBackgroundPainter) SetTransform(matrix geometry.Transform)             {}
