@@ -215,6 +215,15 @@ func (p *Painter) DrawImage(rect graphics.Rectangle, img image.Image) {
 }
 
 func (p *Painter) SetClipRect(rect graphics.Rectangle) {
+	// D2D's PushAxisAlignedClip applies the current render target transform
+	// to the clip rect. Since the clip rect is already in window-local
+	// coordinates (the transform's offset has been applied by the GUI layer),
+	// we must set the clip in identity transform space. Save and restore the
+	// transform manually.
+	prev := p.render.GetTransform()
+	identity := d2d1.Matrix3x2F{M11: 1, M22: 1}
+	p.render.SetTransform(&identity)
+
 	var zero d2d1.RectF
 	if p.clip != zero {
 		p.render.PopAxisAlignedClip()
@@ -227,6 +236,8 @@ func (p *Painter) SetClipRect(rect graphics.Rectangle) {
 		p.clip.Bottom = rect.Y + rect.Height
 		p.render.PushAxisAlignedClip(&p.clip, d2d1.D2D1_ANTIALIAS_MODE_ALIASED)
 	}
+
+	p.render.SetTransform(&prev)
 }
 
 func (p *Painter) createPathGeometry(path graphics.Path, fill bool) (geometry *d2d1.Geometry, err error) {
