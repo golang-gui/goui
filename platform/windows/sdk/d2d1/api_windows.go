@@ -283,6 +283,15 @@ func (this *RenderTarget) PopAxisAlignedClip() {
 	this.class().PopAxisAlignedClip.CallRaw(uintptr(cgo.Pointer(this)))
 }
 
+func (this *RenderTarget) SetTransform(transform *Matrix3x2F) {
+	this.class().SetTransform.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(transform)))
+}
+
+func (this *RenderTarget) GetTransform() (transform Matrix3x2F) {
+	this.class().GetTransform.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(&transform)))
+	return
+}
+
 func (this *RenderTarget) class() *RenderTargetClass {
 	return (*RenderTargetClass)(this.Class)
 }

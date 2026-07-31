@@ -43,8 +43,12 @@ type Ellipse struct {
 	RadiusY float32
 }
 
+// Matrix3x2F represents a D2D 3×2 transformation matrix.
+// Field order matches the C struct D2D1_MATRIX_3X2_F { M11, M12, M21, M22, M31, M32 }.
 type Matrix3x2F struct {
-	M [2][3]float32
+	M11, M12 float32
+	M21, M22 float32
+	M31, M32 float32
 }
 
 type FactoryType uint32
