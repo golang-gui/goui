@@ -89,6 +89,12 @@ func (r Rectangle) Insets(left, top, right, bottom float32) Rectangle {
 	return r
 }
 
+// Translate returns a copy of r shifted by the given point.
+func (r Rectangle) Translate(pt Point) Rectangle {
+	r.Pos = r.Pos.Add(pt)
+	return r
+}
+
 func (r Rectangle) Intersect(r2 Rectangle) Rectangle {
 	x0 := max(r.X, r2.X)
 	y0 := max(r.Y, r2.Y)
