@@ -101,48 +101,48 @@ func render(width, height float32) {
 		// the same shape with a transform, so you can visually verify correctness.
 
 		// 1. Translate: rect at (0,0) → should appear at (520,80)
-		painter.Transform(geometry.Identity())
+		painter.SetTransform(geometry.Identity())
 		painter.DrawRect(graphics.Rect(520, 80, 60, 40), 1, graphics.RGBA(255, 255, 255, 100))
-		painter.Transform(geometry.Translate(520, 80))
+		painter.SetTransform(geometry.Translate(520, 80))
 		painter.FillRect(graphics.Rect(0, 0, 60, 40), graphics.RGBA(255, 0, 0, 200))
 
 		// 2. Translate + Rotate 30° (local-space: rotate shape, then place)
-		painter.Transform(geometry.Identity())
+		painter.SetTransform(geometry.Identity())
 		painter.DrawRect(graphics.Rect(620, 80, 60, 40), 1, graphics.RGBA(255, 255, 255, 100))
-		painter.Transform(geometry.Translate(620, 80).Rotate(30))
+		painter.SetTransform(geometry.Translate(620, 80).Rotate(30))
 		painter.FillRect(graphics.Rect(0, 0, 60, 40), graphics.RGBA(0, 255, 0, 200))
 
 		// 3. Translate + Scale 1.5x
-		painter.Transform(geometry.Identity())
+		painter.SetTransform(geometry.Identity())
 		painter.DrawRect(graphics.Rect(520, 160, 60, 40), 1, graphics.RGBA(255, 255, 255, 100))
-		painter.Transform(geometry.Translate(520, 160).Scale(1.5, 1.5))
+		painter.SetTransform(geometry.Translate(520, 160).Scale(1.5, 1.5))
 		painter.FillRect(graphics.Rect(0, 0, 60, 40), graphics.RGBA(0, 0, 255, 200))
 
 		// 4. Rotated rect stroke (DrawRect with transform)
-		painter.Transform(geometry.Identity())
-		painter.Transform(geometry.Translate(700, 120).Rotate(45))
+		painter.SetTransform(geometry.Identity())
+		painter.SetTransform(geometry.Translate(700, 120).Rotate(45))
 		painter.DrawRect(graphics.Rect(-30, -30, 60, 60), 3, graphics.RGBA(255, 200, 0, 255))
 
 		// 5. Translated + rotated line (DrawLine with transform)
-		painter.Transform(geometry.Identity())
-		painter.Transform(geometry.Translate(520, 260).Rotate(45))
+		painter.SetTransform(geometry.Identity())
+		painter.SetTransform(geometry.Translate(520, 260).Rotate(45))
 		painter.DrawLine(graphics.Point{0, 0}, graphics.Point{60, 0}, 3, graphics.RGBA(255, 100, 255, 255))
 
 		// 6. Translated ellipse (FillEllipse + DrawEllipse with transform)
-		painter.Transform(geometry.Identity())
-		painter.Transform(geometry.Translate(620, 260))
+		painter.SetTransform(geometry.Identity())
+		painter.SetTransform(geometry.Translate(620, 260))
 		painter.FillEllipse(graphics.Point{0, 0}, 25, 25, graphics.RGBA(100, 200, 255, 200))
 		painter.DrawEllipse(graphics.Point{0, 0}, 30, 30, 2, graphics.RGBA(0, 100, 200, 255))
 
 		// 7. Translated + rotated path (DrawPath with transform)
-		painter.Transform(geometry.Identity())
-		painter.Transform(geometry.Translate(520, 360).Rotate(-15))
+		painter.SetTransform(geometry.Identity())
+		painter.SetTransform(geometry.Translate(520, 360).Rotate(-15))
 		path := graphics.MoveTo(0, 0).LineTo(80, 0).ArcTo(15, 15, 0, 0, 1, 95, 15).LineTo(0, 15).Close()
 		painter.DrawPath(path, 2, graphics.RGBA(200, 100, 50, 255))
 
 		// 8. Translated + rotated round rect (FillRoundRect / DrawRoundRect with transform)
-		painter.Transform(geometry.Identity())
-		painter.Transform(geometry.Translate(700, 360).Rotate(20))
+		painter.SetTransform(geometry.Identity())
+		painter.SetTransform(geometry.Translate(700, 360).Rotate(20))
 		painter.FillRoundRect(graphics.Rect(0, 0, 80, 50), 10, graphics.RGBA(200, 50, 200, 180))
 		painter.DrawRoundRect(graphics.Rect(0, 0, 80, 50), 10, 2, graphics.RGBA(255, 255, 255, 255))
 
@@ -153,42 +153,42 @@ func render(width, height float32) {
 			}, 200, 40)
 			if err == nil {
 				// 9a. Reference: no transform
-				painter.Transform(geometry.Identity())
+				painter.SetTransform(geometry.Identity())
 				painter.DrawTextLayout(graphics.Point{520, 460}, smallLayout)
 
 				// 9b. Translate only
-				painter.Transform(geometry.Translate(520, 500))
+				painter.SetTransform(geometry.Translate(520, 500))
 				painter.DrawTextLayout(graphics.Point{0, 0}, smallLayout)
 
 				// 9c. Translate + Rotate 30°
-				painter.Transform(geometry.Translate(520, 540).Rotate(30))
+				painter.SetTransform(geometry.Translate(520, 540).Rotate(30))
 				painter.DrawTextLayout(graphics.Point{0, 0}, smallLayout)
 
 				// 9d. Translate + Scale 1.5x
-				painter.Transform(geometry.Translate(680, 460).Scale(1.5, 1.5))
+				painter.SetTransform(geometry.Translate(680, 460).Scale(1.5, 1.5))
 				painter.DrawTextLayout(graphics.Point{0, 0}, smallLayout)
 
 				// 9e. Translate + Rotate -90° (vertical text, bottom-up)
-				painter.Transform(geometry.Translate(780, 580).Rotate(-90))
+				painter.SetTransform(geometry.Translate(780, 580).Rotate(-90))
 				painter.DrawTextLayout(graphics.Point{0, 0}, smallLayout)
 			}
 		}
 
 		// 10. Transformed image (DrawImage with transform)
 		// 10a. Reference: no transform
-		painter.Transform(geometry.Identity())
+		painter.SetTransform(geometry.Identity())
 		painter.DrawImage(graphics.Rect(700, 460, 80, 60), img)
 
 		// 10b. Translate + Rotate 45°
-		painter.Transform(geometry.Translate(700, 540).Rotate(45))
+		painter.SetTransform(geometry.Translate(700, 540).Rotate(45))
 		painter.DrawImage(graphics.Rect(0, 0, 60, 40), img)
 
 		// 10c. Translate + Scale 0.5x
-		painter.Transform(geometry.Translate(620, 540).Scale(0.5, 0.5))
+		painter.SetTransform(geometry.Translate(620, 540).Scale(0.5, 0.5))
 		painter.DrawImage(graphics.Rect(0, 0, 80, 60), img)
 
 		// 11. Identity reset — shape should be at exact window coords
-		painter.Transform(geometry.Identity())
+		painter.SetTransform(geometry.Identity())
 		painter.DrawRect(graphics.Rect(520, 550, 100, 30), 1, graphics.RGBA(255, 255, 255, 150))
 	}
 	painter.End()
