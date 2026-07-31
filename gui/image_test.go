@@ -118,3 +118,4 @@ func (p *testImagePainter) DrawImage(rect geometry.Rectangle, img image.Image) {
 	p.imageRect = rect
 	p.image = img
 }
+func (p *testImagePainter) SetTransform(matrix geometry.Transform) {}

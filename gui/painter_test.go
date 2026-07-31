@@ -23,8 +23,8 @@ func TestSubPainterUsesWidgetLocalCoordinates(t *testing.T) {
 		t.Fatalf("expected one fill, got %d", len(backend.fills))
 	}
 	fill := backend.fills[0]
-	if fill.rect != geometry.Rect(11, 7, 3, 4) {
-		t.Fatalf("unexpected translated rect: %+v", fill.rect)
+	if fill.rect != geometry.Rect(1, 2, 3, 4) {
+		t.Fatalf("unexpected rect: %+v (transform handles offset)", fill.rect)
 	}
 	if fill.clip != geometry.Rect(14, 11, 20, 10) {
 		t.Fatalf("unexpected translated clip: %+v", fill.clip)
@@ -84,8 +84,8 @@ func TestScrollViewportClipDoesNotMoveWithContent(t *testing.T) {
 		t.Fatalf("expected one fill, got %d", len(backend.fills))
 	}
 	fill := backend.fills[0]
-	if fill.rect != geometry.Rect(20, -30, 100, 300) {
-		t.Fatalf("content origin did not include scroll offset: %+v", fill.rect)
+	if fill.rect != geometry.Rect(0, 0, 100, 300) {
+		t.Fatalf("content rect should be widget-local: %+v", fill.rect)
 	}
 	if fill.clip != geometry.Rect(20, 20, 100, 100) {
 		t.Fatalf("viewport clip moved with content: %+v", fill.clip)
@@ -133,7 +133,7 @@ func TestPaintChildrenOwnsChildPainterScope(t *testing.T) {
 	if p.begins != 1 || p.ends != 1 {
 		t.Fatalf("parent must own one balanced child scope, begins=%d ends=%d", p.begins, p.ends)
 	}
-	if p.clip != child.Rect() {
+	if p.clip != geometry.Rect(0, 0, 20, 10) {
 		t.Fatalf("child scope was not initialized from its rect: %+v", p.clip)
 	}
 }
@@ -196,6 +196,7 @@ func (p *recordingPainterBackend) DrawPath(path graphics.Path, strokeWidth float
 func (p *recordingPainterBackend) DrawTextLayout(origin graphics.Point, layout typography.TextLayout) {
 }
 func (p *recordingPainterBackend) DrawImage(rect graphics.Rectangle, img image.Image) {}
+func (p *recordingPainterBackend) SetTransform(matrix geometry.Transform)             {}
 
 type scopeTestWidget struct {
 	WidgetBase

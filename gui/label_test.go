@@ -344,3 +344,4 @@ func (p *testLabelPainter) DrawTextLayout(origin geometry.Point, layout typograp
 }
 
 func (p *testLabelPainter) DrawImage(rect geometry.Rectangle, img image.Image) {}
+func (p *testLabelPainter) SetTransform(matrix geometry.Transform)             {}

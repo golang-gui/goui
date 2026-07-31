@@ -335,3 +335,4 @@ func (p *testGraphicsPainter) DrawPath(path graphics.Path, strokeWidth float32, 
 func (p *testGraphicsPainter) DrawTextLayout(origin graphics.Point, layout typography.TextLayout) {}
 
 func (p *testGraphicsPainter) DrawImage(rect graphics.Rectangle, img image.Image) {}
+func (p *testGraphicsPainter) SetTransform(matrix geometry.Transform)             {}
