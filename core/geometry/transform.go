@@ -6,18 +6,14 @@ import (
 	"github.com/goexlib/mathx"
 )
 
-// Transform is a 2D affine transform stored as a column-major 3×2 matrix.
+// Transform is a 2D affine transform stored as a row-major 3×2 matrix.
 //
 //	| A11 A12 TX |
 //	| A21 A22 TY |
-//
-// Transform formula: x' = A11*x + A12*y + TX
-//
-//	y' = A21*x + A22*y + TY
 type Transform struct {
-	A11, A21 float32 // column 1 (x axis)
-	A12, A22 float32 // column 2 (y axis)
-	TX, TY   float32 // column 3 (translation)
+	A11, A12 float32 // row 1
+	A21, A22 float32 // row 2
+	TX, TY   float32 // translation
 }
 
 // Identity returns the identity transform.
@@ -40,15 +36,15 @@ func Rotate(degrees float32) Transform {
 	rad := degrees * math.Pi / 180
 	c := mathx.Cos(rad)
 	s := mathx.Sin(rad)
-	return Transform{A11: c, A21: s, A12: -s, A22: c}
+	return Transform{A11: c, A12: -s, A21: s, A22: c}
 }
 
 // Multiply returns t * o (apply o first, then t).
 func (t Transform) Multiply(o Transform) Transform {
 	return Transform{
 		A11: t.A11*o.A11 + t.A12*o.A21,
-		A21: t.A21*o.A11 + t.A22*o.A21,
 		A12: t.A11*o.A12 + t.A12*o.A22,
+		A21: t.A21*o.A11 + t.A22*o.A21,
 		A22: t.A21*o.A12 + t.A22*o.A22,
 		TX:  t.A11*o.TX + t.A12*o.TY + t.TX,
 		TY:  t.A21*o.TX + t.A22*o.TY + t.TY,
@@ -88,8 +84,8 @@ func (t Transform) Inverse() Transform {
 	invDet := 1.0 / det
 	return Transform{
 		A11: t.A22 * invDet,
-		A21: -t.A21 * invDet,
 		A12: -t.A12 * invDet,
+		A21: -t.A21 * invDet,
 		A22: t.A11 * invDet,
 		TX:  (t.A12*t.TY - t.A22*t.TX) * invDet,
 		TY:  (t.A21*t.TX - t.A11*t.TY) * invDet,

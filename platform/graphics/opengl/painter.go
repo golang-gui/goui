@@ -215,7 +215,7 @@ func (p *Painter) Transform(t geometry.Transform) {
 	// NanoVG's SetTransform pre-multiplies the current transform. To set an
 	// absolute transform, reset first, then apply.
 	p.vg.ResetTransform()
-	p.vg.SetTransformByValue(t.A11, t.A21, t.A12, t.A22, t.TX, t.TY)
+	p.vg.SetTransformByValue(t.A11, t.A12, t.A21, t.A22, t.TX, t.TY)
 }
 
 func (p *Painter) DrawImage(rect graphics.Rectangle, img image.Image) {
