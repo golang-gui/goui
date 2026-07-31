@@ -79,7 +79,7 @@ func TestTypography(t *testing.T) {
 		}
 
 		// Mutate text color: cache invalidated — pixels change.
-		layout.SetTextColor(0, 3, color.RGBA{R: 160, A: 255})
+		layout.SetTextColor(0, 3, color.RGBA{R: 200, G: 30, B: 30, A: 255})
 		bmp4, err := ctx.DrawTextLayout(layout, 1.0, nil)
 		if err != nil {
 			t.Fatal(err)
