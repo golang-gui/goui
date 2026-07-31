@@ -3,6 +3,7 @@ package graphics
 import (
 	"image"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/typography"
 )
 
@@ -25,4 +26,5 @@ type Painter interface {
 	DrawPath(path Path, strokeWidth float32, brush Brush)
 	DrawTextLayout(origin Point, layout typography.TextLayout)
 	DrawImage(rect Rectangle, img image.Image)
+	Transform(transform geometry.Transform)
 }
