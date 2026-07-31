@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"math"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/utils"
 	"github.com/golang-gui/goui/platform/typography"
@@ -16,17 +17,18 @@ import (
 )
 
 type Painter struct {
-	drawable Drawable
-	typo     typography.Context
-	bgra     image.RGBA
-	line     image.RGBA
-	viewport graphics.Rectangle
-	scanner  rasterx.Scanner
-	filler   *rasterx.Filler
-	stroker  *rasterx.Stroker
-	pixelBuf []byte
-	lineBuf  []byte
-	scale    float32
+	drawable  Drawable
+	typo      typography.Context
+	bgra      image.RGBA
+	line      image.RGBA
+	viewport  graphics.Rectangle
+	scanner   rasterx.Scanner
+	filler    *rasterx.Filler
+	stroker   *rasterx.Stroker
+	pixelBuf  []byte
+	lineBuf   []byte
+	scale     float32
+	transform geometry.Transform
 }
 
 type Drawable interface {
@@ -66,6 +68,7 @@ func (p *Painter) Begin(width, height, scale float32) {
 	}
 	p.filler.Clear()
 	p.stroker.Clear()
+	p.transform = geometry.Identity()
 }
 
 func (p *Painter) End() {
@@ -89,6 +92,7 @@ func (p *Painter) Clear(color graphics.Color) {
 
 func (p *Painter) FillRect(rect graphics.Rectangle, brush graphics.Brush) {
 	rect = rect.Scale(p.scale)
+	rect = p.transformRect(rect)
 	if color, ok := brush.(graphics.Color); ok {
 		if rect.Contains(p.viewport) {
 			p.Clear(color)
@@ -108,6 +112,7 @@ func (p *Painter) FillRect(rect graphics.Rectangle, brush graphics.Brush) {
 func (p *Painter) FillRoundRect(rect graphics.Rectangle, radius float32, brush graphics.Brush) {
 	rect = rect.Scale(p.scale)
 	radius *= p.scale
+	rect = p.transformRect(rect)
 	if color, ok := brush.(graphics.Color); ok {
 		defer p.filler.Clear()
 		p.filler.SetClip(toClipRect(rect.X, rect.Y, rect.Width, rect.Height))
@@ -123,6 +128,7 @@ func (p *Painter) FillEllipse(center graphics.Point, xRadius, yRadius float32, b
 	center = center.Scale(p.scale)
 	xRadius *= p.scale
 	yRadius *= p.scale
+	center.X, center.Y = p.transformPoint(center.X, center.Y)
 	if color, ok := brush.(graphics.Color); ok {
 		defer p.filler.Clear()
 		p.filler.SetClip(toClipRect(center.X-xRadius, center.Y-yRadius, center.X+xRadius, center.Y+yRadius))
@@ -151,6 +157,8 @@ func (p *Painter) DrawLine(p0, p1 graphics.Point, strokeWidth float32, brush gra
 	p0 = p0.Scale(p.scale)
 	p1 = p1.Scale(p.scale)
 	strokeWidth *= p.scale
+	p0.X, p0.Y = p.transformPoint(p0.X, p0.Y)
+	p1.X, p1.Y = p.transformPoint(p1.X, p1.Y)
 	if color, ok := brush.(graphics.Color); ok {
 		defer p.stroker.Clear()
 		p.stroker.SetClip(toClipRect(min(p0.X, p1.X), min(p0.Y, p1.Y), mathx.Abs(p1.X-p0.X), mathx.Abs(p1.Y-p0.Y)).Inset(-uptoPixel(strokeWidth)))
@@ -169,6 +177,7 @@ func (p *Painter) DrawLine(p0, p1 graphics.Point, strokeWidth float32, brush gra
 func (p *Painter) DrawRect(rect graphics.Rectangle, strokeWidth float32, brush graphics.Brush) {
 	rect = rect.Scale(p.scale)
 	strokeWidth *= p.scale
+	rect = p.transformRect(rect)
 	if color, ok := brush.(graphics.Color); ok {
 		defer p.stroker.Clear()
 		p.stroker.SetClip(toClipRect(rect.X, rect.Y, rect.Width, rect.Height).Inset(-uptoPixel(strokeWidth)))
@@ -185,6 +194,7 @@ func (p *Painter) DrawRoundRect(rect graphics.Rectangle, radius, strokeWidth flo
 	rect = rect.Scale(p.scale)
 	radius *= p.scale
 	strokeWidth *= p.scale
+	rect = p.transformRect(rect)
 	if color, ok := brush.(graphics.Color); ok {
 		defer p.stroker.Clear()
 		p.stroker.SetClip(toClipRect(rect.X, rect.Y, rect.Width, rect.Height).Inset(-uptoPixel(strokeWidth)))
@@ -232,15 +242,14 @@ func (p *Painter) DrawPath(path graphics.Path, strokeWidth float32, brush graphi
 }
 
 func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLayout) {
-	origin = origin.Scale(p.scale)
 	// Snap the text bitmap origin to the device pixel grid so the pre-rasterized
 	// glyphs land 1:1 on physical pixels instead of being resampled (blurred).
-	origin.X = float32(math.Round(float64(origin.X)))
-	origin.Y = float32(math.Round(float64(origin.Y)))
+	origin.X = float32(math.Round(float64(origin.X*p.scale))) / p.scale
+	origin.Y = float32(math.Round(float64(origin.Y*p.scale))) / p.scale
 	if p.typo != nil {
 		textBitmap, err := p.typo.DrawTextLayout(layout, p.scale, nil)
 		if err == nil {
-			drawRect := graphics.Rect(origin.X, origin.Y, float32(textBitmap.Width), float32(textBitmap.Height))
+			drawRect := graphics.Rect(origin.X, origin.Y, float32(textBitmap.Width)/p.scale, float32(textBitmap.Height)/p.scale)
 			bitmap := graphics.Bitmap{
 				Width:  textBitmap.Width,
 				Height: textBitmap.Height,
@@ -253,8 +262,31 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 	}
 }
 
+func (p *Painter) Transform(t geometry.Transform) {
+	p.transform = t
+}
+
+// transformPoint applies the current transform to a point.
+func (p *Painter) transformPoint(x, y float32) (float32, float32) {
+	t := p.transform
+	return t.A11*x + t.A12*y + t.TX, t.A21*x + t.A22*y + t.TY
+}
+
+// transformRect applies the current transform to a rectangle's corners and
+// returns the bounding box of the result.
+func (p *Painter) transformRect(rect graphics.Rectangle) graphics.Rectangle {
+	x0, y0 := p.transformPoint(rect.X, rect.Y)
+	x1, y1 := p.transformPoint(rect.X+rect.Width, rect.Y)
+	x2, y2 := p.transformPoint(rect.X+rect.Width, rect.Y+rect.Height)
+	x3, y3 := p.transformPoint(rect.X, rect.Y+rect.Height)
+	minX := min(x0, min(x1, min(x2, x3)))
+	minY := min(y0, min(y1, min(y2, y3)))
+	maxX := max(x0, max(x1, max(x2, x3)))
+	maxY := max(y0, max(y1, max(y2, y3)))
+	return graphics.Rect(minX, minY, maxX-minX, maxY-minY)
+}
+
 func (p *Painter) DrawImage(rect graphics.Rectangle, img image.Image) {
-	rect = rect.Scale(p.scale)
 	bitmap, ok := graphics.ToBitmap(img, graphics.PixelFormatRGBA)
 	if !ok {
 		bitmap = graphics.CopyToBitmap(img, graphics.PixelFormatRGBA, nil)
@@ -271,23 +303,57 @@ func (p *Painter) SetClipRect(rect graphics.Rectangle) {
 }
 
 func (p *Painter) drawBitmap(rect graphics.Rectangle, bitmap graphics.Bitmap) {
-	defer p.stroker.Clear()
-	p.filler.SetClip(toClipRect(rect.X, rect.Y, rect.Width, rect.Height))
+	defer p.filler.Clear()
+
+	// Transform the 4 corners of the destination rect to device space.
+	// This supports arbitrary affine transforms (translate/rotate/scale).
+	corners := [4]struct{ x, y float32 }{
+		{rect.X, rect.Y},
+		{rect.X + rect.Width, rect.Y},
+		{rect.X + rect.Width, rect.Y + rect.Height},
+		{rect.X, rect.Y + rect.Height},
+	}
+	var dev [4]struct{ x, y float32 }
+	for i, c := range corners {
+		dev[i].x, dev[i].y = p.transformPoint(c.x*p.scale, c.y*p.scale)
+	}
+
+	// Bounding box of the transformed quad for clipping.
+	minX := min(dev[0].x, min(dev[1].x, min(dev[2].x, dev[3].x)))
+	minY := min(dev[0].y, min(dev[1].y, min(dev[2].y, dev[3].y)))
+	maxX := max(dev[0].x, max(dev[1].x, max(dev[2].x, dev[3].x)))
+	maxY := max(dev[0].y, max(dev[1].y, max(dev[2].y, dev[3].y)))
+	p.filler.SetClip(toClipRect(minX, minY, maxX-minX, maxY-minY))
 	defer p.filler.SetClip(image.Rectangle{})
 
-	// Calculate scaling factors from destination rect to source bitmap
+	// Precompute the inverse transform so ColorFunc can map device pixels
+	// back to source bitmap coordinates.
 	srcBounds := bitmap.Bounds()
-	scaleX := float32(srcBounds.Dx()) / rect.Width
-	scaleY := float32(srcBounds.Dy()) / rect.Height
+	srcW := float32(srcBounds.Dx())
+	srcH := float32(srcBounds.Dy())
+	invScale := 1.0 / p.scale
+	inv := p.transform.Inverse()
 
 	p.filler.SetColor(rasterx.ColorFunc(func(x, y int) color.Color {
-		// Map destination pixel (x, y) to source bitmap coordinates
-		srcX := srcBounds.Min.X + int(float32(x-int(rect.X))*scaleX)
-		srcY := srcBounds.Min.Y + int(float32(y-int(rect.Y))*scaleY)
-		return reverseColor(bitmap.At(srcX, srcY))
+		// Device pixel → logical coord (undo scale) → inverse transform → source rect space
+		lx := float32(x) * invScale
+		ly := float32(y) * invScale
+		src := inv.TransformPoint(geometry.Point{X: lx, Y: ly})
+		// Map from rect space to bitmap pixel space.
+		bx := srcBounds.Min.X + int((src.X-rect.X)/rect.Width*srcW)
+		by := srcBounds.Min.Y + int((src.Y-rect.Y)/rect.Height*srcH)
+		if bx < srcBounds.Min.X || bx >= srcBounds.Max.X || by < srcBounds.Min.Y || by >= srcBounds.Max.Y {
+			return color.RGBA{0, 0, 0, 0}
+		}
+		return reverseColor(bitmap.At(bx, by))
 	}))
-	p1 := rect.RightBottom()
-	rasterx.AddRect(float64(rect.X), float64(rect.Y), float64(p1.X), float64(p1.Y), 0, p.filler)
+
+	// Build a quad path through the 4 transformed corners.
+	p.filler.Start(toFixedP(dev[0].x, dev[0].y))
+	p.filler.Line(toFixedP(dev[1].x, dev[1].y))
+	p.filler.Line(toFixedP(dev[2].x, dev[2].y))
+	p.filler.Line(toFixedP(dev[3].x, dev[3].y))
+	p.filler.Stop(true)
 	p.filler.Draw()
 }
 
@@ -331,14 +397,14 @@ func (p *Painter) doPath(add rasterx.Adder, path graphics.Path) (closed bool, cl
 	path.Range(func(op graphics.PathOperation, args []float32) (stop bool) {
 		switch op {
 		case graphics.PathMoveTo:
-			x, y := args[0]*p.scale, args[1]*p.scale
+			x, y := p.transformPoint(args[0]*p.scale, args[1]*p.scale)
 			add.Start(toFixedP(x, y))
 			px, py = x, y
 			sx, sy = x, y
 			updateBounds(x, y)
 
 		case graphics.PathLineTo:
-			x, y := args[0]*p.scale, args[1]*p.scale
+			x, y := p.transformPoint(args[0]*p.scale, args[1]*p.scale)
 			add.Line(toFixedP(x, y))
 			updateBounds(x, y)
 			px, py = x, y
@@ -346,7 +412,7 @@ func (p *Painter) doPath(add rasterx.Adder, path graphics.Path) (closed bool, cl
 		case graphics.PathArcTo:
 			rx, ry := args[0]*p.scale, args[1]*p.scale
 			angle, large, sweep := args[2], args[3], args[4]
-			x, y := args[5]*p.scale, args[6]*p.scale
+			x, y := p.transformPoint(args[5]*p.scale, args[6]*p.scale)
 			p.arcTo(add, px, py, rx, ry, angle, large, sweep, x, y)
 
 			updateBounds(px, py)
@@ -365,9 +431,9 @@ func (p *Painter) doPath(add rasterx.Adder, path graphics.Path) (closed bool, cl
 			px, py = x, y
 
 		case graphics.PathBezierTo:
-			x0, y0 := args[0]*p.scale, args[1]*p.scale
-			x1, y1 := args[2]*p.scale, args[3]*p.scale
-			x, y := args[4]*p.scale, args[5]*p.scale
+			x0, y0 := p.transformPoint(args[0]*p.scale, args[1]*p.scale)
+			x1, y1 := p.transformPoint(args[2]*p.scale, args[3]*p.scale)
+			x, y := p.transformPoint(args[4]*p.scale, args[5]*p.scale)
 			add.CubeBezier(toFixedP(x0, y0), toFixedP(x1, y1), toFixedP(x, y))
 			// 控制点 + 终点
 			updateBounds(x0, y0)

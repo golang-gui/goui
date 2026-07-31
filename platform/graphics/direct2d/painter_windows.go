@@ -30,6 +30,7 @@ type Painter struct {
 	clip       d2d1.RectF
 	imageBuf   []byte
 	scale      float32
+	matrix     d2d1.Matrix3x2F
 }
 
 type NativeWindow interface {
@@ -96,6 +97,8 @@ func (p *Painter) Begin(width, height, scale float32) {
 	p.render.SetDpi(dpi, dpi)
 	p.render.BeginDraw()
 	p.scale = scale
+	// Reset transform to identity at the start of each frame.
+	p.Transform(geometry.Identity())
 }
 
 func (p *Painter) End() {
@@ -191,6 +194,15 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 		}
 		// TODO: draw text layout rendered bitmap
 	}
+}
+
+func (p *Painter) Transform(t geometry.Transform) {
+	p.matrix = d2d1.Matrix3x2F{
+		M11: t.A11, M12: t.A12,
+		M21: t.A21, M22: t.A22,
+		M31: t.TX, M32: t.TY,
+	}
+	p.render.SetTransform(&p.matrix)
 }
 
 func (p *Painter) DrawImage(rect graphics.Rectangle, img image.Image) {
