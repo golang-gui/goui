@@ -72,6 +72,10 @@ type Widget interface {
 	RequestLayout()
 	RequestPaint()
 
+	// Children returns this widget's child widgets; an empty slice means a
+	// leaf node.
+	Children() []Widget
+
 	ConnectMount(func()) signal.Handle
 	ConnectUnmount(func()) signal.Handle
 
@@ -81,9 +85,11 @@ type Widget interface {
 type Container interface {
 	Widget
 
+	// AddChild appends a child (multi-child containers only; single-content
+	// containers like ScrollView use SetContent and are not Containers).
 	AddChild(Widget)
+	// RemoveChild detaches a child.
 	RemoveChild(Widget)
-	Children() []Widget
 }
 
 type WidgetBase struct {

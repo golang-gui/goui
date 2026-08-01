@@ -327,12 +327,10 @@ func hitTest(widget Widget, point geometry.Point) Widget {
 	}
 
 	localPoint := subtractPoint(point, widget.Rect().Pos)
-	if container, ok := widget.(Container); ok {
-		children := container.Children()
-		for i := len(children) - 1; i >= 0; i-- {
-			if target := hitTest(children[i], localPoint); target != nil {
-				return target
-			}
+	children := widget.Children()
+	for i := len(children) - 1; i >= 0; i-- {
+		if target := hitTest(children[i], localPoint); target != nil {
+			return target
 		}
 	}
 	return widget
