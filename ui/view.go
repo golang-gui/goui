@@ -21,7 +21,7 @@ type WidgetView interface {
 type BuildContext interface {
 	State() any
 	SetState(any)
-	UpdateChildren(container gui.Container, children []View)
+	UpdateChildren(widget gui.Widget, children []View)
 }
 
 // ViewBase is embedded as ViewBase[ConcreteView] by every declarative view. Its

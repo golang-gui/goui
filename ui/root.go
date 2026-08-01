@@ -235,6 +235,14 @@ func (r *root) release(n *node, detachWidgets bool) {
 		}
 	}
 
+	// Single-content widgets keep their content in Children() but are not
+	// Containers; clear the slot so the widget tree does not retain it.
+	if detachWidgets {
+		if sc, ok := n.widget.(gui.Bin); ok {
+			sc.SetChild(nil)
+		}
+	}
+
 	if n.view != nil && n.widget != nil {
 		ctx := &buildContext{root: r, node: n}
 		n.view.Unmount(ctx, n.widget)
@@ -252,12 +260,24 @@ func (ctx *buildContext) SetState(state any) {
 	ctx.node.state = state
 }
 
-func (ctx *buildContext) UpdateChildren(container gui.Container, children []View) {
-	if container == nil {
+func (ctx *buildContext) UpdateChildren(widget gui.Widget, children []View) {
+	if widget == nil {
 		return
 	}
 
 	children = compactViews(children)
+
+	// Single-child widgets replace their whole child slot (0 or 1 child).
+	if sc, ok := widget.(gui.Bin); ok {
+		ctx.updateBinChild(sc, children)
+		return
+	}
+
+	container, ok := widget.(gui.Container)
+	if !ok {
+		return
+	}
+
 	oldNodes := ctx.node.children
 	newNodes := make([]*node, 0, len(children))
 
@@ -302,6 +322,42 @@ func (ctx *buildContext) UpdateChildren(container gui.Container, children []View
 		}
 		container.AddChild(child.widget)
 		newNodes = append(newNodes, child)
+	}
+
+	ctx.node.children = newNodes
+}
+
+// updateBinChild reconciles the single child slot of a widget: the
+// previous child (if any) is released and the new view (if any) becomes
+// the child.
+func (ctx *buildContext) updateBinChild(sc gui.Bin, children []View) {
+	if len(children) > 1 {
+		children = children[:1]
+	}
+
+	oldNodes := ctx.node.children
+	var newNodes []*node
+
+	if len(children) == 1 {
+		childView := normalizeView(children[0])
+		var child *node
+		if len(oldNodes) == 1 && sameWidgetViewType(oldNodes[0], childView) {
+			child = ctx.root.updateWidgetNode(oldNodes[0], childView)
+		} else {
+			for _, old := range oldNodes {
+				ctx.root.release(old, true)
+			}
+			child = ctx.root.updateWidgetNode(nil, childView)
+		}
+		if child != nil && child.widget != nil {
+			sc.SetChild(child.widget)
+			newNodes = []*node{child}
+		}
+	} else {
+		for _, old := range oldNodes {
+			ctx.root.release(old, true)
+		}
+		sc.SetChild(nil)
 	}
 
 	ctx.node.children = newNodes
