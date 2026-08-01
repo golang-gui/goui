@@ -5,10 +5,8 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
-	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
-	"github.com/golang-gui/goui/platform/graphics"
 )
 
 type Window interface {
@@ -59,21 +57,14 @@ type ModalTarget interface {
 }
 
 type window struct {
+	rootBase
 	app            *application
 	id             string
 	title          string
 	platformWindow platform.Window
-	painter        graphics.Painter
 	root           Widget
 	dispatcher     EventDispatcher
-	width          float32 // logical (DIP)
-	height         float32 // logical (DIP)
-	pixelWidth     float32 // physical (backing) pixels
-	pixelHeight    float32 // physical (backing) pixels
-	layoutDirty    bool
-	paintDirty     bool
 	focused        bool
-	focusedWidget  Widget
 	activeIM       IMContext            // the focused text widget's context bound to the native IME; nil when none
 	inputMethod    platform.InputMethod // this window's platform IME; nil when the platform has none
 	cursor         platform.Cursor      // this window's platform cursor capability; nil when the platform has none
@@ -95,9 +86,8 @@ const (
 
 func newWindow(app *application) (*window, error) {
 	win := &window{
-		app:         app,
-		layoutDirty: true,
-		paintDirty:  true,
+		app:      app,
+		rootBase: rootBase{layoutDirty: true, paintDirty: true},
 	}
 
 	platformWindow, err := app.platform.NewWindow(defaultWindowWidth, defaultWindowHeight, win.onEvent)
@@ -175,10 +165,6 @@ func (w *window) Focused() bool {
 	return w.focused
 }
 
-func (w *window) FocusedWidget() Widget {
-	return w.focusedWidget
-}
-
 func (w *window) SetFocusedWidget(widget Widget) bool {
 	if widget == nil {
 		w.setFocusedWidget(nil)
@@ -212,17 +198,9 @@ func (w *window) SetWidget(widget Widget) {
 		w.root.base().detachRoot(w.root)
 	}
 	if widget != nil {
-		oldRoot := widget.Root()
-		if oldRoot != nil {
-			widget.base().emitUnmountSubtree(widget)
-			if h, ok := oldRoot.(EventTarget); ok && focusWithin(h, widget.base()) {
-				h.SetFocusedWidget(nil)
-			}
-		}
-		widget.base().detach(widget)
-		w.root = widget
-		widget.base().attachRoot(w, widget)
+		adoptWidget(widget, w)
 	}
+	w.root = widget
 	w.requestLayout()
 }
 
@@ -234,11 +212,7 @@ func (w *window) Show() error {
 }
 
 func (w *window) RequestPaint() error {
-	if w.platformWindow == nil {
-		return nil
-	}
-	w.paintDirty = true
-	return w.platformWindow.RequestPaint()
+	return w.requestPaint()
 }
 
 // RequestCursorUpdate re-resolves the cursor shape from the hover path and
@@ -391,35 +365,7 @@ func (w *window) routeToModalTarget(event events.Event) bool {
 
 func (w *window) paint() {
 	w.root = liveRoot(w.root)
-	if w.painter == nil || w.root == nil {
-		return
-	}
-
-	size := geometry.Size{
-		Width:  w.width,
-		Height: w.height,
-	}
-	if w.layoutDirty {
-		w.root.Measure(layout.Tight(size)) // Window is extrinsic: root fills the window.
-		w.root.Arrange(geometry.Rect(0, 0, size.Width, size.Height))
-		w.layoutDirty = false
-	}
-
-	// Begin takes the physical (backing) pixel size; scale = physical / logical.
-	pixelWidth, pixelHeight := w.pixelWidth, w.pixelHeight
-	scale := float32(1)
-	if w.width > 0 && w.pixelWidth > 0 {
-		scale = w.pixelWidth / w.width
-	} else {
-		pixelWidth, pixelHeight = size.Width, size.Height
-	}
-
-	w.painter.Begin(pixelWidth, pixelHeight, scale)
-	defer w.painter.End()
-	w.painter.Clear(graphics.RGB(255, 255, 255))
-	guiPainter := newPainter(w.painter, geometry.Rect(0, 0, size.Width, size.Height))
-	paintWidget(w.root, SubPainter(guiPainter, w.root.Rect()))
-	w.paintDirty = false
+	w.paintFrame(w.root)
 }
 
 // PlatformWindow is the escape hatch to the underlying platform window.
@@ -429,15 +375,11 @@ func (w *window) PlatformWindow() platform.Window { return w.platformWindow }
 func (w *window) RequestLayout() { w.requestLayout() }
 
 func (w *window) requestLayout() {
-	w.layoutDirty = true
-	w.requestPaint()
+	w.rootBase.requestLayout(w.platformWindow)
 }
 
-func (w *window) requestPaint() {
-	w.paintDirty = true
-	if w.platformWindow != nil {
-		_ = w.platformWindow.RequestPaint()
-	}
+func (w *window) requestPaint() error {
+	return w.rootBase.requestPaint(w.platformWindow)
 }
 
 func (w *window) setFocused(focused bool) {

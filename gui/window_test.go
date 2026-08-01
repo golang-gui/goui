@@ -122,11 +122,13 @@ func TestWindowSetFocusedWidgetValidatesTarget(t *testing.T) {
 func TestWindowPaintPerformsPendingLayoutBeforePainting(t *testing.T) {
 	painter := new(testGraphicsPainter)
 	win := &window{
-		painter:     painter,
-		width:       320,
-		height:      240,
-		pixelWidth:  640,
-		pixelHeight: 480,
+		rootBase: rootBase{
+			painter:     painter,
+			width:       320,
+			height:      240,
+			pixelWidth:  640,
+			pixelHeight: 480,
+		},
 	}
 	root := newLayoutPassWidget()
 	win.SetWidget(root)
@@ -238,10 +240,12 @@ func TestWindowDestroyDestroysRootWidget(t *testing.T) {
 
 func TestWindowSnapshot(t *testing.T) {
 	win := &window{
-		id:     "main",
-		title:  "Main",
-		width:  320,
-		height: 240,
+		id:    "main",
+		title: "Main",
+		rootBase: rootBase{
+			width:  320,
+			height: 240,
+		},
 	}
 	root := newTestWidget()
 	root.SetID("root")

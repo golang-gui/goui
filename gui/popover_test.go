@@ -117,3 +117,27 @@ func TestPopoverModalTogglesWindowModalTarget(t *testing.T) {
 		t.Fatalf("resigning should clear the window's modal target")
 	}
 }
+
+func TestPopoverSetWidgetMigratesFromWindow(t *testing.T) {
+	win := &window{}
+	content := newTestWidget()
+	win.SetWidget(content)
+
+	unmounted := false
+	content.ConnectUnmount(func() { unmounted = true })
+
+	// Migrating the widget from the window into the popover must emit the
+	// unmount notification (adoptWidget semantics) and re-mount under the
+	// popover.
+	p := &popover{}
+	p.SetWidget(content)
+	if !unmounted {
+		t.Fatal("migration to popover should emit unmount on the old root")
+	}
+	if content.Root() != p {
+		t.Fatalf("content should be mounted under the popover, got %v", content.Root())
+	}
+	if p.Widget() != content {
+		t.Fatal("popover content should be set")
+	}
+}
