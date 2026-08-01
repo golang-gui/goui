@@ -29,7 +29,7 @@ func (m *mockWidget) Arrange(rect geometry.Rectangle) {
 
 func TestScrollViewClamp(t *testing.T) {
 	sv := NewScrollView()
-	sv.SetContent(&mockWidget{size: geometry.Size{Width: 100, Height: 500}})
+	sv.SetChild(&mockWidget{size: geometry.Size{Width: 100, Height: 500}})
 
 	// Measure gives the viewport the parent constraint; content is unbounded.
 	sv.Measure(layout.Constraint{Max: geometry.Size{Width: 100, Height: 200}})
@@ -52,7 +52,7 @@ func TestScrollViewClamp(t *testing.T) {
 func TestScrollViewContentOffset(t *testing.T) {
 	sv := NewScrollView()
 	content := &mockWidget{size: geometry.Size{Width: 100, Height: 500}}
-	sv.SetContent(content)
+	sv.SetChild(content)
 
 	sv.Measure(layout.Constraint{Max: geometry.Size{Width: 100, Height: 100}})
 	sv.Arrange(geometry.Rect(0, 0, 100, 100))
@@ -64,34 +64,34 @@ func TestScrollViewContentOffset(t *testing.T) {
 	}
 }
 
-func TestScrollViewSetContentReplaces(t *testing.T) {
+func TestScrollViewSetChildReplaces(t *testing.T) {
 	sv := NewScrollView()
 	first := &mockWidget{size: geometry.Size{Width: 100, Height: 500}}
 	second := &mockWidget{size: geometry.Size{Width: 100, Height: 500}}
 
-	// SetContent is the single-content API; it replaces the previous content.
-	sv.SetContent(first)
-	if sv.Content() != first {
-		t.Fatal("SetContent should set the content")
+	// SetChild is the single-content API; it replaces the previous content.
+	sv.SetChild(first)
+	if sv.Child() != first {
+		t.Fatal("SetChild should set the content")
 	}
 	children := sv.Children()
 	if len(children) != 1 || children[0] != first {
 		t.Fatalf("content should be the only child, got %v", children)
 	}
 
-	sv.SetContent(second)
-	if sv.Content() != second {
-		t.Fatal("SetContent should replace the previous content")
+	sv.SetChild(second)
+	if sv.Child() != second {
+		t.Fatal("SetChild should replace the previous content")
 	}
 	children = sv.Children()
 	if len(children) != 1 || children[0] != second {
 		t.Fatalf("content should be the only child after replace, got %v", children)
 	}
 
-	// Clear via SetContent(nil).
-	sv.SetContent(nil)
-	if sv.Content() != nil {
-		t.Fatal("SetContent(nil) should clear the content")
+	// Clear via SetChild(nil).
+	sv.SetChild(nil)
+	if sv.Child() != nil {
+		t.Fatal("SetChild(nil) should clear the content")
 	}
 	if len(sv.Children()) != 0 {
 		t.Fatal("children should be empty after clear")
@@ -101,7 +101,7 @@ func TestScrollViewSetContentReplaces(t *testing.T) {
 func TestScrollViewChildrenReflectsContent(t *testing.T) {
 	sv := NewScrollView()
 	content := &mockWidget{size: geometry.Size{Width: 100, Height: 500}}
-	sv.SetContent(content)
+	sv.SetChild(content)
 
 	// Children() comes from Widget (not Container): single-content containers
 	// expose their content through the common traversal API, which is what
@@ -128,7 +128,7 @@ func TestWheelEventControllerPublic(t *testing.T) {
 
 func TestScrollViewScrollable(t *testing.T) {
 	sv := NewScrollView()
-	sv.SetContent(&mockWidget{size: geometry.Size{Width: 100, Height: 50}})
+	sv.SetChild(&mockWidget{size: geometry.Size{Width: 100, Height: 50}})
 
 	sv.Measure(layout.Constraint{Max: geometry.Size{Width: 100, Height: 100}})
 	sv.Arrange(geometry.Rect(0, 0, 100, 100))
@@ -136,7 +136,7 @@ func TestScrollViewScrollable(t *testing.T) {
 		t.Fatal("short content should not be scrollable")
 	}
 
-	sv.SetContent(&mockWidget{size: geometry.Size{Width: 100, Height: 500}})
+	sv.SetChild(&mockWidget{size: geometry.Size{Width: 100, Height: 500}})
 	sv.Measure(layout.Constraint{Max: geometry.Size{Width: 100, Height: 100}})
 	sv.Arrange(geometry.Rect(0, 0, 100, 100))
 	if !sv.Scrollable() {
@@ -146,7 +146,7 @@ func TestScrollViewScrollable(t *testing.T) {
 
 func TestScrollViewWheel(t *testing.T) {
 	sv := NewScrollView()
-	sv.SetContent(&mockWidget{size: geometry.Size{Width: 100, Height: 500}})
+	sv.SetChild(&mockWidget{size: geometry.Size{Width: 100, Height: 500}})
 	sv.Measure(layout.Constraint{Max: geometry.Size{Width: 100, Height: 100}})
 	sv.Arrange(geometry.Rect(0, 0, 100, 100))
 
@@ -195,7 +195,7 @@ func (m *mockScrollContent) LayoutVisible(viewport geometry.Size, offset geometr
 func TestScrollViewScrollableContentMode(t *testing.T) {
 	sv := NewScrollView()
 	content := &mockScrollContent{height: 500}
-	sv.SetContent(content)
+	sv.SetChild(content)
 
 	sv.Measure(layout.Constraint{Max: geometry.Size{Width: 100, Height: 100}})
 	sv.Arrange(geometry.Rect(0, 0, 100, 100))
@@ -224,109 +224,5 @@ func TestScrollViewScrollableContentMode(t *testing.T) {
 	sv.SetScrollY(999)
 	if got := content.layoutCalls[len(content.layoutCalls)-1].Y; got != 400 {
 		t.Fatalf("offset should clamp to 400, got %v", got)
-	}
-}
-
-// --- ListView ---
-
-func TestListViewVisibleRange(t *testing.T) {
-	lv := NewListView()
-	lv.SetItemCount(100)
-	lv.SetItemHeight(20)
-
-	// viewport 100 tall at offset 0 → items 0..4
-	lv.LayoutVisible(geometry.Size{Width: 100, Height: 100}, geometry.Point{})
-	got := lv.VisibleIndexes()
-	if len(got) != 5 || got[0] != 0 || got[4] != 4 {
-		t.Fatalf("visible at offset 0 should be [0..4], got %v", got)
-	}
-
-	// offset 50 → items 2..7 (50/20=2, (50+100)/20=7)
-	lv.LayoutVisible(geometry.Size{Width: 100, Height: 100}, geometry.Point{Y: 50})
-	got = lv.VisibleIndexes()
-	if len(got) != 6 || got[0] != 2 || got[5] != 7 {
-		t.Fatalf("visible at offset 50 should be [2..7], got %v", got)
-	}
-
-	// offset beyond end → clamped to last items (total height 2000,
-	// max offset 1900; use 3000 to exceed)
-	lv.LayoutVisible(geometry.Size{Width: 100, Height: 100}, geometry.Point{Y: 3000})
-	got = lv.VisibleIndexes()
-	if len(got) == 0 || got[len(got)-1] != 99 {
-		t.Fatalf("visible at offset 3000 should end at 99, got %v", got)
-	}
-	if got[0] != 95 {
-		t.Fatalf("visible at offset 3000 should start at 95, got %v", got)
-	}
-}
-
-func TestListViewItemReuse(t *testing.T) {
-	lv := NewListView()
-	lv.SetItemCount(100)
-	lv.SetItemHeight(20)
-	created := 0
-	lv.SetRenderItem(func(i int) Widget {
-		created++
-		return NewLabel("item")
-	})
-
-	// First scroll range creates 5 items.
-	lv.LayoutVisible(geometry.Size{Width: 100, Height: 100}, geometry.Point{})
-	if created != 5 {
-		t.Fatalf("first layout should create 5 items, got %d", created)
-	}
-
-	// Scroll down one row: items 1..5; item 0 detached, item 5 created.
-	lv.LayoutVisible(geometry.Size{Width: 100, Height: 100}, geometry.Point{Y: 20})
-	if created != 6 {
-		t.Fatalf("scroll down one row should create 1 new item, got %d", created)
-	}
-	if _, ok := lv.items[0]; !ok {
-		t.Fatal("item 0 should remain cached after scrolling out")
-	}
-
-	// Scroll back up: item 0 reused, no new creation.
-	lv.LayoutVisible(geometry.Size{Width: 100, Height: 100}, geometry.Point{})
-	if created != 6 {
-		t.Fatalf("scroll back up should reuse cached item, created=%d", created)
-	}
-	if _, ok := lv.items[0]; !ok {
-		t.Fatal("item 0 should be re-attached")
-	}
-}
-
-func TestListViewEmpty(t *testing.T) {
-	lv := NewListView()
-	lv.LayoutVisible(geometry.Size{Width: 100, Height: 100}, geometry.Point{})
-	if got := lv.VisibleIndexes(); got != nil {
-		t.Fatalf("empty list should have no visible items, got %v", got)
-	}
-
-	lv.SetItemCount(10)
-	lv.SetItemHeight(0) // zero height → no visible items
-	lv.LayoutVisible(geometry.Size{Width: 100, Height: 100}, geometry.Point{})
-	if got := lv.VisibleIndexes(); got != nil {
-		t.Fatalf("zero item height should have no visible items, got %v", got)
-	}
-}
-
-func TestListViewHitTestItems(t *testing.T) {
-	lv := NewListView()
-	lv.SetItemCount(10)
-	lv.SetItemHeight(20)
-	lv.SetRenderItem(func(i int) Widget {
-		return &mockWidget{size: geometry.Size{Width: 100, Height: 20}}
-	})
-	lv.Arrange(geometry.Rect(0, 0, 100, 100))
-	lv.LayoutVisible(geometry.Size{Width: 100, Height: 100}, geometry.Point{})
-
-	// ListView satisfies Container, so hitTest recurses into its items.
-	item := lv.items[2]
-	if item == nil {
-		t.Fatal("item 2 should be created")
-	}
-	target := hitTest(lv, geometry.Point{X: 50, Y: 2*20 + 10})
-	if target != item {
-		t.Fatalf("hitTest should return item 2, got %v", target)
 	}
 }

@@ -54,10 +54,10 @@ func NewScrollView() *ScrollView {
 	return sv
 }
 
-// SetContent sets the scrollable content. It may be a Scrollable (virtualized
+// SetChild sets the scrollable content. It may be a Scrollable (virtualized
 // layout) or an ordinary widget tree (viewport mode). Setting a new content
 // replaces the previous one.
-func (sv *ScrollView) SetContent(content Widget) {
+func (sv *ScrollView) SetChild(content Widget) {
 	if sv.content == content {
 		return
 	}
@@ -71,8 +71,8 @@ func (sv *ScrollView) SetContent(content Widget) {
 	sv.RequestLayout()
 }
 
-// Content returns the scrollable content, or nil.
-func (sv *ScrollView) Content() Widget {
+// Child returns the scrollable content, or nil.
+func (sv *ScrollView) Child() Widget {
 	return sv.content
 }
 
