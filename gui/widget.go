@@ -85,11 +85,21 @@ type Widget interface {
 type Container interface {
 	Widget
 
-	// AddChild appends a child (multi-child containers only; single-content
-	// containers like ScrollView use SetContent and are not Containers).
+	// AddChild appends a child
 	AddChild(Widget)
 	// RemoveChild detaches a child.
 	RemoveChild(Widget)
+}
+
+// Bin is the capability of widgets whose children form a single replaceable
+// child slot.
+type Bin interface {
+	Widget
+
+	// Child returns the current child, or nil.
+	Child() Widget
+	// SetChild replaces the child; pass nil to clear.
+	SetChild(Widget)
 }
 
 type WidgetBase struct {
@@ -211,10 +221,6 @@ func (w *WidgetBase) Rect() geometry.Rectangle {
 
 func (w *WidgetBase) Parent() Widget {
 	return w.parentWidget
-}
-
-func (w *WidgetBase) RemoveChild(child Widget) {
-	w.removeChild(child)
 }
 
 func (w *WidgetBase) Children() []Widget {
@@ -415,6 +421,11 @@ func (w *WidgetBase) requestSemanticUpdate() {
 	// Reserved for the inspector and automation layers.
 }
 
+// AddChild mounts child under parent. It is the low-level mounting primitive
+// used by Container.AddChild and Bin.SetChild implementations. External code
+// should go through those semantic entry points; as a guard, mounting on a
+// Bin is refused unless the child has already been registered via SetChild
+// (so a direct AddChild on a Button cannot desync its child slot).
 func (w *WidgetBase) AddChild(parent, child Widget) {
 	if parent == nil || parent.base() != w {
 		return
@@ -422,10 +433,15 @@ func (w *WidgetBase) AddChild(parent, child Widget) {
 	if child == nil {
 		return
 	}
+	// Bin guard: a Bin's child must be registered through SetChild first
+	// (SetChild updates the slot before mounting), so bypassing it is a no-op.
+	if bin, ok := parent.(Bin); ok && bin.Child() != child {
+		return
+	}
 	child.base().setParent(child, parent)
 }
 
-func (w *WidgetBase) removeChild(child Widget) {
+func (w *WidgetBase) RemoveChild(child Widget) {
 	if child == nil || child.base().parentWidget == nil || child.base().parentWidget.base() != w {
 		return
 	}

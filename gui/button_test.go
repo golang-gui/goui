@@ -43,7 +43,7 @@ func TestButtonUsesWidgetBaseLayoutAndPaint(t *testing.T) {
 		measureSize: geometry.Size{Width: 120, Height: 60},
 	}
 	button.SetLayoutManager(manager)
-	button.SetContent(child)
+	button.SetChild(child)
 
 	size := button.Measure(layout.Loose(geometry.Size{Width: 300, Height: 200}))
 	if size != (geometry.Size{Width: 132, Height: 72}) {
@@ -67,7 +67,7 @@ func TestButtonUsesWidgetBaseLayoutAndPaint(t *testing.T) {
 func TestButtonDefaultFillLayoutArrangesContent(t *testing.T) {
 	button := NewButton()
 	child := newTestWidget()
-	button.SetContent(child)
+	button.SetChild(child)
 
 	button.Arrange(geometry.Rect(0, 0, 80, 30))
 
@@ -163,7 +163,7 @@ func TestButtonPaintsBackgroundForPointerStates(t *testing.T) {
 func TestButtonHoverUsesContainedChildHover(t *testing.T) {
 	button := NewButton()
 	child := newTestWidget()
-	button.SetContent(child)
+	button.SetChild(child)
 	button.Arrange(geometry.Rect(0, 0, 80, 30))
 	child.Arrange(geometry.Rect(0, 0, 80, 30))
 	win := &window{}
@@ -218,7 +218,7 @@ func TestButtonClickedSignal(t *testing.T) {
 func TestButtonClickedSignalThroughChildContent(t *testing.T) {
 	button := NewButton()
 	child := newTestWidget()
-	button.SetContent(child)
+	button.SetChild(child)
 	button.Arrange(geometry.Rect(0, 0, 80, 30))
 	child.Arrange(geometry.Rect(0, 0, 80, 30))
 	win := &window{}
@@ -253,7 +253,7 @@ func TestButtonClickedSignalThroughChildContent(t *testing.T) {
 func TestButtonClickHandlesChildDownAndButtonUp(t *testing.T) {
 	button := NewButton()
 	child := newTestWidget()
-	button.SetContent(child)
+	button.SetChild(child)
 	button.Arrange(geometry.Rect(0, 0, 80, 30))
 	child.Arrange(geometry.Rect(0, 0, 80, 30))
 	win := &window{}
@@ -389,37 +389,58 @@ func TestButtonIgnoresNonLeftButton(t *testing.T) {
 	}
 }
 
-func TestButtonSetContentReplaces(t *testing.T) {
+func TestButtonSetChildReplaces(t *testing.T) {
 	button := NewButton()
 	first := newPaintCountingWidget()
 	second := newPaintCountingWidget()
 
-	// SetContent is the single-content API; it replaces the previous content.
-	button.SetContent(first)
-	if button.Content() != first {
-		t.Fatal("SetContent should set the content")
+	// SetChild is the single-content API; it replaces the previous content.
+	button.SetChild(first)
+	if button.Child() != first {
+		t.Fatal("SetChild should set the content")
 	}
 	children := button.Children()
 	if len(children) != 1 || children[0] != first {
 		t.Fatalf("content should be the only child, got %v", children)
 	}
 
-	button.SetContent(second)
-	if button.Content() != second {
-		t.Fatal("SetContent should replace the previous content")
+	button.SetChild(second)
+	if button.Child() != second {
+		t.Fatal("SetChild should replace the previous content")
 	}
 	children = button.Children()
 	if len(children) != 1 || children[0] != second {
 		t.Fatalf("content should be the only child after replace, got %v", children)
 	}
 
-	// Clear via SetContent(nil).
-	button.SetContent(nil)
-	if button.Content() != nil {
-		t.Fatal("SetContent(nil) should clear the content")
+	// Clear via SetChild(nil).
+	button.SetChild(nil)
+	if button.Child() != nil {
+		t.Fatal("SetChild(nil) should clear the content")
 	}
 	if len(button.Children()) != 0 {
 		t.Fatal("children should be empty after clear")
+	}
+}
+
+func TestButtonAddChildBypassIsRefused(t *testing.T) {
+	button := NewButton()
+	label := NewLabel("stray")
+
+	// Direct mounting on a Bin without SetChild registration is refused: the
+	// child slot stays empty and the tree stays clean.
+	button.WidgetBase.AddChild(button, label)
+	if button.Child() != nil {
+		t.Fatal("direct AddChild must not desync the child slot")
+	}
+	if len(button.Children()) != 0 {
+		t.Fatalf("direct AddChild must be refused, got children %v", button.Children())
+	}
+
+	// The semantic path still works after the refused bypass.
+	button.SetChild(label)
+	if button.Child() != label || len(button.Children()) != 1 {
+		t.Fatal("SetChild should still work after a refused bypass")
 	}
 }
 

@@ -9,7 +9,7 @@ import (
 
 type Button struct {
 	WidgetBase
-	content Widget  // single content (0 or 1 child); Button is not a Container
+	content Widget  // single child (0 or 1); Button is not a Container
 	padding float32 // self-held: button overrides Measure/Arrange (skeleton floor)
 	hovered bool
 	pressed bool
@@ -44,10 +44,10 @@ func NewButton() *Button {
 	return button
 }
 
-// SetContent sets the button's single content, replacing any previous one.
-// The content is mounted as the only child (FillLayout arranges it inset by
+// SetChild sets the button's single child, replacing any previous one.
+// The child is mounted as the only child (FillLayout arranges it inset by
 // the padding).
-func (b *Button) SetContent(child Widget) {
+func (b *Button) SetChild(child Widget) {
 	if b.content == child {
 		return
 	}
@@ -61,8 +61,8 @@ func (b *Button) SetContent(child Widget) {
 	b.RequestLayout()
 }
 
-// Content returns the button's single content, or nil.
-func (b *Button) Content() Widget {
+// Child returns the button's single child, or nil.
+func (b *Button) Child() Widget {
 	return b.content
 }
 

@@ -524,6 +524,10 @@ func (w *lifecycleWidget) AddChild(child Widget) {
 	w.WidgetBase.AddChild(w, child)
 }
 
+func (w *lifecycleWidget) RemoveChild(child Widget) {
+	w.WidgetBase.RemoveChild(child)
+}
+
 func newLifecycleWidget(name string, calls *[]string) *lifecycleWidget {
 	w := &lifecycleWidget{
 		name:  name,
