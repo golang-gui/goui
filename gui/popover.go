@@ -8,7 +8,6 @@ import (
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
-	"github.com/golang-gui/goui/platform/graphics"
 )
 
 // Popover is a borderless, no-focus floating surface anchored to a Widget, used
@@ -56,20 +55,13 @@ func NewPopover(anchor Widget) Popover {
 }
 
 type popover struct {
+	rootBase
 	anchor        Widget
 	widget        Widget // content
 	position      geometry.Point
 	owner         Window // resolved from the anchor; only the public Window API is used
 	platformPopup platform.Popup
-	painter       graphics.Painter
 	dispatcher    EventDispatcher
-	width         float32 // logical
-	height        float32
-	pixelWidth    float32 // physical
-	pixelHeight   float32
-	layoutDirty   bool
-	paintDirty    bool
-	focusedWidget Widget
 	visible       bool
 	modal         bool // menu-style: owner window forwards its input here (modeless by default)
 
@@ -86,11 +78,8 @@ func (p *popover) Widget() Widget {
 }
 
 func (p *popover) RequestPaint() error {
-	p.requestPaint()
-	return nil
+	return p.requestPaint()
 }
-
-func (p *popover) FocusedWidget() Widget { return p.focusedWidget }
 
 func (p *popover) SetFocusedWidget(widget Widget) bool {
 	if widget != nil && (widget.Root() != p || !widget.Focusable() || !visibleInTree(widget)) {
@@ -134,10 +123,10 @@ func (p *popover) SetWidget(widget Widget) {
 	if p.widget != nil {
 		p.widget.base().detachRoot(p.widget)
 	}
-	p.widget = widget
 	if widget != nil {
-		widget.base().attachRoot(p, widget)
+		adoptWidget(widget, p)
 	}
+	p.widget = widget
 	p.layoutDirty = true
 	if p.visible {
 		p.measureAndSize()
@@ -332,45 +321,18 @@ func (p *popover) onEvent(event platform.Event) {
 
 func (p *popover) paint() {
 	p.widget = liveRoot(p.widget)
-	if p.painter == nil || p.widget == nil {
-		return
-	}
-	size := geometry.Size{Width: p.width, Height: p.height}
-	if p.layoutDirty {
-		p.widget.Measure(layout.Tight(size)) // lay out content at the resolved popover size.
-		p.widget.Arrange(geometry.Rect(0, 0, size.Width, size.Height))
-		p.layoutDirty = false
-	}
-
-	pixelWidth, pixelHeight := p.pixelWidth, p.pixelHeight
-	scale := float32(1)
-	if p.width > 0 && p.pixelWidth > 0 {
-		scale = p.pixelWidth / p.width
-	} else {
-		pixelWidth, pixelHeight = size.Width, size.Height
-	}
-
-	p.painter.Begin(pixelWidth, pixelHeight, scale)
-	defer p.painter.End()
-	p.painter.Clear(graphics.RGB(255, 255, 255))
-	guiPainter := newPainter(p.painter, geometry.Rect(0, 0, size.Width, size.Height))
-	paintWidget(p.widget, SubPainter(guiPainter, p.widget.Rect()))
-	p.paintDirty = false
+	p.paintFrame(p.widget)
 }
 
 // RequestLayout satisfies Root: schedule a relayout of this host.
 func (p *popover) RequestLayout() { p.requestLayout() }
 
 func (p *popover) requestLayout() {
-	p.layoutDirty = true
-	p.requestPaint()
+	p.rootBase.requestLayout(p.platformPopup)
 }
 
-func (p *popover) requestPaint() {
-	p.paintDirty = true
-	if p.platformPopup != nil {
-		_ = p.platformPopup.RequestPaint()
-	}
+func (p *popover) requestPaint() error {
+	return p.rootBase.requestPaint(p.platformPopup)
 }
 
 // anchorWindow resolves the *window hosting anchor, or false if anchor is not

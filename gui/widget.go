@@ -8,14 +8,6 @@ import (
 	"github.com/golang-gui/goui/layout"
 )
 
-// Root is the host a widget lives in — a window or a popover. Widgets reach it
-// via Root() and depend only on this interface, never on the concrete host type.
-type Root interface {
-	Widget() Widget
-	RequestPaint() error
-	RequestLayout()
-}
-
 type Widget interface {
 	base() *WidgetBase
 
