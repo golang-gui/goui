@@ -244,3 +244,38 @@ func (c *KeyEventController) HandleEvent(ctx EventContext) {
 }
 
 func (c *KeyEventController) HandleCrossing(ctx CrossingContext) {}
+
+type WheelEventController struct {
+	phase  PropagationPhase
+	scroll signal.Signal2[EventContext, events.WheelEvent]
+}
+
+func NewWheelEventController() *WheelEventController {
+	return &WheelEventController{
+		phase: PhaseBubble,
+	}
+}
+
+func (c *WheelEventController) Phase() PropagationPhase {
+	return c.phase
+}
+
+func (c *WheelEventController) SetPhase(phase PropagationPhase) {
+	c.phase = phase
+}
+
+func (c *WheelEventController) Reset() {}
+
+func (c *WheelEventController) ConnectScroll(fn func(ctx EventContext, event events.WheelEvent)) signal.Handle {
+	return c.scroll.Connect(fn)
+}
+
+func (c *WheelEventController) HandleEvent(ctx EventContext) {
+	wheelEvent, ok := ctx.Event().(events.WheelEvent)
+	if !ok {
+		return
+	}
+	c.scroll.Emit(ctx, wheelEvent)
+}
+
+func (c *WheelEventController) HandleCrossing(ctx CrossingContext) {}
