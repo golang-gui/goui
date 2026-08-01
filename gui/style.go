@@ -10,10 +10,11 @@ import (
 )
 
 const (
-	styleNameWidget    = "widget"
-	styleNameLabel     = "label"
-	styleNameButton    = "button"
-	styleNameTextInput = "text-input"
+	styleNameWidget     = "widget"
+	styleNameLabel      = "label"
+	styleNameButton     = "button"
+	styleNameTextInput  = "text-input"
+	styleNameScrollView = "scroll-view"
 )
 
 // DefaultStyleSheet is the bare fallback sheet used when the application has no
@@ -72,6 +73,10 @@ func DefaultStyleRules() []style.Rule {
 		style.Name(styleNameTextInput).
 			State(style.Focused).
 			BorderColor(accent),
+
+		style.Name(styleNameScrollView).
+			BackgroundColor(color.Transparent).
+			ForegroundColor(color.RGBA{R: 120, G: 120, B: 120, A: 255}),
 	}
 }
 
