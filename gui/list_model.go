@@ -6,7 +6,29 @@ import (
 	"github.com/golang-gui/goui/core/signal"
 )
 
-// SliceListModel is a generic, concurrency-safe ListModel backed by a plain
+// ListModel is the structural layer of a list view: item count and change
+// notifications. It knows nothing about widgets and nothing about item data —
+// data access lives in ListData[T], so a ListView can drive any model without
+// knowing what the items are.
+type ListModel interface {
+	// ItemsCount returns the total number of items.
+	ItemsCount() int
+	// ConnectItems subscribes to any model change. Handlers run synchronously
+	// on mutation; disconnect via the returned handle.
+	ConnectItems(f func()) signal.Handle
+}
+
+// ListData is the data-access layer of a list: a ListModel plus typed item
+// access. Delegates and declarative wrappers consume it to fetch the item at
+// an index with compile-time type safety (ListData[int] cannot be fed a
+// model of strings).
+type ListData[T any] interface {
+	ListModel
+	// ItemAt returns the data of the item at index.
+	ItemAt(index int) T
+}
+
+// SliceListModel is a generic, concurrency-safe ListData backed by a plain
 // slice. Every mutation emits a change notification; batch mutations go
 // through Modify, which emits exactly once. Out-of-range indices panic with
 // slice semantics.
@@ -29,8 +51,8 @@ func (m *SliceListModel[T]) ItemsCount() int {
 	return len(m.items)
 }
 
-// ItemAt implements ListModel.
-func (m *SliceListModel[T]) ItemAt(index int) any {
+// ItemAt implements ListData.
+func (m *SliceListModel[T]) ItemAt(index int) T {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.items[index]

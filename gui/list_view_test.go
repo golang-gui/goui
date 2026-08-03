@@ -299,12 +299,12 @@ func TestSliceListModelCRUD(t *testing.T) {
 func TestSliceListModelStructs(t *testing.T) {
 	m := NewSliceListModel([]row{{name: "first", n: 1}})
 	m.Append(row{name: "second", n: 2})
-	if got := m.ItemAt(1).(row); got.name != "second" || got.n != 2 {
+	if got := m.ItemAt(1); got.name != "second" || got.n != 2 {
 		t.Fatalf("unexpected item: %+v", got)
 	}
 
 	m.Set(0, row{name: "renamed", n: 10})
-	if got := m.ItemAt(0).(row); got.name != "renamed" {
+	if got := m.ItemAt(0); got.name != "renamed" {
 		t.Fatalf("Set should replace the item, got %+v", got)
 	}
 }
@@ -393,7 +393,7 @@ func TestSliceListModelConcurrent(t *testing.T) {
 	// Modify can sit anywhere, so scan everything and skip them.
 	seen := make(map[int]bool)
 	for i := 0; i < m.ItemsCount(); i++ {
-		v := m.ItemAt(i).(int)
+		v := m.ItemAt(i)
 		if v != -1 {
 			seen[v] = true
 		}
@@ -473,7 +473,7 @@ func TestListViewSetModelDisconnects(t *testing.T) {
 
 // Compile-time interface assertions.
 var (
-	_ ListModel        = (*SliceListModel[int])(nil)
-	_ ListModel        = (*SliceListModel[row])(nil)
+	_ ListData[int]    = (*SliceListModel[int])(nil)
+	_ ListData[row]    = (*SliceListModel[row])(nil)
 	_ ListItemDelegate = (*mockListDelegate)(nil)
 )
