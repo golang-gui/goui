@@ -30,3 +30,12 @@ func (s *State[T]) Set(value T) {
 		rt.RequestUpdate()
 	}
 }
+
+// Update atomically replaces the value via f (read-modify-write) and emits
+// one notification; see core/state.State.Update.
+func (s *State[T]) Update(f func(before T) (after T)) {
+	s.state.Update(f)
+	if rt := currentApp(); rt != nil {
+		rt.RequestUpdate()
+	}
+}

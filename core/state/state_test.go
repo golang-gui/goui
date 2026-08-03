@@ -87,3 +87,45 @@ func TestStateSetDoesNotHoldValueLockDuringEmit(t *testing.T) {
 		t.Fatalf("state value = %d, want 3", got)
 	}
 }
+
+func TestStateUpdate(t *testing.T) {
+	state := Make(1)
+	changes := 0
+	h := state.Connect(func() { changes++ })
+
+	state.Update(func(before int) int { return before + 10 })
+	if got := state.Get(); got != 11 {
+		t.Fatalf("state value = %d, want 11", got)
+	}
+	if changes != 1 {
+		t.Fatalf("Update should emit exactly once, got %d", changes)
+	}
+
+	state.Update(func(before int) int { return before * 2 })
+	if got := state.Get(); got != 22 {
+		t.Fatalf("state value = %d, want 22", got)
+	}
+	if changes != 2 {
+		t.Fatalf("second Update should emit once, got %d", changes)
+	}
+
+	h.Disconnect()
+}
+
+func TestStateUpdateDoesNotHoldLockDuringEmit(t *testing.T) {
+	state := Make(1)
+	updated := false
+	state.Connect(func() {
+		if updated {
+			return
+		}
+		updated = true
+		state.Update(func(before int) int { return before + 1 })
+	})
+
+	state.Update(func(before int) int { return before + 1 })
+
+	if got := state.Get(); got != 3 {
+		t.Fatalf("state value = %d, want 3", got)
+	}
+}
