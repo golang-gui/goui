@@ -114,6 +114,19 @@ func (sv *ScrollView) Scrollable() bool {
 	return sv.contentHeight > sv.Rect().Height
 }
 
+// Snapshot reports the scrollview role and the current scroll state so AI /
+// automation can understand position and range. Actions stay implicit: actual
+// scrolling is performed by dispatching wheel input.
+func (sv *ScrollView) Snapshot() WidgetInfo {
+	info := sv.WidgetBase.Snapshot()
+	info.Role = RoleScrollView
+	info.ScrollY = sv.scrollY
+	if max := sv.contentHeight - sv.Rect().Height; max > 0 {
+		info.MaxScrollY = max
+	}
+	return info
+}
+
 func (sv *ScrollView) Measure(c layout.Constraint) geometry.Size {
 	if !sv.Visible() || sv.content == nil {
 		return geometry.Size{}

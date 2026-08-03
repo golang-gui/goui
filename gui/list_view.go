@@ -326,6 +326,24 @@ func (lv *ListView) VisibleIndexes() []int {
 	return idx
 }
 
+// Snapshot reports the list role plus the virtualized range (total items and
+// the currently visible index span) so AI / automation can understand that
+// more rows exist beyond the viewport. The shell widgets hosting the visible
+// rows are reported as listitem (their box scaffolding is noise).
+func (lv *ListView) Snapshot() WidgetInfo {
+	info := lv.WidgetBase.Snapshot()
+	info.Role = RoleList
+	info.ItemCount = lv.ItemsCount()
+	if vis := lv.VisibleIndexes(); len(vis) > 0 {
+		info.VisibleStart = vis[0]
+		info.VisibleEnd = vis[len(vis)-1]
+	}
+	for i := range info.Children {
+		info.Children[i].Role = RoleListItem
+	}
+	return info
+}
+
 // Measure reports the requested viewport size (the list itself is sized by
 // its parent; content height comes from ContentSize).
 func (lv *ListView) Measure(c layout.Constraint) geometry.Size {
