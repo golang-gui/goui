@@ -31,6 +31,16 @@ func (s *State[T]) Set(value T) {
 	s.changed.Emit()
 }
 
+// Update atomically replaces the value via f and emits one notification.
+// f runs with the state locked: it must not call back into the state. Use it
+// for read-modify-write (counters, toggles) instead of Get+Set.
+func (s *State[T]) Update(f func(before T) (after T)) {
+	s.mu.Lock()
+	s.value = f(s.value)
+	s.mu.Unlock()
+	s.changed.Emit()
+}
+
 func (s *State[T]) Connect(fn func()) signal.Handle {
 	if fn == nil {
 		return nil

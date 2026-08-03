@@ -85,3 +85,19 @@ func TestStateSetWithoutActiveAppUpdatesValue(t *testing.T) {
 		t.Fatalf("state value = %d, want 2", got)
 	}
 }
+
+func TestStateUpdate(t *testing.T) {
+	state := MakeState(1)
+	changes := 0
+	h := state.Connect(func() { changes++ })
+
+	state.Update(func(before int) int { return before + 10 })
+	if got := state.Get(); got != 11 {
+		t.Fatalf("state value = %d, want 11", got)
+	}
+	if changes != 1 {
+		t.Fatalf("Update should emit exactly once, got %d", changes)
+	}
+
+	h.Disconnect()
+}
