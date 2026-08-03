@@ -99,7 +99,28 @@ func TestLinearBoxMainWeightSharesSpace(t *testing.T) {
 		t.Fatalf("unweighted child should hug: %+v", first.Rect())
 	}
 	if second.Rect() != geometry.Rect(10, 0, 90, 20) {
-		t.Fatalf("weighted child should absorb free space: %+v", second.Rect())
+		t.Fatalf("weighted child should only consume main-axis free space: %+v", second.Rect())
+	}
+}
+
+func TestLinearBoxWeightedChildrenSplitFreeSpace(t *testing.T) {
+	box := NewLinearBox(layout.DirectionHorizontal)
+	first := newSizedWidget(geometry.Size{Width: 0, Height: 20})
+	second := newSizedWidget(geometry.Size{Width: 0, Height: 20})
+	first.SetMainWeight(1)
+	second.SetMainWeight(1)
+	box.SetCrossAlign(layout.CrossStretch)
+	box.AddChild(first)
+	box.AddChild(second)
+
+	box.Arrange(geometry.Rect(0, 0, 100, 40))
+	// Explicit CrossStretch, rather than MainWeight, fills the cross axis.
+	// This keeps main-axis weighting and cross-axis alignment independent.
+	if first.Rect() != geometry.Rect(0, 0, 50, 40) {
+		t.Fatalf("first elastic child should take half: %+v", first.Rect())
+	}
+	if second.Rect() != geometry.Rect(50, 0, 50, 40) {
+		t.Fatalf("second elastic child should take half: %+v", second.Rect())
 	}
 }
 
