@@ -258,3 +258,44 @@ func TestScrollViewSnapshot(t *testing.T) {
 		t.Fatalf("maxScrollY should be 300, got %v", info.MaxScrollY)
 	}
 }
+
+func TestScrollViewElasticMeasure(t *testing.T) {
+	sv := NewScrollView()
+	sv.SetChild(&mockScrollContent{height: 500})
+
+	// Scrollable mode has no intrinsic size: Loose constraint -> zero size,
+	// the parent (a linear box) decides through MainWeight.
+	if got := sv.Measure(layout.Constraint{Max: geometry.Size{Width: 100, Height: 100}}); got != (geometry.Size{}) {
+		t.Fatalf("elastic measure should report no intrinsic size, got %v", got)
+	}
+	if sv.MainWeight() != 1 {
+		t.Fatalf("ScrollView should default to MainWeight(1), got %v", sv.MainWeight())
+	}
+	// Tight constraint (window root): c.Min == c.Max -> fills.
+	if got := sv.Measure(layout.Tight(geometry.Size{Width: 800, Height: 600})); got != (geometry.Size{Width: 800, Height: 600}) {
+		t.Fatalf("elastic measure under Tight should fill, got %v", got)
+	}
+}
+
+func TestScrollViewSideBySideInLinearBox(t *testing.T) {
+	// Regression: two ScrollViews in an HBox previously each reported c.Max
+	// (the whole available width), overflowing the linear sum and pushing the
+	// second list out of the container. ScrollView's MainWeight(1) splits
+	// the main axis; the explicit CrossStretch below fills the cross axis.
+	box := NewLinearBox(layout.DirectionHorizontal)
+	box.SetCrossAlign(layout.CrossStretch)
+	left := NewScrollView()
+	left.SetChild(&mockScrollContent{height: 500})
+	right := NewScrollView()
+	right.SetChild(&mockScrollContent{height: 500})
+	box.AddChild(left)
+	box.AddChild(right)
+
+	box.Arrange(geometry.Rect(0, 0, 800, 600))
+	if left.Rect() != geometry.Rect(0, 0, 400, 600) {
+		t.Fatalf("left ScrollView should take half, got %v", left.Rect())
+	}
+	if right.Rect() != geometry.Rect(400, 0, 400, 600) {
+		t.Fatalf("right ScrollView should take half, got %v", right.Rect())
+	}
+}
