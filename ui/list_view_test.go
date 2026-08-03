@@ -8,16 +8,12 @@ import (
 	"github.com/golang-gui/goui/gui"
 )
 
-func itemText(index int, data any) string {
-	return fmt.Sprintf("item %d: %v", index, data)
-}
-
 func TestListViewMountsModelAndDelegate(t *testing.T) {
 	root := newRoot()
 	model := gui.NewSliceListModel([]int{10, 20, 30})
 
-	widget := root.update(ListView(model, func(i int, data any) View {
-		return Label(itemText(i, data))
+	widget := root.update(ListView(model, func(i int, data int) View {
+		return Label(fmt.Sprintf("item %d: %d", i, data))
 	}))
 	lv, ok := widget.(*gui.ListView)
 	if !ok {
@@ -26,8 +22,8 @@ func TestListViewMountsModelAndDelegate(t *testing.T) {
 	if lv.Model() != model {
 		t.Fatal("model should be mounted")
 	}
-	if _, ok := lv.Delegate().(*uiItemDelegate); !ok {
-		t.Fatalf("delegate should be uiItemDelegate, got %T", lv.Delegate())
+	if _, ok := lv.Delegate().(*uiItemDelegate[int]); !ok {
+		t.Fatalf("delegate should be uiItemDelegate[int], got %T", lv.Delegate())
 	}
 }
 
@@ -35,8 +31,8 @@ func TestListViewCoordinatesItems(t *testing.T) {
 	root := newRoot()
 	model := gui.NewSliceListModel([]string{"a", "b", "c"})
 
-	lv := root.update(ListView(model, func(i int, data any) View {
-		return Label(itemText(i, data))
+	lv := root.update(ListView(model, func(i int, data string) View {
+		return Label(fmt.Sprintf("item %d: %s", i, data))
 	})).(*gui.ListView)
 
 	// Drive the virtualization directly: Bind coordinates the declarative
@@ -60,10 +56,10 @@ func TestListViewUnbindReleasesItem(t *testing.T) {
 	root := newRoot()
 	model := gui.NewSliceListModel(make([]int, 100))
 
-	lv := root.update(ListView(model, func(i int, data any) View {
-		return Label(itemText(i, data))
+	lv := root.update(ListView(model, func(i int, data int) View {
+		return Label(fmt.Sprintf("item %d", i))
 	})).(*gui.ListView)
-	d := lv.Delegate().(*uiItemDelegate)
+	d := lv.Delegate().(*uiItemDelegate[int])
 
 	// Drive the delegate contract directly (the test env measures Labels as
 	// 0 height, so layout would bind everything; direct calls isolate the
@@ -95,29 +91,33 @@ func TestListViewUpdateKeepsDelegateSwapsModel(t *testing.T) {
 	root := newRoot()
 	modelA := gui.NewSliceListModel([]int{1, 2, 3})
 
-	lv := root.update(ListView(modelA, func(i int, data any) View {
-		return Label(itemText(i, data))
+	lv := root.update(ListView(modelA, func(i int, data int) View {
+		return Label(fmt.Sprintf("item %d", i))
 	})).(*gui.ListView)
 	delegate := lv.Delegate()
 
 	// Update with a new builder but the same model: the delegate instance is
 	// reused (a fresh delegate would reload the list on every update).
-	root.update(ListView(modelA, func(i int, data any) View {
-		return Label("row-" + fmt.Sprint(i))
+	root.update(ListView(modelA, func(i int, data int) View {
+		return Label(fmt.Sprintf("row-%d", i))
 	}))
 	if lv.Delegate() != delegate {
 		t.Fatal("delegate should be reused across updates")
 	}
 
-	// Update with a new model: SetModel reloads and rows reflect new data.
-	modelB := gui.NewSliceListModel([]string{"x", "y"})
-	root.update(ListView(modelB, func(i int, data any) View {
-		return Label(itemText(i, data))
+	// Update with a new model of the same type: widget and delegate are
+	// reused, SetModel reloads and rows reflect the new data.
+	modelB := gui.NewSliceListModel([]int{9, 8, 7})
+	root.update(ListView(modelB, func(i int, data int) View {
+		return Label(fmt.Sprintf("item %d: %d", i, data))
 	}))
+	if lv.Delegate() != delegate {
+		t.Fatal("same-T model swap should keep the delegate")
+	}
 	lv.LayoutVisible(geometry.Size{Width: 100, Height: 100}, geometry.Point{})
 	shell := lv.Children()[0].(*gui.LinearBox)
 	label := shell.Children()[0].(*gui.Label)
-	if label.Text() != "item 0: x" {
+	if label.Text() != "item 0: 9" {
 		t.Fatalf("row should reflect the new model, got %q", label.Text())
 	}
 }
@@ -127,8 +127,8 @@ func TestListViewInsideScrollView(t *testing.T) {
 	model := gui.NewSliceListModel([]int{1, 2, 3})
 
 	widget := root.update(ScrollView(
-		ListView(model, func(i int, data any) View {
-			return Label(itemText(i, data))
+		ListView(model, func(i int, data int) View {
+			return Label(fmt.Sprintf("item %d", i))
 		}),
 	))
 	sv, ok := widget.(*gui.ScrollView)
@@ -141,5 +141,12 @@ func TestListViewInsideScrollView(t *testing.T) {
 	}
 	if lv.Model() != model {
 		t.Fatal("list model should be mounted through the scroll view")
+	}
+}
+
+func TestSliceListHelper(t *testing.T) {
+	model := SliceList([]int{5, 6, 7})
+	if model.ItemsCount() != 3 || model.ItemAt(2) != 7 {
+		t.Fatalf("SliceList should adapt the slice, count=%d", model.ItemsCount())
 	}
 }
