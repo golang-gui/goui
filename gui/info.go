@@ -25,19 +25,29 @@ type WidgetInfo struct {
 	ContainsFocus bool               `json:"containsFocus"`
 	Actions       []Action           `json:"actions"`
 	Children      []WidgetInfo       `json:"children"`
+
+	// Scroll state (omitempty: absent on non-scrolling widgets).
+	ScrollY      float32 `json:"scrollY,omitempty"`      // current scroll offset
+	MaxScrollY   float32 `json:"maxScrollY,omitempty"`   // scrollable range (contentH - viewportH, >= 0)
+	ItemCount    int     `json:"itemCount,omitempty"`    // ListView: total items (virtualized)
+	VisibleStart int     `json:"visibleStart,omitempty"` // ListView: first visible index
+	VisibleEnd   int     `json:"visibleEnd,omitempty"`   // ListView: last visible index
 }
 
 type Role string
 
 const (
-	RoleWidget    Role = "widget"
-	RoleBox       Role = "box"
-	RoleHBox      Role = "hbox"
-	RoleVBox      Role = "vbox"
-	RoleLabel     Role = "label"
-	RoleButton    Role = "button"
-	RoleImage     Role = "image"
-	RoleTextInput Role = "textinput"
+	RoleWidget     Role = "widget"
+	RoleBox        Role = "box"
+	RoleHBox       Role = "hbox"
+	RoleVBox       Role = "vbox"
+	RoleLabel      Role = "label"
+	RoleButton     Role = "button"
+	RoleImage      Role = "image"
+	RoleTextInput  Role = "textinput"
+	RoleScrollView Role = "scrollview" // scrollable container (WAI-ARIA: scrollbar host)
+	RoleList       Role = "list"       // virtualized list (WAI-ARIA: list)
+	RoleListItem   Role = "listitem"   // list row (WAI-ARIA: listitem)
 )
 
 type Action string

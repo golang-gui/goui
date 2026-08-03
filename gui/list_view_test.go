@@ -477,3 +477,39 @@ var (
 	_ ListData[row]    = (*SliceListModel[row])(nil)
 	_ ListItemDelegate = (*mockListDelegate)(nil)
 )
+
+func TestListViewSnapshot(t *testing.T) {
+	lv := NewListView()
+	lv.SetModel(NewSliceListModel(make([]int, 100)))
+	lv.SetDelegate(&shellZeroDelegate{})
+
+	lv.LayoutVisible(geometry.Size{Width: 100, Height: 100}, geometry.Point{})
+	info := lv.Snapshot()
+	if info.Role != RoleList {
+		t.Fatalf("role should be list, got %q", info.Role)
+	}
+	if info.ItemCount != 100 {
+		t.Fatalf("itemCount should be 100, got %d", info.ItemCount)
+	}
+	if info.VisibleStart != 0 || info.VisibleEnd != 9 {
+		t.Fatalf("visible range should be 0..9, got %d..%d", info.VisibleStart, info.VisibleEnd)
+	}
+	if len(info.Children) != 10 {
+		t.Fatalf("snapshot should include 10 visible rows, got %d", len(info.Children))
+	}
+	for _, child := range info.Children {
+		if child.Role != RoleListItem {
+			t.Fatalf("row role should be listitem, got %q", child.Role)
+		}
+	}
+
+	// Empty list: no visible range, zero children.
+	empty := NewListView()
+	info = empty.Snapshot()
+	if info.Role != RoleList || info.ItemCount != 0 {
+		t.Fatalf("empty list snapshot wrong: %q %d", info.Role, info.ItemCount)
+	}
+	if info.VisibleStart != 0 || info.VisibleEnd != 0 {
+		t.Fatalf("empty list should omit visible range, got %d..%d", info.VisibleStart, info.VisibleEnd)
+	}
+}

@@ -226,3 +226,35 @@ func TestScrollViewScrollableContentMode(t *testing.T) {
 		t.Fatalf("offset should clamp to 400, got %v", got)
 	}
 }
+
+func TestScrollViewSnapshot(t *testing.T) {
+	sv := NewScrollView()
+	sv.SetChild(newTestWidget())
+	sv.Measure(layout.Constraint{Max: geometry.Size{Width: 100, Height: 100}})
+	sv.Arrange(geometry.Rect(0, 0, 100, 100))
+
+	info := sv.Snapshot()
+	if info.Role != RoleScrollView {
+		t.Fatalf("role should be scrollview, got %q", info.Role)
+	}
+	if info.ScrollY != 0 {
+		t.Fatalf("scrollY should be 0, got %v", info.ScrollY)
+	}
+	if len(info.Children) != 1 {
+		t.Fatalf("viewport content should appear in the snapshot, got %d children", len(info.Children))
+	}
+
+	// Scrollable content: MaxScrollY reflects the range.
+	content := &mockWidget{size: geometry.Size{Width: 100, Height: 400}}
+	sv.SetChild(content)
+	sv.Measure(layout.Constraint{Max: geometry.Size{Width: 100, Height: 100}})
+	sv.Arrange(geometry.Rect(0, 0, 100, 100))
+	sv.SetScrollY(50)
+	info = sv.Snapshot()
+	if info.ScrollY != 50 {
+		t.Fatalf("scrollY should be 50, got %v", info.ScrollY)
+	}
+	if info.MaxScrollY != 300 {
+		t.Fatalf("maxScrollY should be 300, got %v", info.MaxScrollY)
+	}
+}
