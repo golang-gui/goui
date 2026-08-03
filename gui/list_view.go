@@ -73,6 +73,11 @@ func NewListView() *ListView {
 	}
 }
 
+// Model returns the current data model.
+func (lv *ListView) Model() ListModel {
+	return lv.model
+}
+
 // SetModel sets the data model, disconnecting the previous one. The list
 // reloads immediately.
 func (lv *ListView) SetModel(m ListModel) {
@@ -88,6 +93,11 @@ func (lv *ListView) SetModel(m ListModel) {
 		lv.modelHandle = m.ConnectItems(lv.reload)
 	}
 	lv.reload()
+}
+
+// Delegate returns the current item renderer.
+func (lv *ListView) Delegate() ListItemDelegate {
+	return lv.delegate
 }
 
 // SetDelegate sets the item renderer. The list reloads immediately.
