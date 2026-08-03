@@ -8,17 +8,6 @@ import (
 	"github.com/golang-gui/goui/layout"
 )
 
-// ListModel is the data layer of a list view: it owns the items and knows
-// nothing about widgets.
-type ListModel interface {
-	// ItemsCount returns the total number of items.
-	ItemsCount() int
-	// ItemAt returns the data of the item at index.
-	ItemAt(index int) any
-	// ConnectItems subscribes to any model change.
-	ConnectItems(f func()) signal.Handle
-}
-
 // ListItemDelegate renders model items as widgets.
 type ListItemDelegate interface {
 	// Setup creates a fresh empty item widget. It is called once per pooled
