@@ -45,6 +45,15 @@ func TestViewSizeModifiersApplyToWidget(t *testing.T) {
 	}
 }
 
+func TestBoxCrossAlignAppliesToContainer(t *testing.T) {
+	root := newRoot()
+	box := root.update(VBox().CrossAlign(layout.CrossStretch)).(*gui.LinearBox)
+
+	if box.CrossAlign() != layout.CrossStretch {
+		t.Fatalf("view CrossAlign did not apply to the mounted widget: %v", box.CrossAlign())
+	}
+}
+
 func TestViewPaddingApplies(t *testing.T) {
 	root := newRoot()
 	w := root.update(VBox().Padding(16))
