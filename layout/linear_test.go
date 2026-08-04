@@ -160,6 +160,30 @@ func TestLinearLayoutCrossAlign(t *testing.T) {
 	}
 }
 
+func TestLinearLayoutCrossStretchUsesCrossAxisSize(t *testing.T) {
+	layout := &LinearLayout{Direction: DirectionHorizontal, CrossAlign: CrossStretch}
+	child := &testChild{
+		size:   geometry.Size{},
+		weight: 1,
+	}
+	layout.Arrange([]Child{child}, geometry.Rect(0, 0, 80, 40))
+
+	if child.rect != geometry.Rect(0, 0, 80, 40) {
+		t.Fatalf("child CrossStretch should fill the cross axis, got %+v", child.rect)
+	}
+}
+
+func TestLinearLayoutCrossStretchUsesFiniteMeasureCrossSize(t *testing.T) {
+	layout := &LinearLayout{Direction: DirectionHorizontal, CrossAlign: CrossStretch}
+	child := &testChild{
+		size: geometry.Size{Width: 10},
+	}
+
+	if got := layout.Measure([]Child{child}, Loose(geometry.Size{Width: 80, Height: 40})); got != (geometry.Size{Width: 10, Height: 40}) {
+		t.Fatalf("child CrossStretch should contribute the finite cross size, got %v", got)
+	}
+}
+
 func TestLinearLayoutMainWeight(t *testing.T) {
 	// Two 10-wide children in a 100-wide row: 80 free split 1:3 by weight.
 	layout := &LinearLayout{Direction: DirectionHorizontal}
@@ -172,6 +196,21 @@ func TestLinearLayoutMainWeight(t *testing.T) {
 	}
 	if second.rect != geometry.Rect(30, 0, 70, 20) { // 10 + 80*3/4
 		t.Fatalf("unexpected second rect: %+v", second.rect)
+	}
+}
+
+func TestLinearLayoutWeightedChildrenUseUnboundedMainAxisBasis(t *testing.T) {
+	layout := &LinearLayout{Direction: DirectionVertical}
+	first := &viewportChild{weight: 1}
+	second := &viewportChild{weight: 1}
+
+	layout.Arrange([]Child{first, second}, geometry.Rect(0, 0, 100, 100))
+
+	if first.rect != geometry.Rect(0, 0, 0, 50) {
+		t.Fatalf("first viewport should receive half the main axis, got %+v", first.rect)
+	}
+	if second.rect != geometry.Rect(0, 50, 0, 50) {
+		t.Fatalf("second viewport should receive half the main axis, got %+v", second.rect)
 	}
 }
 
@@ -192,5 +231,25 @@ func (c *testChild) Arrange(rect geometry.Rectangle) {
 }
 
 func (c *testChild) MainWeight() float32 {
+	return c.weight
+}
+
+type viewportChild struct {
+	weight float32
+	rect   geometry.Rectangle
+}
+
+func (c *viewportChild) Measure(cs Constraint) geometry.Size {
+	if cs.Max.Height >= Inf {
+		return geometry.Size{}
+	}
+	return geometry.Size{Height: cs.Max.Height}
+}
+
+func (c *viewportChild) Arrange(rect geometry.Rectangle) {
+	c.rect = rect
+}
+
+func (c *viewportChild) MainWeight() float32 {
 	return c.weight
 }

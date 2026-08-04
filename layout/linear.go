@@ -17,14 +17,24 @@ func NewLinearLayout(direction Direction) *LinearLayout {
 }
 
 func (l *LinearLayout) Measure(children []Child, c Constraint) geometry.Size {
-	inner := Loose(c.Max.Inset(l.Padding))
+	innerMax := c.Max.Inset(l.Padding)
 	var size geometry.Size
 	count := 0
 	for _, child := range children {
 		if child == nil {
 			continue
 		}
-		childSize := child.Measure(inner)
+		childSize := child.Measure(l.childConstraint(
+			innerMax,
+			child.MainWeight() > 0,
+			l.crossSize(c.Max) < Inf,
+		))
+		if l.CrossAlign == CrossStretch && l.crossSize(c.Max) < Inf {
+			// Keep the measured contribution consistent with the container's
+			// finite cross-axis stretch policy, even for simple custom children
+			// that do not use the tight constraint themselves.
+			l.setCrossSize(&childSize, l.crossSize(innerMax))
+		}
 		if count > 0 {
 			l.addSpacing(&size)
 		}
@@ -57,7 +67,14 @@ func (l *LinearLayout) Arrange(children []Child, rect geometry.Rectangle) {
 	intrinsic := make([]geometry.Size, len(items))
 	var usedMain, totalWeight float32
 	for i, child := range items {
-		intrinsic[i] = child.Measure(Loose(l.makeSize(availMain, availCross)))
+		intrinsic[i] = child.Measure(l.childConstraint(
+			l.makeSize(availMain, availCross),
+			child.MainWeight() > 0,
+			availCross < Inf,
+		))
+		if l.CrossAlign == CrossStretch && availCross < Inf {
+			l.setCrossSize(&intrinsic[i], availCross)
+		}
 		usedMain += l.mainSize(intrinsic[i])
 		if w := child.MainWeight(); w > 0 {
 			totalWeight += w
@@ -105,9 +122,8 @@ func (l *LinearLayout) mainDistribution(freeMain float32, n int) (start, gap flo
 	}
 }
 
-// crossPlacement returns a child's cross-axis length and offset for the
-// container's CrossAlign. Stretch fills the extent; the rest keep the child's
-// hugged cross size and only move it.
+// crossPlacement returns a child's cross-axis length and offset according to
+// the container's CrossAlign policy.
 func (l *LinearLayout) crossPlacement(childCross, availCross float32) (crossLen, crossPos float32) {
 	switch l.CrossAlign {
 	case CrossStretch:
@@ -119,6 +135,38 @@ func (l *LinearLayout) crossPlacement(childCross, availCross float32) (crossLen,
 	default: // CrossStart
 		return childCross, 0
 	}
+}
+
+func (l *LinearLayout) setCrossSize(size *geometry.Size, cross float32) {
+	if l.Direction == DirectionVertical {
+		size.Width = cross
+		return
+	}
+	size.Height = cross
+}
+
+func (l *LinearLayout) setMainSize(size *geometry.Size, main float32) {
+	if l.Direction == DirectionVertical {
+		size.Height = main
+		return
+	}
+	size.Width = main
+}
+
+// childConstraint gives weighted children an unbounded main-axis basis. A
+// viewport such as ScrollView can then report no intrinsic scroll height while
+// still reporting its intrinsic width or finite cross-axis viewport.
+func (l *LinearLayout) childConstraint(max geometry.Size, weighted, crossBounded bool) Constraint {
+	c := Loose(max)
+	if weighted {
+		l.setMainSize(&c.Max, Inf)
+	}
+	if l.CrossAlign == CrossStretch && crossBounded {
+		// Stretch is a tight constraint on the container's cross axis. The
+		// child can measure content such as wrapped text at its final width.
+		l.setCrossSize(&c.Min, l.crossSize(max))
+	}
+	return c
 }
 
 func (l *LinearLayout) addSpacing(size *geometry.Size) {
