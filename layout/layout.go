@@ -74,8 +74,8 @@ const (
 	MainSpaceBetween                  // first at start, last at end, gaps split evenly
 )
 
-// CrossAlign sizes/positions each child on the cross axis. Container-level
-// default; the hug-vs-fill knob (relative axis, unlike GTK's absolute h/v).
+// CrossAlign sizes and positions children on the cross axis. It is a
+// container-level policy relative to the layout direction.
 type CrossAlign int
 
 const (
