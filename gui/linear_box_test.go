@@ -85,6 +85,31 @@ func TestLinearBoxCrossStretchFillsChildren(t *testing.T) {
 	}
 }
 
+func TestLinearBoxCrossAlignIsContainerPolicy(t *testing.T) {
+	parent := NewLinearBox(layout.DirectionHorizontal)
+	parent.SetCrossAlign(layout.CrossStretch)
+	childBox := NewLinearBox(layout.DirectionVertical)
+	childBox.SetMinWidth(20)
+	child := newSizedWidget(geometry.Size{Width: 4, Height: 12})
+	childBox.AddChild(child)
+	parent.AddChild(childBox)
+
+	parent.Arrange(geometry.Rect(0, 0, 100, 40))
+
+	if got := childBox.Rect(); got != geometry.Rect(0, 0, 20, 40) {
+		t.Fatalf("child box CrossStretch should affect its parent placement, got %+v", got)
+	}
+	if got := child.Rect(); got != geometry.Rect(0, 0, 4, 12) {
+		t.Fatalf("child box default CrossStart should hug its child, got %+v", got)
+	}
+
+	childBox.SetCrossAlign(layout.CrossStretch)
+	childBox.Arrange(geometry.Rect(0, 0, 20, 40))
+	if got := child.Rect(); got != geometry.Rect(0, 0, 20, 12) {
+		t.Fatalf("child box CrossStretch should arrange its own child, got %+v", got)
+	}
+}
+
 func TestLinearBoxMainWeightSharesSpace(t *testing.T) {
 	box := NewLinearBox(layout.DirectionHorizontal)
 	first := newSizedWidget(geometry.Size{Width: 10, Height: 20})
@@ -105,17 +130,16 @@ func TestLinearBoxMainWeightSharesSpace(t *testing.T) {
 
 func TestLinearBoxWeightedChildrenSplitFreeSpace(t *testing.T) {
 	box := NewLinearBox(layout.DirectionHorizontal)
+	box.SetCrossAlign(layout.CrossStretch)
 	first := newSizedWidget(geometry.Size{Width: 0, Height: 20})
 	second := newSizedWidget(geometry.Size{Width: 0, Height: 20})
 	first.SetMainWeight(1)
 	second.SetMainWeight(1)
-	box.SetCrossAlign(layout.CrossStretch)
 	box.AddChild(first)
 	box.AddChild(second)
 
 	box.Arrange(geometry.Rect(0, 0, 100, 40))
-	// Explicit CrossStretch, rather than MainWeight, fills the cross axis.
-	// This keeps main-axis weighting and cross-axis alignment independent.
+	// CrossStretch is the container policy; MainWeight distributes the main axis.
 	if first.Rect() != geometry.Rect(0, 0, 50, 40) {
 		t.Fatalf("first elastic child should take half: %+v", first.Rect())
 	}

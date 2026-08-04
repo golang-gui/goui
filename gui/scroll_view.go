@@ -42,7 +42,7 @@ const scrollbarMinThumb = 20
 
 func NewScrollView() *ScrollView {
 	sv := new(ScrollView)
-	sv.SetMainWeight(1) // elastic container: no intrinsic size, fills leftover space in a linear parent
+	sv.SetMainWeight(1) // vertical viewport: flexes in a linear parent
 	sv.wheel = NewWheelEventController()
 	sv.wheel.ConnectScroll(func(_ EventContext, e events.WheelEvent) {
 		if e.Mode == events.WheelDeltaLine {
@@ -133,14 +133,14 @@ func (sv *ScrollView) Measure(c layout.Constraint) geometry.Size {
 		return geometry.Size{}
 	}
 	if sc, ok := sv.content.(Scrollable); ok {
-		// Virtualized content has no intrinsic size: report c.Min ("the
-		// parent decides") and rely on the default MainWeight(1) to fill
-		// leftover space in a linear parent. Returning c.Max here would
-		// claim the whole available main axis, overflow the linear sum and
-		// push siblings out of the container (e.g. HBox with two lists).
 		size := sc.ContentSize()
 		sv.contentWidth, sv.contentHeight = size.Width, size.Height
-		return sv.constrain(c, c.Min)
+		// A bounded height is the viewport height, not the content's intrinsic
+		// scroll extent. An unbounded height has no intrinsic viewport size.
+		return sv.constrain(c, geometry.Size{
+			Width:  size.Width,
+			Height: sv.viewportHeight(c),
+		})
 	}
 	contentC := layout.Constraint{
 		Min: geometry.Size{},
@@ -148,7 +148,17 @@ func (sv *ScrollView) Measure(c layout.Constraint) geometry.Size {
 	}
 	contentSize := sv.content.Measure(contentC)
 	sv.contentWidth, sv.contentHeight = contentSize.Width, contentSize.Height
-	return sv.constrain(c, contentSize)
+	return sv.constrain(c, geometry.Size{
+		Width:  contentSize.Width,
+		Height: sv.viewportHeight(c),
+	})
+}
+
+func (sv *ScrollView) viewportHeight(c layout.Constraint) float32 {
+	if c.Max.Height >= layout.Inf {
+		return 0
+	}
+	return c.Max.Height
 }
 
 func (sv *ScrollView) Arrange(rect geometry.Rectangle) {

@@ -263,13 +263,17 @@ func TestScrollViewElasticMeasure(t *testing.T) {
 	sv := NewScrollView()
 	sv.SetChild(&mockScrollContent{height: 500})
 
-	// Scrollable mode has no intrinsic size: Loose constraint -> zero size,
-	// the parent (a linear box) decides through MainWeight.
-	if got := sv.Measure(layout.Constraint{Max: geometry.Size{Width: 100, Height: 100}}); got != (geometry.Size{}) {
-		t.Fatalf("elastic measure should report no intrinsic size, got %v", got)
+	// A finite parent height is the viewport height; content height remains
+	// cached separately for scrolling.
+	if got := sv.Measure(layout.Constraint{Max: geometry.Size{Width: 100, Height: 100}}); got != (geometry.Size{Width: 100, Height: 100}) {
+		t.Fatalf("bounded measure should use the viewport height, got %v", got)
 	}
 	if sv.MainWeight() != 1 {
 		t.Fatalf("ScrollView should default to MainWeight(1), got %v", sv.MainWeight())
+	}
+	// An unbounded scroll axis has no intrinsic viewport height.
+	if got := sv.Measure(layout.Constraint{Max: geometry.Size{Width: 100, Height: layout.Inf}}); got != (geometry.Size{Width: 100}) {
+		t.Fatalf("unbounded measure should have no intrinsic scroll height, got %v", got)
 	}
 	// Tight constraint (window root): c.Min == c.Max -> fills.
 	if got := sv.Measure(layout.Tight(geometry.Size{Width: 800, Height: 600})); got != (geometry.Size{Width: 800, Height: 600}) {
@@ -277,13 +281,78 @@ func TestScrollViewElasticMeasure(t *testing.T) {
 	}
 }
 
+func TestScrollViewMeasureCombinesChildSizeWithParentConstraint(t *testing.T) {
+	sv := NewScrollView()
+	sv.SetChild(&mockScrollContent{height: 500})
+
+	got := sv.Measure(layout.Constraint{
+		Min: geometry.Size{Width: 120, Height: 20},
+		Max: geometry.Size{Width: 200, Height: 100},
+	})
+	if got != (geometry.Size{Width: 120, Height: 100}) {
+		t.Fatalf("Measure should keep child width and apply both parent bounds, got %v", got)
+	}
+}
+
+func TestScrollViewFillsCrossAxisByDefault(t *testing.T) {
+	box := NewLinearBox(layout.DirectionHorizontal)
+	sv := NewScrollView()
+	sv.SetChild(&mockScrollContent{height: 500})
+	box.AddChild(sv)
+
+	box.Arrange(geometry.Rect(0, 0, 800, 600))
+	if got := sv.Rect(); got != geometry.Rect(0, 0, 800, 600) {
+		t.Fatalf("single ScrollView should fill the viewport by default, got %v", got)
+	}
+}
+
+func TestScrollViewFillsCrossAxisInVerticalLinearBox(t *testing.T) {
+	box := NewLinearBox(layout.DirectionVertical)
+	box.SetCrossAlign(layout.CrossStretch)
+	sv := NewScrollView()
+	sv.SetChild(&mockScrollContent{height: 500})
+	box.AddChild(sv)
+
+	box.Arrange(geometry.Rect(0, 0, 800, 600))
+	if got := sv.Rect(); got != geometry.Rect(0, 0, 800, 600) {
+		t.Fatalf("ScrollView should fill the cross axis in a VBox, got %v", got)
+	}
+}
+
+func TestScrollViewCanHugContentWidthInVerticalLinearBox(t *testing.T) {
+	box := NewLinearBox(layout.DirectionVertical)
+	sv := NewScrollView()
+	sv.SetChild(&mockScrollContent{height: 500})
+	box.AddChild(sv)
+
+	box.Arrange(geometry.Rect(0, 0, 800, 600))
+	if got := sv.Rect(); got != geometry.Rect(0, 0, 100, 600) {
+		t.Fatalf("CrossStart should preserve the content width in a VBox, got %v", got)
+	}
+}
+
+func TestScrollViewViewportModeUsesParentHeight(t *testing.T) {
+	box := NewLinearBox(layout.DirectionVertical)
+	sv := NewScrollView()
+	content := &mockWidget{size: geometry.Size{Width: 100, Height: 1000}}
+	sv.SetChild(content)
+	box.AddChild(sv)
+
+	box.Arrange(geometry.Rect(0, 0, 800, 600))
+	if got := sv.Rect(); got != geometry.Rect(0, 0, 100, 600) {
+		t.Fatalf("ScrollView should preserve content width and use the parent's height, got %v", got)
+	}
+	if got := content.Rect(); got != geometry.Rect(0, 0, 100, 1000) {
+		t.Fatalf("content should retain its full scrollable height, got %v", got)
+	}
+}
+
 func TestScrollViewSideBySideInLinearBox(t *testing.T) {
 	// Regression: two ScrollViews in an HBox previously each reported c.Max
 	// (the whole available width), overflowing the linear sum and pushing the
-	// second list out of the container. ScrollView's MainWeight(1) splits
-	// the main axis; the explicit CrossStretch below fills the cross axis.
+	// second list out of the container. ScrollView's MainWeight(1) splits the
+	// main axis and its viewport capability fills the cross axis by default.
 	box := NewLinearBox(layout.DirectionHorizontal)
-	box.SetCrossAlign(layout.CrossStretch)
 	left := NewScrollView()
 	left.SetChild(&mockScrollContent{height: 500})
 	right := NewScrollView()
@@ -297,5 +366,23 @@ func TestScrollViewSideBySideInLinearBox(t *testing.T) {
 	}
 	if right.Rect() != geometry.Rect(400, 0, 400, 600) {
 		t.Fatalf("right ScrollView should take half, got %v", right.Rect())
+	}
+}
+
+func TestScrollViewStackedInVerticalLinearBox(t *testing.T) {
+	box := NewLinearBox(layout.DirectionVertical)
+	top := NewScrollView()
+	top.SetChild(&mockScrollContent{height: 500})
+	bottom := NewScrollView()
+	bottom.SetChild(&mockScrollContent{height: 500})
+	box.AddChild(top)
+	box.AddChild(bottom)
+
+	box.Arrange(geometry.Rect(0, 0, 800, 600))
+	if top.Rect() != geometry.Rect(0, 0, 100, 300) {
+		t.Fatalf("top ScrollView should keep its content width and take half the height, got %v", top.Rect())
+	}
+	if bottom.Rect() != geometry.Rect(0, 300, 100, 300) {
+		t.Fatalf("bottom ScrollView should keep its content width and take half the height, got %v", bottom.Rect())
 	}
 }
