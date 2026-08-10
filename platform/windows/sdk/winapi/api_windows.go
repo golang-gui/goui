@@ -39,6 +39,8 @@ var (
 	procTrackMouseEvent      = user32Dll.NewProc("TrackMouseEvent")
 	procScreenToClient       = user32Dll.NewProc("ScreenToClient")
 	procClientToScreen       = user32Dll.NewProc("ClientToScreen")
+	procSetCapture           = user32Dll.NewProc("SetCapture")
+	procReleaseCapture       = user32Dll.NewProc("ReleaseCapture")
 
 	// DPI
 	procGetDpiForWindow               = user32Dll.NewProc("GetDpiForWindow")
@@ -275,6 +277,21 @@ func ScreenToClient(wnd HWND, point *POINT) BOOL {
 
 func ClientToScreen(wnd HWND, point *POINT) BOOL {
 	ret, _, _ := syscall.SyscallN(procClientToScreen.Addr(), uintptr(wnd), uintptr(unsafe.Pointer(point)))
+	return BOOL(ret)
+}
+
+// SetCapture causes the specified window to capture all subsequent mouse input,
+// ensuring WM_MOUSEMOVE and WM_*BUTTONUP messages continue to arrive even when
+// the pointer leaves the window's client area. Call ReleaseCapture to end.
+func SetCapture(hwnd HWND) HWND {
+	ret, _, _ := syscall.SyscallN(procSetCapture.Addr(), uintptr(hwnd))
+	return HWND(ret)
+}
+
+// ReleaseCapture releases the mouse capture established by SetCapture and
+// restores normal mouse input routing.
+func ReleaseCapture() BOOL {
+	ret, _, _ := syscall.SyscallN(procReleaseCapture.Addr())
 	return BOOL(ret)
 }
 
