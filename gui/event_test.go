@@ -579,3 +579,177 @@ func assertStrings(t *testing.T, got, want []string) {
 		}
 	}
 }
+
+func TestEventDispatcherCaptureRoutesMoveToCapturedWidget(t *testing.T) {
+	root := newTestWidget()
+	left := newTestWidget()
+	right := newTestWidget()
+	root.SetID("root")
+	left.SetID("left")
+	right.SetID("right")
+	root.Arrange(geometry.Rect(0, 0, 100, 100))
+	left.Arrange(geometry.Rect(0, 0, 40, 100))
+	right.Arrange(geometry.Rect(60, 0, 40, 100))
+	root.AddChild(left)
+	root.AddChild(right)
+
+	drag := NewDragEventController()
+	var updates []geometry.Point
+	drag.ConnectUpdate(func(p geometry.Point, _ events.Modifiers) {
+		updates = append(updates, p)
+	})
+	left.AddEventController(drag)
+
+	win := &window{root: root}
+
+	// Press on left widget → capture starts.
+	if err := win.DispatchEvent(events.PointerEvent{
+		EventType: events.PointerDown,
+		Button:    events.PointerButtonLeft,
+		Position:  geometry.Point{X: 20, Y: 50},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !drag.Dragging() {
+		t.Fatal("drag should be active after pointer down")
+	}
+
+	// Move over the right widget — should still go to left (captured).
+	if err := win.DispatchEvent(events.PointerEvent{
+		EventType: events.PointerMove,
+		Button:    events.PointerButtonLeft,
+		Position:  geometry.Point{X: 70, Y: 50},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(updates) != 1 {
+		t.Fatalf("expected 1 drag-update on captured widget, got %d", len(updates))
+	}
+}
+
+func TestEventDispatcherCaptureReleasesOnPointerUp(t *testing.T) {
+	root := newTestWidget()
+	left := newTestWidget()
+	right := newTestWidget()
+	root.Arrange(geometry.Rect(0, 0, 100, 100))
+	left.Arrange(geometry.Rect(0, 0, 40, 100))
+	right.Arrange(geometry.Rect(60, 0, 40, 100))
+	root.AddChild(left)
+	root.AddChild(right)
+
+	drag := NewDragEventController()
+	ends := 0
+	drag.ConnectEnd(func(geometry.Point, events.Modifiers) { ends++ })
+	left.AddEventController(drag)
+
+	win := &window{root: root}
+
+	// Press on left → capture.
+	_ = win.DispatchEvent(events.PointerEvent{
+		EventType: events.PointerDown,
+		Button:    events.PointerButtonLeft,
+		Position:  geometry.Point{X: 20, Y: 50},
+	})
+
+	// Move over right (captured).
+	_ = win.DispatchEvent(events.PointerEvent{
+		EventType: events.PointerMove,
+		Button:    events.PointerButtonLeft,
+		Position:  geometry.Point{X: 70, Y: 50},
+	})
+
+	// Release over right.
+	_ = win.DispatchEvent(events.PointerEvent{
+		EventType: events.PointerUp,
+		Button:    events.PointerButtonLeft,
+		Position:  geometry.Point{X: 70, Y: 50},
+	})
+	if ends != 1 {
+		t.Fatalf("expected 1 drag-end, got %d", ends)
+	}
+
+	// After release, subsequent move should go through normal hit test (to right).
+	var calls []string
+	right.AddEventController(newRecordingController("right", PhaseTarget, &calls, nil))
+	_ = win.DispatchEvent(events.PointerEvent{
+		EventType: events.PointerMove,
+		Position:  geometry.Point{X: 70, Y: 50},
+	})
+
+	assertStrings(t, calls, []string{"right phase=1 type=5"})
+}
+
+func TestEventDispatcherCaptureClearsOnWidgetHide(t *testing.T) {
+	root := newTestWidget()
+	left := newTestWidget()
+	right := newTestWidget()
+	root.Arrange(geometry.Rect(0, 0, 100, 100))
+	left.Arrange(geometry.Rect(0, 0, 40, 100))
+	right.Arrange(geometry.Rect(60, 0, 40, 100))
+	root.AddChild(left)
+	root.AddChild(right)
+
+	drag := NewDragEventController()
+	left.AddEventController(drag)
+
+	win := &window{root: root}
+
+	// Press on left → capture.
+	_ = win.DispatchEvent(events.PointerEvent{
+		EventType: events.PointerDown,
+		Button:    events.PointerButtonLeft,
+		Position:  geometry.Point{X: 20, Y: 50},
+	})
+	if win.dispatcher.captureTarget != left {
+		t.Fatal("captureTarget should be set to left")
+	}
+
+	// Hide the captured widget → capture should clear.
+	left.SetVisible(false)
+	_ = win.DispatchEvent(events.PointerEvent{
+		EventType: events.PointerMove,
+		Button:    events.PointerButtonLeft,
+		Position:  geometry.Point{X: 70, Y: 50},
+	})
+	if win.dispatcher.captureTarget != nil {
+		t.Fatal("captureTarget should be cleared when widget is hidden")
+	}
+}
+
+func TestEventDispatcherHoverUpdatesDuringCapture(t *testing.T) {
+	root := newTestWidget()
+	left := newTestWidget()
+	right := newTestWidget()
+	root.Arrange(geometry.Rect(0, 0, 100, 100))
+	left.Arrange(geometry.Rect(0, 0, 40, 100))
+	right.Arrange(geometry.Rect(60, 0, 40, 100))
+	root.AddChild(left)
+	root.AddChild(right)
+
+	drag := NewDragEventController()
+	left.AddEventController(drag)
+
+	rightMotion := NewMotionEventController()
+	right.AddEventController(rightMotion)
+
+	win := &window{root: root}
+
+	// Press on left → capture.
+	_ = win.DispatchEvent(events.PointerEvent{
+		EventType: events.PointerDown,
+		Button:    events.PointerButtonLeft,
+		Position:  geometry.Point{X: 20, Y: 50},
+	})
+
+	// Move over right — drag-update goes to left (captured), but hover should
+	// still update to right.
+	_ = win.DispatchEvent(events.PointerEvent{
+		EventType: events.PointerMove,
+		Button:    events.PointerButtonLeft,
+		Position:  geometry.Point{X: 70, Y: 50},
+	})
+
+	if !rightMotion.Hover() {
+		t.Fatal("right widget should be hovered even during left's capture")
+	}
+}

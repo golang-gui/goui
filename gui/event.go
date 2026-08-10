@@ -29,6 +29,22 @@ type EventContext interface {
 	PropagationStopped() bool
 }
 
+// PointerCaptureController is an EventController that captures pointer events
+// during a gesture (e.g. DragEventController). The dispatcher queries this
+// after dispatching a pointer event: if the controller reports it is
+// capturing, the dispatcher routes subsequent PointerMove and PointerUp to the
+// controller's widget, bypassing hit testing. When the controller stops
+// capturing (e.g. on PointerUp or Reset), the dispatcher detects this and
+// resumes normal hit testing.
+//
+// This is an optional interface — controllers that never capture the pointer
+// simply do not implement it. The dispatcher uses type assertion, so existing
+// controllers are unaffected.
+type PointerCaptureController interface {
+	EventController
+	CapturingPointer() bool
+}
+
 type CrossingType int
 
 const (
@@ -133,8 +149,9 @@ func (c *crossingContext) Position() (geometry.Point, bool) {
 }
 
 type EventDispatcher struct {
-	hoverPath []Widget
-	focusPath []Widget
+	hoverPath     []Widget
+	focusPath     []Widget
+	captureTarget Widget // during a drag, PointerMove/Up route here, bypassing hit test
 }
 
 // EventTarget is a widget-tree host the dispatcher propagates events into — a
@@ -191,20 +208,63 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 
 	d.dispatchPhase(ctx, path, PhaseCapture, event)
 	if ctx.PropagationStopped() {
+		d.updateCapture(path, event)
 		return nil
 	}
 
 	d.dispatchPhase(ctx, path[len(path)-1:], PhaseTarget, event)
 	if ctx.PropagationStopped() {
+		d.updateCapture(path, event)
 		return nil
 	}
 
 	slices.Reverse(path)
 	d.dispatchPhase(ctx, path, PhaseBubble, event)
+	d.updateCapture(path, event)
 	return nil
 }
 
+// updateCapture installs, retains, or releases pointer capture based on the
+// state of PointerCaptureController controllers after dispatch. For pointer events, it
+// checks every widget in the propagation path: if any controller reports it is
+// capturing, the dispatcher routes subsequent PointerMove/Up to that widget.
+// When no controller is capturing (e.g. after PointerUp or Reset), capture is
+// released. For non-pointer events, it revalidates the existing capture so
+// that a key handler calling Reset on a drag controller also releases capture.
+func (d *EventDispatcher) updateCapture(path []Widget, event events.Event) {
+	if _, ok := event.(events.PointerEvent); ok {
+		for _, widget := range path {
+			for _, controller := range widget.EventControllers() {
+				if capturer, ok := controller.(PointerCaptureController); ok && capturer.CapturingPointer() {
+					d.captureTarget = widget
+					return
+				}
+			}
+		}
+		d.captureTarget = nil
+		return
+	}
+	if d.captureTarget != nil {
+		for _, controller := range d.captureTarget.EventControllers() {
+			if capturer, ok := controller.(PointerCaptureController); ok && capturer.CapturingPointer() {
+				return
+			}
+		}
+		d.captureTarget = nil
+	}
+}
+
 func (d *EventDispatcher) target(host EventTarget, root Widget, event events.Event) Widget {
+	if d.captureTarget != nil {
+		if d.captureTarget.base().destroyed || !visibleInTree(d.captureTarget) {
+			d.captureTarget = nil
+		} else if pe, ok := event.(events.PointerEvent); ok {
+			if pe.EventType == events.PointerMove || pe.EventType == events.PointerUp {
+				return d.captureTarget
+			}
+		}
+	}
+
 	switch event := event.(type) {
 	case events.PointerEvent:
 		target := hitTest(root, event.Position)
