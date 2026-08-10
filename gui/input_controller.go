@@ -279,3 +279,117 @@ func (c *WheelEventController) HandleEvent(ctx EventContext) {
 }
 
 func (c *WheelEventController) HandleCrossing(ctx CrossingContext) {}
+
+// DragEventController tracks a pointer drag gesture: button down → moves →
+// button up. On PointerDown it calls CapturePointer() so subsequent moves
+// arrive even outside the widget bounds. The begin signal receives the start
+// point; update and end signals receive the current point — all in
+// widget-local coordinates. The controller ignores crossing events; drag
+// state is managed entirely by PointerDown/Move/Up.
+type DragEventController struct {
+	phase    PropagationPhase
+	button   events.PointerButton
+	dragging bool
+	begin    signal.Signal2[geometry.Point, events.Modifiers]
+	update   signal.Signal2[geometry.Point, events.Modifiers]
+	end      signal.Signal2[geometry.Point, events.Modifiers]
+}
+
+func NewDragEventController() *DragEventController {
+	return &DragEventController{
+		phase:  PhaseBubble,
+		button: events.PointerButtonLeft,
+	}
+}
+
+func (c *DragEventController) Phase() PropagationPhase {
+	return c.phase
+}
+
+func (c *DragEventController) SetPhase(phase PropagationPhase) {
+	c.phase = phase
+}
+
+func (c *DragEventController) Button() events.PointerButton {
+	return c.button
+}
+
+func (c *DragEventController) SetButton(button events.PointerButton) {
+	if c.button == button {
+		return
+	}
+	c.Reset()
+	c.button = button
+}
+
+func (c *DragEventController) Dragging() bool {
+	return c.dragging
+}
+
+func (c *DragEventController) Reset() {
+	c.dragging = false
+}
+
+// CapturingPointer satisfies PointerCapturer. The DragEventController captures
+// the pointer for the duration of a drag: from PointerDown (dragging=true)
+// until PointerUp or Reset (dragging=false). The dispatcher queries this after
+// each dispatch to decide whether to route subsequent pointer events to the
+// controller's widget.
+func (c *DragEventController) CapturingPointer() bool {
+	return c.dragging
+}
+
+func (c *DragEventController) ConnectBegin(fn func(geometry.Point, events.Modifiers)) signal.Handle {
+	return c.begin.Connect(fn)
+}
+
+func (c *DragEventController) ConnectUpdate(fn func(geometry.Point, events.Modifiers)) signal.Handle {
+	return c.update.Connect(fn)
+}
+
+func (c *DragEventController) ConnectEnd(fn func(geometry.Point, events.Modifiers)) signal.Handle {
+	return c.end.Connect(fn)
+}
+
+func (c *DragEventController) HandleEvent(ctx EventContext) {
+	pointerEvent, ok := ctx.Event().(events.PointerEvent)
+	if !ok {
+		return
+	}
+
+	switch pointerEvent.EventType {
+	case events.PointerDown:
+		if pointerEvent.Button != c.button {
+			return
+		}
+		position, ok := ctx.Position()
+		if !ok {
+			return
+		}
+		c.dragging = true
+		c.begin.Emit(position, pointerEvent.Modifiers)
+
+	case events.PointerMove:
+		if !c.dragging {
+			return
+		}
+		position, ok := ctx.Position()
+		if !ok {
+			return
+		}
+		c.update.Emit(position, pointerEvent.Modifiers)
+
+	case events.PointerUp:
+		if pointerEvent.Button != c.button || !c.dragging {
+			return
+		}
+		position, ok := ctx.Position()
+		if !ok {
+			return
+		}
+		c.dragging = false
+		c.end.Emit(position, pointerEvent.Modifiers)
+	}
+}
+
+func (c *DragEventController) HandleCrossing(ctx CrossingContext) {}

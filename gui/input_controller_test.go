@@ -283,3 +283,198 @@ func TestKeyEventControllerIgnoresNonKeyEvents(t *testing.T) {
 		t.Fatalf("unexpected key calls: %d", calls)
 	}
 }
+
+func TestDragEventControllerLifecycle(t *testing.T) {
+	controller := NewDragEventController()
+	var begins, updates, ends []geometry.Point
+	var beginMods, updateMods, endMods []events.Modifiers
+	controller.ConnectBegin(func(p geometry.Point, m events.Modifiers) {
+		begins = append(begins, p)
+		beginMods = append(beginMods, m)
+	})
+	controller.ConnectUpdate(func(p geometry.Point, m events.Modifiers) {
+		updates = append(updates, p)
+		updateMods = append(updateMods, m)
+	})
+	controller.ConnectEnd(func(p geometry.Point, m events.Modifiers) {
+		ends = append(ends, p)
+		endMods = append(endMods, m)
+	})
+
+	widget := newTestWidget()
+	widget.Arrange(geometry.Rect(0, 0, 100, 100))
+
+	// PointerDown starts the drag.
+	down := &eventContext{
+		current: widget,
+		event: events.PointerEvent{
+			EventType: events.PointerDown,
+			Button:    events.PointerButtonLeft,
+			Position:  geometry.Point{X: 20, Y: 30},
+			Modifiers: events.ModifierShift,
+		},
+	}
+	controller.HandleEvent(down)
+
+	if !controller.Dragging() {
+		t.Fatal("drag should be active after pointer down")
+	}
+	if !controller.CapturingPointer() {
+		t.Fatal("controller should report capturing pointer after pointer down")
+	}
+	if len(begins) != 1 {
+		t.Fatalf("expected 1 begin, got %d", len(begins))
+	}
+	if begins[0] != (geometry.Point{X: 20, Y: 30}) {
+		t.Fatalf("unexpected begin point: %+v", begins[0])
+	}
+	if beginMods[0] != events.ModifierShift {
+		t.Fatalf("unexpected begin modifiers: %v", beginMods[0])
+	}
+
+	// PointerMove emits update.
+	move := &eventContext{
+		current: widget,
+		event: events.PointerEvent{
+			EventType: events.PointerMove,
+			Button:    events.PointerButtonLeft,
+			Position:  geometry.Point{X: 50, Y: 60},
+			Modifiers: events.ModifierControl,
+		},
+	}
+	controller.HandleEvent(move)
+
+	if len(updates) != 1 {
+		t.Fatalf("expected 1 update, got %d", len(updates))
+	}
+	if updates[0] != (geometry.Point{X: 50, Y: 60}) {
+		t.Fatalf("unexpected update point: %+v", updates[0])
+	}
+	if updateMods[0] != events.ModifierControl {
+		t.Fatalf("unexpected update modifiers: %v", updateMods[0])
+	}
+
+	// PointerUp ends the drag.
+	up := &eventContext{
+		current: widget,
+		event: events.PointerEvent{
+			EventType: events.PointerUp,
+			Button:    events.PointerButtonLeft,
+			Position:  geometry.Point{X: 80, Y: 90},
+			Modifiers: events.ModifierAlt,
+		},
+	}
+	controller.HandleEvent(up)
+
+	if controller.Dragging() {
+		t.Fatal("drag should be inactive after pointer up")
+	}
+	if len(ends) != 1 {
+		t.Fatalf("expected 1 end, got %d", len(ends))
+	}
+	if ends[0] != (geometry.Point{X: 80, Y: 90}) {
+		t.Fatalf("unexpected end point: %+v", ends[0])
+	}
+	if endMods[0] != events.ModifierAlt {
+		t.Fatalf("unexpected end modifiers: %v", endMods[0])
+	}
+}
+
+func TestDragEventControllerIgnoresOtherButtons(t *testing.T) {
+	controller := NewDragEventController()
+	begins := 0
+	controller.ConnectBegin(func(geometry.Point, events.Modifiers) {
+		begins++
+	})
+
+	controller.HandleEvent(&eventContext{
+		event: events.PointerEvent{
+			EventType: events.PointerDown,
+			Button:    events.PointerButtonRight,
+		},
+	})
+
+	if controller.Dragging() || begins != 0 {
+		t.Fatal("right button should not start a left-button drag")
+	}
+}
+
+func TestDragEventControllerIgnoresCrossing(t *testing.T) {
+	controller := NewDragEventController()
+
+	controller.HandleEvent(&eventContext{
+		event: events.PointerEvent{
+			EventType: events.PointerDown,
+			Button:    events.PointerButtonLeft,
+		},
+	})
+	if !controller.Dragging() {
+		t.Fatal("pointer down should start drag")
+	}
+
+	// CrossingLeave should not cancel the drag.
+	controller.HandleCrossing(&crossingContext{
+		crossingType: CrossingPointer,
+		mode:         CrossingContains,
+		direction:    CrossingLeave,
+	})
+
+	if !controller.Dragging() {
+		t.Fatal("crossing leave should not cancel drag")
+	}
+}
+
+func TestDragEventControllerReset(t *testing.T) {
+	controller := NewDragEventController()
+
+	controller.HandleEvent(&eventContext{
+		event: events.PointerEvent{
+			EventType: events.PointerDown,
+			Button:    events.PointerButtonLeft,
+		},
+	})
+	if !controller.Dragging() {
+		t.Fatal("pointer down should start drag")
+	}
+
+	controller.Reset()
+
+	if controller.Dragging() {
+		t.Fatal("reset should clear dragging state")
+	}
+}
+
+func TestDragEventControllerDefaultsToBubblePhase(t *testing.T) {
+	controller := NewDragEventController()
+	if controller.Phase() != PhaseBubble {
+		t.Fatalf("unexpected default phase: %v", controller.Phase())
+	}
+
+	controller.SetPhase(PhaseTarget)
+	if controller.Phase() != PhaseTarget {
+		t.Fatalf("unexpected phase: %v", controller.Phase())
+	}
+}
+
+func TestDragEventControllerSetButtonResets(t *testing.T) {
+	controller := NewDragEventController()
+
+	controller.HandleEvent(&eventContext{
+		event: events.PointerEvent{
+			EventType: events.PointerDown,
+			Button:    events.PointerButtonLeft,
+		},
+	})
+	if !controller.Dragging() {
+		t.Fatal("pointer down should start drag")
+	}
+
+	controller.SetButton(events.PointerButtonRight)
+
+	if controller.Dragging() {
+		t.Fatal("SetButton should reset dragging state")
+	}
+	if controller.Button() != events.PointerButtonRight {
+		t.Fatalf("unexpected button: %v", controller.Button())
+	}
+}
