@@ -351,7 +351,8 @@ func (w *window) routeToModalTarget(event events.Event) bool {
 		return true
 	case events.PointerEvent:
 		if e.EventType == events.PointerDown {
-			w.modalTarget.RequestDismiss() // the owner only ever sees clicks outside the target
+			w.modalTarget.RequestDismiss()   // the owner only ever sees clicks outside the target
+			w.dispatcher.captureTarget = nil // clear any stale capture from the window's own tree
 		}
 		return true // swallow the window's own pointer while a modal target is open
 	case events.FocusEvent:
