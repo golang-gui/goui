@@ -39,6 +39,14 @@ func (w *Window) handlePointerLeave() {
 }
 
 func (w *Window) handlePointerButton(eventType events.EventType, button events.PointerButton, wParam winapi.WPARAM, lParam winapi.LPARAM) {
+	if eventType == events.PointerDown {
+		winapi.SetCapture(w.hwnd)
+	} else if eventType == events.PointerUp {
+		if pointerButtons(wParam) == 0 {
+			winapi.ReleaseCapture()
+			w.trackingMouse = false
+		}
+	}
 	w.emitPointer(eventType, button, w.logicalPoint(clientPoint(lParam)), pointerButtons(wParam), pointerModifiers(wParam))
 }
 
