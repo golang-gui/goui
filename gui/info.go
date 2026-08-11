@@ -29,6 +29,8 @@ type WidgetInfo struct {
 	// Scroll state (omitempty: absent on non-scrolling widgets).
 	ScrollY      float32 `json:"scrollY,omitempty"`      // current scroll offset
 	MaxScrollY   float32 `json:"maxScrollY,omitempty"`   // scrollable range (contentH - viewportH, >= 0)
+	ScrollX      float32 `json:"scrollX,omitempty"`      // horizontal scroll offset
+	MaxScrollX   float32 `json:"maxScrollX,omitempty"`   // horizontal scrollable range (contentW - viewportW, >= 0)
 	ItemCount    int     `json:"itemCount,omitempty"`    // ListView: total items (virtualized)
 	VisibleStart int     `json:"visibleStart,omitempty"` // ListView: first visible index
 	VisibleEnd   int     `json:"visibleEnd,omitempty"`   // ListView: last visible index
@@ -46,6 +48,7 @@ const (
 	RoleImage      Role = "image"
 	RoleTextInput  Role = "textinput"
 	RoleScrollView Role = "scrollview" // scrollable container (WAI-ARIA: scrollbar host)
+	RoleScrollBar  Role = "scrollbar"  // scrollbar control (WAI-ARIA: scrollbar)
 	RoleList       Role = "list"       // virtualized list (WAI-ARIA: list)
 	RoleListItem   Role = "listitem"   // list row (WAI-ARIA: listitem)
 )

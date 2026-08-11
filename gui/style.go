@@ -15,6 +15,8 @@ const (
 	styleNameButton     = "button"
 	styleNameTextInput  = "text-input"
 	styleNameScrollView = "scroll-view"
+	stylePartTrough     = "trough"
+	stylePartThumb      = "thumb"
 )
 
 // DefaultStyleSheet is the bare fallback sheet used when the application has no
@@ -77,6 +79,20 @@ func DefaultStyleRules() []style.Rule {
 		style.Name(styleNameScrollView).
 			BackgroundColor(color.Transparent).
 			ForegroundColor(color.RGBA{R: 120, G: 120, B: 120, A: 255}),
+
+		// ScrollBar parts (resolved under the same "scroll-view" name; ScrollView
+		// and ScrollBar are one unit in the style system). fallbackChain lets
+		// these inherit the base scroll-view rule above.
+		style.Name(styleNameScrollView).Part(stylePartTrough).
+			BackgroundColor(color.RGBA{R: 0, G: 0, B: 0, A: 24}).
+			Radius(3),
+		style.Name(styleNameScrollView).Part(stylePartThumb).
+			BackgroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}).
+			Radius(3),
+		style.Name(styleNameScrollView).Part(stylePartThumb).State(style.Hovered).
+			BackgroundColor(color.RGBA{R: 110, G: 110, B: 110, A: 255}),
+		style.Name(styleNameScrollView).Part(stylePartThumb).State(style.Pressed).
+			BackgroundColor(color.RGBA{R: 90, G: 90, B: 90, A: 255}),
 	}
 }
 

@@ -39,19 +39,25 @@ type ListView struct {
 	items   map[int]Widget  // index -> attached widget (visible only)
 	pool    []Widget        // detached shells, ready to be re-bound (reuse pool)
 	heights map[int]float32 // index -> measured height (exact after Bind)
+	widths  map[int]float32 // index -> measured row width (natural, >= viewport)
 
 	estimate   float32 // estimated height of unmeasured items
 	seedHeight float32 // first measured height after Bind (estimate seed)
+
+	contentWidth float32 // horizontal scroll extent = max measured row width
 
 	modelHandle signal.Handle // model.ConnectItems handle
 	reloading   bool          // guards reentrant reload from model events
 
 	scrollY  float32       // last LayoutVisible offset
+	scrollX  float32       // last LayoutVisible horizontal offset
 	viewport geometry.Size // last LayoutVisible viewport
 
 	first             int     // first visible index (incremental locate cache)
 	firstY            float32 // cumulative height before first
 	lastContentHeight float32
+
+	lastViewportWidth float32 // cache for invalidating heights on resize
 }
 
 // NewListView returns an empty ListView.
@@ -108,20 +114,24 @@ func (lv *ListView) reload() {
 
 	lv.detachAll()
 	lv.heights = make(map[int]float32)
+	lv.widths = make(map[int]float32)
 	lv.pool = nil
 	lv.first, lv.firstY = 0, 0
 	lv.estimate = lv.seedHeight
+	lv.contentWidth = 0
 	lv.lastContentHeight = 0
 	lv.RequestLayout()
 }
 
-// ContentSize implements Scrollable: exact heights for measured items plus
-// an estimate for the rest. The total grows as items get measured, which
-// drives ScrollView to re-clamp and re-proportion the scrollbar.
+// ContentSize implements Scrollable. Height is the exact sum of measured items
+// plus an estimate for the rest (it grows as items are measured). Width is the
+// horizontal scroll extent: the widest measured row (its natural width, at
+// least the viewport width). It only reflects measured rows, so it can grow as
+// wider rows are revealed by scrolling; ScrollView re-lays out when it changes.
 func (lv *ListView) ContentSize() geometry.Size {
 	n := lv.ItemsCount()
 	if n == 0 {
-		return geometry.Size{Width: lv.Rect().Width}
+		return geometry.Size{}
 	}
 	total := float32(0)
 	for i := 0; i < n; i++ {
@@ -131,7 +141,7 @@ func (lv *ListView) ContentSize() geometry.Size {
 			total += lv.estimate
 		}
 	}
-	return geometry.Size{Width: lv.Rect().Width, Height: total}
+	return geometry.Size{Width: lv.contentWidth, Height: total}
 }
 
 // ItemsCount returns the number of items from the model.
@@ -149,6 +159,7 @@ func (lv *ListView) ItemsCount() int {
 func (lv *ListView) LayoutVisible(viewport geometry.Size, offset geometry.Point) {
 	lv.viewport = viewport
 	lv.scrollY = offset.Y
+	lv.scrollX = offset.X
 
 	n := lv.ItemsCount()
 	if n == 0 || lv.delegate == nil || viewport.Height <= 0 {
@@ -171,6 +182,18 @@ func (lv *ListView) LayoutVisible(viewport geometry.Size, offset geometry.Point)
 		}
 	}
 
+	// A viewport width change can rewrap text, so cached heights are stale;
+	// re-measure everything. During an unchanged-width scroll the heights stay
+	// cached and re-scrolling the same items skips the (expensive text)
+	// measurement. Width changes also reset the horizontal scroll extent.
+	if lv.lastViewportWidth != viewport.Width {
+		lv.lastViewportWidth = viewport.Width
+		lv.heights = make(map[int]float32)
+		lv.widths = make(map[int]float32)
+		lv.estimate = lv.seedHeight
+		lv.contentWidth = viewport.Width
+	}
+
 	first, firstY := lv.locateFirst()
 	last := first
 	y := firstY
@@ -179,9 +202,19 @@ func (lv *ListView) LayoutVisible(viewport geometry.Size, offset geometry.Point)
 		if w == nil {
 			break
 		}
-		h := lv.measureItem(last, w)
-		lv.heights[last] = h
-		w.Arrange(geometry.Rect(0, y-lv.scrollY, viewport.Width, h))
+		h, known := lv.heights[last]
+		if !known {
+			h = lv.measureItem(last, w)
+			lv.heights[last] = h
+		}
+		rowW := lv.widths[last]
+		if rowW <= 0 {
+			rowW = viewport.Width
+		}
+		if rowW > lv.contentWidth {
+			lv.contentWidth = rowW
+		}
+		w.Arrange(geometry.Rect(-lv.scrollX, y-lv.scrollY, rowW, h))
 		y += h
 		last++
 	}
@@ -302,15 +335,21 @@ func (lv *ListView) itemAt(index int) Widget {
 	return w
 }
 
-// measureItem measures the item with the viewport width and unbounded height.
+// measureItem measures the item at unbounded width and height: an item is laid
+// out at its natural width (never wrapped to the viewport), so wide content
+// overflows horizontally and is reachable via the horizontal scrollbar. It
+// records both the height and the row width (natural width, flushed to at
+// least the viewport width), and returns the height.
 func (lv *ListView) measureItem(index int, w Widget) float32 {
-	// ignore index: measurement only depends on the widget state
 	size := w.Measure(layout.Constraint{
 		Min: geometry.Size{},
-		Max: geometry.Size{Width: lv.viewport.Width, Height: layout.Inf},
+		Max: geometry.Size{Width: layout.Inf, Height: layout.Inf},
 	})
 	if size.Height <= 0 {
 		size.Height = lv.estimate
+	}
+	if rowW := max(size.Width, lv.viewport.Width); rowW > 0 {
+		lv.widths[index] = rowW
 	}
 	return size.Height
 }
