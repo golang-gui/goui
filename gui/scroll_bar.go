@@ -236,6 +236,7 @@ func (b *ScrollBar) onDragBegin(pos geometry.Point, _ events.Modifiers) {
 		b.grabOffset = b.thumbLen() / 2
 	}
 	b.emitValueFromPos(pos)
+	b.RequestPaint()
 }
 
 func (b *ScrollBar) onDragUpdate(pos geometry.Point, _ events.Modifiers) {
@@ -244,6 +245,10 @@ func (b *ScrollBar) onDragUpdate(pos geometry.Point, _ events.Modifiers) {
 
 func (b *ScrollBar) onDragEnd(_ geometry.Point, _ events.Modifiers) {
 	b.grabOffset = 0
+	// The thumb state (Pressed -> Normal/Hovered) changed, but no value change
+	// follows a release, so nothing else repaints. Without this the thumb stays
+	// visually pressed until the pointer happens to trigger another repaint.
+	b.RequestPaint()
 }
 
 // emitValueFromPos computes the scroll value implied by the pointer position
