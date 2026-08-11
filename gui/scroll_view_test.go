@@ -69,33 +69,44 @@ func TestScrollViewSetChildReplaces(t *testing.T) {
 	first := &mockWidget{size: geometry.Size{Width: 100, Height: 500}}
 	second := &mockWidget{size: geometry.Size{Width: 100, Height: 500}}
 
-	// SetChild is the single-content API; it replaces the previous content.
+	// SetChild is the Bin content API; it replaces the content slot. The
+	// scrollbars are structural children that remain regardless.
 	sv.SetChild(first)
 	if sv.Child() != first {
 		t.Fatal("SetChild should set the content")
 	}
-	children := sv.Children()
-	if len(children) != 1 || children[0] != first {
-		t.Fatalf("content should be the only child, got %v", children)
+	if !sliceContains(sv.Children(), first) {
+		t.Fatalf("content should be in children, got %v", sv.Children())
 	}
 
 	sv.SetChild(second)
 	if sv.Child() != second {
 		t.Fatal("SetChild should replace the previous content")
 	}
-	children = sv.Children()
-	if len(children) != 1 || children[0] != second {
-		t.Fatalf("content should be the only child after replace, got %v", children)
+	if !sliceContains(sv.Children(), second) {
+		t.Fatalf("new content should be in children, got %v", sv.Children())
+	}
+	if sliceContains(sv.Children(), first) {
+		t.Fatal("previous content should be removed after replace")
 	}
 
-	// Clear via SetChild(nil).
+	// Clear via SetChild(nil): content slot is nil, scrollbars remain.
 	sv.SetChild(nil)
 	if sv.Child() != nil {
 		t.Fatal("SetChild(nil) should clear the content")
 	}
-	if len(sv.Children()) != 0 {
-		t.Fatal("children should be empty after clear")
+	if sliceContains(sv.Children(), first) || sliceContains(sv.Children(), second) {
+		t.Fatal("content should not be in children after clear")
 	}
+}
+
+func sliceContains(ws []Widget, w Widget) bool {
+	for _, c := range ws {
+		if c == w {
+			return true
+		}
+	}
+	return false
 }
 
 func TestScrollViewChildrenReflectsContent(t *testing.T) {
@@ -103,11 +114,10 @@ func TestScrollViewChildrenReflectsContent(t *testing.T) {
 	content := &mockWidget{size: geometry.Size{Width: 100, Height: 500}}
 	sv.SetChild(content)
 
-	// Children() comes from Widget (not Container): single-content containers
-	// expose their content through the common traversal API, which is what
-	// hitTest uses to recurse.
+	// Children() comes from Widget (not Container): content is reachable for
+	// hit-test traversal. The scrollbars are also structural children.
 	children := sv.Children()
-	if len(children) != 1 || children[0] != content {
+	if !sliceContains(children, content) {
 		t.Fatalf("Children should contain the content, got %v", children)
 	}
 }
@@ -200,16 +210,20 @@ func TestScrollViewScrollableContentMode(t *testing.T) {
 	sv.Measure(layout.Constraint{Max: geometry.Size{Width: 100, Height: 100}})
 	sv.Arrange(geometry.Rect(0, 0, 100, 100))
 
+	// Vertical scrollbar is shown (content 500 > viewport 100), so the content
+	// area width is 100 - scrollbarWidth = 94.
+	areaW := float32(100 - scrollbarWidth)
+
 	if len(content.layoutCalls) != 1 {
 		t.Fatalf("LayoutVisible should be called once on Arrange, got %d", len(content.layoutCalls))
 	}
 	if content.layoutCalls[0].Y != 0 {
 		t.Fatalf("initial offset should be 0, got %v", content.layoutCalls[0])
 	}
-	// The content's own rect must be set to the viewport, otherwise the
+	// The content's own rect must be set to the content area, otherwise the
 	// SubPainter clip is empty and nothing draws.
-	if got := content.Rect(); got != (geometry.Rect(0, 0, 100, 100)) {
-		t.Fatalf("content rect should be the viewport, got %v", got)
+	if got := content.Rect(); got != (geometry.Rect(0, 0, areaW, 100)) {
+		t.Fatalf("content rect should be the content area, got %v", got)
 	}
 
 	sv.SetScrollY(100)
@@ -220,7 +234,7 @@ func TestScrollViewScrollableContentMode(t *testing.T) {
 		t.Fatalf("offset should be 100, got %v", content.layoutCalls[1])
 	}
 
-	// Clamp: content height 500, viewport 100 → max 400.
+	// Clamp: content height 500, content area height 100 → max 400.
 	sv.SetScrollY(999)
 	if got := content.layoutCalls[len(content.layoutCalls)-1].Y; got != 400 {
 		t.Fatalf("offset should clamp to 400, got %v", got)
@@ -289,8 +303,10 @@ func TestScrollViewMeasureCombinesChildSizeWithParentConstraint(t *testing.T) {
 		Min: geometry.Size{Width: 120, Height: 20},
 		Max: geometry.Size{Width: 200, Height: 100},
 	})
-	if got != (geometry.Size{Width: 120, Height: 100}) {
-		t.Fatalf("Measure should keep child width and apply both parent bounds, got %v", got)
+	// Scrollable content fills the cross axis, so width is the parent's max
+	// width, clamped to the constraint bounds.
+	if got != (geometry.Size{Width: 200, Height: 100}) {
+		t.Fatalf("Measure should fill the cross axis and apply both parent bounds, got %v", got)
 	}
 }
 
@@ -326,8 +342,10 @@ func TestScrollViewCanHugContentWidthInVerticalLinearBox(t *testing.T) {
 	box.AddChild(sv)
 
 	box.Arrange(geometry.Rect(0, 0, 800, 600))
-	if got := sv.Rect(); got != geometry.Rect(0, 0, 100, 600) {
-		t.Fatalf("CrossStart should preserve the content width in a VBox, got %v", got)
+	// Scrollable content fills the cross axis regardless of CrossAlign, so the
+	// viewport spans the full 800 width.
+	if got := sv.Rect(); got != geometry.Rect(0, 0, 800, 600) {
+		t.Fatalf("ScrollView should fill the cross axis with Scrollable content, got %v", got)
 	}
 }
 
@@ -379,10 +397,193 @@ func TestScrollViewStackedInVerticalLinearBox(t *testing.T) {
 	box.AddChild(bottom)
 
 	box.Arrange(geometry.Rect(0, 0, 800, 600))
-	if top.Rect() != geometry.Rect(0, 0, 100, 300) {
-		t.Fatalf("top ScrollView should keep its content width and take half the height, got %v", top.Rect())
+	// Scrollable content fills the cross axis, so the stacked viewports span
+	// the full 800 width and split the height via main-axis weight.
+	if top.Rect() != geometry.Rect(0, 0, 800, 300) {
+		t.Fatalf("top ScrollView should fill the width and take half the height, got %v", top.Rect())
 	}
-	if bottom.Rect() != geometry.Rect(0, 300, 100, 300) {
-		t.Fatalf("bottom ScrollView should keep its content width and take half the height, got %v", bottom.Rect())
+	if bottom.Rect() != geometry.Rect(0, 300, 800, 300) {
+		t.Fatalf("bottom ScrollView should fill the width and take half the height, got %v", bottom.Rect())
+	}
+}
+
+// --- ScrollView slice 2: horizontal scroll + scrollbar interaction ---
+
+func TestScrollViewScrollXClamp(t *testing.T) {
+	sv := NewScrollView()
+	sv.SetChild(&mockWidget{size: geometry.Size{Width: 500, Height: 100}})
+
+	sv.Measure(layout.Constraint{Max: geometry.Size{Width: 200, Height: 100}})
+	sv.Arrange(geometry.Rect(0, 0, 200, 100))
+
+	// Content 500 wide, viewport 200, no vertical scroll → maxX = 300.
+	sv.SetScrollX(1000)
+	if got := sv.ScrollX(); got != 300 {
+		t.Fatalf("SetScrollX(1000) should clamp to 300, got %v", got)
+	}
+	sv.SetScrollX(-50)
+	if got := sv.ScrollX(); got != 0 {
+		t.Fatalf("SetScrollX(-50) should clamp to 0, got %v", got)
+	}
+}
+
+func TestScrollViewContentOffsetX(t *testing.T) {
+	sv := NewScrollView()
+	content := &mockWidget{size: geometry.Size{Width: 500, Height: 100}}
+	sv.SetChild(content)
+
+	sv.Measure(layout.Constraint{Max: geometry.Size{Width: 200, Height: 100}})
+	sv.Arrange(geometry.Rect(0, 0, 200, 100))
+	sv.SetScrollX(50)
+
+	if got := content.Rect().X; got != -50 {
+		t.Fatalf("content X should be -50 after horizontal scroll, got %v", got)
+	}
+}
+
+func TestScrollViewHorizontalWheel(t *testing.T) {
+	sv := NewScrollView()
+	sv.SetChild(&mockWidget{size: geometry.Size{Width: 500, Height: 100}})
+
+	sv.Measure(layout.Constraint{Max: geometry.Size{Width: 200, Height: 100}})
+	sv.Arrange(geometry.Rect(0, 0, 200, 100))
+
+	// Native horizontal wheel (DeltaX).
+	sv.wheel.HandleEvent(&eventContext{event: events.WheelEvent{DeltaX: 30, Mode: events.WheelDeltaPixel}})
+	if got := sv.ScrollX(); got != 30 {
+		t.Fatalf("horizontal wheel should scroll X by 30, got %v", got)
+	}
+
+	// Shift+vertical → horizontal.
+	sv.wheel.HandleEvent(&eventContext{event: events.WheelEvent{DeltaY: 20, Mode: events.WheelDeltaPixel, Modifiers: events.ModifierShift}})
+	if got := sv.ScrollX(); got != 50 {
+		t.Fatalf("Shift+wheel should scroll X by 20 more, got %v", got)
+	}
+}
+
+func TestScrollViewScrollBarVisibility(t *testing.T) {
+	sv := NewScrollView()
+	content := &mockWidget{size: geometry.Size{Width: 500, Height: 500}}
+	sv.SetChild(content)
+
+	sv.Measure(layout.Constraint{Max: geometry.Size{Width: 200, Height: 200}})
+	sv.Arrange(geometry.Rect(0, 0, 200, 200))
+
+	// Both axes scrollable → both bars visible.
+	if !sv.vbar.Visible() {
+		t.Fatal("vertical bar should be visible when content is taller")
+	}
+	if !sv.hbar.Visible() {
+		t.Fatal("horizontal bar should be visible when content is wider")
+	}
+
+	// Short content that fits → no bars.
+	sv.SetChild(&mockWidget{size: geometry.Size{Width: 100, Height: 100}})
+	sv.Measure(layout.Constraint{Max: geometry.Size{Width: 200, Height: 200}})
+	sv.Arrange(geometry.Rect(0, 0, 200, 200))
+	if sv.vbar.Visible() {
+		t.Fatal("vertical bar should be hidden when content fits")
+	}
+	if sv.hbar.Visible() {
+		t.Fatal("horizontal bar should be hidden when content fits")
+	}
+}
+
+func TestScrollViewScrollBarDragUpdatesScroll(t *testing.T) {
+	sv := NewScrollView()
+	sv.SetChild(&mockWidget{size: geometry.Size{Width: 100, Height: 500}})
+
+	sv.Measure(layout.Constraint{Max: geometry.Size{Width: 100, Height: 200}})
+	sv.Arrange(geometry.Rect(0, 0, 100, 200))
+
+	// maxY = 500 - 200 = 300. The vbar is arranged in the right column.
+	// Press on the thumb and drag down; the scroll offset should follow.
+	before := sv.ScrollY()
+	bar := sv.vbar
+
+	down := &eventContext{
+		current: bar,
+		event: events.PointerEvent{
+			EventType: events.PointerDown,
+			Button:    events.PointerButtonLeft,
+			Position:  geometry.Point{X: bar.Rect().X, Y: bar.Rect().Y + 5},
+		},
+	}
+	bar.drag.HandleEvent(down)
+
+	move := &eventContext{
+		current: bar,
+		event: events.PointerEvent{
+			EventType: events.PointerMove,
+			Button:    events.PointerButtonLeft,
+			Position:  geometry.Point{X: bar.Rect().X, Y: bar.Rect().Y + 80},
+		},
+	}
+	bar.drag.HandleEvent(move)
+
+	if sv.ScrollY() <= before {
+		t.Fatalf("dragging the thumb down should increase scrollY, before=%v after=%v", before, sv.ScrollY())
+	}
+
+	up := &eventContext{
+		current: bar,
+		event: events.PointerEvent{
+			EventType: events.PointerUp,
+			Button:    events.PointerButtonLeft,
+			Position:  geometry.Point{X: bar.Rect().X, Y: bar.Rect().Y + 80},
+		},
+	}
+	bar.drag.HandleEvent(up)
+	if bar.drag.Dragging() {
+		t.Fatal("drag should end after pointer up")
+	}
+}
+
+func TestScrollViewStyleNamePushDown(t *testing.T) {
+	sv := NewScrollView()
+	sv.SetChild(&mockWidget{size: geometry.Size{Width: 100, Height: 500}})
+	sv.SetStyleName("my-scroll")
+
+	if sv.vbar.StyleName() != "my-scroll" {
+		t.Fatalf("vbar should inherit ScrollView StyleName, got %q", sv.vbar.StyleName())
+	}
+	if sv.hbar.StyleName() != "my-scroll" {
+		t.Fatalf("hbar should inherit ScrollView StyleName, got %q", sv.hbar.StyleName())
+	}
+}
+
+func TestScrollViewSnapshotScrollX(t *testing.T) {
+	sv := NewScrollView()
+	sv.SetChild(&mockWidget{size: geometry.Size{Width: 500, Height: 100}})
+
+	sv.Measure(layout.Constraint{Max: geometry.Size{Width: 200, Height: 100}})
+	sv.Arrange(geometry.Rect(0, 0, 200, 100))
+	sv.SetScrollX(50)
+
+	info := sv.Snapshot()
+	if info.ScrollX != 50 {
+		t.Fatalf("scrollX should be 50, got %v", info.ScrollX)
+	}
+	if info.MaxScrollX != 300 {
+		t.Fatalf("maxScrollX should be 300, got %v", info.MaxScrollX)
+	}
+	// Snapshot children filter out scrollbars.
+	for _, c := range info.Children {
+		if c.Role == RoleScrollBar {
+			t.Fatal("snapshot should not include scrollbar children")
+		}
+	}
+}
+
+func TestScrollViewSnapshotFiltersScrollBars(t *testing.T) {
+	sv := NewScrollView()
+	sv.SetChild(&mockWidget{size: geometry.Size{Width: 100, Height: 500}})
+	sv.Measure(layout.Constraint{Max: geometry.Size{Width: 100, Height: 100}})
+	sv.Arrange(geometry.Rect(0, 0, 100, 100))
+
+	info := sv.Snapshot()
+	// Only the content child, not the scrollbars.
+	if len(info.Children) != 1 {
+		t.Fatalf("snapshot should have 1 child (content), got %d", len(info.Children))
 	}
 }
