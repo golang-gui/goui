@@ -141,3 +141,14 @@ func TestPopoverSetWidgetMigratesFromWindow(t *testing.T) {
 		t.Fatal("popover content should be set")
 	}
 }
+
+func TestPopoverConnectClosedFiresOnHideOnce(t *testing.T) {
+	p := NewPopover(newTestWidget())
+	closed := 0
+	p.ConnectClosed(func() { closed++ })
+
+	p.Hide() // not visible yet → no fire
+	if closed != 0 {
+		t.Fatalf("Hide on a hidden popover must not fire closed, got %d", closed)
+	}
+}
