@@ -46,6 +46,12 @@ type Popover interface {
 	// usually dismisses a menu (outside click / Esc / focus loss). The control
 	// decides what to do — typically Hide.
 	ConnectDismissRequest(func()) signal.Handle
+
+	// ConnectClosed fires when the popover actually hides — after any Hide /
+	// Destroy / release path, at most once per transition. Unlike
+	// ConnectDismissRequest ("something asks to close") it reports that it is
+	// gone, so a control can restore state.
+	ConnectClosed(func()) signal.Handle
 }
 
 // NewPopover creates a popover anchored to widget. It holds no native resources
@@ -66,6 +72,7 @@ type popover struct {
 	modal         bool // menu-style: owner window forwards its input here (modeless by default)
 
 	dismissRequest signal.Signal0
+	closed         signal.Signal0
 	hUnmount       signal.Handle // anchor unmount -> releaseNative
 	hWinGone       signal.Handle // owner window destroy -> releaseNative
 }
@@ -145,6 +152,10 @@ func (p *popover) ConnectDismissRequest(fn func()) signal.Handle {
 	return p.dismissRequest.Connect(fn)
 }
 
+func (p *popover) ConnectClosed(fn func()) signal.Handle {
+	return p.closed.Connect(fn)
+}
+
 // becomeModalTarget / resignModalTarget register this popover as its owner
 // window's modal input target while it is a visible modal (menu-style). Modeless
 // popovers never intercept the window. Both use only the public Window API.
@@ -206,6 +217,7 @@ func (p *popover) Hide() {
 	if p.platformPopup != nil {
 		_ = p.platformPopup.Hide()
 	}
+	p.closed.Emit()
 }
 
 func (p *popover) Destroy() {
