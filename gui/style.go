@@ -10,13 +10,16 @@ import (
 )
 
 const (
-	styleNameWidget     = "widget"
-	styleNameLabel      = "label"
-	styleNameButton     = "button"
-	styleNameTextInput  = "text-input"
-	styleNameScrollView = "scroll-view"
-	stylePartTrough     = "trough"
-	stylePartThumb      = "thumb"
+	styleNameWidget        = "widget"
+	styleNameLabel         = "label"
+	styleNameButton        = "button"
+	styleNameTextInput     = "text-input"
+	styleNameScrollView    = "scroll-view"
+	stylePartTrough        = "trough"
+	stylePartThumb         = "thumb"
+	styleNameMenu          = "menu"
+	styleNameMenuItem      = "menu-item"
+	styleNameMenuSeparator = "menu-separator"
 )
 
 // DefaultStyleSheet is the bare fallback sheet used when the application has no
@@ -93,6 +96,27 @@ func DefaultStyleRules() []style.Rule {
 			BackgroundColor(color.RGBA{R: 110, G: 110, B: 110, A: 255}),
 		style.Name(styleNameScrollView).Part(stylePartThumb).State(style.Pressed).
 			BackgroundColor(color.RGBA{R: 90, G: 90, B: 90, A: 255}),
+
+		style.Name(styleNameMenu).
+			BackgroundColor(color.RGBA{R: 250, G: 250, B: 250, A: 255}).
+			ForegroundColor(color.Black).
+			BorderColor(color.RGBA{R: 200, G: 200, B: 200, A: 255}).
+			BorderWidth(1).
+			Radius(4),
+		style.Name(styleNameMenuItem).
+			BackgroundColor(color.Transparent).
+			ForegroundColor(color.Black),
+		style.Name(styleNameMenuItem).
+			State(style.Hovered).
+			BackgroundColor(color.RGBA{R: 225, G: 232, B: 240, A: 255}),
+		style.Name(styleNameMenuItem).
+			State(style.Pressed).
+			BackgroundColor(color.RGBA{R: 200, G: 210, B: 225, A: 255}),
+		style.Name(styleNameMenuItem).
+			State(style.Disabled).
+			ForegroundColor(color.RGBA{R: 160, G: 160, B: 160, A: 255}),
+		style.Name(styleNameMenuSeparator).
+			BackgroundColor(color.RGBA{R: 200, G: 200, B: 200, A: 255}),
 	}
 }
 

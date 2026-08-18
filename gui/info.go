@@ -39,18 +39,21 @@ type WidgetInfo struct {
 type Role string
 
 const (
-	RoleWidget     Role = "widget"
-	RoleBox        Role = "box"
-	RoleHBox       Role = "hbox"
-	RoleVBox       Role = "vbox"
-	RoleLabel      Role = "label"
-	RoleButton     Role = "button"
-	RoleImage      Role = "image"
-	RoleTextInput  Role = "textinput"
-	RoleScrollView Role = "scrollview" // scrollable container (WAI-ARIA: scrollbar host)
-	RoleScrollBar  Role = "scrollbar"  // scrollbar control (WAI-ARIA: scrollbar)
-	RoleList       Role = "list"       // virtualized list (WAI-ARIA: list)
-	RoleListItem   Role = "listitem"   // list row (WAI-ARIA: listitem)
+	RoleWidget        Role = "widget"
+	RoleBox           Role = "box"
+	RoleHBox          Role = "hbox"
+	RoleVBox          Role = "vbox"
+	RoleLabel         Role = "label"
+	RoleButton        Role = "button"
+	RoleImage         Role = "image"
+	RoleTextInput     Role = "textinput"
+	RoleScrollView    Role = "scrollview" // scrollable container (WAI-ARIA: scrollbar host)
+	RoleScrollBar     Role = "scrollbar"  // scrollbar control (WAI-ARIA: scrollbar)
+	RoleList          Role = "list"       // virtualized list (WAI-ARIA: list)
+	RoleListItem      Role = "listitem"   // list row (WAI-ARIA: listitem)
+	RoleMenu          Role = "menu"
+	RoleMenuItem      Role = "menuitem"
+	RoleMenuSeparator Role = "menuseparator"
 )
 
 type Action string
