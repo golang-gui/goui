@@ -23,6 +23,7 @@ type node struct {
 	widget   gui.Widget
 	state    any
 	children []*node
+	baseCtx  *viewBaseContext // persistent cross-cutting signal context, reused across rebuilds
 }
 
 type buildContext struct {
@@ -198,25 +199,31 @@ func (r *root) updateWidgetNode(old *node, view WidgetView) *node {
 		current = &node{
 			viewType: viewType,
 			view:     view,
+			baseCtx:  &viewBaseContext{},
 		}
 		ctx := &buildContext{root: r, node: current}
 		current.widget = view.Mount(ctx)
 		if current.widget == nil {
 			return nil
 		}
+		view.base().mount(current.baseCtx, current.widget)
 	}
 
 	ctx := &buildContext{root: r, node: current}
 	current.viewType = viewType
 	current.view = view
 	view.Update(ctx, current.widget)
-	view.base().apply(current.widget) // shared id/visibility/style, framework-driven
+	view.base().update(current.baseCtx, current.widget) // shared id/visibility/style + base signals, framework-driven
 	return current
 }
 
 func (r *root) release(n *node, detachWidgets bool) {
 	if n == nil {
 		return
+	}
+
+	if n.view != nil && n.widget != nil && n.baseCtx != nil {
+		n.view.base().unmount(n.baseCtx, n.widget)
 	}
 
 	container, _ := n.widget.(gui.Container)
