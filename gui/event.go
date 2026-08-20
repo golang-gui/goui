@@ -284,6 +284,15 @@ func (d *EventDispatcher) target(host EventTarget, root Widget, event events.Eve
 	}
 }
 
+// focusNearest moves input focus to the nearest focusable widget in target's
+// parent chain (the pointer-down target).
+//
+// If no focusable widget is found, the current focus is left unchanged. A
+// click on a non-focusable surface — empty space, a :focusable=FALSE control
+// like a menu-bar button, a label wrapper — does not steal or clear focus.
+// This mirrors GTK4 (:focusable=FALSE means the widget and its descendants
+// cannot take focus, so a click there does not move it) and Flutter ("there is
+// always a primary focus": tapping a non-focusable element does not unfocus).
 func focusNearest(host EventTarget, target Widget) {
 	for widget := target; widget != nil; widget = widget.Parent() {
 		if widget.Focusable() {
@@ -291,7 +300,6 @@ func focusNearest(host EventTarget, target Widget) {
 			return
 		}
 	}
-	_ = host.SetFocusedWidget(nil)
 }
 
 func (d *EventDispatcher) dispatchPhase(ctx *eventContext, widgets []Widget, phase PropagationPhase, event events.Event) {
