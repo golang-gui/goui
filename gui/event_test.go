@@ -474,11 +474,47 @@ func TestEventDispatcherPointerDownFocusesNearestFocusableWidget(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if win.FocusedWidget() != nil {
-		t.Fatalf("non-focusable target should clear focus, got %v", win.FocusedWidget())
+	if win.FocusedWidget() != parent {
+		t.Fatalf("click on a non-focusable target should leave focus unchanged, got %v (want parent)", win.FocusedWidget())
 	}
-	if parent.Focused() {
-		t.Fatal("parent focused state was not cleared")
+}
+
+func TestEventDispatcherNonFocusableTargetLeavesFocusForMenuBarScenario(t *testing.T) {
+	// Regression: a menu-bar row of MenuButtons with Focusable(false) must not
+	// steal focus from an editable field (e.g. a TextInput) when clicked to open
+	// a menu. GTK4/Flutter semantics: a click on a non-focusable surface does not
+	// clear or move window focus; the popover routes keyboard via the modal target.
+	win := &window{}
+	root := newTestWidget()
+	root.Arrange(geometry.Rect(0, 0, 100, 100))
+	win.SetWidget(root)
+
+	// A real editable takes focus first.
+	input := newTestWidget()
+	input.Arrange(geometry.Rect(10, 10, 40, 20))
+	input.SetFocusable(true)
+	root.AddChild(input)
+	if !win.SetFocusedWidget(input) {
+		t.Fatal("setup: input did not take focus")
+	}
+	if win.FocusedWidget() != input {
+		t.Fatal("setup: input is not the focused widget")
+	}
+
+	// Clicking a non-focusable button (the menu row) must leave input focused.
+	button := newTestWidget()
+	button.Arrange(geometry.Rect(10, 40, 40, 20))
+	button.SetFocusable(false)
+	root.AddChild(button)
+
+	if err := win.DispatchEvent(events.PointerEvent{
+		EventType: events.PointerDown,
+		Position:  geometry.Point{X: 20, Y: 50},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if win.FocusedWidget() != input {
+		t.Fatalf("clicking a non-focusable menu button stole focus: got %v want input", win.FocusedWidget())
 	}
 }
 
