@@ -2,6 +2,7 @@ package ui
 
 import (
 	"github.com/golang-gui/goui/core/bits"
+	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
 )
 
@@ -46,7 +47,9 @@ type viewBase struct {
 	maxHeight  float32 // size preference; 0 = unbounded
 	mainWeight float32 // main-axis extra-space share; 0 = hug
 	hidden     bool
+	focusable  bool
 	cursor     Cursor
+	onFocus    func(focused bool) // fired when the mounted widget's focus state changes
 
 	fields bits.Bitmap[uint64]
 }
@@ -60,10 +63,53 @@ const (
 	viewMaxHeight
 	viewMainWeight
 	viewHidden
+	viewFocusable
 	viewCursor
+	viewOnFocus
 )
 
+// viewBaseContext is the persistent lifecycle context of viewBase: root creates
+// one per node on first mount and reuses it across rebuilds. It only stores the
+// cross-cutting widget signal handles that must survive rebuilds plus their
+// currently effective callbacks; viewBase's mount/update/unmount register,
+// refresh and clean them up. It is private: it neither exposes root internals
+// nor participates in any public API.
+type viewBaseContext struct {
+	handles []signal.Handle    // cross-rebuild handles for shared widget signals
+	onFocus func(focused bool) // effective OnFocus callback, refreshed on every update
+}
+
 func (b *viewBase) base() *viewBase { return b }
+
+// mount registers the cross-cutting widget signals that survive rebuilds.
+// Currently it only wires keyboard focus: the closure reads ctx.onFocus at fire
+// time, and update overlays the new view's callback into ctx, so a rebuild that
+// swaps the view automatically picks up the latest callback without reconnecting.
+func (b *viewBase) mount(ctx *viewBaseContext, w gui.Widget) {
+	ctx.onFocus = b.onFocus
+	ctx.handles = append(ctx.handles, w.ConnectFocused(func(focused bool) {
+		if ctx.onFocus != nil {
+			ctx.onFocus(focused)
+		}
+	}))
+}
+
+// update refreshes the shared callbacks after each rebuild and applies the
+// shared modifiers onto the widget.
+func (b *viewBase) update(ctx *viewBaseContext, w gui.Widget) {
+	ctx.onFocus = b.onFocus
+	b.apply(w)
+}
+
+// unmount disconnects all registered shared signal handles and clears the
+// context.
+func (b *viewBase) unmount(ctx *viewBaseContext, _ gui.Widget) {
+	for _, h := range ctx.handles {
+		h.Disconnect()
+	}
+	ctx.handles = nil
+	ctx.onFocus = nil
+}
 
 func (b *ViewBase[T]) self() *T {
 	if b.Self != nil {
@@ -154,6 +200,25 @@ func (b *ViewBase[T]) Cursor(c Cursor) *T {
 	return b.self()
 }
 
+// Focusable sets whether the mounted widget accepts keyboard focus. Like Cursor,
+// it only applies when explicitly called — gui widgets that enable focus in their
+// constructor (Button, MenuButton, TextInput) keep that by default. Pass
+// Focusable(false) to strip it (e.g. a menu-bar-style row of MenuButtons where
+// only the open one should take focus).
+func (b *ViewBase[T]) Focusable(focusable bool) *T {
+	b.focusable = focusable
+	b.fields.Set(viewFocusable, true)
+	return b.self()
+}
+
+// OnFocus registers a callback fired when the mounted widget's keyboard focus
+// state changes: true when it gains focus, false when it loses focus.
+func (b *ViewBase[T]) OnFocus(fn func(focused bool)) *T {
+	b.onFocus = fn
+	b.fields.Set(viewOnFocus, true)
+	return b.self()
+}
+
 // apply writes the shared modifier state onto a mounted widget. The
 // reconciler calls it after every Update, so no control does id/visibility/style
 // wiring itself.
@@ -182,6 +247,9 @@ func (b *viewBase) apply(widget gui.Widget) {
 	}
 	if b.fields.Check(viewHidden) {
 		widget.SetVisible(!b.hidden)
+	}
+	if b.fields.Check(viewFocusable) {
+		widget.SetFocusable(b.focusable)
 	}
 	if b.fields.Check(viewCursor) {
 		widget.SetCursor(b.cursor)
