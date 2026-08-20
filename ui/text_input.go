@@ -19,6 +19,14 @@ func TextInput() *TextInputView {
 	return v
 }
 
+func (v *TextInputView) BindText(state BindState[string]) *TextInputView {
+	if state != nil {
+		v.Text(state.Get())
+		v.OnText(state.Set)
+	}
+	return v
+}
+
 func (v *TextInputView) Text(text string) *TextInputView {
 	v.text = text
 	return v
