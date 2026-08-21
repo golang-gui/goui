@@ -42,13 +42,8 @@ type Widget interface {
 	LayoutManager() layout.LayoutManager
 	SetLayoutManager(layout.LayoutManager)
 
-	// Size preference (min/max) clamped by the parent constraint during Measure.
-	// A 0 max means unbounded. There is no fixed "Width"/"Height": everything is
-	// a preference the parent can override (see DesignLayout §9).
-	SetMinWidth(float32)
-	SetMaxWidth(float32)
-	SetMinHeight(float32)
-	SetMaxHeight(float32)
+	MinSize() geometry.Size
+	MaxSize() geometry.Size
 	SetMinSize(geometry.Size)
 	SetMaxSize(geometry.Size)
 
@@ -292,32 +287,51 @@ func (w *WidgetBase) constrain(c layout.Constraint, intrinsic geometry.Size) geo
 	return c.Clamp(w.selfConstraint().Clamp(intrinsic))
 }
 
-func (w *WidgetBase) SetMinWidth(v float32)  { w.setSizePref(&w.minWidth, v) }
-func (w *WidgetBase) SetMaxWidth(v float32)  { w.setSizePref(&w.maxWidth, v) }
-func (w *WidgetBase) SetMinHeight(v float32) { w.setSizePref(&w.minHeight, v) }
-func (w *WidgetBase) SetMaxHeight(v float32) { w.setSizePref(&w.maxHeight, v) }
+func (w *WidgetBase) MinSize() geometry.Size {
+	return geometry.Size{Width: w.minWidth, Height: w.minHeight}
+}
+
+func (w *WidgetBase) MaxSize() geometry.Size {
+	maxW := w.maxWidth
+	maxH := w.maxHeight
+	if maxW <= 0 {
+		maxW = 0
+	}
+	if maxH <= 0 {
+		maxH = 0
+	}
+	return geometry.Size{Width: maxW, Height: maxH}
+}
 
 func (w *WidgetBase) SetMinSize(s geometry.Size) {
-	w.SetMinWidth(s.Width)
-	w.SetMinHeight(s.Height)
+	minChanged := w.minWidth != s.Width || w.minHeight != s.Height
+	if !minChanged {
+		return
+	}
+	w.minWidth = s.Width
+	w.minHeight = s.Height
+	w.RequestLayout()
 }
 
 func (w *WidgetBase) SetMaxSize(s geometry.Size) {
-	w.SetMaxWidth(s.Width)
-	w.SetMaxHeight(s.Height)
-}
-
-func (w *WidgetBase) setSizePref(field *float32, v float32) {
-	if *field == v {
+	maxChanged := w.maxWidth != s.Width || w.maxHeight != s.Height
+	if !maxChanged {
 		return
 	}
-	*field = v
+	w.maxWidth = s.Width
+	w.maxHeight = s.Height
 	w.RequestLayout()
 }
 
 func (w *WidgetBase) MainWeight() float32 { return w.mainWeight }
 
-func (w *WidgetBase) SetMainWeight(v float32) { w.setSizePref(&w.mainWeight, v) }
+func (w *WidgetBase) SetMainWeight(v float32) {
+	if w.mainWeight == v {
+		return
+	}
+	w.mainWeight = v
+	w.RequestLayout()
+}
 
 func (w *WidgetBase) Arrange(rect geometry.Rectangle) {
 	w.rect = rect

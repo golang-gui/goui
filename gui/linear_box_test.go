@@ -89,7 +89,7 @@ func TestLinearBoxCrossAlignIsContainerPolicy(t *testing.T) {
 	parent := NewLinearBox(layout.DirectionHorizontal)
 	parent.SetCrossAlign(layout.CrossStretch)
 	childBox := NewLinearBox(layout.DirectionVertical)
-	childBox.SetMinWidth(20)
+	childBox.SetMinSize(geometry.Size{Width: 20, Height: 0})
 	child := newSizedWidget(geometry.Size{Width: 4, Height: 12})
 	childBox.AddChild(child)
 	parent.AddChild(childBox)
