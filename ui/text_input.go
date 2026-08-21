@@ -50,13 +50,14 @@ func (v *TextInputView) Build() View {
 }
 
 type textInputState struct {
-	onText func(string)
-	text   signal.Handle
+	onText      func(string)
+	text        signal.Handle
+	initPadding float32
 }
 
 func (v *TextInputView) Mount(ctx BuildContext) gui.Widget {
 	input := gui.NewTextInput()
-	state := &textInputState{}
+	state := &textInputState{initPadding: input.Padding()}
 	state.text = input.ConnectText(func(text string) {
 		if state.onText != nil {
 			state.onText(text)
@@ -71,6 +72,8 @@ func (v *TextInputView) Update(ctx BuildContext, widget gui.Widget) {
 	state := ctx.State().(*textInputState)
 	if v.paddingSet {
 		input.SetPadding(v.padding)
+	} else {
+		input.SetPadding(state.initPadding)
 	}
 	func() {
 		state.text.Block()
