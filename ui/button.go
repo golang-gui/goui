@@ -14,8 +14,9 @@ type ButtonView struct {
 }
 
 type buttonState struct {
-	onClick func()
-	click   signal.Handle
+	onClick     func()
+	click       signal.Handle
+	initPadding float32
 }
 
 func Button(text ...string) *ButtonView {
@@ -61,7 +62,7 @@ func (v *ButtonView) Build() View {
 
 func (v *ButtonView) Mount(ctx BuildContext) gui.Widget {
 	button := gui.NewButton()
-	state := &buttonState{}
+	state := &buttonState{initPadding: button.Padding()}
 	state.click = button.ConnectClicked(func() {
 		if state.onClick != nil {
 			state.onClick()
@@ -77,6 +78,8 @@ func (v *ButtonView) Update(ctx BuildContext, widget gui.Widget) {
 	state.onClick = v.onClick
 	if v.padding.HasValue() {
 		button.SetPadding(v.padding.Value())
+	} else {
+		button.SetPadding(state.initPadding)
 	}
 	if v.child == nil {
 		ctx.UpdateChildren(button, nil)

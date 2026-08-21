@@ -2,6 +2,7 @@ package ui
 
 import (
 	"github.com/golang-gui/goui/core/bits"
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
 )
@@ -69,23 +70,48 @@ const (
 )
 
 // viewBaseContext is the persistent lifecycle context of viewBase: root creates
-// one per node on first mount and reuses it across rebuilds. It only stores the
-// cross-cutting widget signal handles that must survive rebuilds plus their
-// currently effective callbacks; viewBase's mount/update/unmount register,
-// refresh and clean them up. It is private: it neither exposes root internals
-// nor participates in any public API.
+// one per node on first mount and reuses it across rebuilds. It stores the
+// cross-cutting widget signal handles that must survive rebuilds, the
+// currently effective callbacks, and a snapshot of the widget's initial
+// shared-modifier values taken right after Mount. On every Update the
+// declarative view either overwrites a value (bit set) or restores the
+// snapshot (bit not set), so the widget's private defaults stay private and
+// a missing modifier naturally reverts. The context is private.
 type viewBaseContext struct {
 	handles []signal.Handle    // cross-rebuild handles for shared widget signals
 	onFocus func(focused bool) // effective OnFocus callback, refreshed on every update
+
+	// Snapshot of the widget's initial values, captured once in mount before
+	// the first apply. Each field corresponds to a viewBase modifier; hidden
+	// is stored as the widget's Visible complement.
+	initName       string
+	initStyleName  string
+	initMinSize    geometry.Size
+	initMaxSize    geometry.Size
+	initMainWeight float32
+	initHidden     bool
+	initFocusable  bool
+	initCursor     Cursor
 }
 
 func (b *viewBase) base() *viewBase { return b }
 
-// mount registers the cross-cutting widget signals that survive rebuilds.
-// Currently it only wires keyboard focus: the closure reads ctx.onFocus at fire
-// time, and update overlays the new view's callback into ctx, so a rebuild that
-// swaps the view automatically picks up the latest callback without reconnecting.
+// mount snapshots the widget's initial shared-modifier values and registers
+// the cross-cutting widget signals that survive rebuilds. The snapshot is
+// taken before the first apply so a later Update with a missing modifier can
+// restore the widget's private default. The focus closure reads ctx.onFocus
+// at fire time, and update overlays the new view's callback into ctx, so a
+// rebuild that swaps the view automatically picks up the latest callback
+// without reconnecting.
 func (b *viewBase) mount(ctx *viewBaseContext, w gui.Widget) {
+	ctx.initName = w.ID()
+	ctx.initStyleName = w.StyleName()
+	ctx.initMinSize = w.MinSize()
+	ctx.initMaxSize = w.MaxSize()
+	ctx.initMainWeight = w.MainWeight()
+	ctx.initHidden = !w.Visible()
+	ctx.initFocusable = w.Focusable()
+	ctx.initCursor = w.Cursor()
 	ctx.onFocus = b.onFocus
 	ctx.handles = append(ctx.handles, w.ConnectFocused(func(focused bool) {
 		if ctx.onFocus != nil {
@@ -95,20 +121,28 @@ func (b *viewBase) mount(ctx *viewBaseContext, w gui.Widget) {
 }
 
 // update refreshes the shared callbacks after each rebuild and applies the
-// shared modifiers onto the widget.
+// shared modifiers onto the widget (missing modifiers restore the snapshot).
 func (b *viewBase) update(ctx *viewBaseContext, w gui.Widget) {
 	ctx.onFocus = b.onFocus
-	b.apply(w)
+	b.apply(ctx, w)
 }
 
 // unmount disconnects all registered shared signal handles and clears the
-// context.
+// context, including the snapshot.
 func (b *viewBase) unmount(ctx *viewBaseContext, _ gui.Widget) {
 	for _, h := range ctx.handles {
 		h.Disconnect()
 	}
 	ctx.handles = nil
 	ctx.onFocus = nil
+	ctx.initName = ""
+	ctx.initStyleName = ""
+	ctx.initMinSize = geometry.Size{}
+	ctx.initMaxSize = geometry.Size{}
+	ctx.initMainWeight = 0
+	ctx.initHidden = false
+	ctx.initFocusable = false
+	ctx.initCursor = nil
 }
 
 func (b *ViewBase[T]) self() *T {
@@ -221,37 +255,56 @@ func (b *ViewBase[T]) OnFocus(fn func(focused bool)) *T {
 
 // apply writes the shared modifier state onto a mounted widget. The
 // reconciler calls it after every Update, so no control does id/visibility/style
-// wiring itself.
-func (b *viewBase) apply(widget gui.Widget) {
+// wiring itself. When a modifier was not set in this frame (bit not set) the
+// widget is restored to the snapshot captured at mount, keeping the widget's
+// private defaults private.
+func (b *viewBase) apply(ctx *viewBaseContext, widget gui.Widget) {
 	if b.fields.Check(viewName) {
 		widget.SetID(b.name)
+	} else {
+		widget.SetID(ctx.initName)
 	}
 	if b.fields.Check(viewStyleName) {
 		widget.SetStyleName(b.styleName)
+	} else {
+		widget.SetStyleName(ctx.initStyleName)
 	}
-	widget.SetStyleName(b.styleName)
+	// MinSize: merge per-axis bits into snapshot, then set once.
+	min := ctx.initMinSize
 	if b.fields.Check(viewMinWidth) {
-		widget.SetMinWidth(b.minWidth)
+		min.Width = b.minWidth
 	}
 	if b.fields.Check(viewMinHeight) {
-		widget.SetMinHeight(b.minHeight)
+		min.Height = b.minHeight
 	}
+	widget.SetMinSize(min)
+	// MaxSize: merge per-axis bits into snapshot, then set once.
+	max := ctx.initMaxSize
 	if b.fields.Check(viewMaxWidth) {
-		widget.SetMaxWidth(b.maxWidth)
+		max.Width = b.maxWidth
 	}
 	if b.fields.Check(viewMaxHeight) {
-		widget.SetMaxHeight(b.maxHeight)
+		max.Height = b.maxHeight
 	}
+	widget.SetMaxSize(max)
 	if b.fields.Check(viewMainWeight) {
 		widget.SetMainWeight(b.mainWeight)
+	} else {
+		widget.SetMainWeight(ctx.initMainWeight)
 	}
 	if b.fields.Check(viewHidden) {
 		widget.SetVisible(!b.hidden)
+	} else {
+		widget.SetVisible(!ctx.initHidden)
 	}
 	if b.fields.Check(viewFocusable) {
 		widget.SetFocusable(b.focusable)
+	} else {
+		widget.SetFocusable(ctx.initFocusable)
 	}
 	if b.fields.Check(viewCursor) {
 		widget.SetCursor(b.cursor)
+	} else {
+		widget.SetCursor(ctx.initCursor)
 	}
 }
