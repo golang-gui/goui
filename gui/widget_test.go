@@ -547,7 +547,7 @@ func TestWidgetBaseSizeConstraint(t *testing.T) {
 	// keeps the result.
 	w := newTestWidget()
 	w.SetMinSize(geometry.Size{Width: 50, Height: 40})
-	w.SetMaxWidth(200)
+	w.SetMaxSize(geometry.Size{Width: 200, Height: 0})
 	w.SetLayoutManager(&testLayoutManager{measureSize: geometry.Size{Width: 500, Height: 10}})
 
 	got := w.Measure(layout.Loose(geometry.Size{Width: 1000, Height: 1000}))
@@ -558,7 +558,7 @@ func TestWidgetBaseSizeConstraint(t *testing.T) {
 	// The parent constraint wins over the child min: it overflows, it does not
 	// push the parent.
 	w2 := newTestWidget()
-	w2.SetMinWidth(50)
+	w2.SetMinSize(geometry.Size{Width: 50, Height: 0})
 	if got := w2.Measure(layout.Tight(geometry.Size{Width: 30, Height: 30})); got.Width != 30 {
 		t.Fatalf("parent max should win over child min: %+v", got)
 	}
