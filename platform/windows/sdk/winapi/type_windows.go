@@ -168,6 +168,17 @@ type RECT struct {
 }
 type LPRECT = *RECT
 
+// MINMAXINFO is sent via WM_GETMINMAXINFO so an application can override the
+// default minimum/maximum window sizes. All values are in physical pixels and
+// refer to the whole window (frame included), not the client area.
+type MINMAXINFO struct {
+	Reserved     POINT
+	MaxSize      POINT
+	MaxPosition  POINT
+	MaxTrackSize POINT
+	MinTrackSize POINT
+}
+
 type MSG struct {
 	Hwnd    HWND
 	Message UINT
