@@ -175,8 +175,8 @@ type MINMAXINFO struct {
 	Reserved     POINT
 	MaxSize      POINT
 	MaxPosition  POINT
-	MaxTrackSize POINT
 	MinTrackSize POINT
+	MaxTrackSize POINT
 }
 
 type MSG struct {
