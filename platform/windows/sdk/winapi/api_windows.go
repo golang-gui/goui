@@ -46,6 +46,7 @@ var (
 	procGetDpiForWindow               = user32Dll.NewProc("GetDpiForWindow")
 	procGetDpiForSystem               = user32Dll.NewProc("GetDpiForSystem")
 	procSetProcessDpiAwarenessContext = user32Dll.NewProc("SetProcessDpiAwarenessContext")
+	procAdjustWindowRectExForDpi      = user32Dll.NewProc("AdjustWindowRectExForDpi")
 	procSystemParametersInfoW         = user32Dll.NewProc("SystemParametersInfoW")
 
 	// Message
@@ -328,6 +329,18 @@ func SetProcessDpiAwarenessContext(value DPI_AWARENESS_CONTEXT) error {
 		return err
 	}
 	return nil
+}
+
+// AdjustWindowRectExForDpi computes the outer window size (frame included)
+// needed to obtain the desired client-area rect, for the given styles and DPI.
+// On failure it returns the input unchanged. Requires Windows 10 1607+.
+func AdjustWindowRectExForDpi(rect *RECT, style, menu, exStyle, dpi DWORD) {
+	if err := procAdjustWindowRectExForDpi.Find(); err != nil {
+		return
+	}
+	syscall.SyscallN(procAdjustWindowRectExForDpi.Addr(),
+		uintptr(unsafe.Pointer(rect)),
+		uintptr(style), uintptr(menu), uintptr(exStyle), uintptr(dpi))
 }
 
 func SystemParametersInfo(action UINT, param UINT, data LPVOID, flags UINT) error {
