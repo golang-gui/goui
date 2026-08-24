@@ -34,6 +34,7 @@ var (
 	xStoreName              = libx11.NewSymbol("XStoreName")
 	xSetTransientForHint    = libx11.NewSymbol("XSetTransientForHint")
 	xSetWMProtocols         = libx11.NewSymbol("XSetWMProtocols")
+	xSetWMNormalHints       = libx11.NewSymbol("XSetWMNormalHints")
 	xDeleteProperty         = libx11.NewSymbol("XDeleteProperty")
 	xChangeProperty         = libx11.NewSymbol("XChangeProperty")
 	xGetWindowProperty      = libx11.NewSymbol("XGetWindowProperty")
@@ -244,6 +245,12 @@ func (d Display) GetWindowPropertyBytes(w Window, property, reqType Atom) ([]byt
 func (d Display) SetWMProtocols(w Window, protocols []Atom) Status {
 	ret, _, _ := xSetWMProtocols.CallRaw(uintptr(d), uintptr(w), uintptr(cgo.CSlice(protocols)), uintptr(len(protocols)))
 	return Status(ret)
+}
+
+// SetWMNormalHints sets the WM_NORMAL_HINTS property on w. The hints struct is
+// copied into the C call; the caller retains ownership.
+func (d Display) SetWMNormalHints(w Window, hints *SizeHints) {
+	xSetWMNormalHints.CallRaw(uintptr(d), uintptr(w), uintptr(cgo.Pointer(hints)))
 }
 
 func (d Display) CreateColormap(w Window, visual *Visual, alloc ColormapAlloc) Colormap {
