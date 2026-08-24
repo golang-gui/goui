@@ -30,6 +30,8 @@ type Window struct {
 	noActivate    bool         // popups: decline activation/focus on click (WM_MOUSEACTIVATE)
 	im            *inputMethod // this window's IME (nil when none); WndProc routes WM_IME_* to it
 	cursor        *cursor      // this window's cursor (nil when none); WndProc consults it on WM_SETCURSOR
+	minW          float32      // min client width in logical (DIP) units; 0 = unbounded
+	minH          float32      // min client height in logical (DIP) units; 0 = unbounded
 }
 
 func newWindow(width, height float32, onEvent events.EventHandler) (w *Window, err error) {
@@ -125,6 +127,15 @@ func (w *Window) RequestPaint() error {
 		return nil
 	}
 	return winapi.InvalidateRect(w.hwnd, nil, winapi.FALSE)
+}
+
+func (w *Window) SetMinSize(width, height float32) {
+	if w.hwnd == 0 {
+		return
+	}
+	// Store logical (DIP) values; physical pixels are derived from the current
+	// scale at WM_GETMINMAXINFO time so a later DPI change stays correct.
+	w.minW, w.minH = width, height
 }
 
 func (w *Window) Draw(img image.Image) error {
@@ -226,6 +237,29 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		if window.cursor != nil && (lParam&0xFFFF) == winapi.HTCLIENT {
 			window.cursor.apply()
 			return winapi.TRUE
+		}
+
+	case winapi.WM_GETMINMAXINFO:
+		// ptMinTrackSize constrains the whole window (frame included), while our
+		// stored minimum is a client-area size like every other goui size.
+		// Convert with the frame geometry at the current DPI, queried right
+		// before each move/resize so DPI changes stay correct.
+		if window.minW > 0 || window.minH > 0 {
+			mmi := (*winapi.MINMAXINFO)(unsafe.Pointer(uintptr(lParam)))
+			scale := window.scaleFactor()
+			dpi := winapi.DWORD(scale * 96)
+			rect := winapi.RECT{
+				Right:  winapi.LONG(window.minW * scale),
+				Bottom: winapi.LONG(window.minH * scale),
+			}
+			winapi.AdjustWindowRectExForDpi(&rect, winapi.WS_OVERLAPPEDWINDOW, 0, 0, dpi)
+			if window.minW > 0 {
+				mmi.MinTrackSize.X = rect.Right - rect.Left
+			}
+			if window.minH > 0 {
+				mmi.MinTrackSize.Y = rect.Bottom - rect.Top
+			}
+			return 0
 		}
 
 	case winapi.WM_MOUSEMOVE:

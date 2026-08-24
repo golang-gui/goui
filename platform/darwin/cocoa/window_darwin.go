@@ -173,6 +173,17 @@ func (w *Window) RequestPaint() error {
 	return nil
 }
 
+func (w *Window) SetMinSize(width, height float32) {
+	if !w.window.Valid() {
+		return
+	}
+	AutoReleasePool(func() {
+		// Content min keeps the hint in goui's content-size semantics; points
+		// are already logical units. A zero size clears the constraint.
+		w.window.SetContentMinSize(NSSize{Width: CGFloat(width), Height: CGFloat(height)})
+	})
+}
+
 func (w *Window) Draw(img image.Image) error {
 	bmp, ok := graphics.ToBitmap(img, graphics.PixelFormatRGBA)
 	if !ok {
