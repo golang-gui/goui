@@ -937,6 +937,7 @@ func initNSWindow() {
 	NSWindowSel.ContentRectForFrameRect = objc.RegisterName("contentRectForFrameRect:")
 	NSWindowSel.SetFrameTopLeftPoint = objc.RegisterName("setFrameTopLeftPoint:")
 	NSWindowSel.SetContentSize = objc.RegisterName("setContentSize:")
+	NSWindowSel.SetContentMinSize = objc.RegisterName("setContentMinSize:")
 	NSWindowSel.SetLevel = objc.RegisterName("setLevel:")
 	NSWindowSel.ConvertRectToScreen = objc.RegisterName("convertRectToScreen:")
 }
@@ -969,6 +970,7 @@ var (
 		ContentRectForFrameRect    objc.SEL
 		SetFrameTopLeftPoint       objc.SEL
 		SetContentSize             objc.SEL
+		SetContentMinSize          objc.SEL
 		SetLevel                   objc.SEL
 		ConvertRectToScreen        objc.SEL
 	}
@@ -1104,6 +1106,10 @@ func (w NSWindow) SetFrameTopLeftPoint(point NSPoint) {
 
 func (w NSWindow) SetContentSize(size NSSize) {
 	w.Send(NSWindowSel.SetContentSize, size)
+}
+
+func (w NSWindow) SetContentMinSize(size NSSize) {
+	w.Send(NSWindowSel.SetContentMinSize, size)
 }
 
 func (w NSWindow) SetLevel(level NSInteger) {
