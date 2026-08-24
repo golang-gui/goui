@@ -1,6 +1,10 @@
 package xlib
 
-import "github.com/goexlib/cgo"
+import (
+	"unsafe"
+
+	"github.com/goexlib/cgo"
+)
 
 type ID uintptr
 
@@ -681,6 +685,44 @@ const (
 	ConfigWindowBorderWidth = 16
 	ConfigWindowSibling     = 32
 	ConfigWindowStackMode   = 64
+)
+
+// XSizeHints flag bits (Xutil.h).
+const PMinSize = 1 << 4
+
+// SizeHints mirrors the C XSizeHints layout on LP64: one long followed by
+// seventeen ints. Go's natural field alignment reproduces the C offsets
+// exactly (Flags spans bytes 0-7, the ints start at byte 8, total size 80),
+// so there is deliberately no padding. Do not insert, remove, or reorder
+// fields.
+type SizeHints struct {
+	Flags      int64
+	X          int32
+	Y          int32
+	Width      int32
+	Height     int32
+	MinWidth   int32
+	MinHeight  int32
+	MaxWidth   int32
+	MaxHeight  int32
+	WidthInc   int32
+	HeightInc  int32
+	MinAspectX int32
+	MinAspectY int32
+	MaxAspectX int32
+	MaxAspectY int32
+	BaseWidth  int32
+	BaseHeight int32
+	WinGravity int32
+}
+
+// Layout guards: XSizeHints must be exactly 80 bytes on LP64. A drift would
+// silently corrupt the WM_NORMAL_HINTS data exchanged with the window
+// manager, so fail the build instead. (Negative array length is a compile
+// error, which makes these two declarations an equality assertion.)
+var (
+	_ [80 - int(unsafe.Sizeof(SizeHints{}))]struct{}
+	_ [int(unsafe.Sizeof(SizeHints{})) - 80]struct{}
 )
 
 // XIM (input method) and XIC (input context) are opaque libX11 pointers. One XIM
