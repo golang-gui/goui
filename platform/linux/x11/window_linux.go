@@ -26,6 +26,8 @@ type Window struct {
 	title   string
 	gc      xlib.GC
 	buttons events.PointerButtons
+	minW    float32      // logical (DIP) minimum size; 0 = unbounded
+	minH    float32      // logical (DIP) minimum size; 0 = unbounded
 	im      *inputMethod // this window's IME (nil when none); the key loop consults it
 	cursor  *cursor      // this window's cursor capability (nil when none)
 }
@@ -199,6 +201,37 @@ func (w *Window) RequestPaint() error {
 	platform.display.ClearArea(w.wid, 0, 0, 0, 0, true)
 	platform.display.Flush()
 	return nil
+}
+
+func (w *Window) SetMinSize(width, height float32) {
+	if w.wid == 0 {
+		return
+	}
+	// Store logical (DIP) values; physical pixels are derived from the display
+	// scale when the hints are written, keeping the hint correct if the scale
+	// ever changes (X11 currently uses a static display-global scale).
+	w.minW, w.minH = width, height
+	w.applyMinSize()
+}
+
+// applyMinSize converts the stored logical (DIP) minimum to physical pixels
+// and writes the WM_NORMAL_HINTS property.
+func (w *Window) applyMinSize() {
+	scale := currentScale()
+	if w.minW <= 0 && w.minH <= 0 {
+		// Clear the hint: delete the WM_NORMAL_HINTS property entirely.
+		platform.display.DeleteProperty(w.wid, xlib.AtomWmNormalHints)
+	} else {
+		hints := xlib.SizeHints{Flags: xlib.PMinSize}
+		if w.minW > 0 {
+			hints.MinWidth = int32(w.minW * scale)
+		}
+		if w.minH > 0 {
+			hints.MinHeight = int32(w.minH * scale)
+		}
+		platform.display.SetWMNormalHints(w.wid, &hints)
+	}
+	platform.display.Flush()
 }
 
 func (w *Window) Draw(img image.Image) error {

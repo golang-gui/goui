@@ -22,4 +22,8 @@ type Window interface {
 	// RequestPaint asks the platform to schedule a paint notification. It does
 	// not draw immediately, and multiple requests may be coalesced.
 	RequestPaint() error
+	// SetMinSize sets the window-manager minimum size hint in logical (DIP)
+	// units. A value of (0, 0) clears the hint (no minimum). The hint is
+	// advisory: the window manager may ignore it.
+	SetMinSize(width, height float32)
 }
