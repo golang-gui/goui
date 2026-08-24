@@ -5,6 +5,7 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
+	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 )
@@ -37,6 +38,8 @@ type Window interface {
 
 	RequestClose() error
 	Destroy()
+
+	SetMinSize(geometry.Size)
 
 	Snapshot() WindowInfo
 	DispatchEvent(event events.Event) error
@@ -74,6 +77,8 @@ type window struct {
 	closeRequest   signal.Signal1[*bool]
 	destroy        signal.Signal0
 	focusChanged   signal.Signal1[bool]
+	minSize        geometry.Size // explicit minimum from SetMinSize; zero means derive from tree
+	minSizeApplied bool          // true once the first layout has derived and applied the min-size hint
 }
 
 // defaultWindowWidth/Height is the preferred initial size (logical/DIP) passed
@@ -323,6 +328,35 @@ func (w *window) ConnectFocusChanged(fn func(bool)) signal.Handle {
 	return w.focusChanged.Connect(fn)
 }
 
+func (w *window) SetMinSize(size geometry.Size) {
+	w.minSize = size
+	if w.platformWindow != nil {
+		w.platformWindow.SetMinSize(size.Width, size.Height)
+	}
+}
+
+// updateMinSize derives and applies the window-manager min-size hint from the
+// widget tree. Called on the first layout pass when no explicit SetMinSize was
+// given. The content is measured with no upper bound (Loose(Inf)) to discover
+// its preferred intrinsic size.
+func (w *window) updateMinSize() {
+	if w.minSizeApplied {
+		return
+	}
+	w.minSizeApplied = true
+	// Explicit SetMinSize wins over auto-derivation.
+	if w.minSize.Width > 0 || w.minSize.Height > 0 {
+		return
+	}
+	if w.root == nil || w.platformWindow == nil {
+		return
+	}
+	pref := w.root.Measure(layout.Unbounded())
+	if pref.Width > 0 || pref.Height > 0 {
+		w.platformWindow.SetMinSize(pref.Width, pref.Height)
+	}
+}
+
 func (w *window) onEvent(event events.Event) {
 	_ = w.DispatchEvent(event)
 }
@@ -366,6 +400,7 @@ func (w *window) routeToModalTarget(event events.Event) bool {
 
 func (w *window) paint() {
 	w.root = liveRoot(w.root)
+	w.updateMinSize()
 	w.paintFrame(w.root)
 }
 
