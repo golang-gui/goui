@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"sync"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/style"
@@ -114,14 +115,15 @@ type app struct {
 }
 
 type windowMount struct {
-	runtime       *app
-	id            string
-	window        gui.Window
-	root          *root
-	view          WindowView
-	closeHandle   signal.Handle
-	destroyHandle signal.Handle
-	destroying    bool
+	runtime        *app
+	id             string
+	window         gui.Window
+	root           *root
+	view           WindowView
+	appliedMinSize geometry.Size // last min-size forwarded to the window; dedupes native calls
+	closeHandle    signal.Handle
+	destroyHandle  signal.Handle
+	destroying     bool
 }
 
 var activeApp struct {
@@ -380,7 +382,17 @@ func (m *windowMount) update(view WindowView) error {
 
 func (m *windowMount) applyWindowProperties(view WindowView) error {
 	m.window.SetID(view.id)
-	return m.window.SetTitle(view.title)
+	if err := m.window.SetTitle(view.title); err != nil {
+		return err
+	}
+	// Forward only when the resolved minimum actually changes, so routine
+	// rebuilds do not issue redundant native calls. A declaration removed by a
+	// rebuild resolves to the zero size, which clears the platform hint.
+	if min := view.mergedMinSize(); min != m.appliedMinSize {
+		m.appliedMinSize = min
+		m.window.SetMinSize(min)
+	}
+	return nil
 }
 
 func (m *windowMount) destroy() {

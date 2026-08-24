@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
@@ -90,6 +91,57 @@ func TestAppReplacesWindowWhenIDChanges(t *testing.T) {
 	}
 	if rt.windows["second"].window != second {
 		t.Fatal("new window mount was not recorded")
+	}
+}
+
+func TestAppWindowMinSize(t *testing.T) {
+	app := newWindowTestApplication()
+	mode := 0 // 0: width only, 1: both axes, 2: no declaration
+	rt := newApp(app, func() RootView {
+		wv := Window("main").Content(Label("main"))
+		switch mode {
+		case 0:
+			wv = wv.MinWidth(320)
+		case 1:
+			wv = wv.MinSize(320, 240)
+		}
+		return wv
+	})
+
+	if err := rt.rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	win := app.windows[0]
+
+	// Width-only declaration forwards exactly once.
+	want := geometry.Size{Width: 320}
+	if len(win.minSizes) != 1 || win.minSizes[0] != want {
+		t.Fatalf("MinWidth not forwarded once: %+v", win.minSizes)
+	}
+
+	// An identical rebuild must not re-issue the native call.
+	rt.RequestUpdate()
+	app.runPosted()
+	if len(win.minSizes) != 1 {
+		t.Fatalf("unchanged rebuild re-forwarded MinWidth: %+v", win.minSizes)
+	}
+
+	// Switching to a full MinSize updates both axes.
+	mode = 1
+	rt.RequestUpdate()
+	app.runPosted()
+	want = geometry.Size{Width: 320, Height: 240}
+	if len(win.minSizes) != 2 || win.minSizes[1] != want {
+		t.Fatalf("MinSize update not forwarded: %+v", win.minSizes)
+	}
+
+	// Removing all declarations clears back to the unbounded default.
+	mode = 2
+	rt.RequestUpdate()
+	app.runPosted()
+	want = geometry.Size{}
+	if len(win.minSizes) != 3 || win.minSizes[2] != want {
+		t.Fatalf("removed declaration did not clear the hint: %+v", win.minSizes)
 	}
 }
 

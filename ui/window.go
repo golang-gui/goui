@@ -1,6 +1,10 @@
 package ui
 
-import "github.com/golang-gui/goui/style"
+import (
+	"github.com/golang-gui/goui/core/bits"
+	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/style"
+)
 
 // RootView is the root declarative view.
 type RootView interface {
@@ -44,6 +48,9 @@ type WindowView struct {
 	content        View
 	onCloseRequest func(*bool)
 	onDestroy      func()
+	minWidth       float32
+	minHeight      float32 // window minimum size hint (logical DIP); merged over an unbounded base on apply
+	fields         bits.Bitmap[uint64]
 }
 
 // Window creates a top-level window view with a stable identity.
@@ -83,4 +90,46 @@ func (w WindowView) OnCloseRequest(fn func(allow *bool)) WindowView {
 func (w WindowView) OnDestroy(fn func()) WindowView {
 	w.onDestroy = fn
 	return w
+}
+
+// MinWidth declares the window's minimum content width (logical DIP). Like the
+// widget-level viewBase, declared axes are merged on each rebuild; an axis
+// without a declaration falls back to the window default, which is no
+// constraint at all.
+func (w WindowView) MinWidth(v float32) WindowView {
+	w.minWidth = v
+	w.fields.Set(viewMinWidth, true)
+	return w
+}
+
+// MinHeight declares the window's minimum content height (logical DIP). See
+// MinWidth for the merge semantics.
+func (w WindowView) MinHeight(v float32) WindowView {
+	w.minHeight = v
+	w.fields.Set(viewMinHeight, true)
+	return w
+}
+
+// MinSize declares both axes of the window's minimum content size (logical
+// DIP), setting the same bits MinWidth and MinHeight would set individually.
+func (w WindowView) MinSize(width, height float32) WindowView {
+	w.minWidth = width
+	w.minHeight = height
+	w.fields.Set(viewMinWidth, true)
+	w.fields.Set(viewMinHeight, true)
+	return w
+}
+
+// mergedMinSize resolves the per-axis declarations into one size. Absent axes
+// fall back to zero (unbounded): a window has no private minimum to snapshot,
+// so "undeclared" simply means unconstrained on that axis.
+func (w WindowView) mergedMinSize() geometry.Size {
+	var s geometry.Size
+	if w.fields.Check(viewMinWidth) {
+		s.Width = w.minWidth
+	}
+	if w.fields.Check(viewMinHeight) {
+		s.Height = w.minHeight
+	}
+	return s
 }

@@ -525,6 +525,7 @@ type testWindow struct {
 	destroyed     bool
 	focused       bool
 	focusedWidget gui.Widget
+	minSizes      []geometry.Size // every SetMinSize call, in order
 	closeRequest  signal.Signal1[*bool]
 	destroy       signal.Signal0
 	focusChanged  signal.Signal1[bool]
@@ -604,6 +605,10 @@ func (w *testWindow) Destroy() {
 	}
 	w.destroyed = true
 	w.destroy.Emit()
+}
+
+func (w *testWindow) SetMinSize(size geometry.Size) {
+	w.minSizes = append(w.minSizes, size)
 }
 
 func (w *testWindow) Snapshot() gui.WindowInfo {
