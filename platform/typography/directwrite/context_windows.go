@@ -20,15 +20,21 @@ type Context struct {
 	dwFactory  *dwrite.Factory
 	d2dFactory *d2d1.Factory
 	imgFactory *wic.ImagingFactory
+	ownsCOM    bool // true if we called com.Initialize (not skipped)
 }
 
 func NewContext() (_ typography.Context, err error) {
-	hr := com.Initialize(com.COINIT_MULTITHREADED)
+	// COM is already initialized as STA by the platform layer (newPlatform).
+	// com.Initialize is a no-op when already initialized; we must not
+	// Uninitialize on destroy since the platform owns the lifetime.
+	already := com.IsInitialized()
+	hr := com.Initialize(com.COINIT_APARTMENTTHREADED)
 	if hr.Failed() {
 		return nil, fmt.Errorf("com initialize err: %v", hr)
 	}
 
 	c := new(Context)
+	c.ownsCOM = !already
 	c.dwFactory, err = dwrite.CreateFactory[dwrite.Factory](dwrite.DWRITE_FACTORY_TYPE_SHARED, dwrite.IID_IDWriteFactory)
 	if err != nil {
 		return nil, fmt.Errorf("create dwrite factory err: %v", err)
@@ -42,7 +48,9 @@ func (c *Context) Destroy() {
 		c.dwFactory.Release()
 		c.dwFactory = nil
 	}
-	com.Uninitialize()
+	if c.ownsCOM {
+		com.Uninitialize()
+	}
 }
 
 func (c *Context) Name() string {
