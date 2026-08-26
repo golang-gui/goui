@@ -11,6 +11,7 @@ import (
 	"github.com/golang-gui/goui/platform/graphics/software"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/directwrite"
+	"github.com/golang-gui/goui/platform/windows/sdk/com"
 	"github.com/golang-gui/goui/platform/windows/sdk/winapi"
 )
 
@@ -115,6 +116,9 @@ func (p *Platform) NewFileDialog() (common.FileDialog, error) {
 func newPlatform() (p *Platform, err error) {
 	p = new(Platform)
 	p.instance, _ = winapi.GetModuleHandle(nil)
+
+	// Initialize COM as STA before creating any COM-dependent objects.
+	com.Initialize(com.COINIT_APARTMENTTHREADED | com.COINIT_DISABLE_OLE1DDE)
 
 	// set DPI awareness
 	if err = winapi.SetProcessDpiAwarenessContext(winapi.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2); err != nil {
