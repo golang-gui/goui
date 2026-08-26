@@ -34,6 +34,10 @@ func InitAppKit() (err error) {
 	initNSGraphicsContext()
 	initNSPasteboard()
 	initNSCursor()
+	initNSSavePanel()
+	initNSOpenPanel()
+	initNSURL()
+	initNSArray()
 	return
 }
 
@@ -1326,4 +1330,202 @@ func (c NSCursorClass) Unhide() {
 // Set makes this cursor the current cursor.
 func (c NSCursor) Set() {
 	c.Send(NSCursorSel.Set)
+}
+
+// NSSavePanel
+
+func initNSSavePanel() {
+	NSSavePanelClassId.Class = objc.GetClass("NSSavePanel")
+	NSSavePanelSel.Init = objc.RegisterName("init")
+	NSSavePanelSel.RunModal = objc.RegisterName("runModal")
+	NSSavePanelSel.SetTitle = objc.RegisterName("setTitle:")
+	NSSavePanelSel.SetAllowedFileTypes = objc.RegisterName("setAllowedFileTypes:")
+	NSSavePanelSel.SetDirectoryURL = objc.RegisterName("setDirectoryURL:")
+	NSSavePanelSel.SetNameFieldStringValue = objc.RegisterName("setNameFieldStringValue:")
+	NSSavePanelSel.URL = objc.RegisterName("URL")
+}
+
+var (
+	NSSavePanelClassId NSSavePanelClass
+	NSSavePanelSel     struct {
+		Init                    objc.SEL
+		RunModal                objc.SEL
+		SetTitle                objc.SEL
+		SetAllowedFileTypes     objc.SEL
+		SetDirectoryURL         objc.SEL
+		SetNameFieldStringValue objc.SEL
+		URL                     objc.SEL
+	}
+)
+
+type (
+	NSSavePanel      struct{ NSWindow }
+	NSSavePanelClass struct{ NSWindowClass }
+)
+
+func (c NSSavePanelClass) Alloc() (res NSSavePanel) {
+	res.NSWindow = c.NSWindowClass.Alloc()
+	return
+}
+
+func (p NSSavePanel) Init() (res NSSavePanel) {
+	res.ID = p.Send(NSSavePanelSel.Init)
+	return
+}
+
+func (p NSSavePanel) RunModal() NSInteger {
+	return objc.Send[NSInteger](p.ID, NSSavePanelSel.RunModal)
+}
+
+func (p NSSavePanel) SetTitle(title string) {
+	p.Send(NSSavePanelSel.SetTitle, NSString_stringWithUTF8String(title))
+}
+
+func (p NSSavePanel) SetAllowedFileTypes(types []string) {
+	var nsArray uintptr
+	if len(types) > 0 {
+		// Create NSArray from Go strings
+		var arr []objc.ID
+		for _, t := range types {
+			arr = append(arr, NSString_stringWithUTF8String(t).ID)
+		}
+		nsArray = NSArray_arrayWithObjects(arr)
+	}
+	p.Send(NSSavePanelSel.SetAllowedFileTypes, nsArray)
+}
+
+func (p NSSavePanel) SetDirectoryURL(url string) {
+	nsURL := NSURL_fileURLWithPath(NSString_stringWithUTF8String(url))
+	p.Send(NSSavePanelSel.SetDirectoryURL, nsURL)
+}
+
+func (p NSSavePanel) SetNameFieldStringValue(name string) {
+	p.Send(NSSavePanelSel.SetNameFieldStringValue, NSString_stringWithUTF8String(name))
+}
+
+func (p NSSavePanel) URL() (res NSURL) {
+	res.ID = p.Send(NSSavePanelSel.URL)
+	return
+}
+
+// NSOpenPanel
+
+func initNSOpenPanel() {
+	NSOpenPanelClassId.Class = objc.GetClass("NSOpenPanel")
+	NSOpenPanelSel.Init = objc.RegisterName("init")
+	NSOpenPanelSel.SetAllowsMultipleSelection = objc.RegisterName("setAllowsMultipleSelection:")
+	NSOpenPanelSel.SetCanChooseDirectories = objc.RegisterName("setCanChooseDirectories:")
+	NSOpenPanelSel.SetCanChooseFiles = objc.RegisterName("setCanChooseFiles:")
+	NSOpenPanelSel.SetAllowsOtherFileTypes = objc.RegisterName("setAllowsOtherFileTypes:")
+	NSOpenPanelSel.URLs = objc.RegisterName("URLs")
+}
+
+var (
+	NSOpenPanelClassId NSOpenPanelClass
+	NSOpenPanelSel     struct {
+		Init                       objc.SEL
+		SetAllowsMultipleSelection objc.SEL
+		SetCanChooseDirectories    objc.SEL
+		SetCanChooseFiles          objc.SEL
+		SetAllowsOtherFileTypes    objc.SEL
+		URLs                       objc.SEL
+	}
+)
+
+type (
+	NSOpenPanel      struct{ NSSavePanel }
+	NSOpenPanelClass struct{ NSSavePanelClass }
+)
+
+func (c NSOpenPanelClass) Alloc() (res NSOpenPanel) {
+	res.NSSavePanel = c.NSSavePanelClass.Alloc()
+	return
+}
+
+func (p NSOpenPanel) Init() (res NSOpenPanel) {
+	res.ID = p.Send(NSOpenPanelSel.Init)
+	return
+}
+
+func (p NSOpenPanel) SetAllowsMultipleSelection(allow bool) {
+	p.Send(NSOpenPanelSel.SetAllowsMultipleSelection, allow)
+}
+
+func (p NSOpenPanel) SetCanChooseDirectories(allow bool) {
+	p.Send(NSOpenPanelSel.SetCanChooseDirectories, allow)
+}
+
+func (p NSOpenPanel) SetCanChooseFiles(allow bool) {
+	p.Send(NSOpenPanelSel.SetCanChooseFiles, allow)
+}
+
+func (p NSOpenPanel) SetAllowsOtherFileTypes(allow bool) {
+	p.Send(NSOpenPanelSel.SetAllowsOtherFileTypes, allow)
+}
+
+func (p NSOpenPanel) URLs() (res NSArray) {
+	res.ID = p.Send(NSOpenPanelSel.URLs)
+	return
+}
+
+// NSURL helper
+
+func initNSURL() {
+	NSURLClassId.Class = objc.GetClass("NSURL")
+	NSURLSel.FileURLWithPath = objc.RegisterName("fileURLWithPath:")
+}
+
+var (
+	NSURLClassId NSURLClass
+	NSURLSel     struct {
+		FileURLWithPath objc.SEL
+	}
+)
+
+type (
+	NSURL      struct{ NSObject }
+	NSURLClass struct{ NSObjectClass }
+)
+
+func NSURL_fileURLWithPath(path NSString) (res NSURL) {
+	res.ID = objc.Send[uintptr](NSURLClassId.Class, NSURLSel.FileURLWithPath, path.ID)
+	return
+}
+
+func (u NSURL) Path() string {
+	return objc.Send[NSString](u.ID, objc.RegisterName("path")).UTF8String()
+}
+
+// NSArray helper
+
+func initNSArray() {
+	NSArrayClassId.Class = objc.GetClass("NSArray")
+	NSArraySel.ArrayWithObjects = objc.RegisterName("arrayWithObjects:count:")
+}
+
+var (
+	NSArrayClassId NSArrayClass
+	NSArraySel     struct {
+		ArrayWithObjects objc.SEL
+	}
+)
+
+type (
+	NSArray      struct{ NSObject }
+	NSArrayClass struct{ NSObjectClass }
+)
+
+func NSArray_arrayWithObjects(objects []objc.ID) uintptr {
+	if len(objects) == 0 {
+		return 0
+	}
+	return objc.Send[uintptr](NSArrayClassId.Class, NSArraySel.ArrayWithObjects, objects[0], uintptr(len(objects)))
+}
+
+func (a NSArray) Count() uintptr {
+	return objc.Send[uintptr](a.ID, objc.RegisterName("count"))
+}
+
+func (a NSArray) ObjectAtIndex(index uintptr) objc.ID {
+	return objc.Send[objc.ID](a.ID, objc.RegisterName("objectAtIndex:"), index)
 }
