@@ -15,13 +15,27 @@ var (
 	coTaskMemFree    = ole32.NewSymbol("CoTaskMemFree")
 )
 
+var comInitialized bool
+
+func IsInitialized() bool {
+	return comInitialized
+}
+
 func Initialize(coInit COINIT) HRESULT {
+	if comInitialized {
+		return 0 // S_OK: already initialized
+	}
 	ret, _, _ := coInitializeEx.CallRaw(0, uintptr(coInit))
-	return HRESULT(ret)
+	hr := HRESULT(ret)
+	if hr.Succeeded() {
+		comInitialized = true
+	}
+	return hr
 }
 
 func Uninitialize() {
 	coUninitialize.CallRaw()
+	comInitialized = false
 }
 
 func CreateInstance[T isUnknown](clsid CLSID, outer **T, clsCtx CLSCTX, iid IID) (inst *T, hr HRESULT) {
