@@ -1,7 +1,6 @@
 package platform
 
 import (
-	"errors"
 	"runtime"
 
 	"github.com/golang-gui/goui/platform/common"
@@ -27,6 +26,9 @@ type (
 	Cursor             = common.Cursor
 	CursorShape        = common.CursorShape
 	EventHandler       = events.EventHandler
+	FileFilter         = common.FileFilter
+	DialogOptions      = common.DialogOptions
+	FileDialog         = common.FileDialog
 )
 
 const (
@@ -72,9 +74,12 @@ type Platform interface {
 	// the window's current cursor shape. Returns ErrUnsupported when the platform
 	// or window does not support cursor control.
 	NewCursor(window Window) (Cursor, error)
+	// NewFileDialog creates the native file dialog capability. Returns
+	// ErrUnsupported when the platform does not support file dialogs.
+	NewFileDialog() (FileDialog, error)
 }
 
-var ErrUnsupported = errors.New("unsupported platform")
+var ErrUnsupported = common.ErrUnsupported
 
 func NewPlatform(name string) (Platform, error) {
 	return newPlatform(name)
