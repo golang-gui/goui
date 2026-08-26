@@ -24,15 +24,27 @@ var (
 	IID_IShellItemArray = com.DefineGuid(0xb63ea76d, 0x1f85, 0x456f, 0xa1, 0x9c, 0x48, 0x15, 0x9e, 0xfa, 0x85, 0x8b)
 )
 
-// CoTaskMemFree is used to free strings returned by IShellItem::GetDisplayName.
 var (
-	ole32             = cgo.NewLazyLibrary("ole32.dll")
-	procCoTaskMemFree = ole32.NewSymbol("CoTaskMemFree")
+	shell32                         = cgo.NewLazyLibrary("shell32.dll")
+	procSHCreateItemFromParsingName = shell32.NewSymbol("SHCreateItemFromParsingName")
 )
 
-// CoTaskMemFree frees memory allocated by the COM subsystem.
-func CoTaskMemFree(ptr unsafe.Pointer) {
-	procCoTaskMemFree.CallRaw(uintptr(ptr))
+// CreateShellItemFromPath creates an IShellItem from a file system path.
+// Returns nil on failure.
+func CreateShellItemFromPath(path string) *ShellItem {
+	wPath, _ := syscall.UTF16PtrFromString(path)
+	defer runtime.KeepAlive(wPath)
+	var item *ShellItem
+	ret, _, _ := procSHCreateItemFromParsingName.CallRaw(
+		uintptr(unsafe.Pointer(wPath)),
+		0,
+		uintptr(unsafe.Pointer(&IID_IShellItem)),
+		uintptr(unsafe.Pointer(&item)),
+	)
+	if com.HRESULT(ret).Failed() {
+		return nil
+	}
+	return item
 }
 
 // --- IShellItem ---
@@ -61,7 +73,7 @@ func (s *ShellItem) GetDisplayName(sigdn SIGDN) (string, com.HRESULT) {
 		return "", hr
 	}
 	name := utf16PtrToString(ptr)
-	CoTaskMemFree(unsafe.Pointer(ptr))
+	com.CoTaskMemFree(unsafe.Pointer(ptr))
 	return name, hr
 }
 
@@ -221,7 +233,7 @@ func (d *FileDialog) GetFileName() (string, com.HRESULT) {
 		return "", hr
 	}
 	name := utf16PtrToString(ptr)
-	CoTaskMemFree(unsafe.Pointer(ptr))
+	com.CoTaskMemFree(unsafe.Pointer(ptr))
 	return name, hr
 }
 
