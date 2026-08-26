@@ -108,6 +108,10 @@ func (p *Platform) NewClipboard() (common.Clipboard, error) {
 	return newClipboard()
 }
 
+func (p *Platform) NewFileDialog() (common.FileDialog, error) {
+	return newFileDialog()
+}
+
 func newPlatform() (p *Platform, err error) {
 	p = new(Platform)
 	p.instance, _ = winapi.GetModuleHandle(nil)

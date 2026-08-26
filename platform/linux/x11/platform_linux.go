@@ -180,3 +180,7 @@ func (p *Platform) NewClipboard() (common.Clipboard, error) {
 	}
 	return p.clipboard, nil
 }
+
+func (p *Platform) NewFileDialog() (common.FileDialog, error) {
+	return newFileDialog()
+}
