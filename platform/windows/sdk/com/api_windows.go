@@ -1,8 +1,10 @@
 package com
 
 import (
-	"github.com/goexlib/cgo"
 	"syscall"
+	"unsafe"
+
+	"github.com/goexlib/cgo"
 )
 
 var (
@@ -10,6 +12,7 @@ var (
 	coInitializeEx   = ole32.NewSymbol("CoInitializeEx")
 	coUninitialize   = ole32.NewSymbol("CoUninitialize")
 	coCreateInstance = ole32.NewSymbol("CoCreateInstance")
+	coTaskMemFree    = ole32.NewSymbol("CoTaskMemFree")
 )
 
 func Initialize(coInit COINIT) HRESULT {
@@ -60,6 +63,12 @@ func (this *Unknown) Release() ULONG {
 
 func (this *Unknown) class() *UnknownClass {
 	return (*UnknownClass)(this.Class)
+}
+
+// CoTaskMemFree frees memory allocated by the COM subsystem (e.g. strings
+// returned by IShellItem::GetDisplayName).
+func CoTaskMemFree(ptr unsafe.Pointer) {
+	coTaskMemFree.CallRaw(uintptr(ptr))
 }
 
 type HRESULT int32
