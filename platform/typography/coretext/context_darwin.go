@@ -415,7 +415,7 @@ func (t *TextLayout) DrawBitmap(scale float32, buf []byte) (bitmap typography.Te
 	}
 
 	// Cache miss: full rasterization.
-	if t.painter.width < width || t.painter.height < height {
+	if t.painter.bitmap.Width != pw || t.painter.bitmap.Height != ph {
 		t.painter.Destroy()
 		err = t.painter.Init(width, height)
 		if err != nil {

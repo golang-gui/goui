@@ -20,6 +20,7 @@ type Painter struct {
 	typo       typography.Context
 	imgs       []int
 	scale      float32
+	transform  geometry.Transform
 	lastWidth  float32 // physical size of the last frame; 0 until the first Begin
 	lastHeight float32
 }
@@ -88,6 +89,7 @@ func (p *Painter) Begin(width, height, scale float32) {
 	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT)
 	p.vg.BeginFrame(int(width/scale), int(height/scale), scale)
 	p.scale = scale
+	p.transform = geometry.Identity()
 }
 
 func (p *Painter) End() {
@@ -196,9 +198,8 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 		if err == nil {
 			// Snap the text bitmap origin to the device pixel grid so the pre-rasterized
 			// glyphs land 1:1 on physical pixels instead of being resampled (blurred).
-			x := float32(math.Round(float64(origin.X*p.scale))) / p.scale
-			y := float32(math.Round(float64(origin.Y*p.scale))) / p.scale
-			drawRect := graphics.Rect(x, y, float32(textBitmap.Width)/p.scale, float32(textBitmap.Height)/p.scale)
+			origin = snapTextOrigin(origin, p.transform, p.scale)
+			drawRect := graphics.Rect(origin.X, origin.Y, float32(textBitmap.Width)/p.scale, float32(textBitmap.Height)/p.scale)
 			bitmap := graphics.Bitmap{
 				Width:  textBitmap.Width,
 				Height: textBitmap.Height,
@@ -212,10 +213,32 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 }
 
 func (p *Painter) SetTransform(t geometry.Transform) {
+	p.transform = t
 	// NanoVG's SetTransform pre-multiplies the current transform. To set an
 	// absolute transform, reset first, then apply.
 	p.vg.ResetTransform()
-	p.vg.SetTransformByValue(t.A11, t.A12, t.A21, t.A22, t.TX, t.TY)
+	a, b, c, d, e, f := nanoVGTransformValues(t)
+	p.vg.SetTransformByValue(a, b, c, d, e, f)
+}
+
+// nanoVGTransformValues converts GOUI's row-major transform to NanoVG's
+// [a c e; b d f] parameter order.
+func nanoVGTransformValues(t geometry.Transform) (a, b, c, d, e, f float32) {
+	return t.A11, t.A21, t.A12, t.A22, t.TX, t.TY
+}
+
+// snapTextOrigin snaps the final position of a pre-rasterized text bitmap.
+// A non-translation transform changes the bitmap itself, so it must remain
+// free to be sampled by NanoVG rather than receiving a translation-only snap.
+func snapTextOrigin(origin geometry.Point, transform geometry.Transform, scale float32) geometry.Point {
+	if scale <= 0 || transform.A11 != 1 || transform.A12 != 0 ||
+		transform.A21 != 0 || transform.A22 != 1 {
+		return origin
+	}
+	return geometry.Point{
+		X: float32(math.Round(float64((origin.X+transform.TX)*scale)))/scale - transform.TX,
+		Y: float32(math.Round(float64((origin.Y+transform.TY)*scale)))/scale - transform.TY,
+	}
 }
 
 func (p *Painter) DrawImage(rect graphics.Rectangle, img image.Image) {
