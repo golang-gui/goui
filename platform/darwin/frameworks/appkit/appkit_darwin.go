@@ -2,6 +2,7 @@ package appkit
 
 import (
 	"fmt"
+
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/core_graphics"
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
 	"github.com/golang-gui/goui/platform/darwin/frameworks/utils"
@@ -1378,16 +1379,15 @@ func (p NSSavePanel) RunModal() NSInteger {
 }
 
 func (p NSSavePanel) SetTitle(title string) {
-	p.Send(NSSavePanelSel.SetTitle, NSString_stringWithUTF8String(title))
+	p.Send(NSSavePanelSel.SetTitle, ToNSString(title))
 }
 
 func (p NSSavePanel) SetAllowedFileTypes(types []string) {
-	var nsArray uintptr
+	var nsArray objc.ID
 	if len(types) > 0 {
-		// Create NSArray from Go strings
 		var arr []objc.ID
 		for _, t := range types {
-			arr = append(arr, NSString_stringWithUTF8String(t).ID)
+			arr = append(arr, ToNSString(t).ID)
 		}
 		nsArray = NSArray_arrayWithObjects(arr)
 	}
@@ -1395,12 +1395,12 @@ func (p NSSavePanel) SetAllowedFileTypes(types []string) {
 }
 
 func (p NSSavePanel) SetDirectoryURL(url string) {
-	nsURL := NSURL_fileURLWithPath(NSString_stringWithUTF8String(url))
+	nsURL := NSURL_fileURLWithPath(ToNSString(url))
 	p.Send(NSSavePanelSel.SetDirectoryURL, nsURL)
 }
 
 func (p NSSavePanel) SetNameFieldStringValue(name string) {
-	p.Send(NSSavePanelSel.SetNameFieldStringValue, NSString_stringWithUTF8String(name))
+	p.Send(NSSavePanelSel.SetNameFieldStringValue, ToNSString(name))
 }
 
 func (p NSSavePanel) URL() (res NSURL) {
@@ -1473,12 +1473,14 @@ func (p NSOpenPanel) URLs() (res NSArray) {
 func initNSURL() {
 	NSURLClassId.Class = objc.GetClass("NSURL")
 	NSURLSel.FileURLWithPath = objc.RegisterName("fileURLWithPath:")
+	NSURLSel.Path = objc.RegisterName("path")
 }
 
 var (
 	NSURLClassId NSURLClass
 	NSURLSel     struct {
 		FileURLWithPath objc.SEL
+		Path            objc.SEL
 	}
 )
 
@@ -1488,25 +1490,38 @@ type (
 )
 
 func NSURL_fileURLWithPath(path NSString) (res NSURL) {
-	res.ID = objc.Send[uintptr](NSURLClassId.Class, NSURLSel.FileURLWithPath, path.ID)
+	res.ID = objc.Send[objc.ID](objc.ID(NSURLClassId.Class), NSURLSel.FileURLWithPath, path.ID)
 	return
 }
 
 func (u NSURL) Path() string {
-	return objc.Send[NSString](u.ID, objc.RegisterName("path")).UTF8String()
+	return objc.Send[NSString](u.ID, NSURLSel.Path).UTF8String()
 }
+
+// NSModalResponse
+
+type NSModalResponse = NSInteger
+
+const (
+	NSModalResponseCancel NSModalResponse = 0
+	NSModalResponseOK     NSModalResponse = 1
+)
 
 // NSArray helper
 
 func initNSArray() {
 	NSArrayClassId.Class = objc.GetClass("NSArray")
 	NSArraySel.ArrayWithObjects = objc.RegisterName("arrayWithObjects:count:")
+	NSArraySel.Count = objc.RegisterName("count")
+	NSArraySel.ObjectAtIndex = objc.RegisterName("objectAtIndex:")
 }
 
 var (
 	NSArrayClassId NSArrayClass
 	NSArraySel     struct {
 		ArrayWithObjects objc.SEL
+		Count            objc.SEL
+		ObjectAtIndex    objc.SEL
 	}
 )
 
@@ -1515,17 +1530,17 @@ type (
 	NSArrayClass struct{ NSObjectClass }
 )
 
-func NSArray_arrayWithObjects(objects []objc.ID) uintptr {
+func NSArray_arrayWithObjects(objects []objc.ID) objc.ID {
 	if len(objects) == 0 {
-		return 0
+		return objc.ID(0)
 	}
-	return objc.Send[uintptr](NSArrayClassId.Class, NSArraySel.ArrayWithObjects, objects[0], uintptr(len(objects)))
+	return objc.Send[objc.ID](objc.ID(NSArrayClassId.Class), NSArraySel.ArrayWithObjects, cgo.CSlice(objects), uintptr(len(objects)))
 }
 
 func (a NSArray) Count() uintptr {
-	return objc.Send[uintptr](a.ID, objc.RegisterName("count"))
+	return objc.Send[uintptr](a.ID, NSArraySel.Count)
 }
 
 func (a NSArray) ObjectAtIndex(index uintptr) objc.ID {
-	return objc.Send[objc.ID](a.ID, objc.RegisterName("objectAtIndex:"), index)
+	return objc.Send[objc.ID](a.ID, NSArraySel.ObjectAtIndex, index)
 }
