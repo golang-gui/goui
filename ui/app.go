@@ -33,6 +33,8 @@ type App interface {
 	Clipboard() Clipboard
 	// Settings returns the system settings view (never nil).
 	Settings() Settings
+	// FileDialog returns the system file dialog view (never nil).
+	FileDialog() FileDialog
 }
 
 var (
