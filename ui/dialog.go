@@ -13,8 +13,7 @@ type DialogOptions = gui.DialogOptions
 // FileDialog is the thread-safe UI-layer view of the system file dialog,
 // obtained via App.FileDialog(). It is always usable: operations run on the
 // UI thread automatically, and when the platform file dialog is unavailable
-// they degrade to reporting ErrUnsupported. Cancel is reported as empty
-// slice with nil error.
+// they degrade to an empty slice. Cancel is reported as empty slice.
 type FileDialog struct {
 	current *app
 	dlg     gui.FileDialog
@@ -30,7 +29,7 @@ func (a *app) FileDialog() FileDialog {
 
 // OpenFile opens a native file-selection dialog for selecting one or more files.
 // It is safe to call from any goroutine; the callback is invoked on the UI thread.
-func (f FileDialog) OpenFile(opts DialogOptions, cb func([]string, error)) {
+func (f FileDialog) OpenFile(opts DialogOptions, cb func([]string)) {
 	if f.current == nil || f.dlg == nil {
 		return
 	}
@@ -41,7 +40,7 @@ func (f FileDialog) OpenFile(opts DialogOptions, cb func([]string, error)) {
 
 // OpenDirectory opens a native dialog for selecting a directory.
 // It is safe to call from any goroutine; the callback is invoked on the UI thread.
-func (f FileDialog) OpenDirectory(opts DialogOptions, cb func([]string, error)) {
+func (f FileDialog) OpenDirectory(opts DialogOptions, cb func([]string)) {
 	if f.current == nil || f.dlg == nil {
 		return
 	}
@@ -52,7 +51,7 @@ func (f FileDialog) OpenDirectory(opts DialogOptions, cb func([]string, error)) 
 
 // SaveFile opens a native save-file dialog.
 // It is safe to call from any goroutine; the callback is invoked on the UI thread.
-func (f FileDialog) SaveFile(opts DialogOptions, cb func([]string, error)) {
+func (f FileDialog) SaveFile(opts DialogOptions, cb func([]string)) {
 	if f.current == nil || f.dlg == nil {
 		return
 	}

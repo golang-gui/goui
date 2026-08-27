@@ -229,14 +229,14 @@ func (a *testApplication) DispatchWindowEvent(window string, event events.Event)
 
 type testFileDialog struct{}
 
-func (f *testFileDialog) OpenFile(owner gui.Window, opts gui.DialogOptions, cb func([]string, error)) {
-	cb(nil, nil)
+func (f *testFileDialog) OpenFile(owner gui.Window, opts gui.DialogOptions, cb func([]string)) {
+	cb(nil)
 }
 
-func (f *testFileDialog) OpenDirectory(owner gui.Window, opts gui.DialogOptions, cb func([]string, error)) {
-	cb(nil, nil)
+func (f *testFileDialog) OpenDirectory(owner gui.Window, opts gui.DialogOptions, cb func([]string)) {
+	cb(nil)
 }
 
-func (f *testFileDialog) SaveFile(owner gui.Window, opts gui.DialogOptions, cb func([]string, error)) {
-	cb(nil, nil)
+func (f *testFileDialog) SaveFile(owner gui.Window, opts gui.DialogOptions, cb func([]string)) {
+	cb(nil)
 }

@@ -387,16 +387,16 @@ func (a *windowTestApplication) DispatchWindowEvent(string, events.Event) error 
 
 type windowTestFileDialog struct{}
 
-func (f *windowTestFileDialog) OpenFile(owner gui.Window, opts gui.DialogOptions, cb func([]string, error)) {
-	cb(nil, nil)
+func (f *windowTestFileDialog) OpenFile(owner gui.Window, opts gui.DialogOptions, cb func([]string)) {
+	cb(nil)
 }
 
-func (f *windowTestFileDialog) OpenDirectory(owner gui.Window, opts gui.DialogOptions, cb func([]string, error)) {
-	cb(nil, nil)
+func (f *windowTestFileDialog) OpenDirectory(owner gui.Window, opts gui.DialogOptions, cb func([]string)) {
+	cb(nil)
 }
 
-func (f *windowTestFileDialog) SaveFile(owner gui.Window, opts gui.DialogOptions, cb func([]string, error)) {
-	cb(nil, nil)
+func (f *windowTestFileDialog) SaveFile(owner gui.Window, opts gui.DialogOptions, cb func([]string)) {
+	cb(nil)
 }
 
 func (a *windowTestApplication) runPosted() {
