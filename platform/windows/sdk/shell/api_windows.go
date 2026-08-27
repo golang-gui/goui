@@ -51,10 +51,11 @@ func CreateShellItemFromPath(path string) *ShellItem {
 
 type ShellItemClass struct {
 	com.UnknownClass
+	BindToHandler  cgo.Symbol // HRESULT(IShellItem*, IBindCtx*, REFGUID, REFIID, void**)
 	GetParent      cgo.Symbol // HRESULT(IShellItem*, IShellItem**)
 	GetDisplayName cgo.Symbol // HRESULT(IShellItem*, SIGDN, LPWSTR*)
 	GetAttributes  cgo.Symbol // HRESULT(IShellItem*, SFGAOF, SFGAOF*)
-	Compare        cgo.Symbol // HRESULT(IShellItem*, IShellItem*, DWORD, int*)
+	Compare        cgo.Symbol // HRESULT(IShellItem*, IShellItem*, SICHINTF, int*)
 }
 
 type ShellItem struct {
