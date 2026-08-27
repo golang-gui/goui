@@ -343,6 +343,10 @@ func (a *windowTestApplication) Settings() gui.Settings {
 	return nil
 }
 
+func (a *windowTestApplication) FileDialog() gui.FileDialog {
+	return &windowTestFileDialog{}
+}
+
 func (a *windowTestApplication) NewWindow() (gui.Window, error) {
 	win := newTestWindow()
 	a.windows = append(a.windows, win)
@@ -379,6 +383,20 @@ func (a *windowTestApplication) Snapshot() gui.ApplicationInfo {
 
 func (a *windowTestApplication) DispatchWindowEvent(string, events.Event) error {
 	return nil
+}
+
+type windowTestFileDialog struct{}
+
+func (f *windowTestFileDialog) OpenFile(owner gui.Window, opts gui.DialogOptions, cb func([]string, error)) {
+	cb(nil, nil)
+}
+
+func (f *windowTestFileDialog) OpenDirectory(owner gui.Window, opts gui.DialogOptions, cb func([]string, error)) {
+	cb(nil, nil)
+}
+
+func (f *windowTestFileDialog) SaveFile(owner gui.Window, opts gui.DialogOptions, cb func([]string, error)) {
+	cb(nil, nil)
 }
 
 func (a *windowTestApplication) runPosted() {
