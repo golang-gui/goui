@@ -18,6 +18,8 @@ type Application interface {
 	Clipboard() Clipboard
 	// Settings returns system settings as usable values. Never nil.
 	Settings() Settings
+	// FileDialog returns the system file dialog, or nil if it is unavailable.
+	FileDialog() FileDialog
 	StyleSheet() style.StyleSheet
 	SetStyleSheet(style.StyleSheet)
 	NewWindow() (Window, error)
@@ -52,13 +54,14 @@ func NewApplication() (Application, error) {
 }
 
 type application struct {
-	platform  platform.Platform
-	loop      platform.EventLoop
-	typo      typography.Context
-	clipboard Clipboard
-	settings  Settings
-	style     style.StyleSheet
-	windows   []*window
+	platform   platform.Platform
+	loop       platform.EventLoop
+	typo       typography.Context
+	clipboard  Clipboard
+	settings   Settings
+	fileDialog FileDialog
+	style      style.StyleSheet
+	windows    []*window
 
 	quitOnLastWindowClosed bool
 }
@@ -94,12 +97,15 @@ func newApplication() (*application, error) {
 		platSettings = nil // getters then always fall back
 	}
 
+	platFileDlg, _ := plat.NewFileDialog()
+
 	app := &application{
-		platform:  plat,
-		loop:      loop,
-		typo:      typo,
-		clipboard: newClipboard(platClip),
-		settings:  newSettings(platSettings, loop),
+		platform:   plat,
+		loop:       loop,
+		typo:       typo,
+		clipboard:  newClipboard(platClip),
+		settings:   newSettings(platSettings, loop),
+		fileDialog: newFileDialog(platFileDlg, loop),
 
 		quitOnLastWindowClosed: true,
 	}
@@ -120,6 +126,11 @@ func (a *application) Clipboard() Clipboard {
 
 func (a *application) Settings() Settings {
 	return a.settings
+}
+
+// FileDialog returns the system file dialog, or nil if it is unavailable.
+func (a *application) FileDialog() FileDialog {
+	return a.fileDialog
 }
 
 // StyleSheet is the app's custom style sheet, or nil when none is set.

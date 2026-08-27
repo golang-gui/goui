@@ -168,6 +168,10 @@ func (a *testApplication) Settings() gui.Settings {
 	panic("unimplemented")
 }
 
+func (a *testApplication) FileDialog() gui.FileDialog {
+	return &testFileDialog{}
+}
+
 type testDispatch struct {
 	window string
 	event  events.Event
@@ -221,4 +225,18 @@ func (a *testApplication) DispatchWindowEvent(window string, event events.Event)
 		event:  event,
 	})
 	return a.dispatchErr
+}
+
+type testFileDialog struct{}
+
+func (f *testFileDialog) OpenFile(owner gui.Window, opts gui.DialogOptions, cb func([]string, error)) {
+	cb(nil, nil)
+}
+
+func (f *testFileDialog) OpenDirectory(owner gui.Window, opts gui.DialogOptions, cb func([]string, error)) {
+	cb(nil, nil)
+}
+
+func (f *testFileDialog) SaveFile(owner gui.Window, opts gui.DialogOptions, cb func([]string, error)) {
+	cb(nil, nil)
 }
