@@ -11,23 +11,21 @@ type FileFilter = platform.FileFilter
 type DialogOptions = platform.DialogOptions
 
 // FileDialog is the system file dialog. It is always usable: when the platform
-// does not support file dialogs, operations report ErrUnsupported.
+// does not support file dialogs, operations silently degrade (empty slice).
+// Cancel is reported as empty slice.
 type FileDialog interface {
 	// OpenFile opens a native file-selection dialog for selecting one or more files.
 	// owner is the parent window; nil means desktop-centered.
 	// cb is called exactly once on the GUI thread with selected paths.
-	// Cancel is reported as empty slice with nil error.
-	OpenFile(owner Window, opts DialogOptions, cb func([]string, error))
+	OpenFile(owner Window, opts DialogOptions, cb func([]string))
 	// OpenDirectory opens a native dialog for selecting a directory.
 	// owner is the parent window; nil means desktop-centered.
 	// cb is called exactly once on the GUI thread with selected paths.
-	// Cancel is reported as empty slice with nil error.
-	OpenDirectory(owner Window, opts DialogOptions, cb func([]string, error))
+	OpenDirectory(owner Window, opts DialogOptions, cb func([]string))
 	// SaveFile opens a native save-file dialog.
 	// owner is the parent window; nil means desktop-centered.
 	// cb is called exactly once on the GUI thread with selected path.
-	// Cancel is reported as empty slice with nil error.
-	SaveFile(owner Window, opts DialogOptions, cb func([]string, error))
+	SaveFile(owner Window, opts DialogOptions, cb func([]string))
 }
 
 type fileDialog struct {
@@ -40,10 +38,10 @@ func newFileDialog(dlg platform.FileDialog, loop platform.EventLoop) FileDialog 
 }
 
 // OpenFile opens a native file-selection dialog for selecting one or more files.
-func (fd *fileDialog) OpenFile(owner Window, opts DialogOptions, cb func([]string, error)) {
+func (fd *fileDialog) OpenFile(owner Window, opts DialogOptions, cb func([]string)) {
 	if fd.dlg == nil {
 		fd.loop.Post(func() {
-			cb(nil, platform.ErrUnsupported)
+			cb(nil)
 		})
 		return
 	}
@@ -51,18 +49,18 @@ func (fd *fileDialog) OpenFile(owner Window, opts DialogOptions, cb func([]strin
 	if owner != nil {
 		ownerWindow = owner.PlatformWindow()
 	}
-	fd.dlg.OpenFile(ownerWindow, opts, func(paths []string, err error) {
+	fd.dlg.OpenFile(ownerWindow, opts, func(paths []string, _ error) {
 		fd.loop.Post(func() {
-			cb(paths, err)
+			cb(paths)
 		})
 	})
 }
 
 // OpenDirectory opens a native dialog for selecting a directory.
-func (fd *fileDialog) OpenDirectory(owner Window, opts DialogOptions, cb func([]string, error)) {
+func (fd *fileDialog) OpenDirectory(owner Window, opts DialogOptions, cb func([]string)) {
 	if fd.dlg == nil {
 		fd.loop.Post(func() {
-			cb(nil, platform.ErrUnsupported)
+			cb(nil)
 		})
 		return
 	}
@@ -70,18 +68,18 @@ func (fd *fileDialog) OpenDirectory(owner Window, opts DialogOptions, cb func([]
 	if owner != nil {
 		ownerWindow = owner.PlatformWindow()
 	}
-	fd.dlg.OpenDirectory(ownerWindow, opts, func(paths []string, err error) {
+	fd.dlg.OpenDirectory(ownerWindow, opts, func(paths []string, _ error) {
 		fd.loop.Post(func() {
-			cb(paths, err)
+			cb(paths)
 		})
 	})
 }
 
 // SaveFile opens a native save-file dialog.
-func (fd *fileDialog) SaveFile(owner Window, opts DialogOptions, cb func([]string, error)) {
+func (fd *fileDialog) SaveFile(owner Window, opts DialogOptions, cb func([]string)) {
 	if fd.dlg == nil {
 		fd.loop.Post(func() {
-			cb(nil, platform.ErrUnsupported)
+			cb(nil)
 		})
 		return
 	}
@@ -89,9 +87,9 @@ func (fd *fileDialog) SaveFile(owner Window, opts DialogOptions, cb func([]strin
 	if owner != nil {
 		ownerWindow = owner.PlatformWindow()
 	}
-	fd.dlg.SaveFile(ownerWindow, opts, func(paths []string, err error) {
+	fd.dlg.SaveFile(ownerWindow, opts, func(paths []string, _ error) {
 		fd.loop.Post(func() {
-			cb(paths, err)
+			cb(paths)
 		})
 	})
 }
