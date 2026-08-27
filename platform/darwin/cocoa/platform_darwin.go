@@ -10,6 +10,8 @@ import (
 	"github.com/golang-gui/goui/platform/typography/coretext"
 
 	"github.com/golang-gui/goui/platform/darwin/frameworks"
+	. "github.com/golang-gui/goui/platform/darwin/frameworks/appkit"
+	. "github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
 )
 
 type Platform struct {

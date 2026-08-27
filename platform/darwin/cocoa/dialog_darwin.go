@@ -19,7 +19,7 @@ func newFileDialog() (common.FileDialog, error) {
 func (fd *fileDialog) OpenFile(owner common.Window, opts common.DialogOptions, cb func([]string, error)) {
 	var panel NSOpenPanel
 	AutoReleasePool(func() {
-		panel = NSOpenPanelClass.Alloc().Init()
+		panel = NSOpenPanelClassId.Alloc().Init()
 	})
 
 	defer func() {
@@ -85,7 +85,7 @@ func (fd *fileDialog) OpenFile(owner common.Window, opts common.DialogOptions, c
 func (fd *fileDialog) OpenDirectory(owner common.Window, opts common.DialogOptions, cb func([]string, error)) {
 	var panel NSOpenPanel
 	AutoReleasePool(func() {
-		panel = NSOpenPanelClass.Alloc().Init()
+		panel = NSOpenPanelClassId.Alloc().Init()
 	})
 
 	defer func() {
@@ -139,7 +139,7 @@ func (fd *fileDialog) OpenDirectory(owner common.Window, opts common.DialogOptio
 func (fd *fileDialog) SaveFile(owner common.Window, opts common.DialogOptions, cb func([]string, error)) {
 	var panel NSSavePanel
 	AutoReleasePool(func() {
-		panel = NSSavePanelClass.Alloc().Init()
+		panel = NSSavePanelClassId.Alloc().Init()
 	})
 
 	defer func() {
