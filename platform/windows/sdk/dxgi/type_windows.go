@@ -1,5 +1,43 @@
 package dxgi
 
+type SampleDesc struct {
+	Count   uint32
+	Quality uint32
+}
+
+type SwapChainDesc1 struct {
+	Width       uint32
+	Height      uint32
+	Format      Format
+	Stereo      int32
+	SampleDesc  SampleDesc
+	BufferUsage Usage
+	BufferCount uint32
+	Scaling     Scaling
+	SwapEffect  SwapEffect
+	AlphaMode   AlphaMode
+	Flags       uint32
+}
+
+type Usage uint32
+type Scaling uint32
+type SwapEffect uint32
+type AlphaMode uint32
+
+const (
+	DXGI_USAGE_RENDER_TARGET_OUTPUT Usage = 0x20
+
+	DXGI_SCALING_STRETCH Scaling = 0
+
+	DXGI_SWAP_EFFECT_DISCARD         SwapEffect = 0
+	DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL SwapEffect = 3
+
+	DXGI_ALPHA_MODE_UNSPECIFIED AlphaMode = 0
+
+	DXGI_ERROR_DEVICE_REMOVED int32 = -2005270523 // 0x887A0005
+	DXGI_ERROR_DEVICE_RESET   int32 = -2005270521 // 0x887A0007
+)
+
 type Format uint32
 
 const (
