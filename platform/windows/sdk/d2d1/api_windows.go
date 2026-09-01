@@ -204,6 +204,23 @@ func (this *RenderTarget) CreateSolidColorBrush(color *ColorF, brushProperties *
 	return
 }
 
+func (this *RenderTarget) CreateGradientStopCollection(stops []GradientStop, gamma Gamma, extendMode ExtendMode) (collection *GradientStopCollection, hr com.HRESULT) {
+	ret, _, _ := this.class().CreateGradientStopCollection.CallRaw(
+		uintptr(cgo.Pointer(this)), uintptr(cgo.CSlice(stops)), uintptr(len(stops)),
+		uintptr(gamma), uintptr(extendMode), uintptr(cgo.Pointer(&collection)),
+	)
+	runtime.KeepAlive(stops)
+	return collection, com.HRESULT(ret)
+}
+
+func (this *RenderTarget) CreateLinearGradientBrush(props *LinearGradientBrushProperties, brushProperties *BrushProperties, collection *GradientStopCollection) (brush *LinearGradientBrush, hr com.HRESULT) {
+	ret, _, _ := this.class().CreateLinearGradientBrush.CallRaw(
+		uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(props)), uintptr(cgo.Pointer(brushProperties)),
+		uintptr(cgo.Pointer(collection)), uintptr(cgo.Pointer(&brush)),
+	)
+	return brush, com.HRESULT(ret)
+}
+
 func (this *RenderTarget) BeginDraw() {
 	this.class().BeginDraw.CallRaw(uintptr(cgo.Pointer(this)))
 }
@@ -357,6 +374,33 @@ func (this *SolidColorBrush) SetColor(color *ColorF) {
 
 func (this *SolidColorBrush) class() *SolidColorBrushClass {
 	return (*SolidColorBrushClass)(this.Class)
+}
+
+type GradientStopCollection struct {
+	Resource
+}
+
+type LinearGradientBrushClass struct {
+	BrushClass
+
+	SetStartPoint cgo.Symbol // void(ID2D1LinearGradientBrush *This, D2D1_POINT_2F startPoint) PURE;
+	SetEndPoint   cgo.Symbol // void(ID2D1LinearGradientBrush *This, D2D1_POINT_2F endPoint) PURE;
+}
+
+type LinearGradientBrush struct {
+	Brush
+}
+
+func (this *LinearGradientBrush) SetStartPoint(point Point2F) {
+	cgo.Call(this.class().SetStartPoint, this, point)
+}
+
+func (this *LinearGradientBrush) SetEndPoint(point Point2F) {
+	cgo.Call(this.class().SetEndPoint, this, point)
+}
+
+func (this *LinearGradientBrush) class() *LinearGradientBrushClass {
+	return (*LinearGradientBrushClass)(this.Class)
 }
 
 type GeometryClass struct {
