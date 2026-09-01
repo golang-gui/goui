@@ -35,6 +35,7 @@ type Painter struct {
 	clip        d2d1.RectF
 	imageBuf    []byte
 	scale       float32
+	transform   geometry.Transform
 	matrix      d2d1.Matrix3x2F
 }
 
@@ -210,12 +211,21 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 }
 
 func (p *Painter) SetTransform(t geometry.Transform) {
-	p.matrix = d2d1.Matrix3x2F{
-		M11: t.A11, M12: t.A12,
-		M21: t.A21, M22: t.A22,
+	p.transform = t
+	p.matrix = d2dMatrix(t)
+	p.render.SetTransform(&p.matrix)
+}
+
+// d2dMatrix converts GOUI's column-vector transform into Direct2D's
+// row-vector matrix layout. The linear off-diagonal terms must be
+// transposed: Direct2D maps x' = x*M11 + y*M21 + M31, while
+// geometry.Transform maps x' = A11*x + A12*y + TX.
+func d2dMatrix(t geometry.Transform) d2d1.Matrix3x2F {
+	return d2d1.Matrix3x2F{
+		M11: t.A11, M12: t.A21,
+		M21: t.A12, M22: t.A22,
 		M31: t.TX, M32: t.TY,
 	}
-	p.render.SetTransform(&p.matrix)
 }
 
 func (p *Painter) DrawImage(rect graphics.Rectangle, img image.Image) {
@@ -439,6 +449,13 @@ func (p *Painter) drawBitmap(rect graphics.Rectangle, bitmap graphics.Bitmap) {
 }
 
 func (p *Painter) snap(x float32) float32 {
+	if p.scale <= 0 || p.transform != geometry.Identity() {
+		// Coordinates are local to the active transform. Snapping them before
+		// Direct2D applies that transform shifts translated widgets and distorts
+		// rotated or scaled geometry. Pixel snapping is only valid when local
+		// and target coordinates are the same.
+		return x
+	}
 	// D2D strokes the center of a path. For a stroke to fall entirely within
 	// a single physical pixel, its center must align to a pixel center, which
 	// in D2D is at half-integer coordinates (0.5, 1.5, 2.5...). Snap to pixel
