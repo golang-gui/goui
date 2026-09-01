@@ -13,4 +13,6 @@ type Surface interface {
 	// Draw blits a finished image onto the surface. It is the present path used
 	// by the software painter.
 	Draw(img image.Image) error
+
+	RequestPaint() error
 }

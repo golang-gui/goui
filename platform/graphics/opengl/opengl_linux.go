@@ -16,13 +16,9 @@ func ChooseGLXFBConfig(config FBConfig) (native glx.FBConfig, err error) {
 	return chooseGLXFBConfig(config)
 }
 
-type GLXContext interface {
-	isGLXContext()
-}
-
-type GLXNativeWindow interface {
+type glxNativeWindow interface {
+	NativeWindow
 	NativeFBConfig() glx.FBConfig
-	RequestPaint() error
 }
 
 type glxContext struct {
@@ -33,7 +29,7 @@ type glxContext struct {
 func (glxContext) isGLXContext() {}
 
 func newContext(win NativeWindow, share Context, _ Config) (_ Context, err error) {
-	fbConfig := win.(GLXNativeWindow).NativeFBConfig() // TODO: check
+	fbConfig := win.(glxNativeWindow).NativeFBConfig() // TODO: check
 
 	var shareCtx glxContext
 	if share != nil {
