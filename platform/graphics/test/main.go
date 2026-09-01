@@ -96,6 +96,22 @@ func render(width, height float32) {
 		painter.DrawRoundRect(graphics.Rect(430, 200, 260, 180), 12, 4, graphics.RGB(30, 100, 30))
 		painter.DrawRect(graphics.Rect(450, 220, 220, 140), 4, graphics.RGB(30, 100, 30))
 
+		// Linear gradient: horizontal fill, transparent diagonal round rect, and stroke.
+		gradient := graphics.LinearGradient{
+			Start:      graphics.Point{X: 180, Y: 480},
+			End:        graphics.Point{X: 400, Y: 480},
+			StartColor: graphics.RGB(255, 100, 40),
+			EndColor:   graphics.RGB(60, 40, 220),
+		}
+		painter.FillRect(graphics.Rect(180, 480, 220, 24), gradient)
+		painter.FillRoundRect(graphics.Rect(180, 514, 220, 40), 10, graphics.LinearGradient{
+			Start:      graphics.Point{X: 180, Y: 514},
+			End:        graphics.Point{X: 400, Y: 554},
+			StartColor: graphics.RGBA(255, 255, 255, 180),
+			EndColor:   graphics.RGBA(20, 20, 80, 20),
+		})
+		painter.DrawRoundRect(graphics.Rect(180, 514, 220, 40), 10, 2, gradient)
+
 		// --- Transform tests ---
 		// Each group draws a white outline reference without transform, then
 		// the same shape with a transform, so you can visually verify correctness.

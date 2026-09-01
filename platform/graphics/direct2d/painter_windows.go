@@ -17,20 +17,25 @@ import (
 )
 
 type Painter struct {
-	typoCtx    typography.Context
-	dwTypo     *directwrite.Context
-	factory    *d2d1.Factory
-	render     *d2d1.HwndRenderTarget
-	colorBrush *d2d1.SolidColorBrush
-	color      d2d1.ColorF
-	sizeU      d2d1.SizeU
-	rect       d2d1.RectF
-	roundRect  d2d1.RoundRect
-	ellipse    d2d1.Ellipse
-	clip       d2d1.RectF
-	imageBuf   []byte
-	scale      float32
-	matrix     d2d1.Matrix3x2F
+	typoCtx     typography.Context
+	dwTypo      *directwrite.Context
+	factory     *d2d1.Factory
+	render      *d2d1.HwndRenderTarget
+	colorBrush  *d2d1.SolidColorBrush
+	color       d2d1.ColorF
+	linearStops *d2d1.GradientStopCollection
+	linearBrush *d2d1.LinearGradientBrush
+	linearStart graphics.Color
+	linearEnd   graphics.Color
+	hasLinear   bool
+	sizeU       d2d1.SizeU
+	rect        d2d1.RectF
+	roundRect   d2d1.RoundRect
+	ellipse     d2d1.Ellipse
+	clip        d2d1.RectF
+	imageBuf    []byte
+	scale       float32
+	matrix      d2d1.Matrix3x2F
 }
 
 type NativeWindow interface {
@@ -75,6 +80,14 @@ func (p *Painter) Name() string {
 }
 
 func (p *Painter) Destroy() {
+	if p.linearBrush != nil {
+		p.linearBrush.Release()
+		p.linearBrush = nil
+	}
+	if p.linearStops != nil {
+		p.linearStops.Release()
+		p.linearStops = nil
+	}
 	if p.colorBrush != nil {
 		p.colorBrush.Release()
 		p.colorBrush = nil
@@ -294,12 +307,65 @@ func (p *Painter) createPathGeometry(path graphics.Path, fill bool) (geometry *d
 }
 
 func (p *Painter) setBrush(brush graphics.Brush) *d2d1.Brush {
-	if color, ok := brush.(graphics.Color); ok {
-		p.color.R, p.color.G, p.color.B, p.color.A = color.R, color.G, color.B, color.A
-		p.colorBrush.SetColor(&p.color)
-		return &p.colorBrush.Brush
+	switch brush := brush.(type) {
+	case graphics.Color:
+		return p.setColorBrush(brush)
+	case graphics.LinearGradient:
+		if brush.Start == brush.End {
+			return p.setColorBrush(brush.StartColor)
+		}
+		if !p.setLinearGradient(brush) {
+			return p.setColorBrush(brush.StartColor)
+		}
+		return &p.linearBrush.Brush
+	default:
+		return nil
 	}
-	return nil
+}
+
+func (p *Painter) setColorBrush(color graphics.Color) *d2d1.Brush {
+	p.color.R, p.color.G, p.color.B, p.color.A = color.R, color.G, color.B, color.A
+	p.colorBrush.SetColor(&p.color)
+	return &p.colorBrush.Brush
+}
+
+func (p *Painter) setLinearGradient(gradient graphics.LinearGradient) bool {
+	if !p.hasLinear || p.linearStart != gradient.StartColor || p.linearEnd != gradient.EndColor {
+		if p.linearBrush != nil {
+			p.linearBrush.Release()
+			p.linearBrush = nil
+		}
+		if p.linearStops != nil {
+			p.linearStops.Release()
+			p.linearStops = nil
+		}
+
+		stops := [2]d2d1.GradientStop{
+			{Position: 0, Color: d2d1.ColorF{R: gradient.StartColor.R, G: gradient.StartColor.G, B: gradient.StartColor.B, A: gradient.StartColor.A}},
+			{Position: 1, Color: d2d1.ColorF{R: gradient.EndColor.R, G: gradient.EndColor.G, B: gradient.EndColor.B, A: gradient.EndColor.A}},
+		}
+		var hr com.HRESULT
+		p.linearStops, hr = p.render.CreateGradientStopCollection(stops[:], d2d1.D2D1_GAMMA_2_2, d2d1.D2D1_EXTEND_MODE_CLAMP)
+		if hr.Failed() {
+			return false
+		}
+		props := d2d1.LinearGradientBrushProperties{
+			StartPoint: d2d1.Point2F{X: gradient.Start.X, Y: gradient.Start.Y},
+			EndPoint:   d2d1.Point2F{X: gradient.End.X, Y: gradient.End.Y},
+		}
+		p.linearBrush, hr = p.render.CreateLinearGradientBrush(&props, nil, p.linearStops)
+		if hr.Failed() {
+			p.linearStops.Release()
+			p.linearStops = nil
+			return false
+		}
+		p.linearStart, p.linearEnd = gradient.StartColor, gradient.EndColor
+		p.hasLinear = true
+	} else {
+		p.linearBrush.SetStartPoint(d2d1.Point2F{X: gradient.Start.X, Y: gradient.Start.Y})
+		p.linearBrush.SetEndPoint(d2d1.Point2F{X: gradient.End.X, Y: gradient.End.Y})
+	}
+	return true
 }
 
 func (p *Painter) setRect(rect graphics.Rectangle) {
