@@ -135,6 +135,117 @@ func TestPainterCompositesTransparentBrushAndPreservesClip(t *testing.T) {
 	assertColorNear(t, d.result.At(4, 0), color.RGBA{B: 255, A: 255}, 1)
 }
 
+func TestBoxShadowFullAndSingleBottomEdge(t *testing.T) {
+	img := renderShadow(t, 40, 35, 1, geometry.Identity(), graphics.Rectangle{}, func(p graphics.Painter) {
+		p.DrawBoxShadow(graphics.Rect(10, 10, 20, 10), 3, graphics.BoxShadow{
+			Color:      graphics.RGBA(255, 0, 0, 255),
+			BlurRadius: 4,
+		})
+	})
+	assertAlphaRange(t, img.At(20, 15), 250, 255)
+	assertAlphaRange(t, img.At(20, 9), 90, 160)
+	assertAlphaRange(t, img.At(20, 5), 0, 4)
+	assertAlphaRange(t, img.At(5, 15), 0, 4)
+	assertAlphaRange(t, img.At(20, 3), 0, 0)
+
+	img = renderShadow(t, 40, 35, 1, geometry.Identity(), graphics.Rectangle{}, func(p graphics.Painter) {
+		blur := float32(4)
+		rect := graphics.Rect(10, 10, 20, 10)
+		p.DrawBoxShadow(rect, 2, graphics.BoxShadow{
+			Color:        graphics.RGBA(0, 0, 0, 220),
+			Offset:       graphics.Point{Y: blur},
+			BlurRadius:   blur,
+			SpreadRadius: -blur,
+		})
+		p.FillRect(rect, graphics.RGB(255, 255, 255))
+	})
+	assertAlphaRange(t, img.At(20, 22), 20, 210)
+	assertAlphaRange(t, img.At(20, 8), 0, 2)
+	assertAlphaRange(t, img.At(8, 15), 0, 7)
+	assertAlphaRange(t, img.At(31, 15), 0, 7)
+}
+
+func TestBoxShadowCompositionClipTransformAndHiDPI(t *testing.T) {
+	img := renderShadow(t, 60, 40, 1, geometry.Identity(), graphics.Rect(15, 0, 30, 40), func(p graphics.Painter) {
+		p.DrawBoxShadow(graphics.Rect(10, 10, 20, 10), 0, graphics.BoxShadow{
+			Color: graphics.RGBA(255, 0, 0, 128), BlurRadius: 4,
+		})
+		p.DrawBoxShadow(graphics.Rect(10, 10, 20, 10), 0, graphics.BoxShadow{
+			Color: graphics.RGBA(0, 0, 255, 128), Offset: graphics.Point{X: 2}, BlurRadius: 4,
+		})
+	})
+	assertColorNear(t, img.At(20, 15), color.RGBA{R: 85, B: 170, A: 192}, 3)
+	assertAlphaRange(t, img.At(14, 15), 0, 2)
+	assertAlphaRange(t, img.At(15, 15), 40, 200)
+
+	img = renderShadow(t, 80, 50, 2, geometry.Translate(10, 10).Rotate(90), graphics.Rectangle{}, func(p graphics.Painter) {
+		p.DrawBoxShadow(graphics.Rect(0, -4, 8, 4), 0, graphics.BoxShadow{
+			Color: graphics.RGBA(0, 255, 0, 255), BlurRadius: 1,
+		})
+	})
+	// Local (4,-2) rotates clockwise to (-2,-4), translates to (8,6),
+	// then scales to device pixel (16,12).
+	assertAlphaRange(t, img.At(16, 12), 240, 255)
+	assertAlphaRange(t, img.At(5, 5), 0, 2)
+
+	img = renderShadow(t, 50, 30, 1, geometry.Translate(5, 5).Scale(2, 1), graphics.Rectangle{}, func(p graphics.Painter) {
+		p.DrawBoxShadow(graphics.Rect(0, 0, 5, 5), 0, graphics.BoxShadow{
+			Color: graphics.RGBA(0, 255, 0, 255), BlurRadius: 1,
+		})
+	})
+	assertAlphaRange(t, img.At(10, 7), 240, 255)
+	assertAlphaRange(t, img.At(2, 7), 0, 2)
+}
+
+func TestBoxShadowFractionalHiDPI(t *testing.T) {
+	img := renderShadow(t, 40, 30, 1.25, geometry.Identity(), graphics.Rectangle{}, func(p graphics.Painter) {
+		p.DrawBoxShadow(graphics.Rect(8, 6, 8, 8), 3, graphics.BoxShadow{
+			Color: graphics.RGBA(20, 40, 80, 200), BlurRadius: 2,
+		})
+	})
+	assertAlphaRange(t, img.At(15, 12), 185, 200)
+	assertAlphaRange(t, img.At(2, 12), 0, 0)
+}
+
+func TestBoxShadowTransparentColorAndContractedEmptyAreNoOps(t *testing.T) {
+	img := renderShadow(t, 20, 20, 1, geometry.Identity(), graphics.Rectangle{}, func(p graphics.Painter) {
+		p.DrawBoxShadow(graphics.Rect(4, 4, 8, 8), 2, graphics.BoxShadow{
+			Color: graphics.RGBA(255, 0, 0, 0), BlurRadius: 4,
+		})
+		p.DrawBoxShadow(graphics.Rect(4, 4, 8, 8), 2, graphics.BoxShadow{
+			Color: graphics.RGB(255, 0, 0), SpreadRadius: -4,
+		})
+	})
+	assertAlphaRange(t, img.At(8, 8), 0, 2)
+}
+
+func renderShadow(t *testing.T, width, height int, scale float32, transform geometry.Transform, clip graphics.Rectangle, draw func(graphics.Painter)) image.Image {
+	t.Helper()
+	var d testDrawer
+	painter, err := NewPainter(&d, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	painter.Begin(float32(width), float32(height), scale)
+	painter.Clear(graphics.Color{})
+	painter.SetTransform(transform)
+	if clip != (graphics.Rectangle{}) {
+		painter.SetClipRect(clip)
+	}
+	draw(painter)
+	painter.End()
+	return d.result
+}
+
+func assertAlphaRange(t *testing.T, actual color.Color, minAlpha, maxAlpha uint8) {
+	t.Helper()
+	_, _, _, alpha := actual.RGBA()
+	got := uint8(alpha >> 8)
+	if got < minAlpha || got > maxAlpha {
+		t.Fatalf("alpha = %d, want [%d,%d]", got, minAlpha, maxAlpha)
+	}
+}
+
 func renderGradient(t *testing.T, gradient graphics.LinearGradient) image.Image {
 	t.Helper()
 	var d testDrawer

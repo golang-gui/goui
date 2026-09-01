@@ -16,6 +16,7 @@ type Painter interface {
 	SetClipRect(rect Rectangle)
 	SetTransform(transform geometry.Transform)
 	Clear(color Color)
+	DrawBoxShadow(rect Rectangle, radius float32, shadow BoxShadow)
 	FillRect(rect Rectangle, brush Brush)
 	FillRoundRect(rect Rectangle, radius float32, brush Brush)
 	FillEllipse(center Point, xRadius, yRadius float32, brush Brush)

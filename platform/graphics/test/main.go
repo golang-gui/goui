@@ -29,7 +29,7 @@ func getTextRange(text, subText string) (start, length int) {
 	return start, len(subText)
 }
 
-func render(width, height float32) {
+func render(width, height, scale float32) {
 	runtime.LockOSThread()
 
 	beg := time.Now()
@@ -37,9 +37,12 @@ func render(width, height float32) {
 		log.Printf("render cost: %v", time.Since(beg))
 	}()
 
-	painter.Begin(width, height, 1.0)
+	painter.Begin(width, height, scale)
 	{
 		painter.Clear(graphics.RGBA(90, 160, 200, 255))
+		painter.DrawBoxShadow(graphics.Rect(50, 50, 100, 60), 12, graphics.BoxShadow{
+			Color: graphics.RGBA(20, 20, 30, 150), BlurRadius: 10, SpreadRadius: 2,
+		})
 		painter.FillRoundRect(graphics.Rect(50, 50, 100, 60), 12, graphics.RGBA(90, 50, 50, 255))
 
 		if typo != nil {
@@ -103,7 +106,19 @@ func render(width, height float32) {
 			StartColor: graphics.RGB(255, 100, 40),
 			EndColor:   graphics.RGB(60, 40, 220),
 		}
+		// Bottom-only recipe: negative spread hides the side influence under the body.
+		painter.DrawBoxShadow(graphics.Rect(180, 480, 220, 24), 4, graphics.BoxShadow{
+			Color: graphics.RGBA(20, 20, 30, 180), Offset: graphics.Point{Y: 6},
+			BlurRadius: 6, SpreadRadius: -6,
+		})
 		painter.FillRect(graphics.Rect(180, 480, 220, 24), gradient)
+		// Two calls compose shadows with independent colors and softness.
+		painter.DrawBoxShadow(graphics.Rect(180, 514, 220, 40), 10, graphics.BoxShadow{
+			Color: graphics.RGBA(255, 80, 30, 70), Offset: graphics.Point{X: -3}, BlurRadius: 8,
+		})
+		painter.DrawBoxShadow(graphics.Rect(180, 514, 220, 40), 10, graphics.BoxShadow{
+			Color: graphics.RGBA(20, 20, 100, 100), Offset: graphics.Point{X: 4, Y: 3}, BlurRadius: 12,
+		})
 		painter.FillRoundRect(graphics.Rect(180, 514, 220, 40), 10, graphics.LinearGradient{
 			Start:      graphics.Point{X: 180, Y: 514},
 			End:        graphics.Point{X: 400, Y: 554},
@@ -159,6 +174,9 @@ func render(width, height float32) {
 		// 8. Translated + rotated round rect (FillRoundRect / DrawRoundRect with transform)
 		painter.SetTransform(geometry.Identity())
 		painter.SetTransform(geometry.Translate(700, 360).Rotate(20))
+		painter.DrawBoxShadow(graphics.Rect(0, 0, 80, 50), 10, graphics.BoxShadow{
+			Color: graphics.RGBA(30, 10, 40, 160), Offset: graphics.Point{Y: 5}, BlurRadius: 7,
+		})
 		painter.FillRoundRect(graphics.Rect(0, 0, 80, 50), 10, graphics.RGBA(200, 50, 200, 180))
 		painter.DrawRoundRect(graphics.Rect(0, 0, 80, 50), 10, 2, graphics.RGBA(255, 255, 255, 255))
 
@@ -206,6 +224,17 @@ func render(width, height float32) {
 		// 11. Identity reset — shape should be at exact window coords
 		painter.SetTransform(geometry.Identity())
 		painter.DrawRect(graphics.Rect(520, 550, 100, 30), 1, graphics.RGBA(255, 255, 255, 150))
+
+		// Clip applies in window coordinates; the right half of this shadow is clipped.
+		painter.SetClipRect(graphics.Rect(640, 545, 55, 45))
+		painter.DrawBoxShadow(graphics.Rect(640, 550, 100, 30), 8, graphics.BoxShadow{
+			Color: graphics.RGBA(0, 0, 0, 180), BlurRadius: 8,
+		})
+		painter.SetClipRect(graphics.Rectangle{})
+		// Transparent colors are intentional no-ops and safe to leave in visual scenarios.
+		painter.DrawBoxShadow(graphics.Rect(640, 550, 100, 30), 8, graphics.BoxShadow{
+			Color: graphics.Color{}, BlurRadius: 8,
+		})
 	}
 	painter.End()
 }
@@ -234,6 +263,7 @@ func main() {
 
 	var win platform.Window
 	var width, height float32
+	scale := float32(1)
 
 	win, err = plat.NewWindow(800, 600, func(event events.Event) {
 		switch ev := event.(type) {
@@ -242,8 +272,11 @@ func main() {
 			eventLoop.Quit()
 		case events.SizeEvent:
 			width, height = ev.PixelWidth, ev.PixelHeight
+			if ev.Width > 0 {
+				scale = ev.PixelWidth / ev.Width
+			}
 		case events.PaintEvent:
-			render(width, height)
+			render(width, height, scale)
 		}
 	})
 	panicIf(err)
