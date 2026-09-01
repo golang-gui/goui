@@ -424,11 +424,10 @@ func (p *Painter) drawSoftBoxShadow(shape boxshadow.Shape, color graphics.Color)
 	}
 	defer output.Release()
 	defer p.shadowEffect.SetInput(0, nil, true)
-	bounds, hr := p.render.GetImageLocalBounds(output)
-	if hr.Failed() {
-		return false
-	}
-	offset := shadowTargetOffset(shape, bounds)
+	// Direct2D keeps the effect output in the input image's coordinate space.
+	// Its negative blur bounds must not be added here: targetOffset positions
+	// that coordinate space, so adding them shifts the shadow left/up by 3σ.
+	offset := shadowTargetOffset(shape)
 	p.render.DrawImage(output, &offset, nil, d2d1.D2D1_INTERPOLATION_MODE_LINEAR, d2d1.D2D1_COMPOSITE_MODE_SOURCE_OVER)
 	return true
 }
@@ -475,8 +474,8 @@ func (p *Painter) shadowCommandList(shape boxshadow.Shape) *d2d1.CommandList {
 	return list
 }
 
-func shadowTargetOffset(shape boxshadow.Shape, bounds d2d1.RectF) d2d1.Point2F {
-	return d2d1.Point2F{X: shape.Rect.X + bounds.Left, Y: shape.Rect.Y + bounds.Top}
+func shadowTargetOffset(shape boxshadow.Shape) d2d1.Point2F {
+	return d2d1.Point2F{X: shape.Rect.X, Y: shape.Rect.Y}
 }
 
 func oldestShadowIndex(entries []shadowCacheEntry) int {
