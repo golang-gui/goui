@@ -7,6 +7,7 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/graphics/internal/boxshadow"
 	"github.com/golang-gui/goui/platform/graphics/utils"
 	"github.com/golang-gui/goui/platform/typography"
 
@@ -104,6 +105,34 @@ func (p *Painter) Clear(color graphics.Color) {
 		end := offset + p.bgra.Stride
 		copy(p.bgra.Pix[offset:end], p.line.Pix)
 	}
+}
+
+func (p *Painter) DrawBoxShadow(rect graphics.Rectangle, radius float32, shadow graphics.BoxShadow) {
+	if shadow.Color.A <= 0 {
+		return
+	}
+	shape, ok := boxshadow.Normalize(rect, radius, shadow.Offset, shadow.BlurRadius, shadow.SpreadRadius)
+	if !ok {
+		return
+	}
+
+	defer p.filler.Clear()
+	bounds := shape.Bounds()
+	clip := p.addRect(p.filler, bounds)
+	p.setShapeClip(clip)
+	defer p.restoreClip()
+	inverse := p.deviceTransform().Inverse()
+	p.filler.SetColor(rasterx.ColorFunc(func(x, y int) color.Color {
+		point := inverse.TransformPoint(geometry.Point{X: float32(x) + 0.5, Y: float32(y) + 0.5})
+		coverage := shape.Alpha(point)
+		if coverage <= 0 {
+			return color.RGBA{}
+		}
+		c := shadow.Color
+		c.A *= coverage
+		return reverseColor(c)
+	}))
+	p.filler.Draw()
 }
 
 func (p *Painter) FillRect(rect graphics.Rectangle, brush graphics.Brush) {

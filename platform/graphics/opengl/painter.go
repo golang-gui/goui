@@ -7,6 +7,7 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/graphics/internal/boxshadow"
 	"github.com/golang-gui/goui/platform/graphics/utils"
 	"github.com/golang-gui/goui/platform/typography"
 
@@ -118,6 +119,31 @@ func (p *Painter) present() {
 func (p *Painter) Clear(color graphics.Color) {
 	gl.ClearColor(color.R, color.G, color.B, color.A)
 	gl.Clear(gl.COLOR_BUFFER_BIT)
+}
+
+func (p *Painter) DrawBoxShadow(rect graphics.Rectangle, radius float32, shadow graphics.BoxShadow) {
+	if shadow.Color.A <= 0 {
+		return
+	}
+	shape, ok := boxshadow.Normalize(rect, radius, shadow.Offset, shadow.BlurRadius, shadow.SpreadRadius)
+	if !ok {
+		return
+	}
+	if shape.BlurRadius <= 0 {
+		p.FillRoundRect(shape.Rect, shape.Radius, shadow.Color)
+		return
+	}
+
+	bounds := shape.Bounds()
+	p.vg.Save()
+	defer p.vg.Restore()
+	p.vg.BeginPath()
+	p.vg.Rect(bounds.X, bounds.Y, bounds.Width, bounds.Height)
+	p.vg.SetFillPaint(nanovgo.BoxShadow(
+		shape.Rect.X, shape.Rect.Y, shape.Rect.Width, shape.Rect.Height,
+		shape.Radius, shape.BlurRadius, nanoVGColor(shadow.Color),
+	))
+	p.vg.Fill()
 }
 
 func (p *Painter) FillRect(rect graphics.Rectangle, brush graphics.Brush) {
