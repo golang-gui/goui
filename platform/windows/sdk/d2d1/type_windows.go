@@ -138,6 +138,31 @@ type BrushProperties struct {
 	Transform Matrix3x2F
 }
 
+type GradientStop struct {
+	Position float32
+	Color    ColorF
+}
+
+type Gamma uint32
+
+const (
+	D2D1_GAMMA_2_2 Gamma = 0
+	D2D1_GAMMA_1_0 Gamma = 1
+)
+
+type ExtendMode uint32
+
+const (
+	D2D1_EXTEND_MODE_CLAMP  ExtendMode = 0
+	D2D1_EXTEND_MODE_WRAP   ExtendMode = 1
+	D2D1_EXTEND_MODE_MIRROR ExtendMode = 2
+)
+
+type LinearGradientBrushProperties struct {
+	StartPoint Point2F
+	EndPoint   Point2F
+}
+
 type BezierSegment struct {
 	Point1 Point2F
 	Point2 Point2F
