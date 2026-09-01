@@ -163,6 +163,13 @@ type LinearGradientBrushProperties struct {
 	EndPoint   Point2F
 }
 
+type RadialGradientBrushProperties struct {
+	Center               Point2F
+	GradientOriginOffset Point2F
+	RadiusX              float32
+	RadiusY              float32
+}
+
 type BezierSegment struct {
 	Point1 Point2F
 	Point2 Point2F
@@ -337,6 +344,63 @@ type BitmapProperties struct {
 	DpiX        float32
 	DpiY        float32
 }
+
+type BitmapProperties1 struct {
+	PixelFormat   PixelFormat
+	DpiX          float32
+	DpiY          float32
+	BitmapOptions BitmapOptions
+	ColorContext  uintptr
+}
+
+type BitmapOptions uint32
+
+const (
+	D2D1_BITMAP_OPTIONS_NONE        BitmapOptions = 0
+	D2D1_BITMAP_OPTIONS_TARGET      BitmapOptions = 1
+	D2D1_BITMAP_OPTIONS_CANNOT_DRAW BitmapOptions = 2
+)
+
+type DeviceContextOptions uint32
+
+const D2D1_DEVICE_CONTEXT_OPTIONS_NONE DeviceContextOptions = 0
+
+type PropertyType uint32
+
+const (
+	D2D1_PROPERTY_TYPE_BOOL    PropertyType = 2
+	D2D1_PROPERTY_TYPE_UINT32  PropertyType = 3
+	D2D1_PROPERTY_TYPE_INT32   PropertyType = 4
+	D2D1_PROPERTY_TYPE_FLOAT   PropertyType = 5
+	D2D1_PROPERTY_TYPE_VECTOR4 PropertyType = 8
+	D2D1_PROPERTY_TYPE_ENUM    PropertyType = 11
+)
+
+type ShadowProperty uint32
+
+const (
+	D2D1_SHADOW_PROP_BLUR_STANDARD_DEVIATION ShadowProperty = iota
+	D2D1_SHADOW_PROP_COLOR
+	D2D1_SHADOW_PROP_OPTIMIZATION
+)
+
+type ShadowOptimization uint32
+
+const (
+	D2D1_SHADOW_OPTIMIZATION_SPEED ShadowOptimization = iota
+	D2D1_SHADOW_OPTIMIZATION_BALANCED
+	D2D1_SHADOW_OPTIMIZATION_QUALITY
+)
+
+type InterpolationMode uint32
+type CompositeMode uint32
+
+const (
+	D2D1_INTERPOLATION_MODE_LINEAR  InterpolationMode = 1
+	D2D1_COMPOSITE_MODE_SOURCE_OVER CompositeMode     = 0
+)
+
+const D2DERR_RECREATE_TARGET int32 = -2003238900 // 0x8899000C
 
 type BitmapInterpolationMode uint32
 

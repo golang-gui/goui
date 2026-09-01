@@ -7,6 +7,7 @@ import (
 	"github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/platform/windows/sdk/com"
 	"github.com/golang-gui/goui/platform/windows/sdk/dwrite"
+	"github.com/golang-gui/goui/platform/windows/sdk/dxgi"
 	"github.com/golang-gui/goui/platform/windows/sdk/wic"
 )
 
@@ -85,6 +86,7 @@ func (this *Factory) class() *FactoryClass {
 }
 
 var IID_ID2D1Factory1 = com.DefineGuid(0xbb12d362, 0xdaee, 0x4b9a, 0xaa, 0x1d, 0x14, 0xba, 0x40, 0x1c, 0xfa, 0x1f)
+var CLSID_D2D1Shadow = com.DefineGuid(0xc67ea361, 0x1863, 0x4e69, 0x89, 0xdb, 0x69, 0x5d, 0x3e, 0x9a, 0x5b, 0x6b)
 
 type Factory1Class struct {
 	FactoryClass
@@ -103,6 +105,11 @@ type Factory1Class struct {
 
 type Factory1 struct {
 	Factory
+}
+
+func (this *Factory1) CreateDevice(dxgiDevice *dxgi.Device) (device *Device, hr com.HRESULT) {
+	ret, _, _ := this.class().CreateDevice.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(dxgiDevice)), uintptr(cgo.Pointer(&device)))
+	return device, com.HRESULT(ret)
 }
 
 func (this *Factory1) class() *Factory1Class {
@@ -215,6 +222,14 @@ func (this *RenderTarget) CreateGradientStopCollection(stops []GradientStop, gam
 
 func (this *RenderTarget) CreateLinearGradientBrush(props *LinearGradientBrushProperties, brushProperties *BrushProperties, collection *GradientStopCollection) (brush *LinearGradientBrush, hr com.HRESULT) {
 	ret, _, _ := this.class().CreateLinearGradientBrush.CallRaw(
+		uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(props)), uintptr(cgo.Pointer(brushProperties)),
+		uintptr(cgo.Pointer(collection)), uintptr(cgo.Pointer(&brush)),
+	)
+	return brush, com.HRESULT(ret)
+}
+
+func (this *RenderTarget) CreateRadialGradientBrush(props *RadialGradientBrushProperties, brushProperties *BrushProperties, collection *GradientStopCollection) (brush *RadialGradientBrush, hr com.HRESULT) {
+	ret, _, _ := this.class().CreateRadialGradientBrush.CallRaw(
 		uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(props)), uintptr(cgo.Pointer(brushProperties)),
 		uintptr(cgo.Pointer(collection)), uintptr(cgo.Pointer(&brush)),
 	)
@@ -403,6 +418,39 @@ func (this *LinearGradientBrush) class() *LinearGradientBrushClass {
 	return (*LinearGradientBrushClass)(this.Class)
 }
 
+type RadialGradientBrushClass struct {
+	BrushClass
+
+	SetCenter               cgo.Symbol // void(ID2D1RadialGradientBrush *This, D2D1_POINT_2F center) PURE;
+	SetGradientOriginOffset cgo.Symbol // void(ID2D1RadialGradientBrush *This, D2D1_POINT_2F gradientOriginOffset) PURE;
+	SetRadiusX              cgo.Symbol // void(ID2D1RadialGradientBrush *This, FLOAT radiusX) PURE;
+	SetRadiusY              cgo.Symbol // void(ID2D1RadialGradientBrush *This, FLOAT radiusY) PURE;
+}
+
+type RadialGradientBrush struct {
+	Brush
+}
+
+func (this *RadialGradientBrush) SetCenter(point Point2F) {
+	cgo.Call(this.class().SetCenter, this, point)
+}
+
+func (this *RadialGradientBrush) SetGradientOriginOffset(point Point2F) {
+	cgo.Call(this.class().SetGradientOriginOffset, this, point)
+}
+
+func (this *RadialGradientBrush) SetRadiusX(radius float32) {
+	cgo.Call(this.class().SetRadiusX, this, radius)
+}
+
+func (this *RadialGradientBrush) SetRadiusY(radius float32) {
+	cgo.Call(this.class().SetRadiusY, this, radius)
+}
+
+func (this *RadialGradientBrush) class() *RadialGradientBrushClass {
+	return (*RadialGradientBrushClass)(this.Class)
+}
+
 type GeometryClass struct {
 	ResourceClass
 
@@ -530,6 +578,166 @@ type BitmapClass struct {
 
 type Bitmap struct {
 	com.Unknown
+}
+
+type DeviceClass struct {
+	ResourceClass
+	CreateDeviceContext     cgo.Symbol
+	CreatePrintControl      cgo.Symbol
+	SetMaximumTextureMemory cgo.Symbol
+	GetMaximumTextureMemory cgo.Symbol
+	ClearResources          cgo.Symbol
+}
+
+type Device struct{ Resource }
+
+func (this *Device) CreateDeviceContext(options DeviceContextOptions) (context *DeviceContext, hr com.HRESULT) {
+	ret, _, _ := (*DeviceClass)(this.Class).CreateDeviceContext.CallRaw(uintptr(cgo.Pointer(this)), uintptr(options), uintptr(cgo.Pointer(&context)))
+	return context, com.HRESULT(ret)
+}
+
+type DeviceContextClass struct {
+	RenderTargetClass
+	CreateBitmap1                    cgo.Symbol
+	CreateBitmapFromWicBitmap1       cgo.Symbol
+	CreateColorContext               cgo.Symbol
+	CreateColorContextFromFilename   cgo.Symbol
+	CreateColorContextFromWic        cgo.Symbol
+	CreateBitmapFromDxgiSurface      cgo.Symbol
+	CreateEffect                     cgo.Symbol
+	CreateGradientStopCollection1    cgo.Symbol
+	CreateImageBrush                 cgo.Symbol
+	CreateBitmapBrush1               cgo.Symbol
+	CreateCommandList                cgo.Symbol
+	IsDxgiFormatSupported            cgo.Symbol
+	IsBufferPrecisionSupported       cgo.Symbol
+	GetImageLocalBounds              cgo.Symbol
+	GetImageWorldBounds              cgo.Symbol
+	GetGlyphRunWorldBounds           cgo.Symbol
+	GetDevice                        cgo.Symbol
+	SetTarget                        cgo.Symbol
+	GetTarget                        cgo.Symbol
+	SetRenderingControls             cgo.Symbol
+	GetRenderingControls             cgo.Symbol
+	SetPrimitiveBlend                cgo.Symbol
+	GetPrimitiveBlend                cgo.Symbol
+	SetUnitMode                      cgo.Symbol
+	GetUnitMode                      cgo.Symbol
+	DrawGlyphRun1                    cgo.Symbol
+	DrawImage                        cgo.Symbol
+	DrawGdiMetafile                  cgo.Symbol
+	DrawBitmap1                      cgo.Symbol
+	PushLayer1                       cgo.Symbol
+	InvalidateEffectInputRectangle   cgo.Symbol
+	GetEffectInvalidRectangleCount   cgo.Symbol
+	GetEffectInvalidRectangles       cgo.Symbol
+	GetEffectRequiredInputRectangles cgo.Symbol
+	FillOpacityMask1                 cgo.Symbol
+}
+
+type DeviceContext struct{ RenderTarget }
+
+func (this *DeviceContext) CreateBitmapFromDxgiSurface(surface *dxgi.Surface, props *BitmapProperties1) (bitmap *Bitmap1, hr com.HRESULT) {
+	ret, _, _ := (*DeviceContextClass)(this.Class).CreateBitmapFromDxgiSurface.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(surface)), uintptr(cgo.Pointer(props)), uintptr(cgo.Pointer(&bitmap)))
+	return bitmap, com.HRESULT(ret)
+}
+
+func (this *DeviceContext) CreateEffect(clsid com.CLSID) (effect *Effect, hr com.HRESULT) {
+	ret, _, _ := (*DeviceContextClass)(this.Class).CreateEffect.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(&clsid)), uintptr(cgo.Pointer(&effect)))
+	return effect, com.HRESULT(ret)
+}
+
+func (this *DeviceContext) CreateCommandList() (commandList *CommandList, hr com.HRESULT) {
+	ret, _, _ := (*DeviceContextClass)(this.Class).CreateCommandList.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(&commandList)))
+	return commandList, com.HRESULT(ret)
+}
+
+func (this *DeviceContext) GetImageLocalBounds(image *Image) (bounds RectF, hr com.HRESULT) {
+	ret, _, _ := (*DeviceContextClass)(this.Class).GetImageLocalBounds.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(image)), uintptr(cgo.Pointer(&bounds)))
+	return bounds, com.HRESULT(ret)
+}
+
+func (this *DeviceContext) SetTarget(image *Image) {
+	(*DeviceContextClass)(this.Class).SetTarget.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(image)))
+}
+
+func (this *DeviceContext) DrawImage(image *Image, targetOffset *Point2F, imageRect *RectF, interpolation InterpolationMode, composite CompositeMode) {
+	(*DeviceContextClass)(this.Class).DrawImage.CallRaw(
+		uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(image)), uintptr(cgo.Pointer(targetOffset)),
+		uintptr(cgo.Pointer(imageRect)), uintptr(interpolation), uintptr(composite),
+	)
+}
+
+type Image struct{ Resource }
+
+type Bitmap1Class struct {
+	BitmapClass
+	GetColorContext cgo.Symbol
+	GetOptions      cgo.Symbol
+	GetSurface      cgo.Symbol
+	Map             cgo.Symbol
+	Unmap           cgo.Symbol
+}
+
+type Bitmap1 struct{ Bitmap }
+
+type PropertiesClass struct {
+	com.UnknownClass
+	GetPropertyCount      cgo.Symbol
+	GetPropertyName       cgo.Symbol
+	GetPropertyNameLength cgo.Symbol
+	GetType               cgo.Symbol
+	GetPropertyIndex      cgo.Symbol
+	SetValueByName        cgo.Symbol
+	SetValue              cgo.Symbol
+	GetValueByName        cgo.Symbol
+	GetValue              cgo.Symbol
+	GetValueSize          cgo.Symbol
+	GetSubProperties      cgo.Symbol
+}
+
+type Properties struct{ com.Unknown }
+
+type EffectClass struct {
+	PropertiesClass
+	SetInput      cgo.Symbol
+	SetInputCount cgo.Symbol
+	GetInput      cgo.Symbol
+	GetInputCount cgo.Symbol
+	GetOutput     cgo.Symbol
+}
+
+type Effect struct{ Properties }
+
+func (this *Effect) SetValue(index uint32, propertyType PropertyType, data cgo.Pointer, size uint32) com.HRESULT {
+	ret, _, _ := (*EffectClass)(this.Class).SetValue.CallRaw(uintptr(cgo.Pointer(this)), uintptr(index), uintptr(propertyType), uintptr(data), uintptr(size))
+	return com.HRESULT(ret)
+}
+
+func (this *Effect) SetInput(index uint32, image *Image, invalidate bool) {
+	value := uintptr(0)
+	if invalidate {
+		value = 1
+	}
+	(*EffectClass)(this.Class).SetInput.CallRaw(uintptr(cgo.Pointer(this)), uintptr(index), uintptr(cgo.Pointer(image)), value)
+}
+
+func (this *Effect) GetOutput() (image *Image) {
+	(*EffectClass)(this.Class).GetOutput.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(&image)))
+	return
+}
+
+type CommandListClass struct {
+	ResourceClass
+	Stream cgo.Symbol
+	Close  cgo.Symbol
+}
+
+type CommandList struct{ Image }
+
+func (this *CommandList) Close() com.HRESULT {
+	ret, _, _ := (*CommandListClass)(this.Class).Close.CallRaw(uintptr(cgo.Pointer(this)))
+	return com.HRESULT(ret)
 }
 
 func (this *Bitmap) CopyFromMemory(rect *RectU, data []byte, stride int) com.HRESULT {
