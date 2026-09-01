@@ -40,6 +40,19 @@ func RGBA(r, g, b, a byte) Color {
 
 func (c Color) isBrush() {}
 
+// LinearGradient interpolates from StartColor at Start to EndColor at End.
+// Its points use the same local logical coordinate space as the geometry being
+// drawn and are transformed together with that geometry. Colors are clamped at
+// either end of the gradient line.
+type LinearGradient struct {
+	Start      Point
+	End        Point
+	StartColor Color
+	EndColor   Color
+}
+
+func (LinearGradient) isBrush() {}
+
 func (c Color) RGBA() (r, g, b, a uint32) {
 	r = uint32(c.R * 255)
 	r |= r << 8

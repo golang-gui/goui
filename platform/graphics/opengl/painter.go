@@ -299,22 +299,50 @@ func (p *Painter) drawBitmap(rect graphics.Rectangle, bitmap graphics.Bitmap) {
 }
 
 func (p *Painter) beginFill(brush graphics.Brush) bool {
-	if color, ok := brush.(graphics.Color); ok {
-		p.vg.Save()
-		p.vg.SetFillColor(nanovgo.Color{R: color.R, G: color.G, B: color.B, A: color.A})
-		return true
+	p.vg.Save()
+	switch brush := brush.(type) {
+	case graphics.Color:
+		p.vg.SetFillColor(nanoVGColor(brush))
+	case graphics.LinearGradient:
+		if brush.Start == brush.End {
+			p.vg.SetFillColor(nanoVGColor(brush.StartColor))
+		} else {
+			p.vg.SetFillPaint(nanovgo.LinearGradient(
+				brush.Start.X, brush.Start.Y, brush.End.X, brush.End.Y,
+				nanoVGColor(brush.StartColor), nanoVGColor(brush.EndColor),
+			))
+		}
+	default:
+		p.vg.Restore()
+		return false
 	}
-	return false
+	return true
 }
 
 func (p *Painter) beginDraw(strokeWidth float32, brush graphics.Brush) bool {
-	if color, ok := brush.(graphics.Color); ok {
-		p.vg.Save()
-		p.vg.SetStrokeWidth(strokeWidth)
-		p.vg.SetStrokeColor(nanovgo.Color{R: color.R, G: color.G, B: color.B, A: color.A})
-		return true
+	p.vg.Save()
+	p.vg.SetStrokeWidth(strokeWidth)
+	switch brush := brush.(type) {
+	case graphics.Color:
+		p.vg.SetStrokeColor(nanoVGColor(brush))
+	case graphics.LinearGradient:
+		if brush.Start == brush.End {
+			p.vg.SetStrokeColor(nanoVGColor(brush.StartColor))
+		} else {
+			p.vg.SetStrokePaint(nanovgo.LinearGradient(
+				brush.Start.X, brush.Start.Y, brush.End.X, brush.End.Y,
+				nanoVGColor(brush.StartColor), nanoVGColor(brush.EndColor),
+			))
+		}
+	default:
+		p.vg.Restore()
+		return false
 	}
-	return false
+	return true
+}
+
+func nanoVGColor(color graphics.Color) nanovgo.Color {
+	return nanovgo.Color{R: color.R, G: color.G, B: color.B, A: color.A}
 }
 
 func (p *Painter) end() {
