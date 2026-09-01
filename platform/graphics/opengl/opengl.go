@@ -11,8 +11,14 @@ type Context interface {
 	GetExtensions() string
 }
 
+type GLXContext interface {
+	Context
+	isGLXContext()
+}
+
 type NativeWindow interface {
 	NativeHandle() uintptr
+	RequestPaint() error
 }
 
 func NewContext(win NativeWindow, share Context, config Config) (Context, error) {

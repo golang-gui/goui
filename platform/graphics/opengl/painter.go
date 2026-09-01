@@ -17,6 +17,7 @@ import (
 type Painter struct {
 	ctx        Context
 	vg         *nanovgo.Context
+	win        NativeWindow
 	typo       typography.Context
 	imgs       []int
 	scale      float32
@@ -26,12 +27,11 @@ type Painter struct {
 
 	hasFrame     bool
 	resizedFrame bool
-	requestPaint func()
+	resizedPaint bool
 }
 
 func NewPainter(win NativeWindow, typoCtx typography.Context) (_ graphics.Painter, err error) {
 	p := new(Painter)
-	p.typo = typoCtx
 	p.ctx, err = NewContext(win, nil, Config{
 		PixelFormat: PixelFormat{
 			RedBits:      8,
@@ -48,24 +48,18 @@ func NewPainter(win NativeWindow, typoCtx typography.Context) (_ graphics.Painte
 		return nil, fmt.Errorf("create opengl context err: %v", err)
 	}
 
-	if _, ok := p.ctx.(GLXContext); ok {
-		if glxWin, ok := win.(GLXNativeWindow); ok {
-			p.requestPaint = func() {
-				_ = glxWin.RequestPaint()
-			}
-		}
-	}
-
-	err = p.ctx.MakeCurrent()
-	if err != nil {
+	if err = p.ctx.MakeCurrent(); err != nil {
 		return nil, fmt.Errorf("make current err: %v", err)
 	}
 
-	p.vg, err = nanovgo.NewContext(p.ctx, nanovgo.AntiAlias)
-	if err != nil {
+	if p.vg, err = nanovgo.NewContext(p.ctx, nanovgo.AntiAlias); err != nil {
 		p.Destroy()
 		return nil, fmt.Errorf("create nanovgo context err: %v", err)
 	}
+
+	p.win = win
+	p.typo = typoCtx
+	_, p.resizedPaint = p.ctx.(GLXContext)
 
 	p.imgs = make([]int, 0, 512)
 	return p, nil
@@ -115,9 +109,9 @@ func (p *Painter) present() {
 	p.ctx.SwapBuffers()
 	p.ctx.ClearCurrent()
 
-	if p.resizedFrame && p.requestPaint != nil {
+	if p.resizedFrame && p.resizedPaint {
 		p.resizedFrame = false
-		p.requestPaint()
+		_ = p.win.RequestPaint()
 	}
 }
 
