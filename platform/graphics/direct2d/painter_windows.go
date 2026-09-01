@@ -3,24 +3,39 @@ package direct2d
 import (
 	"fmt"
 	"image"
+	"unsafe"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/graphics/internal/boxshadow"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/directwrite"
 
 	"github.com/golang-gui/goui/platform/windows/sdk/com"
 	"github.com/golang-gui/goui/platform/windows/sdk/d2d1"
+	"github.com/golang-gui/goui/platform/windows/sdk/d3d11"
 	"github.com/golang-gui/goui/platform/windows/sdk/dxgi"
 
 	"github.com/goexlib/mathx"
 )
 
 type Painter struct {
-	typoCtx     typography.Context
-	dwTypo      *directwrite.Context
-	factory     *d2d1.Factory
-	render      *d2d1.HwndRenderTarget
+	typoCtx      typography.Context
+	dwTypo       *directwrite.Context
+	hwnd         uintptr
+	factory      *d2d1.Factory1
+	d3dDevice    *d3d11.Device
+	dxgiDevice   *dxgi.Device
+	d2dDevice    *d2d1.Device
+	swapChain    *dxgi.SwapChain1
+	target       *d2d1.Bitmap1
+	render       *d2d1.DeviceContext
+	shadowRender *d2d1.DeviceContext
+	shadowEffect *d2d1.Effect
+	shadowBrush  *d2d1.SolidColorBrush
+	shadowCache  []shadowCacheEntry
+	shadowClock  uint64
+
 	colorBrush  *d2d1.SolidColorBrush
 	color       d2d1.ColorF
 	linearStops *d2d1.GradientStopCollection
@@ -28,15 +43,26 @@ type Painter struct {
 	linearStart graphics.Color
 	linearEnd   graphics.Color
 	hasLinear   bool
-	sizeU       d2d1.SizeU
 	rect        d2d1.RectF
 	roundRect   d2d1.RoundRect
 	ellipse     d2d1.Ellipse
 	clip        d2d1.RectF
 	imageBuf    []byte
+	width       uint32
+	height      uint32
 	scale       float32
 	transform   geometry.Transform
 	matrix      d2d1.Matrix3x2F
+	activeFrame bool
+}
+
+const shadowCacheCapacity = 16
+
+type shadowCacheKey struct{ Width, Height, Radius float32 }
+type shadowCacheEntry struct {
+	key  shadowCacheKey
+	list *d2d1.CommandList
+	age  uint64
 }
 
 type NativeWindow interface {
@@ -47,33 +73,164 @@ func NewPainter(win NativeWindow, typoCtx typography.Context) (_ graphics.Painte
 	p := new(Painter)
 	p.typoCtx = typoCtx
 	p.dwTypo, _ = typoCtx.(*directwrite.Context)
+	p.hwnd = win.NativeHandle()
 
-	p.factory, err = d2d1.CreateFactory[d2d1.Factory](d2d1.D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d1.IID_ID2D1Factory, nil)
+	p.factory, err = d2d1.CreateFactory[d2d1.Factory1](d2d1.D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d1.IID_ID2D1Factory1, nil)
 	if err != nil {
-		return nil, fmt.Errorf("create d2d factory err: %v", err)
+		return nil, fmt.Errorf("create d2d 1.1 factory: %v", err)
 	}
-
-	props := d2d1.RenderTargetProperties{
-		DpiX: 96,
-		DpiY: 96,
-	}
-	hwndProps := d2d1.HwndRenderTargetProperties{
-		Hwnd: win.NativeHandle(),
-	}
-	var hr com.HRESULT
-	p.render, hr = p.factory.CreateHwndRenderTarget(&props, &hwndProps)
-	if hr.Failed() {
+	if err = p.createDeviceResources(); err != nil {
 		p.Destroy()
-		return nil, fmt.Errorf("create d2d render target err: %v", hr)
-	}
-
-	p.colorBrush, hr = p.render.CreateSolidColorBrush(&p.color, nil)
-	if hr.Failed() {
-		p.Destroy()
-		return nil, fmt.Errorf("create solid color brush err: %v", hr)
+		return nil, err
 	}
 
 	return p, nil
+}
+
+func (p *Painter) createDeviceResources() (err error) {
+	levels := []d3d11.FeatureLevel{
+		d3d11.D3D_FEATURE_LEVEL_11_1,
+		d3d11.D3D_FEATURE_LEVEL_11_0,
+		d3d11.D3D_FEATURE_LEVEL_10_1,
+		d3d11.D3D_FEATURE_LEVEL_10_0,
+	}
+	var hr com.HRESULT
+	for _, driver := range []d3d11.DriverType{d3d11.D3D_DRIVER_TYPE_HARDWARE, d3d11.D3D_DRIVER_TYPE_WARP} {
+		var immediate *d3d11.DeviceContext
+		p.d3dDevice, _, immediate, hr = d3d11.CreateDevice(driver, d3d11.D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels)
+		if hr == com.HRESULT(-2147024809) { // E_INVALIDARG: Windows 7 does not accept feature level 11.1.
+			if immediate != nil {
+				immediate.Release()
+				immediate = nil
+			}
+			if p.d3dDevice != nil {
+				p.d3dDevice.Release()
+				p.d3dDevice = nil
+			}
+			p.d3dDevice, _, immediate, hr = d3d11.CreateDevice(driver, d3d11.D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels[1:])
+		}
+		if immediate != nil {
+			immediate.Release()
+		}
+		if hr.Succeeded() {
+			break
+		}
+		if p.d3dDevice != nil {
+			p.d3dDevice.Release()
+			p.d3dDevice = nil
+		}
+	}
+	if hr.Failed() || p.d3dDevice == nil {
+		return fmt.Errorf("create D3D11 BGRA device: %v", hr)
+	}
+
+	var unknown *com.Unknown
+	if hr = p.d3dDevice.QueryInterface(dxgi.IID_IDXGIDevice, &unknown); hr.Failed() {
+		p.releaseDeviceResources()
+		return fmt.Errorf("query IDXGIDevice: %v", hr)
+	}
+	p.dxgiDevice = (*dxgi.Device)(unsafe.Pointer(unknown))
+	if p.d2dDevice, hr = p.factory.CreateDevice(p.dxgiDevice); hr.Failed() {
+		p.releaseDeviceResources()
+		return fmt.Errorf("create Direct2D device: %v", hr)
+	}
+	if p.render, hr = p.d2dDevice.CreateDeviceContext(d2d1.D2D1_DEVICE_CONTEXT_OPTIONS_NONE); hr.Failed() {
+		p.releaseDeviceResources()
+		return fmt.Errorf("create Direct2D device context: %v", hr)
+	}
+	if p.shadowRender, hr = p.d2dDevice.CreateDeviceContext(d2d1.D2D1_DEVICE_CONTEXT_OPTIONS_NONE); hr.Failed() {
+		p.releaseDeviceResources()
+		return fmt.Errorf("create Direct2D shadow context: %v", hr)
+	}
+
+	adapter, hr := p.dxgiDevice.GetAdapter()
+	if hr.Failed() {
+		p.releaseDeviceResources()
+		return fmt.Errorf("get DXGI adapter: %v", hr)
+	}
+	defer adapter.Release()
+	unknown = nil
+	if hr = adapter.GetParent(dxgi.IID_IDXGIFactory2, &unknown); hr.Failed() {
+		p.releaseDeviceResources()
+		return fmt.Errorf("get IDXGIFactory2: %v", hr)
+	}
+	dxgiFactory := (*dxgi.Factory2)(unsafe.Pointer(unknown))
+	defer dxgiFactory.Release()
+	desc := dxgi.SwapChainDesc1{
+		Format:      dxgi.DXGI_FORMAT_B8G8R8A8_UNORM,
+		SampleDesc:  dxgi.SampleDesc{Count: 1},
+		BufferUsage: dxgi.DXGI_USAGE_RENDER_TARGET_OUTPUT,
+		BufferCount: 2,
+		Scaling:     dxgi.DXGI_SCALING_STRETCH,
+		SwapEffect:  dxgi.DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
+		AlphaMode:   dxgi.DXGI_ALPHA_MODE_UNSPECIFIED,
+	}
+	p.swapChain, hr = dxgiFactory.CreateSwapChainForHwnd(&p.d3dDevice.Unknown, p.hwnd, &desc)
+	if hr.Failed() {
+		desc.BufferCount = 1
+		desc.SwapEffect = dxgi.DXGI_SWAP_EFFECT_DISCARD
+		p.swapChain, hr = dxgiFactory.CreateSwapChainForHwnd(&p.d3dDevice.Unknown, p.hwnd, &desc)
+	}
+	if hr.Failed() {
+		p.releaseDeviceResources()
+		return fmt.Errorf("create DXGI swap chain: %v", hr)
+	}
+
+	if p.colorBrush, hr = p.render.CreateSolidColorBrush(&p.color, nil); hr.Failed() {
+		p.releaseDeviceResources()
+		return fmt.Errorf("create solid color brush: %v", hr)
+	}
+	opaque := d2d1.ColorF{R: 1, G: 1, B: 1, A: 1}
+	if p.shadowBrush, hr = p.shadowRender.CreateSolidColorBrush(&opaque, nil); hr.Failed() {
+		p.releaseDeviceResources()
+		return fmt.Errorf("create shadow mask brush: %v", hr)
+	}
+	if p.shadowEffect, hr = p.render.CreateEffect(d2d1.CLSID_D2D1Shadow); hr.Failed() {
+		p.releaseDeviceResources()
+		return fmt.Errorf("create Direct2D shadow effect: %v", hr)
+	}
+	return nil
+}
+
+func (p *Painter) createTarget(scale float32) com.HRESULT {
+	surface, hr := p.swapChain.GetBuffer(0, dxgi.IID_IDXGISurface)
+	if hr.Failed() {
+		return hr
+	}
+	defer surface.Release()
+	dpi := 96 * scale
+	props := d2d1.BitmapProperties1{
+		PixelFormat: d2d1.PixelFormat{Format: dxgi.DXGI_FORMAT_B8G8R8A8_UNORM, AlphaMode: d2d1.D2D1_ALPHA_MODE_IGNORE},
+		DpiX:        dpi, DpiY: dpi,
+		BitmapOptions: d2d1.D2D1_BITMAP_OPTIONS_TARGET | d2d1.D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
+	}
+	p.target, hr = p.render.CreateBitmapFromDxgiSurface(surface, &props)
+	if hr.Succeeded() {
+		p.render.SetTarget((*d2d1.Image)(unsafe.Pointer(p.target)))
+	}
+	return hr
+}
+
+func (p *Painter) releaseTarget() {
+	if p.target == nil {
+		return
+	}
+	p.render.SetTarget(nil)
+	p.target.Release()
+	p.target = nil
+}
+
+func isDeviceLost(hr com.HRESULT) bool {
+	code := int32(hr)
+	return code == d2d1.D2DERR_RECREATE_TARGET || code == dxgi.DXGI_ERROR_DEVICE_REMOVED || code == dxgi.DXGI_ERROR_DEVICE_RESET
+}
+
+func (p *Painter) handleDeviceFailure(hr com.HRESULT) {
+	if isDeviceLost(hr) {
+		p.releaseDeviceResources()
+		return
+	}
+	p.releaseTarget()
 }
 
 func (p *Painter) Name() string {
@@ -81,6 +238,16 @@ func (p *Painter) Name() string {
 }
 
 func (p *Painter) Destroy() {
+	p.releaseDeviceResources()
+	if p.factory != nil {
+		p.factory.Release()
+		p.factory = nil
+	}
+}
+
+func (p *Painter) releaseDeviceResources() {
+	p.activeFrame = false
+	p.releaseShadowResources()
 	if p.linearBrush != nil {
 		p.linearBrush.Release()
 		p.linearBrush = nil
@@ -93,42 +260,247 @@ func (p *Painter) Destroy() {
 		p.colorBrush.Release()
 		p.colorBrush = nil
 	}
+	if p.target != nil {
+		if p.render != nil {
+			p.render.SetTarget(nil)
+		}
+		p.target.Release()
+		p.target = nil
+	}
+	if p.shadowRender != nil {
+		p.shadowRender.Release()
+		p.shadowRender = nil
+	}
 	if p.render != nil {
 		p.render.Release()
 		p.render = nil
 	}
-	if p.factory != nil {
-		p.factory.Release()
-		p.factory = nil
+	if p.swapChain != nil {
+		p.swapChain.Release()
+		p.swapChain = nil
 	}
+	if p.d2dDevice != nil {
+		p.d2dDevice.Release()
+		p.d2dDevice = nil
+	}
+	if p.dxgiDevice != nil {
+		p.dxgiDevice.Release()
+		p.dxgiDevice = nil
+	}
+	if p.d3dDevice != nil {
+		p.d3dDevice.Release()
+		p.d3dDevice = nil
+	}
+	p.width, p.height = 0, 0
 }
 
 func (p *Painter) Begin(width, height, scale float32) {
-	p.sizeU.Width = uint32(width)
-	p.sizeU.Height = uint32(height)
-	p.render.Resize(&p.sizeU)
+	p.activeFrame = false
+	if width <= 0 || height <= 0 {
+		return
+	}
+	if p.render == nil {
+		if err := p.createDeviceResources(); err != nil {
+			return
+		}
+	}
+	w, h := uint32(width), uint32(height)
+	scaleChanged := p.scale != 0 && p.scale != scale
+	if p.target == nil || p.width != w || p.height != h || scaleChanged {
+		p.releaseTarget()
+		if p.width != w || p.height != h {
+			if hr := p.swapChain.ResizeBuffers(0, w, h, dxgi.DXGI_FORMAT_UNKNOWN, 0); hr.Failed() {
+				p.handleDeviceFailure(hr)
+				return
+			}
+		}
+		p.width, p.height, p.scale = w, h, scale
+		if hr := p.createTarget(scale); hr.Failed() {
+			p.handleDeviceFailure(hr)
+			return
+		}
+		if scaleChanged {
+			p.releaseShadowCache()
+		}
+	}
 	dpi := 96 * scale
 	p.render.SetDpi(dpi, dpi)
 	p.render.BeginDraw()
 	p.scale = scale
+	p.activeFrame = true
 	// Reset transform to identity at the start of each frame.
 	p.SetTransform(geometry.Identity())
 }
 
 func (p *Painter) End() {
+	if !p.activeFrame {
+		return
+	}
 	// Defensive: pop any clip the GUI layer forgot to restore. D2D requires
 	// the clip stack to be balanced before EndDraw; an unbalanced stack fails
 	// the draw and leaves the window blank.
 	p.SetClipRect(graphics.Rectangle{})
-	p.render.EndDraw(nil, nil)
+	hr := p.render.EndDraw(nil, nil)
+	p.activeFrame = false
+	if hr.Failed() {
+		p.handleDeviceFailure(hr)
+		return
+	}
+	if hr = p.swapChain.Present(1, 0); hr.Failed() {
+		p.handleDeviceFailure(hr)
+	}
 }
 
 func (p *Painter) Clear(color graphics.Color) {
+	if !p.activeFrame {
+		return
+	}
 	p.color.R, p.color.G, p.color.B, p.color.A = color.R, color.G, color.B, color.A
 	p.render.Clear(&p.color)
 }
 
+func (p *Painter) DrawBoxShadow(rect graphics.Rectangle, radius float32, shadow graphics.BoxShadow) {
+	if !p.activeFrame {
+		return
+	}
+	if shadow.Color.A <= 0 {
+		return
+	}
+	shape, ok := boxshadow.Normalize(rect, radius, shadow.Offset, shadow.BlurRadius, shadow.SpreadRadius)
+	if !ok {
+		return
+	}
+	if shape.BlurRadius <= 0 {
+		p.drawClearBoxShadow(shape, shadow.Color)
+		return
+	}
+	if !p.drawSoftBoxShadow(shape, shadow.Color) {
+		p.drawClearBoxShadow(shape, shadow.Color)
+	}
+}
+
+func (p *Painter) drawClearBoxShadow(shape boxshadow.Shape, color graphics.Color) {
+	p.setRoundRect(shape.Rect, shape.Radius)
+	p.render.FillRoundedRectangle(&p.roundRect, p.setColorBrush(color))
+}
+
+func (p *Painter) releaseShadowResources() {
+	if p.shadowEffect != nil {
+		p.shadowEffect.SetInput(0, nil, true)
+	}
+	p.releaseShadowCache()
+	if p.shadowEffect != nil {
+		p.shadowEffect.Release()
+		p.shadowEffect = nil
+	}
+	if p.shadowBrush != nil {
+		p.shadowBrush.Release()
+		p.shadowBrush = nil
+	}
+}
+
+func (p *Painter) drawSoftBoxShadow(shape boxshadow.Shape, color graphics.Color) bool {
+	if p.shadowEffect == nil || p.shadowRender == nil {
+		return false
+	}
+	commandList := p.shadowCommandList(shape)
+	if commandList == nil {
+		return false
+	}
+
+	sigma := shape.Sigma()
+	d2dColor := d2d1.ColorF{R: color.R, G: color.G, B: color.B, A: color.A}
+	optimization := d2d1.D2D1_SHADOW_OPTIMIZATION_QUALITY
+	if p.shadowEffect.SetValue(uint32(d2d1.D2D1_SHADOW_PROP_BLUR_STANDARD_DEVIATION), d2d1.D2D1_PROPERTY_TYPE_FLOAT, unsafe.Pointer(&sigma), uint32(unsafe.Sizeof(sigma))).Failed() ||
+		p.shadowEffect.SetValue(uint32(d2d1.D2D1_SHADOW_PROP_COLOR), d2d1.D2D1_PROPERTY_TYPE_VECTOR4, unsafe.Pointer(&d2dColor), uint32(unsafe.Sizeof(d2dColor))).Failed() ||
+		p.shadowEffect.SetValue(uint32(d2d1.D2D1_SHADOW_PROP_OPTIMIZATION), d2d1.D2D1_PROPERTY_TYPE_ENUM, unsafe.Pointer(&optimization), uint32(unsafe.Sizeof(optimization))).Failed() {
+		return false
+	}
+	p.shadowEffect.SetInput(0, &commandList.Image, true)
+	output := p.shadowEffect.GetOutput()
+	if output == nil {
+		p.shadowEffect.SetInput(0, nil, true)
+		return false
+	}
+	defer output.Release()
+	defer p.shadowEffect.SetInput(0, nil, true)
+	bounds, hr := p.render.GetImageLocalBounds(output)
+	if hr.Failed() {
+		return false
+	}
+	offset := shadowTargetOffset(shape, bounds)
+	p.render.DrawImage(output, &offset, nil, d2d1.D2D1_INTERPOLATION_MODE_LINEAR, d2d1.D2D1_COMPOSITE_MODE_SOURCE_OVER)
+	return true
+}
+
+func (p *Painter) shadowCommandList(shape boxshadow.Shape) *d2d1.CommandList {
+	key := shadowCacheKey{Width: shape.Rect.Width, Height: shape.Rect.Height, Radius: shape.Radius}
+	p.shadowClock++
+	for i := range p.shadowCache {
+		if p.shadowCache[i].key == key {
+			p.shadowCache[i].age = p.shadowClock
+			return p.shadowCache[i].list
+		}
+	}
+
+	list, hr := p.shadowRender.CreateCommandList()
+	if hr.Failed() {
+		return nil
+	}
+	p.shadowRender.SetTarget(&list.Image)
+	p.shadowRender.BeginDraw()
+	identity := d2d1.Matrix3x2F{M11: 1, M22: 1}
+	p.shadowRender.SetTransform(&identity)
+	roundRect := d2d1.RoundRect{
+		Rect:    d2d1.RectF{Right: shape.Rect.Width, Bottom: shape.Rect.Height},
+		RadiusX: shape.Radius, RadiusY: shape.Radius,
+	}
+	p.shadowRender.FillRoundedRectangle(&roundRect, &p.shadowBrush.Brush)
+	hr = p.shadowRender.EndDraw(nil, nil)
+	p.shadowRender.SetTarget(nil)
+	closeHR := list.Close()
+	if hr.Failed() || closeHR.Failed() {
+		list.Release()
+		return nil
+	}
+
+	entry := shadowCacheEntry{key: key, list: list, age: p.shadowClock}
+	if len(p.shadowCache) < shadowCacheCapacity {
+		p.shadowCache = append(p.shadowCache, entry)
+		return list
+	}
+	oldest := oldestShadowIndex(p.shadowCache)
+	p.shadowCache[oldest].list.Release()
+	p.shadowCache[oldest] = entry
+	return list
+}
+
+func shadowTargetOffset(shape boxshadow.Shape, bounds d2d1.RectF) d2d1.Point2F {
+	return d2d1.Point2F{X: shape.Rect.X + bounds.Left, Y: shape.Rect.Y + bounds.Top}
+}
+
+func oldestShadowIndex(entries []shadowCacheEntry) int {
+	oldest := 0
+	for i := 1; i < len(entries); i++ {
+		if entries[i].age < entries[oldest].age {
+			oldest = i
+		}
+	}
+	return oldest
+}
+
+func (p *Painter) releaseShadowCache() {
+	for i := range p.shadowCache {
+		p.shadowCache[i].list.Release()
+	}
+	p.shadowCache = p.shadowCache[:0]
+	p.shadowClock = 0
+}
+
 func (p *Painter) FillRect(rect graphics.Rectangle, brush graphics.Brush) {
+	if !p.activeFrame {
+		return
+	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
 		p.setRect(p.snapRect(rect))
 		p.render.FillRectangle(&p.rect, d2dBrush)
@@ -136,6 +508,9 @@ func (p *Painter) FillRect(rect graphics.Rectangle, brush graphics.Brush) {
 }
 
 func (p *Painter) FillRoundRect(rect graphics.Rectangle, radius float32, brush graphics.Brush) {
+	if !p.activeFrame {
+		return
+	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
 		rect = p.snapRect(rect)
 		p.setRoundRect(rect, radius)
@@ -144,6 +519,9 @@ func (p *Painter) FillRoundRect(rect graphics.Rectangle, radius float32, brush g
 }
 
 func (p *Painter) FillEllipse(center graphics.Point, xRadius, yRadius float32, brush graphics.Brush) {
+	if !p.activeFrame {
+		return
+	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
 		p.setEllipse(p.snapPoint(center), xRadius, yRadius)
 		p.render.FillEllipse(&p.ellipse, d2dBrush)
@@ -151,6 +529,9 @@ func (p *Painter) FillEllipse(center graphics.Point, xRadius, yRadius float32, b
 }
 
 func (p *Painter) FillPath(path graphics.Path, brush graphics.Brush) {
+	if !p.activeFrame {
+		return
+	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
 		geometry, err := p.createPathGeometry(p.snapPath(path), true)
 		if err == nil {
@@ -161,6 +542,9 @@ func (p *Painter) FillPath(path graphics.Path, brush graphics.Brush) {
 }
 
 func (p *Painter) DrawLine(p0, p1 graphics.Point, strokeWidth float32, brush graphics.Brush) {
+	if !p.activeFrame {
+		return
+	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
 		point0 := d2d1.Point2F{X: p.snap(p0.X), Y: p.snap(p0.Y)}
 		point1 := d2d1.Point2F{X: p.snap(p1.X), Y: p.snap(p1.Y)}
@@ -169,6 +553,9 @@ func (p *Painter) DrawLine(p0, p1 graphics.Point, strokeWidth float32, brush gra
 }
 
 func (p *Painter) DrawRect(rect graphics.Rectangle, strokeWidth float32, brush graphics.Brush) {
+	if !p.activeFrame {
+		return
+	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
 		p.setRect(p.snapRect(rect))
 		p.render.DrawRectangle(&p.rect, d2dBrush, strokeWidth, nil)
@@ -176,6 +563,9 @@ func (p *Painter) DrawRect(rect graphics.Rectangle, strokeWidth float32, brush g
 }
 
 func (p *Painter) DrawRoundRect(rect graphics.Rectangle, radius, strokeWidth float32, brush graphics.Brush) {
+	if !p.activeFrame {
+		return
+	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
 		rect = p.snapRect(rect)
 		p.setRoundRect(rect, radius)
@@ -184,6 +574,9 @@ func (p *Painter) DrawRoundRect(rect graphics.Rectangle, radius, strokeWidth flo
 }
 
 func (p *Painter) DrawEllipse(center graphics.Point, xRadius, yRadius, strokeWidth float32, brush graphics.Brush) {
+	if !p.activeFrame {
+		return
+	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
 		p.setEllipse(p.snapPoint(center), xRadius, yRadius)
 		p.render.DrawEllipse(&p.ellipse, d2dBrush, strokeWidth, nil)
@@ -191,6 +584,9 @@ func (p *Painter) DrawEllipse(center graphics.Point, xRadius, yRadius, strokeWid
 }
 
 func (p *Painter) DrawPath(path graphics.Path, strokeWidth float32, brush graphics.Brush) {
+	if !p.activeFrame {
+		return
+	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
 		geometry, err := p.createPathGeometry(p.snapPath(path), false)
 		if err == nil {
@@ -201,6 +597,9 @@ func (p *Painter) DrawPath(path graphics.Path, strokeWidth float32, brush graphi
 }
 
 func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLayout) {
+	if !p.activeFrame {
+		return
+	}
 	if p.typoCtx != nil {
 		if textLayout, ok := layout.(*directwrite.TextLayout); ok {
 			point := d2d1.Point2F{X: p.snap(origin.X), Y: p.snap(origin.Y)}
@@ -211,6 +610,9 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 }
 
 func (p *Painter) SetTransform(t geometry.Transform) {
+	if !p.activeFrame {
+		return
+	}
 	p.transform = t
 	p.matrix = d2dMatrix(t)
 	p.render.SetTransform(&p.matrix)
@@ -229,6 +631,9 @@ func d2dMatrix(t geometry.Transform) d2d1.Matrix3x2F {
 }
 
 func (p *Painter) DrawImage(rect graphics.Rectangle, img image.Image) {
+	if !p.activeFrame {
+		return
+	}
 	bitmap, ok := graphics.ToBitmap(img, graphics.PixelFormatBGRA)
 	if !ok {
 		bitmap = graphics.CopyToBitmap(img, graphics.PixelFormatBGRA, p.imageBuf)
@@ -238,6 +643,9 @@ func (p *Painter) DrawImage(rect graphics.Rectangle, img image.Image) {
 }
 
 func (p *Painter) SetClipRect(rect graphics.Rectangle) {
+	if !p.activeFrame {
+		return
+	}
 	// D2D's PushAxisAlignedClip applies the current render target transform
 	// to the clip rect. Since the clip rect is already in window-local
 	// coordinates (the transform's offset has been applied by the GUI layer),
