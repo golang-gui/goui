@@ -21,8 +21,12 @@ type Painter struct {
 	imgs       []int
 	scale      float32
 	transform  geometry.Transform
-	lastWidth  float32 // physical size of the last frame; 0 until the first Begin
+	lastWidth  float32
 	lastHeight float32
+
+	hasFrame     bool
+	resizedFrame bool
+	requestPaint func()
 }
 
 func NewPainter(win NativeWindow, typoCtx typography.Context) (_ graphics.Painter, err error) {
@@ -42,6 +46,14 @@ func NewPainter(win NativeWindow, typoCtx typography.Context) (_ graphics.Painte
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create opengl context err: %v", err)
+	}
+
+	if _, ok := p.ctx.(GLXContext); ok {
+		if glxWin, ok := win.(GLXNativeWindow); ok {
+			p.requestPaint = func() {
+				_ = glxWin.RequestPaint()
+			}
+		}
 	}
 
 	err = p.ctx.MakeCurrent()
@@ -76,15 +88,7 @@ func (p *Painter) Destroy() {
 
 func (p *Painter) Begin(width, height, scale float32) {
 	p.ctx.MakeCurrent()
-	if width != p.lastWidth || height != p.lastHeight {
-		// The GLX/DRI back buffer is reallocated only one SwapBuffers after the
-		// drawable is resized. Without priming, the first frame at a new size
-		// renders into the stale buffer — e.g. a popup created 1x1 then SetSize'd
-		// collapses its content into a single pixel. Swap once to force the
-		// reallocation before rendering the real content.
-		p.ctx.SwapBuffers()
-		p.lastWidth, p.lastHeight = width, height
-	}
+	p.trackFrameSize(width, height)
 	gl.Viewport(0, 0, int(width), int(height))
 	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT)
 	p.vg.BeginFrame(int(width/scale), int(height/scale), scale)
@@ -98,8 +102,23 @@ func (p *Painter) End() {
 		p.vg.DeleteImage(img)
 	}
 	p.imgs = p.imgs[:0]
+	p.present()
+}
+
+func (p *Painter) trackFrameSize(width, height float32) {
+	p.resizedFrame = p.hasFrame && (width != p.lastWidth || height != p.lastHeight)
+	p.lastWidth, p.lastHeight = width, height
+	p.hasFrame = true
+}
+
+func (p *Painter) present() {
 	p.ctx.SwapBuffers()
 	p.ctx.ClearCurrent()
+
+	if p.resizedFrame && p.requestPaint != nil {
+		p.resizedFrame = false
+		p.requestPaint()
+	}
 }
 
 func (p *Painter) Clear(color graphics.Color) {
