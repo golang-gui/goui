@@ -11,10 +11,30 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/typography"
 )
 
 type testDrawer struct {
 	result image.Image
+}
+
+type testTypography struct {
+	scale  float32
+	bitmap typography.TextBitmap
+}
+
+func (*testTypography) Name() string { return "test" }
+func (*testTypography) Destroy()     {}
+func (*testTypography) AddFont(string) error {
+	return nil
+}
+func (*testTypography) NewTextLayout(string, typography.TextFormat, float32, float32) (typography.TextLayout, error) {
+	return nil, nil
+}
+
+func (t *testTypography) DrawTextLayout(_ typography.TextLayout, scale float32, _ []byte) (typography.TextBitmap, error) {
+	t.scale = scale
+	return t.bitmap, nil
 }
 
 func TestLinearGradientPixels(t *testing.T) {
@@ -116,6 +136,97 @@ func TestPainterRotatesRectGeometryInsteadOfBoundingBox(t *testing.T) {
 
 	assertColorNear(t, d.result.At(60, 46), color.RGBA{R: 255, A: 255}, 1)
 	assertColorNear(t, d.result.At(70, 37), color.RGBA{A: 255}, 1)
+}
+
+func TestDrawTextLayoutUsesTransformRasterScaleAndLogicalSize(t *testing.T) {
+	pixels := make([]byte, 6*3*4)
+	for i := 0; i < len(pixels); i += 4 {
+		pixels[i], pixels[i+3] = 255, 255
+	}
+	typo := &testTypography{bitmap: typography.TextBitmap{
+		Width: 6, Height: 3, Stride: 6 * 4, Pixels: pixels,
+	}}
+	var d testDrawer
+	painter, err := NewPainter(&d, typo)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	painter.Begin(30, 20, 2)
+	painter.Clear(graphics.Color{})
+	painter.SetTransform(geometry.Translate(2, 2).Scale(1.5, 1.5))
+	painter.DrawTextLayout(graphics.Point{}, nil)
+	painter.End()
+
+	if math.Abs(float64(typo.scale-3)) > 1e-5 {
+		t.Fatalf("text raster scale = %v, want 3", typo.scale)
+	}
+	assertAlphaRange(t, d.result.At(9, 5), 250, 255)
+	assertAlphaRange(t, d.result.At(10, 5), 0, 0)
+}
+
+func TestDrawBitmapRotationUsesBilinearSampling(t *testing.T) {
+	bitmap := graphics.MakeBitmap(0, 0, 4, 4, graphics.PixelFormatRGBA, nil)
+	for y := 0; y < 4; y++ {
+		for x := 0; x < 2; x++ {
+			bitmap.SetPixel(x, y, 255, 255, 255, 255)
+		}
+	}
+
+	var d testDrawer
+	base, err := NewPainter(&d, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	painter := base.(*Painter)
+	painter.Begin(24, 24, 1)
+	painter.Clear(graphics.Color{})
+	painter.SetTransform(geometry.Translate(10.5, 10.5).Rotate(30).Translate(-2, -2))
+	painter.drawBitmap(graphics.Rect(0, 0, 4, 4), bitmap)
+	painter.End()
+
+	// Device pixel (10,10) maps to local (2,2), exactly halfway between the
+	// opaque and transparent source columns. Nearest-neighbor sampling returned
+	// zero here; bilinear sampling preserves an intermediate coverage value.
+	assertAlphaRange(t, d.result.At(10, 10), 120, 136)
+}
+
+func TestSampleBitmapBilinearInterpolatesPremultipliedFormats(t *testing.T) {
+	tests := []struct {
+		name   string
+		format graphics.PixelFormat
+		pixels []byte
+	}{
+		{
+			name:   "rgba",
+			format: graphics.PixelFormatRGBA,
+			pixels: []byte{128, 0, 0, 128, 0, 0, 0, 0},
+		},
+		{
+			name:   "bgra",
+			format: graphics.PixelFormatBGRA,
+			pixels: []byte{0, 0, 128, 128, 0, 0, 0, 0},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bitmap := graphics.Bitmap{
+				Width: 2, Height: 1, Stride: 8, Format: tt.format, Pixels: tt.pixels,
+			}
+			got := sampleBitmapBilinear(bitmap, 0.5, 0)
+			want := color.RGBA{B: 64, A: 64}
+			if got != want {
+				t.Fatalf("midpoint color = %+v, want %+v", got, want)
+			}
+
+			got = sampleBitmapBilinear(bitmap, -0.5, 0)
+			want = color.RGBA{B: 128, A: 128}
+			if got != want {
+				t.Fatalf("clamped edge color = %+v, want %+v", got, want)
+			}
+		})
+	}
 }
 
 func TestPainterCompositesTransparentBrushAndPreservesClip(t *testing.T) {
@@ -273,6 +384,33 @@ func BenchmarkDrawImageStatic1024(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		painter.DrawImage(graphics.Rect(0, 0, 1024, 1024), resource)
+	}
+	b.StopTimer()
+	painter.End()
+}
+
+func BenchmarkDrawImageRotated256(b *testing.B) {
+	var d testDrawer
+	painter, err := NewPainter(&d, nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	src := image.NewRGBA(image.Rect(0, 0, 256, 256))
+	for i := 3; i < len(src.Pix); i += 4 {
+		src.Pix[i] = 255
+	}
+	resource, err := painter.NewImage(src)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer resource.Destroy()
+
+	painter.Begin(512, 512, 1)
+	painter.SetTransform(geometry.Translate(256, 256).Rotate(15).Translate(-128, -128))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		painter.DrawImage(graphics.Rect(0, 0, 256, 256), resource)
 	}
 	b.StopTimer()
 	painter.End()
