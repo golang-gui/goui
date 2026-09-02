@@ -54,6 +54,7 @@ type Painter struct {
 	transform   geometry.Transform
 	matrix      d2d1.Matrix3x2F
 	activeFrame bool
+	resizeFrame bool
 }
 
 type imageResource struct {
@@ -297,6 +298,7 @@ func (p *Painter) Destroy() {
 
 func (p *Painter) releaseDeviceResources() {
 	p.activeFrame = false
+	p.resizeFrame = false
 	p.releaseImageNatives()
 	p.releaseShadowResources()
 	if p.linearBrush != nil {
@@ -468,6 +470,7 @@ func (p *Painter) destroyAllImages() {
 
 func (p *Painter) Begin(width, height, scale float32) {
 	p.activeFrame = false
+	p.resizeFrame = false
 	if width <= 0 || height <= 0 {
 		return
 	}
@@ -478,7 +481,9 @@ func (p *Painter) Begin(width, height, scale float32) {
 	}
 	w, h := uint32(width), uint32(height)
 	scaleChanged := p.scale != 0 && p.scale != scale
-	if p.target == nil || p.width != w || p.height != h || scaleChanged {
+	targetChanged := p.target == nil || p.width != w || p.height != h || scaleChanged
+	if targetChanged {
+		p.resizeFrame = true
 		p.releaseTarget()
 		if p.width != w || p.height != h {
 			if hr := p.swapChain.ResizeBuffers(0, w, h, dxgi.DXGI_FORMAT_UNKNOWN, 0); hr.Failed() {
@@ -518,9 +523,21 @@ func (p *Painter) End() {
 		p.handleDeviceFailure(hr)
 		return
 	}
-	if hr = p.swapChain.Present(1, 0); hr.Failed() {
+	syncInterval := presentSyncInterval(p.resizeFrame)
+	p.resizeFrame = false
+	if hr = p.swapChain.Present(syncInterval, 0); hr.Failed() {
 		p.handleDeviceFailure(hr)
 	}
+}
+
+func presentSyncInterval(resizeFrame bool) uint32 {
+	if resizeFrame {
+		// Submit a newly sized buffer without waiting behind an old-size frame.
+		// The swap chain does not allow tearing, so this changes queue latency,
+		// not the normal composited presentation behavior.
+		return 0
+	}
+	return 1
 }
 
 func (p *Painter) Clear(color graphics.Color) {

@@ -236,6 +236,11 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		}
 		return 0
 
+	case winapi.WM_ERASEBKGND:
+		// Every painter presents a complete client-area frame. Letting GDI erase
+		// the window first exposes a white intermediate surface during resize.
+		return winapi.LRESULT(winapi.TRUE)
+
 	case winapi.WM_PAINT:
 		var ps winapi.PAINTSTRUCT
 		winapi.BeginPaint(hwnd, &ps)
