@@ -187,20 +187,11 @@ func (p *Painter) createDeviceResources() (err error) {
 	}
 	dxgiFactory := (*dxgi.Factory2)(unsafe.Pointer(unknown))
 	defer dxgiFactory.Release()
-	desc := dxgi.SwapChainDesc1{
-		Format:      dxgi.DXGI_FORMAT_B8G8R8A8_UNORM,
-		SampleDesc:  dxgi.SampleDesc{Count: 1},
-		BufferUsage: dxgi.DXGI_USAGE_RENDER_TARGET_OUTPUT,
-		BufferCount: 2,
-		Scaling:     dxgi.DXGI_SCALING_STRETCH,
-		SwapEffect:  dxgi.DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
-		AlphaMode:   dxgi.DXGI_ALPHA_MODE_UNSPECIFIED,
-	}
-	p.swapChain, hr = dxgiFactory.CreateSwapChainForHwnd(&p.d3dDevice.Unknown, p.hwnd, &desc)
-	if hr.Failed() {
-		desc.BufferCount = 1
-		desc.SwapEffect = dxgi.DXGI_SWAP_EFFECT_DISCARD
+	for _, desc := range swapChainCandidates() {
 		p.swapChain, hr = dxgiFactory.CreateSwapChainForHwnd(&p.d3dDevice.Unknown, p.hwnd, &desc)
+		if hr.Succeeded() {
+			break
+		}
 	}
 	if hr.Failed() {
 		p.releaseDeviceResources()
@@ -221,6 +212,30 @@ func (p *Painter) createDeviceResources() (err error) {
 		return fmt.Errorf("create Direct2D shadow effect: %v", hr)
 	}
 	return nil
+}
+
+func swapChainCandidates() [3]dxgi.SwapChainDesc1 {
+	base := dxgi.SwapChainDesc1{
+		Format:      dxgi.DXGI_FORMAT_B8G8R8A8_UNORM,
+		SampleDesc:  dxgi.SampleDesc{Count: 1},
+		BufferUsage: dxgi.DXGI_USAGE_RENDER_TARGET_OUTPUT,
+		BufferCount: 2,
+		Scaling:     dxgi.DXGI_SCALING_NONE,
+		SwapEffect:  dxgi.DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
+		AlphaMode:   dxgi.DXGI_ALPHA_MODE_UNSPECIFIED,
+	}
+
+	// DXGI_SCALING_NONE prevents DWM from stretching the last presented
+	// buffer while the HWND and swap-chain sizes briefly differ during a live
+	// resize. Keep the previous flip-model configuration as a compatibility
+	// fallback, followed by the legacy blt-model fallback. SCALING_NONE is not
+	// valid with DXGI_SWAP_EFFECT_DISCARD.
+	flipStretch := base
+	flipStretch.Scaling = dxgi.DXGI_SCALING_STRETCH
+	legacy := flipStretch
+	legacy.BufferCount = 1
+	legacy.SwapEffect = dxgi.DXGI_SWAP_EFFECT_DISCARD
+	return [3]dxgi.SwapChainDesc1{base, flipStretch, legacy}
 }
 
 func (p *Painter) createTarget(scale float32) com.HRESULT {

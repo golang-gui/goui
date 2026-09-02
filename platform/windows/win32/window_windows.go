@@ -27,6 +27,7 @@ type Window struct {
 	lastModifiers events.Modifiers
 	modifiers     events.Modifiers
 	scale         float32      // cached device scale; updated on WM_SIZE
+	inSizeMove    bool         // inside the modal move/resize loop
 	noActivate    bool         // popups: decline activation/focus on click (WM_MOUSEACTIVATE)
 	im            *inputMethod // this window's IME (nil when none); WndProc routes WM_IME_* to it
 	cursor        *cursor      // this window's cursor (nil when none); WndProc consults it on WM_SETCURSOR
@@ -201,8 +202,19 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		window.onEvent(events.FocusEvent{Focused: false})
 		return 0
 
-	case winapi.WM_SIZE:
+	case winapi.WM_ENTERSIZEMOVE:
+		window.inSizeMove = true
+		return 0
+
+	case winapi.WM_EXITSIZEMOVE:
+		window.inSizeMove = false
+		// Commit one final frame even if the last WM_SIZE was coalesced. This
+		// also replaces any old swap-chain buffer still shown by DWM.
 		winapi.InvalidateRect(hwnd, nil, winapi.FALSE)
+		winapi.UpdateWindow(hwnd)
+		return 0
+
+	case winapi.WM_SIZE:
 		pw := float32(lParam & 0xFFFF)
 		ph := float32((lParam & 0xFFFF0000) >> 16)
 		scale := window.scaleFactor()
@@ -213,6 +225,16 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 			PixelWidth:  pw,
 			PixelHeight: ph,
 		})
+		// Dispatch the authoritative size before painting so Painter.Begin can
+		// resize the swap-chain buffers and render with matching dimensions.
+		winapi.InvalidateRect(hwnd, nil, winapi.FALSE)
+		if window.inSizeMove && pw > 0 && ph > 0 {
+			// WM_PAINT is otherwise a low-priority queued message and may be
+			// starved by a stream of WM_SIZE messages. Paint synchronously while
+			// the user drags an edge to minimize the lifetime of the old buffer.
+			winapi.UpdateWindow(hwnd)
+		}
+		return 0
 
 	case winapi.WM_PAINT:
 		var ps winapi.PAINTSTRUCT
