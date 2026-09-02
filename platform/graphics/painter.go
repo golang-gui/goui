@@ -10,7 +10,15 @@ import (
 // Painter is thread-affine and not safe for concurrent use.
 type Painter interface {
 	Name() string
+	// Destroy releases the painter and all of its images. It must not be
+	// called between Begin and End.
 	Destroy()
+	// NewImage snapshots src and creates a painter-native image resource. The
+	// returned image is bound to this Painter and must be destroyed when it is
+	// no longer needed. It may be created inside or outside an active frame, but
+	// its Destroy method must not be called until that frame has ended. All calls
+	// remain subject to Painter's thread affinity.
+	NewImage(src image.Image) (Image, error)
 	Begin(width, height, scale float32)
 	End()
 	SetClipRect(rect Rectangle)
@@ -27,5 +35,5 @@ type Painter interface {
 	DrawEllipse(center Point, xRadius, yRadius, strokeWidth float32, brush Brush)
 	DrawPath(path Path, strokeWidth float32, brush Brush)
 	DrawTextLayout(origin Point, layout typography.TextLayout)
-	DrawImage(rect Rectangle, img image.Image)
+	DrawImage(rect Rectangle, img Image)
 }

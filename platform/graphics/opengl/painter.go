@@ -16,19 +16,50 @@ import (
 )
 
 type Painter struct {
-	ctx        Context
-	vg         *nanovgo.Context
-	win        NativeWindow
-	typo       typography.Context
-	imgs       []int
-	scale      float32
-	transform  geometry.Transform
-	lastWidth  float32
-	lastHeight float32
+	ctx         Context
+	vg          *nanovgo.Context
+	win         NativeWindow
+	typo        typography.Context
+	images      map[*imageResource]struct{}
+	frameImages []int
+	scale       float32
+	transform   geometry.Transform
+	lastWidth   float32
+	lastHeight  float32
 
 	hasFrame     bool
+	activeFrame  bool
 	resizedFrame bool
 	resizedPaint bool
+}
+
+type imageResource struct {
+	owner     *Painter
+	width     int
+	height    int
+	handle    int
+	destroyed bool
+}
+
+func (i *imageResource) Size() (width, height int) {
+	if i == nil {
+		return 0, 0
+	}
+	return i.width, i.height
+}
+
+func (i *imageResource) Update(src image.Image) error {
+	if i == nil || i.destroyed || i.owner == nil {
+		return fmt.Errorf("opengl: update destroyed image")
+	}
+	return i.owner.updateImage(i, src)
+}
+
+func (i *imageResource) Destroy() {
+	if i == nil || i.destroyed || i.owner == nil {
+		return
+	}
+	i.owner.destroyImage(i)
 }
 
 func NewPainter(win NativeWindow, typoCtx typography.Context) (_ graphics.Painter, err error) {
@@ -62,7 +93,8 @@ func NewPainter(win NativeWindow, typoCtx typography.Context) (_ graphics.Painte
 	p.typo = typoCtx
 	_, p.resizedPaint = p.ctx.(GLXContext)
 
-	p.imgs = make([]int, 0, 512)
+	p.images = make(map[*imageResource]struct{})
+	p.frameImages = make([]int, 0, 64)
 	return p, nil
 }
 
@@ -71,14 +103,114 @@ func (p *Painter) Name() string {
 }
 
 func (p *Painter) Destroy() {
+	if p.activeFrame {
+		panic("opengl: destroy painter during active frame")
+	}
 	if p.vg != nil {
+		_ = p.ctx.MakeCurrent()
+		for img := range p.images {
+			img.owner = nil
+			img.handle = 0
+			img.destroyed = true
+		}
+		clear(p.images)
+		p.frameImages = p.frameImages[:0]
 		p.vg.Delete()
 		p.vg = nil
+		p.ctx.ClearCurrent()
 	}
 	if p.ctx != nil {
 		p.ctx.Destroy()
 		p.ctx = nil
 	}
+}
+
+func (p *Painter) NewImage(src image.Image) (graphics.Image, error) {
+	if p.vg == nil || p.ctx == nil {
+		return nil, fmt.Errorf("opengl: create image on destroyed painter")
+	}
+	if src == nil {
+		return nil, fmt.Errorf("opengl: create image from nil source")
+	}
+	bounds := src.Bounds()
+	if bounds.Empty() {
+		return nil, fmt.Errorf("opengl: create empty image")
+	}
+
+	bitmap := imageUploadBitmap(src)
+	madeCurrent := !p.activeFrame
+	if madeCurrent {
+		if err := p.ctx.MakeCurrent(); err != nil {
+			return nil, fmt.Errorf("opengl: make context current for image: %w", err)
+		}
+		defer p.ctx.ClearCurrent()
+	}
+	handle := p.vg.CreateImageRGBA(bitmap.Width, bitmap.Height, nanovgo.ImagePreMultiplied, bitmap.Pixels)
+	if handle == 0 {
+		return nil, fmt.Errorf("opengl: create native image")
+	}
+	img := &imageResource{
+		owner:  p,
+		width:  bounds.Dx(),
+		height: bounds.Dy(),
+		handle: handle,
+	}
+	p.images[img] = struct{}{}
+	return img, nil
+}
+
+func (p *Painter) updateImage(img *imageResource, src image.Image) error {
+	if p.activeFrame {
+		panic("opengl: update image during active frame")
+	}
+	if img == nil || img.destroyed || img.owner != p || img.handle == 0 || p.vg == nil || p.ctx == nil {
+		return fmt.Errorf("opengl: update invalid image")
+	}
+	if src == nil {
+		return fmt.Errorf("opengl: update image from nil source")
+	}
+	bounds := src.Bounds()
+	if bounds.Dx() != img.width || bounds.Dy() != img.height {
+		return fmt.Errorf("opengl: update image size %dx%d, want %dx%d", bounds.Dx(), bounds.Dy(), img.width, img.height)
+	}
+	bitmap := imageUploadBitmap(src)
+	if err := p.ctx.MakeCurrent(); err != nil {
+		return fmt.Errorf("opengl: make context current to update image: %w", err)
+	}
+	err := p.vg.UpdateImage(img.handle, bitmap.Pixels)
+	p.ctx.ClearCurrent()
+	if err != nil {
+		return fmt.Errorf("opengl: update native image: %w", err)
+	}
+	return nil
+}
+
+func imageUploadBitmap(src image.Image) graphics.Bitmap {
+	bitmap, ok := graphics.ToBitmap(src, graphics.PixelFormatRGBA)
+	if ok && bitmap.Stride == bitmap.Width*graphics.PixelFormatRGBA.BytesPerPixel() {
+		return bitmap
+	}
+	return graphics.CopyToBitmap(src, graphics.PixelFormatRGBA, nil)
+}
+
+func (p *Painter) destroyImage(img *imageResource) {
+	if img == nil || img.destroyed || img.owner != p {
+		return
+	}
+	if p.activeFrame {
+		panic("opengl: destroy image during active frame")
+	}
+	if img.handle != 0 && p.vg != nil {
+		if err := p.ctx.MakeCurrent(); err != nil {
+			panic(fmt.Sprintf("opengl: make context current to destroy image: %v", err))
+		}
+		p.vg.DeleteImage(img.handle)
+		p.ctx.ClearCurrent()
+	}
+	delete(p.images, img)
+	img.owner = nil
+	img.handle = 0
+	img.destroyed = true
 }
 
 func (p *Painter) Begin(width, height, scale float32) {
@@ -87,16 +219,18 @@ func (p *Painter) Begin(width, height, scale float32) {
 	gl.Viewport(0, 0, int(width), int(height))
 	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT)
 	p.vg.BeginFrame(int(width/scale), int(height/scale), scale)
+	p.activeFrame = true
 	p.scale = scale
 	p.transform = geometry.Identity()
 }
 
 func (p *Painter) End() {
 	p.vg.EndFrame()
-	for _, img := range p.imgs {
+	for _, img := range p.frameImages {
 		p.vg.DeleteImage(img)
 	}
-	p.imgs = p.imgs[:0]
+	p.frameImages = p.frameImages[:0]
+	p.activeFrame = false
 	p.present()
 }
 
@@ -280,12 +414,15 @@ func snapTextOrigin(origin geometry.Point, transform geometry.Transform, scale f
 	}
 }
 
-func (p *Painter) DrawImage(rect graphics.Rectangle, img image.Image) {
-	bitmap, ok := graphics.ToBitmap(img, graphics.PixelFormatRGBA)
-	if !ok {
-		bitmap = graphics.CopyToBitmap(img, graphics.PixelFormatRGBA, nil)
+func (p *Painter) DrawImage(rect graphics.Rectangle, img graphics.Image) {
+	if rect.Width <= 0 || rect.Height <= 0 {
+		return
 	}
-	p.drawBitmap(rect, bitmap)
+	native, ok := img.(*imageResource)
+	if !ok || native == nil || native.owner != p || native.destroyed || native.handle == 0 {
+		panic("opengl: image does not belong to painter or was destroyed")
+	}
+	p.drawImageHandle(rect, native.handle)
 }
 
 func (p *Painter) SetClipRect(rect graphics.Rectangle) {
@@ -307,15 +444,19 @@ func (p *Painter) SetClipRect(rect graphics.Rectangle) {
 func (p *Painter) drawBitmap(rect graphics.Rectangle, bitmap graphics.Bitmap) {
 	img := p.vg.CreateImageRGBA(bitmap.Width, bitmap.Height, nanovgo.ImagePreMultiplied, bitmap.Pixels)
 	if img != 0 {
-		p.imgs = append(p.imgs, img)
-		p.vg.Save()
-		p.vg.BeginPath()
-		p.vg.SetFillPaint(nanovgo.ImagePattern(rect.X, rect.Y, rect.Width, rect.Height, 0, img, 1.0))
-		p.vg.Rect(rect.X, rect.Y, rect.Width, rect.Height)
-		p.vg.Fill()
-		p.vg.Restore()
+		p.frameImages = append(p.frameImages, img)
+		p.drawImageHandle(rect, img)
 	}
 	// TODO: add error log
+}
+
+func (p *Painter) drawImageHandle(rect graphics.Rectangle, img int) {
+	p.vg.Save()
+	p.vg.BeginPath()
+	p.vg.SetFillPaint(nanovgo.ImagePattern(rect.X, rect.Y, rect.Width, rect.Height, 0, img, 1.0))
+	p.vg.Rect(rect.X, rect.Y, rect.Width, rect.Height)
+	p.vg.Fill()
+	p.vg.Restore()
 }
 
 func (p *Painter) beginFill(brush graphics.Brush) bool {

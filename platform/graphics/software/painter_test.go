@@ -135,6 +135,149 @@ func TestPainterCompositesTransparentBrushAndPreservesClip(t *testing.T) {
 	assertColorNear(t, d.result.At(4, 0), color.RGBA{B: 255, A: 255}, 1)
 }
 
+func TestImageResourceSnapshotsReusesAndCompositesPixels(t *testing.T) {
+	var d testDrawer
+	painter, err := NewPainter(&d, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := image.NewNRGBA(image.Rect(3, 4, 5, 5))
+	src.SetNRGBA(3, 4, color.NRGBA{R: 255, A: 128})
+	src.SetNRGBA(4, 4, color.NRGBA{G: 255, A: 255})
+	resource, err := painter.NewImage(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resource.Destroy()
+	if width, height := resource.Size(); width != 2 || height != 1 {
+		t.Fatalf("resource size = %dx%d, want 2x1", width, height)
+	}
+
+	// NewImage snapshots the source. Later mutations must not affect rendering.
+	src.SetNRGBA(3, 4, color.NRGBA{B: 255, A: 255})
+	painter.Begin(4, 2, 1)
+	painter.Clear(graphics.RGB(0, 0, 255))
+	painter.SetClipRect(graphics.Rect(0, 0, 3, 2))
+	painter.DrawImage(graphics.Rect(0, 0, 4, 2), resource)
+	painter.End()
+
+	assertColorNear(t, d.result.At(0, 0), color.RGBA{R: 128, B: 127, A: 255}, 1)
+	assertColorNear(t, d.result.At(2, 0), color.RGBA{G: 255, A: 255}, 1)
+	assertColorNear(t, d.result.At(3, 0), color.RGBA{B: 255, A: 255}, 1)
+}
+
+func TestImageResourceRejectsWrongPainterAndDestroyedResource(t *testing.T) {
+	var firstDrawer, secondDrawer testDrawer
+	first, _ := NewPainter(&firstDrawer, nil)
+	second, _ := NewPainter(&secondDrawer, nil)
+	resource, err := first.NewImage(image.NewRGBA(image.Rect(0, 0, 1, 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	second.Begin(1, 1, 1)
+	assertPanics(t, func() { second.DrawImage(graphics.Rect(0, 0, 1, 1), resource) })
+	second.End()
+
+	resource.Destroy()
+	first.Begin(1, 1, 1)
+	assertPanics(t, func() { first.DrawImage(graphics.Rect(0, 0, 1, 1), resource) })
+	first.End()
+}
+
+func TestImageAndPainterDestroyRejectActiveFrame(t *testing.T) {
+	var d testDrawer
+	painter, err := NewPainter(&d, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resource, err := painter.NewImage(image.NewRGBA(image.Rect(0, 0, 1, 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	painter.Begin(1, 1, 1)
+	assertPanics(t, resource.Destroy)
+	assertPanics(t, func() { _ = resource.Update(image.NewRGBA(image.Rect(0, 0, 1, 1))) })
+	assertPanics(t, painter.Destroy)
+	painter.End()
+
+	resource.Destroy()
+	if native := resource.(*imageResource); !native.destroyed || native.owner != nil {
+		t.Fatal("image was not destroyed after the frame")
+	}
+}
+
+func TestImageUpdateReusesStorageAndDetachesSource(t *testing.T) {
+	var d testDrawer
+	painter, err := NewPainter(&d, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resource, err := painter.NewImage(image.NewRGBA(image.Rect(0, 0, 1, 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resource.Destroy()
+	native := resource.(*imageResource)
+	pixels := &native.bitmap.Pixels[0]
+
+	src := image.NewNRGBA(image.Rect(4, 5, 5, 6))
+	src.SetNRGBA(4, 5, color.NRGBA{G: 255, A: 255})
+	if err := resource.Update(src); err != nil {
+		t.Fatal(err)
+	}
+	if &native.bitmap.Pixels[0] != pixels {
+		t.Fatal("same-size update replaced the software pixel storage")
+	}
+	src.SetNRGBA(4, 5, color.NRGBA{B: 255, A: 255})
+
+	painter.Begin(1, 1, 1)
+	painter.Clear(graphics.RGB(0, 0, 0))
+	painter.DrawImage(graphics.Rect(0, 0, 1, 1), resource)
+	painter.End()
+	assertColorNear(t, d.result.At(0, 0), color.RGBA{G: 255, A: 255}, 1)
+
+	if err := resource.Update(image.NewRGBA(image.Rect(0, 0, 2, 1))); err == nil {
+		t.Fatal("size-changing update succeeded")
+	}
+}
+
+func assertPanics(t *testing.T, fn func()) {
+	t.Helper()
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected panic")
+		}
+	}()
+	fn()
+}
+
+func BenchmarkDrawImageStatic1024(b *testing.B) {
+	var d testDrawer
+	painter, err := NewPainter(&d, nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	src := image.NewRGBA(image.Rect(0, 0, 1024, 1024))
+	for i := 3; i < len(src.Pix); i += 4 {
+		src.Pix[i] = 255
+	}
+	resource, err := painter.NewImage(src)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer resource.Destroy()
+	painter.Begin(1024, 1024, 1)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		painter.DrawImage(graphics.Rect(0, 0, 1024, 1024), resource)
+	}
+	b.StopTimer()
+	painter.End()
+}
+
 func TestBoxShadowFullAndSingleBottomEdge(t *testing.T) {
 	img := renderShadow(t, 40, 35, 1, geometry.Identity(), graphics.Rectangle{}, func(p graphics.Painter) {
 		p.DrawBoxShadow(graphics.Rect(10, 10, 20, 10), 3, graphics.BoxShadow{

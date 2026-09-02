@@ -47,13 +47,43 @@ type Painter struct {
 	roundRect   d2d1.RoundRect
 	ellipse     d2d1.Ellipse
 	clip        d2d1.RectF
-	imageBuf    []byte
+	images      map[*imageResource]struct{}
 	width       uint32
 	height      uint32
 	scale       float32
 	transform   geometry.Transform
 	matrix      d2d1.Matrix3x2F
 	activeFrame bool
+}
+
+type imageResource struct {
+	owner     *Painter
+	width     int
+	height    int
+	pixels    graphics.Bitmap
+	bitmap    *d2d1.Bitmap
+	destroyed bool
+}
+
+func (i *imageResource) Size() (width, height int) {
+	if i == nil {
+		return 0, 0
+	}
+	return i.width, i.height
+}
+
+func (i *imageResource) Update(src image.Image) error {
+	if i == nil || i.destroyed || i.owner == nil {
+		return fmt.Errorf("direct2d: update destroyed image")
+	}
+	return i.owner.updateImage(i, src)
+}
+
+func (i *imageResource) Destroy() {
+	if i == nil || i.destroyed || i.owner == nil {
+		return
+	}
+	i.owner.destroyImage(i)
 }
 
 const shadowCacheCapacity = 16
@@ -74,6 +104,7 @@ func NewPainter(win NativeWindow, typoCtx typography.Context) (_ graphics.Painte
 	p.typoCtx = typoCtx
 	p.dwTypo, _ = typoCtx.(*directwrite.Context)
 	p.hwnd = win.NativeHandle()
+	p.images = make(map[*imageResource]struct{})
 
 	p.factory, err = d2d1.CreateFactory[d2d1.Factory1](d2d1.D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d1.IID_ID2D1Factory1, nil)
 	if err != nil {
@@ -238,6 +269,10 @@ func (p *Painter) Name() string {
 }
 
 func (p *Painter) Destroy() {
+	if p.activeFrame {
+		panic("direct2d: destroy painter during active frame")
+	}
+	p.destroyAllImages()
 	p.releaseDeviceResources()
 	if p.factory != nil {
 		p.factory.Release()
@@ -247,6 +282,7 @@ func (p *Painter) Destroy() {
 
 func (p *Painter) releaseDeviceResources() {
 	p.activeFrame = false
+	p.releaseImageNatives()
 	p.releaseShadowResources()
 	if p.linearBrush != nil {
 		p.linearBrush.Release()
@@ -292,6 +328,127 @@ func (p *Painter) releaseDeviceResources() {
 		p.d3dDevice = nil
 	}
 	p.width, p.height = 0, 0
+}
+
+func (p *Painter) NewImage(src image.Image) (graphics.Image, error) {
+	if src == nil {
+		return nil, fmt.Errorf("direct2d: create image from nil source")
+	}
+	bounds := src.Bounds()
+	if bounds.Empty() {
+		return nil, fmt.Errorf("direct2d: create empty image")
+	}
+	if p.render == nil {
+		if err := p.createDeviceResources(); err != nil {
+			return nil, fmt.Errorf("direct2d: create image device: %w", err)
+		}
+	}
+	pixels := graphics.CopyToBitmap(src, graphics.PixelFormatBGRA, nil)
+	bitmap, hr := p.createImageBitmap(pixels)
+	if hr.Failed() {
+		if isDeviceLost(hr) {
+			p.handleDeviceFailure(hr)
+		}
+		return nil, fmt.Errorf("direct2d: create native image: %v", hr)
+	}
+	img := &imageResource{
+		owner:  p,
+		width:  bounds.Dx(),
+		height: bounds.Dy(),
+		pixels: pixels,
+		bitmap: bitmap,
+	}
+	p.images[img] = struct{}{}
+	return img, nil
+}
+
+func (p *Painter) updateImage(img *imageResource, src image.Image) error {
+	if p.activeFrame {
+		panic("direct2d: update image during active frame")
+	}
+	if img == nil || img.destroyed || img.owner != p {
+		return fmt.Errorf("direct2d: update invalid image")
+	}
+	if src == nil {
+		return fmt.Errorf("direct2d: update image from nil source")
+	}
+	bounds := src.Bounds()
+	if bounds.Dx() != img.width || bounds.Dy() != img.height {
+		return fmt.Errorf("direct2d: update image size %dx%d, want %dx%d", bounds.Dx(), bounds.Dy(), img.width, img.height)
+	}
+	if p.render == nil {
+		if err := p.createDeviceResources(); err != nil {
+			return fmt.Errorf("direct2d: create image device for update: %w", err)
+		}
+	}
+	pixels := graphics.CopyToBitmap(src, graphics.PixelFormatBGRA, img.pixels.Pixels)
+	if img.bitmap == nil {
+		bitmap, hr := p.createImageBitmap(pixels)
+		if hr.Failed() {
+			if isDeviceLost(hr) {
+				p.handleDeviceFailure(hr)
+			}
+			return fmt.Errorf("direct2d: recreate native image for update: %v", hr)
+		}
+		img.bitmap = bitmap
+	} else if hr := img.bitmap.CopyFromMemory(nil, pixels.Pixels, pixels.Stride); hr.Failed() {
+		if isDeviceLost(hr) {
+			p.handleDeviceFailure(hr)
+		}
+		return fmt.Errorf("direct2d: update native image: %v", hr)
+	}
+	img.pixels = pixels
+	return nil
+}
+
+func (p *Painter) createImageBitmap(bitmap graphics.Bitmap) (*d2d1.Bitmap, com.HRESULT) {
+	size := d2d1.SizeU{Width: uint32(bitmap.Width), Height: uint32(bitmap.Height)}
+	props := d2d1.BitmapProperties{
+		PixelFormat: d2d1.PixelFormat{
+			Format:    dxgi.DXGI_FORMAT_B8G8R8A8_UNORM,
+			AlphaMode: d2d1.D2D1_ALPHA_MODE_PREMULTIPLIED,
+		},
+		DpiX: 96,
+		DpiY: 96,
+	}
+	return p.render.CreateBitmap(size, bitmap.Pixels, bitmap.Stride, &props)
+}
+
+func (p *Painter) destroyImage(img *imageResource) {
+	if img == nil || img.destroyed || img.owner != p {
+		return
+	}
+	if p.activeFrame {
+		panic("direct2d: destroy image during active frame")
+	}
+	delete(p.images, img)
+	bitmap := img.bitmap
+	img.owner = nil
+	img.bitmap = nil
+	img.pixels.Pixels = nil
+	img.destroyed = true
+	if bitmap != nil {
+		bitmap.Release()
+	}
+}
+
+func (p *Painter) releaseImageNatives() {
+	for img := range p.images {
+		if img.bitmap != nil {
+			img.bitmap.Release()
+			img.bitmap = nil
+		}
+	}
+}
+
+func (p *Painter) destroyAllImages() {
+	p.releaseImageNatives()
+	for img := range p.images {
+		img.owner = nil
+		img.pixels.Pixels = nil
+		img.destroyed = true
+	}
+	clear(p.images)
 }
 
 func (p *Painter) Begin(width, height, scale float32) {
@@ -629,16 +786,28 @@ func d2dMatrix(t geometry.Transform) d2d1.Matrix3x2F {
 	}
 }
 
-func (p *Painter) DrawImage(rect graphics.Rectangle, img image.Image) {
+func (p *Painter) DrawImage(rect graphics.Rectangle, img graphics.Image) {
 	if !p.activeFrame {
 		return
 	}
-	bitmap, ok := graphics.ToBitmap(img, graphics.PixelFormatBGRA)
-	if !ok {
-		bitmap = graphics.CopyToBitmap(img, graphics.PixelFormatBGRA, p.imageBuf)
-		p.imageBuf = bitmap.Pixels
+	if rect.Width <= 0 || rect.Height <= 0 {
+		return
 	}
-	p.drawBitmap(p.snapRect(rect), bitmap)
+	native, ok := img.(*imageResource)
+	if !ok || native == nil || native.owner != p || native.destroyed {
+		panic("direct2d: image does not belong to painter or was destroyed")
+	}
+	if native.bitmap == nil {
+		bitmap, hr := p.createImageBitmap(native.pixels)
+		if hr.Failed() {
+			if isDeviceLost(hr) {
+				p.handleDeviceFailure(hr)
+			}
+			return
+		}
+		native.bitmap = bitmap
+	}
+	p.drawNativeImage(p.snapRect(rect), native.bitmap)
 }
 
 func (p *Painter) SetClipRect(rect graphics.Rectangle) {
@@ -825,27 +994,7 @@ func makeBezierSegment(c1x, c1y, c2x, c2y, x, y float32) d2d1.BezierSegment {
 	}
 }
 
-func (p *Painter) drawBitmap(rect graphics.Rectangle, bitmap graphics.Bitmap) {
-	if bitmap.Width <= 0 || bitmap.Height <= 0 {
-		return
-	}
-
-	size := d2d1.SizeU{Width: uint32(bitmap.Width), Height: uint32(bitmap.Height)}
-	props := d2d1.BitmapProperties{
-		PixelFormat: d2d1.PixelFormat{
-			Format:    dxgi.DXGI_FORMAT_B8G8R8A8_UNORM,
-			AlphaMode: d2d1.D2D1_ALPHA_MODE_PREMULTIPLIED,
-		},
-		DpiX: 96,
-		DpiY: 96,
-	}
-
-	d2dBitmap, hr := p.render.CreateBitmap(size, bitmap.Pixels, bitmap.Stride, &props)
-	if hr.Failed() {
-		return
-	}
-	defer d2dBitmap.Release()
-
+func (p *Painter) drawNativeImage(rect graphics.Rectangle, d2dBitmap *d2d1.Bitmap) {
 	dstRect := d2d1.RectF{
 		Left:   rect.X,
 		Top:    rect.Y,
