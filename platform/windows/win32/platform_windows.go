@@ -201,13 +201,12 @@ func (p *Platform) registerWindow() (err error) {
 
 	arrowCursor, _ := winapi.LoadCursor(0, winapi.IDC_ARROW)
 	wdc := winapi.WNDCLASSEX{
-		Size:       winapi.Sizeof_WNDCLASSEX,
-		Style:      winapi.CS_HREDRAW | winapi.CS_VREDRAW | winapi.CS_OWNDC,
-		WndProc:    winapi.MakeWindowProc(windowProc),
-		Instance:   p.instance,
-		Cursor:     arrowCursor,
-		ClassName:  p.windowClass,
-		Background: winapi.HBRUSH(winapi.COLOR_WINDOWFRAME),
+		Size:      winapi.Sizeof_WNDCLASSEX,
+		Style:     winapi.CS_HREDRAW | winapi.CS_VREDRAW | winapi.CS_OWNDC,
+		WndProc:   winapi.MakeWindowProc(windowProc),
+		Instance:  p.instance,
+		Cursor:    arrowCursor,
+		ClassName: p.windowClass,
 	}
 	_, err = winapi.RegisterClassEx(&wdc)
 	return
