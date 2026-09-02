@@ -9,6 +9,7 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/internal/boxshadow"
+	"github.com/golang-gui/goui/platform/graphics/internal/textbitmap"
 	"github.com/golang-gui/goui/platform/graphics/utils"
 	"github.com/golang-gui/goui/platform/typography"
 
@@ -342,24 +343,34 @@ func (p *Painter) DrawPath(path graphics.Path, strokeWidth float32, brush graphi
 }
 
 func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLayout) {
-	// Snap the text bitmap origin to the device pixel grid so the pre-rasterized
-	// glyphs land 1:1 on physical pixels instead of being resampled (blurred).
-	origin.X = float32(math.Round(float64(origin.X*p.scale))) / p.scale
-	origin.Y = float32(math.Round(float64(origin.Y*p.scale))) / p.scale
-	if p.typo != nil {
-		textBitmap, err := p.typo.DrawTextLayout(layout, p.scale, nil)
-		if err == nil {
-			drawRect := graphics.Rect(origin.X, origin.Y, float32(textBitmap.Width)/p.scale, float32(textBitmap.Height)/p.scale)
-			bitmap := graphics.Bitmap{
-				Width:  textBitmap.Width,
-				Height: textBitmap.Height,
-				Stride: textBitmap.Stride,
-				Format: graphics.PixelFormatRGBA,
-				Pixels: textBitmap.Pixels,
-			}
-			p.drawBitmap(drawRect, bitmap)
-		}
+	if p.typo == nil {
+		return
 	}
+
+	rasterScale := textbitmap.RasterScale(p.scale, p.transform)
+	if rasterScale <= 0 {
+		return
+	}
+	textBitmap, err := p.typo.DrawTextLayout(layout, rasterScale, nil)
+	if err != nil || textBitmap.Width <= 0 || textBitmap.Height <= 0 {
+		return
+	}
+
+	origin = textbitmap.SnapOrigin(origin, p.transform, p.scale)
+	drawRect := graphics.Rect(
+		origin.X,
+		origin.Y,
+		float32(textBitmap.Width)/rasterScale,
+		float32(textBitmap.Height)/rasterScale,
+	)
+	bitmap := graphics.Bitmap{
+		Width:  textBitmap.Width,
+		Height: textBitmap.Height,
+		Stride: textBitmap.Stride,
+		Format: graphics.PixelFormatRGBA,
+		Pixels: textBitmap.Pixels,
+	}
+	p.drawBitmap(drawRect, bitmap)
 }
 
 func (p *Painter) SetTransform(t geometry.Transform) {
@@ -543,6 +554,9 @@ func (p *Painter) restoreClip() {
 }
 
 func (p *Painter) drawBitmap(rect graphics.Rectangle, bitmap graphics.Bitmap) {
+	if rect.Width <= 0 || rect.Height <= 0 || bitmap.Width <= 0 || bitmap.Height <= 0 {
+		return
+	}
 	defer p.filler.Clear()
 
 	// Transform the 4 corners of the destination rect to device space.
@@ -573,17 +587,19 @@ func (p *Painter) drawBitmap(rect graphics.Rectangle, bitmap graphics.Bitmap) {
 	srcW := float32(srcBounds.Dx())
 	srcH := float32(srcBounds.Dy())
 	inv := p.deviceTransform().Inverse()
+	// scanFT consumes the returned color synchronously. Reusing it avoids one
+	// interface-boxing allocation for every destination pixel.
+	var sample color.RGBA
 
 	p.filler.SetColor(rasterx.ColorFunc(func(x, y int) color.Color {
 		// Device pixel → local logical coordinate → source rect space.
 		src := inv.TransformPoint(geometry.Point{X: float32(x) + 0.5, Y: float32(y) + 0.5})
-		// Map from rect space to bitmap pixel space.
-		bx := srcBounds.Min.X + int((src.X-rect.X)/rect.Width*srcW)
-		by := srcBounds.Min.Y + int((src.Y-rect.Y)/rect.Height*srcH)
-		if bx < srcBounds.Min.X || bx >= srcBounds.Max.X || by < srcBounds.Min.Y || by >= srcBounds.Max.Y {
-			return color.RGBA{0, 0, 0, 0}
-		}
-		return reverseBitmapColor(bitmap, bx, by)
+		// Integer source coordinates denote pixel centers. Sampling between those
+		// centers preserves the glyph bitmap's grayscale antialiasing after rotation.
+		bx := float32(srcBounds.Min.X) + (src.X-rect.X)/rect.Width*srcW - 0.5
+		by := float32(srcBounds.Min.Y) + (src.Y-rect.Y)/rect.Height*srcH - 0.5
+		sample = sampleBitmapBilinear(bitmap, bx, by)
+		return &sample
 	}))
 
 	// Build a quad path through the 4 transformed corners.
@@ -662,9 +678,48 @@ func compositePremultipliedBGRA(dst, src []byte) {
 	dst[3] = byte(uint16(sa) + (uint16(dst[3])*inv+127)/255)
 }
 
-func reverseBitmapColor(bitmap graphics.Bitmap, x, y int) color.RGBA {
-	r, g, b, a := bitmap.GetPixel(x, y)
+// sampleBitmapBilinear samples premultiplied bitmap channels and returns them
+// in the software painter's internal BGRA byte order. Coordinates are expressed
+// with integer values at pixel centers.
+func sampleBitmapBilinear(bitmap graphics.Bitmap, x, y float32) color.RGBA {
+	bounds := bitmap.Bounds()
+	if bounds.Empty() {
+		return color.RGBA{}
+	}
+
+	ix0 := int(math.Floor(float64(x)))
+	iy0 := int(math.Floor(float64(y)))
+	tx := x - float32(ix0)
+	ty := y - float32(iy0)
+	ix1, iy1 := ix0+1, iy0+1
+	ix0 = min(max(ix0, bounds.Min.X), bounds.Max.X-1)
+	ix1 = min(max(ix1, bounds.Min.X), bounds.Max.X-1)
+	iy0 = min(max(iy0, bounds.Min.Y), bounds.Max.Y-1)
+	iy1 = min(max(iy1, bounds.Min.Y), bounds.Max.Y-1)
+
+	r00, g00, b00, a00 := bitmap.GetPixel(ix0, iy0)
+	r10, g10, b10, a10 := bitmap.GetPixel(ix1, iy0)
+	r01, g01, b01, a01 := bitmap.GetPixel(ix0, iy1)
+	r11, g11, b11, a11 := bitmap.GetPixel(ix1, iy1)
+
+	r := bilinearByte(r00, r10, r01, r11, tx, ty)
+	g := bilinearByte(g00, g10, g01, g11, tx, ty)
+	b := bilinearByte(b00, b10, b01, b11, tx, ty)
+	a := bilinearByte(a00, a10, a01, a11, tx, ty)
 	return color.RGBA{R: b, G: g, B: r, A: a}
+}
+
+func bilinearByte(v00, v10, v01, v11 byte, tx, ty float32) byte {
+	top := float32(v00) + (float32(v10)-float32(v00))*tx
+	bottom := float32(v01) + (float32(v11)-float32(v01))*tx
+	value := top + (bottom-top)*ty
+	if value <= 0 {
+		return 0
+	}
+	if value >= 255 {
+		return 255
+	}
+	return byte(value + 0.5)
 }
 
 func (p *Painter) fillLine(c graphics.Color) {
