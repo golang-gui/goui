@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"image"
 	"image/color"
 	"image/jpeg"
 	"log"
@@ -21,7 +20,7 @@ import (
 var (
 	typo    typography.Context
 	painter graphics.Painter
-	img     image.Image
+	img     graphics.Image
 )
 
 func getTextRange(text, subText string) (start, length int) {
@@ -251,7 +250,7 @@ func main() {
 	data, err := os.ReadFile("testdata/flower.jpg")
 	panicIf(err)
 
-	img, err = jpeg.Decode(bytes.NewReader(data))
+	source, err := jpeg.Decode(bytes.NewReader(data))
 	panicIf(err)
 
 	plat, err := platform.NewPlatform(platform.DefaultName())
@@ -268,7 +267,6 @@ func main() {
 	win, err = plat.NewWindow(800, 600, func(event events.Event) {
 		switch ev := event.(type) {
 		case events.CloseEvent:
-			win.Destroy()
 			eventLoop.Quit()
 		case events.SizeEvent:
 			width, height = ev.PixelWidth, ev.PixelHeight
@@ -280,12 +278,18 @@ func main() {
 		}
 	})
 	panicIf(err)
+	defer win.Destroy()
 
 	typo, err = plat.NewTypography()
 	panicIf(err)
 
 	painter, err = plat.NewPainter(win, typo)
 	panicIf(err)
+	defer painter.Destroy()
+
+	img, err = painter.NewImage(source)
+	panicIf(err)
+	defer img.Destroy()
 
 	win.SetTitle("Painter test")
 	win.Show()

@@ -1,6 +1,7 @@
 package software
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"math"
@@ -17,20 +18,51 @@ import (
 )
 
 type Painter struct {
-	drawable  Drawable
-	typo      typography.Context
-	bgra      image.RGBA
-	line      image.RGBA
-	viewport  graphics.Rectangle
-	scanner   rasterx.Scanner
-	filler    *rasterx.Filler
-	stroker   *rasterx.Stroker
-	pixelBuf  []byte
-	lineBuf   []byte
-	outputBuf []byte
-	scale     float32
-	transform geometry.Transform
-	clip      image.Rectangle
+	drawable    Drawable
+	typo        typography.Context
+	bgra        image.RGBA
+	line        image.RGBA
+	viewport    graphics.Rectangle
+	scanner     rasterx.Scanner
+	filler      *rasterx.Filler
+	stroker     *rasterx.Stroker
+	pixelBuf    []byte
+	lineBuf     []byte
+	outputBuf   []byte
+	images      map[*imageResource]struct{}
+	scale       float32
+	transform   geometry.Transform
+	clip        image.Rectangle
+	activeFrame bool
+}
+
+type imageResource struct {
+	owner     *Painter
+	width     int
+	height    int
+	bitmap    graphics.Bitmap
+	destroyed bool
+}
+
+func (i *imageResource) Size() (width, height int) {
+	if i == nil {
+		return 0, 0
+	}
+	return i.width, i.height
+}
+
+func (i *imageResource) Update(src image.Image) error {
+	if i == nil || i.destroyed || i.owner == nil {
+		return fmt.Errorf("software: update destroyed image")
+	}
+	return i.owner.updateImage(i, src)
+}
+
+func (i *imageResource) Destroy() {
+	if i == nil || i.destroyed || i.owner == nil {
+		return
+	}
+	i.owner.destroyImage(i)
 }
 
 type Drawable interface {
@@ -41,6 +73,7 @@ func NewPainter(drawable Drawable, typo typography.Context) (graphics.Painter, e
 	p := new(Painter)
 	p.drawable = drawable
 	p.typo = typo
+	p.images = make(map[*imageResource]struct{})
 	return p, nil
 }
 
@@ -49,7 +82,64 @@ func (p *Painter) Name() string {
 }
 
 func (p *Painter) Destroy() {
+	if p.activeFrame {
+		panic("software: destroy painter during active frame")
+	}
+	for img := range p.images {
+		img.owner = nil
+		img.bitmap.Pixels = nil
+		img.destroyed = true
+	}
+	clear(p.images)
+}
 
+func (p *Painter) NewImage(src image.Image) (graphics.Image, error) {
+	if src == nil {
+		return nil, fmt.Errorf("software: create image from nil source")
+	}
+	bounds := src.Bounds()
+	if bounds.Empty() {
+		return nil, fmt.Errorf("software: create empty image")
+	}
+	img := &imageResource{
+		owner:  p,
+		width:  bounds.Dx(),
+		height: bounds.Dy(),
+		bitmap: graphics.CopyToBitmap(src, graphics.PixelFormatBGRA, nil),
+	}
+	p.images[img] = struct{}{}
+	return img, nil
+}
+
+func (p *Painter) updateImage(img *imageResource, src image.Image) error {
+	if p.activeFrame {
+		panic("software: update image during active frame")
+	}
+	if img == nil || img.destroyed || img.owner != p {
+		return fmt.Errorf("software: update invalid image")
+	}
+	if src == nil {
+		return fmt.Errorf("software: update image from nil source")
+	}
+	bounds := src.Bounds()
+	if bounds.Dx() != img.width || bounds.Dy() != img.height {
+		return fmt.Errorf("software: update image size %dx%d, want %dx%d", bounds.Dx(), bounds.Dy(), img.width, img.height)
+	}
+	img.bitmap = graphics.CopyToBitmap(src, graphics.PixelFormatBGRA, img.bitmap.Pixels)
+	return nil
+}
+
+func (p *Painter) destroyImage(img *imageResource) {
+	if img == nil || img.destroyed || img.owner != p {
+		return
+	}
+	if p.activeFrame {
+		panic("software: destroy image during active frame")
+	}
+	delete(p.images, img)
+	img.owner = nil
+	img.bitmap.Pixels = nil
+	img.destroyed = true
 }
 
 func (p *Painter) Begin(width, height, scale float32) {
@@ -72,6 +162,7 @@ func (p *Painter) Begin(width, height, scale float32) {
 	p.stroker.Clear()
 	p.transform = geometry.Identity()
 	p.clip = image.Rectangle{}
+	p.activeFrame = true
 }
 
 func (p *Painter) End() {
@@ -96,6 +187,7 @@ func (p *Painter) End() {
 		Format: graphics.PixelFormatBGRA, // reversed
 		Pixels: p.outputBuf,
 	})
+	p.activeFrame = false
 }
 
 func (p *Painter) Clear(color graphics.Color) {
@@ -412,12 +504,17 @@ func (p *Painter) addEllipse(add rasterx.Adder, center graphics.Point, xRadius, 
 	return p.clipForPoints(points, 0)
 }
 
-func (p *Painter) DrawImage(rect graphics.Rectangle, img image.Image) {
-	bitmap, ok := graphics.ToBitmap(img, graphics.PixelFormatRGBA)
-	if !ok {
-		bitmap = graphics.CopyToBitmap(img, graphics.PixelFormatRGBA, nil)
+func (p *Painter) DrawImage(rect graphics.Rectangle, img graphics.Image) {
+	if rect.Width <= 0 || rect.Height <= 0 {
+		return
 	}
-	p.drawBitmap(rect, bitmap)
+	native, ok := img.(*imageResource)
+	if !ok || native == nil || native.owner != p || native.destroyed {
+		panic("software: image does not belong to painter or was destroyed")
+	}
+	if !p.drawAxisAlignedBitmap(rect, native.bitmap) {
+		p.drawBitmap(rect, native.bitmap)
+	}
 }
 
 func (p *Painter) SetClipRect(rect graphics.Rectangle) {
@@ -486,7 +583,7 @@ func (p *Painter) drawBitmap(rect graphics.Rectangle, bitmap graphics.Bitmap) {
 		if bx < srcBounds.Min.X || bx >= srcBounds.Max.X || by < srcBounds.Min.Y || by >= srcBounds.Max.Y {
 			return color.RGBA{0, 0, 0, 0}
 		}
-		return reverseColor(bitmap.At(bx, by))
+		return reverseBitmapColor(bitmap, bx, by)
 	}))
 
 	// Build a quad path through the 4 transformed corners.
@@ -496,6 +593,78 @@ func (p *Painter) drawBitmap(rect graphics.Rectangle, bitmap graphics.Bitmap) {
 	p.filler.Line(toFixedP(dev[3].x, dev[3].y))
 	p.filler.Stop(true)
 	p.filler.Draw()
+}
+
+func (p *Painter) drawAxisAlignedBitmap(rect graphics.Rectangle, bitmap graphics.Bitmap) bool {
+	transform := p.deviceTransform()
+	if transform.A12 != 0 || transform.A21 != 0 || transform.A11 == 0 || transform.A22 == 0 {
+		return false
+	}
+
+	x0 := transform.A11*rect.X + transform.TX
+	x1 := transform.A11*(rect.X+rect.Width) + transform.TX
+	y0 := transform.A22*rect.Y + transform.TY
+	y1 := transform.A22*(rect.Y+rect.Height) + transform.TY
+	if !pixelAligned(x0) || !pixelAligned(x1) || !pixelAligned(y0) || !pixelAligned(y1) {
+		return false
+	}
+
+	left, right := int(math.Round(float64(min(x0, x1)))), int(math.Round(float64(max(x0, x1))))
+	top, bottom := int(math.Round(float64(min(y0, y1)))), int(math.Round(float64(max(y0, y1))))
+	clip := image.Rect(left, top, right, bottom).Intersect(p.bgra.Rect)
+	if p.clip != (image.Rectangle{}) {
+		clip = clip.Intersect(p.clip)
+	}
+	if clip.Empty() {
+		return true
+	}
+
+	srcBounds := bitmap.Bounds()
+	srcW, srcH := float32(srcBounds.Dx()), float32(srcBounds.Dy())
+	deviceW, deviceH := x1-x0, y1-y0
+	for y := clip.Min.Y; y < clip.Max.Y; y++ {
+		v := (float32(y) + 0.5 - y0) / deviceH * srcH
+		sy := int(v)
+		if sy < 0 || sy >= srcBounds.Dy() {
+			continue
+		}
+		for x := clip.Min.X; x < clip.Max.X; x++ {
+			u := (float32(x) + 0.5 - x0) / deviceW * srcW
+			sx := int(u)
+			if sx < 0 || sx >= srcBounds.Dx() {
+				continue
+			}
+			si := bitmap.PixOffset(srcBounds.Min.X+sx, srcBounds.Min.Y+sy)
+			di := p.bgra.PixOffset(x, y)
+			compositePremultipliedBGRA(p.bgra.Pix[di:di+4], bitmap.Pixels[si:si+4])
+		}
+	}
+	return true
+}
+
+func pixelAligned(v float32) bool {
+	return math.Abs(float64(v)-math.Round(float64(v))) < 1e-5
+}
+
+func compositePremultipliedBGRA(dst, src []byte) {
+	sa := src[3]
+	if sa == 0 {
+		return
+	}
+	if sa == 255 {
+		copy(dst, src)
+		return
+	}
+	inv := uint16(255 - sa)
+	dst[0] = byte(uint16(src[0]) + (uint16(dst[0])*inv+127)/255)
+	dst[1] = byte(uint16(src[1]) + (uint16(dst[1])*inv+127)/255)
+	dst[2] = byte(uint16(src[2]) + (uint16(dst[2])*inv+127)/255)
+	dst[3] = byte(uint16(sa) + (uint16(dst[3])*inv+127)/255)
+}
+
+func reverseBitmapColor(bitmap graphics.Bitmap, x, y int) color.RGBA {
+	r, g, b, a := bitmap.GetPixel(x, y)
+	return color.RGBA{R: b, G: g, B: r, A: a}
 }
 
 func (p *Painter) fillLine(c graphics.Color) {
