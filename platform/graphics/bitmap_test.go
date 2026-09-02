@@ -1,6 +1,7 @@
 package graphics
 
 import (
+	"bytes"
 	"image"
 	"image/color"
 	"testing"
@@ -234,6 +235,14 @@ func TestToBitmap(t *testing.T) {
 			t.Fatal("bitmap roundtrip not equal")
 		}
 	})
+
+	t.Run("pointer bitmap zero copy", func(t *testing.T) {
+		orig := MakeBitmap(0, 0, 2, 2, PixelFormatRGBA, nil)
+		dst, ok := ToBitmap(&orig, PixelFormatRGBA)
+		if !ok || &dst.Pixels[0] != &orig.Pixels[0] {
+			t.Fatal("pointer Bitmap should be recognized without copying")
+		}
+	})
 }
 
 func TestCopyToBitmap(t *testing.T) {
@@ -320,6 +329,46 @@ func TestCopyToBitmap(t *testing.T) {
 		dst := CopyToBitmap(src, PixelFormatRGBA, buf)
 		if &dst.Pixels[0] != &buf[0] {
 			t.Fatal("did not reuse provided buffer")
+		}
+	})
+
+	t.Run("RGBA to BGRA swaps channels", func(t *testing.T) {
+		src := image.NewRGBA(image.Rect(3, 4, 4, 5))
+		src.SetRGBA(3, 4, color.RGBA{R: 10, G: 20, B: 30, A: 40})
+		dst := CopyToBitmap(src, PixelFormatBGRA, nil)
+		if got, want := dst.Pixels[:4], []byte{30, 20, 10, 40}; !bytes.Equal(got, want) {
+			t.Fatalf("raw BGRA = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("NRGBA is premultiplied once", func(t *testing.T) {
+		src := image.NewNRGBA(image.Rect(0, 0, 1, 1))
+		src.SetNRGBA(0, 0, color.NRGBA{R: 200, G: 100, B: 50, A: 128})
+		dst := CopyToBitmap(src, PixelFormatRGBA, nil)
+		if got, want := dst.Pixels[:4], []byte{100, 50, 25, 128}; !bytes.Equal(got, want) {
+			t.Fatalf("premultiplied RGBA = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("subimage stride copies only visible rows", func(t *testing.T) {
+		parent := image.NewRGBA(image.Rect(0, 0, 4, 3))
+		parent.SetRGBA(1, 1, color.RGBA{R: 11, G: 12, B: 13, A: 255})
+		parent.SetRGBA(2, 1, color.RGBA{R: 21, G: 22, B: 23, A: 255})
+		parent.SetRGBA(1, 2, color.RGBA{R: 31, G: 32, B: 33, A: 255})
+		parent.SetRGBA(2, 2, color.RGBA{R: 41, G: 42, B: 43, A: 255})
+		sub := parent.SubImage(image.Rect(1, 1, 3, 3))
+		dst := CopyToBitmap(sub, PixelFormatRGBA, nil)
+		if dst.Stride != 8 || dst.Width != 2 || dst.Height != 2 {
+			t.Fatalf("unexpected snapshot geometry: %+v", dst)
+		}
+		for _, tc := range []struct {
+			x, y int
+			r    byte
+		}{{1, 1, 11}, {2, 1, 21}, {1, 2, 31}, {2, 2, 41}} {
+			r, _, _, _ := dst.GetPixel(tc.x, tc.y)
+			if r != tc.r {
+				t.Fatalf("pixel (%d,%d) red = %d, want %d", tc.x, tc.y, r, tc.r)
+			}
 		}
 	})
 }

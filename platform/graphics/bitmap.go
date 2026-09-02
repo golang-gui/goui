@@ -63,6 +63,12 @@ func ToBitmap(src image.Image, dstFormat PixelFormat) (dst Bitmap, ok bool) {
 		}
 		return dst, false
 	}
+	if bmp, ok := src.(*Bitmap); ok {
+		if bmp != nil && bmp.Format == dstFormat {
+			return *bmp, true
+		}
+		return dst, false
+	}
 
 	switch img := src.(type) {
 	case *image.RGBA:
@@ -94,30 +100,78 @@ func ToBitmap(src image.Image, dstFormat PixelFormat) (dst Bitmap, ok bool) {
 }
 
 func CopyToBitmap(src image.Image, dstFormat PixelFormat, buf []byte) (dst Bitmap) {
-	if bmp, ok := src.(Bitmap); ok && bmp.Format == dstFormat {
-		dst = bmp
-		dst.Pixels = make([]byte, len(bmp.Pixels))
-		copy(dst.Pixels, bmp.Pixels)
+	bounds := src.Bounds()
+	dst = MakeBitmap(bounds.Min.X, bounds.Min.Y, bounds.Dx(), bounds.Dy(), dstFormat, buf)
+	if bounds.Empty() {
 		return
 	}
 
-	bounds := src.Bounds()
-	dst = MakeBitmap(bounds.Min.X, bounds.Min.Y, bounds.Dx(), bounds.Dy(), dstFormat, buf)
-
 	switch img := src.(type) {
 	case *image.RGBA:
-		if img.Stride == dst.Stride {
-			copy(dst.Pixels, img.Pix)
+		if dstFormat == PixelFormatRGBA {
+			copyImageRows(dst.Pixels, dst.Stride, img.Pix, img.Stride, bounds.Dx()*4, bounds.Dy())
+			return
+		}
+		if dstFormat == PixelFormatBGRA {
+			for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+				si := img.PixOffset(bounds.Min.X, y)
+				di := dst.PixOffset(bounds.Min.X, y)
+				for x := 0; x < bounds.Dx(); x++ {
+					dst.Pixels[di], dst.Pixels[di+1], dst.Pixels[di+2], dst.Pixels[di+3] =
+						img.Pix[si+2], img.Pix[si+1], img.Pix[si], img.Pix[si+3]
+					si += 4
+					di += 4
+				}
+			}
+			return
+		}
+
+	case *image.NRGBA:
+		if dstFormat == PixelFormatRGBA || dstFormat == PixelFormatBGRA {
+			for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+				si := img.PixOffset(bounds.Min.X, y)
+				di := dst.PixOffset(bounds.Min.X, y)
+				for x := 0; x < bounds.Dx(); x++ {
+					a := img.Pix[si+3]
+					r := premultiply8(img.Pix[si], a)
+					g := premultiply8(img.Pix[si+1], a)
+					b := premultiply8(img.Pix[si+2], a)
+					if dstFormat == PixelFormatRGBA {
+						dst.Pixels[di], dst.Pixels[di+1], dst.Pixels[di+2], dst.Pixels[di+3] = r, g, b, a
+					} else {
+						dst.Pixels[di], dst.Pixels[di+1], dst.Pixels[di+2], dst.Pixels[di+3] = b, g, r, a
+					}
+					si += 4
+					di += 4
+				}
+			}
 			return
 		}
 
 	case *image.Gray:
-		if img.Stride == dst.Stride {
-			copy(dst.Pixels, img.Pix)
+		if dstFormat == PixelFormatGray {
+			copyImageRows(dst.Pixels, dst.Stride, img.Pix, img.Stride, bounds.Dx(), bounds.Dy())
+			return
+		}
+		if dstFormat == PixelFormatRGBA || dstFormat == PixelFormatBGRA {
+			for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+				si := img.PixOffset(bounds.Min.X, y)
+				di := dst.PixOffset(bounds.Min.X, y)
+				for x := 0; x < bounds.Dx(); x++ {
+					v := img.Pix[si]
+					dst.Pixels[di], dst.Pixels[di+1], dst.Pixels[di+2], dst.Pixels[di+3] = v, v, v, 255
+					si++
+					di += 4
+				}
+			}
 			return
 		}
 
 	case Bitmap:
+		if img.Format == dstFormat {
+			copyBitmapRows(dst, img)
+			return
+		}
 		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 			for x := bounds.Min.X; x < bounds.Max.X; x++ {
 				r, g, b, a := img.GetPixel(x, y)
@@ -127,6 +181,13 @@ func CopyToBitmap(src image.Image, dstFormat PixelFormat, buf []byte) (dst Bitma
 		return
 
 	case *Bitmap:
+		if img == nil {
+			return
+		}
+		if img.Format == dstFormat {
+			copyBitmapRows(dst, *img)
+			return
+		}
 		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 			for x := bounds.Min.X; x < bounds.Max.X; x++ {
 				r, g, b, a := img.GetPixel(x, y)
@@ -138,7 +199,13 @@ func CopyToBitmap(src image.Image, dstFormat PixelFormat, buf []byte) (dst Bitma
 
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			dst.Set(x, y, src.At(x, y))
+			if dstFormat == PixelFormatGray {
+				gray := color.GrayModel.Convert(src.At(x, y)).(color.Gray)
+				dst.SetPixel(x, y, gray.Y, gray.Y, gray.Y, 255)
+				continue
+			}
+			r, g, b, a := src.At(x, y).RGBA()
+			dst.SetPixel(x, y, uint8(r>>8), uint8(g>>8), uint8(b>>8), uint8(a>>8))
 		}
 	}
 
@@ -294,4 +361,25 @@ func bgraModel(c color.Color) color.Color {
 		R: uint8(r),
 		A: uint8(a),
 	}
+}
+
+func copyBitmapRows(dst, src Bitmap) {
+	rowBytes := src.Width * src.Format.BytesPerPixel()
+	for y := 0; y < src.Height; y++ {
+		srcStart := y * src.Stride
+		dstStart := y * dst.Stride
+		copy(dst.Pixels[dstStart:dstStart+rowBytes], src.Pixels[srcStart:srcStart+rowBytes])
+	}
+}
+
+func copyImageRows(dst []byte, dstStride int, src []byte, srcStride, rowBytes, height int) {
+	for y := 0; y < height; y++ {
+		dstStart := y * dstStride
+		srcStart := y * srcStride
+		copy(dst[dstStart:dstStart+rowBytes], src[srcStart:srcStart+rowBytes])
+	}
+}
+
+func premultiply8(value, alpha byte) byte {
+	return byte((uint16(value)*uint16(alpha) + 127) / 255)
 }
