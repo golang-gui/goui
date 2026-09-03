@@ -16,20 +16,22 @@ import (
 )
 
 type Window struct {
-	wid     xlib.Window
-	fb      glx.FBConfig
-	cmap    xlib.Colormap
-	parent  common.Window
-	onEvent events.EventHandler
-	width   int32
-	height  int32
-	title   string
-	gc      xlib.GC
-	buttons events.PointerButtons
-	minW    float32      // logical (DIP) minimum size; 0 = unbounded
-	minH    float32      // logical (DIP) minimum size; 0 = unbounded
-	im      *inputMethod // this window's IME (nil when none); the key loop consults it
-	cursor  *cursor      // this window's cursor capability (nil when none)
+	wid          xlib.Window
+	fb           glx.FBConfig
+	cmap         xlib.Colormap
+	parent       common.Window
+	onEvent      events.EventHandler
+	width        int32
+	height       int32
+	title        string
+	gc           xlib.GC
+	buttons      events.PointerButtons
+	minW         float32      // logical (DIP) minimum size; 0 = unbounded
+	minH         float32      // logical (DIP) minimum size; 0 = unbounded
+	im           *inputMethod // this window's IME (nil when none); the key loop consults it
+	cursor       *cursor      // this window's cursor capability (nil when none)
+	resizeSync   resizeSync
+	paintPending bool
 }
 
 // newNativeWindow creates the X11 InputOutput window shared by both top-level
@@ -63,7 +65,9 @@ func newNativeWindow(onEvent events.EventHandler, overrideRedirect bool, width, 
 	win.cmap = platform.display.CreateColormap(platform.defScreen.Root, visual, xlib.ColormapAllocNone)
 
 	attr := xlib.SetWindowAttributes{
-		Colormap: win.cmap,
+		BorderPixel: 0,
+		Colormap:    win.cmap,
+		BitGravity:  xlib.NorthWestGravity,
 		EventMask: xlib.EventMaskStructureNotify |
 			xlib.EventMaskExposure |
 			xlib.EventMaskPropertyChange |
@@ -77,7 +81,7 @@ func newNativeWindow(onEvent events.EventHandler, overrideRedirect bool, width, 
 			xlib.EventMaskLeaveWindow,
 	}
 
-	valueMask := uint(xlib.CwColormap | xlib.CwEventMask)
+	valueMask := uint(xlib.CwBorderPixel | xlib.CwColormap | xlib.CwEventMask | xlib.CwBitGravity)
 	if overrideRedirect {
 		attr.OverrideRedirect = 1
 		valueMask |= xlib.CwOverrideRedirect
@@ -102,9 +106,25 @@ func newWindow(width, height float32, onEvent events.EventHandler) (common.Windo
 		return nil, err
 	}
 
-	// declare WM protocols (top-level only; override-redirect popups bypass the WM)
+	// Declare WM protocols for top-level windows before they are mapped. The
+	// resize-sync protocol is advertised only after its counter property exists.
+	syncEnabled := false
+	if platform.resizeSyncAvailable &&
+		platform.atoms.WM_PROTOCOLS != 0 &&
+		platform.atoms._NET_WM_SYNC_REQUEST != 0 &&
+		platform.atoms._NET_WM_SYNC_REQUEST_COUNTER != 0 {
+		syncEnabled = win.resizeSync.initialize(
+			platform.display,
+			win.wid,
+			platform.atoms._NET_WM_SYNC_REQUEST_COUNTER,
+		)
+	}
 	if platform.atoms.WM_PROTOCOLS != 0 {
-		platform.display.SetWMProtocols(win.wid, []xlib.Atom{platform.atoms.WM_DELETE_WINDOW})
+		protocols := []xlib.Atom{platform.atoms.WM_DELETE_WINDOW}
+		if syncEnabled {
+			protocols = append(protocols, platform.atoms._NET_WM_SYNC_REQUEST)
+		}
+		platform.display.SetWMProtocols(win.wid, protocols)
 	}
 
 	return win, nil
@@ -131,6 +151,7 @@ func (w *Window) Destroy() {
 		platform.display.FreeGC(w.gc)
 		w.gc = 0
 	}
+	w.resizeSync.destroy(platform.display)
 	platform.display.DestroyWindow(w.wid)
 	if w.cmap != 0 {
 		platform.display.FreeColormap(w.cmap)
@@ -198,9 +219,32 @@ func (w *Window) RequestPaint() error {
 	if w.wid == 0 {
 		return nil
 	}
-	platform.display.ClearArea(w.wid, 0, 0, 0, 0, true)
-	platform.display.Flush()
+	w.schedulePaint()
 	return nil
+}
+
+func (w *Window) schedulePaint() {
+	if w == nil || w.wid == 0 || w.paintPending {
+		return
+	}
+	w.paintPending = true
+	paint := func() {
+		w.paintPending = false
+		if w.wid == 0 {
+			return
+		}
+		w.onEvent(events.PaintEvent{})
+		// Paint callbacks are synchronous. OpenGL has swapped its buffers and the
+		// software painter has presented before the callback returns, so this is
+		// the common completion point for the EWMH resize handshake. A handler with
+		// nothing to paint must also release the WM instead of leaving it waiting.
+		w.resizeSync.complete(platform.display)
+	}
+	if platform.eventLoop != nil {
+		platform.eventLoop.Post(paint)
+	} else {
+		paint()
+	}
 }
 
 func (w *Window) SetMinSize(width, height float32) {
@@ -261,13 +305,18 @@ func handleEvent(event xlib.Event) {
 				if window, ok := windowMap[ev.Window]; ok {
 					window.onEvent(events.CloseEvent{})
 				}
+			} else if xlib.Atom(ev.L[0]) == platform.atoms._NET_WM_SYNC_REQUEST {
+				if window, ok := windowMap[ev.Window]; ok {
+					window.resizeSync.request(uint32(ev.L[2]), int32(ev.L[3]))
+				}
 			}
 		}
 	// ping dnd
 	case xlib.ConfigureNotify:
 		ev := event.ConfigureEvent()
 		if window, ok := windowMap[ev.Window]; ok {
-			if ev.Width != window.width || ev.Height != window.height {
+			sizeChanged := ev.Width != window.width || ev.Height != window.height
+			if sizeChanged {
 				window.width, window.height = ev.Width, ev.Height
 				scale := currentScale()
 				window.onEvent(events.SizeEvent{
@@ -277,12 +326,18 @@ func handleEvent(event xlib.Event) {
 					PixelHeight: float32(ev.Height),
 				})
 			}
+			syncPaint := window.resizeSync.configured()
+			if sizeChanged || syncPaint {
+				// Full-frame painters must redraw every new drawable extent. This is
+				// required even when the WM does not implement resize synchronization.
+				window.schedulePaint()
+			}
 		}
 
 	case xlib.Expose:
 		ev := event.ExposeEvent()
 		if window, ok := windowMap[ev.Window]; ok {
-			window.onEvent(events.PaintEvent{})
+			window.schedulePaint()
 		}
 	case xlib.PropertyNotify:
 		// state
