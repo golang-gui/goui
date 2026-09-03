@@ -63,7 +63,7 @@ type Platform interface {
 	NewEventLoop() (EventLoop, error)
 	NewTypography() (typography.Context, error)
 	// NewPainter creates a painter for any paint target — a Window or a Popup.
-	NewPainter(surface Surface, typo typography.Context) (graphics.Painter, error)
+	NewPainter(surface Surface) (graphics.Painter, error)
 	NewSettings() (Settings, error)
 	NewClipboard() (Clipboard, error)
 	// NewInputMethod creates the text-composition (IME) capability for window.

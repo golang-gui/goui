@@ -20,8 +20,6 @@ import (
 )
 
 type Painter struct {
-	typoCtx      typography.Context
-	dwTypo       *directwrite.Context
 	hwnd         uintptr
 	factory      *d2d1.Factory1
 	d3dDevice    *d3d11.Device
@@ -100,10 +98,8 @@ type NativeWindow interface {
 	NativeHandle() uintptr
 }
 
-func NewPainter(win NativeWindow, typoCtx typography.Context) (_ graphics.Painter, err error) {
+func NewPainter(win NativeWindow) (_ graphics.Painter, err error) {
 	p := new(Painter)
-	p.typoCtx = typoCtx
-	p.dwTypo, _ = typoCtx.(*directwrite.Context)
 	p.hwnd = win.NativeHandle()
 	p.images = make(map[*imageResource]struct{})
 
@@ -788,12 +784,9 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 	if !p.activeFrame {
 		return
 	}
-	if p.typoCtx != nil {
-		if textLayout, ok := layout.(*directwrite.TextLayout); ok {
-			point := d2d1.Point2F{X: p.snap(origin.X), Y: p.snap(origin.Y)}
-			textLayout.Draw(&p.render.RenderTarget, point, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP)
-		}
-		// TODO: draw text layout rendered bitmap
+	if textLayout, ok := layout.(*directwrite.TextLayout); ok {
+		point := d2d1.Point2F{X: p.snap(origin.X), Y: p.snap(origin.Y)}
+		textLayout.Draw(&p.render.RenderTarget, point, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP)
 	}
 }
 

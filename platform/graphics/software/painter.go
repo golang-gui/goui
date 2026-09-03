@@ -19,30 +19,33 @@ import (
 )
 
 type Painter struct {
-	drawable    Drawable
-	typo        typography.Context
-	bgra        image.RGBA
-	line        image.RGBA
-	viewport    graphics.Rectangle
-	scanner     rasterx.Scanner
-	filler      *rasterx.Filler
-	stroker     *rasterx.Stroker
-	pixelBuf    []byte
-	lineBuf     []byte
-	outputBuf   []byte
-	images      map[*imageResource]struct{}
-	scale       float32
-	transform   geometry.Transform
-	clip        image.Rectangle
-	activeFrame bool
+	drawable          Drawable
+	bgra              image.RGBA
+	line              image.RGBA
+	viewport          graphics.Rectangle
+	scanner           rasterx.Scanner
+	filler            *rasterx.Filler
+	stroker           *rasterx.Stroker
+	pixelBuf          []byte
+	lineBuf           []byte
+	outputBuf         []byte
+	images            map[*imageResource]struct{}
+	textImages        *textbitmap.ImageCache[graphics.Image]
+	textPixels        []byte
+	pendingTextImages int
+	scale             float32
+	transform         geometry.Transform
+	clip              image.Rectangle
+	activeFrame       bool
 }
 
 type imageResource struct {
-	owner     *Painter
-	width     int
-	height    int
-	bitmap    graphics.Bitmap
-	destroyed bool
+	owner          *Painter
+	width          int
+	height         int
+	bitmap         graphics.Bitmap
+	destroyed      bool
+	pendingDestroy bool
 }
 
 func (i *imageResource) Size() (width, height int) {
@@ -70,11 +73,11 @@ type Drawable interface {
 	Draw(img image.Image) error
 }
 
-func NewPainter(drawable Drawable, typo typography.Context) (graphics.Painter, error) {
+func NewPainter(drawable Drawable) (graphics.Painter, error) {
 	p := new(Painter)
 	p.drawable = drawable
-	p.typo = typo
 	p.images = make(map[*imageResource]struct{})
+	p.textImages = textbitmap.NewImageCache(4, p.releaseTextImage)
 	return p, nil
 }
 
@@ -86,12 +89,15 @@ func (p *Painter) Destroy() {
 	if p.activeFrame {
 		panic("software: destroy painter during active frame")
 	}
+	p.textImages.Destroy()
 	for img := range p.images {
 		img.owner = nil
 		img.bitmap.Pixels = nil
 		img.destroyed = true
 	}
 	clear(p.images)
+	p.pendingTextImages = 0
+	p.textPixels = nil
 }
 
 func (p *Painter) NewImage(src image.Image) (graphics.Image, error) {
@@ -137,10 +143,44 @@ func (p *Painter) destroyImage(img *imageResource) {
 	if p.activeFrame {
 		panic("software: destroy image during active frame")
 	}
+	p.finishImageDestroy(img)
+}
+
+func (p *Painter) finishImageDestroy(img *imageResource) {
+	if img.pendingDestroy {
+		img.pendingDestroy = false
+		p.pendingTextImages--
+	}
 	delete(p.images, img)
 	img.owner = nil
 	img.bitmap.Pixels = nil
 	img.destroyed = true
+}
+
+func (p *Painter) releaseTextImage(img graphics.Image) {
+	native, ok := img.(*imageResource)
+	if !ok || native == nil || native.owner != p || native.destroyed {
+		return
+	}
+	if p.activeFrame {
+		if !native.pendingDestroy {
+			native.pendingDestroy = true
+			p.pendingTextImages++
+		}
+		return
+	}
+	p.destroyImage(native)
+}
+
+func (p *Painter) flushPendingTextImages() {
+	if p.pendingTextImages == 0 {
+		return
+	}
+	for img := range p.images {
+		if img.pendingDestroy {
+			p.finishImageDestroy(img)
+		}
+	}
 }
 
 func (p *Painter) Begin(width, height, scale float32) {
@@ -189,6 +229,7 @@ func (p *Painter) End() {
 		Pixels: p.outputBuf,
 	})
 	p.activeFrame = false
+	p.flushPendingTextImages()
 }
 
 func (p *Painter) Clear(color graphics.Color) {
@@ -343,7 +384,7 @@ func (p *Painter) DrawPath(path graphics.Path, strokeWidth float32, brush graphi
 }
 
 func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLayout) {
-	if p.typo == nil {
+	if layout == nil {
 		return
 	}
 
@@ -351,18 +392,17 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 	if rasterScale <= 0 {
 		return
 	}
-	textBitmap, err := p.typo.DrawTextLayout(layout, rasterScale, nil)
-	if err != nil || textBitmap.Width <= 0 || textBitmap.Height <= 0 {
+	if img, ok := p.textImages.Lookup(layout, rasterScale); ok {
+		p.drawTextImage(origin, rasterScale, img)
 		return
 	}
 
-	origin = textbitmap.SnapOrigin(origin, p.transform, p.scale)
-	drawRect := graphics.Rect(
-		origin.X,
-		origin.Y,
-		float32(textBitmap.Width)/rasterScale,
-		float32(textBitmap.Height)/rasterScale,
-	)
+	textBitmap, err := layout.Rasterize(rasterScale, p.textPixels)
+	if err != nil || textBitmap.Width <= 0 || textBitmap.Height <= 0 {
+		return
+	}
+	p.textPixels = textBitmap.Pixels
+
 	bitmap := graphics.Bitmap{
 		Width:  textBitmap.Width,
 		Height: textBitmap.Height,
@@ -370,7 +410,27 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 		Format: graphics.PixelFormatRGBA,
 		Pixels: textBitmap.Pixels,
 	}
-	p.drawBitmap(drawRect, bitmap)
+	img, err := p.NewImage(bitmap)
+	if err != nil {
+		return
+	}
+	p.textImages.Store(layout, rasterScale, img)
+	p.drawTextImage(origin, rasterScale, img)
+}
+
+func (p *Painter) drawTextImage(origin graphics.Point, rasterScale float32, img graphics.Image) {
+	width, height := img.Size()
+	if width <= 0 || height <= 0 {
+		return
+	}
+	origin = textbitmap.SnapOrigin(origin, p.transform, p.scale)
+	drawRect := graphics.Rect(
+		origin.X,
+		origin.Y,
+		float32(width)/rasterScale,
+		float32(height)/rasterScale,
+	)
+	p.DrawImage(drawRect, img)
 }
 
 func (p *Painter) SetTransform(t geometry.Transform) {

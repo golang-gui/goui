@@ -16,16 +16,17 @@ import (
 )
 
 type Painter struct {
-	ctx         Context
-	vg          *nanovgo.Context
-	win         NativeWindow
-	typo        typography.Context
-	images      map[*imageResource]struct{}
-	frameImages []int
-	scale       float32
-	transform   geometry.Transform
-	lastWidth   float32
-	lastHeight  float32
+	ctx               Context
+	vg                *nanovgo.Context
+	win               NativeWindow
+	images            map[*imageResource]struct{}
+	textImages        *textbitmap.ImageCache[graphics.Image]
+	textPixels        []byte
+	pendingTextImages int
+	scale             float32
+	transform         geometry.Transform
+	lastWidth         float32
+	lastHeight        float32
 
 	hasFrame     bool
 	activeFrame  bool
@@ -34,11 +35,12 @@ type Painter struct {
 }
 
 type imageResource struct {
-	owner     *Painter
-	width     int
-	height    int
-	handle    int
-	destroyed bool
+	owner          *Painter
+	width          int
+	height         int
+	handle         int
+	destroyed      bool
+	pendingDestroy bool
 }
 
 func (i *imageResource) Size() (width, height int) {
@@ -62,7 +64,7 @@ func (i *imageResource) Destroy() {
 	i.owner.destroyImage(i)
 }
 
-func NewPainter(win NativeWindow, typoCtx typography.Context) (_ graphics.Painter, err error) {
+func NewPainter(win NativeWindow) (_ graphics.Painter, err error) {
 	p := new(Painter)
 	p.ctx, err = NewContext(win, nil, Config{
 		PixelFormat: PixelFormat{
@@ -90,11 +92,10 @@ func NewPainter(win NativeWindow, typoCtx typography.Context) (_ graphics.Painte
 	}
 
 	p.win = win
-	p.typo = typoCtx
 	_, p.resizedPaint = p.ctx.(GLXContext)
 
 	p.images = make(map[*imageResource]struct{})
-	p.frameImages = make([]int, 0, 64)
+	p.textImages = textbitmap.NewImageCache(4, p.releaseTextImage)
 	return p, nil
 }
 
@@ -107,6 +108,7 @@ func (p *Painter) Destroy() {
 		panic("opengl: destroy painter during active frame")
 	}
 	if p.vg != nil {
+		p.textImages.Destroy()
 		_ = p.ctx.MakeCurrent()
 		for img := range p.images {
 			img.owner = nil
@@ -114,7 +116,8 @@ func (p *Painter) Destroy() {
 			img.destroyed = true
 		}
 		clear(p.images)
-		p.frameImages = p.frameImages[:0]
+		p.pendingTextImages = 0
+		p.textPixels = nil
 		p.vg.Delete()
 		p.vg = nil
 		p.ctx.ClearCurrent()
@@ -204,13 +207,58 @@ func (p *Painter) destroyImage(img *imageResource) {
 		if err := p.ctx.MakeCurrent(); err != nil {
 			panic(fmt.Sprintf("opengl: make context current to destroy image: %v", err))
 		}
-		p.vg.DeleteImage(img.handle)
+		p.destroyImageCurrent(img)
 		p.ctx.ClearCurrent()
+		return
+	}
+	p.finishImageDestroy(img)
+}
+
+func (p *Painter) destroyImageCurrent(img *imageResource) {
+	if img == nil || img.destroyed || img.owner != p {
+		return
+	}
+	if img.handle != 0 && p.vg != nil {
+		p.vg.DeleteImage(img.handle)
+	}
+	p.finishImageDestroy(img)
+}
+
+func (p *Painter) finishImageDestroy(img *imageResource) {
+	if img.pendingDestroy {
+		img.pendingDestroy = false
+		p.pendingTextImages--
 	}
 	delete(p.images, img)
 	img.owner = nil
 	img.handle = 0
 	img.destroyed = true
+}
+
+func (p *Painter) releaseTextImage(img graphics.Image) {
+	native, ok := img.(*imageResource)
+	if !ok || native == nil || native.owner != p || native.destroyed {
+		return
+	}
+	if p.activeFrame {
+		if !native.pendingDestroy {
+			native.pendingDestroy = true
+			p.pendingTextImages++
+		}
+		return
+	}
+	p.destroyImage(native)
+}
+
+func (p *Painter) flushPendingTextImages() {
+	if p.pendingTextImages == 0 {
+		return
+	}
+	for img := range p.images {
+		if img.pendingDestroy {
+			p.destroyImageCurrent(img)
+		}
+	}
 }
 
 func (p *Painter) Begin(width, height, scale float32) {
@@ -226,11 +274,8 @@ func (p *Painter) Begin(width, height, scale float32) {
 
 func (p *Painter) End() {
 	p.vg.EndFrame()
-	for _, img := range p.frameImages {
-		p.vg.DeleteImage(img)
-	}
-	p.frameImages = p.frameImages[:0]
 	p.activeFrame = false
+	p.flushPendingTextImages()
 	p.present()
 }
 
@@ -366,7 +411,7 @@ func (p *Painter) DrawPath(path graphics.Path, strokeWidth float32, brush graphi
 }
 
 func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLayout) {
-	if p.typo == nil {
+	if layout == nil {
 		return
 	}
 
@@ -377,20 +422,17 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 	if rasterScale <= 0 {
 		return
 	}
-	textBitmap, err := p.typo.DrawTextLayout(layout, rasterScale, nil)
-	if err != nil || textBitmap.Width <= 0 || textBitmap.Height <= 0 {
+	if img, ok := p.textImages.Lookup(layout, rasterScale); ok {
+		p.drawTextImage(origin, rasterScale, img)
 		return
 	}
 
-	// Keep the layout's logical size unchanged. The current NanoVG transform
-	// scales this rectangle to the physical size for which the bitmap was drawn.
-	origin = textbitmap.SnapOrigin(origin, p.transform, p.scale)
-	drawRect := graphics.Rect(
-		origin.X,
-		origin.Y,
-		float32(textBitmap.Width)/rasterScale,
-		float32(textBitmap.Height)/rasterScale,
-	)
+	textBitmap, err := layout.Rasterize(rasterScale, p.textPixels)
+	if err != nil || textBitmap.Width <= 0 || textBitmap.Height <= 0 {
+		return
+	}
+	p.textPixels = textBitmap.Pixels
+
 	bitmap := graphics.Bitmap{
 		Width:  textBitmap.Width,
 		Height: textBitmap.Height,
@@ -398,7 +440,29 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 		Format: graphics.PixelFormatRGBA,
 		Pixels: textBitmap.Pixels,
 	}
-	p.drawBitmap(drawRect, bitmap)
+	img, err := p.NewImage(bitmap)
+	if err != nil {
+		return
+	}
+	p.textImages.Store(layout, rasterScale, img)
+	p.drawTextImage(origin, rasterScale, img)
+}
+
+func (p *Painter) drawTextImage(origin graphics.Point, rasterScale float32, img graphics.Image) {
+	width, height := img.Size()
+	if width <= 0 || height <= 0 {
+		return
+	}
+	// Keep the layout's logical size unchanged. The current NanoVG transform
+	// scales this rectangle to the physical size for which the bitmap was drawn.
+	origin = textbitmap.SnapOrigin(origin, p.transform, p.scale)
+	drawRect := graphics.Rect(
+		origin.X,
+		origin.Y,
+		float32(width)/rasterScale,
+		float32(height)/rasterScale,
+	)
+	p.DrawImage(drawRect, img)
 }
 
 func (p *Painter) SetTransform(t geometry.Transform) {
@@ -441,15 +505,6 @@ func (p *Painter) SetClipRect(rect graphics.Rectangle) {
 		p.vg.Scissor(rect.X, rect.Y, rect.Width, rect.Height)
 	}
 	p.vg.SetTransformByValue(xform[0], xform[1], xform[2], xform[3], xform[4], xform[5])
-}
-
-func (p *Painter) drawBitmap(rect graphics.Rectangle, bitmap graphics.Bitmap) {
-	img := p.vg.CreateImageRGBA(bitmap.Width, bitmap.Height, nanovgo.ImagePreMultiplied, bitmap.Pixels)
-	if img != 0 {
-		p.frameImages = append(p.frameImages, img)
-		p.drawImageHandle(rect, img)
-	}
-	// TODO: add error log
 }
 
 func (p *Painter) drawImageHandle(rect graphics.Rectangle, img int) {

@@ -18,14 +18,86 @@ import (
 )
 
 var (
-	typo    typography.Context
-	painter graphics.Painter
-	img     graphics.Image
+	typo                typography.Context
+	painter             graphics.Painter
+	img                 graphics.Image
+	textLayout          typography.TextLayout
+	transformTextLayout typography.TextLayout
+	textBackgroundRect  graphics.Rectangle
+	hasTextBackground   bool
 )
+
+const sampleText = "✨这是一段比较长的文本；不用担心，它会自动换行。🧧我会改变部分文本的背景色！"
+
+var sampleTextRect = graphics.Rect(50, 120, 300, 100)
 
 func getTextRange(text, subText string) (start, length int) {
 	start = strings.Index(text, subText)
 	return start, len(subText)
+}
+
+func createTextLayouts() (err error) {
+	textLayout, err = typo.NewTextLayout(sampleText, typography.TextFormat{
+		Font: typography.FontInfo{
+			Family: "Microsoft YaHei",
+			Size:   16,
+		},
+		WrapMode:  typography.WrapWordChar,
+		TextAlign: typography.TextAlignCenter,
+	}, sampleTextRect.Width, sampleTextRect.Height)
+	if err != nil {
+		return err
+	}
+
+	kaiStart, kaiLength := getTextRange(sampleText, "这是一段比较长的文本")
+	textLayout.SetTextFont(kaiStart, kaiLength, typography.FontInfo{
+		Family: "Kaiti",
+		Size:   12,
+	})
+	textLayout.SetTextColor(kaiStart, kaiLength, color.RGBA{R: 160, A: 255})
+
+	underlineStart, underlineLength := getTextRange(sampleText, "这是")
+	textLayout.SetUnderline(underlineStart, underlineLength, true)
+
+	strikeStart, strikeLength := getTextRange(sampleText, "不用担心")
+	textLayout.SetStrikethrough(strikeStart, strikeLength, true)
+
+	_, clusters := textLayout.MeasureMetrics()
+	if len(clusters) >= 4 {
+		bgClusters := clusters[len(clusters)-4 : len(clusters)-1]
+		first := bgClusters[0]
+		last := bgClusters[len(bgClusters)-1]
+		textBackgroundRect = graphics.Rect(
+			sampleTextRect.X+first.X,
+			sampleTextRect.Y+first.Y,
+			last.X+last.Width-first.X,
+			last.Y+last.Height-first.Y,
+		)
+		hasTextBackground = true
+	}
+
+	transformTextLayout, err = typo.NewTextLayout("Transform!", typography.TextFormat{
+		Font: typography.FontInfo{Family: "Microsoft YaHei", Size: 18},
+	}, 200, 40)
+	if err != nil {
+		textLayout.Destroy()
+		textLayout = nil
+		hasTextBackground = false
+		return err
+	}
+	return nil
+}
+
+func destroyTextLayouts() {
+	if transformTextLayout != nil {
+		transformTextLayout.Destroy()
+		transformTextLayout = nil
+	}
+	if textLayout != nil {
+		textLayout.Destroy()
+		textLayout = nil
+	}
+	hasTextBackground = false
 }
 
 func render(width, height, scale float32) {
@@ -44,44 +116,11 @@ func render(width, height, scale float32) {
 		})
 		painter.FillRoundRect(graphics.Rect(50, 50, 100, 60), 12, graphics.RGBA(90, 50, 50, 255))
 
-		if typo != nil {
-			text := "✨这是一段比较长的文本；不用担心，它会自动换行。🧧我会改变部分文本的背景色！"
-			textRect := graphics.Rect(50, 120, 300, 100)
-
-			layout, err := typo.NewTextLayout(text, typography.TextFormat{
-				Font: typography.FontInfo{
-					Family: "Microsoft YaHei",
-					Size:   16,
-				},
-				WrapMode:  typography.WrapWordChar,
-				TextAlign: typography.TextAlignCenter,
-			}, textRect.Width, textRect.Height)
-			if err != nil {
-				panic(err)
+		if textLayout != nil {
+			if hasTextBackground {
+				painter.FillRect(textBackgroundRect, graphics.RGBA(30, 60, 130, 255))
 			}
-
-			kaiStart, kaiLength := getTextRange(text, "这是一段比较长的文本")
-			layout.SetTextFont(kaiStart, kaiLength, typography.FontInfo{
-				Family: "Kaiti",
-				Size:   12,
-			})
-			layout.SetTextColor(kaiStart, kaiLength, color.RGBA{R: 160, A: 255})
-
-			underlineStart, underlineLength := getTextRange(text, "这是")
-			layout.SetUnderline(underlineStart, underlineLength, true)
-
-			strikeStart, strikeLength := getTextRange(text, "不用担心")
-			layout.SetStrikethrough(strikeStart, strikeLength, true)
-
-			_, clusters := layout.MeasureMetrics()
-			bgClusters := clusters[len(clusters)-4 : len(clusters)-1]
-			first := bgClusters[0]
-			last := bgClusters[len(bgClusters)-1]
-			bgRect := graphics.Rect(textRect.X+first.X, textRect.Y+first.Y, last.X+last.Width-first.X, last.Y+last.Height-first.Y)
-			// 绘制文本背景色
-			painter.FillRect(bgRect, graphics.RGBA(30, 60, 130, 255))
-
-			painter.DrawTextLayout(textRect.Pos, layout)
+			painter.DrawTextLayout(sampleTextRect.Pos, textLayout)
 		}
 
 		painter.DrawImage(graphics.Rect(50, 260, 300, 200), img)
@@ -180,31 +219,26 @@ func render(width, height, scale float32) {
 		painter.DrawRoundRect(graphics.Rect(0, 0, 80, 50), 10, 2, graphics.RGBA(255, 255, 255, 255))
 
 		// 9. Translated text (DrawTextLayout with transform)
-		if typo != nil {
-			smallLayout, err := typo.NewTextLayout("Transform!", typography.TextFormat{
-				Font: typography.FontInfo{Family: "Microsoft YaHei", Size: 18},
-			}, 200, 40)
-			if err == nil {
-				// 9a. Reference: no transform
-				painter.SetTransform(geometry.Identity())
-				painter.DrawTextLayout(graphics.Point{520, 460}, smallLayout)
+		if transformTextLayout != nil {
+			// 9a. Reference: no transform
+			painter.SetTransform(geometry.Identity())
+			painter.DrawTextLayout(graphics.Point{520, 460}, transformTextLayout)
 
-				// 9b. Translate only
-				painter.SetTransform(geometry.Translate(520, 500))
-				painter.DrawTextLayout(graphics.Point{0, 0}, smallLayout)
+			// 9b. Translate only
+			painter.SetTransform(geometry.Translate(520, 500))
+			painter.DrawTextLayout(graphics.Point{0, 0}, transformTextLayout)
 
-				// 9c. Translate + Rotate 30°
-				painter.SetTransform(geometry.Translate(520, 540).Rotate(30))
-				painter.DrawTextLayout(graphics.Point{0, 0}, smallLayout)
+			// 9c. Translate + Rotate 30°
+			painter.SetTransform(geometry.Translate(520, 540).Rotate(30))
+			painter.DrawTextLayout(graphics.Point{0, 0}, transformTextLayout)
 
-				// 9d. Translate + Scale 1.5x
-				painter.SetTransform(geometry.Translate(680, 460).Scale(1.5, 1.5))
-				painter.DrawTextLayout(graphics.Point{0, 0}, smallLayout)
+			// 9d. Translate + Scale 1.5x
+			painter.SetTransform(geometry.Translate(680, 460).Scale(1.5, 1.5))
+			painter.DrawTextLayout(graphics.Point{0, 0}, transformTextLayout)
 
-				// 9e. Translate + Rotate -90° (vertical text, bottom-up)
-				painter.SetTransform(geometry.Translate(780, 580).Rotate(-90))
-				painter.DrawTextLayout(graphics.Point{0, 0}, smallLayout)
-			}
+			// 9e. Translate + Rotate -90° (vertical text, bottom-up)
+			painter.SetTransform(geometry.Translate(780, 580).Rotate(-90))
+			painter.DrawTextLayout(graphics.Point{0, 0}, transformTextLayout)
 		}
 
 		// 10. Transformed image (DrawImage with transform)
@@ -282,10 +316,14 @@ func main() {
 
 	typo, err = plat.NewTypography()
 	panicIf(err)
+	defer typo.Destroy()
 
-	painter, err = plat.NewPainter(win, typo)
+	painter, err = plat.NewPainter(win)
 	panicIf(err)
 	defer painter.Destroy()
+
+	panicIf(createTextLayouts())
+	defer destroyTextLayouts()
 
 	img, err = painter.NewImage(source)
 	panicIf(err)
