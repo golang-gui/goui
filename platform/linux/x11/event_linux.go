@@ -54,11 +54,11 @@ func (l *EventLoop) Run() {
 			break
 		}
 		l.readWake()
-		l.state.RunTasks()
-		if l.state.Quitting() {
-			break
-		}
+		// Drain native events first so deferred paint callbacks observe the
+		// latest ConfigureNotify size. A WM may apply several interactive resize
+		// steps while the paint task is waiting on the wake pipe.
 		l.processEvents()
+		l.state.RunTasks()
 	}
 	l.state.RunTasks()
 }
@@ -72,6 +72,9 @@ func (l *EventLoop) Quit() {
 func (l *EventLoop) Destroy() {
 	l.state.Destroy()
 	l.closePipe()
+	if platform != nil && platform.eventLoop == l {
+		platform.eventLoop = nil
+	}
 }
 
 func (l *EventLoop) wake() {

@@ -10,6 +10,7 @@ import (
 	"github.com/golang-gui/goui/platform/graphics/software"
 	"github.com/golang-gui/goui/platform/linux/libs/libc"
 	"github.com/golang-gui/goui/platform/linux/libs/xlib"
+	"github.com/golang-gui/goui/platform/linux/libs/xsync"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/pango"
 )
@@ -17,22 +18,26 @@ import (
 type Platform struct {
 	display xlib.Display
 	atoms   struct {
-		UTF8_STRING       xlib.Atom
-		WM_STATE          xlib.Atom
-		WM_PROTOCOLS      xlib.Atom
-		WM_DELETE_WINDOW  xlib.Atom
-		_NET_WM_NAME      xlib.Atom
-		_NET_WM_ICON      xlib.Atom
-		_NET_WM_ICON_NAME xlib.Atom
-		CLIPBOARD         xlib.Atom
-		TARGETS           xlib.Atom
-		GOUI_CLIPBOARD    xlib.Atom
+		UTF8_STRING                  xlib.Atom
+		WM_STATE                     xlib.Atom
+		WM_PROTOCOLS                 xlib.Atom
+		WM_DELETE_WINDOW             xlib.Atom
+		_NET_WM_SYNC_REQUEST         xlib.Atom
+		_NET_WM_SYNC_REQUEST_COUNTER xlib.Atom
+		_NET_WM_NAME                 xlib.Atom
+		_NET_WM_ICON                 xlib.Atom
+		_NET_WM_ICON_NAME            xlib.Atom
+		CLIPBOARD                    xlib.Atom
+		TARGETS                      xlib.Atom
+		GOUI_CLIPBOARD               xlib.Atom
 	}
-	defScreen   *xlib.Screen
-	helper      xlib.Window
-	clipboard   *clipboard
-	numLockMask uint32
-	im          xlib.XIM // display input method; 0 when none is available
+	defScreen           *xlib.Screen
+	helper              xlib.Window
+	clipboard           *clipboard
+	numLockMask         uint32
+	im                  xlib.XIM // display input method; 0 when none is available
+	resizeSyncAvailable bool
+	eventLoop           *EventLoop
 }
 
 var platform *Platform
@@ -53,6 +58,8 @@ func NewPlatform() (_ *Platform, err error) {
 	p.atoms.WM_STATE = p.display.InternAtom("WM_STATE", false)
 	p.atoms.WM_PROTOCOLS = p.display.InternAtom("WM_PROTOCOLS", false)
 	p.atoms.WM_DELETE_WINDOW = p.display.InternAtom("WM_DELETE_WINDOW", false)
+	p.atoms._NET_WM_SYNC_REQUEST = p.display.InternAtom("_NET_WM_SYNC_REQUEST", false)
+	p.atoms._NET_WM_SYNC_REQUEST_COUNTER = p.display.InternAtom("_NET_WM_SYNC_REQUEST_COUNTER", false)
 	p.atoms._NET_WM_NAME = p.display.InternAtom("_NET_WM_NAME", false)
 	p.atoms._NET_WM_ICON = p.display.InternAtom("_NET_WM_ICON", false)
 	p.atoms._NET_WM_ICON_NAME = p.display.InternAtom("_NET_WM_ICON_NAME", false)
@@ -61,6 +68,7 @@ func NewPlatform() (_ *Platform, err error) {
 	p.atoms.GOUI_CLIPBOARD = p.display.InternAtom("GOUI_CLIPBOARD", false)
 
 	p.defScreen = p.display.DefaultScreenOfDisplay()
+	p.resizeSyncAvailable = xsync.Initialize(p.display) == nil
 	p.numLockMask = p.detectNumLockMask()
 
 	// Input method (IME): set the C locale from the environment, wire the
@@ -130,7 +138,12 @@ func (p *Platform) Destroy() {
 }
 
 func (p *Platform) NewEventLoop() (common.EventLoop, error) {
-	return newEventLoop()
+	loop, err := newEventLoop()
+	if err != nil {
+		return nil, err
+	}
+	p.eventLoop = loop
+	return loop, nil
 }
 
 func (p *Platform) NewWindow(width, height float32, handler events.EventHandler) (common.Window, error) {
