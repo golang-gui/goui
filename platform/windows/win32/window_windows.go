@@ -17,22 +17,23 @@ import (
 )
 
 type Window struct {
-	hwnd          winapi.HWND
-	parent        common.Window
-	onEvent       events.EventHandler
-	trackingMouse bool
-	lastPointerX  float32
-	lastPointerY  float32
-	lastButtons   events.PointerButtons
-	lastModifiers events.Modifiers
-	modifiers     events.Modifiers
-	scale         float32      // cached device scale; updated on WM_SIZE
-	inSizeMove    bool         // inside the modal move/resize loop
-	noActivate    bool         // popups: decline activation/focus on click (WM_MOUSEACTIVATE)
-	im            *inputMethod // this window's IME (nil when none); WndProc routes WM_IME_* to it
-	cursor        *cursor      // this window's cursor (nil when none); WndProc consults it on WM_SETCURSOR
-	minW          float32      // min client width in logical (DIP) units; 0 = unbounded
-	minH          float32      // min client height in logical (DIP) units; 0 = unbounded
+	hwnd              winapi.HWND
+	parent            common.Window
+	onEvent           events.EventHandler
+	trackingMouse     bool
+	lastPointerX      float32
+	lastPointerY      float32
+	lastButtons       events.PointerButtons
+	lastModifiers     events.Modifiers
+	modifiers         events.Modifiers
+	scale             float32      // cached device scale; updated on WM_SIZE
+	inSizeMove        bool         // inside the modal move/resize loop
+	resizedInSizeMove bool         // whether that loop delivered an authoritative WM_SIZE
+	noActivate        bool         // popups: decline activation/focus on click (WM_MOUSEACTIVATE)
+	im                *inputMethod // this window's IME (nil when none); WndProc routes WM_IME_* to it
+	cursor            *cursor      // this window's cursor (nil when none); WndProc consults it on WM_SETCURSOR
+	minW              float32      // min client width in logical (DIP) units; 0 = unbounded
+	minH              float32      // min client height in logical (DIP) units; 0 = unbounded
 }
 
 func newWindow(width, height float32, onEvent events.EventHandler) (w *Window, err error) {
@@ -204,14 +205,19 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 
 	case winapi.WM_ENTERSIZEMOVE:
 		window.inSizeMove = true
+		window.resizedInSizeMove = false
 		return 0
 
 	case winapi.WM_EXITSIZEMOVE:
 		window.inSizeMove = false
-		// Commit one final frame even if the last WM_SIZE was coalesced. This
-		// also replaces any old swap-chain buffer still shown by DWM.
-		winapi.InvalidateRect(hwnd, nil, winapi.FALSE)
-		winapi.UpdateWindow(hwnd)
+		if window.resizedInSizeMove {
+			// Commit one final frame even if the last WM_SIZE was coalesced. This
+			// also replaces any old swap-chain buffer still shown by DWM. A pure
+			// move keeps the existing composited client contents and needs no paint.
+			winapi.InvalidateRect(hwnd, nil, winapi.FALSE)
+			winapi.UpdateWindow(hwnd)
+		}
+		window.resizedInSizeMove = false
 		return 0
 
 	case winapi.WM_SIZE:
@@ -228,11 +234,14 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		// Dispatch the authoritative size before painting so Painter.Begin can
 		// resize the swap-chain buffers and render with matching dimensions.
 		winapi.InvalidateRect(hwnd, nil, winapi.FALSE)
-		if window.inSizeMove && pw > 0 && ph > 0 {
-			// WM_PAINT is otherwise a low-priority queued message and may be
-			// starved by a stream of WM_SIZE messages. Paint synchronously while
-			// the user drags an edge to minimize the lifetime of the old buffer.
-			winapi.UpdateWindow(hwnd)
+		if window.inSizeMove {
+			window.resizedInSizeMove = true
+			if pw > 0 && ph > 0 {
+				// WM_PAINT is otherwise a low-priority queued message and may be
+				// starved by a stream of WM_SIZE messages. Paint synchronously while
+				// the user drags an edge to minimize the lifetime of the old buffer.
+				winapi.UpdateWindow(hwnd)
+			}
 		}
 		return 0
 
