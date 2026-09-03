@@ -7,7 +7,9 @@ import (
 	"math"
 	"slices"
 
+	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/platform/typography"
+	"github.com/golang-gui/goui/platform/typography/internal/lifecycle"
 	"github.com/golang-gui/goui/platform/typography/utils"
 
 	"github.com/golang-gui/goui/platform/darwin/frameworks"
@@ -55,13 +57,8 @@ func (c *Context) NewTextLayout(text string, format typography.TextFormat, width
 	return newTextLayout(c, text, format, width, height)
 }
 
-func (c *Context) DrawTextLayout(layout typography.TextLayout, scale float32, buf []byte) (bitmap typography.TextBitmap, err error) {
-	return layout.(*TextLayout).DrawBitmap(scale, buf)
-}
-
 // TextLayout implements typography.TextLayout using Core Text.
 type TextLayout struct {
-	ctx      *Context
 	text     string
 	format   typography.TextFormat
 	width    float32
@@ -73,19 +70,12 @@ type TextLayout struct {
 
 	colorSpace CGColorSpaceRef
 
-	painter textPainter
-
 	dirty      bool // whether attrString has been modified and CTFrame need rebuild
 	frame      CTFrameRef
 	layoutSize CGSize
 	lines      []lineInfo
-
-	// Text bitmap cache. Invalidated by any setter that affects rendering.
-	cachedPixels []byte
-	cachedWidth  int
-	cachedHeight int
-	cachedScale  float32
-	bmpDirty     bool
+	painter    textPainter
+	life       lifecycle.Layout
 }
 
 type lineInfo struct {
@@ -113,7 +103,6 @@ func newTextLayout(c *Context, text string, format typography.TextFormat, width,
 	defer CFRelease(ctFont)
 
 	t := &TextLayout{
-		ctx:      c,
 		text:     text,
 		format:   format,
 		width:    width,
@@ -154,6 +143,10 @@ func newTextLayout(c *Context, text string, format typography.TextFormat, width,
 }
 
 func (t *TextLayout) Destroy() {
+	if !t.life.BeginDestroy() {
+		return
+	}
+	t.painter.Destroy()
 	t.releaseFrame()
 	if t.attrString != 0 {
 		CFRelease(t.attrString)
@@ -163,7 +156,14 @@ func (t *TextLayout) Destroy() {
 		CGColorSpaceRelease(t.colorSpace)
 		t.colorSpace = 0
 	}
-	t.painter.Destroy()
+}
+
+func (t *TextLayout) ConnectChanged(fn func()) signal.Handle {
+	return t.life.ConnectChanged(fn)
+}
+
+func (t *TextLayout) ConnectDestroy(fn func()) signal.Handle {
+	return t.life.ConnectDestroy(fn)
 }
 
 func (t *TextLayout) Text() string {
@@ -184,19 +184,25 @@ func (t *TextLayout) SetSize(maxWidth, maxHeight float32) {
 	}
 	t.width, t.height = maxWidth, maxHeight
 	t.dirty = true
-	t.bmpDirty = true
+	t.life.Changed()
 }
 
 func (t *TextLayout) SetTextAlignment(align typography.TextAlignment) {
+	if t.format.TextAlign == align {
+		return
+	}
 	t.format.TextAlign = align
 	t.updateParagraphStyle()
-	t.bmpDirty = true
+	t.life.Changed()
 }
 
 func (t *TextLayout) SetWrapMode(wrap typography.WrapMode) {
+	if t.format.WrapMode == wrap {
+		return
+	}
 	t.format.WrapMode = wrap
 	t.updateParagraphStyle()
-	t.bmpDirty = true
+	t.life.Changed()
 }
 
 func (t *TextLayout) SetTextFont(start, length int, font typography.FontInfo) {
@@ -214,7 +220,7 @@ func (t *TextLayout) SetTextFont(start, length int, font typography.FontInfo) {
 			CFAttributedStringSetAttribute(t.attrString, CFRangeMake(u16Start, u16End-u16Start), KCTFontAttributeName, ctFont)
 			CFAttributedStringEndEditing(t.attrString)
 			t.dirty = true
-			t.bmpDirty = true
+			t.life.Changed()
 		}
 	}
 }
@@ -234,7 +240,7 @@ func (t *TextLayout) SetTextColor(start, length int, c color.Color) {
 			CFAttributedStringSetAttribute(t.attrString, CFRangeMake(u16Start, u16End-u16Start), KCTForegroundColorAttributeName, fgColor)
 			CFAttributedStringEndEditing(t.attrString)
 			t.dirty = true
-			t.bmpDirty = true
+			t.life.Changed()
 		}
 	}
 }
@@ -258,7 +264,7 @@ func (t *TextLayout) SetUnderline(start, length int, underline bool) {
 			CFAttributedStringSetAttribute(t.attrString, CFRangeMake(u16Start, u16End-u16Start), KCTUnderlineStyleAttributeName, cfNum)
 			CFAttributedStringEndEditing(t.attrString)
 			t.dirty = true
-			t.bmpDirty = true
+			t.life.Changed()
 		}
 	}
 }
@@ -282,7 +288,7 @@ func (t *TextLayout) SetStrikethrough(start, length int, strike bool) {
 			CFAttributedStringSetAttribute(t.attrString, CFRangeMake(u16Start, u16End-u16Start), KCTStrikethroughStyleAttributeName, cfNum)
 			CFAttributedStringEndEditing(t.attrString)
 			t.dirty = true
-			t.bmpDirty = true
+			t.life.Changed()
 		}
 	}
 }
@@ -394,30 +400,38 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 	return
 }
 
-func (t *TextLayout) DrawBitmap(scale float32, buf []byte) (bitmap typography.TextBitmap, err error) {
+func (t *TextLayout) Rasterize(scale float32, buf []byte) (bitmap typography.TextBitmap, err error) {
+	if t.life.IsDestroyed() {
+		return bitmap, errors.New("coretext: rasterize destroyed text layout")
+	}
+	if scale <= 0 || math.IsNaN(float64(scale)) || math.IsInf(float64(scale), 0) {
+		return bitmap, fmt.Errorf("coretext: invalid raster scale %v", scale)
+	}
+	return t.rasterize(scale, buf)
+}
+
+func (t *TextLayout) rasterize(scale float32, buf []byte) (bitmap typography.TextBitmap, err error) {
 	t.ensureFrame()
 
 	_, _, width, height := t.getExtents()
-	if width == 0 || height == 0 {
+	if width <= 0 || height <= 0 {
 		return
 	}
 
 	width = min(width, t.width) * scale
 	height = min(height, t.height) * scale
+	if width <= 0 || height <= 0 {
+		return
+	}
 
 	pw := roundToPixel(width)
 	ph := roundToPixel(height)
 
-	// Cache hit: return cached pixels without re-rasterizing.
-	if !t.bmpDirty && t.cachedPixels != nil &&
-		t.cachedScale == scale && t.cachedWidth == pw && t.cachedHeight == ph {
-		return t.copyCached(pw, ph, buf), nil
-	}
-
-	// Cache miss: full rasterization.
-	if t.painter.bitmap.Width != pw || t.painter.bitmap.Height != ph {
+	if t.painter.bitmap.Width < pw || t.painter.bitmap.Height < ph {
+		widthCapacity := max(pw, t.painter.bitmap.Width)
+		heightCapacity := max(ph, t.painter.bitmap.Height)
 		t.painter.Destroy()
-		err = t.painter.Init(width, height)
+		err = t.painter.Init(float32(widthCapacity), float32(heightCapacity))
 		if err != nil {
 			return
 		}
@@ -428,42 +442,7 @@ func (t *TextLayout) DrawBitmap(scale float32, buf []byte) (bitmap typography.Te
 		return
 	}
 
-	bitmap = t.painter.GetBitmap(width, height, buf)
-	t.storeCached(scale, pw, ph, bitmap.Pixels)
-
-	return bitmap, nil
-}
-
-func (t *TextLayout) copyCached(pw, ph int, buf []byte) typography.TextBitmap {
-	stride := pw * 4
-	byteSize := stride * ph
-	var out []byte
-	if byteSize <= cap(buf) {
-		out = buf[:byteSize]
-	} else {
-		out = make([]byte, byteSize)
-	}
-	copy(out, t.cachedPixels)
-	return typography.TextBitmap{
-		Width:  pw,
-		Height: ph,
-		Stride: stride,
-		Pixels: out,
-	}
-}
-
-func (t *TextLayout) storeCached(scale float32, pw, ph int, pixels []byte) {
-	byteSize := pw * 4 * ph
-	if byteSize <= cap(t.cachedPixels) {
-		t.cachedPixels = t.cachedPixels[:byteSize]
-	} else {
-		t.cachedPixels = make([]byte, byteSize)
-	}
-	copy(t.cachedPixels, pixels)
-	t.cachedWidth = pw
-	t.cachedHeight = ph
-	t.cachedScale = scale
-	t.bmpDirty = false
+	return t.painter.GetBitmap(width, height, buf), nil
 }
 
 func (t *TextLayout) updateParagraphStyle() {
@@ -476,7 +455,6 @@ func (t *TextLayout) updateParagraphStyle() {
 		CFAttributedStringSetAttribute(t.attrString, CFRangeMake(0, t.textLength), KCTParagraphStyleAttributeName, paraStyle)
 		CFAttributedStringEndEditing(t.attrString)
 		t.dirty = true
-		t.bmpDirty = true
 	}
 }
 

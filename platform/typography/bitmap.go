@@ -9,7 +9,7 @@ type TextBitmap struct {
 	Width  int
 	Height int
 	Stride int
-	Pixels []byte // RGBA
+	Pixels []byte // premultiplied RGBA
 }
 
 func (bmp TextBitmap) ColorModel() color.Model {

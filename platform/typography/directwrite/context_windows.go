@@ -4,8 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"image/color"
+	"math"
 
+	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/platform/typography"
+	"github.com/golang-gui/goui/platform/typography/internal/lifecycle"
 	"github.com/golang-gui/goui/platform/typography/utils"
 
 	"github.com/golang-gui/goui/platform/windows/sdk/com"
@@ -80,13 +83,6 @@ func (c *Context) NewTextLayout(text string, format typography.TextFormat, width
 	return newTextLayout(c, textLayout, text, format, width, height), nil
 }
 
-func (c *Context) DrawTextLayout(layout typography.TextLayout, scale float32, buf []byte) (bitmap typography.TextBitmap, err error) {
-	if err = c.prepareDraw(); err != nil {
-		return
-	}
-	return layout.(*TextLayout).DrawBitmap(scale, buf)
-}
-
 func (c *Context) createTextFormat(format typography.TextFormat) (textFormat *dwrite.TextFormat, err error) {
 	fontSize := ptToDip(format.Font.Size)
 	textFormat, hr := c.dwFactory.CreateTextFormat(format.Font.Family, nil, dwrite.DWRITE_FONT_WEIGHT_NORMAL, dwrite.DWRITE_FONT_STYLE_NORMAL, dwrite.DWRITE_FONT_STRETCH_NORMAL, fontSize, "")
@@ -154,6 +150,7 @@ type TextLayout struct {
 	position utils.StringPosition
 	colors   []textColorAttr
 	painter  textPainter
+	life     lifecycle.Layout
 }
 
 type textColorAttr struct {
@@ -174,11 +171,22 @@ func newTextLayout(ctx *Context, layout *dwrite.TextLayout, text string, format 
 }
 
 func (t *TextLayout) Destroy() {
+	if !t.life.BeginDestroy() {
+		return
+	}
+	t.painter.Destroy()
 	if t.layout != nil {
 		t.layout.Release()
 		t.layout = nil
 	}
-	t.painter.Destroy()
+}
+
+func (t *TextLayout) ConnectChanged(fn func()) signal.Handle {
+	return t.life.ConnectChanged(fn)
+}
+
+func (t *TextLayout) ConnectDestroy(fn func()) signal.Handle {
+	return t.life.ConnectDestroy(fn)
 }
 
 func (*TextLayout) Name() string {
@@ -198,12 +206,19 @@ func (t *TextLayout) Size() (maxWidth, maxHeight float32) {
 }
 
 func (t *TextLayout) SetSize(maxWidth, maxHeight float32) {
+	if t.width == maxWidth && t.height == maxHeight {
+		return
+	}
 	t.width, t.height = maxWidth, maxHeight
 	t.layout.SetMaxWidth(maxWidth)
 	t.layout.SetMaxHeight(maxHeight)
+	t.life.Changed()
 }
 
 func (t *TextLayout) SetTextAlignment(align typography.TextAlignment) {
+	if t.format.TextAlign == align {
+		return
+	}
 	t.format.TextAlign = align
 	switch align {
 	case typography.TextAlignBegin:
@@ -215,9 +230,13 @@ func (t *TextLayout) SetTextAlignment(align typography.TextAlignment) {
 	case typography.TextAlignFill:
 		t.layout.SetTextAlignment(dwrite.DWRITE_TEXT_ALIGNMENT_JUSTIFIED)
 	}
+	t.life.Changed()
 }
 
 func (t *TextLayout) SetWrapMode(wrap typography.WrapMode) {
+	if t.format.WrapMode == wrap {
+		return
+	}
 	t.format.WrapMode = wrap
 	switch wrap {
 	case typography.WrapNone:
@@ -227,6 +246,7 @@ func (t *TextLayout) SetWrapMode(wrap typography.WrapMode) {
 	case typography.WrapWordChar:
 		t.layout.SetWordWrapping(dwrite.DWRITE_WORD_WRAPPING_EMERGENCY_BREAK)
 	}
+	t.life.Changed()
 }
 
 func (t *TextLayout) SetTextFont(start, length int, font typography.FontInfo) {
@@ -249,6 +269,7 @@ func (t *TextLayout) SetTextFont(start, length int, font typography.FontInfo) {
 			fontSize := ptToDip(font.Size)
 			t.layout.SetFontSize(fontSize, textRange)
 		}
+		t.life.Changed()
 	}
 }
 
@@ -269,6 +290,7 @@ func (t *TextLayout) SetTextColor(start, length int, color color.Color) {
 			Range: textRange,
 			Color: toRGBAColor(color),
 		})
+		t.life.Changed()
 	}
 }
 
@@ -286,6 +308,7 @@ func (t *TextLayout) SetUnderline(start, length int, underline bool) {
 		}
 
 		t.layout.SetUnderline(underline, textRange)
+		t.life.Changed()
 	}
 }
 
@@ -303,6 +326,7 @@ func (t *TextLayout) SetStrikethrough(start, length int, strike bool) {
 		}
 
 		t.layout.SetStrikethrough(strike, textRange)
+		t.life.Changed()
 	}
 }
 
@@ -433,18 +457,37 @@ func (t *TextLayout) Draw(render *d2d1.RenderTarget, origin d2d1.Point2F, drawOp
 	return nil
 }
 
-func (t *TextLayout) DrawBitmap(scale float32, buf []byte) (bitmap typography.TextBitmap, err error) {
+func (t *TextLayout) Rasterize(scale float32, buf []byte) (bitmap typography.TextBitmap, err error) {
+	if t.life.IsDestroyed() {
+		return bitmap, errors.New("directwrite: rasterize destroyed text layout")
+	}
+	if scale <= 0 || math.IsNaN(float64(scale)) || math.IsInf(float64(scale), 0) {
+		return bitmap, fmt.Errorf("directwrite: invalid raster scale %v", scale)
+	}
+	return t.rasterize(scale, buf)
+}
+
+func (t *TextLayout) rasterize(scale float32, buf []byte) (bitmap typography.TextBitmap, err error) {
+	if err = t.ctx.prepareDraw(); err != nil {
+		return
+	}
+
 	_, _, width, height := t.getExtends()
-	if width == 0 || height == 0 {
+	if width <= 0 || height <= 0 {
 		return
 	}
 
 	width = min(width, t.width) * scale
 	height = min(height, t.height) * scale
+	if width <= 0 || height <= 0 {
+		return
+	}
 
 	if t.painter.width < width || t.painter.height < height {
+		widthCapacity := max(width, t.painter.width)
+		heightCapacity := max(height, t.painter.height)
 		t.painter.Destroy()
-		err = t.painter.Init(t.ctx.d2dFactory, t.ctx.imgFactory, width, height)
+		err = t.painter.Init(t.ctx.d2dFactory, t.ctx.imgFactory, widthCapacity, heightCapacity)
 		if err != nil {
 			return
 		}
