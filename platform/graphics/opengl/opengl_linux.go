@@ -22,18 +22,32 @@ type glxNativeWindow interface {
 }
 
 type glxContext struct {
-	window xlib.Window
-	handle glx.Context
+	drawable glx.Window
+	handle   glx.Context
 }
 
-func (glxContext) isGLXContext() {}
+func (*glxContext) isGLXContext() {}
 
 func newContext(win NativeWindow, share Context, _ Config) (_ Context, err error) {
-	fbConfig := win.(glxNativeWindow).NativeFBConfig() // TODO: check
+	if platform.major < 1 || (platform.major == 1 && platform.minor < 3) {
+		return nil, errors.New("GLX 1.3 or newer is required")
+	}
+	native, ok := win.(glxNativeWindow)
+	if !ok {
+		return nil, errors.New("native window does not provide a GLX FBConfig")
+	}
+	fbConfig := native.NativeFBConfig()
+	if fbConfig == 0 {
+		return nil, errors.New("native window has no GLX FBConfig")
+	}
 
-	var shareCtx glxContext
+	var shareHandle glx.Context
 	if share != nil {
-		shareCtx, _ = share.(glxContext)
+		shareCtx, ok := share.(*glxContext)
+		if !ok {
+			return nil, errors.New("shared context is not a GLX context")
+		}
+		shareHandle = shareCtx.handle
 	}
 
 	if platform.ARB_create_context {
@@ -42,47 +56,77 @@ func newContext(win NativeWindow, share Context, _ Config) (_ Context, err error
 			glx.GLX_CONTEXT_PROFILE_MASK_ARB, glx.GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
 			0, 0,
 		}
-		ctx := glx.CreateContextAttribsARB(platform.display, fbConfig, shareCtx.handle, true, attrs)
+		ctx := glx.CreateContextAttribsARB(platform.display, fbConfig, shareHandle, true, attrs)
 		if ctx == 0 {
 			return nil, errors.New("create GLX context failed")
 		}
 
-		return glxContext{
-			window: xlib.Window(win.NativeHandle()),
-			handle: ctx,
+		// A GLXWindow wraps the actual X11 surface. The window manager remains
+		// the sole owner of its size; every frame redraws the current drawable
+		// extent reported through ConfigureNotify.
+		xWindow := xlib.Window(native.NativeHandle())
+		if xWindow == 0 {
+			glx.DestroyContext(platform.display, ctx)
+			return nil, errors.New("native window is destroyed")
+		}
+		drawable := glx.CreateWindow(platform.display, fbConfig, xWindow)
+		if drawable == 0 {
+			glx.DestroyContext(platform.display, ctx)
+			return nil, errors.New("create GLX window failed")
+		}
+
+		return &glxContext{
+			drawable: drawable,
+			handle:   ctx,
 		}, nil
 	}
 	return nil, errors.New("can not create GLX context")
 }
 
-func (c glxContext) Destroy() {
+func (c *glxContext) Destroy() {
+	if c.drawable != 0 {
+		glx.DestroyWindow(platform.display, c.drawable)
+	}
 	if c.handle != 0 {
 		glx.DestroyContext(platform.display, c.handle)
 	}
+	c.drawable = 0
+	c.handle = 0
 }
 
-func (c glxContext) Name() string {
+func (c *glxContext) Name() string {
 	return "GLX"
 }
 
-func (c glxContext) MakeCurrent() error {
-	glx.MakeCurrent(platform.display, xlib.Drawable(c.window), c.handle)
+func (c *glxContext) MakeCurrent() error {
+	if c == nil || c.drawable == 0 || c.handle == 0 {
+		return errors.New("GLX context is destroyed")
+	}
+	drawable := xlib.Drawable(c.drawable)
+	if !glx.MakeContextCurrent(platform.display, drawable, drawable, c.handle) {
+		return errors.New("make GLX context current failed")
+	}
 	return nil
 }
 
-func (c glxContext) ClearCurrent() error {
-	glx.MakeCurrent(platform.display, 0, 0)
+func (c *glxContext) ClearCurrent() error {
+	if !glx.MakeContextCurrent(platform.display, 0, 0, 0) {
+		return errors.New("clear current GLX context failed")
+	}
 	return nil
 }
 
-func (c glxContext) SwapBuffers() error {
-	glx.SwapBuffers(platform.display, xlib.Drawable(c.window))
+func (c *glxContext) SwapBuffers() error {
+	if c == nil || c.drawable == 0 {
+		return errors.New("GLX drawable is destroyed")
+	}
+	glx.SwapBuffers(platform.display, xlib.Drawable(c.drawable))
 	return nil
 }
 
-func (c glxContext) SwapInterval(v int) error {
+func (c *glxContext) SwapInterval(v int) error {
 	if platform.EXT_swap_control {
-		glx.SwapIntervalEXT(platform.display, xlib.Drawable(c.window), v)
+		glx.SwapIntervalEXT(platform.display, xlib.Drawable(c.drawable), v)
 	} else if platform.MESA_swap_control {
 		glx.SwapIntervalMESA(v)
 	} else if platform.SGI_swap_control && v > 0 {
@@ -91,11 +135,11 @@ func (c glxContext) SwapInterval(v int) error {
 	return nil
 }
 
-func (c glxContext) GetProcAddress(name string) (proc uintptr, err error) {
+func (c *glxContext) GetProcAddress(name string) (proc uintptr, err error) {
 	return glx.GetProcAddress(name)
 }
 
-func (c glxContext) GetExtensions() string {
+func (c *glxContext) GetExtensions() string {
 	return platform.Extensions
 }
 

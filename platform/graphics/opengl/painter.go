@@ -18,20 +18,14 @@ import (
 type Painter struct {
 	ctx               Context
 	vg                *nanovgo.Context
-	win               NativeWindow
 	images            map[*imageResource]struct{}
 	textImages        *textbitmap.ImageCache[graphics.Image]
 	textPixels        []byte
 	pendingTextImages int
 	scale             float32
 	transform         geometry.Transform
-	lastWidth         float32
-	lastHeight        float32
 
-	hasFrame     bool
-	activeFrame  bool
-	resizedFrame bool
-	resizedPaint bool
+	activeFrame bool
 }
 
 type imageResource struct {
@@ -90,9 +84,6 @@ func NewPainter(win NativeWindow) (_ graphics.Painter, err error) {
 		p.Destroy()
 		return nil, fmt.Errorf("create nanovgo context err: %v", err)
 	}
-
-	p.win = win
-	_, p.resizedPaint = p.ctx.(GLXContext)
 
 	p.images = make(map[*imageResource]struct{})
 	p.textImages = textbitmap.NewImageCache(4, p.releaseTextImage)
@@ -262,8 +253,9 @@ func (p *Painter) flushPendingTextImages() {
 }
 
 func (p *Painter) Begin(width, height, scale float32) {
-	p.ctx.MakeCurrent()
-	p.trackFrameSize(width, height)
+	if err := p.ctx.MakeCurrent(); err != nil {
+		panic(fmt.Sprintf("opengl: begin frame: %v", err))
+	}
 	gl.Viewport(0, 0, int(width), int(height))
 	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT)
 	p.vg.BeginFrame(int(width/scale), int(height/scale), scale)
@@ -276,23 +268,8 @@ func (p *Painter) End() {
 	p.vg.EndFrame()
 	p.activeFrame = false
 	p.flushPendingTextImages()
-	p.present()
-}
-
-func (p *Painter) trackFrameSize(width, height float32) {
-	p.resizedFrame = p.hasFrame && (width != p.lastWidth || height != p.lastHeight)
-	p.lastWidth, p.lastHeight = width, height
-	p.hasFrame = true
-}
-
-func (p *Painter) present() {
 	p.ctx.SwapBuffers()
 	p.ctx.ClearCurrent()
-
-	if p.resizedFrame && p.resizedPaint {
-		p.resizedFrame = false
-		_ = p.win.RequestPaint()
-	}
 }
 
 func (p *Painter) Clear(color graphics.Color) {
