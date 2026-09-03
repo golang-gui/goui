@@ -677,6 +677,8 @@ const (
 	CwCursor           = 16384
 )
 
+const NorthWestGravity = 1
+
 const (
 	ConfigWindowX           = 1
 	ConfigWindowY           = 2
