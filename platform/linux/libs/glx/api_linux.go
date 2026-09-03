@@ -1,9 +1,10 @@
 package glx
 
 import (
+	"runtime"
+
 	"github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/platform/linux/libs/xlib"
-	"runtime"
 )
 
 var (
@@ -16,6 +17,7 @@ var (
 	glXQueryVersion          = libgl.NewSymbol("glXQueryVersion")
 	glXDestroyContext        = libgl.NewSymbol("glXDestroyContext")
 	glXMakeCurrent           = libgl.NewSymbol("glXMakeCurrent")
+	glXMakeContextCurrent    = libgl.NewSymbol("glXMakeContextCurrent")
 	glXSwapBuffers           = libgl.NewSymbol("glXSwapBuffers")
 	glXQueryExtensionsString = libgl.NewSymbol("glXQueryExtensionsString")
 	glXCreateNewContext      = libgl.NewSymbol("glXCreateNewContext")
@@ -89,6 +91,17 @@ func MakeCurrent(display xlib.Display, drawable xlib.Drawable, ctx Context) bool
 	return ret != 0
 }
 
+func MakeContextCurrent(display xlib.Display, draw, read xlib.Drawable, ctx Context) bool {
+	//bool(Display dpy, GLXDrawable draw, GLXDrawable read, GLXContext ctx)
+	ret, _, _ := glXMakeContextCurrent.CallRaw(
+		uintptr(display),
+		uintptr(draw),
+		uintptr(read),
+		uintptr(ctx),
+	)
+	return ret != 0
+}
+
 func SwapBuffers(display xlib.Display, drawable xlib.Drawable) {
 	//void(Display dpy, Drawable d)
 	glXSwapBuffers.CallRaw(uintptr(display), uintptr(drawable))
@@ -110,7 +123,7 @@ func CreateNewContext(display xlib.Display, config FBConfig, renderType int, sha
 }
 
 func CreateWindow(display xlib.Display, config FBConfig, win xlib.Window) Window {
-	//Window(Display dpy, FBConfig config, Window win, const int* attrs)
+	//GLXWindow(Display dpy, FBConfig config, Window win, const int* attrs)
 	ret, _, _ := glXCreateWindow.CallRaw(uintptr(display), uintptr(config), uintptr(win), 0)
 	return Window(ret)
 }
