@@ -52,7 +52,7 @@ type Painter struct {
 	transform   geometry.Transform
 	matrix      d2d1.Matrix3x2F
 	activeFrame bool
-	resizeFrame bool
+	occluded    bool
 }
 
 type imageResource struct {
@@ -86,6 +86,11 @@ func (i *imageResource) Destroy() {
 }
 
 const shadowCacheCapacity = 16
+
+// GOUI paints complete frames in response to window messages. Do not make the
+// UI thread wait for an older frame's presentation interval; flip-model DXGI
+// can replace queued frames and let DWM compose the newest submitted frame.
+const frameSyncInterval uint32 = 0
 
 type shadowCacheKey struct{ Width, Height, Radius float32 }
 type shadowCacheEntry struct {
@@ -294,7 +299,7 @@ func (p *Painter) Destroy() {
 
 func (p *Painter) releaseDeviceResources() {
 	p.activeFrame = false
-	p.resizeFrame = false
+	p.occluded = false
 	p.releaseImageNatives()
 	p.releaseShadowResources()
 	if p.linearBrush != nil {
@@ -466,7 +471,6 @@ func (p *Painter) destroyAllImages() {
 
 func (p *Painter) Begin(width, height, scale float32) {
 	p.activeFrame = false
-	p.resizeFrame = false
 	if width <= 0 || height <= 0 {
 		return
 	}
@@ -475,11 +479,18 @@ func (p *Painter) Begin(width, height, scale float32) {
 			return
 		}
 	}
+	if p.occluded {
+		// DXGI_PRESENT_TEST is intended for leaving the idle state. Avoid
+		// rebuilding a complete frame until DWM reports that the HWND is visible
+		// again.
+		if !p.processPresentResult(p.swapChain.Present(0, dxgi.DXGI_PRESENT_TEST)) {
+			return
+		}
+	}
 	w, h := uint32(width), uint32(height)
 	scaleChanged := p.scale != 0 && p.scale != scale
 	targetChanged := p.target == nil || p.width != w || p.height != h || scaleChanged
 	if targetChanged {
-		p.resizeFrame = true
 		p.releaseTarget()
 		if p.width != w || p.height != h {
 			if hr := p.swapChain.ResizeBuffers(0, w, h, dxgi.DXGI_FORMAT_UNKNOWN, 0); hr.Failed() {
@@ -519,21 +530,20 @@ func (p *Painter) End() {
 		p.handleDeviceFailure(hr)
 		return
 	}
-	syncInterval := presentSyncInterval(p.resizeFrame)
-	p.resizeFrame = false
-	if hr = p.swapChain.Present(syncInterval, 0); hr.Failed() {
-		p.handleDeviceFailure(hr)
-	}
+	p.processPresentResult(p.swapChain.Present(frameSyncInterval, 0))
 }
 
-func presentSyncInterval(resizeFrame bool) uint32 {
-	if resizeFrame {
-		// Submit a newly sized buffer without waiting behind an old-size frame.
-		// The swap chain does not allow tearing, so this changes queue latency,
-		// not the normal composited presentation behavior.
-		return 0
+func (p *Painter) processPresentResult(hr com.HRESULT) bool {
+	if hr == com.HRESULT(dxgi.DXGI_STATUS_OCCLUDED) {
+		p.occluded = true
+		return false
 	}
-	return 1
+	p.occluded = false
+	if hr.Failed() {
+		p.handleDeviceFailure(hr)
+		return false
+	}
+	return true
 }
 
 func (p *Painter) Clear(color graphics.Color) {
