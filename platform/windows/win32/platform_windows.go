@@ -73,18 +73,18 @@ func (p *Platform) NewTypography() (typography.Context, error) {
 	return directwrite.NewContext()
 }
 
-func (p *Platform) NewPainter(surface common.Surface, typo typography.Context) (painter graphics.Painter, err error) {
+func (p *Platform) NewPainter(surface common.Surface) (painter graphics.Painter, err error) {
 	switch common.GetPreferPainter() {
 	case "opengl":
-		return opengl.NewPainter(surface, typo)
+		return opengl.NewPainter(surface)
 	case "software":
-		return software.NewPainter(surface, typo)
+		return software.NewPainter(surface)
 	default:
 		// D2D → OpenGL → Software
-		if painter, err = direct2d.NewPainter(surface, typo); err != nil {
+		if painter, err = direct2d.NewPainter(surface); err != nil {
 			// TODO: add log
-			if painter, err = opengl.NewPainter(surface, typo); err != nil {
-				return software.NewPainter(surface, typo)
+			if painter, err = opengl.NewPainter(surface); err != nil {
+				return software.NewPainter(surface)
 			}
 		}
 		return

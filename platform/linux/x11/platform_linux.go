@@ -149,13 +149,13 @@ func (p *Platform) NewTypography() (typography.Context, error) {
 	return pango.NewContext()
 }
 
-func (p *Platform) NewPainter(surface common.Surface, typo typography.Context) (painter graphics.Painter, err error) {
+func (p *Platform) NewPainter(surface common.Surface) (painter graphics.Painter, err error) {
 	switch common.GetPreferPainter() {
 	case "software":
-		return software.NewPainter(surface, typo)
+		return software.NewPainter(surface)
 	default:
-		if painter, err = opengl.NewPainter(surface, typo); err != nil {
-			return software.NewPainter(surface, typo)
+		if painter, err = opengl.NewPainter(surface); err != nil {
+			return software.NewPainter(surface)
 		}
 		return
 	}

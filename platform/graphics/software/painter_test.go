@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
 )
@@ -18,23 +19,46 @@ type testDrawer struct {
 	result image.Image
 }
 
-type testTypography struct {
-	scale  float32
-	bitmap typography.TextBitmap
+type testTextLayout struct {
+	scale      float32
+	bitmap     typography.TextBitmap
+	rasterizes int
+	changed    signal.Signal0
+	destroyed  signal.Signal0
+	didDestroy bool
 }
 
-func (*testTypography) Name() string { return "test" }
-func (*testTypography) Destroy()     {}
-func (*testTypography) AddFont(string) error {
-	return nil
+func (l *testTextLayout) Destroy() {
+	if l.didDestroy {
+		return
+	}
+	l.didDestroy = true
+	l.destroyed.Emit()
 }
-func (*testTypography) NewTextLayout(string, typography.TextFormat, float32, float32) (typography.TextLayout, error) {
+func (l *testTextLayout) Rasterize(scale float32, _ []byte) (typography.TextBitmap, error) {
+	l.scale = scale
+	l.rasterizes++
+	return l.bitmap, nil
+}
+func (l *testTextLayout) ConnectChanged(fn func()) signal.Handle { return l.changed.Connect(fn) }
+func (l *testTextLayout) ConnectDestroy(fn func()) signal.Handle { return l.destroyed.Connect(fn) }
+func (*testTextLayout) Text() string                             { return "test" }
+func (*testTextLayout) Format() typography.TextFormat            { return typography.TextFormat{} }
+func (*testTextLayout) Size() (float32, float32)                 { return 0, 0 }
+func (l *testTextLayout) SetSize(float32, float32)               { l.changed.Emit() }
+func (l *testTextLayout) SetTextAlignment(typography.TextAlignment) {
+	l.changed.Emit()
+}
+func (l *testTextLayout) SetWrapMode(typography.WrapMode) { l.changed.Emit() }
+func (l *testTextLayout) SetTextFont(int, int, typography.FontInfo) {
+	l.changed.Emit()
+}
+func (l *testTextLayout) SetTextColor(int, int, color.Color) { l.changed.Emit() }
+func (l *testTextLayout) SetUnderline(int, int, bool)        { l.changed.Emit() }
+func (l *testTextLayout) SetStrikethrough(int, int, bool)    { l.changed.Emit() }
+func (*testTextLayout) MeasureSize() (float32, float32)      { return 0, 0 }
+func (*testTextLayout) MeasureMetrics() ([]typography.TextLine, []typography.TextCluster) {
 	return nil, nil
-}
-
-func (t *testTypography) DrawTextLayout(_ typography.TextLayout, scale float32, _ []byte) (typography.TextBitmap, error) {
-	t.scale = scale
-	return t.bitmap, nil
 }
 
 func TestLinearGradientPixels(t *testing.T) {
@@ -52,7 +76,7 @@ func TestLinearGradientPixels(t *testing.T) {
 
 func TestLinearGradientTransformAndDegeneratePoint(t *testing.T) {
 	var d testDrawer
-	painter, err := NewPainter(&d, nil)
+	painter, err := NewPainter(&d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +109,7 @@ func TestLinearGradientPremultipliedAlpha(t *testing.T) {
 
 func TestPainterTransformUsesLogicalCoordinatesAtHiDPI(t *testing.T) {
 	var d testDrawer
-	painter, err := NewPainter(&d, nil)
+	painter, err := NewPainter(&d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +127,7 @@ func TestPainterTransformUsesLogicalCoordinatesAtHiDPI(t *testing.T) {
 
 func TestLinearGradientSharesHiDPITransformWithGeometry(t *testing.T) {
 	var d testDrawer
-	painter, err := NewPainter(&d, nil)
+	painter, err := NewPainter(&d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +148,7 @@ func TestLinearGradientSharesHiDPITransformWithGeometry(t *testing.T) {
 
 func TestPainterRotatesRectGeometryInsteadOfBoundingBox(t *testing.T) {
 	var d testDrawer
-	painter, err := NewPainter(&d, nil)
+	painter, err := NewPainter(&d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,11 +167,11 @@ func TestDrawTextLayoutUsesTransformRasterScaleAndLogicalSize(t *testing.T) {
 	for i := 0; i < len(pixels); i += 4 {
 		pixels[i], pixels[i+3] = 255, 255
 	}
-	typo := &testTypography{bitmap: typography.TextBitmap{
+	layout := &testTextLayout{bitmap: typography.TextBitmap{
 		Width: 6, Height: 3, Stride: 6 * 4, Pixels: pixels,
 	}}
 	var d testDrawer
-	painter, err := NewPainter(&d, typo)
+	painter, err := NewPainter(&d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,14 +179,114 @@ func TestDrawTextLayoutUsesTransformRasterScaleAndLogicalSize(t *testing.T) {
 	painter.Begin(30, 20, 2)
 	painter.Clear(graphics.Color{})
 	painter.SetTransform(geometry.Translate(2, 2).Scale(1.5, 1.5))
-	painter.DrawTextLayout(graphics.Point{}, nil)
+	painter.DrawTextLayout(graphics.Point{}, layout)
 	painter.End()
 
-	if math.Abs(float64(typo.scale-3)) > 1e-5 {
-		t.Fatalf("text raster scale = %v, want 3", typo.scale)
+	if math.Abs(float64(layout.scale-3)) > 1e-5 {
+		t.Fatalf("text raster scale = %v, want 3", layout.scale)
 	}
 	assertAlphaRange(t, d.result.At(9, 5), 250, 255)
 	assertAlphaRange(t, d.result.At(10, 5), 0, 0)
+}
+
+func TestDrawTextLayoutCachesImageAcrossPositionsAndFrames(t *testing.T) {
+	pixels := make([]byte, 4*2*4)
+	for i := 0; i < len(pixels); i += 4 {
+		pixels[i], pixels[i+3] = 255, 255
+	}
+	layout := &testTextLayout{bitmap: typography.TextBitmap{
+		Width: 4, Height: 2, Stride: 4 * 4, Pixels: pixels,
+	}}
+	var d testDrawer
+	base, err := NewPainter(&d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	painter := base.(*Painter)
+	defer painter.Destroy()
+
+	painter.Begin(40, 20, 1)
+	painter.Clear(graphics.Color{})
+	painter.DrawTextLayout(graphics.Point{}, layout)
+	painter.DrawTextLayout(graphics.Point{X: 10}, layout)
+	painter.End()
+
+	painter.Begin(40, 20, 1)
+	painter.Clear(graphics.Color{})
+	painter.SetTransform(geometry.Translate(3, 2))
+	painter.DrawTextLayout(graphics.Point{X: 4}, layout)
+	painter.End()
+
+	if layout.rasterizes != 1 {
+		t.Fatalf("stable layout rasterized %d times, want 1", layout.rasterizes)
+	}
+	if len(painter.images) != 1 {
+		t.Fatalf("cached image count = %d, want 1", len(painter.images))
+	}
+
+	layout.SetSize(20, 10)
+	if len(painter.images) != 0 {
+		t.Fatalf("changed layout retained %d images", len(painter.images))
+	}
+	painter.Begin(40, 20, 1)
+	painter.DrawTextLayout(graphics.Point{}, layout)
+	painter.End()
+	if layout.rasterizes != 2 {
+		t.Fatalf("changed layout rasterized %d times, want 2", layout.rasterizes)
+	}
+
+	layout.Destroy()
+	if len(painter.images) != 0 {
+		t.Fatalf("destroyed layout retained %d images", len(painter.images))
+	}
+}
+
+func TestDrawTextLayoutDefersFrameInvalidationAndSupportsMultiplePainters(t *testing.T) {
+	pixels := make([]byte, 2*2*4)
+	for i := 0; i < len(pixels); i += 4 {
+		pixels[i+1], pixels[i+3] = 255, 255
+	}
+	layout := &testTextLayout{bitmap: typography.TextBitmap{
+		Width: 2, Height: 2, Stride: 2 * 4, Pixels: pixels,
+	}}
+	var firstDrawer, secondDrawer testDrawer
+	firstBase, _ := NewPainter(&firstDrawer)
+	secondBase, _ := NewPainter(&secondDrawer)
+	first := firstBase.(*Painter)
+	second := secondBase.(*Painter)
+	defer first.Destroy()
+	defer second.Destroy()
+
+	first.Begin(10, 10, 1)
+	first.DrawTextLayout(graphics.Point{}, layout)
+	oldImage, ok := first.textImages.Lookup(layout, 1)
+	if !ok {
+		t.Fatal("first painter did not cache the layout")
+	}
+	layout.SetTextAlignment(typography.TextAlignCenter)
+	if !oldImage.(*imageResource).pendingDestroy {
+		t.Fatal("frame-active invalidation destroyed or retained the old cache entry")
+	}
+	first.DrawTextLayout(graphics.Point{}, layout)
+	if len(first.images) != 2 {
+		t.Fatalf("active frame image count = %d, want old and replacement", len(first.images))
+	}
+	first.End()
+	if !oldImage.(*imageResource).destroyed || len(first.images) != 1 {
+		t.Fatal("pending text image was not released after End")
+	}
+
+	second.Begin(10, 10, 1)
+	second.DrawTextLayout(graphics.Point{}, layout)
+	second.End()
+	if len(first.images) != 1 || len(second.images) != 1 {
+		t.Fatalf("independent cache sizes = %d, %d, want 1, 1", len(first.images), len(second.images))
+	}
+
+	layout.Destroy()
+	if len(first.images) != 0 || len(second.images) != 0 {
+		t.Fatalf("layout destroy cache sizes = %d, %d, want 0, 0", len(first.images), len(second.images))
+	}
 }
 
 func TestDrawBitmapRotationUsesBilinearSampling(t *testing.T) {
@@ -174,7 +298,7 @@ func TestDrawBitmapRotationUsesBilinearSampling(t *testing.T) {
 	}
 
 	var d testDrawer
-	base, err := NewPainter(&d, nil)
+	base, err := NewPainter(&d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +355,7 @@ func TestSampleBitmapBilinearInterpolatesPremultipliedFormats(t *testing.T) {
 
 func TestPainterCompositesTransparentBrushAndPreservesClip(t *testing.T) {
 	var d testDrawer
-	painter, err := NewPainter(&d, nil)
+	painter, err := NewPainter(&d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +372,7 @@ func TestPainterCompositesTransparentBrushAndPreservesClip(t *testing.T) {
 
 func TestImageResourceSnapshotsReusesAndCompositesPixels(t *testing.T) {
 	var d testDrawer
-	painter, err := NewPainter(&d, nil)
+	painter, err := NewPainter(&d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,8 +403,8 @@ func TestImageResourceSnapshotsReusesAndCompositesPixels(t *testing.T) {
 
 func TestImageResourceRejectsWrongPainterAndDestroyedResource(t *testing.T) {
 	var firstDrawer, secondDrawer testDrawer
-	first, _ := NewPainter(&firstDrawer, nil)
-	second, _ := NewPainter(&secondDrawer, nil)
+	first, _ := NewPainter(&firstDrawer)
+	second, _ := NewPainter(&secondDrawer)
 	resource, err := first.NewImage(image.NewRGBA(image.Rect(0, 0, 1, 1)))
 	if err != nil {
 		t.Fatal(err)
@@ -298,7 +422,7 @@ func TestImageResourceRejectsWrongPainterAndDestroyedResource(t *testing.T) {
 
 func TestImageAndPainterDestroyRejectActiveFrame(t *testing.T) {
 	var d testDrawer
-	painter, err := NewPainter(&d, nil)
+	painter, err := NewPainter(&d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +445,7 @@ func TestImageAndPainterDestroyRejectActiveFrame(t *testing.T) {
 
 func TestImageUpdateReusesStorageAndDetachesSource(t *testing.T) {
 	var d testDrawer
-	painter, err := NewPainter(&d, nil)
+	painter, err := NewPainter(&d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -366,7 +490,7 @@ func assertPanics(t *testing.T, fn func()) {
 
 func BenchmarkDrawImageStatic1024(b *testing.B) {
 	var d testDrawer
-	painter, err := NewPainter(&d, nil)
+	painter, err := NewPainter(&d)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -391,7 +515,7 @@ func BenchmarkDrawImageStatic1024(b *testing.B) {
 
 func BenchmarkDrawImageRotated256(b *testing.B) {
 	var d testDrawer
-	painter, err := NewPainter(&d, nil)
+	painter, err := NewPainter(&d)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -503,7 +627,7 @@ func TestBoxShadowTransparentColorAndContractedEmptyAreNoOps(t *testing.T) {
 func renderShadow(t *testing.T, width, height int, scale float32, transform geometry.Transform, clip graphics.Rectangle, draw func(graphics.Painter)) image.Image {
 	t.Helper()
 	var d testDrawer
-	painter, err := NewPainter(&d, nil)
+	painter, err := NewPainter(&d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -530,7 +654,7 @@ func assertAlphaRange(t *testing.T, actual color.Color, minAlpha, maxAlpha uint8
 func renderGradient(t *testing.T, gradient graphics.LinearGradient) image.Image {
 	t.Helper()
 	var d testDrawer
-	painter, err := NewPainter(&d, nil)
+	painter, err := NewPainter(&d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -558,7 +682,7 @@ func (d *testDrawer) Draw(img image.Image) error {
 
 func TestPainter(t *testing.T) {
 	var d testDrawer
-	painter, err := NewPainter(&d, nil)
+	painter, err := NewPainter(&d)
 	if err != nil {
 		t.Fatal(err)
 	}
