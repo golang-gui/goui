@@ -41,15 +41,15 @@ func TestTypography(t *testing.T) {
 	wrap := typography.WrapWordChar
 	align := typography.TextAlignEnd
 
-	t.Run("bitmap-cache", func(t *testing.T) {
+	t.Run("rasterize", func(t *testing.T) {
 		layout, err := newRichTextLayout(ctx, 200, 100, fontName, wrap, align, white)
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer layout.Destroy()
 
-		// First call: rasterize and populate the cache.
-		bmp1, err := ctx.DrawTextLayout(layout, 1.0, nil)
+		// Each call is a fresh rasterization result owned by the caller.
+		bmp1, err := layout.Rasterize(1.0, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -57,17 +57,20 @@ func TestTypography(t *testing.T) {
 			t.Fatal("first call should return pixels")
 		}
 
-		// Second call with same params: cache hit — pixels identical.
-		bmp2, err := ctx.DrawTextLayout(layout, 1.0, nil)
+		reuse := make([]byte, len(bmp1.Pixels))
+		bmp2, err := layout.Rasterize(1.0, reuse[:0])
 		if err != nil {
 			t.Fatal(err)
 		}
+		if len(bmp2.Pixels) != 0 && &bmp2.Pixels[0] != &reuse[0] {
+			t.Fatal("Rasterize did not reuse a sufficiently large caller buffer")
+		}
 		if !bytes.Equal(bmp1.Pixels, bmp2.Pixels) {
-			t.Fatal("cache-hit pixels should match the first call")
+			t.Fatal("repeated rasterization produced different pixels")
 		}
 
-		// Different scale: cache miss — dimensions differ.
-		bmp3, err := ctx.DrawTextLayout(layout, 2.0, nil)
+		// A different scale changes physical dimensions.
+		bmp3, err := layout.Rasterize(2.0, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -78,15 +81,54 @@ func TestTypography(t *testing.T) {
 			t.Fatal("different scale should produce different width")
 		}
 
-		// Mutate text color: cache invalidated — pixels change.
+		// Layout mutations affect subsequent rasterization.
 		layout.SetTextColor(0, 3, color.RGBA{R: 200, G: 30, B: 30, A: 255})
-		bmp4, err := ctx.DrawTextLayout(layout, 1.0, nil)
+		bmp4, err := layout.Rasterize(1.0, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if bytes.Equal(bmp1.Pixels, bmp4.Pixels) {
-			t.Fatal("pixels should change after setter invalidates cache")
+			t.Fatal("pixels should change after a rendering setter")
 		}
+		if _, err := layout.Rasterize(0, nil); err == nil {
+			t.Fatal("zero raster scale did not return an error")
+		}
+	})
+
+	t.Run("lifecycle", func(t *testing.T) {
+		layout, err := ctx.NewTextLayout("lifecycle", typography.TextFormat{
+			Font:      typography.FontInfo{Family: fontName, Size: 12},
+			WrapMode:  typography.WrapNone,
+			TextAlign: typography.TextAlignBegin,
+			TextColor: color.Black,
+		}, 100, 30)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		changed, destroyed := 0, 0
+		changedHandle := layout.ConnectChanged(func() { changed++ })
+		destroyHandle := layout.ConnectDestroy(func() { destroyed++ })
+		layout.SetSize(120, 30)
+		layout.SetSize(120, 30)
+		if changed != 1 {
+			t.Fatalf("changed notifications = %d, want 1", changed)
+		}
+		changedHandle.Disconnect()
+		layout.SetTextAlignment(typography.TextAlignCenter)
+		if changed != 1 {
+			t.Fatal("disconnected changed listener was called")
+		}
+
+		layout.Destroy()
+		layout.Destroy()
+		if destroyed != 1 {
+			t.Fatalf("destroy notifications = %d, want 1", destroyed)
+		}
+		if _, err := layout.Rasterize(1, nil); err == nil {
+			t.Fatal("destroyed layout could still be rasterized")
+		}
+		destroyHandle.Disconnect()
 	})
 
 	t.Run("text", func(t *testing.T) {
@@ -96,7 +138,7 @@ func TestTypography(t *testing.T) {
 		}
 		defer layout.Destroy()
 
-		bitmap, err := ctx.DrawTextLayout(layout, 1.0, nil)
+		bitmap, err := layout.Rasterize(1.0, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -106,7 +148,7 @@ func TestTypography(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		bitmap, err = ctx.DrawTextLayout(layout, 2.0, nil)
+		bitmap, err = layout.Rasterize(2.0, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -123,7 +165,7 @@ func TestTypography(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		bitmap, err := ctx.DrawTextLayout(layout, 1.0, nil)
+		bitmap, err := layout.Rasterize(1.0, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -154,7 +196,7 @@ func TestTypography(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		bitmap, err := ctx.DrawTextLayout(layout, 1.0, nil)
+		bitmap, err := layout.Rasterize(1.0, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -185,7 +227,7 @@ func TestTypography(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		bitmap, err := ctx.DrawTextLayout(layout, 1.0, nil)
+		bitmap, err := layout.Rasterize(1.0, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -275,7 +317,7 @@ type testPainter struct {
 
 func newTestPainter(typo typography.Context) (_ *testPainter, err error) {
 	p := new(testPainter)
-	p.Painter, err = software.NewPainter(p, typo)
+	p.Painter, err = software.NewPainter(p)
 	if err != nil {
 		return nil, err
 	}
