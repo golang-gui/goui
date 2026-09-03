@@ -162,6 +162,65 @@ func TestPainterRotatesRectGeometryInsteadOfBoundingBox(t *testing.T) {
 	assertColorNear(t, d.result.At(70, 37), color.RGBA{A: 255}, 1)
 }
 
+func TestStrokePrimitivesApplyWidthBeforeBuildingPath(t *testing.T) {
+	tests := []struct {
+		name string
+		draw func(graphics.Painter)
+	}{
+		{
+			name: "rectangle",
+			draw: func(p graphics.Painter) {
+				p.DrawRect(graphics.Rect(8, 6, 16, 21), 4, graphics.RGB(255, 255, 255))
+			},
+		},
+		{
+			name: "rounded rectangle",
+			draw: func(p graphics.Painter) {
+				p.DrawRoundRect(graphics.Rect(8, 6, 16, 21), 4, 4, graphics.RGB(255, 255, 255))
+			},
+		},
+		{
+			name: "ellipse",
+			draw: func(p graphics.Painter) {
+				p.DrawEllipse(graphics.Point{X: 16, Y: 16.5}, 8, 8, 4, graphics.RGB(255, 255, 255))
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			img := renderPainter(t, 32, 33, 1, geometry.Identity(), graphics.Rectangle{}, test.draw)
+			assertAlphaRange(t, img.At(5, 16), 0, 5)
+			assertAlphaRange(t, img.At(6, 16), 250, 255)
+			assertAlphaRange(t, img.At(9, 16), 250, 255)
+			assertAlphaRange(t, img.At(10, 16), 0, 5)
+		})
+	}
+}
+
+func TestStrokeWidthDoesNotLeakBetweenDrawCalls(t *testing.T) {
+	img := renderPainter(t, 48, 32, 1, geometry.Identity(), graphics.Rectangle{}, func(p graphics.Painter) {
+		p.DrawRect(graphics.Rect(8, 6, 12, 20), 6, graphics.RGB(255, 255, 255))
+		p.DrawRect(graphics.Rect(32, 6, 12, 20), 2, graphics.RGB(255, 255, 255))
+	})
+
+	assertAlphaRange(t, img.At(29, 16), 0, 5)
+	assertAlphaRange(t, img.At(30, 16), 0, 5)
+	assertAlphaRange(t, img.At(31, 16), 250, 255)
+	assertAlphaRange(t, img.At(32, 16), 250, 255)
+}
+
+func TestStrokeWidthUsesPhysicalPixelsAtHiDPI(t *testing.T) {
+	img := renderPainter(t, 48, 40, 2, geometry.Identity(), graphics.Rectangle{}, func(p graphics.Painter) {
+		p.DrawRect(graphics.Rect(4.5, 3, 12, 14), 1, graphics.RGB(255, 255, 255))
+	})
+
+	assertAlphaRange(t, img.At(7, 20), 0, 5)
+	assertAlphaRange(t, img.At(8, 20), 250, 255)
+	assertAlphaRange(t, img.At(9, 20), 250, 255)
+	assertAlphaRange(t, img.At(10, 20), 0, 5)
+}
+
 func TestDrawTextLayoutUsesTransformRasterScaleAndLogicalSize(t *testing.T) {
 	pixels := make([]byte, 6*3*4)
 	for i := 0; i < len(pixels); i += 4 {
@@ -541,7 +600,7 @@ func BenchmarkDrawImageRotated256(b *testing.B) {
 }
 
 func TestBoxShadowFullAndSingleBottomEdge(t *testing.T) {
-	img := renderShadow(t, 40, 35, 1, geometry.Identity(), graphics.Rectangle{}, func(p graphics.Painter) {
+	img := renderPainter(t, 40, 35, 1, geometry.Identity(), graphics.Rectangle{}, func(p graphics.Painter) {
 		p.DrawBoxShadow(graphics.Rect(10, 10, 20, 10), 3, graphics.BoxShadow{
 			Color:      graphics.RGBA(255, 0, 0, 255),
 			BlurRadius: 4,
@@ -553,7 +612,7 @@ func TestBoxShadowFullAndSingleBottomEdge(t *testing.T) {
 	assertAlphaRange(t, img.At(5, 15), 0, 4)
 	assertAlphaRange(t, img.At(20, 3), 0, 0)
 
-	img = renderShadow(t, 40, 35, 1, geometry.Identity(), graphics.Rectangle{}, func(p graphics.Painter) {
+	img = renderPainter(t, 40, 35, 1, geometry.Identity(), graphics.Rectangle{}, func(p graphics.Painter) {
 		blur := float32(4)
 		rect := graphics.Rect(10, 10, 20, 10)
 		p.DrawBoxShadow(rect, 2, graphics.BoxShadow{
@@ -571,7 +630,7 @@ func TestBoxShadowFullAndSingleBottomEdge(t *testing.T) {
 }
 
 func TestBoxShadowCompositionClipTransformAndHiDPI(t *testing.T) {
-	img := renderShadow(t, 60, 40, 1, geometry.Identity(), graphics.Rect(15, 0, 30, 40), func(p graphics.Painter) {
+	img := renderPainter(t, 60, 40, 1, geometry.Identity(), graphics.Rect(15, 0, 30, 40), func(p graphics.Painter) {
 		p.DrawBoxShadow(graphics.Rect(10, 10, 20, 10), 0, graphics.BoxShadow{
 			Color: graphics.RGBA(255, 0, 0, 128), BlurRadius: 4,
 		})
@@ -583,7 +642,7 @@ func TestBoxShadowCompositionClipTransformAndHiDPI(t *testing.T) {
 	assertAlphaRange(t, img.At(14, 15), 0, 2)
 	assertAlphaRange(t, img.At(15, 15), 40, 200)
 
-	img = renderShadow(t, 80, 50, 2, geometry.Translate(10, 10).Rotate(90), graphics.Rectangle{}, func(p graphics.Painter) {
+	img = renderPainter(t, 80, 50, 2, geometry.Translate(10, 10).Rotate(90), graphics.Rectangle{}, func(p graphics.Painter) {
 		p.DrawBoxShadow(graphics.Rect(0, -4, 8, 4), 0, graphics.BoxShadow{
 			Color: graphics.RGBA(0, 255, 0, 255), BlurRadius: 1,
 		})
@@ -593,7 +652,7 @@ func TestBoxShadowCompositionClipTransformAndHiDPI(t *testing.T) {
 	assertAlphaRange(t, img.At(16, 12), 240, 255)
 	assertAlphaRange(t, img.At(5, 5), 0, 2)
 
-	img = renderShadow(t, 50, 30, 1, geometry.Translate(5, 5).Scale(2, 1), graphics.Rectangle{}, func(p graphics.Painter) {
+	img = renderPainter(t, 50, 30, 1, geometry.Translate(5, 5).Scale(2, 1), graphics.Rectangle{}, func(p graphics.Painter) {
 		p.DrawBoxShadow(graphics.Rect(0, 0, 5, 5), 0, graphics.BoxShadow{
 			Color: graphics.RGBA(0, 255, 0, 255), BlurRadius: 1,
 		})
@@ -603,7 +662,7 @@ func TestBoxShadowCompositionClipTransformAndHiDPI(t *testing.T) {
 }
 
 func TestBoxShadowFractionalHiDPI(t *testing.T) {
-	img := renderShadow(t, 40, 30, 1.25, geometry.Identity(), graphics.Rectangle{}, func(p graphics.Painter) {
+	img := renderPainter(t, 40, 30, 1.25, geometry.Identity(), graphics.Rectangle{}, func(p graphics.Painter) {
 		p.DrawBoxShadow(graphics.Rect(8, 6, 8, 8), 3, graphics.BoxShadow{
 			Color: graphics.RGBA(20, 40, 80, 200), BlurRadius: 2,
 		})
@@ -613,7 +672,7 @@ func TestBoxShadowFractionalHiDPI(t *testing.T) {
 }
 
 func TestBoxShadowTransparentColorAndContractedEmptyAreNoOps(t *testing.T) {
-	img := renderShadow(t, 20, 20, 1, geometry.Identity(), graphics.Rectangle{}, func(p graphics.Painter) {
+	img := renderPainter(t, 20, 20, 1, geometry.Identity(), graphics.Rectangle{}, func(p graphics.Painter) {
 		p.DrawBoxShadow(graphics.Rect(4, 4, 8, 8), 2, graphics.BoxShadow{
 			Color: graphics.RGBA(255, 0, 0, 0), BlurRadius: 4,
 		})
@@ -624,7 +683,7 @@ func TestBoxShadowTransparentColorAndContractedEmptyAreNoOps(t *testing.T) {
 	assertAlphaRange(t, img.At(8, 8), 0, 2)
 }
 
-func renderShadow(t *testing.T, width, height int, scale float32, transform geometry.Transform, clip graphics.Rectangle, draw func(graphics.Painter)) image.Image {
+func renderPainter(t *testing.T, width, height int, scale float32, transform geometry.Transform, clip graphics.Rectangle, draw func(graphics.Painter)) image.Image {
 	t.Helper()
 	var d testDrawer
 	painter, err := NewPainter(&d)
