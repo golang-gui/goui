@@ -332,11 +332,13 @@ func (p *Painter) DrawLine(p0, p1 graphics.Point, strokeWidth float32, brush gra
 func (p *Painter) DrawRect(rect graphics.Rectangle, strokeWidth float32, brush graphics.Brush) {
 	if p.setBrush(brush) {
 		defer p.stroker.Clear()
-		clip := p.addRect(p.stroker, rect)
 		strokeWidth = p.deviceStrokeWidth(strokeWidth)
+		// rasterx expands the stroke while path segments are added, so the
+		// requested width must be configured before building the path.
+		p.stroker.SetStroke(toFixedI(strokeWidth), toFixedI(4), rasterx.ButtCap, nil, rasterx.FlatGap, rasterx.MiterClip)
+		clip := p.addRect(p.stroker, rect)
 		p.setShapeClip(clip.Inset(-uptoPixel(strokeWidth)))
 		defer p.restoreClip()
-		p.stroker.SetStroke(toFixedI(strokeWidth), toFixedI(4), rasterx.ButtCap, nil, rasterx.FlatGap, rasterx.MiterClip)
 		p.stroker.Draw()
 	}
 }
@@ -344,11 +346,11 @@ func (p *Painter) DrawRect(rect graphics.Rectangle, strokeWidth float32, brush g
 func (p *Painter) DrawRoundRect(rect graphics.Rectangle, radius, strokeWidth float32, brush graphics.Brush) {
 	if p.setBrush(brush) {
 		defer p.stroker.Clear()
-		clip := p.addRoundRect(p.stroker, rect, radius)
 		strokeWidth = p.deviceStrokeWidth(strokeWidth)
+		p.stroker.SetStroke(toFixedI(strokeWidth), toFixedI(4), rasterx.ButtCap, nil, rasterx.FlatGap, rasterx.MiterClip)
+		clip := p.addRoundRect(p.stroker, rect, radius)
 		p.setShapeClip(clip.Inset(-uptoPixel(strokeWidth)))
 		defer p.restoreClip()
-		p.stroker.SetStroke(toFixedI(strokeWidth), toFixedI(4), rasterx.ButtCap, nil, rasterx.FlatGap, rasterx.MiterClip)
 		p.stroker.Draw()
 	}
 }
@@ -356,11 +358,11 @@ func (p *Painter) DrawRoundRect(rect graphics.Rectangle, radius, strokeWidth flo
 func (p *Painter) DrawEllipse(center graphics.Point, xRadius, yRadius, strokeWidth float32, brush graphics.Brush) {
 	if p.setBrush(brush) {
 		defer p.stroker.Clear()
-		clip := p.addEllipse(p.stroker, center, xRadius, yRadius)
 		strokeWidth = p.deviceStrokeWidth(strokeWidth)
+		p.stroker.SetStroke(toFixedI(strokeWidth), toFixedI(4), rasterx.ButtCap, nil, rasterx.FlatGap, rasterx.MiterClip)
+		clip := p.addEllipse(p.stroker, center, xRadius, yRadius)
 		p.setShapeClip(clip.Inset(-uptoPixel(strokeWidth)))
 		defer p.restoreClip()
-		p.stroker.SetStroke(toFixedI(strokeWidth), toFixedI(4), rasterx.ButtCap, nil, rasterx.FlatGap, rasterx.MiterClip)
 		p.stroker.Draw()
 	}
 }
