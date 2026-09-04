@@ -88,10 +88,10 @@ func DefaultStyleRules() []style.Rule {
 		// these inherit the base scroll-view rule above.
 		style.Name(styleNameScrollView).Part(stylePartTrough).
 			BackgroundColor(color.RGBA{R: 0, G: 0, B: 0, A: 24}).
-			Radius(3),
+			Radius(scrollbarRadius),
 		style.Name(styleNameScrollView).Part(stylePartThumb).
 			BackgroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}).
-			Radius(3),
+			Radius(scrollbarRadius),
 		style.Name(styleNameScrollView).Part(stylePartThumb).State(style.Hovered).
 			BackgroundColor(color.RGBA{R: 110, G: 110, B: 110, A: 255}),
 		style.Name(styleNameScrollView).Part(stylePartThumb).State(style.Pressed).

@@ -22,6 +22,20 @@ func newVerticalBar(t *testing.T, max float32) *ScrollBar {
 	return b
 }
 
+func TestScrollBarDefaultThickness(t *testing.T) {
+	const want float32 = 12
+
+	vertical := NewScrollBar(layout.DirectionVertical)
+	if got := vertical.Measure(layout.Unbounded()).Width; got != want {
+		t.Fatalf("vertical scrollbar width: want %v, got %v", want, got)
+	}
+
+	horizontal := NewScrollBar(layout.DirectionHorizontal)
+	if got := horizontal.Measure(layout.Unbounded()).Height; got != want {
+		t.Fatalf("horizontal scrollbar height: want %v, got %v", want, got)
+	}
+}
+
 func TestScrollBarThumbGeometry(t *testing.T) {
 	b := newVerticalBar(t, 400) // content = 600, viewport = 200
 
@@ -244,6 +258,9 @@ func TestScrollBarStyleParts(t *testing.T) {
 	if r != 0 || g != 0 || bl != 0 || a != 24*0x101 {
 		t.Fatalf("trough bg: want rgba(0,0,0,24), got r=%d g=%d b=%d a=%d", r, g, bl, a)
 	}
+	if radius, ok := trough.Radius(); !ok || radius != scrollbarWidth/2 {
+		t.Fatalf("trough radius: want %v, got %v (set=%v)", scrollbarWidth/2, radius, ok)
+	}
 
 	// Thumb normal state.
 	thumb := b.thumbStyle()
@@ -254,6 +271,9 @@ func TestScrollBarStyleParts(t *testing.T) {
 	r, g, bl, a = bg.RGBA()
 	if r != 140*0x101 || g != 140*0x101 || bl != 140*0x101 {
 		t.Fatalf("thumb normal bg: want rgb(140,140,140), got r=%d g=%d b=%d a=%d", r, g, bl, a)
+	}
+	if radius, ok := thumb.Radius(); !ok || radius != scrollbarWidth/2 {
+		t.Fatalf("thumb radius: want %v, got %v (set=%v)", scrollbarWidth/2, radius, ok)
 	}
 
 	// Thumb pressed state (dragging).
