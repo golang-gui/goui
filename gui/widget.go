@@ -55,12 +55,14 @@ type Widget interface {
 	Measure(c layout.Constraint) geometry.Size
 	Arrange(rect geometry.Rectangle)
 
+	// Paint draws this Widget itself in local coordinates. The GUI traversal
+	// automatically paints visible children after Paint returns.
 	Paint(p Painter)
 	RequestLayout()
 	RequestPaint()
 
-	// Children returns this widget's child widgets; an empty slice means a
-	// leaf node.
+	// Children returns this widget's child widgets in back-to-front paint
+	// order; an empty slice means a leaf node.
 	Children() []Widget
 
 	ConnectMount(func()) signal.Handle
@@ -340,17 +342,9 @@ func (w *WidgetBase) Arrange(rect geometry.Rectangle) {
 	}
 }
 
-func (w *WidgetBase) Paint(p Painter) {
-	w.PaintChildren(p)
-}
-
-func (w *WidgetBase) PaintChildren(p Painter) {
-	for _, child := range w.children {
-		if child.Visible() {
-			paintWidget(child, SubPainter(p, child.Rect()))
-		}
-	}
-}
+// Paint is the default no-op self painter. The GUI traversal paints children
+// automatically after this method returns.
+func (w *WidgetBase) Paint(Painter) {}
 
 func (w *WidgetBase) Snapshot() WidgetInfo {
 	info := WidgetInfo{

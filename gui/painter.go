@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"fmt"
 	"image"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -8,17 +9,27 @@ import (
 	"github.com/golang-gui/goui/platform/typography"
 )
 
+// Painter is the widget-local drawing context supplied to Widget.Paint.
+//
+// A Painter is valid only for the synchronous duration of Paint. Widgets draw
+// themselves in local logical coordinates; the GUI traversal owns child
+// painting and restores all state before it enters a child or sibling.
 type Painter interface {
-	// Begin marks the start of a painting scope. State (clip, transform) is
-	// saved and restored on End.
-	Begin()
-	// End marks the end of a painting scope, restoring clip and transform to
-	// the state captured by Begin.
-	End()
+	// Save pushes the current clip and transform. Every Save must be paired
+	// with Restore before the current Widget.Paint call returns.
+	Save()
+	// Restore restores the state most recently pushed by Save. Restore panics
+	// if it would cross the current Widget.Paint boundary.
+	Restore()
+	// NewImage snapshots src into a resource owned by the current platform
+	// Painter. The returned Image follows graphics.Image's lifecycle contract.
 	NewImage(src image.Image) (graphics.Image, error)
+	// SetClipRect replaces the current explicit clip within the Widget's
+	// structural bounds. rect is in Widget-local layout coordinates.
 	SetClipRect(rect geometry.Rectangle)
+	// SetTransform replaces the current Widget-local drawing transform. It
+	// affects only the current Widget, not its descendants.
 	SetTransform(matrix geometry.Transform)
-	Clear(color graphics.Color)
 	FillRect(rect geometry.Rectangle, brush graphics.Brush)
 	FillRoundRect(rect geometry.Rectangle, radius float32, brush graphics.Brush)
 	FillEllipse(center geometry.Point, xRadius, yRadius float32, brush graphics.Brush)
@@ -32,50 +43,41 @@ type Painter interface {
 	DrawImage(rect geometry.Rectangle, img graphics.Image)
 }
 
-func (p *painter) NewImage(src image.Image) (graphics.Image, error) {
-	return p.base.NewImage(src)
-}
-
-// paintWidget is the only entry point used by the GUI traversal to invoke a
-// Widget's Paint method. The caller owns the Painter scope, so Widget.Paint can
-// change its local clip and transform without having to restore them before
-// returning.
-func paintWidget(widget Widget, p Painter) {
-	p.Begin()
-	defer p.End()
-	widget.Paint(p)
-}
-
-// painter adapts the native-surface graphics.Painter to the local, scoped
-// Painter consumed by Widgets. Its rectangles are in window-local logical
-// coordinates. The transform stack manages coordinate-space offsets so that
-// SubPainter instances can work in widget-local coordinates without manual
-// translation in each draw method.
+// painter adapts a surface graphics.Painter to the local drawing context used
+// by Widgets. There is one painter per frame traversal: widget scopes are
+// represented by state, not by chains of delegating Painter objects.
 type painter struct {
 	base   graphics.Painter
 	bounds geometry.Rectangle
 	state  painterState
-	stack  []painterState
+	saves  []painterState
+	frames []painterFrame
 
-	appliedClip geometry.Rectangle
-	clipApplied bool
+	appliedClip  geometry.Rectangle
+	clipApplied  bool
+	appliedXform geometry.Transform
+	xformApplied bool
 }
 
 type painterState struct {
-	// scopeClip is the inherited clip captured by Begin. SetClipRect replaces
-	// the current clip within this fixed boundary rather than accumulating with
-	// the preceding SetClipRect call.
+	// scopeClip is the structural clip established by the Widget tree. A
+	// Widget may replace its explicit clip within this boundary but cannot
+	// widen it.
 	scopeClip geometry.Rectangle
 	clip      geometry.Rectangle
-	// offset is the accumulated translation from widget-local to window-local
-	// coordinates, contributed by nested SubPainter Begin calls.
+	// offset maps the current Widget's local origin to window coordinates.
 	offset geometry.Point
-	// userXform is the transform set by the widget via SetTransform, expressed
-	// in widget-local coordinates.
+	// userXform is the absolute transform set by the current Widget, expressed
+	// in its local coordinates.
 	userXform geometry.Transform
 }
 
-func newPainter(base graphics.Painter, bounds geometry.Rectangle) Painter {
+type painterFrame struct {
+	widget    Widget
+	saveDepth int
+}
+
+func newPainter(base graphics.Painter, bounds geometry.Rectangle) *painter {
 	return &painter{
 		base:   base,
 		bounds: bounds,
@@ -87,58 +89,113 @@ func newPainter(base graphics.Painter, bounds geometry.Rectangle) Painter {
 	}
 }
 
-// rootSaver is implemented by painter to allow SubPainter to save/restore
-// state without recursing through nested SubPainter.Begin calls.
-type rootSaver interface {
-	saveState()
-	restoreState()
-}
-
-// Begin saves the current state onto the stack. Called by paintWidget at the
-// outermost scope.
-func (p *painter) Begin() {
-	p.saveState()
-	p.applyClip()
-	p.applyTransform()
-}
-
-func (p *painter) saveState() {
-	p.stack = append(p.stack, p.state)
-	p.state.scopeClip = p.state.clip
-}
-
-// End restores the state saved by Begin.
-func (p *painter) End() {
-	p.restoreState()
-}
-
-func (p *painter) restoreState() {
-	if len(p.stack) == 0 {
-		panic("gui: unbalanced Painter.End")
+// paintWidget is the single GUI entry point for painting a Widget subtree.
+// Each visible Widget paints itself first; its visible children are then
+// painted in tree order with independent local drawing state.
+func paintWidget(widget Widget, p *painter) {
+	if widget == nil || !widget.Visible() {
+		return
 	}
-	last := len(p.stack) - 1
-	p.state = p.stack[last]
-	p.stack = p.stack[:last]
-	p.applyClip()
-	p.applyTransform()
+	p.paintWidget(widget)
 }
 
-// pushScope accumulates the widget's position into the coordinate offset and
-// sets the widget's clip to its bounds (in window-local coordinates),
-// intersected with the current clip. The scope clip is NOT modified here —
-// it was already captured by Begin. This ensures nested SubPainter clips
-// compose correctly: each widget's clip is intersected with the parent's
-// scope clip (saved by Begin), not with a modified scope clip.
-func (p *painter) pushScope(rectPos geometry.Point, localClip geometry.Rectangle) {
-	p.state.offset = p.state.offset.Add(rectPos)
-	windowClip := localClip.Translate(p.state.offset)
-	p.state.clip = p.state.scopeClip.Intersect(windowClip)
-	p.applyClip()
-	p.applyTransform()
+func (p *painter) paintWidget(widget Widget) {
+	parentState := p.state
+	saveDepth := len(p.saves)
+	p.frames = append(p.frames, painterFrame{widget: widget, saveDepth: saveDepth})
+
+	rect := widget.Rect()
+	offset := parentState.offset.Add(rect.Pos)
+	localBounds := geometry.Rect(0, 0, rect.Width, rect.Height)
+	scopeClip := parentState.scopeClip.Intersect(localBounds.Translate(offset))
+	p.state = painterState{
+		scopeClip: scopeClip,
+		clip:      scopeClip,
+		offset:    offset,
+		userXform: geometry.Identity(),
+	}
+	p.applyState()
+
+	defer func() {
+		// Every exit path, including a panic from Widget.Paint, restores the
+		// parent before control reaches a sibling or the host.
+		p.saves = p.saves[:saveDepth]
+		p.state = parentState
+		p.frames = p.frames[:len(p.frames)-1]
+		p.applyState()
+	}()
+
+	p.paintSelf(widget, saveDepth)
+
+	// WidgetBase owns the canonical child slice. Reading it directly avoids a
+	// defensive Children() copy for every Widget on every frame. Paint is
+	// required not to mutate the tree.
+	for _, child := range widget.base().children {
+		paintWidget(child, p)
+	}
+}
+
+func (p *painter) paintSelf(widget Widget, saveDepth int) {
+	entryState := p.state
+	defer func() {
+		recovered := recover()
+		unbalanced := len(p.saves) - saveDepth
+		p.saves = p.saves[:saveDepth]
+		p.state = entryState
+		p.applyState()
+
+		if recovered != nil {
+			panic(recovered)
+		}
+		if unbalanced != 0 {
+			panic(fmt.Sprintf(
+				"gui: %s returned with %d unbalanced Painter.Save call(s)",
+				widgetPaintName(widget), unbalanced,
+			))
+		}
+	}()
+
+	widget.Paint(p)
+}
+
+func widgetPaintName(widget Widget) string {
+	if id := widget.ID(); id != "" {
+		return fmt.Sprintf("%T.Paint (id %q)", widget, id)
+	}
+	return fmt.Sprintf("%T.Paint", widget)
+}
+
+func (p *painter) Save() {
+	if len(p.frames) == 0 {
+		panic("gui: Painter.Save called outside Widget.Paint")
+	}
+	p.saves = append(p.saves, p.state)
+}
+
+func (p *painter) Restore() {
+	if len(p.frames) == 0 {
+		panic("gui: Painter.Restore called outside Widget.Paint")
+	}
+	frame := p.frames[len(p.frames)-1]
+	if len(p.saves) <= frame.saveDepth {
+		panic(fmt.Sprintf(
+			"gui: Painter.Restore without matching Save in %s",
+			widgetPaintName(frame.widget),
+		))
+	}
+	last := len(p.saves) - 1
+	p.state = p.saves[last]
+	p.saves = p.saves[:last]
+	p.applyState()
+}
+
+func (p *painter) NewImage(src image.Image) (graphics.Image, error) {
+	return p.base.NewImage(src)
 }
 
 func (p *painter) SetClipRect(rect geometry.Rectangle) {
-	// rect is in widget-local coordinates; translate to window-local.
+	// Clip rectangles are layout-space rectangles: translate the Widget-local
+	// value to window coordinates, then restrict it to the immutable tree clip.
 	p.state.clip = p.state.scopeClip.Intersect(rect.Translate(p.state.offset))
 	p.applyClip()
 }
@@ -148,24 +205,29 @@ func (p *painter) SetTransform(matrix geometry.Transform) {
 	p.applyTransform()
 }
 
-// fullTransform returns the effective transform: widget-local coords → user
-// transform → offset translation → window-local coords.
+// fullTransform maps Widget-local coordinates through the Widget's own
+// transform and then into window coordinates.
 func (p *painter) fullTransform() geometry.Transform {
 	return geometry.Translate(p.state.offset.X, p.state.offset.Y).Multiply(p.state.userXform)
 }
 
+func (p *painter) applyState() {
+	p.applyClip()
+	p.applyTransform()
+}
+
 func (p *painter) applyTransform() {
-	p.base.SetTransform(p.fullTransform())
-}
-
-// --- Draw methods: coordinates are in widget-local space; the transform
-// handles translation to window-local coordinates. ---
-
-func (p *painter) Clear(color graphics.Color) {
-	if p.canDraw() {
-		p.base.FillRect(p.state.clip, color)
+	transform := p.fullTransform()
+	if p.xformApplied && p.appliedXform == transform {
+		return
 	}
+	p.base.SetTransform(transform)
+	p.appliedXform = transform
+	p.xformApplied = true
 }
+
+// Draw methods pass Widget-local coordinates through unchanged. The effective
+// transform applies their window offset in the platform Painter.
 
 func (p *painter) FillRect(rect geometry.Rectangle, brush graphics.Brush) {
 	if p.canDraw() {
@@ -256,136 +318,4 @@ func (p *painter) applyClip() {
 
 func emptyRect(rect geometry.Rectangle) bool {
 	return rect.Width <= 0 || rect.Height <= 0
-}
-
-// offsetPusher is implemented by painter to allow SubPainter to accumulate
-// coordinate offsets and set the widget scope clip in one atomic step.
-type offsetPusher interface {
-	pushScope(offset geometry.Point, localClip geometry.Rectangle)
-}
-
-// SubPainter returns a Painter scoped to the given rectangle within the parent
-// Painter's coordinate space. Widget-local coordinates (origin at rect.Pos)
-// are automatically translated to the parent's coordinate space via the
-// transform stack — draw methods receive widget-local coordinates directly.
-func SubPainter(base Painter, rect geometry.Rectangle) Painter {
-	return &subPainter{
-		base: base,
-		rect: rect,
-	}
-}
-
-type subPainter struct {
-	base Painter
-	rect geometry.Rectangle
-}
-
-func (p *subPainter) Begin() {
-	// Save state on the root painter without recursing through nested
-	// SubPainter.Begin calls (which would re-push offsets).
-	if saver, ok := findRootSaver(p.base); ok {
-		saver.saveState()
-	} else {
-		p.base.Begin()
-	}
-	// Push this widget's offset and establish its clip.
-	if op, ok := p.base.(offsetPusher); ok {
-		op.pushScope(p.rect.Pos, geometry.Rect(0, 0, p.rect.Width, p.rect.Height))
-	} else {
-		p.base.SetClipRect(geometry.Rect(0, 0, p.rect.Width, p.rect.Height))
-	}
-}
-
-func (p *subPainter) End() {
-	if saver, ok := findRootSaver(p.base); ok {
-		saver.restoreState()
-	} else {
-		p.base.End()
-	}
-}
-
-// findRootSaver walks the SubPainter chain to find the underlying painter.
-func findRootSaver(p Painter) (rootSaver, bool) {
-	for {
-		if s, ok := p.(rootSaver); ok {
-			return s, true
-		}
-		sp, ok := p.(*subPainter)
-		if !ok {
-			return nil, false
-		}
-		p = sp.base
-	}
-}
-
-func (p *subPainter) SetClipRect(rect geometry.Rectangle) {
-	p.base.SetClipRect(rect)
-}
-
-func (p *subPainter) SetTransform(matrix geometry.Transform) {
-	p.base.SetTransform(matrix)
-}
-
-// pushScope delegates to the underlying painter to accumulate the coordinate
-// offset and set the scope clip. This ensures nested SubPainter instances
-// compose their offsets correctly through the shared painter state.
-func (p *subPainter) pushScope(offset geometry.Point, localClip geometry.Rectangle) {
-	if op, ok := p.base.(offsetPusher); ok {
-		op.pushScope(offset, localClip)
-	}
-}
-
-// Delegate all draw methods to base. Coordinates are in widget-local space;
-// the transform (managed by painter) handles translation to window coordinates.
-
-func (p *subPainter) Clear(color graphics.Color) {
-	p.base.Clear(color)
-}
-
-func (p *subPainter) FillRect(rect geometry.Rectangle, brush graphics.Brush) {
-	p.base.FillRect(rect, brush)
-}
-
-func (p *subPainter) FillRoundRect(rect geometry.Rectangle, radius float32, brush graphics.Brush) {
-	p.base.FillRoundRect(rect, radius, brush)
-}
-
-func (p *subPainter) FillEllipse(center geometry.Point, xRadius, yRadius float32, brush graphics.Brush) {
-	p.base.FillEllipse(center, xRadius, yRadius, brush)
-}
-
-func (p *subPainter) FillPath(path graphics.Path, brush graphics.Brush) {
-	p.base.FillPath(path, brush)
-}
-
-func (p *subPainter) DrawLine(p0, p1 geometry.Point, strokeWidth float32, brush graphics.Brush) {
-	p.base.DrawLine(p0, p1, strokeWidth, brush)
-}
-
-func (p *subPainter) DrawRect(rect geometry.Rectangle, strokeWidth float32, brush graphics.Brush) {
-	p.base.DrawRect(rect, strokeWidth, brush)
-}
-
-func (p *subPainter) DrawRoundRect(rect geometry.Rectangle, radius, strokeWidth float32, brush graphics.Brush) {
-	p.base.DrawRoundRect(rect, radius, strokeWidth, brush)
-}
-
-func (p *subPainter) DrawEllipse(center geometry.Point, xRadius, yRadius, strokeWidth float32, brush graphics.Brush) {
-	p.base.DrawEllipse(center, xRadius, yRadius, strokeWidth, brush)
-}
-
-func (p *subPainter) DrawPath(path graphics.Path, strokeWidth float32, brush graphics.Brush) {
-	p.base.DrawPath(path, strokeWidth, brush)
-}
-
-func (p *subPainter) DrawTextLayout(origin geometry.Point, layout typography.TextLayout) {
-	p.base.DrawTextLayout(origin, layout)
-}
-
-func (p *subPainter) NewImage(src image.Image) (graphics.Image, error) {
-	return p.base.NewImage(src)
-}
-
-func (p *subPainter) DrawImage(rect geometry.Rectangle, img graphics.Image) {
-	p.base.DrawImage(rect, img)
 }

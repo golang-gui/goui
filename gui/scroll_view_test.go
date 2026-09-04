@@ -8,6 +8,7 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/graphics"
 )
 
 // --- ScrollView (viewport mode) ---
@@ -17,6 +18,14 @@ import (
 type mockWidget struct {
 	WidgetBase
 	size geometry.Size
+}
+
+type mockPaintWidget struct {
+	mockWidget
+}
+
+func (m *mockPaintWidget) Paint(p Painter) {
+	p.FillRect(geometry.Rect(0, 0, m.Rect().Width, m.Rect().Height), graphics.RGB(1, 2, 3))
 }
 
 func (m *mockWidget) Measure(c layout.Constraint) geometry.Size {
@@ -69,24 +78,24 @@ func TestScrollViewSetChildReplaces(t *testing.T) {
 	first := &mockWidget{size: geometry.Size{Width: 100, Height: 500}}
 	second := &mockWidget{size: geometry.Size{Width: 100, Height: 500}}
 
-	// SetChild is the Bin content API; it replaces the content slot. The
-	// scrollbars are structural children that remain regardless.
+	// SetChild is the Bin content API; it replaces the content inside the
+	// structural viewport. The viewport and scrollbars remain regardless.
 	sv.SetChild(first)
 	if sv.Child() != first {
 		t.Fatal("SetChild should set the content")
 	}
-	if !sliceContains(sv.Children(), first) {
-		t.Fatalf("content should be in children, got %v", sv.Children())
+	if first.Parent() != sv.viewport || !sliceContains(sv.viewport.Children(), first) {
+		t.Fatalf("content should be mounted under the viewport, parent=%v children=%v", first.Parent(), sv.viewport.Children())
 	}
 
 	sv.SetChild(second)
 	if sv.Child() != second {
 		t.Fatal("SetChild should replace the previous content")
 	}
-	if !sliceContains(sv.Children(), second) {
-		t.Fatalf("new content should be in children, got %v", sv.Children())
+	if second.Parent() != sv.viewport || !sliceContains(sv.viewport.Children(), second) {
+		t.Fatalf("new content should be mounted under the viewport, parent=%v children=%v", second.Parent(), sv.viewport.Children())
 	}
-	if sliceContains(sv.Children(), first) {
+	if first.Parent() != nil || sliceContains(sv.viewport.Children(), first) {
 		t.Fatal("previous content should be removed after replace")
 	}
 
@@ -95,8 +104,8 @@ func TestScrollViewSetChildReplaces(t *testing.T) {
 	if sv.Child() != nil {
 		t.Fatal("SetChild(nil) should clear the content")
 	}
-	if sliceContains(sv.Children(), first) || sliceContains(sv.Children(), second) {
-		t.Fatal("content should not be in children after clear")
+	if len(sv.viewport.Children()) != 0 || second.Parent() != nil {
+		t.Fatal("viewport should not retain content after clear")
 	}
 }
 
@@ -109,16 +118,54 @@ func sliceContains(ws []Widget, w Widget) bool {
 	return false
 }
 
-func TestScrollViewChildrenReflectsContent(t *testing.T) {
+func TestScrollViewChildrenContainStructuralViewport(t *testing.T) {
 	sv := NewScrollView()
 	content := &mockWidget{size: geometry.Size{Width: 100, Height: 500}}
 	sv.SetChild(content)
 
-	// Children() comes from Widget (not Container): content is reachable for
-	// hit-test traversal. The scrollbars are also structural children.
+	// The real tree includes a viewport between ScrollView and content so paint
+	// clipping and hit testing use the same structural boundary.
 	children := sv.Children()
-	if !sliceContains(children, content) {
-		t.Fatalf("Children should contain the content, got %v", children)
+	if !sliceContains(children, sv.viewport) || sliceContains(children, content) {
+		t.Fatalf("ScrollView children should contain the viewport, not content directly: %v", children)
+	}
+	if content.Parent() != sv.viewport || !sliceContains(sv.viewport.Children(), content) {
+		t.Fatalf("viewport should contain content, parent=%v children=%v", content.Parent(), sv.viewport.Children())
+	}
+}
+
+func TestScrollViewViewportDrivesPaintClipAndHitTesting(t *testing.T) {
+	sv := NewScrollView()
+	content := &mockPaintWidget{mockWidget: mockWidget{
+		size: geometry.Size{Width: 100, Height: 500},
+	}}
+	sv.SetChild(content)
+	sv.Measure(layout.Constraint{Max: geometry.Size{Width: 100, Height: 100}})
+	sv.Arrange(geometry.Rect(10, 20, 100, 100))
+	sv.SetScrollY(40)
+
+	wantViewport := geometry.Rect(0, 0, 100-scrollbarWidth, 100)
+	if sv.viewport.Rect() != wantViewport {
+		t.Fatalf("unexpected viewport rect: got %v want %v", sv.viewport.Rect(), wantViewport)
+	}
+
+	backend := new(recordingPainterBackend)
+	paintWidget(sv, newPainter(backend, geometry.Rect(0, 0, 200, 200)))
+	if len(backend.fills) != 1 {
+		t.Fatalf("expected one content fill, got %d", len(backend.fills))
+	}
+	fill := backend.fills[0]
+	if fill.clip != geometry.Rect(10, 20, 100-scrollbarWidth, 100) {
+		t.Fatalf("content must be clipped by the viewport, got %v", fill.clip)
+	}
+	if fill.transform != geometry.Translate(10, -20) {
+		t.Fatalf("unexpected scrolled content transform: %v", fill.transform)
+	}
+
+	// Scrollbars are later siblings than the viewport, so reverse-order hit
+	// testing reaches the vertical bar before any content beneath it.
+	if target := hitTest(sv, geometry.Point{X: 109, Y: 25}); target != sv.vbar {
+		t.Fatalf("point over the scrollbar should hit vbar, got %T", target)
 	}
 }
 
@@ -220,8 +267,8 @@ func TestScrollViewScrollableContentMode(t *testing.T) {
 	if content.layoutCalls[0].Y != 0 {
 		t.Fatalf("initial offset should be 0, got %v", content.layoutCalls[0])
 	}
-	// The content's own rect must be set to the content area, otherwise the
-	// SubPainter clip is empty and nothing draws.
+	// The content's own rect is the structural viewport area; its descendants
+	// are laid out virtually for the requested offset.
 	if got := content.Rect(); got != (geometry.Rect(0, 0, areaW, 100)) {
 		t.Fatalf("content rect should be the content area, got %v", got)
 	}

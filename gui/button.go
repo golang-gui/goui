@@ -113,7 +113,6 @@ func (b *Button) Paint(p Painter) {
 	}
 	rect := geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height)
 	paintStyledBox(p, rect, b.resolvedStyle())
-	b.PaintChildren(p)
 }
 
 func (b *Button) Snapshot() WidgetInfo {

@@ -120,7 +120,6 @@ func (l *Label) Paint(p Painter) {
 	if textLayout != nil {
 		p.DrawTextLayout(geometry.Point{}, textLayout)
 	}
-	l.PaintChildren(p)
 }
 
 func (l *Label) Snapshot() WidgetInfo {

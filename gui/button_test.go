@@ -58,9 +58,10 @@ func TestButtonUsesWidgetBaseLayoutAndPaint(t *testing.T) {
 		t.Fatalf("unexpected layout arrange rect: %+v", manager.arrangeRect)
 	}
 
-	button.Paint(new(testLabelPainter))
+	backend := new(recordingPainterBackend)
+	paintWidget(button, newPainter(backend, geometry.Rect(0, 0, 80, 30)))
 	if child.paints != 1 {
-		t.Fatalf("expected child paint, got %d", child.paints)
+		t.Fatalf("automatic traversal should paint the child, got %d", child.paints)
 	}
 }
 
@@ -455,7 +456,6 @@ func newPaintCountingWidget() *paintCountingWidget {
 
 func (w *paintCountingWidget) Paint(p Painter) {
 	w.paints++
-	w.PaintChildren(p)
 }
 
 type testButtonBackgroundPainter struct {
@@ -468,17 +468,14 @@ type testButtonBackgroundPainter struct {
 	drawBrush       graphics.Brush
 }
 
-func (p *testButtonBackgroundPainter) Begin() {}
-
-func (p *testButtonBackgroundPainter) End() {}
+func (p *testButtonBackgroundPainter) Save()    {}
+func (p *testButtonBackgroundPainter) Restore() {}
 
 func (p *testButtonBackgroundPainter) NewImage(src image.Image) (graphics.Image, error) {
 	return newTestNativeImage(src), nil
 }
 
 func (p *testButtonBackgroundPainter) SetClipRect(rect geometry.Rectangle) {}
-
-func (p *testButtonBackgroundPainter) Clear(color graphics.Color) {}
 
 func (p *testButtonBackgroundPainter) FillRect(rect geometry.Rectangle, brush graphics.Brush) {
 	p.rect = rect
