@@ -14,9 +14,11 @@ var (
 	dwmapiDll   = syscall.NewLazyDLL("dwmapi.dll")
 
 	// Kernel
-	procGetModuleHandleW = kernel32Dll.NewProc("GetModuleHandleW")
-	procLocalAlloc       = kernel32Dll.NewProc("LocalAlloc")
-	procLocalFree        = kernel32Dll.NewProc("LocalFree")
+	procGetModuleHandleW      = kernel32Dll.NewProc("GetModuleHandleW")
+	procLocalAlloc            = kernel32Dll.NewProc("LocalAlloc")
+	procLocalFree             = kernel32Dll.NewProc("LocalFree")
+	procWaitForSingleObjectEx = kernel32Dll.NewProc("WaitForSingleObjectEx")
+	procCloseHandle           = kernel32Dll.NewProc("CloseHandle")
 
 	// Window
 	procRegisterClassExW     = user32Dll.NewProc("RegisterClassExW")
@@ -127,6 +129,16 @@ func GetModuleHandle(name LPCWSTR) (HMODULE, error) {
 		return 0, err
 	}
 	return HMODULE(ret), nil
+}
+
+func WaitForSingleObjectEx(handle HANDLE, milliseconds DWORD, alertable BOOL) DWORD {
+	ret, _, _ := syscall.SyscallN(procWaitForSingleObjectEx.Addr(), uintptr(handle), uintptr(milliseconds), uintptr(alertable))
+	return DWORD(ret)
+}
+
+func CloseHandle(handle HANDLE) bool {
+	ret, _, _ := syscall.SyscallN(procCloseHandle.Addr(), uintptr(handle))
+	return ret != 0
 }
 
 func LocalAlloc(flags UINT, byteSize uint) unsafe.Pointer {
