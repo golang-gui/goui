@@ -15,6 +15,7 @@ import (
 	"github.com/golang-gui/goui/platform/windows/sdk/d2d1"
 	"github.com/golang-gui/goui/platform/windows/sdk/d3d11"
 	"github.com/golang-gui/goui/platform/windows/sdk/dxgi"
+	"github.com/golang-gui/goui/platform/windows/sdk/winapi"
 
 	"github.com/goexlib/mathx"
 )
@@ -34,25 +35,28 @@ type Painter struct {
 	shadowCache  []shadowCacheEntry
 	shadowClock  uint64
 
-	colorBrush  *d2d1.SolidColorBrush
-	color       d2d1.ColorF
-	linearStops *d2d1.GradientStopCollection
-	linearBrush *d2d1.LinearGradientBrush
-	linearStart graphics.Color
-	linearEnd   graphics.Color
-	hasLinear   bool
-	rect        d2d1.RectF
-	roundRect   d2d1.RoundRect
-	ellipse     d2d1.Ellipse
-	clip        d2d1.RectF
-	images      map[*imageResource]struct{}
-	width       uint32
-	height      uint32
-	scale       float32
-	transform   geometry.Transform
-	matrix      d2d1.Matrix3x2F
-	activeFrame bool
-	occluded    bool
+	colorBrush           *d2d1.SolidColorBrush
+	color                d2d1.ColorF
+	linearStops          *d2d1.GradientStopCollection
+	linearBrush          *d2d1.LinearGradientBrush
+	linearStart          graphics.Color
+	linearEnd            graphics.Color
+	hasLinear            bool
+	rect                 d2d1.RectF
+	roundRect            d2d1.RoundRect
+	ellipse              d2d1.Ellipse
+	clip                 d2d1.RectF
+	images               map[*imageResource]struct{}
+	width                uint32
+	height               uint32
+	scale                float32
+	transform            geometry.Transform
+	matrix               d2d1.Matrix3x2F
+	activeFrame          bool
+	deferredFrame        bool
+	occluded             bool
+	swapChainFlags       uint32
+	frameLatencyWaitable winapi.HANDLE
 }
 
 type imageResource struct {
@@ -87,10 +91,12 @@ func (i *imageResource) Destroy() {
 
 const shadowCacheCapacity = 16
 
-// GOUI paints complete frames in response to window messages. Do not make the
-// UI thread wait for an older frame's presentation interval; flip-model DXGI
-// can replace queued frames and let DWM compose the newest submitted frame.
+// GOUI paints complete frames in response to window messages. Present without
+// a sync interval so a newer frame can replace queued work; the waitable swap
+// chain below performs pacing before Direct2D starts rendering.
 const frameSyncInterval uint32 = 0
+
+const frameWaitTimeoutMillis winapi.DWORD = 1
 
 type shadowCacheKey struct{ Width, Height, Radius float32 }
 type shadowCacheEntry struct {
@@ -189,14 +195,29 @@ func (p *Painter) createDeviceResources() (err error) {
 	}
 	dxgiFactory := (*dxgi.Factory2)(unsafe.Pointer(unknown))
 	defer dxgiFactory.Release()
+	var frameLatencyErr error
 	for _, desc := range swapChainCandidates() {
 		p.swapChain, hr = dxgiFactory.CreateSwapChainForHwnd(&p.d3dDevice.Unknown, p.hwnd, &desc)
-		if hr.Succeeded() {
-			break
+		if hr.Failed() {
+			continue
 		}
+		p.swapChainFlags = desc.Flags
+		if desc.Flags&dxgi.DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT != 0 {
+			if err := p.configureFrameLatency(); err != nil {
+				frameLatencyErr = err
+				p.swapChain.Release()
+				p.swapChain = nil
+				p.swapChainFlags = 0
+				continue
+			}
+		}
+		break
 	}
-	if hr.Failed() {
+	if p.swapChain == nil {
 		p.releaseDeviceResources()
+		if frameLatencyErr != nil {
+			return fmt.Errorf("create waitable DXGI swap chain: %w", frameLatencyErr)
+		}
 		return fmt.Errorf("create DXGI swap chain: %v", hr)
 	}
 
@@ -216,7 +237,7 @@ func (p *Painter) createDeviceResources() (err error) {
 	return nil
 }
 
-func swapChainCandidates() [3]dxgi.SwapChainDesc1 {
+func swapChainCandidates() [5]dxgi.SwapChainDesc1 {
 	base := dxgi.SwapChainDesc1{
 		Format:      dxgi.DXGI_FORMAT_B8G8R8A8_UNORM,
 		SampleDesc:  dxgi.SampleDesc{Count: 1},
@@ -225,19 +246,43 @@ func swapChainCandidates() [3]dxgi.SwapChainDesc1 {
 		Scaling:     dxgi.DXGI_SCALING_NONE,
 		SwapEffect:  dxgi.DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
 		AlphaMode:   dxgi.DXGI_ALPHA_MODE_UNSPECIFIED,
+		Flags:       dxgi.DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT,
 	}
 
 	// DXGI_SCALING_NONE prevents DWM from stretching the last presented
 	// buffer while the HWND and swap-chain sizes briefly differ during a live
-	// resize. Keep the previous flip-model configuration as a compatibility
-	// fallback, followed by the legacy blt-model fallback. SCALING_NONE is not
-	// valid with DXGI_SWAP_EFFECT_DISCARD.
+	// resize. Prefer a frame-latency waitable swap chain so painting can be
+	// paced before Direct2D acquires a back buffer. Keep non-waitable flip-model
+	// configurations for Windows 8, then the legacy blt-model fallback.
+	// SCALING_NONE is not valid with DXGI_SWAP_EFFECT_DISCARD.
 	flipStretch := base
 	flipStretch.Scaling = dxgi.DXGI_SCALING_STRETCH
-	legacy := flipStretch
+	flipNoWait := base
+	flipNoWait.Flags = 0
+	flipStretchNoWait := flipStretch
+	flipStretchNoWait.Flags = 0
+	legacy := flipStretchNoWait
 	legacy.BufferCount = 1
 	legacy.SwapEffect = dxgi.DXGI_SWAP_EFFECT_DISCARD
-	return [3]dxgi.SwapChainDesc1{base, flipStretch, legacy}
+	return [5]dxgi.SwapChainDesc1{base, flipStretch, flipNoWait, flipStretchNoWait, legacy}
+}
+
+func (p *Painter) configureFrameLatency() error {
+	var unknown *com.Unknown
+	if hr := p.swapChain.QueryInterface(dxgi.IID_IDXGISwapChain2, &unknown); hr.Failed() {
+		return fmt.Errorf("query IDXGISwapChain2: %v", hr)
+	}
+	swapChain2 := (*dxgi.SwapChain2)(unsafe.Pointer(unknown))
+	defer swapChain2.Release()
+	if hr := swapChain2.SetMaximumFrameLatency(1); hr.Failed() {
+		return fmt.Errorf("set maximum frame latency: %v", hr)
+	}
+	handle := swapChain2.GetFrameLatencyWaitableObject()
+	if handle == 0 {
+		return fmt.Errorf("get frame latency waitable object: null handle")
+	}
+	p.frameLatencyWaitable = winapi.HANDLE(handle)
+	return nil
 }
 
 func (p *Painter) createTarget(scale float32) com.HRESULT {
@@ -299,6 +344,7 @@ func (p *Painter) Destroy() {
 
 func (p *Painter) releaseDeviceResources() {
 	p.activeFrame = false
+	p.deferredFrame = false
 	p.occluded = false
 	p.releaseImageNatives()
 	p.releaseShadowResources()
@@ -329,10 +375,12 @@ func (p *Painter) releaseDeviceResources() {
 		p.render.Release()
 		p.render = nil
 	}
+	p.closeFrameLatencyWaitable()
 	if p.swapChain != nil {
 		p.swapChain.Release()
 		p.swapChain = nil
 	}
+	p.swapChainFlags = 0
 	if p.d2dDevice != nil {
 		p.d2dDevice.Release()
 		p.d2dDevice = nil
@@ -346,6 +394,14 @@ func (p *Painter) releaseDeviceResources() {
 		p.d3dDevice = nil
 	}
 	p.width, p.height = 0, 0
+}
+
+func (p *Painter) closeFrameLatencyWaitable() {
+	if p.frameLatencyWaitable == 0 {
+		return
+	}
+	winapi.CloseHandle(p.frameLatencyWaitable)
+	p.frameLatencyWaitable = 0
 }
 
 func (p *Painter) NewImage(src image.Image) (graphics.Image, error) {
@@ -471,6 +527,7 @@ func (p *Painter) destroyAllImages() {
 
 func (p *Painter) Begin(width, height, scale float32) {
 	p.activeFrame = false
+	p.deferredFrame = false
 	if width <= 0 || height <= 0 {
 		return
 	}
@@ -487,13 +544,18 @@ func (p *Painter) Begin(width, height, scale float32) {
 			return
 		}
 	}
+	if !p.acquireFrameSlot() {
+		return
+	}
 	w, h := uint32(width), uint32(height)
 	scaleChanged := p.scale != 0 && p.scale != scale
 	targetChanged := p.target == nil || p.width != w || p.height != h || scaleChanged
 	if targetChanged {
 		p.releaseTarget()
 		if p.width != w || p.height != h {
-			if hr := p.swapChain.ResizeBuffers(0, w, h, dxgi.DXGI_FORMAT_UNKNOWN, 0); hr.Failed() {
+			// ResizeBuffers must receive the same waitable-object flag that was
+			// used to create the swap chain.
+			if hr := p.swapChain.ResizeBuffers(0, w, h, dxgi.DXGI_FORMAT_UNKNOWN, p.swapChainFlags); hr.Failed() {
 				p.handleDeviceFailure(hr)
 				return
 			}
@@ -516,8 +578,34 @@ func (p *Painter) Begin(width, height, scale float32) {
 	p.SetTransform(geometry.Identity())
 }
 
+func (p *Painter) acquireFrameSlot() bool {
+	if p.frameLatencyWaitable == 0 {
+		return true
+	}
+
+	switch winapi.WaitForSingleObjectEx(p.frameLatencyWaitable, frameWaitTimeoutMillis, winapi.FALSE) {
+	case winapi.WAIT_OBJECT_0:
+		return true
+	case winapi.WAIT_TIMEOUT:
+		// WM_PAINT runs on the UI thread, so do not block it for a complete
+		// refresh interval. Coalesce another paint and render once DXGI has a
+		// back-buffer slot instead of letting EndDraw absorb the queue stall.
+		p.deferredFrame = true
+		return false
+	default:
+		// A failed wait must not make the window permanently blank. Drop the
+		// pacing handle and continue with the compatible non-waiting path.
+		p.closeFrameLatencyWaitable()
+		return true
+	}
+}
+
 func (p *Painter) End() {
 	if !p.activeFrame {
+		if p.deferredFrame {
+			p.deferredFrame = false
+			_ = winapi.InvalidateRect(winapi.HWND(p.hwnd), nil, winapi.FALSE)
+		}
 		return
 	}
 	// Defensive: pop any clip the GUI layer forgot to restore. D2D requires
