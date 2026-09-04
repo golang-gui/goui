@@ -16,7 +16,8 @@ type Popup interface {
 	// SetPosition sets the popup's top-left relative to the owner window's
 	// content origin, in logical coordinates.
 	SetPosition(x, y float32)
-	// SetSize sets the popup's logical size.
+	// SetSize requests the popup's logical size. The authoritative client size
+	// arrives via the platform event handler's SizeEvent.
 	SetSize(width, height float32)
 
 	Show() error
