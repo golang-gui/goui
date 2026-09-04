@@ -101,7 +101,7 @@ func newWindow(app *application) (*window, error) {
 	}
 	win.platformWindow = platformWindow
 
-	win.painter, err = app.platform.NewPainter(platformWindow, app.typo)
+	win.painter, err = app.platform.NewPainter(platformWindow)
 	if err != nil {
 		platformWindow.Destroy()
 		win.platformWindow = nil

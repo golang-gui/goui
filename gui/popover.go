@@ -244,7 +244,7 @@ func (p *popover) createNative(win Window) error {
 		p.owner = nil
 		return fmt.Errorf("create platform popup: %w", err)
 	}
-	painter, err := App.Platform().NewPainter(pp, App.Typography())
+	painter, err := App.Platform().NewPainter(pp)
 	if err != nil {
 		pp.Destroy()
 		p.owner = nil

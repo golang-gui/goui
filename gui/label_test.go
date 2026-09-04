@@ -7,6 +7,7 @@ import (
 
 	"github.com/golang-gui/goui/core/colors"
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
@@ -236,10 +237,6 @@ func (c *testTypography) NewTextLayout(text string, format typography.TextFormat
 	return layout, nil
 }
 
-func (c *testTypography) DrawTextLayout(layout typography.TextLayout, scale float32, buf []byte) (typography.TextBitmap, error) {
-	return typography.TextBitmap{}, nil
-}
-
 type testTextLayout struct {
 	text        string
 	format      typography.TextFormat
@@ -249,10 +246,28 @@ type testTextLayout struct {
 	lines       []typography.TextLine
 	clusters    []typography.TextCluster
 	destroyed   bool
+	changedSig  signal.Signal0
+	destroySig  signal.Signal0
 }
 
 func (l *testTextLayout) Destroy() {
+	if l.destroyed {
+		return
+	}
 	l.destroyed = true
+	l.destroySig.Emit()
+}
+
+func (l *testTextLayout) Rasterize(float32, []byte) (typography.TextBitmap, error) {
+	return typography.TextBitmap{}, nil
+}
+
+func (l *testTextLayout) ConnectChanged(fn func()) signal.Handle {
+	return l.changedSig.Connect(fn)
+}
+
+func (l *testTextLayout) ConnectDestroy(fn func()) signal.Handle {
+	return l.destroySig.Connect(fn)
 }
 
 func (l *testTextLayout) Text() string {
@@ -270,27 +285,36 @@ func (l *testTextLayout) Size() (maxWidth, maxHeight float32) {
 func (l *testTextLayout) SetSize(maxWidth, maxHeight float32) {
 	l.width = maxWidth
 	l.height = maxHeight
+	l.changedSig.Emit()
 }
 
 func (l *testTextLayout) SetTextAlignment(align typography.TextAlignment) {
 	l.format.TextAlign = align
+	l.changedSig.Emit()
 }
 
 func (l *testTextLayout) SetWrapMode(wrap typography.WrapMode) {
 	l.format.WrapMode = wrap
+	l.changedSig.Emit()
 }
 
 func (l *testTextLayout) SetTextFont(start, length int, font typography.FontInfo) {
 	l.format.Font = font
+	l.changedSig.Emit()
 }
 
 func (l *testTextLayout) SetTextColor(start, length int, c color.Color) {
 	l.format.TextColor = c
+	l.changedSig.Emit()
 }
 
-func (l *testTextLayout) SetUnderline(start, length int, underline bool) {}
+func (l *testTextLayout) SetUnderline(start, length int, underline bool) {
+	l.changedSig.Emit()
+}
 
-func (l *testTextLayout) SetStrikethrough(start, length int, strike bool) {}
+func (l *testTextLayout) SetStrikethrough(start, length int, strike bool) {
+	l.changedSig.Emit()
+}
 
 func (l *testTextLayout) MeasureSize() (width, height float32) {
 	return l.measureSize.Width, l.measureSize.Height
@@ -308,6 +332,10 @@ type testLabelPainter struct {
 func (p *testLabelPainter) Begin() {}
 
 func (p *testLabelPainter) End() {}
+
+func (p *testLabelPainter) NewImage(src image.Image) (graphics.Image, error) {
+	return newTestNativeImage(src), nil
+}
 
 func (p *testLabelPainter) SetClipRect(rect geometry.Rectangle) {}
 
@@ -343,5 +371,5 @@ func (p *testLabelPainter) DrawTextLayout(origin geometry.Point, layout typograp
 	p.textLayout = layout
 }
 
-func (p *testLabelPainter) DrawImage(rect geometry.Rectangle, img image.Image) {}
-func (p *testLabelPainter) SetTransform(matrix geometry.Transform)             {}
+func (p *testLabelPainter) DrawImage(rect geometry.Rectangle, img graphics.Image) {}
+func (p *testLabelPainter) SetTransform(matrix geometry.Transform)                {}

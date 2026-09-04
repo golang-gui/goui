@@ -15,6 +15,7 @@ type Painter interface {
 	// End marks the end of a painting scope, restoring clip and transform to
 	// the state captured by Begin.
 	End()
+	NewImage(src image.Image) (graphics.Image, error)
 	SetClipRect(rect geometry.Rectangle)
 	SetTransform(matrix geometry.Transform)
 	Clear(color graphics.Color)
@@ -28,7 +29,11 @@ type Painter interface {
 	DrawEllipse(center geometry.Point, xRadius, yRadius, strokeWidth float32, brush graphics.Brush)
 	DrawPath(path graphics.Path, strokeWidth float32, brush graphics.Brush)
 	DrawTextLayout(origin geometry.Point, layout typography.TextLayout)
-	DrawImage(rect geometry.Rectangle, img image.Image)
+	DrawImage(rect geometry.Rectangle, img graphics.Image)
+}
+
+func (p *painter) NewImage(src image.Image) (graphics.Image, error) {
+	return p.base.NewImage(src)
 }
 
 // paintWidget is the only entry point used by the GUI traversal to invoke a
@@ -222,7 +227,7 @@ func (p *painter) DrawTextLayout(origin geometry.Point, layout typography.TextLa
 	}
 }
 
-func (p *painter) DrawImage(rect geometry.Rectangle, img image.Image) {
+func (p *painter) DrawImage(rect geometry.Rectangle, img graphics.Image) {
 	if p.canDraw() {
 		p.base.DrawImage(rect, img)
 	}
@@ -377,6 +382,10 @@ func (p *subPainter) DrawTextLayout(origin geometry.Point, layout typography.Tex
 	p.base.DrawTextLayout(origin, layout)
 }
 
-func (p *subPainter) DrawImage(rect geometry.Rectangle, img image.Image) {
+func (p *subPainter) NewImage(src image.Image) (graphics.Image, error) {
+	return p.base.NewImage(src)
+}
+
+func (p *subPainter) DrawImage(rect geometry.Rectangle, img graphics.Image) {
 	p.base.DrawImage(rect, img)
 }
