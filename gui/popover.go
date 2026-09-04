@@ -235,7 +235,7 @@ func (p *popover) createNative(win Window) error {
 		return fmt.Errorf("popover: application is not created")
 	}
 	p.owner = win
-	p.measureAndSize() // sizes p.width/height from content
+	p.measureAndSize() // carries the requested content size into native creation
 
 	// Platform + typography come from the app (global escape hatches); the owner
 	// platform window comes from the host's PlatformWindow escape hatch.
@@ -295,15 +295,25 @@ func (p *popover) measureAndSize() {
 	// its content, independent of the owner window's size.
 	const loose = 1 << 14
 	size := p.widget.Measure(layout.Loose(geometry.Size{Width: loose, Height: loose}))
-	p.width, p.height = size.Width, size.Height
-	if p.width < 1 {
-		p.width = 1
+	width, height := size.Width, size.Height
+	if width < 1 {
+		width = 1
 	}
-	if p.height < 1 {
-		p.height = 1
+	if height < 1 {
+		height = 1
 	}
 	if p.platformPopup != nil {
-		p.platformPopup.SetSize(p.width, p.height)
+		// The platform's SizeEvent is authoritative: native surfaces have an
+		// integer physical size, so their logical size can differ slightly from
+		// the requested DIP size after DPI conversion. Keep the current actual
+		// size until that event arrives. In particular, resizing to the same
+		// physical dimensions may produce no event at all.
+		p.platformPopup.SetSize(width, height)
+	} else {
+		// Before native creation these fields carry the requested size into
+		// Platform.NewPopup. Creation's SizeEvent replaces them with the actual
+		// client size.
+		p.width, p.height = width, height
 	}
 	p.layoutDirty = true
 }

@@ -1,11 +1,34 @@
 package gui
 
 import (
+	"image"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/events"
 )
+
+type popoverMeasureWidget struct {
+	WidgetBase
+	size geometry.Size
+}
+
+func (w *popoverMeasureWidget) Measure(layout.Constraint) geometry.Size { return w.size }
+
+type recordingPlatformPopup struct {
+	width  float32
+	height float32
+}
+
+func (*recordingPlatformPopup) NativeHandle() uintptr           { return 1 }
+func (*recordingPlatformPopup) Draw(image.Image) error          { return nil }
+func (*recordingPlatformPopup) RequestPaint() error             { return nil }
+func (*recordingPlatformPopup) Destroy()                        {}
+func (*recordingPlatformPopup) SetPosition(float32, float32)    {}
+func (p *recordingPlatformPopup) SetSize(width, height float32) { p.width, p.height = width, height }
+func (*recordingPlatformPopup) Show() error                     { return nil }
+func (*recordingPlatformPopup) Hide() error                     { return nil }
 
 // absOrigin sums each widget's parent-relative rect origin up the parent chain.
 func TestPopoverAbsOrigin(t *testing.T) {
@@ -99,6 +122,28 @@ func TestPopoverHostsWidgetForRepaintAndLayout(t *testing.T) {
 	content.RequestLayout()
 	if !p.layoutDirty {
 		t.Fatalf("RequestLayout on popover content should reach the popover (mark it dirty)")
+	}
+}
+
+func TestPopoverResizeKeepsAuthoritativeNativeSizeUntilSizeEvent(t *testing.T) {
+	native := &recordingPlatformPopup{}
+	p := &popover{
+		rootBase:      rootBase{width: 120, height: 50, pixelWidth: 120, pixelHeight: 50},
+		platformPopup: native,
+		widget:        &popoverMeasureWidget{size: geometry.Size{Width: 120, Height: 49.65625}},
+	}
+
+	p.measureAndSize()
+	if native.width != 120 || native.height != 49.65625 {
+		t.Fatalf("native size request = %gx%g, want 120x49.65625", native.width, native.height)
+	}
+	if p.width != 120 || p.height != 50 {
+		t.Fatalf("host size changed before SizeEvent: %gx%g, want authoritative 120x50", p.width, p.height)
+	}
+
+	p.onEvent(events.SizeEvent{Width: 120, Height: 51, PixelWidth: 120, PixelHeight: 51})
+	if p.width != 120 || p.height != 51 {
+		t.Fatalf("host size after SizeEvent = %gx%g, want 120x51", p.width, p.height)
 	}
 }
 

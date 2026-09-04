@@ -58,7 +58,8 @@ type Platform interface {
 	// authoritative size always arrives via SizeEvent.
 	NewWindow(width, height float32, handler EventHandler) (Window, error)
 	// NewPopup creates a borderless popup owned by owner. width/height is its
-	// authoritative logical (DIP) size; use SetSize to change it later.
+	// requested logical (DIP) size; native pixel quantization may adjust it, and
+	// the authoritative logical and physical client size arrives via SizeEvent.
 	NewPopup(owner Window, width, height float32, handler EventHandler) (Popup, error)
 	NewEventLoop() (EventLoop, error)
 	NewTypography() (typography.Context, error)

@@ -7,8 +7,9 @@ import (
 
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
-
 	"github.com/golang-gui/goui/platform/windows/sdk/winapi"
+
+	"github.com/goexlib/mathx"
 )
 
 // Popup is a borderless WS_POPUP window owned by another window. It reuses the
@@ -29,16 +30,10 @@ func newPopup(owner common.Window, width, height float32, onEvent events.EventHa
 	ownerHwnd := winapi.HWND(owner.NativeHandle())
 
 	// WS_POPUP has no frame, so the window size equals the client size. Create at
-	// the authoritative physical size (owner's DPI) so the GL drawable is
-	// right-sized from the start.
+	// the minimum containing physical size (using the owner's DPI) so the native
+	// paint surface is large enough from the start.
 	scale := hwndScale(ownerHwnd)
-	w, h := int(width*scale), int(height*scale)
-	if w < 1 {
-		w = 1
-	}
-	if h < 1 {
-		h = 1
-	}
+	w, h := popupPhysicalExtent(width, scale), popupPhysicalExtent(height, scale)
 
 	var err error
 	win.hwnd, err = winapi.CreateWindowEx(
@@ -92,16 +87,22 @@ func (p *Popup) SetSize(width, height float32) {
 		return
 	}
 	scale := p.ownerScale()
-	w := int(width * scale)
-	h := int(height * scale)
-	if w < 1 {
-		w = 1
-	}
-	if h < 1 {
-		h = 1
-	}
+	w := popupPhysicalExtent(width, scale)
+	h := popupPhysicalExtent(height, scale)
 	winapi.SetWindowPos(p.win.hwnd, 0, 0, 0, w, h,
 		winapi.SWP_NOMOVE|winapi.SWP_NOZORDER|winapi.SWP_NOACTIVATE)
+}
+
+// popupPhysicalExtent converts a requested logical extent to the minimum
+// integer pixel extent that can contain it. Truncation (or rounding down) makes
+// the native client area smaller than its measured Direct2D/DirectWrite content
+// and can incorrectly turn an exact-fit viewport into a scrollable one.
+func popupPhysicalExtent(logical, scale float32) int {
+	pixels := int(mathx.Ceil(logical * scale))
+	if pixels < 1 {
+		return 1
+	}
+	return pixels
 }
 
 // ownerScale returns the owner window's device scale so popup logical coords map
