@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image"
+	"reflect"
 
 	"github.com/golang-gui/goui/gui"
 )
@@ -32,7 +33,17 @@ func (v *ImageView) Mount(BuildContext) gui.Widget {
 
 func (v *ImageView) Update(_ BuildContext, widget gui.Widget) {
 	imageWidget := widget.(*gui.Image)
-	imageWidget.SetImage(v.img)
+	if !sameImageSource(imageWidget.Image(), v.img) {
+		imageWidget.SetImage(v.img)
+	}
 }
 
 func (v *ImageView) Unmount(BuildContext, gui.Widget) {}
+
+func sameImageSource(a, b image.Image) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	ta := reflect.TypeOf(a)
+	return ta == reflect.TypeOf(b) && ta.Comparable() && a == b
+}
