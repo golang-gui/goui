@@ -299,6 +299,10 @@ func (p *testGraphicsPainter) Name() string { return "test" }
 
 func (p *testGraphicsPainter) Destroy() {}
 
+func (p *testGraphicsPainter) NewImage(src image.Image) (graphics.Image, error) {
+	return newTestNativeImage(src), nil
+}
+
 func (p *testGraphicsPainter) Begin(width, height, scale float32) {
 	p.begins++
 }
@@ -310,6 +314,9 @@ func (p *testGraphicsPainter) End() {
 func (p *testGraphicsPainter) SetClipRect(rect graphics.Rectangle) {}
 
 func (p *testGraphicsPainter) Clear(color graphics.Color) {}
+
+func (p *testGraphicsPainter) DrawBoxShadow(rect graphics.Rectangle, radius float32, shadow graphics.BoxShadow) {
+}
 
 func (p *testGraphicsPainter) FillRect(rect graphics.Rectangle, brush graphics.Brush) {}
 
@@ -338,5 +345,5 @@ func (p *testGraphicsPainter) DrawPath(path graphics.Path, strokeWidth float32, 
 
 func (p *testGraphicsPainter) DrawTextLayout(origin graphics.Point, layout typography.TextLayout) {}
 
-func (p *testGraphicsPainter) DrawImage(rect graphics.Rectangle, img image.Image) {}
-func (p *testGraphicsPainter) SetTransform(matrix geometry.Transform)             {}
+func (p *testGraphicsPainter) DrawImage(rect graphics.Rectangle, img graphics.Image) {}
+func (p *testGraphicsPainter) SetTransform(matrix geometry.Transform)                {}

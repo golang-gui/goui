@@ -168,6 +168,9 @@ type recordingPainterBackend struct {
 
 func (p *recordingPainterBackend) Name() string { return "recording" }
 func (p *recordingPainterBackend) Destroy()     {}
+func (p *recordingPainterBackend) NewImage(src image.Image) (graphics.Image, error) {
+	return newTestNativeImage(src), nil
+}
 func (p *recordingPainterBackend) Begin(width, height, scale float32) {
 }
 func (p *recordingPainterBackend) End() {}
@@ -175,6 +178,8 @@ func (p *recordingPainterBackend) SetClipRect(rect graphics.Rectangle) {
 	p.clip = rect
 }
 func (p *recordingPainterBackend) Clear(color graphics.Color) {}
+func (p *recordingPainterBackend) DrawBoxShadow(rect graphics.Rectangle, radius float32, shadow graphics.BoxShadow) {
+}
 func (p *recordingPainterBackend) FillRect(rect graphics.Rectangle, brush graphics.Brush) {
 	p.fills = append(p.fills, recordedFill{rect: rect, clip: p.clip})
 }
@@ -195,8 +200,8 @@ func (p *recordingPainterBackend) DrawPath(path graphics.Path, strokeWidth float
 }
 func (p *recordingPainterBackend) DrawTextLayout(origin graphics.Point, layout typography.TextLayout) {
 }
-func (p *recordingPainterBackend) DrawImage(rect graphics.Rectangle, img image.Image) {}
-func (p *recordingPainterBackend) SetTransform(matrix geometry.Transform)             {}
+func (p *recordingPainterBackend) DrawImage(rect graphics.Rectangle, img graphics.Image) {}
+func (p *recordingPainterBackend) SetTransform(matrix geometry.Transform)                {}
 
 type scopeTestWidget struct {
 	WidgetBase

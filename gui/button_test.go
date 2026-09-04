@@ -472,6 +472,10 @@ func (p *testButtonBackgroundPainter) Begin() {}
 
 func (p *testButtonBackgroundPainter) End() {}
 
+func (p *testButtonBackgroundPainter) NewImage(src image.Image) (graphics.Image, error) {
+	return newTestNativeImage(src), nil
+}
+
 func (p *testButtonBackgroundPainter) SetClipRect(rect geometry.Rectangle) {}
 
 func (p *testButtonBackgroundPainter) Clear(color graphics.Color) {}
@@ -517,5 +521,5 @@ func (p *testButtonBackgroundPainter) DrawPath(path graphics.Path, strokeWidth f
 func (p *testButtonBackgroundPainter) DrawTextLayout(origin geometry.Point, layout typography.TextLayout) {
 }
 
-func (p *testButtonBackgroundPainter) DrawImage(rect geometry.Rectangle, img image.Image) {}
-func (p *testButtonBackgroundPainter) SetTransform(matrix geometry.Transform)             {}
+func (p *testButtonBackgroundPainter) DrawImage(rect geometry.Rectangle, img graphics.Image) {}
+func (p *testButtonBackgroundPainter) SetTransform(matrix geometry.Transform)                {}
