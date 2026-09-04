@@ -259,7 +259,6 @@ func (mc *menuContent) Paint(p Painter) {
 	}
 	rect := geometry.Rect(0, 0, mc.Rect().Width, mc.Rect().Height)
 	paintStyledBox(p, rect, ResolveStyle(styleNameMenu, style.PartDefault, style.Normal))
-	mc.PaintChildren(p)
 }
 
 // menuItemDelegate renders model items into menuItemRow widgets.
@@ -338,8 +337,10 @@ func (r *menuItemRow) bind(mi *MenuItem) {
 	r.setPressed(false)
 	if mi.Separator() {
 		r.label.SetText("")
+		r.label.SetVisible(false)
 	} else {
 		r.label.SetText(mi.Label())
+		r.label.SetVisible(true)
 	}
 	r.RequestLayout()
 }
@@ -376,7 +377,6 @@ func (r *menuItemRow) Paint(p Painter) {
 		return
 	}
 	paintStyledBox(p, rect, r.resolvedStyle())
-	r.PaintChildren(p)
 }
 
 func (r *menuItemRow) resolvedStyle() style.Style {
@@ -514,7 +514,6 @@ func (b *MenuButton) Paint(p Painter) {
 	}
 	rect := geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height)
 	paintStyledBox(p, rect, b.resolvedStyle())
-	b.PaintChildren(p)
 }
 
 func (b *MenuButton) resolvedStyle() style.Style {

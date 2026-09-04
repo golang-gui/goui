@@ -329,17 +329,14 @@ type testLabelPainter struct {
 	textLayout typography.TextLayout
 }
 
-func (p *testLabelPainter) Begin() {}
-
-func (p *testLabelPainter) End() {}
+func (p *testLabelPainter) Save()    {}
+func (p *testLabelPainter) Restore() {}
 
 func (p *testLabelPainter) NewImage(src image.Image) (graphics.Image, error) {
 	return newTestNativeImage(src), nil
 }
 
 func (p *testLabelPainter) SetClipRect(rect geometry.Rectangle) {}
-
-func (p *testLabelPainter) Clear(color graphics.Color) {}
 
 func (p *testLabelPainter) FillRect(rect geometry.Rectangle, brush graphics.Brush) {}
 

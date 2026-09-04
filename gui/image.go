@@ -58,7 +58,6 @@ func (i *Image) Paint(p Painter) {
 			p.DrawImage(geometry.Rect(0, 0, float32(width), float32(height)), i.paintImage)
 		}
 	}
-	i.PaintChildren(p)
 }
 
 func (i *Image) releaseImage() {

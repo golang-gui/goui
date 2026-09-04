@@ -104,5 +104,5 @@ func (b *rootBase) paintFrame(content Widget) {
 	defer b.painter.End()
 	b.painter.Clear(graphics.RGB(255, 255, 255))
 	guiPainter := newPainter(b.painter, geometry.Rect(0, 0, size.Width, size.Height))
-	paintWidget(content, SubPainter(guiPainter, content.Rect()))
+	paintWidget(content, guiPainter)
 }

@@ -27,11 +27,12 @@ type Scrollable interface {
 // mode: the tree is arranged at a negative offset and clipped to the viewport).
 //
 // ScrollView is a Bin: SetChild/Child manage the content slot. The two
-// ScrollBars are internal structural children (attached via setParent to
-// bypass the Bin guard); they are not exposed through Child/SetChild.
+// ScrollBars and the content viewport are internal structural children; they
+// are not exposed through Child/SetChild.
 type ScrollView struct {
 	WidgetBase
 	content       Widget
+	viewport      *scrollViewport
 	scrollY       float32
 	scrollX       float32 // horizontal scroll offset
 	contentWidth  float32 // content size cached by Measure (viewport mode)
@@ -42,6 +43,13 @@ type ScrollView struct {
 	hbar          *ScrollBar // horizontal scrollbar (bottom row)
 }
 
+// scrollViewport gives scrolling content a real structural clipping boundary.
+// It deliberately has no visual behavior; the GUI traversal paints its child
+// automatically and intersects that child's clip with the viewport bounds.
+type scrollViewport struct {
+	WidgetBase
+}
+
 const scrollbarWidth = 6
 const scrollbarMinThumb = 20
 
@@ -49,14 +57,16 @@ func NewScrollView() *ScrollView {
 	sv := new(ScrollView)
 	sv.SetMainWeight(1) // vertical viewport: flexes in a linear parent
 
+	sv.viewport = new(scrollViewport)
 	sv.vbar = NewScrollBar(layout.DirectionVertical)
 	sv.hbar = NewScrollBar(layout.DirectionHorizontal)
 	sv.vbar.ConnectChange(func(v float32) { sv.SetScrollY(v) })
 	sv.hbar.ConnectChange(func(v float32) { sv.SetScrollX(v) })
 
-	// Attach the scrollbars as structural children, bypassing the Bin guard
-	// (SetChild/Child manage only the content slot). They must be in the
-	// widget tree for hit-testing to route pointer events to them.
+	// Attach structural children in paint order: content viewport first, then
+	// scrollbars above it. setParent bypasses the Bin guard because SetChild /
+	// Child describe only the public content slot.
+	sv.viewport.base().setParent(sv.viewport, sv)
 	sv.vbar.base().setParent(sv.vbar, sv)
 	sv.hbar.base().setParent(sv.hbar, sv)
 
@@ -81,11 +91,11 @@ func (sv *ScrollView) SetChild(content Widget) {
 		return
 	}
 	if sv.content != nil {
-		sv.WidgetBase.RemoveChild(sv.content)
+		sv.viewport.WidgetBase.RemoveChild(sv.content)
 	}
 	sv.content = content
 	if content != nil {
-		sv.WidgetBase.AddChild(sv, content)
+		sv.viewport.WidgetBase.AddChild(sv.viewport, content)
 	}
 	sv.RequestLayout()
 }
@@ -271,6 +281,7 @@ func (sv *ScrollView) Arrange(rect geometry.Rectangle) {
 		sv.clampScroll()
 		sv.arrangeContent()
 	}
+	sv.viewport.Arrange(sv.contentAreaRect())
 	sv.layoutScrollBars(rect)
 	sv.syncBars()
 }
@@ -383,28 +394,5 @@ func (sv *ScrollView) clampScroll() {
 	}
 	if sv.scrollX < 0 {
 		sv.scrollX = 0
-	}
-}
-
-// Paint draws the scrollbars first (each in its own rect via a self-contained
-// SubPainter save/restore), then narrows the clip to the content area and
-// paints the content. This keeps content from drawing into the scrollbar
-// region — the bars occupy their own layout space, not an overlay.
-func (sv *ScrollView) Paint(p Painter) {
-	if !sv.Visible() {
-		return
-	}
-	if sv.vbar.Visible() {
-		paintWidget(sv.vbar, SubPainter(p, sv.vbar.Rect()))
-	}
-	if sv.hbar.Visible() {
-		paintWidget(sv.hbar, SubPainter(p, sv.hbar.Rect()))
-	}
-	if sv.content != nil {
-		area := sv.contentAreaRect()
-		if area.Width > 0 && area.Height > 0 {
-			p.SetClipRect(area)
-			paintWidget(sv.content, SubPainter(p, sv.content.Rect()))
-		}
 	}
 }
