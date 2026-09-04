@@ -50,7 +50,8 @@ type scrollViewport struct {
 	WidgetBase
 }
 
-const scrollbarWidth = 6
+const scrollbarWidth = 8
+const scrollbarRadius = scrollbarWidth / 2
 const scrollbarMinThumb = 20
 
 func NewScrollView() *ScrollView {
