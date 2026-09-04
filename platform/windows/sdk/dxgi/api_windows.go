@@ -6,9 +6,10 @@ import (
 )
 
 var (
-	IID_IDXGIDevice   = com.DefineGuid(0x54ec77fa, 0x1377, 0x44e6, 0x8c, 0x32, 0x88, 0xfd, 0x5f, 0x44, 0xc8, 0x4c)
-	IID_IDXGIFactory2 = com.DefineGuid(0x50c83a1c, 0xe072, 0x4c48, 0x87, 0xb0, 0x36, 0x30, 0xfa, 0x36, 0xa6, 0xd0)
-	IID_IDXGISurface  = com.DefineGuid(0xcafcb56c, 0x6ac3, 0x4889, 0xbf, 0x47, 0x9e, 0x23, 0xbb, 0xd2, 0x60, 0xec)
+	IID_IDXGIDevice     = com.DefineGuid(0x54ec77fa, 0x1377, 0x44e6, 0x8c, 0x32, 0x88, 0xfd, 0x5f, 0x44, 0xc8, 0x4c)
+	IID_IDXGIFactory2   = com.DefineGuid(0x50c83a1c, 0xe072, 0x4c48, 0x87, 0xb0, 0x36, 0x30, 0xfa, 0x36, 0xa6, 0xd0)
+	IID_IDXGISurface    = com.DefineGuid(0xcafcb56c, 0x6ac3, 0x4889, 0xbf, 0x47, 0x9e, 0x23, 0xbb, 0xd2, 0x60, 0xec)
+	IID_IDXGISwapChain2 = com.DefineGuid(0xa8be2ac4, 0x199f, 0x4946, 0xb3, 0x31, 0x79, 0x59, 0x9f, 0xb9, 0x8d, 0xe7)
 )
 
 type ObjectClass struct {
@@ -151,4 +152,27 @@ func (s *SwapChain1) GetBuffer(index uint32, iid com.IID) (surface *Surface, hr 
 func (s *SwapChain1) ResizeBuffers(count, width, height uint32, format Format, flags uint32) com.HRESULT {
 	ret, _, _ := (*SwapChain1Class)(s.Class).ResizeBuffers.CallRaw(uintptr(cgo.Pointer(s)), uintptr(count), uintptr(width), uintptr(height), uintptr(format), uintptr(flags))
 	return com.HRESULT(ret)
+}
+
+type SwapChain2Class struct {
+	SwapChain1Class
+	SetSourceSize                 cgo.Symbol
+	GetSourceSize                 cgo.Symbol
+	SetMaximumFrameLatency        cgo.Symbol
+	GetMaximumFrameLatency        cgo.Symbol
+	GetFrameLatencyWaitableObject cgo.Symbol
+	SetMatrixTransform            cgo.Symbol
+	GetMatrixTransform            cgo.Symbol
+}
+
+type SwapChain2 struct{ SwapChain1 }
+
+func (s *SwapChain2) SetMaximumFrameLatency(maxLatency uint32) com.HRESULT {
+	ret, _, _ := (*SwapChain2Class)(s.Class).SetMaximumFrameLatency.CallRaw(uintptr(cgo.Pointer(s)), uintptr(maxLatency))
+	return com.HRESULT(ret)
+}
+
+func (s *SwapChain2) GetFrameLatencyWaitableObject() uintptr {
+	ret, _, _ := (*SwapChain2Class)(s.Class).GetFrameLatencyWaitableObject.CallRaw(uintptr(cgo.Pointer(s)))
+	return ret
 }
