@@ -114,6 +114,25 @@ func TestTextLayoutRasterScaleDoesNotAccumulate(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertSameBitmap(t, want1x, actual1x)
+
+	// Shrinking a retained bitmap must read the same rows as a fresh context,
+	// including fractional scales and repeated changes in both directions.
+	for _, scale := range []float32{1.25, 1.5, 1.75, 2, 1.5, 1} {
+		got, err := layout.Rasterize(scale, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fresh, err := c.NewTextLayout("scale", format, 200, 80)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := fresh.Rasterize(scale, nil)
+		fresh.Destroy()
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertSameBitmap(t, want, got)
+	}
 }
 
 func TestTextLayoutsOwnRasterResources(t *testing.T) {

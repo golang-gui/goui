@@ -85,13 +85,16 @@ func otherMouseUp(self NSView, event NSEvent) {
 func scrollWheel(self NSView, event NSEvent) {
 	if window := windowForView(self); window != nil {
 		mode := events.WheelDeltaLine
+		dx, dy := event.ScrollingDeltaX(), -event.ScrollingDeltaY()
 		if event.HasPreciseScrollingDeltas() {
 			mode = events.WheelDeltaPixel
+			scale := pointsPerLogicalUnit(self.Window())
+			dx, dy = dx/scale, dy/scale
 		}
 		window.onEvent(events.WheelEvent{
 			Position:  positionInView(self, event),
-			DeltaX:    float32(event.ScrollingDeltaX()),
-			DeltaY:    -float32(event.ScrollingDeltaY()),
+			DeltaX:    float32(dx),
+			DeltaY:    float32(dy),
 			Mode:      mode,
 			Buttons:   window.buttons,
 			Modifiers: modifiersFromFlags(event.ModifierFlags()),
@@ -207,9 +210,10 @@ func windowForView(view NSView) *Window {
 func positionInView(view NSView, event NSEvent) geometry.Point {
 	point := view.ConvertPointFromView(event.LocationInWindow(), NSView{})
 	bounds := view.Bounds()
+	scale := pointsPerLogicalUnit(view.Window())
 	return geometry.Point{
-		X: float32(point.X),
-		Y: float32(bounds.Size.Height - point.Y),
+		X: float32(point.X / scale),
+		Y: float32((bounds.Size.Height - point.Y) / scale),
 	}
 }
 

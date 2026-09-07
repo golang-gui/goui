@@ -11,7 +11,6 @@ import (
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
-	"github.com/golang-gui/goui/platform/typography"
 )
 
 // TestPopup creates a borderless popup on an owner window, positions and sizes
@@ -135,7 +134,7 @@ func TestPopupPainter(t *testing.T) {
 		owner     platform.Window
 		popup     platform.Popup
 		painter   graphics.Painter
-		typo      typography.Context
+		size      events.SizeEvent
 		painted   bool
 	)
 
@@ -144,11 +143,6 @@ func TestPopupPainter(t *testing.T) {
 		if err != nil {
 			return
 		}
-		typo, err = plat.NewTypography()
-		if err != nil {
-			return
-		}
-
 		owner, err = plat.NewWindow(800, 600, func(platform.Event) {})
 		if err != nil {
 			return
@@ -159,9 +153,12 @@ func TestPopupPainter(t *testing.T) {
 
 		var once sync.Once
 		popup, err = plat.NewPopup(owner, 120, 80, func(event platform.Event) {
+			if event, ok := event.(events.SizeEvent); ok {
+				size = event
+			}
 			if _, ok := event.(events.PaintEvent); ok {
 				once.Do(func() {
-					painter.Begin(120, 80, 1)
+					painter.Begin(size.PixelWidth, size.PixelHeight, size.PixelWidth/size.Width)
 					painter.Clear(graphics.RGB(0x30, 0x30, 0x30))
 					painter.End()
 					painted = true
@@ -174,7 +171,7 @@ func TestPopupPainter(t *testing.T) {
 		}
 
 		// The point of this test: NewPainter accepts a Popup, not only a Window.
-		painter, err = plat.NewPainter(popup, typo)
+		painter, err = plat.NewPainter(popup)
 		if err != nil {
 			return
 		}
