@@ -8,6 +8,7 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/internal/boxshadow"
+	"github.com/golang-gui/goui/platform/graphics/internal/pixelsnap"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/directwrite"
 
@@ -16,8 +17,6 @@ import (
 	"github.com/golang-gui/goui/platform/windows/sdk/d3d11"
 	"github.com/golang-gui/goui/platform/windows/sdk/dxgi"
 	"github.com/golang-gui/goui/platform/windows/sdk/winapi"
-
-	"github.com/goexlib/mathx"
 )
 
 type Painter struct {
@@ -787,7 +786,7 @@ func (p *Painter) FillRect(rect graphics.Rectangle, brush graphics.Brush) {
 		return
 	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		p.setRect(p.snapRect(rect))
+		p.setRect(pixelsnap.Rect(rect, p.transform, p.scale))
 		p.render.FillRectangle(&p.rect, d2dBrush)
 	}
 }
@@ -797,7 +796,7 @@ func (p *Painter) FillRoundRect(rect graphics.Rectangle, radius float32, brush g
 		return
 	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		rect = p.snapRect(rect)
+		rect = pixelsnap.Rect(rect, p.transform, p.scale)
 		p.setRoundRect(rect, radius)
 		p.render.FillRoundedRectangle(&p.roundRect, d2dBrush)
 	}
@@ -831,7 +830,7 @@ func (p *Painter) DrawLine(p0, p1 graphics.Point, strokeWidth float32, brush gra
 		return
 	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		p0, p1 = p.snapLine(p0, p1, strokeWidth)
+		p0, p1 = pixelsnap.Line(p0, p1, strokeWidth, p.transform, p.scale)
 		point0 := d2d1.Point2F{X: p0.X, Y: p0.Y}
 		point1 := d2d1.Point2F{X: p1.X, Y: p1.Y}
 		p.render.DrawLine(point0, point1, d2dBrush, strokeWidth, nil) // TODO: strokeStyle
@@ -843,7 +842,7 @@ func (p *Painter) DrawRect(rect graphics.Rectangle, strokeWidth float32, brush g
 		return
 	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		p.setRect(p.snapStrokeRect(rect, strokeWidth))
+		p.setRect(pixelsnap.StrokeRect(rect, strokeWidth, p.transform, p.scale))
 		p.render.DrawRectangle(&p.rect, d2dBrush, strokeWidth, nil)
 	}
 }
@@ -853,7 +852,7 @@ func (p *Painter) DrawRoundRect(rect graphics.Rectangle, radius, strokeWidth flo
 		return
 	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		rect = p.snapStrokeRect(rect, strokeWidth)
+		rect = pixelsnap.StrokeRect(rect, strokeWidth, p.transform, p.scale)
 		p.setRoundRect(rect, radius)
 		p.render.DrawRoundedRectangle(&p.roundRect, d2dBrush, strokeWidth, nil)
 	}
@@ -963,10 +962,10 @@ func (p *Painter) SetClipRect(rect graphics.Rectangle) {
 		// clip tie-breaking can otherwise cut off the final row/column when
 		// the logical boundary lands on a physical half-pixel.
 		if p.scale > 0 {
-			p.clip.Left = p.snapEdge(p.clip.Left, 0)
-			p.clip.Top = p.snapEdge(p.clip.Top, 0)
-			p.clip.Right = p.snapEdge(p.clip.Right, 0)
-			p.clip.Bottom = p.snapEdge(p.clip.Bottom, 0)
+			p.clip.Left = pixelsnap.Edge(p.clip.Left, 0, p.scale)
+			p.clip.Top = pixelsnap.Edge(p.clip.Top, 0, p.scale)
+			p.clip.Right = pixelsnap.Edge(p.clip.Right, 0, p.scale)
+			p.clip.Bottom = pixelsnap.Edge(p.clip.Bottom, 0, p.scale)
 		}
 		p.render.PushAxisAlignedClip(&p.clip, d2d1.D2D1_ANTIALIAS_MODE_ALIASED)
 		// Even a nonzero logical clip that rounds to an empty device rect
@@ -1140,61 +1139,4 @@ func (p *Painter) drawNativeImage(rect graphics.Rectangle, d2dBitmap *d2d1.Bitma
 		Bottom: rect.Y + rect.Height,
 	}
 	p.render.DrawBitmap(d2dBitmap, &dstRect, 1, d2d1.D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, nil)
-}
-
-// Pixel alignment is only appropriate for axis-aligned UI rectangles and
-// straight lines. Preserve arbitrary paths, ellipses, text, images, and user
-// rotation/scale/shear transforms instead of quantizing their geometry.
-func (p *Painter) canSnap() bool {
-	t := p.transform
-	return p.scale > 0 && t.A11 == 1 && t.A22 == 1 && t.A12 == 0 && t.A21 == 0
-}
-
-// snapEdge rounds a device-space edge, then maps it back to local coordinates.
-// Including the widget translation is essential: layout and font metrics can
-// place a widget at a fractional DIP even when its local border starts at 0.
-func (p *Painter) snapEdge(x, offset float32) float32 {
-	return mathx.Floor((x+offset)*p.scale+0.5)/p.scale - offset
-}
-
-func (p *Painter) snapRect(rect graphics.Rectangle) geometry.Rectangle {
-	if !p.canSnap() {
-		return rect
-	}
-	left := p.snapEdge(rect.X, p.transform.TX)
-	top := p.snapEdge(rect.Y, p.transform.TY)
-	right := p.snapEdge(rect.X+rect.Width, p.transform.TX)
-	bottom := p.snapEdge(rect.Y+rect.Height, p.transform.TY)
-	return geometry.Rect(left, top, right-left, bottom-top)
-}
-
-func (p *Painter) snapStrokeRect(rect graphics.Rectangle, width float32) geometry.Rectangle {
-	if !p.canSnap() || width <= 0 {
-		return rect
-	}
-	// Direct2D centers strokes on their path. Snap the outer silhouette to the
-	// same pixel edges as the fill/structural clip, then restore the centerline.
-	// Odd physical widths need half-pixel centers; even widths need integers.
-	// Keep fractional physical widths unchanged: their inner edge legitimately
-	// has partial coverage at fractional DPI, but the outer edge stays aligned.
-	outer := p.snapRect(rect.Inset(-width / 2))
-	if outer.Width < width || outer.Height < width {
-		return rect
-	}
-	return outer.Inset(width / 2)
-}
-
-func (p *Painter) snapLine(p0, p1 graphics.Point, width float32) (graphics.Point, graphics.Point) {
-	if !p.canSnap() || width <= 0 {
-		return p0, p1
-	}
-	half := width / 2
-	if p0.X == p1.X {
-		p0.X = p.snapEdge(p0.X-half, p.transform.TX) + half
-		p1.X = p0.X
-	} else if p0.Y == p1.Y {
-		p0.Y = p.snapEdge(p0.Y-half, p.transform.TY) + half
-		p1.Y = p0.Y
-	}
-	return p0, p1
 }

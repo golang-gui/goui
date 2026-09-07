@@ -7,6 +7,7 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/internal/boxshadow"
+	"github.com/golang-gui/goui/platform/graphics/internal/pixelsnap"
 	"github.com/golang-gui/goui/platform/graphics/internal/textbitmap"
 	"github.com/golang-gui/goui/platform/graphics/utils"
 	"github.com/golang-gui/goui/platform/typography"
@@ -258,10 +259,13 @@ func (p *Painter) Begin(width, height, scale float32) {
 	}
 	gl.Viewport(0, 0, int(width), int(height))
 	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT)
-	p.vg.BeginFrame(int(width/scale), int(height/scale), scale)
+	// NanoVG's Go API accepts integer frame dimensions. Use physical pixels
+	// here and put DPI scaling in the transform: truncating width/scale would
+	// stretch the viewport at fractional DPI and undo device-pixel alignment.
+	p.vg.BeginFrame(int(width), int(height), 1)
 	p.activeFrame = true
 	p.scale = scale
-	p.transform = geometry.Identity()
+	p.SetTransform(geometry.Identity())
 }
 
 func (p *Painter) End() {
@@ -305,6 +309,7 @@ func (p *Painter) DrawBoxShadow(rect graphics.Rectangle, radius float32, shadow 
 func (p *Painter) FillRect(rect graphics.Rectangle, brush graphics.Brush) {
 	if p.beginFill(brush) {
 		defer p.end()
+		rect = pixelsnap.Rect(rect, p.transform, p.scale)
 		p.vg.BeginPath()
 		p.vg.Rect(rect.X, rect.Y, rect.Width, rect.Height)
 		p.vg.Fill()
@@ -314,6 +319,7 @@ func (p *Painter) FillRect(rect graphics.Rectangle, brush graphics.Brush) {
 func (p *Painter) FillRoundRect(rect graphics.Rectangle, radius float32, brush graphics.Brush) {
 	if p.beginFill(brush) {
 		defer p.end()
+		rect = pixelsnap.Rect(rect, p.transform, p.scale)
 		p.vg.BeginPath()
 		p.vg.RoundedRect(rect.X, rect.Y, rect.Width, rect.Height, radius)
 		p.vg.Fill()
@@ -344,6 +350,7 @@ func (p *Painter) FillPath(path graphics.Path, brush graphics.Brush) {
 func (p *Painter) DrawLine(p0, p1 graphics.Point, strokeWidth float32, brush graphics.Brush) {
 	if p.beginDraw(strokeWidth, brush) {
 		defer p.end()
+		p0, p1 = pixelsnap.Line(p0, p1, strokeWidth, p.transform, p.scale)
 		p.vg.BeginPath()
 		p.vg.MoveTo(p0.X, p0.Y)
 		p.vg.LineTo(p1.X, p1.Y)
@@ -354,6 +361,7 @@ func (p *Painter) DrawLine(p0, p1 graphics.Point, strokeWidth float32, brush gra
 func (p *Painter) DrawRect(rect graphics.Rectangle, strokeWidth float32, brush graphics.Brush) {
 	if p.beginDraw(strokeWidth, brush) {
 		defer p.end()
+		rect = pixelsnap.StrokeRect(rect, strokeWidth, p.transform, p.scale)
 		p.vg.BeginPath()
 		p.vg.Rect(rect.X, rect.Y, rect.Width, rect.Height)
 		p.vg.Stroke()
@@ -363,6 +371,7 @@ func (p *Painter) DrawRect(rect graphics.Rectangle, strokeWidth float32, brush g
 func (p *Painter) DrawRoundRect(rect graphics.Rectangle, radius, strokeWidth float32, brush graphics.Brush) {
 	if p.beginDraw(strokeWidth, brush) {
 		defer p.end()
+		rect = pixelsnap.StrokeRect(rect, strokeWidth, p.transform, p.scale)
 		p.vg.BeginPath()
 		p.vg.RoundedRect(rect.X, rect.Y, rect.Width, rect.Height, radius)
 		p.vg.Stroke()
@@ -448,7 +457,10 @@ func (p *Painter) SetTransform(t geometry.Transform) {
 	// absolute transform, reset first, then apply.
 	p.vg.ResetTransform()
 	a, b, c, d, e, f := nanoVGTransformValues(t)
-	p.vg.SetTransformByValue(a, b, c, d, e, f)
+	// Keep p.transform in logical units for text rasterization and snapping;
+	// only NanoVG sees the DIP-to-device transform (scale * t).
+	s := p.scale
+	p.vg.SetTransformByValue(a*s, b*s, c*s, d*s, e*s, f*s)
 }
 
 // nanoVGTransformValues converts GOUI's row-major transform to NanoVG's
@@ -472,14 +484,17 @@ func (p *Painter) SetClipRect(rect graphics.Rectangle) {
 	// NanoVG's Scissor is transformed by the current transform. Since the
 	// clip rect is already in window-local coordinates (the transform's
 	// offset has been applied by the GUI layer), we must set the scissor in
-	// identity transform space. Save and restore the transform manually
-	// (NOT via vg.Save/Restore, which would also revert the scissor we just
-	// set).
+	// device space, applying only DPI scaling. Save and restore the transform
+	// manually (NOT via vg.Save/Restore, which would revert the new scissor).
 	xform := p.vg.CurrentTransform()
 	p.vg.ResetTransform()
 	p.vg.ResetScissor()
 	if rect.X != 0 || rect.Y != 0 || rect.Width != 0 || rect.Height != 0 {
-		p.vg.Scissor(rect.X, rect.Y, rect.Width, rect.Height)
+		// NanoVG's scissor has a one-device-pixel AA fringe. Put its edges on
+		// the same pixel boundaries as the fill/stroke so it cannot attenuate
+		// the widget border a second time. Keep rounded-corner AA enabled.
+		rect = pixelsnap.Rect(rect, geometry.Identity(), p.scale)
+		p.vg.Scissor(rect.X*p.scale, rect.Y*p.scale, rect.Width*p.scale, rect.Height*p.scale)
 	}
 	p.vg.SetTransformByValue(xform[0], xform[1], xform[2], xform[3], xform[4], xform[5])
 }
