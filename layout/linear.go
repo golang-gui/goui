@@ -16,92 +16,202 @@ func NewLinearLayout(direction Direction) *LinearLayout {
 	}
 }
 
-func (l *LinearLayout) Measure(children []Child, c Constraint) geometry.Size {
-	innerMax := c.Max.Inset(l.Padding)
-	var size geometry.Size
-	count := 0
-	for _, child := range children {
-		if child == nil {
-			continue
-		}
-		childSize := child.Measure(l.childConstraint(
-			innerMax,
-			child.MainWeight() > 0,
-			l.crossSize(c.Max) < Inf,
-		))
-		if l.CrossAlign == CrossStretch && l.crossSize(c.Max) < Inf {
-			// Keep the measured contribution consistent with the container's
-			// finite cross-axis stretch policy, even for simple custom children
-			// that do not use the tight constraint themselves.
-			l.setCrossSize(&childSize, l.crossSize(innerMax))
-		}
-		if count > 0 {
-			l.addSpacing(&size)
-		}
-		l.addChildSize(&size, childSize)
-		count++
-	}
-	// Add padding back onto the content size (empty box → 2*padding).
-	return c.Clamp(size.Inset(-l.Padding))
+func (l *LinearLayout) Measure(children []Child, c Constraint) Measurement {
+	return l.compute(children, c).measured
 }
 
 func (l *LinearLayout) Arrange(children []Child, rect geometry.Rectangle) {
-	rect = rect.Inset(l.Padding) // content area inside the padding
+	plan := l.compute(children, Tight(rect.Size))
+	inner := rect.Inset(l.Padding)
+	for _, item := range plan.items {
+		item.child.Arrange(l.childRect(
+			inner,
+			item.mainPos,
+			item.crossPos,
+			item.mainLen,
+			item.crossLen,
+		))
+	}
+}
 
-	items := make([]Child, 0, len(children))
+type linearItem struct {
+	child    Child
+	measured Measurement
+	weight   float32
+	mainLen  float32
+	crossLen float32
+	mainPos  float32
+	crossPos float32
+}
+
+type linearPlan struct {
+	measured Measurement
+	items    []linearItem
+}
+
+// compute performs the complete one-dimensional layout calculation. Measure
+// uses its container geometry; Arrange calls it with a tight final rectangle so
+// weighted children are measured again at the width/height they will receive.
+// This is essential for height-for-width content such as wrapping text.
+func (l *LinearLayout) compute(children []Child, c Constraint) linearPlan {
+	items := make([]linearItem, 0, len(children))
 	for _, child := range children {
 		if child != nil {
-			items = append(items, child)
+			items = append(items, linearItem{child: child, weight: max(0, child.MainWeight())})
 		}
 	}
+
 	if len(items) == 0 {
-		return
+		return linearPlan{measured: Measured(c.Clamp(geometry.Size{}.Inset(-l.Padding)))}
 	}
 
-	availMain := l.mainSize(rect.Size)
-	availCross := l.crossSize(rect.Size)
-
-	// Pass 1: intrinsic sizes and total weight. Weight never affects the intrinsic
-	// measurement (a weighted child still hugs its content as a minimum); it only
-	// decides how leftover space is shared out below.
-	intrinsic := make([]geometry.Size, len(items))
-	var usedMain, totalWeight float32
-	for i, child := range items {
-		intrinsic[i] = child.Measure(l.childConstraint(
-			l.makeSize(availMain, availCross),
-			child.MainWeight() > 0,
-			availCross < Inf,
-		))
-		if l.CrossAlign == CrossStretch && availCross < Inf {
-			l.setCrossSize(&intrinsic[i], availCross)
+	innerConstraint := c.Inset(l.Padding)
+	innerMax := innerConstraint.Max
+	stretchCross, stretchCrossExtent := l.stretchCrossExtent(innerConstraint)
+	var naturalMain, totalWeight float32
+	for i := range items {
+		item := &items[i]
+		item.measured = item.child.Measure(l.childConstraint(innerMax, item.weight > 0, stretchCross, stretchCrossExtent))
+		if stretchCross {
+			// A tight layout axis wins even when a custom child forgets to clamp
+			// its own result to the supplied constraint.
+			l.setCrossSize(&item.measured.Size, stretchCrossExtent)
 		}
-		usedMain += l.mainSize(intrinsic[i])
-		if w := child.MainWeight(); w > 0 {
-			totalWeight += w
-		}
+		item.mainLen = l.mainSize(item.measured.Size)
+		item.crossLen = l.crossSize(item.measured.Size)
+		naturalMain += item.mainLen
+		totalWeight += item.weight
 	}
-	usedMain += l.Spacing * float32(len(items)-1)
-	freeMain := max(0, availMain-usedMain)
+	naturalMain += l.Spacing * float32(len(items)-1)
+	naturalCross, _, _ := l.crossMetrics(items)
 
-	// Weight consumes the free space first; only when nothing is weighted does
-	// MainAlign get to place the leftover block.
-	startMain, gap := float32(0), l.Spacing
-	if totalWeight == 0 {
-		startMain, gap = l.mainDistribution(freeMain, len(items))
-	}
+	naturalOuter := l.makeSize(naturalMain, naturalCross).Inset(-l.Padding)
+	finalSize := c.Clamp(naturalOuter)
+	innerSize := finalSize.Inset(l.Padding)
+	finalMain := l.mainSize(innerSize)
 
-	offset := startMain
-	for i, child := range items {
-		mainLen := l.mainSize(intrinsic[i])
-		if totalWeight > 0 {
-			if w := child.MainWeight(); w > 0 {
-				mainLen += freeMain * w / totalWeight
+	// Positive free space grows weighted children from their natural basis. If
+	// there is a deficit, fixed children retain their natural size and overflow;
+	// weighted children share what remains and are remeasured under that final
+	// tight main-axis constraint.
+	freeMain := finalMain - naturalMain
+	if totalWeight > 0 {
+		if freeMain >= 0 {
+			for i := range items {
+				if items[i].weight > 0 {
+					items[i].mainLen += freeMain * items[i].weight / totalWeight
+				}
+			}
+		} else {
+			fixedMain := l.Spacing * float32(len(items)-1)
+			for i := range items {
+				if items[i].weight == 0 {
+					fixedMain += items[i].mainLen
+				}
+			}
+			flexMain := max(0, finalMain-fixedMain)
+			for i := range items {
+				if items[i].weight > 0 {
+					items[i].mainLen = flexMain * items[i].weight / totalWeight
+				}
 			}
 		}
-		crossLen, crossPos := l.crossPlacement(l.crossSize(intrinsic[i]), availCross)
-		child.Arrange(l.childRect(rect, offset, crossPos, mainLen, crossLen))
-		offset += mainLen + gap
+
+		for i := range items {
+			item := &items[i]
+			if item.weight == 0 {
+				continue
+			}
+			childC := l.childConstraint(innerMax, true, stretchCross, stretchCrossExtent)
+			l.setMainSize(&childC.Min, item.mainLen)
+			l.setMainSize(&childC.Max, item.mainLen)
+			item.measured = item.child.Measure(childC)
+			// Parent allocation is authoritative even for a custom Child that
+			// returns a size outside its tight constraint.
+			l.setMainSize(&item.measured.Size, item.mainLen)
+			if stretchCross {
+				l.setCrossSize(&item.measured.Size, stretchCrossExtent)
+			}
+			item.crossLen = l.crossSize(item.measured.Size)
+		}
 	}
+
+	// Remeasuring flexible content can change the cross extent (for example a
+	// Label gets taller after wrapping at its final width).
+	finalCrossNatural, commonBaseline, hasCommonBaseline := l.crossMetrics(items)
+	desired := l.makeSize(finalMain, finalCrossNatural).Inset(-l.Padding)
+	finalSize = c.Clamp(desired)
+	innerSize = finalSize.Inset(l.Padding)
+	finalCross := l.crossSize(innerSize)
+
+	usedMain := l.Spacing * float32(len(items)-1)
+	for i := range items {
+		usedMain += items[i].mainLen
+	}
+	remainingMain := max(0, finalMain-usedMain)
+	startMain, gap := float32(0), l.Spacing
+	if totalWeight == 0 {
+		startMain, gap = l.mainDistribution(remainingMain, len(items))
+	}
+
+	mainPos := startMain
+	for i := range items {
+		item := &items[i]
+		item.mainPos = mainPos
+		item.crossLen, item.crossPos = l.itemCrossPlacement(*item, finalCross, commonBaseline, hasCommonBaseline)
+		mainPos += item.mainLen + gap
+	}
+
+	measured := Measured(finalSize)
+	if l.Direction == DirectionHorizontal && l.effectiveCrossAlign() == CrossBaseline && hasCommonBaseline {
+		measured.Baseline = l.Padding + commonBaseline
+		measured.HasBaseline = true
+	} else {
+		// A compound widget exposes its first baseline-bearing descendant so it
+		// can itself participate in a baseline-aligned ancestor.
+		for i := range items {
+			item := &items[i]
+			if !item.measured.HasBaseline {
+				continue
+			}
+			if l.Direction == DirectionHorizontal {
+				measured.Baseline = l.Padding + item.crossPos + item.measured.Baseline
+			} else {
+				measured.Baseline = l.Padding + item.mainPos + item.measured.Baseline
+			}
+			measured.HasBaseline = true
+			break
+		}
+	}
+
+	return linearPlan{measured: measured, items: items}
+}
+
+// crossMetrics returns the natural cross extent. In a baseline-aligned row it
+// combines the largest ascent and descent so differently sized text never
+// overlaps or clips merely to share a baseline.
+func (l *LinearLayout) crossMetrics(items []linearItem) (size, baseline float32, hasBaseline bool) {
+	if l.Direction != DirectionHorizontal || l.effectiveCrossAlign() != CrossBaseline {
+		for i := range items {
+			size = max(size, l.crossSize(items[i].measured.Size))
+		}
+		return size, 0, false
+	}
+
+	var descent, withoutBaseline float32
+	for i := range items {
+		item := &items[i]
+		cross := l.crossSize(item.measured.Size)
+		if !item.measured.HasBaseline {
+			withoutBaseline = max(withoutBaseline, cross)
+			continue
+		}
+		hasBaseline = true
+		ascent := max(0, item.measured.Baseline)
+		baseline = max(baseline, ascent)
+		descent = max(descent, max(0, cross-ascent))
+	}
+	return max(withoutBaseline, baseline+descent), baseline, hasBaseline
 }
 
 // mainDistribution returns the leading main-axis offset and the gap between
@@ -122,10 +232,30 @@ func (l *LinearLayout) mainDistribution(freeMain float32, n int) (start, gap flo
 	}
 }
 
+func (l *LinearLayout) effectiveCrossAlign() CrossAlign {
+	if l.Direction == DirectionVertical && l.CrossAlign == CrossBaseline {
+		return CrossStart
+	}
+	return l.CrossAlign
+}
+
+// itemCrossPlacement returns a child's cross-axis length and offset according
+// to the container policy and, for a horizontal baseline row, the shared
+// typographic baseline.
+func (l *LinearLayout) itemCrossPlacement(item linearItem, availCross, baseline float32, hasBaseline bool) (crossLen, crossPos float32) {
+	if l.Direction == DirectionHorizontal && l.effectiveCrossAlign() == CrossBaseline {
+		if hasBaseline && item.measured.HasBaseline {
+			return item.crossLen, baseline - item.measured.Baseline
+		}
+		return item.crossLen, 0
+	}
+	return l.crossPlacement(item.crossLen, availCross)
+}
+
 // crossPlacement returns a child's cross-axis length and offset according to
-// the container's CrossAlign policy.
+// the effective non-baseline CrossAlign policy.
 func (l *LinearLayout) crossPlacement(childCross, availCross float32) (crossLen, crossPos float32) {
-	switch l.CrossAlign {
+	switch l.effectiveCrossAlign() {
 	case CrossStretch:
 		return availCross, 0
 	case CrossCenter:
@@ -156,35 +286,35 @@ func (l *LinearLayout) setMainSize(size *geometry.Size, main float32) {
 // childConstraint gives weighted children an unbounded main-axis basis. A
 // viewport such as ScrollView can then report no intrinsic scroll height while
 // still reporting its intrinsic width or finite cross-axis viewport.
-func (l *LinearLayout) childConstraint(max geometry.Size, weighted, crossBounded bool) Constraint {
+func (l *LinearLayout) childConstraint(max geometry.Size, weighted, stretchCross bool, crossExtent float32) Constraint {
 	c := Loose(max)
 	if weighted {
 		l.setMainSize(&c.Max, Inf)
 	}
-	if l.CrossAlign == CrossStretch && crossBounded {
+	if stretchCross {
 		// Stretch is a tight constraint on the container's cross axis. The
 		// child can measure content such as wrapped text at its final width.
-		l.setCrossSize(&c.Min, l.crossSize(max))
+		l.setCrossSize(&c.Min, crossExtent)
+		l.setCrossSize(&c.Max, crossExtent)
 	}
 	return c
 }
 
-func (l *LinearLayout) addSpacing(size *geometry.Size) {
-	if l.Direction == DirectionVertical {
-		size.Height += l.Spacing
-		return
+// stretchCrossExtent resolves the concrete inner cross-axis size imposed by
+// CrossStretch. A finite maximum consumes all available cross space. With an
+// unbounded maximum, a finite minimum still supplies a final size that must be
+// used during Measure for height-for-width consistency.
+func (l *LinearLayout) stretchCrossExtent(c Constraint) (bool, float32) {
+	if l.effectiveCrossAlign() != CrossStretch {
+		return false, 0
 	}
-	size.Width += l.Spacing
-}
-
-func (l *LinearLayout) addChildSize(size *geometry.Size, childSize geometry.Size) {
-	if l.Direction == DirectionVertical {
-		size.Width = max(size.Width, childSize.Width)
-		size.Height += childSize.Height
-		return
+	if extent := l.crossSize(c.Max); extent < Inf {
+		return true, extent
 	}
-	size.Width += childSize.Width
-	size.Height = max(size.Height, childSize.Height)
+	if extent := l.crossSize(c.Min); extent > 0 && extent < Inf {
+		return true, extent
+	}
+	return false, 0
 }
 
 // mainSize/crossSize/makeSize map absolute Width/Height onto the layout's

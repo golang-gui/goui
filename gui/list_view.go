@@ -341,10 +341,10 @@ func (lv *ListView) itemAt(index int) Widget {
 // records both the height and the row width (natural width, flushed to at
 // least the viewport width), and returns the height.
 func (lv *ListView) measureItem(index int, w Widget) float32 {
-	size := w.Measure(layout.Constraint{
+	size := measureWidget(w, layout.Constraint{
 		Min: geometry.Size{},
 		Max: geometry.Size{Width: layout.Inf, Height: layout.Inf},
-	})
+	}).Size
 	if size.Height <= 0 {
 		size.Height = lv.estimate
 	}
@@ -385,9 +385,9 @@ func (lv *ListView) Snapshot() WidgetInfo {
 
 // Measure reports the requested viewport size (the list itself is sized by
 // its parent; content height comes from ContentSize).
-func (lv *ListView) Measure(c layout.Constraint) geometry.Size {
+func (lv *ListView) Measure(c layout.Constraint) layout.Measurement {
 	if !lv.Visible() {
-		return geometry.Size{}
+		return layout.Measurement{}
 	}
-	return lv.constrain(c, c.Min)
+	return layout.Measured(lv.constrain(c, c.Min))
 }

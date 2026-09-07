@@ -351,7 +351,7 @@ func (w *window) updateMinSize() {
 	if w.root == nil || w.platformWindow == nil {
 		return
 	}
-	pref := w.root.Measure(layout.Unbounded())
+	pref := measureWidget(w.root, layout.Unbounded()).Size
 	if pref.Width > 0 || pref.Height > 0 {
 		w.platformWindow.SetMinSize(pref.Width, pref.Height)
 	}

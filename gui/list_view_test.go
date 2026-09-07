@@ -15,8 +15,8 @@ type mockListWidget struct {
 	height float32
 }
 
-func (m *mockListWidget) Measure(c layout.Constraint) geometry.Size {
-	return geometry.Size{Width: c.Min.Width, Height: m.height}
+func (m *mockListWidget) Measure(c layout.Constraint) layout.Measurement {
+	return layout.Measured(geometry.Size{Width: c.Min.Width, Height: m.height})
 }
 
 func (m *mockListWidget) Arrange(rect geometry.Rectangle) {

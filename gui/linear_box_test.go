@@ -16,7 +16,7 @@ func TestLinearBoxDefaultsToLinearLayout(t *testing.T) {
 	box.AddChild(second)
 
 	size := box.Measure(layout.Loose(geometry.Size{Width: 100, Height: 50}))
-	if size != (geometry.Size{Width: 42, Height: 20}) {
+	if size.Size != (geometry.Size{Width: 42, Height: 20}) {
 		t.Fatalf("unexpected measured size: %+v", size)
 	}
 
@@ -39,7 +39,7 @@ func TestLinearBoxPaddingInsetsContent(t *testing.T) {
 	box.AddChild(child)
 
 	size := box.Measure(layout.Loose(geometry.Size{Width: 500, Height: 500}))
-	if size != (geometry.Size{Width: 50, Height: 40}) { // 30+2*10, 20+2*10
+	if size.Size != (geometry.Size{Width: 50, Height: 40}) { // 30+2*10, 20+2*10
 		t.Fatalf("padding not added in measure: %+v", size)
 	}
 
@@ -85,6 +85,19 @@ func TestLinearBoxCrossStretchFillsChildren(t *testing.T) {
 	}
 }
 
+func TestLinearBoxSingleChildCentersInAllocatedRect(t *testing.T) {
+	box := NewLinearBox(layout.DirectionHorizontal)
+	box.SetMainAlign(layout.MainCenter)
+	box.SetCrossAlign(layout.CrossCenter)
+	child := newSizedWidget(geometry.Size{Width: 20, Height: 10})
+	box.AddChild(child)
+
+	box.Arrange(geometry.Rect(0, 0, 100, 40))
+	if got := child.Rect(); got != geometry.Rect(40, 15, 20, 10) {
+		t.Fatalf("single-child LinearBox did not center its child: %+v", got)
+	}
+}
+
 func TestLinearBoxCrossAlignIsContainerPolicy(t *testing.T) {
 	parent := NewLinearBox(layout.DirectionHorizontal)
 	parent.SetCrossAlign(layout.CrossStretch)
@@ -125,6 +138,28 @@ func TestLinearBoxMainWeightSharesSpace(t *testing.T) {
 	}
 	if second.Rect() != geometry.Rect(10, 0, 90, 20) {
 		t.Fatalf("weighted child should only consume main-axis free space: %+v", second.Rect())
+	}
+}
+
+func TestLinearBoxAlignsAndPropagatesBaseline(t *testing.T) {
+	box := NewLinearBox(layout.DirectionHorizontal)
+	box.SetCrossAlign(layout.CrossBaseline)
+	first := &baselineSizedWidget{measurement: layout.MeasuredWithBaseline(
+		geometry.Size{Width: 20, Height: 20}, 15,
+	)}
+	second := &baselineSizedWidget{measurement: layout.MeasuredWithBaseline(
+		geometry.Size{Width: 30, Height: 30}, 20,
+	)}
+	box.AddChild(first)
+	box.AddChild(second)
+
+	measured := box.Measure(layout.Loose(geometry.Size{Width: 100, Height: 100}))
+	if !measured.HasBaseline || measured.Baseline != 20 {
+		t.Fatalf("linear box did not propagate common baseline: %+v", measured)
+	}
+	box.Arrange(geometry.Rect(0, 0, 100, 40))
+	if first.Rect().Y+first.measurement.Baseline != second.Rect().Y+second.measurement.Baseline {
+		t.Fatalf("children are not baseline-aligned: first=%+v second=%+v", first.Rect(), second.Rect())
 	}
 }
 
@@ -223,6 +258,15 @@ func newSizedWidget(size geometry.Size) *sizedWidget {
 	return w
 }
 
-func (w *sizedWidget) Measure(_ layout.Constraint) geometry.Size {
-	return w.size
+func (w *sizedWidget) Measure(_ layout.Constraint) layout.Measurement {
+	return layout.Measured(w.size)
+}
+
+type baselineSizedWidget struct {
+	WidgetBase
+	measurement layout.Measurement
+}
+
+func (w *baselineSizedWidget) Measure(layout.Constraint) layout.Measurement {
+	return w.measurement
 }

@@ -211,9 +211,9 @@ func (mc *menuContent) SetModel(m ListData[*MenuItem]) {
 	mc.invalidate()
 }
 
-func (mc *menuContent) Measure(c layout.Constraint) geometry.Size {
+func (mc *menuContent) Measure(c layout.Constraint) layout.Measurement {
 	if !mc.Visible() {
-		return geometry.Size{}
+		return layout.Measurement{}
 	}
 	if !mc.valid {
 		mc.measureNatural()
@@ -225,7 +225,7 @@ func (mc *menuContent) Measure(c layout.Constraint) geometry.Size {
 	if w < minMenuWidth {
 		w = minMenuWidth
 	}
-	return geometry.Size{Width: w, Height: h}
+	return layout.Measured(mc.constrain(c, geometry.Size{Width: w, Height: h}))
 }
 
 func (mc *menuContent) measureNatural() {
@@ -240,7 +240,7 @@ func (mc *menuContent) measureNatural() {
 		if !row.Visible() {
 			continue
 		}
-		s := row.Measure(layout.Constraint{Min: geometry.Size{}, Max: geometry.Size{Width: layout.Inf, Height: layout.Inf}})
+		s := measureWidget(row, layout.Constraint{Min: geometry.Size{}, Max: geometry.Size{Width: layout.Inf, Height: layout.Inf}}).Size
 		w = max(w, s.Width)
 		h += s.Height
 	}
@@ -345,17 +345,19 @@ func (r *menuItemRow) bind(mi *MenuItem) {
 	r.RequestLayout()
 }
 
-func (r *menuItemRow) Measure(c layout.Constraint) geometry.Size {
+func (r *menuItemRow) Measure(c layout.Constraint) layout.Measurement {
 	if !r.Visible() {
-		return geometry.Size{}
+		return layout.Measurement{}
 	}
 	if r.mi != nil && r.mi.Separator() {
-		return geometry.Size{Width: minMenuWidth, Height: menuSeparatorHeight}
+		return layout.Measured(r.constrain(c, geometry.Size{Width: minMenuWidth, Height: menuSeparatorHeight}))
 	}
-	s := r.label.Measure(layout.Constraint{Min: geometry.Size{}, Max: geometry.Size{Width: layout.Inf, Height: layout.Inf}})
+	measured := measureWidget(r.label, layout.Constraint{Min: geometry.Size{}, Max: geometry.Size{Width: layout.Inf, Height: layout.Inf}})
+	s := measured.Size
 	s.Width += menuItemPadding * 2
 	s.Height = max(s.Height, menuItemMinHeight)
-	return s
+	measured.Size = r.constrain(c, s)
+	return measured
 }
 
 func (r *menuItemRow) Arrange(rect geometry.Rectangle) {
@@ -490,15 +492,20 @@ func (b *MenuButton) openMenu() {
 	_ = b.pm.ShowAt(geometry.Point{X: 0, Y: b.Rect().Height})
 }
 
-func (b *MenuButton) Measure(c layout.Constraint) geometry.Size {
+func (b *MenuButton) Measure(c layout.Constraint) layout.Measurement {
 	if !b.Visible() {
-		return geometry.Size{}
+		return layout.Measurement{}
 	}
-	var content geometry.Size
+	var content layout.Measurement
 	if manager := b.LayoutManager(); manager != nil {
-		content = manager.Measure(b.visibleChildren(), layout.Loose(c.Max.Inset(b.padding))).Inset(-b.padding)
+		content = manager.Measure(b.visibleChildren(), layout.Loose(c.Inset(b.padding).Max))
+		content.Size = content.Size.Inset(-b.padding)
+		if content.HasBaseline {
+			content.Baseline += b.padding
+		}
 	}
-	return b.constrain(c, content)
+	content.Size = b.constrain(c, content.Size)
+	return content
 }
 
 func (b *MenuButton) Arrange(rect geometry.Rectangle) {

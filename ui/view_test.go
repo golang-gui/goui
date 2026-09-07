@@ -40,7 +40,7 @@ func TestViewSizeModifiersApplyToWidget(t *testing.T) {
 	root := newRoot()
 	w := root.update(VBox().MinSize(120, 80))
 	got := w.Measure(layout.Loose(geometry.Size{Width: 1000, Height: 1000}))
-	if got != (geometry.Size{Width: 120, Height: 80}) {
+	if got.Size != (geometry.Size{Width: 120, Height: 80}) {
 		t.Fatalf("view MinSize not applied to widget: %+v (want 120x80)", got)
 	}
 }
@@ -58,7 +58,7 @@ func TestViewPaddingApplies(t *testing.T) {
 	root := newRoot()
 	w := root.update(VBox().Padding(16))
 	got := w.Measure(layout.Loose(geometry.Size{Width: 500, Height: 500}))
-	if got != (geometry.Size{Width: 32, Height: 32}) { // empty box, padding on both sides
+	if got.Size != (geometry.Size{Width: 32, Height: 32}) { // empty box, padding on both sides
 		t.Fatalf("view Padding not applied: %+v (want 32x32)", got)
 	}
 }

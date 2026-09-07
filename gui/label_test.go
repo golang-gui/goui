@@ -63,7 +63,7 @@ func TestLabelMeasureUsesTypography(t *testing.T) {
 
 	size := label.Measure(layout.Loose(geometry.Size{Width: 100, Height: 50}))
 
-	if size != (geometry.Size{Width: 42, Height: 18}) {
+	if size.Size != (geometry.Size{Width: 42, Height: 18}) {
 		t.Fatalf("unexpected measured size: %+v", size)
 	}
 	if len(typo.calls) != 1 {
@@ -79,6 +79,29 @@ func TestLabelMeasureUsesTypography(t *testing.T) {
 	// With caching, the layout is NOT destroyed after Measure — it's reused for Paint.
 	if typo.layouts[0].destroyed {
 		t.Fatal("measure should cache text layout for reuse")
+	}
+}
+
+func TestLabelMeasureReportsFirstBaseline(t *testing.T) {
+	typo := &testTypography{
+		measureSize: geometry.Size{Width: 42, Height: 18},
+		lines: []typography.TextLine{
+			{Start: 0, Length: 5, Width: 42, Height: 18, Baseline: 14},
+		},
+	}
+	setTestApplication(t, typo)
+	label := NewLabel("hello")
+	t.Cleanup(label.releaseLayout)
+
+	measured := label.Measure(layout.Loose(geometry.Size{Width: 100, Height: 50}))
+	if !measured.HasBaseline || measured.Baseline != 14 {
+		t.Fatalf("label first baseline: want 14, got %+v", measured)
+	}
+
+	empty := NewLabel("")
+	t.Cleanup(empty.releaseLayout)
+	if got := empty.Measure(layout.Loose(geometry.Size{Width: 100, Height: 50})); got.HasBaseline {
+		t.Fatalf("empty label should not report a baseline: %+v", got)
 	}
 }
 
@@ -172,7 +195,7 @@ func TestLabelWithoutTypographyDoesNotMeasureOrPaint(t *testing.T) {
 	label := NewLabel("hello")
 	t.Cleanup(label.releaseLayout)
 	size := label.Measure(layout.Loose(geometry.Size{Width: 100, Height: 50}))
-	if size != (geometry.Size{}) {
+	if size.Size != (geometry.Size{}) {
 		t.Fatalf("unexpected measured size: %+v", size)
 	}
 

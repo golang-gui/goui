@@ -14,7 +14,9 @@ type popoverMeasureWidget struct {
 	size geometry.Size
 }
 
-func (w *popoverMeasureWidget) Measure(layout.Constraint) geometry.Size { return w.size }
+func (w *popoverMeasureWidget) Measure(layout.Constraint) layout.Measurement {
+	return layout.Measured(w.size)
+}
 
 type recordingPlatformPopup struct {
 	width  float32

@@ -95,13 +95,13 @@ func (l *Label) SetTextAlign(align TextAlign) {
 	l.RequestLayout()
 }
 
-func (l *Label) Measure(c layout.Constraint) geometry.Size {
+func (l *Label) Measure(c layout.Constraint) layout.Measurement {
 	if !l.Visible() {
-		return geometry.Size{}
+		return layout.Measurement{}
 	}
 	textLayout := l.ensureLayout(measureTextSize(c.Max))
 	if textLayout == nil {
-		return geometry.Size{}
+		return layout.Measurement{}
 	}
 
 	width, height := textLayout.MeasureSize()
@@ -109,7 +109,16 @@ func (l *Label) Measure(c layout.Constraint) geometry.Size {
 		format := l.resolvedTextFormat()
 		height = textLineHeight(format.Font.Size)
 	}
-	return l.constrain(c, geometry.Size{Width: width, Height: height})
+	measured := layout.Measured(geometry.Size{Width: width, Height: height})
+	if l.text != "" {
+		lines, _ := textLayout.MeasureMetrics()
+		if len(lines) > 0 {
+			measured.Baseline = lines[0].Baseline
+			measured.HasBaseline = true
+		}
+	}
+	measured.Size = l.constrain(c, measured.Size)
+	return measured
 }
 
 func (l *Label) Paint(p Painter) {

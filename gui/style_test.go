@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/golang-gui/goui/core/colors"
+	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/style"
 )
 
@@ -50,5 +52,23 @@ func TestApplicationStyleSheetDefaultsToNilAndRequestsLayoutOnSet(t *testing.T) 
 	app.SetStyleSheet(nil)
 	if app.StyleSheet() != nil {
 		t.Fatal("nil style sheet should clear application style")
+	}
+}
+
+func TestApplicationStyleSheetInvalidatesWidgetMeasurementSubtree(t *testing.T) {
+	app := &application{}
+	win := &window{}
+	box := NewLinearBox(layout.DirectionHorizontal)
+	child := &countingMeasureWidget{size: geometry.Size{Width: 20, Height: 10}}
+	box.AddChild(child)
+	win.SetWidget(box)
+	app.windows = []*window{win}
+	c := layout.Loose(geometry.Size{Width: 100, Height: 40})
+
+	measureWidget(box, c)
+	app.SetStyleSheet(style.Sheet(style.Name(styleNameWidget).FontSize(18)))
+	measureWidget(box, c)
+	if child.measures != 2 {
+		t.Fatalf("style change left a descendant measurement cached: measures=%d", child.measures)
 	}
 }

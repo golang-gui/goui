@@ -6,6 +6,7 @@ import (
 
 	"github.com/golang-gui/goui/core/colors"
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
@@ -62,6 +63,25 @@ func TestTextInputSetTextRequestsLayoutAndEmitsSignal(t *testing.T) {
 	}
 	if len(texts) != 1 || texts[0] != "abc" {
 		t.Fatalf("unexpected text signal calls: %v", texts)
+	}
+}
+
+func TestTextInputMeasureReportsStableBaseline(t *testing.T) {
+	typo := &testTypography{
+		measureSize: geometry.Size{Width: 30, Height: 18},
+		lines: []typography.TextLine{
+			{Start: 0, Length: len(textInputHeightSample), Width: 30, Height: 18, Baseline: 14},
+		},
+	}
+	setTestApplication(t, typo)
+	input := NewTextInput()
+
+	measured := input.Measure(layout.Loose(geometry.Size{Width: 300, Height: 100}))
+	if measured.Size != (geometry.Size{Width: defaultTextInputWidth, Height: 26}) {
+		t.Fatalf("unexpected text input size: %+v", measured.Size)
+	}
+	if !measured.HasBaseline || measured.Baseline != 18 {
+		t.Fatalf("text input baseline should include padding: %+v", measured)
 	}
 }
 

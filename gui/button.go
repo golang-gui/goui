@@ -76,15 +76,19 @@ func (b *Button) SetPadding(padding float32) {
 	b.RequestLayout()
 }
 
-func (b *Button) Measure(c layout.Constraint) geometry.Size {
+func (b *Button) Measure(c layout.Constraint) layout.Measurement {
 	if !b.Visible() {
-		return geometry.Size{}
+		return layout.Measurement{}
 	}
 	padding := b.padding
 
-	var content geometry.Size
+	var content layout.Measurement
 	if manager := b.LayoutManager(); manager != nil {
-		content = manager.Measure(b.visibleChildren(), layout.Loose(c.Max.Inset(padding))).Inset(-padding)
+		content = manager.Measure(b.visibleChildren(), layout.Loose(c.Inset(padding).Max))
+		content.Size = content.Size.Inset(-padding)
+		if content.HasBaseline {
+			content.Baseline += padding
+		}
 	}
 
 	// A button keeps a font-derived skeleton (one line-height square) so an empty
@@ -95,7 +99,8 @@ func (b *Button) Measure(c layout.Constraint) geometry.Size {
 	floor := textLineHeight(fontSize) + padding*2
 	content.Width = max(content.Width, floor)
 	content.Height = max(content.Height, floor)
-	return b.constrain(c, content)
+	content.Size = b.constrain(c, content.Size)
+	return content
 }
 
 func (b *Button) Arrange(rect geometry.Rectangle) {

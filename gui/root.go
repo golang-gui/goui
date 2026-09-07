@@ -87,7 +87,7 @@ func (b *rootBase) paintFrame(content Widget) {
 	size := geometry.Size{Width: b.width, Height: b.height}
 	if b.layoutDirty {
 		b.layoutDirty = false
-		content.Measure(layout.Tight(size)) // hosts are extrinsic: content fills them
+		measureWidget(content, layout.Tight(size)) // hosts are extrinsic: content fills them
 		content.Arrange(geometry.Rect(0, 0, size.Width, size.Height))
 	}
 

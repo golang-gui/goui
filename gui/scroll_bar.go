@@ -93,14 +93,14 @@ func (b *ScrollBar) ConnectChange(fn func(value float32)) signal.Handle {
 	return b.change.Connect(fn)
 }
 
-func (b *ScrollBar) Measure(c layout.Constraint) geometry.Size {
+func (b *ScrollBar) Measure(c layout.Constraint) layout.Measurement {
 	if !b.Visible() {
-		return geometry.Size{}
+		return layout.Measurement{}
 	}
 	if b.orientation == layout.DirectionVertical {
-		return c.Clamp(geometry.Size{Width: scrollbarWidth})
+		return layout.Measured(b.constrain(c, geometry.Size{Width: scrollbarWidth}))
 	}
-	return c.Clamp(geometry.Size{Height: scrollbarWidth})
+	return layout.Measured(b.constrain(c, geometry.Size{Height: scrollbarWidth}))
 }
 
 func (b *ScrollBar) Paint(p Painter) {
