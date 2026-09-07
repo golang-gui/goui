@@ -615,9 +615,12 @@ func (p *textPainter) GetBitmap(width, height float32, buf []byte) (bitmap typog
 	} else {
 		bitmap.Pixels = make([]byte, byteSize)
 	}
+	// CoreText draws from the CGContext's bottom-left origin. When the
+	// retained bitmap is taller than this rasterization, the active rows
+	// are at the bottom of its top-to-bottom pixel buffer.
 	for y := 0; y < bitmap.Height; y++ {
 		dstOffset := bitmap.PixOffset(0, y)
-		srcOffset := p.bitmap.PixOffset(0, y)
+		srcOffset := p.bitmap.PixOffset(0, p.bitmap.Height-bitmap.Height+y)
 		copy(bitmap.Pixels[dstOffset:dstOffset+bitmap.Stride], p.bitmap.Pixels[srcOffset:])
 	}
 	return

@@ -21,9 +21,9 @@ type inputMethod struct {
 	window       *Window
 	handler      common.InputMethodHandler
 	enabled      bool
-	marked       string  // current preedit
-	caret        NSRect  // caret rect in view-local coordinates (recomputed to screen on demand)
-	pending      NSEvent // key being interpreted, re-emitted from doCommandBySelector
+	marked       string             // current preedit
+	caret        geometry.Rectangle // caret rect in window-logical coordinates
+	pending      NSEvent            // key being interpreted, re-emitted from doCommandBySelector
 	pendingValid bool
 }
 
@@ -57,23 +57,13 @@ func (im *inputMethod) SetEnabled(enabled bool) {
 	}
 }
 
-// SetCaretRect converts the caret rect from window-logical (top-left) coordinates
-// to screen coordinates for the candidate window. The content view is not
-// flipped, so Y is flipped against the view height. (Candidate placement may need
-// tuning on-device.)
+// SetCaretRect stores logical coordinates so candidate placement can use the
+// current backing scale when AppKit requests it, including after a screen move.
 func (im *inputMethod) SetCaretRect(rect geometry.Rectangle) {
 	if im.window == nil || !im.enabled {
 		return
 	}
-	view := im.window.view
-	vb := view.Bounds()
-	local := NSMakeRect(
-		CGFloat(rect.X),
-		vb.Size.Height-CGFloat(rect.Y)-CGFloat(rect.Height),
-		CGFloat(rect.Width),
-		CGFloat(rect.Height),
-	)
-	im.caret = local
+	im.caret = rect
 }
 
 func (im *inputMethod) Reset() {
@@ -184,7 +174,16 @@ func imFirstRect(self NSView, r NSRange, actual uintptr) NSRect {
 	}
 	// Recompute screen coordinates on demand so the position stays correct
 	// after the window is dragged.
-	return im.window.window.ConvertRectToScreen(im.window.view.ConvertRectToWindow(im.caret))
+	view := im.window.view
+	scale := pointsPerLogicalUnit(im.window.window)
+	rect := im.caret
+	local := NSMakeRect(
+		CGFloat(rect.X)*scale,
+		view.Bounds().Size.Height-CGFloat(rect.Y+rect.Height)*scale,
+		CGFloat(rect.Width)*scale,
+		CGFloat(rect.Height)*scale,
+	)
+	return im.window.window.ConvertRectToScreen(view.ConvertRectToWindow(local))
 }
 
 func imAttributedSubstring(self NSView, r NSRange, actual uintptr) ID { return 0 }

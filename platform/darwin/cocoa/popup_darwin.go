@@ -24,8 +24,7 @@ type Popup struct {
 }
 
 func newPopup(owner common.Window, width, height float32, onEvent events.EventHandler) (common.Popup, error) {
-	// Points equal goui logical units, so create at the authoritative size
-	// directly (no scale conversion); this also right-sizes the GL drawable.
+	// newNativeWindow converts the requested logical content size to points.
 	win := newNativeWindow(onEvent, NSWindowStyleMaskBorderless, NSMakeRect(0, 0, CGFloat(width), CGFloat(height)))
 	AutoReleasePool(func() {
 		win.window.SetLevel(popupWindowLevel) // float above ordinary windows
@@ -55,8 +54,7 @@ func (p *Popup) Show() error {
 // SetPosition places the popup at an owner-content-local logical point. goui uses
 // a top-left origin with y growing downward; macOS screen coordinates use a
 // bottom-left origin with y growing upward, so y is flipped against the owner
-// content's top edge. macOS points already equal goui logical units, so no scale
-// factor is applied.
+// content's top edge. The owner's scale maps logical coordinates to points.
 func (p *Popup) SetPosition(x, y float32) {
 	if !p.win.window.Valid() {
 		return
@@ -65,9 +63,10 @@ func (p *Popup) SetPosition(x, y float32) {
 		var ownerWin NSWindow
 		ownerWin.ID = ID(p.owner.NativeHandle())
 		content := ownerWin.ContentRectForFrameRect(ownerWin.Frame())
+		scale := pointsPerLogicalUnit(ownerWin)
 		topLeft := NSPoint{
-			X: content.Origin.X + CGFloat(x),
-			Y: content.Origin.Y + content.Size.Height - CGFloat(y),
+			X: content.Origin.X + CGFloat(x)*scale,
+			Y: content.Origin.Y + content.Size.Height - CGFloat(y)*scale,
 		}
 		p.win.window.SetFrameTopLeftPoint(topLeft)
 	})
@@ -84,6 +83,6 @@ func (p *Popup) SetSize(width, height float32) {
 		height = 1
 	}
 	AutoReleasePool(func() {
-		p.win.window.SetContentSize(NSSize{Width: CGFloat(width), Height: CGFloat(height)})
+		p.win.window.SetContentSize(logicalContentSize(p.win.window, width, height))
 	})
 }

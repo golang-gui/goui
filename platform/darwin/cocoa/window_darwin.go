@@ -23,6 +23,8 @@ type Window struct {
 	parent       common.Window
 	buttons      events.PointerButtons
 	modifiers    events.Modifiers
+	minWidth     float32
+	minHeight    float32
 	im           *inputMethod // this window's IME (nil when none); keyDown routes to it
 	cursor       *cursor      // this window's cursor capability (nil when none)
 }
@@ -42,6 +44,11 @@ func newNativeWindow(onEvent events.EventHandler, styleMask NSWindowStyleMask, r
 		win.window = windowClass.Alloc().InitWith(rect, styleMask, NSBackingStoreBuffered, false)
 
 		win.window.SetContentView(win.view)
+		// Window creation takes GOUI logical units. Match its point size to the
+		// effective scale before publishing the initial backing dimensions.
+		if pointsPerLogicalUnit(win.window) != 1 {
+			win.window.SetContentSize(logicalContentSize(win.window, float32(rect.Size.Width), float32(rect.Size.Height)))
+		}
 		win.window.MakeFirstResponder(win.view.NSResponder)
 		win.window.SetDelegate(win.delegate)
 		win.window.SetAcceptsMouseMovedEvents(true)
@@ -59,8 +66,7 @@ func newWindow(width, height float32, onEvent events.EventHandler) (*Window, err
 		NSWindowStyleMaskClosable |
 		NSWindowStyleMaskResizable
 
-	// NSWindow content is measured in points, which already equal goui logical
-	// units, so pass the logical size straight through (no scale conversion).
+	// newNativeWindow converts the requested logical content size to points.
 	win := newNativeWindow(onEvent, styleMask, NSMakeRect(0, 0, CGFloat(width), CGFloat(height)))
 
 	AutoReleasePool(func() {
@@ -177,10 +183,10 @@ func (w *Window) SetMinSize(width, height float32) {
 	if !w.window.Valid() {
 		return
 	}
+	w.minWidth, w.minHeight = width, height
 	AutoReleasePool(func() {
-		// Content min keeps the hint in goui's content-size semantics; points
-		// are already logical units. A zero size clears the constraint.
-		w.window.SetContentMinSize(NSSize{Width: CGFloat(width), Height: CGFloat(height)})
+		// A zero size clears the constraint.
+		w.window.SetContentMinSize(logicalContentSize(w.window, width, height))
 	})
 }
 
@@ -284,19 +290,20 @@ func windowShouldClose(self NSWindowDelegate, sender NSWindow) bool {
 	return true
 }
 
-// makeSizeEvent builds a SizeEvent carrying both the logical (point) size and
+// makeSizeEvent builds a SizeEvent carrying both the logical size and
 // the physical (backing pixel) size of the view.
 func makeSizeEvent(view NSView) events.SizeEvent {
-	rect := view.Frame()
+	rect := view.Bounds()
 	fbRect := view.ConvertRectToBacking(rect)
-	// Apply scale override: if GOUI_PLAT_SCALE is set, use it to compute
-	// the physical pixel size instead of the native backing scale.
+	// An override affects layout units, never the native drawable dimensions.
+	// Inventing backing sizes here makes glViewport extend beyond the actual
+	// surface and clips translated/scaled geometry out of the window.
 	if scale := common.GetPreferScale(); scale > 0 {
 		return events.SizeEvent{
-			Width:       float32(rect.Size.Width),
-			Height:      float32(rect.Size.Height),
-			PixelWidth:  float32(rect.Size.Width) * scale,
-			PixelHeight: float32(rect.Size.Height) * scale,
+			Width:       float32(fbRect.Size.Width) / scale,
+			Height:      float32(fbRect.Size.Height) / scale,
+			PixelWidth:  float32(fbRect.Size.Width),
+			PixelHeight: float32(fbRect.Size.Height),
 		}
 	}
 	return events.SizeEvent{
@@ -339,8 +346,8 @@ func viewDidChangeBackingProperties(self NSView) {
 	defer self.Release()
 
 	if window, has := windowMap[self.Window()]; has {
-		// Backing scale changed: logical size is unchanged but the physical
-		// pixel size differs, so a fresh SizeEvent carries the new scale.
+		window.SetMinSize(window.minWidth, window.minHeight)
+		// Both the backing size and the point-to-logical conversion may change.
 		window.onEvent(makeSizeEvent(self))
 	}
 }
