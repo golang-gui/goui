@@ -565,7 +565,7 @@ func (this *GeometrySink) class() *GeometrySinkClass {
 var IID_ID2D1Bitmap = com.DefineGuid(0xa2296057, 0xea42, 0x4099, 0x98, 0x3b, 0x53, 0x9f, 0xb6, 0x50, 0x54, 0x26)
 
 type BitmapClass struct {
-	com.UnknownClass
+	ResourceClass
 
 	GetSize              cgo.Symbol //D2D1_SIZE_F(ID2D1Bitmap *This)
 	GetPixelSize         cgo.Symbol //D2D1_SIZE_U(ID2D1Bitmap *This)
@@ -577,7 +577,7 @@ type BitmapClass struct {
 }
 
 type Bitmap struct {
-	com.Unknown
+	Resource
 }
 
 type DeviceClass struct {
