@@ -191,8 +191,8 @@ func (w *BadgeWidget) SetText(text string) {
     w.RequestLayout()
 }
 
-func (w *BadgeWidget) Measure(c layout.Constraint) geometry.Size {
-    return c.Clamp(geometry.Size{Width: 72, Height: 24})
+func (w *BadgeWidget) Measure(c layout.Constraint) layout.Measurement {
+    return layout.Measured(c.Clamp(geometry.Size{Width: 72, Height: 24}))
 }
 
 func (w *BadgeWidget) Paint(p gui.Painter) {
