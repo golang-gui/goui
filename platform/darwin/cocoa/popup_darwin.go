@@ -25,7 +25,7 @@ type Popup struct {
 
 func newPopup(owner common.Window, width, height float32, onEvent events.EventHandler) (common.Popup, error) {
 	// newNativeWindow converts the requested logical content size to points.
-	win := newNativeWindow(onEvent, NSWindowStyleMaskBorderless, NSMakeRect(0, 0, CGFloat(width), CGFloat(height)))
+	win := newNativeWindow(onEvent, popupClass, NSWindowStyleMaskBorderless, NSMakeRect(0, 0, CGFloat(width), CGFloat(height)))
 	AutoReleasePool(func() {
 		win.window.SetLevel(popupWindowLevel) // float above ordinary windows
 	})

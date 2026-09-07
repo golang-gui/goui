@@ -33,7 +33,7 @@ type Window struct {
 // it allocates the delegate/view, initializes the window with the given style
 // and rect, wires the content view and delegate, and registers it for event
 // routing. Callers apply role-specific setup (collection behavior / level).
-func newNativeWindow(onEvent events.EventHandler, styleMask NSWindowStyleMask, rect NSRect) *Window {
+func newNativeWindow(onEvent events.EventHandler, class NSWindowClass, styleMask NSWindowStyleMask, rect NSRect) *Window {
 	win := &Window{
 		onEvent: onEvent,
 	}
@@ -41,7 +41,7 @@ func newNativeWindow(onEvent events.EventHandler, styleMask NSWindowStyleMask, r
 		win.delegate = delegateClass.Alloc()
 		win.view = viewClass.Alloc().Init()
 
-		win.window = windowClass.Alloc().InitWith(rect, styleMask, NSBackingStoreBuffered, false)
+		win.window = class.Alloc().InitWith(rect, styleMask, NSBackingStoreBuffered, false)
 
 		win.window.SetContentView(win.view)
 		// Window creation takes GOUI logical units. Match its point size to the
@@ -67,7 +67,7 @@ func newWindow(width, height float32, onEvent events.EventHandler) (*Window, err
 		NSWindowStyleMaskResizable
 
 	// newNativeWindow converts the requested logical content size to points.
-	win := newNativeWindow(onEvent, styleMask, NSMakeRect(0, 0, CGFloat(width), CGFloat(height)))
+	win := newNativeWindow(onEvent, windowClass, styleMask, NSMakeRect(0, 0, CGFloat(width), CGFloat(height)))
 
 	AutoReleasePool(func() {
 		win.window.SetCollectionBehavior(NSWindowCollectionBehaviorFullScreenPrimary | NSWindowCollectionBehaviorManaged)
@@ -200,6 +200,7 @@ func (w *Window) Draw(img image.Image) error {
 
 var (
 	windowClass   NSWindowClass
+	popupClass    NSWindowClass
 	delegateClass NSWindowDelegateClass
 	viewClass     NSViewClass
 	windowMap     = map[NSWindow]*Window{}
@@ -216,6 +217,15 @@ func initWindowClass() (err error) {
 	})
 	if err != nil {
 		return fmt.Errorf("implement NSWindow err: %v", err)
+	}
+	// Popups accept pointer input without taking native keyboard/main-window
+	// status from their owner. Keyboard routing remains with the owner window.
+	popupClass, err = ImplementNSWindow("GouiPopupWindow", NSWindowOverride{
+		CanBecomeKeyWindow:  func(NSWindow) bool { return false },
+		CanBecomeMainWindow: func(NSWindow) bool { return false },
+	})
+	if err != nil {
+		return fmt.Errorf("implement popup NSWindow err: %v", err)
 	}
 
 	delegateClass, err = ImplementNSWindowDelegate("GouiWindowDelegate", NSWindowDelegateOverride{

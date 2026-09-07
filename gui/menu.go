@@ -154,10 +154,13 @@ func (pm *PopoverMenu) activate(mi *MenuItem) {
 	if mi == nil || !mi.Enabled() {
 		return
 	}
-	if f := mi.Action(); f != nil {
-		f()
-	}
+	// Actions may enter a native modal loop or open another menu. Hide this
+	// popup and release its modal input target before handing off control.
+	action := mi.Action()
 	pm.Hide()
+	if action != nil {
+		action()
+	}
 }
 
 // --- internal renderer ---
