@@ -227,9 +227,9 @@ func (sv *ScrollView) Snapshot() WidgetInfo {
 	return info
 }
 
-func (sv *ScrollView) Measure(c layout.Constraint) geometry.Size {
+func (sv *ScrollView) Measure(c layout.Constraint) layout.Measurement {
 	if !sv.Visible() || sv.content == nil {
-		return geometry.Size{}
+		return layout.Measurement{}
 	}
 	if sc, ok := sv.content.(Scrollable); ok {
 		size := sc.ContentSize()
@@ -239,21 +239,21 @@ func (sv *ScrollView) Measure(c layout.Constraint) geometry.Size {
 		// reported content width drives the horizontal scrollbar (hScrollable),
 		// never the size of the viewport itself — feeding a content or
 		// bar-influenced width back here would shrink the viewport each layout.
-		return sv.constrain(c, geometry.Size{
+		return layout.Measured(sv.constrain(c, geometry.Size{
 			Width:  sv.viewportWidth(c),
 			Height: sv.viewportHeight(c),
-		})
+		}))
 	}
 	contentC := layout.Constraint{
 		Min: geometry.Size{},
 		Max: geometry.Size{Width: layout.Inf, Height: layout.Inf},
 	}
-	contentSize := sv.content.Measure(contentC)
+	contentSize := measureWidget(sv.content, contentC).Size
 	sv.contentWidth, sv.contentHeight = contentSize.Width, contentSize.Height
-	return sv.constrain(c, geometry.Size{
+	return layout.Measured(sv.constrain(c, geometry.Size{
 		Width:  contentSize.Width,
 		Height: sv.viewportHeight(c),
-	})
+	}))
 }
 
 func (sv *ScrollView) viewportWidth(c layout.Constraint) float32 {

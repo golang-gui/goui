@@ -28,8 +28,8 @@ func (m *mockPaintWidget) Paint(p Painter) {
 	p.FillRect(geometry.Rect(0, 0, m.Rect().Width, m.Rect().Height), graphics.RGB(1, 2, 3))
 }
 
-func (m *mockWidget) Measure(c layout.Constraint) geometry.Size {
-	return m.size
+func (m *mockWidget) Measure(c layout.Constraint) layout.Measurement {
+	return layout.Measured(m.size)
 }
 
 func (m *mockWidget) Arrange(rect geometry.Rectangle) {
@@ -326,18 +326,18 @@ func TestScrollViewElasticMeasure(t *testing.T) {
 
 	// A finite parent height is the viewport height; content height remains
 	// cached separately for scrolling.
-	if got := sv.Measure(layout.Constraint{Max: geometry.Size{Width: 100, Height: 100}}); got != (geometry.Size{Width: 100, Height: 100}) {
+	if got := sv.Measure(layout.Constraint{Max: geometry.Size{Width: 100, Height: 100}}); got.Size != (geometry.Size{Width: 100, Height: 100}) {
 		t.Fatalf("bounded measure should use the viewport height, got %v", got)
 	}
 	if sv.MainWeight() != 1 {
 		t.Fatalf("ScrollView should default to MainWeight(1), got %v", sv.MainWeight())
 	}
 	// An unbounded scroll axis has no intrinsic viewport height.
-	if got := sv.Measure(layout.Constraint{Max: geometry.Size{Width: 100, Height: layout.Inf}}); got != (geometry.Size{Width: 100}) {
+	if got := sv.Measure(layout.Constraint{Max: geometry.Size{Width: 100, Height: layout.Inf}}); got.Size != (geometry.Size{Width: 100}) {
 		t.Fatalf("unbounded measure should have no intrinsic scroll height, got %v", got)
 	}
 	// Tight constraint (window root): c.Min == c.Max -> fills.
-	if got := sv.Measure(layout.Tight(geometry.Size{Width: 800, Height: 600})); got != (geometry.Size{Width: 800, Height: 600}) {
+	if got := sv.Measure(layout.Tight(geometry.Size{Width: 800, Height: 600})); got.Size != (geometry.Size{Width: 800, Height: 600}) {
 		t.Fatalf("elastic measure under Tight should fill, got %v", got)
 	}
 }
@@ -352,7 +352,7 @@ func TestScrollViewMeasureCombinesChildSizeWithParentConstraint(t *testing.T) {
 	})
 	// Scrollable content fills the cross axis, so width is the parent's max
 	// width, clamped to the constraint bounds.
-	if got != (geometry.Size{Width: 200, Height: 100}) {
+	if got.Size != (geometry.Size{Width: 200, Height: 100}) {
 		t.Fatalf("Measure should fill the cross axis and apply both parent bounds, got %v", got)
 	}
 }

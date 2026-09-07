@@ -52,7 +52,9 @@ type Widget interface {
 	MainWeight() float32
 	SetMainWeight(float32)
 
-	Measure(c layout.Constraint) geometry.Size
+	// Measure returns this widget's geometry for the exact parent constraint.
+	// The optional baseline is relative to the top edge of the returned size.
+	Measure(c layout.Constraint) layout.Measurement
 	Arrange(rect geometry.Rectangle)
 
 	// Paint draws this Widget itself in local coordinates. The GUI traversal
@@ -112,6 +114,9 @@ type WidgetBase struct {
 	unmount             signal.Signal0
 	focusedSignal       signal.Signal1[bool]
 	containsFocusSignal signal.Signal1[bool]
+	measureConstraint   layout.Constraint
+	measureResult       layout.Measurement
+	measureValid        bool
 	destroyed           bool
 }
 
@@ -253,17 +258,18 @@ func (w *WidgetBase) SetLayoutManager(l layout.LayoutManager) {
 	w.RequestLayout()
 }
 
-func (w *WidgetBase) Measure(c layout.Constraint) geometry.Size {
+func (w *WidgetBase) Measure(c layout.Constraint) layout.Measurement {
 	if w.hidden {
-		return geometry.Size{}
+		return layout.Measurement{}
 	}
-	var intrinsic geometry.Size
+	var measured layout.Measurement
 	if w.layoutManager != nil {
 		// The layout manager insets its own padding (LinearLayout.Padding etc.);
 		// WidgetBase stays padding-free — not every widget has padding.
-		intrinsic = w.layoutManager.Measure(w.visibleChildren(), c)
+		measured = w.layoutManager.Measure(w.visibleChildren(), c)
 	}
-	return w.constrain(c, intrinsic)
+	measured.Size = w.constrain(c, measured.Size)
+	return measured
 }
 
 // selfConstraint is the widget's own size preference (min/max). A 0 max means
@@ -374,11 +380,55 @@ func (w *WidgetBase) windowRect() geometry.Rectangle {
 }
 
 func (w *WidgetBase) RequestLayout() {
+	w.invalidateMeasureToRoot()
 	// Reach the host through the Root interface (window or popover) — never the
 	// concrete *window, which is nil for a popover-hosted widget.
 	if r := w.root(); r != nil {
 		r.RequestLayout()
 	}
+}
+
+// invalidateMeasureToRoot clears the one-entry measurement cache for this
+// widget and every ancestor whose result may include it. WidgetBase does not
+// need an owner/self pointer: its own cache is local and parentWidget provides
+// the upward path.
+func (w *WidgetBase) invalidateMeasureToRoot() {
+	w.measureValid = false
+	for parent := w.parentWidget; parent != nil; parent = parent.Parent() {
+		parent.base().measureValid = false
+	}
+}
+
+// invalidateMeasureSubtree is used for global inputs such as a style-sheet
+// change, where every descendant's intrinsic size may have changed.
+func invalidateMeasureSubtree(widget Widget) {
+	if widget == nil {
+		return
+	}
+	widget.base().measureValid = false
+	for _, child := range widget.Children() {
+		invalidateMeasureSubtree(child)
+	}
+}
+
+// measureWidget is the framework's cached entry point for measuring a Widget.
+// Layout algorithms reach it through widgetLayoutChild, while hosts and the
+// few specialized containers call it directly. The final clamp enforces the
+// layout.Child contract even for application-defined widgets.
+func measureWidget(widget Widget, c layout.Constraint) layout.Measurement {
+	if widget == nil {
+		return layout.Measurement{}
+	}
+	base := widget.base()
+	if base.measureValid && base.measureConstraint == c {
+		return base.measureResult
+	}
+	measured := widget.Measure(c)
+	measured.Size = c.Clamp(measured.Size)
+	base.measureConstraint = c
+	base.measureResult = measured
+	base.measureValid = true
+	return measured
 }
 
 func (w *WidgetBase) RequestPaint() {
@@ -591,6 +641,7 @@ func (w *WidgetBase) destroy(widget Widget) {
 	w.children = nil
 	w.controllers = nil
 	w.layoutManager = nil
+	w.measureValid = false
 }
 
 func (w *WidgetBase) emitMountSubtree(widget Widget) {
@@ -657,8 +708,26 @@ func (w *WidgetBase) visibleChildren() []layout.Child {
 	children := make([]layout.Child, 0, len(w.children))
 	for _, child := range w.children {
 		if child.Visible() {
-			children = append(children, child)
+			children = append(children, widgetLayoutChild{widget: child})
 		}
 	}
 	return children
+}
+
+// widgetLayoutChild adapts a GUI Widget to the pure layout.Child contract and
+// funnels framework-owned child measurement through WidgetBase's cache.
+type widgetLayoutChild struct {
+	widget Widget
+}
+
+func (c widgetLayoutChild) Measure(constraint layout.Constraint) layout.Measurement {
+	return measureWidget(c.widget, constraint)
+}
+
+func (c widgetLayoutChild) Arrange(rect geometry.Rectangle) {
+	c.widget.Arrange(rect)
+}
+
+func (c widgetLayoutChild) MainWeight() float32 {
+	return c.widget.MainWeight()
 }

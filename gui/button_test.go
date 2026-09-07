@@ -46,10 +46,10 @@ func TestButtonUsesWidgetBaseLayoutAndPaint(t *testing.T) {
 	button.SetChild(child)
 
 	size := button.Measure(layout.Loose(geometry.Size{Width: 300, Height: 200}))
-	if size != (geometry.Size{Width: 132, Height: 72}) {
+	if size.Size != (geometry.Size{Width: 132, Height: 72}) {
 		t.Fatalf("unexpected measured size: %+v", size)
 	}
-	if len(manager.measured) != 1 || manager.measured[0] != child {
+	if len(manager.measured) != 1 || layoutChildWidget(manager.measured[0]) != child {
 		t.Fatalf("layout measured unexpected children: %v", manager.measured)
 	}
 
@@ -90,6 +90,21 @@ func TestButtonEmptyKeepsVisibleSkeleton(t *testing.T) {
 	minSkeleton := textLineHeight(defaultFontSize)
 	if size.Width < minSkeleton || size.Height < minSkeleton {
 		t.Fatalf("empty button collapsed: %+v (want at least %v on each axis)", size, minSkeleton)
+	}
+}
+
+func TestButtonMeasurePropagatesContentBaselineThroughPadding(t *testing.T) {
+	button := NewButton()
+	button.SetLayoutManager(&testLayoutManager{
+		measureSize:     geometry.Size{Width: 30, Height: 18},
+		measureBaseline: 14,
+		hasBaseline:     true,
+	})
+	button.SetChild(newTestWidget())
+
+	measured := button.Measure(layout.Loose(geometry.Size{Width: 300, Height: 100}))
+	if !measured.HasBaseline || measured.Baseline != 20 {
+		t.Fatalf("button baseline should include default padding: %+v", measured)
 	}
 }
 

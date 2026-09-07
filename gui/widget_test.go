@@ -169,15 +169,15 @@ func TestWidgetBaseLayoutManagerUsesVisibleChildren(t *testing.T) {
 	parent.SetLayoutManager(manager)
 
 	size := parent.Measure(layout.Loose(geometry.Size{Width: 100, Height: 80}))
-	if size != (geometry.Size{Width: 11, Height: 12}) {
+	if size.Size != (geometry.Size{Width: 11, Height: 12}) {
 		t.Fatalf("unexpected measured size: %+v", size)
 	}
-	if len(manager.measured) != 1 || manager.measured[0] != visible {
+	if len(manager.measured) != 1 || layoutChildWidget(manager.measured[0]) != visible {
 		t.Fatalf("layout measured unexpected elements: %v", manager.measured)
 	}
 
 	parent.Arrange(geometry.Rect(20, 30, 100, 80))
-	if len(manager.arranged) != 1 || manager.arranged[0] != visible {
+	if len(manager.arranged) != 1 || layoutChildWidget(manager.arranged[0]) != visible {
 		t.Fatalf("layout arranged unexpected elements: %v", manager.arranged)
 	}
 	if manager.arrangeRect != geometry.Rect(0, 0, 100, 80) {
@@ -551,7 +551,7 @@ func TestWidgetBaseSizeConstraint(t *testing.T) {
 	w.SetLayoutManager(&testLayoutManager{measureSize: geometry.Size{Width: 500, Height: 10}})
 
 	got := w.Measure(layout.Loose(geometry.Size{Width: 1000, Height: 1000}))
-	if got != (geometry.Size{Width: 200, Height: 40}) {
+	if got.Size != (geometry.Size{Width: 200, Height: 40}) {
 		t.Fatalf("min/max not applied: %+v (want 200x40)", got)
 	}
 
@@ -564,16 +564,93 @@ func TestWidgetBaseSizeConstraint(t *testing.T) {
 	}
 }
 
-type testLayoutManager struct {
-	measureSize geometry.Size
-	measured    []layout.Child
-	arranged    []layout.Child
-	arrangeRect geometry.Rectangle
+func TestWidgetMeasurementCacheReusesIdenticalConstraint(t *testing.T) {
+	box := NewLinearBox(layout.DirectionHorizontal)
+	child := &countingMeasureWidget{size: geometry.Size{Width: 20, Height: 10}}
+	box.AddChild(child)
+	c := layout.Loose(geometry.Size{Width: 100, Height: 40})
+
+	first := measureWidget(box, c)
+	second := measureWidget(box, c)
+	if first != second {
+		t.Fatalf("cached measurement changed: first=%+v second=%+v", first, second)
+	}
+	if child.measures != 1 {
+		t.Fatalf("identical constraint measured child %d times, want 1", child.measures)
+	}
 }
 
-func (l *testLayoutManager) Measure(children []layout.Child, _ layout.Constraint) geometry.Size {
+func TestWidgetRequestLayoutInvalidatesMeasurementToRoot(t *testing.T) {
+	box := NewLinearBox(layout.DirectionHorizontal)
+	child := &countingMeasureWidget{size: geometry.Size{Width: 20, Height: 10}}
+	box.AddChild(child)
+	c := layout.Loose(geometry.Size{Width: 100, Height: 40})
+
+	measureWidget(box, c)
+	child.RequestLayout()
+	measureWidget(box, c)
+	if child.measures != 2 {
+		t.Fatalf("child layout invalidation left an ancestor cache live: measures=%d", child.measures)
+	}
+}
+
+func TestWidgetArrangeReusesMeasurementAtSameConstraint(t *testing.T) {
+	box := NewLinearBox(layout.DirectionHorizontal)
+	child := &countingMeasureWidget{size: geometry.Size{Width: 20, Height: 10}}
+	box.AddChild(child)
+	size := geometry.Size{Width: 100, Height: 40}
+
+	measureWidget(box, layout.Tight(size))
+	box.Arrange(geometry.Rect(0, 0, size.Width, size.Height))
+	if child.measures != 1 {
+		t.Fatalf("Measure followed by Arrange measured child %d times, want 1", child.measures)
+	}
+}
+
+func TestWidgetMeasurementCacheMissesChangedConstraint(t *testing.T) {
+	child := &countingMeasureWidget{size: geometry.Size{Width: 20, Height: 10}}
+
+	measureWidget(child, layout.Loose(geometry.Size{Width: 100, Height: 40}))
+	measureWidget(child, layout.Loose(geometry.Size{Width: 200, Height: 40}))
+	if child.measures != 2 {
+		t.Fatalf("changed constraint reused stale measurement: measures=%d", child.measures)
+	}
+}
+
+type countingMeasureWidget struct {
+	WidgetBase
+	size     geometry.Size
+	measures int
+}
+
+func (w *countingMeasureWidget) Measure(c layout.Constraint) layout.Measurement {
+	w.measures++
+	return layout.Measured(c.Clamp(w.size))
+}
+
+type testLayoutManager struct {
+	measureSize     geometry.Size
+	measureBaseline float32
+	hasBaseline     bool
+	measured        []layout.Child
+	arranged        []layout.Child
+	arrangeRect     geometry.Rectangle
+}
+
+func layoutChildWidget(child layout.Child) Widget {
+	if adapter, ok := child.(widgetLayoutChild); ok {
+		return adapter.widget
+	}
+	widget, _ := child.(Widget)
+	return widget
+}
+
+func (l *testLayoutManager) Measure(children []layout.Child, _ layout.Constraint) layout.Measurement {
 	l.measured = append([]layout.Child(nil), children...)
-	return l.measureSize
+	if l.hasBaseline {
+		return layout.MeasuredWithBaseline(l.measureSize, l.measureBaseline)
+	}
+	return layout.Measured(l.measureSize)
 }
 
 func (l *testLayoutManager) Arrange(children []layout.Child, rect geometry.Rectangle) {

@@ -52,8 +52,9 @@ func (v *BoxView) MainAlign(align layout.MainAlign) *BoxView {
 }
 
 // CrossAlign sets how each child sits on the cross axis: Start / Center / End /
-// Stretch. Default Start hugs; Stretch is the one-liner that fills (e.g. equal
-// width form rows). Container-level default.
+// Stretch / Baseline. Baseline applies to horizontal boxes and falls back to
+// Start in vertical boxes. Default Start hugs; Stretch is the one-liner that
+// fills (e.g. equal-width form rows). Container-level default.
 func (v *BoxView) CrossAlign(align layout.CrossAlign) *BoxView {
 	v.crossAlign = align
 	return v

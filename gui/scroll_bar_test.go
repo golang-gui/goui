@@ -23,7 +23,7 @@ func newVerticalBar(t *testing.T, max float32) *ScrollBar {
 }
 
 func TestScrollBarDefaultThickness(t *testing.T) {
-	const want float32 = 12
+	const want float32 = 8
 
 	vertical := NewScrollBar(layout.DirectionVertical)
 	if got := vertical.Measure(layout.Unbounded()).Width; got != want {

@@ -34,15 +34,15 @@ func (i *Image) SetImage(img image.Image) {
 	i.requestSemanticUpdate()
 }
 
-func (i *Image) Measure(c layout.Constraint) geometry.Size {
+func (i *Image) Measure(c layout.Constraint) layout.Measurement {
 	if !i.Visible() || i.img == nil {
-		return geometry.Size{}
+		return layout.Measurement{}
 	}
 	bounds := i.img.Bounds()
-	return i.constrain(c, geometry.Size{
+	return layout.Measured(i.constrain(c, geometry.Size{
 		Width:  float32(bounds.Dx()),
 		Height: float32(bounds.Dy()),
-	})
+	}))
 }
 
 func (i *Image) Paint(p Painter) {

@@ -294,7 +294,7 @@ func (p *popover) measureAndSize() {
 	// Popup is intrinsic: measure with a loose constraint so the popover sizes to
 	// its content, independent of the owner window's size.
 	const loose = 1 << 14
-	size := p.widget.Measure(layout.Loose(geometry.Size{Width: loose, Height: loose}))
+	size := measureWidget(p.widget, layout.Loose(geometry.Size{Width: loose, Height: loose})).Size
 	width, height := size.Width, size.Height
 	if width < 1 {
 		width = 1

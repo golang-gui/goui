@@ -128,36 +128,47 @@ func (t *TextInput) ConnectText(fn func(string)) signal.Handle {
 	return t.textSignal.Connect(fn)
 }
 
-func (t *TextInput) Measure(c layout.Constraint) geometry.Size {
+func (t *TextInput) Measure(c layout.Constraint) layout.Measurement {
 	if !t.Visible() {
-		return geometry.Size{}
+		return layout.Measurement{}
 	}
 	padding := t.padding
-	lineHeight := t.contentLineHeight(t.textFormat(t.resolvedStyle()))
-	return t.constrain(c, geometry.Size{
+	lineHeight, baseline, hasBaseline := t.contentLineMetrics(t.textFormat(t.resolvedStyle()))
+	measured := layout.Measurement{Size: geometry.Size{
 		Width:  defaultTextInputWidth,
 		Height: lineHeight + padding*2,
-	})
+	}}
+	if hasBaseline {
+		measured.Baseline = padding + baseline
+		measured.HasBaseline = true
+	}
+	measured.Size = t.constrain(c, measured.Size)
+	return measured
 }
 
-// contentLineHeight returns the field's content line height for the given
-// format. It measures a fixed mixed-script sample so the height is stable
-// regardless of what the user has typed (a Latin-only field and a CJK field
-// get the same box height), and falls back to the point-size estimate when no
-// typography context is available (e.g. in tests).
-func (t *TextInput) contentLineHeight(format typography.TextFormat) float32 {
+// contentLineMetrics returns the field's stable line height and first baseline
+// for the given format. It measures a fixed mixed-script sample so Latin-only
+// and CJK content receive the same box geometry. When typography is unavailable
+// (for example in a size-only test), height falls back to the point-size estimate
+// and baseline is reported as unavailable instead of inventing font metrics.
+func (t *TextInput) contentLineMetrics(format typography.TextFormat) (height, baseline float32, hasBaseline bool) {
 	if App != nil {
 		if typo := App.Typography(); typo != nil {
 			sample, err := typo.NewTextLayout(textInputHeightSample, format, textInputMeasureExtent, textInputMeasureExtent)
 			if err == nil {
 				defer sample.Destroy()
-				if _, height := sample.MeasureSize(); height > 0 {
-					return height
+				_, measuredHeight := sample.MeasureSize()
+				if measuredHeight > 0 {
+					lines, _ := sample.MeasureMetrics()
+					if len(lines) > 0 {
+						return measuredHeight, lines[0].Baseline, true
+					}
+					return measuredHeight, 0, false
 				}
 			}
 		}
 	}
-	return textLineHeight(format.Font.Size)
+	return textLineHeight(format.Font.Size), 0, false
 }
 
 func (t *TextInput) Paint(p Painter) {

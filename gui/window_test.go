@@ -274,10 +274,10 @@ func newLayoutPassWidget() *layoutPassWidget {
 	return new(layoutPassWidget)
 }
 
-func (w *layoutPassWidget) Measure(c layout.Constraint) geometry.Size {
+func (w *layoutPassWidget) Measure(c layout.Constraint) layout.Measurement {
 	w.measures++
 	w.measuredAvailable = c.Max
-	return c.Max
+	return layout.Measured(c.Max)
 }
 
 func (w *layoutPassWidget) Arrange(rect geometry.Rectangle) {

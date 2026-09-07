@@ -16,7 +16,7 @@ func TestFillLayoutMeasure(t *testing.T) {
 
 	size := layout.Measure(children, Loose(geometry.Size{Width: 100, Height: 50}))
 
-	if size != (geometry.Size{Width: 30, Height: 20}) {
+	if size.Size != (geometry.Size{Width: 30, Height: 20}) {
 		t.Fatalf("unexpected measured size: %+v", size)
 	}
 }
@@ -34,5 +34,19 @@ func TestFillLayoutArrange(t *testing.T) {
 	}
 	if second.rect != geometry.Rect(5, 6, 70, 80) {
 		t.Fatalf("unexpected second rect: %+v", second.rect)
+	}
+}
+
+func TestFillLayoutPropagatesFirstBaseline(t *testing.T) {
+	layout := NewFillLayout()
+	child := &testChild{
+		size:        geometry.Size{Width: 30, Height: 20},
+		baseline:    14,
+		hasBaseline: true,
+	}
+
+	measured := layout.Measure([]Child{child}, Loose(geometry.Size{Width: 100, Height: 100}))
+	if !measured.HasBaseline || measured.Baseline != 14 {
+		t.Fatalf("fill layout did not propagate child baseline: %+v", measured)
 	}
 }

@@ -29,6 +29,60 @@ func (c Constraint) Clamp(s geometry.Size) geometry.Size {
 	}
 }
 
+// Inset returns the constraint for content inside equal padding on every edge.
+// Unlike geometry.Size.Inset, it preserves Inf so an unbounded axis does not
+// accidentally become a very large but finite axis after subtracting padding.
+func (c Constraint) Inset(n float32) Constraint {
+	return Constraint{
+		Min: geometry.Size{
+			Width:  insetExtent(c.Min.Width, n),
+			Height: insetExtent(c.Min.Height, n),
+		},
+		Max: geometry.Size{
+			Width:  insetExtent(c.Max.Width, n),
+			Height: insetExtent(c.Max.Height, n),
+		},
+	}
+}
+
+func insetExtent(v, n float32) float32 {
+	if v >= Inf {
+		return Inf
+	}
+	v -= 2 * n
+	return max(0, v)
+}
+
+// Measurement is the geometry a child reports for one specific Constraint.
+// Baseline, when present, is the first typographic baseline measured down from
+// the top edge of Size. Keeping it beside Size prevents callers from combining
+// a baseline with geometry produced under different constraints.
+type Measurement struct {
+	geometry.Size
+	Baseline    float32
+	HasBaseline bool
+}
+
+// Measured constructs a size-only Measurement. It is the common result for
+// non-text content and keeps size-only widget implementations concise.
+func Measured(size geometry.Size) Measurement {
+	return Measurement{Size: size}
+}
+
+// MeasuredWithBaseline constructs a Measurement with a first typographic
+// baseline relative to its top edge.
+func MeasuredWithBaseline(size geometry.Size, baseline float32) Measurement {
+	return Measurement{Size: size, Baseline: baseline, HasBaseline: true}
+}
+
+// Constrain clamps the measured size while preserving its content baseline.
+// A hard parent constraint may clip content above or below that baseline; the
+// baseline must continue to describe where the content is actually drawn.
+func (m Measurement) Constrain(c Constraint) Measurement {
+	m.Size = c.Clamp(m.Size)
+	return m
+}
+
 func clamp(v, lo, hi float32) float32 {
 	if lo > hi {
 		lo = hi // over-constrained: Max wins
@@ -43,7 +97,7 @@ func clamp(v, lo, hi float32) float32 {
 }
 
 type Child interface {
-	Measure(c Constraint) geometry.Size
+	Measure(c Constraint) Measurement
 	Arrange(rect geometry.Rectangle)
 	// MainWeight is the child's share of leftover main-axis space (0 = hug).
 	// Linear-style layouts honor it; fill ignores it. It is the one universal
@@ -52,7 +106,7 @@ type Child interface {
 }
 
 type LayoutManager interface {
-	Measure(children []Child, c Constraint) geometry.Size
+	Measure(children []Child, c Constraint) Measurement
 	Arrange(children []Child, rect geometry.Rectangle)
 }
 
@@ -79,8 +133,9 @@ const (
 type CrossAlign int
 
 const (
-	CrossStart   CrossAlign = iota // child hugs, sits at the cross start; default
-	CrossCenter                    // child hugs, centered on the cross axis
-	CrossEnd                       // child hugs, at the cross end
-	CrossStretch                   // child fills the whole cross extent
+	CrossStart    CrossAlign = iota // child hugs, sits at the cross start; default
+	CrossCenter                     // child hugs, centered on the cross axis
+	CrossEnd                        // child hugs, at the cross end
+	CrossStretch                    // child fills the whole cross extent
+	CrossBaseline                   // horizontal only: align first typographic baselines
 )
