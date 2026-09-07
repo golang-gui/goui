@@ -46,6 +46,7 @@ type Painter struct {
 	roundRect            d2d1.RoundRect
 	ellipse              d2d1.Ellipse
 	clip                 d2d1.RectF
+	clipActive           bool
 	images               map[*imageResource]struct{}
 	width                uint32
 	height               uint32
@@ -344,6 +345,8 @@ func (p *Painter) Destroy() {
 
 func (p *Painter) releaseDeviceResources() {
 	p.activeFrame = false
+	p.clipActive = false
+	p.clip = d2d1.RectF{}
 	p.deferredFrame = false
 	p.occluded = false
 	p.releaseImageNatives()
@@ -805,7 +808,7 @@ func (p *Painter) FillEllipse(center graphics.Point, xRadius, yRadius float32, b
 		return
 	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		p.setEllipse(p.snapPoint(center), xRadius, yRadius)
+		p.setEllipse(center, xRadius, yRadius)
 		p.render.FillEllipse(&p.ellipse, d2dBrush)
 	}
 }
@@ -815,7 +818,7 @@ func (p *Painter) FillPath(path graphics.Path, brush graphics.Brush) {
 		return
 	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		geometry, err := p.createPathGeometry(p.snapPath(path), true)
+		geometry, err := p.createPathGeometry(path, true)
 		if err == nil {
 			defer geometry.Release()
 			p.render.FillGeometry(geometry, d2dBrush, nil)
@@ -828,8 +831,9 @@ func (p *Painter) DrawLine(p0, p1 graphics.Point, strokeWidth float32, brush gra
 		return
 	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		point0 := d2d1.Point2F{X: p.snap(p0.X), Y: p.snap(p0.Y)}
-		point1 := d2d1.Point2F{X: p.snap(p1.X), Y: p.snap(p1.Y)}
+		p0, p1 = p.snapLine(p0, p1, strokeWidth)
+		point0 := d2d1.Point2F{X: p0.X, Y: p0.Y}
+		point1 := d2d1.Point2F{X: p1.X, Y: p1.Y}
 		p.render.DrawLine(point0, point1, d2dBrush, strokeWidth, nil) // TODO: strokeStyle
 	}
 }
@@ -839,7 +843,7 @@ func (p *Painter) DrawRect(rect graphics.Rectangle, strokeWidth float32, brush g
 		return
 	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		p.setRect(p.snapRect(rect))
+		p.setRect(p.snapStrokeRect(rect, strokeWidth))
 		p.render.DrawRectangle(&p.rect, d2dBrush, strokeWidth, nil)
 	}
 }
@@ -849,7 +853,7 @@ func (p *Painter) DrawRoundRect(rect graphics.Rectangle, radius, strokeWidth flo
 		return
 	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		rect = p.snapRect(rect)
+		rect = p.snapStrokeRect(rect, strokeWidth)
 		p.setRoundRect(rect, radius)
 		p.render.DrawRoundedRectangle(&p.roundRect, d2dBrush, strokeWidth, nil)
 	}
@@ -860,7 +864,7 @@ func (p *Painter) DrawEllipse(center graphics.Point, xRadius, yRadius, strokeWid
 		return
 	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		p.setEllipse(p.snapPoint(center), xRadius, yRadius)
+		p.setEllipse(center, xRadius, yRadius)
 		p.render.DrawEllipse(&p.ellipse, d2dBrush, strokeWidth, nil)
 	}
 }
@@ -870,7 +874,7 @@ func (p *Painter) DrawPath(path graphics.Path, strokeWidth float32, brush graphi
 		return
 	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		geometry, err := p.createPathGeometry(p.snapPath(path), false)
+		geometry, err := p.createPathGeometry(path, false)
 		if err == nil {
 			defer geometry.Release()
 			p.render.DrawGeometry(geometry, d2dBrush, strokeWidth, nil)
@@ -883,7 +887,7 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 		return
 	}
 	if textLayout, ok := layout.(*directwrite.TextLayout); ok {
-		point := d2d1.Point2F{X: p.snap(origin.X), Y: p.snap(origin.Y)}
+		point := d2d1.Point2F{X: origin.X, Y: origin.Y}
 		textLayout.Draw(&p.render.RenderTarget, point, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP)
 	}
 }
@@ -930,7 +934,7 @@ func (p *Painter) DrawImage(rect graphics.Rectangle, img graphics.Image) {
 		}
 		native.bitmap = bitmap
 	}
-	p.drawNativeImage(p.snapRect(rect), native.bitmap)
+	p.drawNativeImage(rect, native.bitmap)
 }
 
 func (p *Painter) SetClipRect(rect graphics.Rectangle) {
@@ -946,17 +950,28 @@ func (p *Painter) SetClipRect(rect graphics.Rectangle) {
 	identity := d2d1.Matrix3x2F{M11: 1, M22: 1}
 	p.render.SetTransform(&identity)
 
-	var zero d2d1.RectF
-	if p.clip != zero {
+	if p.clipActive {
 		p.render.PopAxisAlignedClip()
-		p.clip = zero
+		p.clipActive = false
 	}
 	if rect.X != 0 || rect.Y != 0 || rect.Width != 0 || rect.Height != 0 {
 		p.clip.Left = rect.X
 		p.clip.Top = rect.Y
 		p.clip.Right = rect.X + rect.Width
 		p.clip.Bottom = rect.Y + rect.Height
+		// Use the same edge rounding as UI rectangles. Direct2D's aliased
+		// clip tie-breaking can otherwise cut off the final row/column when
+		// the logical boundary lands on a physical half-pixel.
+		if p.scale > 0 {
+			p.clip.Left = p.snapEdge(p.clip.Left, 0)
+			p.clip.Top = p.snapEdge(p.clip.Top, 0)
+			p.clip.Right = p.snapEdge(p.clip.Right, 0)
+			p.clip.Bottom = p.snapEdge(p.clip.Bottom, 0)
+		}
 		p.render.PushAxisAlignedClip(&p.clip, d2d1.D2D1_ANTIALIAS_MODE_ALIASED)
+		// Even a nonzero logical clip that rounds to an empty device rect
+		// must be popped before another clip is installed or EndDraw is called.
+		p.clipActive = true
 	}
 
 	p.render.SetTransform(&prev)
@@ -1127,76 +1142,59 @@ func (p *Painter) drawNativeImage(rect graphics.Rectangle, d2dBitmap *d2d1.Bitma
 	p.render.DrawBitmap(d2dBitmap, &dstRect, 1, d2d1.D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, nil)
 }
 
-func (p *Painter) snap(x float32) float32 {
-	if p.scale <= 0 || p.transform != geometry.Identity() {
-		// Coordinates are local to the active transform. Snapping them before
-		// Direct2D applies that transform shifts translated widgets and distorts
-		// rotated or scaled geometry. Pixel snapping is only valid when local
-		// and target coordinates are the same.
-		return x
-	}
-	// D2D strokes the center of a path. For a stroke to fall entirely within
-	// a single physical pixel, its center must align to a pixel center, which
-	// in D2D is at half-integer coordinates (0.5, 1.5, 2.5...). Snap to pixel
-	// center rather than pixel edge; otherwise a 1px border at an integer
-	// coordinate straddles two pixels and appears blurred.
-	return (mathx.Floor(x*p.scale) + 0.5) / p.scale
+// Pixel alignment is only appropriate for axis-aligned UI rectangles and
+// straight lines. Preserve arbitrary paths, ellipses, text, images, and user
+// rotation/scale/shear transforms instead of quantizing their geometry.
+func (p *Painter) canSnap() bool {
+	t := p.transform
+	return p.scale > 0 && t.A11 == 1 && t.A22 == 1 && t.A12 == 0 && t.A21 == 0
+}
+
+// snapEdge rounds a device-space edge, then maps it back to local coordinates.
+// Including the widget translation is essential: layout and font metrics can
+// place a widget at a fractional DIP even when its local border starts at 0.
+func (p *Painter) snapEdge(x, offset float32) float32 {
+	return mathx.Floor((x+offset)*p.scale+0.5)/p.scale - offset
 }
 
 func (p *Painter) snapRect(rect graphics.Rectangle) geometry.Rectangle {
-	// Snap the top-left corner to pixel center, then compute width/height so
-	// the bottom-right corner also lands on a pixel center. Snapping width and
-	// height independently would misalign the far edge (snap(X)+snap(W) !=
-	// snap(X+W)).
-	right := rect.X + rect.Width
-	bottom := rect.Y + rect.Height
-	rect.X = p.snap(rect.X)
-	rect.Y = p.snap(rect.Y)
-	rect.Width = p.snap(right) - rect.X
-	rect.Height = p.snap(bottom) - rect.Y
-	return rect
+	if !p.canSnap() {
+		return rect
+	}
+	left := p.snapEdge(rect.X, p.transform.TX)
+	top := p.snapEdge(rect.Y, p.transform.TY)
+	right := p.snapEdge(rect.X+rect.Width, p.transform.TX)
+	bottom := p.snapEdge(rect.Y+rect.Height, p.transform.TY)
+	return geometry.Rect(left, top, right-left, bottom-top)
 }
 
-func (p *Painter) snapPoint(pt graphics.Point) graphics.Point {
-	pt.X = p.snap(pt.X)
-	pt.Y = p.snap(pt.Y)
-	return pt
+func (p *Painter) snapStrokeRect(rect graphics.Rectangle, width float32) geometry.Rectangle {
+	if !p.canSnap() || width <= 0 {
+		return rect
+	}
+	// Direct2D centers strokes on their path. Snap the outer silhouette to the
+	// same pixel edges as the fill/structural clip, then restore the centerline.
+	// Odd physical widths need half-pixel centers; even widths need integers.
+	// Keep fractional physical widths unchanged: their inner edge legitimately
+	// has partial coverage at fractional DPI, but the outer edge stays aligned.
+	outer := p.snapRect(rect.Inset(-width / 2))
+	if outer.Width < width || outer.Height < width {
+		return rect
+	}
+	return outer.Inset(width / 2)
 }
 
-func (p *Painter) snapPath(path graphics.Path) graphics.Path {
-	var snapped graphics.Path
-	empty := true
-	path.Range(func(op graphics.PathOperation, args []float32) (stop bool) {
-		switch op {
-		case graphics.PathMoveTo:
-			snapped = graphics.MoveTo(p.snap(args[0]), p.snap(args[1]))
-			empty = false
-		case graphics.PathLineTo:
-			if empty {
-				snapped = graphics.MoveTo(p.snap(args[0]), p.snap(args[1]))
-				empty = false
-			}
-			snapped = snapped.LineTo(p.snap(args[0]), p.snap(args[1]))
-		case graphics.PathArcTo:
-			if empty {
-				snapped = graphics.MoveTo(p.snap(args[5]), p.snap(args[6]))
-				empty = false
-			}
-			snapped = snapped.ArcTo(p.snap(args[0]), p.snap(args[1]), p.snap(args[2]), p.snap(args[3]), p.snap(args[4]), p.snap(args[5]), p.snap(args[6]))
-		case graphics.PathBezierTo:
-			if empty {
-				snapped = graphics.MoveTo(p.snap(args[4]), p.snap(args[5]))
-				empty = false
-			}
-			snapped = snapped.BezierTo(
-				p.snap(args[0]), p.snap(args[1]),
-				p.snap(args[2]), p.snap(args[3]),
-				p.snap(args[4]), p.snap(args[5]),
-			)
-		case graphics.PathClose:
-			snapped = snapped.Close()
-		}
-		return false
-	})
-	return snapped
+func (p *Painter) snapLine(p0, p1 graphics.Point, width float32) (graphics.Point, graphics.Point) {
+	if !p.canSnap() || width <= 0 {
+		return p0, p1
+	}
+	half := width / 2
+	if p0.X == p1.X {
+		p0.X = p.snapEdge(p0.X-half, p.transform.TX) + half
+		p1.X = p0.X
+	} else if p0.Y == p1.Y {
+		p0.Y = p.snapEdge(p0.Y-half, p.transform.TY) + half
+		p1.Y = p0.Y
+	}
+	return p0, p1
 }
