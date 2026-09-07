@@ -20,11 +20,18 @@ type Button struct {
 
 const defaultButtonPadding = 6
 
+// NewButton creates a focusable button with centered content and 6 DIP padding.
+// A custom LayoutManager can override the content policy, for example
+// layout.NewFillLayout to stretch the child across the content area.
 func NewButton() *Button {
 	button := new(Button)
 	button.SetFocusable(true)
 	button.padding = defaultButtonPadding
-	button.SetLayoutManager(layout.NewFillLayout())
+	button.SetLayoutManager(&layout.LinearLayout{
+		Direction:  layout.DirectionHorizontal,
+		MainAlign:  layout.MainCenter,
+		CrossAlign: layout.CrossCenter,
+	})
 
 	button.motion = NewMotionEventController()
 	button.motion.ConnectContainsHover(button.setHovered)
@@ -45,8 +52,7 @@ func NewButton() *Button {
 }
 
 // SetChild sets the button's single child, replacing any previous one.
-// The child is mounted as the only child (FillLayout arranges it inset by
-// the padding).
+// The default layout centers the child inside the padding.
 func (b *Button) SetChild(child Widget) {
 	if b.content == child {
 		return
@@ -68,7 +74,9 @@ func (b *Button) Child() Widget {
 
 func (b *Button) Padding() float32 { return b.padding }
 
+// SetPadding sets the inner padding. Negative and non-finite values become 0.
 func (b *Button) SetPadding(padding float32) {
+	padding = normalizeLayoutValue(padding)
 	if b.padding == padding {
 		return
 	}
@@ -80,27 +88,32 @@ func (b *Button) Measure(c layout.Constraint) layout.Measurement {
 	if !b.Visible() {
 		return layout.Measurement{}
 	}
-	padding := b.padding
-
-	var content layout.Measurement
-	if manager := b.LayoutManager(); manager != nil {
-		content = manager.Measure(b.visibleChildren(), layout.Loose(c.Inset(padding).Max))
-		content.Size = content.Size.Inset(-padding)
-		if content.HasBaseline {
-			content.Baseline += padding
-		}
-	}
-
 	// A button keeps a font-derived skeleton (one line-height square) so an empty
 	// or icon-only button stays a visible, clickable box instead of collapsing to
 	// zero. This is the widget's own intrinsic floor, not a user override; a
-	// user's SetMin/MaxSize still wins because constrain runs last (DesignLayout).
+	// user's SetMin/MaxSize and the parent's hard limits still bound this floor.
 	fontSize, _ := b.resolvedStyle().FontSize()
-	floor := textLineHeight(fontSize) + padding*2
-	content.Width = max(content.Width, floor)
-	content.Height = max(content.Height, floor)
-	content.Size = b.constrain(c, content.Size)
-	return content
+	floor := textLineHeight(fontSize) + b.padding*2
+	return measureButtonContent(&b.WidgetBase, c, b.padding, floor)
+}
+
+// measureButtonContent lets Button and MenuButton measure their content with
+// the same constraints used for placement. The optional skeleton floor is
+// clamped by user preferences and parent limits before reaching the manager.
+func measureButtonContent(w *WidgetBase, c layout.Constraint, padding, floor float32) layout.Measurement {
+	c = w.layoutConstraint(c)
+	c.Min = c.Clamp(geometry.Size{Width: floor, Height: floor})
+	var measured layout.Measurement
+	if manager := w.LayoutManager(); manager != nil {
+		measured = manager.Measure(w.visibleChildren(), c.Inset(padding))
+	}
+	measured.Size = c.Clamp(measured.Size.Inset(-padding))
+	if measured.HasBaseline {
+		// Rectangle.Inset also handles a parent allocation smaller than 2*padding.
+		inner := geometry.Rect(0, 0, measured.Width, measured.Height).Inset(padding)
+		measured.Baseline += inner.Y
+	}
+	return measured
 }
 
 func (b *Button) Arrange(rect geometry.Rectangle) {

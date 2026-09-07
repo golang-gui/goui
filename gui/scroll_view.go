@@ -54,9 +54,11 @@ const scrollbarWidth = 8
 const scrollbarRadius = scrollbarWidth / 2
 const scrollbarMinThumb = 20
 
+// NewScrollView creates a viewport with MainWeight 1 so it shares a linear
+// parent's remaining space. SetMainWeight(0) opts out of that allocation.
 func NewScrollView() *ScrollView {
 	sv := new(ScrollView)
-	sv.SetMainWeight(1) // vertical viewport: flexes in a linear parent
+	sv.SetMainWeight(1)
 
 	sv.viewport = new(scrollViewport)
 	sv.vbar = NewScrollBar(layout.DirectionVertical)

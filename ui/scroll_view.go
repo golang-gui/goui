@@ -13,7 +13,8 @@ type ScrollViewView struct {
 	child View
 }
 
-// ScrollView creates an empty scroll view. Set the content with Child.
+// ScrollView wraps content in a viewport. Its default MainWeight is 1;
+// MainWeight(0) opts out of sharing a linear parent's remaining space.
 func ScrollView(child View) *ScrollViewView {
 	v := &ScrollViewView{}
 	v.Self = v

@@ -7,6 +7,8 @@ type LinearBox struct {
 	layout *layout.LinearLayout
 }
 
+// NewLinearBox creates a box with MainStart and CrossDefault alignment,
+// no spacing, and no padding. CrossDefault centers rows and starts columns.
 func NewLinearBox(direction layout.Direction) *LinearBox {
 	box := &LinearBox{
 		layout: layout.NewLinearLayout(direction),
@@ -44,7 +46,10 @@ func (b *LinearBox) Spacing() float32 {
 	return b.layout.Spacing
 }
 
+// SetSpacing sets the gap between children. Negative and non-finite values
+// are treated as zero.
 func (b *LinearBox) SetSpacing(spacing float32) {
+	spacing = normalizeLayoutValue(spacing)
 	if b.layout.Spacing == spacing {
 		return
 	}
@@ -56,7 +61,10 @@ func (b *LinearBox) Padding() float32 {
 	return b.layout.Padding
 }
 
+// SetPadding sets the inner padding. Negative and non-finite values are
+// treated as zero.
 func (b *LinearBox) SetPadding(padding float32) {
+	padding = normalizeLayoutValue(padding)
 	if b.layout.Padding == padding {
 		return
 	}
@@ -76,6 +84,8 @@ func (b *LinearBox) SetMainAlign(align layout.MainAlign) {
 	b.RequestLayout()
 }
 
+// CrossAlign returns the configured policy, including CrossDefault. Changing
+// direction reinterprets CrossDefault without changing this stored value.
 func (b *LinearBox) CrossAlign() layout.CrossAlign {
 	return b.layout.CrossAlign
 }

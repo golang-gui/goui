@@ -107,7 +107,9 @@ func (t *TextInput) displayCaret() int {
 
 func (t *TextInput) Padding() float32 { return t.padding }
 
+// SetPadding sets the inner padding. Negative and non-finite values become 0.
 func (t *TextInput) SetPadding(padding float32) {
+	padding = normalizeLayoutValue(padding)
 	if t.padding == padding {
 		return
 	}

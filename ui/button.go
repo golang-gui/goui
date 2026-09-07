@@ -50,7 +50,7 @@ func (v *ButtonView) OnClick(fn func()) *ButtonView {
 }
 
 // Padding sets the button's inner padding. Unset leaves the button's built-in
-// default (6) untouched.
+// default (6) untouched. Negative and non-finite values are treated as zero.
 func (v *ButtonView) Padding(padding float32) *ButtonView {
 	v.padding.SetValue(padding)
 	return v

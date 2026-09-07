@@ -21,11 +21,11 @@ func TestLinearBoxDefaultsToLinearLayout(t *testing.T) {
 	}
 
 	box.Arrange(geometry.Rect(0, 0, 100, 40))
-	// Default CrossStart: children hug their cross size (Height), not the full 40.
-	if first.Rect() != geometry.Rect(0, 0, 10, 20) {
+	// CrossDefault centers a horizontal row without stretching its children.
+	if first.Rect() != geometry.Rect(0, 10, 10, 20) {
 		t.Fatalf("unexpected first rect: %+v", first.Rect())
 	}
-	if second.Rect() != geometry.Rect(12, 0, 30, 15) {
+	if second.Rect() != geometry.Rect(12, 12.5, 30, 15) {
 		t.Fatalf("unexpected second rect: %+v", second.Rect())
 	}
 }
@@ -56,7 +56,7 @@ func TestLinearBoxAlignRequestLayout(t *testing.T) {
 
 	win.layoutDirty = false
 	box.SetMainAlign(layout.MainStart)
-	box.SetCrossAlign(layout.CrossStart)
+	box.SetCrossAlign(layout.CrossDefault)
 	if win.layoutDirty {
 		t.Fatal("setting unchanged alignment should not request layout")
 	}
@@ -136,7 +136,7 @@ func TestLinearBoxMainWeightSharesSpace(t *testing.T) {
 	if first.Rect().Width != 10 {
 		t.Fatalf("unweighted child should hug: %+v", first.Rect())
 	}
-	if second.Rect() != geometry.Rect(10, 0, 90, 20) {
+	if second.Rect() != geometry.Rect(10, 10, 90, 20) {
 		t.Fatalf("weighted child should only consume main-axis free space: %+v", second.Rect())
 	}
 }
@@ -267,6 +267,50 @@ type baselineSizedWidget struct {
 	measurement layout.Measurement
 }
 
-func (w *baselineSizedWidget) Measure(layout.Constraint) layout.Measurement {
-	return w.measurement
+func (w *baselineSizedWidget) Measure(c layout.Constraint) layout.Measurement {
+	return w.measurement.Constrain(c)
+}
+
+func TestLinearBoxCrossDefaultFollowsDirection(t *testing.T) {
+	box := NewLinearBox(layout.DirectionHorizontal)
+	child := newSizedWidget(geometry.Size{Width: 20, Height: 10})
+	box.AddChild(child)
+	win := &window{}
+	win.SetWidget(box)
+	cases := []struct {
+		direction layout.Direction
+		align     layout.CrossAlign
+		want      geometry.Rectangle
+	}{
+		{layout.DirectionHorizontal, layout.CrossDefault, geometry.Rect(0, 15, 20, 10)},
+		{layout.DirectionVertical, layout.CrossDefault, geometry.Rect(0, 0, 20, 10)},
+		{layout.DirectionHorizontal, layout.CrossStart, geometry.Rect(0, 0, 20, 10)},
+		{layout.DirectionVertical, layout.CrossStart, geometry.Rect(0, 0, 20, 10)},
+		{layout.DirectionHorizontal, layout.CrossDefault, geometry.Rect(0, 15, 20, 10)},
+	}
+	for _, tc := range cases {
+		box.SetDirection(tc.direction)
+		box.SetCrossAlign(tc.align)
+		box.Arrange(geometry.Rect(0, 0, 100, 40))
+		if child.Rect() != tc.want || box.CrossAlign() != tc.align {
+			t.Fatalf("direction=%v align=%v: rect=%+v config=%v; want %+v", tc.direction, tc.align, child.Rect(), box.CrossAlign(), tc.want)
+		}
+	}
+}
+
+func TestLinearBoxMinimumSizeIsIncludedInBaseline(t *testing.T) {
+	box := NewLinearBox(layout.DirectionHorizontal)
+	box.SetMinSize(geometry.Size{Width: 100, Height: 40})
+	child := &baselineSizedWidget{measurement: layout.MeasuredWithBaseline(
+		geometry.Size{Width: 20, Height: 10}, 7,
+	)}
+	box.AddChild(child)
+	measured := box.Measure(layout.Unbounded())
+	if measured.Size != (geometry.Size{Width: 100, Height: 40}) || !measured.HasBaseline || measured.Baseline != 22 {
+		t.Fatalf("minimum height was not included in the centered baseline: %+v", measured)
+	}
+	box.Arrange(geometry.Rectangle{Size: measured.Size})
+	if child.Rect().Y+7 != measured.Baseline {
+		t.Fatalf("measured baseline=%v, child rect=%+v", measured.Baseline, child.Rect())
+	}
 }

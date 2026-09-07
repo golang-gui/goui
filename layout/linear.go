@@ -4,8 +4,8 @@ import "github.com/golang-gui/goui/core/geometry"
 
 type LinearLayout struct {
 	Direction  Direction
-	Spacing    float32
-	Padding    float32 // inner box padding, inset before laying out children
+	Spacing    float32 // non-negative, finite gap between children
+	Padding    float32 // non-negative, finite inner padding
 	MainAlign  MainAlign
 	CrossAlign CrossAlign
 }
@@ -233,6 +233,12 @@ func (l *LinearLayout) mainDistribution(freeMain float32, n int) (start, gap flo
 }
 
 func (l *LinearLayout) effectiveCrossAlign() CrossAlign {
+	if l.CrossAlign == CrossDefault {
+		if l.Direction == DirectionHorizontal {
+			return CrossCenter
+		}
+		return CrossStart
+	}
 	if l.Direction == DirectionVertical && l.CrossAlign == CrossBaseline {
 		return CrossStart
 	}

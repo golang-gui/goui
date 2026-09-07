@@ -70,12 +70,12 @@ func TestLinearLayoutArrangeHorizontal(t *testing.T) {
 
 	layout.Arrange(children, geometry.Rect(100, 200, 80, 40))
 
-	// Default CrossStart: children hug their cross size (Height), no longer
-	// stretched to the full 40. Main axis packs from the start with spacing.
-	if first.rect != geometry.Rect(100, 200, 10, 20) {
+	// CrossDefault centers a horizontal row while preserving natural heights.
+	// Main axis still packs from the start with spacing.
+	if first.rect != geometry.Rect(100, 210, 10, 20) {
 		t.Fatalf("unexpected first rect: %+v", first.rect)
 	}
-	if second.rect != geometry.Rect(112, 200, 30, 15) {
+	if second.rect != geometry.Rect(112, 212.5, 30, 15) {
 		t.Fatalf("unexpected second rect: %+v", second.rect)
 	}
 	// Both children are measured against the full available extent (weight pass
@@ -99,8 +99,7 @@ func TestLinearLayoutArrangeVertical(t *testing.T) {
 
 	layout.Arrange(children, geometry.Rect(100, 200, 80, 40))
 
-	// Default CrossStart: children hug their cross size (Width), no longer
-	// stretched to the full 80.
+	// CrossDefault starts a vertical column and preserves natural widths.
 	if first.rect != geometry.Rect(100, 200, 10, 20) {
 		t.Fatalf("unexpected first rect: %+v", first.rect)
 	}
@@ -207,10 +206,10 @@ func TestLinearLayoutMainWeight(t *testing.T) {
 	second := &testChild{size: geometry.Size{Width: 10, Height: 20}, weight: 3}
 	layout.Arrange([]Child{first, second}, geometry.Rect(0, 0, 100, 40))
 
-	if first.rect != geometry.Rect(0, 0, 30, 20) { // 10 + 80*1/4
+	if first.rect != geometry.Rect(0, 10, 30, 20) { // 10 + 80*1/4
 		t.Fatalf("unexpected first rect: %+v", first.rect)
 	}
-	if second.rect != geometry.Rect(30, 0, 70, 20) { // 10 + 80*3/4
+	if second.rect != geometry.Rect(30, 10, 70, 20) { // 10 + 80*3/4
 		t.Fatalf("unexpected second rect: %+v", second.rect)
 	}
 }
@@ -281,7 +280,7 @@ func TestLinearLayoutRemeasuresWeightedChildAtFinalMainSize(t *testing.T) {
 	if final.Min.Width != 40 || final.Max.Width != 40 {
 		t.Fatalf("weighted child final width should be tight 40, got %+v", final)
 	}
-	if flexible.rect != geometry.Rect(60, 0, 40, 20) {
+	if flexible.rect != geometry.Rect(60, 10, 40, 20) {
 		t.Fatalf("weighted wrapping child should use final height: %+v", flexible.rect)
 	}
 }

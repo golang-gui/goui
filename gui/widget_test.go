@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"math"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -561,6 +562,50 @@ func TestWidgetBaseSizeConstraint(t *testing.T) {
 	w2.SetMinSize(geometry.Size{Width: 50, Height: 0})
 	if got := w2.Measure(layout.Tight(geometry.Size{Width: 30, Height: 30})); got.Width != 30 {
 		t.Fatalf("parent max should win over child min: %+v", got)
+	}
+}
+
+func TestLayoutSettersNormalizeInvalidValuesBeforeInvalidating(t *testing.T) {
+	box := NewLinearBox(layout.DirectionHorizontal)
+	button := NewButton()
+	input := NewTextInput()
+	cases := []struct {
+		name   string
+		widget Widget
+		set    func(float32)
+		get    func() float32
+	}{
+		{"weight", box, box.SetMainWeight, box.MainWeight},
+		{"spacing", box, box.SetSpacing, box.Spacing},
+		{"box-padding", box, box.SetPadding, box.Padding},
+		{"button-padding", button, button.SetPadding, button.Padding},
+		{"input-padding", input, input.SetPadding, input.Padding},
+		{"min-width", box, func(v float32) { box.SetMinSize(geometry.Size{Width: v}) }, func() float32 { return box.MinSize().Width }},
+		{"min-height", box, func(v float32) { box.SetMinSize(geometry.Size{Height: v}) }, func() float32 { return box.MinSize().Height }},
+		{"max-width", box, func(v float32) { box.SetMaxSize(geometry.Size{Width: v}) }, func() float32 { return box.MaxSize().Width }},
+		{"max-height", box, func(v float32) { box.SetMaxSize(geometry.Size{Height: v}) }, func() float32 { return box.MaxSize().Height }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			win := &window{}
+			win.SetWidget(tc.widget)
+			for _, invalid := range []float32{-1, float32(math.NaN()), float32(math.Inf(1)), float32(math.Inf(-1))} {
+				tc.set(6.5)
+				if tc.get() != 6.5 {
+					t.Fatalf("valid fractional value was changed: %v", tc.get())
+				}
+				win.layoutDirty = false
+				tc.set(invalid)
+				if tc.get() != 0 || !win.layoutDirty {
+					t.Fatalf("input=%v: value=%v dirty=%v, want zero and invalidated layout", invalid, tc.get(), win.layoutDirty)
+				}
+				win.layoutDirty = false
+				tc.set(invalid)
+				if win.layoutDirty {
+					t.Fatalf("repeating input=%v invalidated an unchanged normalized value", invalid)
+				}
+			}
+		})
 	}
 }
 

@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"math"
 	"slices"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -42,14 +43,21 @@ type Widget interface {
 	LayoutManager() layout.LayoutManager
 	SetLayoutManager(layout.LayoutManager)
 
+	// MinSize returns the size preference's lower bounds; zero means no minimum.
 	MinSize() geometry.Size
+	// MaxSize returns the size preference's upper bounds. Each zero component
+	// means no upper bound, unlike a zero Max in layout.Constraint.
 	MaxSize() geometry.Size
+	// SetMinSize sets lower bounds. Negative and non-finite components become 0.
 	SetMinSize(geometry.Size)
+	// SetMaxSize sets upper bounds. Zero, negative and non-finite components
+	// clear the corresponding upper bound. Parent constraints always win.
 	SetMaxSize(geometry.Size)
 
 	// MainWeight is this widget's share of leftover main-axis space in a linear
 	// parent (0 = hug). It is also the layout.Child hint the parent reads.
 	MainWeight() float32
+	// SetMainWeight sets the weight. Negative and non-finite values become 0.
 	SetMainWeight(float32)
 
 	// Measure returns this widget's geometry for the exact parent constraint.
@@ -262,14 +270,14 @@ func (w *WidgetBase) Measure(c layout.Constraint) layout.Measurement {
 	if w.hidden {
 		return layout.Measurement{}
 	}
+	c = w.layoutConstraint(c)
 	var measured layout.Measurement
 	if w.layoutManager != nil {
 		// The layout manager insets its own padding (LinearLayout.Padding etc.);
 		// WidgetBase stays padding-free — not every widget has padding.
 		measured = w.layoutManager.Measure(w.visibleChildren(), c)
 	}
-	measured.Size = w.constrain(c, measured.Size)
-	return measured
+	return measured.Constrain(c)
 }
 
 // selfConstraint is the widget's own size preference (min/max). A 0 max means
@@ -295,6 +303,25 @@ func (w *WidgetBase) constrain(c layout.Constraint, intrinsic geometry.Size) geo
 	return c.Clamp(w.selfConstraint().Clamp(intrinsic))
 }
 
+// layoutConstraint combines size preferences with the parent's hard limits
+// before measuring children. This lets wrapping, alignment and baselines use
+// the actual size range instead of clamping only the container's result.
+func (w *WidgetBase) layoutConstraint(c layout.Constraint) layout.Constraint {
+	return layout.Constraint{
+		Min: w.constrain(c, c.Min),
+		Max: w.constrain(c, c.Max),
+	}
+}
+
+// normalizeLayoutValue is shared by GUI layout setters. Normalize before
+// comparing so repeated invalid inputs do not keep invalidating layout.
+func normalizeLayoutValue(v float32) float32 {
+	if v < 0 || math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
+		return 0
+	}
+	return v
+}
+
 func (w *WidgetBase) MinSize() geometry.Size {
 	return geometry.Size{Width: w.minWidth, Height: w.minHeight}
 }
@@ -312,6 +339,8 @@ func (w *WidgetBase) MaxSize() geometry.Size {
 }
 
 func (w *WidgetBase) SetMinSize(s geometry.Size) {
+	s.Width = normalizeLayoutValue(s.Width)
+	s.Height = normalizeLayoutValue(s.Height)
 	minChanged := w.minWidth != s.Width || w.minHeight != s.Height
 	if !minChanged {
 		return
@@ -322,6 +351,8 @@ func (w *WidgetBase) SetMinSize(s geometry.Size) {
 }
 
 func (w *WidgetBase) SetMaxSize(s geometry.Size) {
+	s.Width = normalizeLayoutValue(s.Width)
+	s.Height = normalizeLayoutValue(s.Height)
 	maxChanged := w.maxWidth != s.Width || w.maxHeight != s.Height
 	if !maxChanged {
 		return
@@ -334,6 +365,7 @@ func (w *WidgetBase) SetMaxSize(s geometry.Size) {
 func (w *WidgetBase) MainWeight() float32 { return w.mainWeight }
 
 func (w *WidgetBase) SetMainWeight(v float32) {
+	v = normalizeLayoutValue(v)
 	if w.mainWeight == v {
 		return
 	}
