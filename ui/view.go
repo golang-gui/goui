@@ -218,6 +218,8 @@ func (b *ViewBase[T]) MaxSize(w, h float32) *T {
 
 // MainWeight sets this view's share of leftover main-axis space in a linear
 // parent (0 = hug). Two siblings with weights 1 and 2 split the free space 1:2.
+// Negative and non-finite values are treated as zero. Unset preserves the
+// widget's constructor default; an explicit zero disables expansion.
 func (b *ViewBase[T]) MainWeight(w float32) *T {
 	b.mainWeight = w
 	b.fields.Set(viewMainWeight, true)

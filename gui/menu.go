@@ -418,7 +418,7 @@ func (r *menuItemRow) requestPaint() {
 // --- MenuButton: a button that opens a PopoverMenu below itself ---
 
 // MenuButton is a command-style button that opens a PopoverMenu on click.
-// It mirrors the Button widget's single-child + fill layout conventions.
+// It mirrors the Button widget's single-child, centered content layout.
 type MenuButton struct {
 	WidgetBase
 	content Widget
@@ -435,7 +435,11 @@ type MenuButton struct {
 func NewMenuButton() *MenuButton {
 	b := &MenuButton{padding: defaultButtonPadding}
 	b.SetFocusable(true)
-	b.SetLayoutManager(layout.NewFillLayout())
+	b.SetLayoutManager(&layout.LinearLayout{
+		Direction:  layout.DirectionHorizontal,
+		MainAlign:  layout.MainCenter,
+		CrossAlign: layout.CrossCenter,
+	})
 
 	b.motion = NewMotionEventController()
 	b.motion.ConnectContainsHover(b.setHovered)
@@ -496,16 +500,7 @@ func (b *MenuButton) Measure(c layout.Constraint) layout.Measurement {
 	if !b.Visible() {
 		return layout.Measurement{}
 	}
-	var content layout.Measurement
-	if manager := b.LayoutManager(); manager != nil {
-		content = manager.Measure(b.visibleChildren(), layout.Loose(c.Inset(b.padding).Max))
-		content.Size = content.Size.Inset(-b.padding)
-		if content.HasBaseline {
-			content.Baseline += b.padding
-		}
-	}
-	content.Size = b.constrain(c, content.Size)
-	return content
+	return measureButtonContent(&b.WidgetBase, c, b.padding, 0)
 }
 
 func (b *MenuButton) Arrange(rect geometry.Rectangle) {

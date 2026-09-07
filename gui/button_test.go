@@ -2,6 +2,7 @@ package gui
 
 import (
 	"image"
+	"math"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -65,8 +66,20 @@ func TestButtonUsesWidgetBaseLayoutAndPaint(t *testing.T) {
 	}
 }
 
-func TestButtonDefaultFillLayoutArrangesContent(t *testing.T) {
+func TestButtonDefaultLayoutCentersContent(t *testing.T) {
 	button := NewButton()
+	child := newSizedWidget(geometry.Size{Width: 20, Height: 10})
+	button.SetChild(child)
+
+	button.Arrange(geometry.Rect(0, 0, 80, 30))
+	if child.Rect() != geometry.Rect(30, 10, 20, 10) {
+		t.Fatalf("unexpected centered child rect: %+v", child.Rect())
+	}
+}
+
+func TestButtonExplicitFillLayoutArrangesContent(t *testing.T) {
+	button := NewButton()
+	button.SetLayoutManager(layout.NewFillLayout())
 	child := newTestWidget()
 	button.SetChild(child)
 
@@ -106,6 +119,101 @@ func TestButtonMeasurePropagatesContentBaselineThroughPadding(t *testing.T) {
 	if !measured.HasBaseline || measured.Baseline != 20 {
 		t.Fatalf("button baseline should include default padding: %+v", measured)
 	}
+}
+
+func TestButtonContentBaselineMatchesArrangement(t *testing.T) {
+	constructors := []struct {
+		name          string
+		make          func() Bin
+		naturalHeight float32
+	}{
+		{"Button", func() Bin { return NewButton() }, max(22, textLineHeight(defaultFontSize)+12)},
+		{"MenuButton", func() Bin { return NewMenuButton() }, 22},
+	}
+	for _, constructor := range constructors {
+		t.Run(constructor.name, func(t *testing.T) {
+			cases := []struct {
+				name     string
+				min, max geometry.Size
+				parent   layout.Constraint
+				want     geometry.Size
+			}{
+				{name: "natural", parent: layout.Unbounded(), want: geometry.Size{Width: 32, Height: constructor.naturalHeight}},
+				{name: "minimum", min: geometry.Size{Width: 80, Height: 50}, parent: layout.Unbounded(), want: geometry.Size{Width: 80, Height: 50}},
+				{name: "maximum", max: geometry.Size{Width: 20, Height: 16}, parent: layout.Unbounded(), want: geometry.Size{Width: 20, Height: 16}},
+				{name: "max-wins", min: geometry.Size{Width: 80, Height: 50}, max: geometry.Size{Width: 20, Height: 16}, parent: layout.Unbounded(), want: geometry.Size{Width: 20, Height: 16}},
+				{name: "parent-wins", max: geometry.Size{Width: 20, Height: 16}, parent: layout.Tight(geometry.Size{Width: 100, Height: 60}), want: geometry.Size{Width: 100, Height: 60}},
+				{name: "smaller-than-padding", parent: layout.Tight(geometry.Size{Width: 8, Height: 6}), want: geometry.Size{Width: 8, Height: 6}},
+			}
+			for _, tc := range cases {
+				t.Run(tc.name, func(t *testing.T) {
+					button := constructor.make()
+					button.SetMinSize(tc.min)
+					button.SetMaxSize(tc.max)
+					child := &baselineSizedWidget{measurement: layout.MeasuredWithBaseline(
+						geometry.Size{Width: 20, Height: 10}, 7,
+					)}
+					button.SetChild(child)
+					measured := button.Measure(tc.parent)
+					if measured.Size != tc.want || !measured.HasBaseline {
+						t.Fatalf("measurement=%+v, want size=%+v with baseline", measured, tc.want)
+					}
+					button.Arrange(geometry.Rectangle{Pos: geometry.Point{X: 13, Y: 17}, Size: measured.Size})
+					actual := child.Rect()
+					if math.Abs(float64(actual.X-(measured.Width-actual.Width)/2)) > 0.0001 ||
+						math.Abs(float64(actual.Y-(measured.Height-actual.Height)/2)) > 0.0001 {
+						t.Fatalf("child not centered: parent=%+v child=%+v", measured.Size, actual)
+					}
+					if math.Abs(float64(measured.Baseline-(actual.Y+7))) > 0.0001 {
+						t.Fatalf("baseline=%v does not match child baseline=%v", measured.Baseline, actual.Y+7)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestCenteredButtonParticipatesInBaselineRow(t *testing.T) {
+	button := NewButton()
+	button.SetMinSize(geometry.Size{Height: 50})
+	content := &baselineSizedWidget{measurement: layout.MeasuredWithBaseline(geometry.Size{Width: 20, Height: 10}, 7)}
+	button.SetChild(content)
+	label := &baselineSizedWidget{measurement: layout.MeasuredWithBaseline(geometry.Size{Width: 30, Height: 18}, 14)}
+	row := NewLinearBox(layout.DirectionHorizontal)
+	row.SetCrossAlign(layout.CrossBaseline)
+	row.AddChild(label)
+	row.AddChild(button)
+	measured := row.Measure(layout.Unbounded())
+	row.Arrange(geometry.Rectangle{Size: measured.Size})
+	if label.Rect().Y+14 != button.Rect().Y+content.Rect().Y+7 {
+		t.Fatalf("baseline mismatch: label=%+v button=%+v content=%+v", label.Rect(), button.Rect(), content.Rect())
+	}
+}
+
+func TestButtonMeasuresWrappingContentWithinOwnMaximum(t *testing.T) {
+	button := NewButton()
+	button.SetMaxSize(geometry.Size{Width: 52})
+	child := new(wrappingButtonChild)
+	button.SetChild(child)
+	measured := button.Measure(layout.Unbounded())
+	if measured.Size != (geometry.Size{Width: 52, Height: 32}) {
+		t.Fatalf("button did not measure two lines within its maximum width: %+v", measured)
+	}
+	button.Arrange(geometry.Rectangle{Size: measured.Size})
+	if child.Rect() != geometry.Rect(6, 6, 40, 20) || measured.Baseline != 13 {
+		t.Fatalf("wrapping content changed between Measure and Arrange: child=%+v measured=%+v", child.Rect(), measured)
+	}
+}
+
+type wrappingButtonChild struct{ WidgetBase }
+
+func (w *wrappingButtonChild) Measure(c layout.Constraint) layout.Measurement {
+	size := geometry.Size{Width: 80, Height: 10}
+	if c.Max.Width < size.Width {
+		size.Width = c.Max.Width
+		size.Height = 20
+	}
+	return layout.MeasuredWithBaseline(c.Clamp(size), 7)
 }
 
 func TestButtonPaintsBackgroundForPointerStates(t *testing.T) {

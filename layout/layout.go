@@ -9,7 +9,8 @@ const Inf float32 = 1e9
 // Constraint is the size range a parent hands a child during Measure: the child
 // must return a size within [Min, Max] on each axis. Tight (Min==Max) forces a
 // size (Window root, fill children); Loose (Min==0) lets the child size to its
-// content (Popup, content-driven).
+// content (Popup, content-driven). The zero value is a tight zero-size
+// constraint; use Unbounded for an unconstrained measurement.
 type Constraint struct {
 	Min, Max geometry.Size
 }
@@ -129,11 +130,13 @@ const (
 )
 
 // CrossAlign sizes and positions children on the cross axis. It is a
-// container-level policy relative to the layout direction.
+// container-level policy relative to the layout direction. Its zero value,
+// CrossDefault, centers horizontal rows and starts vertical columns.
 type CrossAlign int
 
 const (
-	CrossStart    CrossAlign = iota // child hugs, sits at the cross start; default
+	CrossDefault  CrossAlign = iota // horizontal: Center; vertical: Start
+	CrossStart                      // child hugs, sits at the cross start
 	CrossCenter                     // child hugs, centered on the cross axis
 	CrossEnd                        // child hugs, at the cross end
 	CrossStretch                    // child fills the whole cross extent

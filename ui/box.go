@@ -15,6 +15,8 @@ type BoxView struct {
 	children   []View
 }
 
+// HBox arranges children horizontally. By default it packs from the start and
+// centers children vertically (CrossDefault), with no spacing or padding.
 func HBox(children ...View) *BoxView {
 	v := &BoxView{
 		direction: layout.DirectionHorizontal,
@@ -24,6 +26,8 @@ func HBox(children ...View) *BoxView {
 	return v
 }
 
+// VBox arranges children vertically. By default it packs from the start and
+// aligns children to the left (CrossDefault), with no spacing or padding.
 func VBox(children ...View) *BoxView {
 	v := &BoxView{
 		direction: layout.DirectionVertical,
@@ -33,12 +37,15 @@ func VBox(children ...View) *BoxView {
 	return v
 }
 
+// Spacing sets the gap between children. Negative and non-finite values are
+// treated as zero by the widget.
 func (v *BoxView) Spacing(spacing float32) *BoxView {
 	v.spacing = spacing
 	return v
 }
 
 // Padding sets the box's inner padding (a layout scalar, not style).
+// Negative and non-finite values are treated as zero by the widget.
 func (v *BoxView) Padding(padding float32) *BoxView {
 	v.padding = padding
 	return v
@@ -51,10 +58,10 @@ func (v *BoxView) MainAlign(align layout.MainAlign) *BoxView {
 	return v
 }
 
-// CrossAlign sets how each child sits on the cross axis: Start / Center / End /
-// Stretch / Baseline. Baseline applies to horizontal boxes and falls back to
-// Start in vertical boxes. Default Start hugs; Stretch is the one-liner that
-// fills (e.g. equal-width form rows). Container-level default.
+// CrossAlign sets how each child sits on the cross axis. CrossDefault (also
+// used when unset) means Center in HBox and Start in VBox. CrossBaseline applies
+// to horizontal boxes and falls back to Start in vertical boxes. CrossStretch
+// fills the cross axis; the other policies preserve the child's natural size.
 func (v *BoxView) CrossAlign(align layout.CrossAlign) *BoxView {
 	v.crossAlign = align
 	return v

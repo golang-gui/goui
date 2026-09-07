@@ -46,6 +46,22 @@ func TestScrollViewRemovesChild(t *testing.T) {
 	}
 }
 
+func TestScrollViewWeightCanBeDisabledAndRestored(t *testing.T) {
+	root := newRoot()
+	sv := root.update(ScrollView(nil)).(*gui.ScrollView)
+	if sv.MainWeight() != 1 {
+		t.Fatal("unset weight overwrote the viewport default")
+	}
+	root.update(ScrollView(nil).MainWeight(0))
+	if sv.MainWeight() != 0 {
+		t.Fatal("explicit zero did not disable viewport expansion")
+	}
+	root.update(ScrollView(nil))
+	if sv.MainWeight() != 1 {
+		t.Fatal("removing the modifier did not restore the viewport default")
+	}
+}
+
 func TestScrollViewFillsSingleHBoxViewportByDefault(t *testing.T) {
 	root := newRoot()
 	widget := root.update(HBox(ScrollView(Label("content")))).(*gui.LinearBox)
