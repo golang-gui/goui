@@ -30,8 +30,8 @@ func newPopup(owner common.Window, width, height float32, onEvent events.EventHa
 	ownerHwnd := winapi.HWND(owner.NativeHandle())
 
 	// WS_POPUP has no frame, so the window size equals the client size. Create at
-	// the minimum containing physical size (using the owner's DPI) so the native
-	// paint surface is large enough from the start.
+	// the minimum containing physical size using the owner's effective scale
+	// (including GOUI_PLAT_SCALE), matching SizeEvent and pointer conversion.
 	scale := hwndScale(ownerHwnd)
 	w, h := popupPhysicalExtent(width, scale), popupPhysicalExtent(height, scale)
 
@@ -105,17 +105,8 @@ func popupPhysicalExtent(logical, scale float32) int {
 	return pixels
 }
 
-// ownerScale returns the owner window's device scale so popup logical coords map
-// to the same physical pixels the owner uses.
+// ownerScale returns the owner's effective scale so popup logical coordinates
+// map to the same physical pixels as the owner's layout, painting, and input.
 func (p *Popup) ownerScale() float32 {
 	return hwndScale(winapi.HWND(p.owner.NativeHandle()))
-}
-
-// hwndScale returns a window's device scale (DPI/96), falling back to 1.
-func hwndScale(hwnd winapi.HWND) float32 {
-	dpi, err := winapi.GetDpiForWindow(hwnd)
-	if err != nil || dpi == 0 {
-		return 1
-	}
-	return float32(dpi) / 96
 }

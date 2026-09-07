@@ -151,10 +151,17 @@ func (w *Window) Draw(img image.Image) error {
 // scaleFactor returns the window scale, falling back to 1 on error. Used to
 // normalize physical pixels (client rect, pointer coords) to logical (DIP).
 func (w *Window) scaleFactor() float32 {
+	return hwndScale(w.hwnd)
+}
+
+// hwndScale is the shared DIP-to-pixel scale for windows and popups. The
+// application override must take precedence in both native geometry requests
+// and the inverse conversion used by SizeEvent and pointer events.
+func hwndScale(hwnd winapi.HWND) float32 {
 	if scale := common.GetPreferScale(); scale > 0 {
 		return scale
 	}
-	dpi, err := winapi.GetDpiForWindow(w.hwnd)
+	dpi, err := winapi.GetDpiForWindow(hwnd)
 	if err != nil || dpi == 0 {
 		return 1
 	}
@@ -169,6 +176,9 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		if message == winapi.WM_CREATE {
 			createStruct := winapi.LPCREATESTRUCT(unsafe.Pointer(uintptr(lParam)))
 			window = (*Window)(createStruct.CreateParams)
+			// WM_SIZE can arrive before CreateWindowEx returns. Its initial DPI
+			// query must use the new HWND, not the still-zero constructor result.
+			window.hwnd = hwnd
 			windowMap[hwnd] = window
 		} else {
 			return winapi.DefWindowProc(hwnd, message, wParam, lParam)
