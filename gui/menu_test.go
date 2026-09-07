@@ -170,6 +170,25 @@ func TestPopoverMenuActivateRunsAction(t *testing.T) {
 	}
 }
 
+func TestPopoverMenuClosesBeforeRunningAction(t *testing.T) {
+	owner := &window{}
+	p := &popover{owner: owner, visible: true, modal: true}
+	owner.SetModalTarget(p)
+	pm := &PopoverMenu{popover: p}
+	closed := 0
+	p.ConnectClosed(func() { closed++ })
+	called := false
+	pm.activate(NewMenuItem("Open", func() {
+		called = true
+		if p.Visible() || owner.modalTarget != nil || closed != 1 {
+			t.Fatal("menu must hide and release its modal target before the action opens a native dialog")
+		}
+	}))
+	if !called || closed != 1 {
+		t.Fatalf("called=%t, closed=%d", called, closed)
+	}
+}
+
 func TestPopoverMenuActivateIgnoresDisabled(t *testing.T) {
 	var ran bool
 	mi := NewMenuItem("Copy", func() { ran = true })
