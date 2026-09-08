@@ -62,9 +62,11 @@ type DesktopWindow interface {
 	// completed; the native window manager can reject or delay the request.
 	RequestState(state WindowState) error
 
-	// SetHitTest replaces the synchronous native-region query. A nil callback
-	// restores platform defaults. p is in window-client DIP and may be outside
-	// the client bounds. Default defers to native handling; Client explicitly
+	// SetHitTest replaces a real synchronous native-region query (currently
+	// Windows only). Unsupported backends return ErrUnsupported, including for
+	// nil; they do not retain or simulate the callback using pointer events.
+	// On supported backends nil restores defaults. p is in client DIP, possibly outside
+	// the client bounds. Default defer8is to native handling; Client explicitly
 	// keeps a customizable region in the client input path.
 	//
 	// The callback runs on the window thread and may be called frequently or
@@ -74,7 +76,41 @@ type DesktopWindow interface {
 	// custom frame roles differ by backend; this is not an operation-permission
 	// API and does not block system-menu, keyboard or window-manager commands.
 	SetHitTest(f func(p geometry.Point) WindowHit) error
+
+	// BeginMove asks the window manager to start an interactive move. Call it
+	// synchronously while handling this window's original native left PointerDown,
+	// not from a posted task, a later event or a synthesized GUI event. The backend
+	// uses the original native input; no coordinate or timestamp is supplied.
+	// Only one successful move/resize request is allowed per press. The caller
+	// must consume that press without starting a click or pointer capture: native
+	// interaction may take over input and consume the matching PointerUp.
+	//
+	// Nil means submitted, not accepted or completed. ErrUnsupported means no
+	// implementation (including Windows, which uses SetHitTest); ErrUnavailable
+	// means no usable current press or a destroyed window. Other native errors
+	// are preserved. Use this path only after SetHitTest returns ErrUnsupported.
+	BeginMove() error
+	// BeginResize has the same input and lifetime contract as BeginMove, but
+	// requests resizing from one edge or corner. It does not implement a resize
+	// loop or change the cursor. Currently X11 provides this request; Windows
+	// uses SetHitTest and macOS retains AppKit's native resize borders instead.
+	BeginResize(edge WindowEdge) error
 }
+
+// WindowEdge identifies one resize edge or corner, not a native hit-test role.
+// Values cannot be combined as flags.
+type WindowEdge uint8
+
+const (
+	WindowEdgeTop WindowEdge = iota
+	WindowEdgeBottom
+	WindowEdgeLeft
+	WindowEdgeRight
+	WindowEdgeTopLeft
+	WindowEdgeTopRight
+	WindowEdgeBottomLeft
+	WindowEdgeBottomRight
+)
 
 // WindowState is the current presentation, not native restoration bookkeeping.
 // Hidden is a withdrawn/hidden window, not an occluded window or an inactive
@@ -131,9 +167,9 @@ type WindowOptions struct {
 }
 
 // WindowHit identifies a native frame role, not a Widget action or pointer state.
-// Its values are independent of native platform constants. A backend without a
-// native caption-button role delivers that region through ordinary client input;
-// it never implements GUI button behavior on behalf of the callback.
+// Its values are independent of native platform constants. Backends without a
+// native hit-test facility reject SetHitTest; they never interpret client input
+// or implement GUI behavior on behalf of the callback.
 type WindowHit uint8
 
 const (

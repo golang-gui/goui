@@ -35,9 +35,7 @@ type Window struct {
 	cursor           *cursor      // this window's cursor capability (nil when none)
 	resizeSync       resizeSync
 	paintPending     bool
-	hitTest          func(geometry.Point) common.WindowHit
-	hitTesting       bool
-	moveResize       bool // a native WM interaction consumed the last left press
+	moveResize       bool // a WM interaction was requested; a raced release must cancel it
 	state            common.WindowState
 	overrideRedirect bool
 }
@@ -160,7 +158,10 @@ func (w *Window) NativeFBConfig() glx.FBConfig {
 }
 
 func (w *Window) Destroy() {
-	w.hitTest = nil
+	if moveResizePress.window == w {
+		moveResizePress = nativePress{}
+	}
+	w.moveResize = false
 	if w.wid == 0 {
 		return
 	}
@@ -243,7 +244,7 @@ func (w *Window) RequestClose() error {
 	if w.wid == 0 {
 		return nil
 	}
-	w.onEvent(events.CloseEvent{})
+	w.emitEvent(events.CloseEvent{})
 	return nil
 }
 
@@ -265,7 +266,7 @@ func (w *Window) schedulePaint() {
 		if w.wid == 0 {
 			return
 		}
-		w.onEvent(events.PaintEvent{})
+		w.emitEvent(events.PaintEvent{})
 		// Paint callbacks are synchronous. OpenGL has swapped its buffers and the
 		// software painter has presented before the callback returns, so this is
 		// the common completion point for the EWMH resize handshake. A handler with
@@ -322,6 +323,8 @@ var windowMap = map[xlib.Window]*Window{}
 
 // TODO: process window event
 func handleEvent(event xlib.Event) {
+	// Entering a nested native dispatch expires any previous press context.
+	moveResizePress = nativePress{}
 	// Give the input method first refusal on every event: during composition it
 	// consumes the keys it needs (candidate navigation, preedit editing) and we
 	// must drop them. Unconsumed keys fall through to normal handling below.
@@ -335,7 +338,7 @@ func handleEvent(event xlib.Event) {
 		if ev.MessageType == platform.atoms.WM_PROTOCOLS && ev.L[0] != 0 {
 			if xlib.Atom(ev.L[0]) == platform.atoms.WM_DELETE_WINDOW {
 				if window, ok := windowMap[ev.Window]; ok {
-					window.onEvent(events.CloseEvent{})
+					window.emitEvent(events.CloseEvent{})
 				}
 			} else if xlib.Atom(ev.L[0]) == platform.atoms._NET_WM_SYNC_REQUEST {
 				if window, ok := windowMap[ev.Window]; ok {
@@ -351,7 +354,7 @@ func handleEvent(event xlib.Event) {
 			if sizeChanged {
 				window.width, window.height = ev.Width, ev.Height
 				scale := currentScale()
-				window.onEvent(events.SizeEvent{
+				window.emitEvent(events.SizeEvent{
 					Width:       float32(ev.Width) / scale,
 					Height:      float32(ev.Height) / scale,
 					PixelWidth:  float32(ev.Width),
@@ -401,12 +404,12 @@ func handleEvent(event xlib.Event) {
 	case xlib.FocusIn:
 		ev := event.AnyEvent()
 		if window, ok := windowMap[ev.Window]; ok {
-			window.onEvent(events.FocusEvent{Focused: true})
+			window.emitEvent(events.FocusEvent{Focused: true})
 		}
 	case xlib.FocusOut:
 		ev := event.AnyEvent()
 		if window, ok := windowMap[ev.Window]; ok {
-			window.onEvent(events.FocusEvent{Focused: false})
+			window.emitEvent(events.FocusEvent{Focused: false})
 		}
 	case xlib.MotionNotify:
 		ev := event.MotionEvent()
@@ -526,73 +529,81 @@ func windowProperty32(d xlib.Display, w xlib.Window, property, reqType xlib.Atom
 	return data, nil
 }
 
-func (w *Window) SetHitTest(f func(geometry.Point) common.WindowHit) error {
+func (w *Window) SetHitTest(func(geometry.Point) common.WindowHit) error {
 	if w.wid == 0 {
 		return common.ErrUnavailable
 	}
-	w.hitTest = f
-	return nil
+	return common.ErrUnsupported
 }
 
-func (w *Window) queryHitTest(p geometry.Point) common.WindowHit {
-	if w.hitTest == nil || w.hitTesting || w.wid == 0 {
-		return common.WindowHitDefault
-	}
-	w.hitTesting = true
-	defer func() { w.hitTesting = false }()
-	hit := w.hitTest(p)
-	if hit > common.WindowHitBottomRight {
-		return common.WindowHitDefault
-	}
-	return hit
+func (w *Window) BeginMove() error {
+	return w.beginMoveResize(8)
 }
 
-func moveResizeDirection(hit common.WindowHit) (int64, bool) {
-	switch hit {
-	case common.WindowHitTopLeft:
+func (w *Window) BeginResize(edge common.WindowEdge) error {
+	if w.wid == 0 {
+		return common.ErrUnavailable
+	}
+	direction, ok := resizeDirection(edge)
+	if !ok {
+		return fmt.Errorf("invalid window edge: %d", edge)
+	}
+	return w.beginMoveResize(direction)
+}
+
+func resizeDirection(edge common.WindowEdge) (int64, bool) {
+	switch edge {
+	case common.WindowEdgeTopLeft:
 		return 0, true
-	case common.WindowHitTop:
+	case common.WindowEdgeTop:
 		return 1, true
-	case common.WindowHitTopRight:
+	case common.WindowEdgeTopRight:
 		return 2, true
-	case common.WindowHitRight:
+	case common.WindowEdgeRight:
 		return 3, true
-	case common.WindowHitBottomRight:
+	case common.WindowEdgeBottomRight:
 		return 4, true
-	case common.WindowHitBottom:
+	case common.WindowEdgeBottom:
 		return 5, true
-	case common.WindowHitBottomLeft:
+	case common.WindowEdgeBottomLeft:
 		return 6, true
-	case common.WindowHitLeft:
+	case common.WindowEdgeLeft:
 		return 7, true
-	case common.WindowHitCaption:
-		return 8, true
 	default:
 		return 0, false
 	}
 }
 
-func (w *Window) beginMoveResize(event *xlib.ButtonEvent) bool {
-	if w.overrideRedirect || event.Button != xlib.Button1 {
-		return false
+func (w *Window) beginMoveResize(direction int64) error {
+	if w.wid == 0 {
+		return common.ErrUnavailable
 	}
-	direction, ok := moveResizeDirection(w.queryHitTest(point(event.X, event.Y)))
-	if !ok {
-		return false
+	if w.overrideRedirect {
+		return common.ErrUnsupported
+	}
+	if moveResizePress.window != w {
+		return common.ErrUnavailable
 	}
 	supported, err := windowProperty32(platform.display, platform.defScreen.Root,
 		platform.atoms._NET_SUPPORTED, xlib.AtomAtom, 4096)
-	if err != nil || !slices.Contains(supported, uint32(platform.atoms._NET_WM_MOVERESIZE)) {
-		return false
+	if err != nil {
+		return err
 	}
+	if platform.atoms._NET_WM_MOVERESIZE == 0 || !slices.Contains(supported, uint32(platform.atoms._NET_WM_MOVERESIZE)) {
+		return common.ErrUnsupported
+	}
+	event := moveResizePress.event
 	// ButtonPress holds an implicit pointer grab. Release it before asking the
 	// WM to grab for its native move/resize loop, using the original press time.
 	platform.display.UngrabPointer(event.Time)
-	if !w.sendMoveResize(event, direction) {
-		return false
+	if !w.sendMoveResize(&event, direction) {
+		return fmt.Errorf("send _NET_WM_MOVERESIZE failed")
 	}
+	moveResizePress = nativePress{}
+	// The WM may consume the release. Do not keep a stale native button state.
+	w.buttons &^= events.PointerButtonLeftDown
 	w.moveResize = true
-	return true
+	return nil
 }
 
 func moveResizeMessage(window xlib.Window, atom xlib.Atom, event *xlib.ButtonEvent, direction int64) xlib.Event {
@@ -744,7 +755,7 @@ func (w *Window) notifyState() {
 	state := w.State()
 	if state != w.state {
 		w.state = state
-		w.onEvent(events.StateEvent{State: state})
+		w.emitEvent(events.StateEvent{State: state})
 	}
 }
 

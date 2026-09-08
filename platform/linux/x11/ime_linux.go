@@ -92,7 +92,7 @@ func (im *inputMethod) handleKey(event *xlib.KeyEvent) {
 	}
 
 	key, location := keyFromKeysym(keysym, event.State, platform.numLockMask)
-	im.window.onEvent(events.KeyEvent{
+	im.window.emitEvent(events.KeyEvent{
 		EventType: events.KeyDown,
 		Key:       key,
 		Code:      events.KeyCodeUnknown,

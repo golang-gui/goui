@@ -6,9 +6,25 @@ import (
 	"github.com/golang-gui/goui/platform/linux/libs/xlib"
 )
 
+// There is one current native input dispatch on the platform thread. Do not
+// retain an XEvent pointer or restore an outer press after nested dispatch.
+type nativePress struct {
+	window *Window
+	event  xlib.ButtonEvent
+}
+
+var moveResizePress nativePress
+
+func (w *Window) emitEvent(event events.Event) {
+	moveResizePress = nativePress{}
+	if w.wid != 0 {
+		w.onEvent(event)
+	}
+}
+
 func (w *Window) handlePointerMove(event *xlib.MotionEvent) {
 	w.buttons = buttonsFromState(event.State, w.buttons)
-	w.onEvent(events.PointerEvent{
+	w.emitEvent(events.PointerEvent{
 		EventType: events.PointerMove,
 		Position:  point(event.X, event.Y),
 		Button:    events.PointerButtonNone,
@@ -19,7 +35,7 @@ func (w *Window) handlePointerMove(event *xlib.MotionEvent) {
 
 func (w *Window) handlePointerCrossing(eventType events.EventType, event *xlib.CrossingEvent) {
 	w.buttons = buttonsFromState(event.State, w.buttons)
-	w.onEvent(events.PointerEvent{
+	w.emitEvent(events.PointerEvent{
 		EventType: eventType,
 		Position:  point(event.X, event.Y),
 		Button:    events.PointerButtonNone,
@@ -29,24 +45,21 @@ func (w *Window) handlePointerCrossing(eventType events.EventType, event *xlib.C
 }
 
 func (w *Window) handleButton(eventType events.EventType, event *xlib.ButtonEvent) {
+	moveResizePress = nativePress{}
 	if event.Type == xlib.ButtonPress {
 		if wheel, ok := wheelEvent(event, buttonsFromState(event.State, w.buttons)); ok {
-			w.onEvent(wheel)
+			w.emitEvent(wheel)
 			return
 		}
 	}
 	if event.Button == xlib.Button1 {
 		if eventType == events.PointerDown {
 			w.moveResize = false
-			if w.beginMoveResize(event) {
-				return
-			}
 		} else if w.moveResize {
 			// Release can race the WM's grab. EWMH requires cancellation when
 			// the client receives that release instead of the WM.
 			w.moveResize = false
 			w.sendMoveResize(event, 11)
-			return
 		}
 	}
 
@@ -64,13 +77,22 @@ func (w *Window) handleButton(eventType events.EventType, event *xlib.ButtonEven
 	}
 	w.buttons = buttons
 
-	w.onEvent(events.PointerEvent{
+	pointer := events.PointerEvent{
 		EventType: eventType,
 		Position:  point(event.X, event.Y),
 		Button:    button,
 		Buttons:   buttons,
 		Modifiers: modifiersFromState(event.State),
-	})
+	}
+	if w.wid == 0 {
+		return
+	}
+	if eventType == events.PointerDown && event.Type == xlib.ButtonPress &&
+		event.Button == xlib.Button1 && event.Window == w.wid && event.SendEvent == 0 && event.SameScreen != 0 {
+		moveResizePress = nativePress{window: w, event: *event}
+	}
+	defer func() { moveResizePress = nativePress{} }()
+	w.onEvent(pointer)
 }
 
 func (w *Window) handleKey(eventType events.EventType, event *xlib.KeyEvent) {
@@ -84,7 +106,7 @@ func (w *Window) handleKey(eventType events.EventType, event *xlib.KeyEvent) {
 	}
 
 	key, location := keyFromKeysym(xlib.LookupKeysym(event, 0), event.State, platform.numLockMask)
-	w.onEvent(events.KeyEvent{
+	w.emitEvent(events.KeyEvent{
 		EventType: eventType,
 		Key:       key,
 		Code:      events.KeyCodeUnknown,
