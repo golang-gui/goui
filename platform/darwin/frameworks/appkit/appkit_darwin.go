@@ -3,8 +3,6 @@ package appkit
 import (
 	"fmt"
 
-	. "github.com/golang-gui/goui/platform/darwin/frameworks/core_graphics"
-	. "github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
 	"github.com/golang-gui/goui/platform/darwin/frameworks/utils"
 
 	"github.com/ebitengine/purego/objc"
@@ -26,6 +24,8 @@ func InitAppKit() (err error) {
 	initNSWindowDelegate()
 	initNSResponder()
 	initNSView()
+	initNSControl()
+	initNSButton()
 	initNSTextInputContext()
 	initNSTextInputClient()
 	initNSTrackingArea()
@@ -486,6 +486,7 @@ func initNSView() {
 	NSViewSel.FlagsChanged = objc.RegisterName("flagsChanged:")
 	NSViewSel.InputContext = objc.RegisterName("inputContext")
 	NSViewSel.ConvertRectToView = objc.RegisterName("convertRect:toView:")
+	NSViewSel.IsHiddenOrHasHiddenAncestor = objc.RegisterName("isHiddenOrHasHiddenAncestor")
 }
 
 var (
@@ -525,6 +526,7 @@ var (
 		FlagsChanged                        objc.SEL
 		InputContext                        objc.SEL
 		ConvertRectToView                   objc.SEL
+		IsHiddenOrHasHiddenAncestor         objc.SEL
 	}
 )
 
@@ -822,6 +824,10 @@ func (v NSView) ConvertRectToWindow(rect NSRect) NSRect {
 	return objc.Send[NSRect](v.ID, NSViewSel.ConvertRectToView, rect, objc.ID(0))
 }
 
+func (v NSView) ConvertRectToView(rect NSRect, target NSView) NSRect {
+	return objc.Send[NSRect](v.ID, NSViewSel.ConvertRectToView, rect, target.ID)
+}
+
 // ConvertRectToScreen converts rect from window coordinates to screen coordinates.
 func (w NSWindow) ConvertRectToScreen(rect NSRect) NSRect {
 	return objc.Send[NSRect](w.ID, NSWindowSel.ConvertRectToScreen, rect)
@@ -848,6 +854,10 @@ func (v NSView) Frame() NSRect {
 
 func (v NSView) Bounds() NSRect {
 	return objc.Send[NSRect](v.ID, NSViewSel.Bounds)
+}
+
+func (v NSView) IsHiddenOrHasHiddenAncestor() bool {
+	return objc.Send[bool](v.ID, NSViewSel.IsHiddenOrHasHiddenAncestor)
 }
 
 func (v NSView) ConvertRectToBacking(rect NSRect) NSRect {
@@ -913,6 +923,42 @@ func (a NSTrackingArea) InitWith(rect NSRect, options NSTrackingAreaOptions, own
 	return Cast[NSTrackingArea](a.Send(NSTrackingAreaSel.InitWith, rect, options, owner, userInfo))
 }
 
+// NSControl
+
+func initNSControl() {
+	NSControlClassId.Class = objc.GetClass("NSControl")
+	NSControlSel.SetEnabled = objc.RegisterName("setEnabled:")
+}
+
+var (
+	NSControlClassId NSControlClass
+	NSControlSel     struct {
+		SetEnabled objc.SEL
+	}
+)
+
+type (
+	NSControl      struct{ NSView }
+	NSControlClass struct{ NSViewClass }
+)
+
+func (c NSControl) SetEnabled(enabled bool) {
+	c.Send(NSControlSel.SetEnabled, enabled)
+}
+
+// NSButton
+
+func initNSButton() {
+	NSButtonClassId.Class = objc.GetClass("NSButton")
+}
+
+var NSButtonClassId NSButtonClass
+
+type (
+	NSButton      struct{ NSControl }
+	NSButtonClass struct{ NSControlClass }
+)
+
 // NSWindow
 
 func initNSWindow() {
@@ -945,6 +991,16 @@ func initNSWindow() {
 	NSWindowSel.SetContentMinSize = objc.RegisterName("setContentMinSize:")
 	NSWindowSel.SetLevel = objc.RegisterName("setLevel:")
 	NSWindowSel.ConvertRectToScreen = objc.RegisterName("convertRectToScreen:")
+	NSWindowSel.StyleMask = objc.RegisterName("styleMask")
+	NSWindowSel.IsVisible = objc.RegisterName("isVisible")
+	NSWindowSel.IsMiniaturized = objc.RegisterName("isMiniaturized")
+	NSWindowSel.IsZoomed = objc.RegisterName("isZoomed")
+	NSWindowSel.Miniaturize = objc.RegisterName("miniaturize:")
+	NSWindowSel.Deminiaturize = objc.RegisterName("deminiaturize:")
+	NSWindowSel.Zoom = objc.RegisterName("zoom:")
+	NSWindowSel.ToggleFullScreen = objc.RegisterName("toggleFullScreen:")
+	NSWindowSel.StandardWindowButton = objc.RegisterName("standardWindowButton:")
+	NSWindowSel.PerformWindowDrag = objc.RegisterName("performWindowDragWithEvent:")
 }
 
 var (
@@ -978,6 +1034,16 @@ var (
 		SetContentMinSize          objc.SEL
 		SetLevel                   objc.SEL
 		ConvertRectToScreen        objc.SEL
+		StyleMask                  objc.SEL
+		IsVisible                  objc.SEL
+		IsMiniaturized             objc.SEL
+		IsZoomed                   objc.SEL
+		Miniaturize                objc.SEL
+		Deminiaturize              objc.SEL
+		Zoom                       objc.SEL
+		ToggleFullScreen           objc.SEL
+		StandardWindowButton       objc.SEL
+		PerformWindowDrag          objc.SEL
 	}
 )
 
@@ -1121,6 +1187,47 @@ func (w NSWindow) SetLevel(level NSInteger) {
 	w.Send(NSWindowSel.SetLevel, level)
 }
 
+func (w NSWindow) StyleMask() NSWindowStyleMask {
+	return objc.Send[NSWindowStyleMask](w.ID, NSWindowSel.StyleMask)
+}
+
+func (w NSWindow) IsVisible() bool {
+	return objc.Send[bool](w.ID, NSWindowSel.IsVisible)
+}
+
+func (w NSWindow) IsMiniaturized() bool {
+	return objc.Send[bool](w.ID, NSWindowSel.IsMiniaturized)
+}
+
+func (w NSWindow) IsZoomed() bool {
+	return objc.Send[bool](w.ID, NSWindowSel.IsZoomed)
+}
+
+func (w NSWindow) Miniaturize(sender objc.ID) {
+	w.Send(NSWindowSel.Miniaturize, sender)
+}
+
+func (w NSWindow) Deminiaturize(sender objc.ID) {
+	w.Send(NSWindowSel.Deminiaturize, sender)
+}
+
+func (w NSWindow) Zoom(sender objc.ID) {
+	w.Send(NSWindowSel.Zoom, sender)
+}
+
+func (w NSWindow) ToggleFullScreen(sender objc.ID) {
+	w.Send(NSWindowSel.ToggleFullScreen, sender)
+}
+
+func (w NSWindow) StandardWindowButton(button NSWindowButton) (res NSButton) {
+	res.ID = w.Send(NSWindowSel.StandardWindowButton, button)
+	return
+}
+
+func (w NSWindow) PerformWindowDrag(event NSEvent) {
+	w.Send(NSWindowSel.PerformWindowDrag, event)
+}
+
 // NSWindowDelegate
 
 func initNSWindowDelegate() {
@@ -1129,15 +1236,27 @@ func initNSWindowDelegate() {
 	NSWindowDelegateSel.WindowDidResize = objc.RegisterName("windowDidResize:")
 	NSWindowDelegateSel.WindowDidBecomeKey = objc.RegisterName("windowDidBecomeKey:")
 	NSWindowDelegateSel.WindowDidResignKey = objc.RegisterName("windowDidResignKey:")
+	NSWindowDelegateSel.WindowDidChangeOcclusionState = objc.RegisterName("windowDidChangeOcclusionState:")
+	NSWindowDelegateSel.WindowShouldZoom = objc.RegisterName("windowShouldZoom:toFrame:")
+	NSWindowDelegateSel.WindowDidMiniaturize = objc.RegisterName("windowDidMiniaturize:")
+	NSWindowDelegateSel.WindowDidDeminiaturize = objc.RegisterName("windowDidDeminiaturize:")
+	NSWindowDelegateSel.WindowDidEnterFullScreen = objc.RegisterName("windowDidEnterFullScreen:")
+	NSWindowDelegateSel.WindowDidExitFullScreen = objc.RegisterName("windowDidExitFullScreen:")
 }
 
 var (
 	NSWindowDelegateClassId NSWindowDelegateClass
 	NSWindowDelegateSel     struct {
-		WindowShouldClose  objc.SEL
-		WindowDidResize    objc.SEL
-		WindowDidBecomeKey objc.SEL
-		WindowDidResignKey objc.SEL
+		WindowShouldClose             objc.SEL
+		WindowDidResize               objc.SEL
+		WindowDidBecomeKey            objc.SEL
+		WindowDidResignKey            objc.SEL
+		WindowDidChangeOcclusionState objc.SEL
+		WindowShouldZoom              objc.SEL
+		WindowDidMiniaturize          objc.SEL
+		WindowDidDeminiaturize        objc.SEL
+		WindowDidEnterFullScreen      objc.SEL
+		WindowDidExitFullScreen       objc.SEL
 	}
 )
 
@@ -1145,15 +1264,21 @@ type (
 	NSWindowDelegate         struct{ NSObject }
 	NSWindowDelegateClass    struct{ NSObjectClass }
 	NSWindowDelegateOverride struct {
-		WindowShouldClose  func(self NSWindowDelegate, sender NSWindow) bool
-		WindowDidResize    func(self NSWindowDelegate, notification NSNotification)
-		WindowDidBecomeKey func(self NSWindowDelegate, notification NSNotification)
-		WindowDidResignKey func(self NSWindowDelegate, notification NSNotification)
+		WindowDidChangeOcclusionState func(self NSWindowDelegate, notification NSNotification)
+		WindowShouldClose             func(self NSWindowDelegate, sender NSWindow) bool
+		WindowDidResize               func(self NSWindowDelegate, notification NSNotification)
+		WindowDidBecomeKey            func(self NSWindowDelegate, notification NSNotification)
+		WindowDidResignKey            func(self NSWindowDelegate, notification NSNotification)
+		WindowShouldZoom              func(self NSWindowDelegate, sender NSWindow, frame NSRect) bool
+		WindowDidMiniaturize          func(self NSWindowDelegate, notification NSNotification)
+		WindowDidDeminiaturize        func(self NSWindowDelegate, notification NSNotification)
+		WindowDidEnterFullScreen      func(self NSWindowDelegate, notification NSNotification)
+		WindowDidExitFullScreen       func(self NSWindowDelegate, notification NSNotification)
 	}
 )
 
 func ImplementNSWindowDelegate(className string, override NSWindowDelegateOverride) (class NSWindowDelegateClass, err error) {
-	methods := make([]objc.MethodDef, 0, 4)
+	methods := make([]objc.MethodDef, 0, 10)
 	if override.WindowShouldClose != nil {
 		methods = append(methods, objc.MethodDef{
 			Cmd: NSWindowDelegateSel.WindowShouldClose,
@@ -1195,6 +1320,54 @@ func ImplementNSWindowDelegate(className string, override NSWindowDelegateOverri
 			},
 		})
 	}
+	if override.WindowDidChangeOcclusionState != nil {
+		methods = append(methods, objc.MethodDef{
+			Cmd: NSWindowDelegateSel.WindowDidChangeOcclusionState,
+			Fn: func(self objc.ID, cmd objc.SEL, notification objc.ID) {
+				override.WindowDidChangeOcclusionState(Cast[NSWindowDelegate](self), Cast[NSNotification](notification))
+			},
+		})
+	}
+	if override.WindowShouldZoom != nil {
+		methods = append(methods, objc.MethodDef{
+			Cmd: NSWindowDelegateSel.WindowShouldZoom,
+			Fn: func(self objc.ID, cmd objc.SEL, sender objc.ID, frame NSRect) bool {
+				return override.WindowShouldZoom(Cast[NSWindowDelegate](self), Cast[NSWindow](sender), frame)
+			},
+		})
+	}
+	if override.WindowDidMiniaturize != nil {
+		methods = append(methods, objc.MethodDef{
+			Cmd: NSWindowDelegateSel.WindowDidMiniaturize,
+			Fn: func(self objc.ID, cmd objc.SEL, notification objc.ID) {
+				override.WindowDidMiniaturize(Cast[NSWindowDelegate](self), Cast[NSNotification](notification))
+			},
+		})
+	}
+	if override.WindowDidDeminiaturize != nil {
+		methods = append(methods, objc.MethodDef{
+			Cmd: NSWindowDelegateSel.WindowDidDeminiaturize,
+			Fn: func(self objc.ID, cmd objc.SEL, notification objc.ID) {
+				override.WindowDidDeminiaturize(Cast[NSWindowDelegate](self), Cast[NSNotification](notification))
+			},
+		})
+	}
+	if override.WindowDidEnterFullScreen != nil {
+		methods = append(methods, objc.MethodDef{
+			Cmd: NSWindowDelegateSel.WindowDidEnterFullScreen,
+			Fn: func(self objc.ID, cmd objc.SEL, notification objc.ID) {
+				override.WindowDidEnterFullScreen(Cast[NSWindowDelegate](self), Cast[NSNotification](notification))
+			},
+		})
+	}
+	if override.WindowDidExitFullScreen != nil {
+		methods = append(methods, objc.MethodDef{
+			Cmd: NSWindowDelegateSel.WindowDidExitFullScreen,
+			Fn: func(self objc.ID, cmd objc.SEL, notification objc.ID) {
+				override.WindowDidExitFullScreen(Cast[NSWindowDelegate](self), Cast[NSNotification](notification))
+			},
+		})
+	}
 	class.Class, err = objc.RegisterClass(className, NSObjectClassId.Class, nil, nil, methods)
 	return
 }
@@ -1203,6 +1376,14 @@ func (c NSWindowDelegateClass) Alloc() (res NSWindowDelegate) {
 	res.NSObject = c.NSObjectClass.Alloc()
 	return
 }
+
+type NSWindowButton NSUInteger
+
+const (
+	NSWindowCloseButton NSWindowButton = iota
+	NSWindowMiniaturizeButton
+	NSWindowZoomButton
+)
 
 type NSWindowStyleMask NSUInteger
 
