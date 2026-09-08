@@ -2,12 +2,27 @@ package cocoa
 
 import (
 	"github.com/golang-gui/goui/core/geometry"
-	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/appkit"
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
 )
+
+// This borrowed NSEvent is usable only during its synchronous pointer-down
+// dispatch. Nested event/task dispatch expires it, even for another window.
+type nativePress struct {
+	window *Window
+	event  NSEvent
+}
+
+var movePress nativePress
+
+func (w *Window) emitEvent(event events.Event) {
+	movePress = nativePress{}
+	if w.window.Valid() {
+		w.onEvent(event)
+	}
+}
 
 func updateTrackingAreas(self NSView) {
 	if window := windowForView(self); window != nil {
@@ -48,25 +63,15 @@ func otherMouseDragged(self NSView, event NSEvent) {
 }
 
 func mouseDown(self NSView, event NSEvent) {
+	self.Retain()
+	defer self.Release()
 	if window := windowForView(self); window != nil {
-		window.nativeDrag = false
-		if window.queryHitTest(positionInView(self, event)) == common.WindowHitCaption {
-			// AppKit owns dragging and may consume mouseUp. Do not leave the GUI
-			// with a pressed button by dispatching a partial click first.
-			window.nativeDrag = true
-			window.window.PerformWindowDrag(event)
-			return
-		}
 		window.emitPointer(events.PointerDown, events.PointerButtonLeft, event)
 	}
 }
 
 func mouseUp(self NSView, event NSEvent) {
 	if window := windowForView(self); window != nil {
-		if window.nativeDrag {
-			window.nativeDrag = false
-			return
-		}
 		window.emitPointer(events.PointerUp, events.PointerButtonLeft, event)
 	}
 }
@@ -104,7 +109,7 @@ func scrollWheel(self NSView, event NSEvent) {
 			scale := pointsPerLogicalUnit(self.Window())
 			dx, dy = dx/scale, dy/scale
 		}
-		window.onEvent(events.WheelEvent{
+		window.emitEvent(events.WheelEvent{
 			Position:  positionInView(self, event),
 			DeltaX:    float32(dx),
 			DeltaY:    float32(dy),
@@ -181,19 +186,25 @@ func (w *Window) reapplyCursor() {
 }
 
 func (w *Window) emitPointer(eventType events.EventType, button events.PointerButton, event NSEvent) {
+	movePress = nativePress{}
 	flag := pointerButtonFlag(button)
 	if eventType == events.PointerDown {
 		w.buttons |= flag
 	} else if eventType == events.PointerUp {
 		w.buttons &^= flag
 	}
-	w.onEvent(events.PointerEvent{
+	pointer := events.PointerEvent{
 		EventType: eventType,
 		Position:  positionInView(w.view, event),
 		Button:    button,
 		Buttons:   w.buttons,
 		Modifiers: modifiersFromFlags(event.ModifierFlags()),
-	})
+	}
+	if eventType == events.PointerDown && button == events.PointerButtonLeft {
+		movePress = nativePress{window: w, event: event}
+	}
+	defer func() { movePress = nativePress{} }()
+	w.onEvent(pointer)
 }
 
 func (w *Window) emitKey(eventType events.EventType, event NSEvent, repeat bool) {
@@ -203,7 +214,7 @@ func (w *Window) emitKey(eventType events.EventType, event NSEvent, repeat bool)
 func (w *Window) emitKeyWithModifiers(eventType events.EventType, event NSEvent, modifiers events.Modifiers, repeat bool) {
 	key, location := keyFromMacKeyCode(event.KeyCode())
 	w.modifiers = modifiers
-	w.onEvent(events.KeyEvent{
+	w.emitEvent(events.KeyEvent{
 		EventType: eventType,
 		Key:       key,
 		Code:      events.KeyCodeUnknown,

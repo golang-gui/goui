@@ -49,6 +49,7 @@ func (l *EventLoop) Post(task func()) {
 }
 
 func (l *EventLoop) Run() {
+	movePress = nativePress{}
 	defer l.state.Quit()
 	if l.state.Destroyed() || l.state.Quitting() {
 		return
@@ -95,6 +96,7 @@ func (l *EventLoop) wake() {
 }
 
 func (l *EventLoop) runTasks() {
+	movePress = nativePress{}
 	l.state.RunTasks()
 	if l.state.Quitting() {
 		NSApp.Stop()

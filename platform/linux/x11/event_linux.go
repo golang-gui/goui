@@ -44,6 +44,7 @@ func (l *EventLoop) Post(task func()) {
 }
 
 func (l *EventLoop) Run() {
+	moveResizePress = nativePress{}
 	defer l.state.Quit()
 	if l.state.Destroyed() {
 		return

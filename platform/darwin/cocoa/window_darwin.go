@@ -28,9 +28,6 @@ type Window struct {
 	minHeight    float32
 	im           *inputMethod // this window's IME (nil when none); keyDown routes to it
 	cursor       *cursor      // this window's cursor capability (nil when none)
-	hitTest      func(geometry.Point) common.WindowHit
-	hitTesting   bool
-	nativeDrag   bool // AppKit consumed the last left press; mouseUp may not arrive
 	state        common.WindowState
 }
 
@@ -92,7 +89,9 @@ func (w *Window) NativeHandle() uintptr {
 }
 
 func (w *Window) Destroy() {
-	w.hitTest = nil
+	if movePress.window == w {
+		movePress = nativePress{}
+	}
 	if !w.window.Valid() {
 		return
 	}
@@ -177,7 +176,7 @@ func (w *Window) RequestClose() error {
 
 	// Programmatic close still uses the vetoable notification when the native
 	// close button is disabled/absent. PerformClose would only beep in that case.
-	w.onEvent(events.CloseEvent{})
+	w.emitEvent(events.CloseEvent{})
 	return nil
 }
 
@@ -312,7 +311,7 @@ func windowShouldClose(self NSWindowDelegate, sender NSWindow) bool {
 	defer self.Release()
 
 	if window, has := windowMap[sender]; has {
-		window.onEvent(events.CloseEvent{})
+		window.emitEvent(events.CloseEvent{})
 		return false
 	}
 	return true
@@ -351,7 +350,7 @@ func windowDidResize(self NSWindowDelegate, notification NSNotification) {
 		if !window.window.Valid() {
 			return
 		}
-		window.onEvent(makeSizeEvent(window.view))
+		window.emitEvent(makeSizeEvent(window.view))
 	}
 }
 
@@ -360,7 +359,7 @@ func windowDidBecomeKey(self NSWindowDelegate, notification NSNotification) {
 	defer self.Release()
 
 	if window, has := windowMap[Cast[NSWindow](notification.Object())]; has {
-		window.onEvent(events.FocusEvent{Focused: true})
+		window.emitEvent(events.FocusEvent{Focused: true})
 	}
 }
 
@@ -369,7 +368,7 @@ func windowDidResignKey(self NSWindowDelegate, notification NSNotification) {
 	defer self.Release()
 
 	if window, has := windowMap[Cast[NSWindow](notification.Object())]; has {
-		window.onEvent(events.FocusEvent{Focused: false})
+		window.emitEvent(events.FocusEvent{Focused: false})
 	}
 }
 
@@ -380,7 +379,7 @@ func viewDidChangeBackingProperties(self NSView) {
 	if window, has := windowMap[self.Window()]; has {
 		window.SetMinSize(window.minWidth, window.minHeight)
 		// Both the backing size and the point-to-logical conversion may change.
-		window.onEvent(makeSizeEvent(self))
+		window.emitEvent(makeSizeEvent(self))
 	}
 }
 
@@ -389,12 +388,12 @@ func drawRect(self NSView, rect NSRect) {
 	defer self.Release()
 
 	if window, has := windowMap[self.Window()]; has {
-		window.onEvent(events.PaintEvent{})
+		window.emitEvent(events.PaintEvent{})
 	}
 }
 
 func (w *Window) sendCreatedEvents() {
-	w.onEvent(makeSizeEvent(w.view))
+	w.emitEvent(makeSizeEvent(w.view))
 }
 
 func (w *Window) drawImage(img graphics.Bitmap) (err error) {
@@ -486,25 +485,35 @@ func controlsRectInDIP(rect, bounds NSRect, pointsPerDIP CGFloat) geometry.Recta
 		float32(rect.Size.Width/pointsPerDIP), float32(rect.Size.Height/pointsPerDIP))
 }
 
-func (w *Window) SetHitTest(f func(geometry.Point) common.WindowHit) error {
+func (w *Window) SetHitTest(func(geometry.Point) common.WindowHit) error {
 	if !w.window.Valid() {
 		return common.ErrUnavailable
 	}
-	w.hitTest = f
+	return common.ErrUnsupported
+}
+
+func (w *Window) BeginMove() error {
+	if !w.window.Valid() || movePress.window != w || !movePress.event.Valid() {
+		return common.ErrUnavailable
+	}
+	event, native := movePress.event, w.window
+	movePress = nativePress{}
+	w.buttons &^= events.PointerButtonLeftDown
+	// AppKit may enter a modal loop, consume mouseUp and reenter Go callbacks.
+	// Keep the native objects alive even if one of those callbacks destroys w.
+	native.Retain()
+	defer native.Release()
+	event.Retain()
+	defer event.Release()
+	native.PerformWindowDrag(event)
 	return nil
 }
 
-func (w *Window) queryHitTest(p geometry.Point) common.WindowHit {
-	if w.hitTest == nil || w.hitTesting || !w.window.Valid() {
-		return common.WindowHitDefault
+func (w *Window) BeginResize(common.WindowEdge) error {
+	if !w.window.Valid() {
+		return common.ErrUnavailable
 	}
-	w.hitTesting = true
-	defer func() { w.hitTesting = false }()
-	hit := w.hitTest(p)
-	if hit > common.WindowHitBottomRight {
-		return common.WindowHitDefault
-	}
-	return hit
+	return common.ErrUnsupported
 }
 
 func (w *Window) State() common.WindowState {
@@ -563,7 +572,7 @@ func (w *Window) notifyState() {
 	state := w.State()
 	if state != w.state {
 		w.state = state
-		w.onEvent(events.StateEvent{State: state})
+		w.emitEvent(events.StateEvent{State: state})
 	}
 }
 

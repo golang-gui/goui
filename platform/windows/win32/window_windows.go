@@ -575,6 +575,21 @@ func (w *Window) SetHitTest(f func(geometry.Point) common.WindowHit) error {
 	return nil
 }
 
+// Windows starts native interaction through WM_NCHITTEST, not client input.
+func (w *Window) BeginMove() error {
+	if w.hwnd == 0 {
+		return common.ErrUnavailable
+	}
+	return common.ErrUnsupported
+}
+
+func (w *Window) BeginResize(common.WindowEdge) error {
+	if w.hwnd == 0 {
+		return common.ErrUnavailable
+	}
+	return common.ErrUnsupported
+}
+
 func (w *Window) queryHitTest(p geometry.Point) common.WindowHit {
 	if w.hitTest == nil || w.hitTesting || w.hwnd == 0 {
 		return common.WindowHitDefault

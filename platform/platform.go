@@ -22,6 +22,7 @@ type (
 	WindowChrome       = common.WindowChrome
 	WindowState        = common.WindowState
 	WindowHit          = common.WindowHit
+	WindowEdge         = common.WindowEdge
 	Popup              = common.Popup
 	EventLoop          = common.EventLoop
 	Clipboard          = common.Clipboard
@@ -65,6 +66,15 @@ const (
 	WindowHitTopRight    = common.WindowHitTopRight
 	WindowHitBottomLeft  = common.WindowHitBottomLeft
 	WindowHitBottomRight = common.WindowHitBottomRight
+
+	WindowEdgeTop         = common.WindowEdgeTop
+	WindowEdgeBottom      = common.WindowEdgeBottom
+	WindowEdgeLeft        = common.WindowEdgeLeft
+	WindowEdgeRight       = common.WindowEdgeRight
+	WindowEdgeTopLeft     = common.WindowEdgeTopLeft
+	WindowEdgeTopRight    = common.WindowEdgeTopRight
+	WindowEdgeBottomLeft  = common.WindowEdgeBottomLeft
+	WindowEdgeBottomRight = common.WindowEdgeBottomRight
 
 	ColorSchemeLight = common.ColorSchemeLight
 	ColorSchemeDark  = common.ColorSchemeDark
