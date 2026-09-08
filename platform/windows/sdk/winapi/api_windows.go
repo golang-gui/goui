@@ -43,6 +43,13 @@ var (
 	procClientToScreen       = user32Dll.NewProc("ClientToScreen")
 	procSetCapture           = user32Dll.NewProc("SetCapture")
 	procReleaseCapture       = user32Dll.NewProc("ReleaseCapture")
+	procIsIconic             = user32Dll.NewProc("IsIconic")
+	procIsZoomed             = user32Dll.NewProc("IsZoomed")
+	procIsWindowVisible      = user32Dll.NewProc("IsWindowVisible")
+	procGetWindowLongW       = user32Dll.NewProc("GetWindowLongW")
+	procGetKeyState          = user32Dll.NewProc("GetKeyState")
+	procGetSystemMenu        = user32Dll.NewProc("GetSystemMenu")
+	procEnableMenuItem       = user32Dll.NewProc("EnableMenuItem")
 
 	// DPI
 	procGetDpiForWindow               = user32Dll.NewProc("GetDpiForWindow")
@@ -98,8 +105,10 @@ var (
 	procRegQueryValueExW = advapi32Dll.NewProc("RegQueryValueExW")
 	procRegCloseKey      = advapi32Dll.NewProc("RegCloseKey")
 
-	// DWN
+	// DWM
 	procDwmGetColorizationColor = dwmapiDll.NewProc("DwmGetColorizationColor")
+	procDwmGetWindowAttribute   = dwmapiDll.NewProc("DwmGetWindowAttribute")
+	procDwmDefWindowProc        = dwmapiDll.NewProc("DwmDefWindowProc")
 
 	// Clipboard
 	procOpenClipboard    = user32Dll.NewProc("OpenClipboard")
@@ -181,6 +190,49 @@ func DestroyWindow(wnd HWND) BOOL {
 func CloseWindow(wnd HWND) BOOL {
 	ret, _, _ := syscall.SyscallN(procCloseWindow.Addr(), uintptr(wnd))
 	return BOOL(ret)
+}
+
+func IsWindowVisible(wnd HWND) BOOL {
+	ret, _, _ := syscall.SyscallN(procIsWindowVisible.Addr(), uintptr(wnd))
+	return BOOL(ret)
+}
+
+func IsIconic(wnd HWND) BOOL {
+	ret, _, _ := syscall.SyscallN(procIsIconic.Addr(), uintptr(wnd))
+	return BOOL(ret)
+}
+
+func IsZoomed(wnd HWND) BOOL {
+	ret, _, _ := syscall.SyscallN(procIsZoomed.Addr(), uintptr(wnd))
+	return BOOL(ret)
+}
+
+// GetWindowLong reads a 32-bit window value, not a pointer-sized field.
+// Zero is a valid result unless the native call also reports an error.
+func GetWindowLong(wnd HWND, index int) (LONG, error) {
+	ret, _, err := syscall.SyscallN(procGetWindowLongW.Addr(), uintptr(wnd), uintptr(index))
+	value := LONG(ret)
+	// SyscallN clears LastError before the call and captures it on return.
+	if value == 0 && err != 0 {
+		return 0, err
+	}
+	return value, nil
+}
+
+func GetKeyState(key int) SHORT {
+	ret, _, _ := syscall.SyscallN(procGetKeyState.Addr(), uintptr(key))
+	return SHORT(ret)
+}
+
+func GetSystemMenu(wnd HWND, revert BOOL) HMENU {
+	ret, _, _ := syscall.SyscallN(procGetSystemMenu.Addr(), uintptr(wnd), uintptr(revert))
+	return HMENU(ret)
+}
+
+// EnableMenuItem returns the previous item state, or UINT(-1) on failure.
+func EnableMenuItem(menu HMENU, item, flags UINT) UINT {
+	ret, _, _ := syscall.SyscallN(procEnableMenuItem.Addr(), uintptr(menu), uintptr(item), uintptr(flags))
+	return UINT(ret)
 }
 
 func SetParent(wnd, parent HWND) (HWND, error) {
@@ -605,6 +657,29 @@ func RegCloseKey(key HKEY) error {
 	ret, _, _ := syscall.SyscallN(procRegCloseKey.Addr(), uintptr(key))
 	if ret != 0 {
 		return syscall.Errno(ret)
+	}
+	return nil
+}
+
+// DwmDefWindowProc writes result when DWM handles the message. The error reports
+// an unavailable native entry point, independently of the handled return value.
+func DwmDefWindowProc(wnd HWND, message UINT, wParam WPARAM, lParam LPARAM, result *LRESULT) (BOOL, error) {
+	if err := procDwmDefWindowProc.Find(); err != nil {
+		return FALSE, err
+	}
+	ret, _, _ := syscall.SyscallN(procDwmDefWindowProc.Addr(), uintptr(wnd), uintptr(message),
+		uintptr(wParam), uintptr(lParam), uintptr(unsafe.Pointer(result)))
+	return BOOL(ret), nil
+}
+
+func DwmGetWindowAttribute(wnd HWND, attribute DWORD, value unsafe.Pointer, size DWORD) error {
+	if err := procDwmGetWindowAttribute.Find(); err != nil {
+		return err
+	}
+	ret, _, _ := syscall.SyscallN(procDwmGetWindowAttribute.Addr(), uintptr(wnd), uintptr(attribute),
+		uintptr(value), uintptr(size))
+	if int32(ret) < 0 {
+		return syscall.Errno(uint32(ret))
 	}
 	return nil
 }

@@ -22,6 +22,7 @@ type (
 type (
 	BYTE     = byte
 	BOOL     = Cint
+	SHORT    = Cshort
 	ATOM     = Cushort
 	INT      = Cint
 	UINT     = Cuint
@@ -69,7 +70,12 @@ const (
 )
 
 const (
+	VK_LBUTTON    = 0x01
+	VK_RBUTTON    = 0x02
 	VK_CANCEL     = 0x03
+	VK_MBUTTON    = 0x04
+	VK_XBUTTON1   = 0x05
+	VK_XBUTTON2   = 0x06
 	VK_BACK       = 0x08
 	VK_TAB        = 0x09
 	VK_RETURN     = 0x0D
@@ -137,7 +143,48 @@ const (
 )
 
 const (
-	TME_LEAVE = 0x00000002
+	TME_LEAVE     = 0x00000002
+	TME_NONCLIENT = 0x00000010
+)
+
+const (
+	GWL_STYLE    = -16
+	GWL_EXSTYLE  = -20
+	GWL_USERDATA = -21
+)
+
+// Non-client hit-test results.
+const (
+	HTCLIENT      = 1
+	HTCAPTION     = 2
+	HTSYSMENU     = 3
+	HTMINBUTTON   = 8
+	HTMAXBUTTON   = 9
+	HTLEFT        = 10
+	HTRIGHT       = 11
+	HTTOP         = 12
+	HTTOPLEFT     = 13
+	HTTOPRIGHT    = 14
+	HTBOTTOM      = 15
+	HTBOTTOMLEFT  = 16
+	HTBOTTOMRIGHT = 17
+	HTCLOSE       = 20
+)
+
+const (
+	SC_SIZE     = 0xF000
+	SC_MINIMIZE = 0xF020
+	SC_MAXIMIZE = 0xF030
+	SC_CLOSE    = 0xF060
+)
+
+const (
+	MF_BYCOMMAND = 0x0000
+	MF_GRAYED    = 0x0001
+)
+
+const (
+	DWMWA_CAPTION_BUTTON_BOUNDS = 5
 )
 
 const (
@@ -657,9 +704,6 @@ const (
 	MA_NOACTIVATE       = 3
 	MA_NOACTIVATEANDEAT = 4
 	WM_QUEUESYNC        = 0x0023
-
-	// HTCLIENT is the WM_SETCURSOR low-word hit-test code for the client area.
-	HTCLIENT = 1
 
 	WM_GETMINMAXINFO = 0x0024
 
