@@ -19,6 +19,8 @@ type Painter interface {
 	// its Destroy method must not be called until that frame has ended. All calls
 	// remain subject to Painter's thread affinity.
 	NewImage(src image.Image) (Image, error)
+	// Begin starts a frame with a surface size in physical pixels. scale is the
+	// number of physical pixels per DIP; subsequent drawing coordinates are DIP.
 	Begin(width, height, scale float32)
 	End()
 	SetClipRect(rect Rectangle)

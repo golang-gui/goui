@@ -1,5 +1,8 @@
 package opengl
 
+// Context is thread-affine. Creation, rendering and destruction must stay on
+// the same OS thread; callers must use runtime.LockOSThread to prevent goroutine
+// migration. MakeCurrent binds to the calling OS thread, not the goroutine.
 type Context interface {
 	Name() string
 	Destroy()

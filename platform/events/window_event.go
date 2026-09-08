@@ -1,5 +1,16 @@
 package events
 
+import "github.com/golang-gui/goui/platform/common"
+
+// StateEvent reports presentation observed in response to native events.
+// Requests never synthesize completion. Unknown means observation is unavailable.
+type StateEvent struct {
+	State common.WindowState
+}
+
+func (e StateEvent) Type() EventType { return State }
+func (e StateEvent) isEvent()        {}
+
 type CloseEvent struct{}
 
 func (e CloseEvent) Type() EventType {
@@ -47,4 +58,5 @@ var (
 	_ Event = SizeEvent{}
 	_ Event = PaintEvent{}
 	_ Event = FocusEvent{}
+	_ Event = StateEvent{}
 )

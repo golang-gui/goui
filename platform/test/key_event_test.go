@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 )
@@ -69,7 +70,7 @@ func TestKeyEventsManual(t *testing.T) {
 			return
 		}
 
-		window, err = plat.NewWindow(800, 600, func(event platform.Event) {
+		window, err = plat.NewWindow(geometry.Size{Width: 800, Height: 600}, func(event platform.Event) {
 			switch event := event.(type) {
 			case events.KeyEvent:
 				select {
@@ -85,7 +86,7 @@ func TestKeyEventsManual(t *testing.T) {
 				destroyed = true
 				eventLoop.Quit()
 			}
-		})
+		}, platform.WindowOptions{})
 		if err != nil {
 			return
 		}

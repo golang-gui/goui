@@ -298,7 +298,7 @@ func main() {
 	var width, height float32
 	scale := float32(1)
 
-	win, err = plat.NewWindow(800, 600, func(event events.Event) {
+	win, err = plat.NewWindow(geometry.Size{Width: 800, Height: 600}, func(event events.Event) {
 		switch ev := event.(type) {
 		case events.CloseEvent:
 			eventLoop.Quit()
@@ -310,7 +310,7 @@ func main() {
 		case events.PaintEvent:
 			render(width, height, scale)
 		}
-	})
+	}, platform.WindowOptions{})
 	panicIf(err)
 	defer win.Destroy()
 

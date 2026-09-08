@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 )
@@ -38,7 +39,7 @@ func TestWindow(t *testing.T) {
 		}
 
 		var finishPaint sync.Once
-		window, err = plat.NewWindow(800, 600, func(event platform.Event) {
+		window, err = plat.NewWindow(geometry.Size{Width: 800, Height: 600}, func(event platform.Event) {
 			switch event.(type) {
 			case events.PaintEvent:
 				finishPaint.Do(func() {
@@ -77,7 +78,7 @@ func TestWindow(t *testing.T) {
 				destroyed = true
 				eventLoop.Quit()
 			}
-		})
+		}, platform.WindowOptions{})
 		if err != nil {
 			return
 		}
@@ -161,7 +162,7 @@ func TestWindowRequestPaint(t *testing.T) {
 			return
 		}
 
-		window, err = plat.NewWindow(800, 600, func(event platform.Event) {
+		window, err = plat.NewWindow(geometry.Size{Width: 800, Height: 600}, func(event platform.Event) {
 			switch event.(type) {
 			case events.PaintEvent:
 				img := image.NewRGBA(image.Rect(0, 0, 64, 64))
@@ -203,7 +204,7 @@ func TestWindowRequestPaint(t *testing.T) {
 				destroyed = true
 				eventLoop.Quit()
 			}
-		})
+		}, platform.WindowOptions{})
 		if err != nil {
 			return
 		}

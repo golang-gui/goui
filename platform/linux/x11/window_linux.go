@@ -2,8 +2,11 @@ package x11
 
 import (
 	"errors"
+	"fmt"
 	"image"
+	"slices"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
@@ -16,22 +19,27 @@ import (
 )
 
 type Window struct {
-	wid          xlib.Window
-	fb           glx.FBConfig
-	cmap         xlib.Colormap
-	parent       common.Window
-	onEvent      events.EventHandler
-	width        int32
-	height       int32
-	title        string
-	gc           xlib.GC
-	buttons      events.PointerButtons
-	minW         float32      // logical (DIP) minimum size; 0 = unbounded
-	minH         float32      // logical (DIP) minimum size; 0 = unbounded
-	im           *inputMethod // this window's IME (nil when none); the key loop consults it
-	cursor       *cursor      // this window's cursor capability (nil when none)
-	resizeSync   resizeSync
-	paintPending bool
+	wid              xlib.Window
+	fb               glx.FBConfig
+	cmap             xlib.Colormap
+	parent           common.Window
+	onEvent          events.EventHandler
+	width            int32
+	height           int32
+	title            string
+	gc               xlib.GC
+	buttons          events.PointerButtons
+	minW             float32      // logical (DIP) minimum size; 0 = unbounded
+	minH             float32      // logical (DIP) minimum size; 0 = unbounded
+	im               *inputMethod // this window's IME (nil when none); the key loop consults it
+	cursor           *cursor      // this window's cursor capability (nil when none)
+	resizeSync       resizeSync
+	paintPending     bool
+	hitTest          func(geometry.Point) common.WindowHit
+	hitTesting       bool
+	moveResize       bool // a native WM interaction consumed the last left press
+	state            common.WindowState
+	overrideRedirect bool
 }
 
 // newNativeWindow creates the X11 InputOutput window shared by both top-level
@@ -40,7 +48,9 @@ type Window struct {
 // WM-bypassing surface (popups); width/height is the initial size in pixels.
 func newNativeWindow(onEvent events.EventHandler, overrideRedirect bool, width, height int) (*Window, error) {
 	win := &Window{
-		onEvent: onEvent,
+		onEvent:          onEvent,
+		state:            common.WindowStateUnknown,
+		overrideRedirect: overrideRedirect,
 	}
 
 	visual := platform.defScreen.RootVisual
@@ -99,12 +109,23 @@ func newNativeWindow(onEvent events.EventHandler, overrideRedirect bool, width, 
 	return win, nil
 }
 
-func newWindow(width, height float32, onEvent events.EventHandler) (common.Window, error) {
+func newWindow(size geometry.Size, onEvent events.EventHandler, options common.WindowOptions) (common.Window, error) {
+	if err := common.ValidateWindowSize(size); err != nil {
+		return nil, err
+	}
+	if err := options.Validate(); err != nil {
+		return nil, err
+	}
+	if options.Chrome == common.WindowChromeIntegrated {
+		return nil, fmt.Errorf("integrated window chrome: %w", common.ErrUnsupported)
+	}
 	scale := currentScale()
-	win, err := newNativeWindow(onEvent, false, physical(width, scale), physical(height, scale))
+	win, err := newNativeWindow(onEvent, false, physical(size.Width, scale), physical(size.Height, scale))
 	if err != nil {
 		return nil, err
 	}
+	win.applyDecoration(options.Chrome)
+	win.applyMinSize()
 
 	// Declare WM protocols for top-level windows before they are mapped. The
 	// resize-sync protocol is advertised only after its counter property exists.
@@ -139,6 +160,7 @@ func (w *Window) NativeFBConfig() glx.FBConfig {
 }
 
 func (w *Window) Destroy() {
+	w.hitTest = nil
 	if w.wid == 0 {
 		return
 	}
@@ -196,13 +218,23 @@ func (w *Window) SetTitle(title string) (err error) {
 }
 
 func (w *Window) Show() error {
+	if w.wid == 0 {
+		return common.ErrUnavailable
+	}
 	platform.display.MapWindow(w.wid)
 	platform.display.Flush()
 	return nil
 }
 
 func (w *Window) Hide() error {
-	platform.display.UnmapWindow(w.wid)
+	if w.wid == 0 {
+		return common.ErrUnavailable
+	}
+	if w.overrideRedirect {
+		platform.display.UnmapWindow(w.wid)
+	} else if platform.display.WithdrawWindow(w.wid, platform.display.DefaultScreen()) == 0 {
+		return fmt.Errorf("XWithdrawWindow failed")
+	}
 	platform.display.Flush()
 	return nil
 }
@@ -340,7 +372,20 @@ func handleEvent(event xlib.Event) {
 			window.schedulePaint()
 		}
 	case xlib.PropertyNotify:
-		// state
+		ev := event.PropertyEvent()
+		if ev.Atom == platform.atoms.WM_STATE || ev.Atom == platform.atoms._NET_WM_STATE {
+			if window := windowMap[ev.Window]; window != nil {
+				window.notifyState()
+			}
+		}
+	case xlib.MapNotify:
+		if window := windowMap[event.MapEvent().Window]; window != nil {
+			window.notifyState()
+		}
+	case xlib.UnmapNotify:
+		if window := windowMap[event.UnmapEvent().Window]; window != nil {
+			window.notifyState()
+		}
 	case xlib.SelectionClear:
 		if platform.clipboard != nil {
 			platform.clipboard.handleSelectionClear(event.SelectionClearEvent())
@@ -421,3 +466,286 @@ func (w *Window) drawImage(img graphics.Bitmap) (err error) {
 	image.Data = nil
 	return nil
 }
+
+// Even None stays managed. No function mask is written: decoration must not
+// disable native close, resize, minimize or maximize operations.
+// Motif hints are requests, not observations of WM-owned decorations.
+func (w *Window) applyDecoration(chrome common.WindowChrome) {
+	if chrome != common.WindowChromeNone {
+		return
+	}
+	hints := [5]uintptr{1 << 1} // decorations flag; hints[2] = no decorations
+	platform.display.ChangeProperty(w.wid, platform.atoms._MOTIF_WM_HINTS,
+		platform.atoms._MOTIF_WM_HINTS, 32, xlib.PropModeReplace, cgo.CSlice(hints[:]), len(hints))
+}
+
+func (w *Window) Chrome() common.WindowChrome {
+	return common.WindowChromeUnknown
+}
+
+func (w *Window) ControlsRect() (geometry.Rectangle, error) {
+	if w.wid == 0 {
+		return geometry.Rectangle{}, common.ErrUnavailable
+	}
+	return geometry.Rectangle{}, common.ErrUnsupported
+}
+
+// windowProperty32 reads a bounded ATOM/CARDINAL-style property, copying
+// native unsigned longs to protocol uint32s before freeing the Xlib buffer.
+// A missing property returns nil, nil. Malformed, truncated or failed queries
+// return an error rather than an apparently valid empty state.
+func windowProperty32(d xlib.Display, w xlib.Window, property, reqType xlib.Atom, maxItems int) ([]uint32, error) {
+	if maxItems <= 0 {
+		return nil, fmt.Errorf("property item limit must be positive")
+	}
+	var (
+		actualType         xlib.Atom
+		actualFormat       int32
+		nitems, bytesAfter uint
+		prop               *byte
+	)
+	status := d.GetWindowProperty(w, property, 0, maxItems, false, reqType,
+		&actualType, &actualFormat, &nitems, &bytesAfter, &prop)
+	if prop != nil {
+		defer xlib.Free(prop)
+	}
+	if status != 0 {
+		return nil, fmt.Errorf("XGetWindowProperty: status %d", status)
+	}
+	if actualType == xlib.AtomNone {
+		return nil, nil
+	}
+	if actualFormat != 32 || (reqType != xlib.AtomAny && actualType != reqType) ||
+		bytesAfter != 0 || nitems > uint(maxItems) || (nitems > 0 && prop == nil) {
+		return nil, fmt.Errorf("invalid or oversized X11 property %d (type %d, format %d)", property, actualType, actualFormat)
+	}
+	data := make([]uint32, int(nitems))
+	for i, value := range cgo.GoSliceNTemp[uintptr](cgo.Pointer(prop), int(nitems)) {
+		data[i] = uint32(value)
+	}
+	return data, nil
+}
+
+func (w *Window) SetHitTest(f func(geometry.Point) common.WindowHit) error {
+	if w.wid == 0 {
+		return common.ErrUnavailable
+	}
+	w.hitTest = f
+	return nil
+}
+
+func (w *Window) queryHitTest(p geometry.Point) common.WindowHit {
+	if w.hitTest == nil || w.hitTesting || w.wid == 0 {
+		return common.WindowHitDefault
+	}
+	w.hitTesting = true
+	defer func() { w.hitTesting = false }()
+	hit := w.hitTest(p)
+	if hit > common.WindowHitBottomRight {
+		return common.WindowHitDefault
+	}
+	return hit
+}
+
+func moveResizeDirection(hit common.WindowHit) (int64, bool) {
+	switch hit {
+	case common.WindowHitTopLeft:
+		return 0, true
+	case common.WindowHitTop:
+		return 1, true
+	case common.WindowHitTopRight:
+		return 2, true
+	case common.WindowHitRight:
+		return 3, true
+	case common.WindowHitBottomRight:
+		return 4, true
+	case common.WindowHitBottom:
+		return 5, true
+	case common.WindowHitBottomLeft:
+		return 6, true
+	case common.WindowHitLeft:
+		return 7, true
+	case common.WindowHitCaption:
+		return 8, true
+	default:
+		return 0, false
+	}
+}
+
+func (w *Window) beginMoveResize(event *xlib.ButtonEvent) bool {
+	if w.overrideRedirect || event.Button != xlib.Button1 {
+		return false
+	}
+	direction, ok := moveResizeDirection(w.queryHitTest(point(event.X, event.Y)))
+	if !ok {
+		return false
+	}
+	supported, err := windowProperty32(platform.display, platform.defScreen.Root,
+		platform.atoms._NET_SUPPORTED, xlib.AtomAtom, 4096)
+	if err != nil || !slices.Contains(supported, uint32(platform.atoms._NET_WM_MOVERESIZE)) {
+		return false
+	}
+	// ButtonPress holds an implicit pointer grab. Release it before asking the
+	// WM to grab for its native move/resize loop, using the original press time.
+	platform.display.UngrabPointer(event.Time)
+	if !w.sendMoveResize(event, direction) {
+		return false
+	}
+	w.moveResize = true
+	return true
+}
+
+func moveResizeMessage(window xlib.Window, atom xlib.Atom, event *xlib.ButtonEvent, direction int64) xlib.Event {
+	var message xlib.Event
+	*message.ClientMessageEvent() = xlib.ClientMessageEvent{
+		Type: xlib.ClientMessage, Window: window, MessageType: atom, Format: 32,
+		L: [5]int64{int64(event.XRoot), int64(event.YRoot), direction, int64(event.Button), 1},
+	}
+	return message
+}
+
+func (w *Window) sendMoveResize(event *xlib.ButtonEvent, direction int64) bool {
+	message := moveResizeMessage(w.wid, platform.atoms._NET_WM_MOVERESIZE, event, direction)
+	ok := platform.display.SendEvent(platform.defScreen.Root, false,
+		xlib.EventMaskSubstructureRedirect|xlib.EventMaskSubstructureNotify, &message)
+	platform.display.Flush()
+	return ok != 0
+}
+
+func (w *Window) State() common.WindowState {
+	if w.wid == 0 {
+		return common.WindowStateUnknown
+	}
+	var attrs xlib.WindowAttributes
+	if platform.display.GetWindowAttributes(w.wid, &attrs) == 0 {
+		return common.WindowStateUnknown
+	}
+	wm, err := windowProperty32(platform.display, w.wid, platform.atoms.WM_STATE, platform.atoms.WM_STATE, 2)
+	if err != nil {
+		return common.WindowStateUnknown
+	}
+	if len(wm) == 0 || (len(wm) == 2 && wm[0] == 0) {
+		if attrs.MapState == xlib.IsUnmapped {
+			return common.WindowStateHidden
+		}
+		return common.WindowStateUnknown
+	}
+	if len(wm) != 2 {
+		return common.WindowStateUnknown
+	}
+	if wm[0] == 3 {
+		return common.WindowStateMinimized
+	}
+	if wm[0] != 1 {
+		return common.WindowStateUnknown
+	}
+	// A normal WM_STATE can be unmapped on another workspace, not Hidden.
+	states, err := windowProperty32(platform.display, w.wid, platform.atoms._NET_WM_STATE, xlib.AtomAtom, 4096)
+	if err != nil {
+		return common.WindowStateUnknown
+	}
+	return observedPresentation(states, platform.atoms._NET_WM_STATE_MAXIMIZED_HORZ,
+		platform.atoms._NET_WM_STATE_MAXIMIZED_VERT, platform.atoms._NET_WM_STATE_FULLSCREEN)
+}
+
+func observedPresentation(states []uint32, horizontal, vertical, fullscreen xlib.Atom) common.WindowState {
+	if states == nil {
+		return common.WindowStateUnknown
+	}
+	if slices.Contains(states, uint32(fullscreen)) {
+		return common.WindowStateFullscreen
+	}
+	if slices.Contains(states, uint32(horizontal)) && slices.Contains(states, uint32(vertical)) {
+		return common.WindowStateMaximized
+	}
+	return common.WindowStateNormal
+}
+
+func (w *Window) RequestState(state common.WindowState) error {
+	if w.wid == 0 {
+		return common.ErrUnavailable
+	}
+	switch state {
+	case common.WindowStateHidden:
+		return w.Hide()
+	case common.WindowStateMinimized:
+		if w.State() == state {
+			return nil
+		}
+		if platform.display.IconifyWindow(w.wid, platform.display.DefaultScreen()) == 0 {
+			return fmt.Errorf("XIconifyWindow failed")
+		}
+		platform.display.Flush()
+		return nil
+	case common.WindowStateNormal, common.WindowStateMaximized, common.WindowStateFullscreen:
+	default:
+		return fmt.Errorf("invalid window state: %d", state)
+	}
+	supported, err := windowProperty32(platform.display, platform.defScreen.Root, platform.atoms._NET_SUPPORTED, xlib.AtomAtom, 4096)
+	if err != nil {
+		return err
+	}
+	has := func(atom xlib.Atom) bool { return atom != 0 && slices.Contains(supported, uint32(atom)) }
+	maxSupported := has(platform.atoms._NET_WM_STATE) &&
+		has(platform.atoms._NET_WM_STATE_MAXIMIZED_HORZ) && has(platform.atoms._NET_WM_STATE_MAXIMIZED_VERT)
+	fullSupported := has(platform.atoms._NET_WM_STATE) && has(platform.atoms._NET_WM_STATE_FULLSCREEN)
+	if (state == common.WindowStateMaximized && !maxSupported) ||
+		(state == common.WindowStateFullscreen && !fullSupported) {
+		return common.ErrUnsupported
+	}
+	if w.State() == state {
+		return nil
+	}
+	// Validate support before mapping. X requests stay ordered: map/deiconify
+	// first, then request the explicit target rather than historical restore.
+	if err := w.Show(); err != nil {
+		return err
+	}
+	// Leave fullscreen before setting the next presentation. A WM may restore
+	// its pre-fullscreen state on exit, discarding a maximize request sent first.
+	if fullSupported && state != common.WindowStateFullscreen {
+		if err := w.sendWMState(false, platform.atoms._NET_WM_STATE_FULLSCREEN, 0); err != nil {
+			return err
+		}
+	}
+	if maxSupported {
+		if err := w.sendWMState(state == common.WindowStateMaximized,
+			platform.atoms._NET_WM_STATE_MAXIMIZED_HORZ, platform.atoms._NET_WM_STATE_MAXIMIZED_VERT); err != nil {
+			return err
+		}
+	}
+	if fullSupported && state == common.WindowStateFullscreen {
+		if err := w.sendWMState(true, platform.atoms._NET_WM_STATE_FULLSCREEN, 0); err != nil {
+			return err
+		}
+	}
+	platform.display.Flush()
+	return nil
+}
+
+func (w *Window) sendWMState(add bool, first, second xlib.Atom) error {
+	var action int64
+	if add {
+		action = 1
+	}
+	var ev xlib.Event
+	*ev.ClientMessageEvent() = xlib.ClientMessageEvent{
+		Type: xlib.ClientMessage, Window: w.wid, MessageType: platform.atoms._NET_WM_STATE,
+		Format: 32, L: [5]int64{action, int64(first), int64(second), 1, 0},
+	}
+	if platform.display.SendEvent(platform.defScreen.Root, false,
+		xlib.EventMaskSubstructureRedirect|xlib.EventMaskSubstructureNotify, &ev) == 0 {
+		return fmt.Errorf("send _NET_WM_STATE failed")
+	}
+	return nil
+}
+
+func (w *Window) notifyState() {
+	state := w.State()
+	if state != w.state {
+		w.state = state
+		w.onEvent(events.StateEvent{State: state})
+	}
+}
+
+var _ common.DesktopWindow = (*Window)(nil)

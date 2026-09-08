@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
@@ -39,7 +40,7 @@ func TestPopup(t *testing.T) {
 			return
 		}
 
-		owner, err = plat.NewWindow(800, 600, func(platform.Event) {})
+		owner, err = plat.NewWindow(geometry.Size{Width: 800, Height: 600}, func(platform.Event) {}, platform.WindowOptions{})
 		if err != nil {
 			return
 		}
@@ -143,7 +144,7 @@ func TestPopupPainter(t *testing.T) {
 		if err != nil {
 			return
 		}
-		owner, err = plat.NewWindow(800, 600, func(platform.Event) {})
+		owner, err = plat.NewWindow(geometry.Size{Width: 800, Height: 600}, func(platform.Event) {}, platform.WindowOptions{})
 		if err != nil {
 			return
 		}

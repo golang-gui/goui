@@ -3,6 +3,7 @@ package platform
 import (
 	"runtime"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
@@ -16,6 +17,11 @@ type (
 	ColorScheme        = common.ColorScheme
 	Surface            = common.Surface
 	Window             = common.Window
+	DesktopWindow      = common.DesktopWindow
+	WindowOptions      = common.WindowOptions
+	WindowChrome       = common.WindowChrome
+	WindowState        = common.WindowState
+	WindowHit          = common.WindowHit
 	Popup              = common.Popup
 	EventLoop          = common.EventLoop
 	Clipboard          = common.Clipboard
@@ -32,6 +38,34 @@ type (
 )
 
 const (
+	WindowChromeUnknown    = common.WindowChromeUnknown
+	WindowChromeNative     = common.WindowChromeNative
+	WindowChromeIntegrated = common.WindowChromeIntegrated
+	WindowChromeNone       = common.WindowChromeNone
+
+	WindowStateUnknown    = common.WindowStateUnknown
+	WindowStateNormal     = common.WindowStateNormal
+	WindowStateHidden     = common.WindowStateHidden
+	WindowStateMinimized  = common.WindowStateMinimized
+	WindowStateMaximized  = common.WindowStateMaximized
+	WindowStateFullscreen = common.WindowStateFullscreen
+
+	WindowHitDefault     = common.WindowHitDefault
+	WindowHitClient      = common.WindowHitClient
+	WindowHitSysMenu     = common.WindowHitSysMenu
+	WindowHitCaption     = common.WindowHitCaption
+	WindowHitMinimize    = common.WindowHitMinimize
+	WindowHitMaximize    = common.WindowHitMaximize
+	WindowHitClose       = common.WindowHitClose
+	WindowHitTop         = common.WindowHitTop
+	WindowHitBottom      = common.WindowHitBottom
+	WindowHitLeft        = common.WindowHitLeft
+	WindowHitRight       = common.WindowHitRight
+	WindowHitTopLeft     = common.WindowHitTopLeft
+	WindowHitTopRight    = common.WindowHitTopRight
+	WindowHitBottomLeft  = common.WindowHitBottomLeft
+	WindowHitBottomRight = common.WindowHitBottomRight
+
 	ColorSchemeLight = common.ColorSchemeLight
 	ColorSchemeDark  = common.ColorSchemeDark
 
@@ -53,10 +87,10 @@ type Platform interface {
 	Destroy()
 	Name() string
 	NewImage(width, height uint) (Image, error)
-	// NewWindow creates a top-level window. width/height is a logical (DIP)
-	// preferred size; the platform may override it (WM/compositor), and the
-	// authoritative size always arrives via SizeEvent.
-	NewWindow(width, height float32, handler EventHandler) (Window, error)
+	// NewWindow creates a top-level window with creation-time options. The
+	// authoritative client size arrives via SizeEvent. Initial notifications
+	// may arrive synchronously before NewWindow returns.
+	NewWindow(size geometry.Size, handler EventHandler, options WindowOptions) (Window, error)
 	// NewPopup creates a borderless popup owned by owner. width/height is its
 	// requested logical (DIP) size; native pixel quantization may adjust it, and
 	// the authoritative logical and physical client size arrives via SizeEvent.
@@ -81,6 +115,7 @@ type Platform interface {
 }
 
 var ErrUnsupported = common.ErrUnsupported
+var ErrUnavailable = common.ErrUnavailable
 
 func NewPlatform(name string) (Platform, error) {
 	return newPlatform(name)

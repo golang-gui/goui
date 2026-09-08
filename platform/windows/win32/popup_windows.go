@@ -58,7 +58,7 @@ func (p *Popup) RequestPaint() error        { return p.win.RequestPaint() }
 func (p *Popup) Draw(img image.Image) error { return p.win.Draw(img) }
 
 // Show maps the popup without stealing activation from the owner. Unlike
-// Window.Show (SW_SHOWNORMAL, which activates) it uses SW_SHOWNOACTIVATE, so it
+// Window.Show (SW_SHOW, which activates) it uses SW_SHOWNOACTIVATE, so it
 // cannot delegate to p.win.Show.
 func (p *Popup) Show() error {
 	if p.win.hwnd == 0 {

@@ -7,6 +7,7 @@ import (
 	"syscall"
 	"unsafe"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
@@ -17,10 +18,12 @@ import (
 )
 
 type Window struct {
+	style             winapi.DWORD
 	hwnd              winapi.HWND
 	parent            common.Window
 	onEvent           events.EventHandler
 	trackingMouse     bool
+	trackingNonClient bool
 	lastPointerX      float32
 	lastPointerY      float32
 	lastButtons       events.PointerButtons
@@ -34,21 +37,41 @@ type Window struct {
 	cursor            *cursor      // this window's cursor (nil when none); WndProc consults it on WM_SETCURSOR
 	minW              float32      // min client width in logical (DIP) units; 0 = unbounded
 	minH              float32      // min client height in logical (DIP) units; 0 = unbounded
+	hitTest           func(geometry.Point) common.WindowHit
+	hitTesting        bool
+	state             common.WindowState // last native notification, not request state
 }
 
-func newWindow(width, height float32, onEvent events.EventHandler) (w *Window, err error) {
+func newWindow(size geometry.Size, onEvent events.EventHandler, options common.WindowOptions) (w *Window, err error) {
+	if err := common.ValidateWindowSize(size); err != nil {
+		return nil, err
+	}
+	if err := options.Validate(); err != nil {
+		return nil, err
+	}
+	if options.Chrome == common.WindowChromeIntegrated {
+		return nil, fmt.Errorf("integrated window chrome: %w", common.ErrUnsupported)
+	}
 	win := &Window{
 		onEvent: onEvent,
 		scale:   1,
+		style:   windowStyle(options),
+		state:   common.WindowStateUnknown,
 	}
 
 	// No window exists yet to query per-monitor DPI, so estimate with the system
-	// DPI; WM_SIZE reports the authoritative client size afterwards. Size is the
-	// outer window (frame included) — good enough for an advisory hint.
-	scale := float32(winapi.GetDpiForSystem()) / 96
-	win.hwnd, err = winapi.CreateWindowEx(0, platform.windowClass, platform.windowTitle, winapi.WS_OVERLAPPEDWINDOW,
+	// DPI; WM_SIZE reports the authoritative client size afterwards. Convert the
+	// requested client size to an outer size using exactly the creation style.
+	dpi := winapi.GetDpiForSystem()
+	scale := float32(dpi) / 96
+	if preferred := common.GetPreferScale(); preferred > 0 {
+		scale = preferred
+	}
+	rect := winapi.RECT{Right: winapi.LONG(size.Width * scale), Bottom: winapi.LONG(size.Height * scale)}
+	winapi.AdjustWindowRectExForDpi(&rect, win.style, 0, 0, dpi)
+	win.hwnd, err = winapi.CreateWindowEx(0, platform.windowClass, platform.windowTitle, win.style,
 		winapi.CW_USEDEFAULT, winapi.CW_USEDEFAULT,
-		int(width*scale), int(height*scale),
+		int(rect.Right-rect.Left), int(rect.Bottom-rect.Top),
 		0, 0, platform.instance,
 		unsafe.Pointer(win))
 
@@ -65,6 +88,7 @@ func (w *Window) NativeHandle() uintptr {
 }
 
 func (w *Window) Destroy() {
+	w.hitTest = nil
 	if w.hwnd != 0 {
 		winapi.DestroyWindow(w.hwnd)
 	}
@@ -105,7 +129,7 @@ func (w *Window) SetTitle(title string) (err error) {
 
 func (w *Window) Show() error {
 	winapi.UpdateWindow(w.hwnd)
-	winapi.ShowWindow(w.hwnd, winapi.SW_SHOWNORMAL)
+	winapi.ShowWindow(w.hwnd, winapi.SW_SHOW)
 	return nil
 }
 
@@ -201,9 +225,42 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		return 0
 
 	case winapi.WM_DESTROY:
+		window.hitTest = nil
 		delete(windowMap, hwnd)
 		window.hwnd = 0
 		return 0
+
+	case winapi.WM_WINDOWPOSCHANGED:
+		// DefWindowProc applies visibility/size consequences first. Query the
+		// resulting native state, never the requested ShowWindow command.
+		result := winapi.DefWindowProc(hwnd, message, wParam, lParam)
+		if window.hwnd != 0 {
+			window.notifyState()
+		}
+		return result
+
+	case winapi.WM_NCHITTEST:
+		return window.handleHitTest(lParam)
+
+	case winapi.WM_NCMOUSEMOVE, winapi.WM_NCLBUTTONDOWN, winapi.WM_NCLBUTTONUP, winapi.WM_NCLBUTTONDBLCLK,
+		winapi.WM_NCRBUTTONDOWN, winapi.WM_NCRBUTTONUP, winapi.WM_NCRBUTTONDBLCLK,
+		winapi.WM_NCMBUTTONDOWN, winapi.WM_NCMBUTTONUP, winapi.WM_NCMBUTTONDBLCLK,
+		winapi.WM_NCXBUTTONDOWN, winapi.WM_NCXBUTTONUP, winapi.WM_NCXBUTTONDBLCLK:
+		if window.handleCaptionPointer(message, wParam, lParam) || window.hwnd == 0 {
+			if message == winapi.WM_NCXBUTTONDOWN || message == winapi.WM_NCXBUTTONUP || message == winapi.WM_NCXBUTTONDBLCLK {
+				return winapi.TRUE
+			}
+			return 0
+		}
+
+	case winapi.WM_NCMOUSELEAVE:
+		if window.trackingNonClient {
+			window.trackingNonClient = false
+			window.handlePointerLeave()
+		}
+		if window.hwnd == 0 {
+			return 0
+		}
 
 	case winapi.WM_SETFOCUS:
 		window.onEvent(events.FocusEvent{Focused: true})
@@ -231,6 +288,10 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		return 0
 
 	case winapi.WM_SIZE:
+		window.notifyState()
+		if window.hwnd == 0 { // an event handler may destroy the window
+			return 0
+		}
 		pw := float32(lParam & 0xFFFF)
 		ph := float32((lParam & 0xFFFF0000) >> 16)
 		scale := window.scaleFactor()
@@ -293,12 +354,15 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		if window.minW > 0 || window.minH > 0 {
 			mmi := (*winapi.MINMAXINFO)(unsafe.Pointer(uintptr(lParam)))
 			scale := window.scaleFactor()
-			dpi := winapi.DWORD(scale * 96)
+			dpi, _ := winapi.GetDpiForWindow(hwnd)
+			if dpi == 0 {
+				dpi = winapi.GetDpiForSystem()
+			}
 			rect := winapi.RECT{
 				Right:  winapi.LONG(window.minW * scale),
 				Bottom: winapi.LONG(window.minH * scale),
 			}
-			winapi.AdjustWindowRectExForDpi(&rect, winapi.WS_OVERLAPPEDWINDOW, 0, 0, dpi)
+			winapi.AdjustWindowRectExForDpi(&rect, window.style, 0, 0, dpi)
 			if window.minW > 0 {
 				mmi.MinTrackSize.X = rect.Right - rect.Left
 			}
@@ -438,3 +502,306 @@ func (w *Window) drawImage(img graphics.Bitmap) error {
 	}
 	return nil
 }
+
+func windowStyle(options common.WindowOptions) winapi.DWORD {
+	if options.Chrome == common.WindowChromeNone {
+		return winapi.WS_POPUP // managed top-level, not a no-activate tool popup
+	}
+	return winapi.WS_OVERLAPPEDWINDOW
+}
+
+func (w *Window) Chrome() common.WindowChrome {
+	if w.hwnd == 0 {
+		return common.WindowChromeUnknown
+	}
+	style, err := winapi.GetWindowLong(w.hwnd, winapi.GWL_STYLE)
+	if err != nil {
+		return common.WindowChromeUnknown
+	}
+	if style&winapi.WS_CAPTION == 0 {
+		return common.WindowChromeNone
+	}
+	return common.WindowChromeNative
+}
+
+func (w *Window) ControlsRect() (geometry.Rectangle, error) {
+	if w.hwnd == 0 {
+		return geometry.Rectangle{}, common.ErrUnavailable
+	}
+	style, err := winapi.GetWindowLong(w.hwnd, winapi.GWL_STYLE)
+	if err != nil {
+		return geometry.Rectangle{}, fmt.Errorf("caption style: %v: %w", err, common.ErrUnavailable)
+	}
+	if style&winapi.WS_CAPTION == 0 || style&winapi.WS_SYSMENU == 0 {
+		return geometry.Rectangle{}, nil
+	}
+	if winapi.IsWindowVisible(w.hwnd) == winapi.FALSE || winapi.IsIconic(w.hwnd) != winapi.FALSE {
+		return geometry.Rectangle{}, common.ErrUnavailable
+	}
+	// DWM caption bounds are physical coordinates relative to the outer window.
+	// They are not defined for hidden or minimized windows.
+	var buttons winapi.RECT
+	if err := winapi.DwmGetWindowAttribute(w.hwnd, winapi.DWMWA_CAPTION_BUTTON_BOUNDS,
+		unsafe.Pointer(&buttons), winapi.DWORD(unsafe.Sizeof(buttons))); err != nil {
+		return geometry.Rectangle{}, fmt.Errorf("caption bounds: %v: %w", err, common.ErrUnavailable)
+	}
+	var frame winapi.RECT
+	if err := winapi.GetWindowRect(w.hwnd, &frame); err != nil {
+		return geometry.Rectangle{}, common.ErrUnavailable
+	}
+	var origin winapi.POINT
+	if winapi.ClientToScreen(w.hwnd, &origin) == 0 {
+		return geometry.Rectangle{}, common.ErrUnavailable
+	}
+	return captionRect(buttons, frame, origin, w.scaleFactor()), nil
+}
+
+func captionRect(buttons, frame winapi.RECT, clientOrigin winapi.POINT, scale float32) geometry.Rectangle {
+	if buttons.Right <= buttons.Left || buttons.Bottom <= buttons.Top {
+		return geometry.Rectangle{}
+	}
+	return geometry.Rect(
+		float32(frame.Left+buttons.Left-clientOrigin.X)/scale,
+		float32(frame.Top+buttons.Top-clientOrigin.Y)/scale,
+		float32(buttons.Right-buttons.Left)/scale,
+		float32(buttons.Bottom-buttons.Top)/scale)
+}
+
+func (w *Window) SetHitTest(f func(geometry.Point) common.WindowHit) error {
+	if w.hwnd == 0 {
+		return common.ErrUnavailable
+	}
+	w.hitTest = f
+	return nil
+}
+
+func (w *Window) queryHitTest(p geometry.Point) common.WindowHit {
+	if w.hitTest == nil || w.hitTesting || w.hwnd == 0 {
+		return common.WindowHitDefault
+	}
+	w.hitTesting = true
+	defer func() { w.hitTesting = false }()
+	hit := w.hitTest(p)
+	if hit > common.WindowHitBottomRight {
+		return common.WindowHitDefault
+	}
+	return hit
+}
+
+func nativeWindowHit(hit common.WindowHit, fallback winapi.LRESULT) winapi.LRESULT {
+	switch hit {
+	case common.WindowHitClient:
+		return winapi.HTCLIENT
+	case common.WindowHitSysMenu:
+		return winapi.HTSYSMENU
+	case common.WindowHitCaption:
+		return winapi.HTCAPTION
+	case common.WindowHitMinimize:
+		return winapi.HTMINBUTTON
+	case common.WindowHitMaximize:
+		return winapi.HTMAXBUTTON
+	case common.WindowHitClose:
+		return winapi.HTCLOSE
+	case common.WindowHitTop:
+		return winapi.HTTOP
+	case common.WindowHitBottom:
+		return winapi.HTBOTTOM
+	case common.WindowHitLeft:
+		return winapi.HTLEFT
+	case common.WindowHitRight:
+		return winapi.HTRIGHT
+	case common.WindowHitTopLeft:
+		return winapi.HTTOPLEFT
+	case common.WindowHitTopRight:
+		return winapi.HTTOPRIGHT
+	case common.WindowHitBottomLeft:
+		return winapi.HTBOTTOMLEFT
+	case common.WindowHitBottomRight:
+		return winapi.HTBOTTOMRIGHT
+	default:
+		return fallback
+	}
+}
+
+func captionButtonHit(hit winapi.LRESULT) bool {
+	return hit == winapi.HTMINBUTTON || hit == winapi.HTMAXBUTTON || hit == winapi.HTCLOSE
+}
+
+func (w *Window) defaultHitTest(lParam winapi.LPARAM) winapi.LRESULT {
+	var hit winapi.LRESULT
+	if handled, err := winapi.DwmDefWindowProc(w.hwnd, winapi.WM_NCHITTEST, 0, lParam, &hit); err == nil && handled != winapi.FALSE {
+		return hit
+	}
+	return winapi.DefWindowProc(w.hwnd, winapi.WM_NCHITTEST, 0, lParam)
+}
+
+func (w *Window) handleHitTest(lParam winapi.LPARAM) winapi.LRESULT {
+	native := w.defaultHitTest(lParam)
+	// These controls belong to the system, not the application's Widget tree.
+	if captionButtonHit(native) || native == winapi.HTSYSMENU {
+		return native
+	}
+	hit := w.queryHitTest(w.logicalPoint(screenPointToClient(w.hwnd, lParam)))
+	return nativeWindowHit(hit, native)
+}
+
+// Custom caption buttons retain their native hover role (notably HTMAXBUTTON
+// for Snap), but clicks enter the same GUI pointer path as other Widgets. The
+// WM must not also execute a caption command for this click.
+func (w *Window) handleCaptionPointer(message winapi.UINT, wParam winapi.WPARAM, lParam winapi.LPARAM) bool {
+	custom := w.hitTest != nil && captionButtonHit(winapi.LRESULT(lowWord(uintptr(wParam))))
+	if custom {
+		native := w.defaultHitTest(lParam)
+		custom = !captionButtonHit(native) && native != winapi.HTSYSMENU
+	}
+	if !custom {
+		// Crossing from a custom button to another non-client role does not
+		// produce WM_NCMOUSELEAVE: the pointer is still inside non-client space.
+		if message == winapi.WM_NCMOUSEMOVE && w.trackingNonClient {
+			w.trackingNonClient = false
+			w.handlePointerLeave()
+		}
+		return false
+	}
+	position := w.logicalPoint(screenPointToClient(w.hwnd, lParam))
+	buttons, modifiers := nativePointerState()
+	if message == winapi.WM_NCMOUSEMOVE {
+		if !w.trackingNonClient {
+			track := winapi.TRACKMOUSEEVENT{
+				Size:  winapi.DWORD(unsafe.Sizeof(winapi.TRACKMOUSEEVENT{})),
+				Flags: winapi.TME_LEAVE | winapi.TME_NONCLIENT, Track: w.hwnd,
+			}
+			w.trackingNonClient = winapi.TrackMouseEvent(&track) != 0
+			w.emitPointer(events.PointerEnter, events.PointerButtonNone, position, buttons, modifiers)
+		}
+		if w.hwnd != 0 {
+			w.emitPointer(events.PointerMove, events.PointerButtonNone, position, buttons, modifiers)
+		}
+		return false // allow the shell to handle native caption hover
+	}
+	var button events.PointerButton
+	var flag events.PointerButtons
+	typ := events.PointerDown
+	switch message {
+	case winapi.WM_NCLBUTTONUP:
+		typ = events.PointerUp
+		fallthrough
+	case winapi.WM_NCLBUTTONDOWN, winapi.WM_NCLBUTTONDBLCLK:
+		button, flag = events.PointerButtonLeft, events.PointerButtonLeftDown
+	case winapi.WM_NCRBUTTONUP:
+		typ = events.PointerUp
+		fallthrough
+	case winapi.WM_NCRBUTTONDOWN, winapi.WM_NCRBUTTONDBLCLK:
+		button, flag = events.PointerButtonRight, events.PointerButtonRightDown
+	case winapi.WM_NCMBUTTONUP:
+		typ = events.PointerUp
+		fallthrough
+	case winapi.WM_NCMBUTTONDOWN, winapi.WM_NCMBUTTONDBLCLK:
+		button, flag = events.PointerButtonMiddle, events.PointerButtonMiddleDown
+	case winapi.WM_NCXBUTTONUP:
+		typ = events.PointerUp
+		fallthrough
+	case winapi.WM_NCXBUTTONDOWN, winapi.WM_NCXBUTTONDBLCLK:
+		button = xButton(wParam)
+		if button == events.PointerButtonBack {
+			flag = events.PointerButtonBackDown
+		}
+		if button == events.PointerButtonForward {
+			flag = events.PointerButtonForwardDown
+		}
+		if flag == 0 {
+			return false
+		}
+	default:
+		return false
+	}
+	if typ == events.PointerDown {
+		buttons |= flag
+		winapi.SetCapture(w.hwnd) // subsequent move/up arrives in client coordinates
+	} else {
+		buttons &^= flag
+		if buttons == 0 {
+			winapi.ReleaseCapture()
+		}
+	}
+	w.emitPointer(typ, button, position, buttons, modifiers)
+	return true
+}
+
+func nativePointerState() (events.PointerButtons, events.Modifiers) {
+	var flags winapi.WPARAM
+	for _, key := range [...]struct {
+		key  int
+		mask winapi.WPARAM
+	}{
+		{winapi.VK_LBUTTON, winapi.MK_LBUTTON}, {winapi.VK_RBUTTON, winapi.MK_RBUTTON},
+		{winapi.VK_MBUTTON, winapi.MK_MBUTTON}, {winapi.VK_XBUTTON1, winapi.MK_XBUTTON1},
+		{winapi.VK_XBUTTON2, winapi.MK_XBUTTON2}, {winapi.VK_SHIFT, winapi.MK_SHIFT},
+		{winapi.VK_CONTROL, winapi.MK_CONTROL},
+	} {
+		if winapi.GetKeyState(key.key) < 0 {
+			flags |= key.mask
+		}
+	}
+	mods := pointerModifiers(flags)
+	if winapi.GetKeyState(winapi.VK_MENU) < 0 {
+		mods |= events.ModifierAlt
+	}
+	if winapi.GetKeyState(winapi.VK_LWIN) < 0 || winapi.GetKeyState(winapi.VK_RWIN) < 0 {
+		mods |= events.ModifierSuper
+	}
+	return pointerButtons(flags), mods
+}
+
+func (w *Window) State() common.WindowState {
+	if w.hwnd == 0 {
+		return common.WindowStateUnknown
+	}
+	if winapi.IsWindowVisible(w.hwnd) == winapi.FALSE {
+		return common.WindowStateHidden
+	}
+	if winapi.IsIconic(w.hwnd) != winapi.FALSE {
+		return common.WindowStateMinimized
+	}
+	if winapi.IsZoomed(w.hwnd) != winapi.FALSE {
+		return common.WindowStateMaximized
+	}
+	// There is no universal Win32 fullscreen flag. Do not infer it from size.
+	return common.WindowStateNormal
+}
+
+func (w *Window) RequestState(state common.WindowState) error {
+	if w.hwnd == 0 {
+		return common.ErrUnavailable
+	}
+	var command int
+	switch state {
+	case common.WindowStateHidden:
+		return w.Hide()
+	case common.WindowStateNormal:
+		command = winapi.SW_SHOWNORMAL
+	case common.WindowStateMinimized:
+		command = winapi.SW_MINIMIZE
+	case common.WindowStateMaximized:
+		command = winapi.SW_SHOWMAXIMIZED
+	case common.WindowStateFullscreen:
+		return common.ErrUnsupported
+	default:
+		return fmt.Errorf("invalid window state: %d", state)
+	}
+	if w.State() != state {
+		// Submit the explicit show target; only native messages report the result.
+		winapi.ShowWindow(w.hwnd, command)
+	}
+	return nil
+}
+
+func (w *Window) notifyState() {
+	state := w.State()
+	if state != w.state {
+		w.state = state
+		w.onEvent(events.StateEvent{State: state})
+	}
+}
+
+var _ common.DesktopWindow = (*Window)(nil)
