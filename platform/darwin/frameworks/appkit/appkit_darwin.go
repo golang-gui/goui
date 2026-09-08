@@ -3,6 +3,8 @@ package appkit
 import (
 	"fmt"
 
+	. "github.com/golang-gui/goui/platform/darwin/frameworks/core_graphics"
+	. "github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
 	"github.com/golang-gui/goui/platform/darwin/frameworks/utils"
 
 	"github.com/ebitengine/purego/objc"
