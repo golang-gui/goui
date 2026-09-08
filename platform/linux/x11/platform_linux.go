@@ -3,6 +3,8 @@ package x11
 import (
 	"errors"
 
+	"github.com/golang-gui/goui/core/geometry"
+
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
@@ -22,6 +24,13 @@ type Platform struct {
 		WM_STATE                     xlib.Atom
 		WM_PROTOCOLS                 xlib.Atom
 		WM_DELETE_WINDOW             xlib.Atom
+		_NET_SUPPORTED               xlib.Atom
+		_NET_WM_STATE                xlib.Atom
+		_NET_WM_MOVERESIZE           xlib.Atom
+		_NET_WM_STATE_MAXIMIZED_HORZ xlib.Atom
+		_NET_WM_STATE_MAXIMIZED_VERT xlib.Atom
+		_NET_WM_STATE_FULLSCREEN     xlib.Atom
+		_MOTIF_WM_HINTS              xlib.Atom
 		_NET_WM_SYNC_REQUEST         xlib.Atom
 		_NET_WM_SYNC_REQUEST_COUNTER xlib.Atom
 		_NET_WM_NAME                 xlib.Atom
@@ -58,6 +67,13 @@ func NewPlatform() (_ *Platform, err error) {
 	p.atoms.WM_STATE = p.display.InternAtom("WM_STATE", false)
 	p.atoms.WM_PROTOCOLS = p.display.InternAtom("WM_PROTOCOLS", false)
 	p.atoms.WM_DELETE_WINDOW = p.display.InternAtom("WM_DELETE_WINDOW", false)
+	p.atoms._NET_SUPPORTED = p.display.InternAtom("_NET_SUPPORTED", false)
+	p.atoms._NET_WM_STATE = p.display.InternAtom("_NET_WM_STATE", false)
+	p.atoms._NET_WM_MOVERESIZE = p.display.InternAtom("_NET_WM_MOVERESIZE", false)
+	p.atoms._NET_WM_STATE_MAXIMIZED_HORZ = p.display.InternAtom("_NET_WM_STATE_MAXIMIZED_HORZ", false)
+	p.atoms._NET_WM_STATE_MAXIMIZED_VERT = p.display.InternAtom("_NET_WM_STATE_MAXIMIZED_VERT", false)
+	p.atoms._NET_WM_STATE_FULLSCREEN = p.display.InternAtom("_NET_WM_STATE_FULLSCREEN", false)
+	p.atoms._MOTIF_WM_HINTS = p.display.InternAtom("_MOTIF_WM_HINTS", false)
 	p.atoms._NET_WM_SYNC_REQUEST = p.display.InternAtom("_NET_WM_SYNC_REQUEST", false)
 	p.atoms._NET_WM_SYNC_REQUEST_COUNTER = p.display.InternAtom("_NET_WM_SYNC_REQUEST_COUNTER", false)
 	p.atoms._NET_WM_NAME = p.display.InternAtom("_NET_WM_NAME", false)
@@ -146,8 +162,8 @@ func (p *Platform) NewEventLoop() (common.EventLoop, error) {
 	return loop, nil
 }
 
-func (p *Platform) NewWindow(width, height float32, handler events.EventHandler) (common.Window, error) {
-	return newWindow(width, height, handler)
+func (p *Platform) NewWindow(size geometry.Size, handler events.EventHandler, options common.WindowOptions) (common.Window, error) {
+	return newWindow(size, handler, options)
 }
 
 func (p *Platform) NewPopup(owner common.Window, width, height float32, handler events.EventHandler) (common.Popup, error) {

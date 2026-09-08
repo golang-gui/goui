@@ -35,6 +35,20 @@ func (w *Window) handleButton(eventType events.EventType, event *xlib.ButtonEven
 			return
 		}
 	}
+	if event.Button == xlib.Button1 {
+		if eventType == events.PointerDown {
+			w.moveResize = false
+			if w.beginMoveResize(event) {
+				return
+			}
+		} else if w.moveResize {
+			// Release can race the WM's grab. EWMH requires cancellation when
+			// the client receives that release instead of the WM.
+			w.moveResize = false
+			w.sendMoveResize(event, 11)
+			return
+		}
+	}
 
 	button := pointerButton(event.Button)
 	if button == events.PointerButtonNone {

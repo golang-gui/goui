@@ -2,6 +2,7 @@ package cocoa
 
 import (
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/appkit"
@@ -48,12 +49,24 @@ func otherMouseDragged(self NSView, event NSEvent) {
 
 func mouseDown(self NSView, event NSEvent) {
 	if window := windowForView(self); window != nil {
+		window.nativeDrag = false
+		if window.queryHitTest(positionInView(self, event)) == common.WindowHitCaption {
+			// AppKit owns dragging and may consume mouseUp. Do not leave the GUI
+			// with a pressed button by dispatching a partial click first.
+			window.nativeDrag = true
+			window.window.PerformWindowDrag(event)
+			return
+		}
 		window.emitPointer(events.PointerDown, events.PointerButtonLeft, event)
 	}
 }
 
 func mouseUp(self NSView, event NSEvent) {
 	if window := windowForView(self); window != nil {
+		if window.nativeDrag {
+			window.nativeDrag = false
+			return
+		}
 		window.emitPointer(events.PointerUp, events.PointerButtonLeft, event)
 	}
 }
@@ -212,8 +225,8 @@ func positionInView(view NSView, event NSEvent) geometry.Point {
 	bounds := view.Bounds()
 	scale := pointsPerLogicalUnit(view.Window())
 	return geometry.Point{
-		X: float32(point.X / scale),
-		Y: float32((bounds.Size.Height - point.Y) / scale),
+		X: float32((point.X - bounds.Origin.X) / scale),
+		Y: float32((bounds.Origin.Y + bounds.Size.Height - point.Y) / scale),
 	}
 }
 

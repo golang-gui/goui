@@ -59,6 +59,9 @@ func (i *imageResource) Destroy() {
 	i.owner.destroyImage(i)
 }
 
+// NewPainter creates an OpenGL painter for win. The caller must lock the owning
+// OS thread before creating the window and keep all painter operations, including
+// Destroy, on that thread. The painter must be destroyed before the window.
 func NewPainter(win NativeWindow) (_ graphics.Painter, err error) {
 	p := new(Painter)
 	p.ctx, err = NewContext(win, nil, Config{

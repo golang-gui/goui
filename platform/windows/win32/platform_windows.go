@@ -3,6 +3,7 @@ package win32
 import (
 	"syscall"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
@@ -57,8 +58,12 @@ func (p *Platform) setWakeHandler(fn func()) {
 	p.wakeHandler = fn
 }
 
-func (p *Platform) NewWindow(width, height float32, handler events.EventHandler) (common.Window, error) {
-	return newWindow(width, height, handler)
+func (p *Platform) NewWindow(size geometry.Size, handler events.EventHandler, options common.WindowOptions) (common.Window, error) {
+	window, err := newWindow(size, handler, options)
+	if err != nil {
+		return nil, err
+	}
+	return window, nil
 }
 
 func (p *Platform) NewPopup(owner common.Window, width, height float32, handler events.EventHandler) (common.Popup, error) {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
@@ -27,6 +28,10 @@ type Window struct {
 	minHeight    float32
 	im           *inputMethod // this window's IME (nil when none); keyDown routes to it
 	cursor       *cursor      // this window's cursor capability (nil when none)
+	hitTest      func(geometry.Point) common.WindowHit
+	hitTesting   bool
+	nativeDrag   bool // AppKit consumed the last left press; mouseUp may not arrive
+	state        common.WindowState
 }
 
 // newNativeWindow creates the NSWindow shared by top-level windows and popups:
@@ -36,6 +41,7 @@ type Window struct {
 func newNativeWindow(onEvent events.EventHandler, class NSWindowClass, styleMask NSWindowStyleMask, rect NSRect) *Window {
 	win := &Window{
 		onEvent: onEvent,
+		state:   common.WindowStateUnknown,
 	}
 	AutoReleasePool(func() {
 		win.delegate = delegateClass.Alloc()
@@ -60,17 +66,23 @@ func newNativeWindow(onEvent events.EventHandler, class NSWindowClass, styleMask
 	return win
 }
 
-func newWindow(width, height float32, onEvent events.EventHandler) (*Window, error) {
-	styleMask := NSWindowStyleMaskMiniaturizable |
-		NSWindowStyleMaskTitled |
-		NSWindowStyleMaskClosable |
-		NSWindowStyleMaskResizable
+func newWindow(size geometry.Size, onEvent events.EventHandler, options common.WindowOptions) (*Window, error) {
+	if err := common.ValidateWindowSize(size); err != nil {
+		return nil, err
+	}
+	if err := options.Validate(); err != nil {
+		return nil, err
+	}
+	if options.Chrome == common.WindowChromeIntegrated {
+		return nil, fmt.Errorf("integrated window chrome: %w", common.ErrUnsupported)
+	}
+	styleMask := windowStyle(options)
 
 	// newNativeWindow converts the requested logical content size to points.
-	win := newNativeWindow(onEvent, windowClass, styleMask, NSMakeRect(0, 0, CGFloat(width), CGFloat(height)))
+	win := newNativeWindow(onEvent, windowClass, styleMask, NSMakeRect(0, 0, CGFloat(size.Width), CGFloat(size.Height)))
 
 	AutoReleasePool(func() {
-		win.window.SetCollectionBehavior(NSWindowCollectionBehaviorFullScreenPrimary | NSWindowCollectionBehaviorManaged)
+		win.window.SetCollectionBehavior(NSWindowCollectionBehaviorManaged | NSWindowCollectionBehaviorFullScreenPrimary)
 	})
 	return win, nil
 }
@@ -80,6 +92,7 @@ func (w *Window) NativeHandle() uintptr {
 }
 
 func (w *Window) Destroy() {
+	w.hitTest = nil
 	if !w.window.Valid() {
 		return
 	}
@@ -162,9 +175,9 @@ func (w *Window) RequestClose() error {
 		return nil
 	}
 
-	AutoReleasePool(func() {
-		w.window.PerformClose(0)
-	})
+	// Programmatic close still uses the vetoable notification when the native
+	// close button is disabled/absent. PerformClose would only beep in that case.
+	w.onEvent(events.CloseEvent{})
 	return nil
 }
 
@@ -229,10 +242,15 @@ func initWindowClass() (err error) {
 	}
 
 	delegateClass, err = ImplementNSWindowDelegate("GouiWindowDelegate", NSWindowDelegateOverride{
-		WindowShouldClose:  windowShouldClose,
-		WindowDidResize:    windowDidResize,
-		WindowDidBecomeKey: windowDidBecomeKey,
-		WindowDidResignKey: windowDidResignKey,
+		WindowDidChangeOcclusionState: windowDidChangeManagement,
+		WindowShouldClose:             windowShouldClose,
+		WindowDidResize:               windowDidResize,
+		WindowDidBecomeKey:            windowDidBecomeKey,
+		WindowDidResignKey:            windowDidResignKey,
+		WindowDidMiniaturize:          windowDidChangeManagement,
+		WindowDidDeminiaturize:        windowDidChangeManagement,
+		WindowDidEnterFullScreen:      windowDidChangeManagement,
+		WindowDidExitFullScreen:       windowDidChangeManagement,
 	})
 	if err != nil {
 		return fmt.Errorf("implement NSWindowDelegate err: %v", err)
@@ -329,6 +347,10 @@ func windowDidResize(self NSWindowDelegate, notification NSNotification) {
 	defer self.Release()
 
 	if window, has := windowMap[Cast[NSWindow](notification.Object())]; has {
+		window.notifyState()
+		if !window.window.Valid() {
+			return
+		}
 		window.onEvent(makeSizeEvent(window.view))
 	}
 }
@@ -401,3 +423,156 @@ func (w *Window) drawImage(img graphics.Bitmap) (err error) {
 	}
 	return nil
 }
+
+func windowStyle(options common.WindowOptions) NSWindowStyleMask {
+	style := NSWindowStyleMaskResizable | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable
+	if options.Chrome != common.WindowChromeNone {
+		style |= NSWindowStyleMaskTitled
+	}
+	return style
+}
+
+func (w *Window) Chrome() common.WindowChrome {
+	if !w.window.Valid() {
+		return common.WindowChromeUnknown
+	}
+	if w.window.StyleMask()&NSWindowStyleMaskTitled == 0 {
+		return common.WindowChromeNone
+	}
+	return common.WindowChromeNative
+}
+
+func (w *Window) ControlsRect() (geometry.Rectangle, error) {
+	if !w.window.Valid() || !w.view.Valid() {
+		return geometry.Rectangle{}, common.ErrUnavailable
+	}
+	if !w.window.IsVisible() || w.window.IsMiniaturized() {
+		return geometry.Rectangle{}, common.ErrUnavailable
+	}
+	var result geometry.Rectangle
+	bounds := w.view.Bounds()
+	scale := pointsPerLogicalUnit(w.window)
+	for _, kind := range [...]NSWindowButton{NSWindowCloseButton, NSWindowMiniaturizeButton, NSWindowZoomButton} {
+		button := w.window.StandardWindowButton(kind)
+		if !button.Valid() || button.IsHiddenOrHasHiddenAncestor() {
+			continue
+		}
+		// AppKit can temporarily host fullscreen controls in another window.
+		// Cross-window convertRect:toView: is not a valid observation.
+		if button.Window() != w.window {
+			return geometry.Rectangle{}, common.ErrUnavailable
+		}
+		r := controlsRectInDIP(button.ConvertRectToView(button.Bounds(), w.view), bounds, scale)
+		if r.Width <= 0 || r.Height <= 0 {
+			continue
+		}
+		if result.Width == 0 {
+			result = r
+		} else {
+			x, y := min(result.X, r.X), min(result.Y, r.Y)
+			result = geometry.Rect(x, y,
+				max(result.X+result.Width, r.X+r.Width)-x,
+				max(result.Y+result.Height, r.Y+r.Height)-y)
+		}
+	}
+	return result, nil
+}
+
+// The content view is unflipped; GOUI uses top-left client coordinates.
+func controlsRectInDIP(rect, bounds NSRect, pointsPerDIP CGFloat) geometry.Rectangle {
+	return geometry.Rect(
+		float32((rect.Origin.X-bounds.Origin.X)/pointsPerDIP),
+		float32((bounds.Origin.Y+bounds.Size.Height-rect.Origin.Y-rect.Size.Height)/pointsPerDIP),
+		float32(rect.Size.Width/pointsPerDIP), float32(rect.Size.Height/pointsPerDIP))
+}
+
+func (w *Window) SetHitTest(f func(geometry.Point) common.WindowHit) error {
+	if !w.window.Valid() {
+		return common.ErrUnavailable
+	}
+	w.hitTest = f
+	return nil
+}
+
+func (w *Window) queryHitTest(p geometry.Point) common.WindowHit {
+	if w.hitTest == nil || w.hitTesting || !w.window.Valid() {
+		return common.WindowHitDefault
+	}
+	w.hitTesting = true
+	defer func() { w.hitTesting = false }()
+	hit := w.hitTest(p)
+	if hit > common.WindowHitBottomRight {
+		return common.WindowHitDefault
+	}
+	return hit
+}
+
+func (w *Window) State() common.WindowState {
+	if !w.window.Valid() {
+		return common.WindowStateUnknown
+	}
+	if w.window.IsMiniaturized() {
+		return common.WindowStateMinimized
+	}
+	if !w.window.IsVisible() {
+		return common.WindowStateHidden
+	}
+	if w.window.StyleMask()&NSWindowStyleMaskFullScreen != 0 {
+		return common.WindowStateFullscreen
+	}
+	// AppKit zoom changes ordinary window geometry; it is not maximization.
+	return common.WindowStateNormal
+}
+
+func (w *Window) RequestState(state common.WindowState) error {
+	if !w.window.Valid() {
+		return common.ErrUnavailable
+	}
+	switch state {
+	case common.WindowStateHidden:
+		return w.Hide()
+	case common.WindowStateMaximized, common.WindowStateFullscreen:
+		// A fullscreen target needs in-flight/failure tracking, not a toggle.
+		return common.ErrUnsupported
+	case common.WindowStateNormal, common.WindowStateMinimized:
+	default:
+		return fmt.Errorf("invalid window state: %d", state)
+	}
+	if w.window.StyleMask()&NSWindowStyleMaskFullScreen != 0 {
+		return common.ErrUnsupported
+	}
+	if w.State() == state {
+		return nil
+	}
+	if state == common.WindowStateMinimized {
+		if w.window.StyleMask()&NSWindowStyleMaskMiniaturizable == 0 {
+			return common.ErrUnsupported
+		}
+		AutoReleasePool(func() { w.window.Miniaturize(0) })
+		return nil
+	}
+	AutoReleasePool(func() {
+		if w.window.IsMiniaturized() {
+			w.window.Deminiaturize(0)
+		}
+	})
+	return w.Show()
+}
+
+func (w *Window) notifyState() {
+	state := w.State()
+	if state != w.state {
+		w.state = state
+		w.onEvent(events.StateEvent{State: state})
+	}
+}
+
+func windowDidChangeManagement(self NSWindowDelegate, notification NSNotification) {
+	self.Retain()
+	defer self.Release()
+	if window := windowMap[Cast[NSWindow](notification.Object())]; window != nil {
+		window.notifyState()
+	}
+}
+
+var _ common.DesktopWindow = (*Window)(nil)

@@ -22,6 +22,7 @@ const (
 	KeyDown
 	KeyUp
 	Focus
+	State
 )
 
 type EventHandler func(event Event)

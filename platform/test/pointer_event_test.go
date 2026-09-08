@@ -75,7 +75,7 @@ func TestPointerEventsManual(t *testing.T) {
 			return
 		}
 
-		window, err = plat.NewWindow(800, 600, func(event platform.Event) {
+		window, err = plat.NewWindow(geometry.Size{Width: 800, Height: 600}, func(event platform.Event) {
 			switch event := event.(type) {
 			case events.PointerEvent:
 				select {
@@ -91,7 +91,7 @@ func TestPointerEventsManual(t *testing.T) {
 				destroyed = true
 				eventLoop.Quit()
 			}
-		})
+		}, platform.WindowOptions{})
 		if err != nil {
 			return
 		}
