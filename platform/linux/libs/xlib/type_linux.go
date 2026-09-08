@@ -153,6 +153,28 @@ type Depth struct {
 	Visuals  *Visual
 }
 
+// WindowAttributes matches XWindowAttributes (native LP64 Xlib layout).
+type WindowAttributes struct {
+	X, Y, Width, Height, BorderWidth, Depth          int32
+	Visual                                           *Visual
+	Root                                             Window
+	Class, BitGravity, WinGravity, BackingStore      int32
+	BackingPlanes, BackingPixel                      uint64
+	SaveUnder                                        Bool
+	Colormap                                         Colormap
+	MapInstalled                                     Bool
+	MapState                                         int32
+	AllEventMasks, YourEventMask, DoNotPropagateMask int64
+	OverrideRedirect                                 Bool
+	Screen                                           *Screen
+}
+
+const (
+	IsUnmapped   = 0
+	IsUnviewable = 1
+	IsViewable   = 2
+)
+
 type SetWindowAttributes struct {
 	BackgroundPixmap   Pixmap
 	BackgroundPixel    uint64
@@ -301,6 +323,9 @@ func (e *Event) ConfigureEvent() *ConfigureEvent {
 	return (*ConfigureEvent)(cgo.Pointer(e))
 }
 
+func (e *Event) MapEvent() *MapEvent     { return (*MapEvent)(cgo.Pointer(e)) }
+func (e *Event) UnmapEvent() *UnmapEvent { return (*UnmapEvent)(cgo.Pointer(e)) }
+
 func (e *Event) PropertyEvent() *PropertyEvent {
 	return (*PropertyEvent)(cgo.Pointer(e))
 }
@@ -343,6 +368,26 @@ type AnyEvent struct {
 	SendEvent Bool
 	Display   Display
 	Window    Window
+}
+
+type MapEvent struct {
+	Type             EventType
+	Serial           uint64
+	SendEvent        Bool
+	Display          Display
+	Event            Window
+	Window           Window
+	OverrideRedirect Bool
+}
+
+type UnmapEvent struct {
+	Type          EventType
+	Serial        uint64
+	SendEvent     Bool
+	Display       Display
+	Event         Window
+	Window        Window
+	FromConfigure Bool
 }
 
 type ExposeEvent struct {
@@ -690,7 +735,10 @@ const (
 )
 
 // XSizeHints flag bits (Xutil.h).
-const PMinSize = 1 << 4
+const (
+	PMinSize = 1 << 4
+	PMaxSize = 1 << 5
+)
 
 // SizeHints mirrors the C XSizeHints layout on LP64: one long followed by
 // seventeen ints. Go's natural field alignment reproduces the C offsets
