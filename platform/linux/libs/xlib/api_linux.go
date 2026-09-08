@@ -1,8 +1,9 @@
 package xlib
 
 import (
-	"github.com/goexlib/cgo"
 	"runtime"
+
+	"github.com/goexlib/cgo"
 )
 
 var (
@@ -24,9 +25,13 @@ var (
 	xDefaultRootWindow      = libx11.NewSymbol("XDefaultRootWindow")
 	xRootWindow             = libx11.NewSymbol("XRootWindow")
 	xCreateWindow           = libx11.NewSymbol("XCreateWindow")
+	xGetWindowAttributes    = libx11.NewSymbol("XGetWindowAttributes")
 	xDestroyWindow          = libx11.NewSymbol("XDestroyWindow")
 	xMapWindow              = libx11.NewSymbol("XMapWindow")
+	xIconifyWindow          = libx11.NewSymbol("XIconifyWindow")
 	xUnmapWindow            = libx11.NewSymbol("XUnmapWindow")
+	xWithdrawWindow         = libx11.NewSymbol("XWithdrawWindow")
+	xUngrabPointer          = libx11.NewSymbol("XUngrabPointer")
 	xMoveWindow             = libx11.NewSymbol("XMoveWindow")
 	xResizeWindow           = libx11.NewSymbol("XResizeWindow")
 	xTranslateCoordinates   = libx11.NewSymbol("XTranslateCoordinates")
@@ -150,12 +155,35 @@ func (d Display) DestroyWindow(w Window) {
 	xDestroyWindow.CallRaw(uintptr(d), uintptr(w))
 }
 
+func (d Display) GetWindowAttributes(w Window, attrs *WindowAttributes) Status {
+	var pin runtime.Pinner
+	pin.Pin(attrs)
+	defer pin.Unpin()
+	ret, _, _ := xGetWindowAttributes.CallRaw(uintptr(d), uintptr(w), uintptr(cgo.Pointer(attrs)))
+	return Status(ret)
+}
+
 func (d Display) MapWindow(w Window) {
 	xMapWindow.CallRaw(uintptr(d), uintptr(w))
 }
 
 func (d Display) UnmapWindow(w Window) {
 	xUnmapWindow.CallRaw(uintptr(d), uintptr(w))
+}
+
+func (d Display) IconifyWindow(w Window, screen int) Status {
+	ret, _, _ := xIconifyWindow.CallRaw(uintptr(d), uintptr(w), uintptr(screen))
+	return Status(ret)
+}
+
+func (d Display) WithdrawWindow(w Window, screen int) Status {
+	ret, _, _ := xWithdrawWindow.CallRaw(uintptr(d), uintptr(w), uintptr(screen))
+	return Status(ret)
+}
+
+func (d Display) UngrabPointer(time Time) int32 {
+	ret, _, _ := xUngrabPointer.CallRaw(uintptr(d), uintptr(time))
+	return int32(ret)
 }
 
 func (d Display) MoveWindow(w Window, x, y int) {
@@ -201,6 +229,27 @@ func (d Display) DeleteProperty(w Window, property Atom) {
 
 func (d Display) ChangeProperty(w Window, property, typ Atom, format byte, mode PropertyChangeMode, data cgo.Pointer, nelements int) {
 	xChangeProperty.CallRaw(uintptr(d), uintptr(w), uintptr(property), uintptr(typ), uintptr(format), uintptr(mode), uintptr(data), uintptr(nelements))
+}
+
+// GetWindowProperty preserves Xlib's returned type, format, lengths and buffer.
+// The caller must Free a non-nil data buffer. For format 32, elements occupy
+// native unsigned longs in memory, not packed uint32s.
+func (d Display) GetWindowProperty(w Window, property Atom, offset, length int, delete bool, reqType Atom,
+	actualType *Atom, actualFormat *int32, nitems, bytesAfter *uint, data **byte) int32 {
+	// CallRaw transports addresses as uintptrs. Pin the output storage before
+	// conversion so stack growth or GC cannot invalidate the native addresses.
+	var pin runtime.Pinner
+	pin.Pin(actualType)
+	pin.Pin(actualFormat)
+	pin.Pin(nitems)
+	pin.Pin(bytesAfter)
+	pin.Pin(data)
+	defer pin.Unpin()
+	ret, _, _ := xGetWindowProperty.CallRaw(uintptr(d), uintptr(w), uintptr(property),
+		uintptr(offset), uintptr(length), uintptr(cgo.CBool(delete)), uintptr(reqType),
+		uintptr(cgo.Pointer(actualType)), uintptr(cgo.Pointer(actualFormat)),
+		uintptr(cgo.Pointer(nitems)), uintptr(cgo.Pointer(bytesAfter)), uintptr(cgo.Pointer(data)))
+	return int32(ret)
 }
 
 func (d Display) SetSelectionOwner(selection Atom, owner Window, time Time) {
