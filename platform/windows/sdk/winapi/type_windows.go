@@ -155,6 +155,7 @@ const (
 
 // Non-client hit-test results.
 const (
+	HTNOWHERE     = 0
 	HTCLIENT      = 1
 	HTCAPTION     = 2
 	HTSYSMENU     = 3
@@ -184,7 +185,20 @@ const (
 )
 
 const (
+	DWMWA_NCRENDERING_ENABLED   = 1
 	DWMWA_CAPTION_BUTTON_BOUNDS = 5
+)
+
+const (
+	SM_CXSIZEFRAME    = 32
+	SM_CYSIZEFRAME    = 33
+	SM_CXPADDEDBORDER = 92
+)
+
+const (
+	MONITOR_DEFAULTTONULL    = 0
+	MONITOR_DEFAULTTOPRIMARY = 1
+	MONITOR_DEFAULTTONEAREST = 2
 )
 
 const (
@@ -208,6 +222,7 @@ type (
 	HCURSOR   = syscall.Handle
 	HBRUSH    = syscall.Handle
 	HKEY      = syscall.Handle
+	HMONITOR  = syscall.Handle
 )
 
 //Windows API Structs
@@ -220,6 +235,29 @@ type RECT struct {
 	Left, Top, Right, Bottom LONG
 }
 type LPRECT = *RECT
+
+type WINDOWPOS struct {
+	Hwnd, InsertAfter HWND
+	X, Y, CX, CY      INT
+	Flags             UINT
+}
+
+type NCCALCSIZE_PARAMS struct {
+	Rects     [3]RECT
+	WindowPos *WINDOWPOS
+}
+
+type MONITORINFO struct {
+	Size    DWORD
+	Monitor RECT
+	Work    RECT
+	Flags   DWORD
+}
+
+type MARGINS struct {
+	CXLeftWidth, CXRightWidth   INT
+	CYTopHeight, CYBottomHeight INT
+}
 
 // MINMAXINFO is sent via WM_GETMINMAXINFO so an application can override the
 // default minimum/maximum window sizes. All values are in physical pixels and
