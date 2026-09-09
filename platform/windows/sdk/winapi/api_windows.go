@@ -47,6 +47,9 @@ var (
 	procIsZoomed             = user32Dll.NewProc("IsZoomed")
 	procIsWindowVisible      = user32Dll.NewProc("IsWindowVisible")
 	procGetWindowLongW       = user32Dll.NewProc("GetWindowLongW")
+	procSetWindowLongW       = user32Dll.NewProc("SetWindowLongW")
+	procMonitorFromWindow    = user32Dll.NewProc("MonitorFromWindow")
+	procGetMonitorInfoW      = user32Dll.NewProc("GetMonitorInfoW")
 	procGetKeyState          = user32Dll.NewProc("GetKeyState")
 	procGetSystemMenu        = user32Dll.NewProc("GetSystemMenu")
 	procEnableMenuItem       = user32Dll.NewProc("EnableMenuItem")
@@ -54,6 +57,7 @@ var (
 	// DPI
 	procGetDpiForWindow               = user32Dll.NewProc("GetDpiForWindow")
 	procGetDpiForSystem               = user32Dll.NewProc("GetDpiForSystem")
+	procGetSystemMetricsForDpi        = user32Dll.NewProc("GetSystemMetricsForDpi")
 	procSetProcessDpiAwarenessContext = user32Dll.NewProc("SetProcessDpiAwarenessContext")
 	procAdjustWindowRectExForDpi      = user32Dll.NewProc("AdjustWindowRectExForDpi")
 	procSystemParametersInfoW         = user32Dll.NewProc("SystemParametersInfoW")
@@ -106,9 +110,11 @@ var (
 	procRegCloseKey      = advapi32Dll.NewProc("RegCloseKey")
 
 	// DWM
-	procDwmGetColorizationColor = dwmapiDll.NewProc("DwmGetColorizationColor")
-	procDwmGetWindowAttribute   = dwmapiDll.NewProc("DwmGetWindowAttribute")
-	procDwmDefWindowProc        = dwmapiDll.NewProc("DwmDefWindowProc")
+	procDwmGetColorizationColor      = dwmapiDll.NewProc("DwmGetColorizationColor")
+	procDwmGetWindowAttribute        = dwmapiDll.NewProc("DwmGetWindowAttribute")
+	procDwmDefWindowProc             = dwmapiDll.NewProc("DwmDefWindowProc")
+	procDwmIsCompositionEnabled      = dwmapiDll.NewProc("DwmIsCompositionEnabled")
+	procDwmExtendFrameIntoClientArea = dwmapiDll.NewProc("DwmExtendFrameIntoClientArea")
 
 	// Clipboard
 	procOpenClipboard    = user32Dll.NewProc("OpenClipboard")
@@ -217,6 +223,30 @@ func GetWindowLong(wnd HWND, index int) (LONG, error) {
 		return 0, err
 	}
 	return value, nil
+}
+
+// SetWindowLong writes a 32-bit window value, not a pointer-sized field.
+// Zero is a valid previous value unless the native call also reports an error.
+func SetWindowLong(wnd HWND, index int, value LONG) (LONG, error) {
+	ret, _, err := syscall.SyscallN(procSetWindowLongW.Addr(), uintptr(wnd), uintptr(index), uintptr(value))
+	previous := LONG(ret)
+	if previous == 0 && err != 0 {
+		return 0, err
+	}
+	return previous, nil
+}
+
+func MonitorFromWindow(wnd HWND, flags DWORD) HMONITOR {
+	ret, _, _ := syscall.SyscallN(procMonitorFromWindow.Addr(), uintptr(wnd), uintptr(flags))
+	return HMONITOR(ret)
+}
+
+func GetMonitorInfo(monitor HMONITOR, info *MONITORINFO) error {
+	ret, _, err := syscall.SyscallN(procGetMonitorInfoW.Addr(), uintptr(monitor), uintptr(unsafe.Pointer(info)))
+	if ret == FALSE {
+		return err
+	}
+	return nil
 }
 
 func GetKeyState(key int) SHORT {
@@ -369,6 +399,16 @@ func GetDpiForWindow(wnd HWND) (UINT, error) {
 		return 0, err
 	}
 	return UINT(ret), nil
+}
+
+// GetSystemMetricsForDpi returns the native metric at the supplied DPI. Zero
+// can be a valid metric; the error reports an unavailable native entry point.
+func GetSystemMetricsForDpi(index int, dpi UINT) (int, error) {
+	if err := procGetSystemMetricsForDpi.Find(); err != nil {
+		return 0, err
+	}
+	ret, _, _ := syscall.SyscallN(procGetSystemMetricsForDpi.Addr(), uintptr(index), uintptr(dpi))
+	return int(int32(ret)), nil
 }
 
 // GetDpiForSystem returns the system DPI, falling back to 96 (1x) when the API
@@ -678,6 +718,28 @@ func DwmGetWindowAttribute(wnd HWND, attribute DWORD, value unsafe.Pointer, size
 	}
 	ret, _, _ := syscall.SyscallN(procDwmGetWindowAttribute.Addr(), uintptr(wnd), uintptr(attribute),
 		uintptr(value), uintptr(size))
+	if int32(ret) < 0 {
+		return syscall.Errno(uint32(ret))
+	}
+	return nil
+}
+
+func DwmIsCompositionEnabled(enabled *BOOL) error {
+	if err := procDwmIsCompositionEnabled.Find(); err != nil {
+		return err
+	}
+	ret, _, _ := syscall.SyscallN(procDwmIsCompositionEnabled.Addr(), uintptr(unsafe.Pointer(enabled)))
+	if int32(ret) < 0 {
+		return syscall.Errno(uint32(ret))
+	}
+	return nil
+}
+
+func DwmExtendFrameIntoClientArea(wnd HWND, margins *MARGINS) error {
+	if err := procDwmExtendFrameIntoClientArea.Find(); err != nil {
+		return err
+	}
+	ret, _, _ := syscall.SyscallN(procDwmExtendFrameIntoClientArea.Addr(), uintptr(wnd), uintptr(unsafe.Pointer(margins)))
 	if int32(ret) < 0 {
 		return syscall.Errno(uint32(ret))
 	}
