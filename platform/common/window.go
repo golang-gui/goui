@@ -55,6 +55,26 @@ type DesktopWindow interface {
 	// Query during layout and after existing size/state events; there is no
 	// dedicated controls-geometry notification.
 	ControlsRect() (geometry.Rectangle, error)
+	// SetControlsPosition places the native caption-button group in top-left
+	// window-client DIP. position is the group's bounding-box origin, not a
+	// button center; native button sizes, spacing and actions remain unchanged.
+	// The value is copied. nil restores the native layout saved before the first
+	// custom position; a non-nil zero point explicitly requests (0, 0).
+	//
+	// Currently only macOS Integrated supports this request. Other backends and
+	// chrome modes return ErrUnsupported, including for nil. A destroyed window
+	// or temporarily unavailable native layout returns ErrUnavailable. Positions
+	// must be finite and non-negative; a position that cannot fit in the native
+	// client layout returns ErrUnavailable without replacing the preference.
+	// ControlsRect remains the actual observation,
+	// not a copy of this preference, and has no dedicated change notification.
+	//
+	// May be set before Show once the native controls exist. Accepted positions
+	// are reapplied after native size/scale changes. During native fullscreen and
+	// its transitions, custom placement is suspended: non-nil requests return
+	// ErrUnavailable, while nil can clear the preference. Native layout owns the
+	// fullscreen controls; the saved preference resumes on return to normal.
+	SetControlsPosition(position *geometry.Point) error
 
 	// State reports one observed presentation state, not a combination of native
 	// flags or the last requested state. Unavailable observations are Unknown.

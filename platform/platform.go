@@ -97,8 +97,10 @@ type Platform interface {
 	Destroy()
 	Name() string
 	NewImage(width, height uint) (Image, error)
-	// NewWindow creates a top-level window with creation-time options. The
-	// authoritative client size arrives via SizeEvent. Initial notifications
+	// NewWindow creates a top-level window with an initial size in DIP. Win32
+	// None/Integrated pass that size as the outer extent without frame adjustment;
+	// Native Win32 and the other current desktop backends request client size.
+	// The authoritative client size arrives via SizeEvent. Initial notifications
 	// may arrive synchronously before NewWindow returns.
 	NewWindow(size geometry.Size, handler EventHandler, options WindowOptions) (Window, error)
 	// NewPopup creates a borderless popup owned by owner. width/height is its

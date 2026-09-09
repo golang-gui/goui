@@ -13,6 +13,8 @@ import (
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/core_foundation"
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/core_graphics"
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
+
+	"github.com/goexlib/mathx"
 )
 
 type Window struct {
@@ -21,14 +23,19 @@ type Window struct {
 	view         NSView
 	trackingArea NSTrackingArea
 	onEvent      events.EventHandler
-	parent       common.Window
-	buttons      events.PointerButtons
-	modifiers    events.Modifiers
-	minWidth     float32
-	minHeight    float32
-	im           *inputMethod // this window's IME (nil when none); keyDown routes to it
-	cursor       *cursor      // this window's cursor capability (nil when none)
-	state        common.WindowState
+
+	parent    common.Window
+	buttons   events.PointerButtons
+	modifiers events.Modifiers
+	minWidth  float32
+	minHeight float32
+
+	im     *inputMethod // this window's IME (nil when none); keyDown routes to it
+	cursor *cursor      // this window's cursor capability (nil when none)
+	state  common.WindowState
+
+	controlsPosition             *windowControlsPosition // value-only preference/defaults; no retained NSButton references
+	controlsFullscreenTransition bool                    // native will/did/failure notifications, not requested state
 }
 
 // newNativeWindow creates the NSWindow shared by top-level windows and popups:
@@ -94,6 +101,7 @@ func (w *Window) NativeHandle() uintptr {
 }
 
 func (w *Window) Destroy() {
+	w.controlsPosition = nil
 	if movePress.window == w {
 		movePress = nativePress{}
 	}
@@ -151,6 +159,7 @@ func (w *Window) Title() (v string) {
 func (w *Window) SetTitle(title string) (err error) {
 	AutoReleasePool(func() {
 		w.window.SetTitle(title)
+		w.updateControlsPosition()
 	})
 	return nil
 }
@@ -159,6 +168,7 @@ func (w *Window) Show() error {
 	AutoReleasePool(func() {
 		NSApp.ActivateIgnoringOtherApps(true)
 		w.window.MakeKeyAndOrderFront(0)
+		w.updateControlsPosition()
 		w.window.MakeFirstResponder(w.view.NSResponder)
 	})
 	return nil
@@ -246,15 +256,19 @@ func initWindowClass() (err error) {
 	}
 
 	delegateClass, err = ImplementNSWindowDelegate("GouiWindowDelegate", NSWindowDelegateOverride{
-		WindowDidChangeOcclusionState: windowDidChangeManagement,
-		WindowShouldClose:             windowShouldClose,
-		WindowDidResize:               windowDidResize,
-		WindowDidBecomeKey:            windowDidBecomeKey,
-		WindowDidResignKey:            windowDidResignKey,
-		WindowDidMiniaturize:          windowDidChangeManagement,
-		WindowDidDeminiaturize:        windowDidChangeManagement,
-		WindowDidEnterFullScreen:      windowDidChangeManagement,
-		WindowDidExitFullScreen:       windowDidChangeManagement,
+		WindowDidChangeOcclusionState:  windowDidChangeManagement,
+		WindowShouldClose:              windowShouldClose,
+		WindowDidResize:                windowDidResize,
+		WindowDidBecomeKey:             windowDidBecomeKey,
+		WindowDidResignKey:             windowDidResignKey,
+		WindowDidMiniaturize:           windowDidChangeManagement,
+		WindowDidDeminiaturize:         windowDidChangeManagement,
+		WindowWillEnterFullScreen:      windowWillChangeFullscreen,
+		WindowWillExitFullScreen:       windowWillChangeFullscreen,
+		WindowDidEnterFullScreen:       windowDidChangeFullscreen,
+		WindowDidExitFullScreen:        windowDidChangeFullscreen,
+		WindowDidFailToEnterFullScreen: windowDidFailChangeFullscreen,
+		WindowDidFailToExitFullScreen:  windowDidFailChangeFullscreen,
 	})
 	if err != nil {
 		return fmt.Errorf("implement NSWindowDelegate err: %v", err)
@@ -267,6 +281,10 @@ func initWindowClass() (err error) {
 		AcceptsFirstResponder: func(self NSView) bool {
 			return true
 		},
+		// Content input belongs to the caller, including under an Integrated
+		// titlebar. Starting a native drag requires an explicit BeginMove;
+		// otherwise one press could both move the window and activate a Widget.
+		MouseDownCanMoveWindow:         func(NSView) bool { return false },
 		ViewDidChangeBackingProperties: viewDidChangeBackingProperties,
 		DrawRect:                       drawRect,
 		UpdateTrackingAreas:            updateTrackingAreas,
@@ -351,6 +369,7 @@ func windowDidResize(self NSWindowDelegate, notification NSNotification) {
 	defer self.Release()
 
 	if window, has := windowMap[Cast[NSWindow](notification.Object())]; has {
+		window.updateControlsPosition()
 		window.notifyState()
 		if !window.window.Valid() {
 			return
@@ -364,6 +383,7 @@ func windowDidBecomeKey(self NSWindowDelegate, notification NSNotification) {
 	defer self.Release()
 
 	if window, has := windowMap[Cast[NSWindow](notification.Object())]; has {
+		window.updateControlsPosition()
 		window.emitEvent(events.FocusEvent{Focused: true})
 	}
 }
@@ -373,6 +393,7 @@ func windowDidResignKey(self NSWindowDelegate, notification NSNotification) {
 	defer self.Release()
 
 	if window, has := windowMap[Cast[NSWindow](notification.Object())]; has {
+		window.updateControlsPosition()
 		window.emitEvent(events.FocusEvent{Focused: false})
 	}
 }
@@ -383,6 +404,7 @@ func viewDidChangeBackingProperties(self NSView) {
 
 	if window, has := windowMap[self.Window()]; has {
 		window.SetMinSize(window.minWidth, window.minHeight)
+		window.updateControlsPosition()
 		// Both the backing size and the point-to-logical conversion may change.
 		window.emitEvent(makeSizeEvent(self))
 	}
@@ -595,7 +617,232 @@ func windowDidChangeManagement(self NSWindowDelegate, notification NSNotificatio
 	self.Retain()
 	defer self.Release()
 	if window := windowMap[Cast[NSWindow](notification.Object())]; window != nil {
+		window.updateControlsPosition()
 		window.notifyState()
+	}
+}
+
+type windowControlsPosition struct {
+	position      geometry.Point // copied GOUI DIP preference
+	defaultOrigin NSPoint        // native top-left point offset, independent of GOUI scale
+	defaultHeight CGFloat        // original titlebar-container height in native points
+}
+
+func (w *Window) SetControlsPosition(position *geometry.Point) (err error) {
+	if !w.window.Valid() {
+		return common.ErrUnavailable
+	}
+	if w.Chrome() != common.WindowChromeIntegrated {
+		return common.ErrUnsupported
+	}
+	if position != nil {
+		if err := validateControlsPosition(*position); err != nil {
+			return err
+		}
+		if w.controlsPlacementSuspended() {
+			return common.ErrUnavailable
+		}
+	}
+	AutoReleasePool(func() {
+		if position == nil {
+			if w.controlsPosition == nil {
+				return
+			}
+			if !w.controlsPlacementSuspended() {
+				err = w.restoreControlsPosition()
+				if err != nil {
+					return // a failed reset keeps the previous preference
+				}
+			}
+			w.controlsPosition = nil
+			return
+		}
+		var controls nativeWindowControls
+		controls, err = w.nativeControls()
+		if err != nil {
+			return
+		}
+		var next windowControlsPosition
+		if w.controlsPosition != nil {
+			next = *w.controlsPosition
+		} else {
+			bounds, group := w.view.Bounds(), controls.bounds(w.view)
+			next.defaultOrigin = NSPoint{X: group.Origin.X - bounds.Origin.X,
+				Y: bounds.Origin.Y + bounds.Size.Height - group.Origin.Y - group.Size.Height}
+			next.defaultHeight = controls.container.Frame().Size.Height
+		}
+		next.position = *position
+		origin := controlsPositionInPoints(next.position, pointsPerLogicalUnit(w.window))
+		height := max(next.defaultHeight, controls.bounds(w.view).Size.Height+2*origin.Y)
+		if err = controls.place(w.view, origin, height); err == nil {
+			w.controlsPosition = &next
+		}
+	})
+	return err
+}
+
+func validateControlsPosition(position geometry.Point) error {
+	for _, value := range []float32{position.X, position.Y} {
+		if value < 0 || mathx.IsNaN(value) || mathx.IsInf(value, 0) {
+			return fmt.Errorf("invalid controls position: %v", position)
+		}
+	}
+	return nil
+}
+
+func (w *Window) controlsPlacementSuspended() bool {
+	return w.controlsFullscreenTransition || w.window.StyleMask()&NSWindowStyleMaskFullScreen != 0
+}
+
+func (w *Window) updateControlsPosition() {
+	if w.controlsPosition == nil || !w.window.Valid() || w.controlsPlacementSuspended() {
+		return
+	}
+	// Native layout may be temporarily unavailable during show/miniaturization.
+	// Keep the preference for the next native update; ControlsRect still reads
+	// the real buttons, never this stored value. Do not reposition from a getter.
+	if controls, err := w.nativeControls(); err == nil {
+		origin := controlsPositionInPoints(w.controlsPosition.position, pointsPerLogicalUnit(w.window))
+		height := max(w.controlsPosition.defaultHeight, controls.bounds(w.view).Size.Height+2*origin.Y)
+		_ = controls.place(w.view, origin, height)
+	}
+}
+
+func (w *Window) restoreControlsPosition() error {
+	controls, err := w.nativeControls()
+	if err != nil {
+		return err
+	}
+	return controls.place(w.view, w.controlsPosition.defaultOrigin, w.controlsPosition.defaultHeight)
+}
+
+// Native buttons remain in AppKit's hierarchy and retain their actions,
+// accessibility and tracking. As in Electron, only their container frame and
+// origins are adjusted; there are no private selectors or replacement buttons.
+// Rediscover these borrowed views each time: AppKit may recreate the controls.
+type nativeWindowControls struct {
+	buttons   [3]NSButton
+	parent    NSView
+	container NSView
+}
+
+func (w *Window) nativeControls() (nativeWindowControls, error) {
+	var controls nativeWindowControls
+	for i, kind := range [...]NSWindowButton{NSWindowCloseButton, NSWindowMiniaturizeButton, NSWindowZoomButton} {
+		button := w.window.StandardWindowButton(kind)
+		if !button.Valid() || button.Window() != w.window || button.IsHiddenOrHasHiddenAncestor() {
+			return controls, common.ErrUnavailable
+		}
+		if i == 0 {
+			controls.parent = button.Superview()
+		} else if button.Superview() != controls.parent {
+			return controls, common.ErrUnavailable
+		}
+		if bounds := button.Bounds(); bounds.Size.Width <= 0 || bounds.Size.Height <= 0 {
+			return controls, common.ErrUnavailable
+		}
+		controls.buttons[i] = button
+	}
+	if !controls.parent.Valid() {
+		return controls, common.ErrUnavailable
+	}
+	controls.container = controls.parent.Superview()
+	if !controls.container.Valid() || !controls.container.Superview().Valid() ||
+		controls.container.Window() != w.window || controls.container == w.view || controls.parent == w.view {
+		return controls, common.ErrUnavailable
+	}
+	return controls, nil
+}
+
+func (c nativeWindowControls) bounds(view NSView) NSRect {
+	result := c.buttons[0].ConvertRectToView(c.buttons[0].Bounds(), view)
+	for _, button := range c.buttons[1:] {
+		r := button.ConvertRectToView(button.Bounds(), view)
+		x, y := min(result.Origin.X, r.Origin.X), min(result.Origin.Y, r.Origin.Y)
+		result = NSMakeRect(x, y,
+			max(result.Origin.X+result.Size.Width, r.Origin.X+r.Size.Width)-x,
+			max(result.Origin.Y+result.Size.Height, r.Origin.Y+r.Size.Height)-y)
+	}
+	return result
+}
+
+func (c nativeWindowControls) place(view NSView, origin NSPoint, height CGFloat) error {
+	bounds, group := view.Bounds(), c.bounds(view)
+	// Do not silently clamp an impossible request or extend a titlebar container
+	// beyond the client. A later resize can make an accepted preference unfit;
+	// the caller can observe that via ControlsRect and choose a new position.
+	if origin.X+group.Size.Width > bounds.Size.Width || height > bounds.Size.Height {
+		return fmt.Errorf("controls position does not fit client: %w", common.ErrUnavailable)
+	}
+	var frames [3]NSRect
+	for i, button := range c.buttons {
+		frames[i] = button.Frame()
+	}
+	from := c.parent.ConvertPointFromView(group.Origin, view)
+	frame := c.container.Frame()
+	next := controlsContainerFrame(frame, height)
+	if next != frame {
+		c.container.SetFrame(next)
+	}
+	// The container may autoresize its descendants. Translate the saved button
+	// frames, preserving their sizes and gaps even if native autoresizing moved
+	// them. The destination conversion must use the new container geometry.
+	target := controlsTargetOrigin(bounds, group.Size, origin)
+	to := c.parent.ConvertPointFromView(target, view)
+	dx, dy := to.X-from.X, to.Y-from.Y
+	for i, button := range c.buttons {
+		r := frames[i]
+		r.Origin.X += dx
+		r.Origin.Y += dy
+		if r != button.Frame() {
+			button.SetFrame(r)
+		}
+	}
+	return nil
+}
+
+func controlsPositionInPoints(position geometry.Point, pointsPerDIP CGFloat) NSPoint {
+	return NSPoint{X: CGFloat(position.X) * pointsPerDIP, Y: CGFloat(position.Y) * pointsPerDIP}
+}
+
+func controlsTargetOrigin(bounds NSRect, size NSSize, topLeft NSPoint) NSPoint {
+	return NSPoint{X: bounds.Origin.X + topLeft.X, Y: bounds.Origin.Y + bounds.Size.Height - topLeft.Y - size.Height}
+}
+
+func controlsContainerFrame(frame NSRect, height CGFloat) NSRect {
+	frame.Origin.Y += frame.Size.Height - height // keep the native top edge fixed
+	frame.Size.Height = height
+	return frame
+}
+
+func windowWillChangeFullscreen(self NSWindowDelegate, notification NSNotification) {
+	self.Retain()
+	defer self.Release()
+	if w := windowMap[Cast[NSWindow](notification.Object())]; w != nil {
+		if w.controlsPosition != nil && !w.controlsPlacementSuspended() {
+			_ = w.restoreControlsPosition()
+		}
+		w.controlsFullscreenTransition = true
+	}
+}
+
+func windowDidChangeFullscreen(self NSWindowDelegate, notification NSNotification) {
+	self.Retain()
+	defer self.Release()
+	if w := windowMap[Cast[NSWindow](notification.Object())]; w != nil {
+		w.controlsFullscreenTransition = false
+		w.updateControlsPosition()
+		w.notifyState()
+	}
+}
+
+func windowDidFailChangeFullscreen(self NSWindowDelegate, window NSWindow) {
+	self.Retain()
+	defer self.Release()
+	if w := windowMap[window]; w != nil {
+		w.controlsFullscreenTransition = false
+		w.updateControlsPosition()
+		w.notifyState()
 	}
 }
 

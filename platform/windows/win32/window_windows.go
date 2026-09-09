@@ -674,6 +674,13 @@ func (w *Window) Chrome() common.WindowChrome {
 	return common.WindowChromeNative
 }
 
+func (w *Window) SetControlsPosition(*geometry.Point) error {
+	if w.hwnd == 0 {
+		return common.ErrUnavailable
+	}
+	return common.ErrUnsupported
+}
+
 func (w *Window) ControlsRect() (geometry.Rectangle, error) {
 	if w.hwnd == 0 {
 		return geometry.Rectangle{}, common.ErrUnavailable
