@@ -969,6 +969,10 @@ func initNSWindow() {
 	NSWindowSel.Center = objc.RegisterName("center")
 	NSWindowSel.Title = objc.RegisterName("title")
 	NSWindowSel.SetTitle = objc.RegisterName("setTitle:")
+	NSWindowSel.TitleVisibility = objc.RegisterName("titleVisibility")
+	NSWindowSel.SetTitleVisibility = objc.RegisterName("setTitleVisibility:")
+	NSWindowSel.TitlebarAppearsTransparent = objc.RegisterName("titlebarAppearsTransparent")
+	NSWindowSel.SetTitlebarAppearsTransparent = objc.RegisterName("setTitlebarAppearsTransparent:")
 	NSWindowSel.SetDelegate = objc.RegisterName("setDelegate:")
 	NSWindowSel.ContentView = objc.RegisterName("contentView")
 	NSWindowSel.SetContentView = objc.RegisterName("setContentView:")
@@ -1008,44 +1012,48 @@ func initNSWindow() {
 var (
 	NSWindowClassId NSWindowClass
 	NSWindowSel     struct {
-		InitWith                   objc.SEL
-		Center                     objc.SEL
-		Title                      objc.SEL
-		SetTitle                   objc.SEL
-		SetDelegate                objc.SEL
-		ContentView                objc.SEL
-		SetContentView             objc.SEL
-		SetCollectionBehavior      objc.SEL
-		SetAcceptsMouseMovedEvents objc.SEL
-		SetRestorable              objc.SEL
-		BackingScaleFactor         objc.SEL
-		MakeFirstResponder         objc.SEL
-		MakeKeyAndOrderFront       objc.SEL
-		OrderFront                 objc.SEL
-		OrderOut                   objc.SEL
-		AddChildWindow             objc.SEL
-		RemoveChildWindow          objc.SEL
-		PerformClose               objc.SEL
-		Close                      objc.SEL
-		CanBecomeKeyWindow         objc.SEL
-		CanBecomeMainWindow        objc.SEL
-		Frame                      objc.SEL
-		ContentRectForFrameRect    objc.SEL
-		SetFrameTopLeftPoint       objc.SEL
-		SetContentSize             objc.SEL
-		SetContentMinSize          objc.SEL
-		SetLevel                   objc.SEL
-		ConvertRectToScreen        objc.SEL
-		StyleMask                  objc.SEL
-		IsVisible                  objc.SEL
-		IsMiniaturized             objc.SEL
-		IsZoomed                   objc.SEL
-		Miniaturize                objc.SEL
-		Deminiaturize              objc.SEL
-		Zoom                       objc.SEL
-		ToggleFullScreen           objc.SEL
-		StandardWindowButton       objc.SEL
-		PerformWindowDrag          objc.SEL
+		InitWith                      objc.SEL
+		Center                        objc.SEL
+		Title                         objc.SEL
+		SetTitle                      objc.SEL
+		TitleVisibility               objc.SEL
+		SetTitleVisibility            objc.SEL
+		TitlebarAppearsTransparent    objc.SEL
+		SetTitlebarAppearsTransparent objc.SEL
+		SetDelegate                   objc.SEL
+		ContentView                   objc.SEL
+		SetContentView                objc.SEL
+		SetCollectionBehavior         objc.SEL
+		SetAcceptsMouseMovedEvents    objc.SEL
+		SetRestorable                 objc.SEL
+		BackingScaleFactor            objc.SEL
+		MakeFirstResponder            objc.SEL
+		MakeKeyAndOrderFront          objc.SEL
+		OrderFront                    objc.SEL
+		OrderOut                      objc.SEL
+		AddChildWindow                objc.SEL
+		RemoveChildWindow             objc.SEL
+		PerformClose                  objc.SEL
+		Close                         objc.SEL
+		CanBecomeKeyWindow            objc.SEL
+		CanBecomeMainWindow           objc.SEL
+		Frame                         objc.SEL
+		ContentRectForFrameRect       objc.SEL
+		SetFrameTopLeftPoint          objc.SEL
+		SetContentSize                objc.SEL
+		SetContentMinSize             objc.SEL
+		SetLevel                      objc.SEL
+		ConvertRectToScreen           objc.SEL
+		StyleMask                     objc.SEL
+		IsVisible                     objc.SEL
+		IsMiniaturized                objc.SEL
+		IsZoomed                      objc.SEL
+		Miniaturize                   objc.SEL
+		Deminiaturize                 objc.SEL
+		Zoom                          objc.SEL
+		ToggleFullScreen              objc.SEL
+		StandardWindowButton          objc.SEL
+		PerformWindowDrag             objc.SEL
 	}
 )
 
@@ -1102,6 +1110,22 @@ func (w NSWindow) Title() string {
 
 func (w NSWindow) SetTitle(title string) {
 	w.Send(NSWindowSel.SetTitle, ToNSString(title))
+}
+
+func (w NSWindow) TitleVisibility() NSWindowTitleVisibility {
+	return objc.Send[NSWindowTitleVisibility](w.ID, NSWindowSel.TitleVisibility)
+}
+
+func (w NSWindow) SetTitleVisibility(value NSWindowTitleVisibility) {
+	w.Send(NSWindowSel.SetTitleVisibility, value)
+}
+
+func (w NSWindow) TitlebarAppearsTransparent() bool {
+	return objc.Send[bool](w.ID, NSWindowSel.TitlebarAppearsTransparent)
+}
+
+func (w NSWindow) SetTitlebarAppearsTransparent(value bool) {
+	w.Send(NSWindowSel.SetTitlebarAppearsTransparent, value)
 }
 
 func (w NSWindow) ContentView() (res NSView) {
@@ -1388,6 +1412,13 @@ const (
 )
 
 type NSWindowStyleMask NSUInteger
+
+type NSWindowTitleVisibility NSInteger
+
+const (
+	NSWindowTitleVisible NSWindowTitleVisibility = iota
+	NSWindowTitleHidden
+)
 
 const (
 	NSWindowStyleMaskBorderless             NSWindowStyleMask = 0
