@@ -456,6 +456,8 @@ func initNSView() {
 	NSViewClassId.Class = objc.GetClass("NSView")
 	NSViewSel.Window = objc.RegisterName("window")
 	NSViewSel.Frame = objc.RegisterName("frame")
+	NSViewSel.SetFrame = objc.RegisterName("setFrame:")
+	NSViewSel.Superview = objc.RegisterName("superview")
 	NSViewSel.Bounds = objc.RegisterName("bounds")
 	NSViewSel.ConvertRectToBacking = objc.RegisterName("convertRectToBacking:")
 	NSViewSel.ConvertPointFromView = objc.RegisterName("convertPoint:fromView:")
@@ -465,6 +467,7 @@ func initNSView() {
 	NSViewSel.RemoveTrackingArea = objc.RegisterName("removeTrackingArea:")
 	NSViewSel.CanBecomeKeyView = objc.RegisterName("canBecomeKeyView")
 	NSViewSel.AcceptsFirstResponder = objc.RegisterName("acceptsFirstResponder")
+	NSViewSel.MouseDownCanMoveWindow = objc.RegisterName("mouseDownCanMoveWindow")
 	NSViewSel.WantsUpdateLayer = objc.RegisterName("wantsUpdateLayer")
 	NSViewSel.UpdateLayer = objc.RegisterName("updateLayer")
 	NSViewSel.DrawRect = objc.RegisterName("drawRect:")
@@ -496,6 +499,8 @@ var (
 	NSViewSel     struct {
 		Window                              objc.SEL
 		Frame                               objc.SEL
+		SetFrame                            objc.SEL
+		Superview                           objc.SEL
 		Bounds                              objc.SEL
 		ConvertRectToBacking                objc.SEL
 		ConvertPointFromView                objc.SEL
@@ -505,6 +510,7 @@ var (
 		RemoveTrackingArea                  objc.SEL
 		CanBecomeKeyView                    objc.SEL
 		AcceptsFirstResponder               objc.SEL
+		MouseDownCanMoveWindow              objc.SEL
 		WantsUpdateLayer                    objc.SEL
 		UpdateLayer                         objc.SEL
 		DrawRect                            objc.SEL
@@ -538,6 +544,7 @@ type (
 	NSViewOverride struct {
 		CanBecomeKeyView               func(self NSView) bool
 		AcceptsFirstResponder          func(self NSView) bool
+		MouseDownCanMoveWindow         func(self NSView) bool
 		WantsUpdateLayer               func(self NSView) bool
 		UpdateLayer                    func(self NSView)
 		DrawRect                       func(self NSView, rect NSRect)
@@ -585,6 +592,14 @@ func ImplementNSView(className string, override NSViewOverride) (class NSViewCla
 			Cmd: NSViewSel.WantsUpdateLayer,
 			Fn: func(self objc.ID, cmd objc.SEL) bool {
 				return override.WantsUpdateLayer(Cast[NSView](self))
+			},
+		})
+	}
+	if override.MouseDownCanMoveWindow != nil {
+		methods = append(methods, objc.MethodDef{
+			Cmd: NSViewSel.MouseDownCanMoveWindow,
+			Fn: func(self objc.ID, cmd objc.SEL) bool {
+				return override.MouseDownCanMoveWindow(Cast[NSView](self))
 			},
 		})
 	}
@@ -854,8 +869,21 @@ func (v NSView) Frame() NSRect {
 	return objc.Send[NSRect](v.ID, NSViewSel.Frame)
 }
 
+func (v NSView) SetFrame(frame NSRect) {
+	v.Send(NSViewSel.SetFrame, frame)
+}
+
+func (v NSView) Superview() (res NSView) {
+	res.ID = v.Send(NSViewSel.Superview)
+	return
+}
+
 func (v NSView) Bounds() NSRect {
 	return objc.Send[NSRect](v.ID, NSViewSel.Bounds)
+}
+
+func (v NSView) MouseDownCanMoveWindow() bool {
+	return objc.Send[bool](v.ID, NSViewSel.MouseDownCanMoveWindow)
 }
 
 func (v NSView) IsHiddenOrHasHiddenAncestor() bool {
@@ -1268,21 +1296,29 @@ func initNSWindowDelegate() {
 	NSWindowDelegateSel.WindowDidDeminiaturize = objc.RegisterName("windowDidDeminiaturize:")
 	NSWindowDelegateSel.WindowDidEnterFullScreen = objc.RegisterName("windowDidEnterFullScreen:")
 	NSWindowDelegateSel.WindowDidExitFullScreen = objc.RegisterName("windowDidExitFullScreen:")
+	NSWindowDelegateSel.WindowWillEnterFullScreen = objc.RegisterName("windowWillEnterFullScreen:")
+	NSWindowDelegateSel.WindowWillExitFullScreen = objc.RegisterName("windowWillExitFullScreen:")
+	NSWindowDelegateSel.WindowDidFailToEnterFullScreen = objc.RegisterName("windowDidFailToEnterFullScreen:")
+	NSWindowDelegateSel.WindowDidFailToExitFullScreen = objc.RegisterName("windowDidFailToExitFullScreen:")
 }
 
 var (
 	NSWindowDelegateClassId NSWindowDelegateClass
 	NSWindowDelegateSel     struct {
-		WindowShouldClose             objc.SEL
-		WindowDidResize               objc.SEL
-		WindowDidBecomeKey            objc.SEL
-		WindowDidResignKey            objc.SEL
-		WindowDidChangeOcclusionState objc.SEL
-		WindowShouldZoom              objc.SEL
-		WindowDidMiniaturize          objc.SEL
-		WindowDidDeminiaturize        objc.SEL
-		WindowDidEnterFullScreen      objc.SEL
-		WindowDidExitFullScreen       objc.SEL
+		WindowShouldClose              objc.SEL
+		WindowDidResize                objc.SEL
+		WindowDidBecomeKey             objc.SEL
+		WindowDidResignKey             objc.SEL
+		WindowDidChangeOcclusionState  objc.SEL
+		WindowShouldZoom               objc.SEL
+		WindowDidMiniaturize           objc.SEL
+		WindowDidDeminiaturize         objc.SEL
+		WindowDidEnterFullScreen       objc.SEL
+		WindowDidExitFullScreen        objc.SEL
+		WindowWillEnterFullScreen      objc.SEL
+		WindowWillExitFullScreen       objc.SEL
+		WindowDidFailToEnterFullScreen objc.SEL
+		WindowDidFailToExitFullScreen  objc.SEL
 	}
 )
 
@@ -1290,16 +1326,20 @@ type (
 	NSWindowDelegate         struct{ NSObject }
 	NSWindowDelegateClass    struct{ NSObjectClass }
 	NSWindowDelegateOverride struct {
-		WindowDidChangeOcclusionState func(self NSWindowDelegate, notification NSNotification)
-		WindowShouldClose             func(self NSWindowDelegate, sender NSWindow) bool
-		WindowDidResize               func(self NSWindowDelegate, notification NSNotification)
-		WindowDidBecomeKey            func(self NSWindowDelegate, notification NSNotification)
-		WindowDidResignKey            func(self NSWindowDelegate, notification NSNotification)
-		WindowShouldZoom              func(self NSWindowDelegate, sender NSWindow, frame NSRect) bool
-		WindowDidMiniaturize          func(self NSWindowDelegate, notification NSNotification)
-		WindowDidDeminiaturize        func(self NSWindowDelegate, notification NSNotification)
-		WindowDidEnterFullScreen      func(self NSWindowDelegate, notification NSNotification)
-		WindowDidExitFullScreen       func(self NSWindowDelegate, notification NSNotification)
+		WindowDidChangeOcclusionState  func(self NSWindowDelegate, notification NSNotification)
+		WindowShouldClose              func(self NSWindowDelegate, sender NSWindow) bool
+		WindowDidResize                func(self NSWindowDelegate, notification NSNotification)
+		WindowDidBecomeKey             func(self NSWindowDelegate, notification NSNotification)
+		WindowDidResignKey             func(self NSWindowDelegate, notification NSNotification)
+		WindowShouldZoom               func(self NSWindowDelegate, sender NSWindow, frame NSRect) bool
+		WindowDidMiniaturize           func(self NSWindowDelegate, notification NSNotification)
+		WindowDidDeminiaturize         func(self NSWindowDelegate, notification NSNotification)
+		WindowDidEnterFullScreen       func(self NSWindowDelegate, notification NSNotification)
+		WindowDidExitFullScreen        func(self NSWindowDelegate, notification NSNotification)
+		WindowWillEnterFullScreen      func(self NSWindowDelegate, notification NSNotification)
+		WindowWillExitFullScreen       func(self NSWindowDelegate, notification NSNotification)
+		WindowDidFailToEnterFullScreen func(self NSWindowDelegate, window NSWindow)
+		WindowDidFailToExitFullScreen  func(self NSWindowDelegate, window NSWindow)
 	}
 )
 
@@ -1391,6 +1431,38 @@ func ImplementNSWindowDelegate(className string, override NSWindowDelegateOverri
 			Cmd: NSWindowDelegateSel.WindowDidExitFullScreen,
 			Fn: func(self objc.ID, cmd objc.SEL, notification objc.ID) {
 				override.WindowDidExitFullScreen(Cast[NSWindowDelegate](self), Cast[NSNotification](notification))
+			},
+		})
+	}
+	if override.WindowWillEnterFullScreen != nil {
+		methods = append(methods, objc.MethodDef{
+			Cmd: NSWindowDelegateSel.WindowWillEnterFullScreen,
+			Fn: func(self objc.ID, cmd objc.SEL, notification objc.ID) {
+				override.WindowWillEnterFullScreen(Cast[NSWindowDelegate](self), Cast[NSNotification](notification))
+			},
+		})
+	}
+	if override.WindowWillExitFullScreen != nil {
+		methods = append(methods, objc.MethodDef{
+			Cmd: NSWindowDelegateSel.WindowWillExitFullScreen,
+			Fn: func(self objc.ID, cmd objc.SEL, notification objc.ID) {
+				override.WindowWillExitFullScreen(Cast[NSWindowDelegate](self), Cast[NSNotification](notification))
+			},
+		})
+	}
+	if override.WindowDidFailToEnterFullScreen != nil {
+		methods = append(methods, objc.MethodDef{
+			Cmd: NSWindowDelegateSel.WindowDidFailToEnterFullScreen,
+			Fn: func(self objc.ID, cmd objc.SEL, window objc.ID) {
+				override.WindowDidFailToEnterFullScreen(Cast[NSWindowDelegate](self), Cast[NSWindow](window))
+			},
+		})
+	}
+	if override.WindowDidFailToExitFullScreen != nil {
+		methods = append(methods, objc.MethodDef{
+			Cmd: NSWindowDelegateSel.WindowDidFailToExitFullScreen,
+			Fn: func(self objc.ID, cmd objc.SEL, window objc.ID) {
+				override.WindowDidFailToExitFullScreen(Cast[NSWindowDelegate](self), Cast[NSWindow](window))
 			},
 		})
 	}
