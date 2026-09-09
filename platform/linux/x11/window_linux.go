@@ -493,6 +493,13 @@ func (w *Window) ControlsRect() (geometry.Rectangle, error) {
 	return geometry.Rectangle{}, common.ErrUnsupported
 }
 
+func (w *Window) SetControlsPosition(*geometry.Point) error {
+	if w.wid == 0 {
+		return common.ErrUnavailable
+	}
+	return common.ErrUnsupported
+}
+
 // windowProperty32 reads a bounded ATOM/CARDINAL-style property, copying
 // native unsigned longs to protocol uint32s before freeing the Xlib buffer.
 // A missing property returns nil, nil. Malformed, truncated or failed queries
