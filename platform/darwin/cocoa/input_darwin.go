@@ -166,6 +166,8 @@ func (w *Window) updateTrackingArea() {
 		w.view.RemoveTrackingArea(w.trackingArea)
 		w.trackingArea = NSTrackingArea{}
 	}
+	// ActiveAlways preserves tracking in non-key popups and inactive windows;
+	// InVisibleRect limits its geometry, independently of activation state.
 	options := NSTrackingMouseEnteredAndExited |
 		NSTrackingMouseMoved |
 		NSTrackingActiveAlways |
