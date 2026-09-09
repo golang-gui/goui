@@ -45,11 +45,19 @@ func newNativeWindow(onEvent events.EventHandler, class NSWindowClass, styleMask
 		win.view = viewClass.Alloc().Init()
 
 		win.window = class.Alloc().InitWith(rect, styleMask, NSBackingStoreBuffered, false)
+		if styleMask&NSWindowStyleMaskFullSizeContentView != 0 {
+			// Keep the native frame and traffic lights. Only the title/background
+			// are removed; the ordinary content view paints underneath them.
+			win.window.SetTitleVisibility(NSWindowTitleHidden)
+			win.window.SetTitlebarAppearsTransparent(true)
+		}
 
 		win.window.SetContentView(win.view)
 		// Window creation takes GOUI logical units. Match its point size to the
 		// effective scale before publishing the initial backing dimensions.
-		if pointsPerLogicalUnit(win.window) != 1 {
+		if styleMask&NSWindowStyleMaskFullSizeContentView != 0 || pointsPerLogicalUnit(win.window) != 1 {
+			// Full-size content includes the titlebar area. Set the content view
+			// size explicitly; do not add a guessed titlebar height to the request.
 			win.window.SetContentSize(logicalContentSize(win.window, float32(rect.Size.Width), float32(rect.Size.Height)))
 		}
 		win.window.MakeFirstResponder(win.view.NSResponder)
@@ -69,9 +77,6 @@ func newWindow(size geometry.Size, onEvent events.EventHandler, options common.W
 	}
 	if err := options.Validate(); err != nil {
 		return nil, err
-	}
-	if options.Chrome == common.WindowChromeIntegrated {
-		return nil, fmt.Errorf("integrated window chrome: %w", common.ErrUnsupported)
 	}
 	styleMask := windowStyle(options)
 
@@ -428,6 +433,9 @@ func windowStyle(options common.WindowOptions) NSWindowStyleMask {
 	if options.Chrome != common.WindowChromeNone {
 		style |= NSWindowStyleMaskTitled
 	}
+	if options.Chrome == common.WindowChromeIntegrated {
+		style |= NSWindowStyleMaskFullSizeContentView
+	}
 	return style
 }
 
@@ -435,8 +443,15 @@ func (w *Window) Chrome() common.WindowChrome {
 	if !w.window.Valid() {
 		return common.WindowChromeUnknown
 	}
-	if w.window.StyleMask()&NSWindowStyleMaskTitled == 0 {
+	style := w.window.StyleMask()
+	if style&NSWindowStyleMaskTitled == 0 {
 		return common.WindowChromeNone
+	}
+	if style&NSWindowStyleMaskFullSizeContentView != 0 {
+		if w.window.TitleVisibility() == NSWindowTitleHidden && w.window.TitlebarAppearsTransparent() {
+			return common.WindowChromeIntegrated
+		}
+		return common.WindowChromeUnknown
 	}
 	return common.WindowChromeNative
 }

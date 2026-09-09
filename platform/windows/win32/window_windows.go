@@ -35,11 +35,13 @@ type Window struct {
 	noActivate        bool         // popups: decline activation/focus on click (WM_MOUSEACTIVATE)
 	im                *inputMethod // this window's IME (nil when none); WndProc routes WM_IME_* to it
 	cursor            *cursor      // this window's cursor (nil when none); WndProc consults it on WM_SETCURSOR
-	minW              float32      // min client width in logical (DIP) units; 0 = unbounded
-	minH              float32      // min client height in logical (DIP) units; 0 = unbounded
+	minW              float32      // minimum size hint in DIP; 0 = unbounded
+	minH              float32      // Native: client size; None/Integrated: outer size
 	hitTest           func(geometry.Point) common.WindowHit
 	hitTesting        bool
 	state             common.WindowState // last native notification, not request state
+	integrated        bool               // custom non-client calculation is installed, not a creation preference
+	frameExtended     bool               // last DWM frame-extension call succeeded
 }
 
 func newWindow(size geometry.Size, onEvent events.EventHandler, options common.WindowOptions) (w *Window, err error) {
@@ -50,25 +52,35 @@ func newWindow(size geometry.Size, onEvent events.EventHandler, options common.W
 		return nil, err
 	}
 	if options.Chrome == common.WindowChromeIntegrated {
-		return nil, fmt.Errorf("integrated window chrome: %w", common.ErrUnsupported)
+		var composed winapi.BOOL
+		if err := winapi.DwmIsCompositionEnabled(&composed); err != nil {
+			return nil, fmt.Errorf("query DWM composition: %w", err)
+		}
+		if composed == winapi.FALSE {
+			return nil, fmt.Errorf("integrated chrome requires DWM composition: %w", common.ErrUnsupported)
+		}
 	}
+	style := windowStyle(options)
 	win := &Window{
 		onEvent: onEvent,
 		scale:   1,
-		style:   windowStyle(options),
+		style:   winapi.WS_OVERLAPPEDWINDOW,
 		state:   common.WindowStateUnknown,
 	}
 
 	// No window exists yet to query per-monitor DPI, so estimate with the system
-	// DPI; WM_SIZE reports the authoritative client size afterwards. Convert the
-	// requested client size to an outer size using exactly the creation style.
+	// DPI; WM_SIZE reports the authoritative client size afterwards. Only Native
+	// chrome adds standard frame insets. Custom chrome takes the supplied extent
+	// directly, without a caption adjustment or a later corrective resize.
 	dpi := winapi.GetDpiForSystem()
 	scale := float32(dpi) / 96
 	if preferred := common.GetPreferScale(); preferred > 0 {
 		scale = preferred
 	}
-	rect := winapi.RECT{Right: winapi.LONG(size.Width * scale), Bottom: winapi.LONG(size.Height * scale)}
-	winapi.AdjustWindowRectExForDpi(&rect, win.style, 0, 0, dpi)
+	rect := windowSizeRect(size, scale, dpi, style)
+	// CW_USEDEFAULT only places overlapped windows. Obtain the system position
+	// before switching to WS_POPUP, as in ModernWindow; no visible caption is
+	// shown because all frame setup completes before Show.
 	win.hwnd, err = winapi.CreateWindowEx(0, platform.windowClass, platform.windowTitle, win.style,
 		winapi.CW_USEDEFAULT, winapi.CW_USEDEFAULT,
 		int(rect.Right-rect.Left), int(rect.Bottom-rect.Top),
@@ -77,6 +89,25 @@ func newWindow(size geometry.Size, onEvent events.EventHandler, options common.W
 
 	if err != nil {
 		return nil, err
+	}
+	if style != win.style {
+		if _, err := winapi.SetWindowLong(win.hwnd, winapi.GWL_STYLE, winapi.LONG(style)); err != nil {
+			win.Destroy()
+			return nil, fmt.Errorf("set window style: %w", err)
+		}
+		win.style = style
+		if options.Chrome == common.WindowChromeIntegrated {
+			if err := win.extendFrame(); err != nil {
+				win.Destroy()
+				return nil, fmt.Errorf("extend integrated frame: %w", err)
+			}
+			win.integrated = true
+		}
+		if err := winapi.SetWindowPos(win.hwnd, 0, 0, 0, 0, 0,
+			winapi.SWP_FRAMECHANGED|winapi.SWP_NOMOVE|winapi.SWP_NOSIZE|winapi.SWP_NOZORDER|winapi.SWP_NOACTIVATE); err != nil {
+			win.Destroy()
+			return nil, fmt.Errorf("install window frame: %w", err)
+		}
 	}
 
 	runtime.KeepAlive(win)
@@ -210,6 +241,23 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 	}
 
 	switch message {
+	case winapi.WM_NCCALCSIZE:
+		if window.integrated && wParam != 0 {
+			return window.calculateClient(wParam, lParam)
+		}
+	case winapi.WM_DWMCOMPOSITIONCHANGED:
+		if window.integrated {
+			// DWM requires the extension to be re-applied after composition
+			// changes. Failure makes Chrome unknown, not a fabricated success.
+			_ = window.extendFrame()
+		}
+	case winapi.WM_ACTIVATE:
+		if window.integrated {
+			window.repaintFrame()
+			if window.hwnd == 0 {
+				return 0
+			}
+		}
 	case winapi.WM_MOUSEACTIVATE:
 		if window.noActivate {
 			// Decline activation AND keyboard focus so a click inside a popup does
@@ -246,6 +294,12 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		winapi.WM_NCRBUTTONDOWN, winapi.WM_NCRBUTTONUP, winapi.WM_NCRBUTTONDBLCLK,
 		winapi.WM_NCMBUTTONDOWN, winapi.WM_NCMBUTTONUP, winapi.WM_NCMBUTTONDBLCLK,
 		winapi.WM_NCXBUTTONDOWN, winapi.WM_NCXBUTTONUP, winapi.WM_NCXBUTTONDBLCLK:
+		if window.integrated && message == winapi.WM_NCLBUTTONDOWN {
+			window.repaintFrame()
+			if window.hwnd == 0 {
+				return 0
+			}
+		}
 		if window.handleCaptionPointer(message, wParam, lParam) || window.hwnd == 0 {
 			if message == winapi.WM_NCXBUTTONDOWN || message == winapi.WM_NCXBUTTONUP || message == winapi.WM_NCXBUTTONDBLCLK {
 				return winapi.TRUE
@@ -302,6 +356,9 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 			PixelWidth:  pw,
 			PixelHeight: ph,
 		})
+		if window.hwnd == 0 {
+			return 0
+		}
 		// Dispatch the authoritative size before painting so Painter.Begin can
 		// resize the swap-chain buffers and render with matching dimensions.
 		winapi.InvalidateRect(hwnd, nil, winapi.FALSE)
@@ -347,27 +404,25 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		}
 
 	case winapi.WM_GETMINMAXINFO:
-		// ptMinTrackSize constrains the whole window (frame included), while our
-		// stored minimum is a client-area size like every other goui size.
-		// Convert with the frame geometry at the current DPI, queried right
-		// before each move/resize so DPI changes stay correct.
-		if window.minW > 0 || window.minH > 0 {
+		if window.integrated || window.minW > 0 || window.minH > 0 {
 			mmi := (*winapi.MINMAXINFO)(unsafe.Pointer(uintptr(lParam)))
-			scale := window.scaleFactor()
-			dpi, _ := winapi.GetDpiForWindow(hwnd)
-			if dpi == 0 {
-				dpi = winapi.GetDpiForSystem()
+			if window.integrated {
+				if monitor, err := window.monitorInfo(); err == nil {
+					setMaximizedBounds(mmi, monitor)
+				}
 			}
-			rect := winapi.RECT{
-				Right:  winapi.LONG(window.minW * scale),
-				Bottom: winapi.LONG(window.minH * scale),
-			}
-			winapi.AdjustWindowRectExForDpi(&rect, window.style, 0, 0, dpi)
-			if window.minW > 0 {
-				mmi.MinTrackSize.X = rect.Right - rect.Left
-			}
-			if window.minH > 0 {
-				mmi.MinTrackSize.Y = rect.Bottom - rect.Top
+			if window.minW > 0 || window.minH > 0 {
+				dpi, _ := winapi.GetDpiForWindow(hwnd)
+				if dpi == 0 {
+					dpi = winapi.GetDpiForSystem()
+				}
+				rect := windowSizeRect(geometry.Size{Width: window.minW, Height: window.minH}, window.scaleFactor(), dpi, window.style)
+				if window.minW > 0 {
+					mmi.MinTrackSize.X = rect.Right - rect.Left
+				}
+				if window.minH > 0 {
+					mmi.MinTrackSize.Y = rect.Bottom - rect.Top
+				}
 			}
 			return 0
 		}
@@ -427,10 +482,18 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		if wParam != winapi.VK_PROCESSKEY {
 			window.handleKey(events.KeyDown, wParam, lParam)
 		}
+		if window.integrated && window.hwnd != 0 && message == winapi.WM_SYSKEYDOWN {
+			// Integrated removes the visible caption, not User32's system
+			// commands (for example Alt+F4). Notify input before native handling.
+			return winapi.DefWindowProc(hwnd, message, wParam, lParam)
+		}
 		return 0
 
 	case winapi.WM_KEYUP, winapi.WM_SYSKEYUP:
 		window.handleKey(events.KeyUp, wParam, lParam)
+		if window.integrated && window.hwnd != 0 && message == winapi.WM_SYSKEYUP {
+			return winapi.DefWindowProc(hwnd, message, wParam, lParam)
+		}
 		return 0
 
 	case winapi.WM_IME_STARTCOMPOSITION:
@@ -504,10 +567,86 @@ func (w *Window) drawImage(img graphics.Bitmap) error {
 }
 
 func windowStyle(options common.WindowOptions) winapi.DWORD {
-	if options.Chrome == common.WindowChromeNone {
+	switch options.Chrome {
+	case common.WindowChromeIntegrated:
+		return winapi.WS_POPUP | winapi.WS_THICKFRAME | winapi.WS_MAXIMIZEBOX
+	case common.WindowChromeNone:
 		return winapi.WS_POPUP // managed top-level, not a no-activate tool popup
+	default:
+		return winapi.WS_OVERLAPPEDWINDOW
 	}
-	return winapi.WS_OVERLAPPEDWINDOW
+}
+
+func windowSizeRect(size geometry.Size, scale float32, dpi winapi.UINT, style winapi.DWORD) winapi.RECT {
+	rect := winapi.RECT{Right: winapi.LONG(size.Width * scale), Bottom: winapi.LONG(size.Height * scale)}
+	if style&winapi.WS_CAPTION != 0 {
+		// Only the unchanged Native mode uses the standard caption calculation.
+		winapi.AdjustWindowRectExForDpi(&rect, style, 0, 0, dpi)
+	}
+	return rect
+}
+
+// Integrated follows ModernWindow's WS_POPUP + DWM extension mechanism.
+// A maximized client is the work area, not the normal frame plus a top inset.
+func (w *Window) calculateClient(wParam winapi.WPARAM, lParam winapi.LPARAM) winapi.LRESULT {
+	client := &(*winapi.NCCALCSIZE_PARAMS)(unsafe.Pointer(uintptr(lParam))).Rects[0]
+	if winapi.IsZoomed(w.hwnd) != winapi.FALSE {
+		if monitor, err := w.monitorInfo(); err == nil {
+			*client = monitor.Work // screen coordinates, already in native pixels
+		}
+		// As in ModernWindow, keep the proposed rectangle if the monitor cannot
+		// be observed. Do not invent work-area bounds or apply normal borders.
+		return 0
+	}
+	outer := *client
+	result := winapi.DefWindowProc(w.hwnd, winapi.WM_NCCALCSIZE, wParam, lParam)
+	*client = integratedClientRect(outer, *client)
+	return result
+}
+
+// A physical non-client pixel keeps the native top border; it is not DIP
+// padding and must not grow with the application's logical scale override.
+const integratedTopBorder winapi.LONG = 1
+
+func integratedClientRect(outer, native winapi.RECT) winapi.RECT {
+	native.Top = min(outer.Top+integratedTopBorder, native.Bottom)
+	return native
+}
+
+func (w *Window) extendFrame() error {
+	// This is separate from the one-pixel non-client top border. DWM also
+	// extends one pixel into the client, retaining native border highlighting.
+	margins := winapi.MARGINS{CYTopHeight: 1}
+	err := winapi.DwmExtendFrameIntoClientArea(w.hwnd, &margins)
+	w.frameExtended = err == nil
+	return err
+}
+
+func (w *Window) repaintFrame() {
+	winapi.InvalidateRect(w.hwnd, nil, winapi.FALSE)
+	winapi.UpdateWindow(w.hwnd)
+}
+
+func (w *Window) monitorInfo() (winapi.MONITORINFO, error) {
+	info := winapi.MONITORINFO{Size: winapi.DWORD(unsafe.Sizeof(winapi.MONITORINFO{}))}
+	monitor := winapi.MonitorFromWindow(w.hwnd, winapi.MONITOR_DEFAULTTONEAREST)
+	if monitor == 0 {
+		return info, common.ErrUnavailable
+	}
+	if err := winapi.GetMonitorInfo(monitor, &info); err != nil {
+		return info, err
+	}
+	if info.Work.Right <= info.Work.Left || info.Work.Bottom <= info.Work.Top {
+		return info, common.ErrUnavailable
+	}
+	return info, nil
+}
+
+func setMaximizedBounds(mmi *winapi.MINMAXINFO, monitor winapi.MONITORINFO) {
+	// MINMAXINFO position is monitor-relative; NCCALCSIZE uses screen space.
+	// Preserve work-area offsets when a taskbar is at the left or top.
+	mmi.MaxPosition = winapi.POINT{X: monitor.Work.Left - monitor.Monitor.Left, Y: monitor.Work.Top - monitor.Monitor.Top}
+	mmi.MaxSize = winapi.POINT{X: monitor.Work.Right - monitor.Work.Left, Y: monitor.Work.Bottom - monitor.Work.Top}
 }
 
 func (w *Window) Chrome() common.WindowChrome {
@@ -518,6 +657,17 @@ func (w *Window) Chrome() common.WindowChrome {
 	if err != nil {
 		return common.WindowChromeUnknown
 	}
+	if w.integrated {
+		const frameStyle = winapi.WS_POPUP | winapi.WS_THICKFRAME
+		if !w.frameExtended || style&winapi.WS_CAPTION != 0 || winapi.DWORD(style)&frameStyle != frameStyle {
+			return common.WindowChromeUnknown
+		}
+		var composed winapi.BOOL
+		if err := winapi.DwmIsCompositionEnabled(&composed); err != nil || composed == winapi.FALSE {
+			return common.WindowChromeUnknown
+		}
+		return common.WindowChromeIntegrated
+	}
 	if style&winapi.WS_CAPTION == 0 {
 		return common.WindowChromeNone
 	}
@@ -527,6 +677,11 @@ func (w *Window) Chrome() common.WindowChrome {
 func (w *Window) ControlsRect() (geometry.Rectangle, error) {
 	if w.hwnd == 0 {
 		return geometry.Rectangle{}, common.ErrUnavailable
+	}
+	if w.integrated {
+		// The installed client calculation removes the native caption group.
+		// DWM's cached caption bounds are not visible controls in this mode.
+		return geometry.Rectangle{}, nil
 	}
 	style, err := winapi.GetWindowLong(w.hwnd, winapi.GWL_STYLE)
 	if err != nil {
@@ -643,11 +798,76 @@ func captionButtonHit(hit winapi.LRESULT) bool {
 }
 
 func (w *Window) defaultHitTest(lParam winapi.LPARAM) winapi.LRESULT {
+	if w.integrated {
+		return w.integratedHitTest(lParam)
+	}
 	var hit winapi.LRESULT
 	if handled, err := winapi.DwmDefWindowProc(w.hwnd, winapi.WM_NCHITTEST, 0, lParam, &hit); err == nil && handled != winapi.FALSE {
 		return hit
 	}
 	return winapi.DefWindowProc(w.hwnd, winapi.WM_NCHITTEST, 0, lParam)
+}
+
+func (w *Window) integratedHitTest(lParam winapi.LPARAM) winapi.LRESULT {
+	hit := winapi.DefWindowProc(w.hwnd, winapi.WM_NCHITTEST, 0, lParam)
+	// No system caption controls exist in this mode. In particular, do not
+	// reserve DwmDefWindowProc's old button positions over custom content.
+	if captionButtonHit(hit) || hit == winapi.HTSYSMENU || hit == winapi.HTCAPTION {
+		hit = winapi.HTCLIENT
+	}
+	if winapi.IsZoomed(w.hwnd) != winapi.FALSE {
+		return hit
+	}
+	var client winapi.RECT
+	if err := winapi.GetClientRect(w.hwnd, &client); err != nil {
+		return hit
+	}
+	dpi, err := winapi.GetDpiForWindow(w.hwnd)
+	if err != nil {
+		return hit
+	}
+	width, err := winapi.GetSystemMetricsForDpi(winapi.SM_CXSIZEFRAME, dpi)
+	if err != nil {
+		return hit
+	}
+	height, err := winapi.GetSystemMetricsForDpi(winapi.SM_CYSIZEFRAME, dpi)
+	if err != nil {
+		return hit
+	}
+	padding, err := winapi.GetSystemMetricsForDpi(winapi.SM_CXPADDEDBORDER, dpi)
+	if err != nil {
+		return hit
+	}
+	point := winapi.POINT{X: winapi.LONG(int16(lParam)), Y: winapi.LONG(int16(lParam >> 16))}
+	if winapi.ScreenToClient(w.hwnd, &point) == winapi.FALSE {
+		return hit
+	}
+	return integratedTopHit(point, client, winapi.LONG(width+padding), winapi.LONG(height+padding), hit)
+}
+
+func integratedTopHit(point winapi.POINT, client winapi.RECT, borderWidth, borderHeight winapi.LONG, native winapi.LRESULT) winapi.LRESULT {
+	// DefWindowProc can classify too much of the side as a top corner after
+	// the caption is removed. Keep ModernWindow's corner correction as well
+	// as its client-side top resize band, using native DPI metrics, not 8 DIP.
+	if native == winapi.HTTOPLEFT || native == winapi.HTTOPRIGHT {
+		if point.Y > client.Top+borderHeight {
+			if native == winapi.HTTOPLEFT {
+				return winapi.HTLEFT
+			}
+			return winapi.HTRIGHT
+		}
+		return native
+	}
+	if point.Y <= client.Top+borderHeight {
+		if point.X <= client.Left+borderWidth {
+			return winapi.HTTOPLEFT
+		}
+		if point.X >= client.Right-borderWidth {
+			return winapi.HTTOPRIGHT
+		}
+		return winapi.HTTOP
+	}
+	return native
 }
 
 func (w *Window) handleHitTest(lParam winapi.LPARAM) winapi.LRESULT {

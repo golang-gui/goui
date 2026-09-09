@@ -39,7 +39,9 @@ type DesktopWindow interface {
 
 	// SetMinSize sets the window-manager minimum size hint in logical (DIP)
 	// units. A value of (0, 0) clears the hint (no minimum). The hint is
-	// advisory: the window manager may ignore it.
+	// advisory: the window manager may ignore it. It follows the size convention
+	// used at creation: Win32 None/Integrated use outer size; Native Win32 and
+	// the other current desktop backends use client size.
 	SetMinSize(width, height float32)
 
 	// Chrome reports observable native decoration, or WindowChromeUnknown when
@@ -133,8 +135,16 @@ const (
 type WindowChrome uint8
 
 const (
+	// WindowChromeNative leaves decoration and caption controls to the system.
 	WindowChromeNative WindowChrome = iota
+	// WindowChromeIntegrated extends the drawable client into the titlebar
+	// while retaining native window edges and compositor treatment. Windows
+	// leaves caption content/buttons to the caller; macOS retains its native
+	// buttons, whose occupied area is reported by ControlsRect. This does not
+	// create GUI controls, guarantee a corner radius or enable transparency.
 	WindowChromeIntegrated
+	// WindowChromeNone requests no decoration. Transparent corners, compositor
+	// shadows and custom move/resize behavior are separate capabilities.
 	WindowChromeNone
 )
 
