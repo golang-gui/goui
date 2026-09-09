@@ -69,7 +69,10 @@ func newNativeWindow(onEvent events.EventHandler, class NSWindowClass, styleMask
 		}
 		win.window.MakeFirstResponder(win.view.NSResponder)
 		win.window.SetDelegate(win.delegate)
-		win.window.SetAcceptsMouseMovedEvents(true)
+		// NSTrackingMouseMoved delivers motion to the tracking-area owner.
+		// Leave acceptsMouseMovedEvents at its default (false): enabling the
+		// separate first-responder path duplicates in-view motion and can also
+		// deliver motion outside the view. Mouse-down/drag/up do not need it.
 		win.window.SetRestorable(false)
 	})
 	windowMap[win.window] = win
