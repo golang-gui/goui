@@ -22,7 +22,7 @@ type Application interface {
 	FileDialog() FileDialog
 	StyleSheet() style.StyleSheet
 	SetStyleSheet(style.StyleSheet)
-	NewWindow() (Window, error)
+	NewWindow(options *WindowOptions) (Window, error)
 	Run()
 	Quit()
 	// QuitOnLastWindowClosed reports whether the app quits when its last window
@@ -146,8 +146,15 @@ func (a *application) SetStyleSheet(sheet style.StyleSheet) {
 	}
 }
 
-func (a *application) NewWindow() (Window, error) {
-	win, err := newWindow(a)
+func (a *application) NewWindow(options *WindowOptions) (Window, error) {
+	opt := defaultWindowOptions
+	if options != nil {
+		opt = *options
+	}
+	if err := opt.Validate(); err != nil {
+		return nil, err
+	}
+	win, err := newWindow(a, opt.normalized())
 	if err != nil {
 		return nil, err
 	}

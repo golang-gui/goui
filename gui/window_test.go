@@ -1,11 +1,14 @@
 package gui
 
 import (
+	"errors"
 	"image"
+	"reflect"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
@@ -63,7 +66,7 @@ func TestWindowDispatchEventHandlesSize(t *testing.T) {
 func TestWindowDispatchEventHandlesFocus(t *testing.T) {
 	win := &window{}
 	var calls []bool
-	win.ConnectFocusChanged(func(focused bool) {
+	win.ConnectFocus(func(focused bool) {
 		calls = append(calls, focused)
 	})
 
@@ -347,3 +350,142 @@ func (p *testGraphicsPainter) DrawTextLayout(origin graphics.Point, layout typog
 
 func (p *testGraphicsPainter) DrawImage(rect graphics.Rectangle, img graphics.Image) {}
 func (p *testGraphicsPainter) SetTransform(matrix geometry.Transform)                {}
+
+type desktopTestWindow struct {
+	chromeTestWindow
+	chrome                                            platform.WindowChrome
+	state                                             WindowState
+	controls                                          geometry.Rectangle
+	nativeButtons                                     bool
+	queryError, commandError, hitError, positionError error
+	requests                                          []WindowState
+	minimums                                          []geometry.Size
+	hitTest                                           func(geometry.Point) platform.WindowHit
+	moveRequests                                      int
+	positions                                         []ChromeControls
+	onMove                                            func()
+}
+
+func (w *desktopTestWindow) Chrome() platform.WindowChrome { return w.chrome }
+func (w *desktopTestWindow) State() WindowState            { return w.state }
+func (w *desktopTestWindow) RequestState(state WindowState) error {
+	w.requests = append(w.requests, state)
+	return w.commandError
+}
+func (w *desktopTestWindow) ControlsRect() (geometry.Rectangle, error) {
+	return w.controls, w.queryError
+}
+func (w *desktopTestWindow) SetControlsPosition(p *geometry.Point) error {
+	if !w.nativeButtons {
+		return platform.ErrUnsupported
+	}
+	var v ChromeControls
+	if p != nil {
+		v = ChromeControls{Position: *p, HasPosition: true}
+	}
+	w.positions = append(w.positions, v)
+	if w.positionError != nil {
+		return w.positionError
+	}
+	if p != nil {
+		w.controls.Pos = *p
+	} else {
+		w.controls.Pos = geometry.Point{X: 12, Y: 8}
+	}
+	return nil
+}
+func (w *desktopTestWindow) SetMinSize(width, height float32) {
+	w.minimums = append(w.minimums, geometry.Size{Width: width, Height: height})
+}
+func (w *desktopTestWindow) SetHitTest(f func(geometry.Point) platform.WindowHit) error {
+	if w.hitError != nil {
+		return w.hitError
+	}
+	w.hitTest = f
+	return nil
+}
+func (w *desktopTestWindow) BeginMove() error {
+	w.moveRequests++
+	if w.onMove != nil {
+		w.onMove()
+	}
+	return w.commandError
+}
+func (w *desktopTestWindow) BeginResize(platform.WindowEdge) error { return platform.ErrUnsupported }
+
+var _ platform.DesktopWindow = (*desktopTestWindow)(nil)
+
+func TestDesktopRequestsDoNotPredictState(t *testing.T) {
+	native := &desktopTestWindow{state: WindowStateNormal}
+	win := &window{platformWindow: native}
+	defer win.Destroy()
+	var changes []WindowState
+	win.ConnectState(func(s WindowState) { changes = append(changes, s) })
+	targets := []WindowState{WindowStateMinimized, WindowStateHidden, WindowStateMaximized, WindowStateFullscreen, WindowStateNormal}
+	for _, state := range targets {
+		win.RequestState(state)
+		if win.State() != WindowStateNormal {
+			t.Fatal("request predicted observation")
+		}
+	}
+	if !reflect.DeepEqual(native.requests, targets) || len(changes) != 0 {
+		t.Fatal("request manufactured state event")
+	}
+	for _, err := range []error{platform.ErrUnsupported, platform.ErrUnavailable, errors.New("native failure")} {
+		native.commandError = err
+		win.RequestState(WindowStateMaximized)
+		if win.State() != WindowStateNormal || len(changes) != 0 {
+			t.Fatal("failed request changed observation")
+		}
+	}
+	native.state = WindowStateMaximized
+	_ = win.DispatchEvent(events.StateEvent{State: native.state})
+	if !reflect.DeepEqual(changes, []WindowState{WindowStateMaximized}) {
+		t.Fatal("lost actual state")
+	}
+	win.Destroy()
+	count := len(native.requests)
+	win.RequestState(WindowStateNormal)
+	if len(native.requests) != count || win.State() != WindowStateUnknown {
+		t.Fatal("dead window request")
+	}
+}
+
+func TestNonDesktopWindowNeedsNoDesktopImplementation(t *testing.T) {
+	win := &window{platformWindow: &chromeTestWindow{}}
+	defer win.Destroy()
+	if win.State() != WindowStateUnknown || win.Chrome() == nil {
+		t.Fatal("invalid non-desktop contract")
+	}
+	var info ChromeInfo
+	win.Chrome().ConnectInfo(func(v ChromeInfo) { info = v })
+	if info.Enabled {
+		t.Fatal("invented integration")
+	}
+	win.RequestState(WindowStateNormal)
+	win.SetMinSize(geometry.Size{Width: 100, Height: 50})
+	win.updateMinSize()
+}
+
+func TestAutomaticMinimumOnlyAppliesToDesktop(t *testing.T) {
+	size := geometry.Size{Width: 120, Height: 40}
+	child := &countingMeasureWidget{size: size}
+	win := &window{platformWindow: &chromeTestWindow{}, root: child}
+	win.updateMinSize()
+	if child.measures != 0 {
+		t.Fatal("non-desktop host measured desktop minimum")
+	}
+	if got := measureWidget(child, layout.Unbounded()).Size; got != size {
+		t.Fatal("widget minimum lost")
+	}
+	win.Destroy()
+	native := &desktopTestWindow{}
+	child = &countingMeasureWidget{size: size}
+	win = &window{platformWindow: native, root: child}
+	win.updateMinSize()
+	win.updateMinSize()
+	if child.measures != 1 || !reflect.DeepEqual(native.minimums, []geometry.Size{size}) {
+		t.Fatal("derived minimum changed")
+	}
+	win.Destroy()
+}
