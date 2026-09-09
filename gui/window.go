@@ -1,7 +1,9 @@
 package gui
 
 import (
+	"errors"
 	"fmt"
+	"log"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
@@ -10,6 +12,10 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 )
 
+// Window owns a native window and its Widget tree. Operations and callbacks run
+// on the GUI thread. Connections are controlled by their returned Handles.
+// Once destruction starts, Connect methods return inert Handles and ordinary
+// notifications skip callbacks that have not started; destroy callbacks still run.
 type Window interface {
 	Root
 
@@ -19,6 +25,14 @@ type Window interface {
 
 	Title() string
 	SetTitle(string) error
+	// Chrome returns the stable, non-nil titlebar integration signal service.
+	// Unsupported integration uses a service that reports disabled information.
+	Chrome() WindowChrome
+	// State reports one native presentation state, or Unknown. RequestState
+	// is best effort; it does not promise the requested result.
+	// Normal requests an ordinary window, not a historical Restore operation.
+	State() WindowState
+	RequestState(WindowState)
 
 	Focused() bool
 	FocusedWidget() Widget
@@ -39,14 +53,28 @@ type Window interface {
 	RequestClose() error
 	Destroy()
 
+	// SetMinSize supplies a desktop WM hint in DIP; it is a no-op for non-desktop
+	// hosts. It follows the native creation-size convention: Windows None and
+	// Integrated use outer size, while the other current desktop modes use client
+	// size. Widget layout constraints are independent of this advisory hint.
 	SetMinSize(geometry.Size)
 
 	Snapshot() WindowInfo
 	DispatchEvent(event events.Event) error
 
-	ConnectCloseRequest(func(*bool)) signal.Handle
+	// ConnectCloseRequest lets fn veto a close request by setting *allow to false.
+	// Each callback runs only while the window is alive.
+	ConnectCloseRequest(func(allow *bool)) signal.Handle
+	// ConnectDestroy runs once, after the window is marked destroyed and before
+	// its resources are released. Reentrant Destroy calls do not interrupt the
+	// notification; normal Handle blocking and disconnection still apply.
 	ConnectDestroy(func()) signal.Handle
-	ConnectFocusChanged(func(bool)) signal.Handle
+	// ConnectFocus receives focus changes while the window is alive.
+	ConnectFocus(func(focused bool)) signal.Handle
+	// ConnectState receives observed native transitions through
+	// DispatchEvent while the window is alive. No event is synthesized just
+	// because RequestState succeeds.
+	ConnectState(func(state WindowState)) signal.Handle
 }
 
 // ModalTarget is a modal element a window forwards its input to (see
@@ -58,6 +86,17 @@ type ModalTarget interface {
 	DispatchEvent(events.Event) error
 	RequestDismiss()
 }
+
+type WindowState = platform.WindowState
+
+const (
+	WindowStateUnknown    = platform.WindowStateUnknown
+	WindowStateNormal     = platform.WindowStateNormal
+	WindowStateHidden     = platform.WindowStateHidden
+	WindowStateMinimized  = platform.WindowStateMinimized
+	WindowStateMaximized  = platform.WindowStateMaximized
+	WindowStateFullscreen = platform.WindowStateFullscreen
+)
 
 type window struct {
 	rootBase
@@ -77,34 +116,38 @@ type window struct {
 	closeRequest   signal.Signal1[*bool]
 	destroy        signal.Signal0
 	focusChanged   signal.Signal1[bool]
+	stateChanged   signal.Signal1[WindowState]
 	minSize        geometry.Size // explicit minimum from SetMinSize; zero means derive from tree
 	minSizeApplied bool          // true once the first layout has derived and applied the min-size hint
+	chrome         *windowChrome
+	layingOut      bool
 }
 
-// defaultWindowWidth/Height is the preferred initial size (logical/DIP) passed
-// to the platform as a hint. TODO(layout): derive from the widget tree / let the
-// caller specify once the layout system threads sizing.
-const (
-	defaultWindowWidth  = 800
-	defaultWindowHeight = 600
-)
-
-func newWindow(app *application) (*window, error) {
+func newWindow(app *application, options WindowOptions) (*window, error) {
 	win := &window{
 		app:      app,
 		rootBase: rootBase{layoutDirty: true, paintDirty: true},
 	}
 
-	platformWindow, err := app.platform.NewWindow(defaultWindowWidth, defaultWindowHeight, win.onEvent)
+	mode := options.Chrome
+	platformWindow, err := app.platform.NewWindow(options.Size, win.onEvent, platform.WindowOptions{Chrome: platform.WindowChrome(mode)})
+	if mode == WindowChromeIntegrated && errors.Is(err, platform.ErrUnsupported) && platformWindow == nil {
+		mode = WindowChromeNative
+		platformWindow, err = app.platform.NewWindow(options.Size, win.onEvent, platform.WindowOptions{Chrome: platform.WindowChromeNative})
+	}
 	if err != nil {
 		return nil, fmt.Errorf("create platform window: %w", err)
 	}
 	win.platformWindow = platformWindow
+	win.Chrome()
+	if err := win.chrome.initialize(mode); err != nil {
+		win.Destroy()
+		return nil, fmt.Errorf("create window chrome: %w", err)
+	}
 
 	win.painter, err = app.platform.NewPainter(platformWindow)
 	if err != nil {
-		platformWindow.Destroy()
-		win.platformWindow = nil
+		win.Destroy()
 		return nil, fmt.Errorf("create painter: %w", err)
 	}
 
@@ -213,7 +256,11 @@ func (w *window) Show() error {
 	if w.platformWindow == nil {
 		return nil
 	}
-	return w.platformWindow.Show()
+	err := w.platformWindow.Show()
+	if w.chrome != nil {
+		w.chrome.nativeChanged()
+	}
+	return err
 }
 
 func (w *window) RequestPaint() error {
@@ -235,6 +282,9 @@ func (w *window) Destroy() {
 		return
 	}
 	w.destroyed = true
+	if w.chrome != nil {
+		w.chrome.destroy()
+	}
 	w.destroy.Emit()
 
 	if w.root != nil {
@@ -281,7 +331,11 @@ func (w *window) Snapshot() WindowInfo {
 }
 
 func (w *window) DispatchEvent(event events.Event) error {
-	if w.routeToModalTarget(event) {
+	if w.destroyed {
+		return nil
+	}
+	// Dismissing a modal target can destroy its owner without consuming the event.
+	if w.routeToModalTarget(event) || w.destroyed {
 		return nil
 	}
 	switch event := event.(type) {
@@ -297,9 +351,29 @@ func (w *window) DispatchEvent(event events.Event) error {
 		w.pixelWidth = event.PixelWidth
 		w.pixelHeight = event.PixelHeight
 		w.requestLayout()
+		if w.chrome != nil {
+			w.chrome.nativeChanged()
+		}
 	case events.FocusEvent:
+		if w.chrome != nil {
+			w.chrome.nativeChanged()
+		}
+		if w.destroyed {
+			return nil
+		}
 		w.setFocused(event.Focused)
+		if w.destroyed {
+			return nil
+		}
 		return w.dispatcher.DispatchEvent(w, event)
+	case events.StateEvent:
+		if w.chrome != nil {
+			w.chrome.nativeChanged()
+		}
+		if w.destroyed {
+			return nil
+		}
+		w.stateChanged.Emit(event.State)
 	case events.PaintEvent:
 		w.paint()
 	case events.PointerEvent:
@@ -317,21 +391,38 @@ func (w *window) DispatchEvent(event events.Event) error {
 }
 
 func (w *window) ConnectCloseRequest(fn func(*bool)) signal.Handle {
-	return w.closeRequest.Connect(fn)
+	if w.destroyed {
+		return signal.Handles(nil)
+	}
+	return w.closeRequest.Connect(func(allow *bool) {
+		if !w.destroyed {
+			fn(allow)
+		}
+	})
 }
 
 func (w *window) ConnectDestroy(fn func()) signal.Handle {
+	if w.destroyed {
+		return signal.Handles(nil)
+	}
 	return w.destroy.Connect(fn)
 }
 
-func (w *window) ConnectFocusChanged(fn func(bool)) signal.Handle {
-	return w.focusChanged.Connect(fn)
+func (w *window) ConnectFocus(fn func(bool)) signal.Handle {
+	if w.destroyed {
+		return signal.Handles(nil)
+	}
+	return w.focusChanged.Connect(func(focused bool) {
+		if !w.destroyed {
+			fn(focused)
+		}
+	})
 }
 
 func (w *window) SetMinSize(size geometry.Size) {
 	w.minSize = size
-	if w.platformWindow != nil {
-		w.platformWindow.SetMinSize(size.Width, size.Height)
+	if native, err := w.desktopWindow(); err == nil {
+		native.SetMinSize(size.Width, size.Height)
 	}
 }
 
@@ -348,12 +439,13 @@ func (w *window) updateMinSize() {
 	if w.minSize.Width > 0 || w.minSize.Height > 0 {
 		return
 	}
-	if w.root == nil || w.platformWindow == nil {
+	native, err := w.desktopWindow()
+	if w.root == nil || err != nil {
 		return
 	}
 	pref := measureWidget(w.root, layout.Unbounded()).Size
 	if pref.Width > 0 || pref.Height > 0 {
-		w.platformWindow.SetMinSize(pref.Width, pref.Height)
+		native.SetMinSize(pref.Width, pref.Height)
 	}
 }
 
@@ -400,8 +492,26 @@ func (w *window) routeToModalTarget(event events.Event) bool {
 
 func (w *window) paint() {
 	w.root = liveRoot(w.root)
+	w.paintDirty = false
+	if w.chrome != nil {
+		w.chrome.refresh()
+	}
+	if w.destroyed {
+		return
+	}
 	w.updateMinSize()
-	w.paintFrame(w.root)
+	func() {
+		w.layingOut = true
+		defer func() { w.layingOut = false }()
+		w.layoutFrame(w.root)
+	}()
+	if w.chrome != nil {
+		w.chrome.afterLayout()
+	}
+	if w.destroyed {
+		return
+	}
+	w.drawFrame(w.root)
 }
 
 // PlatformWindow is the escape hatch to the underlying platform window.
@@ -538,4 +648,45 @@ func visibleInTree(widget Widget) bool {
 		widget = widget.Parent()
 	}
 	return true
+}
+
+func (w *window) desktopWindow() (platform.DesktopWindow, error) {
+	if w.destroyed || w.platformWindow == nil {
+		return nil, platform.ErrUnavailable
+	}
+	native, ok := w.platformWindow.(platform.DesktopWindow)
+	if !ok {
+		return nil, platform.ErrUnsupported
+	}
+	return native, nil
+}
+
+func (w *window) State() WindowState {
+	native, err := w.desktopWindow()
+	if err != nil {
+		return WindowStateUnknown
+	}
+	return native.State()
+}
+
+// RequestState is best effort. Only actual native events change observations.
+func (w *window) RequestState(state WindowState) {
+	native, err := w.desktopWindow()
+	if err != nil {
+		return
+	}
+	if err := native.RequestState(state); err != nil && !errors.Is(err, platform.ErrUnsupported) && !errors.Is(err, platform.ErrUnavailable) {
+		log.Printf("goui: request window state: %v", err)
+	}
+}
+
+func (w *window) ConnectState(fn func(WindowState)) signal.Handle {
+	if w.destroyed {
+		return signal.Handles(nil)
+	}
+	return w.stateChanged.Connect(func(state WindowState) {
+		if !w.destroyed {
+			fn(state)
+		}
+	})
 }

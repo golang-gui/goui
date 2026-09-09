@@ -199,7 +199,7 @@ func (a *testApplication) QuitOnLastWindowClosed() bool { return true }
 
 func (a *testApplication) SetQuitOnLastWindowClosed(bool) {}
 
-func (a *testApplication) NewWindow() (gui.Window, error) {
+func (a *testApplication) NewWindow(options *gui.WindowOptions) (gui.Window, error) {
 	return nil, nil
 }
 

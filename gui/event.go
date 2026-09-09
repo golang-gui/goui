@@ -149,9 +149,12 @@ func (c *crossingContext) Position() (geometry.Point, bool) {
 }
 
 type EventDispatcher struct {
-	hoverPath     []Widget
-	focusPath     []Widget
-	captureTarget Widget // during a drag, PointerMove/Up route here, bypassing hit test
+	// Optional window-owned controller, dispatched before Widget controllers.
+	// Popovers do not install one.
+	hostController EventController
+	hoverPath      []Widget
+	focusPath      []Widget
+	captureTarget  Widget // during a drag, PointerMove/Up route here, bypassing hit test
 }
 
 // EventTarget is a widget-tree host the dispatcher propagates events into — a
@@ -204,6 +207,15 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 	ctx := &eventContext{
 		event:  event,
 		target: target,
+	}
+	if d.hostController != nil {
+		d.hostController.HandleEvent(ctx)
+		if ctx.PropagationStopped() {
+			return nil
+		}
+		if liveRoot(root) == nil || host.Widget() != root {
+			return nil
+		}
 	}
 
 	d.dispatchPhase(ctx, path, PhaseCapture, event)

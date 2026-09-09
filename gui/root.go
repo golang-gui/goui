@@ -83,14 +83,29 @@ func (b *rootBase) paintFrame(content Widget) {
 	}
 
 	b.paintDirty = false
+	b.layoutFrame(content)
+	b.drawFrame(content)
+}
 
+// layoutFrame is shared by windows and popovers. Windows synchronize Chrome
+// after this returns and before drawFrame; no second layout runs that frame.
+func (b *rootBase) layoutFrame(content Widget) {
+	if content == nil {
+		return
+	}
 	size := geometry.Size{Width: b.width, Height: b.height}
 	if b.layoutDirty {
 		b.layoutDirty = false
 		measureWidget(content, layout.Tight(size)) // hosts are extrinsic: content fills them
 		content.Arrange(geometry.Rect(0, 0, size.Width, size.Height))
 	}
+}
 
+func (b *rootBase) drawFrame(content Widget) {
+	if b.painter == nil || content == nil {
+		return
+	}
+	size := geometry.Size{Width: b.width, Height: b.height}
 	// Begin takes the physical (backing) pixel size; scale = physical / logical.
 	pixelWidth, pixelHeight := b.pixelWidth, b.pixelHeight
 	scale := float32(1)
