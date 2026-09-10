@@ -481,7 +481,7 @@ func (a *testApplication) Settings() gui.Settings {
 	return nil
 }
 
-func (a *testApplication) NewWindow() (gui.Window, error) {
+func (a *testApplication) NewWindow(*gui.WindowOptions) (gui.Window, error) {
 	return nil, nil
 }
 
@@ -529,6 +529,28 @@ type testWindow struct {
 	closeRequest  signal.Signal1[*bool]
 	destroy       signal.Signal0
 	focusChanged  signal.Signal1[bool]
+}
+
+func (w *testWindow) Chrome() gui.WindowChrome {
+	return testChrome{}
+}
+func (w *testWindow) State() gui.WindowState       { return gui.WindowStateUnknown }
+func (w *testWindow) RequestState(gui.WindowState) {}
+
+type testChrome struct{}
+
+func (testChrome) ConnectInfo(fn func(gui.ChromeInfo)) signal.Handle {
+	fn(gui.ChromeInfo{})
+	return signal.Handles(nil)
+}
+func (testChrome) ConnectQueryRegion(func(geometry.Point, *gui.ChromeRegion)) signal.Handle {
+	return signal.Handles(nil)
+}
+func (testChrome) ConnectQueryControls(func(*gui.ChromeControls)) signal.Handle {
+	return signal.Handles(nil)
+}
+func (w *testWindow) ConnectState(func(gui.WindowState)) signal.Handle {
+	return signal.Handles(nil)
 }
 
 func newTestWindow() *testWindow {
@@ -627,6 +649,6 @@ func (w *testWindow) ConnectDestroy(fn func()) signal.Handle {
 	return w.destroy.Connect(fn)
 }
 
-func (w *testWindow) ConnectFocusChanged(fn func(bool)) signal.Handle {
+func (w *testWindow) ConnectFocus(fn func(bool)) signal.Handle {
 	return w.focusChanged.Connect(fn)
 }

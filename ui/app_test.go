@@ -309,6 +309,7 @@ func TestAppHandleRunsThroughRuntime(t *testing.T) {
 }
 
 type windowTestApplication struct {
+	options []gui.WindowOptions
 	posts   []func()
 	windows []*testWindow
 	sheets  []style.StyleSheet
@@ -347,7 +348,15 @@ func (a *windowTestApplication) FileDialog() gui.FileDialog {
 	return &windowTestFileDialog{}
 }
 
-func (a *windowTestApplication) NewWindow() (gui.Window, error) {
+func (a *windowTestApplication) NewWindow(request *gui.WindowOptions) (gui.Window, error) {
+	var options gui.WindowOptions
+	if request != nil {
+		options = *request
+	}
+	if err := options.Validate(); err != nil {
+		return nil, err
+	}
+	a.options = append(a.options, options)
 	win := newTestWindow()
 	a.windows = append(a.windows, win)
 	return win, nil
