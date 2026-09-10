@@ -22,20 +22,35 @@ func (w *Window) handlePointerMove(wParam winapi.WPARAM, lParam winapi.LPARAM) {
 	position := w.logicalPoint(clientPoint(lParam))
 	buttons := pointerButtons(wParam)
 	modifiers := pointerModifiers(wParam)
+	w.cancelMouseLeave(true)
 	if !w.trackingMouse {
-		w.trackMouseLeave()
+		w.trackMouseLeave(false)
 		w.emitPointer(events.PointerEnter, events.PointerButtonNone, position, buttons, modifiers)
 	}
 	w.emitPointer(events.PointerMove, events.PointerButtonNone, position, buttons, modifiers)
 }
 
 func (w *Window) handlePointerLeave() {
-	w.trackingMouse = false
 	position := geometry.Point{
 		X: w.lastPointerX,
 		Y: w.lastPointerY,
 	}
 	w.emitPointer(events.PointerLeave, events.PointerButtonNone, position, w.lastButtons, w.lastModifiers)
+}
+
+// Client and non-client tracking describe two native input paths, not two GUI
+// surfaces. A leave queued by the old path must not clear the new path's hover
+// or pressed state after capture or a client/non-client transition.
+func (w *Window) handleTrackedPointerLeave(nonClient bool) {
+	tracking := &w.trackingMouse
+	if nonClient {
+		tracking = &w.trackingNonClient
+	}
+	if !*tracking {
+		return
+	}
+	*tracking = false
+	w.handlePointerLeave()
 }
 
 func (w *Window) handlePointerButton(eventType events.EventType, button events.PointerButton, wParam winapi.WPARAM, lParam winapi.LPARAM) {
@@ -44,7 +59,6 @@ func (w *Window) handlePointerButton(eventType events.EventType, button events.P
 	} else if eventType == events.PointerUp {
 		if pointerButtons(wParam) == 0 {
 			winapi.ReleaseCapture()
-			w.trackingMouse = false
 		}
 	}
 	w.emitPointer(eventType, button, w.logicalPoint(clientPoint(lParam)), pointerButtons(wParam), pointerModifiers(wParam))
@@ -110,15 +124,38 @@ func (w *Window) emitPointer(eventType events.EventType, button events.PointerBu
 	})
 }
 
-func (w *Window) trackMouseLeave() {
+func (w *Window) trackMouseLeave(nonClient bool) {
 	event := winapi.TRACKMOUSEEVENT{
 		Size:  winapi.DWORD(unsafe.Sizeof(winapi.TRACKMOUSEEVENT{})),
 		Flags: winapi.TME_LEAVE,
 		Track: w.hwnd,
 	}
-	if winapi.TrackMouseEvent(&event) != winapi.FALSE {
-		w.trackingMouse = true
+	tracking := &w.trackingMouse
+	if nonClient {
+		event.Flags |= winapi.TME_NONCLIENT
+		tracking = &w.trackingNonClient
 	}
+	if winapi.TrackMouseEvent(&event) != winapi.FALSE {
+		*tracking = true
+	}
+}
+
+func (w *Window) cancelMouseLeave(nonClient bool) {
+	tracking := &w.trackingMouse
+	flags := winapi.DWORD(winapi.TME_CANCEL | winapi.TME_LEAVE)
+	if nonClient {
+		tracking = &w.trackingNonClient
+		flags |= winapi.TME_NONCLIENT
+	}
+	if !*tracking {
+		return
+	}
+	*tracking = false // Also invalidate a leave notification already queued.
+	event := winapi.TRACKMOUSEEVENT{
+		Size:  winapi.DWORD(unsafe.Sizeof(winapi.TRACKMOUSEEVENT{})),
+		Flags: flags, Track: w.hwnd,
+	}
+	winapi.TrackMouseEvent(&event)
 }
 
 func clientPoint(lParam winapi.LPARAM) geometry.Point {

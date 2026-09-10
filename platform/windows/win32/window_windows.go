@@ -308,10 +308,7 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		}
 
 	case winapi.WM_NCMOUSELEAVE:
-		if window.trackingNonClient {
-			window.trackingNonClient = false
-			window.handlePointerLeave()
-		}
+		window.handleTrackedPointerLeave(true)
 		if window.hwnd == 0 {
 			return 0
 		}
@@ -432,7 +429,7 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		return 0
 
 	case winapi.WM_MOUSELEAVE:
-		window.handlePointerLeave()
+		window.handleTrackedPointerLeave(false)
 		return 0
 
 	case winapi.WM_LBUTTONDOWN:
@@ -907,7 +904,7 @@ func (w *Window) handleCaptionPointer(message winapi.UINT, wParam winapi.WPARAM,
 		// Crossing from a custom button to another non-client role does not
 		// produce WM_NCMOUSELEAVE: the pointer is still inside non-client space.
 		if message == winapi.WM_NCMOUSEMOVE && w.trackingNonClient {
-			w.trackingNonClient = false
+			w.cancelMouseLeave(true)
 			w.handlePointerLeave()
 		}
 		return false
@@ -915,12 +912,9 @@ func (w *Window) handleCaptionPointer(message winapi.UINT, wParam winapi.WPARAM,
 	position := w.logicalPoint(screenPointToClient(w.hwnd, lParam))
 	buttons, modifiers := nativePointerState()
 	if message == winapi.WM_NCMOUSEMOVE {
+		w.cancelMouseLeave(false)
 		if !w.trackingNonClient {
-			track := winapi.TRACKMOUSEEVENT{
-				Size:  winapi.DWORD(unsafe.Sizeof(winapi.TRACKMOUSEEVENT{})),
-				Flags: winapi.TME_LEAVE | winapi.TME_NONCLIENT, Track: w.hwnd,
-			}
-			w.trackingNonClient = winapi.TrackMouseEvent(&track) != 0
+			w.trackMouseLeave(true)
 			w.emitPointer(events.PointerEnter, events.PointerButtonNone, position, buttons, modifiers)
 		}
 		if w.hwnd != 0 {
@@ -966,6 +960,7 @@ func (w *Window) handleCaptionPointer(message winapi.UINT, wParam winapi.WPARAM,
 	}
 	if typ == events.PointerDown {
 		buttons |= flag
+		w.cancelMouseLeave(true)
 		winapi.SetCapture(w.hwnd) // subsequent move/up arrives in client coordinates
 	} else {
 		buttons &^= flag
