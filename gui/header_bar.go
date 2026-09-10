@@ -62,7 +62,8 @@ func (h *HeaderBar) SetPadding(padding float32) {
 }
 
 // ConnectDragRegion queries in HeaderBar-local DIP. Background defaults to
-// true, descendants to false. Later callbacks may override earlier answers.
+// true (including padding), descendants to false. Later callbacks may override
+// earlier answers. Native window resize edges are resolved by the platform.
 // Queries are read-only and synchronous; never retain drag or dispatch input.
 func (h *HeaderBar) ConnectDragRegion(fn func(geometry.Point, *bool)) signal.Handle {
 	return h.dragRegion.Connect(fn)
@@ -219,7 +220,9 @@ func (h *HeaderBar) queryRegion(p geometry.Point, result *ChromeRegion) {
 		return
 	}
 	local := widgetLocalPoint(h, p)
-	if !containsPoint(geometry.Rect(0, 0, h.rect.Width, h.rect.Height).Inset(h.padding), local) {
+	// Padding separates content from the background, not input from dragging.
+	// Only the platform knows the actual native resize borders and their DPI.
+	if !containsPoint(geometry.Rect(0, 0, h.rect.Width, h.rect.Height), local) {
 		return
 	}
 	drag := target == h
