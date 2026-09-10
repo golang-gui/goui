@@ -150,6 +150,50 @@ func TestWindowControlsHoverAndCaptureAcrossTrees(t *testing.T) {
 	}
 }
 
+func TestWindowControlsPressMoveAndCancel(t *testing.T) {
+	for i, name := range []string{"minimize", "maximize", "close"} {
+		t.Run(name, func(t *testing.T) {
+			win, _ := chromeFixture(t, false, true)
+			win.ConnectCloseRequest(func(allow *bool) { *allow = false })
+			button := win.controls.buttons[i]
+			clicks := 0
+			button.ConnectClicked(func() { clicks++ })
+			point := button.windowRect().Center()
+			moved := geometry.Point{X: point.X + 3, Y: point.Y + 2}
+			send := func(kind events.EventType, p geometry.Point, buttons events.PointerButtons) {
+				t.Helper()
+				if err := win.DispatchEvent(events.PointerEvent{
+					EventType: kind, Position: p, Button: events.PointerButtonLeft, Buttons: buttons,
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			send(events.PointerMove, point, 0)
+			send(events.PointerDown, point, events.PointerButtonLeftDown)
+			// Capture switches the native input path, which may emit Enter before Move.
+			send(events.PointerEnter, moved, events.PointerButtonLeftDown)
+			send(events.PointerMove, moved, events.PointerButtonLeftDown)
+			if !button.pressed || !button.click.pressed || clicks != 0 {
+				t.Fatal("moving within the button lost the press or clicked early")
+			}
+			send(events.PointerUp, moved, 0)
+			if button.pressed || clicks != 1 {
+				t.Fatal("release did not click exactly once")
+			}
+			send(events.PointerDown, point, events.PointerButtonLeftDown)
+			outside := geometry.Point{X: 20, Y: 200}
+			send(events.PointerMove, outside, events.PointerButtonLeftDown)
+			if button.pressed || button.click.pressed {
+				t.Fatal("leaving the button did not cancel the press")
+			}
+			send(events.PointerUp, outside, 0)
+			if clicks != 1 {
+				t.Fatal("release outside the button activated it")
+			}
+		})
+	}
+}
+
 func TestControlsFollowHeaderAllocation(t *testing.T) {
 	for _, nativeButtons := range []bool{false, true} {
 		win, native := chromeFixture(t, nativeButtons, !nativeButtons)
