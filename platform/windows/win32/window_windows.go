@@ -772,6 +772,13 @@ func nativeWindowHit(hit common.WindowHit, fallback winapi.LRESULT) winapi.LRESU
 	case common.WindowHitSysMenu:
 		return winapi.HTSYSMENU
 	case common.WindowHitCaption:
+		// Drag backgrounds may extend to the client edge. Preserve the real
+		// resize band rather than making GUI padding stand in for DPI metrics.
+		switch fallback {
+		case winapi.HTLEFT, winapi.HTRIGHT, winapi.HTTOP, winapi.HTBOTTOM,
+			winapi.HTTOPLEFT, winapi.HTTOPRIGHT, winapi.HTBOTTOMLEFT, winapi.HTBOTTOMRIGHT:
+			return fallback
+		}
 		return winapi.HTCAPTION
 	case common.WindowHitMinimize:
 		return winapi.HTMINBUTTON
