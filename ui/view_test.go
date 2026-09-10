@@ -19,6 +19,7 @@ func TestViewConstructorsWireSelf(t *testing.T) {
 		{"Button", func() View { return Button("x").Name("btn") }},
 		{"Label", func() View { return Label("x").Name("lbl") }},
 		{"HBox", func() View { return HBox().Name("hbox") }},
+		{"HeaderBar", func() View { return HeaderBar(nil).Name("header") }},
 		{"VBox", func() View { return VBox().Name("vbox") }},
 		{"TextInput", func() View { return TextInput().Name("input") }},
 		{"Image", func() View { return Image(nil).Name("img") }},
