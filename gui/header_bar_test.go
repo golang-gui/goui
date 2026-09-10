@@ -60,8 +60,8 @@ func TestHeaderBarCustomContentAndOverlay(t *testing.T) {
 	if got := native.hitTest(button.windowRect().Center()); got != platform.WindowHitClient {
 		t.Fatalf("application button became drag region: %v", got)
 	}
-	if got := native.hitTest(geometry.Point{X: 1, Y: 1}); got != platform.WindowHitDefault {
-		t.Fatal("header padding overrode native resize edge")
+	if got := native.hitTest(geometry.Point{X: 1, Y: 1}); got != platform.WindowHitCaption {
+		t.Fatal("header padding did not request dragging")
 	}
 	overlay := newTestWidget()
 	root.WidgetBase.AddChild(root, overlay)
@@ -70,6 +70,47 @@ func TestHeaderBarCustomContentAndOverlay(t *testing.T) {
 	overlay.Arrange(geometry.Rect(0, 0, 640, 48))
 	if got := native.hitTest(geometry.Point{X: 100, Y: 20}); got != platform.WindowHitDefault {
 		t.Fatal("standard header hit through covering Widget")
+	}
+}
+
+func TestHeaderBarPaddingParticipatesInDragQuery(t *testing.T) {
+	win, native := chromeFixture(t, false, true)
+	root := NewLinearBox(layout.DirectionVertical)
+	header := NewHeaderBar()
+	header.SetPadding(16)
+	header.SetMinSize(geometry.Size{Height: 64})
+	button := NewButton()
+	button.SetMinSize(geometry.Size{Height: 24})
+	header.SetChild(button)
+	root.AddChild(header)
+	root.AddChild(newSizedWidget(geometry.Size{Width: 100, Height: 40}))
+	win.SetWidget(root)
+	win.paint()
+	// All four padding strips, without claiming the custom controls at right.
+	for _, point := range []geometry.Point{{X: 100, Y: 4}, {X: 100, Y: 60}, {X: 4, Y: 32}} {
+		if got := native.hitTest(point); got != platform.WindowHitCaption {
+			t.Fatalf("padding %v hit=%v, want Caption", point, got)
+		}
+	}
+	if got := native.hitTest(button.windowRect().Center()); got != platform.WindowHitClient {
+		t.Fatal("interactive content became draggable")
+	}
+	if got := native.hitTest(geometry.Point{X: 100, Y: 65}); got == platform.WindowHitCaption {
+		t.Fatal("drag region escaped header allocation")
+	}
+	queried := false
+	handle := header.ConnectDragRegion(func(local geometry.Point, drag *bool) {
+		queried = local == (geometry.Point{X: 100, Y: 60})
+		*drag = false
+	})
+	if native.hitTest(geometry.Point{X: 100, Y: 60}) != platform.WindowHitClient || !queried {
+		t.Fatal("padding bypassed the application's drag-region override")
+	}
+	handle.Disconnect()
+	// With no window-controls reservation, the right padding is background too.
+	header.Arrange(geometry.Rect(20, 100, 200, 64))
+	if got := win.chrome.queryRegion(geometry.Point{X: 216, Y: 132}); got != ChromeRegionDrag {
+		t.Fatalf("translated right padding hit=%v, want Drag", got)
 	}
 }
 
