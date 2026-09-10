@@ -9,6 +9,110 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 )
 
+func TestHeaderBarAutomaticDragControllerPolicy(t *testing.T) {
+	tests := []struct {
+		name       string
+		controller func() EventController
+		want       platform.WindowHit
+	}{
+		{"none", func() EventController { return nil }, platform.WindowHitCaption},
+		{"motion", func() EventController { return NewMotionEventController() }, platform.WindowHitCaption},
+		{"key", func() EventController { return NewKeyEventController() }, platform.WindowHitCaption},
+		{"click", func() EventController { return NewClickEventController() }, platform.WindowHitClient},
+		{"drag", func() EventController { return NewDragEventController() }, platform.WindowHitClient},
+		{"wheel", func() EventController { return NewWheelEventController() }, platform.WindowHitClient},
+		{"custom", func() EventController { return &EventControllerBase{} }, platform.WindowHitClient},
+	}
+	for _, test := range tests {
+		for _, location := range []string{"target", "ancestor", "header"} {
+			t.Run(test.name+"/"+location, func(t *testing.T) {
+				win, native := chromeFixture(t, false, true)
+				header := NewHeaderBar()
+				row := NewLinearBox(layout.DirectionHorizontal)
+				label := NewLabel("Title")
+				label.SetMinSize(geometry.Size{Width: 80, Height: 24})
+				row.AddChild(label)
+				button := NewButton() // unrelated interactive sibling
+				row.AddChild(button)
+				header.SetChild(row)
+				var owner Widget = label
+				if location == "ancestor" {
+					owner = row
+				}
+				if location == "header" {
+					owner = header
+				}
+				controller := test.controller()
+				owner.AddEventController(controller)
+				win.SetWidget(header)
+				win.paint()
+				// This fixture has no typography context. Give the label a real
+				// hit area without depending on font measurement.
+				label.Arrange(geometry.Rect(0, 0, 80, 24))
+				button.Arrange(geometry.Rect(100, 0, 80, 24))
+				point := label.windowRect().Center()
+				if hitTest(header, point) != label {
+					t.Fatal("fixture did not hit label")
+				}
+				if got := native.hitTest(point); got != test.want {
+					t.Fatalf("hit=%v, want %v; label=%v row=%v target=%T default=%v", got, test.want, label.Rect(), row.Rect(), hitTest(header, point), header.defaultDragRegion(label))
+				}
+				owner.RemoveEventController(controller)
+				if native.hitTest(point) != platform.WindowHitCaption {
+					t.Fatal("controller removal was not reflected immediately")
+				}
+				owner.SetFocusable(true)
+				if native.hitTest(point) != platform.WindowHitClient {
+					t.Fatal("focusable path node became draggable")
+				}
+				owner.SetFocusable(false)
+				if native.hitTest(point) != platform.WindowHitCaption {
+					t.Fatal("focusability removal was not reflected immediately")
+				}
+			})
+		}
+	}
+}
+
+func TestHeaderBarButtonContentDoesNotDrag(t *testing.T) {
+	win, native := chromeFixture(t, false, true)
+	header := NewHeaderBar()
+	button := NewButton()
+	button.SetFocusable(false)
+	label := NewLabel("Save")
+	button.SetChild(label)
+	header.SetChild(button)
+	win.SetWidget(header)
+	win.paint()
+	label.Arrange(geometry.Rect(0, 0, 40, 20)) // fixture has no typography
+	if hitTest(header, label.windowRect().Center()) != label {
+		t.Fatal("fixture did not hit button label")
+	}
+	if got := native.hitTest(label.windowRect().Center()); got != platform.WindowHitClient {
+		t.Fatalf("label bypassed non-focusable button: %v", got)
+	}
+}
+
+func BenchmarkHeaderBarDefaultDragRegion(b *testing.B) {
+	header := NewHeaderBar()
+	row := NewLinearBox(layout.DirectionHorizontal)
+	header.SetChild(row)
+	for range 8 {
+		child := NewLinearBox(layout.DirectionHorizontal)
+		row.AddChild(child)
+		row = child
+	}
+	label := NewLabel("Title")
+	row.AddChild(label)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if !header.defaultDragRegion(label) {
+			b.Fatal("passive path rejected")
+		}
+	}
+}
+
 func TestSplitHeaderBarsAndOrderedOverride(t *testing.T) {
 	win, native := chromeFixture(t, false, true)
 	row := NewLinearBox(layout.DirectionHorizontal)
@@ -167,10 +271,6 @@ func setHeaderTitle(header *HeaderBar, text string) {
 	title.SetMainWeight(1)
 	content.AddChild(title)
 	header.SetChild(content)
-	header.ConnectDragRegion(func(point geometry.Point, drag *bool) {
-		picked := Pick(header, point)
-		*drag = picked == header || picked == content || picked == title
-	})
 }
 
 func TestHeaderBarAutomaticControlsAvoidance(t *testing.T) {
@@ -241,6 +341,7 @@ func TestHeaderBarSingleChildAndDragQuery(t *testing.T) {
 	}
 	child := newTestWidget()
 	child.SetMinSize(geometry.Size{Height: 24})
+	child.AddEventController(&EventControllerBase{}) // unknown controller: explicit opt-in
 	header.SetChild(child)
 	win.SetWidget(header)
 	win.paint()

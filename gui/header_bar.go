@@ -61,9 +61,11 @@ func (h *HeaderBar) SetPadding(padding float32) {
 	}
 }
 
-// ConnectDragRegion queries in HeaderBar-local DIP. Background defaults to
-// true (including padding), descendants to false. Later callbacks may override
-// earlier answers. Native window resize edges are resolved by the platform.
+// ConnectDragRegion queries in HeaderBar-local DIP after conservative automatic
+// classification. The hit path through this HeaderBar must have no focusable
+// widgets and only Motion/Key controllers (or none) to default to dragging.
+// Other controllers, including custom ones, default to client input. Later
+// callbacks may override either result. Native resize edges remain platform-owned.
 // Queries are read-only and synchronous; never retain drag or dispatch input.
 func (h *HeaderBar) ConnectDragRegion(fn func(geometry.Point, *bool)) signal.Handle {
 	return h.dragRegion.Connect(fn)
@@ -225,13 +227,37 @@ func (h *HeaderBar) queryRegion(p geometry.Point, result *ChromeRegion) {
 	if !containsPoint(geometry.Rect(0, 0, h.rect.Width, h.rect.Height), local) {
 		return
 	}
-	drag := target == h
+	drag := h.defaultDragRegion(target)
 	h.dragRegion.Emit(local, &drag)
 	if drag {
 		*result = ChromeRegionDrag
 	} else {
 		*result = ChromeRegionClient
 	}
+}
+
+// Inspect only the live hit path, including the HeaderBar itself. This is a
+// local policy, not a prediction that a controller will consume an event.
+// In particular, a passive label inside a button must not bypass its parent.
+func (h *HeaderBar) defaultDragRegion(target Widget) bool {
+	for widget := target; widget != nil; widget = widget.Parent() {
+		if widget.Focusable() {
+			return false
+		}
+		for _, controller := range widget.base().controllers {
+			switch controller.(type) {
+			case nil, *MotionEventController, *KeyEventController:
+				// Known observation/keyboard controllers do not block dragging.
+			default:
+				// Click, Drag, Wheel and unknown controllers keep client input.
+				return false
+			}
+		}
+		if widget == h {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *HeaderBar) liveChild() Widget {
