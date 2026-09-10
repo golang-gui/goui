@@ -242,38 +242,42 @@ func TestChromeNativeInfoAndLayout(t *testing.T) {
 	if len(observations) != 1 || observations[0].Controls != ChromeControlsNative {
 		t.Fatal("missing initial native info")
 	}
-	position := geometry.Point{} // valid origin, not an absent adapter
-	binding := service.ConnectQueryControls(func(r *ChromeControls) { *r = ChromeControls{Position: position, HasPosition: true} })
+	height := float32(14) // intrinsic height: zero Y is a valid centered origin
+	position := geometry.Point{X: 12}
+	binding := service.ConnectQueryControls(func(r *ChromeControls) { r.Height = height })
 	win.paint()
 	win.paint()
 	if len(native.positions) != 1 || !native.positions[0].HasPosition {
 		t.Fatalf("duplicate/lost origin request: %v", native.positions)
 	}
-	if len(observations) != 2 || observations[1].NativeBounds.Pos != position {
+	if len(observations) != 2 || observations[1].ControlsBounds.Pos != position {
 		t.Fatal("actual position was not observed")
 	}
-	position = geometry.Point{X: 24, Y: 18}
+	position = geometry.Point{X: 12, Y: 18}
+	height = 50
 	native.positionError = platform.ErrUnavailable
 	win.paint()
 	win.paint()
-	if len(native.positions) != 2 || win.chrome.info.NativeBounds.Pos == position {
+	if len(native.positions) != 2 || win.chrome.info.ControlsBounds.Pos == position {
 		t.Fatal("failure fabricated geometry or retried on every paint")
 	}
 	native.positionError = nil
 	win.chrome.nativeChanged()
 	win.paint()
-	if len(native.positions) != 3 || win.chrome.info.NativeBounds.Pos != position {
+	if len(native.positions) != 3 || win.chrome.info.ControlsBounds.Pos != position {
 		t.Fatal("native change did not permit retry")
 	}
 	binding.Disconnect()
 	win.paint()
 	if last := native.positions[len(native.positions)-1]; last.HasPosition {
-		t.Fatal("absent adapter did not restore default")
+		t.Fatal("disconnect did not restore default native placement")
 	}
+	observed := win.chrome.info
+	count := len(observations)
 	native.queryError = platform.ErrUnavailable
 	win.chrome.refresh()
-	if win.chrome.info.NativeBoundsAvailable || win.chrome.info.Controls != ChromeControlsNative {
-		t.Fatal("unavailable became custom/absent buttons")
+	if win.chrome.info != observed || len(observations) != count {
+		t.Fatal("temporary native failure changed the public observation")
 	}
 }
 
@@ -299,16 +303,43 @@ func TestChromeNotificationDestroySkipsLaterCallbacks(t *testing.T) {
 	}
 }
 
+func TestChromeInvalidHeightAndNativeSizeChanges(t *testing.T) {
+	for _, nativeButtons := range []bool{false, true} {
+		win, native := chromeFixture(t, nativeButtons, !nativeButtons)
+		height := float32(80)
+		win.Chrome().ConnectQueryControls(func(result *ChromeControls) { result.Height = height })
+		win.paint()
+		valid := chromeInfo(win.Chrome())
+		count := len(native.positions)
+		for _, invalid := range []float32{-1, float32(math.NaN()), float32(math.Inf(1))} {
+			height = invalid
+			win.paint()
+			if chromeInfo(win.Chrome()) != valid || len(native.positions) != count {
+				t.Fatal("invalid height changed geometry or reached native positioning")
+			}
+		}
+		height = 80
+		if nativeButtons {
+			native.controls.Height = 20
+			win.chrome.nativeChanged()
+			win.paint()
+			if native.controls.Y != 30 {
+				t.Fatal("native size change was not re-centered")
+			}
+		}
+	}
+}
+
 func TestChromeLayoutSignalOrderAndDestruction(t *testing.T) {
 	win, native := chromeFixture(t, true, false)
 	win.Chrome().ConnectQueryControls(func(r *ChromeControls) {
-		*r = ChromeControls{HasPosition: true, Position: geometry.Point{X: 16, Y: 18}}
+		r.Height = 50
 	})
 	last := win.Chrome().ConnectQueryControls(func(r *ChromeControls) {
-		r.Position = geometry.Point{X: 32, Y: 20}
+		r.Height = 54
 	})
 	win.paint()
-	if native.controls.Pos != (geometry.Point{X: 32, Y: 20}) {
+	if native.controls.Pos != (geometry.Point{X: 12, Y: 20}) {
 		t.Fatal("layout signals were not last-writer-wins")
 	}
 	last.Disconnect()
@@ -383,6 +414,7 @@ func TestDisabledChromeIsInert(t *testing.T) {
 		service.ConnectQueryControls(func(*ChromeControls) { called = true }),
 	}
 	win.chrome.queryRegion(geometry.Point{})
+	win.chrome.beforeLayout()
 	win.chrome.afterLayout()
 	connections.Disconnect()
 	if called {

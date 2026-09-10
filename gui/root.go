@@ -87,10 +87,11 @@ func (b *rootBase) paintFrame(content Widget) {
 	b.drawFrame(content)
 }
 
-// layoutFrame is shared by windows and popovers. Windows synchronize Chrome
-// after this returns and before drawFrame; no second layout runs that frame.
+// layoutFrame is shared by windows and popovers. Windows seed controls bounds
+// first, query the row height afterwards, and may apply one reservation pass.
 func (b *rootBase) layoutFrame(content Widget) {
 	if content == nil {
+		b.layoutDirty = false
 		return
 	}
 	size := geometry.Size{Width: b.width, Height: b.height}
@@ -101,8 +102,8 @@ func (b *rootBase) layoutFrame(content Widget) {
 	}
 }
 
-func (b *rootBase) drawFrame(content Widget) {
-	if b.painter == nil || content == nil {
+func (b *rootBase) drawFrame(content Widget, decorations ...Widget) {
+	if b.painter == nil {
 		return
 	}
 	size := geometry.Size{Width: b.width, Height: b.height}
@@ -120,4 +121,7 @@ func (b *rootBase) drawFrame(content Widget) {
 	b.painter.Clear(graphics.RGB(255, 255, 255))
 	guiPainter := newPainter(b.painter, geometry.Rect(0, 0, size.Width, size.Height))
 	paintWidget(content, guiPainter)
+	for _, decoration := range decorations {
+		paintWidget(decoration, guiPainter)
+	}
 }

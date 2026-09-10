@@ -120,6 +120,7 @@ type window struct {
 	minSize        geometry.Size // explicit minimum from SetMinSize; zero means derive from tree
 	minSizeApplied bool          // true once the first layout has derived and applied the min-size hint
 	chrome         *windowChrome
+	controls       *windowControls
 	layingOut      bool
 }
 
@@ -143,6 +144,10 @@ func newWindow(app *application, options WindowOptions) (*window, error) {
 	if err := win.chrome.initialize(mode); err != nil {
 		win.Destroy()
 		return nil, fmt.Errorf("create window chrome: %w", err)
+	}
+	if win.chrome.info.Enabled {
+		win.controls = newWindowControls(win)
+		win.dispatcher.decoration = win.controls
 	}
 
 	win.painter, err = app.platform.NewPainter(platformWindow)
@@ -287,6 +292,12 @@ func (w *window) Destroy() {
 	}
 	w.destroy.Emit()
 
+	w.dispatcher.decoration = nil
+	if w.controls != nil {
+		w.controls.release()
+		w.controls = nil
+	}
+
 	if w.root != nil {
 		root := w.root
 		root.base().detachRoot(root)
@@ -326,6 +337,10 @@ func (w *window) Snapshot() WindowInfo {
 	}
 	if w.root != nil {
 		info.Widget = w.root.Snapshot()
+	}
+	if w.controls != nil && w.controls.Visible() {
+		controls := w.controls.Snapshot()
+		info.Controls = &controls
 	}
 	return info
 }
@@ -494,24 +509,33 @@ func (w *window) paint() {
 	w.root = liveRoot(w.root)
 	w.paintDirty = false
 	if w.chrome != nil {
-		w.chrome.refresh()
+		w.chrome.beforeLayout()
 	}
 	if w.destroyed {
 		return
 	}
 	w.updateMinSize()
-	func() {
-		w.layingOut = true
-		defer func() { w.layingOut = false }()
-		w.layoutFrame(w.root)
-	}()
-	if w.chrome != nil {
-		w.chrome.afterLayout()
+	w.layoutContent()
+	if w.chrome != nil && w.chrome.afterLayout() && !w.destroyed {
+		// Notifications only invalidate. Apply changed reservations once in
+		// this frame, without asking for height again or running a fixed point.
+		w.layoutContent()
 	}
 	if w.destroyed {
 		return
 	}
-	w.drawFrame(w.root)
+	var controls Widget
+	if w.controls != nil {
+		w.controls.layout()
+		controls = w.controls
+	}
+	w.drawFrame(w.root, controls)
+}
+
+func (w *window) layoutContent() {
+	w.layingOut = true
+	defer func() { w.layingOut = false }()
+	w.layoutFrame(w.root)
 }
 
 // PlatformWindow is the escape hatch to the underlying platform window.
