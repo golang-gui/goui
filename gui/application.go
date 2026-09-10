@@ -142,6 +142,9 @@ func (a *application) SetStyleSheet(sheet style.StyleSheet) {
 	a.style = sheet
 	for _, win := range a.windows {
 		invalidateMeasureSubtree(win.Widget())
+		if win.controls != nil {
+			invalidateMeasureSubtree(win.controls)
+		}
 		win.requestLayout()
 	}
 }

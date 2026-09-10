@@ -351,6 +351,11 @@ func (p *testGraphicsPainter) DrawTextLayout(origin graphics.Point, layout typog
 func (p *testGraphicsPainter) DrawImage(rect graphics.Rectangle, img graphics.Image) {}
 func (p *testGraphicsPainter) SetTransform(matrix geometry.Transform)                {}
 
+type recordedControlsPosition struct {
+	Position    geometry.Point
+	HasPosition bool
+}
+
 type desktopTestWindow struct {
 	chromeTestWindow
 	chrome                                            platform.WindowChrome
@@ -362,7 +367,7 @@ type desktopTestWindow struct {
 	minimums                                          []geometry.Size
 	hitTest                                           func(geometry.Point) platform.WindowHit
 	moveRequests                                      int
-	positions                                         []ChromeControls
+	positions                                         []recordedControlsPosition
 	onMove                                            func()
 }
 
@@ -379,9 +384,9 @@ func (w *desktopTestWindow) SetControlsPosition(p *geometry.Point) error {
 	if !w.nativeButtons {
 		return platform.ErrUnsupported
 	}
-	var v ChromeControls
+	var v recordedControlsPosition
 	if p != nil {
-		v = ChromeControls{Position: *p, HasPosition: true}
+		v = recordedControlsPosition{Position: *p, HasPosition: true}
 	}
 	w.positions = append(w.positions, v)
 	if w.positionError != nil {

@@ -83,25 +83,26 @@ const (
 
 // ChromeInfo is a value snapshot. Mode is the selected GUI policy. Enabled
 // means integrated collaboration, not visibility of a titlebar in fullscreen.
-// NativeBounds is the observed button union in client DIP; consult
-// NativeBoundsAvailable before using it. An unavailable query is not absence.
+// ControlsBounds is the occupied button union in client DIP for either
+// presentation. A temporary native query failure preserves the last reported
+// bounds without an extra notification. Disabled integration has no bounds.
 type ChromeInfo struct {
-	Mode                  WindowChromeMode
-	Enabled               bool
-	Controls              ChromeControlsMode
-	NativeBounds          geometry.Rectangle
-	NativeBoundsAvailable bool
+	Mode           WindowChromeMode
+	Enabled        bool
+	Controls       ChromeControlsMode
+	ControlsBounds geometry.Rectangle
 }
 
-// ChromeControls is the preferred native button-group origin in client
-// DIP. HasPosition distinguishes no adapter/layout from a real (0,0) request.
+// ChromeControls asks for the height of the available top row in DIP.
+// Chrome centers the intrinsic group in this height.
+// Zero means no row: native positioning resets, custom controls use their own
+// height. Negative/non-finite answers are ignored.
 type ChromeControls struct {
-	Position    geometry.Point
-	HasPosition bool
+	Height float32
 }
 
-// WindowChrome is a window-owned signal service, not a Widget. It never owns
-// HeaderBar/WindowControls objects or an independent Widget hit-test protocol.
+// WindowChrome is a window-owned signal service, not a Widget. Window owns
+// its controls; Chrome coordinates them and HeaderBars through signals.
 // All methods and callbacks run on the GUI thread.
 type WindowChrome interface {
 	// ConnectInfo connects, then synchronously supplies current info once.
@@ -113,8 +114,8 @@ type WindowChrome interface {
 	// Read completed layout only: do not mutate, dispatch, destroy, or retain
 	// the result pointer. No early-out or hidden subscriber priority exists.
 	ConnectQueryRegion(func(point geometry.Point, region *ChromeRegion)) signal.Handle
-	// ConnectQueryControls is emitted after layout for native controls.
-	// At most one WindowControls should supply a native group per window.
+	// ConnectQueryControls runs once after content layout to query the height
+	// of the top row. HeaderBars answer from their completed allocations.
 	// The same synchronous, ordered, borrowed-result rules apply.
 	ConnectQueryControls(func(*ChromeControls)) signal.Handle
 }
@@ -126,17 +127,19 @@ type chromeSignals struct {
 }
 
 type windowChrome struct {
-	window         *window
-	native         platform.DesktopWindow
-	info           ChromeInfo
-	signals        *chromeSignals
-	closed         bool
-	nativeHit      bool
-	querying       bool
-	syncing        bool
-	placementDirty bool
-	lastLayout     ChromeControls
-	positioned     bool
+	window          *window
+	native          platform.DesktopWindow
+	info            ChromeInfo
+	signals         *chromeSignals
+	closed          bool
+	nativeHit       bool
+	querying        bool
+	syncing         bool
+	placementDirty  bool
+	controlsHeight  float32         // last valid query answer, not a window property
+	lastPosition    *geometry.Point // last native request, including failures
+	nativeAvailable bool
+	positioned      bool
 }
 
 func (w *window) Chrome() WindowChrome {
@@ -228,13 +231,21 @@ func (c *windowChrome) refresh() {
 	}
 	next := c.info
 	r, err := c.native.ControlsRect()
-	next.NativeBoundsAvailable = err == nil
-	if err == nil {
-		next.NativeBounds = r
+	available := err == nil
+	if available && !c.nativeAvailable {
+		c.placementDirty = true
 	}
-	if next != c.info {
-		c.info = next
-		c.signals.changed.Emit(next)
+	c.nativeAvailable = available
+	if err == nil {
+		next.ControlsBounds = r
+	}
+	c.publish(next.ControlsBounds)
+}
+
+func (c *windowChrome) publish(bounds geometry.Rectangle) {
+	if bounds != c.info.ControlsBounds {
+		c.info.ControlsBounds = bounds
+		c.signals.changed.Emit(c.info)
 	}
 }
 
@@ -265,7 +276,7 @@ func (c *windowChrome) queryRegion(p geometry.Point) ChromeRegion {
 }
 
 func (c *windowChrome) nativeRegion(p geometry.Point) platform.WindowHit {
-	if !c.live() || c.window.layoutDirty || c.window.layingOut {
+	if !c.live() || c.syncing || c.window.layoutDirty || c.window.layingOut {
 		return platform.WindowHitDefault
 	}
 	switch c.queryRegion(p) {
@@ -284,40 +295,74 @@ func (c *windowChrome) nativeRegion(p geometry.Point) platform.WindowHit {
 	}
 }
 
-// afterLayout is the only source of native placement queries. Native queries
-// and Widget Paint/Arrange never mutate AppKit. No recursive layout is run.
-func (c *windowChrome) afterLayout() {
-	if !c.live() || c.info.Controls != ChromeControlsNative || c.syncing {
+// beforeLayout seeds the horizontal reservation before HeaderBars are
+// arranged. The height query itself must wait for their actual allocations.
+func (c *windowChrome) beforeLayout() {
+	if !c.live() || !c.info.Enabled || c.syncing {
 		return
 	}
 	c.syncing = true
 	defer func() { c.syncing = false }()
+	c.refresh()
+	if c.live() && c.info.Controls == ChromeControlsCustom {
+		c.placeCustom()
+	}
+}
+
+// afterLayout returns whether the newly resolved region changed. Window may
+// then perform one bounded reservation pass, never a recursive height query.
+func (c *windowChrome) afterLayout() bool {
+	if !c.live() || !c.info.Enabled || c.syncing {
+		return false
+	}
+	c.syncing = true
+	defer func() { c.syncing = false }()
+	before := c.info.ControlsBounds
 	var result ChromeControls
 	c.signals.layout.Emit(&result)
-	if !c.live() {
-		return
+	if !c.live() || result.Height < 0 || math.IsNaN(float64(result.Height)) || math.IsInf(float64(result.Height), 0) {
+		return false
 	}
-	if !c.placementDirty && result == c.lastLayout {
-		return
-	}
-	c.placementDirty = false
-	c.lastLayout = result
-	var err error
-	if result.HasPosition {
-		err = c.native.SetControlsPosition(&result.Position)
-		if err == nil {
-			c.positioned = true
+	c.controlsHeight = result.Height
+	if c.info.Controls == ChromeControlsCustom {
+		c.placeCustom()
+	} else if c.nativeAvailable {
+		var position *geometry.Point
+		size := c.info.ControlsBounds.Size
+		if result.Height > 0 && size.Width > 0 && size.Height > 0 {
+			position = &geometry.Point{X: 12, Y: max(0, (result.Height-size.Height)/2)}
 		}
-	} else if c.positioned {
-		err = c.native.SetControlsPosition(nil)
-		if err == nil {
-			c.positioned = false
+		same := position == nil && c.lastPosition == nil ||
+			position != nil && c.lastPosition != nil && *position == *c.lastPosition
+		if c.placementDirty || !same {
+			c.placementDirty = false
+			c.lastPosition = position
+			if position != nil || c.positioned {
+				err := c.native.SetControlsPosition(position)
+				if err == nil {
+					c.positioned = position != nil
+				} else if !errors.Is(err, platform.ErrUnavailable) && !errors.Is(err, platform.ErrUnsupported) {
+					log.Printf("goui: native controls placement: %v", err)
+				}
+				if !c.live() {
+					return false
+				}
+				c.refresh()
+			}
 		}
 	}
-	if err != nil && !errors.Is(err, platform.ErrUnavailable) && !errors.Is(err, platform.ErrUnsupported) {
-		log.Printf("goui: native controls placement: %v", err)
+	return c.live() && c.info.ControlsBounds != before
+}
+
+func (c *windowChrome) placeCustom() {
+	bounds := geometry.Rectangle{}
+	if c.window.State() != WindowStateFullscreen {
+		width := captionButtonWidth * 3
+		bounds = geometry.Rect(max(0, c.window.width-width),
+			max(0, (min(c.controlsHeight, c.window.height)-captionButtonHeight)/2), width, captionButtonHeight).
+			Intersect(geometry.Rect(0, 0, c.window.width, c.window.height))
 	}
-	c.refresh()
+	c.publish(bounds)
 }
 
 func (c *windowChrome) destroy() {
@@ -349,7 +394,7 @@ func (controller *chromeMoveController) HandleEvent(ctx EventContext) {
 	if !ok || event.EventType != events.PointerDown || event.Button != events.PointerButtonLeft {
 		return
 	}
-	if c.window.layoutDirty || c.window.layingOut {
+	if c.syncing || c.window.layoutDirty || c.window.layingOut {
 		return
 	}
 	if c.queryRegion(event.Position) != ChromeRegionDrag || !c.live() {

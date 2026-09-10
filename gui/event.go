@@ -149,6 +149,9 @@ func (c *crossingContext) Position() (geometry.Point, bool) {
 }
 
 type EventDispatcher struct {
+	// Optional window-owned decoration tree, above the application content.
+	// Both trees use this dispatcher's hover, focus, capture and controllers.
+	decoration Widget
 	// Optional window-owned controller, dispatched before Widget controllers.
 	// Popovers do not install one.
 	hostController EventController
@@ -172,12 +175,12 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 	}
 
 	root := host.Widget()
-	if root == nil {
+	if root == nil && d.decoration == nil {
 		return nil
 	}
 
 	if _, ok := event.(events.FocusEvent); ok {
-		d.updateFocus(root, host.FocusedWidget())
+		d.updateFocus(d.treeRoot(root, host.FocusedWidget()), host.FocusedWidget())
 		return nil
 	}
 
@@ -199,6 +202,7 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 		return nil
 	}
 
+	root = d.treeRoot(root, target)
 	path := widgetPath(root, target)
 	if len(path) == 0 {
 		return nil
@@ -213,7 +217,7 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 		if ctx.PropagationStopped() {
 			return nil
 		}
-		if liveRoot(root) == nil || host.Widget() != root {
+		if liveRoot(root) == nil || (host.Widget() != root && d.decoration != root) {
 			return nil
 		}
 	}
@@ -279,13 +283,13 @@ func (d *EventDispatcher) target(host EventTarget, root Widget, event events.Eve
 
 	switch event := event.(type) {
 	case events.PointerEvent:
-		target := hitTest(root, event.Position)
+		target := d.pick(root, event.Position)
 		if event.EventType == events.PointerDown {
 			focusNearest(host, target)
 		}
 		return target
 	case events.WheelEvent:
-		return hitTest(root, event.Position)
+		return d.pick(root, event.Position)
 	case events.KeyEvent:
 		if focused := host.FocusedWidget(); focused != nil {
 			return focused
@@ -330,8 +334,8 @@ func (d *EventDispatcher) dispatchPhase(ctx *eventContext, widgets []Widget, pha
 }
 
 func (d *EventDispatcher) updateHover(root Widget, event events.PointerEvent) {
-	target := hitTest(root, event.Position)
-	path := widgetPath(root, target)
+	target := d.pick(root, event.Position)
+	path := widgetPath(d.treeRoot(root, target), target)
 	d.updatePointerHoverPath(path, event)
 }
 
@@ -402,18 +406,42 @@ func (d *EventDispatcher) notifyCrossing(widget Widget, crossingType CrossingTyp
 }
 
 func hitTest(widget Widget, point geometry.Point) Widget {
-	if widget == nil || !widget.Visible() || !containsPoint(widget.Rect(), point) {
+	if widget == nil {
 		return nil
 	}
+	return Pick(widget, subtractPoint(point, widget.Rect().Pos))
+}
 
-	localPoint := subtractPoint(point, widget.Rect().Pos)
+// Pick returns the deepest visible Widget at point in widget-local DIP, or
+// nil. It uses the same bounds clipping and child order as event delivery.
+// It searches only this subtree, not covering siblings or window decorations,
+// and causes no input, hover or focus changes.
+func Pick(widget Widget, point geometry.Point) Widget {
+	if widget == nil || widget.base().destroyed || !widget.Visible() ||
+		!containsPoint(geometry.Rect(0, 0, widget.Rect().Width, widget.Rect().Height), point) {
+		return nil
+	}
 	children := widget.Children()
 	for i := len(children) - 1; i >= 0; i-- {
-		if target := hitTest(children[i], localPoint); target != nil {
+		if target := hitTest(children[i], point); target != nil {
 			return target
 		}
 	}
 	return widget
+}
+
+func (d *EventDispatcher) pick(content Widget, point geometry.Point) Widget {
+	if target := hitTest(d.decoration, point); target != nil {
+		return target
+	}
+	return hitTest(content, point)
+}
+
+func (d *EventDispatcher) treeRoot(content, target Widget) Widget {
+	if target != nil && d.decoration != nil && target.base().isDescendant(target, d.decoration) {
+		return d.decoration
+	}
+	return content
 }
 
 func widgetPath(root, target Widget) []Widget {

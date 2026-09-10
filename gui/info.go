@@ -11,6 +11,9 @@ type WindowInfo struct {
 	Title  string             `json:"title"`
 	Bounds geometry.Rectangle `json:"bounds"`
 	Widget WidgetInfo         `json:"widget"`
+	// Controls is the window-owned custom decoration tree, not an application
+	// child. Native buttons keep their OS semantics and are not duplicated.
+	Controls *WidgetInfo `json:"controls,omitempty"`
 }
 
 type WidgetInfo struct {
