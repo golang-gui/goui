@@ -3,6 +3,7 @@ package ui
 import (
 	"github.com/golang-gui/goui/core/bits"
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/style"
 )
 
@@ -43,6 +44,7 @@ func (r RootNode) Windows(windows ...WindowView) RootNode {
 
 // WindowView describes one top-level window.
 type WindowView struct {
+	options        gui.WindowOptions
 	id             string
 	title          string
 	content        View
@@ -52,6 +54,16 @@ type WindowView struct {
 	minHeight      float32 // window minimum size hint (logical DIP); merged over an unbounded base on apply
 	fields         bits.Bitmap[uint64]
 }
+
+type (
+	WindowChromeMode = gui.WindowChromeMode
+)
+
+const (
+	WindowChromeNative     = gui.WindowChromeNative
+	WindowChromeIntegrated = gui.WindowChromeIntegrated
+	WindowChromeNone       = gui.WindowChromeNone
+)
 
 // Window creates a top-level window view with a stable identity.
 func Window(id string) WindowView {
@@ -63,14 +75,27 @@ func Window(id string) WindowView {
 
 func (w WindowView) rootView() {}
 
-// ID returns the stable identity used by the window reconciler.
-func (w WindowView) ID() string {
-	return w.id
-}
-
 // Title sets the native window title.
 func (w WindowView) Title(title string) WindowView {
 	w.title = title
+	return w
+}
+
+// Size sets the preferred initial window size in DIP. Windows None/Integrated
+// use outer size; the other current desktop modes request client size. Layout
+// uses the actual client size reported by the window. Size and Chrome are
+// creation-only; changing them for a mounted window ID returns an error. They
+// do not force the window size on ordinary declarative rebuilds.
+func (w WindowView) Size(width, height float32) WindowView {
+	w.options.Size = geometry.Size{Width: width, Height: height}
+	return w
+}
+
+// Chrome sets a creation-time GUI decoration preference. It does not insert
+// a HeaderBar. Integrated owns its controls independently of application content;
+// unsupported Integrated falls back to Native.
+func (w WindowView) Chrome(chrome WindowChromeMode) WindowView {
+	w.options.Chrome = chrome
 	return w
 }
 
@@ -92,17 +117,18 @@ func (w WindowView) OnDestroy(fn func()) WindowView {
 	return w
 }
 
-// MinWidth declares the window's minimum content width (logical DIP). Like the
-// widget-level viewBase, declared axes are merged on each rebuild; an axis
-// without a declaration falls back to the window default, which is no
-// constraint at all.
+// MinWidth declares the desktop window's minimum width hint in DIP, using the
+// same outer/client convention as Size. This does not replace Widget layout
+// constraints or add space for a HeaderBar. Like the widget-level viewBase,
+// declared axes are merged on each rebuild; an axis without a declaration
+// falls back to the window default, which is no constraint at all.
 func (w WindowView) MinWidth(v float32) WindowView {
 	w.minWidth = v
 	w.fields.Set(viewMinWidth, true)
 	return w
 }
 
-// MinHeight declares the window's minimum content height (logical DIP). See
+// MinHeight declares the desktop window's minimum height hint in DIP. See
 // MinWidth for the merge semantics.
 func (w WindowView) MinHeight(v float32) WindowView {
 	w.minHeight = v
@@ -110,8 +136,8 @@ func (w WindowView) MinHeight(v float32) WindowView {
 	return w
 }
 
-// MinSize declares both axes of the window's minimum content size (logical
-// DIP), setting the same bits MinWidth and MinHeight would set individually.
+// MinSize declares both axes of the desktop window's minimum size hint in DIP,
+// setting the same bits MinWidth and MinHeight would set individually.
 func (w WindowView) MinSize(width, height float32) WindowView {
 	w.minWidth = width
 	w.minHeight = height
