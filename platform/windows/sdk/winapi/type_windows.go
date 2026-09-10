@@ -145,6 +145,7 @@ const (
 const (
 	TME_LEAVE     = 0x00000002
 	TME_NONCLIENT = 0x00000010
+	TME_CANCEL    = 0x80000000
 )
 
 const (
