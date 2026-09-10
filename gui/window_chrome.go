@@ -94,7 +94,8 @@ type ChromeInfo struct {
 }
 
 // ChromeControls asks for the height of the available top row in DIP.
-// Chrome centers the intrinsic group in this height.
+// Custom buttons fill this height; native controls keep their intrinsic size
+// and are centered vertically.
 // Zero means no row: native positioning resets, custom controls use their own
 // height. Negative/non-finite answers are ignored.
 type ChromeControls struct {
@@ -358,8 +359,11 @@ func (c *windowChrome) placeCustom() {
 	bounds := geometry.Rectangle{}
 	if c.window.State() != WindowStateFullscreen {
 		width := captionButtonWidth * 3
-		bounds = geometry.Rect(max(0, c.window.width-width),
-			max(0, (min(c.controlsHeight, c.window.height)-captionButtonHeight)/2), width, captionButtonHeight).
+		height := c.controlsHeight
+		if height <= 0 {
+			height = captionButtonHeight
+		}
+		bounds = geometry.Rect(max(0, c.window.width-width), 0, width, height).
 			Intersect(geometry.Rect(0, 0, c.window.width, c.window.height))
 	}
 	c.publish(bounds)

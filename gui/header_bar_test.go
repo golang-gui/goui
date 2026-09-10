@@ -229,6 +229,105 @@ func TestHeaderBarSingleChildAndDragQuery(t *testing.T) {
 	}
 }
 
+func TestHeaderFillsDefaultColumnWithoutStretchingMenuButton(t *testing.T) {
+	win, native := chromeFixture(t, false, true)
+	root := NewLinearBox(layout.DirectionVertical)
+	header := NewHeaderBar()
+	header.SetChild(NewLabel("Title"))
+	header.ConnectDragRegion(func(_ geometry.Point, drag *bool) { *drag = true })
+	root.AddChild(header)
+	content := NewMenuButton()
+	content.SetChild(newSizedWidget(geometry.Size{Width: 40, Height: 24}))
+	natural := content.Measure(layout.Unbounded()).Size
+	root.AddChild(content)
+	win.SetWidget(root)
+	for _, width := range []float32{640, 800, 240} {
+		_ = win.DispatchEvent(events.SizeEvent{Width: width, Height: 400})
+		win.paint()
+		if header.Rect().Width != width {
+			t.Fatalf("header width = %g, want %g", header.Rect().Width, width)
+		}
+		if content.Rect().Size != natural {
+			t.Fatalf("menu button stretched: %v, want %v", content.Rect().Size, natural)
+		}
+		if win.chrome.info.ControlsBounds.Height != header.Rect().Height {
+			t.Fatal("controls did not follow the default-column header")
+		}
+		blank := geometry.Point{X: (width - captionButtonWidth*3) / 2, Y: 24}
+		if native.hitTest(blank) != platform.WindowHitCaption {
+			t.Fatalf("blank header area did not drag at %v", blank)
+		}
+		if native.hitTest(content.windowRect().Center()) == platform.WindowHitCaption {
+			t.Fatal("header claimed content below its allocation")
+		}
+	}
+}
+
+func TestHeaderBarMeasuresAvailableWidth(t *testing.T) {
+	for _, test := range []struct {
+		name                   string
+		constraint             layout.Constraint
+		minSize, maxSize, want geometry.Size
+	}{
+		{name: "bounded", constraint: layout.Loose(geometry.Size{Width: 320, Height: 200}), want: geometry.Size{Width: 320, Height: 48}},
+		{name: "unbounded", constraint: layout.Unbounded(), want: geometry.Size{Width: 76, Height: 48}},
+		{name: "maximum", constraint: layout.Loose(geometry.Size{Width: 320, Height: 200}), maxSize: geometry.Size{Width: 140}, want: geometry.Size{Width: 140, Height: 48}},
+		{name: "minimum unbounded", constraint: layout.Unbounded(), minSize: geometry.Size{Width: 100, Height: 48}, want: geometry.Size{Width: 100, Height: 48}},
+		{name: "parent wins", constraint: layout.Tight(geometry.Size{Width: 240, Height: 72}), maxSize: geometry.Size{Width: 140}, want: geometry.Size{Width: 240, Height: 72}},
+		{name: "narrow", constraint: layout.Loose(geometry.Size{Width: 10, Height: 20}), want: geometry.Size{Width: 10, Height: 20}},
+		{name: "zero", constraint: layout.Tight(geometry.Size{}), want: geometry.Size{}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			header := NewHeaderBar()
+			header.SetChild(&baselineSizedWidget{measurement: layout.MeasuredWithBaseline(geometry.Size{Width: 60, Height: 20}, 14)})
+			if test.minSize != (geometry.Size{}) {
+				header.SetMinSize(test.minSize)
+			}
+			header.SetMaxSize(test.maxSize)
+			got := header.Measure(test.constraint)
+			if got.Size != test.want {
+				t.Fatalf("measurement = %v, want %v", got.Size, test.want)
+			}
+			if test.want.Height >= 48 {
+				header.Arrange(geometry.Rectangle{Size: got.Size})
+				if !got.HasBaseline || got.Baseline != header.Child().Rect().Y+14 {
+					t.Fatalf("baseline no longer matches arranged child: %+v / %v", got, header.Child().Rect())
+				}
+			}
+		})
+	}
+	for _, withHiddenChild := range []bool{false, true} {
+		header := NewHeaderBar()
+		if withHiddenChild {
+			child := newSizedWidget(geometry.Size{Width: 200, Height: 100})
+			child.SetVisible(false)
+			header.SetChild(child)
+		}
+		if got := header.Measure(layout.Loose(geometry.Size{Width: 320, Height: 200})); got.Size != (geometry.Size{Width: 320, Height: 48}) {
+			t.Fatalf("empty header did not fill width: %+v", got)
+		}
+		header.SetVisible(false)
+		if got := header.Measure(layout.Unbounded()); got != (layout.Measurement{}) {
+			t.Fatalf("hidden header measured nonzero: %+v", got)
+		}
+	}
+}
+
+func TestWeightedHeadersFillTheirOwnHorizontalAllocation(t *testing.T) {
+	row := NewLinearBox(layout.DirectionHorizontal)
+	left, right := NewHeaderBar(), NewHeaderBar()
+	for _, header := range []*HeaderBar{left, right} {
+		header.SetChild(newSizedWidget(geometry.Size{Width: 60, Height: 20}))
+		header.SetMainWeight(1)
+		row.AddChild(header)
+	}
+	row.Measure(layout.Tight(geometry.Size{Width: 400, Height: 48}))
+	row.Arrange(geometry.Rect(0, 0, 400, 48))
+	if left.Rect() != geometry.Rect(0, 0, 200, 48) || right.Rect() != geometry.Rect(200, 0, 200, 48) {
+		t.Fatalf("headers exceeded their assigned widths: %v / %v", left.Rect(), right.Rect())
+	}
+}
+
 func TestPickUsesLocalCoordinatesAndPaintOrder(t *testing.T) {
 	root, back, front := newTestWidget(), newTestWidget(), newTestWidget()
 	root.WidgetBase.AddChild(root, back)
@@ -345,14 +444,16 @@ func TestHeaderControlsReservationUsesBoundedLayout(t *testing.T) {
 	win.Chrome().ConnectQueryControls(func(*ChromeControls) { queries++ })
 	header.SetMinSize(geometry.Size{Height: 32})
 	win.paint()
-	if queries != 1 || child.arranges != 2 || win.layoutDirty {
+	// Full-height buttons keep the same horizontal reservation while the
+	// header shrinks, so no second content layout is necessary.
+	if queries != 1 || child.arranges != 1 || win.layoutDirty {
 		t.Fatalf("unbounded or missing reservation pass: queries=%d arranges=%d dirty=%v", queries, child.arranges, win.layoutDirty)
 	}
 	if !emptyRect(child.windowRect().Intersect(win.chrome.info.ControlsBounds)) {
 		t.Fatal("new reservation was not applied in the same frame")
 	}
 	win.paint()
-	if child.arranges != 2 || queries != 2 || win.layoutDirty {
+	if child.arranges != 1 || queries != 2 || win.layoutDirty {
 		t.Fatal("stable controls geometry kept invalidating layout")
 	}
 }

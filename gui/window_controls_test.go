@@ -165,13 +165,25 @@ func TestControlsFollowHeaderAllocation(t *testing.T) {
 			header.SetMinSize(geometry.Size{Height: height})
 			win.paint()
 			bounds := chromeInfo(win.Chrome()).ControlsBounds
-			intrinsicHeight := captionButtonHeight
+			intrinsicHeight := height
 			if nativeButtons {
 				intrinsicHeight = 14
 			}
 			if header.Rect().Height != height || bounds.Height != intrinsicHeight ||
 				bounds.Y != (height-intrinsicHeight)/2 {
 				t.Fatalf("height %v: header=%v controls=%v", height, header.Rect(), bounds)
+			}
+			if !nativeButtons {
+				for _, button := range win.controls.buttons {
+					if button.Rect().Height != height {
+						t.Fatalf("button allocation did not follow header height: %v", button.Rect())
+					}
+				}
+				for _, y := range []float32{1, height - 1} {
+					if native.hitTest(geometry.Point{X: bounds.X + bounds.Width/2, Y: y}) != platform.WindowHitMaximize {
+						t.Fatalf("full-height caption hit missing at y=%g", y)
+					}
+				}
 			}
 			if !emptyRect(content.windowRect().Intersect(bounds)) {
 				t.Fatal("height update left content overlapping controls")
