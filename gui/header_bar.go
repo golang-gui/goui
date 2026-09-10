@@ -9,6 +9,8 @@ import (
 
 // HeaderBar is a single-child, optional window drag region. Its background
 // fills its allocation; its child automatically avoids the window's controls.
+// It fills bounded available width (subject to size preferences), but uses
+// content width when unbounded. Height remains content-driven with a minimum.
 // Multiple HeaderBars can share a window. No title or controls are inserted.
 type HeaderBar struct {
 	WidgetBase
@@ -76,8 +78,15 @@ func (h *HeaderBar) Measure(constraint layout.Constraint) layout.Measurement {
 		m = measureWidget(child, layout.Loose(constraint.Inset(h.padding).Max))
 	}
 	childHeight := m.Height
+	width := m.Width + 2*h.padding
+	if constraint.Max.Width < layout.Inf {
+		// Choose the available width within the effective parent/self limits.
+		// In an unbounded axis (e.g. a weighted row's initial measure), keep
+		// the content basis; the parent will assign a finite width afterwards.
+		width = constraint.Max.Width
+	}
 	m.Size = constraint.Clamp(geometry.Size{
-		Width:  m.Width + 2*h.padding,
+		Width:  width,
 		Height: m.Height + 2*h.padding,
 	})
 	// Header contents are centered vertically.
