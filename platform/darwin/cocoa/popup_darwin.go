@@ -3,6 +3,7 @@ package cocoa
 import (
 	"image"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 
@@ -23,9 +24,9 @@ type Popup struct {
 	owner common.Window
 }
 
-func newPopup(owner common.Window, width, height float32, onEvent events.EventHandler, options common.PopupOptions) (common.Popup, error) {
+func newPopup(owner common.Window, size geometry.Size, onEvent events.EventHandler, options common.PopupOptions) (common.Popup, error) {
 	// newNativeWindow converts the requested logical content size to points.
-	win := newNativeWindow(onEvent, popupClass, NSWindowStyleMaskBorderless, NSMakeRect(0, 0, CGFloat(width), CGFloat(height)), options.Transparent)
+	win := newNativeWindow(onEvent, popupClass, NSWindowStyleMaskBorderless, NSMakeRect(0, 0, CGFloat(size.Width), CGFloat(size.Height)), options.Transparent)
 	AutoReleasePool(func() {
 		win.window.SetLevel(popupWindowLevel) // float above ordinary windows
 	})
