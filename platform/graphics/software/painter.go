@@ -37,45 +37,18 @@ type Painter struct {
 	transform         geometry.Transform
 	clip              image.Rectangle
 	activeFrame       bool
-}
-
-type imageResource struct {
-	owner          *Painter
-	width          int
-	height         int
-	bitmap         graphics.Bitmap
-	destroyed      bool
-	pendingDestroy bool
-}
-
-func (i *imageResource) Size() (width, height int) {
-	if i == nil {
-		return 0, 0
-	}
-	return i.width, i.height
-}
-
-func (i *imageResource) Update(src image.Image) error {
-	if i == nil || i.destroyed || i.owner == nil {
-		return fmt.Errorf("software: update destroyed image")
-	}
-	return i.owner.updateImage(i, src)
-}
-
-func (i *imageResource) Destroy() {
-	if i == nil || i.destroyed || i.owner == nil {
-		return
-	}
-	i.owner.destroyImage(i)
+	transparent       bool
 }
 
 type Drawable interface {
 	Draw(img image.Image) error
+	Transparent() bool
 }
 
 func NewPainter(drawable Drawable) (graphics.Painter, error) {
 	p := new(Painter)
 	p.drawable = drawable
+	p.transparent = drawable.Transparent()
 	p.images = make(map[*imageResource]struct{})
 	p.textImages = textbitmap.NewImageCache(4, p.releaseTextImage)
 	return p, nil
@@ -207,6 +180,19 @@ func (p *Painter) Begin(width, height, scale float32) {
 }
 
 func (p *Painter) End() {
+	if p.transparent {
+		// Native compositors consume premultiplied pixels; Draw is synchronous.
+		err := p.drawable.Draw(graphics.Bitmap{
+			Width: p.bgra.Rect.Dx(), Height: p.bgra.Rect.Dy(),
+			Stride: p.bgra.Stride, Format: graphics.PixelFormatBGRA, Pixels: p.bgra.Pix,
+		})
+		p.activeFrame = false
+		p.flushPendingTextImages()
+		if err != nil {
+			panic(fmt.Errorf("software: present: %w", err))
+		}
+		return
+	}
 	if cap(p.outputBuf) < len(p.bgra.Pix) {
 		p.outputBuf = make([]byte, len(p.bgra.Pix))
 	} else {
@@ -892,4 +878,34 @@ func roundPixel(v float32) int {
 
 func uptoPixel(v float32) int {
 	return int(v + 0.99)
+}
+
+type imageResource struct {
+	owner          *Painter
+	width          int
+	height         int
+	bitmap         graphics.Bitmap
+	destroyed      bool
+	pendingDestroy bool
+}
+
+func (i *imageResource) Size() (width, height int) {
+	if i == nil {
+		return 0, 0
+	}
+	return i.width, i.height
+}
+
+func (i *imageResource) Update(src image.Image) error {
+	if i == nil || i.destroyed || i.owner == nil {
+		return fmt.Errorf("software: update destroyed image")
+	}
+	return i.owner.updateImage(i, src)
+}
+
+func (i *imageResource) Destroy() {
+	if i == nil || i.destroyed || i.owner == nil {
+		return
+	}
+	i.owner.destroyImage(i)
 }

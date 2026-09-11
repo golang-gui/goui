@@ -734,6 +734,10 @@ func assertColorNear(t *testing.T, actual color.Color, want color.RGBA, toleranc
 	}
 }
 
+func (d *testDrawer) Transparent() bool {
+	return false
+}
+
 func (d *testDrawer) Draw(img image.Image) error {
 	d.result = img
 	return nil

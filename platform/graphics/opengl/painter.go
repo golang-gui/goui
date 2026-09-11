@@ -27,6 +27,7 @@ type Painter struct {
 	transform         geometry.Transform
 
 	activeFrame bool
+	transparent bool
 }
 
 type imageResource struct {
@@ -64,12 +65,17 @@ func (i *imageResource) Destroy() {
 // Destroy, on that thread. The painter must be destroyed before the window.
 func NewPainter(win NativeWindow) (_ graphics.Painter, err error) {
 	p := new(Painter)
+	p.transparent = win.Transparent()
+	alphaBits := 0
+	if p.transparent {
+		alphaBits = 8
+	}
 	p.ctx, err = NewContext(win, nil, Config{
 		PixelFormat: PixelFormat{
 			RedBits:      8,
 			GreenBits:    8,
 			BlueBits:     8,
-			AlphaBits:    0,
+			AlphaBits:    alphaBits,
 			DepthBits:    24,
 			StencilBits:  8,
 			Samples:      0,
@@ -81,6 +87,7 @@ func NewPainter(win NativeWindow) (_ graphics.Painter, err error) {
 	}
 
 	if err = p.ctx.MakeCurrent(); err != nil {
+		p.ctx.Destroy()
 		return nil, fmt.Errorf("make current err: %v", err)
 	}
 
@@ -280,6 +287,11 @@ func (p *Painter) End() {
 }
 
 func (p *Painter) Clear(color graphics.Color) {
+	if p.transparent {
+		color.R *= color.A
+		color.G *= color.A
+		color.B *= color.A
+	}
 	gl.ClearColor(color.R, color.G, color.B, color.A)
 	gl.Clear(gl.COLOR_BUFFER_BIT)
 }

@@ -2,6 +2,7 @@ package opengl
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"syscall"
 
@@ -22,10 +23,32 @@ func newContext(win NativeWindow, share Context, config Config) (_ Context, err 
 	}
 
 	hwnd := winapi.HWND(win.NativeHandle())
+	transparent := win.Transparent()
+	if transparent {
+		style, e := winapi.GetWindowLong(hwnd, winapi.GWL_EXSTYLE)
+		if e != nil {
+			return nil, e
+		}
+		if _, e = winapi.SetWindowLong(hwnd, winapi.GWL_EXSTYLE, style&^winapi.WS_EX_NOREDIRECTIONBITMAP); e != nil {
+			return nil, e
+		}
+		defer func() {
+			if err != nil {
+				if _, e := winapi.SetWindowLong(hwnd, winapi.GWL_EXSTYLE, style); e != nil {
+					err = fmt.Errorf("%w; restore window style: %v", err, e)
+				}
+			}
+		}()
+	}
 	hdc, err := winapi.GetDC(hwnd)
 	if err != nil {
 		return
 	}
+	defer func() {
+		if err != nil {
+			winapi.ReleaseDC(hwnd, hdc)
+		}
+	}()
 
 	var shareRc wgl.HGLRC
 	if shareCtx, ok := share.(wglContext); ok {
@@ -41,6 +64,9 @@ func newContext(win NativeWindow, share Context, config Config) (_ Context, err 
 	_, err = winapi.DescribePixelFormat(hdc, pixelFormat, winapi.Sizeof_PIXELFORMATDESCRIPTOR, &pfd)
 	if err != nil {
 		return
+	}
+	if transparent && pfd.AlphaBits < 8 {
+		return nil, errors.New("WGL: transparent surface requires an 8-bit alpha pixel format")
 	}
 
 	err = winapi.SetPixelFormat(hdc, pixelFormat, &pfd)
@@ -59,6 +85,12 @@ func newContext(win NativeWindow, share Context, config Config) (_ Context, err 
 		if err != nil {
 			return nil, err
 		}
+		if transparent {
+			if err := enableFramebufferAlpha(hwnd); err != nil {
+				wgl.DeleteContext(hrc)
+				return nil, err
+			}
+		}
 
 		return wglContext{
 			hwnd: hwnd,
@@ -68,6 +100,21 @@ func newContext(win NativeWindow, share Context, config Config) (_ Context, err 
 	}
 
 	return nil, errors.New("can not create wgl context")
+}
+
+// The empty blur region enables DWM's redirected framebuffer alpha, not blur.
+// Configure it last so earlier context-creation failures leave DWM untouched.
+func enableFramebufferAlpha(hwnd winapi.HWND) error {
+	region, err := winapi.CreateRectRgn(0, 0, -1, -1)
+	if err != nil {
+		return err
+	}
+	defer winapi.DeleteObject(region)
+	blur := winapi.DWM_BLURBEHIND{
+		Flags:  winapi.DWM_BB_ENABLE | winapi.DWM_BB_BLURREGION,
+		Enable: winapi.TRUE, Region: region,
+	}
+	return winapi.DwmEnableBlurBehindWindow(hwnd, &blur)
 }
 
 func (c wglContext) Name() string {
