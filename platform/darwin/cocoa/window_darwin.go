@@ -30,9 +30,10 @@ type Window struct {
 	minWidth  float32
 	minHeight float32
 
-	im     *inputMethod // this window's IME (nil when none); keyDown routes to it
-	cursor *cursor      // this window's cursor capability (nil when none)
-	state  common.WindowState
+	im           *inputMethod // this window's IME (nil when none); keyDown routes to it
+	cursor       *cursor      // this window's cursor capability (nil when none)
+	state        common.WindowState
+	stateRequest bool // guard reentrant target-state requests during native callbacks
 
 	controlsPosition             *windowControlsPosition // value-only preference/defaults; no retained NSButton references
 	controlsFullscreenTransition bool                    // native will/did/failure notifications, not requested state
@@ -584,7 +585,11 @@ func (w *Window) State() common.WindowState {
 	if w.window.StyleMask()&NSWindowStyleMaskFullScreen != 0 {
 		return common.WindowStateFullscreen
 	}
-	// AppKit zoom changes ordinary window geometry; it is not maximization.
+	// Maximized is the platform's enlarged state, not a promise to fill the
+	// work area. AppKit owns the standard/user frames used by zoom/unzoom.
+	if w.window.IsZoomed() {
+		return common.WindowStateMaximized
+	}
 	return common.WindowStateNormal
 }
 
@@ -592,13 +597,16 @@ func (w *Window) RequestState(state common.WindowState) error {
 	if !w.window.Valid() {
 		return common.ErrUnavailable
 	}
+	if w.stateRequest {
+		return common.ErrUnavailable
+	}
 	switch state {
 	case common.WindowStateHidden:
 		return w.Hide()
-	case common.WindowStateMaximized, common.WindowStateFullscreen:
+	case common.WindowStateFullscreen:
 		// A fullscreen target needs in-flight/failure tracking, not a toggle.
 		return common.ErrUnsupported
-	case common.WindowStateNormal, common.WindowStateMinimized:
+	case common.WindowStateNormal, common.WindowStateMinimized, common.WindowStateMaximized:
 	default:
 		return fmt.Errorf("invalid window state: %d", state)
 	}
@@ -608,6 +616,11 @@ func (w *Window) RequestState(state common.WindowState) error {
 	if w.State() == state {
 		return nil
 	}
+	w.stateRequest = true
+	defer func() { w.stateRequest = false }()
+	native := w.window
+	native.Retain()
+	defer native.Release()
 	if state == common.WindowStateMinimized {
 		if w.window.StyleMask()&NSWindowStyleMaskMiniaturizable == 0 {
 			return common.ErrUnsupported
@@ -615,12 +628,43 @@ func (w *Window) RequestState(state common.WindowState) error {
 		AutoReleasePool(func() { w.window.Miniaturize(0) })
 		return nil
 	}
+	// None has no native resize/zoom decoration. Do not invent a maximized
+	// frame for windows for which AppKit cannot perform native zoom.
+	if state == common.WindowStateMaximized && native.StyleMask()&NSWindowStyleMaskResizable == 0 {
+		return common.ErrUnsupported
+	}
+	var err error
 	AutoReleasePool(func() {
-		if w.window.IsMiniaturized() {
-			w.window.Deminiaturize(0)
+		if native.IsMiniaturized() {
+			native.Deminiaturize(0)
+		}
+		if !w.window.Valid() {
+			err = common.ErrUnavailable
+			return
+		}
+		if !native.IsVisible() {
+			native.MakeKeyAndOrderFront(0)
+		}
+		if !w.window.Valid() {
+			err = common.ErrUnavailable
+			return
+		}
+		wantZoom := state == common.WindowStateMaximized
+		if native.IsZoomed() != wantZoom {
+			native.Zoom(0)
+		}
+		if !w.window.Valid() {
+			err = common.ErrUnavailable
+			return
+		}
+		// Resize notifications can run before zoom settles. Re-read the native
+		// state after the operation; notifyState deduplicates actual observations.
+		w.notifyState()
+		if !w.window.Valid() {
+			err = common.ErrUnavailable
 		}
 	})
-	return w.Show()
+	return err
 }
 
 func (w *Window) notifyState() {
