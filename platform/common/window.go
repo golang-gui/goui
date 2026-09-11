@@ -193,7 +193,10 @@ func ValidateWindowSize(size geometry.Size) error {
 //
 // Chrome cannot be changed on an existing window.
 type WindowOptions struct {
-	Chrome WindowChrome
+	// Transparent requests per-pixel client-area alpha. Native decorations and
+	// input regions are independent. Creation fails if alpha is unavailable.
+	Transparent bool
+	Chrome      WindowChrome
 }
 
 // WindowHit identifies a native frame role, not a Widget action or pointer state.

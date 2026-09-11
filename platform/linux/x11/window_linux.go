@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"image"
 	"slices"
+	"unsafe"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/opengl"
+	"github.com/golang-gui/goui/platform/linux/libs/xrender"
 
 	"github.com/golang-gui/goui/platform/linux/libs/glx"
 	"github.com/golang-gui/goui/platform/linux/libs/xlib"
@@ -20,6 +22,9 @@ import (
 
 type Window struct {
 	wid              xlib.Window
+	visual           *xlib.Visual
+	depth            int
+	transparent      bool
 	fb               glx.FBConfig
 	cmap             xlib.Colormap
 	parent           common.Window
@@ -44,11 +49,12 @@ type Window struct {
 // windows and popups: it picks a GL-capable visual, creates the colormap, and
 // registers the window for event routing. overrideRedirect makes a borderless,
 // WM-bypassing surface (popups); width/height is the initial size in pixels.
-func newNativeWindow(onEvent events.EventHandler, overrideRedirect bool, width, height int) (*Window, error) {
+func newNativeWindow(onEvent events.EventHandler, overrideRedirect bool, width, height int, transparent bool) (*Window, error) {
 	win := &Window{
 		onEvent:          onEvent,
 		state:            common.WindowStateUnknown,
 		overrideRedirect: overrideRedirect,
+		transparent:      transparent,
 	}
 
 	visual := platform.defScreen.RootVisual
@@ -56,6 +62,13 @@ func newNativeWindow(onEvent events.EventHandler, overrideRedirect bool, width, 
 
 	fbConfig := opengl.FBConfig{
 		PixelFormat: opengl.DefaultConfig.PixelFormat,
+	}
+	fbConfig.Transparent = transparent
+	if transparent {
+		selection := platform.display.InternAtom(fmt.Sprintf("_NET_WM_CM_S%d", platform.display.DefaultScreen()), false)
+		if platform.display.GetSelectionOwner(selection) == 0 {
+			return nil, fmt.Errorf("transparent surface requires an X11 compositor: %w", common.ErrUnavailable)
+		}
 	}
 
 	if fb, err := opengl.ChooseGLXFBConfig(fbConfig); err == nil {
@@ -70,6 +83,13 @@ func newNativeWindow(onEvent events.EventHandler, overrideRedirect bool, width, 
 		// TODO: add error log
 	}
 
+	if transparent && win.fb == 0 {
+		visual, depth = softwareARGBVisual(), 32
+		if visual == nil {
+			return nil, fmt.Errorf("ARGB visual: %w", common.ErrUnsupported)
+		}
+	}
+	win.visual, win.depth = visual, depth
 	win.cmap = platform.display.CreateColormap(platform.defScreen.Root, visual, xlib.ColormapAllocNone)
 
 	attr := xlib.SetWindowAttributes{
@@ -90,6 +110,9 @@ func newNativeWindow(onEvent events.EventHandler, overrideRedirect bool, width, 
 	}
 
 	valueMask := uint(xlib.CwBorderPixel | xlib.CwColormap | xlib.CwEventMask | xlib.CwBitGravity)
+	if transparent {
+		valueMask |= xlib.CwBackPixel
+	}
 	if overrideRedirect {
 		attr.OverrideRedirect = 1
 		valueMask |= xlib.CwOverrideRedirect
@@ -100,6 +123,7 @@ func newNativeWindow(onEvent events.EventHandler, overrideRedirect bool, width, 
 		depth, xlib.WindowClassInputOutput, visual, valueMask, &attr)
 
 	if win.wid == 0 {
+		platform.display.FreeColormap(win.cmap)
 		return nil, errors.New("create x11 window failed")
 	}
 
@@ -118,7 +142,7 @@ func newWindow(size geometry.Size, onEvent events.EventHandler, options common.W
 		return nil, fmt.Errorf("integrated window chrome: %w", common.ErrUnsupported)
 	}
 	scale := currentScale()
-	win, err := newNativeWindow(onEvent, false, physical(size.Width, scale), physical(size.Height, scale))
+	win, err := newNativeWindow(onEvent, false, physical(size.Width, scale), physical(size.Height, scale), options.Transparent)
 	if err != nil {
 		return nil, err
 	}
@@ -148,6 +172,8 @@ func newWindow(size geometry.Size, onEvent events.EventHandler, options common.W
 
 	return win, nil
 }
+
+func (w *Window) Transparent() bool { return w.transparent }
 
 func (w *Window) NativeHandle() uintptr {
 	return uintptr(w.wid)
@@ -459,7 +485,7 @@ func (w *Window) drawImage(img graphics.Bitmap) (err error) {
 
 	width, height := img.Bounds().Dx(), img.Bounds().Dy()
 
-	image := platform.display.CreateImage(platform.defScreen.RootVisual, int(platform.defScreen.RootDepth), xlib.ImageFormatZPixmap, 0, cgo.CSlice(img.Pixels), width, height, 32, img.Stride)
+	image := platform.display.CreateImage(w.visual, w.depth, xlib.ImageFormatZPixmap, 0, cgo.CSlice(img.Pixels), width, height, 32, img.Stride)
 	if image == nil {
 		return errors.New("create XImage failed")
 	}
@@ -467,6 +493,27 @@ func (w *Window) drawImage(img graphics.Bitmap) (err error) {
 
 	platform.display.PutImage(xlib.Drawable(w.wid), w.gc, image, 0, 0, 0, 0, width, height)
 	image.Data = nil
+	return nil
+}
+
+// Software must not depend on GLX being installed. Xlib owns this visual list
+// for the display lifetime. Select the byte layout consumed by our BGRA upload.
+func softwareARGBVisual() *xlib.Visual {
+	for _, depth := range unsafe.Slice(platform.defScreen.Depths, platform.defScreen.NDepths) {
+		if depth.Depth != 32 {
+			continue
+		}
+		visuals := unsafe.Slice(depth.Visuals, depth.NVisuals)
+		for i := range visuals {
+			v := &visuals[i]
+			f := xrender.FindVisualFormat(platform.display, v)
+			if f != nil && f.Type == 1 && f.Depth == 32 &&
+				f.Direct.Alpha == 24 && f.Direct.AlphaMask == 255 &&
+				v.RedMask == 0xff0000 && v.GreenMask == 0xff00 && v.BlueMask == 0xff {
+				return v
+			}
+		}
+	}
 	return nil
 }
 

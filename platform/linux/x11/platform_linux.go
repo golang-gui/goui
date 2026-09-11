@@ -166,8 +166,8 @@ func (p *Platform) NewWindow(size geometry.Size, handler events.EventHandler, op
 	return newWindow(size, handler, options)
 }
 
-func (p *Platform) NewPopup(owner common.Window, width, height float32, handler events.EventHandler) (common.Popup, error) {
-	return newPopup(owner, width, height, handler)
+func (p *Platform) NewPopup(owner common.Window, size geometry.Size, handler events.EventHandler, options common.PopupOptions) (common.Popup, error) {
+	return newPopup(owner, size, handler, options)
 }
 
 func (p *Platform) NewImage(width, height uint) (common.Image, error) {

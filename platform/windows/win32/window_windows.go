@@ -11,13 +11,17 @@ import (
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
-
+	"github.com/golang-gui/goui/platform/graphics/direct2d"
+	"github.com/golang-gui/goui/platform/windows/sdk/dcomp"
 	"github.com/golang-gui/goui/platform/windows/sdk/winapi"
 
 	"github.com/goexlib/cgo"
 )
 
 type Window struct {
+	transparent       bool
+	uploadPainter     graphics.Painter
+	uploadImage       graphics.Image
 	style             winapi.DWORD
 	hwnd              winapi.HWND
 	parent            common.Window
@@ -44,6 +48,8 @@ type Window struct {
 	frameExtended     bool               // last DWM frame-extension call succeeded
 }
 
+var _ common.DesktopWindow = (*Window)(nil)
+
 func newWindow(size geometry.Size, onEvent events.EventHandler, options common.WindowOptions) (w *Window, err error) {
 	if err := common.ValidateWindowSize(size); err != nil {
 		return nil, err
@@ -61,11 +67,17 @@ func newWindow(size geometry.Size, onEvent events.EventHandler, options common.W
 		}
 	}
 	style := windowStyle(options)
+	if options.Transparent {
+		if err := checkTransparency(); err != nil {
+			return nil, err
+		}
+	}
 	win := &Window{
-		onEvent: onEvent,
-		scale:   1,
-		style:   winapi.WS_OVERLAPPEDWINDOW,
-		state:   common.WindowStateUnknown,
+		onEvent:     onEvent,
+		scale:       1,
+		style:       winapi.WS_OVERLAPPEDWINDOW,
+		state:       common.WindowStateUnknown,
+		transparent: options.Transparent,
 	}
 
 	// No window exists yet to query per-monitor DPI, so estimate with the system
@@ -119,6 +131,7 @@ func (w *Window) NativeHandle() uintptr {
 }
 
 func (w *Window) Destroy() {
+	w.releaseUpload()
 	w.hitTest = nil
 	if w.hwnd != 0 {
 		winapi.DestroyWindow(w.hwnd)
@@ -196,6 +209,9 @@ func (w *Window) SetMinSize(width, height float32) {
 }
 
 func (w *Window) Draw(img image.Image) error {
+	if w.transparent {
+		return w.drawTransparent(img)
+	}
 	bmp, ok := graphics.ToBitmap(img, graphics.PixelFormatBGRA)
 	if !ok {
 		bmp = graphics.CopyToBitmap(img, graphics.PixelFormatBGRA, nil)
@@ -273,6 +289,7 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		return 0
 
 	case winapi.WM_DESTROY:
+		window.releaseUpload()
 		window.hitTest = nil
 		delete(windowMap, hwnd)
 		window.hwnd = 0
@@ -1048,4 +1065,75 @@ func (w *Window) notifyState() {
 	}
 }
 
-var _ common.DesktopWindow = (*Window)(nil)
+func checkTransparency() error {
+	if err := dcomp.Available(); err != nil {
+		return fmt.Errorf("transparent surfaces require Windows 8 or later: %w", common.ErrUnsupported)
+	}
+	var enabled winapi.BOOL
+	if err := winapi.DwmIsCompositionEnabled(&enabled); err != nil {
+		return err
+	}
+	if enabled == winapi.FALSE {
+		return fmt.Errorf("DWM composition: %w", common.ErrUnavailable)
+	}
+	return nil
+}
+
+func (w *Window) Transparent() bool { return w.transparent }
+
+// Software still rasterizes entirely on the CPU. Only presentation uses the
+// composition swap chain, avoiding WS_EX_LAYERED's conflict with CS_OWNDC and
+// retaining ordinary client/non-client geometry. The upload image is reused.
+func (w *Window) drawTransparent(img image.Image) error {
+	if w.hwnd == 0 {
+		return common.ErrUnavailable
+	}
+	if img.Bounds().Empty() {
+		return nil
+	}
+	if err := w.ensureUpload(); err != nil {
+		return err
+	}
+	width, height := img.Bounds().Dx(), img.Bounds().Dy()
+	if w.uploadImage != nil {
+		iw, ih := w.uploadImage.Size()
+		if iw != width || ih != height {
+			w.uploadImage.Destroy()
+			w.uploadImage = nil
+		}
+	}
+	var err error
+	if w.uploadImage == nil {
+		w.uploadImage, err = w.uploadPainter.NewImage(img)
+	} else {
+		err = w.uploadImage.Update(img)
+	}
+	if err != nil {
+		return err
+	}
+	w.uploadPainter.Begin(float32(width), float32(height), 1)
+	w.uploadPainter.Clear(graphics.Color{})
+	w.uploadPainter.DrawImage(graphics.Rect(0, 0, float32(width), float32(height)), w.uploadImage)
+	w.uploadPainter.End()
+	return nil
+}
+
+func (w *Window) ensureUpload() error {
+	if w.uploadPainter != nil {
+		return nil
+	}
+	var err error
+	w.uploadPainter, err = direct2d.NewPainter(w)
+	return err
+}
+
+func (w *Window) releaseUpload() {
+	if w.uploadImage != nil {
+		w.uploadImage.Destroy()
+		w.uploadImage = nil
+	}
+	if w.uploadPainter != nil {
+		w.uploadPainter.Destroy()
+		w.uploadPainter = nil
+	}
+}

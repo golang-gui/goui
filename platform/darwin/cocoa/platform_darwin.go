@@ -58,8 +58,8 @@ func (p *Platform) NewWindow(size geometry.Size, onEvent events.EventHandler, op
 	return window, nil
 }
 
-func (p *Platform) NewPopup(owner common.Window, width, height float32, onEvent events.EventHandler) (common.Popup, error) {
-	return newPopup(owner, width, height, onEvent)
+func (p *Platform) NewPopup(owner common.Window, width, height float32, onEvent events.EventHandler, options common.PopupOptions) (common.Popup, error) {
+	return newPopup(owner, width, height, onEvent, options)
 }
 
 func (p *Platform) NewTypography() (typography.Context, error) {
