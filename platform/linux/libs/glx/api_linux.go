@@ -67,6 +67,9 @@ func GetClientString(display xlib.Display, name int) string {
 }
 
 func QueryExtension(display xlib.Display) (support bool, errorBase, eventBase int) {
+	if err := glXQueryExtension.Find(); err != nil {
+		return false, 0, 0
+	}
 	//int(Display dpy, int* errorBase, int* eventBase)
 	ret, _, _ := glXQueryExtension.CallRaw(uintptr(display), uintptr(cgo.Pointer(&errorBase)), uintptr(cgo.Pointer(&eventBase)))
 	support = ret != 0
