@@ -428,14 +428,14 @@ func TestChromeMoveCaptureFailureAndReentrantDestroy(t *testing.T) {
 	clicked := 0
 	click.ConnectClicked(func(EventContext) { clicked++ })
 	win.Widget().AddEventController(click)
-	clickAt(win, geometry.Point{X: 20, Y: 20})
-	if clicked != 1 || native.moveRequests != 1 {
-		t.Fatal("failed move swallowed ordinary input")
+	dragCaptionAt(win, geometry.Point{X: 20, Y: 20})
+	if clicked != 0 || native.moveRequests != 1 {
+		t.Fatal("failed Caption move leaked into ordinary input")
 	}
 	native.commandError = nil
 	native.onMove = win.Destroy
-	clickAt(win, geometry.Point{X: 20, Y: 20})
-	if !win.destroyed || clicked != 1 {
+	dragCaptionAt(win, geometry.Point{X: 20, Y: 20})
+	if !win.destroyed || clicked != 0 {
 		t.Fatal("reentrant native drag used destroyed Widget tree")
 	}
 }
@@ -448,9 +448,7 @@ func TestChromeMoveUsesEventController(t *testing.T) {
 		click := NewClickEventController()
 		click.ConnectClicked(func(EventContext) { clicks++ })
 		win.Widget().AddEventController(click)
-		for _, kind := range []events.EventType{events.PointerDown, events.PointerUp} {
-			_ = win.DispatchEvent(events.PointerEvent{EventType: kind, Button: events.PointerButtonLeft, Position: geometry.Point{X: 20, Y: 20}})
-		}
+		dragCaptionAt(win, geometry.Point{X: 20, Y: 20})
 		if nativeHit {
 			if native.moveRequests != 0 {
 				t.Fatal("Windows took duplicate move path")

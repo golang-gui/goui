@@ -370,12 +370,16 @@ type desktopTestWindow struct {
 	resizeRequests                                    []platform.WindowEdge
 	positions                                         []recordedControlsPosition
 	onMove                                            func()
+	onState                                           func()
 }
 
 func (w *desktopTestWindow) Chrome() platform.WindowChrome { return w.chrome }
 func (w *desktopTestWindow) State() WindowState            { return w.state }
 func (w *desktopTestWindow) RequestState(state WindowState) error {
 	w.requests = append(w.requests, state)
+	if w.onState != nil {
+		w.onState()
+	}
 	return w.commandError
 }
 func (w *desktopTestWindow) ControlsRect() (geometry.Rectangle, error) {

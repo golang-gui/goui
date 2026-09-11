@@ -253,7 +253,7 @@ func TestHeaderBarClientMoveDoesNotClickTools(t *testing.T) {
 	if clicks != 1 || native.moveRequests != 0 {
 		t.Fatal("tool click became native movement")
 	}
-	clickAt(win, geometry.Point{X: 100, Y: 20})
+	dragCaptionAt(win, geometry.Point{X: 100, Y: 20})
 	if clicks != 1 || native.moveRequests != 1 {
 		t.Fatal("blank/title region did not hand off exactly once")
 	}
@@ -263,6 +263,13 @@ func clickAt(win *window, p geometry.Point) {
 	for _, kind := range []events.EventType{events.PointerDown, events.PointerUp} {
 		_ = win.DispatchEvent(events.PointerEvent{EventType: kind, Button: events.PointerButtonLeft, Position: p})
 	}
+}
+
+func dragCaptionAt(win *window, p geometry.Point) {
+	_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonLeft, Buttons: events.PointerButtonLeftDown, Position: p})
+	p.X += 10
+	_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Buttons: events.PointerButtonLeftDown, Position: p})
+	_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerUp, Button: events.PointerButtonLeft, Position: p})
 }
 
 func setHeaderTitle(header *HeaderBar, text string) {
