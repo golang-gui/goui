@@ -100,8 +100,9 @@ type DesktopWindow interface {
 	SetHitTest(f func(p geometry.Point) WindowHit) error
 
 	// BeginMove asks the window manager to start an interactive move. Call it
-	// synchronously while handling this window's original native left PointerDown,
-	// not from a posted task, a later event or a synthesized GUI event. The backend
+	// synchronously while handling this window's original native left PointerDown
+	// or a native PointerMove while that press remains held (for drag thresholds),
+	// not from a posted task or a synthesized GUI event. The backend
 	// uses the original native input; no coordinate or timestamp is supplied.
 	// Only one successful move/resize request is allowed per press. The caller
 	// must consume that press without starting a click or pointer capture: native
@@ -112,7 +113,8 @@ type DesktopWindow interface {
 	// means no usable current press or a destroyed window. Other native errors
 	// are preserved. Use this path only after SetHitTest returns ErrUnsupported.
 	BeginMove() error
-	// BeginResize has the same input and lifetime contract as BeginMove, but
+	// BeginResize requires the original native left PointerDown (not motion), but
+	// otherwise has the same input and lifetime contract as BeginMove. It
 	// requests resizing from one edge or corner. X11 asks the window manager;
 	// macOS tracks native drag input and adjusts the frame in the backend.
 	// Neither path changes the cursor or promises native edge double-click actions.
