@@ -261,6 +261,8 @@ func (f *controlsFrame) Draw(img image.Image) error {
 	return nil
 }
 
+func (*controlsFrame) Transparent() bool { return false }
+
 type controlsBackground struct{ WidgetBase }
 
 func (w *controlsBackground) Paint(p Painter) {

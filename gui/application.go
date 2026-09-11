@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/typography"
@@ -54,14 +55,15 @@ func NewApplication() (Application, error) {
 }
 
 type application struct {
-	platform   platform.Platform
-	loop       platform.EventLoop
-	typo       typography.Context
-	clipboard  Clipboard
-	settings   Settings
-	fileDialog FileDialog
-	style      style.StyleSheet
-	windows    []*window
+	platform     platform.Platform
+	loop         platform.EventLoop
+	typo         typography.Context
+	clipboard    Clipboard
+	settings     Settings
+	fileDialog   FileDialog
+	style        style.StyleSheet
+	styleChanged signal.Signal0 // internal host invalidation; no new public event API
+	windows      []*window
 
 	quitOnLastWindowClosed bool
 }
@@ -147,6 +149,7 @@ func (a *application) SetStyleSheet(sheet style.StyleSheet) {
 		}
 		win.requestLayout()
 	}
+	a.styleChanged.Emit()
 }
 
 func (a *application) NewWindow(options *WindowOptions) (Window, error) {

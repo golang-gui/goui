@@ -43,7 +43,7 @@ type chromeTestPlatform struct {
 }
 
 func (p *chromeTestPlatform) NewWindow(size geometry.Size, handler platform.EventHandler, options platform.WindowOptions) (platform.Window, error) {
-	p.options = WindowOptions{Size: size, Chrome: WindowChromeMode(options.Chrome)}
+	p.options = WindowOptions{Size: size, Chrome: WindowChromeMode(options.Chrome), Transparent: options.Transparent}
 	p.history = append(p.history, p.options)
 	p.created++
 	if p.creationError != nil {

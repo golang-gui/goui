@@ -24,6 +24,7 @@ type recordingPlatformPopup struct {
 }
 
 func (*recordingPlatformPopup) NativeHandle() uintptr           { return 1 }
+func (*recordingPlatformPopup) Transparent() bool               { return false }
 func (*recordingPlatformPopup) Draw(image.Image) error          { return nil }
 func (*recordingPlatformPopup) RequestPaint() error             { return nil }
 func (*recordingPlatformPopup) Destroy()                        {}
@@ -190,7 +191,7 @@ func TestPopoverSetWidgetMigratesFromWindow(t *testing.T) {
 }
 
 func TestPopoverConnectClosedFiresOnHideOnce(t *testing.T) {
-	p := NewPopover(newTestWidget())
+	p := NewPopover(newTestWidget(), nil)
 	closed := 0
 	p.ConnectClosed(func() { closed++ })
 

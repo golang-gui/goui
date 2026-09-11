@@ -10,6 +10,8 @@ import (
 )
 
 const (
+	styleNameWindow        = "window"
+	styleNamePopover       = "popover"
 	styleNameWidget        = "widget"
 	styleNameLabel         = "label"
 	styleNameButton        = "button"
@@ -38,6 +40,8 @@ func DefaultStyleRules() []style.Rule {
 	size := defaultFontSize
 
 	return []style.Rule{
+		style.Name(styleNameWindow).BackgroundColor(color.White),
+		style.Name(styleNamePopover).BackgroundColor(color.White),
 		style.Name(styleNameWidget).
 			BackgroundColor(color.Transparent).
 			ForegroundColor(color.Black).

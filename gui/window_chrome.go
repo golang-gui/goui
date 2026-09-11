@@ -29,6 +29,9 @@ const (
 type WindowOptions struct {
 	Size   geometry.Size
 	Chrome WindowChromeMode
+	// Transparent requires a native alpha surface; failure is returned, never
+	// downgraded to opaque. The window style independently controls its background.
+	Transparent bool
 }
 
 var defaultWindowOptions = WindowOptions{
