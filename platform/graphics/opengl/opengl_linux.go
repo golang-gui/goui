@@ -6,6 +6,7 @@ import (
 
 	"github.com/golang-gui/goui/platform/linux/libs/glx"
 	"github.com/golang-gui/goui/platform/linux/libs/xlib"
+	"github.com/golang-gui/goui/platform/linux/libs/xrender"
 )
 
 func InitGLX(display xlib.Display) error {
@@ -144,6 +145,9 @@ func (c *glxContext) GetExtensions() string {
 }
 
 func chooseGLXFBConfig(desired FBConfig) (glx.FBConfig, error) {
+	if !platform.init || platform.major < 1 || (platform.major == 1 && platform.minor < 3) {
+		return 0, errors.New("GLX 1.3 or newer is required")
+	}
 	vendor := glx.GetClientString(platform.display, glx.GLX_VENDOR)
 	trustWindowBit := vendor != "Chromium"
 
@@ -170,7 +174,18 @@ func chooseGLXFBConfig(desired FBConfig) (glx.FBConfig, error) {
 		}
 
 		if desired.Transparent {
-			// TODO: implement
+			vi := glx.GetVisualFromFBConfig(platform.display, n)
+			if vi == nil {
+				continue
+			}
+			f := xrender.FindVisualFormat(platform.display, vi.Visual)
+			argb := f != nil && f.Type == 1 && f.Depth == 32 &&
+				f.Direct.Alpha == 24 && f.Direct.AlphaMask == 255 &&
+				vi.Depth == 32 && vi.RedMask == 0xff0000 && vi.GreenMask == 0xff00 && vi.BlueMask == 0xff
+			xlib.Free(vi)
+			if !argb {
+				continue
+			}
 		}
 
 		var u FBConfig
@@ -180,6 +195,10 @@ func chooseGLXFBConfig(desired FBConfig) (glx.FBConfig, error) {
 		u.GreenBits = getGLXFBConfigAttrib(n, glx.GLX_GREEN_SIZE)
 		u.BlueBits = getGLXFBConfigAttrib(n, glx.GLX_BLUE_SIZE)
 		u.AlphaBits = getGLXFBConfigAttrib(n, glx.GLX_ALPHA_SIZE)
+		if desired.Transparent && u.AlphaBits < 8 {
+			continue
+		}
+		u.Transparent = desired.Transparent
 
 		u.DepthBits = getGLXFBConfigAttrib(n, glx.GLX_DEPTH_SIZE)
 		u.StencilBits = getGLXFBConfigAttrib(n, glx.GLX_STENCIL_SIZE)

@@ -15,6 +15,7 @@ import (
 	"github.com/golang-gui/goui/platform/windows/sdk/com"
 	"github.com/golang-gui/goui/platform/windows/sdk/d2d1"
 	"github.com/golang-gui/goui/platform/windows/sdk/d3d11"
+	"github.com/golang-gui/goui/platform/windows/sdk/dcomp"
 	"github.com/golang-gui/goui/platform/windows/sdk/dxgi"
 	"github.com/golang-gui/goui/platform/windows/sdk/winapi"
 )
@@ -57,62 +58,43 @@ type Painter struct {
 	occluded             bool
 	swapChainFlags       uint32
 	frameLatencyWaitable winapi.HANDLE
-}
 
-type imageResource struct {
-	owner     *Painter
-	width     int
-	height    int
-	pixels    graphics.Bitmap
-	bitmap    *d2d1.Bitmap
-	destroyed bool
-}
-
-func (i *imageResource) Size() (width, height int) {
-	if i == nil {
-		return 0, 0
-	}
-	return i.width, i.height
-}
-
-func (i *imageResource) Update(src image.Image) error {
-	if i == nil || i.destroyed || i.owner == nil {
-		return fmt.Errorf("direct2d: update destroyed image")
-	}
-	return i.owner.updateImage(i, src)
-}
-
-func (i *imageResource) Destroy() {
-	if i == nil || i.destroyed || i.owner == nil {
-		return
-	}
-	i.owner.destroyImage(i)
-}
-
-const shadowCacheCapacity = 16
-
-// GOUI paints complete frames in response to window messages. Present without
-// a sync interval so a newer frame can replace queued work; the waitable swap
-// chain below performs pacing before Direct2D starts rendering.
-const frameSyncInterval uint32 = 0
-
-const frameWaitTimeoutMillis winapi.DWORD = 1
-
-type shadowCacheKey struct{ Width, Height, Radius float32 }
-type shadowCacheEntry struct {
-	key  shadowCacheKey
-	list *d2d1.CommandList
-	age  uint64
+	transparent       bool
+	composition       *dcomp.Device
+	compositionTarget *dcomp.Target
+	compositionVisual *dcomp.Visual
 }
 
 type NativeWindow interface {
 	NativeHandle() uintptr
+	Transparent() bool
 }
 
 func NewPainter(win NativeWindow) (_ graphics.Painter, err error) {
 	p := new(Painter)
 	p.hwnd = win.NativeHandle()
+	p.transparent = win.Transparent()
 	p.images = make(map[*imageResource]struct{})
+
+	if p.transparent {
+		hwnd := winapi.HWND(p.hwnd)
+		style, e := winapi.GetWindowLong(hwnd, winapi.GWL_EXSTYLE)
+		if e != nil {
+			return nil, e
+		}
+		if _, e = winapi.SetWindowLong(hwnd, winapi.GWL_EXSTYLE, style|winapi.WS_EX_NOREDIRECTIONBITMAP); e != nil {
+			return nil, e
+		}
+		// Only a failed construction rolls back. A successfully bound painter
+		// owns presentation for the remaining lifetime of this surface.
+		defer func() {
+			if err != nil {
+				if _, e := winapi.SetWindowLong(hwnd, winapi.GWL_EXSTYLE, style); e != nil {
+					err = fmt.Errorf("%w; restore window style: %v", err, e)
+				}
+			}
+		}()
+	}
 
 	p.factory, err = d2d1.CreateFactory[d2d1.Factory1](d2d1.D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d1.IID_ID2D1Factory1, nil)
 	if err != nil {
@@ -197,7 +179,23 @@ func (p *Painter) createDeviceResources() (err error) {
 	defer dxgiFactory.Release()
 	var frameLatencyErr error
 	for _, desc := range swapChainCandidates() {
-		p.swapChain, hr = dxgiFactory.CreateSwapChainForHwnd(&p.d3dDevice.Unknown, p.hwnd, &desc)
+		if p.transparent {
+			// Composition has no implicit HWND size. Its visual remains 1:1;
+			// SCALING_STRETCH is a required descriptor value, not a resize policy.
+			if desc.Scaling != dxgi.DXGI_SCALING_STRETCH || desc.SwapEffect != dxgi.DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL {
+				continue
+			}
+			var rect winapi.RECT
+			if err := winapi.GetClientRect(winapi.HWND(p.hwnd), &rect); err != nil {
+				p.releaseDeviceResources()
+				return err
+			}
+			desc.Width, desc.Height = uint32(max(1, rect.Right-rect.Left)), uint32(max(1, rect.Bottom-rect.Top))
+			desc.AlphaMode = dxgi.DXGI_ALPHA_MODE_PREMULTIPLIED
+			p.swapChain, hr = dxgiFactory.CreateSwapChainForComposition(&p.d3dDevice.Unknown, &desc)
+		} else {
+			p.swapChain, hr = dxgiFactory.CreateSwapChainForHwnd(&p.d3dDevice.Unknown, p.hwnd, &desc)
+		}
 		if hr.Failed() {
 			continue
 		}
@@ -219,6 +217,13 @@ func (p *Painter) createDeviceResources() (err error) {
 			return fmt.Errorf("create waitable DXGI swap chain: %w", frameLatencyErr)
 		}
 		return fmt.Errorf("create DXGI swap chain: %v", hr)
+	}
+
+	if p.transparent {
+		if err := p.createComposition(); err != nil {
+			p.releaseDeviceResources()
+			return err
+		}
 	}
 
 	if p.colorBrush, hr = p.render.CreateSolidColorBrush(&p.color, nil); hr.Failed() {
@@ -297,6 +302,10 @@ func (p *Painter) createTarget(scale float32) com.HRESULT {
 		DpiX:        dpi, DpiY: dpi,
 		BitmapOptions: d2d1.D2D1_BITMAP_OPTIONS_TARGET | d2d1.D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
 	}
+	if p.transparent {
+		props.PixelFormat.AlphaMode = d2d1.D2D1_ALPHA_MODE_PREMULTIPLIED
+		p.render.SetTextAntialiasMode(d2d1.D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE)
+	}
 	p.target, hr = p.render.CreateBitmapFromDxgiSurface(surface, &props)
 	if hr.Succeeded() {
 		p.render.SetTarget((*d2d1.Image)(unsafe.Pointer(p.target)))
@@ -343,6 +352,7 @@ func (p *Painter) Destroy() {
 }
 
 func (p *Painter) releaseDeviceResources() {
+	p.releaseComposition()
 	p.activeFrame = false
 	p.clipActive = false
 	p.clip = d2d1.RectF{}
@@ -1139,4 +1149,97 @@ func (p *Painter) drawNativeImage(rect graphics.Rectangle, d2dBitmap *d2d1.Bitma
 		Bottom: rect.Y + rect.Height,
 	}
 	p.render.DrawBitmap(d2dBitmap, &dstRect, 1, d2d1.D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, nil)
+}
+
+func (p *Painter) createComposition() error {
+	device, hr := dcomp.CreateDevice(p.dxgiDevice)
+	p.composition = device
+	if hr.Failed() {
+		return fmt.Errorf("create composition device: %v", hr)
+	}
+	p.compositionTarget, hr = device.CreateTargetForHwnd(p.hwnd, true)
+	if hr.Failed() {
+		return fmt.Errorf("create composition target: %v", hr)
+	}
+	p.compositionVisual, hr = device.CreateVisual()
+	if hr.Failed() {
+		return fmt.Errorf("create composition visual: %v", hr)
+	}
+	if hr = p.compositionVisual.SetContent(&p.swapChain.Unknown); hr.Failed() {
+		return fmt.Errorf("set composition content: %v", hr)
+	}
+	if hr = p.compositionTarget.SetRoot(p.compositionVisual); hr.Failed() {
+		return fmt.Errorf("set composition root: %v", hr)
+	}
+	if hr = device.Commit(); hr.Failed() {
+		return fmt.Errorf("commit composition: %v", hr)
+	}
+	return nil
+}
+
+func (p *Painter) releaseComposition() {
+	if p.compositionTarget != nil {
+		p.compositionTarget.SetRoot(nil)
+		if p.composition != nil {
+			p.composition.Commit()
+		}
+	}
+	if p.compositionVisual != nil {
+		p.compositionVisual.Release()
+		p.compositionVisual = nil
+	}
+	if p.compositionTarget != nil {
+		p.compositionTarget.Release()
+		p.compositionTarget = nil
+	}
+	if p.composition != nil {
+		p.composition.Release()
+		p.composition = nil
+	}
+}
+
+type imageResource struct {
+	owner     *Painter
+	width     int
+	height    int
+	pixels    graphics.Bitmap
+	bitmap    *d2d1.Bitmap
+	destroyed bool
+}
+
+func (i *imageResource) Size() (width, height int) {
+	if i == nil {
+		return 0, 0
+	}
+	return i.width, i.height
+}
+
+func (i *imageResource) Update(src image.Image) error {
+	if i == nil || i.destroyed || i.owner == nil {
+		return fmt.Errorf("direct2d: update destroyed image")
+	}
+	return i.owner.updateImage(i, src)
+}
+
+func (i *imageResource) Destroy() {
+	if i == nil || i.destroyed || i.owner == nil {
+		return
+	}
+	i.owner.destroyImage(i)
+}
+
+const shadowCacheCapacity = 16
+
+// GOUI paints complete frames in response to window messages. Present without
+// a sync interval so a newer frame can replace queued work; the waitable swap
+// chain below performs pacing before Direct2D starts rendering.
+const frameSyncInterval uint32 = 0
+
+const frameWaitTimeoutMillis winapi.DWORD = 1
+
+type shadowCacheKey struct{ Width, Height, Radius float32 }
+type shadowCacheEntry struct {
+	key  shadowCacheKey
+	list *d2d1.CommandList
+	age  uint64
 }

@@ -22,6 +22,7 @@ type GLXContext interface {
 type NativeWindow interface {
 	NativeHandle() uintptr
 	RequestPaint() error
+	Transparent() bool
 }
 
 func NewContext(win NativeWindow, share Context, config Config) (Context, error) {

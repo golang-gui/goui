@@ -94,6 +94,9 @@ func newContext(win NativeWindow, share Context, config Config) (_ Context, err 
 	// surface that the window server would upscale (blurring the output).
 	contentView.SetWantsBestResolutionOpenGLSurface(true)
 	object.SetView(contentView)
+	if win.Transparent() {
+		object.SetValue(0, NSOpenGLContextParameterSurfaceOpacity)
+	}
 
 	return nsglContext{
 		object:      object,
