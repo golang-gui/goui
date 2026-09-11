@@ -1030,6 +1030,8 @@ func initNSWindow() {
 	NSWindowSel.Frame = objc.RegisterName("frame")
 	NSWindowSel.ContentRectForFrameRect = objc.RegisterName("contentRectForFrameRect:")
 	NSWindowSel.SetFrameTopLeftPoint = objc.RegisterName("setFrameTopLeftPoint:")
+	NSWindowSel.SetFrameDisplay = objc.RegisterName("setFrame:display:")
+	NSWindowSel.MouseLocationOutsideOfEventStream = objc.RegisterName("mouseLocationOutsideOfEventStream")
 	NSWindowSel.SetContentSize = objc.RegisterName("setContentSize:")
 	NSWindowSel.SetContentMinSize = objc.RegisterName("setContentMinSize:")
 	NSWindowSel.SetLevel = objc.RegisterName("setLevel:")
@@ -1049,50 +1051,52 @@ func initNSWindow() {
 var (
 	NSWindowClassId NSWindowClass
 	NSWindowSel     struct {
-		InitWith                      objc.SEL
-		Center                        objc.SEL
-		Title                         objc.SEL
-		SetTitle                      objc.SEL
-		TitleVisibility               objc.SEL
-		SetTitleVisibility            objc.SEL
-		TitlebarAppearsTransparent    objc.SEL
-		SetTitlebarAppearsTransparent objc.SEL
-		SetDelegate                   objc.SEL
-		ContentView                   objc.SEL
-		SetContentView                objc.SEL
-		SetCollectionBehavior         objc.SEL
-		SetAcceptsMouseMovedEvents    objc.SEL
-		SetRestorable                 objc.SEL
-		SetOpaque                     objc.SEL
-		SetBackgroundColor            objc.SEL
-		BackingScaleFactor            objc.SEL
-		MakeFirstResponder            objc.SEL
-		MakeKeyAndOrderFront          objc.SEL
-		OrderFront                    objc.SEL
-		OrderOut                      objc.SEL
-		AddChildWindow                objc.SEL
-		RemoveChildWindow             objc.SEL
-		PerformClose                  objc.SEL
-		Close                         objc.SEL
-		CanBecomeKeyWindow            objc.SEL
-		CanBecomeMainWindow           objc.SEL
-		Frame                         objc.SEL
-		ContentRectForFrameRect       objc.SEL
-		SetFrameTopLeftPoint          objc.SEL
-		SetContentSize                objc.SEL
-		SetContentMinSize             objc.SEL
-		SetLevel                      objc.SEL
-		ConvertRectToScreen           objc.SEL
-		StyleMask                     objc.SEL
-		IsVisible                     objc.SEL
-		IsMiniaturized                objc.SEL
-		IsZoomed                      objc.SEL
-		Miniaturize                   objc.SEL
-		Deminiaturize                 objc.SEL
-		Zoom                          objc.SEL
-		ToggleFullScreen              objc.SEL
-		StandardWindowButton          objc.SEL
-		PerformWindowDrag             objc.SEL
+		InitWith                          objc.SEL
+		Center                            objc.SEL
+		Title                             objc.SEL
+		SetTitle                          objc.SEL
+		TitleVisibility                   objc.SEL
+		SetTitleVisibility                objc.SEL
+		TitlebarAppearsTransparent        objc.SEL
+		SetTitlebarAppearsTransparent     objc.SEL
+		SetDelegate                       objc.SEL
+		ContentView                       objc.SEL
+		SetContentView                    objc.SEL
+		SetCollectionBehavior             objc.SEL
+		SetAcceptsMouseMovedEvents        objc.SEL
+		SetRestorable                     objc.SEL
+		SetOpaque                         objc.SEL
+		SetBackgroundColor                objc.SEL
+		BackingScaleFactor                objc.SEL
+		MakeFirstResponder                objc.SEL
+		MakeKeyAndOrderFront              objc.SEL
+		OrderFront                        objc.SEL
+		OrderOut                          objc.SEL
+		AddChildWindow                    objc.SEL
+		RemoveChildWindow                 objc.SEL
+		PerformClose                      objc.SEL
+		Close                             objc.SEL
+		CanBecomeKeyWindow                objc.SEL
+		CanBecomeMainWindow               objc.SEL
+		Frame                             objc.SEL
+		ContentRectForFrameRect           objc.SEL
+		SetFrameTopLeftPoint              objc.SEL
+		SetFrameDisplay                   objc.SEL
+		MouseLocationOutsideOfEventStream objc.SEL
+		SetContentSize                    objc.SEL
+		SetContentMinSize                 objc.SEL
+		SetLevel                          objc.SEL
+		ConvertRectToScreen               objc.SEL
+		StyleMask                         objc.SEL
+		IsVisible                         objc.SEL
+		IsMiniaturized                    objc.SEL
+		IsZoomed                          objc.SEL
+		Miniaturize                       objc.SEL
+		Deminiaturize                     objc.SEL
+		Zoom                              objc.SEL
+		ToggleFullScreen                  objc.SEL
+		StandardWindowButton              objc.SEL
+		PerformWindowDrag                 objc.SEL
 	}
 )
 
@@ -1241,6 +1245,14 @@ func (w NSWindow) ContentRectForFrameRect(frame NSRect) NSRect {
 
 func (w NSWindow) SetFrameTopLeftPoint(point NSPoint) {
 	w.Send(NSWindowSel.SetFrameTopLeftPoint, point)
+}
+
+func (w NSWindow) SetFrameDisplay(frame NSRect, display bool) {
+	w.Send(NSWindowSel.SetFrameDisplay, frame, display)
+}
+
+func (w NSWindow) MouseLocationOutsideOfEventStream() NSPoint {
+	return objc.Send[NSPoint](w.ID, NSWindowSel.MouseLocationOutsideOfEventStream)
 }
 
 func (w NSWindow) SetContentSize(size NSSize) {
