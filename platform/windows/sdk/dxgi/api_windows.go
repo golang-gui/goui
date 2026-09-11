@@ -84,6 +84,13 @@ type Factory2Class struct {
 
 type Factory2 struct{ Object }
 
+func (f *Factory2) CreateSwapChainForComposition(device *com.Unknown, desc *SwapChainDesc1) (swapChain *SwapChain1, hr com.HRESULT) {
+	ret, _, _ := (*Factory2Class)(f.Class).CreateSwapChainForComposition.CallRaw(
+		uintptr(cgo.Pointer(f)), uintptr(cgo.Pointer(device)), uintptr(cgo.Pointer(desc)), 0, uintptr(cgo.Pointer(&swapChain)),
+	)
+	return swapChain, com.HRESULT(ret)
+}
+
 func (f *Factory2) CreateSwapChainForHwnd(device *com.Unknown, hwnd uintptr, desc *SwapChainDesc1) (swapChain *SwapChain1, hr com.HRESULT) {
 	ret, _, _ := (*Factory2Class)(f.Class).CreateSwapChainForHwnd.CallRaw(
 		uintptr(cgo.Pointer(f)), uintptr(cgo.Pointer(device)), hwnd,
