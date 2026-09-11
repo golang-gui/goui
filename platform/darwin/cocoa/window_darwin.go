@@ -37,7 +37,9 @@ type Window struct {
 	controlsPosition             *windowControlsPosition // value-only preference/defaults; no retained NSButton references
 	controlsFullscreenTransition bool                    // native will/did/failure notifications, not requested state
 
-	transparent bool
+	transparent   bool
+	resize        *windowResize
+	resizeRelease bool // consume the matching up even when a resize is cancelled
 }
 
 // newNativeWindow creates the NSWindow shared by top-level windows and popups:
@@ -113,6 +115,7 @@ func (w *Window) NativeHandle() uintptr {
 }
 
 func (w *Window) Destroy() {
+	w.resize = nil
 	w.controlsPosition = nil
 	if movePress.window == w {
 		movePress = nativePress{}
@@ -187,6 +190,7 @@ func (w *Window) Show() error {
 }
 
 func (w *Window) Hide() error {
+	w.resize = nil
 	if !w.window.Valid() {
 		return nil
 	}
@@ -405,6 +409,7 @@ func windowDidResignKey(self NSWindowDelegate, notification NSNotification) {
 	defer self.Release()
 
 	if window, has := windowMap[Cast[NSWindow](notification.Object())]; has {
+		window.resize = nil
 		window.updateControlsPosition()
 		window.emitEvent(events.FocusEvent{Focused: false})
 	}
@@ -469,10 +474,12 @@ func (w *Window) drawImage(img graphics.Bitmap) (err error) {
 }
 
 func windowStyle(options common.WindowOptions) NSWindowStyleMask {
-	style := NSWindowStyleMaskResizable | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable
+	style := NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable
 	if options.Chrome != common.WindowChromeNone {
-		style |= NSWindowStyleMaskTitled
+		style |= NSWindowStyleMaskTitled | NSWindowStyleMaskResizable
 	}
+	// None uses explicitly requested client resizing. Native border tracking
+	// must not compete with the custom region's original mouse-down.
 	if options.Chrome == common.WindowChromeIntegrated {
 		style |= NSWindowStyleMaskFullSizeContentView
 	}
@@ -548,7 +555,7 @@ func (w *Window) SetHitTest(func(geometry.Point) common.WindowHit) error {
 }
 
 func (w *Window) BeginMove() error {
-	if !w.window.Valid() || movePress.window != w || !movePress.event.Valid() {
+	if !w.window.Valid() || movePress.window != w || !movePress.event.Valid() || w.resize != nil {
 		return common.ErrUnavailable
 	}
 	event, native := movePress.event, w.window
@@ -562,13 +569,6 @@ func (w *Window) BeginMove() error {
 	defer event.Release()
 	native.PerformWindowDrag(event)
 	return nil
-}
-
-func (w *Window) BeginResize(common.WindowEdge) error {
-	if !w.window.Valid() {
-		return common.ErrUnavailable
-	}
-	return common.ErrUnsupported
 }
 
 func (w *Window) State() common.WindowState {

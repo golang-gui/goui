@@ -88,7 +88,7 @@ type DesktopWindow interface {
 	// Windows only). Unsupported backends return ErrUnsupported, including for
 	// nil; they do not retain or simulate the callback using pointer events.
 	// On supported backends nil restores defaults. p is in client DIP, possibly outside
-	// the client bounds. Default defer8is to native handling; Client explicitly
+	// the client bounds. Default defers to native handling; Client explicitly
 	// keeps a customizable region in the client input path.
 	//
 	// The callback runs on the window thread and may be called frequently or
@@ -113,9 +113,11 @@ type DesktopWindow interface {
 	// are preserved. Use this path only after SetHitTest returns ErrUnsupported.
 	BeginMove() error
 	// BeginResize has the same input and lifetime contract as BeginMove, but
-	// requests resizing from one edge or corner. It does not implement a resize
-	// loop or change the cursor. Currently X11 provides this request; Windows
-	// uses SetHitTest and macOS retains AppKit's native resize borders instead.
+	// requests resizing from one edge or corner. X11 asks the window manager;
+	// macOS tracks native drag input and adjusts the frame in the backend.
+	// Neither path changes the cursor or promises native edge double-click actions.
+	// Windows uses SetHitTest instead. Native/Integrated decoration is recommended;
+	// None callers must supply their own interaction regions and cursor feedback.
 	BeginResize(edge WindowEdge) error
 }
 

@@ -49,7 +49,7 @@ func TestPopup(t *testing.T) {
 		}
 
 		var once sync.Once
-		popup, err = plat.NewPopup(owner, 120, 80, func(event platform.Event) {
+		popup, err = plat.NewPopup(owner, geometry.Size{Width: 120, Height: 80}, func(event platform.Event) {
 			if _, ok := event.(events.PaintEvent); ok {
 				once.Do(func() {
 					img := image.NewRGBA(image.Rect(0, 0, 120, 80))
@@ -61,7 +61,7 @@ func TestPopup(t *testing.T) {
 					eventLoop.Quit()
 				})
 			}
-		})
+		}, platform.PopupOptions{})
 		if err != nil {
 			return
 		}
@@ -153,7 +153,7 @@ func TestPopupPainter(t *testing.T) {
 		}
 
 		var once sync.Once
-		popup, err = plat.NewPopup(owner, 120, 80, func(event platform.Event) {
+		popup, err = plat.NewPopup(owner, geometry.Size{Width: 120, Height: 80}, func(event platform.Event) {
 			if event, ok := event.(events.SizeEvent); ok {
 				size = event
 			}
@@ -166,7 +166,7 @@ func TestPopupPainter(t *testing.T) {
 					eventLoop.Quit()
 				})
 			}
-		})
+		}, platform.PopupOptions{})
 		if err != nil {
 			return
 		}
