@@ -226,6 +226,7 @@ func (p NSPasteboard) StringForType(dataType NSString) NSString {
 // NSColor
 
 func initNSColor() {
+	NSColorSel.ClearColor = objc.RegisterName("clearColor")
 	NSColorClassId.Class = objc.GetClass("NSColor")
 	NSColorSel.ControlAccentColor = objc.RegisterName("controlAccentColor")
 	NSColorSel.ColorUsingColorSpace = objc.RegisterName("colorUsingColorSpace:")
@@ -238,6 +239,7 @@ func initNSColor() {
 var (
 	NSColorClassId NSColorClass
 	NSColorSel     struct {
+		ClearColor           objc.SEL
 		ControlAccentColor   objc.SEL
 		ColorUsingColorSpace objc.SEL
 		RedComponent         objc.SEL
@@ -251,6 +253,11 @@ type (
 	NSColor      struct{ NSObject }
 	NSColorClass struct{ NSObjectClass }
 )
+
+func (c NSColorClass) ClearColor() (color NSColor) {
+	color.ID = c.Send(NSColorSel.ClearColor)
+	return
+}
 
 func (c NSColorClass) ControlAccentColor() (color NSColor) {
 	color.ID = c.Send(NSColorSel.ControlAccentColor)
@@ -992,6 +999,8 @@ type (
 // NSWindow
 
 func initNSWindow() {
+	NSWindowSel.SetOpaque = objc.RegisterName("setOpaque:")
+	NSWindowSel.SetBackgroundColor = objc.RegisterName("setBackgroundColor:")
 	NSWindowClassId.Class = objc.GetClass("NSWindow")
 	NSWindowSel.InitWith = objc.RegisterName("initWithContentRect:styleMask:backing:defer:")
 	NSWindowSel.Center = objc.RegisterName("center")
@@ -1054,6 +1063,8 @@ var (
 		SetCollectionBehavior         objc.SEL
 		SetAcceptsMouseMovedEvents    objc.SEL
 		SetRestorable                 objc.SEL
+		SetOpaque                     objc.SEL
+		SetBackgroundColor            objc.SEL
 		BackingScaleFactor            objc.SEL
 		MakeFirstResponder            objc.SEL
 		MakeKeyAndOrderFront          objc.SEL
@@ -1180,6 +1191,9 @@ func (w NSWindow) SetAcceptsMouseMovedEvents(v bool) {
 func (w NSWindow) SetRestorable(v bool) {
 	w.Send(NSWindowSel.SetRestorable, v)
 }
+
+func (w NSWindow) SetOpaque(v bool)                 { w.Send(NSWindowSel.SetOpaque, v) }
+func (w NSWindow) SetBackgroundColor(color NSColor) { w.Send(NSWindowSel.SetBackgroundColor, color) }
 
 func (w NSWindow) BackingScaleFactor() CGFloat {
 	return objc.Send[CGFloat](w.ID, NSWindowSel.BackingScaleFactor)
