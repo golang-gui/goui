@@ -148,6 +148,8 @@ const (
 	WindowStateNormal WindowState = iota
 	WindowStateHidden
 	WindowStateMinimized
+	// Maximized is the platform's enlarged state (AppKit zoom on macOS),
+	// not a guarantee that the window fills the entire screen work area.
 	WindowStateMaximized
 	WindowStateFullscreen
 )
