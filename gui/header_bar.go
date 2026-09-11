@@ -230,7 +230,7 @@ func (h *HeaderBar) queryRegion(p geometry.Point, result *ChromeRegion) {
 	drag := h.defaultDragRegion(target)
 	h.dragRegion.Emit(local, &drag)
 	if drag {
-		*result = ChromeRegionDrag
+		*result = ChromeRegionCaption
 	} else {
 		*result = ChromeRegionClient
 	}

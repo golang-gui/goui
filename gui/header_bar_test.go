@@ -213,7 +213,7 @@ func TestHeaderBarPaddingParticipatesInDragQuery(t *testing.T) {
 	handle.Disconnect()
 	// With no window-controls reservation, the right padding is background too.
 	header.Arrange(geometry.Rect(20, 100, 200, 64))
-	if got := win.chrome.queryRegion(geometry.Point{X: 216, Y: 132}); got != ChromeRegionDrag {
+	if got := win.chrome.queryRegion(geometry.Point{X: 216, Y: 132}); got != ChromeRegionCaption {
 		t.Fatalf("translated right padding hit=%v, want Drag", got)
 	}
 }

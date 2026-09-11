@@ -150,7 +150,7 @@ func newWindow(app *application, options WindowOptions) (*window, error) {
 		win.Destroy()
 		return nil, fmt.Errorf("create window chrome: %w", err)
 	}
-	if win.chrome.info.Enabled {
+	if win.chrome.info.Controls != ChromeControlsNone {
 		win.controls = newWindowControls(win)
 		win.dispatcher.decoration = win.controls
 	}
