@@ -11,7 +11,6 @@ var (
 	kernel32Dll = syscall.NewLazyDLL("kernel32.dll")
 	gdi32Dll    = syscall.NewLazyDLL("gdi32.dll")
 	advapi32Dll = syscall.NewLazyDLL("advapi32.dll")
-	dwmapiDll   = syscall.NewLazyDLL("dwmapi.dll")
 
 	// Kernel
 	procGetModuleHandleW      = kernel32Dll.NewProc("GetModuleHandleW")
@@ -83,6 +82,8 @@ var (
 	procSetCursor   = user32Dll.NewProc("SetCursor")
 
 	// GDI
+	procCreateRectRgn = gdi32Dll.NewProc("CreateRectRgn")
+
 	procCreateCompatibleDC = gdi32Dll.NewProc("CreateCompatibleDC")
 	procDeleteDC           = gdi32Dll.NewProc("DeleteDC")
 
@@ -108,13 +109,6 @@ var (
 	procRegOpenKeyExW    = advapi32Dll.NewProc("RegOpenKeyExW")
 	procRegQueryValueExW = advapi32Dll.NewProc("RegQueryValueExW")
 	procRegCloseKey      = advapi32Dll.NewProc("RegCloseKey")
-
-	// DWM
-	procDwmGetColorizationColor      = dwmapiDll.NewProc("DwmGetColorizationColor")
-	procDwmGetWindowAttribute        = dwmapiDll.NewProc("DwmGetWindowAttribute")
-	procDwmDefWindowProc             = dwmapiDll.NewProc("DwmDefWindowProc")
-	procDwmIsCompositionEnabled      = dwmapiDll.NewProc("DwmIsCompositionEnabled")
-	procDwmExtendFrameIntoClientArea = dwmapiDll.NewProc("DwmExtendFrameIntoClientArea")
 
 	// Clipboard
 	procOpenClipboard    = user32Dll.NewProc("OpenClipboard")
@@ -701,64 +695,12 @@ func RegCloseKey(key HKEY) error {
 	return nil
 }
 
-// DwmDefWindowProc writes result when DWM handles the message. The error reports
-// an unavailable native entry point, independently of the handled return value.
-func DwmDefWindowProc(wnd HWND, message UINT, wParam WPARAM, lParam LPARAM, result *LRESULT) (BOOL, error) {
-	if err := procDwmDefWindowProc.Find(); err != nil {
-		return FALSE, err
+func CreateRectRgn(left, top, right, bottom int32) (HGDIOBJ, error) {
+	ret, _, err := syscall.SyscallN(procCreateRectRgn.Addr(), uintptr(left), uintptr(top), uintptr(right), uintptr(bottom))
+	if ret == 0 {
+		return 0, err
 	}
-	ret, _, _ := syscall.SyscallN(procDwmDefWindowProc.Addr(), uintptr(wnd), uintptr(message),
-		uintptr(wParam), uintptr(lParam), uintptr(unsafe.Pointer(result)))
-	return BOOL(ret), nil
-}
-
-func DwmGetWindowAttribute(wnd HWND, attribute DWORD, value unsafe.Pointer, size DWORD) error {
-	if err := procDwmGetWindowAttribute.Find(); err != nil {
-		return err
-	}
-	ret, _, _ := syscall.SyscallN(procDwmGetWindowAttribute.Addr(), uintptr(wnd), uintptr(attribute),
-		uintptr(value), uintptr(size))
-	if int32(ret) < 0 {
-		return syscall.Errno(uint32(ret))
-	}
-	return nil
-}
-
-func DwmIsCompositionEnabled(enabled *BOOL) error {
-	if err := procDwmIsCompositionEnabled.Find(); err != nil {
-		return err
-	}
-	ret, _, _ := syscall.SyscallN(procDwmIsCompositionEnabled.Addr(), uintptr(unsafe.Pointer(enabled)))
-	if int32(ret) < 0 {
-		return syscall.Errno(uint32(ret))
-	}
-	return nil
-}
-
-func DwmExtendFrameIntoClientArea(wnd HWND, margins *MARGINS) error {
-	if err := procDwmExtendFrameIntoClientArea.Find(); err != nil {
-		return err
-	}
-	ret, _, _ := syscall.SyscallN(procDwmExtendFrameIntoClientArea.Addr(), uintptr(wnd), uintptr(unsafe.Pointer(margins)))
-	if int32(ret) < 0 {
-		return syscall.Errno(uint32(ret))
-	}
-	return nil
-}
-
-func DwmGetColorizationColor(colorization *DWORD, opaqueBlend *BOOL) error {
-	if err := procDwmGetColorizationColor.Find(); err != nil {
-		return err
-	}
-	ret, _, _ := syscall.SyscallN(
-		procDwmGetColorizationColor.Addr(),
-		uintptr(unsafe.Pointer(colorization)),
-		uintptr(unsafe.Pointer(opaqueBlend)),
-	)
-	if ret != 0 {
-		return syscall.Errno(ret)
-	}
-	return nil
+	return HGDIOBJ(ret), nil
 }
 
 func OpenClipboard(wnd HWND) bool {
