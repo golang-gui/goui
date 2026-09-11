@@ -66,8 +66,8 @@ func (p *Platform) NewWindow(size geometry.Size, handler events.EventHandler, op
 	return window, nil
 }
 
-func (p *Platform) NewPopup(owner common.Window, width, height float32, handler events.EventHandler) (common.Popup, error) {
-	return newPopup(owner, width, height, handler)
+func (p *Platform) NewPopup(owner common.Window, size geometry.Size, handler events.EventHandler, options common.PopupOptions) (common.Popup, error) {
+	return newPopup(owner, size, handler, options)
 }
 
 func (p *Platform) NewImage(width, height uint) (common.Image, error) {
@@ -83,17 +83,30 @@ func (p *Platform) NewPainter(surface common.Surface) (painter graphics.Painter,
 	case "opengl":
 		return opengl.NewPainter(surface)
 	case "software":
-		return software.NewPainter(surface)
+		return newSoftwarePainter(surface)
 	default:
 		// D2D → OpenGL → Software
 		if painter, err = direct2d.NewPainter(surface); err != nil {
 			// TODO: add log
 			if painter, err = opengl.NewPainter(surface); err != nil {
-				return software.NewPainter(surface)
+				return newSoftwarePainter(surface)
 			}
 		}
 		return
 	}
+}
+
+func newSoftwarePainter(surface common.Surface) (graphics.Painter, error) {
+	if surface.Transparent() {
+		win := windowMap[winapi.HWND(surface.NativeHandle())]
+		if win == nil {
+			return nil, common.ErrUnavailable
+		}
+		if err := win.ensureUpload(); err != nil {
+			return nil, err
+		}
+	}
+	return software.NewPainter(surface)
 }
 
 func (p *Platform) NewInputMethod(window common.Window, handler common.InputMethodHandler) (common.InputMethod, error) {

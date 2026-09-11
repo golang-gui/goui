@@ -3,6 +3,7 @@ package x11
 import (
 	"image"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 
@@ -18,12 +19,12 @@ type Popup struct {
 	owner common.Window
 }
 
-func newPopup(owner common.Window, width, height float32, onEvent events.EventHandler) (common.Popup, error) {
+func newPopup(owner common.Window, size geometry.Size, onEvent events.EventHandler, options common.PopupOptions) (common.Popup, error) {
 	// override-redirect: borderless, topmost, no taskbar entry, WM-bypassing.
 	// Create at the authoritative size so the GL context binds a correctly-sized
 	// drawable (no 1x1-then-resize).
 	scale := currentScale()
-	win, err := newNativeWindow(onEvent, true, physical(width, scale), physical(height, scale))
+	win, err := newNativeWindow(onEvent, true, physical(size.Width, scale), physical(size.Height, scale), options.Transparent)
 	if err != nil {
 		return nil, err
 	}
@@ -31,6 +32,7 @@ func newPopup(owner common.Window, width, height float32, onEvent events.EventHa
 }
 
 func (p *Popup) NativeHandle() uintptr { return p.win.NativeHandle() }
+func (p *Popup) Transparent() bool     { return p.win.Transparent() }
 
 // NativeFBConfig forwards the underlying window's GLX FBConfig so the OpenGL
 // painter can build a matching context for the popup (x11 duck-types this).

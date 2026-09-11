@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"unsafe"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/windows/sdk/winapi"
@@ -20,11 +21,17 @@ type Popup struct {
 	owner common.Window
 }
 
-func newPopup(owner common.Window, width, height float32, onEvent events.EventHandler) (common.Popup, error) {
+func newPopup(owner common.Window, size geometry.Size, onEvent events.EventHandler, options common.PopupOptions) (common.Popup, error) {
+	if options.Transparent {
+		if err := checkTransparency(); err != nil {
+			return nil, err
+		}
+	}
 	win := &Window{
-		onEvent:    onEvent,
-		scale:      1,
-		noActivate: true, // clicking the popup must not steal focus from its owner
+		onEvent:     onEvent,
+		scale:       1,
+		transparent: options.Transparent,
+		noActivate:  true, // clicking the popup must not steal focus from its owner
 	}
 
 	ownerHwnd := winapi.HWND(owner.NativeHandle())
@@ -33,11 +40,12 @@ func newPopup(owner common.Window, width, height float32, onEvent events.EventHa
 	// the minimum containing physical size using the owner's effective scale
 	// (including GOUI_PLAT_SCALE), matching SizeEvent and pointer conversion.
 	scale := hwndScale(ownerHwnd)
-	w, h := popupPhysicalExtent(width, scale), popupPhysicalExtent(height, scale)
+	w, h := popupPhysicalExtent(size.Width, scale), popupPhysicalExtent(size.Height, scale)
 
 	var err error
+	exStyle := winapi.DWORD(winapi.WS_EX_TOOLWINDOW | winapi.WS_EX_NOACTIVATE)
 	win.hwnd, err = winapi.CreateWindowEx(
-		winapi.WS_EX_TOOLWINDOW|winapi.WS_EX_NOACTIVATE, // no taskbar entry, no activation
+		exStyle, // no taskbar entry, no activation
 		platform.windowClass, platform.windowTitle,
 		winapi.WS_POPUP, // borderless
 		0, 0, w, h,
@@ -52,6 +60,7 @@ func newPopup(owner common.Window, width, height float32, onEvent events.EventHa
 }
 
 func (p *Popup) NativeHandle() uintptr      { return p.win.NativeHandle() }
+func (p *Popup) Transparent() bool          { return p.win.Transparent() }
 func (p *Popup) Destroy()                   { p.win.Destroy() }
 func (p *Popup) Hide() error                { return p.win.Hide() }
 func (p *Popup) RequestPaint() error        { return p.win.RequestPaint() }

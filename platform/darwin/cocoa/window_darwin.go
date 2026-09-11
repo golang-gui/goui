@@ -36,22 +36,29 @@ type Window struct {
 
 	controlsPosition             *windowControlsPosition // value-only preference/defaults; no retained NSButton references
 	controlsFullscreenTransition bool                    // native will/did/failure notifications, not requested state
+
+	transparent bool
 }
 
 // newNativeWindow creates the NSWindow shared by top-level windows and popups:
 // it allocates the delegate/view, initializes the window with the given style
 // and rect, wires the content view and delegate, and registers it for event
 // routing. Callers apply role-specific setup (collection behavior / level).
-func newNativeWindow(onEvent events.EventHandler, class NSWindowClass, styleMask NSWindowStyleMask, rect NSRect) *Window {
+func newNativeWindow(onEvent events.EventHandler, class NSWindowClass, styleMask NSWindowStyleMask, rect NSRect, transparent bool) *Window {
 	win := &Window{
-		onEvent: onEvent,
-		state:   common.WindowStateUnknown,
+		onEvent:     onEvent,
+		state:       common.WindowStateUnknown,
+		transparent: transparent,
 	}
 	AutoReleasePool(func() {
 		win.delegate = delegateClass.Alloc()
 		win.view = viewClass.Alloc().Init()
 
 		win.window = class.Alloc().InitWith(rect, styleMask, NSBackingStoreBuffered, false)
+		if transparent {
+			win.window.SetOpaque(false)
+			win.window.SetBackgroundColor(NSColorClassId.ClearColor())
+		}
 		if styleMask&NSWindowStyleMaskFullSizeContentView != 0 {
 			// Keep the native frame and traffic lights. Only the title/background
 			// are removed; the ordinary content view paints underneath them.
@@ -91,13 +98,15 @@ func newWindow(size geometry.Size, onEvent events.EventHandler, options common.W
 	styleMask := windowStyle(options)
 
 	// newNativeWindow converts the requested logical content size to points.
-	win := newNativeWindow(onEvent, windowClass, styleMask, NSMakeRect(0, 0, CGFloat(size.Width), CGFloat(size.Height)))
+	win := newNativeWindow(onEvent, windowClass, styleMask, NSMakeRect(0, 0, CGFloat(size.Width), CGFloat(size.Height)), options.Transparent)
 
 	AutoReleasePool(func() {
 		win.window.SetCollectionBehavior(NSWindowCollectionBehaviorManaged | NSWindowCollectionBehaviorFullScreenPrimary)
 	})
 	return win, nil
 }
+
+func (w *Window) Transparent() bool { return w.transparent }
 
 func (w *Window) NativeHandle() uintptr {
 	return uintptr(w.window.ID)
@@ -440,6 +449,9 @@ func (w *Window) drawImage(img graphics.Bitmap) (err error) {
 		defer CGColorSpaceRelease(colorSpace)
 
 		bitmapInfo := CGImageAlphaLast
+		if w.transparent {
+			bitmapInfo = CGImageAlphaPremultipliedLast
+		}
 		cgImage := CGImageCreate(uint(width), uint(height), 8, 32, uint(img.Stride), colorSpace, bitmapInfo, dataProvider, nil, false, CGRenderingIntentDefault)
 		if cgImage != 0 {
 			defer CGImageRelease(cgImage)
@@ -447,6 +459,9 @@ func (w *Window) drawImage(img graphics.Bitmap) (err error) {
 			// logical point rect so the retina CGContext maps it 1:1 onto the
 			// backing store instead of upscaling a point-sized image.
 			frame := w.view.Frame()
+			if w.transparent {
+				CGContextClearRect(context, NSMakeRect(0, 0, frame.Size.Width, frame.Size.Height))
+			}
 			CGContextDrawImage(context, NSMakeRect(0, 0, frame.Size.Width, frame.Size.Height), cgImage)
 		}
 	}

@@ -23,9 +23,9 @@ type Popup struct {
 	owner common.Window
 }
 
-func newPopup(owner common.Window, width, height float32, onEvent events.EventHandler) (common.Popup, error) {
+func newPopup(owner common.Window, width, height float32, onEvent events.EventHandler, options common.PopupOptions) (common.Popup, error) {
 	// newNativeWindow converts the requested logical content size to points.
-	win := newNativeWindow(onEvent, popupClass, NSWindowStyleMaskBorderless, NSMakeRect(0, 0, CGFloat(width), CGFloat(height)))
+	win := newNativeWindow(onEvent, popupClass, NSWindowStyleMaskBorderless, NSMakeRect(0, 0, CGFloat(width), CGFloat(height)), options.Transparent)
 	AutoReleasePool(func() {
 		win.window.SetLevel(popupWindowLevel) // float above ordinary windows
 	})
@@ -33,6 +33,7 @@ func newPopup(owner common.Window, width, height float32, onEvent events.EventHa
 }
 
 func (p *Popup) NativeHandle() uintptr      { return p.win.NativeHandle() }
+func (p *Popup) Transparent() bool          { return p.win.Transparent() }
 func (p *Popup) Destroy()                   { p.win.Destroy() }
 func (p *Popup) Hide() error                { return p.win.Hide() }
 func (p *Popup) RequestPaint() error        { return p.win.RequestPaint() }

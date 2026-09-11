@@ -1,5 +1,10 @@
 package common
 
+// PopupOptions configures the popup surface, independently of its owner.
+type PopupOptions struct {
+	Transparent bool
+}
+
 // Popup is a borderless, transient surface (menu, dropdown, tooltip, ...) that
 // belongs to an owner Window and floats above it. It is thread-affine and must
 // be used on the thread that owns the platform.

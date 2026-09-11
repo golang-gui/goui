@@ -19,6 +19,7 @@ type (
 	Window             = common.Window
 	DesktopWindow      = common.DesktopWindow
 	WindowOptions      = common.WindowOptions
+	PopupOptions       = common.PopupOptions
 	WindowChrome       = common.WindowChrome
 	WindowState        = common.WindowState
 	WindowHit          = common.WindowHit
@@ -106,7 +107,7 @@ type Platform interface {
 	// NewPopup creates a borderless popup owned by owner. width/height is its
 	// requested logical (DIP) size; native pixel quantization may adjust it, and
 	// the authoritative logical and physical client size arrives via SizeEvent.
-	NewPopup(owner Window, width, height float32, handler EventHandler) (Popup, error)
+	NewPopup(owner Window, size geometry.Size, handler EventHandler, options PopupOptions) (Popup, error)
 	NewEventLoop() (EventLoop, error)
 	NewTypography() (typography.Context, error)
 	// NewPainter creates a painter for any paint target — a Window or a Popup.
