@@ -51,6 +51,10 @@ func mouseMoved(self NSView, event NSEvent) {
 }
 
 func mouseDragged(self NSView, event NSEvent) {
+	if window := windowForView(self); window != nil && window.resizeRelease {
+		window.trackResize()
+		return
+	}
 	mouseMoved(self, event)
 }
 
@@ -66,12 +70,20 @@ func mouseDown(self NSView, event NSEvent) {
 	self.Retain()
 	defer self.Release()
 	if window := windowForView(self); window != nil {
+		window.resize = nil
+		window.resizeRelease = false
 		window.emitPointer(events.PointerDown, events.PointerButtonLeft, event)
 	}
 }
 
 func mouseUp(self NSView, event NSEvent) {
 	if window := windowForView(self); window != nil {
+		if window.resizeRelease {
+			window.trackResize()
+			window.resize = nil
+			window.resizeRelease = false
+			return
+		}
 		window.emitPointer(events.PointerUp, events.PointerButtonLeft, event)
 	}
 }
