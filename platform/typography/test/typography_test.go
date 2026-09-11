@@ -315,6 +315,8 @@ type testPainter struct {
 	graphics.Painter
 }
 
+func (*testPainter) Transparent() bool { return false }
+
 func newTestPainter(typo typography.Context) (_ *testPainter, err error) {
 	p := new(testPainter)
 	p.Painter, err = software.NewPainter(p)
