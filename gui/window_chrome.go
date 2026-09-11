@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"time"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
@@ -421,19 +422,90 @@ func (c *windowChrome) destroy() {
 // This is a host EventController, not a native-event interception shortcut.
 type chromeInteractionController struct {
 	EventControllerBase
-	chrome *windowChrome
+	chrome     *windowChrome
+	pressed    bool
+	clickAt    time.Time
+	clickPos   geometry.Point
+	lastClick  time.Time
+	lastPos    geometry.Point
+	suppressUp bool
+}
+
+// Private GUI policy until double-click preferences are exposed by Settings.
+const captionClickInterval = 500 * time.Millisecond
+const captionClickDistance float32 = 4
+
+func captionNear(a, b geometry.Point) bool {
+	return math.Abs(float64(a.X-b.X)) <= float64(captionClickDistance) && math.Abs(float64(a.Y-b.Y)) <= float64(captionClickDistance)
+}
+
+func (controller *chromeInteractionController) Reset() {
+	controller.pressed, controller.suppressUp = false, false
+	controller.lastClick = time.Time{}
 }
 
 func (controller *chromeInteractionController) HandleEvent(ctx EventContext) {
+	controller.handleAt(ctx, time.Now())
+}
+
+func (controller *chromeInteractionController) handleAt(ctx EventContext, now time.Time) {
 	c := controller.chrome
 	if !c.live() || c.nativeHit || !c.info.Enabled {
+		controller.Reset()
 		return
 	}
 	event, ok := ctx.Event().(events.PointerEvent)
-	if !ok || event.EventType != events.PointerDown || event.Button != events.PointerButtonLeft {
+	if !ok {
+		controller.Reset()
+		return
+	}
+	if event.EventType == events.PointerUp && event.Button == events.PointerButtonLeft && controller.suppressUp {
+		controller.suppressUp = false
+		ctx.StopPropagation()
 		return
 	}
 	if c.syncing || c.window.layoutDirty || c.window.layingOut {
+		controller.Reset()
+		return
+	}
+	if controller.pressed {
+		if c.window.modalTarget != nil || c.window.dispatcher.captureTarget != nil {
+			controller.Reset()
+			return
+		}
+		if event.EventType == events.PointerMove {
+			ctx.StopPropagation()
+			if event.Buttons&events.PointerButtonLeftDown == 0 {
+				controller.Reset()
+				return
+			}
+			if !captionNear(controller.clickPos, event.Position) {
+				controller.pressed = false
+				controller.lastClick = time.Time{}
+				controller.suppressUp = true
+				// The press belongs to Caption even if the native move is refused;
+				// never send content a release for a press it did not receive.
+				_ = c.native.BeginMove()
+			}
+			return
+		}
+		if event.EventType == events.PointerUp && event.Button == events.PointerButtonLeft {
+			controller.pressed = false
+			ctx.StopPropagation()
+			if now.Sub(controller.clickAt) <= captionClickInterval && captionNear(controller.clickPos, event.Position) && c.queryRegion(event.Position) == ChromeRegionCaption {
+				controller.lastClick, controller.lastPos = controller.clickAt, event.Position
+			} else {
+				controller.lastClick = time.Time{}
+			}
+			return
+		}
+	}
+	if event.EventType != events.PointerDown {
+		return
+	}
+	controller.pressed, controller.suppressUp = false, false
+	if event.Button != events.PointerButtonLeft {
+		controller.Reset()
 		return
 	}
 	region := c.queryRegion(event.Position)
@@ -443,10 +515,27 @@ func (controller *chromeInteractionController) HandleEvent(ctx EventContext) {
 	var err error
 	switch {
 	case region == ChromeRegionCaption:
-		err = c.native.BeginMove()
+		ctx.StopPropagation()
+		if !controller.lastClick.IsZero() && now.Sub(controller.lastClick) >= 0 && now.Sub(controller.lastClick) <= captionClickInterval && captionNear(controller.lastPos, event.Position) {
+			controller.lastClick = time.Time{}
+			controller.suppressUp = true
+			switch c.window.State() {
+			case WindowStateNormal:
+				c.window.RequestState(WindowStateMaximized)
+			case WindowStateMaximized:
+				c.window.RequestState(WindowStateNormal)
+			}
+		} else {
+			controller.lastClick = time.Time{}
+			controller.pressed = true
+			controller.clickAt, controller.clickPos = now, event.Position
+		}
+		return
 	case region >= ChromeRegionTop && region <= ChromeRegionBottomRight:
+		controller.Reset()
 		err = c.native.BeginResize(platform.WindowEdge(region - ChromeRegionTop))
 	default:
+		controller.Reset()
 		return
 	}
 	if err == nil {

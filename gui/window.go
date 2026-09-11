@@ -354,6 +354,19 @@ func (w *window) DispatchEvent(event events.Event) error {
 	if w.destroyed {
 		return nil
 	}
+	if controller := w.dispatcher.hostController; controller != nil {
+		switch e := event.(type) {
+		case events.FocusEvent, events.StateEvent, events.SizeEvent:
+			controller.Reset()
+		case events.PointerEvent:
+			if e.EventType == events.PointerLeave {
+				controller.Reset()
+			}
+		}
+		if w.modalTarget != nil {
+			controller.Reset()
+		}
+	}
 	// Dismissing a modal target can destroy its owner without consuming the event.
 	if w.routeToModalTarget(event) || w.destroyed {
 		return nil
