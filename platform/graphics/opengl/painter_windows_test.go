@@ -201,6 +201,7 @@ type pixelWindow winapi.HWND
 
 func (w pixelWindow) NativeHandle() uintptr { return uintptr(w) }
 func (w pixelWindow) RequestPaint() error   { return nil }
+func (w pixelWindow) Transparent() bool     { return false }
 
 type pixelFixture struct {
 	t          *testing.T
