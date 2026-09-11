@@ -22,7 +22,7 @@ func (w *Window) BeginResize(edge common.WindowEdge) error {
 	if edge > common.WindowEdgeBottomRight {
 		return fmt.Errorf("invalid window edge: %d", edge)
 	}
-	if !w.window.Valid() || movePress.window != w || !movePress.event.Valid() || w.resize != nil {
+	if !w.window.Valid() || movePress.window != w || !movePress.event.Valid() || movePress.motion || w.resize != nil {
 		return common.ErrUnavailable
 	}
 	if w.window.StyleMask()&NSWindowStyleMaskFullScreen != 0 {

@@ -8,11 +8,12 @@ import (
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
 )
 
-// This borrowed NSEvent is usable only during its synchronous pointer-down
+// This borrowed NSEvent is usable only during its synchronous down/drag
 // dispatch. Nested event/task dispatch expires it, even for another window.
 type nativePress struct {
 	window *Window
 	event  NSEvent
+	motion bool
 }
 
 var movePress nativePress
@@ -55,7 +56,10 @@ func mouseDragged(self NSView, event NSEvent) {
 		window.trackResize()
 		return
 	}
-	mouseMoved(self, event)
+	if window := windowForView(self); window != nil {
+		window.emitPointerWithDrag(events.PointerMove, events.PointerButtonNone, event, true)
+		window.reapplyCursor()
+	}
 }
 
 func rightMouseDragged(self NSView, event NSEvent) {
@@ -200,6 +204,10 @@ func (w *Window) reapplyCursor() {
 }
 
 func (w *Window) emitPointer(eventType events.EventType, button events.PointerButton, event NSEvent) {
+	w.emitPointerWithDrag(eventType, button, event, false)
+}
+
+func (w *Window) emitPointerWithDrag(eventType events.EventType, button events.PointerButton, event NSEvent, drag bool) {
 	movePress = nativePress{}
 	flag := pointerButtonFlag(button)
 	if eventType == events.PointerDown {
@@ -216,6 +224,8 @@ func (w *Window) emitPointer(eventType events.EventType, button events.PointerBu
 	}
 	if eventType == events.PointerDown && button == events.PointerButtonLeft {
 		movePress = nativePress{window: w, event: event}
+	} else if drag && w.buttons&events.PointerButtonLeftDown != 0 {
+		movePress = nativePress{window: w, event: event, motion: true}
 	}
 	defer func() { movePress = nativePress{} }()
 	w.onEvent(pointer)

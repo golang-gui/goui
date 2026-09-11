@@ -11,20 +11,34 @@ import (
 type nativePress struct {
 	window *Window
 	event  xlib.ButtonEvent
+	motion bool
 }
 
 var moveResizePress nativePress
 
 func (w *Window) emitEvent(event events.Event) {
 	moveResizePress = nativePress{}
+	if focus, ok := event.(events.FocusEvent); ok && !focus.Focused {
+		w.dragPress = false
+	}
 	if w.wid != 0 {
 		w.onEvent(event)
 	}
 }
 
 func (w *Window) handlePointerMove(event *xlib.MotionEvent) {
+	moveResizePress = nativePress{}
 	w.buttons = buttonsFromState(event.State, w.buttons)
-	w.emitEvent(events.PointerEvent{
+	if w.dragPress && event.Window == w.wid && event.SendEvent == 0 && event.SameScreen != 0 && w.buttons&events.PointerButtonLeftDown != 0 {
+		moveResizePress = nativePress{window: w, motion: true, event: xlib.ButtonEvent{
+			Window: event.Window, Root: event.Root, Time: event.Time, XRoot: event.XRoot, YRoot: event.YRoot, Button: xlib.Button1,
+		}}
+	}
+	defer func() { moveResizePress = nativePress{} }()
+	if w.wid == 0 {
+		return
+	}
+	w.onEvent(events.PointerEvent{
 		EventType: events.PointerMove,
 		Position:  point(event.X, event.Y),
 		Button:    events.PointerButtonNone,
@@ -53,6 +67,7 @@ func (w *Window) handleButton(eventType events.EventType, event *xlib.ButtonEven
 		}
 	}
 	if event.Button == xlib.Button1 {
+		w.dragPress = eventType == events.PointerDown && event.SendEvent == 0 && event.Window == w.wid
 		if eventType == events.PointerDown {
 			w.moveResize = false
 		} else if w.moveResize {

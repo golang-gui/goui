@@ -41,6 +41,7 @@ type Window struct {
 	resizeSync       resizeSync
 	paintPending     bool
 	moveResize       bool // a WM interaction was requested; a raced release must cancel it
+	dragPress        bool // an original left press may start moving on native motion
 	state            common.WindowState
 	overrideRedirect bool
 }
@@ -638,6 +639,9 @@ func (w *Window) beginMoveResize(direction int64) error {
 	if moveResizePress.window != w {
 		return common.ErrUnavailable
 	}
+	if moveResizePress.motion && direction != 8 {
+		return common.ErrUnavailable
+	}
 	supported, err := windowProperty32(platform.display, platform.defScreen.Root,
 		platform.atoms._NET_SUPPORTED, xlib.AtomAtom, 4096)
 	if err != nil {
@@ -654,6 +658,7 @@ func (w *Window) beginMoveResize(direction int64) error {
 		return fmt.Errorf("send _NET_WM_MOVERESIZE failed")
 	}
 	moveResizePress = nativePress{}
+	w.dragPress = false
 	// The WM may consume the release. Do not keep a stale native button state.
 	w.buttons &^= events.PointerButtonLeftDown
 	w.moveResize = true
