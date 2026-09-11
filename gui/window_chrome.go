@@ -18,6 +18,8 @@ type WindowChromeMode uint8
 const (
 	WindowChromeNative WindowChromeMode = iota
 	WindowChromeIntegrated
+	// WindowChromeNone is for special-purpose windows. Prefer Native or
+	// Integrated; callers define drag/resize regions and their cursor feedback.
 	WindowChromeNone
 )
 
@@ -70,10 +72,19 @@ const (
 	ChromeRegionDefault ChromeRegion = iota
 	// Client explicitly keeps this region in ordinary GUI input.
 	ChromeRegionClient
-	ChromeRegionDrag
+	ChromeRegionCaption
 	ChromeRegionMinimize
 	ChromeRegionMaximize
 	ChromeRegionClose
+	// Resize roles start an interactive resize. None callers own cursor feedback.
+	ChromeRegionTop
+	ChromeRegionBottom
+	ChromeRegionLeft
+	ChromeRegionRight
+	ChromeRegionTopLeft
+	ChromeRegionTopRight
+	ChromeRegionBottomLeft
+	ChromeRegionBottomRight
 )
 
 type ChromeControlsMode uint8
@@ -85,7 +96,7 @@ const (
 )
 
 // ChromeInfo is a value snapshot. Mode is the selected GUI policy. Enabled
-// means integrated collaboration, not visibility of a titlebar in fullscreen.
+// means region collaboration (Integrated or desktop None), not titlebar visibility.
 // ControlsBounds is the occupied button union in client DIP for either
 // presentation. A temporary native query failure preserves the last reported
 // bounds without an extra notification. Disabled integration has no bounds.
@@ -194,26 +205,31 @@ func (c *windowChrome) ConnectQueryControls(fn func(*ChromeControls)) signal.Han
 
 func (c *windowChrome) initialize(mode WindowChromeMode) error {
 	c.info.Mode = mode
-	if mode != WindowChromeIntegrated {
+	if mode == WindowChromeNative {
 		return nil
 	}
 	native, err := c.window.desktopWindow()
 	if err != nil {
+		if mode == WindowChromeNone {
+			return nil
+		}
 		return err
 	}
-	if native.Chrome() != platform.WindowChromeIntegrated {
+	if mode == WindowChromeIntegrated && native.Chrome() != platform.WindowChromeIntegrated {
 		return fmt.Errorf("native window did not establish Integrated chrome")
 	}
 	c.native = native
 	c.info.Enabled = true
-	c.info.Controls = ChromeControlsCustom
-	// Probe an actual capability, not GOOS. This new window has no custom
-	// position to reset; native geometry may still be unavailable before Show.
-	err = native.SetControlsPosition(nil)
-	if err == nil || errors.Is(err, platform.ErrUnavailable) {
-		c.info.Controls = ChromeControlsNative
-	} else if !errors.Is(err, platform.ErrUnsupported) {
-		return fmt.Errorf("native controls capability: %w", err)
+	if mode == WindowChromeIntegrated {
+		c.info.Controls = ChromeControlsCustom
+		// Probe an actual capability, not GOOS. This new window has no custom
+		// position to reset; native geometry may still be unavailable before Show.
+		err = native.SetControlsPosition(nil)
+		if err == nil || errors.Is(err, platform.ErrUnavailable) {
+			c.info.Controls = ChromeControlsNative
+		} else if !errors.Is(err, platform.ErrUnsupported) {
+			return fmt.Errorf("native controls capability: %w", err)
+		}
 	}
 	err = native.SetHitTest(c.nativeRegion)
 	if err == nil {
@@ -221,7 +237,7 @@ func (c *windowChrome) initialize(mode WindowChromeMode) error {
 	} else if !errors.Is(err, platform.ErrUnsupported) {
 		return fmt.Errorf("native chrome input: %w", err)
 	}
-	c.window.dispatcher.hostController = &chromeMoveController{chrome: c}
+	c.window.dispatcher.hostController = &chromeInteractionController{chrome: c}
 	c.refresh()
 	return nil
 }
@@ -273,7 +289,7 @@ func (c *windowChrome) queryRegion(p geometry.Point) ChromeRegion {
 	defer func() { c.querying = false }()
 	result := ChromeRegionDefault
 	c.signals.region.Emit(p, &result)
-	if !c.live() || result > ChromeRegionClose {
+	if !c.live() || result > ChromeRegionBottomRight {
 		return ChromeRegionDefault
 	}
 	return result
@@ -286,7 +302,7 @@ func (c *windowChrome) nativeRegion(p geometry.Point) platform.WindowHit {
 	switch c.queryRegion(p) {
 	case ChromeRegionClient:
 		return platform.WindowHitClient
-	case ChromeRegionDrag:
+	case ChromeRegionCaption:
 		return platform.WindowHitCaption
 	case ChromeRegionMinimize:
 		return platform.WindowHitMinimize
@@ -294,6 +310,22 @@ func (c *windowChrome) nativeRegion(p geometry.Point) platform.WindowHit {
 		return platform.WindowHitMaximize
 	case ChromeRegionClose:
 		return platform.WindowHitClose
+	case ChromeRegionTop:
+		return platform.WindowHitTop
+	case ChromeRegionBottom:
+		return platform.WindowHitBottom
+	case ChromeRegionLeft:
+		return platform.WindowHitLeft
+	case ChromeRegionRight:
+		return platform.WindowHitRight
+	case ChromeRegionTopLeft:
+		return platform.WindowHitTopLeft
+	case ChromeRegionTopRight:
+		return platform.WindowHitTopRight
+	case ChromeRegionBottomLeft:
+		return platform.WindowHitBottomLeft
+	case ChromeRegionBottomRight:
+		return platform.WindowHitBottomRight
 	default:
 		return platform.WindowHitDefault
 	}
@@ -387,12 +419,12 @@ func (c *windowChrome) destroy() {
 }
 
 // This is a host EventController, not a native-event interception shortcut.
-type chromeMoveController struct {
+type chromeInteractionController struct {
 	EventControllerBase
 	chrome *windowChrome
 }
 
-func (controller *chromeMoveController) HandleEvent(ctx EventContext) {
+func (controller *chromeInteractionController) HandleEvent(ctx EventContext) {
 	c := controller.chrome
 	if !c.live() || c.nativeHit || !c.info.Enabled {
 		return
@@ -404,10 +436,20 @@ func (controller *chromeMoveController) HandleEvent(ctx EventContext) {
 	if c.syncing || c.window.layoutDirty || c.window.layingOut {
 		return
 	}
-	if c.queryRegion(event.Position) != ChromeRegionDrag || !c.live() {
+	region := c.queryRegion(event.Position)
+	if !c.live() {
 		return
 	}
-	if err := c.native.BeginMove(); err == nil {
+	var err error
+	switch {
+	case region == ChromeRegionCaption:
+		err = c.native.BeginMove()
+	case region >= ChromeRegionTop && region <= ChromeRegionBottomRight:
+		err = c.native.BeginResize(platform.WindowEdge(region - ChromeRegionTop))
+	default:
+		return
+	}
+	if err == nil {
 		ctx.StopPropagation()
 	}
 }

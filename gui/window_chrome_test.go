@@ -130,6 +130,68 @@ func TestWindowCreationOptionsAndService(t *testing.T) {
 	}
 }
 
+func TestNoneChromeResizeRegions(t *testing.T) {
+	for _, nativeHit := range []bool{false, true} {
+		native := &desktopTestWindow{chrome: platform.WindowChromeNone, state: WindowStateNormal}
+		if !nativeHit {
+			native.hitError = platform.ErrUnsupported
+		}
+		app := &application{platform: &chromeTestPlatform{native: native, creationNotifications: true}}
+		result, err := app.NewWindow(&WindowOptions{Chrome: WindowChromeNone, Transparent: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		win := result.(*window)
+		t.Cleanup(win.Destroy)
+		root := newTestWidget()
+		win.SetWidget(root)
+		win.paint()
+		if !win.chrome.info.Enabled || win.chrome.info.Controls != ChromeControlsNone || win.controls != nil {
+			t.Fatal("None must enable regions without adding controls")
+		}
+		region := ChromeRegionTop
+		win.Chrome().ConnectQueryRegion(func(_ geometry.Point, r *ChromeRegion) { *r = region })
+		clicks := 0
+		click := NewClickEventController()
+		click.ConnectClicked(func(EventContext) { clicks++ })
+		root.AddEventController(click)
+		hits := []platform.WindowHit{platform.WindowHitTop, platform.WindowHitBottom, platform.WindowHitLeft, platform.WindowHitRight,
+			platform.WindowHitTopLeft, platform.WindowHitTopRight, platform.WindowHitBottomLeft, platform.WindowHitBottomRight}
+		for i, hit := range hits {
+			region = ChromeRegionTop + ChromeRegion(i)
+			if nativeHit {
+				if got := native.hitTest(geometry.Point{X: 20, Y: 20}); got != hit {
+					t.Fatalf("hit %v != %v", got, hit)
+				}
+			} else {
+				clickAt(win, geometry.Point{X: 20, Y: 20})
+				if len(native.resizeRequests) != i+1 || native.resizeRequests[i] != platform.WindowEdge(i) {
+					t.Fatal(native.resizeRequests)
+				}
+			}
+		}
+		if clicks != 0 || click.Pressed() || win.dispatcher.captureTarget != nil {
+			t.Fatal("resize started a widget click")
+		}
+		if nativeHit && len(native.resizeRequests) != 0 {
+			t.Fatal("duplicate native operation")
+		}
+		if !nativeHit {
+			native.commandError = platform.ErrUnavailable
+			clickAt(win, geometry.Point{X: 20, Y: 20})
+			if clicks != 1 {
+				t.Fatal("failed resize swallowed input")
+			}
+			native.commandError = nil
+			native.onMove = win.Destroy
+			clickAt(win, geometry.Point{X: 20, Y: 20})
+			if !win.destroyed || clicks != 1 {
+				t.Fatal("resize destruction was unsafe")
+			}
+		}
+	}
+}
+
 func TestWindowCreationFallbackAndErrors(t *testing.T) {
 	for _, failure := range []error{nil, errors.New("creation failure")} {
 		plat := &chromeTestPlatform{native: &chromeTestWindow{}, unsupportedIntegrated: true, creationError: failure}
@@ -181,7 +243,7 @@ func TestChromeOrderedQueriesAndHandles(t *testing.T) {
 			t.Fatal("changed client DIP")
 		}
 		order = append(order, 1)
-		*r = ChromeRegionDrag
+		*r = ChromeRegionCaption
 	})
 	second := win.Chrome().ConnectQueryRegion(func(_ geometry.Point, r *ChromeRegion) { order = append(order, 2); *r = ChromeRegionClient })
 	third := win.Chrome().ConnectQueryRegion(func(_ geometry.Point, r *ChromeRegion) { order = append(order, 3); *r = ChromeRegionMaximize })
@@ -213,7 +275,7 @@ func TestChromeReentrancyAndDestroy(t *testing.T) {
 		if query(p) != platform.WindowHitDefault {
 			t.Fatal("reentrant query did not defer")
 		}
-		*r = ChromeRegionDrag
+		*r = ChromeRegionCaption
 	})
 	if query(geometry.Point{}) != platform.WindowHitCaption {
 		t.Fatal("outer query lost")
@@ -355,7 +417,7 @@ func TestChromeLayoutSignalOrderAndDestruction(t *testing.T) {
 
 func TestChromeMoveCaptureFailureAndReentrantDestroy(t *testing.T) {
 	win, native := chromeFixture(t, false, false)
-	win.Chrome().ConnectQueryRegion(func(_ geometry.Point, r *ChromeRegion) { *r = ChromeRegionDrag })
+	win.Chrome().ConnectQueryRegion(func(_ geometry.Point, r *ChromeRegion) { *r = ChromeRegionCaption })
 	win.dispatcher.captureTarget = win.Widget()
 	clickAt(win, geometry.Point{X: 20, Y: 20})
 	if native.moveRequests != 0 {
@@ -381,7 +443,7 @@ func TestChromeMoveCaptureFailureAndReentrantDestroy(t *testing.T) {
 func TestChromeMoveUsesEventController(t *testing.T) {
 	for _, nativeHit := range []bool{true, false} {
 		win, native := chromeFixture(t, false, nativeHit)
-		win.Chrome().ConnectQueryRegion(func(_ geometry.Point, r *ChromeRegion) { *r = ChromeRegionDrag })
+		win.Chrome().ConnectQueryRegion(func(_ geometry.Point, r *ChromeRegion) { *r = ChromeRegionCaption })
 		clicks := 0
 		click := NewClickEventController()
 		click.ConnectClicked(func(EventContext) { clicks++ })

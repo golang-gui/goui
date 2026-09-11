@@ -367,6 +367,7 @@ type desktopTestWindow struct {
 	minimums                                          []geometry.Size
 	hitTest                                           func(geometry.Point) platform.WindowHit
 	moveRequests                                      int
+	resizeRequests                                    []platform.WindowEdge
 	positions                                         []recordedControlsPosition
 	onMove                                            func()
 }
@@ -416,7 +417,13 @@ func (w *desktopTestWindow) BeginMove() error {
 	}
 	return w.commandError
 }
-func (w *desktopTestWindow) BeginResize(platform.WindowEdge) error { return platform.ErrUnsupported }
+func (w *desktopTestWindow) BeginResize(edge platform.WindowEdge) error {
+	w.resizeRequests = append(w.resizeRequests, edge)
+	if w.onMove != nil {
+		w.onMove()
+	}
+	return w.commandError
+}
 
 var _ platform.DesktopWindow = (*desktopTestWindow)(nil)
 
