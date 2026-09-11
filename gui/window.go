@@ -10,6 +10,7 @@ import (
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/style"
 )
 
 // Window owns a native window and its Widget tree. Operations and callbacks run
@@ -25,6 +26,8 @@ type Window interface {
 
 	Title() string
 	SetTitle(string) error
+	// Transparent reports the immutable creation configuration, not pixel opacity.
+	Transparent() bool
 	// Chrome returns the stable, non-nil titlebar integration signal service.
 	// Unsupported integration uses a service that reports disabled information.
 	Chrome() WindowChrome
@@ -127,14 +130,16 @@ type window struct {
 func newWindow(app *application, options WindowOptions) (*window, error) {
 	win := &window{
 		app:      app,
-		rootBase: rootBase{layoutDirty: true, paintDirty: true},
+		rootBase: rootBase{layoutDirty: true, paintDirty: true, transparent: options.Transparent},
 	}
 
 	mode := options.Chrome
-	platformWindow, err := app.platform.NewWindow(options.Size, win.onEvent, platform.WindowOptions{Chrome: platform.WindowChrome(mode)})
+	nativeOptions := platform.WindowOptions{Chrome: platform.WindowChrome(mode), Transparent: options.Transparent}
+	platformWindow, err := app.platform.NewWindow(options.Size, win.onEvent, nativeOptions)
 	if mode == WindowChromeIntegrated && errors.Is(err, platform.ErrUnsupported) && platformWindow == nil {
 		mode = WindowChromeNative
-		platformWindow, err = app.platform.NewWindow(options.Size, win.onEvent, platform.WindowOptions{Chrome: platform.WindowChromeNative})
+		nativeOptions.Chrome = platform.WindowChromeNative
+		platformWindow, err = app.platform.NewWindow(options.Size, win.onEvent, nativeOptions)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("create platform window: %w", err)
@@ -529,7 +534,7 @@ func (w *window) paint() {
 		w.controls.layout()
 		controls = w.controls
 	}
-	w.drawFrame(w.root, controls)
+	w.drawFrame(w.root, ResolveStyle(styleNameWindow, style.PartDefault, style.Normal), controls)
 }
 
 func (w *window) layoutContent() {

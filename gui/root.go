@@ -4,6 +4,7 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/style"
 )
 
 // Root is the host a widget lives in — a window or a popover. Widgets reach it
@@ -26,6 +27,7 @@ type paintRequester interface {
 // parts (the platform window/popup handle) stay in the embedding struct and
 // are passed in.
 type rootBase struct {
+	transparent   bool // immutable native surface configuration, not its style
 	painter       graphics.Painter
 	width         float32 // logical (DIP)
 	height        float32 // logical (DIP)
@@ -35,6 +37,8 @@ type rootBase struct {
 	paintDirty    bool
 	focusedWidget Widget
 }
+
+func (b *rootBase) Transparent() bool { return b.transparent }
 
 // FocusedWidget returns the widget holding keyboard focus, or nil.
 func (b *rootBase) FocusedWidget() Widget { return b.focusedWidget }
@@ -77,14 +81,14 @@ func (b *rootBase) requestPaint(platform paintRequester) error {
 // requests (e.g. a virtualized ListView measures its items during Arrange and
 // requests a relayout), and those must survive to schedule the next frame
 // instead of being cleared here.
-func (b *rootBase) paintFrame(content Widget) {
-	if b.painter == nil || content == nil {
+func (b *rootBase) paintFrame(content Widget, background style.Style) {
+	if b.painter == nil {
 		return
 	}
 
 	b.paintDirty = false
 	b.layoutFrame(content)
-	b.drawFrame(content)
+	b.drawFrame(content, background)
 }
 
 // layoutFrame is shared by windows and popovers. Windows seed controls bounds
@@ -102,7 +106,7 @@ func (b *rootBase) layoutFrame(content Widget) {
 	}
 }
 
-func (b *rootBase) drawFrame(content Widget, decorations ...Widget) {
+func (b *rootBase) drawFrame(content Widget, background style.Style, decorations ...Widget) {
 	if b.painter == nil {
 		return
 	}
@@ -118,8 +122,19 @@ func (b *rootBase) drawFrame(content Widget, decorations ...Widget) {
 
 	b.painter.Begin(pixelWidth, pixelHeight, scale)
 	defer b.painter.End()
-	b.painter.Clear(graphics.RGB(255, 255, 255))
+	// Initialize storage independently of the visible body background. Opaque
+	// surfaces use black for uncovered pixels; alpha surfaces use transparent zero.
+	clearColor := graphics.Color{}
+	if !b.transparent {
+		clearColor.A = 1
+	}
+	b.painter.Clear(clearColor)
 	guiPainter := newPainter(b.painter, geometry.Rect(0, 0, size.Width, size.Height))
+	// The body's current extent is the client rectangle. Future custom chrome
+	// can change this shape without changing the background style's meaning.
+	if bg, ok := background.BackgroundColor(); ok && bg != nil {
+		guiPainter.FillRect(geometry.Rect(0, 0, size.Width, size.Height), graphics.ColorOf(bg))
+	}
 	paintWidget(content, guiPainter)
 	for _, decoration := range decorations {
 		paintWidget(decoration, guiPainter)

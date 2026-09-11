@@ -123,7 +123,7 @@ func (pm *PopoverMenu) ShowAt(pos geometry.Point) error {
 		return nil
 	}
 	if pm.popover == nil {
-		p := NewPopover(pm.anchor)
+		p := NewPopover(pm.anchor, nil)
 		p.SetModal(true)
 		// Dismiss (Esc / outside click / focus loss) must actually hide the
 		// menu — popover.RequestDismiss only emits the request; the controller

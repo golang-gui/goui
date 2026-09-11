@@ -8,6 +8,7 @@ import (
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/style"
 )
 
 // Popover is a borderless, no-focus floating surface anchored to a Widget, used
@@ -20,6 +21,8 @@ import (
 // window is destroyed.
 type Popover interface {
 	Visible() bool
+	// Transparent reports the immutable configuration, including before Show.
+	Transparent() bool
 
 	Widget() Widget
 	SetWidget(Widget)
@@ -54,10 +57,20 @@ type Popover interface {
 	ConnectClosed(func()) signal.Handle
 }
 
-// NewPopover creates a popover anchored to widget. It holds no native resources
+// PopoverOptions configures the native surface independently of its owner.
+type PopoverOptions struct {
+	// Transparent requires an alpha surface. Show returns creation failures.
+	Transparent bool
+}
+
+// NewPopover copies options (nil means opaque). It holds no native resources
 // until Show; the anchor need not be mounted yet.
-func NewPopover(anchor Widget) Popover {
-	return &popover{anchor: anchor}
+func NewPopover(anchor Widget, options *PopoverOptions) Popover {
+	p := &popover{anchor: anchor}
+	if options != nil {
+		p.transparent = options.Transparent
+	}
+	return p
 }
 
 type popover struct {
@@ -75,6 +88,7 @@ type popover struct {
 	closed         signal.Signal0
 	hUnmount       signal.Handle // anchor unmount -> releaseNative
 	hWinGone       signal.Handle // owner window destroy -> releaseNative
+	hStyle         signal.Handle // application style update -> layout/repaint
 }
 
 // --- Root + EventTarget (widget host) ---
@@ -197,13 +211,20 @@ func (p *popover) Show() error {
 		p.measureAndSize()
 	}
 	p.reposition()
+	native := p.platformPopup
+	if err := native.Show(); err != nil {
+		return err
+	}
+	if p.platformPopup != native {
+		return fmt.Errorf("popover: released during Show")
+	}
 	p.visible = true
 	if p.modal {
 		// Only a modal (menu) popover intercepts the window's input; modeless
 		// tooltips/panels leave the window's own input untouched.
 		p.becomeModalTarget()
 	}
-	return p.platformPopup.Show()
+	return nil
 }
 
 func (p *popover) Hide() {
@@ -239,7 +260,7 @@ func (p *popover) createNative(win Window) error {
 
 	// Platform + typography come from the app (global escape hatches); the owner
 	// platform window comes from the host's PlatformWindow escape hatch.
-	pp, err := App.Platform().NewPopup(win.PlatformWindow(), p.width, p.height, p.onEvent)
+	pp, err := App.Platform().NewPopup(win.PlatformWindow(), geometry.Size{Width: p.width, Height: p.height}, p.onEvent, platform.PopupOptions{Transparent: p.transparent})
 	if err != nil {
 		p.owner = nil
 		return fmt.Errorf("create platform popup: %w", err)
@@ -257,6 +278,13 @@ func (p *popover) createNative(win Window) error {
 	// the native surface never outlives its owner window.
 	p.hUnmount = p.anchor.ConnectUnmount(p.releaseNative)
 	p.hWinGone = win.ConnectDestroy(p.releaseNative)
+	if app, ok := App.(*application); ok {
+		p.hStyle = app.styleChanged.Connect(func() {
+			invalidateMeasureSubtree(p.Widget())
+			p.measureAndSize()
+			p.requestLayout()
+		})
+	}
 	return nil
 }
 
@@ -272,6 +300,10 @@ func (p *popover) releaseNative() {
 	if p.hWinGone != nil {
 		p.hWinGone.Disconnect()
 		p.hWinGone = nil
+	}
+	if p.hStyle != nil {
+		p.hStyle.Disconnect()
+		p.hStyle = nil
 	}
 	if p.modal {
 		p.resignModalTarget()
@@ -343,7 +375,7 @@ func (p *popover) onEvent(event platform.Event) {
 
 func (p *popover) paint() {
 	p.widget = liveRoot(p.widget)
-	p.paintFrame(p.widget)
+	p.paintFrame(p.widget, ResolveStyle(styleNamePopover, style.PartDefault, style.Normal))
 }
 
 // RequestLayout satisfies Root: schedule a relayout of this host.
