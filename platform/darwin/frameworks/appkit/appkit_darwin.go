@@ -1580,6 +1580,9 @@ func initNSCursor() {
 	NSCursorSel.PointingHandCursor = objc.RegisterName("pointingHandCursor")
 	NSCursorSel.CrosshairCursor = objc.RegisterName("crosshairCursor")
 	NSCursorSel.OperationNotAllowedCursor = objc.RegisterName("operationNotAllowedCursor")
+	NSCursorSel.ResizeLeftRightCursor = objc.RegisterName("resizeLeftRightCursor")
+	NSCursorSel.ResizeUpDownCursor = objc.RegisterName("resizeUpDownCursor")
+	NSCursorSel.FrameResizeCursorFromPositionInDirections = objc.RegisterName("frameResizeCursorFromPosition:inDirections:")
 	NSCursorSel.Set = objc.RegisterName("set")
 	NSCursorSel.Hide = objc.RegisterName("hide")
 	NSCursorSel.Unhide = objc.RegisterName("unhide")
@@ -1588,21 +1591,55 @@ func initNSCursor() {
 var (
 	NSCursorClassId NSCursorClass
 	NSCursorSel     struct {
-		ArrowCursor               objc.SEL
-		IBeamCursor               objc.SEL
-		PointingHandCursor        objc.SEL
-		CrosshairCursor           objc.SEL
-		OperationNotAllowedCursor objc.SEL
-		Set                       objc.SEL
-		Hide                      objc.SEL
-		Unhide                    objc.SEL
+		ArrowCursor                               objc.SEL
+		IBeamCursor                               objc.SEL
+		PointingHandCursor                        objc.SEL
+		CrosshairCursor                           objc.SEL
+		OperationNotAllowedCursor                 objc.SEL
+		ResizeLeftRightCursor                     objc.SEL
+		ResizeUpDownCursor                        objc.SEL
+		FrameResizeCursorFromPositionInDirections objc.SEL
+		Set                                       objc.SEL
+		Hide                                      objc.SEL
+		Unhide                                    objc.SEL
 	}
 )
 
 type (
-	NSCursor      struct{ NSObject }
-	NSCursorClass struct{ NSObjectClass }
+	NSCursor                      struct{ NSObject }
+	NSCursorClass                 struct{ NSObjectClass }
+	NSCursorFrameResizePosition   uint
+	NSCursorFrameResizeDirections uint
 )
+
+const (
+	NSCursorFrameResizePositionTop       NSCursorFrameResizePosition   = 1 << 0
+	NSCursorFrameResizePositionLeft      NSCursorFrameResizePosition   = 1 << 1
+	NSCursorFrameResizePositionBottom    NSCursorFrameResizePosition   = 1 << 2
+	NSCursorFrameResizePositionRight     NSCursorFrameResizePosition   = 1 << 3
+	NSCursorFrameResizePositionTopLeft                                 = NSCursorFrameResizePositionTop | NSCursorFrameResizePositionLeft
+	NSCursorFrameResizePositionTopRight                                = NSCursorFrameResizePositionTop | NSCursorFrameResizePositionRight
+	NSCursorFrameResizeDirectionsInward  NSCursorFrameResizeDirections = 1 << 0
+	NSCursorFrameResizeDirectionsOutward NSCursorFrameResizeDirections = 1 << 1
+	NSCursorFrameResizeDirectionsAll                                   = NSCursorFrameResizeDirectionsInward | NSCursorFrameResizeDirectionsOutward
+)
+
+func (c NSCursorClass) ResizeLeftRightCursor() (cursor NSCursor) {
+	cursor.ID = c.Send(NSCursorSel.ResizeLeftRightCursor)
+	return
+}
+
+func (c NSCursorClass) ResizeUpDownCursor() (cursor NSCursor) {
+	cursor.ID = c.Send(NSCursorSel.ResizeUpDownCursor)
+	return
+}
+
+// FrameResizeCursorFromPositionInDirections requires the corresponding AppKit
+// selector to be available. Capability checks belong to the calling backend.
+func (c NSCursorClass) FrameResizeCursorFromPositionInDirections(position NSCursorFrameResizePosition, directions NSCursorFrameResizeDirections) (cursor NSCursor) {
+	cursor.ID = c.Send(NSCursorSel.FrameResizeCursorFromPositionInDirections, uint(position), uint(directions))
+	return
+}
 
 func (c NSCursorClass) ArrowCursor() (cursor NSCursor) {
 	cursor.ID = c.Send(NSCursorSel.ArrowCursor)
