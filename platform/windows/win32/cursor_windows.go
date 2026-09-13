@@ -77,6 +77,14 @@ func cursorID(shape common.CursorShape) winapi.LPWSTR {
 		return winapi.IDC_CROSS
 	case common.CursorForbidden:
 		return winapi.IDC_NO
+	case common.CursorResizeHorizontal, common.CursorResizeLeft, common.CursorResizeRight:
+		return winapi.IDC_SIZEWE
+	case common.CursorResizeVertical, common.CursorResizeTop, common.CursorResizeBottom:
+		return winapi.IDC_SIZENS
+	case common.CursorResizeNWSE, common.CursorResizeTopLeft, common.CursorResizeBottomRight:
+		return winapi.IDC_SIZENWSE
+	case common.CursorResizeNESW, common.CursorResizeTopRight, common.CursorResizeBottomLeft:
+		return winapi.IDC_SIZENESW
 	default:
 		return winapi.IDC_ARROW
 	}
