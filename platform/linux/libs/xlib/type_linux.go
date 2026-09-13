@@ -817,10 +817,20 @@ type XColor struct {
 
 // Cursor font constants from <X11/cursorfont.h>. Used with CreateFontCursor.
 const (
-	XC_X_cursor  = 0   // X-shaped "not allowed" cursor
-	XC_arrow     = 2   // standard arrow
-	XC_left_ptr  = 68  // standard arrow (preferred name)
-	XC_hand2     = 60  // pointing hand (link/clickable)
-	XC_xterm     = 152 // text I-beam
-	XC_crosshair = 34  // crosshair (precision)
+	XC_X_cursor            = 0   // X-shaped "not allowed" cursor
+	XC_arrow               = 2   // standard arrow
+	XC_left_ptr            = 68  // standard arrow (preferred name)
+	XC_hand2               = 60  // pointing hand (link/clickable)
+	XC_xterm               = 152 // text I-beam
+	XC_crosshair           = 34  // crosshair (precision)
+	XC_sb_h_double_arrow   = 108
+	XC_sb_v_double_arrow   = 116
+	XC_top_left_corner     = 134
+	XC_top_right_corner    = 136
+	XC_left_side           = 70
+	XC_right_side          = 96
+	XC_top_side            = 138
+	XC_bottom_side         = 16
+	XC_bottom_left_corner  = 12
+	XC_bottom_right_corner = 14
 )
