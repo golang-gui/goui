@@ -3,6 +3,7 @@ package gui
 import (
 	"errors"
 	"fmt"
+	"image/color"
 	"log"
 	"math"
 	"runtime"
@@ -811,16 +812,24 @@ func (w *window) frameStyle() (style.Style, float32) {
 	if !w.floatingFrame() {
 		return style.Style{}, 0
 	}
-	frame := ResolveStyle(styleNameWindow, stylePartFrame, style.Normal)
-	radius, _ := frame.Radius()
-	border, _ := frame.BorderWidth()
-	radius = min(normalizeLayoutValue(radius), max(0, min(w.width, w.height)/2))
+	frame := style.Default().Radius(windowFrameRadius).BorderWidth(windowFrameBorder).
+		BorderColor(w.decorationPalette(true).frame).Style
+	return frame, w.frameInset()
+}
+
+// Resize input and paint clipping share fixed geometry, independent of colors
+// and application style resolution.
+func (w *window) frameInset() float32 {
+	if !w.floatingFrame() {
+		return 0
+	}
+	radius := min(windowFrameRadius, max(0, min(w.width, w.height)/2))
 	scale := w.frameScale()
 	// An equally inset rectangle lies inside a round corner when its inset
 	// is at least r*(1-1/sqrt(2)). Keep an extra physical pixel for AA and
 	// round inward so backend pixel snapping cannot expose the corner.
-	inset := max(float32(5), normalizeLayoutValue(border), radius*(1-1/math.Sqrt2)+1/scale)
-	return frame, float32(math.Ceil(float64(inset*scale))) / scale
+	inset := max(float32(5), windowFrameBorder, radius*(1-1/math.Sqrt2)+1/scale)
+	return float32(math.Ceil(float64(inset*scale))) / scale
 }
 
 // These are GUI resize affordances, not a native input-region mask. Transparent
@@ -830,7 +839,7 @@ func (c *windowChrome) queryFrameRegion(p geometry.Point, result *ChromeRegion) 
 	if !w.floatingFrame() || !containsPoint(geometry.Rect(0, 0, w.width, w.height), p) {
 		return
 	}
-	_, edge := w.frameStyle()
+	edge := w.frameInset()
 	const corner float32 = 16
 	left, right := p.X < edge, p.X >= w.width-edge
 	top, bottom := p.Y < edge, p.Y >= w.height-edge
@@ -852,4 +861,59 @@ func (c *windowChrome) queryFrameRegion(p geometry.Point, result *ChromeRegion) 
 	case bottom:
 		*result = ChromeRegionBottom
 	}
+}
+
+const (
+	windowFrameRadius float32 = 12
+	windowFrameBorder float32 = 1
+)
+
+// Window decoration is GUI policy, not a set of application style selectors.
+// Native decorations remain OS-owned. Only the window background is themed.
+type windowDecorationPalette struct {
+	frame, foreground, button, hovered, pressed color.Gray
+}
+
+func (w *window) decorationPalette(circular bool) windowDecorationPalette {
+	background := ResolveStyle(styleNameWindow, style.PartDefault, style.Normal)
+	if darkWindowBackground(background, w.transparent) {
+		if circular {
+			return windowDecorationPalette{
+				frame: color.Gray{90}, foreground: color.Gray{240},
+				button: color.Gray{64}, hovered: color.Gray{80}, pressed: color.Gray{48},
+			}
+		}
+		return windowDecorationPalette{
+			frame: color.Gray{90}, foreground: color.Gray{240},
+			button: color.Gray{50}, hovered: color.Gray{70}, pressed: color.Gray{35},
+		}
+	}
+	if circular {
+		return windowDecorationPalette{
+			frame: color.Gray{165}, foreground: color.Gray{50},
+			button: color.Gray{232}, hovered: color.Gray{215}, pressed: color.Gray{195},
+		}
+	}
+	return windowDecorationPalette{
+		frame: color.Gray{165}, foreground: color.Gray{0},
+		button: color.Gray{210}, hovered: color.Gray{230}, pressed: color.Gray{180},
+	}
+}
+
+func darkWindowBackground(background style.Style, transparent bool) bool {
+	var r, g, b, a uint32
+	if bg, ok := background.BackgroundColor(); ok && bg != nil {
+		r, g, b, a = bg.RGBA()
+	}
+	if transparent {
+		// The compositor's backdrop is unknown. Use the declared RGB, with a
+		// deterministic light fallback for fully transparent/missing backgrounds.
+		if a == 0 {
+			return false
+		}
+		r, g, b = r*0xffff/a, g*0xffff/a, b*0xffff/a
+	}
+	// An opaque host clears uncovered pixels to black; RGBA's premultiplied
+	// channels already represent composition of the background over that clear.
+	return 299*r+587*g+114*b < 1000*0x8000
 }
