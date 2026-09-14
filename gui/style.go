@@ -19,6 +19,7 @@ const (
 	styleNameScrollView    = "scroll-view"
 	stylePartTrough        = "trough"
 	stylePartThumb         = "thumb"
+	stylePartFocus         = "focus"
 	styleNameMenu          = "menu"
 	styleNameMenuItem      = "menu-item"
 	styleNameMenuSeparator = "menu-separator"
@@ -196,5 +197,20 @@ func paintStyledBorder(p Painter, rect geometry.Rectangle, s style.Style) {
 		p.DrawRoundRect(borderRect, borderRadius, width, stroke)
 	} else {
 		p.DrawRect(borderRect, width, stroke)
+	}
+}
+
+func buttonStyleName(button *WidgetBase) string {
+	if name := button.StyleName(); name != "" {
+		return name
+	}
+	return styleNameButton
+}
+
+// Focus is independent of the button's hover/press state. Only the border is
+// painted here; background and child styles are deliberately left unchanged.
+func paintButtonFocus(p Painter, rect geometry.Rectangle, button *WidgetBase) {
+	if button.Focused() {
+		paintStyledBorder(p, rect, ResolveStyle(buttonStyleName(button), stylePartFocus, style.Focused))
 	}
 }
