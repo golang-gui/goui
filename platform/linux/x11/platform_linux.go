@@ -47,6 +47,7 @@ type Platform struct {
 	im                  xlib.XIM // display input method; 0 when none is available
 	resizeSyncAvailable bool
 	eventLoop           *EventLoop
+	cursorTheme         *cursorTheme
 }
 
 var platform *Platform

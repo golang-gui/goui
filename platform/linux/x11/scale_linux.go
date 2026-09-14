@@ -10,8 +10,8 @@ import (
 
 // X11 has no per-window scale factor. We derive a single display-global scale
 // and cache it. Dynamic changes (XSETTINGS/Xft.dpi updates) are not yet
-// observed; that would require g_signal_connect bindings and driving the GLib
-// main loop. TODO(hidpi): dynamic scale change -> synthesize SizeEvent.
+// applied to window geometry. Cursor settings have their own X11 subscription;
+// TODO(hidpi): dynamic scale change -> synthesize SizeEvent.
 var scaleCache struct {
 	once  sync.Once
 	value float32
