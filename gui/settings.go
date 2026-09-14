@@ -2,6 +2,7 @@ package gui
 
 import (
 	"image/color"
+	"math"
 	"time"
 
 	"github.com/golang-gui/goui/core/signal"
@@ -28,65 +29,45 @@ var (
 	defaultFontSize    float32     = 14
 )
 
+// Settings exposes a GUI-thread snapshot with per-field fallback values.
+// The initial snapshot is available before Run; later changes are polled while
+// the application event loop runs. Getters never query native APIs themselves.
 type Settings interface {
 	ColorScheme() ColorScheme
 	AccentColor() color.Color
 	FontFamily() string
 	FontSize() float32
+	// ConnectChanged runs on the GUI thread after the entire snapshot is updated.
+	// Connecting does not emit the initial snapshot; read it through the getters.
 	ConnectChanged(fn func()) signal.Handle
 }
 
 type settings struct {
-	settings platform.Settings // may be nil; getters then always fall back
+	settings platform.Settings // may be nil; the snapshot then contains fallbacks
 	changed  signal.Signal0
-
-	// Change detection state, accessed only on the UI thread (see watch).
-	snapPrev  settingsSnapshot
-	snapReady bool
+	current  settingsSnapshot // accessed only on the GUI thread
 }
 
-func newSettings(platSettings platform.Settings, loop platform.EventLoop) (s *settings) {
+func newSettings(platSettings platform.Settings) (s *settings) {
 	s = &settings{settings: platSettings}
-	if platSettings != nil {
-		s.watch(loop)
-	}
+	s.current = s.snapshot()
 	return
 }
 
 func (s *settings) ColorScheme() ColorScheme {
-	if s.settings != nil {
-		if v, err := s.settings.ColorScheme(); err == nil {
-			return v
-		}
-	}
-	return defaultColorScheme
+	return s.current.scheme
 }
 
 func (s *settings) AccentColor() color.Color {
-	if s.settings != nil {
-		if v, err := s.settings.AccentColor(); err == nil && v != nil {
-			return v
-		}
-	}
-	return defaultAccentColor
+	return s.current.accent
 }
 
 func (s *settings) FontFamily() string {
-	if s.settings != nil {
-		if v, err := s.settings.FontFamily(); err == nil && v != "" {
-			return v
-		}
-	}
-	return defaultFontFamily
+	return s.current.family
 }
 
 func (s *settings) FontSize() float32 {
-	if s.settings != nil {
-		if v, err := s.settings.FontSize(); err == nil && v > 0 {
-			return v
-		}
-	}
-	return defaultFontSize
+	return s.current.size
 }
 
 // ConnectChanged registers a listener fired when a system setting changes. The
@@ -95,49 +76,74 @@ func (s *settings) ConnectChanged(fn func()) signal.Handle {
 	return s.changed.Connect(fn)
 }
 
-// settingsSnapshot is a comparable digest of the resolved settings.
+// settingsSnapshot owns comparable values, including a copy of the accent color.
 type settingsSnapshot struct {
-	scheme         ColorScheme
-	ar, ag, ab, aa uint32
-	family         string
-	size           float32
+	scheme ColorScheme
+	accent color.RGBA64
+	family string
+	size   float32
 }
 
 func (s *settings) snapshot() settingsSnapshot {
-	ar, ag, ab, aa := s.AccentColor().RGBA()
-	return settingsSnapshot{
-		scheme: s.ColorScheme(),
-		ar:     ar,
-		ag:     ag,
-		ab:     ab,
-		aa:     aa,
-		family: s.FontFamily(),
-		size:   s.FontSize(),
+	next := settingsSnapshot{
+		scheme: defaultColorScheme,
+		accent: color.RGBA64Model.Convert(defaultAccentColor).(color.RGBA64),
+		family: defaultFontFamily,
+		size:   defaultFontSize,
 	}
+	if s.settings == nil {
+		return next
+	}
+	if v, err := s.settings.ColorScheme(); err == nil && (v == ColorSchemeLight || v == ColorSchemeDark) {
+		next.scheme = v
+	}
+	if v, err := s.settings.AccentColor(); err == nil && v != nil {
+		next.accent = color.RGBA64Model.Convert(v).(color.RGBA64)
+	}
+	if v, err := s.settings.FontFamily(); err == nil && v != "" {
+		next.family = v
+	}
+	if v, err := s.settings.FontSize(); err == nil && v > 0 && !math.IsInf(float64(v), 0) {
+		next.size = v
+	}
+	return next
 }
 
-// watch drives system-setting change detection.
-// posts checkChanged onto the event loop so every read happens on the UI thread.
-func (s *settings) watch(loop platform.EventLoop) {
-	if s.settings == nil {
-		return // nothing to observe; getters always fall back
+// watch belongs to one application Run. The timer only posts work; native
+// queries, snapshot updates and notifications all run on the GUI thread.
+// Closing done also invalidates checks already queued when Run returns.
+func (s *settings) watch(loop platform.EventLoop) (stop func()) {
+	if s == nil || s.settings == nil {
+		return func() {}
 	}
+	done := make(chan struct{})
 	go func() {
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
-		for range ticker.C {
-			loop.Post(s.checkChanged)
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				loop.Post(func() {
+					select {
+					case <-done:
+						return
+					default:
+						s.checkChanged()
+					}
+				})
+			}
 		}
 	}()
+	return func() { close(done) }
 }
 
 // checkChanged runs on the UI thread: snapshot, compare, emit on change.
 func (s *settings) checkChanged() {
 	next := s.snapshot()
-	changed := s.snapReady && next != s.snapPrev
-	s.snapPrev = next
-	s.snapReady = true
-	if changed {
+	if next != s.current {
+		s.current = next
 		s.changed.Emit()
 	}
 }

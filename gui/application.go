@@ -59,7 +59,7 @@ type application struct {
 	loop         platform.EventLoop
 	typo         typography.Context
 	clipboard    Clipboard
-	settings     Settings
+	settings     *settings
 	fileDialog   FileDialog
 	style        style.StyleSheet
 	styleChanged signal.Signal0 // internal host invalidation; no new public event API
@@ -106,7 +106,7 @@ func newApplication() (*application, error) {
 		loop:       loop,
 		typo:       typo,
 		clipboard:  newClipboard(platClip),
-		settings:   newSettings(platSettings, loop),
+		settings:   newSettings(platSettings),
 		fileDialog: newFileDialog(platFileDlg, loop),
 
 		quitOnLastWindowClosed: true,
@@ -169,6 +169,8 @@ func (a *application) NewWindow(options *WindowOptions) (Window, error) {
 }
 
 func (a *application) Run() {
+	stop := a.settings.watch(a.loop)
+	defer stop()
 	a.loop.Run()
 }
 
