@@ -350,6 +350,9 @@ var windowMap = map[xlib.Window]*Window{}
 
 // TODO: process window event
 func handleEvent(event xlib.Event) {
+	if platform != nil && platform.cursorTheme != nil {
+		platform.cursorTheme.handleEvent(&event)
+	}
 	// Entering a nested native dispatch expires any previous press context.
 	moveResizePress = nativePress{}
 	// Give the input method first refusal on every event: during composition it

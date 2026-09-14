@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/golang-gui/goui/platform/common"
+	"github.com/golang-gui/goui/platform/linux/libs/xcursor"
 	"github.com/golang-gui/goui/platform/linux/libs/xlib"
 )
 
@@ -21,6 +22,11 @@ func (p *Platform) newCursor(window common.Window) (*cursor, error) {
 		cache:   make(map[common.CursorShape]xlib.Cursor),
 	}
 	win.cursor = c
+	if p.cursorTheme == nil {
+		p.cursorTheme = newCursorTheme(p.display)
+	}
+	c.theme = p.cursorTheme
+	c.theme.cursors[c] = struct{}{}
 	return c, nil
 }
 
@@ -32,12 +38,15 @@ type cursor struct {
 	cache        map[common.CursorShape]xlib.Cursor
 	current      xlib.Cursor
 	transparentC xlib.Cursor // lazy-created 1x1 transparent cursor for CursorNone
+	theme        *cursorTheme
+	shape        common.CursorShape
 }
 
 func (c *cursor) SetShape(shape common.CursorShape) {
 	if c.window == nil || c.display == 0 {
 		return
 	}
+	c.shape = shape
 
 	var xc xlib.Cursor
 	if shape == common.CursorNone {
@@ -47,12 +56,19 @@ func (c *cursor) SetShape(shape common.CursorShape) {
 		}
 		xc = c.transparentC
 	} else {
-		// Standard cursor: load from cursor font and cache it.
+		// Resolve semantic names in the current theme before the core fallback.
 		if cached, ok := c.cache[shape]; ok {
 			xc = cached
 		} else {
-			xc = c.display.CreateFontCursor(cursorFontIndex(shape))
-			c.cache[shape] = xc
+			xc = loadNamedCursor(shape, func(name string) xlib.Cursor {
+				if c.theme.available {
+					return xcursor.LibraryLoadCursor(c.display, name)
+				}
+				return 0
+			}, c.display.CreateFontCursor)
+			if xc != 0 {
+				c.cache[shape] = xc
+			}
 		}
 	}
 
@@ -67,6 +83,16 @@ func (c *cursor) SetShape(shape common.CursorShape) {
 func (c *cursor) Destroy() {
 	if c.display == 0 {
 		return
+	}
+	if c.theme != nil {
+		delete(c.theme.cursors, c)
+		if len(c.theme.cursors) == 0 {
+			c.theme.destroy()
+			if platform != nil && platform.cursorTheme == c.theme {
+				platform.cursorTheme = nil
+			}
+		}
+		c.theme = nil
 	}
 	// Undefine the cursor from the window first.
 	if c.window != nil && c.window.wid != 0 {
@@ -116,7 +142,91 @@ func cursorFontIndex(shape common.CursorShape) uint {
 		return xlib.XC_crosshair
 	case common.CursorForbidden:
 		return xlib.XC_X_cursor
+	case common.CursorResizeHorizontal:
+		return xlib.XC_sb_h_double_arrow
+	case common.CursorResizeVertical:
+		return xlib.XC_sb_v_double_arrow
+	case common.CursorResizeNWSE:
+		return xlib.XC_top_left_corner
+	case common.CursorResizeNESW:
+		return xlib.XC_top_right_corner
+	case common.CursorResizeLeft:
+		return xlib.XC_left_side
+	case common.CursorResizeRight:
+		return xlib.XC_right_side
+	case common.CursorResizeTop:
+		return xlib.XC_top_side
+	case common.CursorResizeBottom:
+		return xlib.XC_bottom_side
+	case common.CursorResizeTopLeft:
+		return xlib.XC_top_left_corner
+	case common.CursorResizeTopRight:
+		return xlib.XC_top_right_corner
+	case common.CursorResizeBottomLeft:
+		return xlib.XC_bottom_left_corner
+	case common.CursorResizeBottomRight:
+		return xlib.XC_bottom_right_corner
 	default:
 		return xlib.XC_left_ptr // fallback to arrow
 	}
+}
+
+// Names follow GTK's standard-name/legacy-name lookup. Themes can alias any
+// number of names to the same image; no desktop-specific shape policy is needed.
+func cursorNames(shape common.CursorShape) []string {
+	switch shape {
+	case common.CursorText:
+		return []string{"text", "xterm"}
+	case common.CursorPointing:
+		return []string{"pointer", "hand2"}
+	case common.CursorCrosshair:
+		return []string{"crosshair", "cross"}
+	case common.CursorForbidden:
+		return []string{"not-allowed", "crossed_circle"}
+	case common.CursorResizeHorizontal:
+		return []string{"ew-resize", "sb_h_double_arrow"}
+	case common.CursorResizeVertical:
+		return []string{"ns-resize", "sb_v_double_arrow"}
+	case common.CursorResizeNWSE:
+		return []string{"nwse-resize", "size_fdiag"}
+	case common.CursorResizeNESW:
+		return []string{"nesw-resize", "size_bdiag"}
+	case common.CursorResizeLeft:
+		return []string{"w-resize", "left_side"}
+	case common.CursorResizeRight:
+		return []string{"e-resize", "right_side"}
+	case common.CursorResizeTop:
+		return []string{"n-resize", "top_side"}
+	case common.CursorResizeBottom:
+		return []string{"s-resize", "bottom_side"}
+	case common.CursorResizeTopLeft:
+		return []string{"nw-resize", "top_left_corner"}
+	case common.CursorResizeTopRight:
+		return []string{"ne-resize", "top_right_corner"}
+	case common.CursorResizeBottomLeft:
+		return []string{"sw-resize", "bottom_left_corner"}
+	case common.CursorResizeBottomRight:
+		return []string{"se-resize", "bottom_right_corner"}
+	default:
+		return []string{"default", "left_ptr"}
+	}
+}
+
+func loadNamedCursor(shape common.CursorShape, load func(string) xlib.Cursor, core func(uint) xlib.Cursor) xlib.Cursor {
+	for _, name := range cursorNames(shape) {
+		if cursor := load(name); cursor != 0 {
+			return cursor
+		}
+	}
+	return core(cursorFontIndex(shape))
+}
+
+func (c *cursor) reloadTheme() {
+	for _, resource := range c.cache {
+		c.display.FreeCursor(resource)
+	}
+	clear(c.cache)
+	c.current = 0
+	// Reapply even if GUI deduplicates same-shape updates or the pointer is idle.
+	c.SetShape(c.shape)
 }

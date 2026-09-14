@@ -78,6 +78,20 @@ func (c *cursor) Destroy() {
 
 // nsCursorForShape maps a CursorShape to the matching NSCursor factory.
 func nsCursorForShape(shape common.CursorShape) NSCursor {
+	if position, ok := frameCursorPosition(shape); ok {
+		if classRespondsToSelector(NSCursorClassId.ID(), "frameResizeCursorFromPosition:inDirections:") {
+			return NSCursorClassId.FrameResizeCursorFromPositionInDirections(position, NSCursorFrameResizeDirectionsAll)
+		}
+		// Older AppKit exposes axis cursors, but no public diagonal cursor.
+		switch shape {
+		case common.CursorResizeLeft, common.CursorResizeRight:
+			return NSCursorClassId.ResizeLeftRightCursor()
+		case common.CursorResizeTop, common.CursorResizeBottom:
+			return NSCursorClassId.ResizeUpDownCursor()
+		default:
+			return NSCursorClassId.ArrowCursor()
+		}
+	}
 	switch shape {
 	case common.CursorText:
 		return NSCursorClassId.IBeamCursor()
@@ -87,7 +101,46 @@ func nsCursorForShape(shape common.CursorShape) NSCursor {
 		return NSCursorClassId.CrosshairCursor()
 	case common.CursorForbidden:
 		return NSCursorClassId.OperationNotAllowedCursor()
+	case common.CursorResizeHorizontal:
+		return NSCursorClassId.ResizeLeftRightCursor()
+	case common.CursorResizeVertical:
+		return NSCursorClassId.ResizeUpDownCursor()
+	case common.CursorResizeNWSE, common.CursorResizeNESW:
+		// Public frame-resize cursors are available on newer AppKit. Older
+		// systems have no public diagonal factory; keep the standard arrow
+		// fallback instead of reaching into private cursor selectors.
+		if classRespondsToSelector(NSCursorClassId.ID(), "frameResizeCursorFromPosition:inDirections:") {
+			position := NSCursorFrameResizePositionTopLeft
+			if shape == common.CursorResizeNESW {
+				position = NSCursorFrameResizePositionTopRight
+			}
+			return NSCursorClassId.FrameResizeCursorFromPositionInDirections(position, NSCursorFrameResizeDirectionsAll)
+		}
+		return NSCursorClassId.ArrowCursor()
 	default:
 		return NSCursorClassId.ArrowCursor()
+	}
+}
+
+func frameCursorPosition(shape common.CursorShape) (NSCursorFrameResizePosition, bool) {
+	switch shape {
+	case common.CursorResizeLeft:
+		return NSCursorFrameResizePositionLeft, true
+	case common.CursorResizeRight:
+		return NSCursorFrameResizePositionRight, true
+	case common.CursorResizeTop:
+		return NSCursorFrameResizePositionTop, true
+	case common.CursorResizeBottom:
+		return NSCursorFrameResizePositionBottom, true
+	case common.CursorResizeTopLeft:
+		return NSCursorFrameResizePositionTopLeft, true
+	case common.CursorResizeTopRight:
+		return NSCursorFrameResizePositionTopRight, true
+	case common.CursorResizeBottomLeft:
+		return NSCursorFrameResizePositionBottom | NSCursorFrameResizePositionLeft, true
+	case common.CursorResizeBottomRight:
+		return NSCursorFrameResizePositionBottom | NSCursorFrameResizePositionRight, true
+	default:
+		return 0, false
 	}
 }

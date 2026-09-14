@@ -83,12 +83,24 @@ const (
 	InputMethodCommit  = common.InputMethodCommit
 	InputMethodPreedit = common.InputMethodPreedit
 
-	CursorDefault   = common.CursorDefault
-	CursorText      = common.CursorText
-	CursorPointing  = common.CursorPointing
-	CursorCrosshair = common.CursorCrosshair
-	CursorForbidden = common.CursorForbidden
-	CursorNone      = common.CursorNone
+	CursorDefault           = common.CursorDefault
+	CursorText              = common.CursorText
+	CursorPointing          = common.CursorPointing
+	CursorCrosshair         = common.CursorCrosshair
+	CursorForbidden         = common.CursorForbidden
+	CursorNone              = common.CursorNone
+	CursorResizeHorizontal  = common.CursorResizeHorizontal
+	CursorResizeVertical    = common.CursorResizeVertical
+	CursorResizeNWSE        = common.CursorResizeNWSE
+	CursorResizeNESW        = common.CursorResizeNESW
+	CursorResizeLeft        = common.CursorResizeLeft
+	CursorResizeRight       = common.CursorResizeRight
+	CursorResizeTop         = common.CursorResizeTop
+	CursorResizeBottom      = common.CursorResizeBottom
+	CursorResizeTopLeft     = common.CursorResizeTopLeft
+	CursorResizeTopRight    = common.CursorResizeTopRight
+	CursorResizeBottomLeft  = common.CursorResizeBottomLeft
+	CursorResizeBottomRight = common.CursorResizeBottomRight
 )
 
 // Platform owns low-level operating-system resources. It and every object

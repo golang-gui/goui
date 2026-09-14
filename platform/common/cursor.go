@@ -1,9 +1,8 @@
 package common
 
-// CursorShape is a named standard cursor. The set is limited to shapes every
-// backend maps to a native cursor, so a shape behaves the
-// same on all platforms. More shapes are added only once all backends have a
-// native mapping.
+// CursorShape is a named standard cursor. Backends use native cursor resources;
+// unsupported shapes fall back to the arrow (notably diagonal resize on macOS
+// before the public frame-resize cursor API).
 type CursorShape uint8
 
 const (
@@ -25,6 +24,24 @@ const (
 	// value — "the pointer looks like nothing here" — so it flows through the
 	// same resolution as every other shape.
 	CursorNone
+	// Axis resize cursors do not identify an active edge (for example, a
+	// splitter). Window borders should use the edge shapes below.
+	CursorResizeHorizontal
+	CursorResizeVertical
+	// CursorResizeNWSE is the top-left / bottom-right diagonal.
+	CursorResizeNWSE
+	// CursorResizeNESW is the top-right / bottom-left diagonal.
+	CursorResizeNESW
+	// Edge resize semantics preserve the active edge. A platform/theme may
+	// share images between opposite edges; callers must not collapse them.
+	CursorResizeLeft
+	CursorResizeRight
+	CursorResizeTop
+	CursorResizeBottom
+	CursorResizeTopLeft
+	CursorResizeTopRight
+	CursorResizeBottomLeft
+	CursorResizeBottomRight
 )
 
 // Cursor is a window's mouse-cursor capability — the object that sets the
