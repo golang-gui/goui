@@ -112,7 +112,7 @@ func render(width, height, scale float32) {
 	{
 		painter.Clear(graphics.RGBA(90, 160, 200, 255))
 		painter.DrawBoxShadow(graphics.Rect(50, 50, 100, 60), 12, graphics.BoxShadow{
-			Color: graphics.RGBA(20, 20, 30, 150), BlurRadius: 10, SpreadRadius: 2,
+			Color: graphics.ColorOf(color.NRGBA{R: 20, G: 20, B: 30, A: 150}), BlurRadius: 10, SpreadRadius: 2,
 		})
 		painter.FillRoundRect(graphics.Rect(50, 50, 100, 60), 12, graphics.RGBA(90, 50, 50, 255))
 
@@ -146,16 +146,16 @@ func render(width, height, scale float32) {
 		}
 		// Bottom-only recipe: negative spread hides the side influence under the body.
 		painter.DrawBoxShadow(graphics.Rect(180, 480, 220, 24), 4, graphics.BoxShadow{
-			Color: graphics.RGBA(20, 20, 30, 180), Offset: graphics.Point{Y: 6},
+			Color: graphics.ColorOf(color.NRGBA{R: 20, G: 20, B: 30, A: 180}), Offset: graphics.Point{Y: 6},
 			BlurRadius: 6, SpreadRadius: -6,
 		})
 		painter.FillRect(graphics.Rect(180, 480, 220, 24), gradient)
 		// Two calls compose shadows with independent colors and softness.
 		painter.DrawBoxShadow(graphics.Rect(180, 514, 220, 40), 10, graphics.BoxShadow{
-			Color: graphics.RGBA(255, 80, 30, 70), Offset: graphics.Point{X: -3}, BlurRadius: 8,
+			Color: graphics.ColorOf(color.NRGBA{R: 255, G: 80, B: 30, A: 70}), Offset: graphics.Point{X: -3}, BlurRadius: 8,
 		})
 		painter.DrawBoxShadow(graphics.Rect(180, 514, 220, 40), 10, graphics.BoxShadow{
-			Color: graphics.RGBA(20, 20, 100, 100), Offset: graphics.Point{X: 4, Y: 3}, BlurRadius: 12,
+			Color: graphics.ColorOf(color.NRGBA{R: 20, G: 20, B: 100, A: 100}), Offset: graphics.Point{X: 4, Y: 3}, BlurRadius: 12,
 		})
 		painter.FillRoundRect(graphics.Rect(180, 514, 220, 40), 10, graphics.LinearGradient{
 			Start:      graphics.Point{X: 180, Y: 514},
@@ -213,7 +213,7 @@ func render(width, height, scale float32) {
 		painter.SetTransform(geometry.Identity())
 		painter.SetTransform(geometry.Translate(700, 360).Rotate(20))
 		painter.DrawBoxShadow(graphics.Rect(0, 0, 80, 50), 10, graphics.BoxShadow{
-			Color: graphics.RGBA(30, 10, 40, 160), Offset: graphics.Point{Y: 5}, BlurRadius: 7,
+			Color: graphics.ColorOf(color.NRGBA{R: 30, G: 10, B: 40, A: 160}), Offset: graphics.Point{Y: 5}, BlurRadius: 7,
 		})
 		painter.FillRoundRect(graphics.Rect(0, 0, 80, 50), 10, graphics.RGBA(200, 50, 200, 180))
 		painter.DrawRoundRect(graphics.Rect(0, 0, 80, 50), 10, 2, graphics.RGBA(255, 255, 255, 255))

@@ -304,20 +304,27 @@ func (p *Painter) DrawBoxShadow(rect graphics.Rectangle, radius float32, shadow 
 	if !ok {
 		return
 	}
-	if shape.BlurRadius <= 0 {
-		p.FillRoundRect(shape.Rect, shape.Radius, shadow.Color)
-		return
-	}
-
-	bounds := shape.Bounds()
+	// NanoVG premultiplies its input; BoxShadow.Color is already premultiplied.
+	// Keep this conversion local to shadows, including the clear silhouette.
+	color := nanoVGColor(shadow.Color)
+	color.R /= color.A
+	color.G /= color.A
+	color.B /= color.A
 	p.vg.Save()
 	defer p.vg.Restore()
 	p.vg.BeginPath()
-	p.vg.Rect(bounds.X, bounds.Y, bounds.Width, bounds.Height)
-	p.vg.SetFillPaint(nanovgo.BoxShadow(
-		shape.Rect.X, shape.Rect.Y, shape.Rect.Width, shape.Rect.Height,
-		shape.Radius, shape.BlurRadius, nanoVGColor(shadow.Color),
-	))
+	if shape.BlurRadius <= 0 {
+		rect := pixelsnap.Rect(shape.Rect, p.transform, p.scale)
+		p.vg.RoundedRect(rect.X, rect.Y, rect.Width, rect.Height, shape.Radius)
+		p.vg.SetFillColor(color)
+	} else {
+		bounds := shape.Bounds()
+		p.vg.Rect(bounds.X, bounds.Y, bounds.Width, bounds.Height)
+		p.vg.SetFillPaint(nanovgo.BoxShadow(
+			shape.Rect.X, shape.Rect.Y, shape.Rect.Width, shape.Rect.Height,
+			shape.Radius, shape.BlurRadius, color,
+		))
+	}
 	p.vg.Fill()
 }
 

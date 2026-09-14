@@ -632,10 +632,10 @@ func TestBoxShadowFullAndSingleBottomEdge(t *testing.T) {
 func TestBoxShadowCompositionClipTransformAndHiDPI(t *testing.T) {
 	img := renderPainter(t, 60, 40, 1, geometry.Identity(), graphics.Rect(15, 0, 30, 40), func(p graphics.Painter) {
 		p.DrawBoxShadow(graphics.Rect(10, 10, 20, 10), 0, graphics.BoxShadow{
-			Color: graphics.RGBA(255, 0, 0, 128), BlurRadius: 4,
+			Color: graphics.ColorOf(color.NRGBA{R: 255, A: 128}), BlurRadius: 4,
 		})
 		p.DrawBoxShadow(graphics.Rect(10, 10, 20, 10), 0, graphics.BoxShadow{
-			Color: graphics.RGBA(0, 0, 255, 128), Offset: graphics.Point{X: 2}, BlurRadius: 4,
+			Color: graphics.ColorOf(color.NRGBA{B: 255, A: 128}), Offset: graphics.Point{X: 2}, BlurRadius: 4,
 		})
 	})
 	assertColorNear(t, img.At(20, 15), color.RGBA{R: 85, B: 170, A: 192}, 3)

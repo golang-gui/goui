@@ -665,18 +665,27 @@ func (p *Painter) DrawBoxShadow(rect graphics.Rectangle, radius float32, shadow 
 	if !ok {
 		return
 	}
+	// Both the native Shadow effect and solid brush take straight alpha.
+	// Convert once so the clear fallback has exactly the same color semantics.
+	color := d2d1.ColorF{
+		R: shadow.Color.R / shadow.Color.A,
+		G: shadow.Color.G / shadow.Color.A,
+		B: shadow.Color.B / shadow.Color.A,
+		A: shadow.Color.A,
+	}
 	if shape.BlurRadius <= 0 {
-		p.drawClearBoxShadow(shape, shadow.Color)
+		p.drawClearBoxShadow(shape, color)
 		return
 	}
-	if !p.drawSoftBoxShadow(shape, shadow.Color) {
-		p.drawClearBoxShadow(shape, shadow.Color)
+	if !p.drawSoftBoxShadow(shape, color) {
+		p.drawClearBoxShadow(shape, color)
 	}
 }
 
-func (p *Painter) drawClearBoxShadow(shape boxshadow.Shape, color graphics.Color) {
+func (p *Painter) drawClearBoxShadow(shape boxshadow.Shape, color d2d1.ColorF) {
 	p.setRoundRect(shape.Rect, shape.Radius)
-	p.render.FillRoundedRectangle(&p.roundRect, p.setColorBrush(color))
+	p.colorBrush.SetColor(&color)
+	p.render.FillRoundedRectangle(&p.roundRect, &p.colorBrush.Brush)
 }
 
 func (p *Painter) releaseShadowResources() {
@@ -694,7 +703,7 @@ func (p *Painter) releaseShadowResources() {
 	}
 }
 
-func (p *Painter) drawSoftBoxShadow(shape boxshadow.Shape, color graphics.Color) bool {
+func (p *Painter) drawSoftBoxShadow(shape boxshadow.Shape, color d2d1.ColorF) bool {
 	if p.shadowEffect == nil || p.shadowRender == nil {
 		return false
 	}
@@ -704,10 +713,9 @@ func (p *Painter) drawSoftBoxShadow(shape boxshadow.Shape, color graphics.Color)
 	}
 
 	sigma := shape.Sigma()
-	d2dColor := d2d1.ColorF{R: color.R, G: color.G, B: color.B, A: color.A}
 	optimization := d2d1.D2D1_SHADOW_OPTIMIZATION_QUALITY
 	if p.shadowEffect.SetValue(uint32(d2d1.D2D1_SHADOW_PROP_BLUR_STANDARD_DEVIATION), d2d1.D2D1_PROPERTY_TYPE_FLOAT, unsafe.Pointer(&sigma), uint32(unsafe.Sizeof(sigma))).Failed() ||
-		p.shadowEffect.SetValue(uint32(d2d1.D2D1_SHADOW_PROP_COLOR), d2d1.D2D1_PROPERTY_TYPE_VECTOR4, unsafe.Pointer(&d2dColor), uint32(unsafe.Sizeof(d2dColor))).Failed() ||
+		p.shadowEffect.SetValue(uint32(d2d1.D2D1_SHADOW_PROP_COLOR), d2d1.D2D1_PROPERTY_TYPE_VECTOR4, unsafe.Pointer(&color), uint32(unsafe.Sizeof(color))).Failed() ||
 		p.shadowEffect.SetValue(uint32(d2d1.D2D1_SHADOW_PROP_OPTIMIZATION), d2d1.D2D1_PROPERTY_TYPE_ENUM, unsafe.Pointer(&optimization), uint32(unsafe.Sizeof(optimization))).Failed() {
 		return false
 	}
