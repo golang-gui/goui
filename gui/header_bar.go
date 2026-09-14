@@ -9,6 +9,7 @@ import (
 
 // HeaderBar is a single-child, optional window drag region. Its background
 // fills its allocation; its child automatically avoids the window's controls.
+// Padding is applied to the content area remaining after controls avoidance.
 // It fills bounded available width (subject to size preferences), but uses
 // content width when unbounded. Height remains content-driven, with a default
 // 40 DIP minimum.
@@ -116,31 +117,30 @@ func (h *HeaderBar) Arrange(rect geometry.Rectangle) {
 	child.Arrange(geometry.Rect(area.X, area.Y+(area.Height-m.Height)/2, area.Width, m.Height))
 }
 
-// Only this row's content is inset. The stored padding and outer allocation
-// stay unchanged. Stale native bounds remain conservative layout reservations.
+// Reserve controls first, then pad the remaining content area. Padding separates
+// content from both window edges and controls; it is not consumed by controls.
+// The outer allocation stays unchanged. Stale native bounds remain reserved.
 func (h *HeaderBar) contentRect() geometry.Rectangle {
 	bounds := geometry.Rect(0, 0, h.rect.Width, h.rect.Height)
-	area := bounds.Inset(h.padding)
 	if !h.info.Enabled || emptyRect(h.info.ControlsBounds) {
-		return area
+		return bounds.Inset(h.padding)
 	}
 	occupied := h.info.ControlsBounds
 	own := h.windowRect()
 	if emptyRect(own.Intersect(occupied)) {
-		return area
+		return bounds.Inset(h.padding)
 	}
 	// This is the same side policy as the window-owned controls, not a
 	// per-HeaderBar choice. Window coordinates handle split header rows.
 	left := h.info.Controls == ChromeControlsNative
 	if left {
-		x := min(h.rect.Width, max(area.X, occupied.X+occupied.Width-own.X))
-		area.Width = max(0, area.X+area.Width-x)
-		area.X = x
+		x := min(bounds.Width, max(0, occupied.X+occupied.Width-own.X))
+		bounds.Width -= x
+		bounds.X = x
 	} else {
-		edge := max(0, min(area.X+area.Width, occupied.X-own.X))
-		area.Width = max(0, edge-area.X)
+		bounds.Width = max(0, min(bounds.Width, occupied.X-own.X))
 	}
-	return area
+	return bounds.Inset(h.padding)
 }
 
 func (h *HeaderBar) Paint(p Painter) {
