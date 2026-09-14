@@ -94,8 +94,8 @@ func Rules(options Options) []style.Rule {
 			style.Name(button.name).State(style.Hovered).BackgroundColor(button.bg[1]),
 			style.Name(button.name).State(style.Pressed).BackgroundColor(button.bg[2]),
 			style.Name(button.name).State(style.Disabled).ForegroundColor(p.disabled),
-			// Focus is a separate paint pass so it can coexist with hover/press.
-			style.Name(button.name).Part("focus").State(style.Focused).BorderColor(focus).BorderWidth(2),
+			// Focus painting remains available, but is disabled by default.
+			style.Name(button.name).Part("focus").State(style.Focused).BorderColor(focus).BorderWidth(0),
 		)
 	}
 	return rules
