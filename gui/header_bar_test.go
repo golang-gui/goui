@@ -418,9 +418,9 @@ func TestHeaderBarMeasuresAvailableWidth(t *testing.T) {
 		constraint             layout.Constraint
 		minSize, maxSize, want geometry.Size
 	}{
-		{name: "bounded", constraint: layout.Loose(geometry.Size{Width: 320, Height: 200}), want: geometry.Size{Width: 320, Height: 48}},
-		{name: "unbounded", constraint: layout.Unbounded(), want: geometry.Size{Width: 76, Height: 48}},
-		{name: "maximum", constraint: layout.Loose(geometry.Size{Width: 320, Height: 200}), maxSize: geometry.Size{Width: 140}, want: geometry.Size{Width: 140, Height: 48}},
+		{name: "bounded", constraint: layout.Loose(geometry.Size{Width: 320, Height: 200}), want: geometry.Size{Width: 320, Height: 40}},
+		{name: "unbounded", constraint: layout.Unbounded(), want: geometry.Size{Width: 76, Height: 40}},
+		{name: "maximum", constraint: layout.Loose(geometry.Size{Width: 320, Height: 200}), maxSize: geometry.Size{Width: 140}, want: geometry.Size{Width: 140, Height: 40}},
 		{name: "minimum unbounded", constraint: layout.Unbounded(), minSize: geometry.Size{Width: 100, Height: 48}, want: geometry.Size{Width: 100, Height: 48}},
 		{name: "parent wins", constraint: layout.Tight(geometry.Size{Width: 240, Height: 72}), maxSize: geometry.Size{Width: 140}, want: geometry.Size{Width: 240, Height: 72}},
 		{name: "narrow", constraint: layout.Loose(geometry.Size{Width: 10, Height: 20}), want: geometry.Size{Width: 10, Height: 20}},
@@ -437,7 +437,7 @@ func TestHeaderBarMeasuresAvailableWidth(t *testing.T) {
 			if got.Size != test.want {
 				t.Fatalf("measurement = %v, want %v", got.Size, test.want)
 			}
-			if test.want.Height >= 48 {
+			if test.want.Height >= 40 {
 				header.Arrange(geometry.Rectangle{Size: got.Size})
 				if !got.HasBaseline || got.Baseline != header.Child().Rect().Y+14 {
 					t.Fatalf("baseline no longer matches arranged child: %+v / %v", got, header.Child().Rect())
@@ -452,7 +452,7 @@ func TestHeaderBarMeasuresAvailableWidth(t *testing.T) {
 			child.SetVisible(false)
 			header.SetChild(child)
 		}
-		if got := header.Measure(layout.Loose(geometry.Size{Width: 320, Height: 200})); got.Size != (geometry.Size{Width: 320, Height: 48}) {
+		if got := header.Measure(layout.Loose(geometry.Size{Width: 320, Height: 200})); got.Size != (geometry.Size{Width: 320, Height: 40}) {
 			t.Fatalf("empty header did not fill width: %+v", got)
 		}
 		header.SetVisible(false)
@@ -472,7 +472,7 @@ func TestWeightedHeadersFillTheirOwnHorizontalAllocation(t *testing.T) {
 	}
 	row.Measure(layout.Tight(geometry.Size{Width: 400, Height: 48}))
 	row.Arrange(geometry.Rect(0, 0, 400, 48))
-	if left.Rect() != geometry.Rect(0, 0, 200, 48) || right.Rect() != geometry.Rect(200, 0, 200, 48) {
+	if left.Rect() != geometry.Rect(0, 4, 200, 40) || right.Rect() != geometry.Rect(200, 4, 200, 40) {
 		t.Fatalf("headers exceeded their assigned widths: %v / %v", left.Rect(), right.Rect())
 	}
 }
