@@ -18,7 +18,8 @@ const (
 // Settings is the thread-safe UI-layer view of system settings, obtained via
 // App.Settings(). Getters run on the UI thread automatically and always return
 // usable values (the gui layer applies fallback), so callers need no nil checks or
-// thread handling.
+// thread handling. Changes automatically request a rebuild of Run's build
+// closure; application state still requires explicit updates.
 type Settings struct {
 	current  *app
 	settings gui.Settings

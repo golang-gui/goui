@@ -47,6 +47,7 @@ var (
 // Run creates the application, mounts the declarative tree returned by build, and
 // runs the event loop until the app quits. build receives the App handle, which it
 // may stash, capture in handlers, or call from other goroutines.
+// System settings changes automatically request a coalesced rebuild.
 func Run(build func(app App) RootView) error {
 	if build == nil {
 		return ErrAppBuildNil
@@ -66,13 +67,24 @@ func Run(build func(app App) RootView) error {
 	a = newApp(guiApp, func() RootView { return build(a) })
 	setActiveApp(a)
 	defer clearActiveApp()
+	return a.run()
+}
+
+// run owns the settings subscription, including the initial build's failure
+// path and native-loop exit (which need not pass through ui.App.Quit).
+func (a *app) run() error {
+	defer a.stop()
+	if settings := a.gui.Settings(); settings != nil {
+		handle := settings.ConnectChanged(a.RequestUpdate)
+		defer handle.Disconnect()
+	}
 
 	if err := a.rebuild(); err != nil {
 		a.destroyAll()
 		return err
 	}
 
-	guiApp.Run()
+	a.gui.Run()
 	return a.error()
 }
 
@@ -86,7 +98,7 @@ func (a *app) Post(f func()) {
 // Sync runs f on the UI thread and waits. It runs f inline when already on the UI
 // thread; after the app stops it is a no-op.
 func (a *app) Sync(f func()) {
-	if f == nil {
+	if f == nil || a.isStopping() {
 		return
 	}
 	if a.onUI() {
@@ -219,7 +231,8 @@ func (a *app) RequestUpdate() {
 
 func (a *app) runPendingUpdate() {
 	a.mu.Lock()
-	if !a.updatePending {
+	if a.stopping || !a.updatePending {
+		a.updatePending = false
 		a.mu.Unlock()
 		return
 	}
@@ -472,6 +485,14 @@ func (a *app) isStopping() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.stopping
+}
+
+// stop invalidates queued updates even when the native loop exits by itself.
+func (a *app) stop() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.stopping = true
+	a.updatePending = false
 }
 
 func (a *app) error() error {
