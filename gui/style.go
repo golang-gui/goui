@@ -11,6 +11,8 @@ import (
 
 const (
 	styleNameWindow        = "window"
+	styleNameWindowControl = "window-control"
+	stylePartFrame         = "frame"
 	styleNamePopover       = "popover"
 	styleNameWidget        = "widget"
 	styleNameLabel         = "label"
@@ -41,6 +43,15 @@ func DefaultStyleRules() []style.Rule {
 
 	return []style.Rule{
 		style.Name(styleNameWindow).BackgroundColor(color.White),
+		style.Name(styleNameWindow).Part(stylePartFrame).
+			Radius(12).BorderWidth(1).BorderColor(color.RGBA{R: 165, G: 165, B: 165, A: 255}),
+		style.Name(styleNameWindowControl).
+			BackgroundColor(color.RGBA{R: 232, G: 232, B: 232, A: 255}).
+			ForegroundColor(color.RGBA{R: 50, G: 50, B: 50, A: 255}).Radius(circularControlDiameter / 2),
+		style.Name(styleNameWindowControl).State(style.Hovered).
+			BackgroundColor(color.RGBA{R: 215, G: 215, B: 215, A: 255}),
+		style.Name(styleNameWindowControl).State(style.Pressed).
+			BackgroundColor(color.RGBA{R: 195, G: 195, B: 195, A: 255}),
 		style.Name(styleNamePopover).BackgroundColor(color.White),
 		style.Name(styleNameWidget).
 			BackgroundColor(color.Transparent).
@@ -173,7 +184,11 @@ func paintStyledBox(p Painter, rect geometry.Rectangle, s style.Style) {
 			p.FillRect(rect, fill)
 		}
 	}
+	paintStyledBorder(p, rect, s)
+}
 
+func paintStyledBorder(p Painter, rect geometry.Rectangle, s style.Style) {
+	radius, _ := s.Radius()
 	width, ok := s.BorderWidth()
 	if !ok || width <= 0 {
 		return

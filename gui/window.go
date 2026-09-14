@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
+	"runtime"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
@@ -114,6 +116,8 @@ type window struct {
 	inputMethod    platform.InputMethod // this window's platform IME; nil when the platform has none
 	cursor         platform.Cursor      // this window's platform cursor capability; nil when the platform has none
 	lastCursor     platform.CursorShape // last shape applied to cursor; dedupes redundant native calls
+	cursorPosition geometry.Point       // last client-local pointer position for chrome queries
+	cursorInside   bool
 	destroyed      bool
 	modalTarget    ModalTarget // the modal element intercepting this window's input; nil when none
 	closeRequest   signal.Signal1[*bool]
@@ -125,6 +129,7 @@ type window struct {
 	chrome         *windowChrome
 	controls       *windowControls
 	layingOut      bool
+	clientChrome   bool // GUI-drawn Integrated over a factual None alpha surface
 }
 
 func newWindow(app *application, options WindowOptions) (*window, error) {
@@ -136,9 +141,22 @@ func newWindow(app *application, options WindowOptions) (*window, error) {
 	mode := options.Chrome
 	nativeOptions := platform.WindowOptions{Chrome: platform.WindowChrome(mode), Transparent: options.Transparent}
 	platformWindow, err := app.platform.NewWindow(options.Size, win.onEvent, nativeOptions)
+	if mode == WindowChromeIntegrated && errors.Is(err, platform.ErrUnsupported) && platformWindow == nil &&
+		runtime.GOOS == "linux" && app.platform.Name() == "x11" {
+		// The platform deliberately does not claim native Integrated support.
+		// Only the GUI knows how to decorate a transparent, undecorated surface.
+		nativeOptions.Chrome, nativeOptions.Transparent = platform.WindowChromeNone, true
+		platformWindow, err = app.platform.NewWindow(options.Size, win.onEvent, nativeOptions)
+		if err == nil {
+			win.clientChrome, win.transparent = true, true
+		} else if platformWindow == nil && !options.Transparent && errors.Is(err, platform.ErrUnavailable) {
+			// No compositor: Integrated is a preference, explicit transparency is not.
+			err = platform.ErrUnsupported
+		}
+	}
 	if mode == WindowChromeIntegrated && errors.Is(err, platform.ErrUnsupported) && platformWindow == nil {
 		mode = WindowChromeNative
-		nativeOptions.Chrome = platform.WindowChromeNative
+		nativeOptions = platform.WindowOptions{Chrome: platform.WindowChromeNative, Transparent: options.Transparent}
 		platformWindow, err = app.platform.NewWindow(options.Size, win.onEvent, nativeOptions)
 	}
 	if err != nil {
@@ -160,7 +178,6 @@ func newWindow(app *application, options WindowOptions) (*window, error) {
 		win.Destroy()
 		return nil, fmt.Errorf("create painter: %w", err)
 	}
-
 	win.title = platformWindow.Title()
 
 	// Text input (IME) is an optional platform capability; a nil result (the
@@ -354,6 +371,19 @@ func (w *window) DispatchEvent(event events.Event) error {
 	if w.destroyed {
 		return nil
 	}
+	switch e := event.(type) {
+	case events.PointerEvent:
+		w.cursorPosition = e.Position
+		w.cursorInside = e.EventType != events.PointerLeave && containsPoint(geometry.Rect(0, 0, w.width, w.height), e.Position)
+		defer w.applyCursor()
+	case events.FocusEvent:
+		if !e.Focused {
+			w.cursorInside = false
+		}
+		defer w.applyCursor()
+	case events.StateEvent, events.SizeEvent:
+		defer w.applyCursor()
+	}
 	if controller := w.dispatcher.hostController; controller != nil {
 		switch e := event.(type) {
 		case events.FocusEvent, events.StateEvent, events.SizeEvent:
@@ -411,7 +441,6 @@ func (w *window) DispatchEvent(event events.Event) error {
 		w.paint()
 	case events.PointerEvent:
 		err := w.dispatcher.DispatchEvent(w, event)
-		w.applyCursor() // re-resolve cursor after hover path changes
 		return err
 	case events.KeyEvent:
 		err := w.dispatcher.DispatchEvent(w, event)
@@ -490,6 +519,7 @@ func (w *window) onEvent(event events.Event) {
 // See the Window interface.
 func (w *window) SetModalTarget(target ModalTarget) {
 	w.modalTarget = target
+	w.applyCursor()
 }
 
 // routeToModalTarget forwards the window's input to its modal target (§7): the
@@ -524,6 +554,7 @@ func (w *window) routeToModalTarget(event events.Event) bool {
 }
 
 func (w *window) paint() {
+	defer w.applyCursor() // layout/state changes can move a resize region beneath a stationary pointer
 	w.root = liveRoot(w.root)
 	w.paintDirty = false
 	if w.chrome != nil {
@@ -547,7 +578,8 @@ func (w *window) paint() {
 		w.controls.layout()
 		controls = w.controls
 	}
-	w.drawFrame(w.root, ResolveStyle(styleNameWindow, style.PartDefault, style.Normal), controls)
+	border, inset := w.frameStyle()
+	w.drawDecoratedFrame(w.root, ResolveStyle(styleNameWindow, style.PartDefault, style.Normal), border, inset, controls)
 }
 
 func (w *window) layoutContent() {
@@ -657,7 +689,7 @@ func (w *window) imReset() {
 // applies it. Called when the hover path changes or a hovered widget changes
 // its cursor. Redundant same-shape calls are skipped.
 func (w *window) applyCursor() {
-	if w.cursor == nil {
+	if w.destroyed || w.cursor == nil {
 		return
 	}
 	var resolved Cursor = CursorDefault
@@ -673,6 +705,12 @@ func (w *window) applyCursor() {
 	shape, ok := resolved.(CursorShape)
 	if !ok {
 		shape = CursorDefault
+	}
+	if frame := w.frameCursor(); frame != CursorDefault {
+		shape = frame
+	}
+	if w.destroyed || w.cursor == nil {
+		return
 	}
 	platformShape := platform.CursorShape(shape)
 	if platformShape == w.lastCursor {
@@ -731,4 +769,87 @@ func (w *window) ConnectState(fn func(WindowState)) signal.Handle {
 			fn(state)
 		}
 	})
+}
+
+func (w *window) floatingFrame() bool {
+	return w.clientChrome && w.State() != WindowStateMaximized && w.State() != WindowStateFullscreen
+}
+
+// Only GUI-drawn Integrated owns automatic resize feedback. None callers keep
+// control of their cursor, and native frames keep their OS cursor behavior.
+func (w *window) frameCursor() CursorShape {
+	if !w.clientChrome || !w.cursorInside || w.chrome == nil || w.layoutDirty || w.layingOut || w.State() != WindowStateNormal {
+		return CursorDefault
+	}
+	// Use the final ordered query, including Client overrides, modal input and
+	// pointer capture. Do not maintain a second geometric hit test for cursors.
+	switch w.chrome.queryRegion(w.cursorPosition) {
+	case ChromeRegionLeft:
+		return CursorResizeLeft
+	case ChromeRegionRight:
+		return CursorResizeRight
+	case ChromeRegionTop:
+		return CursorResizeTop
+	case ChromeRegionBottom:
+		return CursorResizeBottom
+	case ChromeRegionTopLeft:
+		return CursorResizeTopLeft
+	case ChromeRegionTopRight:
+		return CursorResizeTopRight
+	case ChromeRegionBottomLeft:
+		return CursorResizeBottomLeft
+	case ChromeRegionBottomRight:
+		return CursorResizeBottomRight
+	default:
+		return CursorDefault
+	}
+}
+
+// The frame owns a paint-only perimeter. Layout, input coordinates and controls
+// placement stay full-window; only subsequent Widget painting is restricted.
+func (w *window) frameStyle() (style.Style, float32) {
+	if !w.floatingFrame() {
+		return style.Style{}, 0
+	}
+	frame := ResolveStyle(styleNameWindow, stylePartFrame, style.Normal)
+	radius, _ := frame.Radius()
+	border, _ := frame.BorderWidth()
+	radius = min(normalizeLayoutValue(radius), max(0, min(w.width, w.height)/2))
+	scale := w.frameScale()
+	// An equally inset rectangle lies inside a round corner when its inset
+	// is at least r*(1-1/sqrt(2)). Keep an extra physical pixel for AA and
+	// round inward so backend pixel snapping cannot expose the corner.
+	inset := max(float32(5), normalizeLayoutValue(border), radius*(1-1/math.Sqrt2)+1/scale)
+	return frame, float32(math.Ceil(float64(inset*scale))) / scale
+}
+
+// These are GUI resize affordances, not a native input-region mask. Transparent
+// corner pixels remain inside the rectangular native input surface.
+func (c *windowChrome) queryFrameRegion(p geometry.Point, result *ChromeRegion) {
+	w := c.window
+	if !w.floatingFrame() || !containsPoint(geometry.Rect(0, 0, w.width, w.height), p) {
+		return
+	}
+	_, edge := w.frameStyle()
+	const corner float32 = 16
+	left, right := p.X < edge, p.X >= w.width-edge
+	top, bottom := p.Y < edge, p.Y >= w.height-edge
+	switch {
+	case (left && p.Y < corner) || (top && p.X < corner):
+		*result = ChromeRegionTopLeft
+	case (right && p.Y < corner) || (top && p.X >= w.width-corner):
+		*result = ChromeRegionTopRight
+	case (left && p.Y >= w.height-corner) || (bottom && p.X < corner):
+		*result = ChromeRegionBottomLeft
+	case (right && p.Y >= w.height-corner) || (bottom && p.X >= w.width-corner):
+		*result = ChromeRegionBottomRight
+	case left:
+		*result = ChromeRegionLeft
+	case right:
+		*result = ChromeRegionRight
+	case top:
+		*result = ChromeRegionTop
+	case bottom:
+		*result = ChromeRegionBottom
+	}
 }

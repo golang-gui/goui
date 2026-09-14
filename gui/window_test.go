@@ -3,6 +3,8 @@ package gui
 import (
 	"errors"
 	"image"
+	"image/color"
+	"math"
 	"reflect"
 	"testing"
 
@@ -11,7 +13,9 @@ import (
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/graphics/software"
 	"github.com/golang-gui/goui/platform/typography"
+	"github.com/golang-gui/goui/style"
 )
 
 func TestWindowSetWidget(t *testing.T) {
@@ -504,4 +508,114 @@ func TestAutomaticMinimumOnlyAppliesToDesktop(t *testing.T) {
 		t.Fatal("derived minimum changed")
 	}
 	win.Destroy()
+}
+
+type transparentFrame struct{ image image.Image }
+
+func (*transparentFrame) Transparent() bool            { return true }
+func (f *transparentFrame) Draw(img image.Image) error { f.image = img; return nil }
+
+func TestWindowFrameClipDoesNotChangeLayout(t *testing.T) {
+	for _, scale := range []float32{1, 1.25, 1.5, 2} {
+		w, native := chromeFixture(t, false, false)
+		w.clientChrome, w.transparent = true, true
+		w.pixelWidth, w.pixelHeight = w.width*scale, w.height*scale
+		output := &transparentFrame{}
+		p, err := software.NewPainter(output)
+		if err != nil {
+			t.Fatal(err)
+		}
+		w.painter = p
+		content := newPainterTestWidget(func(p Painter) {
+			// A custom Widget cannot cancel the structural frame clip.
+			p.SetClipRect(geometry.Rect(-100, -100, 10000, 10000))
+			p.Save()
+			p.SetTransform(geometry.Translate(-20, -20))
+			p.FillRect(geometry.Rect(0, 0, 10000, 10000), graphics.RGB(40, 100, 200))
+			p.Restore()
+		})
+		w.SetWidget(content)
+		w.paint()
+		bounds := geometry.Rect(0, 0, w.width, w.height)
+		if content.Rect() != bounds || content.base().windowRect() != bounds {
+			t.Fatalf("layout changed: %v", content.Rect())
+		}
+		if hitTest(content, geometry.Point{X: 2, Y: 100}) != content {
+			t.Fatal("paint-only clipping changed Widget hit coordinates")
+		}
+		_, inset := w.frameStyle()
+		if inset < 5 || math.Abs(float64(inset*scale)-math.Round(float64(inset*scale))) > 1e-5 {
+			t.Fatalf("unsafe pixel alignment: %v at %v", inset, scale)
+		}
+		pixel := func(x, y int) color.RGBA {
+			return color.RGBAModel.Convert(output.image.At(x, y)).(color.RGBA)
+		}
+		if got := pixel(0, 0); got.A != 0 {
+			t.Fatalf("corner not transparent: %v", got)
+		}
+		if got := pixel(int(2*scale), int(100*scale)); got != (color.RGBA{255, 255, 255, 255}) {
+			t.Fatalf("Widget painted over frame at %vx: %v", scale, got)
+		}
+		if got := pixel(int(20*scale), int(100*scale)); got != (color.RGBA{40, 100, 200, 255}) {
+			t.Fatalf("content missing: %v", got)
+		}
+		if got := pixel(0, int(100*scale)); got == (color.RGBA{255, 255, 255, 255}) || got.A == 0 {
+			t.Fatalf("border inherited content clip: %v", got)
+		}
+		for _, state := range []WindowState{WindowStateMaximized, WindowStateFullscreen, WindowStateNormal} {
+			native.state = state
+			w.paint()
+			if content.Rect() != bounds {
+				t.Fatal("state change shifted layout")
+			}
+			_, inset = w.frameStyle()
+			if state == WindowStateNormal {
+				if pixel(0, 0).A != 0 || inset == 0 {
+					t.Fatal("normal frame not restored")
+				}
+			} else if pixel(0, 0) != (color.RGBA{40, 100, 200, 255}) || inset != 0 {
+				t.Fatal("maximized/fullscreen retained frame clip")
+			}
+		}
+		w.clientChrome = false
+		w.paint()
+		if pixel(0, 0) != (color.RGBA{40, 100, 200, 255}) {
+			t.Fatal("frame leaked to native/None")
+		}
+	}
+}
+
+func TestFrameStructuralClipIncludesChildrenAndDecorations(t *testing.T) {
+	backend := &recordingPainterBackend{}
+	root := rootBase{width: 100, height: 80, pixelWidth: 100, pixelHeight: 80, painter: backend, layoutDirty: true}
+	full := geometry.Rect(0, 0, 100, 80)
+	draw := func(p Painter) {
+		p.SetClipRect(full)
+		p.FillRect(full, graphics.RGB(255, 0, 0))
+	}
+	parent := &painterTestContainer{}
+	child := newPainterTestWidget(draw)
+	parent.AddChild(child)
+	root.layoutFrame(parent)
+	child.Arrange(full)
+	decoration := newPainterTestWidget(draw)
+	decoration.Arrange(full)
+	root.drawDecoratedFrame(parent, style.Style{}, style.Style{}, 5, decoration)
+	if len(backend.fills) != 2 {
+		t.Fatalf("fills: %v", backend.fills)
+	}
+	for _, fill := range backend.fills {
+		if fill.clip != geometry.Rect(5, 5, 90, 70) {
+			t.Fatalf("escaped structural clip: %v", fill.clip)
+		}
+	}
+	if backend.clip != (geometry.Rectangle{}) || backend.transform != geometry.Identity() {
+		t.Fatal("frame state not restored")
+	}
+	// An empty safe area suppresses drawing, never disables clipping and leaks.
+	backend.fills = nil
+	root.drawDecoratedFrame(parent, style.Style{}, style.Style{}, 60, decoration)
+	if len(backend.fills) != 0 {
+		t.Fatal("empty safe area drew content")
+	}
 }

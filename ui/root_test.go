@@ -589,6 +589,8 @@ func (w *testWindow) Title() string {
 	return w.title
 }
 
+func (*testWindow) Transparent() bool { return false }
+
 func (w *testWindow) SetTitle(title string) error {
 	w.title = title
 	return nil

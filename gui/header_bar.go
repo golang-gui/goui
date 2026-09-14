@@ -214,6 +214,12 @@ func (h *HeaderBar) queryRegion(p geometry.Point, result *ChromeRegion) {
 	if win == nil || !visibleInTree(h) {
 		return
 	}
+	// Integrated's GUI-drawn frame has the same precedence over the automatic
+	// drag area as native resize borders. Explicit window subscribers may still
+	// replace the result in connection order.
+	if w, ok := win.(*window); ok && w.clientChrome && *result >= ChromeRegionTop && *result <= ChromeRegionBottomRight {
+		return
+	}
 	if containsPoint(h.info.ControlsBounds, p) {
 		return
 	}
