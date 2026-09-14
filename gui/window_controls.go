@@ -15,7 +15,7 @@ const (
 	circularControlSize     float32 = 28
 	circularControlDiameter float32 = 24
 	circularControlGap      float32 = 8
-	circularControlInset    float32 = 12
+	circularControlInset    float32 = 6 // visible circle is another 2 DIP inside its hit box
 )
 
 // windowControls belongs exclusively to Window. Only custom presentation has
@@ -205,19 +205,26 @@ type captionIcon struct {
 func (i *captionIcon) Paint(p Painter) {
 	palette := i.controls.window.decorationPalette(i.controls.buttons[i.index].circular)
 	brush := graphics.ColorOf(palette.foreground)
+	// Keep the 12 DIP icon allocation and 1 DIP stroke. Only the Linux
+	// circular presentation uses a smaller glyph; button hit boxes are unchanged.
+	left, right := float32(1), float32(11)
+	if i.controls.buttons[i.index].circular {
+		left, right = 2, 10
+	}
+	span := right - left
 	switch i.index {
 	case 0:
-		p.DrawLine(geometry.Point{X: 1, Y: 6}, geometry.Point{X: 11, Y: 6}, 1, brush)
+		p.DrawLine(geometry.Point{X: left, Y: 6}, geometry.Point{X: right, Y: 6}, 1, brush)
 	case 1:
 		if i.controls.window.State() == WindowStateMaximized {
-			p.DrawLine(geometry.Point{X: 3, Y: 1}, geometry.Point{X: 11, Y: 1}, 1, brush)
-			p.DrawLine(geometry.Point{X: 11, Y: 1}, geometry.Point{X: 11, Y: 9}, 1, brush)
-			p.DrawRect(geometry.Rect(1, 3, 8, 8), 1, brush)
+			p.DrawLine(geometry.Point{X: left + 2, Y: left}, geometry.Point{X: right, Y: left}, 1, brush)
+			p.DrawLine(geometry.Point{X: right, Y: left}, geometry.Point{X: right, Y: right - 2}, 1, brush)
+			p.DrawRect(geometry.Rect(left, left+2, span-2, span-2), 1, brush)
 		} else {
-			p.DrawRect(geometry.Rect(1, 1, 10, 10), 1, brush)
+			p.DrawRect(geometry.Rect(left, left, span, span), 1, brush)
 		}
 	case 2:
-		p.DrawLine(geometry.Point{X: 1, Y: 1}, geometry.Point{X: 11, Y: 11}, 1, brush)
-		p.DrawLine(geometry.Point{X: 11, Y: 1}, geometry.Point{X: 1, Y: 11}, 1, brush)
+		p.DrawLine(geometry.Point{X: left, Y: left}, geometry.Point{X: right, Y: right}, 1, brush)
+		p.DrawLine(geometry.Point{X: right, Y: left}, geometry.Point{X: left, Y: right}, 1, brush)
 	}
 }
