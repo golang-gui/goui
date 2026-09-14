@@ -6,6 +6,7 @@ import (
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/style"
 )
 
 const (
@@ -44,12 +45,9 @@ func (c *windowControls) changed(info ChromeInfo) {
 	c.info = info
 	if info.Controls == ChromeControlsCustom && c.buttons[0] == nil {
 		for i := range c.buttons {
-			button := &captionButton{Button: NewButton(), circular: c.window.clientChrome}
+			button := &captionButton{Button: NewButton(), window: c.window, circular: c.window.clientChrome}
 			button.SetID([]string{"window-minimize", "window-maximize", "window-close"}[i])
 			button.SetPadding(0)
-			if c.window.clientChrome {
-				button.SetStyleName(styleNameWindowControl)
-			}
 			button.SetFocusable(false) // caption buttons do not steal document focus
 			icon := &captionIcon{controls: c, index: i}
 			icon.SetMinSize(geometry.Size{Width: 12, Height: 12})
@@ -68,18 +66,41 @@ func (c *windowControls) changed(info ChromeInfo) {
 // The embedded Button still owns the existing click/hover state and signals.
 type captionButton struct {
 	*Button
+	window   *window
 	circular bool
 }
 
+func (b *captionButton) Measure(c layout.Constraint) layout.Measurement {
+	// Chrome supplies tight allocations; the icon has a fixed intrinsic size.
+	// Do not inherit Button's application-font-derived measurement floor.
+	return b.WidgetBase.Measure(c)
+}
+
+func (b *captionButton) decorationStyle() style.Style {
+	palette := b.window.decorationPalette(b.circular)
+	background := palette.button
+	if b.pressed {
+		background = palette.pressed
+	} else if b.hovered {
+		background = palette.hovered
+	}
+	radius := float32(4)
+	if b.circular {
+		radius = circularControlDiameter / 2
+	}
+	return style.Default().BackgroundColor(background).Radius(radius).Style
+}
+
 func (b *captionButton) Paint(p Painter) {
-	if !b.circular {
-		b.Button.Paint(p)
+	if !b.Visible() {
 		return
 	}
-	if b.Visible() {
+	rect := geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height)
+	if b.circular {
 		inset := (circularControlSize - circularControlDiameter) / 2
-		paintStyledBox(p, geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height).Inset(inset), b.resolvedStyle())
+		rect = rect.Inset(inset)
 	}
+	paintStyledBox(p, rect, b.decorationStyle())
 }
 
 // Window arranges its tree from Chrome's resolved observation. Chrome never
@@ -182,10 +203,8 @@ type captionIcon struct {
 }
 
 func (i *captionIcon) Paint(p Painter) {
-	brush := graphics.RGB(0, 0, 0)
-	if color, ok := i.controls.buttons[i.index].resolvedStyle().ForegroundColor(); ok {
-		brush = graphics.ColorOf(color)
-	}
+	palette := i.controls.window.decorationPalette(i.controls.buttons[i.index].circular)
+	brush := graphics.ColorOf(palette.foreground)
 	switch i.index {
 	case 0:
 		p.DrawLine(geometry.Point{X: 1, Y: 6}, geometry.Point{X: 11, Y: 6}, 1, brush)
