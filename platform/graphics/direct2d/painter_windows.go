@@ -178,7 +178,7 @@ func (p *Painter) createDeviceResources() (err error) {
 	dxgiFactory := (*dxgi.Factory2)(unsafe.Pointer(unknown))
 	defer dxgiFactory.Release()
 	var frameLatencyErr error
-	for _, desc := range swapChainCandidates() {
+	for _, desc := range swapChainCandidates(p.transparent) {
 		if p.transparent {
 			// Composition has no implicit HWND size. Its visual remains 1:1;
 			// SCALING_STRETCH is a required descriptor value, not a resize policy.
@@ -242,34 +242,38 @@ func (p *Painter) createDeviceResources() (err error) {
 	return nil
 }
 
-func swapChainCandidates() [5]dxgi.SwapChainDesc1 {
+func swapChainCandidates(transparent bool) [2]dxgi.SwapChainDesc1 {
 	base := dxgi.SwapChainDesc1{
 		Format:      dxgi.DXGI_FORMAT_B8G8R8A8_UNORM,
 		SampleDesc:  dxgi.SampleDesc{Count: 1},
 		BufferUsage: dxgi.DXGI_USAGE_RENDER_TARGET_OUTPUT,
 		BufferCount: 2,
-		Scaling:     dxgi.DXGI_SCALING_NONE,
+		Scaling:     dxgi.DXGI_SCALING_STRETCH,
 		SwapEffect:  dxgi.DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
 		AlphaMode:   dxgi.DXGI_ALPHA_MODE_UNSPECIFIED,
 		Flags:       dxgi.DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT,
 	}
 
-	// DXGI_SCALING_NONE prevents DWM from stretching the last presented
-	// buffer while the HWND and swap-chain sizes briefly differ during a live
-	// resize. Prefer a frame-latency waitable swap chain so painting can be
-	// paced before Direct2D acquires a back buffer. Keep non-waitable flip-model
-	// configurations for Windows 8, then the legacy blt-model fallback.
-	// SCALING_NONE is not valid with DXGI_SWAP_EFFECT_DISCARD.
-	flipStretch := base
-	flipStretch.Scaling = dxgi.DXGI_SCALING_STRETCH
-	flipNoWait := base
-	flipNoWait.Flags = 0
-	flipStretchNoWait := flipStretch
-	flipStretchNoWait.Flags = 0
-	legacy := flipStretchNoWait
-	legacy.BufferCount = 1
-	legacy.SwapEffect = dxgi.DXGI_SWAP_EFFECT_DISCARD
-	return [5]dxgi.SwapChainDesc1{base, flipStretch, flipNoWait, flipStretchNoWait, legacy}
+	if transparent {
+		// DirectComposition requires flip-sequential + stretch. Its visual is
+		// still 1:1. Keep the existing waitable path and Windows 8 fallback.
+		compatible := base
+		compatible.Flags = 0
+		return [2]dxgi.SwapChainDesc1{base, compatible}
+	}
+
+	// HWND flip presentation and the window's redirection surface can resize
+	// independently, exposing transient white strips on contraction even when
+	// WM_SIZE paints synchronously. Use the redirected blt model for opaque
+	// windows, as Qt's Direct2D backend and Druid's default presentation do.
+	// This costs a presentation copy but keeps GPU drawing and window geometry
+	// synchronized. Do not fall back to flip and silently reintroduce artifacts.
+	base.BufferCount = 1
+	base.SwapEffect = dxgi.DXGI_SWAP_EFFECT_SEQUENTIAL
+	base.Flags = 0 // Frame-latency waitable objects require the flip model.
+	compatible := base
+	compatible.SwapEffect = dxgi.DXGI_SWAP_EFFECT_DISCARD
+	return [2]dxgi.SwapChainDesc1{base, compatible}
 }
 
 func (p *Painter) configureFrameLatency() error {
@@ -1238,9 +1242,9 @@ func (i *imageResource) Destroy() {
 
 const shadowCacheCapacity = 16
 
-// GOUI paints complete frames in response to window messages. Present without
-// a sync interval so a newer frame can replace queued work; the waitable swap
-// chain below performs pacing before Direct2D starts rendering.
+// GOUI paints complete frames in response to window messages. Do not wait for
+// vsync on the UI thread. Transparent flip chains additionally pace rendering
+// with their waitable object; opaque HWND chains use redirected presentation.
 const frameSyncInterval uint32 = 0
 
 const frameWaitTimeoutMillis winapi.DWORD = 1
