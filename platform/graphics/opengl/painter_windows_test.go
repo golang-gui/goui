@@ -9,11 +9,9 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/windows/sdk/winapi"
-	"github.com/golang-gui/nanovgo/gl"
 )
 
 // Read the native rasterizer's pixels, including NanoVG's shader scissor and
@@ -193,21 +191,11 @@ func assertPixel(t *testing.T, img *image.RGBA, x, y int, ink bool) {
 	}
 }
 
-// Deliberately not divisible by the tested DPI scales: truncating the logical
-// BeginFrame dimensions stretches the viewport and defeats pixel alignment.
-const pixelWidth, pixelHeight = 83, 67
-
 type pixelWindow winapi.HWND
 
 func (w pixelWindow) NativeHandle() uintptr { return uintptr(w) }
 func (w pixelWindow) RequestPaint() error   { return nil }
 func (w pixelWindow) Transparent() bool     { return false }
-
-type pixelFixture struct {
-	t          *testing.T
-	p          *Painter
-	readPixels uintptr
-}
 
 func newPixelFixture(t *testing.T) *pixelFixture {
 	t.Helper()
@@ -228,73 +216,5 @@ func newPixelFixture(t *testing.T) *pixelFixture {
 		t.Fatal(err)
 	}
 	p := native.(*Painter)
-	t.Cleanup(p.Destroy)
-	proc := func(name string) uintptr {
-		t.Helper()
-		fn, err := p.ctx.GetProcAddress(name)
-		if err != nil || fn == 0 {
-			t.Fatalf("load %s: %v", name, err)
-		}
-		return fn
-	}
-	// Use an FBO so readback does not depend on window visibility or occlusion.
-	var framebuffer uint32
-	var buffers [2]uint32
-	cgo.Call(proc("glGenFramebuffers"), int32(1), &framebuffer)
-	cgo.Call(proc("glBindFramebuffer"), uint32(gl.FRAMEBUFFER), framebuffer)
-	cgo.Call(proc("glGenRenderbuffers"), int32(2), &buffers[0])
-	deleteFramebuffers, deleteRenderbuffers := proc("glDeleteFramebuffers"), proc("glDeleteRenderbuffers")
-	t.Cleanup(func() {
-		_ = p.ctx.MakeCurrent()
-		cgo.Call(deleteFramebuffers, int32(1), &framebuffer)
-		cgo.Call(deleteRenderbuffers, int32(2), &buffers[0])
-	})
-	for i, format := range []uint32{gl.RGBA8, gl.DEPTH24_STENCIL8} {
-		cgo.Call(proc("glBindRenderbuffer"), uint32(gl.RENDERBUFFER), buffers[i])
-		cgo.Call(proc("glRenderbufferStorage"), uint32(gl.RENDERBUFFER), format, int32(pixelWidth), int32(pixelHeight))
-		attachment := uint32(gl.COLOR_ATTACHMENT0)
-		if i == 1 {
-			attachment = gl.DEPTH_STENCIL_ATTACHMENT
-		}
-		cgo.Call(proc("glFramebufferRenderbuffer"), uint32(gl.FRAMEBUFFER), attachment, uint32(gl.RENDERBUFFER), buffers[i])
-	}
-	if status := cgo.CallRet[uint32](proc("glCheckFramebufferStatus"), uint32(gl.FRAMEBUFFER)); status != gl.FRAMEBUFFER_COMPLETE {
-		t.Fatalf("incomplete framebuffer: %#x", status)
-	}
-	f := &pixelFixture{t: t, p: p, readPixels: proc("glReadPixels")}
-	if err := p.ctx.ClearCurrent(); err != nil {
-		t.Fatal(err)
-	}
-	return f
-}
-
-func (f *pixelFixture) render(scale float32, transform geometry.Transform, clip graphics.Rectangle, draw func(*Painter)) *image.RGBA {
-	f.t.Helper()
-	p := f.p
-	p.Begin(pixelWidth, pixelHeight, scale)
-	p.Clear(graphics.RGB(255, 255, 255))
-	p.SetTransform(transform)
-	p.SetClipRect(clip)
-	draw(p)
-	p.End()
-	return f.readback()
-}
-
-func (f *pixelFixture) readback() *image.RGBA {
-	f.t.Helper()
-	p := f.p
-	if err := p.ctx.MakeCurrent(); err != nil {
-		f.t.Fatal(err)
-	}
-	defer p.ctx.ClearCurrent()
-	pixels := make([]byte, pixelWidth*pixelHeight*4)
-	cgo.Call(f.readPixels, int32(0), int32(0), int32(pixelWidth), int32(pixelHeight), uint32(gl.RGBA), uint32(gl.UNSIGNED_BYTE), &pixels[0])
-	if err := gl.GetError(); err != gl.NO_ERROR {
-		f.t.Fatalf("OpenGL error: %#x", err)
-	}
-	img := image.NewRGBA(image.Rect(0, 0, pixelWidth, pixelHeight))
-	for y := 0; y < pixelHeight; y++ {
-		copy(img.Pix[y*img.Stride:(y+1)*img.Stride], pixels[(pixelHeight-1-y)*img.Stride:(pixelHeight-y)*img.Stride])
-	}
-	return img
+	return newFramebufferFixture(t, p)
 }

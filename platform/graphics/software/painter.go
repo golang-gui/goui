@@ -249,8 +249,14 @@ func (p *Painter) DrawBoxShadow(rect graphics.Rectangle, radius float32, shadow 
 			return color.RGBA{}
 		}
 		c := shadow.Color
-		c.A *= coverage
-		return reverseColor(c)
+		// Color is already premultiplied. Apply mask coverage to all four
+		// channels and only swap R/B for the internal BGRA raster target.
+		return color.RGBA{
+			R: uint8(c.B * coverage * 255),
+			G: uint8(c.G * coverage * 255),
+			B: uint8(c.R * coverage * 255),
+			A: uint8(c.A * coverage * 255),
+		}
 	}))
 	p.filler.Draw()
 }
