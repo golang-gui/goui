@@ -68,6 +68,17 @@ func NewListView() *ListView {
 	}
 }
 
+// StyleChanged drops exact row measurements, not the rows or their bindings.
+// Keep the previous mean/width as estimates until LayoutVisible remeasures, so
+// ScrollView does not clamp its offset against a transient empty extent.
+func (lv *ListView) StyleChanged() {
+	clear(lv.heights)
+	clear(lv.widths)
+	lv.seedHeight = lv.estimate
+	lv.first, lv.firstY = 0, 0
+	lv.lastContentHeight = 0
+}
+
 // Model returns the current data model.
 func (lv *ListView) Model() ListModel {
 	return lv.model
@@ -194,6 +205,9 @@ func (lv *ListView) LayoutVisible(viewport geometry.Size, offset geometry.Point)
 		lv.contentWidth = viewport.Width
 	}
 
+	if len(lv.widths) == 0 {
+		lv.contentWidth = viewport.Width
+	}
 	first, firstY := lv.locateFirst()
 	last := first
 	y := firstY
@@ -203,9 +217,21 @@ func (lv *ListView) LayoutVisible(viewport geometry.Size, offset geometry.Point)
 			break
 		}
 		h, known := lv.heights[last]
-		if !known {
+		// A local style/text change invalidates the row through RequestLayout
+		// even when this list's own style did not change. Do not let the
+		// per-index cache hide that invalidation (including a rebound shell).
+		if !known || !w.base().measureValid {
+			oldWidth := lv.widths[last]
 			h = lv.measureItem(last, w)
 			lv.heights[last] = h
+			if oldWidth == lv.contentWidth && lv.widths[last] < oldWidth {
+				// The previous widest row shrank. Other cached rows still count
+				// toward the extent, including rows outside the viewport.
+				lv.contentWidth = viewport.Width
+				for _, width := range lv.widths {
+					lv.contentWidth = max(lv.contentWidth, width)
+				}
+			}
 		}
 		rowW := lv.widths[last]
 		if rowW <= 0 {

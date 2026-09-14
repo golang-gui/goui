@@ -38,15 +38,11 @@ type Label struct {
 	textAlign TextAlign
 
 	// TextLayout cache. Reused across Measure and Paint. Invalidated by
-	// SetText / SetWrapMode / SetTextAlign / SetStyleName. Released on unmount.
-	cachedLayout    typography.TextLayout
-	cachedText      string
-	cachedWrapMode  WrapMode
-	cachedTextAlign TextAlign
-	cachedStyleName string
-	cachedWidth     float32
-	cachedHeight    float32
-	layoutValid     bool
+	// SetText / SetWrapMode / SetTextAlign / StyleChanged. Released on unmount.
+	cachedLayout typography.TextLayout
+	cachedWidth  float32
+	cachedHeight float32
+	layoutValid  bool
 }
 
 func NewLabel(text string) *Label {
@@ -142,26 +138,18 @@ func (l *Label) invalidateLayout() {
 	l.layoutValid = false
 }
 
+// StyleChanged releases the old font/color resources; they are rebuilt lazily.
+func (l *Label) StyleChanged() { l.releaseLayout() }
+
 func (l *Label) ensureLayout(size geometry.Size) typography.TextLayout {
-	styleName := l.StyleName()
-	if !l.layoutValid ||
-		l.cachedLayout == nil ||
-		l.cachedText != l.text ||
-		l.cachedWrapMode != l.wrapMode ||
-		l.cachedTextAlign != l.textAlign ||
-		l.cachedStyleName != styleName {
+	if !l.layoutValid || l.cachedLayout == nil {
 		l.releaseLayout()
 		l.cachedLayout = l.newTextLayout(l.resolvedTextFormat(), size)
 		if l.cachedLayout == nil {
 			return nil
 		}
-		l.cachedText = l.text
-		l.cachedWrapMode = l.wrapMode
-		l.cachedTextAlign = l.textAlign
-		l.cachedStyleName = styleName
 		l.layoutValid = true
-		l.cachedWidth = 0
-		l.cachedHeight = 0
+		l.cachedWidth, l.cachedHeight = size.Width, size.Height
 	}
 
 	if l.cachedWidth != size.Width || l.cachedHeight != size.Height {
