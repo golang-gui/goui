@@ -9,8 +9,12 @@ import (
 )
 
 const (
-	captionButtonWidth  float32 = 44
-	captionButtonHeight float32 = 32
+	captionButtonWidth      float32 = 44
+	captionButtonHeight     float32 = 32
+	circularControlSize     float32 = 28
+	circularControlDiameter float32 = 24
+	circularControlGap      float32 = 8
+	circularControlInset    float32 = 12
 )
 
 // windowControls belongs exclusively to Window. Only custom presentation has
@@ -19,7 +23,7 @@ type windowControls struct {
 	WidgetBase
 	window      *window
 	info        ChromeInfo
-	buttons     [3]*Button
+	buttons     [3]*captionButton
 	connections signal.Handles
 }
 
@@ -40,17 +44,41 @@ func (c *windowControls) changed(info ChromeInfo) {
 	c.info = info
 	if info.Controls == ChromeControlsCustom && c.buttons[0] == nil {
 		for i := range c.buttons {
-			button := NewButton()
+			button := &captionButton{Button: NewButton(), circular: c.window.clientChrome}
 			button.SetID([]string{"window-minimize", "window-maximize", "window-close"}[i])
 			button.SetPadding(0)
+			if c.window.clientChrome {
+				button.SetStyleName(styleNameWindowControl)
+			}
 			button.SetFocusable(false) // caption buttons do not steal document focus
 			icon := &captionIcon{controls: c, index: i}
 			icon.SetMinSize(geometry.Size{Width: 12, Height: 12})
-			button.SetChild(icon)
+			// Attach to the wrapper identity, not the embedded Button: picking,
+			// propagation and ancestor tests must all see the same parent.
+			button.content = icon
+			button.WidgetBase.AddChild(button, icon)
 			button.ConnectClicked(func() { c.activate(i) })
 			c.buttons[i] = button
 			c.WidgetBase.AddChild(c, button)
 		}
+	}
+}
+
+// Only caption buttons separate their visible background from their hit box.
+// The embedded Button still owns the existing click/hover state and signals.
+type captionButton struct {
+	*Button
+	circular bool
+}
+
+func (b *captionButton) Paint(p Painter) {
+	if !b.circular {
+		b.Button.Paint(p)
+		return
+	}
+	if b.Visible() {
+		inset := (circularControlSize - circularControlDiameter) / 2
+		paintStyledBox(p, geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height).Inset(inset), b.resolvedStyle())
 	}
 }
 
@@ -79,6 +107,9 @@ func (c *windowControls) layout() {
 	c.rect = bounds
 	for i, button := range c.buttons {
 		rect := geometry.Rect(float32(i)*bounds.Width/3, 0, bounds.Width/3, bounds.Height)
+		if c.window.clientChrome {
+			rect = geometry.Rect(float32(i)*(circularControlSize+circularControlGap), 0, circularControlSize, circularControlSize)
+		}
 		measureWidget(button, layout.Tight(rect.Size))
 		button.Arrange(rect)
 	}

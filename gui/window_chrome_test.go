@@ -40,7 +40,10 @@ type chromeTestPlatform struct {
 	creationNotifications       bool
 	creationError, painterError error
 	unsupportedIntegrated       bool
+	name                        string
 }
+
+func (p *chromeTestPlatform) Name() string { return p.name }
 
 func (p *chromeTestPlatform) NewWindow(size geometry.Size, handler platform.EventHandler, options platform.WindowOptions) (platform.Window, error) {
 	p.options = WindowOptions{Size: size, Chrome: WindowChromeMode(options.Chrome), Transparent: options.Transparent}
@@ -98,6 +101,22 @@ func chromeInfo(chrome WindowChrome) (info ChromeInfo) {
 	h := chrome.ConnectInfo(func(v ChromeInfo) { info = v })
 	h.Disconnect()
 	return
+}
+
+func TestChromeNativeChangeCanDestroyWindow(t *testing.T) {
+	w, native := chromeFixture(t, true, false)
+	armed := false
+	w.Chrome().ConnectInfo(func(ChromeInfo) {
+		if armed {
+			w.Destroy()
+		}
+	})
+	native.controls = geometry.Rect(12, 12, 56, 14)
+	armed = true
+	w.chrome.nativeChanged()
+	if !w.destroyed {
+		t.Fatal("info subscriber was not called")
+	}
 }
 
 func TestWindowCreationOptionsAndService(t *testing.T) {

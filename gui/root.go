@@ -107,16 +107,25 @@ func (b *rootBase) layoutFrame(content Widget) {
 }
 
 func (b *rootBase) drawFrame(content Widget, background style.Style, decorations ...Widget) {
+	b.drawDecoratedFrame(content, background, style.Style{}, 0, decorations...)
+}
+
+func (b *rootBase) frameScale() float32 {
+	if b.width > 0 && b.pixelWidth > 0 {
+		return b.pixelWidth / b.width
+	}
+	return 1
+}
+
+func (b *rootBase) drawDecoratedFrame(content Widget, background, border style.Style, inset float32, decorations ...Widget) {
 	if b.painter == nil {
 		return
 	}
 	size := geometry.Size{Width: b.width, Height: b.height}
 	// Begin takes the physical (backing) pixel size; scale = physical / logical.
 	pixelWidth, pixelHeight := b.pixelWidth, b.pixelHeight
-	scale := float32(1)
-	if b.width > 0 && b.pixelWidth > 0 {
-		scale = b.pixelWidth / b.width
-	} else {
+	scale := b.frameScale()
+	if b.width <= 0 || b.pixelWidth <= 0 {
 		pixelWidth, pixelHeight = size.Width, size.Height
 	}
 
@@ -129,14 +138,28 @@ func (b *rootBase) drawFrame(content Widget, background style.Style, decorations
 		clearColor.A = 1
 	}
 	b.painter.Clear(clearColor)
-	guiPainter := newPainter(b.painter, geometry.Rect(0, 0, size.Width, size.Height))
-	// The body's current extent is the client rectangle. Future custom chrome
-	// can change this shape without changing the background style's meaning.
+	bounds := geometry.Rect(0, 0, size.Width, size.Height)
+	guiPainter := newPainter(b.painter, bounds)
+	guiPainter.applyState()
+	// Only the host background reaches the rounded perimeter. Widgets retain
+	// their full allocations but cannot paint over this window-owned area.
 	if bg, ok := background.BackgroundColor(); ok && bg != nil {
-		guiPainter.FillRect(geometry.Rect(0, 0, size.Width, size.Height), graphics.ColorOf(bg))
+		radius, _ := border.Radius()
+		radius = min(normalizeLayoutValue(radius), max(0, min(size.Width, size.Height)/2))
+		if radius > 0 {
+			guiPainter.FillRoundRect(bounds, radius, graphics.ColorOf(bg))
+		} else {
+			guiPainter.FillRect(bounds, graphics.ColorOf(bg))
+		}
 	}
+	safe := geometry.Rect(inset, inset, max(0, size.Width-2*inset), max(0, size.Height-2*inset))
+	guiPainter.state.scopeClip, guiPainter.state.clip = safe, safe
+	guiPainter.applyState()
 	paintWidget(content, guiPainter)
 	for _, decoration := range decorations {
 		paintWidget(decoration, guiPainter)
 	}
+	guiPainter.state.scopeClip, guiPainter.state.clip = bounds, bounds
+	guiPainter.applyState()
+	paintStyledBorder(guiPainter, bounds, border)
 }

@@ -25,8 +25,9 @@ const (
 )
 
 // WindowOptions contains initial preferences, not enforced window geometry.
-// Zero size components use the GUI default. Integrated falls back to Native
-// only when native creation reports unsupported. No Widget root is inserted.
+// Zero size components use the GUI default. On X11, Integrated uses GUI-drawn
+// decorations over a transparent None surface. If that capability is absent,
+// it falls back to Native. No Widget root is inserted.
 // Sizes use DIP under the backend's existing extent convention; layout always
 // uses the actual client size, not the requested extent.
 type WindowOptions struct {
@@ -109,8 +110,8 @@ type ChromeInfo struct {
 }
 
 // ChromeControls asks for the height of the available top row in DIP.
-// Custom buttons fill this height; native controls keep their intrinsic size
-// and are centered vertically.
+// Windows custom buttons fill this height; native and Linux circular controls
+// keep their intrinsic size and are centered vertically.
 // Zero means no row: native positioning resets, custom controls use their own
 // height. Negative/non-finite answers are ignored.
 type ChromeControls struct {
@@ -216,11 +217,21 @@ func (c *windowChrome) initialize(mode WindowChromeMode) error {
 		}
 		return err
 	}
-	if mode == WindowChromeIntegrated && native.Chrome() != platform.WindowChromeIntegrated {
+	nativeChrome := native.Chrome()
+	// X11 decoration hints are a request to the WM, not an observable promise;
+	// its Chrome() correctly returns Unknown. Do not turn GUI policy into a
+	// fabricated native observation.
+	if mode == WindowChromeIntegrated && nativeChrome != platform.WindowChromeIntegrated &&
+		!(c.window.clientChrome && (nativeChrome == platform.WindowChromeNone || nativeChrome == platform.WindowChromeUnknown)) {
 		return fmt.Errorf("native window did not establish Integrated chrome")
 	}
 	c.native = native
 	c.info.Enabled = true
+	if c.window.clientChrome {
+		// First subscriber supplies the frame default; later user subscribers
+		// may override it, including returning Client to lock resizing.
+		c.ConnectQueryRegion(c.queryFrameRegion)
+	}
 	if mode == WindowChromeIntegrated {
 		c.info.Controls = ChromeControlsCustom
 		// Probe an actual capability, not GOOS. This new window has no custom
@@ -276,6 +287,9 @@ func (c *windowChrome) nativeChanged() {
 	}
 	c.placementDirty = true
 	c.refresh()
+	if c.live() && c.window.clientChrome {
+		c.window.RequestLayout()
+	}
 }
 
 func (c *windowChrome) queryRegion(p geometry.Point) ChromeRegion {
@@ -399,8 +413,17 @@ func (c *windowChrome) placeCustom() {
 		if height <= 0 {
 			height = captionButtonHeight
 		}
-		bounds = geometry.Rect(max(0, c.window.width-width), 0, width, height).
-			Intersect(geometry.Rect(0, 0, c.window.width, c.window.height))
+		if c.window.clientChrome {
+			width = circularControlSize*3 + circularControlGap*2
+			if c.controlsHeight <= 0 {
+				height = 48
+			}
+			bounds = geometry.Rect(max(0, c.window.width-width-circularControlInset), max(0, (height-circularControlSize)/2), width, circularControlSize).
+				Intersect(geometry.Rect(0, 0, c.window.width, c.window.height))
+		} else {
+			bounds = geometry.Rect(max(0, c.window.width-width), 0, width, height).
+				Intersect(geometry.Rect(0, 0, c.window.width, c.window.height))
+		}
 	}
 	c.publish(bounds)
 }
