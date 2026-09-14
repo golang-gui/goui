@@ -312,24 +312,25 @@ func TestHeaderBarAutomaticControlsAvoidance(t *testing.T) {
 			t.Fatal("unrelated row was inset")
 		}
 		if nativeButtons {
-			if left.Child().Rect().X != occupied.X+occupied.Width || right.Child().Rect().X != 8 {
+			if left.Child().Rect().X != occupied.X+occupied.Width+left.Padding() || right.Child().Rect().X != 8 {
 				t.Fatal("native left reservation not local to the intersecting segment")
 			}
-			// Existing padding already covers the group: do not add it twice.
+			// Padding belongs to the remaining content area, including when it
+			// is larger than the controls' reservation.
 			left.SetPadding(80)
 			arrange()
-			if left.Child().Rect().X != 80 {
-				t.Fatal("padding was added twice")
+			if left.Child().Rect().X != occupied.X+occupied.Width+80 {
+				t.Fatal("controls consumed content padding")
 			}
 			// A transient native query failure retains the reservation.
 			native.queryError = platform.ErrUnavailable
 			win.chrome.refresh()
 			arrange()
-			if left.Child().Rect().X != 80 || left.info.ControlsBounds != occupied {
+			if left.Child().Rect().X != occupied.X+occupied.Width+80 || left.info.ControlsBounds != occupied {
 				t.Fatal("unavailable controls lost conservative reservation")
 			}
 		} else {
-			if left.Child().Rect().Width != 304 || right.Child().Rect().Width != 320-8-captionButtonWidth*3 {
+			if left.Child().Rect().Width != 304 || right.Child().Rect().Width != 320-16-captionButtonWidth*3 {
 				t.Fatalf("custom right reservation: %v / %v", left.Child().Rect(), right.Child().Rect())
 			}
 			right.Arrange(geometry.Rect(600, 0, 20, 48))
