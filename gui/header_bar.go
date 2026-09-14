@@ -10,7 +10,8 @@ import (
 // HeaderBar is a single-child, optional window drag region. Its background
 // fills its allocation; its child automatically avoids the window's controls.
 // It fills bounded available width (subject to size preferences), but uses
-// content width when unbounded. Height remains content-driven with a minimum.
+// content width when unbounded. Height remains content-driven, with a default
+// 40 DIP minimum.
 // Multiple HeaderBars can share a window. No title or controls are inserted.
 type HeaderBar struct {
 	WidgetBase
@@ -24,7 +25,7 @@ type HeaderBar struct {
 
 func NewHeaderBar() *HeaderBar {
 	h := &HeaderBar{padding: 8}
-	h.SetMinSize(geometry.Size{Height: 48})
+	h.SetMinSize(geometry.Size{Height: 40})
 	h.ConnectMount(h.mountChrome)
 	h.ConnectUnmount(func() {
 		h.connections.Disconnect()
