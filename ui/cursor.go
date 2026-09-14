@@ -13,10 +13,22 @@ type Cursor = gui.Cursor
 type CursorShape = gui.CursorShape
 
 const (
-	CursorDefault   = gui.CursorDefault
-	CursorText      = gui.CursorText
-	CursorPointing  = gui.CursorPointing
-	CursorCrosshair = gui.CursorCrosshair
-	CursorForbidden = gui.CursorForbidden
-	CursorNone      = gui.CursorNone
+	CursorDefault           = gui.CursorDefault
+	CursorText              = gui.CursorText
+	CursorPointing          = gui.CursorPointing
+	CursorCrosshair         = gui.CursorCrosshair
+	CursorForbidden         = gui.CursorForbidden
+	CursorNone              = gui.CursorNone
+	CursorResizeHorizontal  = gui.CursorResizeHorizontal
+	CursorResizeVertical    = gui.CursorResizeVertical
+	CursorResizeNWSE        = gui.CursorResizeNWSE
+	CursorResizeNESW        = gui.CursorResizeNESW
+	CursorResizeLeft        = gui.CursorResizeLeft
+	CursorResizeRight       = gui.CursorResizeRight
+	CursorResizeTop         = gui.CursorResizeTop
+	CursorResizeBottom      = gui.CursorResizeBottom
+	CursorResizeTopLeft     = gui.CursorResizeTopLeft
+	CursorResizeTopRight    = gui.CursorResizeTopRight
+	CursorResizeBottomLeft  = gui.CursorResizeBottomLeft
+	CursorResizeBottomRight = gui.CursorResizeBottomRight
 )
