@@ -26,6 +26,7 @@ const defaultButtonPadding = 6
 func NewButton() *Button {
 	button := new(Button)
 	button.SetFocusable(true)
+	button.ConnectFocused(func(bool) { button.RequestPaint() })
 	button.padding = defaultButtonPadding
 	button.SetLayoutManager(&layout.LinearLayout{
 		Direction:  layout.DirectionHorizontal,
@@ -131,6 +132,7 @@ func (b *Button) Paint(p Painter) {
 	}
 	rect := geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height)
 	paintStyledBox(p, rect, b.resolvedStyle())
+	paintButtonFocus(p, rect, &b.WidgetBase)
 }
 
 func (b *Button) Snapshot() WidgetInfo {
@@ -177,11 +179,7 @@ func (b *Button) requestPaint() {
 }
 
 func (b *Button) resolvedStyle() style.Style {
-	name := b.StyleName()
-	if name == "" {
-		name = styleNameButton
-	}
-	return ResolveStyle(name, style.PartDefault, b.styleState())
+	return ResolveStyle(buttonStyleName(&b.WidgetBase), style.PartDefault, b.styleState())
 }
 
 func (b *Button) styleState() style.State {

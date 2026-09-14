@@ -444,6 +444,7 @@ type MenuButton struct {
 func NewMenuButton() *MenuButton {
 	b := &MenuButton{padding: defaultButtonPadding}
 	b.SetFocusable(true)
+	b.ConnectFocused(func(bool) { b.RequestPaint() })
 	b.SetLayoutManager(&layout.LinearLayout{
 		Direction:  layout.DirectionHorizontal,
 		MainAlign:  layout.MainCenter,
@@ -525,6 +526,7 @@ func (b *MenuButton) Paint(p Painter) {
 	}
 	rect := geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height)
 	paintStyledBox(p, rect, b.resolvedStyle())
+	paintButtonFocus(p, rect, &b.WidgetBase)
 }
 
 func (b *MenuButton) resolvedStyle() style.Style {
@@ -534,7 +536,7 @@ func (b *MenuButton) resolvedStyle() style.Style {
 	} else if b.hovered {
 		st = style.Hovered
 	}
-	return ResolveStyle(styleNameButton, style.PartDefault, st)
+	return ResolveStyle(buttonStyleName(&b.WidgetBase), style.PartDefault, st)
 }
 
 func (b *MenuButton) Snapshot() WidgetInfo {
