@@ -2,15 +2,144 @@ package gui
 
 import (
 	"image"
+	"image/color"
 	"testing"
 
+	"github.com/golang-gui/goui/core/colors"
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/software"
+	"github.com/golang-gui/goui/style"
 )
+
+func TestRectangularCaptionAppearance(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		t.Run(map[bool]string{false: "light", true: "dark"}[dark], func(t *testing.T) {
+			app := &application{}
+			useTestApplication(t, app)
+			background := color.Gray{245}
+			if dark {
+				background.Y = 32
+			}
+			app.SetStyleSheet(style.Sheet(
+				style.Name(styleNameWindow).BackgroundColor(background),
+				// Application accents and ordinary button shapes must not leak in.
+				style.Name(styleNameButton).BackgroundColor(color.White).Radius(20),
+			))
+			win, _ := chromeFixture(t, false, true)
+			win.setFocused(true)
+			for _, button := range win.controls.buttons {
+				if button.Rect().Width != 46 {
+					t.Fatalf("caption width: %g", button.Rect().Width)
+				}
+				check := func(hover, pressed bool) (color.Color, color.Color) {
+					button.hovered, button.pressed = hover, pressed
+					s := button.decorationStyle()
+					if radius, _ := s.Radius(); radius != 0 {
+						t.Fatal("rectangular caption inherited rounded corners")
+					}
+					bg, _ := s.BackgroundColor()
+					fg, _ := s.ForegroundColor()
+					return bg, fg
+				}
+				bg, active := check(false, false)
+				if !colors.Equal(bg, color.Transparent) {
+					t.Fatal("idle caption must reveal titlebar background")
+				}
+				win.setFocused(false)
+				_, inactive := check(false, false)
+				_, _, _, alpha := inactive.RGBA()
+				if colors.Equal(active, inactive) || alpha >= 0xffff {
+					t.Fatal("inactive caption was not dimmed")
+				}
+				win.setFocused(true)
+				hover, hoverInk := check(true, false)
+				pressed, pressedInk := check(true, true)
+				if colors.Equal(hover, pressed) || colors.Equal(hover, bg) {
+					t.Fatal("caption states must remain distinguishable")
+				}
+				if button.close {
+					if !colors.Equal(hover, color.NRGBA{R: 196, G: 43, B: 28, A: 255}) ||
+						!colors.Equal(hoverInk, color.White) || !colors.Equal(pressedInk, color.White) {
+						t.Fatal("close warning lost red background / white glyph")
+					}
+				} else {
+					r, g, b, a := hover.RGBA()
+					if r != g || g != b || a == 0 || a == 0xffff {
+						t.Fatal("ordinary caption hover must use a neutral translucent fill")
+					}
+				}
+				// Linux's circular presentation retains its independent palette.
+				button.circular = true
+				palette := win.decorationPalette(true)
+				for _, focused := range []bool{false, true} {
+					win.setFocused(focused)
+					for state, expected := range []color.Color{palette.button, palette.hovered, palette.pressed} {
+						button.hovered, button.pressed = state == 1, state == 2
+						s := button.decorationStyle()
+						circle, _ := s.BackgroundColor()
+						ink, _ := s.ForegroundColor()
+						radius, _ := s.Radius()
+						if !colors.Equal(circle, expected) || !colors.Equal(ink, palette.foreground) ||
+							radius != circularControlDiameter/2 || button.decorationBrush(ink) != graphics.ColorOf(ink) {
+							t.Fatal("circular decoration appearance changed")
+						}
+					}
+				}
+			}
+			win.paintDirty = false
+			win.setFocused(false)
+			if !win.paintDirty {
+				t.Fatal("activation change did not repaint controls")
+			}
+		})
+	}
+}
+
+func TestCaptionTranslucentColorsAreNotPremultipliedTwice(t *testing.T) {
+	useTestApplication(t, &application{
+		style: style.Sheet(style.Name(styleNameWindow).BackgroundColor(color.Gray{32})),
+	})
+	win, _ := chromeFixture(t, false, true)
+	win.setFocused(true)
+	button := win.controls.buttons[0]
+	button.hovered = true
+	p := new(testButtonBackgroundPainter)
+	button.Paint(p)
+	if p.brush != graphics.RGBA(255, 255, 255, 26) {
+		t.Fatalf("dark hover RGB was attenuated before blending: %+v", p.brush)
+	}
+	button.hovered = false
+	win.setFocused(false)
+	foreground, _ := button.decorationStyle().ForegroundColor()
+	if brush := button.decorationBrush(foreground); brush != graphics.RGBA(255, 255, 255, 102) {
+		t.Fatalf("inactive white RGB was attenuated before blending: %+v", brush)
+	}
+
+	// Verify the actual composite, not only the style or brush values.
+	frame := &controlsFrame{}
+	painter, err := software.NewPainter(frame)
+	if err != nil {
+		t.Fatal(err)
+	}
+	win.painter = painter
+	win.pixelWidth, win.pixelHeight = win.width*2, win.height*2
+	win.SetWidget(nil)
+	for _, test := range []struct {
+		hovered, pressed bool
+		want             uint32
+	}{{false, false, 32}, {true, false, 55}, {true, true, 77}} {
+		button.hovered, button.pressed = test.hovered, test.pressed
+		win.paint()
+		r, g, b, _ := frame.image.At(int((button.windowRect().X+3)*2), 10*2).RGBA()
+		if r>>8 < test.want-1 || r>>8 > test.want+1 || r != g || g != b {
+			t.Fatalf("dark caption composite = %d,%d,%d; want ~%d", r>>8, g>>8, b>>8, test.want)
+		}
+	}
+}
 
 func TestWindowControlsCustomHitAndClick(t *testing.T) {
 	win, native := chromeFixture(t, false, true)
