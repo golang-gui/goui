@@ -71,6 +71,7 @@ func DefaultStyleRules() []style.Rule {
 		style.Name(styleNameButton).
 			State(style.Pressed).
 			BackgroundColor(color.RGBA{R: 180, G: 180, B: 180, A: 255}),
+		style.Name(styleNameButton).Part(stylePartFocus).State(style.Focused).BorderWidth(0),
 
 		style.Name(styleNameTextInput).
 			BackgroundColor(color.White).

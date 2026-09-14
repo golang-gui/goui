@@ -42,7 +42,7 @@ func main() {
 				ui.VBox(
 					ui.HeaderBar(ui.Label("GOUI Modern")),
 					ui.VBox(
-						ui.Label("Use Tab to inspect focus; hover and press a focused button.").Style(muted),
+						ui.Label("Hover and press buttons to inspect their appearance.").Style(muted),
 						ui.HBox(
 							ui.Button("Mode: "+modes[mode]).OnClick(func() { mode = (mode + 1) % len(modes); app.RequestUpdate() }),
 							ui.Button("Accent: "+accentNames[accentIndex]).Style(primary).
