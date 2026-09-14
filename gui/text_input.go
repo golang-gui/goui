@@ -36,12 +36,10 @@ type TextInput struct {
 	textSignal   signal.Signal1[string]
 
 	// TextLayout cache. Reused across Paint calls. Invalidated by setText /
-	// setPreedit / SetPadding / SetStyleName. Released on unmount.
-	cachedLayout    typography.TextLayout
-	cachedDisplay   string
-	cachedPadding   float32
-	cachedStyleName string
-	layoutValid     bool
+	// setPreedit / SetPadding / StyleChanged. Released on unmount.
+	cachedLayout  typography.TextLayout
+	cachedDisplay string
+	layoutValid   bool
 }
 
 func NewTextInput() *TextInput {
@@ -395,21 +393,19 @@ func (t *TextInput) invalidateLayout() {
 	t.layoutValid = false
 }
 
+// StyleChanged releases display resources without changing text, caret or IME.
+func (t *TextInput) StyleChanged() { t.releaseLayout() }
+
 func (t *TextInput) ensureLayout(size geometry.Size, format typography.TextFormat) typography.TextLayout {
-	styleName := t.StyleName()
 	if !t.layoutValid ||
 		t.cachedLayout == nil ||
-		t.cachedDisplay != t.displayText() ||
-		t.cachedPadding != t.padding ||
-		t.cachedStyleName != styleName {
+		t.cachedDisplay != t.displayText() {
 		t.releaseLayout()
 		t.cachedLayout = t.newTextLayout(size, format)
 		if t.cachedLayout == nil {
 			return nil
 		}
 		t.cachedDisplay = t.displayText()
-		t.cachedPadding = t.padding
-		t.cachedStyleName = styleName
 		t.layoutValid = true
 	}
 	return t.cachedLayout

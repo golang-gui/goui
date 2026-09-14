@@ -65,6 +65,18 @@ type Widget interface {
 	Measure(c layout.Constraint) layout.Measurement
 	Arrange(rect geometry.Rectangle)
 
+	// StyleChanged invalidates this widget's style-dependent resources. The
+	// framework calls it before subsequent layout or paint after a style sheet
+	// or style name change, and on first use or reattachment. Changes may be
+	// coalesced. It is not a hover/pressed-state notification.
+	//
+	// Implementations should only update their own derived resources, not
+	// mutate the tree or style sheet or recursively start layout. The framework
+	// invalidates measurement and schedules layout/paint; calling the base
+	// implementation is unnecessary. Like Measure/Paint, this is a framework
+	// hook, not an application event or a method callers need to invoke.
+	StyleChanged()
+
 	// Paint draws this Widget itself in local coordinates. The GUI traversal
 	// automatically paints visible children after Paint returns.
 	Paint(p Painter)
@@ -125,6 +137,7 @@ type WidgetBase struct {
 	measureConstraint   layout.Constraint
 	measureResult       layout.Measurement
 	measureValid        bool
+	styleValid          bool // zero value requests the first framework notification
 	destroyed           bool
 }
 
@@ -153,6 +166,7 @@ func (w *WidgetBase) SetStyleName(name string) {
 		return
 	}
 	w.styleName = name
+	w.styleValid = false
 	w.RequestLayout()
 }
 
@@ -384,6 +398,9 @@ func (w *WidgetBase) Arrange(rect geometry.Rectangle) {
 // automatically after this method returns.
 func (w *WidgetBase) Paint(Painter) {}
 
+// StyleChanged is the default no-op for widgets without cached style resources.
+func (w *WidgetBase) StyleChanged() {}
+
 func (w *WidgetBase) Snapshot() WidgetInfo {
 	info := WidgetInfo{
 		ID:            w.ID(),
@@ -431,16 +448,33 @@ func (w *WidgetBase) invalidateMeasureToRoot() {
 	}
 }
 
-// invalidateMeasureSubtree is used for global inputs such as a style-sheet
-// change, where every descendant's intrinsic size may have changed.
-func invalidateMeasureSubtree(widget Widget) {
-	if widget == nil {
+// invalidateStyleSubtree marks existing descendants without calling user code.
+// The next framework use delivers the coalesced notification through Widget,
+// not through WidgetBase (which deliberately has no owner/self pointer).
+func invalidateStyleSubtree(widget Widget) {
+	if widget == nil || widget.base().destroyed {
 		return
 	}
+	widget.base().styleValid = false
 	widget.base().measureValid = false
 	for _, child := range widget.Children() {
-		invalidateMeasureSubtree(child)
+		invalidateStyleSubtree(child)
 	}
+}
+
+// ensureWidgetStyle also guards specialized layout entry points that read a
+// widget's derived geometry without calling Measure (for example Scrollable).
+func ensureWidgetStyle(widget Widget) bool {
+	if widget == nil || widget.base().destroyed {
+		return false
+	}
+	base := widget.base()
+	if !base.styleValid {
+		base.styleValid = true // consume before calling out; do not lose a new invalidation
+		base.measureValid = false
+		widget.StyleChanged()
+	}
+	return !base.destroyed
 }
 
 // measureWidget is the framework's cached entry point for measuring a Widget.
@@ -448,7 +482,7 @@ func invalidateMeasureSubtree(widget Widget) {
 // few specialized containers call it directly. The final clamp enforces the
 // layout.Child contract even for application-defined widgets.
 func measureWidget(widget Widget, c layout.Constraint) layout.Measurement {
-	if widget == nil {
+	if !ensureWidgetStyle(widget) {
 		return layout.Measurement{}
 	}
 	base := widget.base()
@@ -459,7 +493,7 @@ func measureWidget(widget Widget, c layout.Constraint) layout.Measurement {
 	measured.Size = c.Clamp(measured.Size)
 	base.measureConstraint = c
 	base.measureResult = measured
-	base.measureValid = true
+	base.measureValid = base.styleValid && !base.destroyed
 	return measured
 }
 
@@ -599,6 +633,7 @@ func (w *WidgetBase) attachRoot(root Root, child Widget) {
 	}
 	w.parentWidget = nil
 	w.parentRoot = root
+	invalidateStyleSubtree(child)
 	w.emitMountSubtree(child)
 }
 
@@ -624,6 +659,7 @@ func (w *WidgetBase) attachChild(parent, child Widget) {
 	w.parentWidget = parent
 	w.parentRoot = nil
 	parentBase.children = append(parentBase.children, child)
+	invalidateStyleSubtree(child)
 	parent.RequestLayout()
 	parentBase.requestSemanticUpdate()
 }

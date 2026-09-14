@@ -200,6 +200,9 @@ func (mc *menuContent) invalidate() {
 	mc.valid = false
 }
 
+// StyleChanged invalidates natural sizing; row presentation remains unchanged.
+func (mc *menuContent) StyleChanged() { mc.invalidate() }
+
 func (mc *menuContent) SetModel(m ListData[*MenuItem]) {
 	if mc.model == m {
 		return
@@ -244,6 +247,9 @@ func (mc *menuContent) measureNatural() {
 			continue
 		}
 		s := measureWidget(row, layout.Constraint{Min: geometry.Size{}, Max: geometry.Size{Width: layout.Inf, Height: layout.Inf}}).Size
+		// Temporary measurement rows never mount, so no unmount notification
+		// will release their label's cached layout.
+		row.label.releaseLayout()
 		w = max(w, s.Width)
 		h += s.Height
 	}

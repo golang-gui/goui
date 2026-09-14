@@ -96,6 +96,9 @@ func paintWidget(widget Widget, p *painter) {
 	if widget == nil || !widget.Visible() {
 		return
 	}
+	if !ensureWidgetStyle(widget) || !widget.Visible() {
+		return
+	}
 	p.paintWidget(widget)
 }
 

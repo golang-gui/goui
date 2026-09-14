@@ -256,6 +256,9 @@ func (p *popover) createNative(win Window) error {
 		return fmt.Errorf("popover: application is not created")
 	}
 	p.owner = win
+	// No style connection exists while native resources are absent. Content
+	// may have been measured before the application changed its sheet.
+	invalidateStyleSubtree(p.Widget())
 	p.measureAndSize() // carries the requested content size into native creation
 
 	// Platform + typography come from the app (global escape hatches); the owner
@@ -280,7 +283,7 @@ func (p *popover) createNative(win Window) error {
 	p.hWinGone = win.ConnectDestroy(p.releaseNative)
 	if app, ok := App.(*application); ok {
 		p.hStyle = app.styleChanged.Connect(func() {
-			invalidateMeasureSubtree(p.Widget())
+			invalidateStyleSubtree(p.Widget())
 			p.measureAndSize()
 			p.requestLayout()
 		})

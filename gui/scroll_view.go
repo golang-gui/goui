@@ -234,6 +234,9 @@ func (sv *ScrollView) Measure(c layout.Constraint) layout.Measurement {
 		return layout.Measurement{}
 	}
 	if sc, ok := sv.content.(Scrollable); ok {
+		if !ensureWidgetStyle(sc) {
+			return layout.Measurement{}
+		}
 		size := sc.ContentSize()
 		sv.contentWidth, sv.contentHeight = size.Width, size.Height
 		// A Scrollable fills its viewport's cross axis: the viewport is always
@@ -297,6 +300,9 @@ func (sv *ScrollView) refreshContentSize() bool {
 	if !ok {
 		return false
 	}
+	if !ensureWidgetStyle(sc) {
+		return false
+	}
 	size := sc.ContentSize()
 	if size.Width == sv.contentWidth && size.Height == sv.contentHeight {
 		return false
@@ -306,7 +312,7 @@ func (sv *ScrollView) refreshContentSize() bool {
 }
 
 func (sv *ScrollView) arrangeContent() {
-	if sv.content == nil {
+	if !ensureWidgetStyle(sv.content) {
 		return
 	}
 	area := sv.contentAreaSize()
