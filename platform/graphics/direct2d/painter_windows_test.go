@@ -18,6 +18,40 @@ import (
 	"github.com/golang-gui/goui/platform/windows/sdk/dxgi"
 )
 
+func TestSwapChainPresentationPolicy(t *testing.T) {
+	opaque := swapChainCandidates(false)
+	if opaque[0].SwapEffect != dxgi.DXGI_SWAP_EFFECT_SEQUENTIAL {
+		t.Fatal("opaque HWND must prefer resize-synchronized sequential presentation")
+	}
+	for _, desc := range opaque {
+		if desc.SwapEffect != dxgi.DXGI_SWAP_EFFECT_SEQUENTIAL && desc.SwapEffect != dxgi.DXGI_SWAP_EFFECT_DISCARD {
+			t.Fatal("opaque fallback reintroduced asynchronous HWND flip presentation")
+		}
+		if desc.BufferCount != 1 || desc.Scaling != dxgi.DXGI_SCALING_STRETCH || desc.Flags != 0 {
+			t.Fatalf("invalid blt-model descriptor: %+v", desc)
+		}
+	}
+	composition := swapChainCandidates(true)
+	for i, desc := range composition {
+		flags := uint32(0)
+		if i == 0 {
+			flags = dxgi.DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT
+		}
+		if desc.SwapEffect != dxgi.DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL ||
+			desc.Scaling != dxgi.DXGI_SCALING_STRETCH || desc.BufferCount != 2 || desc.Flags != flags {
+			t.Fatalf("transparent composition contract changed: %+v", desc)
+		}
+	}
+	for _, transparent := range []bool{false, true} {
+		for _, desc := range swapChainCandidates(transparent) {
+			if desc.Format != dxgi.DXGI_FORMAT_B8G8R8A8_UNORM || desc.SampleDesc.Count != 1 ||
+				desc.BufferUsage != dxgi.DXGI_USAGE_RENDER_TARGET_OUTPUT {
+				t.Fatalf("incompatible Direct2D buffer: %+v", desc)
+			}
+		}
+	}
+}
+
 // Exercise the native rasterizer, not just the coordinate helpers: a correctly
 // inset border can still be blurred or cut in half by transform/clip handling.
 func TestRectanglePixelsWithWidgetTranslationAndClip(t *testing.T) {
