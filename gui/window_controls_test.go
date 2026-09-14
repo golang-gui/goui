@@ -270,7 +270,7 @@ func (w *controlsBackground) Paint(p Painter) {
 }
 
 func TestWindowControlsSoftwareFrame(t *testing.T) {
-	for _, scale := range []float32{1, 2} {
+	for _, scale := range []float32{1, 1.5, 2} {
 		win, _ := chromeFixture(t, false, true)
 		frame := &controlsFrame{}
 		painter, err := software.NewPainter(frame)
