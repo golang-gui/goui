@@ -329,7 +329,7 @@ func TestHeaderBarAutomaticControlsAvoidance(t *testing.T) {
 				t.Fatal("unavailable controls lost conservative reservation")
 			}
 		} else {
-			if left.Child().Rect().Width != 304 || right.Child().Rect().Width != 180 {
+			if left.Child().Rect().Width != 304 || right.Child().Rect().Width != 320-8-captionButtonWidth*3 {
 				t.Fatalf("custom right reservation: %v / %v", left.Child().Rect(), right.Child().Rect())
 			}
 			right.Arrange(geometry.Rect(600, 0, 20, 48))

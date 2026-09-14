@@ -7,10 +7,11 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/style"
+	"image/color"
 )
 
 const (
-	captionButtonWidth      float32 = 44
+	captionButtonWidth      float32 = 46
 	captionButtonHeight     float32 = 32
 	circularControlSize     float32 = 28
 	circularControlDiameter float32 = 24
@@ -37,6 +38,7 @@ func newWindowControls(win *window) *windowControls {
 		win.Chrome().ConnectInfo(c.changed),
 		win.Chrome().ConnectQueryRegion(c.queryRegion),
 		win.ConnectState(func(WindowState) { c.RequestPaint() }),
+		win.ConnectFocus(func(bool) { c.RequestPaint() }),
 	}
 	return c
 }
@@ -45,7 +47,7 @@ func (c *windowControls) changed(info ChromeInfo) {
 	c.info = info
 	if info.Controls == ChromeControlsCustom && c.buttons[0] == nil {
 		for i := range c.buttons {
-			button := &captionButton{Button: NewButton(), window: c.window, circular: c.window.clientChrome}
+			button := &captionButton{Button: NewButton(), window: c.window, circular: c.window.clientChrome, close: i == 2}
 			button.SetID([]string{"window-minimize", "window-maximize", "window-close"}[i])
 			button.SetPadding(0)
 			button.SetFocusable(false) // caption buttons do not steal document focus
@@ -68,6 +70,7 @@ type captionButton struct {
 	*Button
 	window   *window
 	circular bool
+	close    bool
 }
 
 func (b *captionButton) Measure(c layout.Constraint) layout.Measurement {
@@ -78,17 +81,43 @@ func (b *captionButton) Measure(c layout.Constraint) layout.Measurement {
 
 func (b *captionButton) decorationStyle() style.Style {
 	palette := b.window.decorationPalette(b.circular)
+	if !b.circular {
+		// Windows caption controls blend into the titlebar at rest. Their
+		// rectangular state fills and close warning color are decoration policy,
+		// independent of application Button styles and accent colors.
+		var background color.Color = color.Transparent
+		var foreground color.Color = palette.foreground
+		if b.close && (b.hovered || b.pressed) {
+			background = color.NRGBA{R: 196, G: 43, B: 28, A: 255}
+			foreground = color.White
+			if b.pressed {
+				background = color.NRGBA{R: 176, G: 37, B: 26, A: 255}
+			}
+		} else {
+			ink := uint8(0)
+			if palette.foreground.Y > 128 {
+				ink = 255
+			}
+			if b.hovered || b.pressed {
+				alpha := uint8(26)
+				if b.pressed {
+					alpha = 51
+				}
+				background = color.NRGBA{R: ink, G: ink, B: ink, A: alpha}
+			} else if !b.window.Focused() {
+				foreground = color.NRGBA{R: ink, G: ink, B: ink, A: 102}
+			}
+		}
+		return style.Default().BackgroundColor(background).ForegroundColor(foreground).Radius(0).Style
+	}
 	background := palette.button
 	if b.pressed {
 		background = palette.pressed
 	} else if b.hovered {
 		background = palette.hovered
 	}
-	radius := float32(4)
-	if b.circular {
-		radius = circularControlDiameter / 2
-	}
-	return style.Default().BackgroundColor(background).Radius(radius).Style
+	return style.Default().BackgroundColor(background).ForegroundColor(palette.foreground).
+		Radius(circularControlDiameter / 2).Style
 }
 
 func (b *captionButton) Paint(p Painter) {
@@ -99,8 +128,22 @@ func (b *captionButton) Paint(p Painter) {
 	if b.circular {
 		inset := (circularControlSize - circularControlDiameter) / 2
 		rect = rect.Inset(inset)
+		paintStyledBox(p, rect, b.decorationStyle())
+		return
 	}
-	paintStyledBox(p, rect, b.decorationStyle())
+	background, _ := b.decorationStyle().BackgroundColor()
+	p.FillRect(rect, b.decorationBrush(background))
+}
+
+func (b *captionButton) decorationBrush(c color.Color) graphics.Color {
+	if b.circular {
+		return graphics.ColorOf(c) // Preserve Linux's existing decoration path.
+	}
+	// Graphics brushes use straight alpha. ColorOf currently returns
+	// premultiplied RGB; feeding it translucent white applies alpha twice.
+	// Keep this correction local until the shared color contract is reconciled.
+	n := color.NRGBAModel.Convert(c).(color.NRGBA)
+	return graphics.RGBA(n.R, n.G, n.B, n.A)
 }
 
 // Window arranges its tree from Chrome's resolved observation. Chrome never
@@ -203,8 +246,8 @@ type captionIcon struct {
 }
 
 func (i *captionIcon) Paint(p Painter) {
-	palette := i.controls.window.decorationPalette(i.controls.buttons[i.index].circular)
-	brush := graphics.ColorOf(palette.foreground)
+	foreground, _ := i.controls.buttons[i.index].decorationStyle().ForegroundColor()
+	brush := i.controls.buttons[i.index].decorationBrush(foreground)
 	// Keep the 12 DIP icon allocation and 1 DIP stroke. Only the Linux
 	// circular presentation uses a smaller glyph; button hit boxes are unchanged.
 	left, right := float32(1), float32(11)
