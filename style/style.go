@@ -34,6 +34,7 @@ type Style struct {
 	radius          float32
 	fontFamily      string
 	fontSize        float32
+	shadow          Shadow
 	fields          bits.Bitmap[uint64]
 }
 
@@ -45,6 +46,7 @@ const (
 	fieldRadius
 	fieldFontFamily
 	fieldFontSize
+	fieldShadow
 )
 
 func (s Style) BackgroundColor() (color.Color, bool) {
@@ -73,6 +75,12 @@ func (s Style) FontFamily() (string, bool) {
 
 func (s Style) FontSize() (float32, bool) {
 	return s.fontSize, s.fields.Check(fieldFontSize)
+}
+
+// Shadow returns the complete shadow value and whether it was explicitly set.
+// An explicitly set zero Shadow disables a shadow supplied by an earlier rule.
+func (s Style) Shadow() (Shadow, bool) {
+	return s.shadow, s.fields.Check(fieldShadow)
 }
 
 func (s *Style) setBackgroundColor(c color.Color) {
@@ -110,6 +118,11 @@ func (s *Style) setFontSize(size float32) {
 	s.fields.Set(fieldFontSize, true)
 }
 
+func (s *Style) setShadow(shadow Shadow) {
+	s.shadow = shadow
+	s.fields.Set(fieldShadow, true)
+}
+
 func (s Style) merge(override Style) Style {
 	if override.fields.Check(fieldBackgroundColor) {
 		s.setBackgroundColor(override.backgroundColor)
@@ -131,6 +144,9 @@ func (s Style) merge(override Style) Style {
 	}
 	if override.fields.Check(fieldFontSize) {
 		s.setFontSize(override.fontSize)
+	}
+	if override.fields.Check(fieldShadow) {
+		s.setShadow(override.shadow)
 	}
 	return s
 }
@@ -210,6 +226,13 @@ func (r Rule) FontSize(size float32) Rule {
 	return r
 }
 
+// Shadow sets an outer box shadow as one atomic field. Members are not merged
+// with earlier shadows. Pass Shadow{} to explicitly turn off an earlier shadow.
+func (r Rule) Shadow(shadow Shadow) Rule {
+	r.Style.setShadow(shadow)
+	return r
+}
+
 type StyleSheet interface {
 	Resolve(sel Sel) Style
 }
@@ -282,5 +305,9 @@ func sameStyle(a, b Style) bool {
 		a.borderWidth == b.borderWidth &&
 		a.radius == b.radius &&
 		a.fontFamily == b.fontFamily &&
-		a.fontSize == b.fontSize
+		a.fontSize == b.fontSize &&
+		colors.Equal(a.shadow.Color, b.shadow.Color) &&
+		a.shadow.Offset == b.shadow.Offset &&
+		a.shadow.BlurRadius == b.shadow.BlurRadius &&
+		a.shadow.SpreadRadius == b.shadow.SpreadRadius
 }
