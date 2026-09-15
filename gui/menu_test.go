@@ -65,15 +65,14 @@ func TestMenuContentNaturalSize(t *testing.T) {
 	}
 	m.AppendSeparator()
 
-	mc := newMenuContent(m, defaultMaxMenuHeight, func(*MenuItem) {})
+	mc := newMenuContent(m, 0, func(*MenuItem) {})
 	size := mc.Measure(layoutLooseFull)
 
-	if size.Width != minMenuWidth {
-		t.Fatalf("natural width = %v, want min %v", size.Width, minMenuWidth)
+	if want := float32(2*menuItemPadding + 2*menuContentPadding); size.Width != want {
+		t.Fatalf("natural width = %v, want padding-only width %v without typography", size.Width, want)
 	}
-	// App is nil in tests, so labels measure 0 and rows fall back to the 24px
-	// minimum; 3 items + 1 separator.
-	want := 3*menuItemMinHeight + menuSeparatorHeight
+	// Without typography, rows use their minimum height, plus shell padding.
+	want := 3*menuItemMinHeight + menuSeparatorHeight + 2*menuContentPadding
 	if size.Height != float32(want) {
 		t.Fatalf("natural height = %v, want %v", size.Height, want)
 	}
@@ -86,10 +85,10 @@ func TestMenuContentSkipsInvisibleItems(t *testing.T) {
 	hidden.SetVisible(false)
 	m.Append("C", func() {})
 
-	mc := newMenuContent(m, defaultMaxMenuHeight, func(*MenuItem) {})
+	mc := newMenuContent(m, 0, func(*MenuItem) {})
 	size := mc.Measure(layoutLooseFull)
 
-	want := 2 * menuItemMinHeight
+	want := 2*menuItemMinHeight + 2*menuContentPadding
 	if size.Height != float32(want) {
 		t.Fatalf("invisible item should not contribute height, got %v want %v", size.Height, want)
 	}

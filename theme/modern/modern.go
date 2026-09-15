@@ -76,10 +76,11 @@ func Rules(options Options) []style.Rule {
 		text("popover").BackgroundColor(p.surface).BorderColor(p.border).BorderWidth(1).Radius(8).Shadow(style.Shadow{}),
 		text("menu").BackgroundColor(p.surface).BorderColor(p.border).BorderWidth(1).Radius(8).
 			Shadow(style.Shadow{Color: color.NRGBA{A: 46}, Offset: geometry.Point{Y: 4}, BlurRadius: 16}),
-		text("menu-item").BackgroundColor(color.Transparent).Radius(4),
+		style.Name("menu-item").BackgroundColor(color.Transparent).Radius(4),
+		text("menu-item-text"),
+		text("menu-item-text-disabled").ForegroundColor(p.disabled),
 		style.Name("menu-item").State(style.Hovered).BackgroundColor(p.menuHover),
 		style.Name("menu-item").State(style.Pressed).BackgroundColor(p.menuPressed),
-		style.Name("menu-item").State(style.Disabled).ForegroundColor(p.disabled),
 		style.Name("menu-separator").BackgroundColor(p.border),
 	}
 	for _, button := range []struct {

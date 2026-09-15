@@ -1,9 +1,13 @@
 package gui
 
 import (
+	"errors"
+	"fmt"
+
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/style"
 )
@@ -93,11 +97,10 @@ type PopoverMenu struct {
 	maxHeight float32
 }
 
-const defaultMaxMenuHeight = 480
-const minMenuWidth = 120
+const menuScrollbarGap = 6
 
 func NewPopoverMenu(anchor Widget) *PopoverMenu {
-	return &PopoverMenu{anchor: anchor, maxHeight: defaultMaxMenuHeight}
+	return &PopoverMenu{anchor: anchor}
 }
 
 func (pm *PopoverMenu) SetMenu(m MenuModel) {
@@ -105,13 +108,28 @@ func (pm *PopoverMenu) SetMenu(m MenuModel) {
 		return
 	}
 	pm.model = m
-	pm.content = nil // rebuilt on next ShowAt
+	if pm.content != nil {
+		pm.content.SetModel(m)
+	}
+	if m == nil {
+		pm.Hide()
+	}
 }
 
 func (pm *PopoverMenu) Menu() MenuModel { return pm.model }
 
+// SetMaxHeight optionally limits the menu body height in DIP, excluding shadow.
+// The default is unrestricted. Non-positive or non-finite values clear the limit.
 func (pm *PopoverMenu) SetMaxHeight(h float32) {
+	h = normalizeLayoutValue(h)
+	if pm.maxHeight == h {
+		return
+	}
 	pm.maxHeight = h
+	if pm.content != nil {
+		pm.content.maxHeight = h
+		pm.content.invalidate()
+	}
 }
 
 func (pm *PopoverMenu) Visible() bool {
@@ -122,25 +140,59 @@ func (pm *PopoverMenu) ShowAt(pos geometry.Point) error {
 	if pm.model == nil {
 		return nil
 	}
-	if pm.popover == nil {
-		p := NewPopover(pm.anchor, nil)
-		p.SetModal(true)
-		// Dismiss (Esc / outside click / focus loss) must actually hide the
-		// menu — popover.RequestDismiss only emits the request; the controller
-		// owns the response.
-		p.ConnectDismissRequest(func() { pm.Hide() })
-		pm.hClosed = p.ConnectClosed(pm.closed.Emit)
-		pm.popover = p
-	}
 	if pm.content == nil {
 		pm.content = newMenuContent(pm.model, pm.maxHeight, pm.activate)
-		pm.popover.SetWidget(pm.content)
+	}
+	// Reuse an opaque fallback until its native surface is released; a new
+	// surface must probe transparency again (e.g. after anchor migration).
+	if p, ok := pm.popover.(*popover); ok && !p.transparent && p.platformPopup == nil {
+		pm.replacePopover(true)
+	}
+	if pm.popover == nil {
+		pm.replacePopover(true)
 	}
 	pm.popover.SetPosition(pos)
-	return pm.popover.Show()
+	err := pm.popover.Show()
+	var creation *popoverCreationError
+	if !pm.popover.Transparent() || !errors.As(err, &creation) || (!errors.Is(err, platform.ErrUnsupported) && !errors.Is(err, platform.ErrUnavailable)) {
+		if err != nil {
+			pm.popover.(*popover).releaseNative()
+		}
+		return err
+	}
+	pm.replacePopover(false)
+	pm.popover.SetPosition(pos)
+	if retry := pm.popover.Show(); retry != nil {
+		pm.popover.Destroy()
+		return fmt.Errorf("menu popup: transparent: %w; opaque: %w", err, retry)
+	}
+	return nil
+}
+
+func (pm *PopoverMenu) replacePopover(transparent bool) {
+	if pm.hClosed != nil {
+		pm.hClosed.Disconnect()
+	}
+	if pm.popover != nil {
+		pm.popover.Destroy()
+	}
+	p := NewPopover(pm.anchor, &PopoverOptions{Transparent: transparent})
+	p.SetStyleName(styleNameMenu)
+	p.SetModal(true)
+	p.ConnectDismissRequest(pm.Hide)
+	pm.hClosed = p.ConnectClosed(pm.closed.Emit)
+	pm.popover = p
+	p.SetWidget(pm.content)
 }
 
 func (pm *PopoverMenu) Hide() {
+	if pm.content != nil {
+		for _, w := range pm.content.list.items {
+			r := w.(*menuItemRow)
+			r.setPressed(false)
+			r.setHovered(false)
+		}
+	}
 	if pm.popover != nil {
 		pm.popover.Hide()
 	}
@@ -181,6 +233,7 @@ type menuContent struct {
 	naturalH  float32
 	valid     bool
 	hChanged  signal.Handle
+	padding   float32
 }
 
 func newMenuContent(m MenuModel, maxHeight float32, activate func(*MenuItem)) *menuContent {
@@ -188,32 +241,51 @@ func newMenuContent(m MenuModel, maxHeight float32, activate func(*MenuItem)) *m
 	mc.delegate = &menuItemDelegate{model: m, onActivate: activate}
 	mc.list = NewListView()
 	mc.list.SetDelegate(mc.delegate)
-	mc.list.SetModel(m)
 	mc.sv = NewScrollView()
+	mc.delegate.scrollView = mc.sv
 	mc.sv.SetChild(mc.list)
 	mc.WidgetBase.AddChild(mc, mc.sv)
-	mc.hChanged = m.ConnectItems(mc.invalidate)
+	mc.ConnectMount(mc.connectModel)
+	mc.ConnectUnmount(mc.disconnectModel)
 	return mc
+}
+
+func (mc *menuContent) connectModel() {
+	if mc.hChanged != nil || mc.model == nil {
+		return
+	}
+	mc.list.SetModel(mc.model)
+	mc.hChanged = mc.model.ConnectItems(mc.invalidate)
+	mc.invalidate()
+}
+
+func (mc *menuContent) disconnectModel() {
+	if mc.hChanged != nil {
+		mc.hChanged.Disconnect()
+		mc.hChanged = nil
+	}
+	mc.list.SetModel(nil) // unbind visible rows and disconnect the list's signal
+	mc.valid = false
 }
 
 func (mc *menuContent) invalidate() {
 	mc.valid = false
+	mc.RequestLayout()
 }
 
-// StyleChanged invalidates natural sizing; row presentation remains unchanged.
+// StyleChanged invalidates natural sizing; child Labels refresh their own text.
 func (mc *menuContent) StyleChanged() { mc.invalidate() }
 
 func (mc *menuContent) SetModel(m ListData[*MenuItem]) {
 	if mc.model == m {
 		return
 	}
-	if mc.hChanged != nil {
-		mc.hChanged.Disconnect()
-	}
+	mc.disconnectModel()
 	mc.model = m
 	mc.delegate.model = m
-	mc.list.SetModel(m)
-	mc.hChanged = m.ConnectItems(mc.invalidate)
+	if mc.Root() != nil {
+		mc.connectModel()
+	}
 	mc.invalidate()
 }
 
@@ -221,15 +293,22 @@ func (mc *menuContent) Measure(c layout.Constraint) layout.Measurement {
 	if !mc.Visible() {
 		return layout.Measurement{}
 	}
+	// The content owns padding, while its host owns the rounded perimeter.
+	s := ResolveStyle(styleNameMenu, style.PartDefault, style.Normal)
+	radius, _ := s.Radius()
+	border, _ := s.BorderWidth()
+	padding := max(float32(menuContentPadding), popoverSafeInset(normalizeLayoutValue(radius), border))
+	if padding != mc.padding {
+		mc.padding, mc.valid = padding, false
+	}
 	if !mc.valid {
 		mc.measureNatural()
 	}
 	w, h := mc.naturalW, mc.naturalH
-	if h > mc.maxHeight {
+	if mc.maxHeight > 0 && h > mc.maxHeight {
 		h = mc.maxHeight
-	}
-	if w < minMenuWidth {
-		w = minMenuWidth
+		// Reserve both the scrollbar and a non-interactive gap outside the rows.
+		w += scrollbarWidth + menuScrollbarGap
 	}
 	return layout.Measured(mc.constrain(c, geometry.Size{Width: w, Height: h}))
 }
@@ -241,42 +320,51 @@ func (mc *menuContent) measureNatural() {
 		n = mc.model.ItemsCount()
 	}
 	for i := 0; i < n; i++ {
-		row := newMenuItemRow(mc.delegate.onActivate)
-		mc.delegate.Bind(i, row)
+		row, mounted := mc.list.items[i].(*menuItemRow)
+		if !mounted {
+			row = newMenuItemRow(mc.delegate.onActivate)
+			mc.delegate.Bind(i, row)
+		}
 		if !row.Visible() {
 			continue
 		}
 		s := measureWidget(row, layout.Constraint{Min: geometry.Size{}, Max: geometry.Size{Width: layout.Inf, Height: layout.Inf}}).Size
-		// Temporary measurement rows never mount, so no unmount notification
-		// will release their label's cached layout.
-		row.label.releaseLayout()
+		// Temporary rows never mount and need explicit resource cleanup.
+		if !mounted {
+			row.label.releaseLayout()
+		}
 		w = max(w, s.Width)
 		h += s.Height
 	}
-	mc.naturalW, mc.naturalH = w, h
+	mc.naturalW, mc.naturalH = w+2*mc.padding, h+2*mc.padding
 	mc.valid = true
 }
 
 func (mc *menuContent) Arrange(rect geometry.Rectangle) {
 	mc.WidgetBase.Arrange(rect)
-	mc.sv.Arrange(geometry.Rect(0, 0, rect.Width, rect.Height))
+	inner := geometry.Rect(mc.padding, mc.padding, max(0, rect.Width-2*mc.padding), max(0, rect.Height-2*mc.padding))
+	measureWidget(mc.sv, layout.Tight(inner.Size))
+	mc.sv.Arrange(inner)
 }
 
-func (mc *menuContent) Paint(p Painter) {
-	if !mc.Visible() {
-		return
-	}
-	rect := geometry.Rect(0, 0, mc.Rect().Width, mc.Rect().Height)
-	paintStyledBox(p, rect, ResolveStyle(styleNameMenu, style.PartDefault, style.Normal))
+func (mc *menuContent) Snapshot() WidgetInfo {
+	info := mc.WidgetBase.Snapshot()
+	info.Role = RoleMenu
+	return info
 }
 
 // menuItemDelegate renders model items into menuItemRow widgets.
 type menuItemDelegate struct {
 	model      MenuModel
 	onActivate func(*MenuItem)
+	scrollView *ScrollView
 }
 
-func (d *menuItemDelegate) Setup() Widget { return newMenuItemRow(d.onActivate) }
+func (d *menuItemDelegate) Setup() Widget {
+	r := newMenuItemRow(d.onActivate)
+	r.scrollView = d.scrollView
+	return r
+}
 
 func (d *menuItemDelegate) Bind(i int, w Widget) {
 	row := w.(*menuItemRow)
@@ -287,30 +375,33 @@ func (d *menuItemDelegate) Bind(i int, w Widget) {
 	row.bind(mi)
 }
 
-func (d *menuItemDelegate) Unbind(i int, w Widget) {}
+func (d *menuItemDelegate) Unbind(i int, w Widget) { w.(*menuItemRow).bind(nil) }
 
-// menuItemRow is one rendered menu row: a label plus hover/pressed/disabled
-// state. A separator row draws a thin line and is not interactive.
+// menuItemRow paints the row background and hosts an independently styled Label.
+// A separator row hides its Label, draws a thin line and is not interactive.
 type menuItemRow struct {
 	WidgetBase
-	label    *Label
-	mi       *MenuItem
-	activate func(*MenuItem)
-	hovered  bool
-	pressed  bool
-	motion   *MotionEventController
-	click    *ClickEventController
+	label      *Label
+	scrollView *ScrollView
+	mi         *MenuItem
+	activate   func(*MenuItem)
+	hovered    bool
+	pressed    bool
+	motion     *MotionEventController
+	click      *ClickEventController
 }
 
 const (
-	menuItemPadding     = 6
-	menuItemMinHeight   = 24
+	menuContentPadding  = 6
+	menuItemPadding     = 8
+	menuItemMinHeight   = 28
 	menuSeparatorHeight = 9
 )
 
 func newMenuItemRow(activate func(*MenuItem)) *menuItemRow {
 	r := &menuItemRow{activate: activate}
 	r.label = NewLabel("")
+	r.label.SetStyleName(styleNameMenuItemText)
 	r.WidgetBase.AddChild(r, r.label)
 
 	r.motion = NewMotionEventController()
@@ -319,12 +410,12 @@ func newMenuItemRow(activate func(*MenuItem)) *menuItemRow {
 
 	r.click = NewClickEventController()
 	r.click.ConnectPressed(func(ctx EventContext, pressed bool) {
-		if r.mi != nil && !r.mi.Separator() {
+		if r.mi != nil && r.mi.Enabled() && !r.mi.Separator() {
 			r.setPressed(pressed)
 		}
 	})
 	r.click.ConnectClicked(func(ctx EventContext) {
-		if r.mi == nil || r.mi.Separator() {
+		if r.mi == nil || !r.mi.Enabled() || r.mi.Separator() {
 			return // separators and unbound rows are not actions
 		}
 		if r.activate != nil {
@@ -336,20 +427,25 @@ func newMenuItemRow(activate func(*MenuItem)) *menuItemRow {
 }
 
 func (r *menuItemRow) bind(mi *MenuItem) {
+	r.label.releaseLayout()
+	r.click.Reset()
+	r.motion.Reset()
+	r.hovered, r.pressed = false, false
 	r.mi = mi
+	r.label.SetText("")
+	r.label.SetVisible(mi != nil && mi.Visible() && !mi.Separator())
+	name := styleNameMenuItemText
+	if mi != nil && !mi.Enabled() {
+		name = styleNameMenuItemTextDisabled
+	}
+	r.label.SetStyleName(name)
 	if mi == nil || !mi.Visible() {
 		r.SetVisible(false)
 		return
 	}
 	r.SetVisible(true)
-	r.setHovered(false)
-	r.setPressed(false)
-	if mi.Separator() {
-		r.label.SetText("")
-		r.label.SetVisible(false)
-	} else {
+	if !mi.Separator() {
 		r.label.SetText(mi.Label())
-		r.label.SetVisible(true)
 	}
 	r.RequestLayout()
 }
@@ -359,19 +455,26 @@ func (r *menuItemRow) Measure(c layout.Constraint) layout.Measurement {
 		return layout.Measurement{}
 	}
 	if r.mi != nil && r.mi.Separator() {
-		return layout.Measured(r.constrain(c, geometry.Size{Width: minMenuWidth, Height: menuSeparatorHeight}))
+		return layout.Measured(r.constrain(c, geometry.Size{Height: menuSeparatorHeight}))
 	}
-	measured := measureWidget(r.label, layout.Constraint{Min: geometry.Size{}, Max: geometry.Size{Width: layout.Inf, Height: layout.Inf}})
-	s := measured.Size
+	s := measureWidget(r.label, layout.Unbounded()).Size
 	s.Width += menuItemPadding * 2
-	s.Height = max(s.Height, menuItemMinHeight)
-	measured.Size = r.constrain(c, s)
-	return measured
+	s.Height = max(s.Height+8, menuItemMinHeight)
+	return layout.Measured(r.constrain(c, s))
 }
 
 func (r *menuItemRow) Arrange(rect geometry.Rectangle) {
+	// ListView allocates a full-width slot. Leave its trailing gutter outside
+	// the row's actual bounds, so painting, picking and snapshots agree.
+	if r.scrollView != nil && r.scrollView.vScrollable() {
+		rect.Width = max(0, rect.Width-menuScrollbarGap)
+	}
 	r.WidgetBase.Arrange(rect)
-	r.label.Arrange(geometry.Rect(menuItemPadding, 0, rect.Width-menuItemPadding*2, rect.Height))
+	if r.label.Visible() {
+		s := measureWidget(r.label, layout.Unbounded()).Size
+		height := min(s.Height, rect.Height)
+		r.label.Arrange(geometry.Rect(menuItemPadding, max(0, (rect.Height-height)/2), max(0, rect.Width-2*menuItemPadding), height))
+	}
 }
 
 func (r *menuItemRow) Paint(p Painter) {
@@ -388,6 +491,21 @@ func (r *menuItemRow) Paint(p Painter) {
 		return
 	}
 	paintStyledBox(p, rect, r.resolvedStyle())
+}
+
+func (r *menuItemRow) Snapshot() WidgetInfo {
+	info := r.WidgetBase.Snapshot()
+	info.Role = RoleMenuItem
+	info.Enabled = r.mi != nil && r.mi.Enabled()
+	if r.mi != nil {
+		info.Text = r.mi.Label()
+		if r.mi.Separator() {
+			info.Role = RoleMenuSeparator
+		} else if info.Enabled {
+			info.Actions = append(info.Actions, ActionClick)
+		}
+	}
+	return info
 }
 
 func (r *menuItemRow) resolvedStyle() style.Style {
@@ -486,6 +604,9 @@ func (b *MenuButton) Child() Widget { return b.content }
 
 func (b *MenuButton) SetMenu(m MenuModel) {
 	b.menu = m
+	if b.pm != nil {
+		b.pm.SetMenu(m)
+	}
 }
 
 func (b *MenuButton) Menu() MenuModel { return b.menu }

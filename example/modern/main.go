@@ -33,8 +33,10 @@ func main() {
 			primary, muted = modern.Primary, modern.MutedText
 		}
 		rows := make([]ui.View, 30)
+		menuRows := make([]*ui.MenuItemView, 30)
 		for i := range rows {
 			rows[i] = ui.Label(fmt.Sprintf("Scrollable row %02d — rounded scrollbar", i+1))
+			menuRows[i] = ui.MenuItem(fmt.Sprintf("Menu item %02d", i+1), nil)
 		}
 		return ui.Root().StyleSheet(sheet).Windows(
 			ui.Window("modern").Title("GOUI Modern").Size(680, 560).
@@ -47,6 +49,15 @@ func main() {
 							ui.Button("Mode: "+modes[mode]).OnClick(func() { mode = (mode + 1) % len(modes); app.RequestUpdate() }),
 							ui.Button("Accent: "+accentNames[accentIndex]).Style(primary).
 								OnClick(func() { accentIndex = (accentIndex + 1) % len(accents); app.RequestUpdate() }),
+						).Spacing(12),
+						ui.HBox(
+							ui.MenuButton("Menu").Menu(
+								ui.MenuItem("New document", func() { text = "New document"; app.RequestUpdate() }),
+								ui.MenuItem("Unavailable command", nil).Enabled(false),
+								ui.MenuSeparator(),
+								ui.MenuItem("Clear text", func() { text = ""; app.RequestUpdate() }),
+							),
+							ui.MenuButton("Long menu").Menu(menuRows...),
 						).Spacing(12),
 						ui.TextInput().Text(text).OnText(func(value string) { text = value; app.RequestUpdate() }),
 						ui.Label("System mode follows settings automatically; Bare GUI restores the fallback.").Style(muted),
