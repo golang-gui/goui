@@ -77,8 +77,8 @@ func Rules(options Options) []style.Rule {
 		text("menu").BackgroundColor(p.surface).BorderColor(p.border).BorderWidth(1).Radius(8).
 			Shadow(style.Shadow{Color: color.NRGBA{A: 46}, Offset: geometry.Point{Y: 4}, BlurRadius: 16}),
 		text("menu-item").BackgroundColor(color.Transparent).Radius(4),
-		style.Name("menu-item").State(style.Hovered).BackgroundColor(mix(p.surface, accent, .10)),
-		style.Name("menu-item").State(style.Pressed).BackgroundColor(mix(p.surface, accent, .18)),
+		style.Name("menu-item").State(style.Hovered).BackgroundColor(p.menuHover),
+		style.Name("menu-item").State(style.Pressed).BackgroundColor(p.menuPressed),
 		style.Name("menu-item").State(style.Disabled).ForegroundColor(p.disabled),
 		style.Name("menu-separator").BackgroundColor(p.border),
 	}
@@ -103,6 +103,7 @@ func Rules(options Options) []style.Rule {
 
 type palette struct {
 	window, surface, button, text, muted, disabled, border color.RGBA
+	menuHover, menuPressed                                 color.RGBA
 }
 
 func colorsFor(dark bool) palette {
@@ -110,11 +111,13 @@ func colorsFor(dark bool) palette {
 		return palette{
 			window: rgb(0x202024), surface: rgb(0x28282D), button: rgb(0x323238),
 			text: rgb(0xECECEE), muted: rgb(0xB8B8C2), disabled: rgb(0x797983), border: rgb(0x55555F),
+			menuHover: rgb(0x3E3E42), menuPressed: rgb(0x4F4F53),
 		}
 	}
 	return palette{
 		window: rgb(0xF6F6F8), surface: rgb(0xFFFFFF), button: rgb(0xFFFFFF),
 		text: rgb(0x202024), muted: rgb(0x61616B), disabled: rgb(0x97979F), border: rgb(0xC6C6CE),
+		menuHover: rgb(0xE6E6E6), menuPressed: rgb(0xD1D1D1),
 	}
 }
 
