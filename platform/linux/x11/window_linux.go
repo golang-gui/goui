@@ -12,6 +12,8 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/opengl"
+	"github.com/golang-gui/goui/platform/internal/workarea"
+	"github.com/golang-gui/goui/platform/linux/libs/xrandr"
 	"github.com/golang-gui/goui/platform/linux/libs/xrender"
 
 	"github.com/golang-gui/goui/platform/linux/libs/glx"
@@ -819,6 +821,94 @@ func (w *Window) notifyState() {
 		w.state = state
 		w.emitEvent(events.StateEvent{State: state})
 	}
+}
+
+func (w *Window) WorkAreaAt(point geometry.Point) (geometry.Rectangle, error) {
+	if err := workarea.ValidatePoint(point); err != nil {
+		return geometry.Rectangle{}, err
+	}
+	if w.wid == 0 || platform == nil || platform.display == 0 {
+		return geometry.Rectangle{}, common.ErrUnavailable
+	}
+	d, root := platform.display, platform.defScreen.Root
+	major, minor, ok := xrandr.QueryVersion(d)
+	if !ok || major < 1 || major == 1 && minor < 5 {
+		return geometry.Rectangle{}, common.ErrUnsupported
+	}
+	monitors, count := xrandr.GetMonitors(d, root, true)
+	if monitors == nil {
+		return geometry.Rectangle{}, common.ErrUnavailable
+	}
+	defer xrandr.FreeMonitors(monitors)
+	if count <= 0 || count > 4096 {
+		return geometry.Rectangle{}, common.ErrUnavailable
+	}
+	ox, oy, translated := d.TranslateCoordinatesChecked(w.wid, root, 0, 0)
+	if !translated {
+		return geometry.Rectangle{}, common.ErrUnavailable
+	}
+	scale := currentScale()
+	bounds := make([]geometry.Rectangle, count)
+	for i, m := range unsafe.Slice(monitors, int(count)) {
+		bounds[i] = geometry.Rect(float32(m.X)/scale-float32(ox)/scale, float32(m.Y)/scale-float32(oy)/scale,
+			float32(m.Width)/scale, float32(m.Height)/scale)
+	}
+	index := workarea.Nearest(bounds, point)
+	if index < 0 {
+		return geometry.Rectangle{}, common.ErrUnavailable
+	}
+	supported, err := windowProperty32(d, root, platform.atoms._NET_SUPPORTED, xlib.AtomAtom, 4096)
+	if err != nil {
+		return geometry.Rectangle{}, err
+	}
+	read := func(name string, limit int) ([]uint32, error) {
+		atom := d.InternAtom(name, true)
+		if atom == 0 || !slices.Contains(supported, uint32(atom)) {
+			return nil, common.ErrUnsupported
+		}
+		values, err := windowProperty32(d, root, atom, xlib.AtomCardinal, limit)
+		if err != nil {
+			return nil, err
+		}
+		if len(values) == 0 {
+			return nil, common.ErrUnavailable
+		}
+		return values, nil
+	}
+	desktop, err := read("_NET_CURRENT_DESKTOP", 1)
+	if err != nil {
+		return geometry.Rectangle{}, err
+	}
+	areas, err := read("_NET_WORKAREA", 16384)
+	if err != nil {
+		return geometry.Rectangle{}, err
+	}
+	area, err := desktopWorkArea(desktop[0], areas)
+	if err != nil {
+		return geometry.Rectangle{}, err
+	}
+	// EWMH 3.9 already specifies workarea relative to the desktop viewport.
+	// RandR geometry and XTranslateCoordinates are root/viewport coordinates;
+	// subtracting _NET_DESKTOP_VIEWPORT here would apply the offset twice.
+	area.X, area.Y = (area.X-float32(ox))/scale, (area.Y-float32(oy))/scale
+	area.Width, area.Height = area.Width/scale, area.Height/scale
+	result := area.Intersect(bounds[index])
+	if !workarea.Valid(result) {
+		return geometry.Rectangle{}, common.ErrUnavailable
+	}
+	return result, nil
+}
+
+func desktopWorkArea(desktop uint32, areas []uint32) (geometry.Rectangle, error) {
+	if len(areas)%4 != 0 || uint64(desktop) >= uint64(len(areas)/4) {
+		return geometry.Rectangle{}, fmt.Errorf("invalid EWMH workarea for desktop %d: %w", desktop, common.ErrUnavailable)
+	}
+	a := areas[int(desktop)*4:][:4]
+	r := geometry.Rect(float32(a[0]), float32(a[1]), float32(a[2]), float32(a[3]))
+	if !workarea.Valid(r) {
+		return geometry.Rectangle{}, common.ErrUnavailable
+	}
+	return r, nil
 }
 
 var _ common.DesktopWindow = (*Window)(nil)

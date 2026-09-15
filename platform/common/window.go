@@ -37,6 +37,15 @@ type Window interface {
 type DesktopWindow interface {
 	Window
 
+	// WorkAreaAt returns the available work area of the display containing point,
+	// or the nearest display if point is outside all displays. Both the point
+	// and result are relative to this window's client origin, in DIP (including
+	// the application scale override). Negative result coordinates are valid.
+	// This is an immediate, thread-affine query, not a placement policy.
+	// Unsupported facilities return ErrUnsupported; destroyed windows or missing
+	// observations return ErrUnavailable. Non-finite points are invalid.
+	WorkAreaAt(point geometry.Point) (geometry.Rectangle, error)
+
 	// SetMinSize sets the window-manager minimum size hint in logical (DIP)
 	// units. A value of (0, 0) clears the hint (no minimum). The hint is
 	// advisory: the window manager may ignore it. It follows the size convention

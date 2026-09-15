@@ -8,6 +8,7 @@ import (
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/internal/workarea"
 
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/appkit"
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/core_foundation"
@@ -570,6 +571,44 @@ func (w *Window) BeginMove() error {
 	defer event.Release()
 	native.PerformWindowDrag(event)
 	return nil
+}
+
+func (w *Window) WorkAreaAt(point geometry.Point) (result geometry.Rectangle, err error) {
+	if err = workarea.ValidatePoint(point); err != nil {
+		return
+	}
+	if !w.window.Valid() {
+		return result, common.ErrUnavailable
+	}
+	AutoReleasePool(func() {
+		// Use the same content origin and scale as Popup.SetPosition.
+		content := w.window.ContentRectForFrameRect(w.window.Frame())
+		scale := pointsPerLogicalUnit(w.window)
+		toClient := func(r NSRect) geometry.Rectangle {
+			return geometry.Rect(float32((r.Origin.X-content.Origin.X)/scale),
+				float32((content.Origin.Y+content.Size.Height-r.Origin.Y-r.Size.Height)/scale),
+				float32(r.Size.Width/scale), float32(r.Size.Height/scale))
+		}
+		screens := NSScreenClassId.Screens()
+		bounds := make([]geometry.Rectangle, screens.Count())
+		for i := range bounds {
+			var screen NSScreen
+			screen.ID = screens.ObjectAtIndex(uintptr(i))
+			bounds[i] = toClient(screen.Frame())
+		}
+		index := workarea.Nearest(bounds, point)
+		if index < 0 {
+			err = common.ErrUnavailable
+			return
+		}
+		var screen NSScreen
+		screen.ID = screens.ObjectAtIndex(uintptr(index))
+		result = toClient(screen.VisibleFrame())
+		if !workarea.Valid(result) {
+			result, err = geometry.Rectangle{}, common.ErrUnavailable
+		}
+	})
+	return
 }
 
 func (w *Window) State() common.WindowState {
