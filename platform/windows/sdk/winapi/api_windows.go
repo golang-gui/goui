@@ -48,6 +48,7 @@ var (
 	procGetWindowLongW       = user32Dll.NewProc("GetWindowLongW")
 	procSetWindowLongW       = user32Dll.NewProc("SetWindowLongW")
 	procMonitorFromWindow    = user32Dll.NewProc("MonitorFromWindow")
+	procMonitorFromPoint     = user32Dll.NewProc("MonitorFromPoint")
 	procGetMonitorInfoW      = user32Dll.NewProc("GetMonitorInfoW")
 	procGetKeyState          = user32Dll.NewProc("GetKeyState")
 	procGetSystemMenu        = user32Dll.NewProc("GetSystemMenu")
@@ -232,6 +233,13 @@ func SetWindowLong(wnd HWND, index int, value LONG) (LONG, error) {
 
 func MonitorFromWindow(wnd HWND, flags DWORD) HMONITOR {
 	ret, _, _ := syscall.SyscallN(procMonitorFromWindow.Addr(), uintptr(wnd), uintptr(flags))
+	return HMONITOR(ret)
+}
+
+func MonitorFromPoint(point POINT, flags DWORD) HMONITOR {
+	// POINT is passed by value as one eight-byte argument on Windows amd64/arm64.
+	packed := uint64(uint32(point.X)) | uint64(uint32(point.Y))<<32
+	ret, _, _ := syscall.SyscallN(procMonitorFromPoint.Addr(), uintptr(packed), uintptr(flags))
 	return HMONITOR(ret)
 }
 
