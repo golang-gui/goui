@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"runtime"
 	"slices"
 	"unsafe"
 
@@ -235,10 +236,11 @@ func (w *Window) Title() string {
 func (w *Window) SetTitle(title string) (err error) {
 	if len(title) != 0 {
 		w.title = title
-		cTitle := cgo.CString(title)
+		cTitle := cgo.CStringTemp(title)
 		platform.display.ChangeProperty(w.wid, platform.atoms._NET_WM_NAME, platform.atoms.UTF8_STRING, 8,
 			xlib.PropModeReplace, cTitle, len(title))
-		platform.display.StoreName(w.wid, cgo.GoStringNTemp(cTitle, len(title)+1))
+		runtime.KeepAlive(cTitle)
+		platform.display.StoreName(w.wid, title)
 	} else {
 		w.title = ""
 		platform.display.DeleteProperty(w.wid, platform.atoms._NET_WM_NAME)

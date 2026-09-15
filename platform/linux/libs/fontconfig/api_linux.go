@@ -40,7 +40,7 @@ func (c Config) ParseAndLoad(file string, complain bool) Bool {
 	// FcBool FcConfigParseAndLoad(FcConfig* config, const FcChar8* file, FcBool complain)
 	var filePtr uintptr
 	if file != "" {
-		cFile := cgo.CString(file)
+		cFile := cgo.CStringTemp(file)
 		filePtr = uintptr(cFile)
 		defer runtime.KeepAlive(cFile)
 	}
@@ -52,7 +52,7 @@ func (c Config) ParseAndLoad(file string, complain bool) Bool {
 // Returns true if the font was successfully added.
 func (c Config) AppFontAddFile(file string) bool {
 	// FcBool FcConfigAppFontAddFile(FcConfig* config, const FcChar8* file)
-	cFile := cgo.CString(file)
+	cFile := cgo.CStringTemp(file)
 	ret, _, _ := fcConfigAppFontAddFile.CallRaw(uintptr(c), uintptr(cFile))
 	runtime.KeepAlive(cFile)
 	return ret != 0
@@ -68,7 +68,7 @@ func (p Pattern) Destroy() {
 // Returns the string and ResultMatch on success.
 func (p Pattern) GetString(object string, n int) (string, Result) {
 	// FcResult FcPatternGetString(const FcPattern* p, const char* object, int n, FcChar8** s)
-	cObject := cgo.CString(object)
+	cObject := cgo.CStringTemp(object)
 	var strPtr uintptr
 	ret, _, _ := fcPatternGetString.CallRaw(uintptr(p), uintptr(cObject), uintptr(n), uintptr(unsafe.Pointer(&strPtr)))
 	runtime.KeepAlive(cObject)
@@ -84,7 +84,7 @@ func (p Pattern) GetString(object string, n int) (string, Result) {
 // The caller must call Pattern.Destroy() when done.
 func FreeTypeQuery(file string, id int) Pattern {
 	// FcPattern* FcFreeTypeQuery(const FcChar8* file, unsigned int id, FcBlanks* blanks, int* count)
-	cFile := cgo.CString(file)
+	cFile := cgo.CStringTemp(file)
 	var count int32
 	ret, _, _ := fcFreeTypeQuery.CallRaw(uintptr(cFile), uintptr(id), 0, uintptr(unsafe.Pointer(&count)))
 	runtime.KeepAlive(cFile)
@@ -97,7 +97,7 @@ func FreeTypeQuery(file string, id int) Pattern {
 func FreeTypeQueryAll(file string) int {
 	// unsigned int FcFreeTypeQueryAll(const FcChar8* file, unsigned int id, FcBlanks* blanks, int* count, FcFontSet* set)
 	// Pass id=-1 to count all faces without adding to a set
-	cFile := cgo.CString(file)
+	cFile := cgo.CStringTemp(file)
 	var count int32
 	fcFreeTypeQueryAll.CallRaw(uintptr(cFile), uintptr(0xFFFFFFFF), 0, uintptr(unsafe.Pointer(&count)), 0)
 	runtime.KeepAlive(cFile)

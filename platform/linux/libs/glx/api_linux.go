@@ -174,7 +174,8 @@ func CreateContextAttribsARB(display xlib.Display, config FBConfig, shareList Co
 }
 
 func GetProcAddress(name string) (proc uintptr, err error) {
-	cName := cgo.CString(name)
+	cName := cgo.CStringTemp(name)
+	defer runtime.KeepAlive(cName)
 	proc, _, err = glXGetProcAddress.CallRaw(uintptr(cName))
 	if err != nil {
 		proc, _, err = glXGetProcAddressARB.CallRaw(uintptr(cName))
@@ -183,10 +184,9 @@ func GetProcAddress(name string) (proc uintptr, err error) {
 			if err != nil {
 				return 0, err
 			}
-			return cgo.Dlsym(libgl.Handle(), cgo.GoStringNTemp(cName, len(name)+1))
+			return cgo.Dlsym(libgl.Handle(), name)
 		}
 	}
-	runtime.KeepAlive(cName)
 	return
 }
 

@@ -20,35 +20,32 @@ var (
 	xSetICValues        = libx11.NewSymbol("XSetICValues")
 	xVaCreateNestedList = libx11.NewSymbol("XVaCreateNestedList")
 
-	// XCreateIC / XSetICValues option-name C strings, kept alive for the process
-	// lifetime.
-	xnInputStyle        = cgo.CString("inputStyle")
-	xnClientWindow      = cgo.CString("clientWindow")
-	xnFocusWindow       = cgo.CString("focusWindow")
-	xnPreeditAttributes = cgo.CString("preeditAttributes")
-	xnSpotLocation      = cgo.CString("spotLocation")
-
 	// spotBuf backs the XNSpotLocation pointer. The nested list keeps the pointer
 	// across XVaCreateNestedList -> XSetICValues, so it must stay put: a
 	// package-level var has a stable address and x11 is single-threaded (all IC
 	// calls are on the platform thread), so reusing one buffer is safe.
 	spotBuf XPoint
+)
 
-	// A real (non-NULL) empty C string. Both setlocale and XSetLocaleModifiers
-	// treat "" as "use the environment" but treat NULL as "query, don't set", so
-	// we must pass this rather than cgo.CString("") (which returns NULL).
-	emptyCString = []byte{0}
+// These option names are only borrowed while reading the varargs/nested list.
+// Terminated Go constants avoid both per-call copies and process-lifetime C
+// allocations. The actual pointers remain local to the calls below.
+const (
+	xnInputStyle        = "inputStyle\x00"
+	xnClientWindow      = "clientWindow\x00"
+	xnFocusWindow       = "focusWindow\x00"
+	xnPreeditAttributes = "preeditAttributes\x00"
+	xnSpotLocation      = "spotLocation\x00"
 )
 
 // SetLocaleModifiers wires the XMODIFIERS-based input-method selection (e.g.
 // "@im=fcitx"). Pass "" to read the XMODIFIERS environment variable.
 func SetLocaleModifiers(modifiers string) {
 	if modifiers == "" {
-		// Real empty string reads XMODIFIERS; NULL would only query (see above).
-		xSetLocaleModifiers.CallRaw(uintptr(cgo.CSlice(emptyCString)))
-		return
+		// CStringTemp("") is NULL (query); a real empty string reads XMODIFIERS.
+		modifiers = "\x00"
 	}
-	c := cgo.CString(modifiers)
+	c := cgo.CStringTemp(modifiers)
 	xSetLocaleModifiers.CallRaw(uintptr(c))
 	runtime.KeepAlive(c)
 }
@@ -74,13 +71,19 @@ func (im XIM) CreateIC(window Window) XIC {
 		return 0
 	}
 	style := uintptr(ximPreeditNothing | ximStatusNothing)
+	inputStyle := cgo.CStringTemp(xnInputStyle)
+	clientWindow := cgo.CStringTemp(xnClientWindow)
+	focusWindow := cgo.CStringTemp(xnFocusWindow)
 	ret, _, _ := xCreateIC.CallRaw(
 		uintptr(im),
-		uintptr(xnInputStyle), style,
-		uintptr(xnClientWindow), uintptr(window),
-		uintptr(xnFocusWindow), uintptr(window),
+		uintptr(inputStyle), style,
+		uintptr(clientWindow), uintptr(window),
+		uintptr(focusWindow), uintptr(window),
 		0,
 	)
+	runtime.KeepAlive(inputStyle)
+	runtime.KeepAlive(clientWindow)
+	runtime.KeepAlive(focusWindow)
 	return XIC(ret)
 }
 
@@ -127,11 +130,16 @@ func (ic XIC) SetSpot(x, y int16) {
 		return
 	}
 	spotBuf.X, spotBuf.Y = x, y
-	list, _, _ := xVaCreateNestedList.CallRaw(0, uintptr(xnSpotLocation), uintptr(cgo.Pointer(&spotBuf)), 0)
+	spotLocation := cgo.CStringTemp(xnSpotLocation)
+	preeditAttributes := cgo.CStringTemp(xnPreeditAttributes)
+	// A nested list may borrow its names until XSetICValues consumes it.
+	defer runtime.KeepAlive(spotLocation)
+	defer runtime.KeepAlive(preeditAttributes)
+	list, _, _ := xVaCreateNestedList.CallRaw(0, uintptr(spotLocation), uintptr(cgo.Pointer(&spotBuf)), 0)
 	if list == 0 {
 		return
 	}
-	xSetICValues.CallRaw(uintptr(ic), uintptr(xnPreeditAttributes), list, 0)
+	xSetICValues.CallRaw(uintptr(ic), uintptr(preeditAttributes), list, 0)
 	Free((*byte)(cgo.Pointer(list)))
 }
 

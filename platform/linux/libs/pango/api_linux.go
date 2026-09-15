@@ -105,7 +105,7 @@ func LayoutNew(context Context) (l Layout) {
 // SetText sets the text of the layout.
 func (l Layout) SetText(text string) {
 	// void pango_layout_set_text(PangoLayout* layout, const char* text, int length)
-	cText := cgo.CString(text)
+	cText := cgo.CStringTemp(text)
 	pangoLayoutSetText.CallRaw(l.GObject, uintptr(cText), uintptr(len(text)))
 	runtime.KeepAlive(cText)
 }
@@ -420,7 +420,7 @@ func (attr *Attribute) Destroy() {
 // AttrFamilyNew create a new font family attribute.
 func AttrFamilyNew(family string) *Attribute {
 	// PangoAttribute* pango_attr_family_new(const char *family)
-	cFamily := cgo.CString(family)
+	cFamily := cgo.CStringTemp(family)
 	ret, _, _ := pangoAttrFamilyNew.CallRaw(uintptr(cFamily))
 	runtime.KeepAlive(cFamily)
 	return goPointer[Attribute](ret)
@@ -462,7 +462,7 @@ func AttrStrikethroughNew(strikethrough bool) *Attribute {
 // features is a string of OpenType feature tags (e.g. "liga=1,kern=1").
 func AttrFontFeaturesNew(features string) *Attribute {
 	// PangoAttribute* pango_attr_font_features_new(const gchar* features)
-	cFeatures := cgo.CString(features)
+	cFeatures := cgo.CStringTemp(features)
 	ret, _, _ := pangoAttrFontFeaturesNew.CallRaw(uintptr(cFeatures))
 	runtime.KeepAlive(cFeatures)
 	return goPointer[Attribute](ret)
@@ -486,7 +486,7 @@ func FontDescriptionNew() FontDescription {
 
 func FontDescriptionFromString(desc string) FontDescription {
 	// PangoFontDescription* pango_font_description_from_string(const char* str)
-	cDesc := cgo.CString(desc)
+	cDesc := cgo.CStringTemp(desc)
 	ret, _, _ := pangoFontDescriptionFromString.CallRaw(uintptr(cDesc))
 	runtime.KeepAlive(cDesc)
 	return FontDescription(ret)
@@ -501,7 +501,7 @@ func (fd FontDescription) Free() {
 // SetFamily sets the family name field of a font description.
 func (fd FontDescription) SetFamily(family string) {
 	// void pango_font_description_set_family(PangoFontDescription* desc, const char* family)
-	cFamily := cgo.CString(family)
+	cFamily := cgo.CStringTemp(family)
 	pangoFontDescriptionSetFamily.CallRaw(uintptr(fd), uintptr(cFamily))
 	runtime.KeepAlive(cFamily)
 }
@@ -574,7 +574,7 @@ func (c Context) SetFontMap(fontMap FontMap) {
 // LanguageFromString takes a RFC-3066 format language tag as a string and converts it to a PangoLanguage pointer.
 func LanguageFromString(language string) Language {
 	// PangoLanguage* pango_language_from_string(const char* language)
-	cLang := cgo.CString(language)
+	cLang := cgo.CStringTemp(language)
 	ret, _, _ := pangoLanguageFromString.CallRaw(uintptr(cLang))
 	runtime.KeepAlive(cLang)
 	return Language(ret)

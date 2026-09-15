@@ -204,12 +204,12 @@ func ShareLists(share, rc HGLRC) error {
 }
 
 func getProcAddress(symbol string) (uintptr, error) {
-	s := cgo.CString(symbol)
+	s := cgo.CStringTemp(symbol)
 	ret, _, err := syscall.SyscallN(wglGetProcAddress.Addr(), uintptr(s))
+	runtime.KeepAlive(s)
 	if ret == 0 {
 		return 0, err
 	}
-	runtime.KeepAlive(s)
 	return ret, nil
 }
 

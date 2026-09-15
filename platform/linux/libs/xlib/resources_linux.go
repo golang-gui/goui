@@ -20,7 +20,7 @@ func (d Display) UngrabServer() { xUngrabServer.CallRaw(uintptr(d)) }
 type ResourceDatabase uintptr
 
 func GetStringDatabase(resources string) ResourceDatabase {
-	cResources := cgo.CString(resources)
+	cResources := cgo.CStringTemp(resources)
 	ret, _, _ := xrmGetStringDatabase.CallRaw(uintptr(cResources))
 	runtime.KeepAlive(cResources)
 	return ResourceDatabase(ret)
@@ -31,7 +31,7 @@ func (db ResourceDatabase) Destroy() {
 }
 
 func (db ResourceDatabase) GetResource(name, class string) (string, bool) {
-	cName, cClass := cgo.CString(name), cgo.CString(class)
+	cName, cClass := cgo.CStringTemp(name), cgo.CStringTemp(class)
 	var kind uintptr
 	var value struct {
 		Size    uint32
