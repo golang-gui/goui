@@ -2,6 +2,9 @@ package x11
 
 import (
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/golang-gui/goui/core/geometry"
 
@@ -18,8 +21,10 @@ import (
 )
 
 type Platform struct {
-	display xlib.Display
-	atoms   struct {
+	appId        string
+	instanceName string
+	display      xlib.Display
+	atoms        struct {
 		UTF8_STRING                  xlib.Atom
 		WM_STATE                     xlib.Atom
 		WM_PROTOCOLS                 xlib.Atom
@@ -52,12 +57,19 @@ type Platform struct {
 
 var platform *Platform
 
-func NewPlatform() (_ *Platform, err error) {
+func NewPlatform(appId string) (_ *Platform, err error) {
 	if platform != nil {
+		if platform.appId != appId {
+			return nil, fmt.Errorf("x11: platform already created with application ID %q, requested %q", platform.appId, appId)
+		}
 		return platform, nil
 	}
 
-	p := new(Platform)
+	executable, err := os.Executable()
+	if err != nil {
+		return nil, fmt.Errorf("x11: application executable: %w", err)
+	}
+	p := &Platform{appId: appId, instanceName: filepath.Base(executable)}
 	p.display = xlib.OpenDisplay("")
 	if p.display == 0 {
 		return nil, errors.New("can not open display")

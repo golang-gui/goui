@@ -16,7 +16,7 @@ func main() {
 	modes := []string{"System", "Light", "Dark", "Bare GUI"}
 	accents := []color.Color{nil, color.NRGBA{R: 140, G: 70, B: 220, A: 255}, color.NRGBA{R: 20, G: 160, B: 90, A: 255}, color.White, color.Black}
 	accentNames := []string{"System", "Purple", "Green", "White", "Black"}
-	err := ui.Run(func(app ui.App) ui.RootView {
+	err := ui.Run("com.xugtek.goui", func(app ui.App) ui.RootView {
 		settings := app.Settings()
 		dark := mode == 2 || mode == 0 && settings.ColorScheme() == ui.ColorSchemeDark
 		accent := accents[accentIndex]

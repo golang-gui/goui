@@ -15,7 +15,7 @@ import (
 )
 
 func TestTypography(t *testing.T) {
-	plat, err := platform.NewPlatform(platform.DefaultName())
+	plat, err := platform.NewPlatform(platform.DefaultName(), "")
 	if err != nil {
 		t.Fatal(err)
 	}

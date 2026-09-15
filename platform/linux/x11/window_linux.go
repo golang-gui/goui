@@ -152,6 +152,7 @@ func newWindow(size geometry.Size, onEvent events.EventHandler, options common.W
 	}
 	win.applyDecoration(options.Chrome)
 	win.applyMinSize()
+	win.setApplicationClass()
 
 	// Declare WM protocols for top-level windows before they are mapped. The
 	// resize-sync protocol is advertised only after its counter property exists.
@@ -899,6 +900,22 @@ func (w *Window) WorkAreaAt(point geometry.Point) (geometry.Rectangle, error) {
 		return geometry.Rectangle{}, common.ErrUnavailable
 	}
 	return result, nil
+}
+
+// setApplicationClass runs only for managed top-level windows, before mapping.
+// WM_CLASS is desktop identity, not icon pixels; StartupWMClass in the installed
+// desktop entry should match res_class exactly.
+func (w *Window) setApplicationClass() {
+	class := platform.appId
+	if class == "" {
+		class = platform.instanceName
+	}
+	name := cgo.CStringTemp(platform.instanceName)
+	className := cgo.CStringTemp(class)
+	hint := xlib.ClassHint{ResName: (*byte)(name), ResClass: (*byte)(className)}
+	platform.display.SetClassHint(w.wid, &hint)
+	runtime.KeepAlive(name)
+	runtime.KeepAlive(className)
 }
 
 func desktopWorkArea(desktop uint32, areas []uint32) (geometry.Rectangle, error) {

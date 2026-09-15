@@ -1,7 +1,9 @@
 package platform
 
 import (
+	"fmt"
 	"runtime"
+	"strings"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/common"
@@ -142,8 +144,15 @@ type Platform interface {
 var ErrUnsupported = common.ErrUnsupported
 var ErrUnavailable = common.ErrUnavailable
 
-func NewPlatform(name string) (Platform, error) {
-	return newPlatform(name)
+// NewPlatform creates the named backend with an immutable application identity.
+// appId may be empty; explicit IDs are checked here before backend creation.
+// Initialize once per process. An ID does not install icon resources or turn a
+// bare macOS executable into an application bundle.
+func NewPlatform(name, appId string) (Platform, error) {
+	if err := checkAppId(appId); err != nil {
+		return nil, err
+	}
+	return newPlatform(name, appId)
 }
 
 func DefaultName() string {
@@ -156,4 +165,30 @@ func DefaultName() string {
 		return "cocoa"
 	}
 	return ""
+}
+
+func checkAppId(appId string) error {
+	if appId == "" {
+		return nil
+	}
+	invalid := func() error { return fmt.Errorf("invalid application ID %q", appId) }
+	if len(appId) > 128 || !strings.Contains(appId, ".") {
+		return invalid()
+	}
+	for _, part := range strings.Split(appId, ".") {
+		if part == "" || !asciiLetter(part[0]) {
+			return invalid()
+		}
+		for i := 1; i < len(part); i++ {
+			c := part[i]
+			if !asciiLetter(c) && !(c >= '0' && c <= '9') && c != '-' {
+				return invalid()
+			}
+		}
+	}
+	return nil
+}
+
+func asciiLetter(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
 }

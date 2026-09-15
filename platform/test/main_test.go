@@ -11,6 +11,8 @@ import (
 
 var mainThreadTasks = make(chan func())
 
+const testApplicationID = "org.golang-gui.PlatformTest"
+
 var (
 	testPlatform     platform.Platform
 	testPlatformErr  error
@@ -52,7 +54,7 @@ func runOnMainThread(task func()) {
 func getPlatform() (platform.Platform, error) {
 	runOnMainThread(func() {
 		testPlatformOnce.Do(func() {
-			testPlatform, testPlatformErr = platform.NewPlatform(platform.DefaultName())
+			testPlatform, testPlatformErr = platform.NewPlatform(platform.DefaultName(), testApplicationID)
 		})
 	})
 	return testPlatform, testPlatformErr
