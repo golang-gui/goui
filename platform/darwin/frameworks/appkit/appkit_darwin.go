@@ -1000,6 +1000,7 @@ type (
 
 func initNSWindow() {
 	NSWindowSel.SetOpaque = objc.RegisterName("setOpaque:")
+	NSWindowSel.SetHasShadow = objc.RegisterName("setHasShadow:")
 	NSWindowSel.SetBackgroundColor = objc.RegisterName("setBackgroundColor:")
 	NSWindowClassId.Class = objc.GetClass("NSWindow")
 	NSWindowSel.InitWith = objc.RegisterName("initWithContentRect:styleMask:backing:defer:")
@@ -1066,6 +1067,7 @@ var (
 		SetAcceptsMouseMovedEvents        objc.SEL
 		SetRestorable                     objc.SEL
 		SetOpaque                         objc.SEL
+		SetHasShadow                      objc.SEL
 		SetBackgroundColor                objc.SEL
 		BackingScaleFactor                objc.SEL
 		MakeFirstResponder                objc.SEL
@@ -1197,6 +1199,7 @@ func (w NSWindow) SetRestorable(v bool) {
 }
 
 func (w NSWindow) SetOpaque(v bool)                 { w.Send(NSWindowSel.SetOpaque, v) }
+func (w NSWindow) SetHasShadow(v bool)              { w.Send(NSWindowSel.SetHasShadow, v) }
 func (w NSWindow) SetBackgroundColor(color NSColor) { w.Send(NSWindowSel.SetBackgroundColor, color) }
 
 func (w NSWindow) BackingScaleFactor() CGFloat {
