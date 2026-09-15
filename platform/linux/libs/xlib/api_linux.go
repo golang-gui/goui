@@ -40,6 +40,7 @@ var (
 	xSetTransientForHint    = libx11.NewSymbol("XSetTransientForHint")
 	xSetWMProtocols         = libx11.NewSymbol("XSetWMProtocols")
 	xSetWMNormalHints       = libx11.NewSymbol("XSetWMNormalHints")
+	xSetClassHint           = libx11.NewSymbol("XSetClassHint")
 	xDeleteProperty         = libx11.NewSymbol("XDeleteProperty")
 	xChangeProperty         = libx11.NewSymbol("XChangeProperty")
 	xGetWindowProperty      = libx11.NewSymbol("XGetWindowProperty")
@@ -312,6 +313,13 @@ func (d Display) SetWMProtocols(w Window, protocols []Atom) Status {
 // copied into the C call; the caller retains ownership.
 func (d Display) SetWMNormalHints(w Window, hints *SizeHints) {
 	xSetWMNormalHints.CallRaw(uintptr(d), uintptr(w), uintptr(cgo.Pointer(hints)))
+}
+
+// SetClassHint copies the two null-terminated strings into WM_CLASS.
+func (d Display) SetClassHint(w Window, hint *ClassHint) int32 {
+	ret, _, _ := xSetClassHint.CallRaw(uintptr(d), uintptr(w), uintptr(cgo.Pointer(hint)))
+	runtime.KeepAlive(hint)
+	return int32(ret)
 }
 
 func (d Display) CreateColormap(w Window, visual *Visual, alloc ColormapAlloc) Colormap {

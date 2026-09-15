@@ -19,6 +19,12 @@ type Status int32
 
 type Display ID
 
+// ClassHint is XClassHint. Both fields point to null-terminated strings.
+type ClassHint struct {
+	ResName  *byte
+	ResClass *byte
+}
+
 type Atom ID
 
 const (
