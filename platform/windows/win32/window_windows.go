@@ -3,6 +3,7 @@ package win32
 import (
 	"fmt"
 	"image"
+	"math"
 	"runtime"
 	"syscall"
 	"unsafe"
@@ -12,6 +13,7 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/direct2d"
+	"github.com/golang-gui/goui/platform/internal/workarea"
 	"github.com/golang-gui/goui/platform/windows/sdk/dcomp"
 	"github.com/golang-gui/goui/platform/windows/sdk/winapi"
 
@@ -1136,4 +1138,37 @@ func (w *Window) releaseUpload() {
 		w.uploadPainter.Destroy()
 		w.uploadPainter = nil
 	}
+}
+
+func (w *Window) WorkAreaAt(point geometry.Point) (geometry.Rectangle, error) {
+	if err := workarea.ValidatePoint(point); err != nil {
+		return geometry.Rectangle{}, err
+	}
+	if w.hwnd == 0 {
+		return geometry.Rectangle{}, common.ErrUnavailable
+	}
+	var origin winapi.POINT
+	if winapi.ClientToScreen(w.hwnd, &origin) == 0 {
+		return geometry.Rectangle{}, common.ErrUnavailable
+	}
+	scale := w.scaleFactor()
+	x, y := float64(origin.X)+float64(point.X)*float64(scale), float64(origin.Y)+float64(point.Y)*float64(scale)
+	if x < math.MinInt32 || x > math.MaxInt32 || y < math.MinInt32 || y > math.MaxInt32 {
+		return geometry.Rectangle{}, fmt.Errorf("work area point outside native coordinate range: %v", point)
+	}
+	monitor := winapi.MonitorFromPoint(winapi.POINT{X: winapi.LONG(x), Y: winapi.LONG(y)}, winapi.MONITOR_DEFAULTTONEAREST)
+	if monitor == 0 {
+		return geometry.Rectangle{}, common.ErrUnavailable
+	}
+	info := winapi.MONITORINFO{Size: winapi.DWORD(unsafe.Sizeof(winapi.MONITORINFO{}))}
+	if err := winapi.GetMonitorInfo(monitor, &info); err != nil {
+		return geometry.Rectangle{}, err
+	}
+	r := info.Work
+	result := geometry.Rect(float32(int64(r.Left)-int64(origin.X))/scale, float32(int64(r.Top)-int64(origin.Y))/scale,
+		float32(int64(r.Right)-int64(r.Left))/scale, float32(int64(r.Bottom)-int64(r.Top))/scale)
+	if !workarea.Valid(result) {
+		return geometry.Rectangle{}, common.ErrUnavailable
+	}
+	return result, nil
 }
