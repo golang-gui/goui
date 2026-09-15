@@ -29,6 +29,8 @@ func newPopup(owner common.Window, size geometry.Size, onEvent events.EventHandl
 	win := newNativeWindow(onEvent, popupClass, NSWindowStyleMaskBorderless, NSMakeRect(0, 0, CGFloat(size.Width), CGFloat(size.Height)), options.Transparent)
 	AutoReleasePool(func() {
 		win.window.SetLevel(popupWindowLevel) // float above ordinary windows
+		// Popup decoration belongs to its content host; avoid a second OS shadow.
+		win.window.SetHasShadow(false)
 	})
 	return &Popup{win: win, owner: owner}, nil
 }
