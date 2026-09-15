@@ -41,6 +41,7 @@ func InitAppKit() (err error) {
 	initNSOpenPanel()
 	initNSURL()
 	initNSArray()
+	initNSScreen()
 	return
 }
 
@@ -1896,3 +1897,26 @@ func (a NSArray) Count() uintptr {
 func (a NSArray) ObjectAtIndex(index uintptr) objc.ID {
 	return objc.Send[objc.ID](a.ID, NSArraySel.ObjectAtIndex, index)
 }
+
+// NSScreen
+
+type NSScreen struct{ NSObject }
+type NSScreenClass struct{ NSObjectClass }
+
+var NSScreenClassId NSScreenClass
+var NSScreenSel struct{ Screens, Frame, VisibleFrame objc.SEL }
+
+func initNSScreen() {
+	NSScreenClassId.Class = objc.GetClass("NSScreen")
+	NSScreenSel.Screens = objc.RegisterName("screens")
+	NSScreenSel.Frame = objc.RegisterName("frame")
+	NSScreenSel.VisibleFrame = objc.RegisterName("visibleFrame")
+}
+
+func (c NSScreenClass) Screens() (screens NSArray) {
+	screens.ID = objc.Send[objc.ID](objc.ID(c.Class), NSScreenSel.Screens)
+	return
+}
+
+func (s NSScreen) Frame() NSRect        { return objc.Send[NSRect](s.ID, NSScreenSel.Frame) }
+func (s NSScreen) VisibleFrame() NSRect { return objc.Send[NSRect](s.ID, NSScreenSel.VisibleFrame) }
