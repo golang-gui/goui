@@ -14,6 +14,30 @@ func resolved(sheet style.StyleSheet, name string, state style.State) style.Styl
 
 func rgba(c color.Color) color.RGBA { return color.RGBAModel.Convert(c).(color.RGBA) }
 
+func TestMenuInteractionColorsIgnoreAccent(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		want := []color.RGBA{rgb(0xE6E6E6), rgb(0xD1D1D1)}
+		if dark {
+			want = []color.RGBA{rgb(0x3E3E42), rgb(0x4F4F53)}
+		}
+		for _, accent := range []color.Color{nil, color.Black, color.White, rgb(0xFF0000), rgb(0x0080FF)} {
+			options := Options{Dark: dark, AccentColor: accent}
+			for i, state := range []style.State{style.Hovered, style.Pressed} {
+				s := resolved(Sheet(options), "menu-item", state)
+				bg, _ := s.BackgroundColor()
+				if rgba(bg) != want[i] {
+					t.Fatalf("dark=%v accent=%v state=%v: %v, want %v", dark, accent, state, bg, want[i])
+				}
+			}
+			custom := style.Sheet(append(Rules(options), style.Name("menu-item").State(style.Hovered).BackgroundColor(rgb(0x123456)))...)
+			bg, _ := resolved(custom, "menu-item", style.Hovered).BackgroundColor()
+			if rgba(bg) != rgb(0x123456) {
+				t.Fatal("application cannot override menu state background")
+			}
+		}
+	}
+}
+
 func TestContrastReferenceValues(t *testing.T) {
 	if contrast(rgb(0), rgb(0xFFFFFF)) != 21 || contrast(rgb(0x808080), rgb(0x808080)) != 1 {
 		t.Fatal("contrast calculation does not match reference endpoints")

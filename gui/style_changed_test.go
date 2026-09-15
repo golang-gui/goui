@@ -166,6 +166,7 @@ func textStyleSheet(size float32, ink color.Color) style.StyleSheet {
 	return style.Sheet(
 		style.Name("label").FontFamily("Test Sans").FontSize(size).ForegroundColor(ink),
 		style.Name("text-input").FontFamily("Test Sans").FontSize(size).ForegroundColor(ink),
+		style.Name("menu-item").FontFamily("Test Sans").FontSize(size).ForegroundColor(ink),
 	)
 }
 
@@ -280,8 +281,6 @@ func TestStyleChangedMenuNaturalSizeReleasesTemporaryText(t *testing.T) {
 	useTestApplication(t, app)
 	model := NewSliceListModel([]*MenuItem{NewMenuItem("long menu label", nil)})
 	content := newMenuContent(model, 480, nil)
-	defer content.hChanged.Disconnect()
-	defer content.list.modelHandle.Disconnect()
 	win := &window{}
 	win.SetWidget(content)
 	defer win.SetWidget(nil)

@@ -110,6 +110,7 @@ func DefaultStyleRules() []style.Rule {
 			BorderWidth(1).
 			Radius(4),
 		style.Name(styleNameMenuItem).
+			FontFamily(family).FontSize(size).
 			BackgroundColor(color.Transparent).
 			ForegroundColor(color.Black),
 		style.Name(styleNameMenuItem).
