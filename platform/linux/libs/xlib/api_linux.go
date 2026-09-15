@@ -197,12 +197,24 @@ func (d Display) ResizeWindow(w Window, width, height uint) {
 // TranslateCoordinates maps (srcX, srcY) in src to the dest window's coordinate
 // space. Used to place a popup at an owner-window-local point in root coords.
 func (d Display) TranslateCoordinates(src, dest Window, srcX, srcY int) (destX, destY int) {
+	destX, destY, _ = d.TranslateCoordinatesChecked(src, dest, srcX, srcY)
+	return
+}
+
+// TranslateCoordinatesChecked also reports XTranslateCoordinates' Bool result
+// (false when the windows are on different X screens).
+func (d Display) TranslateCoordinatesChecked(src, dest Window, srcX, srcY int) (destX, destY int, ok bool) {
 	var dx, dy int32
 	var child Window
-	xTranslateCoordinates.CallRaw(uintptr(d), uintptr(src), uintptr(dest),
+	var pin runtime.Pinner
+	pin.Pin(&dx)
+	pin.Pin(&dy)
+	pin.Pin(&child)
+	defer pin.Unpin()
+	ret, _, _ := xTranslateCoordinates.CallRaw(uintptr(d), uintptr(src), uintptr(dest),
 		uintptr(srcX), uintptr(srcY),
 		uintptr(cgo.Pointer(&dx)), uintptr(cgo.Pointer(&dy)), uintptr(cgo.Pointer(&child)))
-	return int(dx), int(dy)
+	return int(dx), int(dy), ret != 0
 }
 
 func (d Display) ClearArea(w Window, x, y int, width, height uint, exposures bool) {
