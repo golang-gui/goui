@@ -43,7 +43,7 @@ func newPopup(owner common.Window, size geometry.Size, onEvent events.EventHandl
 	w, h := popupPhysicalExtent(size.Width, scale), popupPhysicalExtent(size.Height, scale)
 
 	var err error
-	exStyle := winapi.DWORD(winapi.WS_EX_TOOLWINDOW | winapi.WS_EX_NOACTIVATE)
+	exStyle := winapi.DWORD(winapi.WS_EX_TOOLWINDOW|winapi.WS_EX_NOACTIVATE) | surfaceExStyle(options.Transparent)
 	win.hwnd, err = winapi.CreateWindowEx(
 		exStyle, // no taskbar entry, no activation
 		platform.windowClass, platform.windowTitle,
