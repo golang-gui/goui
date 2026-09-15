@@ -95,7 +95,7 @@ func newWindow(size geometry.Size, onEvent events.EventHandler, options common.W
 	// CW_USEDEFAULT only places overlapped windows. Obtain the system position
 	// before switching to WS_POPUP, as in ModernWindow; no visible caption is
 	// shown because all frame setup completes before Show.
-	win.hwnd, err = winapi.CreateWindowEx(0, platform.windowClass, platform.windowTitle, win.style,
+	win.hwnd, err = winapi.CreateWindowEx(surfaceExStyle(options.Transparent), platform.windowClass, platform.windowTitle, win.style,
 		winapi.CW_USEDEFAULT, winapi.CW_USEDEFAULT,
 		int(rect.Right-rect.Left), int(rect.Bottom-rect.Top),
 		0, 0, platform.instance,
@@ -269,12 +269,22 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 			// changes. Failure makes Chrome unknown, not a fabricated success.
 			_ = window.extendFrame()
 		}
+	case winapi.WM_NCACTIVATE:
+		if window.integrated {
+			// Update native activation state without letting User32 paint its
+			// standard frame over our extended client area. In particular, the
+			// default repaint can leave a white strip on Windows 10.
+			return winapi.DefWindowProc(hwnd, message, wParam, -1)
+		}
 	case winapi.WM_ACTIVATE:
 		if window.integrated {
-			window.repaintFrame()
-			if window.hwnd == 0 {
-				return 0
+			// Finish native activation/focus processing before presenting the
+			// custom frame, so a subsequent default paint cannot overwrite it.
+			result := winapi.DefWindowProc(hwnd, message, wParam, lParam)
+			if window.hwnd != 0 {
+				window.repaintFrame()
 			}
+			return result
 		}
 	case winapi.WM_MOUSEACTIVATE:
 		if window.noActivate {
@@ -591,6 +601,16 @@ func windowStyle(options common.WindowOptions) winapi.DWORD {
 	default:
 		return winapi.WS_OVERLAPPEDWINDOW
 	}
+}
+
+func surfaceExStyle(transparent bool) winapi.DWORD {
+	// Windows 10 rejects changing NOREDIRECTIONBITMAP after HWND creation.
+	// D2D and software upload present through DirectComposition; WGL instead
+	// needs a redirected window for its DWM blur-behind presentation.
+	if transparent && common.GetPreferPainter() != "opengl" {
+		return winapi.WS_EX_NOREDIRECTIONBITMAP
+	}
+	return 0
 }
 
 func windowSizeRect(size geometry.Size, scale float32, dpi winapi.UINT, style winapi.DWORD) winapi.RECT {
