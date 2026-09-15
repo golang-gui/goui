@@ -80,10 +80,10 @@ func NewPainter(win NativeWindow) (_ graphics.Painter, err error) {
 		hwnd := winapi.HWND(p.hwnd)
 		style, e := winapi.GetWindowLong(hwnd, winapi.GWL_EXSTYLE)
 		if e != nil {
-			return nil, e
+			return nil, fmt.Errorf("read composition window style: %w", e)
 		}
 		if _, e = winapi.SetWindowLong(hwnd, winapi.GWL_EXSTYLE, style|winapi.WS_EX_NOREDIRECTIONBITMAP); e != nil {
-			return nil, e
+			return nil, fmt.Errorf("set composition window style: %w", e)
 		}
 		// Only a failed construction rolls back. A successfully bound painter
 		// owns presentation for the remaining lifetime of this surface.
@@ -188,7 +188,7 @@ func (p *Painter) createDeviceResources() (err error) {
 			var rect winapi.RECT
 			if err := winapi.GetClientRect(winapi.HWND(p.hwnd), &rect); err != nil {
 				p.releaseDeviceResources()
-				return err
+				return fmt.Errorf("get composition client rectangle: %w", err)
 			}
 			desc.Width, desc.Height = uint32(max(1, rect.Right-rect.Left)), uint32(max(1, rect.Bottom-rect.Top))
 			desc.AlphaMode = dxgi.DXGI_ALPHA_MODE_PREMULTIPLIED
