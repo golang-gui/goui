@@ -38,6 +38,10 @@ func main() {
 			rows[i] = ui.Label(fmt.Sprintf("Scrollable row %02d — rounded scrollbar", i+1))
 			menuRows[i] = ui.MenuItem(fmt.Sprintf("Menu item %02d", i+1), nil)
 		}
+		edgeMenuRows := make([]*ui.MenuItemView, 120)
+		for i := range edgeMenuRows {
+			edgeMenuRows[i] = ui.MenuItem(fmt.Sprintf("Work-area constrained item %03d", i+1), nil)
+		}
 		return ui.Root().StyleSheet(sheet).Windows(
 			ui.Window("modern").Title("GOUI Modern").Size(680, 560).
 				Chrome(ui.WindowChromeIntegrated).Content(
@@ -63,6 +67,10 @@ func main() {
 						ui.Label("System mode follows settings automatically; Bare GUI restores the fallback.").Style(muted),
 						ui.ScrollView(ui.VBox(rows...).Spacing(10).Padding(8)),
 					).Padding(16).Spacing(16).CrossAlign(layout.CrossStretch).MainWeight(1),
+					ui.HBox(
+						ui.Label("Move near screen edges, then open →").Style(muted),
+						ui.MenuButton("Edge / long menu").Menu(edgeMenuRows...),
+					).MainAlign(layout.MainEnd).Padding(8).Spacing(8),
 				).CrossAlign(layout.CrossStretch),
 			),
 		)

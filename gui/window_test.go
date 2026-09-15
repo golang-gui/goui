@@ -435,6 +435,10 @@ func (w *desktopTestWindow) BeginResize(edge platform.WindowEdge) error {
 
 var _ platform.DesktopWindow = (*desktopTestWindow)(nil)
 
+func (*desktopTestWindow) WorkAreaAt(geometry.Point) (geometry.Rectangle, error) {
+	return geometry.Rectangle{}, platform.ErrUnsupported
+}
+
 func TestDesktopRequestsDoNotPredictState(t *testing.T) {
 	native := &desktopTestWindow{state: WindowStateNormal}
 	win := &window{platformWindow: native}

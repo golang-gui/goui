@@ -3,6 +3,7 @@ package gui
 import (
 	"errors"
 	"fmt"
+	"log"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
@@ -137,6 +138,10 @@ func (pm *PopoverMenu) Visible() bool {
 }
 
 func (pm *PopoverMenu) ShowAt(pos geometry.Point) error {
+	return pm.show(pos, false)
+}
+
+func (pm *PopoverMenu) show(pos geometry.Point, rectangle bool) error {
 	if pm.model == nil {
 		return nil
 	}
@@ -151,7 +156,8 @@ func (pm *PopoverMenu) ShowAt(pos geometry.Point) error {
 	if pm.popover == nil {
 		pm.replacePopover(true)
 	}
-	pm.popover.SetPosition(pos)
+	p := pm.popover.(*popover)
+	p.position, p.anchorRectangle = pos, rectangle
 	err := pm.popover.Show()
 	var creation *popoverCreationError
 	if !pm.popover.Transparent() || !errors.As(err, &creation) || (!errors.Is(err, platform.ErrUnsupported) && !errors.Is(err, platform.ErrUnavailable)) {
@@ -161,7 +167,8 @@ func (pm *PopoverMenu) ShowAt(pos geometry.Point) error {
 		return err
 	}
 	pm.replacePopover(false)
-	pm.popover.SetPosition(pos)
+	p = pm.popover.(*popover)
+	p.position, p.anchorRectangle = pos, rectangle
 	if retry := pm.popover.Show(); retry != nil {
 		pm.popover.Destroy()
 		return fmt.Errorf("menu popup: transparent: %w; opaque: %w", err, retry)
@@ -242,7 +249,6 @@ func newMenuContent(m MenuModel, maxHeight float32, activate func(*MenuItem)) *m
 	mc.list = NewListView()
 	mc.list.SetDelegate(mc.delegate)
 	mc.sv = NewScrollView()
-	mc.delegate.scrollView = mc.sv
 	mc.sv.SetChild(mc.list)
 	mc.WidgetBase.AddChild(mc, mc.sv)
 	mc.ConnectMount(mc.connectModel)
@@ -304,11 +310,33 @@ func (mc *menuContent) Measure(c layout.Constraint) layout.Measurement {
 	if !mc.valid {
 		mc.measureNatural()
 	}
-	w, h := mc.naturalW, mc.naturalH
-	if mc.maxHeight > 0 && h > mc.maxHeight {
-		h = mc.maxHeight
-		// Reserve both the scrollbar and a non-interactive gap outside the rows.
-		w += scrollbarWidth + menuScrollbarGap
+	c = mc.layoutConstraint(c)
+	heightLimit := c.Max.Height
+	if mc.maxHeight > 0 {
+		heightLimit = min(heightLimit, mc.maxHeight)
+	}
+	w, h := mc.naturalW, min(mc.naturalH, heightLimit)
+	// Scrollbars can force the other axis. Two monotonic passes account for
+	// both, without overwriting the cached natural size or the user's limit.
+	vertical, horizontal := false, false
+	for range 2 {
+		vertical = vertical || mc.naturalH > h
+		w = mc.naturalW
+		if vertical {
+			w += scrollbarWidth + menuScrollbarGap
+		}
+		horizontal = horizontal || w > c.Max.Width
+		h = mc.naturalH
+		if horizontal {
+			h += scrollbarWidth
+		}
+		h = min(h, heightLimit)
+		if horizontal && mc.naturalH > max(0, h-scrollbarWidth) {
+			vertical = true
+		}
+	}
+	if vertical {
+		w = mc.naturalW + scrollbarWidth + menuScrollbarGap
 	}
 	return layout.Measured(mc.constrain(c, geometry.Size{Width: w, Height: h}))
 }
@@ -333,7 +361,7 @@ func (mc *menuContent) measureNatural() {
 		if !mounted {
 			row.label.releaseLayout()
 		}
-		w = max(w, s.Width)
+		w = max(w, max(0, s.Width-row.trailingGap))
 		h += s.Height
 	}
 	mc.naturalW, mc.naturalH = w+2*mc.padding, h+2*mc.padding
@@ -343,6 +371,25 @@ func (mc *menuContent) measureNatural() {
 func (mc *menuContent) Arrange(rect geometry.Rectangle) {
 	mc.WidgetBase.Arrange(rect)
 	inner := geometry.Rect(mc.padding, mc.padding, max(0, rect.Width-2*mc.padding), max(0, rect.Height-2*mc.padding))
+	// Include the trailing gap in the scroll extent, not in the Label's text
+	// width. Otherwise a wide row loses the last six pixels even when scrolled
+	// fully right. Determine this from final geometry, not stale scrollbar state.
+	contentW, contentH := mc.naturalW-2*mc.padding, mc.naturalH-2*mc.padding
+	horizontal := contentW > inner.Width
+	vertical := contentH > inner.Height-boolHeight(horizontal, scrollbarWidth)
+	gap := float32(0)
+	if vertical {
+		gap = menuScrollbarGap
+	}
+	if gap != mc.delegate.trailingGap {
+		mc.delegate.trailingGap = gap
+		for _, widget := range mc.list.items {
+			row := widget.(*menuItemRow)
+			row.trailingGap = gap
+			row.RequestLayout()
+		}
+		mc.list.StyleChanged()
+	}
 	measureWidget(mc.sv, layout.Tight(inner.Size))
 	mc.sv.Arrange(inner)
 }
@@ -355,19 +402,20 @@ func (mc *menuContent) Snapshot() WidgetInfo {
 
 // menuItemDelegate renders model items into menuItemRow widgets.
 type menuItemDelegate struct {
-	model      MenuModel
-	onActivate func(*MenuItem)
-	scrollView *ScrollView
+	model       MenuModel
+	onActivate  func(*MenuItem)
+	trailingGap float32
 }
 
 func (d *menuItemDelegate) Setup() Widget {
 	r := newMenuItemRow(d.onActivate)
-	r.scrollView = d.scrollView
+	r.trailingGap = d.trailingGap
 	return r
 }
 
 func (d *menuItemDelegate) Bind(i int, w Widget) {
 	row := w.(*menuItemRow)
+	row.trailingGap = d.trailingGap
 	var mi *MenuItem
 	if d.model != nil && i < d.model.ItemsCount() {
 		mi = d.model.ItemAt(i)
@@ -381,14 +429,14 @@ func (d *menuItemDelegate) Unbind(i int, w Widget) { w.(*menuItemRow).bind(nil) 
 // A separator row hides its Label, draws a thin line and is not interactive.
 type menuItemRow struct {
 	WidgetBase
-	label      *Label
-	scrollView *ScrollView
-	mi         *MenuItem
-	activate   func(*MenuItem)
-	hovered    bool
-	pressed    bool
-	motion     *MotionEventController
-	click      *ClickEventController
+	label       *Label
+	trailingGap float32
+	mi          *MenuItem
+	activate    func(*MenuItem)
+	hovered     bool
+	pressed     bool
+	motion      *MotionEventController
+	click       *ClickEventController
 }
 
 const (
@@ -458,7 +506,7 @@ func (r *menuItemRow) Measure(c layout.Constraint) layout.Measurement {
 		return layout.Measured(r.constrain(c, geometry.Size{Height: menuSeparatorHeight}))
 	}
 	s := measureWidget(r.label, layout.Unbounded()).Size
-	s.Width += menuItemPadding * 2
+	s.Width += menuItemPadding*2 + r.trailingGap
 	s.Height = max(s.Height+8, menuItemMinHeight)
 	return layout.Measured(r.constrain(c, s))
 }
@@ -466,9 +514,7 @@ func (r *menuItemRow) Measure(c layout.Constraint) layout.Measurement {
 func (r *menuItemRow) Arrange(rect geometry.Rectangle) {
 	// ListView allocates a full-width slot. Leave its trailing gutter outside
 	// the row's actual bounds, so painting, picking and snapshots agree.
-	if r.scrollView != nil && r.scrollView.vScrollable() {
-		rect.Width = max(0, rect.Width-menuScrollbarGap)
-	}
+	rect.Width = max(0, rect.Width-r.trailingGap)
 	r.WidgetBase.Arrange(rect)
 	if r.label.Visible() {
 		s := measureWidget(r.label, layout.Unbounded()).Size
@@ -624,7 +670,9 @@ func (b *MenuButton) openMenu() {
 		b.pm.ConnectClosed(b.closed.Emit)
 	}
 	b.pm.SetMenu(b.menu)
-	_ = b.pm.ShowAt(geometry.Point{X: 0, Y: b.Rect().Height})
+	if err := b.pm.show(geometry.Point{}, true); err != nil {
+		log.Printf("goui: open menu: %v", err)
+	}
 }
 
 func (b *MenuButton) Measure(c layout.Constraint) layout.Measurement {

@@ -1,7 +1,9 @@
 package gui
 
 import (
+	"errors"
 	"fmt"
+	"log"
 	"math"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -34,7 +36,8 @@ type Popover interface {
 
 	Anchor() Widget
 
-	// Position is the body's origin relative to the anchor, excluding shadow (DIP).
+	// Position is the requested body origin relative to the anchor, excluding
+	// shadow (DIP). Desktop workarea adjustment does not change this request.
 	Position() geometry.Point
 	SetPosition(geometry.Point)
 
@@ -80,20 +83,25 @@ func NewPopover(anchor Widget, options *PopoverOptions) Popover {
 
 type popover struct {
 	rootBase
-	anchor            Widget
-	widget            Widget // content
-	position          geometry.Point
-	owner             Window // resolved from the anchor; only the public Window API is used
-	platformPopup     platform.Popup
-	styleName         string
-	insets            popoverInsets
-	requestedSize     geometry.Size
-	requestedPosition geometry.Point
-	positionValid     bool
-	destroyed         bool
-	dispatcher        EventDispatcher
-	visible           bool
-	modal             bool // menu-style: owner window forwards its input here (modeless by default)
+	anchor                    Widget
+	widget                    Widget // content
+	position                  geometry.Point
+	owner                     Window // resolved from the anchor; only the public Window API is used
+	platformPopup             platform.Popup
+	styleName                 string
+	insets                    popoverInsets
+	requestedSize             geometry.Size
+	requestedPosition         geometry.Point
+	positionValid             bool
+	anchorRectangle           bool // MenuButton requests the whole anchor's bounds
+	placement                 popoverPlacement
+	placementValid            bool
+	workAreaUnsupportedLogged bool
+	lifecycle                 uint64 // invalidates in-flight native/measurement callbacks
+	destroyed                 bool
+	dispatcher                EventDispatcher
+	visible                   bool
+	modal                     bool // menu-style: owner window forwards its input here (modeless by default)
 
 	dismissRequest signal.Signal0
 	closed         signal.Signal0
@@ -184,8 +192,10 @@ func (p *popover) SetWidget(widget Widget) {
 
 func (p *popover) SetPosition(pos geometry.Point) {
 	p.position = pos
+	p.anchorRectangle = false
 	if p.visible {
-		p.reposition()
+		p.measureAndSize()
+		p.requestPaint()
 	}
 }
 
@@ -255,6 +265,7 @@ func (p *popover) Show() error {
 			return fmt.Errorf("popover: destroyed during owner change")
 		}
 	}
+	showEpoch := p.lifecycle
 	// The owner may have moved without changing any owner-local coordinates.
 	// Each Show must let the platform resolve them against the current origin.
 	p.positionValid = false
@@ -263,14 +274,24 @@ func (p *popover) Show() error {
 			return err
 		}
 	} else {
-		p.measureAndSize()
+		p.layoutDirty = true
+		if err := p.updateNaturalSize(); err != nil {
+			return err
+		}
 	}
 	p.reposition()
+	if p.lifecycle != showEpoch || p.destroyed {
+		return fmt.Errorf("popover: released while preparing Show")
+	}
 	native := p.platformPopup
+	if native == nil {
+		return fmt.Errorf("popover: released before Show")
+	}
+	epoch := p.lifecycle
 	if err := native.Show(); err != nil {
 		return err
 	}
-	if p.platformPopup != native {
+	if p.platformPopup != native || p.lifecycle != epoch {
 		return fmt.Errorf("popover: released during Show")
 	}
 	p.visible = true
@@ -283,18 +304,22 @@ func (p *popover) Show() error {
 }
 
 func (p *popover) Hide() {
-	if !p.visible {
+	p.lifecycle++
+	wasVisible := p.visible
+	if !wasVisible && p.platformPopup == nil {
 		return
 	}
 	p.visible = false
 	p.resetInput()
-	if p.modal {
+	if wasVisible && p.modal {
 		p.resignModalTarget()
 	}
 	if p.platformPopup != nil {
 		_ = p.platformPopup.Hide()
 	}
-	p.closed.Emit()
+	if wasVisible {
+		p.closed.Emit()
+	}
 }
 
 func (p *popover) Destroy() {
@@ -344,23 +369,41 @@ func (p *popover) createNative(win Window) error {
 	// No style connection exists while native resources are absent. Content
 	// may have been measured before the application changed its sheet.
 	invalidateStyleSubtree(p.Widget())
-	p.measureAndSize() // carries the requested content size into native creation
+	p.layoutDirty = true
+	if err := p.updateNaturalSize(); err != nil {
+		p.releaseNative()
+		return err
+	}
 	if p.destroyed {
 		return fmt.Errorf("popover: destroyed during measurement")
 	}
 
 	// Platform + typography come from the app (global escape hatches); the owner
 	// platform window comes from the host's PlatformWindow escape hatch.
-	pp, err := App.Platform().NewPopup(win.PlatformWindow(), geometry.Size{Width: p.width, Height: p.height}, p.onEvent, platform.PopupOptions{Transparent: p.transparent})
+	epoch := p.lifecycle
+	pp, err := App.Platform().NewPopup(win.PlatformWindow(), p.requestedSize, p.onEvent, platform.PopupOptions{Transparent: p.transparent})
 	if err != nil {
 		p.releaseNative()
 		return &popoverCreationError{fmt.Errorf("create platform popup: %w", err)}
+	}
+	currentOwner, mounted := anchorWindow(p.anchor)
+	if p.lifecycle != epoch || p.destroyed || !mounted || currentOwner != win {
+		pp.Destroy()
+		p.releaseNative()
+		return fmt.Errorf("popover: released during creation")
 	}
 	painter, err := App.Platform().NewPainter(pp)
 	if err != nil {
 		pp.Destroy()
 		p.releaseNative()
 		return &popoverCreationError{fmt.Errorf("create popover painter: %w", err)}
+	}
+	currentOwner, mounted = anchorWindow(p.anchor)
+	if p.lifecycle != epoch || p.destroyed || !mounted || currentOwner != win {
+		painter.Destroy()
+		pp.Destroy()
+		p.releaseNative()
+		return fmt.Errorf("popover: released during painter creation")
 	}
 	p.platformPopup = pp
 	p.painter = painter
@@ -380,6 +423,7 @@ func (p *popover) createNative(win Window) error {
 }
 
 func (p *popover) releaseNative() {
+	p.lifecycle++
 	wasVisible := p.visible
 	p.visible = false
 	p.resetInput()
@@ -406,6 +450,7 @@ func (p *popover) releaseNative() {
 	p.platformPopup = nil
 	p.owner = nil
 	p.positionValid = false
+	p.placementValid = false
 	p.requestedSize = geometry.Size{}
 	if p.widget != nil && p.widget.Root() == p {
 		p.widget.base().detachRoot(p.widget)
@@ -421,33 +466,63 @@ func (p *popover) releaseNative() {
 // measureAndSize requests an intrinsic content size plus shadow allocation.
 func (p *popover) measureAndSize() {
 	p.layoutDirty = true
-	p.updateNaturalSize()
+	if err := p.updateNaturalSize(); err != nil {
+		log.Printf("goui: popup layout: %v", err)
+	}
 }
 
-func (p *popover) updateNaturalSize() {
-	if p.widget == nil {
-		return
+func (p *popover) updateNaturalSize() error {
+	epoch, widget := p.lifecycle, p.Widget()
+	snapshot, err := p.queryPlacement()
+	if err != nil {
+		return err
 	}
-	// Popup is intrinsic: measure with a loose constraint so the popover sizes to
-	// its content, independent of the owner window's size.
-	const loose = 1 << 14
-	size := measureWidget(p.widget, layout.Loose(geometry.Size{Width: loose, Height: loose})).Size
+	size := geometry.Size{Width: 1, Height: 1}
+	if widget != nil {
+		size = measureWidget(widget, layout.Unbounded()).Size
+	}
+	if !finitePopup(size.Width) || !finitePopup(size.Height) {
+		return fmt.Errorf("popover: non-finite content size")
+	}
+	size.Width, size.Height = max(1, size.Width), max(1, size.Height)
 	s := p.resolvedStyle()
 	shadow, _ := s.Shadow()
 	radius, _ := s.Radius()
-	p.insets = popoverInsets{}
+	insets := popoverInsets{}
 	if p.transparent {
-		p.insets = popoverShadowInsets(size, radius, shadow)
+		insets = popoverShadowInsets(size, radius, shadow)
 	}
-	width, height := size.Width, size.Height
-	if width < 1 {
-		width = 1
+	if snapshot.constrained {
+		limit, err := snapshot.bodyLimit(insets)
+		if err != nil {
+			return err
+		}
+		if size.Width > limit.Width || size.Height > limit.Height {
+			c := layout.Loose(limit)
+			if widget != nil {
+				size = measureWidget(widget, c).Size
+			}
+			if !finitePopup(size.Width) || !finitePopup(size.Height) {
+				return fmt.Errorf("popover: non-finite constrained content size")
+			}
+			size = c.Clamp(geometry.Size{Width: max(1, size.Width), Height: max(1, size.Height)})
+		}
 	}
-	if height < 1 {
-		height = 1
+	// Keep conservative natural shadow allocation during shrinking: negative
+	// spread may erase the smaller mask, but must not cause a sizing oscillation.
+	width, height := size.Width+insets.left+insets.right, size.Height+insets.top+insets.bottom
+	if !validPopupRect(geometry.Rect(0, 0, width, height)) {
+		return fmt.Errorf("popover: invalid surface size")
 	}
-	width += p.insets.left + p.insets.right
-	height += p.insets.top + p.insets.bottom
+	if p.lifecycle != epoch || p.destroyed || p.Widget() != widget {
+		return fmt.Errorf("popover: released or content replaced during layout")
+	}
+	if p.owner != nil {
+		if win, ok := anchorWindow(p.anchor); !ok || win != p.owner {
+			return fmt.Errorf("popover: anchor moved during layout")
+		}
+	}
+	p.placement, p.placementValid, p.insets = snapshot, true, insets
 	desired := geometry.Size{Width: width, Height: height}
 	changed := p.requestedSize != desired
 	p.requestedSize = desired // before SetSize: it may synchronously send SizeEvent
@@ -460,6 +535,9 @@ func (p *popover) updateNaturalSize() {
 		if changed {
 			p.platformPopup.SetSize(width, height)
 		}
+		if p.lifecycle != epoch || p.destroyed {
+			return fmt.Errorf("popover: released during resize")
+		}
 		p.reposition()
 	} else {
 		// Before native creation these fields carry the requested size into
@@ -467,14 +545,51 @@ func (p *popover) updateNaturalSize() {
 		// client size.
 		p.width, p.height = width, height
 	}
+	return nil
+}
+
+func (p *popover) queryPlacement() (popoverPlacement, error) {
+	origin := absOrigin(p.anchor)
+	snapshot := popoverPlacement{anchor: geometry.Rect(origin.X+p.position.X, origin.Y+p.position.Y, 0, 0), rectangle: p.anchorRectangle}
+	point := snapshot.anchor.Pos
+	if snapshot.rectangle && p.anchor != nil {
+		snapshot.anchor = geometry.Rectangle{Pos: origin, Size: p.anchor.Rect().Size}
+		point = snapshot.anchor.Center()
+	}
+	if !finitePopup(point.X) || !finitePopup(point.Y) {
+		return snapshot, fmt.Errorf("popover: non-finite anchor position")
+	}
+	var err error = platform.ErrUnsupported
+	if p.owner != nil {
+		if desktop, ok := p.owner.PlatformWindow().(platform.DesktopWindow); ok {
+			snapshot.workArea, err = desktop.WorkAreaAt(point)
+		}
+	}
+	if errors.Is(err, platform.ErrUnsupported) {
+		if !p.workAreaUnsupportedLogged {
+			log.Printf("goui: popup work area unsupported; using unconstrained placement")
+			p.workAreaUnsupportedLogged = true
+		}
+		return snapshot, nil
+	}
+	if err != nil {
+		return snapshot, fmt.Errorf("popover work area: %w", err)
+	}
+	if !validPopupRect(snapshot.workArea) {
+		return snapshot, fmt.Errorf("popover work area: invalid rectangle: %w", platform.ErrUnavailable)
+	}
+	snapshot.constrained = true
+	return snapshot, nil
 }
 
 func (p *popover) reposition() {
 	if p.platformPopup == nil {
 		return
 	}
-	o := absOrigin(p.anchor)
-	pos := geometry.Point{X: o.X + p.position.X - p.insets.left, Y: o.Y + p.position.Y - p.insets.top}
+	if !p.placementValid {
+		return
+	}
+	pos := p.placement.position(geometry.Size{Width: p.width, Height: p.height}, p.insets)
 	if !p.positionValid || pos != p.requestedPosition {
 		p.requestedPosition, p.positionValid = pos, true
 		p.platformPopup.SetPosition(pos.X, pos.Y)
@@ -484,10 +599,14 @@ func (p *popover) reposition() {
 // --- events / paint ---
 
 func (p *popover) onEvent(event platform.Event) {
+	if p.destroyed {
+		return
+	}
 	switch e := event.(type) {
 	case events.SizeEvent:
 		p.width, p.height = e.Width, e.Height
 		p.pixelWidth, p.pixelHeight = e.PixelWidth, e.PixelHeight
+		p.reposition() // correct native rounding against the completed snapshot
 		p.requestLayout()
 	case events.PaintEvent:
 		p.paint()
@@ -504,11 +623,18 @@ func (p *popover) paint() {
 	p.paintDirty = false
 	if p.layoutDirty {
 		p.layoutDirty = false
-		p.updateNaturalSize()
+		if err := p.updateNaturalSize(); err != nil {
+			log.Printf("goui: popup layout: %v", err)
+			return // retain the last completed native frame on query failure
+		}
+		epoch := p.lifecycle
 		if p.widget != nil {
 			body := p.bodyRect()
 			measureWidget(p.widget, layout.Tight(body.Size))
 			p.widget.Arrange(body)
+		}
+		if p.lifecycle != epoch || p.painter == nil || p.destroyed {
+			return
 		}
 	}
 	background, border, shadow := p.surfaceStyle()
@@ -638,4 +764,63 @@ func roundedBodyContains(rect geometry.Rectangle, radius float32, point geometry
 	x := point.X - min(max(point.X, rect.X+radius), rect.X+rect.Width-radius)
 	y := point.Y - min(max(point.Y, rect.Y+radius), rect.Y+rect.Height-radius)
 	return x*x+y*y <= radius*radius
+}
+
+// One solve uses one owner-local snapshot. No native objects or widgets are
+// retained here; rounded SizeEvents can reuse it without another display query.
+type popoverPlacement struct {
+	anchor      geometry.Rectangle
+	rectangle   bool
+	workArea    geometry.Rectangle
+	constrained bool
+}
+
+func finitePopup(v float32) bool { return !math.IsNaN(float64(v)) && !math.IsInf(float64(v), 0) }
+
+func validPopupRect(r geometry.Rectangle) bool {
+	return r.Width > 0 && r.Height > 0 && finitePopup(r.X) && finitePopup(r.Y) &&
+		finitePopup(r.Width) && finitePopup(r.Height) && finitePopup(r.X+r.Width) && finitePopup(r.Y+r.Height)
+}
+
+func (s popoverPlacement) bodyLimit(insets popoverInsets) (geometry.Size, error) {
+	size := geometry.Size{Width: s.workArea.Width - insets.left - insets.right, Height: s.workArea.Height - insets.top - insets.bottom}
+	if !finitePopup(size.Width) || !finitePopup(size.Height) || size.Width < 1 || size.Height < 1 {
+		return geometry.Size{}, fmt.Errorf("popover: shadow leaves no usable body in work area")
+	}
+	return size, nil
+}
+
+// position returns the full surface origin. Alignment is against the body,
+// containment against the surface. Oversized actual native sizes anchor at the
+// workarea origin rather than generating resize feedback loops.
+func (s popoverPlacement) position(surface geometry.Size, insets popoverInsets) geometry.Point {
+	a := s.anchor
+	body := geometry.Size{Width: max(0, surface.Width-insets.left-insets.right), Height: max(0, surface.Height-insets.top-insets.bottom)}
+	preferred := geometry.Point{X: a.X - insets.left, Y: a.Y - insets.top}
+	if s.rectangle {
+		preferred.Y += a.Height
+	}
+	if !s.constrained {
+		return preferred
+	}
+	area := s.workArea
+	fits := func(p geometry.Point) bool {
+		return p.X >= area.X && p.Y >= area.Y && p.X+surface.Width <= area.X+area.Width && p.Y+surface.Height <= area.Y+area.Height
+	}
+	if s.rectangle {
+		for _, p := range [...]geometry.Point{
+			preferred,
+			{X: a.X + a.Width - body.Width - insets.left, Y: preferred.Y},
+			{X: preferred.X, Y: a.Y - body.Height - insets.top},
+			{X: a.X + a.Width - body.Width - insets.left, Y: a.Y - body.Height - insets.top},
+		} {
+			if fits(p) {
+				return p
+			}
+		}
+	}
+	return geometry.Point{
+		X: min(max(preferred.X, area.X), max(area.X, area.X+area.Width-surface.Width)),
+		Y: min(max(preferred.Y, area.Y), max(area.Y, area.Y+area.Height-surface.Height)),
+	}
 }
