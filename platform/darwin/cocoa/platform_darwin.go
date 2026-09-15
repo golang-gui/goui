@@ -1,6 +1,8 @@
 package cocoa
 
 import (
+	"fmt"
+
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
@@ -20,17 +22,42 @@ type Platform struct {
 
 var platform *Platform
 
-func NewPlatform() (p *Platform, err error) {
+func NewPlatform(appId string) (p *Platform, err error) {
 	if platform != nil {
-		return p, nil
+		return platform, nil
 	}
 
-	p, err = newPlatform()
+	p, err = newPlatform(appId)
 	if err != nil {
 		return
 	}
 
 	platform = p
+	return
+}
+
+func newPlatform(appId string) (p *Platform, err error) {
+	err = frameworks.Init()
+	if err != nil {
+		return
+	}
+
+	err = checkApplicationBundle(appId)
+	if err != nil {
+		return nil, err
+	}
+
+	err = initWindowClass()
+	if err != nil {
+		return
+	}
+
+	p = new(Platform)
+	AutoReleasePool(func() {
+		app := NSApplicationClassId.SharedApplication()
+		app.SetActivationPolicy(NSApplicationActivationPolicyRegular)
+		app.FinishLaunching()
+	})
 	return
 }
 
@@ -101,22 +128,26 @@ func (p *Platform) NewFileDialog() (common.FileDialog, error) {
 	return newFileDialog()
 }
 
-func newPlatform() (p *Platform, err error) {
-	err = frameworks.Init()
-	if err != nil {
-		return
+func checkApplicationBundle(appId string) (err error) {
+	if appId == "" {
+		return nil
 	}
-
-	err = initWindowClass()
-	if err != nil {
-		return
-	}
-
-	p = new(Platform)
 	AutoReleasePool(func() {
-		app := NSApplicationClassId.SharedApplication()
-		app.SetActivationPolicy(NSApplicationActivationPolicyRegular)
-		app.FinishLaunching()
+		bundle := NSBundleClassId.MainBundle()
+		key := ToNSString("CFBundlePackageType")
+		defer key.Release()
+		kind := StringFromObject(bundle.ObjectForInfoDictionaryKey(key).ID)
+		bundleID := bundle.BundleIdentifier().UTF8String()
+		err = validateBundleIdentity(appId, bundleID, kind == "APPL")
 	})
 	return
+}
+
+// A bare executable has no application bundle to configure. Never pretend that
+// a requested ID supplies missing bundle resources or changes native identity.
+func validateBundleIdentity(appId, bundleID string, applicationBundle bool) error {
+	if appId != "" && (applicationBundle || bundleID != "") && appId != bundleID {
+		return fmt.Errorf("cocoa: application ID %q does not match bundle identifier %q", appId, bundleID)
+	}
+	return nil
 }

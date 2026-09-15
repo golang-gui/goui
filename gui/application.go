@@ -41,12 +41,16 @@ var (
 	ErrAppNil = errors.New("application is not created")
 )
 
-func NewApplication() (Application, error) {
+// NewApplication creates the application with a stable, case-sensitive identity
+// such as "com.example.Editor". Empty leaves identity unspecified. The ID is
+// immutable and distinct from window IDs, titles and display names. Supplying an
+// ID does not install desktop entries, icons or an application bundle.
+func NewApplication(appId string) (Application, error) {
 	if App != nil {
 		return App, nil
 	}
 
-	app, err := newApplication()
+	app, err := newApplication(appId)
 	if err != nil {
 		return nil, err
 	}
@@ -68,8 +72,8 @@ type application struct {
 	quitOnLastWindowClosed bool
 }
 
-func newApplication() (*application, error) {
-	plat, err := platform.NewPlatform(platform.DefaultName())
+func newApplication(appId string) (*application, error) {
+	plat, err := platform.NewPlatform(platform.DefaultName(), appId)
 	if err != nil {
 		return nil, fmt.Errorf("create platform: %w", err)
 	}

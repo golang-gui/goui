@@ -48,7 +48,10 @@ var (
 // runs the event loop until the app quits. build receives the App handle, which it
 // may stash, capture in handlers, or call from other goroutines.
 // System settings changes automatically request a coalesced rebuild.
-func Run(build func(app App) RootView) error {
+// appId is the immutable application identity (for example "com.example.Editor"),
+// not a window ID. Empty leaves it unspecified. It is passed to gui.NewApplication
+// before build runs and does not participate in declarative updates.
+func Run(appId string, build func(app App) RootView) error {
 	if build == nil {
 		return ErrAppBuildNil
 	}
@@ -58,7 +61,7 @@ func Run(build func(app App) RootView) error {
 
 	runtime.LockOSThread()
 
-	guiApp, err := gui.NewApplication()
+	guiApp, err := gui.NewApplication(appId)
 	if err != nil {
 		return err
 	}

@@ -1,6 +1,8 @@
 package win32
 
 import (
+	"fmt"
+	"os"
 	"syscall"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -13,25 +15,37 @@ import (
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/directwrite"
 	"github.com/golang-gui/goui/platform/windows/sdk/com"
+	"github.com/golang-gui/goui/platform/windows/sdk/shell"
 	"github.com/golang-gui/goui/platform/windows/sdk/winapi"
 )
 
 type Platform struct {
-	instance     winapi.HINSTANCE
-	helperWindow winapi.HWND
-	windowClass  winapi.LPWSTR
-	windowTitle  winapi.LPWSTR
-	wakeHandler  func()
+	appId            string
+	destroyed        bool
+	icons            applicationIcons
+	windowRegistered bool
+	helperClass      winapi.LPWSTR
+	instance         winapi.HINSTANCE
+	helperWindow     winapi.HWND
+	windowClass      winapi.LPWSTR
+	windowTitle      winapi.LPWSTR
+	wakeHandler      func()
 }
 
 var platform *Platform
 
-func NewPlatform() (p *Platform, err error) {
+func NewPlatform(appId string) (p *Platform, err error) {
 	if platform != nil {
+		if platform.destroyed {
+			return nil, common.ErrUnavailable
+		}
+		if platform.appId != appId {
+			return nil, fmt.Errorf("win32: platform already created with application ID %q, requested %q", platform.appId, appId)
+		}
 		return platform, nil
 	}
 
-	p, err = newPlatform()
+	p, err = newPlatform(appId)
 	if err != nil {
 		return
 	}
@@ -41,7 +55,28 @@ func NewPlatform() (p *Platform, err error) {
 }
 
 func (p *Platform) Destroy() {
-
+	if p.destroyed {
+		return
+	}
+	// The caller must destroy windows first. If Windows refuses to unregister
+	// a class still in use, retain its icons and allow a later cleanup attempt.
+	if p.windowRegistered {
+		if err := winapi.UnregisterClass(p.windowClass, p.instance); err != nil {
+			return
+		}
+		p.windowRegistered = false
+	}
+	p.icons.destroy()
+	if p.helperWindow != 0 {
+		winapi.DestroyWindow(p.helperWindow)
+		p.helperWindow = 0
+	}
+	if p.helperClass != nil {
+		_ = winapi.UnregisterClass(p.helperClass, p.instance)
+		p.helperClass = nil
+	}
+	p.wakeHandler = nil
+	p.destroyed = true
 }
 
 func (p *Platform) Name() string {
@@ -131,12 +166,24 @@ func (p *Platform) NewFileDialog() (common.FileDialog, error) {
 	return newFileDialog()
 }
 
-func newPlatform() (p *Platform, err error) {
-	p = new(Platform)
+func newPlatform(appId string) (p *Platform, err error) {
+	p = &Platform{appId: appId}
+	resources := p
+	defer func() {
+		if err != nil {
+			resources.Destroy()
+		}
+	}()
 	p.instance, _ = winapi.GetModuleHandle(nil)
 
 	// Initialize COM as STA before creating any COM-dependent objects.
 	com.Initialize(com.COINIT_APARTMENTTHREADED | com.COINIT_DISABLE_OLE1DDE)
+	if appId != "" {
+		id, _ := syscall.UTF16PtrFromString(appId)
+		if err = shell.SetCurrentProcessExplicitAppUserModelID(id); err != nil {
+			return nil, fmt.Errorf("win32: set application ID: %w", err)
+		}
+	}
 
 	// set DPI awareness
 	if err = winapi.SetProcessDpiAwarenessContext(winapi.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2); err != nil {
@@ -147,6 +194,9 @@ func newPlatform() (p *Platform, err error) {
 		return nil, err
 	}
 
+	if executable, pathErr := os.Executable(); pathErr == nil {
+		p.icons = loadApplicationIcons(executable)
+	}
 	if err = p.registerWindow(); err != nil {
 		return nil, err
 	}
@@ -168,6 +218,7 @@ func (p *Platform) createHelperWindow() (err error) {
 	if err != nil {
 		return
 	}
+	p.helperClass = cls
 
 	p.helperWindow, err = winapi.CreateWindowEx(winapi.WS_EX_OVERLAPPEDWINDOW, cls, cls,
 		winapi.WS_CLIPSIBLINGS|winapi.WS_CLIPCHILDREN,
@@ -225,7 +276,47 @@ func (p *Platform) registerWindow() (err error) {
 		Instance:  p.instance,
 		Cursor:    arrowCursor,
 		ClassName: p.windowClass,
+		Icon:      p.icons.large,
+		IconSm:    p.icons.small,
 	}
 	_, err = winapi.RegisterClassEx(&wdc)
+	p.windowRegistered = err == nil
 	return
+}
+
+// applicationIcons belongs to the registered window class, not an individual
+// window. Extraction is done once; the handles outlive every class instance.
+type applicationIcons struct {
+	large winapi.HICON
+	small winapi.HICON
+}
+
+func loadApplicationIcons(executable string) (icons applicationIcons) {
+	path, err := syscall.UTF16PtrFromString(executable)
+	if err != nil {
+		return
+	}
+	_, err = shell.ExtractIconEx(path, 0, &icons.large, &icons.small, 1)
+	if err != nil {
+		icons.destroy()
+		return
+	}
+	// A module may supply only one usable size. Sharing it is safe while the
+	// class owns both fields, provided destroy releases distinct handles once.
+	if icons.large == 0 {
+		icons.large = icons.small
+	} else if icons.small == 0 {
+		icons.small = icons.large
+	}
+	return
+}
+
+func (icons *applicationIcons) destroy() {
+	if icons.large != 0 {
+		winapi.DestroyIcon(icons.large)
+	}
+	if icons.small != 0 && icons.small != icons.large {
+		winapi.DestroyIcon(icons.small)
+	}
+	*icons = applicationIcons{}
 }

@@ -287,7 +287,7 @@ func main() {
 	source, err := jpeg.Decode(bytes.NewReader(data))
 	panicIf(err)
 
-	plat, err := platform.NewPlatform(platform.DefaultName())
+	plat, err := platform.NewPlatform(platform.DefaultName(), "")
 	panicIf(err)
 
 	eventLoop, err := plat.NewEventLoop()

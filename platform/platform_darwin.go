@@ -2,9 +2,9 @@ package platform
 
 import "github.com/golang-gui/goui/platform/darwin/cocoa"
 
-func newPlatform(name string) (Platform, error) {
+func newPlatform(name, appId string) (Platform, error) {
 	if name != "cocoa" {
 		return nil, ErrUnsupported
 	}
-	return cocoa.NewPlatform()
+	return cocoa.NewPlatform(appId)
 }
