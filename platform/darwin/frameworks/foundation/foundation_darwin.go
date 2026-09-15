@@ -23,6 +23,7 @@ func InitFoundation() (err error) {
 	initNSDate()
 	initNSString()
 	initNSNotification()
+	initNSBundle()
 
 	err = initNSRunLoopMode()
 	if err != nil {
@@ -242,6 +243,41 @@ func StringFromObject(obj ID) string {
 type NSStringEncoding NSUInteger
 
 const NSUTF8StringEncoding NSStringEncoding = 4
+
+// NSBundle
+
+func initNSBundle() {
+	NSBundleClassId.Class = objc.GetClass("NSBundle")
+	NSBundleSel.MainBundle = objc.RegisterName("mainBundle")
+	NSBundleSel.BundleIdentifier = objc.RegisterName("bundleIdentifier")
+	NSBundleSel.ObjectForInfoDictionaryKey = objc.RegisterName("objectForInfoDictionaryKey:")
+}
+
+var (
+	NSBundleClassId NSBundleClass
+	NSBundleSel     struct {
+		MainBundle                 objc.SEL
+		BundleIdentifier           objc.SEL
+		ObjectForInfoDictionaryKey objc.SEL
+	}
+)
+
+type (
+	NSBundle      struct{ NSObject }
+	NSBundleClass struct{ NSObjectClass }
+)
+
+func (c NSBundleClass) MainBundle() NSBundle {
+	return Cast[NSBundle](c.Send(NSBundleSel.MainBundle))
+}
+
+func (b NSBundle) BundleIdentifier() NSString {
+	return Cast[NSString](b.Send(NSBundleSel.BundleIdentifier))
+}
+
+func (b NSBundle) ObjectForInfoDictionaryKey(key NSString) NSObject {
+	return Cast[NSObject](b.Send(NSBundleSel.ObjectForInfoDictionaryKey, key.ID))
+}
 
 // NSNotification
 
