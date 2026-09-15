@@ -7,6 +7,7 @@ import (
 
 	"github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/platform/windows/sdk/com"
+	"github.com/golang-gui/goui/platform/windows/sdk/winapi"
 )
 
 // CLSID for FileOpenDialog and FileSaveDialog (Common Item Dialog).
@@ -25,9 +26,46 @@ var (
 )
 
 var (
-	shell32                         = cgo.NewLazyLibrary("shell32.dll")
-	procSHCreateItemFromParsingName = shell32.NewSymbol("SHCreateItemFromParsingName")
+	shell32                                     = cgo.NewLazyLibrary("shell32.dll")
+	procSHCreateItemFromParsingName             = shell32.NewSymbol("SHCreateItemFromParsingName")
+	procExtractIconExW                          = shell32.NewSymbol("ExtractIconExW")
+	procSetCurrentProcessExplicitAppUserModelID = shell32.NewSymbol("SetCurrentProcessExplicitAppUserModelID")
+	procGetCurrentProcessExplicitAppUserModelID = shell32.NewSymbol("GetCurrentProcessExplicitAppUserModelID")
 )
+
+// ExtractIconEx returns the number of icons extracted. Index zero selects the
+// first icon group, not resource ID zero. Returned icons require DestroyIcon.
+func ExtractIconEx(file winapi.LPCWSTR, index int32, large, small *winapi.HICON, count winapi.UINT) (winapi.UINT, error) {
+	ret, _, err := procExtractIconExW.CallRaw(uintptr(unsafe.Pointer(file)),
+		uintptr(index), uintptr(unsafe.Pointer(large)), uintptr(unsafe.Pointer(small)), uintptr(count))
+	runtime.KeepAlive(file)
+	runtime.KeepAlive(large)
+	runtime.KeepAlive(small)
+	if winapi.UINT(ret) == ^winapi.UINT(0) {
+		return 0, err
+	}
+	return winapi.UINT(ret), nil
+}
+
+func SetCurrentProcessExplicitAppUserModelID(appID winapi.LPCWSTR) error {
+	ret, _, _ := procSetCurrentProcessExplicitAppUserModelID.CallRaw(uintptr(unsafe.Pointer(appID)))
+	runtime.KeepAlive(appID)
+	if hr := com.HRESULT(ret); hr.Failed() {
+		return hr
+	}
+	return nil
+}
+
+// GetCurrentProcessExplicitAppUserModelID returns a COM-allocated string. On
+// success the caller must release it with CoTaskMemFree.
+func GetCurrentProcessExplicitAppUserModelID(appID *winapi.LPWSTR) error {
+	ret, _, _ := procGetCurrentProcessExplicitAppUserModelID.CallRaw(uintptr(unsafe.Pointer(appID)))
+	runtime.KeepAlive(appID)
+	if hr := com.HRESULT(ret); hr.Failed() {
+		return hr
+	}
+	return nil
+}
 
 // CreateShellItemFromPath creates an IShellItem from a file system path.
 // Returns nil on failure.
