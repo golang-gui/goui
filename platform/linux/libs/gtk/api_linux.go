@@ -42,7 +42,7 @@ func StyleContextNew() (context StyleContext, err error) {
 }
 
 func (c StyleContext) LookupColor(name string) (RGBA, bool, error) {
-	cName := cgo.CString(name)
+	cName := cgo.CStringTemp(name)
 	var color RGBA
 	ret, _, err := gtkStyleContextLookupColor.CallRaw(c.GObject, uintptr(cName), uintptr(cgo.Pointer(&color)))
 	runtime.KeepAlive(cName)

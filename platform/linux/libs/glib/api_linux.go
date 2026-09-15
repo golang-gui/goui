@@ -40,7 +40,7 @@ func (o Object) Unref() {
 }
 
 func (o Object) BoolProperty(name string) (bool, error) {
-	cName := cgo.CString(name)
+	cName := cgo.CStringTemp(name)
 	var value int32
 	_, _, err := gObjectGet.CallRaw(o.GObject, uintptr(cName), uintptr(unsafe.Pointer(&value)), 0)
 	runtime.KeepAlive(cName)
@@ -48,7 +48,7 @@ func (o Object) BoolProperty(name string) (bool, error) {
 }
 
 func (o Object) IntProperty(name string) (int32, error) {
-	cName := cgo.CString(name)
+	cName := cgo.CStringTemp(name)
 	var value int32
 	_, _, err := gObjectGet.CallRaw(o.GObject, uintptr(cName), uintptr(unsafe.Pointer(&value)), 0)
 	runtime.KeepAlive(cName)
@@ -56,7 +56,7 @@ func (o Object) IntProperty(name string) (int32, error) {
 }
 
 func (o Object) StringProperty(name string) (string, error) {
-	cName := cgo.CString(name)
+	cName := cgo.CStringTemp(name)
 	var value uintptr
 	_, _, err := gObjectGet.CallRaw(o.GObject, uintptr(cName), uintptr(unsafe.Pointer(&value)), 0)
 	runtime.KeepAlive(cName)

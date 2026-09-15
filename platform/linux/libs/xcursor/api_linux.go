@@ -26,7 +26,7 @@ func Available() bool {
 }
 
 func LibraryLoadCursor(display xlib.Display, name string) xlib.Cursor {
-	cName := cgo.CString(name)
+	cName := cgo.CStringTemp(name)
 	ret, _, _ := loadCursor.CallRaw(uintptr(display), uintptr(cName))
 	runtime.KeepAlive(cName)
 	return xlib.Cursor(ret)
@@ -41,7 +41,7 @@ func GetTheme(display xlib.Display) string {
 }
 
 func SetTheme(display xlib.Display, theme string) {
-	cTheme := cgo.CString(theme)
+	cTheme := cgo.CStringTemp(theme)
 	setTheme.CallRaw(uintptr(display), uintptr(cTheme))
 	runtime.KeepAlive(cTheme)
 }

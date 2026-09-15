@@ -70,7 +70,7 @@ var (
 )
 
 func OpenDisplay(name string) Display {
-	cName := cgo.CString(name)
+	cName := cgo.CStringTemp(name)
 	ret, _, _ := xOpenDisplay.CallRaw(uintptr(cName))
 	runtime.KeepAlive(cName)
 	return Display(ret)
@@ -106,7 +106,7 @@ func (d Display) NextEvent() (ev Event) {
 }
 
 func (d Display) InternAtom(name string, onlyIfExists bool) Atom {
-	cName := cgo.CString(name)
+	cName := cgo.CStringTemp(name)
 	ret, _, _ := xInternAtom.CallRaw(uintptr(d), uintptr(cName), uintptr(cgo.CBool(onlyIfExists)))
 	runtime.KeepAlive(cName)
 	return Atom(ret)
@@ -222,7 +222,7 @@ func (d Display) ClearArea(w Window, x, y int, width, height uint, exposures boo
 }
 
 func (d Display) StoreName(w Window, name string) {
-	cName := cgo.CString(name)
+	cName := cgo.CStringTemp(name)
 	xStoreName.CallRaw(uintptr(d), uintptr(w), uintptr(cName))
 	runtime.KeepAlive(cName)
 }
