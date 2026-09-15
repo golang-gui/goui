@@ -21,6 +21,8 @@ var (
 
 	// Window
 	procRegisterClassExW     = user32Dll.NewProc("RegisterClassExW")
+	procGetClassInfoExW      = user32Dll.NewProc("GetClassInfoExW")
+	procUnregisterClassW     = user32Dll.NewProc("UnregisterClassW")
 	procCreateWindowExW      = user32Dll.NewProc("CreateWindowExW")
 	procDestroyWindow        = user32Dll.NewProc("DestroyWindow")
 	procEnableWindow         = user32Dll.NewProc("EnableWindow")
@@ -80,6 +82,7 @@ var (
 
 	// Resource
 	procLoadCursorW = user32Dll.NewProc("LoadCursorW")
+	procDestroyIcon = user32Dll.NewProc("DestroyIcon")
 	procSetCursor   = user32Dll.NewProc("SetCursor")
 
 	// GDI
@@ -168,6 +171,14 @@ func RegisterClassEx(cls *WNDCLASSEX) (ATOM, error) {
 	return ATOM(ret), nil
 }
 
+func GetClassInfoEx(instance HINSTANCE, name LPCWSTR, cls *WNDCLASSEX) error {
+	ret, _, err := syscall.SyscallN(procGetClassInfoExW.Addr(), uintptr(instance), uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(cls)))
+	if ret == 0 {
+		return err
+	}
+	return nil
+}
+
 func CreateWindowEx(exStyle DWORD, clsName, wndName LPCWSTR, style DWORD, x, y, w, h int, parent HWND, menu HMENU, inst HINSTANCE, param LPVOID) (HWND, error) {
 	ret, _, err := syscall.SyscallN(procCreateWindowExW.Addr(),
 		uintptr(exStyle),
@@ -181,6 +192,19 @@ func CreateWindowEx(exStyle DWORD, clsName, wndName LPCWSTR, style DWORD, x, y, 
 	}
 
 	return HWND(ret), nil
+}
+
+func UnregisterClass(name LPCWSTR, instance HINSTANCE) error {
+	ret, _, err := syscall.SyscallN(procUnregisterClassW.Addr(), uintptr(unsafe.Pointer(name)), uintptr(instance))
+	if ret == 0 {
+		return err
+	}
+	return nil
+}
+
+func DestroyIcon(icon HICON) BOOL {
+	ret, _, _ := syscall.SyscallN(procDestroyIcon.Addr(), uintptr(icon))
+	return BOOL(ret)
 }
 
 func DestroyWindow(wnd HWND) BOOL {
