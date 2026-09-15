@@ -367,6 +367,10 @@ func (lv *ListView) itemAt(index int) Widget {
 // records both the height and the row width (natural width, flushed to at
 // least the viewport width), and returns the height.
 func (lv *ListView) measureItem(index int, w Widget) float32 {
+	if !w.Visible() {
+		lv.widths[index] = 0
+		return 0
+	}
 	size := measureWidget(w, layout.Constraint{
 		Min: geometry.Size{},
 		Max: geometry.Size{Width: layout.Inf, Height: layout.Inf},
@@ -394,7 +398,8 @@ func (lv *ListView) VisibleIndexes() []int {
 // Snapshot reports the list role plus the virtualized range (total items and
 // the currently visible index span) so AI / automation can understand that
 // more rows exist beyond the viewport. The shell widgets hosting the visible
-// rows are reported as listitem (their box scaffolding is noise).
+// rows with a generic widget role are reported as listitem. Semantic delegates
+// (e.g. menu items and separators) retain their own roles.
 func (lv *ListView) Snapshot() WidgetInfo {
 	info := lv.WidgetBase.Snapshot()
 	info.Role = RoleList
@@ -404,7 +409,9 @@ func (lv *ListView) Snapshot() WidgetInfo {
 		info.VisibleEnd = vis[len(vis)-1]
 	}
 	for i := range info.Children {
-		info.Children[i].Role = RoleListItem
+		if info.Children[i].Role == RoleWidget {
+			info.Children[i].Role = RoleListItem
+		}
 	}
 	return info
 }
