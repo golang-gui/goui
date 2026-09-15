@@ -69,7 +69,7 @@ func TestPaletteAndCoverage(t *testing.T) {
 				t.Fatalf("dark=%v %s background=%v, want %v", dark, name, bg, want)
 			}
 		}
-		for _, name := range []string{"widget", "label", Primary, MutedText, "button", "text-input", "scroll-view", "header-bar", "popover", "menu", "menu-item"} {
+		for _, name := range []string{"widget", "label", Primary, MutedText, "button", "text-input", "scroll-view", "header-bar", "popover", "menu", "menu-item-text", "menu-item-text-disabled"} {
 			s := resolved(sheet, name, style.Normal)
 			family, _ := s.FontFamily()
 			size, _ := s.FontSize()
@@ -81,6 +81,12 @@ func TestPaletteAndCoverage(t *testing.T) {
 		for name, want := range map[string]float32{"button": 6, Primary: 6, "text-input": 6, "menu-item": 4, "menu": 8, "popover": 8} {
 			if got, _ := resolved(sheet, name, style.Normal).Radius(); got != want {
 				t.Fatalf("%s radius=%v, want %v", name, got, want)
+			}
+		}
+		for name, want := range map[string]color.RGBA{"menu-item-text": p.text, "menu-item-text-disabled": p.disabled} {
+			fg, _ := resolved(sheet, name, style.Normal).ForegroundColor()
+			if rgba(fg) != want {
+				t.Fatalf("dark=%v %s foreground=%v, want %v", dark, name, fg, want)
 			}
 		}
 		for _, part := range []string{"trough", "thumb"} {

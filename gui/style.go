@@ -10,19 +10,21 @@ import (
 )
 
 const (
-	styleNameWindow        = "window"
-	styleNamePopover       = "popover"
-	styleNameWidget        = "widget"
-	styleNameLabel         = "label"
-	styleNameButton        = "button"
-	styleNameTextInput     = "text-input"
-	styleNameScrollView    = "scroll-view"
-	stylePartTrough        = "trough"
-	stylePartThumb         = "thumb"
-	stylePartFocus         = "focus"
-	styleNameMenu          = "menu"
-	styleNameMenuItem      = "menu-item"
-	styleNameMenuSeparator = "menu-separator"
+	styleNameWindow               = "window"
+	styleNamePopover              = "popover"
+	styleNameWidget               = "widget"
+	styleNameLabel                = "label"
+	styleNameButton               = "button"
+	styleNameTextInput            = "text-input"
+	styleNameScrollView           = "scroll-view"
+	stylePartTrough               = "trough"
+	stylePartThumb                = "thumb"
+	stylePartFocus                = "focus"
+	styleNameMenu                 = "menu"
+	styleNameMenuItem             = "menu-item"
+	styleNameMenuItemText         = "menu-item-text"
+	styleNameMenuItemTextDisabled = "menu-item-text-disabled"
+	styleNameMenuSeparator        = "menu-separator"
 )
 
 // DefaultStyleSheet is the bare fallback sheet used when the application has no
@@ -110,18 +112,18 @@ func DefaultStyleRules() []style.Rule {
 			BorderWidth(1).
 			Radius(4),
 		style.Name(styleNameMenuItem).
+			BackgroundColor(color.Transparent),
+		style.Name(styleNameMenuItemText).
+			FontFamily(family).FontSize(size).ForegroundColor(color.Black),
+		style.Name(styleNameMenuItemTextDisabled).
 			FontFamily(family).FontSize(size).
-			BackgroundColor(color.Transparent).
-			ForegroundColor(color.Black),
+			ForegroundColor(color.RGBA{R: 160, G: 160, B: 160, A: 255}),
 		style.Name(styleNameMenuItem).
 			State(style.Hovered).
 			BackgroundColor(color.RGBA{R: 225, G: 232, B: 240, A: 255}),
 		style.Name(styleNameMenuItem).
 			State(style.Pressed).
 			BackgroundColor(color.RGBA{R: 200, G: 210, B: 225, A: 255}),
-		style.Name(styleNameMenuItem).
-			State(style.Disabled).
-			ForegroundColor(color.RGBA{R: 160, G: 160, B: 160, A: 255}),
 		style.Name(styleNameMenuSeparator).
 			BackgroundColor(color.RGBA{R: 200, G: 200, B: 200, A: 255}),
 	}

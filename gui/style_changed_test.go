@@ -166,7 +166,7 @@ func textStyleSheet(size float32, ink color.Color) style.StyleSheet {
 	return style.Sheet(
 		style.Name("label").FontFamily("Test Sans").FontSize(size).ForegroundColor(ink),
 		style.Name("text-input").FontFamily("Test Sans").FontSize(size).ForegroundColor(ink),
-		style.Name("menu-item").FontFamily("Test Sans").FontSize(size).ForegroundColor(ink),
+		style.Name("menu-item-text").FontFamily("Test Sans").FontSize(size).ForegroundColor(ink),
 	)
 }
 
