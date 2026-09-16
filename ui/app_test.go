@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"runtime"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -269,6 +270,8 @@ func TestBeginRunIsOneShot(t *testing.T) {
 }
 
 func TestAppHandleRunsThroughRuntime(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	app := newWindowTestApplication()
 	builds := 0
 	// The App handle passed into the build closure is the runtime itself.

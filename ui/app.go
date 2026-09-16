@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
@@ -35,6 +36,13 @@ type App interface {
 	Settings() Settings
 	// FileDialog returns the system file dialog view (never nil).
 	FileDialog() FileDialog
+	// TimeoutFunc starts a one-shot GUI-thread callback. The returned timer can
+	// be stopped or restarted with the same callback. See Timer for lifetime rules.
+	// Panics if delay is not positive or fn is nil; after Quit returns an inert timer.
+	TimeoutFunc(delay time.Duration, fn func()) *Timer
+	// TickFunc starts periodic GUI-thread callbacks, first after interval.
+	// Panics if interval is not positive or fn is nil; after Quit returns an inert timer.
+	TickFunc(interval time.Duration, fn func()) *Timer
 }
 
 var (
@@ -83,6 +91,8 @@ func (a *app) run() error {
 	}
 
 	if err := a.rebuild(); err != nil {
+		// Timers may already have been started by the initial build, before Run.
+		a.Quit()
 		a.destroyAll()
 		return err
 	}
@@ -109,14 +119,21 @@ func (a *app) Sync(f func()) {
 		return
 	}
 
-	var wg sync.WaitGroup
+	done := make(chan struct{})
 	if !a.postTask(func() {
-		defer wg.Done()
-		f()
+		defer close(done)
+		if !a.isStopping() {
+			f()
+		}
 	}) {
 		return
 	}
-	wg.Wait()
+	select {
+	case <-done:
+	case <-a.finished:
+		// Run has returned, so no in-flight UI callback can still be writing
+		// results. Queued work that did not execute is discarded.
+	}
 }
 
 type app struct {
@@ -127,6 +144,7 @@ type app struct {
 	appliedSheet  style.StyleSheet
 	updatePending bool
 	stopping      bool
+	finished      chan struct{} // closed only after run returns, not on a Quit request
 	err           error
 	uiThread      int
 }
@@ -193,6 +211,7 @@ func newApp(guiApp gui.Application, build func() RootView) *app {
 		gui:      guiApp,
 		build:    build,
 		windows:  make(map[string]*windowMount),
+		finished: make(chan struct{}),
 		uiThread: gothread.GetId(),
 	}
 }
@@ -490,12 +509,20 @@ func (a *app) isStopping() bool {
 	return a.stopping
 }
 
-// stop invalidates queued updates even when the native loop exits by itself.
+// stop runs on the UI thread after run has finished, including initial-build
+// failure. It invalidates queued work and releases synchronous callers even when
+// the native loop exits without processing their posts. Quit must not close
+// finished: a currently executing callback may still be writing caller results.
 func (a *app) stop() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.stopping = true
 	a.updatePending = false
+	select {
+	case <-a.finished:
+	default:
+		close(a.finished)
+	}
 }
 
 func (a *app) error() error {

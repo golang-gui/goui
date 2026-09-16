@@ -8,7 +8,7 @@ import (
 )
 
 // Timer emits timeout notifications on its application's GUI thread. Create it
-// with Application.NewTimer, TimeoutFunc or TickFunc. Its zero value cannot be
+// with Application.NewTimer. Its zero value cannot be
 // started. All methods must be called on the GUI thread; use Application.Post
 // from other goroutines. A Timer must not be copied after use.
 //
