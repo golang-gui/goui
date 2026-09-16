@@ -16,18 +16,29 @@ type WindowInfo struct {
 	Controls *WidgetInfo `json:"controls,omitempty"`
 }
 
+// WidgetInfo describes semantic content and state for inspection and input
+// planning, not an exhaustive layout or hit-test tree. Widgets may omit internal
+// structure (for example, ScrollView's viewport and scrollbars).
+// Operations must still be dispatched as input events through Window.DispatchEvent.
 type WidgetInfo struct {
-	ID            string             `json:"id"`
-	Role          Role               `json:"role"`
-	Text          string             `json:"text"`
-	Bounds        geometry.Rectangle `json:"bounds"`
-	Visible       bool               `json:"visible"`
-	Enabled       bool               `json:"enabled"`
-	Focusable     bool               `json:"focusable"`
-	Focused       bool               `json:"focused"`
-	ContainsFocus bool               `json:"containsFocus"`
-	Actions       []Action           `json:"actions"`
-	Children      []WidgetInfo       `json:"children"`
+	ID   string `json:"id"`
+	Role Role   `json:"role"`
+	Text string `json:"text"`
+	// Bounds is the layout rectangle in window-local DIP, before clipping or
+	// occlusion. It does not guarantee that a point can receive pointer input.
+	Bounds geometry.Rectangle `json:"bounds"`
+	// Visible is the widget's own visibility flag, not effective visibility
+	// through ancestors or occlusion. Hidden nodes may remain in the snapshot.
+	Visible       bool `json:"visible"`
+	Enabled       bool `json:"enabled"`
+	Focusable     bool `json:"focusable"`
+	Focused       bool `json:"focused"`
+	ContainsFocus bool `json:"containsFocus"`
+	// Actions describes supported actions, not guaranteed input reachability.
+	Actions []Action `json:"actions"`
+	// Children preserves back-to-front order for retained widget siblings.
+	// Semantic filtering means this is not a complete pointer-picking tree.
+	Children []WidgetInfo `json:"children"`
 
 	// Scroll state (omitempty: absent on non-scrolling widgets).
 	ScrollY      float32 `json:"scrollY,omitempty"`      // current scroll offset

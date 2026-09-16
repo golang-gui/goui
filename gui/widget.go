@@ -90,6 +90,8 @@ type Widget interface {
 	ConnectMount(func()) signal.Handle
 	ConnectUnmount(func()) signal.Handle
 
+	// Snapshot describes semantic content and state, not the concrete widget
+	// type or all layout details. See WidgetInfo for visibility and input limits.
 	Snapshot() WidgetInfo
 }
 

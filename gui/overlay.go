@@ -25,6 +25,15 @@ type Overlay struct {
 
 func NewOverlay() *Overlay { return new(Overlay) }
 
+// Snapshot reports a generic container, preserving the content's own semantics
+// and back-to-front child order. Floating placement and Fill do not imply a
+// dialog, keyboard modality or disabled underlying content.
+func (o *Overlay) Snapshot() WidgetInfo {
+	info := o.WidgetBase.Snapshot()
+	info.Role = RoleBox
+	return info
+}
+
 // Child returns the main child, or nil if it has been removed or reparented.
 func (o *Overlay) Child() Widget {
 	if o.child != nil && o.child.Parent() == o && !o.child.base().destroyed {
