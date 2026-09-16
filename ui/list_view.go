@@ -71,7 +71,11 @@ func (v *ListViewView[T]) Update(ctx BuildContext, widget gui.Widget) {
 func (v *ListViewView[T]) Unmount(ctx BuildContext, widget gui.Widget) {
 	lv := widget.(*gui.ListView)
 	if d, ok := lv.Delegate().(*uiItemDelegate[T]); ok {
-		d.releaseAll()
+		// Root has already released registered row targets. In the window
+		// destruction path their GUI trees deliberately remain intact.
+		d.ctx = nil
+		d.builder = nil
+		d.model = nil
 	}
 }
 
@@ -82,23 +86,20 @@ func (v *ListViewView[T]) Unmount(ctx BuildContext, widget gui.Widget) {
 //	Bind   → coordinate the row View into the shell (mount or update node)
 //	Unbind → release the row node and detach it from the shell
 //
-// Rows scroll out of view and are released; the node map stays bounded by the
-// reuse pool size. The model is gui.ListData[T]: Bind fetches the typed item
+// Rows scroll out of view and are released through the same mounting-target
+// API as ordinary containers. The model is gui.ListData[T]: Bind fetches the typed item
 // and hands it straight to the builder.
 type uiItemDelegate[T any] struct {
 	model   gui.ListData[T]
 	builder func(index int, data T) View
-	root    *root
-	nodes   map[gui.Widget]*node // shell widget → coordinated row node
+	ctx     BuildContext
 }
 
 func newListItemDelegate[T any](v *ListViewView[T], ctx BuildContext) *uiItemDelegate[T] {
-	bc, _ := ctx.(*buildContext)
 	return &uiItemDelegate[T]{
 		model:   v.model,
 		builder: v.builder,
-		root:    bc.root,
-		nodes:   make(map[gui.Widget]*node),
+		ctx:     ctx,
 	}
 }
 
@@ -107,38 +108,22 @@ func (d *uiItemDelegate[T]) Setup() gui.Widget {
 }
 
 func (d *uiItemDelegate[T]) Bind(index int, w gui.Widget) {
-	if d.builder == nil || d.root == nil {
+	if d.ctx == nil {
 		return
 	}
 	shell, ok := w.(*gui.LinearBox)
 	if !ok {
 		return
 	}
-	item := d.root.updateNode(d.nodes[w], d.builder(index, d.model.ItemAt(index)))
-	if item == nil || item.widget == nil {
-		return
+	var content View
+	if d.builder != nil {
+		content = d.builder(index, d.model.ItemAt(index))
 	}
-	d.nodes[w] = item
-	shell.AddChild(item.widget)
+	d.ctx.UpdateChildren(shell, []View{content})
 }
 
 func (d *uiItemDelegate[T]) Unbind(index int, w gui.Widget) {
-	if n := d.nodes[w]; n != nil {
-		if c, ok := w.(gui.Container); ok && n.widget != nil {
-			c.RemoveChild(n.widget)
-		}
-		d.root.release(n, true)
-		delete(d.nodes, w)
-	}
-}
-
-// releaseAll releases every remaining row node (list teardown).
-func (d *uiItemDelegate[T]) releaseAll() {
-	for w, n := range d.nodes {
-		if c, ok := w.(gui.Container); ok && n.widget != nil {
-			c.RemoveChild(n.widget)
-		}
-		d.root.release(n, true)
-		delete(d.nodes, w)
+	if shell, ok := w.(Container); ok && d.ctx != nil {
+		d.ctx.UpdateChildren(shell, nil)
 	}
 }

@@ -87,13 +87,7 @@ func (v *MenuButtonView) Update(ctx BuildContext, widget gui.Widget) {
 	button := widget.(*gui.MenuButton)
 	state := ctx.State().(*menuButtonState)
 
-	// Content child: reconcile the label/custom child into the button's single
-	// slot. gui.MenuButton is a Bin, so updateBinChild handles it.
-	if v.child == nil {
-		ctx.UpdateChildren(button, nil)
-	} else {
-		ctx.UpdateChildren(button, []View{v.child})
-	}
+	ctx.UpdateChild(button, v.child)
 
 	// Menu model: rebuild only when the entries changed, so an open menu is not
 	// needlessly reloaded on unrelated rebuilds. The fingerprint omits actions

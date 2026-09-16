@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -68,21 +69,21 @@ func TestListViewUnbindReleasesItem(t *testing.T) {
 	shell1 := d.Setup().(*gui.LinearBox)
 	d.Bind(0, shell0)
 	d.Bind(1, shell1)
-	if len(d.nodes) != 2 {
-		t.Fatalf("2 rows should be coordinated, got %d", len(d.nodes))
+	if len(root.root.children) != 2 {
+		t.Fatalf("2 row targets should be coordinated, got %d", len(root.root.children))
 	}
 	if len(shell0.Children()) != 1 || len(shell1.Children()) != 1 {
 		t.Fatal("bound shells should host their rows")
 	}
 
 	d.Unbind(0, shell0)
-	if len(d.nodes) != 1 {
-		t.Fatalf("unbound row should be released, got %d nodes", len(d.nodes))
+	if len(root.root.children) != 1 {
+		t.Fatalf("unbound row target should be released, got %d", len(root.root.children))
 	}
 	if len(shell0.Children()) != 0 {
 		t.Fatal("released shell should be empty")
 	}
-	if d.nodes[shell1] == nil {
+	if root.root.children[0].target != shell1 {
 		t.Fatal("other rows must stay coordinated")
 	}
 }
@@ -148,5 +149,64 @@ func TestSliceListHelper(t *testing.T) {
 	model := SliceList([]int{5, 6, 7})
 	if model.ItemsCount() != 3 || model.ItemAt(2) != 7 {
 		t.Fatalf("SliceList should adapt the slice, count=%d", model.ItemsCount())
+	}
+}
+
+func TestListViewRebindReplacesAndClearsRows(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	model := SliceList([]int{1})
+	lv := r.update(ListView(model, func(int, int) View { return Label("first") })).(*gui.ListView)
+	d := lv.Delegate().(*uiItemDelegate[int])
+	shell := d.Setup().(*gui.LinearBox)
+	d.Bind(0, shell)
+	old := shell.Children()[0]
+	r.update(ListView(model, func(int, int) View { return Button("replacement") }))
+	d.Bind(0, shell)
+	if len(shell.Children()) != 1 || shell.Children()[0] == old || old.Parent() != nil {
+		t.Fatal("rebind did not replace the previous row")
+	}
+	r.update(ListView(model, func(int, int) View { return nil }))
+	d.Bind(0, shell)
+	if len(shell.Children()) != 0 || len(r.root.children) != 0 {
+		t.Fatal("nil row content left old widgets or mounting records")
+	}
+}
+
+func TestListViewRowsFollowRootTeardownMode(t *testing.T) {
+	for _, destroying := range []bool{false, true} {
+		t.Run(map[bool]string{false: "detach", true: "window-destroy"}[destroying], func(t *testing.T) {
+			r := newRoot()
+			tracker := new(lifecycleTracker)
+			lv := r.update(ListView(SliceList([]int{1, 2}), func(int, int) View {
+				return &lifecycleView{tracker: tracker}
+			})).(*gui.ListView)
+			lv.LayoutVisible(geometry.Size{Width: 100, Height: 100}, geometry.Point{})
+			shells := lv.Children()
+			rows := []gui.Widget{shells[0].Children()[0], shells[1].Children()[0]}
+			d := lv.Delegate().(*uiItemDelegate[int])
+			if destroying {
+				r.unmountForWindowDestroy()
+			} else {
+				r.unmountWindow()
+			}
+			if !slices.Equal(lv.Children(), shells) {
+				t.Fatal("Root detached ListView-owned shells")
+			}
+			for i, shell := range shells {
+				if destroying {
+					if len(shell.Children()) != 1 || shell.Children()[0] != rows[i] {
+						t.Fatal("window destruction lost rows before GUI cleanup")
+					}
+				} else if len(shell.Children()) != 0 || rows[i].Parent() != nil {
+					t.Fatal("ordinary unmount retained declarative row content")
+				}
+			}
+			if tracker.mounts != 2 || tracker.unmounts != 2 || d.ctx != nil {
+				t.Fatalf("rows were not released exactly once: %+v", tracker)
+			}
+			d.Unbind(0, shells[0]) // A late delegate call cannot dismantle retained rows.
+			r.unmountWindow()
+		})
 	}
 }

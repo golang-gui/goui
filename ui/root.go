@@ -2,6 +2,7 @@ package ui
 
 import (
 	"reflect"
+	"slices"
 	"sync"
 
 	"github.com/golang-gui/goui/core/signal"
@@ -22,7 +23,8 @@ type node struct {
 	view     WidgetView
 	widget   gui.Widget
 	state    any
-	children []*node
+	children []*childTarget
+	released bool
 	baseCtx  *viewBaseContext // persistent cross-cutting signal context, reused across rebuilds
 }
 
@@ -204,6 +206,7 @@ func (r *root) updateWidgetNode(old *node, view WidgetView) *node {
 		ctx := &buildContext{root: r, node: current}
 		current.widget = view.Mount(ctx)
 		if current.widget == nil {
+			r.release(current, true)
 			return nil
 		}
 		view.base().mount(current.baseCtx, current.widget)
@@ -218,37 +221,19 @@ func (r *root) updateWidgetNode(old *node, view WidgetView) *node {
 }
 
 func (r *root) release(n *node, detachWidgets bool) {
-	if n == nil {
+	if n == nil || n.released {
 		return
 	}
+	n.released = true
 
 	if n.view != nil && n.widget != nil && n.baseCtx != nil {
 		n.view.base().unmount(n.baseCtx, n.widget)
 	}
 
-	container, _ := n.widget.(gui.Container)
-	for _, child := range n.children {
-		childWidget := child.widget
-		r.release(child, detachWidgets)
-		if detachWidgets && container != nil && childWidget != nil {
-			container.RemoveChild(childWidget)
-		}
+	for _, target := range n.children {
+		r.releaseChildren(target, 0, detachWidgets)
 	}
 	n.children = nil
-
-	if detachWidgets && container != nil {
-		for _, child := range container.Children() {
-			container.RemoveChild(child)
-		}
-	}
-
-	// Single-content widgets keep their content in Children() but are not
-	// Containers; clear the slot so the widget tree does not retain it.
-	if detachWidgets {
-		if sc, ok := n.widget.(gui.Bin); ok {
-			sc.SetChild(nil)
-		}
-	}
 
 	if n.view != nil && n.widget != nil {
 		ctx := &buildContext{root: r, node: n}
@@ -267,107 +252,123 @@ func (ctx *buildContext) SetState(state any) {
 	ctx.node.state = state
 }
 
-func (ctx *buildContext) UpdateChildren(widget gui.Widget, children []View) {
-	if widget == nil {
-		return
-	}
-
-	children = compactViews(children)
-
-	// Single-child widgets replace their whole child slot (0 or 1 child).
-	if sc, ok := widget.(gui.Bin); ok {
-		ctx.updateBinChild(sc, children)
-		return
-	}
-
-	container, ok := widget.(gui.Container)
-	if !ok {
-		return
-	}
-
-	oldNodes := ctx.node.children
-	newNodes := make([]*node, 0, len(children))
-
-	index := 0
-	for index < len(oldNodes) && index < len(children) {
-		childView := normalizeView(children[index])
-		if !sameWidgetViewType(oldNodes[index], childView) {
-			break
-		}
-		child := ctx.root.updateWidgetNode(oldNodes[index], childView)
-		if child == nil || child.widget == nil {
-			var oldWidget gui.Widget
-			if oldNodes[index] != nil {
-				oldWidget = oldNodes[index].widget
-			}
-			ctx.root.release(oldNodes[index], true)
-			if oldWidget != nil {
-				container.RemoveChild(oldWidget)
-			}
-			index++
-			continue
-		}
-		newNodes = append(newNodes, child)
-		index++
-	}
-
-	for _, old := range oldNodes[index:] {
-		var oldWidget gui.Widget
-		if old != nil {
-			oldWidget = old.widget
-		}
-		ctx.root.release(old, true)
-		if oldWidget != nil {
-			container.RemoveChild(oldWidget)
-		}
-	}
-
-	for _, childView := range children[index:] {
-		child := ctx.root.updateWidgetNode(nil, normalizeView(childView))
-		if child == nil || child.widget == nil {
-			continue
-		}
-		container.AddChild(child.widget)
-		newNodes = append(newNodes, child)
-	}
-
-	ctx.node.children = newNodes
+// childTarget records only UI-owned nodes for one mounting target. Keeping
+// targets in registration order makes teardown deterministic.
+type childTarget struct {
+	target    any // stable pointer implementing bin or container, never both modes
+	bin       Bin
+	container Container
+	nodes     []*node
 }
 
-// updateBinChild reconciles the single child slot of a widget: the
-// previous child (if any) is released and the new view (if any) becomes
-// the child.
-func (ctx *buildContext) updateBinChild(sc gui.Bin, children []View) {
-	if len(children) > 1 {
-		children = children[:1]
+func (ctx *buildContext) childTarget(target any, single bool) *childTarget {
+	if ctx.node.released || target == nil {
+		return nil
 	}
-
-	oldNodes := ctx.node.children
-	var newNodes []*node
-
-	if len(children) == 1 {
-		childView := normalizeView(children[0])
-		var child *node
-		if len(oldNodes) == 1 && sameWidgetViewType(oldNodes[0], childView) {
-			child = ctx.root.updateWidgetNode(oldNodes[0], childView)
-		} else {
-			for _, old := range oldNodes {
-				ctx.root.release(old, true)
+	value := reflect.ValueOf(target)
+	if value.Kind() != reflect.Pointer || value.IsNil() {
+		panic("ui: child mounting target must be a non-nil stable pointer")
+	}
+	for _, current := range ctx.node.children {
+		if current.target == target {
+			if (current.bin != nil) != single {
+				panic("ui: same target used as both Bin and Container")
 			}
-			child = ctx.root.updateWidgetNode(nil, childView)
+			return current
 		}
-		if child != nil && child.widget != nil {
-			sc.SetChild(child.widget)
-			newNodes = []*node{child}
-		}
-	} else {
-		for _, old := range oldNodes {
-			ctx.root.release(old, true)
-		}
-		sc.SetChild(nil)
 	}
+	current := &childTarget{target: target}
+	if single {
+		current.bin = target.(Bin)
+	} else {
+		current.container = target.(Container)
+	}
+	ctx.node.children = append(ctx.node.children, current)
+	return current
+}
 
-	ctx.node.children = newNodes
+func (ctx *buildContext) UpdateChild(target Bin, child View) gui.Widget {
+	current := ctx.childTarget(target, true)
+	if current == nil {
+		return nil
+	}
+	view := normalizeView(child)
+	if len(current.nodes) != 0 && !sameWidgetViewType(current.nodes[0], view) {
+		ctx.root.releaseChildren(current, 0, true)
+	}
+	if view != nil {
+		if len(current.nodes) != 0 {
+			ctx.root.updateWidgetNode(current.nodes[0], view)
+		} else if mounted := ctx.root.updateWidgetNode(nil, view); mounted != nil {
+			current.nodes = []*node{mounted}
+			target.SetChild(mounted.widget)
+		}
+	}
+	if len(current.nodes) == 0 {
+		ctx.forgetEmptyTarget(current)
+		return nil
+	}
+	return current.nodes[0].widget
+}
+
+func (ctx *buildContext) UpdateChildren(target Container, children []View) []gui.Widget {
+	current := ctx.childTarget(target, false)
+	if current == nil {
+		return nil
+	}
+	result := make([]gui.Widget, len(children))
+	index := 0
+	for i, child := range children {
+		view := normalizeView(child)
+		if view == nil {
+			continue
+		}
+		// Without an insertion API, only the same-type prefix can be reused.
+		if index < len(current.nodes) && !sameWidgetViewType(current.nodes[index], view) {
+			ctx.root.releaseChildren(current, index, true)
+		}
+		var mounted *node
+		if index < len(current.nodes) {
+			mounted = ctx.root.updateWidgetNode(current.nodes[index], view)
+		} else {
+			mounted = ctx.root.updateWidgetNode(nil, view)
+			if mounted == nil {
+				continue
+			}
+			current.nodes = append(current.nodes, mounted)
+			target.AddChild(mounted.widget)
+		}
+		result[i] = mounted.widget
+		index++
+	}
+	ctx.root.releaseChildren(current, index, true)
+	ctx.forgetEmptyTarget(current)
+	return result
+}
+
+// Dynamic targets such as recycled list rows must not accumulate empty records.
+func (ctx *buildContext) forgetEmptyTarget(target *childTarget) {
+	if len(target.nodes) == 0 {
+		if index := slices.Index(ctx.node.children, target); index >= 0 {
+			ctx.node.children = slices.Delete(ctx.node.children, index, index+1)
+		}
+	}
+}
+
+func (r *root) releaseChildren(target *childTarget, from int, detach bool) {
+	for _, child := range target.nodes[from:] {
+		widget := child.widget
+		r.release(child, detach)
+		if detach {
+			if target.bin != nil {
+				target.bin.SetChild(nil)
+			} else {
+				target.container.RemoveChild(widget)
+			}
+		}
+	}
+	clear(target.nodes[from:])
+	target.nodes = target.nodes[:from]
 }
 
 func sameWidgetViewType(old *node, view WidgetView) bool {
