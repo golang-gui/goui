@@ -142,7 +142,7 @@ func TestSettingsWatchBelongsToApplicationRun(t *testing.T) {
 		}
 		// Return with this task still queued, as a native loop can do on quit.
 	}
-	a := &application{settings: s, loop: loop}
+	a := &application{settings: s, loop: loop, timers: newTimerScheduler(loop.Post, time.Now)}
 	a.Run()
 	source.family = "Changed after exit"
 	pending()

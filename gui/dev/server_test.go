@@ -160,6 +160,8 @@ type testApplication struct {
 	dispatchErr error
 }
 
+func (a *testApplication) NewTimer() *gui.Timer { panic("unexpected NewTimer") }
+
 func (a *testApplication) Clipboard() gui.Clipboard {
 	panic("unimplemented")
 }

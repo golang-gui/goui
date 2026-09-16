@@ -111,32 +111,16 @@ func (s *settings) snapshot() settingsSnapshot {
 
 // watch belongs to one application Run. The timer only posts work; native
 // queries, snapshot updates and notifications all run on the GUI thread.
-// Closing done also invalidates checks already queued when Run returns.
-func (s *settings) watch(loop platform.EventLoop) (stop func()) {
+// Stopping also invalidates checks already queued when Run returns.
+func (s *settings) watch(app Application) (stop func()) {
 	if s == nil || s.settings == nil {
 		return func() {}
 	}
-	done := make(chan struct{})
-	go func() {
-		ticker := time.NewTicker(2 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-done:
-				return
-			case <-ticker.C:
-				loop.Post(func() {
-					select {
-					case <-done:
-						return
-					default:
-						s.checkChanged()
-					}
-				})
-			}
-		}
-	}()
-	return func() { close(done) }
+	timer := app.NewTimer()
+	timer.ConnectTimeout(s.checkChanged)
+	// A scheduler already closed by Quit intentionally does not start polling.
+	_ = timer.Start(2 * time.Second)
+	return timer.Stop
 }
 
 // checkChanged runs on the UI thread: snapshot, compare, emit on change.

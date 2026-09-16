@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/platform"
@@ -24,7 +25,15 @@ type Application interface {
 	StyleSheet() style.StyleSheet
 	SetStyleSheet(style.StyleSheet)
 	NewWindow(options *WindowOptions) (Window, error)
+	// NewTimer creates an inactive timer permanently bound to this application.
+	// Creation does not register a task or allocate waiting resources. Call on
+	// the GUI thread; the timer can be started before Run, but not after Quit.
+	NewTimer() *Timer
+	// Run processes native events and GUI timers on the owning thread. Returning
+	// from Run stops timer scheduling and waits for its background waiter to exit.
 	Run()
+	// Quit stops timer scheduling and requests event-loop exit. It may be called
+	// from any goroutine; an already-started timer signal may finish.
 	Quit()
 	// QuitOnLastWindowClosed reports whether the app quits when its last window
 	// is closed (default true).
@@ -61,6 +70,7 @@ func NewApplication(appId string) (Application, error) {
 type application struct {
 	platform     platform.Platform
 	loop         platform.EventLoop
+	timers       *timerScheduler
 	typo         typography.Context
 	clipboard    Clipboard
 	settings     *settings
@@ -108,6 +118,7 @@ func newApplication(appId string) (*application, error) {
 	app := &application{
 		platform:   plat,
 		loop:       loop,
+		timers:     newTimerScheduler(loop.Post, time.Now),
 		typo:       typo,
 		clipboard:  newClipboard(platClip),
 		settings:   newSettings(platSettings),
@@ -172,13 +183,46 @@ func (a *application) NewWindow(options *WindowOptions) (Window, error) {
 	return win, nil
 }
 
+func (a *application) NewTimer() *Timer {
+	return &Timer{app: a}
+}
+
+func (a *application) startTimer(t *Timer, interval time.Duration, once bool) error {
+	// The scheduler receives only a callback. Binding it to the public Timer's
+	// signal, and keeping its task handle, are application responsibilities.
+	run, err := a.timers.schedule(t.run, interval, once, t.timeout.Emit)
+	if err != nil {
+		return err
+	}
+	t.run = run
+	return nil
+}
+
+func (a *application) stopTimer(t *Timer) {
+	a.timers.cancel(t.run)
+	t.run = nil
+}
+
+func (a *application) timerActive(t *Timer) bool {
+	return a.timers.active(t.run)
+}
+
 func (a *application) Run() {
-	stop := a.settings.watch(a.loop)
+	if a.timers != nil {
+		defer a.timers.finish()
+	}
+	stop := a.settings.watch(a)
 	defer stop()
+	if a.timers != nil {
+		a.timers.start()
+	}
 	a.loop.Run()
 }
 
 func (a *application) Quit() {
+	if a.timers != nil {
+		a.timers.close()
+	}
 	a.loop.Quit()
 }
 
@@ -227,6 +271,6 @@ func (a *application) removeWindow(win *window) {
 		a.windows = slices.Delete(a.windows, index, index+1)
 	}
 	if a.quitOnLastWindowClosed && len(a.windows) == 0 {
-		a.loop.Quit()
+		a.Quit()
 	}
 }
