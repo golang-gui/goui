@@ -356,6 +356,9 @@ func TestOverlayTreeOrderPaintingClippingAndSnapshot(t *testing.T) {
 		t.Fatalf("ordinary tree clipping did not apply: %+v", backend.fills)
 	}
 	info := o.Snapshot()
+	if info.Role != RoleBox {
+		t.Fatalf("overlay must report a generic container: %q", info.Role)
+	}
 	if len(info.Children) != 3 || info.Children[0].ID != "main" || info.Children[1].ID != "first" || info.Children[2].ID != "second" {
 		t.Fatalf("unexpected snapshot children: %+v", info.Children)
 	}
@@ -439,6 +442,13 @@ func TestOverlayNestedConfirmationLayer(t *testing.T) {
 	if confirm.Rect() != geometry.Rect(0, 0, 400, 300) || mask.Rect() != confirm.Rect() || panel.Rect() != geometry.Rect(140, 120, 120, 60) {
 		t.Fatalf("wrong nested layout: confirm=%+v mask=%+v panel=%+v", confirm.Rect(), mask.Rect(), panel.Rect())
 	}
+	info := o.Snapshot()
+	if len(info.Children) != 2 || info.Children[1].Role != RoleBox || len(info.Children[1].Children) != 2 {
+		t.Fatalf("nested overlay lost its semantic subtree: %+v", info)
+	}
+	if got := info.Children[1].Children[1].Bounds; got != geometry.Rect(140, 120, 120, 60) {
+		t.Fatalf("nested panel snapshot has wrong bounds: %+v", got)
+	}
 	overlayTestClick(t, win, geometry.Point{X: 10, Y: 10})
 	overlayTestClick(t, win, geometry.Point{X: 200, Y: 150})
 	if counts[main] != 0 || counts[mask] != 1 || counts[panel] != 1 {
@@ -453,6 +463,68 @@ func TestOverlayNestedConfirmationLayer(t *testing.T) {
 	o.Arrange(geometry.Rect(0, 0, 200, 120))
 	if panel.Rect() != geometry.Rect(40, 30, 120, 60) {
 		t.Fatalf("confirmation did not recenter after resize: %+v", panel.Rect())
+	}
+}
+
+func TestOverlaySnapshotWithoutMainChild(t *testing.T) {
+	o := NewOverlay()
+	if info := o.Snapshot(); info.Role != RoleBox || len(info.Children) != 0 {
+		t.Fatalf("unexpected empty overlay snapshot: %+v", info)
+	}
+	button := NewButton()
+	button.SetID("floating")
+	o.AddOverlay(button)
+	o.ConnectOverlayPosition(button, func(_, _ geometry.Size, p *geometry.Point) {
+		*p = geometry.Point{X: 15, Y: 25}
+	})
+	o.Arrange(geometry.Rect(10, 20, 200, 100))
+	info := o.Snapshot()
+	if len(info.Children) != 1 || info.Children[0].ID != "floating" || info.Children[0].Role != RoleButton {
+		t.Fatalf("floating content lost its semantics without a main child: %+v", info)
+	}
+	if info.Children[0].Bounds.Pos != (geometry.Point{X: 25, Y: 45}) {
+		t.Fatalf("floating snapshot must use window coordinates: %+v", info.Children[0].Bounds)
+	}
+	o.RemoveOverlay(button)
+	if info := o.Snapshot(); len(info.Children) != 0 {
+		t.Fatalf("detached floating content remains in snapshot: %+v", info)
+	}
+}
+
+func TestOverlaySnapshotOcclusionDoesNotDisableContent(t *testing.T) {
+	o := NewOverlay()
+	button := NewButton()
+	clicks := 0
+	button.ConnectClicked(func() { clicks++ })
+	o.SetChild(button)
+	mask := newTestWidget() // Even without a controller, the mask blocks picking.
+	o.AddOverlay(mask)
+	o.SetOverlayFill(mask, true)
+	win := &window{}
+	win.SetWidget(o)
+	o.Arrange(geometry.Rect(0, 0, 200, 100))
+	for _, visible := range []bool{true, false, true} {
+		mask.SetVisible(visible)
+		info := o.Snapshot()
+		if len(info.Children) != 2 || info.Children[1].Visible != visible {
+			t.Fatalf("visibility must not remove or reorder snapshot nodes: %+v", info)
+		}
+		underlying := info.Children[0]
+		if underlying.Role != RoleButton || !underlying.Visible || !underlying.Enabled || !slices.Contains(underlying.Actions, ActionClick) {
+			t.Fatalf("occlusion changed the button's semantics: %+v", underlying)
+		}
+		if underlying.Bounds != geometry.Rect(0, 0, 200, 100) {
+			t.Fatalf("snapshot bounds must not be reduced by occlusion: %+v", underlying.Bounds)
+		}
+		before := clicks
+		overlayTestClick(t, win, underlying.Bounds.Center())
+		want := before
+		if !visible {
+			want++
+		}
+		if clicks != want {
+			t.Fatalf("mask visible=%v: clicks=%d, want %d", visible, clicks, want)
+		}
 	}
 }
 
