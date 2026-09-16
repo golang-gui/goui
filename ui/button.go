@@ -81,11 +81,7 @@ func (v *ButtonView) Update(ctx BuildContext, widget gui.Widget) {
 	} else {
 		button.SetPadding(state.initPadding)
 	}
-	if v.child == nil {
-		ctx.UpdateChildren(button, nil)
-	} else {
-		ctx.UpdateChildren(button, []View{v.child})
-	}
+	ctx.UpdateChild(button, v.child)
 }
 
 func (v *ButtonView) Unmount(ctx BuildContext, _ gui.Widget) {

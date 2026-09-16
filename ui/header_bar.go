@@ -74,11 +74,7 @@ func (v *HeaderBarView) Update(ctx BuildContext, widget gui.Widget) {
 	} else {
 		header.SetPadding(state.initPadding)
 	}
-	if v.child == nil {
-		ctx.UpdateChildren(header, nil)
-	} else {
-		ctx.UpdateChildren(header, []View{v.child})
-	}
+	ctx.UpdateChild(header, v.child)
 }
 
 func (v *HeaderBarView) Unmount(ctx BuildContext, _ gui.Widget) {

@@ -23,7 +23,32 @@ type WidgetView interface {
 type BuildContext interface {
 	State() any
 	SetState(any)
-	UpdateChildren(widget gui.Widget, children []View)
+	// UpdateChild reconciles one target's content. nil clears the managed child.
+	UpdateChild(target Bin, child View) gui.Widget
+	// UpdateChildren reconciles one target's list in declaration order. Results
+	// correspond to input indices; nil views/builds/mounts yield nil entries.
+	// Only actual widgets occupy reconciliation positions. An empty list clears
+	// managed children. Omitting a call does not clear a previously used target.
+	UpdateChildren(target Container, children []View) []gui.Widget
+}
+
+// Bin is a single-child mounting target, not necessarily a Widget. Unlike
+// gui.Bin it need not provide layout, events or its own widget tree. Targets
+// must be stable, non-nil pointers reused across updates of the owning View.
+// A target must not be shared between owners or used as both Bin and Container.
+// The UI reconciler owns only the children it mounts; callers must not replace
+// or reparent those children behind it. All operations run on the GUI thread.
+type Bin interface {
+	SetChild(gui.Widget)
+}
+
+// Container is a list mounting target, not necessarily a Widget. AddChild
+// appends and RemoveChild detaches without destroying. Like Bin, targets must
+// have stable pointer identity. Framework teardown removes only managed children;
+// window destruction releases UI state without detaching the GUI tree.
+type Container interface {
+	AddChild(gui.Widget)
+	RemoveChild(gui.Widget)
 }
 
 // ViewBase is embedded as ViewBase[ConcreteView] by every declarative view. Its

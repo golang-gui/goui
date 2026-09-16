@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image"
+	"slices"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -653,4 +654,189 @@ func (w *testWindow) ConnectDestroy(fn func()) signal.Handle {
 
 func (w *testWindow) ConnectFocus(fn func(bool)) signal.Handle {
 	return w.focusChanged.Connect(fn)
+}
+
+// These targets deliberately are not Widgets: external bindings need only the
+// public mounting methods, not private buildContext or reconciler nodes.
+type testBinTarget struct {
+	child gui.Widget
+	calls int
+}
+
+func (b *testBinTarget) SetChild(w gui.Widget) { b.child = w; b.calls++ }
+
+type testContainerTarget struct {
+	children []gui.Widget
+	removes  int
+}
+
+func (c *testContainerTarget) AddChild(w gui.Widget) { c.children = append(c.children, w) }
+func (c *testContainerTarget) RemoveChild(w gui.Widget) {
+	if i := slices.Index(c.children, w); i >= 0 {
+		c.children = slices.Delete(c.children, i, i+1)
+		c.removes++
+	}
+}
+
+type mountingView struct {
+	viewBase
+	update func(BuildContext)
+}
+
+func (v *mountingView) Build() View                           { return v }
+func (v *mountingView) Mount(BuildContext) gui.Widget         { return gui.NewLabel("") }
+func (v *mountingView) Unmount(BuildContext, gui.Widget)      {}
+func (v *mountingView) Update(ctx BuildContext, _ gui.Widget) { v.update(ctx) }
+
+func TestChildTargetsAreIndependentAndOmittedCallsPreserveContent(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	a, b := new(testBinTarget), new(testBinTarget)
+	list := new(testContainerTarget)
+	update := func(fn func(BuildContext)) { r.update(&mountingView{update: fn}) }
+	var previous []gui.Widget
+	update(func(ctx BuildContext) {
+		ctx.UpdateChild(a, Label("a"))
+		ctx.UpdateChild(b, Label("b"))
+		previous = ctx.UpdateChildren(list, []View{Label("one"), TextInput()})
+	})
+	aChild, bChild := a.child, b.child
+	update(func(ctx BuildContext) {
+		// Call order is not the identity of a target.
+		got := ctx.UpdateChildren(list, []View{Label("ONE"), TextInput()})
+		ctx.UpdateChild(a, Label("A"))
+		if !slices.Equal(got, previous) || a.child != aChild {
+			t.Fatal("rebuild replaced same-type children")
+		}
+	})
+	if b.child != bChild || a.calls != 1 || b.calls != 1 {
+		t.Fatal("omitted target was cleared or unchanged child was reattached")
+	}
+	update(func(ctx BuildContext) {
+		ctx.UpdateChild(a, nil)
+		got := ctx.UpdateChildren(list, []View{Label("prefix"), Button()})
+		if got[0] != previous[0] || got[1] == previous[1] {
+			t.Fatal("list prefix reuse/tail replacement failed")
+		}
+	})
+	if a.child != nil || b.child != bChild || len(r.root.children) != 2 {
+		t.Fatal("clearing one target affected another or retained empty records")
+	}
+	update(func(ctx BuildContext) {
+		ctx.UpdateChildren(list, nil)
+		ctx.UpdateChild(b, nil)
+	})
+	if len(r.root.children) != 0 || len(list.children) != 0 || b.child != nil {
+		t.Fatal("explicit clear did not release all targets")
+	}
+}
+
+type nilMountView struct{ viewBase }
+
+func (v *nilMountView) Build() View                    { return v }
+func (*nilMountView) Mount(BuildContext) gui.Widget    { return nil }
+func (*nilMountView) Update(BuildContext, gui.Widget)  {}
+func (*nilMountView) Unmount(BuildContext, gui.Widget) {}
+
+func TestChildTargetResultsPreserveDeclarationIndices(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	list := new(testContainerTarget)
+	bin := new(testBinTarget)
+	builds := 0
+	r.update(&mountingView{update: func(ctx BuildContext) {
+		got := ctx.UpdateChildren(list, []View{
+			nil, Label("a"), &testCompositionView{builds: &builds}, &nilMountView{}, Label("b"),
+		})
+		if len(got) != 5 || got[0] != nil || got[2] != nil || got[3] != nil || builds != 1 {
+			t.Fatalf("nil results lost input correspondence: %+v", got)
+		}
+		if !slices.Equal(list.children, []gui.Widget{got[1], got[4]}) {
+			t.Fatal("nil results occupied actual child positions")
+		}
+		ctx.UpdateChild(bin, Label("old"))
+		if got := ctx.UpdateChild(bin, &nilMountView{}); got != nil || bin.child != nil {
+			t.Fatal("nil Mount left stale single-slot content")
+		}
+		if got := ctx.UpdateChild(bin, &testCompositionView{}); got != nil {
+			t.Fatal("nil Build produced a widget")
+		}
+	}})
+}
+
+func TestChildTargetTeardownOnlyTouchesManagedChildren(t *testing.T) {
+	for _, destroy := range []bool{false, true} {
+		t.Run(map[bool]string{false: "detach", true: "window-destroy"}[destroy], func(t *testing.T) {
+			r := newRoot()
+			bin, list := new(testBinTarget), new(testContainerTarget)
+			unmanaged := gui.NewLabel("internal widget")
+			list.AddChild(unmanaged)
+			tracker := new(lifecycleTracker)
+			var saved BuildContext
+			r.update(&mountingView{update: func(ctx BuildContext) {
+				saved = ctx
+				ctx.UpdateChild(bin, &lifecycleView{tracker: tracker})
+				ctx.UpdateChildren(list, []View{Label("managed")})
+			}})
+			child, children := bin.child, slices.Clone(list.children)
+			if destroy {
+				r.unmountForWindowDestroy()
+				if bin.child != child || !slices.Equal(list.children, children) || list.removes != 0 {
+					t.Fatal("window destruction detached the GUI tree")
+				}
+			} else {
+				r.unmountWindow()
+				if bin.child != nil || !slices.Equal(list.children, []gui.Widget{unmanaged}) || list.removes != 1 {
+					t.Fatal("ordinary teardown did not detach only managed nodes")
+				}
+			}
+			if tracker.unmounts != 1 {
+				t.Fatal("UI lifecycle was not released exactly once")
+			}
+			// Stored contexts (e.g. virtual-list delegates) cannot revive a dead owner.
+			if saved.UpdateChild(bin, Label("late")) != nil || saved.UpdateChildren(list, []View{Label("late")}) != nil {
+				t.Fatal("a released context mounted new children")
+			}
+			r.unmountWindow()
+			if tracker.unmounts != 1 {
+				t.Fatal("duplicate teardown")
+			}
+		})
+	}
+}
+
+type valueBinTarget struct{}
+
+func (valueBinTarget) SetChild(gui.Widget) {}
+
+type ambiguousTarget struct {
+	testBinTarget
+	testContainerTarget
+}
+
+func TestChildTargetsRejectUnstableIdentityAndMixedModes(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		update func(BuildContext)
+	}{
+		{"value", func(ctx BuildContext) { ctx.UpdateChild(valueBinTarget{}, Label("x")) }},
+		{"typed-nil", func(ctx BuildContext) { ctx.UpdateChild((*testBinTarget)(nil), Label("x")) }},
+		{"mixed", func(ctx BuildContext) {
+			target := new(ambiguousTarget)
+			ctx.UpdateChild(target, Label("x"))
+			ctx.UpdateChildren(target, []View{Label("y")})
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			r := newRoot()
+			r.update(&mountingView{update: func(BuildContext) {}})
+			t.Cleanup(r.unmountWindow)
+			defer func() {
+				if recover() == nil {
+					t.Fatal("invalid mounting target accepted")
+				}
+			}()
+			r.update(&mountingView{update: test.update})
+		})
+	}
 }

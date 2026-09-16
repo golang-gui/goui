@@ -37,11 +37,7 @@ func (v *ScrollViewView) Mount(BuildContext) gui.Widget {
 }
 
 func (v *ScrollViewView) Update(ctx BuildContext, widget gui.Widget) {
-	if v.child == nil {
-		ctx.UpdateChildren(widget, nil)
-	} else {
-		ctx.UpdateChildren(widget, []View{v.child})
-	}
+	ctx.UpdateChild(widget.(*gui.ScrollView), v.child)
 }
 
 func (v *ScrollViewView) Unmount(BuildContext, gui.Widget) {}
