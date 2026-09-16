@@ -58,6 +58,6 @@ type PollFd struct {
 const POLLIN = 0x0001
 
 func Poll(fds []PollFd, timeout int) (ret int, eno syscall.Errno) {
-	r1, _, eno := syscall.RawSyscall(syscall.SYS_POLL, uintptr(cgo.CSlice(fds)), uintptr(len(fds)), uintptr(timeout))
+	r1, _, eno := syscall.Syscall(syscall.SYS_POLL, uintptr(cgo.CSlice(fds)), uintptr(len(fds)), uintptr(timeout))
 	return int(r1), eno
 }
