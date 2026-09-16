@@ -456,6 +456,8 @@ type testApplication struct {
 	posts []func()
 }
 
+func (a *testApplication) NewTimer() *gui.Timer { panic("unexpected NewTimer") }
+
 func newTestApplication() *testApplication {
 	return new(testApplication)
 }

@@ -320,6 +320,8 @@ func newWindowTestApplication() *windowTestApplication {
 	return new(windowTestApplication)
 }
 
+func (a *windowTestApplication) NewTimer() *gui.Timer { panic("unexpected NewTimer") }
+
 func (a *windowTestApplication) Platform() platform.Platform {
 	return nil
 }

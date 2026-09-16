@@ -2,6 +2,7 @@ package gui
 
 import (
 	"testing"
+	"time"
 
 	"github.com/golang-gui/goui/platform"
 )
@@ -19,13 +20,16 @@ func TestApplicationQuitsOnLastWindowClosed(t *testing.T) {
 	loop := &quitCountLoop{}
 	w1, w2 := &window{}, &window{}
 	a := &application{loop: loop, windows: []*window{w1, w2}, quitOnLastWindowClosed: true}
+	q := newTimerTestQueue(t)
+	a.timers = q.s
+	timer := startTestTimer(t, q, time.Second, true, func() {})
 
 	a.removeWindow(w1)
-	if loop.quits != 0 {
+	if loop.quits != 0 || !timer.Active() {
 		t.Fatalf("must not quit while a window remains, quits=%d", loop.quits)
 	}
 	a.removeWindow(w2)
-	if loop.quits != 1 {
+	if loop.quits != 1 || timer.Active() {
 		t.Fatalf("must quit when the last window closes, quits=%d", loop.quits)
 	}
 }
