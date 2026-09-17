@@ -15,9 +15,9 @@ type Painter interface {
 	Destroy()
 	// NewImage snapshots src and creates a painter-native image resource. The
 	// returned image is bound to this Painter and must be destroyed when it is
-	// no longer needed. It may be created inside or outside an active frame, but
-	// its Destroy method must not be called until that frame has ended. All calls
-	// remain subject to Painter's thread affinity.
+	// no longer needed. It may be created inside or outside an active frame.
+	// Destroy immediately invalidates it, deferring native release until End
+	// when called during a frame. All calls obey Painter's thread affinity.
 	NewImage(src image.Image) (Image, error)
 	// Begin starts a frame with a surface size in physical pixels. scale is the
 	// number of physical pixels per DIP; subsequent drawing coordinates are DIP.

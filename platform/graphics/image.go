@@ -6,7 +6,9 @@ import "image"
 //
 // Images are created by Painter.NewImage and are bound to the Painter that
 // created them. They are thread-affine like their owner Painter. Destroy is
-// idempotent, but must not be called between the owner's Begin and End calls.
+// idempotent and immediately invalidates the Image for DrawImage and Update.
+// During an active frame, native release is deferred until End has consumed or
+// discarded recorded commands; drawing recorded before Destroy remains valid.
 // Painter.Destroy also destroys any images that are still alive and is likewise
 // invalid during an active frame.
 type Image interface {
