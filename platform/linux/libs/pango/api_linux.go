@@ -52,16 +52,17 @@ var (
 	pangoAttrListInsert = libpango.NewSymbol("pango_attr_list_insert")
 
 	// PangoAttribute constructors
-	pangoAttributeDestroy     = libpango.NewSymbol("pango_attribute_destroy")
-	pangoAttrFamilyNew        = libpango.NewSymbol("pango_attr_family_new")
-	pangoAttrSizeNewAbsolute  = libpango.NewSymbol("pango_attr_size_new_absolute")
-	pangoAttrSizeNew          = libpango.NewSymbol("pango_attr_size_new")
-	pangoAttrWeightNew        = libpango.NewSymbol("pango_attr_weight_new")
-	pangoAttrStretchNew       = libpango.NewSymbol("pango_attr_stretch_new")
-	pangoAttrFontFeaturesNew  = libpango.NewSymbol("pango_attr_font_features_new")
-	pangoAttrForegroundNew    = libpango.NewSymbol("pango_attr_foreground_new")
-	pangoAttrUnderlineNew     = libpango.NewSymbol("pango_attr_underline_new")
-	pangoAttrStrikethroughNew = libpango.NewSymbol("pango_attr_strikethrough_new")
+	pangoAttributeDestroy       = libpango.NewSymbol("pango_attribute_destroy")
+	pangoAttrFamilyNew          = libpango.NewSymbol("pango_attr_family_new")
+	pangoAttrSizeNewAbsolute    = libpango.NewSymbol("pango_attr_size_new_absolute")
+	pangoAttrSizeNew            = libpango.NewSymbol("pango_attr_size_new")
+	pangoAttrWeightNew          = libpango.NewSymbol("pango_attr_weight_new")
+	pangoAttrStretchNew         = libpango.NewSymbol("pango_attr_stretch_new")
+	pangoAttrFontFeaturesNew    = libpango.NewSymbol("pango_attr_font_features_new")
+	pangoAttrForegroundNew      = libpango.NewSymbol("pango_attr_foreground_new")
+	pangoAttrForegroundAlphaNew = libpango.NewSymbol("pango_attr_foreground_alpha_new")
+	pangoAttrUnderlineNew       = libpango.NewSymbol("pango_attr_underline_new")
+	pangoAttrStrikethroughNew   = libpango.NewSymbol("pango_attr_strikethrough_new")
 
 	// PangoFontDescription
 	pangoFontDescriptionNew             = libpango.NewSymbol("pango_font_description_new")
@@ -472,6 +473,13 @@ func AttrFontFeaturesNew(features string) *Attribute {
 func AttrForegroundNew(red, green, blue uint16) *Attribute {
 	// PangoAttribute* pango_attr_foreground_new(guint16 red, guint16 green, guint16 blue)
 	ret, _, _ := pangoAttrForegroundNew.CallRaw(uintptr(red), uintptr(green), uintptr(blue))
+	return goPointer[Attribute](ret)
+}
+
+// AttrForegroundAlphaNew creates a foreground opacity attribute (0..65535).
+func AttrForegroundAlphaNew(alpha uint16) *Attribute {
+	// PangoAttribute* pango_attr_foreground_alpha_new(guint16 alpha)
+	ret, _, _ := pangoAttrForegroundAlphaNew.CallRaw(uintptr(alpha))
 	return goPointer[Attribute](ret)
 }
 
