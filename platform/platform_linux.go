@@ -6,5 +6,9 @@ func newPlatform(name, appId string) (Platform, error) {
 	if name != "x11" {
 		return nil, ErrUnsupported
 	}
-	return x11.NewPlatform(appId)
+	p, err := x11.NewPlatform(appId)
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
 }
