@@ -22,6 +22,14 @@ type Application interface {
 	Settings() Settings
 	// FileDialog returns the system file dialog, or nil if it is unavailable.
 	FileDialog() FileDialog
+	// OpenURL asks the system to open an absolute URL with its registered handler.
+	// Call on the GUI thread. Errors are returned without logging or displaying
+	// a dialog. Success means request acceptance, not external app completion.
+	OpenURL(rawURL string) error
+	// OpenPath asks the default application to open a file or directory. Relative
+	// paths use the working directory; no shell expansion is performed. Like
+	// OpenURL, it runs on the GUI thread and returns the native request result.
+	OpenPath(path string) error
 	StyleSheet() style.StyleSheet
 	SetStyleSheet(style.StyleSheet)
 	NewWindow(options *WindowOptions) (Window, error)
@@ -148,6 +156,14 @@ func (a *application) Settings() Settings {
 // FileDialog returns the system file dialog, or nil if it is unavailable.
 func (a *application) FileDialog() FileDialog {
 	return a.fileDialog
+}
+
+func (a *application) OpenURL(rawURL string) error {
+	return a.platform.OpenURL(rawURL)
+}
+
+func (a *application) OpenPath(path string) error {
+	return a.platform.OpenPath(path)
 }
 
 // StyleSheet is the app's custom style sheet, or nil when none is set.

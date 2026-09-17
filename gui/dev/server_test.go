@@ -162,6 +162,10 @@ type testApplication struct {
 
 func (a *testApplication) NewTimer() *gui.Timer { panic("unexpected NewTimer") }
 
+func (a *testApplication) OpenURL(string) error { panic("unexpected OpenURL") }
+
+func (a *testApplication) OpenPath(string) error { panic("unexpected OpenPath") }
+
 func (a *testApplication) Clipboard() gui.Clipboard {
 	panic("unimplemented")
 }
