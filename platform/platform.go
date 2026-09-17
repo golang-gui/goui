@@ -158,6 +158,7 @@ var ErrUnavailable = common.ErrUnavailable
 // appId may be empty; explicit IDs are checked here before backend creation.
 // Initialize once per process. An ID does not install icon resources or turn a
 // bare macOS executable into an application bundle.
+// On failure, the returned Platform interface is nil.
 func NewPlatform(name, appId string) (Platform, error) {
 	if err := checkAppId(appId); err != nil {
 		return nil, err

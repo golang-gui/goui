@@ -6,5 +6,9 @@ func newPlatform(name, appId string) (Platform, error) {
 	if name != "win32" {
 		return nil, ErrUnsupported
 	}
-	return win32.NewPlatform(appId)
+	p, err := win32.NewPlatform(appId)
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
 }
