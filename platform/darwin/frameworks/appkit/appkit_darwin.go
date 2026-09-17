@@ -40,6 +40,7 @@ func InitAppKit() (err error) {
 	initNSSavePanel()
 	initNSOpenPanel()
 	initNSURL()
+	initNSWorkspace()
 	initNSArray()
 	initNSScreen()
 	return
@@ -1748,7 +1749,7 @@ func (p NSSavePanel) SetAllowedFileTypes(types []string) {
 }
 
 func (p NSSavePanel) SetDirectoryURL(url string) {
-	nsURL := NSURL_fileURLWithPath(ToNSString(url))
+	nsURL := NSURLClassId.FileURLWithPath(ToNSString(url))
 	p.Send(NSSavePanelSel.SetDirectoryURL, nsURL)
 }
 
@@ -1821,10 +1822,11 @@ func (p NSOpenPanel) URLs() (res NSArray) {
 	return
 }
 
-// NSURL helper
+// NSURL
 
 func initNSURL() {
 	NSURLClassId.Class = objc.GetClass("NSURL")
+	NSURLSel.URLWithString = objc.RegisterName("URLWithString:")
 	NSURLSel.FileURLWithPath = objc.RegisterName("fileURLWithPath:")
 	NSURLSel.Path = objc.RegisterName("path")
 }
@@ -1832,6 +1834,7 @@ func initNSURL() {
 var (
 	NSURLClassId NSURLClass
 	NSURLSel     struct {
+		URLWithString   objc.SEL
 		FileURLWithPath objc.SEL
 		Path            objc.SEL
 	}
@@ -1842,13 +1845,48 @@ type (
 	NSURLClass struct{ NSObjectClass }
 )
 
-func NSURL_fileURLWithPath(path NSString) (res NSURL) {
-	res.ID = objc.Send[objc.ID](objc.ID(NSURLClassId.Class), NSURLSel.FileURLWithPath, path.ID)
+func (c NSURLClass) FileURLWithPath(path NSString) (res NSURL) {
+	res.ID = c.Send(NSURLSel.FileURLWithPath, path.ID)
+	return
+}
+
+func (c NSURLClass) URLWithString(value NSString) (res NSURL) {
+	res.ID = c.Send(NSURLSel.URLWithString, value.ID)
 	return
 }
 
 func (u NSURL) Path() string {
 	return objc.Send[NSString](u.ID, NSURLSel.Path).UTF8String()
+}
+
+// NSWorkspace
+
+func initNSWorkspace() {
+	NSWorkspaceClassId.Class = objc.GetClass("NSWorkspace")
+	NSWorkspaceSel.SharedWorkspace = objc.RegisterName("sharedWorkspace")
+	NSWorkspaceSel.OpenURL = objc.RegisterName("openURL:")
+}
+
+var (
+	NSWorkspaceClassId NSWorkspaceClass
+	NSWorkspaceSel     struct {
+		SharedWorkspace objc.SEL
+		OpenURL         objc.SEL
+	}
+)
+
+type (
+	NSWorkspace      struct{ NSObject }
+	NSWorkspaceClass struct{ NSObjectClass }
+)
+
+func (c NSWorkspaceClass) SharedWorkspace() (res NSWorkspace) {
+	res.ID = c.Send(NSWorkspaceSel.SharedWorkspace)
+	return
+}
+
+func (w NSWorkspace) OpenURL(url NSURL) bool {
+	return objc.Send[bool](w.ID, NSWorkspaceSel.OpenURL, url.ID)
 }
 
 // NSModalResponse
