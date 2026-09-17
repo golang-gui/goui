@@ -102,7 +102,7 @@ func TestLinearGradientTransformAndDegeneratePoint(t *testing.T) {
 
 func TestLinearGradientPremultipliedAlpha(t *testing.T) {
 	color := interpolateGradientColor(graphics.RGBA(255, 0, 0, 255), graphics.RGBA(0, 0, 255, 0), 0.5)
-	if color.A != 0.5 || color.R != 1 || color.G != 0 || color.B != 0 {
+	if color.A != 0.5 || color.R != 0.5 || color.G != 0 || color.B != 0 {
 		t.Fatalf("unexpected premultiplied interpolation: %+v", color)
 	}
 }

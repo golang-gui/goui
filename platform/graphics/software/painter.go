@@ -467,14 +467,9 @@ func (p *Painter) setBrush(brush graphics.Brush) bool {
 func interpolateGradientColor(start, end graphics.Color, t float32) graphics.Color {
 	lerp := func(a, b float32) float32 { return a + (b-a)*t }
 	a := lerp(start.A, end.A)
-	r := lerp(start.R*start.A, end.R*end.A)
-	g := lerp(start.G*start.A, end.G*end.A)
-	b := lerp(start.B*start.A, end.B*end.A)
-	if a > 0 {
-		r /= a
-		g /= a
-		b /= a
-	}
+	r := lerp(start.R, end.R)
+	g := lerp(start.G, end.G)
+	b := lerp(start.B, end.B)
 	return graphics.Color{R: r, G: g, B: b, A: a}
 }
 
@@ -778,9 +773,6 @@ func bilinearByte(v00, v10, v01, v11 byte, tx, ty float32) byte {
 
 func (p *Painter) fillLine(c graphics.Color) {
 	r, g, b, a := c.RGBA8()
-	r = uint8(uint16(r) * uint16(a) / 255)
-	g = uint8(uint16(g) * uint16(a) / 255)
-	b = uint8(uint16(b) * uint16(a) / 255)
 	for x := 0; x < p.line.Rect.Max.X; x++ {
 		offset := p.line.PixOffset(x, 0)
 		p.line.Pix[offset] = b
@@ -850,15 +842,13 @@ func initRGBA(rgba *image.RGBA, width, height int, buf []byte) {
 }
 
 func reverseColor(c color.Color) color.RGBA {
+	// Go colors already return premultiplied channels. Only swap R/B for BGRA.
 	r, g, b, a := c.RGBA()
-	r = r * a / 65535
-	g = g * a / 65535
-	b = b * a / 65535
 	return color.RGBA{
 		R: uint8(b >> 8),
 		G: uint8(g >> 8),
 		B: uint8(r >> 8),
-		A: byte(a),
+		A: uint8(a >> 8),
 	}
 }
 
