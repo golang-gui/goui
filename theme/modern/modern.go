@@ -17,6 +17,8 @@ const (
 	Primary = "primary"
 	// MutedText is a secondary text style for Label and other text widgets.
 	MutedText = "muted-text"
+	// AccentIcon uses a contrast-adjusted accent foreground for drawing icons.
+	AccentIcon = "accent-icon"
 )
 
 // Options contains resolved appearance values, not system-following policies.
@@ -62,6 +64,8 @@ func Rules(options Options) []style.Rule {
 		style.Name("window").BackgroundColor(p.window),
 		text("widget").BackgroundColor(color.Transparent).BorderWidth(0).Radius(0),
 		text("label"),
+		style.Name("icon").ForegroundColor(p.text),
+		style.Name(AccentIcon).ForegroundColor(focus),
 		text("label").State(style.Disabled).ForegroundColor(p.disabled),
 		text(MutedText).ForegroundColor(p.muted),
 		text("header-bar").BackgroundColor(p.window),

@@ -14,6 +14,7 @@ const (
 	styleNamePopover              = "popover"
 	styleNameWidget               = "widget"
 	styleNameLabel                = "label"
+	styleNameIcon                 = "icon"
 	styleNameButton               = "button"
 	styleNameTextInput            = "text-input"
 	styleNameScrollView           = "scroll-view"
@@ -45,6 +46,7 @@ func DefaultStyleRules() []style.Rule {
 	return []style.Rule{
 		style.Name(styleNameWindow).BackgroundColor(color.White),
 		style.Name(styleNamePopover).BackgroundColor(color.White),
+		style.Name(styleNameIcon).ForegroundColor(color.Black),
 		style.Name(styleNameWidget).
 			BackgroundColor(color.Transparent).
 			ForegroundColor(color.Black).
