@@ -325,6 +325,10 @@ func newWindowTestApplication() *windowTestApplication {
 
 func (a *windowTestApplication) NewTimer() *gui.Timer { panic("unexpected NewTimer") }
 
+func (a *windowTestApplication) OpenURL(string) error { panic("unexpected OpenURL") }
+
+func (a *windowTestApplication) OpenPath(string) error { panic("unexpected OpenPath") }
+
 func (a *windowTestApplication) Platform() platform.Platform {
 	return nil
 }
