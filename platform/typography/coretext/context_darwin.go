@@ -709,11 +709,13 @@ func toRGBAColor(c color.Color) color.RGBA {
 }
 
 func createCGColor(colorSpace CGColorSpaceRef, rgba color.RGBA) CFTypeRef {
+	// CGColor components are straight; the bitmap target remains premultiplied.
+	c := color.NRGBA64Model.Convert(rgba).(color.NRGBA64)
 	components := []CGFloat{
-		float64(rgba.R) / 255.0,
-		float64(rgba.G) / 255.0,
-		float64(rgba.B) / 255.0,
-		float64(rgba.A) / 255.0,
+		float64(c.R) / 65535.0,
+		float64(c.G) / 65535.0,
+		float64(c.B) / 65535.0,
+		float64(c.A) / 65535.0,
 	}
 	return CFTypeRef(CGColorCreate(colorSpace, components))
 }

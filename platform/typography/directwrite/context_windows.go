@@ -609,12 +609,15 @@ func (p *textPainter) GetBitmap(width, height float32, buf []byte) (bitmap typog
 }
 
 func toD2dColor(c color.Color) (d2dColor d2d1.ColorF) {
-	rgba := toRGBAColor(c)
+	if c == nil {
+		c = typography.DefaultTextColor()
+	}
+	rgba := color.NRGBA64Model.Convert(c).(color.NRGBA64)
 	return d2d1.ColorF{
-		R: float32(rgba.R) / 255,
-		G: float32(rgba.G) / 255,
-		B: float32(rgba.B) / 255,
-		A: float32(rgba.A) / 255,
+		R: float32(rgba.R) / 65535,
+		G: float32(rgba.G) / 65535,
+		B: float32(rgba.B) / 65535,
+		A: float32(rgba.A) / 65535,
 	}
 }
 
