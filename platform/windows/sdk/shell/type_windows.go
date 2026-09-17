@@ -1,5 +1,28 @@
 package shell
 
+import "github.com/golang-gui/goui/platform/windows/sdk/winapi"
+
+const SEE_MASK_FLAG_NO_UI uint32 = 0x00000400
+
+// SHELLEXECUTEINFO matches SHELLEXECUTEINFOW. IconOrMonitor is the native union.
+type SHELLEXECUTEINFO struct {
+	Size          uint32
+	Mask          uint32
+	Window        winapi.HWND
+	Verb          winapi.LPCWSTR
+	File          winapi.LPCWSTR
+	Parameters    winapi.LPCWSTR
+	Directory     winapi.LPCWSTR
+	Show          int32
+	Instance      winapi.HINSTANCE
+	IDList        uintptr
+	Class         winapi.LPCWSTR
+	ClassKey      uintptr
+	HotKey        uint32
+	IconOrMonitor uintptr
+	Process       uintptr
+}
+
 // FILEOPENDIALOGOPTIONS specifies the options for an IFileDialog.
 type FILEOPENDIALOGOPTIONS uint32
 

@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"errors"
 	"runtime"
 	"syscall"
 	"unsafe"
@@ -31,7 +32,30 @@ var (
 	procExtractIconExW                          = shell32.NewSymbol("ExtractIconExW")
 	procSetCurrentProcessExplicitAppUserModelID = shell32.NewSymbol("SetCurrentProcessExplicitAppUserModelID")
 	procGetCurrentProcessExplicitAppUserModelID = shell32.NewSymbol("GetCurrentProcessExplicitAppUserModelID")
+	procShellExecuteExW                         = shell32.NewSymbol("ShellExecuteExW")
 )
+
+func ShellExecuteEx(info *SHELLEXECUTEINFO) error {
+	// The lazy CallRaw boundary takes uintptrs. Keep the native structure and
+	// its UTF-16 buffers at stable addresses until the request returns.
+	var pin runtime.Pinner
+	pin.Pin(info)
+	for _, value := range []*uint16{info.Verb, info.File, info.Parameters, info.Directory, info.Class} {
+		if value != nil {
+			pin.Pin(value)
+		}
+	}
+	defer pin.Unpin()
+	ret, _, err := procShellExecuteExW.CallRaw(uintptr(unsafe.Pointer(info)))
+	runtime.KeepAlive(info)
+	if ret == 0 {
+		if err != nil {
+			return err
+		}
+		return errors.New("ShellExecuteExW failed without an error code")
+	}
+	return nil
+}
 
 // ExtractIconEx returns the number of icons extracted. Index zero selects the
 // first icon group, not resource ID zero. Returned icons require DestroyIcon.
