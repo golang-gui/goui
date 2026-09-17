@@ -17,14 +17,14 @@ import (
 )
 
 type Painter struct {
-	ctx               Context
-	vg                *nanovgo.Context
-	images            map[*imageResource]struct{}
-	textImages        *textbitmap.ImageCache[graphics.Image]
-	textPixels        []byte
-	pendingTextImages int
-	scale             float32
-	transform         geometry.Transform
+	ctx           Context
+	vg            *nanovgo.Context
+	images        map[*imageResource]struct{}
+	textImages    *textbitmap.ImageCache[graphics.Image]
+	textPixels    []byte
+	pendingImages int
+	scale         float32
+	transform     geometry.Transform
 
 	activeFrame bool
 	transparent bool
@@ -97,7 +97,7 @@ func NewPainter(win NativeWindow) (_ graphics.Painter, err error) {
 	}
 
 	p.images = make(map[*imageResource]struct{})
-	p.textImages = textbitmap.NewImageCache(4, p.releaseTextImage)
+	p.textImages = textbitmap.NewImageCache(4, func(img graphics.Image) { img.Destroy() })
 	return p, nil
 }
 
@@ -116,9 +116,10 @@ func (p *Painter) Destroy() {
 			img.owner = nil
 			img.handle = 0
 			img.destroyed = true
+			img.pendingDestroy = false
 		}
 		clear(p.images)
-		p.pendingTextImages = 0
+		p.pendingImages = 0
 		p.textPixels = nil
 		p.vg.Delete()
 		p.vg = nil
@@ -202,11 +203,15 @@ func (p *Painter) destroyImage(img *imageResource) {
 	if img == nil || img.destroyed || img.owner != p {
 		return
 	}
+	img.destroyed = true
+	img.pendingDestroy = true
+	p.pendingImages++
 	if p.activeFrame {
-		panic("opengl: destroy image during active frame")
+		return
 	}
 	if img.handle != 0 && p.vg != nil {
 		if err := p.ctx.MakeCurrent(); err != nil {
+			// Keep the invalid resource pending for a later End or Painter.Destroy.
 			panic(fmt.Sprintf("opengl: make context current to destroy image: %v", err))
 		}
 		p.destroyImageCurrent(img)
@@ -217,7 +222,7 @@ func (p *Painter) destroyImage(img *imageResource) {
 }
 
 func (p *Painter) destroyImageCurrent(img *imageResource) {
-	if img == nil || img.destroyed || img.owner != p {
+	if img == nil || img.owner != p {
 		return
 	}
 	if img.handle != 0 && p.vg != nil {
@@ -229,7 +234,7 @@ func (p *Painter) destroyImageCurrent(img *imageResource) {
 func (p *Painter) finishImageDestroy(img *imageResource) {
 	if img.pendingDestroy {
 		img.pendingDestroy = false
-		p.pendingTextImages--
+		p.pendingImages--
 	}
 	delete(p.images, img)
 	img.owner = nil
@@ -237,23 +242,8 @@ func (p *Painter) finishImageDestroy(img *imageResource) {
 	img.destroyed = true
 }
 
-func (p *Painter) releaseTextImage(img graphics.Image) {
-	native, ok := img.(*imageResource)
-	if !ok || native == nil || native.owner != p || native.destroyed {
-		return
-	}
-	if p.activeFrame {
-		if !native.pendingDestroy {
-			native.pendingDestroy = true
-			p.pendingTextImages++
-		}
-		return
-	}
-	p.destroyImage(native)
-}
-
-func (p *Painter) flushPendingTextImages() {
-	if p.pendingTextImages == 0 {
+func (p *Painter) flushPendingImages() {
+	if p.pendingImages == 0 {
 		return
 	}
 	for img := range p.images {
@@ -279,11 +269,15 @@ func (p *Painter) Begin(width, height, scale float32) {
 }
 
 func (p *Painter) End() {
+	defer p.ctx.ClearCurrent()
+	defer func() {
+		// Discard any commands left if EndFrame panicked before submission.
+		p.vg.CancelFrame()
+		p.activeFrame = false
+		p.flushPendingImages()
+	}()
 	p.vg.EndFrame()
-	p.activeFrame = false
-	p.flushPendingTextImages()
 	p.ctx.SwapBuffers()
-	p.ctx.ClearCurrent()
 }
 
 func (p *Painter) Clear(color graphics.Color) {

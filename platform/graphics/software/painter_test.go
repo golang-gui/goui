@@ -479,7 +479,7 @@ func TestImageResourceRejectsWrongPainterAndDestroyedResource(t *testing.T) {
 	first.End()
 }
 
-func TestImageAndPainterDestroyRejectActiveFrame(t *testing.T) {
+func TestImageDestroyDuringActiveFrame(t *testing.T) {
 	var d testDrawer
 	painter, err := NewPainter(&d)
 	if err != nil {
@@ -491,8 +491,18 @@ func TestImageAndPainterDestroyRejectActiveFrame(t *testing.T) {
 	}
 
 	painter.Begin(1, 1, 1)
-	assertPanics(t, resource.Destroy)
+	painter.DrawImage(graphics.Rect(0, 0, 1, 1), resource)
 	assertPanics(t, func() { _ = resource.Update(image.NewRGBA(image.Rect(0, 0, 1, 1))) })
+	resource.Destroy()
+	resource.Destroy()
+	native := resource.(*imageResource)
+	if !native.destroyed || !native.pendingDestroy || native.bitmap.Pixels == nil || painter.(*Painter).pendingImages != 1 {
+		t.Fatal("image must be invalidated immediately, with storage retained until End")
+	}
+	if err := resource.Update(image.NewRGBA(image.Rect(0, 0, 1, 1))); err == nil {
+		t.Fatal("destroyed image accepted update")
+	}
+	assertPanics(t, func() { painter.DrawImage(graphics.Rect(0, 0, 1, 1), resource) })
 	assertPanics(t, painter.Destroy)
 	painter.End()
 

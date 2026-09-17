@@ -19,25 +19,25 @@ import (
 )
 
 type Painter struct {
-	drawable          Drawable
-	bgra              image.RGBA
-	line              image.RGBA
-	viewport          graphics.Rectangle
-	scanner           rasterx.Scanner
-	filler            *rasterx.Filler
-	stroker           *rasterx.Stroker
-	pixelBuf          []byte
-	lineBuf           []byte
-	outputBuf         []byte
-	images            map[*imageResource]struct{}
-	textImages        *textbitmap.ImageCache[graphics.Image]
-	textPixels        []byte
-	pendingTextImages int
-	scale             float32
-	transform         geometry.Transform
-	clip              image.Rectangle
-	activeFrame       bool
-	transparent       bool
+	drawable      Drawable
+	bgra          image.RGBA
+	line          image.RGBA
+	viewport      graphics.Rectangle
+	scanner       rasterx.Scanner
+	filler        *rasterx.Filler
+	stroker       *rasterx.Stroker
+	pixelBuf      []byte
+	lineBuf       []byte
+	outputBuf     []byte
+	images        map[*imageResource]struct{}
+	textImages    *textbitmap.ImageCache[graphics.Image]
+	textPixels    []byte
+	pendingImages int
+	scale         float32
+	transform     geometry.Transform
+	clip          image.Rectangle
+	activeFrame   bool
+	transparent   bool
 }
 
 type Drawable interface {
@@ -50,7 +50,7 @@ func NewPainter(drawable Drawable) (graphics.Painter, error) {
 	p.drawable = drawable
 	p.transparent = drawable.Transparent()
 	p.images = make(map[*imageResource]struct{})
-	p.textImages = textbitmap.NewImageCache(4, p.releaseTextImage)
+	p.textImages = textbitmap.NewImageCache(4, func(img graphics.Image) { img.Destroy() })
 	return p, nil
 }
 
@@ -67,9 +67,10 @@ func (p *Painter) Destroy() {
 		img.owner = nil
 		img.bitmap.Pixels = nil
 		img.destroyed = true
+		img.pendingDestroy = false
 	}
 	clear(p.images)
-	p.pendingTextImages = 0
+	p.pendingImages = 0
 	p.textPixels = nil
 }
 
@@ -113,8 +114,11 @@ func (p *Painter) destroyImage(img *imageResource) {
 	if img == nil || img.destroyed || img.owner != p {
 		return
 	}
+	img.destroyed = true
 	if p.activeFrame {
-		panic("software: destroy image during active frame")
+		img.pendingDestroy = true
+		p.pendingImages++
+		return
 	}
 	p.finishImageDestroy(img)
 }
@@ -122,7 +126,7 @@ func (p *Painter) destroyImage(img *imageResource) {
 func (p *Painter) finishImageDestroy(img *imageResource) {
 	if img.pendingDestroy {
 		img.pendingDestroy = false
-		p.pendingTextImages--
+		p.pendingImages--
 	}
 	delete(p.images, img)
 	img.owner = nil
@@ -130,23 +134,8 @@ func (p *Painter) finishImageDestroy(img *imageResource) {
 	img.destroyed = true
 }
 
-func (p *Painter) releaseTextImage(img graphics.Image) {
-	native, ok := img.(*imageResource)
-	if !ok || native == nil || native.owner != p || native.destroyed {
-		return
-	}
-	if p.activeFrame {
-		if !native.pendingDestroy {
-			native.pendingDestroy = true
-			p.pendingTextImages++
-		}
-		return
-	}
-	p.destroyImage(native)
-}
-
-func (p *Painter) flushPendingTextImages() {
-	if p.pendingTextImages == 0 {
+func (p *Painter) flushPendingImages() {
+	if p.pendingImages == 0 {
 		return
 	}
 	for img := range p.images {
@@ -180,14 +169,16 @@ func (p *Painter) Begin(width, height, scale float32) {
 }
 
 func (p *Painter) End() {
+	defer func() {
+		p.activeFrame = false
+		p.flushPendingImages()
+	}()
 	if p.transparent {
 		// Native compositors consume premultiplied pixels; Draw is synchronous.
 		err := p.drawable.Draw(graphics.Bitmap{
 			Width: p.bgra.Rect.Dx(), Height: p.bgra.Rect.Dy(),
 			Stride: p.bgra.Stride, Format: graphics.PixelFormatBGRA, Pixels: p.bgra.Pix,
 		})
-		p.activeFrame = false
-		p.flushPendingTextImages()
 		if err != nil {
 			panic(fmt.Errorf("software: present: %w", err))
 		}
@@ -207,15 +198,16 @@ func (p *Painter) End() {
 		}
 		p.outputBuf[i], p.outputBuf[i+1], p.outputBuf[i+2], p.outputBuf[i+3] = b, g, r, a
 	}
-	p.drawable.Draw(graphics.Bitmap{
+	err := p.drawable.Draw(graphics.Bitmap{
 		Width:  p.bgra.Rect.Max.X,
 		Height: p.bgra.Rect.Max.Y,
 		Stride: p.bgra.Stride,
 		Format: graphics.PixelFormatBGRA, // reversed
 		Pixels: p.outputBuf,
 	})
-	p.activeFrame = false
-	p.flushPendingTextImages()
+	if err != nil {
+		panic(fmt.Errorf("software: present: %w", err))
+	}
 }
 
 func (p *Painter) Clear(color graphics.Color) {

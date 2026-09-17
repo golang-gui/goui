@@ -48,6 +48,7 @@ type Painter struct {
 	clip                 d2d1.RectF
 	clipActive           bool
 	images               map[*imageResource]struct{}
+	pendingImages        int
 	width                uint32
 	height               uint32
 	scale                float32
@@ -363,6 +364,7 @@ func (p *Painter) releaseDeviceResources() {
 	p.deferredFrame = false
 	p.occluded = false
 	p.releaseImageNatives()
+	p.flushPendingImages()
 	p.releaseShadowResources()
 	if p.linearBrush != nil {
 		p.linearBrush.Release()
@@ -508,8 +510,19 @@ func (p *Painter) destroyImage(img *imageResource) {
 	if img == nil || img.destroyed || img.owner != p {
 		return
 	}
+	img.destroyed = true
 	if p.activeFrame {
-		panic("direct2d: destroy image during active frame")
+		img.pendingDestroy = true
+		p.pendingImages++
+		return
+	}
+	p.finishImageDestroy(img)
+}
+
+func (p *Painter) finishImageDestroy(img *imageResource) {
+	if img.pendingDestroy {
+		img.pendingDestroy = false
+		p.pendingImages--
 	}
 	delete(p.images, img)
 	bitmap := img.bitmap
@@ -519,6 +532,17 @@ func (p *Painter) destroyImage(img *imageResource) {
 	img.destroyed = true
 	if bitmap != nil {
 		bitmap.Release()
+	}
+}
+
+func (p *Painter) flushPendingImages() {
+	if p.pendingImages == 0 {
+		return
+	}
+	for img := range p.images {
+		if img.pendingDestroy {
+			p.finishImageDestroy(img)
+		}
 	}
 }
 
@@ -537,8 +561,10 @@ func (p *Painter) destroyAllImages() {
 		img.owner = nil
 		img.pixels.Pixels = nil
 		img.destroyed = true
+		img.pendingDestroy = false
 	}
 	clear(p.images)
+	p.pendingImages = 0
 }
 
 func (p *Painter) Begin(width, height, scale float32) {
@@ -630,6 +656,7 @@ func (p *Painter) End() {
 	p.SetClipRect(graphics.Rectangle{})
 	hr := p.render.EndDraw(nil, nil)
 	p.activeFrame = false
+	p.flushPendingImages()
 	if hr.Failed() {
 		p.handleDeviceFailure(hr)
 		return
@@ -1215,12 +1242,13 @@ func (p *Painter) releaseComposition() {
 }
 
 type imageResource struct {
-	owner     *Painter
-	width     int
-	height    int
-	pixels    graphics.Bitmap
-	bitmap    *d2d1.Bitmap
-	destroyed bool
+	owner          *Painter
+	width          int
+	height         int
+	pixels         graphics.Bitmap
+	bitmap         *d2d1.Bitmap
+	destroyed      bool
+	pendingDestroy bool
 }
 
 func (i *imageResource) Size() (width, height int) {
