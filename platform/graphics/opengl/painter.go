@@ -287,11 +287,7 @@ func (p *Painter) End() {
 }
 
 func (p *Painter) Clear(color graphics.Color) {
-	if p.transparent {
-		color.R *= color.A
-		color.G *= color.A
-		color.B *= color.A
-	}
+	// glClear writes framebuffer channels directly, unlike NanoVG paints.
 	gl.ClearColor(color.R, color.G, color.B, color.A)
 	gl.Clear(gl.COLOR_BUFFER_BIT)
 }
@@ -304,12 +300,8 @@ func (p *Painter) DrawBoxShadow(rect graphics.Rectangle, radius float32, shadow 
 	if !ok {
 		return
 	}
-	// NanoVG premultiplies its input; BoxShadow.Color is already premultiplied.
-	// Keep this conversion local to shadows, including the clear silhouette.
+	// The same native boundary conversion is used by all NanoVG paints.
 	color := nanoVGColor(shadow.Color)
-	color.R /= color.A
-	color.G /= color.A
-	color.B /= color.A
 	p.vg.Save()
 	defer p.vg.Restore()
 	p.vg.BeginPath()
@@ -574,7 +566,11 @@ func (p *Painter) beginDraw(strokeWidth float32, brush graphics.Brush) bool {
 }
 
 func nanoVGColor(color graphics.Color) nanovgo.Color {
-	return nanovgo.Color{R: color.R, G: color.G, B: color.B, A: color.A}
+	// NanoVG accepts straight colors and premultiplies before interpolation.
+	if color.A <= 0 {
+		return nanovgo.Color{}
+	}
+	return nanovgo.Color{R: color.R / color.A, G: color.G / color.A, B: color.B / color.A, A: color.A}
 }
 
 func (p *Painter) end() {

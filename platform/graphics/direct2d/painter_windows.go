@@ -654,7 +654,7 @@ func (p *Painter) Clear(color graphics.Color) {
 	if !p.activeFrame {
 		return
 	}
-	p.color.R, p.color.G, p.color.B, p.color.A = color.R, color.G, color.B, color.A
+	p.color = d2dColor(color)
 	p.render.Clear(&p.color)
 }
 
@@ -671,12 +671,7 @@ func (p *Painter) DrawBoxShadow(rect graphics.Rectangle, radius float32, shadow 
 	}
 	// Both the native Shadow effect and solid brush take straight alpha.
 	// Convert once so the clear fallback has exactly the same color semantics.
-	color := d2d1.ColorF{
-		R: shadow.Color.R / shadow.Color.A,
-		G: shadow.Color.G / shadow.Color.A,
-		B: shadow.Color.B / shadow.Color.A,
-		A: shadow.Color.A,
-	}
+	color := d2dColor(shadow.Color)
 	if shape.BlurRadius <= 0 {
 		p.drawClearBoxShadow(shape, color)
 		return
@@ -1069,9 +1064,18 @@ func (p *Painter) setBrush(brush graphics.Brush) *d2d1.Brush {
 }
 
 func (p *Painter) setColorBrush(color graphics.Color) *d2d1.Brush {
-	p.color.R, p.color.G, p.color.B, p.color.A = color.R, color.G, color.B, color.A
+	p.color = d2dColor(color)
 	p.colorBrush.SetColor(&p.color)
 	return &p.colorBrush.Brush
+}
+
+// Direct2D's clear, brush, gradient-stop and shadow-effect color parameters
+// always use straight alpha, independently of the target bitmap's alpha mode.
+func d2dColor(c graphics.Color) d2d1.ColorF {
+	if c.A <= 0 {
+		return d2d1.ColorF{}
+	}
+	return d2d1.ColorF{R: c.R / c.A, G: c.G / c.A, B: c.B / c.A, A: c.A}
 }
 
 func (p *Painter) setLinearGradient(gradient graphics.LinearGradient) bool {
@@ -1086,8 +1090,8 @@ func (p *Painter) setLinearGradient(gradient graphics.LinearGradient) bool {
 		}
 
 		stops := [2]d2d1.GradientStop{
-			{Position: 0, Color: d2d1.ColorF{R: gradient.StartColor.R, G: gradient.StartColor.G, B: gradient.StartColor.B, A: gradient.StartColor.A}},
-			{Position: 1, Color: d2d1.ColorF{R: gradient.EndColor.R, G: gradient.EndColor.G, B: gradient.EndColor.B, A: gradient.EndColor.A}},
+			{Position: 0, Color: d2dColor(gradient.StartColor)},
+			{Position: 1, Color: d2dColor(gradient.EndColor)},
 		}
 		var hr com.HRESULT
 		p.linearStops, hr = p.render.CreateGradientStopCollection(stops[:], d2d1.D2D1_GAMMA_2_2, d2d1.D2D1_EXTEND_MODE_CLAMP)
