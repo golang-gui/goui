@@ -1,6 +1,7 @@
 package cocoa
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -9,6 +10,7 @@ import (
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/opengl"
 	"github.com/golang-gui/goui/platform/graphics/software"
+	"github.com/golang-gui/goui/platform/internal/desktopopen"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/coretext"
 
@@ -126,6 +128,33 @@ func (p *Platform) NewClipboard() (common.Clipboard, error) {
 
 func (p *Platform) NewFileDialog() (common.FileDialog, error) {
 	return newFileDialog()
+}
+
+func (p *Platform) OpenURL(rawURL string) (err error) {
+	if err = desktopopen.ValidateURL(rawURL); err != nil {
+		return err
+	}
+	AutoReleasePool(func() {
+		url := NSURLClassId.URLWithString(ToNSString(rawURL))
+		if url.ID == 0 || !NSWorkspaceClassId.SharedWorkspace().OpenURL(url) {
+			err = errors.New("open URL: NSWorkspace rejected the request")
+		}
+	})
+	return
+}
+
+func (p *Platform) OpenPath(path string) (err error) {
+	abs, err := desktopopen.AbsolutePath(path)
+	if err != nil {
+		return err
+	}
+	AutoReleasePool(func() {
+		url := NSURLClassId.FileURLWithPath(ToNSString(abs))
+		if url.ID == 0 || !NSWorkspaceClassId.SharedWorkspace().OpenURL(url) {
+			err = errors.New("open path: NSWorkspace rejected the request")
+		}
+	})
+	return
 }
 
 func checkApplicationBundle(appId string) (err error) {

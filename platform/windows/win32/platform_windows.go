@@ -3,7 +3,9 @@ package win32
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"syscall"
+	"unsafe"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/common"
@@ -12,6 +14,7 @@ import (
 	"github.com/golang-gui/goui/platform/graphics/direct2d"
 	"github.com/golang-gui/goui/platform/graphics/opengl"
 	"github.com/golang-gui/goui/platform/graphics/software"
+	"github.com/golang-gui/goui/platform/internal/desktopopen"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/directwrite"
 	"github.com/golang-gui/goui/platform/windows/sdk/com"
@@ -166,6 +169,46 @@ func (p *Platform) NewFileDialog() (common.FileDialog, error) {
 	return newFileDialog()
 }
 
+func (p *Platform) OpenURL(rawURL string) error {
+	if err := desktopopen.ValidateURL(rawURL); err != nil {
+		return err
+	}
+	return p.openExternal(rawURL, "open URL")
+}
+
+func (p *Platform) OpenPath(path string) error {
+	abs, err := desktopopen.AbsolutePath(path)
+	if err != nil {
+		return err
+	}
+	return p.openExternal(abs, "open path")
+}
+
+func (p *Platform) openExternal(target, operation string) error {
+	if p.destroyed {
+		return fmt.Errorf("%s: %w", operation, common.ErrUnavailable)
+	}
+	file, err := syscall.UTF16PtrFromString(target)
+	if err != nil {
+		return fmt.Errorf("%s: %w", operation, err)
+	}
+	verb, _ := syscall.UTF16PtrFromString("open")
+	info := shell.SHELLEXECUTEINFO{
+		Size: uint32(unsafe.Sizeof(shell.SHELLEXECUTEINFO{})),
+		Mask: shell.SEE_MASK_FLAG_NO_UI,
+		Verb: verb,
+		File: file,
+		Show: winapi.SW_SHOWNORMAL,
+	}
+	err = shell.ShellExecuteEx(&info)
+	runtime.KeepAlive(file)
+	runtime.KeepAlive(verb)
+	if err != nil {
+		return fmt.Errorf("%s: %w", operation, err)
+	}
+	return nil
+}
+
 func newPlatform(appId string) (p *Platform, err error) {
 	p = &Platform{appId: appId}
 	resources := p
@@ -177,7 +220,9 @@ func newPlatform(appId string) (p *Platform, err error) {
 	p.instance, _ = winapi.GetModuleHandle(nil)
 
 	// Initialize COM as STA before creating any COM-dependent objects.
-	com.Initialize(com.COINIT_APARTMENTTHREADED | com.COINIT_DISABLE_OLE1DDE)
+	if hr := com.Initialize(com.COINIT_APARTMENTTHREADED | com.COINIT_DISABLE_OLE1DDE); hr.Failed() {
+		return nil, fmt.Errorf("win32: initialize COM: %w", hr)
+	}
 	if appId != "" {
 		id, _ := syscall.UTF16PtrFromString(appId)
 		if err = shell.SetCurrentProcessExplicitAppUserModelID(id); err != nil {

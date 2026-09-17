@@ -111,6 +111,16 @@ const (
 type Platform interface {
 	Destroy()
 	Name() string
+	// OpenURL asks the registered handler to open an absolute URL, including
+	// custom schemes. It does not infer a scheme or interpret filesystem paths.
+	// Invalid input and native request failures are returned. Success only means
+	// the native API accepted the request, not that the target finished opening.
+	// The call may block during dispatch, but does not wait for the target to exit.
+	OpenURL(rawURL string) error
+	// OpenPath opens a file or directory with its default application. Relative
+	// paths use the working directory; shell expressions and ~ are not expanded.
+	// Like OpenURL, this reports the native request result, not final completion.
+	OpenPath(path string) error
 	NewImage(width, height uint) (Image, error)
 	// NewWindow creates a top-level window with an initial size in DIP. Win32
 	// None/Integrated pass that size as the outer extent without frame adjustment;
