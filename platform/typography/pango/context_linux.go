@@ -226,11 +226,21 @@ func (t *TextLayout) SetTextColor(start, length int, foreground color.Color) {
 			length = len(t.text)
 		}
 
-		r, g, b, _ := foreground.RGBA()
-		attr := pango.AttrForegroundNew(uint16(r), uint16(g), uint16(b))
+		if foreground == nil {
+			foreground = typography.DefaultTextColor()
+		}
+		c := color.NRGBA64Model.Convert(foreground).(color.NRGBA64)
+		attr := pango.AttrForegroundNew(c.R, c.G, c.B)
 		attr.StartIndex = uint32(start)
 		attr.EndIndex = uint32(start + length)
 		t.attrs.Insert(attr)
+		// PangoCairo treats renderer alpha 0 as "use the default", not fully
+		// transparent. The smallest explicit alpha rounds to zero in our 8-bit
+		// text bitmap and avoids accidentally painting an opaque black run.
+		alpha := pango.AttrForegroundAlphaNew(max(c.A, 1))
+		alpha.StartIndex = uint32(start)
+		alpha.EndIndex = uint32(start + length)
+		t.attrs.Insert(alpha)
 
 		t.layout.ContextChanged()
 		t.life.Changed()
@@ -491,10 +501,11 @@ func toColor(c color.Color) (r, g, b, a float64) {
 	if c == nil {
 		c = typography.DefaultTextColor()
 	}
-	r32, g32, b32, a32 := color.RGBAModel.Convert(c).RGBA()
-	r = float64(r32) / 65535.0
-	g = float64(g32) / 65535.0
-	b = float64(b32) / 65535.0
-	a = float64(a32) / 65535.0
+	// cairo_set_source_rgba accepts straight components, not Go's RGBA values.
+	nrgba := color.NRGBA64Model.Convert(c).(color.NRGBA64)
+	r = float64(nrgba.R) / 65535.0
+	g = float64(nrgba.G) / 65535.0
+	b = float64(nrgba.B) / 65535.0
+	a = float64(nrgba.A) / 65535.0
 	return
 }
