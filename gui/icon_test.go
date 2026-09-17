@@ -219,9 +219,7 @@ func TestIconSoftwarePixels(t *testing.T) {
 }
 
 // Verify Icon uses the existing brush path without introducing an additional
-// alpha conversion. Absolute premultiplied color values are asserted above;
-// software.reverseColor currently double-premultiplies translucent brushes,
-// an existing backend issue deliberately not compensated for by Icon.
+// alpha conversion. Both paths must match the absolute premultiplied color.
 func TestIconSoftwareMatchesDirectTranslucentDrawing(t *testing.T) {
 	c := color.NRGBA{R: 255, G: 100, A: 128}
 	useTestApplication(t, &application{style: style.Sheet(style.Name("icon").ForegroundColor(c))})
@@ -242,6 +240,9 @@ func TestIconSoftwareMatchesDirectTranslucentDrawing(t *testing.T) {
 		for x := 0; x < 8; x++ {
 			got := color.RGBAModel.Convert(out.image.At(x, y))
 			want := color.RGBAModel.Convert(out.image.At(x+8, y))
+			if got != color.RGBAModel.Convert(c) {
+				t.Fatalf("incorrect premultiplied icon pixel: %v", got)
+			}
 			if got != want {
 				t.Fatalf("Icon changed translucent brush at (%d,%d): %v want %v", x, y, got, want)
 			}
