@@ -13,15 +13,7 @@ func RasterScale(deviceScale float32, transform geometry.Transform) float32 {
 		return 0
 	}
 
-	a := float64(transform.A11)
-	b := float64(transform.A12)
-	c := float64(transform.A21)
-	d := float64(transform.A22)
-
-	// The largest singular value is the maximum stretch of the transform's
-	// linear part. This stable 2x2 closed form also covers rotations, shears,
-	// reflections, and non-uniform scales.
-	stretch := (math.Hypot(a+d, c-b) + math.Hypot(a-d, c+b)) * 0.5
+	stretch := float64(transform.MaxScale())
 	rasterScale := float64(deviceScale) * stretch
 	if rasterScale <= 0 || rasterScale > math.MaxFloat32 || !finite(rasterScale) {
 		return 0
