@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/platform/internal/desktopopen"
+	"github.com/golang-gui/goui/platform/linux/libs/glib"
 
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
@@ -225,4 +227,29 @@ func (p *Platform) NewClipboard() (common.Clipboard, error) {
 
 func (p *Platform) NewFileDialog() (common.FileDialog, error) {
 	return newFileDialog()
+}
+
+func (p *Platform) OpenURL(rawURL string) error {
+	if err := desktopopen.ValidateURL(rawURL); err != nil {
+		return err
+	}
+	if err := glib.AppInfoLaunchDefaultForURI(rawURL, 0); err != nil {
+		return fmt.Errorf("open URL: %w", err)
+	}
+	return nil
+}
+
+func (p *Platform) OpenPath(path string) error {
+	abs, err := desktopopen.AbsolutePath(path)
+	if err != nil {
+		return err
+	}
+	uri, err := glib.FilenameToURI(abs)
+	if err != nil {
+		return fmt.Errorf("open path: %w", err)
+	}
+	if err := glib.AppInfoLaunchDefaultForURI(uri, 0); err != nil {
+		return fmt.Errorf("open path: %w", err)
+	}
+	return nil
 }
