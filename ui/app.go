@@ -18,8 +18,8 @@ import (
 
 // App is the running application handle passed into the Run build closure. It is
 // the running *app itself: valid for the whole run and safe to stash,
-// capture in handlers, or call from any goroutine (after Quit its methods are safe
-// no-ops).
+// capture in handlers, or call from any goroutine. After Quit, work is not
+// dispatched; result-bearing commands report ErrAppStopped as documented.
 type App interface {
 	// Post runs f on the UI thread asynchronously.
 	Post(func())
@@ -36,6 +36,15 @@ type App interface {
 	Settings() Settings
 	// FileDialog returns the system file dialog view (never nil).
 	FileDialog() FileDialog
+	// OpenURL asks the system's registered handler to open an absolute URL,
+	// including custom schemes. It executes on the GUI thread and returns the
+	// native request result, not external app completion. It may block during
+	// dispatch. After Quit, or if exit discards the request, returns ErrAppStopped.
+	OpenURL(rawURL string) error
+	// OpenPath opens a file or directory with its default application. Relative
+	// paths use the working directory at execution; no shell expansion is done.
+	// Threading, request completion and exit semantics are the same as OpenURL.
+	OpenPath(path string) error
 	// TimeoutFunc starts a one-shot GUI-thread callback. The returned timer can
 	// be stopped or restarted with the same callback. See Timer for lifetime rules.
 	// Panics if delay is not positive or fn is nil; after Quit returns an inert timer.
@@ -46,6 +55,7 @@ type App interface {
 }
 
 var (
+	ErrAppStopped      = errors.New("ui: application has stopped")
 	ErrAppRunOnce      = errors.New("ui: Run may be called only once per process")
 	ErrAppBuildNil     = errors.New("ui app build function is nil")
 	ErrWindowIDEmpty   = errors.New("ui window id is empty")
@@ -134,6 +144,18 @@ func (a *app) Sync(f func()) {
 		// Run has returned, so no in-flight UI callback can still be writing
 		// results. Queued work that did not execute is discarded.
 	}
+}
+
+func (a *app) OpenURL(rawURL string) (err error) {
+	err = ErrAppStopped
+	a.Sync(func() { err = a.gui.OpenURL(rawURL) })
+	return
+}
+
+func (a *app) OpenPath(path string) (err error) {
+	err = ErrAppStopped
+	a.Sync(func() { err = a.gui.OpenPath(path) })
+	return
 }
 
 type app struct {
