@@ -74,6 +74,19 @@ func (t Transform) TransformPoint(p Point) Point {
 	}
 }
 
+// MaxScale returns the largest stretch of the linear part (its largest
+// singular value). Translation is ignored. This includes non-uniform scale,
+// rotation, reflection and shear. Non-finite or overflowing results return zero.
+func (t Transform) MaxScale() float32 {
+	a, b := t.A11, t.A12
+	c, d := t.A21, t.A22
+	stretch := (mathx.Hypot(a+d, c-b) + mathx.Hypot(a-d, c+b)) * .5
+	if mathx.IsNaN(stretch) || stretch > math.MaxFloat32 {
+		return 0
+	}
+	return stretch
+}
+
 // Inverse returns the inverse of t. If t is non-invertible (determinant ≈ 0),
 // it returns Identity.
 func (t Transform) Inverse() Transform {
