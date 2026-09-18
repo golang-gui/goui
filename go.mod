@@ -12,8 +12,13 @@ require (
 )
 
 require (
+	github.com/golang-gui/oksvg v0.0.0-20260918033125-75e7ce872d46
 	github.com/xuges/gothread v0.0.1
-	golang.org/x/image v0.0.0-20211028202545-6944b10bf410
+	golang.org/x/image v0.24.0
+	golang.org/x/sys v0.30.0
 )
 
-require golang.org/x/sys v0.28.0 // indirect
+require (
+	golang.org/x/net v0.35.0 // indirect
+	golang.org/x/text v0.22.0 // indirect
+)
