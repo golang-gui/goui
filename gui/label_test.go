@@ -352,8 +352,9 @@ type testLabelPainter struct {
 	textLayout typography.TextLayout
 }
 
-func (p *testLabelPainter) Save()    {}
-func (p *testLabelPainter) Restore() {}
+func (p *testLabelPainter) Save()               {}
+func (p *testLabelPainter) Restore()            {}
+func (p *testLabelPainter) PixelScale() float32 { return 1 }
 
 func (p *testLabelPainter) NewImage(src image.Image) (graphics.Image, error) {
 	return newTestNativeImage(src), nil

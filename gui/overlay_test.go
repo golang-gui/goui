@@ -343,7 +343,7 @@ func TestOverlayTreeOrderPaintingClippingAndSnapshot(t *testing.T) {
 	o.ConnectOverlayPosition(second, func(_, _ geometry.Size, p *geometry.Point) { p.X, p.Y = 90, 70 })
 	o.Arrange(geometry.Rect(10, 20, 100, 80))
 	backend := new(recordingPainterBackend)
-	paintWidget(o, newPainter(backend, geometry.Rect(0, 0, 200, 200)))
+	paintWidget(o, newPainter(backend, geometry.Rect(0, 0, 200, 200), 1))
 	if len(backend.fills) != 3 {
 		t.Fatalf("unexpected paint count: %d", len(backend.fills))
 	}

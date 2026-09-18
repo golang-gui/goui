@@ -20,7 +20,7 @@ func TestPainterUsesWidgetLocalCoordinates(t *testing.T) {
 	})
 	widget.Arrange(geometry.Rect(10, 5, 100, 80))
 
-	paintWidget(widget, newPainter(backend, bounds))
+	paintWidget(widget, newPainter(backend, bounds, 1))
 
 	if len(backend.fills) != 1 {
 		t.Fatalf("expected one fill, got %d", len(backend.fills))
@@ -59,7 +59,7 @@ func TestPainterAutomaticallyPaintsChildrenInTreeOrder(t *testing.T) {
 	parent.AddChild(hidden)
 	parent.AddChild(last)
 
-	paintWidget(parent, newPainter(backend, bounds))
+	paintWidget(parent, newPainter(backend, bounds, 1))
 
 	if parent.paints != 1 || first.paints != 1 || hidden.paints != 0 || last.paints != 1 {
 		t.Fatalf("unexpected paint counts: parent=%d first=%d hidden=%d last=%d",
@@ -84,7 +84,7 @@ func TestWidgetBaseDefaultPaintStillTraversesChildren(t *testing.T) {
 	child.Arrange(geometry.Rect(5, 6, 20, 20))
 	parent.AddChild(child)
 
-	paintWidget(parent, newPainter(backend, bounds))
+	paintWidget(parent, newPainter(backend, bounds, 1))
 
 	if child.paints != 1 || len(backend.fills) != 1 {
 		t.Fatalf("WidgetBase.Paint should be a no-op without suppressing descendants: paints=%d fills=%d",
@@ -106,7 +106,7 @@ func TestPainterRestoresParentStateBeforePaintingChild(t *testing.T) {
 	child.Arrange(geometry.Rect(20, 10, 30, 20))
 	parent.AddChild(child)
 
-	paintWidget(parent, newPainter(backend, bounds))
+	paintWidget(parent, newPainter(backend, bounds, 1))
 
 	if len(backend.fills) != 1 {
 		t.Fatalf("expected child fill, got %d", len(backend.fills))
@@ -134,7 +134,7 @@ func TestPainterStructuralViewportClipDoesNotMoveWithContent(t *testing.T) {
 	root.AddChild(viewport)
 	viewport.AddChild(content)
 
-	paintWidget(root, newPainter(backend, bounds))
+	paintWidget(root, newPainter(backend, bounds, 1))
 
 	if len(backend.fills) != 1 {
 		t.Fatalf("expected one fill, got %d", len(backend.fills))
@@ -162,7 +162,7 @@ func TestPainterSuppressesEmptyClipAndCanSetAnotherClip(t *testing.T) {
 	})
 	widget.Arrange(bounds)
 
-	paintWidget(widget, newPainter(backend, bounds))
+	paintWidget(widget, newPainter(backend, bounds, 1))
 
 	if len(backend.fills) != 1 {
 		t.Fatalf("expected drawing to resume with a non-empty clip, got %d fills", len(backend.fills))
@@ -190,7 +190,7 @@ func TestPainterSaveRestoreRestoresClipAndTransform(t *testing.T) {
 	})
 	widget.Arrange(geometry.Rect(10, 5, 80, 70))
 
-	paintWidget(widget, newPainter(backend, bounds))
+	paintWidget(widget, newPainter(backend, bounds, 1))
 
 	if len(backend.fills) != 5 {
 		t.Fatalf("expected five fills, got %d", len(backend.fills))
@@ -224,7 +224,7 @@ func TestPainterRejectsRestoreAcrossWidgetBoundary(t *testing.T) {
 	widget.Arrange(bounds)
 
 	message := recoverMessage(func() {
-		paintWidget(widget, newPainter(backend, bounds))
+		paintWidget(widget, newPainter(backend, bounds, 1))
 	})
 	if !strings.Contains(message, "without matching Save") || !strings.Contains(message, `id "broken"`) {
 		t.Fatalf("unexpected panic: %q", message)
@@ -237,7 +237,7 @@ func TestPainterRejectsRestoreAcrossWidgetBoundary(t *testing.T) {
 func TestPainterReportsUnbalancedSaveAndRestoresState(t *testing.T) {
 	backend := new(recordingPainterBackend)
 	bounds := geometry.Rect(0, 0, 100, 100)
-	p := newPainter(backend, bounds)
+	p := newPainter(backend, bounds, 1)
 	broken := newPainterTestWidget(func(p Painter) {
 		p.Save()
 		p.SetClipRect(geometry.Rect(1, 2, 3, 4))
@@ -263,7 +263,7 @@ func TestPainterReportsUnbalancedSaveAndRestoresState(t *testing.T) {
 func TestPainterRestoresStateAfterWidgetPanic(t *testing.T) {
 	backend := new(recordingPainterBackend)
 	bounds := geometry.Rect(0, 0, 100, 100)
-	p := newPainter(backend, bounds)
+	p := newPainter(backend, bounds, 1)
 	broken := newPainterTestWidget(func(p Painter) {
 		p.Save()
 		p.SetClipRect(geometry.Rect(1, 2, 3, 4))

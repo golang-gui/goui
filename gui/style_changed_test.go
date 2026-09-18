@@ -40,7 +40,7 @@ func (w *styleProbe) Measure(c layout.Constraint) layout.Measurement {
 func (w *styleProbe) Paint(Painter) { w.events = append(w.events, "paint") }
 
 func paintStyleTestWidget(w Widget) {
-	paintWidget(w, newPainter(&recordingPainterBackend{}, geometry.Rect(0, 0, 400, 400)))
+	paintWidget(w, newPainter(&recordingPainterBackend{}, geometry.Rect(0, 0, 400, 400), 1))
 }
 
 func TestStyleChangedCoalescesBeforeMeasureAndPaint(t *testing.T) {
