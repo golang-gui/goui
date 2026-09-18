@@ -5,26 +5,26 @@ import (
 	"github.com/golang-gui/goui/gui"
 )
 
-// Painter, Color and IconDrawFunc share GUI's synchronous drawing contract.
+// Icon content shares GUI's drawing and immutable-resource contracts.
 type Painter = gui.Painter
 type Color = gui.Color
-type IconDrawFunc = gui.IconDrawFunc
+type IconSource = gui.IconSource
 
 type IconView struct {
 	ViewBase[IconView]
-	draw IconDrawFunc
-	size optional.Optional[float32]
+	source IconSource
+	size   optional.Optional[float32]
 }
 
 // Icon declares drawing content whose foreground comes from its own style.
-func Icon(draw IconDrawFunc) *IconView {
-	v := &IconView{draw: draw}
+func Icon(source IconSource) *IconView {
+	v := &IconView{source: source}
 	v.Self = v
 	return v
 }
 
-func (v *IconView) DrawFunc(draw IconDrawFunc) *IconView {
-	v.draw = draw
+func (v *IconView) Source(source IconSource) *IconView {
+	v.source = source
 	return v
 }
 
@@ -38,14 +38,14 @@ func (v *IconView) Size(size float32) *IconView {
 func (v *IconView) Build() View { return v }
 
 func (v *IconView) Mount(ctx BuildContext) gui.Widget {
-	icon := gui.NewIcon(v.draw)
+	icon := gui.NewIcon(v.source)
 	ctx.SetState(icon.Size())
 	return icon
 }
 
 func (v *IconView) Update(ctx BuildContext, widget gui.Widget) {
 	icon := widget.(*gui.Icon)
-	icon.SetDrawFunc(v.draw)
+	icon.SetSource(v.source)
 	if v.size.HasValue() {
 		icon.SetSize(v.size.Value())
 	} else {
@@ -54,3 +54,5 @@ func (v *IconView) Update(ctx BuildContext, widget gui.Widget) {
 }
 
 func (v *IconView) Unmount(BuildContext, gui.Widget) {}
+
+var _ WidgetView = (*IconView)(nil)

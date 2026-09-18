@@ -1,4 +1,4 @@
-// Icon 窗口验证：样式驱动的矢量／自定义绘制，不使用位图缓存或 DevServer。
+// Icon 窗口验证：样式驱动的矢量／自定义绘制，通过 Software 生成并缓存位图，不使用 DevServer。
 //
 // 环境：桌面会话及相应绘制库；记录 OS、Linux 桌面环境、后端和缩放比例。
 // 启动：go run ./tests/window/ui/icon
@@ -27,13 +27,14 @@ import (
 	"image/color"
 
 	"github.com/golang-gui/goui/core/geometry"
+	drawicon "github.com/golang-gui/goui/icon/draw"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/theme/modern"
 	"github.com/golang-gui/goui/ui"
 )
 
-func search(p ui.Painter, r geometry.Rectangle, c ui.Color) {
+func search(p graphics.Painter, r geometry.Rectangle, c ui.Color) {
 	s := r.Width
 	p.DrawEllipse(geometry.Point{X: r.X + s*.42, Y: r.Y + s*.42}, s*.25, s*.25, s*.08, c)
 	p.DrawLine(geometry.Point{X: r.X + s*.60, Y: r.Y + s*.60}, geometry.Point{X: r.X + s*.88, Y: r.Y + s*.88}, s*.08, c)
@@ -41,35 +42,39 @@ func search(p ui.Painter, r geometry.Rectangle, c ui.Color) {
 
 var checkPath = graphics.MoveTo(3, 12).LineTo(9, 18).LineTo(21, 5)
 
-func check(p ui.Painter, r geometry.Rectangle, c ui.Color) {
-	p.Save()
-	defer p.Restore()
+func check(p graphics.Painter, r geometry.Rectangle, c ui.Color) {
 	p.SetTransform(geometry.Translate(r.X, r.Y).Scale(r.Width/24, r.Height/24))
 	p.DrawPath(checkPath, 2, c)
 }
 
-func mark(p ui.Painter, r geometry.Rectangle, c ui.Color) {
+func mark(p graphics.Painter, r geometry.Rectangle, c ui.Color) {
 	p.FillEllipse(geometry.Point{X: r.X + r.Width/2, Y: r.Y + r.Height/2}, r.Width*.45, r.Height*.45,
 		ui.Color{R: 1, G: .5, A: 1})
 	p.FillRect(geometry.Rect(r.X+r.Width*.4, r.Y+r.Height*.2, r.Width*.2, r.Height*.6), c)
 }
 
-func symbol(plus bool) ui.IconDrawFunc {
-	return func(p ui.Painter, r geometry.Rectangle, c ui.Color) {
+func symbol(plus bool) *drawicon.Source {
+	return &drawicon.Source{Draw: func(p graphics.Painter, r geometry.Rectangle, c ui.Color) {
 		p.FillRect(geometry.Rect(r.X+r.Width*.2, r.Y+r.Height*.45, r.Width*.6, r.Height*.1), c)
 		if plus {
 			p.FillRect(geometry.Rect(r.X+r.Width*.45, r.Y+r.Height*.2, r.Width*.1, r.Height*.6), c)
 		}
-	}
+	}}
 }
 
 func main() {
 	dark, plus := false, true
+	searchSource, checkSource, markSource := &drawicon.Source{Draw: search}, &drawicon.Source{Draw: check}, &drawicon.Source{Draw: mark}
+	plusSource, minusSource := symbol(true), symbol(false)
 	accentIndex, sizeIndex, clicks := 0, 0, 0
 	accents := []color.Color{color.RGBA{R: 40, G: 120, B: 220, A: 255}, color.RGBA{R: 160, G: 60, B: 200, A: 255}, color.RGBA{R: 20, G: 150, B: 80, A: 255}}
 	sizes := []float32{24, 40, 16}
 	if err := ui.Run("org.golang-gui.IconTest", func(app ui.App) ui.RootView {
 		size := sizes[sizeIndex]
+		symbolSource := minusSource
+		if plus {
+			symbolSource = plusSource
+		}
 		return ui.Root().StyleSheet(modern.Sheet(modern.Options{Dark: dark, AccentColor: accents[accentIndex]})).Windows(
 			ui.Window("icons").Title("GOUI Icon validation").Size(720, 320).Chrome(ui.WindowChromeIntegrated).Content(
 				ui.VBox(
@@ -83,11 +88,11 @@ func main() {
 							ui.Button("Replace").OnClick(func() { plus = !plus; app.RequestUpdate() }),
 						).Spacing(12),
 						ui.HBox(
-							ui.Icon(search).Size(size),
-							ui.Icon(check).Size(size).Style(modern.AccentIcon),
-							ui.Icon(mark).Size(size),
-							ui.Button().Content(ui.Icon(search).Size(size)).Style(modern.Primary).OnClick(func() { clicks++; app.RequestUpdate() }),
-							ui.Icon(symbol(plus)).Size(size),
+							ui.Icon(searchSource).Size(size),
+							ui.Icon(checkSource).Size(size).Style(modern.AccentIcon),
+							ui.Icon(markSource).Size(size),
+							ui.Button().Content(ui.Icon(searchSource).Size(size)).Style(modern.Primary).OnClick(func() { clicks++; app.RequestUpdate() }),
+							ui.Icon(symbolSource).Size(size),
 						).Spacing(24).CrossAlign(layout.CrossCenter),
 						ui.Label("Search | Accent path | Two-color | Icon button | Closure"),
 					).Padding(16).Spacing(20),
