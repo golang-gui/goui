@@ -34,30 +34,30 @@ import (
 	"github.com/golang-gui/goui/ui"
 )
 
-func search(p graphics.Painter, r geometry.Rectangle, c ui.Color) {
-	s := r.Width
-	p.DrawEllipse(geometry.Point{X: r.X + s*.42, Y: r.Y + s*.42}, s*.25, s*.25, s*.08, c)
-	p.DrawLine(geometry.Point{X: r.X + s*.60, Y: r.Y + s*.60}, geometry.Point{X: r.X + s*.88, Y: r.Y + s*.88}, s*.08, c)
+func search(p graphics.Painter, size graphics.Size, c graphics.Color) {
+	s := size.Width
+	p.DrawEllipse(geometry.Point{X: s * .42, Y: s * .42}, s*.25, s*.25, s*.08, c)
+	p.DrawLine(geometry.Point{X: s * .60, Y: s * .60}, geometry.Point{X: s * .88, Y: s * .88}, s*.08, c)
 }
 
 var checkPath = graphics.MoveTo(3, 12).LineTo(9, 18).LineTo(21, 5)
 
-func check(p graphics.Painter, r geometry.Rectangle, c ui.Color) {
-	p.SetTransform(geometry.Translate(r.X, r.Y).Scale(r.Width/24, r.Height/24))
+func check(p graphics.Painter, size graphics.Size, c graphics.Color) {
+	p.SetTransform(geometry.Scale(size.Width/24, size.Height/24))
 	p.DrawPath(checkPath, 2, c)
 }
 
-func mark(p graphics.Painter, r geometry.Rectangle, c ui.Color) {
-	p.FillEllipse(geometry.Point{X: r.X + r.Width/2, Y: r.Y + r.Height/2}, r.Width*.45, r.Height*.45,
+func mark(p graphics.Painter, size graphics.Size, c graphics.Color) {
+	p.FillEllipse(geometry.Point{X: size.Width / 2, Y: size.Height / 2}, size.Width*.45, size.Height*.45,
 		ui.Color{R: 1, G: .5, A: 1})
-	p.FillRect(geometry.Rect(r.X+r.Width*.4, r.Y+r.Height*.2, r.Width*.2, r.Height*.6), c)
+	p.FillRect(geometry.Rect(size.Width*.4, size.Height*.2, size.Width*.2, size.Height*.6), c)
 }
 
 func symbol(plus bool) *drawicon.Source {
-	return &drawicon.Source{Draw: func(p graphics.Painter, r geometry.Rectangle, c ui.Color) {
-		p.FillRect(geometry.Rect(r.X+r.Width*.2, r.Y+r.Height*.45, r.Width*.6, r.Height*.1), c)
+	return &drawicon.Source{Draw: func(p graphics.Painter, size graphics.Size, c graphics.Color) {
+		p.FillRect(geometry.Rect(size.Width*.2, size.Height*.45, size.Width*.6, size.Height*.1), c)
 		if plus {
-			p.FillRect(geometry.Rect(r.X+r.Width*.45, r.Y+r.Height*.2, r.Width*.1, r.Height*.6), c)
+			p.FillRect(geometry.Rect(size.Width*.45, size.Height*.2, size.Width*.1, size.Height*.6), c)
 		}
 	}}
 }
