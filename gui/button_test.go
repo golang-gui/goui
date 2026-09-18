@@ -60,7 +60,7 @@ func TestButtonUsesWidgetBaseLayoutAndPaint(t *testing.T) {
 	}
 
 	backend := new(recordingPainterBackend)
-	paintWidget(button, newPainter(backend, geometry.Rect(0, 0, 80, 30)))
+	paintWidget(button, newPainter(backend, geometry.Rect(0, 0, 80, 30), 1))
 	if child.paints != 1 {
 		t.Fatalf("automatic traversal should paint the child, got %d", child.paints)
 	}
@@ -591,8 +591,9 @@ type testButtonBackgroundPainter struct {
 	drawBrush       graphics.Brush
 }
 
-func (p *testButtonBackgroundPainter) Save()    {}
-func (p *testButtonBackgroundPainter) Restore() {}
+func (p *testButtonBackgroundPainter) Save()               {}
+func (p *testButtonBackgroundPainter) Restore()            {}
+func (p *testButtonBackgroundPainter) PixelScale() float32 { return 1 }
 
 func (p *testButtonBackgroundPainter) NewImage(src image.Image) (graphics.Image, error) {
 	return newTestNativeImage(src), nil

@@ -136,6 +136,8 @@ func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Sty
 		pixelWidth, pixelHeight = size.Width, size.Height
 	}
 
+	bounds := geometry.Rect(0, 0, size.Width, size.Height)
+	guiPainter := newPainter(b.painter, bounds, scale)
 	b.painter.Begin(pixelWidth, pixelHeight, scale)
 	defer b.painter.End()
 	// Initialize storage independently of the visible body background. Opaque
@@ -145,8 +147,6 @@ func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Sty
 		clearColor.A = 1
 	}
 	b.painter.Clear(clearColor)
-	bounds := geometry.Rect(0, 0, size.Width, size.Height)
-	guiPainter := newPainter(b.painter, bounds)
 	guiPainter.applyState()
 	radius, _ := border.Radius()
 	if shadow.Color.A > 0 && body.Width > 0 && body.Height > 0 {

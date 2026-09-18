@@ -3,6 +3,7 @@ package gui
 import (
 	"fmt"
 	"image"
+	"math"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/graphics"
@@ -24,6 +25,10 @@ type Painter interface {
 	// NewImage snapshots src into a resource owned by the current platform
 	// Painter. The returned Image follows graphics.Image's lifecycle contract.
 	NewImage(src image.Image) (graphics.Image, error)
+	// PixelScale is the physical-pixels-per-DIP scale needed for raster content
+	// under the current transform (including its maximum stretch and HiDPI).
+	// A zero result means the scale is degenerate or non-finite.
+	PixelScale() float32
 	// SetClipRect replaces the current explicit clip within the Widget's
 	// structural bounds. rect is in Widget-local layout coordinates.
 	SetClipRect(rect geometry.Rectangle)
@@ -52,6 +57,7 @@ type painter struct {
 	state  painterState
 	saves  []painterState
 	frames []painterFrame
+	scale  float32
 
 	appliedClip  geometry.Rectangle
 	clipApplied  bool
@@ -77,9 +83,10 @@ type painterFrame struct {
 	saveDepth int
 }
 
-func newPainter(base graphics.Painter, bounds geometry.Rectangle) *painter {
+func newPainter(base graphics.Painter, bounds geometry.Rectangle, scale float32) *painter {
 	return &painter{
 		base:   base,
+		scale:  scale,
 		bounds: bounds,
 		state: painterState{
 			scopeClip: bounds,
@@ -194,6 +201,14 @@ func (p *painter) Restore() {
 
 func (p *painter) NewImage(src image.Image) (graphics.Image, error) {
 	return p.base.NewImage(src)
+}
+
+func (p *painter) PixelScale() float32 {
+	result := float64(p.scale) * float64(p.state.userXform.MaxScale())
+	if result <= 0 || result > math.MaxFloat32 || math.IsNaN(result) {
+		return 0
+	}
+	return float32(result)
 }
 
 func (p *painter) SetClipRect(rect geometry.Rectangle) {

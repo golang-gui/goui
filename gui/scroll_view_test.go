@@ -150,7 +150,7 @@ func TestScrollViewViewportDrivesPaintClipAndHitTesting(t *testing.T) {
 	}
 
 	backend := new(recordingPainterBackend)
-	paintWidget(sv, newPainter(backend, geometry.Rect(0, 0, 200, 200)))
+	paintWidget(sv, newPainter(backend, geometry.Rect(0, 0, 200, 200), 1))
 	if len(backend.fills) != 1 {
 		t.Fatalf("expected one content fill, got %d", len(backend.fills))
 	}
