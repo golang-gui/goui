@@ -804,11 +804,54 @@ const (
 	XLookupBoth     Status = 4
 )
 
-// Input-context styles. Root style keeps preedit/status in the input method's
-// own UI; it is the simplest portable choice (see DesignIME §9).
+// Input-context style masks from Xlib.h.
 const (
-	ximPreeditNothing = 0x0008
-	ximStatusNothing  = 0x0400
+	XIMPreeditCallbacks = 0x0002
+	XIMPreeditNothing   = 0x0008
+	XIMPreeditNone      = 0x0010
+	XIMStatusNothing    = 0x0400
+	XIMStatusNone       = 0x0800
+)
+
+type XIMStyles struct {
+	CountStyles     uint16
+	SupportedStyles *uintptr
+}
+
+type XIMCallback struct {
+	ClientData uintptr
+	Callback   uintptr
+}
+
+type XIMText struct {
+	Length          uint16 // characters, not bytes
+	Feedback        *uintptr
+	EncodingIsWchar int32
+	String          *byte // union: char* or wchar_t*
+}
+
+type XIMPreeditDrawCallbackStruct struct {
+	Caret, ChgFirst, ChgLength int32 // character indexes/counts
+	Text                       *XIMText
+}
+
+type XIMPreeditCaretCallbackStruct struct {
+	Position, Direction, Style int32
+}
+
+const (
+	XIMForwardChar = iota
+	XIMBackwardChar
+	XIMForwardWord
+	XIMBackwardWord
+	XIMCaretUp
+	XIMCaretDown
+	XIMNextLine
+	XIMPreviousLine
+	XIMLineStart
+	XIMLineEnd
+	XIMAbsolutePosition
+	XIMDontChange
 )
 
 // XColor represents a color in X11. Used when creating pixmap cursors.
