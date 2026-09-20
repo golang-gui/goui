@@ -2,6 +2,7 @@ package win32
 
 import (
 	"errors"
+	"strings"
 	"unicode/utf16"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -17,6 +18,7 @@ type inputMethod struct {
 	savedIMC winapi.HIMC // context detached while IME is disabled (non-text focus)
 	spot     winapi.RECT // last pushed caret rect (client physical px), deduped
 	spotSet  bool
+	charHigh uint16 // pending WM_CHAR high surrogate, cleared when focus changes
 }
 
 // newInputMethod creates the IMM32 input method for window.
@@ -37,6 +39,7 @@ func (im *inputMethod) SetEnabled(enabled bool) {
 		return
 	}
 	im.enabled = enabled
+	im.charHigh = 0
 	im.spotSet = false
 	if enabled {
 		if im.savedIMC != 0 {
@@ -99,6 +102,7 @@ func (im *inputMethod) SetCaretRect(rect geometry.Rectangle) {
 }
 
 func (im *inputMethod) Reset() {
+	im.charHigh = 0
 	if im.window == nil || im.window.hwnd == 0 {
 		return
 	}
@@ -111,6 +115,7 @@ func (im *inputMethod) Reset() {
 }
 
 func (im *inputMethod) Destroy() {
+	im.charHigh = 0
 	if im.savedIMC != 0 && im.window != nil && im.window.hwnd != 0 {
 		winapi.ImmAssociateContext(im.window.hwnd, im.savedIMC)
 		im.savedIMC = 0
@@ -121,10 +126,41 @@ func (im *inputMethod) Destroy() {
 	}
 }
 
+// handleChar delivers translated native text, independent of physical keys,
+// Shift, Caps Lock, dead keys and AltGr. Editing control characters are handled
+// by the key-event path instead. A Unicode HWND receives UTF-16 code units.
+func (im *inputMethod) handleChar(unit uint16, repeat int, composed bool) {
+	if im.window == nil || !im.enabled || im.handler == nil {
+		return
+	}
+	var text string
+	high := im.charHigh
+	im.charHigh = 0
+	if 0xd800 <= unit && unit <= 0xdbff {
+		im.charHigh = unit
+		if high == 0 {
+			return
+		}
+		text = "\ufffd"
+	} else if 0xdc00 <= unit && unit <= 0xdfff {
+		text = string(utf16.DecodeRune(rune(high), rune(unit)))
+	} else {
+		if high != 0 {
+			text = "\ufffd"
+		}
+		if unit >= 0x20 && unit != 0x7f {
+			text += string(rune(unit))
+		}
+	}
+	if text != "" {
+		im.handler(common.InputMethodResult{Kind: common.InputMethodCommit, Text: strings.Repeat(text, max(1, repeat)), Composed: composed})
+	}
+}
+
 // handleComposition handles WM_IME_COMPOSITION: a result string commits, a
 // composition string updates the inline preedit.
 func (im *inputMethod) handleComposition(lParam winapi.LPARAM) {
-	if im.window == nil || im.window.hwnd == 0 {
+	if im.window == nil || im.window.hwnd == 0 || !im.enabled {
 		return
 	}
 	himc := winapi.ImmGetContext(im.window.hwnd)
@@ -136,8 +172,12 @@ func (im *inputMethod) handleComposition(lParam winapi.LPARAM) {
 	flags := winapi.DWORD(lParam)
 	if flags&winapi.GCS_RESULTSTR != 0 {
 		if text := winapi.ImmGetCompositionString(himc, winapi.GCS_RESULTSTR); text != "" {
-			im.handler(common.InputMethodResult{Kind: common.InputMethodCommit, Text: text})
+			im.handler(common.InputMethodResult{Kind: common.InputMethodCommit, Text: text, Composed: true})
 		}
+	}
+	// A commit callback can destroy the window or move focus out of text input.
+	if im.window == nil || im.window.hwnd == 0 || !im.enabled {
+		return
 	}
 	if flags&winapi.GCS_COMPSTR != 0 {
 		text := winapi.ImmGetCompositionString(himc, winapi.GCS_COMPSTR)
@@ -148,7 +188,9 @@ func (im *inputMethod) handleComposition(lParam winapi.LPARAM) {
 
 // endComposition clears the inline preedit.
 func (im *inputMethod) endComposition() {
-	im.handler(common.InputMethodResult{Kind: common.InputMethodPreedit})
+	if im.window != nil && im.enabled && im.handler != nil {
+		im.handler(common.InputMethodResult{Kind: common.InputMethodPreedit})
+	}
 }
 
 // imeByteCaret converts a UTF-16-code-unit cursor position within the

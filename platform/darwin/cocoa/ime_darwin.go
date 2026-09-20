@@ -117,9 +117,10 @@ func imInsertText(self NSView, text string, replace NSRange) {
 	if im == nil {
 		return
 	}
+	composed := im.marked != ""
 	im.marked = ""
 	if im.handler != nil {
-		im.handler(common.InputMethodResult{Kind: common.InputMethodCommit, Text: text})
+		im.handler(common.InputMethodResult{Kind: common.InputMethodCommit, Text: text, Composed: composed})
 	}
 }
 
