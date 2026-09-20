@@ -231,7 +231,9 @@ func (p *Painter) DrawBoxShadow(rect graphics.Rectangle, radius float32, shadow 
 	defer p.filler.Clear()
 	bounds := shape.Bounds()
 	clip := p.addRect(p.filler, bounds)
-	p.setShapeClip(clip)
+	if !p.setShapeClip(clip) {
+		return
+	}
 	defer p.restoreClip()
 	inverse := p.deviceTransform().Inverse()
 	p.filler.SetColor(rasterx.ColorFunc(func(x, y int) color.Color {
@@ -257,7 +259,9 @@ func (p *Painter) FillRect(rect graphics.Rectangle, brush graphics.Brush) {
 	if p.setBrush(brush) {
 		defer p.filler.Clear()
 		clip := p.addRect(p.filler, rect)
-		p.setShapeClip(clip)
+		if !p.setShapeClip(clip) {
+			return
+		}
 		defer p.restoreClip()
 		p.filler.Draw()
 	}
@@ -267,7 +271,9 @@ func (p *Painter) FillRoundRect(rect graphics.Rectangle, radius float32, brush g
 	if p.setBrush(brush) {
 		defer p.filler.Clear()
 		clip := p.addRoundRect(p.filler, rect, radius)
-		p.setShapeClip(clip)
+		if !p.setShapeClip(clip) {
+			return
+		}
 		defer p.restoreClip()
 		p.filler.Draw()
 	}
@@ -277,7 +283,9 @@ func (p *Painter) FillEllipse(center graphics.Point, xRadius, yRadius float32, b
 	if p.setBrush(brush) {
 		defer p.filler.Clear()
 		clip := p.addEllipse(p.filler, center, xRadius, yRadius)
-		p.setShapeClip(clip)
+		if !p.setShapeClip(clip) {
+			return
+		}
 		defer p.restoreClip()
 		p.filler.Draw()
 	}
@@ -290,7 +298,9 @@ func (p *Painter) FillPath(path graphics.Path, brush graphics.Brush) {
 		if !closed {
 			p.filler.Stop(true)
 		}
-		p.setShapeClip(clip)
+		if !p.setShapeClip(clip) {
+			return
+		}
 		defer p.restoreClip()
 		p.filler.Draw()
 	}
@@ -301,7 +311,9 @@ func (p *Painter) DrawLine(p0, p1 graphics.Point, strokeWidth float32, brush gra
 		defer p.stroker.Clear()
 		p0, p1 = p.devicePoint(p0), p.devicePoint(p1)
 		strokeWidth = p.deviceStrokeWidth(strokeWidth)
-		p.setShapeClip(p.clipForPoints([]graphics.Point{p0, p1}, strokeWidth/2))
+		if !p.setShapeClip(p.clipForPoints([]graphics.Point{p0, p1}, strokeWidth/2)) {
+			return
+		}
 		defer p.restoreClip()
 		p.stroker.SetStroke(toFixedI(strokeWidth), toFixedI(4), rasterx.ButtCap, nil, rasterx.FlatGap, rasterx.MiterClip)
 
@@ -321,7 +333,9 @@ func (p *Painter) DrawRect(rect graphics.Rectangle, strokeWidth float32, brush g
 		// requested width must be configured before building the path.
 		p.stroker.SetStroke(toFixedI(strokeWidth), toFixedI(4), rasterx.ButtCap, nil, rasterx.FlatGap, rasterx.MiterClip)
 		clip := p.addRect(p.stroker, rect)
-		p.setShapeClip(clip.Inset(-uptoPixel(strokeWidth)))
+		if !p.setShapeClip(clip.Inset(-uptoPixel(strokeWidth))) {
+			return
+		}
 		defer p.restoreClip()
 		p.stroker.Draw()
 	}
@@ -333,7 +347,9 @@ func (p *Painter) DrawRoundRect(rect graphics.Rectangle, radius, strokeWidth flo
 		strokeWidth = p.deviceStrokeWidth(strokeWidth)
 		p.stroker.SetStroke(toFixedI(strokeWidth), toFixedI(4), rasterx.ButtCap, nil, rasterx.FlatGap, rasterx.MiterClip)
 		clip := p.addRoundRect(p.stroker, rect, radius)
-		p.setShapeClip(clip.Inset(-uptoPixel(strokeWidth)))
+		if !p.setShapeClip(clip.Inset(-uptoPixel(strokeWidth))) {
+			return
+		}
 		defer p.restoreClip()
 		p.stroker.Draw()
 	}
@@ -345,7 +361,9 @@ func (p *Painter) DrawEllipse(center graphics.Point, xRadius, yRadius, strokeWid
 		strokeWidth = p.deviceStrokeWidth(strokeWidth)
 		p.stroker.SetStroke(toFixedI(strokeWidth), toFixedI(4), rasterx.ButtCap, nil, rasterx.FlatGap, rasterx.MiterClip)
 		clip := p.addEllipse(p.stroker, center, xRadius, yRadius)
-		p.setShapeClip(clip.Inset(-uptoPixel(strokeWidth)))
+		if !p.setShapeClip(clip.Inset(-uptoPixel(strokeWidth))) {
+			return
+		}
 		defer p.restoreClip()
 		p.stroker.Draw()
 	}
@@ -362,7 +380,9 @@ func (p *Painter) DrawPath(path graphics.Path, strokeWidth float32, brush graphi
 			p.stroker.Stop(false)
 		}
 
-		p.setShapeClip(clip.Inset(-uptoPixel(strokeWidth)))
+		if !p.setShapeClip(clip.Inset(-uptoPixel(strokeWidth))) {
+			return
+		}
 		defer p.restoreClip()
 
 		p.stroker.Draw()
@@ -583,11 +603,18 @@ func (p *Painter) SetClipRect(rect graphics.Rectangle) {
 	p.restoreClip()
 }
 
-func (p *Painter) setShapeClip(clip image.Rectangle) {
+// setShapeClip leaves the scanner unchanged and returns false when the shape
+// cannot affect the clip. scanFT treats a zero-size clip as "unclipped", so an
+// empty intersection must never be passed through as a drawable region.
+func (p *Painter) setShapeClip(clip image.Rectangle) bool {
 	if p.clip != (image.Rectangle{}) {
 		clip = clip.Intersect(p.clip)
 	}
+	if clip.Empty() {
+		return false
+	}
 	p.scanner.SetClip(clip)
+	return true
 }
 
 func (p *Painter) restoreClip() {
@@ -619,7 +646,9 @@ func (p *Painter) drawBitmap(rect graphics.Rectangle, bitmap graphics.Bitmap) {
 	minY := min(dev[0].y, min(dev[1].y, min(dev[2].y, dev[3].y)))
 	maxX := max(dev[0].x, max(dev[1].x, max(dev[2].x, dev[3].x)))
 	maxY := max(dev[0].y, max(dev[1].y, max(dev[2].y, dev[3].y)))
-	p.setShapeClip(toClipRect(minX, minY, maxX-minX, maxY-minY))
+	if !p.setShapeClip(toClipRect(minX, minY, maxX-minX, maxY-minY)) {
+		return
+	}
 	defer p.restoreClip()
 
 	// Precompute the inverse transform so ColorFunc can map device pixels
