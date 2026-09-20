@@ -2,6 +2,7 @@ package xlib
 
 import (
 	"runtime"
+	"unsafe"
 
 	"github.com/goexlib/cgo"
 )
@@ -19,6 +20,8 @@ var (
 	xSetLocaleModifiers = libx11.NewSymbol("XSetLocaleModifiers")
 	xSetICValues        = libx11.NewSymbol("XSetICValues")
 	xVaCreateNestedList = libx11.NewSymbol("XVaCreateNestedList")
+	xGetIMValues        = libx11.NewSymbol("XGetIMValues")
+	xSetIMValues        = libx11.NewSymbol("XSetIMValues")
 
 	// spotBuf backs the XNSpotLocation pointer. The nested list keeps the pointer
 	// across XVaCreateNestedList -> XSetICValues, so it must stay put: a
@@ -31,11 +34,17 @@ var (
 // Terminated Go constants avoid both per-call copies and process-lifetime C
 // allocations. The actual pointers remain local to the calls below.
 const (
-	xnInputStyle        = "inputStyle\x00"
-	xnClientWindow      = "clientWindow\x00"
-	xnFocusWindow       = "focusWindow\x00"
-	xnPreeditAttributes = "preeditAttributes\x00"
-	xnSpotLocation      = "spotLocation\x00"
+	xnInputStyle           = "inputStyle\x00"
+	xnClientWindow         = "clientWindow\x00"
+	xnFocusWindow          = "focusWindow\x00"
+	xnPreeditAttributes    = "preeditAttributes\x00"
+	xnSpotLocation         = "spotLocation\x00"
+	xnQueryInputStyle      = "queryInputStyle\x00"
+	xnDestroyCallback      = "destroyCallback\x00"
+	xnPreeditStartCallback = "preeditStartCallback\x00"
+	xnPreeditDoneCallback  = "preeditDoneCallback\x00"
+	xnPreeditDrawCallback  = "preeditDrawCallback\x00"
+	xnPreeditCaretCallback = "preeditCaretCallback\x00"
 )
 
 // SetLocaleModifiers wires the XMODIFIERS-based input-method selection (e.g.
@@ -51,7 +60,7 @@ func SetLocaleModifiers(modifiers string) {
 }
 
 // OpenIM opens the display's input method. Returns 0 if no input method is
-// available (callers then fall back to plain keysym translation).
+// available. This does not provide a character-input fallback.
 func OpenIM(d Display) XIM {
 	ret, _, _ := xOpenIM.CallRaw(uintptr(d), 0, 0, 0)
 	return XIM(ret)
@@ -64,26 +73,94 @@ func (im XIM) Close() {
 	xCloseIM.CallRaw(uintptr(im))
 }
 
-// CreateIC creates a root-style input context bound to window. Returns 0 on
-// failure.
-func (im XIM) CreateIC(window Window) XIC {
+// SetDestroyCallback registers XNDestroyCallback. Xlib copies the descriptor;
+// its callback/client-data targets must outlive the XIM. When called, Xlib
+// destroys the XIM and all its XICs: the client must invalidate its handles,
+// not call XCloseIM or XDestroyIC on them. Returns false on attribute rejection.
+func (im XIM) SetDestroyCallback(callback XIMCallback) bool {
+	if im == 0 {
+		return false
+	}
+	name := cgo.CStringTemp(xnDestroyCallback)
+	var pin runtime.Pinner
+	pin.Pin(&callback)
+	defer pin.Unpin()
+	failed, _, _ := xSetIMValues.CallRaw(uintptr(im), uintptr(name), uintptr(unsafe.Pointer(&callback)), 0)
+	runtime.KeepAlive(name)
+	return failed == 0
+}
+
+// QueryInputStyles copies XNQueryInputStyle and frees Xlib's result. A nil slice
+// means the query failed; style selection belongs to the caller.
+func (im XIM) QueryInputStyles() []uintptr {
+	if im == 0 {
+		return nil
+	}
+	var styles *XIMStyles
+	name := cgo.CStringTemp(xnQueryInputStyle)
+	var pin runtime.Pinner
+	pin.Pin(&styles)
+	defer pin.Unpin()
+	err, _, _ := xGetIMValues.CallRaw(uintptr(im), uintptr(name), uintptr(unsafe.Pointer(&styles)), 0)
+	runtime.KeepAlive(name)
+	if styles != nil {
+		defer Free((*byte)(unsafe.Pointer(styles)))
+	}
+	if err != 0 || styles == nil {
+		return nil
+	}
+	return append([]uintptr(nil), unsafe.Slice(styles.SupportedStyles, int(styles.CountStyles))...)
+}
+
+// CreateIC binds an input context to window using the requested native style.
+// preedit supplies start/done/draw/caret callbacks in that order, or nil for a
+// style without callbacks. Xlib copies the callback descriptors; their function
+// and client-data targets must remain valid until Destroy. Returns 0 on failure.
+func (im XIM) CreateIC(window Window, style uintptr, preedit *[4]XIMCallback) XIC {
 	if im == 0 {
 		return 0
 	}
-	style := uintptr(ximPreeditNothing | ximStatusNothing)
 	inputStyle := cgo.CStringTemp(xnInputStyle)
 	clientWindow := cgo.CStringTemp(xnClientWindow)
 	focusWindow := cgo.CStringTemp(xnFocusWindow)
+	var list uintptr
+	if preedit != nil {
+		var pin runtime.Pinner
+		pin.Pin(preedit)
+		defer pin.Unpin()
+		start, done := cgo.CStringTemp(xnPreeditStartCallback), cgo.CStringTemp(xnPreeditDoneCallback)
+		draw, caret := cgo.CStringTemp(xnPreeditDrawCallback), cgo.CStringTemp(xnPreeditCaretCallback)
+		defer runtime.KeepAlive(start)
+		defer runtime.KeepAlive(done)
+		defer runtime.KeepAlive(draw)
+		defer runtime.KeepAlive(caret)
+		list, _, _ = xVaCreateNestedList.CallRaw(0,
+			uintptr(start), uintptr(unsafe.Pointer(&preedit[0])),
+			uintptr(done), uintptr(unsafe.Pointer(&preedit[1])),
+			uintptr(draw), uintptr(unsafe.Pointer(&preedit[2])),
+			uintptr(caret), uintptr(unsafe.Pointer(&preedit[3])), 0)
+		if list == 0 {
+			return 0
+		}
+		defer Free((*byte)(cgo.Pointer(list)))
+	}
+	// A null attribute name terminates varargs for the no-callback case.
+	var preeditName unsafe.Pointer
+	if list != 0 {
+		preeditName = cgo.CStringTemp(xnPreeditAttributes)
+	}
 	ret, _, _ := xCreateIC.CallRaw(
 		uintptr(im),
 		uintptr(inputStyle), style,
 		uintptr(clientWindow), uintptr(window),
 		uintptr(focusWindow), uintptr(window),
-		0,
+		uintptr(preeditName), list, 0,
 	)
 	runtime.KeepAlive(inputStyle)
 	runtime.KeepAlive(clientWindow)
 	runtime.KeepAlive(focusWindow)
+	runtime.KeepAlive(preeditName)
+	runtime.KeepAlive(preedit)
 	return XIC(ret)
 }
 
@@ -120,14 +197,12 @@ func (ic XIC) ResetIC() {
 	}
 }
 
-// SetSpot updates the input context's XNSpotLocation so the candidate window
-// follows the caret. x/y are pixels relative to the focus window, with y at the
-// bottom of the caret line. This is the well-worn root-style + spot approach
-// (used by st and others): even under XIMPreeditNothing, fcitx/ibus honor the
-// spot for candidate placement, so no font set / over-the-spot style is needed.
-func (ic XIC) SetSpot(x, y int16) {
+// SetSpot sets XNSpotLocation in focus-window physical pixels and reports
+// whether XSetICValues accepted the attributes. Support outside
+// XIMPreeditPosition is an Xlib/input-method extension, not an XIM guarantee.
+func (ic XIC) SetSpot(x, y int16) bool {
 	if ic == 0 {
-		return
+		return false
 	}
 	spotBuf.X, spotBuf.Y = x, y
 	spotLocation := cgo.CStringTemp(xnSpotLocation)
@@ -137,17 +212,26 @@ func (ic XIC) SetSpot(x, y int16) {
 	defer runtime.KeepAlive(preeditAttributes)
 	list, _, _ := xVaCreateNestedList.CallRaw(0, uintptr(spotLocation), uintptr(cgo.Pointer(&spotBuf)), 0)
 	if list == 0 {
-		return
+		return false
 	}
-	xSetICValues.CallRaw(uintptr(ic), uintptr(preeditAttributes), list, 0)
+	failed, _, _ := xSetICValues.CallRaw(uintptr(ic), uintptr(preeditAttributes), list, 0)
 	Free((*byte)(cgo.Pointer(list)))
+	return failed == 0
 }
 
 // Utf8LookupString feeds a key-press event to the input context and returns the
 // committed UTF-8 text (empty if none), the keysym, and the lookup status.
 func (ic XIC) Utf8LookupString(event *KeyEvent) (text string, keysym KeySym, status Status) {
+	// Xlib may invoke Go preedit callbacks during lookup. Pin all output slots
+	// and borrowed input storage across possible Go stack growth in a callback.
+	var pin runtime.Pinner
+	pin.Pin(event)
+	pin.Pin(&keysym)
+	pin.Pin(&status)
+	defer pin.Unpin()
 	buf := make([]byte, 64)
 	for {
+		pin.Pin(&buf[0])
 		n, _, _ := xutf8LookupString.CallRaw(
 			uintptr(ic),
 			uintptr(cgo.Pointer(event)),
@@ -172,6 +256,9 @@ func (ic XIC) Utf8LookupString(event *KeyEvent) (text string, keysym KeySym, sta
 // candidate navigation). Returns true if it did, meaning the caller must drop
 // the event. Pass window=0 to use the event's own window.
 func FilterEvent(event *Event, window Window) bool {
+	var pin runtime.Pinner
+	pin.Pin(event)
+	defer pin.Unpin()
 	ret, _, _ := xFilterEvent.CallRaw(uintptr(cgo.Pointer(event)), uintptr(window))
 	return ret != 0
 }

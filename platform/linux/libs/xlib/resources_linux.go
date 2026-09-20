@@ -20,6 +20,11 @@ func (d Display) UngrabServer() { xUngrabServer.CallRaw(uintptr(d)) }
 type ResourceDatabase uintptr
 
 func GetStringDatabase(resources string) ResourceDatabase {
+	// XrmGetStringDatabase requires a string even when it is empty;
+	// CStringTemp("") is NULL, which Xlib does not accept here.
+	if resources == "" {
+		resources = "\x00"
+	}
 	cResources := cgo.CStringTemp(resources)
 	ret, _, _ := xrmGetStringDatabase.CallRaw(uintptr(cResources))
 	runtime.KeepAlive(cResources)
