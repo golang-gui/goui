@@ -68,6 +68,15 @@ func (c *Context) NewTextLayout(text string, format typography.TextFormat, width
 	if layoutContext.IsNull() {
 		return nil, errors.New("create pango context from font map failed")
 	}
+	// Fix raster options on this layout's own shaping context. Pango installs
+	// its font options when drawing, so setting only the destination Cairo
+	// context would not guarantee grayscale alpha on transparent bitmaps.
+	options := cairo.FontOptionsCreate()
+	if options != 0 {
+		options.SetAntialias(cairo.AntialiasGray)
+		pango_cairo.ContextSetFontOptions(layoutContext, options)
+		options.Destroy()
+	}
 
 	layout := pango.LayoutNew(layoutContext)
 	if layout.IsNull() {
@@ -208,12 +217,12 @@ func (t *TextLayout) SetTextFont(start, length int, font typography.FontInfo) {
 		familyAttr := pango.AttrFamilyNew(font.Family)
 		familyAttr.StartIndex = uint32(start)
 		familyAttr.EndIndex = uint32(start + length)
-		t.attrs.Insert(familyAttr)
+		t.attrs.Change(familyAttr)
 
 		sizeAttr := pango.AttrSizeNew(int(font.Size * pango.Scale))
 		sizeAttr.StartIndex = uint32(start)
 		sizeAttr.EndIndex = uint32(start + length)
-		t.attrs.Insert(sizeAttr)
+		t.attrs.Change(sizeAttr)
 
 		t.layout.ContextChanged()
 		t.life.Changed()
@@ -233,14 +242,14 @@ func (t *TextLayout) SetTextColor(start, length int, foreground color.Color) {
 		attr := pango.AttrForegroundNew(c.R, c.G, c.B)
 		attr.StartIndex = uint32(start)
 		attr.EndIndex = uint32(start + length)
-		t.attrs.Insert(attr)
+		t.attrs.Change(attr)
 		// PangoCairo treats renderer alpha 0 as "use the default", not fully
 		// transparent. The smallest explicit alpha rounds to zero in our 8-bit
 		// text bitmap and avoids accidentally painting an opaque black run.
 		alpha := pango.AttrForegroundAlphaNew(max(c.A, 1))
 		alpha.StartIndex = uint32(start)
 		alpha.EndIndex = uint32(start + length)
-		t.attrs.Insert(alpha)
+		t.attrs.Change(alpha)
 
 		t.layout.ContextChanged()
 		t.life.Changed()
@@ -260,7 +269,7 @@ func (t *TextLayout) SetUnderline(start, length int, underline bool) {
 		attr := pango.AttrUnderlineNew(value)
 		attr.StartIndex = uint32(start)
 		attr.EndIndex = uint32(start + length)
-		t.attrs.Insert(attr)
+		t.attrs.Change(attr)
 
 		t.layout.ContextChanged()
 		t.life.Changed()
@@ -276,7 +285,7 @@ func (t *TextLayout) SetStrikethrough(start, length int, strike bool) {
 		attr := pango.AttrStrikethroughNew(strike)
 		attr.StartIndex = uint32(start)
 		attr.EndIndex = uint32(start + length)
-		t.attrs.Insert(attr)
+		t.attrs.Change(attr)
 
 		t.layout.ContextChanged()
 		t.life.Changed()
@@ -290,72 +299,63 @@ func (t *TextLayout) MeasureSize() (width, height float32) {
 
 func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []typography.TextCluster) {
 	lineCount := t.layout.GetLineCount()
-	if lineCount != 0 {
-		lines = make([]typography.TextLine, 0, lineCount)
-		clusters = make([]typography.TextCluster, 0, t.chars)
-		xOffset, _, _, _ := t.getExtents()
-		// TODO: yOffset?
-
-		iter := t.layout.GetIter()
-		var clustersBeg, clustersEnd int
-		var lastLine *pango.LayoutLine
-		for {
-			line := iter.GetLineReadonly()
-			if line == nil {
-				break
-			}
-			if line != lastLine {
-				if linesCount := len(lines); linesCount != 0 {
-					last := &lines[linesCount-1]
-					last.Clusters = clusters[clustersBeg:clustersEnd]
-					slices.SortFunc(last.Clusters, func(a, b typography.TextCluster) int {
-						return a.Start - b.Start
-					})
-					clustersBeg = clustersEnd
-				}
-				baseline := iter.GetBaseline()
-				_, lineRect := iter.GetLineExtents()
-				lines = append(lines, typography.TextLine{
-					Start:    int(line.StartIndex),
-					Length:   int(line.Length),
-					X:        (float32(lineRect.X) / pango.Scale) - xOffset,
-					Y:        float32(lineRect.Y) / pango.Scale,
-					Width:    float32(lineRect.Width) / pango.Scale,
-					Height:   float32(lineRect.Height) / pango.Scale,
-					Baseline: float32(baseline) / pango.Scale,
-				})
-				lastLine = line
-			}
-
-			run := iter.GetRunReadonly()
-			lineIndex := len(lines) - 1
-			currentLine := &lines[lineIndex]
+	if lineCount == 0 {
+		return
+	}
+	lines = make([]typography.TextLine, 0, lineCount)
+	clusters = make([]typography.TextCluster, 0, t.chars)
+	xOffset, yOffset, _, _ := t.getExtents()
+	iter := t.layout.GetIter()
+	defer iter.Free()
+	// Keep independent line/cluster cursors. NextCluster skips empty lines,
+	// while copying a line cursor on Pango 1.50.6 loses end_x_offset and can
+	// produce uninitialized X positions when advancing to the next font run.
+	clusterIter := t.layout.GetIter()
+	defer clusterIter.Free()
+	for {
+		nativeLine := iter.GetLineReadonly()
+		if nativeLine == nil {
+			break
+		}
+		_, rect := iter.GetLineExtents()
+		line := typography.TextLine{
+			Start: int(nativeLine.StartIndex), Length: int(nativeLine.Length),
+			X:     float32(rect.X)/pango.Scale - xOffset,
+			Y:     float32(rect.Y)/pango.Scale - yOffset,
+			Width: float32(rect.Width) / pango.Scale, Height: float32(rect.Height) / pango.Scale,
+			Baseline: float32(iter.GetBaseline())/pango.Scale - yOffset,
+		}
+		beg := len(clusters)
+		// NextCluster skips empty lines. Keep a separate line iterator so empty
+		// and trailing lines retain their native metrics and stable LineIndex.
+		for clusterIter.GetLineReadonly() == nativeLine {
+			run := clusterIter.GetRunReadonly()
 			if run != nil && run.Item != nil {
-				index := iter.GetIndex()
-				_, clusterRect := iter.GetClusterExtents()
+				_, clusterRect := clusterIter.GetClusterExtents()
 				clusters = append(clusters, typography.TextCluster{
-					Start:     index,
-					X:         (float32(clusterRect.X) / pango.Scale) - xOffset,
-					Y:         currentLine.Y,
-					Width:     float32(clusterRect.Width) / pango.Scale,
-					Height:    currentLine.Height,
-					LineIndex: lineIndex,
-					Direction: typography.TextDirection(run.Item.Analysis.Level),
+					Start: clusterIter.GetIndex(),
+					X:     float32(clusterRect.X)/pango.Scale - xOffset, Y: line.Y,
+					Width: float32(clusterRect.Width) / pango.Scale, Height: line.Height,
+					LineIndex: len(lines),
+					Direction: typography.TextDirection(run.Item.Analysis.Level & 1),
 				})
-				clustersEnd++
 			}
-
-			if !iter.NextCluster() {
-				currentLine.Clusters = clusters[clustersBeg:clustersEnd]
-				slices.SortFunc(currentLine.Clusters, func(a, b typography.TextCluster) int {
-					return a.Start - b.Start
-				})
+			if !clusterIter.NextCluster() {
 				break
 			}
 		}
-
-		for i := 1; i < len(clusters); i++ {
-			clusters[i-1].Length = clusters[i].Start - clusters[i-1].Start
+		line.Clusters = clusters[beg:]
+		slices.SortFunc(line.Clusters, func(a, b typography.TextCluster) int { return a.Start - b.Start })
+		for i := range line.Clusters {
+			end := line.Start + line.Length
+			if i+1 < len(line.Clusters) {
+				end = line.Clusters[i+1].Start
+			}
+			line.Clusters[i].Length = end - line.Clusters[i].Start
+		}
+		lines = append(lines, line)
+		if !iter.NextLine() {
+			break
 		}
 	}
 	return
@@ -416,7 +416,6 @@ type textPainter struct {
 	bitmap  typography.TextBitmap
 	surface cairo.Surface
 	context cairo.Context
-	options cairo.FontOptions
 }
 
 func (p *textPainter) Init(width, height float32) (err error) {
@@ -438,20 +437,10 @@ func (p *textPainter) Init(width, height float32) (err error) {
 		return fmt.Errorf("create cairo context err: %v", status)
 	}
 
-	p.options = cairo.FontOptionsCreate()
-	if p.options != 0 {
-		p.options.SetAntialias(cairo.AntialiasGray)
-		p.context.SetFontOptions(p.options)
-	}
-
 	return nil
 }
 
 func (p *textPainter) Destroy() {
-	if p.options != 0 {
-		p.options.Destroy()
-		p.options = 0
-	}
 	if p.context != 0 {
 		p.context.Destroy()
 		p.context = 0
@@ -465,19 +454,15 @@ func (p *textPainter) Destroy() {
 func (p *textPainter) DrawTextLayout(t *TextLayout, x, y, scale float32) (err error) {
 	cgo.Memset(cgo.CSlice(p.bitmap.Pixels), 0, cgo.Sizet(len(p.bitmap.Pixels)))
 	p.context.Save()
-	defer func() {
-		p.context.Restore()
-		// UpdateLayout copies cairo's transform and font options into the Pango
-		// context. Restore those inputs after rasterization so retained layouts
-		// continue to measure in logical coordinates.
-		pango_cairo.UpdateLayout(p.context, t.layout)
-	}()
+	defer p.context.Restore()
 
 	r, g, b, a := toColor(t.format.TextColor)
 	p.context.Scale(float64(scale), float64(scale))
 	p.context.SetSourceRGBA(r, g, b, a)
 	p.context.MoveTo(float64(x), float64(y))
-	pango_cairo.UpdateLayout(p.context, t.layout)
+	// Raster scale changes the device mapping, not the measured logical layout.
+	// UpdateLayout would re-shape with scale-dependent hinted advances and can
+	// change wrapping; restoring it afterwards cannot fix the pixels just drawn.
 	pango_cairo.ShowLayout(p.context, t.layout)
 	if status := p.context.Status(); status != 0 {
 		return fmt.Errorf("cairo draw pango layout err: %v", status)

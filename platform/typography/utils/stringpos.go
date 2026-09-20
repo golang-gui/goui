@@ -11,6 +11,10 @@ type StringPosition struct {
 }
 
 func CalcStringPosition(text string) (p StringPosition) {
+	// The end position is valid even for an empty string (empty lines/carets).
+	if text == "" {
+		return StringPosition{u8to16: []int{0}, u16to8: []int{0}}
+	}
 	if len(text) != 0 {
 		p.u8to16 = make([]int, 0, len(text))
 		p.u16to8 = make([]int, 0, len(text)/2)
