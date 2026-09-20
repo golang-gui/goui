@@ -13,13 +13,22 @@ type IMClient interface {
 	IMContext() IMContext
 }
 
+// IMCommit is one native text insertion. Composed means the native input method
+// identified a composition/text-service result, possibly without any preedit.
+// False does not rule out composition on APIs that cannot identify the source.
+// Editors can use this fact to separate undo groups; IMContext does not edit.
+type IMCommit struct {
+	Text     string
+	Composed bool
+}
+
 // IMContext is a text widget's handle to the input method. The widget creates
 // one with NewIMContext, connects Commit/Preedit, and reports its caret; the
 // framework does the rest — focus binding, key routing, candidate positioning.
 type IMContext interface {
 	// ConnectCommit registers a handler for committed text (ordinary typed text,
 	// a converted CJK phrase, an emoji, ...). This is the widget's text path.
-	ConnectCommit(fn func(text string)) signal.Handle
+	ConnectCommit(fn func(commit IMCommit)) signal.Handle
 	// ConnectPreedit registers a handler for the in-progress composition string.
 	// caret is the cursor position within text as a byte offset; empty text means
 	// the composition ended.
@@ -34,14 +43,14 @@ type IMContext interface {
 	Reset()
 
 	// Framework-internal
-	emitCommit(text string)
+	emitCommit(commit IMCommit)
 	emitPreedit(text string, caret int)
 	setWindow(w *window) // binds to the focused window; nil unbinds
 }
 
 // imContext is the sole IMContext implementation.
 type imContext struct {
-	commit  signal.Signal1[string]
+	commit  signal.Signal1[IMCommit]
 	preedit signal.Signal2[string, int]
 	window  *window // non-nil only while the owning widget is focused
 }
@@ -52,7 +61,7 @@ func NewIMContext() IMContext {
 	return &imContext{}
 }
 
-func (c *imContext) ConnectCommit(fn func(text string)) signal.Handle {
+func (c *imContext) ConnectCommit(fn func(commit IMCommit)) signal.Handle {
 	return c.commit.Connect(fn)
 }
 
@@ -72,6 +81,6 @@ func (c *imContext) Reset() {
 	}
 }
 
-func (c *imContext) emitCommit(text string)             { c.commit.Emit(text) }
+func (c *imContext) emitCommit(commit IMCommit)         { c.commit.Emit(commit) }
 func (c *imContext) emitPreedit(text string, caret int) { c.preedit.Emit(text, caret) }
 func (c *imContext) setWindow(w *window)                { c.window = w }

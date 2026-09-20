@@ -181,9 +181,9 @@ func newWindow(app *application, options WindowOptions) (*window, error) {
 	}
 	win.title = platformWindow.Title()
 
-	// Text input (IME) is an optional platform capability; a nil result (the
-	// platform has no input method) just means text widgets fall back to plain
-	// key events. Commit/preedit are routed to the focused widget's IMContext.
+	// Text input is optional. Without a native input method, navigation still
+	// uses KeyEvent, but GUI does not invent characters from physical keys.
+	// Commit/preedit are routed to the focused widget's IMContext.
 	win.inputMethod, _ = app.platform.NewInputMethod(platformWindow, win.onInputMethod)
 
 	// Cursor is an optional platform capability; nil means the platform controls
@@ -201,7 +201,7 @@ func (w *window) onInputMethod(r platform.InputMethodResult) {
 	}
 	switch r.Kind {
 	case platform.InputMethodCommit:
-		w.activeIM.emitCommit(r.Text)
+		w.activeIM.emitCommit(IMCommit{Text: r.Text, Composed: r.Composed})
 	case platform.InputMethodPreedit:
 		w.activeIM.emitPreedit(r.Text, r.Caret)
 	}
