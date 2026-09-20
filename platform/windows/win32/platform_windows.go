@@ -148,7 +148,11 @@ func newSoftwarePainter(surface common.Surface) (graphics.Painter, error) {
 }
 
 func (p *Platform) NewInputMethod(window common.Window, handler common.InputMethodHandler) (common.InputMethod, error) {
-	return newInputMethod(window, handler)
+	im, err := newInputMethod(window, handler)
+	if err != nil {
+		return nil, err
+	}
+	return im, nil
 }
 
 func (p *Platform) NewCursor(window common.Window) (common.Cursor, error) {

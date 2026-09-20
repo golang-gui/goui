@@ -104,10 +104,15 @@ func NewPlatform(appId string) (_ *Platform, err error) {
 
 	// Input method (IME): set the C locale from the environment, wire the
 	// XMODIFIERS-based input-method selection, then open the display's IM. A nil
-	// IM (no server / unset XMODIFIERS) degrades to plain keysym translation.
+	// IM leaves physical key events available, but does not synthesize text.
 	libc.SetLocale(libc.LC_CTYPE, "")
 	xlib.SetLocaleModifiers("")
 	p.im = xlib.OpenIM(p.display)
+	if p.im != 0 && !p.im.SetDestroyCallback(inputMethodDestroyCallback) {
+		// Do not retain an IM whose lifetime we cannot observe safely.
+		p.im.Close()
+		p.im = 0
+	}
 
 	p.helper = p.display.CreateWindow(p.defScreen.Root, 0, 0, 1, 1, 0,
 		int(p.defScreen.RootDepth), xlib.WindowClassInputOutput, p.defScreen.RootVisual, 0, nil)
@@ -206,7 +211,11 @@ func (p *Platform) NewPainter(surface common.Surface) (painter graphics.Painter,
 }
 
 func (p *Platform) NewInputMethod(window common.Window, handler common.InputMethodHandler) (common.InputMethod, error) {
-	return p.newInputMethod(window, handler)
+	im, err := p.newInputMethod(window, handler)
+	if err != nil {
+		return nil, err
+	}
+	return im, nil
 }
 
 // NewCursor creates an x11 cursor capability for window.

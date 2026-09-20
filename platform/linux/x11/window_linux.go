@@ -363,8 +363,14 @@ func handleEvent(event xlib.Event) {
 	// Give the input method first refusal on every event: during composition it
 	// consumes the keys it needs (candidate navigation, preedit editing) and we
 	// must drop them. Unconsumed keys fall through to normal handling below.
-	if platform != nil && platform.im != 0 && xlib.FilterEvent(&event, 0) {
-		return
+	if platform != nil && platform.im != 0 {
+		filtered := xlib.FilterEvent(&event, 0)
+		// Native callbacks only copy preedit data. Notify GUI after XFilterEvent
+		// returns, so a handler may safely reset/destroy its input context.
+		flushPreedit()
+		if filtered {
+			return
+		}
 	}
 
 	switch event.Type {

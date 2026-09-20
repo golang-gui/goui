@@ -42,6 +42,10 @@ type InputMethodResult struct {
 	Kind  InputMethodKind
 	Text  string
 	Caret int // byte offset within Text; meaningful for InputMethodPreedit
+	// Composed identifies a native composition/text-service commit, even when
+	// no preedit was exposed. False means ordinary character input or that the
+	// native API did not identify its source. It is not an undo policy.
+	Composed bool // meaningful for InputMethodCommit
 }
 
 // InputMethodHandler receives input-method output on the UI thread. It is a func

@@ -15,8 +15,6 @@ import (
 	"github.com/golang-gui/goui/platform/typography/coretext"
 
 	"github.com/golang-gui/goui/platform/darwin/frameworks"
-	. "github.com/golang-gui/goui/platform/darwin/frameworks/appkit"
-	. "github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
 )
 
 type Platform struct {
@@ -108,7 +106,11 @@ func (p *Platform) NewPainter(surface common.Surface) (painter graphics.Painter,
 }
 
 func (p *Platform) NewInputMethod(window common.Window, handler common.InputMethodHandler) (common.InputMethod, error) {
-	return newInputMethod(window, handler)
+	im, err := newInputMethod(window, handler)
+	if err != nil {
+		return nil, err
+	}
+	return im, nil
 }
 
 // NewCursor creates a cocoa cursor capability for window.

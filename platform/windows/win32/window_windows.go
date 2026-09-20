@@ -522,6 +522,12 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		}
 		return 0
 
+	case winapi.WM_CHAR, winapi.WM_IME_CHAR:
+		if window.im != nil {
+			window.im.handleChar(uint16(wParam), int(uintptr(lParam)&0xffff), message == winapi.WM_IME_CHAR)
+			return 0
+		}
+
 	case winapi.WM_IME_STARTCOMPOSITION:
 		if window.im != nil {
 			// Suppress the default composition window; preedit is rendered inline
@@ -532,6 +538,8 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 	case winapi.WM_IME_COMPOSITION:
 		if window.im != nil {
 			window.im.handleComposition(lParam)
+			// We consumed GCS_RESULTSTR ourselves. Do not pass it to
+			// DefWindowProc, which would synthesize a second character path.
 			return 0
 		}
 
