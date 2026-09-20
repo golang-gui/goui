@@ -337,70 +337,62 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 	clusterMetrics, _ := t.layout.GetClusterMetrics()
 	clusters = make([]typography.TextCluster, 0, len(clusterMetrics))
 
-	pos := 0
-	index := 0
-	start := 0
-	clustersEnd := 0
-
-	xOffset, _, _, _ := t.getExtends()
+	pos, index := 0, 0
+	xOffset, yOffset, _, _ := t.getExtends()
+	lineY := -yOffset
+	totalUnits := t.position.ToUtf16(len(t.text))
 
 	for lineIndex, metrics := range lineMetrics {
 		var line typography.TextLine
 		endPos := pos + int(metrics.Length)
-		endU8Pos := t.position.ToUtf8(endPos)
-		if endU8Pos == -1 {
-			endU8Pos = len(t.text)
-		}
-		line.Start = t.position.ToUtf8(pos)
-		line.Length = endU8Pos - line.Start
-		lineX, lineY, _, _ := t.layout.HitTestTextPosition(pos, false)
-		lineRangeMetrics, _ := t.layout.HitTestTextRange(pos, 1, 0, 0)
-		for _, rangeMetrics := range lineRangeMetrics {
-			lineX = min(lineX, rangeMetrics.Left)
-			lineY = min(lineY, rangeMetrics.Top)
-		}
-		lineEndX, _, _, _ := t.layout.HitTestTextPosition(endPos-1, true)
+		// DirectWrite counts an implicit end-of-text unit in the last line's
+		// length without reporting it as a newline. Clamp the content to the
+		// actual text so the phantom unit never becomes a cluster.
+		contentEnd := min(endPos-int(metrics.NewlineLength), totalUnits)
+		line.Start = t.position.ToUtf8(min(pos, totalUnits))
+		line.Length = t.position.ToUtf8(contentEnd) - line.Start
+		lineX, _, _, _ := t.layout.HitTestTextPosition(pos, false)
 		line.X = lineX - xOffset
 		line.Y = lineY
-		line.Width = lineEndX - lineX
 		line.Height = metrics.Height
 		line.Baseline = line.Y + metrics.Baseline
-
-		lastCluster := typography.TextCluster{
-			X: line.X,
-		}
-		clustersBeg := clustersEnd
-
-		end := start + int(metrics.Length)
-		for ; index < len(clusterMetrics); index++ {
-			if pos < end {
-				dwCluster := clusterMetrics[index]
-				if dwCluster.Width != 0 {
-					var cluster typography.TextCluster
-					cluster.Start = t.position.ToUtf8(pos)
-					cluster.Length = t.position.ToUtf8(pos+int(dwCluster.Length)) - cluster.Start
-					cluster.X = lastCluster.X + lastCluster.Width
-					cluster.Y = line.Y
-					cluster.Width = dwCluster.Width
-					cluster.Height = line.Height
-					cluster.LineIndex = lineIndex
-					if dwCluster.IsRightToLeft() {
-						cluster.Direction = typography.TextRightToLeft
-					}
-					lastCluster = cluster
-
-					clusters = append(clusters, cluster)
-					clustersEnd++
+		clustersBeg := len(clusters)
+		for index < len(clusterMetrics) && pos < endPos {
+			dwCluster := clusterMetrics[index]
+			clusterEnd := pos + int(dwCluster.Length)
+			// Newline positions belong to the line boundary, not the preceding
+			// visible cluster. DirectWrite also reports an implicit end-of-text
+			// cluster that is not always flagged, so only clusters fully inside
+			// the content range are emitted. Positions are still consumed so
+			// the next line starts aligned. Other zero-width clusters still
+			// carry text ranges.
+			if clusterEnd > pos && clusterEnd <= contentEnd && !dwCluster.IsNewLine() {
+				_, _, hit, _ := t.layout.HitTestTextPosition(pos, false)
+				cluster := typography.TextCluster{
+					Start: t.position.ToUtf8(pos),
+					X:     hit.Left - xOffset, Y: line.Y,
+					Width: dwCluster.Width, Height: line.Height, LineIndex: lineIndex,
 				}
-				pos += int(dwCluster.Length)
-				continue
+				cluster.Length = t.position.ToUtf8(pos+int(dwCluster.Length)) - cluster.Start
+				if dwCluster.IsRightToLeft() {
+					cluster.Direction = typography.TextRightToLeft
+				}
+				// Logical cluster order is not visual order in a bidi line.
+				if len(clusters) == clustersBeg {
+					line.X, line.Width = cluster.X, cluster.Width
+				} else {
+					right := max(line.X+line.Width, cluster.X+cluster.Width)
+					line.X = min(line.X, cluster.X)
+					line.Width = right - line.X
+				}
+				clusters = append(clusters, cluster)
 			}
-			break
+			pos = clusterEnd
+			index++
 		}
-		line.Clusters = clusters[clustersBeg:clustersEnd]
+		line.Clusters = clusters[clustersBeg:]
 		lines = append(lines, line)
-
-		start = end
+		lineY += metrics.Height
 	}
 
 	return

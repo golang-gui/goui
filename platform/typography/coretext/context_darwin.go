@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"math"
 	"slices"
+	"strings"
 
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/platform/typography"
@@ -322,6 +323,9 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 		if u8End < 0 {
 			u8End = len(t.text)
 		}
+		// CoreText includes the paragraph separator in a line's string range.
+		// Keep it out of visible clusters, as in Pango and DirectWrite.
+		u8End = u8Start + len(strings.TrimRight(t.text[u8Start:u8End], "\r\n\u2028\u2029"))
 
 		line := typography.TextLine{
 			Start:    u8Start,
@@ -334,6 +338,7 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 		}
 
 		clustersBeg := len(clusters)
+		clusterByIndex := make(map[int]int)
 
 		// Get clusters from runs
 		runs := CTLineGetGlyphRuns(li.line)
@@ -350,39 +355,43 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 
 			positions := make([]CGPoint, glyphCount)
 			CTRunGetPositions(run, CFRangeMake(0, 0), positions)
+			advances := make([]CGSize, glyphCount)
+			CTRunGetAdvances(run, CFRangeMake(0, 0), advances)
 
 			indices := make([]CFIndex, glyphCount)
 			CTRunGetStringIndices(run, CFRangeMake(0, 0), indices)
 
-			// Build clusters: group glyphs by string index
+			// A string index may map to several positioned glyphs. Group by
+			// that index (not glyph order), preserving native advance geometry.
 			for gi := 0; gi < glyphCount; gi++ {
 				u16Idx := int(indices[gi])
-				// Determine cluster width
-				var clusterWidth float64
-				if gi+1 < glyphCount {
-					clusterWidth = math.Abs(positions[gi+1].X - positions[gi].X)
-				} else {
-					// Last glyph in run - use remaining run width
-					runWidth, _, _, _ := CTRunGetTypographicBounds(run, CFRangeMake(0, 0))
-					clusterWidth = math.Abs(runWidth - positions[gi].X + positions[0].X)
-					if gi > 0 {
-						clusterWidth = math.Abs(runWidth - (positions[gi].X - positions[0].X))
-					}
-				}
-
 				u8Pos := t.position.ToUtf8(u16Idx)
+				if u8Pos < u8Start || u8Pos >= u8End {
+					continue
+				}
+				x0 := lineX + float32(positions[gi].X)
+				x1 := x0 + float32(advances[gi].Width)
+				left, right := min(x0, x1), max(x0, x1)
+				if ci, ok := clusterByIndex[u8Pos]; ok {
+					cluster := &clusters[ci]
+					right = max(right, cluster.X+cluster.Width)
+					cluster.X = min(left, cluster.X)
+					cluster.Width = right - cluster.X
+					continue
+				}
 
 				cluster := typography.TextCluster{
 					Start:     u8Pos,
-					X:         lineX + float32(positions[gi].X),
+					X:         left,
 					Y:         height - lineY, // convert Y
-					Width:     float32(clusterWidth),
+					Width:     right - left,
 					Height:    lineHeight,
 					LineIndex: lineIndex,
 				}
 				if isRTL {
 					cluster.Direction = typography.TextRightToLeft
 				}
+				clusterByIndex[u8Pos] = len(clusters)
 				clusters = append(clusters, cluster)
 			}
 		}
@@ -391,11 +400,14 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 		slices.SortFunc(line.Clusters, func(a, b typography.TextCluster) int {
 			return a.Start - b.Start
 		})
+		for i := range line.Clusters {
+			end := u8End
+			if i+1 < len(line.Clusters) {
+				end = line.Clusters[i+1].Start
+			}
+			line.Clusters[i].Length = end - line.Clusters[i].Start
+		}
 		lines = append(lines, line)
-	}
-
-	for i := 1; i < len(clusters); i++ {
-		clusters[i-1].Length = clusters[i].Start - clusters[i-1].Start
 	}
 	return
 }
