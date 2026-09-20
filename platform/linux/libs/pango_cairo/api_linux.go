@@ -51,6 +51,13 @@ func UpdateLayout(cr cairo.Context, layout pango.Layout) {
 	pangoCairoUpdateLayout.CallRaw(uintptr(cr), layout.GObject)
 }
 
+// ContextSetFontOptions copies options into the Pango context. A zero options
+// value restores the defaults inherited from the Cairo target surface.
+func ContextSetFontOptions(context pango.Context, options cairo.FontOptions) {
+	// void pango_cairo_context_set_font_options(PangoContext*, const cairo_font_options_t*)
+	pangoCairoContextSetFontOptions.CallRaw(context.GObject, uintptr(options))
+}
+
 func ShowLayout(cr cairo.Context, layout pango.Layout) {
 	// void	pango_cairo_show_layout(cairo_t* cr, PangoLayout* layout)
 	pangoCairoShowLayout.CallRaw(uintptr(cr), layout.GObject)
