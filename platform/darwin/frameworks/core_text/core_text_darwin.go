@@ -214,6 +214,13 @@ func CTRunGetPositions(run CTRunRef, r CFRange, positions []CGPoint) {
 	fnCTRunGetPositions(run, r, unsafe.Pointer(&positions[0]))
 }
 
+func CTRunGetAdvances(run CTRunRef, r CFRange, advances []CGSize) {
+	if len(advances) == 0 {
+		return
+	}
+	fnCTRunGetAdvances(run, r, unsafe.Pointer(&advances[0]))
+}
+
 func CTRunGetStringIndices(run CTRunRef, r CFRange, indices []CFIndex) {
 	if len(indices) == 0 {
 		return
@@ -454,6 +461,7 @@ var functions = []utils.Function{
 	{Name: "CTRunGetStringRange", PFunc: &fnCTRunGetStringRange},
 	{Name: "CTRunGetTypographicBounds", PFunc: &fnCTRunGetTypographicBounds},
 	{Name: "CTRunGetPositions", PFunc: &fnCTRunGetPositions},
+	{Name: "CTRunGetAdvances", PFunc: &fnCTRunGetAdvances},
 	{Name: "CTRunGetStringIndices", PFunc: &fnCTRunGetStringIndices},
 	{Name: "CTRunGetStatus", PFunc: &fnCTRunGetStatus},
 	{Name: "CTRunGetAttributes", PFunc: &fnCTRunGetAttributes},
@@ -504,6 +512,7 @@ var (
 	fnCTRunGetStringRange       func(run CTRunRef) CFRange
 	fnCTRunGetTypographicBounds func(run CTRunRef, r CFRange, ascent *CGFloat, descent *CGFloat, leading *CGFloat) CGFloat
 	fnCTRunGetPositions         func(run CTRunRef, r CFRange, positions unsafe.Pointer)
+	fnCTRunGetAdvances          func(run CTRunRef, r CFRange, advances unsafe.Pointer)
 	fnCTRunGetStringIndices     func(run CTRunRef, r CFRange, indices unsafe.Pointer)
 	fnCTRunGetStatus            func(run CTRunRef) CTRunStatus
 	fnCTRunGetAttributes        func(run CTRunRef) CFDictionaryRef
