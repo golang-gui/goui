@@ -33,6 +33,8 @@ var (
 	pangoLayoutContextChanged     = libpango.NewSymbol("pango_layout_context_changed")
 
 	// PangoLayoutIter
+	pangoLayoutIterCopy              = libpango.NewSymbol("pango_layout_iter_copy")
+	pangoLayoutIterFree              = libpango.NewSymbol("pango_layout_iter_free")
 	pangoLayoutIterGetIndex          = libpango.NewSymbol("pango_layout_iter_get_index")
 	pangoLayoutIterGetBaseline       = libpango.NewSymbol("pango_layout_iter_get_baseline")
 	pangoLayoutIterGetLineReadonly   = libpango.NewSymbol("pango_layout_iter_get_line_readonly")
@@ -50,6 +52,7 @@ var (
 	pangoAttrListNew    = libpango.NewSymbol("pango_attr_list_new")
 	pangoAttrListUnref  = libpango.NewSymbol("pango_attr_list_unref")
 	pangoAttrListInsert = libpango.NewSymbol("pango_attr_list_insert")
+	pangoAttrListChange = libpango.NewSymbol("pango_attr_list_change")
 
 	// PangoAttribute constructors
 	pangoAttributeDestroy       = libpango.NewSymbol("pango_attribute_destroy")
@@ -228,6 +231,16 @@ func (l Layout) ContextChanged() {
 
 type LayoutIter uintptr
 
+// Copy returns an independently positioned iterator, owned by the caller.
+func (iter LayoutIter) Copy() LayoutIter {
+	ret, _, _ := pangoLayoutIterCopy.CallRaw(uintptr(iter))
+	return LayoutIter(ret)
+}
+
+func (iter LayoutIter) Free() {
+	pangoLayoutIterFree.CallRaw(uintptr(iter))
+}
+
 func (iter LayoutIter) GetIndex() int {
 	// int pango_layout_iter_get_index(PangoLayoutIter* iter)
 	ret, _, _ := pangoLayoutIterGetIndex.CallRaw(uintptr(iter))
@@ -403,6 +416,13 @@ func (al AttrList) Unref() {
 func (al AttrList) Insert(attr *Attribute) {
 	// void pango_attr_list_insert(PangoAttrList* list, PangoAttribute* attr)
 	pangoAttrListInsert.CallRaw(uintptr(al), uintptr(cgo.Pointer(attr)))
+}
+
+// Change replaces attributes of the same type over attr's range and merges
+// adjacent identical attributes. The list takes ownership of attr.
+func (al AttrList) Change(attr *Attribute) {
+	// void pango_attr_list_change(PangoAttrList* list, PangoAttribute* attr)
+	pangoAttrListChange.CallRaw(uintptr(al), uintptr(cgo.Pointer(attr)))
 }
 
 // --- PangoAttribute ---
