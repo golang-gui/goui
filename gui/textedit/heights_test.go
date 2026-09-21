@@ -5,6 +5,46 @@ import (
 	"testing"
 )
 
+func TestTextHeightsUnchangedPreservesRuns(t *testing.T) {
+	for _, height := range []float32{0, -3, 1, 20, 20.3} {
+		var h HeightIndex
+		h.Reset(100000, height)
+		root, seed := h.root, h.seed
+		allocs := testing.AllocsPerRun(10, func() {
+			for i := 0; i < h.Count(); i += 17 {
+				h.Set(i, height)
+			}
+		})
+		if allocs != 0 || h.root != root || root.run != 100000 || root.left != nil || root.right != nil || h.seed != seed {
+			t.Fatalf("unchanged height %g split a run or allocated: %g", height, allocs)
+		}
+		h.Set(50000, 40.5)
+		root, seed = h.root, h.seed
+		allocs = testing.AllocsPerRun(100, func() {
+			h.Set(0, height)
+			h.Set(49999, height)
+			h.Set(50000, 40.5)
+			h.Set(99999, height)
+			h.Set(-1, 50)
+			h.Set(100000, 50)
+		})
+		if allocs != 0 || h.root != root || h.seed != seed {
+			t.Fatal("unchanged mixed-height index was modified")
+		}
+		checkHeightNode(t, h.root)
+	}
+}
+
+func BenchmarkTextHeightsUnchanged(b *testing.B) {
+	var h HeightIndex
+	h.Reset(100000, 20)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		h.Set(i%100000, 20)
+	}
+}
+
 func TestTextHeightsSplicesAgainstArray(t *testing.T) {
 	var h HeightIndex
 	h.Reset(10000, 20)
