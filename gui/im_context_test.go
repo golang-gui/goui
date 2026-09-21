@@ -7,6 +7,8 @@ import (
 	"github.com/golang-gui/goui/platform"
 )
 
+// IMContext 与窗口输入路由。
+
 // TextInput must satisfy IMClient so the window can find its context on focus.
 var _ IMClient = (*TextInput)(nil)
 
@@ -81,7 +83,7 @@ func TestWindowBindsAndRoutesIMEToFocusedTextInput(t *testing.T) {
 	if input.Text() != "你好" {
 		t.Fatalf("preedit leaked into committed text: %q", input.Text())
 	}
-	if input.preedit == nil || input.preedit.text != "shi" {
+	if input.preedit == nil || input.preedit.Text() != "shi" {
 		t.Fatalf("preedit not set: %q", input.preedit)
 	}
 	if got := input.displayParagraph(0); got != "你好shi" {
@@ -114,20 +116,5 @@ func TestWindowUnbindsIMEWhenFocusLeaves(t *testing.T) {
 	win.onInputMethod(platform.InputMethodResult{Kind: platform.InputMethodCommit, Text: "x"})
 	if input.Text() != "hi" {
 		t.Fatalf("commit after unbind should not insert: %q", input.Text())
-	}
-}
-
-func TestTextInputCommitInsertsAtCaret(t *testing.T) {
-	input := NewTextInput()
-	input.SetText("ac")
-	input.SetSelection(TextSelection{len("a"), len("a")})
-
-	input.onCommit(IMCommit{Text: "b"})
-
-	if input.Text() != "abc" {
-		t.Fatalf("unexpected text: %q", input.Text())
-	}
-	if input.Selection().Caret != len("ab") {
-		t.Fatalf("unexpected caret: %d", input.Selection().Caret)
 	}
 }

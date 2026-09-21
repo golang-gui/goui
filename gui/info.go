@@ -39,6 +39,8 @@ type WidgetInfo struct {
 	// Children preserves back-to-front order for retained widget siblings.
 	// Semantic filtering means this is not a complete pointer-picking tree.
 	Children []WidgetInfo `json:"children"`
+	// TextEditing is range-labelled editor state, not an input shortcut.
+	TextEditing *TextEditingInfo `json:"textEditing,omitempty"`
 
 	// Scroll state (omitempty: absent on non-scrolling widgets).
 	ScrollY      float32 `json:"scrollY,omitempty"`      // current scroll offset
@@ -48,6 +50,27 @@ type WidgetInfo struct {
 	ItemCount    int     `json:"itemCount,omitempty"`    // ListView: total items (virtualized)
 	VisibleStart int     `json:"visibleStart,omitempty"` // ListView: first visible index
 	VisibleEnd   int     `json:"visibleEnd,omitempty"`   // ListView: last visible index
+}
+
+// TextEditingInfo describes an editor without materializing an entire large
+// document. VisibleText corresponds exactly to VisibleRange (UTF-8 bytes) and
+// may be truncated; Length is the size of the complete document.
+type TextEditingInfo struct {
+	ReadOnly     bool          `json:"readOnly"`
+	Selection    TextSelection `json:"selection"`
+	Length       int           `json:"length"`
+	VisibleRange TextRange     `json:"visibleRange"`
+	VisibleText  string        `json:"visibleText"`
+	// Preedit describes temporary, uncommitted text separately. VisibleText
+	// and its range always refer to the committed model, even during IME.
+	Preedit *TextPreeditInfo `json:"preedit,omitempty"`
+}
+
+type TextPreeditInfo struct {
+	Replacement TextRange `json:"replacement"`
+	Text        string    `json:"text"`
+	Caret       int       `json:"caret"`  // UTF-8 bytes within the complete preedit text
+	Length      int       `json:"length"` // Text may be a bounded prefix
 }
 
 type Role string
@@ -61,6 +84,7 @@ const (
 	RoleButton        Role = "button"
 	RoleImage         Role = "image"
 	RoleTextInput     Role = "textinput"
+	RoleTextView      Role = "textview"
 	RoleScrollView    Role = "scrollview" // scrollable container (WAI-ARIA: scrollbar host)
 	RoleScrollBar     Role = "scrollbar"  // scrollbar control (WAI-ARIA: scrollbar)
 	RoleList          Role = "list"       // virtualized list (WAI-ARIA: list)
