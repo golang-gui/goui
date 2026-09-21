@@ -22,6 +22,14 @@ type editorTypography struct{ testTypography }
 func (c *editorTypography) NewTextLayout(text string, format typography.TextFormat, width, height float32) (typography.TextLayout, error) {
 	l, _ := c.testTypography.NewTextLayout(text, format, width, height)
 	p := l.(*testTextLayout)
+	p.resized = func() { layoutEditorFixture(p) }
+	layoutEditorFixture(p)
+	return p, nil
+}
+
+func layoutEditorFixture(p *testTextLayout) {
+	text, format, width := p.text, p.format, p.width
+	p.lines, p.clusters = nil, nil
 	line := typography.TextLine{Height: 20, Baseline: 15}
 	x, y := float32(0), float32(0)
 	for offset, r := range text {
@@ -40,7 +48,6 @@ func (c *editorTypography) NewTextLayout(text string, format typography.TextForm
 	line.Width = x
 	p.lines = append(p.lines, line)
 	p.measureSize = geometry.Size{Width: x, Height: y + 20}
-	return p, nil
 }
 
 func newEditorFixture(t *testing.T, text string) (*TextView, *window, *editorTypography) {
