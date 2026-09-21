@@ -1,604 +1,102 @@
 package gui
 
 import (
-	"unicode/utf8"
-
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
+	"github.com/golang-gui/goui/gui/textedit"
 	"github.com/golang-gui/goui/layout"
-	"github.com/golang-gui/goui/platform/events"
-	"github.com/golang-gui/goui/platform/graphics"
-	"github.com/golang-gui/goui/platform/typography"
-	"github.com/golang-gui/goui/style"
 )
 
 const (
-	defaultTextInputWidth   = 160
-	defaultTextInputPadding = 4
-	textInputCaretWidth     = 1
-	textInputMeasureExtent  = 1 << 20
-	// textInputHeightSample includes a Latin ascender (A), a Latin descender
-	// (g) and a CJK rune so the measured line height covers every script the
-	// field may show. CJK glyphs have larger ascent/descent than Latin, so
-	// sizing the box from a Latin-only estimate clips CJK text.
+	defaultTextInputWidth  = 160
+	textInputMeasureExtent = 1 << 20
+	// Measure a stable mixed-script line, independent of field contents.
 	textInputHeightSample = "Ag中"
 )
 
+// TextInput is a single-line editor with its own private document/history.
+// It shares editing operations with TextView, not a child Widget or model.
 type TextInput struct {
 	WidgetBase
-	padding      float32 // self-held: text input self-draws content with an inner inset
-	text         string
-	caret        int
-	preedit      string // active input-method composition, not part of text
-	preeditCaret int    // caret byte offset within preedit
-	im           IMContext
-	key          *KeyEventController
-	textSignal   signal.Signal1[string]
-
-	// TextLayout cache. Reused across Paint calls. Invalidated by setText /
-	// setPreedit / SetPadding / StyleChanged. Released on unmount.
-	cachedLayout  typography.TextLayout
-	cachedDisplay string
-	layoutValid   bool
+	*textEditor
+	textSignal signal.Signal1[string]
 }
 
 func NewTextInput() *TextInput {
-	input := new(TextInput)
-	input.SetFocusable(true)
-	input.SetCursor(CursorText)
-	input.padding = defaultTextInputPadding
-	input.im = NewIMContext()
-	input.im.ConnectCommit(input.onCommit)
-	input.im.ConnectPreedit(input.onPreedit)
-	input.key = NewKeyEventController()
-	input.key.ConnectKeyDown(input.handleKeyDown)
-	input.AddEventController(input.key)
-	input.ConnectUnmount(input.releaseLayout)
-	return input
+	t := &TextInput{}
+	t.textEditor = newTextEditor(t, true)
+	t.connectChange(func(TextChange) { t.textSignal.Emit(t.Text()) })
+	return t
 }
 
-// IMContext satisfies IMClient: the window binds this context to the native
-// input method while the field is focused (see doc/DesignIME.md §6).
-func (t *TextInput) IMContext() IMContext { return t.im }
+func (t *TextInput) Text() string { return t.model.Text() }
 
-// onCommit inserts input-method-committed text at the caret and clears any
-// preedit. This is the field's real text-insertion path.
-func (t *TextInput) onCommit(text string) {
-	t.setPreedit("", 0)
-	t.insertText(text)
-}
-
-// onPreedit updates the in-progress composition shown inline before the caret.
-func (t *TextInput) onPreedit(text string, caret int) {
-	t.setPreedit(text, caret)
-}
-
-func (t *TextInput) setPreedit(text string, caret int) {
-	if t.preedit == text && t.preeditCaret == caret {
-		return
-	}
-	t.preedit = text
-	t.preeditCaret = caret
-	t.invalidateLayout()
-	t.RequestLayout()
-}
-
-// displayText is the committed text with the active preedit spliced in at the
-// caret. Text() still returns committed text only.
-func (t *TextInput) displayText() string {
-	if t.preedit == "" {
-		return t.text
-	}
-	caret := clampCaret(t.text, t.caret)
-	return t.text[:caret] + t.preedit + t.text[caret:]
-}
-
-// displayCaret is the visible caret byte offset within displayText — inside the
-// preedit while composing.
-func (t *TextInput) displayCaret() int {
-	caret := clampCaret(t.text, t.caret)
-	if t.preedit == "" {
-		return caret
-	}
-	return caret + clampCaret(t.preedit, t.preeditCaret)
-}
-
-func (t *TextInput) Padding() float32 { return t.padding }
-
-// SetPadding sets the inner padding. Negative and non-finite values become 0.
-func (t *TextInput) SetPadding(padding float32) {
-	padding = normalizeLayoutValue(padding)
-	if t.padding == padding {
-		return
-	}
-	t.padding = padding
-	t.invalidateLayout()
-	t.RequestLayout()
-}
-
-func (t *TextInput) Text() string {
-	return t.text
-}
-
+// SetText reloads normalized single-line text: CR/CRLF become LF, each LF
+// becomes a space, and invalid UTF-8 is replaced. A changed value cancels IME,
+// clears history and puts the caret at the end. Equal text is a complete no-op.
 func (t *TextInput) SetText(text string) {
-	t.setText(text, len(text))
+	text = textedit.NormalizeSingleLine(text)
+	if t.model.EqualText(text) {
+		return
+	}
+	model, epoch := t.model, t.mountEpoch
+	t.cancelPreedit(true)
+	if t.destroyed || t.model != model || t.mountEpoch != epoch {
+		return
+	}
+	model.SetText(text)
+	if t.suspended && t.model == model && t.mountEpoch == epoch {
+		// The private model is disconnected on unmount. Explicit setters still
+		// update the field and emit notifications while detached.
+		t.selection = TextSelection{len(text), len(text)}
+		t.seenRevision = model.Revision()
+		t.resetParagraphs()
+		t.textSignal.Emit(text)
+	}
 }
 
-func (t *TextInput) ConnectText(fn func(string)) signal.Handle {
-	return t.textSignal.Connect(fn)
+func (t *TextInput) ConnectText(fn func(string)) signal.Handle { return t.textSignal.Connect(fn) }
+
+// ConnectSubmit reports an unconsumed Enter key. It does not insert a newline.
+func (t *TextInput) ConnectSubmit(fn func()) signal.Handle { return t.submitSignal.Connect(fn) }
+func (t *TextInput) Selection() TextSelection              { return t.selection }
+
+// SetSelection uses UTF-8 byte positions, clamped to complete Clusters.
+func (t *TextInput) SetSelection(s TextSelection) { t.setSelectionValue(s) }
+func (t *TextInput) ConnectSelection(fn func(TextSelection)) signal.Handle {
+	return t.connectSelection(fn)
 }
+func (t *TextInput) ReadOnly() bool         { return t.readOnly }
+func (t *TextInput) SetReadOnly(value bool) { t.setReadOnly(value) }
+func (t *TextInput) Padding() float32       { return t.padding }
+
+// SetPadding sets the content inset in DIP; invalid values become zero.
+func (t *TextInput) SetPadding(value float32) { t.setPadding(value) }
+func (t *TextInput) IMContext() IMContext     { return t.imContext() }
+func (t *TextInput) StyleChanged()            { t.styleChanged() }
 
 func (t *TextInput) Measure(c layout.Constraint) layout.Measurement {
 	if !t.Visible() {
 		return layout.Measurement{}
 	}
-	padding := t.padding
-	lineHeight, baseline, hasBaseline := t.contentLineMetrics(t.textFormat(t.resolvedStyle()))
-	measured := layout.Measurement{Size: geometry.Size{
-		Width:  defaultTextInputWidth,
-		Height: lineHeight + padding*2,
-	}}
-	if hasBaseline {
-		measured.Baseline = padding + baseline
-		measured.HasBaseline = true
-	}
-	measured.Size = t.constrain(c, measured.Size)
-	return measured
+	t.ensureFormat()
+	m := layout.Measurement{Size: t.constrain(c, geometry.Size{
+		Width: defaultTextInputWidth, Height: t.lineHeight + 2*t.padding,
+	}), Baseline: t.padding + t.baseline, HasBaseline: t.hasBaseline}
+	return m
 }
 
-// contentLineMetrics returns the field's stable line height and first baseline
-// for the given format. It measures a fixed mixed-script sample so Latin-only
-// and CJK content receive the same box geometry. When typography is unavailable
-// (for example in a size-only test), height falls back to the point-size estimate
-// and baseline is reported as unavailable instead of inventing font metrics.
-func (t *TextInput) contentLineMetrics(format typography.TextFormat) (height, baseline float32, hasBaseline bool) {
-	if App != nil {
-		if typo := App.Typography(); typo != nil {
-			sample, err := typo.NewTextLayout(textInputHeightSample, format, textInputMeasureExtent, textInputMeasureExtent)
-			if err == nil {
-				defer sample.Destroy()
-				_, measuredHeight := sample.MeasureSize()
-				if measuredHeight > 0 {
-					lines, _ := sample.MeasureMetrics()
-					if len(lines) > 0 {
-						return measuredHeight, lines[0].Baseline, true
-					}
-					return measuredHeight, 0, false
-				}
-			}
-		}
-	}
-	return textLineHeight(format.Font.Size), 0, false
+func (t *TextInput) Arrange(rect geometry.Rectangle) {
+	t.WidgetBase.Arrange(rect)
+	t.layoutSingleLine(rect.Size)
 }
-
 func (t *TextInput) Paint(p Painter) {
-	if !t.Visible() {
-		return
-	}
-
-	s := t.resolvedStyle()
-	size := t.Rect().Size
-	rect := geometry.Rect(0, 0, size.Width, size.Height)
-	paintStyledBox(p, rect, s)
-
-	padding := t.padding
-	origin := geometry.Point{X: padding, Y: padding}
-	format := t.textFormat(s)
-	lineHeight := textLineHeight(format.Font.Size)
-
-	if len(t.displayText()) == 0 {
-		if t.Focused() {
-			caret := t.defaultCaretRect(padding, lineHeight)
-			t.reportCaret(origin, caret)
-			if caretColor, ok := t.caretColor(format); ok {
-				t.paintCaretRect(p, origin, caret, caretColor)
-			}
-		}
-		return
-	}
-
-	textLayout := t.ensureLayout(size.Inset(padding), format)
-	if textLayout == nil {
-		return
-	}
-
-	// Center the rendered text vertically within the content area. The box is
-	// sized to a mixed-script sample line, so a shorter line (e.g. Latin text
-	// in a CJK-sized field) would otherwise cling to the top; a full-height CJK
-	// line centers to offset 0 and stays put.
-	origin.Y += t.verticalTextOffset(size, padding, textLayout)
-
-	p.DrawTextLayout(origin, textLayout)
-	if caretColor, ok := t.caretColor(format); ok {
-		if t.preedit != "" {
-			t.paintPreeditUnderline(p, origin, textLayout, padding, lineHeight, caretColor)
-		}
-		if t.Focused() {
-			caret := t.caretRect(textLayout, padding, lineHeight)
-			t.reportCaret(origin, caret)
-			t.paintCaretRect(p, origin, caret, caretColor)
-		}
-	}
+	t.layoutSingleLine(t.Rect().Size)
+	t.paint(p)
 }
-
-// verticalTextOffset is the extra Y inset that centers a single text line
-// within the content area. It returns 0 when the line is as tall as (or taller
-// than) the content box, keeping the text top-aligned rather than pushing it up
-// past the top padding.
-func (t *TextInput) verticalTextOffset(size geometry.Size, padding float32, textLayout typography.TextLayout) float32 {
-	_, textHeight := textLayout.MeasureSize()
-	if textHeight <= 0 {
-		return 0
-	}
-	if offset := (size.Height - padding*2 - textHeight) / 2; offset > 0 {
-		return offset
-	}
-	return 0
-}
-
-// reportCaret hands the caret rectangle (in widget-local coordinates) to the
-// input method so it can position the candidate window near the caret.
-func (t *TextInput) reportCaret(origin geometry.Point, rect geometry.Rectangle) {
-	t.im.SetCaretRect(geometry.Rect(
-		origin.X+rect.X,
-		origin.Y+rect.Y,
-		rect.Width,
-		rect.Height,
-	))
-}
-
-// paintPreeditUnderline underlines the composing region so the user can tell
-// uncommitted text apart from committed text.
-func (t *TextInput) paintPreeditUnderline(p Painter, origin geometry.Point, layout typography.TextLayout, padding, lineHeight float32, color graphics.Color) {
-	start := clampCaret(t.text, t.caret)
-	end := start + len(t.preedit)
-	from := t.caretRectAt(layout, start, padding, lineHeight)
-	to := t.caretRectAt(layout, end, padding, lineHeight)
-	y := origin.Y + from.Y + from.Height - textInputCaretWidth
-	p.DrawLine(
-		geometry.Point{X: origin.X + from.X, Y: y},
-		geometry.Point{X: origin.X + to.X, Y: y},
-		textInputCaretWidth,
-		color,
-	)
-}
-
-// caretColor returns the caret color taken from the style foreground. When the
-// style leaves the foreground unset there is nothing to draw the caret with, so
-// ok is false and the caret is skipped (see the unset-skips-drawing rule).
-func (t *TextInput) caretColor(format typography.TextFormat) (graphics.Color, bool) {
-	if format.TextColor == nil {
-		return graphics.Color{}, false
-	}
-	return graphics.ColorOf(format.TextColor), true
-}
-
 func (t *TextInput) Snapshot() WidgetInfo {
-	info := t.WidgetBase.Snapshot()
+	info := t.snapshot()
 	info.Role = RoleTextInput
-	info.Text = t.text
+	info.Text = t.Text()
 	return info
-}
-
-func (t *TextInput) handleKeyDown(ctx EventContext, event events.KeyEvent) {
-	if t.handleEditingKey(event) {
-		ctx.StopPropagation()
-	}
-}
-
-func (t *TextInput) handleEditingKey(event events.KeyEvent) bool {
-	switch event.Key {
-	case events.KeyBackspace:
-		return t.deleteBeforeCaret()
-	case events.KeyDelete:
-		return t.deleteAfterCaret()
-	case events.KeyArrowLeft:
-		return t.moveCaret(previousRuneIndex(t.text, t.caret))
-	case events.KeyArrowRight:
-		return t.moveCaret(nextRuneIndex(t.text, t.caret))
-	case events.KeyHome:
-		return t.moveCaret(0)
-	case events.KeyEnd:
-		return t.moveCaret(len(t.text))
-	}
-
-	text, ok := keyEventText(event)
-	if !ok {
-		return false
-	}
-	t.insertText(text)
-	return true
-}
-
-func (t *TextInput) insertText(text string) {
-	if text == "" {
-		return
-	}
-	caret := clampCaret(t.text, t.caret)
-	t.setText(t.text[:caret]+text+t.text[caret:], caret+len(text))
-}
-
-func (t *TextInput) deleteBeforeCaret() bool {
-	caret := clampCaret(t.text, t.caret)
-	if caret == 0 {
-		return false
-	}
-	prev := previousRuneIndex(t.text, caret)
-	t.setText(t.text[:prev]+t.text[caret:], prev)
-	return true
-}
-
-func (t *TextInput) deleteAfterCaret() bool {
-	caret := clampCaret(t.text, t.caret)
-	if caret == len(t.text) {
-		return false
-	}
-	next := nextRuneIndex(t.text, caret)
-	t.setText(t.text[:caret]+t.text[next:], caret)
-	return true
-}
-
-func (t *TextInput) moveCaret(caret int) bool {
-	caret = clampCaret(t.text, caret)
-	if t.caret == caret {
-		return false
-	}
-	t.caret = caret
-	t.requestPaint()
-	return true
-}
-
-func (t *TextInput) setText(text string, caret int) {
-	caret = clampCaret(text, caret)
-	if t.text == text && t.caret == caret {
-		return
-	}
-	textChanged := t.text != text
-	t.text = text
-	t.caret = caret
-	if textChanged {
-		t.textSignal.Emit(text)
-		t.invalidateLayout()
-		t.RequestLayout()
-		t.requestSemanticUpdate()
-		return
-	}
-	t.requestPaint()
-}
-
-func (t *TextInput) requestPaint() {
-	// Root is the widget host (window or popover); Window() is nil for a
-	// popover-hosted widget, which would drop the repaint request.
-	if r := t.Root(); r != nil {
-		_ = r.RequestPaint()
-	}
-}
-
-func (t *TextInput) newTextLayout(size geometry.Size, format typography.TextFormat) typography.TextLayout {
-	if App == nil {
-		return nil
-	}
-	typo := App.Typography()
-	if typo == nil {
-		return nil
-	}
-	textLayout, err := typo.NewTextLayout(t.displayText(), format, size.Width, size.Height)
-	if err != nil {
-		return nil
-	}
-	return textLayout
-}
-
-func (t *TextInput) invalidateLayout() {
-	t.layoutValid = false
-}
-
-// StyleChanged releases display resources without changing text, caret or IME.
-func (t *TextInput) StyleChanged() { t.releaseLayout() }
-
-func (t *TextInput) ensureLayout(size geometry.Size, format typography.TextFormat) typography.TextLayout {
-	if !t.layoutValid ||
-		t.cachedLayout == nil ||
-		t.cachedDisplay != t.displayText() {
-		t.releaseLayout()
-		t.cachedLayout = t.newTextLayout(size, format)
-		if t.cachedLayout == nil {
-			return nil
-		}
-		t.cachedDisplay = t.displayText()
-		t.layoutValid = true
-	}
-	return t.cachedLayout
-}
-
-func (t *TextInput) releaseLayout() {
-	if t.cachedLayout != nil {
-		t.cachedLayout.Destroy()
-		t.cachedLayout = nil
-	}
-	t.layoutValid = false
-}
-
-// textFormat builds the single-line text format from the resolved style. Font
-// family, size and color come from the style; wrapping and alignment are fixed
-// for a single-line field.
-func (t *TextInput) textFormat(s style.Style) typography.TextFormat {
-	return textFormatFromStyle(s, WrapNone, TextAlignBegin)
-}
-
-func (t *TextInput) resolvedStyle() style.Style {
-	name := t.StyleName()
-	if name == "" {
-		name = styleNameTextInput
-	}
-	return ResolveStyle(name, style.PartDefault, t.styleState())
-}
-
-func (t *TextInput) styleState() style.State {
-	if t.Focused() {
-		return style.Focused
-	}
-	return style.Normal
-}
-
-func (t *TextInput) paintCaretRect(p Painter, origin geometry.Point, rect geometry.Rectangle, caretColor graphics.Color) {
-	x := origin.X + rect.X
-	y0 := origin.Y + rect.Y
-	y1 := y0 + rect.Height
-	p.DrawLine(
-		geometry.Point{X: x, Y: y0},
-		geometry.Point{X: x, Y: y1},
-		textInputCaretWidth,
-		caretColor,
-	)
-}
-
-func (t *TextInput) caretRect(layout typography.TextLayout, padding, lineHeight float32) geometry.Rectangle {
-	return t.caretRectAt(layout, t.displayCaret(), padding, lineHeight)
-}
-
-func (t *TextInput) caretRectAt(layout typography.TextLayout, caret int, padding, lineHeight float32) geometry.Rectangle {
-	lines, clusters := layout.MeasureMetrics()
-	if len(lines) == 0 {
-		return t.defaultCaretRect(padding, lineHeight)
-	}
-
-	line := lines[0]
-	lineIndex := 0
-	for i, current := range lines {
-		if caret >= current.Start && caret <= current.Start+current.Length {
-			line = current
-			lineIndex = i
-			break
-		}
-	}
-
-	x := line.X
-	for _, cluster := range clusters {
-		if cluster.LineIndex != lineIndex {
-			continue
-		}
-		if caret <= cluster.Start {
-			x = cluster.X
-			break
-		}
-		x = cluster.X + cluster.Width
-		if cluster.Length > 0 && caret < cluster.Start+cluster.Length {
-			break
-		}
-	}
-
-	height := line.Height
-	if height <= 0 {
-		height = lineHeight
-	}
-	return geometry.Rect(x, line.Y, textInputCaretWidth, height)
-}
-
-func (t *TextInput) defaultCaretRect(padding, lineHeight float32) geometry.Rectangle {
-	height := t.Rect().Size.Inset(padding).Height
-	if height <= 0 {
-		height = lineHeight
-	}
-	return geometry.Rect(0, 0, textInputCaretWidth, height)
-}
-
-func keyEventText(event events.KeyEvent) (string, bool) {
-	if event.Modifiers&(events.ModifierControl|events.ModifierAlt|events.ModifierSuper) != 0 {
-		return "", false
-	}
-
-	shift := event.Modifiers&events.ModifierShift != 0
-	switch {
-	case events.KeyA <= event.Key && event.Key <= events.KeyZ:
-		ch := byte('a' + event.Key - events.KeyA)
-		if shift {
-			ch = byte('A' + event.Key - events.KeyA)
-		}
-		return string([]byte{ch}), true
-	case events.Key0 <= event.Key && event.Key <= events.Key9:
-		index := event.Key - events.Key0
-		if shift {
-			return string([]byte{")!@#$%^&*("[index]}), true
-		}
-		return string([]byte{'0' + byte(index)}), true
-	case events.KeyNumpad0 <= event.Key && event.Key <= events.KeyNumpad9:
-		return string([]byte{'0' + byte(event.Key-events.KeyNumpad0)}), true
-	}
-
-	switch event.Key {
-	case events.KeySpace:
-		return " ", true
-	case events.KeyMinus:
-		return shifted("-", "_", shift), true
-	case events.KeyEqual:
-		return shifted("=", "+", shift), true
-	case events.KeyBracketLeft:
-		return shifted("[", "{", shift), true
-	case events.KeyBracketRight:
-		return shifted("]", "}", shift), true
-	case events.KeyBackslash:
-		return shifted("\\", "|", shift), true
-	case events.KeySemicolon:
-		return shifted(";", ":", shift), true
-	case events.KeyQuote:
-		return shifted("'", "\"", shift), true
-	case events.KeyComma:
-		return shifted(",", "<", shift), true
-	case events.KeyPeriod:
-		return shifted(".", ">", shift), true
-	case events.KeySlash:
-		return shifted("/", "?", shift), true
-	case events.KeyBackquote:
-		return shifted("`", "~", shift), true
-	case events.KeyNumpadAdd:
-		return "+", true
-	case events.KeyNumpadSubtract:
-		return "-", true
-	case events.KeyNumpadMultiply:
-		return "*", true
-	case events.KeyNumpadDivide:
-		return "/", true
-	case events.KeyNumpadDecimal:
-		return ".", true
-	}
-	return "", false
-}
-
-func shifted(normal, shifted string, shift bool) string {
-	if shift {
-		return shifted
-	}
-	return normal
-}
-
-func previousRuneIndex(text string, index int) int {
-	index = clampCaret(text, index)
-	if index == 0 {
-		return 0
-	}
-	_, size := utf8.DecodeLastRuneInString(text[:index])
-	return index - size
-}
-
-func nextRuneIndex(text string, index int) int {
-	index = clampCaret(text, index)
-	if index == len(text) {
-		return len(text)
-	}
-	_, size := utf8.DecodeRuneInString(text[index:])
-	return index + size
-}
-
-func clampCaret(text string, index int) int {
-	if index <= 0 {
-		return 0
-	}
-	if index >= len(text) {
-		return len(text)
-	}
-	for index > 0 && !utf8.RuneStart(text[index]) {
-		index--
-	}
-	return index
 }
