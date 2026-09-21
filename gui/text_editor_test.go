@@ -1,16 +1,20 @@
 package gui
 
 import (
+	"fmt"
+	"image/color"
 	"runtime"
 	"strings"
 	"testing"
 	"unicode/utf8"
 
+	"github.com/golang-gui/goui/core/colors"
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/typography"
+	"github.com/golang-gui/goui/style"
 )
 
 // 共用排版、剪贴板替身与事件入口。
@@ -562,5 +566,237 @@ func testTextEditorNativeNavigation(t *testing.T, newContext func() (typography.
 				t.Fatalf("deletion split native combining cluster: %q", editor.model.Text())
 			}
 		})
+	}
+}
+
+func checkParagraphCache(t *testing.T, c *textParagraphCache) {
+	t.Helper()
+	count, size := 0, 0
+	var previous *textParagraph
+	for p := c.oldest; p != nil; p = p.next {
+		if p.previous != previous || c.paragraphs[p.index] != p {
+			t.Fatal("cache links and paragraph map disagree")
+		}
+		previous = p
+		count++
+		size += p.textBytes
+		if count > len(c.paragraphs) {
+			t.Fatal("cache cycle")
+		}
+	}
+	if count != len(c.paragraphs) || size != c.textBytes || previous != c.newest {
+		t.Fatal("cache accounting mismatch")
+	}
+}
+
+func TestTextParagraphCacheRecencyAndBudgets(t *testing.T) {
+	var c textParagraphCache
+	for i := 0; i < textParagraphCacheLimit; i++ {
+		c.add(i, 10, &textParagraph{layout: &testTextLayout{}})
+	}
+	retained, evicted := c.paragraphs[0], c.paragraphs[1]
+	c.touch(retained)
+	c.add(textParagraphCacheLimit, 10, &textParagraph{layout: &testTextLayout{}})
+	c.trim(textParagraphCacheLimit, textParagraphCacheLimit+1)
+	if c.paragraphs[0] != retained || c.paragraphs[1] != nil || !evicted.layout.(*testTextLayout).destroyed {
+		t.Fatal("eviction did not respect access recency")
+	}
+	checkParagraphCache(t, &c)
+	c.clear()
+	if !retained.layout.(*testTextLayout).destroyed {
+		t.Fatal("clear did not release retained resources")
+	}
+	checkParagraphCache(t, &c)
+	// An oversized active paragraph must remain usable. Once it leaves the
+	// active range, the byte budget evicts it even below the count limit.
+	large := &textParagraph{layout: &testTextLayout{}}
+	c.add(0, textParagraphCacheBytes+1, large)
+	c.trim(0, 1)
+	if c.paragraphs[0] != large {
+		t.Fatal("evicted oversized active paragraph")
+	}
+	c.add(1, 10, &textParagraph{layout: &testTextLayout{}})
+	c.trim(1, 2)
+	if c.paragraphs[0] != nil || c.textBytes != 10 || !large.layout.(*testTextLayout).destroyed {
+		t.Fatal("text byte budget not enforced")
+	}
+	checkParagraphCache(t, &c)
+	c.clear()
+	// The active viewport can contain more paragraphs than the cache limit.
+	for i := 0; i < textParagraphCacheLimit+10; i++ {
+		c.add(i, 0, &textParagraph{})
+	}
+	c.trim(0, textParagraphCacheLimit+10)
+	if len(c.paragraphs) != textParagraphCacheLimit+10 {
+		t.Fatal("active range was evicted")
+	}
+	c.trim(textParagraphCacheLimit, textParagraphCacheLimit+10)
+	if len(c.paragraphs) != textParagraphCacheLimit {
+		t.Fatal("cache did not recover its bound after viewport shrank")
+	}
+	checkParagraphCache(t, &c)
+}
+
+func TestTextViewRecentLayoutsSurviveScrollEditAndUnmount(t *testing.T) {
+	var text strings.Builder
+	for i := 0; i < 2000; i++ {
+		fmt.Fprintf(&text, "line %04d\n", i)
+	}
+	editor, win, typo := newEditorFixture(t, text.String())
+	original := editor.paragraph(3)
+	editor.LayoutVisible(editor.viewport, geometry.Point{Y: 2000})
+	count := len(typo.calls)
+	editor.LayoutVisible(editor.viewport, geometry.Point{})
+	if editor.paragraph(3) != original || len(typo.calls) != count {
+		t.Fatal("return scroll rebuilt cached paragraphs")
+	}
+	editor.LayoutVisible(editor.viewport, geometry.Point{Y: 2000})
+	if err := editor.model.Replace(TextRange{}, "new\n"); err != nil {
+		t.Fatal(err)
+	}
+	if editor.paragraphs[4] != original || original.index != 4 {
+		t.Fatal("edit failed to remap an offscreen cached paragraph")
+	}
+	checkParagraphCache(t, &editor.textParagraphCache)
+	if !editor.model.Undo() {
+		t.Fatal("undo failed")
+	}
+	if editor.paragraphs[3] != original || original.index != 3 {
+		t.Fatal("undo failed to restore cached paragraph index")
+	}
+	// A standalone fixture has no ScrollView to acknowledge anchor requests.
+	editor.LayoutVisible(editor.viewport, editor.offset)
+	editor.LayoutVisible(editor.viewport, editor.offset)
+	for y := float32(4000); y < 36000; y += 300 {
+		editor.LayoutVisible(editor.viewport, geometry.Point{Y: y})
+		checkParagraphCache(t, &editor.textParagraphCache)
+		if len(editor.paragraphs) > textParagraphCacheLimit {
+			t.Fatal("scroll cache grew without bound")
+		}
+	}
+	if !original.layout.(*testTextLayout).destroyed {
+		t.Fatal("old cached layout was never evicted")
+	}
+	win.SetWidget(nil)
+	checkParagraphCache(t, &editor.textParagraphCache)
+	for _, p := range typo.layouts {
+		if !p.destroyed {
+			t.Fatal("unmount leaked a native layout")
+		}
+	}
+}
+
+func TestTextViewOffscreenCacheInvalidation(t *testing.T) {
+	editor, _, typo := newEditorFixture(t, strings.Repeat("abcdefghijklmnopqrst\n", 2000))
+	p := editor.paragraph(3)
+	editor.LayoutVisible(editor.viewport, geometry.Point{Y: 2000})
+	count := len(typo.calls)
+	app := App.(*application)
+	foreground := color.RGBA{R: 80, A: 255}
+	app.style = style.Sheet(append(DefaultStyleRules(), style.Name(styleNameTextView).ForegroundColor(foreground))...)
+	editor.StyleChanged()
+	if p.layout.(*testTextLayout).destroyed || !colors.Equal(p.layout.Format().TextColor, foreground) || len(typo.calls) != count {
+		t.Fatal("color change failed to update retained layouts in place")
+	}
+	editor.LayoutVisible(geometry.Size{Width: 109, Height: 108}, editor.offset)
+	if p.measured {
+		t.Fatal("offscreen measurement remained valid after width change")
+	}
+	if got := editor.paragraph(3); got != p || got.height != 40 {
+		t.Fatal("offscreen paragraph was not lazily resized on access")
+	}
+	// Width A -> B -> A resets the height index twice. Reusing a cached native
+	// layout must still restore its height into the current index.
+	editor.LayoutVisible(geometry.Size{Width: 209, Height: 108}, geometry.Point{})
+	if editor.paragraph(3) != p || p.height != 20 || editor.heights.Top(4)-editor.heights.Top(3) != 20 {
+		t.Fatal("returning to original width left stale paragraph heights")
+	}
+	app.style = style.Sheet(append(DefaultStyleRules(), style.Name(styleNameTextView).FontSize(30))...)
+	editor.StyleChanged()
+	if !p.layout.(*testTextLayout).destroyed || len(editor.paragraphs) != 0 {
+		t.Fatal("font change did not clear retained layouts")
+	}
+	checkParagraphCache(t, &editor.textParagraphCache)
+}
+
+func TestTextViewMeasuresEditingGeometryOnlyOnDemand(t *testing.T) {
+	editor, _, _ := newEditorFixture(t, strings.Repeat("abcdefghijklmnopqrst\n", 30))
+	p := editor.paragraph(1)
+	native := p.layout.(*testTextLayout)
+	if p.geometryValid || native.metricsCalls != 0 {
+		t.Fatal("display-only paragraph eagerly built editing geometry")
+	}
+	editor.Paint(&testLabelPainter{})
+	if p.geometryValid || native.metricsCalls != 0 {
+		t.Fatal("plain painting built unrelated editing geometry")
+	}
+	rng, _ := editor.model.LineRange(1)
+	if got := editor.snapPosition(rng.Start + 1); got != rng.Start+1 {
+		t.Fatalf("lazy snapping returned %d", got)
+	}
+	editor.snapPosition(rng.Start + 2)
+	if !p.geometryValid || native.metricsCalls != 1 {
+		t.Fatal("editing geometry was not cached after first use")
+	}
+	editor.LayoutVisible(geometry.Size{Width: 109, Height: 108}, geometry.Point{})
+	p = editor.paragraph(1)
+	if p.layout != native || p.geometryValid {
+		t.Fatal("reflow did not retain layout and invalidate old geometry")
+	}
+	g := p.editGeometry(editor.lineHeight)
+	if g.LineCount() != 2 || native.metricsCalls != 2 {
+		t.Fatal("lazy geometry did not use the new wrapping width")
+	}
+	p.editGeometry(editor.lineHeight)
+	if native.metricsCalls != 2 {
+		t.Fatal("unchanged geometry was remeasured")
+	}
+}
+
+func TestTextViewPaintSelectionDoesNotMeasureUnselectedParagraphs(t *testing.T) {
+	editor, _, _ := newEditorFixture(t, strings.Repeat("row\n", 30))
+	editor.SetSelection(TextSelection{4, 6})
+	editor.Paint(&testLabelPainter{})
+	if !editor.paragraph(1).geometryValid || editor.paragraph(2).geometryValid {
+		t.Fatal("selection painting measured an unrelated paragraph")
+	}
+}
+
+func TestTextViewWidthChangeReusesLayoutAndRefreshesHeight(t *testing.T) {
+	editor, _, typo := newEditorFixture(t, "abcdefghijklmnopqrst")
+	original := editor.paragraphs[0].layout
+	count := len(typo.calls)
+	for _, width := range []float32{109, 209, 89, 209} {
+		editor.LayoutVisible(geometry.Size{Width: width, Height: 108}, geometry.Point{})
+		p := editor.paragraph(0)
+		if p.layout != original || original.(*testTextLayout).destroyed {
+			t.Fatal("width change replaced the native layout")
+		}
+		nativeWidth, _ := p.layout.Size()
+		if nativeWidth != width-9 {
+			t.Fatalf("stale native width: %g, want %g", nativeWidth, width-9)
+		}
+		cols := int((width - 9) / 10)
+		wantHeight := float32((20+cols-1)/cols) * 20
+		if p.height != wantHeight || editor.heights.Total() != wantHeight {
+			t.Fatalf("stale height at width %g: paragraph=%g index=%g want=%g", width, p.height, editor.heights.Total(), wantHeight)
+		}
+	}
+	if len(typo.calls) != count {
+		t.Fatal("width-only reflow created layouts")
+	}
+}
+
+func TestTextViewReflowUpdatesOnlyOneSharedModelView(t *testing.T) {
+	left, _, _ := newEditorFixture(t, "abcdefghijklmnopqrst")
+	right := NewTextView()
+	right.SetModel(left.model)
+	win := &window{}
+	win.SetWidget(right)
+	t.Cleanup(func() { win.SetWidget(nil) })
+	right.Arrange(geometry.Rect(0, 0, 209, 108))
+	left.LayoutVisible(geometry.Size{Width: 109, Height: 108}, geometry.Point{})
+	if left.paragraph(0).height != 40 || right.paragraph(0).height != 20 {
+		t.Fatal("reflow did not preserve independent view layouts")
 	}
 }
