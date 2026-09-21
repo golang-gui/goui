@@ -261,16 +261,18 @@ func (c *testTypography) NewTextLayout(text string, format typography.TextFormat
 }
 
 type testTextLayout struct {
-	text        string
-	format      typography.TextFormat
-	width       float32
-	height      float32
-	measureSize geometry.Size
-	lines       []typography.TextLine
-	clusters    []typography.TextCluster
-	destroyed   bool
-	changedSig  signal.Signal0
-	destroySig  signal.Signal0
+	text         string
+	format       typography.TextFormat
+	width        float32
+	height       float32
+	measureSize  geometry.Size
+	lines        []typography.TextLine
+	clusters     []typography.TextCluster
+	destroyed    bool
+	resized      func()
+	metricsCalls int
+	changedSig   signal.Signal0
+	destroySig   signal.Signal0
 }
 
 func (l *testTextLayout) Destroy() {
@@ -306,8 +308,14 @@ func (l *testTextLayout) Size() (maxWidth, maxHeight float32) {
 }
 
 func (l *testTextLayout) SetSize(maxWidth, maxHeight float32) {
+	if l.width == maxWidth && l.height == maxHeight {
+		return
+	}
 	l.width = maxWidth
 	l.height = maxHeight
+	if l.resized != nil {
+		l.resized()
+	}
 	l.changedSig.Emit()
 }
 
@@ -344,6 +352,7 @@ func (l *testTextLayout) MeasureSize() (width, height float32) {
 }
 
 func (l *testTextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []typography.TextCluster) {
+	l.metricsCalls++
 	return l.lines, l.clusters
 }
 

@@ -115,7 +115,7 @@ func (t *textEditor) hitText(point geometry.Point) textedit.Position {
 	if p := t.paragraph(index); p != nil {
 		rng := t.displayLineRange(index)
 		point.Y -= t.heights.Top(index)
-		pos := p.geometry.Hit(point)
+		pos := p.editGeometry(t.lineHeight).Hit(point)
 		pos.Offset += rng.Start
 		if composition := t.preedit; composition != nil {
 			pos.Offset = composition.ModelOffset(pos.Offset, pos.Upstream)
@@ -172,7 +172,7 @@ func (t *textEditor) logicalAdjacent(offset int, forward bool) int {
 		return offset - 1
 	}
 	if p := t.paragraph(index); p != nil {
-		return rng.Start + p.geometry.Adjacent(offset-rng.Start, forward)
+		return rng.Start + p.editGeometry(t.lineHeight).Adjacent(offset-rng.Start, forward)
 	}
 	return offset // Never guess a cluster boundary from rune counts.
 }
@@ -182,7 +182,7 @@ func (t *textEditor) horizontal(right bool) textedit.Position {
 	rng, _ := t.model.LineRange(index)
 	pos := textedit.Position{Offset: t.selection.Caret - rng.Start, Upstream: t.caretUpstream}
 	if p := t.paragraph(index); p != nil {
-		if next, ok := p.geometry.Visual(pos, right); ok {
+		if next, ok := p.editGeometry(t.lineHeight).Visual(pos, right); ok {
 			next.Offset += rng.Start
 			return next
 		}
@@ -209,8 +209,8 @@ func (t *textEditor) selectionEdge(right, word bool) textedit.Position {
 	if !word && index == t.model.LineAt(rng.End) {
 		if p := t.paragraph(index); p != nil {
 			line, _ := t.model.LineRange(index)
-			a := p.geometry.Caret(textedit.Position{Offset: first.Offset - line.Start, Upstream: first.Upstream})
-			b := p.geometry.Caret(textedit.Position{Offset: last.Offset - line.Start, Upstream: last.Upstream})
+			a := p.editGeometry(t.lineHeight).Caret(textedit.Position{Offset: first.Offset - line.Start, Upstream: first.Upstream})
+			b := p.editGeometry(t.lineHeight).Caret(textedit.Position{Offset: last.Offset - line.Start, Upstream: last.Upstream})
 			if a.Y > b.Y || a.Y == b.Y && a.X > b.X {
 				first, last = last, first
 			}
@@ -241,7 +241,7 @@ func (t *textEditor) vertical(down bool, page bool) textedit.Position {
 	index := t.model.LineAt(pos.Offset)
 	rng, _ := t.model.LineRange(index)
 	p := t.paragraph(index)
-	line := p.geometry.LineIndex(textedit.Position{Offset: pos.Offset - rng.Start, Upstream: pos.Upstream})
+	line := p.editGeometry(t.lineHeight).LineIndex(textedit.Position{Offset: pos.Offset - rng.Start, Upstream: pos.Upstream})
 	if down {
 		line++
 	} else {
@@ -256,8 +256,8 @@ func (t *textEditor) vertical(down bool, page bool) textedit.Position {
 		if p == nil {
 			return pos
 		}
-		line = p.geometry.LineCount() - 1
-	} else if line >= p.geometry.LineCount() {
+		line = p.editGeometry(t.lineHeight).LineCount() - 1
+	} else if line >= p.editGeometry(t.lineHeight).LineCount() {
 		if index+1 == t.model.LineCount() {
 			return pos
 		}
@@ -269,7 +269,7 @@ func (t *textEditor) vertical(down bool, page bool) textedit.Position {
 		line = 0
 	}
 	rng, _ = t.model.LineRange(index)
-	pos = p.geometry.HitLine(line, t.desiredX)
+	pos = p.editGeometry(t.lineHeight).HitLine(line, t.desiredX)
 	pos.Offset += rng.Start
 	return pos
 }
@@ -287,8 +287,8 @@ func (t *textEditor) lineEdge(end, document bool) textedit.Position {
 	if p == nil {
 		return textedit.Position{Offset: rng.Start, Upstream: false}
 	}
-	i := p.geometry.LineIndex(textedit.Position{Offset: t.selection.Caret - rng.Start, Upstream: t.caretUpstream})
-	pos := p.geometry.LineEdge(i, end)
+	i := p.editGeometry(t.lineHeight).LineIndex(textedit.Position{Offset: t.selection.Caret - rng.Start, Upstream: t.caretUpstream})
+	pos := p.editGeometry(t.lineHeight).LineEdge(i, end)
 	pos.Offset += rng.Start
 	return pos
 }
@@ -489,7 +489,7 @@ func (t *textEditor) wordAt(offset int) TextRange {
 	line, _ := t.model.LineRange(index)
 	rng := t.model.WordAt(offset)
 	if p := t.paragraph(index); p != nil {
-		return TextRange{line.Start + p.geometry.Snap(rng.Start-line.Start, false), line.Start + p.geometry.Snap(rng.End-line.Start, true)}
+		return TextRange{line.Start + p.editGeometry(t.lineHeight).Snap(rng.Start-line.Start, false), line.Start + p.editGeometry(t.lineHeight).Snap(rng.End-line.Start, true)}
 	}
 	return rng
 }
@@ -509,7 +509,7 @@ func (t *textEditor) wordAdjacent(offset int, forward bool) int {
 	rest, _ := t.model.Slice(TextRange{rng.End, line.End})
 	end := rng.End + len(rest) - len(strings.TrimLeft(rest, " \t"))
 	if p := t.paragraph(index); p != nil {
-		end = line.Start + p.geometry.Snap(end-line.Start, true)
+		end = line.Start + p.editGeometry(t.lineHeight).Snap(end-line.Start, true)
 	}
 	return end
 }
