@@ -101,7 +101,7 @@ func (w *Window) updateKeyModifiers(eventType events.EventType, key events.Key) 
 	}
 
 	switch key {
-	case events.KeyShift, events.KeyControl, events.KeyAlt, events.KeySuper:
+	case events.KeyShift, events.KeyControl, events.KeyAlt, events.KeyWin:
 		if eventType == events.KeyDown {
 			w.modifiers |= bit
 		} else {
@@ -227,8 +227,8 @@ func modifierForKey(key events.Key) events.Modifiers {
 		return events.ModifierControl
 	case events.KeyAlt:
 		return events.ModifierAlt
-	case events.KeySuper:
-		return events.ModifierSuper
+	case events.KeyWin:
+		return events.ModifierWin
 	default:
 		return 0
 	}
@@ -317,9 +317,9 @@ func keyFromVirtualKey(vk int, lParam winapi.LPARAM) (events.Key, events.KeyLoca
 	case winapi.VK_RMENU:
 		return events.KeyAlt, events.KeyLocationRight
 	case winapi.VK_LWIN:
-		return events.KeySuper, events.KeyLocationLeft
+		return events.KeyWin, events.KeyLocationLeft
 	case winapi.VK_RWIN:
-		return events.KeySuper, events.KeyLocationRight
+		return events.KeyWin, events.KeyLocationRight
 	case winapi.VK_CAPITAL:
 		return events.KeyCapsLock, events.KeyLocationStandard
 	case winapi.VK_NUMLOCK:

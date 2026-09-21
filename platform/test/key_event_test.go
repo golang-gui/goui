@@ -12,6 +12,24 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 )
 
+func TestPlatformKeyNames(t *testing.T) {
+	for _, tt := range []struct {
+		key      events.Key
+		modifier events.Modifiers
+		name     string
+	}{
+		{events.KeyWin, events.ModifierWin, "Win"},
+		{events.KeySuper, events.ModifierSuper, "Super"},
+		{events.KeyCommand, events.ModifierCommand, "Command"},
+		{events.KeyOption, events.ModifierOption, "Option"},
+		{events.KeyAlt, events.ModifierAlt, "Alt"},
+	} {
+		if keyName(tt.key) != tt.name || modifiersName(tt.modifier) != tt.name {
+			t.Fatalf("%s: key=%s modifier=%s", tt.name, keyName(tt.key), modifiersName(tt.modifier))
+		}
+	}
+}
+
 func TestKeyEventContract(t *testing.T) {
 	event := events.KeyEvent{
 		EventType: events.KeyDown,
@@ -265,6 +283,12 @@ func keyName(key events.Key) string {
 		return "Alt"
 	case events.KeySuper:
 		return "Super"
+	case events.KeyWin:
+		return "Win"
+	case events.KeyOption:
+		return "Option"
+	case events.KeyCommand:
+		return "Command"
 	case events.KeyCapsLock:
 		return "CapsLock"
 	case events.KeyNumLock:
