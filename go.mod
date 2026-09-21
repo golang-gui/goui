@@ -7,10 +7,10 @@ require (
 	github.com/goexlib/cgo v0.1.0
 	github.com/goexlib/mathx v0.0.1
 	github.com/golang-gui/nanovgo v0.0.8
+	github.com/golang-gui/oksvg v0.0.0-20260918033125-75e7ce872d46
 	github.com/rivo/uniseg v0.4.7
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef
 	github.com/srwiley/scanFT v0.0.0-20220128184157-0d1ee492111f
-	github.com/golang-gui/oksvg v0.0.0-20260918033125-75e7ce872d46
 	github.com/xuges/gothread v0.0.1
 	golang.org/x/image v0.24.0
 )
