@@ -304,10 +304,10 @@ func modifiersFromFlags(flags NSEventModifierFlags) events.Modifiers {
 		mods |= events.ModifierControl
 	}
 	if flags&NSEventModifierFlagOption != 0 {
-		mods |= events.ModifierAlt
+		mods |= events.ModifierOption
 	}
 	if flags&NSEventModifierFlagCommand != 0 {
-		mods |= events.ModifierSuper
+		mods |= events.ModifierCommand
 	}
 	return mods
 }
@@ -318,10 +318,10 @@ func modifierForKey(key events.Key) events.Modifiers {
 		return events.ModifierShift
 	case events.KeyControl:
 		return events.ModifierControl
-	case events.KeyAlt:
-		return events.ModifierAlt
-	case events.KeySuper:
-		return events.ModifierSuper
+	case events.KeyOption:
+		return events.ModifierOption
+	case events.KeyCommand:
+		return events.ModifierCommand
 	default:
 		return 0
 	}
@@ -392,13 +392,14 @@ var macKeyCodeMap = map[uint16]macKey{
 	50:  {events.KeyBackquote, events.KeyLocationStandard},
 	51:  {events.KeyBackspace, events.KeyLocationStandard},
 	53:  {events.KeyEscape, events.KeyLocationStandard},
-	55:  {events.KeySuper, events.KeyLocationLeft},
+	54:  {events.KeyCommand, events.KeyLocationRight},
+	55:  {events.KeyCommand, events.KeyLocationLeft},
 	56:  {events.KeyShift, events.KeyLocationLeft},
 	57:  {events.KeyCapsLock, events.KeyLocationStandard},
-	58:  {events.KeyAlt, events.KeyLocationLeft},
+	58:  {events.KeyOption, events.KeyLocationLeft},
 	59:  {events.KeyControl, events.KeyLocationLeft},
 	60:  {events.KeyShift, events.KeyLocationRight},
-	61:  {events.KeyAlt, events.KeyLocationRight},
+	61:  {events.KeyOption, events.KeyLocationRight},
 	62:  {events.KeyControl, events.KeyLocationRight},
 	64:  {events.KeyF17, events.KeyLocationStandard},
 	65:  {events.KeyNumpadDecimal, events.KeyLocationNumpad},

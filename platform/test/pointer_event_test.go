@@ -275,7 +275,10 @@ func modifiersName(modifiers events.Modifiers) string {
 	const known = events.ModifierShift |
 		events.ModifierControl |
 		events.ModifierAlt |
-		events.ModifierSuper
+		events.ModifierSuper |
+		events.ModifierCommand |
+		events.ModifierWin |
+		events.ModifierOption
 
 	names := make([]string, 0, 6)
 	if modifiers&events.ModifierShift != 0 {
@@ -289,6 +292,15 @@ func modifiersName(modifiers events.Modifiers) string {
 	}
 	if modifiers&events.ModifierSuper != 0 {
 		names = append(names, "Super")
+	}
+	if modifiers&events.ModifierCommand != 0 {
+		names = append(names, "Command")
+	}
+	if modifiers&events.ModifierWin != 0 {
+		names = append(names, "Win")
+	}
+	if modifiers&events.ModifierOption != 0 {
+		names = append(names, "Option")
 	}
 	if extra := modifiers &^ known; extra != 0 {
 		names = append(names, fmt.Sprintf("Modifiers(0x%x)", uint16(extra)))

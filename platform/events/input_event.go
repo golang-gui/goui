@@ -8,7 +8,14 @@ const (
 	ModifierShift Modifiers = 1 << iota
 	ModifierControl
 	ModifierAlt
+	// ModifierSuper is Linux Super.
 	ModifierSuper
+	// ModifierCommand is macOS Command, distinct from Win and Super.
+	ModifierCommand
+	// ModifierWin is the Windows logo key, distinct from Super and Command.
+	ModifierWin
+	// ModifierOption is macOS Option, distinct from Windows/Linux Alt.
+	ModifierOption
 )
 
 type PointerButton uint8
@@ -192,6 +199,12 @@ const (
 	KeyNumpadDivide
 	KeyNumpadDecimal
 	KeyNumpadEnter
+	// Append new keys to preserve existing numeric event/protocol values.
+	KeyCommand
+	// KeyWin is the Windows logo key. Location identifies its left/right side.
+	KeyWin
+	// KeyOption is macOS Option, distinct from Alt.
+	KeyOption
 )
 
 type KeyCode uint32
