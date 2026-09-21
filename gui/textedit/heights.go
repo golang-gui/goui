@@ -125,7 +125,24 @@ func (h *HeightIndex) Set(index int, height float32) {
 	if index < 0 || index >= heightCount(h.root) {
 		return
 	}
-	h.Splice(index, 1, 1, height)
+	// Measuring an estimated or previously measured height often changes
+	// nothing. Preserve the run instead of splitting it and allocating nodes.
+	for n, relative := h.root, index; n != nil; {
+		left := heightCount(n.left)
+		switch {
+		case relative < left:
+			n = n.left
+		case relative >= left+n.run:
+			relative -= left + n.run
+			n = n.right
+		default:
+			if n.height == max(1, float64(height)) {
+				return
+			}
+			h.Splice(index, 1, 1, height)
+			return
+		}
+	}
 }
 
 // Total returns the document height in DIP.
