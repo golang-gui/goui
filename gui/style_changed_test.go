@@ -4,6 +4,7 @@ import (
 	"image/color"
 	"slices"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/golang-gui/goui/core/colors"
 	"github.com/golang-gui/goui/core/geometry"
@@ -158,7 +159,14 @@ type styleTypography struct{ testTypography }
 
 func (c *styleTypography) NewTextLayout(text string, f typography.TextFormat, width, height float32) (typography.TextLayout, error) {
 	c.measureSize = geometry.Size{Width: float32(len(text)) * f.Font.Size, Height: f.Font.Size}
-	c.lines = []typography.TextLine{{Height: f.Font.Size, Baseline: f.Font.Size * .8}}
+	c.lines = []typography.TextLine{{Length: len(text), Width: c.measureSize.Width, Height: f.Font.Size, Baseline: f.Font.Size * .8}}
+	// Supply complete editing metrics; a font-only fixture cannot represent
+	// the caret at byte 2 now that TextInput honors Cluster boundaries.
+	c.clusters = nil
+	for i, r := range text {
+		length := utf8.RuneLen(r)
+		c.clusters = append(c.clusters, typography.TextCluster{Start: i, Length: length, X: float32(i) * f.Font.Size, Width: float32(length) * f.Font.Size, Height: f.Font.Size})
+	}
 	return c.testTypography.NewTextLayout(text, f, width, height)
 }
 
@@ -186,9 +194,9 @@ func TestStyleChangedRefreshesLabelAndTextInputResources(t *testing.T) {
 			} else {
 				input := NewTextInput()
 				input.SetText("hello")
-				input.caret = 2
-				input.setPreedit("x", 1)
-				w, cached = input, func() typography.TextLayout { return input.cachedLayout }
+				input.SetSelection(TextSelection{2, 2})
+				input.onPreedit("x", 1)
+				w, cached = input, func() typography.TextLayout { return input.paragraphs[0].layout }
 			}
 			win.SetWidget(w)
 			defer win.SetWidget(nil)
@@ -219,10 +227,10 @@ func TestStyleChangedRefreshesLabelAndTextInputResources(t *testing.T) {
 			old = cached().(*testTextLayout)
 			app.SetStyleSheet(textStyleSheet(20, color.White))
 			paintStyleTestWidget(w)
-			if !old.destroyed || !colors.Equal(cached().Format().TextColor, color.White) {
+			if (kind == "label" && !old.destroyed) || (kind == "text-input" && (old.destroyed || cached() != old)) || !colors.Equal(cached().Format().TextColor, color.White) {
 				t.Fatal("color-only change left stale text resources")
 			}
-			if input, ok := w.(*TextInput); ok && (input.Text() != "hello" || input.caret != 2 || input.preedit != "x" || input.preeditCaret != 1) {
+			if input, ok := w.(*TextInput); ok && (input.Text() != "hello" || input.Selection().Caret != 2 || input.preedit == nil || input.preedit.Text() != "x" || input.preedit.Caret() != 1) {
 				t.Fatal("style change altered editing state")
 			}
 		})

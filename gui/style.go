@@ -17,6 +17,7 @@ const (
 	styleNameIcon                 = "icon"
 	styleNameButton               = "button"
 	styleNameTextInput            = "text-input"
+	styleNameTextView             = "text-view"
 	styleNameScrollView           = "scroll-view"
 	stylePartTrough               = "trough"
 	stylePartThumb                = "thumb"
@@ -88,6 +89,13 @@ func DefaultStyleRules() []style.Rule {
 		style.Name(styleNameTextInput).
 			State(style.Focused).
 			BorderColor(accent),
+		style.Name(styleNameTextInput).Part("selection").BackgroundColor(color.RGBA{R: 185, G: 210, B: 245, A: 255}),
+		style.Name(styleNameTextView).
+			BackgroundColor(color.White).
+			ForegroundColor(color.Black).
+			FontFamily(family).FontSize(size),
+		style.Name(styleNameTextView).Part("selection").BackgroundColor(color.RGBA{R: 185, G: 210, B: 245, A: 255}),
+		style.Name(styleNameTextView).Part("caret").ForegroundColor(color.Black),
 
 		style.Name(styleNameScrollView).
 			BackgroundColor(color.Transparent).
