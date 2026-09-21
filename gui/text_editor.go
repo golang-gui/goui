@@ -16,13 +16,16 @@ import (
 )
 
 type textParagraph struct {
-	layout        typography.TextLayout
-	measured      bool
-	geometry      textedit.Geometry
-	geometryValid bool
-	width         float32
-	height        float32
-	textHeight    float32
+	index          int
+	textBytes      int
+	previous, next *textParagraph
+	layout         typography.TextLayout
+	measured       bool
+	geometry       textedit.Geometry
+	geometryValid  bool
+	width          float32
+	height         float32
+	textHeight     float32
 }
 
 // editGeometry is independent of size measurement: displaying a paragraph
@@ -44,9 +47,110 @@ func (p *textParagraph) editGeometry(emptyHeight float32) *textedit.Geometry {
 	return &p.geometry
 }
 
+// Retain recently used native layouts per editor, not per document or backend.
+// The byte budget counts source text, not native memory (which is opaque).
+// Both limits apply to retained resources; the active layout range is pinned
+// even if a large viewport or a single long paragraph exceeds either budget.
+const (
+	textParagraphCacheLimit = 512
+	textParagraphCacheBytes = 1 << 20
+)
+
+type textParagraphCache struct {
+	paragraphs     map[int]*textParagraph
+	oldest, newest *textParagraph
+	textBytes      int
+}
+
+func (c *textParagraphCache) touch(p *textParagraph) {
+	if c.newest == p {
+		return
+	}
+	c.unlink(p)
+	p.previous = c.newest
+	if c.newest != nil {
+		c.newest.next = p
+	} else {
+		c.oldest = p
+	}
+	c.newest = p
+}
+
+func (c *textParagraphCache) unlink(p *textParagraph) {
+	if p.previous != nil {
+		p.previous.next = p.next
+	} else if c.oldest == p {
+		c.oldest = p.next
+	}
+	if p.next != nil {
+		p.next.previous = p.previous
+	} else if c.newest == p {
+		c.newest = p.previous
+	}
+	p.previous, p.next = nil, nil
+}
+
+func (c *textParagraphCache) add(index, textBytes int, p *textParagraph) {
+	if c.paragraphs == nil {
+		c.paragraphs = make(map[int]*textParagraph)
+	}
+	p.index, p.textBytes = index, textBytes
+	c.paragraphs[index] = p
+	c.textBytes += textBytes
+	c.touch(p)
+}
+
+func (c *textParagraphCache) remove(p *textParagraph) {
+	c.unlink(p)
+	delete(c.paragraphs, p.index)
+	c.textBytes -= p.textBytes
+	if p.layout != nil {
+		p.layout.Destroy()
+	}
+}
+
+func (c *textParagraphCache) clear() {
+	for c.oldest != nil {
+		c.remove(c.oldest)
+	}
+	c.paragraphs = nil
+}
+
+func (c *textParagraphCache) trim(start, end int) {
+	for p := c.oldest; p != nil && (len(c.paragraphs) > textParagraphCacheLimit || c.textBytes > textParagraphCacheBytes); {
+		next := p.next
+		if p.index < start || p.index >= end {
+			c.remove(p)
+		}
+		p = next
+	}
+}
+
+// An edit invalidates only replaced paragraphs. Keep both native resources
+// and recency order for unaffected paragraphs, remapping their logical index.
+func (c *textParagraphCache) splice(start, removed, inserted int) {
+	for p := c.oldest; p != nil; {
+		next := p.next
+		if p.index >= start && p.index < start+removed {
+			c.remove(p)
+		}
+		p = next
+	}
+	next := make(map[int]*textParagraph, len(c.paragraphs))
+	for index, p := range c.paragraphs {
+		if index >= start+removed {
+			index += inserted - removed
+		}
+		p.index = index
+		next[index] = p
+	}
+	c.paragraphs = next
+}
+
 // textEditor is private state and operations, not a Widget. Its owner is the
 // sole tree node and input target. Each control has independent resources.
 type textEditor struct {
+	textParagraphCache
 	owner             Widget
 	singleLine        bool
 	model             *TextModel
@@ -69,7 +173,6 @@ type textEditor struct {
 	layoutWidth       float32
 	observedWidth     float32
 	heights           textedit.HeightIndex
-	paragraphs        map[int]*textParagraph
 	changeSignal      signal.Signal1[TextChange]
 	submitSignal      signal.Signal0
 	selectSignal      signal.Signal1[TextSelection]
@@ -434,12 +537,7 @@ func (t *textEditor) ensureFormat() {
 }
 
 func (t *textEditor) releaseParagraphs() {
-	for _, p := range t.paragraphs {
-		if p.layout != nil {
-			p.layout.Destroy()
-		}
-	}
-	t.paragraphs = nil
+	t.textParagraphCache.clear()
 }
 
 func (t *textEditor) resetParagraphs() {
@@ -449,25 +547,15 @@ func (t *textEditor) resetParagraphs() {
 }
 
 func (t *textEditor) spliceParagraphs(start, removed, inserted int) {
-	next := make(map[int]*textParagraph, len(t.paragraphs))
-	for index, p := range t.paragraphs {
-		switch {
-		case index < start:
-			next[index] = p
-		case index >= start+removed:
-			next[index+inserted-removed] = p
-		default:
-			if p.layout != nil {
-				p.layout.Destroy()
-			}
-		}
-	}
-	t.paragraphs = next
+	t.textParagraphCache.splice(start, removed, inserted)
 	t.heights.Splice(start, removed, inserted, t.lineHeight)
 }
 
 func (t *textEditor) paragraph(index int) *textParagraph {
 	p := t.paragraphs[index]
+	if p != nil {
+		t.textParagraphCache.touch(p)
+	}
 	if p != nil && p.measured {
 		return p
 	}
@@ -488,10 +576,7 @@ func (t *textEditor) paragraph(index int) *textParagraph {
 				return nil
 			}
 		}
-		if t.paragraphs == nil {
-			t.paragraphs = make(map[int]*textParagraph)
-		}
-		t.paragraphs[index] = p
+		t.textParagraphCache.add(index, len(text), p)
 	} else if p.layout != nil {
 		p.layout.SetSize(width, textInputMeasureExtent)
 	}
@@ -565,21 +650,26 @@ func (t *textEditor) layoutVisible(viewport geometry.Size, offset geometry.Point
 	anchorTop := t.heights.Top(anchor)
 	start := t.heights.At(max(0, offset.Y-t.padding-viewport.Height))
 	end := start
+	// Above-viewport measurement participates in the retained text anchor.
+	// Preserve that range, but do not synchronously shape another full screen
+	// below the viewport on every scrollbar jump.
+	const trailingOverscanParagraphs = 4
+	trailing := 0
 	for end < t.displayLineCount() {
-		if t.heights.Top(end) > offset.Y-t.padding+2*viewport.Height && end > anchor {
+		top := t.heights.Top(end)
+		if top > offset.Y-t.padding+2*viewport.Height && end > anchor {
 			break
+		}
+		if top > offset.Y-t.padding+viewport.Height && end > anchor {
+			if trailing == trailingOverscanParagraphs {
+				break
+			}
+			trailing++
 		}
 		t.paragraph(end)
 		end++
 	}
-	for i, p := range t.paragraphs {
-		if i < start || i >= end {
-			if p.layout != nil {
-				p.layout.Destroy()
-			}
-			delete(t.paragraphs, i)
-		}
-	}
+	t.textParagraphCache.trim(start, end)
 	// Measuring the overscan above the viewport must not move its top text.
 	if delta := t.heights.Top(anchor) - anchorTop; delta != 0 {
 		t.offset.Y = max(0, offset.Y+delta)

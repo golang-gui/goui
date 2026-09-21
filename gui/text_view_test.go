@@ -47,12 +47,12 @@ func TestTextViewViewportCacheAndLocalEdit(t *testing.T) {
 	if len(typo.calls) != count {
 		t.Fatal("paint rebuilt an offscreen caret paragraph")
 	}
-	if len(editor.paragraphs) > 20 {
+	if len(editor.paragraphs) > textParagraphCacheLimit {
 		t.Fatalf("scroll retained %d paragraph layouts", len(editor.paragraphs))
 	}
 	for _, p := range typo.layouts {
-		if p == untouched && !p.destroyed {
-			t.Fatal("offscreen layout not released")
+		if p == untouched && p.destroyed {
+			t.Fatal("recent offscreen layout not retained")
 		}
 	}
 	info := editor.Snapshot()
@@ -834,6 +834,74 @@ func testTextViewNativeResizeAnchor(t *testing.T, newContext func() (typography.
 			if editor.anchorPending || scroll.revealPending {
 				t.Fatalf("resize did not settle: width=%g old=%+v scroll=%g contentOffset=%g anchor=%+v pending=%t/%t", width, old, scroll.ScrollY(), editor.offset.Y, editor.anchor, editor.anchorPending, scroll.revealPending)
 			}
+		}
+	}
+}
+
+func TestTextViewFastScrollCoversViewport(t *testing.T) {
+	testTextViewFastScrollCoverage(t, &editorTypography{})
+}
+
+func testTextViewFastScrollCoverage(t *testing.T, ctx typography.Context) {
+	t.Helper()
+	setTestApplication(t, ctx)
+	var text strings.Builder
+	for i := 0; i < 1500; i++ {
+		fmt.Fprintf(&text, "[%04d] %s\n", i, strings.Repeat("abc 中文 ffi ", 1+i%9))
+	}
+	editor := NewTextView()
+	editor.SetModel(NewTextModel(text.String()))
+	scroll := NewScrollView()
+	scroll.SetChild(editor)
+	win := &window{}
+	win.SetWidget(scroll)
+	defer win.SetWidget(nil)
+	for _, size := range []geometry.Size{{Width: 220, Height: 108}, {Width: 499, Height: 590}, {Width: 1206, Height: 1200}} {
+		box := geometry.Rect(0, 0, size.Width, size.Height)
+		scroll.Measure(layout.Tight(size))
+		scroll.Arrange(box)
+		for _, y := range []float32{20000, 1100, 50000, 0, 35000, 9500, 1e8, 1000} {
+			scroll.SetScrollY(y)
+			assertTextViewViewportMeasured(t, editor)
+			for range 20 {
+				if !editor.anchorPending && !scroll.revealPending && !editor.revealCaret {
+					break
+				}
+				scroll.Arrange(box)
+				assertTextViewViewportMeasured(t, editor)
+			}
+			if editor.anchorPending || scroll.revealPending || editor.revealCaret || editor.offset.Y != scroll.ScrollY() {
+				t.Fatalf("scroll did not settle: size=%v y=%g host=%g editor=%g", size, y, scroll.ScrollY(), editor.offset.Y)
+			}
+			assertTextViewViewportMeasured(t, editor)
+		}
+	}
+}
+
+func assertTextViewViewportMeasured(t *testing.T, editor *TextView) {
+	t.Helper()
+	first := editor.heights.At(max(0, editor.offset.Y-editor.padding))
+	last := editor.heights.At(max(0, editor.offset.Y+editor.viewport.Height-editor.padding-1))
+	for index := first; index <= last; index++ {
+		p := editor.paragraphs[index]
+		if p == nil || !p.measured {
+			t.Fatalf("unmeasured visible paragraph: viewport=%v offset=%g index=%d visible=%d..%d", editor.viewport, editor.offset.Y, index, first, last)
+		}
+	}
+}
+
+func TestTextViewTrailingOverscanIsBounded(t *testing.T) {
+	editor, _, _ := newEditorFixture(t, strings.Repeat("row\n", 5000))
+	for _, height := range []float32{400, 1200} {
+		editor.LayoutVisible(geometry.Size{Width: 1200, Height: height}, geometry.Point{})
+		count := 0
+		for index := range editor.paragraphs {
+			if editor.heights.Top(index) > height-editor.padding {
+				count++
+			}
+		}
+		if count > 4 {
+			t.Fatalf("height %g measured %d trailing paragraphs", height, count)
 		}
 	}
 }
