@@ -1,7 +1,10 @@
 package gui
 
 import (
+	"math"
+
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/events"
 
@@ -20,6 +23,14 @@ type Scrollable interface {
 	// the visible area size; offset is the scroll offset (the content places
 	// its children at -offset).
 	LayoutVisible(viewport geometry.Size, offset geometry.Point)
+}
+
+// ScrollIntoViewRequester is optional scrolling-content behavior. Requests use
+// content-local DIP coordinates before subtracting the scroll offset. A
+// ScrollView connects to its content automatically; the content does not need
+// to know its host or write the host's scroll state.
+type ScrollIntoViewRequester interface {
+	ConnectScrollIntoView(func(geometry.Rectangle)) signal.Handle
 }
 
 // ScrollView is a single-content scrolling container. The content may be a
@@ -41,6 +52,11 @@ type ScrollView struct {
 	wheel         *WheelEventController
 	vbar          *ScrollBar // vertical scrollbar (right column)
 	hbar          *ScrollBar // horizontal scrollbar (bottom row)
+	revealHandle  signal.Handle
+	revealRect    geometry.Rectangle
+	revealPending bool
+	layoutDepth   int
+	revealing     bool
 }
 
 // scrollViewport gives scrolling content a real structural clipping boundary.
@@ -83,6 +99,8 @@ func NewScrollView() *ScrollView {
 		sv.SetScrollY(sv.ScrollY() + sv.wheelDelta(dy, e.Mode))
 	})
 	sv.AddEventController(sv.wheel)
+	sv.ConnectMount(sv.connectReveal)
+	sv.ConnectUnmount(sv.disconnectReveal)
 	return sv
 }
 
@@ -93,6 +111,7 @@ func (sv *ScrollView) SetChild(content Widget) {
 	if sv.content == content {
 		return
 	}
+	sv.disconnectReveal()
 	if sv.content != nil {
 		sv.viewport.WidgetBase.RemoveChild(sv.content)
 	}
@@ -100,7 +119,91 @@ func (sv *ScrollView) SetChild(content Widget) {
 	if content != nil {
 		sv.viewport.WidgetBase.AddChild(sv.viewport, content)
 	}
+	sv.connectReveal()
 	sv.RequestLayout()
+}
+
+func (sv *ScrollView) connectReveal() {
+	if sv.revealHandle != nil || sv.destroyed {
+		return
+	}
+	content := sv.content
+	if requester, ok := content.(ScrollIntoViewRequester); ok {
+		sv.revealHandle = requester.ConnectScrollIntoView(func(rect geometry.Rectangle) {
+			if !sv.destroyed && sv.content == content {
+				sv.ScrollIntoView(rect)
+			}
+		})
+	}
+}
+
+func (sv *ScrollView) disconnectReveal() {
+	if sv.revealHandle != nil {
+		sv.revealHandle.Disconnect()
+		sv.revealHandle = nil
+	}
+	sv.revealPending = false
+}
+
+// ScrollIntoView minimally scrolls to show rect in unscrolled content-local
+// coordinates. For a rectangle larger than the viewport its leading edge is
+// preferred. Invalid rectangles are ignored. During layout only the latest
+// request is retained and applied after the content extent has been refreshed.
+func (sv *ScrollView) ScrollIntoView(rect geometry.Rectangle) {
+	if sv.destroyed || sv.content == nil || rect.Width < 0 || rect.Height < 0 {
+		return
+	}
+	for _, v := range []float32{rect.X, rect.Y, rect.Width, rect.Height, rect.X + rect.Width, rect.Y + rect.Height} {
+		if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
+			return
+		}
+	}
+	sv.revealRect, sv.revealPending = rect, true
+	sv.flushReveal()
+}
+
+func (sv *ScrollView) flushReveal() {
+	if !sv.revealPending || sv.layoutDepth != 0 || sv.revealing || sv.destroyed || sv.content == nil {
+		return
+	}
+	area := sv.contentAreaSize()
+	if area.Width <= 0 || area.Height <= 0 {
+		return // retain until the first allocation
+	}
+	sv.revealing = true
+	defer func() { sv.revealing = false }()
+	extentChanged := sv.refreshContentSize()
+	area = sv.contentAreaSize()
+	rect := sv.revealRect
+	sv.revealPending = false
+	oldX, oldY := sv.scrollX, sv.scrollY
+	sv.scrollX = revealOffset(oldX, area.Width, rect.X, rect.Width)
+	sv.scrollY = revealOffset(oldY, area.Height, rect.Y, rect.Height)
+	sv.clampScroll()
+	if extentChanged || oldX != sv.scrollX || oldY != sv.scrollY {
+		sv.Arrange(sv.Rect())
+		sv.RequestPaint()
+	}
+	// A layout may revise its request after measuring new content. Process it
+	// on the next layout, not recursively on this stack.
+	if sv.revealPending {
+		sv.RequestLayout()
+	}
+}
+
+func revealOffset(offset, viewport, start, size float32) float32 {
+	if start < offset {
+		return float32(math.Floor(float64(start)))
+	}
+	if start+size > offset+viewport {
+		return float32(math.Ceil(float64(min(start, start+size-viewport))))
+	}
+	return offset
+}
+
+func (sv *ScrollView) finishContentLayout() {
+	sv.layoutDepth--
+	sv.flushReveal()
 }
 
 // Child returns the scrollable content, or nil.
@@ -276,6 +379,8 @@ func (sv *ScrollView) viewportHeight(c layout.Constraint) float32 {
 }
 
 func (sv *ScrollView) Arrange(rect geometry.Rectangle) {
+	sv.layoutDepth++
+	defer sv.finishContentLayout()
 	sv.WidgetBase.Arrange(rect)
 	sv.clampScroll()
 	sv.arrangeContent()
@@ -312,6 +417,8 @@ func (sv *ScrollView) refreshContentSize() bool {
 }
 
 func (sv *ScrollView) arrangeContent() {
+	sv.layoutDepth++
+	defer sv.finishContentLayout()
 	if !ensureWidgetStyle(sv.content) {
 		return
 	}
