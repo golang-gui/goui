@@ -17,6 +17,37 @@ import (
 	"github.com/golang-gui/goui/style"
 )
 
+func TestTextEditorCommandModifierIsNotSuper(t *testing.T) {
+	for _, modifier := range []events.Modifiers{events.ModifierControl, events.ModifierCommand, events.ModifierSuper, events.ModifierWin, events.ModifierOption, textCommandModifier() | events.ModifierOption, textCommandModifier() | events.ModifierAlt} {
+		editor, win, _ := newEditorFixture(t, "abc")
+		editorKey(t, win, events.KeyA, modifier)
+		want := TextSelection{}
+		if runtime.GOOS == "darwin" && modifier == events.ModifierCommand || runtime.GOOS != "darwin" && modifier == events.ModifierControl {
+			want = TextSelection{0, 3}
+		}
+		if editor.Selection() != want {
+			t.Fatalf("modifier %v: selection %+v, want %+v", modifier, editor.Selection(), want)
+		}
+	}
+}
+
+func TestTextEditorCommandRejectsExtraModifiers(t *testing.T) {
+	for _, extra := range []events.Modifiers{events.ModifierAltGraph, events.ModifierWin, events.ModifierSuper, 1 << 15} {
+		event := events.KeyEvent{EventType: events.KeyDown, Key: events.KeyA, Modifiers: textCommandModifier() | extra}
+		if textCommand(event.Modifiers) || cancelsTextPreedit(event) {
+			t.Fatalf("extra modifier %v interpreted as editing command", extra)
+		}
+		editor, win, _ := newEditorFixture(t, "abc")
+		editorKey(t, win, event.Key, event.Modifiers)
+		if editor.Selection() != (TextSelection{}) {
+			t.Fatal("extra modifier unexpectedly selected all text")
+		}
+		if (KeyGesture{Key: KeyA, Modifiers: ModPrimary}).Matches(event) {
+			t.Fatal("extra modifier unexpectedly matched shortcut")
+		}
+	}
+}
+
 // 共用排版、剪贴板替身与事件入口。
 
 // Fixture typography has 10 DIP cells and 20 DIP lines. It is deliberately

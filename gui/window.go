@@ -34,6 +34,9 @@ type Window interface {
 	// Chrome returns the stable, non-nil titlebar integration signal service.
 	// Unsupported integration uses a service that reports disabled information.
 	Chrome() WindowChrome
+	// Shortcuts returns the window-owned controller. Its default Bubble phase
+	// runs after the focused widget's tree; modal targets receive input first.
+	Shortcuts() *ShortcutController
 	// State reports one native presentation state, or Unknown. RequestState
 	// is best effort; it does not promise the requested result.
 	// Normal requests an ordinary window, not a historical Restore operation.
@@ -196,7 +199,12 @@ func newWindow(app *application, options WindowOptions) (*window, error) {
 // onInputMethod is the window's platform.InputMethodHandler: it routes native
 // input-method output to the focused widget's IMContext (see doc/DesignIME.md §3).
 func (w *window) onInputMethod(r platform.InputMethodResult) {
-	if w.activeIM == nil {
+	if w.destroyed || w.activeIM == nil {
+		return
+	}
+	// A modal target owns keyboard input. A trailing native result must not
+	// edit the underlying field; allow only the cancellation of its preedit.
+	if w.modalTarget != nil && (r.Kind != platform.InputMethodPreedit || r.Text != "") {
 		return
 	}
 	switch r.Kind {
@@ -310,6 +318,10 @@ func (w *window) Destroy() {
 		return
 	}
 	w.destroyed = true
+	if c := w.dispatcher.shortcuts; c != nil {
+		c.destroyed = true
+		c.Clear()
+	}
 	if w.chrome != nil {
 		w.chrome.destroy()
 	}
@@ -453,6 +465,14 @@ func (w *window) DispatchEvent(event events.Event) error {
 	return nil
 }
 
+func (w *window) Shortcuts() *ShortcutController {
+	if w.dispatcher.shortcuts == nil {
+		w.dispatcher.shortcuts = NewShortcutController()
+		w.dispatcher.shortcuts.destroyed = w.destroyed
+	}
+	return w.dispatcher.shortcuts
+}
+
 func (w *window) ConnectCloseRequest(fn func(*bool)) signal.Handle {
 	if w.destroyed {
 		return signal.Handles(nil)
@@ -519,7 +539,18 @@ func (w *window) onEvent(event events.Event) {
 // SetModalTarget installs (or with nil clears) the window's modal input target.
 // See the Window interface.
 func (w *window) SetModalTarget(target ModalTarget) {
+	if w.destroyed {
+		return
+	}
+	wasModal := w.modalTarget != nil
 	w.modalTarget = target
+	if target != nil && !wasModal {
+		w.imReset()
+		if w.destroyed {
+			return
+		}
+	}
+	w.imSetEnabled(w.activeIM != nil)
 	w.applyCursor()
 }
 
@@ -533,6 +564,7 @@ func (w *window) routeToModalTarget(event events.Event) bool {
 	}
 	switch e := event.(type) {
 	case events.KeyEvent:
+		e.PreventDefault() // never deliver owner text after forwarding to a popup
 		if e.EventType == events.KeyDown && e.Key == events.KeyEscape {
 			w.modalTarget.RequestDismiss()
 		} else {
@@ -647,7 +679,7 @@ func (w *window) updateInputMethod(focused Widget) {
 
 func (w *window) imSetEnabled(enabled bool) {
 	if w.inputMethod != nil {
-		w.inputMethod.SetEnabled(enabled)
+		w.inputMethod.SetEnabled(enabled && w.modalTarget == nil)
 	}
 }
 

@@ -96,6 +96,7 @@ func (b *EventControllerBase) HandleEvent(ctx EventContext) {}
 func (b *EventControllerBase) HandleCrossing(ctx CrossingContext) {}
 
 type eventContext struct {
+	alive            func() bool
 	event            events.Event
 	target           Widget
 	current          Widget
@@ -149,6 +150,7 @@ func (c *crossingContext) Position() (geometry.Point, bool) {
 }
 
 type EventDispatcher struct {
+	shortcuts *ShortcutController
 	// Optional window-owned decoration tree, above the application content.
 	// Both trees use this dispatcher's hover, focus, capture and controllers.
 	decoration Widget
@@ -176,6 +178,9 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 
 	root := host.Widget()
 	if root == nil && d.decoration == nil {
+		if d.shortcuts != nil {
+			d.shortcuts.HandleEvent(&eventContext{event: event})
+		}
 		return nil
 	}
 
@@ -211,6 +216,10 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 	ctx := &eventContext{
 		event:  event,
 		target: target,
+		alive: func() bool {
+			return liveRoot(root) != nil && !target.base().destroyed &&
+				(host.Widget() == root || d.decoration == root) && len(widgetPath(root, target)) != 0
+		},
 	}
 	if d.hostController != nil {
 		d.hostController.HandleEvent(ctx)
@@ -222,6 +231,10 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 		}
 	}
 
+	d.dispatchShortcuts(ctx, PhaseCapture)
+	if ctx.PropagationStopped() {
+		return nil
+	}
 	d.dispatchPhase(ctx, path, PhaseCapture, event)
 	if ctx.PropagationStopped() {
 		d.updateCapture(path, event)
@@ -233,11 +246,28 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 		d.updateCapture(path, event)
 		return nil
 	}
+	d.dispatchShortcuts(ctx, PhaseTarget)
+	if ctx.PropagationStopped() {
+		return nil
+	}
 
 	slices.Reverse(path)
 	d.dispatchPhase(ctx, path, PhaseBubble, event)
+	if !ctx.PropagationStopped() {
+		d.dispatchShortcuts(ctx, PhaseBubble)
+	}
 	d.updateCapture(path, event)
 	return nil
+}
+
+func (d *EventDispatcher) dispatchShortcuts(ctx *eventContext, phase PropagationPhase) {
+	if ctx.alive != nil && !ctx.alive() {
+		ctx.StopPropagation()
+		return
+	}
+	if d.shortcuts != nil && d.shortcuts.Phase() == phase {
+		d.shortcuts.HandleEvent(ctx)
+	}
 }
 
 // updateCapture installs, retains, or releases pointer capture based on the
@@ -320,12 +350,26 @@ func focusNearest(host EventTarget, target Widget) {
 
 func (d *EventDispatcher) dispatchPhase(ctx *eventContext, widgets []Widget, phase PropagationPhase, event events.Event) {
 	for _, widget := range widgets {
+		if ctx.alive != nil && !ctx.alive() {
+			ctx.StopPropagation()
+			return
+		}
+		if widget.base().destroyed {
+			ctx.StopPropagation()
+			return
+		}
 		ctx.current = widget
-		for _, controller := range widget.EventControllers() {
+		for _, controller := range slices.Clone(widget.EventControllers()) {
+			if !slices.Contains(widget.EventControllers(), controller) {
+				continue
+			}
 			if controller == nil || controller.Phase() != phase {
 				continue
 			}
 			controller.HandleEvent(ctx)
+			if ctx.alive != nil && !ctx.alive() {
+				ctx.StopPropagation()
+			}
 			if ctx.PropagationStopped() {
 				return
 			}
