@@ -1,0 +1,14 @@
+package iokit
+
+// Device-dependent event flag masks from IOKit/hidsystem/IOLLEvent.h.
+// NSEvent.modifierFlags retains these bits alongside the AppKit aggregate bits.
+const (
+	NX_DEVICELCTLKEYMASK   = 0x00000001
+	NX_DEVICELSHIFTKEYMASK = 0x00000002
+	NX_DEVICERSHIFTKEYMASK = 0x00000004
+	NX_DEVICELCMDKEYMASK   = 0x00000008
+	NX_DEVICERCMDKEYMASK   = 0x00000010
+	NX_DEVICELALTKEYMASK   = 0x00000020
+	NX_DEVICERALTKEYMASK   = 0x00000040
+	NX_DEVICERCTLKEYMASK   = 0x00002000
+)
