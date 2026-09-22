@@ -80,6 +80,7 @@ const (
 	RoleBox           Role = "box"
 	RoleHBox          Role = "hbox"
 	RoleVBox          Role = "vbox"
+	RoleWrapBox       Role = "wrapbox" // ordered wrapping container, not a selectable grid
 	RoleLabel         Role = "label"
 	RoleButton        Role = "button"
 	RoleImage         Role = "image"
