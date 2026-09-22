@@ -1,6 +1,8 @@
 package gui
 
 import (
+	"fmt"
+	"image"
 	"math"
 	"slices"
 
@@ -800,4 +802,45 @@ func (c widgetLayoutChild) Arrange(rect geometry.Rectangle) {
 
 func (c widgetLayoutChild) MainWeight() float32 {
 	return c.widget.MainWeight()
+}
+
+// Pick returns the deepest visible Widget at point in widget-local DIP, or
+// nil. It uses the same bounds clipping and child order as event delivery.
+// It searches only this subtree, not covering siblings or window decorations,
+// and causes no input, hover or focus changes.
+func Pick(widget Widget, point geometry.Point) Widget {
+	if widget == nil || widget.base().destroyed || !widget.Visible() ||
+		!containsPoint(geometry.Rect(0, 0, widget.Rect().Width, widget.Rect().Height), point) {
+		return nil
+	}
+	children := widget.Children()
+	for i := len(children) - 1; i >= 0; i-- {
+		if target := hitTest(children[i], point); target != nil {
+			return target
+		}
+	}
+	return widget
+}
+
+// RenderWidget repaints widget and its visible descendants into an independent
+// transparent image. It uses the current allocation, not the previous displayed
+// frame, and excludes ancestors, siblings and native window decorations.
+// The image origin is (0, 0); dimensions are ceil(allocation * scale).
+// A zero scale uses the host's current physical-pixels-per-DIP scale.
+//
+// Call on the GUI thread, outside Paint, after the mounted host has completed
+// layout. This does not mount, arrange or move widgets. Paint must obey its
+// normal contract, including not mutating the tree. Drawing/resource failures
+// are returned; panics in Paint propagate after drawing state is restored.
+func RenderWidget(widget Widget, scale float32) (image.Image, error) {
+	if widget == nil || widget.base().destroyed || !widget.Visible() {
+		return nil, fmt.Errorf("gui: render unavailable widget")
+	}
+	host, ok := widget.Root().(interface {
+		renderWidgetImage(Widget, float32) (image.Image, error)
+	})
+	if !ok {
+		return nil, fmt.Errorf("gui: render widget without a rendering host")
+	}
+	return host.renderWidgetImage(widget, scale)
 }

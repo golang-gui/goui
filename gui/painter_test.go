@@ -347,6 +347,9 @@ type recordingPainterBackend struct {
 
 func (p *recordingPainterBackend) Name() string { return "recording" }
 func (p *recordingPainterBackend) Destroy()     {}
+func (p *recordingPainterBackend) RenderImage(int, int, float32, func()) (image.Image, error) {
+	return nil, fmt.Errorf("recording painter does not rasterize")
+}
 func (p *recordingPainterBackend) NewImage(src image.Image) (graphics.Image, error) {
 	return newTestNativeImage(src), nil
 }

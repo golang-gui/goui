@@ -305,6 +305,9 @@ type testGraphicsPainter struct {
 func (p *testGraphicsPainter) Name() string { return "test" }
 
 func (p *testGraphicsPainter) Destroy() {}
+func (p *testGraphicsPainter) RenderImage(int, int, float32, func()) (image.Image, error) {
+	return nil, errors.New("test painter does not rasterize")
+}
 
 func (p *testGraphicsPainter) NewImage(src image.Image) (graphics.Image, error) {
 	return newTestNativeImage(src), nil

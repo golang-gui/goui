@@ -1,6 +1,10 @@
 package gui
 
 import (
+	"fmt"
+	"image"
+	"math"
+
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/graphics"
@@ -173,4 +177,25 @@ func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Sty
 	guiPainter.state.scopeClip, guiPainter.state.clip = bounds, bounds
 	guiPainter.applyState()
 	paintStyledBorder(guiPainter, body, border)
+}
+
+func (b *rootBase) renderWidgetImage(widget Widget, scale float32) (image.Image, error) {
+	if b.painter == nil || b.layoutDirty {
+		return nil, fmt.Errorf("gui: render widget before host layout is ready")
+	}
+	if scale == 0 {
+		scale = b.frameScale()
+	}
+	rect := widget.Rect()
+	w, h := math.Ceil(float64(rect.Width)*float64(scale)), math.Ceil(float64(rect.Height)*float64(scale))
+	if scale <= 0 || math.IsNaN(w) || math.IsNaN(h) || w <= 0 || h <= 0 || w > 16384 || h > 16384 {
+		return nil, fmt.Errorf("gui: invalid widget render size or scale")
+	}
+	return b.painter.RenderImage(int(w), int(h), scale, func() {
+		p := newPainter(b.painter, geometry.Rect(0, 0, rect.Width, rect.Height), scale)
+		// Cancel only this root's parent-relative position. Descendants keep
+		// their ordinary local allocations and structural clips.
+		p.state.offset = geometry.Point{X: -rect.X, Y: -rect.Y}
+		paintWidget(widget, p)
+	})
 }
