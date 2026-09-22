@@ -321,6 +321,35 @@ func (e *Event) AnyEvent() *AnyEvent {
 	return (*AnyEvent)(cgo.Pointer(e))
 }
 
+func (e *Event) MappingEvent() *MappingEvent {
+	return (*MappingEvent)(cgo.Pointer(e))
+}
+
+func (e *Event) KeymapEvent() *KeymapEvent {
+	return (*KeymapEvent)(cgo.Pointer(e))
+}
+
+// XKeymapEvent. Window is unused by Xlib; KeyVector is a server snapshot.
+type KeymapEvent struct {
+	Type      EventType
+	Serial    uint64
+	SendEvent Bool
+	Display   Display
+	Window    Window
+	KeyVector [32]byte
+}
+
+type MappingEvent struct {
+	Type         EventType
+	Serial       uint64
+	SendEvent    Bool
+	Display      Display
+	Window       Window
+	Request      int32
+	FirstKeycode int32
+	Count        int32
+}
+
 func (e *Event) ExposeEvent() *ExposeEvent {
 	return (*ExposeEvent)(cgo.Pointer(e))
 }
@@ -668,6 +697,8 @@ const (
 	XK_Super_L      KeySym = 0xffeb
 	XK_Super_R      KeySym = 0xffec
 )
+
+const XK_ISO_Level3_Shift KeySym = 0xfe03
 
 const (
 	Button1 = 1
