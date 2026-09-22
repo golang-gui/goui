@@ -44,6 +44,7 @@ func (r RootNode) Windows(windows ...WindowView) RootNode {
 
 // WindowView describes one top-level window.
 type WindowView struct {
+	shortcuts      []*ShortcutView
 	options        gui.WindowOptions
 	id             string
 	title          string

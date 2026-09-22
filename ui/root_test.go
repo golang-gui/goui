@@ -521,6 +521,7 @@ func (a *testApplication) runPosted() {
 }
 
 type testWindow struct {
+	shortcuts     *gui.ShortcutController
 	id            string
 	title         string
 	widget        gui.Widget
@@ -532,6 +533,13 @@ type testWindow struct {
 	closeRequest  signal.Signal1[*bool]
 	destroy       signal.Signal0
 	focusChanged  signal.Signal1[bool]
+}
+
+func (w *testWindow) Shortcuts() *gui.ShortcutController {
+	if w.shortcuts == nil {
+		w.shortcuts = gui.NewShortcutController()
+	}
+	return w.shortcuts
 }
 
 func (w *testWindow) Chrome() gui.WindowChrome {
