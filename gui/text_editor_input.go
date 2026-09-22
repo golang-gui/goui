@@ -50,6 +50,11 @@ func (c *textEditController) HandleEvent(ctx EventContext) {
 		t.anchorPending = false
 	case events.KeyEvent:
 		if event.EventType == events.KeyDown && t.editingKey(event) {
+			event.PreventDefault()
+			ctx.StopPropagation()
+		} else if event.EventType == events.KeyDown && textInputKey(event) {
+			// Reserve text for the focused editor, but allow the native text/IME
+			// path to commit it. Capture handlers can explicitly override this.
 			ctx.StopPropagation()
 		}
 	case events.PointerEvent:
@@ -99,6 +104,22 @@ func (c *textEditController) HandleEvent(ctx EventContext) {
 			}
 		}
 	}
+}
+
+func textInputKey(event events.KeyEvent) bool {
+	key := event.Key
+	if key != events.KeySpace && !(key >= events.KeyA && key <= events.KeyBackquote) &&
+		!(key >= events.KeyNumpad0 && key <= events.KeyNumpadDecimal) {
+		return false
+	}
+	mods := event.Modifiers &^ events.ModifierShift
+	// Ctrl+Alt can be native AltGr text. Preserve it at the text target rather
+	// than guessing a keyboard layout or manufacturing a platform AltGr flag.
+	return mods == 0 || mods == events.ModifierOption || mods == events.ModifierAltGraph || mods == events.ModifierControl|events.ModifierAlt
+}
+
+func textCommand(modifiers events.Modifiers) bool {
+	return modifiers&^events.ModifierShift == textCommandModifier()
 }
 
 func abs32(x float32) float32 {
@@ -294,10 +315,8 @@ func (t *textEditor) lineEdge(end, document bool) textedit.Position {
 }
 
 func textCommandModifier() events.Modifiers {
-	if runtime.GOOS == "darwin" {
-		return events.ModifierSuper
-	}
-	return events.ModifierControl
+	modifier, _ := ModPrimary.Resolve()
+	return modifier
 }
 
 func (t *textEditor) editingKey(event events.KeyEvent) bool {
@@ -308,14 +327,15 @@ func (t *textEditor) editingKey(event events.KeyEvent) bool {
 			return true
 		}
 	}
-	if t.preedit == nil && (cancelsTextPreedit(event) || event.Key == events.KeyC && event.Modifiers&textCommandModifier() != 0) && !t.normalizeEditingSelection() {
+	if t.preedit == nil && (cancelsTextPreedit(event) || event.Key == events.KeyC && textCommand(event.Modifiers)) && !t.normalizeEditingSelection() {
 		return true
 	}
 	shift := event.Modifiers&events.ModifierShift != 0
-	command := event.Modifiers&textCommandModifier() != 0 && event.Modifiers&events.ModifierAlt == 0
+	command := textCommand(event.Modifiers)
 	word := event.Modifiers&events.ModifierControl != 0
 	if runtime.GOOS == "darwin" {
-		word = event.Modifiers&events.ModifierAlt != 0
+		modifier, _ := ModAlt.Resolve()
+		word = event.Modifiers&modifier != 0
 	}
 	if command {
 		switch event.Key {
@@ -423,7 +443,7 @@ func cancelsTextPreedit(event events.KeyEvent) bool {
 		events.KeyEnter, events.KeyNumpadEnter, events.KeyTab:
 		return true
 	case events.KeyA, events.KeyX, events.KeyV, events.KeyZ, events.KeyY:
-		return event.Modifiers&textCommandModifier() != 0
+		return textCommand(event.Modifiers)
 	}
 	return false
 }
