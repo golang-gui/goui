@@ -456,24 +456,6 @@ func hitTest(widget Widget, point geometry.Point) Widget {
 	return Pick(widget, subtractPoint(point, widget.Rect().Pos))
 }
 
-// Pick returns the deepest visible Widget at point in widget-local DIP, or
-// nil. It uses the same bounds clipping and child order as event delivery.
-// It searches only this subtree, not covering siblings or window decorations,
-// and causes no input, hover or focus changes.
-func Pick(widget Widget, point geometry.Point) Widget {
-	if widget == nil || widget.base().destroyed || !widget.Visible() ||
-		!containsPoint(geometry.Rect(0, 0, widget.Rect().Width, widget.Rect().Height), point) {
-		return nil
-	}
-	children := widget.Children()
-	for i := len(children) - 1; i >= 0; i-- {
-		if target := hitTest(children[i], point); target != nil {
-			return target
-		}
-	}
-	return widget
-}
-
 func (d *EventDispatcher) pick(content Widget, point geometry.Point) Widget {
 	if target := hitTest(d.decoration, point); target != nil {
 		return target

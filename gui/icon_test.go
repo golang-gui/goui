@@ -347,6 +347,10 @@ func (p *iconCacheBackend) NewImage(src image.Image) (graphics.Image, error) {
 	p.images = append(p.images, n)
 	return n, nil
 }
+
+func (p *iconCacheBackend) RenderImage(int, int, float32, func()) (image.Image, error) {
+	return nil, errors.New("iconCacheBackend does not rasterize")
+}
 func (p *iconCacheBackend) DrawImage(rect geometry.Rectangle, img graphics.Image) {
 	n := img.(*iconCachedImage)
 	if n.owner != p || n.destroyed {

@@ -1,11 +1,15 @@
 package gui
 
 import (
+	"image"
+	"image/color"
 	"math"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/graphics/software"
 )
 
 type testWidget struct {
@@ -701,4 +705,114 @@ func (l *testLayoutManager) Measure(children []layout.Child, _ layout.Constraint
 func (l *testLayoutManager) Arrange(children []layout.Child, rect geometry.Rectangle) {
 	l.arranged = append([]layout.Child(nil), children...)
 	l.arrangeRect = rect
+}
+
+type widgetRenderSurface struct{ presents int }
+
+func (s *widgetRenderSurface) Transparent() bool      { return true }
+func (s *widgetRenderSurface) Draw(image.Image) error { s.presents++; return nil }
+
+func TestRenderWidgetSubtree(t *testing.T) {
+	surface := &widgetRenderSurface{}
+	p, _ := software.NewPainter(surface)
+	defer p.Destroy()
+	w := &window{rootBase: rootBase{painter: p, width: 100, pixelWidth: 200}}
+	parent := newPainterTestWidget(func(p Painter) { p.FillRect(geometry.Rect(0, 0, 100, 100), graphics.RGB(0, 255, 0)) })
+	child := newPainterTestWidget(func(p Painter) {
+		p.SetClipRect(geometry.Rect(1, 1, 4, 4))
+		p.SetTransform(geometry.Translate(1, 1))
+		p.FillRect(geometry.Rect(0, 0, 8, 8), graphics.RGBA(255, 0, 0, 128))
+	})
+	src := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	for i := 0; i < len(src.Pix); i += 4 {
+		src.Pix[i+2], src.Pix[i+3] = 255, 255
+	}
+	picture := NewImage(src)
+	child.AddChild(picture)
+	parent.AddChild(child)
+	w.SetWidget(parent)
+	parent.Arrange(geometry.Rect(0, 0, 100, 100))
+	child.Arrange(geometry.Rect(23, 17, 10, 8))
+	picture.Arrange(geometry.Rect(6, 2, 2, 2))
+	w.layoutDirty = false
+	defer picture.releaseImage()
+	// Warm the widget's image cache on its normal painter.
+	p.Begin(200, 200, 2)
+	p.Clear(graphics.Color{})
+	paintWidget(parent, newPainter(p, geometry.Rect(0, 0, 100, 100), 2))
+	p.End()
+	native := picture.paintImage
+	original := child.Rect()
+	for _, scale := range []float32{0, 1, 2} {
+		img, err := RenderWidget(child, scale)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := int(scale)
+		if s == 0 {
+			s = 2
+		}
+		if img.Bounds() != image.Rect(0, 0, 10*s, 8*s) {
+			t.Fatal(img.Bounds())
+		}
+		for _, tc := range []struct {
+			x, y int
+			want color.RGBA
+		}{
+			{0, 0, color.RGBA{}}, {2, 2, color.RGBA{R: 128, A: 128}}, {6, 2, color.RGBA{B: 255, A: 255}}, {9, 7, color.RGBA{}},
+		} {
+			got := color.RGBAModel.Convert(img.At(tc.x*s, tc.y*s)).(color.RGBA)
+			if got != tc.want {
+				t.Fatalf("scale=%g at %d,%d: %v want %v", scale, tc.x, tc.y, got, tc.want)
+			}
+		}
+		if picture.paintImage != native || child.Rect() != original || child.Root() != w {
+			t.Fatal("render changed resources or allocation")
+		}
+	}
+	if parent.paints != 1 || child.paints != 4 || surface.presents != 1 {
+		t.Fatal("incorrect subtree painting/presentation")
+	}
+}
+
+func TestRenderWidgetPreconditionsAndPanic(t *testing.T) {
+	p, _ := software.NewPainter(&widgetRenderSurface{})
+	defer p.Destroy()
+	w := &window{rootBase: rootBase{painter: p}}
+	child := newPainterTestWidget(nil)
+	if _, err := RenderWidget(nil, 1); err == nil {
+		t.Fatal("nil accepted")
+	}
+	if _, err := RenderWidget(child, 1); err == nil {
+		t.Fatal("unmounted accepted")
+	}
+	w.SetWidget(child)
+	child.Arrange(geometry.Rect(3, 4, 8, 8))
+	if _, err := RenderWidget(child, 1); err == nil {
+		t.Fatal("pending layout accepted")
+	}
+	w.layoutDirty = false
+	for _, scale := range []float32{-1, float32(math.NaN()), float32(math.Inf(1))} {
+		if _, err := RenderWidget(child, scale); err == nil {
+			t.Fatal("invalid scale accepted")
+		}
+	}
+	child.paint = func(Painter) {
+		if _, err := RenderWidget(child, 1); err == nil {
+			t.Fatal("nested paint accepted")
+		}
+		panic("widget paint")
+	}
+	func() {
+		defer func() {
+			if recover() != "widget paint" {
+				t.Fatal("panic swallowed")
+			}
+		}()
+		_, _ = RenderWidget(child, 1)
+	}()
+	child.paint = nil
+	if _, err := RenderWidget(child, 1); err != nil {
+		t.Fatal(err)
+	}
 }
