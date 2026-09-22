@@ -28,6 +28,7 @@ func NewTextModel(text string) *TextModel { return textedit.NewModel(text) }
 // TextView is a plain multiline editor. Model and history can be shared;
 // selection, input state, scrolling and native layouts belong to each view.
 // Place it in a ScrollView for scrolling and scrollbars.
+// Secondary click or Shift+F10 opens its standard editing context menu.
 type TextView struct {
 	WidgetBase
 	*textEditor

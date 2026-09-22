@@ -10,6 +10,7 @@ import (
 
 	"github.com/golang-gui/goui/core/colors"
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/gui/textedit"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
@@ -103,6 +104,287 @@ func editorKey(t *testing.T, win *window, key events.Key, modifiers events.Modif
 	t.Helper()
 	if err := win.DispatchEvent(events.KeyEvent{EventType: events.KeyDown, Key: key, Modifiers: modifiers}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Context menus use the real dispatcher, PopoverMenu and menu row controllers;
+// only the native surface, typography and clipboard are replaced (no desktop).
+func newEditorMenuFixture(t *testing.T, singleLine bool) (*textEditor, *window, *placementPlatform, *editorClipboard) {
+	t.Helper()
+	view, win, _ := newEditorFixture(t, "abcdef")
+	editor := view.textEditor
+	if singleLine {
+		input := NewTextInput()
+		input.SetText("abcdef")
+		win.SetWidget(input)
+		input.Arrange(geometry.Rect(0, 0, 209, 32))
+		win.SetFocusedWidget(input)
+		editor = input.textEditor
+	}
+	clip := &editorClipboard{}
+	plat := &placementPlatform{syncSize: true}
+	App.(*application).platform = plat
+	App.(*application).clipboard = clip
+	win.platformWindow = &placementWindow{area: geometry.Rect(0, 0, 800, 600)}
+	return editor, win, plat, clip
+}
+
+func editorMenuOpen(t *testing.T, editor *textEditor, win *window) *PopoverMenu {
+	t.Helper()
+	editorKey(t, win, events.KeyF10, events.ModifierShift)
+	if editor.contextMenu == nil || !editor.contextMenu.popup.Visible() {
+		t.Fatal("Shift+F10 did not open the context menu")
+	}
+	pm := editor.contextMenu.popup
+	settlePlacement(t, pm.popover.(*popover))
+	return pm
+}
+
+func editorMenuClick(t *testing.T, pm *PopoverMenu, label string) {
+	t.Helper()
+	p := pm.popover.(*popover)
+	settlePlacement(t, p)
+	for _, widget := range pm.content.list.items {
+		row := widget.(*menuItemRow)
+		if row.mi.Label() != label {
+			continue
+		}
+		pos := absOrigin(row)
+		pos.X += row.Rect().Width / 2
+		pos.Y += row.Rect().Height / 2
+		for _, kind := range []events.EventType{events.PointerDown, events.PointerUp} {
+			if err := p.DispatchEvent(events.PointerEvent{EventType: kind, Position: pos, Button: events.PointerButtonLeft}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return
+	}
+	t.Fatalf("menu item %q is not visible", label)
+}
+
+func TestTextEditorContextMenuCommands(t *testing.T) {
+	for _, singleLine := range []bool{false, true} {
+		for _, command := range []string{"Undo", "Redo", "Cut", "Copy", "Paste", "Delete", "Select All"} {
+			t.Run(fmt.Sprintf("single=%t/%s", singleLine, command), func(t *testing.T) {
+				editor, win, _, clip := newEditorMenuFixture(t, singleLine)
+				editor.setSelectionValue(TextSelection{1, 4})
+				if command == "Undo" || command == "Redo" {
+					editor.im.emitCommit(IMCommit{Text: "XY"})
+					if command == "Redo" {
+						editorKey(t, win, events.KeyZ, textCommandModifier())
+					}
+				}
+				pm := editorMenuOpen(t, editor, win)
+				if clip.pending != nil {
+					t.Fatal("opening a context menu read clipboard text")
+				}
+				editorMenuClick(t, pm, command)
+				if pm.Visible() || win.modalTarget != nil || win.FocusedWidget() != editor.owner {
+					t.Fatal("activation did not dismiss modal menu and retain editor focus")
+				}
+				want := "abcdef"
+				switch command {
+				case "Cut", "Delete":
+					want = "aef"
+				case "Redo":
+					want = "aXYef"
+				case "Paste":
+					if clip.pending == nil {
+						t.Fatal("paste did not request clipboard")
+					}
+					clip.pending("X\nY", true)
+					want = "aX\nYef"
+					if singleLine {
+						want = "aX Yef"
+					}
+				}
+				if got := editor.model.Text(); got != want {
+					t.Fatalf("text=%q, want %q", got, want)
+				}
+				if (command == "Cut" || command == "Copy") && clip.text != "bcd" {
+					t.Fatalf("clipboard=%q, want bcd", clip.text)
+				}
+				if command == "Select All" && editor.selection != (TextSelection{0, 6}) {
+					t.Fatal("menu did not select all")
+				}
+				if command == "Cut" || command == "Delete" || command == "Paste" {
+					editorKey(t, win, events.KeyZ, textCommandModifier())
+					if editor.model.Text() != "abcdef" || editor.selection != (TextSelection{1, 4}) {
+						t.Fatal("menu operation was not one undoable edit with selection restore")
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestTextEditorContextMenuPointerAndDismiss(t *testing.T) {
+	editor, win, plat, _ := newEditorMenuFixture(t, false)
+	editor.setSelectionValue(TextSelection{4, 1})
+	rightClick := func(x float32) {
+		t.Helper()
+		if err := win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonRight, Position: geometry.Point{X: x, Y: 12}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rightClick(24) // Fixed fixture cells: padding 4 + two cells, inside [1,4).
+	if editor.contextMenu == nil || !editor.contextMenu.popup.Visible() || editor.selection != (TextSelection{4, 1}) {
+		t.Fatal("right click lost the existing reversed selection")
+	}
+	pm := editor.contextMenu.popup
+	if pm.popover.Position() != (geometry.Point{24, 12}) || editor.input.CapturingPointer() {
+		t.Fatal("wrong local popup origin or retained selection drag")
+	}
+	editorKey(t, win, events.KeyEscape, 0)
+	if pm.Visible() || editor.selection != (TextSelection{4, 1}) || win.modalTarget != nil {
+		t.Fatal("Escape changed selection or retained modal menu")
+	}
+	rightClick(42) // Last selected cell's trailing half maps to caret offset 4.
+	if editor.selection != (TextSelection{4, 1}) {
+		t.Fatal("nearest-caret rounding discarded a visually hit selection")
+	}
+	editorKey(t, win, events.KeyEscape, 0)
+	rightClick(54)
+	if editor.selection != (TextSelection{5, 5}) || !pm.Visible() || len(plat.natives) != 1 {
+		t.Fatal("right click outside selection did not position caret/reuse popup")
+	}
+	// The first outside click only dismisses; it does not move the caret.
+	win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonLeft, Position: geometry.Point{X: 4, Y: 12}})
+	if pm.Visible() || editor.selection != (TextSelection{5, 5}) {
+		t.Fatal("outside click leaked into editor")
+	}
+	// Shift+F10 preserves the selection and anchors at the caret bottom.
+	editor.setSelectionValue(TextSelection{1, 3})
+	editorMenuOpen(t, editor, win)
+	if pm.popover.Position() != (geometry.Point{34, 24}) || editor.selection != (TextSelection{1, 3}) {
+		t.Fatalf("keyboard popup moved selection or used wrong caret: %v", pm.popover.Position())
+	}
+	win.DispatchEvent(events.FocusEvent{Focused: false})
+	if pm.Visible() || win.modalTarget != nil {
+		t.Fatal("window focus loss retained menu")
+	}
+}
+
+func TestTextEditorContextMenuScrolledPosition(t *testing.T) {
+	editor, win, _, _ := newEditorMenuFixture(t, false)
+	editor.setModel(NewTextModel("first\nsecond\nthird"))
+	editor.setSelectionValue(TextSelection{7, 10})
+	editor.revealCaret = false
+	editor.layoutVisible(geometry.Size{209, 60}, geometry.Point{Y: 20})
+	win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonRight, Position: geometry.Point{X: 24, Y: 12}})
+	if editor.selection != (TextSelection{7, 10}) || editor.contextMenu.popup.popover.Position() != (geometry.Point{24, 12}) {
+		t.Fatal("scrolled selection or popup origin used document rather than local coordinates")
+	}
+}
+
+func TestTextEditorControlClickContextMenu(t *testing.T) {
+	editor, win, _, _ := newEditorMenuFixture(t, true)
+	win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonLeft, Modifiers: events.ModifierControl, Position: geometry.Point{X: 24, Y: 12}})
+	visible := editor.contextMenu != nil && editor.contextMenu.popup.Visible()
+	if visible != (runtime.GOOS == "darwin") {
+		t.Fatalf("Control+click menu=%t on %s", visible, runtime.GOOS)
+	}
+}
+
+func TestTextEditorCopyCommandDuringPreedit(t *testing.T) {
+	editor, win, _, clip := newEditorMenuFixture(t, false)
+	editor.setSelectionValue(TextSelection{1, 6})
+	editor.im.emitPreedit("x", 1) // Projection is shorter than the model selection.
+	editorKey(t, win, events.KeyC, textCommandModifier())
+	if clip.text != "bcdef" || editor.preedit == nil || editor.selection != (TextSelection{1, 6}) {
+		t.Fatalf("copy normalized model positions against preedit: %q, %+v", clip.text, editor.selection)
+	}
+}
+
+func TestTextEditorContextMenuAvailability(t *testing.T) {
+	editor, win, _, _ := newEditorMenuFixture(t, false)
+	pm := editorMenuOpen(t, editor, win)
+	check := func(enabled ...textEditCommand) {
+		t.Helper()
+		for command, item := range editor.contextMenu.items {
+			want := false
+			for _, e := range enabled {
+				want = want || command == e
+			}
+			if item.Enabled() != want {
+				t.Fatalf("%s enabled=%v, want %v", item.Label(), item.Enabled(), want)
+			}
+		}
+	}
+	check(textPaste, textSelectAll)
+	editor.setSelectionValue(TextSelection{1, 4})
+	check(textCut, textCopy, textPaste, textDeleteSelection, textSelectAll)
+	editor.setReadOnly(true)
+	check(textCopy, textSelectAll)
+	editorMenuClick(t, pm, "Delete")
+	if !pm.Visible() || editor.model.Text() != "abcdef" {
+		t.Fatal("disabled menu item activated")
+	}
+	for _, widget := range pm.content.list.items {
+		info := widget.Snapshot()
+		if info.Text == "Delete" && (info.Enabled || len(info.Actions) != 0 || info.Role != RoleMenuItem) {
+			t.Fatal("disabled menu item advertises interactive snapshot")
+		}
+	}
+	editor.setReadOnly(false)
+	_ = editor.model.Apply(TextEdit{Range: TextRange{0, 0}, Text: "!"}, textedit.EditOptions{Atomic: true})
+	check(textUndo, textCut, textCopy, textPaste, textDeleteSelection, textSelectAll)
+	editor.model.SetText("")
+	check(textPaste)
+}
+
+func TestTextEditorContextMenuLifecycle(t *testing.T) {
+	for _, kind := range []string{"unmount", "replace-model", "reopen", "preedit", "stale-paste"} {
+		t.Run(kind, func(t *testing.T) {
+			editor, win, plat, clip := newEditorMenuFixture(t, false)
+			editor.setSelectionValue(TextSelection{1, 4})
+			if kind == "preedit" {
+				editor.im.emitPreedit("未提交", 3)
+			}
+			pm := editorMenuOpen(t, editor, win)
+			switch kind {
+			case "unmount":
+				pm.ConnectClosed(func() { win.SetWidget(nil) })
+				editorMenuClick(t, pm, "Delete")
+				if editor.model.Text() != "abcdef" || !plat.natives[0].destroyed || win.modalTarget != nil {
+					t.Fatal("activation after unmount or popup resource leak")
+				}
+			case "replace-model":
+				model := NewTextModel("replacement")
+				pm.ConnectClosed(func() { editor.setModel(model) })
+				editorMenuClick(t, pm, "Delete")
+				if editor.model != model || model.Text() != "replacement" {
+					t.Fatal("old menu action edited replacement model")
+				}
+			case "preedit":
+				if editor.preedit != nil || editor.model.Text() != "abcdef" {
+					t.Fatal("opening menu committed temporary preedit")
+				}
+				editorMenuClick(t, pm, "Copy")
+				if clip.text != "bcd" {
+					t.Fatal("copy included preedit instead of committed selection")
+				}
+			case "reopen":
+				once := true
+				pm.ConnectClosed(func() {
+					if once {
+						once = false
+						editorMenuOpen(t, editor, win)
+					}
+				})
+				editorMenuClick(t, pm, "Delete")
+				if !pm.Visible() || editor.model.Text() != "abcdef" {
+					t.Fatal("old action ran after close callback opened a new menu")
+				}
+			case "stale-paste":
+				editorMenuClick(t, pm, "Paste")
+				editor.setSelectionValue(TextSelection{})
+				clip.pending("stale", true)
+				if editor.model.Text() != "abcdef" {
+					t.Fatal("late menu paste changed a different selection")
+				}
+			}
+		})
 	}
 }
 

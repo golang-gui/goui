@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"log"
 	"strings"
 	"time"
 
@@ -180,6 +181,7 @@ type textEditor struct {
 	revealCaret       bool
 	im                IMContext
 	input             *textEditController
+	contextMenu       *textEditMenu
 	desiredX          float32
 	hasDesiredX       bool
 	mountEpoch        uint64
@@ -209,6 +211,12 @@ func newTextEditor(owner Widget, singleLine bool) *textEditor {
 	t.im.ConnectPreedit(t.onPreedit)
 	t.input = &textEditController{EventControllerBase: NewEventControllerBase(PhaseTarget), view: t}
 	t.owner.AddEventController(t.input)
+	menuShortcuts := NewShortcutController()
+	menuShortcuts.SetPhase(PhaseTarget)
+	menuShortcut := NewShortcut(KeyGesture{Key: KeyF10, Modifiers: ModShift})
+	menuShortcut.ConnectActivate(func() { t.showContextMenu(nil) })
+	menuShortcuts.AddShortcut(menuShortcut)
+	t.owner.AddEventController(menuShortcuts)
 	t.owner.ConnectMount(func() {
 		t.mountEpoch++
 		t.suspended = false
@@ -218,6 +226,7 @@ func newTextEditor(owner Widget, singleLine bool) *textEditor {
 	t.owner.ConnectUnmount(func() {
 		t.mountEpoch++
 		t.suspended = true
+		t.hideContextMenu()
 		t.cancelPreedit(true)
 		t.input.Reset()
 		t.disconnectModel()
@@ -227,6 +236,7 @@ func newTextEditor(owner Widget, singleLine bool) *textEditor {
 	t.owner.ConnectFocused(func(focused bool) {
 		t.model.BreakUndoGroup()
 		if !focused {
+			t.hideContextMenu()
 			t.cancelPreedit(false)
 			t.input.Reset()
 		}
@@ -245,6 +255,7 @@ func (t *textEditor) setModel(model *TextModel) {
 		model = NewTextModel("")
 	}
 	previous, epoch := t.model, t.mountEpoch
+	t.hideContextMenu()
 	t.cancelPreedit(true)
 	if t.owner.base().destroyed || t.model != previous || t.mountEpoch != epoch {
 		return
@@ -330,6 +341,7 @@ func (t *textEditor) setSelection(selection TextSelection, upstream, reveal bool
 		t.owner.RequestLayout()
 	}
 	if changed {
+		t.updateContextMenu()
 		t.selectSignal.Emit(selection)
 	}
 }
@@ -352,6 +364,7 @@ func (t *textEditor) setReadOnly(value bool) {
 	t.model.BreakUndoGroup()
 	t.owner.RequestPaint()
 	t.owner.base().requestSemanticUpdate()
+	t.updateContextMenu()
 }
 func (t *textEditor) setAcceptsTab(value bool) { t.acceptsTab = value }
 func (t *textEditor) setWrapMode(value WrapMode) {
@@ -443,6 +456,7 @@ func (t *textEditor) modelChanged(change TextChange) {
 	if t.owner.base().destroyed || t.model != model || t.mountEpoch != epoch {
 		return
 	}
+	t.updateContextMenu()
 	if oldSelection != t.selection {
 		t.selectSignal.Emit(t.selection)
 	}
@@ -1205,4 +1219,194 @@ func (t *textEditor) resetInputMethod() {
 	t.resettingIME = true
 	defer func() { t.resettingIME = false }()
 	t.im.Reset()
+}
+
+// Keyboard bindings and menu items share operations, not synthetic key events.
+// This stays private to the editor; it is not an application command registry.
+type textEditCommand uint8
+
+const (
+	textUndo textEditCommand = iota
+	textRedo
+	textCut
+	textCopy
+	textPaste
+	textDeleteSelection
+	textSelectAll
+)
+
+type textEditMenu struct {
+	popup *PopoverMenu
+	items map[textEditCommand]*MenuItem
+}
+
+func (t *textEditor) canEditCommand(command textEditCommand) bool {
+	if t.owner.base().destroyed || t.suspended {
+		return false
+	}
+	selected := t.selection.Anchor != t.selection.Caret
+	switch command {
+	case textUndo:
+		return !t.readOnly && t.model.CanUndo()
+	case textRedo:
+		return !t.readOnly && t.model.CanRedo()
+	case textCopy:
+		return selected && App != nil && App.Clipboard() != nil
+	case textCut:
+		return !t.readOnly && selected && App != nil && App.Clipboard() != nil
+	case textPaste:
+		// Clipboard has no format query. Do not fetch potentially sensitive text
+		// merely to display a menu; an unsuccessful request is a paste no-op.
+		return !t.readOnly && App != nil && App.Clipboard() != nil
+	case textDeleteSelection:
+		return !t.readOnly && selected
+	case textSelectAll:
+		return t.model.Len() != 0
+	}
+	return false
+}
+
+func (t *textEditor) runEditCommand(command textEditCommand) {
+	if !t.canEditCommand(command) {
+		return
+	}
+	model, epoch := t.model, t.mountEpoch
+	if command != textCopy {
+		t.cancelPreedit(true)
+	}
+	if t.owner.base().destroyed || t.model != model || t.mountEpoch != epoch {
+		return
+	}
+	// Copy during IME composition keeps the committed selection. Its offsets
+	// cannot be normalized against the shorter/longer temporary projection.
+	if t.preedit == nil && !t.normalizeEditingSelection() {
+		return
+	}
+	if !t.canEditCommand(command) {
+		return
+	}
+	switch command {
+	case textUndo, textRedo:
+		t.undo(command == textRedo)
+	case textCut, textCopy:
+		t.copySelection(command == textCut)
+	case textPaste:
+		t.paste()
+	case textDeleteSelection:
+		t.replaceSelection("", true)
+	case textSelectAll:
+		t.setSelectionValue(TextSelection{0, t.model.Len()})
+	}
+}
+
+// A nil point denotes keyboard invocation, positioned below the caret. Pointer
+// coordinates and PopoverMenu.ShowAt both use editor-local DIP.
+func (t *textEditor) showContextMenu(point *geometry.Point) {
+	if t.owner.base().destroyed || t.suspended || t.owner.Window() == nil {
+		return
+	}
+	model, epoch := t.model, t.mountEpoch
+	t.cancelPreedit(true)
+	if t.owner.base().destroyed || t.model != model || t.mountEpoch != epoch || !t.normalizeEditingSelection() {
+		return
+	}
+	t.input.Reset()
+	t.hasDesiredX = false
+	position := geometry.Point{X: t.padding, Y: t.padding + t.lineHeight}
+	if point != nil {
+		position = *point
+		if !t.selectionContains(position) {
+			t.moveTo(t.hitText(position), false)
+		}
+	} else if caret, ok := t.caretRect(); ok {
+		position = geometry.Point{X: caret.X - t.offset.X, Y: caret.Y + caret.Height - t.offset.Y}
+	}
+	if t.owner.base().destroyed || t.model != model || t.mountEpoch != epoch || t.suspended {
+		return
+	}
+	t.model.BreakUndoGroup()
+	if t.contextMenu == nil {
+		t.contextMenu = &textEditMenu{popup: NewPopoverMenu(t.owner)}
+	}
+	menu := t.contextMenu
+	menu.items = make(map[textEditCommand]*MenuItem)
+	items := NewMenu()
+	for _, spec := range []struct {
+		command textEditCommand
+		label   string
+	}{
+		{textUndo, "Undo"}, {textRedo, "Redo"},
+		{textCut, "Cut"}, {textCopy, "Copy"}, {textPaste, "Paste"},
+		{textDeleteSelection, "Delete"}, {textSelectAll, "Select All"},
+	} {
+		if spec.command == textCut || spec.command == textSelectAll {
+			items.AppendSeparator()
+		}
+		command := spec.command
+		item := items.Append(spec.label, func() {
+			// PopoverMenu hides before activation. The hide/IME callbacks may
+			// unmount us, replace the document, or open another menu.
+			if t.model == model && t.mountEpoch == epoch && menu.popup.Menu() == items {
+				t.runEditCommand(command)
+			}
+		})
+		item.SetEnabled(t.canEditCommand(command))
+		menu.items[command] = item
+	}
+	menu.popup.SetMenu(items)
+	if err := menu.popup.ShowAt(position); err != nil {
+		log.Printf("goui: text context menu: %v", err)
+	}
+}
+
+// Hit the painted selection rather than the nearest caret: the last half of a
+// selected Cluster can map to its end boundary. Only shape the hit paragraph,
+// even if the selection spans a large document; bidi spans remain disjoint.
+func (t *textEditor) selectionContains(point geometry.Point) bool {
+	selected := t.selection.Range()
+	if selected.Start == selected.End {
+		return false
+	}
+	point.X += t.offset.X - t.padding
+	point.Y += t.offset.Y - t.padding
+	index := t.heights.At(point.Y)
+	rng := t.displayLineRange(index)
+	if selected.Start > rng.End || selected.End <= rng.Start {
+		return false
+	}
+	p := t.paragraph(index)
+	if p == nil {
+		return false
+	}
+	point.Y -= t.heights.Top(index)
+	g := p.editGeometry(t.lineHeight)
+	contains := func(rect geometry.Rectangle) bool {
+		return point.X >= rect.X && point.X < rect.X+rect.Width && point.Y >= rect.Y && point.Y < rect.Y+rect.Height
+	}
+	for _, rect := range g.Selection(TextRange{selected.Start - rng.Start, selected.End - rng.Start}) {
+		if contains(rect) {
+			return true
+		}
+	}
+	if selected.End > rng.End && index+1 < t.displayLineCount() {
+		rect := g.Caret(textedit.Position{Offset: rng.End - rng.Start, Upstream: true})
+		rect.Width = max(1, t.lineHeight/3)
+		return contains(rect)
+	}
+	return false
+}
+
+func (t *textEditor) updateContextMenu() {
+	if t.contextMenu == nil || !t.contextMenu.popup.Visible() {
+		return
+	}
+	for command, item := range t.contextMenu.items {
+		item.SetEnabled(t.canEditCommand(command))
+	}
+}
+
+func (t *textEditor) hideContextMenu() {
+	if t.contextMenu != nil {
+		t.contextMenu.popup.Hide()
+	}
 }

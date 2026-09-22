@@ -64,6 +64,11 @@ func (c *textEditController) HandleEvent(ctx EventContext) {
 		}
 		switch event.EventType {
 		case events.PointerDown:
+			if event.Button == events.PointerButtonRight || runtime.GOOS == "darwin" && event.Button == events.PointerButtonLeft && event.Modifiers&events.ModifierControl != 0 {
+				ctx.StopPropagation()
+				t.showContextMenu(&point)
+				return
+			}
 			if event.Button != events.PointerButtonLeft {
 				return
 			}
@@ -340,26 +345,26 @@ func (t *textEditor) editingKey(event events.KeyEvent) bool {
 	if command {
 		switch event.Key {
 		case events.KeyA:
-			t.setSelectionValue(TextSelection{0, t.model.Len()})
+			t.runEditCommand(textSelectAll)
 			return true
 		case events.KeyC:
-			t.copySelection(false)
+			t.runEditCommand(textCopy)
 			return true
 		case events.KeyX:
-			t.copySelection(true)
+			t.runEditCommand(textCut)
 			return true
 		case events.KeyV:
-			t.paste()
+			t.runEditCommand(textPaste)
 			return true
 		case events.KeyZ:
-			if !t.readOnly {
-				t.undo(shift)
+			if shift {
+				t.runEditCommand(textRedo)
+			} else {
+				t.runEditCommand(textUndo)
 			}
 			return true
 		case events.KeyY:
-			if !t.readOnly {
-				t.undo(true)
-			}
+			t.runEditCommand(textRedo)
 			return true
 		}
 	}
