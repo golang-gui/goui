@@ -16,6 +16,37 @@ import (
 	"github.com/golang-gui/goui/style"
 )
 
+func TestExplicitModifierAndKeyNames(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		modifier events.Modifiers
+		key      events.Key
+	}{
+		{"ctrl", events.ModifierControl, events.KeyControl},
+		{"option", events.ModifierOption, events.KeyOption},
+		{"altgraph", events.ModifierAltGraph, events.KeyAltGraph},
+		{"altgr", events.ModifierAltGraph, events.KeyAltGraph},
+		{"alt", events.ModifierAlt, events.KeyAlt},
+		{"command", events.ModifierCommand, events.KeyCommand},
+		{"cmd", events.ModifierCommand, events.KeyCommand},
+		{"super", events.ModifierSuper, events.KeySuper},
+		{"win", events.ModifierWin, events.KeyWin},
+		{"meta", events.ModifierSuper, events.KeySuper},
+	} {
+		modifier, err := modifierByName(tt.name)
+		if err != nil || modifier != tt.modifier {
+			t.Fatalf("modifier %s: %v, %v", tt.name, modifier, err)
+		}
+		key, err := keyByName(tt.name)
+		if err != nil || key != tt.key {
+			t.Fatalf("key %s: %v, %v", tt.name, key, err)
+		}
+	}
+	if _, err := modifierByName("primary"); err == nil {
+		t.Fatal("platform input protocol must not infer Primary")
+	}
+}
+
 func TestNormalizeAddr(t *testing.T) {
 	addr, err := normalizeAddr("8080")
 	if err != nil {

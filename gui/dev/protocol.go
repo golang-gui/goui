@@ -260,10 +260,18 @@ func modifierByName(name string) (events.Modifiers, error) {
 		return events.ModifierShift, nil
 	case "control", "ctrl":
 		return events.ModifierControl, nil
-	case "alt", "option":
+	case "alt":
 		return events.ModifierAlt, nil
-	case "super", "meta", "command", "cmd":
+	case "option":
+		return events.ModifierOption, nil
+	case "altgraph", "altgr":
+		return events.ModifierAltGraph, nil
+	case "super", "meta":
 		return events.ModifierSuper, nil
+	case "win":
+		return events.ModifierWin, nil
+	case "command", "cmd":
+		return events.ModifierCommand, nil
 	default:
 		return 0, fmt.Errorf("unknown modifier %q", name)
 	}
@@ -364,10 +372,18 @@ func keyByName(name string) (events.Key, error) {
 		return events.KeyShift, nil
 	case "control", "ctrl":
 		return events.KeyControl, nil
-	case "alt", "option":
+	case "alt":
 		return events.KeyAlt, nil
-	case "super", "meta", "command", "cmd":
+	case "option":
+		return events.KeyOption, nil
+	case "altgraph", "altgr":
+		return events.KeyAltGraph, nil
+	case "super", "meta":
 		return events.KeySuper, nil
+	case "win":
+		return events.KeyWin, nil
+	case "command", "cmd":
+		return events.KeyCommand, nil
 	case "capslock":
 		return events.KeyCapsLock, nil
 	case "numlock":
