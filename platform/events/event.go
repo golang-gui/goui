@@ -1,7 +1,8 @@
 package events
 
-// Event is a read-only platform notification. Only event types declared by
-// this package can implement it.
+// Event carries read-only platform facts. KeyEvent additionally permits a
+// synchronous default-action response; its key data remains unchanged.
+// Only event types declared by this package can implement it.
 type Event interface {
 	Type() EventType
 	isEvent()

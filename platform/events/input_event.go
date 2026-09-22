@@ -2,6 +2,9 @@ package events
 
 import "github.com/golang-gui/goui/core/geometry"
 
+// Modifiers reports aggregate native modifier state, without left/right sides.
+// A modifier remains active while either side is held. KeyEvent.Location
+// identifies the side of the key that changed, not the sides of this mask.
 type Modifiers uint16
 
 const (
@@ -16,6 +19,8 @@ const (
 	ModifierWin
 	// ModifierOption is macOS Option, distinct from Windows/Linux Alt.
 	ModifierOption
+	// ModifierAltGraph is X11's Level3 modifier, not a synthesized Ctrl+Alt.
+	ModifierAltGraph
 )
 
 type PointerButton uint8
@@ -205,6 +210,8 @@ const (
 	KeyWin
 	// KeyOption is macOS Option, distinct from Alt.
 	KeyOption
+	// KeyAltGraph is X11 ISO_Level3_Shift; its physical side is unspecified.
+	KeyAltGraph
 )
 
 type KeyCode uint32
@@ -213,11 +220,29 @@ const KeyCodeUnknown KeyCode = 0
 
 type KeyEvent struct {
 	EventType EventType
+	// Key identifies the logical key, not its physical US keyboard position.
+	// A-Z follow the active layout and ignore letter case. Text and composed
+	// characters are delivered separately by the input method. Unsupported
+	// characters may report KeyUnknown; Code is reserved for physical keys.
 	Key       Key
 	Code      KeyCode
 	Location  KeyLocation
 	Modifiers Modifiers
 	Repeat    bool
+	// Handled is an optional synchronous response supplied by the native key
+	// dispatcher. Set it only to true (or call PreventDefault) to prevent that
+	// dispatch's remaining default key/text handling. It is not event data and
+	// must not be retained for asynchronous replies. Synthetic events may omit
+	// it. Stopping GUI propagation alone does not set this response.
+	Handled *bool
+}
+
+// PreventDefault marks this native key dispatch as handled. It does not stop
+// GUI propagation; callers that consume a shortcut must do both.
+func (e KeyEvent) PreventDefault() {
+	if e.Handled != nil {
+		*e.Handled = true
+	}
 }
 
 func (e KeyEvent) Type() EventType {
