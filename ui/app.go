@@ -172,6 +172,7 @@ type app struct {
 }
 
 type windowMount struct {
+	shortcuts      shortcutBindings
 	runtime        *app
 	id             string
 	window         gui.Window
@@ -454,6 +455,9 @@ func (m *windowMount) applyWindowProperties(view WindowView) error {
 		m.appliedMinSize = min
 		m.window.SetMinSize(min)
 	}
+	if len(view.shortcuts) != 0 || m.shortcuts.controller != nil {
+		m.shortcuts.update(m.window.Shortcuts(), view.shortcuts)
+	}
 	return nil
 }
 
@@ -466,6 +470,7 @@ func (m *windowMount) destroy() {
 }
 
 func (m *windowMount) disconnect() {
+	m.shortcuts.clear()
 	if m.closeHandle != nil {
 		m.closeHandle.Disconnect()
 		m.closeHandle = nil

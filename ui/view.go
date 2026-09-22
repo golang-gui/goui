@@ -65,6 +65,7 @@ type ViewBase[T any] struct {
 // reconciler reads it via View.base after each Update and writes it onto the
 // mounted widget, so controls never apply these themselves.
 type viewBase struct {
+	shortcuts  []*ShortcutView
 	name       string
 	styleName  string // semantic style name (Sel.Name); "" reverts to the widget's type default
 	minWidth   float32
@@ -103,8 +104,9 @@ const (
 // snapshot (bit not set), so the widget's private defaults stay private and
 // a missing modifier naturally reverts. The context is private.
 type viewBaseContext struct {
-	handles []signal.Handle    // cross-rebuild handles for shared widget signals
-	onFocus func(focused bool) // effective OnFocus callback, refreshed on every update
+	shortcuts shortcutBindings
+	handles   []signal.Handle    // cross-rebuild handles for shared widget signals
+	onFocus   func(focused bool) // effective OnFocus callback, refreshed on every update
 
 	// Snapshot of the widget's initial values, captured once in mount before
 	// the first apply. Each field corresponds to a viewBase modifier; hidden
@@ -149,12 +151,27 @@ func (b *viewBase) mount(ctx *viewBaseContext, w gui.Widget) {
 // shared modifiers onto the widget (missing modifiers restore the snapshot).
 func (b *viewBase) update(ctx *viewBaseContext, w gui.Widget) {
 	ctx.onFocus = b.onFocus
+	if len(b.shortcuts) != 0 {
+		controller := ctx.shortcuts.controller
+		if controller == nil {
+			controller = gui.NewShortcutController()
+			w.AddEventController(controller)
+		}
+		ctx.shortcuts.update(controller, b.shortcuts)
+	} else if ctx.shortcuts.controller != nil {
+		w.RemoveEventController(ctx.shortcuts.controller)
+		ctx.shortcuts.clear()
+	}
 	b.apply(ctx, w)
 }
 
 // unmount disconnects all registered shared signal handles and clears the
 // context, including the snapshot.
-func (b *viewBase) unmount(ctx *viewBaseContext, _ gui.Widget) {
+func (b *viewBase) unmount(ctx *viewBaseContext, w gui.Widget) {
+	if ctx.shortcuts.controller != nil {
+		w.RemoveEventController(ctx.shortcuts.controller)
+		ctx.shortcuts.clear()
+	}
 	for _, h := range ctx.handles {
 		h.Disconnect()
 	}
