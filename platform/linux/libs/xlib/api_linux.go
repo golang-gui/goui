@@ -17,6 +17,7 @@ var (
 	xFlush                  = libx11.NewSymbol("XFlush")
 	xSendEvent              = libx11.NewSymbol("XSendEvent")
 	xNextEvent              = libx11.NewSymbol("XNextEvent")
+	xPeekEvent              = libx11.NewSymbol("XPeekEvent")
 	xInternAtom             = libx11.NewSymbol("XInternAtom")
 	xDefaultScreen          = libx11.NewSymbol("XDefaultScreen")
 	xDefaultScreenOfDisplay = libx11.NewSymbol("XDefaultScreenOfDisplay")
@@ -59,6 +60,9 @@ var (
 	xPutImage               = libx11.NewSymbol("XPutImage")
 	xFree                   = libx11.NewSymbol("XFree")
 	xLookupKeysym           = libx11.NewSymbol("XLookupKeysym")
+	xkbLookupKeySym         = libx11.NewSymbol("XkbLookupKeySym")
+	xkbKeysymToModifiers    = libx11.NewSymbol("XkbKeysymToModifiers")
+	xRefreshKeyboardMapping = libx11.NewSymbol("XRefreshKeyboardMapping")
 	xKeysymToKeycode        = libx11.NewSymbol("XKeysymToKeycode")
 	xGetModifierMapping     = libx11.NewSymbol("XGetModifierMapping")
 	xFreeModifiermap        = libx11.NewSymbol("XFreeModifiermap")
@@ -75,6 +79,11 @@ func OpenDisplay(name string) Display {
 	ret, _, _ := xOpenDisplay.CallRaw(uintptr(cName))
 	runtime.KeepAlive(cName)
 	return Display(ret)
+}
+
+func (d Display) PeekEvent() (event Event) {
+	xPeekEvent.CallRaw(uintptr(d), uintptr(cgo.Pointer(&event)))
+	return
 }
 
 func (d Display) Close() {
@@ -369,6 +378,22 @@ func Free[T any](p *T) {
 func LookupKeysym(event *KeyEvent, index int) KeySym {
 	ret, _, _ := xLookupKeysym.CallRaw(uintptr(cgo.Pointer(event)), uintptr(index))
 	return KeySym(ret)
+}
+
+func (d Display) XkbLookupKeySym(keycode uint8, state uint32) (sym KeySym, modifiers uint32, ok bool) {
+	ret, _, _ := xkbLookupKeySym.CallRaw(uintptr(d), uintptr(keycode), uintptr(state),
+		uintptr(cgo.Pointer(&modifiers)), uintptr(cgo.Pointer(&sym)))
+	ok = ret != 0
+	return
+}
+
+func RefreshKeyboardMapping(event *MappingEvent) {
+	xRefreshKeyboardMapping.CallRaw(uintptr(cgo.Pointer(event)))
+}
+
+func (d Display) XkbKeysymToModifiers(sym KeySym) uint32 {
+	ret, _, _ := xkbKeysymToModifiers.CallRaw(uintptr(d), uintptr(sym))
+	return uint32(ret)
 }
 
 func (d Display) KeysymToKeycode(keysym KeySym) KeyCode {
