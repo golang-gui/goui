@@ -24,6 +24,8 @@ import (
 )
 
 type Window struct {
+	pressedKeys      [256]bool
+	modifierKeys     [32]byte // separate from XIM-delivered repeat tracking
 	wid              xlib.Window
 	visual           *xlib.Visual
 	depth            int
@@ -106,6 +108,7 @@ func newNativeWindow(onEvent events.EventHandler, overrideRedirect bool, width, 
 			xlib.EventMaskKeyPress |
 			xlib.EventMaskKeyRelease |
 			xlib.EventMaskFocusChange |
+			xlib.EventMaskKeymapState |
 			xlib.EventMaskButtonPress |
 			xlib.EventMaskButtonRelease |
 			xlib.EventMaskPointerMotion |
@@ -355,22 +358,52 @@ var windowMap = map[xlib.Window]*Window{}
 
 // TODO: process window event
 func handleEvent(event xlib.Event) {
+	if event.Type == xlib.MappingNotify {
+		xlib.RefreshKeyboardMapping(event.MappingEvent())
+		if platform != nil {
+			platform.numLockMask = platform.detectNumLockMask()
+			platform.refreshModifierMapping()
+		}
+		return
+	}
 	if platform != nil && platform.cursorTheme != nil {
 		platform.cursorTheme.handleEvent(&event)
 	}
 	// Entering a nested native dispatch expires any previous press context.
 	moveResizePress = nativePress{}
+	if event.Type == xlib.FocusOut {
+		if w := windowMap[event.AnyEvent().Window]; w != nil {
+			w.pressedKeys = [256]bool{}
+			w.modifierKeys = [32]byte{}
+		}
+	}
+	if event.Type == xlib.KeymapNotify {
+		// Xlib leaves Window=None. This is a keyboard-wide snapshot, queued
+		// immediately after FocusIn/EnterNotify, not a query of a later state.
+		// Do not seed repeat tracking: a pending XIM forward is still a first press.
+		for _, w := range windowMap {
+			w.modifierKeys = event.KeymapEvent().KeyVector
+		}
+	}
 	// Give the input method first refusal on every event: during composition it
 	// consumes the keys it needs (candidate navigation, preedit editing) and we
 	// must drop them. Unconsumed keys fall through to normal handling below.
+	filtered := false
 	if platform != nil && platform.im != 0 {
-		filtered := xlib.FilterEvent(&event, 0)
+		filtered = xlib.FilterEvent(&event, 0)
 		// Native callbacks only copy preedit data. Notify GUI after XFilterEvent
 		// returns, so a handler may safely reset/destroy its input context.
 		flushPreedit()
-		if filtered {
-			return
+	}
+	var repeat bool
+	if event.Type == xlib.KeyPress || event.Type == xlib.KeyRelease {
+		ev := event.KeyEvent()
+		if w := windowMap[ev.Window]; w != nil {
+			repeat = w.trackKey(ev.KeyCode, event.Type == xlib.KeyPress, filtered)
 		}
+	}
+	if filtered {
+		return
 	}
 
 	switch event.Type {
@@ -480,12 +513,12 @@ func handleEvent(event xlib.Event) {
 	case xlib.KeyPress:
 		ev := event.KeyEvent()
 		if window, ok := windowMap[ev.Window]; ok {
-			window.handleKey(events.KeyDown, ev)
+			window.handleKey(events.KeyDown, ev, repeat)
 		}
 	case xlib.KeyRelease:
 		ev := event.KeyEvent()
 		if window, ok := windowMap[ev.Window]; ok {
-			window.handleKey(events.KeyUp, ev)
+			window.handleKey(events.KeyUp, ev, false)
 		}
 	}
 }

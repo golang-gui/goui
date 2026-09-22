@@ -18,13 +18,14 @@ import (
 // (registered by appkit via the NSViewOverride text-input funcs below); the
 // protocol methods find this per-window state via windowForView(self).
 type inputMethod struct {
-	window       *Window
-	handler      common.InputMethodHandler
-	enabled      bool
-	marked       string             // current preedit
-	caret        geometry.Rectangle // caret rect in window-logical coordinates
-	pending      NSEvent            // key being interpreted, re-emitted from doCommandBySelector
-	pendingValid bool
+	window            *Window
+	handler           common.InputMethodHandler
+	enabled           bool
+	marked            string             // current preedit
+	caret             geometry.Rectangle // caret rect in window-logical coordinates
+	pending           NSEvent            // key being interpreted, re-emitted from doCommandBySelector
+	pendingValid      bool
+	pendingDispatched bool // context already produced text or a command for pending
 }
 
 // newInputMethod creates the cocoa input method for window.
@@ -81,12 +82,21 @@ func (im *inputMethod) Destroy() {
 // while a text widget is focused). Text becomes insertText/setMarkedText; other
 // keys come back via doCommandBySelector and are re-emitted as KeyEvents.
 func (im *inputMethod) interpret(view NSView, event NSEvent) {
+	previous, valid, dispatched := im.pending, im.pendingValid, im.pendingDispatched
+	defer func() { im.pending, im.pendingValid, im.pendingDispatched = previous, valid, dispatched }()
 	im.pending = event
 	im.pendingValid = true
+	im.pendingDispatched = false
+	handled := false
 	if ctx := view.InputContext(); ctx.Valid() {
-		ctx.HandleEvent(event)
+		handled = ctx.HandleEvent(event)
 	}
-	im.pendingValid = false
+	// A command such as Cmd+S need not be an NSTextInputClient editing
+	// selector. Do not lose it when the input context declines the event.
+	if !handled && !im.pendingDispatched && im.enabled && im.window != nil {
+		im.pendingDispatched = true
+		im.window.emitKey(events.KeyDown, event, event.IsARepeat())
+	}
 }
 
 func (im *inputMethod) discardMarked() {
@@ -117,6 +127,7 @@ func imInsertText(self NSView, text string, replace NSRange) {
 	if im == nil {
 		return
 	}
+	im.pendingDispatched = true
 	composed := im.marked != ""
 	im.marked = ""
 	if im.handler != nil {
@@ -129,6 +140,7 @@ func imSetMarkedText(self NSView, text string, selected, replace NSRange) {
 	if im == nil {
 		return
 	}
+	im.pendingDispatched = true
 	im.marked = text
 	if im.handler != nil {
 		im.handler(common.InputMethodResult{
@@ -198,6 +210,10 @@ func imDoCommandBySelector(self NSView, selector SEL) {
 	if im == nil || im.window == nil || !im.pendingValid {
 		return
 	}
+	if im.pendingDispatched {
+		return
+	}
+	im.pendingDispatched = true
 	// interpretKeyEvents turned this key into an editing/navigation command; the
 	// widget handles it via the ordinary key path.
 	im.window.emitKey(events.KeyDown, im.pending, im.pending.IsARepeat())

@@ -34,7 +34,6 @@ type Window struct {
 	lastPointerY      float32
 	lastButtons       events.PointerButtons
 	lastModifiers     events.Modifiers
-	modifiers         events.Modifiers
 	scale             float32      // cached device scale; updated on WM_SIZE
 	inSizeMove        bool         // inside the modal move/resize loop
 	resizedInSizeMove bool         // whether that loop delivered an authoritative WM_SIZE
@@ -506,7 +505,9 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		// virtual key is VK_PROCESSKEY; drop it so it does not double up with the
 		// committed text delivered via WM_IME_COMPOSITION.
 		if wParam != winapi.VK_PROCESSKEY {
-			window.handleKey(events.KeyDown, wParam, lParam)
+			if window.handleKey(events.KeyDown, wParam, lParam) {
+				return 0
+			}
 		}
 		if window.integrated && window.hwnd != 0 && message == winapi.WM_SYSKEYDOWN {
 			// Integrated removes the visible caption, not User32's system
@@ -516,7 +517,9 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		return 0
 
 	case winapi.WM_KEYUP, winapi.WM_SYSKEYUP:
-		window.handleKey(events.KeyUp, wParam, lParam)
+		if window.handleKey(events.KeyUp, wParam, lParam) {
+			return 0
+		}
 		if window.integrated && window.hwnd != 0 && message == winapi.WM_SYSKEYUP {
 			return winapi.DefWindowProc(hwnd, message, wParam, lParam)
 		}

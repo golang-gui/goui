@@ -5,6 +5,7 @@ import (
 
 	"github.com/golang-gui/goui/platform/internal/eventloop"
 	"github.com/golang-gui/goui/platform/linux/libs/libc"
+	"github.com/golang-gui/goui/platform/linux/libs/xlib"
 )
 
 type EventLoop struct {
@@ -116,7 +117,23 @@ func (l *EventLoop) readWake() {
 
 func (l *EventLoop) getEvent() {
 	event := platform.display.NextEvent()
+	// Core X11 auto-repeat is an adjacent release/press pair with identical
+	// keycode and server timestamp. Do not treat its synthetic release as up.
+	if event.Type == xlib.KeyRelease && platform.display.Pending() != 0 {
+		next := platform.display.PeekEvent()
+		if isRepeatPair(&event, &next) {
+			return
+		}
+	}
 	handleEvent(event)
+}
+
+func isRepeatPair(release, press *xlib.Event) bool {
+	if release.Type != xlib.KeyRelease || press.Type != xlib.KeyPress {
+		return false
+	}
+	u, d := release.KeyEvent(), press.KeyEvent()
+	return u.KeyCode == d.KeyCode && u.Time == d.Time && u.Window == d.Window
 }
 
 func (l *EventLoop) wait() bool {

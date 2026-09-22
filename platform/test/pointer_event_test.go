@@ -278,7 +278,8 @@ func modifiersName(modifiers events.Modifiers) string {
 		events.ModifierSuper |
 		events.ModifierCommand |
 		events.ModifierWin |
-		events.ModifierOption
+		events.ModifierOption |
+		events.ModifierAltGraph
 
 	names := make([]string, 0, 6)
 	if modifiers&events.ModifierShift != 0 {
@@ -301,6 +302,9 @@ func modifiersName(modifiers events.Modifiers) string {
 	}
 	if modifiers&events.ModifierOption != 0 {
 		names = append(names, "Option")
+	}
+	if modifiers&events.ModifierAltGraph != 0 {
+		names = append(names, "AltGraph")
 	}
 	if extra := modifiers &^ known; extra != 0 {
 		names = append(names, fmt.Sprintf("Modifiers(0x%x)", uint16(extra)))
