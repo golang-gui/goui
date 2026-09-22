@@ -637,6 +637,20 @@ type DeviceContextClass struct {
 
 type DeviceContext struct{ RenderTarget }
 
+func (this *DeviceContext) CreateBitmap1(size SizeU, data []byte, pitch uint32, props *BitmapProperties1) (bitmap *Bitmap1, hr com.HRESULT) {
+	hr = cgo.CallRet[com.HRESULT]((*DeviceContextClass)(this.Class).CreateBitmap1, this, size, cgo.CSlice(data), pitch, props, &bitmap)
+	return
+}
+
+func (this *RenderTarget) GetDpi() (x, y float32) {
+	cgo.Call(this.class().GetDpi, this, &x, &y)
+	return
+}
+
+func (this *RenderTarget) GetTextAntialiasMode() TextAntialiasMode {
+	return cgo.CallRet[TextAntialiasMode](this.class().GetTextAntialiasMode, this)
+}
+
 func (this *DeviceContext) CreateBitmapFromDxgiSurface(surface *dxgi.Surface, props *BitmapProperties1) (bitmap *Bitmap1, hr com.HRESULT) {
 	ret, _, _ := (*DeviceContextClass)(this.Class).CreateBitmapFromDxgiSurface.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(surface)), uintptr(cgo.Pointer(props)), uintptr(cgo.Pointer(&bitmap)))
 	return bitmap, com.HRESULT(ret)
@@ -680,6 +694,19 @@ type Bitmap1Class struct {
 }
 
 type Bitmap1 struct{ Bitmap }
+
+func (this *Bitmap) CopyFromBitmap(point *Point2U, source *Bitmap, rect *RectU) com.HRESULT {
+	return cgo.CallRet[com.HRESULT](this.class().CopyFromBitmap, this, point, source, rect)
+}
+
+func (this *Bitmap1) Map(options MapOptions) (mapped MappedRect, hr com.HRESULT) {
+	hr = cgo.CallRet[com.HRESULT]((*Bitmap1Class)(this.Class).Map, this, options, &mapped)
+	return
+}
+
+func (this *Bitmap1) Unmap() com.HRESULT {
+	return cgo.CallRet[com.HRESULT]((*Bitmap1Class)(this.Class).Unmap, this)
+}
 
 type PropertiesClass struct {
 	com.UnknownClass

@@ -359,7 +359,21 @@ const (
 	D2D1_BITMAP_OPTIONS_NONE        BitmapOptions = 0
 	D2D1_BITMAP_OPTIONS_TARGET      BitmapOptions = 1
 	D2D1_BITMAP_OPTIONS_CANNOT_DRAW BitmapOptions = 2
+	D2D1_BITMAP_OPTIONS_CPU_READ    BitmapOptions = 4
 )
+
+type MapOptions uint32
+
+type Point2U struct {
+	X, Y uint32
+}
+
+const D2D1_MAP_OPTIONS_READ MapOptions = 1
+
+type MappedRect struct {
+	Pitch uint32
+	Bits  *byte
+}
 
 type DeviceContextOptions uint32
 
