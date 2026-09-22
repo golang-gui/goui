@@ -19,6 +19,16 @@ type Painter interface {
 	// Destroy immediately invalidates it, deferring native release until End
 	// when called during a frame. All calls obey Painter's thread affinity.
 	NewImage(src image.Image) (Image, error)
+	// RenderImage calls draw synchronously on this Painter with a transparent
+	// offscreen target. width/height are physical pixels; drawing uses DIP at
+	// scale pixels per DIP. It returns an independent premultiplied RGBA image.
+	// It must be called outside Begin/End. draw must not call Begin, End,
+	// Destroy or RenderImage; existing images remain usable, and images created
+	// by draw retain their ordinary Painter ownership. No surface is presented.
+	// Target state is restored even if draw panics (the panic propagates).
+	// Dimensions must be positive, at most 16384 each and 64 million pixels
+	// total; scale must be finite and positive. Native limits may be smaller.
+	RenderImage(width, height int, scale float32, draw func()) (image.Image, error)
 	// Begin starts a frame with a surface size in physical pixels. scale is the
 	// number of physical pixels per DIP; subsequent drawing coordinates are DIP.
 	Begin(width, height, scale float32)

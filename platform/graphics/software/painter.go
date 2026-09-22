@@ -9,6 +9,7 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/internal/boxshadow"
+	"github.com/golang-gui/goui/platform/graphics/internal/offscreen"
 	"github.com/golang-gui/goui/platform/graphics/internal/textbitmap"
 	"github.com/golang-gui/goui/platform/graphics/utils"
 	"github.com/golang-gui/goui/platform/typography"
@@ -925,4 +926,36 @@ func (i *imageResource) Destroy() {
 		return
 	}
 	i.owner.destroyImage(i)
+}
+
+func (p *Painter) RenderImage(width, height int, scale float32, draw func()) (image.Image, error) {
+	if p.activeFrame {
+		return nil, fmt.Errorf("software: render image during active frame")
+	}
+	if err := offscreen.Validate(width, height, scale, draw); err != nil {
+		return nil, err
+	}
+	// Preserve only target state, not resource ownership or pending destruction.
+	bgra, line, viewport := p.bgra, p.line, p.viewport
+	scanner, filler, stroker := p.scanner, p.filler, p.stroker
+	pixels, lines := p.pixelBuf, p.lineBuf
+	oldScale, transform, clip := p.scale, p.transform, p.clip
+	defer func() {
+		p.activeFrame = false
+		p.flushPendingImages()
+		p.bgra, p.line, p.viewport = bgra, line, viewport
+		p.scanner, p.filler, p.stroker = scanner, filler, stroker
+		p.pixelBuf, p.lineBuf = pixels, lines
+		p.scale, p.transform, p.clip = oldScale, transform, clip
+	}()
+	// Force Begin to allocate an isolated, zero-filled raster target.
+	p.viewport.Width = 0
+	p.pixelBuf, p.lineBuf = nil, nil
+	p.Begin(float32(width), float32(height), scale)
+	draw()
+	result := image.NewRGBA(image.Rect(0, 0, width, height))
+	for i := 0; i < len(result.Pix); i += 4 {
+		result.Pix[i], result.Pix[i+1], result.Pix[i+2], result.Pix[i+3] = p.bgra.Pix[i+2], p.bgra.Pix[i+1], p.bgra.Pix[i], p.bgra.Pix[i+3]
+	}
+	return result, nil
 }

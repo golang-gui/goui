@@ -3,10 +3,13 @@ package opengl
 import (
 	"fmt"
 	"image"
+	"sync"
 
+	"github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/internal/boxshadow"
+	"github.com/golang-gui/goui/platform/graphics/internal/offscreen"
 	"github.com/golang-gui/goui/platform/graphics/internal/pixelsnap"
 	"github.com/golang-gui/goui/platform/graphics/internal/textbitmap"
 	"github.com/golang-gui/goui/platform/graphics/utils"
@@ -604,4 +607,152 @@ func (p *Painter) arcTo(sx, sy, rx, ry, angle, large, sweep, ex, ey float32) {
 	lineTo := utils.LineTo(p.vg.LineTo)
 	bezierTo := utils.BezierTo(p.vg.BezierTo)
 	utils.ArcTo(lineTo, bezierTo, sx, sy, rx, ry, angle, large, sweep, ex, ey)
+}
+
+// RenderImage offscreen GL entry points. Resolved once through the current
+// context on the first RenderImage call (all three platforms resolve core GL
+// procs through the current context, like NanoVG's own GL bindings) and then
+// reused globally to avoid per-frame GetProcAddress lookups.
+var (
+	renderImageProcMu             sync.Mutex
+	renderImageProcsReady         bool
+	procGLGetIntegerv             uintptr
+	procGLGenFramebuffers         uintptr
+	procGLBindFramebuffer         uintptr
+	procGLDeleteFramebuffers      uintptr
+	procGLGenRenderbuffers        uintptr
+	procGLBindRenderbuffer        uintptr
+	procGLDeleteRenderbuffers     uintptr
+	procGLRenderbufferStorage     uintptr
+	procGLFramebufferRenderbuffer uintptr
+	procGLCheckFramebufferStatus  uintptr
+	procGLReadPixels              uintptr
+)
+
+// ensureRenderImageProcs resolves the offscreen GL entry points on first use.
+// The caller must have made the context current. A failed load is not cached
+// so a later call can retry; success is cached globally.
+func ensureRenderImageProcs(ctx Context) error {
+	renderImageProcMu.Lock()
+	defer renderImageProcMu.Unlock()
+	if renderImageProcsReady {
+		return nil
+	}
+	targets := []struct {
+		name string
+		out  *uintptr
+	}{
+		{"glGetIntegerv", &procGLGetIntegerv},
+		{"glGenFramebuffers", &procGLGenFramebuffers},
+		{"glBindFramebuffer", &procGLBindFramebuffer},
+		{"glDeleteFramebuffers", &procGLDeleteFramebuffers},
+		{"glGenRenderbuffers", &procGLGenRenderbuffers},
+		{"glBindRenderbuffer", &procGLBindRenderbuffer},
+		{"glDeleteRenderbuffers", &procGLDeleteRenderbuffers},
+		{"glRenderbufferStorage", &procGLRenderbufferStorage},
+		{"glFramebufferRenderbuffer", &procGLFramebufferRenderbuffer},
+		{"glCheckFramebufferStatus", &procGLCheckFramebufferStatus},
+		{"glReadPixels", &procGLReadPixels},
+	}
+	for _, t := range targets {
+		proc, err := ctx.GetProcAddress(t.name)
+		if err != nil || proc == 0 {
+			return fmt.Errorf("opengl: missing %s: %v", t.name, err)
+		}
+		*t.out = proc
+	}
+	renderImageProcsReady = true
+	return nil
+}
+
+func (p *Painter) RenderImage(width, height int, scale float32, draw func()) (image.Image, error) {
+	if p.activeFrame {
+		return nil, fmt.Errorf("opengl: render image during active frame")
+	}
+	if err := offscreen.Validate(width, height, scale, draw); err != nil {
+		return nil, err
+	}
+	if err := p.ctx.MakeCurrent(); err != nil {
+		return nil, fmt.Errorf("opengl: render image: %w", err)
+	}
+	defer p.ctx.ClearCurrent()
+	if err := ensureRenderImageProcs(p.ctx); err != nil {
+		return nil, err
+	}
+	get := func(name uint32) int32 {
+		var result int32
+		cgo.Call(procGLGetIntegerv, name, &result)
+		return result
+	}
+	const drawFramebuffer, readFramebuffer = uint32(0x8CA9), uint32(0x8CA8)
+	oldDraw, oldRead, oldBuffer := get(0x8CA6), get(0x8CAA), get(0x8CA7)
+	var viewport [4]int32
+	cgo.Call(procGLGetIntegerv, uint32(gl.VIEWPORT), &viewport[0])
+	var framebuffer uint32
+	var buffers [2]uint32
+	cgo.Call(procGLGenFramebuffers, int32(1), &framebuffer)
+	cgo.Call(procGLGenRenderbuffers, int32(2), &buffers[0])
+	defer func() {
+		cgo.Call(procGLBindFramebuffer, drawFramebuffer, uint32(oldDraw))
+		cgo.Call(procGLBindFramebuffer, readFramebuffer, uint32(oldRead))
+		cgo.Call(procGLBindRenderbuffer, uint32(gl.RENDERBUFFER), uint32(oldBuffer))
+		gl.Viewport(int(viewport[0]), int(viewport[1]), int(viewport[2]), int(viewport[3]))
+		cgo.Call(procGLDeleteFramebuffers, int32(1), &framebuffer)
+		cgo.Call(procGLDeleteRenderbuffers, int32(2), &buffers[0])
+	}()
+	cgo.Call(procGLBindFramebuffer, uint32(gl.FRAMEBUFFER), framebuffer)
+	for i, format := range []uint32{gl.RGBA8, gl.DEPTH24_STENCIL8} {
+		cgo.Call(procGLBindRenderbuffer, uint32(gl.RENDERBUFFER), buffers[i])
+		cgo.Call(procGLRenderbufferStorage, uint32(gl.RENDERBUFFER), format, int32(width), int32(height))
+		attachment := uint32(gl.COLOR_ATTACHMENT0)
+		if i == 1 {
+			attachment = gl.DEPTH_STENCIL_ATTACHMENT
+		}
+		cgo.Call(procGLFramebufferRenderbuffer, uint32(gl.FRAMEBUFFER), attachment, uint32(gl.RENDERBUFFER), buffers[i])
+	}
+	if status := cgo.CallRet[uint32](procGLCheckFramebufferStatus, uint32(gl.FRAMEBUFFER)); status != gl.FRAMEBUFFER_COMPLETE {
+		return nil, fmt.Errorf("opengl: incomplete offscreen framebuffer %#x", status)
+	}
+	oldScale, oldTransform := p.scale, p.transform
+	defer func() {
+		p.vg.CancelFrame()
+		p.activeFrame = false
+		p.flushPendingImages()
+		p.scale, p.transform = oldScale, oldTransform
+	}()
+	gl.Viewport(0, 0, width, height)
+	gl.Disable(gl.SCISSOR_TEST)
+	gl.ColorMask(true, true, true, true)
+	gl.StencilMask(0xffffffff)
+	gl.ClearColor(0, 0, 0, 0)
+	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT)
+	p.vg.BeginFrame(width, height, 1)
+	p.activeFrame, p.scale = true, scale
+	p.SetTransform(geometry.Identity())
+	p.SetClipRect(graphics.Rectangle{})
+	draw()
+	p.vg.EndFrame()
+	// Read tightly packed rows into independent CPU storage. Preserve pack
+	// state, including a possible pixel-pack buffer, rather than assuming zero.
+	packBuffer := get(0x88ED)
+	gl.BindBuffer(gl.PIXEL_PACK_BUFFER, gl.Buffer{})
+	defer gl.BindBuffer(gl.PIXEL_PACK_BUFFER, gl.Buffer{Value: uint32(packBuffer)})
+	for _, item := range [][2]uint32{{0x0D05, 1}, {0x0D02, 0}, {0x0D03, 0}, {0x0D04, 0}} {
+		old := get(item[0])
+		gl.PixelStorei(gl.Enum(item[0]), gl.Int(item[1]))
+		defer gl.PixelStorei(gl.Enum(item[0]), gl.Int(old))
+	}
+	result := image.NewRGBA(image.Rect(0, 0, width, height))
+	cgo.Call(procGLReadPixels, int32(0), int32(0), int32(width), int32(height), uint32(gl.RGBA), uint32(gl.UNSIGNED_BYTE), &result.Pix[0])
+	if err := gl.GetError(); err != gl.NO_ERROR {
+		return nil, fmt.Errorf("opengl: read offscreen pixels: %#x", err)
+	}
+	row := make([]byte, result.Stride)
+	for y := 0; y < height/2; y++ {
+		top, bottom := y*result.Stride, (height-1-y)*result.Stride
+		copy(row, result.Pix[top:top+result.Stride])
+		copy(result.Pix[top:top+result.Stride], result.Pix[bottom:bottom+result.Stride])
+		copy(result.Pix[bottom:bottom+result.Stride], row)
+	}
+	return result, nil
 }

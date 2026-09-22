@@ -8,6 +8,7 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/internal/boxshadow"
+	"github.com/golang-gui/goui/platform/graphics/internal/offscreen"
 	"github.com/golang-gui/goui/platform/graphics/internal/pixelsnap"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/directwrite"
@@ -1286,4 +1287,91 @@ type shadowCacheEntry struct {
 	key  shadowCacheKey
 	list *d2d1.CommandList
 	age  uint64
+}
+
+func (p *Painter) RenderImage(width, height int, scale float32, draw func()) (image.Image, error) {
+	if p.activeFrame {
+		return nil, fmt.Errorf("direct2d: render image during active frame")
+	}
+	if err := offscreen.Validate(width, height, scale, draw); err != nil {
+		return nil, err
+	}
+	if p.render == nil {
+		if err := p.createDeviceResources(); err != nil {
+			return nil, fmt.Errorf("direct2d: create offscreen device: %w", err)
+		}
+	}
+	var deviceFailure com.HRESULT
+	defer func() {
+		// Run only after the temporary target has been detached and released.
+		if deviceFailure.Failed() {
+			p.handleDeviceFailure(deviceFailure)
+		}
+	}()
+	props := d2d1.BitmapProperties1{
+		PixelFormat: d2d1.PixelFormat{Format: dxgi.DXGI_FORMAT_B8G8R8A8_UNORM, AlphaMode: d2d1.D2D1_ALPHA_MODE_PREMULTIPLIED},
+		DpiX:        96 * scale, DpiY: 96 * scale,
+		BitmapOptions: d2d1.D2D1_BITMAP_OPTIONS_TARGET | d2d1.D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
+	}
+	size := d2d1.SizeU{Width: uint32(width), Height: uint32(height)}
+	target, hr := p.render.CreateBitmap1(size, nil, 0, &props)
+	if hr.Failed() {
+		return nil, fmt.Errorf("direct2d: create offscreen target: %w", hr)
+	}
+	defer target.Release()
+	oldScale, oldTransform, oldMatrix, oldClip := p.scale, p.transform, p.matrix, p.clip
+	dpiX, dpiY := p.render.GetDpi()
+	textMode := p.render.GetTextAntialiasMode()
+	nativeTransform := p.render.GetTransform()
+	p.render.SetTarget((*d2d1.Image)(unsafe.Pointer(target)))
+	p.render.SetDpi(96*scale, 96*scale)
+	p.render.SetTextAntialiasMode(d2d1.D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE)
+	p.render.BeginDraw()
+	p.activeFrame, p.scale = true, scale
+	defer func() {
+		if p.activeFrame {
+			p.SetClipRect(graphics.Rectangle{})
+			deviceFailure = p.render.EndDraw(nil, nil)
+		}
+		p.activeFrame = false
+		p.flushPendingImages()
+		p.render.SetTarget((*d2d1.Image)(unsafe.Pointer(p.target)))
+		p.render.SetDpi(dpiX, dpiY)
+		p.render.SetTextAntialiasMode(textMode)
+		p.render.SetTransform(&nativeTransform)
+		p.scale, p.transform, p.matrix, p.clip = oldScale, oldTransform, oldMatrix, oldClip
+	}()
+	p.SetTransform(geometry.Identity())
+	p.Clear(graphics.Color{})
+	draw()
+	p.SetClipRect(graphics.Rectangle{})
+	hr = p.render.EndDraw(nil, nil)
+	p.activeFrame = false
+	if hr.Failed() {
+		deviceFailure = hr
+		return nil, fmt.Errorf("direct2d: draw offscreen image: %w", hr)
+	}
+	props.BitmapOptions = d2d1.D2D1_BITMAP_OPTIONS_CPU_READ | d2d1.D2D1_BITMAP_OPTIONS_CANNOT_DRAW
+	readback, hr := p.render.CreateBitmap1(size, nil, 0, &props)
+	if hr.Failed() {
+		return nil, fmt.Errorf("direct2d: create readback bitmap: %w", hr)
+	}
+	defer readback.Release()
+	if hr = readback.CopyFromBitmap(nil, &target.Bitmap, nil); hr.Failed() {
+		return nil, fmt.Errorf("direct2d: copy offscreen image: %w", hr)
+	}
+	mapped, hr := readback.Map(d2d1.D2D1_MAP_OPTIONS_READ)
+	if hr.Failed() {
+		return nil, fmt.Errorf("direct2d: map offscreen image: %w", hr)
+	}
+	defer readback.Unmap()
+	pixels := unsafe.Slice(mapped.Bits, int(mapped.Pitch)*height)
+	result := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			src, dst := y*int(mapped.Pitch)+x*4, y*result.Stride+x*4
+			result.Pix[dst], result.Pix[dst+1], result.Pix[dst+2], result.Pix[dst+3] = pixels[src+2], pixels[src+1], pixels[src], pixels[src+3]
+		}
+	}
+	return result, nil
 }
