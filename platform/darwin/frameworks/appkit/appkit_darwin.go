@@ -366,20 +366,22 @@ func initNSEvent() {
 	NSEventSel.HasPreciseScrollingDeltas = objc.RegisterName("hasPreciseScrollingDeltas")
 	NSEventSel.KeyCode = objc.RegisterName("keyCode")
 	NSEventSel.IsARepeat = objc.RegisterName("isARepeat")
+	NSEventSel.CharactersIgnoringModifiers = objc.RegisterName("charactersIgnoringModifiers")
 }
 
 var (
 	NSEventClassId NSEventClass
 	NSEventSel     struct {
-		OtherEventWithType        objc.SEL
-		LocationInWindow          objc.SEL
-		ModifierFlags             objc.SEL
-		ButtonNumber              objc.SEL
-		ScrollingDeltaX           objc.SEL
-		ScrollingDeltaY           objc.SEL
-		HasPreciseScrollingDeltas objc.SEL
-		KeyCode                   objc.SEL
-		IsARepeat                 objc.SEL
+		OtherEventWithType          objc.SEL
+		LocationInWindow            objc.SEL
+		ModifierFlags               objc.SEL
+		ButtonNumber                objc.SEL
+		ScrollingDeltaX             objc.SEL
+		ScrollingDeltaY             objc.SEL
+		HasPreciseScrollingDeltas   objc.SEL
+		KeyCode                     objc.SEL
+		IsARepeat                   objc.SEL
+		CharactersIgnoringModifiers objc.SEL
 	}
 )
 
@@ -430,6 +432,11 @@ func (e NSEvent) KeyCode() uint16 {
 
 func (e NSEvent) IsARepeat() bool {
 	return objc.Send[bool](e.ID, NSEventSel.IsARepeat)
+}
+
+func (e NSEvent) CharactersIgnoringModifiers() (s NSString) {
+	s.ID = e.Send(NSEventSel.CharactersIgnoringModifiers)
+	return
 }
 
 const (
