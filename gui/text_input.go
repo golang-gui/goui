@@ -16,6 +16,7 @@ const (
 
 // TextInput is a single-line editor with its own private document/history.
 // It shares editing operations with TextView, not a child Widget or model.
+// Secondary click or Shift+F10 opens its standard editing context menu.
 type TextInput struct {
 	WidgetBase
 	*textEditor
