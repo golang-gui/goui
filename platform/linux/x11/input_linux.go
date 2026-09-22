@@ -110,26 +110,59 @@ func (w *Window) handleButton(eventType events.EventType, event *xlib.ButtonEven
 	w.onEvent(pointer)
 }
 
-func (w *Window) handleKey(eventType events.EventType, event *xlib.KeyEvent) {
+func (w *Window) handleKey(eventType events.EventType, event *xlib.KeyEvent, repeat bool) {
 	// When a text widget is focused, run key-downs through the input method: it
 	// turns them into committed text (handler.Commit) or, for keys it does not
 	// consume, a plain KeyEvent (see doc/DesignIME.md §4). Key-ups and the
 	// no-IME case take the plain path below.
 	if eventType == events.KeyDown && w.im != nil && w.im.enabled {
-		w.im.handleKey(event)
+		w.im.handleKey(event, repeat)
 		return
 	}
 
-	key, location := keyFromKeysym(xlib.LookupKeysym(event, 0), event.State, platform.numLockMask)
+	key, location := keyFromNativeEvent(event)
+	var handled bool
 	w.emitEvent(events.KeyEvent{
 		EventType: eventType,
 		Key:       key,
 		Code:      events.KeyCodeUnknown,
 		Location:  location,
-		Modifiers: keyModifiers(eventType, key, event.State),
-		Repeat:    false,
+		Modifiers: w.keyModifiers(eventType, key, event.KeyCode, event.State),
+		Repeat:    repeat,
+		Handled:   &handled,
 	})
 }
+
+// Track the input stream delivered after XIM filtering, not its transport.
+// XIM may consume an original press/release and later put the same event back
+// into the queue. Counting both would mark a first press as auto-repeat, or
+// let an original release clear state before a forwarded repeat arrives.
+func (w *Window) trackKey(code uint32, down, filtered bool) bool {
+	if filtered || code == 0 || code >= uint32(len(w.pressedKeys)) {
+		return false
+	}
+	repeat := down && w.pressedKeys[code]
+	w.pressedKeys[code] = down
+	mask := byte(1 << (code % 8))
+	if down {
+		w.modifierKeys[code/8] |= mask
+	} else {
+		w.modifierKeys[code/8] &^= mask
+	}
+	return repeat
+}
+
+func keyFromNativeEvent(event *xlib.KeyEvent) (events.Key, events.KeyLocation) {
+	// XKB encodes the effective group in core state bits 13..14. Level zero
+	// preserves the letter identity independently of Shift/CapsLock/AltGr;
+	// text is obtained separately from XIM, never from this shortcut lookup.
+	// XkbLookupKeySym applies each key's group wrap/redirect policy as well;
+	// indexing group 1 directly would lose single-group function keys.
+	keysym, _, _ := event.Display.XkbLookupKeySym(uint8(event.KeyCode), keyboardGroup(event.State)<<13)
+	return keyFromKeysym(keysym, event.State, platform.numLockMask)
+}
+
+func keyboardGroup(state uint32) uint32 { return (state >> 13) & 3 }
 
 func wheelEvent(event *xlib.ButtonEvent, buttons events.PointerButtons) (events.WheelEvent, bool) {
 	wheel := events.WheelEvent{
@@ -222,21 +255,38 @@ func modifiersFromState(state uint32) events.Modifiers {
 	if state&xlib.Mod1Mask != 0 {
 		mods |= events.ModifierAlt
 	}
+	if platform != nil && state&platform.altGraphMasks[keyboardGroup(state)] != 0 {
+		mods |= events.ModifierAltGraph
+	}
 	return mods
 }
 
-func keyModifiers(eventType events.EventType, key events.Key, state uint32) events.Modifiers {
+func (w *Window) keyModifiers(eventType events.EventType, key events.Key, code, state uint32) events.Modifiers {
 	mods := keyModifiersFromState(state)
 	bit := modifierForKey(key)
 	if bit == 0 {
 		return mods
 	}
+	if platform != nil && code < uint32(len(platform.modifierMasks)) {
+		// One native modifier slot may represent more than one public bit
+		// (e.g. Level3 assigned to Mod1). Release all of this key's contributions.
+		bit |= keyModifiersFromState(platform.modifierMasks[code] | keyboardGroup(state)<<13)
+	}
 	switch key {
-	case events.KeyShift, events.KeyControl, events.KeyAlt, events.KeySuper:
+	case events.KeyShift, events.KeyControl, events.KeyAlt, events.KeySuper, events.KeyAltGraph:
 		if eventType == events.KeyDown {
 			mods |= bit
 		} else {
 			mods &^= bit
+			// Core X11 state describes the instant BEFORE this release. Keep
+			// the bit if another down key contributes the same native modifier.
+			if platform != nil {
+				for code, mask := range platform.modifierMasks {
+					if w.modifierKeys[code/8]&(1<<uint(code%8)) != 0 {
+						mods |= keyModifiersFromState(mask|keyboardGroup(state)<<13) & bit
+					}
+				}
+			}
 		}
 	}
 	return mods
@@ -260,6 +310,8 @@ func modifierForKey(key events.Key) events.Modifiers {
 		return events.ModifierAlt
 	case events.KeySuper:
 		return events.ModifierSuper
+	case events.KeyAltGraph:
+		return events.ModifierAltGraph
 	default:
 		return 0
 	}
@@ -283,6 +335,8 @@ func keyFromKeysym(keysym xlib.KeySym, state, numLockMask uint32) (events.Key, e
 	}
 
 	switch keysym {
+	case xlib.XK_ISO_Level3_Shift:
+		return events.KeyAltGraph, events.KeyLocationStandard
 	case xlib.XK_Escape:
 		return events.KeyEscape, events.KeyLocationStandard
 	case xlib.XK_Print:

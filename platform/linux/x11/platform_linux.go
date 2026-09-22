@@ -51,7 +51,9 @@ type Platform struct {
 	helper              xlib.Window
 	clipboard           *clipboard
 	numLockMask         uint32
-	im                  xlib.XIM // display input method; 0 when none is available
+	altGraphMasks       [4]uint32   // XKB effective group -> Level3 modifier mask
+	modifierMasks       [256]uint32 // native modifier map indexed by keycode
+	im                  xlib.XIM    // display input method; 0 when none is available
 	resizeSyncAvailable bool
 	eventLoop           *EventLoop
 	cursorTheme         *cursorTheme
@@ -101,6 +103,7 @@ func NewPlatform(appId string) (_ *Platform, err error) {
 	p.defScreen = p.display.DefaultScreenOfDisplay()
 	p.resizeSyncAvailable = xsync.Initialize(p.display) == nil
 	p.numLockMask = p.detectNumLockMask()
+	p.refreshModifierMapping()
 
 	// Input method (IME): set the C locale from the environment, wire the
 	// XMODIFIERS-based input-method selection, then open the display's IM. A nil
@@ -124,6 +127,36 @@ func NewPlatform(appId string) (_ *Platform, err error) {
 
 	platform = p
 	return platform, nil
+}
+
+func (p *Platform) refreshModifierMapping() {
+	p.modifierMasks = [256]uint32{}
+	p.altGraphMasks = [4]uint32{}
+	mapping := p.display.GetModifierMapping()
+	if mapping == nil {
+		return
+	}
+	defer xlib.FreeModifiermap(mapping)
+	for i, code := range mapping.Keycodes() {
+		if code != 0 {
+			p.modifierMasks[code] |= 1 << (i / int(mapping.MaxKeypermod))
+		}
+	}
+	// XkbKeysymToModifiers merges all groups. With us,cn(altgr-pinyin),
+	// right Alt is Alt_R in group 0 but Level3 in group 1; merging would
+	// incorrectly label ordinary US Alt as AltGraph. Lookup respects each
+	// key's native group wrap/redirect policy, just like keyFromNativeEvent.
+	for code, mask := range p.modifierMasks {
+		if mask == 0 {
+			continue
+		}
+		for group := range p.altGraphMasks {
+			sym, _, ok := p.display.XkbLookupKeySym(uint8(code), uint32(group)<<13)
+			if ok && sym == xlib.XK_ISO_Level3_Shift {
+				p.altGraphMasks[group] |= mask
+			}
+		}
+	}
 }
 
 func (p *Platform) detectNumLockMask() uint32 {

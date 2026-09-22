@@ -81,33 +81,39 @@ func (w *Window) handleWheel(horizontal bool, wParam winapi.WPARAM, lParam winap
 	w.onEvent(event)
 }
 
-func (w *Window) handleKey(eventType events.EventType, wParam winapi.WPARAM, lParam winapi.LPARAM) {
+func (w *Window) handleKey(eventType events.EventType, wParam winapi.WPARAM, lParam winapi.LPARAM) (handled bool) {
 	key, location := keyFromVirtualKey(int(wParam), lParam)
-	w.updateKeyModifiers(eventType, key)
 	w.onEvent(events.KeyEvent{
 		EventType: eventType,
 		Key:       key,
 		Code:      events.KeyCodeUnknown,
 		Location:  location,
-		Modifiers: w.modifiers,
+		Modifiers: keyModifiers(winapi.GetKeyState),
 		Repeat:    eventType == events.KeyDown && (uintptr(lParam)&(1<<30)) != 0,
+		Handled:   &handled,
 	})
+	return
 }
 
-func (w *Window) updateKeyModifiers(eventType events.EventType, key events.Key) {
-	bit := modifierForKey(key)
-	if bit == 0 {
-		return
-	}
-
-	switch key {
-	case events.KeyShift, events.KeyControl, events.KeyAlt, events.KeyWin:
-		if eventType == events.KeyDown {
-			w.modifiers |= bit
-		} else {
-			w.modifiers &^= bit
+// GetKeyState describes the state associated with the dequeued message, unlike
+// GetAsyncKeyState. Query both sides instead of clearing an entire modifier on
+// either key-up. This also works when a key was pressed before gaining focus.
+func keyModifiers(state func(int) winapi.SHORT) events.Modifiers {
+	var mods events.Modifiers
+	for _, pair := range [...]struct {
+		left, right int
+		modifier    events.Modifiers
+	}{
+		{winapi.VK_LSHIFT, winapi.VK_RSHIFT, events.ModifierShift},
+		{winapi.VK_LCONTROL, winapi.VK_RCONTROL, events.ModifierControl},
+		{winapi.VK_LMENU, winapi.VK_RMENU, events.ModifierAlt},
+		{winapi.VK_LWIN, winapi.VK_RWIN, events.ModifierWin},
+	} {
+		if state(pair.left) < 0 || state(pair.right) < 0 {
+			mods |= pair.modifier
 		}
 	}
+	return mods
 }
 
 func (w *Window) emitPointer(eventType events.EventType, button events.PointerButton, position geometry.Point, buttons events.PointerButtons, modifiers events.Modifiers) {
@@ -217,21 +223,6 @@ func pointerModifiers(wParam winapi.WPARAM) events.Modifiers {
 		mods |= events.ModifierControl
 	}
 	return mods
-}
-
-func modifierForKey(key events.Key) events.Modifiers {
-	switch key {
-	case events.KeyShift:
-		return events.ModifierShift
-	case events.KeyControl:
-		return events.ModifierControl
-	case events.KeyAlt:
-		return events.ModifierAlt
-	case events.KeyWin:
-		return events.ModifierWin
-	default:
-		return 0
-	}
 }
 
 func keyFromVirtualKey(vk int, lParam winapi.LPARAM) (events.Key, events.KeyLocation) {

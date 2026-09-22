@@ -27,7 +27,6 @@ type Window struct {
 
 	parent    common.Window
 	buttons   events.PointerButtons
-	modifiers events.Modifiers
 	minWidth  float32
 	minHeight float32
 

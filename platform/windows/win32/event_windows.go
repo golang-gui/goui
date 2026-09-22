@@ -1,6 +1,7 @@
 package win32
 
 import (
+	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/internal/eventloop"
 	"github.com/golang-gui/goui/platform/windows/sdk/winapi"
 )
@@ -39,10 +40,37 @@ func (l *EventLoop) Run() {
 			break
 		}
 
-		winapi.TranslateMessage(&msg)
-		winapi.DispatchMessage(&msg)
+		dispatchMessage(&msg)
 	}
 	l.state.RunTasks()
+}
+
+// TranslateMessage queues WM_CHAR/WM_DEADCHAR, so application key handling
+// must run first. Process ordinary GOUI key messages exactly once here; the
+// window procedure still handles messages delivered by native nested loops.
+// IME-owned VK_PROCESSKEY messages stay on the normal Windows dispatch path.
+func dispatchMessage(msg *winapi.MSG) {
+	switch msg.Message {
+	case winapi.WM_KEYDOWN, winapi.WM_SYSKEYDOWN, winapi.WM_KEYUP, winapi.WM_SYSKEYUP:
+		if w := windowMap[msg.Hwnd]; w != nil && msg.WParam != winapi.VK_PROCESSKEY {
+			var kind events.EventType
+			if msg.Message == winapi.WM_KEYDOWN || msg.Message == winapi.WM_SYSKEYDOWN {
+				kind = events.KeyDown
+			} else {
+				kind = events.KeyUp
+			}
+			if w.handleKey(kind, msg.WParam, msg.LParam) || w.hwnd == 0 {
+				return
+			}
+			winapi.TranslateMessage(msg)
+			if w.integrated && (msg.Message == winapi.WM_SYSKEYDOWN || msg.Message == winapi.WM_SYSKEYUP) {
+				winapi.DefWindowProc(msg.Hwnd, msg.Message, msg.WParam, msg.LParam)
+			}
+			return
+		}
+	}
+	winapi.TranslateMessage(msg)
+	winapi.DispatchMessage(msg)
 }
 
 func (l *EventLoop) Quit() {

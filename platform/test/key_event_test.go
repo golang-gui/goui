@@ -22,6 +22,7 @@ func TestPlatformKeyNames(t *testing.T) {
 		{events.KeySuper, events.ModifierSuper, "Super"},
 		{events.KeyCommand, events.ModifierCommand, "Command"},
 		{events.KeyOption, events.ModifierOption, "Option"},
+		{events.KeyAltGraph, events.ModifierAltGraph, "AltGraph"},
 		{events.KeyAlt, events.ModifierAlt, "Alt"},
 	} {
 		if keyName(tt.key) != tt.name || modifiersName(tt.modifier) != tt.name {
@@ -287,6 +288,8 @@ func keyName(key events.Key) string {
 		return "Win"
 	case events.KeyOption:
 		return "Option"
+	case events.KeyAltGraph:
+		return "AltGraph"
 	case events.KeyCommand:
 		return "Command"
 	case events.KeyCapsLock:

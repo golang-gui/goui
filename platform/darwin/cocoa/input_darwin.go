@@ -2,6 +2,7 @@ package cocoa
 
 import (
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/platform/darwin/frameworks/iokit"
 	"github.com/golang-gui/goui/platform/events"
 
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/appkit"
@@ -159,19 +160,44 @@ func keyUp(self NSView, event NSEvent) {
 
 func flagsChanged(self NSView, event NSEvent) {
 	if window := windowForView(self); window != nil {
-		key, _ := keyFromMacKeyCode(event.KeyCode())
-		bit := modifierForKey(key)
-		if bit == 0 {
+		flags := event.ModifierFlags()
+		eventType, ok := modifierEventType(event.KeyCode(), flags)
+		if !ok {
 			return
 		}
-
-		next := modifiersFromFlags(event.ModifierFlags())
-		eventType := events.KeyDown
-		if window.modifiers&bit != 0 && next&bit == 0 {
-			eventType = events.KeyUp
-		}
-		window.emitKeyWithModifiers(eventType, event, next, false)
+		window.emitKeyWithModifiers(eventType, event, modifiersFromFlags(flags), false)
 	}
+}
+
+// flagsChanged reports the changed keycode and the resulting device flags.
+// The aggregate Shift/Control/Option/Command flag cannot tell which side was
+// released while the other is still down. No previous-window state is needed.
+func modifierEventType(code uint16, flags NSEventModifierFlags) (events.EventType, bool) {
+	var mask NSEventModifierFlags
+	switch code {
+	case 54:
+		mask = iokit.NX_DEVICERCMDKEYMASK
+	case 55:
+		mask = iokit.NX_DEVICELCMDKEYMASK
+	case 56:
+		mask = iokit.NX_DEVICELSHIFTKEYMASK
+	case 58:
+		mask = iokit.NX_DEVICELALTKEYMASK
+	case 59:
+		mask = iokit.NX_DEVICELCTLKEYMASK
+	case 60:
+		mask = iokit.NX_DEVICERSHIFTKEYMASK
+	case 61:
+		mask = iokit.NX_DEVICERALTKEYMASK
+	case 62:
+		mask = iokit.NX_DEVICERCTLKEYMASK
+	default:
+		return 0, false // Preserve the existing treatment of non-momentary keys.
+	}
+	if flags&mask != 0 {
+		return events.KeyDown, true
+	}
+	return events.KeyUp, true
 }
 
 func (w *Window) updateTrackingArea() {
@@ -237,7 +263,12 @@ func (w *Window) emitKey(eventType events.EventType, event NSEvent, repeat bool)
 
 func (w *Window) emitKeyWithModifiers(eventType events.EventType, event NSEvent, modifiers events.Modifiers, repeat bool) {
 	key, location := keyFromMacKeyCode(event.KeyCode())
-	w.modifiers = modifiers
+	// flagsChanged is not a character-bearing event. AppKit raises an
+	// exception if charactersIgnoringModifiers is read from it.
+	if modifierForKey(key) == 0 {
+		key = logicalMacKey(key, location, event.CharactersIgnoringModifiers().UTF8String())
+	}
+	var handled bool
 	w.emitEvent(events.KeyEvent{
 		EventType: eventType,
 		Key:       key,
@@ -245,6 +276,7 @@ func (w *Window) emitKeyWithModifiers(eventType events.EventType, event NSEvent,
 		Location:  location,
 		Modifiers: modifiers,
 		Repeat:    repeat,
+		Handled:   &handled,
 	})
 }
 
@@ -332,6 +364,29 @@ func keyFromMacKeyCode(code uint16) (events.Key, events.KeyLocation) {
 		return key.key, key.location
 	}
 	return events.KeyUnknown, events.KeyLocationStandard
+}
+
+// Letter identities follow the active layout, not the US keycap at keyCode.
+// AppKit ignores Control/Option here but preserves Shift; both letter cases
+// identify the same key. Non-ASCII text remains IME input, not a guessed A-Z.
+// Non-letter keys retain their existing identity (including keypad keys).
+func logicalMacKey(physical events.Key, location events.KeyLocation, characters string) events.Key {
+	if location == events.KeyLocationNumpad || physical < events.KeyA || physical > events.KeyBackquote {
+		return physical
+	}
+	if len(characters) == 1 {
+		c := characters[0]
+		if c >= 'a' && c <= 'z' {
+			return events.KeyA + events.Key(c-'a')
+		}
+		if c >= 'A' && c <= 'Z' {
+			return events.KeyA + events.Key(c-'A')
+		}
+	}
+	if physical >= events.KeyA && physical <= events.KeyZ {
+		return events.KeyUnknown
+	}
+	return physical
 }
 
 type macKey struct {

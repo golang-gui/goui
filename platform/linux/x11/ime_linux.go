@@ -110,8 +110,8 @@ func (im *inputMethod) Destroy() {
 
 // handleKey feeds a key-down to the IC: committed text goes to the handler; a key
 // the IM did not turn into text becomes an ordinary KeyEvent.
-func (im *inputMethod) handleKey(event *xlib.KeyEvent) {
-	text, keysym, status := im.ic.Utf8LookupString(event)
+func (im *inputMethod) handleKey(event *xlib.KeyEvent, repeat bool) {
+	text, _, status := im.ic.Utf8LookupString(event)
 	flushPreedit()
 	if im.ic == 0 || !im.enabled || im.window == nil {
 		return
@@ -122,14 +122,16 @@ func (im *inputMethod) handleKey(event *xlib.KeyEvent) {
 		return
 	}
 
-	key, location := keyFromKeysym(keysym, event.State, platform.numLockMask)
+	key, location := keyFromNativeEvent(event)
+	var handled bool
 	im.window.emitEvent(events.KeyEvent{
 		EventType: events.KeyDown,
 		Key:       key,
 		Code:      events.KeyCodeUnknown,
 		Location:  location,
-		Modifiers: keyModifiers(events.KeyDown, key, event.State),
-		Repeat:    false,
+		Modifiers: im.window.keyModifiers(events.KeyDown, key, event.KeyCode, event.State),
+		Repeat:    repeat,
+		Handled:   &handled,
 	})
 }
 
