@@ -23,6 +23,14 @@ type SHELLEXECUTEINFO struct {
 	Process       uintptr
 }
 
+// DragImage matches SHDRAGIMAGE.
+type DragImage struct {
+	Size     struct{ Width, Height int32 }
+	Hotspot  winapi.POINT
+	Bitmap   winapi.HBITMAP
+	ColorKey uint32
+}
+
 // FILEOPENDIALOGOPTIONS specifies the options for an IFileDialog.
 type FILEOPENDIALOGOPTIONS uint32
 
