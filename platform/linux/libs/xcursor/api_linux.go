@@ -2,18 +2,22 @@ package xcursor
 
 import (
 	"runtime"
+	"unsafe"
 
 	"github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/platform/linux/libs/xlib"
 )
 
 var (
-	lib            = cgo.NewLazyLibrary("libXcursor.so.1")
-	loadCursor     = lib.NewSymbol("XcursorLibraryLoadCursor")
-	getTheme       = lib.NewSymbol("XcursorGetTheme")
-	setTheme       = lib.NewSymbol("XcursorSetTheme")
-	getDefaultSize = lib.NewSymbol("XcursorGetDefaultSize")
-	setDefaultSize = lib.NewSymbol("XcursorSetDefaultSize")
+	lib             = cgo.NewLazyLibrary("libXcursor.so.1")
+	loadCursor      = lib.NewSymbol("XcursorLibraryLoadCursor")
+	getTheme        = lib.NewSymbol("XcursorGetTheme")
+	setTheme        = lib.NewSymbol("XcursorSetTheme")
+	getDefaultSize  = lib.NewSymbol("XcursorGetDefaultSize")
+	setDefaultSize  = lib.NewSymbol("XcursorSetDefaultSize")
+	imageCreate     = lib.NewSymbol("XcursorImageCreate")
+	imageDestroy    = lib.NewSymbol("XcursorImageDestroy")
+	imageLoadCursor = lib.NewSymbol("XcursorImageLoadCursor")
 )
 
 func Available() bool {
@@ -23,6 +27,42 @@ func Available() bool {
 		}
 	}
 	return true
+}
+
+// Image is the libXcursor XcursorImage ABI. Pixels point to the library's
+// allocation and contain premultiplied ARGB32 values.
+type Image struct {
+	Version, Size, Width, Height, XHot, YHot, Delay uint32
+	Pixels                                          *uint32
+}
+
+func CreateImage(width, height int) *Image {
+	if imageCreate.Find() != nil || imageDestroy.Find() != nil || imageLoadCursor.Find() != nil {
+		return nil
+	}
+	ret, _, _ := imageCreate.CallRaw(uintptr(width), uintptr(height))
+	return (*Image)(unsafe.Pointer(ret))
+}
+
+func (i *Image) Destroy() {
+	if i != nil {
+		imageDestroy.CallRaw(uintptr(unsafe.Pointer(i)))
+	}
+}
+
+func (i *Image) PixelBuffer() []uint32 {
+	if i == nil || i.Pixels == nil {
+		return nil
+	}
+	return unsafe.Slice(i.Pixels, int(i.Width)*int(i.Height))
+}
+
+func (i *Image) LoadCursor(display xlib.Display) xlib.Cursor {
+	if i == nil {
+		return 0
+	}
+	ret, _, _ := imageLoadCursor.CallRaw(uintptr(display), uintptr(unsafe.Pointer(i)))
+	return xlib.Cursor(ret)
 }
 
 func LibraryLoadCursor(display xlib.Display, name string) xlib.Cursor {
