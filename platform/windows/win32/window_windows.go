@@ -40,8 +40,11 @@ type Window struct {
 	noActivate        bool         // popups: decline activation/focus on click (WM_MOUSEACTIVATE)
 	im                *inputMethod // this window's IME (nil when none); WndProc routes WM_IME_* to it
 	cursor            *cursor      // this window's cursor (nil when none); WndProc consults it on WM_SETCURSOR
-	minW              float32      // minimum size hint in DIP; 0 = unbounded
-	minH              float32      // Native: client size; None/Integrated: outer size
+	dnd               *oleDragService
+	dragPress         bool    // current native left press, not a synthesized GUI event
+	dragMotion        bool    // true only during the native WM_MOUSEMOVE callback
+	minW              float32 // minimum size hint in DIP; 0 = unbounded
+	minH              float32 // Native: client size; None/Integrated: outer size
 	hitTest           func(geometry.Point) common.WindowHit
 	hitTesting        bool
 	state             common.WindowState // last native notification, not request state
@@ -132,6 +135,9 @@ func (w *Window) NativeHandle() uintptr {
 }
 
 func (w *Window) Destroy() {
+	if w.dnd != nil {
+		w.dnd.Destroy()
+	}
 	w.releaseUpload()
 	w.hitTest = nil
 	if w.hwnd != 0 {

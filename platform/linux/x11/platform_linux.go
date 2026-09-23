@@ -11,6 +11,7 @@ import (
 	"github.com/golang-gui/goui/platform/linux/libs/glib"
 
 	"github.com/golang-gui/goui/platform/common"
+	"github.com/golang-gui/goui/platform/dragdrop"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/opengl"
@@ -46,6 +47,25 @@ type Platform struct {
 		CLIPBOARD                    xlib.Atom
 		TARGETS                      xlib.Atom
 		GOUI_CLIPBOARD               xlib.Atom
+		XdndAware                    xlib.Atom
+		XdndEnter                    xlib.Atom
+		XdndPosition                 xlib.Atom
+		XdndStatus                   xlib.Atom
+		XdndLeave                    xlib.Atom
+		XdndDrop                     xlib.Atom
+		XdndFinished                 xlib.Atom
+		XdndTypeList                 xlib.Atom
+		XdndProxy                    xlib.Atom
+		XdndActionList               xlib.Atom
+		XdndSelection                xlib.Atom
+		XdndActionCopy               xlib.Atom
+		XdndActionMove               xlib.Atom
+		XdndActionLink               xlib.Atom
+		GOUI_DND                     xlib.Atom
+		URI_LIST                     xlib.Atom
+		TEXT_UTF8                    xlib.Atom
+		INCR                         xlib.Atom
+		GOUI_LOCAL                   xlib.Atom
 	}
 	defScreen           *xlib.Screen
 	helper              xlib.Window
@@ -57,6 +77,8 @@ type Platform struct {
 	resizeSyncAvailable bool
 	eventLoop           *EventLoop
 	cursorTheme         *cursorTheme
+	nextDragOfferID     uint64
+	dragSource          *xdndSource
 }
 
 var platform *Platform
@@ -99,6 +121,7 @@ func NewPlatform(appId string) (_ *Platform, err error) {
 	p.atoms.CLIPBOARD = p.display.InternAtom("CLIPBOARD", false)
 	p.atoms.TARGETS = p.display.InternAtom("TARGETS", false)
 	p.atoms.GOUI_CLIPBOARD = p.display.InternAtom("GOUI_CLIPBOARD", false)
+	p.initDragAtoms()
 
 	p.defScreen = p.display.DefaultScreenOfDisplay()
 	p.resizeSyncAvailable = xsync.Initialize(p.display) == nil
@@ -254,6 +277,22 @@ func (p *Platform) NewInputMethod(window common.Window, handler common.InputMeth
 // NewCursor creates an x11 cursor capability for window.
 func (p *Platform) NewCursor(window common.Window) (common.Cursor, error) {
 	return p.newCursor(window)
+}
+
+func (p *Platform) NewDragDrop(surface common.Surface) (common.DragDrop, error) {
+	var w *Window
+	switch v := surface.(type) {
+	case *Window:
+		w = v
+	case *Popup:
+		w = v.win
+	}
+	if w == nil || w.wid == 0 || w.dnd != nil {
+		return nil, common.ErrUnavailable
+	}
+	d := &dragService{window: w, platform: p, formatAtoms: make(map[dragdrop.Format]xlib.Atom)}
+	w.dnd = d
+	return d, nil
 }
 
 func (p *Platform) NewSettings() (common.Settings, error) {

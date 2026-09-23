@@ -25,6 +25,7 @@ import (
 type Platform struct {
 	appId            string
 	destroyed        bool
+	oleInitialized   bool
 	icons            applicationIcons
 	windowRegistered bool
 	helperClass      winapi.LPWSTR
@@ -79,6 +80,10 @@ func (p *Platform) Destroy() {
 		p.helperClass = nil
 	}
 	p.wakeHandler = nil
+	if p.oleInitialized {
+		com.UninitializeOLE()
+		p.oleInitialized = false
+	}
 	p.destroyed = true
 }
 
@@ -159,6 +164,10 @@ func (p *Platform) NewCursor(window common.Window) (common.Cursor, error) {
 	return newCursor(window)
 }
 
+func (p *Platform) NewDragDrop(surface common.Surface) (common.DragDrop, error) {
+	return newDragService(surface)
+}
+
 func (p *Platform) NewSettings() (common.Settings, error) {
 	return newSettings()
 }
@@ -224,9 +233,10 @@ func newPlatform(appId string) (p *Platform, err error) {
 	p.instance, _ = winapi.GetModuleHandle(nil)
 
 	// Initialize COM as STA before creating any COM-dependent objects.
-	if hr := com.Initialize(com.COINIT_APARTMENTTHREADED | com.COINIT_DISABLE_OLE1DDE); hr.Failed() {
-		return nil, fmt.Errorf("win32: initialize COM: %w", hr)
+	if hr := com.InitializeOLE(); hr.Failed() {
+		return nil, fmt.Errorf("win32: initialize OLE: %w", hr)
 	}
+	p.oleInitialized = true
 	if appId != "" {
 		id, _ := syscall.UTF16PtrFromString(appId)
 		if err = shell.SetCurrentProcessExplicitAppUserModelID(id); err != nil {

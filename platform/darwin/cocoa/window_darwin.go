@@ -41,6 +41,8 @@ type Window struct {
 	transparent   bool
 	resize        *windowResize
 	resizeRelease bool // consume the matching up even when a resize is cancelled
+	dnd           *dragService
+	dragDown      NSEvent // retained mouse-down event required by AppKit's dragging API
 }
 
 // newNativeWindow creates the NSWindow shared by top-level windows and popups:
@@ -116,6 +118,10 @@ func (w *Window) NativeHandle() uintptr {
 }
 
 func (w *Window) Destroy() {
+	if w.dnd != nil {
+		w.dnd.Destroy()
+	}
+	w.clearDragDown()
 	w.resize = nil
 	w.controlsPosition = nil
 	if movePress.window == w {
@@ -341,6 +347,13 @@ func initWindowClass() (err error) {
 	})
 	if err != nil {
 		return fmt.Errorf("implement NSTextInputClient err: %v", err)
+	}
+	if err = ImplementNSDragging(viewClass, DraggingOverride{
+		Entered: dragEntered, Updated: dragUpdated, Exited: dragExited,
+		Perform: dragPerformed, Conclude: dragConcluded,
+		SourceMask: dragSourceMask, Ended: dragSourceEnded,
+	}); err != nil {
+		return fmt.Errorf("implement NSDragging err: %v", err)
 	}
 
 	return
