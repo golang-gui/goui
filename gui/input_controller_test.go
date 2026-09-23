@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -193,6 +194,26 @@ func TestClickEventControllerResetClearsPress(t *testing.T) {
 	}
 	if len(pressed) != 1 || !pressed[0] {
 		t.Fatalf("unexpected pressed calls: %v", pressed)
+	}
+}
+
+func TestClickEventControllerCancelPointerReleasesWithoutClick(t *testing.T) {
+	controller := NewClickEventController()
+	var pressed []bool
+	clicks := 0
+	controller.ConnectPressed(func(_ EventContext, value bool) { pressed = append(pressed, value) })
+	controller.ConnectClicked(func(EventContext) { clicks++ })
+	controller.HandleEvent(&eventContext{event: events.PointerEvent{
+		EventType: events.PointerDown, Button: events.PointerButtonLeft,
+	}})
+	controller.CancelPointer(&eventContext{event: events.PointerEvent{
+		EventType: events.PointerMove, Buttons: events.PointerButtonLeftDown,
+	}})
+	controller.HandleEvent(&eventContext{event: events.PointerEvent{
+		EventType: events.PointerUp, Button: events.PointerButtonLeft,
+	}})
+	if controller.Pressed() || clicks != 0 || !slices.Equal(pressed, []bool{true, false}) {
+		t.Fatalf("cancel: pressed=%t clicks=%d notifications=%v", controller.Pressed(), clicks, pressed)
 	}
 }
 

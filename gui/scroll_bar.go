@@ -40,6 +40,7 @@ func NewScrollBar(ori layout.Direction) *ScrollBar {
 	b.drag.ConnectBegin(b.onDragBegin)
 	b.drag.ConnectUpdate(b.onDragUpdate)
 	b.drag.ConnectEnd(b.onDragEnd)
+	b.drag.ConnectCancel(b.finishDrag)
 	b.AddEventController(b.drag)
 
 	b.motion = NewMotionEventController()
@@ -244,6 +245,10 @@ func (b *ScrollBar) onDragUpdate(pos geometry.Point, _ events.Modifiers) {
 }
 
 func (b *ScrollBar) onDragEnd(_ geometry.Point, _ events.Modifiers) {
+	b.finishDrag()
+}
+
+func (b *ScrollBar) finishDrag() {
 	b.grabOffset = 0
 	// The thumb state (Pressed -> Normal/Hovered) changed, but no value change
 	// follows a release, so nothing else repaints. Without this the thumb stays

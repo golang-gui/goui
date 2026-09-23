@@ -29,22 +29,6 @@ type EventContext interface {
 	PropagationStopped() bool
 }
 
-// PointerCaptureController is an EventController that captures pointer events
-// during a gesture (e.g. DragEventController). The dispatcher queries this
-// after dispatching a pointer event: if the controller reports it is
-// capturing, the dispatcher routes subsequent PointerMove and PointerUp to the
-// controller's widget, bypassing hit testing. When the controller stops
-// capturing (e.g. on PointerUp or Reset), the dispatcher detects this and
-// resumes normal hit testing.
-//
-// This is an optional interface — controllers that never capture the pointer
-// simply do not implement it. The dispatcher uses type assertion, so existing
-// controllers are unaffected.
-type PointerCaptureController interface {
-	EventController
-	CapturingPointer() bool
-}
-
 type CrossingType int
 
 const (
@@ -96,6 +80,9 @@ func (b *EventControllerBase) HandleEvent(ctx EventContext) {}
 func (b *EventControllerBase) HandleCrossing(ctx CrossingContext) {}
 
 type eventContext struct {
+	dispatcher       *EventDispatcher
+	host             EventTarget
+	controller       EventController
 	alive            func() bool
 	event            events.Event
 	target           Widget
@@ -159,7 +146,17 @@ type EventDispatcher struct {
 	hostController EventController
 	hoverPath      []Widget
 	focusPath      []Widget
-	captureTarget  Widget // during a drag, PointerMove/Up route here, bypassing hit test
+	captureTarget  Widget // derived from the accepted gesture; used by chrome queries
+	gesture        *gestureSequence
+	suppressUp     events.PointerButton // native takeover may consume the matching release
+}
+
+func (d *EventDispatcher) cancelInput(reason GestureCancelReason) {
+	if d.gesture != nil {
+		d.gesture.cancel(reason)
+	}
+	d.captureTarget = nil
+	d.suppressUp = events.PointerButtonNone
 }
 
 // EventTarget is a widget-tree host the dispatcher propagates events into — a
@@ -177,6 +174,41 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 	}
 
 	root := host.Widget()
+	var sequence *gestureSequence
+	if pointer, ok := event.(events.PointerEvent); ok {
+		if pointer.EventType == events.PointerDown {
+			if d.gesture != nil {
+				d.gesture.cancel(GestureInterrupted)
+			}
+			d.suppressUp = events.PointerButtonNone
+			d.captureTarget = nil
+			sequence = &gestureSequence{dispatcher: d, host: host, button: pointer.Button,
+				buttonsObserved: pointer.Buttons&pointerButtonMask(pointer.Button) != 0,
+				event:           pointer, active: true, delivering: true, serial: 1}
+			d.gesture = sequence
+		} else if d.gesture != nil {
+			sequence = d.gesture
+			sequence.event = pointer
+			sequence.serial++
+			sequence.delivering = true
+			sequence.revalidate()
+			if pointer.EventType == events.PointerMove && sequence.active {
+				if pointer.Buttons&pointerButtonMask(sequence.button) != 0 {
+					sequence.buttonsObserved = true
+				} else if sequence.buttonsObserved {
+					sequence.cancel(GestureInterrupted)
+				}
+			}
+		}
+		if pointer.EventType == events.PointerUp && pointer.Button == d.suppressUp {
+			d.suppressUp = events.PointerButtonNone
+			return nil
+		}
+		defer func() {
+			d.deliverGestureRemainder(sequence)
+			d.finishGesture(sequence, pointer)
+		}()
+	}
 	if root == nil && d.decoration == nil {
 		if d.shortcuts != nil {
 			d.shortcuts.HandleEvent(&eventContext{event: event})
@@ -185,6 +217,9 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 	}
 
 	if _, ok := event.(events.FocusEvent); ok {
+		if e := event.(events.FocusEvent); !e.Focused && d.gesture != nil {
+			d.gesture.cancel(GestureInterrupted)
+		}
 		d.updateFocus(d.treeRoot(root, host.FocusedWidget()), host.FocusedWidget())
 		return nil
 	}
@@ -214,14 +249,21 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 	}
 
 	ctx := &eventContext{
-		event:  event,
-		target: target,
+		dispatcher: d,
+		host:       host,
+		event:      event,
+		target:     target,
 		alive: func() bool {
-			return liveRoot(root) != nil && !target.base().destroyed &&
+			return liveRoot(root) != nil && !target.base().destroyed && visibleInTree(target) &&
 				(host.Widget() == root || d.decoration == root) && len(widgetPath(root, target)) != 0
 		},
 	}
+	if pointer, ok := event.(events.PointerEvent); ok && sequence != nil && pointer.EventType == events.PointerDown {
+		sequence.path = slices.Clone(path)
+	}
 	if d.hostController != nil {
+		ctx.controller = d.hostController
+		ctx.current = nil
 		d.hostController.HandleEvent(ctx)
 		if ctx.PropagationStopped() {
 			return nil
@@ -237,13 +279,11 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 	}
 	d.dispatchPhase(ctx, path, PhaseCapture, event)
 	if ctx.PropagationStopped() {
-		d.updateCapture(path, event)
 		return nil
 	}
 
 	d.dispatchPhase(ctx, path[len(path)-1:], PhaseTarget, event)
 	if ctx.PropagationStopped() {
-		d.updateCapture(path, event)
 		return nil
 	}
 	d.dispatchShortcuts(ctx, PhaseTarget)
@@ -256,7 +296,6 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 	if !ctx.PropagationStopped() {
 		d.dispatchShortcuts(ctx, PhaseBubble)
 	}
-	d.updateCapture(path, event)
 	return nil
 }
 
@@ -270,47 +309,16 @@ func (d *EventDispatcher) dispatchShortcuts(ctx *eventContext, phase Propagation
 	}
 }
 
-// updateCapture installs, retains, or releases pointer capture based on the
-// state of PointerCaptureController controllers after dispatch. For pointer events, it
-// checks every widget in the propagation path: if any controller reports it is
-// capturing, the dispatcher routes subsequent PointerMove/Up to that widget.
-// When no controller is capturing (e.g. after PointerUp or Reset), capture is
-// released. For non-pointer events, it revalidates the existing capture so
-// that a key handler calling Reset on a drag controller also releases capture.
-func (d *EventDispatcher) updateCapture(path []Widget, event events.Event) {
-	if _, ok := event.(events.PointerEvent); ok {
-		for _, widget := range path {
-			for _, controller := range widget.EventControllers() {
-				if capturer, ok := controller.(PointerCaptureController); ok && capturer.CapturingPointer() {
-					d.captureTarget = widget
-					return
+func (d *EventDispatcher) target(host EventTarget, root Widget, event events.Event) Widget {
+	if d.gesture != nil && d.gesture.active && len(d.gesture.members) != 0 {
+		if pe, ok := event.(events.PointerEvent); ok && (pe.EventType == events.PointerMove || pe.EventType == events.PointerUp) {
+			for i := len(d.gesture.path) - 1; i >= 0; i-- {
+				if visibleInTree(d.gesture.path[i]) {
+					return d.gesture.path[i]
 				}
 			}
 		}
-		d.captureTarget = nil
-		return
 	}
-	if d.captureTarget != nil {
-		for _, controller := range d.captureTarget.EventControllers() {
-			if capturer, ok := controller.(PointerCaptureController); ok && capturer.CapturingPointer() {
-				return
-			}
-		}
-		d.captureTarget = nil
-	}
-}
-
-func (d *EventDispatcher) target(host EventTarget, root Widget, event events.Event) Widget {
-	if d.captureTarget != nil {
-		if d.captureTarget.base().destroyed || !visibleInTree(d.captureTarget) {
-			d.captureTarget = nil
-		} else if pe, ok := event.(events.PointerEvent); ok {
-			if pe.EventType == events.PointerMove || pe.EventType == events.PointerUp {
-				return d.captureTarget
-			}
-		}
-	}
-
 	switch event := event.(type) {
 	case events.PointerEvent:
 		target := d.pick(root, event.Position)
@@ -365,6 +373,14 @@ func (d *EventDispatcher) dispatchPhase(ctx *eventContext, widgets []Widget, pha
 			}
 			if controller == nil || controller.Phase() != phase {
 				continue
+			}
+			ctx.controller = controller
+			if s := d.gesture; s != nil {
+				for _, p := range s.members {
+					if p.controller == controller && p.widget == widget {
+						p.delivered = s.serial
+					}
+				}
 			}
 			controller.HandleEvent(ctx)
 			if ctx.alive != nil && !ctx.alive() {

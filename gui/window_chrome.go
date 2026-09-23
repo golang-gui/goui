@@ -445,123 +445,132 @@ func (c *windowChrome) destroy() {
 // This is a host EventController, not a native-event interception shortcut.
 type chromeInteractionController struct {
 	EventControllerBase
-	chrome     *windowChrome
-	pressed    bool
-	clickAt    time.Time
-	clickPos   geometry.Point
-	lastClick  time.Time
-	lastPos    geometry.Point
-	suppressUp bool
+	chrome      *windowChrome
+	gesture     *GestureParticipation
+	region      ChromeRegion
+	secondClick bool
+	now         func() time.Time
+	clickAt     time.Time
+	clickPos    geometry.Point
+	lastClick   time.Time
+	lastPos     geometry.Point
 }
 
-// Private GUI policy until double-click preferences are exposed by Settings.
-const captionClickInterval = 500 * time.Millisecond
-const captionClickDistance float32 = 4
-
 func captionNear(a, b geometry.Point) bool {
-	return math.Abs(float64(a.X-b.X)) <= float64(captionClickDistance) && math.Abs(float64(a.Y-b.Y)) <= float64(captionClickDistance)
+	return !gestureMoved(a, b, gestureDefaultDistance)
 }
 
 func (controller *chromeInteractionController) Reset() {
-	controller.pressed, controller.suppressUp = false, false
+	gesture := controller.gesture
+	controller.gesture = nil
+	gesture.Reject()
 	controller.lastClick = time.Time{}
 }
 
 func (controller *chromeInteractionController) HandleEvent(ctx EventContext) {
-	controller.handleAt(ctx, time.Now())
+	now := time.Now()
+	if controller.now != nil {
+		now = controller.now()
+	}
+	controller.handleGesture(ctx, now)
 }
 
-func (controller *chromeInteractionController) handleAt(ctx EventContext, now time.Time) {
+func (controller *chromeInteractionController) handleGesture(ctx EventContext, now time.Time) {
 	c := controller.chrome
-	if !c.live() || c.nativeHit || !c.info.Enabled {
+	if !c.live() || c.nativeHit || !c.info.Enabled || c.window.modalTarget != nil || c.syncing || c.window.layoutDirty || c.window.layingOut {
 		controller.Reset()
 		return
 	}
-	event, ok := ctx.Event().(events.PointerEvent)
+	e, ok := ctx.Event().(events.PointerEvent)
 	if !ok {
-		controller.Reset()
 		return
 	}
-	if event.EventType == events.PointerUp && event.Button == events.PointerButtonLeft && controller.suppressUp {
-		controller.suppressUp = false
-		ctx.StopPropagation()
-		return
-	}
-	if c.syncing || c.window.layoutDirty || c.window.layingOut {
-		controller.Reset()
-		return
-	}
-	if controller.pressed {
-		if c.window.modalTarget != nil || c.window.dispatcher.captureTarget != nil {
-			controller.Reset()
+	switch e.EventType {
+	case events.PointerDown:
+		if e.Button != events.PointerButtonLeft {
 			return
 		}
-		if event.EventType == events.PointerMove {
-			ctx.StopPropagation()
-			if event.Buttons&events.PointerButtonLeftDown == 0 {
-				controller.Reset()
-				return
-			}
-			if !captionNear(controller.clickPos, event.Position) {
-				controller.pressed = false
-				controller.lastClick = time.Time{}
-				controller.suppressUp = true
-				// The press belongs to Caption even if the native move is refused;
-				// never send content a release for a press it did not receive.
-				_ = c.native.BeginMove()
-			}
+		region := c.queryRegion(e.Position)
+		if region != ChromeRegionCaption && (region < ChromeRegionTop || region > ChromeRegionBottomRight) {
 			return
 		}
-		if event.EventType == events.PointerUp && event.Button == events.PointerButtonLeft {
-			controller.pressed = false
-			ctx.StopPropagation()
-			if now.Sub(controller.clickAt) <= captionClickInterval && captionNear(controller.clickPos, event.Position) && c.queryRegion(event.Position) == ChromeRegionCaption {
-				controller.lastClick, controller.lastPos = controller.clickAt, event.Position
-			} else {
-				controller.lastClick = time.Time{}
-			}
+		controller.gesture = JoinGesture(ctx)
+		if controller.gesture == nil {
 			return
 		}
-	}
-	if event.EventType != events.PointerDown {
-		return
-	}
-	controller.pressed, controller.suppressUp = false, false
-	if event.Button != events.PointerButtonLeft {
-		controller.Reset()
-		return
-	}
-	region := c.queryRegion(event.Position)
-	if !c.live() {
-		return
-	}
-	var err error
-	switch {
-	case region == ChromeRegionCaption:
-		ctx.StopPropagation()
-		if !controller.lastClick.IsZero() && now.Sub(controller.lastClick) >= 0 && now.Sub(controller.lastClick) <= captionClickInterval && captionNear(controller.lastPos, event.Position) {
-			controller.lastClick = time.Time{}
-			controller.suppressUp = true
-			switch c.window.State() {
-			case WindowStateNormal:
-				c.window.RequestState(WindowStateMaximized)
-			case WindowStateMaximized:
-				c.window.RequestState(WindowStateNormal)
-			}
+		controller.region = region
+		controller.clickAt, controller.clickPos = now, e.Position
+		controller.secondClick = region == ChromeRegionCaption && !controller.lastClick.IsZero() &&
+			now.Sub(controller.lastClick) >= 0 && now.Sub(controller.lastClick) <= gestureClickInterval && captionNear(controller.lastPos, e.Position)
+		if region != ChromeRegionCaption {
+			controller.gesture.Claim()
+		}
+	case events.PointerMove:
+		if controller.gesture == nil || controller.region != ChromeRegionCaption {
+			return
+		}
+		if e.Buttons != 0 && e.Buttons&events.PointerButtonLeftDown == 0 {
+			controller.gesture.Reject()
+			return
+		}
+		if !captionNear(controller.clickPos, e.Position) {
+			controller.secondClick = false
+			controller.gesture.Claim()
+		}
+	case events.PointerUp:
+		if e.Button != events.PointerButtonLeft || controller.gesture == nil {
+			return
+		}
+		if controller.region != ChromeRegionCaption {
+			return
+		}
+		if !captionNear(controller.clickPos, e.Position) || c.queryRegion(e.Position) != ChromeRegionCaption {
+			controller.gesture.Reject()
+			return
+		}
+		if controller.secondClick {
+			controller.gesture.Claim()
 		} else {
-			controller.lastClick = time.Time{}
-			controller.pressed = true
-			controller.clickAt, controller.clickPos = now, event.Position
+			controller.gesture.Claim()
 		}
-		return
-	case region >= ChromeRegionTop && region <= ChromeRegionBottomRight:
-		controller.Reset()
-		err = c.native.BeginResize(platform.WindowEdge(region - ChromeRegionTop))
-	default:
-		controller.Reset()
+	}
+}
+
+func (controller *chromeInteractionController) GestureAccepted(ctx EventContext) {
+	gesture, region, second := controller.gesture, controller.region, controller.secondClick
+	controller.gesture = nil
+	if gesture == nil || !controller.chrome.live() {
 		return
 	}
-	if err == nil {
-		ctx.StopPropagation()
+	if region == ChromeRegionCaption {
+		if e, ok := ctx.Event().(events.PointerEvent); ok && e.EventType == events.PointerUp {
+			if second {
+				controller.lastClick = time.Time{}
+				switch controller.chrome.window.State() {
+				case WindowStateNormal:
+					controller.chrome.window.RequestState(WindowStateMaximized)
+				case WindowStateMaximized:
+					controller.chrome.window.RequestState(WindowStateNormal)
+				}
+			} else {
+				controller.lastClick, controller.lastPos = controller.clickAt, e.Position
+			}
+			return
+		}
 	}
+	gesture.sequence.takeOver()
+	if region == ChromeRegionCaption {
+		controller.lastClick = time.Time{}
+		_ = controller.chrome.native.BeginMove()
+	} else {
+		_ = controller.chrome.native.BeginResize(platform.WindowEdge(region - ChromeRegionTop))
+	}
+}
+
+func (controller *chromeInteractionController) GestureCanceled(GestureCancelReason) {
+	controller.gesture = nil
+	if controller.secondClick {
+		controller.lastClick = time.Time{}
+	}
+	controller.secondClick = false
 }

@@ -5,6 +5,7 @@ import (
 	"math"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
@@ -198,13 +199,13 @@ func TestNoneChromeResizeRegions(t *testing.T) {
 		if !nativeHit {
 			native.commandError = platform.ErrUnavailable
 			clickAt(win, geometry.Point{X: 20, Y: 20})
-			if clicks != 1 {
-				t.Fatal("failed resize swallowed input")
+			if clicks != 0 || click.Pressed() {
+				t.Fatal("a failed native resize must not turn an accepted resize press into a click")
 			}
 			native.commandError = nil
 			native.onMove = win.Destroy
 			clickAt(win, geometry.Point{X: 20, Y: 20})
-			if !win.destroyed || clicks != 1 {
+			if !win.destroyed || clicks != 0 {
 				t.Fatal("resize destruction was unsafe")
 			}
 		}
@@ -476,6 +477,47 @@ func TestChromeMoveUsesEventController(t *testing.T) {
 			t.Fatal("native move started a GUI click/capture")
 		}
 		win.Destroy()
+	}
+}
+
+func TestChromeSecondPressChoosesDragOrDoubleClickOnRelease(t *testing.T) {
+	win, native := chromeFixture(t, false, false)
+	now := time.Unix(100, 0)
+	win.dispatcher.hostController.(*chromeInteractionController).now = func() time.Time { return now }
+	win.Chrome().ConnectQueryRegion(func(_ geometry.Point, r *ChromeRegion) { *r = ChromeRegionCaption })
+	point := geometry.Point{X: 20, Y: 20}
+	clickAt(win, point)
+	now = now.Add(100 * time.Millisecond)
+	dragCaptionAt(win, point)
+	if native.moveRequests != 1 || len(native.requests) != 0 {
+		t.Fatalf("second press drag: move=%d state=%v", native.moveRequests, native.requests)
+	}
+	now = now.Add(100 * time.Millisecond)
+	clickAt(win, point)
+	now = now.Add(100 * time.Millisecond)
+	clickAt(win, point)
+	if len(native.requests) != 1 || native.requests[0] != WindowStateMaximized {
+		t.Fatalf("double click should request maximize on release: %v", native.requests)
+	}
+}
+
+func TestChromeDoesNotCountWidgetClickAsCaptionClick(t *testing.T) {
+	win, native := chromeFixture(t, false, false)
+	now := time.Unix(100, 0)
+	win.dispatcher.hostController.(*chromeInteractionController).now = func() time.Time { return now }
+	win.Chrome().ConnectQueryRegion(func(_ geometry.Point, r *ChromeRegion) { *r = ChromeRegionCaption })
+	child := newTestWidget()
+	child.Arrange(geometry.Rect(0, 0, 40, 40))
+	win.Widget().base().AddChild(win.Widget(), child)
+	click := NewClickEventController()
+	child.AddEventController(click)
+	clicked := 0
+	click.ConnectClicked(func(EventContext) { clicked++ })
+	clickAt(win, geometry.Point{X: 20, Y: 20})
+	now = now.Add(100 * time.Millisecond)
+	clickAt(win, geometry.Point{X: 100, Y: 20})
+	if clicked != 1 || len(native.requests) != 0 {
+		t.Fatalf("widget click leaked into caption history: clicked=%d requests=%v", clicked, native.requests)
 	}
 }
 

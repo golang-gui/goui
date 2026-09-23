@@ -99,7 +99,6 @@ type popover struct {
 	workAreaUnsupportedLogged bool
 	lifecycle                 uint64 // invalidates in-flight native/measurement callbacks
 	destroyed                 bool
-	dispatcher                EventDispatcher
 	visible                   bool
 	modal                     bool // menu-style: owner window forwards its input here (modeless by default)
 
@@ -334,6 +333,7 @@ func (p *popover) Destroy() {
 // Reset controller state as well as dispatch paths. The menu additionally
 // resets its presentation state, since Controller.Reset need not emit signals.
 func (p *popover) resetInput() {
+	p.cancelInput(GestureHostClosed)
 	p.dispatcher = EventDispatcher{}
 	var reset func(Widget)
 	reset = func(w Widget) {
