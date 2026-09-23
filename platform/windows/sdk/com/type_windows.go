@@ -1,5 +1,7 @@
 package com
 
+import "unsafe"
+
 type COINIT uint32
 
 const (
@@ -38,3 +40,48 @@ const (
 	CLSCTX_LOCAL_SERVER   CLSCTX = 0x4
 	CLSCTX_REMOTE_SERVER  CLSCTX = 0x10
 )
+
+var (
+	IID_IUnknown    = DefineGuid(0x00000000, 0x0000, 0x0000, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46)
+	IID_IDataObject = DefineGuid(0x0000010e, 0x0000, 0x0000, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46)
+	IID_IDropTarget = DefineGuid(0x00000122, 0x0000, 0x0000, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46)
+	IID_IDropSource = DefineGuid(0x00000121, 0x0000, 0x0000, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46)
+)
+
+const (
+	S_OK                         HRESULT = 0
+	E_NOINTERFACE                HRESULT = -2147467262
+	E_NOTIMPL                    HRESULT = -2147467263
+	E_INVALIDARG                 HRESULT = -2147024809
+	DV_E_FORMATETC               HRESULT = -2147221404
+	DV_E_TYMED                   HRESULT = -2147221399
+	DRAGDROP_S_DROP              HRESULT = 0x00040100
+	DRAGDROP_S_CANCEL            HRESULT = 0x00040101
+	DRAGDROP_S_USEDEFAULTCURSORS HRESULT = 0x00040102
+)
+
+const (
+	TymedHGlobal    uint32 = 1
+	TymedIStream    uint32 = 4
+	DVAspectContent uint32 = 1
+	DataDirGet      uint32 = 1
+	DropEffectCopy  uint32 = 1
+	DropEffectMove  uint32 = 2
+	DropEffectLink  uint32 = 4
+)
+
+// FormatEtc and StgMedium match the Win64 OLE ABI. The union in STGMEDIUM is
+// represented by Handle, valid as HGLOBAL when Tymed==TymedHGlobal.
+type FormatEtc struct {
+	Format       uint16
+	TargetDevice unsafe.Pointer
+	Aspect       uint32
+	Index        int32
+	Tymed        uint32
+}
+
+type StgMedium struct {
+	Tymed          uint32
+	Handle         uintptr
+	ReleaseUnknown unsafe.Pointer
+}
