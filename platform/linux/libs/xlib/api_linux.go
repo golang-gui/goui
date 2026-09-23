@@ -35,7 +35,9 @@ var (
 	xUngrabPointer          = libx11.NewSymbol("XUngrabPointer")
 	xMoveWindow             = libx11.NewSymbol("XMoveWindow")
 	xResizeWindow           = libx11.NewSymbol("XResizeWindow")
+	xGrabPointer            = libx11.NewSymbol("XGrabPointer")
 	xTranslateCoordinates   = libx11.NewSymbol("XTranslateCoordinates")
+	xSelectInput            = libx11.NewSymbol("XSelectInput")
 	xClearArea              = libx11.NewSymbol("XClearArea")
 	xStoreName              = libx11.NewSymbol("XStoreName")
 	xSetTransientForHint    = libx11.NewSymbol("XSetTransientForHint")
@@ -214,8 +216,14 @@ func (d Display) TranslateCoordinates(src, dest Window, srcX, srcY int) (destX, 
 // TranslateCoordinatesChecked also reports XTranslateCoordinates' Bool result
 // (false when the windows are on different X screens).
 func (d Display) TranslateCoordinatesChecked(src, dest Window, srcX, srcY int) (destX, destY int, ok bool) {
+	destX, destY, _, ok = d.TranslateCoordinatesChild(src, dest, srcX, srcY)
+	return
+}
+
+// TranslateCoordinatesChild also returns the mapped child of dest at the
+// translated point, as reported by XTranslateCoordinates.
+func (d Display) TranslateCoordinatesChild(src, dest Window, srcX, srcY int) (destX, destY int, child Window, ok bool) {
 	var dx, dy int32
-	var child Window
 	var pin runtime.Pinner
 	pin.Pin(&dx)
 	pin.Pin(&dy)
@@ -224,7 +232,21 @@ func (d Display) TranslateCoordinatesChecked(src, dest Window, srcX, srcY int) (
 	ret, _, _ := xTranslateCoordinates.CallRaw(uintptr(d), uintptr(src), uintptr(dest),
 		uintptr(srcX), uintptr(srcY),
 		uintptr(cgo.Pointer(&dx)), uintptr(cgo.Pointer(&dy)), uintptr(cgo.Pointer(&child)))
-	return int(dx), int(dy), ret != 0
+	return int(dx), int(dy), child, ret != 0
+}
+
+// GrabPointer takes an active, asynchronous pointer grab. A zero status is
+// GrabSuccess; the caller must pair it with UngrabPointer.
+func (d Display) GrabPointer(w Window, ownerEvents bool, eventMask uint, cursor Cursor, time Time) int32 {
+	ret, _, _ := xGrabPointer.CallRaw(uintptr(d), uintptr(w), uintptr(cgo.CBool(ownerEvents)),
+		uintptr(eventMask), 1, 1, 0, uintptr(cursor), uintptr(time))
+	return int32(ret)
+}
+
+// SelectInput replaces this client's event mask on w; another client's mask
+// is unaffected. It is used for PropertyNotify on a foreign INCR requestor.
+func (d Display) SelectInput(w Window, eventMask uint) {
+	xSelectInput.CallRaw(uintptr(d), uintptr(w), uintptr(eventMask))
 }
 
 func (d Display) ClearArea(w Window, x, y int, width, height uint, exposures bool) {
