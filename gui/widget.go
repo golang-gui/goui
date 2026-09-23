@@ -267,6 +267,10 @@ func (w *WidgetBase) AddEventController(controller EventController) {
 		return
 	}
 	w.controllers = append(w.controllers, controller)
+	if owned, ok := controller.(interface{ setWidget(Widget) }); ok && w.self != nil {
+		owned.setWidget(w.self)
+	}
+	notifyDragControllersChanged(w.root())
 }
 
 func (w *WidgetBase) RemoveEventController(controller EventController) {
@@ -280,6 +284,10 @@ func (w *WidgetBase) RemoveEventController(controller EventController) {
 		return
 	}
 	w.controllers = slices.Delete(w.controllers, index, index+1)
+	if owned, ok := controller.(interface{ setWidget(Widget) }); ok {
+		owned.setWidget(nil)
+	}
+	notifyDragControllersChanged(w.root())
 }
 
 func (w *WidgetBase) LayoutManager() layout.LayoutManager {
@@ -422,6 +430,31 @@ func (w *WidgetBase) Snapshot() WidgetInfo {
 		Focusable:     w.Focusable(),
 		Focused:       w.Focused(),
 		ContainsFocus: w.ContainsFocus(),
+	}
+	for _, controller := range w.controllers {
+		switch c := controller.(type) {
+		case *DragSource:
+			if c.enabled && c.actions.ValidSet() && c.actions != 0 {
+				if info.DragDrop == nil {
+					info.DragDrop = new(DragDropInfo)
+				}
+				info.DragDrop.SourceActions |= c.actions
+				info.DragDrop.Dragging = info.DragDrop.Dragging || c.dragging
+			}
+		case *DropTarget:
+			if c.enabled && c.actions.ValidSet() && c.actions != 0 && len(c.formats) != 0 {
+				if info.DragDrop == nil {
+					info.DragDrop = new(DragDropInfo)
+				}
+				info.DragDrop.TargetActions |= c.actions
+				info.DragDrop.DropActive = info.DragDrop.DropActive || c.active
+				for _, format := range c.formats {
+					if validDragFormat(format) && !slices.Contains(info.DragDrop.TargetFormats, format) {
+						info.DragDrop.TargetFormats = append(info.DragDrop.TargetFormats, format)
+					}
+				}
+			}
+		}
 	}
 	for _, child := range w.children {
 		info.Children = append(info.Children, child.Snapshot())
@@ -727,6 +760,11 @@ func (w *WidgetBase) emitMountSubtree(widget Widget) {
 		return
 	}
 	w.self = widget
+	for _, controller := range w.controllers {
+		if owned, ok := controller.(interface{ setWidget(Widget) }); ok {
+			owned.setWidget(widget)
+		}
+	}
 	w.mount.Emit()
 	for _, child := range slices.Clone(w.children) {
 		child.base().emitMountSubtree(child)
@@ -742,6 +780,11 @@ func (w *WidgetBase) emitUnmountSubtree(widget Widget) {
 		child.base().emitUnmountSubtree(child)
 	}
 	w.unmount.Emit()
+	for _, controller := range w.controllers {
+		if owned, ok := controller.(interface{ setWidget(Widget) }); ok {
+			owned.setWidget(nil)
+		}
+	}
 	w.self = nil
 }
 

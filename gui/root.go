@@ -7,6 +7,7 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/style"
 )
@@ -25,12 +26,16 @@ type paintRequester interface {
 	RequestPaint() error
 }
 
-// rootBase is the common frame and input state of every widget host (window,
-// popover). Each host embeds its own instance; native surface policy remains in
-// the embedding host.
+// rootBase is the common internal state of every widget host (window, popover):
+// frame, input, drag-and-drop and the current native surface. Each host embeds
+// its own instance; native window and popover policy remains in those hosts.
 type rootBase struct {
 	app           *application
 	dispatcher    EventDispatcher
+	drag          dragHostState
+	dragTarget    dragTargetState
+	surfaceEpoch  uint64 // invalidates callbacks from a replaced native surface
+	surface       platform.Surface
 	transparent   bool // immutable native surface configuration, not its style
 	painter       graphics.Painter
 	width         float32 // logical (DIP)
@@ -46,6 +51,11 @@ func (b *rootBase) rootState() *rootBase { return b }
 
 func (b *rootBase) cancelInput(reason GestureCancelReason) {
 	b.dispatcher.cancelInput(reason)
+	state := b.dragTarget
+	b.leaveDragTarget()
+	if state.reading && state.offer != nil {
+		_ = state.offer.Finish(0)
+	}
 }
 
 func (b *rootBase) Transparent() bool { return b.transparent }

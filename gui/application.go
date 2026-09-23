@@ -86,6 +86,8 @@ type application struct {
 	style        style.StyleSheet
 	styleChanged signal.Signal0 // internal host invalidation; no new public event API
 	windows      []*window
+	dragSession  *guiDragSession
+	nextDragID  uint64
 
 	quitOnLastWindowClosed bool
 }

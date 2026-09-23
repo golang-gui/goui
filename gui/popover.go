@@ -182,6 +182,7 @@ func (p *popover) SetWidget(widget Widget) {
 		adoptWidget(widget, p)
 	}
 	p.widget = widget
+	p.dragControllersChanged()
 	p.layoutDirty = true
 	if p.visible {
 		p.measureAndSize()
@@ -224,7 +225,21 @@ func (p *popover) resignModalTarget() {
 // DispatchEvent routes an event the owner window forwards (keyboard nav, since
 // the popover has no native focus) to the popover's content. Part of ModalTarget.
 func (p *popover) DispatchEvent(event events.Event) error {
+	if e, ok := event.(events.DragSourceEvent); ok {
+		if app := dragAppOf(p); app != nil {
+			app.dispatchDragSourceEvent(e)
+		}
+		return nil
+	}
 	if p.destroyed {
+		return nil
+	}
+	if e, ok := event.(events.DragOfferEvent); ok {
+		p.dispatchDragOffer(p, e)
+		return nil
+	}
+	if e, ok := event.(events.DragDataEvent); ok {
+		p.dispatchDragData(p, e)
 		return nil
 	}
 	if p.modal {
@@ -362,6 +377,9 @@ func (p *popover) createNative(win Window) error {
 	if App == nil {
 		return fmt.Errorf("popover: application is not created")
 	}
+	if app, ok := App.(*application); ok {
+		p.app = app
+	}
 	p.owner = win
 	if widget := p.Widget(); widget != nil && widget.Root() != p {
 		adoptWidget(widget, p)
@@ -381,7 +399,22 @@ func (p *popover) createNative(win Window) error {
 	// Platform + typography come from the app (global escape hatches); the owner
 	// platform window comes from the host's PlatformWindow escape hatch.
 	epoch := p.lifecycle
-	pp, err := App.Platform().NewPopup(win.PlatformWindow(), p.requestedSize, p.onEvent, platform.PopupOptions{Transparent: p.transparent})
+	p.surfaceEpoch++
+	surfaceEpoch := p.surfaceEpoch
+	nativeApp := p.app
+	pp, err := App.Platform().NewPopup(win.PlatformWindow(), p.requestedSize, func(event events.Event) {
+		// A source result belongs to the application session even if its popup
+		// has since been released. Other callbacks must match this surface.
+		if e, ok := event.(events.DragSourceEvent); ok {
+			if nativeApp != nil {
+				nativeApp.dispatchDragSourceEvent(e)
+			}
+			return
+		}
+		if p.surfaceEpoch == surfaceEpoch && !p.destroyed {
+			p.onEvent(event)
+		}
+	}, platform.PopupOptions{Transparent: p.transparent})
 	if err != nil {
 		p.releaseNative()
 		return &popoverCreationError{fmt.Errorf("create platform popup: %w", err)}
@@ -406,7 +439,9 @@ func (p *popover) createNative(win Window) error {
 		return fmt.Errorf("popover: released during painter creation")
 	}
 	p.platformPopup = pp
+	p.surface = pp
 	p.painter = painter
+	p.dragControllersChanged()
 
 	// Auto-release when the anchor leaves the tree or the window is destroyed —
 	// the native surface never outlives its owner window.
@@ -424,9 +459,12 @@ func (p *popover) createNative(win Window) error {
 
 func (p *popover) releaseNative() {
 	p.lifecycle++
+	p.surfaceEpoch++
+	p.surface = nil
 	wasVisible := p.visible
 	p.visible = false
 	p.resetInput()
+	p.drag.destroy()
 	if p.hUnmount != nil {
 		p.hUnmount.Disconnect()
 		p.hUnmount = nil

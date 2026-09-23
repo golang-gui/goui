@@ -41,6 +41,8 @@ type WidgetInfo struct {
 	Children []WidgetInfo `json:"children"`
 	// TextEditing is range-labelled editor state, not an input shortcut.
 	TextEditing *TextEditingInfo `json:"textEditing,omitempty"`
+	// DragDrop describes capabilities and transient state, never transferred data.
+	DragDrop *DragDropInfo `json:"dragDrop,omitempty"`
 
 	// Scroll state (omitempty: absent on non-scrolling widgets).
 	ScrollY      float32 `json:"scrollY,omitempty"`      // current scroll offset
@@ -50,6 +52,14 @@ type WidgetInfo struct {
 	ItemCount    int     `json:"itemCount,omitempty"`    // ListView: total items (virtualized)
 	VisibleStart int     `json:"visibleStart,omitempty"` // ListView: first visible index
 	VisibleEnd   int     `json:"visibleEnd,omitempty"`   // ListView: last visible index
+}
+
+type DragDropInfo struct {
+	SourceActions DragAction   `json:"sourceActions,omitempty"`
+	TargetActions DragAction   `json:"targetActions,omitempty"`
+	TargetFormats []DragFormat `json:"targetFormats,omitempty"`
+	Dragging      bool         `json:"dragging,omitempty"`
+	DropActive    bool         `json:"dropActive,omitempty"`
 }
 
 // TextEditingInfo describes an editor without materializing an entire large
