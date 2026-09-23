@@ -120,6 +120,10 @@ func (p *Platform) NewCursor(window common.Window) (common.Cursor, error) {
 	return newCursor(window)
 }
 
+func (p *Platform) NewDragDrop(surface common.Surface) (common.DragDrop, error) {
+	return newDragService(surface)
+}
+
 func (p *Platform) NewSettings() (common.Settings, error) {
 	return newSettings()
 }

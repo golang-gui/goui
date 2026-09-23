@@ -19,6 +19,8 @@ func (w *Window) logicalPoint(p geometry.Point) geometry.Point {
 }
 
 func (w *Window) handlePointerMove(wParam winapi.WPARAM, lParam winapi.LPARAM) {
+	w.dragMotion = true
+	defer func() { w.dragMotion = false }()
 	position := w.logicalPoint(clientPoint(lParam))
 	buttons := pointerButtons(wParam)
 	modifiers := pointerModifiers(wParam)
@@ -54,6 +56,9 @@ func (w *Window) handleTrackedPointerLeave(nonClient bool) {
 }
 
 func (w *Window) handlePointerButton(eventType events.EventType, button events.PointerButton, wParam winapi.WPARAM, lParam winapi.LPARAM) {
+	if button == events.PointerButtonLeft {
+		w.dragPress = eventType == events.PointerDown
+	}
 	if eventType == events.PointerDown {
 		winapi.SetCapture(w.hwnd)
 	} else if eventType == events.PointerUp {

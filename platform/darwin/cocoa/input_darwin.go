@@ -75,6 +75,9 @@ func mouseDown(self NSView, event NSEvent) {
 	self.Retain()
 	defer self.Release()
 	if window := windowForView(self); window != nil {
+		window.clearDragDown()
+		event.Retain()
+		window.dragDown = event
 		window.resize = nil
 		window.resizeRelease = false
 		window.emitPointer(events.PointerDown, events.PointerButtonLeft, event)
@@ -83,6 +86,7 @@ func mouseDown(self NSView, event NSEvent) {
 
 func mouseUp(self NSView, event NSEvent) {
 	if window := windowForView(self); window != nil {
+		defer window.clearDragDown()
 		if window.resizeRelease {
 			window.trackResize()
 			window.resize = nil

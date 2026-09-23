@@ -44,6 +44,7 @@ type Window struct {
 	im               *inputMethod // this window's IME (nil when none); the key loop consults it
 	cursor           *cursor      // this window's cursor capability (nil when none)
 	resizeSync       resizeSync
+	dnd              *dragService
 	paintPending     bool
 	moveResize       bool // a WM interaction was requested; a raced release must cancel it
 	dragPress        bool // an original left press may start moving on native motion
@@ -198,6 +199,9 @@ func (w *Window) Destroy() {
 	w.moveResize = false
 	if w.wid == 0 {
 		return
+	}
+	if w.dnd != nil {
+		w.dnd.Destroy()
 	}
 
 	delete(windowMap, w.wid)
@@ -405,10 +409,16 @@ func handleEvent(event xlib.Event) {
 	if filtered {
 		return
 	}
+	if platform != nil && platform.dragSource != nil && platform.dragSource.handleNative(&event) {
+		return
+	}
 
 	switch event.Type {
 	case xlib.ClientMessage:
 		ev := event.ClientMessageEvent()
+		if window := windowMap[ev.Window]; window != nil && window.dnd != nil && window.dnd.handleClientMessage(ev) {
+			return
+		}
 		if ev.MessageType == platform.atoms.WM_PROTOCOLS && ev.L[0] != 0 {
 			if xlib.Atom(ev.L[0]) == platform.atoms.WM_DELETE_WINDOW {
 				if window, ok := windowMap[ev.Window]; ok {
@@ -450,6 +460,12 @@ func handleEvent(event xlib.Event) {
 		}
 	case xlib.PropertyNotify:
 		ev := event.PropertyEvent()
+		if platform.dragSource != nil && platform.dragSource.handleProperty(ev) {
+			return
+		}
+		if platform.handleDragProperty(ev) {
+			return
+		}
 		if ev.Atom == platform.atoms.WM_STATE || ev.Atom == platform.atoms._NET_WM_STATE {
 			if window := windowMap[ev.Window]; window != nil {
 				window.notifyState()
@@ -464,14 +480,23 @@ func handleEvent(event xlib.Event) {
 			window.notifyState()
 		}
 	case xlib.SelectionClear:
+		if platform.dragSource != nil && platform.dragSource.handleSelectionClear(event.SelectionClearEvent()) {
+			return
+		}
 		if platform.clipboard != nil {
 			platform.clipboard.handleSelectionClear(event.SelectionClearEvent())
 		}
 	case xlib.SelectionRequest:
+		if platform.dragSource != nil && platform.dragSource.handleSelectionRequest(event.SelectionRequestEvent()) {
+			return
+		}
 		if platform.clipboard != nil {
 			platform.clipboard.handleSelectionRequest(event.SelectionRequestEvent())
 		}
 	case xlib.SelectionNotify:
+		if platform.handleDragSelection(event.SelectionEvent()) {
+			return
+		}
 		if platform.clipboard != nil {
 			platform.clipboard.handleSelectionNotify(event.SelectionEvent())
 		}

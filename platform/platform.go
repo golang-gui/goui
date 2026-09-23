@@ -34,6 +34,7 @@ type (
 	InputMethodResult  = common.InputMethodResult
 	InputMethodKind    = common.InputMethodKind
 	Cursor             = common.Cursor
+	DragDrop           = common.DragDrop
 	CursorShape        = common.CursorShape
 	EventHandler       = events.EventHandler
 	FileFilter         = common.FileFilter
@@ -146,6 +147,9 @@ type Platform interface {
 	// the window's current cursor shape. Returns ErrUnsupported when the platform
 	// or window does not support cursor control.
 	NewCursor(window Window) (Cursor, error)
+	// NewDragDrop creates the native drag/drop service for a live Window or
+	// Popup surface. A backend without native DnD returns ErrUnsupported.
+	NewDragDrop(surface Surface) (DragDrop, error)
 	// NewFileDialog creates the native file dialog capability. Returns
 	// ErrUnsupported when the platform does not support file dialogs.
 	NewFileDialog() (FileDialog, error)
