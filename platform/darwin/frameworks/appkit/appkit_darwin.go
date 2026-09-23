@@ -2,6 +2,8 @@ package appkit
 
 import (
 	"fmt"
+	"runtime"
+	"unsafe"
 
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/core_graphics"
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
@@ -36,6 +38,11 @@ func InitAppKit() (err error) {
 	initNSFont()
 	initNSGraphicsContext()
 	initNSPasteboard()
+	initNSPasteboardItem()
+	initNSDraggingInfo()
+	initNSDraggingItem()
+	initNSData()
+	initNSImage()
 	initNSCursor()
 	initNSSavePanel()
 	initNSOpenPanel()
@@ -188,18 +195,26 @@ func (c NSColorSpaceClass) SRGBColorSpace() (space NSColorSpace) {
 func initNSPasteboard() {
 	NSPasteboardClassId.Class = objc.GetClass("NSPasteboard")
 	NSPasteboardSel.GeneralPasteboard = objc.RegisterName("generalPasteboard")
+	NSPasteboardSel.UniquePasteboard = objc.RegisterName("pasteboardWithUniqueName")
 	NSPasteboardSel.ClearContents = objc.RegisterName("clearContents")
 	NSPasteboardSel.SetStringForType = objc.RegisterName("setString:forType:")
 	NSPasteboardSel.StringForType = objc.RegisterName("stringForType:")
+	NSPasteboardSel.Items = objc.RegisterName("pasteboardItems")
+	NSPasteboardSel.WriteObjects = objc.RegisterName("writeObjects:")
+	NSPasteboardSel.ReleaseGlobally = objc.RegisterName("releaseGlobally")
 }
 
 var (
 	NSPasteboardClassId NSPasteboardClass
 	NSPasteboardSel     struct {
 		GeneralPasteboard objc.SEL
+		UniquePasteboard  objc.SEL
 		ClearContents     objc.SEL
 		SetStringForType  objc.SEL
 		StringForType     objc.SEL
+		Items             objc.SEL
+		WriteObjects      objc.SEL
+		ReleaseGlobally   objc.SEL
 	}
 )
 
@@ -213,6 +228,10 @@ func (c NSPasteboardClass) GeneralPasteboard() (pb NSPasteboard) {
 	return
 }
 
+func (c NSPasteboardClass) UniquePasteboard() NSPasteboard {
+	return Cast[NSPasteboard](c.Send(NSPasteboardSel.UniquePasteboard))
+}
+
 func (p NSPasteboard) ClearContents() {
 	p.Send(NSPasteboardSel.ClearContents)
 }
@@ -223,6 +242,228 @@ func (p NSPasteboard) SetStringForType(str, dataType NSString) bool {
 
 func (p NSPasteboard) StringForType(dataType NSString) NSString {
 	return Cast[NSString](p.Send(NSPasteboardSel.StringForType, dataType))
+}
+
+func (p NSPasteboard) Items() NSArray {
+	return Cast[NSArray](p.Send(NSPasteboardSel.Items))
+}
+
+func (p NSPasteboard) WriteObjects(items NSArray) bool {
+	return objc.Send[bool](p.ID, NSPasteboardSel.WriteObjects, items)
+}
+
+func (p NSPasteboard) ReleaseGlobally() {
+	p.Send(NSPasteboardSel.ReleaseGlobally)
+}
+
+// NSPasteboardItem
+
+func initNSPasteboardItem() {
+	NSPasteboardItemClassId.Class = objc.GetClass("NSPasteboardItem")
+	NSPasteboardItemSel.SetStringForType = objc.RegisterName("setString:forType:")
+	NSPasteboardItemSel.SetDataForType = objc.RegisterName("setData:forType:")
+	NSPasteboardItemSel.StringForType = objc.RegisterName("stringForType:")
+	NSPasteboardItemSel.DataForType = objc.RegisterName("dataForType:")
+	NSPasteboardItemSel.Types = objc.RegisterName("types")
+}
+
+var (
+	NSPasteboardItemClassId NSPasteboardItemClass
+	NSPasteboardItemSel     struct {
+		SetStringForType objc.SEL
+		SetDataForType   objc.SEL
+		StringForType    objc.SEL
+		DataForType      objc.SEL
+		Types            objc.SEL
+	}
+)
+
+type (
+	PasteboardItem        struct{ NSObject }
+	NSPasteboardItemClass struct{ NSObjectClass }
+)
+
+func NewPasteboardItem() PasteboardItem {
+	return Cast[PasteboardItem](NSPasteboardItemClassId.Send(NSObjectSel.New))
+}
+
+func (i PasteboardItem) SetString(value, typ NSString) bool {
+	return objc.Send[bool](i.ID, NSPasteboardItemSel.SetStringForType, value, typ)
+}
+
+func (i PasteboardItem) SetData(value NativeData, typ NSString) bool {
+	return objc.Send[bool](i.ID, NSPasteboardItemSel.SetDataForType, value, typ)
+}
+
+func (i PasteboardItem) String(typ NSString) NSString {
+	return Cast[NSString](i.Send(NSPasteboardItemSel.StringForType, typ))
+}
+
+func (i PasteboardItem) Data(typ NSString) NativeData {
+	return Cast[NativeData](i.Send(NSPasteboardItemSel.DataForType, typ))
+}
+
+func (i PasteboardItem) Types() NSArray {
+	return Cast[NSArray](i.Send(NSPasteboardItemSel.Types))
+}
+
+// NSData
+
+func initNSData() {
+	NSDataClassId.Class = objc.GetClass("NSData")
+	NSDataSel.DataWithBytes = objc.RegisterName("dataWithBytes:length:")
+	NSDataSel.Length = objc.RegisterName("length")
+	NSDataSel.Bytes = objc.RegisterName("bytes")
+}
+
+var (
+	NSDataClassId NSDataClass
+	NSDataSel     struct {
+		DataWithBytes objc.SEL
+		Length        objc.SEL
+		Bytes         objc.SEL
+	}
+)
+
+type (
+	NativeData  struct{ NSObject }
+	NSDataClass struct{ NSObjectClass }
+)
+
+func NewNativeData(value []byte) NativeData {
+	var ptr unsafe.Pointer
+	if len(value) != 0 {
+		ptr = unsafe.Pointer(&value[0])
+	}
+	res := Cast[NativeData](NSDataClassId.Send(NSDataSel.DataWithBytes, ptr, uintptr(len(value))))
+	runtime.KeepAlive(value)
+	return res
+}
+
+func (d NativeData) Bytes() []byte {
+	if d.ID == 0 {
+		return nil
+	}
+	n := d.Length()
+	if n == 0 {
+		return []byte{}
+	}
+	if n > 64<<20 {
+		return nil
+	}
+	p := objc.Send[unsafe.Pointer](d.ID, NSDataSel.Bytes)
+	if p == nil {
+		return nil
+	}
+	return append([]byte(nil), unsafe.Slice((*byte)(p), n)...)
+}
+
+func (d NativeData) Length() uintptr {
+	if d.ID == 0 {
+		return 0
+	}
+	return objc.Send[uintptr](d.ID, NSDataSel.Length)
+}
+
+// NSImage
+
+func initNSImage() {
+	NSImageClassId.Class = objc.GetClass("NSImage")
+	NSImageSel.InitWithData = objc.RegisterName("initWithData:")
+}
+
+var (
+	NSImageClassId NSImageClass
+	NSImageSel     struct {
+		InitWithData objc.SEL
+	}
+)
+
+type (
+	NativeImage  struct{ NSObject }
+	NSImageClass struct{ NSObjectClass }
+)
+
+func NewNativeImage(data NativeData) NativeImage {
+	return Cast[NativeImage](NSImageClassId.Send(NSObjectSel.Alloc)).Init(data)
+}
+
+func (i NativeImage) Init(data NativeData) NativeImage {
+	return Cast[NativeImage](i.Send(NSImageSel.InitWithData, data))
+}
+
+// NSDraggingInfo and NSDraggingItem
+
+const (
+	NSDragOperationCopy uint = 1
+	NSDragOperationLink uint = 2
+	NSDragOperationMove uint = 16
+)
+
+func initNSDraggingInfo() {
+	NSDraggingInfoSel.Pasteboard = objc.RegisterName("draggingPasteboard")
+	NSDraggingInfoSel.Location = objc.RegisterName("draggingLocation")
+	NSDraggingInfoSel.Source = objc.RegisterName("draggingSource")
+	NSDraggingInfoSel.SourceMask = objc.RegisterName("draggingSourceOperationMask")
+}
+
+var NSDraggingInfoSel struct {
+	Pasteboard objc.SEL
+	Location   objc.SEL
+	Source     objc.SEL
+	SourceMask objc.SEL
+}
+
+type (
+	DraggingInfo    struct{ NSObject }
+	DraggingSession struct{ NSObject }
+)
+
+func (i DraggingInfo) Pasteboard() NSPasteboard {
+	return Cast[NSPasteboard](i.Send(NSDraggingInfoSel.Pasteboard))
+}
+
+func (i DraggingInfo) Location() NSPoint {
+	return objc.Send[NSPoint](i.ID, NSDraggingInfoSel.Location)
+}
+
+func (i DraggingInfo) Source() objc.ID {
+	return i.Send(NSDraggingInfoSel.Source)
+}
+
+func (i DraggingInfo) SourceMask() uint {
+	return objc.Send[uint](i.ID, NSDraggingInfoSel.SourceMask)
+}
+
+func initNSDraggingItem() {
+	NSDraggingItemClassId.Class = objc.GetClass("NSDraggingItem")
+	NSDraggingItemSel.InitWithPasteboardWriter = objc.RegisterName("initWithPasteboardWriter:")
+	NSDraggingItemSel.SetDraggingFrame = objc.RegisterName("setDraggingFrame:contents:")
+}
+
+var (
+	NSDraggingItemClassId NSDraggingItemClass
+	NSDraggingItemSel     struct {
+		InitWithPasteboardWriter objc.SEL
+		SetDraggingFrame         objc.SEL
+	}
+)
+
+type (
+	DraggingItem        struct{ NSObject }
+	NSDraggingItemClass struct{ NSObjectClass }
+)
+
+func NewDraggingItem(writer PasteboardItem) DraggingItem {
+	return Cast[DraggingItem](NSDraggingItemClassId.Send(NSObjectSel.Alloc)).Init(writer)
+}
+
+func (i DraggingItem) Init(writer PasteboardItem) DraggingItem {
+	return Cast[DraggingItem](i.Send(NSDraggingItemSel.InitWithPasteboardWriter, writer))
+}
+
+func (i DraggingItem) SetFrame(frame NSRect, image NativeImage) {
+	i.Send(NSDraggingItemSel.SetDraggingFrame, frame, image)
 }
 
 // NSColor
@@ -508,6 +749,16 @@ func initNSView() {
 	NSViewSel.InputContext = objc.RegisterName("inputContext")
 	NSViewSel.ConvertRectToView = objc.RegisterName("convertRect:toView:")
 	NSViewSel.IsHiddenOrHasHiddenAncestor = objc.RegisterName("isHiddenOrHasHiddenAncestor")
+	NSViewSel.RegisterDraggedTypes = objc.RegisterName("registerForDraggedTypes:")
+	NSViewSel.UnregisterDraggedTypes = objc.RegisterName("unregisterDraggedTypes")
+	NSViewSel.BeginDraggingSession = objc.RegisterName("beginDraggingSessionWithItems:event:source:")
+	NSViewSel.DraggingEntered = objc.RegisterName("draggingEntered:")
+	NSViewSel.DraggingUpdated = objc.RegisterName("draggingUpdated:")
+	NSViewSel.DraggingExited = objc.RegisterName("draggingExited:")
+	NSViewSel.PerformDragOperation = objc.RegisterName("performDragOperation:")
+	NSViewSel.ConcludeDragOperation = objc.RegisterName("concludeDragOperation:")
+	NSViewSel.DraggingSourceMask = objc.RegisterName("draggingSession:sourceOperationMaskForDraggingContext:")
+	NSViewSel.DraggingSessionEnded = objc.RegisterName("draggingSession:endedAtPoint:operation:")
 }
 
 var (
@@ -551,6 +802,16 @@ var (
 		InputContext                        objc.SEL
 		ConvertRectToView                   objc.SEL
 		IsHiddenOrHasHiddenAncestor         objc.SEL
+		RegisterDraggedTypes                objc.SEL
+		UnregisterDraggedTypes              objc.SEL
+		BeginDraggingSession                objc.SEL
+		DraggingEntered                     objc.SEL
+		DraggingUpdated                     objc.SEL
+		DraggingExited                      objc.SEL
+		PerformDragOperation                objc.SEL
+		ConcludeDragOperation               objc.SEL
+		DraggingSourceMask                  objc.SEL
+		DraggingSessionEnded                objc.SEL
 	}
 )
 
@@ -683,6 +944,67 @@ func ImplementNSView(className string, override NSViewOverride) (class NSViewCla
 		)
 	}
 	return
+}
+
+func (v NSView) RegisterDraggedTypes(types NSArray) {
+	v.Send(NSViewSel.RegisterDraggedTypes, types)
+}
+
+func (v NSView) UnregisterDraggedTypes() {
+	v.Send(NSViewSel.UnregisterDraggedTypes)
+}
+
+func (v NSView) BeginDraggingSession(items NSArray, event NSEvent) DraggingSession {
+	return Cast[DraggingSession](v.Send(NSViewSel.BeginDraggingSession, items, event, v))
+}
+
+// NSDraggingDestination and NSDraggingSource are protocols implemented by an NSView subclass.
+
+type DraggingOverride struct {
+	Entered    func(NSView, DraggingInfo) uint
+	Updated    func(NSView, DraggingInfo) uint
+	Exited     func(NSView, DraggingInfo)
+	Perform    func(NSView, DraggingInfo) bool
+	Conclude   func(NSView, DraggingInfo)
+	SourceMask func(NSView, DraggingSession, uint) uint
+	Ended      func(NSView, DraggingSession, NSPoint, uint)
+}
+
+func ImplementNSDragging(cls NSViewClass, override DraggingOverride) error {
+	// NSView already adopts NSDraggingDestination and supplies default methods.
+	// Only NSDraggingSource is new to this subclass.
+	protocol := objc.GetProtocol("NSDraggingSource")
+	if protocol == nil {
+		return fmt.Errorf("AppKit NSDraggingSource protocol not found")
+	}
+	if !cls.Class.AddProtocol(protocol) {
+		return fmt.Errorf("cannot add NSDraggingSource protocol")
+	}
+	add := func(sel objc.SEL, types string, callback any) {
+		cls.Class.AddMethod(sel, objc.IMP(cgo.NewCallback(callback)), types)
+	}
+	add(NSViewSel.DraggingEntered, "Q@:@", func(self objc.ID, _ objc.SEL, info objc.ID) uint {
+		return override.Entered(Cast[NSView](self), Cast[DraggingInfo](info))
+	})
+	add(NSViewSel.DraggingUpdated, "Q@:@", func(self objc.ID, _ objc.SEL, info objc.ID) uint {
+		return override.Updated(Cast[NSView](self), Cast[DraggingInfo](info))
+	})
+	add(NSViewSel.DraggingExited, "v@:@", func(self objc.ID, _ objc.SEL, info objc.ID) {
+		override.Exited(Cast[NSView](self), Cast[DraggingInfo](info))
+	})
+	add(NSViewSel.PerformDragOperation, "B@:@", func(self objc.ID, _ objc.SEL, info objc.ID) bool {
+		return override.Perform(Cast[NSView](self), Cast[DraggingInfo](info))
+	})
+	add(NSViewSel.ConcludeDragOperation, "v@:@", func(self objc.ID, _ objc.SEL, info objc.ID) {
+		override.Conclude(Cast[NSView](self), Cast[DraggingInfo](info))
+	})
+	add(NSViewSel.DraggingSourceMask, "Q@:@Q", func(self objc.ID, _ objc.SEL, session objc.ID, context uint) uint {
+		return override.SourceMask(Cast[NSView](self), Cast[DraggingSession](session), context)
+	})
+	add(NSViewSel.DraggingSessionEnded, "v@:@{CGPoint=dd}Q", func(self objc.ID, _ objc.SEL, session objc.ID, point NSPoint, operation uint) {
+		override.Ended(Cast[NSView](self), Cast[DraggingSession](session), point, operation)
+	})
+	return nil
 }
 
 // NSTextInputClient — protocol binding for IME.
@@ -1836,6 +2158,7 @@ func initNSURL() {
 	NSURLSel.URLWithString = objc.RegisterName("URLWithString:")
 	NSURLSel.FileURLWithPath = objc.RegisterName("fileURLWithPath:")
 	NSURLSel.Path = objc.RegisterName("path")
+	NSURLSel.AbsoluteString = objc.RegisterName("absoluteString")
 }
 
 var (
@@ -1844,6 +2167,7 @@ var (
 		URLWithString   objc.SEL
 		FileURLWithPath objc.SEL
 		Path            objc.SEL
+		AbsoluteString  objc.SEL
 	}
 )
 
@@ -1864,6 +2188,10 @@ func (c NSURLClass) URLWithString(value NSString) (res NSURL) {
 
 func (u NSURL) Path() string {
 	return objc.Send[NSString](u.ID, NSURLSel.Path).UTF8String()
+}
+
+func (u NSURL) AbsoluteString() string {
+	return Cast[NSString](u.Send(NSURLSel.AbsoluteString)).UTF8String()
 }
 
 // NSWorkspace
