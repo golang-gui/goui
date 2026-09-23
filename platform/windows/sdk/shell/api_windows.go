@@ -19,11 +19,14 @@ var (
 
 // IIDs.
 var (
-	IID_IFileDialog     = com.DefineGuid(0x42f85136, 0xdb7e, 0x439c, 0x85, 0xf1, 0xe4, 0x07, 0x5d, 0x13, 0x5f, 0xc8)
-	IID_IFileOpenDialog = com.DefineGuid(0xd57c7288, 0xd4ad, 0x4768, 0xbe, 0x02, 0x9d, 0x96, 0x95, 0x32, 0xd9, 0x60)
-	IID_IFileSaveDialog = com.DefineGuid(0x84bccd23, 0x5fde, 0x4cdb, 0xae, 0xa4, 0xaf, 0x64, 0xb8, 0x3d, 0x78, 0xab)
-	IID_IShellItem      = com.DefineGuid(0x43826d1e, 0xe718, 0x42ee, 0xbc, 0x55, 0xa1, 0xe2, 0x61, 0xc3, 0x7b, 0xfe)
-	IID_IShellItemArray = com.DefineGuid(0xb63ea76d, 0x1f85, 0x456f, 0xa1, 0x9c, 0x48, 0x15, 0x9e, 0xfa, 0x85, 0x8b)
+	IID_IFileDialog       = com.DefineGuid(0x42f85136, 0xdb7e, 0x439c, 0x85, 0xf1, 0xe4, 0x07, 0x5d, 0x13, 0x5f, 0xc8)
+	IID_IFileOpenDialog   = com.DefineGuid(0xd57c7288, 0xd4ad, 0x4768, 0xbe, 0x02, 0x9d, 0x96, 0x95, 0x32, 0xd9, 0x60)
+	IID_IFileSaveDialog   = com.DefineGuid(0x84bccd23, 0x5fde, 0x4cdb, 0xae, 0xa4, 0xaf, 0x64, 0xb8, 0x3d, 0x78, 0xab)
+	IID_IShellItem        = com.DefineGuid(0x43826d1e, 0xe718, 0x42ee, 0xbc, 0x55, 0xa1, 0xe2, 0x61, 0xc3, 0x7b, 0xfe)
+	IID_IShellItemArray   = com.DefineGuid(0xb63ea76d, 0x1f85, 0x456f, 0xa1, 0x9c, 0x48, 0x15, 0x9e, 0xfa, 0x85, 0x8b)
+	CLSID_DragDropHelper  = com.DefineGuid(0x4657278a, 0x411b, 0x11d2, 0x83, 0x9a, 0x00, 0xc0, 0x4f, 0xd9, 0x18, 0xd0)
+	IID_IDragSourceHelper = com.DefineGuid(0xde5bf786, 0x477a, 0x11d2, 0x83, 0x9d, 0x00, 0xc0, 0x4f, 0xd9, 0x18, 0xd0)
+	IID_IDropTargetHelper = com.DefineGuid(0x4657278b, 0x411b, 0x11d2, 0x83, 0x9a, 0x00, 0xc0, 0x4f, 0xd9, 0x18, 0xd0)
 )
 
 var (
@@ -33,7 +36,112 @@ var (
 	procSetCurrentProcessExplicitAppUserModelID = shell32.NewSymbol("SetCurrentProcessExplicitAppUserModelID")
 	procGetCurrentProcessExplicitAppUserModelID = shell32.NewSymbol("GetCurrentProcessExplicitAppUserModelID")
 	procShellExecuteExW                         = shell32.NewSymbol("ShellExecuteExW")
+	procDragQueryFileW                          = shell32.NewSymbol("DragQueryFileW")
+	procSHCreateStdEnumFmtEtc                   = shell32.NewSymbol("SHCreateStdEnumFmtEtc")
 )
+
+// CreateStdEnumFmtEtc returns a COM enumerator with one owned reference.
+func CreateStdEnumFmtEtc(formats []com.FormatEtc, out *unsafe.Pointer) com.HRESULT {
+	var first unsafe.Pointer
+	var pin runtime.Pinner
+	if len(formats) != 0 {
+		first = unsafe.Pointer(&formats[0])
+		pin.Pin(&formats[0])
+	}
+	pin.Pin(out)
+	defer pin.Unpin()
+	ret, _, _ := procSHCreateStdEnumFmtEtc.CallRaw(uintptr(len(formats)), uintptr(first), uintptr(unsafe.Pointer(out)))
+	runtime.KeepAlive(formats)
+	return com.HRESULT(ret)
+}
+
+// DragQueryFileW reads CF_HDROP paths without transferring ownership of hdrop.
+// The caller releases the containing STGMEDIUM after extracting all paths.
+func DragQueryFileW(hdrop uintptr, index uint32, buffer *uint16, capacity uint32) uint32 {
+	ret, _, _ := procDragQueryFileW.CallRaw(hdrop, uintptr(index), uintptr(unsafe.Pointer(buffer)), uintptr(capacity))
+	runtime.KeepAlive(buffer)
+	return uint32(ret)
+}
+
+// IDragSourceHelper
+
+type DragSourceHelperClass struct {
+	com.UnknownClass
+	InitializeFromBitmap cgo.Symbol
+	InitializeFromWindow cgo.Symbol
+}
+
+type DragSourceHelper struct{ com.Unknown }
+
+func NewDragSourceHelper() (*DragSourceHelper, com.HRESULT) {
+	return com.CreateInstance[DragSourceHelper](CLSID_DragDropHelper, nil, com.CLSCTX_INPROC_SERVER, IID_IDragSourceHelper)
+}
+
+func (h *DragSourceHelper) InitializeFromBitmap(image *DragImage, data unsafe.Pointer) com.HRESULT {
+	var pin runtime.Pinner
+	pin.Pin(image)
+	defer pin.Unpin()
+	ret, _, _ := h.class().InitializeFromBitmap.CallRaw(uintptr(unsafe.Pointer(h)), uintptr(unsafe.Pointer(image)), uintptr(data))
+	runtime.KeepAlive(image)
+	return com.HRESULT(ret)
+}
+
+func (h *DragSourceHelper) class() *DragSourceHelperClass {
+	return (*DragSourceHelperClass)(h.Class)
+}
+
+// IDropTargetHelper
+
+type DropTargetHelperClass struct {
+	com.UnknownClass
+	DragEnter cgo.Symbol
+	DragLeave cgo.Symbol
+	DragOver  cgo.Symbol
+	Drop      cgo.Symbol
+	Show      cgo.Symbol
+}
+
+type DropTargetHelper struct{ com.Unknown }
+
+func NewDropTargetHelper() (*DropTargetHelper, com.HRESULT) {
+	return com.CreateInstance[DropTargetHelper](CLSID_DragDropHelper, nil, com.CLSCTX_INPROC_SERVER, IID_IDropTargetHelper)
+}
+
+func (h *DropTargetHelper) Enter(hwnd winapi.HWND, data unsafe.Pointer, point *winapi.POINT, effect uint32) com.HRESULT {
+	var pin runtime.Pinner
+	pin.Pin(point)
+	defer pin.Unpin()
+	ret, _, _ := h.class().DragEnter.CallRaw(uintptr(unsafe.Pointer(h)), uintptr(hwnd), uintptr(data), uintptr(unsafe.Pointer(point)), uintptr(effect))
+	runtime.KeepAlive(point)
+	return com.HRESULT(ret)
+}
+
+func (h *DropTargetHelper) Leave() com.HRESULT {
+	ret, _, _ := h.class().DragLeave.CallRaw(uintptr(unsafe.Pointer(h)))
+	return com.HRESULT(ret)
+}
+
+func (h *DropTargetHelper) Over(point *winapi.POINT, effect uint32) com.HRESULT {
+	var pin runtime.Pinner
+	pin.Pin(point)
+	defer pin.Unpin()
+	ret, _, _ := h.class().DragOver.CallRaw(uintptr(unsafe.Pointer(h)), uintptr(unsafe.Pointer(point)), uintptr(effect))
+	runtime.KeepAlive(point)
+	return com.HRESULT(ret)
+}
+
+func (h *DropTargetHelper) Finish(data unsafe.Pointer, point *winapi.POINT, effect uint32) com.HRESULT {
+	var pin runtime.Pinner
+	pin.Pin(point)
+	defer pin.Unpin()
+	ret, _, _ := h.class().Drop.CallRaw(uintptr(unsafe.Pointer(h)), uintptr(data), uintptr(unsafe.Pointer(point)), uintptr(effect))
+	runtime.KeepAlive(point)
+	return com.HRESULT(ret)
+}
+
+func (h *DropTargetHelper) class() *DropTargetHelperClass {
+	return (*DropTargetHelperClass)(h.Class)
+}
 
 func ShellExecuteEx(info *SHELLEXECUTEINFO) error {
 	// The lazy CallRaw boundary takes uintptrs. Keep the native structure and
