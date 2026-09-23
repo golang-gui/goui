@@ -20,41 +20,42 @@ var (
 	procCloseHandle           = kernel32Dll.NewProc("CloseHandle")
 
 	// Window
-	procRegisterClassExW     = user32Dll.NewProc("RegisterClassExW")
-	procGetClassInfoExW      = user32Dll.NewProc("GetClassInfoExW")
-	procUnregisterClassW     = user32Dll.NewProc("UnregisterClassW")
-	procCreateWindowExW      = user32Dll.NewProc("CreateWindowExW")
-	procDestroyWindow        = user32Dll.NewProc("DestroyWindow")
-	procEnableWindow         = user32Dll.NewProc("EnableWindow")
-	procShowWindow           = user32Dll.NewProc("ShowWindow")
-	procUpdateWindow         = user32Dll.NewProc("UpdateWindow")
-	procSetParent            = user32Dll.NewProc("SetParent")
-	procGetWindowRect        = user32Dll.NewProc("GetWindowRect")
-	procSetWindowPos         = user32Dll.NewProc("SetWindowPos")
-	procGetWindowTextW       = user32Dll.NewProc("GetWindowTextW")
-	procGetWindowTextLengthW = user32Dll.NewProc("GetWindowTextLengthW")
-	procSetWindowTextW       = user32Dll.NewProc("SetWindowTextW")
-	procBringWindowToTop     = user32Dll.NewProc("BringWindowToTop")
-	procGetClientRect        = user32Dll.NewProc("GetClientRect")
-	procInvalidateRect       = user32Dll.NewProc("InvalidateRect")
-	procFlashWindowEx        = user32Dll.NewProc("FlashWindowEx")
-	procCloseWindow          = user32Dll.NewProc("CloseWindow")
-	procTrackMouseEvent      = user32Dll.NewProc("TrackMouseEvent")
-	procScreenToClient       = user32Dll.NewProc("ScreenToClient")
-	procClientToScreen       = user32Dll.NewProc("ClientToScreen")
-	procSetCapture           = user32Dll.NewProc("SetCapture")
-	procReleaseCapture       = user32Dll.NewProc("ReleaseCapture")
-	procIsIconic             = user32Dll.NewProc("IsIconic")
-	procIsZoomed             = user32Dll.NewProc("IsZoomed")
-	procIsWindowVisible      = user32Dll.NewProc("IsWindowVisible")
-	procGetWindowLongW       = user32Dll.NewProc("GetWindowLongW")
-	procSetWindowLongW       = user32Dll.NewProc("SetWindowLongW")
-	procMonitorFromWindow    = user32Dll.NewProc("MonitorFromWindow")
-	procMonitorFromPoint     = user32Dll.NewProc("MonitorFromPoint")
-	procGetMonitorInfoW      = user32Dll.NewProc("GetMonitorInfoW")
-	procGetKeyState          = user32Dll.NewProc("GetKeyState")
-	procGetSystemMenu        = user32Dll.NewProc("GetSystemMenu")
-	procEnableMenuItem       = user32Dll.NewProc("EnableMenuItem")
+	procRegisterClassExW         = user32Dll.NewProc("RegisterClassExW")
+	procGetClassInfoExW          = user32Dll.NewProc("GetClassInfoExW")
+	procUnregisterClassW         = user32Dll.NewProc("UnregisterClassW")
+	procCreateWindowExW          = user32Dll.NewProc("CreateWindowExW")
+	procDestroyWindow            = user32Dll.NewProc("DestroyWindow")
+	procEnableWindow             = user32Dll.NewProc("EnableWindow")
+	procShowWindow               = user32Dll.NewProc("ShowWindow")
+	procUpdateWindow             = user32Dll.NewProc("UpdateWindow")
+	procSetParent                = user32Dll.NewProc("SetParent")
+	procGetWindowRect            = user32Dll.NewProc("GetWindowRect")
+	procSetWindowPos             = user32Dll.NewProc("SetWindowPos")
+	procGetWindowTextW           = user32Dll.NewProc("GetWindowTextW")
+	procGetWindowTextLengthW     = user32Dll.NewProc("GetWindowTextLengthW")
+	procSetWindowTextW           = user32Dll.NewProc("SetWindowTextW")
+	procBringWindowToTop         = user32Dll.NewProc("BringWindowToTop")
+	procGetClientRect            = user32Dll.NewProc("GetClientRect")
+	procInvalidateRect           = user32Dll.NewProc("InvalidateRect")
+	procFlashWindowEx            = user32Dll.NewProc("FlashWindowEx")
+	procCloseWindow              = user32Dll.NewProc("CloseWindow")
+	procTrackMouseEvent          = user32Dll.NewProc("TrackMouseEvent")
+	procScreenToClient           = user32Dll.NewProc("ScreenToClient")
+	procClientToScreen           = user32Dll.NewProc("ClientToScreen")
+	procSetCapture               = user32Dll.NewProc("SetCapture")
+	procReleaseCapture           = user32Dll.NewProc("ReleaseCapture")
+	procIsIconic                 = user32Dll.NewProc("IsIconic")
+	procIsZoomed                 = user32Dll.NewProc("IsZoomed")
+	procIsWindowVisible          = user32Dll.NewProc("IsWindowVisible")
+	procGetWindowLongW           = user32Dll.NewProc("GetWindowLongW")
+	procSetWindowLongW           = user32Dll.NewProc("SetWindowLongW")
+	procMonitorFromWindow        = user32Dll.NewProc("MonitorFromWindow")
+	procMonitorFromPoint         = user32Dll.NewProc("MonitorFromPoint")
+	procGetMonitorInfoW          = user32Dll.NewProc("GetMonitorInfoW")
+	procGetKeyState              = user32Dll.NewProc("GetKeyState")
+	procGetSystemMenu            = user32Dll.NewProc("GetSystemMenu")
+	procEnableMenuItem           = user32Dll.NewProc("EnableMenuItem")
+	procRegisterClipboardFormatW = user32Dll.NewProc("RegisterClipboardFormatW")
 
 	// DPI
 	procGetDpiForWindow               = user32Dll.NewProc("GetDpiForWindow")
@@ -92,6 +93,7 @@ var (
 	procDeleteDC           = gdi32Dll.NewProc("DeleteDC")
 
 	procCreateCompatibleBitmap = gdi32Dll.NewProc("CreateCompatibleBitmap")
+	procCreateDIBSection       = gdi32Dll.NewProc("CreateDIBSection")
 	procSelectObject           = gdi32Dll.NewProc("SelectObject")
 	procDeleteObject           = gdi32Dll.NewProc("DeleteObject")
 
@@ -124,7 +126,29 @@ var (
 	procGlobalAlloc  = kernel32Dll.NewProc("GlobalAlloc")
 	procGlobalLock   = kernel32Dll.NewProc("GlobalLock")
 	procGlobalUnlock = kernel32Dll.NewProc("GlobalUnlock")
+	procGlobalSize   = kernel32Dll.NewProc("GlobalSize")
+	procGlobalFree   = kernel32Dll.NewProc("GlobalFree")
 )
+
+func RegisterClipboardFormat(name string) uint16 {
+	value, err := syscall.UTF16PtrFromString(name)
+	if err != nil {
+		return 0
+	}
+	result, _, _ := procRegisterClipboardFormatW.Call(uintptr(unsafe.Pointer(value)))
+	runtime.KeepAlive(value)
+	return uint16(result)
+}
+
+func GlobalSize(mem HGLOBAL) uintptr {
+	result, _, _ := procGlobalSize.Call(uintptr(mem))
+	return result
+}
+
+func GlobalFree(mem HGLOBAL) bool {
+	result, _, _ := procGlobalFree.Call(uintptr(mem))
+	return result == 0
+}
 
 type WindowProcFunc func(wnd HWND, message UINT, wParam WPARAM, lParam LPARAM) LRESULT
 
@@ -600,6 +624,23 @@ func DeleteDC(hdc HDC) BOOL {
 func CreateCompatibleBitmap(hdc HDC, w, h INT) HBITMAP {
 	ret, _, _ := syscall.SyscallN(procCreateCompatibleBitmap.Addr(), uintptr(hdc), uintptr(w), uintptr(h))
 	return HBITMAP(ret)
+}
+
+// CreateDIBSection returns a top-down or bottom-up DIB according to bmi's
+// height sign. The returned pixel pointer remains valid until DeleteObject.
+func CreateDIBSection(bmi *BITMAPINFO, bits *unsafe.Pointer) (HBITMAP, error) {
+	var pin runtime.Pinner
+	pin.Pin(bmi)
+	pin.Pin(bits)
+	defer pin.Unpin()
+	ret, _, err := syscall.SyscallN(procCreateDIBSection.Addr(), 0, uintptr(unsafe.Pointer(bmi)), DIB_RGB_COLORS,
+		uintptr(unsafe.Pointer(bits)), 0, 0)
+	runtime.KeepAlive(bmi)
+	runtime.KeepAlive(bits)
+	if ret == 0 {
+		return 0, err
+	}
+	return HBITMAP(ret), nil
 }
 
 func SetDIBits(hdc HDC, bitmap HBITMAP, start, lines UINT, bits LPVOID, bmi *BITMAPINFO, colorUse UINT) (INT, error) {

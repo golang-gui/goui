@@ -45,6 +45,7 @@ type (
 
 const (
 	CF_UNICODETEXT = 13
+	CF_HDROP       = 15
 	GMEM_MOVEABLE  = 0x0002
 )
 
