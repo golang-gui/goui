@@ -109,12 +109,10 @@ const (
 
 type window struct {
 	rootBase
-	app            *application
 	id             string
 	title          string
 	platformWindow platform.Window
 	root           Widget
-	dispatcher     EventDispatcher
 	focused        bool
 	activeIM       IMContext            // the focused text widget's context bound to the native IME; nil when none
 	inputMethod    platform.InputMethod // this window's platform IME; nil when the platform has none
@@ -138,8 +136,7 @@ type window struct {
 
 func newWindow(app *application, options WindowOptions) (*window, error) {
 	win := &window{
-		app:      app,
-		rootBase: rootBase{layoutDirty: true, paintDirty: true, transparent: options.Transparent},
+		rootBase: rootBase{app: app, layoutDirty: true, paintDirty: true, transparent: options.Transparent},
 	}
 
 	mode := options.Chrome
@@ -318,6 +315,7 @@ func (w *window) Destroy() {
 		return
 	}
 	w.destroyed = true
+	w.cancelInput(GestureHostClosed)
 	if c := w.dispatcher.shortcuts; c != nil {
 		c.destroyed = true
 		c.Clear()
@@ -398,13 +396,9 @@ func (w *window) DispatchEvent(event events.Event) error {
 		defer w.applyCursor()
 	}
 	if controller := w.dispatcher.hostController; controller != nil {
-		switch e := event.(type) {
+		switch event.(type) {
 		case events.FocusEvent, events.StateEvent, events.SizeEvent:
 			controller.Reset()
-		case events.PointerEvent:
-			if e.EventType == events.PointerLeave {
-				controller.Reset()
-			}
 		}
 		if w.modalTarget != nil {
 			controller.Reset()
@@ -544,6 +538,9 @@ func (w *window) SetModalTarget(target ModalTarget) {
 	}
 	wasModal := w.modalTarget != nil
 	w.modalTarget = target
+	if target != nil {
+		w.cancelInput(GestureInterrupted)
+	}
 	if target != nil && !wasModal {
 		w.imReset()
 		if w.destroyed {
@@ -573,8 +570,8 @@ func (w *window) routeToModalTarget(event events.Event) bool {
 		return true
 	case events.PointerEvent:
 		if e.EventType == events.PointerDown {
-			w.modalTarget.RequestDismiss()   // the owner only ever sees clicks outside the target
-			w.dispatcher.captureTarget = nil // clear any stale capture from the window's own tree
+			w.modalTarget.RequestDismiss() // the owner only ever sees clicks outside the target
+			w.cancelInput(GestureInterrupted)
 		}
 		return true // swallow the window's own pointer while a modal target is open
 	case events.FocusEvent:

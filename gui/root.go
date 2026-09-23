@@ -25,12 +25,12 @@ type paintRequester interface {
 	RequestPaint() error
 }
 
-// rootBase is the frame state shared by every widget host (window, popover):
-// painter, logical/physical size, dirty flags and the focused widget. Hosts
-// embed it and let the promoted methods drive their frame; platform-specific
-// parts (the platform window/popup handle) stay in the embedding struct and
-// are passed in.
+// rootBase is the common frame and input state of every widget host (window,
+// popover). Each host embeds its own instance; native surface policy remains in
+// the embedding host.
 type rootBase struct {
+	app           *application
+	dispatcher    EventDispatcher
 	transparent   bool // immutable native surface configuration, not its style
 	painter       graphics.Painter
 	width         float32 // logical (DIP)
@@ -40,6 +40,12 @@ type rootBase struct {
 	layoutDirty   bool
 	paintDirty    bool
 	focusedWidget Widget
+}
+
+func (b *rootBase) rootState() *rootBase { return b }
+
+func (b *rootBase) cancelInput(reason GestureCancelReason) {
+	b.dispatcher.cancelInput(reason)
 }
 
 func (b *rootBase) Transparent() bool { return b.transparent }

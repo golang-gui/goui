@@ -23,6 +23,7 @@ type textEditController struct {
 	EventControllerBase
 	view      *textEditor
 	dragging  bool
+	gesture   *GestureParticipation
 	lastDown  time.Time
 	lastPoint geometry.Point
 	dragPoint geometry.Point
@@ -30,10 +31,56 @@ type textEditController struct {
 
 func (c *textEditController) CapturingPointer() bool { return c.dragging }
 func (c *textEditController) Reset() {
+	gesture := c.gesture
+	c.gesture = nil
+	gesture.Reject()
 	c.dragging = false
 	c.lastDown = time.Time{}
 	if c.view.scrollTimer != nil {
 		c.view.scrollTimer.Stop()
+	}
+}
+
+func (c *textEditController) GestureAccepted(ctx EventContext) {
+	event, ok := ctx.Event().(events.PointerEvent)
+	if !ok {
+		return
+	}
+	point, ok := ctx.Position()
+	if ok {
+		c.beginSelection(ctx, event, point)
+	}
+}
+
+func (c *textEditController) GestureCanceled(GestureCancelReason) {
+	c.gesture = nil
+	c.dragging = false
+	if c.view.scrollTimer != nil {
+		c.view.scrollTimer.Stop()
+	}
+}
+
+func (c *textEditController) beginSelection(ctx EventContext, event events.PointerEvent, point geometry.Point) {
+	t := c.view
+	t.hasDesiredX = false
+	position := t.hitText(point)
+	model, epoch := t.model, t.mountEpoch
+	t.cancelPreedit(true)
+	if t.owner.base().destroyed || t.model != model || t.mountEpoch != epoch {
+		return
+	}
+	now := time.Now()
+	double := !c.lastDown.IsZero() && now.Sub(c.lastDown) <= gestureClickInterval &&
+		!gestureMoved(point, c.lastPoint, gestureDefaultDistance)
+	c.lastDown, c.lastPoint, c.dragging = now, point, true
+	c.dragPoint = point
+	ctx.StopPropagation()
+	if double {
+		c.lastDown = time.Time{}
+		rng := t.wordAt(position.Offset)
+		t.setSelection(TextSelection{rng.Start, rng.End}, false, true)
+	} else {
+		t.moveTo(position, event.Modifiers&events.ModifierShift != 0)
 	}
 }
 
@@ -72,26 +119,12 @@ func (c *textEditController) HandleEvent(ctx EventContext) {
 			if event.Button != events.PointerButtonLeft {
 				return
 			}
-			t.hasDesiredX = false
-			position := t.hitText(point)
-			model, epoch := t.model, t.mountEpoch
-			t.cancelPreedit(true)
-			if t.owner.base().destroyed || t.model != model || t.mountEpoch != epoch {
+			if gesture := JoinGesture(ctx); gesture != nil {
+				c.gesture = gesture
+				gesture.Claim()
 				return
 			}
-			now := time.Now()
-			double := !c.lastDown.IsZero() && now.Sub(c.lastDown) <= 500*time.Millisecond &&
-				abs32(point.X-c.lastPoint.X) <= 4 && abs32(point.Y-c.lastPoint.Y) <= 4
-			c.lastDown, c.lastPoint, c.dragging = now, point, true
-			c.dragPoint = point
-			ctx.StopPropagation()
-			if double {
-				c.lastDown = time.Time{}
-				rng := t.wordAt(position.Offset)
-				t.setSelection(TextSelection{rng.Start, rng.End}, false, true)
-			} else {
-				t.moveTo(position, event.Modifiers&events.ModifierShift != 0)
-			}
+			c.beginSelection(ctx, event, point)
 		case events.PointerMove:
 			if c.dragging {
 				c.dragPoint = point
@@ -103,6 +136,7 @@ func (c *textEditController) HandleEvent(ctx EventContext) {
 			}
 		case events.PointerUp:
 			if event.Button == events.PointerButtonLeft && c.dragging {
+				c.gesture = nil
 				c.dragging = false
 				t.syncAutoScroll()
 				ctx.StopPropagation()

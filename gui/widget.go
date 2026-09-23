@@ -129,6 +129,7 @@ type WidgetBase struct {
 	parentRoot          Root
 	children            []Widget
 	controllers         []EventController
+	self                Widget // set while mounted; preserves the actual Widget identity
 	layoutManager       layout.LayoutManager
 	minWidth, minHeight float32 // self size preference; 0 = no min
 	maxWidth, maxHeight float32 // self size preference; 0 = unbounded
@@ -183,6 +184,7 @@ func (w *WidgetBase) SetVisible(visible bool) {
 	if w.hidden != hidden {
 		w.hidden = hidden
 		if hidden {
+			cancelGestureSubtree(w.root(), w.self)
 			if h, ok := w.root().(EventTarget); ok && focusWithin(h, w) {
 				h.SetFocusedWidget(nil)
 			}
@@ -269,6 +271,11 @@ func (w *WidgetBase) AddEventController(controller EventController) {
 
 func (w *WidgetBase) RemoveEventController(controller EventController) {
 	index := slices.Index(w.controllers, controller)
+	if index < 0 {
+		return
+	}
+	cancelGestureController(w.root(), controller)
+	index = slices.Index(w.controllers, controller)
 	if index < 0 {
 		return
 	}
@@ -453,8 +460,7 @@ func (w *WidgetBase) invalidateMeasureToRoot() {
 }
 
 // invalidateStyleSubtree marks existing descendants without calling user code.
-// The next framework use delivers the coalesced notification through Widget,
-// not through WidgetBase (which deliberately has no owner/self pointer).
+// The next framework use delivers the coalesced notification through Widget.
 func invalidateStyleSubtree(widget Widget) {
 	if widget == nil || widget.base().destroyed {
 		return
@@ -720,6 +726,7 @@ func (w *WidgetBase) emitMountSubtree(widget Widget) {
 	if widget == nil || widget.base() != w {
 		return
 	}
+	w.self = widget
 	w.mount.Emit()
 	for _, child := range slices.Clone(w.children) {
 		child.base().emitMountSubtree(child)
@@ -730,10 +737,12 @@ func (w *WidgetBase) emitUnmountSubtree(widget Widget) {
 	if widget == nil || widget.base() != w {
 		return
 	}
+	cancelGestureSubtree(w.root(), widget)
 	for _, child := range slices.Clone(w.children) {
 		child.base().emitUnmountSubtree(child)
 	}
 	w.unmount.Emit()
+	w.self = nil
 }
 
 func (w *WidgetBase) isDescendant(widget, ancestor Widget) bool {
