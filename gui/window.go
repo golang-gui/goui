@@ -160,6 +160,7 @@ func newWindow(app *application, options WindowOptions) (*window, error) {
 		nativeOptions = platform.WindowOptions{Chrome: platform.WindowChromeNative, Transparent: options.Transparent}
 		platformWindow, err = app.platform.NewWindow(options.Size, win.onEvent, nativeOptions)
 	}
+	win.surface = platformWindow
 	if err != nil {
 		return nil, fmt.Errorf("create platform window: %w", err)
 	}
@@ -282,6 +283,7 @@ func (w *window) SetWidget(widget Widget) {
 		adoptWidget(widget, w)
 	}
 	w.root = widget
+	w.dragControllersChanged()
 	w.requestLayout()
 }
 
@@ -316,6 +318,7 @@ func (w *window) Destroy() {
 	}
 	w.destroyed = true
 	w.cancelInput(GestureHostClosed)
+	w.drag.destroy()
 	if c := w.dispatcher.shortcuts; c != nil {
 		c.destroyed = true
 		c.Clear()
@@ -379,7 +382,25 @@ func (w *window) Snapshot() WindowInfo {
 }
 
 func (w *window) DispatchEvent(event events.Event) error {
+	if e, ok := event.(events.DragSourceEvent); ok {
+		w.app.dispatchDragSourceEvent(e)
+		return nil
+	}
 	if w.destroyed {
+		return nil
+	}
+	if e, ok := event.(events.DragOfferEvent); ok {
+		if w.modalTarget != nil {
+			if e.EventType == events.DragDrop {
+				_ = e.Offer.Finish(0)
+			}
+			return nil
+		}
+		w.dispatchDragOffer(w, e)
+		return nil
+	}
+	if e, ok := event.(events.DragDataEvent); ok {
+		w.dispatchDragData(w, e)
 		return nil
 	}
 	switch e := event.(type) {
