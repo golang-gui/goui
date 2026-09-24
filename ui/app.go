@@ -30,6 +30,9 @@ type App interface {
 	Quit()
 	// RequestUpdate coalesces a declarative rebuild on the UI thread.
 	RequestUpdate()
+	// FindWidget borrows the currently mounted widget with id in a Window's
+	// content tree. Missing IDs return nil
+	FindWidget(windowID, widgetID string) gui.Widget
 	// Clipboard returns the system clipboard view (never nil).
 	Clipboard() Clipboard
 	// Settings returns the system settings view (never nil).
@@ -155,6 +158,15 @@ func (a *app) OpenURL(rawURL string) (err error) {
 func (a *app) OpenPath(path string) (err error) {
 	err = ErrAppStopped
 	a.Sync(func() { err = a.gui.OpenPath(path) })
+	return
+}
+
+func (a *app) FindWidget(windowID, widgetID string) (widget gui.Widget) {
+	a.Sync(func() {
+		if mount := a.windows[windowID]; mount != nil && mount.window != nil {
+			widget = gui.FindWidget(mount.window, widgetID)
+		}
+	})
 	return
 }
 

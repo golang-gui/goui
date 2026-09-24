@@ -60,6 +60,35 @@ func TestAppMountsAndUpdatesWindow(t *testing.T) {
 	}
 }
 
+func TestAppFindWidgetByScopedID(t *testing.T) {
+	guiApp := newWindowTestApplication()
+	rt := newApp(guiApp, func() RootView {
+		return Window("main").Content(VBox().Children(
+			Label("one").ID("target").Name("peer"),
+			Label("two").ID("other").Name("peer"),
+		))
+	})
+	if err := rt.rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	got := rt.FindWidget("main", "target")
+	if got == nil || got.ID() != "target" || got.Name() != "peer" {
+		t.Fatalf("scoped lookup: widget=%v", got)
+	}
+	if missing := rt.FindWidget("other", "target"); missing != nil {
+		t.Fatalf("unknown window lookup: widget=%v", missing)
+	}
+	if missing := rt.FindWidget("main", ""); missing != nil {
+		t.Fatalf("empty ID lookup: widget=%v", missing)
+	}
+	if err := rt.reconcileWindows(nil); err != nil {
+		t.Fatal(err)
+	}
+	if missing := rt.FindWidget("main", "target"); missing != nil {
+		t.Fatalf("removed window lookup: widget=%v", missing)
+	}
+}
+
 func TestAppReplacesWindowWhenIDChanges(t *testing.T) {
 	app := newWindowTestApplication()
 	id := "first"
