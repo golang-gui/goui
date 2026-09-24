@@ -910,3 +910,60 @@ func RenderWidget(widget Widget, scale float32) (image.Image, error) {
 	}
 	return host.renderWidgetImage(widget, scale)
 }
+
+// FindWidget returns the currently mounted widget with id under root. A missing
+// or empty id returns nil. Call on the GUI thread; the returned widget is
+// borrowed from its Root and may become invalid after a tree update.
+func FindWidget(root Root, id string) Widget {
+	if root == nil || id == "" {
+		return nil
+	}
+	var found Widget
+	visitWidgetTree(root, func(widget Widget) bool {
+		if widget.ID() != id {
+			return true
+		}
+		found = widget
+		return false
+	})
+	return found
+}
+
+// FindWidgetsByName returns every currently mounted widget with the given
+// nonempty Name in traversal order. Names need not be unique within a Root.
+func FindWidgetsByName(root Root, name string) []Widget {
+	if root == nil || name == "" {
+		return nil
+	}
+	var matches []Widget
+	visitWidgetTree(root, func(widget Widget) bool {
+		if widget.Name() == name {
+			matches = append(matches, widget)
+		}
+		return true
+	})
+	return matches
+}
+
+// visitWidgetTree traverses the actual tree, including internal widgets that
+// a semantic Snapshot may deliberately omit. Returning false stops traversal.
+func visitWidgetTree(root Root, visit func(Widget) bool) {
+	var walk func(Widget) bool
+	walk = func(widget Widget) bool {
+		if widget == nil || widget.base().destroyed {
+			return true
+		}
+		if !visit(widget) {
+			return false
+		}
+		for _, child := range widget.Children() {
+			if !walk(child) {
+				return false
+			}
+		}
+		return true
+	}
+	if root != nil {
+		walk(root.Widget())
+	}
+}
