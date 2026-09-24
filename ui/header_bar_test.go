@@ -46,15 +46,15 @@ func TestHeaderBarReconcilesChildAndDefaults(t *testing.T) {
 
 // The binding's signal callback delegates to extendDragRegion. GUI tests exercise
 // actual Chrome queries/occlusion; here we isolate declarative state and matching.
-func TestHeaderBarDragNamesReconcileAndMatchExactTarget(t *testing.T) {
+func TestHeaderBarCaptionsReconcileAndMatchExactTarget(t *testing.T) {
 	root := newRoot()
 	t.Cleanup(root.unmountWindow)
-	build := func(name string) *HeaderBarView {
-		return HeaderBar(HBox(Label("Title").Name(name), Button("Save")).Name("row"))
+	build := func(id string) *HeaderBarView {
+		return HeaderBar(HBox(Label("Title").ID(id).Name("shared"), Button("Save").ID("button-id").Name("shared")).ID("row-id"))
 	}
-	names := []string{"row", "title", ""}
-	view := build("title").DragNames(names...)
-	names[1] = "mutated"
+	ids := []string{"row-id", "title-id", ""}
+	view := build("title-id").Captions(ids...)
+	ids[1] = "mutated"
 	header := root.update(view).(*gui.HeaderBar)
 	state := root.root.state.(*headerBarState)
 	handle := state.drag
@@ -71,13 +71,27 @@ func TestHeaderBarDragNamesReconcileAndMatchExactTarget(t *testing.T) {
 	}
 	arrange()
 	if !query(geometry.Point{X: 20, Y: 20}, false) {
-		t.Fatal("exact name not matched or caller slice retained")
+		t.Fatal("exact ID not matched or caller slice retained")
 	}
+	root.update(build("title-id").Captions("shared"))
+	arrange()
+	if query(geometry.Point{X: 20, Y: 20}, false) {
+		t.Fatal("Captions matched Name instead of ID")
+	}
+	root.update(build("title-id").Captions("row-id", "title-id"))
+	arrange()
 	if query(geometry.Point{X: 120, Y: 20}, false) {
-		t.Fatal("row name matched a button descendant")
+		t.Fatal("row ID matched a button descendant")
 	}
+	root.update(build("title-id").Captions("button-id"))
+	arrange()
+	if !query(geometry.Point{X: 120, Y: 20}, false) {
+		t.Fatal("explicit caption ID did not match an interactive child")
+	}
+	root.update(build("title-id").Captions("row-id", "title-id"))
+	arrange()
 	if !query(geometry.Point{X: 250, Y: 20}, false) {
-		t.Fatal("row's own empty area did not match")
+		t.Fatal("row's own ID did not match")
 	}
 	if query(geometry.Point{X: 1, Y: 1}, false) {
 		t.Fatal("empty ID matched")
@@ -89,30 +103,30 @@ func TestHeaderBarDragNamesReconcileAndMatchExactTarget(t *testing.T) {
 		t.Fatal("out-of-bounds point matched")
 	}
 
-	root.update(build("renamed").DragNames("title"))
+	root.update(build("renamed-id").Captions("title-id"))
 	arrange()
 	if query(geometry.Point{X: 20, Y: 20}, false) {
-		t.Fatal("stale widget name used")
+		t.Fatal("stale widget ID used")
 	}
-	root.update(build("renamed").DragNames("title").DragNames("renamed"))
+	root.update(build("renamed-id").Captions("title-id").Captions("renamed-id"))
 	arrange()
 	if !query(geometry.Point{X: 20, Y: 20}, false) {
-		t.Fatal("new name list not applied")
+		t.Fatal("new caption ID list not applied")
 	}
 	if state != root.root.state || handle != state.drag {
 		t.Fatal("rebuild replaced the state or signal connection")
 	}
 	oldChild := header.Child()
-	root.update(HeaderBar(Image(nil).Name("renamed")).DragNames("renamed"))
+	root.update(HeaderBar(Image(nil).ID("renamed-id")).Captions("renamed-id"))
 	header.Arrange(geometry.Rect(30, 40, 300, 48))
 	header.Child().Arrange(geometry.Rect(8, 8, 100, 32))
 	if header.Child() == oldChild || !query(geometry.Point{X: 20, Y: 20}, false) {
-		t.Fatal("name matching retained a replaced child")
+		t.Fatal("ID matching retained a replaced child")
 	}
-	root.update(build("renamed"))
+	root.update(build("renamed-id"))
 	arrange()
 	if query(geometry.Point{X: 20, Y: 20}, false) {
-		t.Fatal("omitted names did not clear override")
+		t.Fatal("omitted caption IDs did not clear override")
 	}
 }
 
@@ -126,15 +140,15 @@ func (h *headerDragDisconnectProbe) Disconnect() {
 	h.Handle.Disconnect()
 }
 
-func TestHeaderBarUnmountDisconnectsDragNames(t *testing.T) {
+func TestHeaderBarUnmountDisconnectsCaptions(t *testing.T) {
 	root := newRoot()
-	root.update(HeaderBar(Label("Title").Name("title")).DragNames("title"))
+	root.update(HeaderBar(Label("Title").ID("title")).Captions("title"))
 	state := root.root.state.(*headerBarState)
 	probe := &headerDragDisconnectProbe{Handle: state.drag}
 	state.drag = probe
 	root.update(Label("replacement"))
-	if probe.calls != 1 || state.drag != nil || state.dragNames != nil {
-		t.Fatal("unmount retained names or signal connection")
+	if probe.calls != 1 || state.drag != nil || state.captionIDs != nil {
+		t.Fatal("unmount retained caption IDs or signal connection")
 	}
 	root.unmountWindow()
 }
