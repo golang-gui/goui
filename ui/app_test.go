@@ -61,6 +61,8 @@ func TestAppMountsAndUpdatesWindow(t *testing.T) {
 }
 
 func TestAppFindWidgetByScopedID(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	guiApp := newWindowTestApplication()
 	rt := newApp(guiApp, func() RootView {
 		return Window("main").Content(VBox().Children(
@@ -80,6 +82,9 @@ func TestAppFindWidgetByScopedID(t *testing.T) {
 	}
 	if missing := rt.FindWidget("main", ""); missing != nil {
 		t.Fatalf("empty ID lookup: widget=%v", missing)
+	}
+	if missing := rt.FindWidget("main", "absent"); missing != nil {
+		t.Fatalf("unknown widget lookup: widget=%v", missing)
 	}
 	if err := rt.reconcileWindows(nil); err != nil {
 		t.Fatal(err)
