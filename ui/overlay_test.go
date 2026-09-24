@@ -14,7 +14,7 @@ func TestOverlayReconcilesMainIndependently(t *testing.T) {
 	r := newRoot()
 	t.Cleanup(r.unmountWindow)
 	build := func(main View, text string) *OverlayView {
-		return Overlay(main, OverlayItem(TextInput().Text(text).Name("find")))
+		return Overlay(main, OverlayItem(TextInput().Text(text).ID("find")))
 	}
 	o := r.update(build(Label("main"), "first")).(*gui.Overlay)
 	main, floating := o.Child(), o.Children()[1].(*gui.TextInput)
@@ -211,11 +211,11 @@ func TestOverlayBindingSnapshotAndPointerRouting(t *testing.T) {
 	build := func(show bool) *OverlayView {
 		return Overlay(
 			Button().OnClick(func() { background++ }),
-			OverlayItem(Button().MinSize(40, 20).Name("find").OnClick(func() { floating++ })).
+			OverlayItem(Button().MinSize(40, 20).ID("find").OnClick(func() { floating++ })).
 				OnPosition(func(_, _ geometry.Size, p *geometry.Point) { p.X, p.Y = 150, 10 }),
 			OverlayItem(Overlay(
-				HBox().Name("mask"),
-				OverlayItem(Button().MinSize(80, 40).Name("panel").OnClick(func() { panel++ })).
+				HBox().ID("mask"),
+				OverlayItem(Button().MinSize(80, 40).ID("panel").OnClick(func() { panel++ })).
 					OnPosition(func(available, size geometry.Size, p *geometry.Point) {
 						p.X, p.Y = (available.Width-size.Width)/2, (available.Height-size.Height)/2
 					}),

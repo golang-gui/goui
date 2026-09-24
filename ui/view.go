@@ -66,6 +66,9 @@ type ViewBase[T any] struct {
 // mounted widget, so controls never apply these themselves.
 type viewBase struct {
 	shortcuts  []*ShortcutView
+	dragSource *DragSourceView
+	dropTarget *DropTargetView
+	id         string
 	name       string
 	styleName  string // semantic style name (Sel.Name); "" reverts to the widget's type default
 	minWidth   float32
@@ -82,7 +85,8 @@ type viewBase struct {
 }
 
 const (
-	viewName = iota
+	viewID = iota
+	viewName
 	viewStyleName
 	viewMinWidth
 	viewMinHeight
@@ -104,13 +108,16 @@ const (
 // snapshot (bit not set), so the widget's private defaults stay private and
 // a missing modifier naturally reverts. The context is private.
 type viewBaseContext struct {
-	shortcuts shortcutBindings
-	handles   []signal.Handle    // cross-rebuild handles for shared widget signals
-	onFocus   func(focused bool) // effective OnFocus callback, refreshed on every update
+	shortcuts  shortcutBindings
+	dragSource dragSourceBinding
+	dropTarget dropTargetBinding
+	handles    []signal.Handle    // cross-rebuild handles for shared widget signals
+	onFocus    func(focused bool) // effective OnFocus callback, refreshed on every update
 
 	// Snapshot of the widget's initial values, captured once in mount before
 	// the first apply. Each field corresponds to a viewBase modifier; hidden
 	// is stored as the widget's Visible complement.
+	initID         string
 	initName       string
 	initStyleName  string
 	initMinSize    geometry.Size
@@ -131,7 +138,8 @@ func (b *viewBase) base() *viewBase { return b }
 // rebuild that swaps the view automatically picks up the latest callback
 // without reconnecting.
 func (b *viewBase) mount(ctx *viewBaseContext, w gui.Widget) {
-	ctx.initName = w.ID()
+	ctx.initID = w.ID()
+	ctx.initName = w.Name()
 	ctx.initStyleName = w.StyleName()
 	ctx.initMinSize = w.MinSize()
 	ctx.initMaxSize = w.MaxSize()
@@ -151,6 +159,8 @@ func (b *viewBase) mount(ctx *viewBaseContext, w gui.Widget) {
 // shared modifiers onto the widget (missing modifiers restore the snapshot).
 func (b *viewBase) update(ctx *viewBaseContext, w gui.Widget) {
 	ctx.onFocus = b.onFocus
+	ctx.dragSource.update(w, b.dragSource)
+	ctx.dropTarget.update(w, b.dropTarget)
 	if len(b.shortcuts) != 0 {
 		controller := ctx.shortcuts.controller
 		if controller == nil {
@@ -168,6 +178,8 @@ func (b *viewBase) update(ctx *viewBaseContext, w gui.Widget) {
 // unmount disconnects all registered shared signal handles and clears the
 // context, including the snapshot.
 func (b *viewBase) unmount(ctx *viewBaseContext, w gui.Widget) {
+	ctx.dragSource.clear(w)
+	ctx.dropTarget.clear(w)
 	if ctx.shortcuts.controller != nil {
 		w.RemoveEventController(ctx.shortcuts.controller)
 		ctx.shortcuts.clear()
@@ -177,6 +189,7 @@ func (b *viewBase) unmount(ctx *viewBaseContext, w gui.Widget) {
 	}
 	ctx.handles = nil
 	ctx.onFocus = nil
+	ctx.initID = ""
 	ctx.initName = ""
 	ctx.initStyleName = ""
 	ctx.initMinSize = geometry.Size{}
@@ -194,6 +207,15 @@ func (b *ViewBase[T]) self() *T {
 	panic("ui: view not initialized via its constructor (ViewBase.Self is nil)")
 }
 
+// ID assigns a nonempty identifier for precise lookup within this widget's Root.
+// Empty clears it; ID does not affect declarative reconciliation.
+func (b *ViewBase[T]) ID(id string) *T {
+	b.id = id
+	b.fields.Set(viewID, true)
+	return b.self()
+}
+
+// Name assigns a repeatable natural name, independent of ID and StyleName.
 func (b *ViewBase[T]) Name(name string) *T {
 	b.name = name
 	b.fields.Set(viewName, true)
@@ -303,10 +325,15 @@ func (b *ViewBase[T]) OnFocus(fn func(focused bool)) *T {
 // widget is restored to the snapshot captured at mount, keeping the widget's
 // private defaults private.
 func (b *viewBase) apply(ctx *viewBaseContext, widget gui.Widget) {
-	if b.fields.Check(viewName) {
-		widget.SetID(b.name)
+	if b.fields.Check(viewID) {
+		widget.SetID(b.id)
 	} else {
-		widget.SetID(ctx.initName)
+		widget.SetID(ctx.initID)
+	}
+	if b.fields.Check(viewName) {
+		widget.SetName(b.name)
+	} else {
+		widget.SetName(ctx.initName)
 	}
 	if b.fields.Check(viewStyleName) {
 		widget.SetStyleName(b.styleName)
