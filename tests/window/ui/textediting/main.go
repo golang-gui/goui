@@ -130,9 +130,9 @@ func main() {
 					).Spacing(8),
 					ui.HBox(
 						ui.Label("Search:"),
-						ui.TextInput().Name("search").BindText(&text).BindSelection(&searchSelection).OnSubmit(onSubmit).ReadOnly(readonly).MainWeight(1),
+						ui.TextInput().ID("search").BindText(&text).BindSelection(&searchSelection).OnSubmit(onSubmit).ReadOnly(readonly).MainWeight(1),
 						ui.Label("Uncontrolled:"),
-						ui.TextInput().Name("uncontrolled").OnSubmit(onSubmit).MainWeight(1),
+						ui.TextInput().ID("uncontrolled").OnSubmit(onSubmit).MainWeight(1),
 					).CrossAlign(layout.CrossBaseline).Spacing(8),
 					ui.HBox(
 						ui.Button("Replace notes").OnClick(func() {
@@ -157,14 +157,14 @@ func main() {
 							app.RequestUpdate()
 						}),
 					).Spacing(8),
-					ui.ScrollView(ui.TextView().Name("notes").BindText(&notes).
+					ui.ScrollView(ui.TextView().ID("notes").BindText(&notes).
 						BindSelection(&notesSelection).ReadOnly(readonly)).MinHeight(100).MaxHeight(100),
 					ui.Label(fmt.Sprintf("Notes: %d bytes | selection %+v | Search %+v | auto rebuild %t", len(notes.Get()), notesSelection.Get(), searchSelection.Get(), rebuildTimer.Active())),
 					ui.HBox(
-						ui.ScrollView(ui.TextView().Name("left").Model(model).ReadOnly(readonly).
+						ui.ScrollView(ui.TextView().ID("left").Model(model).ReadOnly(readonly).
 							OnChange(func(ui.TextChange) { app.RequestUpdate() }).
 							OnSelection(func(s ui.TextSelection) { leftSelection = s; app.RequestUpdate() })),
-						ui.ScrollView(ui.TextView().Name("right").Model(model).
+						ui.ScrollView(ui.TextView().ID("right").Model(model).
 							OnSelection(func(s ui.TextSelection) { rightSelection = s; app.RequestUpdate() })),
 					).Spacing(12).CrossAlign(layout.CrossStretch).MainWeight(1),
 					statusLabel(fmt.Sprintf("%d bytes | L %+v | R %+v | submits %d | rebuilds %d | readonly %t", model.Len(), leftSelection, rightSelection, submits, rebuilds, readonly)),
