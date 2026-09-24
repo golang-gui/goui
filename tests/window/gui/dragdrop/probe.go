@@ -105,7 +105,7 @@ func (p *probe) target(name, caption string, format gui.DragFormat) *gui.Button 
 		label.SetText("Drop " + caption)
 		fmt.Printf("%s Leave\n", name)
 	})
-	drop.ConnectDrop(func(e *gui.DropEvent) {
+	drop.ConnectDrop(func(e *gui.DropRequest) {
 		p.check(entered, name+": Drop without Enter")
 		verified, accepted, detail := false, false, ""
 		switch e.Format {

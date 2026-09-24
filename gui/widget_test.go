@@ -863,9 +863,14 @@ func TestWidgetIdentityAndRootLookup(t *testing.T) {
 	}
 
 	floating.SetID("item")
-	if got := FindWidget(win, "item"); got != nil {
-		t.Fatalf("duplicate ID selected a widget: widget=%v", got)
+	if got := FindWidget(win, "item"); got != main {
+		t.Fatalf("duplicate ID should select the first tree match: widget=%v", got)
 	}
+	main.SetID("renamed")
+	if got := FindWidget(win, "item"); got != floating {
+		t.Fatalf("lookup after renaming the first match: widget=%v", got)
+	}
+	main.SetID("item")
 	overlay.RemoveOverlay(floating)
 	if got := FindWidget(win, "item"); got != main {
 		t.Fatalf("lookup after removal: widget=%v", got)

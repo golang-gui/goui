@@ -405,7 +405,7 @@ func (b *rootBase) dispatchDragData(host EventTarget, e events.DragDataEvent) {
 		return
 	}
 	w := target.owner
-	request := &DropEvent{Position: widgetLocalPoint(w, state.point), Format: state.format,
+	request := &DropRequest{Position: widgetLocalPoint(w, state.point), Format: state.format,
 		Action: state.action, Data: data}
 	app := dragAppOf(host.(Root))
 	var local *guiDragSession

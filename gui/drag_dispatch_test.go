@@ -45,7 +45,7 @@ func TestDropTargetDispatchThroughWindowAndSemanticState(t *testing.T) {
 		calls = append(calls, "enter")
 	})
 	target.ConnectMotion(func(*DragMotion) { calls = append(calls, "motion") })
-	target.ConnectDrop(func(e *DropEvent) {
+	target.ConnectDrop(func(e *DropRequest) {
 		files, ok := e.Data.Files()
 		if !ok || !slices.Equal(files, []string{"/tmp/drop.txt"}) || e.Position != (geometry.Point{X: 10, Y: 20}) {
 			t.Errorf("drop: %+v, files=%q", *e, files)
@@ -91,7 +91,7 @@ func TestDropTargetRemovedBeforeReadFinishesRejects(t *testing.T) {
 	target := NewDropTarget(DragFormatText)
 	root.AddEventController(target)
 	drops := 0
-	target.ConnectDrop(func(*DropEvent) { drops++ })
+	target.ConnectDrop(func(*DropRequest) { drops++ })
 	offer := &testDragOffer{id: 2, formats: []dragdrop.Format{dragdrop.FormatText}}
 	for _, typ := range []events.EventType{events.DragEnter, events.DragDrop} {
 		if err := win.DispatchEvent(events.DragOfferEvent{EventType: typ, Offer: offer,

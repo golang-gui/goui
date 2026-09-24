@@ -176,7 +176,9 @@ type DragMotion struct {
 	Action   DragAction
 }
 
-type DropEvent struct {
+// DropRequest asks the target to accept data already read in the selected
+// format. Only Accepted affects the result, and it must be set synchronously.
+type DropRequest struct {
 	Position geometry.Point
 	Format   DragFormat
 	Action   DragAction
@@ -363,7 +365,7 @@ type DropTarget struct {
 	enter   signal.Signal1[*DragMotion]
 	motion  signal.Signal1[*DragMotion]
 	leave   signal.Signal0
-	drop    signal.Signal1[*DropEvent]
+	drop    signal.Signal1[*DropRequest]
 	error   signal.Signal1[error]
 }
 
@@ -424,7 +426,7 @@ func (t *DropTarget) SetFormats(formats ...DragFormat) {
 func (t *DropTarget) ConnectEnter(fn func(*DragMotion)) signal.Handle  { return t.enter.Connect(fn) }
 func (t *DropTarget) ConnectMotion(fn func(*DragMotion)) signal.Handle { return t.motion.Connect(fn) }
 func (t *DropTarget) ConnectLeave(fn func()) signal.Handle             { return t.leave.Connect(fn) }
-func (t *DropTarget) ConnectDrop(fn func(*DropEvent)) signal.Handle    { return t.drop.Connect(fn) }
+func (t *DropTarget) ConnectDrop(fn func(*DropRequest)) signal.Handle  { return t.drop.Connect(fn) }
 func (t *DropTarget) ConnectError(fn func(error)) signal.Handle        { return t.error.Connect(fn) }
 
 func (t *DropTarget) setWidget(w Widget) {
