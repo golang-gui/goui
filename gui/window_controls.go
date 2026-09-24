@@ -31,7 +31,7 @@ type windowControls struct {
 
 func newWindowControls(win *window) *windowControls {
 	c := &windowControls{window: win}
-	c.SetID("window-controls")
+	c.SetName("window-controls")
 	c.hidden = true
 	c.attachRoot(win, c)
 	c.connections = signal.Handles{
@@ -48,7 +48,7 @@ func (c *windowControls) changed(info ChromeInfo) {
 	if info.Controls == ChromeControlsCustom && c.buttons[0] == nil {
 		for i := range c.buttons {
 			button := &captionButton{Button: NewButton(), window: c.window, circular: c.window.clientChrome, close: i == 2}
-			button.SetID([]string{"window-minimize", "window-maximize", "window-close"}[i])
+			button.SetName([]string{"window-minimize", "window-maximize", "window-close"}[i])
 			button.SetPadding(0)
 			button.SetFocusable(false) // caption buttons do not steal document focus
 			icon := &captionIcon{controls: c, index: i}
