@@ -20,6 +20,8 @@ type Widget interface {
 
 	ID() string
 	SetID(string)
+	Name() string
+	SetName(string)
 	StyleName() string // explicit style override, "" when unset
 	SetStyleName(string)
 
@@ -119,6 +121,7 @@ type Bin interface {
 
 type WidgetBase struct {
 	id                  string
+	name                string
 	styleName           string // style override; "" = the control resolves with its own default name
 	hidden              bool
 	focusable           bool
@@ -157,6 +160,16 @@ func (w *WidgetBase) ID() string {
 func (w *WidgetBase) SetID(id string) {
 	if w.id != id {
 		w.id = id
+		w.requestSemanticUpdate()
+	}
+}
+
+// Name is a repeatable natural name, independent of ID and StyleName.
+func (w *WidgetBase) Name() string { return w.name }
+
+func (w *WidgetBase) SetName(name string) {
+	if w.name != name {
+		w.name = name
 		w.requestSemanticUpdate()
 	}
 }
@@ -423,6 +436,7 @@ func (w *WidgetBase) StyleChanged() {}
 func (w *WidgetBase) Snapshot() WidgetInfo {
 	info := WidgetInfo{
 		ID:            w.ID(),
+		Name:          w.Name(),
 		Role:          RoleWidget,
 		Bounds:        w.windowRect(),
 		Visible:       w.Visible(),
