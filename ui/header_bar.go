@@ -13,14 +13,14 @@ import (
 // automatic drag classification; this view only reconciles content and options.
 type HeaderBarView struct {
 	ViewBase[HeaderBarView]
-	child     View
-	padding   optional.Optional[float32]
-	dragNames []string
+	child      View
+	padding    optional.Optional[float32]
+	captionIDs []string
 }
 
 type headerBarState struct {
 	initPadding float32
-	dragNames   []string
+	captionIDs  []string
 	drag        signal.Handle
 }
 
@@ -44,12 +44,13 @@ func (v *HeaderBarView) Padding(padding float32) *HeaderBarView {
 	return v
 }
 
-// DragNames additionally allows dragging when the actual hit widget's Name
-// matches a nonempty name. It never matches ancestors or searches other headers.
-// Matching is an explicit override, including for interactive widgets. Repeated
-// calls replace the list; an empty list leaves only GUI automatic classification.
-func (v *HeaderBarView) DragNames(names ...string) *HeaderBarView {
-	v.dragNames = slices.Clone(names)
+// Captions treats widgets with these IDs as caption regions when they are the
+// actual hit target. It does not match ancestors or other HeaderBars. A match
+// explicitly overrides the automatic classification, even for interactive
+// widgets. Repeated calls replace the list; an empty list leaves only the
+// automatic classification. IDs are not window title text.
+func (v *HeaderBarView) Captions(ids ...string) *HeaderBarView {
+	v.captionIDs = slices.Clone(ids)
 	return v
 }
 
@@ -68,7 +69,7 @@ func (v *HeaderBarView) Mount(ctx BuildContext) gui.Widget {
 func (v *HeaderBarView) Update(ctx BuildContext, widget gui.Widget) {
 	header := widget.(*gui.HeaderBar)
 	state := ctx.State().(*headerBarState)
-	state.dragNames = v.dragNames
+	state.captionIDs = v.captionIDs
 	if v.padding.HasValue() {
 		header.SetPadding(v.padding.Value())
 	} else {
@@ -84,18 +85,18 @@ func (v *HeaderBarView) Unmount(ctx BuildContext, _ gui.Widget) {
 			state.drag.Disconnect()
 			state.drag = nil
 		}
-		state.dragNames = nil
+		state.captionIDs = nil
 	}
 }
 
 func (s *headerBarState) extendDragRegion(header *gui.HeaderBar, point geometry.Point, drag *bool) {
-	if *drag || len(s.dragNames) == 0 {
+	if *drag || len(s.captionIDs) == 0 {
 		return
 	}
 	// GUI has already excluded covering siblings and window controls before
 	// emitting this query. Pick uses the same HeaderBar-local coordinates.
 	if target := gui.Pick(header, point); target != nil {
-		if name := target.ID(); name != "" && slices.Contains(s.dragNames, name) {
+		if id := target.ID(); id != "" && slices.Contains(s.captionIDs, id) {
 			*drag = true
 		}
 	}
