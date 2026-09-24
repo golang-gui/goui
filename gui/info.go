@@ -22,6 +22,7 @@ type WindowInfo struct {
 // Operations must still be dispatched as input events through Window.DispatchEvent.
 type WidgetInfo struct {
 	ID   string `json:"id"`
+	Name string `json:"name"`
 	Role Role   `json:"role"`
 	Text string `json:"text"`
 	// Bounds is the layout rectangle in window-local DIP, before clipping or
