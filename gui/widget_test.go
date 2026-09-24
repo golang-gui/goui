@@ -1,9 +1,11 @@
 package gui
 
 import (
+	"encoding/json"
 	"image"
 	"image/color"
 	"math"
+	strings "strings"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -814,5 +816,92 @@ func TestRenderWidgetPreconditionsAndPanic(t *testing.T) {
 	child.paint = nil
 	if _, err := RenderWidget(child, 1); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestWidgetIdentityAndRootLookup(t *testing.T) {
+	win := &window{}
+	overlay := NewOverlay()
+	main := NewLabel("main")
+	main.SetID("item")
+	main.SetName("peer")
+	floating := NewLabel("floating")
+	floating.SetID("float")
+	floating.SetName("peer")
+	overlay.SetChild(main)
+	overlay.AddOverlay(floating)
+	win.SetWidget(overlay)
+	win.layoutDirty, win.paintDirty = false, false
+	main.SetName("changed")
+	main.SetID("changed-id")
+	if win.layoutDirty || win.paintDirty {
+		t.Fatal("changing identity scheduled layout or paint")
+	}
+	main.SetName("peer")
+	main.SetID("item")
+
+	if got := FindWidget(win, "float"); got != floating {
+		t.Fatalf("overlay lookup: widget=%v", got)
+	}
+	if got := FindWidgetsByName(win, "peer"); len(got) != 2 || got[0] != main || got[1] != floating {
+		t.Fatalf("repeatable name lookup: %v", got)
+	}
+	if got := FindWidget(win, ""); got != nil {
+		t.Fatalf("empty ID should not match: widget=%v", got)
+	}
+	if got := FindWidget(win, "absent"); got != nil {
+		t.Fatalf("missing ID should not match: widget=%v", got)
+	}
+
+	info := main.Snapshot()
+	if info.ID != "item" || info.Name != "peer" || info.Text != "main" {
+		t.Fatalf("snapshot merged identity and text: %+v", info)
+	}
+	encoded, err := json.Marshal(info)
+	if err != nil || !strings.Contains(string(encoded), `"name":"peer"`) {
+		t.Fatalf("snapshot JSON name: %s, %v", encoded, err)
+	}
+
+	floating.SetID("item")
+	if got := FindWidget(win, "item"); got != nil {
+		t.Fatalf("duplicate ID selected a widget: widget=%v", got)
+	}
+	overlay.RemoveOverlay(floating)
+	if got := FindWidget(win, "item"); got != main {
+		t.Fatalf("lookup after removal: widget=%v", got)
+	}
+	win.SetWidget(nil)
+	if got := FindWidget(win, "item"); got != nil {
+		t.Fatalf("detached widget remained visible: widget=%v", got)
+	}
+}
+
+func TestWidgetIDScopedToRoot(t *testing.T) {
+	win := &window{}
+	anchor := NewLabel("anchor")
+	anchor.SetID("shared")
+	win.SetWidget(anchor)
+
+	pop := NewPopover(anchor, nil)
+	child := NewLabel("popover")
+	child.SetID("shared")
+	pop.SetWidget(child)
+	if got := FindWidget(win, "shared"); got != anchor {
+		t.Fatalf("window lookup: widget=%v", got)
+	}
+	if got := FindWidget(pop, "shared"); got != child {
+		t.Fatalf("popover lookup: widget=%v", got)
+	}
+	if child.Root() != pop {
+		t.Fatal("popover content has a different root")
+	}
+	child.SetName("popover-content")
+	if got := FindWidgetsByName(pop, "popover-content"); len(got) != 1 || got[0] != child {
+		t.Fatalf("popover name lookup: %v", got)
+	}
+	// Root requests are available through the public interface even before Show.
+	pop.RequestLayout()
+	if err := pop.RequestPaint(); err != nil {
+		t.Fatalf("popover repaint before Show: %v", err)
 	}
 }
