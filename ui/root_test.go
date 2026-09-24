@@ -18,7 +18,7 @@ import (
 func TestRootCreatesAndUpdatesLabel(t *testing.T) {
 	root := newRoot()
 
-	widget := root.update(Label("hello").Name("title"))
+	widget := root.update(Label("hello").ID("title"))
 	label, ok := widget.(*gui.Label)
 	if !ok {
 		t.Fatalf("updated %T, want *gui.Label", widget)
@@ -27,7 +27,7 @@ func TestRootCreatesAndUpdatesLabel(t *testing.T) {
 		t.Fatalf("unexpected label state: id=%q text=%q", label.ID(), label.Text())
 	}
 
-	updated := root.update(Label("world").Name("title2"))
+	updated := root.update(Label("world").ID("title2"))
 	if updated != label {
 		t.Fatal("label at the same root slot and type should be reused")
 	}
@@ -39,8 +39,8 @@ func TestRootCreatesAndUpdatesLabel(t *testing.T) {
 func TestRootReplacesDifferentViewType(t *testing.T) {
 	root := newRoot()
 
-	label := root.update(Label("name").Name("field"))
-	input := root.update(TextInput().Name("field").Text("name"))
+	label := root.update(Label("name").ID("field"))
+	input := root.update(TextInput().ID("field").Text("name"))
 
 	if input == label {
 		t.Fatal("different view types should not reuse the same widget")
@@ -95,11 +95,11 @@ func TestRootUpdatesBoxChildrenByPositionAndType(t *testing.T) {
 	root := newRoot()
 
 	widget := root.update(VBox().
-		Name("root").
+		ID("root").
 		Spacing(6).
 		Children(
-			Label("one").Name("first"),
-			Label("two").Name("second"),
+			Label("one").ID("first"),
+			Label("two").ID("second"),
 		))
 	box := widget.(*gui.LinearBox)
 	if box.ID() != "root" || box.Direction() != layout.DirectionVertical || box.Spacing() != 6 {
@@ -115,9 +115,9 @@ func TestRootUpdatesBoxChildrenByPositionAndType(t *testing.T) {
 	root.update(VBox().
 		Spacing(8).
 		Children(
-			Label("ONE").Name("first-updated"),
-			Label("TWO").Name("second-updated"),
-			Label("THREE").Name("third"),
+			Label("ONE").ID("first-updated"),
+			Label("TWO").ID("second-updated"),
+			Label("THREE").ID("third"),
 		))
 
 	children = box.Children()
@@ -275,13 +275,13 @@ func TestRootUpdatesImageAndCommonFields(t *testing.T) {
 	first := image.NewRGBA(image.Rect(0, 0, 10, 10))
 	second := image.NewRGBA(image.Rect(0, 0, 20, 20))
 
-	widget := root.update(Image(first).Name("logo"))
+	widget := root.update(Image(first).ID("logo"))
 	imageWidget := widget.(*gui.Image)
 	if imageWidget.ID() != "logo" || imageWidget.Image() != first || !imageWidget.Visible() {
 		t.Fatalf("unexpected image state: id=%q visible=%v", imageWidget.ID(), imageWidget.Visible())
 	}
 
-	updated := root.update(Image(second).Name("logo2").Hidden(true))
+	updated := root.update(Image(second).ID("logo2").Hidden(true))
 	if updated != imageWidget {
 		t.Fatal("image at the same root slot and type should be reused")
 	}

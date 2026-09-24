@@ -9,29 +9,88 @@ import (
 )
 
 // Every widget-view constructor must wire ViewBase.Self so the shared chain
-// modifiers (Name/Hidden/Style) return the concrete view instead of panicking on
+// modifiers (ID/Name/Hidden/Style) return the concrete view instead of panicking on
 // a nil Self. This is the guardrail for the one unsafe edge of the self-type.
 func TestViewConstructorsWireSelf(t *testing.T) {
 	cases := []struct {
 		name string
 		make func() View // ends in a shared modifier, which panics if Self is nil
 	}{
-		{"Button", func() View { return Button("x").Name("btn") }},
-		{"Label", func() View { return Label("x").Name("lbl") }},
-		{"HBox", func() View { return HBox().Name("hbox") }},
-		{"HeaderBar", func() View { return HeaderBar(nil).Name("header") }},
-		{"VBox", func() View { return VBox().Name("vbox") }},
-		{"TextInput", func() View { return TextInput().Name("input") }},
-		{"Image", func() View { return Image(nil).Name("img") }},
+		{"Button", func() View { return Button("x").ID("btn") }},
+		{"Label", func() View { return Label("x").ID("lbl") }},
+		{"HBox", func() View { return HBox().ID("hbox") }},
+		{"HeaderBar", func() View { return HeaderBar(nil).ID("header") }},
+		{"VBox", func() View { return VBox().ID("vbox") }},
+		{"TextInput", func() View { return TextInput().ID("input") }},
+		{"Image", func() View { return Image(nil).ID("img") }},
 	}
 	for _, c := range cases {
 		view := c.make() // would panic in self() if the constructor forgot Self
 		if view == nil {
 			t.Fatalf("%s: chained modifier returned nil (Self not wired)", c.name)
 		}
-		if view.base().name == "" {
-			t.Fatalf("%s: shared Name modifier did not apply", c.name)
+		if view.base().id == "" {
+			t.Fatalf("%s: shared ID modifier did not apply", c.name)
 		}
+	}
+}
+
+func TestViewIDAndNameRemainIndependentAcrossUpdates(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	w := r.update(Label("content").ID("first").Name("natural").Style("label")).(*gui.Label)
+	if w.ID() != "first" || w.Name() != "natural" || w.StyleName() != "label" ||
+		w.Snapshot().Text != "content" {
+		t.Fatalf("initial identity: %+v", w.Snapshot())
+	}
+	if next := r.update(Label("updated").ID("second").Name("natural")); next != w {
+		t.Fatal("changing ID replaced the widget")
+	}
+	if w.ID() != "second" || w.Name() != "natural" || w.StyleName() != "" {
+		t.Fatalf("updated identity: %+v", w.Snapshot())
+	}
+	r.update(Label("updated").ID("").Name(""))
+	if w.ID() != "" || w.Name() != "" {
+		t.Fatalf("explicit empty values were ignored: id=%q name=%q", w.ID(), w.Name())
+	}
+	r.update(Label("plain"))
+	if w.ID() != "" || w.Name() != "" {
+		t.Fatalf("removed modifiers did not restore defaults: id=%q name=%q", w.ID(), w.Name())
+	}
+}
+
+type initialIdentityView struct{ ViewBase[initialIdentityView] }
+
+func newInitialIdentityView() *initialIdentityView {
+	v := new(initialIdentityView)
+	v.Self = v
+	return v
+}
+
+func (v *initialIdentityView) Build() View { return v }
+func (v *initialIdentityView) Mount(BuildContext) gui.Widget {
+	w := gui.NewLabel("content")
+	w.SetID("original-id")
+	w.SetName("original-name")
+	return w
+}
+func (v *initialIdentityView) Update(BuildContext, gui.Widget)  {}
+func (v *initialIdentityView) Unmount(BuildContext, gui.Widget) {}
+
+func TestViewIdentityRestoresConstructorDefaults(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	w := r.update(newInitialIdentityView().ID("replacement").Name("renamed"))
+	if w.ID() != "replacement" || w.Name() != "renamed" {
+		t.Fatalf("declared identity: id=%q name=%q", w.ID(), w.Name())
+	}
+	r.update(newInitialIdentityView().ID("").Name(""))
+	if w.ID() != "" || w.Name() != "" {
+		t.Fatalf("explicit empty identity: id=%q name=%q", w.ID(), w.Name())
+	}
+	r.update(newInitialIdentityView())
+	if w.ID() != "original-id" || w.Name() != "original-name" {
+		t.Fatalf("constructor identity not restored: id=%q name=%q", w.ID(), w.Name())
 	}
 }
 
