@@ -24,6 +24,8 @@ import (
 // Show, bound to that window, and released when the anchor unmounts or the
 // window is destroyed.
 type Popover interface {
+	Root
+
 	Visible() bool
 	// Transparent reports the immutable configuration, including before Show.
 	Transparent() bool
@@ -31,7 +33,6 @@ type Popover interface {
 	StyleName() string
 	SetStyleName(string)
 
-	Widget() Widget
 	SetWidget(Widget)
 
 	Anchor() Widget
