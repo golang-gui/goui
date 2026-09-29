@@ -585,6 +585,77 @@ func (w *Window) BeginMove() error {
 	return nil
 }
 
+func (w *Window) Position(relativeTo common.Window) (result geometry.Point, err error) {
+	if !w.window.Valid() {
+		return result, common.ErrUnavailable
+	}
+	var offset geometry.Point
+	if relativeTo == nil {
+		area, queryErr := w.WorkAreaAt(geometry.Point{})
+		if queryErr != nil {
+			return result, queryErr
+		}
+		offset, relativeTo = area.Pos, w
+	}
+	reference, ok := relativeTo.(*Window)
+	if !ok {
+		return result, common.ErrUnsupported
+	}
+	if reference == nil || !reference.window.Valid() {
+		return result, common.ErrUnavailable
+	}
+	AutoReleasePool(func() {
+		frame := w.window.Frame()
+		content := reference.window.ContentRectForFrameRect(reference.window.Frame())
+		scale := pointsPerLogicalUnit(reference.window)
+		result = geometry.Point{
+			X: float32((frame.Origin.X-content.Origin.X)/scale) - offset.X,
+			Y: float32((content.Origin.Y+content.Size.Height-frame.Origin.Y-frame.Size.Height)/scale) - offset.Y,
+		}
+	})
+	return result, workarea.ValidatePoint(result)
+}
+
+func (w *Window) SetPosition(relativeTo common.Window, position geometry.Point) error {
+	if err := workarea.ValidatePoint(position); err != nil {
+		return err
+	}
+	if !w.window.Valid() {
+		return common.ErrUnavailable
+	}
+	if relativeTo == nil {
+		area, err := w.WorkAreaAt(geometry.Point{})
+		if err != nil {
+			return err
+		}
+		position.X += area.X
+		position.Y += area.Y
+		relativeTo = w
+	}
+	reference, ok := relativeTo.(*Window)
+	if !ok {
+		return common.ErrUnsupported
+	}
+	if reference == nil || !reference.window.Valid() {
+		return common.ErrUnavailable
+	}
+	if err := workarea.ValidatePoint(position); err != nil {
+		return err
+	}
+	AutoReleasePool(func() {
+		content := reference.window.ContentRectForFrameRect(reference.window.Frame())
+		scale := pointsPerLogicalUnit(reference.window)
+		native := w.window
+		native.Retain()
+		defer native.Release()
+		native.SetFrameTopLeftPoint(NSPoint{
+			X: content.Origin.X + CGFloat(position.X)*scale,
+			Y: content.Origin.Y + content.Size.Height - CGFloat(position.Y)*scale,
+		})
+	})
+	return nil
+}
+
 func (w *Window) WorkAreaAt(point geometry.Point) (result geometry.Rectangle, err error) {
 	if err = workarea.ValidatePoint(point); err != nil {
 		return

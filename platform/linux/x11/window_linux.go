@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"math"
 	"runtime"
 	"slices"
 	"unsafe"
@@ -41,6 +42,7 @@ type Window struct {
 	buttons          events.PointerButtons
 	minW             float32      // logical (DIP) minimum size; 0 = unbounded
 	minH             float32      // logical (DIP) minimum size; 0 = unbounded
+	initialPosition  *[2]int32    // outer-frame pixels requested while withdrawn
 	im               *inputMethod // this window's IME (nil when none); the key loop consults it
 	cursor           *cursor      // this window's cursor capability (nil when none)
 	resizeSync       resizeSync
@@ -155,7 +157,7 @@ func newWindow(size geometry.Size, onEvent events.EventHandler, options common.W
 		return nil, err
 	}
 	win.applyDecoration(options.Chrome)
-	win.applyMinSize()
+	win.applyNormalHints()
 	win.setApplicationClass()
 
 	// Declare WM protocols for top-level windows before they are mapped. The
@@ -327,27 +329,34 @@ func (w *Window) SetMinSize(width, height float32) {
 	// scale when the hints are written, keeping the hint correct if the scale
 	// ever changes (X11 currently uses a static display-global scale).
 	w.minW, w.minH = width, height
-	w.applyMinSize()
+	w.applyNormalHints()
 }
 
-// applyMinSize converts the stored logical (DIP) minimum to physical pixels
-// and writes the WM_NORMAL_HINTS property.
-func (w *Window) applyMinSize() {
-	scale := currentScale()
-	if w.minW <= 0 && w.minH <= 0 {
-		// Clear the hint: delete the WM_NORMAL_HINTS property entirely.
+// applyNormalHints writes both logical minimum sizes and any pre-map position,
+// so changing one does not erase the other from WM_NORMAL_HINTS.
+func (w *Window) applyNormalHints() {
+	hints := w.normalHints(currentScale())
+	if hints.Flags == 0 {
 		platform.display.DeleteProperty(w.wid, xlib.AtomWmNormalHints)
 	} else {
-		hints := xlib.SizeHints{Flags: xlib.PMinSize}
-		if w.minW > 0 {
-			hints.MinWidth = int32(w.minW * scale)
-		}
-		if w.minH > 0 {
-			hints.MinHeight = int32(w.minH * scale)
-		}
 		platform.display.SetWMNormalHints(w.wid, &hints)
 	}
 	platform.display.Flush()
+}
+
+func (w *Window) normalHints(scale float32) xlib.SizeHints {
+	var hints xlib.SizeHints
+	if w.minW > 0 || w.minH > 0 {
+		hints.Flags |= xlib.PMinSize
+		hints.MinWidth = int32(max(0, w.minW) * scale)
+		hints.MinHeight = int32(max(0, w.minH) * scale)
+	}
+	if p := w.initialPosition; p != nil {
+		hints.Flags |= xlib.PPosition | xlib.PWinGravity
+		hints.X, hints.Y = p[0], p[1]
+		hints.WinGravity = xlib.NorthWestGravity
+	}
+	return hints
 }
 
 func (w *Window) Draw(img image.Image) error {
@@ -888,6 +897,165 @@ func (w *Window) notifyState() {
 		w.state = state
 		w.emitEvent(events.StateEvent{State: state})
 	}
+}
+
+func (w *Window) Position(relativeTo common.Window) (geometry.Point, error) {
+	if w.wid == 0 || platform == nil || platform.display == 0 {
+		return geometry.Point{}, common.ErrUnavailable
+	}
+	var offset geometry.Point
+	if relativeTo == nil {
+		area, err := w.WorkAreaAt(geometry.Point{})
+		if err != nil {
+			return geometry.Point{}, err
+		}
+		offset, relativeTo = area.Pos, w
+	}
+	reference, ok := relativeTo.(*Window)
+	if !ok {
+		return geometry.Point{}, common.ErrUnsupported
+	}
+	if reference == nil || reference.wid == 0 {
+		return geometry.Point{}, common.ErrUnavailable
+	}
+	d, root := platform.display, platform.defScreen.Root
+	var left, top uint32
+	if !w.overrideRedirect {
+		var attrs xlib.WindowAttributes
+		if d.GetWindowAttributes(w.wid, &attrs) == 0 || attrs.MapState == xlib.IsUnmapped {
+			// After withdrawal, old frame extents can outlive the WM frame.
+			// Do not subtract them from an unmapped/reparented client origin.
+			return geometry.Point{}, common.ErrUnavailable
+		}
+		// Decoration hints are preferences, not observed frame geometry. Use
+		// the WM's EWMH observation even when None was requested. Before the
+		// WM publishes it, do not invent zero margins or return a saved request.
+		atom := platform.atoms._NET_FRAME_EXTENTS
+		if atom == 0 {
+			return geometry.Point{}, common.ErrUnavailable
+		}
+		extents, err := windowProperty32(d, w.wid, atom, xlib.AtomCardinal, 4)
+		if err != nil {
+			return geometry.Point{}, err
+		}
+		left, top, err = frameOriginInsets(extents)
+		if err != nil {
+			return geometry.Point{}, err
+		}
+	}
+	x, y, ok := d.TranslateCoordinatesChecked(w.wid, root, 0, 0)
+	if !ok {
+		return geometry.Point{}, common.ErrUnavailable
+	}
+	ox, oy := x, y
+	if reference != w {
+		ox, oy, ok = d.TranslateCoordinatesChecked(reference.wid, root, 0, 0)
+		if !ok {
+			return geometry.Point{}, common.ErrUnavailable
+		}
+	}
+	scale := float64(currentScale())
+	return geometry.Point{
+		X: float32((float64(x)-float64(left)-float64(ox))/scale) - offset.X,
+		Y: float32((float64(y)-float64(top)-float64(oy))/scale) - offset.Y,
+	}, nil
+}
+
+func frameOriginInsets(extents []uint32) (left, top uint32, err error) {
+	if len(extents) != 4 {
+		return 0, 0, common.ErrUnavailable
+	}
+	// Cardinal values are unsigned. Reject invalid/unrepresentable margins
+	// rather than allowing a malicious or broken property to wrap coordinates.
+	for _, extent := range extents {
+		if extent > math.MaxInt32 {
+			return 0, 0, fmt.Errorf("invalid EWMH frame extent: %d", extent)
+		}
+	}
+	return extents[0], extents[2], nil
+}
+
+func (w *Window) SetPosition(relativeTo common.Window, position geometry.Point) error {
+	if err := workarea.ValidatePoint(position); err != nil {
+		return err
+	}
+	if w.wid == 0 || platform == nil || platform.display == 0 {
+		return common.ErrUnavailable
+	}
+	if relativeTo == nil {
+		area, err := w.WorkAreaAt(geometry.Point{})
+		if err != nil {
+			return err
+		}
+		position.X += area.X
+		position.Y += area.Y
+		relativeTo = w
+	}
+	reference, ok := relativeTo.(*Window)
+	if !ok {
+		return common.ErrUnsupported
+	}
+	if reference == nil || reference.wid == 0 {
+		return common.ErrUnavailable
+	}
+	d, root := platform.display, platform.defScreen.Root
+	ox, oy, ok := d.TranslateCoordinatesChecked(reference.wid, root, 0, 0)
+	if !ok {
+		return common.ErrUnavailable
+	}
+	scale := float64(currentScale())
+	x, y, err := workarea.NativePosition(float64(ox)+float64(position.X)*scale,
+		float64(oy)+float64(position.Y)*scale)
+	if err != nil {
+		return err
+	}
+	wm, err := windowProperty32(d, w.wid, platform.atoms.WM_STATE, platform.atoms.WM_STATE, 2)
+	if err != nil {
+		return err
+	}
+	var attrs xlib.WindowAttributes
+	if d.GetWindowAttributes(w.wid, &attrs) == 0 {
+		return common.ErrUnavailable
+	}
+	if w.overrideRedirect || attrs.MapState == xlib.IsUnmapped && (len(wm) == 0 || wm[0] == 0) {
+		// Core ConfigureWindow carries signed 16-bit coordinates, unlike EWMH.
+		if x < math.MinInt16 || x > math.MaxInt16 || y < math.MinInt16 || y > math.MaxInt16 {
+			return fmt.Errorf("initial window position outside X11 coordinate range: (%d, %d)", x, y)
+		}
+		// Withdrawn windows have no WM frame yet. ICCCM position/gravity hints
+		// tell the WM to interpret the requested point as the future frame corner.
+		if !w.overrideRedirect {
+			w.initialPosition = &[2]int32{x, y}
+			w.applyNormalHints()
+		}
+		d.MoveWindow(w.wid, int(x), int(y))
+		d.Flush()
+		return nil
+	}
+	atom := platform.atoms._NET_MOVERESIZE_WINDOW
+	supported, err := windowProperty32(d, root, platform.atoms._NET_SUPPORTED, xlib.AtomAtom, 4096)
+	if err != nil {
+		return err
+	}
+	if atom == 0 || !slices.Contains(supported, uint32(atom)) {
+		return common.ErrUnsupported
+	}
+	message := positionMessage(w.wid, atom, x, y)
+	if d.SendEvent(root, false, xlib.EventMaskSubstructureRedirect|xlib.EventMaskSubstructureNotify, &message) == 0 {
+		return fmt.Errorf("send _NET_MOVERESIZE_WINDOW failed")
+	}
+	d.Flush()
+	return nil
+}
+
+func positionMessage(window xlib.Window, atom xlib.Atom, x, y int32) xlib.Event {
+	var message xlib.Event
+	*message.ClientMessageEvent() = xlib.ClientMessageEvent{
+		Type: xlib.ClientMessage, Window: window, MessageType: atom, Format: 32,
+		// NW gravity: outer frame corner. Only x/y change; source 1 = application.
+		L: [5]int64{xlib.NorthWestGravity | 1<<8 | 1<<9 | 1<<12, int64(x), int64(y)},
+	}
+	return message
 }
 
 func (w *Window) WorkAreaAt(point geometry.Point) (geometry.Rectangle, error) {
