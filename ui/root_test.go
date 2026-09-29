@@ -582,6 +582,18 @@ func (w *testWindow) PlatformWindow() platform.Window {
 	return nil
 }
 
+func (w *testWindow) WorkAreaAt(geometry.Point) (geometry.Rectangle, error) {
+	return geometry.Rectangle{}, platform.ErrUnsupported
+}
+
+func (w *testWindow) SetPosition(gui.Window, geometry.Point) error {
+	return platform.ErrUnsupported
+}
+
+func (w *testWindow) Position(gui.Window) (geometry.Point, error) {
+	return geometry.Point{}, platform.ErrUnsupported
+}
+
 func (w *testWindow) SetModalTarget(gui.ModalTarget) {}
 
 func (w *testWindow) ID() string {

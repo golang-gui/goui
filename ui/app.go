@@ -30,6 +30,14 @@ type App interface {
 	Quit()
 	// RequestUpdate coalesces a declarative rebuild on the UI thread.
 	RequestUpdate()
+	// FindWindow borrows the currently mounted GUI window with id. Empty or
+	// missing IDs, an unmounting window, and a stopped app return nil. Lookup is
+	// synchronized, but the returned object remains GUI-thread-affine: use it
+	// in an event callback or put both lookup and use inside Post/Sync.
+	// It does not create a window or transfer ownership. Do not mutate its ID or
+	// declaratively managed content. A recreated ID denotes a new object; an old
+	// reference is not retargeted. A window being built is not yet discoverable.
+	FindWindow(id string) gui.Window
 	// FindWidget borrows the currently mounted widget with id in a Window's
 	// content tree. Missing IDs return nil
 	FindWidget(windowID, widgetID string) gui.Widget
@@ -158,6 +166,18 @@ func (a *app) OpenURL(rawURL string) (err error) {
 func (a *app) OpenPath(path string) (err error) {
 	err = ErrAppStopped
 	a.Sync(func() { err = a.gui.OpenPath(path) })
+	return
+}
+
+func (a *app) FindWindow(id string) (window gui.Window) {
+	if id == "" {
+		return nil
+	}
+	a.Sync(func() {
+		if mount := a.windows[id]; mount != nil && !mount.destroying {
+			window = mount.window
+		}
+	})
 	return
 }
 
