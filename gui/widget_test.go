@@ -5,7 +5,8 @@ import (
 	"image"
 	"image/color"
 	"math"
-	strings "strings"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -908,5 +909,146 @@ func TestWidgetIDScopedToRoot(t *testing.T) {
 	pop.RequestLayout()
 	if err := pop.RequestPaint(); err != nil {
 		t.Fatalf("popover repaint before Show: %v", err)
+	}
+}
+
+func TestWidgetBaseMoveChildPreservesMountedIdentity(t *testing.T) {
+	win := &window{}
+	parent := newTestWidget()
+	a, b, c := newTestWidget(), newTestWidget(), newTestWidget()
+	parent.AddChild(a)
+	parent.AddChild(b)
+	parent.AddChild(c)
+	mounts, unmounts := 0, 0
+	b.ConnectMount(func() { mounts++ })
+	b.ConnectUnmount(func() { unmounts++ })
+	b.SetFocusable(true)
+	win.SetWidget(parent)
+	if mounts != 1 {
+		t.Fatalf("initial mount count = %d", mounts)
+	}
+	if !win.SetFocusedWidget(b) {
+		t.Fatal("failed to focus mounted child")
+	}
+	win.layoutDirty, win.paintDirty = false, false
+	parent.MoveChildBefore(b, a)
+	children := parent.Children()
+	if len(children) != 3 || children[0] != b || children[1] != a || children[2] != c {
+		t.Fatalf("unexpected child order: %v", children)
+	}
+	if b.Parent() != parent || b.Root() != win || win.FocusedWidget() != b || mounts != 1 || unmounts != 0 {
+		t.Fatalf("move changed ownership or lifecycle: parent=%v mounts=%d unmounts=%d", b.Parent(), mounts, unmounts)
+	}
+	if !win.layoutDirty || !win.paintDirty {
+		t.Fatal("reordering must request layout and paint")
+	}
+	parent.MoveChildAfter(b, c)
+	parent.MoveChildBefore(b, a)
+	if b.Root() != win || win.FocusedWidget() != b || mounts != 1 || unmounts != 0 {
+		t.Fatal("relative moves disturbed mounted identity or focus")
+	}
+	win.layoutDirty, win.paintDirty = false, false
+	parent.MoveChildAfter(b, nil)  // already first
+	parent.MoveChildBefore(c, nil) // already last
+	parent.MoveChildBefore(b, a)   // already adjacent
+	parent.MoveChildAfter(a, b)    // already adjacent
+	parent.MoveChildBefore(b, b)
+	parent.MoveChildAfter(nil, a)
+	parent.MoveChildBefore(b, newTestWidget())
+	parent.MoveChildAfter(newTestWidget(), a)
+	if got := parent.Children(); got[0] != b || got[1] != a || got[2] != c {
+		t.Fatalf("invalid move changed order: %v", got)
+	}
+	if win.layoutDirty || win.paintDirty {
+		t.Fatal("no-op moves requested a frame")
+	}
+	win.SetWidget(nil)
+}
+
+func TestWidgetRelativeMoveOrder(t *testing.T) {
+	for _, tc := range []struct {
+		name, child, sibling, want string
+		after                      bool
+	}{
+		{"before forward", "a", "c", "bac", false},
+		{"before backward", "c", "a", "cab", false},
+		{"before end", "a", "", "bca", false},
+		{"after forward", "a", "c", "bca", true},
+		{"after backward", "c", "a", "acb", true},
+		{"after start", "c", "", "cab", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			parent := newTestWidget()
+			children := map[string]Widget{}
+			for _, id := range []string{"a", "b", "c"} {
+				child := newPainterTestWidget(nil)
+				child.SetID(id)
+				children[id] = child
+				parent.AddChild(child)
+			}
+			if tc.after {
+				parent.MoveChildAfter(children[tc.child], children[tc.sibling])
+			} else {
+				parent.MoveChildBefore(children[tc.child], children[tc.sibling])
+			}
+			bounds := geometry.Rect(0, 0, 100, 100)
+			parent.Arrange(bounds)
+			var painted string
+			for _, child := range children {
+				child.Arrange(bounds) // fully overlapping: order decides picking
+				id := child.ID()
+				child.(*painterTestWidget).paint = func(Painter) { painted += id }
+			}
+			paintWidget(parent, newPainter(new(recordingPainterBackend), bounds, 1))
+			if painted != tc.want {
+				t.Fatalf("paint order=%s want=%s", painted, tc.want)
+			}
+			picked := Pick(parent, geometry.Point{X: 10, Y: 10})
+			if picked != children[tc.want[2:]] {
+				t.Fatalf("picked=%s want=%s", picked.ID(), tc.want[2:])
+			}
+			for i, info := range parent.Snapshot().Children {
+				if info.ID != tc.want[i:i+1] || parent.Children()[i].ID() != info.ID {
+					t.Fatalf("snapshot and Children order disagree with %s", tc.want)
+				}
+			}
+		})
+	}
+}
+
+func TestWidgetRelativeMoveRejectsForeignAndDestroyedNodes(t *testing.T) {
+	parent, other := newTestWidget(), newTestWidget()
+	a, b, foreign := newTestWidget(), newTestWidget(), newTestWidget()
+	parent.AddChild(a)
+	parent.AddChild(b)
+	other.AddChild(foreign)
+	parent.MoveChildBefore(a, foreign)
+	parent.MoveChildAfter(foreign, b)
+	dead := newTestWidget()
+	dead.destroy(dead)
+	parent.MoveChildBefore(dead, b)
+	parent.MoveChildAfter(a, dead)
+	if !slices.Equal(parent.Children(), []Widget{a, b}) || foreign.Parent() != other {
+		t.Fatal("invalid move changed ownership/order")
+	}
+	parent.destroy(parent)
+	parent.MoveChildBefore(a, nil)
+	parent.MoveChildAfter(foreign, nil)
+	if len(parent.Children()) != 0 || foreign.Parent() != other {
+		t.Fatal("destroyed parent accepted children")
+	}
+}
+
+func TestWidgetRelativeMoveAffectsOrderedLayout(t *testing.T) {
+	box := NewLinearBox(layout.DirectionHorizontal)
+	a := newSizedWidget(geometry.Size{Width: 10, Height: 20})
+	b := newSizedWidget(geometry.Size{Width: 30, Height: 20})
+	box.AddChild(a)
+	box.AddChild(b)
+	box.MoveChildBefore(b, a)
+	box.Measure(layout.Loose(geometry.Size{Width: 100, Height: 40}))
+	box.Arrange(geometry.Rect(0, 0, 100, 40))
+	if b.Rect().X != 0 || a.Rect().X != 30 {
+		t.Fatalf("layout ignored sibling order: a=%v b=%v", a.Rect(), b.Rect())
 	}
 }
