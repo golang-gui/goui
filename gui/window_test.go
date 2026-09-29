@@ -376,6 +376,8 @@ type desktopTestWindow struct {
 	moveRequests                                      int
 	resizeRequests                                    []platform.WindowEdge
 	positions                                         []recordedControlsPosition
+	windowReference                                   platform.Window
+	windowPosition                                    geometry.Point
 	onMove                                            func()
 	onState                                           func()
 }
@@ -438,8 +440,124 @@ func (w *desktopTestWindow) BeginResize(edge platform.WindowEdge) error {
 
 var _ platform.DesktopWindow = (*desktopTestWindow)(nil)
 
+func (w *desktopTestWindow) SetPosition(reference platform.Window, position geometry.Point) error {
+	w.windowReference, w.windowPosition = reference, position
+	return w.commandError
+}
+
+func (w *desktopTestWindow) Position(reference platform.Window) (geometry.Point, error) {
+	w.windowReference = reference
+	return w.windowPosition, w.queryError
+}
+
 func (*desktopTestWindow) WorkAreaAt(geometry.Point) (geometry.Rectangle, error) {
 	return geometry.Rectangle{}, platform.ErrUnsupported
+}
+
+func TestWindowPositionDelegation(t *testing.T) {
+	native, reference := &desktopTestWindow{}, &desktopTestWindow{}
+	w, ref := &window{platformWindow: native}, &window{platformWindow: reference}
+	p := geometry.Point{X: -20, Y: 40}
+	for _, relativeTo := range []Window{nil, ref, w} {
+		if err := w.SetPosition(relativeTo, p); err != nil {
+			t.Fatal(err)
+		}
+		var want platform.Window
+		if relativeTo != nil {
+			want = relativeTo.PlatformWindow()
+		}
+		if native.windowReference != want || native.windowPosition != p {
+			t.Fatal("GUI changed reference or coordinates")
+		}
+	}
+	failure := errors.New("native positioning failed")
+	native.commandError = failure
+	if err := w.SetPosition(nil, p); err != failure {
+		t.Fatalf("lost native error: %v", err)
+	}
+	// Destroy callbacks run before releasing the native window; no use is valid
+	// once destruction starts, even while the native handle is still present.
+	ref.destroyed = true
+	if err := w.SetPosition(ref, p); !errors.Is(err, platform.ErrUnavailable) {
+		t.Fatalf("accepted destroyed reference: %v", err)
+	}
+	if err := w.SetPosition(&window{}, p); !errors.Is(err, platform.ErrUnavailable) {
+		t.Fatalf("nil reference handle became work-area positioning: %v", err)
+	}
+	w.destroyed = true
+	if err := w.SetPosition(nil, p); !errors.Is(err, platform.ErrUnavailable) {
+		t.Fatal(err)
+	}
+	if _, err := w.WorkAreaAt(p); !errors.Is(err, platform.ErrUnavailable) {
+		t.Fatal(err)
+	}
+	w = &window{platformWindow: &chromeTestWindow{}}
+	if err := w.SetPosition(nil, p); !errors.Is(err, platform.ErrUnsupported) {
+		t.Fatal(err)
+	}
+	if _, err := w.WorkAreaAt(p); !errors.Is(err, platform.ErrUnsupported) {
+		t.Fatal(err)
+	}
+}
+
+func TestWindowObservedPosition(t *testing.T) {
+	native := &desktopTestWindow{windowPosition: geometry.Point{X: -6, Y: -28}}
+	w := &window{platformWindow: native}
+	ref := &window{platformWindow: &desktopTestWindow{}}
+	for _, relativeTo := range []Window{nil, ref, w} {
+		got, err := w.Position(relativeTo)
+		if err != nil || got != native.windowPosition {
+			t.Fatalf("observation changed: %v, %v", got, err)
+		}
+		var want platform.Window
+		if relativeTo != nil {
+			want = relativeTo.PlatformWindow()
+		}
+		if native.windowReference != want {
+			t.Fatal("reference changed")
+		}
+	}
+	// Observations change without a GUI SetPosition call.
+	native.windowPosition = geometry.Point{X: 500, Y: 200}
+	if got, err := w.Position(nil); err != nil || got != native.windowPosition {
+		t.Fatal("returned a cached request", got, err)
+	}
+	for _, err := range []error{platform.ErrUnavailable, platform.ErrUnsupported, errors.New("native query failed")} {
+		native.queryError = err
+		if _, got := w.Position(nil); got != err {
+			t.Fatal("native error changed", got)
+		}
+	}
+	native.queryError = nil
+	ref.destroyed = true // native object still present during destroy callbacks
+	var nilRef *window
+	for _, reference := range []Window{ref, &window{}, nilRef} {
+		if _, err := w.Position(reference); !errors.Is(err, platform.ErrUnavailable) {
+			t.Fatal("accepted unavailable reference", err)
+		}
+	}
+	w.destroyed = true
+	if _, err := w.Position(nil); !errors.Is(err, platform.ErrUnavailable) {
+		t.Fatal("accepted destroyed target", err)
+	}
+	w = &window{platformWindow: &chromeTestWindow{}}
+	if _, err := w.Position(nil); !errors.Is(err, platform.ErrUnsupported) {
+		t.Fatal("accepted non-desktop host", err)
+	}
+}
+
+func TestWindowWorkAreaDelegation(t *testing.T) {
+	native := &placementWindow{area: geometry.Rect(-80, -40, 1000, 700)}
+	w := &window{platformWindow: native}
+	p := geometry.Point{X: 200, Y: -10}
+	area, err := w.WorkAreaAt(p)
+	if err != nil || area != native.area || len(native.points) != 1 || native.points[0] != p {
+		t.Fatalf("query changed: %v %v %v", area, err, native.points)
+	}
+	native.err = errors.New("observation failed")
+	if _, err := w.WorkAreaAt(p); err != native.err {
+		t.Fatalf("lost native error: %v", err)
+	}
 }
 
 func TestDesktopRequestsDoNotPredictState(t *testing.T) {
