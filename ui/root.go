@@ -16,6 +16,13 @@ type root struct {
 	build         func() View
 	updatePending bool
 	destroyHandle signal.Handle
+	afterUpdate   []afterUpdateCall
+}
+
+type afterUpdateCall struct {
+	owner   *node
+	version uint64
+	fn      func()
 }
 
 type node struct {
@@ -25,6 +32,7 @@ type node struct {
 	state    any
 	children []*childTarget
 	released bool
+	version  uint64
 	baseCtx  *viewBaseContext // persistent cross-cutting signal context, reused across rebuilds
 }
 
@@ -46,15 +54,28 @@ func (r *root) widget() gui.Widget {
 
 func (r *root) update(view View) gui.Widget {
 	r.root = r.updateNode(r.root, view)
+	r.flushAfterUpdate()
 	return r.widget()
 }
 
 func (r *root) updateWindow(window gui.Window, view View) gui.Widget {
-	widget := r.update(view)
+	r.root = r.updateNode(r.root, view)
+	widget := r.widget()
 	if window != nil {
 		window.SetWidget(widget)
 	}
+	r.flushAfterUpdate()
 	return widget
+}
+
+func (r *root) flushAfterUpdate() {
+	calls := r.afterUpdate
+	r.afterUpdate = nil
+	for _, call := range calls {
+		if call.owner != nil && !call.owner.released && call.owner.version == call.version && call.fn != nil {
+			call.fn()
+		}
+	}
 }
 
 func (r *root) mountWindow(window gui.Window, build func() View) {
@@ -150,6 +171,7 @@ func (r *root) unmount(detachWindow bool) {
 	r.updatePending = false
 	r.destroyHandle = nil
 	r.root = nil
+	r.afterUpdate = nil
 	r.mu.Unlock()
 
 	if destroyHandle != nil {
@@ -171,6 +193,7 @@ func (r *root) unmountForWindowDestroy() {
 	r.updatePending = false
 	r.destroyHandle = nil
 	r.root = nil
+	r.afterUpdate = nil
 	r.mu.Unlock()
 
 	if destroyHandle != nil {
@@ -202,6 +225,7 @@ func (r *root) updateWidgetNode(old *node, view WidgetView) *node {
 			viewType: viewType,
 			view:     view,
 			baseCtx:  &viewBaseContext{},
+			version:  1,
 		}
 		ctx := &buildContext{root: r, node: current}
 		current.widget = view.Mount(ctx)
@@ -210,6 +234,9 @@ func (r *root) updateWidgetNode(old *node, view WidgetView) *node {
 			return nil
 		}
 		view.base().mount(current.baseCtx, current.widget)
+	}
+	if old != nil {
+		current.version++
 	}
 
 	ctx := &buildContext{root: r, node: current}
@@ -250,6 +277,14 @@ func (ctx *buildContext) State() any {
 
 func (ctx *buildContext) SetState(state any) {
 	ctx.node.state = state
+}
+
+func (ctx *buildContext) AfterUpdate(fn func()) {
+	if fn != nil && !ctx.node.released {
+		ctx.root.afterUpdate = append(ctx.root.afterUpdate, afterUpdateCall{
+			owner: ctx.node, version: ctx.node.version, fn: fn,
+		})
+	}
 }
 
 // childTarget records only UI-owned nodes for one mounting target. Keeping

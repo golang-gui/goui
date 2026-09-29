@@ -23,6 +23,11 @@ type WidgetView interface {
 type BuildContext interface {
 	State() any
 	SetState(any)
+	// AfterUpdate runs after the entire View tree has been reconciled and
+	// attached to its Window, before the next layout. It is a one-shot hook.
+	// A released or superseded owner is skipped. Do not retain BuildContext or
+	// start a nested reconciliation from this callback.
+	AfterUpdate(func())
 	// UpdateChild reconciles one target's content. nil clears the managed child.
 	UpdateChild(target Bin, child View) gui.Widget
 	// UpdateChildren reconciles one target's list in declaration order. Results
