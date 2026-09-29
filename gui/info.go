@@ -34,6 +34,7 @@ type WidgetInfo struct {
 	Enabled       bool `json:"enabled"`
 	Focusable     bool `json:"focusable"`
 	Focused       bool `json:"focused"`
+	Selected      bool `json:"selected,omitempty"`
 	ContainsFocus bool `json:"containsFocus"`
 	// Actions describes supported actions, not guaranteed input reachability.
 	Actions []Action `json:"actions"`
@@ -84,6 +85,8 @@ type TextPreeditInfo struct {
 	Length      int       `json:"length"` // Text may be a bounded prefix
 }
 
+// Role is an open semantic identifier. Widget packages may define their own
+// typed constants; GUI consumers must not assume this list is exhaustive.
 type Role string
 
 const (

@@ -87,8 +87,10 @@ type Widget interface {
 	RequestLayout()
 	RequestPaint()
 
-	// Children returns this widget's child widgets in back-to-front paint
-	// order; an empty slice means a leaf node.
+	// Children returns the direct children in sibling order: painting visits
+	// them forwards and picking visits them backwards (frontmost first).
+	// Layout managers may interpret this order for placement; it is not a
+	// universal content index or keyboard focus order. An empty slice is a leaf.
 	Children() []Widget
 
 	ConnectMount(func()) signal.Handle
@@ -258,6 +260,9 @@ func (w *WidgetBase) Parent() Widget {
 	return w.parentWidget
 }
 
+// Children returns a copy of the canonical sibling sequence shared by layout,
+// painting, picking and the default Snapshot. Container implementations should
+// use the child helpers to maintain it, not override only the returned order.
 func (w *WidgetBase) Children() []Widget {
 	return slices.Clone(w.children)
 }
@@ -619,6 +624,60 @@ func (w *WidgetBase) RemoveChild(child Widget) {
 		return
 	}
 	child.base().setParent(child, nil)
+}
+
+// MoveChildBefore moves an existing direct child immediately before sibling.
+// A nil sibling moves child to the end (frontmost in default painting).
+// This is a widget-implementation helper, not a container's content API.
+// It changes Children and default Snapshot order and may affect layout; it is
+// not a paint-only stacking operation. Ownership, focus and mount state stay
+// unchanged. A change requests layout/paint and a semantic update.
+// Invalid, destroyed, identical or already-positioned children are a no-op.
+func (w *WidgetBase) MoveChildBefore(child, sibling Widget) {
+	w.moveChild(child, sibling, false)
+}
+
+// MoveChildAfter moves an existing direct child immediately after sibling.
+// A nil sibling moves child to the beginning (backmost in default painting).
+// The same ownership, invalid-input and invalidation rules as MoveChildBefore
+// apply. Neither method attaches children or moves them between parents.
+func (w *WidgetBase) MoveChildAfter(child, sibling Widget) {
+	w.moveChild(child, sibling, true)
+}
+
+func (w *WidgetBase) moveChild(child, sibling Widget, after bool) {
+	if w.destroyed || child == nil || child == sibling || child.base().destroyed {
+		return
+	}
+	from := slices.Index(w.children, child)
+	if from < 0 || child.Parent() == nil || child.Parent().base() != w {
+		return
+	}
+	index := len(w.children)
+	if sibling != nil {
+		if sibling.base().destroyed || sibling.Parent() != child.Parent() {
+			return
+		}
+		index = slices.Index(w.children, sibling)
+		if index < 0 {
+			return
+		}
+		if after {
+			index++
+		}
+	} else if after {
+		index = 0
+	}
+	if from < index {
+		index--
+	}
+	if from == index {
+		return
+	}
+	w.children = slices.Delete(w.children, from, from+1)
+	w.children = slices.Insert(w.children, index, child)
+	w.RequestLayout()
+	w.requestSemanticUpdate()
 }
 
 func (w *WidgetBase) setParent(child, parent Widget) {
