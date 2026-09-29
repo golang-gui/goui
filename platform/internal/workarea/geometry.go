@@ -12,9 +12,19 @@ func Finite(v float32) bool { return !math.IsNaN(float64(v)) && !math.IsInf(floa
 
 func ValidatePoint(p geometry.Point) error {
 	if !Finite(p.X) || !Finite(p.Y) {
-		return fmt.Errorf("invalid work area point: %v", p)
+		return fmt.Errorf("invalid window geometry point: %v", p)
 	}
 	return nil
+}
+
+// NativePosition rounds once at the native pixel boundary, rejecting overflow
+// before converting to the signed 32-bit coordinates used by Win32 and EWMH.
+func NativePosition(x, y float64) (int32, int32, error) {
+	x, y = math.Round(x), math.Round(y)
+	if math.IsNaN(x) || math.IsNaN(y) || x < math.MinInt32 || x > math.MaxInt32 || y < math.MinInt32 || y > math.MaxInt32 {
+		return 0, 0, fmt.Errorf("window position outside native coordinate range: (%v, %v)", x, y)
+	}
+	return int32(x), int32(y), nil
 }
 
 func Valid(r geometry.Rectangle) bool {

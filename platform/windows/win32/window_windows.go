@@ -1177,6 +1177,77 @@ func (w *Window) releaseUpload() {
 	}
 }
 
+func (w *Window) Position(relativeTo common.Window) (geometry.Point, error) {
+	if w.hwnd == 0 {
+		return geometry.Point{}, common.ErrUnavailable
+	}
+	var offset geometry.Point
+	if relativeTo == nil {
+		area, err := w.WorkAreaAt(geometry.Point{})
+		if err != nil {
+			return geometry.Point{}, err
+		}
+		offset, relativeTo = area.Pos, w
+	}
+	reference, ok := relativeTo.(*Window)
+	if !ok {
+		return geometry.Point{}, common.ErrUnsupported
+	}
+	if reference == nil || reference.hwnd == 0 {
+		return geometry.Point{}, common.ErrUnavailable
+	}
+	var origin winapi.POINT
+	if winapi.ClientToScreen(reference.hwnd, &origin) == 0 {
+		return geometry.Point{}, common.ErrUnavailable
+	}
+	var frame winapi.RECT
+	if err := winapi.GetWindowRect(w.hwnd, &frame); err != nil {
+		return geometry.Point{}, err
+	}
+	scale := float64(reference.scaleFactor())
+	return geometry.Point{
+		X: float32((float64(frame.Left)-float64(origin.X))/scale) - offset.X,
+		Y: float32((float64(frame.Top)-float64(origin.Y))/scale) - offset.Y,
+	}, nil
+}
+
+func (w *Window) SetPosition(relativeTo common.Window, position geometry.Point) error {
+	if err := workarea.ValidatePoint(position); err != nil {
+		return err
+	}
+	if w.hwnd == 0 {
+		return common.ErrUnavailable
+	}
+	if relativeTo == nil {
+		area, err := w.WorkAreaAt(geometry.Point{})
+		if err != nil {
+			return err
+		}
+		position.X += area.X
+		position.Y += area.Y
+		relativeTo = w
+	}
+	reference, ok := relativeTo.(*Window)
+	if !ok {
+		return common.ErrUnsupported
+	}
+	if reference == nil || reference.hwnd == 0 {
+		return common.ErrUnavailable
+	}
+	var origin winapi.POINT
+	if winapi.ClientToScreen(reference.hwnd, &origin) == 0 {
+		return common.ErrUnavailable
+	}
+	scale := float64(reference.scaleFactor())
+	x, y, err := workarea.NativePosition(float64(origin.X)+float64(position.X)*scale,
+		float64(origin.Y)+float64(position.Y)*scale)
+	if err != nil {
+		return err
+	}
+	return winapi.SetWindowPos(w.hwnd, 0, int(x), int(y), 0, 0,
+		winapi.SWP_NOSIZE|winapi.SWP_NOZORDER|winapi.SWP_NOACTIVATE)
+}
+
 func (w *Window) WorkAreaAt(point geometry.Point) (geometry.Rectangle, error) {
 	if err := workarea.ValidatePoint(point); err != nil {
 		return geometry.Rectangle{}, err
