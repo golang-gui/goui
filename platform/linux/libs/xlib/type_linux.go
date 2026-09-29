@@ -773,8 +773,10 @@ const (
 
 // XSizeHints flag bits (Xutil.h).
 const (
-	PMinSize = 1 << 4
-	PMaxSize = 1 << 5
+	PPosition   = 1 << 2
+	PMinSize    = 1 << 4
+	PMaxSize    = 1 << 5
+	PWinGravity = 1 << 9
 )
 
 // SizeHints mirrors the C XSizeHints layout on LP64: one long followed by
