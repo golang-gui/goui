@@ -49,6 +49,22 @@ type Window interface {
 
 	Show() error
 
+	// WorkAreaAt returns the work area containing point (or the nearest one),
+	// in this window's client-local DIP. Unsupported hosts return ErrUnsupported.
+	WorkAreaAt(point geometry.Point) (geometry.Rectangle, error)
+	// SetPosition requests the outer-frame top-left in relativeTo's client DIP.
+	// nil uses this window's current WorkAreaAt(Point{}) top-left and DIP instead.
+	// This is a one-shot request, not ownership or following. Negative positions
+	// are allowed; the window manager may adjust or ignore the request. It does
+	// not resize or activate the window. Errors are returned to the caller.
+	SetPosition(relativeTo Window, position geometry.Point) error
+	// Position observes the actual outer-frame top-left in the same reference
+	// coordinates as SetPosition. nil uses this window's current work area;
+	// self-reference returns the frame-to-client offset. It does not wait for
+	// pending moves or return the last requested/restored position. Unavailable
+	// native geometry and unsupported hosts return errors.
+	Position(relativeTo Window) (geometry.Point, error)
+
 	// PlatformWindow returns the underlying platform window.
 	PlatformWindow() platform.Window
 
@@ -515,6 +531,52 @@ func (w *window) ConnectFocus(fn func(bool)) signal.Handle {
 			fn(focused)
 		}
 	})
+}
+
+func (w *window) WorkAreaAt(point geometry.Point) (geometry.Rectangle, error) {
+	native, err := w.desktopWindow()
+	if err != nil {
+		return geometry.Rectangle{}, err
+	}
+	return native.WorkAreaAt(point)
+}
+
+func (w *window) SetPosition(relativeTo Window, position geometry.Point) error {
+	native, err := w.desktopWindow()
+	if err != nil {
+		return err
+	}
+	reference, err := positionReference(relativeTo)
+	if err != nil {
+		return err
+	}
+	return native.SetPosition(reference, position)
+}
+
+func (w *window) Position(relativeTo Window) (geometry.Point, error) {
+	native, err := w.desktopWindow()
+	if err != nil {
+		return geometry.Point{}, err
+	}
+	reference, err := positionReference(relativeTo)
+	if err != nil {
+		return geometry.Point{}, err
+	}
+	return native.Position(reference)
+}
+
+func positionReference(relativeTo Window) (platform.Window, error) {
+	var reference platform.Window
+	if relativeTo != nil {
+		if ref, ok := relativeTo.(*window); ok && (ref == nil || ref.destroyed) {
+			return nil, platform.ErrUnavailable
+		}
+		reference = relativeTo.PlatformWindow()
+		if reference == nil {
+			return nil, platform.ErrUnavailable
+		}
+	}
+	return reference, nil
 }
 
 func (w *window) SetMinSize(size geometry.Size) {
