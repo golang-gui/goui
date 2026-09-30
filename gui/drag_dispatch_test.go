@@ -2,6 +2,7 @@ package gui
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 
@@ -13,18 +14,81 @@ import (
 
 type testDragOffer struct {
 	id       uint64
+	sourceID uint64
+	onFinish func()
 	formats  []dragdrop.Format
 	read     dragdrop.Format
 	finished []dragdrop.Action
 }
 
 func (o *testDragOffer) ID() uint64                   { return o.id }
-func (o *testDragOffer) SourceID() uint64             { return 0 }
+func (o *testDragOffer) SourceID() uint64             { return o.sourceID }
 func (o *testDragOffer) Formats() []dragdrop.Format   { return slices.Clone(o.formats) }
 func (o *testDragOffer) Read(f dragdrop.Format) error { o.read = f; return nil }
 func (o *testDragOffer) Finish(a dragdrop.Action) error {
 	o.finished = append(o.finished, a)
+	if o.onFinish != nil {
+		o.onFinish()
+	}
 	return nil
+}
+
+func TestLocalDropCommitSurvivesReentrantEnd(t *testing.T) {
+	for _, stage := range []string{"drop", "leave", "finish"} {
+		for _, accepted := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/accepted=%t", stage, accepted), func(t *testing.T) {
+				app := &application{}
+				win := &window{rootBase: rootBase{app: app}}
+				root := newTestWidget()
+				root.Arrange(geometry.Rect(0, 0, 100, 100))
+				win.SetWidget(root)
+				source := NewDragSource()
+				run := &guiDragSession{app: app, id: 42, source: source, data: new(DragData)}
+				app.dragSession = run
+				var results []DragResult
+				source.ConnectEnd(func(result DragResult) { results = append(results, result) })
+				end := func() {
+					app.dispatchDragSourceEvent(events.DragSourceEvent{EventType: events.DragSourceEnd, ID: run.id, Result: DragResult{Canceled: true}})
+					if len(results) != 0 {
+						t.Fatal("End was emitted before synchronous Drop/Finish returned")
+					}
+				}
+				target := NewDropTarget(DragFormatText)
+				root.AddEventController(target)
+				target.ConnectDrop(func(e *DropRequest) {
+					if stage == "drop" {
+						end()
+					}
+					e.Accepted = accepted
+				})
+				if stage == "leave" {
+					target.ConnectLeave(end)
+				}
+				offer := &testDragOffer{id: 7, sourceID: run.id, formats: []dragdrop.Format{dragdrop.FormatText}}
+				if stage == "finish" {
+					offer.onFinish = end
+				}
+				for _, kind := range []events.EventType{events.DragEnter, events.DragDrop} {
+					if err := win.DispatchEvent(events.DragOfferEvent{EventType: kind, Offer: offer, Position: geometry.Point{X: 10, Y: 10}, Actions: dragdrop.Copy}); err != nil {
+						t.Fatal(err)
+					}
+				}
+				data := new(dragdrop.Data)
+				data.SetText("committed payload")
+				if err := win.DispatchEvent(events.DragDataEvent{OfferID: offer.id, Format: dragdrop.FormatText, Data: data}); err != nil {
+					t.Fatal(err)
+				}
+				want := DragAction(0)
+				if accepted {
+					want = DragCopy
+				}
+				run.end(DragResult{Canceled: true}) // duplicate terminal callbacks are ignored
+				if len(results) != 1 || results[0].Action != want || results[0].Canceled == accepted || results[0].Validate() != nil || app.dragSession != nil || run.data != nil || !slices.Equal(offer.finished, []dragdrop.Action{want}) {
+					t.Fatalf("results=%+v finish=%v session=%p data=%p", results, offer.finished, app.dragSession, run.data)
+				}
+			})
+		}
+	}
 }
 
 func TestDropTargetDispatchThroughWindowAndSemanticState(t *testing.T) {
