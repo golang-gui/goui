@@ -41,6 +41,7 @@ var (
 	procCloseWindow              = user32Dll.NewProc("CloseWindow")
 	procTrackMouseEvent          = user32Dll.NewProc("TrackMouseEvent")
 	procScreenToClient           = user32Dll.NewProc("ScreenToClient")
+	procGetMessagePos            = user32Dll.NewProc("GetMessagePos")
 	procClientToScreen           = user32Dll.NewProc("ClientToScreen")
 	procSetCapture               = user32Dll.NewProc("SetCapture")
 	procReleaseCapture           = user32Dll.NewProc("ReleaseCapture")
@@ -413,6 +414,11 @@ func FlashWindowEx(pfwi PFLASHWINFO) BOOL {
 func TrackMouseEvent(event *TRACKMOUSEEVENT) BOOL {
 	ret, _, _ := syscall.SyscallN(procTrackMouseEvent.Addr(), uintptr(unsafe.Pointer(event)))
 	return BOOL(ret)
+}
+
+func GetMessagePos() DWORD {
+	ret, _, _ := syscall.SyscallN(procGetMessagePos.Addr())
+	return DWORD(ret)
 }
 
 func ScreenToClient(wnd HWND, point *POINT) BOOL {
