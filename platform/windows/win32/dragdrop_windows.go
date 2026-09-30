@@ -636,6 +636,8 @@ type oleSourceSession struct {
 	data            *oleDataObject
 	source          *oleSourceObject
 	cancelRequested bool
+	position        geometry.Point
+	positionValid   bool
 }
 
 type oleDataObjectVTable struct {
@@ -752,6 +754,9 @@ func (d *oleDragService) Begin(id uint64, data *dragdrop.Data, actions dragdrop.
 		}
 	} else {
 		result.Canceled = true
+	}
+	if !result.Canceled && result.Err == nil && session.window.hwnd != 0 {
+		result.Position, result.PositionValid = session.position, session.positionValid
 	}
 	if d.source == session {
 		d.source = nil
@@ -1076,6 +1081,15 @@ func oleSourceQueryContinue(this, escape, keyState uintptr) uintptr {
 		return oleResult(com.DRAGDROP_S_CANCEL)
 	}
 	if keyState&winapi.MK_LBUTTON == 0 {
+		// OLE is still processing the terminating input here. Do not query the
+		// cursor after DoDragDrop returns (the user may already have moved it).
+		msg := winapi.GetMessagePos()
+		point := winapi.POINT{X: int32(int16(msg)), Y: int32(int16(msg >> 16))}
+		if session.window.hwnd != 0 && winapi.ScreenToClient(session.window.hwnd, &point) != 0 {
+			scale := hwndScale(session.window.hwnd)
+			session.position = geometry.Point{X: float32(point.X) / scale, Y: float32(point.Y) / scale}
+			session.positionValid = true
+		}
 		return oleResult(com.DRAGDROP_S_DROP)
 	}
 	return 0

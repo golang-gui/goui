@@ -45,6 +45,7 @@ type macSource struct {
 	canceled bool
 	ended    bool
 	session  DraggingSession
+	started  NSTimeInterval // timestamp of the native press, not wall-clock time
 }
 
 type macOffer struct {
@@ -243,7 +244,8 @@ func (d *dragService) beginNative(id uint64, data *dragdrop.Data, actions dragdr
 	for i, item := range items {
 		ids[i] = item.ID
 	}
-	s := &macSource{service: d, view: w.view, onEvent: w.onEvent, id: id, actions: actions}
+	s := &macSource{service: d, view: w.view, onEvent: w.onEvent, id: id, actions: actions,
+		started: w.dragDown.Timestamp()}
 	activeMacSource = s
 	d.source = s
 	s.session = w.view.BeginDraggingSession(Cast[NSArray](NSArray_arrayWithObjects(ids)), w.dragDown)
@@ -444,17 +446,53 @@ func dragSourceMask(view NSView, session DraggingSession, _ uint) uint {
 	}
 	return 0
 }
-func dragSourceEnded(view NSView, _ DraggingSession, _ NSPoint, operation uint) {
+func dragSourceEnded(view NSView, session DraggingSession, point NSPoint, operation uint) {
 	if s := activeMacSource; s != nil && s.view.ID == view.ID {
-		result := dragdrop.Result{Action: macActions(operation)}
-		if result.Action != dragdrop.Copy && result.Action != dragdrop.Move && result.Action != dragdrop.Link {
-			result.Action = 0
+		// BeginDraggingSession may synchronously finish before assigning the
+		// session. Otherwise, ignore callbacks for a different native session.
+		if s.session.Valid() && s.session.ID != session.ID {
+			return
 		}
-		if s.canceled {
-			result = dragdrop.Result{Canceled: true}
+		event := NSApp.CurrentEvent()
+		var eventType NSEventType
+		var key uint16
+		var stamp NSTimeInterval
+		if event.Valid() {
+			eventType, stamp = event.Type(), event.Timestamp()
+			if eventType == NSEventTypeKeyDown {
+				key = event.KeyCode()
+			}
+		}
+		result := macDragResult(operation, s.actions, s.canceled, s.started, eventType, key, stamp)
+		if w := s.service.window; !result.Canceled && w != nil && w.window.Valid() {
+			content := w.window.ContentRectForFrameRect(w.window.Frame())
+			ppu := pointsPerLogicalUnit(w.window)
+			result.Position = geometry.Point{
+				X: float32((point.X - content.Origin.X) / ppu),
+				Y: float32((content.Origin.Y + content.Size.Height - point.Y) / ppu),
+			}
+			result.PositionValid = true
 		}
 		s.end(result)
 	}
+}
+
+func macDragResult(operation uint, allowed dragdrop.Action, cancelRequested bool, started NSTimeInterval, eventType NSEventType, key uint16, stamp NSTimeInterval) dragdrop.Result {
+	action := macActions(operation)
+	if !action.ValidResult() || action&allowed == 0 {
+		action = 0
+	}
+	// An AppKit Copy/Move/Link is a performed operation, even when cancellation
+	// was requested while the native drag loop was running. Never undo it by
+	// substituting a local cancellation flag (also matches the XDND backend).
+	if action != 0 {
+		return dragdrop.Result{Action: action}
+	}
+	// AppKit has no cancellation-reason parameter. Use the same current-event
+	// Escape observation as Firefox's Cocoa drag source, constrained to this
+	// session's time span. This is a compatibility rule, not an SDK guarantee.
+	escaped := eventType == NSEventTypeKeyDown && key == 53 && stamp >= started && started > 0
+	return dragdrop.Result{Canceled: cancelRequested || escaped}
 }
 
 func (o *macOffer) ID() uint64       { return o.id }
