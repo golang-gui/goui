@@ -168,6 +168,8 @@ type guiDragSession struct {
 	ending        bool
 	delivering    bool
 	pendingCancel bool
+	committed     DragAction // synchronous local Drop accepted by the application
+	pendingEnd    *DragResult
 }
 
 func (a *application) startDrag(host Root, widget Widget, source *DragSource, data *DragData, preview DragPreview, actions DragAction) error {
@@ -201,7 +203,7 @@ func (a *application) startDrag(host Root, widget Widget, source *DragSource, da
 }
 
 func (s *guiDragSession) cancel() {
-	if s == nil || s.app.dragSession != s || s.ending {
+	if s == nil || s.app.dragSession != s || s.ending || s.committed != 0 {
 		return
 	}
 	if s.delivering {
@@ -214,6 +216,17 @@ func (s *guiDragSession) cancel() {
 func (s *guiDragSession) end(result DragResult) {
 	if s == nil || s.app.dragSession != s || s.ending {
 		return
+	}
+	if s.delivering {
+		// Native callbacks can reenter while a Drop handler unmounts its source.
+		// Wait for that synchronous handler to decide whether it committed.
+		if s.pendingEnd == nil {
+			s.pendingEnd = &result
+		}
+		return
+	}
+	if s.committed != 0 {
+		result.Action, result.Canceled, result.Err = s.committed, false, nil
 	}
 	s.ending = true
 	s.app.dragSession = nil
@@ -414,17 +427,25 @@ func (b *rootBase) dispatchDragData(host EventTarget, e events.DragDataEvent) {
 		local.delivering = true
 	}
 	target.drop.Emit(request)
-	if local != nil {
-		local.delivering = false
-	}
 	action := DragAction(0)
 	if request.Accepted {
 		action = state.action
 	}
+	if local != nil {
+		local.committed = action
+		// Keep delivering set during Leave and Finish: both can call back
+		// synchronously, and End must see the already committed action.
+	}
 	b.leaveDragTarget()
 	_ = state.offer.Finish(action)
-	if local != nil && local.pendingCancel && action == 0 {
-		local.native.Cancel()
+	if local != nil {
+		local.delivering = false
+		if result := local.pendingEnd; result != nil {
+			local.pendingEnd = nil
+			local.end(*result)
+		} else if local.pendingCancel && action == 0 {
+			local.cancel()
+		}
 	}
 }
 
