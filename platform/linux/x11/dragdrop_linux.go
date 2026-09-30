@@ -605,6 +605,8 @@ type xdndSource struct {
 	released        bool
 	dropped         bool
 	cancelRequested bool
+	position        geometry.Point
+	positionValid   bool
 	x, y            int
 	stamp           xlib.Time
 	state           uint32
@@ -820,6 +822,9 @@ func (s *xdndSource) handleNative(event *xlib.Event) bool {
 		if ev.Button != xlib.Button1 {
 			return true
 		}
+		// Refresh both the target and its final position. Motion can be
+		// coalesced; the release is authoritative, not the last MotionNotify.
+		s.motion(int(ev.XRoot), int(ev.YRoot), ev.Time, ev.State)
 		s.release(ev.Time)
 		return true
 	case xlib.KeyPress:
@@ -929,10 +934,12 @@ func (s *xdndSource) status(m *xlib.ClientMessageEvent) {
 	}
 	s.progress = time.Now()
 	s.scheduleTimeout()
-	if s.released {
-		s.dropOrEnd()
-	} else if s.pending {
+	if s.pending {
+		// The reply acknowledged an older position. Negotiate the final point
+		// before deciding to drop, including when the button is already up.
 		s.sendPosition()
+	} else if s.released {
+		s.dropOrEnd()
 	}
 }
 
@@ -941,6 +948,12 @@ func (s *xdndSource) release(stamp xlib.Time) {
 		return
 	}
 	s.released, s.stamp = true, stamp
+	p := s.service.platform
+	x, y, ok := p.display.TranslateCoordinatesChecked(p.defScreen.Root, s.window.wid, s.x, s.y)
+	if ok {
+		s.position = geometry.Point{X: float32(x) / currentScale(), Y: float32(y) / currentScale()}
+		s.positionValid = true
+	}
 	s.window.dragPress = false
 	s.window.buttons &^= events.PointerButtonLeftDown
 	s.service.platform.display.UngrabPointer(stamp)
@@ -1006,6 +1019,9 @@ func (s *xdndSource) end(result dragdrop.Result) {
 	p := s.service.platform
 	if p.dragSource != s {
 		return
+	}
+	if !result.Canceled && result.Err == nil && s.window.wid != 0 {
+		result.Position, result.PositionValid = s.position, s.positionValid
 	}
 	p.dragSource = nil
 	if s.timer != nil {

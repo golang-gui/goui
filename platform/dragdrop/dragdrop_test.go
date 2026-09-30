@@ -2,6 +2,7 @@ package dragdrop
 
 import (
 	"bytes"
+	"errors"
 	"image"
 	"math"
 	"path/filepath"
@@ -9,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/golang-gui/goui/core/geometry"
 )
 
 func TestDataCopyAndFormats(t *testing.T) {
@@ -131,6 +134,29 @@ func TestActions(t *testing.T) {
 	}
 	if err := (Result{Action: Copy, Canceled: true}).Validate(); err == nil {
 		t.Fatal("accepted completed and canceled result")
+	}
+}
+
+func TestResultPosition(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		result Result
+		valid  bool
+	}{
+		{"origin", Result{PositionValid: true}, true},
+		{"outside source", Result{Position: geometry.Point{X: -40, Y: 600}, PositionValid: true}, true},
+		{"completed", Result{Action: Move, PositionValid: true}, true},
+		{"unavailable", Result{}, true},
+		{"cancel has no position", Result{Canceled: true, PositionValid: true}, false},
+		{"error has no position", Result{Err: errors.New("native failure"), PositionValid: true}, false},
+		{"NaN", Result{Position: geometry.Point{X: float32(math.NaN())}, PositionValid: true}, false},
+		{"infinity", Result{Position: geometry.Point{Y: float32(math.Inf(1))}, PositionValid: true}, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.result.Validate(); (err == nil) != tt.valid {
+				t.Fatalf("Validate(%+v) = %v; valid=%t", tt.result, err, tt.valid)
+			}
+		})
 	}
 }
 

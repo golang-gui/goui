@@ -263,11 +263,19 @@ func (p Preview) Validate() error {
 }
 
 // Result records the observable terminal state of a native drag session.
-// A zero Action without Canceled or Err means no target accepted the drop.
+// A zero Action without Canceled or Err means no action was performed. It does
+// not distinguish an absent target from a target that refused the data.
+// A completed native action takes precedence over a late cancellation request.
 type Result struct {
 	Action   Action
 	Canceled bool
 	Err      error
+	// Position is the native end point in source-client DIP, possibly outside
+	// the source. It is not a later cursor query or the preview's origin.
+	// PositionValid is false for cancellation, errors, an unavailable source,
+	// or when the backend could not obtain an end point. (0,0) is a valid point.
+	Position      geometry.Point
+	PositionValid bool
 }
 
 // Offer is a native incoming transfer. Read starts exactly one format read;
@@ -289,6 +297,11 @@ func (r Result) Validate() error {
 	}
 	if r.Action != 0 && (r.Canceled || r.Err != nil) {
 		return fmt.Errorf("dragdrop: completed action conflicts with cancel or error")
+	}
+	if r.PositionValid && (r.Canceled || r.Err != nil ||
+		math.IsNaN(float64(r.Position.X)) || math.IsNaN(float64(r.Position.Y)) ||
+		math.IsInf(float64(r.Position.X), 0) || math.IsInf(float64(r.Position.Y), 0)) {
+		return fmt.Errorf("dragdrop: invalid end position")
 	}
 	return nil
 }
