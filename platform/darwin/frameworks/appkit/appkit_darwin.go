@@ -63,6 +63,7 @@ func initNSApplication() {
 	NSApplicationSel.ActivateIgnoringOtherApps = objc.RegisterName("activateIgnoringOtherApps:")
 	NSApplicationSel.EffectiveAppearance = objc.RegisterName("effectiveAppearance")
 	NSApplicationSel.SendEvent = objc.RegisterName("sendEvent:")
+	NSApplicationSel.CurrentEvent = objc.RegisterName("currentEvent")
 	NSApplicationSel.PostEvent = objc.RegisterName("postEvent:atStart:")
 	NSApplicationSel.NextEvent = objc.RegisterName("nextEventMatchingMask:untilDate:inMode:dequeue:")
 	NSApplicationSel.Run = objc.RegisterName("run")
@@ -78,6 +79,7 @@ var (
 		ActivateIgnoringOtherApps objc.SEL
 		EffectiveAppearance       objc.SEL
 		SendEvent                 objc.SEL
+		CurrentEvent              objc.SEL
 		PostEvent                 objc.SEL
 		NextEvent                 objc.SEL
 		Run                       objc.SEL
@@ -124,6 +126,12 @@ func (a NSApplication) EffectiveAppearance() (appearance NSAppearance) {
 
 func (a NSApplication) SendEvent(event NSEvent) {
 	a.Send(NSApplicationSel.SendEvent, event)
+}
+
+// CurrentEvent returns the borrowed event currently being handled by AppKit.
+// It does not promise to be the event which ended a dragging session.
+func (a NSApplication) CurrentEvent() NSEvent {
+	return Cast[NSEvent](a.Send(NSApplicationSel.CurrentEvent))
 }
 
 func (a NSApplication) PostEvent(event NSEvent, atStart bool) {
@@ -600,6 +608,8 @@ func initNSEvent() {
 	NSEventClassId.Class = objc.GetClass("NSEvent")
 	NSEventSel.OtherEventWithType = objc.RegisterName("otherEventWithType:location:modifierFlags:timestamp:windowNumber:context:subtype:data1:data2:")
 	NSEventSel.LocationInWindow = objc.RegisterName("locationInWindow")
+	NSEventSel.Type = objc.RegisterName("type")
+	NSEventSel.Timestamp = objc.RegisterName("timestamp")
 	NSEventSel.ModifierFlags = objc.RegisterName("modifierFlags")
 	NSEventSel.ButtonNumber = objc.RegisterName("buttonNumber")
 	NSEventSel.ScrollingDeltaX = objc.RegisterName("scrollingDeltaX")
@@ -615,6 +625,8 @@ var (
 	NSEventSel     struct {
 		OtherEventWithType          objc.SEL
 		LocationInWindow            objc.SEL
+		Type                        objc.SEL
+		Timestamp                   objc.SEL
 		ModifierFlags               objc.SEL
 		ButtonNumber                objc.SEL
 		ScrollingDeltaX             objc.SEL
@@ -633,8 +645,14 @@ type (
 
 type NSEventType NSUInteger
 
-// TODO: event types
-const NSEventTypeApplicationDefined NSEventType = 15
+const (
+	NSEventTypeLeftMouseDown      NSEventType = 1
+	NSEventTypeLeftMouseUp        NSEventType = 2
+	NSEventTypeLeftMouseDragged   NSEventType = 6
+	NSEventTypeKeyDown            NSEventType = 10
+	NSEventTypeKeyUp              NSEventType = 11
+	NSEventTypeApplicationDefined NSEventType = 15
+)
 
 type NSEventModifierFlags int
 
@@ -645,6 +663,14 @@ func (c NSEventClass) OtherEventWithType(eventType NSEventType, location NSPoint
 
 func (e NSEvent) LocationInWindow() NSPoint {
 	return objc.Send[NSPoint](e.ID, NSEventSel.LocationInWindow)
+}
+
+func (e NSEvent) Type() NSEventType {
+	return objc.Send[NSEventType](e.ID, NSEventSel.Type)
+}
+
+func (e NSEvent) Timestamp() NSTimeInterval {
+	return objc.Send[NSTimeInterval](e.ID, NSEventSel.Timestamp)
 }
 
 func (e NSEvent) ModifierFlags() NSEventModifierFlags {
