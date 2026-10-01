@@ -46,8 +46,9 @@ type OverlayView struct {
 }
 
 // Overlay hosts an optional main child and floating items in back-to-front order.
-// Nil items and children building to nil are omitted. Items reconcile by position
-// and concrete View type, not descriptor pointer or Name. Keep persistent layers
+// Nil items and children building to nil are omitted. Items reconcile by child ID
+// and concrete View type, or position when un-IDed, not descriptor pointer/Name.
+// Keep persistent layers
 // declared and change their child's Visible modifier to preserve their state.
 func Overlay(child View, items ...*OverlayItemView) *OverlayView {
 	v := &OverlayView{child: child, items: slices.Clone(items)}
@@ -128,6 +129,10 @@ func (s *overlayChildren) RemoveChild(child gui.Widget) {
 		delete(s.items, child)
 	}
 	s.overlay.RemoveOverlay(child)
+}
+
+func (s *overlayChildren) MoveChildBefore(child, sibling gui.Widget) {
+	s.overlay.MoveChildBefore(child, sibling)
 }
 
 type overlayItemState struct {

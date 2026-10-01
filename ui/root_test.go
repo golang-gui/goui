@@ -27,11 +27,11 @@ func TestRootCreatesAndUpdatesLabel(t *testing.T) {
 		t.Fatalf("unexpected label state: id=%q text=%q", label.ID(), label.Text())
 	}
 
-	updated := root.update(Label("world").ID("title2"))
+	updated := root.update(Label("world").ID("title"))
 	if updated != label {
 		t.Fatal("label at the same root slot and type should be reused")
 	}
-	if label.ID() != "title2" || label.Text() != "world" {
+	if label.ID() != "title" || label.Text() != "world" {
 		t.Fatalf("label was not updated: id=%q text=%q", label.ID(), label.Text())
 	}
 }
@@ -113,10 +113,11 @@ func TestRootUpdatesBoxChildrenByPositionAndType(t *testing.T) {
 	second := children[1].(*gui.Label)
 
 	root.update(VBox().
+		ID("root").
 		Spacing(8).
 		Children(
-			Label("ONE").ID("first-updated"),
-			Label("TWO").ID("second-updated"),
+			Label("ONE").ID("first"),
+			Label("TWO").ID("second"),
 			Label("THREE").ID("third"),
 		))
 
@@ -281,11 +282,11 @@ func TestRootUpdatesImageAndCommonFields(t *testing.T) {
 		t.Fatalf("unexpected image state: id=%q visible=%v", imageWidget.ID(), imageWidget.Visible())
 	}
 
-	updated := root.update(Image(second).ID("logo2").Hidden(true))
+	updated := root.update(Image(second).ID("logo").Hidden(true))
 	if updated != imageWidget {
 		t.Fatal("image at the same root slot and type should be reused")
 	}
-	if imageWidget.ID() != "logo2" || imageWidget.Image() != second || imageWidget.Visible() {
+	if imageWidget.ID() != "logo" || imageWidget.Image() != second || imageWidget.Visible() {
 		t.Fatalf("image fields were not updated: id=%q visible=%v", imageWidget.ID(), imageWidget.Visible())
 	}
 }
@@ -697,6 +698,110 @@ func (c *testContainerTarget) RemoveChild(w gui.Widget) {
 	if i := slices.Index(c.children, w); i >= 0 {
 		c.children = slices.Delete(c.children, i, i+1)
 		c.removes++
+	}
+}
+
+func (c *testContainerTarget) MoveChildBefore(child, sibling gui.Widget) {
+	i := slices.Index(c.children, child)
+	if i < 0 || child == sibling {
+		return
+	}
+	c.children = slices.Delete(c.children, i, i+1)
+	i = slices.Index(c.children, sibling)
+	if i < 0 {
+		i = len(c.children)
+	}
+	c.children = slices.Insert(c.children, i, child)
+}
+
+func TestRootIDReorderRetainsNodeStateAndLifecycle(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	a, b := new(lifecycleTracker), new(lifecycleTracker)
+	box := r.update(VBox(transferView(a, "a"), Label("other").ID("other"))).(*gui.LinearBox)
+	old := slices.Clone(r.root.children[0].nodes)
+	state, base := old[0].state, old[0].baseCtx
+	// Reorder, insert and update in one pass.
+	inserted := transferView(b, "new")
+	inserted.id = "inserted"
+	r.update(VBox(Label("OTHER").ID("other"), inserted, transferView(a, "A")))
+	nodes := r.root.children[0].nodes
+	if nodes[0] != old[1] || nodes[2] != old[0] || nodes[2].state != state || nodes[2].baseCtx != base ||
+		a.mounts != 1 || a.unmounts != 0 || b.mounts != 1 || b.unmounts != 0 ||
+		!slices.Equal(box.Children(), []gui.Widget{old[1].widget, nodes[1].widget, old[0].widget}) {
+		t.Fatal("ID reorder/insert replaced state or changed lifecycle")
+	}
+	removed := nodes[1].widget
+	r.update(VBox(transferView(a, "last")))
+	if box.Children()[0] != old[0].widget || b.unmounts != 1 || removed.Parent() != nil || a.unmounts != 0 {
+		t.Fatal("removing siblings replaced or released the retained node")
+	}
+}
+
+func TestRootIdentityChangeAndGUIRenameAreDistinct(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	tracker := new(lifecycleTracker)
+	original := r.update(transferView(tracker, "first"))
+	original.SetID("renamed-imperatively")
+	if got := r.update(transferView(tracker, "second")); got != original || got.ID() != "page" || tracker.mounts != 1 {
+		t.Fatal("GUI rename changed declaration identity")
+	}
+	changed := transferView(tracker, "replacement")
+	changed.id = "new-id"
+	if got := r.update(changed); got == original || tracker.mounts != 2 || tracker.unmounts != 1 {
+		t.Fatal("new declaration ID did not replace and release the old node")
+	}
+}
+
+func TestRootIDsMatchOnlyWithinTheirMountingTarget(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	tracker := new(lifecycleTracker)
+	r.update(HBox(VBox(transferView(tracker, "before")), VBox()))
+	old := r.root.children[0].nodes[0].children[0].nodes[0].widget
+	r.update(HBox(VBox(), VBox(transferView(tracker, "after"))))
+	current := r.root.children[0].nodes[1].children[0].nodes[0].widget
+	if current == old || tracker.mounts != 2 || tracker.unmounts != 1 {
+		t.Fatal("same ID implicitly claimed a node from a different parent")
+	}
+}
+
+func TestRootIDAndTypeMustBothMatch(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	box := r.update(VBox(Label("a").ID("a"), Label("b").ID("b"))).(*gui.LinearBox)
+	old := slices.Clone(box.Children())
+	r.update(VBox(Button("new a").ID("a"), Label("B").ID("b")))
+	if box.Children()[0] == old[0] || old[0].Parent() != nil || box.Children()[1] != old[1] {
+		t.Fatal("changed concrete type retained its node or rebuilt its sibling")
+	}
+}
+
+func TestRootRejectsDuplicateNormalizedIDsBeforeMutation(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	box := r.update(VBox(Label("original").ID("same"))).(*gui.LinearBox)
+	old := box.Children()[0].(*gui.Label)
+	defer func() {
+		if recover() == nil {
+			t.Fatal("duplicate normalized IDs accepted")
+		}
+		if len(box.Children()) != 1 || box.Children()[0] != old || old.Text() != "original" {
+			t.Fatal("invalid declaration modified existing children")
+		}
+	}()
+	r.update(VBox(Label("changed").ID("same"), &testCompositionView{view: Label("duplicate").ID("same")}))
+}
+
+func TestRootUnidentifiedNodesRemainPositional(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	box := r.update(VBox(Label("a"), Label("b"))).(*gui.LinearBox)
+	old := slices.Clone(box.Children())
+	r.update(VBox(Label("b"), Label("a")))
+	if !slices.Equal(box.Children(), old) || old[0].(*gui.Label).Text() != "b" {
+		t.Fatal("unidentified nodes stopped matching by position")
 	}
 }
 

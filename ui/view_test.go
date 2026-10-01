@@ -43,13 +43,15 @@ func TestViewIDAndNameRemainIndependentAcrossUpdates(t *testing.T) {
 		w.Snapshot().Text != "content" {
 		t.Fatalf("initial identity: %+v", w.Snapshot())
 	}
-	if next := r.update(Label("updated").ID("second").Name("natural")); next != w {
-		t.Fatal("changing ID replaced the widget")
+	next := r.update(Label("updated").ID("second").Name("natural")).(*gui.Label)
+	if next == w {
+		t.Fatal("changing declaration ID retained the widget")
 	}
+	w = next
 	if w.ID() != "second" || w.Name() != "natural" || w.StyleName() != "" {
 		t.Fatalf("updated identity: %+v", w.Snapshot())
 	}
-	r.update(Label("updated").ID("").Name(""))
+	w = r.update(Label("updated").ID("").Name("")).(*gui.Label)
 	if w.ID() != "" || w.Name() != "" {
 		t.Fatalf("explicit empty values were ignored: id=%q name=%q", w.ID(), w.Name())
 	}
@@ -84,7 +86,7 @@ func TestViewIdentityRestoresConstructorDefaults(t *testing.T) {
 	if w.ID() != "replacement" || w.Name() != "renamed" {
 		t.Fatalf("declared identity: id=%q name=%q", w.ID(), w.Name())
 	}
-	r.update(newInitialIdentityView().ID("").Name(""))
+	w = r.update(newInitialIdentityView().ID("").Name(""))
 	if w.ID() != "" || w.Name() != "" {
 		t.Fatalf("explicit empty identity: id=%q name=%q", w.ID(), w.Name())
 	}

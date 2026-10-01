@@ -44,7 +44,7 @@ func TestOverlayReconcilesMainIndependently(t *testing.T) {
 	}
 }
 
-func TestOverlayReconcilesFloatingPrefixAndNilItems(t *testing.T) {
+func TestOverlayReconcilesFloatingPositionsAndNilItems(t *testing.T) {
 	r := newRoot()
 	t.Cleanup(r.unmountWindow)
 	builds := 0
@@ -63,8 +63,8 @@ func TestOverlayReconcilesFloatingPrefixAndNilItems(t *testing.T) {
 	if builds != 1 || len(children) != 4 || o.Child() != main || children[1] != old[0] {
 		t.Fatal("nil filtering, composition expansion or prefix reuse failed")
 	}
-	if children[2] == old[1] || children[3] == old[2] || old[1].Parent() != nil || old[2].Parent() != nil {
-		t.Fatal("type mismatch must rebuild and detach the tail")
+	if children[2] == old[1] || children[3] != old[2] || old[1].Parent() != nil || old[2].Parent() != o {
+		t.Fatal("type mismatch must replace only that position and retain other matching nodes")
 	}
 	if children[1].(*gui.Label).Text() != "ONE" {
 		t.Fatal("reused content was not updated")
@@ -72,6 +72,19 @@ func TestOverlayReconcilesFloatingPrefixAndNilItems(t *testing.T) {
 	r.update(Overlay(Label("main")).Overlays(OverlayItem(Label("ignored"))).Overlays())
 	if len(o.Children()) != 1 || len(r.root.children) != 1 {
 		t.Fatal("Overlays must replace, not append")
+	}
+}
+
+func TestOverlayIDReorderKeepsPlacementBindingsAndSnapshotOrder(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	o := r.update(Overlay(Label("main"), OverlayItem(Label("a").ID("a")), OverlayItem(Label("b").ID("b")))).(*gui.Overlay)
+	old := slices.Clone(o.Children())
+	s := r.root.state.(*overlayChildren)
+	a, b := s.items[old[1]], s.items[old[2]]
+	r.update(Overlay(Label("MAIN"), OverlayItem(Label("B").ID("b")).Fill(true), OverlayItem(Label("A").ID("a"))))
+	if !slices.Equal(o.Children(), []gui.Widget{old[0], old[2], old[1]}) || s.items[old[1]] != a || s.items[old[2]] != b || !o.OverlayFill(old[2]) || o.Snapshot().Children[1].ID != "b" {
+		t.Fatal("reorder lost stacking, semantic order or placement state")
 	}
 }
 
