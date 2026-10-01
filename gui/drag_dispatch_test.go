@@ -340,6 +340,7 @@ func TestDragServiceRetriesAfterControllerConfigurationChanges(t *testing.T) {
 
 type gestureDragNative struct {
 	begin    int
+	cancels  int
 	onBegin  func(uint64)
 	beginErr error
 }
@@ -352,8 +353,8 @@ func (n *gestureDragNative) Begin(id uint64, _ *dragdrop.Data, _ dragdrop.Action
 	}
 	return n.beginErr
 }
-func (*gestureDragNative) Cancel()  {}
-func (*gestureDragNative) Destroy() {}
+func (n *gestureDragNative) Cancel() { n.cancels++ }
+func (*gestureDragNative) Destroy()  {}
 
 func TestGestureDragSourceNilPrepareFallsBackToAncestor(t *testing.T) {
 	root, child := newTestWidget(), newTestWidget()

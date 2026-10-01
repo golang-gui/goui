@@ -220,6 +220,7 @@ type DropRequest struct {
 // after ordinary event propagation has finished.
 type DragSource struct {
 	owner           Widget
+	run             *guiDragSession
 	enabled         bool
 	actions         DragAction
 	armed           bool
@@ -271,12 +272,54 @@ func (s *DragSource) SetActions(value DragAction) {
 }
 
 func (s *DragSource) Cancel() {
-	if s.owner == nil {
-		return
+	if s.run != nil {
+		s.run.cancel()
 	}
-	if app := dragAppOf(s.owner.Root()); app != nil && app.dragSession != nil && app.dragSession.source == s {
-		app.dragSession.cancel()
+}
+
+// Begin hands an already accepted pointer drag to native drag-and-drop. Call
+// it synchronously from gesture.ConnectUpdate, while the original left button
+// is still down. The source need not be added as an event controller: in this
+// mode it is a reusable source of Begin/End signals and Cancel requests.
+//
+// Data and Preview are supplied directly; Prepare is not emitted. Validation
+// failures leave the pointer gesture active. Once handed off, it emits neither
+// a pointer End nor Cancel (even if native startup fails). Startup failure is
+// returned; a started session reports its terminal result through ConnectEnd,
+// possibly before Begin returns. Do not delete moved data a second time in End
+// when a local target has already transferred it.
+func (s *DragSource) Begin(gesture *DragEventController, data *DragData, preview DragPreview) error {
+	if gesture == nil || !gesture.updating || !gesture.dragging || gesture.button != events.PointerButtonLeft {
+		return fmt.Errorf("gui: drag handoff requires an active left-drag update")
 	}
+	p := gesture.gesture
+	if p == nil || p.widget == nil || p.state != gestureWon || p.sequence.winner != p || !p.sequence.valid(p) ||
+		p.sequence.event.EventType != events.PointerMove || p.sequence.event.Buttons&events.PointerButtonLeftDown == 0 {
+		return fmt.Errorf("gui: drag gesture is no longer current")
+	}
+	if !s.enabled || s.actions == 0 || !s.actions.ValidSet() || s.run != nil || (s.owner != nil && s.owner != p.widget) {
+		return fmt.Errorf("gui: drag source is unavailable")
+	}
+	root := p.widget.Root()
+	app := dragAppOf(root)
+	if app == nil || app.dragSession != nil {
+		return fmt.Errorf("gui: drag application is unavailable or busy")
+	}
+	frozen := data.freeze()
+	if err := frozen.validate(); err != nil {
+		return err
+	}
+	if _, err := dragCapability(root); err != nil {
+		return err
+	}
+	// Capability setup may deliver application callbacks.
+	if !p.sequence.valid(p) || !gesture.dragging || app.dragSession != nil || !s.enabled ||
+		s.run != nil || s.actions == 0 || !s.actions.ValidSet() || (s.owner != nil && s.owner != p.widget) {
+		return fmt.Errorf("gui: drag gesture invalidated during preparation")
+	}
+	gesture.gesture, gesture.dragging = nil, false
+	p.sequence.takeOver()
+	return app.startDrag(root, p.widget, s, frozen, preview, s.actions)
 }
 
 func (s *DragSource) ConnectPrepare(fn func(*DragPrepare)) signal.Handle {
