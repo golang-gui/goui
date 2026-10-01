@@ -42,19 +42,19 @@ func init() {
 
 func GetFBConfigs(display xlib.Display, screen int) []FBConfig {
 	//FBConfig*(Display dpy, int screen, int* count)
-	count := 0
-	configs, _, _ := glXGetFBConfigs.CallRaw(uintptr(display), uintptr(screen), uintptr(cgo.Pointer(&count)))
-	if configs != 0 {
-		return cgo.GoSliceN[FBConfig](cgo.Pointer(configs), count)
+	var count int32
+	configs := cgo.CallRet[*FBConfig](glXGetFBConfigs.Addr(), display, int32(screen), &count)
+	if configs != nil {
+		return cgo.GoSliceN[FBConfig](cgo.Pointer(configs), int(count))
 	}
 	return nil
 }
 
 func GetFBConfigAttrib(display xlib.Display, config FBConfig, attr int) (value int, ok bool) {
 	//int(Display dpy, FBConfig config, int attr, int* value)
-	ret, _, err := glXGetFBConfigAttrib.CallRaw(uintptr(display), uintptr(config), uintptr(attr), uintptr(cgo.Pointer(&value)))
-	ok = err == nil && ret == 0
-	return
+	var nativeValue int32
+	ret := cgo.CallRet[int32](glXGetFBConfigAttrib.Addr(), display, config, int32(attr), &nativeValue)
+	return int(nativeValue), ret == 0
 }
 
 func GetClientString(display xlib.Display, name int) string {
@@ -67,20 +67,17 @@ func GetClientString(display xlib.Display, name int) string {
 }
 
 func QueryExtension(display xlib.Display) (support bool, errorBase, eventBase int) {
-	if err := glXQueryExtension.Find(); err != nil {
-		return false, 0, 0
-	}
 	//int(Display dpy, int* errorBase, int* eventBase)
-	ret, _, _ := glXQueryExtension.CallRaw(uintptr(display), uintptr(cgo.Pointer(&errorBase)), uintptr(cgo.Pointer(&eventBase)))
-	support = ret != 0
-	return
+	var nativeErrorBase, nativeEventBase int32
+	ret := cgo.CallRet[int32](glXQueryExtension.Addr(), display, &nativeErrorBase, &nativeEventBase)
+	return ret != 0, int(nativeErrorBase), int(nativeEventBase)
 }
 
 func QueryVersion(display xlib.Display) (ok bool, major, minor int) {
 	//bool(Display dpy, int* major, int* minor)
-	ret, _, _ := glXQueryVersion.CallRaw(uintptr(display), uintptr(cgo.Pointer(&major)), uintptr(cgo.Pointer(&minor)))
-	ok = ret != 0
-	return
+	var nativeMajor, nativeMinor int32
+	ret := cgo.CallRet[int32](glXQueryVersion.Addr(), display, &nativeMajor, &nativeMinor)
+	return ret != 0, int(nativeMajor), int(nativeMinor)
 }
 
 func DestroyContext(display xlib.Display, ctx Context) {
@@ -152,17 +149,15 @@ func SwapIntervalEXT(display xlib.Display, drawable xlib.Drawable, interval int)
 func SwapIntervalSGI(interval int) int {
 	//int(int)
 	if glXSwapIntervalSGI != 0 {
-		ret, _, _ := glXSwapIntervalSGI.CallRaw(uintptr(interval))
-		return int(ret)
+		return int(cgo.CallRet[int32](glXSwapIntervalSGI, int32(interval)))
 	}
 	return 0
 }
 
 func SwapIntervalMESA(interval int) int {
-	//int(int)
+	//int(unsigned int)
 	if glXSwapIntervalMESA != 0 {
-		ret, _, _ := glXSwapIntervalMESA.CallRaw(uintptr(interval))
-		return int(ret)
+		return int(cgo.CallRet[int32](glXSwapIntervalMESA, uint32(interval)))
 	}
 	return 0
 }
