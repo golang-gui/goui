@@ -3,12 +3,11 @@ package widgets
 import (
 	"slices"
 	"testing"
-	"time"
 
-	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
-	"github.com/golang-gui/goui/layout"
 )
+
+// 页面管理与关闭请求。
 
 func TestTabViewSelectionRemovalAndCloseRequest(t *testing.T) {
 	v := NewTabView()
@@ -58,52 +57,6 @@ func TestTabViewSelectionRemovalAndCloseRequest(t *testing.T) {
 	}
 }
 
-func TestTabViewMoveAndBarOverflow(t *testing.T) {
-	v := NewTabView()
-	pages := []*TabPage{NewTabPage("One", nil), NewTabPage("Two", nil), NewTabPage("Three", nil)}
-	for _, p := range pages {
-		p.SetClosable(true)
-		v.AppendPage(p)
-	}
-	v.SetCurrent(pages[1])
-	bar := NewTabBar()
-	bar.SetView(v)
-	bar.SetReorderable(true)
-	bar.Measure(layout.Loose(geometry.Size{Width: 110, Height: 40}))
-	bar.Arrange(geometry.Rect(0, 0, 110, 40))
-	if !bar.overflow || bar.viewport.Rect().Width != 110-2*tabButtonWidth {
-		t.Fatalf("overflow viewport = %+v", bar.viewport.Rect())
-	}
-	for _, child := range bar.viewport.Children() {
-		// Extreme host constraints clip the viewport, not the minimum tab width.
-		if child.Rect().Width != 112 {
-			t.Fatalf("overflow violated uniform minimum width: %+v", child.Rect())
-		}
-	}
-	var moved []*TabPage
-	v.ConnectMoved(func(page *TabPage, from, to int) {
-		if from != 2 || to != 0 {
-			t.Fatalf("move %d -> %d", from, to)
-		}
-		moved = append(moved, page)
-	})
-	v.MovePage(pages[2], 0)
-	got := v.Pages()
-	if got[0] != pages[2] || got[1] != pages[0] || got[2] != pages[1] || v.Current() != pages[1] || len(moved) != 1 {
-		t.Fatalf("unexpected reorder: %v current=%p moved=%v", got, v.Current(), moved)
-	}
-	info := bar.Snapshot()
-	if info.Role != RoleTabBar || len(info.Children) != 5 ||
-		info.Children[1].Role != RoleTab || info.Children[1].Text != "Three" ||
-		info.Children[2].Text != "One" || info.Children[3].Text != "Two" || !info.Children[3].Selected {
-		t.Fatalf("semantic order or selection disagrees with pages: %+v", info)
-	}
-	bar.SetView(nil)
-	if len(bar.items) != 0 {
-		t.Fatal("unbinding retained tab rows")
-	}
-}
-
 func TestTabPageIndicesMapToRelativeSiblingOrder(t *testing.T) {
 	v := NewTabView()
 	a, b, c, d := NewTabPage("A", nil), NewTabPage("B", nil), NewTabPage("C", nil), NewTabPage("D", nil)
@@ -139,50 +92,18 @@ func TestTabPageIndicesMapToRelativeSiblingOrder(t *testing.T) {
 	}
 }
 
-func TestTabBarReleaseOutsideViewportCancelsReorder(t *testing.T) {
-	v := NewTabView()
-	a, b := NewTabPage("One", nil), NewTabPage("Two", nil)
-	v.AppendPage(a)
-	v.AppendPage(b)
-	bar := NewTabBar()
-	bar.SetView(v)
-	bar.SetReorderable(true)
-	bar.Measure(layout.Loose(geometry.Size{Width: 300, Height: 40}))
-	bar.Arrange(geometry.Rect(0, 0, 300, 40))
-	bar.beginDrag(a, geometry.Point{X: 8, Y: 20})
-	bar.endDrag(a, geometry.Point{X: 290, Y: 100})
-	if pages := v.Pages(); pages[0] != a || pages[1] != b || bar.dragPage != nil {
-		t.Fatalf("outside release reordered pages or kept drag active: %v", pages)
-	}
-}
+// 关闭回调安全。
 
-func TestTabBarEdgeScrollKeepsDragActive(t *testing.T) {
-	v := NewTabView()
-	for _, title := range []string{"One", "Two", "Three", "Four"} {
-		page := NewTabPage(title, nil)
-		page.SetClosable(true)
-		v.AppendPage(page)
+func TestTabCloseRequestCallbacksCannotUseRemovedPage(t *testing.T) {
+	view := NewTabView()
+	page := NewTabPage("page", nil)
+	page.SetClosable(true)
+	view.AppendPage(page)
+	view.ConnectCloseRequest(view.RemovePage)
+	later := 0
+	view.ConnectCloseRequest(func(*TabPage) { later++ })
+	view.RequestClose(page)
+	if later != 0 || len(view.Pages()) != 0 {
+		t.Fatal("later handler used removed page")
 	}
-	bar := NewTabBar()
-	bar.SetView(v)
-	bar.SetReorderable(true)
-	bar.Measure(layout.Loose(geometry.Size{Width: 110, Height: 40}))
-	bar.Arrange(geometry.Rect(0, 0, 110, 40))
-	if !bar.overflow || bar.scroll != 0 {
-		t.Fatalf("initial overflow=%v scroll=%g", bar.overflow, bar.scroll)
-	}
-	page := v.Pages()[0]
-	bar.beginDrag(page, geometry.Point{X: bar.viewport.Rect().X + 8, Y: 20})
-	bar.pointer = geometry.Point{X: bar.viewport.Rect().X + bar.viewportWidth - 1, Y: 20}
-	bar.advanceMotion(100 * time.Millisecond)
-	forward := bar.scroll
-	if forward <= 0 || bar.dragPage != page {
-		t.Fatalf("right edge did not scroll during drag: scroll=%g", forward)
-	}
-	bar.pointer.X = bar.viewport.Rect().X + 1
-	bar.advanceMotion(100 * time.Millisecond)
-	if bar.scroll >= forward {
-		t.Fatalf("left edge did not reverse scroll: before=%g after=%g", forward, bar.scroll)
-	}
-	bar.stopDrag()
 }

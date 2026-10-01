@@ -274,6 +274,19 @@ BuildContext 或同步启动嵌套协调。没有给 Root 增加 Tab 专用分�
 
 ## 验证
 
+包内测试按职责集中组织，不与实现文件一一对应：
+
+- `widgets/tab_view_test.go`：页面管理、选择、顺序和关闭请求。
+- `widgets/tab_bar_test.go`：布局、溢出、输入、排序、关闭按钮、分隔线、菜单与快照。
+- `widgets/tab_transfer_test.go`：页面移交、拖放占位及拖出请求的生命周期。
+- `widgets/tab_bar_linux_test.go`：不依赖桌面的 Pango 字体测量，保留平台限定和线程亲和。
+- `widgets/test_helpers_test.go`：多文件共用的固定布局和正常输入派发替身；单文件专用 helper 就近保留。
+- `widgets/ui/tabs_test.go`：声明协调、身份、移交、菜单构建与信号清理。
+- `widgets/style/style_test.go`：兜底样式的显式组合。
+
+合并只改变文件归属及分组，不改变测试名称、输入、断言、容差或跳过条件。
+真实窗口验证仍放在 `tests/window/widgets/`，不合入包内测试。
+
 包内测试覆盖页面选择、删除退避、关闭请求、真实子节点重排、溢出布局、
 输入分发下的拖动提交/取消、跟手位置、让位与反向过渡、空白命中路径、
 Snapshot 和 AfterUpdate 时序。Linux 下使用不依赖桌面的真实 Pango 度量
