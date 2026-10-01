@@ -51,6 +51,13 @@ func Rules(options Options) []style.Rule {
 		return style.Name(name).ForegroundColor(p.text).FontFamily(options.FontFamily).FontSize(size)
 	}
 	buttonHover, buttonPressed := mix(p.button, p.text, .04), mix(p.button, p.text, .08)
+	// Tabs use neutral surfaces rather than the accent/focus color. Keep the
+	// selected and lifted surfaces opaque when they overlap neighboring tabs.
+	tabSelected := p.surface
+	if options.Dark {
+		tabSelected = mix(p.window, p.text, .08)
+	}
+	tabBorder := mix(tabSelected, p.text, .10)
 	primary := [3]color.RGBA{
 		tintedBackground(p.button, accent, p.text, .12),
 		tintedBackground(p.button, accent, p.text, .18),
@@ -91,6 +98,27 @@ func Rules(options Options) []style.Rule {
 		style.Name("menu-item").State(style.Hovered).BackgroundColor(p.menuHover),
 		style.Name("menu-item").State(style.Pressed).BackgroundColor(p.menuPressed),
 		style.Name("menu-separator").BackgroundColor(p.border),
+		text("tab-bar").BackgroundColor(color.Transparent),
+		style.Name("tab-bar").Part("separator").ForegroundColor(mix(p.window, p.text, .18)),
+		style.Name("tab-item").BackgroundColor(color.Transparent).BorderWidth(0).Radius(6),
+		style.Name("tab-item").State(style.Hovered).BackgroundColor(mix(p.window, p.text, .04)),
+		style.Name("tab-item").State(style.Pressed).BackgroundColor(mix(p.window, p.text, .07)),
+		style.Name("tab-item").Part("selected").BackgroundColor(tabSelected).BorderColor(tabBorder).BorderWidth(1),
+		style.Name("tab-item").Part("selected").State(style.Hovered).BackgroundColor(mix(tabSelected, p.text, .02)),
+		style.Name("tab-item").Part("selected").State(style.Pressed).BackgroundColor(mix(tabSelected, p.text, .04)),
+		style.Name("tab-item").Part("dragging").BackgroundColor(tabSelected).BorderColor(mix(tabSelected, p.text, .18)).BorderWidth(1),
+		text("tab-item-text"),
+		text("tab-item-text-selected"),
+		style.Name("tab-item-icon").ForegroundColor(p.text),
+		style.Name("tab-item-icon-selected").ForegroundColor(p.text),
+		style.Name("tab-close-button").BackgroundColor(color.Transparent).Radius(4),
+		style.Name("tab-close-button").State(style.Hovered).BackgroundColor(p.menuHover),
+		style.Name("tab-close-button").State(style.Pressed).BackgroundColor(p.menuPressed),
+		text("tab-close-button-text").ForegroundColor(p.muted),
+		style.Name("tab-scroll-button").BackgroundColor(color.Transparent).Radius(4),
+		style.Name("tab-scroll-button").State(style.Hovered).BackgroundColor(p.menuHover),
+		style.Name("tab-scroll-button").State(style.Pressed).BackgroundColor(p.menuPressed),
+		text("tab-scroll-button-text").ForegroundColor(p.muted),
 	}
 	for _, button := range []struct {
 		name string
