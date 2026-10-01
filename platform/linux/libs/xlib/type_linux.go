@@ -19,6 +19,24 @@ type Status int32
 
 type Display ID
 
+// ErrorEvent is XErrorEvent; Serial identifies the failed protocol request.
+type ErrorEvent struct {
+	Type        int32
+	Display     Display
+	ResourceID  ID
+	Serial      uintptr
+	ErrorCode   uint8
+	RequestCode uint8
+	MinorCode   uint8
+}
+
+type ErrorHandler uintptr
+
+const (
+	BadWindow        = 3
+	RequestSendEvent = 25
+)
+
 // ClassHint is XClassHint. Both fields point to null-terminated strings.
 type ClassHint struct {
 	ResName  *byte

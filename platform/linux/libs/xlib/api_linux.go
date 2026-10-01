@@ -9,71 +9,77 @@ import (
 var (
 	libx11 = cgo.NewLazyLibrary("libX11.so.6")
 
-	xOpenDisplay            = libx11.NewSymbol("XOpenDisplay")
-	xCloseDisplay           = libx11.NewSymbol("XCloseDisplay")
-	xConnectionNumber       = libx11.NewSymbol("XConnectionNumber")
-	xPending                = libx11.NewSymbol("XPending")
-	xQLength                = libx11.NewSymbol("XQLength")
-	xFlush                  = libx11.NewSymbol("XFlush")
-	xSendEvent              = libx11.NewSymbol("XSendEvent")
-	xNextEvent              = libx11.NewSymbol("XNextEvent")
-	xPeekEvent              = libx11.NewSymbol("XPeekEvent")
-	xInternAtom             = libx11.NewSymbol("XInternAtom")
-	xDefaultScreen          = libx11.NewSymbol("XDefaultScreen")
-	xDefaultScreenOfDisplay = libx11.NewSymbol("XDefaultScreenOfDisplay")
-	xDefaultVisual          = libx11.NewSymbol("XDefaultVisual")
-	xDefaultDepth           = libx11.NewSymbol("XDefaultDepth")
-	xDefaultRootWindow      = libx11.NewSymbol("XDefaultRootWindow")
-	xRootWindow             = libx11.NewSymbol("XRootWindow")
-	xCreateWindow           = libx11.NewSymbol("XCreateWindow")
-	xGetWindowAttributes    = libx11.NewSymbol("XGetWindowAttributes")
-	xDestroyWindow          = libx11.NewSymbol("XDestroyWindow")
-	xMapWindow              = libx11.NewSymbol("XMapWindow")
-	xIconifyWindow          = libx11.NewSymbol("XIconifyWindow")
-	xUnmapWindow            = libx11.NewSymbol("XUnmapWindow")
-	xWithdrawWindow         = libx11.NewSymbol("XWithdrawWindow")
-	xUngrabPointer          = libx11.NewSymbol("XUngrabPointer")
-	xMoveWindow             = libx11.NewSymbol("XMoveWindow")
-	xResizeWindow           = libx11.NewSymbol("XResizeWindow")
-	xGrabPointer            = libx11.NewSymbol("XGrabPointer")
-	xTranslateCoordinates   = libx11.NewSymbol("XTranslateCoordinates")
-	xSelectInput            = libx11.NewSymbol("XSelectInput")
-	xClearArea              = libx11.NewSymbol("XClearArea")
-	xStoreName              = libx11.NewSymbol("XStoreName")
-	xSetTransientForHint    = libx11.NewSymbol("XSetTransientForHint")
-	xSetWMProtocols         = libx11.NewSymbol("XSetWMProtocols")
-	xSetWMNormalHints       = libx11.NewSymbol("XSetWMNormalHints")
-	xSetClassHint           = libx11.NewSymbol("XSetClassHint")
-	xDeleteProperty         = libx11.NewSymbol("XDeleteProperty")
-	xChangeProperty         = libx11.NewSymbol("XChangeProperty")
-	xGetWindowProperty      = libx11.NewSymbol("XGetWindowProperty")
-	xSetSelectionOwner      = libx11.NewSymbol("XSetSelectionOwner")
-	xGetSelectionOwner      = libx11.NewSymbol("XGetSelectionOwner")
-	xConvertSelection       = libx11.NewSymbol("XConvertSelection")
-	xChangeWindowAttributes = libx11.NewSymbol("XChangeWindowAttributes")
-	xCreateColormap         = libx11.NewSymbol("XCreateColormap")
-	xFreeColormap           = libx11.NewSymbol("XFreeColormap")
-	xCreateGC               = libx11.NewSymbol("XCreateGC")
-	xFreeGC                 = libx11.NewSymbol("XFreeGC")
-	xCreatePixmap           = libx11.NewSymbol("XCreatePixmap")
-	xFreePixmap             = libx11.NewSymbol("XFreePixmap")
-	xCreateImage            = libx11.NewSymbol("XCreateImage")
-	xDestroyImage           = libx11.NewSymbol("XDestroyImage")
-	xPutImage               = libx11.NewSymbol("XPutImage")
-	xFree                   = libx11.NewSymbol("XFree")
-	xLookupKeysym           = libx11.NewSymbol("XLookupKeysym")
-	xkbLookupKeySym         = libx11.NewSymbol("XkbLookupKeySym")
-	xkbKeysymToModifiers    = libx11.NewSymbol("XkbKeysymToModifiers")
-	xRefreshKeyboardMapping = libx11.NewSymbol("XRefreshKeyboardMapping")
-	xKeysymToKeycode        = libx11.NewSymbol("XKeysymToKeycode")
-	xGetModifierMapping     = libx11.NewSymbol("XGetModifierMapping")
-	xFreeModifiermap        = libx11.NewSymbol("XFreeModifiermap")
-	xCreateFontCursor       = libx11.NewSymbol("XCreateFontCursor")
-	xCreatePixmapCursor     = libx11.NewSymbol("XCreatePixmapCursor")
-	xDefineCursor           = libx11.NewSymbol("XDefineCursor")
-	xUndefineCursor         = libx11.NewSymbol("XUndefineCursor")
-	xFreeCursor             = libx11.NewSymbol("XFreeCursor")
-	xCreateBitmapFromData   = libx11.NewSymbol("XCreateBitmapFromData")
+	xOpenDisplay             = libx11.NewSymbol("XOpenDisplay")
+	xCloseDisplay            = libx11.NewSymbol("XCloseDisplay")
+	xConnectionNumber        = libx11.NewSymbol("XConnectionNumber")
+	xPending                 = libx11.NewSymbol("XPending")
+	xQLength                 = libx11.NewSymbol("XQLength")
+	xFlush                   = libx11.NewSymbol("XFlush")
+	xSendEvent               = libx11.NewSymbol("XSendEvent")
+	xNextEvent               = libx11.NewSymbol("XNextEvent")
+	xPeekEvent               = libx11.NewSymbol("XPeekEvent")
+	xInternAtom              = libx11.NewSymbol("XInternAtom")
+	xDefaultScreen           = libx11.NewSymbol("XDefaultScreen")
+	xDefaultScreenOfDisplay  = libx11.NewSymbol("XDefaultScreenOfDisplay")
+	xDefaultVisual           = libx11.NewSymbol("XDefaultVisual")
+	xDefaultDepth            = libx11.NewSymbol("XDefaultDepth")
+	xDefaultRootWindow       = libx11.NewSymbol("XDefaultRootWindow")
+	xRootWindow              = libx11.NewSymbol("XRootWindow")
+	xCreateWindow            = libx11.NewSymbol("XCreateWindow")
+	xGetWindowAttributes     = libx11.NewSymbol("XGetWindowAttributes")
+	xDestroyWindow           = libx11.NewSymbol("XDestroyWindow")
+	xMapWindow               = libx11.NewSymbol("XMapWindow")
+	xIconifyWindow           = libx11.NewSymbol("XIconifyWindow")
+	xUnmapWindow             = libx11.NewSymbol("XUnmapWindow")
+	xWithdrawWindow          = libx11.NewSymbol("XWithdrawWindow")
+	xUngrabPointer           = libx11.NewSymbol("XUngrabPointer")
+	xMoveWindow              = libx11.NewSymbol("XMoveWindow")
+	xRaiseWindow             = libx11.NewSymbol("XRaiseWindow")
+	xChangeActivePointerGrab = libx11.NewSymbol("XChangeActivePointerGrab")
+	xResizeWindow            = libx11.NewSymbol("XResizeWindow")
+	xGrabPointer             = libx11.NewSymbol("XGrabPointer")
+	xTranslateCoordinates    = libx11.NewSymbol("XTranslateCoordinates")
+	xSelectInput             = libx11.NewSymbol("XSelectInput")
+	xClearArea               = libx11.NewSymbol("XClearArea")
+	xStoreName               = libx11.NewSymbol("XStoreName")
+	xSetTransientForHint     = libx11.NewSymbol("XSetTransientForHint")
+	xSetWMProtocols          = libx11.NewSymbol("XSetWMProtocols")
+	xSetWMNormalHints        = libx11.NewSymbol("XSetWMNormalHints")
+	xSetClassHint            = libx11.NewSymbol("XSetClassHint")
+	xDeleteProperty          = libx11.NewSymbol("XDeleteProperty")
+	xChangeProperty          = libx11.NewSymbol("XChangeProperty")
+	xGetWindowProperty       = libx11.NewSymbol("XGetWindowProperty")
+	xSetSelectionOwner       = libx11.NewSymbol("XSetSelectionOwner")
+	xGetSelectionOwner       = libx11.NewSymbol("XGetSelectionOwner")
+	xConvertSelection        = libx11.NewSymbol("XConvertSelection")
+	xChangeWindowAttributes  = libx11.NewSymbol("XChangeWindowAttributes")
+	xCreateColormap          = libx11.NewSymbol("XCreateColormap")
+	xFreeColormap            = libx11.NewSymbol("XFreeColormap")
+	xCreateGC                = libx11.NewSymbol("XCreateGC")
+	xFreeGC                  = libx11.NewSymbol("XFreeGC")
+	xCreatePixmap            = libx11.NewSymbol("XCreatePixmap")
+	xFreePixmap              = libx11.NewSymbol("XFreePixmap")
+	xCreateImage             = libx11.NewSymbol("XCreateImage")
+	xDestroyImage            = libx11.NewSymbol("XDestroyImage")
+	xPutImage                = libx11.NewSymbol("XPutImage")
+	xFree                    = libx11.NewSymbol("XFree")
+	xLookupKeysym            = libx11.NewSymbol("XLookupKeysym")
+	xkbLookupKeySym          = libx11.NewSymbol("XkbLookupKeySym")
+	xkbKeysymToModifiers     = libx11.NewSymbol("XkbKeysymToModifiers")
+	xRefreshKeyboardMapping  = libx11.NewSymbol("XRefreshKeyboardMapping")
+	xKeysymToKeycode         = libx11.NewSymbol("XKeysymToKeycode")
+	xGetModifierMapping      = libx11.NewSymbol("XGetModifierMapping")
+	xFreeModifiermap         = libx11.NewSymbol("XFreeModifiermap")
+	xCreateFontCursor        = libx11.NewSymbol("XCreateFontCursor")
+	xCreatePixmapCursor      = libx11.NewSymbol("XCreatePixmapCursor")
+	xDefineCursor            = libx11.NewSymbol("XDefineCursor")
+	xUndefineCursor          = libx11.NewSymbol("XUndefineCursor")
+	xFreeCursor              = libx11.NewSymbol("XFreeCursor")
+	xCreateBitmapFromData    = libx11.NewSymbol("XCreateBitmapFromData")
+
+	xSetErrorHandler           = libx11.NewSymbol("XSetErrorHandler")
+	xNextRequest               = libx11.NewSymbol("XNextRequest")
+	xLastKnownRequestProcessed = libx11.NewSymbol("XLastKnownRequestProcessed")
 )
 
 func OpenDisplay(name string) Display {
@@ -98,18 +104,41 @@ func (d Display) ConnectionNumber() int32 {
 }
 
 func (d Display) Pending() int {
-	ret, _, _ := xPending.CallRaw(uintptr(d))
-	return int(ret)
+	return int(cgo.CallRet[int32](xPending.Addr(), d))
 }
 
 func (d Display) QLength() int {
-	ret, _, _ := xQLength.CallRaw(uintptr(d))
-	return int(ret)
+	return int(cgo.CallRet[int32](xQLength.Addr(), d))
 }
 
 func (d Display) SendEvent(w Window, propagate bool, eventMask uint64, event *Event) Status {
 	ret, _, _ := xSendEvent.CallRaw(uintptr(d), uintptr(w), uintptr(cgo.CBool(propagate)), uintptr(eventMask), uintptr(cgo.Pointer(event)))
 	return Status(ret)
+}
+
+// SetErrorHandler replaces the process-wide Xlib handler and returns its predecessor.
+// A zero handler restores Xlib's default handler.
+func SetErrorHandler(handler ErrorHandler) ErrorHandler {
+	ret, _, _ := xSetErrorHandler.CallRaw(uintptr(handler))
+	return ErrorHandler(ret)
+}
+
+func (h ErrorHandler) Call(display Display, event *ErrorEvent) int32 {
+	ret, _, _ := cgo.CallRaw(uintptr(h), uintptr(display), uintptr(cgo.Pointer(event)))
+	runtime.KeepAlive(event)
+	return int32(ret)
+}
+
+// NextRequest reads the next request serial without a server round trip.
+func (d Display) NextRequest() uintptr {
+	ret, _, _ := xNextRequest.CallRaw(uintptr(d))
+	return ret
+}
+
+// LastKnownRequestProcessed reads Xlib's observed server progress, without waiting.
+func (d Display) LastKnownRequestProcessed() uintptr {
+	ret, _, _ := xLastKnownRequestProcessed.CallRaw(uintptr(d))
+	return ret
 }
 
 func (d Display) NextEvent() (ev Event) {
@@ -129,8 +158,7 @@ func (d Display) Flush() {
 }
 
 func (d Display) DefaultScreen() int {
-	ret, _, _ := xDefaultScreen.CallRaw(uintptr(d))
-	return int(ret)
+	return int(cgo.CallRet[int32](xDefaultScreen.Addr(), d))
 }
 
 func (d Display) DefaultScreenOfDisplay() *Screen {
@@ -144,8 +172,7 @@ func (d Display) DefaultVisual(screen int) *Visual {
 }
 
 func (d Display) DefaultDepth(screen int) (depth int) {
-	ret, _, _ := xDefaultDepth.CallRaw(uintptr(d), uintptr(screen))
-	return int(ret)
+	return int(cgo.CallRet[int32](xDefaultDepth.Addr(), d, int32(screen)))
 }
 
 func (d Display) DefaultRootWindow() Window {
@@ -200,6 +227,14 @@ func (d Display) UngrabPointer(time Time) int32 {
 
 func (d Display) MoveWindow(w Window, x, y int) {
 	xMoveWindow.CallRaw(uintptr(d), uintptr(w), uintptr(x), uintptr(y))
+}
+
+func (d Display) RaiseWindow(w Window) {
+	xRaiseWindow.CallRaw(uintptr(d), uintptr(w))
+}
+
+func (d Display) ChangeActivePointerGrab(mask uint32, cursor Cursor, stamp Time) {
+	xChangeActivePointerGrab.CallRaw(uintptr(d), uintptr(mask), uintptr(cursor), uintptr(stamp))
 }
 
 func (d Display) ResizeWindow(w Window, width, height uint) {
@@ -429,8 +464,7 @@ func (d Display) GetModifierMapping() *ModifierKeymap {
 }
 
 func FreeModifiermap(mapping *ModifierKeymap) int {
-	ret, _, _ := xFreeModifiermap.CallRaw(uintptr(cgo.Pointer(mapping)))
-	return int(ret)
+	return int(cgo.CallRet[int32](xFreeModifiermap.Addr(), mapping))
 }
 
 // CreateFontCursor creates a cursor from the X standard cursor font (cursorfont.h).
