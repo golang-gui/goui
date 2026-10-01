@@ -510,6 +510,40 @@ func TestDestroyWidgetUnmountsAndClearsSubtreeOnce(t *testing.T) {
 	}
 }
 
+func TestWidgetReparentSurvivesLifecycleDestruction(t *testing.T) {
+	for _, endpoint := range []string{"child", "target", "source"} {
+		t.Run(endpoint, func(t *testing.T) {
+			sourceWindow, targetWindow := &window{}, &window{}
+			source, target, child := newTestWidget(), newTestWidget(), newTestWidget()
+			source.AddChild(child)
+			sourceWindow.SetWidget(source)
+			targetWindow.SetWidget(target)
+			defer sourceWindow.Destroy()
+			defer targetWindow.Destroy()
+			unmounts, mounts := 0, 0
+			child.ConnectMount(func() { mounts++ })
+			child.ConnectUnmount(func() {
+				unmounts++
+				switch endpoint {
+				case "child":
+					child.base().destroy(child)
+				case "target":
+					targetWindow.Destroy()
+				case "source":
+					sourceWindow.Destroy()
+				}
+			})
+			target.AddChild(child)
+			if unmounts != 1 || mounts != 0 || child.Root() != nil || child.Parent() != nil {
+				t.Fatalf("resurrected/double-unmounted subtree: unmount=%d mount=%d root=%v parent=%v", unmounts, mounts, child.Root(), child.Parent())
+			}
+			if child.Destroyed() != (endpoint != "target") {
+				t.Fatal("incorrect final lifecycle observation")
+			}
+		})
+	}
+}
+
 type testControllerAdapter struct{}
 
 func (c *testControllerAdapter) Phase() PropagationPhase {

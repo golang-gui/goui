@@ -149,11 +149,18 @@ type WidgetBase struct {
 	measureValid        bool
 	styleValid          bool // zero value requests the first framework notification
 	destroyed           bool
+	reparenting         bool
+	unmounting          bool
 }
 
 func (w *WidgetBase) base() *WidgetBase {
 	return w
 }
+
+// Destroyed reports whether final host-owned destruction has begun. Unlike
+// Root() == nil, this distinguishes a reusable detached widget from one that
+// must never be attached again. It is a GUI-thread lifecycle observation.
+func (w *WidgetBase) Destroyed() bool { return w.destroyed }
 
 func (w *WidgetBase) ID() string {
 	return w.id
@@ -681,7 +688,7 @@ func (w *WidgetBase) moveChild(child, sibling Widget, after bool) {
 }
 
 func (w *WidgetBase) setParent(child, parent Widget) {
-	if child == nil || child.base() != w {
+	if child == nil || child.base() != w || w.reparenting {
 		return
 	}
 	if child == nil || child == parent {
@@ -701,6 +708,8 @@ func (w *WidgetBase) setParent(child, parent Widget) {
 	if parent != nil && parent.base().destroyed {
 		return
 	}
+	w.reparenting = true
+	defer func() { w.reparenting = false }()
 
 	oldRoot := child.Root()
 	var newRoot Root
@@ -715,9 +724,14 @@ func (w *WidgetBase) setParent(child, parent Widget) {
 			h.SetFocusedWidget(nil)
 		}
 	}
+	// Lifecycle/focus callbacks may destroy either endpoint. Destruction wins;
+	// never attach a dead subtree or revive a parent destroyed by Unmount.
+	if w.destroyed {
+		return
+	}
 	w.detach(child)
 
-	if parent != nil {
+	if parent != nil && !parent.base().destroyed {
 		w.attachChild(parent, child)
 	}
 	if !rootChanged && oldRoot != nil {
@@ -725,7 +739,7 @@ func (w *WidgetBase) setParent(child, parent Widget) {
 			h.SetFocusedWidget(h.FocusedWidget())
 		}
 	}
-	if rootChanged && newRoot != nil {
+	if rootChanged && newRoot != nil && child.Root() == newRoot {
 		w.emitMountSubtree(child)
 	}
 }
@@ -807,6 +821,9 @@ func (w *WidgetBase) destroy(widget Widget) {
 	if widget == nil || widget.base() != w || w.destroyed {
 		return
 	}
+	// Publish final destruction before callbacks so recursive destruction and
+	// reattachment from Unmount cannot resurrect this object.
+	w.destroyed = true
 
 	oldRoot := widget.Root()
 	if oldRoot != nil {
@@ -817,7 +834,6 @@ func (w *WidgetBase) destroy(widget Widget) {
 	}
 	w.detach(widget)
 
-	w.destroyed = true
 	for _, child := range slices.Clone(w.children) {
 		child.base().destroy(child)
 	}
@@ -829,7 +845,7 @@ func (w *WidgetBase) destroy(widget Widget) {
 }
 
 func (w *WidgetBase) emitMountSubtree(widget Widget) {
-	if widget == nil || widget.base() != w {
+	if widget == nil || widget.base() != w || w.destroyed {
 		return
 	}
 	w.self = widget
@@ -839,15 +855,22 @@ func (w *WidgetBase) emitMountSubtree(widget Widget) {
 		}
 	}
 	w.mount.Emit()
+	if w.destroyed || widget.Root() == nil {
+		return
+	}
 	for _, child := range slices.Clone(w.children) {
-		child.base().emitMountSubtree(child)
+		if child.Parent() == widget {
+			child.base().emitMountSubtree(child)
+		}
 	}
 }
 
 func (w *WidgetBase) emitUnmountSubtree(widget Widget) {
-	if widget == nil || widget.base() != w {
+	if widget == nil || widget.base() != w || w.unmounting {
 		return
 	}
+	w.unmounting = true
+	defer func() { w.unmounting = false }()
 	cancelGestureSubtree(w.root(), widget)
 	for _, child := range slices.Clone(w.children) {
 		child.base().emitUnmountSubtree(child)
