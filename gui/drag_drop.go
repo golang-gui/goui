@@ -167,13 +167,42 @@ type DragPrepare struct {
 	Preview  DragPreview
 }
 
-type DragResult = dragdrop.Result
+// DragResult combines the native outcome with delivery facts known to GUI.
+// LocalDrop is true if this session received a Drop in this application,
+// including a rejected Drop. It does not classify foreign targets, nor infer
+// a Drop from an earlier hover. A zero Action alone never means empty desktop.
+type DragResult struct {
+	Action        DragAction
+	Canceled      bool
+	Err           error
+	Position      geometry.Point // native end point in source-client DIP
+	PositionValid bool
+	LocalTarget   bool // native end point hit a registered drag window in this process, not necessarily a Drop
+	LocalDrop     bool
+}
+
+func (r DragResult) Validate() error {
+	return (dragdrop.Result{Action: r.Action, Canceled: r.Canceled, Err: r.Err,
+		Position: r.Position, PositionValid: r.PositionValid, LocalTarget: r.LocalTarget}).Validate()
+}
 
 type DragMotion struct {
 	Position geometry.Point
 	Format   DragFormat
 	Allowed  DragAction
 	Action   DragAction
+	local    *DragData
+}
+
+// Local borrows an application-local value during this Enter/Motion callback.
+// External offers never expose Go objects, and portable data is read only at
+// Drop. The request expires when its callback returns; retaining it does not
+// retain access to the drag session.
+func (e *DragMotion) Local(name string) (any, bool) {
+	if e == nil || e.local == nil || e.Format != LocalFormat(name) {
+		return nil, false
+	}
+	return e.local.Local(name)
 }
 
 // DropRequest asks the target to accept data already read in the selected
