@@ -4,6 +4,8 @@ import (
 	"runtime"
 	"syscall"
 	"unsafe"
+
+	"github.com/goexlib/cgo"
 )
 
 var (
@@ -42,6 +44,7 @@ var (
 	procTrackMouseEvent          = user32Dll.NewProc("TrackMouseEvent")
 	procScreenToClient           = user32Dll.NewProc("ScreenToClient")
 	procGetMessagePos            = user32Dll.NewProc("GetMessagePos")
+	procWindowFromPoint          = user32Dll.NewProc("WindowFromPoint")
 	procClientToScreen           = user32Dll.NewProc("ClientToScreen")
 	procSetCapture               = user32Dll.NewProc("SetCapture")
 	procReleaseCapture           = user32Dll.NewProc("ReleaseCapture")
@@ -286,10 +289,7 @@ func MonitorFromWindow(wnd HWND, flags DWORD) HMONITOR {
 }
 
 func MonitorFromPoint(point POINT, flags DWORD) HMONITOR {
-	// POINT is passed by value as one eight-byte argument on Windows amd64/arm64.
-	packed := uint64(uint32(point.X)) | uint64(uint32(point.Y))<<32
-	ret, _, _ := syscall.SyscallN(procMonitorFromPoint.Addr(), uintptr(packed), uintptr(flags))
-	return HMONITOR(ret)
+	return cgo.CallRet[HMONITOR](procMonitorFromPoint.Addr(), point, flags)
 }
 
 func GetMonitorInfo(monitor HMONITOR, info *MONITORINFO) error {
@@ -419,6 +419,10 @@ func TrackMouseEvent(event *TRACKMOUSEEVENT) BOOL {
 func GetMessagePos() DWORD {
 	ret, _, _ := syscall.SyscallN(procGetMessagePos.Addr())
 	return DWORD(ret)
+}
+
+func WindowFromPoint(point POINT) HWND {
+	return cgo.CallRet[HWND](procWindowFromPoint.Addr(), point)
 }
 
 func ScreenToClient(wnd HWND, point *POINT) BOOL {
