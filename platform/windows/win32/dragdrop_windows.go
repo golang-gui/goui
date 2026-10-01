@@ -15,6 +15,7 @@ import (
 	"unicode/utf16"
 	"unsafe"
 
+	"github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/dragdrop"
@@ -73,10 +74,10 @@ var oleDropTargetTable = oleDropTargetVTable{
 	queryInterface: syscall.NewCallback(oleTargetQueryInterface),
 	addRef:         syscall.NewCallback(oleTargetAddRef),
 	release:        syscall.NewCallback(oleTargetRelease),
-	dragEnter:      syscall.NewCallback(oleTargetEnter),
-	dragOver:       syscall.NewCallback(oleTargetOver),
+	dragEnter:      cgo.NewCallback(oleTargetEnter),
+	dragOver:       cgo.NewCallback(oleTargetOver),
 	dragLeave:      syscall.NewCallback(oleTargetLeave),
-	drop:           syscall.NewCallback(oleTargetDrop),
+	drop:           cgo.NewCallback(oleTargetDrop),
 }
 
 var oleDropTargetRoots sync.Map // uintptr -> *oleDropTarget, until final COM Release
@@ -231,21 +232,19 @@ func oleTargetRelease(this uintptr) uintptr {
 	return uintptr((*oleDropTarget)(unsafe.Pointer(this)).releaseRef())
 }
 
-func oleTargetEnter(this, object, keyState, packedPoint, effectPtr uintptr) uintptr {
-	t := (*oleDropTarget)(unsafe.Pointer(this))
-	if t.service == nil || effectPtr == 0 || object == 0 {
-		return oleResult(com.E_INVALIDARG)
+func oleTargetEnter(t *oleDropTarget, object *com.DataObject, keyState uint32, point winapi.POINT, effect *uint32) com.HRESULT {
+	if t.service == nil || effect == nil || object == nil {
+		return com.E_INVALIDARG
 	}
-	t.service.enter((*com.DataObject)(unsafe.Pointer(object)), uint32(keyState), packedPoint, (*uint32)(unsafe.Pointer(effectPtr)))
+	t.service.enter(object, keyState, point, effect)
 	return 0
 }
 
-func oleTargetOver(this, keyState, packedPoint, effectPtr uintptr) uintptr {
-	t := (*oleDropTarget)(unsafe.Pointer(this))
-	if t.service == nil || effectPtr == 0 {
-		return oleResult(com.E_INVALIDARG)
+func oleTargetOver(t *oleDropTarget, keyState uint32, point winapi.POINT, effect *uint32) com.HRESULT {
+	if t.service == nil || effect == nil {
+		return com.E_INVALIDARG
 	}
-	t.service.over(uint32(keyState), packedPoint, (*uint32)(unsafe.Pointer(effectPtr)))
+	t.service.over(keyState, point, effect)
 	return 0
 }
 
@@ -256,24 +255,18 @@ func oleTargetLeave(this uintptr) uintptr {
 	return 0
 }
 
-func oleTargetDrop(this, object, keyState, packedPoint, effectPtr uintptr) uintptr {
-	t := (*oleDropTarget)(unsafe.Pointer(this))
-	if t.service == nil || effectPtr == 0 {
-		return oleResult(com.E_INVALIDARG)
+func oleTargetDrop(t *oleDropTarget, object *com.DataObject, keyState uint32, point winapi.POINT, effect *uint32) com.HRESULT {
+	if t.service == nil || effect == nil {
+		return com.E_INVALIDARG
 	}
-	t.service.drop(uint32(keyState), packedPoint, (*uint32)(unsafe.Pointer(effectPtr)))
+	t.service.drop(keyState, point, effect)
 	return 0
 }
 
-func olePoint(packed uintptr, hwnd winapi.HWND) geometry.Point {
-	point := oleScreenPoint(packed)
+func olePoint(point winapi.POINT, hwnd winapi.HWND) geometry.Point {
 	winapi.ScreenToClient(hwnd, &point)
 	scale := hwndScale(hwnd)
 	return geometry.Point{X: float32(point.X) / scale, Y: float32(point.Y) / scale}
-}
-
-func oleScreenPoint(packed uintptr) winapi.POINT {
-	return winapi.POINT{X: winapi.LONG(int32(uint32(packed))), Y: winapi.LONG(int32(uint32(packed >> 32)))}
 }
 
 func oleSuggested(keyState uint32, actions dragdrop.Action) (dragdrop.Action, bool) {
@@ -298,7 +291,7 @@ func oleActions(mask uint32) dragdrop.Action {
 	return dragdrop.Action(mask & uint32(dragdrop.AllActions))
 }
 
-func (d *oleDragService) enter(object *com.DataObject, key uint32, packed uintptr, effect *uint32) {
+func (d *oleDragService) enter(object *com.DataObject, key uint32, point winapi.POINT, effect *uint32) {
 	d.leave()
 	if d.destroyed || d.window == nil || len(d.formats) == 0 {
 		*effect = 0
@@ -325,7 +318,7 @@ func (d *oleDragService) enter(object *com.DataObject, key uint32, packed uintpt
 	}
 	if len(formats) == 0 {
 		*effect = 0
-		d.enterDragImage(object, packed, *effect)
+		d.enterDragImage(object, point, *effect)
 		return
 	}
 	object.AddRef()
@@ -335,43 +328,40 @@ func (d *oleDragService) enter(object *com.DataObject, key uint32, packed uintpt
 		o.sourceID = activeOLESource.id
 	}
 	d.offer = o
-	d.notify(o, events.DragEnter, key, packed, effect)
+	d.notify(o, events.DragEnter, key, point, effect)
 	if !d.destroyed {
-		d.enterDragImage(object, packed, *effect)
+		d.enterDragImage(object, point, *effect)
 	}
 }
 
-func (d *oleDragService) enterDragImage(object *com.DataObject, packed uintptr, effect uint32) {
+func (d *oleDragService) enterDragImage(object *com.DataObject, point winapi.POINT, effect uint32) {
 	if d.imageHelper == nil || d.window == nil {
 		return
 	}
-	point := oleScreenPoint(packed)
 	if d.imageHelper.Enter(d.window.hwnd, unsafe.Pointer(object), &point, effect).Succeeded() {
 		d.imageActive = true
 	}
 }
 
-func (d *oleDragService) over(key uint32, packed uintptr, effect *uint32) {
+func (d *oleDragService) over(key uint32, point winapi.POINT, effect *uint32) {
 	if d.offer == nil || d.destroyed {
 		*effect = 0
 		if d.imageActive && d.imageHelper != nil {
-			point := oleScreenPoint(packed)
 			d.imageHelper.Over(&point, 0)
 		}
 		return
 	}
-	d.notify(d.offer, events.DragMotion, key, packed, effect)
+	d.notify(d.offer, events.DragMotion, key, point, effect)
 	if d.imageActive && d.imageHelper != nil {
-		point := oleScreenPoint(packed)
 		d.imageHelper.Over(&point, *effect)
 	}
 }
 
-func (d *oleDragService) notify(o *oleOffer, typ events.EventType, key uint32, packed uintptr, effect *uint32) {
+func (d *oleDragService) notify(o *oleOffer, typ events.EventType, key uint32, point winapi.POINT, effect *uint32) {
 	allowed := o.actions & oleActions(*effect)
 	suggested, forced := oleSuggested(key, allowed)
 	answer := dragdrop.Action(0)
-	d.window.onEvent(events.DragOfferEvent{EventType: typ, Position: olePoint(packed, d.window.hwnd),
+	d.window.onEvent(events.DragOfferEvent{EventType: typ, Position: olePoint(point, d.window.hwnd),
 		Offer: o, Actions: allowed, Suggested: suggested, Forced: forced, ActionReply: &answer})
 	if d.destroyed || d.offer != o || !answer.ValidResult() || answer&allowed == 0 {
 		*effect = 0
@@ -398,7 +388,7 @@ func (d *oleDragService) leave() {
 	o.release()
 }
 
-func (d *oleDragService) drop(key uint32, packed uintptr, effect *uint32) {
+func (d *oleDragService) drop(key uint32, point winapi.POINT, effect *uint32) {
 	o := d.offer
 	if o == nil || d.destroyed || d.window == nil {
 		*effect = 0
@@ -410,14 +400,13 @@ func (d *oleDragService) drop(key uint32, packed uintptr, effect *uint32) {
 	}
 	o.dropped = true
 	suggested, forced := oleSuggested(key, o.actions)
-	d.window.onEvent(events.DragOfferEvent{EventType: events.DragDrop, Position: olePoint(packed, d.window.hwnd),
+	d.window.onEvent(events.DragOfferEvent{EventType: events.DragDrop, Position: olePoint(point, d.window.hwnd),
 		Offer: o, Actions: o.actions, Suggested: suggested, Forced: forced})
 	if !o.finished {
 		_ = o.Finish(0)
 	}
 	*effect = uint32(o.selected)
 	if d.imageActive && d.imageHelper != nil {
-		point := oleScreenPoint(packed)
 		d.imageHelper.Finish(unsafe.Pointer(o.data), &point, *effect)
 		d.imageActive = false
 	}
@@ -638,6 +627,7 @@ type oleSourceSession struct {
 	cancelRequested bool
 	position        geometry.Point
 	positionValid   bool
+	localTarget     bool
 }
 
 type oleDataObjectVTable struct {
@@ -757,6 +747,7 @@ func (d *oleDragService) Begin(id uint64, data *dragdrop.Data, actions dragdrop.
 	}
 	if !result.Canceled && result.Err == nil && session.window.hwnd != 0 {
 		result.Position, result.PositionValid = session.position, session.positionValid
+		result.LocalTarget = session.positionValid && session.localTarget
 	}
 	if d.source == session {
 		d.source = nil
@@ -1085,6 +1076,9 @@ func oleSourceQueryContinue(this, escape, keyState uintptr) uintptr {
 		// cursor after DoDragDrop returns (the user may already have moved it).
 		msg := winapi.GetMessagePos()
 		point := winapi.POINT{X: int32(int16(msg)), Y: int32(int16(msg >> 16))}
+		if target := windowMap[winapi.WindowFromPoint(point)]; target != nil && target.dnd != nil {
+			session.localTarget = target.dnd.registered && !target.dnd.destroyed
+		}
 		if session.window.hwnd != 0 && winapi.ScreenToClient(session.window.hwnd, &point) != 0 {
 			scale := hwndScale(session.window.hwnd)
 			session.position = geometry.Point{X: float32(point.X) / scale, Y: float32(point.Y) / scale}

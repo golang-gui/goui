@@ -3,8 +3,6 @@ package x11
 import (
 	"errors"
 	"fmt"
-	"image"
-	"math"
 	"slices"
 	"strings"
 	"time"
@@ -14,11 +12,9 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/dragdrop"
 	"github.com/golang-gui/goui/platform/events"
-	"github.com/golang-gui/goui/platform/linux/libs/xcursor"
 	"github.com/golang-gui/goui/platform/linux/libs/xlib"
 
 	"github.com/goexlib/cgo"
-	xdraw "golang.org/x/image/draw"
 )
 
 // dragService is one native XDND capability per X11 surface.
@@ -256,8 +252,49 @@ func (p *Platform) sendDragMessageWindow(dest, messageWindow xlib.Window, typ xl
 	var event xlib.Event
 	m := event.ClientMessageEvent()
 	m.Type, m.Window, m.MessageType, m.Format, m.L = xlib.ClientMessage, messageWindow, typ, 32, values
-	p.display.SendEvent(dest, false, 0, &event)
+	// The peer may disappear between any existence query and this request.
+	// Track the actual request instead; late BadWindow replies must not kill
+	// the process. Xlib serial queries below do not wait for the server.
+	p.retireDragMessages(p.display.LastKnownRequestProcessed())
+	serial := p.display.NextRequest()
+	if p.dragMessages == nil {
+		p.dragMessages = make(map[uintptr]xlib.Window)
+	}
+	p.dragMessages[serial] = dest
+	if p.display.SendEvent(dest, false, 0, &event) == 0 {
+		delete(p.dragMessages, serial)
+	}
 	p.display.Flush()
+}
+
+func (p *Platform) onDragMessageError(display xlib.Display, event *xlib.ErrorEvent) int32 {
+	if display == p.display && p.consumeDragMessageError(event) {
+		return 0
+	}
+	// XSetErrorHandler returns a callable default handler as well. Do not
+	// suppress unrelated requests or errors from another library/display.
+	return p.previousXErrorHandler.Call(display, event)
+}
+
+func (p *Platform) consumeDragMessageError(event *xlib.ErrorEvent) bool {
+	if event.Display != p.display || event.ErrorCode != xlib.BadWindow ||
+		event.RequestCode != xlib.RequestSendEvent || event.MinorCode != 0 {
+		return false
+	}
+	dest, pending := p.dragMessages[event.Serial]
+	if !pending || xlib.ID(dest) != event.ResourceID {
+		return false
+	}
+	delete(p.dragMessages, event.Serial)
+	return true
+}
+
+func (p *Platform) retireDragMessages(processed uintptr) {
+	for serial := range p.dragMessages {
+		if serial <= processed {
+			delete(p.dragMessages, serial)
+		}
+	}
 }
 
 func (d *dragService) handleClientMessage(m *xlib.ClientMessageEvent) bool {
@@ -607,14 +644,16 @@ type xdndSource struct {
 	cancelRequested bool
 	position        geometry.Point
 	positionValid   bool
+	localTarget     bool
 	x, y            int
 	stamp           xlib.Time
 	state           uint32
-	started         time.Time
+	releasedAt      time.Time
 	progress        time.Time
 	timer           *time.Timer
 	transfers       map[xdndTransferKey]*xdndTransfer
-	previewCursor   xlib.Cursor
+	preview         *xdndPreview
+	cursors         map[dragdrop.Action]xlib.Cursor
 }
 
 type xdndTransferKey struct {
@@ -626,57 +665,6 @@ type xdndTransfer struct {
 	typ    xlib.Atom
 	data   []byte
 	offset int
-}
-
-func makeXDNDPreview(display xlib.Display, preview dragdrop.Preview) (xlib.Cursor, error) {
-	if preview.Image == nil {
-		return 0, nil
-	}
-	scale := preview.Scale
-	if scale == 0 {
-		scale = currentScale()
-	}
-	physical := currentScale()
-	bounds := preview.Image.Bounds()
-	if int64(bounds.Dx())*int64(bounds.Dy()) > 16<<20 {
-		return 0, fmt.Errorf("x11 dragdrop: source preview exceeds pixel limit")
-	}
-	if math.Abs(float64(preview.Hotspot.X*physical)) > 16384 || math.Abs(float64(preview.Hotspot.Y*physical)) > 16384 {
-		return 0, fmt.Errorf("x11 dragdrop: preview hotspot exceeds cursor limit")
-	}
-	w := int(math.Round(float64(bounds.Dx()) * float64(physical/scale)))
-	h := int(math.Round(float64(bounds.Dy()) * float64(physical/scale)))
-	hotX := int(math.Round(float64(preview.Hotspot.X * physical)))
-	hotY := int(math.Round(float64(preview.Hotspot.Y * physical)))
-	if w <= 0 || h <= 0 || w > 16384 || h > 16384 {
-		return 0, fmt.Errorf("x11 dragdrop: invalid physical preview size")
-	}
-	padLeft, padTop := max(0, -hotX), max(0, -hotY)
-	padRight, padBottom := max(0, hotX-w+1), max(0, hotY-h+1)
-	width, height := w+padLeft+padRight, h+padTop+padBottom
-	if width > 16384 || height > 16384 || int64(width)*int64(height) > 16<<20 {
-		return 0, fmt.Errorf("x11 dragdrop: preview exceeds cursor image limit")
-	}
-	raster := image.NewRGBA(image.Rect(0, 0, w, h))
-	xdraw.CatmullRom.Scale(raster, raster.Bounds(), preview.Image, bounds, xdraw.Over, nil)
-	native := xcursor.CreateImage(width, height)
-	if native == nil {
-		return 0, fmt.Errorf("x11 dragdrop: libXcursor image unavailable")
-	}
-	defer native.Destroy()
-	native.XHot, native.YHot = uint32(hotX+padLeft), uint32(hotY+padTop)
-	pixels := native.PixelBuffer()
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			r, g, b, a := raster.At(x, y).RGBA()
-			pixels[(y+padTop)*width+(x+padLeft)] = uint32(a>>8)<<24 | uint32(r>>8)<<16 | uint32(g>>8)<<8 | uint32(b>>8)
-		}
-	}
-	cursor := native.LoadCursor(display)
-	if cursor == 0 {
-		return 0, fmt.Errorf("x11 dragdrop: XcursorImageLoadCursor failed")
-	}
-	return cursor, nil
 }
 
 func (d *dragService) beginSource(id uint64, data *dragdrop.Data, actions dragdrop.Action, preview dragdrop.Preview) error {
@@ -693,49 +681,34 @@ func (d *dragService) beginSource(id uint64, data *dragdrop.Data, actions dragdr
 	if err := preview.Validate(); err != nil {
 		return err
 	}
-	var previewCursor xlib.Cursor
-	if preview.Image != nil {
-		var err error
-		previewCursor, err = makeXDNDPreview(p.display, preview)
-		if err != nil {
-			return err
-		}
-	}
 	press := moveResizePress
 	if press.window != d.window || press.event.Button != xlib.Button1 || press.event.SendEvent != 0 {
-		if previewCursor != 0 {
-			p.display.FreeCursor(previewCursor)
-		}
 		return fmt.Errorf("x11 dragdrop: Begin requires current native left press")
 	}
 	copy := data.Clone()
 	wire, types, err := p.dragWireData(copy)
 	if err != nil {
-		if previewCursor != 0 {
-			p.display.FreeCursor(previewCursor)
-		}
+		return err
+	}
+	visual, err := newXDNDPreview(preview)
+	if err != nil {
 		return err
 	}
 	s := &xdndSource{service: d, window: d.window, id: id, actions: actions,
-		previewCursor: previewCursor,
-		wire:          wire, types: types, x: int(press.event.XRoot), y: int(press.event.YRoot),
-		stamp: press.event.Time, state: press.event.State,
-		started: time.Now(), progress: time.Now()}
+		preview: visual, cursors: make(map[dragdrop.Action]xlib.Cursor),
+		wire: wire, types: types, x: int(press.event.XRoot), y: int(press.event.YRoot),
+		stamp: press.event.Time, state: press.event.State}
 	// The current press has an implicit grab owned by this client. An explicit
 	// grab replaces it so motion and release continue to arrive outside us.
 	const mask = xlib.EventMaskPointerMotion | xlib.EventMaskButtonRelease
-	if status := p.display.GrabPointer(d.window.wid, false, mask, previewCursor, press.event.Time); status != 0 {
-		if previewCursor != 0 {
-			p.display.FreeCursor(previewCursor)
-		}
+	if status := p.display.GrabPointer(d.window.wid, false, mask, s.cursor(0), press.event.Time); status != 0 {
+		s.destroyVisuals()
 		return fmt.Errorf("x11 dragdrop: XGrabPointer status %d", status)
 	}
 	p.display.SetSelectionOwner(p.atoms.XdndSelection, d.window.wid, press.event.Time)
 	if p.display.GetSelectionOwner(p.atoms.XdndSelection) != d.window.wid {
 		p.display.UngrabPointer(press.event.Time)
-		if previewCursor != 0 {
-			p.display.FreeCursor(previewCursor)
-		}
+		s.destroyVisuals()
 		return fmt.Errorf("x11 dragdrop: could not own XdndSelection")
 	}
 	if len(types) > 3 {
@@ -752,7 +725,6 @@ func (d *dragService) beginSource(id uint64, data *dragdrop.Data, actions dragdr
 		32, xlib.PropModeReplace, cgo.CSlice(actionAtoms), len(actionAtoms))
 	p.display.Flush()
 	p.dragSource = s
-	s.scheduleTimeout()
 	d.window.dragPress = false
 	d.window.emitEvent(events.DragSourceEvent{EventType: events.DragSourceBegin, ID: id})
 	if p.dragSource == s && s.window.wid != 0 {
@@ -856,6 +828,7 @@ func (s *xdndSource) motion(x, y int, stamp xlib.Time, state uint32) {
 		return
 	}
 	s.x, s.y, s.stamp, s.state = x, y, stamp, state
+	s.preview.move(x, y)
 	target, proxy, version := p.dragTargetAt(x, y)
 	if target == s.window.wid && s.service.formats == nil {
 		// The source's own surface is not a destination unless it registered one.
@@ -932,6 +905,7 @@ func (s *xdndSource) status(m *xlib.ClientMessageEvent) {
 			s.accepted = action
 		}
 	}
+	s.updateCursor()
 	s.progress = time.Now()
 	s.scheduleTimeout()
 	if s.pending {
@@ -948,6 +922,13 @@ func (s *xdndSource) release(stamp xlib.Time) {
 		return
 	}
 	s.released, s.stamp = true, stamp
+	s.releasedAt = time.Now()
+	s.progress = s.releasedAt
+	// motion has resolved the target at the ButtonRelease root coordinates.
+	// Preserve that fact before asynchronous status/drop completion can alter it.
+	if target := windowMap[s.target]; target != nil && target.dnd != nil {
+		s.localTarget = len(target.dnd.formats) != 0
+	}
 	p := s.service.platform
 	x, y, ok := p.display.TranslateCoordinatesChecked(p.defScreen.Root, s.window.wid, s.x, s.y)
 	if ok {
@@ -957,8 +938,11 @@ func (s *xdndSource) release(stamp xlib.Time) {
 	s.window.dragPress = false
 	s.window.buttons &^= events.PointerButtonLeftDown
 	s.service.platform.display.UngrabPointer(stamp)
+	s.preview.hide()
 	if !s.awaiting {
 		s.dropOrEnd()
+	} else {
+		s.scheduleTimeout()
 	}
 }
 
@@ -1000,6 +984,7 @@ func (s *xdndSource) leaveTarget() {
 			[5]int64{int64(s.window.wid)})
 	}
 	s.target, s.proxy, s.accepted = 0, 0, 0
+	s.updateCursor()
 	s.awaiting, s.pending = false, false
 }
 
@@ -1022,19 +1007,18 @@ func (s *xdndSource) end(result dragdrop.Result) {
 	}
 	if !result.Canceled && result.Err == nil && s.window.wid != 0 {
 		result.Position, result.PositionValid = s.position, s.positionValid
+		result.LocalTarget = s.positionValid && s.localTarget
 	}
 	p.dragSource = nil
 	if s.timer != nil {
 		s.timer.Stop()
+		s.timer = nil
 	}
 	for key := range s.transfers {
 		s.removeTransfer(key)
 	}
 	p.display.UngrabPointer(0)
-	if s.previewCursor != 0 {
-		p.display.FreeCursor(s.previewCursor)
-		s.previewCursor = 0
-	}
+	s.destroyVisuals()
 	if p.display.GetSelectionOwner(p.atoms.XdndSelection) == s.window.wid {
 		p.display.SetSelectionOwner(p.atoms.XdndSelection, 0, 0)
 	}
@@ -1049,33 +1033,48 @@ func (s *xdndSource) end(result dragdrop.Result) {
 	}
 }
 
-func (s *xdndSource) scheduleTimeout() {
-	p := s.service.platform
-	if p.eventLoop == nil {
-		return
+// replyDeadline bounds protocol completion after release, not the user's
+// time spent dragging. While held, even a silent target can be left or canceled;
+// no response is required merely because the pointer stays still.
+func (s *xdndSource) replyDeadline() time.Time {
+	if !s.released || (!s.awaiting && !s.dropped) {
+		return time.Time{}
 	}
-	if s.timer != nil {
-		s.timer.Stop()
-	}
-	deadline := s.started.Add(30 * time.Second)
+	deadline := s.releasedAt.Add(30 * time.Second)
 	if idle := s.progress.Add(10 * time.Second); idle.Before(deadline) {
 		deadline = idle
 	}
-	delay := time.Until(deadline)
-	if delay < 0 {
-		delay = 0
+	return deadline
+}
+
+func (s *xdndSource) scheduleTimeout() {
+	p := s.service.platform
+	loop := p.eventLoop
+	if s.timer != nil {
+		s.timer.Stop()
+		s.timer = nil
 	}
-	s.timer = time.AfterFunc(delay, func() {
-		p.eventLoop.Post(func() {
+	deadline := s.replyDeadline()
+	if loop == nil || p.dragSource != s || deadline.IsZero() {
+		return
+	}
+	s.timer = time.AfterFunc(max(0, time.Until(deadline)), func() {
+		loop.Post(func() {
 			if p.dragSource != s {
 				return
 			}
-			if time.Since(s.started) < 30*time.Second && time.Since(s.progress) < 10*time.Second {
+			// Stop does not retract a task already posted to the GUI thread.
+			// A later reply may have cleared or extended the current wait.
+			current := s.replyDeadline()
+			if current.IsZero() {
+				return
+			}
+			if time.Now().Before(current) {
 				s.scheduleTimeout()
 				return
 			}
 			s.leaveTarget()
-			s.end(dragdrop.Result{Err: errors.New("x11 dragdrop: native session timed out")})
+			s.end(dragdrop.Result{Err: errors.New("x11 dragdrop: native reply timed out")})
 		})
 	})
 }
