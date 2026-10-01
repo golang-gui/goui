@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/goexlib/cgo"
+
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/internal/desktopopen"
 	"github.com/golang-gui/goui/platform/linux/libs/glib"
@@ -81,6 +83,9 @@ type Platform struct {
 	cursorTheme         *cursorTheme
 	nextDragOfferID     uint64
 	dragSource          *xdndSource
+
+	dragMessages          map[uintptr]xlib.Window // outstanding, externally addressed SendEvent requests
+	previousXErrorHandler xlib.ErrorHandler
 }
 
 var platform *Platform
@@ -153,6 +158,9 @@ func NewPlatform(appId string) (_ *Platform, err error) {
 	}
 
 	platform = p
+	// The platform/display is process-lived. Keep the preceding handler for
+	// every error outside explicitly tracked external drag messages.
+	p.previousXErrorHandler = xlib.SetErrorHandler(xlib.ErrorHandler(cgo.NewCallback(p.onDragMessageError)))
 	return platform, nil
 }
 

@@ -472,6 +472,15 @@ func dragSourceEnded(view NSView, session DraggingSession, point NSPoint, operat
 				Y: float32((content.Origin.Y + content.Size.Height - point.Y) / ppu),
 			}
 			result.PositionValid = true
+			// Use AppKit's mouse hit rules at the supplied terminal point, not
+			// the current cursor or the last draggingEntered/Exited callback.
+			number := NSWindowClassId.WindowNumberAtPoint(point, 0)
+			for native, target := range windowMap {
+				if target.dnd != nil && len(target.dnd.formats) != 0 && native.WindowNumber() == number {
+					result.LocalTarget = true
+					break
+				}
+			}
 		}
 		s.end(result)
 	}

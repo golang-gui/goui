@@ -276,6 +276,12 @@ type Result struct {
 	// or when the backend could not obtain an end point. (0,0) is a valid point.
 	Position      geometry.Point
 	PositionValid bool
+	// LocalTarget means the native end point hit a window in this process
+	// registered to receive drags. It does not mean a Drop was delivered or
+	// accepted. False does not distinguish an external target from no target.
+	// This is a final hit, not a record of previously visited windows; it is
+	// only reported with a valid end position, never for cancellation/errors.
+	LocalTarget bool
 }
 
 // Offer is a native incoming transfer. Read starts exactly one format read;
@@ -292,6 +298,9 @@ type Offer interface {
 }
 
 func (r Result) Validate() error {
+	if r.LocalTarget && !r.PositionValid {
+		return fmt.Errorf("dragdrop: local target without end position")
+	}
 	if !r.Action.ValidResult() {
 		return fmt.Errorf("dragdrop: invalid result action %d", r.Action)
 	}
