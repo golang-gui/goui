@@ -3,6 +3,8 @@ package x11
 import (
 	"errors"
 	"fmt"
+	"image"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -10,9 +12,14 @@ import (
 	"unsafe"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/dragdrop"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/linux/libs/xcursor"
 	"github.com/golang-gui/goui/platform/linux/libs/xlib"
+	"github.com/golang-gui/goui/platform/linux/libs/xshape"
+	xdraw "golang.org/x/image/draw"
 
 	"github.com/goexlib/cgo"
 )
@@ -1192,4 +1199,178 @@ func (s *xdndSource) handleSelectionClear(ev *xlib.SelectionClearEvent) bool {
 	s.leaveTarget()
 	s.end(dragdrop.Result{Err: errors.New("x11 dragdrop: lost XdndSelection ownership")})
 	return true
+}
+
+// The session owns a separate, input-transparent surface. The pointer always
+// remains a normal action cursor; preview dimensions never become cursor size.
+type xdndPreview struct {
+	window     *Window
+	hotX, hotY int
+	shown      bool
+}
+
+func previewRaster(preview dragdrop.Preview, physical float32) (*image.RGBA, int, int, error) {
+	scale := preview.Scale
+	if scale == 0 {
+		scale = physical
+	}
+	bounds := preview.Image.Bounds()
+	w := math.Round(float64(bounds.Dx()) * float64(physical/scale))
+	h := math.Round(float64(bounds.Dy()) * float64(physical/scale))
+	hotX := math.Round(float64(preview.Hotspot.X * physical))
+	hotY := math.Round(float64(preview.Hotspot.Y * physical))
+	if w <= 0 || h <= 0 || w > 16384 || h > 16384 || w*h > 16<<20 ||
+		math.Abs(hotX) > 16384 || math.Abs(hotY) > 16384 {
+		return nil, 0, 0, fmt.Errorf("x11 dragdrop: preview exceeds physical size limit")
+	}
+	raster := image.NewRGBA(image.Rect(0, 0, int(w), int(h)))
+	xdraw.CatmullRom.Scale(raster, raster.Bounds(), preview.Image, bounds, xdraw.Src, nil)
+	return raster, int(hotX), int(hotY), nil
+}
+
+func newXDNDPreview(preview dragdrop.Preview) (*xdndPreview, error) {
+	if preview.Image == nil {
+		return nil, nil
+	}
+	raster, hotX, hotY, err := previewRaster(preview, currentScale())
+	if err != nil {
+		return nil, err
+	}
+	display := platform.display
+	major, minor, ok := xshape.QueryVersion(display)
+	// Input regions require Shape 1.1. Without it, keep action feedback but
+	// omit the visual rather than create a surface that intercepts the drop.
+	if !ok || major < 1 || (major == 1 && minor < 1) {
+		return nil, nil
+	}
+	bitmap := graphics.CopyToBitmap(raster, graphics.PixelFormatBGRA, nil)
+	p := &xdndPreview{hotX: hotX, hotY: hotY}
+	paint := func(event events.Event) {
+		if event.Type() == events.Paint && p.window != nil {
+			_ = p.window.drawImage(bitmap)
+			display.Flush()
+		}
+	}
+	p.window, err = newNativeWindow(paint, true, raster.Rect.Dx(), raster.Rect.Dy(), true)
+	if errors.Is(err, common.ErrUnavailable) || errors.Is(err, common.ErrUnsupported) {
+		p.window, err = newNativeWindow(paint, true, raster.Rect.Dx(), raster.Rect.Dy(), false)
+		if err == nil {
+			// Without a compositor X11 only supports binary window coverage.
+			// Use the same image with a bounding shape, not a preview cursor.
+			rects := opaquePreview(&bitmap)
+			// Keep each request below the core X11 request-size limit, even for
+			// fragmented alpha masks. An empty image sets an empty shape.
+			first := min(len(rects), 4096)
+			xshape.CombineRectangles(display, p.window.wid, xshape.Bounding, 0, 0, rects[:first], xshape.Set, xshape.Unsorted)
+			for rects = rects[first:]; len(rects) > 0; {
+				n := min(len(rects), 4096)
+				xshape.CombineRectangles(display, p.window.wid, xshape.Bounding, 0, 0, rects[:n], xshape.Union, xshape.Unsorted)
+				rects = rects[n:]
+			}
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	xshape.CombineRectangles(display, p.window.wid, xshape.Input, 0, 0, nil, xshape.Set, xshape.Unsorted)
+	if err := p.window.drawImage(bitmap); err != nil {
+		p.window.Destroy()
+		return nil, err
+	}
+	return p, nil
+}
+
+// opaquePreview returns horizontal runs of alpha >= 50%, and unpremultiplies
+// covered pixels for the non-composited visual. Fractional alpha is unavailable.
+func opaquePreview(bitmap *graphics.Bitmap) []xshape.Rectangle {
+	var rectangles []xshape.Rectangle
+	w, h := bitmap.Bounds().Dx(), bitmap.Bounds().Dy()
+	for y := 0; y < h; y++ {
+		start := -1
+		for x := 0; x <= w; x++ {
+			i := y*bitmap.Stride + x*4
+			if x < w && bitmap.Pixels[i+3] >= 128 {
+				if start < 0 {
+					start = x
+				}
+				a := uint32(bitmap.Pixels[i+3])
+				for c := range 3 {
+					bitmap.Pixels[i+c] = byte(min(255, uint32(bitmap.Pixels[i+c])*255/a))
+				}
+				bitmap.Pixels[i+3] = 255
+			} else if start >= 0 {
+				rectangles = append(rectangles, xshape.Rectangle{X: int16(start), Y: int16(y), Width: uint16(x - start), Height: 1})
+				start = -1
+			}
+		}
+	}
+	return rectangles
+}
+
+func (p *xdndPreview) move(x, y int) {
+	if p == nil {
+		return
+	}
+	display := platform.display
+	display.MoveWindow(p.window.wid, x-p.hotX, y-p.hotY)
+	if !p.shown {
+		_ = p.window.Show()
+		p.shown = true
+	}
+	display.RaiseWindow(p.window.wid)
+	display.Flush()
+}
+
+func (p *xdndPreview) hide() {
+	if p != nil && p.shown {
+		_ = p.window.Hide()
+		p.shown = false
+	}
+}
+
+func (s *xdndSource) cursor(action dragdrop.Action) xlib.Cursor {
+	if cursor := s.cursors[action]; cursor != 0 {
+		return cursor
+	}
+	display := s.service.platform.display
+	names := []string{"dnd-none", "not-allowed"}
+	switch action {
+	case dragdrop.Copy:
+		names = []string{"dnd-copy", "copy"}
+	case dragdrop.Move:
+		names = []string{"dnd-move", "move"}
+	case dragdrop.Link:
+		names = []string{"dnd-link", "alias"}
+	}
+	var cursor xlib.Cursor
+	if xcursor.Available() {
+		for _, name := range names {
+			cursor = xcursor.LibraryLoadCursor(display, name)
+			if cursor != 0 {
+				break
+			}
+		}
+	}
+	if cursor == 0 {
+		cursor = display.CreateFontCursor(68)
+	} // XC_left_ptr
+	s.cursors[action] = cursor
+	return cursor
+}
+
+func (s *xdndSource) updateCursor() {
+	if !s.released {
+		s.service.platform.display.ChangeActivePointerGrab(xlib.EventMaskPointerMotion|xlib.EventMaskButtonRelease, s.cursor(s.accepted), 0)
+	}
+}
+
+func (s *xdndSource) destroyVisuals() {
+	if s.preview != nil {
+		s.preview.window.Destroy()
+		s.preview = nil
+	}
+	for _, cursor := range s.cursors {
+		s.service.platform.display.FreeCursor(cursor)
+	}
+	s.cursors = nil
 }
