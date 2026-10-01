@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/dragdrop"
 	"github.com/golang-gui/goui/platform/events"
@@ -143,6 +144,12 @@ func (p *popover) dragControllersChanged() {
 func dragCapability(root Root) (platform.DragDrop, error) {
 	if h, ok := root.(interface{ rootState() *rootBase }); ok {
 		base := h.rootState()
+		// Manual handoff need not register a second pointer controller just to
+		// create the native capability. This is still owned by the same root.
+		if base.drag.native == nil && base.app != nil && base.app.platform != nil && base.surface != nil {
+			base.drag.attempted = true
+			base.drag.native, base.drag.err = base.app.platform.NewDragDrop(base.surface)
+		}
 		updateDragHost(&base.drag, base.app, base.surface, root.Widget())
 		if base.drag.native != nil {
 			return base.drag.native, nil
@@ -171,6 +178,7 @@ type guiDragSession struct {
 	committed     DragAction // synchronous local Drop accepted by the application
 	localDrop     bool       // observed delivery, not inferred from hover/Action
 	pendingEnd    *DragResult
+	unmount       signal.Handle
 }
 
 func (a *application) startDrag(host Root, widget Widget, source *DragSource, data *DragData, preview DragPreview, actions DragAction) error {
@@ -188,6 +196,8 @@ func (a *application) startDrag(host Root, widget Widget, source *DragSource, da
 	run := &guiDragSession{app: a, id: a.nextDragID, source: source, widget: widget,
 		host: host, data: data, native: native}
 	a.dragSession = run
+	source.run = run
+	run.unmount = widget.ConnectUnmount(run.cancel)
 	err = native.Begin(run.id, &data.portable, actions, dragdrop.Preview{
 		Image: preview.Image, Scale: preview.Scale, Hotspot: preview.Hotspot,
 	})
@@ -198,6 +208,8 @@ func (a *application) startDrag(host Root, widget Widget, source *DragSource, da
 			return nil
 		}
 		a.dragSession = nil
+		source.run = nil
+		run.unmount.Disconnect()
 		run.data = nil
 	}
 	return err
@@ -232,6 +244,11 @@ func (s *guiDragSession) end(result DragResult) {
 	result.LocalDrop = s.localDrop
 	s.ending = true
 	s.app.dragSession = nil
+	s.source.run = nil
+	if s.unmount != nil {
+		s.unmount.Disconnect()
+		s.unmount = nil
+	}
 	s.source.dragging = false
 	if s.widget != nil && !s.widget.base().destroyed {
 		s.widget.base().requestSemanticUpdate()
