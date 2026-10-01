@@ -4,10 +4,13 @@ import (
 	"github.com/golang-gui/goui/gui"
 )
 
+// MenuModel is the imperative model consumed by GUI menu presenters.
+type MenuModel = gui.MenuModel
+
 // MenuItemView describes one menu entry (or a separator row). It is a plain
-// declarative descriptor, not a widget: a MenuButton consumes the items to
-// build and mount a gui.Menu model, which the imperative layer renders. Rebuild
-// the descriptor each update to reflect current state (e.g. Enabled(state.Get())).
+// declarative descriptor, not a widget: menu presenters consume the items to
+// build a GUI menu model. Rebuild the descriptor each update (or each context
+// menu request) to reflect current state, e.g. Enabled(state.Get()).
 type MenuItemView struct {
 	label     string
 	action    func()
@@ -95,15 +98,18 @@ func (v *MenuButtonView) Update(ctx BuildContext, widget gui.Widget) {
 	// flag is what matters.
 	sig := signatureOf(v.items)
 	if sig != state.lastSig {
-		button.SetMenu(buildMenu(v.items))
+		button.SetMenu(Menu(v.items...))
 		state.lastSig = sig
 	}
 }
 
 func (v *MenuButtonView) Unmount(BuildContext, gui.Widget) {}
 
-// buildMenu coordinates the declarative item descriptors into a gui.Menu model.
-func buildMenu(items []*MenuItemView) *gui.Menu {
+// Menu converts menu item declarations into a fresh imperative menu model.
+// It does not mount a View or execute item actions. Composite controls can use
+// it when coordinating their own menu declarations, including menus queried
+// at input time. An empty declaration produces an empty model.
+func Menu(items ...*MenuItemView) MenuModel {
 	m := gui.NewMenu()
 	for _, it := range items {
 		if it == nil {

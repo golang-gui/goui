@@ -6,6 +6,23 @@ import (
 	"github.com/golang-gui/goui/gui"
 )
 
+func TestMenuConvertsDeclarationsWithoutExecutingActions(t *testing.T) {
+	called := 0
+	item := MenuItem("Open", func() { called++ }).Enabled(false)
+	menu := Menu(nil, item, MenuSeparator())
+	if menu.ItemsCount() != 2 || menu.ItemAt(0).Label() != "Open" || menu.ItemAt(0).Enabled() || !menu.ItemAt(1).Separator() || called != 0 {
+		t.Fatal("menu conversion lost metadata or executed an action")
+	}
+	item.Enabled(true)
+	if menu.ItemAt(0).Enabled() || Menu(item).ItemAt(0) == menu.ItemAt(0) {
+		t.Fatal("conversion did not copy declaration values into independent items")
+	}
+	menu.ItemAt(0).Action()()
+	if called != 1 || Menu().ItemsCount() != 0 {
+		t.Fatal("action was lost or empty declaration produced items")
+	}
+}
+
 func TestMenuButtonMountsAndBuildsMenu(t *testing.T) {
 	root := newRoot()
 
