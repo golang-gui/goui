@@ -1386,6 +1386,8 @@ func initNSWindow() {
 	NSWindowSel.CanBecomeKeyWindow = objc.RegisterName("canBecomeKeyWindow")
 	NSWindowSel.CanBecomeMainWindow = objc.RegisterName("canBecomeMainWindow")
 	NSWindowSel.Frame = objc.RegisterName("frame")
+	NSWindowSel.WindowNumber = objc.RegisterName("windowNumber")
+	NSWindowSel.WindowNumberAtPoint = objc.RegisterName("windowNumberAtPoint:belowWindowWithWindowNumber:")
 	NSWindowSel.ContentRectForFrameRect = objc.RegisterName("contentRectForFrameRect:")
 	NSWindowSel.SetFrameTopLeftPoint = objc.RegisterName("setFrameTopLeftPoint:")
 	NSWindowSel.SetFrameDisplay = objc.RegisterName("setFrame:display:")
@@ -1438,6 +1440,8 @@ var (
 		CanBecomeKeyWindow                objc.SEL
 		CanBecomeMainWindow               objc.SEL
 		Frame                             objc.SEL
+		WindowNumber                      objc.SEL
+		WindowNumberAtPoint               objc.SEL
 		ContentRectForFrameRect           objc.SEL
 		SetFrameTopLeftPoint              objc.SEL
 		SetFrameDisplay                   objc.SEL
@@ -1493,6 +1497,14 @@ func ImplementNSWindow(className string, override NSWindowOverride) (class NSWin
 func (c NSWindowClass) Alloc() (res NSWindow) {
 	res.NSObject = c.NSObjectClass.Alloc()
 	return
+}
+
+func (c NSWindowClass) WindowNumberAtPoint(point NSPoint, belowWindowNumber NSInteger) NSInteger {
+	return NSInteger(c.Send(NSWindowSel.WindowNumberAtPoint, point, belowWindowNumber))
+}
+
+func (w NSWindow) WindowNumber() NSInteger {
+	return objc.Send[NSInteger](w.ID, NSWindowSel.WindowNumber)
 }
 
 func (w NSWindow) InitWith(contentRect NSRect, styleMask NSWindowStyleMask, backing NSBackingStoreType, defer_ bool) (res NSWindow) {
