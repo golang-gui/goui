@@ -28,12 +28,6 @@ type Value struct {
 	Lo uint32
 }
 
-// raw returns the register representation of XSyncValue on the 64-bit Linux
-// ABIs supported by the X11 backend.
-func (v Value) raw() uintptr {
-	return uintptr(uint64(v.Lo)<<32 | uint64(uint32(v.Hi)))
-}
-
 // Initialize verifies that the server and libXext both provide the Sync
 // extension. Callers may safely omit resize synchronization when it fails.
 func Initialize(display xlib.Display) error {
@@ -67,12 +61,11 @@ func Initialize(display xlib.Display) error {
 }
 
 func CreateCounter(display xlib.Display, initial Value) Counter {
-	ret, _, _ := xSyncCreateCounter.CallRaw(uintptr(display), initial.raw())
-	return Counter(ret)
+	return cgo.CallRet[Counter](xSyncCreateCounter.Addr(), display, initial)
 }
 
 func SetCounter(display xlib.Display, counter Counter, value Value) {
-	xSyncSetCounter.CallRaw(uintptr(display), uintptr(counter), value.raw())
+	cgo.Call(xSyncSetCounter.Addr(), display, counter, value)
 }
 
 func DestroyCounter(display xlib.Display, counter Counter) {

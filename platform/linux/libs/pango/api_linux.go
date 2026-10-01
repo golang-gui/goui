@@ -190,8 +190,7 @@ func (l Layout) GetIter() LayoutIter {
 // GetLineCount retrieves the count of lines for the layout.
 func (l Layout) GetLineCount() int {
 	// int pango_layout_get_line_count(PangoLayout* layout)
-	ret, _, _ := pangoLayoutGetLineCount.CallRaw(l.GObject)
-	return int(ret)
+	return int(cgo.CallRet[int32](pangoLayoutGetLineCount.Addr(), l.GObject))
 }
 
 // GetLineReadonly retrieves a particular line from a layout.
@@ -243,14 +242,12 @@ func (iter LayoutIter) Free() {
 
 func (iter LayoutIter) GetIndex() int {
 	// int pango_layout_iter_get_index(PangoLayoutIter* iter)
-	ret, _, _ := pangoLayoutIterGetIndex.CallRaw(uintptr(iter))
-	return int(ret)
+	return int(cgo.CallRet[int32](pangoLayoutIterGetIndex.Addr(), iter))
 }
 
 func (iter LayoutIter) GetBaseline() int {
 	// int pango_layout_iter_get_baseline(PangoLayoutIter* iter)
-	ret, _, _ := pangoLayoutIterGetBaseline.CallRaw(uintptr(iter))
-	return int(ret)
+	return int(cgo.CallRet[int32](pangoLayoutIterGetBaseline.Addr(), iter))
 }
 
 func (iter LayoutIter) GetLineReadonly() *LayoutLine {
@@ -557,8 +554,7 @@ func (fd FontDescription) GetFamily() string {
 
 func (fd FontDescription) GetSize() int {
 	// gint pango_font_description_get_size(const PangoFontDescription* desc)
-	ret, _, _ := pangoFontDescriptionGetSize.CallRaw(uintptr(fd))
-	return int(ret)
+	return int(cgo.CallRet[int32](pangoFontDescriptionGetSize.Addr(), fd))
 }
 
 // --- PangoContext ---

@@ -36,8 +36,7 @@ var (
 // FormatStrideForWidth returns the stride for an image surface with the given format and width.
 func FormatStrideForWidth(format Format, width int) int {
 	// cairo_format_stride_for_width(cairo_format_t format, int width) -> int
-	ret, _, _ := cairoFormatStrideForWidth.CallRaw(uintptr(format), uintptr(width))
-	return int(ret)
+	return int(cgo.CallRet[int32](cairoFormatStrideForWidth.Addr(), format, int32(width)))
 }
 
 // ImageSurfaceCreate creates an image surface of the specified format and dimensions.

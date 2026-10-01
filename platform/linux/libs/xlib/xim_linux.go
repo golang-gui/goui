@@ -232,14 +232,7 @@ func (ic XIC) Utf8LookupString(event *KeyEvent) (text string, keysym KeySym, sta
 	buf := make([]byte, 64)
 	for {
 		pin.Pin(&buf[0])
-		n, _, _ := xutf8LookupString.CallRaw(
-			uintptr(ic),
-			uintptr(cgo.Pointer(event)),
-			uintptr(cgo.Pointer(&buf[0])),
-			uintptr(len(buf)),
-			uintptr(cgo.Pointer(&keysym)),
-			uintptr(cgo.Pointer(&status)),
-		)
+		n := cgo.CallRet[int32](xutf8LookupString.Addr(), ic, event, &buf[0], int32(len(buf)), &keysym, &status)
 		count := int(n)
 		if status == XBufferOverflow && count > len(buf) {
 			buf = make([]byte, count)
