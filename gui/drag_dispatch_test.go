@@ -21,6 +21,48 @@ type testDragOffer struct {
 	finished []dragdrop.Action
 }
 
+func TestDragMotionLocalIsScopedToMatchingSessionAndFormat(t *testing.T) {
+	app := &application{}
+	win := &window{rootBase: rootBase{app: app}}
+	root := newTestWidget()
+	root.Arrange(geometry.Rect(0, 0, 100, 100))
+	win.SetWidget(root)
+	defer win.Destroy()
+	payload := new(int)
+	data := new(DragData)
+	data.SetLocal("page", payload)
+	data.SetLocal("other", new(int))
+	app.dragSession = &guiDragSession{app: app, id: 42, data: data, source: NewDragSource()}
+	target := NewDropTarget(LocalFormat("page"))
+	root.AddEventController(target)
+	var held *DragMotion
+	calls := 0
+	inspect := func(e *DragMotion) {
+		calls++
+		held = e
+		if got, ok := e.Local("page"); !ok || got != payload {
+			t.Fatal("matching local payload unavailable")
+		}
+		if _, ok := e.Local("other"); ok {
+			t.Fatal("unselected format exposed")
+		}
+	}
+	target.ConnectEnter(inspect)
+	target.ConnectMotion(inspect)
+	for _, id := range []uint64{42, 42, 99} {
+		offer := &testDragOffer{id: 7, sourceID: id, formats: []dragdrop.Format{dragdrop.FormatLocalMarker}}
+		_ = win.DispatchEvent(events.DragOfferEvent{EventType: events.DragMotion, Offer: offer, Position: geometry.Point{X: 10, Y: 10}, Actions: dragdrop.Copy})
+		if held != nil {
+			if _, ok := held.Local("page"); ok {
+				t.Fatal("expired request retained local access")
+			}
+		}
+	}
+	if calls != 2 {
+		t.Fatalf("foreign offer was exposed, callbacks=%d", calls)
+	}
+}
+
 func (o *testDragOffer) ID() uint64                   { return o.id }
 func (o *testDragOffer) SourceID() uint64             { return o.sourceID }
 func (o *testDragOffer) Formats() []dragdrop.Format   { return slices.Clone(o.formats) }
@@ -48,7 +90,7 @@ func TestLocalDropCommitSurvivesReentrantEnd(t *testing.T) {
 				var results []DragResult
 				source.ConnectEnd(func(result DragResult) { results = append(results, result) })
 				end := func() {
-					app.dispatchDragSourceEvent(events.DragSourceEvent{EventType: events.DragSourceEnd, ID: run.id, Result: DragResult{Canceled: true}})
+					app.dispatchDragSourceEvent(events.DragSourceEvent{EventType: events.DragSourceEnd, ID: run.id, Result: dragdrop.Result{Canceled: true}})
 					if len(results) != 0 {
 						t.Fatal("End was emitted before synchronous Drop/Finish returned")
 					}
@@ -83,10 +125,71 @@ func TestLocalDropCommitSurvivesReentrantEnd(t *testing.T) {
 					want = DragCopy
 				}
 				run.end(DragResult{Canceled: true}) // duplicate terminal callbacks are ignored
-				if len(results) != 1 || results[0].Action != want || results[0].Canceled == accepted || results[0].Validate() != nil || app.dragSession != nil || run.data != nil || !slices.Equal(offer.finished, []dragdrop.Action{want}) {
+				if len(results) != 1 || !results[0].LocalDrop || results[0].Action != want || results[0].Canceled == accepted || results[0].Validate() != nil || app.dragSession != nil || run.data != nil || !slices.Equal(offer.finished, []dragdrop.Action{want}) {
 					t.Fatalf("results=%+v finish=%v session=%p data=%p", results, offer.finished, app.dragSession, run.data)
 				}
 			})
+		}
+	}
+}
+
+func TestDragResultLocalDropIsDeliveryNotHover(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		drop, foreign bool
+	}{{"hover only", false, false}, {"local rejected", true, false}, {"foreign rejected", true, true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			app := &application{}
+			win := &window{rootBase: rootBase{app: app}}
+			root := newTestWidget()
+			root.Arrange(geometry.Rect(0, 0, 100, 100))
+			win.SetWidget(root)
+			defer win.Destroy()
+			source := NewDragSource()
+			run := &guiDragSession{app: app, id: 42, source: source, data: new(DragData)}
+			app.dragSession = run
+			var result DragResult
+			source.ConnectEnd(func(r DragResult) { result = r })
+			offer := &testDragOffer{id: 7, sourceID: 42, formats: []dragdrop.Format{dragdrop.FormatText}}
+			if tc.foreign {
+				offer.sourceID = 0
+			}
+			kinds := []events.EventType{events.DragEnter}
+			if tc.drop {
+				kinds = append(kinds, events.DragDrop)
+			}
+			kinds = append(kinds, events.DragLeave)
+			for _, kind := range kinds {
+				// No compatible target: a delivered local Drop still counts.
+				if err := win.DispatchEvent(events.DragOfferEvent{EventType: kind, Offer: offer, Position: geometry.Point{X: 10, Y: 10}, Actions: dragdrop.Move}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			run.end(DragResult{PositionValid: true, Position: geometry.Point{X: 12, Y: 34}})
+			if result.LocalDrop != (tc.drop && !tc.foreign) || result.Action != 0 || result.Canceled || !result.PositionValid {
+				t.Fatalf("incorrect end facts: %+v", result)
+			}
+		})
+	}
+}
+
+func TestDragResultForwardsFinalLocalTargetWithoutInventingDrop(t *testing.T) {
+	for _, local := range []bool{false, true} {
+		app := &application{}
+		source := NewDragSource()
+		app.dragSession = &guiDragSession{app: app, id: 42, source: source, data: new(DragData)}
+		calls := 0
+		source.ConnectEnd(func(r DragResult) {
+			calls++
+			if r.LocalTarget != local || r.LocalDrop || r.Action != 0 || r.Canceled ||
+				!r.PositionValid || r.Position != (geometry.Point{X: 12, Y: 34}) || r.Validate() != nil {
+				t.Fatalf("incorrect terminal facts: %+v", r)
+			}
+		})
+		app.dispatchDragSourceEvent(events.DragSourceEvent{EventType: events.DragSourceEnd, ID: 42,
+			Result: dragdrop.Result{LocalTarget: local, PositionValid: true, Position: geometry.Point{X: 12, Y: 34}}})
+		if calls != 1 || app.dragSession != nil {
+			t.Fatalf("calls=%d session retained=%t", calls, app.dragSession != nil)
 		}
 	}
 }

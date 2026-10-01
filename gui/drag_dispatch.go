@@ -169,6 +169,7 @@ type guiDragSession struct {
 	delivering    bool
 	pendingCancel bool
 	committed     DragAction // synchronous local Drop accepted by the application
+	localDrop     bool       // observed delivery, not inferred from hover/Action
 	pendingEnd    *DragResult
 }
 
@@ -228,6 +229,7 @@ func (s *guiDragSession) end(result DragResult) {
 	if s.committed != 0 {
 		result.Action, result.Canceled, result.Err = s.committed, false, nil
 	}
+	result.LocalDrop = s.localDrop
 	s.ending = true
 	s.app.dragSession = nil
 	s.source.dragging = false
@@ -255,7 +257,9 @@ func (a *application) dispatchDragSourceEvent(event events.DragSourceEvent) {
 		}
 		run.source.begin.Emit()
 	case events.DragSourceEnd:
-		run.end(event.Result)
+		r := event.Result
+		run.end(DragResult{Action: r.Action, Canceled: r.Canceled, Err: r.Err,
+			Position: r.Position, PositionValid: r.PositionValid, LocalTarget: r.LocalTarget})
 	}
 }
 
@@ -283,6 +287,11 @@ func (b *rootBase) dispatchDragOffer(host EventTarget, e events.DragOfferEvent) 
 			*e.ActionReply = action
 		}
 	case events.DragDrop:
+		// Record before negotiation, Read, or callbacks: rejection and native
+		// synchronous End must not erase the fact that a local Drop occurred.
+		if app := dragAppOf(host.(Root)); app != nil && app.dragSession != nil && app.dragSession.id == e.Offer.SourceID() {
+			app.dragSession.localDrop = true
+		}
 		action := b.negotiateDragTarget(host, e)
 		if action == 0 || b.dragTarget.target == nil {
 			b.leaveDragTarget()
@@ -356,6 +365,9 @@ func (b *rootBase) negotiateDragTarget(host EventTarget, e events.DragOfferEvent
 			initial := b.dragTarget.target != t
 			action := preferredDragAction(allowed, e.Suggested)
 			request := &DragMotion{Position: widgetLocalPoint(w, e.Position), Format: chosen, Allowed: allowed, Action: action}
+			if app != nil && app.dragSession != nil && app.dragSession.id == e.Offer.SourceID() && strings.HasPrefix(string(chosen), "local:") {
+				request.local = app.dragSession.data
+			}
 			if initial {
 				t.active = true
 				w.base().requestSemanticUpdate()
@@ -364,6 +376,7 @@ func (b *rootBase) negotiateDragTarget(host EventTarget, e events.DragOfferEvent
 			} else {
 				t.motion.Emit(request)
 			}
+			request.local = nil
 			if t.owner != w || w.base().destroyed || w.Root() != host.(Root) || !t.enabled ||
 				!request.Action.ValidResult() || request.Action&allowed == 0 {
 				b.leaveDragTarget()
