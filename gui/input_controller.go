@@ -368,8 +368,8 @@ func (c *WheelEventController) HandleEvent(ctx EventContext) {
 func (c *WheelEventController) HandleCrossing(ctx CrossingContext) {}
 
 // DragEventController tracks a pointer drag gesture: button down → moves →
-// button up. On PointerDown it calls CapturePointer() so subsequent moves
-// arrive even outside the widget bounds. The begin signal receives the start
+// button up. After winning gesture arbitration, subsequent moves arrive even
+// outside the widget bounds. The begin signal receives the start
 // point; update and end signals receive the current point — all in
 // widget-local coordinates. The controller ignores crossing events; drag
 // state is managed entirely by PointerDown/Move/Up.
@@ -377,6 +377,7 @@ type DragEventController struct {
 	phase          PropagationPhase
 	button         events.PointerButton
 	dragging       bool
+	updating       bool // a native handoff is only legal inside the update signal
 	gesture        *GestureParticipation
 	threshold      float32
 	start          geometry.Point
@@ -435,9 +436,26 @@ func (c *DragEventController) Reset() {
 	c.dragging = false
 }
 
-func (c *DragEventController) GestureAccepted(EventContext) {
+func (c *DragEventController) GestureAccepted(ctx EventContext) {
+	gesture := c.gesture
 	c.dragging = true
 	c.begin.Emit(c.start, c.startModifiers)
+	// The threshold-crossing move may already be outside a reorder strip.
+	// Native systems coalesce motion; waiting for another move loses that
+	// displacement (and can miss the handoff entirely before button-up).
+	if c.gesture == gesture && c.dragging {
+		if e, ok := ctx.Event().(events.PointerEvent); ok && e.EventType == events.PointerMove {
+			if position, valid := ctx.Position(); valid {
+				c.emitUpdate(position, e.Modifiers)
+			}
+		}
+	}
+}
+
+func (c *DragEventController) emitUpdate(position geometry.Point, modifiers events.Modifiers) {
+	c.updating = true
+	defer func() { c.updating = false }()
+	c.update.Emit(position, modifiers)
 }
 
 func (c *DragEventController) GestureCanceled(GestureCancelReason) {
@@ -506,7 +524,7 @@ func (c *DragEventController) HandleEvent(ctx EventContext) {
 		if !ok {
 			return
 		}
-		c.update.Emit(position, pointerEvent.Modifiers)
+		c.emitUpdate(position, pointerEvent.Modifiers)
 
 	case events.PointerUp:
 		if c.gesture != nil && !c.dragging {

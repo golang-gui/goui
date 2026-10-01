@@ -8,6 +8,26 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 )
 
+func TestGestureThresholdMoveDeliveredAfterBegin(t *testing.T) {
+	root := newTestWidget()
+	root.Arrange(geometry.Rect(0, 0, 100, 100))
+	win := &window{}
+	win.SetWidget(root)
+	drag := NewDragEventController()
+	drag.SetThreshold(4)
+	root.AddEventController(drag)
+	var points []geometry.Point
+	drag.ConnectBegin(func(p geometry.Point, _ events.Modifiers) { points = append(points, p) })
+	drag.ConnectUpdate(func(p geometry.Point, _ events.Modifiers) { points = append(points, p) })
+	start, far := geometry.Point{X: 10, Y: 10}, geometry.Point{X: 200, Y: 150}
+	_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonLeft,
+		Buttons: events.PointerButtonLeftDown, Position: start})
+	_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Buttons: events.PointerButtonLeftDown, Position: far})
+	if len(points) != 2 || points[0] != start || points[1] != far {
+		t.Fatalf("threshold crossing lost its position: %v", points)
+	}
+}
+
 func TestGestureClickAndParentDrag(t *testing.T) {
 	for _, drag := range []bool{false, true} {
 		root, child := newTestWidget(), newTestWidget()
