@@ -824,9 +824,13 @@ func TestRenderWidgetPreconditionsAndPanic(t *testing.T) {
 		t.Fatal("unmounted accepted")
 	}
 	w.SetWidget(child)
-	child.Arrange(geometry.Rect(3, 4, 8, 8))
 	if _, err := RenderWidget(child, 1); err == nil {
-		t.Fatal("pending layout accepted")
+		t.Fatal("unallocated widget accepted")
+	}
+	child.Arrange(geometry.Rect(3, 4, 8, 8))
+	img, err := RenderWidget(child, 1)
+	if err != nil || img.Bounds().Dx() != 8 || img.Bounds().Dy() != 8 || !w.layoutDirty || child.Rect() != geometry.Rect(3, 4, 8, 8) {
+		t.Fatalf("pending layout must render current allocation without flushing it: image=%v err=%v", img, err)
 	}
 	w.layoutDirty = false
 	for _, scale := range []float32{-1, float32(math.NaN()), float32(math.Inf(1))} {
