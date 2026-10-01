@@ -196,8 +196,8 @@ func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Sty
 }
 
 func (b *rootBase) renderWidgetImage(widget Widget, scale float32) (image.Image, error) {
-	if b.painter == nil || b.layoutDirty {
-		return nil, fmt.Errorf("gui: render widget before host layout is ready")
+	if b.painter == nil {
+		return nil, fmt.Errorf("gui: render widget without a painter")
 	}
 	if scale == 0 {
 		scale = b.frameScale()

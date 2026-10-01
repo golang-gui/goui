@@ -976,8 +976,9 @@ func Pick(widget Widget, point geometry.Point) Widget {
 // The image origin is (0, 0); dimensions are ceil(allocation * scale).
 // A zero scale uses the host's current physical-pixels-per-DIP scale.
 //
-// Call on the GUI thread, outside Paint, after the mounted host has completed
-// layout. This does not mount, arrange or move widgets. Paint must obey its
+// Call on the GUI thread, outside Paint, after the widget has an allocation.
+// A pending layout is not flushed: this renders its currently allocated size.
+// This does not mount, arrange or move widgets. Paint must obey its
 // normal contract, including not mutating the tree. Drawing/resource failures
 // are returned; panics in Paint propagate after drawing state is restored.
 func RenderWidget(widget Widget, scale float32) (image.Image, error) {
