@@ -10,6 +10,9 @@ import (
 )
 
 type root struct {
+	runtime       *app
+	transferring  bool
+	reconciling   bool
 	mu            sync.Mutex
 	root          *node
 	window        gui.Window
@@ -17,6 +20,7 @@ type root struct {
 	updatePending bool
 	destroyHandle signal.Handle
 	afterUpdate   []afterUpdateCall
+	transferAfter []afterUpdateCall
 }
 
 type afterUpdateCall struct {
@@ -26,6 +30,8 @@ type afterUpdateCall struct {
 }
 
 type node struct {
+	root     *root
+	id       string // declaration identity, not the widget's mutable GUI ID
 	viewType reflect.Type
 	view     WidgetView
 	widget   gui.Widget
@@ -53,13 +59,13 @@ func (r *root) widget() gui.Widget {
 }
 
 func (r *root) update(view View) gui.Widget {
-	r.root = r.updateNode(r.root, view)
+	r.reconcile(view)
 	r.flushAfterUpdate()
 	return r.widget()
 }
 
 func (r *root) updateWindow(window gui.Window, view View) gui.Widget {
-	r.root = r.updateNode(r.root, view)
+	r.reconcile(view)
 	widget := r.widget()
 	if window != nil {
 		window.SetWidget(widget)
@@ -72,7 +78,7 @@ func (r *root) flushAfterUpdate() {
 	calls := r.afterUpdate
 	r.afterUpdate = nil
 	for _, call := range calls {
-		if call.owner != nil && !call.owner.released && call.owner.version == call.version && call.fn != nil {
+		if call.owner != nil && call.owner.root == r && !call.owner.released && call.owner.version == call.version && call.fn != nil {
 			call.fn()
 		}
 	}
@@ -214,7 +220,7 @@ func (r *root) updateWidgetNode(old *node, view WidgetView) *node {
 	}
 
 	viewType := reflect.TypeOf(view)
-	if old != nil && old.viewType != viewType {
+	if old != nil && !sameWidgetIdentity(old, view) {
 		r.release(old, true)
 		old = nil
 	}
@@ -222,6 +228,8 @@ func (r *root) updateWidgetNode(old *node, view WidgetView) *node {
 	current := old
 	if current == nil {
 		current = &node{
+			root:     r,
+			id:       view.base().id,
 			viewType: viewType,
 			view:     view,
 			baseCtx:  &viewBaseContext{},
@@ -252,6 +260,7 @@ func (r *root) release(n *node, detachWidgets bool) {
 		return
 	}
 	n.released = true
+	n.root = nil
 
 	if n.view != nil && n.widget != nil && n.baseCtx != nil {
 		n.view.base().unmount(n.baseCtx, n.widget)
@@ -273,6 +282,19 @@ func (r *root) release(n *node, detachWidgets bool) {
 
 func (ctx *buildContext) State() any {
 	return ctx.node.state
+}
+
+func (ctx *buildContext) Coordinator() *Coordinator {
+	return &Coordinator{owner: ctx.node}
+}
+
+func (r *root) reconcile(view View) {
+	if r.transferring || r.reconciling {
+		panic("ui: cannot nest reconciliation or reconcile during child transfer; request a later update")
+	}
+	r.reconciling = true
+	defer func() { r.reconciling = false }()
+	r.root = r.updateNode(r.root, view)
 }
 
 func (ctx *buildContext) SetState(state any) {
@@ -328,7 +350,7 @@ func (ctx *buildContext) UpdateChild(target Bin, child View) gui.Widget {
 		return nil
 	}
 	view := normalizeView(child)
-	if len(current.nodes) != 0 && !sameWidgetViewType(current.nodes[0], view) {
+	if len(current.nodes) != 0 && !sameWidgetIdentity(current.nodes[0], view) {
 		ctx.root.releaseChildren(current, 0, true)
 	}
 	if view != nil {
@@ -347,36 +369,78 @@ func (ctx *buildContext) UpdateChild(target Bin, child View) gui.Widget {
 }
 
 func (ctx *buildContext) UpdateChildren(target Container, children []View) []gui.Widget {
+	if ctx.node.released || target == nil {
+		return nil
+	}
+	// Normalize and reject duplicate local IDs before modifying the target.
+	views := make([]WidgetView, len(children))
+	ids := make(map[string]bool)
+	for i, child := range children {
+		views[i] = normalizeView(child)
+		if views[i] != nil && views[i].base().id != "" {
+			id := views[i].base().id
+			if ids[id] {
+				panic("ui: duplicate child ID " + id)
+			}
+			ids[id] = true
+		}
+	}
 	current := ctx.childTarget(target, false)
 	if current == nil {
 		return nil
 	}
 	result := make([]gui.Widget, len(children))
-	index := 0
-	for i, child := range children {
-		view := normalizeView(child)
+	old := slices.Clone(current.nodes)
+	byID := make(map[string]*node, len(old))
+	for _, n := range old {
+		if n.id != "" {
+			byID[n.id] = n
+		}
+	}
+	used := make(map[*node]bool, len(old))
+	next := make([]*node, 0, len(children))
+	position := 0
+	for i, view := range views {
 		if view == nil {
 			continue
 		}
-		// Without an insertion API, only the same-type prefix can be reused.
-		if index < len(current.nodes) && !sameWidgetViewType(current.nodes[index], view) {
-			ctx.root.releaseChildren(current, index, true)
+		var previous *node
+		if id := view.base().id; id != "" {
+			previous = byID[id]
+		} else if position < len(old) && old[position].id == "" {
+			previous = old[position]
 		}
-		var mounted *node
-		if index < len(current.nodes) {
-			mounted = ctx.root.updateWidgetNode(current.nodes[index], view)
-		} else {
-			mounted = ctx.root.updateWidgetNode(nil, view)
-			if mounted == nil {
-				continue
-			}
-			current.nodes = append(current.nodes, mounted)
+		if !sameWidgetIdentity(previous, view) {
+			previous = nil
+		}
+		mounted := ctx.root.updateWidgetNode(previous, view)
+		if mounted == nil {
+			continue
+		}
+		if previous == nil {
 			target.AddChild(mounted.widget)
+		} else {
+			used[previous] = true
 		}
+		next = append(next, mounted)
 		result[i] = mounted.widget
-		index++
+		position++
 	}
-	ctx.root.releaseChildren(current, index, true)
+	for _, n := range old {
+		if !used[n] {
+			widget := n.widget
+			ctx.root.release(n, true)
+			target.RemoveChild(widget)
+		}
+	}
+	current.nodes = next
+	// Relative moves preserve focus, mounts and window resources. Non-managed
+	// children remain owned by the target; only the managed list is ordered here.
+	var sibling gui.Widget
+	for i := len(next) - 1; i >= 0; i-- {
+		target.MoveChildBefore(next[i].widget, sibling)
+		sibling = next[i].widget
+	}
 	ctx.forgetEmptyTarget(current)
 	return result
 }
@@ -384,6 +448,9 @@ func (ctx *buildContext) UpdateChildren(target Container, children []View) []gui
 // Dynamic targets such as recycled list rows must not accumulate empty records.
 func (ctx *buildContext) forgetEmptyTarget(target *childTarget) {
 	if len(target.nodes) == 0 {
+		if target.container != nil && containerWidget(target.container) == ctx.node.widget {
+			return
+		}
 		if index := slices.Index(ctx.node.children, target); index >= 0 {
 			ctx.node.children = slices.Delete(ctx.node.children, index, index+1)
 		}
@@ -406,8 +473,8 @@ func (r *root) releaseChildren(target *childTarget, from int, detach bool) {
 	target.nodes = target.nodes[:from]
 }
 
-func sameWidgetViewType(old *node, view WidgetView) bool {
-	return old != nil && view != nil && old.viewType == reflect.TypeOf(view)
+func sameWidgetIdentity(old *node, view WidgetView) bool {
+	return old != nil && !old.released && view != nil && old.viewType == reflect.TypeOf(view) && old.id == view.base().id
 }
 
 func compactViews(views []View) []View {

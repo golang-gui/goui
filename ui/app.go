@@ -433,6 +433,7 @@ func (a *app) createWindow(view WindowView) (*windowMount, error) {
 		root:    newRoot(),
 		view:    view,
 	}
+	mount.root.runtime = a
 
 	if err := mount.applyWindowProperties(view); err != nil {
 		window.Destroy()

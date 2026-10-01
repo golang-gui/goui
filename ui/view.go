@@ -23,6 +23,10 @@ type WidgetView interface {
 type BuildContext interface {
 	State() any
 	SetState(any)
+	// Coordinator borrows this node's coordination identity. Unlike this
+	// per-update context, the handle may be retained by an adapter's State.
+	// It expires on View release and follows an explicitly transferred subtree.
+	Coordinator() *Coordinator
 	// AfterUpdate runs after the entire View tree has been reconciled and
 	// attached to its Window, before the next layout. It is a one-shot hook.
 	// A released or superseded owner is skipped. Do not retain BuildContext or
@@ -54,6 +58,18 @@ type Bin interface {
 type Container interface {
 	AddChild(gui.Widget)
 	RemoveChild(gui.Widget)
+	// MoveChildBefore reorders an existing child without unmounting it.
+	// A nil sibling moves the child to the end.
+	MoveChildBefore(child, sibling gui.Widget)
+}
+
+// TransferContainer identifies the Widget owning a list adapted by a non-Widget
+// mounting target. Its empty registration is retained while the owner lives so
+// an explicitly transferred node can enter an empty list. Widget containers
+// already identify themselves and need not implement this interface.
+type TransferContainer interface {
+	Container
+	Widget() gui.Widget
 }
 
 // ViewBase is embedded as ViewBase[ConcreteView] by every declarative view. Its
@@ -213,7 +229,9 @@ func (b *ViewBase[T]) self() *T {
 }
 
 // ID assigns a nonempty identifier for precise lookup within this widget's Root.
-// Empty clears it; ID does not affect declarative reconciliation.
+// ID also identifies this node within its mounting target: the same ID and
+// concrete View type retain state across reorder. Changing it replaces the node.
+// Empty uses positional identity. IDs remain unique within the GUI Root, not App.
 func (b *ViewBase[T]) ID(id string) *T {
 	b.id = id
 	b.fields.Set(viewID, true)
