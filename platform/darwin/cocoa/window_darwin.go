@@ -521,7 +521,11 @@ func (w *Window) ControlsRect() (geometry.Rectangle, error) {
 	if !w.window.Valid() || !w.view.Valid() {
 		return geometry.Rectangle{}, common.ErrUnavailable
 	}
-	if !w.window.IsVisible() || w.window.IsMiniaturized() {
+	// Visibility is not required for convertRect:toView:. A prepared hidden
+	// window already owns its native buttons and must expose their actual
+	// geometry before the first layout/show. Fullscreen transitions can move
+	// them to another window; the ownership checks below still reject that.
+	if w.window.IsMiniaturized() {
 		return geometry.Rectangle{}, common.ErrUnavailable
 	}
 	var result geometry.Rectangle
@@ -605,12 +609,12 @@ func (w *Window) Position(relativeTo common.Window) (result geometry.Point, err 
 		return result, common.ErrUnavailable
 	}
 	AutoReleasePool(func() {
-		frame := w.window.Frame()
+		client := w.window.ContentRectForFrameRect(w.window.Frame())
 		content := reference.window.ContentRectForFrameRect(reference.window.Frame())
 		scale := pointsPerLogicalUnit(reference.window)
 		result = geometry.Point{
-			X: float32((frame.Origin.X-content.Origin.X)/scale) - offset.X,
-			Y: float32((content.Origin.Y+content.Size.Height-frame.Origin.Y-frame.Size.Height)/scale) - offset.Y,
+			X: float32((client.Origin.X-content.Origin.X)/scale) - offset.X,
+			Y: float32((content.Origin.Y+content.Size.Height-client.Origin.Y-client.Size.Height)/scale) - offset.Y,
 		}
 	})
 	return result, workarea.ValidatePoint(result)
@@ -648,10 +652,15 @@ func (w *Window) SetPosition(relativeTo common.Window, position geometry.Point) 
 		native := w.window
 		native.Retain()
 		defer native.Release()
-		native.SetFrameTopLeftPoint(NSPoint{
+		point := NSPoint{
 			X: content.Origin.X + CGFloat(position.X)*scale,
 			Y: content.Origin.Y + content.Size.Height - CGFloat(position.Y)*scale,
-		})
+		}
+		frame := native.Frame()
+		ownContent := native.ContentRectForFrameRect(frame)
+		point.X -= ownContent.Origin.X - frame.Origin.X
+		point.Y += frame.Origin.Y + frame.Size.Height - ownContent.Origin.Y - ownContent.Size.Height
+		native.SetFrameTopLeftPoint(point)
 	})
 	return nil
 }
