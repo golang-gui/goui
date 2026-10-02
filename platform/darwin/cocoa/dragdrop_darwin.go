@@ -209,7 +209,7 @@ func macActions(native uint) dragdrop.Action {
 	return actions
 }
 
-func (d *dragService) Begin(id uint64, data *dragdrop.Data, actions dragdrop.Action, preview dragdrop.Preview) error {
+func (d *dragService) Begin(id uint64, data *dragdrop.Data, actions dragdrop.Action, preview dragdrop.Preview, feedback dragdrop.Feedback) error {
 	w := d.window
 	if w == nil || !w.window.Valid() || activeMacSource != nil {
 		return common.ErrUnavailable
@@ -227,11 +227,11 @@ func (d *dragService) Begin(id uint64, data *dragdrop.Data, actions dragdrop.Act
 		return fmt.Errorf("cocoa dragdrop: no active left-button press")
 	}
 	var beginErr error
-	AutoReleasePool(func() { beginErr = d.beginNative(id, data, actions, preview) })
+	AutoReleasePool(func() { beginErr = d.beginNative(id, data, actions, preview, feedback) })
 	return beginErr
 }
 
-func (d *dragService) beginNative(id uint64, data *dragdrop.Data, actions dragdrop.Action, preview dragdrop.Preview) error {
+func (d *dragService) beginNative(id uint64, data *dragdrop.Data, actions dragdrop.Action, preview dragdrop.Preview, feedback dragdrop.Feedback) error {
 	w := d.window
 	items, err := makeMacDragItems(data, preview, w)
 	if err != nil {
@@ -259,6 +259,11 @@ func (d *dragService) beginNative(id uint64, data *dragdrop.Data, actions dragdr
 		return fmt.Errorf("cocoa dragdrop: AppKit did not start a session")
 	}
 	s.session.Retain()
+	if feedback.DisableReturnAnimation {
+		// AppKit's default return animation would contradict a source-owned
+		// alternative operation after an unaccepted drag. Native result is intact.
+		s.session.SetAnimatesToStartingPositionsOnCancelOrFail(false)
+	}
 	if d.window == nil || !w.window.Valid() {
 		s.canceled = true
 		return nil

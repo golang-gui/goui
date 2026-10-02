@@ -26,6 +26,47 @@ func TestOLEDragDropABI(t *testing.T) {
 	}
 }
 
+func TestOLEFeedbackPreservesAcceptedAndCanceledNativeCursors(t *testing.T) {
+	session := new(oleSourceSession)
+	source := newOLESourceObject(session)
+	defer source.releaseRef()
+	// Animation control is independent and must not override OLE cursors.
+	session.feedback.DisableReturnAnimation = true
+	for _, tc := range []struct {
+		fallback, canceled bool
+		effect             uint32
+	}{
+		{false, false, 0},
+		{true, false, uint32(dragdrop.Move)},
+		{true, false, uint32(dragdrop.Copy)},
+		{true, false, uint32(dragdrop.Move) | 0x80000000},
+		{true, false, uint32(dragdrop.Copy) | 0x80000000},
+		{true, true, 0},
+		{true, true, 0x80000000},
+	} {
+		session.feedback.NeutralOutsideTargets, session.cancelRequested = tc.fallback, tc.canceled
+		result := oleSourceFeedback(uintptr(unsafe.Pointer(source)), uintptr(tc.effect))
+		if result != oleResult(com.DRAGDROP_S_USEDEFAULTCURSORS) {
+			t.Fatalf("native feedback overridden for %+v: %x", tc, result)
+		}
+	}
+}
+
+func TestOLEFeedbackOperationBits(t *testing.T) {
+	// Explorer's rejected desktop target may add DROPEFFECT_SCROLL alone.
+	// It must not suppress NeutralOutsideTargets, nor be interpreted as acceptance.
+	for _, effect := range []uint32{0, 0x80000000} {
+		if oleActions(effect) != 0 {
+			t.Fatalf("advisory bits became an operation: %x", effect)
+		}
+	}
+	for _, action := range []dragdrop.Action{dragdrop.Copy, dragdrop.Move, dragdrop.Link} {
+		if oleActions(uint32(action)|0x80000000) != action {
+			t.Fatal("scroll altered the accepted operation")
+		}
+	}
+}
+
 func TestOLEDragImageHeadless(t *testing.T) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()

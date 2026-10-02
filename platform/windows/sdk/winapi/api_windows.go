@@ -44,6 +44,7 @@ var (
 	procTrackMouseEvent          = user32Dll.NewProc("TrackMouseEvent")
 	procScreenToClient           = user32Dll.NewProc("ScreenToClient")
 	procGetMessagePos            = user32Dll.NewProc("GetMessagePos")
+	procGetCursorPos             = user32Dll.NewProc("GetCursorPos")
 	procWindowFromPoint          = user32Dll.NewProc("WindowFromPoint")
 	procClientToScreen           = user32Dll.NewProc("ClientToScreen")
 	procSetCapture               = user32Dll.NewProc("SetCapture")
@@ -419,6 +420,11 @@ func TrackMouseEvent(event *TRACKMOUSEEVENT) BOOL {
 func GetMessagePos() DWORD {
 	ret, _, _ := syscall.SyscallN(procGetMessagePos.Addr())
 	return DWORD(ret)
+}
+
+func GetCursorPos(point *POINT) BOOL {
+	ret, _, _ := syscall.SyscallN(procGetCursorPos.Addr(), uintptr(unsafe.Pointer(point)))
+	return BOOL(ret)
 }
 
 func WindowFromPoint(point POINT) HWND {

@@ -116,8 +116,8 @@ func (d *dragService) SetFormats(formats []dragdrop.Format) error {
 	return nil
 }
 
-func (d *dragService) Begin(id uint64, data *dragdrop.Data, actions dragdrop.Action, preview dragdrop.Preview) error {
-	return d.beginSource(id, data, actions, preview)
+func (d *dragService) Begin(id uint64, data *dragdrop.Data, actions dragdrop.Action, preview dragdrop.Preview, feedback dragdrop.Feedback) error {
+	return d.beginSource(id, data, actions, preview, feedback)
 }
 
 func (d *dragService) Cancel() {
@@ -661,6 +661,7 @@ type xdndSource struct {
 	transfers       map[xdndTransferKey]*xdndTransfer
 	preview         *xdndPreview
 	cursors         map[dragdrop.Action]xlib.Cursor
+	feedback        dragdrop.Feedback
 }
 
 type xdndTransferKey struct {
@@ -674,7 +675,7 @@ type xdndTransfer struct {
 	offset int
 }
 
-func (d *dragService) beginSource(id uint64, data *dragdrop.Data, actions dragdrop.Action, preview dragdrop.Preview) error {
+func (d *dragService) beginSource(id uint64, data *dragdrop.Data, actions dragdrop.Action, preview dragdrop.Preview, feedback dragdrop.Feedback) error {
 	p := d.platform
 	if d.window == nil || d.window.wid == 0 || p.dragSource != nil || p.eventLoop == nil {
 		return fmt.Errorf("x11 dragdrop: source unavailable or busy")
@@ -702,7 +703,8 @@ func (d *dragService) beginSource(id uint64, data *dragdrop.Data, actions dragdr
 		return err
 	}
 	s := &xdndSource{service: d, window: d.window, id: id, actions: actions,
-		preview: visual, cursors: make(map[dragdrop.Action]xlib.Cursor),
+		feedback: feedback,
+		preview:  visual, cursors: make(map[dragdrop.Action]xlib.Cursor),
 		wire: wire, types: types, x: int(press.event.XRoot), y: int(press.event.YRoot),
 		stamp: press.event.Time, state: press.event.State}
 	// The current press has an implicit grab owned by this client. An explicit
@@ -1329,12 +1331,18 @@ func (p *xdndPreview) hide() {
 }
 
 func (s *xdndSource) cursor(action dragdrop.Action) xlib.Cursor {
+	// A private cache key distinguishes neutral fallback from native rejection.
+	if action == 0 && s.feedback.NeutralOutsideTargets && !s.overLocalTarget() {
+		action = 0x80
+	}
 	if cursor := s.cursors[action]; cursor != 0 {
 		return cursor
 	}
 	display := s.service.platform.display
 	names := []string{"dnd-none", "not-allowed"}
 	switch action {
+	case 0x80:
+		names = []string{"left_ptr", "default"}
 	case dragdrop.Copy:
 		names = []string{"dnd-copy", "copy"}
 	case dragdrop.Move:
@@ -1356,6 +1364,12 @@ func (s *xdndSource) cursor(action dragdrop.Action) xlib.Cursor {
 	} // XC_left_ptr
 	s.cursors[action] = cursor
 	return cursor
+}
+
+func (s *xdndSource) overLocalTarget() bool {
+	// Use the current native pointer location, not a previously visited target.
+	target := windowMap[s.target]
+	return target != nil && target.dnd != nil && len(target.dnd.formats) != 0
 }
 
 func (s *xdndSource) updateCursor() {

@@ -619,6 +619,7 @@ func initializeOLEPreview(data *oleDataObject, preview dragdrop.Preview, physica
 }
 
 type oleSourceSession struct {
+	feedback        dragdrop.Feedback
 	service         *oleDragService
 	window          *Window
 	id              uint64
@@ -694,7 +695,7 @@ var oleSourceTable = oleSourceVTable{
 var oleSourceRoots sync.Map
 var activeOLESource *oleSourceSession // one OLE modal source on the GUI STA
 
-func (d *oleDragService) Begin(id uint64, data *dragdrop.Data, actions dragdrop.Action, preview dragdrop.Preview) error {
+func (d *oleDragService) Begin(id uint64, data *dragdrop.Data, actions dragdrop.Action, preview dragdrop.Preview, feedback dragdrop.Feedback) error {
 	if d.destroyed || d.window == nil || d.window.hwnd == 0 || d.source != nil || activeOLESource != nil {
 		return common.ErrUnavailable
 	}
@@ -714,7 +715,7 @@ func (d *oleDragService) Begin(id uint64, data *dragdrop.Data, actions dragdrop.
 	if err != nil {
 		return err
 	}
-	session := &oleSourceSession{service: d, window: d.window, id: id}
+	session := &oleSourceSession{service: d, window: d.window, id: id, feedback: feedback}
 	session.data = newOLEDataObject(wire)
 	if preview.Image != nil {
 		if err := initializeOLEPreview(session.data, preview, hwndScale(d.window.hwnd)); err != nil {
@@ -1089,4 +1090,19 @@ func oleSourceQueryContinue(this, escape, keyState uintptr) uintptr {
 	return 0
 }
 
-func oleSourceFeedback(_, _ uintptr) uintptr { return oleResult(com.DRAGDROP_S_USEDEFAULTCURSORS) }
+func oleSourceFeedback(this, effect uintptr) uintptr {
+	session := (*oleSourceObject)(unsafe.Pointer(this)).session
+	// DROPEFFECT_SCROLL is advisory, not an accepted operation. Explorer can
+	// return it by itself; compare the operation bits, not the raw DWORD.
+	if session != nil && session.feedback.NeutralOutsideTargets && oleActions(uint32(effect)) == 0 && !session.cancelRequested {
+		var point winapi.POINT
+		if winapi.GetCursorPos(&point) != 0 {
+			target := windowMap[winapi.WindowFromPoint(point)]
+			if target == nil || target.dnd == nil || !target.dnd.registered || target.dnd.destroyed {
+				winapi.SetCursor(loadCursor(common.CursorDefault))
+				return 0 // S_OK: source supplied feedback, not an accepted Drop
+			}
+		}
+	}
+	return oleResult(com.DRAGDROP_S_USEDEFAULTCURSORS)
+}

@@ -41,6 +41,7 @@ func InitAppKit() (err error) {
 	initNSPasteboardItem()
 	initNSDraggingInfo()
 	initNSDraggingItem()
+	initNSDraggingSession()
 	initNSData()
 	initNSImage()
 	initNSCursor()
@@ -426,6 +427,18 @@ type (
 	DraggingInfo    struct{ NSObject }
 	DraggingSession struct{ NSObject }
 )
+
+func initNSDraggingSession() {
+	NSDraggingSessionSel.SetAnimatesToStartingPositionsOnCancelOrFail = objc.RegisterName("setAnimatesToStartingPositionsOnCancelOrFail:")
+}
+
+var NSDraggingSessionSel struct {
+	SetAnimatesToStartingPositionsOnCancelOrFail objc.SEL
+}
+
+func (s DraggingSession) SetAnimatesToStartingPositionsOnCancelOrFail(value bool) {
+	s.Send(NSDraggingSessionSel.SetAnimatesToStartingPositionsOnCancelOrFail, value)
+}
 
 func (i DraggingInfo) Pasteboard() NSPasteboard {
 	return Cast[NSPasteboard](i.Send(NSDraggingInfoSel.Pasteboard))

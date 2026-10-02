@@ -231,6 +231,7 @@ type DragSource struct {
 	preview         DragPreview
 	preparedActions DragAction
 	dragging        bool
+	feedback        DragFeedback
 	prepare         signal.Signal1[*DragPrepare]
 	begin           signal.Signal0
 	end             signal.Signal1[DragResult]
@@ -242,6 +243,21 @@ func (s *DragSource) Phase() PropagationPhase { return PhaseCapture }
 func (s *DragSource) Enabled() bool           { return s.enabled }
 func (s *DragSource) Actions() DragAction     { return s.actions }
 func (s *DragSource) Dragging() bool          { return s.dragging }
+
+// DragFeedback configures presentation, not acceptance or DragResult.
+// Its zero value preserves native feedback. Unsupported presentation options
+// are ignored; the native performed action and cancellation remain unchanged.
+type DragFeedback struct {
+	// NeutralOutsideTargets uses a neutral cursor outside local native targets
+	// when no operation is accepted; local target feedback remains native.
+	NeutralOutsideTargets bool
+	// DisableReturnAnimation suppresses native failed/canceled-drop rebound.
+	DisableReturnAnimation bool
+}
+
+// SetFeedback sets the presentation options copied at the next Begin.
+// Changing them during an active session does not affect that session.
+func (s *DragSource) SetFeedback(value DragFeedback) { s.feedback = value }
 func (s *DragSource) Reset() {
 	gesture := s.gesture
 	s.gesture = nil
