@@ -527,6 +527,7 @@ type testWindow struct {
 	title         string
 	widget        gui.Widget
 	shows         int
+	showErr       error
 	destroyed     bool
 	focused       bool
 	focusedWidget gui.Widget
@@ -635,7 +636,7 @@ func (w *testWindow) SetFocusedWidget(widget gui.Widget) bool {
 
 func (w *testWindow) Show() error {
 	w.shows++
-	return nil
+	return w.showErr
 }
 
 func (w *testWindow) RequestClose() error {
