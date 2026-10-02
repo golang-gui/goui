@@ -155,9 +155,10 @@ WorkAreaAt(point geometry.Point) (geometry.Rectangle, error)
 结束时刻/坐标有效性。不能用旧的栏内最后一个 PointerMove 代替原生结束点，也不能
 在源已销毁或移位后把失去参考依据的坐标当作有效数据。
 
-新窗口外框请求位置应由结束点减去“新窗口外框到目标标签抓取点”的偏移得到。
-该偏移包含原生框架到客户区、目标 TabBar 在客户区中的布局、标签槽位和标签内抓取
-点。不能把源标签栏偏移当成目标偏移，或把结束点直接当外框左上角。参考与目标在
+新窗口客户区请求位置应由结束点减去“目标标签在客户区内的抓取点”得到。
+该偏移包含目标 TabBar 在客户区中的布局、标签槽位和标签内抓取点，不包含原生
+外框；平台后端负责客户区与原生外框之间的转换。不能把源标签栏偏移当成目标偏移，
+或把结束点直接当窗口原点。参考与目标在
 不同 DPI 时，先在平台边界明确尺度转换，再在同一参考窗口 DIP 中计算；不能直接
 相减分别来自两窗口的 DIP。已有公开接口不代表所有混合 DPI 换算已实现。
 
@@ -597,7 +598,8 @@ Windows RDP，保留原有 macOS VNC/SSH。停止本机隔离 Xvnc/Xfwm4，不�
 
 ## 14. 命令式拖出请求与新窗口准备（2026-09-30）
 
-新增 `TabBar.ConnectDetachRequest(func(*TabDetachRequest))`。请求给出原 Page、
+新增拖出请求信号（当前签名为 `TabBar.ConnectDetachRequest(func(*TabDetachRequest, *bool))`；
+结果指针的默认防护见第 30 节）。请求给出原 Page、
 源 Window、结束 Position（源客户区 DIP）、标签内 Hotspot。应用可以保存请求，
 等待自己创建的目标正常布局，然后调用 `TransferTo(target, index)`；不创建独立
 页面所有者，不先卸载源页面。`Cancel()` 幂等；新拖动、源卸载、SetView、关闭
@@ -627,6 +629,9 @@ LocalDrop 不能完整识别“最终停留于本应用明确拒绝区域”，�
 本阶段尚未实现的 UI 迁移保护已在第 15–16 节接入；声明式页面不可绕过协调器裸移交。
 
 ### 14.2 窗口准备示例与坐标
+
+以下保留本阶段历史流程；当前例程已按第 30 节改为隐藏准备及统一客户区坐标，
+不再查询原生外框偏移或等待首次 Paint。
 
 `tests/window/widgets/tab_detach` 用应用自有的 frameProbe 在正常 Paint 后 Post
 准备工作，不在 Paint 中搬页面。目标暂放仅用于测量的标签元数据占位页（没有复制
@@ -702,7 +707,8 @@ Root 的 ID 冲突。源和目标映射在 GUI 生命周期回调前一起切换
 UI 选择回调在声明模型更新后发出，避免把移动后的页面解析成空 key。
 同视图重排仍使用原 Moved/OnMoved，不重复发跨视图通知。
 
-UI 的 `OnDetachRequest(func(*wui.TabDetachRequest))` 传出带 Key 的命令式准备请求。
+UI 的拖出请求传出命令式准备请求（当前签名为
+`OnDetachRequest(func(*wui.TabDetachRequest, *bool))`；当前页面身份为 ID，见第 29–30 节）。
 应用可以先声明空目标窗口，通过 App.FindWidget 找到目标后 TransferTo；此路径
 也经过同一个协调请求。本节阶段先验既有窗口转移；声明式新建窗口、正常布局
 与热点定位的后续整合验收见第 16 节。
@@ -747,6 +753,8 @@ libadwaita 1.10.0 的 [transfer_page 官方契约](https://gnome.pages.gitlab.gn
 不增加 Window/Root 帧回调，不把应用的窗口创建策略下沉到 widgets。
 
 ### 16.1 准备流程与断言
+
+以下为本阶段历史准备流程，当前隐藏窗口准备及客户区定位以第 30 节为准。
 
 - OnDetachRequest 保存原请求、源位置/缩放，声明目标窗口及仅含元数据的占位页。
   原输入框此时仍由源页面持有，不先创建第二个编辑器。
@@ -1473,3 +1481,286 @@ OnCloseRequest 的字符串含义也统一为页面 ID。普通应用只维护�
   `/tmp/goui-ui-identity.2gAGKg`，全仓既有图片测试仍按原规则运行。
 - 验证后已停止自建 Xvnc :97、Xfwm4，测试窗口正常退出；用户桌面未操作。
   未提交代码，仓库外的测试产物保留供复查。
+
+## 30. 拖出反馈与隐藏窗口准备（2026-10-02）
+
+本节替代历史例程中的“Show → 首次 Paint → Post → 定位/移交”准备流程。
+实际缺陷是新窗口已可见时才调整位置；macOS 还会先播放未接受的原生预览回弹，
+而源标签在请求处理中恢复显示；Windows 默认拒绝光标与源端拖出能力不一致。
+不使用延迟、重复定位、隐藏已显示的窗口或伪造原生 Drop 成功来补偿。
+
+### 30.1 隐藏准备（历史方案，已由第 31 节替代）
+
+普通窗口增加 ClientSize 原生即时观察；gui.Window.PrepareLayout 复用真实布局和
+Chrome 占位，返回物理像素/DIP，不调用 Painter.Begin/End、不显示或泵送事件。
+DesktopWindow/gui.Window 的 SetPosition 与 Position 统一使用客户区原点，不再增加
+SetClientPosition 或公开原生外框坐标。Position(self) 返回零；只要客户区原生几何
+存在，Show 前也可以即时查询。此前外框契约及帧边距观察不再适用。
+
+应用创建隐藏目标和临时布局页面，依次执行：
+
+1. SetPosition(source, release)，让原生目标先位于目标显示区域。
+2. PrepareLayout，获取目标实际布局、Snapshot 标签锚点和比例。
+3. 最终客户区原点 = release − (目标标签局部锚点 + hotspot) × targetScale/sourceScale。
+4. 提交 TransferTo，移除临时页面，再 Show。
+
+release 使用源客户区 DIP；hotspot/锚点使用目标 DIP，必须换算比例。
+不减一个猜测的标题栏高度。X11 用 StaticGravity 和初始 normal hints 表达客户区
+位置；Windows/AppKit 从真实窗口对象取得客户区/外框偏移。系统约束仍可能改请求位置，
+显示后例程通过实际 Position 和标签 Snapshot 独立核对抓取点，容差保持 1 物理像素。
+
+UI 不增加特定 TabView 的 Root 分支：普通新窗口在挂载内容之前登记 ID/生命周期，
+View 的已有 AfterUpdate 可查到隐藏目标、完成准备和普通协调移交，随后才 Show。
+准备回调销毁目标时不再复活或 Show；完成钩子之前必须更新本轮全部窗口声明，
+不能依赖源/目标的声明顺序。具体批次边界见 30.5。
+本例程 frame 的准备回调移至 AfterUpdate，不在 Paint 中修改或 Post 移交。
+
+### 30.2 源占位与反馈
+
+源标签从原生 Begin 到 retained DetachRequest 完成一直隐藏、保留槽位；正文和页面
+仍归源所有。Cancel/失败恢复同一标签，提交时先消耗请求再做普通页面生命周期转移，
+不在移交前短暂恢复源绘制。始终发出查询，不增加 HasListeners 或根据连接数判断
+应用能力。ConnectDetachRequest 的第二参数是初值 false 的 handled 指针：处理者
+接手或保存请求时设置 true；Emit 返回后若最终为 false，就 Cancel 恢复源标签。
+连接顺序就是查询顺序，后连接可改变结果；结果指针仅在同步回调中有效，不能保存。
+已取消/消费的请求不再传给后续处理者，默认 Cancel 不会撤销已提交的移交。
+处理者设置 true 后断开自身连接，不影响已保留的请求；UI 直接转发同一结果指针，
+省略 OnDetachRequest 时保持 false，不增加独立连接计数或监听能力查询。
+
+启用 Transferable 的多页标签请求单次 SourceFallback 原生视觉配置，不检查监听者。
+Windows/X11 在本进程注册目标之外、未接受且未取消时使用中性指针；本进程拒绝
+和已接受动作仍按原生反馈。macOS 关闭会话失败回弹，Esc 仍走原取消结果。
+Action=0 始终是未接受，不当作原生 Move 成功；单页仍可移入已有 TabView，
+但不能凭未接受放下创建新窗口。
+
+参考取舍：libadwaita 1.8.0 的
+[AdwTabBox](https://github.com/GNOME/libadwaita/blob/1.8.0/src/adw-tab-box.c#L2320)
+在 GDK 的 no-target 取消路径执行 detach；GOUI 沿用“源端后续操作”区分，
+但不照搬它的 gdk_drag_drop_done(TRUE)，因为 GOUI 原生结果必须保留平台事实。
+原生反馈依据 [GiveFeedback](https://learn.microsoft.com/en-us/windows/win32/api/oleidl/nf-oleidl-idropsource-givefeedback)
+与 [AppKit 回弹属性](https://developer.apple.com/documentation/appkit/nsdraggingsession/animatestostartingpositionsoncancelorfail)；
+初始定位依据 [EWMH StaticGravity](https://specifications.freedesktop.org/wm/1.5/ar01s09.html#id-1.10.8)。
+这不是给 platform 引入 Tab 生命周期或 GUI 新窗口策略。
+
+### 30.3 前一版回归与验收
+
+以下是客户区接口统一、handled 查询调整之前的结果，不代替调整后的验收。
+
+包内新增/扩充回归覆盖隐藏布局无 Paint、布局/绘制重入与销毁、客户区请求委派、
+X11 初始重力保留、UI Show 前查询与销毁、pending 请求隐藏/槽位/取消恢复、无接收者
+不滞留请求、反馈按会话复制且不改取消结果，以及 Windows 原生默认光标保留条件。
+窗口例程同步中文步骤和独立抓取点断言。
+
+- Linux：隔离 Xvnc :98/Xfwm4 合成器、1x、默认 Painter（未单独确认实际后端），
+  Native/Integrated 的 tab_detach 均 PASS，显示后实际抓取点与释放点一致。
+  UI detached 模式编辑 edited A、移交、Rebuild、再编辑 after move、关闭源后 PASS，
+  原页面/输入框/State 保留。未操作用户 Linux 桌面。
+- macOS：15.7.7 arm64、VNC 桌面、1x、默认 Painter，Native/Integrated 拖出均 PASS，
+  Mount/Unmount=2/1、原文本保留、实际抓取点与释放点一致。
+  首次快速输入序列的 Esc 未取消并触发准备，不能算通过；重新确认按压/原生预览、
+  分步按 Esc 后 canceled 模式 PASS（requests=0、Mount/Unmount=1/0），未放宽断言。
+  原生无头的格式、动作/取消结果、协议注册和 pasteboard 相关测试均通过。
+- Windows：10 19045 amd64，测试 EXE 校验哈希一致，但 Defender ASR
+  C1DB55AB-C21A-4637-BB3F-A12568109D35、事件 1121 阻止执行；未修改系统安全策略。
+  本轮仅交叉编译，光标、隐藏定位及原生无头测试未完成，不计作桌面通过。
+- 单屏 1x 断言不证明混合 DPI、其它窗口管理器或每帧视觉行为；本轮没有性能前后
+  对照，不宣称降低多少毫秒。相关日志/截图/二进制在仓库外
+  /tmp/goui-tab-detach-fix.3fne2H；跨平台全仓编译、全仓测试及 race 结果见 Plan。
+
+工具问题：Windows remote-shell 的 default_shell 报 powershell，实际命令经 cmd；
+大型 stdin 传输阻塞并留下部分数据，已终止任务进程并改为哈希校验的临时 HTTP 传输。
+Computer Use 输入成功只表示发送，快速 Run 输入可能落到旧窗口，截图可能落后于操作；
+验收按观察后的实际窗口、公开结果断言和进程日志判断，不据工具 ok 判通过。
+
+### 30.4 客户区契约与 handled 查询调整后的验证
+
+- 代码移除单独的 SetClientPosition、HasListeners，Position/SetPosition 三平台
+  统一客户区原点；X11 不再依赖 `_NET_FRAME_EXTENTS`，初始 hints 和 EWMH 请求
+  均采用 StaticGravity。原生装饰偏移不进入 GUI/应用定位公式。
+- 包内回归验证 handled 初值 false、连接顺序覆盖、无人处理/Block/断开时恢复、
+  已消费请求不传给后续回调、同步提交不被默认 Cancel 撤销，以及一次性处理者断开
+  自身连接后仍可保留请求。未修改 core/signal 的公共接口。
+- Linux：隔离 Xvnc :98、Xfwm4 合成器、显式 Software，None/Native/Integrated
+  在 1x 和逻辑 2x 的六组 window_position -auto 全部通过。各组都断言 Show 前
+  nil/self/other 实际观察，以及 Show 后工作区、相对/自身移动、重复定位、不跟随、
+  非法输入和销毁检查。WorkAreaAt 提供独立原生观察，不只比较 getter/setter。
+- Linux 同环境 1x：Native 与 Integrated 的 tab_detach 均 PASS，实际抓取点分别
+  为源 DIP (850,480)、(950,550)，与释放点一致，GUI Mount/Unmount=2/1。
+  Integrated 的 ui_tab_transfer detached 完成真实编辑 edited A、拖出、Rebuild、
+  编辑 after move、关闭源；实际抓取点 (900,470) 与释放点一致，原页面/输入框/State
+  保留（updates=5、notifications=18）。未使用 DevServer 或操作用户桌面。
+- `DISPLAY=:98 XMODIFIERS=@im=none go test -count=1 -json ./...` 通过：
+  46 个有测试包、1668 个测试/子测试通过，无失败；14 个既有人工/opt-in 测试跳过。
+  core/signal、gui、ui、widgets 及 platform/linux/x11 的无 DISPLAY race 通过。
+  Windows amd64、macOS arm64 的 CGO_ENABLED=0 全仓测试目标交叉编译通过，
+  使用 `-exec=/bin/true` 仅编译，不代表原生执行。
+- Windows/macOS 原生窗口本次未重跑；前一版 macOS 实测和 Windows ASR 阻止执行
+  的事实保留在 30.3。其它绘制后端、其它 WM、真实多屏/混合 DPI 未验收。
+  本次定位与拖出验证没有性能对照，不作性能结论。
+- 测试日志/截图/二进制在仓库外 `/tmp/goui-client-position.pDNzIg`；既有图片测试
+  按原规则产生文件，未删除或迁移。自建测试窗口正常退出，隔离桌面验证后停止。
+
+### 30.5 Windows/macOS 远端失败修复与复验
+
+本轮修复三个具体原因，不新增公共平台能力，也不使用延迟或位置补偿：
+
+- UI 原来每更新一个窗口树就执行该 Root 的 AfterUpdate。若先处理目标，移交
+  已完成后仍会处理源的旧声明，造成移交节点卸载、重新创建。现在 App 先完成
+  全部树更新及旧窗口清理，再执行完成回调，最后 Show 新窗口；独立 Root 的完成
+  语义不变。回归覆盖源优先/目标优先，断言同一 Widget、一次 Mount、零 Unmount，
+  并执行后续 RequestUpdate。用 overlay 恢复旧完成时序时，目标优先确定性失败
+  （Mount=2、Unmount=1），修正后两种顺序通过。
+- macOS ControlsRect 错误要求窗口已可见，使隐藏 Integrated 窗口首次布局缺失
+  红绿灯占位，Show 后标签位置变化。原生按钮视图在隐藏窗口已存在，现在直接
+  观察其真实坐标；保留最小化、视图有效性、按钮隐藏及同窗口归属检查，不猜测位置。
+- Windows Explorer 桌面拒绝时可返回只有 `DROPEFFECT_SCROLL` 的 effect。
+  GiveFeedback 原来比较整个 DWORD 为零，漏掉此情况；现在复用 oleActions 提取
+  Copy/Move/Link 后判断。SourceFallback 只改变适用区域的指针，不把 SCROLL
+  当接受、不改变 Drop 结果；已接受、本进程拒绝和取消仍保留原生反馈。
+
+参考依据：Microsoft 的 [DROPEFFECT 契约](https://learn.microsoft.com/en-us/windows/win32/com/dropeffect-constants)
+要求比较前移除 SCROLL 提示位；[GiveFeedback](https://learn.microsoft.com/en-us/windows/win32/api/oleidl/nf-oleidl-idropsource-givefeedback)
+允许源设置光标并返回 S_OK。Qt 6.8.3 的
+[Windows 拖放实现](https://github.com/qt/qtbase/blob/v6.8.3/src/plugins/platforms/windows/qwindowsdrag.cpp)
+同样按操作位解释反馈，GOUI 不引入其额外光标窗口机制。
+Electron 38.0.0 的 [macOS 原生按钮代理](https://github.com/electron/electron/blob/v38.0.0/shell/browser/ui/cocoa/window_buttons_proxy.mm)
+在初始化时读取 standardWindowButton 的真实 frame；GOUI 仍采用自己的视图归属和
+坐标换算，不照搬按钮代理。以上是源码参考，具体远端结果如下。
+
+- macOS 15.7.7 arm64、VNC 1650×1050、显式 OpenGL、1x、Integrated：
+  UI 拖出、Rebuild、真实输入 `after move`、关闭源通过；实际抓取点和释放点均
+  `(1000,475)` 源 DIP，原页面/输入框/State 保留（updates=5、notifications=18）。
+- Windows 10 19045.6466 amd64、RDP Session 1 1600×900、Direct2D、1x、Integrated：
+  最终无诊断埋点构建完成同样 UI 操作，通过；抓取点/释放点均 `(1050,420)`，
+  原对象和 State 保留（updates=5、notifications=18）。分步保持拖动、Esc、Verify
+  通过，requests=0、Mount/Unmount=1/0。原生 Session 1 的 GetCursorInfo 采样
+  确认桌面区域为普通箭头；RDP 截图不包含原生指针，未仅凭截图判定反馈成功。
+- Windows 同后端 Integrated 逻辑 2x 的定位用例：隐藏查询及显示后 7 步全部通过。
+  原测试初始高度 330 DIP 小于实测内容最小高度 348.625 DIP，随后扩高并触发
+  工作区位置约束，不能归为 SetPosition 偏移。例程初始高度改为 400 DIP，输出
+  内容测量值便于核对，保留全部位置断言与容差；生产定位代码未为此增加补偿。
+- Windows 原生无头 6 个 OLE ABI、反馈、预览、数据及 URI 测试通过，含新增 SCROLL
+  组合回归；本次不把原生无头通过扩展为所有跨进程拖放互操作通过。
+- 本机 `go test -count=1 -json ./...` 通过：46 个有测试包、1671 个测试/子测试
+  通过、零失败，14 个既有人工/opt-in 跳过。`go test -race -count=1 ./ui ./widgets/...`
+  通过；Windows amd64、macOS arm64 的 `CGO_ENABLED=0 go test -exec=/bin/true ./...`
+  全仓目标编译通过（仅编译）。最终 Windows 归档和 macOS 窗口二进制传输哈希一致。
+
+日志、截图和构建产物在仓库外 `/tmp/goui-detach-fix.37sgsr`。诊断过程的临时
+平台埋点已移除；一次中间构建下载仍触发 Defender ASR 1121，保留失败记录，
+最终构建已实际执行，未修改安全策略。其它后端、真实多屏/混合 DPI、逐帧视觉和
+性能对照未执行；本轮未重复 Linux 桌面验收，不覆盖 30.4 的历史结果。
+
+## 31. 按 TabView 内容区尺寸创建拖出窗口（2026-10-02）
+
+本节是当前方案。第 30 节的同步隐藏布局、ClientSize/PrepareLayout、临时布局页面
+及目标像素比例探测已撤销；客户区定位、源占位、handled 查询、原生结果和
+UI 整批完成时序继续保留。历史验证不自动成为新方案的验收。
+
+### 31.1 内容尺寸
+
+`TabDetachRequest.ContentSize geometry.Size` 在发出请求时读取源 TabView 的当前
+矩形大小，单位 DIP，是只读快照。它不读取未选中页面可能过期的 Rect，不读取子控件
+的 intrinsic/min size，也不复制整个源窗口的侧栏、工具栏或独立 TabBar。
+源随后改变布局不会改写快照；它只辅助初次建窗，不成为页面、TabView 或窗口的永久
+约束。ui 的请求包装保留同一个 GUI 请求，不复制状态。
+
+应用拥有目标窗口结构，在内容尺寸上增加自身标题栏、状态栏和留白等开销，必要时
+用普通 Measure 计算自己的装饰部分。不能机械沿用整窗大小。例程源/目标结构相同，
+在源第一次正常布局中记录该结构的固定开销，并计入现有 WindowOptions.Size 与
+原生装饰的尺寸约定；最小尺寸导致的首窗放大不能被记录成负开销。
+UI 例程显式 CrossStretch，使 TabView 是横向内容视口，不把 VBox 默认 Start 的
+未使用空间算成装饰。这里是例程的窗口构造逻辑，不是新的公共布局 API。
+
+### 31.2 显示前完成移交
+
+命令式顺序：创建已知尺寸的隐藏窗口与真正的空 TabView → SetPosition 一次请求
+初始位置 → TransferTo 原页面/子树 → Show → 正常 SizeEvent、布局和 Paint。
+
+声明式顺序：
+
+1. 保存 pending 请求与内容尺寸，声明已知尺寸、页面列表为空的目标；RequestUpdate。
+2. 全部窗口树完成本轮协调后，目标 WidgetView 的 AfterUpdate 通过普通 ID 查询
+   取得隐藏窗口/TabView，定位、TransferTo。
+3. OnTransfer 更新源/目标声明，请求下一轮更新。
+4. 当前批次显示仍存活的新窗口，之后普通更新协调已移交子树。
+
+AfterUpdate 是声明协调完成，不保证原生尺寸到达、布局完成或首次 Paint。整批树更新、
+完成回调及 Show 期间禁止同步嵌套窗口批次；业务变化用 RequestUpdate。
+不向布局暴露 PixelScale，不增加 PrepareLayout、ClientSize 或隐藏窗口测量特例。
+正常路径不创建占位页面；测试中同 ID 的空页面仅用于主动验证移交失败，非尺寸探测。
+
+定位继续以客户区原点为标准。应用可扣除自己已知的目标标题栏原点及 Hotspot，例程
+使用相同窗口结构的源栏原点；不测量隐藏目标、不在 Show 后纠正位置。不同目标布局、
+跨屏 DPI 下不承诺抓取点与释放点严格相差一物理像素。WM 仍可约束初次位置/尺寸，
+不能把请求值当作系统事实。
+
+创建、定位、提交失败：Cancel，销毁尚未接收页面的空目标。提交成功后 Show 失败：
+返回错误，保留目标内容归属到调用方正常清理；不在局部错误路径删除原页面。
+UI runtime 返回失败后按应用退出契约统一清理，并非自动把页面恢复到源。
+pending 时源标签隐藏并留槽位；Cancel 恢复同一对象；单页可转入已有 TabView，但
+未接受的桌面放下不创建新窗。查询最终 handled，不增加 HasListeners 或 Detachable。
+
+### 31.3 分离原生视觉反馈
+
+`gui.DragSource.SetFeedback(gui.DragFeedback)` 按会话复制一个普通值：
+
+- `NeutralOutsideTargets`：未接受且位于本进程已注册目标之外时请求中性光标；
+  本进程目标的接受/拒绝保持原生反馈。
+- `DisableReturnAnimation`：请求禁用未接受/取消的回弹动画，当前用于 AppKit。
+
+两项独立，零值保持原生行为，不支持的视觉选项忽略，不修改 Action/Canceled/Err。
+改变配置只影响下次 Begin。多页 Transferable 标签设置两项，是否创建窗口仍由应用
+的 handled 决定。Windows 屏蔽 DROPEFFECT_SCROLL 后判断 Copy/Move/Link；SCROLL
+本身不表示接受。platform 只接入原生反馈，不认识 Tab 或新窗口策略。
+
+参考：libadwaita 1.8.8 的
+[create-window](https://gnome.pages.gitlab.gnome.org/libadwaita/doc/1.8/signal.TabView.create-window.html)
+将建窗及定位交给应用，返回目标 TabView；
+[transfer_page](https://gnome.pages.gitlab.gnome.org/libadwaita/doc/1.8/method.TabView.transfer_page.html)
+复用原 page。采用这种归属划分，不照搬整套实现，不据此增加隐藏布局公共 API。
+
+### 31.4 本轮验证
+
+包内回归覆盖当前视口与非当前页面旧 Rect 的区别、快照稳定、移交后可继续缩放，
+两个反馈选项独立按会话复制且保留取消结果、整批 AfterUpdate 两种声明顺序、
+嵌套批次拒绝、Show 失败保留归属到正常清理。撤销 PrepareLayout 契约及其专用测试，
+以上述内容尺寸回归替代；不改无关断言，不放宽跳过条件。
+
+Linux 隔离 Xvnc :98 / Xfwm4 合成、Software、1x：
+
+- Native 命令式拖出通过；另将源客户区放大到 650×430 再拖出，验证原 page/input
+  身份、Mount/Unmount=2/1、目标内容区 626×292 DIP、请求位置、销毁源后内容存活。
+- Integrated UI 拖出、Rebuild、键入 after move、关闭源通过；源/目标内容区均为
+  496×178 DIP，原 page/input/State 与连接保留，View Unmount=0。
+- Native Esc 取消和模拟准备失败通过；源 Mount/Unmount=1/0，没有原页面移交。
+
+位置/内容尺寸使用 1 DIP 原生整数舍入容差，不再声称一物理像素热点对齐。输入使用
+XTest，走正常原生事件链，不用 DevServer。首次隔离会话沿用 `XMODIFIERS=@im=fcitx`
+但该显示没有服务，字符未提交；显式改用 libX11 本地输入法 `@im=none` 后重跑编辑
+通过，未改用户桌面配置。只创建/操作本例窗口；既有全仓图片测试仍按原规则生成文件。
+
+本机日志、截图在仓库外 `/tmp/goui-tab-content.Npzahm`。
+
+随后使用校验 SHA256 一致的构建，经 remote-computer-use 在远端实际操作：
+
+- Windows 10 19045.6466 amd64 / Direct2D / 1x，macOS 15.7.7 arm64 /
+  OpenGL / 1x：Integrated 的 UI 拖出、Rebuild、再次真实编辑、关闭源均 PASS，
+  原 page/input/State 保留；请求位置与实际位置一致，源/目标内容尺寸断言通过。
+- 两端 Native 命令式拖出及 Esc 取消均有 PASS；拖出 Mount/Unmount=2/1，
+  取消 requests=0、Mount/Unmount=1/0。
+- Windows 六项 OLE 原生无头 ABI、反馈、预览、数据及 URI 测试全部通过。
+- macOS 一次补充截图复查超过工具 30 秒按住租约，自动松手建窗，取消模式正确
+  报 FAIL；该轮操作无效，不代替此前实际 Esc 操作的 PASS。后一次补查期间
+  SSH/VNC 断开，控制台用户变为 root；SSH 恢复，VNC 仍不可用，该次复查中断，
+  不计为通过。只终止核对过路径的本次测试进程，保留用户已有 GoLand 测试进程。
+- 截图可能返回输入前缓存帧，工具 ok 只表示投递；本轮静态截图不能证明短暂闪烁、
+  回弹动画或系统指针表现完全消失。其它后端、2x、多显示器及混合 DPI 未验收。
+
+远端验收记录、日志和截图保存在仓库外 `/tmp/goui-tab-remote.oKahYa`。
+
+最终 `DISPLAY=:98 XMODIFIERS=@im=none go test -count=1 -json ./...` 通过：
+46 个有测试包、1672 个测试/子测试通过，零失败，14 个既有人工/opt-in 测试跳过。
+`go test -race ./gui ./widgets ./widgets/ui ./ui` 通过。
+Windows amd64 / macOS arm64 的 `CGO_ENABLED=0 go test -exec=/bin/true ./...`
+全仓目标编译通过（仅编译）；`git diff --check` 通过。
