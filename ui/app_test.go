@@ -2,11 +2,13 @@ package ui
 
 import (
 	"errors"
+	"fmt"
 	"runtime"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
+	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/typography"
@@ -57,6 +59,168 @@ func TestAppMountsAndUpdatesWindow(t *testing.T) {
 	}
 	if len(app.windows) != 1 || app.windows[0] != win {
 		t.Fatal("same window id should reuse the existing gui.Window")
+	}
+}
+
+func TestNewWindowRegisteredForAfterUpdateBeforeShow(t *testing.T) {
+	app := newWindowTestApplication()
+	probe := &afterUpdateProbe{child: Label("ready").ID("child")}
+	probe.Self = probe
+	rt := newApp(app, func() RootView { return Window("prepared").Content(probe) })
+	called := 0
+	probe.callback = func(widget gui.Widget) {
+		called++
+		mount := rt.windows["prepared"]
+		if mount == nil || mount.window.Widget() != widget || mount.root.widget() != widget || app.windows[0].shows != 0 {
+			t.Fatal("hidden window not registered/mounted before preparation")
+		}
+		if gui.FindWidget(mount.window, "child") == nil {
+			t.Fatal("preparation cannot find the completed child tree")
+		}
+	}
+	if err := rt.rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	if called != 1 || app.windows[0].shows != 1 {
+		t.Fatal("preparation/show order or counts changed")
+	}
+}
+
+func TestAfterUpdateCanDiscardHiddenWindowWithoutShowingIt(t *testing.T) {
+	app := newWindowTestApplication()
+	probe := new(afterUpdateProbe)
+	probe.Self = probe
+	rt := newApp(app, func() RootView { return Window("discarded").Content(probe) })
+	probe.callback = func(gui.Widget) { rt.windows["discarded"].window.Destroy() }
+	if err := rt.rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	if !app.windows[0].destroyed || app.windows[0].shows != 0 || rt.windows["discarded"] != nil {
+		t.Fatal("discarded hidden window was shown or registered again")
+	}
+}
+
+func TestAfterUpdateCannotNestWindowBatch(t *testing.T) {
+	application := newWindowTestApplication()
+	probe := new(afterUpdateProbe)
+	probe.Self = probe
+	rt := newApp(application, func() RootView { return Window("prepared").Content(probe) })
+	calls := 0
+	probe.callback = func(gui.Widget) {
+		calls++
+		if err := rt.reconcileWindows(nil); err == nil {
+			t.Fatal("completion callback entered a nested window batch")
+		}
+		if rt.windows["prepared"] == nil || application.windows[0].shows != 0 {
+			t.Fatal("nested completion removed or showed the pending window")
+		}
+	}
+	if err := rt.rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 || application.windows[0].shows != 1 || rt.updatingWindows || rt.reconcilingWindows {
+		t.Fatal("batch guard prevented normal completion or leaked")
+	}
+	// The guard applies only to synchronous nesting, not the next update.
+	probe.callback = nil
+	if err := rt.reconcileWindows(nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestShowFailurePreservesCompletedWindowUntilCleanup(t *testing.T) {
+	application := newWindowTestApplication()
+	probe := new(afterUpdateProbe)
+	probe.Self = probe
+	failure := errors.New("show failed")
+	rt := newApp(application, func() RootView { return Window("prepared").Content(probe) })
+	probe.callback = func(gui.Widget) { application.windows[0].showErr = failure }
+	if err := rt.rebuild(); !errors.Is(err, failure) {
+		t.Fatalf("show error lost: %v", err)
+	}
+	window := application.windows[0]
+	if window.destroyed || rt.windows["prepared"] == nil || window.Widget() == nil {
+		t.Fatal("show failure destroyed content completed by AfterUpdate")
+	}
+	rt.destroyAll()
+	if !window.destroyed {
+		t.Fatal("normal application cleanup leaked the failed window")
+	}
+}
+
+type transferCompletionView struct {
+	ViewBase[transferCompletionView]
+	children []View
+	complete func(*gui.LinearBox)
+}
+
+func (v *transferCompletionView) Build() View { return v }
+func (v *transferCompletionView) Mount(BuildContext) gui.Widget {
+	return gui.NewLinearBox(layout.DirectionVertical)
+}
+func (v *transferCompletionView) Update(ctx BuildContext, widget gui.Widget) {
+	box := widget.(*gui.LinearBox)
+	ctx.UpdateChildren(box, v.children)
+	ctx.AfterUpdate(func() { v.complete(box) })
+}
+func (v *transferCompletionView) Unmount(BuildContext, gui.Widget) {}
+
+func TestWindowCompletionTransferDoesNotReapplyStaleSourceDeclaration(t *testing.T) {
+	for _, targetFirst := range []bool{false, true} {
+		t.Run(fmt.Sprint("target-first=", targetFirst), func(t *testing.T) {
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+			application := newWindowTestApplication()
+			tracker := new(lifecycleTracker)
+			var rt *app
+			var original gui.Widget
+			pending, moved := false, false
+			makeView := func(target bool) *transferCompletionView {
+				v := new(transferCompletionView)
+				v.Self = v
+				if target == moved {
+					v.children = []View{transferView(tracker, "retained")}
+				}
+				v.complete = func(box *gui.LinearBox) {
+					if !target || !pending || moved {
+						return
+					}
+					source := rt.windows["source"].window.Widget().(*gui.LinearBox)
+					if err := (&Coordinator{owner: rt.windows["source"].root.root}).TransferChild(original, box, func() error {
+						source.RemoveChild(original)
+						box.AddChild(original)
+						return nil
+					}, func() { moved = true; rt.RequestUpdate() }); err != nil {
+						t.Fatal(err)
+					}
+				}
+				return v
+			}
+			rt = newApp(application, func() RootView {
+				source := Window("source").Content(makeView(false))
+				if !pending {
+					return source
+				}
+				target := Window("target").Content(makeView(true))
+				if targetFirst {
+					return Root().Windows(target, source)
+				}
+				return Root().Windows(source, target)
+			})
+			if err := rt.rebuild(); err != nil {
+				t.Fatal(err)
+			}
+			original = rt.windows["source"].window.Widget().Children()[0]
+			pending = true
+			if err := rt.rebuild(); err != nil {
+				t.Fatal(err)
+			}
+			application.runPosted()
+			if !moved || tracker.mounts != 1 || tracker.unmounts != 0 || len(rt.windows["source"].window.Widget().Children()) != 0 || rt.windows["target"].window.Widget().Children()[0] != original {
+				t.Fatalf("completion recreated or lost transferred node: moved=%v lifecycle=%+v", moved, tracker)
+			}
+			rt.destroyAll()
+		})
 	}
 }
 

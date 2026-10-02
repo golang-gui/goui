@@ -36,7 +36,8 @@ type App interface {
 	// in an event callback or put both lookup and use inside Post/Sync.
 	// It does not create a window or transfer ownership. Do not mutate its ID or
 	// declaratively managed content. A recreated ID denotes a new object; an old
-	// reference is not retargeted. A window being built is not yet discoverable.
+	// reference is not retargeted. A registered hidden window is discoverable
+	// during AfterUpdate, so it can be prepared before its first Show.
 	FindWindow(id string) gui.Window
 	// FindWidget borrows the currently mounted widget with id in a Window's
 	// content tree. Missing IDs return nil
@@ -191,16 +192,18 @@ func (a *app) FindWidget(windowID, widgetID string) (widget gui.Widget) {
 }
 
 type app struct {
-	mu            sync.Mutex
-	gui           gui.Application
-	build         func() RootView
-	windows       map[string]*windowMount
-	appliedSheet  style.StyleSheet
-	updatePending bool
-	stopping      bool
-	finished      chan struct{} // closed only after run returns, not on a Quit request
-	err           error
-	uiThread      int
+	mu                 sync.Mutex
+	gui                gui.Application
+	build              func() RootView
+	windows            map[string]*windowMount
+	updatingWindows    bool // guards the whole batch, including completion callbacks and Show
+	reconcilingWindows bool // defer root completion callbacks until every window tree is updated
+	appliedSheet       style.StyleSheet
+	updatePending      bool
+	stopping           bool
+	finished           chan struct{} // closed only after run returns, not on a Quit request
+	err                error
+	uiThread           int
 }
 
 type windowMount struct {
@@ -390,20 +393,26 @@ func (a *app) reconcileWindows(views []WindowView) error {
 		seen[view.id] = view
 	}
 
-	for id, view := range seen {
-		mount := a.windows[id]
+	if a.updatingWindows {
+		return fmt.Errorf("ui: cannot nest window reconciliation; request a later update")
+	}
+	a.updatingWindows, a.reconcilingWindows = true, true
+	defer func() { a.updatingWindows, a.reconcilingWindows = false, false }()
+	mounted := make([]*windowMount, 0, len(views))
+	created := make([]*windowMount, 0, len(views))
+	for _, view := range views {
+		mount := a.windows[view.id]
 		if mount == nil {
 			var err error
 			mount, err = a.createWindow(view)
 			if err != nil {
 				return err
 			}
-			a.windows[id] = mount
-			continue
-		}
-		if err := mount.update(view); err != nil {
+			created = append(created, mount)
+		} else if err := mount.update(view); err != nil {
 			return err
 		}
+		mounted = append(mounted, mount)
 	}
 
 	for id, mount := range a.windows {
@@ -412,6 +421,23 @@ func (a *app) reconcileWindows(views []WindowView) error {
 		}
 		delete(a.windows, id)
 		mount.destroy()
+	}
+	// Completion callbacks can transfer nodes and update the declarations. No
+	// tree may still consume this rebuild's old declarations after that point.
+	a.reconcilingWindows = false
+	for _, mount := range mounted {
+		if !mount.destroying {
+			mount.root.flushAfterUpdate()
+		}
+	}
+	for _, mount := range created {
+		if !mount.destroying {
+			if err := mount.window.Show(); err != nil {
+				// Completion may have transferred retained content into this
+				// window. Keep ownership until the caller's normal cleanup.
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -439,16 +465,14 @@ func (a *app) createWindow(view WindowView) (*windowMount, error) {
 		window.Destroy()
 		return nil, err
 	}
+	// Register the hidden host before mounting its tree. AfterUpdate callbacks
+	// may position the window or adopt a node from another root;
+	// both need the same ordinary ID lookup and ownership as visible windows.
+	a.windows[view.id] = mount
+	mount.connect()
 	mount.root.mountWindow(window, func() View {
 		return mount.view.content
 	})
-
-	if err := window.Show(); err != nil {
-		window.Destroy()
-		return nil, err
-	}
-
-	mount.connect()
 	return mount, nil
 }
 
@@ -515,6 +539,7 @@ func (m *windowMount) disconnect() {
 }
 
 func (a *app) windowDestroyed(mount *windowMount) {
+	mount.destroying = true
 	if current := a.windows[mount.id]; current == mount {
 		delete(a.windows, mount.id)
 	}

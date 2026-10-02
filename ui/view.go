@@ -28,7 +28,10 @@ type BuildContext interface {
 	// It expires on View release and follows an explicitly transferred subtree.
 	Coordinator() *Coordinator
 	// AfterUpdate runs after the entire View tree has been reconciled and
-	// attached to its Window, before the next layout. It is a one-shot hook.
+	// attached to its Window, before the next layout. App rebuilds complete all
+	// window trees before these callbacks and show new windows afterwards, so
+	// cross-window transfers cannot be overwritten by stale declarations.
+	// It is a one-shot hook.
 	// A released or superseded owner is skipped. Do not retain BuildContext or
 	// start a nested reconciliation from this callback.
 	AfterUpdate(func())

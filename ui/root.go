@@ -75,6 +75,9 @@ func (r *root) updateWindow(window gui.Window, view View) gui.Widget {
 }
 
 func (r *root) flushAfterUpdate() {
+	if r.runtime != nil && r.runtime.reconcilingWindows {
+		return
+	}
 	calls := r.afterUpdate
 	r.afterUpdate = nil
 	for _, call := range calls {
