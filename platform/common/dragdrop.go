@@ -10,7 +10,8 @@ type DragDrop interface {
 	SetFormats([]dragdrop.Format) error
 	// Begin starts a session from the current native left-button press. A nil
 	// Data is valid for a source offering only application-local values.
-	Begin(id uint64, data *dragdrop.Data, actions dragdrop.Action, preview dragdrop.Preview) error
+	// Feedback is copied for this session and never changes the terminal result.
+	Begin(id uint64, data *dragdrop.Data, actions dragdrop.Action, preview dragdrop.Preview, feedback dragdrop.Feedback) error
 	// Cancel requests cancellation; it cannot undo a drop already performed by
 	// the destination. AppKit may keep its native session alive until release.
 	// The terminal Result, not this request, reports the actual outcome.

@@ -243,6 +243,18 @@ type Preview struct {
 	Hotspot geometry.Point
 }
 
+// Feedback configures presentation, never the performed Action. The zero value
+// keeps the native rejected-drop cursor and return animation.
+type Feedback struct {
+	// NeutralOutsideTargets requests a neutral cursor for an unaccepted drag
+	// outside registered local targets. Accepted/rejected local targets keep
+	// their native feedback. This does not accept a drop.
+	NeutralOutsideTargets bool
+	// DisableReturnAnimation suppresses native failed/canceled-drop rebound
+	// where supported. Cancellation and the performed Action are unchanged.
+	DisableReturnAnimation bool
+}
+
 // Validate rejects bad scale/hotspot and images beyond the same 16384-pixel
 // dimension bound used by RenderWidget. Native backends still copy and convert
 // pixels before returning from Begin; an image.Image is not retained by them.

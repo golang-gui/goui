@@ -200,7 +200,7 @@ func (a *application) startDrag(host Root, widget Widget, source *DragSource, da
 	run.unmount = widget.ConnectUnmount(run.cancel)
 	err = native.Begin(run.id, &data.portable, actions, dragdrop.Preview{
 		Image: preview.Image, Scale: preview.Scale, Hotspot: preview.Hotspot,
-	})
+	}, dragdrop.Feedback{NeutralOutsideTargets: source.feedback.NeutralOutsideTargets, DisableReturnAnimation: source.feedback.DisableReturnAnimation})
 	if err != nil {
 		if a.dragSession != run {
 			// Begin may synchronously deliver the terminal result. That result

@@ -339,6 +339,7 @@ func TestDragServiceRetriesAfterControllerConfigurationChanges(t *testing.T) {
 }
 
 type gestureDragNative struct {
+	feedback dragdrop.Feedback
 	begin    int
 	cancels  int
 	onBegin  func(uint64)
@@ -346,7 +347,8 @@ type gestureDragNative struct {
 }
 
 func (*gestureDragNative) SetFormats([]dragdrop.Format) error { return nil }
-func (n *gestureDragNative) Begin(id uint64, _ *dragdrop.Data, _ dragdrop.Action, _ dragdrop.Preview) error {
+func (n *gestureDragNative) Begin(id uint64, _ *dragdrop.Data, _ dragdrop.Action, _ dragdrop.Preview, feedback dragdrop.Feedback) error {
+	n.feedback = feedback
 	n.begin++
 	if n.onBegin != nil {
 		n.onBegin(id)
@@ -355,6 +357,43 @@ func (n *gestureDragNative) Begin(id uint64, _ *dragdrop.Data, _ dragdrop.Action
 }
 func (n *gestureDragNative) Cancel() { n.cancels++ }
 func (*gestureDragNative) Destroy()  {}
+
+func TestDragSourceFeedbackIsPerSessionAndPreservesCancellation(t *testing.T) {
+	root := newTestWidget()
+	root.Arrange(geometry.Rect(0, 0, 100, 100))
+	source := NewDragSource()
+	root.AddEventController(source)
+	source.ConnectPrepare(func(request *DragPrepare) {
+		request.Data = new(DragData)
+		request.Data.SetText("drag")
+	})
+	native := new(gestureDragNative)
+	win := &window{rootBase: rootBase{app: &application{platform: &gestureDragPlatform{native: native}}, surface: &recordingPlatformPopup{}}}
+	win.SetWidget(root)
+	defer win.Destroy()
+	var ended DragResult
+	ends := 0
+	source.ConnectEnd(func(result DragResult) { ended = result; ends++ })
+	native.onBegin = func(id uint64) {
+		source.SetFeedback(DragFeedback{}) // affects only future sessions
+		_ = win.DispatchEvent(events.DragSourceEvent{EventType: events.DragSourceBegin, ID: id})
+		_ = win.DispatchEvent(events.DragSourceEvent{EventType: events.DragSourceEnd, ID: id, Result: dragdrop.Result{Canceled: true}})
+	}
+	for i, feedback := range []DragFeedback{
+		{NeutralOutsideTargets: true, DisableReturnAnimation: true},
+		{NeutralOutsideTargets: true},
+		{DisableReturnAnimation: true},
+		{},
+	} {
+		source.SetFeedback(feedback)
+		_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonLeft, Position: geometry.Point{X: 20, Y: 20}})
+		_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Buttons: events.PointerButtonLeftDown, Position: geometry.Point{X: 30, Y: 20}})
+		want := dragdrop.Feedback{NeutralOutsideTargets: feedback.NeutralOutsideTargets, DisableReturnAnimation: feedback.DisableReturnAnimation}
+		if native.begin != i+1 || native.feedback != want || ends != i+1 || !ended.Canceled || ended.Action != 0 || ended.Err != nil {
+			t.Fatalf("begin=%d feedback=%+v want=%+v ends=%d result=%+v", native.begin, native.feedback, want, ends, ended)
+		}
+	}
+}
 
 func TestGestureDragSourceNilPrepareFallsBackToAncestor(t *testing.T) {
 	root, child := newTestWidget(), newTestWidget()
