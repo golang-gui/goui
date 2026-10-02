@@ -17,15 +17,16 @@
 // 主要操作与预期：
 //  1. 激活源窗口，抓住 Document A 标签中部，拖到所有测试窗口外的桌面空白处松开。
 //     默认模式：出现新窗口，A 在新窗口中，源仅剩 B；原文本保留。
-//     新窗口先正常布局，随后按目标真实标签位置、原生边框和像素比例定位；
-//     原抓取点应落在释放点（允许一物理像素舍入），不把释放点当作窗口左上角。
+//     新窗口按源内容区尺寸加本例布局开销创建，定位和移交后再显示；
+//     不应先显示在系统默认位置再移动，也不应先恢复源标签再出现新窗口。
+//     初次位置扣除已知标签栏原点和抓取偏移，不承诺不同布局/跨屏 DPI 精确对齐。
 //  2. 点击任一窗口的 Verify and exit。程序检查原页面/输入框身份、挂载次数、
 //     文本、选择和定位，再销毁源窗口，确认目标内容仍然存活。输出 PASS 后退出。
 //  3. 以 -expect canceled 重新启动：先拖出源栏，观察到原生预览后保持左键按下，
 //     按 Esc 再松开，然后 Verify。预期不产生新窗口请求，源仍为 A/B，
 //     Mount=1、Unmount=0。不要只点击 Verify，静态断言不代替实际取消操作。
 //  4. 以 -expect prepare-failure 重新启动，按步骤 1 拖出。
-//     预期目标已创建显示但模拟准备失败，未接收页面的空目标关闭；
+//     预期目标已创建但尚未显示时模拟准备失败，未接收页面的空目标关闭；
 //     Verify 检查源不变且没有页面卸载。这不是操作系统创建窗口失败的注入。
 //
 // 可选拒绝回归（每项重新启动）：
@@ -37,10 +38,12 @@
 //
 // 可选逻辑 2x：POSIX 使用 GOUI_PLAT_SCALE=2 go run ./tests/window/widgets/tab_detach；
 // PowerShell 先设 $env:GOUI_PLAT_SCALE='2' 再启动，结束后恢复原值；不代表混合 DPI。
-// 平台差异：macOS 先激活窗口再操作；取消动画由系统决定，不要求一定回弹。
+// 平台差异：macOS 先激活窗口再操作；允许拖出建窗的会话不播放失败回弹动画，
+// Esc 仍恢复源标签。Windows 在窗口外应显示普通光标，不显示不可放置标记；
+// 原生目标接受或本应用目标拒绝时仍使用原生反馈。
 // Linux Integrated 需要合成器，应记录实际装饰是否回退为 Native。
 // 不要在准备定位时移动源窗口；用例将其视为失效并报错。系统可能限制位置，
-// 定位断言失败不能通过放宽容差当作成功。
+// 用例以 1 DIP 原生整数舍入容差检查请求位置和内容区尺寸。
 // 严格模式结果：Verify 自动检查原对象、归属、文本、挂载次数和定位；成功 PASS、失败 FAIL，
 // 失败或未完成返回非零状态。预览外观和实际释放点由操作者独立观察核对。
 // 副作用：只创建、移动、销毁自身窗口，不改系统设置或剪贴板。
@@ -63,20 +66,25 @@ import (
 	"github.com/golang-gui/goui/widgets"
 )
 
-// A test-owned container observes a normal frame, then posts preparation to
-// the event loop. It neither forces layout nor transfers a page inside Paint.
+// 同一种文档窗口结构在首次正常布局时记录自身的固定开销。
+// 拖出只沿用内容区大小，加上本例标题栏/按钮/留白；不测量隐藏目标。
 type frameProbe struct {
 	gui.WidgetBase
-	scale float32
-	after func(float32)
+	view                  *widgets.TabView
+	initialSize, overhead geometry.Size
+	sized                 bool
 }
 
-func (p *frameProbe) Paint(painter gui.Painter) {
-	p.scale = painter.PixelScale()
-	if next := p.after; next != nil {
-		p.after = nil
-		scale := p.scale
-		gui.App.Post(func() { next(scale) })
+func (p *frameProbe) Arrange(rect geometry.Rectangle) {
+	p.WidgetBase.Arrange(rect)
+	if !p.sized && p.view.Rect().Width > 0 && p.view.Rect().Height > 0 {
+		viewport := p.view.Rect().Size
+		// 正常首轮布局可能被内容最小尺寸放大，不能把请求尺寸当作实际尺寸。
+		// 只读源窗口已有的 DIP 边界；max 保留自绘模式的原生边框开销，
+		// 不把最小尺寸放大误记成负开销，也不观察/布局隐藏目标。
+		bounds := p.Window().Snapshot().Bounds.Size
+		p.overhead = geometry.Size{Width: max(bounds.Width, p.initialSize.Width) - viewport.Width, Height: max(bounds.Height, p.initialSize.Height) - viewport.Height}
+		p.sized = true
 	}
 }
 
@@ -148,9 +156,8 @@ func run() error {
 		app.Post(app.Quit)
 	}
 	var tv *widgets.TabView
-	var tb *widgets.TabBar
-	var release, hotspot geometry.Point
-	var ratio, sourceScale float32
+	var requestedPosition geometry.Point
+	var contentSize geometry.Size
 	verify := func() {
 		if (*rejectTarget || *expect == "rejected") && (rejectVisits == 0 || rejectDrops != 0) {
 			fail(fmt.Errorf("expected negotiation refusal: visits=%d drops=%d", rejectVisits, rejectDrops))
@@ -162,27 +169,30 @@ func run() error {
 				fail(fmt.Errorf("identity/order/lifecycle: requests=%d mounts=%d unmounts=%d", requests, mounts, unmounts))
 				return
 			}
-			outer, err := target.Position(source)
+			origin, err := target.Position(source)
 			if err != nil {
 				fail(err)
 				return
 			}
-			frame, err := target.Position(target)
+			self, err := target.Position(target)
 			if err != nil {
 				fail(err)
 				return
 			}
-			anchor, ok := firstTab(tb.Snapshot())
-			if !ok {
-				fail(fmt.Errorf("target tab not laid out"))
+			if self != (geometry.Point{}) {
+				fail(fmt.Errorf("client self-position=%v, want zero", self))
 				return
 			}
-			actual := outer.Add(anchor.Add(hotspot).Add(frame.Scale(-1)).Scale(ratio))
-			if math.Abs(float64(actual.X-release.X))*float64(sourceScale) > 1.01 || math.Abs(float64(actual.Y-release.Y))*float64(sourceScale) > 1.01 {
-				fail(fmt.Errorf("grab point=%v release=%v ratio=%g", actual, release, ratio))
+			if math.Abs(float64(origin.X-requestedPosition.X)) > 1 || math.Abs(float64(origin.Y-requestedPosition.Y)) > 1 {
+				fail(fmt.Errorf("position=%v requested=%v", origin, requestedPosition))
 				return
 			}
-			fmt.Printf("position release=%v actual=%v ratio=%g\n", release, actual, ratio)
+			actualSize := tv.Rect().Size
+			if math.Abs(float64(actualSize.Width-contentSize.Width)) > 1 || math.Abs(float64(actualSize.Height-contentSize.Height)) > 1 {
+				fail(fmt.Errorf("content size=%v requested=%v", actualSize, contentSize))
+				return
+			}
+			fmt.Printf("position=%v content=%v\n", origin, actualSize)
 			source.Destroy()
 			if a.Destroyed() || a.Root() != target || input.Text() != text {
 				fail(fmt.Errorf("source destruction affected target"))
@@ -201,7 +211,7 @@ func run() error {
 		verified = true
 		app.Post(app.Quit)
 	}
-	build := func(view *widgets.TabView, label string) (*frameProbe, *widgets.TabBar) {
+	build := func(view *widgets.TabView, label string, size geometry.Size) (*frameProbe, *widgets.TabBar) {
 		bar := widgets.NewTabBar()
 		bar.SetView(view)
 		bar.SetReorderable(true)
@@ -210,7 +220,7 @@ func run() error {
 		button := gui.NewButton()
 		button.SetChild(gui.NewLabel("Verify and exit"))
 		button.ConnectClicked(verify)
-		column := &frameProbe{}
+		column := &frameProbe{view: view, initialSize: size}
 		column.SetLayoutManager(&layout.LinearLayout{Direction: layout.DirectionVertical, CrossAlign: layout.CrossStretch, Padding: 12, Spacing: 8})
 		column.WidgetBase.AddChild(column, bar)
 		column.WidgetBase.AddChild(column, gui.NewLabel(label))
@@ -218,8 +228,8 @@ func run() error {
 		column.WidgetBase.AddChild(column, view)
 		return column, bar
 	}
-	content, sb := build(sv, "Drag A onto empty desktop, then Verify")
-	sb.ConnectDetachRequest(func(request *widgets.TabDetachRequest) {
+	content, sb := build(sv, "Drag A onto empty desktop, then Verify", options.Size)
+	sb.ConnectDetachRequest(func(request *widgets.TabDetachRequest, handled *bool) {
 		requests++
 		if *expect == "rejected" {
 			request.Cancel()
@@ -231,76 +241,63 @@ func run() error {
 			fail(fmt.Errorf("duplicate detach request"))
 			return
 		}
-		release, hotspot, sourceScale = request.Position, request.Hotspot, content.scale
+		contentSize = request.ContentSize
+		targetOptions := *options
+		targetOptions.Size = contentSize.Add(content.overhead)
+		// 本例目标标签栏与源使用相同留白，采用已知栏原点初次定位。
+		requestedPosition = request.Position.Add(sb.Snapshot().Bounds.Pos.Add(request.Hotspot).Scale(-1))
 		sourceOrigin, err := source.Position(nil)
 		if err != nil {
 			request.Cancel()
 			fail(err)
 			return
 		}
-		target, err = app.NewWindow(options)
+		target, err = app.NewWindow(&targetOptions)
 		if err != nil {
 			request.Cancel()
 			fail(err)
 			return
 		}
 		_ = target.SetTitle("GOUI DETACHED TARGET")
+		*handled = true
 		target.ConnectCloseRequest(func(*bool) { request.Cancel(); app.Quit() })
 		tv = widgets.NewTabView()
-		// Only a sizing placeholder, never a copy of the page's editing subtree.
-		placeholder := widgets.NewTabPage(a.Title(), nil)
-		tv.AppendPage(placeholder)
-		targetContent, targetBar := build(tv, "Retained page in new window")
-		tb = targetBar
-		targetContent.after = func(scale float32) {
-			if target == nil {
-				return
-			} // preparation may have been canceled after Show
-			abort := func(err error) { request.Cancel(); target.Destroy(); target = nil; fail(err) }
+		targetContent, _ := build(tv, "Retained page in new window", targetOptions.Size)
+		target.SetWidget(targetContent)
+		abort := func(err error) { request.Cancel(); target.Destroy(); target = nil; fail(err) }
+		prepare := func() {
 			observed, err := source.Position(nil)
 			if err != nil {
 				abort(err)
 				return
 			}
-			if observed != sourceOrigin || content.scale != sourceScale {
-				abort(fmt.Errorf("source moved or changed DPI while preparing target"))
+			if observed != sourceOrigin {
+				abort(fmt.Errorf("source moved during preparation"))
 				return
 			}
-			frame, err := target.Position(target)
-			if err != nil {
+			if err := target.SetPosition(source, requestedPosition); err != nil {
 				abort(err)
 				return
 			}
-			anchor, ok := firstTab(tb.Snapshot())
-			if !ok || scale <= 0 || sourceScale <= 0 {
-				abort(fmt.Errorf("missing target layout/scale"))
-				return
-			}
-			ratio = scale / sourceScale
-			position := release.Add(anchor.Add(hotspot).Add(frame.Scale(-1)).Scale(-ratio))
-			if err := target.SetPosition(source, position); err != nil {
-				abort(err)
-				return
-			}
-			tv.RemovePage(placeholder)
 			if err := request.TransferTo(tv, 0); err != nil {
 				abort(err)
 				return
 			}
-			fmt.Printf("prepared target: requested=%v release=%v ratio=%g\n", position, release, ratio)
-		}
-		target.SetWidget(targetContent)
-		if err := target.Show(); err != nil {
-			request.Cancel()
-			fail(err)
-			return
+			fmt.Printf("prepared target: position=%v content=%v\n", requestedPosition, contentSize)
 		}
 		if *expect == "prepare-failure" {
-			targetContent.after = nil
 			request.Cancel()
 			target.Destroy()
 			target = nil
 			fmt.Println("injected preparation failure; source retained")
+			return
+		}
+		prepare()
+		if target != nil {
+			if err := target.Show(); err != nil {
+				// 保留已接收原页面的目标，不因显示错误销毁编辑内容。
+				fail(err)
+			}
 		}
 	})
 	source.SetWidget(content)
@@ -344,16 +341,4 @@ func run() error {
 	}
 	fmt.Printf("PASS %s requests=%d mounts=%d unmounts=%d text=%q rejection-visits=%d drops=%d\n", *expect, requests, mounts, unmounts, text, rejectVisits, rejectDrops)
 	return nil
-}
-
-func firstTab(info gui.WidgetInfo) (geometry.Point, bool) {
-	if info.Role == widgets.RoleTab {
-		return info.Bounds.Pos, info.Bounds.Width > 0 && info.Bounds.Height > 0
-	}
-	for _, child := range info.Children {
-		if point, ok := firstTab(child); ok {
-			return point, true
-		}
-	}
-	return geometry.Point{}, false
 }

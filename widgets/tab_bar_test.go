@@ -592,7 +592,7 @@ func TestSingleTabWithoutTransferStaysLocal(t *testing.T) {
 	bar.Arrange(bar.Rect())
 	errors, requests := 0, 0
 	bar.ConnectTransferError(func(error) { errors++ })
-	bar.ConnectDetachRequest(func(*TabDetachRequest) { requests++ })
+	bar.ConnectDetachRequest(func(*TabDetachRequest, *bool) { requests++ })
 	d := new(gui.EventDispatcher)
 	host := &tabInputHost{root: bar}
 	dispatchTabPointer(t, d, host, events.PointerDown, 20, 20)

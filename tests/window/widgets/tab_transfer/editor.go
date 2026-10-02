@@ -169,7 +169,7 @@ func runEditorTransfer(chrome gui.WindowChromeMode, canceled bool) error {
 		bar.SetReorderable(true)
 		bar.SetTransferable(true)
 		bar.ConnectTransferError(fail)
-		bar.ConnectDetachRequest(func(r *widgets.TabDetachRequest) { r.Cancel(); fail(fmt.Errorf("unexpected detach")) })
+		bar.ConnectDetachRequest(func(r *widgets.TabDetachRequest, handled *bool) { r.Cancel(); fail(fmt.Errorf("unexpected detach")) })
 		column := gui.NewLinearBox(layout.DirectionVertical)
 		column.SetCrossAlign(layout.CrossStretch)
 		column.SetPadding(12)

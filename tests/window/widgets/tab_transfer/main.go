@@ -318,7 +318,7 @@ func run() error {
 			failure = err
 			app.Post(app.Quit)
 		})
-		bar.ConnectDetachRequest(func(request *widgets.TabDetachRequest) {
+		bar.ConnectDetachRequest(func(request *widgets.TabDetachRequest, handled *bool) {
 			detachRequests++
 			request.Cancel()
 		})

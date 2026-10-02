@@ -76,6 +76,9 @@ func (b *TabBar) handoff(page *TabPage, gesture *gui.DragEventController, point 
 	run := &tabTransferDrag{page: page, view: b.view, source: gui.NewDragSource(),
 		window: b.Window(), hotspot: geometry.Point{X: b.grabX, Y: b.grabY}}
 	run.source.SetActions(gui.DragMove)
+	if len(b.view.Pages()) > 1 {
+		run.source.SetFeedback(gui.DragFeedback{NeutralOutsideTargets: true, DisableReturnAnimation: true})
+	}
 	run.source.ConnectBegin(func() {
 		run.started = true
 		b.syncDragVisibility()
@@ -88,12 +91,13 @@ func (b *TabBar) handoff(page *TabPage, gesture *gui.DragEventController, point 
 		if b.nativeDrag == run {
 			b.nativeDrag = nil
 		}
-		b.syncDragVisibility()
 		if result.Err != nil {
+			b.syncDragVisibility()
 			b.transferError.Emit(result.Err)
 			return
 		}
 		b.requestDetach(run, result)
+		b.syncDragVisibility()
 	})
 	b.nativeDrag = run
 	data := new(gui.DragData)
@@ -232,6 +236,7 @@ func (b *TabBar) syncDragVisibility() {
 		hidden := b.nativeDrag != nil && b.nativeDrag.started && !b.nativeDrag.ended &&
 			!b.nativeDrag.committed && b.nativeDrag.page == page
 		hidden = hidden || (b.validIncoming(b.incoming) && b.incoming.page == page)
+		hidden = hidden || (b.pendingDetach != nil && b.pendingDetach.valid() && b.pendingDetach.Page == page)
 		if hidden && item.Visible() {
 			// WidgetBase deliberately measures invisible children as zero.
 			// Preserve the source's intrinsic height before hiding its subtree.
