@@ -31,9 +31,9 @@ func runInteractive(chrome gui.WindowChromeMode) error {
 		input.SetText(fmt.Sprintf("Retained text %d", serial))
 		view.AppendPage(widgets.NewTabPage(fmt.Sprintf("Document %d", serial), input))
 	}
-	var build func(*widgets.TabView) (gui.Window, *widgets.TabBar, *frameProbe, *gui.Label, error)
-	build = func(view *widgets.TabView) (gui.Window, *widgets.TabBar, *frameProbe, *gui.Label, error) {
-		window, err := app.NewWindow(&gui.WindowOptions{Size: geometry.Size{Width: 500, Height: 320}, Chrome: chrome})
+	var build func(*widgets.TabView, geometry.Size) (gui.Window, *widgets.TabBar, *frameProbe, *gui.Label, error)
+	build = func(view *widgets.TabView, size geometry.Size) (gui.Window, *widgets.TabBar, *frameProbe, *gui.Label, error) {
+		window, err := app.NewWindow(&gui.WindowOptions{Size: size, Chrome: chrome})
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
@@ -55,7 +55,7 @@ func runInteractive(chrome gui.WindowChromeMode) error {
 		add := gui.NewButton()
 		add.SetChild(gui.NewLabel("Add tab"))
 		add.ConnectClicked(func() { addPage(view) })
-		content := new(frameProbe)
+		content := &frameProbe{view: view, initialSize: size}
 		content.SetLayoutManager(&layout.LinearLayout{Direction: layout.DirectionVertical, CrossAlign: layout.CrossStretch, Spacing: 8})
 		var top gui.Widget = bar
 		if chrome == gui.WindowChromeIntegrated {
@@ -67,26 +67,24 @@ func runInteractive(chrome gui.WindowChromeMode) error {
 			content.WidgetBase.AddChild(content, child)
 		}
 		window.SetWidget(content)
-		bar.ConnectDetachRequest(func(request *widgets.TabDetachRequest) {
+		bar.ConnectDetachRequest(func(request *widgets.TabDetachRequest, handled *bool) {
 			origin, err := window.Position(nil)
 			if err != nil {
 				request.Cancel()
 				report(err)
 				return
 			}
-			sourceScale := content.scale
 			targetView := widgets.NewTabView()
-			placeholder := widgets.NewTabPage(request.Page.Title(), nil)
-			targetView.AppendPage(placeholder)
-			target, targetBar, targetContent, targetStatus, err := build(targetView)
+			target, _, targetContent, targetStatus, err := build(targetView, request.ContentSize.Add(content.overhead))
 			if err != nil {
 				request.Cancel()
 				report(err)
 				return
 			}
 			abort := func(err error) { request.Cancel(); target.Destroy(); report(err) }
+			*handled = true
 			target.ConnectCloseRequest(func(*bool) { request.Cancel() })
-			targetContent.after = func(scale float32) {
+			prepare := func() {
 				if targetContent.Destroyed() {
 					request.Cancel()
 					return
@@ -100,43 +98,34 @@ func runInteractive(chrome gui.WindowChromeMode) error {
 					abort(err)
 					return
 				}
-				if observed != origin || content.scale != sourceScale {
+				if observed != origin {
 					abort(fmt.Errorf("source moved during preparation"))
 					return
 				}
-				frame, err := target.Position(target)
-				if err != nil {
-					abort(err)
-					return
-				}
-				anchor, ok := firstTab(targetBar.Snapshot())
-				if !ok || scale <= 0 || sourceScale <= 0 {
-					abort(fmt.Errorf("missing target layout"))
-					return
-				}
-				position := request.Position.Add(anchor.Add(request.Hotspot).Add(frame.Scale(-1)).Scale(-scale / sourceScale))
+				position := request.Position.Add(bar.Snapshot().Bounds.Pos.Add(request.Hotspot).Scale(-1))
 				if err := target.SetPosition(window, position); err != nil {
 					abort(err)
 					return
 				}
-				targetView.RemovePage(placeholder)
 				if err := request.TransferTo(targetView, 0); err != nil {
 					abort(err)
 					return
 				}
 				targetStatus.SetText("Page retained. Move back or add another tab.")
 				fmt.Println("DETACHED: original page transferred; continue or close windows")
+				if err := target.Show(); err != nil {
+					// 不销毁已持有原页面的目标；显示失败交给调用方处理。
+					report(err)
+				}
 			}
-			if err := target.Show(); err != nil {
-				abort(err)
-			}
+			prepare()
 		})
 		return window, bar, content, status, nil
 	}
 	view := widgets.NewTabView()
 	addPage(view)
 	addPage(view)
-	window, _, _, _, err := build(view)
+	window, _, _, _, err := build(view, geometry.Size{Width: 500, Height: 320})
 	if err != nil {
 		return err
 	}

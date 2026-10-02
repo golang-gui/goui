@@ -28,7 +28,7 @@ type TabDetachRequest struct {
 type tabBarState struct {
 	handles            signal.Handles
 	onError            func(error)
-	onDetach           func(*TabDetachRequest)
+	onDetach           func(*TabDetachRequest, *bool)
 	onContextMenuError func(error)
 	contextMenu        func(string) []*baseui.MenuItemView
 }

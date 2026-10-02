@@ -23,13 +23,14 @@
 //     状态未变化不能证明执行过取消手势。此模式不执行步骤 3、4 的编辑流程。
 //  6. 以 -expect detached 重新启动：初始只有 source。按步骤 1 编辑，再把 A
 //     拖到所有测试窗口外的桌面空白处；松开后不要再移动源窗口或调整缩放。
-//     目标窗口通过 UI 声明创建，正常布局后定位、移交；执行步骤 3、4。
-//     Verify 额外检查目标标签的原抓取点与释放点相差不超过 1 物理像素。
+//     声明真正的空目标，沿用内容区大小加本例窗口开销，定位和移交后才显示；执行步骤 3、4。
+//     预期不从默认位置可见移动，源标签不在松手后先回原位再消失。
+//     Verify 以 1 DIP 整数舍入容差检查请求位置、源/目标内容区大小；不承诺跨屏像素对齐。
 //
 // 可选回归（每项重新启动，仅执行该模式）：
 //  1. -expect prepare-failure / -expect prepare-cancel：不要执行主要步骤 1，
 //     保持初始 retained A，拖 A 到桌面。
-//     准备窗口短暂出现后关闭；failure 使用同 ID 的空页面触发 UI 移交拒绝，
+//     准备窗口始终不可见；failure 使用同 ID 的空页面触发 UI 移交拒绝，
 //     cancel 主动取消请求。两者均检查请求不可复用，源仍有 A/B。
 //     点击源 Verify，断言原页面从未发生 GUI 或 View 卸载。不要在准备中移动源窗口。
 //  2. -expect target-destroy：按主要步骤 1、2 操作。A 的 GUI Unmount 回调立即销毁目标，
@@ -50,7 +51,9 @@
 // 可加 -chrome integrated 检查标签拖动与 HeaderBar 拖窗不会混淆。
 // 可选逻辑 2x：POSIX 使用 GOUI_PLAT_SCALE=2 go run ./tests/window/widgets/ui_tab_transfer；
 // PowerShell 先设 $env:GOUI_PLAT_SCALE='2' 再启动，结束后恢复原值；不代表混合 DPI。
-// 平台差异：macOS 先激活窗口再操作，原生预览/取消动画由系统决定；Linux Integrated
+// 平台差异：macOS 先激活窗口再操作，支持拖出时禁用失败回弹动画；Esc 仍恢复源标签。
+// Windows 在可拖出桌面区域使用普通指针，本应用已注册目标拒绝时仍显示原生拒绝反馈。
+// Linux Integrated
 // 需要合成器，应记录是否回退为 Native。全选用 Ctrl+A，macOS 用 Cmd+A。
 // 结果：Verify 自动断言页面/输入框/State 身份、连接、生命周期和重建结果，成功输出
 // PASS；错误日志或未完成以非零状态退出。预览、输入体验和真实释放点需独立观察。
@@ -69,6 +72,7 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
+	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/theme/modern"
 	"github.com/golang-gui/goui/ui"
 	"github.com/golang-gui/goui/widgets"
@@ -164,8 +168,8 @@ func main() {
 	requests := 0
 	destructions := 0
 	var pending *wui.TabDetachRequest
-	var release, hotspot, sourceOrigin geometry.Point
-	var sourceScale, ratio float32
+	var requestedPosition, sourceOrigin geometry.Point
+	var contentSize, targetSize geometry.Size
 	verified, positioned := false, false
 	var failure error
 	err := ui.Run("org.golang-gui.UITabTransfer", func(app ui.App) ui.RootView {
@@ -180,9 +184,6 @@ func main() {
 		transfer := func(change wui.TabTransfer) {
 			transfers++
 			from, to := models[change.SourceWindow], models[change.TargetWindow]
-			if detaching {
-				to = slices.DeleteFunc(to, func(key string) bool { return key == "preparing" })
-			}
 			index := slices.Index(from, change.PageID)
 			if index < 0 || change.Index < 0 || change.Index > len(to) {
 				fail(fmt.Errorf("invalid model transfer: %+v", change))
@@ -220,7 +221,7 @@ func main() {
 			app.RequestUpdate()
 			log.Printf("DESTROY %s during GUI mounted=%v", id, mounted)
 		}
-		detach := func(request *wui.TabDetachRequest) {
+		detach := func(request *wui.TabDetachRequest, handled *bool) {
 			requests++
 			if !detaching || requests != 1 || request.PageID != "A" {
 				request.Cancel()
@@ -234,15 +235,25 @@ func main() {
 				fail(err)
 				return
 			}
-			pending, release, hotspot = request, request.Position, request.Hotspot
-			sourceScale = frames["source"].scale
-			models["target"] = []string{"preparing"} // metadata only, never duplicate the editor
+			pending, contentSize = request, request.ContentSize
+			sourceFrame := frames["source"]
+			if !sourceFrame.sized {
+				request.Cancel()
+				pending = nil
+				fail(fmt.Errorf("source content not arranged"))
+				return
+			}
+			targetSize = contentSize.Add(sourceFrame.overhead)
+			bar := app.FindWidget("source", "tab-bar")
+			requestedPosition = request.Position.Add(bar.Snapshot().Bounds.Pos.Add(request.Hotspot).Scale(-1))
+			*handled = true
+			models["target"] = []string{} // 真正的空目标，原页面移交前不创建占位页面。
 			if *expect == "prepare-failure" {
 				models["target"] = []string{"A"} // conflicting page ID, no second editor
 			}
 			app.RequestUpdate()
 		}
-		prepare := func(frame *frameWidget) {
+		prepare := func(_ *frameWidget) {
 			request := pending
 			if request == nil {
 				return
@@ -252,6 +263,9 @@ func main() {
 			abort := func(err error) {
 				pending = nil
 				request.Cancel()
+				if target != nil {
+					target.Destroy()
+				}
 				delete(models, "target")
 				app.RequestUpdate()
 				if err != nil {
@@ -260,6 +274,10 @@ func main() {
 			}
 			if target == nil || view == nil {
 				abort(fmt.Errorf("target preparation missing UI ownership"))
+				return
+			}
+			if err := target.SetPosition(request.Window, requestedPosition); err != nil {
+				abort(err)
 				return
 			}
 			if *expect == "prepare-failure" || *expect == "prepare-cancel" {
@@ -290,24 +308,8 @@ func main() {
 				abort(err)
 				return
 			}
-			if origin != sourceOrigin || sourceScale <= 0 || frames["source"].scale != sourceScale || frame.scale <= 0 {
-				abort(fmt.Errorf("source moved or changed scale during preparation"))
-				return
-			}
-			border, err := target.Position(target)
-			if err != nil {
-				abort(err)
-				return
-			}
-			anchor, ok := firstTab(target.Widget().Snapshot())
-			if !ok {
-				abort(fmt.Errorf("target placeholder not laid out"))
-				return
-			}
-			ratio = frame.scale / sourceScale
-			position := release.Add(anchor.Add(hotspot).Add(border.Scale(-1)).Scale(-ratio))
-			if err := target.SetPosition(request.Window, position); err != nil {
-				abort(err)
+			if origin != sourceOrigin {
+				abort(fmt.Errorf("source moved during preparation"))
 				return
 			}
 			if err := request.TransferTo(view, 0); err != nil {
@@ -315,7 +317,7 @@ func main() {
 				return
 			}
 			pending = nil
-			log.Printf("PREPARED UI target requested=%v release=%v ratio=%g", position, release, ratio)
+			log.Printf("PREPARED UI target position=%v content=%v", requestedPosition, contentSize)
 		}
 		verify := func() {
 			state := states["A"]
@@ -373,23 +375,30 @@ func main() {
 					return
 				}
 				source, target := app.FindWindow("source"), app.FindWindow("target")
-				outer, err := target.Position(source)
+				origin, err := target.Position(source)
 				if err != nil {
 					fail(err)
 					return
 				}
-				border, err := target.Position(target)
+				self, err := target.Position(target)
 				if err != nil {
 					fail(err)
 					return
 				}
-				anchor, ok := firstTab(target.Widget().Snapshot())
-				actual := outer.Add(anchor.Add(hotspot).Add(border.Scale(-1)).Scale(ratio))
-				if !ok || math.Abs(float64(actual.X-release.X))*float64(sourceScale) > 1.01 || math.Abs(float64(actual.Y-release.Y))*float64(sourceScale) > 1.01 {
-					fail(fmt.Errorf("position actual=%v release=%v ratio=%g", actual, release, ratio))
+				if self != (geometry.Point{}) {
+					fail(fmt.Errorf("client self-position=%v, want zero", self))
 					return
 				}
-				log.Printf("POSITION actual=%v release=%v ratio=%g", actual, release, ratio)
+				if math.Abs(float64(origin.X-requestedPosition.X)) > 1 || math.Abs(float64(origin.Y-requestedPosition.Y)) > 1 {
+					fail(fmt.Errorf("position=%v requested=%v", origin, requestedPosition))
+					return
+				}
+				actualSize := view.Rect().Size
+				if math.Abs(float64(actualSize.Width-contentSize.Width)) > 1 || math.Abs(float64(actualSize.Height-contentSize.Height)) > 1 {
+					fail(fmt.Errorf("content size=%v requested=%v", actualSize, contentSize))
+					return
+				}
+				log.Printf("POSITION actual=%v content=%v", origin, actualSize)
 			}
 			delete(models, "source")
 			app.RequestUpdate()
@@ -411,7 +420,7 @@ func main() {
 			}
 			var pages []*wui.TabPageView
 			for _, key := range keys {
-				if key == "preparing" || (id == "target" && *expect == "prepare-failure") {
+				if id == "target" && *expect == "prepare-failure" {
 					pages = append(pages, wui.TabPage(key, nil).Title("Document A"))
 					continue
 				}
@@ -433,13 +442,17 @@ func main() {
 				ui.Label(fmt.Sprintf("%s / builds %d", id, builds)),
 				ui.HBox(ui.Button("Rebuild").OnClick(app.RequestUpdate), ui.Button("Verify and close source").OnClick(verify)).Spacing(8),
 				wui.TabView(pages...).ID("documents").OnTransfer(transfer),
-			).Spacing(12).Padding(12)
-			frame := &frameView{key: id, frames: frames, child: content}
+			).CrossAlign(layout.CrossStretch).Spacing(12).Padding(12)
+			size := geometry.Size{Width: 520, Height: 340}
+			if id == "target" && detaching {
+				size = targetSize
+			}
+			frame := &frameView{key: id, frames: frames, child: content, size: size}
 			frame.Self = frame
 			if id == "target" && pending != nil {
 				frame.after = prepare
 			}
-			windows = append(windows, ui.Window(id).Title("GOUI UI TRANSFER "+id).Chrome(decoration).Size(520, 340).Content(frame))
+			windows = append(windows, ui.Window(id).Title("GOUI UI TRANSFER "+id).Chrome(decoration).Size(size.Width, size.Height).Content(frame))
 		}
 		if !positioned {
 			positioned = true

@@ -191,7 +191,7 @@ type TabBarView struct {
 	minTabWidth, maxTabWidth float32
 	transferable             bool
 	onTransferError          func(error)
-	onDetachRequest          func(*TabDetachRequest)
+	onDetachRequest          func(*TabDetachRequest, *bool)
 	onContextMenuError       func(error)
 	contextMenu              func(string) []*baseui.MenuItemView
 }
@@ -218,7 +218,11 @@ func (v *TabBarView) OnContextMenuError(fn func(error)) *TabBarView {
 	v.onContextMenuError = fn
 	return v
 }
-func (v *TabBarView) OnDetachRequest(fn func(*TabDetachRequest)) *TabBarView {
+
+// OnDetachRequest forwards the GUI request and its initially false result.
+// Set handled to true when retaining or processing the request; otherwise the
+// source tab is restored after emission. The result pointer is callback-local.
+func (v *TabBarView) OnDetachRequest(fn func(*TabDetachRequest, *bool)) *TabBarView {
 	v.onDetachRequest = fn
 	return v
 }
@@ -248,12 +252,10 @@ func (v *TabBarView) Mount(ctx baseui.BuildContext) gui.Widget {
 				state.onError(err)
 			}
 		}),
-		bar.ConnectDetachRequest(func(request *widgets.TabDetachRequest) {
-			if pageID(request.Page) == "" || state.onDetach == nil {
-				request.Cancel()
-				return
+		bar.ConnectDetachRequest(func(request *widgets.TabDetachRequest, handled *bool) {
+			if pageID(request.Page) != "" && state.onDetach != nil {
+				state.onDetach(&TabDetachRequest{TabDetachRequest: request, PageID: request.Page.ID()}, handled)
 			}
-			state.onDetach(&TabDetachRequest{TabDetachRequest: request, PageID: request.Page.ID()})
 		}),
 	}
 	ctx.SetState(state)

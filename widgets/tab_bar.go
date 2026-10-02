@@ -50,7 +50,7 @@ type TabBar struct {
 	dropTarget                          *gui.DropTarget
 	nativeDrag, incoming                *tabTransferDrag
 	transferError                       signal.Signal1[error]
-	detachRequest                       signal.Signal1[*TabDetachRequest]
+	detachRequest                       signal.Signal2[*TabDetachRequest, *bool]
 	pendingDetach                       *TabDetachRequest
 	incomingAt                          int
 	previewMotion                       bool // retain animation while a vacated gap closes

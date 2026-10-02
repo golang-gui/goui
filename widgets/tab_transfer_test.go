@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
 )
@@ -597,7 +598,7 @@ func TestDetachRequestEligibility(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			bar, run := detachFixture()
 			calls := 0
-			bar.ConnectDetachRequest(func(r *TabDetachRequest) {
+			bar.ConnectDetachRequest(func(r *TabDetachRequest, handled *bool) {
 				calls++
 				if r.Page != run.page || r.Window != run.window || r.Hotspot != run.hotspot || run.page.Parent() != run.view {
 					t.Fatal("request detached or changed original page")
@@ -616,20 +617,54 @@ func TestSingleTabDoesNotRequestNewWindow(t *testing.T) {
 	bar, run := detachFixture()
 	run.view.RemovePage(run.view.Pages()[1])
 	requests := 0
-	bar.ConnectDetachRequest(func(*TabDetachRequest) { requests++ })
+	bar.ConnectDetachRequest(func(*TabDetachRequest, *bool) { requests++ })
 	bar.requestDetach(run, gui.DragResult{PositionValid: true})
 	if requests != 0 || bar.pendingDetach != nil || run.page.Parent() != run.view {
 		t.Fatal("unaccepted sole page requested a new window")
 	}
 }
 
+func TestDetachContentSizeUsesCurrentViewportNotInactivePage(t *testing.T) {
+	bar, run := detachFixture()
+	run.view.Measure(layout.Loose(geometry.Size{Width: 640, Height: 360}))
+	run.view.Arrange(geometry.Rect(20, 30, 640, 360))
+	// The inactive page deliberately has stale geometry from another layout.
+	run.view.SetCurrent(run.view.Pages()[1])
+	run.page.Arrange(geometry.Rect(0, 0, 110, 70))
+	var request *TabDetachRequest
+	bar.ConnectDetachRequest(func(r *TabDetachRequest, handled *bool) { request = r; *handled = true })
+	run.hotspot = geometry.Point{X: 30, Y: 12}
+	bar.requestDetach(run, gui.DragResult{PositionValid: true, Position: geometry.Point{X: 800, Y: 200}})
+	if request == nil || request.ContentSize != (geometry.Size{Width: 640, Height: 360}) ||
+		request.Position != (geometry.Point{X: 800, Y: 200}) || request.Hotspot != run.hotspot {
+		t.Fatalf("request did not snapshot viewport and input: %+v", request)
+	}
+	run.view.Arrange(geometry.Rect(20, 30, 400, 240))
+	if request.ContentSize != (geometry.Size{Width: 640, Height: 360}) {
+		t.Fatal("pending request changed with source layout")
+	}
+	target := NewTabView()
+	if err := request.TransferTo(target, 0); err != nil {
+		t.Fatal(err)
+	}
+	// Initial content size must not become a permanent page constraint.
+	target.Measure(layout.Loose(geometry.Size{Width: 300, Height: 180}))
+	target.Arrange(geometry.Rect(0, 0, 300, 180))
+	if run.page.Rect().Size != (geometry.Size{Width: 300, Height: 180}) {
+		t.Fatalf("transfer imposed a lasting content constraint: %v", run.page.Rect())
+	}
+}
+
 func TestDetachRequestRetainedUntilSingleCommit(t *testing.T) {
 	bar, run := detachFixture()
 	var request *TabDetachRequest
-	bar.ConnectDetachRequest(func(r *TabDetachRequest) { request = r })
+	bar.ConnectDetachRequest(func(r *TabDetachRequest, handled *bool) { request = r; *handled = true })
 	bar.requestDetach(run, gui.DragResult{PositionValid: true})
 	if request == nil || run.page.Parent() != run.view {
 		t.Fatal("preparation lost page")
+	}
+	if bar.items[run.page].Visible() {
+		t.Fatal("source tab reappeared while preparing the detached window")
 	}
 	target := NewTabView()
 	host := &detachTestHost{window: new(detachTestWindow)}
@@ -650,7 +685,7 @@ func TestDetachRequestInvalidation(t *testing.T) {
 			bar, run := detachFixture()
 			bar.SetReorderable(true)
 			var request *TabDetachRequest
-			bar.ConnectDetachRequest(func(r *TabDetachRequest) { request = r })
+			bar.ConnectDetachRequest(func(r *TabDetachRequest, handled *bool) { request = r; *handled = true })
 			bar.requestDetach(run, gui.DragResult{PositionValid: true})
 			switch action {
 			case "last page":
@@ -679,6 +714,137 @@ func TestDetachRequestInvalidation(t *testing.T) {
 			if action != "remove page" && run.page.Parent() != run.view {
 				t.Fatal("failed preparation lost source page")
 			}
+			if item := bar.items[run.page]; item != nil && !item.Visible() {
+				t.Fatal("source tab stayed hidden after preparation was cancelled")
+			}
 		})
+	}
+}
+
+func TestPendingDetachPreservesSlotAndCancellationRestoresTab(t *testing.T) {
+	bar, run := detachFixture()
+	bar.SetTabWidthRange(100, 100)
+	bar.Measure(layout.Loose(geometry.Size{Width: 300, Height: 40}))
+	bar.Arrange(geometry.Rect(0, 0, 300, 40))
+	item, next := bar.items[run.page], bar.items[run.view.Pages()[1]]
+	before, height := next.Rect(), bar.Measure(layout.Unbounded()).Height
+	var request *TabDetachRequest
+	bar.ConnectDetachRequest(func(r *TabDetachRequest, handled *bool) { request = r; *handled = true })
+	bar.requestDetach(run, gui.DragResult{PositionValid: true})
+	bar.Measure(layout.Loose(geometry.Size{Width: 300, Height: 40}))
+	bar.Arrange(geometry.Rect(0, 0, 300, 40))
+	if item.Visible() || next.Rect() != before || bar.Measure(layout.Unbounded()).Height != height {
+		t.Fatal("pending detach collapsed the reserved slot or row height")
+	}
+	request.Cancel()
+	if !item.Visible() || bar.pendingDetach != nil || run.page.Parent() != run.view {
+		t.Fatal("cancel did not restore the original source tab")
+	}
+}
+
+func TestDetachWithoutListenerDoesNotRetainHiddenTab(t *testing.T) {
+	bar, run := detachFixture()
+	bar.requestDetach(run, gui.DragResult{PositionValid: true})
+	if bar.pendingDetach != nil || !bar.items[run.page].Visible() {
+		t.Fatal("unhandled request retained a hidden tab")
+	}
+}
+
+func TestDetachRequestUsesFinalHandledResult(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		results []bool
+		retain  bool
+	}{
+		{"declined", []bool{false}, false},
+		{"later decline", []bool{true, false}, false},
+		{"later accept", []bool{false, true}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bar, run := detachFixture()
+			var request *TabDetachRequest
+			calls := 0
+			for _, result := range tc.results {
+				bar.ConnectDetachRequest(func(r *TabDetachRequest, handled *bool) {
+					if request == nil && *handled {
+						t.Fatal("handled must initially be false")
+					}
+					request = r
+					calls++
+					*handled = result
+				})
+			}
+			bar.requestDetach(run, gui.DragResult{PositionValid: true})
+			if calls != len(tc.results) || request == nil {
+				t.Fatal("request was not queried in connection order")
+			}
+			if request.valid() != tc.retain || (bar.pendingDetach != nil) != tc.retain ||
+				bar.items[run.page].Visible() == tc.retain || run.page.Parent() != run.view {
+				t.Fatal("final handled result did not determine source reservation")
+			}
+			request.Cancel()
+			if bar.pendingDetach != nil || !bar.items[run.page].Visible() {
+				t.Fatal("cancel did not restore the original tab")
+			}
+		})
+	}
+}
+
+func TestInactiveDetachConnectionsLeaveDefaultUnhandled(t *testing.T) {
+	for _, action := range []string{"block", "disconnect"} {
+		t.Run(action, func(t *testing.T) {
+			bar, run := detachFixture()
+			handle := bar.ConnectDetachRequest(func(*TabDetachRequest, *bool) {
+				t.Fatal("inactive connection invoked")
+			})
+			if action == "block" {
+				handle.Block()
+			} else {
+				handle.Disconnect()
+			}
+			bar.requestDetach(run, gui.DragResult{PositionValid: true})
+			if bar.pendingDetach != nil || !bar.items[run.page].Visible() || run.page.Parent() != run.view {
+				t.Fatal("inactive connection retained a request or lost its source page")
+			}
+		})
+	}
+}
+
+func TestSynchronousDetachCommitIsNotUndoneByUnhandledResult(t *testing.T) {
+	bar, run := detachFixture()
+	target := NewTabView()
+	calls := 0
+	bar.ConnectDetachRequest(func(r *TabDetachRequest, handled *bool) {
+		calls++
+		if err := r.TransferTo(target, 0); err != nil {
+			t.Fatal(err)
+		}
+		// The request was consumed synchronously, not retained for later work.
+	})
+	bar.ConnectDetachRequest(func(*TabDetachRequest, *bool) {
+		t.Fatal("later handler received an already consumed request")
+	})
+	bar.requestDetach(run, gui.DragResult{PositionValid: true})
+	if calls != 1 || bar.pendingDetach != nil || run.page.Parent() != target {
+		t.Fatal("default cancellation undid an already committed transfer")
+	}
+}
+
+func TestOneShotDetachListenerCanRetainRequestAfterDisconnecting(t *testing.T) {
+	bar, run := detachFixture()
+	var request *TabDetachRequest
+	var handle signal.Handle
+	handle = bar.ConnectDetachRequest(func(r *TabDetachRequest, handled *bool) {
+		request = r
+		*handled = true
+		handle.Disconnect()
+	})
+	bar.requestDetach(run, gui.DragResult{PositionValid: true})
+	if request == nil || !request.valid() || bar.pendingDetach != request || bar.items[run.page].Visible() {
+		t.Fatal("disconnecting an already invoked listener cancelled its retained request")
+	}
+	request.Cancel()
+	if bar.pendingDetach != nil || !bar.items[run.page].Visible() {
+		t.Fatal("retained one-shot request did not restore its source on cancel")
 	}
 }
