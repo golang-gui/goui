@@ -1200,14 +1200,14 @@ func (w *Window) Position(relativeTo common.Window) (geometry.Point, error) {
 	if winapi.ClientToScreen(reference.hwnd, &origin) == 0 {
 		return geometry.Point{}, common.ErrUnavailable
 	}
-	var frame winapi.RECT
-	if err := winapi.GetWindowRect(w.hwnd, &frame); err != nil {
-		return geometry.Point{}, err
+	var client winapi.POINT
+	if winapi.ClientToScreen(w.hwnd, &client) == 0 {
+		return geometry.Point{}, common.ErrUnavailable
 	}
 	scale := float64(reference.scaleFactor())
 	return geometry.Point{
-		X: float32((float64(frame.Left)-float64(origin.X))/scale) - offset.X,
-		Y: float32((float64(frame.Top)-float64(origin.Y))/scale) - offset.Y,
+		X: float32((float64(client.X)-float64(origin.X))/scale) - offset.X,
+		Y: float32((float64(client.Y)-float64(origin.Y))/scale) - offset.Y,
 	}, nil
 }
 
@@ -1239,8 +1239,18 @@ func (w *Window) SetPosition(relativeTo common.Window, position geometry.Point) 
 		return common.ErrUnavailable
 	}
 	scale := float64(reference.scaleFactor())
-	x, y, err := workarea.NativePosition(float64(origin.X)+float64(position.X)*scale,
-		float64(origin.Y)+float64(position.Y)*scale)
+	px, py := float64(origin.X)+float64(position.X)*scale, float64(origin.Y)+float64(position.Y)*scale
+	var clientOrigin winapi.POINT
+	if winapi.ClientToScreen(w.hwnd, &clientOrigin) == 0 {
+		return common.ErrUnavailable
+	}
+	var frame winapi.RECT
+	if err := winapi.GetWindowRect(w.hwnd, &frame); err != nil {
+		return err
+	}
+	px -= float64(clientOrigin.X) - float64(frame.Left)
+	py -= float64(clientOrigin.Y) - float64(frame.Top)
+	x, y, err := workarea.NativePosition(px, py)
 	if err != nil {
 		return err
 	}

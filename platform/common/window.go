@@ -46,22 +46,25 @@ type DesktopWindow interface {
 	// observations return ErrUnavailable. Non-finite points are invalid.
 	WorkAreaAt(point geometry.Point) (geometry.Rectangle, error)
 
-	// Position observes the outer-frame top-left using the same reference and
+	// Position observes the client-area top-left using the same reference and
 	// DIP convention as SetPosition. nil uses this window's current WorkAreaAt
-	// (Point{}) origin. Self-reference reports the frame-to-client offset, not
-	// necessarily zero. This queries native geometry, never the last request or
-	// restored placement. It does not wait for pending moves or dispatch events.
-	// Missing geometry (including an as-yet unobserved frame before Show) returns
-	// ErrUnavailable; unsupported facilities/references return ErrUnsupported.
+	// (Point{}) origin. Self-reference returns (0, 0). This queries native
+	// geometry, never the last request or restored placement. It does not wait
+	// for pending moves or dispatch events.
+	// May be used before Show once native client geometry exists. Missing
+	// geometry returns ErrUnavailable; unsupported facilities/references return
+	// ErrUnsupported.
 	Position(relativeTo Window) (geometry.Point, error)
 
-	// SetPosition requests the outer frame's top-left position. With relativeTo,
+	// SetPosition requests the client-area top-left position. With relativeTo,
 	// position is relative to that window's client origin, in its DIP. With nil,
 	// it is relative to this window's WorkAreaAt(Point{}) origin, in this window's
 	// DIP. Origins are sampled once; this does not establish a parent or tracking
 	// relationship. Referencing this window itself is valid.
 	// Negative/outside-area positions are allowed; no clamping or resizing is
 	// performed. Native window-manager policy may adjust or ignore requests.
+	// Native decoration/frame offsets are handled by the backend, irrespective
+	// of Chrome. GUI-drawn decoration is inside the client area.
 	// May be used before Show if the native origin/work area is observable.
 	// Non-finite/unrepresentable positions are invalid. Unsupported facilities
 	// return ErrUnsupported; destroyed windows/missing observations return

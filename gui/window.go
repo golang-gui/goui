@@ -52,17 +52,18 @@ type Window interface {
 	// WorkAreaAt returns the work area containing point (or the nearest one),
 	// in this window's client-local DIP. Unsupported hosts return ErrUnsupported.
 	WorkAreaAt(point geometry.Point) (geometry.Rectangle, error)
-	// SetPosition requests the outer-frame top-left in relativeTo's client DIP.
+	// SetPosition requests the client-area top-left in relativeTo's client DIP.
 	// nil uses this window's current WorkAreaAt(Point{}) top-left and DIP instead.
 	// This is a one-shot request, not ownership or following. Negative positions
 	// are allowed; the window manager may adjust or ignore the request. It does
 	// not resize or activate the window. Errors are returned to the caller.
 	SetPosition(relativeTo Window, position geometry.Point) error
-	// Position observes the actual outer-frame top-left in the same reference
+	// Position observes the actual client-area top-left in the same reference
 	// coordinates as SetPosition. nil uses this window's current work area;
-	// self-reference returns the frame-to-client offset. It does not wait for
-	// pending moves or return the last requested/restored position. Unavailable
-	// native geometry and unsupported hosts return errors.
+	// self-reference returns (0, 0). It may be queried before Show once native
+	// client geometry exists. It does not wait for pending moves or return the
+	// last requested/restored position. Unavailable native geometry and
+	// unsupported hosts return errors.
 	Position(relativeTo Window) (geometry.Point, error)
 
 	// PlatformWindow returns the underlying platform window.

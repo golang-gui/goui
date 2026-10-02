@@ -38,7 +38,6 @@ type Platform struct {
 		_NET_WM_STATE                xlib.Atom
 		_NET_WM_MOVERESIZE           xlib.Atom
 		_NET_MOVERESIZE_WINDOW       xlib.Atom
-		_NET_FRAME_EXTENTS           xlib.Atom
 		_NET_WM_STATE_MAXIMIZED_HORZ xlib.Atom
 		_NET_WM_STATE_MAXIMIZED_VERT xlib.Atom
 		_NET_WM_STATE_FULLSCREEN     xlib.Atom
@@ -117,7 +116,6 @@ func NewPlatform(appId string) (_ *Platform, err error) {
 	p.atoms._NET_WM_STATE = p.display.InternAtom("_NET_WM_STATE", false)
 	p.atoms._NET_WM_MOVERESIZE = p.display.InternAtom("_NET_WM_MOVERESIZE", false)
 	p.atoms._NET_MOVERESIZE_WINDOW = p.display.InternAtom("_NET_MOVERESIZE_WINDOW", false)
-	p.atoms._NET_FRAME_EXTENTS = p.display.InternAtom("_NET_FRAME_EXTENTS", false)
 	p.atoms._NET_WM_STATE_MAXIMIZED_HORZ = p.display.InternAtom("_NET_WM_STATE_MAXIMIZED_HORZ", false)
 	p.atoms._NET_WM_STATE_MAXIMIZED_VERT = p.display.InternAtom("_NET_WM_STATE_MAXIMIZED_VERT", false)
 	p.atoms._NET_WM_STATE_FULLSCREEN = p.display.InternAtom("_NET_WM_STATE_FULLSCREEN", false)

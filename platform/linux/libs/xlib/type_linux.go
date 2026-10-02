@@ -779,6 +779,8 @@ const (
 
 const NorthWestGravity = 1
 
+const StaticGravity = 10
+
 const (
 	ConfigWindowX           = 1
 	ConfigWindowY           = 2
