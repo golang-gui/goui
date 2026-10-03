@@ -1,6 +1,9 @@
 package gui
 
-import "github.com/golang-gui/goui/core/geometry"
+import (
+	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/layout"
+)
 
 type ApplicationInfo struct {
 	Windows []WindowInfo `json:"windows"`
@@ -45,6 +48,8 @@ type WidgetInfo struct {
 	TextEditing *TextEditingInfo `json:"textEditing,omitempty"`
 	// DragDrop describes capabilities and transient state, never transferred data.
 	DragDrop *DragDropInfo `json:"dragDrop,omitempty"`
+	// Range describes an adjustable value; it is not a semantic input shortcut.
+	Range *RangeInfo `json:"range,omitempty"`
 
 	// Scroll state (omitempty: absent on non-scrolling widgets).
 	ScrollY      float32 `json:"scrollY,omitempty"`      // current scroll offset
@@ -54,6 +59,15 @@ type WidgetInfo struct {
 	ItemCount    int     `json:"itemCount,omitempty"`    // ListView: total items (virtualized)
 	VisibleStart int     `json:"visibleStart,omitempty"` // ListView: first visible index
 	VisibleEnd   int     `json:"visibleEnd,omitempty"`   // ListView: last visible index
+}
+
+// RangeInfo uses DIP for spatial controls. Direction is the axis along which
+// Value increases, not the orientation of a separator's visible line.
+type RangeInfo struct {
+	Value     float32          `json:"value"`
+	Min       float32          `json:"min"`
+	Max       float32          `json:"max"`
+	Direction layout.Direction `json:"direction"`
 }
 
 type DragDropInfo struct {
