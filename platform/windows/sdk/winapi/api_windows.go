@@ -209,7 +209,8 @@ func GetClassInfoEx(instance HINSTANCE, name LPCWSTR, cls *WNDCLASSEX) error {
 }
 
 func CreateWindowEx(exStyle DWORD, clsName, wndName LPCWSTR, style DWORD, x, y, w, h int, parent HWND, menu HMENU, inst HINSTANCE, param LPVOID) (HWND, error) {
-	ret, _, err := syscall.SyscallN(procCreateWindowExW.Addr(),
+	// Window creation synchronously invokes the window procedure.
+	ret, _, err := procCreateWindowExW.Call(
 		uintptr(exStyle),
 		uintptr(unsafe.Pointer(clsName)),
 		uintptr(unsafe.Pointer(wndName)),
@@ -360,7 +361,8 @@ func SetWindowPos(wnd, insertAfter HWND, x, y, cx, cy int, flags UINT) error {
 }
 
 func SetWindowText(wnd HWND, text LPCWSTR) error {
-	ret, _, err := syscall.SyscallN(procSetWindowTextW.Addr(), uintptr(wnd), uintptr(unsafe.Pointer(text)))
+	// An in-process window receives WM_SETTEXT before this call returns.
+	ret, _, err := procSetWindowTextW.Call(uintptr(wnd), uintptr(unsafe.Pointer(text)))
 	if ret == FALSE {
 		return err
 	}
@@ -368,7 +370,8 @@ func SetWindowText(wnd HWND, text LPCWSTR) error {
 }
 
 func GetWindowText(wnd HWND, text LPWSTR, maxLen INT) (INT, error) {
-	ret, _, err := syscall.SyscallN(procGetWindowTextW.Addr(), uintptr(wnd), uintptr(unsafe.Pointer(text)), uintptr(maxLen))
+	// An in-process window receives WM_GETTEXT while retaining this buffer.
+	ret, _, err := procGetWindowTextW.Call(uintptr(wnd), uintptr(unsafe.Pointer(text)), uintptr(maxLen))
 	if ret == 0 {
 		return 0, err
 	}
@@ -528,7 +531,8 @@ func SystemParametersInfo(action UINT, param UINT, data LPVOID, flags UINT) erro
 }
 
 func BeginPaint(wnd HWND, paint LPPAINTSTRUCT) HDC {
-	ret, _, _ := syscall.SyscallN(procBeginPaint.Addr(), uintptr(wnd), uintptr(unsafe.Pointer(paint)))
+	// Background erasure can synchronously invoke WM_ERASEBKGND.
+	ret, _, _ := procBeginPaint.Call(uintptr(wnd), uintptr(unsafe.Pointer(paint)))
 	return HDC(ret)
 }
 
@@ -553,12 +557,13 @@ func SetCursor(cursor HCURSOR) {
 }
 
 func GetMessage(msg LPMSG, wnd HWND, filterMin, filterMax UINT) (BOOL, error) {
-	ret, _, err := syscall.SyscallN(procGetMessageW.Addr(),
-		uintptr(unsafe.Pointer(msg)),
+	// Sent messages can enter Go and grow its stack before GetMessage writes
+	// msg. Proc.Call makes this buffer escape and keeps it alive for the call.
+	ret, _, err := procGetMessageW.Call(uintptr(unsafe.Pointer(msg)),
 		uintptr(wnd),
 		uintptr(filterMin), uintptr(filterMax))
-	if Cintptr(ret) == 0 {
-		return FALSE, err
+	if BOOL(ret) == -1 {
+		return -1, err
 	}
 
 	return BOOL(ret), nil
@@ -573,24 +578,22 @@ func WaitMessage() (BOOL, error) {
 }
 
 func PeekMessage(msg LPMSG, wnd HWND, filterMin, filterMax, removeMsg UINT) (BOOL, error) {
-	ret, _, err := syscall.SyscallN(procPeekMessageW.Addr(),
+	// Like GetMessage, PeekMessage dispatches pending sent messages.
+	ret, _, _ := procPeekMessageW.Call(
 		uintptr(unsafe.Pointer(msg)),
 		uintptr(wnd),
 		uintptr(filterMin), uintptr(filterMax), uintptr(removeMsg))
-	if Cintptr(ret) == 0 {
-		return FALSE, err
-	}
-
+	// Zero means an empty queue, not a LastError failure.
 	return BOOL(ret), nil
 }
 
 func TranslateMessage(msg LPMSG) BOOL {
-	ret, _, _ := syscall.SyscallN(procTranslateMessage.Addr(), uintptr(unsafe.Pointer(msg)))
+	ret, _, _ := procTranslateMessage.Call(uintptr(unsafe.Pointer(msg)))
 	return BOOL(ret)
 }
 
 func DispatchMessage(msg LPMSG) LRESULT {
-	ret, _, _ := syscall.SyscallN(procDispatchMessageW.Addr(), uintptr(unsafe.Pointer(msg)))
+	ret, _, _ := procDispatchMessageW.Call(uintptr(unsafe.Pointer(msg)))
 	return LRESULT(ret)
 }
 
