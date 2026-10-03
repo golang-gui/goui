@@ -68,6 +68,7 @@ func Rules(options Options) []style.Rule {
 		primary[0], primary[1], primary[2],
 	})
 	rules := []style.Rule{
+		style.Name("split-handle").ForegroundColor(mix(p.window, p.text, .18)),
 		style.Name("window").BackgroundColor(p.window),
 		text("widget").BackgroundColor(color.Transparent).BorderWidth(0).Radius(0),
 		text("label"),
