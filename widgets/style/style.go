@@ -1,6 +1,6 @@
 // Package style supplies explicitly composed fallback rules for widgets.
 // It does not register rules or modify the application's stylesheet. Modern
-// already supplies its own complete tab appearance and does not need these rules.
+// already supplies its own complete widget appearance and does not need these rules.
 package style
 
 import (
@@ -33,5 +33,6 @@ func Rules() []basestyle.Rule {
 		basestyle.Name("tab-close-button-text").ForegroundColor(color.Black).FontFamily(family).FontSize(size),
 		basestyle.Name("tab-scroll-button").BackgroundColor(color.Transparent).Radius(4).FontSize(size),
 		basestyle.Name("tab-scroll-button-text").ForegroundColor(color.Black).FontFamily(family).FontSize(size),
+		basestyle.Name("split-handle").ForegroundColor(color.RGBA{R: 198, G: 198, B: 206, A: 255}),
 	}
 }
