@@ -33,14 +33,16 @@ func (l *EventLoop) Run() {
 		return
 	}
 
+	// GetMessage makes msg escape; reuse one stable buffer for the entire run.
+	msg := new(winapi.MSG)
 	for !l.state.Quitting() {
-		var msg winapi.MSG
-		result, _ := winapi.GetMessage(&msg, 0, 0, 0)
+		*msg = winapi.MSG{}
+		result, _ := winapi.GetMessage(msg, 0, 0, 0)
 		if result == winapi.FALSE || result == -1 {
 			break
 		}
 
-		dispatchMessage(&msg)
+		dispatchMessage(msg)
 	}
 	l.state.RunTasks()
 }

@@ -290,14 +290,15 @@ func (p *Platform) createHelperWindow() (err error) {
 
 	winapi.ShowWindow(p.helperWindow, winapi.SW_HIDE)
 
-	var msg winapi.MSG
+	msg := new(winapi.MSG)
 	for {
-		has, _ := winapi.PeekMessage(&msg, p.helperWindow, 0, 0, winapi.PM_REMOVE)
+		*msg = winapi.MSG{}
+		has, _ := winapi.PeekMessage(msg, p.helperWindow, 0, 0, winapi.PM_REMOVE)
 		if has == winapi.FALSE {
 			break
 		}
-		winapi.TranslateMessage(&msg)
-		winapi.DispatchMessage(&msg)
+		winapi.TranslateMessage(msg)
+		winapi.DispatchMessage(msg)
 	}
 
 	return nil
