@@ -850,8 +850,10 @@ func (this *TextLayout) DetermineMinWidth() (minWidth float32) {
 	return
 }
 
-func (this *TextLayout) HitTestPoint(x, y float32, isTrialing bool) (isInside bool, hitTestMetrics HitTestMetrics, hr com.HRESULT) {
-	hr = cgo.CallRet[com.HRESULT](this.class().HitTestPoint, this, x, y, isTrialing, &isInside, &hitTestMetrics)
+func (this *TextLayout) HitTestPoint(x, y float32) (isTrailing, isInside bool, hitTestMetrics HitTestMetrics, hr com.HRESULT) {
+	var trailing, inside winapi.BOOL
+	hr = cgo.CallRet[com.HRESULT](this.class().HitTestPoint, this, x, y, &trailing, &inside, &hitTestMetrics)
+	isTrailing, isInside = trailing != 0, inside != 0
 	return
 }
 
