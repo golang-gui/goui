@@ -660,6 +660,7 @@ func (p *popover) paint() {
 	}
 	p.widget = liveRoot(p.widget)
 	p.paintDirty = false
+	laidOut := p.layoutDirty
 	if p.layoutDirty {
 		p.layoutDirty = false
 		if err := p.updateNaturalSize(); err != nil {
@@ -675,6 +676,12 @@ func (p *popover) paint() {
 		if p.lifecycle != epoch || p.painter == nil || p.destroyed {
 			return
 		}
+	}
+	if laidOut {
+		p.refreshDragMotion(p)
+	}
+	if p.destroyed {
+		return
 	}
 	background, border, shadow := p.surfaceStyle()
 	radius, _ := border.Radius()
