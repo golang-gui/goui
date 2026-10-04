@@ -223,8 +223,12 @@ func TestTextEditorContextMenuPointerAndDismiss(t *testing.T) {
 	editor.setSelectionValue(TextSelection{4, 1})
 	rightClick := func(x float32) {
 		t.Helper()
-		if err := win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonRight, Position: geometry.Point{X: x, Y: 12}}); err != nil {
-			t.Fatal(err)
+		// Windows requests on release; other platforms request on press.
+		// Dispatch the complete click rather than assuming either timing.
+		for _, kind := range []events.EventType{events.PointerDown, events.PointerUp} {
+			if err := win.DispatchEvent(events.PointerEvent{EventType: kind, Button: events.PointerButtonRight, Position: geometry.Point{X: x, Y: 12}}); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	rightClick(24) // Fixed fixture cells: padding 4 + two cells, inside [1,4).
@@ -271,8 +275,12 @@ func TestTextEditorContextMenuScrolledPosition(t *testing.T) {
 	editor.setSelectionValue(TextSelection{7, 10})
 	editor.revealCaret = false
 	editor.layoutVisible(geometry.Size{209, 60}, geometry.Point{Y: 20})
-	win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonRight, Position: geometry.Point{X: 24, Y: 12}})
-	if editor.selection != (TextSelection{7, 10}) || editor.contextMenu.popup.popover.Position() != (geometry.Point{24, 12}) {
+	for _, kind := range []events.EventType{events.PointerDown, events.PointerUp} {
+		if err := win.DispatchEvent(events.PointerEvent{EventType: kind, Button: events.PointerButtonRight, Position: geometry.Point{X: 24, Y: 12}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if editor.contextMenu == nil || !editor.contextMenu.popup.Visible() || editor.selection != (TextSelection{7, 10}) || editor.contextMenu.popup.popover.Position() != (geometry.Point{24, 12}) {
 		t.Fatal("scrolled selection or popup origin used document rather than local coordinates")
 	}
 }

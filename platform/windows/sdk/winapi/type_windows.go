@@ -84,6 +84,7 @@ const (
 	VK_CONTROL    = 0x11
 	VK_MENU       = 0x12
 	VK_PAUSE      = 0x13
+	VK_APPS       = 0x5D
 	VK_CAPITAL    = 0x14
 	VK_ESCAPE     = 0x1B
 	VK_SPACE      = 0x20

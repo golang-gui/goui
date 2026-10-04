@@ -267,6 +267,8 @@ func keyFromVirtualKey(vk int, lParam winapi.LPARAM) (events.Key, events.KeyLoca
 		return events.KeyPrintScreen, events.KeyLocationStandard
 	case winapi.VK_SPACE:
 		return events.KeySpace, events.KeyLocationStandard
+	case winapi.VK_APPS:
+		return events.KeyMenu, events.KeyLocationStandard
 	case winapi.VK_PAUSE, winapi.VK_CANCEL:
 		return events.KeyPause, events.KeyLocationStandard
 	case winapi.VK_LEFT:

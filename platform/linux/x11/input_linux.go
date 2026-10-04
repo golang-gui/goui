@@ -339,6 +339,8 @@ func keyFromKeysym(keysym xlib.KeySym, state, numLockMask uint32) (events.Key, e
 		return events.KeyAltGraph, events.KeyLocationStandard
 	case xlib.XK_Escape:
 		return events.KeyEscape, events.KeyLocationStandard
+	case xlib.XK_Menu:
+		return events.KeyMenu, events.KeyLocationStandard
 	case xlib.XK_Print:
 		return events.KeyPrintScreen, events.KeyLocationStandard
 	case xlib.XK_Scroll_Lock:

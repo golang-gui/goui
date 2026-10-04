@@ -211,12 +211,16 @@ func newTextEditor(owner Widget, singleLine bool) *textEditor {
 	t.im.ConnectPreedit(t.onPreedit)
 	t.input = &textEditController{EventControllerBase: NewEventControllerBase(PhaseTarget), view: t}
 	t.owner.AddEventController(t.input)
-	menuShortcuts := NewShortcutController()
-	menuShortcuts.SetPhase(PhaseTarget)
-	menuShortcut := NewShortcut(KeyGesture{Key: KeyF10, Modifiers: ModShift})
-	menuShortcut.ConnectActivate(func() { t.showContextMenu(nil) })
-	menuShortcuts.AddShortcut(menuShortcut)
-	t.owner.AddEventController(menuShortcuts)
+	menu := NewContextMenuEventController()
+	menu.ConnectRequest(func(ctx EventContext) {
+		ctx.StopPropagation()
+		if point, ok := ctx.Position(); ok {
+			t.showContextMenu(&point)
+		} else {
+			t.showContextMenu(nil)
+		}
+	})
+	t.owner.AddEventController(menu)
 	t.owner.ConnectMount(func() {
 		t.mountEpoch++
 		t.suspended = false
