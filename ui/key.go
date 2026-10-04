@@ -123,6 +123,7 @@ const (
 	KeyWin            = gui.KeyWin
 	KeyOption         = gui.KeyOption
 	KeyAltGraph       = gui.KeyAltGraph
+	KeyMenu           = gui.KeyMenu
 	KeyPrimary        = gui.KeyPrimary
 	ModShift          = gui.ModShift
 	ModControl        = gui.ModControl

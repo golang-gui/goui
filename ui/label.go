@@ -6,7 +6,8 @@ import (
 
 type LabelView struct {
 	ViewBase[LabelView]
-	text string
+	text     string
+	wrapMode gui.WrapMode
 }
 
 func Label(text string) *LabelView {
@@ -17,6 +18,11 @@ func Label(text string) *LabelView {
 
 func (v *LabelView) Text(text string) *LabelView {
 	v.text = text
+	return v
+}
+
+func (v *LabelView) WrapMode(mode gui.WrapMode) *LabelView {
+	v.wrapMode = mode
 	return v
 }
 
@@ -31,6 +37,7 @@ func (v *LabelView) Mount(BuildContext) gui.Widget {
 func (v *LabelView) Update(_ BuildContext, widget gui.Widget) {
 	label := widget.(*gui.Label)
 	label.SetText(v.text)
+	label.SetWrapMode(v.wrapMode)
 }
 
 func (v *LabelView) Unmount(BuildContext, gui.Widget) {}
