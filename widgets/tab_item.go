@@ -62,9 +62,17 @@ func newTabItem(bar *TabBar, page *TabPage) *tabItem {
 	item.close = closeButton
 	closeButton.ConnectContainsFocus(func(bool) { item.RequestLayout() })
 	item.WidgetBase.AddChild(item, closeButton)
-	item.AddEventController(&tabContextMenuController{
-		EventControllerBase: gui.NewEventControllerBase(gui.PhaseCapture), item: item,
+	menu := gui.NewContextMenuEventController()
+	menu.SetPhase(gui.PhaseCapture)
+	menu.ConnectRequest(func(ctx gui.EventContext) {
+		point, ok := ctx.Position()
+		if !ok {
+			point.Y = item.Rect().Height
+		}
+		ctx.StopPropagation()
+		item.bar.showContextMenu(item.page, item.contextMenuPosition(point))
 	})
+	item.AddEventController(menu)
 	bar.addWheel(item)
 
 	motion := gui.NewMotionEventController()

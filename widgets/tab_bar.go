@@ -340,20 +340,6 @@ func (b *TabBar) onKey(ctx gui.EventContext, e events.KeyEvent) {
 	if len(pages) == 0 {
 		return
 	}
-	if e.Key == events.KeyF10 && e.Modifiers == events.ModifierShift {
-		if host, ok := b.Root().(gui.EventTarget); ok {
-			for _, page := range pages {
-				item := b.items[page]
-				if item != nil && (item.body.ContainsFocus() || item.close.ContainsFocus() || host.FocusedWidget() == item.body) {
-					ctx.StopPropagation()
-					e.PreventDefault()
-					b.showContextMenu(page, item.contextMenuPosition(geometry.Point{Y: item.Rect().Height}))
-					return
-				}
-			}
-		}
-		return
-	}
 	index := slices.Index(pages, b.view.Current())
 	switch e.Key {
 	case events.KeyArrowLeft:

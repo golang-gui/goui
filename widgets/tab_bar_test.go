@@ -973,17 +973,3 @@ func TestTabContextMenuQueryCannotOutliveBarMount(t *testing.T) {
 		t.Fatal("unmounted bar continued the old query")
 	}
 }
-
-func TestTabContextMenuPointerPlatformSemantics(t *testing.T) {
-	for _, goos := range []string{"linux", "windows", "darwin"} {
-		if !tabContextMenuPointer(events.PointerEvent{Button: events.PointerButtonRight}, goos) {
-			t.Fatal("secondary click not recognized")
-		}
-		if got := tabContextMenuPointer(events.PointerEvent{Button: events.PointerButtonLeft, Modifiers: events.ModifierControl}, goos); got != (goos == "darwin") {
-			t.Fatalf("Control-click incorrectly interpreted on %s", goos)
-		}
-		if tabContextMenuPointer(events.PointerEvent{Button: events.PointerButtonLeft}, goos) {
-			t.Fatal("primary click interpreted as context menu")
-		}
-	}
-}

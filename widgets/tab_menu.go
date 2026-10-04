@@ -1,12 +1,9 @@
 package widgets
 
 import (
-	"runtime"
-
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
-	"github.com/golang-gui/goui/platform/events"
 )
 
 // ConnectContextMenu queries this bar's menu for page synchronously on the GUI
@@ -84,30 +81,4 @@ func (b *TabBar) showContextMenu(page *TabPage, position geometry.Point) {
 
 func (item *tabItem) contextMenuPosition(point geometry.Point) geometry.Point {
 	return point.Add(item.Rect().Pos).Add(item.bar.viewport.Rect().Pos)
-}
-
-// Keep pointer handling on actual tabs, not on the bar/viewport: their empty
-// areas must remain passive HeaderBar caption regions. Capture also prevents
-// macOS Control-click from reaching the primary click, close and drag handlers.
-type tabContextMenuController struct {
-	gui.EventControllerBase
-	item *tabItem
-}
-
-func (c *tabContextMenuController) HandleEvent(ctx gui.EventContext) {
-	event, ok := ctx.Event().(events.PointerEvent)
-	if !ok || event.EventType != events.PointerDown || !tabContextMenuPointer(event, runtime.GOOS) {
-		return
-	}
-	point, ok := ctx.Position()
-	if !ok {
-		return
-	}
-	ctx.StopPropagation()
-	c.item.bar.showContextMenu(c.item.page, c.item.contextMenuPosition(point))
-}
-
-func tabContextMenuPointer(event events.PointerEvent, goos string) bool {
-	return event.Button == events.PointerButtonRight || goos == "darwin" &&
-		event.Button == events.PointerButtonLeft && event.Modifiers&events.ModifierControl != 0
 }

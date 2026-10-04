@@ -626,6 +626,17 @@ func (w *WidgetBase) AddChild(parent, child Widget) {
 	child.base().setParent(child, parent)
 }
 
+// AddStructuralChild mounts a widget implementation's internal child outside
+// its public Bin slot, such as a disclosure button. The implementation owns
+// its layout and removal. Application content should use SetChild/AddChild.
+// Parent must be the Widget implemented by this WidgetBase.
+func (w *WidgetBase) AddStructuralChild(parent, child Widget) {
+	if parent == nil || parent.base() != w || child == nil {
+		return
+	}
+	child.base().setParent(child, parent)
+}
+
 func (w *WidgetBase) RemoveChild(child Widget) {
 	if child == nil || child.base().parentWidget == nil || child.base().parentWidget.base() != w {
 		return

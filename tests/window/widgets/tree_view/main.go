@@ -200,29 +200,41 @@ func runUI(fallback bool) error {
 type delegate struct {
 	model   *model
 	version *int
+	tree    *widgets.TreeView
 }
 type rowContent struct {
-	*gui.LinearBox
+	*widgets.TreeExpander
 	label  *gui.Label
 	button *gui.Button
 	id     string
 }
 
 func (d *delegate) Setup() gui.Widget {
-	c := &rowContent{LinearBox: gui.NewLinearBox(layout.DirectionHorizontal), label: gui.NewLabel("")}
+	c := &rowContent{TreeExpander: widgets.NewTreeExpander(), label: gui.NewLabel("")}
+	box := gui.NewLinearBox(layout.DirectionHorizontal)
+	c.SetChild(box)
+	c.ConnectToggle(func() {
+		if c.id != "" {
+			d.tree.SetExpanded(c.id, !d.tree.Expanded(c.id))
+		}
+	})
 	c.label.SetStyleName("tree-item-text")
-	c.SetSpacing(8)
-	c.AddChild(c.label)
+	box.SetSpacing(8)
+	box.AddChild(c.label)
 	c.button = gui.NewButton()
 	c.button.SetChild(gui.NewLabel("row action"))
 	c.button.ConnectClicked(func() { fmt.Printf("row-action=%s\n", c.id) })
-	c.AddChild(c.button)
+	box.AddChild(c.button)
 	return c
 }
 func (d *delegate) Bind(row widgets.TreeRow, widget gui.Widget) {
 	c := widget.(*rowContent)
 	value := d.model.Item(row.ID)
 	c.id = row.ID
+	c.SetDepth(row.Depth)
+	c.SetIndentation(d.tree.Indentation())
+	c.SetExpandable(row.Expandable)
+	c.SetExpanded(row.Expanded)
 	c.label.SetText(fmt.Sprintf("%s [v%d]", value.title, *d.version))
 	c.button.SetVisible(value.action)
 }
@@ -254,7 +266,7 @@ func runGUI(fallback bool) error {
 	tree := widgets.NewTreeView()
 	tree.SetID("tree")
 	tree.SetModel(m)
-	tree.SetDelegate(&delegate{m, &version})
+	tree.SetDelegate(&delegate{model: m, version: &version, tree: tree})
 	tree.SetSelectionMode(widgets.SelectionMultiple)
 	tree.SetExpanded("project", true)
 	tree.ConnectSelection(func(ids []string) { fmt.Printf("selection=%v\n", ids) })
