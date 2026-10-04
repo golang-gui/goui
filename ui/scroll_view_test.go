@@ -9,6 +9,22 @@ import (
 	"github.com/golang-gui/goui/layout"
 )
 
+func TestScrollViewDragAutoScrollDefaultsAndUpdates(t *testing.T) {
+	root := newRoot()
+	sv := root.update(ScrollView(Label("content"))).(*gui.ScrollView)
+	if !sv.DragAutoScroll() {
+		t.Fatal("drag auto scrolling should default to enabled")
+	}
+	root.update(ScrollView(Label("content")).DragAutoScroll(false))
+	if sv.DragAutoScroll() {
+		t.Fatal("declaration did not disable drag auto scrolling")
+	}
+	root.update(ScrollView(Label("content")))
+	if !sv.DragAutoScroll() {
+		t.Fatal("omitted value should restore the default")
+	}
+}
+
 func TestScrollViewMountsAndUpdatesChild(t *testing.T) {
 	root := newRoot()
 

@@ -10,15 +10,21 @@ import (
 // (gui.Bin), reconciled like ui.Button.
 type ScrollViewView struct {
 	ViewBase[ScrollViewView]
-	child View
+	child          View
+	dragAutoScroll bool
 }
 
 // ScrollView wraps content in a viewport. Its default MainWeight is 1;
 // MainWeight(0) opts out of sharing a linear parent's remaining space.
 func ScrollView(child View) *ScrollViewView {
-	v := &ScrollViewView{}
+	v := &ScrollViewView{dragAutoScroll: true}
 	v.Self = v
 	v.child = child
+	return v
+}
+
+func (v *ScrollViewView) DragAutoScroll(enabled bool) *ScrollViewView {
+	v.dragAutoScroll = enabled
 	return v
 }
 
@@ -37,6 +43,7 @@ func (v *ScrollViewView) Mount(BuildContext) gui.Widget {
 }
 
 func (v *ScrollViewView) Update(ctx BuildContext, widget gui.Widget) {
+	widget.(*gui.ScrollView).SetDragAutoScroll(v.dragAutoScroll)
 	ctx.UpdateChild(widget.(*gui.ScrollView), v.child)
 }
 
