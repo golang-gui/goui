@@ -21,6 +21,7 @@ type root struct {
 	destroyHandle signal.Handle
 	afterUpdate   []afterUpdateCall
 	transferAfter []afterUpdateCall
+	afterPending  bool
 }
 
 type afterUpdateCall struct {
@@ -43,7 +44,6 @@ type node struct {
 }
 
 type buildContext struct {
-	root *root
 	node *node
 }
 
@@ -238,7 +238,7 @@ func (r *root) updateWidgetNode(old *node, view WidgetView) *node {
 			baseCtx:  &viewBaseContext{},
 			version:  1,
 		}
-		ctx := &buildContext{root: r, node: current}
+		ctx := &buildContext{node: current}
 		current.widget = view.Mount(ctx)
 		if current.widget == nil {
 			r.release(current, true)
@@ -250,7 +250,7 @@ func (r *root) updateWidgetNode(old *node, view WidgetView) *node {
 		current.version++
 	}
 
-	ctx := &buildContext{root: r, node: current}
+	ctx := &buildContext{node: current}
 	current.viewType = viewType
 	current.view = view
 	view.Update(ctx, current.widget)
@@ -275,7 +275,7 @@ func (r *root) release(n *node, detachWidgets bool) {
 	n.children = nil
 
 	if n.view != nil && n.widget != nil {
-		ctx := &buildContext{root: r, node: n}
+		ctx := &buildContext{node: n}
 		n.view.Unmount(ctx, n.widget)
 	}
 	n.view = nil
@@ -285,6 +285,41 @@ func (r *root) release(n *node, detachWidgets bool) {
 
 func (ctx *buildContext) State() any {
 	return ctx.node.state
+}
+
+// A retained context borrows the node, never the Root at its creation. Each
+// delayed row build resolves ownership again after explicit transfers.
+func (ctx *buildContext) beginBuild() (*root, func()) {
+	r := ctx.node.root
+	if ctx.node.released || r == nil {
+		return nil, func() {}
+	}
+	if r.transferring {
+		panic("ui: cannot build children during transfer")
+	}
+	if r.reconciling {
+		return r, func() {}
+	}
+	r.reconciling = true
+	return r, func() {
+		r.reconciling = false
+		r.scheduleAfterUpdate()
+	}
+}
+
+func (r *root) scheduleAfterUpdate() {
+	if r.afterPending || len(r.afterUpdate) == 0 || gui.App == nil {
+		return
+	}
+	r.afterPending = true
+	gui.App.Post(func() {
+		r.afterPending = false
+		if r.reconciling || r.transferring {
+			r.scheduleAfterUpdate()
+			return
+		}
+		r.flushAfterUpdate()
+	})
 }
 
 func (ctx *buildContext) Coordinator() *Coordinator {
@@ -301,12 +336,14 @@ func (r *root) reconcile(view View) {
 }
 
 func (ctx *buildContext) SetState(state any) {
-	ctx.node.state = state
+	if !ctx.node.released {
+		ctx.node.state = state
+	}
 }
 
 func (ctx *buildContext) AfterUpdate(fn func()) {
-	if fn != nil && !ctx.node.released {
-		ctx.root.afterUpdate = append(ctx.root.afterUpdate, afterUpdateCall{
+	if fn != nil && !ctx.node.released && ctx.node.root != nil {
+		ctx.node.root.afterUpdate = append(ctx.node.root.afterUpdate, afterUpdateCall{
 			owner: ctx.node, version: ctx.node.version, fn: fn,
 		})
 	}
@@ -348,18 +385,23 @@ func (ctx *buildContext) childTarget(target any, single bool) *childTarget {
 }
 
 func (ctx *buildContext) UpdateChild(target Bin, child View) gui.Widget {
+	r, finish := ctx.beginBuild()
+	defer finish()
+	if r == nil {
+		return nil
+	}
 	current := ctx.childTarget(target, true)
 	if current == nil {
 		return nil
 	}
 	view := normalizeView(child)
 	if len(current.nodes) != 0 && !sameWidgetIdentity(current.nodes[0], view) {
-		ctx.root.releaseChildren(current, 0, true)
+		r.releaseChildren(current, 0, true)
 	}
 	if view != nil {
 		if len(current.nodes) != 0 {
-			ctx.root.updateWidgetNode(current.nodes[0], view)
-		} else if mounted := ctx.root.updateWidgetNode(nil, view); mounted != nil {
+			r.updateWidgetNode(current.nodes[0], view)
+		} else if mounted := r.updateWidgetNode(nil, view); mounted != nil {
 			current.nodes = []*node{mounted}
 			target.SetChild(mounted.widget)
 		}
@@ -372,6 +414,11 @@ func (ctx *buildContext) UpdateChild(target Bin, child View) gui.Widget {
 }
 
 func (ctx *buildContext) UpdateChildren(target Container, children []View) []gui.Widget {
+	r, finish := ctx.beginBuild()
+	defer finish()
+	if r == nil {
+		return nil
+	}
 	if ctx.node.released || target == nil {
 		return nil
 	}
@@ -416,7 +463,7 @@ func (ctx *buildContext) UpdateChildren(target Container, children []View) []gui
 		if !sameWidgetIdentity(previous, view) {
 			previous = nil
 		}
-		mounted := ctx.root.updateWidgetNode(previous, view)
+		mounted := r.updateWidgetNode(previous, view)
 		if mounted == nil {
 			continue
 		}
@@ -432,7 +479,7 @@ func (ctx *buildContext) UpdateChildren(target Container, children []View) []gui
 	for _, n := range old {
 		if !used[n] {
 			widget := n.widget
-			ctx.root.release(n, true)
+			r.release(n, true)
 			target.RemoveChild(widget)
 		}
 	}

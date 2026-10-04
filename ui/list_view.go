@@ -2,6 +2,7 @@ package ui
 
 import (
 	"github.com/golang-gui/goui/gui"
+	"github.com/golang-gui/goui/internal/identity"
 	"github.com/golang-gui/goui/layout"
 )
 
@@ -20,6 +21,9 @@ type ListViewView[T any] struct {
 //
 // The model parameter is gui.ListData[T]: a string model cannot be passed to
 // a ListView[int] — the type mismatch is a compile error.
+// Reuse a non-nil model pointer across rebuilds to retain its installation.
+// Non-pointer model values are reinstalled on each update, without comparing
+// their contents. A nil interface clears the model; typed nils are not supported.
 func ListView[T any](model gui.ListData[T], item func(index int, data T) View) *ListViewView[T] {
 	v := &ListViewView[T]{model: model, builder: item}
 	v.Self = v
@@ -32,7 +36,8 @@ func SliceList[T any](slice []T) gui.ListData[T] {
 	return gui.NewSliceListModel(slice)
 }
 
-// Model replaces the data model (reference-equal no-op at the gui level).
+// Model declares the model. The adapter skips installation for the same
+// non-nil pointer; gui.ListView.SetModel itself always reinstalls the model.
 func (v *ListViewView[T]) Model(model gui.ListData[T]) *ListViewView[T] {
 	v.model = model
 	return v
@@ -50,14 +55,12 @@ func (v *ListViewView[T]) Build() View {
 
 func (v *ListViewView[T]) Mount(ctx BuildContext) gui.Widget {
 	lv := gui.NewListView()
-	lv.SetModel(v.model) // ListData[T] embeds ListModel, so this always holds
 	lv.SetDelegate(newListItemDelegate(v, ctx))
 	return lv
 }
 
 func (v *ListViewView[T]) Update(ctx BuildContext, widget gui.Widget) {
 	lv := widget.(*gui.ListView)
-	lv.SetModel(v.model) // idempotent: same instance is a no-op
 	if d, ok := lv.Delegate().(*uiItemDelegate[T]); ok {
 		// Reuse the delegate (a new one would reload the list on every update);
 		// refresh its data so future Bind calls see the new model/builder.
@@ -66,6 +69,12 @@ func (v *ListViewView[T]) Update(ctx BuildContext, widget gui.Widget) {
 	} else {
 		lv.SetDelegate(newListItemDelegate(v, ctx))
 	}
+	// Update the delegate before installing data: callbacks during installation
+	// and subsequent delayed row builds must observe the latest declaration.
+	if !identity.SamePointer(lv.Model(), v.model) {
+		lv.SetModel(v.model)
+	}
+	lv.Refresh()
 }
 
 func (v *ListViewView[T]) Unmount(ctx BuildContext, widget gui.Widget) {
@@ -108,7 +117,8 @@ func (d *uiItemDelegate[T]) Setup() gui.Widget {
 }
 
 func (d *uiItemDelegate[T]) Bind(index int, w gui.Widget) {
-	if d.ctx == nil {
+	ctx := d.ctx
+	if ctx == nil {
 		return
 	}
 	shell, ok := w.(*gui.LinearBox)
@@ -119,7 +129,7 @@ func (d *uiItemDelegate[T]) Bind(index int, w gui.Widget) {
 	if d.builder != nil {
 		content = d.builder(index, d.model.ItemAt(index))
 	}
-	d.ctx.UpdateChildren(shell, []View{content})
+	ctx.UpdateChildren(shell, []View{content})
 }
 
 func (d *uiItemDelegate[T]) Unbind(index int, w gui.Widget) {
