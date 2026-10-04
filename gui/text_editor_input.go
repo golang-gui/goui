@@ -111,12 +111,7 @@ func (c *textEditController) HandleEvent(ctx EventContext) {
 		}
 		switch event.EventType {
 		case events.PointerDown:
-			if event.Button == events.PointerButtonRight || runtime.GOOS == "darwin" && event.Button == events.PointerButtonLeft && event.Modifiers&events.ModifierControl != 0 {
-				ctx.StopPropagation()
-				t.showContextMenu(&point)
-				return
-			}
-			if event.Button != events.PointerButtonLeft {
+			if !primaryPointer(event) {
 				return
 			}
 			if gesture := JoinGesture(ctx); gesture != nil {

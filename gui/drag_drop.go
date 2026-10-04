@@ -391,7 +391,7 @@ func (s *DragSource) HandleEvent(ctx EventContext) {
 		s.gesture.Reject()
 		return
 	}
-	if e.EventType != events.PointerDown || e.Button != events.PointerButtonLeft || !s.enabled || s.actions == 0 {
+	if e.EventType != events.PointerDown || !primaryPointer(e) || !s.enabled || s.actions == 0 {
 		return
 	}
 	if c, ok := ctx.(*eventContext); ok && c.current != nil {

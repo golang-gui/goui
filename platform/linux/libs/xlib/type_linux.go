@@ -659,6 +659,7 @@ const (
 const (
 	XK_Scroll_Lock  KeySym = 0xff14
 	XK_Pause        KeySym = 0xff13
+	XK_Menu         KeySym = 0xff67
 	XK_BackSpace    KeySym = 0xff08
 	XK_Tab          KeySym = 0xff09
 	XK_Return       KeySym = 0xff0d

@@ -212,6 +212,8 @@ const (
 	KeyOption
 	// KeyAltGraph is X11 ISO_Level3_Shift; its physical side is unspecified.
 	KeyAltGraph
+	// KeyMenu is the dedicated context-menu key, when provided by the keyboard.
+	KeyMenu
 )
 
 type KeyCode uint32

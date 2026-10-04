@@ -230,7 +230,7 @@ func (c *ClickEventController) HandleEvent(ctx EventContext) {
 
 	switch pointerEvent.EventType {
 	case events.PointerDown:
-		if pointerEvent.Button != c.button {
+		if pointerEvent.Button != c.button || c.button == events.PointerButtonLeft && !primaryPointer(pointerEvent) {
 			return
 		}
 		now := time.Now()
@@ -494,7 +494,7 @@ func (c *DragEventController) HandleEvent(ctx EventContext) {
 
 	switch pointerEvent.EventType {
 	case events.PointerDown:
-		if pointerEvent.Button != c.button {
+		if pointerEvent.Button != c.button || c.button == events.PointerButtonLeft && !primaryPointer(pointerEvent) {
 			return
 		}
 		position, ok := ctx.Position()

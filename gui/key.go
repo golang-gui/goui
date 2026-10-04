@@ -193,7 +193,8 @@ const (
 	KeyWin            Key = Key(events.KeyWin)
 	KeyOption         Key = Key(events.KeyOption)
 	KeyAltGraph       Key = Key(events.KeyAltGraph)
-	KeyPrimary        Key = KeyAltGraph + 1
+	KeyMenu           Key = Key(events.KeyMenu)
+	KeyPrimary        Key = KeyMenu + 1
 )
 
 // Resolve translates a key declaration for the current desktop platform.
@@ -230,7 +231,7 @@ func (k Key) resolve(goos string) (events.Key, bool) {
 			return events.KeyUnknown, false
 		}
 	default:
-		if k > KeyAltGraph {
+		if k > KeyMenu {
 			return events.KeyUnknown, false
 		}
 	}
