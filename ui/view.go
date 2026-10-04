@@ -92,21 +92,22 @@ type ViewBase[T any] struct {
 // reconciler reads it via View.base after each Update and writes it onto the
 // mounted widget, so controls never apply these themselves.
 type viewBase struct {
-	shortcuts  []*ShortcutView
-	dragSource *DragSourceView
-	dropTarget *DropTargetView
-	id         string
-	name       string
-	styleName  string // semantic style name (Sel.Name); "" reverts to the widget's type default
-	minWidth   float32
-	minHeight  float32 // size preference; 0 = no min
-	maxWidth   float32
-	maxHeight  float32 // size preference; 0 = unbounded
-	mainWeight float32 // main-axis extra-space share; 0 = hug
-	hidden     bool
-	focusable  bool
-	cursor     Cursor
-	onFocus    func(focused bool) // fired when the mounted widget's focus state changes
+	shortcuts     []*ShortcutView
+	dragSource    *DragSourceView
+	dropTarget    *DropTargetView
+	id            string
+	name          string
+	styleName     string // semantic style name (Sel.Name); "" reverts to the widget's type default
+	minWidth      float32
+	minHeight     float32 // size preference; 0 = no min
+	maxWidth      float32
+	maxHeight     float32 // size preference; 0 = unbounded
+	mainWeight    float32 // main-axis extra-space share; 0 = hug
+	hidden        bool
+	focusable     bool
+	cursor        Cursor
+	onFocus       func(focused bool) // fired when the mounted widget's focus state changes
+	onContextMenu func(gui.EventContext)
 
 	fields bits.Bitmap[uint64]
 }
@@ -135,11 +136,14 @@ const (
 // snapshot (bit not set), so the widget's private defaults stay private and
 // a missing modifier naturally reverts. The context is private.
 type viewBaseContext struct {
-	shortcuts  shortcutBindings
-	dragSource dragSourceBinding
-	dropTarget dropTargetBinding
-	handles    []signal.Handle    // cross-rebuild handles for shared widget signals
-	onFocus    func(focused bool) // effective OnFocus callback, refreshed on every update
+	shortcuts         shortcutBindings
+	dragSource        dragSourceBinding
+	dropTarget        dropTargetBinding
+	handles           []signal.Handle    // cross-rebuild handles for shared widget signals
+	onFocus           func(focused bool) // effective OnFocus callback, refreshed on every update
+	contextMenu       *gui.ContextMenuEventController
+	contextMenuHandle signal.Handle
+	onContextMenu     func(gui.EventContext)
 
 	// Snapshot of the widget's initial values, captured once in mount before
 	// the first apply. Each field corresponds to a viewBase modifier; hidden
@@ -186,6 +190,20 @@ func (b *viewBase) mount(ctx *viewBaseContext, w gui.Widget) {
 // shared modifiers onto the widget (missing modifiers restore the snapshot).
 func (b *viewBase) update(ctx *viewBaseContext, w gui.Widget) {
 	ctx.onFocus = b.onFocus
+	ctx.onContextMenu = b.onContextMenu
+	if b.onContextMenu != nil && ctx.contextMenu == nil {
+		ctx.contextMenu = gui.NewContextMenuEventController()
+		ctx.contextMenuHandle = ctx.contextMenu.ConnectRequest(func(event gui.EventContext) {
+			if ctx.onContextMenu != nil {
+				ctx.onContextMenu(event)
+			}
+		})
+		w.AddEventController(ctx.contextMenu)
+	} else if b.onContextMenu == nil && ctx.contextMenu != nil {
+		w.RemoveEventController(ctx.contextMenu)
+		ctx.contextMenuHandle.Disconnect()
+		ctx.contextMenu, ctx.contextMenuHandle = nil, nil
+	}
 	ctx.dragSource.update(w, b.dragSource)
 	ctx.dropTarget.update(w, b.dropTarget)
 	if len(b.shortcuts) != 0 {
@@ -205,6 +223,12 @@ func (b *viewBase) update(ctx *viewBaseContext, w gui.Widget) {
 // unmount disconnects all registered shared signal handles and clears the
 // context, including the snapshot.
 func (b *viewBase) unmount(ctx *viewBaseContext, w gui.Widget) {
+	if ctx.contextMenu != nil {
+		w.RemoveEventController(ctx.contextMenu)
+		ctx.contextMenuHandle.Disconnect()
+		ctx.contextMenu, ctx.contextMenuHandle = nil, nil
+	}
+	ctx.onContextMenu = nil
 	ctx.dragSource.clear(w)
 	ctx.dropTarget.clear(w)
 	if ctx.shortcuts.controller != nil {
@@ -232,6 +256,13 @@ func (b *ViewBase[T]) self() *T {
 		return b.Self
 	}
 	panic("ui: view not initialized via its constructor (ViewBase.Self is nil)")
+}
+
+// OnContextMenu observes a request. Consume it with StopPropagation; keyboard
+// requests have no pointer position and should use the control's current item.
+func (b *ViewBase[T]) OnContextMenu(fn func(gui.EventContext)) *T {
+	b.onContextMenu = fn
+	return b.self()
 }
 
 // ID assigns a nonempty identifier for precise lookup within this widget's Root.
