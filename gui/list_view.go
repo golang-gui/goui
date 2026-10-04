@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"math"
 	"slices"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -58,6 +59,12 @@ type ListView struct {
 	lastContentHeight float32
 
 	lastViewportWidth float32 // cache for invalidating heights on resize
+	revision          uint64
+	refresh           bool
+	revealIndex       int
+	revealPending     bool
+	revealSignal      signal.Signal1[geometry.Rectangle]
+	revealed          signal.Signal1[int]
 }
 
 // NewListView returns an empty ListView.
@@ -84,10 +91,12 @@ func (lv *ListView) Model() ListModel {
 	return lv.model
 }
 
-// SetModel sets the data model, disconnecting the previous one. The list
-// reloads immediately.
+// SetModel installs the model, disconnecting the previous subscription and
+// reloading the list even when m is the same instance. Nil clears the model.
+// Data changes should use the model's Items signal; presentation-only changes
+// should use Refresh. Declarative adapters decide whether installation is needed.
 func (lv *ListView) SetModel(m ListModel) {
-	if lv.model == m {
+	if lv.Destroyed() {
 		return
 	}
 	if lv.modelHandle != nil {
@@ -106,16 +115,97 @@ func (lv *ListView) Delegate() ListItemDelegate {
 	return lv.delegate
 }
 
-// SetDelegate sets the item renderer. The list reloads immediately.
+// SetDelegate installs the renderer, unbinding old rows and discarding its
+// reuse pool even when d is the same instance. Use Refresh to keep the renderer
+// and its row shells while updating their presentation.
 func (lv *ListView) SetDelegate(d ListItemDelegate) {
-	if lv.delegate == d {
+	if lv.Destroyed() {
 		return
 	}
+	lv.detachAll()
+	if lv.Destroyed() {
+		return
+	}
+	// Shells belong to their creating delegate, never to its replacement.
+	lv.pool = nil
 	lv.delegate = d
 	lv.reload()
 }
 
-// reload drops all items and cached heights and requests a relayout.
+// Refresh rebinds realized items on the next layout, preserving the model and
+// scroll position. Use it when a delegate's presentation changes.
+func (lv *ListView) Refresh() {
+	if lv.Destroyed() {
+		return
+	}
+	lv.refresh = true
+	lv.RequestLayout()
+}
+
+// Reveal requests that index become vertically visible. ScrollView owns the
+// actual offset; unmeasured rows use estimates until the target is realized.
+func (lv *ListView) Reveal(index int) {
+	if lv.Destroyed() || index < 0 || index >= lv.ItemsCount() {
+		return
+	}
+	lv.revealIndex, lv.revealPending = index, true
+	lv.RequestLayout()
+}
+
+func (lv *ListView) ConnectScrollIntoView(fn func(geometry.Rectangle)) signal.Handle {
+	return lv.revealSignal.Connect(func(rect geometry.Rectangle) {
+		if !lv.Destroyed() {
+			fn(rect)
+		}
+	})
+}
+
+// ConnectRevealed reports completion of a Reveal request after the target was
+// measured and reached the viewport. Replacing the model cancels the request
+// without emitting completion. It does not report ordinary scrolling.
+func (lv *ListView) ConnectRevealed(fn func(int)) signal.Handle {
+	return lv.revealed.Connect(func(index int) {
+		if !lv.Destroyed() {
+			fn(index)
+		}
+	})
+}
+
+func (lv *ListView) revealItem() {
+	if !lv.revealPending || lv.Destroyed() || lv.viewport.Height <= 0 || lv.estimate <= 0 {
+		return
+	}
+	index := lv.revealIndex
+	if index >= lv.ItemsCount() {
+		lv.revealPending = false
+		return
+	}
+	y := float32(0)
+	for i := 0; i < index; i++ {
+		y += lv.heightAt(i)
+	}
+	h := lv.heightAt(index)
+	_, exact := lv.heights[index]
+	visible := y >= lv.scrollY && y+h <= lv.scrollY+lv.viewport.Height
+	// ScrollView floors its maximum offset. A fractional final content edge
+	// cannot be revealed further; accept only that host-imposed sub-DIP remainder.
+	if index == lv.ItemsCount()-1 && y >= lv.scrollY && y+h-lv.scrollY-lv.viewport.Height < 1 {
+		visible = true
+	}
+	if h > lv.viewport.Height {
+		visible = float32(math.Floor(float64(y))) == lv.scrollY
+	}
+	// ScrollView rounds leading/trailing offsets to whole DIP.
+	if exact && visible {
+		lv.revealPending = false
+		lv.revealed.Emit(index)
+		return
+	}
+	lv.revealSignal.Emit(geometry.Rect(lv.scrollX, y, lv.viewport.Width, h))
+}
+
+// reload unbinds items and drops index-based measurements. Shells remain
+// reusable with the same delegate even when the model's order changes.
 func (lv *ListView) reload() {
 	if lv.reloading {
 		return
@@ -123,10 +213,11 @@ func (lv *ListView) reload() {
 	lv.reloading = true
 	defer func() { lv.reloading = false }()
 
+	lv.revision++
+	lv.revealPending = false
 	lv.detachAll()
 	lv.heights = make(map[int]float32)
 	lv.widths = make(map[int]float32)
-	lv.pool = nil
 	lv.first, lv.firstY = 0, 0
 	lv.estimate = lv.seedHeight
 	lv.contentWidth = 0
@@ -168,6 +259,10 @@ func (lv *ListView) ItemsCount() int {
 // and measures items until the viewport is filled, and unbinds items that
 // scrolled out.
 func (lv *ListView) LayoutVisible(viewport geometry.Size, offset geometry.Point) {
+	if lv.Destroyed() {
+		return
+	}
+	revision := lv.revision
 	lv.viewport = viewport
 	lv.scrollY = offset.Y
 	lv.scrollX = offset.X
@@ -176,6 +271,20 @@ func (lv *ListView) LayoutVisible(viewport geometry.Size, offset geometry.Point)
 	if n == 0 || lv.delegate == nil || viewport.Height <= 0 {
 		lv.detachAll()
 		return
+	}
+	if lv.refresh {
+		lv.refresh = false
+		for _, index := range lv.VisibleIndexes() {
+			w := lv.items[index]
+			lv.delegate.Bind(index, w)
+			if lv.Destroyed() || revision != lv.revision {
+				return
+			}
+			w.RequestLayout()
+		}
+		// Offscreen measurements remain estimates until those rows bind again.
+		// Clearing them here would lose the widest row and clamp horizontal
+		// scrolling, even when only the visible presentation changed.
 	}
 
 	// Guard: drop children that are not registered in the item map (someone
@@ -209,10 +318,27 @@ func (lv *ListView) LayoutVisible(viewport geometry.Size, offset geometry.Point)
 		lv.contentWidth = viewport.Width
 	}
 	first, firstY := lv.locateFirst()
+	// Recycle old rows before realizing the new viewport, keeping the pool
+	// bounded during large jumps. A row taller than the viewport remains valid.
+	for _, index := range lv.VisibleIndexes() {
+		if index < first {
+			w := lv.items[index]
+			delete(lv.items, index)
+			lv.delegate.Unbind(index, w)
+			if lv.Destroyed() || revision != lv.revision {
+				return
+			}
+			lv.WidgetBase.RemoveChild(w)
+			lv.pool = append(lv.pool, w)
+		}
+	}
 	last := first
 	y := firstY
 	for last < n && y < lv.scrollY+viewport.Height {
 		w := lv.itemAt(last)
+		if lv.Destroyed() || revision != lv.revision {
+			return
+		}
 		if w == nil {
 			break
 		}
@@ -233,6 +359,9 @@ func (lv *ListView) LayoutVisible(viewport geometry.Size, offset geometry.Point)
 				}
 			}
 		}
+		if lv.Destroyed() || revision != lv.revision {
+			return
+		}
 		rowW := lv.widths[last]
 		if rowW <= 0 {
 			rowW = viewport.Width
@@ -245,11 +374,22 @@ func (lv *ListView) LayoutVisible(viewport geometry.Size, offset geometry.Point)
 		last++
 	}
 	last-- // inclusive
+	var sibling Widget
+	for i := last; i >= first; i-- {
+		if w := lv.items[i]; w != nil {
+			lv.MoveChildBefore(w, sibling)
+			sibling = w
+		}
+	}
 
 	// Detach items outside [first, last]; shells go to the reuse pool.
 	for index, w := range lv.items {
 		if index < first || index > last {
+			delete(lv.items, index)
 			lv.delegate.Unbind(index, w)
+			if lv.Destroyed() || revision != lv.revision {
+				return
+			}
 			lv.WidgetBase.RemoveChild(w)
 			delete(lv.items, index)
 			lv.pool = append(lv.pool, w)
@@ -262,7 +402,13 @@ func (lv *ListView) LayoutVisible(viewport geometry.Size, offset geometry.Point)
 		for _, h := range lv.heights {
 			sum += h
 		}
-		lv.estimate = sum / float32(count)
+		estimate := sum / float32(count)
+		if estimate != lv.estimate {
+			// The cached prefix may include rows still using the old estimate.
+			// Otherwise retain the incremental locator for ordinary scrolling.
+			lv.first, lv.firstY = 0, 0
+			lv.estimate = estimate
+		}
 	}
 
 	// Request a relayout only when the total extent changed, so ScrollView
@@ -271,18 +417,24 @@ func (lv *ListView) LayoutVisible(viewport geometry.Size, offset geometry.Point)
 		lv.lastContentHeight = h
 		lv.RequestLayout()
 	}
+	lv.revealItem()
 }
 
-// detachAll unbinds and detaches every attached item, keeping the shells in
-// the reuse pool.
+// detachAll unbinds and detaches all realized rows using the current delegate.
 func (lv *ListView) detachAll() {
+	items := lv.items
+	lv.items = make(map[int]Widget)
 	if lv.delegate != nil {
-		for index, w := range lv.items {
+		for index, w := range items {
 			lv.delegate.Unbind(index, w)
+			if lv.Destroyed() {
+				return
+			}
 			lv.WidgetBase.RemoveChild(w)
+			lv.pool = append(lv.pool, w)
 		}
 	} else {
-		for _, w := range lv.items {
+		for _, w := range items {
 			lv.WidgetBase.RemoveChild(w)
 		}
 	}
@@ -339,19 +491,25 @@ func (lv *ListView) itemAt(index int) Widget {
 	if lv.delegate == nil {
 		return nil
 	}
+	revision := lv.revision
+	delegate := lv.delegate
 	var w Widget
 	if n := len(lv.pool); n > 0 {
 		w = lv.pool[n-1]
 		lv.pool = lv.pool[:n-1]
 	} else {
-		w = lv.delegate.Setup()
-		if w == nil {
+		w = delegate.Setup()
+		if w == nil || lv.Destroyed() || revision != lv.revision {
 			return nil
 		}
 	}
 	// Bind first, then measure: the shell is empty (an empty Label measures
 	// 0), so the estimate seed must come from a bound item's real height.
-	lv.delegate.Bind(index, w)
+	delegate.Bind(index, w)
+	if lv.Destroyed() || w.base().destroyed || revision != lv.revision {
+		return nil
+	}
+	w.RequestLayout()
 	if lv.seedHeight == 0 {
 		lv.seedHeight = lv.measureItem(index, w)
 		lv.estimate = lv.seedHeight

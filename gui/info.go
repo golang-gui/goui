@@ -50,6 +50,9 @@ type WidgetInfo struct {
 	DragDrop *DragDropInfo `json:"dragDrop,omitempty"`
 	// Range describes an adjustable value; it is not a semantic input shortcut.
 	Range *RangeInfo `json:"range,omitempty"`
+	// Hierarchy describes model identity and logical sibling position without
+	// materializing nodes outside a virtualized viewport.
+	Hierarchy *HierarchyInfo `json:"hierarchy,omitempty"`
 
 	// Scroll state (omitempty: absent on non-scrolling widgets).
 	ScrollY      float32 `json:"scrollY,omitempty"`      // current scroll offset
@@ -59,6 +62,19 @@ type WidgetInfo struct {
 	ItemCount    int     `json:"itemCount,omitempty"`    // ListView: total items (virtualized)
 	VisibleStart int     `json:"visibleStart,omitempty"` // ListView: first visible index
 	VisibleEnd   int     `json:"visibleEnd,omitempty"`   // ListView: last visible index
+}
+
+// HierarchyInfo uses one-based levels and sibling positions. SetSize counts
+// currently known siblings; Current is distinct from actual keyboard focus.
+type HierarchyInfo struct {
+	NodeID        string `json:"nodeID"`
+	ParentID      string `json:"parentID"`
+	Level         int    `json:"level"`
+	PositionInSet int    `json:"positionInSet"`
+	SetSize       int    `json:"setSize"`
+	Expandable    bool   `json:"expandable"`
+	Expanded      bool   `json:"expanded"`
+	Current       bool   `json:"current"`
 }
 
 // RangeInfo uses DIP for spatial controls. Direction is the axis along which

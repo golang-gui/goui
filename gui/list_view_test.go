@@ -1,12 +1,149 @@
 package gui
 
 import (
+	"slices"
 	"sync"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/layout"
 )
+
+func TestListViewRevealEstimatedVariableAndOversizedRows(t *testing.T) {
+	for _, oversized := range []bool{false, true} {
+		lv := NewListView()
+		lv.SetModel(NewSliceListModel(make([]int, 1000)))
+		heights := map[int]float32{999: 31.5}
+		if oversized {
+			heights[999] = 230
+		}
+		d := newMockListDelegate(heights)
+		lv.SetDelegate(d)
+		sv := NewScrollView()
+		sv.SetChild(lv)
+		var completed []int
+		lv.ConnectRevealed(func(index int) { completed = append(completed, index) })
+		lv.Reveal(999) // valid before any allocation or measured estimate
+		for i := 0; i < 20; i++ {
+			sv.Measure(layout.Tight(geometry.Size{Width: 200, Height: 100}))
+			sv.Arrange(geometry.Rect(0, 0, 200, 100))
+			if !lv.revealPending {
+				break
+			}
+		}
+		if lv.revealPending || !slices.Contains(lv.VisibleIndexes(), 999) || d.setups > 22 {
+			t.Fatalf("reveal did not converge or created all rows: pending=%v visible=%v setups=%d", lv.revealPending, lv.VisibleIndexes(), d.setups)
+		}
+		if oversized && lv.items[999].Rect().Y < 0 || oversized && lv.items[999].Rect().Y >= 1 {
+			t.Fatalf("oversized leading edge=%g", lv.items[999].Rect().Y)
+		}
+		sv.SetScrollY(0)
+		sv.Arrange(sv.Rect())
+		if sv.ScrollY() != 0 {
+			t.Fatal("completed request stole user scroll")
+		}
+		if !slices.Equal(completed, []int{999}) {
+			t.Fatalf("completion must be reported once, not on ordinary scrolling: %v", completed)
+		}
+		lv.Reveal(4)
+		lv.Reveal(-1)
+		if lv.revealIndex != 4 {
+			t.Fatal("invalid request replaced valid target")
+		}
+		lv.SetModel(NewSliceListModel([]int{0}))
+		if lv.revealPending {
+			t.Fatal("model replacement retained old target")
+		}
+		if !slices.Equal(completed, []int{999}) {
+			t.Fatal("cancelled reveal emitted completion")
+		}
+	}
+}
+func TestListViewDelegateReplacementUsesOldBindings(t *testing.T) {
+	lv := NewListView()
+	lv.SetModel(NewSliceListModel([]int{0, 1, 2}))
+	old, next := newMockListDelegate(nil), newMockListDelegate(nil)
+	lv.SetDelegate(old)
+	lv.LayoutVisible(geometry.Size{Width: 100, Height: 30}, geometry.Point{})
+	lv.SetDelegate(next)
+	if len(old.unbinds) != 3 || len(next.unbinds) != 0 {
+		t.Fatal("wrong delegate unbound old widgets")
+	}
+	lv.LayoutVisible(geometry.Size{Width: 100, Height: 30}, geometry.Point{})
+	if next.setups != 3 {
+		t.Fatal("new delegate reused incompatible shells")
+	}
+}
+
+type listInstallModel struct {
+	*SliceListModel[int]
+	connections, deliveries int
+}
+
+func (m *listInstallModel) ConnectItems(fn func()) signal.Handle {
+	m.connections++
+	return m.SliceListModel.ConnectItems(func() { m.deliveries++; fn() })
+}
+
+// 显式重新设置同一模型必须重连、解绑，但只有一个有效订阅。
+func TestListViewExplicitReinstallation(t *testing.T) {
+	m := &listInstallModel{SliceListModel: NewSliceListModel([]int{1, 2, 3})}
+	lv := NewListView()
+	d := newMockListDelegate(nil)
+	lv.SetDelegate(d)
+	lv.SetModel(m)
+	lv.LayoutVisible(geometry.Size{Width: 100, Height: 30}, geometry.Point{})
+	lv.SetModel(m)
+	if m.connections != 2 || len(d.unbinds) != 3 {
+		t.Fatalf("same model was not reinstalled: connections=%d unbinds=%d", m.connections, len(d.unbinds))
+	}
+	m.Set(0, 4)
+	if m.deliveries != 1 {
+		t.Fatal("old model subscription leaked")
+	}
+	lv.LayoutVisible(geometry.Size{Width: 100, Height: 30}, geometry.Point{})
+	before := d.setups
+	lv.SetDelegate(d)
+	if len(d.unbinds) != 6 || len(lv.pool) != 0 {
+		t.Fatal("same delegate retained old bindings or shells")
+	}
+	lv.LayoutVisible(geometry.Size{Width: 100, Height: 30}, geometry.Point{})
+	if d.setups != before+3 {
+		t.Fatal("explicit delegate installation reused the old pool")
+	}
+	lv.SetModel(nil)
+	m.Set(0, 5)
+	if m.deliveries != 1 || lv.ItemsCount() != 0 {
+		t.Fatal("nil model did not disconnect")
+	}
+}
+
+type listValueModel struct {
+	*listInstallModel
+	payload any
+}
+type listValueDelegate struct {
+	*mockListDelegate
+	payload any
+}
+
+func TestListViewInstallsInterfaceValuesWithoutComparing(t *testing.T) {
+	for _, payload := range []any{[]int{1}, map[string]int{"x": 1}, func() {}} {
+		m := listValueModel{&listInstallModel{SliceListModel: NewSliceListModel([]int{1})}, payload}
+		d := listValueDelegate{newMockListDelegate(nil), payload}
+		lv := NewListView()
+		lv.SetModel(m)
+		lv.SetDelegate(d)
+		lv.LayoutVisible(geometry.Size{Width: 100, Height: 10}, geometry.Point{})
+		lv.SetModel(m)
+		lv.SetDelegate(d)
+		if m.connections != 2 || len(d.unbinds) != 1 {
+			t.Fatal("value reinstallation was skipped")
+		}
+		lv.SetModel(nil)
+	}
+}
 
 // mockListWidget is a widget whose measured height is set explicitly
 // (standing in for a real content widget; the delegate sets it during Bind).
@@ -137,11 +274,12 @@ func TestListViewItemReuse(t *testing.T) {
 	if len(d.unbinds) != 1 || d.unbinds[0] != 0 {
 		t.Fatalf("scrolled-out item 0 should be unbound, got %v", d.unbinds)
 	}
-	if d.setups != 11 {
-		t.Fatalf("scroll down should create 1 new shell, setups=%d", d.setups)
+	if d.setups != 10 {
+		t.Fatalf("scroll down should reuse the outgoing shell, setups=%d", d.setups)
 	}
 
-	// Scroll back up: item 0 re-bound from the pool, no new Setup.
+	// On the reverse scroll the incoming row precedes the outgoing row, so
+	// one spare shell is created; further scrolling can reuse that spare.
 	bindsBefore := len(d.binds)
 	lv.LayoutVisible(geometry.Size{Width: 100, Height: 100}, geometry.Point{})
 	if len(d.binds)-bindsBefore != 1 || d.setups != 11 {
@@ -161,14 +299,14 @@ func TestListViewReloadOnModelChange(t *testing.T) {
 		t.Fatalf("expected 10 setups, got %d", d.setups)
 	}
 
-	// Model mutation emits → ListView reloads: all items unbound and rebuilt.
+	// Model mutation invalidates index bindings, not delegate-owned shells.
 	model.Append(0)
 	if len(d.unbinds) != 10 {
 		t.Fatalf("reload should unbind all 10 items, got %v", d.unbinds)
 	}
 	lv.LayoutVisible(geometry.Size{Width: 100, Height: 100}, geometry.Point{})
-	if d.setups != 20 {
-		t.Fatalf("reload should rebuild visible items, setups=%d", d.setups)
+	if d.setups != 10 || len(d.binds) != 20 {
+		t.Fatalf("reload should rebind pooled shells, setups=%d binds=%d", d.setups, len(d.binds))
 	}
 	if got := lv.ItemsCount(); got != 11 {
 		t.Fatalf("ItemsCount should follow model, got %d", got)
