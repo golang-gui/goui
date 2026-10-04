@@ -42,21 +42,23 @@ type ScrollIntoViewRequester interface {
 // are not exposed through Child/SetChild.
 type ScrollView struct {
 	WidgetBase
-	content       Widget
-	viewport      *scrollViewport
-	scrollY       float32
-	scrollX       float32 // horizontal scroll offset
-	contentWidth  float32 // content size cached by Measure (viewport mode)
-	contentHeight float32 // content size cached by Measure (viewport mode)
-	lineHeight    float32 // WheelDeltaLine height; 0 = default text line height
-	wheel         *WheelEventController
-	vbar          *ScrollBar // vertical scrollbar (right column)
-	hbar          *ScrollBar // horizontal scrollbar (bottom row)
-	revealHandle  signal.Handle
-	revealRect    geometry.Rectangle
-	revealPending bool
-	layoutDepth   int
-	revealing     bool
+	content        Widget
+	viewport       *scrollViewport
+	scrollY        float32
+	scrollX        float32 // horizontal scroll offset
+	contentWidth   float32 // content size cached by Measure (viewport mode)
+	contentHeight  float32 // content size cached by Measure (viewport mode)
+	lineHeight     float32 // WheelDeltaLine height; 0 = default text line height
+	wheel          *WheelEventController
+	vbar           *ScrollBar // vertical scrollbar (right column)
+	hbar           *ScrollBar // horizontal scrollbar (bottom row)
+	revealHandle   signal.Handle
+	revealRect     geometry.Rectangle
+	revealPending  bool
+	layoutDepth    int
+	revealing      bool
+	dragAutoScroll bool
+	dragMotion     *DragMotionEventController
 }
 
 // scrollViewport gives scrolling content a real structural clipping boundary.
@@ -73,7 +75,7 @@ const scrollbarMinThumb = 20
 // NewScrollView creates a viewport with MainWeight 1 so it shares a linear
 // parent's remaining space. SetMainWeight(0) opts out of that allocation.
 func NewScrollView() *ScrollView {
-	sv := new(ScrollView)
+	sv := &ScrollView{dragAutoScroll: true}
 	sv.SetMainWeight(1)
 
 	sv.viewport = new(scrollViewport)
@@ -99,9 +101,24 @@ func NewScrollView() *ScrollView {
 		sv.SetScrollY(sv.ScrollY() + sv.wheelDelta(dy, e.Mode))
 	})
 	sv.AddEventController(sv.wheel)
+	sv.dragMotion = NewDragMotionEventController()
+	sv.dragMotion.passive = true
+	sv.AddEventController(sv.dragMotion)
 	sv.ConnectMount(sv.connectReveal)
 	sv.ConnectUnmount(sv.disconnectReveal)
 	return sv
+}
+
+// DragAutoScroll reports whether native drag-and-drop scrolls at viewport edges.
+func (sv *ScrollView) DragAutoScroll() bool { return sv.dragAutoScroll }
+func (sv *ScrollView) SetDragAutoScroll(enabled bool) {
+	if sv.dragAutoScroll == enabled {
+		return
+	}
+	sv.dragAutoScroll = enabled
+	if h, ok := sv.Root().(interface{ rootState() *rootBase }); ok {
+		h.rootState().syncDragScroll()
+	}
 }
 
 // SetChild sets the scrollable content. It may be a Scrollable (virtualized

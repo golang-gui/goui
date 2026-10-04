@@ -78,6 +78,10 @@ func dragControllers(root Widget) (hasController bool, formats []dragdrop.Format
 						formats = append(formats, portable)
 					}
 				}
+			case *DragMotionEventController:
+				if !c.passive {
+					hasController = true
+				}
 			}
 		}
 		for _, child := range w.Children() {
@@ -295,15 +299,20 @@ func (b *rootBase) dispatchDragOffer(host EventTarget, e events.DragOfferEvent) 
 	}
 	switch e.EventType {
 	case events.DragLeave:
+		if b.dragMotion.event.Offer != nil && b.dragMotion.event.Offer.ID() == e.Offer.ID() {
+			b.clearDragMotion()
+		}
 		if b.dragTarget.offer != nil && b.dragTarget.offer.ID() == e.Offer.ID() && !b.dragTarget.reading {
 			b.leaveDragTarget()
 		}
 	case events.DragEnter, events.DragMotion:
+		b.updateDragMotion(host, e)
 		action := b.negotiateDragTarget(host, e)
 		if e.ActionReply != nil {
 			*e.ActionReply = action
 		}
 	case events.DragDrop:
+		b.clearDragMotion()
 		// Record before negotiation, Read, or callbacks: rejection and native
 		// synchronous End must not erase the fact that a local Drop occurred.
 		if app := dragAppOf(host.(Root)); app != nil && app.dragSession != nil && app.dragSession.id == e.Offer.SourceID() {

@@ -34,6 +34,7 @@ type rootBase struct {
 	dispatcher    EventDispatcher
 	drag          dragHostState
 	dragTarget    dragTargetState
+	dragMotion    dragMotionState
 	surfaceEpoch  uint64 // invalidates callbacks from a replaced native surface
 	surface       platform.Surface
 	transparent   bool // immutable native surface configuration, not its style
@@ -50,6 +51,7 @@ type rootBase struct {
 func (b *rootBase) rootState() *rootBase { return b }
 
 func (b *rootBase) cancelInput(reason GestureCancelReason) {
+	b.clearDragMotion()
 	b.dispatcher.cancelInput(reason)
 	state := b.dragTarget
 	b.leaveDragTarget()

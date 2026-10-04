@@ -678,6 +678,7 @@ func (w *window) paint() {
 		return
 	}
 	w.updateMinSize()
+	laidOut := w.layoutDirty
 	w.layoutContent()
 	if w.chrome != nil && w.chrome.afterLayout() && !w.destroyed {
 		// Notifications only invalidate. Apply changed reservations once in
@@ -688,6 +689,12 @@ func (w *window) paint() {
 		return
 	}
 	var controls Widget
+	if laidOut {
+		w.refreshDragMotion(w)
+	}
+	if w.destroyed {
+		return
+	}
 	if w.controls != nil {
 		w.controls.layout()
 		controls = w.controls
