@@ -20,11 +20,13 @@ type WidgetView interface {
 	Unmount(ctx BuildContext, widget gui.Widget)
 }
 
+// BuildContext borrows its View node on the GUI thread. A virtualized adapter
+// may retain it for delayed row builds: child updates resolve the current Root
+// and become no-ops after release. It does not extend the node's lifetime.
 type BuildContext interface {
 	State() any
 	SetState(any)
-	// Coordinator borrows this node's coordination identity. Unlike this
-	// per-update context, the handle may be retained by an adapter's State.
+	// Coordinator borrows this node's identity for explicit subtree transfers.
 	// It expires on View release and follows an explicitly transferred subtree.
 	Coordinator() *Coordinator
 	// AfterUpdate runs after the entire View tree has been reconciled and
@@ -32,8 +34,9 @@ type BuildContext interface {
 	// window trees before these callbacks and show new windows afterwards, so
 	// cross-window transfers cannot be overwritten by stale declarations.
 	// It is a one-shot hook.
-	// A released or superseded owner is skipped. Do not retain BuildContext or
-	// start a nested reconciliation from this callback.
+	// For delayed builds outside a View update, callbacks are posted to the GUI
+	// loop after synchronous layout/mounting finishes. Released or superseded
+	// owners are skipped. Do not start nested reconciliation from this callback.
 	AfterUpdate(func())
 	// UpdateChild reconciles one target's content. nil clears the managed child.
 	UpdateChild(target Bin, child View) gui.Widget
