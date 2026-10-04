@@ -157,7 +157,7 @@ func (item *tabItem) Paint(p gui.Painter) {
 	if item.bar.lifted == item.page {
 		part = "dragging"
 	}
-	paintTabBox(p, geometry.Rect(0, 0, item.Rect().Width, item.Rect().Height), "tab-item", part, state)
+	paintStyledBox(p, geometry.Rect(0, 0, item.Rect().Width, item.Rect().Height), "tab-item", part, state)
 }
 
 // Content-space positions keep scrolling independent of the slide animation.
@@ -234,26 +234,4 @@ func (g *tabGlyph) Snapshot() gui.WidgetInfo {
 		info.Text = "Scroll tabs right"
 	}
 	return info
-}
-
-func paintTabBox(p gui.Painter, rect geometry.Rectangle, name, part string, state style.State) {
-	s := gui.ResolveStyle(name, part, state)
-	radius, _ := s.Radius()
-	if bg, ok := s.BackgroundColor(); ok && bg != nil {
-		if radius > 0 {
-			p.FillRoundRect(rect, radius, graphics.ColorOf(bg))
-		} else {
-			p.FillRect(rect, graphics.ColorOf(bg))
-		}
-	}
-	width, hasWidth := s.BorderWidth()
-	border, hasColor := s.BorderColor()
-	if hasWidth && hasColor && width > 0 && border != nil {
-		inside := rect.Inset(width / 2)
-		if radius > 0 {
-			p.DrawRoundRect(inside, max(0, radius-width/2), width, graphics.ColorOf(border))
-		} else {
-			p.DrawRect(inside, width, graphics.ColorOf(border))
-		}
-	}
 }

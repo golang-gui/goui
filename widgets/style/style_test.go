@@ -51,3 +51,21 @@ func TestRulesComposeWithoutRegistering(t *testing.T) {
 		t.Fatal("rules share mutable backing storage")
 	}
 }
+
+func TestTreeFallbackStatesAndIndependentText(t *testing.T) {
+	sheet := basestyle.Sheet(append(gui.DefaultStyleRules(), Rules()...)...)
+	var previous color.Color
+	for _, state := range []basestyle.State{basestyle.Normal, basestyle.Hovered, basestyle.Pressed} {
+		bg, ok := sheet.Resolve(basestyle.Sel{Name: "tree-item", Part: "selected", State: state}).BackgroundColor()
+		if !ok || bg == previous {
+			t.Fatalf("missing selected state %v", state)
+		}
+		previous = bg
+	}
+	for _, name := range []string{"tree-item-text", "tree-item-icon", "tree-expander"} {
+		fg, ok := sheet.Resolve(basestyle.Sel{Name: name}).ForegroundColor()
+		if !ok || fg != color.Black {
+			t.Fatalf("%s relies on inherited foreground", name)
+		}
+	}
+}
