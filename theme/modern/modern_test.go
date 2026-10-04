@@ -14,6 +14,91 @@ func resolved(sheet style.StyleSheet, name string, state style.State) style.Styl
 
 func rgba(c color.Color) color.RGBA { return color.RGBAModel.Convert(c).(color.RGBA) }
 
+func TestTreeInteractionAndTypography(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		options := Options{Dark: dark, FontFamily: "Tree Font", FontSize: 17}
+		sheet := Sheet(options)
+		p := colorsFor(dark)
+		// Selected is a part, not a new global State: all three interaction
+		// states need explicit rules because parts do not inherit other parts.
+		var previous color.RGBA
+		for i, state := range []style.State{style.Normal, style.Hovered, style.Pressed} {
+			selected := sheet.Resolve(style.Sel{Name: "tree-item", Part: "selected", State: state})
+			bg, ok := selected.BackgroundColor()
+			if !ok || rgba(bg).A != 255 || i > 0 && rgba(bg) == previous {
+				t.Fatalf("missing selected interaction state: dark=%v state=%v", dark, state)
+			}
+			previous = rgba(bg)
+			fg, _ := resolved(sheet, "tree-expander", state).ForegroundColor()
+			want := p.muted
+			if state != style.Normal {
+				want = p.text
+			}
+			if rgba(fg) != want {
+				t.Fatalf("disclosure foreground=%v, want %v", fg, want)
+			}
+		}
+		text := resolved(sheet, "tree-item-text", style.Normal)
+		family, _ := text.FontFamily()
+		size, _ := text.FontSize()
+		if family != "Tree Font" || size != 17 {
+			t.Fatal("tree text ignored theme typography")
+		}
+		custom := style.Sheet(append(Rules(options), style.Name("tree-item").Part("selected").State(style.Hovered).BackgroundColor(color.Black))...)
+		bg, _ := custom.Resolve(style.Sel{Name: "tree-item", Part: "selected", State: style.Hovered}).BackgroundColor()
+		if bg != color.Black {
+			t.Fatal("application state override lost")
+		}
+	}
+}
+
+func TestTreeSelectionColorsIgnoreAccent(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		// 固定调色板预期，不通过被测实现的 mix 函数推导。
+		want := []color.RGBA{rgb(0xD1D1D1), rgb(0xCACACA), rgb(0xC3C3C3)}
+		wantBorder := rgb(0x61616B)
+		if dark {
+			want = []color.RGBA{rgb(0x4F4F53), rgb(0x555559), rgb(0x5C5C5F)}
+			wantBorder = rgb(0xB8B8C2)
+		}
+		for _, accent := range []color.Color{nil, color.Black, color.White, rgb(0xFF0000), rgb(0x0080FF)} {
+			options := Options{Dark: dark, AccentColor: accent}
+			sheet := Sheet(options)
+			for i, state := range []style.State{style.Normal, style.Hovered, style.Pressed} {
+				selected := sheet.Resolve(style.Sel{Name: "tree-item", Part: "selected", State: state})
+				bg, ok := selected.BackgroundColor()
+				if !ok || rgba(bg) != want[i] {
+					t.Fatalf("dark=%v accent=%v state=%v: selected=%v, want %v", dark, accent, state, bg, want[i])
+				}
+				if radius, _ := selected.Radius(); radius != 4 {
+					t.Fatal("selected row lost its rounded corners")
+				}
+				text, _ := resolved(sheet, "tree-item-text", style.Normal).ForegroundColor()
+				if contrast(rgba(text), rgba(bg)) < 4.5 {
+					t.Fatal("selected background reduced text contrast below 4.5:1")
+				}
+				current := sheet.Resolve(style.Sel{Name: "tree-item", Part: "current", State: state})
+				border, _ := current.BorderColor()
+				width, _ := current.BorderWidth()
+				if rgba(border) != wantBorder || width != 1 {
+					t.Fatalf("current outline=%v/%g, want neutral %v/1 DIP", border, width, wantBorder)
+				}
+			}
+			custom := style.Sheet(append(Rules(options),
+				style.Name("tree-item").Part("selected").BackgroundColor(rgb(0x123456)),
+				style.Name("tree-item").Part("current").BorderColor(color.Black).BorderWidth(2),
+			)...)
+			bg, _ := custom.Resolve(style.Sel{Name: "tree-item", Part: "selected"}).BackgroundColor()
+			current := custom.Resolve(style.Sel{Name: "tree-item", Part: "current"})
+			border, _ := current.BorderColor()
+			width, _ := current.BorderWidth()
+			if rgba(bg) != rgb(0x123456) || border != color.Black || width != 2 {
+				t.Fatal("application cannot override tree selection/current styles")
+			}
+		}
+	}
+}
+
 func TestMenuInteractionColorsIgnoreAccent(t *testing.T) {
 	for _, dark := range []bool{false, true} {
 		want := []color.RGBA{rgb(0xE6E6E6), rgb(0xD1D1D1)}
