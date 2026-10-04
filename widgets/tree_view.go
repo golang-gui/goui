@@ -2,7 +2,6 @@ package widgets
 
 import (
 	"math"
-	"runtime"
 	"slices"
 	"sort"
 
@@ -34,8 +33,9 @@ type TreeRow struct {
 	Expandable, Expanded, Selected, Current bool
 }
 
-// TreeItemDelegate constructs content only; the tree owns indentation,
-// disclosure, selection and row input. Unbind receives the last bound snapshot.
+// TreeItemDelegate constructs full-row content. Compose a TreeExpander for
+// indentation/disclosure; the tree owns selection and row input. Unbind receives
+// the last bound snapshot. Widgets may be recycled; retain node IDs, not rows.
 type TreeItemDelegate interface {
 	Setup() gui.Widget
 	Bind(TreeRow, gui.Widget)
@@ -128,7 +128,9 @@ func NewTreeView() *TreeView {
 	blank := gui.NewClickEventController()
 	blank.ConnectClicked(func(gui.EventContext) { v.SetSelection(nil) })
 	v.AddEventController(blank)
-	v.AddEventController(&treeMenuController{EventControllerBase: gui.NewEventControllerBase(gui.PhaseBubble), view: v})
+	menu := gui.NewContextMenuEventController()
+	menu.ConnectRequest(v.contextMenuRequested)
+	v.AddEventController(menu)
 	return v
 }
 
@@ -311,6 +313,25 @@ func (v *TreeView) SetIndentation(value float32) {
 	}
 	v.indentation = value
 	v.Refresh()
+}
+
+// RowAt queries a laid-out visible row using TreeView-local DIP, including
+// indentation and row whitespace. Bounds are the full row and may be partially
+// clipped. It never realizes rows or loads children; requery after layout.
+func (v *TreeView) RowAt(point geometry.Point) (TreeRow, geometry.Rectangle, bool) {
+	if v.Destroyed() || point.X < 0 || point.Y < 0 || point.X >= v.Rect().Width || point.Y >= v.Rect().Height {
+		return TreeRow{}, geometry.Rectangle{}, false
+	}
+	for _, r := range v.realized {
+		bounds := r.Rect()
+		for parent := r.Parent(); parent != nil && parent != v; parent = parent.Parent() {
+			bounds.Pos = bounds.Pos.Add(parent.Rect().Pos)
+		}
+		if point.X >= bounds.X && point.X < bounds.X+bounds.Width && point.Y >= bounds.Y && point.Y < bounds.Y+bounds.Height {
+			return v.rowState(r.flat), bounds, true
+		}
+	}
+	return TreeRow{}, geometry.Rectangle{}, false
 }
 
 // Refresh rebinds realized row content without changing model or view state.
@@ -765,13 +786,6 @@ func (v *TreeView) keyDown(ctx gui.EventContext, event events.KeyEvent) {
 		}
 		v.SetSelection(ids)
 		navigation = false
-	case events.KeyF10:
-		if !shift || !hasCurrent {
-			return
-		}
-		v.menuPending = v.rows[index].id
-		v.Reveal(v.menuPending)
-		navigation = false
 	default:
 		return
 	}
@@ -831,22 +845,17 @@ func (v *TreeView) showMenu(id string, position geometry.Point) {
 	}
 }
 
-type treeMenuController struct {
-	gui.EventControllerBase
-	view *TreeView
-}
-
-func (c *treeMenuController) HandleEvent(ctx gui.EventContext) {
-	e, ok := ctx.Event().(events.PointerEvent)
-	if !ok || e.EventType != events.PointerDown || !(e.Button == events.PointerButtonRight || runtime.GOOS == "darwin" && e.Button == events.PointerButtonLeft && e.Modifiers&events.ModifierControl != 0) {
-		return
-	}
+func (v *TreeView) contextMenuRequested(ctx gui.EventContext) {
 	point, ok := ctx.Position()
 	if !ok {
+		if v.current != "" {
+			ctx.StopPropagation()
+			v.menuPending = v.current
+			v.Reveal(v.menuPending)
+		}
 		return
 	}
 	ctx.StopPropagation()
-	v := c.view
 	version := v.revision
 	id := ""
 	for _, row := range v.realized {

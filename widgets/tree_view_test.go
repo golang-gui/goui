@@ -3,6 +3,7 @@ package widgets
 import (
 	"fmt"
 	"image/color"
+	"runtime"
 	"slices"
 	"testing"
 
@@ -19,11 +20,40 @@ import (
 type treeTestDelegate struct {
 	binds, setups int
 	unbound       []TreeRow
+	view          *TreeView
+	bindings      map[*TreeExpander]TreeRow
 }
 
-func (d *treeTestDelegate) Setup() gui.Widget                { d.setups++; return splitTestChild(160, 20) }
-func (d *treeTestDelegate) Bind(_ TreeRow, _ gui.Widget)     { d.binds++ }
-func (d *treeTestDelegate) Unbind(row TreeRow, _ gui.Widget) { d.unbound = append(d.unbound, row) }
+func (d *treeTestDelegate) Setup() gui.Widget {
+	d.setups++
+	e := NewTreeExpander()
+	e.SetChild(splitTestChild(160, 20))
+	e.ConnectToggle(func() {
+		if row, ok := d.bindings[e]; ok && d.view != nil {
+			d.view.SetExpanded(row.ID, !d.view.Expanded(row.ID))
+		}
+	})
+	return e
+}
+func (d *treeTestDelegate) Bind(row TreeRow, w gui.Widget) {
+	d.binds++
+	e := w.(*TreeExpander)
+	if d.bindings == nil {
+		d.bindings = make(map[*TreeExpander]TreeRow)
+	}
+	d.bindings[e] = row
+	e.SetDepth(row.Depth)
+	e.SetExpandable(row.Expandable)
+	e.SetExpanded(row.Expanded)
+	if d.view != nil {
+		e.SetIndentation(d.view.Indentation())
+	}
+}
+func (d *treeTestDelegate) Unbind(row TreeRow, w gui.Widget) {
+	d.unbound = append(d.unbound, row)
+	delete(d.bindings, w.(*TreeExpander))
+	w.(*TreeExpander).SetExpandable(false)
+}
 func treeFixture() (*TreeView, *TreeStore[string]) {
 	m := NewTreeStore[string]()
 	m.Modify(func(m *TreeStore[string]) {
@@ -35,7 +65,7 @@ func treeFixture() (*TreeView, *TreeStore[string]) {
 	})
 	v := NewTreeView()
 	v.SetModel(m)
-	v.SetDelegate(new(treeTestDelegate))
+	v.SetDelegate(&treeTestDelegate{view: v})
 	return v, m
 }
 func treeLayout(v *TreeView, height, y float32) {
@@ -180,7 +210,7 @@ func TestTreeViewRowsSnapshotDelegateAndVirtualization(t *testing.T) {
 	if nested.Role != RoleTreeItem || nested.Hierarchy.NodeID != "nested" || nested.Hierarchy.Level != 3 || !nested.Selected || !nested.Hierarchy.Current || nested.Focused {
 		t.Fatal("hierarchy/current/focus incorrect")
 	}
-	if info.Children[0].Children[0].Role != gui.RoleButton || info.Children[0].Children[0].Name != "折叠" {
+	if info.Children[0].Children[0].Children[0].Role != gui.RoleButton || info.Children[0].Children[0].Children[0].Name != "折叠" {
 		t.Fatal("disclosure semantics")
 	}
 	old := v.Delegate().(*treeTestDelegate)
@@ -519,8 +549,8 @@ type treeWidthDelegate struct {
 }
 
 func (d *treeWidthDelegate) Bind(row TreeRow, w gui.Widget) {
-	d.binds++
-	w.SetMinSize(geometry.Size{Width: d.model.Item(row.ID), Height: 20})
+	d.treeTestDelegate.Bind(row, w)
+	w.(*TreeExpander).Child().SetMinSize(geometry.Size{Width: d.model.Item(row.ID), Height: 20})
 }
 
 func TestTreeViewStateRefreshRetainsMeasurementsAndBindings(t *testing.T) {
@@ -567,7 +597,7 @@ func TestTreeViewStateRefreshRetainsMeasurementsAndBindings(t *testing.T) {
 	setups, unbound := d.setups, len(d.unbound)
 	m.Set("10", 90)
 	arrange()
-	if d.setups != setups || len(d.unbound) != unbound || v.realized["10"] != row || row.content.MinSize().Width != 90 {
+	if d.setups != setups || len(d.unbound) != unbound || v.realized["10"] != row || row.content.(*TreeExpander).Child().MinSize().Width != 90 {
 		t.Fatal("data-only refresh replaced shells/bindings or kept stale content")
 	}
 	v.Refresh()
@@ -669,10 +699,14 @@ func TestTreeViewContextMenuBubblesAfterContent(t *testing.T) {
 				}
 			})
 			treeLayout(v, 100, 0)
-			err := new(gui.EventDispatcher).DispatchEvent(&tabInputHost{root: v}, events.PointerEvent{
+			dispatcher, host := new(gui.EventDispatcher), &tabInputHost{root: v}
+			err := dispatcher.DispatchEvent(host, events.PointerEvent{
 				EventType: events.PointerDown, Button: events.PointerButtonRight,
 				Buttons: events.PointerButtonRightDown, Position: geometry.Point{X: 60, Y: 14},
 			})
+			if runtime.GOOS == "windows" && !consume {
+				err = dispatcher.DispatchEvent(host, events.PointerEvent{EventType: events.PointerUp, Button: events.PointerButtonRight, Position: geometry.Point{X: 60, Y: 14}})
+			}
 			wantQueries := 1
 			if consume {
 				wantQueries = 0
@@ -726,19 +760,19 @@ func TestTreeViewCurrentOnlyPaintsOutlineAndDisclosureUsesOwnState(t *testing.T)
 		t.Fatalf("fills=%d borders=%d focused=%v", p.fills, p.borders, v.Focused())
 	}
 	dispatchTabPointer(t, dispatcher, host, events.PointerMove, 14, 14)
-	r.expander.Paint(p)
+	r.content.(*TreeExpander).button.Paint(p)
 	if p.ink != graphics.ColorOf(color.RGBA{R: 255, A: 255}) {
 		t.Fatal("disclosure ignored hover")
 	}
 	dispatchTabPointer(t, dispatcher, host, events.PointerDown, 14, 14)
-	r.expander.Paint(p)
+	r.content.(*TreeExpander).button.Paint(p)
 	if p.ink != graphics.ColorOf(color.RGBA{B: 255, A: 255}) {
 		t.Fatal("disclosure ignored press")
 	}
 	dispatchTabPointer(t, dispatcher, host, events.PointerUp, 14, 14)
 	v.LayoutVisible(geometry.Size{Width: 300, Height: 100}, geometry.Point{})
 	for _, row := range v.realized {
-		if row.expander.pressed {
+		if row.content.(*TreeExpander).button.pressed {
 			t.Fatal("recycled disclosure retained pressed state")
 		}
 	}

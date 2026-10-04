@@ -83,6 +83,29 @@ func TestWidgetBaseChildTree(t *testing.T) {
 	}
 }
 
+func TestWidgetBaseStructuralChildPreservesBinSlotAndLifecycle(t *testing.T) {
+	parent := NewButton()
+	content, internal, accidental := newTestWidget(), newTestWidget(), newTestWidget()
+	parent.SetChild(content)
+	parent.WidgetBase.AddChild(parent, accidental)
+	if accidental.Parent() != nil || parent.Child() != content {
+		t.Fatal("ordinary mounting bypassed the Bin content slot")
+	}
+	parent.WidgetBase.AddStructuralChild(parent, internal)
+	if internal.Parent() != parent || parent.Child() != content || len(parent.Children()) != 2 {
+		t.Fatal("structural mounting changed the public content slot")
+	}
+	win := &window{}
+	win.SetWidget(parent)
+	if internal.Root() != win {
+		t.Fatal("structural child did not follow host ownership")
+	}
+	win.Destroy()
+	if !internal.Destroyed() || !content.Destroyed() || internal.Parent() != nil {
+		t.Fatal("host destruction did not clean up structural children")
+	}
+}
+
 func TestWidgetBaseSetRootPropagatesToChildren(t *testing.T) {
 	win := &window{}
 	parent := newTestWidget()

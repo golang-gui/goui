@@ -113,11 +113,12 @@ type treeState[T any] struct {
 	onActivate  func(string)
 	contextMenu func(string) []*baseui.MenuItemView
 	onError     func(error)
+	tree        *widgets.TreeView
 }
 
 func (v *TreeViewView[T]) Mount(ctx baseui.BuildContext) gui.Widget {
 	tree := widgets.NewTreeView()
-	state := &treeState[T]{ctx: ctx}
+	state := &treeState[T]{ctx: ctx, tree: tree}
 	state.handles = signal.Handles{
 		tree.ConnectSelection(func(ids []string) {
 			if state.onSelection != nil {
@@ -189,7 +190,23 @@ func (*TreeViewView[T]) Unmount(ctx baseui.BuildContext, _ gui.Widget) {
 	state.onSelection, state.onCurrent, state.onExpanded, state.onActivate = nil, nil, nil, nil
 	state.contextMenu, state.onError = nil, nil
 }
-func (*treeState[T]) Setup() gui.Widget { return gui.NewLinearBox(layout.DirectionVertical) }
+
+type treeContent struct {
+	*widgets.TreeExpander
+	box *gui.LinearBox
+	id  string
+}
+
+func (s *treeState[T]) Setup() gui.Widget {
+	c := &treeContent{TreeExpander: widgets.NewTreeExpander(), box: gui.NewLinearBox(layout.DirectionVertical)}
+	c.SetChild(c.box)
+	c.ConnectToggle(func() {
+		if s.ctx != nil && c.id != "" && !s.tree.Destroyed() {
+			s.tree.SetExpanded(c.id, !s.tree.Expanded(c.id))
+		}
+	})
+	return c
+}
 func (s *treeState[T]) Bind(row widgets.TreeRow, widget gui.Widget) {
 	ctx := s.ctx
 	if ctx == nil {
@@ -199,10 +216,19 @@ func (s *treeState[T]) Bind(row widgets.TreeRow, widget gui.Widget) {
 	if s.item != nil && s.model != nil {
 		view = s.item(row, s.model.Item(row.ID))
 	}
-	ctx.UpdateChildren(widget.(*gui.LinearBox), []baseui.View{view})
+	c := widget.(*treeContent)
+	c.id = row.ID
+	c.SetDepth(row.Depth)
+	c.SetIndentation(s.tree.Indentation())
+	c.SetExpandable(row.Expandable)
+	c.SetExpanded(row.Expanded)
+	ctx.UpdateChildren(c.box, []baseui.View{view})
 }
 func (s *treeState[T]) Unbind(_ widgets.TreeRow, widget gui.Widget) {
 	if s.ctx != nil {
-		s.ctx.UpdateChildren(widget.(*gui.LinearBox), nil)
+		c := widget.(*treeContent)
+		c.id = ""
+		c.SetExpandable(false)
+		s.ctx.UpdateChildren(c.box, nil)
 	}
 }
