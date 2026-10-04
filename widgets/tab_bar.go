@@ -277,7 +277,7 @@ func (b *TabBar) syncItems() {
 }
 
 func (b *TabBar) Paint(p gui.Painter) {
-	paintTabBox(p, geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height), "tab-bar", "", style.Normal)
+	paintStyledBox(p, geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height), "tab-bar", "", style.Normal)
 }
 func (b *TabBar) Snapshot() gui.WidgetInfo {
 	info := b.WidgetBase.Snapshot()
