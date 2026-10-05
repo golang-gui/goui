@@ -1,6 +1,7 @@
 package widgets
 
 import (
+	"encoding/json"
 	"fmt"
 	"image/color"
 	"runtime"
@@ -207,7 +208,8 @@ func TestTreeViewRowsSnapshotDelegateAndVirtualization(t *testing.T) {
 		t.Fatalf("tree snapshot %+v", info)
 	}
 	nested := info.Children[2]
-	if nested.Role != RoleTreeItem || nested.Hierarchy.NodeID != "nested" || nested.Hierarchy.Level != 3 || !nested.Selected || !nested.Hierarchy.Current || nested.Focused {
+	hierarchy, ok := nested.Attributes[HierarchyInfoKey].(HierarchyInfo)
+	if nested.Role != RoleTreeItem || !ok || hierarchy.NodeID != "nested" || hierarchy.Level != 3 || !nested.Selected || !hierarchy.Current || nested.Focused {
 		t.Fatal("hierarchy/current/focus incorrect")
 	}
 	if info.Children[0].Children[0].Children[0].Role != gui.RoleButton || info.Children[0].Children[0].Children[0].Name != "折叠" {
@@ -234,8 +236,55 @@ func TestTreeViewRowsSnapshotDelegateAndVirtualization(t *testing.T) {
 	if len(v.realized) > 6 || newer.setups > 6 {
 		t.Fatalf("jump grew widget pool: %d/%d", len(v.realized), newer.setups)
 	}
-	if id := v.Snapshot().Children[0].Hierarchy.NodeID; id != "1000" {
-		t.Fatalf("scrolled range/order: %s", id)
+	if hierarchy, ok := v.Snapshot().Children[0].Attributes[HierarchyInfoKey].(HierarchyInfo); !ok || hierarchy.NodeID != "1000" {
+		t.Fatalf("scrolled range/order: %+v", hierarchy)
+	}
+}
+
+func TestTreeViewSnapshotAttributesIsolation(t *testing.T) {
+	v, _ := treeFixture()
+	defer v.SetModel(nil)
+	v.SetExpandedIDs([]string{"root", "a"})
+	v.SetSelection([]string{"nested"})
+	v.SetCurrent("nested")
+	treeLayout(v, 180, 0)
+	old := v.Snapshot()
+	root := old.Children[0].Attributes[HierarchyInfoKey].(HierarchyInfo)
+	nested := old.Children[2].Attributes[HierarchyInfoKey].(HierarchyInfo)
+	v.SetSelection(nil)
+	v.SetCurrent("root")
+	v.SetExpanded("root", false)
+	treeLayout(v, 180, 0)
+	now := v.Snapshot()
+	if got := now.Children[0].Attributes[HierarchyInfoKey].(HierarchyInfo); got.Expanded || !got.Current {
+		t.Fatalf("new hierarchy did not capture changed state: %+v", got)
+	}
+	now.Children[0].SetAttribute(HierarchyInfoKey, HierarchyInfo{})
+	if old.Children[0].Attributes[HierarchyInfoKey].(HierarchyInfo) != root || !root.Expanded || old.Children[2].Attributes[HierarchyInfoKey].(HierarchyInfo) != nested || !nested.Current || !old.Children[2].Selected {
+		t.Fatal("previous tree snapshot shares mutable state with a later snapshot")
+	}
+	data, err := json.Marshal(old.Children[2])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if _, legacy := fields["hierarchy"]; legacy {
+		t.Fatal("snapshot still emits the retired hierarchy field")
+	}
+	var attributes map[string]json.RawMessage
+	if err := json.Unmarshal(fields["attributes"], &attributes); err != nil {
+		t.Fatal(err)
+	}
+	var decoded HierarchyInfo
+	if err := json.Unmarshal(attributes[HierarchyInfoKey], &decoded); err != nil {
+		t.Fatal(err)
+	}
+	want := HierarchyInfo{NodeID: "nested", ParentID: "a", Level: 3, PositionInSet: 1, SetSize: 1, Current: true}
+	if decoded != want {
+		t.Fatalf("JSON changed the hierarchy schema: got %+v want %+v", decoded, want)
 	}
 }
 
@@ -537,7 +586,9 @@ func TestTreeViewStableIDsSurviveRenameReorderAndReparent(t *testing.T) {
 	checkTreeState(t, v, "nested", "nested")
 	treeLayout(v, 180, 0)
 	rows := v.Snapshot().Children
-	if rows[0].Hierarchy.NodeID != "other" || rows[1].Hierarchy.NodeID != "nested" || rows[1].Hierarchy.ParentID != "other" || rows[1].Hierarchy.Level != 2 {
+	parent, parentOK := rows[0].Attributes[HierarchyInfoKey].(HierarchyInfo)
+	child, childOK := rows[1].Attributes[HierarchyInfoKey].(HierarchyInfo)
+	if !parentOK || !childOK || parent.NodeID != "other" || child.NodeID != "nested" || child.ParentID != "other" || child.Level != 2 {
 		t.Fatal("stable identity lost hierarchy or visible order")
 	}
 }

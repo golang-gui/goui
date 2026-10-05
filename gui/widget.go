@@ -98,6 +98,10 @@ type Widget interface {
 
 	// Snapshot describes semantic content and state, not the concrete widget
 	// type or all layout details. See WidgetInfo for visibility and input limits.
+	// Call on the GUI thread and return detached data, including Attributes;
+	// copy mutable slices/maps from widget state rather than returning live data.
+	// Consumers treat the result as read-only. Snapshot must not realize offscreen
+	// content merely to describe it or defer GUI access to JSON encoding.
 	Snapshot() WidgetInfo
 }
 

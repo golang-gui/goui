@@ -117,8 +117,8 @@ func assertTree(tree *widgets.TreeView) {
 	}
 	seen := make(map[string]bool)
 	for _, row := range info.Children {
-		h := row.Hierarchy
-		if row.Role != widgets.RoleTreeItem || h == nil || h.NodeID == "" || seen[h.NodeID] || h.Level < 1 || h.PositionInSet < 1 || h.PositionInSet > h.SetSize || row.Focused {
+		h, ok := row.Attributes[widgets.HierarchyInfoKey].(widgets.HierarchyInfo)
+		if row.Role != widgets.RoleTreeItem || !ok || h.NodeID == "" || seen[h.NodeID] || h.Level < 1 || h.PositionInSet < 1 || h.PositionInSet > h.SetSize || row.Focused {
 			panic("row hierarchy/focus incorrect")
 		}
 		seen[h.NodeID] = true
