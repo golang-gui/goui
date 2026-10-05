@@ -150,10 +150,11 @@ func TestListViewInstallsInterfaceValuesWithoutComparing(t *testing.T) {
 type mockListWidget struct {
 	WidgetBase
 	height float32
+	width  float32
 }
 
 func (m *mockListWidget) Measure(c layout.Constraint) layout.Measurement {
-	return layout.Measured(geometry.Size{Width: c.Min.Width, Height: m.height})
+	return layout.Measured(geometry.Size{Width: max(c.Min.Width, m.width), Height: m.height})
 }
 
 func (m *mockListWidget) Arrange(rect geometry.Rectangle) {
@@ -168,6 +169,7 @@ type mockListDelegate struct {
 	binds    []int
 	unbinds  []int
 	heights  map[int]float32
+	widths   map[int]float32
 	lastBind map[int]Widget
 }
 
@@ -186,10 +188,83 @@ func (d *mockListDelegate) Bind(index int, w Widget) {
 	if h, ok := d.heights[index]; ok {
 		w.(*mockListWidget).height = h
 	}
+	if width, ok := d.widths[index]; ok {
+		w.(*mockListWidget).width = width
+	}
 }
 
 func (d *mockListDelegate) Unbind(index int, w Widget) {
 	d.unbinds = append(d.unbinds, index)
+}
+
+func TestListViewMeasurementInvalidation(t *testing.T) {
+	t.Run("offscreen measurements remain estimates until rebound", func(t *testing.T) {
+		lv := NewListView()
+		d := newMockListDelegate(map[int]float32{})
+		d.widths = make(map[int]float32)
+		for i := 0; i < 100; i++ {
+			d.heights[i] = 10
+			d.widths[i] = 100
+		}
+		d.widths[0] = 500
+		lv.SetModel(NewSliceListModel(make([]int, 100)))
+		lv.SetDelegate(d)
+		defer lv.SetModel(nil)
+		viewport := geometry.Size{Width: 100, Height: 20}
+		lv.LayoutVisible(viewport, geometry.Point{})
+		lv.LayoutVisible(viewport, geometry.Point{Y: 100})
+		d.widths[0], d.heights[0] = 700, 30
+		lv.Refresh()
+		lv.LayoutVisible(viewport, geometry.Point{Y: 100})
+		if lv.ContentSize().Width != 500 || lv.heights[0] != 10 {
+			t.Fatal("refresh discarded offscreen estimates and changed the scroll range")
+		}
+		lv.LayoutVisible(viewport, geometry.Point{})
+		if lv.ContentSize().Width != 700 || lv.heights[0] != 30 {
+			t.Fatal("rebound row treated historical dimensions as exact")
+		}
+	})
+	t.Run("local layout and refresh preserve estimated extents", func(t *testing.T) {
+		lv := NewListView()
+		d := newMockListDelegate(map[int]float32{0: 10, 1: 20})
+		lv.SetModel(NewSliceListModel(make([]int, 100)))
+		lv.SetDelegate(d)
+		viewport := geometry.Size{Width: 100, Height: 30}
+		lv.LayoutVisible(viewport, geometry.Point{})
+		row := d.lastBind[0].(*mockListWidget)
+		row.height = 30
+		row.RequestLayout()
+		lv.LayoutVisible(viewport, geometry.Point{})
+		if lv.heights[0] != 30 {
+			t.Fatal("row RequestLayout was hidden by the index cache")
+		}
+		d.heights[0] = 50
+		before := lv.ContentSize()
+		lv.Refresh()
+		if lv.ContentSize() != before {
+			t.Fatal("Refresh discarded the estimated scroll extent")
+		}
+		lv.LayoutVisible(viewport, geometry.Point{})
+		if lv.heights[0] != 50 {
+			t.Fatal("Refresh did not rebind and remeasure visible rows")
+		}
+		lv.SetModel(nil)
+	})
+	t.Run("width invalidation repairs the locator prefix", func(t *testing.T) {
+		lv := NewListView()
+		lv.SetModel(NewSliceListModel(make([]int, 100)))
+		lv.SetDelegate(newMockListDelegate(map[int]float32{1: 40}))
+		lv.LayoutVisible(geometry.Size{Width: 100, Height: 80}, geometry.Point{})
+		lv.LayoutVisible(geometry.Size{Width: 100, Height: 20}, geometry.Point{Y: 50})
+		// Resizing invalidates offscreen measurements. The old prefix (10+40)
+		// must not survive while heightAt now uses the original 10 DIP seed.
+		lv.LayoutVisible(geometry.Size{Width: 80, Height: 20}, geometry.Point{Y: 50})
+		visible := lv.VisibleIndexes()
+		if len(visible) == 0 || visible[0] != 5 || lv.items[5].Rect().Y != 0 {
+			t.Fatalf("stale locator after resize: visible=%v; want row 5 at y=0", visible)
+		}
+		lv.SetModel(nil)
+	})
 }
 
 // --- ListView: layout & virtualization ---

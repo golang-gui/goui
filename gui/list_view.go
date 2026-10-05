@@ -185,7 +185,8 @@ func (lv *ListView) revealItem() {
 		y += lv.heightAt(i)
 	}
 	h := lv.heightAt(index)
-	_, exact := lv.heights[index]
+	row, realized := lv.items[index]
+	exact := realized && row.base().measureValid
 	visible := y >= lv.scrollY && y+h <= lv.scrollY+lv.viewport.Height
 	// ScrollView floors its maximum offset. A fractional final content edge
 	// cannot be revealed further; accept only that host-imposed sub-DIP remainder.
@@ -312,6 +313,7 @@ func (lv *ListView) LayoutVisible(viewport geometry.Size, offset geometry.Point)
 		lv.widths = make(map[int]float32)
 		lv.estimate = lv.seedHeight
 		lv.contentWidth = viewport.Width
+		lv.first, lv.firstY = 0, 0
 	}
 
 	if len(lv.widths) == 0 {
@@ -348,8 +350,14 @@ func (lv *ListView) LayoutVisible(viewport geometry.Size, offset geometry.Point)
 		// per-index cache hide that invalidation (including a rebound shell).
 		if !known || !w.base().measureValid {
 			oldWidth := lv.widths[last]
+			oldHeight := lv.heightAt(last)
 			h = lv.measureItem(last, w)
 			lv.heights[last] = h
+			if oldHeight != h {
+				// A later backwards scroll must not use a prefix computed before
+				// these measurements changed (even if their mean is unchanged).
+				lv.first, lv.firstY = 0, 0
+			}
 			if oldWidth == lv.contentWidth && lv.widths[last] < oldWidth {
 				// The previous widest row shrank. Other cached rows still count
 				// toward the extent, including rows outside the viewport.
