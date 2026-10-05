@@ -274,7 +274,18 @@ func (*TableViewView[T]) Unmount(ctx baseui.BuildContext, _ gui.Widget) {
 	s.onSelection, s.onCurrent, s.onActivate = nil, nil, nil
 	s.onSortRequest, s.contextMenu, s.onError = nil, nil, nil
 }
-func (c *tableColumnState[T]) Setup() gui.Widget { return gui.NewLinearBox(layout.DirectionVertical) }
+
+// This ordinary Container carries one declared subtree without imposing a
+// second linear layout. Padding and alignment belong to the returned View.
+type tableCellContent struct{ gui.WidgetBase }
+
+func (w *tableCellContent) AddChild(child gui.Widget) { w.WidgetBase.AddChild(w, child) }
+
+func (c *tableColumnState[T]) Setup() gui.Widget {
+	w := new(tableCellContent)
+	w.SetLayoutManager(layout.NewFillLayout())
+	return w
+}
 func (c *tableColumnState[T]) Bind(row widgets.TableRow, widget gui.Widget) {
 	s := c.owner
 	ctx := s.ctx
@@ -285,10 +296,10 @@ func (c *tableColumnState[T]) Bind(row widgets.TableRow, widget gui.Widget) {
 	if c.cell != nil && s.model != nil {
 		view = c.cell(row, s.model.ItemAt(row.Index))
 	}
-	ctx.UpdateChildren(widget.(*gui.LinearBox), []baseui.View{view})
+	ctx.UpdateChildren(widget.(*tableCellContent), []baseui.View{view})
 }
 func (c *tableColumnState[T]) Unbind(_ widgets.TableRow, widget gui.Widget) {
 	if ctx := c.owner.ctx; ctx != nil {
-		ctx.UpdateChildren(widget.(*gui.LinearBox), nil)
+		ctx.UpdateChildren(widget.(*tableCellContent), nil)
 	}
 }

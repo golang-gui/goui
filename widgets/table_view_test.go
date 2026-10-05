@@ -121,6 +121,47 @@ func tablePanic(t *testing.T, fn func()) {
 }
 
 // 边框、内容几何和斑马色；不创建桌面窗口或字体资源。
+func TestTableViewCellContentFillsAllocation(t *testing.T) {
+	old := gui.App
+	gui.App = &separatorApp{sheet: style.Sheet(
+		style.Name("table-grid").Part("horizontal").BorderWidth(5),
+		style.Name("table-grid").Part("vertical").BorderWidth(7),
+	)}
+	t.Cleanup(func() { gui.App = old })
+	v, m, column, _ := tableFixture(2)
+	defer v.SetModel(nil)
+	column.SetWidth(100)
+	column.SetDelegate(&tableTestDelegate{model: m, setup: func() gui.Widget {
+		return splitTestChild(20, 12)
+	}})
+	other := NewTableColumn("tall", "Tall")
+	other.SetWidth(70)
+	other.SetDelegate(&tableTestDelegate{model: m, setup: func() gui.Widget {
+		return splitTestChild(30, 64)
+	}})
+	v.SetColumns(column, other)
+	tableArrange(v, 220, 180)
+	row := v.realized["r0"]
+	if row.Rect().Height != 69 || row.cells[0].Rect().Height != 64 {
+		t.Fatalf("row must use the tallest content plus one grid band: %v", row.Rect())
+	}
+	for i, want := range []geometry.Rectangle{geometry.Rect(0, 0, 93, 64), geometry.Rect(0, 0, 70, 64)} {
+		if got := row.cells[i].content.Rect(); got != want {
+			t.Fatalf("cell %d content=%v, want full allocation %v", i, got, want)
+		}
+	}
+	// Last records do not reserve another horizontal grid band.
+	if last := v.realized["r1"]; last.Rect().Height != 64 || last.cells[0].content.Rect().Height != 64 {
+		t.Fatal("last record lost content height or duplicated a grid band")
+	}
+	column.SetMinWidth(0)
+	column.SetWidth(3)
+	tableArrange(v, 220, 180)
+	if got := row.cells[0].content.Rect(); got != geometry.Rect(0, 0, 0, 64) {
+		t.Fatalf("grid wider than the column produced an invalid content allocation: %v", got)
+	}
+}
+
 func TestTableViewDecorationLayout(t *testing.T) {
 	old := gui.App
 	app := &separatorApp{sheet: style.Sheet(
@@ -145,10 +186,10 @@ func TestTableViewDecorationLayout(t *testing.T) {
 	}
 	row := v.realized["r0"]
 	content := row.cells[0].content.(*tableTestContent)
-	if content.Rect() != geometry.Rect(8, 4, 52, 40) || row.Rect().Height != 54 || row.cells[0].Rect().Height != 48 {
+	if content.Rect() != geometry.Rect(0, 0, 68, 32) || row.Rect().Height != 38 || row.cells[0].Rect().Height != 32 {
 		t.Fatalf("content squeezed by grid: content=%v row=%v cell=%v", content.Rect(), row.Rect(), row.cells[0].Rect())
 	}
-	if v.realized["r1"].Rect().Height != 48 || v.columnLineWidth(other) != 0 || row.cells[1].Rect().X != 80 {
+	if v.realized["r1"].Rect().Height != 32 || v.columnLineWidth(other) != 0 || row.cells[1].Rect().X != 80 {
 		t.Fatal("last boundary duplicated or column allocation shifted")
 	}
 	for _, cell := range row.cells {
@@ -179,13 +220,13 @@ func TestTableViewDecorationLayout(t *testing.T) {
 		// In this window-free fixture Refresh invalidates the bound cell layout.
 		v.Refresh()
 		tableArrange(v, 200, 200)
-		if content.Rect().Width != 52 || row.Rect().Height != 48 {
+		if content.Rect().Width != 68 || row.Rect().Height != 32 {
 			t.Fatal("transparent color unexpectedly released line space")
 		}
 		app.sheet = style.Sheet(style.Name("table-grid").Part("vertical").BorderWidth(0))
 		v.Refresh()
 		tableArrange(v, 200, 200)
-		if content.Rect().Width != 60 || row.Rect().Height != 32 {
+		if content.Rect().Width != 80 || row.Rect().Height != 32 {
 			t.Fatalf("grid removal retained stale measurement: %v %v", content.Rect(), row.Rect())
 		}
 	})
@@ -271,7 +312,7 @@ func TestTableViewDecorationPixels(t *testing.T) {
 			for _, sample := range []struct {
 				x, y int
 				want color.RGBA
-			}{{69, 20, color.RGBA{R: 128, A: 128}}, {79, 53, color.RGBA{R: 128, A: 128}}, {100, 49, color.RGBA{R: 128, A: 128}}, {8, 4, color.RGBA{G: 255, A: 255}}, {59, 43, color.RGBA{G: 255, A: 255}}, {67, 20, color.RGBA{}}, {159, 20, color.RGBA{}}} {
+			}{{69, 20, color.RGBA{R: 128, A: 128}}, {79, 37, color.RGBA{R: 128, A: 128}}, {100, 33, color.RGBA{R: 128, A: 128}}, {0, 0, color.RGBA{G: 255, A: 255}}, {67, 31, color.RGBA{G: 255, A: 255}}, {67, 20, color.RGBA{G: 255, A: 255}}, {159, 20, color.RGBA{}}} {
 				got := pixels.RGBAAt(sample.x*int(scale), sample.y*int(scale))
 				for i, channel := range []uint8{got.R, got.G, got.B, got.A} {
 					want := []uint8{sample.want.R, sample.want.G, sample.want.B, sample.want.A}[i]
@@ -474,7 +515,7 @@ func TestTableViewLayoutVirtualizationAndRefresh(t *testing.T) {
 	m.Set(0, tableRecord{"r0", 360, 20})
 	tableArrange(v, 240, 180)
 	row := v.realized["r0"]
-	if row.Rect().Height != 68 || row.cells[0].Rect().Width != 160 || row.cells[1].Rect().X != 160 {
+	if row.Rect().Height != 60 || row.cells[0].Rect().Width != 160 || row.cells[1].Rect().X != 160 {
 		t.Fatalf("fixed column wrapping: row=%v cells=%v", row.Rect(), row.cells[0].Rect())
 	}
 	preferred := v.Measure(layout.Unbounded())
@@ -503,19 +544,19 @@ func TestTableViewLayoutVirtualizationAndRefresh(t *testing.T) {
 	shell := row.cells[0].content
 	c.SetWidth(80)
 	tableArrange(v, 240, 180)
-	if row.cells[0].content != shell || row.Rect().Height != 128 || row.cells[1].Rect().X != 80 {
+	if row.cells[0].content != shell || row.Rect().Height != 100 || row.cells[1].Rect().X != 80 {
 		t.Fatalf("resize lost content or cached old height: %v", row.Rect())
 	}
 	content := shell.(*tableTestContent)
 	content.height = 30
 	content.RequestLayout()
 	tableArrange(v, 240, 180)
-	if row.Rect().Height != 188 {
+	if row.Rect().Height != 150 {
 		t.Fatalf("local layout invalidation ignored: %v", row.Rect())
 	}
 	v.Refresh()
 	tableArrange(v, 240, 180)
-	if row.Rect().Height != 128 {
+	if row.Rect().Height != 100 {
 		t.Fatal("Refresh did not rebind content")
 	}
 	bindings := d.binds
@@ -791,13 +832,13 @@ func TestTableViewBalancedColumnWidthsAndNarrowViewport(t *testing.T) {
 	v.SetColumns(c, other)
 	m.Set(0, tableRecord{"r0", 360, 20})
 	tableArrange(v, 280, 180)
-	if v.realized["r0"].Rect().Height != 68 {
+	if v.realized["r0"].Rect().Height != 60 {
 		t.Fatal("initial wrap")
 	}
 	c.SetWidth(100)
 	other.SetWidth(180)
 	tableArrange(v, 280, 180)
-	if v.columnWidth != 280 || v.realized["r0"].Rect().Height != 108 || v.realized["r0"].cells[1].Rect().X != 100 {
+	if v.columnWidth != 280 || v.realized["r0"].Rect().Height != 80 || v.realized["r0"].cells[1].Rect().X != 100 {
 		t.Fatal("same total width concealed per-column wrapping change")
 	}
 	v.scroll.SetScrollY(1500)
@@ -806,7 +847,7 @@ func TestTableViewBalancedColumnWidthsAndNarrowViewport(t *testing.T) {
 	tableArrange(v, 280, 180)
 	v.scroll.SetScrollY(0)
 	tableArrange(v, 280, 180)
-	if v.realized["r0"].Rect().Height != 128 {
+	if v.realized["r0"].Rect().Height != 100 {
 		t.Fatal("offscreen row retained old column measurements")
 	}
 	tableArrange(v, 1, 1)

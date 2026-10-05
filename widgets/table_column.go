@@ -3,7 +3,9 @@ package widgets
 import "github.com/golang-gui/goui/core/signal"
 
 // TableColumn is mutable configuration owned by at most one TableView. Widths
-// are DIP, including cell padding. It owns no native resources.
+// are DIP, including reserved grid lines. Cell content fills the remaining
+// allocation; any padding or alignment belongs to that content Widget.
+// It owns no native resources.
 type TableColumn struct {
 	id, title                 string
 	width, minWidth, maxWidth float32

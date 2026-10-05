@@ -31,6 +31,43 @@ func tableBindingArrange(v *widgets.TableView) {
 	v.Measure(layout.Tight(size))
 	v.Arrange(geometry.Rectangle{Size: size})
 }
+
+func TestTableViewTextInputFillsCell(t *testing.T) {
+	m := newTableBindingModel()
+	ctx := new(treeBindingContext)
+	v := TableView[string](m, TableColumn("note", "Note", func(_ widgets.TableRow, text string) baseui.View {
+		return baseui.TextInput().Text(text)
+	}).Width(200))
+	table := v.Mount(ctx).(*widgets.TableView)
+	defer table.SetModel(nil)
+	defer v.Unmount(ctx, table)
+	v.Update(ctx, table)
+	tableBindingArrange(table)
+	check := func(width float32) {
+		t.Helper()
+		if len(ctx.widgets) != 3 {
+			t.Fatalf("unexpected realized editors: %d", len(ctx.widgets))
+		}
+		for _, widget := range ctx.widgets {
+			input := widget.(*gui.TextInput)
+			want := geometry.Rect(0, 0, width, 32)
+			if input.Rect() != want || input.Parent().Rect() != want {
+				t.Fatalf("UI shell must not shrink the editor: input=%v shell=%v want=%v", input.Rect(), input.Parent().Rect(), want)
+			}
+			if info := input.Snapshot(); info.Role != gui.RoleTextInput || !info.Focusable || info.Text == "" {
+				t.Fatal("cell editor lost its own input semantics")
+			}
+		}
+	}
+	check(200)
+	table.Columns()[0].SetWidth(240)
+	tableBindingArrange(table)
+	check(240)
+	v.Update(ctx, table)
+	tableBindingArrange(table)
+	check(200)
+}
+
 func TestTableViewColumnIdentityAndUncontrolledState(t *testing.T) {
 	m := newTableBindingModel()
 	ctx := new(treeBindingContext)
