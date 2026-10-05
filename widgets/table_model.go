@@ -27,6 +27,8 @@ type TableRow struct {
 // TableCellDelegate creates cell content for one column. Setup returns a live,
 // detached Widget (nil means empty). Bind can repeat without Unbind. Unbind
 // receives the last binding, not a fresh lookup into a possibly reordered model.
+// Content fills the cell after grid lines are reserved. Return a container when
+// the content needs padding, alignment or more than one Widget.
 type TableCellDelegate interface {
 	Setup() gui.Widget
 	Bind(TableRow, gui.Widget)

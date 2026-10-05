@@ -8,9 +8,9 @@ import (
 )
 
 const (
-	tableMinHeight float32 = 32
-	tablePaddingX  float32 = 8
-	tablePaddingY  float32 = 4
+	tableMinHeight      float32 = 32
+	tableHeaderPaddingX float32 = 8
+	tableHeaderPaddingY float32 = 4
 )
 
 type tableLayout struct{ view *TableView }
@@ -128,11 +128,11 @@ type tableCellLayout struct{ cell *tableCell }
 
 func (l *tableCellLayout) Measure(children []layout.Child, c layout.Constraint) layout.Measurement {
 	line := l.cell.row.view.columnLineWidth(l.cell.column)
-	size := geometry.Size{Width: 2*tablePaddingX + line, Height: 2 * tablePaddingY}
+	size := geometry.Size{Width: line}
 	if len(children) > 0 {
-		m := children[0].Measure(layout.Loose(geometry.Size{Width: max(0, c.Max.Width-size.Width), Height: layout.Inf}))
+		m := children[0].Measure(layout.Loose(geometry.Size{Width: max(0, c.Max.Width-line), Height: c.Max.Height}))
 		size.Width += m.Width
-		size.Height += m.Height
+		size.Height = m.Height
 	}
 	return layout.Measured(c.Clamp(size))
 }
@@ -140,8 +140,7 @@ func (l *tableCellLayout) Arrange(children []layout.Child, rect geometry.Rectang
 	if len(children) == 0 {
 		return
 	}
-	available := max(0, rect.Width-l.cell.row.view.columnLineWidth(l.cell.column))
-	width := max(0, available-2*tablePaddingX)
-	m := children[0].Measure(layout.Loose(geometry.Size{Width: width, Height: max(0, rect.Height-2*tablePaddingY)}))
-	children[0].Arrange(geometry.Rect(min(tablePaddingX, available), max(0, (rect.Height-m.Height)/2), min(width, m.Width), m.Height))
+	content := geometry.Rect(0, 0, max(0, rect.Width-l.cell.row.view.columnLineWidth(l.cell.column)), rect.Height)
+	children[0].Measure(layout.Tight(content.Size))
+	children[0].Arrange(content)
 }
