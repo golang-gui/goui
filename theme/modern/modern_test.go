@@ -14,6 +14,86 @@ func resolved(sheet style.StyleSheet, name string, state style.State) style.Styl
 
 func rgba(c color.Color) color.RGBA { return color.RGBAModel.Convert(c).(color.RGBA) }
 
+func TestButtonFocusAppearance(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		neutral := color.RGBA{R: 198, G: 198, B: 206, A: 255}
+		if dark {
+			neutral = color.RGBA{R: 85, G: 85, B: 95, A: 255}
+		}
+		for _, accent := range []color.Color{nil, color.Black, color.White, color.RGBA{R: 255, A: 255}} {
+			rules := Rules(Options{Dark: dark, AccentColor: accent})
+			sheet := style.Sheet(rules...)
+			for _, name := range []string{"button", Primary} {
+				focused := sheet.Resolve(style.Sel{Name: name, Part: "focus", State: style.Focused})
+				focus, _ := focused.BorderColor()
+				base := rgba(focus)
+				// Independent integer reference: 75% focus + 25% neutral,
+				// nearest byte rounding. All inputs/output are opaque sRGB.
+				blend := func(a, b uint8) uint8 { return uint8((3*int(a) + int(b) + 2) / 4) }
+				want := color.RGBA{R: blend(base.R, neutral.R), G: blend(base.G, neutral.G), B: blend(base.B, neutral.B), A: 255}
+				if accent == nil {
+					blue := color.RGBA{R: 101, G: 145, B: 213, A: 255}
+					if dark {
+						blue = color.RGBA{R: 91, G: 130, B: 190, A: 255}
+					}
+					if want != blue {
+						t.Fatalf("default blue reference changed: %v want %v", want, blue)
+					}
+				}
+				for _, state := range []style.State{style.Focused, style.FocusVisible} {
+					s := sheet.Resolve(style.Sel{Name: name, Part: "focus", State: state})
+					bg, ok := s.BackgroundColor()
+					if !ok || rgba(bg).A != 0 {
+						t.Fatalf("focus added a background: dark=%v accent=%v name=%s state=%v bg=%v", dark, accent, name, state, bg)
+					}
+					wantWidth := float32(0)
+					if state == style.FocusVisible {
+						wantWidth = 2
+						bc, ok := s.BorderColor()
+						if !ok || rgba(bc) != want || rgba(bc) == neutral {
+							t.Fatalf("keyboard border: dark=%v accent=%v name=%s got=%v want=%v", dark, accent, name, bc, want)
+						}
+					}
+					if width, ok := s.BorderWidth(); !ok || width != wantWidth {
+						t.Fatalf("focus width: state=%v got=%g want=%g, set=%v", state, width, wantWidth, ok)
+					}
+					if radius, _ := s.Radius(); radius != 6 {
+						t.Fatalf("focus did not preserve button radius: %g", radius)
+					}
+				}
+				customRules := append(rules, style.Name(name).Part("focus").State(style.Focused).BorderWidth(3).Radius(9))
+				custom := style.Sheet(customRules...)
+				if width, _ := custom.Resolve(style.Sel{Name: name, Part: "focus", State: style.Focused}).BorderWidth(); width != 3 {
+					t.Fatal("application ordinary Focused override was lost")
+				}
+				sel := style.Sel{Name: name, Part: "focus", State: style.FocusVisible}
+				if width, _ := custom.Resolve(sel).BorderWidth(); width != 2 {
+					t.Fatal("generic Focused replaced the more specific keyboard border")
+				}
+				if radius, _ := custom.Resolve(sel).Radius(); radius != 9 {
+					t.Fatal("unset FocusVisible radius did not inherit Focused")
+				}
+				custom = style.Sheet(append(customRules, style.Name(name).Part("focus").State(style.FocusVisible).
+					BorderColor(color.RGBA{R: 255, A: 255}).BorderWidth(1))...)
+				bc, _ := custom.Resolve(sel).BorderColor()
+				if width, _ := custom.Resolve(sel).BorderWidth(); width != 1 || rgba(bc) != (color.RGBA{R: 255, A: 255}) {
+					t.Fatal("explicit keyboard border override was lost")
+				}
+				custom = style.Sheet(append(customRules, style.Name(name).Part("focus").State(style.FocusVisible).BorderWidth(0))...)
+				if width, _ := custom.Resolve(sel).BorderWidth(); width != 0 {
+					t.Fatal("application could not disable the keyboard border")
+				}
+			}
+			if bg, ok := resolved(sheet, "label", style.Normal).BackgroundColor(); ok && rgba(bg).A != 0 {
+				t.Fatal("button hint leaked into its independent label style")
+			}
+			if width, _ := resolved(sheet, "text-input", style.Focused).BorderWidth(); width != 2 {
+				t.Fatal("ordinary text-input focus border changed")
+			}
+		}
+	}
+}
+
 func TestTreeInteractionAndTypography(t *testing.T) {
 	for _, dark := range []bool{false, true} {
 		options := Options{Dark: dark, FontFamily: "Tree Font", FontSize: 17}
