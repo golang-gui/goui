@@ -53,6 +53,8 @@ type WidgetInfo struct {
 	// Hierarchy describes model identity and logical sibling position without
 	// materializing nodes outside a virtualized viewport.
 	Hierarchy *HierarchyInfo `json:"hierarchy,omitempty"`
+	// Table describes logical table identity without realizing offscreen rows.
+	Table *TableInfo `json:"table,omitempty"`
 
 	// Scroll state (omitempty: absent on non-scrolling widgets).
 	ScrollY      float32 `json:"scrollY,omitempty"`      // current scroll offset
@@ -62,6 +64,20 @@ type WidgetInfo struct {
 	ItemCount    int     `json:"itemCount,omitempty"`    // ListView: total items (virtualized)
 	VisibleStart int     `json:"visibleStart,omitempty"` // ListView: first visible index
 	VisibleEnd   int     `json:"visibleEnd,omitempty"`   // ListView: last visible index
+}
+
+// TableInfo uses one-based row/column positions. Zero means the table itself
+// or a header rather than a data row. IDs are model-local, not Widget IDs.
+// Sort is "ascending", "descending" or empty; Current is not keyboard focus.
+type TableInfo struct {
+	RowCount    int    `json:"rowCount"`
+	ColumnCount int    `json:"columnCount"`
+	RowID       string `json:"rowID,omitempty"`
+	ColumnID    string `json:"columnID,omitempty"`
+	RowIndex    int    `json:"rowIndex,omitempty"`
+	ColumnIndex int    `json:"columnIndex,omitempty"`
+	Current     bool   `json:"current,omitempty"`
+	Sort        string `json:"sort,omitempty"`
 }
 
 // HierarchyInfo uses one-based levels and sibling positions. SetSize counts
