@@ -70,6 +70,9 @@ func Rules(options Options) []style.Rule {
 		p.window, p.surface, p.button, buttonHover, buttonPressed,
 		primary[0], primary[1], primary[2],
 	})
+	// Soften the accent towards the palette's neutral border, not white in both
+	// themes. The opaque color keeps hover/pressed backgrounds unchanged.
+	tabFocus := mix(focus, p.border, .25)
 	rules := []style.Rule{
 		style.Name("table-view").BackgroundColor(p.window).BorderColor(p.border).BorderWidth(1),
 		style.Name("table-grid").BorderColor(mix(p.window, p.text, .10)).BorderWidth(0),
@@ -167,8 +170,12 @@ func Rules(options Options) []style.Rule {
 			style.Name(button.name).State(style.Hovered).BackgroundColor(button.bg[1]),
 			style.Name(button.name).State(style.Pressed).BackgroundColor(button.bg[2]),
 			style.Name(button.name).State(style.Disabled).ForegroundColor(p.disabled),
-			// Focus painting remains available, but is disabled by default.
-			style.Name(button.name).Part("focus").State(style.Focused).BorderColor(focus).BorderWidth(0),
+			// Pointer focus has no decoration; keyboard focus uses a thin border.
+			// Keep the optional border color for application Focused overrides.
+			style.Name(button.name).Part("focus").State(style.Focused).
+				BackgroundColor(color.Transparent).BorderColor(focus).BorderWidth(0),
+			style.Name(button.name).Part("focus").State(style.FocusVisible).
+				BackgroundColor(color.Transparent).BorderColor(tabFocus).BorderWidth(2),
 		)
 	}
 	return rules
