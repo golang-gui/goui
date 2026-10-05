@@ -69,3 +69,25 @@ func TestTreeFallbackStatesAndIndependentText(t *testing.T) {
 		}
 	}
 }
+
+func TestTableFallbackDecorationParts(t *testing.T) {
+	sheet := basestyle.Sheet(append(gui.DefaultStyleRules(), Rules()...)...)
+	if bg, ok := sheet.Resolve(basestyle.Sel{Name: "table-view"}).BackgroundColor(); !ok || bg != color.White {
+		t.Fatal("table fallback has no background")
+	}
+	for _, part := range []string{"outer-horizontal", "outer-vertical"} {
+		if width, _ := sheet.Resolve(basestyle.Sel{Name: "table-view", Part: part}).BorderWidth(); width != 1 {
+			t.Fatal("outer frame default missing")
+		}
+	}
+	for part, want := range map[string]float32{"horizontal": 1, "vertical": 0} {
+		s := sheet.Resolve(basestyle.Sel{Name: "table-grid", Part: part})
+		width, _ := s.BorderWidth()
+		if ink, ok := s.BorderColor(); !ok || ink == nil || width != want {
+			t.Fatalf("missing grid style %s", part)
+		}
+	}
+	if width, _ := sheet.Resolve(basestyle.Sel{Name: "table-header", Part: "separator"}).BorderWidth(); width != 1 {
+		t.Fatal("header separator is not style controlled")
+	}
+}
