@@ -76,7 +76,11 @@ func DefaultStyleRules() []style.Rule {
 		style.Name(styleNameButton).
 			State(style.Pressed).
 			BackgroundColor(color.RGBA{R: 180, G: 180, B: 180, A: 255}),
-		style.Name(styleNameButton).Part(stylePartFocus).State(style.Focused).BorderWidth(0),
+		style.Name(styleNameButton).Part(stylePartFocus).State(style.Focused).
+			BackgroundColor(color.Transparent).BorderWidth(0),
+		style.Name(styleNameButton).Part(stylePartFocus).State(style.FocusVisible).
+			BackgroundColor(color.Transparent).
+			BorderColor(color.RGBA{R: 102, G: 147, B: 217, A: 255}).BorderWidth(2),
 
 		style.Name(styleNameTextInput).
 			BackgroundColor(color.White).
@@ -221,10 +225,21 @@ func buttonStyleName(button *WidgetBase) string {
 	return styleNameButton
 }
 
-// Focus is independent of the button's hover/press state. Only the border is
-// painted here; background and child styles are deliberately left unchanged.
+// Focus is an independent pass over the button's hover/press background. Its
+// optional tint and border do not alter the child widgets' styles.
 func paintButtonFocus(p Painter, rect geometry.Rectangle, button *WidgetBase) {
 	if button.Focused() {
-		paintStyledBorder(p, rect, ResolveStyle(buttonStyleName(button), stylePartFocus, style.Focused))
+		state := style.Focused
+		if button.FocusVisible() {
+			state = style.FocusVisible
+		}
+		focus := ResolveStyle(buttonStyleName(button), stylePartFocus, state)
+		if bg, ok := focus.BackgroundColor(); ok && bg != nil && graphics.ColorOf(bg).A > 0 {
+			paintStyledBox(p, rect, focus)
+		} else {
+			// The default pointer-focus background is transparent: skip the
+			// no-op fill while retaining an application's optional border.
+			paintStyledBorder(p, rect, focus)
+		}
 	}
 }

@@ -16,6 +16,9 @@ const (
 	Pressed
 	Focused
 	Disabled
+	// FocusVisible is keyboard-indicated focus. It falls back to Focused for
+	// the same part before applying its own overrides.
+	FocusVisible
 )
 
 const PartDefault = ""
@@ -277,6 +280,9 @@ func fallbackChain(sel Sel) []Sel {
 	}
 	if partNormal != chain[len(chain)-1] {
 		chain = append(chain, partNormal)
+	}
+	if sel.State == FocusVisible {
+		chain = append(chain, Sel{Name: sel.Name, Part: sel.Part, State: Focused})
 	}
 	exact := Sel{
 		Name:  sel.Name,

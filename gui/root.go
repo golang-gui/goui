@@ -46,6 +46,7 @@ type rootBase struct {
 	layoutDirty   bool
 	paintDirty    bool
 	focusedWidget Widget
+	focusVisible  bool // input-managed keyboard hint mode, independent per host
 }
 
 func (b *rootBase) rootState() *rootBase { return b }

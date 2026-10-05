@@ -34,6 +34,10 @@ type Widget interface {
 	// SetFocusable(false) also clears focus if this widget is currently focused.
 	SetFocusable(bool)
 	Focused() bool
+	// FocusVisible reports logical focus with a keyboard-navigation hint. The
+	// host manages it: Tab enables hints, pointer presses disable them, and
+	// programmatic focus preserves the current mode. It is not a selection.
+	FocusVisible() bool
 	ContainsFocus() bool
 	ConnectFocused(func(focused bool)) signal.Handle
 	ConnectContainsFocus(func(focused bool)) signal.Handle
@@ -246,6 +250,14 @@ func (w *WidgetBase) SetFocusable(focusable bool) {
 
 func (w *WidgetBase) Focused() bool {
 	return w.focused
+}
+
+func (w *WidgetBase) FocusVisible() bool {
+	if !w.focused || w.destroyed {
+		return false
+	}
+	owner, ok := w.root().(interface{ rootState() *rootBase })
+	return ok && owner.rootState().focusVisible
 }
 
 func (w *WidgetBase) Cursor() Cursor {
@@ -464,6 +476,7 @@ func (w *WidgetBase) Snapshot() WidgetInfo {
 		Enabled:       true,
 		Focusable:     w.Focusable(),
 		Focused:       w.Focused(),
+		FocusVisible:  w.FocusVisible(),
 		ContainsFocus: w.ContainsFocus(),
 	}
 	for _, controller := range w.controllers {

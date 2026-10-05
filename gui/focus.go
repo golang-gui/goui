@@ -6,6 +6,24 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 )
 
+// setFocusVisible changes the host's input mode, not its logical focus. The
+// current widget needs repainting even when focus stays on the same target.
+func setFocusVisible(host EventTarget, visible bool) {
+	owner, ok := host.(interface{ rootState() *rootBase })
+	if !ok {
+		return
+	}
+	state := owner.rootState()
+	if state.focusVisible == visible {
+		return
+	}
+	state.focusVisible = visible
+	if focused := host.FocusedWidget(); focused != nil && !focused.base().destroyed {
+		focused.RequestPaint()
+		focused.base().requestSemanticUpdate()
+	}
+}
+
 // navigateTab is the default key fallback, after controllers and shortcuts.
 // Rebuild the order from the live tree on each key: tree changes need no
 // separate focus chain or invalidation protocol.
@@ -47,6 +65,9 @@ func (d *EventDispatcher) navigateTab(host EventTarget, event events.Event) {
 		index = (index + 1) % len(candidates)
 	}
 	next := candidates[index]
+	// Focus callbacks must observe the new mode. A single candidate also turns
+	// on the hint without emitting another focus notification.
+	setFocusVisible(host, true)
 	if next != current && !host.SetFocusedWidget(next) {
 		return
 	}
