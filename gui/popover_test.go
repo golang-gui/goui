@@ -20,6 +20,46 @@ type popoverMeasureWidget struct {
 	size geometry.Size
 }
 
+func TestPopoverTabFocusAndModalIsolation(t *testing.T) {
+	ownerRoot := newTestWidget()
+	ownerRoot.SetFocusable(true)
+	win := &window{}
+	win.SetWidget(ownerRoot)
+	win.SetFocusedWidget(ownerRoot)
+	root, first, second := newTestWidget(), newTestWidget(), newTestWidget()
+	first.SetFocusable(true)
+	second.SetFocusable(true)
+	root.AddChild(first)
+	root.AddChild(second)
+	p := &popover{modal: true, visible: true}
+	p.SetWidget(root)
+	win.SetModalTarget(p)
+	var changes []bool
+	first.ConnectFocused(func(focused bool) { changes = append(changes, focused) })
+	for _, want := range []Widget{first, second, first} {
+		handled := false
+		e := shortcutPress(events.KeyTab, 0)
+		e.Handled = &handled
+		_ = win.DispatchEvent(e)
+		if !handled || p.FocusedWidget() != want || !want.Focused() || !root.ContainsFocus() || win.FocusedWidget() != ownerRoot {
+			t.Fatalf("modal Tab: focus=%p want=%p handled=%v", p.FocusedWidget(), want, handled)
+		}
+	}
+	root.RemoveChild(first)
+	if p.FocusedWidget() != nil || first.Focused() || root.ContainsFocus() {
+		t.Fatal("popover detach retained focus")
+	}
+	if len(changes) != 4 || !changes[0] || changes[1] || !changes[2] || changes[3] {
+		t.Fatalf("focus signals=%v, want [true false true false]", changes)
+	}
+	win.SetModalTarget(nil)
+	p.SetFocusedWidget(second)
+	p.Hide()
+	if p.FocusedWidget() != nil || second.Focused() || root.ContainsFocus() {
+		t.Fatal("hiding popover retained logical focus")
+	}
+}
+
 func (w *popoverMeasureWidget) Measure(layout.Constraint) layout.Measurement {
 	return layout.Measured(w.size)
 }

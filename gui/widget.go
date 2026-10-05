@@ -28,7 +28,10 @@ type Widget interface {
 	Visible() bool
 	SetVisible(bool)
 
+	// Focusable allows this widget to receive logical focus and participate in
+	// default Tab navigation. It does not change its descendants' capabilities.
 	Focusable() bool
+	// SetFocusable(false) also clears focus if this widget is currently focused.
 	SetFocusable(bool)
 	Focused() bool
 	ContainsFocus() bool
@@ -89,8 +92,10 @@ type Widget interface {
 
 	// Children returns the direct children in sibling order: painting visits
 	// them forwards and picking visits them backwards (frontmost first).
-	// Layout managers may interpret this order for placement; it is not a
-	// universal content index or keyboard focus order. An empty slice is a leaf.
+	// Default Tab navigation uses depth-first preorder (self, then children);
+	// Shift+Tab reverses that order. Layout managers may also use sibling order
+	// for placement; it is not a universal logical content index. An empty slice
+	// is a leaf. Focusable=false skips only self; hidden subtrees are skipped.
 	Children() []Widget
 
 	ConnectMount(func()) signal.Handle
