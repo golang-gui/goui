@@ -122,13 +122,12 @@ func (p *popover) RequestPaint() error {
 }
 
 func (p *popover) SetFocusedWidget(widget Widget) bool {
-	if widget != nil && (widget.Root() != p || !widget.Focusable() || !visibleInTree(widget)) {
+	if widget != nil && (p.destroyed || widget.base().destroyed || widget.Root() != p || !widget.Focusable() || !visibleInTree(widget)) {
 		return false
 	}
-	if p.focusedWidget != widget {
-		p.focusedWidget = widget
-		p.requestPaint()
-	}
+	p.focusedWidget = widget
+	p.dispatcher.updateFocus(p.Widget(), widget)
+	p.requestPaint()
 	return true
 }
 
@@ -349,6 +348,7 @@ func (p *popover) Destroy() {
 // Reset controller state as well as dispatch paths. The menu additionally
 // resets its presentation state, since Controller.Reset need not emit signals.
 func (p *popover) resetInput() {
+	p.SetFocusedWidget(nil)
 	p.cancelInput(GestureHostClosed)
 	p.dispatcher = EventDispatcher{}
 	var reset func(Widget)

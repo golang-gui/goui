@@ -18,6 +18,32 @@ import (
 
 // 多行视图、模型与布局。
 
+func TestTextViewTabConsumptionPrecedesNavigation(t *testing.T) {
+	editor, win, _ := newEditorFixture(t, "")
+	root, next := newTestWidget(), newTestWidget()
+	next.SetFocusable(true)
+	win.SetWidget(nil)
+	root.AddChild(editor)
+	root.AddChild(next)
+	win.SetWidget(root)
+	editor.Arrange(geometry.Rect(0, 0, 209, 108))
+	win.SetFocusedWidget(editor)
+	editor.SetAcceptsTab(true)
+	editorKey(t, win, events.KeyTab, 0)
+	if editor.Model().Text() != "\t" || win.FocusedWidget() != editor {
+		t.Fatal("AcceptsTab did not consume Tab before navigation")
+	}
+	editor.SetAcceptsTab(false)
+	editorKey(t, win, events.KeyTab, 0)
+	if editor.Model().Text() != "\t" || win.FocusedWidget() != next || !next.Focused() {
+		t.Fatal("unconsumed Tab did not move focus")
+	}
+	editorKey(t, win, events.KeyTab, events.ModifierShift)
+	if win.FocusedWidget() != editor || !editor.Focused() {
+		t.Fatal("Shift+Tab did not restore editor focus")
+	}
+}
+
 func TestTextViewViewportCacheAndLocalEdit(t *testing.T) {
 	editor, _, typo := newEditorFixture(t, strings.Repeat("row\n", 50000))
 	if len(editor.paragraphs) > 20 || len(typo.calls) > 25 {

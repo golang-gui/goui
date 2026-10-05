@@ -269,7 +269,7 @@ func (w *window) SetFocusedWidget(widget Widget) bool {
 		w.setFocusedWidget(nil)
 		return true
 	}
-	if widget.Window() != w || !widget.Focusable() || !visibleInTree(widget) {
+	if w.destroyed || widget.base().destroyed || widget.Window() != w || !widget.Focusable() || !visibleInTree(widget) {
 		return false
 	}
 	if w.focusedWidget == widget {
@@ -649,7 +649,11 @@ func (w *window) routeToModalTarget(event events.Event) bool {
 		if e.EventType == events.KeyDown && e.Key == events.KeyEscape {
 			w.modalTarget.RequestDismiss()
 		} else {
-			_ = w.modalTarget.DispatchEvent(event)
+			// The owner's native default is already suppressed. Give the modal
+			// target its own consumption result so its key fallbacks can run.
+			handled := false
+			e.Handled = &handled
+			_ = w.modalTarget.DispatchEvent(e)
 		}
 		return true
 	case events.PointerEvent:

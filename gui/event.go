@@ -296,6 +296,9 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 	if !ctx.PropagationStopped() {
 		d.dispatchShortcuts(ctx, PhaseBubble)
 	}
+	if !ctx.PropagationStopped() {
+		d.navigateTab(host, event)
+	}
 	return nil
 }
 
@@ -332,7 +335,10 @@ func (d *EventDispatcher) target(host EventTarget, root Widget, event events.Eve
 		if focused := host.FocusedWidget(); focused != nil {
 			return focused
 		}
-		return root
+		if root != nil {
+			return root
+		}
+		return d.decoration
 	default:
 		return nil
 	}
@@ -344,9 +350,7 @@ func (d *EventDispatcher) target(host EventTarget, root Widget, event events.Eve
 // If no focusable widget is found, the current focus is left unchanged. A
 // click on a non-focusable surface — empty space, a :focusable=FALSE control
 // like a menu-bar button, a label wrapper — does not steal or clear focus.
-// This mirrors GTK4 (:focusable=FALSE means the widget and its descendants
-// cannot take focus, so a click there does not move it) and Flutter ("there is
-// always a primary focus": tapping a non-focusable element does not unfocus).
+// Focusable applies only to the widget itself, not to its descendants.
 func focusNearest(host EventTarget, target Widget) {
 	for widget := target; widget != nil; widget = widget.Parent() {
 		if widget.Focusable() {
@@ -409,8 +413,11 @@ func (d *EventDispatcher) updateFocus(root, target Widget) {
 }
 
 func (d *EventDispatcher) updateFocusPath(path []Widget) {
-	d.updateCrossingPath(CrossingFocus, d.focusPath, path, geometry.Point{}, false)
+	oldPath := d.focusPath
+	// Publish the destination before signals: a callback can change focus again.
+	// Crossing delivery below checks the latest path before changing each state.
 	d.focusPath = path
+	d.updateCrossingPath(CrossingFocus, oldPath, path, geometry.Point{}, false)
 }
 
 func (d *EventDispatcher) updateCrossingPath(crossingType CrossingType, oldPath, newPath []Widget, position geometry.Point, hasPosition bool) {
@@ -446,6 +453,19 @@ func (d *EventDispatcher) notifyCrossing(widget Widget, crossingType CrossingTyp
 	if widget == nil {
 		return
 	}
+	current := func() bool {
+		if crossingType != CrossingFocus {
+			return true
+		}
+		inside := slices.Contains(d.focusPath, widget)
+		if mode == CrossingTarget {
+			inside = pathTarget(d.focusPath) == widget
+		}
+		return inside == (direction == CrossingEnter)
+	}
+	if !current() {
+		return
+	}
 
 	ctx := &crossingContext{
 		crossingType: crossingType,
@@ -457,8 +477,11 @@ func (d *EventDispatcher) notifyCrossing(widget Widget, crossingType CrossingTyp
 		ctx.position = widgetLocalPoint(widget, position)
 	}
 	widget.base().handleCrossing(ctx)
-	for _, controller := range widget.EventControllers() {
-		if controller == nil {
+	for _, controller := range slices.Clone(widget.EventControllers()) {
+		if widget.base().destroyed || !current() {
+			return
+		}
+		if controller == nil || !slices.Contains(widget.EventControllers(), controller) {
 			continue
 		}
 		controller.HandleCrossing(ctx)

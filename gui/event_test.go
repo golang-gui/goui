@@ -5,8 +5,307 @@ import (
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/events"
 )
+
+func TestEventDispatcherTabOrder(t *testing.T) {
+	win := &window{}
+	root, first, group, nested, hidden, last := newTestWidget(), newTestWidget(), newTestWidget(), newTestWidget(), newTestWidget(), newTestWidget()
+	root.AddChild(first)
+	root.AddChild(group)
+	group.AddChild(nested)
+	root.AddChild(hidden)
+	hidden.AddChild(newTestWidget())
+	root.AddChild(last)
+	for _, w := range []Widget{first, nested, hidden, hidden.Children()[0], last} {
+		w.SetFocusable(true)
+	}
+	hidden.SetVisible(false)
+	win.SetWidget(root)
+	t.Cleanup(func() { win.SetWidget(nil) })
+
+	press := func(mods events.Modifiers, want Widget) {
+		t.Helper()
+		handled := false
+		_ = win.DispatchEvent(events.KeyEvent{EventType: events.KeyDown, Key: events.KeyTab, Modifiers: mods, Handled: &handled})
+		if !handled || win.FocusedWidget() != want || !want.Focused() || !root.ContainsFocus() {
+			t.Fatalf("Tab(%v): focus=%p want=%p handled=%v", mods, win.FocusedWidget(), want, handled)
+		}
+		if !win.Snapshot().Widget.ContainsFocus {
+			t.Fatal("focus missing from semantic snapshot")
+		}
+	}
+	press(0, first)
+	press(0, nested) // A non-focusable parent does not exclude its descendants.
+	press(0, last)
+	press(0, first) // Wrap within this host.
+	press(events.ModifierShift, last)
+	press(events.ModifierShift, nested)
+	_ = win.SetFocusedWidget(nil)
+	press(events.ModifierShift, last)
+
+	// Candidates are rebuilt from the current tree, not a persistent chain.
+	last.SetFocusable(false)
+	group.SetVisible(false)
+	press(0, first)
+	root.MoveChildBefore(last, first)
+	last.SetFocusable(true)
+	press(events.ModifierShift, last)
+	root.RemoveChild(last)
+	press(0, first)
+	group.SetVisible(true)
+	group.SetFocusable(true)
+	press(0, group)
+	press(0, nested) // Focusable containers also retain child traversal.
+}
+
+func TestEventDispatcherTabFallback(t *testing.T) {
+	for _, test := range []struct {
+		name           string
+		event          events.KeyEvent
+		initialHandled bool
+	}{
+		{"keyup", events.KeyEvent{EventType: events.KeyUp, Key: events.KeyTab}, false},
+		{"control", shortcutPress(events.KeyTab, events.ModifierControl), false},
+		{"alt", shortcutPress(events.KeyTab, events.ModifierAlt), false},
+		{"command", shortcutPress(events.KeyTab, events.ModifierCommand), false},
+		{"option", shortcutPress(events.KeyTab, events.ModifierOption), false},
+		{"win", shortcutPress(events.KeyTab, events.ModifierWin), false},
+		{"super", shortcutPress(events.KeyTab, events.ModifierSuper), false},
+		{"altgraph", shortcutPress(events.KeyTab, events.ModifierAltGraph), false},
+		{"other", shortcutPress(events.KeyEnter, 0), false},
+		{"handled", shortcutPress(events.KeyTab, 0), true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root, child := newTestWidget(), newTestWidget()
+			child.SetFocusable(true)
+			root.AddChild(child)
+			win := &window{}
+			win.SetWidget(root)
+			handled := test.initialHandled
+			test.event.Handled = &handled
+			_ = win.DispatchEvent(test.event)
+			if win.FocusedWidget() != nil || handled != test.initialHandled {
+				t.Fatal("non-navigation key changed focus or native default")
+			}
+		})
+	}
+	for _, phase := range []PropagationPhase{PhaseCapture, PhaseTarget, PhaseBubble} {
+		for _, mode := range []string{"controller", "shortcut", "prevent-default"} {
+			t.Run(fmt.Sprintf("%s/%d", mode, phase), func(t *testing.T) {
+				root, child := newTestWidget(), newTestWidget()
+				child.SetFocusable(true)
+				root.AddChild(child)
+				win := &window{}
+				win.SetWidget(root)
+				calls := 0
+				if mode == "shortcut" {
+					s := NewShortcut(KeyGesture{Key: KeyTab})
+					s.ConnectActivate(func() { calls++ })
+					win.Shortcuts().SetPhase(phase)
+					win.Shortcuts().AddShortcut(s)
+				} else {
+					root.AddEventController(newRecordingController("consumer", phase, new([]string), func(ctx EventContext) {
+						calls++
+						if mode == "controller" {
+							ctx.StopPropagation()
+						} else {
+							ctx.Event().(events.KeyEvent).PreventDefault()
+						}
+					}))
+				}
+				handled := false
+				e := shortcutPress(events.KeyTab, 0)
+				e.Handled = &handled
+				_ = win.DispatchEvent(e)
+				if calls != 1 || win.FocusedWidget() != nil {
+					t.Fatal("default navigation ran before input consumer")
+				}
+			})
+		}
+	}
+}
+
+func TestEventDispatcherTabEmptyAndSingle(t *testing.T) {
+	root := newTestWidget()
+	win := &window{}
+	win.SetWidget(root)
+	handled := false
+	e := shortcutPress(events.KeyTab, 0)
+	e.Handled = &handled
+	_ = win.DispatchEvent(e)
+	if handled || win.FocusedWidget() != nil {
+		t.Fatal("empty focus list consumed Tab")
+	}
+	root.SetFocusable(true)
+	changes := 0
+	root.ConnectFocused(func(bool) { changes++ })
+	for i := 0; i < 3; i++ {
+		handled = false
+		_ = win.DispatchEvent(e)
+		if !handled || win.FocusedWidget() != root {
+			t.Fatal("single candidate did not consume Tab")
+		}
+	}
+	if changes != 1 {
+		t.Fatalf("same focus emitted %d signals, want 1", changes)
+	}
+}
+
+func TestEventDispatcherTabFocusCallbacks(t *testing.T) {
+	for _, when := range []string{"leave", "enter", "contains"} {
+		for _, action := range []string{"remove", "redirect", "destroy-target", "destroy-host"} {
+			t.Run(when+"/"+action, func(t *testing.T) {
+				root, a, branch, b, c := newTestWidget(), newTestWidget(), newTestWidget(), newTestWidget(), newTestWidget()
+				root.AddChild(a)
+				root.AddChild(branch)
+				branch.AddChild(b)
+				branch.AddChild(c)
+				for _, w := range []Widget{a, b, c} {
+					w.SetFocusable(true)
+				}
+				win := &window{}
+				win.SetWidget(root)
+				win.SetFocusedWidget(a)
+				change := func() {
+					switch action {
+					case "remove":
+						branch.RemoveChild(b)
+					case "redirect":
+						win.SetFocusedWidget(c)
+					case "destroy-target":
+						b.base().destroy(b)
+					case "destroy-host":
+						win.Destroy()
+					}
+				}
+				switch when {
+				case "leave":
+					a.ConnectFocused(func(focused bool) {
+						if !focused {
+							change()
+						}
+					})
+				case "enter":
+					b.ConnectFocused(func(focused bool) {
+						if focused {
+							change()
+						}
+					})
+				case "contains":
+					b.ConnectContainsFocus(func(focused bool) {
+						if focused {
+							change()
+						}
+					})
+				}
+				_ = win.DispatchEvent(shortcutPress(events.KeyTab, 0))
+				if pathTarget(win.dispatcher.focusPath) != win.FocusedWidget() {
+					t.Fatal("dispatcher retained a superseded focus path")
+				}
+				if b.Focused() || a.Focused() {
+					t.Fatal("stale focus notification after callback")
+				}
+				if action == "redirect" {
+					if win.FocusedWidget() != c || !c.Focused() || !branch.ContainsFocus() || !root.ContainsFocus() {
+						t.Fatal("reentrant focus lost state")
+					}
+				} else if win.FocusedWidget() != nil || root.ContainsFocus() || branch.ContainsFocus() {
+					t.Fatal("detached subtree retained focus")
+				}
+			})
+		}
+	}
+}
+
+func TestEventDispatcherTabDecorationTree(t *testing.T) {
+	win := &window{}
+	decoration := newTestWidget()
+	decoration.SetFocusable(true)
+	adoptWidget(decoration, win)
+	win.dispatcher.decoration = decoration
+	_ = win.DispatchEvent(shortcutPress(events.KeyTab, 0))
+	if win.FocusedWidget() != decoration || !decoration.Focused() {
+		t.Fatal("decoration-only host could not focus")
+	}
+	root := newTestWidget()
+	root.SetFocusable(true)
+	win.SetWidget(root)
+	_ = win.DispatchEvent(shortcutPress(events.KeyTab, 0))
+	if win.FocusedWidget() != root || decoration.Focused() {
+		t.Fatal("decoration did not wrap to content")
+	}
+	_ = win.DispatchEvent(shortcutPress(events.KeyTab, 0))
+	if win.FocusedWidget() != decoration || root.Focused() {
+		t.Fatal("content did not visit decoration")
+	}
+}
+
+func TestEventDispatcherTabRevealsNestedScrollViews(t *testing.T) {
+	outer, inner := NewScrollView(), NewScrollView()
+	outerContent := &mockWidget{size: geometry.Size{Width: 300, Height: 600}}
+	innerContent := &mockWidget{size: geometry.Size{Width: 200, Height: 400}}
+	first, last := newTestWidget(), newTestWidget()
+	first.SetFocusable(true)
+	last.SetFocusable(true)
+	innerContent.WidgetBase.AddChild(innerContent, first)
+	innerContent.WidgetBase.AddChild(innerContent, last)
+	first.Arrange(geometry.Rect(0, 0, 30, 20))
+	last.Arrange(geometry.Rect(150, 350, 30, 20))
+	inner.SetChild(innerContent)
+	outerContent.WidgetBase.AddChild(outerContent, inner)
+	outer.SetChild(outerContent)
+	win := &window{}
+	win.SetWidget(outer)
+	outer.Measure(layout.Loose(geometry.Size{Width: 120, Height: 100}))
+	outer.Arrange(geometry.Rect(0, 0, 120, 100))
+	inner.Measure(layout.Loose(geometry.Size{Width: 100, Height: 80}))
+	inner.Arrange(geometry.Rect(170, 400, 100, 80))
+	win.SetFocusedWidget(first)
+	_ = win.DispatchEvent(shortcutPress(events.KeyTab, 0))
+	// Independent expected geometry, including the 8 DIP scrollbar space:
+	// inner viewport 92x72, outer viewport 112x92, target size 30x20.
+	if inner.ScrollX() != 88 || inner.ScrollY() != 298 || outer.ScrollX() != 150 || outer.ScrollY() != 380 {
+		t.Fatalf("inner=(%g,%g), outer=(%g,%g)", inner.ScrollX(), inner.ScrollY(), outer.ScrollX(), outer.ScrollY())
+	}
+	if win.FocusedWidget() != last || !last.Focused() {
+		t.Fatal("reveal changed focus")
+	}
+	_ = win.DispatchEvent(shortcutPress(events.KeyTab, events.ModifierShift))
+	if win.FocusedWidget() != first || inner.ScrollX() != 0 || inner.ScrollY() != 0 || outer.ScrollX() != 150 || outer.ScrollY() != 380 {
+		t.Fatal("reverse traversal did not reveal the first nested field minimally")
+	}
+}
+
+type tabScrollableContent struct {
+	mockScrollContent
+	target Widget
+}
+
+func (m *tabScrollableContent) LayoutVisible(viewport geometry.Size, offset geometry.Point) {
+	m.mockScrollContent.LayoutVisible(viewport, offset)
+	m.target.Arrange(geometry.Rect(-offset.X, 350-offset.Y, 30, 20))
+}
+
+func TestEventDispatcherTabRevealsScrollableChild(t *testing.T) {
+	child := newTestWidget()
+	child.SetFocusable(true)
+	content := &tabScrollableContent{mockScrollContent: mockScrollContent{height: 500}, target: child}
+	content.WidgetBase.AddChild(content, child)
+	scroll := NewScrollView()
+	scroll.SetChild(content)
+	win := &window{}
+	win.SetWidget(scroll)
+	scroll.Measure(layout.Loose(geometry.Size{Width: 200, Height: 100}))
+	scroll.Arrange(geometry.Rect(0, 0, 200, 100))
+	scroll.SetScrollY(80)
+	_ = win.DispatchEvent(shortcutPress(events.KeyTab, 0))
+	// The field's unscrolled bottom is 370, and the viewport is 100 DIP.
+	if win.FocusedWidget() != child || scroll.ScrollY() != 270 || child.Rect().Y != 80 {
+		t.Fatalf("focus=%p scroll=%g child=%+v", win.FocusedWidget(), scroll.ScrollY(), child.Rect())
+	}
+}
 
 func TestEventDispatcherDispatchesPointerEventThroughThreePhases(t *testing.T) {
 	root := newTestWidget()
