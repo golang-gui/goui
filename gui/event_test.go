@@ -86,7 +86,7 @@ func TestEventDispatcherTabFallback(t *testing.T) {
 			handled := test.initialHandled
 			test.event.Handled = &handled
 			_ = win.DispatchEvent(test.event)
-			if win.FocusedWidget() != nil || handled != test.initialHandled {
+			if win.FocusedWidget() != nil || handled != test.initialHandled || win.focusVisible {
 				t.Fatal("non-navigation key changed focus or native default")
 			}
 		})
@@ -119,7 +119,7 @@ func TestEventDispatcherTabFallback(t *testing.T) {
 				e := shortcutPress(events.KeyTab, 0)
 				e.Handled = &handled
 				_ = win.DispatchEvent(e)
-				if calls != 1 || win.FocusedWidget() != nil {
+				if calls != 1 || win.FocusedWidget() != nil || win.focusVisible {
 					t.Fatal("default navigation ran before input consumer")
 				}
 			})
@@ -135,7 +135,7 @@ func TestEventDispatcherTabEmptyAndSingle(t *testing.T) {
 	e := shortcutPress(events.KeyTab, 0)
 	e.Handled = &handled
 	_ = win.DispatchEvent(e)
-	if handled || win.FocusedWidget() != nil {
+	if handled || win.FocusedWidget() != nil || win.focusVisible {
 		t.Fatal("empty focus list consumed Tab")
 	}
 	root.SetFocusable(true)
@@ -208,14 +208,79 @@ func TestEventDispatcherTabFocusCallbacks(t *testing.T) {
 					t.Fatal("stale focus notification after callback")
 				}
 				if action == "redirect" {
-					if win.FocusedWidget() != c || !c.Focused() || !branch.ContainsFocus() || !root.ContainsFocus() {
+					if win.FocusedWidget() != c || !c.Focused() || !c.FocusVisible() || !branch.ContainsFocus() || !root.ContainsFocus() {
 						t.Fatal("reentrant focus lost state")
 					}
-				} else if win.FocusedWidget() != nil || root.ContainsFocus() || branch.ContainsFocus() {
+				} else if win.FocusedWidget() != nil || root.ContainsFocus() || branch.ContainsFocus() || b.FocusVisible() {
 					t.Fatal("detached subtree retained focus")
 				}
 			})
 		}
+	}
+}
+
+func TestEventDispatcherFocusVisible(t *testing.T) {
+	root, first, second := newTestWidget(), newTestWidget(), newTestWidget()
+	root.AddChild(first)
+	root.AddChild(second)
+	for _, child := range []Widget{first, second} {
+		child.SetFocusable(true)
+	}
+	root.Arrange(geometry.Rect(0, 0, 100, 100))
+	first.Arrange(geometry.Rect(0, 0, 100, 40))
+	second.Arrange(geometry.Rect(0, 50, 100, 40))
+	win := &window{}
+	win.SetWidget(root)
+	t.Cleanup(func() { win.SetWidget(nil) })
+	changes := 0
+	first.ConnectFocused(func(bool) { changes++ })
+	win.SetFocusedWidget(first)
+	if first.FocusVisible() || first.Snapshot().FocusVisible {
+		t.Fatal("initial programmatic focus enabled keyboard hints")
+	}
+	second.ConnectFocused(func(focused bool) {
+		if focused && (!second.FocusVisible() || !second.Snapshot().FocusVisible) {
+			t.Fatal("Tab callback observed the old input mode")
+		}
+	})
+	_ = win.DispatchEvent(shortcutPress(events.KeyTab, 0))
+	if !second.FocusVisible() || first.FocusVisible() || root.FocusVisible() {
+		t.Fatal("keyboard hint was not limited to the focused target")
+	}
+	_ = win.DispatchEvent(shortcutPress(events.KeyTab, events.ModifierShift))
+	if !first.FocusVisible() || second.FocusVisible() {
+		t.Fatal("reverse navigation lost keyboard hints")
+	}
+	win.SetFocusedWidget(nil)
+	if first.FocusVisible() || second.FocusVisible() {
+		t.Fatal("cleared focus kept a visible hint")
+	}
+	win.SetFocusedWidget(first)
+	if !first.FocusVisible() {
+		t.Fatal("programmatic focus did not preserve keyboard mode")
+	}
+	before := changes
+	_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: geometry.Point{X: 10, Y: 10}})
+	if !first.FocusVisible() {
+		t.Fatal("pointer movement hid the keyboard hint")
+	}
+	win.paintDirty, win.layoutDirty = false, false
+	_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Position: geometry.Point{X: 10, Y: 10}, Button: events.PointerButtonLeft})
+	if first.FocusVisible() || first.Snapshot().FocusVisible || !first.Focused() || changes != before {
+		t.Fatal("pointer press did not hide hints independently of logical focus")
+	}
+	if !win.paintDirty || win.layoutDirty {
+		t.Fatal("hint-only change must repaint without requesting layout")
+	}
+	// The same candidate still enables hints, without repeating Focused signals.
+	second.SetFocusable(false)
+	_ = win.DispatchEvent(shortcutPress(events.KeyTab, 0))
+	if !first.FocusVisible() || changes != before {
+		t.Fatal("single-candidate Tab did not enable hints independently")
+	}
+	root.RemoveChild(first)
+	if first.FocusVisible() || first.Snapshot().FocusVisible {
+		t.Fatal("detached widget retained keyboard hints")
 	}
 }
 

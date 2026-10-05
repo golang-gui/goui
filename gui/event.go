@@ -177,6 +177,7 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 	var sequence *gestureSequence
 	if pointer, ok := event.(events.PointerEvent); ok {
 		if pointer.EventType == events.PointerDown {
+			setFocusVisible(host, false)
 			if d.gesture != nil {
 				d.gesture.cancel(GestureInterrupted)
 			}

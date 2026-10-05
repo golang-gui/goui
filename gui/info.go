@@ -37,6 +37,7 @@ type WidgetInfo struct {
 	Enabled       bool `json:"enabled"`
 	Focusable     bool `json:"focusable"`
 	Focused       bool `json:"focused"`
+	FocusVisible  bool `json:"focusVisible"` // focused with a keyboard-navigation hint
 	Selected      bool `json:"selected,omitempty"`
 	ContainsFocus bool `json:"containsFocus"`
 	// Actions describes supported actions, not guaranteed input reachability.

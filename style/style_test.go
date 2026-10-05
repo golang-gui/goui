@@ -72,6 +72,54 @@ func TestResolveUsesPartFallback(t *testing.T) {
 	}
 }
 
+func TestResolveFocusVisibleFallback(t *testing.T) {
+	for _, part := range []string{PartDefault, "focus"} {
+		t.Run("part="+part, func(t *testing.T) {
+			rules := []Rule{
+				Name("button").BackgroundColor(color.White).BorderWidth(1).Radius(6),
+				Name("button").Part(part).ForegroundColor(color.Black),
+				Name("button").Part(part).State(Focused).BackgroundColor(color.Transparent).BorderColor(color.Black).BorderWidth(2),
+				Name("button").Part(part).State(FocusVisible).BackgroundColor(color.NRGBA{A: 24}),
+				// Later, unrelated parts/states/names must not leak into the chain.
+				Name("button").Part("other").State(Focused).BorderWidth(8),
+				Name("button").Part(part).State(Hovered).BorderWidth(9),
+				Name("label").Part(part).State(Focused).BorderWidth(10),
+			}
+			sheet := Sheet(rules...)
+			sel := Sel{Name: "button", Part: part, State: FocusVisible}
+			resolved := sheet.Resolve(sel)
+			bg, ok := resolved.BackgroundColor()
+			if !ok || !colors.Equal(bg, color.NRGBA{A: 24}) {
+				t.Fatalf("visible background: %v, set=%v", bg, ok)
+			}
+			if width, ok := resolved.BorderWidth(); !ok || width != 2 {
+				t.Fatalf("Focused border not inherited: %g, set=%v", width, ok)
+			}
+			if radius, ok := resolved.Radius(); !ok || radius != 6 {
+				t.Fatalf("normal radius not inherited: %g, set=%v", radius, ok)
+			}
+			// Explicit zero/transparent values still override the Focused step.
+			custom := Sheet(append(rules, Name("button").Part(part).State(FocusVisible).
+				BackgroundColor(color.Transparent).BorderWidth(0))...)
+			if width, _ := custom.Resolve(sel).BorderWidth(); width != 0 {
+				t.Fatal("FocusVisible could not disable a Focused border")
+			}
+			if bg, _ := custom.Resolve(sel).BackgroundColor(); !colors.Equal(bg, color.Transparent) {
+				t.Fatal("FocusVisible could not disable its tint")
+			}
+			sel.State = Focused
+			if bg, _ := sheet.Resolve(sel).BackgroundColor(); !colors.Equal(bg, color.Transparent) {
+				t.Fatal("FocusVisible leaked into ordinary Focused")
+			}
+		})
+	}
+	// A non-default part must not inherit a different part's Focused state.
+	sheet := Sheet(Name("button").BorderWidth(1), Name("button").State(Focused).BorderWidth(7))
+	if width, _ := sheet.Resolve(Sel{Name: "button", Part: "focus", State: FocusVisible}).BorderWidth(); width != 1 {
+		t.Fatal("FocusVisible inherited another part's Focused rule")
+	}
+}
+
 func TestResolveRequiresFullSelectorMatch(t *testing.T) {
 	red := color.RGBA{R: 255, A: 255}
 	blue := color.RGBA{B: 255, A: 255}

@@ -658,6 +658,7 @@ func (w *window) routeToModalTarget(event events.Event) bool {
 		return true
 	case events.PointerEvent:
 		if e.EventType == events.PointerDown {
+			setFocusVisible(w, false)
 			w.modalTarget.RequestDismiss() // the owner only ever sees clicks outside the target
 			w.cancelInput(GestureInterrupted)
 		}

@@ -60,6 +60,48 @@ func TestPopoverTabFocusAndModalIsolation(t *testing.T) {
 	}
 }
 
+func TestPopoverFocusVisibleIsolationAndReset(t *testing.T) {
+	ownerRoot, popupRoot := newTestWidget(), newTestWidget()
+	for _, widget := range []*testWidget{ownerRoot, popupRoot} {
+		widget.SetFocusable(true)
+		widget.Arrange(geometry.Rect(0, 0, 100, 100))
+	}
+	win := &window{}
+	win.SetWidget(ownerRoot)
+	p := &popover{rootBase: rootBase{width: 100, height: 100}, modal: true, visible: true}
+	p.SetWidget(popupRoot)
+	t.Cleanup(func() { p.SetWidget(nil); win.SetWidget(nil) })
+	_ = win.DispatchEvent(shortcutPress(events.KeyTab, 0))
+	win.SetModalTarget(p)
+	_ = win.DispatchEvent(shortcutPress(events.KeyTab, 0))
+	if !ownerRoot.FocusVisible() || !popupRoot.FocusVisible() {
+		t.Fatal("modal navigation changed the owner's input mode")
+	}
+	_ = p.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Position: geometry.Point{X: 5, Y: 5}, Button: events.PointerButtonLeft})
+	if !ownerRoot.FocusVisible() || popupRoot.FocusVisible() || !popupRoot.Focused() {
+		t.Fatal("popup pointer mode leaked to owner or changed logical focus")
+	}
+	_ = win.DispatchEvent(shortcutPress(events.KeyTab, 0))
+	// Even a click in the transparent popup corner clears its own hint before
+	// requesting dismissal; applications need not hide it synchronously.
+	_ = p.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Position: geometry.Point{X: -1, Y: -1}})
+	if popupRoot.FocusVisible() || !ownerRoot.FocusVisible() {
+		t.Fatal("popup outside press did not independently clear hints")
+	}
+	_ = win.DispatchEvent(shortcutPress(events.KeyTab, 0))
+	p.ConnectDismissRequest(func() { p.Hide(); win.SetModalTarget(nil) })
+	_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown})
+	if ownerRoot.FocusVisible() || !ownerRoot.Focused() || popupRoot.FocusVisible() || p.FocusedWidget() != nil {
+		t.Fatal("owner outside press or popup Hide retained keyboard hints")
+	}
+	// Reopening and programmatically focusing starts without the old popup mode.
+	p.visible = true
+	p.SetFocusedWidget(popupRoot)
+	if popupRoot.FocusVisible() {
+		t.Fatal("reopened popup inherited the hidden session's keyboard mode")
+	}
+}
+
 func (w *popoverMeasureWidget) Measure(layout.Constraint) layout.Measurement {
 	return layout.Measured(w.size)
 }

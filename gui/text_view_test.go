@@ -30,12 +30,12 @@ func TestTextViewTabConsumptionPrecedesNavigation(t *testing.T) {
 	win.SetFocusedWidget(editor)
 	editor.SetAcceptsTab(true)
 	editorKey(t, win, events.KeyTab, 0)
-	if editor.Model().Text() != "\t" || win.FocusedWidget() != editor {
+	if editor.Model().Text() != "\t" || win.FocusedWidget() != editor || editor.FocusVisible() || win.focusVisible {
 		t.Fatal("AcceptsTab did not consume Tab before navigation")
 	}
 	editor.SetAcceptsTab(false)
 	editorKey(t, win, events.KeyTab, 0)
-	if editor.Model().Text() != "\t" || win.FocusedWidget() != next || !next.Focused() {
+	if editor.Model().Text() != "\t" || win.FocusedWidget() != next || !next.Focused() || !next.FocusVisible() {
 		t.Fatal("unconsumed Tab did not move focus")
 	}
 	editorKey(t, win, events.KeyTab, events.ModifierShift)

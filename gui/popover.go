@@ -248,6 +248,7 @@ func (p *popover) DispatchEvent(event events.Event) error {
 			_, border, _ := p.surfaceStyle()
 			radius, _ := border.Radius()
 			if e.EventType == events.PointerDown && !roundedBodyContains(p.bodyRect(), radius, e.Position) {
+				setFocusVisible(p, false)
 				p.RequestDismiss()
 				return nil
 			}
@@ -348,6 +349,7 @@ func (p *popover) Destroy() {
 // Reset controller state as well as dispatch paths. The menu additionally
 // resets its presentation state, since Controller.Reset need not emit signals.
 func (p *popover) resetInput() {
+	setFocusVisible(p, false)
 	p.SetFocusedWidget(nil)
 	p.cancelInput(GestureHostClosed)
 	p.dispatcher = EventDispatcher{}

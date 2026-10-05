@@ -1,7 +1,9 @@
 package gui
 
 import (
+	"fmt"
 	"image"
+	"image/color"
 	"math"
 	"testing"
 
@@ -9,7 +11,9 @@ import (
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/graphics/software"
 	"github.com/golang-gui/goui/platform/typography"
+	"github.com/golang-gui/goui/style"
 )
 
 func TestButtonSnapshot(t *testing.T) {
@@ -32,6 +36,118 @@ func TestButtonSnapshot(t *testing.T) {
 	}
 	if len(info.Actions) != 1 || info.Actions[0] != ActionClick {
 		t.Fatalf("unexpected snapshot actions: %v", info.Actions)
+	}
+}
+
+func TestButtonFocusVisiblePixels(t *testing.T) {
+	for _, kind := range []struct {
+		name string
+		new  func() Bin
+	}{
+		{"Button", func() Bin { return NewButton() }},
+		{"MenuButton", func() Bin { return NewMenuButton() }},
+	} {
+		for _, scale := range []float32{1, 2} {
+			t.Run(fmt.Sprintf("%s/%gx", kind.name, scale), func(t *testing.T) {
+				setTestApplication(t, nil)
+				backend, err := software.NewPainter(&widgetRenderSurface{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer backend.Destroy()
+				button := kind.new()
+				win := &window{rootBase: rootBase{painter: backend}}
+				win.SetWidget(button)
+				defer win.SetWidget(nil)
+				button.Arrange(geometry.Rect(0, 0, 80, 30))
+				softBorder := color.RGBA{R: 102, G: 147, B: 217, A: 255}
+				check := func(want uint8, border color.RGBA, borderWidth int) {
+					t.Helper()
+					img, err := RenderWidget(button, scale)
+					if err != nil {
+						t.Fatal(err)
+					}
+					// Straight edges and interior, away from rounded corners/text.
+					// Opaque premultiplied sRGB bytes: exact assertions (there is
+					// no translucent tint or partial edge coverage at these points).
+					body := color.RGBA{R: want, G: want, B: want, A: 255}
+					pixels := int(scale)
+					// Sample every physical pixel through the entire border and
+					// the first interior pixel on all four sides (2/4 pixels at
+					// 1x/2x for the default 2 DIP border).
+					for depth := 0; depth <= borderWidth*pixels; depth++ {
+						wantColor := body
+						if depth < borderWidth*pixels {
+							wantColor = border
+						}
+						for _, point := range []image.Point{{X: 40 * pixels, Y: depth}, {X: 40 * pixels, Y: 30*pixels - 1 - depth}, {X: depth, Y: 15 * pixels}, {X: 80*pixels - 1 - depth, Y: 15 * pixels}} {
+							got := color.RGBAModel.Convert(img.At(point.X, point.Y)).(color.RGBA)
+							if got != wantColor {
+								t.Fatalf("pixel at %v (depth=%d px): %v want %v", point, depth, got, wantColor)
+							}
+						}
+					}
+					if got := color.RGBAModel.Convert(img.At(40*pixels, 15*pixels)).(color.RGBA); got != body {
+						t.Fatalf("focus changed the interior: %v want %v", got, body)
+					}
+					if button.Rect() != geometry.Rect(0, 0, 80, 30) || img.Bounds() != image.Rect(0, 0, 80*int(scale), 30*int(scale)) {
+						t.Fatal("focus changed layout or expanded rendering bounds")
+					}
+					if got := color.RGBAModel.Convert(img.At(0, 0)).(color.RGBA); got != (color.RGBA{}) {
+						t.Fatalf("focus squared off the rounded corner: %v", got)
+					}
+				}
+				check(210, color.RGBA{R: 210, G: 210, B: 210, A: 255}, 0)
+				_ = win.DispatchEvent(shortcutPress(events.KeyTab, 0))
+				check(210, softBorder, 2)
+				_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: geometry.Point{X: 10, Y: 10}})
+				check(230, softBorder, 2) // Hover background is untouched.
+				_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Position: geometry.Point{X: 10, Y: 10}, Button: events.PointerButtonLeft, Buttons: events.PointerButtonLeftDown})
+				if !button.Focused() || button.FocusVisible() {
+					t.Fatal("pointer press did not preserve focus while hiding the hint")
+				}
+				check(180, color.RGBA{R: 180, G: 180, B: 180, A: 255}, 0)
+				_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerUp, Position: geometry.Point{X: 100, Y: 100}, Button: events.PointerButtonLeft})
+				_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: geometry.Point{X: 100, Y: 100}})
+				check(210, color.RGBA{R: 210, G: 210, B: 210, A: 255}, 0)
+				// Generic Focused rules still control pointer focus; the more
+				// specific default FocusVisible border controls keyboard focus.
+				rules := append(DefaultStyleRules(), style.Name("button").Part("focus").State(style.Focused).
+					BorderColor(color.RGBA{R: 255, A: 255}).BorderWidth(3))
+				App.SetStyleSheet(style.Sheet(rules...))
+				for _, keyboard := range []bool{false, true} {
+					if keyboard {
+						_ = win.DispatchEvent(shortcutPress(events.KeyTab, 0))
+					}
+					if keyboard {
+						check(210, softBorder, 2)
+					} else {
+						check(210, color.RGBA{R: 255, A: 255}, 3)
+					}
+				}
+				// Explicit keyboard overrides remain available, including disabling
+				// the border without changing its underlying normal background.
+				App.SetStyleSheet(style.Sheet(append(rules, style.Name("button").Part("focus").State(style.FocusVisible).BorderWidth(0))...))
+				check(210, color.RGBA{R: 210, G: 210, B: 210, A: 255}, 0)
+				for _, width := range []int{1, 3} {
+					App.SetStyleSheet(style.Sheet(append(rules, style.Name("button").Part("focus").State(style.FocusVisible).
+						BorderColor(color.RGBA{R: 255, A: 255}).BorderWidth(float32(width)))...))
+					check(210, color.RGBA{R: 255, A: 255}, width)
+				}
+				child := newPainterTestWidget(func(p Painter) {
+					p.FillRect(geometry.Rect(0, 0, 8, 8), graphics.RGB(0, 0, 255))
+				})
+				button.SetChild(child)
+				child.Arrange(geometry.Rect(36, 11, 8, 8))
+				img, err := RenderWidget(button, scale)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got := color.RGBAModel.Convert(img.At(40*int(scale), 15*int(scale))).(color.RGBA); got != (color.RGBA{B: 255, A: 255}) {
+					t.Fatalf("focus border covered child painting: %v", got)
+				}
+			})
+		}
 	}
 }
 

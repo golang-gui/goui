@@ -14,6 +14,7 @@ import (
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/graphics/software"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/style"
 )
@@ -98,6 +99,58 @@ func newEditorFixture(t *testing.T, text string) (*TextView, *window, *editorTyp
 	win.SetFocusedWidget(editor)
 	t.Cleanup(func() { win.SetWidget(nil) })
 	return editor, win, typo
+}
+
+func TestTextInputFocusVisibleKeepsOwnBorder(t *testing.T) {
+	for _, scale := range []float32{1, 2} {
+		t.Run(fmt.Sprintf("%gx", scale), func(t *testing.T) {
+			_, win, _ := newEditorFixture(t, "")
+			backend, err := software.NewPainter(&widgetRenderSurface{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer backend.Destroy()
+			win.painter = backend
+			input := NewTextInput()
+			win.SetWidget(input)
+			defer win.SetWidget(nil)
+			input.Arrange(geometry.Rect(0, 0, 80, 30))
+			border := color.RGBA{R: 70, G: 130, B: 220, A: 255}
+			App.SetStyleSheet(style.Sheet(append(DefaultStyleRules(),
+				style.Name("text-input").State(style.Focused).BorderColor(border).BorderWidth(2),
+				// Deliberately conflicting rules must not add a second focus pass
+				// or replace the editor's existing Focused border.
+				style.Name("text-input").State(style.FocusVisible).BorderColor(color.Black).BorderWidth(6),
+				style.Name("text-input").Part("focus").State(style.FocusVisible).BorderColor(color.Black).BorderWidth(6),
+			)...))
+			win.SetFocusedWidget(input)
+			for _, keyboard := range []bool{false, true} {
+				if keyboard {
+					editorKey(t, win, events.KeyTab, 0)
+				}
+				if input.FocusVisible() != keyboard {
+					t.Fatalf("unexpected input mode: keyboard=%v hint=%v", keyboard, input.FocusVisible())
+				}
+				img, err := RenderWidget(input, scale)
+				if err != nil {
+					t.Fatal(err)
+				}
+				// Straight top edge at 0/1 DIP must be exactly the opaque 2 DIP
+				// editor border; 2 DIP and the center must stay white. No glyphs,
+				// corners or caret are sampled; premultiplied sRGB bytes, no tolerance.
+				for _, y := range []int{0, 1, 2, 15} {
+					want := border
+					if y >= 2 {
+						want = color.RGBA{R: 255, G: 255, B: 255, A: 255}
+					}
+					got := color.RGBAModel.Convert(img.At(40*int(scale), y*int(scale))).(color.RGBA)
+					if got != want {
+						t.Fatalf("keyboard=%v y=%d DIP pixel=%v want=%v", keyboard, y, got, want)
+					}
+				}
+			}
+		})
+	}
 }
 
 func editorKey(t *testing.T, win *window, key events.Key, modifiers events.Modifiers) {
