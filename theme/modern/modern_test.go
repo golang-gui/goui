@@ -52,6 +52,74 @@ func TestTreeInteractionAndTypography(t *testing.T) {
 	}
 }
 
+func TestTableStylesNeutralSelectionAndIndependentText(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		want := []color.RGBA{rgb(0xD1D1D1), rgb(0xCACACA), rgb(0xC3C3C3)}
+		if dark {
+			want = []color.RGBA{rgb(0x4F4F53), rgb(0x555559), rgb(0x5C5C5F)}
+		}
+		for _, accent := range []color.Color{color.Black, rgb(0xFF0000)} {
+			sheet := Sheet(Options{Dark: dark, AccentColor: accent, FontFamily: "Table Font", FontSize: 17})
+			for i, state := range []style.State{style.Normal, style.Hovered, style.Pressed} {
+				selected := sheet.Resolve(style.Sel{Name: "table-row", Part: "selected", State: state})
+				bg, ok := selected.BackgroundColor()
+				if !ok || rgba(bg) != want[i] {
+					t.Fatalf("table selection dark=%v state=%v: %v", dark, state, bg)
+				}
+			}
+			for _, name := range []string{"table-header-text", "table-cell-text"} {
+				s := resolved(sheet, name, style.Normal)
+				family, _ := s.FontFamily()
+				size, _ := s.FontSize()
+				fg, ok := s.ForegroundColor()
+				if family != "Table Font" || size != 17 || !ok || rgba(fg).A != 255 {
+					t.Fatal("table text depends on parent styling")
+				}
+			}
+			for _, part := range []string{"separator", "sort"} {
+				if _, ok := sheet.Resolve(style.Sel{Name: "table-header", Part: part}).ForegroundColor(); !ok {
+					t.Fatal("missing header part")
+				}
+			}
+			frame := resolved(sheet, "table-view", style.Normal)
+			if bg, ok := frame.BackgroundColor(); !ok || rgba(bg).A != 255 {
+				t.Fatal("table has no opaque theme background")
+			}
+			for _, part := range []string{"outer-horizontal", "outer-vertical"} {
+				if width, ok := sheet.Resolve(style.Sel{Name: "table-view", Part: part}).BorderWidth(); !ok || width != 1 {
+					t.Fatal("missing thin outer frame")
+				}
+			}
+			for part, wantWidth := range map[string]float32{"horizontal": 1, "vertical": 0} {
+				s := sheet.Resolve(style.Sel{Name: "table-grid", Part: part})
+				width, ok := s.BorderWidth()
+				ink, hasColor := s.BorderColor()
+				if !ok || width != wantWidth || !hasColor || rgba(ink).A != 255 {
+					t.Fatalf("grid default %s: width=%g color=%v", part, width, ink)
+				}
+			}
+			bg, _ := sheet.Resolve(style.Sel{Name: "table-row", Part: "alternate"}).BackgroundColor()
+			if rgba(bg).A != 0 {
+				t.Fatal("zebra enabled without an application rule")
+			}
+			custom := style.Sheet(append(Rules(Options{Dark: dark}),
+				style.Name("table-view").Part("outer-horizontal").BorderWidth(0),
+				style.Name("table-grid").Part("vertical").BorderWidth(3),
+				style.Name("table-row").Part("alternate").BackgroundColor(color.White),
+			)...)
+			if w, _ := custom.Resolve(style.Sel{Name: "table-view", Part: "outer-horizontal"}).BorderWidth(); w != 0 {
+				t.Fatal("outer horizontal override ignored")
+			}
+			if w, _ := custom.Resolve(style.Sel{Name: "table-view", Part: "outer-vertical"}).BorderWidth(); w != 1 {
+				t.Fatal("independent outer sides coupled")
+			}
+			if w, _ := custom.Resolve(style.Sel{Name: "table-grid", Part: "vertical"}).BorderWidth(); w != 3 {
+				t.Fatal("grid application override ignored")
+			}
+		}
+	}
+}
+
 func TestTreeSelectionColorsIgnoreAccent(t *testing.T) {
 	for _, dark := range []bool{false, true} {
 		// 固定调色板预期，不通过被测实现的 mix 函数推导。
