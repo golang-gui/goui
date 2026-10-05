@@ -182,9 +182,17 @@ func writeError(w http.ResponseWriter, status int, err error) {
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		status = http.StatusInternalServerError
+		// This fixed bool/string error response cannot fail JSON encoding.
+		data, _ = json.Marshal(errorResponse{OK: false, Error: "encode response: " + err.Error()})
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(value)
+	// Headers are committed. A transport error cannot be replaced by a second
+	// response; encoding errors have already been handled above.
+	_, _ = w.Write(append(data, '\n'))
 }
 
 // normalizeAddr returns a loopback TCP address for the dev server. A bare port such

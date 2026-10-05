@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -96,6 +97,9 @@ func TestHandlerSnapshotReturnsApplicationSnapshot(t *testing.T) {
 			},
 		}},
 	}
+	app.snapshot.Windows[0].Widget.SetAttribute("acme.record", struct {
+		Count int `json:"count"`
+	}{Count: 3})
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, SnapshotPath, nil)
@@ -118,6 +122,70 @@ func TestHandlerSnapshotReturnsApplicationSnapshot(t *testing.T) {
 	}
 	if got := response.Snapshot.Windows[0].Widget.Bounds.X; got != 12 {
 		t.Fatalf("unexpected widget bounds x %v", got)
+	}
+	attribute, ok := response.Snapshot.Windows[0].Widget.Attributes["acme.record"].(map[string]any)
+	if !ok || attribute["count"] != float64(3) {
+		t.Fatalf("unknown attribute was discarded or incorrectly decoded: %+v", attribute)
+	}
+}
+
+func TestHandlerSnapshotEncodingFailure(t *testing.T) {
+	app := newTestApplication()
+	widget := gui.WidgetInfo{ID: "invalid"}
+	widget.SetAttribute("acme.failure", failingResponseValue{})
+	app.snapshot.Windows = []gui.WindowInfo{{ID: "main", Widget: widget}}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, SnapshotPath, nil)
+	newHandler(func() gui.Application { return app }).ServeHTTP(rec, req)
+	var response errorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != http.StatusInternalServerError || response.OK || response.Error == "" || bytes.Contains(rec.Body.Bytes(), []byte(`"snapshot"`)) {
+		t.Fatalf("encoding failure was reported as a successful snapshot: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+type failingResponseValue struct{}
+
+func (failingResponseValue) MarshalJSON() ([]byte, error) {
+	return nil, errors.New("test encoding failure")
+}
+
+func TestWriteJSONEncodingFailure(t *testing.T) {
+	cycle := make(map[string]any)
+	cycle["self"] = cycle
+	for _, tt := range []struct {
+		name  string
+		value any
+	}{
+		{"function", func() {}},
+		{"cycle", cycle},
+		{"nan", math.NaN()},
+		{"infinity", math.Inf(1)},
+		{"custom marshaler", failingResponseValue{}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			writeJSON(rec, http.StatusOK, struct {
+				OK    bool `json:"ok"`
+				Value any  `json:"value"`
+			}{OK: true, Value: tt.value})
+			if rec.Code != http.StatusInternalServerError {
+				t.Fatalf("status=%d body=%q; want 500 with a complete error response", rec.Code, rec.Body.String())
+			}
+			if rec.Header().Get("Content-Type") != "application/json" {
+				t.Fatal("encoding failure lost JSON content type")
+			}
+			var body map[string]json.RawMessage
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatalf("incomplete error JSON: %v; body=%q", err, rec.Body.String())
+			}
+			var message string
+			if string(body["ok"]) != "false" || json.Unmarshal(body["error"], &message) != nil || message == "" || len(body) != 2 {
+				t.Fatalf("unexpected error response: %s", rec.Body.String())
+			}
+		})
 	}
 }
 
