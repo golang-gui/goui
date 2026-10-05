@@ -174,7 +174,7 @@ func (r *tableRow) Snapshot() gui.WidgetInfo {
 	info := r.WidgetBase.Snapshot()
 	info.Role = RoleTableRow
 	info.Selected = r.view.selected[r.bound.ID]
-	info.Table = &gui.TableInfo{RowID: r.bound.ID, RowIndex: r.bound.Index + 1, Current: r.view.current == r.bound.ID}
+	info.SetAttribute(TableInfoKey, TableInfo{RowID: r.bound.ID, RowIndex: r.bound.Index + 1, Current: r.view.current == r.bound.ID})
 	info.Actions = append(info.Actions, gui.ActionClick)
 	return info
 }
@@ -219,7 +219,7 @@ func (c *tableCell) Snapshot() gui.WidgetInfo {
 	info := c.WidgetBase.Snapshot()
 	info.Role = RoleTableCell
 	index := slices.Index(c.row.view.columns, c.column)
-	info.Table = &gui.TableInfo{RowID: c.bound.ID, RowIndex: c.bound.Index + 1, ColumnID: c.column.id, ColumnIndex: index + 1, Current: c.row.view.current == c.bound.ID}
+	info.SetAttribute(TableInfoKey, TableInfo{RowID: c.bound.ID, RowIndex: c.bound.Index + 1, ColumnID: c.column.id, ColumnIndex: index + 1, Current: c.row.view.current == c.bound.ID})
 	info.Selected = c.row.view.selected[c.bound.ID]
 	return info
 }

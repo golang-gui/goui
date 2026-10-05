@@ -142,25 +142,29 @@ func sheet(dark, fallback bool, appearance int) style.StyleSheet {
 func assertTable(table *widgets.TableView) {
 	info := table.Snapshot()
 	columns := table.Columns()
-	if info.Role != widgets.RoleTable || info.Table == nil || info.Table.ColumnCount != 4 || info.Table.RowCount != table.Model().ItemsCount() || len(info.Children) < 4 || len(info.Children) > 90 {
+	tableInfo, ok := info.Attributes[widgets.TableInfoKey].(widgets.TableInfo)
+	if info.Role != widgets.RoleTable || !ok || tableInfo.ColumnCount != 4 || tableInfo.RowCount != table.Model().ItemsCount() || len(info.Children) < 4 || len(info.Children) > 90 {
 		panic("table extent/virtualization")
 	}
 	seen := make(map[string]bool)
 	for i, header := range info.Children[:4] {
-		if header.Role != widgets.RoleColumnHeader || header.Table.ColumnID != columns[i].ID() || header.Table.ColumnIndex != i+1 {
+		h, ok := header.Attributes[widgets.TableInfoKey].(widgets.TableInfo)
+		if header.Role != widgets.RoleColumnHeader || !ok || h.ColumnID != columns[i].ID() || h.ColumnIndex != i+1 {
 			panic("header semantics")
 		}
 	}
 	for _, row := range info.Children[4:] {
-		if row.Role != widgets.RoleTableRow || row.Table == nil || row.Table.RowID == "" || seen[row.Table.RowID] || len(row.Children) != 4 {
+		r, ok := row.Attributes[widgets.TableInfoKey].(widgets.TableInfo)
+		if row.Role != widgets.RoleTableRow || !ok || r.RowID == "" || seen[r.RowID] || len(row.Children) != 4 {
 			panic("row semantics")
 		}
-		seen[row.Table.RowID] = true
-		if row.Table.RowIndex < 1 || row.Table.RowIndex > info.Table.RowCount || table.Model().RowID(row.Table.RowIndex-1) != row.Table.RowID || row.Table.Current != (row.Table.RowID == table.Current()) || row.Selected != slices.Contains(table.Selection(), row.Table.RowID) {
+		seen[r.RowID] = true
+		if r.RowIndex < 1 || r.RowIndex > tableInfo.RowCount || table.Model().RowID(r.RowIndex-1) != r.RowID || r.Current != (r.RowID == table.Current()) || row.Selected != slices.Contains(table.Selection(), r.RowID) {
 			panic("row identity/state")
 		}
 		for i, cell := range row.Children {
-			if cell.Role != widgets.RoleTableCell || cell.Table.ColumnID != columns[i].ID() || cell.Table.RowID != row.Table.RowID || cell.Table.ColumnIndex != i+1 || cell.Bounds.Width != columns[i].Width() || cell.Bounds.X != info.Children[i].Bounds.X {
+			c, ok := cell.Attributes[widgets.TableInfoKey].(widgets.TableInfo)
+			if cell.Role != widgets.RoleTableCell || !ok || c.ColumnID != columns[i].ID() || c.RowID != r.RowID || c.ColumnIndex != i+1 || cell.Bounds.Width != columns[i].Width() || cell.Bounds.X != info.Children[i].Bounds.X {
 				panic("cell/header geometry")
 			}
 		}
@@ -198,7 +202,7 @@ func assertTable(table *widgets.TableView) {
 		}
 	}
 	checkContent(table)
-	fmt.Printf("ASSERT PASS logical=%d realized=%d current=%s selection=%v scroll=(%g,%g)\n", info.Table.RowCount, len(seen), table.Current(), table.Selection(), info.ScrollX, info.ScrollY)
+	fmt.Printf("ASSERT PASS logical=%d realized=%d current=%s selection=%v scroll=(%g,%g)\n", tableInfo.RowCount, len(seen), table.Current(), table.Selection(), info.ScrollX, info.ScrollY)
 }
 func menuItems(m *model, row, column string) []*ui.MenuItemView {
 	if row == "" {

@@ -147,11 +147,11 @@ func (r *treeRow) Snapshot() gui.WidgetInfo {
 	info := r.WidgetBase.Snapshot()
 	info.Role = RoleTreeItem
 	info.Selected = r.view.selected[r.bound.ID]
-	info.Hierarchy = &gui.HierarchyInfo{
+	info.SetAttribute(HierarchyInfoKey, HierarchyInfo{
 		NodeID: r.bound.ID, ParentID: r.flat.parent, Level: r.flat.depth + 1,
 		PositionInSet: r.flat.position, SetSize: r.flat.siblings,
 		Expandable: r.bound.Expandable, Expanded: r.view.expanded[r.bound.ID], Current: r.view.current == r.bound.ID,
-	}
+	})
 	info.Actions = append(info.Actions, gui.ActionClick)
 	return info
 }

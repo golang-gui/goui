@@ -1,6 +1,7 @@
 package widgets
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
@@ -683,16 +684,75 @@ func TestTableViewInteractiveCellAndSnapshot(t *testing.T) {
 	v.SetSelection([]string{"r0"})
 	tableArrange(v, 220, 180)
 	info := v.Snapshot()
-	if info.Role != RoleTable || info.Table.RowCount != 20 || info.Table.ColumnCount != 1 || len(info.Children) > 8 {
+	table, ok := info.Attributes[TableInfoKey].(TableInfo)
+	if info.Role != RoleTable || !ok || table.RowCount != 20 || table.ColumnCount != 1 || len(info.Children) > 8 {
 		t.Fatal("table snapshot extent/virtualization")
 	}
-	if info.Children[0].Role != RoleColumnHeader || info.Children[0].Table.ColumnID != "name" {
+	header, ok := info.Children[0].Attributes[TableInfoKey].(TableInfo)
+	if info.Children[0].Role != RoleColumnHeader || !ok || header.ColumnID != "name" {
 		t.Fatal("header metadata")
 	}
 	row := info.Children[1]
 	cell := row.Children[0]
-	if row.Role != RoleTableRow || row.Table.RowID != "r0" || row.Table.RowIndex != 1 || !row.Selected || !row.Table.Current || cell.Role != RoleTableCell || cell.Table.ColumnIndex != 1 || cell.ID == "r0" {
+	rowInfo, rowOK := row.Attributes[TableInfoKey].(TableInfo)
+	cellInfo, cellOK := cell.Attributes[TableInfoKey].(TableInfo)
+	if row.Role != RoleTableRow || !rowOK || rowInfo.RowID != "r0" || rowInfo.RowIndex != 1 || !row.Selected || !rowInfo.Current || cell.Role != RoleTableCell || !cellOK || cellInfo.ColumnIndex != 1 || cell.ID == "r0" {
 		t.Fatal("row/cell semantic identity")
+	}
+}
+
+func TestTableViewSnapshotAttributesIsolation(t *testing.T) {
+	v, _, column, _ := tableFixture(1000)
+	defer v.SetModel(nil)
+	column.SetSortable(true)
+	v.AddEventController(gui.NewDragSource())
+	v.SetCurrent("r0")
+	v.SetSelection([]string{"r0"})
+	v.SetSort("name", SortAscending)
+	tableArrange(v, 220, 180)
+	old := v.Snapshot()
+	oldTable := old.Attributes[TableInfoKey].(TableInfo)
+	oldHeader := old.Children[0].Attributes[TableInfoKey].(TableInfo)
+	oldRow := old.Children[1].Attributes[TableInfoKey].(TableInfo)
+	oldCell := old.Children[1].Children[0].Attributes[TableInfoKey].(TableInfo)
+	if old.DragDrop == nil || old.DragDrop.SourceActions != gui.DragCopy || oldHeader.Sort != "ascending" || !oldRow.Current || !oldCell.Current {
+		t.Fatal("table attributes lost another capability, sort or current state")
+	}
+	v.SetCurrent("r1")
+	v.SetSelection([]string{"r1"})
+	v.SetSort("name", SortDescending)
+	now := v.Snapshot()
+	if now.Children[0].Attributes[TableInfoKey].(TableInfo).Sort != "descending" || now.Children[1].Attributes[TableInfoKey].(TableInfo).Current {
+		t.Fatal("new snapshot did not capture changed state")
+	}
+	now.SetAttribute(TableInfoKey, TableInfo{})
+	now.Children[0].SetAttribute(TableInfoKey, TableInfo{})
+	now.Children[1].SetAttribute(TableInfoKey, TableInfo{})
+	now.Children[1].Children[0].SetAttribute(TableInfoKey, TableInfo{})
+	if old.Attributes[TableInfoKey].(TableInfo) != oldTable || old.Children[0].Attributes[TableInfoKey].(TableInfo) != oldHeader || old.Children[1].Attributes[TableInfoKey].(TableInfo) != oldRow || old.Children[1].Children[0].Attributes[TableInfoKey].(TableInfo) != oldCell || !old.Children[1].Selected {
+		t.Fatal("previous table snapshot shares mutable state with a later snapshot")
+	}
+	data, err := json.Marshal(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if _, legacy := fields["table"]; legacy {
+		t.Fatal("snapshot still emits the retired table field")
+	}
+	var attributes map[string]json.RawMessage
+	if err := json.Unmarshal(fields["attributes"], &attributes); err != nil {
+		t.Fatal(err)
+	}
+	var decoded TableInfo
+	if err := json.Unmarshal(attributes[TableInfoKey], &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded != (TableInfo{RowCount: 1000, ColumnCount: 1}) || len(old.Children) > 8 {
+		t.Fatalf("JSON changed the table schema or virtualized children: %+v / %d", decoded, len(old.Children))
 	}
 }
 func TestTableViewRevealAndReentrantCallbacks(t *testing.T) {

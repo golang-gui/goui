@@ -44,17 +44,19 @@ type WidgetInfo struct {
 	// Children preserves back-to-front order for retained widget siblings.
 	// Semantic filtering means this is not a complete pointer-picking tree.
 	Children []WidgetInfo `json:"children"`
+	// Attributes contains named semantic data defined by the providing package.
+	// Values must be JSON-serializable snapshots, detached from mutable widget
+	// state; they must not contain Widgets, Models, native resources or callbacks.
+	// Producers copy mutable slices/maps as needed and consumers treat the result
+	// as read-only. SetAttribute does not deep-copy values. Unknown keys may be
+	// ignored by consumers; no registration or concrete-type decoding is implied.
+	Attributes map[string]any `json:"attributes,omitempty"`
 	// TextEditing is range-labelled editor state, not an input shortcut.
 	TextEditing *TextEditingInfo `json:"textEditing,omitempty"`
 	// DragDrop describes capabilities and transient state, never transferred data.
 	DragDrop *DragDropInfo `json:"dragDrop,omitempty"`
 	// Range describes an adjustable value; it is not a semantic input shortcut.
 	Range *RangeInfo `json:"range,omitempty"`
-	// Hierarchy describes model identity and logical sibling position without
-	// materializing nodes outside a virtualized viewport.
-	Hierarchy *HierarchyInfo `json:"hierarchy,omitempty"`
-	// Table describes logical table identity without realizing offscreen rows.
-	Table *TableInfo `json:"table,omitempty"`
 
 	// Scroll state (omitempty: absent on non-scrolling widgets).
 	ScrollY      float32 `json:"scrollY,omitempty"`      // current scroll offset
@@ -66,31 +68,25 @@ type WidgetInfo struct {
 	VisibleEnd   int     `json:"visibleEnd,omitempty"`   // ListView: last visible index
 }
 
-// TableInfo uses one-based row/column positions. Zero means the table itself
-// or a header rather than a data row. IDs are model-local, not Widget IDs.
-// Sort is "ascending", "descending" or empty; Current is not keyboard focus.
-type TableInfo struct {
-	RowCount    int    `json:"rowCount"`
-	ColumnCount int    `json:"columnCount"`
-	RowID       string `json:"rowID,omitempty"`
-	ColumnID    string `json:"columnID,omitempty"`
-	RowIndex    int    `json:"rowIndex,omitempty"`
-	ColumnIndex int    `json:"columnIndex,omitempty"`
-	Current     bool   `json:"current,omitempty"`
-	Sort        string `json:"sort,omitempty"`
-}
-
-// HierarchyInfo uses one-based levels and sibling positions. SetSize counts
-// currently known siblings; Current is distinct from actual keyboard focus.
-type HierarchyInfo struct {
-	NodeID        string `json:"nodeID"`
-	ParentID      string `json:"parentID"`
-	Level         int    `json:"level"`
-	PositionInSet int    `json:"positionInSet"`
-	SetSize       int    `json:"setSize"`
-	Expandable    bool   `json:"expandable"`
-	Expanded      bool   `json:"expanded"`
-	Current       bool   `json:"current"`
+// SetAttribute assembles semantic snapshot data; it does not change a Widget.
+// Names are case-sensitive and should use a package namespace (for example,
+// "goui.table"). Empty names panic. Nil deletes an entry without allocating;
+// a typed nil is an ordinary interface value, not a deletion request.
+// Existing entries are replaced, not merged. The map is allocated on demand.
+// Values are stored as provided, without validation or copying; producers must
+// supply detached JSON-serializable data before publishing the snapshot.
+func (info *WidgetInfo) SetAttribute(name string, value any) {
+	if name == "" {
+		panic("gui: empty snapshot attribute name")
+	}
+	if value == nil {
+		delete(info.Attributes, name)
+		return
+	}
+	if info.Attributes == nil {
+		info.Attributes = make(map[string]any)
+	}
+	info.Attributes[name] = value
 }
 
 // RangeInfo uses DIP for spatial controls. Direction is the axis along which

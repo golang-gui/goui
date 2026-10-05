@@ -90,14 +90,15 @@ func (h *tableHeader) Paint(p gui.Painter) {
 func (h *tableHeader) Snapshot() gui.WidgetInfo {
 	info := h.WidgetBase.Snapshot()
 	info.Role, info.Text = RoleColumnHeader, h.column.title
-	info.Table = &gui.TableInfo{ColumnID: h.column.id, ColumnIndex: slices.Index(h.view.columns, h.column) + 1}
+	data := TableInfo{ColumnID: h.column.id, ColumnIndex: slices.Index(h.view.columns, h.column) + 1}
 	if h.view.sortColumn == h.column.id {
 		if h.view.sortOrder == SortAscending {
-			info.Table.Sort = "ascending"
+			data.Sort = "ascending"
 		} else if h.view.sortOrder == SortDescending {
-			info.Table.Sort = "descending"
+			data.Sort = "descending"
 		}
 	}
+	info.SetAttribute(TableInfoKey, data)
 	info.Children = nil
 	if h.column.resizable {
 		info.Children = append(info.Children, h.handle.Snapshot())

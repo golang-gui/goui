@@ -536,7 +536,7 @@ func (v *TableView) Paint(p gui.Painter) {
 func (v *TableView) Snapshot() gui.WidgetInfo {
 	info := v.WidgetBase.Snapshot()
 	info.Role, info.ItemCount = RoleTable, len(v.rowIDs)
-	info.Table = &gui.TableInfo{RowCount: len(v.rowIDs), ColumnCount: len(v.columns)}
+	info.SetAttribute(TableInfoKey, TableInfo{RowCount: len(v.rowIDs), ColumnCount: len(v.columns)})
 	scroll, list := v.scroll.Snapshot(), v.list.Snapshot()
 	info.ScrollX, info.ScrollY, info.MaxScrollX, info.MaxScrollY = scroll.ScrollX, scroll.ScrollY, scroll.MaxScrollX, scroll.MaxScrollY
 	info.VisibleStart, info.VisibleEnd = list.VisibleStart, list.VisibleEnd
