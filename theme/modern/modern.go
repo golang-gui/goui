@@ -73,6 +73,7 @@ func Rules(options Options) []style.Rule {
 	// Soften the accent towards the palette's neutral border, not white in both
 	// themes. The opaque color keeps hover/pressed backgrounds unchanged.
 	tabFocus := mix(focus, p.border, .25)
+	progressTrack := mix(p.window, p.text, .10)
 	rules := []style.Rule{
 		style.Name("table-view").BackgroundColor(p.window).BorderColor(p.border).BorderWidth(1),
 		style.Name("table-grid").BorderColor(mix(p.window, p.text, .10)).BorderWidth(0),
@@ -110,6 +111,8 @@ func Rules(options Options) []style.Rule {
 		text("widget").BackgroundColor(color.Transparent).BorderWidth(0).Radius(0),
 		text("label"),
 		style.Name("icon").ForegroundColor(p.text),
+		style.Name("progress-bar").BackgroundColor(progressTrack).
+			ForegroundColor(focusColor(accent, p.text, []color.RGBA{progressTrack, p.window})).Radius(2),
 		style.Name(AccentIcon).ForegroundColor(focus),
 		text("label").State(style.Disabled).ForegroundColor(p.disabled),
 		text(MutedText).ForegroundColor(p.muted),
