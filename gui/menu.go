@@ -138,10 +138,10 @@ func (pm *PopoverMenu) Visible() bool {
 }
 
 func (pm *PopoverMenu) ShowAt(pos geometry.Point) error {
-	return pm.show(pos, false)
+	return pm.show(PopoverPlacementPoint, pos)
 }
 
-func (pm *PopoverMenu) show(pos geometry.Point, rectangle bool) error {
+func (pm *PopoverMenu) show(placement PopoverPlacement, pos geometry.Point) error {
 	if pm.model == nil {
 		return nil
 	}
@@ -156,9 +156,12 @@ func (pm *PopoverMenu) show(pos geometry.Point, rectangle bool) error {
 	if pm.popover == nil {
 		pm.replacePopover(true)
 	}
-	p := pm.popover.(*popover)
-	p.position, p.anchorRectangle = pos, rectangle
-	err := pm.popover.Show()
+	show := func() error {
+		pm.popover.SetPosition(pos)
+		pm.popover.SetPlacement(placement)
+		return pm.popover.Show()
+	}
+	err := show()
 	var creation *popoverCreationError
 	if !pm.popover.Transparent() || !errors.As(err, &creation) || (!errors.Is(err, platform.ErrUnsupported) && !errors.Is(err, platform.ErrUnavailable)) {
 		if err != nil {
@@ -167,9 +170,7 @@ func (pm *PopoverMenu) show(pos geometry.Point, rectangle bool) error {
 		return err
 	}
 	pm.replacePopover(false)
-	p = pm.popover.(*popover)
-	p.position, p.anchorRectangle = pos, rectangle
-	if retry := pm.popover.Show(); retry != nil {
+	if retry := show(); retry != nil {
 		pm.popover.Destroy()
 		return fmt.Errorf("menu popup: transparent: %w; opaque: %w", err, retry)
 	}
@@ -670,7 +671,7 @@ func (b *MenuButton) openMenu() {
 		b.pm.ConnectClosed(b.closed.Emit)
 	}
 	b.pm.SetMenu(b.menu)
-	if err := b.pm.show(geometry.Point{}, true); err != nil {
+	if err := b.pm.show(PopoverPlacementBottom, geometry.Point{}); err != nil {
 		log.Printf("goui: open menu: %v", err)
 	}
 }

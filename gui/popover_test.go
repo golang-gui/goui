@@ -2,6 +2,7 @@ package gui
 
 import (
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"math"
@@ -17,7 +18,44 @@ import (
 
 type popoverMeasureWidget struct {
 	WidgetBase
-	size geometry.Size
+	size      geometry.Size
+	onMeasure func()
+}
+
+func TestPopoverPlacementConfiguration(t *testing.T) {
+	root, anchor := newTestWidget(), newTestWidget()
+	root.AddChild(anchor)
+	win := &window{}
+	win.SetWidget(root)
+	anchor.Arrange(geometry.Rect(30, 40, 160, 32))
+	p := NewPopover(anchor, nil).(*popover)
+	if p.Placement() != PopoverPlacementPoint {
+		t.Fatal("default placement is not Point")
+	}
+	pos := geometry.Point{X: 5, Y: 6}
+	p.SetPosition(pos)
+	p.SetPlacement(PopoverPlacementBottom)
+	snapshot, err := p.queryPlacement()
+	if err != nil || snapshot.placement != PopoverPlacementBottom || snapshot.anchor != geometry.Rect(30, 40, 160, 32) || p.Position() != pos {
+		t.Fatalf("anchor placement: %v %v", snapshot, err)
+	}
+	p.SetPosition(geometry.Point{X: 7, Y: 8})
+	if p.Placement() != PopoverPlacementBottom {
+		t.Fatal("SetPosition changed placement")
+	}
+	p.SetPosition(pos)
+	p.SetPlacement(PopoverPlacementPoint)
+	snapshot, err = p.queryPlacement()
+	if err != nil || snapshot.placement != PopoverPlacementPoint || snapshot.anchor != geometry.Rect(35, 46, 0, 0) {
+		t.Fatalf("point placement: %v %v", snapshot, err)
+	}
+	p.SetPlacement(PopoverPlacementBottom)
+	p.SetPlacement(PopoverPlacement(255))
+	if p.Placement() != PopoverPlacementPoint || p.Position() != pos || p.platformPopup != nil {
+		t.Fatal("invalid enum normalization changed position or created a popup")
+	}
+	p.Destroy()
+	win.Destroy()
 }
 
 func TestPopoverTabFocusAndModalIsolation(t *testing.T) {
@@ -103,6 +141,9 @@ func TestPopoverFocusVisibleIsolationAndReset(t *testing.T) {
 }
 
 func (w *popoverMeasureWidget) Measure(layout.Constraint) layout.Measurement {
+	if w.onMeasure != nil {
+		w.onMeasure()
+	}
 	return layout.Measured(w.size)
 }
 
@@ -294,30 +335,30 @@ func TestPopoverPlacementGeometry(t *testing.T) {
 		name      string
 		anchor    geometry.Rectangle
 		size      geometry.Size
-		rectangle bool
+		placement PopoverPlacement
 		insets    popoverInsets
 		want      geometry.Point
 	}{
-		{"point", geometry.Rect(10, 20, 0, 0), geometry.Size{30, 20}, false, popoverInsets{}, geometry.Point{10, 20}},
-		{"point slide", geometry.Rect(90, 90, 0, 0), geometry.Size{30, 20}, false, popoverInsets{}, geometry.Point{70, 80}},
-		{"point top left", geometry.Rect(-30, -20, 0, 0), geometry.Size{30, 20}, false, popoverInsets{}, geometry.Point{}},
-		{"below left", geometry.Rect(10, 10, 20, 10), geometry.Size{30, 20}, true, popoverInsets{}, geometry.Point{10, 20}},
-		{"below right", geometry.Rect(80, 10, 20, 10), geometry.Size{30, 20}, true, popoverInsets{}, geometry.Point{70, 20}},
-		{"above left", geometry.Rect(10, 85, 20, 10), geometry.Size{30, 20}, true, popoverInsets{}, geometry.Point{10, 65}},
-		{"above right", geometry.Rect(80, 85, 20, 10), geometry.Size{30, 20}, true, popoverInsets{}, geometry.Point{70, 65}},
-		{"slide before shrink", geometry.Rect(40, 40, 20, 20), geometry.Size{90, 90}, true, popoverInsets{}, geometry.Point{10, 10}},
-		{"shadow body alignment", geometry.Rect(10, 10, 20, 10), geometry.Size{38, 30}, true, popoverInsets{3, 4, 5, 6}, geometry.Point{7, 16}},
-		{"shadow containment flips", geometry.Rect(10, 70, 20, 10), geometry.Size{38, 30}, true, popoverInsets{3, 4, 5, 6}, geometry.Point{7, 46}},
-		{"actual rounded oversized", geometry.Rect(90, 90, 0, 0), geometry.Size{100.5, 100.5}, false, popoverInsets{}, geometry.Point{}},
+		{"point", geometry.Rect(10, 20, 0, 0), geometry.Size{30, 20}, PopoverPlacementPoint, popoverInsets{}, geometry.Point{10, 20}},
+		{"point slide", geometry.Rect(90, 90, 0, 0), geometry.Size{30, 20}, PopoverPlacementPoint, popoverInsets{}, geometry.Point{70, 80}},
+		{"point top left", geometry.Rect(-30, -20, 0, 0), geometry.Size{30, 20}, PopoverPlacementPoint, popoverInsets{}, geometry.Point{}},
+		{"below left", geometry.Rect(10, 10, 20, 10), geometry.Size{30, 20}, PopoverPlacementBottom, popoverInsets{}, geometry.Point{10, 20}},
+		{"below right", geometry.Rect(80, 10, 20, 10), geometry.Size{30, 20}, PopoverPlacementBottom, popoverInsets{}, geometry.Point{70, 20}},
+		{"above left", geometry.Rect(10, 85, 20, 10), geometry.Size{30, 20}, PopoverPlacementBottom, popoverInsets{}, geometry.Point{10, 65}},
+		{"above right", geometry.Rect(80, 85, 20, 10), geometry.Size{30, 20}, PopoverPlacementBottom, popoverInsets{}, geometry.Point{70, 65}},
+		{"slide before shrink", geometry.Rect(40, 40, 20, 20), geometry.Size{90, 90}, PopoverPlacementBottom, popoverInsets{}, geometry.Point{10, 10}},
+		{"shadow body alignment", geometry.Rect(10, 10, 20, 10), geometry.Size{38, 30}, PopoverPlacementBottom, popoverInsets{3, 4, 5, 6}, geometry.Point{7, 16}},
+		{"shadow containment flips", geometry.Rect(10, 70, 20, 10), geometry.Size{38, 30}, PopoverPlacementBottom, popoverInsets{3, 4, 5, 6}, geometry.Point{7, 46}},
+		{"actual rounded oversized", geometry.Rect(90, 90, 0, 0), geometry.Size{100.5, 100.5}, PopoverPlacementPoint, popoverInsets{}, geometry.Point{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			s := popoverPlacement{anchor: tc.anchor, rectangle: tc.rectangle, workArea: geometry.Rect(0, 0, 100, 100), constrained: true}
+			s := popoverPlacementSnapshot{anchor: tc.anchor, placement: tc.placement, workArea: geometry.Rect(0, 0, 100, 100), constrained: true}
 			if got := s.position(tc.size, tc.insets); got != tc.want {
 				t.Fatalf("%v, want %v", got, tc.want)
 			}
 		})
 	}
-	s := popoverPlacement{workArea: geometry.Rect(-100, -50, 300, 200)}
+	s := popoverPlacementSnapshot{workArea: geometry.Rect(-100, -50, 300, 200)}
 	s.constrained = true
 	s.anchor = geometry.Rect(-120, -70, 0, 0)
 	if got := s.position(geometry.Size{50, 40}, popoverInsets{}); got != (geometry.Point{-100, -50}) {
@@ -355,8 +396,12 @@ type placementNative struct {
 	syncSize  bool
 	onSize    func()
 	destroyed bool
+	shows     int
+	paints    int
 }
 
+func (p *placementNative) Show() error         { p.shows++; return nil }
+func (p *placementNative) RequestPaint() error { p.paints++; return nil }
 func (p *placementNative) SetPosition(x, y float32) {
 	p.positions = append(p.positions, geometry.Point{X: x, Y: y})
 }
@@ -373,12 +418,18 @@ func (p *placementNative) Destroy() { p.destroyed = true }
 
 type placementPlatform struct {
 	platform.Platform
-	natives  []*placementNative
-	created  []geometry.Size
-	syncSize bool
+	natives        []*placementNative
+	created        []geometry.Size
+	syncSize       bool
+	transparentErr error
+	options        []platform.PopupOptions
 }
 
-func (p *placementPlatform) NewPopup(_ platform.Window, size geometry.Size, handler platform.EventHandler, _ platform.PopupOptions) (platform.Popup, error) {
+func (p *placementPlatform) NewPopup(_ platform.Window, size geometry.Size, handler platform.EventHandler, options platform.PopupOptions) (platform.Popup, error) {
+	p.options = append(p.options, options)
+	if options.Transparent && p.transparentErr != nil {
+		return nil, p.transparentErr
+	}
 	n := &placementNative{handler: handler, syncSize: p.syncSize}
 	p.natives, p.created = append(p.natives, n), append(p.created, size)
 	if p.syncSize {
@@ -416,6 +467,172 @@ func settlePlacement(t *testing.T, p *popover) {
 		}
 	}
 	t.Fatal("popup layout did not settle")
+}
+
+func TestPopoverPlacementVisibleUpdates(t *testing.T) {
+	p, _, plat, _ := placementFixture(t, geometry.Rect(0, 0, 1000, 1000))
+	p.SetModal(true)
+	p.SetPosition(geometry.Point{X: 5, Y: 6})
+	p.widget.SetFocusable(true)
+	closed := 0
+	p.ConnectClosed(func() { closed++ })
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	settlePlacement(t, p)
+	p.SetFocusedWidget(p.widget)
+	n := plat.natives[0]
+	positions, queries := len(n.positions), len(plat.created)
+	p.SetPlacement(PopoverPlacementBottom)
+	if len(n.positions) != positions || len(plat.created) != queries {
+		t.Fatal("setter synchronously moved or recreated popup")
+	}
+	settlePlacement(t, p)
+	if p.requestedPosition != (geometry.Point{X: 80, Y: 90}) {
+		t.Fatal("Bottom did not use the complete anchor", p.requestedPosition)
+	}
+	paints := n.paints
+	p.SetPosition(geometry.Point{X: 21, Y: 22})
+	if p.layoutDirty || n.paints != paints || p.Placement() != PopoverPlacementBottom {
+		t.Fatal("ignored Position scheduled layout or changed placement")
+	}
+	p.SetPlacement(PopoverPlacementPoint)
+	p.SetPosition(geometry.Point{X: 23, Y: 24})
+	positions = len(n.positions)
+	settlePlacement(t, p)
+	if len(n.positions) != positions+1 || p.requestedPosition != (geometry.Point{X: 103, Y: 104}) {
+		t.Fatal("batched Point configuration did not position once", n.positions)
+	}
+	if len(plat.created) != 1 || n.shows != 1 || closed != 0 || !p.Visible() || !p.Modal() || p.FocusedWidget() != p.widget || p.owner.(*window).modalTarget != p {
+		t.Fatal("placement update changed surface, visibility, modal state or focus")
+	}
+	paints = n.paints
+	p.SetPlacement(p.Placement())
+	p.SetPosition(p.Position())
+	if p.layoutDirty || n.paints != paints {
+		t.Fatal("equal setters requested layout")
+	}
+}
+
+func TestPopoverPlacementSurvivesFailureAndHide(t *testing.T) {
+	p, w, plat, _ := placementFixture(t, geometry.Rect(0, 0, 1000, 1000))
+	pos := geometry.Point{X: 5, Y: 6}
+	p.SetPosition(pos)
+	p.SetPlacement(PopoverPlacementBottom)
+	w.err = platform.ErrUnavailable
+	if err := p.Show(); !errors.Is(err, platform.ErrUnavailable) || len(plat.created) != 0 {
+		t.Fatal("query failure created a surface", err)
+	}
+	if p.Placement() != PopoverPlacementBottom || p.Position() != pos {
+		t.Fatal("failed Show changed configuration")
+	}
+	w.err = nil
+	for range 2 {
+		if err := p.Show(); err != nil {
+			t.Fatal(err)
+		}
+		settlePlacement(t, p)
+		if p.Placement() != PopoverPlacementBottom || p.Position() != pos || p.requestedPosition != (geometry.Point{X: 80, Y: 90}) {
+			t.Fatal("Show changed configuration or placement")
+		}
+		p.Hide()
+	}
+	if len(plat.created) != 1 {
+		t.Fatal("Hide/Show unnecessarily recreated popup")
+	}
+}
+
+func TestPopoverPlacementChangedDuringMeasure(t *testing.T) {
+	for _, visible := range []bool{false, true} {
+		for _, field := range []string{"placement", "position"} {
+			t.Run(fmt.Sprintf("visible=%t/%s", visible, field), func(t *testing.T) {
+				p, _, plat, _ := placementFixture(t, geometry.Rect(0, 0, 1000, 1000))
+				if visible {
+					if err := p.Show(); err != nil {
+						t.Fatal(err)
+					}
+					settlePlacement(t, p)
+				}
+				content := p.widget.(*popoverMeasureWidget)
+				content.onMeasure = func() {
+					content.onMeasure = nil
+					if field == "placement" {
+						p.SetPlacement(PopoverPlacementBottom)
+					} else {
+						p.SetPosition(geometry.Point{X: 17, Y: 18})
+					}
+				}
+				if visible {
+					n := plat.natives[0]
+					positions := len(n.positions)
+					p.RequestLayout()
+					p.paint()
+					if len(n.positions) != positions || !p.layoutDirty {
+						t.Fatal("stale solve moved surface or consumed new request")
+					}
+					settlePlacement(t, p)
+				} else {
+					if err := p.Show(); err == nil || len(plat.created) != 0 {
+						t.Fatal("stale solve created surface", err)
+					}
+					if err := p.Show(); err != nil {
+						t.Fatal(err)
+					}
+					settlePlacement(t, p)
+				}
+				want := geometry.Point{X: 97, Y: 98}
+				if field == "placement" {
+					want = geometry.Point{X: 80, Y: 90}
+				}
+				if p.requestedPosition != want {
+					t.Fatal(p.requestedPosition, want)
+				}
+			})
+		}
+	}
+}
+
+func TestMenuPlacementFallbackAndModeSwitch(t *testing.T) {
+	for _, placement := range []PopoverPlacement{PopoverPlacementPoint, PopoverPlacementBottom} {
+		t.Run(fmt.Sprint(placement), func(t *testing.T) {
+			p, _, plat, app := placementFixture(t, geometry.Rect(0, 0, 1000, 1000))
+			app.typo = &styleTypography{}
+			app.style = textStyleSheet(10, color.Black)
+			plat.transparentErr = platform.ErrUnsupported
+			pm := NewPopoverMenu(p.anchor)
+			m := NewMenu()
+			m.Append("Text", nil)
+			pm.SetMenu(m)
+			t.Cleanup(func() {
+				if pm.popover != nil {
+					pm.popover.Destroy()
+				}
+			})
+			pos := geometry.Point{X: 5, Y: 6}
+			if err := pm.show(placement, pos); err != nil {
+				t.Fatal(err)
+			}
+			menu := pm.popover.(*popover)
+			settlePlacement(t, menu)
+			if menu.Transparent() || menu.Placement() != placement || menu.Position() != pos || len(plat.options) != 2 || !plat.options[0].Transparent || plat.options[1].Transparent {
+				t.Fatal("opaque retry changed placement request", plat.options)
+			}
+			if err := pm.show(PopoverPlacementBottom, geometry.Point{}); err != nil {
+				t.Fatal(err)
+			}
+			settlePlacement(t, menu)
+			if menu.requestedPosition != (geometry.Point{X: 80, Y: 90}) {
+				t.Fatal(menu.requestedPosition)
+			}
+			if err := pm.ShowAt(pos); err != nil {
+				t.Fatal(err)
+			}
+			settlePlacement(t, menu)
+			if menu.Placement() != PopoverPlacementPoint || menu.requestedPosition != (geometry.Point{X: 85, Y: 86}) || len(plat.created) != 1 {
+				t.Fatal("ShowAt retained rectangle placement or recreated surface", menu.requestedPosition)
+			}
+		})
+	}
 }
 
 func TestPopoverPlacementRefreshAndRounding(t *testing.T) {
@@ -579,7 +796,7 @@ func TestMenuPlacementScreenLimitAndInput(t *testing.T) {
 		m.Append("Text", func() { activated++ })
 	}
 	pm.SetMenu(m)
-	if err := pm.show(geometry.Point{}, true); err != nil {
+	if err := pm.show(PopoverPlacementBottom, geometry.Point{}); err != nil {
 		t.Fatal(err)
 	}
 	menu := pm.popover.(*popover)
@@ -607,7 +824,7 @@ func TestMenuPlacementScreenLimitAndInput(t *testing.T) {
 		short.Append("Text", nil)
 	}
 	pm.SetMenu(short)
-	if err := pm.show(geometry.Point{}, true); err != nil {
+	if err := pm.show(PopoverPlacementBottom, geometry.Point{}); err != nil {
 		t.Fatal(err)
 	}
 	settlePlacement(t, menu)

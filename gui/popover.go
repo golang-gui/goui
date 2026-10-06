@@ -15,6 +15,19 @@ import (
 	"github.com/golang-gui/goui/style"
 )
 
+// PopoverPlacement specifies the preferred position of a popover's body.
+// Work area constraints may adjust the actual position without changing it.
+type PopoverPlacement uint8
+
+const (
+	// PopoverPlacementPoint uses Position as the body's preferred top-left
+	// corner, in anchor-local DIP. It is the default placement.
+	PopoverPlacementPoint PopoverPlacement = iota
+	// PopoverPlacementBottom prefers the bottom-left of the complete anchor
+	// rectangle. It may align right, flip above, or slide into the work area.
+	PopoverPlacementBottom
+)
+
 // Popover is a borderless, no-focus floating surface anchored to a Widget, used
 // for menus, detached toolbars and tooltips. Whether it behaves as a menu or a
 // tooltip is decided by its content Widget; the Popover itself has no dismiss
@@ -37,9 +50,17 @@ type Popover interface {
 
 	Anchor() Widget
 
+	// Placement reports the requested strategy, not the actual placement.
+	Placement() PopoverPlacement
+	// SetPlacement preserves Position. Unknown values use Point placement.
+	// A visible popover updates on its next layout without being reopened.
+	SetPlacement(PopoverPlacement)
+
 	// Position is the requested body origin relative to the anchor, excluding
 	// shadow (DIP). Desktop workarea adjustment does not change this request.
+	// Only Point placement uses it; other strategies preserve but ignore it.
 	Position() geometry.Point
+	// SetPosition preserves Placement and schedules layout only in Point mode.
 	SetPosition(geometry.Point)
 
 	// Modal reports whether this popover is modal relative to its owner window:
@@ -50,6 +71,8 @@ type Popover interface {
 	Modal() bool
 	SetModal(bool)
 
+	// Show resolves current anchor geometry and work area using the configured
+	// Placement and Position. It does not change either request, even on failure.
 	Show() error
 	Hide()
 	Destroy()
@@ -87,6 +110,7 @@ type popover struct {
 	anchor                    Widget
 	widget                    Widget // content
 	position                  geometry.Point
+	placement                 PopoverPlacement
 	owner                     Window // resolved from the anchor; only the public Window API is used
 	platformPopup             platform.Popup
 	styleName                 string
@@ -94,9 +118,8 @@ type popover struct {
 	requestedSize             geometry.Size
 	requestedPosition         geometry.Point
 	positionValid             bool
-	anchorRectangle           bool // MenuButton requests the whole anchor's bounds
-	placement                 popoverPlacement
-	placementValid            bool
+	placementSnapshot         popoverPlacementSnapshot
+	placementSnapshotValid    bool
 	workAreaUnsupportedLogged bool
 	lifecycle                 uint64 // invalidates in-flight native/measurement callbacks
 	destroyed                 bool
@@ -133,11 +156,12 @@ func (p *popover) SetFocusedWidget(widget Widget) bool {
 
 // --- Popover API ---
 
-func (p *popover) Visible() bool            { return p.visible }
-func (p *popover) Anchor() Widget           { return p.anchor }
-func (p *popover) Position() geometry.Point { return p.position }
-func (p *popover) Modal() bool              { return p.modal }
-func (p *popover) StyleName() string        { return p.styleName }
+func (p *popover) Visible() bool               { return p.visible }
+func (p *popover) Anchor() Widget              { return p.anchor }
+func (p *popover) Position() geometry.Point    { return p.position }
+func (p *popover) Placement() PopoverPlacement { return p.placement }
+func (p *popover) Modal() bool                 { return p.modal }
+func (p *popover) StyleName() string           { return p.styleName }
 
 func (p *popover) SetStyleName(name string) {
 	if p.styleName == name {
@@ -190,12 +214,30 @@ func (p *popover) SetWidget(widget Widget) {
 	}
 }
 
-func (p *popover) SetPosition(pos geometry.Point) {
-	p.position = pos
-	p.anchorRectangle = false
+func (p *popover) SetPlacement(placement PopoverPlacement) {
+	if placement != PopoverPlacementBottom {
+		placement = PopoverPlacementPoint
+	}
+	if p.destroyed || p.placement == placement {
+		return
+	}
+	p.placement = placement
+	p.layoutDirty = true
 	if p.visible {
-		p.measureAndSize()
-		p.requestPaint()
+		p.requestLayout()
+	}
+}
+
+func (p *popover) SetPosition(pos geometry.Point) {
+	if p.destroyed || p.position == pos {
+		return
+	}
+	p.position = pos
+	if p.placement == PopoverPlacementPoint {
+		p.layoutDirty = true
+		if p.visible {
+			p.requestLayout()
+		}
 	}
 }
 
@@ -491,7 +533,7 @@ func (p *popover) releaseNative() {
 	p.platformPopup = nil
 	p.owner = nil
 	p.positionValid = false
-	p.placementValid = false
+	p.placementSnapshotValid = false
 	p.requestedSize = geometry.Size{}
 	if p.widget != nil && p.widget.Root() == p {
 		p.widget.base().detachRoot(p.widget)
@@ -514,6 +556,7 @@ func (p *popover) measureAndSize() {
 
 func (p *popover) updateNaturalSize() error {
 	epoch, widget := p.lifecycle, p.Widget()
+	placement, position := p.placement, p.position
 	snapshot, err := p.queryPlacement()
 	if err != nil {
 		return err
@@ -558,12 +601,15 @@ func (p *popover) updateNaturalSize() error {
 	if p.lifecycle != epoch || p.destroyed || p.Widget() != widget {
 		return fmt.Errorf("popover: released or content replaced during layout")
 	}
+	if p.placement != placement || (placement == PopoverPlacementPoint && p.position != position) {
+		return fmt.Errorf("popover: placement changed during layout")
+	}
 	if p.owner != nil {
 		if win, ok := anchorWindow(p.anchor); !ok || win != p.owner {
 			return fmt.Errorf("popover: anchor moved during layout")
 		}
 	}
-	p.placement, p.placementValid, p.insets = snapshot, true, insets
+	p.placementSnapshot, p.placementSnapshotValid, p.insets = snapshot, true, insets
 	desired := geometry.Size{Width: width, Height: height}
 	changed := p.requestedSize != desired
 	p.requestedSize = desired // before SetSize: it may synchronously send SizeEvent
@@ -579,6 +625,9 @@ func (p *popover) updateNaturalSize() error {
 		if p.lifecycle != epoch || p.destroyed {
 			return fmt.Errorf("popover: released during resize")
 		}
+		if p.placement != placement || (placement == PopoverPlacementPoint && p.position != position) {
+			return fmt.Errorf("popover: placement changed during resize")
+		}
 		p.reposition()
 	} else {
 		// Before native creation these fields carry the requested size into
@@ -589,11 +638,11 @@ func (p *popover) updateNaturalSize() error {
 	return nil
 }
 
-func (p *popover) queryPlacement() (popoverPlacement, error) {
+func (p *popover) queryPlacement() (popoverPlacementSnapshot, error) {
 	origin := absOrigin(p.anchor)
-	snapshot := popoverPlacement{anchor: geometry.Rect(origin.X+p.position.X, origin.Y+p.position.Y, 0, 0), rectangle: p.anchorRectangle}
+	snapshot := popoverPlacementSnapshot{anchor: geometry.Rect(origin.X+p.position.X, origin.Y+p.position.Y, 0, 0), placement: p.placement}
 	point := snapshot.anchor.Pos
-	if snapshot.rectangle && p.anchor != nil {
+	if snapshot.placement == PopoverPlacementBottom && p.anchor != nil {
 		snapshot.anchor = geometry.Rectangle{Pos: origin, Size: p.anchor.Rect().Size}
 		point = snapshot.anchor.Center()
 	}
@@ -627,10 +676,10 @@ func (p *popover) reposition() {
 	if p.platformPopup == nil {
 		return
 	}
-	if !p.placementValid {
+	if !p.placementSnapshotValid {
 		return
 	}
-	pos := p.placement.position(geometry.Size{Width: p.width, Height: p.height}, p.insets)
+	pos := p.placementSnapshot.position(geometry.Size{Width: p.width, Height: p.height}, p.insets)
 	if !p.positionValid || pos != p.requestedPosition {
 		p.requestedPosition, p.positionValid = pos, true
 		p.platformPopup.SetPosition(pos.X, pos.Y)
@@ -816,9 +865,9 @@ func roundedBodyContains(rect geometry.Rectangle, radius float32, point geometry
 
 // One solve uses one owner-local snapshot. No native objects or widgets are
 // retained here; rounded SizeEvents can reuse it without another display query.
-type popoverPlacement struct {
+type popoverPlacementSnapshot struct {
 	anchor      geometry.Rectangle
-	rectangle   bool
+	placement   PopoverPlacement
 	workArea    geometry.Rectangle
 	constrained bool
 }
@@ -830,7 +879,7 @@ func validPopupRect(r geometry.Rectangle) bool {
 		finitePopup(r.Width) && finitePopup(r.Height) && finitePopup(r.X+r.Width) && finitePopup(r.Y+r.Height)
 }
 
-func (s popoverPlacement) bodyLimit(insets popoverInsets) (geometry.Size, error) {
+func (s popoverPlacementSnapshot) bodyLimit(insets popoverInsets) (geometry.Size, error) {
 	size := geometry.Size{Width: s.workArea.Width - insets.left - insets.right, Height: s.workArea.Height - insets.top - insets.bottom}
 	if !finitePopup(size.Width) || !finitePopup(size.Height) || size.Width < 1 || size.Height < 1 {
 		return geometry.Size{}, fmt.Errorf("popover: shadow leaves no usable body in work area")
@@ -841,11 +890,11 @@ func (s popoverPlacement) bodyLimit(insets popoverInsets) (geometry.Size, error)
 // position returns the full surface origin. Alignment is against the body,
 // containment against the surface. Oversized actual native sizes anchor at the
 // workarea origin rather than generating resize feedback loops.
-func (s popoverPlacement) position(surface geometry.Size, insets popoverInsets) geometry.Point {
+func (s popoverPlacementSnapshot) position(surface geometry.Size, insets popoverInsets) geometry.Point {
 	a := s.anchor
 	body := geometry.Size{Width: max(0, surface.Width-insets.left-insets.right), Height: max(0, surface.Height-insets.top-insets.bottom)}
 	preferred := geometry.Point{X: a.X - insets.left, Y: a.Y - insets.top}
-	if s.rectangle {
+	if s.placement == PopoverPlacementBottom {
 		preferred.Y += a.Height
 	}
 	if !s.constrained {
@@ -855,7 +904,7 @@ func (s popoverPlacement) position(surface geometry.Size, insets popoverInsets) 
 	fits := func(p geometry.Point) bool {
 		return p.X >= area.X && p.Y >= area.Y && p.X+surface.Width <= area.X+area.Width && p.Y+surface.Height <= area.Y+area.Height
 	}
-	if s.rectangle {
+	if s.placement == PopoverPlacementBottom {
 		for _, p := range [...]geometry.Point{
 			preferred,
 			{X: a.X + a.Width - body.Width - insets.left, Y: preferred.Y},
