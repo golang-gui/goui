@@ -22,6 +22,7 @@ func Rules() []basestyle.Rule {
 		basestyle.Name("tab-bar").BackgroundColor(color.Transparent),
 		basestyle.Name("check-button").FontFamily(family).FontSize(size),
 		basestyle.Name("check-button-text").ForegroundColor(color.Black).FontFamily(family).FontSize(size),
+		basestyle.Name("switch-text").ForegroundColor(color.Black).FontFamily(family).FontSize(size),
 		basestyle.Name("progress-bar").BackgroundColor(color.RGBA{R: 225, G: 225, B: 225, A: 255}).
 			ForegroundColor(color.RGBA{R: 70, G: 130, B: 220, A: 255}).Radius(2),
 		basestyle.Name("table-view").BackgroundColor(color.White).BorderColor(color.RGBA{R: 198, G: 198, B: 206, A: 255}).BorderWidth(1),
@@ -70,5 +71,6 @@ func Rules() []basestyle.Rule {
 		basestyle.Name("tab-scroll-button-text").ForegroundColor(color.Black).FontFamily(family).FontSize(size),
 		basestyle.Name("split-handle").ForegroundColor(color.RGBA{R: 198, G: 198, B: 206, A: 255}),
 	}
-	return append(rules, checkButtonRules()...)
+	rules = append(rules, checkButtonRules()...)
+	return append(rules, switchRules()...)
 }
