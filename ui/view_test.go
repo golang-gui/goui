@@ -6,7 +6,64 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/widgets"
 )
+
+func TestViewEnabledReconcilesOwnSettingsAndSubtrees(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		make func() gui.Widget
+	}{
+		{"Button", func() gui.Widget { return gui.NewButton() }},
+		{"TextInput", func() gui.Widget { return gui.NewTextInput() }},
+		{"CheckButton", func() gui.Widget { return widgets.NewCheckButton() }},
+		{"Switch", func() gui.Widget { return widgets.NewSwitch() }},
+		{"DropDown", func() gui.Widget { return widgets.NewDropDown() }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			r := newRoot()
+			t.Cleanup(r.unmountWindow)
+			declaration := func() *enabledWidgetView {
+				v := &enabledWidgetView{make: test.make}
+				v.Self = v
+				return v
+			}
+			w := r.update(declaration().Enabled(false))
+			if w.Enabled() || gui.IsEnabled(w) || !w.Focusable() {
+				t.Fatal("common Enabled modifier did not preserve focus configuration")
+			}
+			if next := r.update(declaration()); next != w || !w.Enabled() {
+				t.Fatal("omission did not restore initial setting on the retained widget")
+			}
+			w.SetEnabled(false)
+			r.update(declaration())
+			if !w.Enabled() {
+				t.Fatal("common coordination retained external setting")
+			}
+		})
+	}
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	box := r.update(VBox(Label("explicit").Enabled(false), Label("inherited")).Enabled(false)).(*gui.LinearBox)
+	children := box.Children()
+	if children[0].Enabled() || !children[1].Enabled() || gui.IsEnabled(children[1]) {
+		t.Fatal("parent restriction overwrote local child settings")
+	}
+	r.update(VBox(Label("explicit").Enabled(false), Label("inherited")))
+	if gui.IsEnabled(children[0]) || !gui.IsEnabled(children[1]) {
+		t.Fatal("removing the container modifier did not restore the correct children")
+	}
+}
+
+type enabledWidgetView struct {
+	ViewBase[enabledWidgetView]
+	make func() gui.Widget
+}
+
+func (v *enabledWidgetView) Build() View                    { return v }
+func (v *enabledWidgetView) Mount(BuildContext) gui.Widget  { return v.make() }
+func (*enabledWidgetView) Update(BuildContext, gui.Widget)  {}
+func (*enabledWidgetView) Unmount(BuildContext, gui.Widget) {}
 
 // Every widget-view constructor must wire ViewBase.Self so the shared chain
 // modifiers (ID/Name/Hidden/Style) return the concrete view instead of panicking on

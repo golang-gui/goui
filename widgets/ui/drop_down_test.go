@@ -58,9 +58,11 @@ func TestDropDownDeclarationAndLatestSignals(t *testing.T) {
 	if errorsSeen != 1 {
 		t.Fatal("input error not delivered to latest handler")
 	}
-	v = DropDown(m).Selected(-1).Enabled(false).Padding(0).PopupMaxHeight(0)
+	// Shared Enabled coordination is tested with the real root in ui; this
+	// adapter double only invokes the control-specific Update.
+	v = DropDown(m).Selected(-1).Padding(0).PopupMaxHeight(0)
 	v.Update(ctx, d)
-	if d.Selected() != -1 || d.Enabled() || d.Focusable() || d.Padding() != 0 || d.PopupMaxHeight() != 0 {
+	if d.Selected() != -1 || !d.Enabled() || !d.Focusable() || d.Padding() != 0 || d.PopupMaxHeight() != 0 {
 		t.Fatal("explicit zero not applied")
 	}
 	v = DropDown(m).Selected(0).OnSelected(func(int) { latest++ })

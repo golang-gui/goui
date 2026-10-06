@@ -11,13 +11,15 @@ import (
 )
 
 func TestSwitchReconcile(t *testing.T) {
+	// Shared Enabled is applied by the coordinator, covered by ui's real-root
+	// regression test; this double exercises only the control's own Update.
 	ctx := new(tabContext)
 	first, latest := 0, 0
-	v := Switch("Automatic").Checked(true).Padding(9).Animated(false).Enabled(false).OnChange(func(bool) { first++ })
+	v := Switch("Automatic").Checked(true).Padding(9).Animated(false).OnChange(func(bool) { first++ })
 	b := v.Mount(ctx).(*widgets.Switch)
 	v.Update(ctx, b)
 	child := b.Child()
-	if !b.Checked() || b.Padding() != 9 || b.Animated() || b.Enabled() || child == nil || first != 0 {
+	if !b.Checked() || b.Padding() != 9 || b.Animated() || !b.Enabled() || child == nil || first != 0 {
 		t.Fatal("initial declaration / silent update")
 	}
 	for i := 0; i < 4; i++ {
@@ -61,7 +63,6 @@ func TestSwitchDeclarationRestoresExternalState(t *testing.T) {
 	b := v.Mount(ctx).(*widgets.Switch)
 	v.Update(ctx, b)
 	b.SetChecked(true)
-	b.SetEnabled(false)
 	b.SetAnimated(false)
 	b.SetPadding(0)
 	v.Update(ctx, b)

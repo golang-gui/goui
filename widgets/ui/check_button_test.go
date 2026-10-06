@@ -24,14 +24,17 @@ func checkKey(t *testing.T, b *widgets.CheckButton) {
 }
 
 func TestCheckButtonReconcileAndSignals(t *testing.T) {
+	// This adapter double calls Update directly. Shared modifiers, including
+	// Enabled, are covered by ui.TestViewEnabledReconcilesOwnSettingsAndSubtrees
+	// through the actual coordinator rather than bypassed here.
 	ctx := new(tabContext)
 	g := widgets.NewCheckGroup()
 	first, latest := 0, 0
-	v := CheckButton("Choice").Checked(true).Group(g).Appearance(CheckAppearanceButton).Padding(9).Enabled(false).OnChange(func(CheckState) { first++ })
+	v := CheckButton("Choice").Checked(true).Group(g).Appearance(CheckAppearanceButton).Padding(9).OnChange(func(CheckState) { first++ })
 	b := v.Mount(ctx).(*widgets.CheckButton)
 	v.Update(ctx, b)
 	child := b.Child()
-	if !b.Checked() || b.Group() != g || b.Appearance() != CheckAppearanceButton || b.Padding() != 9 || b.Enabled() || child == nil || first != 0 {
+	if !b.Checked() || b.Group() != g || b.Appearance() != CheckAppearanceButton || b.Padding() != 9 || !b.Enabled() || child == nil || first != 0 {
 		t.Fatal("initial declaration / silent synchronization failed")
 	}
 	for i := 0; i < 4; i++ {
@@ -67,7 +70,6 @@ func TestCheckButtonDeclarationRestoresExternalState(t *testing.T) {
 	b.SetGroup(widgets.NewCheckGroup())
 	b.SetAppearance(CheckAppearanceButton)
 	b.SetPadding(0)
-	b.SetEnabled(false)
 	v.Update(ctx, b)
 	if b.Checked() || b.Group() != nil || b.Appearance() != CheckAppearanceIndicator || b.Padding() != 6 || !b.Enabled() {
 		t.Fatal("declaration failed to restore externally changed GUI state")

@@ -20,7 +20,6 @@ type DropDownView struct {
 	model              gui.ListData[DropDownItem]
 	selected           int
 	placeholder        string
-	disabled           bool
 	padding, maxHeight float32
 	fields             bits.Bitmap[uint8]
 	item, selectedItem func(int, DropDownItem) baseui.View
@@ -51,7 +50,6 @@ func (v *DropDownView) Selected(index int) *DropDownView {
 	return v
 }
 func (v *DropDownView) Placeholder(text string) *DropDownView { v.placeholder = text; return v }
-func (v *DropDownView) Enabled(enabled bool) *DropDownView    { v.disabled = !enabled; return v }
 func (v *DropDownView) Padding(value float32) *DropDownView {
 	v.padding = value
 	v.fields.Set(dropDownPadding, true)
@@ -110,7 +108,6 @@ func (v *DropDownView) Update(ctx baseui.BuildContext, widget gui.Widget) {
 	d, s := widget.(*widgets.DropDown), ctx.State().(*dropDownState)
 	s.model, s.item, s.selectedItem = v.model, v.item, v.selectedItem
 	s.onSelected, s.onOpenError = v.onSelected, v.onOpenError
-	d.SetEnabled(!v.disabled)
 	d.SetPlaceholder(v.placeholder)
 	padding, maxHeight := s.padding, s.maxHeight
 	if v.fields.Check(dropDownPadding) {
@@ -159,7 +156,7 @@ func (d *dropDownUIDelegate) Bind(index int, widget gui.Widget) {
 	} else {
 		name, disabled := "drop-down-item-text", item.Disabled
 		if d.selected {
-			name, disabled = "drop-down-text", !s.widget.Enabled()
+			name, disabled = "drop-down-text", false
 		}
 		if disabled {
 			name += "-disabled"
