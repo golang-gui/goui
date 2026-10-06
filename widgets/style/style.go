@@ -73,5 +73,13 @@ func Rules() []basestyle.Rule {
 	}
 	rules = append(rules, checkButtonRules()...)
 	rules = append(rules, dropDownRules()...)
-	return append(rules, switchRules()...)
+	rules = append(rules, switchRules()...)
+	for _, name := range []string{"check-button-text", "switch-text", "drop-down-text", "drop-down-placeholder",
+		"table-header-text", "table-cell-text", "table-cell-icon", "tree-item-text", "tree-item-icon",
+		"tab-item-text", "tab-item-text-selected", "tab-item-icon", "tab-item-icon-selected",
+		"tab-close-button-text", "tab-scroll-button-text"} {
+		rules = append(rules, basestyle.Name(name).State(basestyle.Disabled).
+			ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}))
+	}
+	return rules
 }

@@ -112,6 +112,7 @@ func Rules(options Options) []style.Rule {
 		style.Name("split-handle").ForegroundColor(mix(p.window, p.text, .18)),
 		style.Name("window").BackgroundColor(p.window),
 		text("widget").BackgroundColor(color.Transparent).BorderWidth(0).Radius(0),
+		style.Name("widget").State(style.Disabled).ForegroundColor(p.disabled),
 		text("label"),
 		style.Name("icon").ForegroundColor(p.text),
 		style.Name("progress-bar").BackgroundColor(progressTrack).
@@ -123,7 +124,9 @@ func Rules(options Options) []style.Rule {
 		text("text-input").BackgroundColor(p.surface).BorderColor(p.border).BorderWidth(1).Radius(6),
 		style.Name("text-input").State(style.Focused).BorderColor(focus).BorderWidth(2),
 		style.Name("text-input").State(style.Disabled).ForegroundColor(p.disabled),
+		style.Name("text-input").State(style.Disabled).BackgroundColor(p.window),
 		text("text-view").BackgroundColor(p.surface),
+		style.Name("text-view").State(style.Disabled).ForegroundColor(p.disabled),
 		style.Name("text-input").Part("selection").BackgroundColor(mix(p.surface, accent, .25)),
 		style.Name("text-view").Part("selection").BackgroundColor(mix(p.surface, accent, .25)),
 		style.Name("text-input").Part("caret").ForegroundColor(p.text),
@@ -175,7 +178,7 @@ func Rules(options Options) []style.Rule {
 			text(button.name).BackgroundColor(button.bg[0]).BorderColor(p.border).BorderWidth(1).Radius(6),
 			style.Name(button.name).State(style.Hovered).BackgroundColor(button.bg[1]),
 			style.Name(button.name).State(style.Pressed).BackgroundColor(button.bg[2]),
-			style.Name(button.name).State(style.Disabled).ForegroundColor(p.disabled),
+			style.Name(button.name).State(style.Disabled).ForegroundColor(p.disabled).BackgroundColor(p.button),
 			// Pointer focus has no decoration; keyboard focus uses a thin border.
 			// Keep the optional border color for application Focused overrides.
 			style.Name(button.name).Part("focus").State(style.Focused).
@@ -186,7 +189,16 @@ func Rules(options Options) []style.Rule {
 	}
 	rules = append(rules, checkButtonRules(p, accent, tabFocus)...)
 	rules = append(rules, switchRules(p, accent, tabFocus)...)
-	return append(rules, dropDownRules(p, tabFocus, options.FontFamily, size)...)
+	rules = append(rules, dropDownRules(p, tabFocus, options.FontFamily, size)...)
+	// Each content widget resolves its own name; state is shared through the
+	// tree, but foreground rules are explicit rather than inherited colors.
+	for _, name := range []string{"icon", AccentIcon, MutedText, "check-button-text", "switch-text",
+		"drop-down-text", "drop-down-placeholder", "table-header-text", "table-cell-text", "table-cell-icon",
+		"tree-item-text", "tree-item-icon", "tab-item-text", "tab-item-text-selected", "tab-item-icon",
+		"tab-item-icon-selected", "tab-close-button-text", "tab-scroll-button-text"} {
+		rules = append(rules, style.Name(name).State(style.Disabled).ForegroundColor(p.disabled))
+	}
+	return rules
 }
 
 type palette struct {
