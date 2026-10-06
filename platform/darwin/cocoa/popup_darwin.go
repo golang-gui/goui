@@ -2,6 +2,7 @@ package cocoa
 
 import (
 	"image"
+	"math"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/common"
@@ -80,13 +81,26 @@ func (p *Popup) SetSize(width, height float32) {
 	if !p.win.window.Valid() {
 		return
 	}
-	if width < 1 {
-		width = 1
-	}
-	if height < 1 {
-		height = 1
-	}
 	AutoReleasePool(func() {
-		p.win.window.SetContentSize(logicalContentSize(p.win.window, width, height))
+		p.win.window.SetContentSize(popupContentSize(p.win.window, width, height))
 	})
+}
+
+func popupContentSize(window NSWindow, width, height float32) NSSize {
+	return popupSizeInPoints(width, height, window.BackingScaleFactor(), CGFloat(common.GetPreferScale()))
+}
+
+// popupSizeInPoints rounds outward in backing pixels, not logical units or
+// AppKit points. A fractional text height must fit after native pixel alignment.
+// Without an override a logical unit is an AppKit point; with one it spans
+// preferScale backing pixels. The actual SizeEvent remains authoritative.
+func popupSizeInPoints(width, height float32, backingScale, preferScale CGFloat) NSSize {
+	scale := backingScale
+	if preferScale > 0 {
+		scale = preferScale
+	}
+	return NSSize{
+		Width:  CGFloat(math.Ceil(float64(max(1, width))*float64(scale))) / backingScale,
+		Height: CGFloat(math.Ceil(float64(max(1, height))*float64(scale))) / backingScale,
+	}
 }

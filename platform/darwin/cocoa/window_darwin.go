@@ -74,7 +74,11 @@ func newNativeWindow(onEvent events.EventHandler, class NSWindowClass, styleMask
 		win.window.SetContentView(win.view)
 		// Window creation takes GOUI logical units. Match its point size to the
 		// effective scale before publishing the initial backing dimensions.
-		if styleMask&NSWindowStyleMaskFullSizeContentView != 0 || pointsPerLogicalUnit(win.window) != 1 {
+		if class == popupClass {
+			// Use this popup's backing scale before publishing its initial size.
+			// Ordinary windows retain their existing native sizing behavior.
+			win.window.SetContentSize(popupContentSize(win.window, float32(rect.Size.Width), float32(rect.Size.Height)))
+		} else if styleMask&NSWindowStyleMaskFullSizeContentView != 0 || pointsPerLogicalUnit(win.window) != 1 {
 			// Full-size content includes the titlebar area. Set the content view
 			// size explicitly; do not add a guessed titlebar height to the request.
 			win.window.SetContentSize(logicalContentSize(win.window, float32(rect.Size.Width), float32(rect.Size.Height)))
