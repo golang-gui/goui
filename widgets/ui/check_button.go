@@ -27,7 +27,6 @@ type CheckButtonView struct {
 	state      CheckState
 	group      *widgets.CheckGroup
 	appearance CheckAppearance
-	disabled   bool
 	padding    optional.Optional[float32]
 	onChange   func(CheckState)
 }
@@ -77,7 +76,6 @@ func (v *CheckButtonView) Appearance(appearance CheckAppearance) *CheckButtonVie
 	v.appearance = appearance
 	return v
 }
-func (v *CheckButtonView) Enabled(enabled bool) *CheckButtonView { v.disabled = !enabled; return v }
 func (v *CheckButtonView) Padding(padding float32) *CheckButtonView {
 	v.padding.SetValue(padding)
 	return v
@@ -107,7 +105,6 @@ func (v *CheckButtonView) Update(ctx baseui.BuildContext, widget gui.Widget) {
 	b.SetGroup(v.group)
 	b.SetCheckState(v.state)
 	b.SetAppearance(v.appearance)
-	b.SetEnabled(!v.disabled)
 	b.SetPadding(v.padding.ValueOr(s.padding))
 	ctx.UpdateChild(b, v.child)
 }

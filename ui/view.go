@@ -104,6 +104,7 @@ type viewBase struct {
 	maxHeight     float32 // size preference; 0 = unbounded
 	mainWeight    float32 // main-axis extra-space share; 0 = hug
 	hidden        bool
+	enabled       bool
 	focusable     bool
 	cursor        Cursor
 	onFocus       func(focused bool) // fired when the mounted widget's focus state changes
@@ -122,6 +123,7 @@ const (
 	viewMaxHeight
 	viewMainWeight
 	viewHidden
+	viewEnabled
 	viewFocusable
 	viewCursor
 	viewOnFocus
@@ -155,6 +157,7 @@ type viewBaseContext struct {
 	initMaxSize    geometry.Size
 	initMainWeight float32
 	initHidden     bool
+	initEnabled    bool
 	initFocusable  bool
 	initCursor     Cursor
 }
@@ -176,6 +179,7 @@ func (b *viewBase) mount(ctx *viewBaseContext, w gui.Widget) {
 	ctx.initMaxSize = w.MaxSize()
 	ctx.initMainWeight = w.MainWeight()
 	ctx.initHidden = !w.Visible()
+	ctx.initEnabled = w.Enabled()
 	ctx.initFocusable = w.Focusable()
 	ctx.initCursor = w.Cursor()
 	ctx.onFocus = b.onFocus
@@ -247,6 +251,7 @@ func (b *viewBase) unmount(ctx *viewBaseContext, w gui.Widget) {
 	ctx.initMaxSize = geometry.Size{}
 	ctx.initMainWeight = 0
 	ctx.initHidden = false
+	ctx.initEnabled = false
 	ctx.initFocusable = false
 	ctx.initCursor = nil
 }
@@ -360,11 +365,16 @@ func (b *ViewBase[T]) Cursor(c Cursor) *T {
 	return b.self()
 }
 
-// Focusable sets whether the mounted widget accepts keyboard focus. Like Cursor,
-// it only applies when explicitly called — gui widgets that enable focus in their
-// constructor (Button, MenuButton, TextInput) keep that by default. Pass
-// Focusable(false) to strip it (e.g. a menu-bar-style row of MenuButtons where
-// only the open one should take focus).
+// Enabled restricts this widget and its subtree's user interaction. Omission
+// restores the widget's initial own setting; ancestor restrictions still apply.
+func (b *ViewBase[T]) Enabled(enabled bool) *T {
+	b.enabled = enabled
+	b.fields.Set(viewEnabled, true)
+	return b.self()
+}
+
+// Focusable sets this widget's own focus capability. Omission restores its
+// constructor default; disabled ancestors still prevent receiving focus.
 func (b *ViewBase[T]) Focusable(focusable bool) *T {
 	b.focusable = focusable
 	b.fields.Set(viewFocusable, true)
@@ -432,6 +442,11 @@ func (b *viewBase) apply(ctx *viewBaseContext, widget gui.Widget) {
 		widget.SetFocusable(b.focusable)
 	} else {
 		widget.SetFocusable(ctx.initFocusable)
+	}
+	if b.fields.Check(viewEnabled) {
+		widget.SetEnabled(b.enabled)
+	} else {
+		widget.SetEnabled(ctx.initEnabled)
 	}
 	if b.fields.Check(viewCursor) {
 		widget.SetCursor(b.cursor)

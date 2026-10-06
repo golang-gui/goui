@@ -11,11 +11,11 @@ import (
 // SwitchView declares a two-state switch; input and animation belong to widgets.Switch.
 type SwitchView struct {
 	baseui.ViewBase[SwitchView]
-	child             baseui.View
-	checked, disabled bool
-	padding           optional.Optional[float32]
-	animated          optional.Optional[bool]
-	onChange          func(bool)
+	child    baseui.View
+	checked  bool
+	padding  optional.Optional[float32]
+	animated optional.Optional[bool]
+	onChange func(bool)
 }
 
 type switchState struct {
@@ -44,7 +44,6 @@ func (v *SwitchView) Text(text string) *SwitchView {
 func (v *SwitchView) Content(child baseui.View) *SwitchView { v.child = child; return v }
 func (v *SwitchView) Child(child baseui.View) *SwitchView   { return v.Content(child) }
 func (v *SwitchView) Checked(checked bool) *SwitchView      { v.checked = checked; return v }
-func (v *SwitchView) Enabled(enabled bool) *SwitchView      { v.disabled = !enabled; return v }
 func (v *SwitchView) Padding(padding float32) *SwitchView   { v.padding.SetValue(padding); return v }
 func (v *SwitchView) Animated(animated bool) *SwitchView    { v.animated.SetValue(animated); return v }
 func (v *SwitchView) OnChange(fn func(bool)) *SwitchView    { v.onChange = fn; return v }
@@ -66,7 +65,6 @@ func (v *SwitchView) Update(ctx baseui.BuildContext, widget gui.Widget) {
 	b := widget.(*widgets.Switch)
 	s := ctx.State().(*switchState)
 	s.onChange = v.onChange
-	b.SetEnabled(!v.disabled)
 	b.SetAnimated(v.animated.ValueOr(s.animated))
 	b.SetPadding(v.padding.ValueOr(s.padding))
 	b.SetChecked(v.checked)
