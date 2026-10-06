@@ -185,7 +185,8 @@ func Rules(options Options) []style.Rule {
 		)
 	}
 	rules = append(rules, checkButtonRules(p, accent, tabFocus)...)
-	return append(rules, switchRules(p, accent, tabFocus)...)
+	rules = append(rules, switchRules(p, accent, tabFocus)...)
+	return append(rules, dropDownRules(p, tabFocus, options.FontFamily, size)...)
 }
 
 type palette struct {
