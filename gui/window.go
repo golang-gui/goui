@@ -269,7 +269,7 @@ func (w *window) SetFocusedWidget(widget Widget) bool {
 		w.setFocusedWidget(nil)
 		return true
 	}
-	if w.destroyed || widget.base().destroyed || widget.Window() != w || !widget.Focusable() || !visibleInTree(widget) {
+	if w.destroyed || widget.base().destroyed || widget.Window() != w || !widget.Focusable() || !IsEnabled(widget) || !visibleInTree(widget) {
 		return false
 	}
 	if w.focusedWidget == widget {
@@ -821,6 +821,9 @@ func (w *window) applyCursor() {
 	var resolved Cursor = CursorDefault
 	path := w.dispatcher.hoverPath
 	for i := len(path) - 1; i >= 0; i-- {
+		if !IsEnabled(path[i]) {
+			continue
+		}
 		if c := path[i].Cursor(); c != nil && c != CursorDefault {
 			resolved = c
 			break

@@ -56,11 +56,17 @@ func DefaultStyleRules() []style.Rule {
 			Radius(0).
 			FontFamily(family).
 			FontSize(size),
+		style.Name(styleNameWidget).State(style.Disabled).
+			ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}),
 
 		style.Name(styleNameLabel).
 			ForegroundColor(color.Black).
 			FontFamily(family).
 			FontSize(size),
+		style.Name(styleNameLabel).State(style.Disabled).
+			ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}),
+		style.Name(styleNameIcon).State(style.Disabled).
+			ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}),
 
 		style.Name(styleNameButton).
 			BackgroundColor(color.RGBA{R: 210, G: 210, B: 210, A: 255}).
@@ -76,6 +82,8 @@ func DefaultStyleRules() []style.Rule {
 		style.Name(styleNameButton).
 			State(style.Pressed).
 			BackgroundColor(color.RGBA{R: 180, G: 180, B: 180, A: 255}),
+		style.Name(styleNameButton).State(style.Disabled).
+			ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}),
 		style.Name(styleNameButton).Part(stylePartFocus).State(style.Focused).
 			BackgroundColor(color.Transparent).BorderWidth(0),
 		style.Name(styleNameButton).Part(stylePartFocus).State(style.FocusVisible).
@@ -93,6 +101,9 @@ func DefaultStyleRules() []style.Rule {
 		style.Name(styleNameTextInput).
 			State(style.Focused).
 			BorderColor(accent),
+		style.Name(styleNameTextInput).State(style.Disabled).
+			BackgroundColor(color.RGBA{R: 245, G: 245, B: 245, A: 255}).
+			ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}),
 		style.Name(styleNameTextInput).Part("selection").BackgroundColor(color.RGBA{R: 185, G: 210, B: 245, A: 255}),
 		style.Name(styleNameTextView).
 			BackgroundColor(color.White).
@@ -100,6 +111,8 @@ func DefaultStyleRules() []style.Rule {
 			FontFamily(family).FontSize(size),
 		style.Name(styleNameTextView).Part("selection").BackgroundColor(color.RGBA{R: 185, G: 210, B: 245, A: 255}),
 		style.Name(styleNameTextView).Part("caret").ForegroundColor(color.Black),
+		style.Name(styleNameTextView).State(style.Disabled).
+			ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}),
 
 		style.Name(styleNameScrollView).
 			BackgroundColor(color.Transparent).
@@ -228,7 +241,7 @@ func buttonStyleName(button *WidgetBase) string {
 // Focus is an independent pass over the button's hover/press background. Its
 // optional tint and border do not alter the child widgets' styles.
 func paintButtonFocus(p Painter, rect geometry.Rectangle, button *WidgetBase) {
-	if button.Focused() {
+	if IsEnabled(button) && button.Focused() {
 		state := style.Focused
 		if button.FocusVisible() {
 			state = style.FocusVisible

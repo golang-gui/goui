@@ -33,7 +33,10 @@ type WidgetInfo struct {
 	Bounds geometry.Rectangle `json:"bounds"`
 	// Visible is the widget's own visibility flag, not effective visibility
 	// through ancestors or occlusion. Hidden nodes may remain in the snapshot.
-	Visible       bool `json:"visible"`
+	Visible bool `json:"visible"`
+	// Enabled reports effective interaction, including ancestor restrictions.
+	// Controls may further restrict a record (for example, a disabled menu item).
+	// It is not the widget's own Enabled setting.
 	Enabled       bool `json:"enabled"`
 	Focusable     bool `json:"focusable"`
 	Focused       bool `json:"focused"`

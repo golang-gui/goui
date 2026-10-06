@@ -11,8 +11,11 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/platform/dragdrop"
+	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/software"
+	"github.com/golang-gui/goui/style"
 )
 
 type testWidget struct {
@@ -1112,4 +1115,452 @@ func TestWidgetRelativeMoveAffectsOrderedLayout(t *testing.T) {
 	if b.Rect().X != 0 || a.Rect().X != 30 {
 		t.Fatalf("layout ignored sibling order: a=%v b=%v", a.Rect(), b.Rect())
 	}
+}
+
+func TestWidgetEnabledPropagationAndReparent(t *testing.T) {
+	root, group, child, explicit := newTestWidget(), newTestWidget(), NewLabel("child"), NewButton()
+	root.AddChild(group)
+	group.AddChild(child)
+	group.AddChild(explicit)
+	explicit.SetEnabled(false)
+	if IsEnabled(nil) || !root.Enabled() || !IsEnabled(child) {
+		t.Fatal("nil or zero-value enabled state")
+	}
+	group.SetEnabled(false)
+	group.SetEnabled(false)
+	if !child.Enabled() || IsEnabled(child) || explicit.Enabled() || !explicit.Focusable() {
+		t.Fatal("ancestor overwrote own settings")
+	}
+	group.SetEnabled(true)
+	if !IsEnabled(child) || IsEnabled(explicit) {
+		t.Fatal("enable did not preserve explicit child disable")
+	}
+
+	// Reparenting between disabled parents must not enable even temporarily.
+	other := newTestWidget()
+	other.SetEnabled(false)
+	group.SetEnabled(false)
+	revision := child.enabledRevision
+	other.AddChild(child)
+	if child.enabledRevision != revision || IsEnabled(child) {
+		t.Fatal("reparent published the intermediate detached state")
+	}
+	root.AddChild(child)
+	if !IsEnabled(child) || child.enabledRevision != revision+1 {
+		t.Fatal("reparent to enabled parent did not restore state")
+	}
+	root.SetEnabled(false)
+	root.RemoveChild(child)
+	if !IsEnabled(child) || child.Parent() != nil {
+		t.Fatal("detached subtree retained ancestor restriction")
+	}
+}
+
+func TestWidgetEnabledCancellationReentry(t *testing.T) {
+	win, root, child := &window{}, newTestWidget(), NewButton()
+	root.AddChild(child)
+	win.SetWidget(root)
+	t.Cleanup(func() { win.SetWidget(nil) })
+	resets := 0
+	child.AddEventController(&enabledTestController{reset: func() { resets++ }})
+	child.ConnectFocused(func(focused bool) {
+		if !focused {
+			if IsEnabled(root) || IsEnabled(child) {
+				t.Fatal("focus callback observed a partially updated subtree")
+			}
+			root.SetEnabled(true)
+		}
+	})
+	win.SetFocusedWidget(child)
+	root.SetEnabled(false)
+	if !IsEnabled(root) || !IsEnabled(child) || resets != 0 || win.FocusedWidget() != nil {
+		t.Fatal("stale cleanup continued after reenable, or focus was restored")
+	}
+	child.ConnectFocused(func(focused bool) {
+		if !focused {
+			root.destroy(root)
+		}
+	})
+	win.SetFocusedWidget(child)
+	root.SetEnabled(false)
+	if !root.Destroyed() || !child.Destroyed() {
+		t.Fatal("cancellation callback destruction was not final")
+	}
+}
+
+func TestWidgetEnabledPointerDoesNotPassThrough(t *testing.T) {
+	win := &window{}
+	root, back, front := newTestWidget(), NewButton(), NewButton()
+	root.AddChild(back)
+	root.AddChild(front)
+	win.SetWidget(root)
+	t.Cleanup(func() { win.SetWidget(nil) })
+	for _, w := range []Widget{root, back, front} {
+		w.Arrange(geometry.Rect(0, 0, 100, 40))
+	}
+	backClicks, frontClicks := 0, 0
+	back.ConnectClicked(func() { backClicks++ })
+	front.ConnectClicked(func() { frontClicks++ })
+	pointer := func(kind events.EventType) {
+		t.Helper()
+		if err := win.DispatchEvent(events.PointerEvent{EventType: kind, Button: events.PointerButtonLeft,
+			Position: geometry.Point{X: 10, Y: 10}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	front.SetEnabled(false)
+	if Pick(root, geometry.Point{X: 10, Y: 10}) != front {
+		t.Fatal("disabled widget disappeared from geometric picking")
+	}
+	pointer(events.PointerDown)
+	pointer(events.PointerUp)
+	if backClicks != 0 || frontClicks != 0 || win.FocusedWidget() != nil {
+		t.Fatal("disabled target passed input or acquired focus")
+	}
+	front.SetEnabled(true)
+	pointer(events.PointerDown)
+	if !front.pressed {
+		t.Fatal("enabled button was not pressed")
+	}
+	front.SetEnabled(false)
+	if front.pressed || front.hovered || win.FocusedWidget() != nil {
+		t.Fatal("disable did not cancel press, hover and focus")
+	}
+	front.SetEnabled(true)
+	pointer(events.PointerUp)
+	if frontClicks != 0 || len(front.EventControllers()) != 2 {
+		t.Fatal("old press activated or controller registration changed")
+	}
+	pointer(events.PointerDown)
+	pointer(events.PointerUp)
+	if frontClicks != 1 {
+		t.Fatal("new press did not recover after enabling")
+	}
+}
+
+func TestWidgetEnabledChildBlocksAncestorActivation(t *testing.T) {
+	win, button, label := &window{}, NewButton(), NewLabel("disabled part")
+	button.SetChild(label)
+	label.SetEnabled(false)
+	win.SetWidget(button)
+	button.Arrange(geometry.Rect(0, 0, 100, 40))
+	label.Arrange(geometry.Rect(0, 0, 100, 40))
+	t.Cleanup(func() { win.SetWidget(nil) })
+	calls := 0
+	button.ConnectClicked(func() { calls++ })
+	for _, kind := range []events.EventType{events.PointerDown, events.PointerUp} {
+		_ = win.DispatchEvent(events.PointerEvent{EventType: kind, Button: events.PointerButtonLeft, Position: geometry.Point{X: 10, Y: 10}})
+	}
+	if calls != 0 {
+		t.Fatal("disabled child activated an ancestor")
+	}
+}
+
+func TestWidgetEnabledFocusTabAndShortcuts(t *testing.T) {
+	win, root := &window{}, newTestWidget()
+	group, first, next := newTestWidget(), NewButton(), NewButton()
+	root.AddChild(group)
+	group.AddChild(first)
+	root.AddChild(next)
+	win.SetWidget(root)
+	t.Cleanup(func() { win.SetWidget(nil) })
+	if !win.SetFocusedWidget(first) {
+		t.Fatal("initial focus")
+	}
+	group.SetEnabled(false)
+	if win.FocusedWidget() != nil || win.SetFocusedWidget(first) || !first.Focusable() {
+		t.Fatal("disabled subtree retained focus or lost its configuration")
+	}
+	_ = win.DispatchEvent(events.KeyEvent{EventType: events.KeyDown, Key: events.KeyTab})
+	if win.FocusedWidget() != next {
+		t.Fatal("Tab did not skip disabled subtree")
+	}
+	group.SetEnabled(true)
+	if win.FocusedWidget() != next {
+		t.Fatal("reenable stole focus")
+	}
+	local, global := 0, 0
+	controller := NewShortcutController()
+	localShortcut := NewShortcut(KeyGesture{Key: KeyF5})
+	localShortcut.ConnectActivate(func() { local++ })
+	controller.AddShortcut(localShortcut)
+	first.AddEventController(controller)
+	globalShortcut := NewShortcut(KeyGesture{Key: KeyF5})
+	globalShortcut.ConnectActivate(func() { global++ })
+	win.Shortcuts().AddShortcut(globalShortcut)
+	win.SetFocusedWidget(first)
+	_ = win.DispatchEvent(events.KeyEvent{EventType: events.KeyDown, Key: events.KeyF5})
+	root.SetEnabled(false)
+	_ = win.DispatchEvent(events.KeyEvent{EventType: events.KeyDown, Key: events.KeyF5})
+	if local != 1 || global != 1 {
+		t.Fatalf("shortcut scopes: local=%d global=%d", local, global)
+	}
+}
+
+func TestWidgetEnabledWheelAndDispatchReentrancy(t *testing.T) {
+	win, root, child := &window{}, newTestWidget(), newTestWidget()
+	root.AddChild(child)
+	win.SetWidget(root)
+	t.Cleanup(func() { win.SetWidget(nil) })
+	root.Arrange(geometry.Rect(0, 0, 100, 40))
+	child.Arrange(geometry.Rect(0, 0, 100, 40))
+	parentCalls, childCalls := 0, 0
+	parent := &enabledTestController{handle: func(ctx EventContext) {
+		if _, wheel := ctx.Event().(events.WheelEvent); wheel {
+			parentCalls++
+		}
+	}}
+	root.AddEventController(parent)
+	child.AddEventController(&enabledTestController{handle: func(EventContext) { childCalls++ }})
+	child.SetEnabled(false)
+	_ = win.DispatchEvent(events.WheelEvent{Position: geometry.Point{X: 10, Y: 10}})
+	if parentCalls != 1 || childCalls != 0 {
+		t.Fatal("wheel did not stay on enabled ancestor path")
+	}
+	child.SetEnabled(true)
+	parent.SetPhase(PhaseCapture)
+	parent.handle = func(EventContext) { child.SetEnabled(false); child.SetEnabled(true) }
+	_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Position: geometry.Point{X: 10, Y: 10}})
+	if childCalls != 0 {
+		t.Fatal("dispatch continued after disable/reenable within a callback")
+	}
+}
+
+type enabledTestController struct {
+	EventControllerBase
+	handle func(EventContext)
+	reset  func()
+}
+
+func (c *enabledTestController) HandleEvent(ctx EventContext) { c.handle(ctx) }
+func (c *enabledTestController) Reset() {
+	if c.reset != nil {
+		c.reset()
+	}
+}
+
+func TestWidgetEnabledLabelStyleAndSnapshot(t *testing.T) {
+	previous := App
+	App = &application{style: style.Sheet(
+		style.Name("custom-label").FontSize(12).ForegroundColor(color.Black),
+		style.Name("custom-label").State(style.Disabled).FontSize(18).ForegroundColor(color.Gray{Y: 140}),
+	)}
+	t.Cleanup(func() { App = previous })
+	button, label := NewButton(), NewLabel("retained")
+	label.SetStyleName("custom-label")
+	button.SetChild(label)
+	ensureWidgetStyle(label)
+	label.layoutValid = true
+	button.SetEnabled(false)
+	if !label.layoutValid || label.styleValid {
+		t.Fatal("style hook was not deferred, or enabled state failed to invalidate style")
+	}
+	ensureWidgetStyle(label)
+	format := label.resolvedTextFormat()
+	info := button.Snapshot()
+	if label.layoutValid || format.Font.Size != 18 || info.Enabled || len(info.Actions) != 0 ||
+		len(info.Children) != 1 || info.Children[0].Enabled || info.Children[0].Text != "retained" || label.StyleName() != "custom-label" {
+		t.Fatal("disabled style/cache/semantic state did not follow the subtree")
+	}
+	button.SetEnabled(true)
+	if label.resolvedTextFormat().Font.Size != 12 || len(button.Snapshot().Actions) != 1 {
+		t.Fatal("style or semantics did not recover")
+	}
+}
+
+func TestWidgetEnabledIconUsesOwnDisabledForeground(t *testing.T) {
+	app := &application{style: style.Sheet(
+		style.Name("parent").ForegroundColor(color.RGBA{R: 255, A: 255}),
+		style.Name("custom-icon").ForegroundColor(color.RGBA{B: 255, A: 255}),
+		style.Name("custom-icon").State(style.Disabled).ForegroundColor(color.Gray{Y: 140}),
+	)}
+	useTestApplication(t, app)
+	var got Color
+	icon := NewIcon(iconTestDraw(func(_ Painter, _ geometry.Rectangle, foreground Color) { got = foreground }))
+	icon.SetStyleName("custom-icon")
+	group := newTestWidget()
+	group.SetStyleName("parent")
+	group.AddChild(icon)
+	icon.Arrange(geometry.Rect(0, 0, 20, 20))
+	paintIconTest(icon)
+	if got.B != 1 || got.R != 0 {
+		t.Fatal("icon inherited the parent foreground")
+	}
+	group.SetEnabled(false)
+	paintIconTest(icon)
+	if got != graphics.ColorOf(color.Gray{Y: 140}) {
+		t.Fatal("disabled ancestor did not invalidate the icon's own foreground cache")
+	}
+	group.SetEnabled(true)
+	paintIconTest(icon)
+	if got.B != 1 || got.R != 0 {
+		t.Fatal("icon did not restore its own normal foreground")
+	}
+}
+
+func TestWidgetEnabledStyleHooksCoalesceAndInitializeDetachedWidgets(t *testing.T) {
+	app := &application{style: style.Sheet(
+		style.Name("probe").FontSize(10),
+		style.Name("probe").State(style.Disabled).FontSize(20),
+	)}
+	useTestApplication(t, app)
+	probe := &styleProbe{}
+	probe.SetStyleName("probe")
+	var states []bool
+	probe.onStyle = func() {
+		enabled := IsEnabled(probe)
+		states = append(states, enabled)
+		state := style.Normal
+		if !enabled {
+			state = style.Disabled
+		}
+		probe.size, _ = ResolveStyle("probe", "", state).FontSize()
+	}
+	probe.SetEnabled(false) // no mounted identity is needed to record invalidation
+	if probe.notified != 0 || measureWidget(probe, layout.Unbounded()).Width != 20 {
+		t.Fatal("detached state did not initialize disabled resources on first use")
+	}
+	probe.SetEnabled(true)
+	group := newTestWidget()
+	group.AddChild(probe)
+	group.SetEnabled(false)
+	group.SetEnabled(true)
+	if probe.notified != 1 || measureWidget(probe, layout.Unbounded()).Width != 10 ||
+		!slices.Equal(states, []bool{false, true}) {
+		t.Fatal("state invalidations were not coalesced before measurement")
+	}
+	group.SetEnabled(false)
+	if measureWidget(probe, layout.Unbounded()).Width != 20 {
+		t.Fatal("ancestor disable retained enabled-state font geometry")
+	}
+	before := probe.notified
+	probe.SetEnabled(false) // own setting changes, actual state does not
+	group.SetEnabled(true)
+	measureWidget(probe, layout.Unbounded())
+	if probe.notified != before || IsEnabled(probe) {
+		t.Fatal("unchanged actual state invalidated resources or lost local disable")
+	}
+}
+
+func TestWidgetEnabledRestoresStationaryHoverInEveryHost(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		root Root
+	}{
+		{"Window", &window{}},
+		{"Popover", &popover{}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			host := test.root.(interface {
+				SetWidget(Widget)
+				DispatchEvent(events.Event) error
+			})
+			group, button := newTestWidget(), NewButton()
+			group.AddChild(button)
+			host.SetWidget(group)
+			t.Cleanup(func() { host.SetWidget(nil) })
+			group.Arrange(geometry.Rect(0, 0, 100, 40))
+			button.Arrange(geometry.Rect(0, 0, 100, 40))
+			var hover []bool
+			button.motion.ConnectContainsHover(func(value bool) { hover = append(hover, value) })
+			if err := host.DispatchEvent(events.PointerEvent{EventType: events.PointerMove,
+				Position: geometry.Point{X: 10, Y: 10}}); err != nil {
+				t.Fatal(err)
+			}
+			group.SetEnabled(false)
+			group.SetEnabled(true)
+			if !button.hovered || !slices.Equal(hover, []bool{true, false, true}) {
+				t.Fatalf("stationary hover did not recover: %v", hover)
+			}
+			_ = host.DispatchEvent(events.PointerEvent{EventType: events.PointerLeave})
+			group.SetEnabled(false)
+			group.SetEnabled(true)
+			if button.hovered || !slices.Equal(hover, []bool{true, false, true, false}) {
+				t.Fatal("reenable restored hover after the pointer left the surface")
+			}
+		})
+	}
+}
+
+func TestWidgetEnabledDragReadIsCanceled(t *testing.T) {
+	win := &window{rootBase: rootBase{app: &application{}}}
+	root, child := newTestWidget(), newTestWidget()
+	root.AddChild(child)
+	win.SetWidget(root)
+	t.Cleanup(func() { win.SetWidget(nil) })
+	root.Arrange(geometry.Rect(0, 0, 100, 100))
+	child.Arrange(geometry.Rect(0, 0, 100, 100))
+	target := NewDropTarget(DragFormatText)
+	child.AddEventController(target)
+	drops, leaves := 0, 0
+	target.ConnectDrop(func(*DropRequest) { drops++ })
+	target.ConnectLeave(func() { leaves++ })
+	offer := &testDragOffer{id: 23, formats: []dragdrop.Format{dragdrop.FormatText}}
+	for _, kind := range []events.EventType{events.DragEnter, events.DragDrop} {
+		_ = win.DispatchEvent(events.DragOfferEvent{EventType: kind, Offer: offer,
+			Position: geometry.Point{X: 10, Y: 10}, Actions: dragdrop.Copy})
+	}
+	if offer.read != dragdrop.FormatText || !target.active {
+		t.Fatal("drop did not start a pending read")
+	}
+	root.SetEnabled(false)
+	if !target.Enabled() || target.active || leaves != 1 || !slices.Equal(offer.finished, []dragdrop.Action{0}) {
+		t.Fatal("disable did not reject pending read and preserve controller settings")
+	}
+	root.SetEnabled(true)
+	data := new(dragdrop.Data)
+	data.SetText("late")
+	_ = win.DispatchEvent(events.DragDataEvent{OfferID: offer.id, Format: offer.read, Data: data})
+	if drops != 0 || !slices.Equal(offer.finished, []dragdrop.Action{0}) {
+		t.Fatal("late data delivered after reenable, or finished twice")
+	}
+}
+
+func TestWidgetEnabledCancelsManualDragSession(t *testing.T) {
+	app := &application{}
+	win := &window{rootBase: rootBase{app: app}}
+	root, child := newTestWidget(), newTestWidget()
+	root.AddChild(child)
+	win.SetWidget(root)
+	t.Cleanup(func() { win.SetWidget(nil) })
+	native := &gestureDragNative{}
+	// Manual handoff does not add the DragSource to the widget's controllers.
+	app.dragSession = &guiDragSession{app: app, host: win, widget: child, native: native, source: NewDragSource()}
+	root.SetEnabled(false)
+	if native.cancels == 0 {
+		t.Fatal("disable failed to cancel a manually handed-off native drag")
+	}
+	app.dragSession = nil
+}
+
+func TestWidgetEnabledStopsStaleHoverAndClickCallbacks(t *testing.T) {
+	win, root, button := &window{}, newTestWidget(), NewButton()
+	root.AddChild(button)
+	win.SetWidget(root)
+	t.Cleanup(func() { win.SetWidget(nil) })
+	root.Arrange(geometry.Rect(0, 0, 100, 40))
+	button.Arrange(geometry.Rect(0, 0, 100, 40))
+	first, second := NewMotionEventController(), NewMotionEventController()
+	button.AddEventController(first)
+	button.AddEventController(second)
+	first.ConnectHover(func(hovered bool) {
+		if hovered {
+			button.SetEnabled(false)
+		}
+	})
+	enters := 0
+	second.ConnectHover(func(hovered bool) {
+		if hovered {
+			enters++
+		}
+	})
+	_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: geometry.Point{X: 10, Y: 10}})
+	if IsEnabled(button) || button.hovered || enters != 0 {
+		t.Fatal("hover crossing continued after disable inside an earlier controller")
+	}
+	button.RemoveEventController(first)
+	button.SetEnabled(true)
+	button.ConnectClicked(func() { button.SetEnabled(false); button.SetEnabled(true) })
+	button.ConnectClicked(func() { t.Fatal("stale click signal continued after disable and reenable") })
+	button.emitClicked()
 }

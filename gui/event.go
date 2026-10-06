@@ -145,6 +145,8 @@ type EventDispatcher struct {
 	// Popovers do not install one.
 	hostController EventController
 	hoverPath      []Widget
+	pointerEvent   events.PointerEvent // last position, shared by all widget hosts
+	pointerInside  bool
 	focusPath      []Widget
 	captureTarget  Widget // derived from the accepted gesture; used by chrome queries
 	gesture        *gestureSequence
@@ -240,6 +242,16 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 
 	target := d.target(host, root, event)
 	if target == nil {
+		// Window shortcuts remain available when its entire content is disabled.
+		if _, key := event.(events.KeyEvent); key {
+			ctx := &eventContext{event: event}
+			if d.shortcuts != nil {
+				d.shortcuts.HandleEvent(ctx)
+			}
+			if !ctx.PropagationStopped() {
+				d.navigateTab(host, event)
+			}
+		}
 		return nil
 	}
 
@@ -249,13 +261,15 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 		return nil
 	}
 
+	enabledRevision := target.base().enabledRevision
 	ctx := &eventContext{
 		dispatcher: d,
 		host:       host,
 		event:      event,
 		target:     target,
 		alive: func() bool {
-			return liveRoot(root) != nil && !target.base().destroyed && visibleInTree(target) &&
+			return liveRoot(root) != nil && !target.base().destroyed && IsEnabled(target) &&
+				target.base().enabledRevision == enabledRevision && visibleInTree(target) &&
 				(host.Widget() == root || d.decoration == root) && len(widgetPath(root, target)) != 0
 		},
 	}
@@ -317,7 +331,7 @@ func (d *EventDispatcher) target(host EventTarget, root Widget, event events.Eve
 	if d.gesture != nil && d.gesture.active && len(d.gesture.members) != 0 {
 		if pe, ok := event.(events.PointerEvent); ok && (pe.EventType == events.PointerMove || pe.EventType == events.PointerUp) {
 			for i := len(d.gesture.path) - 1; i >= 0; i-- {
-				if visibleInTree(d.gesture.path[i]) {
+				if visibleInTree(d.gesture.path[i]) && IsEnabled(d.gesture.path[i]) {
 					return d.gesture.path[i]
 				}
 			}
@@ -326,20 +340,26 @@ func (d *EventDispatcher) target(host EventTarget, root Widget, event events.Eve
 	switch event := event.(type) {
 	case events.PointerEvent:
 		target := d.pick(root, event.Position)
+		if target != nil && !IsEnabled(target) {
+			return nil
+		}
 		if event.EventType == events.PointerDown {
 			focusNearest(host, target)
 		}
 		return target
 	case events.WheelEvent:
-		return d.pick(root, event.Position)
+		return enabledAncestor(d.pick(root, event.Position))
 	case events.KeyEvent:
-		if focused := host.FocusedWidget(); focused != nil {
+		if focused := host.FocusedWidget(); focused != nil && IsEnabled(focused) {
 			return focused
 		}
-		if root != nil {
+		if root != nil && IsEnabled(root) {
 			return root
 		}
-		return d.decoration
+		if d.decoration != nil && IsEnabled(d.decoration) {
+			return d.decoration
+		}
+		return nil
 	default:
 		return nil
 	}
@@ -354,7 +374,7 @@ func (d *EventDispatcher) target(host EventTarget, root Widget, event events.Eve
 // Focusable applies only to the widget itself, not to its descendants.
 func focusNearest(host EventTarget, target Widget) {
 	for widget := target; widget != nil; widget = widget.Parent() {
-		if widget.Focusable() {
+		if IsEnabled(widget) && widget.Focusable() {
 			_ = host.SetFocusedWidget(widget)
 			return
 		}
@@ -367,7 +387,7 @@ func (d *EventDispatcher) dispatchPhase(ctx *eventContext, widgets []Widget, pha
 			ctx.StopPropagation()
 			return
 		}
-		if widget.base().destroyed {
+		if widget.base().destroyed || !IsEnabled(widget) {
 			ctx.StopPropagation()
 			return
 		}
@@ -399,14 +419,16 @@ func (d *EventDispatcher) dispatchPhase(ctx *eventContext, widgets []Widget, pha
 }
 
 func (d *EventDispatcher) updateHover(root Widget, event events.PointerEvent) {
+	d.pointerEvent, d.pointerInside = event, true
 	target := d.pick(root, event.Position)
-	path := widgetPath(d.treeRoot(root, target), target)
+	path := enabledHoverPath(widgetPath(d.treeRoot(root, target), target))
 	d.updatePointerHoverPath(path, event)
 }
 
 func (d *EventDispatcher) updatePointerHoverPath(path []Widget, event events.PointerEvent) {
-	d.updateCrossingPath(CrossingPointer, d.hoverPath, path, event.Position, true)
+	oldPath := d.hoverPath
 	d.hoverPath = path
+	d.updateCrossingPath(CrossingPointer, oldPath, path, event.Position, true)
 }
 
 func (d *EventDispatcher) updateFocus(root, target Widget) {
@@ -447,6 +469,7 @@ func (d *EventDispatcher) updateCrossingPath(crossingType CrossingType, oldPath,
 }
 
 func (d *EventDispatcher) clearHover(event events.PointerEvent) {
+	d.pointerEvent, d.pointerInside = event, false
 	d.updatePointerHoverPath(nil, event)
 }
 
@@ -454,13 +477,17 @@ func (d *EventDispatcher) notifyCrossing(widget Widget, crossingType CrossingTyp
 	if widget == nil {
 		return
 	}
+	if direction == CrossingEnter && !IsEnabled(widget) {
+		return
+	}
 	current := func() bool {
-		if crossingType != CrossingFocus {
-			return true
+		path := d.focusPath
+		if crossingType == CrossingPointer {
+			path = d.hoverPath
 		}
-		inside := slices.Contains(d.focusPath, widget)
+		inside := slices.Contains(path, widget)
 		if mode == CrossingTarget {
-			inside = pathTarget(d.focusPath) == widget
+			inside = pathTarget(path) == widget
 		}
 		return inside == (direction == CrossingEnter)
 	}

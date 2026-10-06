@@ -128,7 +128,7 @@ func (s *gestureSequence) valid(p *GestureParticipation) bool {
 	if p.widget == nil {
 		return s.dispatcher.hostController == p.controller
 	}
-	if p.widget.base().destroyed || !visibleInTree(p.widget) ||
+	if p.widget.base().destroyed || !IsEnabled(p.widget) || !visibleInTree(p.widget) ||
 		!slices.Contains(p.widget.EventControllers(), EventController(p.controller)) {
 		return false
 	}

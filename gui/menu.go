@@ -543,7 +543,7 @@ func (r *menuItemRow) Paint(p Painter) {
 func (r *menuItemRow) Snapshot() WidgetInfo {
 	info := r.WidgetBase.Snapshot()
 	info.Role = RoleMenuItem
-	info.Enabled = r.mi != nil && r.mi.Enabled()
+	info.Enabled = info.Enabled && r.mi != nil && r.mi.Enabled()
 	if r.mi != nil {
 		info.Text = r.mi.Label()
 		if r.mi.Separator() {
@@ -663,7 +663,7 @@ func (b *MenuButton) ConnectClosed(fn func()) signal.Handle {
 }
 
 func (b *MenuButton) openMenu() {
-	if b.menu == nil {
+	if b.menu == nil || b.Destroyed() || !IsEnabled(b) {
 		return
 	}
 	if b.pm == nil {
@@ -701,7 +701,9 @@ func (b *MenuButton) Paint(p Painter) {
 
 func (b *MenuButton) resolvedStyle() style.Style {
 	st := style.Normal
-	if b.pressed {
+	if !IsEnabled(b) {
+		st = style.Disabled
+	} else if b.pressed {
 		st = style.Pressed
 	} else if b.hovered {
 		st = style.Hovered
@@ -712,7 +714,9 @@ func (b *MenuButton) resolvedStyle() style.Style {
 func (b *MenuButton) Snapshot() WidgetInfo {
 	info := b.WidgetBase.Snapshot()
 	info.Role = RoleButton
-	info.Actions = append(info.Actions, ActionClick)
+	if info.Enabled {
+		info.Actions = append(info.Actions, ActionClick)
+	}
 	return info
 }
 

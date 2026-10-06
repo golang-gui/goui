@@ -189,7 +189,11 @@ func (l *Label) resolvedTextFormat() typography.TextFormat {
 	if name == "" {
 		name = styleNameLabel
 	}
-	return textFormatFromStyle(ResolveStyle(name, style.PartDefault, style.Normal), l.wrapMode, l.textAlign)
+	state := style.Normal
+	if !IsEnabled(l) {
+		state = style.Disabled
+	}
+	return textFormatFromStyle(ResolveStyle(name, style.PartDefault, state), l.wrapMode, l.textAlign)
 }
 
 func measureTextSize(available geometry.Size) geometry.Size {

@@ -353,7 +353,7 @@ func (s *DragSource) HandleEvent(ctx EventContext) {
 	}
 	if e.EventType == events.PointerMove && s.gesture != nil && s.armed && gestureMoved(s.pressWindow, e.Position, gestureDefaultDistance) {
 		s.armed = false
-		if s.owner == nil || !s.enabled || !s.actions.ValidSet() || s.actions == 0 {
+		if s.owner == nil || !IsEnabled(s.owner) || !s.enabled || !s.actions.ValidSet() || s.actions == 0 {
 			s.gesture.Reject()
 			return
 		}
@@ -366,7 +366,7 @@ func (s *DragSource) HandleEvent(ctx EventContext) {
 		request := &DragPrepare{Position: s.press}
 		s.prepare.Emit(request)
 		if s.gesture == nil || s.owner != owner || owner.Root() != root || owner.base().destroyed ||
-			!s.enabled || !s.actions.ValidSet() || s.actions == 0 || app.dragSession != nil {
+			!IsEnabled(owner) || !s.enabled || !s.actions.ValidSet() || s.actions == 0 || app.dragSession != nil {
 			s.gesture.Reject()
 			return
 		}
@@ -405,7 +405,7 @@ func (s *DragSource) HandleEvent(ctx EventContext) {
 func (s *DragSource) GestureAccepted(EventContext) {
 	gesture, data, preview, actions := s.gesture, s.prepared, s.preview, s.preparedActions
 	s.gesture, s.prepared, s.armed = nil, nil, false
-	if gesture == nil || data == nil || s.owner == nil {
+	if gesture == nil || data == nil || s.owner == nil || !IsEnabled(s.owner) {
 		return
 	}
 	root := s.owner.Root()

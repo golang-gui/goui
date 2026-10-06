@@ -192,7 +192,7 @@ func TestClickEventControllerResetClearsPress(t *testing.T) {
 	if controller.Pressed() {
 		t.Fatal("reset did not clear pressed state")
 	}
-	if len(pressed) != 1 || !pressed[0] {
+	if !slices.Equal(pressed, []bool{true, false}) {
 		t.Fatalf("unexpected pressed calls: %v", pressed)
 	}
 }

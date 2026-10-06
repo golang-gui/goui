@@ -145,7 +145,7 @@ func (p *popover) RequestPaint() error {
 }
 
 func (p *popover) SetFocusedWidget(widget Widget) bool {
-	if widget != nil && (p.destroyed || widget.base().destroyed || widget.Root() != p || !widget.Focusable() || !visibleInTree(widget)) {
+	if widget != nil && (p.destroyed || widget.base().destroyed || widget.Root() != p || !widget.Focusable() || !IsEnabled(widget) || !visibleInTree(widget)) {
 		return false
 	}
 	p.focusedWidget = widget

@@ -212,7 +212,7 @@ func (h *HeaderBar) queryControls(result *ChromeControls) {
 
 func (h *HeaderBar) queryRegion(p geometry.Point, result *ChromeRegion) {
 	win := h.Window()
-	if win == nil || !visibleInTree(h) {
+	if win == nil || !visibleInTree(h) || !IsEnabled(h) {
 		return
 	}
 	// Integrated's GUI-drawn frame has the same precedence over the automatic
@@ -225,7 +225,7 @@ func (h *HeaderBar) queryRegion(p geometry.Point, result *ChromeRegion) {
 		return
 	}
 	target := hitTest(win.Widget(), p)
-	if target == nil || !target.base().isDescendant(target, h) {
+	if target == nil || !IsEnabled(target) || !target.base().isDescendant(target, h) {
 		return
 	}
 	local := widgetLocalPoint(h, p)
