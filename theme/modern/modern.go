@@ -77,6 +77,7 @@ func Rules(options Options) []style.Rule {
 	rules := []style.Rule{
 		text("check-button"),
 		text("check-button-text"),
+		text("switch-text"),
 		style.Name("table-view").BackgroundColor(p.window).BorderColor(p.border).BorderWidth(1),
 		style.Name("table-grid").BorderColor(mix(p.window, p.text, .10)).BorderWidth(0),
 		style.Name("table-grid").Part("horizontal").BorderWidth(1),
@@ -183,7 +184,8 @@ func Rules(options Options) []style.Rule {
 				BackgroundColor(color.Transparent).BorderColor(tabFocus).BorderWidth(2),
 		)
 	}
-	return append(rules, checkButtonRules(p, accent, tabFocus)...)
+	rules = append(rules, checkButtonRules(p, accent, tabFocus)...)
+	return append(rules, switchRules(p, accent, tabFocus)...)
 }
 
 type palette struct {
