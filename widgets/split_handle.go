@@ -170,7 +170,7 @@ func (h *splitHandle) Paint(p gui.Painter) {
 func (h *splitHandle) Snapshot() gui.WidgetInfo {
 	info := h.WidgetBase.Snapshot()
 	info.Role = RoleSeparator
-	info.Enabled = h.view.active()
+	info.Enabled = info.Enabled && h.view.active()
 	lo, hi := h.view.limits(h.view.available())
 	info.Range = &gui.RangeInfo{Value: h.view.startSize, Min: lo, Max: hi, Direction: h.view.direction}
 	if info.Enabled {

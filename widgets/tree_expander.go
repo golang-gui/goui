@@ -162,7 +162,9 @@ func (b *treeDisclosure) Snapshot() gui.WidgetInfo {
 		if b.expander.expanded {
 			info.Name = "折叠"
 		}
-		info.Actions = append(info.Actions, gui.ActionClick)
+		if info.Enabled {
+			info.Actions = append(info.Actions, gui.ActionClick)
+		}
 	}
 	return info
 }
