@@ -108,7 +108,11 @@ func (i *Icon) Paint(p Painter) {
 	if name == "" {
 		name = styleNameIcon
 	}
-	s := ResolveStyle(name, "", style.Normal)
+	state := style.Normal
+	if !IsEnabled(i) {
+		state = style.Disabled
+	}
+	s := ResolveStyle(name, "", state)
 	var foreground Color
 	if c, ok := s.ForegroundColor(); ok && c != nil {
 		foreground = graphics.ColorOf(c)

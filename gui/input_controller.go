@@ -157,10 +157,10 @@ func (c *ClickEventController) Pressed() bool {
 func (c *ClickEventController) Reset() {
 	gesture := c.gesture
 	c.gesture = nil
-	gesture.Reject()
-	c.pressed = false
 	c.lastDown = time.Time{}
 	c.second = false
+	c.setPressed(&eventContext{}, false)
+	gesture.Reject()
 }
 
 func (c *ClickEventController) GestureAccepted(ctx EventContext) {
@@ -433,7 +433,9 @@ func (c *DragEventController) Reset() {
 	gesture := c.gesture
 	c.gesture = nil
 	gesture.Reject()
-	c.dragging = false
+	if c.dragging {
+		c.GestureCanceled(GestureInterrupted)
+	}
 }
 
 func (c *DragEventController) GestureAccepted(ctx EventContext) {

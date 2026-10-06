@@ -51,7 +51,7 @@ func dragAppOf(root Root) *application {
 func dragControllers(root Widget) (hasController bool, formats []dragdrop.Format, targets []*DropTarget) {
 	var walk func(Widget)
 	walk = func(w Widget) {
-		if w == nil || w.base().destroyed {
+		if w == nil || w.base().destroyed || !IsEnabled(w) {
 			return
 		}
 		for _, controller := range w.EventControllers() {
@@ -350,6 +350,10 @@ func (b *rootBase) dispatchDragOffer(host EventTarget, e events.DragOfferEvent) 
 func (b *rootBase) negotiateDragTarget(host EventTarget, e events.DragOfferEvent) DragAction {
 	root := host.Widget()
 	pathTarget := b.dispatcher.pick(root, e.Position)
+	if pathTarget != nil && !IsEnabled(pathTarget) {
+		b.leaveDragTarget()
+		return 0
+	}
 	path := widgetPath(b.dispatcher.treeRoot(root, pathTarget), pathTarget)
 	if len(path) == 0 {
 		b.leaveDragTarget()
@@ -368,7 +372,7 @@ func (b *rootBase) negotiateDragTarget(host EventTarget, e events.DragOfferEvent
 		w := path[i]
 		for _, controller := range w.EventControllers() {
 			t, ok := controller.(*DropTarget)
-			if !ok || !t.enabled || t.owner != w || t.actions == 0 || !t.actions.ValidSet() {
+			if !ok || !IsEnabled(w) || !t.enabled || t.owner != w || t.actions == 0 || !t.actions.ValidSet() {
 				continue
 			}
 			allowed := t.actions & e.Actions
@@ -403,7 +407,7 @@ func (b *rootBase) negotiateDragTarget(host EventTarget, e events.DragOfferEvent
 				t.motion.Emit(request)
 			}
 			request.local = nil
-			if t.owner != w || w.base().destroyed || w.Root() != host.(Root) || !t.enabled ||
+			if t.owner != w || w.base().destroyed || !IsEnabled(w) || w.Root() != host.(Root) || !t.enabled ||
 				!request.Action.ValidResult() || request.Action&allowed == 0 {
 				b.leaveDragTarget()
 				continue
@@ -451,7 +455,7 @@ func (b *rootBase) dispatchDragData(host EventTarget, e events.DragDataEvent) {
 	}
 	target := state.target
 	if target == nil || target.owner == nil || target.owner.base().destroyed ||
-		target.owner.Root() != host.(Root) || !target.enabled || !slices.Contains(target.formats, state.format) ||
+		target.owner.Root() != host.(Root) || !IsEnabled(target.owner) || !target.enabled || !slices.Contains(target.formats, state.format) ||
 		target.actions&state.action == 0 {
 		b.finishDragDataError(nil)
 		return

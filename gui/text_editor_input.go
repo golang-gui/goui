@@ -11,7 +11,7 @@ import (
 )
 
 func (t *textEditor) imContext() IMContext {
-	if t.readOnly {
+	if t.readOnly || !IsEnabled(t.owner) {
 		return nil
 	}
 	return t.im
@@ -38,6 +38,25 @@ func (c *textEditController) Reset() {
 	c.lastDown = time.Time{}
 	if c.view.scrollTimer != nil {
 		c.view.scrollTimer.Stop()
+	}
+	if !IsEnabled(c.view.owner) {
+		t := c.view
+		model, epoch, revision := t.model, t.mountEpoch, t.owner.base().enabledRevision
+		current := func() bool {
+			return !t.owner.base().destroyed && !IsEnabled(t.owner) && t.model == model &&
+				t.mountEpoch == epoch && t.owner.base().enabledRevision == revision
+		}
+		t.inputRevision++
+		t.hideContextMenu()
+		if !current() {
+			return
+		}
+		t.cancelPreedit(true)
+		if !current() {
+			return
+		}
+		t.model.BreakUndoGroup()
+		t.syncBlink(true)
 	}
 }
 
@@ -86,7 +105,7 @@ func (c *textEditController) beginSelection(ctx EventContext, event events.Point
 
 func (c *textEditController) HandleEvent(ctx EventContext) {
 	t := c.view
-	if t.owner.base().destroyed {
+	if t.owner.base().destroyed || !IsEnabled(t.owner) {
 		return
 	}
 	switch event := ctx.Event().(type) {
@@ -190,12 +209,13 @@ func (t *textEditor) moveTo(pos textedit.Position, extend bool) {
 }
 
 func (t *textEditor) replaceSelection(text string, atomic bool) {
-	if t.owner.base().destroyed || t.readOnly || t.suspended {
+	if t.owner.base().destroyed || !IsEnabled(t.owner) || t.readOnly || t.suspended {
 		return
 	}
 	model, epoch := t.model, t.mountEpoch
+	enabledRevision := t.owner.base().enabledRevision
 	t.cancelPreedit(true)
-	if t.owner.base().destroyed || t.model != model || t.mountEpoch != epoch {
+	if t.owner.base().destroyed || !IsEnabled(t.owner) || t.owner.base().enabledRevision != enabledRevision || t.model != model || t.mountEpoch != epoch {
 		return
 	}
 	if !t.normalizeEditingSelection() {
@@ -525,13 +545,13 @@ func (t *textEditor) copySelection(cut bool) {
 }
 
 func (t *textEditor) paste() {
-	if t.readOnly || App == nil || App.Clipboard() == nil {
+	if t.readOnly || !IsEnabled(t.owner) || App == nil || App.Clipboard() == nil {
 		return
 	}
 	model, revision, selection, epoch := t.model, t.model.Revision(), t.selection, t.mountEpoch
 	inputRevision := t.inputRevision
 	App.Clipboard().RequestText(func(text string, ok bool) {
-		if !ok || t.owner.base().destroyed || t.suspended || t.readOnly || t.model != model || model.Revision() != revision || t.selection != selection || t.mountEpoch != epoch || t.inputRevision != inputRevision {
+		if !ok || t.owner.base().destroyed || t.suspended || !IsEnabled(t.owner) || t.readOnly || t.model != model || model.Revision() != revision || t.selection != selection || t.mountEpoch != epoch || t.inputRevision != inputRevision {
 			return
 		}
 		t.replaceSelection(text, true)

@@ -13,7 +13,7 @@ type Button struct {
 	padding float32 // self-held: button overrides Measure/Arrange (skeleton floor)
 	hovered bool
 	pressed bool
-	clicked signal.Signal0
+	clicked signal.Signal1[uint64]
 	motion  *MotionEventController
 	click   *ClickEventController
 }
@@ -136,16 +136,24 @@ func (b *Button) Paint(p Painter) {
 func (b *Button) Snapshot() WidgetInfo {
 	info := b.WidgetBase.Snapshot()
 	info.Role = RoleButton
-	info.Actions = append(info.Actions, ActionClick)
+	if info.Enabled {
+		info.Actions = append(info.Actions, ActionClick)
+	}
 	return info
 }
 
 func (b *Button) ConnectClicked(fn func()) signal.Handle {
-	return b.clicked.Connect(fn)
+	return b.clicked.Connect(func(revision uint64) {
+		if !b.Destroyed() && IsEnabled(b) && b.enabledRevision == revision {
+			fn()
+		}
+	})
 }
 
 func (b *Button) emitClicked() {
-	b.clicked.Emit()
+	if !b.Destroyed() && IsEnabled(b) {
+		b.clicked.Emit(b.enabledRevision)
+	}
 }
 
 func (b *Button) setHovered(hovered bool) {
@@ -181,6 +189,9 @@ func (b *Button) resolvedStyle() style.Style {
 }
 
 func (b *Button) styleState() style.State {
+	if !IsEnabled(b) {
+		return style.Disabled
+	}
 	if b.pressed {
 		return style.Pressed
 	}

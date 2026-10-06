@@ -493,11 +493,13 @@ func (t *textEditor) snapPosition(offset int) int {
 // caret paragraphs to be shaped during a viewport-only style/layout pass.
 func (t *textEditor) normalizeEditingSelection() bool {
 	model, epoch, revision := t.model, t.mountEpoch, t.model.Revision()
+	enabledRevision := t.owner.base().enabledRevision
 	s := TextSelection{t.snapPosition(t.selection.Anchor), t.snapPosition(t.selection.Caret)}
 	if s != t.selection {
 		t.setSelection(s, false, false)
 	}
-	return !t.owner.base().destroyed && !t.suspended && t.model == model && t.mountEpoch == epoch && model.Revision() == revision
+	return !t.owner.base().destroyed && !t.suspended && IsEnabled(t.owner) &&
+		t.owner.base().enabledRevision == enabledRevision && t.model == model && t.mountEpoch == epoch && model.Revision() == revision
 }
 
 func (t *textEditor) resolvedStyle(part string) style.Style {
@@ -509,7 +511,9 @@ func (t *textEditor) resolvedStyle(part string) style.Style {
 		}
 	}
 	state := style.Normal
-	if t.owner.Focused() {
+	if !IsEnabled(t.owner) {
+		state = style.Disabled
+	} else if t.owner.Focused() {
 		state = style.Focused
 	}
 	return ResolveStyle(name, part, state)
@@ -996,7 +1000,7 @@ func (t *textEditor) disconnectInteractionTimers() {
 }
 
 func (t *textEditor) interactive() bool {
-	if t.owner.base().destroyed || t.suspended || !t.owner.Focused() || t.owner.Root() == nil || !visibleInTree(t.owner) {
+	if t.owner.base().destroyed || t.suspended || !IsEnabled(t.owner) || !t.owner.Focused() || t.owner.Root() == nil || !visibleInTree(t.owner) {
 		return false
 	}
 	if w := t.owner.Window(); w != nil {
@@ -1142,7 +1146,7 @@ func (t *textEditor) displayCaret() textedit.Position {
 }
 
 func (t *textEditor) onPreedit(text string, caret int) {
-	if t.owner.base().destroyed || t.suspended || t.readOnly || t.resettingIME {
+	if t.owner.base().destroyed || t.suspended || !IsEnabled(t.owner) || t.readOnly || t.resettingIME {
 		return
 	}
 	if text == "" {
@@ -1185,7 +1189,7 @@ func (t *textEditor) onPreedit(text string, caret int) {
 }
 
 func (t *textEditor) onCommit(commit IMCommit) {
-	if t.owner.base().destroyed || t.suspended || t.readOnly || t.resettingIME {
+	if t.owner.base().destroyed || t.suspended || !IsEnabled(t.owner) || t.readOnly || t.resettingIME {
 		return
 	}
 	atomic := commit.Composed || t.preedit != nil || t.nextCommitAtomic
@@ -1245,7 +1249,7 @@ type textEditMenu struct {
 }
 
 func (t *textEditor) canEditCommand(command textEditCommand) bool {
-	if t.owner.base().destroyed || t.suspended {
+	if t.owner.base().destroyed || t.suspended || !IsEnabled(t.owner) {
 		return false
 	}
 	selected := t.selection.Anchor != t.selection.Caret
@@ -1306,7 +1310,7 @@ func (t *textEditor) runEditCommand(command textEditCommand) {
 // A nil point denotes keyboard invocation, positioned below the caret. Pointer
 // coordinates and PopoverMenu.ShowAt both use editor-local DIP.
 func (t *textEditor) showContextMenu(point *geometry.Point) {
-	if t.owner.base().destroyed || t.suspended || t.owner.Window() == nil {
+	if t.owner.base().destroyed || t.suspended || !IsEnabled(t.owner) || t.owner.Window() == nil {
 		return
 	}
 	model, epoch := t.model, t.mountEpoch

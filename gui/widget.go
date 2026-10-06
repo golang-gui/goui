@@ -28,6 +28,10 @@ type Widget interface {
 	Visible() bool
 	SetVisible(bool)
 
+	// Enabled is this widget's own setting, independent of its ancestors.
+	Enabled() bool
+	SetEnabled(bool)
+
 	// Focusable allows this widget to receive logical focus and participate in
 	// default Tab navigation. It does not change its descendants' capabilities.
 	Focusable() bool
@@ -77,9 +81,10 @@ type Widget interface {
 	Arrange(rect geometry.Rectangle)
 
 	// StyleChanged invalidates this widget's style-dependent resources. The
-	// framework calls it before subsequent layout or paint after a style sheet
-	// or style name change, and on first use or reattachment. Changes may be
-	// coalesced. It is not a hover/pressed-state notification.
+	// framework calls it before subsequent layout or paint after a style sheet,
+	// style name, or effective enabled-state change, and on first use or
+	// reattachment. Invalidations may be coalesced and need not result in
+	// different style values. It is not an input or business-state notification.
 	//
 	// Implementations should only update their own derived resources, not
 	// mutate the tree or style sheet or recursively start layout. The framework
@@ -99,7 +104,8 @@ type Widget interface {
 	// Default Tab navigation uses depth-first preorder (self, then children);
 	// Shift+Tab reverses that order. Layout managers may also use sibling order
 	// for placement; it is not a universal logical content index. An empty slice
-	// is a leaf. Focusable=false skips only self; hidden subtrees are skipped.
+	// is a leaf. Focusable=false skips only self; hidden or disabled subtrees
+	// are skipped during focus navigation.
 	Children() []Widget
 
 	ConnectMount(func()) signal.Handle
@@ -139,6 +145,9 @@ type WidgetBase struct {
 	name                string
 	styleName           string // style override; "" = the control resolves with its own default name
 	hidden              bool
+	disabled            bool
+	inheritedDisabled   bool
+	enabledRevision     uint64
 	focusable           bool
 	focused             bool
 	containsFocus       bool
@@ -473,7 +482,7 @@ func (w *WidgetBase) Snapshot() WidgetInfo {
 		Role:          RoleWidget,
 		Bounds:        w.windowRect(),
 		Visible:       w.Visible(),
-		Enabled:       true,
+		Enabled:       IsEnabled(w),
 		Focusable:     w.Focusable(),
 		Focused:       w.Focused(),
 		FocusVisible:  w.FocusVisible(),
@@ -482,7 +491,7 @@ func (w *WidgetBase) Snapshot() WidgetInfo {
 	for _, controller := range w.controllers {
 		switch c := controller.(type) {
 		case *DragSource:
-			if c.enabled && c.actions.ValidSet() && c.actions != 0 {
+			if info.Enabled && c.enabled && c.actions.ValidSet() && c.actions != 0 {
 				if info.DragDrop == nil {
 					info.DragDrop = new(DragDropInfo)
 				}
@@ -490,7 +499,7 @@ func (w *WidgetBase) Snapshot() WidgetInfo {
 				info.DragDrop.Dragging = info.DragDrop.Dragging || c.dragging
 			}
 		case *DropTarget:
-			if c.enabled && c.actions.ValidSet() && c.actions != 0 && len(c.formats) != 0 {
+			if info.Enabled && c.enabled && c.actions.ValidSet() && c.actions != 0 && len(c.formats) != 0 {
 				if info.DragDrop == nil {
 					info.DragDrop = new(DragDropInfo)
 				}
@@ -767,6 +776,7 @@ func (w *WidgetBase) setParent(child, parent Widget) {
 	if parent != nil && !parent.base().destroyed {
 		w.attachChild(parent, child)
 	}
+	w.updateEnabled()
 	if !rootChanged && oldRoot != nil {
 		if h, ok := oldRoot.(EventTarget); ok && focusWithin(h, child.base()) {
 			h.SetFocusedWidget(h.FocusedWidget())
@@ -796,6 +806,7 @@ func (w *WidgetBase) attachRoot(root Root, child Widget) {
 	}
 	w.parentWidget = nil
 	w.parentRoot = root
+	w.updateEnabled()
 	invalidateStyleSubtree(child)
 	w.emitMountSubtree(child)
 }
@@ -812,6 +823,7 @@ func (w *WidgetBase) detachRoot(child Widget) {
 		}
 	}
 	w.detach(child)
+	w.updateEnabled()
 }
 
 func (w *WidgetBase) attachChild(parent, child Widget) {
@@ -1082,4 +1094,165 @@ func visitWidgetTree(root Root, visit func(Widget) bool) {
 	if root != nil {
 		walk(root.Widget())
 	}
+}
+
+func (w *WidgetBase) Enabled() bool { return !w.disabled }
+
+// IsEnabled reports whether widget and all its ancestors are enabled. A nil
+// widget returns false. Visibility, mounting and focusability are independent;
+// like other widget queries, call this on the GUI thread.
+func IsEnabled(widget Widget) bool { return widget != nil && widget.base().isEnabled() }
+
+func (w *WidgetBase) isEnabled() bool { return !w.disabled && !w.inheritedDisabled }
+
+func (w *WidgetBase) SetEnabled(enabled bool) {
+	if w.destroyed || w.disabled == !enabled {
+		return
+	}
+	oldEnabled := w.isEnabled()
+	w.disabled = !enabled
+	w.propagateEnabled(oldEnabled)
+}
+
+// Reparenting publishes only the final parent's restriction, never a temporary
+// enable while the widget is being detached from its old parent.
+func (w *WidgetBase) updateEnabled() {
+	oldEnabled := w.isEnabled()
+	w.inheritedDisabled = w.parentWidget != nil && !IsEnabled(w.parentWidget)
+	w.propagateEnabled(oldEnabled)
+}
+
+type enabledChange struct {
+	base     *WidgetBase
+	revision uint64
+}
+
+func (w *WidgetBase) propagateEnabled(oldEnabled bool) {
+	var changes []enabledChange
+	var commit func(*WidgetBase, bool)
+	commit = func(base *WidgetBase, old bool) {
+		if base.destroyed || base.isEnabled() == old {
+			return
+		}
+		base.enabledRevision++
+		base.styleValid, base.measureValid = false, false
+		changes = append(changes, enabledChange{base, base.enabledRevision})
+		for _, child := range base.children {
+			b := child.base()
+			before := b.isEnabled()
+			b.inheritedDisabled = !base.isEnabled()
+			commit(b, before)
+		}
+	}
+	// All state and cache invalidations are visible before cancellation invokes
+	// user code. StyleChanged itself stays deferred to the framework use path.
+	commit(w, oldEnabled)
+	if len(changes) == 0 {
+		return
+	}
+	root := w.root()
+	w.RequestLayout()
+	w.requestSemanticUpdate()
+	if !w.isEnabled() {
+		w.cancelDisabledInput()
+	}
+	for _, change := range changes {
+		b := change.base
+		for _, controller := range slices.Clone(b.controllers) {
+			if b.destroyed || b.isEnabled() || b.enabledRevision != change.revision || b.root() != root {
+				break
+			}
+			if controller != nil && slices.Contains(b.controllers, controller) {
+				controller.Reset()
+			}
+		}
+	}
+	notifyDragControllersChanged(root)
+	refreshEnabledHover(root)
+}
+
+// Host-level state is cancelled once for the affected subtree. Each changed
+// node resets its own controllers separately, with reentrant lifetime checks.
+func (w *WidgetBase) cancelDisabledInput() {
+	root := w.root()
+	revision := w.enabledRevision
+	current := func() bool {
+		return !w.destroyed && !w.isEnabled() && w.enabledRevision == revision && w.root() == root
+	}
+	if w.self != nil {
+		cancelGestureSubtree(root, w.self)
+	}
+	if !current() {
+		return
+	}
+	if host, ok := root.(EventTarget); ok && focusWithin(host, w) {
+		host.SetFocusedWidget(nil)
+	}
+	if !current() {
+		return
+	}
+	if host, ok := root.(interface{ rootState() *rootBase }); ok {
+		b := host.rootState()
+		path := b.dispatcher.hoverPath
+		for i, widget := range path {
+			if !IsEnabled(widget) {
+				b.dispatcher.updatePointerHoverPath(slices.Clone(path[:i]), b.dispatcher.pointerEvent)
+				break
+			}
+		}
+		if !current() {
+			return
+		}
+		if target := b.dragTarget.target; target != nil && target.owner != nil && !IsEnabled(target.owner) {
+			state := b.dragTarget
+			b.leaveDragTarget()
+			if state.reading && state.offer != nil {
+				_ = state.offer.Finish(0)
+			}
+		}
+		if !current() {
+			return
+		}
+		b.clearDisabledDragMotion()
+		if !current() {
+			return
+		}
+		// A manually handed-off source need not be registered as a controller.
+		if app := b.app; app != nil && app.dragSession != nil {
+			run := app.dragSession
+			if run.widget != nil && run.widget.Root() == root && !IsEnabled(run.widget) {
+				run.cancel()
+			}
+		}
+	}
+}
+
+func refreshEnabledHover(root Root) {
+	if host, ok := root.(interface{ rootState() *rootBase }); ok {
+		d := &host.rootState().dispatcher
+		if d.pointerInside {
+			d.updateHover(root.Widget(), d.pointerEvent)
+		}
+	}
+	if host, ok := root.(interface{ applyCursor() }); ok {
+		host.applyCursor()
+	}
+}
+
+// Keep enabled ancestors' contains-hover state without making a disabled leaf
+// an interactive target.
+func enabledHoverPath(path []Widget) []Widget {
+	for i, widget := range path {
+		if !IsEnabled(widget) {
+			return path[:i]
+		}
+	}
+	return path
+}
+
+func enabledAncestor(widget Widget) Widget {
+	for widget != nil && !IsEnabled(widget) {
+		widget = widget.Parent()
+	}
+	return widget
 }

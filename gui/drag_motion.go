@@ -36,7 +36,7 @@ func (c *DragMotionEventController) ConnectMotion(fn func(geometry.Point)) signa
 }
 func (c *DragMotionEventController) connectPoint(s *signal.Signal2[geometry.Point, uint64], fn func(geometry.Point)) signal.Handle {
 	return s.Connect(func(p geometry.Point, generation uint64) {
-		if generation == c.generation && c.owner != nil && !c.owner.base().destroyed {
+		if generation == c.generation && c.owner != nil && !c.owner.base().destroyed && IsEnabled(c.owner) {
 			fn(p)
 		}
 	})
@@ -97,6 +97,15 @@ func (b *rootBase) clearDragMotion() {
 	}
 }
 
+func (b *rootBase) clearDisabledDragMotion() {
+	for _, widget := range b.dragMotion.path {
+		if !IsEnabled(widget) {
+			b.clearDragMotion()
+			return
+		}
+	}
+}
+
 func (b *rootBase) updateDragMotion(host EventTarget, e events.DragOfferEvent) {
 	s := &b.dragMotion
 	if s.updating {
@@ -116,6 +125,10 @@ func (b *rootBase) updateDragMotion(host EventTarget, e events.DragOfferEvent) {
 		return
 	}
 	target := b.dispatcher.pick(root, e.Position)
+	if target != nil && !IsEnabled(target) {
+		b.clearDragMotion()
+		return
+	}
 	path := widgetPath(b.dispatcher.treeRoot(root, target), target)
 	var observers []*DragMotionEventController
 	for _, w := range path {
@@ -137,7 +150,7 @@ func (b *rootBase) updateDragMotion(host EventTarget, e events.DragOfferEvent) {
 	}
 	for _, c := range observers {
 		owner := c.owner
-		if owner == nil || owner.base().destroyed || owner.Root() != root.Root() {
+		if owner == nil || owner.base().destroyed || !IsEnabled(owner) || owner.Root() != root.Root() {
 			continue
 		}
 		point := widgetLocalPoint(owner, e.Position)
@@ -187,7 +200,7 @@ func (b *rootBase) dragScrollAxes() (x, y *ScrollView, vx, vy float32) {
 	s := &b.dragMotion
 	for i := len(s.path) - 1; i >= 0; i-- {
 		sv, ok := s.path[i].(*ScrollView)
-		if !ok || !sv.dragAutoScroll || sv.destroyed || sv.Root() == nil {
+		if !ok || !sv.dragAutoScroll || sv.destroyed || !IsEnabled(sv) || sv.Root() == nil {
 			continue
 		}
 		p := widgetLocalPoint(sv, s.event.Position)

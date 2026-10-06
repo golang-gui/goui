@@ -19,6 +19,100 @@ import (
 	"github.com/golang-gui/goui/style"
 )
 
+func TestTextEditorDisabledPreservesContentAndRejectsLateInput(t *testing.T) {
+	editor, win, _ := newEditorFixture(t, "abc")
+	editor.SetSelection(TextSelection{Anchor: 1, Caret: 2})
+	selection := editor.Selection()
+	clip := &editorClipboard{}
+	App.(*application).clipboard = clip
+	editor.paste()
+	if clip.pending == nil {
+		t.Fatal("paste did not request clipboard")
+	}
+	editor.onPreedit("候选", 1)
+	if editor.preedit == nil {
+		t.Fatal("preedit setup failed")
+	}
+	editor.SetEnabled(false)
+	if editor.Model().Text() != "abc" || editor.Selection() != selection || editor.preedit != nil || win.FocusedWidget() != nil || editor.imContext() != nil {
+		t.Fatal("disable changed content or retained active editing")
+	}
+	editor.onCommit(IMCommit{Text: "late"})
+	editor.onPreedit("late", 0)
+	if editor.Model().Text() != "abc" || editor.preedit != nil || editor.canEditCommand(textSelectAll) {
+		t.Fatal("disabled editor accepted native input or menu command")
+	}
+	editor.SetEnabled(true)
+	clip.pending("stale", true)
+	if editor.Model().Text() != "abc" || win.FocusedWidget() != nil {
+		t.Fatal("reenable accepted old paste or stole focus")
+	}
+	editor.SetReadOnly(true)
+	if !win.SetFocusedWidget(editor) || !editor.canEditCommand(textSelectAll) {
+		t.Fatal("read-only was confused with disabled")
+	}
+	editor.SetEnabled(false)
+	editor.Model().SetText("programmatic")
+	if editor.Model().Text() != "programmatic" || editor.Snapshot().Enabled {
+		t.Fatal("disabled editor rejected programmatic synchronization")
+	}
+}
+
+func TestTextEditorDisableDuringSelectionNormalizationStopsCommit(t *testing.T) {
+	for _, reenable := range []bool{false, true} {
+		t.Run(fmt.Sprintf("reenable=%t", reenable), func(t *testing.T) {
+			editor, _, _ := newEditorFixture(t, "e\u0301x")
+			// A changed shaping boundary can leave a rune-aligned selection
+			// inside a cluster until the next editing command normalizes it.
+			paragraph := editor.paragraph(0)
+			metrics := paragraph.layout.(*testTextLayout)
+			metrics.clusters = []typography.TextCluster{
+				{Start: 0, Length: 3, Width: 10, Height: 20},
+				{Start: 3, Length: 1, X: 10, Width: 10, Height: 20},
+			}
+			paragraph.geometryValid = false
+			editor.selection = TextSelection{Anchor: 1, Caret: 1}
+			normalizations := 0
+			editor.ConnectSelection(func(TextSelection) {
+				normalizations++
+				editor.SetEnabled(false)
+				if reenable {
+					editor.SetEnabled(true)
+				}
+			})
+			editor.onCommit(IMCommit{Text: "late"})
+			if normalizations != 1 || editor.Model().Text() != "e\u0301x" {
+				t.Fatal("commit continued after selection callback disabled the editor")
+			}
+		})
+	}
+}
+
+type editorResetIM struct {
+	IMContext
+	onReset func()
+}
+
+func (c *editorResetIM) Reset() { c.onReset() }
+
+func TestTextEditorDisabledResetStopsAfterIMEReentry(t *testing.T) {
+	editor, win, _ := newEditorFixture(t, "abc")
+	win.SetFocusedWidget(nil) // Exercise the controller cleanup, not focus exit.
+	editor.onPreedit("候选", 1)
+	resets := 0
+	editor.im = &editorResetIM{IMContext: editor.im, onReset: func() {
+		resets++
+		editor.SetEnabled(true)
+		// A synchronous callback owns the new state. Stale cleanup must not
+		// restart its caret or break the new editing session's undo group.
+		editor.caretVisible = false
+	}}
+	editor.SetEnabled(false)
+	if resets != 1 || !IsEnabled(editor) || editor.preedit != nil || editor.caretVisible {
+		t.Fatal("disabled-input cleanup continued after IME callback reenabling")
+	}
+}
+
 func TestTextEditorCommandModifierIsNotSuper(t *testing.T) {
 	for _, modifier := range []events.Modifiers{events.ModifierControl, events.ModifierCommand, events.ModifierSuper, events.ModifierWin, events.ModifierOption, textCommandModifier() | events.ModifierOption, textCommandModifier() | events.ModifierAlt} {
 		editor, win, _ := newEditorFixture(t, "abc")
