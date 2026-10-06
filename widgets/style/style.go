@@ -72,5 +72,6 @@ func Rules() []basestyle.Rule {
 		basestyle.Name("split-handle").ForegroundColor(color.RGBA{R: 198, G: 198, B: 206, A: 255}),
 	}
 	rules = append(rules, checkButtonRules()...)
+	rules = append(rules, dropDownRules()...)
 	return append(rules, switchRules()...)
 }
