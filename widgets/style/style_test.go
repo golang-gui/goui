@@ -10,6 +10,9 @@ import (
 
 func TestRulesComposeWithoutRegistering(t *testing.T) {
 	for _, rule := range gui.DefaultStyleRules() {
+		if rule.Sel.Name == "progress-bar" {
+			t.Fatal("GUI fallback still owns progress rules")
+		}
 		if len(rule.Sel.Name) >= 4 && rule.Sel.Name[:4] == "tab-" {
 			t.Fatal("GUI fallback still owns tab rules")
 		}
@@ -49,6 +52,21 @@ func TestRulesComposeWithoutRegistering(t *testing.T) {
 	first[0] = basestyle.Name("mutated")
 	if second[0].Sel.Name != "tab-bar" {
 		t.Fatal("rules share mutable backing storage")
+	}
+}
+
+func TestProgressFallbackIsExplicit(t *testing.T) {
+	sheet := basestyle.Sheet(append(gui.DefaultStyleRules(), Rules()...)...)
+	s := sheet.Resolve(basestyle.Sel{Name: "progress-bar"})
+	bg, _ := s.BackgroundColor()
+	fg, _ := s.ForegroundColor()
+	radius, _ := s.Radius()
+	if bg != (color.RGBA{R: 225, G: 225, B: 225, A: 255}) ||
+		fg != (color.RGBA{R: 70, G: 130, B: 220, A: 255}) || radius != 2 {
+		t.Fatal("missing progress track / foreground / radius")
+	}
+	if _, ok := gui.DefaultStyleSheet().Resolve(basestyle.Sel{Name: "progress-bar"}).ForegroundColor(); ok {
+		t.Fatal("widget rules changed GUI fallback globally")
 	}
 }
 

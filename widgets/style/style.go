@@ -20,6 +20,8 @@ func Rules() []basestyle.Rule {
 	size, _ := label.FontSize()
 	return []basestyle.Rule{
 		basestyle.Name("tab-bar").BackgroundColor(color.Transparent),
+		basestyle.Name("progress-bar").BackgroundColor(color.RGBA{R: 225, G: 225, B: 225, A: 255}).
+			ForegroundColor(color.RGBA{R: 70, G: 130, B: 220, A: 255}).Radius(2),
 		basestyle.Name("table-view").BackgroundColor(color.White).BorderColor(color.RGBA{R: 198, G: 198, B: 206, A: 255}).BorderWidth(1),
 		basestyle.Name("table-grid").BorderColor(color.RGBA{R: 225, G: 225, B: 230, A: 255}).BorderWidth(0),
 		basestyle.Name("table-grid").Part("horizontal").BorderWidth(1),
