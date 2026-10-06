@@ -75,6 +75,8 @@ func Rules(options Options) []style.Rule {
 	tabFocus := mix(focus, p.border, .25)
 	progressTrack := mix(p.window, p.text, .10)
 	rules := []style.Rule{
+		text("check-button"),
+		text("check-button-text"),
 		style.Name("table-view").BackgroundColor(p.window).BorderColor(p.border).BorderWidth(1),
 		style.Name("table-grid").BorderColor(mix(p.window, p.text, .10)).BorderWidth(0),
 		style.Name("table-grid").Part("horizontal").BorderWidth(1),
@@ -181,7 +183,7 @@ func Rules(options Options) []style.Rule {
 				BackgroundColor(color.Transparent).BorderColor(tabFocus).BorderWidth(2),
 		)
 	}
-	return rules
+	return append(rules, checkButtonRules(p, accent, tabFocus)...)
 }
 
 type palette struct {
@@ -253,11 +255,17 @@ func tintedBackground(base, accent, text color.RGBA, amount float64) color.RGBA 
 }
 
 func focusColor(accent, text color.RGBA, backgrounds []color.RGBA) color.RGBA {
+	return contrastColor(accent, text, backgrounds, 3)
+}
+
+// contrastColor preserves the accent hue where possible, moving towards the
+// palette's text color only as far as needed for all supplied backgrounds.
+func contrastColor(accent, text color.RGBA, backgrounds []color.RGBA, minimum float64) color.RGBA {
 	for step := 0; step <= 255; step++ {
 		candidate := mix(accent, text, float64(step)/255)
 		valid := true
 		for _, bg := range backgrounds {
-			if contrast(candidate, bg) < 3 {
+			if contrast(candidate, bg) < minimum {
 				valid = false
 				break
 			}
