@@ -5,13 +5,16 @@ import "github.com/golang-gui/goui/gui"
 // Semantic roles supplied by this widget package. Values remain stable across
 // implementation changes; generic GUI snapshot consumers need no tab knowledge.
 const (
-	RoleTabView     gui.Role = "tabview"
-	RoleTabBar      gui.Role = "tabbar"
-	RoleTab         gui.Role = "tab"
-	RoleTabPanel    gui.Role = "tabpanel"
-	RoleSplitView   gui.Role = "splitview"
-	RoleSeparator   gui.Role = "separator"
-	RoleProgressBar gui.Role = "progressbar"
+	RoleTabView      gui.Role = "tabview"
+	RoleTabBar       gui.Role = "tabbar"
+	RoleTab          gui.Role = "tab"
+	RoleTabPanel     gui.Role = "tabpanel"
+	RoleSplitView    gui.Role = "splitview"
+	RoleSeparator    gui.Role = "separator"
+	RoleProgressBar  gui.Role = "progressbar"
+	RoleCheckBox     gui.Role = "checkbox"
+	RoleRadioButton  gui.Role = "radiobutton"
+	RoleToggleButton gui.Role = "togglebutton"
 )
 
 // Snapshot attribute keys describe semantic capabilities, not concrete widget

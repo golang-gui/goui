@@ -70,6 +70,80 @@ func TestProgressFallbackIsExplicit(t *testing.T) {
 	}
 }
 
+func TestCheckButtonFallbackParts(t *testing.T) {
+	sheet := basestyle.Sheet(append(gui.DefaultStyleRules(), Rules()...)...)
+	for _, part := range []string{"indicator", "indicator-checked", "indicator-mixed", "radio", "radio-checked", "button", "button-checked", "button-mixed"} {
+		for _, state := range []basestyle.State{basestyle.Normal, basestyle.Hovered, basestyle.Pressed, basestyle.Disabled} {
+			s := sheet.Resolve(basestyle.Sel{Name: "check-button", Part: part, State: state})
+			if bg, ok := s.BackgroundColor(); !ok || bg == nil {
+				t.Fatalf("missing %s background", part)
+			} else if part == "button-checked" || part == "button-mixed" {
+				r, g, b, _ := bg.RGBA()
+				if r != g || g != b {
+					t.Fatalf("%s state=%v should have a neutral fill, got %v", part, state, bg)
+				}
+			}
+			wantWidth := float32(1)
+			if part == "radio-checked" {
+				wantWidth = 2
+			}
+			if part == "button" || part == "button-checked" || part == "button-mixed" {
+				// Bare GUI Button is borderless. The explicit widget fallback
+				// follows that policy instead of forcing a different appearance.
+				wantWidth = 0
+			}
+			if width, ok := s.BorderWidth(); !ok || width != wantWidth {
+				t.Fatalf("%s state=%v border=%v; want %v", part, state, width, wantWidth)
+			}
+		}
+	}
+	if size, _ := sheet.Resolve(basestyle.Sel{Name: "check-button-text"}).FontSize(); size <= 0 {
+		t.Fatal("label needs independent font")
+	}
+	if _, ok := gui.DefaultStyleSheet().Resolve(basestyle.Sel{Name: "check-button", Part: "indicator-checked"}).ForegroundColor(); ok {
+		t.Fatal("fallback registered itself in GUI")
+	}
+}
+
+func TestCheckButtonFallbackMatchesButtons(t *testing.T) {
+	sheet := basestyle.Sheet(append(gui.DefaultStyleRules(), Rules()...)...)
+	for _, state := range []basestyle.State{basestyle.Normal, basestyle.Hovered, basestyle.Pressed, basestyle.Disabled} {
+		ordinary := sheet.Resolve(basestyle.Sel{Name: "button", State: state})
+		toggle := sheet.Resolve(basestyle.Sel{Name: "check-button", Part: "button", State: state})
+		wantBG, _ := ordinary.BackgroundColor()
+		gotBG, _ := toggle.BackgroundColor()
+		wantRadius, _ := ordinary.Radius()
+		gotRadius, _ := toggle.Radius()
+		wantEdge, _ := ordinary.BorderColor()
+		gotEdge, _ := toggle.BorderColor()
+		if gotBG != wantBG || gotRadius != wantRadius || gotEdge != wantEdge {
+			t.Fatalf("unchecked state=%v does not match bare Button", state)
+		}
+		for _, selection := range []string{"", "-checked", "-mixed"} {
+			s := sheet.Resolve(basestyle.Sel{Name: "check-button", Part: "indicator" + selection, State: state})
+			if radius, _ := s.Radius(); radius != 4 {
+				t.Fatal("checkbox radius is not 4 DIP")
+			}
+			if state != basestyle.Disabled {
+				edge, _ := s.BorderColor()
+				wantEdge, _ := sheet.Resolve(basestyle.Sel{Name: "check-button", Part: "indicator" + selection}).BorderColor()
+				if selection != "" {
+					wantEdge, _ = s.BackgroundColor()
+					if fg, _ := s.ForegroundColor(); fg != color.White {
+						t.Fatal("selected checkbox must use white ink")
+					}
+				}
+				if edge != wantEdge {
+					t.Fatal("hover/press changes indicator outline")
+				}
+			}
+		}
+	}
+	if width, _ := sheet.Resolve(basestyle.Sel{Name: "check-button", Part: "focus", State: basestyle.FocusVisible}).BorderWidth(); width != 2 {
+		t.Fatal("missing independent 2 DIP keyboard focus")
+	}
+}
+
 func TestTreeFallbackStatesAndIndependentText(t *testing.T) {
 	sheet := basestyle.Sheet(append(gui.DefaultStyleRules(), Rules()...)...)
 	var previous color.Color
