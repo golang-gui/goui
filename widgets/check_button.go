@@ -72,8 +72,6 @@ type CheckButton struct {
 	appearance CheckAppearance
 	group      *CheckGroup
 	padding    float32
-	enabled    bool
-	focusable  bool
 	hovered    bool
 	pressed    bool
 	revision   uint64
@@ -86,7 +84,7 @@ type CheckButton struct {
 // NewCheckButton creates an unchecked, focusable square indicator with 6 DIP
 // padding, an 18 DIP indicator and an 8 DIP content gap. It has no implicit label.
 func NewCheckButton() *CheckButton {
-	b := &CheckButton{padding: 6, enabled: true, focusable: true}
+	b := &CheckButton{padding: 6}
 	b.WidgetBase.SetFocusable(true)
 	b.SetLayoutManager(checkLayout{button: b})
 	b.ConnectFocused(func(bool) { b.RequestPaint() })
@@ -201,32 +199,6 @@ func (b *CheckButton) SetPadding(padding float32) {
 	}
 }
 
-func (b *CheckButton) Enabled() bool { return b.enabled }
-
-// SetEnabled disables this control's activation and Tab participation, not its
-// child's independent behavior. It preserves the requested Focusable value.
-func (b *CheckButton) SetEnabled(enabled bool) {
-	if b.Destroyed() || b.enabled == enabled {
-		return
-	}
-	b.enabled = enabled
-	if enabled {
-		b.addControllers()
-	} else {
-		b.RemoveEventController(b.click)
-		b.RemoveEventController(b.motion)
-		b.RemoveEventController(b.keys)
-		b.hovered, b.pressed = false, false
-	}
-	b.WidgetBase.SetFocusable(enabled && b.focusable)
-	b.RequestPaint()
-}
-
-func (b *CheckButton) SetFocusable(focusable bool) {
-	b.focusable = focusable
-	b.WidgetBase.SetFocusable(b.enabled && focusable)
-}
-
 func (b *CheckButton) addControllers() {
 	b.AddEventController(b.motion)
 	b.AddEventController(b.click)
@@ -245,7 +217,7 @@ func (b *CheckButton) ConnectChange(fn func(CheckState)) signal.Handle {
 }
 
 func (b *CheckButton) activate() {
-	if b.Destroyed() || !b.enabled || !b.Visible() {
+	if b.Destroyed() || !gui.IsEnabled(b) || !b.Visible() {
 		return
 	}
 	state := CheckChecked
@@ -318,8 +290,7 @@ func (b *CheckButton) Snapshot() gui.WidgetInfo {
 	} else if b.group != nil {
 		info.Role = RoleRadioButton
 	}
-	info.Enabled = b.enabled
-	if b.enabled {
+	if info.Enabled {
 		info.Actions = append(info.Actions, gui.ActionClick)
 	}
 	info.SetAttribute(CheckInfoKey, CheckInfo{State: b.state, Appearance: b.appearance, Grouped: b.group != nil})
@@ -335,7 +306,7 @@ func (b *CheckButton) Paint(p gui.Painter) {
 		name = "check-button"
 	}
 	state := style.Normal
-	if !b.enabled {
+	if !gui.IsEnabled(b) {
 		state = style.Disabled
 	} else if b.pressed {
 		state = style.Pressed

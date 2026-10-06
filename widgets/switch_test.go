@@ -76,7 +76,7 @@ func TestSwitchSettersAndInput(t *testing.T) {
 	}
 	b.SetEnabled(false)
 	switchKey(t, d, h, events.KeySpace, false)
-	if b.Checked() || b.Focusable() || changes != 4 {
+	if b.Checked() || !b.Focusable() || gui.IsEnabled(b) || changes != 4 {
 		t.Fatal("disabled switch activated")
 	}
 	b.SetFocusable(false)
@@ -264,7 +264,7 @@ func TestSwitchLayoutAndSnapshot(t *testing.T) {
 		t.Fatal("snapshot aliases state")
 	}
 	b.SetEnabled(false)
-	if info := b.Snapshot(); info.Enabled || len(info.Actions) != 0 || info.Focusable {
+	if info := b.Snapshot(); info.Enabled || len(info.Actions) != 0 || !info.Focusable {
 		t.Fatal("disabled semantics advertise activation")
 	}
 	child.SetVisible(false)

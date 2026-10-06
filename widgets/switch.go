@@ -27,25 +27,25 @@ const switchDuration = 120 * time.Millisecond
 // Like other widgets, its methods belong to the GUI thread.
 type Switch struct {
 	gui.WidgetBase
-	child                                 gui.Widget
-	checked, enabled, focusable, animated bool
-	padding                               float32
-	hovered, pressed, mounted             bool
-	revision                              uint64
-	change                                signal.Signal2[bool, func() bool]
-	motion                                *gui.MotionEventController
-	click                                 *gui.ClickEventController
-	keys                                  *gui.KeyEventController
-	drag                                  *switchDrag
-	position, from, dragPosition, dragX   float32
-	started                               time.Time
-	timer                                 *gui.Timer
+	child                               gui.Widget
+	checked, animated                   bool
+	padding                             float32
+	hovered, pressed, mounted           bool
+	revision                            uint64
+	change                              signal.Signal2[bool, func() bool]
+	motion                              *gui.MotionEventController
+	click                               *gui.ClickEventController
+	keys                                *gui.KeyEventController
+	drag                                *switchDrag
+	position, from, dragPosition, dragX float32
+	started                             time.Time
+	timer                               *gui.Timer
 }
 
 // NewSwitch creates an enabled, focusable switch, initially off. The track is
 // 36x20 DIP with a 16 DIP thumb, 6 DIP padding and an 8 DIP content gap.
 func NewSwitch() *Switch {
-	b := &Switch{enabled: true, focusable: true, animated: true, padding: 6}
+	b := &Switch{animated: true, padding: 6}
 	b.WidgetBase.SetFocusable(true)
 	b.SetLayoutManager(switchLayout{b})
 	b.ConnectMount(func() { b.mounted = true })
@@ -133,7 +133,7 @@ func (b *Switch) SetChecked(checked bool) {
 }
 
 func (b *Switch) setChecked(checked, notify bool) {
-	if b.Destroyed() || !b.enabled && notify {
+	if b.Destroyed() || !gui.IsEnabled(b) && notify {
 		return
 	}
 	changed := b.checked != checked
@@ -158,35 +158,6 @@ func (b *Switch) ConnectChange(fn func(bool)) signal.Handle {
 			fn(checked)
 		}
 	})
-}
-
-func (b *Switch) Enabled() bool { return b.enabled }
-
-// SetEnabled affects this switch's input and Tab participation, preserving
-// content behavior and the caller's Focusable preference.
-func (b *Switch) SetEnabled(enabled bool) {
-	if b.Destroyed() || b.enabled == enabled {
-		return
-	}
-	b.enabled = enabled
-	if enabled {
-		b.addControllers()
-	} else {
-		b.cancelInput()
-		b.RemoveEventController(b.drag)
-		b.RemoveEventController(b.click)
-		b.RemoveEventController(b.keys)
-		b.RemoveEventController(b.motion)
-		b.hovered = false
-		b.finishAnimation()
-	}
-	b.WidgetBase.SetFocusable(enabled && b.focusable)
-	b.RequestPaint()
-}
-
-func (b *Switch) SetFocusable(focusable bool) {
-	b.focusable = focusable
-	b.WidgetBase.SetFocusable(b.enabled && focusable)
 }
 
 func (b *Switch) Padding() float32 { return b.padding }
@@ -247,7 +218,7 @@ func (b *Switch) target() float32 {
 }
 
 func (b *Switch) canAnimate() bool {
-	if !b.animated || !b.enabled || !b.mounted || b.Root() == nil || b.Destroyed() {
+	if !b.animated || !gui.IsEnabled(b) || !b.mounted || b.Root() == nil || b.Destroyed() {
 		return false
 	}
 	if track := b.trackRect(); track.Width <= 0 || track.Height <= 0 {
@@ -339,7 +310,7 @@ func (b *Switch) Paint(p gui.Painter) {
 		name = "switch"
 	}
 	state := style.Normal
-	if !b.enabled {
+	if !gui.IsEnabled(b) {
 		state = style.Disabled
 	} else if b.pressed || b.drag.Dragging() {
 		state = style.Pressed
@@ -371,8 +342,8 @@ func (b *Switch) Paint(p gui.Painter) {
 
 func (b *Switch) Snapshot() gui.WidgetInfo {
 	info := b.WidgetBase.Snapshot()
-	info.Role, info.Enabled = RoleSwitch, b.enabled
-	if b.enabled {
+	info.Role = RoleSwitch
+	if info.Enabled {
 		info.Actions = append(info.Actions, gui.ActionClick)
 	}
 	info.SetAttribute(SwitchInfoKey, SwitchInfo{Checked: b.checked})

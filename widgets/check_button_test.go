@@ -133,8 +133,8 @@ func TestCheckButtonInput(t *testing.T) {
 	b.SetEnabled(false)
 	dispatchTabPointer(t, d, host, events.PointerUp, 8, 16)
 	checkClick(t, b)
-	if b.Checked() || len(states) != before || b.Focusable() || b.Snapshot().Enabled {
-		t.Fatal("disabled control activated or remained focusable")
+	if b.Checked() || len(states) != before || !b.Focusable() || gui.IsEnabled(b) || b.Snapshot().Enabled {
+		t.Fatal("disabled control activated or lost its own focus capability")
 	}
 	b.SetFocusable(false)
 	b.SetEnabled(true)

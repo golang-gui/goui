@@ -175,7 +175,9 @@ func (r *tableRow) Snapshot() gui.WidgetInfo {
 	info.Role = RoleTableRow
 	info.Selected = r.view.selected[r.bound.ID]
 	info.SetAttribute(TableInfoKey, TableInfo{RowID: r.bound.ID, RowIndex: r.bound.Index + 1, Current: r.view.current == r.bound.ID})
-	info.Actions = append(info.Actions, gui.ActionClick)
+	if info.Enabled {
+		info.Actions = append(info.Actions, gui.ActionClick)
+	}
 	return info
 }
 

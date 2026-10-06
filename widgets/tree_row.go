@@ -152,6 +152,8 @@ func (r *treeRow) Snapshot() gui.WidgetInfo {
 		PositionInSet: r.flat.position, SetSize: r.flat.siblings,
 		Expandable: r.bound.Expandable, Expanded: r.view.expanded[r.bound.ID], Current: r.view.current == r.bound.ID,
 	})
-	info.Actions = append(info.Actions, gui.ActionClick)
+	if info.Enabled {
+		info.Actions = append(info.Actions, gui.ActionClick)
+	}
 	return info
 }

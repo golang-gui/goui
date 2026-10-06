@@ -34,6 +34,9 @@ func newDropDownContent(owner *DropDown) *dropDownContent {
 	c.scroll = gui.NewScrollView()
 	c.scroll.SetChild(c.list)
 	c.WidgetBase.AddChild(c, c.scroll)
+	c.AddEventController(&dropDownPopupInput{
+		EventControllerBase: gui.NewEventControllerBase(gui.PhaseCapture), owner: owner,
+	})
 	keys := gui.NewKeyEventController()
 	keys.SetPhase(gui.PhaseCapture)
 	keys.ConnectKeyDown(c.keyDown)
@@ -47,9 +50,27 @@ func newDropDownContent(owner *DropDown) *dropDownContent {
 	return c
 }
 
+// The popup is a separate Root. Check its owner's current eligibility before
+// ordinary input reaches a custom option widget, then dismiss a stale popup.
+type dropDownPopupInput struct {
+	gui.EventControllerBase
+	owner *DropDown
+}
+
+func (c *dropDownPopupInput) HandleEvent(ctx gui.EventContext) {
+	if !c.owner.Destroyed() && c.owner.Opened() && gui.IsEnabled(c.owner) {
+		return
+	}
+	ctx.StopPropagation()
+	if key, ok := ctx.Event().(events.KeyEvent); ok {
+		key.PreventDefault()
+	}
+	c.owner.Close()
+}
+
 func (c *dropDownContent) keyDown(ctx gui.EventContext, event events.KeyEvent) {
 	d := c.owner
-	if !d.Opened() || !d.enabled || d.Destroyed() {
+	if !d.Opened() || !gui.IsEnabled(d) || d.Destroyed() {
 		return
 	}
 	plain := func(key gui.Key) bool { return (gui.KeyGesture{Key: key}).Matches(event) }
@@ -149,9 +170,22 @@ func (c *dropDownContent) Arrange(rect geometry.Rectangle) {
 
 func (c *dropDownContent) Snapshot() gui.WidgetInfo {
 	info := c.WidgetBase.Snapshot()
+	if c.owner.Destroyed() || !gui.IsEnabled(c.owner) {
+		disableDropDownSnapshot(&info)
+	}
 	info.Role = RoleListBox
 	info.SetAttribute(DropDownInfoKey, DropDownInfo{Count: c.owner.count(), Index: c.owner.selected, Expanded: c.owner.Opened()})
 	return info
+}
+
+// Detached semantic data must reflect the cross-Root input restriction too.
+func disableDropDownSnapshot(info *gui.WidgetInfo) {
+	info.Enabled = false
+	info.Actions = nil
+	info.DragDrop = nil
+	for i := range info.Children {
+		disableDropDownSnapshot(&info.Children[i])
+	}
 }
 
 type dropDownListDelegate struct {
@@ -296,7 +330,10 @@ func (r *dropDownRow) Paint(p gui.Painter) {
 
 func (r *dropDownRow) Snapshot() gui.WidgetInfo {
 	info := r.WidgetBase.Snapshot()
-	info.Role, info.Enabled, info.Selected = RoleOption, r.bound && !r.disabled, r.bound && r.owner.selected == r.index
+	info.Role, info.Enabled, info.Selected = RoleOption, info.Enabled && r.bound && !r.disabled && gui.IsEnabled(r.owner), r.bound && r.owner.selected == r.index
+	if r.owner.Destroyed() || !gui.IsEnabled(r.owner) {
+		disableDropDownSnapshot(&info)
+	}
 	if r.bound && r.index < r.owner.count() {
 		info.Text = r.owner.model.ItemAt(r.index).Text
 	}

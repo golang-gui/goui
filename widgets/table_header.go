@@ -103,7 +103,7 @@ func (h *tableHeader) Snapshot() gui.WidgetInfo {
 	if h.column.resizable {
 		info.Children = append(info.Children, h.handle.Snapshot())
 	}
-	if h.column.sortable {
+	if info.Enabled && h.column.sortable {
 		info.Actions = append(info.Actions, gui.ActionClick)
 	}
 	return info
@@ -214,7 +214,9 @@ func (h *tableResizeHandle) Snapshot() gui.WidgetInfo {
 		maximum = layout.Inf
 	}
 	info.Range = &gui.RangeInfo{Value: c.width, Min: c.minWidth, Max: max(c.minWidth, maximum), Direction: layout.DirectionHorizontal}
-	info.Actions = []gui.Action{gui.ActionFocus}
+	if info.Enabled {
+		info.Actions = []gui.Action{gui.ActionFocus}
+	}
 	return info
 }
 func tablePoint(widget gui.Widget, point geometry.Point, table *TableView) geometry.Point {

@@ -44,7 +44,6 @@ type DropDown struct {
 	placeholderLabel           *gui.Label
 	placeholder                string
 	selected, current, bound   int
-	enabled, focusable         bool
 	hovered, pressed           bool
 	padding, popupMaxHeight    float32
 	revision                   uint64
@@ -60,7 +59,7 @@ type DropDown struct {
 // NewDropDown creates an enabled, focusable control with no selection, 6 DIP
 // padding and a 320 DIP maximum popup body height. Native resources are lazy.
 func NewDropDown() *DropDown {
-	d := &DropDown{selected: -1, current: -1, bound: -1, enabled: true, focusable: true, padding: 6, popupMaxHeight: 320}
+	d := &DropDown{selected: -1, current: -1, bound: -1, padding: 6, popupMaxHeight: 320}
 	d.WidgetBase.SetFocusable(true)
 	d.SetLayoutManager(dropDownLayout{d})
 	d.placeholderLabel = gui.NewLabel("")
@@ -212,31 +211,6 @@ func (d *DropDown) SetPlaceholder(text string) {
 	}
 }
 
-func (d *DropDown) Enabled() bool { return d.enabled }
-func (d *DropDown) SetEnabled(enabled bool) {
-	if d.Destroyed() || d.enabled == enabled {
-		return
-	}
-	d.enabled = enabled
-	if enabled {
-		d.addControllers()
-	} else {
-		d.revision++
-		d.Close()
-		d.click.Reset()
-		d.RemoveEventController(d.motion)
-		d.RemoveEventController(d.click)
-		d.RemoveEventController(d.keys)
-		d.hovered, d.pressed = false, false
-	}
-	d.WidgetBase.SetFocusable(enabled && d.focusable)
-	d.Refresh()
-}
-
-func (d *DropDown) SetFocusable(focusable bool) {
-	d.focusable = focusable
-	d.WidgetBase.SetFocusable(d.enabled && focusable)
-}
 func (d *DropDown) SetVisible(visible bool) {
 	if !visible {
 		d.Close()
@@ -412,7 +386,7 @@ func (d *DropDown) Open() error {
 	if d.Destroyed() {
 		return fmt.Errorf("drop-down: destroyed")
 	}
-	if !d.enabled || !d.Visible() || d.Opened() {
+	if !gui.IsEnabled(d) || !d.Visible() || d.Opened() {
 		return nil
 	}
 	index := d.selected
@@ -504,7 +478,7 @@ func (d *DropDown) neighbor(from, direction int) int {
 	return -1
 }
 func (d *DropDown) choose(index int) {
-	if d.Destroyed() || !d.enabled || !d.available(index) {
+	if d.Destroyed() || !gui.IsEnabled(d) || !d.available(index) {
 		return
 	}
 	changed := d.selected != index
@@ -516,7 +490,7 @@ func (d *DropDown) choose(index int) {
 }
 
 func (d *DropDown) keyDown(ctx gui.EventContext, event events.KeyEvent) {
-	if !d.enabled {
+	if !gui.IsEnabled(d) {
 		return
 	}
 	plain := func(key gui.Key) bool { return (gui.KeyGesture{Key: key}).Matches(event) }
@@ -549,7 +523,7 @@ func (d *DropDown) Paint(p gui.Painter) {
 		name = "drop-down"
 	}
 	state := style.Normal
-	if !d.enabled {
+	if !gui.IsEnabled(d) {
 		state = style.Disabled
 	} else if d.pressed || d.Opened() {
 		state = style.Pressed
@@ -573,13 +547,13 @@ func (d *DropDown) Paint(p gui.Painter) {
 
 func (d *DropDown) Snapshot() gui.WidgetInfo {
 	info := d.WidgetBase.Snapshot()
-	info.Role, info.Enabled = RoleComboBox, d.enabled
+	info.Role = RoleComboBox
 	if d.selected >= 0 && d.selected < d.count() {
 		info.Text = d.model.ItemAt(d.selected).Text
 	} else {
 		info.Text = d.placeholder
 	}
-	if d.enabled {
+	if info.Enabled {
 		info.Actions = append(info.Actions, gui.ActionClick)
 	}
 	info.SetAttribute(DropDownInfoKey, DropDownInfo{Count: d.count(), Index: d.selected, Expanded: d.Opened()})
@@ -598,7 +572,7 @@ func (d *dropDownLabelDelegate) Bind(index int, widget gui.Widget) {
 	name := "drop-down-item-text"
 	disabled := item.Disabled
 	if d.selected {
-		name, disabled = "drop-down-text", !d.owner.enabled
+		name, disabled = "drop-down-text", false
 	}
 	if disabled {
 		name += "-disabled"

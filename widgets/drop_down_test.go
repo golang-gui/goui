@@ -3,6 +3,7 @@ package widgets
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image/color"
 	"math"
 	"testing"
@@ -141,6 +142,70 @@ func TestDropDownDisabledOptionBlocksCustomActions(t *testing.T) {
 	}
 }
 
+func TestDropDownDisabledOwnerBlocksCustomPopupInput(t *testing.T) {
+	for _, ancestor := range []bool{false, true} {
+		for _, keyboard := range []bool{false, true} {
+			t.Run(fmt.Sprintf("ancestor=%t/keyboard=%t", ancestor, keyboard), func(t *testing.T) {
+				d, _, _, _ := dropDownInput()
+				t.Cleanup(func() { d.SetModel(nil) })
+				group := gui.NewLinearBox(layout.DirectionVertical)
+				group.AddChild(d)
+				clicks, keys, selected := 0, 0, 0
+				d.SetDelegate(dropDownButtonDelegate{&clicks})
+				popup := dropDownPopup(d)
+				d.ConnectSelected(func(int) { selected++ })
+				if err := d.Open(); err != nil {
+					t.Fatal(err)
+				}
+				measured := d.content.Measure(layout.Unbounded())
+				d.content.Arrange(geometry.Rectangle{Size: measured.Size})
+				row := d.content.list.Children()[0]
+				button := row.Children()[0]
+				controller := gui.NewKeyEventController()
+				controller.ConnectKeyDown(func(gui.EventContext, events.KeyEvent) { keys++ })
+				button.AddEventController(controller)
+				if ancestor {
+					group.SetEnabled(false)
+				} else {
+					d.SetEnabled(false)
+				}
+				if !popup.Visible() {
+					t.Fatal("disable imposed an immediate popup-close policy")
+				}
+				var checkSnapshot func(gui.WidgetInfo)
+				checkSnapshot = func(info gui.WidgetInfo) {
+					if info.Enabled || len(info.Actions) != 0 || info.DragDrop != nil {
+						t.Fatal("disabled owner's popup advertised an available action")
+					}
+					for _, child := range info.Children {
+						checkSnapshot(child)
+					}
+				}
+				checkSnapshot(d.content.Snapshot())
+				h := &tabInputHost{root: d.content, focus: button}
+				dispatcher := new(gui.EventDispatcher)
+				if keyboard {
+					handled := false
+					_ = dispatcher.DispatchEvent(h, events.KeyEvent{EventType: events.KeyDown,
+						Key: events.KeySpace, Handled: &handled})
+					if !handled {
+						t.Fatal("disabled popup key was not consumed")
+					}
+				} else {
+					point := button.Rect().Center()
+					point.X += row.Rect().X + d.content.scroll.Rect().X
+					point.Y += row.Rect().Y + d.content.scroll.Rect().Y
+					dispatchTabPointer(t, dispatcher, h, events.PointerDown, point.X, point.Y)
+					dispatchTabPointer(t, dispatcher, h, events.PointerUp, point.X, point.Y)
+				}
+				if clicks != 0 || keys != 0 || selected != 0 || d.Selected() != -1 || popup.Visible() {
+					t.Fatalf("stale popup input: clicks=%d keys=%d selected=%d visible=%t", clicks, keys, selected, popup.Visible())
+				}
+			})
+		}
+	}
+}
+
 func dropDownInput() (*DropDown, *gui.SliceListModel[DropDownItem], *tabInputHost, *gui.EventDispatcher) {
 	d := NewDropDown()
 	m := gui.NewSliceListModel([]DropDownItem{{Text: "A"}, {Text: "Disabled", Disabled: true}, {Text: "C"}, {Text: "D"}})
@@ -201,7 +266,7 @@ func TestDropDownSelectionAndModel(t *testing.T) {
 	}
 	d.SetEnabled(false)
 	switchKey(t, dispatch, h, events.KeyArrowDown, false)
-	if d.Selected() != -1 || d.Focusable() || calls != 3 {
+	if d.Selected() != -1 || !d.Focusable() || gui.IsEnabled(d) || calls != 3 {
 		t.Fatal("disabled input")
 	}
 	d.SetFocusable(false)
@@ -268,8 +333,14 @@ func TestDropDownBrowseConfirmCancel(t *testing.T) {
 		t.Fatal("initial browse did not skip disabled")
 	}
 	d.SetEnabled(false)
-	if d.Opened() || d.current != -1 {
-		t.Fatal("disable kept popup")
+	// This unmounted test host has no focus-loss notification. Disabling alone
+	// leaves the popup; the next input must reject selection and dismiss it.
+	if !d.Opened() || d.current != 2 || d.Selected() != -1 {
+		t.Fatal("disable changed selection or imposed an immediate-close policy")
+	}
+	p.key(t, events.KeyEnter, 0)
+	if d.Opened() || d.current != -1 || d.Selected() != -1 || calls != 1 {
+		t.Fatal("disabled popup input committed selection or failed to dismiss")
 	}
 }
 
