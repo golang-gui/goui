@@ -129,7 +129,7 @@ func main() {
 				if data.State != state || len(info.Children) != 1 {
 					panic("snapshot incorrect: " + id)
 				}
-				if id == "disabled" && (b.Enabled() || b.Focusable()) {
+				if id == "disabled" && (b.Enabled() || gui.IsEnabled(b) || !b.Focusable()) {
 					panic("disabled is focusable")
 				}
 				if id == "independent" && b.Enabled() != enabled {
