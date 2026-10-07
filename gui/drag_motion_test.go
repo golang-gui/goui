@@ -146,3 +146,23 @@ func TestDragScrollVelocity(t *testing.T) {
 		}
 	}
 }
+
+func TestDragAutoScrollRespectsNestedDirections(t *testing.T) {
+	outer, inner := NewScrollView(), NewScrollView()
+	outer.SetDirection(ScrollVertical)
+	inner.SetDirection(ScrollHorizontal)
+	content := &mockWidget{size: geometry.Size{Width: 200, Height: 1000}}
+	outer.SetChild(content)
+	content.WidgetBase.AddChild(content, inner)
+	inner.SetChild(&extentScrollContent{size: geometry.Size{Width: 500, Height: 500}})
+	win := &window{}
+	win.SetWidget(outer)
+	defer win.Destroy()
+	outer.Arrange(geometry.Rect(0, 0, 200, 100))
+	inner.Arrange(geometry.Rect(0, 0, 120, 100))
+	_ = win.DispatchEvent(events.DragOfferEvent{EventType: events.DragEnter, Offer: &testDragOffer{id: 1}, Position: geometry.Point{X: 115, Y: 85}})
+	x, y, _, _ := win.dragScrollAxes()
+	if x != inner || y != outer {
+		t.Fatalf("nested axis ownership: x=%p y=%p, want inner=%p outer=%p", x, y, inner, outer)
+	}
+}

@@ -33,6 +33,20 @@ type ScrollIntoViewRequester interface {
 	ConnectScrollIntoView(func(geometry.Rectangle)) signal.Handle
 }
 
+// ScrollDirection selects the axes available for scrolling. Single-axis modes
+// measure ordinary content at the viewport's cross-axis size; Scrollable
+// content retains responsibility for its own layout and wrapping policy.
+type ScrollDirection uint8
+
+const (
+	// ScrollBoth preserves ordinary content's natural width and height.
+	ScrollBoth ScrollDirection = iota
+	// ScrollVertical fits ordinary content to the viewport width.
+	ScrollVertical
+	// ScrollHorizontal fits ordinary content to the viewport height.
+	ScrollHorizontal
+)
+
 // ScrollView is a single-content scrolling container. The content may be a
 // Scrollable (virtualized, e.g. ListView) or an ordinary widget tree (viewport
 // mode: the tree is arranged at a negative offset and clipped to the viewport).
@@ -44,10 +58,11 @@ type ScrollView struct {
 	WidgetBase
 	content        Widget
 	viewport       *scrollViewport
+	direction      ScrollDirection
 	scrollY        float32
 	scrollX        float32 // horizontal scroll offset
-	contentWidth   float32 // content size cached by Measure (viewport mode)
-	contentHeight  float32 // content size cached by Measure (viewport mode)
+	contentWidth   float32 // measured content or Scrollable extent
+	contentHeight  float32 // refreshed at the actual viewport during Arrange
 	lineHeight     float32 // WheelDeltaLine height; 0 = default text line height
 	wheel          *WheelEventController
 	vbar           *ScrollBar // vertical scrollbar (right column)
@@ -109,6 +124,31 @@ func NewScrollView() *ScrollView {
 	return sv
 }
 
+// Direction returns the scrolling axes, initially ScrollBoth.
+func (sv *ScrollView) Direction() ScrollDirection { return sv.direction }
+
+// SetDirection selects the scrolling axes and requests layout. Offsets on a
+// disabled axis are reset immediately. Invalid values select ScrollBoth.
+func (sv *ScrollView) SetDirection(direction ScrollDirection) {
+	if direction > ScrollHorizontal {
+		direction = ScrollBoth
+	}
+	if sv.direction == direction {
+		return
+	}
+	sv.direction = direction
+	if !sv.canScrollX() {
+		sv.scrollX = 0
+	}
+	if !sv.canScrollY() {
+		sv.scrollY = 0
+	}
+	sv.RequestLayout()
+}
+
+func (sv *ScrollView) canScrollX() bool { return sv.direction != ScrollVertical }
+func (sv *ScrollView) canScrollY() bool { return sv.direction != ScrollHorizontal }
+
 // DragAutoScroll reports whether native drag-and-drop scrolls at viewport edges.
 func (sv *ScrollView) DragAutoScroll() bool { return sv.dragAutoScroll }
 func (sv *ScrollView) SetDragAutoScroll(enabled bool) {
@@ -133,6 +173,10 @@ func (sv *ScrollView) SetChild(content Widget) {
 		sv.viewport.WidgetBase.RemoveChild(sv.content)
 	}
 	sv.content = content
+	if content == nil {
+		sv.contentWidth, sv.contentHeight = 0, 0
+		sv.scrollX, sv.scrollY = 0, 0
+	}
 	if content != nil {
 		sv.viewport.WidgetBase.AddChild(sv.viewport, content)
 	}
@@ -261,6 +305,9 @@ func (sv *ScrollView) wheelDelta(delta float32, mode events.WheelDeltaMode) floa
 
 // SetScrollY sets the vertical scroll offset, rounded to whole logical pixels.
 func (sv *ScrollView) SetScrollY(y float32) {
+	if !sv.canScrollY() {
+		return
+	}
 	y = mathx.Round(y)
 	if sv.scrollY == y {
 		return
@@ -278,6 +325,9 @@ func (sv *ScrollView) ScrollY() float32 {
 
 // SetScrollX sets the horizontal scroll offset, rounded to whole logical pixels.
 func (sv *ScrollView) SetScrollX(x float32) {
+	if !sv.canScrollX() {
+		return
+	}
 	x = mathx.Round(x)
 	if sv.scrollX == x {
 		return
@@ -296,32 +346,68 @@ func (sv *ScrollView) ScrollX() float32 {
 // Scrollable reports whether the content can scroll vertically (content taller
 // than the content area).
 func (sv *ScrollView) Scrollable() bool {
-	return sv.contentHeight > sv.contentAreaSize().Height
+	return sv.canScrollY() && sv.contentHeight > sv.contentAreaSize().Height
 }
 
 // vScrollable reports whether the vertical scrollbar should be shown.
 func (sv *ScrollView) vScrollable() bool {
-	return sv.content != nil && sv.contentHeight > sv.Rect().Height
+	_, _, vertical := sv.scrollGeometry()
+	return vertical
 }
 
 // hScrollable reports whether the horizontal scrollbar should be shown.
 func (sv *ScrollView) hScrollable() bool {
-	return sv.content != nil && sv.contentWidth > sv.Rect().Width
+	_, horizontal, _ := sv.scrollGeometry()
+	return horizontal
+}
+
+// scrollGeometry resolves the two bars together, starting without bars so a
+// previous allocation cannot keep unnecessary bars alive. Each step can only
+// add a bar; two axes need at most three evaluations to settle their occupancy.
+func (sv *ScrollView) scrollGeometry() (area geometry.Size, horizontal, vertical bool) {
+	size := sv.Rect().Size
+	for range 3 {
+		area = scrollArea(size, horizontal, vertical)
+		h := horizontal || sv.content != nil && sv.canScrollX() && sv.contentWidth > area.Width
+		v := vertical || sv.content != nil && sv.canScrollY() && sv.contentHeight > area.Height
+		if h == horizontal && v == vertical {
+			return
+		}
+		horizontal, vertical = h, v
+	}
+	area = scrollArea(size, horizontal, vertical)
+	return
+}
+
+func scrollArea(size geometry.Size, horizontal, vertical bool) geometry.Size {
+	if horizontal {
+		size.Height -= scrollbarWidth
+	}
+	if vertical {
+		size.Width -= scrollbarWidth
+	}
+	size.Width = max(0, size.Width)
+	size.Height = max(0, size.Height)
+	return size
 }
 
 // contentAreaSize returns the content area dimensions: the full viewport minus
 // the space occupied by visible scrollbars.
 func (sv *ScrollView) contentAreaSize() geometry.Size {
-	r := sv.Rect()
-	w := r.Width
-	h := r.Height
-	if sv.hScrollable() {
-		h -= scrollbarWidth
+	area, _, _ := sv.scrollGeometry()
+	return area
+}
+
+func (sv *ScrollView) scrollRange() geometry.Size {
+	area := sv.contentAreaSize()
+	var extent geometry.Size
+	if sv.canScrollX() {
+		extent.Width = max(0, sv.contentWidth-area.Width)
 	}
-	if sv.vScrollable() {
-		w -= scrollbarWidth
+	if sv.canScrollY() {
+		extent.Height = max(0, sv.contentHeight-area.Height)
 	}
-	return geometry.Size{Width: w, Height: h}
+	return extent
 }
 
 // contentAreaRect returns the content area in ScrollView-local coordinates.
@@ -334,12 +420,8 @@ func (sv *ScrollView) Snapshot() WidgetInfo {
 	info.Role = RoleScrollView
 	info.ScrollY = sv.scrollY
 	info.ScrollX = sv.scrollX
-	if max := sv.contentHeight - sv.contentAreaSize().Height; max > 0 {
-		info.MaxScrollY = max
-	}
-	if max := sv.contentWidth - sv.contentAreaSize().Width; max > 0 {
-		info.MaxScrollX = max
-	}
+	extent := sv.scrollRange()
+	info.MaxScrollY, info.MaxScrollX = extent.Height, extent.Width
 	// Filter out the scrollbars: the snapshot exposes only the content child
 	// so automation sees the real content tree, not structural bars.
 	info.Children = nil
@@ -369,16 +451,27 @@ func (sv *ScrollView) Measure(c layout.Constraint) layout.Measurement {
 			Height: sv.viewportHeight(c),
 		}))
 	}
-	contentC := layout.Constraint{
-		Min: geometry.Size{},
-		Max: geometry.Size{Width: layout.Inf, Height: layout.Inf},
+	contentSize := sv.measureContent(sv.layoutConstraint(c).Max)
+	size := geometry.Size{Width: contentSize.Width, Height: sv.viewportHeight(c)}
+	if sv.direction == ScrollHorizontal {
+		size.Width, size.Height = sv.viewportWidth(c), contentSize.Height
 	}
-	contentSize := measureWidget(sv.content, contentC).Size
-	sv.contentWidth, sv.contentHeight = contentSize.Width, contentSize.Height
-	return layout.Measured(sv.constrain(c, geometry.Size{
-		Width:  contentSize.Width,
-		Height: sv.viewportHeight(c),
-	}))
+	return layout.Measured(sv.constrain(c, size))
+}
+
+// measureContent releases scrolling axes, keeping a finite non-scrolling
+// axis tight. With an unbounded cross axis there is no invented viewport size.
+func (sv *ScrollView) measureContent(viewport geometry.Size) geometry.Size {
+	c := layout.Unbounded()
+	if sv.direction == ScrollVertical && viewport.Width < layout.Inf {
+		c.Min.Width, c.Max.Width = max(0, viewport.Width), max(0, viewport.Width)
+	}
+	if sv.direction == ScrollHorizontal && viewport.Height < layout.Inf {
+		c.Min.Height, c.Max.Height = max(0, viewport.Height), max(0, viewport.Height)
+	}
+	size := measureWidget(sv.content, c).Constrain(c).Size
+	sv.contentWidth, sv.contentHeight = size.Width, size.Height
+	return size
 }
 
 func (sv *ScrollView) viewportWidth(c layout.Constraint) float32 {
@@ -399,15 +492,32 @@ func (sv *ScrollView) Arrange(rect geometry.Rectangle) {
 	sv.layoutDepth++
 	defer sv.finishContentLayout()
 	sv.WidgetBase.Arrange(rect)
+	if _, virtual := sv.content.(Scrollable); sv.content != nil && !virtual {
+		// Begin at the full cross extent on each allocation, then remeasure at
+		// the bar-reduced extent. Width-sensitive forms wrap at their actual
+		// viewport width, including after a resize or content shrink.
+		sv.measureContent(rect.Size)
+		if sv.direction != ScrollBoth {
+			area := sv.contentAreaSize()
+			if area != rect.Size {
+				sv.measureContent(area)
+			}
+		}
+	}
 	sv.clampScroll()
-	sv.arrangeContent()
-	if sv.refreshContentSize() {
-		// A virtualized content (e.g. ListView) reports its real extent only
-		// after its items are measured during LayoutVisible above, so Measure's
-		// cached value is stale on the first pass. Re-clamp and re-layout so
-		// the content area and scrollbars reflect the true extent.
-		sv.clampScroll()
+	for range 3 {
+		area, x, y := sv.contentAreaSize(), sv.scrollX, sv.scrollY
 		sv.arrangeContent()
+		if !sv.refreshContentSize() {
+			break
+		}
+		sv.clampScroll()
+		if area == sv.contentAreaSize() && x == sv.scrollX && y == sv.scrollY {
+			break
+		}
+		if sv.destroyed {
+			return
+		}
 	}
 	sv.viewport.Arrange(sv.contentAreaRect())
 	sv.layoutScrollBars(rect)
@@ -452,12 +562,11 @@ func (sv *ScrollView) arrangeContent() {
 // based on scrollability. A hidden bar is arranged to a zero-size rect.
 func (sv *ScrollView) layoutScrollBars(rect geometry.Rectangle) {
 	barW := float32(scrollbarWidth)
-	hScroll := sv.hScrollable()
-	vScroll := sv.vScrollable()
+	area, hScroll, vScroll := sv.scrollGeometry()
 
 	if vScroll {
 		sv.vbar.SetVisible(true)
-		sv.vbar.Arrange(geometry.Rect(rect.Width-barW, 0, barW, rect.Height-boolHeight(hScroll, barW)))
+		sv.vbar.Arrange(geometry.Rect(max(0, rect.Width-barW), 0, min(barW, max(0, rect.Width)), area.Height))
 	} else {
 		sv.vbar.SetVisible(false)
 		sv.vbar.Arrange(geometry.Rect(0, 0, 0, 0))
@@ -465,63 +574,35 @@ func (sv *ScrollView) layoutScrollBars(rect geometry.Rectangle) {
 
 	if hScroll {
 		sv.hbar.SetVisible(true)
-		sv.hbar.Arrange(geometry.Rect(0, rect.Height-barW, rect.Width-boolWidth(vScroll, barW), barW))
+		sv.hbar.Arrange(geometry.Rect(0, max(0, rect.Height-barW), area.Width, min(barW, max(0, rect.Height))))
 	} else {
 		sv.hbar.SetVisible(false)
 		sv.hbar.Arrange(geometry.Rect(0, 0, 0, 0))
 	}
 }
 
-func boolHeight(b bool, barW float32) float32 {
-	if b {
-		return barW
-	}
-	return 0
-}
-
-func boolWidth(b bool, barW float32) float32 {
-	if b {
-		return barW
-	}
-	return 0
-}
-
 // syncBars pushes the current scroll state into the scrollbars so their thumbs
 // reflect the actual offset and range.
 func (sv *ScrollView) syncBars() {
-	area := sv.contentAreaSize()
-	maxY := sv.contentHeight - area.Height
-	if maxY < 0 {
-		maxY = 0
-	}
-	maxX := sv.contentWidth - area.Width
-	if maxX < 0 {
-		maxX = 0
-	}
-	sv.vbar.SetMax(maxY)
+	extent := sv.scrollRange()
+	sv.vbar.SetMax(extent.Height)
 	sv.vbar.SetValue(sv.scrollY)
-	sv.hbar.SetMax(maxX)
+	sv.hbar.SetMax(extent.Width)
 	sv.hbar.SetValue(sv.scrollX)
 }
 
 // clampScroll keeps the scroll offsets within [0, content - contentArea], with
 // whole-pixel boundaries so the content never lands on fractional coordinates.
 func (sv *ScrollView) clampScroll() {
-	area := sv.contentAreaSize()
-	maxY := mathx.Floor(sv.contentHeight - area.Height)
-	if maxY < 0 {
-		maxY = 0
-	}
+	extent := sv.scrollRange()
+	maxY := mathx.Floor(extent.Height)
 	if sv.scrollY > maxY {
 		sv.scrollY = maxY
 	}
 	if sv.scrollY < 0 {
 		sv.scrollY = 0
 	}
-	maxX := mathx.Floor(sv.contentWidth - area.Width)
-	if maxX < 0 {
-		maxX = 0
-	}
+	maxX := mathx.Floor(extent.Width)
 	if sv.scrollX > maxX {
 		sv.scrollX = maxX
 	}

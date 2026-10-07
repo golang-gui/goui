@@ -25,6 +25,21 @@ func TestScrollViewDragAutoScrollDefaultsAndUpdates(t *testing.T) {
 	}
 }
 
+func TestScrollViewDirectionUpdatesAndRestoresDefault(t *testing.T) {
+	root := newRoot()
+	sv := root.update(ScrollView(Label("content")).Direction(ScrollVertical)).(*gui.ScrollView)
+	if sv.Direction() != gui.ScrollVertical {
+		t.Fatal("vertical declaration was not applied")
+	}
+	if got := root.update(ScrollView(Label("content")).Direction(ScrollHorizontal)); got != sv || sv.Direction() != gui.ScrollHorizontal {
+		t.Fatal("direction update recreated the widget or was not applied")
+	}
+	root.update(ScrollView(Label("content")))
+	if sv.Direction() != gui.ScrollBoth {
+		t.Fatal("omitted direction did not restore ScrollBoth")
+	}
+}
+
 func TestScrollViewMountsAndUpdatesChild(t *testing.T) {
 	root := newRoot()
 

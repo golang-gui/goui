@@ -4,6 +4,14 @@ import (
 	"github.com/golang-gui/goui/gui"
 )
 
+type ScrollDirection = gui.ScrollDirection
+
+const (
+	ScrollBoth       = gui.ScrollBoth
+	ScrollVertical   = gui.ScrollVertical
+	ScrollHorizontal = gui.ScrollHorizontal
+)
+
 // ScrollViewView is the declarative wrapper of gui.ScrollView. It hosts a
 // single scrollable child — either a gui.Scrollable (e.g. ui.ListView) or an
 // ordinary widget tree (viewport mode). The child is a single content slot
@@ -11,6 +19,7 @@ import (
 type ScrollViewView struct {
 	ViewBase[ScrollViewView]
 	child          View
+	direction      ScrollDirection
 	dragAutoScroll bool
 }
 
@@ -25,6 +34,14 @@ func ScrollView(child View) *ScrollViewView {
 
 func (v *ScrollViewView) DragAutoScroll(enabled bool) *ScrollViewView {
 	v.dragAutoScroll = enabled
+	return v
+}
+
+// Direction selects the scrolling axes. A single-axis viewport measures an
+// ordinary child at its available cross-axis size, for example wrapping a
+// form to the viewport width with ScrollVertical. The default is ScrollBoth.
+func (v *ScrollViewView) Direction(direction ScrollDirection) *ScrollViewView {
+	v.direction = direction
 	return v
 }
 
@@ -43,6 +60,7 @@ func (v *ScrollViewView) Mount(BuildContext) gui.Widget {
 }
 
 func (v *ScrollViewView) Update(ctx BuildContext, widget gui.Widget) {
+	widget.(*gui.ScrollView).SetDirection(v.direction)
 	widget.(*gui.ScrollView).SetDragAutoScroll(v.dragAutoScroll)
 	ctx.UpdateChild(widget.(*gui.ScrollView), v.child)
 }
