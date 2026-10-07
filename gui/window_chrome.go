@@ -381,7 +381,10 @@ func (c *windowChrome) afterLayout() bool {
 		var position *geometry.Point
 		size := c.info.ControlsBounds.Size
 		if result.Height > 0 && size.Width > 0 && size.Height > 0 {
-			position = &geometry.Point{X: 12, Y: max(0, (result.Height-size.Height)/2)}
+			// Header height controls vertical centering only. Preserve the
+			// observed native horizontal anchor, including before first Show,
+			// so the initial content reservation remains valid after layout.
+			position = &geometry.Point{X: c.info.ControlsBounds.X, Y: max(0, (result.Height-size.Height)/2)}
 		}
 		same := position == nil && c.lastPosition == nil ||
 			position != nil && c.lastPosition != nil && *position == *c.lastPosition

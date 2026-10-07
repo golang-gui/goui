@@ -65,7 +65,7 @@ func (h *HeaderBar) SetPadding(padding float32) {
 
 // ConnectDragRegion queries in HeaderBar-local DIP after conservative automatic
 // classification. The hit path through this HeaderBar must have no focusable
-// widgets and only Motion/Key controllers (or none) to default to dragging.
+// widgets and only Motion/Key/DropTarget controllers (or none) to default to dragging.
 // Other controllers, including custom ones, default to client input. Later
 // callbacks may override either result. Native resize edges remain platform-owned.
 // Queries are read-only and synchronous; never retain drag or dispatch input.
@@ -254,8 +254,9 @@ func (h *HeaderBar) defaultDragRegion(target Widget) bool {
 		}
 		for _, controller := range widget.base().controllers {
 			switch controller.(type) {
-			case nil, *MotionEventController, *KeyEventController:
-				// Known observation/keyboard controllers do not block dragging.
+			case nil, *MotionEventController, *KeyEventController, *DropTarget:
+				// These known controllers do not claim ordinary pointer gestures.
+				// DropTarget receives native offers, not presses on the header.
 			default:
 				// Click, Drag, Wheel and unknown controllers keep client input.
 				return false

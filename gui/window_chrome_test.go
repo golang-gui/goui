@@ -77,6 +77,9 @@ func (*chromeTestPlatform) NewInputMethod(platform.Window, platform.InputMethodH
 func (*chromeTestPlatform) NewCursor(platform.Window) (platform.Cursor, error) {
 	return nil, platform.ErrUnsupported
 }
+func (*chromeTestPlatform) NewDragDrop(platform.Surface) (platform.DragDrop, error) {
+	return nil, platform.ErrUnsupported
+}
 
 func chromeFixture(t *testing.T, nativeButtons, nativeHit bool) (*window, *desktopTestWindow) {
 	t.Helper()
@@ -375,6 +378,21 @@ func TestChromeNativeInfoAndLayout(t *testing.T) {
 	win.chrome.refresh()
 	if win.chrome.info != observed || len(observations) != count {
 		t.Fatal("temporary native failure changed the public observation")
+	}
+}
+
+func TestChromePreservesInitialNativeHorizontalAnchor(t *testing.T) {
+	win, native := chromeFixture(t, true, false)
+	native.controls.X = 8
+	win.chrome.nativeChanged()
+	win.Chrome().ConnectQueryControls(func(r *ChromeControls) { r.Height = 40 })
+	win.paint()
+	if native.controls.X != 8 || native.controls.Y != 13 {
+		t.Fatalf("native controls moved horizontally: %v", native.controls)
+	}
+	win.paint()
+	if len(native.positions) != 1 {
+		t.Fatal("unchanged header repeatedly repositioned native controls")
 	}
 }
 
