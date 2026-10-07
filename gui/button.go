@@ -28,11 +28,7 @@ func NewButton() *Button {
 	button.SetFocusable(true)
 	button.ConnectFocused(func(bool) { button.RequestPaint() })
 	button.padding = defaultButtonPadding
-	button.SetLayoutManager(&layout.LinearLayout{
-		Direction:  layout.DirectionHorizontal,
-		MainAlign:  layout.MainCenter,
-		CrossAlign: layout.CrossCenter,
-	})
+	button.SetLayoutManager(buttonContentLayout{})
 
 	button.motion = NewMotionEventController()
 	button.motion.ConnectContainsHover(button.setHovered)
@@ -113,6 +109,35 @@ func measureButtonContent(w *WidgetBase, c layout.Constraint, padding, floor flo
 		measured.Baseline += inner.Y
 	}
 	return measured
+}
+
+// buttonContentLayout centers a Bin's single content without linearly packing
+// it. Both axes remain bounded: a button's maximum width must still reach
+// wrapping content, independently of LinearBox's natural main-axis basis.
+type buttonContentLayout struct{}
+
+func (buttonContentLayout) Measure(children []layout.Child, c layout.Constraint) layout.Measurement {
+	var measured layout.Measurement
+	if len(children) > 0 {
+		measured = children[0].Measure(layout.Loose(c.Max)).Constrain(layout.Loose(c.Max))
+	}
+	size := c.Clamp(measured.Size)
+	if measured.HasBaseline {
+		measured.Baseline += (size.Height - measured.Height) / 2
+	}
+	measured.Size = size
+	return measured
+}
+
+func (buttonContentLayout) Arrange(children []layout.Child, rect geometry.Rectangle) {
+	if len(children) == 0 {
+		return
+	}
+	size := children[0].Measure(layout.Loose(rect.Size)).Constrain(layout.Loose(rect.Size)).Size
+	children[0].Arrange(geometry.Rect(
+		rect.X+(rect.Width-size.Width)/2, rect.Y+(rect.Height-size.Height)/2,
+		size.Width, size.Height,
+	))
 }
 
 func (b *Button) Arrange(rect geometry.Rectangle) {

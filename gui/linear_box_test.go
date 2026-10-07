@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -27,6 +28,53 @@ func TestLinearBoxDefaultsToLinearLayout(t *testing.T) {
 	}
 	if second.Rect() != geometry.Rect(12, 12.5, 30, 15) {
 		t.Fatalf("unexpected second rect: %+v", second.Rect())
+	}
+}
+
+func TestLinearBoxNestedStretchKeepsMeasuredMainExtent(t *testing.T) {
+	for _, direction := range []layout.Direction{layout.DirectionVertical, layout.DirectionHorizontal} {
+		t.Run(fmt.Sprint(direction), func(t *testing.T) {
+			transpose := func(size geometry.Size) geometry.Size {
+				if direction == layout.DirectionHorizontal {
+					return geometry.Size{Width: size.Height, Height: size.Width}
+				}
+				return size
+			}
+			root := NewLinearBox(direction)
+			root.SetCrossAlign(layout.CrossStretch)
+			root.SetSpacing(10)
+			panel := new(WidgetBase)
+			panel.SetLayoutManager(layout.NewFillLayout())
+			panel.SetMinSize(transpose(geometry.Size{Height: 110}))
+			rowDirection := layout.DirectionHorizontal
+			if direction == layout.DirectionHorizontal {
+				rowDirection = layout.DirectionVertical
+			}
+			row := NewLinearBox(rowDirection)
+			row.SetCrossAlign(layout.CrossStretch)
+			row.SetPadding(16)
+			leaf := &baselineSizedWidget{measurement: layout.Measured(transpose(geometry.Size{Width: 60, Height: 20}))}
+			leaf.SetMainWeight(1)
+			row.AddChild(leaf)
+			panel.AddChild(panel, row)
+			tail := &baselineSizedWidget{measurement: layout.Measured(transpose(geometry.Size{Width: 80, Height: 20}))}
+			root.AddChild(panel)
+			root.AddChild(tail)
+			c := layout.Constraint{Min: transpose(geometry.Size{Width: 300}), Max: transpose(geometry.Size{Width: 300, Height: layout.Inf})}
+			measured := root.Measure(c)
+			if measured.Size != transpose(geometry.Size{Width: 300, Height: 140}) {
+				t.Fatalf("natural extent: %+v", measured)
+			}
+			root.Arrange(geometry.Rectangle{Size: measured.Size})
+			wantPanel := geometry.Rectangle{Size: transpose(geometry.Size{Width: 300, Height: 110})}
+			wantTail := geometry.Rectangle{Pos: geometry.Point{Y: 120}, Size: geometry.Size{Width: 300, Height: 20}}
+			if direction == layout.DirectionHorizontal {
+				wantTail = geometry.Rect(120, 0, 20, 300)
+			}
+			if panel.Rect() != wantPanel || tail.Rect() != wantTail {
+				t.Fatalf("Arrange consumed the parent's entire main extent again: panel=%v tail=%v", panel.Rect(), tail.Rect())
+			}
+		})
 	}
 }
 
