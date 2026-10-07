@@ -10,10 +10,16 @@
 
 九类：基础控件、文本编辑、布局滚动、数据浏览、多标签、菜单覆盖层、图形动画、
 系统拖放、窗口检查。内容和窗口交互均经过现有 ui / widgets/ui / gui 公共接口。
-仅例程自己的背景 Bin、有限宽纵向 Scrollable、自绘图形和 ScrollBar WidgetView
-作为扩展示范，不向 Root/BuildContext/Painter 添加特例。
+仅例程自己的背景 Bin、自绘图形和 ScrollBar WidgetView 作为扩展示范，不向
+Root/BuildContext/Painter 添加特例。表单现改用普通 ScrollView 的纵向方向，
+删除临时 flowWidget；框架完善与验证见 [滚动布局](DesignScrollLayout.md)。
 
 ## 状态、资源与生命周期
+
+后续滚动切片的本机复验：Software 1x / OpenGL 配置 2x 的表单、布局页、
+820×600 DIP 窄窗与 Wrap 折行通过，Software 1x 系统页末尾完整可达。
+专项窗口的四组 1x/2x 和全仓/race/目标编译记录见 DesignScrollLayout；
+本轮不重复宣称所有九类场景已重新验收。
 
 - 持久的文档、树、表、列表、图标和位图只初始化一次，不在 Build 中创建模型。
 - 分类切换保留业务数据，但只挂载活动分类；编辑视图局部的焦点/滚动可重置。
