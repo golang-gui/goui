@@ -98,7 +98,9 @@ type PopoverOptions struct {
 // NewPopover copies options (nil means opaque). It holds no native resources
 // until Show; the anchor need not be mounted yet.
 func NewPopover(anchor Widget, options *PopoverOptions) Popover {
-	p := &popover{anchor: anchor}
+	// Native Show may synchronously paint before visibility is committed.
+	// Keep frames paused until Show succeeds, also on the first presentation.
+	p := &popover{anchor: anchor, rootBase: rootBase{frameSuspended: true}}
 	if options != nil {
 		p.transparent = options.Transparent
 	}
@@ -352,6 +354,7 @@ func (p *popover) Show() error {
 		return fmt.Errorf("popover: released during Show")
 	}
 	p.visible = true
+	p.resumeFrames(p.platformPopup)
 	if p.modal {
 		// Only a modal (menu) popover intercepts the window's input; modeless
 		// tooltips/panels leave the window's own input untouched.
@@ -361,6 +364,7 @@ func (p *popover) Show() error {
 }
 
 func (p *popover) Hide() {
+	p.suspendFrames()
 	p.lifecycle++
 	wasVisible := p.visible
 	if !wasVisible && p.platformPopup == nil {
@@ -384,6 +388,7 @@ func (p *popover) Destroy() {
 		return
 	}
 	p.destroyed = true
+	p.destroyFrames()
 	p.releaseNative()
 	p.widget = nil
 }
@@ -422,7 +427,9 @@ func (p *popover) createNative(win Window) error {
 	if App == nil {
 		return fmt.Errorf("popover: application is not created")
 	}
-	if app, ok := App.(*application); ok {
+	if host, ok := win.(interface{ rootState() *rootBase }); ok {
+		p.app = host.rootState().app
+	} else if app, ok := App.(*application); ok {
 		p.app = app
 	}
 	p.owner = win
@@ -503,6 +510,8 @@ func (p *popover) createNative(win Window) error {
 }
 
 func (p *popover) releaseNative() {
+	p.suspendFrames()
+	p.frameRequester = nil
 	p.lifecycle++
 	p.surfaceEpoch++
 	p.surface = nil
@@ -709,8 +718,11 @@ func (p *popover) paint() {
 	if p.painter == nil || p.destroyed {
 		return
 	}
+	if !p.beginFrame() {
+		return
+	}
+	defer p.endFrame()
 	p.widget = liveRoot(p.widget)
-	p.paintDirty = false
 	laidOut := p.layoutDirty
 	if p.layoutDirty {
 		p.layoutDirty = false

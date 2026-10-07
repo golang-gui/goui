@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/graphics"
@@ -145,12 +146,19 @@ type progressTestRoot struct {
 	widget          gui.Widget
 	paints, layouts int
 	visible         bool
+	frames          signal.Signal1[time.Time]
+	connects        int
+	err             error
 }
 
 func (r *progressTestRoot) Widget() gui.Widget  { return r.widget }
-func (r *progressTestRoot) RequestPaint() error { r.paints++; return nil }
+func (r *progressTestRoot) RequestPaint() error { r.paints++; return r.err }
 func (r *progressTestRoot) RequestLayout()      { r.layouts++ }
 func (r *progressTestRoot) Visible() bool       { return r.visible }
+func (r *progressTestRoot) ConnectFrame(fn func(time.Time)) signal.Handle {
+	r.connects++
+	return r.frames.Connect(fn)
+}
 
 type progressTestHost struct {
 	gui.WidgetBase

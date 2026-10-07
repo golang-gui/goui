@@ -92,6 +92,10 @@ func chromeFixture(t *testing.T, nativeButtons, nativeHit bool) (*window, *deskt
 	}
 	win := result.(*window)
 	win.SetWidget(newTestWidget())
+	// Creation reports Hidden; exercise layout as a shown window would.
+	if err := win.Show(); err != nil {
+		t.Fatal(err)
+	}
 	win.paint()
 	native.positions = nil
 	t.Cleanup(win.Destroy)
@@ -165,6 +169,9 @@ func TestNoneChromeResizeRegions(t *testing.T) {
 		t.Cleanup(win.Destroy)
 		root := newTestWidget()
 		win.SetWidget(root)
+		if err := win.Show(); err != nil {
+			t.Fatal(err)
+		}
 		win.paint()
 		if !win.chrome.info.Enabled || win.chrome.info.Controls != ChromeControlsNone || win.controls != nil {
 			t.Fatal("None must enable regions without adding controls")

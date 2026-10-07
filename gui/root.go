@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"image"
 	"math"
+	"time"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/graphics"
@@ -18,6 +20,10 @@ type Root interface {
 	Widget() Widget
 	RequestPaint() error
 	RequestLayout()
+	// ConnectFrame observes a GUI-thread update before layout and painting.
+	// Connecting does not request drawing; request the first and subsequent
+	// frames with RequestPaint. The timestamp is shared by all frame listeners.
+	ConnectFrame(func(time.Time)) signal.Handle
 }
 
 // paintRequester is the native surface capability a host notifies to schedule
@@ -30,23 +36,32 @@ type paintRequester interface {
 // frame, input, drag-and-drop and the current native surface. Each host embeds
 // its own instance; native window and popover policy remains in those hosts.
 type rootBase struct {
-	app           *application
-	dispatcher    EventDispatcher
-	drag          dragHostState
-	dragTarget    dragTargetState
-	dragMotion    dragMotionState
-	surfaceEpoch  uint64 // invalidates callbacks from a replaced native surface
-	surface       platform.Surface
-	transparent   bool // immutable native surface configuration, not its style
-	painter       graphics.Painter
-	width         float32 // logical (DIP)
-	height        float32 // logical (DIP)
-	pixelWidth    float32 // physical (backing) pixels
-	pixelHeight   float32 // physical (backing) pixels
-	layoutDirty   bool
-	paintDirty    bool
-	focusedWidget Widget
-	focusVisible  bool // input-managed keyboard hint mode, independent per host
+	app            *application
+	dispatcher     EventDispatcher
+	drag           dragHostState
+	dragTarget     dragTargetState
+	dragMotion     dragMotionState
+	surfaceEpoch   uint64 // invalidates callbacks from a replaced native surface
+	surface        platform.Surface
+	transparent    bool // immutable native surface configuration, not its style
+	painter        graphics.Painter
+	width          float32 // logical (DIP)
+	height         float32 // logical (DIP)
+	pixelWidth     float32 // physical (backing) pixels
+	pixelHeight    float32 // physical (backing) pixels
+	layoutDirty    bool
+	paintDirty     bool
+	focusedWidget  Widget
+	focusVisible   bool // input-managed keyboard hint mode, independent per host
+	frames         signal.Signal1[time.Time]
+	framePainting  bool
+	framePending   bool
+	frameSuspended bool
+	frameDestroyed bool
+	frameEpoch     uint64
+	lastFrame      time.Time
+	frameTimer     *Timer
+	frameRequester paintRequester
 }
 
 func (b *rootBase) rootState() *rootBase { return b }
@@ -89,27 +104,16 @@ func (b *rootBase) requestLayout(platform paintRequester) {
 	b.requestPaint(platform)
 }
 
-// requestPaint schedules a repaint of the next frame and notifies the native
-// surface.
-func (b *rootBase) requestPaint(platform paintRequester) error {
-	b.paintDirty = true
-	if platform == nil {
-		return nil
-	}
-	return platform.RequestPaint()
-}
-
 // paintFrame runs one layout + paint frame for the host's content. The dirty
 // flags are consumed *before* the work: layout and painting may issue new
 // requests (e.g. a virtualized ListView measures its items during Arrange and
 // requests a relayout), and those must survive to schedule the next frame
 // instead of being cleared here.
 func (b *rootBase) paintFrame(content Widget, background style.Style) {
-	if b.painter == nil {
+	if b.painter == nil || !b.beginFrame() {
 		return
 	}
-
-	b.paintDirty = false
+	defer b.endFrame()
 	b.layoutFrame(content)
 	b.drawFrame(content, background)
 }

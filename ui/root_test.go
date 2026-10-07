@@ -4,6 +4,7 @@ import (
 	"image"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
@@ -579,6 +580,8 @@ func (w *testWindow) RequestPaint() error {
 }
 
 func (w *testWindow) RequestLayout() {}
+
+func (w *testWindow) ConnectFrame(func(time.Time)) signal.Handle { return signal.Handles(nil) }
 
 func (w *testWindow) PlatformWindow() platform.Window {
 	return nil

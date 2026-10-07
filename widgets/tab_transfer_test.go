@@ -76,9 +76,10 @@ func TestTransferRequestRequiresCommitAndExpires(t *testing.T) {
 // Fake roots exercise ordinary WidgetBase mount/unmount without native windows.
 type tabTransferRoot struct{ widget gui.Widget }
 
-func (r *tabTransferRoot) Widget() gui.Widget { return r.widget }
-func (*tabTransferRoot) RequestPaint() error  { return nil }
-func (*tabTransferRoot) RequestLayout()       {}
+func (r *tabTransferRoot) Widget() gui.Widget                       { return r.widget }
+func (*tabTransferRoot) RequestPaint() error                        { return nil }
+func (*tabTransferRoot) RequestLayout()                             {}
+func (*tabTransferRoot) ConnectFrame(func(time.Time)) signal.Handle { return signal.Handles(nil) }
 
 type tabTransferHost struct {
 	gui.WidgetBase
@@ -554,7 +555,8 @@ func (w *detachTestWindow) Widget() gui.Widget { return w.widget }
 
 func (*detachTestWindow) RequestLayout() {}
 
-func (*detachTestWindow) RequestPaint() error { return nil }
+func (*detachTestWindow) RequestPaint() error                        { return nil }
+func (*detachTestWindow) ConnectFrame(func(time.Time)) signal.Handle { return signal.Handles(nil) }
 
 func (*detachTestWindow) FocusedWidget() gui.Widget { return nil }
 
