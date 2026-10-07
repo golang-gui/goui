@@ -309,6 +309,9 @@ func (w *window) Show() error {
 		return nil
 	}
 	err := w.platformWindow.Show()
+	if err == nil {
+		w.resumeFrames(w.platformWindow)
+	}
 	if w.chrome != nil {
 		w.chrome.nativeChanged()
 	}
@@ -334,6 +337,7 @@ func (w *window) Destroy() {
 		return
 	}
 	w.destroyed = true
+	w.destroyFrames()
 	w.cancelInput(GestureHostClosed)
 	w.drag.destroy()
 	if c := w.dispatcher.shortcuts; c != nil {
@@ -475,6 +479,11 @@ func (w *window) DispatchEvent(event events.Event) error {
 		}
 		return w.dispatcher.DispatchEvent(w, event)
 	case events.StateEvent:
+		if event.State == WindowStateHidden || event.State == WindowStateMinimized {
+			w.suspendFrames()
+		} else if event.State != WindowStateUnknown && w.frameSuspended {
+			w.resumeFrames(w.platformWindow)
+		}
 		if w.chrome != nil {
 			w.chrome.nativeChanged()
 		}
@@ -674,8 +683,11 @@ func (w *window) routeToModalTarget(event events.Event) bool {
 
 func (w *window) paint() {
 	defer w.applyCursor() // layout/state changes can move a resize region beneath a stationary pointer
+	if !w.beginFrame() {
+		return
+	}
+	defer w.endFrame()
 	w.root = liveRoot(w.root)
-	w.paintDirty = false
 	if w.chrome != nil {
 		w.chrome.beforeLayout()
 	}
