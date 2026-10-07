@@ -857,16 +857,18 @@ func (w *window) imReset() {
 	}
 }
 
-// applyCursor resolves the cursor shape from the dispatcher's hover path
-// (innermost non-Default widget wins, falling back to CursorDefault) and
-// applies it. Called when the hover path changes or a hovered widget changes
-// its cursor. Redundant same-shape calls are skipped.
+// applyCursor uses the accepted gesture's owner while captured, otherwise the
+// live hover path. The innermost non-Default cursor wins. Hover still updates
+// during capture; ending or handing off the gesture restores that live cursor.
 func (w *window) applyCursor() {
 	if w.destroyed || w.cursor == nil {
 		return
 	}
 	var resolved Cursor = CursorDefault
 	path := w.dispatcher.hoverPath
+	if capture := w.dispatcher.captureTarget; capture != nil && !capture.base().destroyed && IsEnabled(capture) && visibleInTree(capture) {
+		path = widgetPath(w.dispatcher.treeRoot(w.Widget(), capture), capture)
+	}
 	for i := len(path) - 1; i >= 0; i-- {
 		if !IsEnabled(path[i]) {
 			continue
