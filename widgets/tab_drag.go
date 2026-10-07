@@ -101,7 +101,7 @@ func (b *TabBar) positionTabs(height float32) {
 		item.widthMotion.place(item.width, b.previewMotion)
 		item.Arrange(geometry.Rect(item.motion.x-b.scroll, 0, item.widthMotion.x, height))
 	}
-	b.updateTimer()
+	b.updateFrames()
 }
 
 func (b *TabBar) endDrag(page *TabPage, point geometry.Point) {
@@ -137,8 +137,9 @@ func (b *TabBar) cancelDrag() {
 func (b *TabBar) stopDrag() {
 	b.dragPage, b.dragOrder, b.lifted = nil, nil, nil
 	b.previewMotion = false
-	if b.timer != nil {
-		b.timer.Stop()
+	if b.frameHandle != nil {
+		b.frameHandle.Disconnect()
+		b.frameHandle = nil
 	}
 	b.lastTick = time.Time{}
 	for _, item := range b.items {
@@ -189,11 +190,12 @@ func (b *TabBar) moving() bool {
 	return false
 }
 
-func (b *TabBar) updateTimer() {
+func (b *TabBar) updateFrames() {
 	if !b.moving() && b.scrollVelocity() == 0 {
 		b.previewMotion = false
-		if b.timer != nil {
-			b.timer.Stop()
+		if b.frameHandle != nil {
+			b.frameHandle.Disconnect()
+			b.frameHandle = nil
 		}
 		if b.dragPage == nil && b.lifted != nil {
 			b.lifted = nil
@@ -201,18 +203,21 @@ func (b *TabBar) updateTimer() {
 		}
 		return
 	}
-	if b.timer == nil && b.Root() != nil && gui.App != nil {
-		b.timer = gui.App.NewTimer()
-		b.timerHandle = b.timer.ConnectTimeout(func() {
-			now := time.Now()
+	if b.frameHandle == nil && b.Root() != nil {
+		root := b.Root()
+		b.lastTick = time.Now()
+		b.frameHandle = root.ConnectFrame(func(now time.Time) {
+			if b.Destroyed() || b.Root() != root {
+				b.frameHandle.Disconnect()
+				b.frameHandle = nil
+				return
+			}
 			elapsed := now.Sub(b.lastTick)
 			b.lastTick = now
 			b.advanceMotion(elapsed)
+			b.updateFrames()
 		})
-	}
-	if b.timer != nil && !b.timer.Active() {
-		b.lastTick = time.Now()
-		_ = b.timer.Start(16 * time.Millisecond)
+		_ = root.RequestPaint()
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/graphics"
@@ -40,8 +41,9 @@ type ProgressBar struct {
 	indeterminate bool
 	thickness     float32
 	mounted       bool
-	timer         *gui.Timer
+	frame         signal.Handle
 	started       time.Time
+	elapsed       time.Duration
 }
 
 // NewProgressBar creates a determinate linear indicator at zero, 4 DIP thick.
@@ -49,7 +51,7 @@ type ProgressBar struct {
 func NewProgressBar() *ProgressBar {
 	p := &ProgressBar{thickness: 4}
 	p.SetLayoutManager(progressLayout{bar: p})
-	p.ConnectMount(func() { p.mounted = true })
+	p.ConnectMount(func() { p.mounted = true; p.syncAnimation() })
 	p.ConnectUnmount(func() {
 		p.mounted = false
 		p.stopAnimation()
@@ -91,7 +93,7 @@ func (p *ProgressBar) SetShape(shape ProgressShape) {
 func (p *ProgressBar) Indeterminate() bool { return p.indeterminate }
 
 // SetIndeterminate switches activity mode without changing Value. Repeating
-// the same mode does not reset the animation. Leaving activity stops its timer.
+// the same mode does not reset the animation. Leaving activity disconnects it.
 func (p *ProgressBar) SetIndeterminate(indeterminate bool) {
 	if p.indeterminate == indeterminate {
 		return
@@ -126,20 +128,19 @@ func (p *ProgressBar) Arrange(rect geometry.Rectangle) {
 }
 
 func (p *ProgressBar) Paint(painter gui.Painter) {
-	p.syncAnimation()
 	if !p.Visible() || p.thickness <= 0 || p.Rect().Width <= 0 || p.Rect().Height <= 0 {
 		return
 	}
 	elapsed := time.Duration(0)
-	if p.timer != nil && p.timer.Active() {
-		elapsed = time.Since(p.started)
+	if p.frame != nil {
+		elapsed = p.elapsed
 	} else if p.shape == ProgressLinear {
 		elapsed = 450 * time.Millisecond // A visible static pose if animation cannot run.
 	}
 	p.paint(painter, elapsed)
 }
 
-// Drawing takes elapsed time explicitly; timer cadence never changes geometry.
+// Drawing takes the cached frame time; rendering never advances the animation.
 func (p *ProgressBar) paint(painter gui.Painter, elapsed time.Duration) {
 	name := p.StyleName()
 	if name == "" {
@@ -215,33 +216,42 @@ func (p *ProgressBar) syncAnimation() {
 		p.stopAnimation()
 		return
 	}
-	if p.timer != nil {
-		return // Includes a failed start; retry only after an explicit stop.
-	}
-	if gui.App == nil {
+	if p.frame != nil {
 		return
 	}
-	p.timer = gui.App.NewTimer()
-	p.timer.ConnectTimeout(p.tick)
-	if p.timer.Start(16*time.Millisecond) == nil {
-		p.started = time.Now()
+	root := p.Root()
+	p.started = time.Now()
+	p.elapsed = 0
+	p.frame = root.ConnectFrame(func(now time.Time) {
+		if p.Root() != root {
+			p.stopAnimation()
+			return
+		}
+		p.tick(now)
+	})
+	if root.RequestPaint() != nil {
+		p.stopAnimation()
 	}
 }
 
-func (p *ProgressBar) tick() {
+func (p *ProgressBar) tick(now time.Time) {
 	if !p.canAnimate() {
 		p.stopAnimation()
 		return
 	}
-	p.RequestPaint()
+	p.elapsed = max(0, now.Sub(p.started))
+	if p.Root().RequestPaint() != nil {
+		p.stopAnimation()
+	}
 }
 
 func (p *ProgressBar) stopAnimation() {
-	if p.timer != nil {
-		p.timer.Stop()
-		p.timer = nil
+	if p.frame != nil {
+		p.frame.Disconnect()
+		p.frame = nil
 	}
 	p.started = time.Time{}
+	p.elapsed = 0
 }
 
 // Motion is a pure elapsed-time function, not an accumulation of timer ticks.

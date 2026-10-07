@@ -4,6 +4,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/golang-gui/goui/animation"
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
@@ -27,25 +28,37 @@ const switchDuration = 120 * time.Millisecond
 // Like other widgets, its methods belong to the GUI thread.
 type Switch struct {
 	gui.WidgetBase
-	child                               gui.Widget
-	checked, animated                   bool
-	padding                             float32
-	hovered, pressed, mounted           bool
-	revision                            uint64
-	change                              signal.Signal2[bool, func() bool]
-	motion                              *gui.MotionEventController
-	click                               *gui.ClickEventController
-	keys                                *gui.KeyEventController
-	drag                                *switchDrag
-	position, from, dragPosition, dragX float32
-	started                             time.Time
-	timer                               *gui.Timer
+	child                         gui.Widget
+	checked, animated             bool
+	padding                       float32
+	hovered, pressed, mounted     bool
+	revision                      uint64
+	change                        signal.Signal2[bool, func() bool]
+	motion                        *gui.MotionEventController
+	click                         *gui.ClickEventController
+	keys                          *gui.KeyEventController
+	drag                          *switchDrag
+	position, dragPosition, dragX float32
+	transition                    *animation.Animation[float32]
 }
 
 // NewSwitch creates an enabled, focusable switch, initially off. The track is
 // 36x20 DIP with a 16 DIP thumb, 6 DIP padding and an 8 DIP content gap.
 func NewSwitch() *Switch {
 	b := &Switch{animated: true, padding: 6}
+	b.transition = animation.New(float32(0), animation.Float32)
+	b.transition.ConnectUpdate(func(position float32) {
+		if b.Destroyed() {
+			b.transition.Stop()
+			return
+		}
+		b.position = position
+		if !b.canAnimate() {
+			b.transition.Stop()
+			b.position = b.target()
+		}
+		b.RequestPaint()
+	})
 	b.WidgetBase.SetFocusable(true)
 	b.SetLayoutManager(switchLayout{b})
 	b.ConnectMount(func() { b.mounted = true })
@@ -235,26 +248,8 @@ func (b *Switch) canAnimate() bool {
 	return true
 }
 
-// Timer is only a repaint wake-up; interpolation uses monotonic elapsed time.
-func switchPosition(from, to float32, elapsed time.Duration) float32 {
-	t := min(1, max(0, float64(elapsed)/float64(switchDuration)))
-	return from + (to-from)*float32(1-(1-t)*(1-t)*(1-t))
-}
-
-func (b *Switch) displayPosition(now time.Time) float32 {
-	if !b.started.IsZero() {
-		return switchPosition(b.from, b.target(), now.Sub(b.started))
-	}
-	return b.position
-}
-
 func (b *Switch) stopAnimation() {
-	b.position = b.displayPosition(time.Now())
-	if b.timer != nil {
-		b.timer.Stop()
-		b.timer = nil
-	}
-	b.started = time.Time{}
+	b.transition.Stop()
 }
 
 func (b *Switch) finishAnimation() { b.stopAnimation(); b.position = b.target() }
@@ -264,25 +259,12 @@ func (b *Switch) moveToTarget() {
 	if b.position == b.target() {
 		return
 	}
-	if !b.canAnimate() || gui.App == nil {
+	if !b.canAnimate() {
 		b.position = b.target()
 		return
 	}
-	b.from, b.started = b.position, time.Now()
-	timer := gui.App.NewTimer()
-	b.timer = timer
-	timer.ConnectTimeout(func() {
-		if b.timer != timer {
-			return
-		}
-		if !b.canAnimate() || time.Since(b.started) >= switchDuration {
-			b.finishAnimation()
-		}
-		if !b.Destroyed() {
-			b.RequestPaint()
-		}
-	})
-	if timer.Start(16*time.Millisecond) != nil {
+	b.transition.SetValue(b.position)
+	if b.transition.AnimateTo(b.Root(), b.target(), switchDuration, animation.EaseOutCubic) != nil {
 		b.finishAnimation()
 	}
 }
@@ -324,7 +306,7 @@ func (b *Switch) Paint(p gui.Painter) {
 	track := b.trackRect()
 	paintStyledBox(p, track, name, "track"+suffix, state)
 	diameter, gap := track.Height*.8, track.Height*.1
-	x := track.X + gap + diameter/2 + b.displayPosition(time.Now())*(track.Width-2*gap-diameter)
+	x := track.X + gap + diameter/2 + b.position*(track.Width-2*gap-diameter)
 	center := geometry.Point{X: x, Y: track.Y + track.Height/2}
 	s := gui.ResolveStyle(name, "thumb"+suffix, state)
 	if bg, ok := s.BackgroundColor(); ok && bg != nil {

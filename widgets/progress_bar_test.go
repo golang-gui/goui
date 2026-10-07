@@ -2,6 +2,7 @@ package widgets
 
 import (
 	"encoding/json"
+	"errors"
 	"image"
 	"image/color"
 	"image/draw"
@@ -120,8 +121,8 @@ func TestProgressBarSnapshot(t *testing.T) {
 }
 
 // Public GUI doubles: no native windows, scheduler internals or sleeping.
-// Real timer activation/cancellation and destruction are asserted by the window
-// examples; these tests exercise guards, failed starts and stale tick handling.
+// Real frame activation/cancellation and destruction are asserted by the window
+// examples; these tests exercise guards, failed requests and stale frames.
 type progressTestApplication struct {
 	gui.Application
 	sheet  style.StyleSheet
@@ -186,46 +187,46 @@ func TestProgressBarAnimationLifecycle(t *testing.T) {
 		t.Fatal("determinate widget allocated a timer or was not mounted")
 	}
 	p.SetIndeterminate(true)
-	if p.timer == nil || len(app.timers) != 1 || !p.canAnimate() {
-		t.Fatal("activity did not create one timer")
+	if p.frame == nil || host.root.connects != 1 || len(app.timers) != 0 || !p.canAnimate() {
+		t.Fatal("activity did not connect one frame listener")
 	}
-	timer, started := p.timer, p.started
+	frame, started := p.frame, p.started
 	p.SetIndeterminate(true)
 	p.SetValue(.7)
 	p.SetShape(ProgressCircular)
 	p.Arrange(p.Rect())
-	if p.timer != timer || len(app.timers) != 1 || p.started != started {
+	if p.frame != frame || host.root.connects != 1 || p.started != started {
 		t.Fatal("repeated declarations or shape change reset the clock")
 	}
 	host.root.paints, host.root.layouts = 0, 0
-	p.tick()
+	host.root.frames.Emit(started.Add(time.Second))
 	if host.root.paints != 1 || host.root.layouts != 0 || p.Value() != .7 || p.started != started {
 		t.Fatal("tick changed layout, progress or clock")
 	}
 	box.SetVisible(false)
 	host.root.paints = 0
-	p.tick()
-	if p.timer != nil || p.canAnimate() || host.root.paints != 0 {
+	host.root.frames.Emit(started.Add(2 * time.Second))
+	if p.frame != nil || p.canAnimate() || host.root.paints != 0 {
 		t.Fatal("hidden ancestor retained activity or repainted")
 	}
 	box.SetVisible(true)
 	p.Arrange(p.Rect())
-	if p.timer == nil || len(app.timers) != 2 {
+	if p.frame == nil || host.root.connects != 2 {
 		t.Fatal("layout did not restore activity after revealing subtree")
 	}
 	p.SetVisible(false)
-	if p.timer != nil {
-		t.Fatal("self-hide retained a timer")
+	if p.frame != nil {
+		t.Fatal("self-hide retained a frame listener")
 	}
 	p.SetVisible(true)
 	p.SetThickness(0)
-	if p.timer != nil {
-		t.Fatal("zero thickness retained a timer")
+	if p.frame != nil {
+		t.Fatal("zero thickness retained a frame listener")
 	}
 	p.SetThickness(4)
 	p.Arrange(geometry.Rectangle{})
-	if p.timer != nil {
-		t.Fatal("zero allocation retained a timer")
+	if p.frame != nil {
+		t.Fatal("zero allocation retained a frame listener")
 	}
 	p.Arrange(geometry.Rect(0, 0, 24, 24))
 	// An external unmount listener must not resurrect activity while Root is
@@ -235,21 +236,21 @@ func TestProgressBarAnimationLifecycle(t *testing.T) {
 		p.SetIndeterminate(true)
 	})
 	box.RemoveChild(p)
-	count := len(app.timers)
-	p.tick() // A stale callback must be harmless after unmount.
-	if p.timer != nil || p.mounted || p.canAnimate() || len(app.timers) != count {
+	count := host.root.connects
+	host.root.frames.Emit(time.Now()) // Stale source after unmount.
+	if p.frame != nil || p.mounted || p.canAnimate() || host.root.connects != count {
 		t.Fatal("unmount or stale tick resurrected activity")
 	}
 	other := newProgressTestHost()
 	other.AddChild(other, p)
 	t.Cleanup(func() { other.RemoveChild(p) })
 	p.Arrange(p.Rect())
-	if p.Root() != other.root || p.timer == nil || len(app.timers) != count+1 {
+	if p.Root() != other.root || p.frame == nil || other.root.connects != 1 {
 		t.Fatal("remount did not recreate activity for the new host")
 	}
 	p.SetIndeterminate(false)
-	if p.Value() != .7 || p.timer != nil {
-		t.Fatal("leaving activity lost progress or retained timer")
+	if p.Value() != .7 || p.frame != nil {
+		t.Fatal("leaving activity lost progress or retained listener")
 	}
 }
 
@@ -257,33 +258,37 @@ func TestProgressBarAnimationFailureAndPopover(t *testing.T) {
 	app := new(progressTestApplication)
 	useProgressApplication(t, app)
 	host := newProgressTestHost()
+	host.root.err = errors.New("frame unavailable")
 	p := NewProgressBar()
 	host.AddChild(host, p)
 	t.Cleanup(func() { host.RemoveChild(p) })
 	p.SetIndeterminate(true)
 	p.Arrange(geometry.Rect(0, 0, 100, 4))
-	timer := p.timer
-	host.root.paints = 0
-	p.syncAnimation()
-	if timer == nil || timer.Active() || p.timer != timer || len(app.timers) != 1 || !p.started.IsZero() || host.root.paints != 0 {
-		t.Fatal("failed start retried or kept a moving phase")
+	if p.frame != nil || !p.started.IsZero() || len(app.timers) != 0 {
+		t.Fatal("failed request retained activity or allocated a timer")
 	}
+	host.root.paints = 0
+	host.root.frames.Emit(time.Now())
+	if host.root.paints != 0 {
+		t.Fatal("failed source retained callback")
+	}
+	host.root.err = nil
 	host.root.visible = false
-	p.tick()
-	if p.timer != nil {
+	p.syncAnimation()
+	if p.frame != nil {
 		t.Fatal("hidden host retained activity")
 	}
 	host.root.visible = true
 	p.syncAnimation()
-	if p.timer == nil || len(app.timers) != 2 {
+	if p.frame == nil {
 		t.Fatal("revealed host did not retry")
 	}
 	popup := gui.NewPopover(nil, nil)
 	popup.SetWidget(p)
 	t.Cleanup(func() { popup.SetWidget(nil) })
 	p.Arrange(p.Rect())
-	p.tick()
-	if p.timer != nil || !p.mounted || p.canAnimate() || len(app.timers) != 2 {
+	host.root.frames.Emit(time.Now())
+	if p.frame != nil || !p.mounted || p.canAnimate() || len(app.timers) != 0 {
 		t.Fatal("hidden popover retained activity")
 	}
 }

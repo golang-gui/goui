@@ -43,8 +43,7 @@ type TabBar struct {
 	pointer                             geometry.Point // bar-local, independent of moving children
 	grabX                               float32
 	grabY                               float32
-	timer                               *gui.Timer
-	timerHandle                         signal.Handle
+	frameHandle                         signal.Handle
 	lastTick                            time.Time
 	transferable                        bool
 	dropTarget                          *gui.DropTarget
@@ -80,11 +79,10 @@ func NewTabBar() *TabBar {
 		b.clearIncoming()
 		b.stopDrag()
 		b.disconnect()
-		if b.timerHandle != nil {
-			b.timerHandle.Disconnect()
-			b.timerHandle = nil
+		if b.frameHandle != nil {
+			b.frameHandle.Disconnect()
+			b.frameHandle = nil
 		}
-		b.timer = nil
 	})
 	b.ConnectMount(func() { b.connect() })
 	key := gui.NewKeyEventController()
