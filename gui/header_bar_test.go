@@ -65,6 +65,7 @@ func TestHeaderBarAutomaticDragControllerPolicy(t *testing.T) {
 		{"none", func() EventController { return nil }, platform.WindowHitCaption},
 		{"motion", func() EventController { return NewMotionEventController() }, platform.WindowHitCaption},
 		{"key", func() EventController { return NewKeyEventController() }, platform.WindowHitCaption},
+		{"drop-target", func() EventController { return NewDropTarget(LocalFormat("test")) }, platform.WindowHitCaption},
 		{"click", func() EventController { return NewClickEventController() }, platform.WindowHitClient},
 		{"drag", func() EventController { return NewDragEventController() }, platform.WindowHitClient},
 		{"wheel", func() EventController { return NewWheelEventController() }, platform.WindowHitClient},

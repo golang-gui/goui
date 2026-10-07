@@ -36,7 +36,9 @@ returns to its default, and custom controls use their own height. Invalid
 negative/non-finite answers are ignored.
 
 Windows custom buttons have a 44-by-32 DIP intrinsic size and stay on the right. Native
-buttons keep their observed size and the existing 12 DIP left inset. Chrome
+buttons keep their observed size and horizontal anchor; Chrome does not replace
+the native left inset with a fixed value. This also preserves the reservation
+observed before first Show. Chrome
 centers the group vertically in the answered height; a row shorter than the
 intrinsic group cannot move native buttons above the client origin, so the origin
 is clamped to zero. Custom painting remains clipped to the client area.
@@ -101,8 +103,10 @@ and window controls, then classifies the actual hit path up to and including
 itself. Padding is part of its background, not a synthetic resize border.
 
 - Any focusable widget on the path keeps client input.
-- No controllers, or only the concrete built-in MotionEventController and
-  KeyEventController types, permit dragging.
+- No controllers, or only the concrete built-in MotionEventController,
+  KeyEventController and DropTarget types, permit dragging. DropTarget handles
+  native drag offers rather than ordinary pointer presses; registering a drop
+  destination must not disable an otherwise passive caption region.
 - Click, Drag, Wheel and unknown/custom controllers conservatively keep client
   input, regardless of callback registration or current gesture state.
 - Only the hit path matters: a neighboring button does not block a passive label,
