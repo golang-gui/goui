@@ -46,12 +46,12 @@ type demo struct {
 	list                               *gui.SliceListModel[string]
 	table                              *recordModel
 	tableSelection                     []string
+	tableWidths                        [4]float32
 	sortColumn                         string
 	sortOrder                          widgets.SortOrder
 	tabWindows                         []*tabWindow
 	documents                          map[string]*ui.TextModel
 	nextDocument, nextWindow           int
-	closingTab                         string
 	pendingDetach                      *wui.TabDetachRequest
 	detachWindow                       string
 	detachPosition                     geometry.Point
@@ -106,6 +106,7 @@ func newDemo() (*demo, error) {
 	}
 	d.list = gui.NewSliceListModel(rows)
 	d.table = newRecordModel()
+	d.tableWidths = [4]float32{180, 100, 110, 210}
 	d.tabWindows = []*tabWindow{{id: "main", pages: []string{"document-1", "document-2", "document-3"}, current: "document-1"}}
 	d.nextDocument = 3
 	d.documents = make(map[string]*ui.TextModel)
@@ -230,7 +231,9 @@ func section(title string, children ...ui.View) ui.View {
 	return surface(ui.VBox(append([]ui.View{ui.Label(title).Style("demo-subheading")}, children...)...).Spacing(12).Padding(16).CrossAlign(layout.CrossStretch)).Style("demo-card")
 }
 func page(title, description string, children ...ui.View) ui.View {
-	return ui.ScrollView(ui.VBox(append(heading(title, description), children...)...).Spacing(16).Padding(16).CrossAlign(layout.CrossStretch)).Direction(ui.ScrollVertical).ID("page-" + title).MainWeight(1)
+	scroll := ui.ScrollView(ui.VBox(append(heading(title, description), children...)...).Spacing(16).Padding(16).CrossAlign(layout.CrossStretch)).Direction(ui.ScrollVertical).ID("page-" + title).MainWeight(1)
+	// 页面视觉留白在视口外，才能同时避让滚动条；不承担窗口装饰补偿。
+	return ui.VBox(scroll).Padding(8).CrossAlign(layout.CrossStretch).MainWeight(1)
 }
 func fullPage(title, description string, children ...ui.View) ui.View {
 	return ui.VBox(append(heading(title, description), children...)...).ID("page-" + title).Spacing(12).Padding(16).CrossAlign(layout.CrossStretch).MainWeight(1)

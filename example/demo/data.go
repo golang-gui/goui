@@ -63,7 +63,7 @@ func (m *recordModel) setNote(id, note string) {
 }
 func (d *demo) dataPage() ui.View {
 	tree := wui.TreeView(d.tree, func(row widgets.TreeRow, value string) ui.View {
-		return ui.HBox(ui.Icon(d.icons[1]).Size(16), ui.Label(value)).Spacing(8)
+		return ui.HBox(ui.Icon(d.icons[1]).Size(16).Style("tree-item-icon"), ui.Label(value).Style("tree-item-text")).Spacing(8)
 	}).ID("project-tree").Expanded(d.expanded).Selection(d.treeSelection).SelectionMode(widgets.SelectionMultiple).
 		OnExpanded(func(id string, expanded bool) {
 			d.expanded = setMember(d.expanded, id, expanded)
@@ -77,12 +77,12 @@ func (d *demo) dataPage() ui.View {
 			return []*ui.MenuItemView{ui.MenuItem("查看 "+d.tree.Item(id), func() { d.report("节点 ID：" + id) }), ui.MenuItem("复制节点名", func() { d.app.Clipboard().SetText(d.tree.Item(id)); d.report("已请求复制节点名") })}
 		}).OnContextMenuError(func(e error) { d.result("树菜单", e) })
 	table := wui.TableView(d.table,
-		wui.TableColumn("name", "名称", func(_ widgets.TableRow, r record) ui.View { return ui.HBox(ui.Label(r.Name)).Padding(8) }).Width(180).MinWidth(100).Resizable(true).Sortable(true),
-		wui.TableColumn("kind", "类型", func(_ widgets.TableRow, r record) ui.View { return ui.HBox(ui.Label(r.Kind)).Padding(8) }).Width(100).Resizable(true).Sortable(true),
-		wui.TableColumn("size", "大小 / KB", func(_ widgets.TableRow, r record) ui.View { return ui.HBox(ui.Label(fmt.Sprint(r.Size))).Padding(8) }).Width(110).Resizable(true).Sortable(true),
+		wui.TableColumn("name", "名称", func(_ widgets.TableRow, r record) ui.View { return ui.HBox(ui.Label(r.Name)).Padding(8) }).Width(d.tableWidths[0]).OnResize(func(width float32) { d.tableWidths[0] = width }).MinWidth(100).Resizable(true).Sortable(true),
+		wui.TableColumn("kind", "类型", func(_ widgets.TableRow, r record) ui.View { return ui.HBox(ui.Label(r.Kind)).Padding(8) }).Width(d.tableWidths[1]).OnResize(func(width float32) { d.tableWidths[1] = width }).Resizable(true).Sortable(true),
+		wui.TableColumn("size", "大小 / KB", func(_ widgets.TableRow, r record) ui.View { return ui.HBox(ui.Label(fmt.Sprint(r.Size))).Padding(8) }).Width(d.tableWidths[2]).OnResize(func(width float32) { d.tableWidths[2] = width }).Resizable(true).Sortable(true),
 		wui.TableColumn("note", "备注（直接编辑）", func(_ widgets.TableRow, r record) ui.View {
 			return ui.TextInput().Style("demo-cell-edit").Text(r.Note).OnText(func(value string) { d.table.setNote(r.ID, value) })
-		}).Width(210).Resizable(true),
+		}).Width(d.tableWidths[3]).OnResize(func(width float32) { d.tableWidths[3] = width }).Resizable(true),
 	).ID("records-table").SelectionMode(widgets.SelectionMultiple).Selection(d.tableSelection).Sort(d.sortColumn, d.sortOrder).
 		OnSelection(func(ids []string) {
 			d.tableSelection = slices.Clone(ids)

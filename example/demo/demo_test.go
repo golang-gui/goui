@@ -10,6 +10,7 @@ import (
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/ui"
 	"github.com/golang-gui/goui/widgets"
+	wui "github.com/golang-gui/goui/widgets/ui"
 )
 
 // 这些测试只覆盖例程自己的内存数据和布局适配，不创建窗口/事件循环。
@@ -74,6 +75,88 @@ func TestTabOrderAndTreeExpansion(t *testing.T) {
 	}
 	if got := setMember(ids, "d", true); !slices.Equal(got, []string{"a", "b", "c", "d"}) {
 		t.Fatal(got)
+	}
+}
+
+type demoTestApp struct {
+	ui.App
+	updates int
+}
+
+func (a *demoTestApp) RequestUpdate() { a.updates++ }
+
+func TestTabCloseConfirmationBelongsToCurrentWindow(t *testing.T) {
+	d, err := newDemo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.app = new(demoTestApp)
+	main := d.tabWindows[0]
+	target := &tabWindow{id: "target", pages: []string{"document-2"}, current: "document-2"}
+	main.pages = []string{"document-1", "document-3"}
+	d.tabWindows = append(d.tabWindows, target)
+	d.page = 1
+	d.requestTabClose(target, "document-2")
+	if target.closing != "document-2" || main.closing != "" || d.page != 1 {
+		t.Fatal("close request escaped its workspace")
+	}
+	d.closeTab(target)
+	if target.closing != "" || len(target.pages) != 0 || d.documents["document-2"] != nil || len(main.pages) != 2 {
+		t.Fatal("confirmation closed the wrong page")
+	}
+	d.requestTabClose(target, "document-1")
+	if target.closing != "" {
+		t.Fatal("accepted a page owned by another window")
+	}
+}
+
+func TestTabTransferCancelsSourceConfirmation(t *testing.T) {
+	d, err := newDemo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.app = new(demoTestApp)
+	source := d.tabWindows[0]
+	target := &tabWindow{id: "target"}
+	d.tabWindows = append(d.tabWindows, target)
+	d.requestTabClose(source, "document-2")
+	d.transferTab(wui.TabTransfer{SourceWindow: source.id, TargetWindow: target.id, PageID: "document-2", Index: 0})
+	d.closeTab(source) // A stale confirmation must not remove the moved model.
+	if source.closing != "" || target.current != "document-2" || d.documents["document-2"] == nil {
+		t.Fatal("transfer left a stale confirmation")
+	}
+}
+
+func TestDetachedTabUsesTargetControlsOccupancy(t *testing.T) {
+	for _, test := range []struct {
+		info        gui.ChromeInfo
+		inset, want float32
+	}{
+		{gui.ChromeInfo{Enabled: true, Controls: gui.ChromeControlsNative, ControlsBounds: geometry.Rect(12, 8, 68, 14)}, 0, 80},
+		{gui.ChromeInfo{Enabled: true, Controls: gui.ChromeControlsNative, ControlsBounds: geometry.Rect(22, 8, 78, 14)}, 5, 95},
+		{gui.ChromeInfo{Enabled: true, Controls: gui.ChromeControlsCustom, ControlsBounds: geometry.Rect(500, 8, 80, 14)}, 5, 0},
+		{gui.ChromeInfo{}, 0, 0},
+	} {
+		if got := tabControlsInset(test.info, test.inset); got != test.want {
+			t.Fatalf("controls inset=%g, want %g", got, test.want)
+		}
+	}
+}
+
+func TestPageGutterIsOutsideScrollViewport(t *testing.T) {
+	for _, origin := range []float32{0, 5} {
+		scroll := gui.NewScrollView()
+		view := page("gutter", "test").(*ui.BoxView)
+		box := view.Mount(nil).(*gui.LinearBox)
+		view.Update(bodyContext{children: []gui.Widget{scroll}}, box)
+		box.Measure(layout.Tight(geometry.Size{Width: 500, Height: 300}))
+		box.Arrange(geometry.Rect(origin, origin, 500, 300))
+		if scroll.Rect() != geometry.Rect(8, 8, 484, 284) {
+			t.Fatalf("viewport gutter=%v", scroll.Rect())
+		}
+		if scroll.Snapshot().Bounds != geometry.Rect(origin+8, origin+8, 484, 284) {
+			t.Fatal("gutter lost window-local semantics")
+		}
 	}
 }
 

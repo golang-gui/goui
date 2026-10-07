@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/ui"
 	"github.com/golang-gui/goui/widgets"
@@ -17,6 +18,7 @@ type tabWindow struct {
 	pages   []string
 	current string
 	size    geometry.Size
+	closing string
 }
 
 func (d *demo) tabState(id string) *tabWindow {
@@ -54,18 +56,26 @@ func (d *demo) tabContents(w *tabWindow) ui.View {
 }
 func (d *demo) tabsPage() ui.View {
 	w := d.tabWindows[0]
-	work := d.tabContents(w)
-	confirm := surface(ui.VBox(ui.Label("关闭标签？").Style("demo-subheading"), ui.Label("示例会丢弃该文档的内存内容；不会写入文件。"),
-		ui.HBox(ui.Button("取消").OnClick(func() { d.closingTab = ""; d.app.RequestUpdate() }), ui.Button("关闭").OnClick(d.closeTab)).Spacing(12)).Padding(20).Spacing(12)).Style("demo-card").MaxWidth(440)
-	layer := ui.Overlay(surface(nil).Style("demo-mask"), ui.OverlayItem(confirm).OnPosition(center)).Visible(d.closingTab != "")
 	return fullPage("多标签工作区", "抓住标签排序，拖到另一个标签窗口，或拖到桌面创建新窗口。只剩一个标签时仍可移交，但不再脱离创建新窗口。",
 		ui.HWrap(ui.Button("新建标签").ID("new-tab").OnClick(func() { d.addTab(w) }), ui.Button("打开目标窗口").ID("tab-target").OnClick(d.newTabWindow)).Spacing(10),
-		ui.Overlay(work, ui.OverlayItem(layer).Fill(true)).MainWeight(1),
+		d.tabWorkspace(w).MainWeight(1),
 	)
 }
+
+func (d *demo) tabWorkspace(w *tabWindow) *ui.OverlayView {
+	confirm := surface(ui.VBox(ui.Label("关闭标签？").Style("demo-subheading"), ui.Label("示例会丢弃该文档的内存内容；不会写入文件。"),
+		ui.HBox(ui.Button("取消").OnClick(func() { w.closing = ""; d.app.RequestUpdate() }), ui.Button("关闭").OnClick(func() { d.closeTab(w) })).Spacing(12)).Padding(20).Spacing(12)).Style("demo-card").MaxWidth(440)
+	layer := ui.Overlay(surface(nil).Style("demo-mask"), ui.OverlayItem(confirm).OnPosition(center)).ID("tab-close-confirm").Visible(w.closing != "")
+	return ui.Overlay(d.tabContents(w), ui.OverlayItem(layer).Fill(true))
+}
 func (d *demo) requestTabClose(w *tabWindow, id string) {
-	d.closingTab = id
-	d.navigateToTabs()
+	if d.tabState(w.id) != w || !slices.Contains(w.pages, id) {
+		return
+	}
+	w.closing = id
+	if w.id == "main" {
+		d.navigateToTabs()
+	}
 	d.report("请求关闭：" + id)
 }
 func (d *demo) navigateToTabs() {
@@ -73,23 +83,23 @@ func (d *demo) navigateToTabs() {
 		d.navigate(4)
 	}
 }
-func (d *demo) closeTab() {
-	id := d.closingTab
-	d.closingTab = ""
-	for _, w := range d.tabWindows {
-		if i := slices.Index(w.pages, id); i >= 0 {
-			w.pages = slices.Delete(w.pages, i, i+1)
-			if w.current == id {
-				w.current = ""
-				if len(w.pages) > 0 {
-					w.current = w.pages[min(i, len(w.pages)-1)]
-				}
-			}
-			break
-		}
+func (d *demo) closeTab(w *tabWindow) {
+	id := w.closing
+	w.closing = ""
+	if d.tabState(w.id) != w {
+		return
 	}
-	delete(d.documents, id)
-	d.report("标签已关闭：" + id)
+	if i := slices.Index(w.pages, id); i >= 0 {
+		w.pages = slices.Delete(w.pages, i, i+1)
+		if w.current == id {
+			w.current = ""
+			if len(w.pages) > 0 {
+				w.current = w.pages[min(i, len(w.pages)-1)]
+			}
+		}
+		delete(d.documents, id)
+		d.report("标签已关闭：" + id)
+	}
 }
 func moveID(ids []string, id string, index int) []string {
 	out := slices.Clone(ids)
@@ -106,6 +116,9 @@ func (d *demo) transferTab(e wui.TabTransfer) {
 	}
 	if i := slices.Index(source.pages, e.PageID); i >= 0 {
 		source.pages = slices.Delete(source.pages, i, i+1)
+	}
+	if source.closing == e.PageID {
+		source.closing = ""
 	}
 	if source.current == e.PageID {
 		source.current = ""
@@ -124,12 +137,13 @@ func (d *demo) newTabWindow() {
 	d.addTab(w)
 }
 func (d *demo) tabWindowView(w *tabWindow) ui.WindowView {
-	content := surface(d.tabContents(w)).Style("demo-background")
+	content := surface(d.tabWorkspace(w)).Style("demo-background")
 	if d.pendingDetach != nil && d.detachWindow == w.id {
 		content.after = func() { d.prepareDetach(w) }
 	}
 	return ui.Window(w.id).Title("GOUI · 标签工作区").Size(w.size.Width, w.size.Height).Chrome(ui.WindowChromeIntegrated).
 		OnDestroy(func() {
+			w.closing = ""
 			d.tabWindows = slices.DeleteFunc(d.tabWindows, func(item *tabWindow) bool { return item == w })
 			for _, id := range w.pages {
 				delete(d.documents, id)
@@ -155,7 +169,15 @@ func (d *demo) detachTab(source *tabWindow, r *wui.TabDetachRequest, handled *bo
 	inset := r.Window.Widget().Rect().Pos
 	height := bar.Parent().Rect().Height
 	size := geometry.Size{Width: r.ContentSize.Width + 2*inset.X, Height: r.ContentSize.Height + height + 2*inset.Y}
-	d.detachPosition = r.Position.Add(r.Hotspot.Add(bar.Rect().Pos).Add(inset).Scale(-1))
+	// 暂存目标未避让控制按钮时的起点，创建后按目标的实际占位修正。
+	header, ok := bar.Parent().(*gui.HeaderBar)
+	if !ok {
+		r.Cancel()
+		return
+	}
+	// 目标是顶部 HeaderBar，基础 X 是 padding，不是源已避让后的 X。
+	barOrigin := geometry.Point{X: header.Padding(), Y: bar.Rect().Y}
+	d.detachPosition = r.Position.Add(r.Hotspot.Add(barOrigin).Add(inset).Scale(-1))
 	d.tabWindows = append(d.tabWindows, &tabWindow{id: id, size: size})
 	d.pendingDetach, d.detachWindow = r, id
 	d.app.RequestUpdate()
@@ -170,7 +192,13 @@ func (d *demo) prepareDetach(w *tabWindow) {
 	view, _ := d.app.FindWidget(w.id, "documents").(*widgets.TabView)
 	err := fmt.Errorf("新窗口的标签容器未就绪")
 	if target != nil && view != nil {
-		err = target.SetPosition(r.Window, d.detachPosition)
+		position := d.detachPosition
+		// ConnectInfo 同步报告当前占位；这里一次性借用，不注册长期监听。
+		var info gui.ChromeInfo
+		connection := target.Chrome().ConnectInfo(func(current gui.ChromeInfo) { info = current })
+		connection.Disconnect()
+		position.X -= tabControlsInset(info, r.Window.Widget().Rect().X)
+		err = target.SetPosition(r.Window, position)
 		if err == nil {
 			err = r.TransferTo(view, 0)
 		}
@@ -183,4 +211,11 @@ func (d *demo) prepareDetach(w *tabWindow) {
 		d.tabWindows = slices.DeleteFunc(d.tabWindows, func(item *tabWindow) bool { return item == w })
 		d.result("创建脱离窗口", err)
 	}
+}
+
+func tabControlsInset(info gui.ChromeInfo, inset float32) float32 {
+	if !info.Enabled || info.Controls != gui.ChromeControlsNative || info.ControlsBounds.Width <= 0 {
+		return 0
+	}
+	return max(0, info.ControlsBounds.X+info.ControlsBounds.Width-inset)
 }
