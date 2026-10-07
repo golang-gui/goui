@@ -122,15 +122,20 @@ func (b *rootBase) paintFrame(content Widget, background style.Style) {
 // layoutFrame is shared by windows and popovers. Windows seed controls bounds
 // first, query the row height afterwards, and may apply one reservation pass.
 func (b *rootBase) layoutFrame(content Widget) {
+	b.layoutFrameIn(content, geometry.Rect(0, 0, b.width, b.height))
+}
+
+// layoutFrameIn lets a host reserve its own perimeter without wrapping the
+// user's root or changing Widget-local coordinates. Popovers use the full frame.
+func (b *rootBase) layoutFrameIn(content Widget, bounds geometry.Rectangle) {
 	if content == nil {
 		b.layoutDirty = false
 		return
 	}
-	size := geometry.Size{Width: b.width, Height: b.height}
 	if b.layoutDirty {
 		b.layoutDirty = false
-		measureWidget(content, layout.Tight(size)) // hosts are extrinsic: content fills them
-		content.Arrange(geometry.Rect(0, 0, size.Width, size.Height))
+		measureWidget(content, layout.Tight(bounds.Size)) // hosts are extrinsic: content fills them
+		content.Arrange(bounds)
 	}
 }
 
@@ -180,8 +185,8 @@ func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Sty
 	if shadow.Color.A > 0 && body.Width > 0 && body.Height > 0 {
 		b.painter.DrawBoxShadow(body, radius, shadow)
 	}
-	// Only the host background reaches the rounded perimeter. Widgets retain
-	// their full allocations but cannot paint over this window-owned area.
+	// Only the host background reaches the rounded perimeter. The host supplies
+	// content allocations; structural clipping also contains custom painting.
 	if bg, ok := background.BackgroundColor(); ok && bg != nil {
 		radius = min(normalizeLayoutValue(radius), max(0, min(body.Width, body.Height)/2))
 		if radius > 0 {

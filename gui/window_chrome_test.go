@@ -204,6 +204,14 @@ func TestNoneChromeResizeRegions(t *testing.T) {
 			t.Fatal("duplicate native operation")
 		}
 		if !nativeHit {
+			// No content or decoration tree: host regions still receive the press.
+			win.SetWidget(nil)
+			win.paint()
+			before := len(native.resizeRequests)
+			clickAt(win, geometry.Point{X: 20, Y: 20})
+			if len(native.resizeRequests) != before+1 || clicks != 0 {
+				t.Fatal("an empty host lost its custom resize region")
+			}
 			native.commandError = platform.ErrUnavailable
 			clickAt(win, geometry.Point{X: 20, Y: 20})
 			if clicks != 0 || click.Pressed() {
@@ -484,6 +492,45 @@ func TestChromeMoveUsesEventController(t *testing.T) {
 			t.Fatal("native move started a GUI click/capture")
 		}
 		win.Destroy()
+	}
+}
+
+// Window 拥有缩放边缘，不依赖应用树在那里命中 Widget。真实输入仍从
+// DispatchEvent 进入 host controller 和既有手势竞争，而不是直接调用 BeginResize。
+func TestIntegratedResizeWithoutWidgetHit(t *testing.T) {
+	for _, content := range []string{"normal", "disabled", "empty"} {
+		t.Run(content, func(t *testing.T) {
+			win, native := chromeFixture(t, false, false)
+			win.clientChrome = true
+			win.Chrome().ConnectQueryRegion(win.chrome.queryFrameRegion)
+			clicks := 0
+			click := NewClickEventController()
+			click.ConnectClicked(func(EventContext) { clicks++ })
+			win.Widget().AddEventController(click)
+			if content == "empty" {
+				win.SetWidget(nil)
+			} else if content == "disabled" {
+				win.Widget().SetEnabled(false)
+			}
+			win.RequestLayout()
+			win.paint()
+			points := []geometry.Point{{X: 100, Y: 2}, {X: 100, Y: 398}, {X: 2, Y: 100}, {X: 638, Y: 100}, {X: 2, Y: 2}, {X: 638, Y: 2}, {X: 2, Y: 398}, {X: 638, Y: 398}}
+			for i, point := range points {
+				if target := win.dispatcher.pick(win.Widget(), point); target != nil {
+					t.Fatalf("resize perimeter hit a Widget: %v", target)
+				}
+				_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Position: point, Button: events.PointerButtonLeft, Buttons: events.PointerButtonLeftDown})
+				_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerUp, Position: point, Button: events.PointerButtonLeft})
+				if len(native.resizeRequests) != i+1 || native.resizeRequests[i] != platform.WindowEdge(i) || clicks != 0 || win.dispatcher.gesture != nil {
+					t.Fatalf("edge=%d: requests=%v, clicks=%d", i, native.resizeRequests, clicks)
+				}
+			}
+			native.onMove = win.Destroy
+			_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Position: points[0], Button: events.PointerButtonLeft, Buttons: events.PointerButtonLeftDown})
+			if !win.destroyed || win.dispatcher.gesture != nil {
+				t.Fatal("native resize reentry did not safely destroy the host")
+			}
+		})
 	}
 }
 

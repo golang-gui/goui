@@ -181,16 +181,17 @@ func (h *HeaderBar) mountChrome() {
 	}
 }
 
-// Only the top segment covering the group's outer anchor supplies height.
-// The horizontal reservation is known before layout; vertical position is
-// deliberately irrelevant to choosing the segment.
+// Only the segment at the root content's top covering the outer anchor supplies height.
+// The horizontal reservation is known before layout; the controls' current
+// vertical placement is deliberately irrelevant to choosing the segment.
 func (h *HeaderBar) queryControls(result *ChromeControls) {
 	win := h.Window()
 	if win == nil || !h.arranged || !visibleInTree(h) || !h.info.Enabled {
 		return
 	}
 	own, controls := h.windowRect(), h.info.ControlsBounds
-	if own.Y != 0 || emptyRect(own) || controls.Width <= 0 {
+	root := win.Widget()
+	if root == nil || own.Y != root.Rect().Y || emptyRect(own) || controls.Width <= 0 {
 		return
 	}
 	x := controls.X
@@ -199,7 +200,7 @@ func (h *HeaderBar) queryControls(result *ChromeControls) {
 	} else {
 		x += controls.Width - min(0.5, controls.Width/2)
 	}
-	point := geometry.Point{X: x, Y: min(0.5, own.Height/2)}
+	point := geometry.Point{X: x, Y: own.Y + min(0.5, own.Height/2)}
 	if !containsPoint(own, point) {
 		return
 	}
