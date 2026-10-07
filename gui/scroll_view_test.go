@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"math"
 	"testing"
 
 	"github.com/goexlib/mathx"
@@ -10,6 +11,201 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 )
+
+func TestScrollViewCoupledBarsAndResize(t *testing.T) {
+	for _, size := range []geometry.Size{{Width: 96, Height: 200}, {Width: 200, Height: 96}} {
+		sv := NewScrollView()
+		sv.SetChild(&mockWidget{size: size})
+		sv.Measure(layout.Tight(geometry.Size{Width: 100, Height: 100}))
+		sv.Arrange(geometry.Rect(0, 0, 100, 100))
+		if !sv.vbar.Visible() || !sv.hbar.Visible() || sv.viewport.Rect() != geometry.Rect(0, 0, 92, 92) {
+			t.Fatalf("bar-induced overflow not resolved: size=%v viewport=%v", size, sv.viewport.Rect())
+		}
+		info := sv.Snapshot()
+		if info.MaxScrollX != size.Width-92 || info.MaxScrollY != size.Height-92 {
+			t.Fatalf("snapshot ranges disagree with viewport: %+v", info)
+		}
+		sv.SetScrollX(1000)
+		sv.SetScrollY(1000)
+		sv.Arrange(geometry.Rect(0, 0, 220, 220))
+		if sv.hbar.Visible() || sv.vbar.Visible() || sv.ScrollX() != 0 || sv.ScrollY() != 0 || sv.viewport.Rect() != geometry.Rect(0, 0, 220, 220) {
+			t.Fatal("old bars or offsets survived a larger allocation")
+		}
+	}
+}
+
+// responsiveScrollWidget models wrapping without fonts or a desktop. Its
+// natural text extent is 400 DIP; each wrapped line/column takes 20 DIP.
+type responsiveScrollWidget struct {
+	WidgetBase
+	horizontal  bool
+	length      float32
+	constraints []layout.Constraint
+}
+
+func (w *responsiveScrollWidget) Measure(c layout.Constraint) layout.Measurement {
+	w.constraints = append(w.constraints, c)
+	cross := c.Max.Width
+	if w.horizontal {
+		cross = c.Max.Height
+	}
+	cross = min(w.length, cross)
+	lines := float32(1)
+	if cross > 0 {
+		lines = float32(math.Ceil(float64(w.length / cross)))
+	}
+	size := geometry.Size{Width: cross, Height: 20 * lines}
+	if w.horizontal {
+		size.Width, size.Height = size.Height, size.Width
+	}
+	return layout.Measured(size).Constrain(c)
+}
+
+func TestScrollViewSingleAxisMeasuresActualViewport(t *testing.T) {
+	for _, direction := range []ScrollDirection{ScrollVertical, ScrollHorizontal} {
+		horizontal := direction == ScrollHorizontal
+		sv := NewScrollView()
+		sv.SetDirection(direction)
+		content := &responsiveScrollWidget{length: 400, horizontal: horizontal}
+		sv.SetChild(content)
+		size := geometry.Size{Width: 100, Height: 60}
+		if horizontal {
+			size.Width, size.Height = size.Height, size.Width
+		}
+		sv.Measure(layout.Tight(size))
+		sv.Arrange(geometry.Rectangle{Size: size})
+		wantContent, wantArea := geometry.Size{Width: 92, Height: 100}, geometry.Size{Width: 92, Height: 60}
+		if horizontal {
+			wantContent.Width, wantContent.Height = wantContent.Height, wantContent.Width
+			wantArea.Width, wantArea.Height = wantArea.Height, wantArea.Width
+		}
+		if content.Rect().Size != wantContent || sv.viewport.Rect().Size != wantArea || sv.vbar.Visible() == horizontal || sv.hbar.Visible() != horizontal {
+			t.Fatalf("single-axis layout: direction=%v content=%v viewport=%v", direction, content.Rect(), sv.viewport.Rect())
+		}
+		last := content.constraints[len(content.constraints)-1]
+		if !horizontal && (last.Min.Width != 92 || last.Max.Width != 92 || last.Max.Height != layout.Inf) ||
+			horizontal && (last.Min.Height != 92 || last.Max.Height != 92 || last.Max.Width != layout.Inf) {
+			t.Fatalf("not measured at bar-reduced cross extent: %+v", last)
+		}
+		// Reveal requests, including an overflowing cross-axis rectangle, may
+		// only move the configured axis. The visible end is 100 - 60 = 40.
+		sv.ScrollIntoView(geometry.Rect(200, 200, 1, 1))
+		if !horizontal && (sv.ScrollX() != 0 || sv.ScrollY() != 40) || horizontal && (sv.ScrollX() != 40 || sv.ScrollY() != 0) {
+			t.Fatalf("reveal ignored direction: %g/%g", sv.ScrollX(), sv.ScrollY())
+		}
+		content.length = 60
+		sv.Arrange(geometry.Rectangle{Size: size})
+		if sv.hbar.Visible() || sv.vbar.Visible() || sv.ScrollX() != 0 || sv.ScrollY() != 0 {
+			t.Fatal("content shrink retained scrollbar or offset")
+		}
+		// Short content fills only the cross axis, not the scrolling axis.
+		want := geometry.Size{Width: 100, Height: 20}
+		if horizontal {
+			want.Width, want.Height = want.Height, want.Width
+		}
+		if content.Rect().Size != want {
+			t.Fatalf("short content stretched along the scrolling axis: %v", content.Rect())
+		}
+	}
+}
+
+func TestScrollViewDirectionOffsetsWheelAndSnapshot(t *testing.T) {
+	sv := NewScrollView()
+	sv.SetChild(&mockWidget{size: geometry.Size{Width: 500, Height: 500}})
+	sv.Arrange(geometry.Rect(0, 0, 100, 100))
+	sv.SetScrollX(20)
+	sv.SetScrollY(30)
+	sv.SetDirection(ScrollVertical)
+	if sv.ScrollX() != 0 || sv.ScrollY() != 30 {
+		t.Fatal("direction change did not reset just the disabled offset")
+	}
+	sv.Arrange(sv.Rect())
+	sv.SetScrollX(50)
+	win := &window{}
+	win.SetWidget(sv)
+	defer win.Destroy()
+	_ = win.DispatchEvent(events.WheelEvent{Position: geometry.Point{X: 20, Y: 20}, DeltaX: 40, DeltaY: 10, Mode: events.WheelDeltaPixel})
+	info := sv.Snapshot()
+	if sv.ScrollX() != 0 || sv.ScrollY() != 40 || info.MaxScrollX != 0 || sv.hbar.Visible() {
+		t.Fatal("vertical mode accepted horizontal input or exposed a disabled range")
+	}
+	sv.SetDirection(ScrollHorizontal)
+	sv.Arrange(sv.Rect())
+	sv.SetScrollY(50)
+	_ = win.DispatchEvent(events.WheelEvent{Position: geometry.Point{X: 20, Y: 20}, DeltaY: 10, Modifiers: events.ModifierShift, Mode: events.WheelDeltaPixel})
+	info = sv.Snapshot()
+	if sv.ScrollX() != 10 || sv.ScrollY() != 0 || info.MaxScrollY != 0 || sv.vbar.Visible() {
+		t.Fatal("horizontal mode did not honor Shift-wheel or exposed a disabled range")
+	}
+	sv.SetDirection(255)
+	if sv.Direction() != ScrollBoth {
+		t.Fatal("invalid direction was not normalized")
+	}
+}
+
+func TestScrollViewUnboundedCrossAxisAndOwnMaximum(t *testing.T) {
+	sv := NewScrollView()
+	sv.SetDirection(ScrollVertical)
+	content := &responsiveScrollWidget{length: 400}
+	sv.SetChild(content)
+	if got := sv.Measure(layout.Unbounded()).Size; got != (geometry.Size{Width: 400}) {
+		t.Fatalf("unbounded viewport invented a cross size: %v", got)
+	}
+	sv.SetMaxSize(geometry.Size{Width: 100})
+	if got := sv.Measure(layout.Loose(geometry.Size{Width: 200, Height: 60})).Width; got != 100 || content.constraints[len(content.constraints)-1].Max.Width != 100 {
+		t.Fatalf("own maximum did not reach content measurement: width=%g", got)
+	}
+}
+
+func TestScrollViewTinyAllocationAndClear(t *testing.T) {
+	sv := NewScrollView()
+	sv.SetChild(&mockWidget{size: geometry.Size{Width: 200, Height: 200}})
+	for _, size := range []geometry.Size{{}, {Width: 3, Height: 4}, {Width: 8, Height: 8}} {
+		sv.Arrange(geometry.Rectangle{Size: size})
+		for _, r := range []geometry.Rectangle{sv.viewport.Rect(), sv.vbar.Rect(), sv.hbar.Rect()} {
+			if r.X < 0 || r.Y < 0 || r.Width < 0 || r.Height < 0 || r.X+r.Width > size.Width || r.Y+r.Height > size.Height {
+				t.Fatalf("structural allocation outside tiny viewport %v: %v", size, r)
+			}
+		}
+	}
+	sv.SetChild(nil)
+	sv.Arrange(sv.Rect())
+	info := sv.Snapshot()
+	if info.MaxScrollX != 0 || info.MaxScrollY != 0 || sv.hbar.Visible() || sv.vbar.Visible() {
+		t.Fatal("cleared child retained its extent")
+	}
+}
+
+type extentScrollContent struct {
+	WidgetBase
+	size      geometry.Size
+	discover  geometry.Size
+	viewports []geometry.Size
+}
+
+func (w *extentScrollContent) ContentSize() geometry.Size { return w.size }
+func (w *extentScrollContent) LayoutVisible(viewport geometry.Size, offset geometry.Point) {
+	w.viewports = append(w.viewports, viewport)
+	if w.discover != (geometry.Size{}) {
+		w.size, w.discover = w.discover, geometry.Size{}
+	}
+}
+
+func TestScrollViewVirtualExtentAndDisabledAxis(t *testing.T) {
+	sv := NewScrollView()
+	content := &extentScrollContent{discover: geometry.Size{Width: 96, Height: 200}}
+	sv.SetChild(content)
+	sv.Measure(layout.Tight(geometry.Size{Width: 100, Height: 100}))
+	sv.Arrange(geometry.Rect(0, 0, 100, 100))
+	if len(content.viewports) != 2 || content.Rect() != geometry.Rect(0, 0, 92, 92) || content.viewports[1] != (geometry.Size{Width: 92, Height: 92}) {
+		t.Fatalf("lazy extent did not update the actual viewport: %v / %v", content.viewports, content.Rect())
+	}
+	sv.SetDirection(ScrollVertical)
+	sv.Arrange(sv.Rect())
+	if content.ContentSize().Width != 96 || sv.Snapshot().MaxScrollX != 0 || sv.hbar.Visible() || content.Rect() != geometry.Rect(0, 0, 92, 100) {
+		t.Fatal("host changed virtual content policy instead of disabling its scroll axis")
+	}
+}
 
 // --- ScrollView (viewport mode) ---
 
@@ -48,8 +244,9 @@ func TestScrollViewClamp(t *testing.T) {
 	}
 
 	sv.SetScrollY(1000)
-	if got := sv.ScrollY(); got != 300 {
-		t.Fatalf("SetScrollY(1000) should clamp to 300, got %v", got)
+	// The vertical bar reduces width below 100, requiring a horizontal bar too.
+	if got := sv.ScrollY(); got != 308 {
+		t.Fatalf("SetScrollY(1000) should clamp to 308, got %v", got)
 	}
 
 	sv.SetScrollY(-50)
@@ -144,7 +341,7 @@ func TestScrollViewViewportDrivesPaintClipAndHitTesting(t *testing.T) {
 	sv.Arrange(geometry.Rect(10, 20, 100, 100))
 	sv.SetScrollY(40)
 
-	wantViewport := geometry.Rect(0, 0, 100-scrollbarWidth, 100)
+	wantViewport := geometry.Rect(0, 0, 100-scrollbarWidth, 100-scrollbarWidth)
 	if sv.viewport.Rect() != wantViewport {
 		t.Fatalf("unexpected viewport rect: got %v want %v", sv.viewport.Rect(), wantViewport)
 	}
@@ -155,7 +352,7 @@ func TestScrollViewViewportDrivesPaintClipAndHitTesting(t *testing.T) {
 		t.Fatalf("expected one content fill, got %d", len(backend.fills))
 	}
 	fill := backend.fills[0]
-	if fill.clip != geometry.Rect(10, 20, 100-scrollbarWidth, 100) {
+	if fill.clip != geometry.Rect(10, 20, 100-scrollbarWidth, 100-scrollbarWidth) {
 		t.Fatalf("content must be clipped by the viewport, got %v", fill.clip)
 	}
 	if fill.transform != geometry.Translate(10, -20) {
@@ -227,8 +424,8 @@ func TestScrollViewWheel(t *testing.T) {
 
 	// Clamp at the end.
 	sv.wheel.HandleEvent(&eventContext{event: events.WheelEvent{DeltaY: 10000, Mode: events.WheelDeltaPixel}})
-	if got := sv.ScrollY(); got != 400 {
-		t.Fatalf("wheel should clamp to 400, got %v", got)
+	if got := sv.ScrollY(); got != 408 {
+		t.Fatalf("wheel should clamp to 408 with both bars, got %v", got)
 	}
 }
 
@@ -257,8 +454,8 @@ func TestScrollViewScrollableContentMode(t *testing.T) {
 	sv.Measure(layout.Constraint{Max: geometry.Size{Width: 100, Height: 100}})
 	sv.Arrange(geometry.Rect(0, 0, 100, 100))
 
-	// Vertical scrollbar is shown (content 500 > viewport 100), so the content
-	// area width is 100 - scrollbarWidth = 94.
+	// The vertical bar reduces width below the content's fixed 100, so both
+	// bars occupy space. Scrollable still controls its own width/wrapping policy.
 	areaW := float32(100 - scrollbarWidth)
 
 	if len(content.layoutCalls) != 1 {
@@ -269,7 +466,7 @@ func TestScrollViewScrollableContentMode(t *testing.T) {
 	}
 	// The content's own rect is the structural viewport area; its descendants
 	// are laid out virtually for the requested offset.
-	if got := content.Rect(); got != (geometry.Rect(0, 0, areaW, 100)) {
+	if got := content.Rect(); got != (geometry.Rect(0, 0, areaW, areaW)) {
 		t.Fatalf("content rect should be the content area, got %v", got)
 	}
 
@@ -281,10 +478,10 @@ func TestScrollViewScrollableContentMode(t *testing.T) {
 		t.Fatalf("offset should be 100, got %v", content.layoutCalls[1])
 	}
 
-	// Clamp: content height 500, content area height 100 → max 400.
+	// Clamp: content height 500, content area height 92 → max 408.
 	sv.SetScrollY(999)
-	if got := content.layoutCalls[len(content.layoutCalls)-1].Y; got != 400 {
-		t.Fatalf("offset should clamp to 400, got %v", got)
+	if got := content.layoutCalls[len(content.layoutCalls)-1].Y; got != 408 {
+		t.Fatalf("offset should clamp to 408, got %v", got)
 	}
 }
 
@@ -315,8 +512,8 @@ func TestScrollViewSnapshot(t *testing.T) {
 	if info.ScrollY != 50 {
 		t.Fatalf("scrollY should be 50, got %v", info.ScrollY)
 	}
-	if info.MaxScrollY != 300 {
-		t.Fatalf("maxScrollY should be 300, got %v", info.MaxScrollY)
+	if info.MaxScrollY != 308 {
+		t.Fatalf("maxScrollY should be 308 with both bars, got %v", info.MaxScrollY)
 	}
 }
 
@@ -463,10 +660,10 @@ func TestScrollViewScrollXClamp(t *testing.T) {
 	sv.Measure(layout.Constraint{Max: geometry.Size{Width: 200, Height: 100}})
 	sv.Arrange(geometry.Rect(0, 0, 200, 100))
 
-	// Content 500 wide, viewport 200, no vertical scroll → maxX = 300.
+	// The horizontal bar reduces height below 100, requiring a vertical bar.
 	sv.SetScrollX(1000)
-	if got := sv.ScrollX(); got != 300 {
-		t.Fatalf("SetScrollX(1000) should clamp to 300, got %v", got)
+	if got := sv.ScrollX(); got != 308 {
+		t.Fatalf("SetScrollX(1000) should clamp to 308, got %v", got)
 	}
 	sv.SetScrollX(-50)
 	if got := sv.ScrollX(); got != 0 {
@@ -611,8 +808,8 @@ func TestScrollViewSnapshotScrollX(t *testing.T) {
 	if info.ScrollX != 50 {
 		t.Fatalf("scrollX should be 50, got %v", info.ScrollX)
 	}
-	if info.MaxScrollX != 300 {
-		t.Fatalf("maxScrollX should be 300, got %v", info.MaxScrollX)
+	if info.MaxScrollX != 308 {
+		t.Fatalf("maxScrollX should be 308 with both bars, got %v", info.MaxScrollX)
 	}
 	// Snapshot children filter out scrollbars.
 	for _, c := range info.Children {

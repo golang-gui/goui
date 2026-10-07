@@ -209,10 +209,11 @@ func (b *rootBase) dragScrollAxes() (x, y *ScrollView, vx, vy float32) {
 			continue
 		}
 		dx, dy := dragScrollVelocity(p.X-area.X, area.Width), dragScrollVelocity(p.Y-area.Y, area.Height)
-		if x == nil && (dx < 0 && sv.scrollX > 0 || dx > 0 && sv.scrollX < float32(math.Floor(float64(max(0, sv.contentWidth-area.Width))))) {
+		extent := sv.scrollRange()
+		if x == nil && sv.canScrollX() && (dx < 0 && sv.scrollX > 0 || dx > 0 && sv.scrollX < float32(math.Floor(float64(extent.Width)))) {
 			x, vx = sv, dx
 		}
-		if y == nil && (dy < 0 && sv.scrollY > 0 || dy > 0 && sv.scrollY < float32(math.Floor(float64(max(0, sv.contentHeight-area.Height))))) {
+		if y == nil && sv.canScrollY() && (dy < 0 && sv.scrollY > 0 || dy > 0 && sv.scrollY < float32(math.Floor(float64(extent.Height)))) {
 			y, vy = sv, dy
 		}
 	}
