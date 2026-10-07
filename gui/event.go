@@ -212,7 +212,7 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 			d.finishGesture(sequence, pointer)
 		}()
 	}
-	if root == nil && d.decoration == nil {
+	if root == nil && d.decoration == nil && d.hostController == nil {
 		if d.shortcuts != nil {
 			d.shortcuts.HandleEvent(&eventContext{event: event})
 		}
@@ -242,6 +242,16 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 
 	target := d.target(host, root, event)
 	if target == nil {
+		// A host-owned pointer region need not belong to either Widget tree
+		// (for example Window's resize perimeter). Keep its controller in the
+		// same dispatch/gesture sequence even when Widget picking returns nil.
+		if _, pointer := event.(events.PointerEvent); pointer && d.hostController != nil {
+			ctx := &eventContext{dispatcher: d, host: host, event: event, controller: d.hostController}
+			d.hostController.HandleEvent(ctx)
+			if ctx.PropagationStopped() {
+				return nil
+			}
+		}
 		// Window shortcuts remain available when its entire content is disabled.
 		if _, key := event.(events.KeyEvent); key {
 			ctx := &eventContext{event: event}

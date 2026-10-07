@@ -418,7 +418,8 @@ func (c *windowChrome) placeCustom() {
 			if c.controlsHeight <= 0 {
 				height = 40
 			}
-			bounds = geometry.Rect(max(0, c.window.width-width-circularControlInset), max(0, (height-circularControlSize)/2), width, circularControlSize).
+			top := c.window.contentBounds().Y
+			bounds = geometry.Rect(max(0, c.window.width-width-circularControlInset), top+max(0, (height-circularControlSize)/2), width, circularControlSize).
 				Intersect(geometry.Rect(0, 0, c.window.width, c.window.height))
 		} else {
 			bounds = geometry.Rect(max(0, c.window.width-width), 0, width, height).

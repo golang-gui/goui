@@ -2,6 +2,7 @@ package gui
 
 import (
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"math"
@@ -42,6 +43,119 @@ func TestWindowRequestPaintWithoutPlatformWindow(t *testing.T) {
 
 	if err := win.RequestPaint(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestWindowStyleNameOnlyInvalidatesOwnPaint(t *testing.T) {
+	win, other := &window{}, &window{}
+	root := newTestWidget()
+	root.SetStyleName("content-style")
+	win.SetWidget(root)
+	win.paintDirty, win.layoutDirty = false, false
+	before := win.Snapshot()
+	win.SetStyleName("special-window")
+	if win.StyleName() != "special-window" || !win.paintDirty || win.layoutDirty {
+		t.Fatal("window style must request paint, not change layout")
+	}
+	if other.StyleName() != "" || other.paintDirty || root.StyleName() != "content-style" || !reflect.DeepEqual(win.Snapshot(), before) {
+		t.Fatal("window style leaked to other windows, child styles or semantic geometry")
+	}
+	win.paintDirty = false
+	win.SetStyleName("special-window")
+	if win.paintDirty {
+		t.Fatal("setting the same window style must be a no-op")
+	}
+	win.SetStyleName("")
+	if win.StyleName() != "" || !win.paintDirty {
+		t.Fatal("empty style name must restore the default background")
+	}
+	win.Destroy()
+	win.paintDirty = false
+	win.SetStyleName("after-destroy")
+	if win.StyleName() != "" || win.paintDirty {
+		t.Fatal("destroyed window accepted a style change")
+	}
+}
+
+// 物理像素采样远离圆角和抗锯齿：x=2 DIP、y=30 DIP 位于窗口背景边缘，
+// 不在 5 DIP 的控件绘制区内；(30,30) 位于辅助窗的实色内容中。输出按预乘
+// RGBA 精确比较，不涉及字体。分别覆盖应用 1x/2x 的独立背景、多窗口和重绘。
+func TestWindowBackgroundStyleIsIsolated(t *testing.T) {
+	for _, scale := range []float32{1, 2} {
+		t.Run(fmt.Sprintf("%gx", scale), func(t *testing.T) {
+			rules := func(background color.Color) style.StyleSheet {
+				return style.Sheet(
+					style.Name("window").BackgroundColor(background),
+					// These geometry fields must not override GUI-owned chrome.
+					style.Name("transparent-window").BackgroundColor(color.Transparent).Radius(40).BorderWidth(20),
+					style.Name("dark-window").BackgroundColor(color.Gray{32}),
+				)
+			}
+			app := &application{style: rules(color.Gray{245})}
+			useTestApplication(t, app)
+			makeWindow := func(framed bool) (*window, *transparentFrame) {
+				output := &transparentFrame{}
+				p, err := software.NewPainter(output)
+				if err != nil {
+					t.Fatal(err)
+				}
+				w := &window{rootBase: rootBase{width: 80, height: 60,
+					pixelWidth: 80 * scale, pixelHeight: 60 * scale, transparent: true, painter: p}, clientChrome: framed}
+				w.SetWidget(newPainterTestWidget(func(p Painter) {
+					p.FillRect(geometry.Rect(16, 16, 48, 28), graphics.RGB(12, 34, 56))
+				}))
+				t.Cleanup(w.Destroy)
+				return w, output
+			}
+			pixel := func(output *transparentFrame, x, y float32) color.RGBA {
+				return color.RGBAModel.Convert(output.image.At(int(x*scale), int(y*scale))).(color.RGBA)
+			}
+			main, mainOutput := makeWindow(true)
+			aux, auxOutput := makeWindow(false)
+			main.paint()
+			aux.paint()
+			if got := pixel(mainOutput, 2, 30); got != (color.RGBA{245, 245, 245, 255}) {
+				t.Fatalf("default main background: %v", got)
+			}
+			aux.SetStyleName("transparent-window")
+			aux.paint()
+			main.paint()
+			if got := pixel(auxOutput, 2, 30); got != (color.RGBA{}) {
+				t.Fatalf("auxiliary window did not clear its own background: %v", got)
+			}
+			if got := pixel(auxOutput, 30, 30); got != (color.RGBA{12, 34, 56, 255}) {
+				t.Fatalf("transparent background changed content painting: %v", got)
+			}
+			if got := pixel(mainOutput, 2, 30); got != (color.RGBA{245, 245, 245, 255}) || main.frameInset() != 5 {
+				t.Fatalf("auxiliary style changed the main background or chrome: %v", got)
+			}
+			aux.SetStyleName("dark-window")
+			aux.paint()
+			if pixel(auxOutput, 2, 30) != (color.RGBA{32, 32, 32, 255}) ||
+				aux.decorationPalette(true).frame.Y != 90 || main.decorationPalette(true).frame.Y != 165 {
+				t.Fatal("decoration palettes must follow each window's own background")
+			}
+			aux.SetStyleName("")
+			aux.paint()
+			if got := pixel(auxOutput, 2, 30); got != (color.RGBA{245, 245, 245, 255}) {
+				t.Fatalf("empty style did not restore the default: %v", got)
+			}
+			aux.SetStyleName("transparent-window")
+			app.style = rules(color.Gray{40})
+			main.paint()
+			aux.paint()
+			if pixel(mainOutput, 2, 30) != (color.RGBA{40, 40, 40, 255}) || pixel(auxOutput, 2, 30) != (color.RGBA{}) {
+				t.Fatal("application theme update lost independent background selection")
+			}
+			another, anotherOutput := makeWindow(false)
+			another.SetStyleName("transparent-window")
+			aux.Destroy()
+			main.paint()
+			another.paint()
+			if pixel(mainOutput, 2, 30) != (color.RGBA{40, 40, 40, 255}) || pixel(anotherOutput, 2, 30) != (color.RGBA{}) {
+				t.Fatal("closing one transparent window changed other windows")
+			}
+		})
 	}
 }
 
@@ -640,7 +754,158 @@ type transparentFrame struct{ image image.Image }
 func (*transparentFrame) Transparent() bool            { return true }
 func (f *transparentFrame) Draw(img image.Image) error { f.image = img; return nil }
 
-func TestWindowFrameClipDoesNotChangeLayout(t *testing.T) {
+// 不额外添加 Padding；根布局、滚动条和 Snapshot 都必须位于四边缩放区域内侧。
+func TestIntegratedContentLayoutAvoidsResizeEdges(t *testing.T) {
+	for _, scale := range []float32{1, 1.25, 2} {
+		t.Run(fmt.Sprintf("%gx", scale), func(t *testing.T) {
+			w, native := chromeFixture(t, false, false)
+			w.clientChrome = true
+			w.pixelWidth, w.pixelHeight = w.width*scale, w.height*scale
+			w.Chrome().ConnectQueryRegion(w.chrome.queryFrameRegion)
+			content := newTestWidget()
+			content.SetMinSize(geometry.Size{Width: 1000, Height: 1000})
+			scroll := NewScrollView()
+			scroll.SetChild(content)
+			w.SetWidget(scroll)
+			for _, state := range []WindowState{WindowStateNormal, WindowStateMaximized, WindowStateFullscreen, WindowStateNormal} {
+				native.state = state
+				_ = w.DispatchEvent(events.StateEvent{State: state})
+				w.paint()
+				inset := float32(0)
+				if state == WindowStateNormal {
+					inset = float32(math.Ceil(float64(5*scale))) / scale
+				}
+				want := geometry.Rect(inset, inset, w.width-2*inset, w.height-2*inset)
+				if scroll.Rect() != want || w.Snapshot().Widget.Bounds != want {
+					t.Fatalf("state=%v: root/snapshot=%v/%v, want %v", state, scroll.Rect(), w.Snapshot().Widget.Bounds, want)
+				}
+				for _, bar := range []*ScrollBar{scroll.vbar, scroll.hbar} {
+					r := bar.windowRect()
+					if !bar.Visible() || r.Intersect(want) != r || hitTest(scroll, r.Center()) != bar {
+						t.Fatalf("state=%v: scrollbar painted/hit outside content: %v", state, r)
+					}
+					if bar == scroll.vbar && (r.Width != 8 || r.X+r.Width != want.X+want.Width) ||
+						bar == scroll.hbar && (r.Height != 8 || r.Y+r.Height != want.Y+want.Height) {
+						t.Fatalf("scrollbar is not full-width and flush with content: %v", r)
+					}
+				}
+				if state == WindowStateNormal {
+					for _, p := range []geometry.Point{{X: 2, Y: 100}, {X: w.width - 2, Y: 100}, {X: 100, Y: 2}, {X: 100, Y: w.height - 2}} {
+						if hitTest(scroll, p) != nil || w.chrome.queryRegion(p) < ChromeRegionTop {
+							t.Fatalf("resize edge reached Widget content: %v", p)
+						}
+					}
+				}
+			}
+			// 普通原生 Integrated、Native 和 None 都不因相同样式或透明能力而内缩。
+			w.clientChrome = false
+			w.RequestLayout()
+			w.paint()
+			if scroll.Rect() != geometry.Rect(0, 0, w.width, w.height) {
+				t.Fatal("GUI resize inset leaked to native/None hosts")
+			}
+		})
+	}
+}
+
+func TestIntegratedAutomaticMinimumIncludesResizeEdges(t *testing.T) {
+	for _, explicit := range []bool{false, true} {
+		w, native := chromeFixture(t, false, false)
+		w.clientChrome = true
+		w.minSizeApplied = false
+		native.minimums = nil
+		content := newTestWidget()
+		content.SetMinSize(geometry.Size{Width: 120, Height: 60})
+		w.SetWidget(content)
+		if explicit {
+			w.SetMinSize(geometry.Size{Width: 200, Height: 100})
+		}
+		w.updateMinSize()
+		want := geometry.Size{Width: 130, Height: 70}
+		if explicit {
+			want = geometry.Size{Width: 200, Height: 100}
+		}
+		if !reflect.DeepEqual(native.minimums, []geometry.Size{want}) {
+			t.Fatalf("explicit=%v: minimums=%v, want %v", explicit, native.minimums, want)
+		}
+		w.updateMinSize()
+		if len(native.minimums) != 1 {
+			t.Fatal("unchanged decoration reapplied the WM hint")
+		}
+		// 分数缩放只重算占用边缘；显式窗口最小尺寸不受影响。
+		w.pixelWidth = w.width * 1.25
+		w.updateMinSize()
+		if !explicit {
+			if got := native.minimums[len(native.minimums)-1]; got != (geometry.Size{Width: 131.2, Height: 71.2}) {
+				t.Fatalf("fractional scale hint: %v", got)
+			}
+			native.state = WindowStateMaximized
+			w.updateMinSize()
+			if got := native.minimums[len(native.minimums)-1]; got != (geometry.Size{Width: 120, Height: 60}) {
+				t.Fatalf("maximized hint retained floating edges: %v", got)
+			}
+		} else if len(native.minimums) != 1 {
+			t.Fatal("scale overrode the explicit minimum")
+		}
+	}
+}
+
+// 在胶囊滑块中段采样，避开圆角 AA；不透明预乘 RGBA 应精确覆盖完整的
+// 8 DIP 宽度（1x=8、2x=16 物理像素），紧邻外侧仍为窗口自己的白色背景。
+func TestIntegratedScrollbarPixelsKeepFullWidth(t *testing.T) {
+	for _, scale := range []float32{1, 2} {
+		t.Run(fmt.Sprintf("%gx", scale), func(t *testing.T) {
+			useTestApplication(t, &application{style: style.Sheet(
+				style.Name("window").BackgroundColor(color.White),
+				style.Name("scroll-view").Part("thumb").BackgroundColor(color.RGBA{R: 40, G: 100, B: 200, A: 255}).Radius(4),
+			)})
+			w, _ := chromeFixture(t, false, false)
+			w.clientChrome, w.transparent = true, true
+			w.pixelWidth, w.pixelHeight = w.width*scale, w.height*scale
+			output := &transparentFrame{}
+			p, err := software.NewPainter(output)
+			if err != nil {
+				t.Fatal(err)
+			}
+			w.painter = p
+			child := newTestWidget()
+			child.SetMinSize(geometry.Size{Width: 1000, Height: 1000})
+			scroll := NewScrollView()
+			scroll.SetChild(child)
+			w.SetWidget(scroll)
+			w.paint()
+			want := color.RGBA{40, 100, 200, 255}
+			for _, bar := range []*ScrollBar{scroll.vbar, scroll.hbar} {
+				thumb := bar.thumbRect().Translate(bar.windowRect().Pos)
+				start, end := int(thumb.X*scale), int((thumb.X+thumb.Width)*scale)
+				fixed := int(thumb.Center().Y * scale)
+				if bar == scroll.hbar {
+					start, end = int(thumb.Y*scale), int((thumb.Y+thumb.Height)*scale)
+					fixed = int(thumb.Center().X * scale)
+				}
+				if end-start != int(8*scale) {
+					t.Fatalf("thumb pixel width=%d", end-start)
+				}
+				for n := start; n <= end; n++ {
+					x, y := n, fixed
+					if bar == scroll.hbar {
+						x, y = fixed, n
+					}
+					got := color.RGBAModel.Convert(output.image.At(x, y)).(color.RGBA)
+					expected := want
+					if n == end {
+						expected = color.RGBA{255, 255, 255, 255}
+					}
+					if got != expected {
+						t.Fatalf("bar=%v pixel=(%d,%d): %v, want %v", bar.Orientation(), x, y, got, expected)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestWindowFrameClipMatchesContentLayout(t *testing.T) {
 	for _, scale := range []float32{1, 1.25, 1.5, 2} {
 		w, native := chromeFixture(t, false, false)
 		w.clientChrome, w.transparent = true, true
@@ -661,14 +926,14 @@ func TestWindowFrameClipDoesNotChangeLayout(t *testing.T) {
 		})
 		w.SetWidget(content)
 		w.paint()
-		bounds := geometry.Rect(0, 0, w.width, w.height)
-		if content.Rect() != bounds || content.base().windowRect() != bounds {
-			t.Fatalf("layout changed: %v", content.Rect())
-		}
-		if hitTest(content, geometry.Point{X: 2, Y: 100}) != content {
-			t.Fatal("paint-only clipping changed Widget hit coordinates")
-		}
 		_, inset := w.frameStyle()
+		bounds := geometry.Rect(inset, inset, w.width-2*inset, w.height-2*inset)
+		if content.Rect() != bounds || content.base().windowRect() != bounds {
+			t.Fatalf("content layout differs from frame clip: %v", content.Rect())
+		}
+		if hitTest(content, geometry.Point{X: 2, Y: 100}) != nil || hitTest(content, geometry.Point{X: 20, Y: 100}) != content {
+			t.Fatal("Widget hit bounds differ from its safe allocation")
+		}
 		if inset < 5 || math.Abs(float64(inset*scale)-math.Round(float64(inset*scale))) > 1e-5 {
 			t.Fatalf("unsafe pixel alignment: %v at %v", inset, scale)
 		}
@@ -689,11 +954,13 @@ func TestWindowFrameClipDoesNotChangeLayout(t *testing.T) {
 		}
 		for _, state := range []WindowState{WindowStateMaximized, WindowStateFullscreen, WindowStateNormal} {
 			native.state = state
+			_ = w.DispatchEvent(events.StateEvent{State: state})
 			w.paint()
-			if content.Rect() != bounds {
-				t.Fatal("state change shifted layout")
-			}
 			_, inset = w.frameStyle()
+			want := geometry.Rect(inset, inset, w.width-2*inset, w.height-2*inset)
+			if content.Rect() != want {
+				t.Fatalf("state=%v: content=%v, want %v", state, content.Rect(), want)
+			}
 			if state == WindowStateNormal {
 				if pixel(0, 0).A != 0 || inset == 0 {
 					t.Fatal("normal frame not restored")
@@ -703,6 +970,7 @@ func TestWindowFrameClipDoesNotChangeLayout(t *testing.T) {
 			}
 		}
 		w.clientChrome = false
+		w.RequestLayout()
 		w.paint()
 		if pixel(0, 0) != (color.RGBA{40, 100, 200, 255}) {
 			t.Fatal("frame leaked to native/None")

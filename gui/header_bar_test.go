@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -8,6 +9,52 @@ import (
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 )
+
+func TestIntegratedHeaderBarUsesContentTop(t *testing.T) {
+	for _, scale := range []float32{1, 2} {
+		for _, height := range []float32{40, 64} {
+			t.Run(fmt.Sprintf("%gx/%g", scale, height), func(t *testing.T) {
+				win, native := chromeFixture(t, false, true)
+				win.clientChrome = true
+				win.pixelWidth, win.pixelHeight = win.width*scale, win.height*scale
+				win.Chrome().ConnectQueryRegion(win.chrome.queryFrameRegion)
+				for _, button := range win.controls.buttons {
+					button.circular = true
+				}
+				row := NewLinearBox(layout.DirectionHorizontal)
+				left, right := NewHeaderBar(), NewHeaderBar()
+				for _, h := range []*HeaderBar{left, right} {
+					h.SetMinSize(geometry.Size{Height: height})
+					h.SetMainWeight(1)
+					h.SetChild(newTestWidget())
+					row.AddChild(h)
+				}
+				root := NewLinearBox(layout.DirectionVertical)
+				root.SetCrossAlign(layout.CrossStretch)
+				root.AddChild(row)
+				win.SetWidget(root)
+				for _, state := range []WindowState{WindowStateNormal, WindowStateMaximized, WindowStateNormal} {
+					native.state = state
+					_ = win.DispatchEvent(events.StateEvent{State: state})
+					win.paint()
+					own, controls := right.windowRect(), win.controls.Rect()
+					if win.chrome.controlsHeight != height || controls.Center().Y != own.Center().Y {
+						t.Fatalf("state=%v: height=%v, header=%v, controls=%v", state, win.chrome.controlsHeight, own, controls)
+					}
+					if controls.X+controls.Width != win.width-6 || right.Padding() != 8 {
+						t.Fatal("content inset was added to controls/right padding twice")
+					}
+					if !emptyRect(right.Child().base().windowRect().Intersect(controls)) {
+						t.Fatal("header content overlapped window-owned controls")
+					}
+					if native.hitTest(left.windowRect().Center()) != platform.WindowHitCaption {
+						t.Fatal("inset header segment lost caption hit testing")
+					}
+				}
+			})
+		}
+	}
+}
 
 func TestHeaderBarAutomaticDragControllerPolicy(t *testing.T) {
 	tests := []struct {

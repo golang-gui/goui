@@ -523,6 +523,7 @@ func (a *testApplication) runPosted() {
 }
 
 type testWindow struct {
+	styleName     string
 	shortcuts     *gui.ShortcutController
 	id            string
 	title         string
@@ -618,6 +619,9 @@ func (w *testWindow) Title() string {
 }
 
 func (*testWindow) Transparent() bool { return false }
+
+func (w *testWindow) StyleName() string        { return w.styleName }
+func (w *testWindow) SetStyleName(name string) { w.styleName = name }
 
 func (w *testWindow) SetTitle(title string) error {
 	w.title = title

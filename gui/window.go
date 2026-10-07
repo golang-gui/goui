@@ -29,6 +29,12 @@ type Window interface {
 
 	Title() string
 	SetTitle(string) error
+	// StyleName is the explicit host background style name; empty uses "window".
+	// It is not inherited by Widgets and does not customize window chrome geometry.
+	StyleName() string
+	// SetStyleName selects this window's background and requests a repaint.
+	// Only BackgroundColor is consumed; empty restores the default style name.
+	SetStyleName(string)
 	// Transparent reports the immutable creation configuration, not pixel opacity.
 	Transparent() bool
 	// Chrome returns the stable, non-nil titlebar integration signal service.
@@ -128,6 +134,7 @@ type window struct {
 	rootBase
 	id             string
 	title          string
+	styleName      string
 	platformWindow platform.Window
 	root           Widget
 	focused        bool
@@ -145,6 +152,7 @@ type window struct {
 	stateChanged   signal.Signal1[WindowState]
 	minSize        geometry.Size // explicit minimum from SetMinSize; zero means derive from tree
 	minSizeApplied bool          // true once the first layout has derived and applied the min-size hint
+	minSizeInset   float32       // perimeter used by the automatic hint; changes with state/scale
 	chrome         *windowChrome
 	controls       *windowControls
 	layingOut      bool
@@ -258,6 +266,24 @@ func (w *window) SetTitle(title string) error {
 	}
 	w.title = title
 	return nil
+}
+
+func (w *window) StyleName() string { return w.styleName }
+
+func (w *window) SetStyleName(name string) {
+	if w.destroyed || w.styleName == name {
+		return
+	}
+	w.styleName = name
+	w.requestPaint()
+}
+
+func (w *window) backgroundStyle() style.Style {
+	name := w.styleName
+	if name == "" {
+		name = styleNameWindow
+	}
+	return ResolveStyle(name, style.PartDefault, style.Normal)
 }
 
 func (w *window) Focused() bool {
@@ -597,14 +623,16 @@ func (w *window) SetMinSize(size geometry.Size) {
 }
 
 // updateMinSize derives and applies the window-manager min-size hint from the
-// widget tree. Called on the first layout pass when no explicit SetMinSize was
-// given. The content is measured with no upper bound (Loose(Inf)) to discover
-// its preferred intrinsic size.
+// widget tree when no explicit SetMinSize was given. Linux GUI-drawn Integrated
+// includes its reserved perimeter and reapplies the hint when that changes.
+// The content is measured unbounded to discover its preferred intrinsic size.
 func (w *window) updateMinSize() {
-	if w.minSizeApplied {
+	inset := w.frameInset()
+	if w.minSizeApplied && w.minSizeInset == inset {
 		return
 	}
 	w.minSizeApplied = true
+	w.minSizeInset = inset
 	// Explicit SetMinSize wins over auto-derivation.
 	if w.minSize.Width > 0 || w.minSize.Height > 0 {
 		return
@@ -615,7 +643,7 @@ func (w *window) updateMinSize() {
 	}
 	pref := measureWidget(w.root, layout.Unbounded()).Size
 	if pref.Width > 0 || pref.Height > 0 {
-		native.SetMinSize(pref.Width, pref.Height)
+		native.SetMinSize(pref.Width+2*inset, pref.Height+2*inset)
 	}
 }
 
@@ -717,13 +745,20 @@ func (w *window) paint() {
 		controls = w.controls
 	}
 	border, inset := w.frameStyle()
-	w.drawDecoratedFrame(w.root, ResolveStyle(styleNameWindow, style.PartDefault, style.Normal), border, inset, controls)
+	w.drawDecoratedFrame(w.root, w.backgroundStyle(), border, inset, controls)
 }
 
 func (w *window) layoutContent() {
 	w.layingOut = true
 	defer func() { w.layingOut = false }()
-	w.layoutFrame(w.root)
+	w.layoutFrameIn(w.root, w.contentBounds())
+}
+
+// Only Linux GUI-drawn Integrated owns a perimeter outside Widget layout.
+// Its bounds match the structural paint clip and the resize strips exactly.
+func (w *window) contentBounds() geometry.Rectangle {
+	inset := w.frameInset()
+	return geometry.Rect(inset, inset, max(0, w.width-2*inset), max(0, w.height-2*inset))
 }
 
 // PlatformWindow is the escape hatch to the underlying platform window.
@@ -946,8 +981,8 @@ func (w *window) frameCursor() CursorShape {
 	}
 }
 
-// The frame owns a paint-only perimeter. Layout, input coordinates and controls
-// placement stay full-window; only subsequent Widget painting is restricted.
+// The frame owns the perimeter outside content layout. Coordinates still use
+// the complete native surface; Widgets and controls avoid the resize strips.
 func (w *window) frameStyle() (style.Style, float32) {
 	if !w.floatingFrame() {
 		return style.Style{}, 0
@@ -1015,7 +1050,7 @@ type windowDecorationPalette struct {
 }
 
 func (w *window) decorationPalette(circular bool) windowDecorationPalette {
-	background := ResolveStyle(styleNameWindow, style.PartDefault, style.Normal)
+	background := w.backgroundStyle()
 	if darkWindowBackground(background, w.transparent) {
 		if circular {
 			return windowDecorationPalette{
