@@ -201,3 +201,266 @@ RenderWidget 跟随现有 Rect 转换。补齐无额外 Padding 的贴边滚动�
 涉及的平台实际实现验收。DesignGUIWindowChrome 已同步从“仅绘制裁剪、全窗口
 布局”调整为 Linux 内侧布局；不增加 safe-area 公共接口。样式动画、常见滚动
 及高频 UI 绑定另行设计，不包含在本次修复中。
+
+## 10. 高频 UI 绑定优化（记录，暂缓实施）
+
+2026-10-07 用户确认：当前优先保证功能正确，以下只记录优化方向，不修改实现。
+尚未进行同环境前后性能对照，不将源码上的重复工作写成已测得的性能瓶颈。
+
+源码观察：
+
+- UI RequestUpdate 合并尚未执行的更新任务，不承诺按绘制帧合并；更新仍协调
+  所有声明窗口。ui/app.go 每轮应用标题，gui.Window.SetTitle 尚无同值防护。
+- ui/root.go 的 UpdateChildren 每轮规范化、匹配孩子并请求相对重排；
+  WidgetBase 的重排查找使用 slices.Index，稳定子树也可能重复做顺序查找。
+- demo 每次构建 Modern 规则与样式表，样式比较能避免重复安装，但不能避免
+  构造与比较本身。ListView/TreeView/TableView 的刷新则有真实语义：构建回调
+  可以读取已经变化的外部状态，不能仅凭模型地址或函数地址跳过。
+
+后续可评估的最小范围：标题同值防护、稳定孩子的线性快速路径、demo 按实际
+亮暗及主题色缓存样式表。快速路径必须检查真实 Widget 顺序，不能只相信上一轮
+声明；不能改变 State.Set 的通知、View.Update 的可变值语义或列表刷新契约。
+不引入隐式依赖追踪、额外 Key、通用对象猜测比较或强制同帧协调。
+
+验证要求：100/1000 个孩子的稳定更新与实际增删/重排对照，记录分配及耗时；
+保留原生标题调用次数、最新回调、外部模型变化和外部重排的正确性断言。
+只有具体应用测量证明仍有必要，才设计局部重建等更大的机制。
+
+## 11. 深度体验反馈：功能优先的待修复清单
+
+记录时间：2026-10-07。以下现象来自用户对 demo 的体验，不是本轮 Agent
+完成的桌面复现。用户明确指出第 4 项为 Linux、第 5 项为 macOS；其他项的
+平台、绘制后端、缩放及桌面版本尚未完整记录。源码核对与因果推断分开列出，
+全部尚未修复、尚未验收；不扩大为三平台共同缺陷。
+
+### 11.1 拖动过程中鼠标指针跳变
+
+状态：待明确是光标形状、屏幕位置还是拖动预览变化，以及具体拖动操作与平台。
+gui/window.go 的 applyCursor 按 hoverPath 选择光标，而拖动事件可以按手势
+捕获路径派发；两者在拖过其他控件时可能不同。这只是形状变化的候选原因，
+不能据此认定原生指针位置跳变，也不能统一冻结所有 hover。
+
+涉及：gui/window.go、gui/event.go、gui/gesture.go；如仅原生拖放发生，再检查
+对应平台的反馈光标和从 GUI 手势交接原生会话的时机。
+验收：分别拖标签、SplitView、列宽与滚动条，跨不同光标控件和窗口边缘，
+区分实际指针与预览；结束/取消后光标正常恢复。
+
+### 11.2 TreeView 与 Modern 风格不和谐
+
+分类：外观反馈，不是已确认的渲染算法错误。Modern 已采用中性选中底色，但
+仍需一起检查行高、留白、展开箭头及当前行边框。demo 的自定义行在
+example/demo/data.go 中创建普通 Label/Icon，没有选择 tree-item-text /
+tree-item-icon；不能通过父控件隐式传样式来修正。
+
+涉及：theme/modern/modern.go、widgets/tree_row.go、widgets/tree_expander.go、
+example/demo/data.go。先用普通正文、菜单、表格作相邻对照，再确定样式调整，
+保留选择与键盘定位的可辨性，不简单换成大面积主题色。
+验收：亮暗/主题色、选中/悬停/当前行/禁用、不同层级及 1x/2x；不改变行命中、
+虚拟化和 Snapshot。
+
+### 11.3 TableView 调整列宽后排序还原
+
+已确认源码原因：example/demo/data.go 每轮声明固定 Width(180/100/110/210)，
+没有 OnResize 保存用户调整；排序请求触发 RequestUpdate，声明的受控值重新
+写回列。widgets/ui/table_view.go 的 Width 是受控属性，不是初值，现有非受控
+用法已支持保留用户宽度。不能为修 demo 改成“setter 只生效一次”。
+
+建议：demo 为各列保留宽度，OnResize 更新对应值；保留排序与模型独立。
+涉及：example/demo 的状态及 data.go，相关例程测试；无需改变 TableView API。
+验收：拖动各列后排序、选择行、F5、切换主题均保留宽度，明确重置才还原。
+
+### 11.4 Linux 标签拖至外部应用：脱离失败或接收提示残留
+
+源码事实：widgets/tab_transfer_drag.go 的标签会话仅 SetLocal；无可移植内容时
+X11 只提供 application/x-goui-local 标记，不声明文本或文件。该标记不把 Go
+对象发送给外部进程；不能为了让外部接受而伪装文本、文件或 URI。
+
+已确认的协议清理缺口：platform/linux/x11/dragdrop_linux.go 的 dropOrEnd 在
+目标未接受时直接 end，未经过已有 leaveTarget；普通 end 也不发送 XdndLeave。
+取消路径会发送 Leave，已经发送 Drop 的路径等待 Finished，两者不能混淆。
+这与 gedit 提示残留相符，但关联尚须实测。Qt 6.8.3 XCB 的
+[send_leave/cancel 源码](https://github.com/qt/qtbase/blob/v6.8.3/src/plugins/platforms/xcb/qxcbdrag.cpp)
+也明确区分撤销目标交互与实际 Drop；参考其协议职责，不照搬事件循环结构。
+
+建议：未提交 Drop 的会话结束前清理已进入的目标；保留正常 Drop/Finished、
+取消和故障结果的区别。GoLand 上未创建窗口尚不能定因，需要核对 XdndAware/
+Proxy、Status 与结束结果。widgets/tab_detach.go 不在取消、错误或应用内目标
+上自动创建新窗，不能把协议超时改成成功，也不能写 GoLand 特判。
+
+涉及：X11 拖放实现与窗口例程；若发现通用 GUI 结束结果契约问题再调整上层。
+验收：拖至桌面、GoLand、gedit、另一 GOUI TabBar，分别松手、离开、Esc；
+外部拒绝的提示必须清除，正常脱离只创建一窗，取消不创建；正常文件/文本
+拖放仍保留真实类型和接收结果。必要时用最小外部目标覆盖拒绝、代理及不响应。
+
+### 11.5 macOS 脱离窗口的标签不在鼠标下
+
+待验证的主要假设：example/demo/tabs.go 用源 TabBar 的局部位置计算目标窗口
+位置，但主窗口的标签 HeaderBar 嵌在内容页，新窗口的 HeaderBar 在顶部；
+macOS 后者还会避让左侧原生控制按钮，目标 TabBar 起点不一定等于源起点。
+Linux/Windows 的右侧控制区通常不改变标签起点，不能由此断言 AppKit 坐标错误。
+
+建议：先记录释放点、Hotspot、源/目标 TabBar 实际起点，区分目标布局偏移与
+平台窗口位置换算。Qt 6.8.3 Cocoa 的
+[draggingSession:endedAtPoint:operation:](https://github.com/qt/qtbase/blob/v6.8.3/src/plugins/platforms/cocoa/qnsview_dragging.mm)
+按原生屏幕、窗口及 View 的坐标边界换算，可用于检查 AppKit 调用；当前只是
+参考其坐标分层，并未证明 GOUI 平台实现有误。
+
+涉及：先检查 example/demo/tabs.go 与 HeaderBar 控制区避让；如坐标契约仍有
+偏差再改 platform/darwin/cocoa。不添加经验偏移、固定红绿灯宽度或通用隐藏
+窗口预布局 API。验收：主窗口与独立标签窗口各自脱离，原生按钮位置及缩放
+变化后，释放点仍在新标签的对应 Hotspot；Linux/Windows 复验不回归。
+
+### 11.6 移交后关闭确认仍出现在原窗口
+
+已确认源码原因：closingTab 是 demo 全局状态，确认 Overlay 只放在 tabsPage；
+requestTabClose 收到 tabWindow 却未使用，反而强制主窗口跳到标签页。
+独立 tabWindowView 没有对应 Overlay。这是例程的窗口归属问题，不是 Widget
+移交应自动迁移所有外部业务弹层。
+
+建议：每个标签工作区使用同一套内容和确认 Overlay，关闭请求记录实际所属
+窗口/标签；确认期间发生移交或窗口销毁时明确取消或重新定位所有者。
+涉及：example/demo/tabs.go、状态与测试，无需扩展 Overlay 或 UI Root。
+验收：移交/脱离后从标签关闭按钮和菜单发起确认，只在当前所属窗口出现；
+取消不丢文档，确认只删除对应文档，销毁窗口不留下悬挂确认。
+
+### 11.7 新窗口 TabBar 空白区不能拖动窗口
+
+已确认源码原因：Transferable 在整个 TabBar 上注册 gui.DropTarget；HeaderBar
+的 defaultDragRegion 把它归为未知交互控制器，所以空白命中路径也被排除。
+DropTarget.HandleEvent 对普通输入为空，实际处理的是独立的拖放 offer。
+
+建议：在 HeaderBar 的保守分类中识别已知、不处理普通指针输入的 DropTarget；
+真实标签/关闭按钮的 Focusable、Click、Drag 仍阻止 Caption，未知自定义控制器
+仍保守。不要把整个 TabBar 或它的所有后代无条件声明成拖动区。
+涉及：gui/header_bar.go 及回归、标签窗口例程；不增加控件类型特判。
+验收：空白可移动/双击，标签仍选择/排序/移交，关闭与溢出按钮正常；应用内
+拖入目标仍显示占位并接收。
+
+### 11.8 Tab 聚焦按钮后 Space / Enter 无响应
+
+已确认源码原因：gui.Button / MenuButton 仅安装点击及悬停控制器，没有键盘
+激活处理；Tab 已完成焦点转移，不能由 EventDispatcher 冒充按钮语义。
+GTK 4.24.1 的 [Button.activate 文档](https://docs.gtk.org/gtk4/signal.Button.activate.html)
+把 Space / Enter 绑定到按钮激活，应用监听 clicked；采用控件负责激活的职责，
+不为此引入另一套全局动作分发。
+
+建议：控件复用 KeyEventController，键盘与鼠标走同一点击/打开信号路径；明确
+按下/释放、Repeat、修饰键和取消规则，不借此增加所有 Widget 的自动激活。
+涉及：gui/button.go、gui/menu.go、行为测试及键盘窗口例程；UI OnClick 无新 API。
+验收：普通/Primary/MenuButton 经 Tab 聚焦后激活一次，重复键不重复提交；
+禁用、失焦、销毁和取消安全，鼠标点击及 FocusVisible 外观不回归。
+
+### 11.9 右侧滚动条仍显得靠边
+
+分类：页面留白的视觉反馈，与第 9 节已修复的边缘裁剪不同。demo 的 page
+把 Padding(16) 放在滚动内容内部，不会移动属于 ScrollView 的滚动条；Window
+的自动安全边缘只负责缩放/裁剪边界，不代表页面设计上的视觉间隔。
+
+建议：在普通页面 ScrollView 的外部提供对称的页面留白，先以 8 DIP 作视觉
+候选，再实际对照；不恢复全窗口的装饰补偿，不改变 HeaderBar/WindowControls，
+也不新增 ScrollView 或 Painter 的窗口边缘策略。
+涉及：example/demo 的 page 布局及相关断言。验收：亮暗、窄窗、最大化/恢复、
+1x/2x 下完整滑块与对称留白，滚动内容测量、命中及末尾可见性保持正确。
+
+### 修复顺序与实施边界
+
+1. 优先处理已确认的功能问题：列宽受控绑定、关闭确认归属、按钮键盘激活、
+   Transferable TabBar 的空白 Caption；补独立回归，不改无关公共 API。
+2. 处理原生拖放清理及 macOS 定位；光标问题在明确具体操作后并入对应切片。
+   先本机验证，再在受影响平台验收，不把 GoLand/gedit 现象当成同一根因。
+3. 对照调整 TreeView 和页面留白；样式与行为分开，保留已修复的窗口安全边界。
+4. 上述功能稳定前不实施第 10 节优化，不随修复扩大动画、资源或协调器设计。
+
+本轮仅源码核对及文档记录，未修改实现、未执行上述桌面验收。
+
+记录核对：git diff --check 通过。`env -u DISPLAY go test ./...` 未全通过：
+platform/typography/test 的 TestTypography 在创建平台时返回 `can not open display`；
+该既有测试需要显示连接，不因文档修改而改变。其余包返回成功或无测试文件；
+桌面相关测试的跳过不算窗口验收通过。本轮不迁移测试、不修改跳过条件，
+也不为了文档记录在用户桌面启动测试窗口。
+
+## 12. 深度体验反馈修复与验证记录
+
+2026-10-07，用户授权逐项修复、验证、提交。以下是本次实现及实际验证，
+与第 11 节只做源码分析的历史记录分开；高频 UI 绑定优化仍暂缓。
+
+### 修改及边界
+
+| 反馈 | 确认原因与修正 | 自动回归 / 指定实测 |
+| --- | --- | --- |
+| 快速拖动缩放箭头跳变 | Window 原先只读实时 hover；现有已接受手势的捕获目标在捕获期间拥有光标，结束后恢复实时 hover，不冻结 hover 本身。 | 捕获、释放、取消、隐藏、禁用、卸载、失焦和原生接管；Linux XFixes、Windows GetCursorInfo 检查 SplitView / 列宽拖动。 |
+| TreeView 外观不和谐 | Modern 树行选中色改为窗口底色与前景的浅中性色；鼠标焦点不叠加 current 边框，FocusVisible 保留细边框。demo Label/Icon 分别声明自己的样式。 | 亮暗色独立色值/对比度断言，自定义 current 样式原有覆盖保留；Linux 外观复验。未改变 TableView 配色。 |
+| 排序恢复列宽 | demo 重建一直声明固定 Width；现在各列 OnResize 回写自己的宽度状态。 | Linux / Windows 拖宽后排序及 F5 重建保留宽度；TableView 的受控 Width 契约不变。 |
+| Linux 外部标签拖放失败或提示残留 | 本地标记没有外部可读取的表示，却仍进入外部客户端等待 Status；只含本地对象的 offer 现不进入外部目标。另在未发 Drop 的结束路径补 Leave。 | 本地/混合/可移植格式及目标身份断言；gedit 上标签脱离且无接收提示；独立原生拒绝目标记录 Enter、Motion、Leave，没有 Drop，源结果为非取消、无错误的未接收。GoLand 本身未运行。 |
+| macOS 新窗口标签偏离鼠标 | 源 HeaderBar 嵌在主页面，目标 HeaderBar 顶置并避让原生按钮；复制源偏移不适用。按源已知尺寸和目标 Chrome 实际占位计算目标起点，GUI 保留原生水平锚点而只垂直居中。 | 控制区/根起点独立断言，原生水平锚点与定位去重回归；macOS 非工作区边缘释放点对应新标签 Hotspot。Linux / Windows 脱离复验。 |
+| 关闭确认回到原窗口 | 原来只有主页面拥有全局 closingTab；现由每个 tabWindow 持有确认并共用工作区 Overlay。 | 窗口归属、错误窗口请求、移交撤销旧确认回归；Linux / macOS 关闭脱离标签时只遮罩目标窗口。 |
+| 新窗口空白标签栏不拖窗 | HeaderBar 将整个 TabBar 注册的 DropTarget 当成普通鼠标交互。现在识别该已知控制器，不把未知控制器或 Click/Drag/Wheel 放行。 | 命中路径控制器策略断言；三平台脱离后的空白区域实际拖窗。 |
+| Tab 后 Space / Enter 不激活 | Button / MenuButton 只有鼠标控制器；增加私有 KeyEventController，共用点击或打开菜单路径。 | 仅自身聚焦、无额外修饰时在非 Repeat KeyDown 激活一次；子控件输入、禁用、释放、回调销毁回归。三平台真实 Tab、Space、Enter 计数均为 2，F6 公开焦点断言通过。 |
+| 滚动条视觉靠边 | 原留白在滚动内容内部，不移动 ScrollView 自己的滑块；普通滚动页面在视口外增加对称 8 DIP 留白。 | 独立分配/快照断言及 Linux 1x 观察；不改变 Window 安全边界、HeaderBar、Controls 或全页标签布局。 |
+
+没有新增公共 GUI 或布局接口；没有伪装文本/文件类型、按外部应用名称分支、
+把协议超时改成成功，或改动 macOS 原生窗口位置换算。可移植文本/文件 offer
+仍走原生 XDND；已发送 Drop 的会话保留 Finished 协议，不错误发送 Leave。
+HeaderBar 高度只决定原生按钮的 Y，不能在首次显示时改变已报告的水平占位。
+
+### 命令与结果
+
+通过：
+
+- 隔离显示下 `DISPLAY=:88 XMODIFIERS=@im=none go test -count=1 ./...`。
+- `go test -race` 的 gui、widgets、ui、widgets/ui、example/demo、theme/modern、
+  platform/linux/x11 七包（同一隔离显示）。
+- Windows amd64 / macOS arm64 的 `CGO_ENABLED=0` demo、GUI、Modern、demo 测试
+  目标和 tab_navigation 窗口程序编译；远端执行 GUI、Modern、demo 包内测试
+  均 PASS，最终 GUI 修改再次原生运行通过。不是远端全仓测试。
+- 两个目标的 `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...` 和
+  `GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build ./...` 均通过。
+- `git diff --check`、`go vet ./theme/modern ./example/demo`，以及
+  `go vet -composites=false ./gui ./widgets ./theme/modern ./example/demo`；
+  完整 vet 的既有报警仍保留下述失败记录，不算完整 vet 通过。
+
+失败 / 环境限制：
+
+- 第 11 节的无 DISPLAY 全仓命令仍受既有 TestTypography 的显示连接依赖限制；
+  本轮使用自己的隔离显示完成全仓，不扩大 skip 或删除测试。
+- `go vet ./gui ./widgets ./theme/modern ./example/demo` 的 composites 检查报告
+  既有 TextSelection/TextRange 和 Popover 测试里的非键名结构体字面值。
+  报警所在 text_editor、text_input、text_view、popover 测试等文件未在本轮改动；
+  不把该命令算作通过，不在缺陷修复中顺带重写这些文件。
+
+原生桌面环境与实际范围：
+
+- Linux amd64：任务专用 Xvnc 1.12.0 + Xfwm4 合成器，不操作用户原有显示。
+  实际 OpenGL、应用 1x；另有本机 Software 1x 初轮观察。完成上述指定输入，
+  原生光标名称在捕获期间保持 sb_h_double_arrow，释放后恢复 left_ptr。
+  gedit 为本轮空白进程，没有打开、写入或保存用户文件。独立拒绝目标使用
+  platform/drag_end 窗口例程，Leave 在松手后收到，而非把取消当拒绝。
+- Windows 10 19045 amd64：RDP 1600×900、1x；Tab 验证的 NewImage 实际类型为
+  direct2d.imageResource。实际列宽排序/F5、SplitView/列宽光标、标签脱离及空白
+  拖窗通过。原生光标检查在交互会话内用 IDC_SIZEWE 句柄作独立预期，不以
+  GUI 自己的 Cursor 枚举自证正确；SSH Session 0 不能代替该桌面检查。
+- macOS 15.7.7 arm64：VNC 1650×1050、实际 OpenGL、应用 1x。实际 Hotspot 定位、
+  空白拖窗、目标关闭遮罩与按钮键盘输入通过。屏幕边缘处系统可能限制窗口
+  位置，位置验收选用不触及工作区边缘的释放点，不把系统退避算坐标错误。
+
+未执行：GoLand 指定应用视觉复验、其他发行版/WM、无合成器、全部后端组合、
+本轮完整 2x/混合 DPI、跨屏定位、菜单弹出按钮的三平台原生键盘操作。
+MenuButton 的打开路径已由包内测试验证，但不冒充 Popup 桌面验收。
+既有全仓测试会创建窗口及源码目录 PNG；不迁移、不删除、不把跳过算通过。
+
+日志和截图保存在仓库外 `/tmp/goui-demo-fixes.ZmXskm`，主要证据为
+delivery-tests.log、final-race.log、三平台 tab-nav 日志、win-column-cursor.log、
+win-split-cursor.log、reject-source.log / reject-target.log，以及对应桌面截图。
+不依赖 DevServer；验收结束只关闭本轮程序和临时桌面/任务，保留既有远端会话。
+
+### 工具调用问题记录
+
+- remote-shell 的 Windows status 报 default_shell=powershell，但 SSH 默认实际
+  按 cmd 解析；显式调用 powershell.exe -EncodedCommand 后正常。
+- Windows SSH 的 Console.In.ReadToEnd / ReadLine 上传路径曾等待不结束，改用
+  已有 SSH ControlMaster 上的 SCP；没有重启 SSH 或修改安全设置。
+- remote-computer-use 的动作成功仅代表输入投递。窗口首次激活、绘制和截图
+  可能尚未完成，需等待短暂的处理时间并重新观察，不能立即截图判为应用失败。
+  本轮用显式按下/移动及 finally release-input 验证持续捕获，不修改技能文件。
+- SSH Session 0 的 GetCursorInfo 失败是会话限制；临时交互任务中的原生探针
+  可以检查真实桌面光标。该差异不是 GOUI 的渲染或捕获缺陷。
