@@ -71,7 +71,7 @@ func (l *LinearLayout) compute(children []Child, c Constraint) linearPlan {
 	var naturalMain, totalWeight float32
 	for i := range items {
 		item := &items[i]
-		item.measured = item.child.Measure(l.childConstraint(innerMax, item.weight > 0, stretchCross, stretchCrossExtent))
+		item.measured = item.child.Measure(l.childConstraint(innerMax, stretchCross, stretchCrossExtent))
 		if stretchCross {
 			// A tight layout axis wins even when a custom child forgets to clamp
 			// its own result to the supplied constraint.
@@ -122,7 +122,7 @@ func (l *LinearLayout) compute(children []Child, c Constraint) linearPlan {
 			if item.weight == 0 {
 				continue
 			}
-			childC := l.childConstraint(innerMax, true, stretchCross, stretchCrossExtent)
+			childC := l.childConstraint(innerMax, stretchCross, stretchCrossExtent)
 			l.setMainSize(&childC.Min, item.mainLen)
 			l.setMainSize(&childC.Max, item.mainLen)
 			item.measured = item.child.Measure(childC)
@@ -289,14 +289,13 @@ func (l *LinearLayout) setMainSize(size *geometry.Size, main float32) {
 	size.Width = main
 }
 
-// childConstraint gives weighted children an unbounded main-axis basis. A
-// viewport such as ScrollView can then report no intrinsic scroll height while
-// still reporting its intrinsic width or finite cross-axis viewport.
-func (l *LinearLayout) childConstraint(max geometry.Size, weighted, stretchCross bool, crossExtent float32) Constraint {
+// childConstraint measures every child's natural main-axis basis. Giving a
+// fixed child the whole parent's main extent would let a nested perpendicular
+// CrossStretch container consume that extent again during Arrange. Weighted
+// children receive their final tight main-axis allocation in the second pass.
+func (l *LinearLayout) childConstraint(max geometry.Size, stretchCross bool, crossExtent float32) Constraint {
 	c := Loose(max)
-	if weighted {
-		l.setMainSize(&c.Max, Inf)
-	}
+	l.setMainSize(&c.Max, Inf)
 	if stretchCross {
 		// Stretch is a tight constraint on the container's cross axis. The
 		// child can measure content such as wrapped text at its final width.

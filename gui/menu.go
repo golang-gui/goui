@@ -377,7 +377,11 @@ func (mc *menuContent) Arrange(rect geometry.Rectangle) {
 	// fully right. Determine this from final geometry, not stale scrollbar state.
 	contentW, contentH := mc.naturalW-2*mc.padding, mc.naturalH-2*mc.padding
 	horizontal := contentW > inner.Width
-	vertical := contentH > inner.Height-boolHeight(horizontal, scrollbarWidth)
+	availableHeight := inner.Height
+	if horizontal {
+		availableHeight -= scrollbarWidth
+	}
+	vertical := contentH > availableHeight
 	gap := float32(0)
 	if vertical {
 		gap = menuScrollbarGap
@@ -610,11 +614,7 @@ func NewMenuButton() *MenuButton {
 	b := &MenuButton{padding: defaultButtonPadding}
 	b.SetFocusable(true)
 	b.ConnectFocused(func(bool) { b.RequestPaint() })
-	b.SetLayoutManager(&layout.LinearLayout{
-		Direction:  layout.DirectionHorizontal,
-		MainAlign:  layout.MainCenter,
-		CrossAlign: layout.CrossCenter,
-	})
+	b.SetLayoutManager(buttonContentLayout{})
 
 	b.motion = NewMotionEventController()
 	b.motion.ConnectContainsHover(b.setHovered)

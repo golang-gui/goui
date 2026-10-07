@@ -78,12 +78,12 @@ func TestLinearLayoutArrangeHorizontal(t *testing.T) {
 	if second.rect != geometry.Rect(112, 212.5, 30, 15) {
 		t.Fatalf("unexpected second rect: %+v", second.rect)
 	}
-	// Both children are measured against the full available extent (weight pass
-	// measures all before distributing), so available is the full rect size.
-	if first.available != (geometry.Size{Width: 80, Height: 40}) {
+	// Fixed children use an unbounded natural main-axis basis too; only the
+	// cross axis receives the parent's available extent. Geometry is unchanged.
+	if first.available != (geometry.Size{Width: Inf, Height: 40}) {
 		t.Fatalf("unexpected first available size: %+v", first.available)
 	}
-	if second.available != (geometry.Size{Width: 80, Height: 40}) {
+	if second.available != (geometry.Size{Width: Inf, Height: 40}) {
 		t.Fatalf("unexpected second available size: %+v", second.available)
 	}
 }
@@ -106,10 +106,10 @@ func TestLinearLayoutArrangeVertical(t *testing.T) {
 	if second.rect != geometry.Rect(100, 222, 30, 15) {
 		t.Fatalf("unexpected second rect: %+v", second.rect)
 	}
-	if first.available != (geometry.Size{Width: 80, Height: 40}) {
+	if first.available != (geometry.Size{Width: 80, Height: Inf}) {
 		t.Fatalf("unexpected first available size: %+v", first.available)
 	}
-	if second.available != (geometry.Size{Width: 80, Height: 40}) {
+	if second.available != (geometry.Size{Width: 80, Height: Inf}) {
 		t.Fatalf("unexpected second available size: %+v", second.available)
 	}
 }
