@@ -839,6 +839,11 @@ func (s *xdndSource) motion(x, y int, stamp xlib.Time, state uint32) {
 	s.x, s.y, s.stamp, s.state = x, y, stamp, state
 	s.preview.move(x, y)
 	target, proxy, version := p.dragTargetAt(x, y)
+	if !s.canOfferTo(target) {
+		// A process-local marker has no representation a foreign client can
+		// read. Do not enter it or wait for its Status for this session.
+		target, proxy = 0, 0
+	}
 	if target == s.window.wid && s.service.formats == nil {
 		// The source's own surface is not a destination unless it registered one.
 		target, proxy = 0, 0
@@ -858,6 +863,10 @@ func (s *xdndSource) motion(x, y int, stamp xlib.Time, state uint32) {
 		return
 	}
 	s.sendPosition()
+}
+
+func (s *xdndSource) canOfferTo(target xlib.Window) bool {
+	return len(s.types) != 1 || s.types[0] != s.service.platform.atoms.GOUI_LOCAL || windowMap[target] != nil
 }
 
 func (s *xdndSource) sendEnter() {
@@ -1013,6 +1022,11 @@ func (s *xdndSource) end(result dragdrop.Result) {
 	p := s.service.platform
 	if p.dragSource != s {
 		return
+	}
+	if !s.dropped {
+		// Enter without Drop must be paired with Leave, including release on
+		// a rejected target. Otherwise foreign targets retain their hover UI.
+		s.leaveTarget()
 	}
 	if !result.Canceled && result.Err == nil && s.window.wid != 0 {
 		result.Position, result.PositionValid = s.position, s.positionValid
