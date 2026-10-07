@@ -14,7 +14,8 @@
 //     弹出按钮有 2 DIP 柔化主题色圆角边框，内部底色不变；文本框原有边框保持不变。
 //     首次无焦点时 Shift+Tab 到 far，按住 Tab 可重复转移。
 //  2. 聚焦 first/second 后键入 ASCII、中文，文字只进入当前字段；Tab 不插入。
-//     聚焦 action 后 Tab 到 editor；本例不要求 Space/Enter 激活按钮。
+//     聚焦 action 后按 Space、Enter，每次分别增加状态栏和终端中的 action 计数；
+//     按住键不重复激活，带 Ctrl/Alt 修饰不激活。Tab 到 editor 后仍正常输入。
 //     点击 AcceptsTab 按钮开启插入：普通 Tab 插入制表符且保留焦点；Shift+Tab
 //     返回 action。再次点击按钮关闭插入后，Tab 从 editor 到 far。
 //  3. F2 隐藏/显示 second；F3 禁用/启用 second 的 Focusable（不是 Disabled）。
@@ -123,7 +124,12 @@ func main() {
 	action := gui.NewButton()
 	action.SetChild(gui.NewLabel("action"))
 	watch(action, "action")
-	action.ConnectClicked(func() { fmt.Println("action clicked") })
+	activations := 0
+	action.ConnectClicked(func() {
+		activations++
+		status.SetText(fmt.Sprintf("action activations: %d", activations))
+		fmt.Printf("action activations=%d\n", activations)
+	})
 	editor := gui.NewTextView()
 	editor.SetModel(gui.NewTextModel("editor: enable AcceptsTab to insert tabs"))
 	watch(editor, "editor")

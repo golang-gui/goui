@@ -1228,7 +1228,7 @@ func TestWidgetEnabledPointerDoesNotPassThrough(t *testing.T) {
 	}
 	front.SetEnabled(true)
 	pointer(events.PointerUp)
-	if frontClicks != 0 || len(front.EventControllers()) != 2 {
+	if frontClicks != 0 || len(front.EventControllers()) != 3 {
 		t.Fatal("old press activated or controller registration changed")
 	}
 	pointer(events.PointerDown)

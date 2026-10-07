@@ -250,3 +250,22 @@ func TestMenuButtonCreatesPopoverOnOpen(t *testing.T) {
 		t.Fatal("MenuButton should forward its menu to the PopoverMenu")
 	}
 }
+
+func TestMenuButtonKeyboardUsesOpenPath(t *testing.T) {
+	for _, key := range []events.Key{events.KeySpace, events.KeyEnter} {
+		b := NewMenuButton()
+		menu := NewMenu()
+		menu.Append("Copy", func() {})
+		b.SetMenu(menu)
+		win := &window{}
+		win.SetWidget(b)
+		_ = win.DispatchEvent(shortcutPress(events.KeyTab, 0))
+		_ = win.DispatchEvent(shortcutPress(key, 0))
+		// No native surface is supplied: showing fails, but the real open path
+		// must have created the menu and forwarded its model, not just a counter.
+		if b.pm == nil || b.pm.Menu() != menu {
+			t.Fatal("keyboard bypassed menu open path")
+		}
+		win.Destroy()
+	}
+}

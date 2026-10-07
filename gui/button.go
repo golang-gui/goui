@@ -4,6 +4,7 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/style"
 )
 
@@ -42,8 +43,30 @@ func NewButton() *Button {
 		button.emitClicked()
 	})
 	button.AddEventController(button.click)
+	addButtonKeys(button, button.emitClicked)
 
 	return button
+}
+
+// Match the activation policy of CheckButton and Switch: unmodified Space or
+// Enter activates once on key-down. Only the focused button owns this binding;
+// an editable child must retain its own keyboard input.
+func addButtonKeys(button Widget, activate func()) {
+	keys := NewKeyEventController()
+	keys.ConnectKeyDown(func(ctx EventContext, event events.KeyEvent) {
+		if !button.base().focused || button.base().destroyed || !IsEnabled(button) {
+			return
+		}
+		if !(KeyGesture{Key: KeySpace}).Matches(event) && !(KeyGesture{Key: KeyEnter}).Matches(event) {
+			return
+		}
+		ctx.StopPropagation()
+		event.PreventDefault()
+		if !event.Repeat {
+			activate()
+		}
+	})
+	button.AddEventController(keys)
 }
 
 // SetChild sets the button's single child, replacing any previous one.
