@@ -46,6 +46,78 @@ func TestWindowRequestPaintWithoutPlatformWindow(t *testing.T) {
 	}
 }
 
+type windowCursorRecorder struct{ shape platform.CursorShape }
+
+func (c *windowCursorRecorder) SetShape(shape platform.CursorShape) { c.shape = shape }
+func (*windowCursorRecorder) Destroy()                              {}
+
+func TestWindowCapturedDragOwnsCursor(t *testing.T) {
+	for _, end := range []string{"release", "cancel", "hide", "disable", "unmount", "focus-loss", "native-takeover"} {
+		t.Run(end, func(t *testing.T) {
+			root, handle, other := newTestWidget(), newTestWidget(), newTestWidget()
+			root.Arrange(geometry.Rect(0, 0, 300, 100))
+			handle.Arrange(geometry.Rect(10, 0, 8, 100))
+			other.Arrange(geometry.Rect(50, 0, 200, 100))
+			handle.SetCursor(CursorResizeHorizontal)
+			other.SetCursor(CursorText)
+			root.AddChild(handle)
+			root.AddChild(other)
+			drag := NewDragEventController()
+			handle.AddEventController(drag)
+			motion := NewMotionEventController()
+			other.AddEventController(motion)
+			cursor := new(windowCursorRecorder)
+			win := &window{cursor: cursor}
+			win.SetWidget(root)
+			t.Cleanup(win.Destroy)
+			pointer := func(kind events.EventType, x float32, down bool) {
+				t.Helper()
+				buttons := events.PointerButtons(0)
+				if down {
+					buttons = events.PointerButtonLeftDown
+				}
+				if err := win.DispatchEvent(events.PointerEvent{EventType: kind, Position: geometry.Point{X: x, Y: 30}, Button: events.PointerButtonLeft, Buttons: buttons}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			pointer(events.PointerMove, 14, false)
+			pointer(events.PointerDown, 14, true)
+			// 大幅移动，且不执行布局：模拟快速拖动及尺寸达到限制后越过手柄。
+			pointer(events.PointerMove, 200, true)
+			if win.dispatcher.captureTarget != handle || !motion.Hover() {
+				t.Fatal("drag capture and live hover must remain independent")
+			}
+			if cursor.shape != platform.CursorResizeHorizontal {
+				t.Fatalf("captured cursor=%v, want horizontal resize", cursor.shape)
+			}
+			win.applyCursor() // A paint-side cursor refresh must not restore hover early.
+			if cursor.shape != platform.CursorResizeHorizontal {
+				t.Fatal("paint refresh overrode captured cursor")
+			}
+			switch end {
+			case "release":
+				pointer(events.PointerUp, 200, false)
+			case "cancel":
+				drag.Reset()
+			case "hide":
+				handle.SetVisible(false)
+			case "disable":
+				handle.SetEnabled(false)
+			case "unmount":
+				root.RemoveChild(handle)
+			case "focus-loss":
+				_ = win.DispatchEvent(events.FocusEvent{Focused: false})
+			case "native-takeover":
+				win.dispatcher.gesture.takeOver()
+			}
+			win.applyCursor()
+			if win.dispatcher.captureTarget != nil || cursor.shape != platform.CursorText {
+				t.Fatalf("%s left capture/cursor: %v %v", end, win.dispatcher.captureTarget, cursor.shape)
+			}
+		})
+	}
+}
+
 func TestWindowStyleNameOnlyInvalidatesOwnPaint(t *testing.T) {
 	win, other := &window{}, &window{}
 	root := newTestWidget()
