@@ -4,9 +4,10 @@
 Software 配置 1x/2x、OpenGL 配置 1x，具体操作和后端判定边界见 DesignDemo。
 只记录有代码依据或实际观察的事项，不把例程失误写成框架缺陷。
 初始例程开发不顺带改框架；后续经确认的背景隔离及 Linux Integrated 布局
-修复分别记录在第 3、9 节，其余建议仍需按具体应用需求确认范围。
+修复分别记录在第 3、9 节；后续滚动方向与嵌套 Stretch 修正在第 1、7 节。
+其余建议仍需按具体应用需求确认范围。
 
-## 1. 普通表单滚动缺少有限宽度的便利用法
+## 1. 普通表单滚动缺少有限宽度的便利用法（已补齐）
 
 分类：契约允许的行为，但常见表单场景使用成本较高，不是已确认的算法缺陷。
 
@@ -14,16 +15,17 @@ Software 配置 1x/2x、OpenGL 配置 1x，具体操作和后端判定边界见 
 给足宽度。最初卡片仅占约 500 DIP，自然尺寸小于约 900 DIP 的 viewport；
 HWrap 在无限宽测量时也不会按 viewport 换行。
 
-依据：`gui/scroll_view.go` 的普通 child 使用双轴无限约束，并按测量出的
+修复前依据：`gui/scroll_view.go` 的普通 child 使用双轴无限约束，并按测量出的
 contentWidth/contentHeight 排列；只有 `Scrollable` 收到实际 viewport。
 `CrossStretch` 只撑开 VBox 内的孩子，不能改变 VBox 自己被安排的宽度。
 
-本例处理：例程内 `flowWidget` 实现已有 Scrollable，约束孩子宽度、保留纵向
-自然高度。包内测试检查有限宽/无限高、滚动偏移和语义子树。
+初始例程处理：`flowWidget` 实现已有 Scrollable，约束孩子宽度、保留纵向
+自然高度。随后确认的方向切片删除适配，直接使用
+`ScrollView(...).Direction(ui.ScrollVertical)`；ScrollBoth 默认仍保留自然尺寸。
 
-建议：先明确 ScrollView 自然尺寸与 viewport 填充的常见用法并提供文档；后续
-表单需求反复出现时，再设计简单的纵向滚动/横向填充策略。不要为 Demo 改通用
-布局算法，也不靠固定 MinWidth 假装响应式。
+实现不扩充 Scrollable/ListView 接口，不靠固定 MinWidth 假装响应式。
+同时修正滚动条相互占位的独立错误，契约和回归见
+[DesignScrollLayout](DesignScrollLayout.md)。
 
 ## 2. 不存在或不完整的文本 StyleName 容易静默丢失文本
 
@@ -105,9 +107,9 @@ textEditor，也不把直接改状态当成键盘回归测试。
 契约，覆盖未安装、服务退出/重启和独立 display。示例不全局改 XMODIFIERS，
 本地验证只使用进程级 local XIM；中文预编辑和候选窗本轮未验证。
 
-## 7. 纵向滚动表单内横排 Stretch 的测量/排列差异
+## 7. 纵向滚动表单内横排 Stretch 的测量/排列差异（已修复）
 
-分类：已观察到的布局组合一致性问题，责任边界待独立回归确认，本轮未改框架。
+分类：独立无窗口回归确认的 LinearLayout 自然基线约束问题。
 
 复现：本例纵向 Scrollable 的 VBox 中加入一个带 MinHeight(110) 的背景 Bin，
 内部是 `HBox(Label(...).MainWeight(1)).Padding(16).CrossAlign(CrossStretch)`。
@@ -115,14 +117,16 @@ textEditor，也不把直接改状态当成键盘回归测试。
 已报告的 ContentSize，滚轮无法把末尾完整移入 viewport。去掉该 HBox 的
 CrossStretch，保留水平权重、Padding 和接收区最小高度后，末尾可正常滚到。
 
-代码依据：layout/linear.go 的 compute/childConstraint 给非加权孩子传父级
+修复前代码依据：layout/linear.go 的 compute/childConstraint 给非加权孩子传父级
 主轴最大值；stretchCrossExtent 对无限最大值采用自然测量，对有限最大值
 消费全部交叉空间。外层 VBox 从无限高测量到有限高 Arrange 时，内层 HBox 的
 交叉约束随之改变，重新计算出的高度可能大于第一次测量的自然高度。
 
-本例不需要把文字在纵向铺满，使用默认 CrossCenter 即可。建议后续用嵌套
-VBox/HBox 的纯布局用例比较 Measurement、最终子矩形和可滚动 extent，先判断
-父级分配和 Stretch 契约，不能仅靠扩大 ContentSize 或新增隐藏重绘补偿修复。
+独立回归中 Measurement=300×140，但末项底部曾到 170 DIP；行列转置同样
+复现。现统一自然主轴无界基线，仅加权孩子在最终分配后紧约束重测；末项
+底部与测量一致。不扩大 ContentSize，不加隐藏补偿。Button/MenuButton 单内容
+居中从 LinearLayout 解耦，保留最大尺寸换行与 baseline。兼容影响见
+[DesignScrollLayout](DesignScrollLayout.md)。
 
 ## 8. 例程错误与预期行为，不记为框架缺陷
 

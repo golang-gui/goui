@@ -230,7 +230,7 @@ func section(title string, children ...ui.View) ui.View {
 	return surface(ui.VBox(append([]ui.View{ui.Label(title).Style("demo-subheading")}, children...)...).Spacing(12).Padding(16).CrossAlign(layout.CrossStretch)).Style("demo-card")
 }
 func page(title, description string, children ...ui.View) ui.View {
-	return ui.ScrollView(flow(ui.VBox(append(heading(title, description), children...)...).Spacing(16).Padding(16).CrossAlign(layout.CrossStretch))).ID("page-" + title).MainWeight(1)
+	return ui.ScrollView(ui.VBox(append(heading(title, description), children...)...).Spacing(16).Padding(16).CrossAlign(layout.CrossStretch)).Direction(ui.ScrollVertical).ID("page-" + title).MainWeight(1)
 }
 func fullPage(title, description string, children ...ui.View) ui.View {
 	return ui.VBox(append(heading(title, description), children...)...).ID("page-" + title).Spacing(12).Padding(16).CrossAlign(layout.CrossStretch).MainWeight(1)

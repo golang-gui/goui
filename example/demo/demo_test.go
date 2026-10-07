@@ -119,8 +119,9 @@ func (w *layoutProbe) Measure(c layout.Constraint) layout.Measurement {
 	return layout.Measured(geometry.Size{Width: c.Max.Width, Height: 450})
 }
 
-func TestFormFlowConstrainsWidthAndScrollsHeight(t *testing.T) {
-	w := new(flowWidget)
+func TestFormScrollViewConstrainsWidthAndScrollsHeight(t *testing.T) {
+	w := gui.NewScrollView()
+	w.SetDirection(gui.ScrollVertical)
 	child := new(layoutProbe)
 	w.SetChild(child)
 	w.Measure(layout.Loose(geometry.Size{Width: 500, Height: 300}))
@@ -128,18 +129,12 @@ func TestFormFlowConstrainsWidthAndScrollsHeight(t *testing.T) {
 		t.Fatal("form children need finite width and unbounded height")
 	}
 	w.Arrange(geometry.Rect(0, 0, 480, 300))
-	w.LayoutVisible(geometry.Size{Width: 480, Height: 300}, geometry.Point{Y: 70})
-	if got := child.Rect(); got != geometry.Rect(0, -70, 480, 450) {
+	w.SetScrollY(70)
+	if got := child.Rect(); got != geometry.Rect(0, -70, 472, 450) {
 		t.Fatalf("arranged %v", got)
 	}
-	if got := w.ContentSize(); got != (geometry.Size{Width: 480, Height: 450}) {
-		t.Fatalf("content size %v", got)
-	}
-	if child.Parent() != w {
-		t.Fatal("helper embedding leaked into parent tree")
-	}
-	if info := w.Snapshot(); info.Role != gui.RoleBox || len(info.Children) != 1 {
-		t.Fatal("flow wrapper omitted semantic subtree")
+	if info := w.Snapshot(); info.Role != gui.RoleScrollView || len(info.Children) != 1 || info.MaxScrollY != 150 || info.MaxScrollX != 0 {
+		t.Fatal("form omitted semantic subtree or exposed an incorrect range")
 	}
 }
 
