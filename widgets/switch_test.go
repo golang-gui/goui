@@ -2,11 +2,13 @@ package widgets
 
 import (
 	"encoding/json"
+	"errors"
 	"image/color"
 	"math"
 	"testing"
 	"time"
 
+	"github.com/golang-gui/goui/animation"
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
@@ -279,10 +281,11 @@ func TestSwitchAnimation(t *testing.T) {
 		elapsed time.Duration
 		want    float32
 	}{{-time.Second, 0}, {0, 0}, {30 * time.Millisecond, .578125}, {60 * time.Millisecond, .875}, {120 * time.Millisecond, 1}, {time.Second, 1}} {
-		if got := switchPosition(0, 1, tc.elapsed); got != tc.want {
+		progress := min(1, max(0, float64(tc.elapsed)/float64(switchDuration)))
+		if got := animation.Float32(0, 1, animation.EaseOutCubic(progress)); got != tc.want {
 			t.Fatalf("position at %s=%v want %v", tc.elapsed, got, tc.want)
 		}
-		if got := switchPosition(1, 0, tc.elapsed); got != 1-tc.want {
+		if got := animation.Float32(1, 0, animation.EaseOutCubic(progress)); got != 1-tc.want {
 			t.Fatal("reverse animation differs")
 		}
 	}
@@ -292,42 +295,43 @@ func TestSwitchAnimation(t *testing.T) {
 	b := NewSwitch()
 	host.WidgetBase.AddChild(host, b)
 	b.Arrange(geometry.Rect(0, 0, 48, 32))
-	b.SetChecked(true) // The desktop-free fake cannot start a Timer: snap safely.
-	if len(app.timers) != 1 || b.timer != nil || !b.started.IsZero() || b.position != 1 {
-		t.Fatal("timer start failure froze transition")
+	host.root.err = errors.New("schedule")
+	b.SetChecked(true)
+	if len(app.timers) != 0 || b.transition.Running() || b.position != 1 {
+		t.Fatal("frame request failure froze transition")
 	}
-	// Stop samples the current transition before a new target is committed.
-	b.from, b.started, b.position = 0, time.Now().Add(-60*time.Millisecond), 0
-	b.stopAnimation()
-	if b.position < .875 || b.position > 1 {
-		t.Fatalf("lost in-flight position: %v", b.position)
-	}
-	b.from, b.started, b.position = 0, time.Now().Add(-60*time.Millisecond), 0
+	host.root.err = nil
 	b.SetChecked(false)
-	if b.from < .875 || b.from > 1 || b.Checked() {
-		t.Fatalf("retarget sampled the new endpoint instead of the old transition: %v", b.from)
+	host.root.frames.Emit(time.Now().Add(60 * time.Millisecond))
+	position := b.position
+	b.stopAnimation()
+	if b.position != position || b.transition.Running() || position < 0 || position > .125 {
+		t.Fatalf("Stop changed cached position: %v", b.position)
 	}
 	b.SetChecked(true)
-	b.from, b.started = 0, time.Now()
+	if b.position != position || !b.transition.Running() || !b.Checked() {
+		t.Fatal("retarget lost the last displayed sample")
+	}
+	connections := host.root.connects
 	b.SetChecked(true)
-	if b.started.IsZero() {
+	if !b.transition.Running() || host.root.connects != connections {
 		t.Fatal("same setter restarted / snapped animation")
 	}
 	b.SetAnimated(false)
-	if !b.started.IsZero() || b.position != 1 {
+	if b.transition.Running() || b.position != 1 {
 		t.Fatal("animation disable did not finish")
 	}
 	b.SetAnimated(true)
-	b.from, b.started = 0, time.Now()
+	b.SetChecked(false)
 	host.WidgetBase.RemoveChild(b)
-	if b.mounted || !b.started.IsZero() || b.timer != nil || b.position != 1 {
+	if b.mounted || b.transition.Running() || b.position != 0 {
 		t.Fatal("unmount retained animation")
 	}
 	owner := gui.NewPopover(nil, nil)
 	owner.SetWidget(b)
-	b.from, b.started = 0, time.Now()
+	b.SetChecked(true)
 	owner.Destroy()
-	if b.mounted || !b.started.IsZero() || b.timer != nil {
+	if b.mounted || b.transition.Running() {
 		t.Fatal("destroy retained animation")
 	}
 }

@@ -138,7 +138,7 @@ func (b *TabBar) moveIncoming(e *gui.DragMotion) {
 	b.RequestLayout()
 	b.Arrange(b.Rect())
 	e.Action = gui.DragMove
-	b.updateTimer()
+	b.updateFrames()
 	b.viewport.RequestPaint()
 }
 
@@ -206,7 +206,7 @@ func (b *TabBar) clearIncoming() {
 		b.Arrange(b.Rect())
 	}
 	b.viewport.RequestPaint()
-	b.updateTimer()
+	b.updateFrames()
 }
 
 func (b *TabBar) updateIncomingSlot() {

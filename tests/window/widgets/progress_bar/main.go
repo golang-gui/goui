@@ -16,7 +16,7 @@
 //     不变。拖动窗口大小，圆形不拉成椭圆，不超出控件边界。
 //  5. Check 输出 ASSERT PASS：核对角色、形态、确定值、忙等待省略值，无
 //     可调节 Range／点击动作。模式／隐藏变化后等 100ms 再 Check，同时检查
-//     当前应有的活动 Timer 数量（忙且可见时两个，否则零）；此断言不替代动画观察。
+//     控件自身不再创建 Timer，忙等待通过 Root 帧信号驱动；此断言不替代动画观察。
 //  6. 在 1x/2x 重复以上步骤，4 DIP 对应 4/8 物理像素，圆头不出现接缝／加深。
 //
 // 平台差异：字体／装饰可不同，边缘抗锯齿允许细微差别，不承诺刷新同步。
@@ -140,11 +140,7 @@ func main() {
 			}
 		}
 		if all[0].Rect().Width > 0 { // Startup Check precedes the first layout.
-			want := 0
-			if busy && visible {
-				want = 2
-			}
-			monitor.checkTimers(want)
+			monitor.checkTimers(0)
 		}
 		fmt.Printf("ASSERT PASS value=%.2f busy=%v visible=%v dark=%v\n", value, busy, visible, dark)
 	}

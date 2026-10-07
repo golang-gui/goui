@@ -232,6 +232,50 @@ func TestTabBarEdgeScrollKeepsDragActive(t *testing.T) {
 
 // 输入、排序和关闭按钮。
 
+func TestTabDragUsesSharedFramesAndStops(t *testing.T) {
+	bar, _, pages := dragTestBar()
+	owner := newProgressTestHost()
+	owner.AddChild(owner, bar)
+	t.Cleanup(func() { owner.RemoveChild(bar) })
+	d := new(gui.EventDispatcher)
+	host := &tabInputHost{root: bar}
+	dispatchTabPointer(t, d, host, events.PointerDown, 20, 20)
+	dispatchTabPointer(t, d, host, events.PointerMove, 30, 20)
+	dispatchTabPointer(t, d, host, events.PointerMove, 140, 20)
+	if bar.frameHandle == nil || owner.root.connects != 1 {
+		t.Fatal("drag did not connect once to its root")
+	}
+	at := bar.lastTick
+	owner.root.frames.Emit(at.Add(70 * time.Millisecond))
+	x := bar.items[pages[1]].motion.x
+	if x <= 0 || x >= 104 || owner.root.connects != 1 {
+		t.Fatal("shared frame did not advance the neighbor or duplicated connection", x)
+	}
+	dispatchTabPointer(t, d, host, events.PointerUp, 140, 20)
+	for i := 1; i <= 4; i++ {
+		owner.root.frames.Emit(at.Add(70*time.Millisecond + time.Duration(i)*100*time.Millisecond))
+	}
+	if bar.moving() || bar.frameHandle != nil || bar.lifted != nil {
+		t.Fatal("settled drag retained frame listener")
+	}
+	paints := owner.root.paints
+	owner.root.frames.Emit(at.Add(time.Second))
+	if owner.root.paints != paints {
+		t.Fatal("idle frame requested paint")
+	}
+	dispatchTabPointer(t, d, host, events.PointerDown, 20, 20)
+	dispatchTabPointer(t, d, host, events.PointerMove, 140, 20)
+	if bar.frameHandle == nil {
+		t.Fatal("second drag did not restart frame updates")
+	}
+	owner.RemoveChild(bar)
+	paints = owner.root.paints
+	owner.root.frames.Emit(at.Add(2 * time.Second))
+	if bar.frameHandle != nil || owner.root.paints != paints {
+		t.Fatal("unmounted bar retained frame activity")
+	}
+}
+
 func TestTabDragFollowsPointerSlidesAndCommitsOnce(t *testing.T) {
 	bar, view, pages := dragTestBar()
 	view.SetCurrent(pages[2])
