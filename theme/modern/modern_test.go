@@ -203,10 +203,10 @@ func TestTableStylesNeutralSelectionAndIndependentText(t *testing.T) {
 func TestTreeSelectionColorsIgnoreAccent(t *testing.T) {
 	for _, dark := range []bool{false, true} {
 		// 固定调色板预期，不通过被测实现的 mix 函数推导。
-		want := []color.RGBA{rgb(0xD1D1D1), rgb(0xCACACA), rgb(0xC3C3C3)}
+		want := []color.RGBA{rgb(0xE1E1E3), rgb(0xD9D9DB), rgb(0xD2D2D4)}
 		wantBorder := rgb(0x61616B)
 		if dark {
-			want = []color.RGBA{rgb(0x4F4F53), rgb(0x555559), rgb(0x5C5C5F)}
+			want = []color.RGBA{rgb(0x343438), rgb(0x3B3B3F), rgb(0x434347)}
 			wantBorder = rgb(0xB8B8C2)
 		}
 		for _, accent := range []color.Color{nil, color.Black, color.White, rgb(0xFF0000), rgb(0x0080FF)} {
@@ -228,9 +228,13 @@ func TestTreeSelectionColorsIgnoreAccent(t *testing.T) {
 				current := sheet.Resolve(style.Sel{Name: "tree-item", Part: "current", State: state})
 				border, _ := current.BorderColor()
 				width, _ := current.BorderWidth()
-				if rgba(border) != wantBorder || width != 1 {
-					t.Fatalf("current outline=%v/%g, want neutral %v/1 DIP", border, width, wantBorder)
+				if rgba(border) != wantBorder || width != 0 {
+					t.Fatalf("pointer current outline=%v/%g, want neutral %v/0 DIP", border, width, wantBorder)
 				}
+			}
+			keyboard := sheet.Resolve(style.Sel{Name: "tree-item", Part: "current", State: style.FocusVisible})
+			if width, _ := keyboard.BorderWidth(); width != 1 {
+				t.Fatalf("keyboard current outline=%g, want 1 DIP", width)
 			}
 			custom := style.Sheet(append(Rules(options),
 				style.Name("tree-item").Part("selected").BackgroundColor(rgb(0x123456)),

@@ -58,9 +58,10 @@ func Rules(options Options) []style.Rule {
 		tabSelected = mix(p.window, p.text, .08)
 	}
 	tabBorder := mix(tabSelected, p.text, .10)
-	// Tree selection uses the menu's neutral palette, independent of accent.
-	// Keep it distinct from an unselected row's hover, with subtle interaction tints.
-	treeSelected := p.menuPressed
+	// Tree rows are part of the window surface, not pressed menu items. Keep
+	// selection neutral but lighter, without changing the table's palette.
+	rowSelected := p.menuPressed
+	treeSelected := mix(p.window, p.text, .10)
 	primary := [3]color.RGBA{
 		tintedBackground(p.button, accent, p.text, .12),
 		tintedBackground(p.button, accent, p.text, .18),
@@ -92,9 +93,9 @@ func Rules(options Options) []style.Rule {
 		style.Name("table-row").BackgroundColor(color.Transparent).BorderWidth(0).Radius(4),
 		style.Name("table-row").State(style.Hovered).BackgroundColor(p.menuHover),
 		style.Name("table-row").State(style.Pressed).BackgroundColor(p.menuPressed),
-		style.Name("table-row").Part("selected").BackgroundColor(treeSelected),
-		style.Name("table-row").Part("selected").State(style.Hovered).BackgroundColor(mix(treeSelected, p.text, .04)),
-		style.Name("table-row").Part("selected").State(style.Pressed).BackgroundColor(mix(treeSelected, p.text, .08)),
+		style.Name("table-row").Part("selected").BackgroundColor(rowSelected),
+		style.Name("table-row").Part("selected").State(style.Hovered).BackgroundColor(mix(rowSelected, p.text, .04)),
+		style.Name("table-row").Part("selected").State(style.Pressed).BackgroundColor(mix(rowSelected, p.text, .08)),
 		style.Name("table-row").Part("current").BackgroundColor(color.Transparent).BorderColor(p.muted).BorderWidth(1),
 		style.Name("tree-view").BackgroundColor(color.Transparent),
 		style.Name("tree-item").BackgroundColor(color.Transparent).BorderWidth(0).Radius(4),
@@ -103,7 +104,8 @@ func Rules(options Options) []style.Rule {
 		style.Name("tree-item").Part("selected").BackgroundColor(treeSelected),
 		style.Name("tree-item").Part("selected").State(style.Hovered).BackgroundColor(mix(treeSelected, p.text, .04)),
 		style.Name("tree-item").Part("selected").State(style.Pressed).BackgroundColor(mix(treeSelected, p.text, .08)),
-		style.Name("tree-item").Part("current").BackgroundColor(color.Transparent).BorderColor(p.muted).BorderWidth(1),
+		style.Name("tree-item").Part("current").BackgroundColor(color.Transparent).BorderColor(p.muted).BorderWidth(0),
+		style.Name("tree-item").Part("current").State(style.FocusVisible).BorderWidth(1),
 		style.Name("tree-expander").ForegroundColor(p.muted).BackgroundColor(color.Transparent).Radius(4),
 		style.Name("tree-expander").State(style.Hovered).ForegroundColor(p.text).BackgroundColor(p.menuHover),
 		style.Name("tree-expander").State(style.Pressed).ForegroundColor(p.text).BackgroundColor(p.menuPressed),
