@@ -630,6 +630,7 @@ func NewMenuButton() *MenuButton {
 		ctx.StopPropagation()
 	})
 	b.AddEventController(b.click)
+	addButtonKeys(b, b.openMenu)
 	return b
 }
 

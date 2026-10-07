@@ -39,6 +39,63 @@ func TestButtonSnapshot(t *testing.T) {
 	}
 }
 
+func TestButtonKeyboardActivationAfterTab(t *testing.T) {
+	for _, key := range []events.Key{events.KeySpace, events.KeyEnter} {
+		t.Run(fmt.Sprint(key), func(t *testing.T) {
+			button := NewButton()
+			win := &window{}
+			win.SetWidget(button)
+			t.Cleanup(win.Destroy)
+			clicks := 0
+			button.ConnectClicked(func() { clicks++ })
+			_ = win.DispatchEvent(shortcutPress(events.KeyTab, 0))
+			if !button.Focused() || !button.FocusVisible() {
+				t.Fatal("Tab did not focus the button")
+			}
+			press := func(mod events.Modifiers, repeat bool) bool {
+				handled := false
+				_ = win.DispatchEvent(events.KeyEvent{EventType: events.KeyDown, Key: key, Modifiers: mod, Repeat: repeat, Handled: &handled})
+				return handled
+			}
+			if !press(0, false) || clicks != 1 {
+				t.Fatal("focused button did not activate")
+			}
+			if !press(0, true) || clicks != 1 {
+				t.Fatal("repeat reactivated button")
+			}
+			_ = win.DispatchEvent(events.KeyEvent{EventType: events.KeyUp, Key: key})
+			if clicks != 1 || press(events.ModifierControl, false) || clicks != 1 {
+				t.Fatal("release or modified key activated button")
+			}
+			button.SetEnabled(false)
+			press(0, false)
+			if clicks != 1 {
+				t.Fatal("disabled button activated")
+			}
+			button.SetEnabled(true)
+			win.SetFocusedWidget(button)
+			button.ConnectClicked(win.Destroy)
+			button.ConnectClicked(func() { t.Fatal("callback ran after destruction") })
+			press(0, false)
+		})
+	}
+}
+
+func TestButtonKeyboardDoesNotActivateFromEditableChild(t *testing.T) {
+	button := NewButton()
+	child := newTestWidget()
+	child.SetFocusable(true)
+	button.SetChild(child)
+	win := &window{}
+	win.SetWidget(button)
+	defer win.Destroy()
+	win.SetFocusedWidget(child)
+	button.ConnectClicked(func() { t.Fatal("child input activated parent button") })
+	for _, key := range []events.Key{events.KeySpace, events.KeyEnter} {
+		_ = win.DispatchEvent(shortcutPress(key, 0))
+	}
+}
+
 func TestButtonFocusVisiblePixels(t *testing.T) {
 	for _, kind := range []struct {
 		name string
