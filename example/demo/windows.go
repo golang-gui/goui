@@ -5,29 +5,31 @@ import (
 	"fmt"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/example/demo/resource"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/mlang"
 	"github.com/golang-gui/goui/ui"
 )
 
 func (d *demo) windowPage() ui.View {
-	return fullPage("窗口与语义检查", "主窗口使用 Integrated。平台不具备相应能力时按 GUI 契约退回；窗口状态请求不承诺成功。",
-		ui.HWrap(ui.Button("普通 Native 窗口").ID("native-window").OnClick(func() { d.openWindow(gui.WindowChromeNative, false) }),
-			ui.Button("Integrated 窗口").OnClick(func() { d.openWindow(gui.WindowChromeIntegrated, false) }),
-			ui.Button("透明 None 窗口").ID("transparent-window").OnClick(func() { d.openWindow(gui.WindowChromeNone, true) })).Spacing(12).LineSpacing(8),
-		ui.HWrap(ui.Button("请求最大化").OnClick(func() {
+	return fullPage("windows", resource.WindowHeading(), resource.WindowHint(),
+		ui.HWrap(ui.Button(resource.NativeWindow()).ID("native-window").OnClick(func() { d.openWindow(gui.WindowChromeNative, false) }),
+			ui.Button(resource.IntegratedWindow()).OnClick(func() { d.openWindow(gui.WindowChromeIntegrated, false) }),
+			ui.Button(resource.TransparentWindow()).ID("transparent-window").OnClick(func() { d.openWindow(gui.WindowChromeNone, true) })).Spacing(12).LineSpacing(8),
+		ui.HWrap(ui.Button(resource.Maximize()).OnClick(func() {
 			d.app.FindWindow("main").RequestState(gui.WindowStateMaximized)
-			d.report("已请求最大化")
+			d.report(resource.MaximizeRequested())
 		}),
-			ui.Button("请求普通状态").OnClick(func() {
+			ui.Button(resource.NormalState()).OnClick(func() {
 				d.app.FindWindow("main").RequestState(gui.WindowStateNormal)
-				d.report("已请求普通状态")
+				d.report(resource.NormalRequested())
 			}),
-			ui.Button("读取位置 / 工作区").OnClick(d.inspectPosition), ui.Button("读取快照").ID("snapshot").OnClick(d.inspectSnapshot),
-			ui.Button("按 ID 查找").OnClick(func() {
+			ui.Button(resource.ReadPositionArea()).OnClick(d.inspectPosition), ui.Button(resource.ReadSnapshot()).ID("snapshot").OnClick(d.inspectSnapshot),
+			ui.Button(resource.FindID()).OnClick(func() {
 				w := d.app.FindWidget("main", "snapshot")
 				if w != nil {
-					d.report(fmt.Sprintf("snapshot → %T · 角色 %s", w, w.Snapshot().Role))
+					d.report(fmt.Sprintf(resource.FoundWidget(), w, w.Snapshot().Role))
 				}
 			})).Spacing(10).LineSpacing(8),
 		ui.ScrollView(ui.TextView().ID("snapshot-text").Model(d.inspection).ReadOnly(true).WrapMode(ui.WrapWordChar).Padding(12)).MainWeight(1),
@@ -42,31 +44,31 @@ func (d *demo) inspectSnapshot() {
 	if err == nil {
 		d.inspection.SetText(string(data))
 	}
-	d.result("读取语义快照", err)
+	d.result(resource.ReadSemantics(), err)
 }
 func (d *demo) inspectPosition() {
 	w := d.app.FindWindow("main")
 	pos, err := w.Position(nil)
 	if err != nil {
-		d.result("读取位置", err)
+		d.result(resource.ReadPosition(), err)
 		return
 	}
 	area, err := w.WorkAreaAt(geometry.Point{})
 	if err != nil {
-		d.result("读取工作区", err)
+		d.result(resource.ReadWorkArea(), err)
 		return
 	}
-	d.report(fmt.Sprintf("客户内容原点相对工作区：%.0f, %.0f DIP；工作区：%.0f×%.0f DIP；状态：%v", pos.X, pos.Y, area.Width, area.Height, w.State()))
+	d.report(fmt.Sprintf(resource.PositionFormat(), pos.X, pos.Y, area.Width, area.Height, w.State()))
 }
 func (d *demo) openWindow(chrome gui.WindowChromeMode, transparent bool) {
 	w, err := gui.App.NewWindow(&gui.WindowOptions{Size: geometry.Size{Width: 440, Height: 300}, Chrome: chrome, Transparent: transparent})
 	if err != nil {
-		d.result("创建窗口", err)
+		d.result(resource.CreateWindow(), err)
 		return
 	}
-	if err := w.SetTitle("GOUI · 独立窗口"); err != nil {
+	if err := w.SetTitle(resource.AuxTitle()); err != nil {
 		w.Destroy()
-		d.result("设置窗口标题", err)
+		d.result(resource.SetTitle(), err)
 		return
 	}
 	if transparent {
@@ -75,27 +77,39 @@ func (d *demo) openWindow(chrome gui.WindowChromeMode, transparent bool) {
 	box := gui.NewLinearBox(layout.DirectionVertical)
 	box.SetSpacing(16)
 	box.SetPadding(20)
-	box.AddChild(gui.NewLabel("通过 GUI 公共接口创建的独立窗口"))
-	box.AddChild(gui.NewLabel("主题变化会重新绘制；关闭主窗口退出整个示例。"))
+	var labels []struct {
+		widget *gui.Label
+		text   mlang.Getter
+	}
+	label := func(text mlang.Getter) *gui.Label {
+		widget := gui.NewLabel(text())
+		labels = append(labels, struct {
+			widget *gui.Label
+			text   mlang.Getter
+		}{widget, text})
+		return widget
+	}
+	box.AddChild(label(resource.AuxDescription))
+	box.AddChild(label(resource.AuxHint))
 	if transparent {
-		box.AddChild(gui.NewLabel("此窗口独立使用透明背景，其他窗口的背景不变。"))
+		box.AddChild(label(resource.TransparencyHint))
 	}
 	move := gui.NewButton()
-	move.SetChild(gui.NewLabel("移动到主窗口右下方"))
+	move.SetChild(label(resource.MoveWindow))
 	move.ConnectClicked(func() {
-		d.result("相对定位", w.SetPosition(d.app.FindWindow("main"), geometry.Point{X: 240, Y: 160}))
+		d.result(resource.RelativePosition(), w.SetPosition(d.app.FindWindow("main"), geometry.Point{X: 240, Y: 160}))
 	})
 	box.AddChild(move)
 	closeButton := gui.NewButton()
-	closeButton.SetChild(gui.NewLabel("关闭此窗"))
+	closeButton.SetChild(label(resource.CloseWindow))
 	closeButton.ConnectClicked(func() { w.Destroy() })
 	box.AddChild(closeButton)
 	header := gui.NewHeaderBar()
-	title := "GOUI · 可以拖动标题区域"
+	title := resource.DragTitle
 	if chrome == gui.WindowChromeNative {
-		title = "GOUI · 请拖动系统原生标题栏"
+		title = resource.NativeDragTitle
 	}
-	header.SetChild(gui.NewLabel(title))
+	header.SetChild(label(title))
 	column := gui.NewLinearBox(layout.DirectionVertical)
 	column.SetCrossAlign(layout.CrossStretch)
 	if transparent {
@@ -117,20 +131,39 @@ func (d *demo) openWindow(chrome gui.WindowChromeMode, transparent bool) {
 	} else {
 		w.SetWidget(panel)
 	}
-	w.ConnectState(func(state gui.WindowState) { d.report(fmt.Sprintf("独立窗口实际上报状态：%v", state)) })
+	w.ConnectState(func(state gui.WindowState) { d.report(fmt.Sprintf(resource.WindowState(), state)) })
+	closed := false
+	languageChanged := mlang.ConnectChanged(func() {
+		if closed {
+			return
+		}
+		if err := w.SetTitle(resource.AuxTitle()); err != nil {
+			d.result(resource.SetTitle(), err)
+		}
+		for _, item := range labels {
+			if closed {
+				return
+			}
+			item.widget.SetText(item.text())
+		}
+	})
+	w.ConnectDestroy(func() { closed = true; languageChanged.Disconnect() })
 	d.app.RequestUpdate()
 	// 先选定此窗口的背景样式、创建内容，再显示；不展示默认位置后再定位。
 	d.app.Post(func() {
+		if closed {
+			return
+		}
 		positionErr := w.SetPosition(d.app.FindWindow("main"), geometry.Point{X: 180, Y: 120})
 		if err := w.Show(); err != nil {
 			w.Destroy()
-			d.result("显示窗口", err)
+			d.result(resource.ShowWindow(), err)
 			return
 		}
 		if positionErr != nil {
-			d.result("窗口已显示，但相对定位", positionErr)
+			d.result(resource.PositionAfterShow(), positionErr)
 		} else {
-			d.report("独立窗口已显示（可尝试拖动标题区域）")
+			d.report(resource.WindowShown())
 		}
 	})
 }

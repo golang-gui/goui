@@ -1,11 +1,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/example/demo/resource"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/ui"
@@ -40,31 +42,31 @@ func (d *demo) addTab(w *tabWindow) {
 func (d *demo) tabContents(w *tabWindow) ui.View {
 	pages := make([]*wui.TabPageView, 0, len(w.pages))
 	for _, id := range w.pages {
-		pages = append(pages, wui.TabPage(id, ui.ScrollView(ui.TextView().ID("editor-"+id).Model(d.documents[id]).WrapMode(ui.WrapWordChar).Padding(16))).Title(strings.Replace(id, "document-", "文档 ", 1)).Icon(d.icons[0]).Closable(true))
+		pages = append(pages, wui.TabPage(id, ui.ScrollView(ui.TextView().ID("editor-"+id).Model(d.documents[id]).WrapMode(ui.WrapWordChar).Padding(16))).Title(fmt.Sprintf(resource.DocumentTitle(), strings.TrimPrefix(id, "document-"))).Icon(d.icons[0]).Closable(true))
 	}
 	bar := wui.TabBar("documents").ID("tab-bar").Reorderable(true).Transferable(true).TabWidthRange(105, 200).
 		ContextMenu(func(id string) []*ui.MenuItemView {
-			return []*ui.MenuItemView{ui.MenuItem("关闭标签", func() { d.requestTabClose(w, id) }), ui.MenuItem("新建标签", func() { d.addTab(w) })}
+			return []*ui.MenuItemView{ui.MenuItem(resource.CloseTab(), func() { d.requestTabClose(w, id) }), ui.MenuItem(resource.NewTab(), func() { d.addTab(w) })}
 		}).
 		OnDetachRequest(func(r *wui.TabDetachRequest, handled *bool) { d.detachTab(w, r, handled) }).
-		OnTransferError(func(e error) { d.result("标签移交", e) }).OnContextMenuError(func(e error) { d.result("标签菜单", e) })
+		OnTransferError(func(e error) { d.result(resource.TabTransfer(), e) }).OnContextMenuError(func(e error) { d.result(resource.TabMenu(), e) })
 	view := wui.TabView(pages...).ID("documents").MainWeight(1).Current(w.current).
 		OnCurrent(func(id string) { w.current = id; d.app.RequestUpdate() }).
 		OnCloseRequest(func(id string) { d.requestTabClose(w, id) }).
-		OnMoved(func(id string, from, to int) { w.pages = moveID(w.pages, id, to); d.report("标签顺序已更新") }).OnTransfer(d.transferTab)
+		OnMoved(func(id string, from, to int) { w.pages = moveID(w.pages, id, to); d.report(resource.TabsReordered()) }).OnTransfer(d.transferTab)
 	return ui.VBox(ui.HeaderBar(bar).Padding(4), view).CrossAlign(layout.CrossStretch)
 }
 func (d *demo) tabsPage() ui.View {
 	w := d.tabWindows[0]
-	return fullPage("多标签工作区", "抓住标签排序，拖到另一个标签窗口，或拖到桌面创建新窗口。只剩一个标签时仍可移交，但不再脱离创建新窗口。",
-		ui.HWrap(ui.Button("新建标签").ID("new-tab").OnClick(func() { d.addTab(w) }), ui.Button("打开目标窗口").ID("tab-target").OnClick(d.newTabWindow)).Spacing(10),
+	return fullPage("tabs", resource.Tabs(), resource.TabsHint(),
+		ui.HWrap(ui.Button(resource.NewTab()).ID("new-tab").OnClick(func() { d.addTab(w) }), ui.Button(resource.OpenTargetWindow()).ID("tab-target").OnClick(d.newTabWindow)).Spacing(10),
 		d.tabWorkspace(w).MainWeight(1),
 	)
 }
 
 func (d *demo) tabWorkspace(w *tabWindow) *ui.OverlayView {
-	confirm := surface(ui.VBox(ui.Label("关闭标签？").Style("demo-subheading"), ui.Label("示例会丢弃该文档的内存内容；不会写入文件。"),
-		ui.HBox(ui.Button("取消").OnClick(func() { w.closing = ""; d.app.RequestUpdate() }), ui.Button("关闭").OnClick(func() { d.closeTab(w) })).Spacing(12)).Padding(20).Spacing(12)).Style("demo-card").MaxWidth(440)
+	confirm := surface(ui.VBox(ui.Label(resource.CloseTabQuestion()).Style("demo-subheading"), ui.Label(resource.CloseTabHint()),
+		ui.HBox(ui.Button(resource.Cancel()).OnClick(func() { w.closing = ""; d.app.RequestUpdate() }), ui.Button(resource.Close()).OnClick(func() { d.closeTab(w) })).Spacing(12)).Padding(20).Spacing(12)).Style("demo-card").MaxWidth(440)
 	layer := ui.Overlay(surface(nil).Style("demo-mask"), ui.OverlayItem(confirm).OnPosition(center)).ID("tab-close-confirm").Visible(w.closing != "")
 	return ui.Overlay(d.tabContents(w), ui.OverlayItem(layer).Fill(true))
 }
@@ -76,7 +78,7 @@ func (d *demo) requestTabClose(w *tabWindow, id string) {
 	if w.id == "main" {
 		d.navigateToTabs()
 	}
-	d.report("请求关闭：" + id)
+	d.report(fmt.Sprintf(resource.TabCloseRequested(), id))
 }
 func (d *demo) navigateToTabs() {
 	if d.page != 4 {
@@ -98,7 +100,7 @@ func (d *demo) closeTab(w *tabWindow) {
 			}
 		}
 		delete(d.documents, id)
-		d.report("标签已关闭：" + id)
+		d.report(fmt.Sprintf(resource.TabClosed(), id))
 	}
 }
 func moveID(ids []string, id string, index int) []string {
@@ -128,7 +130,7 @@ func (d *demo) transferTab(e wui.TabTransfer) {
 	}
 	target.pages = moveID(target.pages, e.PageID, e.Index)
 	target.current = e.PageID
-	d.report("标签已移交：" + e.PageID + " → " + target.id)
+	d.report(fmt.Sprintf(resource.TabTransferred(), e.PageID, target.id))
 }
 func (d *demo) newTabWindow() {
 	d.nextWindow++
@@ -141,7 +143,7 @@ func (d *demo) tabWindowView(w *tabWindow) ui.WindowView {
 	if d.pendingDetach != nil && d.detachWindow == w.id {
 		content.after = func() { d.prepareDetach(w) }
 	}
-	return ui.Window(w.id).Title("GOUI · 标签工作区").Size(w.size.Width, w.size.Height).Chrome(ui.WindowChromeIntegrated).
+	return ui.Window(w.id).Title(resource.TabWindowTitle()).Size(w.size.Width, w.size.Height).Chrome(ui.WindowChromeIntegrated).
 		OnDestroy(func() {
 			w.closing = ""
 			d.tabWindows = slices.DeleteFunc(d.tabWindows, func(item *tabWindow) bool { return item == w })
@@ -163,7 +165,7 @@ func (d *demo) detachTab(source *tabWindow, r *wui.TabDetachRequest, handled *bo
 	bar := d.app.FindWidget(source.id, "tab-bar")
 	if bar == nil || bar.Parent() == nil || r.Window.Widget() == nil {
 		r.Cancel()
-		d.report("标签布局未就绪，未创建窗口")
+		d.report(resource.TabLayoutNotReady())
 		return
 	}
 	inset := r.Window.Widget().Rect().Pos
@@ -190,7 +192,7 @@ func (d *demo) prepareDetach(w *tabWindow) {
 	d.pendingDetach = nil
 	target := d.app.FindWindow(w.id)
 	view, _ := d.app.FindWidget(w.id, "documents").(*widgets.TabView)
-	err := fmt.Errorf("新窗口的标签容器未就绪")
+	err := errors.New(resource.TabContainerNotReady())
 	if target != nil && view != nil {
 		position := d.detachPosition
 		// ConnectInfo 同步报告当前占位；这里一次性借用，不注册长期监听。
@@ -209,7 +211,7 @@ func (d *demo) prepareDetach(w *tabWindow) {
 			target.Destroy()
 		}
 		d.tabWindows = slices.DeleteFunc(d.tabWindows, func(item *tabWindow) bool { return item == w })
-		d.result("创建脱离窗口", err)
+		d.result(resource.CreateDetachedWindow(), err)
 	}
 }
 

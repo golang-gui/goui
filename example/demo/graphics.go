@@ -9,6 +9,7 @@ import (
 
 	"github.com/golang-gui/goui/animation"
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/example/demo/resource"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/icon/draw"
 	"github.com/golang-gui/goui/icon/svg"
@@ -56,10 +57,10 @@ func (d *demo) graphicsPage() ui.View {
 	for _, source := range d.icons {
 		icons = append(icons, ui.Icon(source).Size(36).Style("demo-swatch"))
 	}
-	return page("图形与动画", "同一 IconSource 按物理尺寸和前景色生成像素。自定义 Widget 只画自身；子树状态隔离由内核完成。",
-		section("Image / SVG / 自定义图标", ui.Image(d.bitmap).MaxWidth(280).MaxHeight(110), ui.HBox(icons...).Spacing(24), ui.Label("前三枚是单色 SVG，第四枚由 Software 绘制，最后一枚保留 SVG 原色。切换主题色观察重绘。")),
-		section("通用绘制：路径、渐变、预乘透明色、Transform 和 Clip", newCanvas().ID("canvas").MinHeight(190).MaxHeight(190),
-			ui.Button("RenderWidget 截图预览").ID("capture-canvas").OnClick(func() {
+	return page("graphics", resource.Graphics(), resource.GraphicsHint(),
+		section(resource.ImagesTitle(), ui.Image(d.bitmap).MaxWidth(280).MaxHeight(110), ui.HBox(icons...).Spacing(24), ui.Label(resource.IconsHint())),
+		section(resource.DrawingTitle(), newCanvas().ID("canvas").MinHeight(190).MaxHeight(190),
+			ui.Button(resource.Capture()).ID("capture-canvas").OnClick(func() {
 				w := d.app.FindWidget("main", "canvas")
 				if w == nil {
 					return
@@ -68,17 +69,17 @@ func (d *demo) graphicsPage() ui.View {
 				if err == nil {
 					d.capture = img
 				}
-				d.result("离屏渲染", err)
+				d.result(resource.Offscreen(), err)
 			}), ui.Image(d.capture).Visible(d.capture != nil).MaxHeight(190)),
-		section("进度条与帧驱动动画",
-			ui.HWrap(ui.Button("尺寸动画 / 重定向").ID("animate").OnClick(d.animate), ui.Button("停止").ID("stop-animation").OnClick(func() { d.motion.Stop(); d.busy = false; d.report("动画已停止") }),
-				ui.Button("跳至终值").OnClick(d.motion.Finish),
-				wui.Switch("忙等待").Checked(d.busy).OnChange(func(v bool) { d.busy = v; d.app.RequestUpdate() })).Spacing(12).LineSpacing(8),
+		section(resource.AnimationTitle(),
+			ui.HWrap(ui.Button(resource.Animate()).ID("animate").OnClick(d.animate), ui.Button(resource.Stop()).ID("stop-animation").OnClick(func() { d.motion.Stop(); d.busy = false; d.report(resource.AnimationStopped()) }),
+				ui.Button(resource.Finish()).OnClick(d.motion.Finish),
+				wui.Switch(resource.Busy()).Checked(d.busy).OnChange(func(v bool) { d.busy = v; d.app.RequestUpdate() })).Spacing(12).LineSpacing(8),
 			ui.HBox(ui.Icon(d.icons[0]).ID("animated-icon").Style("demo-swatch").Size(d.motionValue.Get())).
 				MainAlign(layout.MainCenter).CrossAlign(layout.CrossCenter).MinHeight(88).MaxHeight(88),
 			wui.ProgressBar((d.motionValue.Get()-32)/48).Indeterminate(d.busy),
 			wui.ProgressBar((d.motionValue.Get()-32)/48).Shape(wui.ProgressCircular).Indeterminate(d.busy).MinSize(64, 64).MaxSize(64, 64),
-			ui.Label(fmt.Sprintf("当前值 %.1f DIP；尺寸动画结束后不继续请求帧。离开页面停止演示动画。", d.motionValue.Get()))),
+			ui.Label(fmt.Sprintf(resource.AnimationValue(), d.motionValue.Get()))),
 	)
 }
 func (d *demo) animate() {
@@ -86,7 +87,7 @@ func (d *demo) animate() {
 	if d.motionValue.Get() > 55 {
 		target = 32
 	}
-	d.result("启动动画", d.motion.AnimateTo(d.app.FindWindow("main"), target, 650*time.Millisecond, animation.EaseOutCubic))
+	d.result(resource.StartAnimation(), d.motion.AnimateTo(d.app.FindWindow("main"), target, 650*time.Millisecond, animation.EaseOutCubic))
 }
 
 type canvasWidget struct{ gui.WidgetBase }
@@ -94,7 +95,7 @@ type canvasWidget struct{ gui.WidgetBase }
 func (w *canvasWidget) Snapshot() gui.WidgetInfo {
 	i := w.WidgetBase.Snapshot()
 	i.Role = gui.RoleImage
-	i.Text = "渐变、半透明几何和裁剪变换演示"
+	i.Text = resource.CanvasDescription()
 	return i
 }
 func (w *canvasWidget) Paint(p gui.Painter) {
