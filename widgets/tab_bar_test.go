@@ -11,6 +11,7 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/mlang"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
@@ -19,6 +20,22 @@ import (
 )
 
 // 布局、溢出与页面顺序同步。
+
+func TestTabGlyphLocalizedSnapshot(t *testing.T) {
+	previous := mlang.Language()
+	t.Cleanup(func() { _ = mlang.SetLanguage(previous) })
+	_ = mlang.SetLanguage("zh-CN")
+	for _, tc := range []struct {
+		direction int
+		text      string
+	}{{0, "关闭标签页"}, {-1, "向左滚动标签页"}, {1, "向右滚动标签页"}} {
+		glyph := &tabGlyph{direction: tc.direction}
+		info := glyph.Snapshot()
+		if info.Text != tc.text || info.Role != gui.RoleImage || len(info.Actions) != 0 {
+			t.Fatalf("decorative glyph lost text/role or fabricated an action: %+v", info)
+		}
+	}
+}
 
 func TestAllocateTabWidth(t *testing.T) {
 	for _, tc := range []struct {

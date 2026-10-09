@@ -10,7 +10,9 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui/textedit"
+	"github.com/golang-gui/goui/internal/resource"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/mlang"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/style"
@@ -226,10 +228,15 @@ func newTextEditor(owner Widget, singleLine bool) *textEditor {
 		t.suspended = false
 		t.connectModel()
 		t.connectInteractionTimers()
+		t.connectContextMenuLanguage()
 	})
 	t.owner.ConnectUnmount(func() {
 		t.mountEpoch++
 		t.suspended = true
+		if t.contextMenu != nil && t.contextMenu.language != nil {
+			t.contextMenu.language.Disconnect()
+			t.contextMenu.language = nil
+		}
 		t.hideContextMenu()
 		t.cancelPreedit(true)
 		t.input.Reset()
@@ -1244,8 +1251,47 @@ const (
 )
 
 type textEditMenu struct {
-	popup *PopoverMenu
-	items map[textEditCommand]*MenuItem
+	popup    *PopoverMenu
+	items    map[textEditCommand]*MenuItem
+	language signal.Handle
+}
+
+func (command textEditCommand) menuLabel() string {
+	switch command {
+	case textUndo:
+		return resource.Undo()
+	case textRedo:
+		return resource.Redo()
+	case textCut:
+		return resource.Cut()
+	case textCopy:
+		return resource.Copy()
+	case textPaste:
+		return resource.Paste()
+	case textDeleteSelection:
+		return resource.Delete()
+	case textSelectAll:
+		return resource.SelectAll()
+	}
+	return ""
+}
+
+func (t *textEditor) connectContextMenuLanguage() {
+	if t.contextMenu == nil || t.contextMenu.language != nil || t.suspended || t.owner.base().destroyed {
+		return
+	}
+	t.contextMenu.language = mlang.ConnectChanged(func() {
+		menu := t.contextMenu
+		if t.owner.base().destroyed || t.suspended || menu == nil || !menu.popup.Visible() {
+			return
+		}
+		for command, item := range menu.items {
+			if t.owner.base().destroyed || t.suspended || t.contextMenu != menu {
+				return
+			}
+			item.SetLabel(command.menuLabel())
+		}
+	})
 }
 
 func (t *textEditor) canEditCommand(command textEditCommand) bool {
@@ -1336,22 +1382,17 @@ func (t *textEditor) showContextMenu(point *geometry.Point) {
 	if t.contextMenu == nil {
 		t.contextMenu = &textEditMenu{popup: NewPopoverMenu(t.owner)}
 	}
+	t.connectContextMenuLanguage()
 	menu := t.contextMenu
 	menu.items = make(map[textEditCommand]*MenuItem)
 	items := NewMenu()
-	for _, spec := range []struct {
-		command textEditCommand
-		label   string
-	}{
-		{textUndo, "Undo"}, {textRedo, "Redo"},
-		{textCut, "Cut"}, {textCopy, "Copy"}, {textPaste, "Paste"},
-		{textDeleteSelection, "Delete"}, {textSelectAll, "Select All"},
+	for _, command := range []textEditCommand{
+		textUndo, textRedo, textCut, textCopy, textPaste, textDeleteSelection, textSelectAll,
 	} {
-		if spec.command == textCut || spec.command == textSelectAll {
+		if command == textCut || command == textSelectAll {
 			items.AppendSeparator()
 		}
-		command := spec.command
-		item := items.Append(spec.label, func() {
+		item := items.Append(command.menuLabel(), func() {
 			// PopoverMenu hides before activation. The hide/IME callbacks may
 			// unmount us, replace the document, or open another menu.
 			if t.model == model && t.mountEpoch == epoch && menu.popup.Menu() == items {

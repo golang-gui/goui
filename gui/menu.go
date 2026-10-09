@@ -22,7 +22,7 @@ type MenuItem struct {
 	enabled   bool
 	visible   bool
 	separator bool
-	onChanged func() // wired by Menu.Append; fires on SetEnabled/SetVisible
+	onChanged func() // wired by Menu.Append; fires when presentation changes
 }
 
 func NewMenuItem(label string, action func()) *MenuItem {
@@ -34,6 +34,18 @@ func (mi *MenuItem) Action() func()  { return mi.action }
 func (mi *MenuItem) Enabled() bool   { return mi.enabled }
 func (mi *MenuItem) Visible() bool   { return mi.visible }
 func (mi *MenuItem) Separator() bool { return mi.separator }
+
+// SetLabel updates presentation without replacing the entry or its action.
+// Menus containing this item are notified so open menus remeasure and repaint.
+func (mi *MenuItem) SetLabel(label string) {
+	if mi.label == label {
+		return
+	}
+	mi.label = label
+	if mi.onChanged != nil {
+		mi.onChanged()
+	}
+}
 
 func (mi *MenuItem) SetEnabled(v bool) {
 	if mi.enabled == v {
