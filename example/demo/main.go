@@ -16,8 +16,10 @@ import (
 
 	"github.com/golang-gui/goui/animation"
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/example/demo/resource"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/mlang"
 	"github.com/golang-gui/goui/style"
 	"github.com/golang-gui/goui/theme/modern"
 	"github.com/golang-gui/goui/ui"
@@ -25,7 +27,7 @@ import (
 	wui "github.com/golang-gui/goui/widgets/ui"
 )
 
-var pageNames = []string{"基础控件", "文本编辑", "布局与滚动", "数据浏览", "多标签工作区", "菜单与覆盖层", "图形与动画", "系统与拖放", "窗口与检查"}
+var pageNames = []mlang.Getter{resource.Basic, resource.Text, resource.Layout, resource.Data, resource.Tabs, resource.Overlays, resource.Graphics, resource.System, resource.Windows}
 
 type demo struct {
 	app                                ui.App
@@ -74,24 +76,30 @@ type demo struct {
 }
 
 func main() {
+	// Demo startup language is an application choice, not an implicit Settings policy.
+	if err := mlang.SetLanguage("zh-CN"); err != nil {
+		log.Fatal(err)
+	}
 	d, err := newDemo()
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer d.stopActivities()
+	languageChanged := mlang.ConnectChanged(d.translateUI)
+	defer languageChanged.Disconnect()
 	if err := ui.Run("org.golanggui.Demo", d.build); err != nil {
 		log.Fatal(err)
 	}
 }
 
 func newDemo() (*demo, error) {
-	d := &demo{status: "欢迎。选择左侧分类开始体验；主题设置对所有窗口生效。", enabled: true, mixed: wui.CheckMixed,
+	d := &demo{status: resource.Welcome(), enabled: true, mixed: wui.CheckMixed,
 		group: widgets.NewCheckGroup(), drop: 0, fancyDrop: 0, wrap: true,
 		input: ui.MakeState("Hello, GOUI"), text: ui.NewTextModel("GOUI 文本编辑\n\n支持中文输入、选区、撤销与重做。\nEmoji: 👨‍👩‍👧‍👦 组合字符: é\n试试拖选文字、右键菜单，以及 Ctrl/Cmd+A、C、V、Z。\n\n这是一条较长的示例行，用来观察自动换行与水平滚动如何随着可用宽度发生变化。"),
 		inspection:  ui.NewTextModel("点击“读取快照”，检查当前窗口的角色、ID、边界、状态与子树。"),
 		motionValue: ui.MakeState(float32(32)), expanded: []string{"project", "src"}, dropped: "将文本、应用内卡片或外部文件拖到此处。"}
 	d.layoutStart, d.layoutRatio, d.dataStart, d.dataRatio = 200, .4, 220, .68
-	d.choices = gui.NewSliceListModel([]widgets.DropDownItem{{Text: "默认选项"}, {Text: "自定义展示"}, {Text: "不可选项目", Disabled: true}, {Text: "最后一个选项"}})
+	d.choices = gui.NewSliceListModel([]widgets.DropDownItem{{Text: resource.DefaultOption()}, {Text: resource.CustomOption()}, {Text: resource.DisabledOption(), Disabled: true}, {Text: resource.LastOption()}})
 	d.tree = widgets.NewTreeStore[string]()
 	d.tree.Append("", "project", "示例项目")
 	d.tree.Append("project", "src", "src")
@@ -124,9 +132,9 @@ func newDemo() (*demo, error) {
 func (d *demo) report(message string) { d.status = message; d.app.RequestUpdate() }
 func (d *demo) result(operation string, err error) {
 	if err != nil {
-		d.report(operation + "失败：" + err.Error())
+		d.report(fmt.Sprintf(resource.FailedFormat(), operation, err.Error()))
 	} else {
-		d.report(operation + "请求已完成")
+		d.report(fmt.Sprintf(resource.CompletedFormat(), operation))
 	}
 }
 func (d *demo) stopActivities() {
@@ -156,7 +164,7 @@ func (d *demo) navigate(index int) {
 	}
 	d.stopActivities()
 	d.page, d.panel, d.mask, d.toast = index, false, false, ""
-	d.report("当前页面：" + pageNames[index])
+	d.report(fmt.Sprintf(resource.CurrentPageFormat(), pageNames[index]()))
 }
 
 func (d *demo) build(app ui.App) ui.RootView {
@@ -188,29 +196,30 @@ func (d *demo) build(app ui.App) ui.RootView {
 		style.Name("demo-cell-edit").State(style.Focused).BorderColor(accents[d.accent]).BorderWidth(1),
 	)
 	side := make([]ui.View, 0, len(pageNames)+2)
-	side = append(side, ui.Label("功能分类").Style("demo-subheading"))
+	side = append(side, ui.Label(resource.Categories()).Style("demo-subheading"))
 	for i, name := range pageNames {
-		b := ui.Button(fmt.Sprintf("%02d  %s", i+1, name)).ID(fmt.Sprintf("nav-%d", i)).OnClick(func() { d.navigate(i) })
+		b := ui.Button().Content(ui.Label(fmt.Sprintf("%02d  %s", i+1, name())).WrapMode(gui.WrapWordChar)).ID(fmt.Sprintf("nav-%d", i)).OnClick(func() { d.navigate(i) })
 		if i == d.page {
 			b.Style(modern.Primary)
 		}
 		side = append(side, b)
 	}
-	side = append(side, ui.Label("Tab / Shift+Tab：焦点导航\nF5：刷新声明\n点击才启动系统操作").WrapMode(gui.WrapWordChar).Style(modern.MutedText))
+	side = append(side, ui.Label(resource.KeyboardHint()).WrapMode(gui.WrapWordChar).Style(modern.MutedText))
 	pages := []func() ui.View{d.basicPage, d.textPage, d.layoutPage, d.dataPage, d.tabsPage, d.overlaysPage, d.graphicsPage, d.systemPage, d.windowPage}
 	content := ui.VBox(
-		ui.HeaderBar(ui.HBox(ui.Icon(d.icons[0]).Size(22), ui.Label("GOUI · 控件与功能展厅").Style("demo-subheading")).Spacing(10)),
-		ui.HBox(
-			ui.Button("外观："+[]string{"跟随系统", "浅色", "深色"}[d.mode]).ID("theme-mode").OnClick(func() { d.mode = (d.mode + 1) % 3; app.RequestUpdate() }),
-			ui.Button("主题色："+[]string{"系统", "紫色", "绿色", "橙色"}[d.accent]).ID("theme-accent").OnClick(func() { d.accent = (d.accent + 1) % 4; app.RequestUpdate() }),
-			ui.Label("同一套 Modern 样式，随系统设置和主题重新绘制").Style(modern.MutedText),
-		).Padding(12).Spacing(10),
+		ui.HeaderBar(ui.HBox(ui.Icon(d.icons[0]).Size(22), ui.Label(resource.Title()).Style("demo-subheading")).Spacing(10)),
+		ui.HWrap(
+			ui.Button(fmt.Sprintf(resource.AppearanceFormat(), []string{resource.FollowSystem(), resource.Light(), resource.Dark()}[d.mode])).ID("theme-mode").OnClick(func() { d.mode = (d.mode + 1) % 3; app.RequestUpdate() }),
+			ui.Button(fmt.Sprintf(resource.AccentFormat(), []string{resource.SystemAccent(), resource.Purple(), resource.Green(), resource.Orange()}[d.accent])).ID("theme-accent").OnClick(func() { d.accent = (d.accent + 1) % 4; app.RequestUpdate() }),
+			d.languageMenu(settings.Language()),
+			ui.Label(fmt.Sprintf(resource.LanguageStatus(), settings.Language(), mlang.Language())).ID("language-status").Style(modern.MutedText),
+		).Padding(12).Spacing(10).LineSpacing(8),
 		demoBody(ui.VBox(side...).Spacing(8).Padding(12).MinWidth(190).MaxWidth(190).CrossAlign(layout.CrossStretch),
 			pages[d.page]()),
 		ui.HBox(ui.Label(d.status).ID("status").WrapMode(gui.WrapWordChar).Style(modern.MutedText).MainWeight(1)).Padding(10).MinHeight(44),
 	).CrossAlign(layout.CrossStretch)
-	windows := []ui.WindowView{ui.Window("main").Title("GOUI Demo").Chrome(ui.WindowChromeIntegrated).Size(1120, 800).MinSize(820, 600).
-		Shortcuts(ui.Shortcut(ui.KeyF5).OnActivate(func() { d.report("已重新协调声明式控件树") })).
+	windows := []ui.WindowView{ui.Window("main").Title(resource.Title()).Chrome(ui.WindowChromeIntegrated).Size(1120, 800).MinSize(820, 600).
+		Shortcuts(ui.Shortcut(ui.KeyF5).OnActivate(func() { d.report(resource.Refreshed()) })).
 		OnDestroy(func() { d.stopActivities(); app.Quit() }).Content(surface(content).Style("demo-background"))}
 	for _, window := range d.tabWindows[1:] {
 		windows = append(windows, d.tabWindowView(window))
@@ -230,13 +239,49 @@ func heading(title, description string) []ui.View {
 func section(title string, children ...ui.View) ui.View {
 	return surface(ui.VBox(append([]ui.View{ui.Label(title).Style("demo-subheading")}, children...)...).Spacing(12).Padding(16).CrossAlign(layout.CrossStretch)).Style("demo-card")
 }
-func page(title, description string, children ...ui.View) ui.View {
-	scroll := ui.ScrollView(ui.VBox(append(heading(title, description), children...)...).Spacing(16).Padding(16).CrossAlign(layout.CrossStretch)).Direction(ui.ScrollVertical).ID("page-" + title).MainWeight(1)
+func page(id, title, description string, children ...ui.View) ui.View {
+	scroll := ui.ScrollView(ui.VBox(append(heading(title, description), children...)...).Spacing(16).Padding(16).CrossAlign(layout.CrossStretch)).Direction(ui.ScrollVertical).ID("page-" + id).MainWeight(1)
 	// 页面视觉留白在视口外，才能同时避让滚动条；不承担窗口装饰补偿。
 	return ui.VBox(scroll).Padding(8).CrossAlign(layout.CrossStretch).MainWeight(1)
 }
-func fullPage(title, description string, children ...ui.View) ui.View {
-	return ui.VBox(append(heading(title, description), children...)...).ID("page-" + title).Spacing(12).Padding(16).CrossAlign(layout.CrossStretch).MainWeight(1)
+func fullPage(id, title, description string, children ...ui.View) ui.View {
+	return ui.VBox(append(heading(title, description), children...)...).ID("page-" + id).Spacing(12).Padding(16).CrossAlign(layout.CrossStretch).MainWeight(1)
+}
+
+var demoLanguages = []struct{ tag, name string }{
+	{"zh-CN", "简体中文"}, {"en", "English"}, {"ja", "日本語"}, {"ko", "한국어"},
+	{"de", "Deutsch"}, {"fr", "Français"}, {"ru", "Русский"}, {"ar", "العربية"},
+}
+
+func (d *demo) languageMenu(systemLanguage string) ui.View {
+	items := make([]*ui.MenuItemView, 0, len(demoLanguages)+2)
+	for _, choice := range demoLanguages {
+		label := choice.name
+		if choice.tag == mlang.Language() {
+			label = "✓ " + label
+		}
+		items = append(items, ui.MenuItem(label, func() {
+			err := mlang.SetLanguage(choice.tag)
+			d.result(resource.SelectLanguage(), err)
+		}))
+	}
+	items = append(items, ui.MenuSeparator(), ui.MenuItem(resource.UseSystemLanguage()+" ("+systemLanguage+")", func() {
+		err := mlang.SetLanguage(d.app.Settings().Language())
+		d.result(resource.UseSystemLanguage(), err)
+	}))
+	return ui.MenuButton(fmt.Sprintf(resource.LanguageFormat(), mlang.Language())).ID("language-menu").Menu(items...)
+}
+
+// Update presentation in the existing model, not user edits or model identity.
+func (d *demo) translateUI() {
+	labels := []string{resource.DefaultOption(), resource.CustomOption(), resource.DisabledOption(), resource.LastOption()}
+	for i, label := range labels {
+		item := d.choices.ItemAt(i)
+		if item.Text != label {
+			item.Text = label
+			d.choices.Set(i, item)
+		}
+	}
 }
 func (d *demo) showToast(text string) {
 	d.toast = text

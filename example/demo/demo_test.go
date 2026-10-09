@@ -5,13 +5,68 @@ import (
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/example/demo/resource"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/mlang"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/ui"
 	"github.com/golang-gui/goui/widgets"
 	wui "github.com/golang-gui/goui/widgets/ui"
 )
+
+func TestLanguageChangePreservesDemoModelsAndState(t *testing.T) {
+	previous := mlang.Language()
+	t.Cleanup(func() { _ = mlang.SetLanguage(previous) })
+	d, err := newDemo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.app = new(demoTestApp)
+	defer d.stopActivities()
+	choices, tree, list, table, model := d.choices, d.tree, d.list, d.table, d.text
+	d.input.Set("user input")
+	d.text.SetText("user editor text")
+	d.selection = ui.TextSelection{Anchor: 1, Caret: 5}
+	d.drop, d.fancyDrop, d.page = 3, 1, 1
+	d.tableWidths[0] = 257
+	d.table.setNote("file-000", "edited note")
+	d.table.sort("size", widgets.SortDescending)
+	firstRow := d.table.RowID(0)
+	d.documents["document-1"].SetText("edited document")
+	d.tabWindows[0].current = "document-2"
+	canUndo := model.CanUndo()
+	listener := mlang.ConnectChanged(d.translateUI)
+	defer listener.Disconnect()
+	for _, choice := range demoLanguages {
+		if err := mlang.SetLanguage(choice.tag); err != nil {
+			t.Fatal(err)
+		}
+		d.translateUI()
+		if choices != d.choices || tree != d.tree || list != d.list || table != d.table || model != d.text {
+			t.Fatal("language change replaced a persistent model")
+		}
+		if d.input.Get() != "user input" || model.Text() != "user editor text" || model.CanUndo() != canUndo ||
+			d.selection != (ui.TextSelection{Anchor: 1, Caret: 5}) || d.page != 1 || d.drop != 3 || d.fancyDrop != 1 ||
+			d.tableWidths[0] != 257 || d.table.RowID(0) != firstRow || d.documents["document-1"].Text() != "edited document" ||
+			d.tabWindows[0].current != "document-2" {
+			t.Fatal("translation overwrote user state")
+		}
+		for i := 0; i < table.ItemsCount(); i++ {
+			if row := table.ItemAt(i); row.ID == "file-000" && row.Note != "edited note" {
+				t.Fatal("translation overwrote table edit")
+			}
+		}
+		if choices.ItemAt(0).Text != resource.DefaultOption() || !choices.ItemAt(2).Disabled {
+			t.Fatal("presentation not updated or disabled state lost")
+		}
+		for i, getter := range pageNames {
+			if getter() == "" {
+				t.Fatalf("page %d has no translated name", i)
+			}
+		}
+	}
+}
 
 // 这些测试只覆盖例程自己的内存数据和布局适配，不创建窗口/事件循环。
 func TestInitialModelsAndAssets(t *testing.T) {
@@ -146,7 +201,7 @@ func TestDetachedTabUsesTargetControlsOccupancy(t *testing.T) {
 func TestPageGutterIsOutsideScrollViewport(t *testing.T) {
 	for _, origin := range []float32{0, 5} {
 		scroll := gui.NewScrollView()
-		view := page("gutter", "test").(*ui.BoxView)
+		view := page("gutter", "gutter", "test").(*ui.BoxView)
 		box := view.Mount(nil).(*gui.LinearBox)
 		view.Update(bodyContext{children: []gui.Widget{scroll}}, box)
 		box.Measure(layout.Tight(geometry.Size{Width: 500, Height: 300}))
