@@ -3,7 +3,7 @@
 // 启动：go run ./example/modern。初始：系统主题、系统主题色、启用 Modern。
 // 操作与预期：
 //  1. 切换 Mode 的 Light/Dark，文字、背景及语义色适配亮暗；切换 Accent 不改变 Warning/Error/Success。
-//  2. 悬停/按下 Flat action 和 Menu，中性底色出现；点击 Flat action 更新输入框。
+//  2. 悬停/按下 Flat action 和 Menu，出现与普通按钮一致的中性底色和 1 DIP 描边，文字位置不跳动；点击 Flat action 更新输入框。
 //  3. Disabled flat 无底色，不可点击或 Tab 聚焦；Flat action 的 Tab 聚焦显示 2 DIP 边框。
 //  4. 切换 Bare GUI，清空自定义 StyleName，恢复 GUI 兜底，文字不丢失。
 //  5. 打开菜单、滚动长菜单、改变窗口大小，检查菜单与控件无裁剪或透明色残留。

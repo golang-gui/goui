@@ -233,7 +233,7 @@ func TestSidebarSurfaceHierarchy(t *testing.T) {
 		for _, accent := range []color.Color{nil, color.Black, color.White, rgb(0xFF0000)} {
 			sheet := Sheet(Options{Dark: dark, AccentColor: accent})
 			bg, _ := resolved(sheet, Sidebar, style.Normal).BackgroundColor()
-			// Sidebar remains darker than the window/card and existing flat
+			// Sidebar remains darker than the window/card and flat
 			// interaction surfaces; it no longer lies between window and hover.
 			for _, sel := range []style.Sel{{Name: "window"}, {Name: Card}, {Name: Flat, State: style.Hovered}, {Name: Flat, State: style.Pressed}} {
 				surface, _ := sheet.Resolve(sel).BackgroundColor()
@@ -253,9 +253,9 @@ func TestSidebarSurfaceHierarchy(t *testing.T) {
 
 func TestFlatButtonAppearance(t *testing.T) {
 	for _, dark := range []bool{false, true} {
-		hover, pressed := rgb(0xEDEDF0), rgb(0xE5E5E7)
+		hover, pressed, border := rgb(0xF6F6F6), rgb(0xEDEDED), rgb(0xC6C6CE)
 		if dark {
-			hover, pressed = rgb(0x28282C), rgb(0x303034)
+			hover, pressed, border = rgb(0x39393F), rgb(0x414147), rgb(0x55555F)
 		}
 		for _, accent := range []color.Color{nil, color.Black, color.White, rgb(0xFF0000)} {
 			sheet := Sheet(Options{Dark: dark, AccentColor: accent})
@@ -266,15 +266,19 @@ func TestFlatButtonAppearance(t *testing.T) {
 			for _, test := range []struct {
 				state style.State
 				bg    color.RGBA
-			}{{style.Normal, color.RGBA{}}, {style.Hovered, hover}, {style.Pressed, pressed},
-				{style.Focused, color.RGBA{}}, {style.FocusVisible, color.RGBA{}}, {style.Disabled, color.RGBA{}}} {
+				width float32
+			}{{style.Normal, color.RGBA{}, 0}, {style.Hovered, hover, 1}, {style.Pressed, pressed, 1},
+				{style.Focused, color.RGBA{}, 0}, {style.FocusVisible, color.RGBA{}, 0}, {style.Disabled, color.RGBA{}, 0}} {
 				s := resolved(sheet, Flat, test.state)
 				bg, ok := s.BackgroundColor()
 				if !ok || rgba(bg) != test.bg {
 					t.Fatalf("flat dark=%v state=%v: %v, want %v", dark, test.state, bg, test.bg)
 				}
-				if width, ok := s.BorderWidth(); !ok || width != 0 {
-					t.Fatal("flat button added a normal border")
+				if width, ok := s.BorderWidth(); !ok || width != test.width {
+					t.Fatalf("flat border dark=%v state=%v: %g, want %g", dark, test.state, width, test.width)
+				}
+				if ink, ok := s.BorderColor(); !ok || rgba(ink) != border {
+					t.Fatalf("flat border color dark=%v state=%v: %v, want %v", dark, test.state, ink, border)
 				}
 				if radius, _ := s.Radius(); radius != 6 {
 					t.Fatal("flat button lost its rounded interaction surface")
@@ -287,6 +291,13 @@ func TestFlatButtonAppearance(t *testing.T) {
 				if rgba(fg) != wantForeground {
 					t.Fatalf("flat foreground dark=%v state=%v: %v, want %v", dark, test.state, fg, wantForeground)
 				}
+				if test.state == style.Hovered || test.state == style.Pressed {
+					// 先断言独立 RGB/宽度预期，再验证完整交互表面与普通按钮一致。
+					ordinary := resolved(sheet, "button", test.state)
+					if !style.SameRules([]style.Rule{{Style: s}}, []style.Rule{{Style: ordinary}}) {
+						t.Fatalf("flat interaction differs from button: dark=%v state=%v", dark, test.state)
+					}
+				}
 				for _, surface := range []string{"window", Card, Sidebar} {
 					background, _ := resolved(sheet, surface, style.Normal).BackgroundColor()
 					if test.bg.A > 0 {
@@ -296,6 +307,45 @@ func TestFlatButtonAppearance(t *testing.T) {
 						t.Fatal("flat text contrast fell below 4.5:1")
 					}
 				}
+			}
+		}
+	}
+}
+
+func TestButtonInteractionBorderOverrides(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		rules := Rules(Options{Dark: dark})
+		// 普通按钮仍从自身常态继承描边，不因 Flat 的状态规则被固定为 1 DIP。
+		for _, name := range []string{"button", Primary} {
+			custom := style.Sheet(append(rules, style.Name(name).BorderWidth(3))...)
+			for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed, style.Disabled} {
+				if width, _ := resolved(custom, name, state).BorderWidth(); width != 3 {
+					t.Fatalf("%s/%v lost inherited application border: %g", name, state, width)
+				}
+			}
+		}
+		custom := style.Sheet(append(rules,
+			style.Name(Flat).State(style.Hovered).BorderWidth(0).BackgroundColor(color.White),
+			style.Name(Flat).State(style.Pressed).BorderWidth(2).BorderColor(color.Black),
+		)...)
+		if width, _ := resolved(custom, Flat, style.Hovered).BorderWidth(); width != 0 {
+			t.Fatal("application cannot disable flat hover border")
+		}
+		if bg, _ := resolved(custom, Flat, style.Hovered).BackgroundColor(); bg != color.White {
+			t.Fatal("application cannot override flat hover background")
+		}
+		pressed := resolved(custom, Flat, style.Pressed)
+		width, _ := pressed.BorderWidth()
+		ink, _ := pressed.BorderColor()
+		if width != 2 || ink != color.Black {
+			t.Fatal("application cannot override flat pressed border")
+		}
+		for _, state := range []style.State{style.Normal, style.Disabled} {
+			s := resolved(custom, Flat, state)
+			width, _ := s.BorderWidth()
+			bg, _ := s.BackgroundColor()
+			if width != 0 || rgba(bg).A != 0 {
+				t.Fatal("flat interaction overrides leaked into rest/disabled")
 			}
 		}
 	}
