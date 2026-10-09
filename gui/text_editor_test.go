@@ -12,6 +12,7 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui/textedit"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/mlang"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics/software"
@@ -362,6 +363,54 @@ func TestTextEditorContextMenuCommands(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestTextEditorContextMenuLanguageAndLifecycle(t *testing.T) {
+	previous := mlang.Language()
+	t.Cleanup(func() { _ = mlang.SetLanguage(previous) })
+	_ = mlang.SetLanguage("en")
+	editor, win, _, clip := newEditorMenuFixture(t, false)
+	editor.setSelectionValue(TextSelection{Anchor: 1, Caret: 4})
+	pm := editorMenuOpen(t, editor, win)
+	copyItem := editor.contextMenu.items[textCopy]
+	model := pm.Menu()
+	for _, tc := range []struct{ tag, copy string }{
+		{"zh-CN", "复制"}, {"ja", "コピー"}, {"ko", "복사"}, {"de", "Kopieren"},
+		{"fr", "Copier"}, {"ru", "Копировать"}, {"ar", "نسخ"},
+	} {
+		if err := mlang.SetLanguage(tc.tag); err != nil {
+			t.Fatal(err)
+		}
+		settlePlacement(t, pm.popover.(*popover))
+		if !pm.Visible() || pm.Menu() != model || editor.contextMenu.items[textCopy] != copyItem ||
+			copyItem.Label() != tc.copy || editor.selection != (TextSelection{Anchor: 1, Caret: 4}) || editor.model.Text() != "abcdef" {
+			t.Fatalf("%s: translation recreated menu or changed editor state", tc.tag)
+		}
+	}
+	editorMenuClick(t, pm, "نسخ") // normal pointer dispatch still executes Copy
+	if clip.text != "bcd" || pm.Visible() || win.FocusedWidget() != editor.owner {
+		t.Fatal("translated item lost command or focus semantics")
+	}
+	owner := editor.owner
+	win.SetWidget(nil)
+	if editor.contextMenu.language != nil {
+		t.Fatal("unmount retained the language connection")
+	}
+	_ = mlang.SetLanguage("ja")
+	if copyItem.Label() != "نسخ" {
+		t.Fatal("unmounted editor reacted to a language change")
+	}
+	win.SetWidget(owner)
+	owner.Arrange(geometry.Rect(0, 0, 209, 108))
+	win.SetFocusedWidget(owner)
+	pm = editorMenuOpen(t, editor, win)
+	if editor.contextMenu.language == nil || editor.contextMenu.items[textCopy].Label() != "コピー" {
+		t.Fatal("remount did not reconnect or read the current language")
+	}
+	_ = mlang.SetLanguage("zh-CN")
+	if !pm.Visible() || editor.contextMenu.items[textCopy].Label() != "复制" {
+		t.Fatal("remounted menu did not translate live")
 	}
 }
 

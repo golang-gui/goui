@@ -5,6 +5,7 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
+	"github.com/golang-gui/goui/internal/resource"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/style"
@@ -235,11 +236,11 @@ func (g *tabGlyph) Paint(p gui.Painter) {
 
 func (g *tabGlyph) Snapshot() gui.WidgetInfo {
 	info := g.WidgetBase.Snapshot()
-	info.Role, info.Text = gui.RoleImage, "Close tab"
+	info.Role, info.Text = gui.RoleImage, resource.CloseTab()
 	if g.direction < 0 {
-		info.Text = "Scroll tabs left"
+		info.Text = resource.ScrollTabsLeft()
 	} else if g.direction > 0 {
-		info.Text = "Scroll tabs right"
+		info.Text = resource.ScrollTabsRight()
 	}
 	return info
 }

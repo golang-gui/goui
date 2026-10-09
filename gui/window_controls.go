@@ -3,6 +3,7 @@ package gui
 import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
+	"github.com/golang-gui/goui/internal/resource"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
@@ -219,9 +220,9 @@ func (c *windowControls) activate(index int) {
 func (c *windowControls) Snapshot() WidgetInfo {
 	info := c.WidgetBase.Snapshot()
 	info.Role = RoleHBox
-	for i, text := range []string{"Minimize", "Maximize", "Close"} {
+	for i, text := range []string{resource.Minimize(), resource.Maximize(), resource.Close()} {
 		if i == 1 && c.window.State() == WindowStateMaximized {
-			text = "Restore"
+			text = resource.Restore()
 		}
 		if i < len(info.Children) {
 			info.Children[i].Text = text

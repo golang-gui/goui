@@ -11,6 +11,7 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
+	"github.com/golang-gui/goui/mlang"
 	"github.com/golang-gui/goui/style"
 
 	"github.com/xuges/gothread"
@@ -77,7 +78,9 @@ var (
 // Run creates the application, mounts the declarative tree returned by build, and
 // runs the event loop until the app quits. build receives the App handle, which it
 // may stash, capture in handlers, or call from other goroutines.
-// System settings changes automatically request a coalesced rebuild.
+// System settings and mlang language changes automatically request a coalesced
+// rebuild. Resource getters should be called inside build, not resolved once
+// outside it. Change language on the UI thread, or inside App.Post.
 // appId is the immutable application identity (for example "com.example.Editor"),
 // not a window ID. Empty leaves it unspecified. It is passed to gui.NewApplication
 // before build runs and does not participate in declarative updates.
@@ -103,10 +106,12 @@ func Run(appId string, build func(app App) RootView) error {
 	return a.run()
 }
 
-// run owns the settings subscription, including the initial build's failure
-// path and native-loop exit (which need not pass through ui.App.Quit).
+// run owns settings and language subscriptions, including the initial build's
+// failure path and native-loop exit (which need not pass through ui.App.Quit).
 func (a *app) run() error {
 	defer a.stop()
+	languageHandle := mlang.ConnectChanged(a.RequestUpdate)
+	defer languageHandle.Disconnect()
 	if settings := a.gui.Settings(); settings != nil {
 		handle := settings.ConnectChanged(a.RequestUpdate)
 		defer handle.Disconnect()

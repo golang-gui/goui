@@ -54,6 +54,11 @@ func TestMenuItemChangesNotifyModel(t *testing.T) {
 	if changes != 2 {
 		t.Fatalf("no-op SetEnabled should not notify, got %d", changes)
 	}
+	item.SetLabel("复制")
+	item.SetLabel("复制")
+	if changes != 3 || item.Label() != "复制" || m.ItemAt(0) != item || item.Action() == nil {
+		t.Fatal("label change must notify once and preserve item identity/action")
+	}
 }
 
 // --- menuContent rendering ---

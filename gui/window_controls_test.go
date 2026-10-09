@@ -8,12 +8,32 @@ import (
 	"github.com/golang-gui/goui/core/colors"
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/mlang"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/software"
 	"github.com/golang-gui/goui/style"
 )
+
+func TestWindowControlsLocalizedSnapshot(t *testing.T) {
+	previous := mlang.Language()
+	t.Cleanup(func() { _ = mlang.SetLanguage(previous) })
+	win, native := chromeFixture(t, false, true)
+	_ = mlang.SetLanguage("ja")
+	info := win.controls.Snapshot()
+	for i, want := range []string{"最小化", "最大化", "閉じる"} {
+		if info.Children[i].Text != want || info.Children[i].Role != RoleButton {
+			t.Fatalf("button %d lost localized text or role: %+v", i, info.Children[i])
+		}
+	}
+	native.state = WindowStateMaximized
+	_ = win.DispatchEvent(events.StateEvent{State: native.state})
+	_ = mlang.SetLanguage("ar")
+	if got := win.controls.Snapshot().Children[1].Text; got != "استعادة" {
+		t.Fatalf("maximized controls did not localize Restore: %q", got)
+	}
+}
 
 func TestRectangularCaptionAppearance(t *testing.T) {
 	for _, dark := range []bool{false, true} {
