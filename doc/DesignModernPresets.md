@@ -1,0 +1,96 @@
+# Modern 通用样式预设
+
+## 范围与参考
+
+2026-10-09：在现有 `theme/modern` 中增加六个具名预设，不增加 Widget、
+Style 字段、CSS class 组合、隐式父子继承或平台适配。
+
+参考 [libadwaita 1.9.4 的样式约定](https://gnome.pages.gitlab.gnome.org/libadwaita/doc/1.9/style-classes.html)：
+Flat 区分静止与交互表面，Card 表达内容分组，Warning/Error/Success 表达状态。
+这里只采用视觉语义，不复制 GTK 的 class 组合、继承或自动修改子控件机制。
+GOUI 的 Sidebar 表示背景表面，不等同于 libadwaita 的 navigation-sidebar 列表策略。
+
+## API 与规则
+
+| 常量 | StyleName | 消费方与默认值 |
+| --- | --- | --- |
+| `modern.Card` | `card` | 绘制背景的 Widget；中性表面、1 DIP 柔和边框、10 DIP 圆角、明确无阴影 |
+| `modern.Sidebar` | `sidebar` | 绘制背景的 Widget；中性底色、直角、零边框、明确无阴影 |
+| `modern.Flat` | `flat` | Button/MenuButton；静止和禁用透明、悬停/按下中性灰、6 DIP 圆角、零普通边框 |
+| `modern.Warning` | `warning` | Label/Icon 等前景消费者；警告色，不添加背景、边框、圆角或阴影 |
+| `modern.Error` | `error` | Label/Icon 等前景消费者；错误色，不表示危险操作按钮或输入校验状态 |
+| `modern.Success` | `success` | Label/Icon 等前景消费者；成功色，不添加表面装饰 |
+
+每个预设都有独立的正文前景与主题字体规则。禁用时使用既有中性禁用色；
+不影响控件行为。Flat 复用按钮的独立 focus part：鼠标聚焦零边框，
+FocusVisible 为 2 DIP 柔化主题色边框，不改变布局或悬停/按下底色。
+应用仍可在 `modern.Rules` 后追加规则覆盖同一 selector。
+
+Color 按现有标准库 sRGB 值表达，交给既有绘制边界转换。状态色只随 Dark 改变，
+不随 AccentColor 改变：
+
+| 前景 | 亮色 | 暗色 |
+| --- | --- | --- |
+| Warning | `#8A5900` | `#EAC16D` |
+| Error | `#BA3038` | `#F3959A` |
+| Success | `#276B43` | `#83CAA2` |
+
+三种状态前景在默认 Window/Card/Sidebar 和普通按钮表面上保持至少 4.5:1
+对比度；禁用色沿用既有弱化表现，不承诺正文对比度。
+
+样式名是完整预设，而不是叠加 class；`Style("flat primary")` 没有组合语义。
+父控件不把样式传给子 Label/Icon，调用方分别设置。
+Card/Sidebar 不提供 Padding 或布局，也不让不绘制背景的 HBox/VBox 自动变成表面。
+只有自绘表面的消费者才绘制这些字段。
+
+## 示例集成
+
+`example/demo` 继续使用现有应用自定义 surface Bin：全部 section 选用 Card，
+侧栏外壳选用 Sidebar，未选中的导航按钮选用 Flat，当前页保留 Primary。
+基础页增加可点击/禁用 Flat 以及独立设置样式的警告、错误、成功文字和图标；
+新增文案在 resource 中提供现有八语言翻译，固定 ID 不参与翻译。
+不修改 Window Integrated 避让、透明窗口背景、页面滚动边距或控件默认行为。
+
+`example/modern` 增加 Flat、禁用 Flat 和三种状态文字。
+GUI 兜底模式清空这些预设名，不依赖未启用的 Modern 规则。
+
+## 验证
+
+包内测试检查独立颜色预期、亮暗/极端主题色、字体完整性、状态前景、
+禁用、Flat 的六种状态、focus part、对比度、应用覆盖及其他名字不受影响。
+demo 布局回归使用实际 surface 承载侧栏，仍须填满分配空间且不增加边缘内缩；
+资源测试覆盖新文本的八语言与格式参数。
+
+本机窗口通过真实桌面输入检查：亮暗/主题色切换、Flat 悬停/按下/点击、
+禁用不可激活、Tab 焦点、语义图标与文字、侧栏导航、卡片边缘、缩窄后滚动。
+不使用 DevServer；后端和缩放覆盖值与实际桌面缩放分别记录。
+
+## 实施与验收记录（2026-10-09）
+
+- 六个预设、完整 Flat 交互/focus、状态色与独立字体规则已实现；不修改 gui、
+  ui、style 或 platform。demo 已移除私有 demo-card 配色，采用公共 Card/Sidebar，
+  新增七条具名八语言资源。导航当前页仍为 Primary，其他项使用 Flat。
+- `go test ./...` 与非缓存 `go test -json -count=1 ./...` 通过：2138 项通过、
+  14 项既有窗口/剪贴板/GLX 人工测试跳过，无新增失败或跳过。
+- `go test -race ./theme/modern ./example/demo/...` 与
+  `go vet ./theme/modern ./example/demo/... ./example/modern` 通过。
+- Windows amd64、macOS arm64 的 demo 与 modern 示例交叉编译通过，
+  `CGO_ENABLED=0`；没有把编译记录为原生运行或桌面外观验收。
+- 本机 Linux amd64/X11，隔离 TigerVNC 1.12.0 / Xfwm4 合成桌面：
+  Software 1x、OpenGL 请求配置 2x 的 demo 亮暗、主题切换和显示通过。
+  2x 是 `GOUI_PLAT_SCALE` 应用覆盖，不代表物理显示器 HiDPI/混合 DPI；
+  平台工厂仍允许 OpenGL 初始化失败后回退 Software，未插入私有后端探针。
+- 真实桌面输入验证 Flat 悬停/按下/点击反馈、禁用点击不改变反馈、
+  Shift+Tab/Tab 聚焦边框、侧栏切页；Software 1x 另检查 820×600 缩窄和滚动。
+  截图采样用独立字节预期断言 Flat 悬停 `#EDEDF0`、按下 `#E5E5E7`，
+  Card/Sidebar 两套背景以及三种语义色的实心文字/图标像素；
+  改主题色后语义行像素保持相同。形状、文字抗锯齿不套跨平台金图。
+- modern 示例 Software 1x 检查 Flat MenuButton 打开菜单、Flat action 更新
+  输入框以及 Bare GUI 清空预设名；截图的透明 popup 黑色外侧是单独 drawable
+  采集时丢弃 alpha 的结果，不当作桌面合成外观证据。
+- 验证产物在 `/tmp/goui-modern-presets.9vRfgV/`，不写入仓库。
+  程序正常关闭；隔离桌面随后停止，不操作用户原来的桌面会话。
+
+未执行：Windows/macOS 原生桌面、本机 Software 2x/OpenGL 请求配置 1x 的
+完整组合、物理显示器 HiDPI、八语言母语外观校对。新增文本的八语言定义、
+实际解析与格式参数已由 resource 包测试覆盖。本轮没有平台或绘制契约变更。
