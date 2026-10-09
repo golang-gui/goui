@@ -15,11 +15,12 @@ var (
 	advapi32Dll = syscall.NewLazyDLL("advapi32.dll")
 
 	// Kernel
-	procGetModuleHandleW      = kernel32Dll.NewProc("GetModuleHandleW")
-	procLocalAlloc            = kernel32Dll.NewProc("LocalAlloc")
-	procLocalFree             = kernel32Dll.NewProc("LocalFree")
-	procWaitForSingleObjectEx = kernel32Dll.NewProc("WaitForSingleObjectEx")
-	procCloseHandle           = kernel32Dll.NewProc("CloseHandle")
+	procGetModuleHandleW            = kernel32Dll.NewProc("GetModuleHandleW")
+	procGetUserPreferredUILanguages = kernel32Dll.NewProc("GetUserPreferredUILanguages")
+	procLocalAlloc                  = kernel32Dll.NewProc("LocalAlloc")
+	procLocalFree                   = kernel32Dll.NewProc("LocalFree")
+	procWaitForSingleObjectEx       = kernel32Dll.NewProc("WaitForSingleObjectEx")
+	procCloseHandle                 = kernel32Dll.NewProc("CloseHandle")
 
 	// Window
 	procRegisterClassExW         = user32Dll.NewProc("RegisterClassExW")
@@ -171,6 +172,30 @@ func GetModuleHandle(name LPCWSTR) (HMODULE, error) {
 		return 0, err
 	}
 	return HMODULE(ret), nil
+}
+
+// GetUserPreferredUILanguages preserves the native size-query/MULTI_SZ contract.
+// size is measured in UTF-16 code units, not bytes; count is the number of languages.
+func GetUserPreferredUILanguages(flags DWORD, count *DWORD, buffer *uint16, size *DWORD) error {
+	var pin runtime.Pinner
+	if count != nil {
+		pin.Pin(count)
+	}
+	if buffer != nil {
+		pin.Pin(buffer)
+	}
+	if size != nil {
+		pin.Pin(size)
+	}
+	defer pin.Unpin()
+	ret, _, err := procGetUserPreferredUILanguages.Call(uintptr(flags), uintptr(unsafe.Pointer(count)), uintptr(unsafe.Pointer(buffer)), uintptr(unsafe.Pointer(size)))
+	if ret == 0 {
+		if err == syscall.Errno(0) {
+			return syscall.EINVAL
+		}
+		return err
+	}
+	return nil
 }
 
 func WaitForSingleObjectEx(handle HANDLE, milliseconds DWORD, alertable BOOL) DWORD {

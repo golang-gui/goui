@@ -5,6 +5,9 @@ import (
 	"unsafe"
 )
 
+// GetUserPreferredUILanguages language-name output (rather than LANGID strings).
+const MUI_LANGUAGE_NAME DWORD = 0x8
+
 // C types
 type (
 	Cshort   = int16

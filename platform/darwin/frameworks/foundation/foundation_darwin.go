@@ -24,6 +24,7 @@ func InitFoundation() (err error) {
 	initNSString()
 	initNSNotification()
 	initNSBundle()
+	initNSLocale()
 
 	err = initNSRunLoopMode()
 	if err != nil {
@@ -39,6 +40,27 @@ func InitFoundation() (err error) {
 }
 
 // Types
+
+// NSLocale
+
+func initNSLocale() {
+	NSLocaleClassId.Class = objc.GetClass("NSLocale")
+	NSLocaleSel.PreferredLanguages = objc.RegisterName("preferredLanguages")
+}
+
+var (
+	NSLocaleClassId NSLocaleClass
+	NSLocaleSel     struct{ PreferredLanguages objc.SEL }
+)
+
+type NSLocaleClass struct{ NSObjectClass }
+
+// PreferredLanguages returns the borrowed NSArray handle. NSArray's existing
+// binding lives in appkit; the caller wraps it and copies strings before the
+// current autorelease pool ends. No preferred-language selection happens here.
+func (c NSLocaleClass) PreferredLanguages() ID {
+	return objc.Send[ID](ID(c.Class), NSLocaleSel.PreferredLanguages)
+}
 
 type (
 	ID  = objc.ID

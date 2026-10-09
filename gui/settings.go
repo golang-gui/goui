@@ -7,6 +7,7 @@ import (
 
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/platform"
+	"golang.org/x/text/language"
 )
 
 // ColorScheme re-exports the platform color scheme so gui consumers use gui
@@ -33,6 +34,9 @@ var (
 // The initial snapshot is available before Run; later changes are polled while
 // the application event loop runs. Getters never query native APIs themselves.
 type Settings interface {
+	// Language is the system's preferred UI language (BCP 47), or "en" when
+	// unavailable/neutral. It does not change mlang's application language.
+	Language() string
 	ColorScheme() ColorScheme
 	AccentColor() color.Color
 	FontFamily() string
@@ -53,6 +57,8 @@ func newSettings(platSettings platform.Settings) (s *settings) {
 	s.current = s.snapshot()
 	return
 }
+
+func (s *settings) Language() string { return s.current.language }
 
 func (s *settings) ColorScheme() ColorScheme {
 	return s.current.scheme
@@ -78,21 +84,28 @@ func (s *settings) ConnectChanged(fn func()) signal.Handle {
 
 // settingsSnapshot owns comparable values, including a copy of the accent color.
 type settingsSnapshot struct {
-	scheme ColorScheme
-	accent color.RGBA64
-	family string
-	size   float32
+	language string
+	scheme   ColorScheme
+	accent   color.RGBA64
+	family   string
+	size     float32
 }
 
 func (s *settings) snapshot() settingsSnapshot {
 	next := settingsSnapshot{
-		scheme: defaultColorScheme,
-		accent: color.RGBA64Model.Convert(defaultAccentColor).(color.RGBA64),
-		family: defaultFontFamily,
-		size:   defaultFontSize,
+		language: "en",
+		scheme:   defaultColorScheme,
+		accent:   color.RGBA64Model.Convert(defaultAccentColor).(color.RGBA64),
+		family:   defaultFontFamily,
+		size:     defaultFontSize,
 	}
 	if s.settings == nil {
 		return next
+	}
+	if value, err := s.settings.Language(); err == nil {
+		if tag, err := language.Parse(value); err == nil && tag != language.Und {
+			next.language = tag.String()
+		}
 	}
 	if v, err := s.settings.ColorScheme(); err == nil && (v == ColorSchemeLight || v == ColorSchemeDark) {
 		next.scheme = v

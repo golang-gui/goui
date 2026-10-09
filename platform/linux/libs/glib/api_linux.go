@@ -18,12 +18,25 @@ var (
 	gObjectUnref = gobject.NewSymbol("g_object_unref")
 	gObjectGet   = gobject.NewSymbol("g_object_get")
 
-	gFree          = glib.NewSymbol("g_free")
-	gFilenameToURI = glib.NewSymbol("g_filename_to_uri")
-	gErrorFree     = glib.NewSymbol("g_error_free")
+	gFree             = glib.NewSymbol("g_free")
+	gGetLanguageNames = glib.NewSymbol("g_get_language_names")
+	gFilenameToURI    = glib.NewSymbol("g_filename_to_uri")
+	gErrorFree        = glib.NewSymbol("g_error_free")
 
 	gAppInfoLaunchDefaultForURI = gio.NewSymbol("g_app_info_launch_default_for_uri")
 )
+
+// GetLanguageNames copies GLib's ordered locale preferences. The native array
+// and strings are borrowed and must not be freed. This does not need GTK/X11.
+func GetLanguageNames() []string {
+	ptr := cgo.CallRet[**byte](gGetLanguageNames.Addr())
+	var result []string
+	for ptr != nil && *ptr != nil {
+		result = append(result, cgo.GoString(unsafe.Pointer(*ptr)))
+		ptr = (**byte)(unsafe.Add(unsafe.Pointer(ptr), unsafe.Sizeof(*ptr)))
+	}
+	return result
+}
 
 type Object struct {
 	GObject uintptr

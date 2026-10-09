@@ -24,6 +24,9 @@ func (c ColorScheme) String() string {
 }
 
 type Settings interface {
+	// Language returns the user's first preferred UI language as a BCP 47 tag,
+	// not regional formatting preferences. A neutral locale is "und".
+	Language() (string, error)
 	ColorScheme() (ColorScheme, error)
 	AccentColor() (color.Color, error)
 	FontFamily() (string, error)

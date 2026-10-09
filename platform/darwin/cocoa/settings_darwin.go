@@ -17,6 +17,22 @@ func newSettings() (common.Settings, error) {
 	return &Settings{}, nil
 }
 
+func (Settings) Language() (string, error) {
+	languages := NSArray{NSObject: NSObject{ID: NSLocaleClassId.PreferredLanguages()}}
+	if languages.IsNil() || languages.Count() == 0 {
+		return "", common.ErrSettingUnsupported
+	}
+	first := NSString{NSObject: NSObject{ID: languages.ObjectAtIndex(0)}}
+	if first.IsNil() {
+		return "", common.ErrSettingUnsupported
+	}
+	value := first.UTF8String()
+	if value == "" {
+		return "", common.ErrSettingUnsupported
+	}
+	return value, nil
+}
+
 func (Settings) ColorScheme() (common.ColorScheme, error) {
 	app := NSApp
 	if app.IsNil() {

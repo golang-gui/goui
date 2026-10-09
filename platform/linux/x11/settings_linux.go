@@ -1,15 +1,18 @@
 package x11
 
 import (
+	"fmt"
 	"image/color"
 	"strings"
 	"sync"
 
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/linux/libs/glib"
 	"github.com/golang-gui/goui/platform/linux/libs/gtk"
 	"github.com/golang-gui/goui/platform/linux/libs/pango"
 	"github.com/golang-gui/goui/platform/linux/libs/pango_cairo"
+	"golang.org/x/text/language"
 )
 
 type Settings struct{}
@@ -22,6 +25,40 @@ var gtkInit struct {
 
 func newSettings() (common.Settings, error) {
 	return &Settings{}, nil
+}
+
+func (Settings) Language() (string, error) {
+	names := glib.GetLanguageNames()
+	if len(names) == 0 {
+		return "", common.ErrSettingUnsupported
+	}
+	return localeLanguage(names[0])
+}
+
+// POSIX locale encoding/currency modifiers are not language subtags. Preserve
+// language/script/region facts; do not turn C into an invented English setting.
+func localeLanguage(locale string) (string, error) {
+	base, modifier, _ := strings.Cut(locale, "@")
+	base, _, _ = strings.Cut(base, ".")
+	if base == "C" || base == "POSIX" {
+		return "und", nil
+	}
+	tag, err := language.Parse(base)
+	if err != nil {
+		return "", fmt.Errorf("system UI locale %q: %w", locale, err)
+	}
+	if modifier != "" && modifier != "euro" {
+		scripts := map[string]string{"latin": "Latn", "cyrillic": "Cyrl", "arabic": "Arab"}
+		if script, ok := scripts[modifier]; ok {
+			tag, err = language.Compose(tag, language.MustParseScript(script))
+		} else {
+			tag, err = language.Parse(tag.String() + "-" + modifier)
+		}
+		if err != nil {
+			return "", fmt.Errorf("system UI locale %q: %w", locale, err)
+		}
+	}
+	return tag.String(), nil
 }
 
 func (Settings) ColorScheme() (common.ColorScheme, error) {
