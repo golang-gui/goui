@@ -255,7 +255,7 @@ func (s *tablePixelSurface) Draw(img image.Image) error {
 	return nil
 }
 
-// Only adapt the operation used by these Paint methods, not GUI traversal.
+// Only adapt the operations used by these Paint methods, not GUI traversal.
 type tablePixelPainter struct {
 	gui.Painter
 	native graphics.Painter
@@ -263,6 +263,15 @@ type tablePixelPainter struct {
 
 func (p *tablePixelPainter) FillRect(r geometry.Rectangle, ink graphics.Brush) {
 	p.native.FillRect(r, ink)
+}
+func (p *tablePixelPainter) FillRoundRect(r geometry.Rectangle, radius float32, ink graphics.Brush) {
+	p.native.FillRoundRect(r, radius, ink)
+}
+func (p *tablePixelPainter) DrawRect(r geometry.Rectangle, width float32, ink graphics.Brush) {
+	p.native.DrawRect(r, width, ink)
+}
+func (p *tablePixelPainter) DrawRoundRect(r geometry.Rectangle, radius, width float32, ink graphics.Brush) {
+	p.native.DrawRoundRect(r, radius, width, ink)
 }
 func tablePixels(t *testing.T, size geometry.Size, scale float32, paint func(*tablePixelPainter)) *image.RGBA {
 	t.Helper()
@@ -335,6 +344,80 @@ func TestTableViewDecorationPixels(t *testing.T) {
 			if got := pixels.RGBAAt(79*int(scale), 4*int(scale)); got != (color.RGBA{A: 255}) {
 				t.Fatalf("nonresizable header lost its grid: %v", got)
 			}
+		})
+	}
+}
+
+func TestTableViewCurrentFocusAppearance(t *testing.T) {
+	old := gui.App
+	app := &separatorApp{}
+	gui.App = app
+	t.Cleanup(func() { gui.App = old })
+	for _, scale := range []float32{1, 2} {
+		t.Run(fmt.Sprintf("%gx", scale), func(t *testing.T) {
+			rules := []style.Rule{
+				style.Name("table-row").BackgroundColor(color.White).BorderWidth(0).Radius(4),
+				style.Name("table-row").Part("selected").BackgroundColor(color.RGBA{G: 255, A: 255}),
+				// current 故意有不透明背景，不能覆盖选中底色。
+				style.Name("table-row").Part("current").BackgroundColor(color.RGBA{R: 255, A: 255}).BorderColor(color.RGBA{B: 255, A: 255}).BorderWidth(0),
+				style.Name("table-row").Part("current").State(style.FocusVisible).BorderWidth(1),
+			}
+			app.sheet = style.Sheet(rules...)
+			v, _, column, _ := tableFixture(2)
+			column.SetResizable(false)        // Isolate the row hint from focusable resize handles.
+			owner := gui.NewPopover(nil, nil) // Lazy root: no native surface or desktop.
+			owner.SetWidget(v)
+			defer owner.Destroy()
+			tableArrange(v, 300, 180)
+			row := v.realized["r0"]
+			input := owner.(gui.ModalTarget)
+			dispatch := func(event events.Event) {
+				t.Helper()
+				if err := input.DispatchEvent(event); err != nil {
+					t.Fatal(err)
+				}
+			}
+			click := func() {
+				point := row.Snapshot().Bounds.Pos.Add(geometry.Point{X: 20, Y: 10})
+				dispatch(events.PointerEvent{EventType: events.PointerDown, Position: point, Button: events.PointerButtonLeft, Buttons: events.PointerButtonLeftDown})
+				dispatch(events.PointerEvent{EventType: events.PointerUp, Position: point, Button: events.PointerButtonLeft})
+			}
+			check := func(x int, want color.RGBA) {
+				t.Helper()
+				pixels := tablePixels(t, row.Rect().Size, scale, func(p *tablePixelPainter) { row.Paint(p) })
+				// Sample the straight left edge (away from the rounded corners)
+				// and the interior in opaque premultiplied sRGB. Integer DIP
+				// bands have full coverage at 1x/2x, so no tolerance is needed.
+				if got := pixels.RGBAAt(x*int(scale), 12*int(scale)); got != want {
+					t.Fatalf("sample x=%d: %v, want %v (focus-visible=%v)", x, got, want, v.FocusVisible())
+				}
+			}
+			green, blue := color.RGBA{G: 255, A: 255}, color.RGBA{B: 255, A: 255}
+			click()
+			if !v.Focused() || v.FocusVisible() || v.Current() != "r0" || !slices.Equal(v.Selection(), []string{"r0"}) {
+				t.Fatal("pointer input did not focus/select the current record without a keyboard hint")
+			}
+			check(0, green)
+			dispatch(events.KeyEvent{EventType: events.KeyDown, Key: events.KeyTab})
+			if !v.FocusVisible() {
+				t.Fatal("Tab did not enable the keyboard hint")
+			}
+			check(0, blue)
+			check(1, green)
+			check(10, green)
+			dispatch(events.PointerEvent{EventType: events.PointerMove, Position: row.Snapshot().Bounds.Pos.Add(geometry.Point{X: 25, Y: 12})})
+			check(0, blue) // Hover alone must not clear the keyboard hint.
+			click()
+			if v.FocusVisible() {
+				t.Fatal("click on the same current record retained the keyboard hint")
+			}
+			check(0, green)
+			// The widget forwards state instead of prohibiting pointer outlines:
+			// applications may explicitly opt into their own current decoration.
+			app.sheet = style.Sheet(append(rules, style.Name("table-row").Part("current").BorderWidth(2))...)
+			check(1, blue)
+			owner.(gui.EventTarget).SetFocusedWidget(nil)
+			check(1, green)
 		})
 	}
 }

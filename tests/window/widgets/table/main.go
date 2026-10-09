@@ -27,6 +27,11 @@
 //     表头和滚动条不查询正文菜单。菜单弹出失败输出 menu-error。
 //  6. Rebuild（GUI 为 Refresh）更新版本号，保留选择、Current、滚动及列宽。
 //     Toggle dark 切换中性亮暗外观；文字独立使用表格样式名，选中不是主题色底。
+//     Modern 的表头略区别于正文，1 DIP 外框/表头底线比行线稍清晰；选中行使用
+//     与 TreeView 一致的浅中性色。鼠标选择行不叠加 current 轮廓；Tab 再
+//     Shift+Tab 回到 TableView 后，当前行显示 1 DIP 中性轮廓，移动鼠标仍保留，点击
+//     同一行后消失。需要先把表格滚回顶部，确保 Current 可见且 Tab 未滚到别处。
+//     -fallback-style 保留其既有鼠标 current 轮廓，不套用 Modern 的外观约定。
 //  7. Snapshot 输出 ASSERT PASS：真实逻辑行/列数、顺序、当前/选中和虚拟行数量；
 //     此断言只验证语义，不代替实际交互和外观验收。缩放 1x/2x 重复主要操作。
 //  8. Appearance 循环 plain（无内部线）、zebra（斑马色）、rows（水平线）、
@@ -34,6 +39,7 @@
 //     外框不得被表头、正文或滚动条盖住；表头与正文竖线对齐，交点不加深。
 //     部分 Action 为填满自身矩形的青色自定义 Widget；thick 下其四边仍完整，
 //     不被线条覆盖。切换粗细后说明重新换行，滚动/重建/排序后条纹仍按行序交替。
+//     青色单元格首次绘制输出 backend / pixel-scale，核对实际后端而非仅启动参数。
 //     Snapshot 还使用 RenderWidget 重绘实际子树并采样青色块四角（无需截图文件），
 //     检查自绘内容边缘；这不是帧率基准，也不代替原生窗口外观观察。
 //  9. 点击 Notes 列并输入文字，预期整格出现 2 DIP 主题色直角边框，四边没有
@@ -66,6 +72,7 @@ import (
 	"github.com/golang-gui/goui/widgets"
 	widgetstyle "github.com/golang-gui/goui/widgets/style"
 	wui "github.com/golang-gui/goui/widgets/ui"
+	"image"
 	"image/color"
 	"log"
 	"math"
@@ -407,12 +414,24 @@ type noteCell struct {
 
 // Deliberately paint the full allocated area. The table, not this Widget,
 // must allocate a safe content rectangle around arbitrarily thick grid lines.
-type paintedCell struct{ gui.WidgetBase }
+type paintedCell struct {
+	gui.WidgetBase
+	reported bool
+}
 
 func (*paintedCell) Measure(c layout.Constraint) layout.Measurement {
 	return layout.Measured(c.Clamp(geometry.Size{Width: c.Max.Width, Height: 24}))
 }
 func (w *paintedCell) Paint(p gui.Painter) {
+	if !w.reported {
+		resource, err := p.NewImage(image.NewRGBA(image.Rect(0, 0, 1, 1)))
+		if err != nil {
+			panic(err)
+		}
+		fmt.Printf("backend=%T pixel-scale=%g\n", resource, p.PixelScale())
+		resource.Destroy()
+		w.reported = true
+	}
 	p.FillRect(geometry.Rectangle{Size: w.Rect().Size}, graphics.ColorOf(color.RGBA{G: 150, B: 170, A: 255}))
 }
 

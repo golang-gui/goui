@@ -134,11 +134,12 @@ func TestTreeInteractionAndTypography(t *testing.T) {
 
 func TestTableStylesNeutralSelectionAndIndependentText(t *testing.T) {
 	for _, dark := range []bool{false, true} {
-		want := []color.RGBA{rgb(0xD1D1D1), rgb(0xCACACA), rgb(0xC3C3C3)}
+		// 独立的 sRGB 字节预期；与 TreeView 使用同一中性选中色阶。
+		want := []color.RGBA{rgb(0xE1E1E3), rgb(0xD9D9DB), rgb(0xD2D2D4)}
 		if dark {
-			want = []color.RGBA{rgb(0x4F4F53), rgb(0x555559), rgb(0x5C5C5F)}
+			want = []color.RGBA{rgb(0x343438), rgb(0x3B3B3F), rgb(0x434347)}
 		}
-		for _, accent := range []color.Color{color.Black, rgb(0xFF0000)} {
+		for _, accent := range []color.Color{nil, color.Black, color.White, rgb(0xFF0000), rgb(0x0080FF)} {
 			sheet := Sheet(Options{Dark: dark, AccentColor: accent, FontFamily: "Table Font", FontSize: 17})
 			for i, state := range []style.State{style.Normal, style.Hovered, style.Pressed} {
 				selected := sheet.Resolve(style.Sel{Name: "table-row", Part: "selected", State: state})
@@ -146,6 +147,19 @@ func TestTableStylesNeutralSelectionAndIndependentText(t *testing.T) {
 				if !ok || rgba(bg) != want[i] {
 					t.Fatalf("table selection dark=%v state=%v: %v", dark, state, bg)
 				}
+				if radius, _ := selected.Radius(); radius != 4 {
+					t.Fatal("table selection lost its rounded corners")
+				}
+				fg, _ := resolved(sheet, "table-cell-text", style.Normal).ForegroundColor()
+				if contrast(rgba(fg), rgba(bg)) < 4.5 {
+					t.Fatal("table selection reduced text contrast below 4.5:1")
+				}
+				if width, _ := sheet.Resolve(style.Sel{Name: "table-row", Part: "current", State: state}).BorderWidth(); width != 0 {
+					t.Fatal("pointer focus added a current outline")
+				}
+			}
+			if width, _ := sheet.Resolve(style.Sel{Name: "table-row", Part: "current", State: style.FocusVisible}).BorderWidth(); width != 1 {
+				t.Fatal("keyboard current lost its thin outline")
 			}
 			for _, name := range []string{"table-header-text", "table-cell-text"} {
 				s := resolved(sheet, name, style.Normal)
@@ -186,6 +200,8 @@ func TestTableStylesNeutralSelectionAndIndependentText(t *testing.T) {
 				style.Name("table-view").Part("outer-horizontal").BorderWidth(0),
 				style.Name("table-grid").Part("vertical").BorderWidth(3),
 				style.Name("table-row").Part("alternate").BackgroundColor(color.White),
+				style.Name("table-row").Part("selected").BackgroundColor(rgb(0x123456)),
+				style.Name("table-row").Part("current").BorderColor(color.Black).BorderWidth(2),
 			)...)
 			if w, _ := custom.Resolve(style.Sel{Name: "table-view", Part: "outer-horizontal"}).BorderWidth(); w != 0 {
 				t.Fatal("outer horizontal override ignored")
@@ -196,6 +212,44 @@ func TestTableStylesNeutralSelectionAndIndependentText(t *testing.T) {
 			if w, _ := custom.Resolve(style.Sel{Name: "table-grid", Part: "vertical"}).BorderWidth(); w != 3 {
 				t.Fatal("grid application override ignored")
 			}
+			bg, _ = custom.Resolve(style.Sel{Name: "table-row", Part: "selected"}).BackgroundColor()
+			current := custom.Resolve(style.Sel{Name: "table-row", Part: "current"})
+			ink, _ := current.BorderColor()
+			width, _ := current.BorderWidth()
+			if rgba(bg) != rgb(0x123456) || ink != color.Black || width != 2 {
+				t.Fatal("table selection/current application override ignored")
+			}
+		}
+	}
+}
+
+func TestTableSurfaceHierarchy(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		background, edge, grid := rgb(0xF6F6F8), rgb(0xD8D8DA), rgb(0xE9E9EB)
+		header := []color.RGBA{rgb(0xF2F2F4), rgb(0xEBEBED), rgb(0xE5E5E7)}
+		if dark {
+			background, edge, grid = rgb(0x202024), rgb(0x3D3D40), rgb(0x2C2C30)
+			header = []color.RGBA{rgb(0x242428), rgb(0x2A2A2E), rgb(0x303034)}
+		}
+		sheet := Sheet(Options{Dark: dark})
+		frame := resolved(sheet, "table-view", style.Normal)
+		bg, _ := frame.BackgroundColor()
+		border, _ := frame.BorderColor()
+		if rgba(bg) != background || rgba(border) != edge {
+			t.Fatalf("table surface dark=%v: background=%v edge=%v", dark, bg, border)
+		}
+		for i, state := range []style.State{style.Normal, style.Hovered, style.Pressed} {
+			bg, _ := resolved(sheet, "table-header", state).BackgroundColor()
+			separator := sheet.Resolve(style.Sel{Name: "table-header", Part: "separator", State: state})
+			ink, _ := separator.ForegroundColor()
+			width, _ := separator.BorderWidth()
+			if rgba(bg) != header[i] || rgba(ink) != edge || width != 1 {
+				t.Fatalf("header hierarchy dark=%v state=%v: background=%v separator=%v/%g", dark, state, bg, ink, width)
+			}
+		}
+		ink, _ := sheet.Resolve(style.Sel{Name: "table-grid", Part: "horizontal"}).BorderColor()
+		if rgba(ink) != grid {
+			t.Fatalf("row separator dark=%v: %v, want %v", dark, ink, grid)
 		}
 	}
 }

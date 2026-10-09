@@ -167,6 +167,9 @@ func (r *tableRow) Paint(p gui.Painter) {
 	paintStyledBox(p, rect, "table-row", part, state)
 	r.paintGrid(p, rect)
 	if r.view.current == r.bound.ID && r.view.Focused() {
+		if r.view.FocusVisible() {
+			state = style.FocusVisible
+		}
 		paintStyledBorder(p, rect, gui.ResolveStyle("table-row", "current", state))
 	}
 }

@@ -464,3 +464,50 @@ win-split-cursor.log、reject-source.log / reject-target.log，以及对应桌�
   本轮用显式按下/移动及 finally release-input 验证持续捕获，不修改技能文件。
 - SSH Session 0 的 GetCursorInfo 失败是会话限制；临时交互任务中的原生探针
   可以检查真实桌面光标。该差异不是 GOUI 的渲染或捕获缺陷。
+
+## 13. TableView Modern 外观收敛
+
+2026-10-09，按用户确认的方案调整 TableView，不改平台、GUI 公共 API、Cell
+填满分配、文本样式隔离或编辑器焦点行为。
+
+参考 [GTK4 ColumnView 官方文档](https://docs.gtk.org/gtk4/class.ColumnView.html)
+（查阅时 Library 4.24.1）的 header/listview 结构及独立行列分隔线设置，采用
+结构与内容可分别定制的思路；具体颜色是 GOUI Modern 的设计，不声称来自 GTK。
+
+- 表格 selected 与 TreeView 共用浅中性色阶，亮暗色随窗口底色／前景变化，
+  不随主题色变化；保留圆角以及 hover／pressed 层级，TreeView 原有颜色不变。
+- 表头略区别于正文；外框和表头底线保持 1 DIP，颜色比行线稍清晰。默认仍为
+  淡水平线，不启用垂直网格或斑马色，应用的显式外观设置继续生效。
+- 行绘制向 current Part 转交 TableView 的 FocusVisible；Modern 默认鼠标
+  current 无轮廓，键盘焦点显示 1 DIP 中性轮廓。这里只传状态，不硬编码禁止
+  鼠标轮廓，应用可以继续覆盖 current 样式；兜底样式保持原有策略。
+- 验收例程补中文操作说明和实际 backend/pixel-scale 日志，避免将 OpenGL
+  初始化失败后的 Software 回退算作 OpenGL 验收。
+
+自动回归先在旧实现复现：原选中色／边框层级与独立预期不符，current 未传递
+FocusVisible，1x/2x 边缘样本为选中绿色而非键盘边框蓝色。修正后测试通过。
+颜色测试使用独立 sRGB 字节预期并检查文字对比度；像素测试使用正常根输入分发，
+覆盖鼠标选中、Tab、hover 保留、重复点击清除、自定义鼠标轮廓与失焦。
+采样直边和内部的不透明预乘颜色，整数 DIP 的 1x/2x 满覆盖样本无需容差。
+既有网格、填满与编辑器测试保留，不删除断言或放宽误差。
+
+验证通过：
+
+- 无 DISPLAY 的 widgets、theme/modern、tests/window/widgets/table 包测试。
+- 隔离显示下 `DISPLAY=:89 XMODIFIERS=@im=none go test -count=1 ./...`。
+- 同显示下 `go test -race -count=1 ./theme/modern ./widgets/... ./tests/window/widgets/table ./example/demo`。
+- `go vet ./theme/modern ./widgets ./tests/window/widgets/table ./example/demo` 及 `git diff --check`。
+- Windows amd64／macOS arm64 的 `CGO_ENABLED=0 go build ./...`；两个目标的
+  widgets、theme/modern 测试程序交叉编译，不计作原生运行。
+- 本机 Linux amd64，任务专用 Xvnc 1.12.0 + Xfwm4 4.16.1 合成器。表格例程
+  实际 Software/OpenGL 各应用 1x/2x；亮暗切换、选中、键盘提示及 F6 语义断言
+  通过，OpenGL 1x 的排序／Rebuild 保留选择，Software 2x 的 thick 模式编辑器
+  边界与青色内容检查通过。桌面直边采样另确认 OpenGL 的细框为 1/2 个物理
+  像素、鼠标不叠轮廓；不使用跨平台字体金图。
+- `example/demo` 本机 OpenGL 配置 1x 的数据浏览页，TreeView/TableView 亮暗
+  并排观察及选中通过；该项不代替四种配置都有实际后端日志的表格例程检查。
+
+未执行：Windows/macOS 原生桌面及 Direct2D、其他 WM、混合 DPI、全部菜单／IME
+交互。本轮不作性能结论；既有全仓测试会创建窗口及源码目录 PNG，未迁移或删除，
+条件跳过不算窗口验收通过。不操作用户原有桌面、不修改系统设置或剪贴板。
+日志和截图存于仓库外 `/tmp/goui-table-appearance.46cBKZ`。
