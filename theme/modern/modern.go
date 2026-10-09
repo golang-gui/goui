@@ -58,10 +58,10 @@ func Rules(options Options) []style.Rule {
 		tabSelected = mix(p.window, p.text, .08)
 	}
 	tabBorder := mix(tabSelected, p.text, .10)
-	// Tree rows are part of the window surface, not pressed menu items. Keep
-	// selection neutral but lighter, without changing the table's palette.
-	rowSelected := p.menuPressed
-	treeSelected := mix(p.window, p.text, .10)
+	// Tree/table rows share the window's neutral selection surface rather than
+	// a pressed menu fill. Borders distinguish structure without competing with it.
+	rowSelected := mix(p.window, p.text, .10)
+	tableEdge, tableGrid := mix(p.window, p.text, .14), mix(p.window, p.text, .06)
 	primary := [3]color.RGBA{
 		tintedBackground(p.button, accent, p.text, .12),
 		tintedBackground(p.button, accent, p.text, .18),
@@ -79,31 +79,32 @@ func Rules(options Options) []style.Rule {
 		text("check-button"),
 		text("check-button-text"),
 		text("switch-text"),
-		style.Name("table-view").BackgroundColor(p.window).BorderColor(p.border).BorderWidth(1),
-		style.Name("table-grid").BorderColor(mix(p.window, p.text, .10)).BorderWidth(0),
+		style.Name("table-view").BackgroundColor(p.window).BorderColor(tableEdge).BorderWidth(1),
+		style.Name("table-grid").BorderColor(tableGrid).BorderWidth(0),
 		style.Name("table-grid").Part("horizontal").BorderWidth(1),
-		style.Name("table-header").BackgroundColor(p.window),
-		style.Name("table-header").State(style.Hovered).BackgroundColor(p.menuHover),
-		style.Name("table-header").State(style.Pressed).BackgroundColor(p.menuPressed),
-		style.Name("table-header").Part("separator").ForegroundColor(p.border).BorderWidth(1),
+		style.Name("table-header").BackgroundColor(mix(p.window, p.text, .02)),
+		style.Name("table-header").State(style.Hovered).BackgroundColor(mix(p.window, p.text, .05)),
+		style.Name("table-header").State(style.Pressed).BackgroundColor(mix(p.window, p.text, .08)),
+		style.Name("table-header").Part("separator").ForegroundColor(tableEdge).BorderWidth(1),
 		style.Name("table-header").Part("sort").ForegroundColor(p.muted),
 		text("table-header-text"),
 		text("table-cell-text"),
 		style.Name("table-cell-icon").ForegroundColor(p.text),
 		style.Name("table-row").BackgroundColor(color.Transparent).BorderWidth(0).Radius(4),
-		style.Name("table-row").State(style.Hovered).BackgroundColor(p.menuHover),
-		style.Name("table-row").State(style.Pressed).BackgroundColor(p.menuPressed),
+		style.Name("table-row").State(style.Hovered).BackgroundColor(mix(p.window, p.text, .04)),
+		style.Name("table-row").State(style.Pressed).BackgroundColor(mix(p.window, p.text, .08)),
 		style.Name("table-row").Part("selected").BackgroundColor(rowSelected),
 		style.Name("table-row").Part("selected").State(style.Hovered).BackgroundColor(mix(rowSelected, p.text, .04)),
 		style.Name("table-row").Part("selected").State(style.Pressed).BackgroundColor(mix(rowSelected, p.text, .08)),
-		style.Name("table-row").Part("current").BackgroundColor(color.Transparent).BorderColor(p.muted).BorderWidth(1),
+		style.Name("table-row").Part("current").BackgroundColor(color.Transparent).BorderColor(p.muted).BorderWidth(0),
+		style.Name("table-row").Part("current").State(style.FocusVisible).BorderWidth(1),
 		style.Name("tree-view").BackgroundColor(color.Transparent),
 		style.Name("tree-item").BackgroundColor(color.Transparent).BorderWidth(0).Radius(4),
 		style.Name("tree-item").State(style.Hovered).BackgroundColor(p.menuHover),
 		style.Name("tree-item").State(style.Pressed).BackgroundColor(p.menuPressed),
-		style.Name("tree-item").Part("selected").BackgroundColor(treeSelected),
-		style.Name("tree-item").Part("selected").State(style.Hovered).BackgroundColor(mix(treeSelected, p.text, .04)),
-		style.Name("tree-item").Part("selected").State(style.Pressed).BackgroundColor(mix(treeSelected, p.text, .08)),
+		style.Name("tree-item").Part("selected").BackgroundColor(rowSelected),
+		style.Name("tree-item").Part("selected").State(style.Hovered).BackgroundColor(mix(rowSelected, p.text, .04)),
+		style.Name("tree-item").Part("selected").State(style.Pressed).BackgroundColor(mix(rowSelected, p.text, .08)),
 		style.Name("tree-item").Part("current").BackgroundColor(color.Transparent).BorderColor(p.muted).BorderWidth(0),
 		style.Name("tree-item").Part("current").State(style.FocusVisible).BorderWidth(1),
 		style.Name("tree-expander").ForegroundColor(p.muted).BackgroundColor(color.Transparent).Radius(4),
