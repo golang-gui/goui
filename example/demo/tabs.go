@@ -10,6 +10,7 @@ import (
 	"github.com/golang-gui/goui/example/demo/resource"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/theme/modern"
 	"github.com/golang-gui/goui/ui"
 	"github.com/golang-gui/goui/widgets"
 	wui "github.com/golang-gui/goui/widgets/ui"
@@ -66,7 +67,7 @@ func (d *demo) tabsPage() ui.View {
 
 func (d *demo) tabWorkspace(w *tabWindow) *ui.OverlayView {
 	confirm := surface(ui.VBox(ui.Label(resource.CloseTabQuestion()).Style("demo-subheading"), ui.Label(resource.CloseTabHint()),
-		ui.HBox(ui.Button(resource.Cancel()).OnClick(func() { w.closing = ""; d.app.RequestUpdate() }), ui.Button(resource.Close()).OnClick(func() { d.closeTab(w) })).Spacing(12)).Padding(20).Spacing(12)).Style("demo-card").MaxWidth(440)
+		ui.HBox(ui.Button(resource.Cancel()).OnClick(func() { w.closing = ""; d.app.RequestUpdate() }), ui.Button(resource.Close()).OnClick(func() { d.closeTab(w) })).Spacing(12)).Padding(20).Spacing(12)).Style(modern.Card).MaxWidth(440)
 	layer := ui.Overlay(surface(nil).Style("demo-mask"), ui.OverlayItem(confirm).OnPosition(center)).ID("tab-close-confirm").Visible(w.closing != "")
 	return ui.Overlay(d.tabContents(w), ui.OverlayItem(layer).Fill(true))
 }

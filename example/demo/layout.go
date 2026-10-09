@@ -5,6 +5,7 @@ import (
 
 	"github.com/golang-gui/goui/example/demo/resource"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/theme/modern"
 	"github.com/golang-gui/goui/ui"
 	wui "github.com/golang-gui/goui/widgets/ui"
 )
@@ -22,7 +23,7 @@ func (d *demo) layoutPage() ui.View {
 		section(resource.ScrollBarTitle(), scrollBar(d.scrollValue, func(value float32) { d.scrollValue = value; d.app.RequestUpdate() }), ui.Label(fmt.Sprintf(resource.ScrollPosition(), d.scrollValue))),
 		section("HBox / VBox / Baseline",
 			ui.HBox(ui.Label(resource.Username()), ui.TextInput().Text("GOUI").MainWeight(1), ui.Button(resource.OK())).CrossAlign(layout.CrossBaseline).Spacing(12),
-			ui.HBox(surface(ui.HBox(ui.Label(resource.WeightOne())).Padding(12)).Style("demo-card").MainWeight(1), surface(ui.HBox(ui.Label(resource.WeightTwo())).Padding(12)).Style("demo-card").MainWeight(2)).Spacing(12)),
+			ui.HBox(surface(ui.HBox(ui.Label(resource.WeightOne())).Padding(12)).Style(modern.Card).MainWeight(1), surface(ui.HBox(ui.Label(resource.WeightTwo())).Padding(12)).Style(modern.Card).MainWeight(2)).Spacing(12)),
 		section(resource.HWrapTitle(), ui.HWrap(chips...).Spacing(8).LineSpacing(8)),
 		section(resource.VWrapTitle(), ui.VWrap(vertical...).Spacing(8).LineSpacing(20).MinHeight(95).MaxHeight(95)),
 		section(resource.SplitTitle(),

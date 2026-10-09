@@ -9,6 +9,7 @@ import (
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/mlang"
+	"github.com/golang-gui/goui/theme/modern"
 	"github.com/golang-gui/goui/ui"
 )
 
@@ -118,7 +119,7 @@ func (d *demo) openWindow(chrome gui.WindowChromeMode, transparent bool) {
 	column.AddChild(header)
 	column.AddChild(box)
 	panel := new(surfaceWidget)
-	panel.SetStyleName("demo-card")
+	panel.SetStyleName(modern.Card)
 	panel.SetLayoutManager(layout.NewFillLayout())
 	panel.SetChild(column)
 	if transparent {
