@@ -25,8 +25,9 @@ const (
 	// Sidebar is a neutral, square surface without a border. It does not style
 	// navigation items or supply padding to its children.
 	Sidebar = "sidebar"
-	// Flat is a complete Button/MenuButton style: transparent at rest, neutral
-	// when hovered or pressed, with the ordinary keyboard focus decoration.
+	// Flat is a complete Button/MenuButton style: transparent and borderless
+	// at rest or disabled, with the ordinary button surface and 1 DIP border
+	// when hovered or pressed. Keyboard focus uses the independent focus part.
 	Flat = "flat"
 	// Warning, Error and Success are foreground presets for text and icons,
 	// not action-button or input-validation styles. They follow Dark, not AccentColor.
@@ -197,18 +198,24 @@ func Rules(options Options) []style.Rule {
 	}{
 		{"button", [3]color.Color{p.button, buttonHover, buttonPressed}},
 		{Primary, [3]color.Color{primary[0], primary[1], primary[2]}},
-		{Flat, [3]color.Color{color.Transparent, mix(p.window, p.text, .04), mix(p.window, p.text, .08)}},
+		{Flat, [3]color.Color{color.Transparent, buttonHover, buttonPressed}},
 	} {
 		borderWidth := float32(1)
 		var disabledBackground color.Color = p.button
+		hoverRule := style.Name(button.name).State(style.Hovered).BackgroundColor(button.bg[1])
+		pressedRule := style.Name(button.name).State(style.Pressed).BackgroundColor(button.bg[2])
 		if button.name == Flat {
 			borderWidth = 0
 			disabledBackground = color.Transparent
+			// Flat hides only its resting surface, not the button's interaction
+			// boundary. Other button styles still inherit their normal border.
+			hoverRule = hoverRule.BorderWidth(1)
+			pressedRule = pressedRule.BorderWidth(1)
 		}
 		rules = append(rules,
 			text(button.name).BackgroundColor(button.bg[0]).BorderColor(p.border).BorderWidth(borderWidth).Radius(6),
-			style.Name(button.name).State(style.Hovered).BackgroundColor(button.bg[1]),
-			style.Name(button.name).State(style.Pressed).BackgroundColor(button.bg[2]),
+			hoverRule,
+			pressedRule,
 			style.Name(button.name).State(style.Disabled).ForegroundColor(p.disabled).BackgroundColor(disabledBackground),
 			// Pointer focus has no decoration; keyboard focus uses a thin border.
 			// Keep the optional border color for application Focused overrides.
