@@ -139,7 +139,7 @@ func Rules(options Options) []style.Rule {
 		text(MutedText).ForegroundColor(p.muted),
 		text(Card).BackgroundColor(p.surface).BorderColor(mix(p.surface, p.text, .12)).
 			BorderWidth(1).Radius(10).Shadow(style.Shadow{}),
-		text(Sidebar).BackgroundColor(mix(p.window, p.text, .025)).
+		text(Sidebar).BackgroundColor(p.sidebar).
 			BorderWidth(0).Radius(0).Shadow(style.Shadow{}),
 		text(Warning).ForegroundColor(p.warning),
 		text(Error).ForegroundColor(p.error),
@@ -234,6 +234,7 @@ func Rules(options Options) []style.Rule {
 
 type palette struct {
 	window, surface, button, text, muted, disabled, border color.RGBA
+	sidebar                                                color.RGBA
 	menuHover, menuPressed                                 color.RGBA
 	warning, error, success                                color.RGBA
 }
@@ -242,14 +243,16 @@ func colorsFor(dark bool) palette {
 	if dark {
 		return palette{
 			window: rgb(0x202024), surface: rgb(0x28282D), button: rgb(0x323238),
-			text: rgb(0xECECEE), muted: rgb(0xB8B8C2), disabled: rgb(0x797983), border: rgb(0x55555F),
+			sidebar: rgb(0x18181C),
+			text:    rgb(0xECECEE), muted: rgb(0xB8B8C2), disabled: rgb(0x797983), border: rgb(0x55555F),
 			menuHover: rgb(0x3E3E42), menuPressed: rgb(0x4F4F53),
 			warning: rgb(0xEAC16D), error: rgb(0xF3959A), success: rgb(0x83CAA2),
 		}
 	}
 	return palette{
 		window: rgb(0xF6F6F8), surface: rgb(0xFFFFFF), button: rgb(0xFFFFFF),
-		text: rgb(0x202024), muted: rgb(0x61616B), disabled: rgb(0x97979F), border: rgb(0xC6C6CE),
+		sidebar: rgb(0xE2E2E8),
+		text:    rgb(0x202024), muted: rgb(0x61616B), disabled: rgb(0x97979F), border: rgb(0xC6C6CE),
 		menuHover: rgb(0xE6E6E6), menuPressed: rgb(0xD1D1D1),
 		warning: rgb(0x8A5900), error: rgb(0xBA3038), success: rgb(0x276B43),
 	}

@@ -134,9 +134,9 @@ func TestTreeInteractionAndTypography(t *testing.T) {
 
 func TestSurfacePresets(t *testing.T) {
 	for _, dark := range []bool{false, true} {
-		card, edge, sidebar := rgb(0xFFFFFF), rgb(0xE4E4E5), rgb(0xF1F1F3)
+		card, edge, sidebar := rgb(0xFFFFFF), rgb(0xE4E4E5), rgb(0xE2E2E8)
 		if dark {
-			card, edge, sidebar = rgb(0x28282D), rgb(0x404044), rgb(0x252529)
+			card, edge, sidebar = rgb(0x28282D), rgb(0x404044), rgb(0x18181C)
 		}
 		for _, accent := range []color.Color{nil, color.Black, color.White, rgb(0xFF0000)} {
 			sheet := Sheet(Options{Dark: dark, AccentColor: accent})
@@ -179,11 +179,11 @@ func TestSurfacePresets(t *testing.T) {
 func TestSemanticForegroundPresets(t *testing.T) {
 	for _, dark := range []bool{false, true} {
 		want := []color.RGBA{rgb(0x8A5900), rgb(0xBA3038), rgb(0x276B43)}
-		backgrounds := []color.RGBA{rgb(0xF6F6F8), rgb(0xFFFFFF), rgb(0xF1F1F3)}
+		backgrounds := []color.RGBA{rgb(0xF6F6F8), rgb(0xFFFFFF), rgb(0xE2E2E8)}
 		disabled := rgb(0x97979F)
 		if dark {
 			want = []color.RGBA{rgb(0xEAC16D), rgb(0xF3959A), rgb(0x83CAA2)}
-			backgrounds = []color.RGBA{rgb(0x202024), rgb(0x28282D), rgb(0x323238), rgb(0x252529)}
+			backgrounds = []color.RGBA{rgb(0x202024), rgb(0x28282D), rgb(0x323238), rgb(0x18181C)}
 			disabled = rgb(0x797983)
 		}
 		for _, accent := range []color.Color{nil, color.Black, color.White, rgb(0xFF0000), rgb(0x0080FF)} {
@@ -222,6 +222,29 @@ func TestSemanticForegroundPresets(t *testing.T) {
 			for _, name := range []string{"label", "icon", Error, Success} {
 				if !style.SameRules([]style.Rule{{Style: resolved(custom, name, style.Normal)}}, []style.Rule{{Style: resolved(sheet, name, style.Normal)}}) {
 					t.Fatalf("warning override leaked into %s", name)
+				}
+			}
+		}
+	}
+}
+
+func TestSidebarSurfaceHierarchy(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		for _, accent := range []color.Color{nil, color.Black, color.White, rgb(0xFF0000)} {
+			sheet := Sheet(Options{Dark: dark, AccentColor: accent})
+			bg, _ := resolved(sheet, Sidebar, style.Normal).BackgroundColor()
+			// Sidebar remains darker than the window/card and existing flat
+			// interaction surfaces; it no longer lies between window and hover.
+			for _, sel := range []style.Sel{{Name: "window"}, {Name: Card}, {Name: Flat, State: style.Hovered}, {Name: Flat, State: style.Pressed}} {
+				surface, _ := sheet.Resolve(sel).BackgroundColor()
+				if luminance(rgba(bg)) >= luminance(rgba(surface)) {
+					t.Fatalf("sidebar dark=%v: %v is not darker than %s/%v %v", dark, bg, sel.Name, sel.State, surface)
+				}
+			}
+			for _, name := range []string{"label", MutedText, Warning, Error, Success} {
+				fg, _ := resolved(sheet, name, style.Normal).ForegroundColor()
+				if ratio := contrast(rgba(fg), rgba(bg)); ratio < 4.5 {
+					t.Fatalf("sidebar dark=%v %s contrast=%g, want >= 4.5", dark, name, ratio)
 				}
 			}
 		}
