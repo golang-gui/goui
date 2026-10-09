@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/golang-gui/goui/example/demo/resource"
+	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/theme/modern"
 	"github.com/golang-gui/goui/ui"
@@ -17,9 +18,18 @@ func (d *demo) basicPage() ui.View {
 			wui.Switch(resource.EnableControls()).Checked(d.enabled).OnChange(func(v bool) { d.enabled = v; change() }),
 			ui.HWrap(ui.Button(resource.NormalButton()).OnClick(func() { d.report(resource.NormalClicked()) }),
 				ui.Button(resource.PrimaryButton()).Style(modern.Primary).OnClick(func() { d.report(resource.PrimaryClicked()) }),
+				ui.Button(resource.FlatButton()).Style(modern.Flat).ID("basic-flat").OnClick(func() { d.report(resource.FlatClicked()) }),
 				ui.Button().Content(ui.HBox(ui.Icon(d.icons[0]).Size(18), ui.Label(resource.IconButton())).Spacing(8)).OnClick(func() { d.report(resource.IconClicked()) }),
 			).Spacing(12).LineSpacing(12).Enabled(d.enabled),
-			ui.Button(resource.AlwaysDisabled()).Enabled(false)),
+			ui.HWrap(ui.Button(resource.AlwaysDisabled()).Enabled(false),
+				ui.Button(resource.FlatButton()).Style(modern.Flat).ID("basic-flat-disabled").Enabled(false)).Spacing(12).LineSpacing(12)),
+		section(resource.SemanticStyles(),
+			ui.Label(resource.SemanticHint()).WrapMode(gui.WrapWordChar).Style(modern.MutedText),
+			ui.HWrap(
+				ui.HBox(ui.Icon(d.icons[0]).Size(20).Style(modern.Warning), ui.Label(resource.WarningText()).Style(modern.Warning)).Spacing(8),
+				ui.HBox(ui.Icon(d.icons[0]).Size(20).Style(modern.Error), ui.Label(resource.ErrorText()).Style(modern.Error)).Spacing(8),
+				ui.HBox(ui.Icon(d.icons[0]).Size(20).Style(modern.Success), ui.Label(resource.SuccessText()).Style(modern.Success)).Spacing(8),
+			).ID("basic-semantic-colors").Spacing(24).LineSpacing(12)),
 		section(resource.Choices(),
 			ui.HWrap(
 				wui.CheckButton(resource.Checkbox()).Checked(d.checked).OnChange(func(v wui.CheckState) { d.checked = v == wui.CheckChecked; change() }),

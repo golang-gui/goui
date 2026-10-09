@@ -1,3 +1,15 @@
+// Modern 样式展示。
+// 环境：桌面窗口；Linux 需要 X11，后端和应用缩放可由 GOUI_PLAT_PAINTER / GOUI_PLAT_SCALE 指定。
+// 启动：go run ./example/modern。初始：系统主题、系统主题色、启用 Modern。
+// 操作与预期：
+//  1. 切换 Mode 的 Light/Dark，文字、背景及语义色适配亮暗；切换 Accent 不改变 Warning/Error/Success。
+//  2. 悬停/按下 Flat action 和 Menu，中性底色出现；点击 Flat action 更新输入框。
+//  3. Disabled flat 无底色，不可点击或 Tab 聚焦；Flat action 的 Tab 聚焦显示 2 DIP 边框。
+//  4. 切换 Bare GUI，清空自定义 StyleName，恢复 GUI 兜底，文字不丢失。
+//  5. 打开菜单、滚动长菜单、改变窗口大小，检查菜单与控件无裁剪或透明色残留。
+//
+// Card/Sidebar 的表面消费示例见 example/demo；布局容器不因 StyleName 自动绘制背景。
+// 副作用：无系统配置/剪贴板/文件修改。复位：重新启动。退出：关闭窗口。
 package main
 
 import (
@@ -24,13 +36,14 @@ func main() {
 			accent = settings.AccentColor()
 		}
 		var sheet style.StyleSheet
-		primary, muted := "", ""
+		primary, muted, flat, warning, errorStyle, success := "", "", "", "", "", ""
 		if mode != 3 {
 			sheet = modern.Sheet(modern.Options{
 				Dark: dark, AccentColor: accent,
 				FontFamily: settings.FontFamily(), FontSize: settings.FontSize(),
 			})
 			primary, muted = modern.Primary, modern.MutedText
+			flat, warning, errorStyle, success = modern.Flat, modern.Warning, modern.Error, modern.Success
 		}
 		rows := make([]ui.View, 30)
 		menuRows := make([]*ui.MenuItemView, 30)
@@ -54,8 +67,13 @@ func main() {
 							ui.Button("Accent: "+accentNames[accentIndex]).Style(primary).
 								OnClick(func() { accentIndex = (accentIndex + 1) % len(accents); app.RequestUpdate() }),
 						).Spacing(12),
+						ui.HWrap(
+							ui.Button("Flat action").Style(flat).OnClick(func() { text = "Flat action clicked"; app.RequestUpdate() }),
+							ui.Button("Disabled flat").Style(flat).Enabled(false),
+							ui.Label("Warning").Style(warning), ui.Label("Error").Style(errorStyle), ui.Label("Success").Style(success),
+						).Spacing(12).LineSpacing(8),
 						ui.HBox(
-							ui.MenuButton("Menu").Menu(
+							ui.MenuButton("Menu").Style(flat).Menu(
 								ui.MenuItem("New document", func() { text = "New document"; app.RequestUpdate() }),
 								ui.MenuItem("Unavailable command", nil).Enabled(false),
 								ui.MenuSeparator(),
