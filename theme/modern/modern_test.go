@@ -23,7 +23,7 @@ func TestButtonFocusAppearance(t *testing.T) {
 		for _, accent := range []color.Color{nil, color.Black, color.White, color.RGBA{R: 255, A: 255}} {
 			rules := Rules(Options{Dark: dark, AccentColor: accent})
 			sheet := style.Sheet(rules...)
-			for _, name := range []string{"button", Primary} {
+			for _, name := range []string{"button", Primary, Flat} {
 				focused := sheet.Resolve(style.Sel{Name: name, Part: "focus", State: style.Focused})
 				focus, _ := focused.BorderColor()
 				base := rgba(focus)
@@ -128,6 +128,152 @@ func TestTreeInteractionAndTypography(t *testing.T) {
 		bg, _ := custom.Resolve(style.Sel{Name: "tree-item", Part: "selected", State: style.Hovered}).BackgroundColor()
 		if bg != color.Black {
 			t.Fatal("application state override lost")
+		}
+	}
+}
+
+func TestSurfacePresets(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		card, edge, sidebar := rgb(0xFFFFFF), rgb(0xE4E4E5), rgb(0xF1F1F3)
+		if dark {
+			card, edge, sidebar = rgb(0x28282D), rgb(0x404044), rgb(0x252529)
+		}
+		for _, accent := range []color.Color{nil, color.Black, color.White, rgb(0xFF0000)} {
+			sheet := Sheet(Options{Dark: dark, AccentColor: accent})
+			for _, test := range []struct {
+				name          string
+				background    color.RGBA
+				width, radius float32
+			}{{Card, card, 1, 10}, {Sidebar, sidebar, 0, 0}} {
+				for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed, style.Disabled} {
+					s := resolved(sheet, test.name, state)
+					bg, ok := s.BackgroundColor()
+					width, hasWidth := s.BorderWidth()
+					radius, hasRadius := s.Radius()
+					if !ok || rgba(bg) != test.background || !hasWidth || width != test.width || !hasRadius || radius != test.radius {
+						t.Fatalf("surface %s dark=%v state=%v: bg=%v border=%g radius=%g", test.name, dark, state, bg, width, radius)
+					}
+					if shadow, ok := s.Shadow(); !ok || shadow != (style.Shadow{}) {
+						t.Fatal("surface should explicitly have no shadow")
+					}
+				}
+			}
+			if border, _ := resolved(sheet, Card, style.Normal).BorderColor(); rgba(border) != edge {
+				t.Fatalf("card border dark=%v: %v, want %v", dark, border, edge)
+			}
+			custom := style.Sheet(append(Rules(Options{Dark: dark}), style.Name(Card).BorderWidth(0).Radius(14),
+				style.Name(Sidebar).BackgroundColor(color.Black))...)
+			if width, _ := resolved(custom, Card, style.Normal).BorderWidth(); width != 0 {
+				t.Fatal("card application override ignored")
+			}
+			if radius, _ := resolved(custom, Card, style.Normal).Radius(); radius != 14 {
+				t.Fatal("card radius override ignored")
+			}
+			if bg, _ := resolved(custom, Sidebar, style.Normal).BackgroundColor(); bg != color.Black {
+				t.Fatal("sidebar application override ignored")
+			}
+		}
+	}
+}
+
+func TestSemanticForegroundPresets(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		want := []color.RGBA{rgb(0x8A5900), rgb(0xBA3038), rgb(0x276B43)}
+		backgrounds := []color.RGBA{rgb(0xF6F6F8), rgb(0xFFFFFF), rgb(0xF1F1F3)}
+		disabled := rgb(0x97979F)
+		if dark {
+			want = []color.RGBA{rgb(0xEAC16D), rgb(0xF3959A), rgb(0x83CAA2)}
+			backgrounds = []color.RGBA{rgb(0x202024), rgb(0x28282D), rgb(0x323238), rgb(0x252529)}
+			disabled = rgb(0x797983)
+		}
+		for _, accent := range []color.Color{nil, color.Black, color.White, rgb(0xFF0000), rgb(0x0080FF)} {
+			sheet := Sheet(Options{Dark: dark, AccentColor: accent})
+			for i, name := range []string{Warning, Error, Success} {
+				for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed, style.Focused, style.FocusVisible, style.Disabled} {
+					s := resolved(sheet, name, state)
+					fg, ok := s.ForegroundColor()
+					expected := want[i]
+					if state == style.Disabled {
+						expected = disabled
+					}
+					if !ok || rgba(fg) != expected {
+						t.Fatalf("semantic %s dark=%v state=%v: %v, want %v", name, dark, state, fg, expected)
+					}
+					_, background := s.BackgroundColor()
+					_, border := s.BorderWidth()
+					_, radius := s.Radius()
+					_, shadow := s.Shadow()
+					if background || border || radius || shadow {
+						t.Fatal("foreground-only semantic style added surface decoration")
+					}
+				}
+				// Opaque sRGB colors, no alpha compositing: status text must be
+				// readable on the window, card, sidebar and ordinary button surfaces.
+				for _, bg := range backgrounds {
+					if ratio := contrast(want[i], bg); ratio < 4.5 {
+						t.Fatalf("%s contrast against %v: %g, want >= 4.5", name, bg, ratio)
+					}
+				}
+			}
+			custom := style.Sheet(append(Rules(Options{Dark: dark}), style.Name(Warning).ForegroundColor(color.Black))...)
+			if fg, _ := resolved(custom, Warning, style.Normal).ForegroundColor(); fg != color.Black {
+				t.Fatal("warning application override ignored")
+			}
+			for _, name := range []string{"label", "icon", Error, Success} {
+				if !style.SameRules([]style.Rule{{Style: resolved(custom, name, style.Normal)}}, []style.Rule{{Style: resolved(sheet, name, style.Normal)}}) {
+					t.Fatalf("warning override leaked into %s", name)
+				}
+			}
+		}
+	}
+}
+
+func TestFlatButtonAppearance(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		hover, pressed := rgb(0xEDEDF0), rgb(0xE5E5E7)
+		if dark {
+			hover, pressed = rgb(0x28282C), rgb(0x303034)
+		}
+		for _, accent := range []color.Color{nil, color.Black, color.White, rgb(0xFF0000)} {
+			sheet := Sheet(Options{Dark: dark, AccentColor: accent})
+			text, disabled := rgb(0x202024), rgb(0x97979F)
+			if dark {
+				text, disabled = rgb(0xECECEE), rgb(0x797983)
+			}
+			for _, test := range []struct {
+				state style.State
+				bg    color.RGBA
+			}{{style.Normal, color.RGBA{}}, {style.Hovered, hover}, {style.Pressed, pressed},
+				{style.Focused, color.RGBA{}}, {style.FocusVisible, color.RGBA{}}, {style.Disabled, color.RGBA{}}} {
+				s := resolved(sheet, Flat, test.state)
+				bg, ok := s.BackgroundColor()
+				if !ok || rgba(bg) != test.bg {
+					t.Fatalf("flat dark=%v state=%v: %v, want %v", dark, test.state, bg, test.bg)
+				}
+				if width, ok := s.BorderWidth(); !ok || width != 0 {
+					t.Fatal("flat button added a normal border")
+				}
+				if radius, _ := s.Radius(); radius != 6 {
+					t.Fatal("flat button lost its rounded interaction surface")
+				}
+				fg, _ := s.ForegroundColor()
+				wantForeground := text
+				if test.state == style.Disabled {
+					wantForeground = disabled
+				}
+				if rgba(fg) != wantForeground {
+					t.Fatalf("flat foreground dark=%v state=%v: %v, want %v", dark, test.state, fg, wantForeground)
+				}
+				for _, surface := range []string{"window", Card, Sidebar} {
+					background, _ := resolved(sheet, surface, style.Normal).BackgroundColor()
+					if test.bg.A > 0 {
+						background = test.bg
+					}
+					if test.state != style.Disabled && contrast(rgba(fg), rgba(background)) < 4.5 {
+						t.Fatal("flat text contrast fell below 4.5:1")
+					}
+				}
+			}
 		}
 	}
 }
@@ -360,7 +506,7 @@ func TestPaletteAndCoverage(t *testing.T) {
 				t.Fatalf("dark=%v %s background=%v, want %v", dark, name, bg, want)
 			}
 		}
-		for _, name := range []string{"widget", "label", Primary, MutedText, "button", "text-input", "scroll-view", "header-bar", "popover", "menu", "menu-item-text", "menu-item-text-disabled"} {
+		for _, name := range []string{"widget", "label", Primary, MutedText, Card, Sidebar, Flat, Warning, Error, Success, "button", "text-input", "scroll-view", "header-bar", "popover", "menu", "menu-item-text", "menu-item-text-disabled"} {
 			s := resolved(sheet, name, style.Normal)
 			family, _ := s.FontFamily()
 			size, _ := s.FontSize()

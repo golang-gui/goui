@@ -19,6 +19,20 @@ const (
 	MutedText = "muted-text"
 	// AccentIcon uses a contrast-adjusted accent foreground for drawing icons.
 	AccentIcon = "accent-icon"
+	// Card is a rounded, subtly bordered surface without a shadow. The widget
+	// must paint its own background; layout-only boxes do not become cards.
+	Card = "card"
+	// Sidebar is a neutral, square surface without a border. It does not style
+	// navigation items or supply padding to its children.
+	Sidebar = "sidebar"
+	// Flat is a complete Button/MenuButton style: transparent at rest, neutral
+	// when hovered or pressed, with the ordinary keyboard focus decoration.
+	Flat = "flat"
+	// Warning, Error and Success are foreground presets for text and icons,
+	// not action-button or input-validation styles. They follow Dark, not AccentColor.
+	Warning = "warning"
+	Error   = "error"
+	Success = "success"
 )
 
 // Options contains resolved appearance values, not system-following policies.
@@ -123,6 +137,13 @@ func Rules(options Options) []style.Rule {
 		style.Name(AccentIcon).ForegroundColor(focus),
 		text("label").State(style.Disabled).ForegroundColor(p.disabled),
 		text(MutedText).ForegroundColor(p.muted),
+		text(Card).BackgroundColor(p.surface).BorderColor(mix(p.surface, p.text, .12)).
+			BorderWidth(1).Radius(10).Shadow(style.Shadow{}),
+		text(Sidebar).BackgroundColor(mix(p.window, p.text, .025)).
+			BorderWidth(0).Radius(0).Shadow(style.Shadow{}),
+		text(Warning).ForegroundColor(p.warning),
+		text(Error).ForegroundColor(p.error),
+		text(Success).ForegroundColor(p.success),
 		text("header-bar").BackgroundColor(p.window),
 		text("text-input").BackgroundColor(p.surface).BorderColor(p.border).BorderWidth(1).Radius(6),
 		style.Name("text-input").State(style.Focused).BorderColor(focus).BorderWidth(2),
@@ -172,16 +193,23 @@ func Rules(options Options) []style.Rule {
 	}
 	for _, button := range []struct {
 		name string
-		bg   [3]color.RGBA
+		bg   [3]color.Color
 	}{
-		{"button", [3]color.RGBA{p.button, buttonHover, buttonPressed}},
-		{Primary, primary},
+		{"button", [3]color.Color{p.button, buttonHover, buttonPressed}},
+		{Primary, [3]color.Color{primary[0], primary[1], primary[2]}},
+		{Flat, [3]color.Color{color.Transparent, mix(p.window, p.text, .04), mix(p.window, p.text, .08)}},
 	} {
+		borderWidth := float32(1)
+		var disabledBackground color.Color = p.button
+		if button.name == Flat {
+			borderWidth = 0
+			disabledBackground = color.Transparent
+		}
 		rules = append(rules,
-			text(button.name).BackgroundColor(button.bg[0]).BorderColor(p.border).BorderWidth(1).Radius(6),
+			text(button.name).BackgroundColor(button.bg[0]).BorderColor(p.border).BorderWidth(borderWidth).Radius(6),
 			style.Name(button.name).State(style.Hovered).BackgroundColor(button.bg[1]),
 			style.Name(button.name).State(style.Pressed).BackgroundColor(button.bg[2]),
-			style.Name(button.name).State(style.Disabled).ForegroundColor(p.disabled).BackgroundColor(p.button),
+			style.Name(button.name).State(style.Disabled).ForegroundColor(p.disabled).BackgroundColor(disabledBackground),
 			// Pointer focus has no decoration; keyboard focus uses a thin border.
 			// Keep the optional border color for application Focused overrides.
 			style.Name(button.name).Part("focus").State(style.Focused).
@@ -195,7 +223,7 @@ func Rules(options Options) []style.Rule {
 	rules = append(rules, dropDownRules(p, tabFocus, options.FontFamily, size)...)
 	// Each content widget resolves its own name; state is shared through the
 	// tree, but foreground rules are explicit rather than inherited colors.
-	for _, name := range []string{"icon", AccentIcon, MutedText, "check-button-text", "switch-text",
+	for _, name := range []string{"icon", AccentIcon, MutedText, Card, Sidebar, Warning, Error, Success, "check-button-text", "switch-text",
 		"drop-down-text", "drop-down-placeholder", "table-header-text", "table-cell-text", "table-cell-icon",
 		"tree-item-text", "tree-item-icon", "tab-item-text", "tab-item-text-selected", "tab-item-icon",
 		"tab-item-icon-selected", "tab-close-button-text", "tab-scroll-button-text"} {
@@ -207,6 +235,7 @@ func Rules(options Options) []style.Rule {
 type palette struct {
 	window, surface, button, text, muted, disabled, border color.RGBA
 	menuHover, menuPressed                                 color.RGBA
+	warning, error, success                                color.RGBA
 }
 
 func colorsFor(dark bool) palette {
@@ -215,12 +244,14 @@ func colorsFor(dark bool) palette {
 			window: rgb(0x202024), surface: rgb(0x28282D), button: rgb(0x323238),
 			text: rgb(0xECECEE), muted: rgb(0xB8B8C2), disabled: rgb(0x797983), border: rgb(0x55555F),
 			menuHover: rgb(0x3E3E42), menuPressed: rgb(0x4F4F53),
+			warning: rgb(0xEAC16D), error: rgb(0xF3959A), success: rgb(0x83CAA2),
 		}
 	}
 	return palette{
 		window: rgb(0xF6F6F8), surface: rgb(0xFFFFFF), button: rgb(0xFFFFFF),
 		text: rgb(0x202024), muted: rgb(0x61616B), disabled: rgb(0x97979F), border: rgb(0xC6C6CE),
 		menuHover: rgb(0xE6E6E6), menuPressed: rgb(0xD1D1D1),
+		warning: rgb(0x8A5900), error: rgb(0xBA3038), success: rgb(0x276B43),
 	}
 }
 
