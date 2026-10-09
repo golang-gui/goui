@@ -7,6 +7,7 @@ import (
 
 	"github.com/golang-gui/goui/example/demo/resource"
 	"github.com/golang-gui/goui/gui"
+	"github.com/golang-gui/goui/theme/modern"
 	"github.com/golang-gui/goui/ui"
 )
 
@@ -104,7 +105,7 @@ func (d *demo) systemPage() ui.View {
 			ui.HWrap(ui.Button(resource.DragText()).ID("drag-text").DragSource(source("drag-text", textData)),
 				ui.Button(resource.DragLocal()).ID("drag-local").DragSource(source("drag-local", localData)),
 				ui.Button(resource.DragFiles()).ID("drag-files").Enabled(len(d.files) > 0).DragSource(source("drag-files", filesData))).Spacing(12).LineSpacing(8),
-			surface(ui.HBox(ui.Label(d.dropped).WrapMode(ui.WrapWordChar).MainWeight(1)).Padding(16)).Style("demo-card").ID("drop-zone").MinHeight(110).DropTarget(target),
+			surface(ui.HBox(ui.Label(d.dropped).WrapMode(ui.WrapWordChar).MainWeight(1)).Padding(16)).Style(modern.Card).ID("drop-zone").MinHeight(110).DropTarget(target),
 			ui.Label(resource.DragHint())),
 	)
 }

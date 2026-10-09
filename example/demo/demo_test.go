@@ -1,7 +1,13 @@
 package main
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"path/filepath"
 	"slices"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -14,6 +20,41 @@ import (
 	"github.com/golang-gui/goui/widgets"
 	wui "github.com/golang-gui/goui/widgets/ui"
 )
+
+// 私有 demo-card 规则已移除，遗漏的样式引用会让浮动面板和 Dialog 透明。
+// 只检查样式调用，不把同名的应用内拖放数据格式当作样式。
+func TestDemoCardStyleMigration(t *testing.T) {
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		if strings.HasSuffix(file, "_test.go") {
+			continue
+		}
+		positions := token.NewFileSet()
+		source, err := parser.ParseFile(positions, file, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ast.Inspect(source, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok || len(call.Args) != 1 {
+				return true
+			}
+			method, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok || (method.Sel.Name != "Style" && method.Sel.Name != "SetStyleName") {
+				return true
+			}
+			if literal, ok := call.Args[0].(*ast.BasicLit); ok && literal.Kind == token.STRING {
+				if name, err := strconv.Unquote(literal.Value); err == nil && name == "demo-card" {
+					t.Errorf("%s: removed demo-card style; use modern.Card", positions.Position(literal.Pos()))
+				}
+			}
+			return true
+		})
+	}
+}
 
 func TestLanguageChangePreservesDemoModelsAndState(t *testing.T) {
 	previous := mlang.Language()

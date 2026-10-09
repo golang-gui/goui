@@ -52,6 +52,8 @@ Card/Sidebar 不提供 Padding 或布局，也不让不绘制背景的 HBox/VBox
 
 `example/demo` 继续使用现有应用自定义 surface Bin：全部 section 选用 Card，
 侧栏外壳选用 Sidebar，未选中的导航按钮选用 Flat，当前页保留 Primary。
+浮动查找面板、两种确认 Dialog、Toast、辅助窗口内容、权重布局表面及拖放接收区
+同样选用 Card；遮罩保留独立的半透明规则，透明窗口的外围保留独立背景规则。
 基础页增加可点击/禁用 Flat 以及独立设置样式的警告、错误、成功文字和图标；
 新增文案在 resource 中提供现有八语言翻译，固定 ID 不参与翻译。
 不修改 Window Integrated 避让、透明窗口背景、页面滚动边距或控件默认行为。
@@ -120,3 +122,36 @@ Flat 悬停/按下及 Primary 选中项。截图按独立 RGB 字节断言新背
 
 本轮未重新执行 OpenGL/Direct2D 原生窗口、远端桌面或物理 HiDPI 验收。
 此前按用户要求保留工作区供体验，本轮用户已明确要求提交。
+
+## demo 卡片引用修复（2026-10-09）
+
+用户反馈的浮动查找面板与遮罩 Dialog 透明，原因是 demo 删除私有 `demo-card`
+规则后，五个场景文件中仍有八处旧样式引用。具名样式不存在就不提供背景，
+surface 不应自行猜测 fallback；这不是 Sidebar 配色或透明绘制契约的问题。
+
+将查找面板、确认 Dialog、Toast、标签关闭确认框、辅助窗口内容、两个权重布局
+表面及拖放接收区统一改为 `modern.Card`。保留三处同名 `demo-card` 拖放数据
+格式标识，不添加兼容样式别名，不修改 gui/ui/style/platform 或 surface 绘制实现。
+遮罩 alpha 140、透明辅助窗口的外围、现有布局与事件处理保持不变。
+
+回归测试 `TestDemoCardStyleMigration` 只检查 Style/SetStyleName 调用：在修复前
+明确报告八处遗留引用，修复后通过；不将应用内数据格式误判为样式。
+
+验证结果：
+
+- `go test -json -count=1 ./...` 通过：2140 项通过、14 项既有测试跳过，
+  无新增失败或跳过；不把无测试文件的包计作测试跳过。
+- `go test -count=1 ./example/demo/... ./theme/modern`、相关 race 与 vet 通过。
+- Windows amd64/macOS arm64 demo 的 `CGO_ENABLED=0` 交叉编译通过；未原生运行。
+- 本机 Linux amd64，隔离 TigerVNC 1.12.0/X11/Xfwm4 合成桌面、Software 1x，
+  真实鼠标输入复现旧版面板/Dialog 背景缺失，再验证修复后的亮暗模式。
+  查找面板、确认 Dialog、Toast、标签关闭确认框、两处权重表面、拖放接收区和
+  透明辅助窗口内部卡片均恢复背景；切换模式时同步更新。
+- 截图在避开文字、边框与抗锯齿的内部空白像素按独立 RGB 预期断言：
+  Card 亮色 `(255,255,255)`、暗色 `(40,40,45)`。另采集完整桌面验证透明辅助
+  窗口外围透出下方侧栏，而不是使用丢弃 alpha 的单窗口图片推断合成结果。
+  初次诊断采样将 Dialog 下方的白色卡片误当窗口底色，修正采样基准后，
+  旧版遮罩像素符合 `255 × (1 − 140/255) = 115`，未调整容差或绘制代码。
+
+未执行：本轮 OpenGL/Direct2D 原生窗口、远端桌面与物理 HiDPI 验收。
+产物位于 `/tmp/goui-demo-card.XW7jPy/`；测试应用正常关闭，隔离桌面停止。

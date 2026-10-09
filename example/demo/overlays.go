@@ -36,11 +36,11 @@ func (d *demo) overlaysPage() ui.View {
 			ui.Label(resource.MaskHint())),
 		section(resource.ScrollableBackground(), ui.VBox(chipsCopy(25)...).Spacing(12)),
 	)
-	panel := surface(ui.VBox(ui.Label(resource.Search()).Style("demo-subheading"), ui.TextInput().BindText(&d.input), ui.Button(resource.ClosePanel()).OnClick(func() { d.panel = false; d.app.RequestUpdate() })).Padding(16).Spacing(12).CrossAlign(layout.CrossStretch)).Style("demo-card").MinWidth(300).MaxWidth(330).Visible(d.panel)
+	panel := surface(ui.VBox(ui.Label(resource.Search()).Style("demo-subheading"), ui.TextInput().BindText(&d.input), ui.Button(resource.ClosePanel()).OnClick(func() { d.panel = false; d.app.RequestUpdate() })).Padding(16).Spacing(12).CrossAlign(layout.CrossStretch)).Style(modern.Card).MinWidth(300).MaxWidth(330).Visible(d.panel)
 	dialog := surface(ui.VBox(ui.Label(resource.ConfirmQuestion()).Style("demo-subheading"), ui.Label(resource.ConfirmHint()),
-		ui.HBox(ui.Button(resource.Cancel()).OnClick(func() { d.mask = false; d.app.RequestUpdate() }), ui.Button(resource.Confirm()).Style(modern.Primary).OnClick(func() { d.mask = false; d.showToast(resource.Confirmed()) })).Spacing(12).MainAlign(layout.MainEnd)).Padding(24).Spacing(16).CrossAlign(layout.CrossStretch)).Style("demo-card").MaxWidth(450)
+		ui.HBox(ui.Button(resource.Cancel()).OnClick(func() { d.mask = false; d.app.RequestUpdate() }), ui.Button(resource.Confirm()).Style(modern.Primary).OnClick(func() { d.mask = false; d.showToast(resource.Confirmed()) })).Spacing(12).MainAlign(layout.MainEnd)).Padding(24).Spacing(16).CrossAlign(layout.CrossStretch)).Style(modern.Card).MaxWidth(450)
 	mask := ui.Overlay(surface(nil).Style("demo-mask"), ui.OverlayItem(dialog).OnPosition(center)).Visible(d.mask)
-	toast := surface(ui.HBox(ui.Label(d.toast)).Padding(12)).Style("demo-card").Visible(d.toast != "").MinHeight(48).MinWidth(280)
+	toast := surface(ui.HBox(ui.Label(d.toast)).Padding(12)).Style(modern.Card).Visible(d.toast != "").MinHeight(48).MinWidth(280)
 	return ui.Overlay(base,
 		ui.OverlayItem(panel).OnPosition(func(a, s geometry.Size, p *geometry.Point) { *p = geometry.Point{X: max(0, a.Width-s.Width-20), Y: 20} }),
 		ui.OverlayItem(mask).Fill(true),
