@@ -177,17 +177,14 @@ func (d *demo) build(app ui.App) ui.RootView {
 	if fontSize <= 0 {
 		fontSize = 14
 	}
-	bg, card, border, fg := color.NRGBA{R: 245, G: 246, B: 248, A: 255}, color.NRGBA{R: 255, G: 255, B: 255, A: 255}, color.NRGBA{R: 216, G: 220, B: 225, A: 255}, color.NRGBA{R: 40, G: 45, B: 52, A: 255}
+	bg, fg := color.NRGBA{R: 245, G: 246, B: 248, A: 255}, color.NRGBA{R: 40, G: 45, B: 52, A: 255}
 	if dark {
 		bg = color.NRGBA{R: 30, G: 32, B: 36, A: 255}
-		card = color.NRGBA{R: 40, G: 43, B: 48, A: 255}
-		border = color.NRGBA{R: 65, G: 69, B: 76, A: 255}
 		fg = color.NRGBA{R: 234, G: 236, B: 239, A: 255}
 	}
 	rules = append(rules,
 		style.Name("demo-background").BackgroundColor(bg),
 		style.Name("demo-transparent-window").BackgroundColor(color.Transparent),
-		style.Name("demo-card").BackgroundColor(card).BorderColor(border).BorderWidth(1).Radius(10),
 		style.Name("demo-heading").ForegroundColor(fg).FontSize(22).FontFamily(settings.FontFamily()),
 		style.Name("demo-subheading").ForegroundColor(fg).FontSize(16).FontFamily(settings.FontFamily()),
 		style.Name("demo-mask").BackgroundColor(color.NRGBA{A: 140}),
@@ -198,7 +195,7 @@ func (d *demo) build(app ui.App) ui.RootView {
 	side := make([]ui.View, 0, len(pageNames)+2)
 	side = append(side, ui.Label(resource.Categories()).Style("demo-subheading"))
 	for i, name := range pageNames {
-		b := ui.Button().Content(ui.Label(fmt.Sprintf("%02d  %s", i+1, name())).WrapMode(gui.WrapWordChar)).ID(fmt.Sprintf("nav-%d", i)).OnClick(func() { d.navigate(i) })
+		b := ui.Button().Content(ui.Label(fmt.Sprintf("%02d  %s", i+1, name())).WrapMode(gui.WrapWordChar)).Style(modern.Flat).ID(fmt.Sprintf("nav-%d", i)).OnClick(func() { d.navigate(i) })
 		if i == d.page {
 			b.Style(modern.Primary)
 		}
@@ -214,7 +211,8 @@ func (d *demo) build(app ui.App) ui.RootView {
 			d.languageMenu(settings.Language()),
 			ui.Label(fmt.Sprintf(resource.LanguageStatus(), settings.Language(), mlang.Language())).ID("language-status").Style(modern.MutedText),
 		).Padding(12).Spacing(10).LineSpacing(8),
-		demoBody(ui.VBox(side...).Spacing(8).Padding(12).MinWidth(190).MaxWidth(190).CrossAlign(layout.CrossStretch),
+		demoBody(surface(ui.VBox(side...).Spacing(8).Padding(12).CrossAlign(layout.CrossStretch)).
+			Style(modern.Sidebar).ID("demo-sidebar").MinWidth(190).MaxWidth(190),
 			pages[d.page]()),
 		ui.HBox(ui.Label(d.status).ID("status").WrapMode(gui.WrapWordChar).Style(modern.MutedText).MainWeight(1)).Padding(10).MinHeight(44),
 	).CrossAlign(layout.CrossStretch)
@@ -237,7 +235,7 @@ func heading(title, description string) []ui.View {
 	return []ui.View{ui.Label(title).Style("demo-heading"), ui.Label(description).WrapMode(gui.WrapWordChar).Style(modern.MutedText)}
 }
 func section(title string, children ...ui.View) ui.View {
-	return surface(ui.VBox(append([]ui.View{ui.Label(title).Style("demo-subheading")}, children...)...).Spacing(12).Padding(16).CrossAlign(layout.CrossStretch)).Style("demo-card")
+	return surface(ui.VBox(append([]ui.View{ui.Label(title).Style("demo-subheading")}, children...)...).Spacing(12).Padding(16).CrossAlign(layout.CrossStretch)).Style(modern.Card)
 }
 func page(id, title, description string, children ...ui.View) ui.View {
 	scroll := ui.ScrollView(ui.VBox(append(heading(title, description), children...)...).Spacing(16).Padding(16).CrossAlign(layout.CrossStretch)).Direction(ui.ScrollVertical).ID("page-" + id).MainWeight(1)

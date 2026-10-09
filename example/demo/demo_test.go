@@ -306,7 +306,9 @@ func TestBodyUsesAllocatedContentEdges(t *testing.T) {
 		{"wide-inset", geometry.Rect(5, 5, 1110, 790)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			side := gui.NewLinearBox(layout.DirectionVertical)
+			side := new(surfaceWidget)
+			side.SetLayoutManager(layout.NewFillLayout())
+			side.SetChild(gui.NewLinearBox(layout.DirectionVertical))
 			side.SetMinSize(geometry.Size{Width: 190})
 			side.SetMaxSize(geometry.Size{Width: 190})
 			content := gui.NewLinearBox(layout.DirectionVertical)
