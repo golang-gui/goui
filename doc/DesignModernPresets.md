@@ -21,6 +21,11 @@ GOUI 的 Sidebar 表示背景表面，不等同于 libadwaita 的 navigation-sid
 | `modern.Error` | `error` | Label/Icon 等前景消费者；错误色，不表示危险操作按钮或输入校验状态 |
 | `modern.Success` | `success` | Label/Icon 等前景消费者；成功色，不添加表面装饰 |
 
+Sidebar 使用独立的调色板值：亮色 `#E2E2E8`，暗色 `#18181C`。
+两种模式均比 Window/Card 更深，不再通过窗口背景向正文混合 2.5% 推导。
+本轮只改变侧栏底色，不改变 Flat、普通按钮、Primary 或语义前景；
+子控件的悬停/按下、当前分类与 Tab 焦点仍由各自原有规则绘制。
+
 每个预设都有独立的正文前景与主题字体规则。禁用时使用既有中性禁用色；
 不影响控件行为。Flat 复用按钮的独立 focus part：鼠标聚焦零边框，
 FocusVisible 为 2 DIP 柔化主题色边框，不改变布局或悬停/按下底色。
@@ -94,3 +99,24 @@ demo 布局回归使用实际 surface 承载侧栏，仍须填满分配空间且
 未执行：Windows/macOS 原生桌面、本机 Software 2x/OpenGL 请求配置 1x 的
 完整组合、物理显示器 HiDPI、八语言母语外观校对。新增文本的八语言定义、
 实际解析与格式参数已由 resource 包测试覆盖。本轮没有平台或绘制契约变更。
+
+## Sidebar 背景调整（2026-10-09）
+
+侧栏旧背景通过窗口/正文混合 2.5% 得到，与 Flat 的悬停表面过近。
+此次改为独立 palette 字段，亮色从 `#F1F1F3` 改为 `#E2E2E8`，
+暗色从 `#252529` 改为 `#18181C`。不改变 Flat、普通按钮、Primary、
+语义前景、布局、边缘避让或 demo 的声明。
+
+新增回归检查侧栏比 Window/Card 和既有 Flat 交互表面更深，正文、MutedText、
+Warning/Error/Success 在实际 Sidebar 背景上的对比度不低于 4.5:1。
+原有表面颜色预期随契约调整，Flat 的交互颜色预期保持不变。
+
+已通过：`go test ./...`、Modern/demo 包非缓存测试、相关 race/vet；
+Windows amd64/macOS arm64 的 Modern 测试目标编译。
+本机隔离 TigerVNC/X11/Xfwm4、Software 1x 的 demo 检查亮暗模式、分类切换、
+Flat 悬停/按下及 Primary 选中项。截图按独立 RGB 字节断言新背景和原交互色，
+并与上一版 Software 1x 截图比较选中项内部及右侧卡片内容，确认不受影响。
+验证产物在 `/tmp/goui-sidebar.O79RsC/`；测试程序和隔离桌面已退出。
+
+本轮未重新执行 OpenGL/Direct2D 原生窗口、远端桌面或物理 HiDPI 验收。
+此前按用户要求保留工作区供体验，本轮用户已明确要求提交。
