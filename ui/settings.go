@@ -33,6 +33,15 @@ func (a *app) Settings() Settings {
 	}
 }
 
+// Language returns the cached system UI language, not mlang's application
+// language. Like the other Settings getters it synchronizes with the UI thread.
+func (s Settings) Language() (v string) {
+	if s.current != nil {
+		s.current.Sync(func() { v = s.settings.Language() })
+	}
+	return
+}
+
 func (s Settings) ColorScheme() (v ColorScheme) {
 	if s.current == nil {
 		return v

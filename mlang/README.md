@@ -24,6 +24,9 @@ fmt.Println(resource.Save()) // 保存
 ```
 
 初始语言为 `en`。`Language()` 返回请求的规范化标签，而非某个词条的回退语言。
+系统界面语言通过 `gui.Settings.Language()` / `ui.App.Settings().Language()` 查询，
+应用在自己的初始化流程或用户操作中主动决定是否传给 `SetLanguage`。系统查询
+和应用语言独立，不要在 UI Build 中调用 `SetLanguage`。
 合法但无翻译的语言使用各词条第一项，不报加载错误。资源定义中的非法或重复
 标签则是程序错误，构造时 panic。
 

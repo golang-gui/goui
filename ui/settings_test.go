@@ -15,6 +15,7 @@ type testSettings struct {
 	changed                signal.Signal0
 	scheme                 gui.ColorScheme
 	family                 string
+	language               string
 	connections, listeners int
 }
 
@@ -22,6 +23,7 @@ func (s *testSettings) ColorScheme() gui.ColorScheme { return s.scheme }
 func (s *testSettings) AccentColor() color.Color     { return color.Black }
 func (s *testSettings) FontFamily() string           { return s.family }
 func (s *testSettings) FontSize() float32            { return 14 }
+func (s *testSettings) Language() string             { return s.language }
 func (s *testSettings) ConnectChanged(fn func()) signal.Handle {
 	s.connections++
 	s.listeners++
@@ -65,7 +67,7 @@ func TestSettingsAutomaticallyRebuildAndDeduplicateSheet(t *testing.T) {
 		// A new sheet is built each time; unrelated settings must not invalidate
 		// all GUI style caches when the resolved rules remain equal.
 		return Root().StyleSheet(style.Sheet(style.Name("window").BackgroundColor(background))).
-			Windows(Window("main").Content(Label(rt.Settings().FontFamily())))
+			Windows(Window("main").Content(Label(rt.Settings().FontFamily() + rt.Settings().Language())))
 	})
 	a.run = func() {
 		if builds != 1 || a.settings.connections != 1 || a.settings.listeners != 1 {
@@ -73,6 +75,7 @@ func TestSettingsAutomaticallyRebuildAndDeduplicateSheet(t *testing.T) {
 		}
 		label := a.windows[0].widget.(*gui.Label)
 		a.settings.scheme, a.settings.family = ColorSchemeDark, "Changed"
+		a.settings.language = "ja"
 		a.settings.changed.Emit()
 		a.settings.changed.Emit()
 		rt.RequestUpdate() // explicit requests share the same scheduler
@@ -80,7 +83,7 @@ func TestSettingsAutomaticallyRebuildAndDeduplicateSheet(t *testing.T) {
 			t.Fatal("settings updates were not deferred/coalesced")
 		}
 		a.runPosted()
-		if builds != 2 || label.Text() != "Changed" || len(a.sheets) != 2 || len(a.windows) != 1 {
+		if builds != 2 || label.Text() != "Changedja" || len(a.sheets) != 2 || len(a.windows) != 1 {
 			t.Fatal("settings did not reconcile existing content and changed sheet")
 		}
 		a.settings.family = "Unrelated to fixed font style"

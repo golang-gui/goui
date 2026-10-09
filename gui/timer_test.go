@@ -352,17 +352,17 @@ func TestSettingsUsesSharedTimer(t *testing.T) {
 	}
 	source.family = "After"
 	q.advance(2 * time.Second)
-	if source.reads != 4 {
+	if source.reads != 5 {
 		t.Fatal("native settings queried before GUI dispatch")
 	}
 	q.dispatch(t)
-	if s.FontFamily() != "After" || source.reads != 8 {
+	if s.FontFamily() != "After" || source.reads != 10 {
 		t.Fatal("settings not updated on dispatch")
 	}
 	q.advance(2 * time.Second)
 	stop()
 	q.dispatch(t)
-	if source.reads != 8 {
+	if source.reads != 10 {
 		t.Fatal("stopped settings watch queried native state")
 	}
 }

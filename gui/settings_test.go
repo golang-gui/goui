@@ -7,16 +7,56 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-gui/goui/mlang"
 	"github.com/golang-gui/goui/platform"
 )
 
 type settingsTestSource struct {
-	scheme ColorScheme
-	accent color.Color
-	family string
-	size   float32
-	err    error
-	reads  int
+	scheme   ColorScheme
+	accent   color.Color
+	family   string
+	language string
+	size     float32
+	err      error
+	reads    int
+}
+
+func TestSettingsLanguageFallbackAndApplicationIndependence(t *testing.T) {
+	previous := mlang.Language()
+	t.Cleanup(func() { _ = mlang.SetLanguage(previous) })
+	if err := mlang.SetLanguage("fr"); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ native, want string }{
+		{"zh-cn", "zh-CN"}, {"ja", "ja"}, {"ko-KR", "ko-KR"},
+		{"", "en"}, {"und", "en"}, {"not a language", "en"},
+	} {
+		source := &settingsTestSource{language: tc.native}
+		s := newSettings(source)
+		if got := s.Language(); got != tc.want {
+			t.Fatalf("%q: got %q, want %q", tc.native, got, tc.want)
+		}
+		changes := 0
+		s.ConnectChanged(func() { changes++ })
+		source.language = "ar"
+		s.checkChanged()
+		if changes != 1 || s.Language() != "ar" {
+			t.Fatal("language-only change was not published")
+		}
+		source.err = errors.New("language unavailable")
+		s.checkChanged()
+		if changes != 2 || s.Language() != "en" {
+			t.Fatal("language query failure did not fall back")
+		}
+		if mlang.Language() != "fr" {
+			t.Fatal("system snapshot overwrote application language")
+		}
+	}
+}
+
+func (s *settingsTestSource) Language() (string, error) {
+	s.reads++
+	return s.language, s.err
 }
 
 func (s *settingsTestSource) ColorScheme() (ColorScheme, error) {
@@ -38,10 +78,10 @@ func (s *settingsTestSource) FontSize() (float32, error) {
 
 func TestSettingsInitialSnapshotAndFirstChange(t *testing.T) {
 	accent := &color.NRGBA{R: 20, G: 40, B: 60, A: 128}
-	source := &settingsTestSource{scheme: ColorSchemeDark, accent: accent, family: "First", size: 16}
+	source := &settingsTestSource{scheme: ColorSchemeDark, accent: accent, family: "First", size: 16, language: "zh-CN"}
 	s := newSettings(source)
 	initial := s.current
-	if source.reads != 4 || s.ColorScheme() != ColorSchemeDark || s.FontFamily() != "First" || s.FontSize() != 16 {
+	if source.reads != 5 || s.ColorScheme() != ColorSchemeDark || s.FontFamily() != "First" || s.FontSize() != 16 || s.Language() != "zh-CN" {
 		t.Fatalf("initial settings missing: %+v, reads=%d", initial, source.reads)
 	}
 	if initial.accent != color.RGBA64Model.Convert(accent) {
@@ -51,7 +91,7 @@ func TestSettingsInitialSnapshotAndFirstChange(t *testing.T) {
 	h := s.ConnectChanged(func() {
 		changes++
 		if s.ColorScheme() != ColorSchemeLight || s.FontFamily() != "Second" || s.FontSize() != 18 ||
-			s.AccentColor() != color.RGBA64Model.Convert(accent) {
+			s.AccentColor() != color.RGBA64Model.Convert(accent) || s.Language() != "ja" {
 			t.Fatal("listener saw a partial/stale snapshot")
 		}
 	})
@@ -60,18 +100,19 @@ func TestSettingsInitialSnapshotAndFirstChange(t *testing.T) {
 		t.Fatal("connecting emitted an initial change")
 	}
 	source.scheme, source.family, source.size = ColorSchemeLight, "Second", 18
+	source.language = "ja"
 	accent.R = 200
 	for range 10 {
 		if s.ColorScheme() != initial.scheme || s.AccentColor() != initial.accent ||
-			s.FontFamily() != initial.family || s.FontSize() != initial.size {
+			s.FontFamily() != initial.family || s.FontSize() != initial.size || s.Language() != initial.language {
 			t.Fatal("getter queried native state or retained mutable platform color")
 		}
 	}
-	if source.reads != 4 {
+	if source.reads != 5 {
 		t.Fatal("getters performed native queries")
 	}
 	s.checkChanged()
-	if changes != 1 || source.reads != 8 {
+	if changes != 1 || source.reads != 10 {
 		t.Fatalf("first poll lost the change: changes=%d reads=%d", changes, source.reads)
 	}
 	// Equal colors with a different concrete Go type do not cause a notification.
@@ -137,7 +178,7 @@ func TestSettingsWatchBelongsToApplicationRun(t *testing.T) {
 		case <-time.After(5 * time.Second):
 			t.Fatal("Run did not start settings polling")
 		}
-		if source.reads != 4 {
+		if source.reads != 5 {
 			t.Fatal("timer queried native settings outside the event loop")
 		}
 		// Return with this task still queued, as a native loop can do on quit.
@@ -146,7 +187,7 @@ func TestSettingsWatchBelongsToApplicationRun(t *testing.T) {
 	a.Run()
 	source.family = "Changed after exit"
 	pending()
-	if source.reads != 4 || s.FontFamily() != "Initial" {
+	if source.reads != 5 || s.FontFamily() != "Initial" {
 		t.Fatal("stale poll queried native resources after Run returned")
 	}
 	// No-platform fallback needs neither a timer nor a usable event loop.

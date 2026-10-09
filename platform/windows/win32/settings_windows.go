@@ -19,6 +19,28 @@ func newSettings() (common.Settings, error) {
 	return &Settings{}, nil
 }
 
+func (Settings) Language() (string, error) {
+	var count, size winapi.DWORD
+	if err := winapi.GetUserPreferredUILanguages(winapi.MUI_LANGUAGE_NAME, &count, nil, &size); err != nil {
+		return "", err
+	}
+	if count == 0 || size < 2 || size > 65536 {
+		return "", common.ErrSettingUnsupported
+	}
+	buffer := make([]uint16, size)
+	if err := winapi.GetUserPreferredUILanguages(winapi.MUI_LANGUAGE_NAME, &count, &buffer[0], &size); err != nil {
+		return "", err
+	}
+	if count == 0 || size < 2 || int(size) > len(buffer) {
+		return "", common.ErrSettingUnsupported
+	}
+	value := syscall.UTF16ToString(buffer[:size])
+	if value == "" {
+		return "", common.ErrSettingUnsupported
+	}
+	return value, nil
+}
+
 func (Settings) ColorScheme() (common.ColorScheme, error) {
 	value, err := readCurrentUserDWORD(`Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`, "AppsUseLightTheme")
 	if err != nil {
