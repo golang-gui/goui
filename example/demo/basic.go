@@ -56,7 +56,7 @@ func (d *demo) basicPage() ui.View {
 			}).
 				OnSelected(func(i int) { d.fancyDrop = i; change() }).OnOpenError(func(e error) { d.result(resource.OpenCustomDropDown(), e) }).Enabled(d.enabled),
 			ui.Label(resource.DisabledHint()).Style(modern.MutedText)),
-		section(resource.TextLayout(), ui.HBox(ui.Label("Baseline"), ui.TextInput().Text("文字基线对齐").MinWidth(240)).CrossAlign(layout.CrossBaseline).Spacing(12),
+		section(resource.TextLayout(), ui.HBox(ui.Label("Baseline"), ui.TextInput().ID("baseline-input").BindText(&d.baselineInput).MinWidth(240)).CrossAlign(layout.CrossBaseline).Spacing(12),
 			ui.Label(resource.LabelHint())),
 	)
 }

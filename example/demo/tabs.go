@@ -35,7 +35,8 @@ func (d *demo) tabState(id string) *tabWindow {
 func (d *demo) addTab(w *tabWindow) {
 	d.nextDocument++
 	id := fmt.Sprintf("document-%d", d.nextDocument)
-	d.documents[id] = ui.NewTextModel("新文档\n\n在这里输入内容。")
+	d.documents[id] = ui.NewTextModel(documentSample(id))
+	d.documentRevisions[id] = 0
 	w.pages = append(w.pages, id)
 	w.current = id
 	d.app.RequestUpdate()
@@ -101,6 +102,7 @@ func (d *demo) closeTab(w *tabWindow) {
 			}
 		}
 		delete(d.documents, id)
+		delete(d.documentRevisions, id)
 		d.report(fmt.Sprintf(resource.TabClosed(), id))
 	}
 }
@@ -150,6 +152,7 @@ func (d *demo) tabWindowView(w *tabWindow) ui.WindowView {
 			d.tabWindows = slices.DeleteFunc(d.tabWindows, func(item *tabWindow) bool { return item == w })
 			for _, id := range w.pages {
 				delete(d.documents, id)
+				delete(d.documentRevisions, id)
 			}
 			d.app.RequestUpdate()
 		}).Content(content)

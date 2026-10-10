@@ -1,4 +1,4 @@
-// Package resource contains display text, not IDs or editable demo data.
+// Package resource contains display text and initial samples, not IDs or user edits.
 package resource
 
 import "github.com/golang-gui/goui/mlang"
