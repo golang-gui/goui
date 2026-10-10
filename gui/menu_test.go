@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"image/color"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -73,13 +74,43 @@ func TestMenuContentNaturalSize(t *testing.T) {
 	mc := newMenuContent(m, 0, func(*MenuItem) {})
 	size := mc.Measure(layoutLooseFull)
 
-	if want := float32(2*menuItemPadding + 2*menuContentPadding); size.Width != want {
-		t.Fatalf("natural width = %v, want padding-only width %v without typography", size.Width, want)
+	if size.Width != 160 {
+		t.Fatalf("menu body width = %v, want default minimum 160", size.Width)
+	}
+	if want := float32(2*menuItemPadding + 2*menuContentPadding); mc.naturalW != want {
+		t.Fatalf("intrinsic width = %v, want padding-only width %v without typography", mc.naturalW, want)
 	}
 	// Without typography, rows use their minimum height, plus shell padding.
 	want := 3*menuItemMinHeight + menuSeparatorHeight + 2*menuContentPadding
 	if size.Height != float32(want) {
 		t.Fatalf("natural height = %v, want %v", size.Height, want)
+	}
+}
+
+func TestMenuContentWidthConstraints(t *testing.T) {
+	useTestApplication(t, &application{typo: &styleTypography{}, style: textStyleSheet(10, color.Black)})
+	for _, tt := range []struct {
+		name  string
+		label string
+		c     layout.Constraint
+		want  float32
+	}{
+		{"short Chinese", "复制", layout.Unbounded(), 160},
+		{"short English", "Copy", layout.Unbounded(), 160},
+		// The typography fixture measures each byte as 10 DIP; include row and body padding.
+		{"long content", "A very long menu item", layout.Unbounded(), 210 + 16 + 12},
+		{"narrow work area", "复制", layout.Loose(geometry.Size{Width: 100, Height: 100}), 100},
+		{"parent minimum", "复制", layout.Tight(geometry.Size{Width: 220, Height: 40}), 220},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			m := NewMenu()
+			m.Append(tt.label, nil)
+			mc := newMenuContent(m, 0, nil)
+			size := mc.Measure(tt.c).Size
+			if size != (geometry.Size{Width: tt.want, Height: 40}) {
+				t.Fatalf("body size = %v, want %vx40", size, tt.want)
+			}
+		})
 	}
 }
 
