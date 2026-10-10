@@ -10,7 +10,6 @@ import (
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform"
-	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/style"
 )
@@ -595,10 +594,6 @@ func (a *windowTestApplication) Windows() []gui.Window {
 
 func (a *windowTestApplication) Snapshot() gui.ApplicationInfo {
 	return gui.ApplicationInfo{}
-}
-
-func (a *windowTestApplication) DispatchWindowEvent(string, events.Event) error {
-	return nil
 }
 
 type windowTestFileDialog struct{}

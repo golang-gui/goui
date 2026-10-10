@@ -13,12 +13,12 @@ import (
 )
 
 var (
-	errWindowRequired    = errors.New("event window is required")
+	errTargetRequired    = errors.New("target ref is required")
 	errEventTypeRequired = errors.New("event type is required")
 )
 
 type eventRequest struct {
-	Window    string          `json:"window"`
+	Target    string          `json:"target"`
 	Type      string          `json:"type"`
 	EventType *int            `json:"eventType,omitempty"`
 	X         float32         `json:"x"`
@@ -33,6 +33,11 @@ type eventRequest struct {
 	Code      uint32          `json:"code,omitempty"`
 	Location  string          `json:"location,omitempty"`
 	Repeat    bool            `json:"repeat,omitempty"`
+}
+
+type textRequest struct {
+	Target string  `json:"target"`
+	Text   *string `json:"text"` // nil distinguishes missing text from a valid no-op
 }
 
 func (r eventRequest) event() (events.Event, error) {

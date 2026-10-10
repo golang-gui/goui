@@ -70,6 +70,15 @@ type Popover interface {
 	// scoped to the owner window; it does not block other windows.
 	Modal() bool
 	SetModal(bool)
+	// DispatchEvent uses this surface's normal input path and local DIP.
+	// Native keyboard input reaches modal popovers through their owner window.
+	// Call on the GUI thread; key events require the owner's current modal input.
+	DispatchEvent(events.Event) error
+	// CommitText submits confirmed UTF-8 text to this popover's editable logical
+	// focus. It requires a visible popover holding its owner's modal input.
+	// Like Window.CommitText, it does not change focus or simulate native IME;
+	// native preedit/candidate support remains a separate capability.
+	CommitText(text string) error
 
 	// Show resolves current anchor geometry and work area using the configured
 	// Placement and Position. It does not change either request, even on failure.
@@ -154,6 +163,15 @@ func (p *popover) SetFocusedWidget(widget Widget) bool {
 	p.dispatcher.updateFocus(p.Widget(), widget)
 	p.requestPaint()
 	return true
+}
+
+func (p *popover) CommitText(text string) error {
+	return commitText(p, text)
+}
+
+func (p *popover) ownsModalInput() bool {
+	owner, ok := p.owner.(*window)
+	return ok && !owner.destroyed && !owner.frameSuspended && p.modal && owner.modalTarget == p
 }
 
 // --- Popover API ---
@@ -278,6 +296,9 @@ func (p *popover) DispatchEvent(event events.Event) error {
 	if p.destroyed {
 		return nil
 	}
+	if _, key := event.(events.KeyEvent); key && p.owner != nil && !p.ownsModalInput() {
+		return fmt.Errorf("popover: does not own modal keyboard input")
+	}
 	if e, ok := event.(events.DragOfferEvent); ok {
 		p.dispatchDragOffer(p, e)
 		return nil
@@ -354,6 +375,9 @@ func (p *popover) Show() error {
 		return fmt.Errorf("popover: released during Show")
 	}
 	p.visible = true
+	if owner, ok := p.owner.(*window); ok {
+		owner.addPopover(p)
+	}
 	p.resumeFrames(p.platformPopup)
 	if p.modal {
 		// Only a modal (menu) popover intercepts the window's input; modeless
@@ -371,6 +395,9 @@ func (p *popover) Hide() {
 		return
 	}
 	p.visible = false
+	if owner, ok := p.owner.(*window); ok {
+		owner.removePopover(p)
+	}
 	p.resetInput()
 	if wasVisible && p.modal {
 		p.resignModalTarget()
@@ -517,6 +544,9 @@ func (p *popover) releaseNative() {
 	p.surface = nil
 	wasVisible := p.visible
 	p.visible = false
+	if owner, ok := p.owner.(*window); ok {
+		owner.removePopover(p)
+	}
 	p.resetInput()
 	p.drag.destroy()
 	if p.hUnmount != nil {

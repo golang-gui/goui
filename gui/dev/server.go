@@ -18,6 +18,7 @@ import (
 const (
 	SnapshotPath = "/goui/dev/snapshot"
 	EventPath    = "/goui/dev/event"
+	TextPath     = "/goui/dev/text"
 )
 
 const defaultCallTimeout = 5 * time.Second
@@ -61,6 +62,7 @@ func serve(addr string) error {
 type handler struct {
 	appFn       func() gui.Application
 	callTimeout time.Duration
+	refs        references // exclusively accessed inside app.Post callbacks
 }
 
 // newHandler builds the protocol handler. appFn resolves the running application on
@@ -70,12 +72,13 @@ func newHandler(appFn func() gui.Application) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc(SnapshotPath, h.handleSnapshot)
 	mux.HandleFunc(EventPath, h.handleEvent)
+	mux.HandleFunc(TextPath, h.handleText)
 	return mux
 }
 
 type snapshotResponse struct {
 	OK       bool                `json:"ok"`
-	Snapshot gui.ApplicationInfo `json:"snapshot"`
+	Snapshot applicationSnapshot `json:"snapshot"`
 }
 
 type okResponse struct {
@@ -99,9 +102,10 @@ func (h *handler) handleSnapshot(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var snapshot gui.ApplicationInfo
+	var snapshot applicationSnapshot
 	if err := h.call(req, app, func() error {
-		snapshot = app.Snapshot()
+		windows := h.refs.refresh(app)
+		snapshot = h.refs.snapshot(windows)
 		return nil
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
@@ -129,8 +133,8 @@ func (h *handler) handleEvent(w http.ResponseWriter, req *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	if eventReq.Window == "" {
-		writeError(w, http.StatusBadRequest, errWindowRequired)
+	if eventReq.Target == "" {
+		writeError(w, http.StatusBadRequest, errTargetRequired)
 		return
 	}
 
@@ -141,12 +145,55 @@ func (h *handler) handleEvent(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if err := h.call(req, app, func() error {
-		return app.DispatchWindowEvent(eventReq.Window, event)
+		h.refs.refresh(app)
+		target, err := h.refs.resolve(eventReq.Target)
+		if err != nil {
+			return err
+		}
+		return target.dispatch(event)
 	}); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
 
+	writeJSON(w, http.StatusOK, okResponse{OK: true})
+}
+
+func (h *handler) handleText(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		writeMethodNotAllowed(w, http.MethodPost)
+		return
+	}
+	app := h.appFn()
+	if app == nil {
+		writeError(w, http.StatusServiceUnavailable, errAppNotReady)
+		return
+	}
+	defer req.Body.Close()
+	var input textRequest
+	if err := json.NewDecoder(req.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if input.Target == "" {
+		writeError(w, http.StatusBadRequest, errTargetRequired)
+		return
+	}
+	if input.Text == nil {
+		writeError(w, http.StatusBadRequest, errors.New("text is required"))
+		return
+	}
+	if err := h.call(req, app, func() error {
+		h.refs.refresh(app)
+		target, err := h.refs.resolve(input.Target)
+		if err != nil {
+			return err
+		}
+		return target.host.CommitText(*input.Text)
+	}); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, okResponse{OK: true})
 }
 
@@ -157,6 +204,10 @@ func (h *handler) call(req *http.Request, app gui.Application, f func() error) e
 
 	done := make(chan error, 1)
 	app.Post(func() {
+		if err := ctx.Err(); err != nil {
+			done <- err
+			return
+		}
 		done <- f()
 	})
 
