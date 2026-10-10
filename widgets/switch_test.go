@@ -3,6 +3,7 @@ package widgets
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image/color"
 	"math"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/software"
 	"github.com/golang-gui/goui/style"
+	"github.com/golang-gui/goui/theme/modern"
 )
 
 func switchInput() (*Switch, *tabInputHost, *gui.EventDispatcher) {
@@ -394,4 +396,96 @@ func TestSwitchSoftwarePixels(t *testing.T) {
 		}
 		native.Destroy()
 	}
+}
+
+func TestSwitchModernCapsuleCoverage(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		for _, scale := range []float32{1, 1.25, 2} {
+			for _, offset := range []float32{0, .25} {
+				for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed, style.Disabled} {
+					t.Run(fmt.Sprintf("dark=%v/scale=%g/offset=%g/state=%d", dark, scale, offset, state), func(t *testing.T) {
+						sheet := modern.Sheet(modern.Options{Dark: dark, AccentColor: color.RGBA{R: 70, G: 130, B: 220, A: 255}})
+						useProgressApplication(t, &progressTestApplication{sheet: sheet})
+						b, host, dispatcher := switchInput()
+						b.SetAnimated(false)
+						b.SetChecked(true)
+						switch state {
+						case style.Hovered:
+							dispatchTabPointer(t, dispatcher, host, events.PointerMove, 16, 16)
+						case style.Pressed:
+							dispatchTabPointer(t, dispatcher, host, events.PointerDown, 16, 16)
+						case style.Disabled:
+							b.SetEnabled(false)
+						}
+						out := new(progressPixelSurface)
+						native, err := software.NewPainter(out)
+						if err != nil {
+							t.Fatal(err)
+						}
+						defer native.Destroy()
+						native.Begin(100*scale, 40*scale, scale)
+						native.Clear(graphics.Color{})
+						native.SetTransform(geometry.Translate(offset, offset))
+						b.Paint(checkPixelPainter{native: native})
+						native.End()
+
+						track := sheet.Resolve(style.Sel{Name: "switch", Part: "track-checked", State: state})
+						bg, _ := track.BackgroundColor()
+						ink := color.RGBAModel.Convert(bg).(color.RGBA)
+						if ink.A != 255 {
+							t.Fatal("coverage reference requires an opaque track")
+						}
+						// Sample the left semicircle, where the checked thumb cannot cover
+						// the track. The independent reference integrates an exact radius-10
+						// circle in physical pixels; it does not redraw the same path.
+						// Compare premultiplied sRGB RGBA8 over transparent. Ten byte levels
+						// allow 26.6 path quantization, the cubic circle approximation and
+						// RGBA8 rounding, but reject the former ~25% double-AA coverage error.
+						cx, cy, radius := float64((16+offset)*scale), float64((16+offset)*scale), float64(10*scale)
+						boundary := 0
+						for y := 0; y < out.pixels.Bounds().Dy(); y++ {
+							for x := 0; float64(x+1) <= cx; x++ {
+								coverage := switchCircleCoverage(x, y, cx, cy, radius)
+								if coverage > 0 && coverage < 1 {
+									boundary++
+								}
+								got := out.pixels.RGBAAt(x, y)
+								for i, channel := range [4]uint8{got.R, got.G, got.B, got.A} {
+									want := float64([4]uint8{ink.R, ink.G, ink.B, ink.A}[i]) * coverage
+									if math.Abs(float64(channel)-want) > 10 {
+										t.Fatalf("capsule (%d,%d) channel %d=%d want %.2f (coverage %.4f)", x, y, i, channel, want, coverage)
+									}
+								}
+							}
+						}
+						if boundary == 0 {
+							t.Fatal("no antialiased boundary pixels sampled")
+						}
+					})
+				}
+			}
+		}
+	}
+}
+
+func switchCircleCoverage(x, y int, cx, cy, radius float64) float64 {
+	distance := math.Hypot(float64(x)+.5-cx, float64(y)+.5-cy)
+	if distance < radius-1 {
+		return 1
+	}
+	if distance > radius+1 {
+		return 0
+	}
+	const samples = 128
+	inside := 0
+	for j := 0; j < samples; j++ {
+		py := float64(y) + (float64(j)+.5)/samples - cy
+		for i := 0; i < samples; i++ {
+			px := float64(x) + (float64(i)+.5)/samples - cx
+			if px*px+py*py <= radius*radius {
+				inside++
+			}
+		}
+	}
+	return float64(inside) / (samples * samples)
 }

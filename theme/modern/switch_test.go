@@ -18,8 +18,18 @@ func TestSwitchTheme(t *testing.T) {
 					bg, bgOK := track.BackgroundColor()
 					ink, inkOK := thumb.BackgroundColor()
 					width, _ := track.BorderWidth()
-					if !bgOK || !inkOK || rgba(bg).A != 255 || rgba(ink).A != 255 || width != 1 {
+					if !bgOK || !inkOK || rgba(bg).A != 255 || rgba(ink).A != 255 {
 						t.Fatal("incomplete switch parts")
+					}
+					wantWidth := float32(1)
+					if suffix != "" {
+						wantWidth = 0
+					}
+					if width != wantWidth {
+						t.Fatalf("track%s border width=%v want %v", suffix, width, wantWidth)
+					}
+					if radius, _ := track.Radius(); radius != 10 {
+						t.Fatal("track must retain its capsule radius")
 					}
 					if width, _ := thumb.BorderWidth(); width != 0 {
 						t.Fatal("thumb must be a full disc without an outline")

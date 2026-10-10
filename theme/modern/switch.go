@@ -33,7 +33,10 @@ func switchRules(p palette, accent, focus color.RGBA) []style.Rule {
 				fills = [4]color.RGBA{white, white, white, mix(white, disabled, .25)}
 				edges = [4]color.RGBA{}
 				width, radius = 0, 8
-			} else if !checked {
+			} else if checked {
+				// A same-color stroke would composite the antialiased edge twice.
+				width = 0
+			} else {
 				for i := 0; i < 3; i++ {
 					edges[i] = mix(fills[i], p.text, .08)
 				}
