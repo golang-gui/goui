@@ -22,12 +22,12 @@ func (d *demo) layoutPage() ui.View {
 	return page("layout", resource.Layout(), resource.LayoutHint(),
 		section(resource.ScrollBarTitle(), scrollBar(d.scrollValue, func(value float32) { d.scrollValue = value; d.app.RequestUpdate() }), ui.Label(fmt.Sprintf(resource.ScrollPosition(), d.scrollValue))),
 		section("HBox / VBox / Baseline",
-			ui.HBox(ui.Label(resource.Username()), ui.TextInput().Text("GOUI").MainWeight(1), ui.Button(resource.OK())).CrossAlign(layout.CrossBaseline).Spacing(12),
+			ui.HBox(ui.Label(resource.Username()), ui.TextInput().BindText(&d.username).MainWeight(1), ui.Button(resource.OK())).CrossAlign(layout.CrossBaseline).Spacing(12),
 			ui.HBox(surface(ui.HBox(ui.Label(resource.WeightOne())).Padding(12)).Style(modern.Card).MainWeight(1), surface(ui.HBox(ui.Label(resource.WeightTwo())).Padding(12)).Style(modern.Card).MainWeight(2)).Spacing(12)),
 		section(resource.HWrapTitle(), ui.HWrap(chips...).Spacing(8).LineSpacing(8)),
 		section(resource.VWrapTitle(), ui.VWrap(vertical...).Spacing(8).LineSpacing(20).MinHeight(95).MaxHeight(95)),
 		section(resource.SplitTitle(),
-			wui.HSplit(ui.ScrollView(ui.VBox(ui.Label(resource.Left()), ui.Label("StartSize 初值 200 DIP"), ui.TextInput().Text("拖动分隔条后改变内容")).Spacing(12).Padding(12)),
+			wui.HSplit(ui.ScrollView(ui.VBox(ui.Label(resource.Left()), ui.Label(resource.StartSizeHint()), ui.TextInput().ID("split-input").BindText(&d.splitInput)).Spacing(12).Padding(12)),
 				wui.VSplit(ui.ScrollView(ui.VBox(ui.Label(resource.RightTop()), ui.Label(resource.AutoSize()))).MinHeight(70),
 					ui.ScrollView(ui.VBox(chipsCopy(12)...).Spacing(10).Padding(12))).Ratio(d.layoutRatio).
 					OnResize(func(start, end float32) {

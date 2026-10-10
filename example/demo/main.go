@@ -39,8 +39,11 @@ type demo struct {
 	group                              *widgets.CheckGroup
 	drop, fancyDrop                    int
 	choices                            *gui.SliceListModel[widgets.DropDownItem]
-	input                              ui.State[string]
+	input, baselineInput, splitInput   sampleInput
+	username                           ui.State[string]
 	text                               *ui.TextModel
+	textRevision                       uint64
+	language                           string
 	selection                          ui.TextSelection
 	readonly, wrap                     bool
 	tree                               *widgets.TreeStore[string]
@@ -53,6 +56,7 @@ type demo struct {
 	sortOrder                          widgets.SortOrder
 	tabWindows                         []*tabWindow
 	documents                          map[string]*ui.TextModel
+	documentRevisions                  map[string]uint64
 	nextDocument, nextWindow           int
 	pendingDetach                      *wui.TabDetachRequest
 	detachWindow                       string
@@ -72,7 +76,9 @@ type demo struct {
 	popup                              gui.Popover
 	files                              []string
 	dropped                            string
+	droppedKind                        demoDropKind
 	inspection                         *ui.TextModel
+	inspectionRevision                 uint64
 }
 
 func main() {
@@ -95,13 +101,14 @@ func main() {
 func newDemo() (*demo, error) {
 	d := &demo{status: resource.Welcome(), enabled: true, mixed: wui.CheckMixed,
 		group: widgets.NewCheckGroup(), drop: 0, fancyDrop: 0, wrap: true,
-		input: ui.MakeState("Hello, GOUI"), text: ui.NewTextModel("GOUI 文本编辑\n\n支持中文输入、选区、撤销与重做。\nEmoji: 👨‍👩‍👧‍👦 组合字符: é\n试试拖选文字、右键菜单，以及 Ctrl/Cmd+A、C、V、Z。\n\n这是一条较长的示例行，用来观察自动换行与水平滚动如何随着可用宽度发生变化。"),
-		inspection:  ui.NewTextModel("点击“读取快照”，检查当前窗口的角色、ID、边界、状态与子树。"),
-		motionValue: ui.MakeState(float32(32)), expanded: []string{"project", "src"}, dropped: "将文本、应用内卡片或外部文件拖到此处。"}
+		input: newSampleInput(resource.InputSample()), baselineInput: newSampleInput(resource.BaselineSample()), splitInput: newSampleInput(resource.SplitInputSample()),
+		username: ui.MakeState("GOUI"),
+		text:     ui.NewTextModel(resource.EditorSample()), inspection: ui.NewTextModel(resource.InspectionSample()), language: mlang.Language(),
+		motionValue: ui.MakeState(float32(32)), expanded: []string{"project", "src"}}
 	d.layoutStart, d.layoutRatio, d.dataStart, d.dataRatio = 200, .4, 220, .68
 	d.choices = gui.NewSliceListModel([]widgets.DropDownItem{{Text: resource.DefaultOption()}, {Text: resource.CustomOption()}, {Text: resource.DisabledOption(), Disabled: true}, {Text: resource.LastOption()}})
 	d.tree = widgets.NewTreeStore[string]()
-	d.tree.Append("", "project", "示例项目")
+	d.tree.Append("", "project", resource.SampleProject())
 	d.tree.Append("project", "src", "src")
 	d.tree.Append("src", "main", "main.go")
 	d.tree.Append("src", "view", "view.go")
@@ -110,7 +117,7 @@ func newDemo() (*demo, error) {
 	d.tree.Append("project", "readme", "README.md")
 	rows := make([]string, 1000)
 	for i := range rows {
-		rows[i] = fmt.Sprintf("虚拟列表 · 第 %04d 行", i+1)
+		rows[i] = fmt.Sprintf(resource.ListRow(), i+1)
 	}
 	d.list = gui.NewSliceListModel(rows)
 	d.table = newRecordModel()
@@ -118,8 +125,10 @@ func newDemo() (*demo, error) {
 	d.tabWindows = []*tabWindow{{id: "main", pages: []string{"document-1", "document-2", "document-3"}, current: "document-1"}}
 	d.nextDocument = 3
 	d.documents = make(map[string]*ui.TextModel)
-	for i, id := range d.tabWindows[0].pages {
-		d.documents[id] = ui.NewTextModel(fmt.Sprintf("文档 %d\n\n输入内容后拖动标签：排序、移交到另一窗口，或拖到桌面创建窗口。\n编辑状态和撤销历史跟随页面。", i+1))
+	d.documentRevisions = make(map[string]uint64)
+	for _, id := range d.tabWindows[0].pages {
+		d.documents[id] = ui.NewTextModel(documentSample(id))
+		d.documentRevisions[id] = 0
 	}
 	d.motion = animation.New(float32(32), animation.Float32)
 	d.motion.ConnectUpdate(d.motionValue.Set)
@@ -270,17 +279,6 @@ func (d *demo) languageMenu(systemLanguage string) ui.View {
 	return ui.MenuButton(fmt.Sprintf(resource.LanguageFormat(), mlang.Language())).ID("language-menu").Menu(items...)
 }
 
-// Update presentation in the existing model, not user edits or model identity.
-func (d *demo) translateUI() {
-	labels := []string{resource.DefaultOption(), resource.CustomOption(), resource.DisabledOption(), resource.LastOption()}
-	for i, label := range labels {
-		item := d.choices.ItemAt(i)
-		if item.Text != label {
-			item.Text = label
-			d.choices.Set(i, item)
-		}
-	}
-}
 func (d *demo) showToast(text string) {
 	d.toast = text
 	if d.toastTimer != nil {

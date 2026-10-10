@@ -11,11 +11,49 @@ import (
 	"github.com/golang-gui/goui/ui"
 )
 
+type demoDropKind uint8
+
+const (
+	demoDropNone demoDropKind = iota
+	demoDropText
+	demoDropFiles
+	demoDropCard
+)
+
+// Store payload separately from its translated description. Even empty text
+// is a successful drop, rather than the initial invitation.
+func (d *demo) receiveDrop(r *ui.DropRequest) {
+	if paths, ok := r.Data.Files(); ok {
+		d.dropped, d.droppedKind = strings.Join(paths, "\n"), demoDropFiles
+	} else if text, ok := r.Data.Text(); ok {
+		d.dropped, d.droppedKind = text, demoDropText
+	} else if value, ok := r.Data.Local("demo-card"); ok {
+		d.dropped, d.droppedKind = fmt.Sprint(value), demoDropCard
+	} else {
+		return
+	}
+	r.Accepted = true
+	d.report(resource.DropAccepted())
+}
+
+func (d *demo) dropDescription() string {
+	switch d.droppedKind {
+	case demoDropFiles:
+		return fmt.Sprintf(resource.FilesReceived(), d.dropped)
+	case demoDropText:
+		return fmt.Sprintf(resource.TextReceived(), d.dropped)
+	case demoDropCard:
+		return resource.LocalCardReceived()
+	default:
+		return resource.DropZoneHint()
+	}
+}
+
 func (d *demo) systemPage() ui.View {
 	textData := new(gui.DragData)
 	textData.SetText(d.input.Get())
 	localData := new(gui.DragData)
-	localData.SetLocal("demo-card", "GOUI 应用内卡片")
+	localData.SetLocal("demo-card", "goui-demo-card")
 	filesData := new(gui.DragData)
 	filesData.SetFiles(d.files)
 	source := func(id string, data *gui.DragData) *ui.DragSourceView {
@@ -42,19 +80,7 @@ func (d *demo) systemPage() ui.View {
 			}
 		})
 	}
-	target := ui.DropTarget(ui.LocalFormat("demo-card"), ui.DragFormatFiles, ui.DragFormatText).OnDrop(func(r *ui.DropRequest) {
-		if paths, ok := r.Data.Files(); ok {
-			d.dropped = fmt.Sprintf(resource.FilesReceived(), strings.Join(paths, "\n"))
-		} else if text, ok := r.Data.Text(); ok {
-			d.dropped = fmt.Sprintf(resource.TextReceived(), text)
-		} else if value, ok := r.Data.Local("demo-card"); ok {
-			d.dropped = fmt.Sprint(value)
-		} else {
-			return
-		}
-		r.Accepted = true
-		d.report(resource.DropAccepted())
-	}).OnError(func(e error) { d.result(resource.ReceiveDrop(), e) })
+	target := ui.DropTarget(ui.LocalFormat("demo-card"), ui.DragFormatFiles, ui.DragFormatText).OnDrop(d.receiveDrop).OnError(func(e error) { d.result(resource.ReceiveDrop(), e) })
 	return page("system", resource.System(), resource.SystemHint(),
 		section(resource.Clipboard(), ui.TextInput().BindText(&d.input), ui.HWrap(ui.Button(resource.CopyText()).ID("copy-text").OnClick(func() {
 			d.app.Clipboard().SetText(d.input.Get())
@@ -100,12 +126,12 @@ func (d *demo) systemPage() ui.View {
 				d.tickTimer = d.app.TickFunc(time.Second, func() { d.ticks++; d.app.RequestUpdate() })
 				d.report(resource.TimerStarted())
 			}
-		}), ui.Label(fmt.Sprintf("Tick：%d", d.ticks))).Spacing(12)),
+		}), ui.Label(fmt.Sprintf(resource.TickCount(), d.ticks))).Spacing(12)),
 		section(resource.DragDropTitle(),
 			ui.HWrap(ui.Button(resource.DragText()).ID("drag-text").DragSource(source("drag-text", textData)),
 				ui.Button(resource.DragLocal()).ID("drag-local").DragSource(source("drag-local", localData)),
 				ui.Button(resource.DragFiles()).ID("drag-files").Enabled(len(d.files) > 0).DragSource(source("drag-files", filesData))).Spacing(12).LineSpacing(8),
-			surface(ui.HBox(ui.Label(d.dropped).WrapMode(ui.WrapWordChar).MainWeight(1)).Padding(16)).Style(modern.Card).ID("drop-zone").MinHeight(110).DropTarget(target),
+			surface(ui.HBox(ui.Label(d.dropDescription()).WrapMode(ui.WrapWordChar).MainWeight(1)).Padding(16)).Style(modern.Card).ID("drop-zone").MinHeight(110).DropTarget(target),
 			ui.Label(resource.DragHint())),
 	)
 }

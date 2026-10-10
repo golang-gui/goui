@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -67,6 +68,7 @@ func TestLanguageChangePreservesDemoModelsAndState(t *testing.T) {
 	defer d.stopActivities()
 	choices, tree, list, table, model := d.choices, d.tree, d.list, d.table, d.text
 	d.input.Set("user input")
+	d.username.Set("user name")
 	d.text.SetText("user editor text")
 	d.selection = ui.TextSelection{Anchor: 1, Caret: 5}
 	d.drop, d.fancyDrop, d.page = 3, 1, 1
@@ -87,7 +89,7 @@ func TestLanguageChangePreservesDemoModelsAndState(t *testing.T) {
 		if choices != d.choices || tree != d.tree || list != d.list || table != d.table || model != d.text {
 			t.Fatal("language change replaced a persistent model")
 		}
-		if d.input.Get() != "user input" || model.Text() != "user editor text" || model.CanUndo() != canUndo ||
+		if d.input.Get() != "user input" || d.username.Get() != "user name" || model.Text() != "user editor text" || model.CanUndo() != canUndo ||
 			d.selection != (ui.TextSelection{Anchor: 1, Caret: 5}) || d.page != 1 || d.drop != 3 || d.fancyDrop != 1 ||
 			d.tableWidths[0] != 257 || d.table.RowID(0) != firstRow || d.documents["document-1"].Text() != "edited document" ||
 			d.tabWindows[0].current != "document-2" {
@@ -106,6 +108,187 @@ func TestLanguageChangePreservesDemoModelsAndState(t *testing.T) {
 				t.Fatalf("page %d has no translated name", i)
 			}
 		}
+	}
+}
+
+// 默认样例由例程持有；八语言都必须覆盖，而不是只翻译标题和按钮。
+func TestDemoSamplesUseCurrentLanguage(t *testing.T) {
+	previous := mlang.Language()
+	t.Cleanup(func() { _ = mlang.SetLanguage(previous) })
+	for _, choice := range demoLanguages {
+		t.Run(choice.tag, func(t *testing.T) {
+			if err := mlang.SetLanguage(choice.tag); err != nil {
+				t.Fatal(err)
+			}
+			d, err := newDemo()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer d.stopActivities()
+			if d.input.Get() != resource.InputSample() || d.text.Text() != resource.EditorSample() ||
+				d.inspection.Text() != resource.InspectionSample() || d.tree.Item("project") != resource.SampleProject() ||
+				d.list.ItemAt(999) != fmt.Sprintf(resource.ListRow(), 1000) ||
+				d.documents["document-2"].Text() != fmt.Sprintf(resource.DocumentSample(), "2") {
+				t.Fatal("initial samples did not use the current language")
+			}
+			row := d.table.ItemAt(0)
+			if row.Name != fmt.Sprintf(resource.RecordName(), 1) || row.Kind != resource.RecordDocument() || row.Note != resource.RecordNote() {
+				t.Fatal("table sample data not localized")
+			}
+			if d.tree.Item("main") != "main.go" || row.ID != "file-000" || !strings.Contains(d.text.Text(), "👨‍👩‍👧‍👦") || !strings.Contains(d.text.Text(), "é") {
+				t.Fatal("translation changed IDs, filenames or editing test characters")
+			}
+		})
+	}
+}
+
+func TestLanguageChangeUpdatesUntouchedSamples(t *testing.T) {
+	previous := mlang.Language()
+	t.Cleanup(func() { _ = mlang.SetLanguage(previous) })
+	_ = mlang.SetLanguage("en")
+	d, err := newDemo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.app = new(demoTestApp)
+	defer d.stopActivities()
+	model, document := d.text, d.documents["document-1"]
+	for _, choice := range demoLanguages {
+		_ = mlang.SetLanguage(choice.tag)
+		d.translateUI()
+		if d.text != model || d.documents["document-1"] != document || model.Text() != resource.EditorSample() ||
+			document.Text() != fmt.Sprintf(resource.DocumentSample(), "1") || d.input.Get() != resource.InputSample() ||
+			d.baselineInput.Get() != resource.BaselineSample() || d.splitInput.Get() != resource.SplitInputSample() ||
+			d.inspection.Text() != resource.InspectionSample() || d.dropDescription() != resource.DropZoneHint() ||
+			d.tree.Item("project") != resource.SampleProject() || d.list.ItemAt(0) != fmt.Sprintf(resource.ListRow(), 1) {
+			t.Fatalf("%s: untouched samples not refreshed in place", choice.tag)
+		}
+		revision := model.Revision()
+		d.translateUI()
+		if model.Revision() != revision || model.CanUndo() || model.CanRedo() {
+			t.Fatal("translation created edit history or was not idempotent")
+		}
+	}
+	d.addTab(d.tabWindows[0])
+	id := d.tabWindows[0].current
+	if d.documents[id].Text() != fmt.Sprintf(resource.DocumentSample(), "4") {
+		t.Fatal("new tab ignored the current language")
+	}
+	d.requestTabClose(d.tabWindows[0], id)
+	d.closeTab(d.tabWindows[0])
+	if _, ok := d.documentRevisions[id]; ok {
+		t.Fatal("closed document retained localization bookkeeping")
+	}
+}
+
+// 即便撤销后内容恰好等于默认值，也不能丢失用户的重做历史。
+func TestLanguageChangePreservesEditedSampleOwnership(t *testing.T) {
+	previous := mlang.Language()
+	t.Cleanup(func() { _ = mlang.SetLanguage(previous) })
+	_ = mlang.SetLanguage("en")
+	d, err := newDemo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.stopActivities()
+	original := d.text.Text()
+	if err := d.text.ReplaceAtomic(ui.TextRange{Start: 0, End: 0}, "user edit\n"); err != nil {
+		t.Fatal(err)
+	}
+	if !d.text.Undo() || d.text.Text() != original || !d.text.CanRedo() {
+		t.Fatal("invalid regression setup")
+	}
+	document := d.documents["document-1"]
+	if err := document.ReplaceAtomic(ui.TextRange{Start: 0, End: 0}, "document edit\n"); err != nil {
+		t.Fatal(err)
+	}
+	d.input.Set(resource.InputSample()) // 显式赋值仍交给用户持有，不靠内容猜测。
+	d.baselineInput.Set("user baseline")
+	d.splitInput.Set("user split")
+	d.inspection.SetText(`{"ID":"main","Text":"原始快照"}`)
+	d.table.setNote("file-000", resource.RecordNote())
+	d.table.sort("size", widgets.SortDescending)
+	first := d.table.RowID(0)
+	_ = mlang.SetLanguage("zh-CN")
+	d.translateUI()
+	if d.text.Text() != original || !d.text.CanRedo() || !document.CanUndo() ||
+		!strings.HasPrefix(document.Text(), "document edit\n") || d.input.Get() != "Hello, GOUI" ||
+		d.baselineInput.Get() != "user baseline" || d.splitInput.Get() != "user split" ||
+		d.inspection.Text() != `{"ID":"main","Text":"原始快照"}` || d.table.RowID(0) != first {
+		t.Fatal("language change replaced user-owned state or undo history")
+	}
+	if !d.text.Redo() || d.text.Text() != "user edit\n"+original || !document.Undo() {
+		t.Fatal("history no longer works after translation")
+	}
+	for i := 0; i < d.table.ItemsCount(); i++ {
+		r := d.table.ItemAt(i)
+		if r.ID == "file-000" && r.Note != "Editable note" {
+			t.Fatal("explicit note edit was mistaken for an untouched default")
+		}
+		if r.ID == "file-001" && r.Note != resource.RecordNote() {
+			t.Fatal("untouched note did not follow the language")
+		}
+	}
+	d.table.resetNote("file-000")
+	_ = mlang.SetLanguage("de")
+	d.translateUI()
+	for i := 0; i < d.table.ItemsCount(); i++ {
+		if row := d.table.ItemAt(i); row.Note != resource.RecordNote() {
+			t.Fatal("reset note did not return ownership to the demo")
+		}
+	}
+}
+
+func TestDropDescriptionTranslatesWithoutChangingPayload(t *testing.T) {
+	previous := mlang.Language()
+	t.Cleanup(func() { _ = mlang.SetLanguage(previous) })
+	d, err := newDemo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.app = new(demoTestApp)
+	defer d.stopActivities()
+	for _, test := range []struct {
+		name string
+		data func(*gui.DragData)
+		raw  string
+		kind demoDropKind
+	}{
+		{"text", func(data *gui.DragData) { data.SetText("用户 text 日本語\nملف") }, "用户 text 日本語\nملف", demoDropText},
+		{"empty text", func(data *gui.DragData) { data.SetText("") }, "", demoDropText},
+		{"files", func(data *gui.DragData) { data.SetFiles([]string{"/tmp/文件.txt", "/tmp/test.go"}) }, "/tmp/文件.txt\n/tmp/test.go", demoDropFiles},
+		{"card", func(data *gui.DragData) { data.SetLocal("demo-card", "goui-demo-card") }, "goui-demo-card", demoDropCard},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			data := new(gui.DragData)
+			test.data(data)
+			r := &ui.DropRequest{Data: data}
+			d.receiveDrop(r)
+			if !r.Accepted {
+				t.Fatal("demo rejected a supported drop")
+			}
+			for _, choice := range demoLanguages {
+				_ = mlang.SetLanguage(choice.tag)
+				d.translateUI()
+				if d.dropped != test.raw || d.droppedKind != test.kind {
+					t.Fatal("translation changed the raw payload or format")
+				}
+				want := resource.LocalCardReceived()
+				if test.kind == demoDropFiles {
+					want = fmt.Sprintf(resource.FilesReceived(), test.raw)
+				} else if test.kind == demoDropText {
+					want = fmt.Sprintf(resource.TextReceived(), test.raw)
+				}
+				if d.dropDescription() != want {
+					t.Fatal("drop description did not follow the language")
+				}
+			}
+		})
+	}
+	unsupported := &ui.DropRequest{Data: new(gui.DragData)}
+	d.receiveDrop(unsupported)
+	if unsupported.Accepted || d.dropped != "goui-demo-card" {
+		t.Fatal("unsupported data overwrote the accepted drop")
 	}
 }
 
@@ -275,7 +458,7 @@ func TestRecordSortAndEditUseStableIDs(t *testing.T) {
 			if r.Note != "kept after reorder" {
 				t.Fatal("edit applied to index rather than row ID")
 			}
-		} else if r.Note != "可编辑备注" {
+		} else if r.Note != resource.RecordNote() {
 			t.Fatal("another row was edited")
 		}
 	}

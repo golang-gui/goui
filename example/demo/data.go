@@ -16,6 +16,8 @@ import (
 type record struct {
 	ID, Name, Kind, Note string
 	Size                 int
+	number               int
+	noteEdited           bool
 }
 type recordModel struct{ *gui.SliceListModel[record] }
 
@@ -23,9 +25,25 @@ func (m *recordModel) RowID(i int) string { return m.ItemAt(i).ID }
 func newRecordModel() *recordModel {
 	items := make([]record, 120)
 	for i := range items {
-		items[i] = record{ID: fmt.Sprintf("file-%03d", i), Name: fmt.Sprintf("文档 %03d", i+1), Kind: []string{"文档", "图片", "代码"}[i%3], Size: (i * 37) % 2048, Note: "可编辑备注"}
+		items[i] = record{ID: fmt.Sprintf("file-%03d", i), number: i + 1, Size: (i * 37) % 2048}
+		items[i].translate()
 	}
 	return &recordModel{gui.NewSliceListModel(items)}
+}
+func (r *record) translate() {
+	r.Name = fmt.Sprintf(resource.RecordName(), r.number)
+	r.Kind = []string{resource.RecordDocument(), resource.RecordImage(), resource.RecordCode()}[(r.number-1)%3]
+	if !r.noteEdited {
+		r.Note = resource.RecordNote()
+	}
+}
+func (m *recordModel) translate() {
+	m.Modify(func(items []record) []record {
+		for i := range items {
+			items[i].translate()
+		}
+		return items
+	})
 }
 func (m *recordModel) sort(column string, order widgets.SortOrder) {
 	m.Modify(func(items []record) []record {
@@ -51,11 +69,17 @@ func (m *recordModel) sort(column string, order widgets.SortOrder) {
 	})
 }
 func (m *recordModel) setNote(id, note string) {
+	m.writeNote(id, note, true)
+}
+func (m *recordModel) resetNote(id string) {
+	m.writeNote(id, resource.RecordNote(), false)
+}
+func (m *recordModel) writeNote(id, note string, edited bool) {
 	for i := 0; i < m.ItemsCount(); i++ {
 		r := m.ItemAt(i)
 		if r.ID == id {
-			if r.Note != note {
-				r.Note = note
+			if r.Note != note || r.noteEdited != edited {
+				r.Note, r.noteEdited = note, edited
 				m.Set(i, r)
 			}
 			return
@@ -95,7 +119,7 @@ func (d *demo) dataPage() ui.View {
 			d.app.RequestUpdate()
 		}).
 		ContextMenu(func(id, column string) []*ui.MenuItemView {
-			return []*ui.MenuItemView{ui.MenuItem(resource.ViewRowID(), func() { d.report(fmt.Sprintf(resource.RowColumn(), id, column)) }), ui.MenuItem(resource.ResetNote(), func() { d.table.setNote(id, "可编辑备注") })}
+			return []*ui.MenuItemView{ui.MenuItem(resource.ViewRowID(), func() { d.report(fmt.Sprintf(resource.RowColumn(), id, column)) }), ui.MenuItem(resource.ResetNote(), func() { d.table.resetNote(id) })}
 		}).
 		OnContextMenuError(func(e error) { d.result(resource.TableMenu(), e) })
 	left := ui.VBox(ui.Label(resource.TreeActions()), ui.ScrollView(tree).MainWeight(1)).CrossAlign(layout.CrossStretch).Spacing(8).MinWidth(160)
