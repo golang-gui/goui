@@ -807,10 +807,13 @@ func TestMenuPlacementScreenLimitAndInput(t *testing.T) {
 	if plat.created[0].Height != 180 || pm.maxHeight != 0 || !pm.content.sv.vScrollable() || pm.content.sv.hScrollable() {
 		t.Fatal(plat.created, pm.content.sv.contentWidth)
 	}
-	if want := float32(40 + 2*menuItemPadding + 2*menuContentPadding + scrollbarWidth + menuScrollbarGap); menu.width != want {
-		t.Fatal(menu.width, want)
+	if menu.width != 160 {
+		t.Fatalf("short scrollable menu width = %v, want default minimum 160", menu.width)
 	}
 	r := pm.content.list.items[0].(*menuItemRow)
+	if r.trailingGap != menuScrollbarGap {
+		t.Fatal("minimum width lost the menu/scrollbar gap", r.trailingGap)
+	}
 	position := r.base().windowRect().Center()
 	for _, kind := range []events.EventType{events.PointerDown, events.PointerUp} {
 		menu.DispatchEvent(events.PointerEvent{EventType: kind, Position: position, Button: events.PointerButtonLeft})
@@ -830,6 +833,104 @@ func TestMenuPlacementScreenLimitAndInput(t *testing.T) {
 	settlePlacement(t, menu)
 	if menu.bodyRect().Height != 4*menuItemMinHeight+2*menuContentPadding || pm.content.sv.vScrollable() {
 		t.Fatal("premature side-based height limit", menu.bodyRect())
+	}
+}
+
+func TestMenuPlacementMinimumWidth(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		label     string
+		areaWidth float32
+		shadow    bool
+		bodyWidth float32
+		surfaceW  float32
+	}{
+		{"short Chinese", "复制", 240, false, 160, 160},
+		{"narrow work area", "复制", 100, false, 100, 100},
+		{"shadow excluded", "复制", 240, true, 160, 192},
+		{"narrow with shadow", "Copy", 100, true, 68, 100},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			p, _, plat, app := placementFixture(t, geometry.Rect(0, 0, tt.areaWidth, 180))
+			app.typo, app.style = &styleTypography{}, textStyleSheet(10, color.Black)
+			if tt.shadow {
+				app.style = style.Sheet(
+					style.Name(styleNameMenuItemText).FontFamily("Test Sans").FontSize(10).ForegroundColor(color.Black),
+					style.Name(styleNameMenu).Shadow(style.Shadow{Color: color.Black, BlurRadius: 10}),
+				)
+			}
+			pm := NewPopoverMenu(p.anchor)
+			t.Cleanup(func() {
+				if pm.popover != nil {
+					pm.popover.Destroy()
+				}
+			})
+			model := NewMenu()
+			model.Append(tt.label, nil)
+			pm.SetMenu(model)
+			if err := pm.ShowAt(geometry.Point{}); err != nil {
+				t.Fatal(err)
+			}
+			menu := pm.popover.(*popover)
+			settlePlacement(t, menu)
+			if menu.bodyRect().Size != (geometry.Size{Width: tt.bodyWidth, Height: 40}) || plat.created[0].Width != tt.surfaceW {
+				t.Fatalf("body = %v, created surface = %v", menu.bodyRect(), plat.created[0])
+			}
+			if pm.content.sv.hScrollable() || pm.content.sv.vScrollable() {
+				t.Fatal("preferred minimum caused unnecessary scrollbars")
+			}
+			row := pm.content.list.items[0].(*menuItemRow)
+			info := row.Snapshot()
+			if pm.content.Snapshot().Role != RoleMenu || info.Role != RoleMenuItem || info.Text != tt.label || info.Bounds != row.base().windowRect() {
+				t.Fatal("minimum width changed menu semantics", info)
+			}
+			if row.Rect().Width != tt.bodyWidth-2*menuContentPadding {
+				t.Fatal("row did not occupy the wider body", row.Rect())
+			}
+			// A general Popover keeps its own content size; it must not inherit menu defaults.
+			if err := p.Show(); err != nil {
+				t.Fatal(err)
+			}
+			settlePlacement(t, p)
+			if p.bodyRect().Size != (geometry.Size{Width: 30, Height: 20}) {
+				t.Fatal("menu minimum leaked into general Popover", p.bodyRect())
+			}
+		})
+	}
+}
+
+func TestMenuPlacementLabelChangesResizeBody(t *testing.T) {
+	p, _, _, app := placementFixture(t, geometry.Rect(0, 0, 1000, 1000))
+	app.typo, app.style = &styleTypography{}, textStyleSheet(10, color.Black)
+	pm := NewPopoverMenu(p.anchor)
+	t.Cleanup(func() {
+		if pm.popover != nil {
+			pm.popover.Destroy()
+		}
+	})
+	model := NewMenu()
+	item := model.Append("复制", nil)
+	pm.SetMenu(model)
+	if err := pm.ShowAt(geometry.Point{}); err != nil {
+		t.Fatal(err)
+	}
+	menu := pm.popover.(*popover)
+	for _, tt := range []struct {
+		label string
+		width float32
+	}{
+		{"复制", 160},
+		{"A very long menu item", 238},
+		{"Copy", 160},
+	} {
+		item.SetLabel(tt.label)
+		settlePlacement(t, menu)
+		if menu.bodyRect().Size != (geometry.Size{Width: tt.width, Height: 40}) {
+			t.Fatalf("%q: body = %v, want %vx40", tt.label, menu.bodyRect(), tt.width)
+		}
+		if pm.content.sv.hScrollable() || pm.content.sv.vScrollable() {
+			t.Fatal("content change caused unnecessary scrollbars")
+		}
 	}
 }
 

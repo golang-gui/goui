@@ -99,6 +99,8 @@ func (m *Menu) appendItem(mi *MenuItem) {
 
 // PopoverMenu is a command-style menu control: a modal Popover anchored to a
 // widget that renders a Menu model into a scrollable, virtualized row list.
+// Its body prefers a minimum width of 160 DIP, excluding shadow; longer content
+// expands it, and the available work area remains a hard size limit.
 // Renderer internals (menuContent/ScrollView/ListView) are not public.
 type PopoverMenu struct {
 	anchor    Widget
@@ -258,6 +260,7 @@ type menuContent struct {
 
 func newMenuContent(m MenuModel, maxHeight float32, activate func(*MenuItem)) *menuContent {
 	mc := &menuContent{model: m, maxHeight: maxHeight}
+	mc.SetMinSize(geometry.Size{Width: menuContentMinWidth})
 	mc.delegate = &menuItemDelegate{model: m, onActivate: activate}
 	mc.list = NewListView()
 	mc.list.SetDelegate(mc.delegate)
@@ -457,6 +460,7 @@ type menuItemRow struct {
 }
 
 const (
+	menuContentMinWidth = 160
 	menuContentPadding  = 6
 	menuItemPadding     = 8
 	menuItemMinHeight   = 28
