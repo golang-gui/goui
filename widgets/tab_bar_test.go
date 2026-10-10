@@ -153,6 +153,54 @@ func TestTabWidthRangeNormalizationAndAccessoryFloor(t *testing.T) {
 
 // 页面同步与边缘滚动。
 
+// 实际标签和箭头仅在栏可滚动时消费滚轮；空白区保持被动，不影响 Caption。
+func TestTabBarWheelPropagation(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		width     float32
+		x         float32
+		initial   float32
+		delta     geometry.Point
+		want      float32
+		propagate bool
+	}{
+		{name: "tab", width: 180, x: 34, delta: geometry.Point{Y: 12}, want: 12},
+		{name: "horizontal", width: 180, x: 34, delta: geometry.Point{X: 12}, want: 12},
+		{name: "previous button", width: 180, x: 12, delta: geometry.Point{Y: 12}, want: 12},
+		{name: "next button", width: 180, x: 168, delta: geometry.Point{Y: 12}, want: 12},
+		{name: "start", width: 180, x: 34, delta: geometry.Point{Y: -12}},
+		{name: "end", width: 180, x: 34, initial: 176, delta: geometry.Point{Y: 12}, want: 176},
+		{name: "no overflow", width: 400, x: 10, delta: geometry.Point{Y: 12}, propagate: true},
+		{name: "blank", width: 400, x: 360, delta: geometry.Point{Y: 12}, propagate: true},
+		{name: "zero", width: 180, x: 34, propagate: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bar, _, _ := dragTestBar()
+			bar.Arrange(geometry.Rect(0, 0, tc.width, 40))
+			bar.setScroll(tc.initial)
+			bar.Arrange(bar.Rect())
+			root := new(gui.WidgetBase)
+			root.Arrange(geometry.Rect(0, 0, 400, 100))
+			root.AddChild(root, bar)
+			defer bar.SetView(nil)
+			parentReceived := false
+			wheel := gui.NewWheelEventController()
+			wheel.ConnectScroll(func(gui.EventContext, events.WheelEvent) { parentReceived = true })
+			root.AddEventController(wheel)
+			d := new(gui.EventDispatcher)
+			if err := d.DispatchEvent(&tabInputHost{root: root}, events.WheelEvent{
+				Position: geometry.Point{X: tc.x, Y: 20}, DeltaX: tc.delta.X, DeltaY: tc.delta.Y,
+				Mode: events.WheelDeltaPixel,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if bar.scroll != tc.want || parentReceived != tc.propagate {
+				t.Fatalf("scroll = %g, want %g; parent received = %v, want %v", bar.scroll, tc.want, parentReceived, tc.propagate)
+			}
+		})
+	}
+}
+
 func TestTabViewMoveAndBarOverflow(t *testing.T) {
 	v := NewTabView()
 	pages := []*TabPage{NewTabPage("One", nil), NewTabPage("Two", nil), NewTabPage("Three", nil)}

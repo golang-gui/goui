@@ -374,9 +374,82 @@ func TestWheelEventControllerPublic(t *testing.T) {
 	controller.ConnectScroll(func(_ EventContext, e events.WheelEvent) {
 		got = e
 	})
-	controller.HandleEvent(&eventContext{event: events.WheelEvent{DeltaY: 5, Mode: events.WheelDeltaPixel}})
+	ctx := &eventContext{event: events.WheelEvent{DeltaY: 5, Mode: events.WheelDeltaPixel}}
+	controller.HandleEvent(ctx)
 	if got.DeltaY != 5 {
 		t.Fatalf("ConnectScroll should receive the wheel event, got %+v", got)
+	}
+	if ctx.PropagationStopped() {
+		t.Fatal("a reusable wheel controller must leave consumption to its listener")
+	}
+}
+
+// 通过窗口正常派发路径验证嵌套滚动：消费依据是请求轴的范围，不是本次偏移
+// 是否改变。内层已到边界或小于整数 DIP 的输入也不能意外移动外层。
+func TestScrollViewNestedWheelPropagation(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		direction ScrollDirection
+		content   geometry.Size
+		initial   geometry.Point
+		delta     geometry.Point
+		modifiers events.Modifiers
+		wantInner geometry.Point
+		wantOuter geometry.Point
+		propagate bool
+	}{
+		{name: "vertical", content: geometry.Size{Width: 50, Height: 500}, delta: geometry.Point{Y: 12}, wantInner: geometry.Point{Y: 12}},
+		{name: "bottom", content: geometry.Size{Width: 50, Height: 500}, initial: geometry.Point{Y: 400}, delta: geometry.Point{Y: 12}, wantInner: geometry.Point{Y: 400}},
+		{name: "top", content: geometry.Size{Width: 50, Height: 500}, delta: geometry.Point{Y: -12}},
+		{name: "fractional", content: geometry.Size{Width: 50, Height: 500}, delta: geometry.Point{Y: 0.2}},
+		{name: "horizontal", content: geometry.Size{Width: 500, Height: 50}, delta: geometry.Point{X: 12}, wantInner: geometry.Point{X: 12}},
+		{name: "right", content: geometry.Size{Width: 500, Height: 50}, initial: geometry.Point{X: 400}, delta: geometry.Point{X: 12}, wantInner: geometry.Point{X: 400}},
+		{name: "left", content: geometry.Size{Width: 500, Height: 50}, delta: geometry.Point{X: -12}},
+		{name: "shift", content: geometry.Size{Width: 500, Height: 50}, delta: geometry.Point{Y: 12}, modifiers: events.ModifierShift, wantInner: geometry.Point{X: 12}},
+		{name: "both axes", content: geometry.Size{Width: 500, Height: 500}, delta: geometry.Point{X: 8, Y: 12}, wantInner: geometry.Point{X: 8, Y: 12}},
+		{name: "one matching axis consumes the event", direction: ScrollVertical, content: geometry.Size{Width: 500, Height: 500}, delta: geometry.Point{X: 8, Y: 12}, wantInner: geometry.Point{Y: 12}},
+		{name: "short", content: geometry.Size{Width: 50, Height: 50}, delta: geometry.Point{Y: 12}, wantOuter: geometry.Point{Y: 12}, propagate: true},
+		{name: "empty", delta: geometry.Point{Y: 12}, wantOuter: geometry.Point{Y: 12}, propagate: true},
+		{name: "no vertical range", content: geometry.Size{Width: 500, Height: 50}, delta: geometry.Point{Y: 12}, wantOuter: geometry.Point{Y: 12}, propagate: true},
+		{name: "disabled vertical axis", direction: ScrollHorizontal, content: geometry.Size{Width: 500, Height: 500}, delta: geometry.Point{Y: 12}, wantOuter: geometry.Point{Y: 12}, propagate: true},
+		{name: "disabled horizontal axis", direction: ScrollVertical, content: geometry.Size{Width: 500, Height: 500}, delta: geometry.Point{Y: 12}, modifiers: events.ModifierShift, wantOuter: geometry.Point{X: 12}, propagate: true},
+		{name: "zero", content: geometry.Size{Width: 500, Height: 500}, propagate: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			inner := NewScrollView()
+			inner.SetDirection(tc.direction)
+			if tc.content != (geometry.Size{}) {
+				inner.SetChild(&mockWidget{size: tc.content})
+			}
+			content := &mockWidget{size: geometry.Size{Width: 600, Height: 600}}
+			content.AddChild(content, inner)
+			outer := NewScrollView()
+			outer.SetChild(content)
+			win := &window{}
+			win.SetWidget(outer)
+			defer win.Destroy()
+			outer.Arrange(geometry.Rect(0, 0, 300, 300))
+			outer.SetScrollX(20)
+			outer.SetScrollY(20)
+			inner.Arrange(geometry.Rect(40, 40, 100, 100))
+			inner.SetScrollX(tc.initial.X)
+			inner.SetScrollY(tc.initial.Y)
+			outerReceived := false
+			outer.wheel.ConnectScroll(func(EventContext, events.WheelEvent) { outerReceived = true })
+			if err := win.DispatchEvent(events.WheelEvent{
+				Position: geometry.Point{X: 50, Y: 50}, DeltaX: tc.delta.X, DeltaY: tc.delta.Y,
+				Mode: events.WheelDeltaPixel, Modifiers: tc.modifiers,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if got := (geometry.Point{X: inner.ScrollX(), Y: inner.ScrollY()}); got != tc.wantInner {
+				t.Fatalf("inner offset = %v, want %v", got, tc.wantInner)
+			}
+			wantOuter := geometry.Point{X: 20 + tc.wantOuter.X, Y: 20 + tc.wantOuter.Y}
+			if got := (geometry.Point{X: outer.ScrollX(), Y: outer.ScrollY()}); got != wantOuter || outerReceived != tc.propagate {
+				t.Fatalf("outer offset = %v, want %v; received = %v, want %v", got, wantOuter, outerReceived, tc.propagate)
+			}
+		})
 	}
 }
 

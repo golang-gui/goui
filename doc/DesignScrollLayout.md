@@ -100,6 +100,48 @@ ui.ScrollView(
 Snapshot 保留 RoleScrollView、偏移、范围和内容子树；禁用轴最大范围为零，
 不向 WidgetInfo 添加控件专属字段。
 
+### 嵌套滚轮消费（2026-10-10）
+
+滚轮沿既有命中路径由内向外冒泡。ScrollView 先按原规则处理 Shift 横向转换，
+再用共享 scrollRange 判断请求轴：任一非零增量对应的轴有范围，便调用
+EventContext.StopPropagation 并滚动；否则保持传播，允许可滚动的祖先响应。
+一次双轴事件作为整体消费，不拆分或重新派发剩余增量。范围包括方向设置和
+滚动条占位，不用本次偏移是否改变判断是否消费；到达边界、小数增量经整数
+DIP 舍入后未移动，仍不带动外层。零增量、空内容或请求轴无范围则不消费。
+
+参考 [GTK 4.18.6 GtkScrolledWindow 滚轮处理源码](https://github.com/GNOME/gtk/blob/4.18.6/gtk/gtkscrolledwindow.c#L1322)：
+两轴均不可滚动时传播，否则消费，不以单次移动量决定。GOUI 采用该职责划分，
+但进一步按当前事件的请求轴判断，保留竖滚轮经过仅横向滚动容器时交给外层
+的行为；不复制其平滑滚动、overshoot 或 adjustment 系统。
+WheelEventController 仍是被动信号控制器，由使用方决定消费；EventDispatcher
+继续仅负责通用传播。TabBar 在实际标签/箭头有溢出范围时采用同样的消费原则，
+栏和 viewport 空白区不增加控制器。
+
+包内正常窗口/派发器路径回归先在旧实现复现内外层同时滚动，再验证首尾、
+横向/Shift、双轴、单轴方向限制、短/空内容及小数/零增量。
+窗口例程在既有 Nested Stretch 面板中加入独立内层 ScrollView；F10 定位、
+F4 切换长短，F6 输出外层与内层偏移/范围及窗口局部 bounds，便于真实输入核对。
+
+本轮验证：
+
+- 正常窗口/派发器路径的 16 组 ScrollView、9 组 TabBar 回归：旧实现失败，修正后通过。
+  无 DISPLAY 的 GUI/widgets 包测试、相关 GUI/widgets/UI race 通过。
+- `DISPLAY=:89 XMODIFIERS=@im=none go test -json -count=1 ./...`：2245 个测试/子测试通过，
+  14 个既有条件跳过。保留原有窗口和源码目录 PNG 输出，不把跳过算作桌面验收。
+- Windows amd64/macOS arm64 的 GUI/widgets 测试目标与窗口例程编译通过；不是原生运行结果。
+- 本机 Linux amd64，任务专用 Xvnc 1.12.0、Xfwm4 4.16.1 合成器，实际 Software/OpenGL
+  （llvmpipe）各应用 1x/2x。真实 XTest 滚轮经平台事件进入窗口：内层移动、滚到末尾、
+  末尾继续、滚回开头、开头继续，外层始终不动；短内层将滚轮交给外层，鼠标移到外层
+  普通内容后仍正常滚动。四组各 9 次公开偏移检查通过，不使用 DevServer。
+  窗口例程 F6 另检查双条占位、横向范围和面板高度；TabBar 消费本轮由包内测试覆盖。
+- 普通 `go vet ./gui ./widgets ./tests/window/gui/scroll_layout` 因未修改的文本编辑/
+  Popover 等文件中既有 unkeyed struct literal 警告失败；`-composites=false` 其余检查通过。
+  不删除断言、不更改既有测试或跳过条件来掩盖结果。
+
+未执行：Windows/macOS 原生桌面、Direct2D、真实设备 HiDPI/触控板惯性输入及其他 WM。
+两项拖出反馈按用户确认保留原生 DnD 与系统位置约束，本轮不修改或重复验收平台拖放。
+日志和截图存于仓库外 `/tmp/goui-nested-wheel.NrMT1M`；仅使用任务专用桌面。
+
 ## 4. 例程与验证
 
 demo 表单直接用 Direction(ScrollVertical)，删除 flowWidget/flowView 和
