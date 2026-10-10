@@ -2,19 +2,20 @@ package dev
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
-	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
-	"github.com/golang-gui/goui/platform/typography"
-	"github.com/golang-gui/goui/style"
 )
 
 func TestExplicitModifierAndKeyNames(t *testing.T) {
@@ -79,25 +80,23 @@ func TestNormalizeAddr(t *testing.T) {
 	}
 }
 
-func TestHandlerSnapshotReturnsApplicationSnapshot(t *testing.T) {
+func TestHandlerSnapshotPreservesGUISemantics(t *testing.T) {
 	app := newTestApplication()
-	app.snapshot = gui.ApplicationInfo{
-		Windows: []gui.WindowInfo{{
-			ID:     "main",
-			Title:  "Main",
-			Bounds: geometry.Rect(0, 0, 320, 240),
-			Widget: gui.WidgetInfo{
-				ID:      "save",
-				Role:    gui.RoleButton,
-				Text:    "Save",
-				Bounds:  geometry.Rect(12, 20, 80, 32),
-				Visible: true,
-				Enabled: true,
-				Actions: []gui.Action{gui.ActionClick},
-			},
-		}},
+	app.windows[0].(*testWindow).info = gui.WindowInfo{
+		ID:     "main",
+		Title:  "Main",
+		Bounds: geometry.Rect(0, 0, 320, 240),
+		Widget: gui.WidgetInfo{
+			ID:      "save",
+			Role:    gui.RoleButton,
+			Text:    "Save",
+			Bounds:  geometry.Rect(12, 20, 80, 32),
+			Visible: true,
+			Enabled: true,
+			Actions: []gui.Action{gui.ActionClick},
+		},
 	}
-	app.snapshot.Windows[0].Widget.SetAttribute("acme.record", struct {
+	app.windows[0].(*testWindow).info.Widget.SetAttribute("acme.record", struct {
 		Count int `json:"count"`
 	}{Count: 3})
 
@@ -133,7 +132,7 @@ func TestHandlerSnapshotEncodingFailure(t *testing.T) {
 	app := newTestApplication()
 	widget := gui.WidgetInfo{ID: "invalid"}
 	widget.SetAttribute("acme.failure", failingResponseValue{})
-	app.snapshot.Windows = []gui.WindowInfo{{ID: "main", Widget: widget}}
+	app.windows[0].(*testWindow).info = gui.WindowInfo{ID: "main", Widget: widget}
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, SnapshotPath, nil)
 	newHandler(func() gui.Application { return app }).ServeHTTP(rec, req)
@@ -191,19 +190,21 @@ func TestWriteJSONEncodingFailure(t *testing.T) {
 
 func TestHandlerDispatchesPointerEvent(t *testing.T) {
 	app := newTestApplication()
+	handler := newHandler(func() gui.Application { return app })
+	snapshot := readSnapshot(t, handler)
 
-	body := bytes.NewBufferString(`{
-		"window": "main",
+	body := bytes.NewBufferString(fmt.Sprintf(`{
+		"target": %q,
 		"type": "pointer_down",
 		"x": 12.5,
 		"y": 34.5,
 		"button": "left",
 		"buttons": ["left"],
 		"modifiers": ["shift", "ctrl"]
-	}`)
+	}`, snapshot.Windows[0].Ref))
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, EventPath, body)
-	newHandler(func() gui.Application { return app }).ServeHTTP(rec, req)
+	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("unexpected status %d: %s", rec.Code, rec.Body.String())
@@ -254,27 +255,11 @@ func TestEventRequestParsesKeyEvent(t *testing.T) {
 }
 
 type testApplication struct {
-	snapshot    gui.ApplicationInfo
+	gui.Application
+	windows     []gui.Window
 	dispatches  []testDispatch
 	dispatchErr error
-}
-
-func (a *testApplication) NewTimer() *gui.Timer { panic("unexpected NewTimer") }
-
-func (a *testApplication) OpenURL(string) error { panic("unexpected OpenURL") }
-
-func (a *testApplication) OpenPath(string) error { panic("unexpected OpenPath") }
-
-func (a *testApplication) Clipboard() gui.Clipboard {
-	panic("unimplemented")
-}
-
-func (a *testApplication) Settings() gui.Settings {
-	panic("unimplemented")
-}
-
-func (a *testApplication) FileDialog() gui.FileDialog {
-	return &testFileDialog{}
+	post        func(func())
 }
 
 type testDispatch struct {
@@ -283,65 +268,262 @@ type testDispatch struct {
 }
 
 func newTestApplication() *testApplication {
-	return new(testApplication)
+	a := &testApplication{}
+	a.windows = []gui.Window{&testWindow{app: a, info: gui.WindowInfo{ID: "main"}, widget: gui.NewButton()}}
+	return a
 }
-
-func (a *testApplication) Platform() platform.Platform {
-	return nil
-}
-
-func (a *testApplication) Typography() typography.Context {
-	return nil
-}
-
-func (a *testApplication) StyleSheet() style.StyleSheet {
-	return nil
-}
-
-func (a *testApplication) SetStyleSheet(style.StyleSheet) {}
-
-func (a *testApplication) QuitOnLastWindowClosed() bool { return true }
-
-func (a *testApplication) SetQuitOnLastWindowClosed(bool) {}
-
-func (a *testApplication) NewWindow(options *gui.WindowOptions) (gui.Window, error) {
-	return nil, nil
-}
-
-func (a *testApplication) Run() {}
-
-func (a *testApplication) Quit() {}
 
 func (a *testApplication) Post(task func()) {
+	if a.post != nil {
+		a.post(task)
+		return
+	}
 	task()
 }
 
 func (a *testApplication) Windows() []gui.Window {
-	return nil
+	return append([]gui.Window(nil), a.windows...)
 }
 
 func (a *testApplication) Snapshot() gui.ApplicationInfo {
-	return a.snapshot
+	panic("dev must enumerate public windows, not call Application.Snapshot")
 }
 
-func (a *testApplication) DispatchWindowEvent(window string, event events.Event) error {
-	a.dispatches = append(a.dispatches, testDispatch{
-		window: window,
+type testWindow struct {
+	gui.Window
+	app       *testApplication
+	info      gui.WindowInfo
+	widget    gui.Widget
+	popovers  []gui.Popover
+	destroy   signal.Signal0
+	commits   []string
+	commitErr error
+}
+
+func (w *testWindow) Snapshot() gui.WindowInfo               { return w.info }
+func (w *testWindow) Widget() gui.Widget                     { return w.widget }
+func (w *testWindow) Popovers() []gui.Popover                { return append([]gui.Popover(nil), w.popovers...) }
+func (w *testWindow) ConnectDestroy(fn func()) signal.Handle { return w.destroy.Connect(fn) }
+func (w *testWindow) CommitText(text string) error {
+	if w.commitErr != nil {
+		return w.commitErr
+	}
+	w.commits = append(w.commits, text)
+	return nil
+}
+func (w *testWindow) DispatchEvent(event events.Event) error {
+	w.app.dispatches = append(w.app.dispatches, testDispatch{
+		window: w.info.ID,
 		event:  event,
 	})
-	return a.dispatchErr
+	return w.app.dispatchErr
 }
 
-type testFileDialog struct{}
-
-func (f *testFileDialog) OpenFile(owner gui.Window, opts gui.DialogOptions, cb func([]string)) {
-	cb(nil)
+func readSnapshot(t *testing.T, handler http.Handler) applicationSnapshot {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, SnapshotPath, nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("snapshot: %d %s", rec.Code, rec.Body.String())
+	}
+	var response snapshotResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	return response.Snapshot
 }
 
-func (f *testFileDialog) OpenDirectory(owner gui.Window, opts gui.DialogOptions, cb func([]string)) {
-	cb(nil)
+func postInput(t *testing.T, handler http.Handler, path string, body any, want int) {
+	t.Helper()
+	data, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, bytes.NewReader(data)))
+	if rec.Code != want {
+		t.Fatalf("%s: status=%d, want=%d; %s", path, rec.Code, want, rec.Body.String())
+	}
+	var response map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response["ok"] != (want == http.StatusOK) {
+		t.Fatalf("wrong success flag: %s", rec.Body.String())
+	}
 }
 
-func (f *testFileDialog) SaveFile(owner gui.Window, opts gui.DialogOptions, cb func([]string)) {
-	cb(nil)
+func TestReferencesIndependentOfGUIIDs(t *testing.T) {
+	app := newTestApplication()
+	first := app.windows[0].(*testWindow)
+	first.info.ID = ""
+	second := &testWindow{app: app, info: gui.WindowInfo{ID: ""}, widget: gui.NewButton()}
+	app.windows = append(app.windows, second)
+	h := newHandler(func() gui.Application { return app })
+	snapshot := readSnapshot(t, h)
+	firstRef, secondRef := snapshot.Windows[0].Ref, snapshot.Windows[1].Ref
+	if firstRef == "" || firstRef == secondRef || firstRef == snapshot.Windows[0].Widget.Ref {
+		t.Fatal("missing or conflicting runtime refs")
+	}
+	for _, id := range []string{"duplicate", "renamed"} {
+		first.info.ID, second.info.ID = id, id
+		postInput(t, h, TextPath, map[string]any{"target": secondRef, "text": id}, http.StatusOK)
+		next := readSnapshot(t, h)
+		if next.Windows[0].Ref != firstRef || next.Windows[1].Ref != secondRef || next.Windows[0].ID != id {
+			t.Fatal("GUI ID rename changed protocol identity")
+		}
+		if next.Windows[0].Widget.Ref == snapshot.Windows[0].Widget.Ref {
+			t.Fatal("semantic nodes must not pretend to have permanent object identity")
+		}
+	}
+	if len(first.commits) != 0 || len(second.commits) != 2 || first.widget.ID() != "" {
+		t.Fatal("ref lookup used GUI IDs or wrote an automatic ID back to a widget")
+	}
+	app.windows = []gui.Window{second}
+	postInput(t, h, TextPath, map[string]any{"target": firstRef, "text": "stale"}, http.StatusBadRequest)
+	third := &testWindow{app: app, widget: gui.NewButton()}
+	app.windows = append(app.windows, third)
+	if readSnapshot(t, h).Windows[1].Ref == firstRef {
+		t.Fatal("new window reused a dead window reference")
+	}
+}
+
+type testPopover struct {
+	gui.Popover
+	visible bool
+	modal   bool
+	widget  gui.Widget
+	closed  signal.Signal0
+	events  []events.Event
+	commits []string
+}
+
+func (p *testPopover) Visible() bool                         { return p.visible }
+func (p *testPopover) Modal() bool                           { return p.modal }
+func (p *testPopover) Widget() gui.Widget                    { return p.widget }
+func (p *testPopover) ConnectClosed(fn func()) signal.Handle { return p.closed.Connect(fn) }
+func (p *testPopover) DispatchEvent(event events.Event) error {
+	p.events = append(p.events, event)
+	return nil
+}
+func (p *testPopover) CommitText(text string) error { p.commits = append(p.commits, text); return nil }
+
+func TestPopoverReferencesAndInputRouting(t *testing.T) {
+	app := newTestApplication()
+	w := app.windows[0].(*testWindow)
+	p := &testPopover{visible: true, modal: true, widget: gui.NewLabel("popup")}
+	w.popovers = []gui.Popover{p}
+	h := newHandler(func() gui.Application { return app })
+	snapshot := readSnapshot(t, h)
+	popup := snapshot.Windows[0].Popovers[0]
+	postInput(t, h, EventPath, map[string]any{"target": popup.Ref, "type": "pointer_down", "x": 12, "y": 20}, http.StatusOK)
+	postInput(t, h, EventPath, map[string]any{"target": popup.Ref, "type": "wheel", "deltaY": 3}, http.StatusOK)
+	postInput(t, h, EventPath, map[string]any{"target": popup.Ref, "type": "key_down", "key": "down"}, http.StatusOK)
+	postInput(t, h, TextPath, map[string]any{"target": popup.Ref, "text": "你👋"}, http.StatusOK)
+	if len(p.events) != 3 || len(p.commits) != 1 || p.commits[0] != "你👋" || len(app.dispatches) != 0 {
+		t.Fatal("popover requests did not use the selected public host input path")
+	}
+	if e := p.events[0].(events.PointerEvent); e.Position != (geometry.Point{X: 12, Y: 20}) {
+		t.Fatal("popover pointer coordinates were changed")
+	}
+	if e := p.events[2].(events.KeyEvent); e.Key != events.KeyArrowDown {
+		t.Fatal("popover keyboard did not enter the selected popup dispatch")
+	}
+	p.modal = false
+	postInput(t, h, EventPath, map[string]any{"target": popup.Ref, "type": "key_down", "key": "a"}, http.StatusBadRequest)
+	// Hide and reopen the same object between requests: the old ref must not
+	// silently acquire a new presentation, even though enumeration sees it again.
+	p.visible = false
+	p.closed.Emit()
+	p.visible = true
+	postInput(t, h, TextPath, map[string]any{"target": popup.Ref, "text": "stale"}, http.StatusBadRequest)
+	if next := readSnapshot(t, h).Windows[0].Popovers[0]; next.Ref == popup.Ref {
+		t.Fatal("reopened popup reused a closed presentation ref")
+	}
+	p.visible = false // removal is checked even without a notification
+	if len(readSnapshot(t, h).Windows[0].Popovers) != 0 {
+		t.Fatal("hidden popup remained in snapshot")
+	}
+}
+
+func TestSnapshotReferencesPreserveFilteredSemantics(t *testing.T) {
+	app := newTestApplication()
+	w := app.windows[0].(*testWindow)
+	// Actual Children differs deliberately from this semantic tree. No guessing
+	// correspondence, no reconstruction that drops attributes or special roles.
+	w.info.Widget = gui.WidgetInfo{Role: gui.RoleScrollView, Children: []gui.WidgetInfo{
+		{Role: gui.RoleMenuItem, Text: "choice", ID: "repeated"},
+		{Role: gui.RoleMenuItem, Text: "choice", ID: "repeated"},
+	}}
+	w.info.Controls = &gui.WidgetInfo{Role: gui.RoleButton, Name: "window-close"}
+	h := newHandler(func() gui.Application { return app })
+	snapshot := readSnapshot(t, h)
+	root := snapshot.Windows[0]
+	seen := make(map[string]bool)
+	for _, ref := range []string{root.Ref, root.Widget.Ref, root.Controls.Ref, root.Widget.Children[0].Ref, root.Widget.Children[1].Ref} {
+		if ref == "" || seen[ref] {
+			t.Fatal("every semantic node must have a distinct ref")
+		}
+		seen[ref] = true
+	}
+	if len(root.Widget.Children) != 2 || root.Widget.Children[0].Role != gui.RoleMenuItem || root.Controls.Name != "window-close" || len(w.info.Widget.Children) != 2 {
+		t.Fatal("snapshot wrapping changed semantic filtering or original data")
+	}
+	postInput(t, h, EventPath, map[string]any{"target": root.Widget.Ref, "type": "pointer_down"}, http.StatusBadRequest)
+}
+
+func TestTextRequestValidationAndErrors(t *testing.T) {
+	app := newTestApplication()
+	w := app.windows[0].(*testWindow)
+	h := newHandler(func() gui.Application { return app })
+	ref := readSnapshot(t, h).Windows[0].Ref
+	for _, body := range []any{
+		map[string]any{"text": "missing target"},
+		map[string]any{"target": ref},
+		map[string]any{"target": ref, "text": nil},
+		map[string]any{"target": "unknown", "text": "wrong ref"},
+		map[string]any{"window": "main", "text": "old addressing"},
+	} {
+		postInput(t, h, TextPath, body, http.StatusBadRequest)
+	}
+	postInput(t, h, TextPath, map[string]any{"target": ref, "text": ""}, http.StatusOK)
+	w.commitErr = errors.New("no editable focus")
+	postInput(t, h, TextPath, map[string]any{"target": ref, "text": "late"}, http.StatusBadRequest)
+	if len(w.commits) != 1 || w.commits[0] != "" {
+		t.Fatal("invalid text request was dispatched")
+	}
+	w.destroy.Emit()
+	app.windows = nil
+	postInput(t, h, TextPath, map[string]any{"target": ref, "text": "destroyed"}, http.StatusBadRequest)
+}
+
+func TestCanceledQueuedCallDoesNotExecute(t *testing.T) {
+	for _, mode := range []string{"cancel", "timeout"} {
+		t.Run(mode, func(t *testing.T) {
+			app := newTestApplication()
+			queued := make(chan func(), 1)
+			app.post = func(fn func()) { queued <- fn }
+			h := &handler{callTimeout: time.Second}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if mode == "timeout" {
+				h.callTimeout = 10 * time.Millisecond
+			}
+			request := httptest.NewRequest(http.MethodPost, TextPath, nil).WithContext(ctx)
+			done := make(chan error, 1)
+			calls := 0
+			go func() { done <- h.call(request, app, func() error { calls++; return nil }) }()
+			task := <-queued
+			if mode == "cancel" {
+				cancel()
+			}
+			if err := <-done; err == nil {
+				t.Fatal("queued request did not fail")
+			}
+			task() // Event loop finally catches up, after the HTTP request is gone.
+			if calls != 0 {
+				t.Fatal("canceled request performed late GUI input")
+			}
+		})
+	}
 }

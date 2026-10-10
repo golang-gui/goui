@@ -8,7 +8,6 @@ import (
 
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/platform"
-	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/style"
 )
@@ -50,7 +49,6 @@ type Application interface {
 	Post(func())
 	Windows() []Window
 	Snapshot() ApplicationInfo
-	DispatchWindowEvent(windowID string, event events.Event) error
 }
 
 var (
@@ -87,7 +85,7 @@ type application struct {
 	styleChanged signal.Signal0 // internal host invalidation; no new public event API
 	windows      []*window
 	dragSession  *guiDragSession
-	nextDragID  uint64
+	nextDragID   uint64
 
 	quitOnLastWindowClosed bool
 }
@@ -272,15 +270,6 @@ func (a *application) Snapshot() ApplicationInfo {
 		info.Windows = append(info.Windows, win.Snapshot())
 	}
 	return info
-}
-
-func (a *application) DispatchWindowEvent(windowID string, event events.Event) error {
-	for _, win := range a.windows {
-		if win.ID() == windowID {
-			return win.DispatchEvent(event)
-		}
-	}
-	return fmt.Errorf("window %q not found", windowID)
 }
 
 func (a *application) removeWindow(win *window) {

@@ -7,6 +7,7 @@ import (
 	"log"
 	"math"
 	"runtime"
+	"slices"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
@@ -93,6 +94,16 @@ type Window interface {
 
 	Snapshot() WindowInfo
 	DispatchEvent(event events.Event) error
+	// CommitText submits confirmed UTF-8 text to the current editable logical
+	// focus through IMContext, without changing focus or activating the window.
+	// Call on the GUI thread. A blocked/unavailable target or active preedit
+	// returns an error; an empty string is a no-op on a valid target. Success
+	// means synchronous dispatch, not completed layout/paint or native typing.
+	CommitText(text string) error
+	// Popovers returns a copy of the currently shown popovers owned by this
+	// window, in registration order. These are borrowed GUI-thread objects;
+	// hiding/releasing a popover removes it without changing its ownership.
+	Popovers() []Popover
 
 	// ConnectCloseRequest lets fn veto a close request by setting *allow to false.
 	// Each callback runs only while the window is alive.
@@ -146,6 +157,7 @@ type window struct {
 	cursorInside   bool
 	destroyed      bool
 	modalTarget    ModalTarget // the modal element intercepting this window's input; nil when none
+	popovers       []*popover  // currently shown surfaces; lifecycle stays with each popover
 	closeRequest   signal.Signal1[*bool]
 	destroy        signal.Signal0
 	focusChanged   signal.Signal1[bool]
@@ -426,6 +438,32 @@ func (w *window) Snapshot() WindowInfo {
 		info.Controls = &controls
 	}
 	return info
+}
+
+func (w *window) Popovers() []Popover {
+	result := make([]Popover, 0, len(w.popovers))
+	if !w.destroyed {
+		for _, p := range w.popovers {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
+func (w *window) addPopover(p *popover) {
+	if !w.destroyed && !slices.Contains(w.popovers, p) {
+		w.popovers = append(w.popovers, p)
+	}
+}
+
+func (w *window) removePopover(p *popover) {
+	if i := slices.Index(w.popovers, p); i >= 0 {
+		w.popovers = slices.Delete(w.popovers, i, i+1)
+	}
+}
+
+func (w *window) CommitText(text string) error {
+	return commitText(w, text)
 }
 
 func (w *window) DispatchEvent(event events.Event) error {

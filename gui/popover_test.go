@@ -58,6 +58,96 @@ func TestPopoverPlacementConfiguration(t *testing.T) {
 	win.Destroy()
 }
 
+func TestWindowPopoversFollowVisibleLifetime(t *testing.T) {
+	p, native, _, app := placementFixture(t, geometry.Rect(0, 0, 1000, 1000))
+	w := app.windows[0]
+	if len(w.Popovers()) != 0 {
+		t.Fatal("unshown popover was enumerated")
+	}
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	if got := w.Popovers(); len(got) != 1 || got[0] != p {
+		t.Fatalf("shown popovers=%v", got)
+	} else {
+		got[0] = nil
+		if w.Popovers()[0] != p {
+			t.Fatal("Popovers exposed the internal slice")
+		}
+	}
+	if err := p.Show(); err != nil || len(w.Popovers()) != 1 {
+		t.Fatal("repeated Show registered the same object twice")
+	}
+	p.Hide()
+	if len(w.Popovers()) != 0 {
+		t.Fatal("hidden popover retained by window")
+	}
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	other := &window{platformWindow: native}
+	other.SetWidget(p.Anchor()) // unmount releases the old native surface
+	if len(w.Popovers()) != 0 {
+		t.Fatal("anchor migration left an old window entry")
+	}
+	if err := p.Show(); err != nil || len(other.Popovers()) != 1 {
+		t.Fatalf("new owner did not register popover: %v", err)
+	}
+	p.Destroy()
+	if len(other.Popovers()) != 0 {
+		t.Fatal("destroyed popover retained by window")
+	}
+}
+
+func TestWindowPopoversRemoveBeforeClosedCallbacks(t *testing.T) {
+	p, _, _, app := placementFixture(t, geometry.Rect(0, 0, 1000, 1000))
+	w := app.windows[0]
+	p.ConnectClosed(func() {
+		if len(w.Popovers()) != 0 {
+			t.Fatal("closed callback observed stale visible popovers")
+		}
+	})
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	p.Anchor().base().detachRoot(p.Anchor())
+	if len(w.Popovers()) != 0 {
+		t.Fatal("anchor unmount retained popup")
+	}
+}
+
+type failedShowPopup struct{ platform.Popup }
+
+func (*failedShowPopup) Show() error { return errors.New("native Show failed") }
+
+type failedShowPlatform struct{ *placementPlatform }
+
+func (p *failedShowPlatform) NewPopup(owner platform.Window, size geometry.Size, handler platform.EventHandler, options platform.PopupOptions) (platform.Popup, error) {
+	native, err := p.placementPlatform.NewPopup(owner, size, handler, options)
+	if err != nil {
+		return nil, err
+	}
+	return &failedShowPopup{native}, nil
+}
+
+func TestWindowPopoversExcludeFailedShowAndOwnerDestruction(t *testing.T) {
+	p, _, plat, app := placementFixture(t, geometry.Rect(0, 0, 1000, 1000))
+	w := app.windows[0]
+	app.platform = &failedShowPlatform{plat}
+	if err := p.Show(); err == nil || len(w.Popovers()) != 0 || p.Visible() {
+		t.Fatal("failed native Show registered a visible popup")
+	}
+	p.releaseNative()
+	app.platform = plat
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	w.Destroy()
+	if len(w.Popovers()) != 0 || p.Visible() {
+		t.Fatal("owner destruction retained a shown popup")
+	}
+}
+
 func TestPopoverTabFocusAndModalIsolation(t *testing.T) {
 	ownerRoot := newTestWidget()
 	ownerRoot.SetFocusable(true)

@@ -510,10 +510,6 @@ func (a *testApplication) Snapshot() gui.ApplicationInfo {
 	return gui.ApplicationInfo{}
 }
 
-func (a *testApplication) DispatchWindowEvent(string, events.Event) error {
-	return nil
-}
-
 func (a *testApplication) runPosted() {
 	posts := a.posts
 	a.posts = nil
@@ -674,6 +670,9 @@ func (w *testWindow) Snapshot() gui.WindowInfo {
 func (w *testWindow) DispatchEvent(events.Event) error {
 	return nil
 }
+
+func (w *testWindow) CommitText(string) error { panic("unexpected CommitText") }
+func (w *testWindow) Popovers() []gui.Popover { return nil }
 
 func (w *testWindow) ConnectCloseRequest(fn func(*bool)) signal.Handle {
 	return w.closeRequest.Connect(fn)
