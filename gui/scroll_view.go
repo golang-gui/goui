@@ -107,11 +107,18 @@ func NewScrollView() *ScrollView {
 	sv.hbar.base().setParent(sv.hbar, sv)
 
 	sv.wheel = NewWheelEventController()
-	sv.wheel.ConnectScroll(func(_ EventContext, e events.WheelEvent) {
+	sv.wheel.ConnectScroll(func(ctx EventContext, e events.WheelEvent) {
 		dx, dy := e.DeltaX, e.DeltaY
 		if dy != 0 && e.Modifiers&events.ModifierShift != 0 {
 			dx, dy = dy, 0
 		}
+		extent := sv.scrollRange()
+		if (dx == 0 || extent.Width <= 0) && (dy == 0 || extent.Height <= 0) {
+			return
+		}
+		// Own the whole event whenever a requested axis has a scroll range,
+		// even at its boundary or when rounding leaves the offset unchanged.
+		ctx.StopPropagation()
 		sv.SetScrollX(sv.ScrollX() + sv.wheelDelta(dx, e.Mode))
 		sv.SetScrollY(sv.ScrollY() + sv.wheelDelta(dy, e.Mode))
 	})

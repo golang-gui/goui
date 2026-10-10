@@ -15,10 +15,16 @@
 //     F8 最大化、F9 恢复，换行和滚动范围更新，不保留旧的多余滚动条。
 //  5. 每项操作后按 F6，输出 SCROLL LAYOUT PASS 和各视口/偏移的公开几何断言。
 //     F11 切换亮暗后重复检查；1x/2x 分别验收，8 DIP 滚动条宽为 8/16 像素。
+//  6. F10 定位到表单中的 Nested CrossStretch 面板，按 F6 记录外层偏移和内层 bounds。
+//     将鼠标置于内层列表中滚动，再按 F6：仅 nested 偏移改变，form 不变。
+//     滚到内层首尾后继续滚动，form 仍不变。鼠标移到面板左侧文字后滚动，
+//     form 应正常滚动。F4 将内层切为短内容，F10 重新定位并按 F6 记录；
+//     在内层短内容上滚动，form 应改变，nested 保持 0。F4 恢复长内容。
 //
 // 平台差异：字体影响换行阈值；只有 Linux 自绘 Integrated 内缩窗口内容。
 // 副作用：窗口和日志，不读写剪贴板/文件、不启动 DevServer、不改系统设置。
-// 复位：F9 恢复普通状态，F7 恢复长表单；重启复位偏移。退出：关闭窗口。
+// 复位：F9 恢复普通状态，F7 恢复长表单，F4 恢复长内层列表；重启复位偏移。
+// 退出：关闭窗口。
 package main
 
 import (
@@ -86,7 +92,7 @@ func main() {
 	root := gui.NewLinearBox(layout.DirectionVertical)
 	root.SetCrossAlign(layout.CrossStretch)
 	header := gui.NewHeaderBar()
-	header.SetChild(gui.NewLabel("Scroll layout — F6 check / F7 short / F11 theme"))
+	header.SetChild(gui.NewLabel("Scroll layout — F6 check / F10 nested / F4 short"))
 	root.AddChild(header)
 	row := gui.NewLinearBox(layout.DirectionHorizontal)
 	row.SetCrossAlign(layout.CrossStretch)
@@ -131,6 +137,21 @@ func main() {
 	leaf := gui.NewLabel("Nested CrossStretch: 110 DIP panel")
 	leaf.SetMainWeight(1)
 	stretch.AddChild(leaf)
+	nested := gui.NewScrollView()
+	nested.SetDirection(gui.ScrollVertical)
+	nested.SetMinSize(geometry.Size{Width: 160})
+	nested.SetMaxSize(geometry.Size{Width: 160})
+	nested.SetMainWeight(0)
+	nestedContent := gui.NewLinearBox(layout.DirectionVertical)
+	nestedContent.SetCrossAlign(layout.CrossStretch)
+	var nestedRows []gui.Widget
+	for i := range 16 {
+		label := gui.NewLabel(fmt.Sprintf("内层滚动 %02d", i+1))
+		nestedContent.AddChild(label)
+		nestedRows = append(nestedRows, label)
+	}
+	nested.SetChild(nestedContent)
+	stretch.AddChild(nested)
 	panel.AddChild(panel, stretch)
 	content.AddChild(panel)
 	tail := gui.NewLabel("END — 应能完整滚动到此标记")
@@ -165,6 +186,14 @@ func main() {
 		s.ConnectActivate(fn)
 		win.Shortcuts().AddShortcut(s)
 	}
+	nestedShort := false
+	bind(gui.KeyF4, func() {
+		nestedShort = !nestedShort
+		for _, label := range nestedRows[1:] {
+			label.SetVisible(!nestedShort)
+		}
+		fmt.Printf("nested-short=%v\n", nestedShort)
+	})
 	bind(gui.KeyF6, func() {
 		b := both.Snapshot()
 		if b.MaxScrollX != 4 || b.MaxScrollY != 108 {
@@ -187,11 +216,16 @@ func main() {
 		if h.MaxScrollX != 100 || h.MaxScrollY != 0 || horizontal.ScrollY() != 0 {
 			panic(fmt.Sprintf("horizontal ranges: %g/%g", h.MaxScrollX, h.MaxScrollY))
 		}
+		n := nested.Snapshot()
+		if n.MaxScrollX != 0 || (n.MaxScrollY == 0) != nestedShort {
+			panic(fmt.Sprintf("nested ranges: %g/%g short=%v", n.MaxScrollX, n.MaxScrollY, nestedShort))
+		}
+		fmt.Printf("NESTED WHEEL form=%g nested=%g max=%g short=%v\n", form.ScrollY(), nested.ScrollY(), n.MaxScrollY, nestedShort)
 		fmt.Printf("SCROLL LAYOUT PASS form=%v content=%v offset=%g max=%g both=%g/%g horizontal=%g\n", form.Snapshot().Bounds, content.Rect(), f.ScrollY, f.MaxScrollY, b.ScrollX, b.ScrollY, h.ScrollX)
 		for _, item := range []struct {
 			name string
 			view *gui.ScrollView
-		}{{"form", form}, {"both", both}, {"horizontal", horizontal}} {
+		}{{"form", form}, {"both", both}, {"horizontal", horizontal}, {"nested", nested}} {
 			r := item.view.Snapshot().Bounds
 			fmt.Printf("BOUNDS %s %g %g %g %g\n", item.name, r.X, r.Y, r.Width, r.Height)
 		}
@@ -208,6 +242,7 @@ func main() {
 	})
 	bind(gui.KeyF8, func() { win.RequestState(gui.WindowStateMaximized) })
 	bind(gui.KeyF9, func() { win.RequestState(gui.WindowStateNormal) })
+	bind(gui.KeyF10, func() { form.ScrollIntoView(panel.Rect()) })
 	bind(gui.KeyF11, func() {
 		dark = !dark
 		app.SetStyleSheet(modern.Sheet(modern.Options{Dark: dark}))
