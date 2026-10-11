@@ -26,7 +26,11 @@ type config struct {
 		Icon    string `toml:"icon"`
 	} `toml:"windows"`
 	MacOS struct {
-		Icon string `toml:"icon"`
+		Icon            string `toml:"icon"`
+		Sandbox         bool   `toml:"sandbox"`
+		UserFiles       string `toml:"user_files"`
+		PersistAccess   bool   `toml:"persist_access"`
+		SigningIdentity string `toml:"signing_identity"`
 	} `toml:"macos"`
 	Linux struct {
 		Categories []string `toml:"categories"`
@@ -111,6 +115,22 @@ func (c *config) validate() error {
 	}
 	if c.MacOS.Icon != "" && strings.ToLower(filepath.Ext(c.MacOS.Icon)) != ".icns" {
 		return fmt.Errorf("macos.icon must be an ICNS file")
+	}
+	if c.MacOS.UserFiles != "" && c.MacOS.UserFiles != "read-only" && c.MacOS.UserFiles != "read-write" {
+		return fmt.Errorf("macos.user_files must be read-only or read-write")
+	}
+	if !c.MacOS.Sandbox && (c.MacOS.UserFiles != "" || c.MacOS.PersistAccess) {
+		return fmt.Errorf("macos.user_files and persist_access require sandbox = true")
+	}
+	if c.MacOS.PersistAccess && c.MacOS.UserFiles == "" {
+		return fmt.Errorf("macos.persist_access requires user_files access")
+	}
+	identity := c.MacOS.SigningIdentity
+	if strings.TrimSpace(identity) != identity || strings.IndexFunc(identity, unicode.IsControl) >= 0 {
+		return fmt.Errorf("macos.signing_identity must not contain surrounding whitespace or control characters")
+	}
+	if c.MacOS.Sandbox && identity == "" {
+		return fmt.Errorf("macos.sandbox requires an explicit signing_identity (use '-' only for development)")
 	}
 	if c.Metadata != "" {
 		path := filepath.Clean(c.Metadata)

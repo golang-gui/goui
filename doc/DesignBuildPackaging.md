@@ -16,7 +16,9 @@
   未安装的桌面集成或原生窗口图标当作跨桌面保证。
 
 首个切片实现 Windows EXE、macOS app、Linux dir；DEB/RPM 后续按实际需求
-接入 nFPM。暂不实现归档格式、AppImage、权限声明、签名、公证、上传、自动安装。
+接入 nFPM。暂不实现归档格式、AppImage、公证、上传、自动安装。
+文件访问切片增补明确配置的 macOS 沙箱 Entitlements 与原生签名，详见
+[文件访问设计](DesignFileAccess.md)；不扩展为通用权限系统。
 不随包分发 GOUI 动态加载的系统库；用户仍须提供支持的桌面系统环境。
 
 ## 配置
@@ -39,6 +41,10 @@ console = false
 
 [macos]
 # icon = "assets/app.icns"
+# sandbox = true
+# user_files = "read-write" # 或 read-only
+# persist_access = true
+# signing_identity = "Apple Development: ..." # 开发可显式用 "-"
 
 [linux]
 categories = ["Utility"]
@@ -85,7 +91,10 @@ DPI awareness 沿用运行时的初始化。ICO 的各尺寸直接由 SVG 渲染
 
 macOS 使用 icns/v3 v3.0.1（与项目 Go 版本兼容），通过公开 IconSet 写入独立渲染的
 32..1024 像素 PNG 项。生成 Contents/Info.plist、MacOS/executable、Resources/AppIcon.icns。
-plist 提供 Bundle ID、名称、版本、APPL 类型及高分辨率声明；不提供签名或权限。
+plist 提供 Bundle ID、名称、版本、APPL 类型及高分辨率声明。显式配置 sandbox
+时另外生成 Entitlements，package 在 macOS 使用配置的 signing_identity 签名
+并校验；沙箱/用户选择文件/持久访问为独立权限项，不写进 Info.plist。不自动
+解锁钥匙串、选择证书、公证或申请分发资格。
 
 Linux 安装目录树包括 usr/bin/executable、usr/share/applications/ID.desktop、
 usr/share/icons/hicolor/<size>x<size>/apps/ID.png，SVG 另存 scalable。
@@ -120,6 +129,11 @@ desktop 的 Icon、StartupWMClass 使用 ID，Exec 指向 /usr/bin/executable。
   全仓测试、命令包 race / vet 通过。本次仅无桌面测试修正，不重复窗口验收或
   Windows 原生测试；此前两端窗口验收记录保持有效。
 - [ ] Linux desktop 安装集成；不自动安装，不以启动代替图标验收。
+- [x] 2026-10-11 文件访问切片：显式 macOS sandbox/user_files/persist_access/
+  signing_identity、独立 Entitlements、原生签名/校验与失败不发布通过。
+  macOS 15.7.7 arm64 实际 ad-hoc 沙箱 app 的容器目录、外部选择/保存、
+  read-write/read-only 凭据和跨启动恢复通过；开发证书 SSH 签名失败和
+  稳定证书跨更新验证缺口见 [文件访问验证记录](DesignFileAccess.md#实施与验证记录2026-10-11)。
 
 验证命令：`go test ./...`、`go test -race ./cmd/goui`、
 `GOOS=<os> GOARCH=<arch> CGO_ENABLED=0 go build -o <临时目录> ./cmd/goui` 及

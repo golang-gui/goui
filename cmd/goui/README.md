@@ -45,9 +45,27 @@ categories = ["Utility"]
 不要同时使用另一套 main 包资源 syso；console 配置控制 Windows GUI/CUI 子系统。
 
 `build` 总是生成裸二进制；`package` 从不重新编译。Windows EXE 可以直接分发；
-macOS app 提供 Bundle 身份和图标，但**尚未签名／公证**。Linux dir 是安装目录树，
+macOS app 提供 Bundle 身份和图标，可显式配置签名；公证仍由应用发行流程负责。Linux dir 是安装目录树，
 不是自动注册的便携应用；二进制可独立运行，桌面图标需要安装 desktop/hicolor 文件。
-不生成 DEB/RPM/AppImage，不请求权限，不签名、不自动安装或复制系统库。
+不生成 DEB/RPM/AppImage，不自动申请权限、安装或复制系统库。
+
+macOS 沙箱文件访问可以显式启用：
+
+```toml
+[macos]
+sandbox = true
+user_files = "read-write" # 或 read-only；不授予任意文件访问
+persist_access = true    # 允许持久化用户选择资源的访问凭据
+signing_identity = "Apple Development: ..." # 明确选择本机可用身份
+```
+
+`generate` 将 Entitlements.plist 单独生成在资源目录，不混入 Info.plist；
+`package` 必须在 macOS 执行，调用系统 codesign 签入并校验，失败不发布 .app。
+开发可显式用 `signing_identity = "-"`，但 ad-hoc 不保证跨构建的身份稳定；
+保存凭据使用稳定签名，并在用户选择文件后取得 FileAccess.Credential。
+原始二进制不因 `build` 而成为可分发的沙箱应用，必须完成 package。
+不启用网络、全磁盘或临时例外权限；文件访问和取消/错误契约见
+[文件访问设计](../../doc/DesignFileAccess.md)。
 
 SVG 使用和 `cmd/svgpng` 相同的 GOUI 静态子集，按原色等比居中并保留透明。
 不支持的 SVG 应先按 [SVG 设计](../../doc/DesignSVG.md) 转为支持的内容或 PNG。
