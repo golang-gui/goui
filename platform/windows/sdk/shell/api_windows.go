@@ -489,7 +489,7 @@ func CreateFileSaveDialog() (*FileSaveDialog, com.HRESULT) {
 
 // HRESULT_CANCEL is the HRESULT returned when the user cancels a dialog.
 // 0x800704C7 = HRESULT_FROM_WIN32(ERROR_CANCELLED)
-var HRESULT_CANCEL = com.HRESULT(-2147023417)
+const HRESULT_CANCEL = com.HRESULT(-2147023673)
 
 func utf16PtrToString(p *uint16) string {
 	if p == nil {

@@ -40,6 +40,7 @@ type (
 	FileFilter         = common.FileFilter
 	DialogOptions      = common.DialogOptions
 	FileDialog         = common.FileDialog
+	FileAccess         = common.FileAccess
 )
 
 const (

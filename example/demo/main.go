@@ -75,6 +75,7 @@ type demo struct {
 	bitmap, capture                    image.Image
 	popup                              gui.Popover
 	files                              []string
+	fileAccess                         []ui.FileAccess
 	dropped                            string
 	droppedKind                        demoDropKind
 	inspection                         *ui.TextModel
@@ -227,7 +228,7 @@ func (d *demo) build(app ui.App) ui.RootView {
 	).CrossAlign(layout.CrossStretch)
 	windows := []ui.WindowView{ui.Window("main").Title(resource.Title()).Chrome(ui.WindowChromeIntegrated).Size(1120, 800).MinSize(820, 600).
 		Shortcuts(ui.Shortcut(ui.KeyF5).OnActivate(func() { d.report(resource.Refreshed()) })).
-		OnDestroy(func() { d.stopActivities(); app.Quit() }).Content(surface(content).Style("demo-background"))}
+		OnDestroy(func() { d.stopActivities(); d.closeFiles(); app.Quit() }).Content(surface(content).Style("demo-background"))}
 	for _, window := range d.tabWindows[1:] {
 		windows = append(windows, d.tabWindowView(window))
 	}

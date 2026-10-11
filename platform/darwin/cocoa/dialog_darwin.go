@@ -1,6 +1,8 @@
 package cocoa
 
 import (
+	"fmt"
+
 	"github.com/golang-gui/goui/platform/common"
 
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/appkit"
@@ -9,18 +11,45 @@ import (
 
 // fileDialog implements the native file dialog capability for macOS.
 type fileDialog struct {
+	sandbox         bool
+	bookmarkOptions NSURLBookmarkCreationOptions
 }
 
 func newFileDialog() (common.FileDialog, error) {
-	return &fileDialog{}, nil
+	sandbox, err := processEntitlement("com.apple.security.app-sandbox")
+	if err != nil {
+		return nil, err
+	}
+	fd := &fileDialog{sandbox: sandbox}
+	if sandbox {
+		fd.bookmarkOptions = NSURLBookmarkCreationWithSecurityScope
+		readOnly, err := processEntitlement("com.apple.security.files.user-selected.read-only")
+		if err != nil {
+			return nil, err
+		}
+		if readOnly {
+			readWrite, err := processEntitlement("com.apple.security.files.user-selected.read-write")
+			if err != nil {
+				return nil, err
+			}
+			if !readWrite {
+				fd.bookmarkOptions |= NSURLBookmarkCreationSecurityScopeAllowOnlyReadAccess
+			}
+		}
+	}
+	return fd, nil
 }
 
 // OpenFile opens a native file-selection dialog for selecting one or more files.
-func (fd *fileDialog) OpenFile(owner common.Window, opts common.DialogOptions, cb func([]string, error)) {
+func (fd *fileDialog) OpenFile(owner common.Window, opts common.DialogOptions, cb func([]common.FileAccess, error)) {
 	var panel NSOpenPanel
 	AutoReleasePool(func() {
 		panel = NSOpenPanelClassId.Alloc().Init()
 	})
+	if panel.IsNil() {
+		cb(nil, fmt.Errorf("file dialog: create NSOpenPanel failed"))
+		return
+	}
 
 	defer func() {
 		AutoReleasePool(func() {
@@ -62,31 +91,30 @@ func (fd *fileDialog) OpenFile(owner common.Window, opts common.DialogOptions, c
 	// Run modal
 	result := panel.RunModal()
 	if result != NSModalResponseOK {
-		cb(nil, nil)
+		cb(nil, fileDialogResponseError(result))
 		return
 	}
 
 	// Get selected URLs
-	var paths []string
+	var access []common.FileAccess
+	var err error
 	AutoReleasePool(func() {
-		urls := panel.URLs()
-		count := urls.Count()
-		for i := uintptr(0); i < count; i++ {
-			url := NSURL{}
-			url.ID = urls.ObjectAtIndex(i)
-			paths = append(paths, url.Path())
-		}
+		access, err = fd.selectedAccess(panel.URLs())
 	})
 
-	cb(paths, nil)
+	cb(access, err)
 }
 
 // OpenDirectory opens a native dialog for selecting a directory.
-func (fd *fileDialog) OpenDirectory(owner common.Window, opts common.DialogOptions, cb func([]string, error)) {
+func (fd *fileDialog) OpenDirectory(owner common.Window, opts common.DialogOptions, cb func([]common.FileAccess, error)) {
 	var panel NSOpenPanel
 	AutoReleasePool(func() {
 		panel = NSOpenPanelClassId.Alloc().Init()
 	})
+	if panel.IsNil() {
+		cb(nil, fmt.Errorf("file dialog: create NSOpenPanel failed"))
+		return
+	}
 
 	defer func() {
 		AutoReleasePool(func() {
@@ -116,31 +144,30 @@ func (fd *fileDialog) OpenDirectory(owner common.Window, opts common.DialogOptio
 	// Run modal
 	result := panel.RunModal()
 	if result != NSModalResponseOK {
-		cb(nil, nil)
+		cb(nil, fileDialogResponseError(result))
 		return
 	}
 
 	// Get selected URL
-	var paths []string
+	var access []common.FileAccess
+	var err error
 	AutoReleasePool(func() {
-		urls := panel.URLs()
-		count := urls.Count()
-		for i := uintptr(0); i < count; i++ {
-			url := NSURL{}
-			url.ID = urls.ObjectAtIndex(i)
-			paths = append(paths, url.Path())
-		}
+		access, err = fd.selectedAccess(panel.URLs())
 	})
 
-	cb(paths, nil)
+	cb(access, err)
 }
 
 // SaveFile opens a native save-file dialog.
-func (fd *fileDialog) SaveFile(owner common.Window, opts common.DialogOptions, cb func([]string, error)) {
+func (fd *fileDialog) SaveFile(owner common.Window, opts common.DialogOptions, cb func([]common.FileAccess, error)) {
 	var panel NSSavePanel
 	AutoReleasePool(func() {
 		panel = NSSavePanelClassId.Alloc().Init()
 	})
+	if panel.IsNil() {
+		cb(nil, fmt.Errorf("file dialog: create NSSavePanel failed"))
+		return
+	}
 
 	defer func() {
 		AutoReleasePool(func() {
@@ -184,16 +211,27 @@ func (fd *fileDialog) SaveFile(owner common.Window, opts common.DialogOptions, c
 	// Run modal
 	result := panel.RunModal()
 	if result != NSModalResponseOK {
-		cb(nil, nil)
+		cb(nil, fileDialogResponseError(result))
 		return
 	}
 
 	// Get selected URL
-	var path string
+	var access common.FileAccess
+	var err error
 	AutoReleasePool(func() {
-		url := panel.URL()
-		path = url.Path()
+		access, err = fd.newAccess(panel.URL(), false)
 	})
 
-	cb([]string{path}, nil)
+	if err != nil {
+		cb(nil, err)
+		return
+	}
+	cb([]common.FileAccess{access}, nil)
+}
+
+func fileDialogResponseError(response NSModalResponse) error {
+	if response == NSModalResponseCancel {
+		return nil
+	}
+	return fmt.Errorf("file dialog: unexpected modal response %d", response)
 }

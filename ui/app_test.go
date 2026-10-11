@@ -598,16 +598,20 @@ func (a *windowTestApplication) Snapshot() gui.ApplicationInfo {
 
 type windowTestFileDialog struct{}
 
-func (f *windowTestFileDialog) OpenFile(owner gui.Window, opts gui.DialogOptions, cb func([]string)) {
-	cb(nil)
+func (f *windowTestFileDialog) OpenFile(owner gui.Window, opts gui.DialogOptions, cb func([]gui.FileAccess, error)) {
+	cb(nil, nil)
 }
 
-func (f *windowTestFileDialog) OpenDirectory(owner gui.Window, opts gui.DialogOptions, cb func([]string)) {
-	cb(nil)
+func (f *windowTestFileDialog) OpenDirectory(owner gui.Window, opts gui.DialogOptions, cb func([]gui.FileAccess, error)) {
+	cb(nil, nil)
 }
 
-func (f *windowTestFileDialog) SaveFile(owner gui.Window, opts gui.DialogOptions, cb func([]string)) {
-	cb(nil)
+func (f *windowTestFileDialog) SaveFile(owner gui.Window, opts gui.DialogOptions, cb func([]gui.FileAccess, error)) {
+	cb(nil, nil)
+}
+
+func (f *windowTestFileDialog) RestoreAccess([]byte) (gui.FileAccess, error) {
+	return nil, errors.New("test: no stored access")
 }
 
 func (a *windowTestApplication) runPosted() {

@@ -25,6 +25,7 @@ func InitFoundation() (err error) {
 	initNSNotification()
 	initNSBundle()
 	initNSLocale()
+	initNSError()
 
 	err = initNSRunLoopMode()
 	if err != nil {
@@ -40,6 +41,24 @@ func InitFoundation() (err error) {
 }
 
 // Types
+
+// NSError is a borrowed Foundation error. Copy its strings before the current
+// autorelease pool ends, or retain it explicitly.
+type NSError struct{ NSObject }
+
+var NSErrorSel struct{ Domain, Code, LocalizedDescription objc.SEL }
+
+func initNSError() {
+	NSErrorSel.Domain = objc.RegisterName("domain")
+	NSErrorSel.Code = objc.RegisterName("code")
+	NSErrorSel.LocalizedDescription = objc.RegisterName("localizedDescription")
+}
+
+func (e NSError) Domain() string  { return Cast[NSString](e.Send(NSErrorSel.Domain)).UTF8String() }
+func (e NSError) Code() NSInteger { return objc.Send[NSInteger](e.ID, NSErrorSel.Code) }
+func (e NSError) LocalizedDescription() string {
+	return Cast[NSString](e.Send(NSErrorSel.LocalizedDescription)).UTF8String()
+}
 
 // NSLocale
 

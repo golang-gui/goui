@@ -2,11 +2,13 @@ package x11
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 
 	"github.com/golang-gui/goui/platform/common"
+	"github.com/golang-gui/goui/platform/internal/fileaccess"
 )
 
 // fileDialog implements the native file dialog capability for X11.
@@ -85,7 +87,7 @@ func buildFilterArgs(helper dialogHelper, filters []common.FileFilter) []string 
 }
 
 // OpenFile opens a native file-selection dialog for selecting one or more files.
-func (fd *fileDialog) OpenFile(owner common.Window, opts common.DialogOptions, cb func([]string, error)) {
+func (fd *fileDialog) OpenFile(owner common.Window, opts common.DialogOptions, cb func([]common.FileAccess, error)) {
 	args := buildOpenFileArgs(fd.helper, opts)
 	output, err := runDialog(fd.helper, args)
 	if err != nil {
@@ -98,11 +100,12 @@ func (fd *fileDialog) OpenFile(owner common.Window, opts common.DialogOptions, c
 	}
 
 	paths := parseOutput(fd.helper, output, opts.AllowMultiple)
-	cb(paths, nil)
+	access, err := fileaccess.Paths(paths)
+	cb(access, err)
 }
 
 // OpenDirectory opens a native dialog for selecting a directory.
-func (fd *fileDialog) OpenDirectory(owner common.Window, opts common.DialogOptions, cb func([]string, error)) {
+func (fd *fileDialog) OpenDirectory(owner common.Window, opts common.DialogOptions, cb func([]common.FileAccess, error)) {
 	args := buildOpenDirectoryArgs(fd.helper, opts)
 	output, err := runDialog(fd.helper, args)
 	if err != nil {
@@ -115,11 +118,12 @@ func (fd *fileDialog) OpenDirectory(owner common.Window, opts common.DialogOptio
 	}
 
 	paths := parseOutput(fd.helper, output, false)
-	cb(paths, nil)
+	access, err := fileaccess.Paths(paths)
+	cb(access, err)
 }
 
 // SaveFile opens a native save-file dialog.
-func (fd *fileDialog) SaveFile(owner common.Window, opts common.DialogOptions, cb func([]string, error)) {
+func (fd *fileDialog) SaveFile(owner common.Window, opts common.DialogOptions, cb func([]common.FileAccess, error)) {
 	args := buildSaveFileArgs(fd.helper, opts)
 	output, err := runDialog(fd.helper, args)
 	if err != nil {
@@ -132,7 +136,12 @@ func (fd *fileDialog) SaveFile(owner common.Window, opts common.DialogOptions, c
 	}
 
 	paths := parseOutput(fd.helper, output, false)
-	cb(paths, nil)
+	access, err := fileaccess.Paths(paths)
+	cb(access, err)
+}
+
+func (fd *fileDialog) RestoreAccess(credential []byte) (common.FileAccess, error) {
+	return fileaccess.RestorePath(credential)
 }
 
 var errDialogCancelled = errors.New("dialog cancelled")
@@ -152,15 +161,20 @@ func runDialog(helper dialogHelper, args []string) (string, error) {
 	}
 
 	cmd := exec.Command(name, args...)
-	output, err := cmd.CombinedOutput()
+	// Helpers print diagnostic warnings to stderr even on success. They must
+	// never become part of the selected filename.
+	output, err := cmd.Output()
 	if err != nil {
 		// zenity/kdialog exit code 1 means user cancelled
 		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
 			return "", errDialogCancelled
 		}
-		return "", errors.New("dialog failed: " + string(output))
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return "", fmt.Errorf("dialog failed: %w: %s", err, strings.TrimSpace(string(exitErr.Stderr)))
+		}
+		return "", fmt.Errorf("dialog failed: %w", err)
 	}
-	return strings.TrimSpace(string(output)), nil
+	return strings.TrimSuffix(string(output), "\n"), nil
 }
 
 // buildOpenFileArgs builds command-line arguments for file selection.

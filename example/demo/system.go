@@ -103,11 +103,21 @@ func (d *demo) systemPage() ui.View {
 				d.app.FileDialog().OpenDirectory(ui.DialogOptions{Title: resource.ChooseFolderTitle()}, d.selectedPaths)
 			}),
 			ui.Button(resource.SaveDialog()).OnClick(func() {
-				d.app.FileDialog().SaveFile(ui.DialogOptions{Title: resource.SaveDialogTitle(), DefaultName: "demo.txt"}, func(paths []string) {
-					if len(paths) == 0 {
+				d.app.FileDialog().SaveFile(ui.DialogOptions{Title: resource.SaveDialogTitle(), DefaultName: "demo.txt"}, func(access []ui.FileAccess, err error) {
+					if err != nil {
+						d.result(resource.SaveDialogTitle(), err)
+						return
+					}
+					if len(access) == 0 {
 						d.report(resource.NoSavePath())
 					} else {
-						d.report(fmt.Sprintf(resource.SavePath(), paths[0]))
+						defer access[0].Close()
+						path, err := access[0].LocalPath()
+						if err != nil {
+							d.result(resource.SaveDialogTitle(), err)
+							return
+						}
+						d.report(fmt.Sprintf(resource.SavePath(), path))
 					}
 				})
 			}),
@@ -135,11 +145,35 @@ func (d *demo) systemPage() ui.View {
 			ui.Label(resource.DragHint())),
 	)
 }
-func (d *demo) selectedPaths(paths []string) {
-	if len(paths) == 0 {
+func (d *demo) selectedPaths(access []ui.FileAccess, err error) {
+	if err != nil {
+		d.result(resource.DialogsTitle(), err)
+		return
+	}
+	if len(access) == 0 {
 		d.report(resource.NoDialogPath())
 		return
 	}
-	d.files = append([]string(nil), paths...)
+	var paths []string
+	for _, item := range access {
+		path, pathErr := item.LocalPath()
+		if pathErr != nil {
+			for _, acquired := range access {
+				acquired.Close()
+			}
+			d.result(resource.DialogsTitle(), pathErr)
+			return
+		}
+		paths = append(paths, path)
+	}
+	d.closeFiles()
+	d.fileAccess, d.files = access, paths
 	d.report(fmt.Sprintf(resource.ChosenPath(), strings.Join(paths, ", ")))
+}
+
+func (d *demo) closeFiles() {
+	for _, access := range d.fileAccess {
+		access.Close()
+	}
+	d.fileAccess, d.files = nil, nil
 }
