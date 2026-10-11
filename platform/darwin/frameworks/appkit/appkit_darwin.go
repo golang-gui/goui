@@ -2210,15 +2210,20 @@ func initNSURL() {
 	NSURLSel.FileURLWithPath = objc.RegisterName("fileURLWithPath:")
 	NSURLSel.Path = objc.RegisterName("path")
 	NSURLSel.AbsoluteString = objc.RegisterName("absoluteString")
+	NSURLSel.BookmarkData = objc.RegisterName("bookmarkDataWithOptions:includingResourceValuesForKeys:relativeToURL:error:")
+	NSURLSel.ResolveBookmark = objc.RegisterName("URLByResolvingBookmarkData:options:relativeToURL:bookmarkDataIsStale:error:")
+	NSURLSel.StartAccess = objc.RegisterName("startAccessingSecurityScopedResource")
+	NSURLSel.StopAccess = objc.RegisterName("stopAccessingSecurityScopedResource")
 }
 
 var (
 	NSURLClassId NSURLClass
 	NSURLSel     struct {
-		URLWithString   objc.SEL
-		FileURLWithPath objc.SEL
-		Path            objc.SEL
-		AbsoluteString  objc.SEL
+		URLWithString                                          objc.SEL
+		FileURLWithPath                                        objc.SEL
+		Path                                                   objc.SEL
+		AbsoluteString                                         objc.SEL
+		BookmarkData, ResolveBookmark, StartAccess, StopAccess objc.SEL
 	}
 )
 
@@ -2226,6 +2231,30 @@ type (
 	NSURL      struct{ NSObject }
 	NSURLClass struct{ NSObjectClass }
 )
+
+type NSURLBookmarkCreationOptions = NSUInteger
+type NSURLBookmarkResolutionOptions = NSUInteger
+
+const (
+	NSURLBookmarkCreationWithSecurityScope                NSURLBookmarkCreationOptions   = 1 << 11
+	NSURLBookmarkCreationSecurityScopeAllowOnlyReadAccess NSURLBookmarkCreationOptions   = 1 << 12
+	NSURLBookmarkResolutionWithoutUI                      NSURLBookmarkResolutionOptions = 1 << 8
+	NSURLBookmarkResolutionWithSecurityScope              NSURLBookmarkResolutionOptions = 1 << 10
+)
+
+func (u NSURL) BookmarkData(options NSURLBookmarkCreationOptions, err *NSError) NativeData {
+	return Cast[NativeData](u.Send(NSURLSel.BookmarkData, options, ID(0), ID(0), err))
+}
+
+func (c NSURLClass) ResolveBookmarkData(data NativeData, options NSURLBookmarkResolutionOptions, stale *bool, err *NSError) NSURL {
+	return Cast[NSURL](c.Send(NSURLSel.ResolveBookmark, data.ID, options, ID(0), stale, err))
+}
+
+func (u NSURL) StartAccessingSecurityScopedResource() bool {
+	return objc.Send[bool](u.ID, NSURLSel.StartAccess)
+}
+
+func (u NSURL) StopAccessingSecurityScopedResource() { u.Send(NSURLSel.StopAccess) }
 
 func (c NSURLClass) FileURLWithPath(path NSString) (res NSURL) {
 	res.ID = c.Send(NSURLSel.FileURLWithPath, path.ID)

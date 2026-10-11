@@ -9,6 +9,7 @@ import (
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/core_text"
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/opengl"
+	. "github.com/golang-gui/goui/platform/darwin/frameworks/security"
 )
 
 var (
@@ -36,6 +37,10 @@ func Init() (err error) {
 		return
 	}
 	err = InitFoundation()
+	if err != nil {
+		return
+	}
+	err = InitSecurity()
 	if err != nil {
 		return
 	}

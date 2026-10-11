@@ -6,6 +6,7 @@ import (
 	"syscall"
 
 	"github.com/golang-gui/goui/platform/common"
+	"github.com/golang-gui/goui/platform/internal/fileaccess"
 	"github.com/golang-gui/goui/platform/windows/sdk/shell"
 )
 
@@ -20,7 +21,7 @@ func newFileDialog() (common.FileDialog, error) {
 }
 
 // OpenFile opens a file selection dialog.
-func (fd *fileDialog) OpenFile(owner common.Window, opts common.DialogOptions, cb func([]string, error)) {
+func (fd *fileDialog) OpenFile(owner common.Window, opts common.DialogOptions, cb func([]common.FileAccess, error)) {
 	dlg, hr := shell.CreateFileOpenDialog()
 	if hr.Failed() {
 		cb(nil, hr)
@@ -90,15 +91,19 @@ func (fd *fileDialog) OpenFile(owner common.Window, opts common.DialogOptions, c
 		for i := uint32(0); i < count; i++ {
 			item, hr := arr.GetItemAt(i)
 			if hr.Failed() {
-				continue
+				cb(nil, hr)
+				return
 			}
 			name, hr := item.GetDisplayName(shell.SIGDN_FILESYSPATH)
 			item.Release()
-			if hr.Succeeded() && name != "" {
-				paths = append(paths, name)
+			if hr.Failed() {
+				cb(nil, hr)
+				return
 			}
+			paths = append(paths, name)
 		}
-		cb(paths, nil)
+		access, err := fileaccess.Paths(paths)
+		cb(access, err)
 		return
 	}
 
@@ -113,11 +118,12 @@ func (fd *fileDialog) OpenFile(owner common.Window, opts common.DialogOptions, c
 		cb(nil, hr)
 		return
 	}
-	cb([]string{name}, nil)
+	access, err := fileaccess.Paths([]string{name})
+	cb(access, err)
 }
 
 // OpenDirectory opens a directory selection dialog.
-func (fd *fileDialog) OpenDirectory(owner common.Window, opts common.DialogOptions, cb func([]string, error)) {
+func (fd *fileDialog) OpenDirectory(owner common.Window, opts common.DialogOptions, cb func([]common.FileAccess, error)) {
 	dlg, hr := shell.CreateFileOpenDialog()
 	if hr.Failed() {
 		cb(nil, hr)
@@ -170,11 +176,12 @@ func (fd *fileDialog) OpenDirectory(owner common.Window, opts common.DialogOptio
 		cb(nil, hr)
 		return
 	}
-	cb([]string{name}, nil)
+	access, err := fileaccess.Paths([]string{name})
+	cb(access, err)
 }
 
 // SaveFile opens a save file dialog.
-func (fd *fileDialog) SaveFile(owner common.Window, opts common.DialogOptions, cb func([]string, error)) {
+func (fd *fileDialog) SaveFile(owner common.Window, opts common.DialogOptions, cb func([]common.FileAccess, error)) {
 	dlg, hr := shell.CreateFileSaveDialog()
 	if hr.Failed() {
 		cb(nil, hr)
@@ -243,7 +250,12 @@ func (fd *fileDialog) SaveFile(owner common.Window, opts common.DialogOptions, c
 		cb(nil, hr)
 		return
 	}
-	cb([]string{name}, nil)
+	access, err := fileaccess.Paths([]string{name})
+	cb(access, err)
+}
+
+func (fd *fileDialog) RestoreAccess(credential []byte) (common.FileAccess, error) {
+	return fileaccess.RestorePath(credential)
 }
 
 // toFilterSpecs converts common.FileFilter to shell.COMDLG_FILTERSPEC.

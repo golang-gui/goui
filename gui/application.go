@@ -19,7 +19,8 @@ type Application interface {
 	Clipboard() Clipboard
 	// Settings returns system settings as usable values. Never nil.
 	Settings() Settings
-	// FileDialog returns the system file dialog, or nil if it is unavailable.
+	// FileDialog returns the system file service (never nil). Unavailable
+	// services report the native creation error when an operation is requested.
 	FileDialog() FileDialog
 	// OpenURL asks the system to open an absolute URL with its registered handler.
 	// Call on the GUI thread. Errors are returned without logging or displaying
@@ -121,7 +122,7 @@ func newApplication(appId string) (*application, error) {
 		platSettings = nil // getters then always fall back
 	}
 
-	platFileDlg, _ := plat.NewFileDialog()
+	platFileDlg, fileDialogErr := plat.NewFileDialog()
 
 	app := &application{
 		platform:   plat,
@@ -130,7 +131,7 @@ func newApplication(appId string) (*application, error) {
 		typo:       typo,
 		clipboard:  newClipboard(platClip),
 		settings:   newSettings(platSettings),
-		fileDialog: newFileDialog(platFileDlg, loop),
+		fileDialog: newFileDialog(platFileDlg, loop, fileDialogErr),
 
 		quitOnLastWindowClosed: true,
 	}
@@ -153,7 +154,7 @@ func (a *application) Settings() Settings {
 	return a.settings
 }
 
-// FileDialog returns the system file dialog, or nil if it is unavailable.
+// FileDialog returns the file dialog service, including native failure results.
 func (a *application) FileDialog() FileDialog {
 	return a.fileDialog
 }
