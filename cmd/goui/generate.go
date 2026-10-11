@@ -18,6 +18,9 @@ func generate(ctx context.Context, c *config, t target, tags, output string) ([]
 	if err != nil {
 		return nil, err
 	}
+	if t.OS == "darwin" && c.MacOS.Sandbox {
+		assets["Entitlements.plist"] = macOSEntitlements(c)
+	}
 	if output == "" {
 		output = filepath.Join("dist", t.folder(), "resources")
 	}

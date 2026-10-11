@@ -60,7 +60,11 @@ func packageApp(c *config, t target, format, binaryPath, output string) (string,
 	if err := os.MkdirAll(filepath.Dir(output), 0755); err != nil {
 		return "", err
 	}
-	work, err := os.MkdirTemp(filepath.Dir(output), ".goui-package-*")
+	pattern := ".goui-package-*"
+	if t.OS == "darwin" {
+		pattern += ".app"
+	}
+	work, err := os.MkdirTemp(filepath.Dir(output), pattern)
 	if err != nil {
 		return "", err
 	}
@@ -83,6 +87,11 @@ func packageApp(c *config, t target, format, binaryPath, output string) (string,
 	}
 	if err := copyFile(binaryPath, filepath.Join(work, executable), 0755); err != nil {
 		return "", err
+	}
+	if t.OS == "darwin" && c.MacOS.SigningIdentity != "" {
+		if err := signMacOS(c, work); err != nil {
+			return "", err
+		}
 	}
 	if err := os.Rename(work, output); err != nil {
 		return "", err
