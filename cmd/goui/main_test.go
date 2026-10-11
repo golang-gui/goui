@@ -60,8 +60,21 @@ func TestConfigOutsideModule(t *testing.T) {
 		t.Fatal(err)
 	}
 	pkg, err := mainPackage(context.Background(), c, target{"linux", "amd64"}, "")
-	if err != nil || pkg.Dir != moduleDir {
+	if err != nil {
 		t.Fatalf("config-relative main package did not use its own module: %+v %v", pkg, err)
+	}
+	got, err := os.Stat(pkg.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.Stat(moduleDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Go may canonicalize macOS's /var alias to /private/var. Compare the
+	// actual directory, not its spelling, without accepting a different module.
+	if !os.SameFile(got, want) {
+		t.Fatalf("resolved module directory %q, want %q", pkg.Dir, moduleDir)
 	}
 }
 
