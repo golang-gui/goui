@@ -112,9 +112,13 @@ desktop 的 Icon、StartupWMClass 使用 ID，Exec 指向 /usr/bin/executable。
   命令实际构建并打包 app，plutil 校验、1024 像素 ICNS、包内外二进制哈希一致，
   Finder／Dock 图标、菜单栏名称、双击启动、缩放和关闭通过。
   窗口使用默认绘制配置，未验收签名、公证或 Gatekeeper 分发。
-- [ ] macOS 包内测试 `TestConfigOutsideModule` 仍失败：测试比较原始目录字符串，
-  Go 报告 `/private/var/...` 而 t.TempDir 返回 `/var/...`。两者设备号／inode 一致，
-  其余命令测试通过；待将断言改为 `os.SameFile`，本次提交不修改此测试。
+- [x] 2026-10-11 修正 `TestConfigOutsideModule` 的路径别名误判：Go 报告
+  `/private/var/...` 而 t.TempDir 返回 `/var/...`，两者设备号／inode 一致。
+  断言通过 `os.Stat` / `os.SameFile` 检查实际目录，仍拒绝解析到其它模块，
+  不修改生产路径处理。macOS 15.7.7 arm64 / Go 1.24.9 先复现旧测试失败，
+  修正后目标回归、完整命令包非缓存测试、race 和 vet 全部通过；本机 Linux
+  全仓测试、命令包 race / vet 通过。本次仅无桌面测试修正，不重复窗口验收或
+  Windows 原生测试；此前两端窗口验收记录保持有效。
 - [ ] Linux desktop 安装集成；不自动安装，不以启动代替图标验收。
 
 验证命令：`go test ./...`、`go test -race ./cmd/goui`、
