@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"runtime"
 	"sync"
 	"time"
 
@@ -78,6 +77,8 @@ var (
 // Run creates the application, mounts the declarative tree returned by build, and
 // runs the event loop until the app quits. build receives the App handle, which it
 // may stash, capture in handlers, or call from other goroutines.
+// Call Run from main, not a background goroutine. Platform initialization already
+// keeps main on the startup OS thread. Use App.Post/Sync for background work.
 // System settings and mlang language changes automatically request a coalesced
 // rebuild. Resource getters should be called inside build, not resolved once
 // outside it. Change language on the UI thread, or inside App.Post.
@@ -91,8 +92,6 @@ func Run(appId string, build func(app App) RootView) error {
 	if err := activeRun(); err != nil {
 		return err
 	}
-
-	runtime.LockOSThread()
 
 	guiApp, err := gui.NewApplication(appId)
 	if err != nil {
