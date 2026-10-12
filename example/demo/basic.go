@@ -19,7 +19,7 @@ func (d *demo) basicPage() ui.View {
 			ui.HWrap(ui.Button(resource.NormalButton()).OnClick(func() { d.report(resource.NormalClicked()) }),
 				ui.Button(resource.PrimaryButton()).Style(modern.Primary).OnClick(func() { d.report(resource.PrimaryClicked()) }),
 				ui.Button(resource.FlatButton()).Style(modern.Flat).ID("basic-flat").OnClick(func() { d.report(resource.FlatClicked()) }),
-				ui.Button().Content(ui.HBox(ui.Icon(d.icons[0]).Size(18), ui.Label(resource.IconButton())).Spacing(8)).OnClick(func() { d.report(resource.IconClicked()) }),
+				ui.Button().Content(ui.HBox(ui.Icon(d.logo).Size(18), ui.Label(resource.IconButton())).Spacing(8)).OnClick(func() { d.report(resource.IconClicked()) }),
 			).Spacing(12).LineSpacing(12).Enabled(d.enabled),
 			ui.HWrap(ui.Button(resource.AlwaysDisabled()).Enabled(false),
 				ui.Button(resource.FlatButton()).Style(modern.Flat).ID("basic-flat-disabled").Enabled(false)).Spacing(12).LineSpacing(12)),

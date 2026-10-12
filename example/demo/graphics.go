@@ -21,20 +21,22 @@ import (
 )
 
 func (d *demo) loadAssets() error {
+	logo, err := svg.Parse(strings.NewReader(resource.LogoMarkSVG()))
+	if err != nil {
+		return err
+	}
+	// Branding always keeps its original colors, independently of icon styles.
+	// Never add a tintable copy of the logo to the ordinary icon samples.
+	d.logo = logo.WithRawColors()
 	paths := []string{
-		resource.LogoMarkSVG(),
+		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M6 3H14L19 8V21H6Z M14 3V8H19 M9 12H16 M9 16H16" fill="none" stroke="#303840" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 5H10L12 7H22V20H2Z" fill="#e0ac42"/><path d="M3 9H21V19H3Z" fill="#f4cd6b"/></svg>`,
 		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="#30a878" stroke-width="2"/><path d="M6 12L10 16L18 7" fill="none" stroke="#30a878" stroke-width="2"/></svg>`,
 	}
-	for i, text := range paths {
+	for _, text := range paths {
 		s, err := svg.Parse(strings.NewReader(text))
 		if err != nil {
 			return err
-		}
-		if i == 0 {
-			// Branding keeps its original colors; the icon sample below also
-			// demonstrates the monochrome variant of the same vector.
-			d.logo = s.WithRawColors()
 		}
 		d.icons = append(d.icons, s)
 	}
