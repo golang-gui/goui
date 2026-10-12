@@ -34,14 +34,20 @@ Root/BuildContext/Painter 添加特例。表单现改用普通 ScrollView 的纵
 
 采用用户提供的 `doc/logo/goui-mark.svg`（512×512 方形标志）和
 `doc/logo/goui-logo.svg`（1220×512 横版标志），不修改图形或配色。
-方形标志用于 HeaderBar、尺寸动画和平台应用图标；横版标志在图形页以 305×128 的
-固定 Image 展示。品牌使用 `WithRawColors`，图标演示另保留单色版本。
+方形标志用于 HeaderBar、带图标按钮、标签页、尺寸动画和平台应用图标；横版标志
+在图形页以 305×128 的固定 Image 展示。所有 Logo 必须使用 `WithRawColors`，
+始终保留原色，不因主题色、亮暗模式或禁用状态染色，也不提供 Logo 单色版本。
+方形 Logo 独立存放于 `d.logo`，不加入 `d.icons`。可着色集合中的三枚 SVG 改为
+普通文档、文件夹和勾选图标，保留 Software 图标和原色文件夹样例；图标数量与
+八语言提示不变。语义色和普通图标示范使用这个集合，不复用品牌资源。
 资源只在 `newDemo` 解析/栅格化一次，不在 Build/Paint 加载文件。
 
-动画必须绑定独立的原色 `d.logo`，不能复用单色样例 `d.icons[0]`；移除动画
+按钮、标签页和动画必须绑定独立的原色 `d.logo`，不能复用可着色样例；移除动画
 图标的 `demo-swatch` 样式，避免把品牌展示与主题色示范混为一谈。大小仍由
 `motionValue` 驱动，沿用原有布局与动画，不修改 Icon/SVG 或任何绘制后端。
-绑定回归检查动画声明，像素回归独立验证该原色资源；两者不能互相代替。
+绑定回归检查按钮、标签页和动画声明，像素回归独立验证原色资源和展示尺寸下的
+颜色稳定性；另外比较 alpha 掩码，禁止把 Logo 的单色副本加入普通图标集合。
+资源和绑定验证不能互相代替，真实窗口仍检查小尺寸、禁用与亮暗切换的外观。
 
 `go:embed` 不允许父目录引用，因此 `example/demo/resource` 存放逐字节一致
 的副本；测试防止副本与设计源漂移。运行文件不依赖源码或启动目录。
@@ -85,6 +91,36 @@ macOS 的 `.app` 和 Linux 桌面目录部署继续用现有 `package` 命令显
   和鼻子的原色细节；亮暗/主题色切换不把 logo 染成实心方块。Software 还复验
   反向动画回到 32 DIP。两组正常退出，截图/日志在仓库外临时目录。
   验证未使用 DevServer，沿用上一节后端/缩放范围，未做远端原生桌面验收。
+
+#### Logo 原色统一补充验证（2026-10-12）
+
+- 新增 `TestDemoTintedIconsExcludeLogo` 和 `TestDemoBrandIconBindings` 后，
+  执行以下无桌面回归命令在旧实现失败：
+
+  ```sh
+  env -u DISPLAY CGO_ENABLED=0 go test ./example/demo -run '^TestDemo(LogoSizesPreserveColors|TintedIconsExcludeLogo|BrandIconBindings)$' -count=1
+  ```
+
+  图标 0 复用了 Logo alpha 掩码，按钮和标签页绑定
+  可着色资源。改为独立原色 Logo／普通文档图标后通过，不改 Icon 或 Painter。
+- 保留既有 512 像素的独立原色采样；新增 16、18、24、32、36、48、64、80、
+  160 像素下的完整 RGBA8 比较，覆盖亮暗、主题色、禁用灰及预乘半透明前景。
+  同一尺寸的 Logo 像素必须完全一致，不用颜色容差隐藏着色或缩放错误。
+- 无 DISPLAY 的 `CGO_ENABLED=0 go test ./example/demo/... -count=1`、
+  `go test -race ./example/demo/... -count=1` 与例程 vet 通过。隔离桌面的
+  `CGO_ENABLED=0 go test -json ./... -count=1`：2357 项通过、15 项既有跳过、
+  零失败；保留既有测试的原生窗口和图片输出副作用。
+- 本机 Linux amd64、Xvnc 1.12/Xfwm4 合成器：Software 1x 与 OpenGL 配置 2x
+  实际检查按钮初态／禁用、亮暗／紫色主题、选中与未选中标签及图形页；普通
+  图标从紫色切到绿色，Logo 和原色文件夹不变。OpenGL 配置 2x 另检查动画
+  初态、中间帧及终态；窗框、眼睛和鼻子保持原色。不使用 DevServer。
+- 截图中的按钮区域（1x 的 `[469,487) × [332,350)`，2x 坐标乘 2）检查
+  不透明窗框的 RGB8 `#00ADD8`：亮色、禁用＋紫色、暗色＋紫色均保留原色，
+  每种后端内部的像素数不变。跨后端不要求抗锯齿像素数量相等。
+- `CGO_ENABLED=0 go build` 的 Linux amd64、Windows amd64、macOS arm64 目标
+  通过；后两端仅交叉编译，未做原生桌面／Direct2D 验证。OpenGL 环境为
+  llvmpipe，应用配置 2x 不是实际 Retina 或混合 DPI 验证。二进制、截图和日志
+  位于仓库外 `/tmp/goui-demo-logo.WFHwcw`，窗口和隔离桌面正常清理。
 
 ## 样式、系统操作与契约
 

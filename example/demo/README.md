@@ -58,9 +58,10 @@ Windows 还可选择 `direct2d`；PowerShell 使用 `$env:GOUI_PLAT_PAINTER='dir
 
 ## Logo 与构建
 
-标题栏使用 `doc/logo/goui-mark.svg` 的方形标志，图形页展示
-`doc/logo/goui-logo.svg` 的横版标志。品牌展示保留 SVG 原色，不跟随主题色染色；
-图标样例中的单色版本仍用于演示主题色。两份 SVG 原样嵌入 `resource`，
+标题栏、带图标按钮、标签页及动画使用 `doc/logo/goui-mark.svg` 的方形标志，
+图形页展示 `doc/logo/goui-logo.svg` 的横版标志。Logo 始终保留 SVG 原色，
+不因主题色、亮暗模式或禁用状态染色；单色示范使用独立的普通图标，不使用 Logo。
+两份 SVG 原样嵌入 `resource`，
 运行不需要源文件，也不依赖当前目录；修改设计后须同步副本，测试检查字节一致。
 SVG 保留原设计中的 Go gopher / Renee French / CC BY 4.0 归属说明。
 
@@ -94,6 +95,8 @@ go run ./cmd/goui build -config example/demo/goui.toml
 
 1. 基础控件：点击按钮、复选、三态初值、单选、按钮式 CheckButton 和 Switch；
    单选组最多选一个。关闭“启用下方控件”，交互失效但值保留；再次启用恢复。
+   “带图标”按钮的 Logo 保留蓝色窗框和 Gopher 原色细节；切换亮暗、主题色或
+   禁用按钮都不将 Logo 染成实心块。警告／错误／成功样例使用普通可着色图标。
    展开两个 DropDown，禁用项目不可选，自定义项目显示图标。Tab / Shift+Tab
    转移焦点，按钮的键盘焦点与点击焦点区别显示；按空格或回车激活聚焦的按钮。
    右侧滚动条应完整呈胶囊形，滚动页在视口外保留 8 DIP 对称留白，避免
@@ -121,6 +124,7 @@ go run ./cmd/goui build -config example/demo/goui.toml
    单元格填满，编辑器普通状态无独立边框、焦点状态为直角主题色边框。
    滚动下方 1000 行 ListView，点击行显示对应序号。
 5. 多标签工作区：新建、选中、右键和关闭标签；关闭在标签所在窗口确认。
+   标签图标同样使用原色 Logo，选中／未选中和主题色切换不改变品牌配色。
    拖动标签排序，窗口变窄时一起缩小至阈值后滚动。打开目标窗口，将其移到
    主窗口外的可见位置再拖入标签；输入内容跟随原页面，不是拷贝第二个编辑器。
    标签拖到桌面或外部应用松开创建新窗口；本地标签不向外部应用提供可接收的

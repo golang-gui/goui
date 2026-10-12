@@ -478,6 +478,119 @@ func TestDemoLogoPixels(t *testing.T) {
 	}
 }
 
+// 实际展示尺寸包含按钮、标题栏、图形样例、动画及配置 2x 缩放。
+// 只比较同一尺寸下的完整预乘 RGBA 像素，变化的前景不能染色 Logo。
+func TestDemoLogoSizesPreserveColors(t *testing.T) {
+	d, err := newDemo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.stopActivities()
+	for _, size := range []int{16, 18, 24, 32, 36, 48, 64, 80, 160} {
+		t.Run(fmt.Sprintf("%dpx", size), func(t *testing.T) {
+			original := d.logo.Image(size, size, graphics.Color{})
+			if original == nil || original.Bounds() != image.Rect(0, 0, size, size) {
+				t.Fatal("invalid original logo image")
+			}
+			for _, foreground := range []graphics.Color{
+				graphics.RGB(32, 32, 36), graphics.RGB(236, 236, 238),
+				graphics.RGB(180, 30, 90), graphics.RGB(151, 151, 159),
+				{R: .25, G: .25, B: .25, A: .5},
+			} {
+				img := d.logo.Image(size, size, foreground)
+				if img == nil || img.Bounds() != image.Rect(0, 0, size, size) {
+					t.Fatal("invalid logo image")
+				}
+				for y := 0; y < size; y++ {
+					for x := 0; x < size; x++ {
+						got := color.RGBAModel.Convert(img.At(x, y))
+						want := color.RGBAModel.Convert(original.At(x, y))
+						if got != want {
+							t.Fatalf("foreground %v recolored logo (%d,%d): %v, want %v", foreground, x, y, got, want)
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+// 可着色图标集合不能包含 Logo 的单色副本；alpha 掩码比较不依赖前景色。
+func TestDemoTintedIconsExcludeLogo(t *testing.T) {
+	d, err := newDemo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.stopActivities()
+	logo := d.logo.Image(32, 32, graphics.Color{})
+	for index, source := range d.icons {
+		img := source.Image(32, 32, graphics.RGB(100, 150, 200))
+		if img == nil || img.Bounds() != logo.Bounds() {
+			t.Fatalf("icon %d: invalid image", index)
+		}
+		matches := true
+		for y := 0; y < 32 && matches; y++ {
+			for x := 0; x < 32; x++ {
+				_, _, _, a := img.At(x, y).RGBA()
+				_, _, _, logoAlpha := logo.At(x, y).RGBA()
+				if a != logoAlpha {
+					matches = false
+					break
+				}
+			}
+		}
+		if matches {
+			t.Errorf("icon %d reuses the logo mask; use an ordinary icon for tinting", index)
+		}
+	}
+}
+
+// 像素正确不能证明声明使用了正确资源；检查按钮和标签页真实绑定。
+func TestDemoBrandIconBindings(t *testing.T) {
+	for _, test := range []struct{ name, file, method string }{
+		{"button", "basic.go", "Content"},
+		{"tab", "tabs.go", "Icon"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			source, err := parser.ParseFile(token.NewFileSet(), test.file, nil, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			ast.Inspect(source, func(node ast.Node) bool {
+				call, ok := node.(*ast.CallExpr)
+				if !ok || len(call.Args) != 1 {
+					return true
+				}
+				method, ok := call.Fun.(*ast.SelectorExpr)
+				if !ok || method.Sel.Name != test.method {
+					return true
+				}
+				if test.name == "button" {
+					caption := false
+					ast.Inspect(call.Args[0], func(node ast.Node) bool {
+						if getter, ok := node.(*ast.SelectorExpr); ok && getter.Sel.Name == "IconButton" {
+							caption = true
+						}
+						return true
+					})
+					if !caption {
+						return true
+					}
+				}
+				found = true
+				if !demoHasCall(call, "Icon", "d.logo") {
+					t.Error("brand icon must use the original-color d.logo, not a tintable sample")
+				}
+				return false
+			})
+			if !found {
+				t.Fatal("missing brand icon declaration")
+			}
+		})
+	}
+}
+
 // 原色资源的像素正确不代表动画声明使用了它；直接检查该声明的绑定，
 // 避免为了这一例程测试导出 UI 私有状态或实现第二套协调器。
 func TestAnimatedIconUsesRawLogo(t *testing.T) {
