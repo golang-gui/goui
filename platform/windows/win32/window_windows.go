@@ -656,7 +656,7 @@ func windowStyle(options common.WindowOptions, build uint32) winapi.DWORD {
 	switch options.Chrome {
 	case common.WindowChromeIntegrated:
 		if build >= windows11Build {
-			return winapi.WS_OVERLAPPEDWINDOW
+			return winapi.WS_OVERLAPPED | winapi.WS_THICKFRAME | winapi.WS_MAXIMIZEBOX
 		}
 		return winapi.WS_POPUP | winapi.WS_THICKFRAME | winapi.WS_MAXIMIZEBOX
 	case common.WindowChromeNone:
