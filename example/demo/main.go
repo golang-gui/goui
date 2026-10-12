@@ -196,6 +196,7 @@ func (d *demo) build(app ui.App) ui.RootView {
 	rules = append(rules,
 		style.Name("demo-background").BackgroundColor(bg),
 		style.Name("demo-transparent-window").BackgroundColor(color.Transparent),
+		style.Name("demo-title").ForegroundColor(fg).FontSize(fontSize).FontFamily(settings.FontFamily()),
 		style.Name("demo-heading").ForegroundColor(fg).FontSize(22).FontFamily(settings.FontFamily()),
 		style.Name("demo-subheading").ForegroundColor(fg).FontSize(16).FontFamily(settings.FontFamily()),
 		style.Name("demo-mask").BackgroundColor(color.NRGBA{A: 140}),
@@ -203,7 +204,7 @@ func (d *demo) build(app ui.App) ui.RootView {
 		style.Name("demo-cell-edit").ForegroundColor(fg).FontFamily(settings.FontFamily()).FontSize(fontSize).BackgroundColor(color.Transparent).Radius(0).BorderWidth(0),
 		style.Name("demo-cell-edit").State(style.Focused).BorderColor(accents[d.accent]).BorderWidth(1),
 	)
-	side := make([]ui.View, 0, len(pageNames)+2)
+	side := make([]ui.View, 0, len(pageNames)+1)
 	side = append(side, ui.Label(resource.Categories()).Style("demo-subheading"))
 	for i, name := range pageNames {
 		b := ui.Button().Content(ui.Label(fmt.Sprintf("%02d  %s", i+1, name())).WrapMode(gui.WrapWordChar)).Style(modern.Flat).ID(fmt.Sprintf("nav-%d", i)).OnClick(func() { d.navigate(i) })
@@ -212,10 +213,9 @@ func (d *demo) build(app ui.App) ui.RootView {
 		}
 		side = append(side, b)
 	}
-	side = append(side, ui.Label(resource.KeyboardHint()).WrapMode(gui.WrapWordChar).Style(modern.MutedText))
 	pages := []func() ui.View{d.basicPage, d.textPage, d.layoutPage, d.dataPage, d.tabsPage, d.overlaysPage, d.graphicsPage, d.systemPage, d.windowPage}
 	content := ui.VBox(
-		ui.HeaderBar(ui.HBox(ui.Icon(d.logo).Size(28), ui.Label(resource.Title()).Style("demo-subheading")).Spacing(10)),
+		ui.HeaderBar(ui.HBox(ui.Icon(d.logo).Size(24), ui.Label(resource.Title()).Style("demo-title")).Spacing(10)).Padding(6),
 		ui.HWrap(
 			ui.Button(fmt.Sprintf(resource.AppearanceFormat(), []string{resource.FollowSystem(), resource.Light(), resource.Dark()}[d.mode])).ID("theme-mode").OnClick(func() { d.mode = (d.mode + 1) % 3; app.RequestUpdate() }),
 			ui.Button(fmt.Sprintf(resource.AccentFormat(), []string{resource.SystemAccent(), resource.Purple(), resource.Green(), resource.Orange()}[d.accent])).ID("theme-accent").OnClick(func() { d.accent = (d.accent + 1) % 4; app.RequestUpdate() }),
@@ -225,7 +225,7 @@ func (d *demo) build(app ui.App) ui.RootView {
 		demoBody(surface(ui.VBox(side...).Spacing(8).Padding(12).CrossAlign(layout.CrossStretch)).
 			Style(modern.Sidebar).ID("demo-sidebar").MinWidth(190).MaxWidth(190),
 			pages[d.page]()),
-		ui.HBox(ui.Label(d.status).ID("status").WrapMode(gui.WrapWordChar).Style(modern.MutedText).MainWeight(1)).Padding(10).MinHeight(44),
+		ui.HBox(ui.Label(d.status).ID("status").WrapMode(gui.WrapWordChar).Style(modern.MutedText).MainWeight(1)).Padding(6).MinHeight(28),
 	).CrossAlign(layout.CrossStretch)
 	windows := []ui.WindowView{ui.Window("main").Title(resource.Title()).Chrome(ui.WindowChromeIntegrated).Size(1120, 800).MinSize(820, 600).
 		Shortcuts(ui.Shortcut(ui.KeyF5).OnActivate(func() { d.report(resource.Refreshed()) })).
