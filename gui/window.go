@@ -87,9 +87,8 @@ type Window interface {
 	Destroy()
 
 	// SetMinSize supplies a desktop WM hint in DIP; it is a no-op for non-desktop
-	// hosts. It follows the native creation-size convention: Windows None and
-	// Integrated use outer size, while the other current desktop modes use client
-	// size. Widget layout constraints are independent of this advisory hint.
+	// hosts. Like the creation size, it describes the client area irrespective
+	// of Chrome. Widget layout constraints are independent of this advisory hint.
 	SetMinSize(geometry.Size)
 
 	Snapshot() WindowInfo

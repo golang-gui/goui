@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strconv"
 	"syscall"
 	"unsafe"
 
@@ -34,6 +35,7 @@ type Platform struct {
 	windowClass      winapi.LPWSTR
 	windowTitle      winapi.LPWSTR
 	wakeHandler      func()
+	buildNumber      uint32 // cached on the first Integrated window request
 }
 
 var platform *Platform
@@ -342,6 +344,44 @@ func (p *Platform) registerWindow() (err error) {
 	_, err = winapi.RegisterClassEx(&wdc)
 	p.windowRegistered = err == nil
 	return
+}
+
+const windows11Build = 22000
+
+// windowsBuild follows ModernWindow's registry query. Cache the observation
+// on Platform, not each Window; Native/None do not require a version query.
+func (p *Platform) windowsBuild() (uint32, error) {
+	if p.buildNumber != 0 {
+		return p.buildNumber, nil
+	}
+	path, _ := syscall.UTF16PtrFromString(`SOFTWARE\Microsoft\Windows NT\CurrentVersion`)
+	name, _ := syscall.UTF16PtrFromString("CurrentBuildNumber")
+	var key winapi.HKEY
+	if err := winapi.RegOpenKeyEx(winapi.HKEY_LOCAL_MACHINE, path, 0, winapi.KEY_READ, &key); err != nil {
+		return 0, err
+	}
+	defer winapi.RegCloseKey(key)
+
+	// A uint32 build number needs at most ten digits plus the terminator.
+	// Reject unexpected type/size and query errors instead of assuming Win10.
+	var buffer [32]uint16
+	size := winapi.DWORD(unsafe.Sizeof(buffer))
+	var kind winapi.DWORD
+	if err := winapi.RegQueryValueEx(key, name, nil, &kind, (*winapi.BYTE)(unsafe.Pointer(&buffer[0])), &size); err != nil {
+		return 0, err
+	}
+	if kind != winapi.REG_SZ || size < 2 || size%2 != 0 || size > winapi.DWORD(unsafe.Sizeof(buffer)) {
+		return 0, fmt.Errorf("invalid CurrentBuildNumber registry value: type %d, size %d", kind, size)
+	}
+	build, err := strconv.ParseUint(syscall.UTF16ToString(buffer[:size/2]), 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("parse Windows build number: %w", err)
+	}
+	if build == 0 {
+		return 0, fmt.Errorf("invalid Windows build number: 0")
+	}
+	p.buildNumber = uint32(build)
+	return p.buildNumber, nil
 }
 
 // applicationIcons belongs to the registered window class, not an individual

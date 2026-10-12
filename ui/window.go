@@ -82,8 +82,7 @@ func (w WindowView) Title(title string) WindowView {
 	return w
 }
 
-// Size sets the preferred initial window size in DIP. Windows None/Integrated
-// use outer size; the other current desktop modes request client size. Layout
+// Size sets the preferred initial client-area size in DIP for every Chrome. Layout
 // uses the actual client size reported by the window. Size and Chrome are
 // creation-only; changing them for a mounted window ID returns an error. They
 // do not force the window size on ordinary declarative rebuilds.
@@ -119,7 +118,7 @@ func (w WindowView) OnDestroy(fn func()) WindowView {
 }
 
 // MinWidth declares the desktop window's minimum width hint in DIP, using the
-// same outer/client convention as Size. This does not replace Widget layout
+// same client-area convention as Size. This does not replace Widget layout
 // constraints or add space for a HeaderBar. Like the widget-level viewBase,
 // declared axes are merged on each rebuild; an axis without a declaration
 // falls back to the window default, which is no constraint at all.
