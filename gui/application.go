@@ -37,8 +37,9 @@ type Application interface {
 	// Creation does not register a task or allocate waiting resources. Call on
 	// the GUI thread; the timer can be started before Run, but not after Quit.
 	NewTimer() *Timer
-	// Run processes native events and GUI timers on the owning thread. Returning
-	// from Run stops timer scheduling and waits for its background waiter to exit.
+	// Run processes native events and GUI timers on the main goroutine used to
+	// create the application. Returning from Run stops timer scheduling and waits
+	// for its background waiter to exit, but does not unlock the startup OS thread.
 	Run()
 	// Quit stops timer scheduling and requests event-loop exit. It may be called
 	// from any goroutine; an already-started timer signal may finish.
@@ -61,6 +62,8 @@ var (
 // such as "com.example.Editor". Empty leaves identity unspecified. The ID is
 // immutable and distinct from window IDs, titles and display names. Supplying an
 // ID does not install desktop entries, icons or an application bundle.
+// Call from main and use the application on that goroutine. The platform package
+// already locks main to the startup OS thread; background work uses Post.
 func NewApplication(appId string) (Application, error) {
 	if App != nil {
 		return App, nil

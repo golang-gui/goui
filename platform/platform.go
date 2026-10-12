@@ -12,6 +12,13 @@ import (
 	"github.com/golang-gui/goui/platform/typography"
 )
 
+func init() {
+	// Keep main on the startup OS thread before application initialization.
+	// Locking only in Run is too late for AppKit and previously created resources.
+	// Retain the lock after Run returns so native cleanup stays on this thread.
+	runtime.LockOSThread()
+}
+
 type (
 	Event              = events.Event
 	Image              = common.Image
@@ -163,6 +170,9 @@ var ErrUnavailable = common.ErrUnavailable
 // appId may be empty; explicit IDs are checked here before backend creation.
 // Initialize once per process. An ID does not install icon resources or turn a
 // bare macOS executable into an application bundle.
+// Call from main and run the event loop on that same goroutine. Importing this
+// package locks main to the startup OS thread; it does not dispatch calls from
+// other goroutines to that thread. Use EventLoop.Post for background work.
 // On failure, the returned Platform interface is nil.
 func NewPlatform(name, appId string) (Platform, error) {
 	if err := checkAppId(appId); err != nil {
