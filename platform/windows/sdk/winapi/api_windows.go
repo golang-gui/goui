@@ -77,6 +77,7 @@ var (
 	procPeekMessageW     = user32Dll.NewProc("PeekMessageW")
 	procTranslateMessage = user32Dll.NewProc("TranslateMessage")
 	procDispatchMessageW = user32Dll.NewProc("DispatchMessageW")
+	procSendMessageW     = user32Dll.NewProc("SendMessageW")
 	procPostMessageW     = user32Dll.NewProc("PostMessageW")
 	procPostQuitMessage  = user32Dll.NewProc("PostQuitMessage")
 	procDefWindowProcW   = user32Dll.NewProc("DefWindowProcW")
@@ -531,14 +532,18 @@ func SetProcessDpiAwarenessContext(value DPI_AWARENESS_CONTEXT) error {
 
 // AdjustWindowRectExForDpi computes the outer window size (frame included)
 // needed to obtain the desired client-area rect, for the given styles and DPI.
-// On failure it returns the input unchanged. Requires Windows 10 1607+.
-func AdjustWindowRectExForDpi(rect *RECT, style, menu, exStyle, dpi DWORD) {
+// Requires Windows 10 1607+. Native lookup and calculation failures are returned.
+func AdjustWindowRectExForDpi(rect *RECT, style, menu, exStyle, dpi DWORD) error {
 	if err := procAdjustWindowRectExForDpi.Find(); err != nil {
-		return
+		return err
 	}
-	syscall.SyscallN(procAdjustWindowRectExForDpi.Addr(),
+	ret, _, err := syscall.SyscallN(procAdjustWindowRectExForDpi.Addr(),
 		uintptr(unsafe.Pointer(rect)),
 		uintptr(style), uintptr(menu), uintptr(exStyle), uintptr(dpi))
+	if ret == FALSE {
+		return err
+	}
+	return nil
 }
 
 func SystemParametersInfo(action UINT, param UINT, data LPVOID, flags UINT) error {
@@ -619,6 +624,14 @@ func TranslateMessage(msg LPMSG) BOOL {
 
 func DispatchMessage(msg LPMSG) LRESULT {
 	ret, _, _ := procDispatchMessageW.Call(uintptr(unsafe.Pointer(msg)))
+	return LRESULT(ret)
+}
+
+// SendMessage synchronously calls the target window procedure. If lParam or
+// wParam contains a Go address, the caller must keep that memory pinned for
+// the call, including reentrant callbacks.
+func SendMessage(wnd HWND, msg UINT, wParam WPARAM, lParam LPARAM) LRESULT {
+	ret, _, _ := procSendMessageW.Call(uintptr(wnd), uintptr(msg), uintptr(wParam), uintptr(lParam))
 	return LRESULT(ret)
 }
 

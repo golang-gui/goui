@@ -124,9 +124,9 @@ type Platform interface {
 	// Like OpenURL, this reports the native request result, not final completion.
 	OpenPath(path string) error
 	NewImage(width, height uint) (Image, error)
-	// NewWindow creates a top-level window with an initial size in DIP. Win32
-	// None/Integrated pass that size as the outer extent without frame adjustment;
-	// Native Win32 and the other current desktop backends request client size.
+	// NewWindow creates a top-level window with a requested client-area size in
+	// DIP. Native decoration/frame offsets are handled by the backend in every
+	// Chrome mode; GUI-drawn decoration is inside this client area.
 	// The authoritative client size arrives via SizeEvent. Initial notifications
 	// may arrive synchronously before NewWindow returns.
 	NewWindow(size geometry.Size, handler EventHandler, options WindowOptions) (Window, error)

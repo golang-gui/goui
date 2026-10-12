@@ -73,9 +73,9 @@ type DesktopWindow interface {
 
 	// SetMinSize sets the window-manager minimum size hint in logical (DIP)
 	// units. A value of (0, 0) clears the hint (no minimum). The hint is
-	// advisory: the window manager may ignore it. It follows the size convention
-	// used at creation: Win32 None/Integrated use outer size; Native Win32 and
-	// the other current desktop backends use client size.
+	// advisory: the window manager may ignore it. Like the creation size, it
+	// describes the client area, irrespective of Chrome. Native frame offsets
+	// are handled by the backend; GUI-drawn decoration is inside the client area.
 	SetMinSize(width, height float32)
 
 	// Chrome reports observable native decoration, or WindowChromeUnknown when
