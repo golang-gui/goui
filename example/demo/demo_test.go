@@ -59,6 +59,102 @@ func TestDemoCardStyleMigration(t *testing.T) {
 	}
 }
 
+// 检查例程真实声明，不为测试导出 UI 私有状态或重建协调器。
+// 实际高度、原生按钮避让及字体放大后的裁剪另按 README 做桌面验证。
+func TestDemoCompactChromeDeclaration(t *testing.T) {
+	source, err := parser.ParseFile(token.NewFileSet(), "main.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var content *ast.CallExpr
+	var titleStyle ast.Node
+	ast.Inspect(source, func(node ast.Node) bool {
+		if assignment, ok := node.(*ast.AssignStmt); ok && len(assignment.Lhs) == 1 && len(assignment.Rhs) == 1 {
+			if name, ok := assignment.Lhs[0].(*ast.Ident); ok && name.Name == "content" {
+				for expr := assignment.Rhs[0]; ; {
+					call, ok := expr.(*ast.CallExpr)
+					if !ok {
+						break
+					}
+					method, ok := call.Fun.(*ast.SelectorExpr)
+					if !ok {
+						break
+					}
+					if method.Sel.Name == "VBox" {
+						content = call
+						break
+					}
+					expr = method.X
+				}
+			}
+		}
+		if selector, ok := node.(*ast.SelectorExpr); ok && selector.Sel.Name == "KeyboardHint" {
+			t.Error("sidebar must not show the verbose keyboard instructions")
+		}
+		if call, ok := node.(*ast.CallExpr); ok {
+			if method, ok := call.Fun.(*ast.SelectorExpr); ok && method.Sel.Name == "FontFamily" && demoHasCall(call, "Name", `"demo-title"`) {
+				titleStyle = call
+			}
+		}
+		return true
+	})
+	if content == nil || len(content.Args) != 4 {
+		t.Fatal("missing demo header/toolbar/body/status declaration")
+	}
+	for _, check := range []struct {
+		name, method, value string
+		node                ast.Node
+	}{
+		{"header padding", "Padding", "6", content.Args[0]},
+		{"header logo", "Size", "24", content.Args[0]},
+		{"header title", "Style", `"demo-title"`, content.Args[0]},
+		{"title font follows settings", "FontSize", "fontSize", titleStyle},
+		{"status padding", "Padding", "6", content.Args[3]},
+		{"status minimum height", "MinHeight", "28", content.Args[3]},
+		{"long status wraps", "WrapMode", "gui.WrapWordChar", content.Args[3]},
+	} {
+		if check.node == nil || !demoHasCall(check.node, check.method, check.value) {
+			t.Errorf("%s: missing %s(%s)", check.name, check.method, check.value)
+		}
+	}
+	for _, node := range []ast.Node{content.Args[0], content.Args[3]} {
+		ast.Inspect(node, func(node ast.Node) bool {
+			if selector, ok := node.(*ast.SelectorExpr); ok && selector.Sel.Name == "MaxHeight" {
+				t.Error("header/status must grow with large fonts and long messages")
+			}
+			return true
+		})
+	}
+}
+
+func demoHasCall(node ast.Node, method, value string) bool {
+	found := false
+	ast.Inspect(node, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok || len(call.Args) != 1 {
+			return true
+		}
+		selector, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || selector.Sel.Name != method {
+			return true
+		}
+		var argument string
+		switch arg := call.Args[0].(type) {
+		case *ast.BasicLit:
+			argument = arg.Value
+		case *ast.Ident:
+			argument = arg.Name
+		case *ast.SelectorExpr:
+			if qualifier, ok := arg.X.(*ast.Ident); ok {
+				argument = qualifier.Name + "." + arg.Sel.Name
+			}
+		}
+		found = found || argument == value
+		return true
+	})
+	return found
+}
+
 func TestLanguageChangePreservesDemoModelsAndState(t *testing.T) {
 	previous := mlang.Language()
 	t.Cleanup(func() { _ = mlang.SetLanguage(previous) })
