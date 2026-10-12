@@ -5,6 +5,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"image"
+	"image/color"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -329,6 +331,95 @@ func TestInitialModelsAndAssets(t *testing.T) {
 		if !visible {
 			t.Fatalf("icon %d: blank image", i)
 		}
+	}
+}
+
+// 只在内存中栅格化。采样均远离抗锯齿边缘，按预乘 RGBA8 精确比较：
+// 512 画布的透明外角、蓝色窗框、白眼和鼻子；横版还检查灰色字母。
+func TestDemoLogoPixels(t *testing.T) {
+	d, err := newDemo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.stopActivities()
+	if d.logo == nil {
+		t.Fatal("missing logo source")
+	}
+	for _, foreground := range []graphics.Color{graphics.RGB(180, 30, 90), graphics.RGB(30, 180, 90)} {
+		img := d.logo.Image(512, 512, foreground)
+		if img == nil || img.Bounds() != image.Rect(0, 0, 512, 512) {
+			t.Fatal("invalid square logo dimensions")
+		}
+		for _, sample := range []struct {
+			x, y int
+			want color.RGBA
+		}{
+			{0, 0, color.RGBA{}},
+			{256, 100, color.RGBA{G: 173, B: 216, A: 255}},
+			{122, 103, color.RGBA{R: 255, G: 255, B: 255, A: 255}},
+			{184, 304, color.RGBA{R: 255, G: 255, B: 255, A: 255}},
+			{256, 358, color.RGBA{R: 23, G: 50, B: 74, A: 255}},
+		} {
+			if got := color.RGBAModel.Convert(img.At(sample.x, sample.y)).(color.RGBA); got != sample.want {
+				t.Errorf("logo (%d,%d), foreground %v: %v, want %v", sample.x, sample.y, foreground, got, sample.want)
+			}
+		}
+	}
+	if d.wordmark == nil || d.wordmark.Bounds() != image.Rect(0, 0, 305, 128) {
+		t.Fatal("wordmark must preserve its 1220:512 aspect ratio")
+	}
+	for _, sample := range []struct {
+		x, y int
+		want color.RGBA
+	}{
+		{0, 0, color.RGBA{}},
+		{61, 32, color.RGBA{G: 173, B: 216, A: 255}},
+		{285, 64, color.RGBA{R: 91, G: 122, B: 143, A: 255}},
+	} {
+		if got := color.RGBAModel.Convert(d.wordmark.At(sample.x, sample.y)).(color.RGBA); got != sample.want {
+			t.Errorf("wordmark (%d,%d): %v, want %v", sample.x, sample.y, got, sample.want)
+		}
+	}
+}
+
+// 原色资源的像素正确不代表动画声明使用了它；直接检查该声明的绑定，
+// 避免为了这一例程测试导出 UI 私有状态或实现第二套协调器。
+func TestAnimatedIconUsesRawLogo(t *testing.T) {
+	source, err := parser.ParseFile(token.NewFileSet(), "graphics.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	ast.Inspect(source, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok || len(call.Args) != 1 {
+			return true
+		}
+		method, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || method.Sel.Name != "ID" {
+			return true
+		}
+		literal, ok := call.Args[0].(*ast.BasicLit)
+		if !ok || literal.Kind != token.STRING || literal.Value != `"animated-icon"` {
+			return true
+		}
+		found = true
+		icon, ok := method.X.(*ast.CallExpr)
+		if !ok || len(icon.Args) != 1 {
+			t.Fatal("animated-icon must be declared with ui.Icon(d.logo)")
+		}
+		constructor, ok := icon.Fun.(*ast.SelectorExpr)
+		if !ok || constructor.Sel.Name != "Icon" {
+			t.Fatal("animated-icon must be declared with ui.Icon(d.logo)")
+		}
+		binding, ok := icon.Args[0].(*ast.SelectorExpr)
+		if !ok || binding.Sel.Name != "logo" {
+			t.Fatal("animated-icon uses a monochrome sample instead of the original-color logo")
+		}
+		return false
+	})
+	if !found {
+		t.Fatal("missing animated-icon declaration")
 	}
 }
 

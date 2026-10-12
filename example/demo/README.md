@@ -49,6 +49,35 @@ GOUI_PLAT_PAINTER=opengl GOUI_PLAT_SCALE=2 go run ./example/demo
 Windows 还可选择 `direct2d`；PowerShell 使用 `$env:GOUI_PLAT_PAINTER='direct2d'`。
 应用 2x 覆盖值不是混合 DPI / Retina 验证，建议桌面至少 2400×1700 物理像素。
 
+## Logo 与构建
+
+标题栏使用 `doc/logo/goui-mark.svg` 的方形标志，图形页展示
+`doc/logo/goui-logo.svg` 的横版标志。品牌展示保留 SVG 原色，不跟随主题色染色；
+图标样例中的单色版本仍用于演示主题色。两份 SVG 原样嵌入 `resource`，
+运行不需要源文件，也不依赖当前目录；修改设计后须同步副本，测试检查字节一致。
+SVG 保留原设计中的 Go gopher / Renee French / CC BY 4.0 归属说明。
+
+在仓库根目录使用构建工具：
+
+```bash
+go run ./cmd/goui build -config example/demo/goui.toml
+./example/demo/dist/linux-amd64/goui-demo
+```
+
+构建输出位于 `example/demo/dist/<OS>-<ARCH>/`，配置中的方形 SVG 同时用于
+平台图标生成。配置路径相对 `goui.toml`，应用 ID 与 `ui.Run` 一致。
+可指定 `-target windows/amd64` 或 `-target darwin/arm64`：
+
+- Windows：构建前自动生成 `goui_windows_amd64.syso`，EXE 包含图标和版本资源；
+  默认无控制台，不需要另做安装包。
+- macOS：`build` 输出裸二进制；要使用应用图标和 bundle 身份，还需执行
+  `go run ./cmd/goui package -config example/demo/goui.toml -target darwin/arm64 -format app`。
+- Linux：二进制可直接运行；`build` 生成 desktop 与 hicolor 图标资源，但不自动
+  安装到系统。`go run ./cmd/goui package -config example/demo/goui.toml -format dir`
+  生成包含可执行文件与桌面资源的目录树，部署方式见 `cmd/goui/README.md`。
+
+这些命令不安装图标、修改系统设置或启用沙箱；重复打包须选尚不存在的 `-o` 目录。
+
 ## 操作与预期
 
 1. 基础控件：点击按钮、复选、三态初值、单选、按钮式 CheckButton 和 Switch；
@@ -101,8 +130,11 @@ Windows 还可选择 `direct2d`；PowerShell 使用 `$env:GOUI_PLAT_PAINTER='dir
    确认后显示 Toast，3 秒消失；离开分类取消 Toast。
    这个 Dialog 是指针遮罩示范，不提供键盘模态、焦点圈定或后台快捷键屏蔽。
 7. 图形与动画：切换主题色，单色 SVG/自定义图标重绘，原色 SVG 和固定 Image
-   保留颜色。观察透明叠加、变换与裁剪；点击 RenderWidget 显示离屏结果。
-   启动尺寸动画后可以重定向、停止或跳至终值；进度与数值同步。忙等待的长条
+   保留颜色；标题栏的方形 logo 和本页横版 logo 保持蓝色、灰色等原设计配色，
+   不拉伸、不遮挡文字，透明外缘不出现底色方块。观察透明叠加、变换与裁剪；
+   点击 RenderWidget 显示离屏结果。
+   动画区域同样使用原色方形 logo，不应显示为主题色实心方块；启动尺寸动画后
+   在 32～80 DIP 之间变化，可以重定向、停止或跳至终值；进度与数值同步。忙等待的长条
    向前循环，圆形旋转。默认停止，离开该分类停止演示动画和忙等待。
 8. 系统与拖放：复制/读取剪贴板、选择文件/目录、保存对话框只展示路径。
    打开网站会启动默认浏览器，打开选中项会调用系统默认应用。

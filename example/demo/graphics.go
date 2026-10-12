@@ -22,17 +22,28 @@ import (
 
 func (d *demo) loadAssets() error {
 	paths := []string{
-		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="none" stroke="#6852cf" stroke-width="2" d="M12 2L21 7V17L12 22L3 17V7Z"/><path fill="none" stroke="#6852cf" stroke-width="2" d="M16 8H8V16H16V12H12"/></svg>`,
+		resource.LogoMarkSVG(),
 		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 5H10L12 7H22V20H2Z" fill="#e0ac42"/><path d="M3 9H21V19H3Z" fill="#f4cd6b"/></svg>`,
 		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="#30a878" stroke-width="2"/><path d="M6 12L10 16L18 7" fill="none" stroke="#30a878" stroke-width="2"/></svg>`,
 	}
-	for _, text := range paths {
+	for i, text := range paths {
 		s, err := svg.Parse(strings.NewReader(text))
 		if err != nil {
 			return err
 		}
+		if i == 0 {
+			// Branding keeps its original colors; the icon sample below also
+			// demonstrates the monochrome variant of the same vector.
+			d.logo = s.WithRawColors()
+		}
 		d.icons = append(d.icons, s)
 	}
+	wordmark, err := svg.Parse(strings.NewReader(resource.LogoSVG()))
+	if err != nil {
+		return err
+	}
+	// Fixed Image sample at its native aspect ratio (1220:512).
+	d.wordmark = wordmark.WithRawColors().Image(305, 128, graphics.Color{})
 	d.icons = append(d.icons, &draw.Source{Draw: func(p graphics.Painter, s graphics.Size, c graphics.Color) {
 		p.FillEllipse(graphics.Point{X: s.Width / 2, Y: s.Height / 2}, s.Width*.45, s.Height*.45, c)
 		p.DrawLine(graphics.Point{X: s.Width * .3, Y: s.Height * .5}, graphics.Point{X: s.Width * .7, Y: s.Height * .5}, max(1, s.Width*.06), graphics.RGBA(255, 255, 255, 230))
@@ -58,7 +69,7 @@ func (d *demo) graphicsPage() ui.View {
 		icons = append(icons, ui.Icon(source).Size(36).Style("demo-swatch"))
 	}
 	return page("graphics", resource.Graphics(), resource.GraphicsHint(),
-		section(resource.ImagesTitle(), ui.Image(d.bitmap).MaxWidth(280).MaxHeight(110), ui.HBox(icons...).Spacing(24), ui.Label(resource.IconsHint())),
+		section(resource.ImagesTitle(), ui.Image(d.wordmark).MaxWidth(305).MaxHeight(128), ui.Image(d.bitmap).MaxWidth(280).MaxHeight(110), ui.HBox(icons...).Spacing(24), ui.Label(resource.IconsHint())),
 		section(resource.DrawingTitle(), newCanvas().ID("canvas").MinHeight(190).MaxHeight(190),
 			ui.Button(resource.Capture()).ID("capture-canvas").OnClick(func() {
 				w := d.app.FindWidget("main", "canvas")
@@ -75,7 +86,7 @@ func (d *demo) graphicsPage() ui.View {
 			ui.HWrap(ui.Button(resource.Animate()).ID("animate").OnClick(d.animate), ui.Button(resource.Stop()).ID("stop-animation").OnClick(func() { d.motion.Stop(); d.busy = false; d.report(resource.AnimationStopped()) }),
 				ui.Button(resource.Finish()).OnClick(d.motion.Finish),
 				wui.Switch(resource.Busy()).Checked(d.busy).OnChange(func(v bool) { d.busy = v; d.app.RequestUpdate() })).Spacing(12).LineSpacing(8),
-			ui.HBox(ui.Icon(d.icons[0]).ID("animated-icon").Style("demo-swatch").Size(d.motionValue.Get())).
+			ui.HBox(ui.Icon(d.logo).ID("animated-icon").Size(d.motionValue.Get())).
 				MainAlign(layout.MainCenter).CrossAlign(layout.CrossCenter).MinHeight(88).MaxHeight(88),
 			wui.ProgressBar((d.motionValue.Get()-32)/48).Indeterminate(d.busy),
 			wui.ProgressBar((d.motionValue.Get()-32)/48).Shape(wui.ProgressCircular).Indeterminate(d.busy).MinSize(64, 64).MaxSize(64, 64),
