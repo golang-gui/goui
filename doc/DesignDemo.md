@@ -30,6 +30,62 @@ Root/BuildContext/Painter 添加特例。表单现改用普通 ScrollView 的纵
   主窗口关闭退出应用，最终清理由 Application 完成。
 - 未接入 DevServer，不在演示或验收中使用语义动作捷径。
 
+### Logo 与构建资源
+
+采用用户提供的 `doc/logo/goui-mark.svg`（512×512 方形标志）和
+`doc/logo/goui-logo.svg`（1220×512 横版标志），不修改图形或配色。
+方形标志用于 HeaderBar、尺寸动画和平台应用图标；横版标志在图形页以 305×128 的
+固定 Image 展示。品牌使用 `WithRawColors`，图标演示另保留单色版本。
+资源只在 `newDemo` 解析/栅格化一次，不在 Build/Paint 加载文件。
+
+动画必须绑定独立的原色 `d.logo`，不能复用单色样例 `d.icons[0]`；移除动画
+图标的 `demo-swatch` 样式，避免把品牌展示与主题色示范混为一谈。大小仍由
+`motionValue` 驱动，沿用原有布局与动画，不修改 Icon/SVG 或任何绘制后端。
+绑定回归检查动画声明，像素回归独立验证该原色资源；两者不能互相代替。
+
+`go:embed` 不允许父目录引用，因此 `example/demo/resource` 存放逐字节一致
+的副本；测试防止副本与设计源漂移。运行文件不依赖源码或启动目录。
+`example/demo/goui.toml` 的 icon 直接引用原始方形 SVG，ID 与 `ui.Run` 一致。
+复用 `cmd/goui build` 生成资源与二进制，不增加框架 API、专用图标系统或打包逻辑。
+macOS 的 `.app` 和 Linux 桌面目录部署继续用现有 `package` 命令显式执行；
+裸二进制构建不承诺安装图标或显示 bundle 图标。操作步骤见例程 README。
+
+#### 2026-10-12 验证
+
+- 无桌面的 `env -u DISPLAY go test ./example/demo/... ./cmd/goui -count=1`
+  通过；嵌入副本与设计源逐字节一致。像素回归覆盖透明外角、蓝色窗框、白眼、
+  鼻子、横版灰色字母以及不同前景色下的原色保留，不使用抗锯齿边缘金图。
+- `go test -race ./example/demo/... -count=1`（无 DISPLAY）与
+  `go vet ./example/demo/...` 通过。
+- `DISPLAY=:84 XMODIFIERS=@im=none go test -json ./... -count=1`：
+  2341 个测试/子测试通过、15 项跳过、零失败。跳过为 14 个既有窗口/手动项
+  和只适用于 macOS 的签名测试；不是窗口程序的场景验收。
+- 通过 `go run ./cmd/goui build -config example/demo/goui.toml` 构建
+  Linux amd64，另使用 `CGO_ENABLED=0` 及 `-target windows/amd64`、
+  `-target darwin/arm64` 构建两端二进制。输出于例程的 dist；Windows 同时
+  生成 COFF 图标/版本资源，macOS 生成 plist/ICNS，Linux 生成 desktop/hicolor。
+- 本机 Linux amd64，隔离 Xvnc 1.12.0 + Xfwm4 合成器，Software 1x 与 OpenGL
+  配置 2x：从仓库外临时目录直接启动所构建二进制，实际点击图形页、亮暗及
+  主题色按钮，截图观察方形标题栏标志和横版比例、原色、透明外缘；正常关闭。
+  未使用 DevServer。OpenGL 环境为 llvmpipe，保留既有后端回退边界，不宣称
+  硬件 GPU 或真实 HiDPI 验收；横版是固定像素 Image 样例，不是动态 DPI 图标。
+- 未执行 Windows/macOS 原生桌面、macOS `.app` 打包/签名或 Linux 桌面资源
+  安装；本轮没有改动平台或绘制后端。临时截图/日志留在仓库外，构建输出及
+  生成的 Windows syso/归属标记由例程的 `.gitignore` 排除，不提交二进制。
+
+#### 动画原色绑定补充验证
+
+- `env -u DISPLAY go test ./example/demo -run '^TestAnimatedIconUsesRawLogo$'
+  -count=1` 在旧声明下失败：`animated-icon uses a monochrome sample instead of
+  the original-color logo`；修正为 `d.logo` 后，例程无桌面测试/race/vet 通过。
+- 修正后非缓存全仓测试：2342 个测试/子测试通过、15 项既有跳过、零失败；
+  Linux amd64、Windows amd64、macOS arm64 的 `cmd/goui build` 均重新完成。
+- 本机仍用隔离 Xvnc/Xfwm4，Software 1x 和 OpenGL 配置 2x：实际滚动到
+  动画区域，观察 32 DIP 初态、动画中间帧、80 DIP 终值，均能看到窗框、眼睛
+  和鼻子的原色细节；亮暗/主题色切换不把 logo 染成实心方块。Software 还复验
+  反向动画回到 32 DIP。两组正常退出，截图/日志在仓库外临时目录。
+  验证未使用 DevServer，沿用上一节后端/缩放范围，未做远端原生桌面验收。
+
 ## 样式、系统操作与契约
 
 使用 Modern，顶部显式选择系统/浅/深和主题色。每个子控件以自己的 StyleName

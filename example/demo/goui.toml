@@ -1,0 +1,15 @@
+# 在仓库根目录执行：go run ./cmd/goui build -config example/demo/goui.toml
+# 路径相对于本文件；ID 与 main.go 中 ui.Run 的应用 ID 保持一致。
+id = "org.golanggui.Demo"
+name = "GOUI Demo"
+executable = "goui-demo"
+main = "."
+version = "0.1.0"
+build = 1
+icon = "../../doc/logo/goui-mark.svg"
+
+[windows]
+console = false
+
+[linux]
+categories = ["Development"]

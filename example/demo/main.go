@@ -72,7 +72,8 @@ type demo struct {
 	motion                             *animation.Animation[float32]
 	motionValue                        ui.State[float32]
 	icons                              []gui.IconSource
-	bitmap, capture                    image.Image
+	logo                               gui.IconSource
+	wordmark, bitmap, capture          image.Image
 	popup                              gui.Popover
 	files                              []string
 	fileAccess                         []ui.FileAccess
@@ -214,7 +215,7 @@ func (d *demo) build(app ui.App) ui.RootView {
 	side = append(side, ui.Label(resource.KeyboardHint()).WrapMode(gui.WrapWordChar).Style(modern.MutedText))
 	pages := []func() ui.View{d.basicPage, d.textPage, d.layoutPage, d.dataPage, d.tabsPage, d.overlaysPage, d.graphicsPage, d.systemPage, d.windowPage}
 	content := ui.VBox(
-		ui.HeaderBar(ui.HBox(ui.Icon(d.icons[0]).Size(22), ui.Label(resource.Title()).Style("demo-subheading")).Spacing(10)),
+		ui.HeaderBar(ui.HBox(ui.Icon(d.logo).Size(28), ui.Label(resource.Title()).Style("demo-subheading")).Spacing(10)),
 		ui.HWrap(
 			ui.Button(fmt.Sprintf(resource.AppearanceFormat(), []string{resource.FollowSystem(), resource.Light(), resource.Dark()}[d.mode])).ID("theme-mode").OnClick(func() { d.mode = (d.mode + 1) % 3; app.RequestUpdate() }),
 			ui.Button(fmt.Sprintf(resource.AccentFormat(), []string{resource.SystemAccent(), resource.Purple(), resource.Green(), resource.Orange()}[d.accent])).ID("theme-accent").OnClick(func() { d.accent = (d.accent + 1) % 4; app.RequestUpdate() }),
