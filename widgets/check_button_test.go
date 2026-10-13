@@ -476,12 +476,11 @@ func TestCheckButtonModernSoftwarePixels(t *testing.T) {
 			b.SetChecked(true)
 			draw()
 			mark := pixel(15, 15)
-			gap := color.RGBA{R: 255, G: 255, B: 255, A: 255}
-			if tc.dark {
-				gap = color.RGBA{R: 50, G: 50, B: 56, A: 255}
-			}
-			if mark.A != 255 || mark.B <= mark.G || mark.G <= mark.R || pixel(15, 9) != gap || pixel(6, 6) != (color.RGBA{}) {
-				t.Fatal("radio lost its colored dot / circular geometry")
+			// The default accent is adjusted once for white marks, then used
+			// identically by both fills. Samples are inside the 9 DIP circle
+			// and 4 DIP dot, away from AA edges; compare exact opaque bytes.
+			if mark != (color.RGBA{R: 255, G: 255, B: 255, A: 255}) || pixel(15, 9) != (color.RGBA{R: 64, G: 118, B: 200, A: 255}) || pixel(6, 6) != (color.RGBA{}) || pixel(3, 15) != (color.RGBA{}) {
+				t.Fatalf("dark=%v scale=%v radio dot=%v fill=%v; want white dot, solid accent and transparent corners/padding", tc.dark, scale, mark, pixel(15, 9))
 			}
 			b.SetAppearance(CheckAppearanceButton)
 			draw()

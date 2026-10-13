@@ -66,6 +66,73 @@ func TestCheckButtonMatchesModernButtons(t *testing.T) {
 	}
 }
 
+func TestRadioSolidSelection(t *testing.T) {
+	// Independent opaque sRGB byte expectations, including the checkbox's
+	// existing white-mark adjustment and 6%/12% hover/pressed shades.
+	for _, tc := range []struct {
+		name   string
+		accent color.Color
+		colors [3]color.RGBA
+	}{
+		{"default", nil, [3]color.RGBA{rgb(0x4076C8), rgb(0x3C6FBC), rgb(0x3868B0)}},
+		{"system-blue", rgb(0x0078D4), [3]color.RGBA{rgb(0x0078D4), rgb(0x0071C7), rgb(0x006ABB)}},
+		{"purple-blue", rgb(0x3366CC), [3]color.RGBA{rgb(0x3366CC), rgb(0x3060C0), rgb(0x2D5AB4)}},
+		{"red", rgb(0xD03030), [3]color.RGBA{rgb(0xD03030), rgb(0xC42D2D), rgb(0xB72A2A)}},
+		{"white", color.White, [3]color.RGBA{rgb(0x767676), rgb(0x6F6F6F), rgb(0x686868)}},
+		{"yellow", rgb(0xFFFF00), [3]color.RGBA{rgb(0x7A7A00), rgb(0x737300), rgb(0x6B6B00)}},
+		{"black", color.Black, [3]color.RGBA{rgb(0), rgb(0), rgb(0)}},
+	} {
+		for _, dark := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/dark=%v", tc.name, dark), func(t *testing.T) {
+				sheet := Sheet(Options{Dark: dark, AccentColor: tc.accent})
+				backgrounds := [3]color.RGBA{rgb(0xFFFFFF), rgb(0xF6F6F6), rgb(0xEDEDED)}
+				disabled := rgb(0x97979F)
+				disabledFill := rgb(0xD2D2D3)
+				if dark {
+					backgrounds = [3]color.RGBA{rgb(0x323238), rgb(0x39393F), rgb(0x414147)}
+					disabled = rgb(0x797983)
+					disabledFill = rgb(0x57575C)
+				}
+				for i, state := range []style.State{style.Normal, style.Hovered, style.Pressed} {
+					radio := sheet.Resolve(style.Sel{Name: "check-button", Part: "radio-checked", State: state})
+					bg, _ := radio.BackgroundColor()
+					mark, _ := radio.ForegroundColor()
+					edge, _ := radio.BorderColor()
+					if rgba(bg) != tc.colors[i] || rgba(mark) != rgb(0xFFFFFF) || rgba(edge) != tc.colors[i] {
+						t.Fatalf("state=%v radio bg/mark/edge=%v/%v/%v; want accent %v with white dot", state, bg, mark, edge, tc.colors[i])
+					}
+					if width, _ := radio.BorderWidth(); width != 0 {
+						t.Fatalf("solid radio outline width=%v; want no overlapping stroke", width)
+					}
+					if radius, _ := radio.Radius(); radius != 9 {
+						t.Fatalf("radio radius=%v; want 9 DIP", radius)
+					}
+					for _, part := range []string{"indicator-checked", "indicator-mixed"} {
+						checkbox := sheet.Resolve(style.Sel{Name: "check-button", Part: part, State: state})
+						fill, _ := checkbox.BackgroundColor()
+						ink, _ := checkbox.ForegroundColor()
+						if rgba(fill) != tc.colors[i] || rgba(ink) != rgb(0xFFFFFF) {
+							t.Fatalf("part=%s state=%v checkbox fill/ink changed: %v/%v", part, state, fill, ink)
+						}
+					}
+					unchecked := sheet.Resolve(style.Sel{Name: "check-button", Part: "radio", State: state})
+					neutral, _ := unchecked.BackgroundColor()
+					if width, _ := unchecked.BorderWidth(); width != 1 || rgba(neutral) != backgrounds[i] {
+						t.Fatalf("unchecked radio state=%v changed: bg=%v width=%v", state, neutral, width)
+					}
+				}
+				radio := sheet.Resolve(style.Sel{Name: "check-button", Part: "radio-checked", State: style.Disabled})
+				bg, _ := radio.BackgroundColor()
+				mark, _ := radio.ForegroundColor()
+				edge, _ := radio.BorderColor()
+				if width, _ := radio.BorderWidth(); width != 0 || rgba(bg) != disabledFill || rgba(mark) != disabled || rgba(edge) != disabledFill {
+					t.Fatalf("disabled radio changed: bg=%v mark=%v edge=%v", bg, mark, edge)
+				}
+			})
+		}
+	}
+}
+
 func TestCheckButtonStyle(t *testing.T) {
 	for _, dark := range []bool{false, true} {
 		for _, accent := range []color.Color{nil, color.Black, color.White, rgb(0xD03030), rgb(0xFFFF00)} {
@@ -82,18 +149,20 @@ func TestCheckButtonStyle(t *testing.T) {
 						width, _ := s.BorderWidth()
 						wantWidth := float32(1)
 						if shape == "radio" && selection != "" {
-							wantWidth = 2
+							wantWidth = 0
 						}
 						if !bgOK || !fgOK || rgba(bg).A != 255 || rgba(fg).A != 255 || width != wantWidth {
 							t.Fatal("incomplete appearance part")
 						}
+						// Checkbox marks and the radio's white dot share the
+						// same solid accent and 4.5 contrast target.
 						if state != style.Disabled && shape != "button" && selection != "" && contrast(rgba(bg), rgba(fg)) < 4.5 {
 							t.Fatalf("low mark contrast dark=%v accent=%v bg=%v fg=%v", dark, accent, bg, fg)
 						}
-						if shape == "radio" {
+						if shape == "radio" && selection == "" {
 							ordinaryBG, _ := sheet.Resolve(style.Sel{Name: "button", State: state}).BackgroundColor()
 							if rgba(bg) != rgba(ordinaryBG) {
-								t.Fatal("radio gap should retain the neutral surface")
+								t.Fatal("unchecked radio should retain the neutral surface")
 							}
 						}
 					}
