@@ -725,7 +725,10 @@ func (w *Window) State() common.WindowState {
 	}
 	// Maximized is the platform's enlarged state, not a promise to fill the
 	// work area. AppKit owns the standard/user frames used by zoom/unzoom.
-	if w.window.IsZoomed() {
+	// AppKit can report isZoomed=true for a non-resizable, borderless
+	// window even at its initial size. Such None windows have no native zoom
+	// operation (RequestState rejects it), so this is not an enlarged state.
+	if w.window.StyleMask()&NSWindowStyleMaskResizable != 0 && w.window.IsZoomed() {
 		return common.WindowStateMaximized
 	}
 	return common.WindowStateNormal
@@ -788,7 +791,7 @@ func (w *Window) RequestState(state common.WindowState) error {
 			return
 		}
 		wantZoom := state == common.WindowStateMaximized
-		if native.IsZoomed() != wantZoom {
+		if native.StyleMask()&NSWindowStyleMaskResizable != 0 && native.IsZoomed() != wantZoom {
 			native.Zoom(0)
 		}
 		if !w.window.Valid() {
