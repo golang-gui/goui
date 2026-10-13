@@ -2,6 +2,7 @@ package widgets
 
 import (
 	"encoding/json"
+	"fmt"
 	"image/color"
 	"math"
 	"reflect"
@@ -434,6 +435,128 @@ func TestCheckButtonSoftwarePixels(t *testing.T) {
 			t.Fatal("drawing escaped bounds")
 		}
 		native.Destroy()
+	}
+}
+
+func TestCheckButtonDefaultSoftwarePixels(t *testing.T) {
+	// No custom sheet. Samples are opaque premultiplied sRGB RGBA8 interior
+	// pixels away from AA edges; padding and radio corners must stay transparent.
+	useProgressApplication(t, new(progressTestApplication))
+	for _, scale := range []float32{1, 2} {
+		b := NewCheckButton()
+		b.Arrange(geometry.Rect(0, 0, 30, 30))
+		out := new(progressPixelSurface)
+		native, err := software.NewPainter(out)
+		if err != nil {
+			t.Fatal(err)
+		}
+		draw := func() {
+			native.Begin(30*scale, 30*scale, scale)
+			native.Clear(graphics.Color{})
+			b.Paint(checkPixelPainter{native: native})
+			native.End()
+		}
+		pixel := func(x, y int) color.RGBA { return out.pixels.RGBAAt(x*int(scale), y*int(scale)) }
+		draw()
+		if got := pixel(15, 9); got != (color.RGBA{255, 255, 255, 255}) {
+			t.Fatalf("%gx unchecked indicator=%v; want white", scale, got)
+		}
+		b.SetCheckState(CheckMixed)
+		draw()
+		if got := pixel(15, 9); got != (color.RGBA{51, 112, 204, 255}) {
+			t.Fatalf("%gx selected indicator=%v; want blue", scale, got)
+		}
+		if pixel(15, 15) != (color.RGBA{255, 255, 255, 255}) || pixel(3, 15) != (color.RGBA{}) {
+			t.Fatal("default mixed mark / transparent padding missing")
+		}
+		b.SetGroup(NewCheckGroup())
+		b.SetChecked(true)
+		draw()
+		if pixel(15, 15) != (color.RGBA{255, 255, 255, 255}) || pixel(15, 9) != (color.RGBA{51, 112, 204, 255}) || pixel(6, 6) != (color.RGBA{}) {
+			t.Fatal("default radio white dot / blue fill / circular geometry missing")
+		}
+		b.SetGroup(nil)
+		b.SetAppearance(CheckAppearanceButton)
+		draw()
+		if pixel(15, 15) != (color.RGBA{185, 185, 185, 255}) {
+			t.Fatal("default selected button surface missing")
+		}
+		native.Destroy()
+	}
+}
+
+func TestCheckButtonBasicEdgeCoverage(t *testing.T) {
+	for _, shape := range []string{"checked", "mixed", "radio"} {
+		for _, scale := range []float32{1, 2} {
+			for _, offset := range []float32{0, .25} {
+				for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed, style.Disabled} {
+					t.Run(fmt.Sprintf("%s/scale=%g/offset=%g/state=%d", shape, scale, offset, state), func(t *testing.T) {
+						useProgressApplication(t, new(progressTestApplication))
+						b := NewCheckButton()
+						b.Arrange(geometry.Rect(0, 0, 30, 30))
+						b.SetChecked(true)
+						if shape == "mixed" {
+							b.SetCheckState(CheckMixed)
+						} else if shape == "radio" {
+							b.SetGroup(NewCheckGroup())
+						}
+						host, dispatcher := &tabInputHost{root: b, focus: b}, new(gui.EventDispatcher)
+						ink := color.RGBA{R: 51, G: 112, B: 204, A: 255}
+						switch state {
+						case style.Hovered:
+							dispatchTabPointer(t, dispatcher, host, events.PointerMove, 15, 15)
+							ink = color.RGBA{R: 48, G: 105, B: 192, A: 255}
+						case style.Pressed:
+							dispatchTabPointer(t, dispatcher, host, events.PointerDown, 15, 15)
+							ink = color.RGBA{R: 44, G: 97, B: 179, A: 255}
+						case style.Disabled:
+							b.SetEnabled(false)
+							ink = color.RGBA{R: 220, G: 220, B: 220, A: 255}
+						}
+						out := new(progressPixelSurface)
+						native, err := software.NewPainter(out)
+						if err != nil {
+							t.Fatal(err)
+						}
+						defer native.Destroy()
+						native.Begin(32*scale, 32*scale, scale)
+						native.Clear(graphics.Color{})
+						native.SetTransform(geometry.Translate(offset, offset))
+						b.Paint(checkPixelPainter{native: native})
+						native.End()
+						// Independently integrate the radius-4 top-left corner or the
+						// radius-9 radio boundary. Neither region intersects the mark.
+						// Premultiplied sRGB RGBA8 over transparent; the existing 10-level
+						// circle tolerance covers path quantization/approximation/rounding,
+						// but not a second same-color antialiased stroke (see Switch test).
+						cx, cy, radius := float64((10+offset)*scale), float64((10+offset)*scale), float64(4*scale)
+						if shape == "radio" {
+							cx, cy, radius = float64((15+offset)*scale), float64((15+offset)*scale), float64(9*scale)
+						}
+						boundary := 0
+						for y := 0; float64(y+1) <= cy; y++ {
+							for x := 0; float64(x+1) <= cx; x++ {
+								coverage := switchCircleCoverage(x, y, cx, cy, radius)
+								if coverage <= 0 || coverage >= 1 {
+									continue
+								}
+								boundary++
+								got := out.pixels.RGBAAt(x, y)
+								for i, channel := range [4]uint8{got.R, got.G, got.B, got.A} {
+									want := float64([4]uint8{ink.R, ink.G, ink.B, ink.A}[i]) * coverage
+									if math.Abs(float64(channel)-want) > 10 {
+										t.Fatalf("edge (%d,%d) channel %d=%d want %.2f (coverage %.4f)", x, y, i, channel, want, coverage)
+									}
+								}
+							}
+						}
+						if boundary == 0 {
+							t.Fatal("no antialiased boundary pixels sampled")
+						}
+					})
+				}
+			}
+		}
 	}
 }
 

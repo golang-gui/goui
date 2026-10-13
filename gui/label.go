@@ -1,8 +1,6 @@
 package gui
 
 import (
-	"runtime"
-
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/typography"
@@ -204,15 +202,4 @@ func measureTextSize(available geometry.Size) geometry.Size {
 		available.Height = labelMeasureExtent
 	}
 	return available
-}
-
-func defaultLabelFontFamily() string {
-	switch runtime.GOOS {
-	case "windows":
-		return "Segoe UI"
-	case "linux":
-		return "sans-serif"
-	default:
-		return ""
-	}
 }

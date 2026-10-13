@@ -598,17 +598,21 @@ func TestTableViewLayoutVirtualizationAndRefresh(t *testing.T) {
 	m.Set(0, tableRecord{"r0", 360, 20})
 	tableArrange(v, 240, 180)
 	row := v.realized["r0"]
-	if row.Rect().Height != 60 || row.cells[0].Rect().Width != 160 || row.cells[1].Rect().X != 160 {
+	// Basic now supplies the existing 1 DIP horizontal grid by default. It
+	// reserves a separate band; the wrapped cell keeps all 60 DIP of content.
+	if row.Rect().Height != 61 || row.cells[0].Rect().Height != 60 || row.cells[0].Rect().Width != 160 || row.cells[1].Rect().X != 160 {
 		t.Fatalf("fixed column wrapping: row=%v cells=%v", row.Rect(), row.cells[0].Rect())
 	}
 	preferred := v.Measure(layout.Unbounded())
-	if len(v.realized) > 8 || d.setups > 8 || preferred.Height > 1000 || preferred.Width != 0 {
-		t.Fatal("table measured/realized all records")
+	// The scrollable body still has no intrinsic viewport width. Basic's
+	// 1 DIP outer border contributes exactly 2 DIP to the measured width.
+	if len(v.realized) > 8 || d.setups > 8 || preferred.Height > 1000 || preferred.Width != 2 {
+		t.Fatalf("table measurement/virtualization: preferred=%v realized=%d setups=%d", preferred, len(v.realized), d.setups)
 	}
 	v.scroll.SetScrollX(32)
 	v.scroll.SetScrollY(1500)
-	if v.headerRow.Rect().X != -32 || v.headerViewport.Rect().Y != 0 || v.headerViewport.Rect().Width != v.body.Rect().Width {
-		t.Fatal("header not synchronized to actual body viewport")
+	if v.headerRow.Rect().X != -32 || v.headerViewport.Rect().Y != 1 || v.headerViewport.Rect().Width != v.body.Rect().Width {
+		t.Fatalf("header not synchronized inside 1 DIP frame: header=%v viewport=%v body=%v", v.headerRow.Rect(), v.headerViewport.Rect(), v.body.Rect())
 	}
 	for _, r := range v.realized {
 		if r.Rect().X != -32 || r.cells[1].Rect().X != 160 {
@@ -627,19 +631,19 @@ func TestTableViewLayoutVirtualizationAndRefresh(t *testing.T) {
 	shell := row.cells[0].content
 	c.SetWidth(80)
 	tableArrange(v, 240, 180)
-	if row.cells[0].content != shell || row.Rect().Height != 100 || row.cells[1].Rect().X != 80 {
+	if row.cells[0].content != shell || row.Rect().Height != 101 || row.cells[0].Rect().Height != 100 || row.cells[1].Rect().X != 80 {
 		t.Fatalf("resize lost content or cached old height: %v", row.Rect())
 	}
 	content := shell.(*tableTestContent)
 	content.height = 30
 	content.RequestLayout()
 	tableArrange(v, 240, 180)
-	if row.Rect().Height != 150 {
+	if row.Rect().Height != 151 || row.cells[0].Rect().Height != 150 {
 		t.Fatalf("local layout invalidation ignored: %v", row.Rect())
 	}
 	v.Refresh()
 	tableArrange(v, 240, 180)
-	if row.Rect().Height != 100 {
+	if row.Rect().Height != 101 || row.cells[0].Rect().Height != 100 {
 		t.Fatal("Refresh did not rebind content")
 	}
 	bindings := d.binds
@@ -651,6 +655,32 @@ func TestTableViewLayoutVirtualizationAndRefresh(t *testing.T) {
 	tableArrange(v, 240, 180)
 	if row.cells[1].content != shell || row.cells[1].Rect().X != 120 {
 		t.Fatal("column reorder recreated retained content")
+	}
+}
+func TestTableViewUnboundedMeasurement(t *testing.T) {
+	v, _, _, d := tableFixture(10000)
+	defer v.SetModel(nil)
+	// Make the header tall enough to expose sentinel subtraction regardless
+	// of the platform's font metrics (Inf - 80 is a finite float32 value).
+	v.headerRow.SetMinSize(geometry.Size{Height: 80})
+	for _, tc := range []struct {
+		name string
+		max  geometry.Size
+		want geometry.Size
+	}{
+		{"both-unbounded", geometry.Size{Width: layout.Inf, Height: layout.Inf}, geometry.Size{Width: 2, Height: 82}},
+		{"height-unbounded", geometry.Size{Width: 200, Height: layout.Inf}, geometry.Size{Width: 200, Height: 82}},
+		{"width-unbounded", geometry.Size{Width: layout.Inf, Height: 180}, geometry.Size{Width: 2, Height: 180}},
+		{"finite", geometry.Size{Width: 200, Height: 180}, geometry.Size{Width: 200, Height: 180}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := v.Measure(layout.Loose(tc.max)).Size; got != tc.want {
+				t.Fatalf("measurement=%v, want %v", got, tc.want)
+			}
+			if len(v.realized) != 0 || d.setups != 0 {
+				t.Fatalf("Measure realized rows: realized=%d setups=%d", len(v.realized), d.setups)
+			}
+		})
 	}
 }
 func TestTableViewDelegateLifecycleAndFocus(t *testing.T) {
@@ -915,13 +945,13 @@ func TestTableViewBalancedColumnWidthsAndNarrowViewport(t *testing.T) {
 	v.SetColumns(c, other)
 	m.Set(0, tableRecord{"r0", 360, 20})
 	tableArrange(v, 280, 180)
-	if v.realized["r0"].Rect().Height != 60 {
+	if v.realized["r0"].Rect().Height != 61 || v.realized["r0"].cells[0].Rect().Height != 60 {
 		t.Fatal("initial wrap")
 	}
 	c.SetWidth(100)
 	other.SetWidth(180)
 	tableArrange(v, 280, 180)
-	if v.columnWidth != 280 || v.realized["r0"].Rect().Height != 80 || v.realized["r0"].cells[1].Rect().X != 100 {
+	if v.columnWidth != 280 || v.realized["r0"].Rect().Height != 81 || v.realized["r0"].cells[0].Rect().Height != 80 || v.realized["r0"].cells[1].Rect().X != 100 {
 		t.Fatal("same total width concealed per-column wrapping change")
 	}
 	v.scroll.SetScrollY(1500)
@@ -930,7 +960,7 @@ func TestTableViewBalancedColumnWidthsAndNarrowViewport(t *testing.T) {
 	tableArrange(v, 280, 180)
 	v.scroll.SetScrollY(0)
 	tableArrange(v, 280, 180)
-	if v.realized["r0"].Rect().Height != 100 {
+	if v.realized["r0"].Rect().Height != 101 || v.realized["r0"].cells[0].Rect().Height != 100 {
 		t.Fatal("offscreen row retained old column measurements")
 	}
 	tableArrange(v, 1, 1)

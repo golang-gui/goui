@@ -18,6 +18,9 @@ func TestSwitchFallback(t *testing.T) {
 				t.Fatal("missing background")
 			}
 			wantWidth := float32(1)
+			if part == "track-checked" {
+				wantWidth = 0
+			}
 			if strings.HasPrefix(part, "thumb") {
 				wantWidth = 0
 				if bg, _ := s.BackgroundColor(); state&basestyle.Disabled == 0 && color.RGBAModel.Convert(bg) != (color.RGBA{R: 255, G: 255, B: 255, A: 255}) {
@@ -42,7 +45,7 @@ func TestSwitchFallback(t *testing.T) {
 	if size, _ := sheet.Resolve(basestyle.Sel{Name: "switch-text"}).FontSize(); size <= 0 {
 		t.Fatal("missing independent font")
 	}
-	if _, ok := gui.DefaultStyleSheet().Resolve(basestyle.Sel{Name: "switch", Part: "track-checked"}).BackgroundColor(); ok {
-		t.Fatal("fallback registered in GUI")
+	if bg, ok := gui.DefaultStyleSheet().Resolve(basestyle.Sel{Name: "switch", Part: "track-checked"}).BackgroundColor(); !ok || color.RGBAModel.Convert(bg) != (color.RGBA{R: 70, G: 130, B: 220, A: 255}) {
+		t.Fatal("default sheet lacks the selected switch track")
 	}
 }

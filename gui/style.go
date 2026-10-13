@@ -1,12 +1,11 @@
 package gui
 
 import (
-	"image/color"
-
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/style"
+	"github.com/golang-gui/goui/theme/basic"
 )
 
 const (
@@ -29,132 +28,16 @@ const (
 	styleNameMenuSeparator        = "menu-separator"
 )
 
-// DefaultStyleSheet is the bare fallback sheet used when the application has no
-// custom sheet — enough to make widgets visible, not a theme.
-func DefaultStyleSheet() style.StyleSheet {
-	return defaultStyleSheet
-}
+// DefaultStyleSheet returns the complete Basic fallback used when the
+// application has no custom stylesheet. It does not enable Modern.
+func DefaultStyleSheet() style.StyleSheet { return defaultStyleSheet }
 
-// defaultStyleSheet is the bare fallback sheet: built once (it never changes —
-// accent/font do not track settings; the real theme is a separate package).
-var defaultStyleSheet = style.Sheet(DefaultStyleRules()...)
+// Cache immutable fallback values; Basic does not watch system settings.
+var defaultStyleSheet = basic.Sheet()
 
-func DefaultStyleRules() []style.Rule {
-	accent := defaultAccentColor
-	family := defaultLabelFontFamily()
-	size := defaultFontSize
-
-	return []style.Rule{
-		style.Name(styleNameWindow).BackgroundColor(color.White),
-		style.Name(styleNamePopover).BackgroundColor(color.White),
-		style.Name(styleNameIcon).ForegroundColor(color.Black),
-		style.Name(styleNameWidget).
-			BackgroundColor(color.Transparent).
-			ForegroundColor(color.Black).
-			BorderColor(color.Transparent).
-			BorderWidth(0).
-			Radius(0).
-			FontFamily(family).
-			FontSize(size),
-		style.Name(styleNameWidget).State(style.Disabled).
-			ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}),
-
-		style.Name(styleNameLabel).
-			ForegroundColor(color.Black).
-			FontFamily(family).
-			FontSize(size),
-		style.Name(styleNameLabel).State(style.Disabled).
-			ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}),
-		style.Name(styleNameIcon).State(style.Disabled).
-			ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}),
-
-		style.Name(styleNameButton).
-			BackgroundColor(color.RGBA{R: 210, G: 210, B: 210, A: 255}).
-			ForegroundColor(color.Black).
-			BorderColor(color.Transparent).
-			BorderWidth(0).
-			Radius(4).
-			FontFamily(family).
-			FontSize(size),
-		style.Name(styleNameButton).
-			State(style.Hovered).
-			BackgroundColor(color.RGBA{R: 230, G: 230, B: 230, A: 255}),
-		style.Name(styleNameButton).
-			State(style.Pressed).
-			BackgroundColor(color.RGBA{R: 180, G: 180, B: 180, A: 255}),
-		style.Name(styleNameButton).State(style.Disabled).
-			ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}),
-		style.Name(styleNameButton).Part(stylePartFocus).State(style.Focused).
-			BackgroundColor(color.Transparent).BorderWidth(0),
-		style.Name(styleNameButton).Part(stylePartFocus).State(style.FocusVisible).
-			BackgroundColor(color.Transparent).
-			BorderColor(color.RGBA{R: 102, G: 147, B: 217, A: 255}).BorderWidth(2),
-
-		style.Name(styleNameTextInput).
-			BackgroundColor(color.White).
-			ForegroundColor(color.Black).
-			BorderColor(color.RGBA{R: 180, G: 180, B: 180, A: 255}).
-			BorderWidth(1).
-			Radius(0).
-			FontFamily(family).
-			FontSize(size),
-		style.Name(styleNameTextInput).
-			State(style.Focused).
-			BorderColor(accent),
-		style.Name(styleNameTextInput).State(style.Disabled).
-			BackgroundColor(color.RGBA{R: 245, G: 245, B: 245, A: 255}).
-			ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}),
-		style.Name(styleNameTextInput).Part("selection").BackgroundColor(color.RGBA{R: 185, G: 210, B: 245, A: 255}),
-		style.Name(styleNameTextView).
-			BackgroundColor(color.White).
-			ForegroundColor(color.Black).
-			FontFamily(family).FontSize(size),
-		style.Name(styleNameTextView).Part("selection").BackgroundColor(color.RGBA{R: 185, G: 210, B: 245, A: 255}),
-		style.Name(styleNameTextView).Part("caret").ForegroundColor(color.Black),
-		style.Name(styleNameTextView).State(style.Disabled).
-			ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}),
-
-		style.Name(styleNameScrollView).
-			BackgroundColor(color.Transparent).
-			ForegroundColor(color.RGBA{R: 120, G: 120, B: 120, A: 255}),
-
-		// ScrollBar parts (resolved under the same "scroll-view" name; ScrollView
-		// and ScrollBar are one unit in the style system). fallbackChain lets
-		// these inherit the base scroll-view rule above.
-		style.Name(styleNameScrollView).Part(stylePartTrough).
-			BackgroundColor(color.RGBA{R: 0, G: 0, B: 0, A: 24}).
-			Radius(scrollbarRadius),
-		style.Name(styleNameScrollView).Part(stylePartThumb).
-			BackgroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}).
-			Radius(scrollbarRadius),
-		style.Name(styleNameScrollView).Part(stylePartThumb).State(style.Hovered).
-			BackgroundColor(color.RGBA{R: 110, G: 110, B: 110, A: 255}),
-		style.Name(styleNameScrollView).Part(stylePartThumb).State(style.Pressed).
-			BackgroundColor(color.RGBA{R: 90, G: 90, B: 90, A: 255}),
-
-		style.Name(styleNameMenu).
-			BackgroundColor(color.RGBA{R: 250, G: 250, B: 250, A: 255}).
-			ForegroundColor(color.Black).
-			BorderColor(color.RGBA{R: 200, G: 200, B: 200, A: 255}).
-			BorderWidth(1).
-			Radius(4),
-		style.Name(styleNameMenuItem).
-			BackgroundColor(color.Transparent),
-		style.Name(styleNameMenuItemText).
-			FontFamily(family).FontSize(size).ForegroundColor(color.Black),
-		style.Name(styleNameMenuItemTextDisabled).
-			FontFamily(family).FontSize(size).
-			ForegroundColor(color.RGBA{R: 160, G: 160, B: 160, A: 255}),
-		style.Name(styleNameMenuItem).
-			State(style.Hovered).
-			BackgroundColor(color.RGBA{R: 225, G: 232, B: 240, A: 255}),
-		style.Name(styleNameMenuItem).
-			State(style.Pressed).
-			BackgroundColor(color.RGBA{R: 200, G: 210, B: 225, A: 255}),
-		style.Name(styleNameMenuSeparator).
-			BackgroundColor(color.RGBA{R: 200, G: 200, B: 200, A: 255}),
-	}
-}
+// DefaultStyleRules returns fresh Basic rules for all built-in controls.
+// It is retained for applications that append overrides before building a sheet.
+func DefaultStyleRules() []style.Rule { return basic.Rules() }
 
 // ResolveStyle resolves (name, part, state) against the application's current
 // style sheet, falling back to the built-in default when there is none.
