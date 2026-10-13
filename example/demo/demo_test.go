@@ -19,10 +19,142 @@ import (
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/mlang"
 	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/theme/modern"
 	"github.com/golang-gui/goui/ui"
 	"github.com/golang-gui/goui/widgets"
 	wui "github.com/golang-gui/goui/widgets/ui"
 )
+
+// 校验按钮实际传入的创建选项；不为例程测试创建原生窗口或模拟 Application。
+func TestAuxWindowExampleDeclarations(t *testing.T) {
+	source, err := parser.ParseFile(token.NewFileSet(), "windows.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expression := func(expr ast.Expr) string {
+		switch value := expr.(type) {
+		case *ast.Ident:
+			return value.Name
+		case *ast.SelectorExpr:
+			if pkg, ok := value.X.(*ast.Ident); ok {
+				return pkg.Name + "." + value.Sel.Name
+			}
+		}
+		return ""
+	}
+	for _, test := range []struct {
+		id     string
+		fields map[string]string
+		frame  string
+	}{
+		{"skip-taskbar-window", map[string]string{"Chrome": "gui.WindowChromeNative", "SkipTaskbar": "true"}, "false"},
+		{"border-box-window", map[string]string{"Chrome": "gui.WindowChromeNone", "Transparent": "true"}, "true"},
+	} {
+		t.Run(test.id, func(t *testing.T) {
+			found := false
+			ast.Inspect(source, func(node ast.Node) bool {
+				call, ok := node.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				method, ok := call.Fun.(*ast.SelectorExpr)
+				if !ok || method.Sel.Name != "OnClick" || !demoHasCall(method.X, "ID", strconv.Quote(test.id)) {
+					return true
+				}
+				ast.Inspect(call, func(node ast.Node) bool {
+					invoke, ok := node.(*ast.CallExpr)
+					if !ok {
+						return true
+					}
+					method, ok := invoke.Fun.(*ast.SelectorExpr)
+					if !ok || method.Sel.Name != "openWindow" || len(invoke.Args) != 2 {
+						return true
+					}
+					options, ok := invoke.Args[0].(*ast.CompositeLit)
+					if !ok || expression(options.Type) != "gui.WindowOptions" {
+						t.Fatal("example must explicitly pass GUI window options")
+					}
+					got := make(map[string]string)
+					for _, field := range options.Elts {
+						if field, ok := field.(*ast.KeyValueExpr); ok {
+							got[expression(field.Key)] = expression(field.Value)
+						}
+					}
+					if len(got) != len(test.fields) || expression(invoke.Args[1]) != test.frame {
+						t.Fatalf("options=%v BorderBox=%s", got, expression(invoke.Args[1]))
+					}
+					for field, want := range test.fields {
+						if got[field] != want {
+							t.Errorf("%s=%s, want %s", field, got[field], want)
+						}
+					}
+					found = true
+					return false
+				})
+				return false
+			})
+			if !found {
+				t.Fatal("missing actionable window example")
+			}
+		})
+	}
+}
+
+// 检查例程真实构造的根；BorderBox 不能被透明样例的外层容器包住。
+// 文字排版及原生命中另在 README 的桌面操作中验证。
+func TestAuxWindowContentComposition(t *testing.T) {
+	for _, test := range []struct {
+		name                   string
+		transparent, borderBox bool
+	}{
+		{"native", false, false},
+		{"transparent", true, false},
+		{"border-box", true, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			column := gui.NewLinearBox(layout.DirectionVertical)
+			column.SetCrossAlign(layout.CrossStretch)
+			header := gui.NewHeaderBar()
+			column.AddChild(header)
+			scroll := gui.NewScrollView()
+			scroll.SetDirection(gui.ScrollVertical)
+			scroll.SetChild(new(layoutProbe))
+			column.AddChild(scroll)
+			root := auxWindowContent(column, test.transparent, test.borderBox)
+			if test.borderBox {
+				frame, ok := root.(*gui.BorderBox)
+				if !ok || frame.Child() != column || !frame.Resizable() || frame.ResizeWidth() != 6 || frame.StyleName() != modern.Card {
+					t.Fatal("BorderBox must be root with explicit Card appearance and default resize width")
+				}
+				frame.Measure(layout.Tight(geometry.Size{Width: 500, Height: 380}))
+				frame.Arrange(geometry.Rect(0, 0, 500, 380))
+				if column.Rect() != geometry.Rect(6, 6, 488, 368) || header.Rect().Y != 0 || scroll.Rect().Y != header.Rect().Height {
+					t.Fatal("root safe inset was duplicated or scrolling displaced HeaderBar")
+				}
+				if info := root.Snapshot(); info.Role != gui.RoleBox || len(info.Children) != 1 || info.Children[0].Bounds != column.Rect() {
+					t.Fatal("window example lost its content subtree")
+				}
+			} else {
+				var panel *surfaceWidget
+				if test.transparent {
+					outer, ok := root.(*gui.LinearBox)
+					if !ok || outer.Padding() != 16 || len(outer.Children()) != 1 {
+						t.Fatal("legacy transparent example lost its outer margin")
+					}
+					panel, _ = outer.Children()[0].(*surfaceWidget)
+				} else {
+					panel, _ = root.(*surfaceWidget)
+				}
+				if panel == nil || panel.Child() != column || panel.StyleName() != modern.Card {
+					t.Fatal("ordinary example changed its content surface")
+				}
+			}
+		})
+	}
+	if frame := gui.NewBorderBox(); frame.StyleName() != "" {
+		t.Fatal("demo must not change the BorderBox constructor's invisible default")
+	}
+}
 
 // 私有 demo-card 规则已移除，遗漏的样式引用会让浮动面板和 Dialog 透明。
 // 只检查样式调用，不把同名的应用内拖放数据格式当作样式。

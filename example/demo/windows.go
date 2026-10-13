@@ -15,9 +15,21 @@ import (
 
 func (d *demo) windowPage() ui.View {
 	return fullPage("windows", resource.WindowHeading(), resource.WindowHint(),
-		ui.HWrap(ui.Button(resource.NativeWindow()).ID("native-window").OnClick(func() { d.openWindow(gui.WindowChromeNative, false) }),
-			ui.Button(resource.IntegratedWindow()).OnClick(func() { d.openWindow(gui.WindowChromeIntegrated, false) }),
-			ui.Button(resource.TransparentWindow()).ID("transparent-window").OnClick(func() { d.openWindow(gui.WindowChromeNone, true) })).Spacing(12).LineSpacing(8),
+		ui.HWrap(ui.Button(resource.NativeWindow()).ID("native-window").OnClick(func() {
+			d.openWindow(gui.WindowOptions{Chrome: gui.WindowChromeNative}, false)
+		}),
+			ui.Button(resource.IntegratedWindow()).OnClick(func() {
+				d.openWindow(gui.WindowOptions{Chrome: gui.WindowChromeIntegrated}, false)
+			}),
+			ui.Button(resource.TransparentWindow()).ID("transparent-window").OnClick(func() {
+				d.openWindow(gui.WindowOptions{Chrome: gui.WindowChromeNone, Transparent: true}, false)
+			}),
+			ui.Button(resource.SkipTaskbarWindow()).ID("skip-taskbar-window").OnClick(func() {
+				d.openWindow(gui.WindowOptions{Chrome: gui.WindowChromeNative, SkipTaskbar: true}, false)
+			}),
+			ui.Button(resource.BorderBoxWindow()).ID("border-box-window").OnClick(func() {
+				d.openWindow(gui.WindowOptions{Chrome: gui.WindowChromeNone, Transparent: true}, true)
+			})).Spacing(12).LineSpacing(8),
 		ui.HWrap(ui.Button(resource.Maximize()).OnClick(func() {
 			d.app.FindWindow("main").RequestState(gui.WindowStateMaximized)
 			d.report(resource.MaximizeRequested())
@@ -61,18 +73,33 @@ func (d *demo) inspectPosition() {
 	}
 	d.report(fmt.Sprintf(resource.PositionFormat(), pos.X, pos.Y, area.Width, area.Height, w.State()))
 }
-func (d *demo) openWindow(chrome gui.WindowChromeMode, transparent bool) {
-	w, err := gui.App.NewWindow(&gui.WindowOptions{Size: geometry.Size{Width: 440, Height: 300}, Chrome: chrome, Transparent: transparent})
+func (d *demo) openWindow(options gui.WindowOptions, borderBox bool) {
+	options.Size = geometry.Size{Width: 440, Height: 300}
+	if options.SkipTaskbar || borderBox {
+		options.Size = geometry.Size{Width: 500, Height: 380}
+	}
+	w, err := gui.App.NewWindow(&options)
 	if err != nil {
 		d.result(resource.CreateWindow(), err)
 		return
 	}
-	if err := w.SetTitle(resource.AuxTitle()); err != nil {
+	if options.SkipTaskbar || borderBox {
+		// These resizable examples intentionally scroll their prose. Do not
+		// use its unbounded natural width as the window's minimum-size hint.
+		w.SetMinSize(geometry.Size{Width: 280, Height: 220})
+	}
+	windowTitle := resource.AuxTitle
+	if options.SkipTaskbar {
+		windowTitle = resource.SkipTaskbarWindow
+	} else if borderBox {
+		windowTitle = resource.BorderBoxWindow
+	}
+	if err := w.SetTitle(windowTitle()); err != nil {
 		w.Destroy()
 		d.result(resource.SetTitle(), err)
 		return
 	}
-	if transparent {
+	if options.Transparent {
 		w.SetStyleName("demo-transparent-window")
 	}
 	box := gui.NewLinearBox(layout.DirectionVertical)
@@ -84,6 +111,7 @@ func (d *demo) openWindow(chrome gui.WindowChromeMode, transparent bool) {
 	}
 	label := func(text mlang.Getter) *gui.Label {
 		widget := gui.NewLabel(text())
+		widget.SetWrapMode(gui.WrapWordChar)
 		labels = append(labels, struct {
 			widget *gui.Label
 			text   mlang.Getter
@@ -92,8 +120,21 @@ func (d *demo) openWindow(chrome gui.WindowChromeMode, transparent bool) {
 	}
 	box.AddChild(label(resource.AuxDescription))
 	box.AddChild(label(resource.AuxHint))
-	if transparent {
+	if options.Transparent {
 		box.AddChild(label(resource.TransparencyHint))
+	}
+	if options.SkipTaskbar {
+		box.AddChild(label(resource.SkipTaskbarHint))
+	}
+	if borderBox {
+		box.AddChild(label(resource.BorderBoxHint))
+	}
+	if options.SkipTaskbar || borderBox {
+		box.AddChild(label(resource.AuxInputHint))
+		// Window-local input stays alive when the application's declarations
+		// rebuild. Translating labels must not replace user-owned text.
+		input := gui.NewTextInput()
+		box.AddChild(input)
 	}
 	move := gui.NewButton()
 	move.SetChild(label(resource.MoveWindow))
@@ -107,38 +148,31 @@ func (d *demo) openWindow(chrome gui.WindowChromeMode, transparent bool) {
 	box.AddChild(closeButton)
 	header := gui.NewHeaderBar()
 	title := resource.DragTitle
-	if chrome == gui.WindowChromeNative {
+	if options.Chrome == gui.WindowChromeNative {
 		title = resource.NativeDragTitle
 	}
 	header.SetChild(label(title))
 	column := gui.NewLinearBox(layout.DirectionVertical)
 	column.SetCrossAlign(layout.CrossStretch)
-	if transparent {
+	if options.Transparent && !borderBox {
 		column.SetPadding(12)
 	} // 子树留在圆角内部，不假装背景绘制能够裁剪后续孩子。
 	column.AddChild(header)
-	column.AddChild(box)
-	panel := new(surfaceWidget)
-	panel.SetStyleName(modern.Card)
-	panel.SetLayoutManager(layout.NewFillLayout())
-	panel.SetChild(column)
-	if transparent {
-		panel.SetMainWeight(1)
-		outer := gui.NewLinearBox(layout.DirectionVertical)
-		outer.SetPadding(16)
-		outer.SetCrossAlign(layout.CrossStretch)
-		outer.AddChild(panel)
-		w.SetWidget(outer)
-	} else {
-		w.SetWidget(panel)
-	}
+	// Keep descriptions and close controls reachable with long translations
+	// or a resized window; HeaderBar remains outside the scrolling content.
+	scroll := gui.NewScrollView()
+	scroll.SetDirection(gui.ScrollVertical)
+	scroll.SetMainWeight(1)
+	scroll.SetChild(box)
+	column.AddChild(scroll)
+	w.SetWidget(auxWindowContent(column, options.Transparent, borderBox))
 	w.ConnectState(func(state gui.WindowState) { d.report(fmt.Sprintf(resource.WindowState(), state)) })
 	closed := false
 	languageChanged := mlang.ConnectChanged(func() {
 		if closed {
 			return
 		}
-		if err := w.SetTitle(resource.AuxTitle()); err != nil {
+		if err := w.SetTitle(windowTitle()); err != nil {
 			d.result(resource.SetTitle(), err)
 		}
 		for _, item := range labels {
@@ -167,4 +201,29 @@ func (d *demo) openWindow(chrome gui.WindowChromeMode, transparent bool) {
 			d.report(resource.WindowShown())
 		}
 	})
+}
+
+// Window creation preferences and content composition are independent. The
+// BorderBox must be the actual root, not wrapped inside the legacy transparent
+// example's outer padding, or automatic resizing would intentionally be inactive.
+func auxWindowContent(column gui.Widget, transparent, borderBox bool) gui.Widget {
+	if borderBox {
+		frame := gui.NewBorderBox()
+		frame.SetStyleName(modern.Card) // Explicit demo appearance; the default stays invisible.
+		frame.SetChild(column)
+		return frame
+	}
+	panel := new(surfaceWidget)
+	panel.SetStyleName(modern.Card)
+	panel.SetLayoutManager(layout.NewFillLayout())
+	panel.SetChild(column)
+	if transparent {
+		panel.SetMainWeight(1)
+		outer := gui.NewLinearBox(layout.DirectionVertical)
+		outer.SetPadding(16)
+		outer.SetCrossAlign(layout.CrossStretch)
+		outer.AddChild(panel)
+		return outer
+	}
+	return panel
 }

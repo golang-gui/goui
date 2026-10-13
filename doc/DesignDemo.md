@@ -26,7 +26,8 @@ Root/BuildContext/Painter 添加特例。表单现改用普通 ScrollView 的纵
 - 动画和计时器默认关闭；分类切换停止演示任务、销毁手工 Popover。
 - 标签跨窗调用现有 Coordinator 子树移交，提交后更新源/目标页面 ID 集合；脱离
   先声明空目标，再 AfterUpdate 定位/TransferTo，最后由 UI 正常显示。
-- 额外标签窗口由 UI 管理；三种装饰示范窗由 GUI Application 管理，无额外引用表。
+- 额外标签窗口由 UI 管理；装饰、SkipTaskbar 和 BorderBox 示范窗由 GUI Application
+  管理，无额外引用表。
   主窗口关闭退出应用，最终清理由 Application 完成。
 - 未接入 DevServer，不在演示或验收中使用语义动作捷径。
 
@@ -405,3 +406,59 @@ platform/gui/ui API。新增 17 个八语言资源，覆盖单行/多行、基�
 证据文件。本轮未执行 Windows/macOS 原生桌面、Direct2D、跨应用文件拖放、
 真实 IME/混合 DPI 或母语校对；不承诺 RTL 整窗镜像。Switch 已按用户要求单独
 提交；本轮 demo 代码、回归测试和对应设计说明也按用户确认独立提交。
+
+## 2026-10-13 SkipTaskbar 与 BorderBox 窗口示例
+
+在“9.窗口与检查”增加两个入口，不改变主窗口的 Integrated/背景样式：
+
+- “不占任务栏窗口”：创建 Native + SkipTaskbar 的普通窗口，不使用 Popup、
+  置顶或禁止激活策略。说明 Windows Alt+Tab、X11 WM 请求与 macOS 应用 Dock
+  的差异；保留原生拖动/缩放、窗口内输入和关闭。
+- “BorderBox 自绘窗口”：创建 None + Transparent，选择此窗口独立的
+  `demo-transparent-window` 背景样式，以 BorderBox 为实际根，显式使用 modern.Card
+  的背景/圆角/描边。BorderBox 默认无外观规则不变，不修改 Basic/Modern 或 GUI。
+  HeaderBar 在安全内区域负责移动；6 DIP 四边/四角由 BorderBox 和既有 Chrome
+  机制缩放，不能再包入旧透明例的 16 DIP 外层容器。
+
+继续复用 openWindow 的创建错误反馈、显示前定位、语言信号和销毁清理。窗口
+创建选项与内容组成分开：前者直接使用 gui.WindowOptions，后者使用例程私有
+auxWindowContent，不引入窗口管理器、持久状态表或 UI 特例。原三种装饰例仍保持
+440x300 初始尺寸，新例使用 500x380 创建偏好，并显式设置 280x220 最小窗口尺寸；
+不把长说明在无界测量时的自然宽度当作窗口最小宽度。两者的文本输入归各自 GUI Widget 所有，
+应用声明重建与语言更新只改固定标题/说明/按钮，不改用户输入。
+
+长说明按词换行，正文置于垂直 ScrollView，HeaderBar 不随正文滚动；此规则也
+适用于原辅助窗，缩窄或切换长文案语言后仍可滚动到关闭按钮。所有新增固定文本
+按现有八语言 resource 方式维护，不改主窗口共享 window 背景或隐式继承样式。
+
+验证：无桌面测试检查真实入口选项、根类型/Card/default resize width、内容安全
+布局/Snapshot 与旧透明例的外层保留；现有资源测试自动检查八种语言完整性。
+真实桌面按 example/demo/README 第 9 项检查任务栏/激活、输入、拖动/缩放、
+主题/语言更新、用户文本保留、多个透明窗口逐个关闭与主背景隔离。
+本机验收完成（2026-10-13，Go 1.25.8，Linux amd64）：
+
+- `env -u DISPLAY go test ./example/demo/... -count=1` 与 demo 的 race 测试通过；
+  `go vet ./example/demo/...`、`git diff --check` 通过。
+- 最终在独立本机 X11 显示上执行 `go test ./... -count=1 -json`：2481 测试/子测试
+  通过、15 既有跳过、0 失败。保留原有测试的窗口副作用，不算无桌面验收。
+- Windows amd64 / macOS arm64 的 `CGO_ENABLED=0 go build ./example/demo` 通过，
+  产物输出到仓库外；这只证明目标编译，不代表远端桌面运行。
+- 本机 Xvnc 1.12 / Xfwm4 合成环境，Software 和 OpenGL 配置 1x：两个入口可打开，
+  500x380 创建尺寸及 280x220 原生最小尺寸提示正确；BorderBox 的 Card 表面、
+  透明圆角、安全留白和主窗口背景隔离可见。SkipTaskbar 原生属性包含
+  `_NET_WM_STATE_SKIP_TASKBAR`，仍能激活和接收输入。
+- OpenGL 下实际拖动原生标题栏和 BorderBox HeaderBar、收窄右边框及降低底边框，
+  尺寸从 500x380 变为 352x282；滚动能到达关闭按钮，HeaderBar 保持原位。
+  浅色切暗色、中文切英文后，两个辅助窗说明和标题更新；复制输入框内容分别
+  断言为 `keep-123` / `frame-456`，没有被声明重建覆盖。逐个关闭后主背景不变，
+  再切德文无销毁访问异常，关闭主窗口退出码 0。
+
+隔离桌面未启动任务栏面板，因此本轮仅验证 X11 请求属性，未把任务栏实际呈现
+算作通过。OpenGL 为 Mesa 23.2.1 llvmpipe；未覆盖硬件 GPU、真实 HiDPI、真实 IME
+或所有语言的桌面布局。第一次隔离会话沿用了无法连接的 fcitx 配置，模拟逐键输入
+未产生文字；粘贴正常，随后以 `XMODIFIERS=@im=none GTK_IM_MODULE=simple` 重启后
+逐键输入及复制断言通过，不据此改动输入框架。
+
+按用户要求未执行远端桌面验收。日志、截图和构建产物保留于
+`/tmp/goui-demo-windows.oUWHYj`；已退出例程并清理自建桌面进程。本轮 demo 代码、
+测试及对应设计说明独立提交，未推送。
