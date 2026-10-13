@@ -6,16 +6,14 @@ import (
 
 	"github.com/golang-gui/goui/gui"
 	basestyle "github.com/golang-gui/goui/style"
+	"github.com/golang-gui/goui/theme/basic"
 )
 
 func TestRulesComposeWithoutRegistering(t *testing.T) {
-	for _, rule := range gui.DefaultStyleRules() {
-		if rule.Sel.Name == "progress-bar" {
-			t.Fatal("GUI fallback still owns progress rules")
-		}
-		if len(rule.Sel.Name) >= 4 && rule.Sel.Name[:4] == "tab-" {
-			t.Fatal("GUI fallback still owns tab rules")
-		}
+	// Basic is now automatically applied. The legacy subset must still be
+	// independently usable and must not mutate the cached default sheet.
+	if !basestyle.SameRules(gui.DefaultStyleRules(), basic.Rules()) || !basestyle.SameRules(Rules(), basic.WidgetRules()) {
+		t.Fatal("compatibility entry points diverged from Basic")
 	}
 	rules := append(gui.DefaultStyleRules(), Rules()...)
 	sheet := basestyle.Sheet(rules...)
@@ -45,8 +43,8 @@ func TestRulesComposeWithoutRegistering(t *testing.T) {
 	if bg != color.White {
 		t.Fatal("application override lost")
 	}
-	if _, ok := gui.DefaultStyleSheet().Resolve(basestyle.Sel{Name: "tab-item", Part: "selected"}).BackgroundColor(); ok {
-		t.Fatal("explicit composition changed GUI fallback globally")
+	if bg, ok := gui.DefaultStyleSheet().Resolve(basestyle.Sel{Name: "tab-item", Part: "selected"}).BackgroundColor(); !ok || bg != (color.RGBA{R: 210, G: 210, B: 210, A: 255}) {
+		t.Fatal("explicit override changed GUI fallback globally")
 	}
 	first, second := Rules(), Rules()
 	first[0] = basestyle.Name("mutated")
@@ -55,7 +53,7 @@ func TestRulesComposeWithoutRegistering(t *testing.T) {
 	}
 }
 
-func TestProgressFallbackIsExplicit(t *testing.T) {
+func TestProgressFallbackIsAutomatic(t *testing.T) {
 	sheet := basestyle.Sheet(append(gui.DefaultStyleRules(), Rules()...)...)
 	s := sheet.Resolve(basestyle.Sel{Name: "progress-bar"})
 	bg, _ := s.BackgroundColor()
@@ -65,8 +63,8 @@ func TestProgressFallbackIsExplicit(t *testing.T) {
 		fg != (color.RGBA{R: 70, G: 130, B: 220, A: 255}) || radius != 2 {
 		t.Fatal("missing progress track / foreground / radius")
 	}
-	if _, ok := gui.DefaultStyleSheet().Resolve(basestyle.Sel{Name: "progress-bar"}).ForegroundColor(); ok {
-		t.Fatal("widget rules changed GUI fallback globally")
+	if fg, ok := gui.DefaultStyleSheet().Resolve(basestyle.Sel{Name: "progress-bar"}).ForegroundColor(); !ok || fg != (color.RGBA{R: 70, G: 130, B: 220, A: 255}) {
+		t.Fatal("default sheet lacks progress foreground")
 	}
 }
 
@@ -84,8 +82,9 @@ func TestCheckButtonFallbackParts(t *testing.T) {
 				}
 			}
 			wantWidth := float32(1)
-			if part == "radio-checked" {
-				wantWidth = 2
+			if part == "radio-checked" || part == "indicator-checked" || part == "indicator-mixed" {
+				// Selected shapes are one solid fill, not a fill plus same-color stroke.
+				wantWidth = 0
 			}
 			if part == "button" || part == "button-checked" || part == "button-mixed" {
 				// Bare GUI Button is borderless. The explicit widget fallback
@@ -100,8 +99,8 @@ func TestCheckButtonFallbackParts(t *testing.T) {
 	if size, _ := sheet.Resolve(basestyle.Sel{Name: "check-button-text"}).FontSize(); size <= 0 {
 		t.Fatal("label needs independent font")
 	}
-	if _, ok := gui.DefaultStyleSheet().Resolve(basestyle.Sel{Name: "check-button", Part: "indicator-checked"}).ForegroundColor(); ok {
-		t.Fatal("fallback registered itself in GUI")
+	if fg, ok := gui.DefaultStyleSheet().Resolve(basestyle.Sel{Name: "check-button", Part: "indicator-checked"}).ForegroundColor(); !ok || fg != color.White {
+		t.Fatal("default sheet lacks the checkbox mark")
 	}
 }
 

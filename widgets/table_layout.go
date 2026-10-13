@@ -17,9 +17,20 @@ type tableLayout struct{ view *TableView }
 
 func (l *tableLayout) Measure(children []layout.Child, c layout.Constraint) layout.Measurement {
 	h, w := l.view.borderWidths()
-	width, height := max(0, c.Max.Width-2*w), max(0, c.Max.Height-2*h)
+	width, height := c.Max.Width, c.Max.Height
+	// Inf is a finite sentinel. Preserve it when reserving the frame/header,
+	// otherwise ScrollView mistakes an unbounded axis for a huge viewport.
+	if width < layout.Inf {
+		width = max(0, width-2*w)
+	}
+	if height < layout.Inf {
+		height = max(0, height-2*h)
+	}
 	header := children[0].Measure(layout.Loose(geometry.Size{Width: width, Height: layout.Inf}))
-	body := children[1].Measure(layout.Loose(geometry.Size{Width: width, Height: max(0, height-header.Height)}))
+	if height < layout.Inf {
+		height = max(0, height-header.Height)
+	}
+	body := children[1].Measure(layout.Loose(geometry.Size{Width: width, Height: height}))
 	// The header's summed column width is scrollable content, not a minimum
 	// viewport width. Use the same viewport policy as the internal ScrollView.
 	return layout.Measured(c.Clamp(geometry.Size{Width: body.Width + 2*w, Height: header.Height + body.Height + 2*h}))

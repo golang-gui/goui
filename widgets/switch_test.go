@@ -398,71 +398,122 @@ func TestSwitchSoftwarePixels(t *testing.T) {
 	}
 }
 
+func TestSwitchDefaultSoftwarePixels(t *testing.T) {
+	// No custom sheet. Opaque premultiplied sRGB RGBA8, sampled inside the
+	// track and thumb away from AA boundaries at both 1x and 2x.
+	useProgressApplication(t, new(progressTestApplication))
+	for _, scale := range []float32{1, 2} {
+		b := NewSwitch()
+		b.SetAnimated(false)
+		b.Arrange(geometry.Rect(0, 0, 48, 32))
+		out := new(progressPixelSurface)
+		native, err := software.NewPainter(out)
+		if err != nil {
+			t.Fatal(err)
+		}
+		draw := func() {
+			native.Begin(48*scale, 32*scale, scale)
+			native.Clear(graphics.Color{})
+			b.Paint(checkPixelPainter{native: native})
+			native.End()
+		}
+		pixel := func(x, y int) color.RGBA { return out.pixels.RGBAAt(x*int(scale), y*int(scale)) }
+		draw()
+		if pixel(16, 16) != (color.RGBA{255, 255, 255, 255}) || pixel(32, 16) != (color.RGBA{199, 199, 201, 255}) {
+			t.Fatal("default off track / white thumb missing")
+		}
+		b.SetChecked(true)
+		draw()
+		if pixel(16, 16) != (color.RGBA{70, 130, 220, 255}) || pixel(32, 16) != (color.RGBA{255, 255, 255, 255}) {
+			t.Fatal("default on track / white thumb missing")
+		}
+		b.SetEnabled(false)
+		draw()
+		if pixel(16, 16) != (color.RGBA{193, 203, 217, 255}) || pixel(32, 16) != (color.RGBA{246, 246, 246, 255}) {
+			t.Fatal("default disabled track / thumb missing")
+		}
+		if pixel(6, 6) != (color.RGBA{}) || pixel(3, 16) != (color.RGBA{}) {
+			t.Fatal("default switch escaped capsule / padding")
+		}
+		native.Destroy()
+	}
+}
+
+func TestSwitchBasicCapsuleCoverage(t *testing.T) {
+	// Exercise the automatically applied fallback, not a composed custom sheet.
+	testSwitchCapsuleCoverage(t, nil)
+}
+
 func TestSwitchModernCapsuleCoverage(t *testing.T) {
 	for _, dark := range []bool{false, true} {
-		for _, scale := range []float32{1, 1.25, 2} {
-			for _, offset := range []float32{0, .25} {
-				for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed, style.Disabled} {
-					t.Run(fmt.Sprintf("dark=%v/scale=%g/offset=%g/state=%d", dark, scale, offset, state), func(t *testing.T) {
-						sheet := modern.Sheet(modern.Options{Dark: dark, AccentColor: color.RGBA{R: 70, G: 130, B: 220, A: 255}})
-						useProgressApplication(t, &progressTestApplication{sheet: sheet})
-						b, host, dispatcher := switchInput()
-						b.SetAnimated(false)
-						b.SetChecked(true)
-						switch state {
-						case style.Hovered:
-							dispatchTabPointer(t, dispatcher, host, events.PointerMove, 16, 16)
-						case style.Pressed:
-							dispatchTabPointer(t, dispatcher, host, events.PointerDown, 16, 16)
-						case style.Disabled:
-							b.SetEnabled(false)
-						}
-						out := new(progressPixelSurface)
-						native, err := software.NewPainter(out)
-						if err != nil {
-							t.Fatal(err)
-						}
-						defer native.Destroy()
-						native.Begin(100*scale, 40*scale, scale)
-						native.Clear(graphics.Color{})
-						native.SetTransform(geometry.Translate(offset, offset))
-						b.Paint(checkPixelPainter{native: native})
-						native.End()
+		t.Run(fmt.Sprintf("dark=%v", dark), func(t *testing.T) {
+			testSwitchCapsuleCoverage(t, modern.Sheet(modern.Options{Dark: dark, AccentColor: color.RGBA{R: 70, G: 130, B: 220, A: 255}}))
+		})
+	}
+}
 
-						track := sheet.Resolve(style.Sel{Name: "switch", Part: "track-checked", State: state})
-						bg, _ := track.BackgroundColor()
-						ink := color.RGBAModel.Convert(bg).(color.RGBA)
-						if ink.A != 255 {
-							t.Fatal("coverage reference requires an opaque track")
-						}
-						// Sample the left semicircle, where the checked thumb cannot cover
-						// the track. The independent reference integrates an exact radius-10
-						// circle in physical pixels; it does not redraw the same path.
-						// Compare premultiplied sRGB RGBA8 over transparent. Ten byte levels
-						// allow 26.6 path quantization, the cubic circle approximation and
-						// RGBA8 rounding, but reject the former ~25% double-AA coverage error.
-						cx, cy, radius := float64((16+offset)*scale), float64((16+offset)*scale), float64(10*scale)
-						boundary := 0
-						for y := 0; y < out.pixels.Bounds().Dy(); y++ {
-							for x := 0; float64(x+1) <= cx; x++ {
-								coverage := switchCircleCoverage(x, y, cx, cy, radius)
-								if coverage > 0 && coverage < 1 {
-									boundary++
-								}
-								got := out.pixels.RGBAAt(x, y)
-								for i, channel := range [4]uint8{got.R, got.G, got.B, got.A} {
-									want := float64([4]uint8{ink.R, ink.G, ink.B, ink.A}[i]) * coverage
-									if math.Abs(float64(channel)-want) > 10 {
-										t.Fatalf("capsule (%d,%d) channel %d=%d want %.2f (coverage %.4f)", x, y, i, channel, want, coverage)
-									}
+func testSwitchCapsuleCoverage(t *testing.T, sheet style.StyleSheet) {
+	for _, scale := range []float32{1, 1.25, 2} {
+		for _, offset := range []float32{0, .25} {
+			for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed, style.Disabled} {
+				t.Run(fmt.Sprintf("scale=%g/offset=%g/state=%d", scale, offset, state), func(t *testing.T) {
+					useProgressApplication(t, &progressTestApplication{sheet: sheet})
+					b, host, dispatcher := switchInput()
+					b.SetAnimated(false)
+					b.SetChecked(true)
+					switch state {
+					case style.Hovered:
+						dispatchTabPointer(t, dispatcher, host, events.PointerMove, 16, 16)
+					case style.Pressed:
+						dispatchTabPointer(t, dispatcher, host, events.PointerDown, 16, 16)
+					case style.Disabled:
+						b.SetEnabled(false)
+					}
+					out := new(progressPixelSurface)
+					native, err := software.NewPainter(out)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer native.Destroy()
+					native.Begin(100*scale, 40*scale, scale)
+					native.Clear(graphics.Color{})
+					native.SetTransform(geometry.Translate(offset, offset))
+					b.Paint(checkPixelPainter{native: native})
+					native.End()
+
+					track := gui.ResolveStyle("switch", "track-checked", state)
+					bg, _ := track.BackgroundColor()
+					ink := color.RGBAModel.Convert(bg).(color.RGBA)
+					if ink.A != 255 {
+						t.Fatal("coverage reference requires an opaque track")
+					}
+					// Sample the left semicircle, where the checked thumb cannot cover
+					// the track. The independent reference integrates an exact radius-10
+					// circle in physical pixels; it does not redraw the same path.
+					// Compare premultiplied sRGB RGBA8 over transparent. Ten byte levels
+					// allow 26.6 path quantization, the cubic circle approximation and
+					// RGBA8 rounding, but reject the former ~25% double-AA coverage error.
+					cx, cy, radius := float64((16+offset)*scale), float64((16+offset)*scale), float64(10*scale)
+					boundary := 0
+					for y := 0; y < out.pixels.Bounds().Dy(); y++ {
+						for x := 0; float64(x+1) <= cx; x++ {
+							coverage := switchCircleCoverage(x, y, cx, cy, radius)
+							if coverage > 0 && coverage < 1 {
+								boundary++
+							}
+							got := out.pixels.RGBAAt(x, y)
+							for i, channel := range [4]uint8{got.R, got.G, got.B, got.A} {
+								want := float64([4]uint8{ink.R, ink.G, ink.B, ink.A}[i]) * coverage
+								if math.Abs(float64(channel)-want) > 10 {
+									t.Fatalf("capsule (%d,%d) channel %d=%d want %.2f (coverage %.4f)", x, y, i, channel, want, coverage)
 								}
 							}
 						}
-						if boundary == 0 {
-							t.Fatal("no antialiased boundary pixels sampled")
-						}
-					})
-				}
+					}
+					if boundary == 0 {
+						t.Fatal("no antialiased boundary pixels sampled")
+					}
+				})
 			}
 		}
 	}
