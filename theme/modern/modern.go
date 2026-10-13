@@ -1,6 +1,6 @@
 // Package modern builds an explicitly enabled, platform-independent stylesheet.
-// It does not query system settings or subscribe to changes. Applications pass
-// settings into Options and replace their stylesheet when those values change.
+// It does not query native settings or subscribe to changes. Applications pass
+// values through Options or supply a settings snapshot through FromSettings.
 package modern
 
 import (
@@ -8,6 +8,7 @@ import (
 	"math"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/style"
 )
 
@@ -55,6 +56,30 @@ type Options struct {
 
 // Sheet returns a complete sheet; GUI fallback rules need not be appended.
 func Sheet(options Options) style.StyleSheet { return style.Sheet(Rules(options)...) }
+
+// Settings is the appearance subset consumed by FromSettings. Both gui.Settings
+// and ui.Settings satisfy it; no language, signal or application is required.
+// Calls retain the supplied settings object's threading contract.
+type Settings interface {
+	ColorScheme() gui.ColorScheme
+	AccentColor() color.Color
+	FontFamily() string
+	FontSize() float32
+}
+
+// FromSettings creates a complete Modern stylesheet from the current settings.
+// It does not retain settings, install the sheet or subscribe to changes. In a
+// ui.Run build, use Root().StyleSheet(modern.FromSettings(app.Settings())); UI
+// already rebuilds after settings changes. Imperative GUI applications can pass
+// the result to SetStyleSheet and repeat that on Settings.ConnectChanged.
+func FromSettings(settings Settings) style.StyleSheet {
+	return Sheet(Options{
+		Dark:        settings.ColorScheme() == gui.ColorSchemeDark,
+		AccentColor: settings.AccentColor(),
+		FontFamily:  settings.FontFamily(),
+		FontSize:    settings.FontSize(),
+	})
+}
 
 // Rules returns independently owned rules. Append application rules to override
 // specific selectors, then pass the result to style.Sheet. No window decoration

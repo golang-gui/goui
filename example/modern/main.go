@@ -42,10 +42,14 @@ func main() {
 		var sheet style.StyleSheet
 		primary, primaryContent, muted, flat, warning, errorStyle, success := "", "", "", "", "", "", ""
 		if mode != 3 {
-			sheet = modern.Sheet(modern.Options{
-				Dark: dark, AccentColor: accent,
-				FontFamily: settings.FontFamily(), FontSize: settings.FontSize(),
-			})
+			if mode == 0 && accentIndex == 0 {
+				sheet = modern.FromSettings(settings)
+			} else {
+				sheet = modern.Sheet(modern.Options{
+					Dark: dark, AccentColor: accent,
+					FontFamily: settings.FontFamily(), FontSize: settings.FontSize(),
+				})
+			}
 			primary, primaryContent, muted = modern.Primary, modern.PrimaryContent, modern.MutedText
 			flat, warning, errorStyle, success = modern.Flat, modern.Warning, modern.Error, modern.Success
 		}
