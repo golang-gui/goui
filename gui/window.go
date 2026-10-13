@@ -176,7 +176,7 @@ func newWindow(app *application, options WindowOptions) (*window, error) {
 	}
 
 	mode := options.Chrome
-	nativeOptions := platform.WindowOptions{Chrome: platform.WindowChrome(mode), Transparent: options.Transparent}
+	nativeOptions := platform.WindowOptions{Chrome: platform.WindowChrome(mode), Transparent: options.Transparent, SkipTaskbar: options.SkipTaskbar}
 	platformWindow, err := app.platform.NewWindow(options.Size, win.onEvent, nativeOptions)
 	if mode == WindowChromeIntegrated && errors.Is(err, platform.ErrUnsupported) && platformWindow == nil &&
 		runtime.GOOS == "linux" && app.platform.Name() == "x11" {
@@ -193,7 +193,7 @@ func newWindow(app *application, options WindowOptions) (*window, error) {
 	}
 	if mode == WindowChromeIntegrated && errors.Is(err, platform.ErrUnsupported) && platformWindow == nil {
 		mode = WindowChromeNative
-		nativeOptions = platform.WindowOptions{Chrome: platform.WindowChromeNative, Transparent: options.Transparent}
+		nativeOptions = platform.WindowOptions{Chrome: platform.WindowChromeNative, Transparent: options.Transparent, SkipTaskbar: options.SkipTaskbar}
 		platformWindow, err = app.platform.NewWindow(options.Size, win.onEvent, nativeOptions)
 	}
 	win.surface = platformWindow

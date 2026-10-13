@@ -28,14 +28,20 @@ const (
 // Zero size components use the GUI default. On X11, Integrated uses GUI-drawn
 // decorations over a transparent None surface. If that capability is absent,
 // it falls back to Native. No Widget root is inserted.
-// Sizes use DIP under the backend's existing extent convention; layout always
-// uses the actual client size, not the requested extent.
+// Size requests client-area DIP; layout always uses the actual client size,
+// not the requested extent.
 type WindowOptions struct {
 	Size   geometry.Size
 	Chrome WindowChromeMode
 	// Transparent requires a native alpha surface; failure is returned, never
 	// downgraded to opaque. The window style independently controls its background.
 	Transparent bool
+	// SkipTaskbar requests no separate taskbar entry, independently of Chrome
+	// and positioning. Windows also excludes Alt+Tab; X11 may ignore the hint.
+	// macOS keeps the application Dock icon and native minimization behavior.
+	// The window remains an ordinary, activatable window and counts toward the
+	// application's last-window-closed policy. This is creation-only.
+	SkipTaskbar bool
 }
 
 var defaultWindowOptions = WindowOptions{

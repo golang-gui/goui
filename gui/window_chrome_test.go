@@ -47,7 +47,7 @@ type chromeTestPlatform struct {
 func (p *chromeTestPlatform) Name() string { return p.name }
 
 func (p *chromeTestPlatform) NewWindow(size geometry.Size, handler platform.EventHandler, options platform.WindowOptions) (platform.Window, error) {
-	p.options = WindowOptions{Size: size, Chrome: WindowChromeMode(options.Chrome), Transparent: options.Transparent}
+	p.options = WindowOptions{Size: size, Chrome: WindowChromeMode(options.Chrome), Transparent: options.Transparent, SkipTaskbar: options.SkipTaskbar}
 	p.history = append(p.history, p.options)
 	p.created++
 	if p.creationError != nil {
@@ -154,6 +154,30 @@ func TestWindowCreationOptionsAndService(t *testing.T) {
 			t.Fatal("lost creation-time size event")
 		}
 		win.Destroy()
+	}
+}
+
+func TestWindowSkipTaskbarPreservedThroughChromeFallback(t *testing.T) {
+	for _, chrome := range []WindowChromeMode{WindowChromeNative, WindowChromeNone, WindowChromeIntegrated} {
+		for _, fallback := range []bool{false, true} {
+			native := &desktopTestWindow{chrome: platform.WindowChrome(chrome), state: WindowStateHidden}
+			plat := &chromeTestPlatform{native: native, unsupportedIntegrated: fallback}
+			app := &application{platform: plat}
+			options := WindowOptions{Chrome: chrome, SkipTaskbar: true}
+			win, err := app.NewWindow(&options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, request := range plat.history {
+				if !request.SkipTaskbar || request.Transparent || request.Size != defaultWindowOptions.Size {
+					t.Fatalf("creation preference lost: %+v", request)
+				}
+			}
+			if len(app.Windows()) != 1 || app.Windows()[0] != win {
+				t.Fatal("taskbar omission changed ordinary window registration")
+			}
+			win.Destroy()
+		}
 	}
 }
 

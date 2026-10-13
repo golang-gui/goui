@@ -61,6 +61,33 @@ func TestAppMountsAndUpdatesWindow(t *testing.T) {
 	}
 }
 
+func TestWindowSkipTaskbarCreationOnly(t *testing.T) {
+	app := newWindowTestApplication()
+	skip := true
+	rt := newApp(app, func() RootView {
+		return Window("tool").Chrome(WindowChromeNone).SkipTaskbar(skip).Content(Label("tool"))
+	})
+	if err := rt.rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	if len(app.options) != 1 || !app.options[0].SkipTaskbar || app.options[0].Chrome != gui.WindowChromeNone {
+		t.Fatalf("creation preferences not forwarded: %+v", app.options)
+	}
+	if err := rt.rebuild(); err != nil || len(app.windows) != 1 || app.windows[0].shows != 1 {
+		t.Fatalf("identical declaration recreated/showed window: %v", err)
+	}
+	skip = false
+	if err := rt.rebuild(); err == nil {
+		t.Fatal("changing SkipTaskbar on a mounted window must fail")
+	}
+	if len(app.windows) != 1 || app.windows[0].destroyed {
+		t.Fatal("rejected creation change replaced/destroyed window")
+	}
+	if Window("ordinary").options.SkipTaskbar || Window("ordinary").SkipTaskbar(true).SkipTaskbar(false).options.SkipTaskbar {
+		t.Fatal("zero/default or explicit false did not restore ordinary preference")
+	}
+}
+
 func TestNewWindowRegisteredForAfterUpdateBeforeShow(t *testing.T) {
 	app := newWindowTestApplication()
 	probe := &afterUpdateProbe{child: Label("ready").ID("child")}

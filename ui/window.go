@@ -99,6 +99,14 @@ func (w WindowView) Chrome(chrome WindowChromeMode) WindowView {
 	return w
 }
 
+// SkipTaskbar sets a creation-only preference to omit this window's taskbar
+// entry. It does not change Chrome, activation, ownership or placement. Windows
+// also excludes Alt+Tab; X11 depends on the WM. macOS keeps the app's Dock icon.
+func (w WindowView) SkipTaskbar(skip bool) WindowView {
+	w.options.SkipTaskbar = skip
+	return w
+}
+
 // Content sets the root widget view for the window.
 func (w WindowView) Content(content View) WindowView {
 	w.content = content

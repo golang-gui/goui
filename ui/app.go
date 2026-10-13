@@ -494,7 +494,7 @@ func (m *windowMount) connect() {
 
 func (m *windowMount) update(view WindowView) error {
 	if view.options != m.view.options {
-		return fmt.Errorf("window %q: Size and Chrome are creation-only; use a new window ID to change them", view.id)
+		return fmt.Errorf("window %q: Size, Chrome, Transparent and SkipTaskbar are creation-only; use a new window ID to change them", view.id)
 	}
 	if err := m.applyWindowProperties(view); err != nil {
 		return err
