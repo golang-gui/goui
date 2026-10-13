@@ -199,6 +199,7 @@ func TestDemoCompactChromeDeclaration(t *testing.T) {
 		t.Fatal(err)
 	}
 	var content *ast.CallExpr
+	var mainWindow ast.Node
 	var titleStyle ast.Node
 	ast.Inspect(source, func(node ast.Node) bool {
 		if assignment, ok := node.(*ast.AssignStmt); ok && len(assignment.Lhs) == 1 && len(assignment.Rhs) == 1 {
@@ -227,6 +228,9 @@ func TestDemoCompactChromeDeclaration(t *testing.T) {
 			if method, ok := call.Fun.(*ast.SelectorExpr); ok && method.Sel.Name == "FontFamily" && demoHasCall(call, "Name", `"demo-title"`) {
 				titleStyle = call
 			}
+			if method, ok := call.Fun.(*ast.SelectorExpr); ok && method.Sel.Name == "Content" && demoHasCall(call, "Window", `"main"`) {
+				mainWindow = call
+			}
 		}
 		return true
 	})
@@ -237,6 +241,7 @@ func TestDemoCompactChromeDeclaration(t *testing.T) {
 		name, method, value string
 		node                ast.Node
 	}{
+		{"main window initial centering", "Center", "true", mainWindow},
 		{"header padding", "Padding", "6", content.Args[0]},
 		{"header logo", "Size", "24", content.Args[0]},
 		{"header title", "Style", `"demo-title"`, content.Args[0]},

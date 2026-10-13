@@ -244,7 +244,7 @@ func (d *demo) build(app ui.App) ui.RootView {
 			pages[d.page]()),
 		ui.HBox(ui.Label(d.status).ID("status").WrapMode(gui.WrapWordChar).Style(modern.MutedText).MainWeight(1)).Padding(6).MinHeight(28),
 	).CrossAlign(layout.CrossStretch)
-	windows := []ui.WindowView{ui.Window("main").Title(resource.Title()).Chrome(ui.WindowChromeIntegrated).Size(1120, 800).MinSize(820, 600).
+	windows := []ui.WindowView{ui.Window("main").Title(resource.Title()).Chrome(ui.WindowChromeIntegrated).Size(1120, 800).MinSize(820, 600).Center(true).
 		Shortcuts(ui.Shortcut(ui.KeyF5).OnActivate(func() { d.report(resource.Refreshed()) })).
 		OnDestroy(func() { d.stopActivities(); d.closeFiles(); app.Quit() }).Content(surface(content).Style("demo-background"))}
 	for _, window := range d.tabWindows[1:] {
