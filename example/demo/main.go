@@ -184,6 +184,23 @@ func (d *demo) build(app ui.App) ui.RootView {
 	dark := d.mode == 2 || d.mode == 0 && settings.ColorScheme() == ui.ColorSchemeDark
 	accents := []color.Color{settings.AccentColor(), color.NRGBA{R: 118, G: 74, B: 213, A: 255}, color.NRGBA{R: 30, G: 151, B: 99, A: 255}, color.NRGBA{R: 217, G: 115, B: 36, A: 255}}
 	rules := modern.Rules(modern.Options{Dark: dark, AccentColor: accents[d.accent], FontFamily: settings.FontFamily(), FontSize: settings.FontSize()})
+	// 当前分类不是主要操作：复制普通按钮的完整规则，再显式指定中性选中底色。
+	// 规则是独立的值，不引入样式继承，也不改变其子 Label 的前景。
+	for _, rule := range rules {
+		if rule.Sel.Name == "button" {
+			rule.Sel.Name = "demo-nav-current"
+			rules = append(rules, rule)
+		}
+	}
+	selected := [3]color.NRGBA{{R: 208, G: 208, B: 214, A: 255}, {R: 200, G: 200, B: 207, A: 255}, {R: 189, G: 189, B: 197, A: 255}}
+	if dark {
+		selected = [3]color.NRGBA{{R: 52, G: 52, B: 60, A: 255}, {R: 61, G: 61, B: 69, A: 255}, {R: 69, G: 69, B: 78, A: 255}}
+	}
+	rules = append(rules,
+		style.Name("demo-nav-current").BackgroundColor(selected[0]),
+		style.Name("demo-nav-current").State(style.Hovered).BackgroundColor(selected[1]),
+		style.Name("demo-nav-current").State(style.Pressed).BackgroundColor(selected[2]),
+	)
 	fontSize := settings.FontSize()
 	if fontSize <= 0 {
 		fontSize = 14
@@ -209,7 +226,7 @@ func (d *demo) build(app ui.App) ui.RootView {
 	for i, name := range pageNames {
 		b := ui.Button().Content(ui.Label(fmt.Sprintf("%02d  %s", i+1, name())).WrapMode(gui.WrapWordChar)).Style(modern.Flat).ID(fmt.Sprintf("nav-%d", i)).OnClick(func() { d.navigate(i) })
 		if i == d.page {
-			b.Style(modern.Primary)
+			b.Style("demo-nav-current")
 		}
 		side = append(side, b)
 	}

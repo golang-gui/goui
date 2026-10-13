@@ -14,30 +14,105 @@ func resolved(sheet style.StyleSheet, name string, state style.State) style.Styl
 
 func rgba(c color.Color) color.RGBA { return color.RGBAModel.Convert(c).(color.RGBA) }
 
+func TestPrimarySolidColorsAndIndependentContent(t *testing.T) {
+	// Independent opaque sRGB byte expectations. Interaction shades are 6%/12%
+	// darker, except black which is lifted so it still has visible feedback.
+	for _, tc := range []struct {
+		accent, foreground color.RGBA
+		backgrounds        [3]color.RGBA
+	}{
+		{rgb(0x3366CC), rgb(0xFFFFFF), [3]color.RGBA{rgb(0x3366CC), rgb(0x3060C0), rgb(0x2D5AB4)}},
+		{rgb(0x0078D4), rgb(0xFFFFFF), [3]color.RGBA{rgb(0x0078D4), rgb(0x0071C7), rgb(0x006ABB)}},
+		{rgb(0x000000), rgb(0xFFFFFF), [3]color.RGBA{rgb(0x000000), rgb(0x0F0F0F), rgb(0x1F1F1F)}},
+		{rgb(0xFFFFFF), rgb(0x000000), [3]color.RGBA{rgb(0xFFFFFF), rgb(0xF0F0F0), rgb(0xE0E0E0)}},
+		{rgb(0xFFDC46), rgb(0x000000), [3]color.RGBA{rgb(0xFFDC46), rgb(0xF0CF42), rgb(0xE0C23E)}},
+	} {
+		for _, dark := range []bool{false, true} {
+			sheet := Sheet(Options{Dark: dark, AccentColor: tc.accent, FontFamily: "Primary Font", FontSize: 17})
+			for i, state := range []style.State{style.Normal, style.Hovered, style.Pressed} {
+				s := resolved(sheet, Primary, state)
+				bg, _ := s.BackgroundColor()
+				if rgba(bg) != tc.backgrounds[i] {
+					t.Fatalf("primary dark=%v accent=%v state=%v background=%v; want %v", dark, tc.accent, state, bg, tc.backgrounds[i])
+				}
+				if border, _ := s.BorderWidth(); border != 0 {
+					t.Fatal("solid primary acquired a resting/interaction border")
+				}
+				fg, _ := s.ForegroundColor()
+				content := resolved(sheet, PrimaryContent, state)
+				ink, ok := content.ForegroundColor()
+				if !ok || rgba(ink) != tc.foreground || rgba(fg) != tc.foreground {
+					t.Fatalf("primary/content foreground dark=%v accent=%v: %v/%v", dark, tc.accent, fg, ink)
+				}
+				if family, _ := content.FontFamily(); family != "Primary Font" {
+					t.Fatal("primary content lost independent typography")
+				}
+				if size, _ := content.FontSize(); size != 17 {
+					t.Fatal("primary content lost font size")
+				}
+				if _, hasBackground := content.BackgroundColor(); hasBackground {
+					t.Fatal("primary content paints another button surface")
+				}
+			}
+			p := colorsFor(dark)
+			for _, name := range []string{"label", "icon"} {
+				fg, _ := resolved(sheet, name, style.Normal).ForegroundColor()
+				if rgba(fg) != p.text {
+					t.Fatal("primary foreground leaked into ordinary content")
+				}
+			}
+			bg, _ := resolved(sheet, Primary, style.Disabled).BackgroundColor()
+			fg, _ := resolved(sheet, PrimaryContent, style.Disabled).ForegroundColor()
+			if rgba(bg) != p.button || rgba(fg) != p.disabled {
+				t.Fatal("disabled primary kept accent or pointer feedback")
+			}
+			disabled := resolved(sheet, Primary, style.Disabled)
+			border, _ := disabled.BorderColor()
+			if width, _ := disabled.BorderWidth(); width != 0 || rgba(border) != p.border {
+				t.Fatal("disabled primary changed its optional neutral border")
+			}
+		}
+	}
+}
+
 func TestButtonFocusAppearance(t *testing.T) {
 	for _, dark := range []bool{false, true} {
 		neutral := color.RGBA{R: 198, G: 198, B: 206, A: 255}
 		if dark {
 			neutral = color.RGBA{R: 85, G: 85, B: 95, A: 255}
 		}
-		for _, accent := range []color.Color{nil, color.Black, color.White, color.RGBA{R: 255, A: 255}} {
+		for _, accent := range []color.Color{nil, color.Black, color.White, rgb(0xFF0000), rgb(0x3366CC), rgb(0x0078D4), rgb(0xFFDC46)} {
 			rules := Rules(Options{Dark: dark, AccentColor: accent})
 			sheet := style.Sheet(rules...)
 			for _, name := range []string{"button", Primary, Flat} {
 				focused := sheet.Resolve(style.Sel{Name: name, Part: "focus", State: style.Focused})
 				focus, _ := focused.BorderColor()
 				base := rgba(focus)
-				// Independent integer reference: 75% focus + 25% neutral,
-				// nearest byte rounding. All inputs/output are opaque sRGB.
+				if name == Primary {
+					ordinary, _ := sheet.Resolve(style.Sel{Name: "button", Part: "focus", State: style.Focused}).BorderColor()
+					if base != rgba(ordinary) {
+						t.Fatalf("primary pointer focus changed: dark=%v accent=%v got=%v want %v", dark, accent, base, ordinary)
+					}
+				}
+				// Independent integer reference: ordinary/Flat keyboard focus
+				// retains the existing 75% focus + 25% neutral border blend.
 				blend := func(a, b uint8) uint8 { return uint8((3*int(a) + int(b) + 2) / 4) }
 				want := color.RGBA{R: blend(base.R, neutral.R), G: blend(base.G, neutral.G), B: blend(base.B, neutral.B), A: 255}
 				if accent == nil {
-					blue := color.RGBA{R: 101, G: 145, B: 213, A: 255}
+					blue := color.RGBA{R: 102, G: 147, B: 217, A: 255}
 					if dark {
-						blue = color.RGBA{R: 91, G: 130, B: 190, A: 255}
+						blue = color.RGBA{R: 87, G: 127, B: 190, A: 255}
 					}
 					if want != blue {
 						t.Fatalf("default blue reference changed: %v want %v", want, blue)
+					}
+				}
+				if name == Primary {
+					// Fixed neutral bytes depend only on the mode, not the fill
+					// or its foreground. Pointer focus keeps the default above.
+					want = color.RGBA{R: 65, G: 65, B: 71, A: 255}
+					if dark {
+						want = color.RGBA{R: 216, G: 216, B: 222, A: 255}
 					}
 				}
 				for _, state := range []style.State{style.Focused, style.FocusVisible} {
@@ -51,7 +126,7 @@ func TestButtonFocusAppearance(t *testing.T) {
 						wantWidth = 2
 						bc, ok := s.BorderColor()
 						if !ok || rgba(bc) != want || rgba(bc) == neutral {
-							t.Fatalf("keyboard border: dark=%v accent=%v name=%s got=%v want=%v", dark, accent, name, bc, want)
+							t.Fatalf("keyboard outline color: dark=%v accent=%v name=%s got=%v want=%v", dark, accent, name, bc, want)
 						}
 					}
 					if width, ok := s.BorderWidth(); !ok || width != wantWidth {
@@ -90,6 +165,28 @@ func TestButtonFocusAppearance(t *testing.T) {
 			if width, _ := resolved(sheet, "text-input", style.Focused).BorderWidth(); width != 2 {
 				t.Fatal("ordinary text-input focus border changed")
 			}
+		}
+	}
+}
+
+func TestPrimaryContentOverridesAreIndependent(t *testing.T) {
+	rules := Rules(Options{AccentColor: rgb(0x3366CC)})
+	sheet := style.Sheet(append(rules,
+		style.Name(PrimaryContent).ForegroundColor(rgb(0xEEEEEE)).FontSize(19),
+	)...)
+	for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed, style.FocusVisible} {
+		content := resolved(sheet, PrimaryContent, state)
+		ink, _ := content.ForegroundColor()
+		size, _ := content.FontSize()
+		if rgba(ink) != rgb(0xEEEEEE) || size != 19 {
+			t.Fatal("explicit primary content override was lost")
+		}
+	}
+	for _, name := range []string{Primary, "label", "icon"} {
+		original := resolved(style.Sheet(rules...), name, style.Normal)
+		actual := resolved(sheet, name, style.Normal)
+		if !style.SameRules([]style.Rule{{Style: original}}, []style.Rule{{Style: actual}}) {
+			t.Fatalf("primary content override leaked into %s", name)
 		}
 	}
 }
@@ -579,7 +676,7 @@ func TestPaletteAndCoverage(t *testing.T) {
 				t.Fatalf("dark=%v %s background=%v, want %v", dark, name, bg, want)
 			}
 		}
-		for _, name := range []string{"widget", "label", Primary, MutedText, Card, Sidebar, Flat, Warning, Error, Success, "button", "text-input", "scroll-view", "header-bar", "popover", "menu", "menu-item-text", "menu-item-text-disabled"} {
+		for _, name := range []string{"widget", "label", Primary, PrimaryContent, MutedText, Card, Sidebar, Flat, Warning, Error, Success, "button", "text-input", "scroll-view", "header-bar", "popover", "menu", "menu-item-text", "menu-item-text-disabled"} {
 			s := resolved(sheet, name, style.Normal)
 			family, _ := s.FontFamily()
 			size, _ := s.FontSize()
@@ -679,6 +776,27 @@ func TestQuantizedContrastAcrossAccentCube(t *testing.T) {
 						}
 					}
 					for _, name := range []string{"button", Primary, "text-input", "menu-item"} {
+						textColor, focusColor := p.text, rgba(focus)
+						if name == Primary {
+							// Children explicitly select PrimaryContent; the body
+							// foreground is not inherited from the solid button.
+							fg, _ := resolved(sheet, PrimaryContent, style.Normal).ForegroundColor()
+							textColor = rgba(fg)
+							ink, _ := sheet.Resolve(style.Sel{Name: Primary, Part: "focus", State: style.FocusVisible}).BorderColor()
+							focusColor = rgba(ink)
+							if textColor != rgb(0x000000) && textColor != rgb(0xFFFFFF) {
+								t.Fatal("primary content has no stable contrasting foreground")
+							}
+							// Mode selects the fixed gray, regardless of the accent
+							// or the fill's black/white foreground choice.
+							wantFocus := rgb(0x414147)
+							if dark {
+								wantFocus = rgb(0xD8D8DE)
+							}
+							if focusColor != wantFocus {
+								t.Fatalf("primary mode-neutral focus: dark=%v accent=%v got=%v want %v", dark, accent, focusColor, wantFocus)
+							}
+						}
 						for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed} {
 							s := resolved(sheet, name, state)
 							bg, _ := s.BackgroundColor()
@@ -686,11 +804,11 @@ func TestQuantizedContrastAcrossAccentCube(t *testing.T) {
 							if background.A == 0 { // menu text is over the menu surface
 								background = p.surface
 							}
-							if contrast(p.text, background) < 4.5 {
+							if contrast(textColor, background) < 4.5 {
 								t.Fatalf("text contrast: dark=%v accent=%v %s/%v", dark, accent, name, state)
 							}
-							if name != "menu-item" && contrast(rgba(focus), background) < 3 {
-								t.Fatalf("focus contrast: dark=%v accent=%v %s/%v", dark, accent, name, state)
+							if ratio := contrast(focusColor, background); name != "menu-item" && name != Primary && ratio < 3 {
+								t.Fatalf("focus contrast: dark=%v accent=%v %s/%v got=%g want >= 3", dark, accent, name, state, ratio)
 							}
 						}
 					}

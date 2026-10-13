@@ -9,12 +9,12 @@
 // 操作与预期：
 //  1. 点击 Light/Dark。普通搜索图标随正文变亮／暗，Accent 勾号保持可辨，
 //     双色标记的橙色部分不变，另一部分随前景变化，无旧颜色残留。
-//  2. 点击 Accent。蓝／紫／绿循环，只有主题色图标跟随；普通图标不变。
+//  2. 点击 Accent。蓝／紫／绿循环，主题色图标及 Primary 按钮实底跟随；普通图标不变。
 //  3. 点击 Size。24/40/16 DIP 循环，圆形仍为圆形，Path 比例不变；在 2x 下
 //     重新运行检查斜线和曲线边缘，不应出现放大低分辨率位图的模糊。
 //  4. 点击 Replace。最后一个图标在加号和减号间切换，验证同源闭包更新。
 //  5. 点击搜索图标按钮，每次计数加一；悬停／按下只改变按钮背景，图标不
-//     继承按钮样式；独立图标无点击行为，不出现焦点边框。
+//     继承按钮样式，显式使用 PrimaryContent 对比前景；独立图标无点击行为，不出现焦点边框。
 //  6. 调整窗口大小，图标不溢出控件边界；切换主题后重复以上操作。
 //
 // 平台差异：字体／窗口装饰由现有平台处理；三后端图标几何和颜色应一致，
@@ -91,7 +91,7 @@ func main() {
 							ui.Icon(searchSource).Size(size),
 							ui.Icon(checkSource).Size(size).Style(modern.AccentIcon),
 							ui.Icon(markSource).Size(size),
-							ui.Button().Content(ui.Icon(searchSource).Size(size)).Style(modern.Primary).OnClick(func() { clicks++; app.RequestUpdate() }),
+							ui.Button().Content(ui.Icon(searchSource).Size(size).Style(modern.PrimaryContent)).Style(modern.Primary).OnClick(func() { clicks++; app.RequestUpdate() }),
 							ui.Icon(symbolSource).Size(size),
 						).Spacing(24).CrossAlign(layout.CrossCenter),
 						ui.Label("Search | Accent path | Two-color | Icon button | Closure"),

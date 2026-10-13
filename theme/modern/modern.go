@@ -12,9 +12,13 @@ import (
 )
 
 const (
-	// Primary is a tinted button style. Its child Label keeps the normal text
-	// color: GOUI styles do not implicitly inherit through the widget tree.
+	// Primary is a solid, borderless accent Button/MenuButton style.
+	// Give its child labels and monochrome icons PrimaryContent explicitly;
+	// styles do not inherit.
 	Primary = "primary"
+	// PrimaryContent is the contrasting foreground and typography for content
+	// on Primary. It supplies no background, border or layout policy.
+	PrimaryContent = "primary-content"
 	// MutedText is a secondary text style for Label and other text widgets.
 	MutedText = "muted-text"
 	// AccentIcon uses a contrast-adjusted accent foreground for drawing icons.
@@ -77,14 +81,9 @@ func Rules(options Options) []style.Rule {
 	// a pressed menu fill. Borders distinguish structure without competing with it.
 	rowSelected := mix(p.window, p.text, .10)
 	tableEdge, tableGrid := mix(p.window, p.text, .14), mix(p.window, p.text, .06)
-	primary := [3]color.RGBA{
-		tintedBackground(p.button, accent, p.text, .12),
-		tintedBackground(p.button, accent, p.text, .18),
-		tintedBackground(p.button, accent, p.text, .24),
-	}
+	primary, primaryText := primaryColors(accent)
 	focus := focusColor(accent, p.text, []color.RGBA{
 		p.window, p.surface, p.button, buttonHover, buttonPressed,
-		primary[0], primary[1], primary[2],
 	})
 	// Soften the accent towards the palette's neutral border, not white in both
 	// themes. The opaque color keeps hover/pressed backgrounds unchanged.
@@ -132,6 +131,7 @@ func Rules(options Options) []style.Rule {
 		text("widget").BackgroundColor(color.Transparent).BorderWidth(0).Radius(0),
 		style.Name("widget").State(style.Disabled).ForegroundColor(p.disabled),
 		text("label"),
+		text(PrimaryContent).ForegroundColor(primaryText),
 		style.Name("icon").ForegroundColor(p.text),
 		style.Name("progress-bar").BackgroundColor(progressTrack).
 			ForegroundColor(focusColor(accent, p.text, []color.RGBA{progressTrack, p.window})).Radius(2),
@@ -201,6 +201,7 @@ func Rules(options Options) []style.Rule {
 		{Flat, [3]color.Color{color.Transparent, buttonHover, buttonPressed}},
 	} {
 		borderWidth := float32(1)
+		foreground, keyboardBorder := p.text, tabFocus
 		var disabledBackground color.Color = p.button
 		hoverRule := style.Name(button.name).State(style.Hovered).BackgroundColor(button.bg[1])
 		pressedRule := style.Name(button.name).State(style.Pressed).BackgroundColor(button.bg[2])
@@ -212,8 +213,17 @@ func Rules(options Options) []style.Rule {
 			hoverRule = hoverRule.BorderWidth(1)
 			pressedRule = pressedRule.BorderWidth(1)
 		}
+		if button.name == Primary {
+			borderWidth = 0 // The solid fill defines the resting boundary.
+			foreground = primaryText
+			// Only keyboard focus uses a neutral border selected by the mode.
+			keyboardBorder = rgb(0x414147)
+			if options.Dark {
+				keyboardBorder = rgb(0xD8D8DE)
+			}
+		}
 		rules = append(rules,
-			text(button.name).BackgroundColor(button.bg[0]).BorderColor(p.border).BorderWidth(borderWidth).Radius(6),
+			text(button.name).ForegroundColor(foreground).BackgroundColor(button.bg[0]).BorderColor(p.border).BorderWidth(borderWidth).Radius(6),
 			hoverRule,
 			pressedRule,
 			style.Name(button.name).State(style.Disabled).ForegroundColor(p.disabled).BackgroundColor(disabledBackground),
@@ -222,7 +232,7 @@ func Rules(options Options) []style.Rule {
 			style.Name(button.name).Part("focus").State(style.Focused).
 				BackgroundColor(color.Transparent).BorderColor(focus).BorderWidth(0),
 			style.Name(button.name).Part("focus").State(style.FocusVisible).
-				BackgroundColor(color.Transparent).BorderColor(tabFocus).BorderWidth(2),
+				BackgroundColor(color.Transparent).BorderColor(keyboardBorder).BorderWidth(2),
 		)
 	}
 	rules = append(rules, checkButtonRules(p, accent, tabFocus)...)
@@ -230,7 +240,7 @@ func Rules(options Options) []style.Rule {
 	rules = append(rules, dropDownRules(p, tabFocus, options.FontFamily, size)...)
 	// Each content widget resolves its own name; state is shared through the
 	// tree, but foreground rules are explicit rather than inherited colors.
-	for _, name := range []string{"icon", AccentIcon, MutedText, Card, Sidebar, Warning, Error, Success, "check-button-text", "switch-text",
+	for _, name := range []string{"icon", AccentIcon, PrimaryContent, MutedText, Card, Sidebar, Warning, Error, Success, "check-button-text", "switch-text",
 		"drop-down-text", "drop-down-placeholder", "table-header-text", "table-cell-text", "table-cell-icon",
 		"tree-item-text", "tree-item-icon", "tab-item-text", "tab-item-text-selected", "tab-item-icon",
 		"tab-item-icon-selected", "tab-close-button-text", "tab-scroll-button-text"} {
@@ -303,14 +313,20 @@ func contrast(a, b color.RGBA) float64 {
 	return (max(x, y) + .05) / (min(x, y) + .05)
 }
 
-func tintedBackground(base, accent, text color.RGBA, amount float64) color.RGBA {
-	for step := 255; step >= 0; step-- {
-		bg := mix(base, accent, amount*float64(step)/255)
-		if contrast(bg, text) >= 4.5 {
-			return bg
-		}
+func primaryColors(accent color.RGBA) ([3]color.RGBA, color.RGBA) {
+	black, white := rgb(0x000000), rgb(0xFFFFFF)
+	foreground, contrastTarget := white, black
+	// Keep white lettering for saturated accents. Very light accents use black
+	// instead of turning yellow/pastel/white into a dark, unrelated surface.
+	if luminance(accent) > .5 {
+		foreground, contrastTarget = black, white
 	}
-	return base
+	base := contrastColor(accent, contrastTarget, []color.RGBA{foreground}, 4.5)
+	interaction := black
+	if luminance(base) < .02 {
+		interaction = white // Black still needs visible hover/pressed feedback.
+	}
+	return [3]color.RGBA{base, mix(base, interaction, .06), mix(base, interaction, .12)}, foreground
 }
 
 func focusColor(accent, text color.RGBA, backgrounds []color.RGBA) color.RGBA {
