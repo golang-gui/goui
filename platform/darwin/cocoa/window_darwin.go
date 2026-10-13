@@ -114,6 +114,10 @@ func newWindow(size geometry.Size, onEvent events.EventHandler, options common.W
 
 	AutoReleasePool(func() {
 		win.window.SetCollectionBehavior(NSWindowCollectionBehaviorManaged | NSWindowCollectionBehaviorFullScreenPrimary)
+		// AppKit does not choose a default position for an explicit (0, 0)
+		// content rect. Place ordinary windows while hidden; later SetPosition
+		// requests override this, and Show must preserve their current position.
+		win.window.Center()
 	})
 	return win, nil
 }
