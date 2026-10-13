@@ -115,6 +115,8 @@ func Rules(options Options) []style.Rule {
 	tabFocus := mix(focus, p.border, .25)
 	progressTrack := mix(p.window, p.text, .10)
 	rules := []style.Rule{
+		style.Name("border-box").BackgroundColor(color.Transparent).
+			BorderColor(color.Transparent).BorderWidth(0).Radius(0),
 		text("check-button"),
 		text("check-button-text"),
 		text("switch-text"),

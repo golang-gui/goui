@@ -56,6 +56,8 @@ func coreRules() []style.Rule {
 	size := defaultFontSize
 
 	return []style.Rule{
+		style.Name("border-box").BackgroundColor(color.Transparent).
+			BorderColor(color.Transparent).BorderWidth(0).Radius(0),
 		style.Name(styleNameWindow).BackgroundColor(color.White),
 		style.Name(styleNamePopover).BackgroundColor(color.White),
 		style.Name(styleNameIcon).ForegroundColor(color.Black),
