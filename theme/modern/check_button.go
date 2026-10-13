@@ -6,8 +6,8 @@ import (
 	"github.com/golang-gui/goui/style"
 )
 
-// Checkboxes use a solid accent with a white mark. Radios keep an open center,
-// while the larger toggle button uses neutral surfaces and independently styled text.
+// Selected checkboxes and radios use a solid accent with a white mark.
+// The larger toggle button uses neutral surfaces and independently styled text.
 func checkButtonRules(p palette, accent, focus color.RGBA) []style.Rule {
 	ordinary := [3]color.RGBA{p.button, mix(p.button, p.text, .04), mix(p.button, p.text, .08)}
 	selected := [3]color.RGBA{
@@ -16,10 +16,10 @@ func checkButtonRules(p palette, accent, focus color.RGBA) []style.Rule {
 		mix(p.button, p.text, .20),
 	}
 	white, black := rgb(0xFFFFFF), rgb(0)
+	// Share selected fills between checkboxes and radios.
 	// Darken very light accents rather than swapping the check to a black mark.
 	fill := contrastColor(accent, black, []color.RGBA{white}, 4.5)
 	checkFill := [3]color.RGBA{fill, mix(fill, black, .06), mix(fill, black, .12)}
-	radioMark := contrastColor(accent, p.text, ordinary[:], 4.5)
 	rules := []style.Rule{style.Name("check-button").BackgroundColor(color.Transparent).BorderWidth(0)}
 	for _, shape := range []string{"indicator", "radio", "button"} {
 		for _, selection := range []string{"", "-checked", "-mixed"} {
@@ -39,7 +39,9 @@ func checkButtonRules(p palette, accent, focus color.RGBA) []style.Rule {
 			case "radio":
 				radius = 9
 				if selection != "" {
-					fg, edge, width = radioMark, radioMark, 2
+					backgrounds, fg, edge, width = checkFill, white, fill, 0
+					disabledBackground = mix(p.button, p.text, .20)
+					disabledEdge = disabledBackground
 				}
 			case "button":
 				edge, disabledEdge, radius = p.border, p.border, 6
@@ -50,8 +52,8 @@ func checkButtonRules(p palette, accent, focus color.RGBA) []style.Rule {
 			}
 			part := shape + selection
 			edges := [3]color.RGBA{edge, edge, edge}
-			if shape == "indicator" && selection != "" {
-				edges = backgrounds
+			if shape != "button" && selection != "" {
+				edges = checkFill
 			}
 			rules = append(rules,
 				style.Name("check-button").Part(part).BackgroundColor(backgrounds[0]).ForegroundColor(fg).BorderColor(edges[0]).BorderWidth(width).Radius(radius),
