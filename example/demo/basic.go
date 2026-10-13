@@ -17,7 +17,7 @@ func (d *demo) basicPage() ui.View {
 		section(resource.Buttons(),
 			wui.Switch(resource.EnableControls()).Checked(d.enabled).OnChange(func(v bool) { d.enabled = v; change() }),
 			ui.HWrap(ui.Button(resource.NormalButton()).OnClick(func() { d.report(resource.NormalClicked()) }),
-				ui.Button(resource.PrimaryButton()).Style(modern.Primary).OnClick(func() { d.report(resource.PrimaryClicked()) }),
+				ui.Button().Content(ui.Label(resource.PrimaryButton()).Style(modern.PrimaryContent)).Style(modern.Primary).OnClick(func() { d.report(resource.PrimaryClicked()) }),
 				ui.Button(resource.FlatButton()).Style(modern.Flat).ID("basic-flat").OnClick(func() { d.report(resource.FlatClicked()) }),
 				ui.Button().Content(ui.HBox(ui.Icon(d.logo).Size(18), ui.Label(resource.IconButton())).Spacing(8)).OnClick(func() { d.report(resource.IconClicked()) }),
 			).Spacing(12).LineSpacing(12).Enabled(d.enabled),

@@ -152,7 +152,7 @@ func main() {
 						ui.Button("Check").OnClick(check), ui.Button("Quit").OnClick(app.Quit)).Spacing(8),
 					ui.Label(fmt.Sprintf("group=%v | button=%v declared=%v | input=%v | clicks=%d changes=%d submits=%d", groupEnabled, buttonEnabled, buttonDeclared, inputEnabled, clicks, changes, submits)),
 					ui.VBox(
-						ui.HBox(button, ui.Button("Primary").ID("primary").Style(modern.Primary).OnClick(func() { clicks++; update() }),
+						ui.HBox(button, ui.Button().Content(ui.Label("Primary").Style(modern.PrimaryContent)).ID("primary").Style(modern.Primary).OnClick(func() { clicks++; update() }),
 							ui.Button("Always disabled").ID("always-disabled").Enabled(false).OnClick(func() { panic("disabled click") })).Spacing(12),
 						ui.TextInput().ID("input").Text(text).Enabled(inputEnabled).MinWidth(420).
 							OnText(func(value string) { text = value; changes++; update() }).OnSubmit(func() { submits++; update() }),

@@ -122,7 +122,8 @@ func main() {
 	watch(first, "first")
 	watch(second, "second")
 	action := gui.NewButton()
-	action.SetChild(gui.NewLabel("action"))
+	actionText := gui.NewLabel("action")
+	action.SetChild(actionText)
 	watch(action, "action")
 	activations := 0
 	action.ConnectClicked(func() {
@@ -258,11 +259,12 @@ func main() {
 		fmt.Printf("accent-index=%d (0=blue, 1=black, 2=white, 3=red)\n", accentIndex)
 	})
 	bind(gui.KeyF10, func() {
-		name := modern.Primary
+		name, contentName := modern.Primary, modern.PrimaryContent
 		if action.StyleName() == name {
-			name = ""
+			name, contentName = "", ""
 		}
 		action.SetStyleName(name)
+		actionText.SetStyleName(contentName)
 		fmt.Printf("action-style=%q\n", name)
 	})
 	for _, widget := range []gui.Widget{toolbar, content, status, &backendProbe{}} {

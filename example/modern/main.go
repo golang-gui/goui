@@ -7,6 +7,10 @@
 //  3. Disabled flat 无底色，不可点击或 Tab 聚焦；Flat action 的 Tab 聚焦显示 2 DIP 边框。
 //  4. 切换 Bare GUI，清空自定义 StyleName，恢复 GUI 兜底，文字不丢失。
 //  5. 打开菜单、滚动长菜单、改变窗口大小，检查菜单与控件无裁剪或透明色残留。
+//  6. Accent 按钮使用主题色实底和显式 PrimaryContent；紫/绿使用白字，黄/白使用黑字。
+//     常态/悬停/按下均不叠加普通描边，黑色仍有交互反馈；Disabled primary 使用中性底和弱化文字。
+//     Primary 的 Tab 焦点亮色为深灰 #414147、暗色为浅灰 #D8D8DE，沿用 2 DIP 贴边框，实底和文字不变。
+//     普通按钮/Flat 的焦点配色与几何不变。
 //
 // Card/Sidebar 的表面消费示例见 example/demo；布局容器不因 StyleName 自动绘制背景。
 // 副作用：无系统配置/剪贴板/文件修改。复位：重新启动。退出：关闭窗口。
@@ -26,8 +30,8 @@ func main() {
 	mode, accentIndex := 0, 0
 	text := "Hello, GOUI"
 	modes := []string{"System", "Light", "Dark", "Bare GUI"}
-	accents := []color.Color{nil, color.NRGBA{R: 140, G: 70, B: 220, A: 255}, color.NRGBA{R: 20, G: 160, B: 90, A: 255}, color.White, color.Black}
-	accentNames := []string{"System", "Purple", "Green", "White", "Black"}
+	accents := []color.Color{nil, color.NRGBA{R: 140, G: 70, B: 220, A: 255}, color.NRGBA{R: 20, G: 160, B: 90, A: 255}, color.NRGBA{R: 255, G: 220, B: 70, A: 255}, color.White, color.Black}
+	accentNames := []string{"System", "Purple", "Green", "Yellow", "White", "Black"}
 	err := ui.Run("com.xugtek.goui", func(app ui.App) ui.RootView {
 		settings := app.Settings()
 		dark := mode == 2 || mode == 0 && settings.ColorScheme() == ui.ColorSchemeDark
@@ -36,13 +40,13 @@ func main() {
 			accent = settings.AccentColor()
 		}
 		var sheet style.StyleSheet
-		primary, muted, flat, warning, errorStyle, success := "", "", "", "", "", ""
+		primary, primaryContent, muted, flat, warning, errorStyle, success := "", "", "", "", "", "", ""
 		if mode != 3 {
 			sheet = modern.Sheet(modern.Options{
 				Dark: dark, AccentColor: accent,
 				FontFamily: settings.FontFamily(), FontSize: settings.FontSize(),
 			})
-			primary, muted = modern.Primary, modern.MutedText
+			primary, primaryContent, muted = modern.Primary, modern.PrimaryContent, modern.MutedText
 			flat, warning, errorStyle, success = modern.Flat, modern.Warning, modern.Error, modern.Success
 		}
 		rows := make([]ui.View, 30)
@@ -64,8 +68,9 @@ func main() {
 						ui.Label("Hover and press buttons to inspect their appearance.").Style(muted),
 						ui.HBox(
 							ui.Button("Mode: "+modes[mode]).OnClick(func() { mode = (mode + 1) % len(modes); app.RequestUpdate() }),
-							ui.Button("Accent: "+accentNames[accentIndex]).Style(primary).
+							ui.Button().Content(ui.Label("Accent: "+accentNames[accentIndex]).Style(primaryContent)).Style(primary).
 								OnClick(func() { accentIndex = (accentIndex + 1) % len(accents); app.RequestUpdate() }),
+							ui.Button().Content(ui.Label("Disabled primary").Style(primaryContent)).Style(primary).Enabled(false),
 						).Spacing(12),
 						ui.HWrap(
 							ui.Button("Flat action").Style(flat).OnClick(func() { text = "Flat action clicked"; app.RequestUpdate() }),

@@ -127,6 +127,43 @@ func TestDemoCompactChromeDeclaration(t *testing.T) {
 	}
 }
 
+// Primary 的内容显式选择对比前景；侧栏选中只用中性色，不借用主要操作样式。
+func TestDemoPrimaryContentDeclaration(t *testing.T) {
+	primaryCount := 0
+	for _, file := range []string{"main.go", "basic.go", "overlays.go"} {
+		positions := token.NewFileSet()
+		source, err := parser.ParseFile(positions, file, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if file == "main.go" && !demoHasCall(source, "Style", `"demo-nav-current"`) {
+			t.Error("sidebar current item must have its own neutral style")
+		}
+		ast.Inspect(source, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok || len(call.Args) != 1 {
+				return true
+			}
+			method, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok || method.Sel.Name != "Style" {
+				return true
+			}
+			name, ok := call.Args[0].(*ast.SelectorExpr)
+			if !ok || name.Sel.Name != "Primary" {
+				return true
+			}
+			primaryCount++
+			if file == "main.go" || !demoHasCall(method.X, "Style", "modern.PrimaryContent") {
+				t.Errorf("%s: primary action needs explicit contrasting content, not a navigation item", positions.Position(call.Pos()))
+			}
+			return true
+		})
+	}
+	if primaryCount != 2 {
+		t.Fatalf("expected basic action and dialog confirmation; found %d primary actions", primaryCount)
+	}
+}
+
 func demoHasCall(node ast.Node, method, value string) bool {
 	found := false
 	ast.Inspect(node, func(node ast.Node) bool {

@@ -104,7 +104,9 @@ go run ./cmd/goui build -config example/demo/goui.toml
    最大化/全屏及其他平台不额外添加这段避让。缩窄窗口、最大化再恢复后，
    滚动条仍应完整可见，左右两侧都可点击、拖动，不应被窗口边缘裁掉。
    Modern 展示：内容 section 使用 `modern.Card`，侧栏外壳使用 `modern.Sidebar`，
-   未选中的分类按钮使用 `modern.Flat`，当前页仍为 Primary。扁平按钮平时无底色
+   未选中的分类按钮使用 `modern.Flat`，当前页使用私有中性选中样式。主要操作按钮
+   使用 Primary 主题色实底，子 Label 显式使用 PrimaryContent 的对比前景；禁用后
+   底色和文字均弱化，切换亮暗／主题色时仍可读。扁平按钮平时无底色
    和普通边框，悬停/按下恢复普通按钮的中性背景和 1 DIP 描边，文字位置不跳动；
    点击显示反馈，禁用扁平按钮保持透明无框且不会触发。
    Tab 聚焦仍有 2 DIP 边框。语义样式卡片中的警告/错误/成功文字与图标分别
