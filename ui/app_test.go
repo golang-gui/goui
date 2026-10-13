@@ -88,6 +88,33 @@ func TestWindowSkipTaskbarCreationOnly(t *testing.T) {
 	}
 }
 
+func TestWindowCenterCreationOnly(t *testing.T) {
+	app := newWindowTestApplication()
+	center := true
+	rt := newApp(app, func() RootView {
+		return Window("main").Size(360, 240).Center(center).Content(Label("centered"))
+	})
+	if err := rt.rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	if len(app.options) != 1 || !app.options[0].Center || app.options[0].Size != (geometry.Size{Width: 360, Height: 240}) {
+		t.Fatalf("initial centering not forwarded: %+v", app.options)
+	}
+	if err := rt.rebuild(); err != nil || len(app.windows) != 1 || app.windows[0].shows != 1 {
+		t.Fatalf("rebuild recreated or showed centered window: %v", err)
+	}
+	center = false
+	if err := rt.rebuild(); err == nil {
+		t.Fatal("changing Center on a mounted window must fail")
+	}
+	if len(app.windows) != 1 || app.windows[0].destroyed {
+		t.Fatal("rejected creation change replaced or destroyed window")
+	}
+	if Window("main").options.Center || Window("main").Center(true).Center(false).options.Center {
+		t.Fatal("default or explicit false did not restore platform placement")
+	}
+}
+
 func TestNewWindowRegisteredForAfterUpdateBeforeShow(t *testing.T) {
 	app := newWindowTestApplication()
 	probe := &afterUpdateProbe{child: Label("ready").ID("child")}

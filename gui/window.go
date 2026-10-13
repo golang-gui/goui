@@ -217,6 +217,19 @@ func newWindow(app *application, options WindowOptions) (*window, error) {
 		return nil, fmt.Errorf("create painter: %w", err)
 	}
 	win.title = platformWindow.Title()
+	if options.Center {
+		area, err := win.WorkAreaAt(geometry.Point{})
+		if err == nil {
+			err = win.SetPosition(nil, geometry.Point{
+				X: (area.Width - options.Size.Width) / 2,
+				Y: (area.Height - options.Size.Height) / 2,
+			})
+		}
+		if err != nil {
+			win.Destroy()
+			return nil, fmt.Errorf("center initial window: %w", err)
+		}
+	}
 
 	// Text input is optional. Without a native input method, navigation still
 	// uses KeyEvent, but GUI does not invent characters from physical keys.

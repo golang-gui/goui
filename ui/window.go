@@ -107,6 +107,14 @@ func (w WindowView) SkipTaskbar(skip bool) WindowView {
 	return w
 }
 
+// Center requests initial client-area centering in the window's work area.
+// It is creation-only, using the initial Size, and never reapplied on rebuild
+// or Show. False preserves platform defaults; a later SetPosition overrides it.
+func (w WindowView) Center(center bool) WindowView {
+	w.options.Center = center
+	return w
+}
+
 // Content sets the root widget view for the window.
 func (w WindowView) Content(content View) WindowView {
 	w.content = content
