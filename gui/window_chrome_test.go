@@ -296,6 +296,133 @@ func TestWindowDefaultOptionsAndInvalidCreation(t *testing.T) {
 	}
 }
 
+type centerTestWindow struct {
+	desktopTestWindow
+	area                      geometry.Rectangle
+	areaError                 error
+	areaQueries, moves, shows int
+}
+
+func (w *centerTestWindow) WorkAreaAt(point geometry.Point) (geometry.Rectangle, error) {
+	w.areaQueries++
+	if point != (geometry.Point{}) {
+		return geometry.Rectangle{}, errors.New("initial work area queried away from client origin")
+	}
+	return w.area, w.areaError
+}
+
+func (w *centerTestWindow) SetPosition(reference platform.Window, position geometry.Point) error {
+	w.moves++
+	return w.desktopTestWindow.SetPosition(reference, position)
+}
+
+func (w *centerTestWindow) Show() error {
+	w.shows++
+	return nil
+}
+
+func TestWindowInitialCenter(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		options WindowOptions
+		area    geometry.Rectangle
+		want    geometry.Point
+	}{
+		{"explicit", WindowOptions{Size: geometry.Size{Width: 320, Height: 200}, Center: true}, geometry.Rect(-140, -60, 1920, 1040), geometry.Point{X: 800, Y: 420}},
+		{"default size", WindowOptions{Center: true}, geometry.Rect(-100, -20, 1920, 1040), geometry.Point{X: 560, Y: 220}},
+		{"default axis", WindowOptions{Size: geometry.Size{Width: 320}, Center: true}, geometry.Rect(0, 0, 1920, 1040), geometry.Point{X: 800, Y: 220}},
+		{"fractional DIP", WindowOptions{Size: geometry.Size{Width: 321, Height: 201}, Center: true}, geometry.Rect(-30, -40, 1000, 700), geometry.Point{X: 339.5, Y: 249.5}},
+		{"oversized not clamped", WindowOptions{Size: geometry.Size{Width: 1200, Height: 900}, Center: true}, geometry.Rect(0, 0, 1000, 700), geometry.Point{X: -100, Y: -100}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			native := &centerTestWindow{area: tc.area}
+			plat := &chromeTestPlatform{native: native}
+			app := &application{platform: plat}
+			win, err := app.NewWindow(&tc.options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(win.Destroy)
+			if native.shows != 0 || native.areaQueries != 1 || native.moves != 1 || native.windowReference != nil || native.windowPosition != tc.want {
+				t.Fatalf("hidden initial placement: shows=%d queries=%d moves=%d reference=%v position=%v want=%v",
+					native.shows, native.areaQueries, native.moves, native.windowReference, native.windowPosition, tc.want)
+			}
+			// No creation SizeEvent: do not depend on the GUI's uninitialized cache.
+			if win.(*window).width != 0 || win.(*window).height != 0 {
+				t.Fatal("initial preference fabricated an observed client size")
+			}
+			want := geometry.Point{X: 120, Y: 80}
+			if err := win.SetPosition(nil, want); err != nil {
+				t.Fatal(err)
+			}
+			for range 2 {
+				if err := win.Show(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if native.moves != 2 || native.areaQueries != 1 || native.windowPosition != want {
+				t.Fatal("Show reapplied initial centering or overrode explicit placement")
+			}
+		})
+	}
+}
+
+func TestWindowCenterFallbackAndFailures(t *testing.T) {
+	for _, fallback := range []bool{false, true} {
+		native := &centerTestWindow{area: geometry.Rect(0, 0, 1920, 1040)}
+		native.chrome = platform.WindowChromeIntegrated
+		if fallback {
+			native.chrome = platform.WindowChromeNative
+		}
+		plat := &chromeTestPlatform{native: native, unsupportedIntegrated: fallback}
+		app := &application{platform: plat}
+		win, err := app.NewWindow(&WindowOptions{Chrome: WindowChromeIntegrated, Center: true, SkipTaskbar: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if native.moves != 1 || native.windowPosition != (geometry.Point{X: 560, Y: 220}) {
+			t.Fatal("chrome fallback lost or repeated initial placement")
+		}
+		for _, request := range plat.history {
+			if request.Center || !request.SkipTaskbar {
+				t.Fatal("GUI placement policy leaked into native creation options")
+			}
+		}
+		win.Destroy()
+	}
+	for _, tc := range []struct {
+		name   string
+		native platform.Window
+		want   error
+	}{
+		{"not desktop", &chromeTestWindow{}, platform.ErrUnsupported},
+		{"work area", &centerTestWindow{areaError: platform.ErrUnavailable}, platform.ErrUnavailable},
+		{"position", &centerTestWindow{desktopTestWindow: desktopTestWindow{commandError: platform.ErrUnsupported}, area: geometry.Rect(0, 0, 1920, 1040)}, platform.ErrUnsupported},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app := &application{platform: &chromeTestPlatform{native: tc.native}}
+			win, err := app.NewWindow(&WindowOptions{Center: true})
+			if win != nil || !errors.Is(err, tc.want) || len(app.Windows()) != 0 {
+				t.Fatalf("failed placement returned or registered a window: window=%v err=%v", win, err)
+			}
+			if native, ok := tc.native.(*centerTestWindow); ok && (!native.destroyed || native.shows != 0) {
+				t.Fatal("failed centered creation showed or leaked native window")
+			}
+			if native, ok := tc.native.(*chromeTestWindow); ok && !native.destroyed {
+				t.Fatal("failed non-desktop centered creation leaked window")
+			}
+		})
+	}
+	// A platform without desktop placement still supports the default option.
+	native := &centerTestWindow{areaError: platform.ErrUnsupported}
+	app := &application{platform: &chromeTestPlatform{native: native}}
+	win, err := app.NewWindow(&WindowOptions{Center: false})
+	if err != nil || native.areaQueries != 0 || native.moves != 0 {
+		t.Fatalf("default creation unnecessarily required positioning: %v", err)
+	}
+	win.Destroy()
+}
+
 func TestChromeOrderedQueriesAndHandles(t *testing.T) {
 	win, native := chromeFixture(t, false, true)
 	var order []int
