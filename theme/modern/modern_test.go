@@ -3,9 +3,12 @@ package modern
 import (
 	"image/color"
 	"math"
+	"reflect"
 	"testing"
 
+	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/style"
+	"github.com/golang-gui/goui/ui"
 )
 
 func resolved(sheet style.StyleSheet, name string, state style.State) style.Style {
@@ -13,6 +16,89 @@ func resolved(sheet style.StyleSheet, name string, state style.State) style.Styl
 }
 
 func rgba(c color.Color) color.RGBA { return color.RGBAModel.Convert(c).(color.RGBA) }
+
+// Consumer-side interface: both existing Settings APIs must work unchanged.
+var _ Settings = gui.Settings(nil)
+var _ Settings = ui.Settings{}
+
+type appearanceSettings struct {
+	scheme gui.ColorScheme
+	accent color.Color
+	family string
+	size   float32
+	reads  [4]int
+}
+
+func (s *appearanceSettings) ColorScheme() gui.ColorScheme { s.reads[0]++; return s.scheme }
+func (s *appearanceSettings) AccentColor() color.Color     { s.reads[1]++; return s.accent }
+func (s *appearanceSettings) FontFamily() string           { s.reads[2]++; return s.family }
+func (s *appearanceSettings) FontSize() float32            { s.reads[3]++; return s.size }
+
+func TestFromSettings(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		s := &appearanceSettings{accent: rgb(0x0078D4), family: "Test UI Font", size: 17}
+		window := rgb(0xF6F6F8)
+		if dark {
+			s.scheme, window = gui.ColorSchemeDark, rgb(0x202024)
+		}
+		sheet := FromSettings(s)
+		if s.reads != [4]int{1, 1, 1, 1} {
+			t.Fatalf("settings reads=%v; want one read per appearance value", s.reads)
+		}
+		bg, ok := sheet.Resolve(style.Sel{Name: "window"}).BackgroundColor()
+		if !ok || rgba(bg) != window {
+			t.Fatalf("dark=%v window=%v; want %v", dark, bg, window)
+		}
+		for _, name := range []string{"label", "check-button-text", "switch-text", PrimaryContent} {
+			text := sheet.Resolve(style.Sel{Name: name})
+			family, _ := text.FontFamily()
+			size, _ := text.FontSize()
+			if family != s.family || size != s.size {
+				t.Fatalf("%s lost settings typography: %q/%g", name, family, size)
+			}
+		}
+		bg, _ = sheet.Resolve(style.Sel{Name: Primary}).BackgroundColor()
+		if rgba(bg) != rgb(0x0078D4) {
+			t.Fatal("settings accent was not passed to Modern")
+		}
+		want := Sheet(Options{Dark: dark, AccentColor: s.accent, FontFamily: s.family, FontSize: s.size})
+		if !reflect.DeepEqual(sheet, want) {
+			t.Fatal("FromSettings differs from the explicit Options contract")
+		}
+	}
+}
+
+func TestFromSettingsSnapshotIsolationAndNormalization(t *testing.T) {
+	accent := rgb(0x0078D4)
+	s := &appearanceSettings{accent: &accent, family: "First", size: 16}
+	first := FromSettings(s)
+	accent = rgb(0xD03030)
+	s.scheme, s.family, s.size = gui.ColorSchemeDark, "Second", 20
+	second := FromSettings(s)
+	for _, tc := range []struct {
+		sheet  style.StyleSheet
+		accent color.RGBA
+		family string
+		size   float32
+	}{{first, rgb(0x0078D4), "First", 16}, {second, rgb(0xD03030), "Second", 20}} {
+		bg, _ := tc.sheet.Resolve(style.Sel{Name: Primary}).BackgroundColor()
+		text := tc.sheet.Resolve(style.Sel{Name: "label"})
+		family, _ := text.FontFamily()
+		size, _ := text.FontSize()
+		if rgba(bg) != tc.accent || family != tc.family || size != tc.size {
+			t.Fatal("settings mutation changed an already constructed sheet")
+		}
+	}
+	if s.reads != [4]int{2, 2, 2, 2} {
+		t.Fatal("constructed sheets kept reading their source")
+	}
+	if !reflect.DeepEqual(FromSettings(ui.Settings{}), Sheet(Options{})) {
+		t.Fatal("zero settings no longer uses Modern's existing defaults")
+	}
+	if !reflect.DeepEqual(FromSettings(&appearanceSettings{size: float32(math.NaN())}), Sheet(Options{})) {
+		t.Fatal("invalid font size did not use the existing Options normalization")
+	}
+}
 
 func TestPrimarySolidColorsAndIndependentContent(t *testing.T) {
 	// Independent opaque sRGB byte expectations. Interaction shades are 6%/12%
