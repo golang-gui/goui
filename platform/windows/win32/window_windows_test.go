@@ -46,7 +46,7 @@ func TestCustomWindowSize(t *testing.T) {
 				} {
 					// Insets are an independent native observation, not logical
 					// padding. In particular the Win10 top stays one pixel at 2x.
-					got, err := windowSizeRect(geometry.Size{Width: 320, Height: 200}, scale, dpi, chrome, frame)
+					got, err := windowSizeRect(geometry.Size{Width: 320, Height: 200}, scale, dpi, chrome, 0, frame)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -59,6 +59,44 @@ func TestCustomWindowSize(t *testing.T) {
 						t.Fatalf("chrome %v scale %g dpi %d frame %+v: got %+v, want %+v", chrome, scale, dpi, frame, got, want)
 					}
 				}
+			}
+		}
+	}
+}
+
+func TestSkipTaskbarWindowExStyle(t *testing.T) {
+	for _, chrome := range []common.WindowChrome{common.WindowChromeNative, common.WindowChromeNone, common.WindowChromeIntegrated} {
+		for _, transparent := range []bool{false, true} {
+			options := common.WindowOptions{Chrome: chrome, Transparent: transparent}
+			ordinary := windowExStyle(options)
+			options.SkipTaskbar = true
+			got := windowExStyle(options)
+			if got != ordinary|winapi.WS_EX_TOOLWINDOW || got&(winapi.WS_EX_NOACTIVATE|winapi.WS_EX_TOPMOST|winapi.WS_EX_APPWINDOW) != 0 {
+				t.Fatalf("incorrect tool-window treatment: %#x, ordinary %#x", got, ordinary)
+			}
+			if windowStyle(options, 19045) != windowStyle(common.WindowOptions{Chrome: chrome, Transparent: transparent}, 19045) {
+				t.Fatal("SkipTaskbar changed Chrome")
+			}
+		}
+	}
+}
+
+func TestSkipTaskbarNativeClientSize(t *testing.T) {
+	for _, dpi := range []winapi.UINT{96, 192} {
+		for _, skip := range []bool{false, true} {
+			exStyle := windowExStyle(common.WindowOptions{SkipTaskbar: skip})
+			size := geometry.Size{Width: 320, Height: 200}
+			scale := float32(dpi) / 96
+			got, err := windowSizeRect(size, scale, dpi, common.WindowChromeNative, exStyle, winapi.RECT{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := winapi.RECT{Right: winapi.LONG(320 * scale), Bottom: winapi.LONG(200 * scale)}
+			if err := winapi.AdjustWindowRectExForDpi(&want, winapi.WS_OVERLAPPEDWINDOW, 0, exStyle, dpi); err != nil {
+				t.Fatal(err)
+			}
+			if got != want {
+				t.Fatalf("DPI %d skip %v: got %+v want native %+v", dpi, skip, got, want)
 			}
 		}
 	}

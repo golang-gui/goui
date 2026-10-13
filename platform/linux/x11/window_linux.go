@@ -157,6 +157,13 @@ func newWindow(size geometry.Size, onEvent events.EventHandler, options common.W
 		return nil, err
 	}
 	win.applyDecoration(options.Chrome)
+	if options.SkipTaskbar {
+		// Before mapping, the client supplies initial EWMH states directly.
+		// Keep the window WM-managed: taskbar suppression is not a popup role.
+		states := []xlib.Atom{platform.atoms._NET_WM_STATE_SKIP_TASKBAR}
+		platform.display.ChangeProperty(win.wid, platform.atoms._NET_WM_STATE,
+			xlib.AtomAtom, 32, xlib.PropModeReplace, cgo.CSlice(states), len(states))
+	}
 	win.applyNormalHints()
 	win.setApplicationClass()
 

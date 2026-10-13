@@ -105,6 +105,9 @@ func newWindow(size geometry.Size, onEvent events.EventHandler, options common.W
 		return nil, err
 	}
 	styleMask := windowStyle(options)
+	// SkipTaskbar needs no per-window mutation on AppKit: the Dock represents
+	// the application. Keep the ordinary key-window class, activation policy
+	// and native minimization behavior; do not turn this window into a popup.
 
 	// newNativeWindow converts the requested logical content size to points.
 	win := newNativeWindow(onEvent, windowClass, styleMask, NSMakeRect(0, 0, CGFloat(size.Width), CGFloat(size.Height)), options.Transparent)

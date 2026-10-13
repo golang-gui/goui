@@ -25,6 +25,7 @@ type Window struct {
 	uploadPainter     graphics.Painter
 	uploadImage       graphics.Image
 	style             winapi.DWORD
+	exStyle           winapi.DWORD
 	hwnd              winapi.HWND
 	parent            common.Window
 	onEvent           events.EventHandler
@@ -86,6 +87,7 @@ func newWindow(size geometry.Size, onEvent events.EventHandler, options common.W
 		onEvent:     onEvent,
 		scale:       1,
 		style:       winapi.WS_OVERLAPPEDWINDOW,
+		exStyle:     windowExStyle(options),
 		state:       common.WindowStateUnknown,
 		transparent: options.Transparent,
 	}
@@ -103,14 +105,14 @@ func newWindow(size geometry.Size, onEvent events.EventHandler, options common.W
 	}
 	// The hidden overlapped HWND establishes default placement. Integrated's
 	// final frame is calculated with its actual style after the HWND exists.
-	rect, err := windowSizeRect(size, scale, dpi, options.Chrome, winapi.RECT{})
+	rect, err := windowSizeRect(size, scale, dpi, options.Chrome, win.exStyle, winapi.RECT{})
 	if err != nil {
 		return nil, fmt.Errorf("calculate window size: %w", err)
 	}
 	// CW_USEDEFAULT only places overlapped windows. Obtain the system position
 	// before switching to WS_POPUP, as in ModernWindow; no visible caption is
 	// shown because all frame setup completes before Show.
-	win.hwnd, err = winapi.CreateWindowEx(surfaceExStyle(options.Transparent), platform.windowClass, platform.windowTitle, win.style,
+	win.hwnd, err = winapi.CreateWindowEx(win.exStyle, platform.windowClass, platform.windowTitle, win.style,
 		winapi.CW_USEDEFAULT, winapi.CW_USEDEFAULT,
 		int(rect.Right-rect.Left), int(rect.Bottom-rect.Top),
 		0, 0, platform.instance,
@@ -140,7 +142,7 @@ func newWindow(size geometry.Size, onEvent events.EventHandler, options common.W
 			win.Destroy()
 			return nil, fmt.Errorf("calculate integrated frame: %w", err)
 		}
-		rect, err = windowSizeRect(size, scale, dpi, options.Chrome, frame)
+		rect, err = windowSizeRect(size, scale, dpi, options.Chrome, win.exStyle, frame)
 		if err != nil {
 			win.Destroy()
 			return nil, fmt.Errorf("calculate integrated size: %w", err)
@@ -487,7 +489,7 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 				} else if window.style&winapi.WS_CAPTION != 0 {
 					chrome = common.WindowChromeNative
 				}
-				rect, err := windowSizeRect(geometry.Size{Width: window.minW, Height: window.minH}, window.scaleFactor(), dpi, chrome, frame)
+				rect, err := windowSizeRect(geometry.Size{Width: window.minW, Height: window.minH}, window.scaleFactor(), dpi, chrome, window.exStyle, frame)
 				if err != nil {
 					return winapi.DefWindowProc(hwnd, message, wParam, lParam)
 				}
@@ -676,13 +678,21 @@ func surfaceExStyle(transparent bool) winapi.DWORD {
 	return 0
 }
 
-func windowSizeRect(size geometry.Size, scale float32, dpi winapi.UINT, chrome common.WindowChrome, frame winapi.RECT) (winapi.RECT, error) {
+func windowExStyle(options common.WindowOptions) winapi.DWORD {
+	style := surfaceExStyle(options.Transparent)
+	if options.SkipTaskbar {
+		style |= winapi.WS_EX_TOOLWINDOW
+	}
+	return style
+}
+
+func windowSizeRect(size geometry.Size, scale float32, dpi winapi.UINT, chrome common.WindowChrome, exStyle winapi.DWORD, frame winapi.RECT) (winapi.RECT, error) {
 	rect := winapi.RECT{Right: winapi.LONG(size.Width * scale), Bottom: winapi.LONG(size.Height * scale)}
 	switch chrome {
 	case common.WindowChromeNative:
 		// A caption style is not sufficient to choose this calculation: Win11
 		// Integrated has that style too, but removes the native caption height.
-		if err := winapi.AdjustWindowRectExForDpi(&rect, winapi.WS_OVERLAPPEDWINDOW, 0, 0, dpi); err != nil {
+		if err := winapi.AdjustWindowRectExForDpi(&rect, winapi.WS_OVERLAPPEDWINDOW, 0, exStyle, dpi); err != nil {
 			return winapi.RECT{}, err
 		}
 	case common.WindowChromeIntegrated:

@@ -36,6 +36,7 @@ type Platform struct {
 		WM_DELETE_WINDOW             xlib.Atom
 		_NET_SUPPORTED               xlib.Atom
 		_NET_WM_STATE                xlib.Atom
+		_NET_WM_STATE_SKIP_TASKBAR   xlib.Atom
 		_NET_WM_MOVERESIZE           xlib.Atom
 		_NET_MOVERESIZE_WINDOW       xlib.Atom
 		_NET_WM_STATE_MAXIMIZED_HORZ xlib.Atom
@@ -114,6 +115,7 @@ func NewPlatform(appId string) (_ *Platform, err error) {
 	p.atoms.WM_DELETE_WINDOW = p.display.InternAtom("WM_DELETE_WINDOW", false)
 	p.atoms._NET_SUPPORTED = p.display.InternAtom("_NET_SUPPORTED", false)
 	p.atoms._NET_WM_STATE = p.display.InternAtom("_NET_WM_STATE", false)
+	p.atoms._NET_WM_STATE_SKIP_TASKBAR = p.display.InternAtom("_NET_WM_STATE_SKIP_TASKBAR", false)
 	p.atoms._NET_WM_MOVERESIZE = p.display.InternAtom("_NET_WM_MOVERESIZE", false)
 	p.atoms._NET_MOVERESIZE_WINDOW = p.display.InternAtom("_NET_MOVERESIZE_WINDOW", false)
 	p.atoms._NET_WM_STATE_MAXIMIZED_HORZ = p.display.InternAtom("_NET_WM_STATE_MAXIMIZED_HORZ", false)

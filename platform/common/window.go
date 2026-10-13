@@ -231,12 +231,19 @@ func ValidateWindowSize(size geometry.Size) error {
 
 // WindowOptions must be supplied before the native window is created.
 //
-// Chrome cannot be changed on an existing window.
+// Chrome, Transparent and SkipTaskbar cannot be changed on an existing window.
 type WindowOptions struct {
 	// Transparent requests per-pixel client-area alpha. Native decorations and
 	// input regions are independent. Creation fails if alpha is unavailable.
 	Transparent bool
 	Chrome      WindowChrome
+	// SkipTaskbar requests omission of this window's taskbar entry. It is
+	// independent of Chrome, activation, ownership and positioning. On Windows
+	// tool-window treatment also excludes Alt+Tab and changes Native captions;
+	// on X11 the window manager decides whether to honor the hint. macOS has an
+	// application-level Dock icon: this preference does not hide that icon or
+	// prevent native minimized-window tiles. It is not an observed state.
+	SkipTaskbar bool
 }
 
 // WindowHit identifies a native frame role, not a Widget action or pointer state.
