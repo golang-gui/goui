@@ -5,7 +5,7 @@
 <h1 align="center">无需 GCC，用 Go 构建轻量、现代的桌面应用</h1>
 
 <p align="center">
-  <a href="../README.md">English</a> ·
+  <a href="../README.md">English</a>
 </p>
 
 GOUI 是纯Go实现的原生 GUI 框架。用 Go 编写界面与业务逻辑，非套壳浏览器引擎，无需 C/C++ 构建工具链。
