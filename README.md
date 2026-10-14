@@ -1,304 +1,329 @@
-# goui
+<p align="center">
+  <img src="doc/logo/goui-logo.svg" width="400" alt="GOUI">
+</p>
 
-[中文文档](./doc/README_CN.md)
+<h1 align="center">Build lightweight, modern desktop apps in Go—no GCC required</h1>
 
-goui is a Go-native and AI-friendly declarative UI framework.
+<p align="center">
+  <a href="doc/README_CN.md">中文</a>
+</p>
 
+GOUI is a native GUI framework written entirely in Go. Build both your interface
+and application logic in Go, without a browser engine or a C/C++ build toolchain.
 
+The current version provides the foundations and controls needed for small
+desktop applications; public APIs are still evolving.
 
-## Declarative UI With Built-In Views
+## Try the demo
+
+The [demo](example/demo) brings together controls, text editing, layouts, data
+views, detachable tabs, overlays, graphics, animations, and system integration.
+Switch between light/dark appearances, accent colors, and eight UI languages.
+
+| Platform | Demo download |
+| --- | --- |
+| Windows x64 | Coming soon |
+| macOS Apple Silicon | Coming soon |
+| Linux x64 / X11 | Coming soon |
+
+Windows
+
+<img src="doc/images/demo-windows.png" width="900" alt="GOUI Demo on Windows">
+
+macOS
+
+<img src="doc/images/demo-macOS.png" width="900" alt="GOUI Demo on macOS">
+
+Linux
+
+<img src="doc/images/demo-linux.png" width="900" alt="GOUI Demo on Linux">
+
+To run the current source from the repository root:
+
+```sh
+CGO_ENABLED=0 go run ./example/demo
+```
+
+## Why GOUI?
+
+- **No cgo, no GCC.** Build with `CGO_ENABLED=0` using the Go toolchain, including
+  cross-compilation for supported targets. Native APIs are bound at runtime;
+  building your application does not require a C/C++ compiler.
+- **One binary, one app.** Embed icons and other assets with Go's `embed` package.
+  Windows executables and Linux binaries can run directly; macOS can wrap the
+  executable in an `.app` for application identity, icons, and signing.
+- **Modern appearance, native integration.** A consistent Modern stylesheet with
+  light/dark modes and accent colors, paired with native window chrome, fonts,
+  text layout, IME, clipboard, and file dialogs.
+- **AI-friendly.** Semantic snapshots describe the widget tree. The `gui/dev`
+  adapter supports inspecting windows and popovers, dispatching input, and
+  committing text for debugging and AI automation.
+
+Single-binary delivery does **not** mean there are no system dependencies. GOUI
+loads native system libraries at runtime. See
+[platforms and dependencies](#platforms-and-dependencies) for requirements.
+
+### Standing on the shoulders of giants
+
+GOUI learns from mature frameworks rather than inventing every mechanism:
+[GTK4](https://docs.gtk.org/gtk4/) for widgets and event controllers,
+[Flutter](https://docs.flutter.dev/ui/layout/constraints) for constraint-based
+layout, [Qt](https://doc.qt.io/) and [Avalonia](https://docs.avaloniaui.net/) for
+desktop integration, and [SwiftUI](https://developer.apple.com/documentation/swiftui)
+for declarative composition. The result remains Go-shaped, not an imitation of
+any one framework.
+
+Rendering builds on native Direct2D/DirectWrite, Core Text, and Pango/Cairo,
+alongside the project's [NanoVG Go fork](https://github.com/golang-gui/nanovgo).
+SVG support uses the project's [oksvg fork](https://github.com/golang-gui/oksvg).
+GOUI keeps these foundations behind clear platform, widget, and declarative layers.
+
+## Size and memory
+
+GOUI is a lightweight native GUI framework. Actual executable size and runtime
+memory usage depend on the application and rendering backend.
+
+### Executable size
+
+Built with Go 1.25.8, `CGO_ENABLED=0`, `-trimpath`, and `-ldflags="-s -w"`,
+with `-H=windowsgui` also set on Windows.
+
+| Target | Minimal app | Demo |
+| --- | ---: | ---: |
+| Windows amd64 | 4.58 MiB | 8.56 MiB |
+| macOS arm64 | 4.75 MiB | 8.26 MiB |
+| Linux amd64 | 4.46 MiB | 8.43 MiB |
+
+The full demo includes its logo, SVG icons, eight-language resources, and nine
+feature pages. Windows includes generated icon and version resources. These
+figures are from development builds, not published release artifacts; `.app`
+metadata, installer/archive overhead, and system libraries are not included.
+
+### Process memory usage
+
+| Application | RSS | PSS |
+| --- | ---: | ---: |
+| Minimal app | 58.8 MiB | 28.6 MiB |
+| Demo | 78.5 MiB | 46.2 MiB |
+
+RSS includes resident shared-library pages; PSS apportions shared pages between
+processes. The figures are summed from Linux `/proc/<pid>/smaps` and are provided
+for reference; results on other platforms may differ.
+
+## What you can build with today
+
+- **Controls:** buttons, labels, images/icons, text inputs, multi-line text views,
+  menus, dropdowns, check/radio/toggle buttons, switches, and linear/circular
+  progress indicators.
+- **Layout and data:** horizontal/vertical boxes, wrapping, baseline alignment,
+  scrolling, overlays, split views, virtualized lists, tree views, and tables with
+  custom cells, sortable headers, and resizable columns.
+- **Workspaces:** tabs with close requests and context menus, drag reordering,
+  transfers between windows, and detaching into new windows.
+- **Input:** Unicode editing, CJK IME, selection, undo/redo, clipboard, shortcuts,
+  Tab focus navigation, and drag and drop within and across applications.
+- **Appearance:** Modern light/dark styles, accent and semantic colors, SVG and
+  style-aware icons, HiDPI, transparency, shadows, and custom widget painting.
+- **Application facilities:** timers on the GUI thread, frame-driven numeric
+  animation, system settings, eight-language framework resources, file dialogs
+  and access credentials, and opening URLs/files through system handlers.
+
+Core controls live in `gui`, with declarative bindings in `ui`. Additional
+controls live in `widgets`, with their declarative bindings in `widgets/ui`.
+
+## Quick start
+
+Requires **Go 1.24 or newer** and a supported desktop environment.
+Create a module and add GOUI:
+
+```sh
+mkdir hello-goui
+cd hello-goui
+go mod init example.com/hello-goui
+go get github.com/golang-gui/goui@latest
+```
+
+Save as `main.go`:
 
 ```go
-import . "github.com/golang-gui/goui/ui"
+package main
+
+import (
+	"fmt"
+	"log"
+
+	"github.com/golang-gui/goui/theme/modern"
+	"github.com/golang-gui/goui/ui"
+)
 
 func main() {
-    text := MakeState("Hello GOUI!")
-    input := ""
-
-    Run(func(app App) RootView {
-        return Window("main").
-            Title("Main Window").
-            Content(
-                VBox(
-                    Label(text.Get()),
-                    HBox(
-                        Label("Please input: "),
-                        TextInput().
-                            Text(input).
-                            OnText(func(value string) {
-                                input = value
-                            }),
-                    ),
-                    HBox(Button("Submit").OnClick(func() {
-                        text.Set(input)
-                    })),
-                ),
-            )
-    })
+	count := ui.MakeState(0)
+	err := ui.Run("com.example.Hello", func(app ui.App) ui.RootView {
+		s := app.Settings()
+		return ui.Root().StyleSheet(modern.Sheet(modern.Options{
+			Dark:        s.ColorScheme() == ui.ColorSchemeDark,
+			AccentColor: s.AccentColor(),
+			FontFamily:  s.FontFamily(),
+			FontSize:    s.FontSize(),
+		})).Windows(
+			ui.Window("main").Title("Hello GOUI").Size(480, 240).Content(
+				ui.VBox(
+					ui.Label(fmt.Sprintf("Clicked %d times", count.Get())),
+					ui.Button("Click me").OnClick(func() {
+						count.Set(count.Get() + 1)
+					}),
+				).Spacing(12).Padding(20),
+			),
+		)
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 ```
 
-The `ui` package is declarative. Views are ordinary Go values with chainable
-configuration methods. `Run` passes a stable `App` handle into the build
-closure — it owns the command-style runtime operations (`Post` / `Sync` /
-`Quit` / `RequestUpdate`) plus read-only `Clipboard()` / `Settings()`, and
-`State.Set` requests one coalesced UI rebuild. `Run` runs once per process; to
-show a different UI, change state and let the tree rebuild.
+Build and run on your current platform:
 
-## Composition Views
-
-Simple composition can just be a function returning `ui.View`:
-
-```go
-func Login(username, password string, onLogin func()) View {
-    return VBox(
-        HBox(Label("Username: "), TextInput().Text(username)),
-        HBox(Label("Password: "), TextInput().Text(password)),
-        HBox(Button("Login").OnClick(onLogin)),
-    ).Spacing(8)
-}
+```sh
+CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o hello-goui .
+./hello-goui
 ```
 
-For more configurable composition, define a value type with chainable methods
-and `Build() View`:
+On Windows PowerShell, use `$env:CGO_ENABLED='0'`, then
+`go build -trimpath -ldflags="-s -w -H=windowsgui" -o hello-goui.exe .`.
 
-```go
-type LoginView struct {
-    username string
-    password string
-    onLogin  func()
-}
+Views are ordinary Go values. `State.Set` requests a coalesced rebuild; system
+settings changes also rebuild this example, updating its Modern stylesheet.
+For larger applications, compose views with functions or custom view types, or
+implement widgets using `gui.WidgetBase`.
 
-func Login2() LoginView {
-    return LoginView{}
-}
+## Platforms and dependencies
 
-func (v LoginView) Username(value string) LoginView {
-    v.username = value
-    return v
-}
+| Platform / current release target | Window system | Drawing backends | Text layout |
+| --- | --- | --- | --- |
+| Windows / amd64 | Win32 | Direct2D, OpenGL, Software | DirectWrite |
+| macOS / arm64 | AppKit | OpenGL, Software | Core Text |
+| Linux / amd64 | X11 | OpenGL, Software | Pango / Cairo |
 
-func (v LoginView) Password(value string) LoginView {
-    v.password = value
-    return v
-}
+On Windows and macOS, native frameworks are supplied by the operating system.
+On Linux, the current backend needs an X11 display server; Wayland sessions need
+XWayland, and window behavior still needs validation on the target desktop.
+Runtime libraries include X11/Xext/Xrender/Xrandr/Xcursor, GL/GLX, GLib/GIO,
+Fontconfig, and Pango/Cairo. Settings integration and native file dialogs use
+GTK3. No development headers or C compiler are needed. Linux Integrated decoration
+additionally needs a compositor; otherwise GOUI can fall back to native decoration.
 
-func (v LoginView) OnLogin(fn func()) LoginView {
-    v.onLogin = fn
-    return v
-}
+You can select a drawing backend with `GOUI_PLAT_PAINTER=software` or `opengl`;
+Windows also accepts `direct2d`. See the [demo guide](example/demo/README.md)
+for platform details.
 
-func (v LoginView) Build() View {
-    return VBox(
-        HBox(Label("Username: "), TextInput().Text(v.username)),
-        HBox(Label("Password: "), TextInput().Text(v.password)),
-        HBox(Button("Login").OnClick(v.onLogin)),
-    )
-}
+### Build and package
+
+Ordinary `go build` is sufficient to build an application. The optional
+[`cmd/goui`](cmd/goui/README.md) tool handles platform resources and packaging from
+`goui.toml`: Windows icon/version resources, macOS Info.plist/ICNS/`.app` and
+explicit signing, and Linux desktop/icon resources. It does not require GCC.
+macOS signing uses the platform's `codesign` tool.
+
+For example, build the demo and its platform resources:
+
+```sh
+CGO_ENABLED=0 go run ./cmd/goui build -config example/demo/goui.toml -ldflags="-s -w"
 ```
 
-Composition views are expanded automatically, so they can be used like built-in
-views:
+## Environment variables
 
-```go
-VBox(
-    Login2().
-        Username("xuges").
-        Password("123456").
-        OnLogin(func() {
-            text.Set("Login success.")
-        }),
-    Label(text.Get()),
-)
+These are usually unnecessary. Set them before launching the application for
+startup configuration, debugging, or compatibility checks. Restart the application
+after changing them; they are not runtime switching interfaces.
+
+| Variable | Purpose and values | Default behavior |
+| --- | --- | --- |
+| `GOUI_PLAT_SCALE` | Overrides the logical-unit-to-physical-pixel scale; fractional values such as `1`, `1.5`, and `2` are supported | Uses the platform's system scale; an unset, unparseable, or non-positive value does not override it |
+| `GOUI_PLAT_PAINTER` | Selects a drawing backend: `opengl`, `software`; Windows also accepts `direct2d` | Uses the platform's default backend and initialization fallback policy |
+
+`GOUI_PLAT_SCALE=2` means 1 DIP maps to 2 physical pixels. It does not change
+the operating system's display settings or replace HiDPI testing on real devices.
+
+Backend names are lowercase. An unset or unrecognized name uses the default:
+
+- **Windows:** Direct2D by default, falling back to OpenGL and then Software if
+  initialization fails. Specifying `direct2d` follows the same sequence; explicitly
+  selecting `opengl` does not fall back and returns an error if initialization fails.
+- **Linux / macOS:** OpenGL by default, falling back to Software if initialization
+  fails. Specifying `opengl` follows the same policy.
+- Specifying `software` selects software rendering directly. These fallbacks
+  occur during backend initialization, not automatically while the app is running.
+
+Linux / X11 also recognizes these compatibility variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `GDK_SCALE` | Sets a scale such as `1` or `2`; precedence is `GOUI_PLAT_SCALE` > `GDK_SCALE` > desktop DPI settings |
+| `XCURSOR_THEME` | Selects an installed cursor theme, overriding the desktop cursor theme setting |
+| `XCURSOR_SIZE` | Sets the cursor size in positive integer pixels, such as `24` or `32`, overriding the desktop cursor size setting |
+
+For example, launch the software-rendered demo at 2x from the repository root
+using Bash:
+
+```sh
+CGO_ENABLED=0 GOUI_PLAT_PAINTER=software GOUI_PLAT_SCALE=2 go run ./example/demo
 ```
 
-## Custom Views And Widgets
+Windows PowerShell:
 
-A custom `ui.WidgetView` is the bridge from declarative `ui.View` values to an
-imperative `gui.Widget`. This example wraps a `gui.Label` and stores the latest
-callback in the reconciler state:
-
-```go
-type HyperlinkView struct {
-    url     string
-    onClick func()
-}
-
-func Hyperlink(url string) HyperlinkView {
-    return HyperlinkView{url: url}
-}
-
-func (v HyperlinkView) Url(value string) HyperlinkView {
-    v.url = value
-    return v
-}
-
-func (v HyperlinkView) OnClick(fn func()) HyperlinkView {
-    v.onClick = fn
-    return v
-}
-
-func (v HyperlinkView) Build() View {
-    return v
-}
-
-type hyperlinkState struct {
-    onClick func()
-}
-
-func (v HyperlinkView) Mount(ctx BuildContext) gui.Widget {
-    state := &hyperlinkState{onClick: v.onClick}
-    click := gui.NewClickEventController()
-    click.ConnectClicked(func(gui.EventContext) {
-        if state.onClick != nil {
-            state.onClick()
-        }
-    })
-
-    label := gui.NewLabel(v.url)
-    label.AddEventController(click)
-    ctx.SetState(state)
-    return label
-}
-
-func (v HyperlinkView) Update(ctx BuildContext, widget gui.Widget) {
-    ctx.State().(*hyperlinkState).onClick = v.onClick
-    widget.(*gui.Label).SetText(v.url)
-}
-
-func (v HyperlinkView) Unmount(BuildContext, gui.Widget) {}
+```powershell
+$env:CGO_ENABLED = '0'
+$env:GOUI_PLAT_PAINTER = 'direct2d'
+$env:GOUI_PLAT_SCALE = '1.5'
+go run ./example/demo
 ```
 
-For a fully custom widget, implement the `gui.Widget` behavior directly, usually
-by embedding `gui.WidgetBase` and overriding measurement, painting, and snapshot
-behavior as needed:
+Variables in the Bash example apply only to that command; those in the PowerShell
+example remain set in the current terminal session. To restore automatic selection,
+remove the relevant variables and restart the application. For example, in PowerShell:
+`Remove-Item Env:GOUI_PLAT_PAINTER, Env:GOUI_PLAT_SCALE -ErrorAction SilentlyContinue`.
 
-```go
-type BadgeWidget struct {
-    gui.WidgetBase
-    text string
-}
+### Optional development tools
 
-func NewBadgeWidget(text string) *BadgeWidget {
-    return &BadgeWidget{text: text}
-}
+`GOUI_DEV_ADDR` is the listening address for the [`gui/dev`](gui/dev) development
+adapter, not a platform rendering setting. First add
+`import _ "github.com/golang-gui/goui/gui/dev"` to the application, then set the
+variable to enable the service. It does not start unless the package is imported
+and the variable is set. For an application that already imports the package:
 
-func (w *BadgeWidget) SetText(text string) {
-    if w.text == text {
-        return
-    }
-    w.text = text
-    w.RequestLayout()
-}
-
-func (w *BadgeWidget) Measure(c layout.Constraint) layout.Measurement {
-    return layout.Measured(c.Clamp(geometry.Size{Width: 72, Height: 24}))
-}
-
-func (w *BadgeWidget) Paint(p gui.Painter) {
-    if !w.Visible() {
-        return
-    }
-    size := w.Rect().Size
-    p.FillRoundRect(
-        geometry.Rect(0, 0, size.Width, size.Height),
-        12,
-        graphics.RGB(40, 110, 220),
-    )
-}
-
-type BadgeView struct {
-    text string
-}
-
-func Badge(text string) BadgeView {
-    return BadgeView{text: text}
-}
-
-func (v BadgeView) Build() View {
-    return v
-}
-
-func (v BadgeView) Mount(BuildContext) gui.Widget {
-    return NewBadgeWidget(v.text)
-}
-
-func (v BadgeView) Update(_ BuildContext, widget gui.Widget) {
-    widget.(*BadgeWidget).SetText(v.text)
-}
-
-func (v BadgeView) Unmount(BuildContext, gui.Widget) {}
+```sh
+GOUI_DEV_ADDR=127.0.0.1:8888 ./your-app
 ```
 
-## Core Idea
+The service provides semantic snapshots, input event dispatch, and text submission.
+Use it only for local development; enabling it in production is not recommended.
 
-goui is built around three layers:
+## A small, layered design
 
 ```text
-ui        declarative View layer for application code
-gui       imperative Widget layer for control authors
-platform  native windows, events, graphics, and typography
+ui        Declarative views and explicit update coordination
+gui       Widgets, layout, painting, events, focus, signals, and snapshots
+platform  Native windows, event loops, input, drawing, and typography
 ```
 
-The MVP has validated the main design:
-
-- `ui` gives application code a concise declarative API.
-- `gui` gives custom control authors an imperative widget kernel with layout,
-  painting, events, focus, lifecycle, signals, and semantic snapshots.
-- `platform` uses native platform capabilities for windows, drawing, input, and
-  text layout as much as practical.
-
-**The result is a framework direction that is native to Go, understandable by**
-**humans, and inspectable and controllable by AI.**
-
-## Platform Direction
-
-Current desktop backends:
-
-| Platform | Window System | Graphics | Typography |
-| --- | --- | --- | --- |
-| Windows | Win32 | Direct2D | DirectWrite |
-| macOS | Cocoa | OpenGL | Core Text |
-| Linux | X11 | OpenGL | Pango |
-
-goui aims to keep platform-specific work behind the `platform` layer while
-preserving each system's strengths in rendering, text layout, and input.
-
-The intended build model is still:
-
-```bash
-CGO_ENABLED=0 go build ./...
-```
-
-## AI and Automation
-
-AI support is part of the architecture, not a later add-on.
-
-The framework is designed so tools and AI agents can inspect semantic snapshots,
-understand widget hierarchy and bounds, and drive applications through the same
-event path used by real users.
-
-## Status
-
-The MVP is complete as an architecture validation. It includes platform events,
-an imperative GUI layer, basic widgets, a declarative `ui` layer, a
-constraint-based layout system, a semantic style system, HiDPI scaling,
-clipboard and system settings, and update scheduling through `State.Set` /
-`App.RequestUpdate`.
-
-**The API is still unstable and goui is not ready for production use.**
+Use only the layers you need. `animation`, `layout`, `style`, `icon`, and `mlang`
+provide focused capabilities; `gui/dev` is an opt-in debugging adapter. GOUI aims
+to be a practical GUI toolkit, not a browser or an all-purpose platform SDK.
 
 ## Roadmap
 
-- Finish the popup line: menus, tooltips, and dialogs.
-- IME / text composition for CJK input.
-- Drag and drop.
-- A retained scene graph over the native painter for caching and partial
-  repaint, unlocking efficient scrolling and list views.
-- A built-in light/dark theme that follows system settings.
-- A stable inspection and automation protocol.
-- More platform support.
+- Complete and refine application features, strengthen accessibility and
+  keyboard interaction, and stabilize APIs through real application development.
+- Add touch input and gestures while keeping mouse/keyboard use first-class.
+- Support more platforms, architectures, and window systems.
+- Improve build, packaging, debugging, inspection, and automation tools.
+- Add more purpose-built controls and reusable application components.
+- Keep optimizing startup, rendering, scrolling, executable size, and memory
+  use—with reproducible measurements rather than blanket performance promises.
 
-## License
+## License and acknowledgements
 
-MIT License.
+GOUI is [MIT licensed](LICENSE). Dependencies retain their own licenses.
+The [logo](doc/logo/goui-mark.svg) retains attribution to the Go gopher by
+Renee French (CC BY 4.0).
