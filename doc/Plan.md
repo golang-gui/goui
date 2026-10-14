@@ -3,6 +3,44 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## 使用方 AI 应用开发 Skill
+
+- [x] 补充 [自定义 Widget／View](CustomWidgetView.md) 的六种方式、外部包示例，
+  同步技能独立参考、安装清单和 README；只改文档，不改 gui／ui 生产实现。
+- [x] 按 normalizeView 修正 DesignUI 中纯 Build 修饰器传播的旧评估表述，
+  明确外层／内层身份、Self、同节点 State 槽、子树协调与销毁职责。
+- [x] 本轮从教程直接提取 7 个 Go 代码块到临时外部模块；CGO_ENABLED=0 的
+  Linux amd64、Windows amd64、macOS arm64 编译与接口断言通过。
+- [x] 外部模块 3 项非缓存逻辑验证通过：组合／扩展 Widget，Surface 父链、
+  min／max／父约束、局部 Arrange 和 Snapshot，以及 View Self／委托／子树请求。
+- [x] 本机 X11、Software、指定 1x：短暂窗口通过 Window.DispatchEvent 验证
+  Counter 最新回调、只连接一次和 Unmount 断开；实际 ui.Run 协调另验证同 ID 复用、
+  换 ID 替换、纯 Build 外壳 ID 不传播、Surface 父链与 UnitLabel／Counter 更新。
+- 初次临时回调替身验证 `go test -count=1 -v ./custom` 失败（old=0/new=0）：
+  未挂载 Widget 的 liveRoot 校验拒绝输入，不能当作示例故障。没有修改框架或
+  弱化回调断言，原诊断保留在临时目录；原断言改由真实宿主独立程序验证并通过。
+- [x] 既有 UI 构造／Root 相关用例非缓存执行通过；go test ./... 通过（包含缓存），
+  技能格式、91 份 Markdown 的本地链接／锚点及围栏检查通过。
+- 本轮没有框架源码／测试修改，临时样例与验证程序只放仓库外；已退出两次短暂
+  本机窗口。旧 ui_test 例程为原有未跟踪文件，仅作当前工作区参考；本文示例不依赖
+  它发布。未执行其他绘图后端、远端桌面或真实多工具安装，不计为三端原生验收。
+- [x] 已确认：skills/goui-app 为可独立安装的通用技能，skills/INSTALL.md 为 AI
+  执行的统一安装入口；不增加 Agent 适配器、不改使用方 AGENTS、不自动安装依赖。
+- [x] 编写入口与应用／构建调试参考，覆盖版本核对、公开 API、更新与生命周期、
+  样式／DIP、打包和验证边界；Star 克制提醒、Issue／PR 证据与授权规则。
+- [x] 中英文 README 增加一句话安装入口，安装来源、范围、同名保护、检查和
+  加载状态明确区分；设计契约即 [安装说明](../skills/INSTALL.md) 和
+  [Skill](../skills/goui-app/SKILL.md)，不另建重复设计文档。
+- [x] 本机 Linux amd64／Go 1.25.8：quick_validate.py 技能格式检查通过；89 份
+  Markdown 的 450 个本地链接／锚点、围栏及新增文件空白检查通过。
+- [x] 临时独立模块直接提取两个完整 Go 示例，replace 指向本轮源码；CGO_ENABLED=0
+  的 Linux amd64、Windows amd64、macOS arm64 六组构建通过，不计为原生运行验收。
+- [x] go test ./... 通过（包含缓存），git diff --check 通过；保留既有 opt-in
+  条件和 PNG 原目录输出测试，不把全仓结果称为纯无头或无桌面副作用。
+- 不在本机 AI 工具目录安装、不执行真实多工具安装或远端桌面；修改阶段不自动提交。
+  后续按用户明确指令提交相关文档，不推送；发布后再验证 main 上的安装入口，
+  不将工作区链接存在当作线上已可安装。
+
 ## 2026-10-14 文档复核与同步
 
 - [x] 修正登记差异中的旧 API、线程／资源归属、布局与颜色契约；只修改文档。

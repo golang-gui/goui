@@ -16,6 +16,17 @@ Popup、WindowChrome／BorderBox／SkipTaskbar／初始 Center、文件访问凭
 旧 P0～P4 排序和阶段日志保留在文末历史区，不再据其中“下一步”或未勾选项判断
 当前缺失能力。上一次审查与本轮分类见 [文档复核](DesignDocumentAudit.md)。
 
+## 使用方开发支持
+
+- 应用开发 [Skill](../skills/goui-app/SKILL.md) 与统一 [INSTALL.md](../skills/INSTALL.md)
+  随仓库提供；AI 按自身工具的原生机制安装完整技能，GOUI 不维护各 Agent 适配器。
+- Skill 不替代应用依赖版本的源码，不自动升级模块；中英文 README 提供安装提示。
+  后续根据真实使用反馈改进内容，不因为 Agent 品种增加多套应用开发规则。
+- [自定义 Widget／View 指南](CustomWidgetView.md) 覆盖两层的组合、扩展和实现，
+  Skill 随附独立参考；纯 Build 修饰器自动传播不属于已实现能力，不借教程扩展框架。
+- 技能格式、引用与示例验证记录见 Plan；发布后的远端文件可用性、不同工具的
+  实际安装与发现仍需分别验证，不承诺工具通用兼容或本会话自动加载。
+
 ## 有确认设计的待实现功能
 
 <a id="future-submenu"></a>
