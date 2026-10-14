@@ -43,31 +43,20 @@ CGO_ENABLED=0 go run ./example/demo
 
 ## 为什么选择 GOUI？
 
-- **No cgo，无需 GCC。** 使用 `CGO_ENABLED=0` 和 Go 工具链构建，支持已适配目标
-  的交叉编译。原生 API 在运行时绑定，构建应用不需要 C/C++ 编译器。
-- **单二进制交付。** 图标等资源可通过 Go 的 `embed` 一同嵌入。
-  Windows EXE、Linux 二进制可以直接运行；macOS 可将二进制包装为 `.app`，
-  补齐应用身份、图标和签名。
-- **现代外观，原生集成。** Modern 样式提供多平台一致的亮暗外观和主题色，
-  窗口装饰、字体、文字排版、输入法、剪贴板和文件对话框利用系统能力。
-- **AI友好。** 语义快照描述控件树；`gui/dev` 提供窗口和
-  Popover 检查、输入事件派发与文本提交，用于调试及 AI 自动化。
+- **No cgo，无需 GCC。** 使用 `CGO_ENABLED=0` 和 Go 工具链构建，支持已适配目标的交叉编译。原生 API 在运行时绑定，构建应用不需要 C/C++ 编译器。
+- **单二进制交付。** 图标等资源可通过 Go 的 `embed` 一同嵌入。Windows EXE、Linux 二进制可以直接运行；macOS 可将二进制包装为 `.app`，补齐应用身份、图标和签名。
+- **现代外观，原生集成。** Modern 样式提供多平台一致的亮暗外观和主题色，窗口装饰、字体、文字排版、输入法、剪贴板和文件对话框利用系统能力。
+- **AI友好。** 语义快照描述控件树；`gui/dev` 提供窗口和Popover 检查、输入事件派发与文本提交，用于调试及 AI 自动化。
 
 单二进制交付**不等于没有系统依赖**：GOUI 在运行时加载系统自带原生库。具体要求见[平台与依赖](#平台与依赖)。
 
 ### 站在巨人肩膀上
 
-GOUI 吸收成熟框架的设计经验，而不是重新发明所有机制：参考
-[GTK4](https://docs.gtk.org/gtk4/) 的控件与事件控制器、
-[Flutter](https://docs.flutter.dev/ui/layout/constraints) 的约束布局、
-[Qt](https://doc.qt.io/) 和 [Avalonia](https://docs.avaloniaui.net/) 的桌面集成，
-以及 [SwiftUI](https://developer.apple.com/documentation/swiftui) 的声明式组合。
-最终服从 Go 风格和实际需求，不照搬任何一个框架。
+GOUI 吸收成熟框架的设计经验，而不是重新发明所有机制：
 
-底层利用 Direct2D/DirectWrite、Core Text、Pango/Cairo 等原生能力，以及项目维护的
-[NanoVG Go 分支](https://github.com/golang-gui/nanovgo)。SVG 使用项目维护的
-[oksvg 分支](https://github.com/golang-gui/oksvg)。这些成熟基础被收敛在清晰的平台、
-控件和声明式边界内。
+参考[GTK4](https://docs.gtk.org/gtk4/) 的控件与事件控制器、[Flutter](https://docs.flutter.dev/ui/layout/constraints) 的约束布局、[Qt](https://doc.qt.io/) 和 [Avalonia](https://docs.avaloniaui.net/) 的桌面集成，以及 [SwiftUI](https://developer.apple.com/documentation/swiftui) 的声明式组合。最终服从 Go 风格和实际需求，不照搬任何一个框架。
+
+底层利用 Direct2D/DirectWrite、Core Text、Pango/Cairo 等原生能力，以及项目维护的[NanoVG Go 分支](https://github.com/golang-gui/nanovgo)。SVG 使用项目维护的[oksvg 分支](https://github.com/golang-gui/oksvg)。这些成熟基础被收敛在清晰的平台、控件和声明式边界内。
 
 ## 程序大小与内存占用
 
@@ -83,9 +72,7 @@ GOUI 是原生GUI框架，资源占用较小，但具体可执行文件大小与
 | macOS arm64 | 4.75 MiB | 8.26 MiB |
 | Linux amd64 | 4.46 MiB | 8.43 MiB |
 
-完整 Demo 包含 Logo、SVG 图标、八语言资源和九个功能页面；Windows 包含生成的
-图标及版本资源。数据来自开发构建，并非已经发布的下载产物；不包含 `.app`
-元数据、安装包／压缩包开销或系统库。
+完整 Demo 包含 Logo、SVG 图标、八语言资源和九个功能页面；Windows 包含生成的图标及版本资源。数据来自开发构建，并非已经发布的下载产物；不包含 `.app`元数据、安装包／压缩包开销或系统库。
 
 ### 进程内存占用
 
@@ -94,22 +81,16 @@ GOUI 是原生GUI框架，资源占用较小，但具体可执行文件大小与
 | 最小应用 | 58.8 MiB | 28.6 MiB |
 | Demo | 78.5 MiB | 46.2 MiB |
 
-RSS 包含驻留的共享库页面，PSS 按进程分摊共享页面；由Linux `/proc/<pid>/smaps`
-汇总，仅供参考，其他平台可能会有出入。
+RSS 包含驻留的共享库页面，PSS 按进程分摊共享页面；由Linux `/proc/<pid>/smaps`汇总，仅供参考，其他平台可能会有出入。
 
 ## 当前可以使用的能力
 
-- **基础与交互控件：** 按钮、标签、图片／图标、单行输入、多行文本编辑、菜单、
-  下拉列表、复选／单选／切换按钮、Switch、长条和圆形进度指示。
-- **布局与数据：** 横纵线性盒、换行布局、基线对齐、滚动、Overlay、SplitView、
-  虚拟化列表、TreeView，以及支持自定义单元格、排序和调整列宽的 TableView。
+- **基础与交互控件：** 按钮、标签、图片／图标、单行输入、多行文本编辑、菜单、下拉列表、复选／单选／切换按钮、Switch、长条和圆形进度指示。
+- **布局与数据：** 横纵线性盒、换行布局、基线对齐、滚动、Overlay、SplitView、虚拟化列表、TreeView，以及支持自定义单元格、排序和调整列宽的 TableView。
 - **多标签工作区：** 关闭请求、右键菜单、拖动排序、跨窗口移交与拖出创建窗口。
-- **输入：** Unicode 编辑、CJK 输入法、选区、撤销／重做、剪贴板、快捷键、
-  Tab 焦点导航，以及应用内和跨应用拖放。
-- **外观与绘图：** Modern 亮暗样式、主题色和语义色、SVG 与跟随样式的图标、
-  HiDPI、透明窗口、阴影和自定义控件绘制。
-- **应用设施：** GUI 线程定时器、帧驱动数值动画、系统设置、八语言框架资源、
-  文件对话框和访问凭据，以及通过系统默认应用打开链接／文件。
+- **输入：** Unicode 编辑、CJK 输入法、选区、撤销／重做、剪贴板、快捷键、Tab 焦点导航，以及应用内和跨应用拖放。
+- **外观与绘图：** Modern 亮暗样式、主题色和语义色、SVG 与跟随样式的图标、HiDPI、透明窗口、阴影和自定义控件绘制。
+- **应用设施：** GUI 线程定时器、帧驱动数值动画、系统设置、八语言框架资源、文件对话框和访问凭据，以及通过系统默认应用打开链接／文件。
 
 核心控件位于 `gui`，声明式绑定位于 `ui`，配套控件位于 `widgets`，对应声明式绑定位于 `widgets/ui`。
 
@@ -130,36 +111,38 @@ go get github.com/golang-gui/goui@latest
 package main
 
 import (
-	"fmt"
-	"log"
+    "fmt"
+    "log"
 
-	"github.com/golang-gui/goui/theme/modern"
-	"github.com/golang-gui/goui/ui"
+    "github.com/golang-gui/goui/theme/modern"
+    "github.com/golang-gui/goui/ui"
 )
 
 func main() {
-	count := ui.MakeState(0)
-	err := ui.Run("com.example.Hello", func(app ui.App) ui.RootView {
-		s := app.Settings()
-		return ui.Root().StyleSheet(modern.Sheet(modern.Options{
-			Dark:        s.ColorScheme() == ui.ColorSchemeDark,
-			AccentColor: s.AccentColor(),
-			FontFamily:  s.FontFamily(),
-			FontSize:    s.FontSize(),
-		})).Windows(
-			ui.Window("main").Title("Hello GOUI").Size(480, 240).Content(
-				ui.VBox(
-					ui.Label(fmt.Sprintf("Clicked %d times", count.Get())),
-					ui.Button("Click me").OnClick(func() {
-						count.Set(count.Get() + 1)
-					}),
-				).Spacing(12).Padding(20),
-			),
-		)
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
+    count := ui.MakeState(0)
+    err := ui.Run("com.example.Hello", func(app ui.App) ui.RootView {
+        return ui.Root().
+            StyleSheet(modern.FromSettings(app.Settings())). // 使用“现代”主题
+            Windows(
+                ui.Window("main").
+                    Title("Hello GOUI").
+                    Size(480, 240).
+                    Content(
+                        ui.VBox(
+                            ui.Label(fmt.Sprintf("Clicked %d times", count.Get())),
+                            ui.Button("Click me").OnClick(func() {
+                                // count.Set(count.Get() + 1) 的更优用法：
+                                count.Update(func(old int) int {
+                                    return old + 1
+                                })
+                            }),
+                        ).Spacing(12).Padding(20),
+                    ),
+            )
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
 }
 ```
 
@@ -170,12 +153,11 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o hello-goui .
 ./hello-goui
 ```
 
-Windows PowerShell 使用 `$env:CGO_ENABLED='0'`，然后执行
+Windows PowerShell 使用 `$env:CGO_ENABLED='0'`，然后执行：
+
 `go build -trimpath -ldflags="-s -w -H=windowsgui" -o hello-goui.exe .`。
 
-View 是普通 Go 值；`State.Set` 会请求合并后的重建。系统设置变化也会自动重建
-此例并更新 Modern 样式。复杂应用可以使用函数或自定义 View 类型组合界面，
-也可以通过 `gui.WidgetBase` 实现控件。
+View 是普通 Go 值；`State.Set` 会请求合并后的重建。系统设置变化也会自动重建此例并更新 Modern 样式。复杂应用可以使用函数或自定义 View 类型组合界面，也可以通过 `gui.WidgetBase` 实现控件。
 
 ## 平台与依赖
 
@@ -185,20 +167,15 @@ View 是普通 Go 值；`State.Set` 会请求合并后的重建。系统设置�
 | macOS / arm64 | AppKit | OpenGL、Software | Core Text |
 | Linux / amd64 | X11 | OpenGL、Software | Pango / Cairo |
 
-Windows、macOS 使用操作系统提供的原生框架。Linux 当前后端需要 X11 显示服务；
-Wayland 会话需要 XWayland，具体窗口行为仍需在目标桌面验证。运行库包括
-X11/Xext/Xrender/Xrandr/Xcursor、GL/GLX、GLib/GIO、Fontconfig 和 Pango/Cairo；
-系统设置与原生文件对话框使用 GTK3。不需要开发头文件或 C 编译器。
+Windows、macOS 使用操作系统提供的原生框架。Linux 当前后端需要 X11 显示服务；Wayland 会话需要 XWayland，具体窗口行为仍需在目标桌面验证。运行库包括X11/Xext/Xrender/Xrandr/Xcursor、GL/GLX、GLib/GIO、Fontconfig 和 Pango/Cairo；
+系统设置与原生文件对话框使用 GTK，不需要开发头文件或 C 编译器。
 Linux Integrated 窗口装饰还需要合成器，否则可回退原生装饰。
 
-可通过 `GOUI_PLAT_PAINTER=software` 或 `opengl` 选择绘图后端，Windows 还支持
-`direct2d`。平台详细说明见 Demo 使用说明。
+可通过 `GOUI_PLAT_PAINTER=software` 或 `opengl` 选择绘图后端，Windows 还支持`direct2d`。平台详细说明见 Demo 使用说明。
 
 ### 构建与打包
 
-普通 `go build` 即可构建应用。可选的 [`cmd/goui`](../cmd/goui/README.md) 从
-`goui.toml` 生成平台资源并协助打包：Windows 图标与版本资源，macOS
-Info.plist／ICNS／`.app` 与显式签名，以及 Linux desktop／图标资源。
+普通 `go build` 即可构建应用。可选的 [`cmd/goui`](../cmd/goui/README.md) 从`goui.toml` 生成平台资源并协助打包：Windows 图标与版本资源，macOSInfo.plist／ICNS／`.app` 与显式签名，以及 Linux desktop／图标资源。
 这些步骤不需要 GCC；macOS 签名使用系统 `codesign` 工具。
 
 例如，构建 Demo 并生成平台资源：
@@ -209,8 +186,7 @@ CGO_ENABLED=0 go run ./cmd/goui build -config example/demo/goui.toml -ldflags="-
 
 ## 环境变量
 
-通常无需设置。以下变量用于启动配置、调试或兼容性验证，请在启动前设置，
-修改后重新启动应用；它们不是运行时切换接口。
+通常无需设置。以下变量用于启动配置、调试或兼容性验证，请在启动前设置，修改后重新启动应用；它们不是运行时切换接口。
 
 | 变量 | 用途与取值 | 默认行为 |
 | --- | --- | --- |
@@ -222,8 +198,11 @@ CGO_ENABLED=0 go run ./cmd/goui build -config example/demo/goui.toml -ldflags="-
 绘图后端名称使用小写。未设置或名称不识别时使用默认选择：
 
 - **Windows：** 默认 Direct2D，初始化失败时依次尝试 OpenGL、Software。
+
   指定 `direct2d` 也遵循这个顺序；显式指定 `opengl` 时不自动降级，初始化失败会返回错误。
+
 - **Linux / macOS：** 默认 OpenGL，初始化失败时降级到 Software；指定 `opengl` 也遵循此策略。
+
 - 指定 `software` 时直接使用软件绘制。这些降级发生在后端初始化时，不是运行期间自动切换。
 
 Linux / X11 还识别以下兼容变量：
@@ -250,7 +229,7 @@ go run ./example/demo
 ```
 
 Bash 示例中的变量仅对该命令生效；PowerShell 示例会保留在当前终端会话中。
-恢复自动选择时，删除相应变量并重启应用，例如在 PowerShell 中执行
+恢复自动选择时，删除相应变量并重启应用，例如在 PowerShell 中执行：
 `Remove-Item Env:GOUI_PLAT_PAINTER, Env:GOUI_PLAT_SCALE -ErrorAction SilentlyContinue`。
 
 ### 可选开发工具
@@ -273,18 +252,14 @@ gui       控件、布局、绘制、事件、焦点、信号与语义快照
 platform  原生窗口、事件循环、输入、绘图与文字排版
 ```
 
-按需选择使用的层次。`animation`、`layout`、`style`、`icon`、`mlang` 提供专注的
-能力，`gui/dev` 是可选的调试适配层。GOUI 希望成为实用的 GUI 工具包，
-而不是浏览器或无所不包的平台 SDK。
+按需选择使用的层次。`animation`、`layout`、`style`、`icon`、`mlang` 提供专注的能力，`gui/dev` 是可选的调试适配层。GOUI 希望成为实用的 GUI 工具包，而不是浏览器或无所不包的平台 SDK。
 
 ## 后续路线
 
-- 完善应用所需功能、辅助功能与键盘交互，在具体应用实践中稳定 API。
 - 增加触摸输入与手势，同时保持鼠标、键盘体验。
 - 适配更多平台、架构与窗口系统。
-- 完善构建打包、调试、检查与自动化配套工具。
 - 增加更多用途控件与可复用应用组件。
-- 持续优化启动、绘制、滚动、程序体积和内存占用，以可复现测量支持性能结论。
+- 持续优化性能和内存占用，以可复现测量支持性能结论。
 
 ## 许可证与致谢
 
