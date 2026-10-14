@@ -126,9 +126,10 @@ The declarative layer should be a small adapter over gui, not a second widget
 system.
 
 View values describe UI structure. Root reconciles those values into a gui
-widget tree. Reuse is based on parent position and concrete view type during
-MVP. Stable identity for dynamic lists can be added later when the need is
-concrete.
+widget tree. Within each mounting target, a non-empty ID plus concrete view type
+provides stable identity; views without an ID use the existing positional/type
+fallback. IDs are not global ownership keys. Cross-root transfer is explicit,
+not inferred from matching IDs. See [Widget Identity](DesignWidgetIdentity.md).
 
 The declarative syntax should be Go-friendly. Chain methods are acceptable when
 they produce clearer code than struct literals. The API should avoid embedded
@@ -208,9 +209,10 @@ behavior, and platform conventions belong below or at the gui boundary, not in
 application code. Platform-specific reading and change notification should be
 implemented in platform and consumed by gui.
 
-GOUI should learn from CSS, but it should not become CSS. Tree-level style
-inheritance and local style overrides are useful. Browser compatibility,
-selector complexity, and large implicit cascades are not MVP goals.
+GOUI should learn from CSS, but it should not become CSS. A widget resolves its
+own StyleName; parents do not implicitly supply child styles. Application rules
+override the complete Basic fallback. Browser compatibility, selector complexity,
+tree-level cascading and local style-sheet inheritance are not current contracts.
 
 ## Semantic and AI Integration Principles
 
