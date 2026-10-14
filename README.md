@@ -19,9 +19,14 @@ tabs, overlays, graphics, animations, and system integration. Switch between lig
 
 | Platform | Demo download |
 | --- | --- |
-| Windows x64 | Coming soon |
-| macOS Apple Silicon | Coming soon |
-| Linux x64 / X11 | Coming soon |
+| Windows x64 | [Download EXE](https://github.com/golang-gui/goui/releases/download/v0.1.0/goui-demo-v0.1.0-windows-amd64.exe) |
+| macOS Apple Silicon | [Download .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.1.0/goui-demo-v0.1.0-darwin-arm64.zip) |
+| Linux x64 / X11 | [Download executable](https://github.com/golang-gui/goui/releases/download/v0.1.0/goui-demo-v0.1.0-linux-amd64) |
+
+See the [v0.1.0 release notes](https://github.com/golang-gui/goui/releases/tag/v0.1.0) and
+[SHA-256 checksums](https://github.com/golang-gui/goui/releases/download/v0.1.0/SHA256SUMS).
+On Linux, run `chmod +x goui-demo-v0.1.0-linux-amd64` before launching it.
+On macOS, extract and open `GOUI Demo.app`; the bundle is ad-hoc signed, not notarized.
 
 Windows
 
@@ -279,4 +284,5 @@ Use only the layers you need. `animation`, `layout`, `style`, `icon`, and `mlang
 ## License and acknowledgements
 
 GOUI is [MIT licensed](LICENSE). Dependencies retain their own licenses.
+
 The [logo](doc/logo/goui-mark.svg) retains attribution to the Go gopher by Renee French (CC BY 4.0).
