@@ -93,7 +93,7 @@ macOS Popup 创建及调整尺寸在平台边界向上对齐物理像素，避�
 
 独立样式：drop-down、drop-down-text、drop-down-text-disabled、drop-down-placeholder、
 drop-down-item、drop-down-item-text、drop-down-item-text-disabled、drop-down-popup。
-widgets/style 显式兜底，Modern 提供亮暗统一的按钮密度、2 DIP FocusVisible、中性
+theme/basic 已提供 GUI 自动使用的完整兜底，Modern 提供亮暗统一的按钮密度、2 DIP FocusVisible、中性
 灰行高亮、勾选及圆角阴影。Padding 是控件属性，不进入样式系统。
 角色：combobox / listbox / option；goui.dropdown 属性携带索引、数量、展开或浏览
 状态，不修改 gui.WidgetInfo。弹出为独立 Root 快照，不伪装主窗口子树，不实现
@@ -153,8 +153,8 @@ amd64 / macOS arm64 编译；原生桌面与编译分开记录。
   历史命令，已关闭误启动程序，改为分步截图及交互会话启动，不将旧帧当验收结果。
 - 定位接口整理已迁移到公开 Placement / SetPlacement 与 Show；新增替身检查
   DropDown 实际请求 Bottom。当前全仓、race、Windows/macOS 编译及 Linux Software
-  1x 定位回归结果原记于 `DesignPopupPlacement.md` 的 2026-10-06 记录；该旧文档
-  因其它章节漂移未在本轮收录，参见 [文档审查记录](DesignDocumentAudit.md)。
+  1x 定位回归结果见 [PopupPlacement](DesignPopupPlacement.md) 的 2026-10-06 记录。
+  2026-10-14 已同步其过时章节，复核分类见 [文档审查记录](DesignDocumentAudit.md)。
   下列初次实现和 macOS 尺寸修复结果保留各自环境，不代表本轮远端桌面复验。
 - 完成 widgets / widgets/ui、显式兜底 / Modern、具名快照，以及 Popover 定位
   通用入口；未改变平台、Painter、ListView 或 UI Root / BuildContext 的接口。

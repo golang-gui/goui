@@ -25,19 +25,11 @@ Tab 专属的 `RoleTabView`、`RoleTabBar`、`RoleTab`、`RoleTabPanel` 常量�
 `widgets`，类型仍为开放的 `gui.Role`，字符串保持 `tabview/tabbar/tab/tabpanel`。
 通用选择状态 `WidgetInfo.Selected` 留在 GUI。GUI 不需要认识 Tab 类型或注册这些角色。
 
-基础外观由 `widgets/style.Rules()` 提供，不再加入 `gui.DefaultStyleRules()`。
-不使用 Modern 时，应用显式组合（`widgetstyle` 为 `widgets/style` 的导入别名）：
-
-```go
-rules := append(gui.DefaultStyleRules(), widgetstyle.Rules()...)
-// Append application overrides here, then install the sheet on the application/root.
-sheet := style.Sheet(rules...)
-```
-
-规则包只显式读取 GUI 固定默认 Label 字体，保留原有平台字体默认值；不读取当前主题、
-不监听设置、不向父子控件传递样式、不在 init 中注册。Modern 已提供完整 Tab 外观，
-继续直接使用 `modern.Sheet`，无需叠加基础规则。`-fallback-style` 窗口验收参数可验证
-显式组合后的基础外观；此模式不响应例程的 Dark/Text size 外观按钮。
+基础外观已归 `theme/basic`，GUI 自动兜底，应用无需显式拼接规则。
+`widgets/style.Rules()` 只保留兼容转发，见 [兜底设计](DesignThemeFallback.md)。
+规则不向父子控件传递样式、不在 init 中注册。Modern 可通过 `modern.FromSettings`
+生成当次设置快照；命令式应用自行管理设置变化连接，UI 已自动请求更新。
+`-fallback-style` 窗口验收参数验证 Basic，此模式不响应例程的 Dark/Text size 按钮。
 
 声明式调用使用 `wui.TabView(wui.TabPage("home", home).Title("Home"))`，
 `wui.TabBar("documents")` 根据 TabView 的 Widget.ID 关联。
@@ -208,9 +200,9 @@ cubic ease-out 过渡让位。判定依据目标槽位，不能使用过渡中�
 目标槽位。Esc 或在栏外释放时滑回原位。页面增删、外部重排、布局尺寸变化、
 解绑或卸载立即清理拖动状态；信号回调可移除页面或解绑，不得继续使用旧关联。
 
-边缘滚动与位置过渡复用栏内单个 GUI Timer，仅在需要时运行，按实际经过
-时间推进；指针离开标签栏的垂直范围后停止边缘滚动。拖动结束后过渡完成
-即停表，卸载立即停止并断开连接。该私有实现不引入公共动画系统或平台 DnD。
+边缘滚动与位置过渡复用栏内单个 Root.ConnectFrame 连接，仅在需要时连接并
+RequestPaint，按实际经过时间推进；指针离开标签栏的垂直范围后停止边缘滚动。
+拖动结束后过渡完成即断开，卸载立即清理。插值复用 animation 包，见 [动画设计](DesignAnimation.md)。
 
 键盘在标签主体聚焦时支持左右、Home、End、Enter、Space，事件向 TabBar
 冒泡处理；不隐式注册窗口级关闭或切页快捷键。焦点位于标签主体和按钮，
@@ -233,9 +225,9 @@ Selected 状态；真实输入仍经过 Window.DispatchEvent。过渡使用实�
 标签使用 `tab-bar`、`tab-item`（`selected` / `dragging` part）、`tab-item-text`、
 `tab-item-icon`、`tab-close-button`、`tab-scroll-button` 名称；选择态的标题、
 图标分别使用 `-selected` 名称。子控件自己解析 StyleName，不继承父样式。
-兜底规则由 `widgets/style` 显式提供，Modern 规则保留在主题入口。IconSource 可在页面间共享，
+兜底规则由 `theme/basic` 自动提供，Modern 规则保留在主题入口。IconSource 可在页面间共享，
 每个 Icon Widget 自己管理平台图片缓存。TabBar 卸载时断开页面通知，停止
-边缘滚动计时器；页面由其根宿主最终销毁。
+帧更新连接；页面由其根宿主最终销毁。
 
 Modern 采用低对比度浮动圆角标签：6 DIP 圆角，普通态透明底面和正常文字/图标色；
 悬停、按下使用淡中性色反馈。选中态使用正常文字/图标色、不透明中性底面和淡色
@@ -243,7 +235,7 @@ Modern 采用低对比度浮动圆角标签：6 DIP 圆角，普通态透明底�
 不改变原选择态的文字颜色，不添加受 viewport 裁剪的外扩阴影。
 选中不使用主题色描边、不加粗文字，不与键盘焦点语义混同。
 未选中不是禁用态，不降低标题和图标的对比度。关闭按钮默认只有次要色叉号，
-选中、整个标签悬停或标签子树包含键盘焦点时显示；其余时候隐藏。悬停/按下按钮
+选中、整个标签悬停或关闭按钮自身子树包含焦点时显示；主体焦点不强制显示。悬停/按下按钮
 显示中性底色，滚动箭头使用相同反馈。所有颜色/圆角/边框由样式决定，不硬编码进控件绘制。
 
 `tab-bar` 的 `separator` part 使用 ForegroundColor 绘制中性分隔竖线；透明色可关闭。
@@ -284,7 +276,7 @@ BuildContext 或同步启动嵌套协调。没有给 Root 增加 Tab 专用分�
 - `widgets/tab_bar_linux_test.go`：不依赖桌面的 Pango 字体测量，保留平台限定和线程亲和。
 - `widgets/test_helpers_test.go`：多文件共用的固定布局和正常输入派发替身；单文件专用 helper 就近保留。
 - `widgets/ui/tabs_test.go`：声明协调、身份、移交、菜单构建与信号清理。
-- `widgets/style/style_test.go`：兜底样式的显式组合。
+- `theme/basic/basic_test.go`：完整兜底；widgets/style 测试只检查兼容入口。
 
 合并只改变文件归属及分组，不改变测试名称、输入、断言、容差或跳过条件。
 真实窗口验证仍放在 `tests/window/widgets/`，不合入包内测试。
@@ -297,8 +289,8 @@ Snapshot 和 AfterUpdate 时序。Linux 下使用不依赖桌面的真实 Pango 
 HeaderBar 和缩放验收见 `tests/window/widgets/tabs` 的入口注释。执行
 `go test ./...`；本机窗口操作和后端、缩放结果分别记录。
 
-当前实现不涵盖跨窗口转移和拖出新窗口，后续按 [转移设计](DesignTabTransfer.md)
-实施，不再将其视为未规划方向。固定/分组标签、页面懒加载、自定义标签头和垂直
+跨窗口转移和拖出新窗口已实现，契约与分平台验收范围见 [转移设计](DesignTabTransfer.md)
+最新切片，不以本篇栏内验证代替转移验收。固定/分组标签、页面懒加载、自定义标签头和垂直
 标签栏仍不在本次范围。
 
 实现参考：Qt 6.8.0 的 [QTabBar](https://github.com/qt/qtbase/blob/v6.8.0/src/widgets/widgets/qtabbar.cpp#L1951)
