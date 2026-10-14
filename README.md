@@ -28,15 +28,15 @@ Switch between light/dark appearances, accent colors, and eight UI languages.
 
 Windows
 
-<img src="doc/images/demo-windows.png" width="900" alt="GOUI Demo on Windows">
+<img src="doc/images/demo-windows.png" alt="GOUI Demo on Windows">
 
 macOS
 
-<img src="doc/images/demo-macOS.png" width="900" alt="GOUI Demo on macOS">
+<img src="doc/images/demo-macOS.png" alt="GOUI Demo on macOS">
 
 Linux
 
-<img src="doc/images/demo-linux.png" width="900" alt="GOUI Demo on Linux">
+<img src="doc/images/demo-linux.png" alt="GOUI Demo on Linux">
 
 To run the current source from the repository root:
 

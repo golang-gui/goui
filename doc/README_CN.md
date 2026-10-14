@@ -25,15 +25,15 @@ GOUI 是纯Go实现的原生 GUI 框架。用 Go 编写界面与业务逻辑，�
 
 Windows
 
-<img src="images/demo-windows.png" width="900" alt="Windows 上的 GOUI Demo">
+<img src="images/demo-windows.png" alt="Windows 上的 GOUI Demo">
 
 macOS
 
-<img src="images/demo-macOS.png" width="900" alt="macOS 上的 GOUI Demo">
+<img src="images/demo-macOS.png" alt="macOS 上的 GOUI Demo">
 
 Linux
 
-<img src="images/demo-linux.png" width="900" alt="Linux 上的 GOUI Demo">
+<img src="images/demo-linux.png" alt="Linux 上的 GOUI Demo">
 
 也可以在仓库根目录直接运行当前源码：
 
