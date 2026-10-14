@@ -1,5 +1,91 @@
 # 设计文档审查与收录
 
+## 2026-10-14 复核与修正
+
+开始复核时基线：pre-release/v0.1，HEAD 8a5b4bf（实现基线仍为 de44eda）。
+期间工作区另出现 44ba6b8 Update README，提交阶段基线另含 b320c74 的截图尺寸调整；
+两笔均为用户的 README／截图提交，源码基线未变，不纳入本轮文档同步范围。
+用户已确认同步文档，随后明确要求提交并合并相近主题。本轮不以源码迁就旧方案，
+不修改实现、测试、README、截图或开发指南，仅收录本轮文档，不推送。
+
+上一次“整篇跳过”只是收录决定，不等于全文已无价值。本轮按现行接口、资源归属、
+坐标和源码路径修正已登记差异，保留有效设计与带日期的历史证据；不把历史“待验收”
+改成当前“未实现”，不重新执行历史桌面场景。
+
+### 已同步的当前契约
+
+| 领域／文档 | 修正内容与核对入口 |
+| --- | --- |
+| Design、DesignApp、DesignOverlay | ui.State 由调用方持有；局部 ID／具体类型协调；dev 包括 TextPath／短期 ref。核对 ui/state.go、ui/root.go、gui/dev/server.go。 |
+| DesignWidgetPainter、DesignTransform、DesignShadow、DesignPaint | PixelScale；stroke／radius 为 DIP；透明／不透明 D2D 呈现路径分开；resize 不清轮廓缓存；移除无基准性能断言和过时私有 Label 示例。 |
+| Settings、DesignPlatformSettings、HiDPI | AccentColor 为标准 color.Color，Language 已接入；Settings 用应用 Timer 轮询；X11 scale 为一次查询缓存，不宣称 monitor 动态监听。 |
+| Clipboard、DesignConventions、DesignFileDialog | 编辑复制／剪切／粘贴已实现；FileDialog 已交付 FileAccess／RestoreAccess 和错误，取消为空结果加 nil；只有 Clipboard 错误反馈仍待迁移。 |
+| DesignCursor、DesignDragAndDrop、DesignIME、DesignTextEditing、DesignKeyboardNavigation、InputTODO | nil 显式光标与接受手势捕获优先；DragFeedback 独立选项；真实文本提交已实现；编辑菜单共用 ContextMenuEventController；Primary 单独灰色焦点与禁用子树导航。 |
+| DesignLayout、DesignScroll、DesignWrapBox | 创建 API 使用 Size／Options；去掉 priming-swap 说法；变高虚拟行、宽度失效、同 Delegate 复用与明确安装语义；单轴 ScrollView 已适配交叉约束。 |
+| DesignMenu、DesignPopup、DesignPopupPlacement、DesignPopoverMenuAppearance | MenuModel 已存在、先 Hide 后 Action；原生 Popover 保留；160 DIP 菜单最小主体宽度、工作区查询／退避、透明样式外壳均已实现；删除重复附着草案。 |
+| DesignStyle、DesignModernStyle、DesignIcon、theme/modern/README | 完整 Basic 默认兜底，Modern.FromSettings 为 GUI 类型便利入口；Source.Image／WithRawColors；去掉菜单迁移 Overlay 与最小兜底的过时说明。 |
+| DesignCheckButton、DesignSwitch、DesignProgressBar、DesignSplitView、DesignTabs、DesignTreeView、DesignTableView、DesignDropDown | 样式归 theme/basic；Switch／Progress／Tab 使用 ConnectFrame；现代 Radio／焦点及关闭按钮规则；ListView 已正确旧委托解绑。 |
+| DesignWindowChrome、DesignWindowHitTest、DesignWindowManagement、DesignGUIWindowChrome | Window 拥有 Controls，HeaderBar 单 Child；Linux 安全布局与 clip；macOS 有限 BeginResize；Win10／11 顶边分支；客户区 Position 和整批 AfterUpdate；Windows 自绘按钮尺寸同步为 46×32 DIP，不替原生交通灯猜尺寸。 |
+
+表中列出本轮修正范围，不承诺穷举所有未来需求或替代源码 API 注释。
+仍保留的私有实现示意／原阶段计划已注明作用域或历史性质；引用接口时以当前章节
+和源码为准，而不是复制旧草案。
+
+### 未实现规划与评估分类
+
+未来事项集中于 [Roadmap](Roadmap.md)，Plan 只跟踪实施与验收：
+
+- **待实现、有确认设计**：子菜单／菜单键盘导航；原生 Popover IME（实施方案需复核）；
+  Clipboard 错误反馈迁移。
+- **待重新设计／评估**：通用附着浮层、共享滚动模型、通用裁剪或擦除、最小尺寸与
+  二维布局、样式动画／进一步 selector 扩展。
+- **需求／测量触发**：高频更新／渲染资源优化、原生帧时钟、设置通知／动态 DPI、
+  Touch／Pen／输入扩展、系统集成、更多平台／控件和打包格式；未承诺 API、日期或版本。
+- **已实现但待补验收**：保留各专题最新的版本／后端／DPI 缺口，不混成新增功能。
+- **已撤销，不恢复**：输入区域／鼠标穿透、菜单迁移 Overlay、隐藏窗口预布局、
+  独立客户区定位 API、自由布局 WindowControls、旧指针捕获与平台 Popup 半径查询等。
+
+特别更正：DesignIME 原文已经把 Popover 委托标为“未实现”，它本身不是实现漂移。
+本轮修的是过时现状、owner/modal 基线和不适用于实际退避位置的坐标配方。
+DesignScroll 已有 v2 测量式设计；只同步旧表、示意和安装／失效语义，不把整篇
+误判为固定行高方案。
+
+### 历史与暂缓文档的处理
+
+- GuiDesign 明确归早期 MVP 历史；现行入口指向专题设计，旧 Style／局部继承等
+  API 不复活。MVP 的已完成基线、Root／Focus／Container 示例同步当前实现。
+- DesignLinuxTransparency、DesignPopupAppearance 为已撤销历史提案，纠正前言
+  中尚在承诺实施的旧路线；旧 API／颜色假设／验收目标不构成当前契约。
+- DesignDrag 已明确被 DesignGesture 取代，本轮复核保留原文，不重新列入待实施。
+- DesignMenuSubmenu 标注未来状态，复核 Attributes 与实际定位算法所在文件；
+  DesignUI 保留已实现核心，未采用的 portal API 移出当前接口说明。
+- PlatformDev 结构地图与现有源码／指南一致，无需为“尚未提交链接目标”修改设计。
+  各级 AGENTS 保持用户原有文件，不在本轮顺带收录或更改。
+
+### 本轮验证
+
+- 本机 Linux amd64、Go 1.25.8：go test ./... 通过，包含缓存；保留既有 opt-in
+  条件和 PNG 输出测试，不把此结果当作纯无头、无桌面副作用或三端窗口验收。
+- 文档结构检查通过：扫描 doc 与 theme 中 84 份 Markdown 的本地链接／
+  锚点，未发现缺失目标；代码围栏平衡。检查包含历史区，不请求外网、不将外链
+  仍可访问或参考框架今天的行为作为本轮已验证事项。
+- git diff --check 通过；52 份文档被同步或明确归档，其余文档未改。
+  修改阶段未跟踪文档未暂存，不能只用 git diff --stat 统计本轮修改范围。
+- 修改阶段原 README 与 README_CN 以 SHA-256 保护；后续用户的 README 提交另行保留，
+  本轮没有源码／测试改动。
+- 未执行新的远端、独立桌面、跨平台编译或 race；文档同步不扩大历史验收范围。
+- 按用户提交指令，将 52 份文档归为 7 个主题：架构与设置、绘制与主题、布局与控件、
+  输入与文本、窗口与文件访问、Popup 与菜单、路线与审查；不带入其他工作区文件。
+  以下 2026-10-13 收录记录保留原提交事实，与本轮修正区分；本轮不推送。
+
+## 2026-10-13 原审查记录
+
+<details>
+<summary>展开原收录／跳过结论（历史快照，已由上述复核更新）</summary>
+
+下表的“保持原样／跳过／暂缓”仅是该次收录决策，不是当前仍有这些差异。
+原行号随正文同步已不适合定位；当前按上述章节与源码入口核对。
+
 ## 范围与判定
 
 审查日期：2026-10-13。实现基线：`pre-release/v0.1` 分支 `de44eda`。
@@ -170,3 +256,5 @@
 - `git diff --check`／暂存差异检查：提交前执行。
 - 未执行新的独立窗口、远端桌面、交叉编译或 race 检查；本轮没有实现变更，
   不借文档整理扩大已有功能的跨平台验收结论。
+
+</details>
