@@ -94,6 +94,21 @@ RSS includes resident shared-library pages; PSS apportions shared pages between 
 
 Core controls live in `gui`, with declarative bindings in `ui`. Additional controls live in `widgets`, with their declarative bindings in `widgets/ui`.
 
+## Build with an AI coding assistant
+
+The [GOUI application development Skill](skills/goui-app/SKILL.md) guides your AI through
+GOUI APIs, state, layout, styles, resources, building, and debugging. To install it, tell your AI:
+
+> Install the GOUI application development skill following https://github.com/golang-gui/goui/blob/main/skills/INSTALL.md.
+
+The AI follows the [installation instructions](skills/INSTALL.md) using its tool's native
+skill mechanism; no GOUI-specific Agent adapter or manual file copying is required.
+Tools without Skill support can read the guide directly, but this is not a native installation.
+Installing the Skill does not install or upgrade your application's GOUI dependency.
+
+For reusable components and custom controls, see [Custom Widget and View](doc/CustomWidgetView.md)
+for composing, extending, and implementing both layers.
+
 ## Quick start
 
 Requires **Go 1.24 or newer** and a supported desktop environment. Create a module and add GOUI:

@@ -94,6 +94,21 @@ RSS 包含驻留的共享库页面，PSS 按进程分摊共享页面；由Linux 
 
 核心控件位于 `gui`，声明式绑定位于 `ui`，配套控件位于 `widgets`，对应声明式绑定位于 `widgets/ui`。
 
+## 使用 AI 编写应用
+
+[GOUI 应用开发 Skill](../skills/goui-app/SKILL.md) 帮助你的 AI 正确使用 GOUI 的接口、
+状态、布局、样式和资源，并完成构建与调试。只需告诉 AI：
+
+> 请按照 https://github.com/golang-gui/goui/blob/main/skills/INSTALL.md 的说明，安装 GOUI 应用开发 Skill。
+
+AI 会按[安装说明](../skills/INSTALL.md)使用当前工具的原生技能机制完成安装，
+不需要 GOUI 为不同 Agent 编写适配器，也不需要你手动复制文件。
+不支持 Skill 的工具可以直接阅读开发指南，但不等同于原生安装。
+安装 Skill 不会安装或升级应用的 GOUI 依赖。
+
+需要复用业务界面或自定义控件时，参阅[自定义 Widget 与 View](CustomWidgetView.md)，
+包含两层的组合、扩展、实现方式及生命周期示例。
+
 ## 快速上手
 
 需要 **Go 1.24 或更高版本**，以及支持的桌面环境。创建模块并添加 GOUI：
