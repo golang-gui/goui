@@ -343,5 +343,7 @@ dismiss 回写及生命周期边界集中记录在 [未来路线](Roadmap.md#fut
 
 - **糖是否要**:`Tooltip`/`ContextMenu` 单列,还是只留通用 `Popover`。倾向先只做通用 `Popover` 附着,糖等 `Menu` 基元落地、真觉啰嗦再加;且糖加在 gui(`SetTooltip`)还是 ui(`.Tooltip()`)一起定——倾向 **gui 出能力、ui 出糖**。
 - Menu／MenuItem 基元和分隔线已实现；子菜单与菜单键盘导航的后续设计见 [子菜单](DesignMenuSubmenu.md)。
-- 组合型 View(只 `Build()`)的修饰器作用到 `Build()` 结果根 widget —— reconciler 传播细节。
+- 组合型 View（只 Build）的共享修饰器传播仅是评估方向，当前 normalizeView 展开
+  后只应用最终 WidgetView 的修饰器，不自动传播外壳 ID／Style，也不为外壳保留
+  独立协调状态。现行使用方式与扩展限制见 [自定义 Widget／View](CustomWidgetView.md)。
 - 若将来同一 anchor 上组合状态驱动、hover 与上下文菜单，须明确协调所有权和优先级；不预先承诺 OverlaySpec 或 Key 接口。
