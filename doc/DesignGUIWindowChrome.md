@@ -35,7 +35,7 @@ TitleBarHeight property exists. Zero means no row answered: native positioning
 returns to its default, and custom controls use their own height. Invalid
 negative/non-finite answers are ignored.
 
-Windows custom buttons have a 44-by-32 DIP intrinsic size and stay on the right. Native
+Windows custom buttons have a 46-by-32 DIP intrinsic size and stay on the right. Native
 buttons keep their observed size and horizontal anchor; Chrome does not replace
 the native left inset with a fixed value. This also preserves the reservation
 observed before first Show. Chrome
