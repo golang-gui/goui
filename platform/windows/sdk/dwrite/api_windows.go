@@ -91,6 +91,16 @@ func (this *Factory) class() *FactoryClass {
 	return (*FactoryClass)(this.Class)
 }
 
+func (this *Factory) CreateFontFileReference(path string) (file *FontFile, hr com.HRESULT) {
+	wPath, err := syscall.UTF16PtrFromString(path)
+	if err != nil {
+		return nil, com.E_INVALIDARG
+	}
+	hr = cgo.CallRet[com.HRESULT](this.class().CreateFontFileReference, this, wPath, uintptr(0), &file)
+	runtime.KeepAlive(wPath)
+	return
+}
+
 var IID_IDWriteFactory1 = com.DefineGuid(0x30572f99, 0xdac6, 0x41db, 0xa1, 0x6e, 0x04, 0x86, 0x30, 0x7e, 0x60, 0x6a)
 
 type Factory1Class struct {
@@ -123,6 +133,30 @@ type Factory3Class struct {
 	CreateFontCollectionFromFontSet             cgo.Symbol //HRESULT(IDWriteFactory3 *This, IDWriteFontSet *fontset, IDWriteFontCollection1 **collection)
 	IDWriteFactory3_GetSystemFontCollection     cgo.Symbol //HRESULT(IDWriteFactory3 *This, WINBOOL include_downloadable, IDWriteFontCollection1 **collection, WINBOOL check_for_updates)
 	GetFontDownloadQueue                        cgo.Symbol //HRESULT(IDWriteFactory3 *This, IDWriteFontDownloadQueue **queue)
+}
+
+type Factory3 struct{ Factory }
+
+func (this *Factory3) class() *Factory3Class { return (*Factory3Class)(this.Class) }
+
+func (this *Factory3) CreateFontFaceReference(file *FontFile, index uint32, simulations uint32) (ref *FontFaceReference, hr com.HRESULT) {
+	hr = cgo.CallRet[com.HRESULT](this.class().CreateFontFaceReference_, this, file, index, simulations, &ref)
+	return
+}
+
+func (this *Factory3) GetSystemFontSet() (set *FontSet, hr com.HRESULT) {
+	hr = cgo.CallRet[com.HRESULT](this.class().GetSystemFontSet, this, &set)
+	return
+}
+
+func (this *Factory3) CreateFontSetBuilder() (builder *FontSetBuilder, hr com.HRESULT) {
+	hr = cgo.CallRet[com.HRESULT](this.class().CreateFontSetBuilder, this, &builder)
+	return
+}
+
+func (this *Factory3) CreateFontCollectionFromFontSet(set *FontSet) (collection *FontCollection1, hr com.HRESULT) {
+	hr = cgo.CallRet[com.HRESULT](this.class().CreateFontCollectionFromFontSet, this, set, &collection)
+	return
 }
 
 var IID_IDWriteFactory4 = com.DefineGuid(0x4b0b5bd3, 0x0797, 0x4549, 0x8a, 0xc5, 0xfe, 0x91, 0x5c, 0xc5, 0x38, 0x56)
@@ -300,6 +334,8 @@ type FontCollection struct {
 	com.Unknown
 }
 
+type FontCollection1 struct{ FontCollection }
+
 func (this *FontCollection) GetFontFamilyCount() int {
 	ret, _, _ := this.class().GetFontFamilyCount.CallRaw(uintptr(cgo.Pointer(this)))
 	return int(ret)
@@ -313,6 +349,18 @@ func (this *FontCollection) GetFontFamily(index int) (family *FontFamily, hr com
 
 func (this *FontCollection) class() *FontCollectionClass {
 	return (*FontCollectionClass)(this.Class)
+}
+
+func (this *FontCollection) FindFamilyName(name string) (index uint32, exists bool, hr com.HRESULT) {
+	wName, err := syscall.UTF16PtrFromString(name)
+	if err != nil {
+		return 0, false, com.E_INVALIDARG
+	}
+	var nativeExists int32
+	hr = cgo.CallRet[com.HRESULT](this.class().FindFamilyName, this, wName, &index, &nativeExists)
+	runtime.KeepAlive(wName)
+	exists = nativeExists != 0
+	return
 }
 
 var IID_IDWriteFontFace = com.DefineGuid(0x5f49804d, 0x7024, 0x4d43, 0xbf, 0xa9, 0xd2, 0x59, 0x84, 0xf5, 0x38, 0x49)
@@ -463,7 +511,14 @@ type FontFileClass struct {
 }
 
 type FontFile struct {
-	// TODO: add method
+	com.Unknown
+}
+
+func (this *FontFile) Analyze() (supported bool, fileType uint32, faceType FontFaceType, count uint32, hr com.HRESULT) {
+	var nativeSupported int32
+	hr = cgo.CallRet[com.HRESULT]((*FontFileClass)(this.Class).Analyze, this, &nativeSupported, &fileType, &faceType, &count)
+	supported = nativeSupported != 0
+	return
 }
 
 var IID_IDWriteFontList = com.DefineGuid(0x1a0d8438, 0x1d97, 0x4ec1, 0xae, 0xf9, 0xa2, 0xfb, 0x86, 0xed, 0x6a, 0xcb)
@@ -502,6 +557,11 @@ func (this *FontFamily) class() *FontFamilyClass {
 	return (*FontFamilyClass)(this.Class)
 }
 
+func (this *FontFamily) GetFirstMatchingFont(weight FontWeight, stretch FontStretch, style FontStyle) (font *Font, hr com.HRESULT) {
+	hr = cgo.CallRet[com.HRESULT](this.class().GetFirstMatchingFont, this, weight, stretch, style, &font)
+	return
+}
+
 var IID_IDWriteLocalizedStrings = com.DefineGuid(0x08256209, 0x099a, 0x4b34, 0xb8, 0x6d, 0xc2, 0x2b, 0x11, 0x0e, 0x77, 0x71)
 
 type LocalizedStringsClass struct {
@@ -521,8 +581,10 @@ type LocalizedStrings struct {
 func (this *LocalizedStrings) GetString(index int) string {
 	length := this.GetStringLength(index)
 	if length != 0 {
-		buf := make([]uint16, length)
-		ret, _, _ := this.class().GetString.CallRaw(uintptr(cgo.Pointer(this)), uintptr(index), uintptr(cgo.CSlice(buf)), uintptr(length))
+		// DirectWrite's reported length excludes the terminator; GetString's
+		// capacity includes it.
+		buf := make([]uint16, length+1)
+		ret, _, _ := this.class().GetString.CallRaw(uintptr(cgo.Pointer(this)), uintptr(index), uintptr(cgo.CSlice(buf)), uintptr(len(buf)))
 		if ret == 0 {
 			return syscall.UTF16ToString(buf)
 		}
@@ -562,6 +624,14 @@ func (this *FontSetBuilder) CreateFontSet() (fontSet *FontSet, hr com.HRESULT) {
 
 func (this *FontSetBuilder) class() *FontSetBuilderClass {
 	return (*FontSetBuilderClass)(this.Class)
+}
+
+func (this *FontSetBuilder) AddFontFaceReference(ref *FontFaceReference) com.HRESULT {
+	return cgo.CallRet[com.HRESULT](this.class().AddFontFaceReference, this, ref)
+}
+
+func (this *FontSetBuilder) AddFontSet(set *FontSet) com.HRESULT {
+	return cgo.CallRet[com.HRESULT](this.class().AddFontSet, this, set)
 }
 
 var IID_IDWriteFontSetBuilder1 = com.DefineGuid(0x3ff7715f, 0x3cdc, 0x4dc6, 0x9b, 0x72, 0xec, 0x56, 0x21, 0xdc, 0xca, 0xfd)
@@ -620,8 +690,30 @@ func (this *FontSet) class() *FontSetClass {
 	return (*FontSetClass)(this.Class)
 }
 
-type Font struct {
-	//TODO: apply
+type FontClass struct {
+	com.UnknownClass
+	GetFontFamily           cgo.Symbol
+	GetWeight               cgo.Symbol
+	GetStretch              cgo.Symbol
+	GetStyle                cgo.Symbol
+	IsSymbolFont            cgo.Symbol
+	GetFaceNames            cgo.Symbol
+	GetInformationalStrings cgo.Symbol
+	GetSimulations          cgo.Symbol
+	GetMetrics              cgo.Symbol
+	HasCharacter            cgo.Symbol
+	CreateFontFace          cgo.Symbol
+}
+
+type Font struct{ com.Unknown }
+
+func (this *Font) GetFaceNames() (names *LocalizedStrings, hr com.HRESULT) {
+	hr = cgo.CallRet[com.HRESULT]((*FontClass)(this.Class).GetFaceNames, this, &names)
+	return
+}
+
+func (this *Font) GetSimulations() uint32 {
+	return cgo.CallRet[uint32]((*FontClass)(this.Class).GetSimulations, this)
 }
 
 var IID_IDWriteFontFaceReference = com.DefineGuid(0x5e7fa7ca, 0xdde3, 0x424c, 0x89, 0xf0, 0x9f, 0xcd, 0x6f, 0xed, 0x58, 0xcd)
@@ -770,6 +862,22 @@ type TextLayoutClass struct {
 	HitTestTextRange                          cgo.Symbol //HRESULT(IDWriteTextLayout *This, UINT32 textPosition,    UINT32 textLength,    FLOAT originX,    FLOAT originY,    DWRITE_HIT_TEST_METRICS *metrics,    UINT32 max_metricscount,    UINT32 *actual_metricscount)
 }
 
+var IID_IDWriteInlineObject = com.DefineGuid(0x8339fde3, 0x106f, 0x47ab, 0x83, 0x73, 0x1c, 0x62, 0x95, 0xeb, 0x10, 0xb3)
+
+type InlineObjectClass struct {
+	com.UnknownClass
+	Draw               cgo.Symbol
+	GetMetrics         cgo.Symbol
+	GetOverhangMetrics cgo.Symbol
+	GetBreakConditions cgo.Symbol
+}
+
+type InlineObject struct{ com.Unknown }
+
+func (this *TextLayout) SetInlineObject(object *InlineObject, textRange TextRange) com.HRESULT {
+	return cgo.CallRet[com.HRESULT](this.class().SetInlineObject, this, object, textRange)
+}
+
 type TextLayout struct {
 	TextFormat
 }
@@ -822,30 +930,52 @@ func (this *TextLayout) SetDrawingEffect(effect *com.Unknown, textRange TextRang
 }
 
 func (this *TextLayout) GetMetrics() (metrics TextMetrics, hr com.HRESULT) {
+	// Measuring an inline object can synchronously call back into Go. Keep
+	// native output addresses stable across callback-driven stack growth.
+	var pin runtime.Pinner
+	pin.Pin(&metrics)
+	defer pin.Unpin()
 	ret, _, _ := this.class().GetMetrics.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(&metrics)))
 	hr = com.HRESULT(ret)
 	return
 }
 
 func (this *TextLayout) GetLineMetrics() (lineMetrics []LineMetrics, hr com.HRESULT) {
-	var count int
-	this.class().GetLineMetrics.CallRaw(uintptr(cgo.Pointer(this)), 0, 0, uintptr(cgo.Pointer(&count)))
+	var count uint32 // UINT32*, not a platform-sized int*
+	var pin runtime.Pinner
+	pin.Pin(&count)
+	defer pin.Unpin()
+	ret, _, _ := this.class().GetLineMetrics.CallRaw(uintptr(cgo.Pointer(this)), 0, 0, uintptr(cgo.Pointer(&count)))
+	if count == 0 {
+		return nil, com.HRESULT(ret)
+	}
 	lineMetrics = make([]LineMetrics, count)
-	ret, _, _ := this.class().GetLineMetrics.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.CSlice(lineMetrics)), uintptr(len(lineMetrics)), uintptr(cgo.Pointer(&count)))
+	ret, _, _ = this.class().GetLineMetrics.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.CSlice(lineMetrics)), uintptr(len(lineMetrics)), uintptr(cgo.Pointer(&count)))
+	runtime.KeepAlive(lineMetrics)
 	hr = com.HRESULT(ret)
 	return
 }
 
 func (this *TextLayout) GetClusterMetrics() (clusterMetrics []ClusterMetrics, hr com.HRESULT) {
-	var count int
-	this.class().GetClusterMetrics.CallRaw(uintptr(cgo.Pointer(this)), 0, 0, uintptr(cgo.Pointer(&count)))
+	var count uint32
+	var pin runtime.Pinner
+	pin.Pin(&count)
+	defer pin.Unpin()
+	ret, _, _ := this.class().GetClusterMetrics.CallRaw(uintptr(cgo.Pointer(this)), 0, 0, uintptr(cgo.Pointer(&count)))
+	if count == 0 {
+		return nil, com.HRESULT(ret)
+	}
 	clusterMetrics = make([]ClusterMetrics, count)
-	ret, _, _ := this.class().GetClusterMetrics.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.CSlice(clusterMetrics)), uintptr(len(clusterMetrics)), uintptr(cgo.Pointer(&count)))
+	ret, _, _ = this.class().GetClusterMetrics.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.CSlice(clusterMetrics)), uintptr(len(clusterMetrics)), uintptr(cgo.Pointer(&count)))
+	runtime.KeepAlive(clusterMetrics)
 	hr = com.HRESULT(ret)
 	return
 }
 
 func (this *TextLayout) DetermineMinWidth() (minWidth float32) {
+	var pin runtime.Pinner
+	pin.Pin(&minWidth)
+	defer pin.Unpin()
 	this.class().DetermineMinWidth.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(&minWidth)))
 	return
 }
@@ -907,7 +1037,7 @@ type HitTestMetrics struct {
 	Top          float32
 	Width        float32
 	Height       float32
-	BidLevel     float32
+	BidiLevel    uint32
 	IsText       winapi.BOOL
 	IsTrimmed    winapi.BOOL
 }
