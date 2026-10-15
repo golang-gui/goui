@@ -1,5 +1,15 @@
 package pango
 
+type Weight int32
+type Stretch int32
+type Style int32
+
+const (
+	StyleNormal Style = iota
+	StyleOblique
+	StyleItalic
+)
+
 // Opaque types
 type (
 	FontDescription uintptr

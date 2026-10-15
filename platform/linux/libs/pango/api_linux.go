@@ -2,6 +2,7 @@ package pango
 
 import (
 	"runtime"
+	"unsafe"
 
 	"github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/platform/linux/libs/fontconfig"
@@ -9,7 +10,8 @@ import (
 )
 
 var (
-	libpango = cgo.NewLazyLibrary("libpango-1.0.so.0")
+	libpango   = cgo.NewLazyLibrary("libpango-1.0.so.0")
+	libpangofc = cgo.NewLazyLibrary("libpangoft2-1.0.so.0")
 
 	// PangoLayout
 	pangoLayoutNew                = libpango.NewSymbol("pango_layout_new")
@@ -40,6 +42,9 @@ var (
 	pangoLayoutIterGetLineReadonly   = libpango.NewSymbol("pango_layout_iter_get_line_readonly")
 	pangoLayoutIterGetLineExtents    = libpango.NewSymbol("pango_layout_iter_get_line_extents")
 	pangoLayoutIterGetRunReadonly    = libpango.NewSymbol("pango_layout_iter_get_run_readonly")
+	pangoLayoutIterGetRunExtents     = libpango.NewSymbol("pango_layout_iter_get_run_extents")
+	pangoLayoutIterNextRun           = libpango.NewSymbol("pango_layout_iter_next_run")
+	pangoGlyphStringIndexToX         = libpango.NewSymbol("pango_glyph_string_index_to_x")
 	pangoLayoutIterGetClusterExtents = libpango.NewSymbol("pango_layout_iter_get_cluster_extents")
 	pangoLayoutIterNextLine          = libpango.NewSymbol("pango_layout_iter_next_line")
 	pangoLayoutIterNextCluster       = libpango.NewSymbol("pango_layout_iter_next_cluster")
@@ -49,12 +54,15 @@ var (
 	pangoLayoutLineXToIndex   = libpango.NewSymbol("pango_layout_line_x_to_index")
 
 	// PangoAttrList
+	pangoAttrListFilter = libpango.NewSymbol("pango_attr_list_filter")
 	pangoAttrListNew    = libpango.NewSymbol("pango_attr_list_new")
 	pangoAttrListUnref  = libpango.NewSymbol("pango_attr_list_unref")
 	pangoAttrListInsert = libpango.NewSymbol("pango_attr_list_insert")
 	pangoAttrListChange = libpango.NewSymbol("pango_attr_list_change")
 
 	// PangoAttribute constructors
+	pangoAttrShapeNew           = libpango.NewSymbol("pango_attr_shape_new")
+	pangoAttrFontDescNew        = libpango.NewSymbol("pango_attr_font_desc_new")
 	pangoAttributeDestroy       = libpango.NewSymbol("pango_attribute_destroy")
 	pangoAttrFamilyNew          = libpango.NewSymbol("pango_attr_family_new")
 	pangoAttrSizeNewAbsolute    = libpango.NewSymbol("pango_attr_size_new_absolute")
@@ -68,14 +76,27 @@ var (
 	pangoAttrStrikethroughNew   = libpango.NewSymbol("pango_attr_strikethrough_new")
 
 	// PangoFontDescription
-	pangoFontDescriptionNew             = libpango.NewSymbol("pango_font_description_new")
-	pangoFontDescriptionFromString      = libpango.NewSymbol("pango_font_description_from_string")
-	pangoFontDescriptionFree            = libpango.NewSymbol("pango_font_description_free")
-	pangoFontDescriptionSetFamily       = libpango.NewSymbol("pango_font_description_set_family")
-	pangoFontDescriptionSetSize         = libpango.NewSymbol("pango_font_description_set_size")
-	pangoFontDescriptionSetAbsoluteSize = libpango.NewSymbol("pango_font_description_set_absolute_size")
-	pangoFontDescriptionGetFamily       = libpango.NewSymbol("pango_font_description_get_family")
-	pangoFontDescriptionGetSize         = libpango.NewSymbol("pango_font_description_get_size")
+	pangoFontDescriptionNew                   = libpango.NewSymbol("pango_font_description_new")
+	pangoFontDescriptionFromString            = libpango.NewSymbol("pango_font_description_from_string")
+	pangoFontDescriptionFree                  = libpango.NewSymbol("pango_font_description_free")
+	pangoFontDescriptionSetFamily             = libpango.NewSymbol("pango_font_description_set_family")
+	pangoFontDescriptionSetSize               = libpango.NewSymbol("pango_font_description_set_size")
+	pangoFontDescriptionSetAbsoluteSize       = libpango.NewSymbol("pango_font_description_set_absolute_size")
+	pangoFontDescriptionGetFamily             = libpango.NewSymbol("pango_font_description_get_family")
+	pangoFontDescriptionGetSize               = libpango.NewSymbol("pango_font_description_get_size")
+	pangoFontDescribe                         = libpango.NewSymbol("pango_font_describe")
+	pangoFontGetFace                          = libpango.NewSymbol("pango_font_get_face")
+	pangoFontGetMetrics                       = libpango.NewSymbol("pango_font_get_metrics")
+	pangoFontMetricsUnref                     = libpango.NewSymbol("pango_font_metrics_unref")
+	pangoFontMetricsGetStrikethroughPosition  = libpango.NewSymbol("pango_font_metrics_get_strikethrough_position")
+	pangoFontMetricsGetStrikethroughThickness = libpango.NewSymbol("pango_font_metrics_get_strikethrough_thickness")
+	pangoFontFaceGetFaceName                  = libpango.NewSymbol("pango_font_face_get_face_name")
+	pangoFontDescriptionSetWeight             = libpango.NewSymbol("pango_font_description_set_weight")
+	pangoFontDescriptionSetStretch            = libpango.NewSymbol("pango_font_description_set_stretch")
+	pangoFontDescriptionSetStyle              = libpango.NewSymbol("pango_font_description_set_style")
+	pangoFontDescriptionGetWeight             = libpango.NewSymbol("pango_font_description_get_weight")
+	pangoFontDescriptionGetStretch            = libpango.NewSymbol("pango_font_description_get_stretch")
+	pangoFontDescriptionGetStyle              = libpango.NewSymbol("pango_font_description_get_style")
 
 	// PangoContext
 	pangoContextGetFontDescription = libpango.NewSymbol("pango_context_get_font_description")
@@ -88,9 +109,10 @@ var (
 	pangoLanguageFromString = libpango.NewSymbol("pango_language_from_string")
 
 	// PangoFontMap
-	pangoFontMapCreateContext = libpango.NewSymbol("pango_font_map_create_context")
-	pangoFcFontMapGetConfig   = libpango.NewSymbol("pango_fc_font_map_get_config")
-	pangoFcFontMapSetConfig   = libpango.NewSymbol("pango_fc_font_map_set_config")
+	pangoFontMapCreateContext   = libpango.NewSymbol("pango_font_map_create_context")
+	pangoFcFontMapGetConfig     = libpangofc.NewSymbol("pango_fc_font_map_get_config")
+	pangoFcFontMapSetConfig     = libpangofc.NewSymbol("pango_fc_font_map_set_config")
+	pangoFcFontMapConfigChanged = libpangofc.NewSymbol("pango_fc_font_map_config_changed")
 )
 
 // --- PangoLayout ---
@@ -230,6 +252,15 @@ func (l Layout) ContextChanged() {
 
 type LayoutIter uintptr
 
+func (iter LayoutIter) GetRunExtents() (ink, logical Rectangle) {
+	pangoLayoutIterGetRunExtents.CallRaw(uintptr(iter), uintptr(cgo.Pointer(&ink)), uintptr(cgo.Pointer(&logical)))
+	return
+}
+func (iter LayoutIter) NextRun() bool {
+	ret, _, _ := pangoLayoutIterNextRun.CallRaw(uintptr(iter))
+	return ret != 0
+}
+
 // Copy returns an independently positioned iterator, owned by the caller.
 func (iter LayoutIter) Copy() LayoutIter {
 	ret, _, _ := pangoLayoutIterCopy.CallRaw(uintptr(iter))
@@ -345,6 +376,14 @@ type GlyphString struct {
 	logClusters uintptr
 }
 
+func (g *GlyphString) IndexToX(text string, analysis *Analysis, index int, trailing bool) int {
+	var x int32
+	cText := cgo.CStringTemp(text)
+	pangoGlyphStringIndexToX.CallRaw(uintptr(cgo.Pointer(g)), uintptr(cText), uintptr(len(text)), uintptr(cgo.Pointer(analysis)), uintptr(index), uintptr(cgo.CBool(trailing)), uintptr(cgo.Pointer(&x)))
+	runtime.KeepAlive(cText)
+	return int(x)
+}
+
 func (g GlyphString) GetGlyphInfos() []GlyphInfo {
 	return cgo.GoSliceN[GlyphInfo](cgo.Pointer(g.glyphs), int(g.NumGlyphs))
 }
@@ -396,6 +435,26 @@ type Analysis struct {
 
 type AttrList uintptr
 
+var removeAttrType = cgo.NewCallback(func(attr *Attribute, data uintptr) int32 {
+	if attr.Type() == AttrType(data) {
+		return 1
+	}
+	return 0
+})
+
+// RemoveType removes and destroys every attribute of this type.
+func (al AttrList) RemoveType(kind AttrType) {
+	removed := cgo.CallRet[AttrList](pangoAttrListFilter.Addr(), al, removeAttrType, uintptr(kind))
+	if removed != 0 {
+		removed.Unref()
+	}
+}
+
+// AttrShapeNew copies both rectangles. An empty ink rectangle draws nothing.
+func AttrShapeNew(ink, logical Rectangle) *Attribute {
+	return cgo.CallRet[*Attribute](pangoAttrShapeNew.Addr(), &ink, &logical)
+}
+
 // AttrListNew creates a new empty attribute list with a reference count of one.
 func AttrListNew() AttrList {
 	// PangoAttrList* pango_attr_list_new()
@@ -428,6 +487,31 @@ type Attribute struct {
 	Class      uintptr
 	StartIndex uint32
 	EndIndex   uint32
+}
+
+type AttrClass struct {
+	Type                 AttrType
+	Copy, Destroy, Equal uintptr
+}
+type AttrInt struct {
+	Attribute
+	Value int32
+}
+
+func (attr *Attribute) IntValue() int32   { return (*AttrInt)(unsafe.Pointer(attr)).Value }
+func (attr *Attribute) ColorValue() Color { return (*AttrColor)(unsafe.Pointer(attr)).Color }
+
+type Color struct{ Red, Green, Blue uint16 }
+type AttrColor struct {
+	Attribute
+	Color Color
+}
+
+func (attr *Attribute) Type() AttrType { return (*AttrClass)(unsafe.Pointer(attr.Class)).Type }
+
+// ExtraAttributes borrows the native attributes carried by this shaped item.
+func (a Analysis) ExtraAttributes() *glib.GSList[Attribute] {
+	return (*glib.GSList[Attribute])(unsafe.Pointer(a.ExtraAttrs))
 }
 
 func (attr *Attribute) Destroy() {
@@ -557,6 +641,59 @@ func (fd FontDescription) GetSize() int {
 	return int(cgo.CallRet[int32](pangoFontDescriptionGetSize.Addr(), fd))
 }
 
+type Font uintptr
+
+type FontMetrics uintptr
+
+func (f Font) GetMetrics(language Language) FontMetrics {
+	return cgo.CallRet[FontMetrics](pangoFontGetMetrics.Addr(), f, language)
+}
+func (m FontMetrics) Unref() { pangoFontMetricsUnref.CallRaw(uintptr(m)) }
+func (m FontMetrics) GetStrikethroughPosition() int {
+	return int(cgo.CallRet[int32](pangoFontMetricsGetStrikethroughPosition.Addr(), m))
+}
+func (m FontMetrics) GetStrikethroughThickness() int {
+	return int(cgo.CallRet[int32](pangoFontMetricsGetStrikethroughThickness.Addr(), m))
+}
+
+type FontFace uintptr
+
+func (f Font) GetFace() FontFace { return cgo.CallRet[FontFace](pangoFontGetFace.Addr(), f) }
+func (f FontFace) GetFaceName() string {
+	return cgo.GoString(cgo.CallRet[cgo.Pointer](pangoFontFaceGetFaceName.Addr(), f))
+}
+
+func (fd FontDescription) SetWeight(weight Weight) {
+	pangoFontDescriptionSetWeight.CallRaw(uintptr(fd), uintptr(weight))
+}
+func (fd FontDescription) SetStretch(stretch Stretch) {
+	pangoFontDescriptionSetStretch.CallRaw(uintptr(fd), uintptr(stretch))
+}
+func (fd FontDescription) SetStyle(style Style) {
+	pangoFontDescriptionSetStyle.CallRaw(uintptr(fd), uintptr(style))
+}
+func (fd FontDescription) GetWeight() Weight {
+	return cgo.CallRet[Weight](pangoFontDescriptionGetWeight.Addr(), fd)
+}
+func (fd FontDescription) GetStretch() Stretch {
+	return cgo.CallRet[Stretch](pangoFontDescriptionGetStretch.Addr(), fd)
+}
+func (fd FontDescription) GetStyle() Style {
+	return cgo.CallRet[Style](pangoFontDescriptionGetStyle.Addr(), fd)
+}
+
+// AttrFontDescNew copies desc; caller may immediately free the description.
+func AttrFontDescNew(desc FontDescription) *Attribute {
+	ret, _, _ := pangoAttrFontDescNew.CallRaw(uintptr(desc))
+	return goPointer[Attribute](ret)
+}
+
+// Describe returns a new description of the actual matched font; caller frees it.
+func (f Font) Describe() FontDescription {
+	ret, _, _ := pangoFontDescribe.CallRaw(uintptr(f))
+	return FontDescription(ret)
+}
+
 // --- PangoContext ---
 
 type Context struct {
@@ -621,6 +758,9 @@ func (fm FontMap) GetConfig() fontconfig.Config {
 	ret, _, _ := pangoFcFontMapGetConfig.CallRaw(fm.GObject)
 	return fontconfig.Config(ret)
 }
+
+// ConfigChanged clears cached font matches after changing this map's FcConfig.
+func (fm FontMap) ConfigChanged() { pangoFcFontMapConfigChanged.CallRaw(fm.GObject) }
 
 // FontMapSetConfig sets the FcConfig for a PangoCairoFontMap created with FontMapNewForFontType(cairo.FontTypeFT).
 // The fontMap must be a PangoFcFontMap (i.e. created with FontTypeFT).
