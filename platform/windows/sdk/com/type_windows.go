@@ -53,6 +53,7 @@ const (
 	E_NOINTERFACE                HRESULT = -2147467262
 	E_NOTIMPL                    HRESULT = -2147467263
 	E_INVALIDARG                 HRESULT = -2147024809
+	E_POINTER                    HRESULT = -2147467261
 	DV_E_FORMATETC               HRESULT = -2147221404
 	DV_E_TYMED                   HRESULT = -2147221399
 	DRAGDROP_S_DROP              HRESULT = 0x00040100

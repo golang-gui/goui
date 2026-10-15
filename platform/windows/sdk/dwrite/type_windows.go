@@ -1,5 +1,23 @@
 package dwrite
 
+type InlineObjectMetrics struct {
+	Width            float32
+	Height           float32
+	Baseline         float32
+	SupportsSideways int32 // BOOL, not a Go bool
+}
+
+type OverhangMetrics struct{ Left, Top, Right, Bottom float32 }
+
+type BreakCondition uint32
+
+const (
+	DWRITE_BREAK_CONDITION_NEUTRAL BreakCondition = iota
+	DWRITE_BREAK_CONDITION_CAN_BREAK
+	DWRITE_BREAK_CONDITION_MAY_NOT_BREAK
+	DWRITE_BREAK_CONDITION_MUST_BREAK
+)
+
 type FactoryType uint32
 
 const (
