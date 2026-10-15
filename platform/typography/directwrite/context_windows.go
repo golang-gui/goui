@@ -5,7 +5,11 @@ import (
 	"fmt"
 	"image/color"
 	"math"
+	"path/filepath"
+	"sync/atomic"
+	"unsafe"
 
+	"github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/internal/lifecycle"
@@ -16,14 +20,17 @@ import (
 	"github.com/golang-gui/goui/platform/windows/sdk/dwrite"
 	"github.com/golang-gui/goui/platform/windows/sdk/dxgi"
 	"github.com/golang-gui/goui/platform/windows/sdk/wic"
-	"github.com/golang-gui/goui/platform/windows/sdk/winapi"
 )
 
 type Context struct {
-	dwFactory  *dwrite.Factory
-	d2dFactory *d2d1.Factory
-	imgFactory *wic.ImagingFactory
-	ownsCOM    bool // true if we called com.Initialize (not skipped)
+	dwFactory      *dwrite.Factory
+	d2dFactory     *d2d1.Factory
+	imgFactory     *wic.ImagingFactory
+	ownsCOM        bool // true if we called com.Initialize (not skipped)
+	fontFactory    *dwrite.Factory3
+	fontSet        *dwrite.FontSet
+	fontCollection *dwrite.FontCollection1
+	fontFiles      map[string]bool
 }
 
 func NewContext() (_ typography.Context, err error) {
@@ -40,6 +47,7 @@ func NewContext() (_ typography.Context, err error) {
 	c.ownsCOM = !already
 	c.dwFactory, err = dwrite.CreateFactory[dwrite.Factory](dwrite.DWRITE_FACTORY_TYPE_SHARED, dwrite.IID_IDWriteFactory)
 	if err != nil {
+		c.Destroy()
 		return nil, fmt.Errorf("create dwrite factory err: %v", err)
 	}
 	return c, nil
@@ -47,6 +55,18 @@ func NewContext() (_ typography.Context, err error) {
 
 func (c *Context) Destroy() {
 	c.destroyDraw()
+	if c.fontCollection != nil {
+		c.fontCollection.Release()
+		c.fontCollection = nil
+	}
+	if c.fontSet != nil {
+		c.fontSet.Release()
+		c.fontSet = nil
+	}
+	if c.fontFactory != nil {
+		c.fontFactory.Release()
+		c.fontFactory = nil
+	}
 	if c.dwFactory != nil {
 		c.dwFactory.Release()
 		c.dwFactory = nil
@@ -61,11 +81,88 @@ func (c *Context) Name() string {
 }
 
 func (c *Context) AddFont(fontFile string) error {
-	num := winapi.AddFontResourceEx(fontFile, winapi.FR_PRIVATE)
-	if num == 0 {
-		return errors.New("add font resource failed")
+	path, err := filepath.Abs(fontFile)
+	if err != nil {
+		return err
 	}
+	if c.fontFiles[path] {
+		return nil
+	}
+	if c.fontFactory == nil {
+		c.fontFactory, err = dwrite.CreateFactory[dwrite.Factory3](dwrite.DWRITE_FACTORY_TYPE_SHARED, dwrite.IID_IDWriteFactory3)
+		if err != nil {
+			return fmt.Errorf("create font factory: %w", err)
+		}
+	}
+	file, hr := c.fontFactory.CreateFontFileReference(path)
+	if hr.Failed() {
+		return fmt.Errorf("create font file: %w", hr)
+	}
+	defer file.Release()
+	supported, _, _, count, hr := file.Analyze()
+	if hr.Failed() {
+		return fmt.Errorf("analyze font file: %w", hr)
+	}
+	if !supported || count == 0 {
+		return errors.New("unsupported font file")
+	}
+	builder, hr := c.fontFactory.CreateFontSetBuilder()
+	if hr.Failed() {
+		return fmt.Errorf("create font set builder: %w", hr)
+	}
+	defer builder.Release()
+	// Application faces precede the previously available system/application faces.
+	for index := uint32(0); index < count; index++ {
+		ref, hr := c.fontFactory.CreateFontFaceReference(file, index, 0)
+		if hr.Failed() {
+			return fmt.Errorf("create font face: %w", hr)
+		}
+		hr = builder.AddFontFaceReference(ref)
+		ref.Release()
+		if hr.Failed() {
+			return fmt.Errorf("add font face: %w", hr)
+		}
+	}
+	previous := c.fontSet
+	if previous == nil {
+		previous, hr = c.fontFactory.GetSystemFontSet()
+		if hr.Failed() {
+			return fmt.Errorf("get system fonts: %w", hr)
+		}
+		defer previous.Release()
+	}
+	if hr = builder.AddFontSet(previous); hr.Failed() {
+		return fmt.Errorf("add existing fonts: %w", hr)
+	}
+	set, hr := builder.CreateFontSet()
+	if hr.Failed() {
+		return fmt.Errorf("create font set: %w", hr)
+	}
+	collection, hr := c.fontFactory.CreateFontCollectionFromFontSet(set)
+	if hr.Failed() {
+		set.Release()
+		return fmt.Errorf("create font collection: %w", hr)
+	}
+	// Publish only the complete pair. Native layouts retain their old collection.
+	if c.fontCollection != nil {
+		c.fontCollection.Release()
+	}
+	if c.fontSet != nil {
+		c.fontSet.Release()
+	}
+	c.fontSet, c.fontCollection = set, collection
+	if c.fontFiles == nil {
+		c.fontFiles = make(map[string]bool)
+	}
+	c.fontFiles[path] = true
 	return nil
+}
+
+func (c *Context) fonts() *dwrite.FontCollection {
+	if c.fontCollection == nil {
+		return nil
+	}
+	return &c.fontCollection.FontCollection
 }
 
 func (c *Context) NewTextLayout(text string, format typography.TextFormat, width, height float32) (typography.TextLayout, error) {
@@ -84,8 +181,14 @@ func (c *Context) NewTextLayout(text string, format typography.TextFormat, width
 }
 
 func (c *Context) createTextFormat(format typography.TextFormat) (textFormat *dwrite.TextFormat, err error) {
-	fontSize := ptToDip(format.Font.Size)
-	textFormat, hr := c.dwFactory.CreateTextFormat(format.Font.Family, nil, dwrite.DWRITE_FONT_WEIGHT_NORMAL, dwrite.DWRITE_FONT_STYLE_NORMAL, dwrite.DWRITE_FONT_STRETCH_NORMAL, fontSize, "")
+	font, err := utils.ResolveFont(format.Font)
+	if err != nil {
+		return nil, err
+	}
+	if font.Family == "" {
+		font.Family = "Segoe UI"
+	}
+	textFormat, hr := c.dwFactory.CreateTextFormat(font.Family, c.fonts(), dwrite.FontWeight(font.Weight), nativeFontStyle(font.Style), dwrite.FontStretch(font.Width), ptToDip(font.Size), "")
 	if hr.Failed() {
 		return nil, hr
 	}
@@ -141,16 +244,17 @@ func (c *Context) destroyDraw() {
 }
 
 type TextLayout struct {
-	ctx      *Context
-	layout   *dwrite.TextLayout
-	text     string
-	format   typography.TextFormat
-	width    float32
-	height   float32
-	position utils.StringPosition
-	colors   []textColorAttr
-	painter  textPainter
-	life     lifecycle.Layout
+	ctx          *Context
+	layout       *dwrite.TextLayout
+	text         string
+	format       typography.TextFormat
+	width        float32
+	height       float32
+	position     utils.StringPosition
+	colors       []textColorAttr
+	painter      textPainter
+	life         lifecycle.Layout
+	placeholders map[int]typography.PlaceholderMetrics
 }
 
 type textColorAttr struct {
@@ -250,27 +354,26 @@ func (t *TextLayout) SetWrapMode(wrap typography.WrapMode) {
 }
 
 func (t *TextLayout) SetTextFont(start, length int, font typography.FontInfo) {
-	if 0 <= start && 0 < length && (len(font.Family) != 0 || font.Size != 0) {
-		startPos := t.position.ToUtf16(start)
-		endPos := t.position.ToUtf16(start + length)
-		if endPos < 0 {
-			endPos = t.position.ToUtf16(len(t.text))
-		}
-
-		textRange := dwrite.TextRange{
-			StartPosition: uint32(startPos),
-			Length:        uint32(endPos - startPos),
-		}
-
-		if len(font.Family) != 0 {
-			t.layout.SetFontFamilyName(font.Family, textRange)
-		}
-		if font.Size != 0 {
-			fontSize := ptToDip(font.Size)
-			t.layout.SetFontSize(fontSize, textRange)
-		}
-		t.life.Changed()
+	utils.CheckTextRange(t.text, start, length)
+	font, err := utils.ResolveFont(font)
+	if err != nil {
+		panic(err)
 	}
+	if font.Family == "" {
+		font.Family = "Segoe UI"
+	}
+	startPos, endPos := t.position.ToUtf16(start), t.position.ToUtf16(start+length)
+	textRange := dwrite.TextRange{StartPosition: uint32(startPos), Length: uint32(endPos - startPos)}
+	t.layout.SetFontFamilyName(font.Family, textRange)
+	t.layout.SetFontSize(ptToDip(font.Size), textRange)
+	t.layout.SetFontWeight(dwrite.FontWeight(font.Weight), textRange)
+	t.layout.SetFontStretch(dwrite.FontStretch(font.Width), textRange)
+	t.layout.SetFontStyle(nativeFontStyle(font.Style), textRange)
+	t.life.Changed()
+}
+
+func nativeFontStyle(style typography.FontStyle) dwrite.FontStyle {
+	return []dwrite.FontStyle{dwrite.DWRITE_FONT_STYLE_NORMAL, dwrite.DWRITE_FONT_STYLE_ITALIC, dwrite.DWRITE_FONT_STYLE_OBLIQUE}[style]
 }
 
 func (t *TextLayout) SetTextColor(start, length int, color color.Color) {
@@ -374,7 +477,12 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 					Width: dwCluster.Width, Height: line.Height, LineIndex: lineIndex,
 				}
 				cluster.Length = t.position.ToUtf8(pos+int(dwCluster.Length)) - cluster.Start
-				if dwCluster.IsRightToLeft() {
+				if placeholder, ok := t.placeholders[cluster.Start]; ok {
+					cluster.Y, cluster.Height = line.Baseline-placeholder.Baseline, placeholder.Height
+				}
+				// Inline objects have no RTL glyph flag. Hit testing reports the
+				// actual resolved bidi level for both text and inline objects.
+				if hit.BidiLevel&1 != 0 {
 					cluster.Direction = typography.TextRightToLeft
 				}
 				// Logical cluster order is not visual order in a bidi line.
@@ -618,4 +726,94 @@ func toRGBAColor(c color.Color) (rgba color.RGBA) {
 		c = typography.DefaultTextColor()
 	}
 	return color.RGBAModel.Convert(c).(color.RGBA)
+}
+
+// A C-allocated, numeric-only COM object. DirectWrite owns references to it;
+// no native pointer keeps Go heap/stack memory or a TextLayout alive.
+type inlineObject struct {
+	class   uintptr
+	refs    int32
+	metrics dwrite.InlineObjectMetrics
+}
+
+var inlineClass = dwrite.InlineObjectClass{
+	UnknownClass: com.UnknownClass{
+		QueryInterface: cgo.Symbol(cgo.NewCallback(func(this *inlineObject, iid *com.IID, result *uintptr) com.HRESULT {
+			if iid == nil || result == nil {
+				return com.E_POINTER
+			}
+			*result = 0
+			if *iid != com.IID_IUnknown && *iid != dwrite.IID_IDWriteInlineObject {
+				return com.E_NOINTERFACE
+			}
+			*result = uintptr(unsafe.Pointer(this))
+			atomic.AddInt32(&this.refs, 1)
+			return com.S_OK
+		})),
+		AddRef: cgo.Symbol(cgo.NewCallback(func(this *inlineObject) uint32 { return uint32(atomic.AddInt32(&this.refs, 1)) })),
+		Release: cgo.Symbol(cgo.NewCallback(func(this *inlineObject) uint32 {
+			count := atomic.AddInt32(&this.refs, -1)
+			if count == 0 {
+				cgo.Free(unsafe.Pointer(this))
+			}
+			return uint32(count)
+		})),
+	},
+	Draw: cgo.Symbol(cgo.NewCallback(func(this *inlineObject, client, renderer uintptr, x, y float32, sideways, rtl int32, effect uintptr) com.HRESULT {
+		return com.S_OK
+	})),
+	GetMetrics: cgo.Symbol(cgo.NewCallback(func(this *inlineObject, result *dwrite.InlineObjectMetrics) com.HRESULT {
+		if result == nil {
+			return com.E_POINTER
+		}
+		*result = this.metrics
+		return com.S_OK
+	})),
+	GetOverhangMetrics: cgo.Symbol(cgo.NewCallback(func(this *inlineObject, result *dwrite.OverhangMetrics) com.HRESULT {
+		if result == nil {
+			return com.E_POINTER
+		}
+		*result = dwrite.OverhangMetrics{}
+		return com.S_OK
+	})),
+	GetBreakConditions: cgo.Symbol(cgo.NewCallback(func(this *inlineObject, before, after *dwrite.BreakCondition) com.HRESULT {
+		if before == nil || after == nil {
+			return com.E_POINTER
+		}
+		*before, *after = dwrite.DWRITE_BREAK_CONDITION_CAN_BREAK, dwrite.DWRITE_BREAK_CONDITION_CAN_BREAK
+		return com.S_OK
+	})),
+}
+
+func (t *TextLayout) SetPlaceholder(start int, metrics *typography.PlaceholderMetrics) {
+	utils.CheckPlaceholder(t.text, start, metrics)
+	r := dwrite.TextRange{StartPosition: uint32(t.position.ToUtf16(start)), Length: 1}
+	var object *dwrite.InlineObject
+	if metrics != nil {
+		data := cgo.Malloc(cgo.Sizet(unsafe.Sizeof(inlineObject{})))
+		if data == nil {
+			panic("directwrite: allocate inline metrics failed")
+		}
+		value := (*inlineObject)(data)
+		value.class = uintptr(unsafe.Pointer(&inlineClass))
+		value.refs = 1
+		value.metrics = dwrite.InlineObjectMetrics{Width: metrics.Width, Height: metrics.Height, Baseline: metrics.Baseline}
+		object = (*dwrite.InlineObject)(data)
+	}
+	hr := t.layout.SetInlineObject(object, r)
+	if object != nil {
+		object.Release()
+	}
+	if hr.Failed() {
+		panic(hr)
+	}
+	if metrics == nil {
+		delete(t.placeholders, start)
+	} else {
+		if t.placeholders == nil {
+			t.placeholders = make(map[int]typography.PlaceholderMetrics)
+		}
+		t.placeholders[start] = *metrics
+	}
+	t.life.Changed()
 }

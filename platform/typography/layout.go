@@ -38,8 +38,10 @@ type TextLayout interface {
 	// SetWrapMode changes automatic line wrapping within the layout width.
 	SetWrapMode(wrap WrapMode)
 
-	// SetTextFont applies font to a non-empty range of Text. start and length are
-	// UTF-8 byte offsets and must describe valid rune boundaries.
+	// SetTextFont replaces the complete font request for a non-empty range of
+	// Text; zero fields use FontInfo defaults, not the previous range values.
+	// start and length must describe valid UTF-8 rune boundaries. Invalid ranges
+	// or font requests panic; invalid base requests fail NewTextLayout.
 	SetTextFont(start, length int, font FontInfo)
 
 	// SetTextColor applies c to a non-empty range of Text. start and length are
@@ -55,6 +57,13 @@ type TextLayout interface {
 	// Text. start and length are UTF-8 byte offsets and must describe valid rune
 	// boundaries.
 	SetStrikethrough(start, length int, strike bool)
+
+	// SetPlaceholder assigns layout-local metrics to the U+FFFC replacement
+	// character at UTF-8 byte offset start. It does not insert or replace text.
+	// It copies metrics; nil clears the setting and restores the character's
+	// native layout. The placeholder forms an indivisible cluster and reserves
+	// space without painting content. Invalid positions or metrics panic.
+	SetPlaceholder(start int, metrics *PlaceholderMetrics)
 
 	// MeasureSize returns the occupied width and height under the current layout
 	// constraints and formatting, in logical units.
@@ -92,6 +101,15 @@ type TextLayout interface {
 	// The caller owns the returned handle and should disconnect it if the listener
 	// becomes invalid before the layout is destroyed.
 	ConnectDestroy(func()) signal.Handle
+}
+
+// PlaceholderMetrics describes a non-painted inline placeholder, in logical
+// units (not typographic points). Width is finite and nonnegative, Height is
+// finite and positive, and Baseline is the top-to-baseline distance in [0,Height].
+type PlaceholderMetrics struct {
+	Width    float32
+	Height   float32
+	Baseline float32
 }
 
 // TextLine describes one laid-out line in layout-local logical coordinates.

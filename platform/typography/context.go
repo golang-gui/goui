@@ -17,10 +17,10 @@ type Context interface {
 	// method may be called after Destroy.
 	Destroy()
 
-	// AddFont registers the font file for font-family resolution by layouts
-	// created afterward. Registration scope and lifetime are platform-defined;
-	// in particular, AddFont does not guarantee that existing layouts change.
-	// It returns an error when the platform cannot register the file.
+	// AddFont makes the file's font families available to layouts created afterward.
+	// Duplicate registration is idempotent. Failed registration leaves existing
+	// fonts available. Scope is platform-defined; existing layouts need not rematch.
+	// The caller keeps the file accessible while its fonts are in use.
 	AddFont(fontFile string) error
 
 	// NewTextLayout creates a layout for text using format and maximum layout
@@ -50,17 +50,59 @@ type TextFormat struct {
 // FontInfo describes a requested font face. Font matching is performed by the
 // platform typography backend, so the selected face may be a fallback.
 type FontInfo struct {
-	// Family is the platform font-family name.
+	// Family is the font-family name; empty requests the platform default.
 	Family string
-	// Size is the font size in typographic points (1/72 inch).
+	// Size is the font size in typographic points (1/72 inch). Zero requests 12 pt;
+	// otherwise it must be finite and positive.
 	Size float32
-	// Weight requests a platform-specific font weight. Zero uses the backend's
-	// default, and backends that do not support the value may ignore it.
-	Weight float32
-	// Width requests a platform-specific font width. Zero uses the backend's
-	// default, and backends that do not support the value may ignore it.
-	Width float32
+	// Weight requests a weight from 100 through 900; zero means Regular.
+	Weight FontWeight
+	// Width requests a standard width class; zero means Normal.
+	Width FontWidth
+	// Style requests an upright, italic or oblique face, not a painter transform.
+	Style FontStyle
 }
+
+// FontWeight is an OpenType-style weight request. Zero defaults to Regular;
+// otherwise values from 100 to 900 are valid, including intermediate weights.
+type FontWeight uint16
+
+const (
+	FontWeightThin       FontWeight = 100
+	FontWeightExtraLight FontWeight = 200
+	FontWeightLight      FontWeight = 300
+	FontWeightRegular    FontWeight = 400
+	FontWeightMedium     FontWeight = 500
+	FontWeightSemibold   FontWeight = 600
+	FontWeightBold       FontWeight = 700
+	FontWeightExtraBold  FontWeight = 800
+	FontWeightBlack      FontWeight = 900
+)
+
+// FontWidth is a standard width class; zero defaults to Normal.
+type FontWidth uint8
+
+const (
+	FontWidthUltraCondensed FontWidth = iota + 1
+	FontWidthExtraCondensed
+	FontWidthCondensed
+	FontWidthSemiCondensed
+	FontWidthNormal
+	FontWidthSemiExpanded
+	FontWidthExpanded
+	FontWidthExtraExpanded
+	FontWidthUltraExpanded
+)
+
+// FontStyle requests a native face's slant. Missing faces may use the closest
+// native match; no painter transform is used to simulate a slant.
+type FontStyle uint8
+
+const (
+	FontStyleNormal FontStyle = iota
+	FontStyleItalic
+	FontStyleOblique
+)
 
 // WrapMode controls where a TextLayout may insert automatic line breaks.
 type WrapMode int

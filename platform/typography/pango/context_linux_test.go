@@ -5,12 +5,129 @@ import (
 	"image/color"
 	"image/png"
 	"os"
+	"runtime"
 	"testing"
 
+	"github.com/golang-gui/goui/platform/linux/libs/fontconfig"
+	native "github.com/golang-gui/goui/platform/linux/libs/pango"
 	"github.com/golang-gui/goui/platform/typography"
+	"github.com/golang-gui/goui/platform/typography/internal/typographytest"
 )
 
+func TestMain(m *testing.M) { os.Exit(typographytest.Main(m)) }
+
+func TestFontRegistration(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ctx, err := NewContext()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctx.Destroy()
+	path := typographytest.FontFile(t)
+	pattern := fontconfig.FreeTypeQuery(path, 0)
+	if pattern == 0 {
+		t.Fatal("invalid fixture")
+	}
+	family, _ := pattern.GetString("family", 0)
+	pattern.Destroy()
+	if family != "Go" {
+		t.Fatalf("fixture family=%q", family)
+	}
+	// Seed the fallback cache before registration.
+	before, err := ctx.NewTextLayout("Go", typography.TextFormat{Font: typography.FontInfo{Family: "Go", Size: 14}}, 200, 80)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer before.Destroy()
+	before.MeasureSize()
+	for i := 0; i < 2; i++ {
+		if err := ctx.AddFont(path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := ctx.AddFont(path + ".missing"); err == nil {
+		t.Fatal("missing file accepted")
+	}
+	if err := ctx.AddFont(typographytest.InvalidFontFile(t)); err == nil {
+		t.Fatal("invalid font file accepted")
+	}
+	after, err := ctx.NewTextLayout("Go", typography.TextFormat{Font: typography.FontInfo{Family: "Go", Size: 14}}, 200, 80)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer after.Destroy()
+	iter := after.(*TextLayout).layout.GetIter()
+	defer iter.Free()
+	desc := native.Font(iter.GetRunReadonly().Item.Analysis.Font).Describe()
+	defer desc.Free()
+	if desc.GetFamily() != "Go" {
+		t.Fatalf("registered font matched %q instead of Go", desc.GetFamily())
+	}
+	if _, err := before.Rasterize(1, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFontStyles(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ctx, err := NewContext()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctx.Destroy()
+	typographytest.FontStyles(t, ctx)
+	for _, font := range []typography.FontInfo{
+		{Family: "Go", Size: 20, Weight: typography.FontWeightBold},
+		{Family: "Go", Size: 20, Style: typography.FontStyleItalic},
+	} {
+		layout, err := ctx.NewTextLayout("Go", typography.TextFormat{Font: font}, 200, 80)
+		if err != nil {
+			t.Fatal(err)
+		}
+		iter := layout.(*TextLayout).layout.GetIter()
+		matched := native.Font(iter.GetRunReadonly().Item.Analysis.Font)
+		desc := matched.Describe()
+		style := []native.Style{native.StyleNormal, native.StyleItalic, native.StyleOblique}[font.Style]
+		wantFace := "Bold"
+		if font.Style == typography.FontStyleItalic {
+			wantFace = "Italic"
+		}
+		if desc.GetFamily() != "Go" || matched.GetFace().GetFaceName() != wantFace || desc.GetStyle() != style {
+			t.Errorf("actual face differs: family=%q weight=%d style=%d, request=%+v", desc.GetFamily(), desc.GetWeight(), desc.GetStyle(), font)
+		}
+		desc.Free()
+		iter.Free()
+		layout.Destroy()
+	}
+}
+
+func TestStrikethroughMetrics(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ctx, err := NewContext()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctx.Destroy()
+	typographytest.Strikethrough(t, ctx, 4.0/3, 0, nil)
+}
+
+func TestPlaceholders(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ctx, err := NewContext()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctx.Destroy()
+	typographytest.Placeholders(t, ctx)
+}
+
 func Test_TextLayout(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	c, err := NewContext()
 	if err != nil {
 		t.Fatal(err)
@@ -63,6 +180,8 @@ func Test_TextLayout(t *testing.T) {
 }
 
 func TestTextLayoutEmptyMeasureMetrics(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	c, err := NewContext()
 	if err != nil {
 		t.Fatal(err)
@@ -97,6 +216,8 @@ func TestTextLayoutEmptyMeasureMetrics(t *testing.T) {
 }
 
 func TestTextLayoutsOwnRasterResourcesAndDoNotLeakPixels(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ctx, err := NewContext()
 	if err != nil {
 		t.Fatal(err)
@@ -145,6 +266,8 @@ func TestTextLayoutsOwnRasterResourcesAndDoNotLeakPixels(t *testing.T) {
 }
 
 func TestTextLayoutRasterScaleDoesNotAccumulate(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	c, err := NewContext()
 	if err != nil {
 		t.Fatal(err)
