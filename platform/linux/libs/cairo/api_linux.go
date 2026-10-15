@@ -23,6 +23,8 @@ var (
 	cairoLineTo                      = libcairo.NewSymbol("cairo_line_to")
 	cairoStroke                      = libcairo.NewSymbol("cairo_stroke")
 	cairoSetLineWidth                = libcairo.NewSymbol("cairo_set_line_width")
+	cairoRectangle                   = libcairo.NewSymbol("cairo_rectangle")
+	cairoFill                        = libcairo.NewSymbol("cairo_fill")
 	cairoSetFontOptions              = libcairo.NewSymbol("cairo_set_font_options")
 	cairoFontOptionsCreate           = libcairo.NewSymbol("cairo_font_options_create")
 	cairoFontOptionsDestroy          = libcairo.NewSymbol("cairo_font_options_destroy")
@@ -139,6 +141,11 @@ func (cr Context) SetLineWidth(width float64) {
 	// void cairo_set_line_width(cairo_t* cr, double width)
 	cgo.Call(cairoSetLineWidth.Addr(), uintptr(cr), width)
 }
+
+func (cr Context) Rectangle(x, y, width, height float64) {
+	cgo.Call(cairoRectangle.Addr(), cr, x, y, width, height)
+}
+func (cr Context) Fill() { cairoFill.CallRaw(uintptr(cr)) }
 
 // SetFontOptions sets a set of custom font rendering options for the cairo context.
 func (cr Context) SetFontOptions(options FontOptions) {
