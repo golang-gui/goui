@@ -26,7 +26,7 @@ tabs, overlays, graphics, animations, and system integration. Switch between lig
 See the [v0.1.0 release notes](https://github.com/golang-gui/goui/releases/tag/v0.1.0) and
 [SHA-256 checksums](https://github.com/golang-gui/goui/releases/download/v0.1.0/SHA256SUMS).
 On Linux, run `chmod +x goui-demo-v0.1.0-linux-amd64` before launching it.
-On macOS, extract and open `GOUI Demo.app`; the bundle is ad-hoc signed, not notarized.
+On macOS, extract and open `GOUI Demo.app`; the bundle is Developer ID signed and Apple-notarized, with the notarization ticket stapled.
 
 Windows
 
