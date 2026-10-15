@@ -256,6 +256,14 @@ func CFArrayGetValueAtIndex(theArray CFArrayRef, idx int) CFTypeRef {
 
 type CFDictionaryRef = CFTypeRef
 
+func CFDictionaryGetValue(dictionary CFDictionaryRef, key CFTypeRef) CFTypeRef {
+	return fnCFDictionaryGetValue(dictionary, key)
+}
+
+func CFAttributedStringRemoveAttribute(str CFMutableAttributedStringRef, r CFRange, name CFStringRef) {
+	fnCFAttributedStringRemoveAttribute(str, r, name)
+}
+
 func CFDictionaryCreate(keys []CFTypeRef, values []CFTypeRef) CFDictionaryRef {
 	count := CFIndex(len(keys))
 	if count == 0 {
@@ -308,16 +316,18 @@ var constants = []utils.Constant{
 	utils.Const[CFBooleanRef]{Name: "kCFBooleanTrue", PVar: &KCFBooleanTrue},
 	utils.Const[CFBooleanRef]{Name: "kCFBooleanFalse", PVar: &KCFBooleanFalse},
 
-	utils.Const[uintptr]{Name: "kCFTypeDictionaryKeyCallBacks", PVar: &kCFTypeDictionaryKeyCallBacks},
-	utils.Const[uintptr]{Name: "kCFTypeDictionaryValueCallBacks", PVar: &kCFTypeDictionaryValueCallBacks},
+	utils.Const[uintptr]{Name: "kCFTypeDictionaryKeyCallBacks", PAddr: &kCFTypeDictionaryKeyCallBacks},
+	utils.Const[uintptr]{Name: "kCFTypeDictionaryValueCallBacks", PAddr: &kCFTypeDictionaryValueCallBacks},
 
-	utils.Const[uintptr]{Name: "kCFTypeArrayCallBacks", PVar: &kCFTypeArrayCallBacks},
+	utils.Const[uintptr]{Name: "kCFTypeArrayCallBacks", PAddr: &kCFTypeArrayCallBacks},
 	utils.Const[CFRunLoopMode]{Name: "kCFRunLoopCommonModes", PVar: &KCFRunLoopCommonModes},
 }
 
 // functions
 
 var functions = []utils.Function{
+	{Name: "CFDictionaryGetValue", PFunc: &fnCFDictionaryGetValue},
+	{Name: "CFAttributedStringRemoveAttribute", PFunc: &fnCFAttributedStringRemoveAttribute},
 	{Name: "CFRelease", PFunc: &fnCFRelease},
 	{Name: "CFDataCreate", PFunc: &fnCFDataCreate},
 	{Name: "CFAbsoluteTimeGetCurrent", PFunc: &fnCFAbsoluteTimeGetCurrent},
@@ -357,8 +367,10 @@ var functions = []utils.Function{
 }
 
 var (
-	fnCFRelease    func(ref CFTypeRef)
-	fnCFDataCreate func(allocator CFAllocatorRef, bytes cgo.Pointer, length CFIndex) CFDataRef
+	fnCFDictionaryGetValue              func(CFDictionaryRef, CFTypeRef) CFTypeRef
+	fnCFAttributedStringRemoveAttribute func(CFMutableAttributedStringRef, CFRange, CFStringRef)
+	fnCFRelease                         func(ref CFTypeRef)
+	fnCFDataCreate                      func(allocator CFAllocatorRef, bytes cgo.Pointer, length CFIndex) CFDataRef
 
 	fnCFAbsoluteTimeGetCurrent        func() CFAbsoluteTime
 	fnCFRunLoopGetMain                func() CFRunLoopRef
