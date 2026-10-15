@@ -10,15 +10,22 @@ import (
 var (
 	libfontconfig = cgo.NewLazyLibrary("libfontconfig.so.1")
 
-	fcConfigCreate         = libfontconfig.NewSymbol("FcConfigCreate")
-	fcConfigDestroy        = libfontconfig.NewSymbol("FcConfigDestroy")
-	fcConfigParseAndLoad   = libfontconfig.NewSymbol("FcConfigParseAndLoad")
-	fcConfigAppFontAddFile = libfontconfig.NewSymbol("FcConfigAppFontAddFile")
-	fcPatternDestroy       = libfontconfig.NewSymbol("FcPatternDestroy")
-	fcPatternGetString     = libfontconfig.NewSymbol("FcPatternGetString")
-	fcFreeTypeQuery        = libfontconfig.NewSymbol("FcFreeTypeQuery")
-	fcFreeTypeQueryAll     = libfontconfig.NewSymbol("FcFreeTypeQueryAll")
+	fcConfigCreate           = libfontconfig.NewSymbol("FcConfigCreate")
+	fcInitLoadConfigAndFonts = libfontconfig.NewSymbol("FcInitLoadConfigAndFonts")
+	fcConfigDestroy          = libfontconfig.NewSymbol("FcConfigDestroy")
+	fcConfigParseAndLoad     = libfontconfig.NewSymbol("FcConfigParseAndLoad")
+	fcConfigAppFontAddFile   = libfontconfig.NewSymbol("FcConfigAppFontAddFile")
+	fcPatternDestroy         = libfontconfig.NewSymbol("FcPatternDestroy")
+	fcPatternGetString       = libfontconfig.NewSymbol("FcPatternGetString")
+	fcFreeTypeQuery          = libfontconfig.NewSymbol("FcFreeTypeQuery")
+	fcFreeTypeQueryAll       = libfontconfig.NewSymbol("FcFreeTypeQueryAll")
 )
+
+// InitLoadConfigAndFonts returns an owned configuration with system fonts loaded.
+func InitLoadConfigAndFonts() Config {
+	ret, _, _ := fcInitLoadConfigAndFonts.CallRaw()
+	return Config(ret)
+}
 
 // ConfigCreate creates a new empty configuration.
 func ConfigCreate() Config {
