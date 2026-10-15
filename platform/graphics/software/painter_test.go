@@ -57,10 +57,11 @@ func (l *testTextLayout) SetWrapMode(typography.WrapMode) { l.changed.Emit() }
 func (l *testTextLayout) SetTextFont(int, int, typography.FontInfo) {
 	l.changed.Emit()
 }
-func (l *testTextLayout) SetTextColor(int, int, color.Color) { l.changed.Emit() }
-func (l *testTextLayout) SetUnderline(int, int, bool)        { l.changed.Emit() }
-func (l *testTextLayout) SetStrikethrough(int, int, bool)    { l.changed.Emit() }
-func (*testTextLayout) MeasureSize() (float32, float32)      { return 0, 0 }
+func (l *testTextLayout) SetTextColor(int, int, color.Color)                 { l.changed.Emit() }
+func (l *testTextLayout) SetUnderline(int, int, bool)                        { l.changed.Emit() }
+func (l *testTextLayout) SetStrikethrough(int, int, bool)                    { l.changed.Emit() }
+func (l *testTextLayout) SetPlaceholder(int, *typography.PlaceholderMetrics) { l.changed.Emit() }
+func (*testTextLayout) MeasureSize() (float32, float32)                      { return 0, 0 }
 func (*testTextLayout) MeasureMetrics() ([]typography.TextLine, []typography.TextCluster) {
 	return nil, nil
 }

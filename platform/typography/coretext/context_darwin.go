@@ -3,10 +3,13 @@ package coretext
 import (
 	"errors"
 	"fmt"
+	"github.com/goexlib/cgo"
 	"image/color"
 	"math"
+	"path/filepath"
 	"slices"
 	"strings"
+	"unsafe"
 
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/platform/typography"
@@ -20,7 +23,7 @@ import (
 )
 
 type Context struct {
-	fonts []CTFontRef // registered custom fonts (for cleanup if needed)
+	fontFiles map[string]bool
 }
 
 func NewContext() (typography.Context, error) {
@@ -36,22 +39,34 @@ func (c *Context) Name() string {
 }
 
 func (c *Context) Destroy() {
-	for _, f := range c.fonts {
-		if f != 0 {
-			CFRelease(f)
-		}
-	}
-	c.fonts = nil
+	// Registration is process-wide, not an owned CTFont reference. Do not
+	// unregister fonts still used by another Context or external CoreText code.
+	c.fontFiles = nil
 }
 
 func (c *Context) AddFont(fontFile string) error {
-	fontURL := CFURLCreateWithFileSystemPath(fontFile, KCFURLPOSIXPathStyle, false)
+	path, err := filepath.Abs(fontFile)
+	if err != nil {
+		return err
+	}
+	if c.fontFiles[path] {
+		return nil
+	}
+	fontURL := CFURLCreateWithFileSystemPath(path, KCFURLPOSIXPathStyle, false)
 	if fontURL == 0 {
 		return fmt.Errorf("failed to create URL for font file: %s", fontFile)
 	}
 	defer CFRelease(fontURL)
 
-	return CTFontManagerRegisterFontsForURL(fontURL, KCTFontManagerScopeProcess)
+	err = CTFontManagerRegisterFontsForURL(fontURL, KCTFontManagerScopeProcess)
+	if err != nil && err != KCTFontManagerErrorAlreadyRegistered {
+		return err
+	}
+	if c.fontFiles == nil {
+		c.fontFiles = make(map[string]bool)
+	}
+	c.fontFiles[path] = true
+	return nil
 }
 
 func (c *Context) NewTextLayout(text string, format typography.TextFormat, width, height float32) (typography.TextLayout, error) {
@@ -71,12 +86,53 @@ type TextLayout struct {
 
 	colorSpace CGColorSpaceRef
 
-	dirty      bool // whether attrString has been modified and CTFrame need rebuild
-	frame      CTFrameRef
-	layoutSize CGSize
-	lines      []lineInfo
-	painter    textPainter
-	life       lifecycle.Layout
+	dirty        bool // whether attrString has been modified and CTFrame need rebuild
+	frame        CTFrameRef
+	layoutSize   CGSize
+	lines        []lineInfo
+	painter      textPainter
+	life         lifecycle.Layout
+	placeholders map[int]typography.PlaceholderMetrics
+}
+
+type inlineMetrics struct{ ascent, descent, width float64 }
+
+var inlineCallbacks = CTRunDelegateCallbacks{
+	Version:    1,
+	Deallocate: cgo.NewCallback(func(refCon unsafe.Pointer) { cgo.Free(refCon) }),
+	GetAscent:  cgo.NewCallback(func(refCon unsafe.Pointer) float64 { return (*inlineMetrics)(refCon).ascent }),
+	GetDescent: cgo.NewCallback(func(refCon unsafe.Pointer) float64 { return (*inlineMetrics)(refCon).descent }),
+	GetWidth:   cgo.NewCallback(func(refCon unsafe.Pointer) float64 { return (*inlineMetrics)(refCon).width }),
+}
+
+func (t *TextLayout) SetPlaceholder(start int, metrics *typography.PlaceholderMetrics) {
+	utils.CheckPlaceholder(t.text, start, metrics)
+	r := CFRangeMake(t.position.ToUtf16(start), 1)
+	if metrics == nil {
+		CFAttributedStringRemoveAttribute(t.attrString, r, KCTRunDelegateAttributeName)
+		delete(t.placeholders, start)
+	} else {
+		// C-owned numeric refCon avoids retaining a pointer into Go's moving stack
+		// or tying native callbacks to a GUI object. The delegate frees it.
+		data := cgo.Malloc(cgo.Sizet(unsafe.Sizeof(inlineMetrics{})))
+		if data == nil {
+			panic("coretext: allocate inline metrics failed")
+		}
+		*(*inlineMetrics)(data) = inlineMetrics{float64(metrics.Baseline), float64(metrics.Height - metrics.Baseline), float64(metrics.Width)}
+		delegate := CTRunDelegateCreate(&inlineCallbacks, data)
+		if delegate == 0 {
+			cgo.Free(data)
+			panic("coretext: create run delegate failed")
+		}
+		CFAttributedStringSetAttribute(t.attrString, r, KCTRunDelegateAttributeName, delegate)
+		CFRelease(delegate) // attributed string owns the native reference
+		if t.placeholders == nil {
+			t.placeholders = make(map[int]typography.PlaceholderMetrics)
+		}
+		t.placeholders[start] = *metrics
+	}
+	t.dirty = true
+	t.life.Changed()
 }
 
 type lineInfo struct {
@@ -91,6 +147,9 @@ type lineInfo struct {
 }
 
 func newTextLayout(c *Context, text string, format typography.TextFormat, width, height float32) (*TextLayout, error) {
+	if _, err := utils.ResolveFont(format.Font); err != nil {
+		return nil, err
+	}
 	textStr := CFStringCreateWithString(text)
 	if textStr == 0 {
 		return nil, errors.New("create text string failed")
@@ -119,12 +178,14 @@ func newTextLayout(c *Context, text string, format typography.TextFormat, width,
 
 	fgColor := createCGColor(t.colorSpace, toRGBAColor(format.TextColor))
 	if fgColor == 0 {
+		t.Destroy()
 		return nil, errors.New("create text color failed")
 	}
 	defer CGColorRelease(fgColor)
 
 	t.attrString = CFAttributedStringCreateMutable(0, 0)
 	if t.attrString == 0 {
+		t.Destroy()
 		return nil, errors.New("create attributed string failed")
 	}
 
@@ -207,23 +268,19 @@ func (t *TextLayout) SetWrapMode(wrap typography.WrapMode) {
 }
 
 func (t *TextLayout) SetTextFont(start, length int, font typography.FontInfo) {
-	if 0 <= start && 0 < length && (len(font.Family) != 0 || font.Size != 0) {
-		u16Start := t.position.ToUtf16(start)
-		u16End := t.position.ToUtf16(start + length)
-		if u16End < 0 {
-			u16End = t.textLength
-		}
-
-		ctFont := createCTFont(font)
-		if ctFont != 0 {
-			defer CFRelease(ctFont)
-			CFAttributedStringBeginEditing(t.attrString)
-			CFAttributedStringSetAttribute(t.attrString, CFRangeMake(u16Start, u16End-u16Start), KCTFontAttributeName, ctFont)
-			CFAttributedStringEndEditing(t.attrString)
-			t.dirty = true
-			t.life.Changed()
-		}
+	utils.CheckTextRange(t.text, start, length)
+	if _, err := utils.ResolveFont(font); err != nil {
+		panic(err)
 	}
+	u16Start, u16End := t.position.ToUtf16(start), t.position.ToUtf16(start+length)
+	ctFont := createCTFont(font)
+	if ctFont == 0 {
+		panic("coretext: create font failed")
+	}
+	defer CFRelease(ctFont)
+	CFAttributedStringSetAttribute(t.attrString, CFRangeMake(u16Start, u16End-u16Start), KCTFontAttributeName, ctFont)
+	t.dirty = true
+	t.life.Changed()
 }
 
 func (t *TextLayout) SetTextColor(start, length int, c color.Color) {
@@ -388,6 +445,9 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 					Height:    lineHeight,
 					LineIndex: lineIndex,
 				}
+				if placeholder, ok := t.placeholders[u8Pos]; ok {
+					cluster.Y, cluster.Height = line.Baseline-placeholder.Baseline, placeholder.Height
+				}
 				if isRTL {
 					cluster.Direction = typography.TextRightToLeft
 				}
@@ -497,8 +557,15 @@ func (t *TextLayout) ensureFrame() {
 		textRange := CFRangeMake(0, 0)
 		size := CGSize{Width: float64(t.width), Height: 20000}
 		t.layoutSize, _ = CTFramesetterSuggestFrameSizeWithConstraints(framesetter, textRange, 0, size)
-		if t.layoutSize.Width != 0 && t.layoutSize.Height != 0 {
-			path := CGPathCreateWithRect(CGRect{Size: t.layoutSize}, nil)
+		frameSize := t.layoutSize
+		// The suggested footprint can have zero width for whitespace/zero-width
+		// inline objects. A degenerate path produces no lines. Lay out those runs
+		// in the requested width while keeping their measured advance unchanged.
+		if frameSize.Width == 0 {
+			frameSize.Width = size.Width
+		}
+		if frameSize.Width > 0 && frameSize.Height > 0 {
+			path := CGPathCreateWithRect(CGRect{Size: frameSize}, nil)
 			if path != 0 {
 				defer CFRelease(path)
 
@@ -639,54 +706,55 @@ func (p *textPainter) GetBitmap(width, height float32, buf []byte) (bitmap typog
 }
 
 func createCTFont(font typography.FontInfo) CTFontRef {
+	font, err := utils.ResolveFont(font)
+	if err != nil {
+		return 0
+	}
 	size := float64(font.Size)
-	if size == 0 {
-		size = 12
-	}
-
 	if font.Family == "" {
-		return CTFontCreateWithName(".AppleSystemUIFont", size, nil)
+		font.Family = ".AppleSystemUIFont"
 	}
-
-	if font.Weight != 0 || font.Width != 0 {
-		keys := make([]CFTypeRef, 0, 3)
-		values := make([]CFTypeRef, 0, 3)
-
-		cfFamily := CFStringCreateWithString(font.Family)
-		keys = append(keys, KCTFontFamilyNameAttribute)
-		values = append(values, cfFamily)
-
-		cfSize := CFNumberCreateFloat64(size)
-		keys = append(keys, KCTFontSizeAttribute)
-		values = append(values, cfSize)
-
-		if font.Weight != 0 {
-			// Build traits dictionary with weight
-			traitKeys := []CFTypeRef{KCTFontWeightTrait}
-			weightVal := CFNumberCreateFloat64(float64(font.Weight))
-			traitValues := []CFTypeRef{weightVal}
-			traitsDict := CFDictionaryCreate(traitKeys, traitValues)
-			CFRelease(weightVal)
-
-			keys = append(keys, KCTFontTraitsAttribute)
-			values = append(values, traitsDict)
-			defer CFRelease(traitsDict)
-		}
-
-		attrs := CFDictionaryCreate(keys, values)
-		CFRelease(cfFamily)
-		CFRelease(cfSize)
-
-		desc := CTFontDescriptorCreateWithAttributes(attrs)
-		CFRelease(attrs)
-		if desc != 0 {
-			ctFont := CTFontCreateWithFontDescriptor(desc, size, nil)
-			CFRelease(desc)
-			return ctFont
+	if font.Weight == typography.FontWeightRegular && font.Width == typography.FontWidthNormal && font.Style == typography.FontStyleNormal {
+		return CTFontCreateWithName(font.Family, size, nil)
+	}
+	// CoreText weight is -1..1, not the OpenType 100..900 scale. Values at
+	// common weights match NSFontWeight/CTFont weight constants.
+	weights := [...]float64{-0.8, -0.6, -0.4, 0, 0.23, 0.3, 0.4, 0.56, 0.62}
+	index := int(font.Weight)/100 - 1
+	weight := weights[index]
+	if remainder := int(font.Weight) % 100; remainder != 0 {
+		weight += (weights[index+1] - weight) * float64(remainder) / 100
+	}
+	weightValue := CFNumberCreateFloat64(weight)
+	widthValue := CFNumberCreateFloat64(float64(int(font.Width)-5) / 4)
+	defer CFRelease(weightValue)
+	defer CFRelease(widthValue)
+	traitKeys := []CFTypeRef{KCTFontWeightTrait, KCTFontWidthTrait}
+	traitValues := []CFTypeRef{weightValue, widthValue}
+	if font.Style != typography.FontStyleNormal {
+		italic := CFNumberCreateInt32(1) // kCTFontTraitItalic, matching a native face
+		defer CFRelease(italic)
+		traitKeys = append(traitKeys, KCTFontSymbolicTrait)
+		traitValues = append(traitValues, italic)
+		if font.Style == typography.FontStyleOblique {
+			slant := CFNumberCreateFloat64(0.2)
+			defer CFRelease(slant)
+			traitKeys = append(traitKeys, KCTFontSlantTrait)
+			traitValues = append(traitValues, slant)
 		}
 	}
-
-	return CTFontCreateWithName(font.Family, size, nil)
+	traits := CFDictionaryCreate(traitKeys, traitValues)
+	defer CFRelease(traits)
+	family := CFStringCreateWithString(font.Family)
+	defer CFRelease(family)
+	attributes := CFDictionaryCreate([]CFTypeRef{KCTFontFamilyNameAttribute, KCTFontTraitsAttribute}, []CFTypeRef{family, traits})
+	defer CFRelease(attributes)
+	desc := CTFontDescriptorCreateWithAttributes(attributes)
+	if desc == 0 {
+		return 0
+	}
+	defer CFRelease(desc)
+	return CTFontCreateWithFontDescriptor(desc, size, nil)
 }
 
 func convertAlignment(align typography.TextAlignment) CTTextAlignment {

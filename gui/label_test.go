@@ -347,6 +347,8 @@ func (l *testTextLayout) SetStrikethrough(start, length int, strike bool) {
 	l.changedSig.Emit()
 }
 
+func (l *testTextLayout) SetPlaceholder(int, *typography.PlaceholderMetrics) {}
+
 func (l *testTextLayout) MeasureSize() (width, height float32) {
 	return l.measureSize.Width, l.measureSize.Height
 }

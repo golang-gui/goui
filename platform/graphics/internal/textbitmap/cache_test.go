@@ -31,10 +31,11 @@ func (l *cacheTestLayout) SetWrapMode(typography.WrapMode) { l.changed.Emit() }
 func (l *cacheTestLayout) SetTextFont(int, int, typography.FontInfo) {
 	l.changed.Emit()
 }
-func (l *cacheTestLayout) SetTextColor(int, int, color.Color) { l.changed.Emit() }
-func (l *cacheTestLayout) SetUnderline(int, int, bool)        { l.changed.Emit() }
-func (l *cacheTestLayout) SetStrikethrough(int, int, bool)    { l.changed.Emit() }
-func (*cacheTestLayout) MeasureSize() (float32, float32)      { return 0, 0 }
+func (l *cacheTestLayout) SetTextColor(int, int, color.Color)                 { l.changed.Emit() }
+func (l *cacheTestLayout) SetUnderline(int, int, bool)                        { l.changed.Emit() }
+func (l *cacheTestLayout) SetStrikethrough(int, int, bool)                    { l.changed.Emit() }
+func (l *cacheTestLayout) SetPlaceholder(int, *typography.PlaceholderMetrics) { l.changed.Emit() }
+func (*cacheTestLayout) MeasureSize() (float32, float32)                      { return 0, 0 }
 func (*cacheTestLayout) MeasureMetrics() ([]typography.TextLine, []typography.TextCluster) {
 	return nil, nil
 }

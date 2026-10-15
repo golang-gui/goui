@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image/color"
 	"math"
+	"path/filepath"
 	"slices"
 	"unicode/utf8"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/golang-gui/goui/platform/typography/utils"
 
 	"github.com/golang-gui/goui/platform/linux/libs/cairo"
+	"github.com/golang-gui/goui/platform/linux/libs/fontconfig"
 	"github.com/golang-gui/goui/platform/linux/libs/pango"
 	"github.com/golang-gui/goui/platform/linux/libs/pango_cairo"
 
@@ -21,7 +23,8 @@ import (
 )
 
 type Context struct {
-	fontMap pango.FontMap
+	fontMap   pango.FontMap
+	fontFiles map[string]bool
 }
 
 func NewContext() (_ typography.Context, err error) {
@@ -30,6 +33,13 @@ func NewContext() (_ typography.Context, err error) {
 	if c.fontMap.IsNull() {
 		return nil, errors.New("create pango cairo font map failed")
 	}
+	config := fontconfig.InitLoadConfigAndFonts()
+	if config == 0 {
+		c.fontMap.Unref()
+		return nil, errors.New("create fontconfig configuration failed")
+	}
+	c.fontMap.SetConfig(config) // the font map retains its independent configuration
+	config.Destroy()
 
 	return c, nil
 }
@@ -46,23 +56,35 @@ func (c *Context) Destroy() {
 }
 
 func (c *Context) AddFont(fontFile string) error {
-	ok := c.fontMap.GetConfig().AppFontAddFile(fontFile)
+	path, err := filepath.Abs(fontFile)
+	if err != nil {
+		return err
+	}
+	if c.fontFiles[path] {
+		return nil
+	}
+	config := c.fontMap.GetConfig()
+	ok := config.AppFontAddFile(path)
 	if !ok {
 		return errors.New("add font file failed")
 	}
+	c.fontMap.ConfigChanged()
+	if c.fontFiles == nil {
+		c.fontFiles = make(map[string]bool)
+	}
+	c.fontFiles[path] = true
 	return nil
 }
 
 func (c *Context) NewTextLayout(text string, format typography.TextFormat, width, height float32) (typography.TextLayout, error) {
-	desc := pango.FontDescriptionNew()
+	desc, err := createFontDescription(format.Font)
+	if err != nil {
+		return nil, err
+	}
 	if desc == 0 {
 		return nil, errors.New("create pango font description failed")
 	}
 	defer desc.Free()
-
-	desc.SetFamily(format.Font.Family)
-	desc.SetSize(int(format.Font.Size * pango.Scale))
-	// TODO: other font param
 
 	layoutContext := c.fontMap.CreateContext()
 	if layoutContext.IsNull() {
@@ -90,17 +112,21 @@ func (c *Context) NewTextLayout(text string, format typography.TextFormat, width
 }
 
 type TextLayout struct {
-	context pango.Context
-	layout  pango.Layout
-	text    string
-	format  typography.TextFormat
-	width   float32
-	height  float32
-	attrs   pango.AttrList
-	chars   int
-	painter textPainter
-	life    lifecycle.Layout
+	context      pango.Context
+	layout       pango.Layout
+	text         string
+	format       typography.TextFormat
+	width        float32
+	height       float32
+	attrs        pango.AttrList
+	chars        int
+	painter      textPainter
+	life         lifecycle.Layout
+	strikes      []textRange
+	placeholders map[int]typography.PlaceholderMetrics
 }
+
+type textRange struct{ start, end int }
 
 func newTextLayout(context pango.Context, layout pango.Layout, text string, format typography.TextFormat, width, height float32) (t *TextLayout) {
 	t = &TextLayout{
@@ -209,24 +235,58 @@ func (t *TextLayout) SetWrapMode(wrap typography.WrapMode) {
 }
 
 func (t *TextLayout) SetTextFont(start, length int, font typography.FontInfo) {
-	if 0 <= start && start < len(t.text) {
-		if length < 0 {
-			length = len(t.text)
-		}
-
-		familyAttr := pango.AttrFamilyNew(font.Family)
-		familyAttr.StartIndex = uint32(start)
-		familyAttr.EndIndex = uint32(start + length)
-		t.attrs.Change(familyAttr)
-
-		sizeAttr := pango.AttrSizeNew(int(font.Size * pango.Scale))
-		sizeAttr.StartIndex = uint32(start)
-		sizeAttr.EndIndex = uint32(start + length)
-		t.attrs.Change(sizeAttr)
-
-		t.layout.ContextChanged()
-		t.life.Changed()
+	utils.CheckTextRange(t.text, start, length)
+	desc, err := createFontDescription(font)
+	if err != nil {
+		panic(err)
 	}
+	defer desc.Free()
+	attr := pango.AttrFontDescNew(desc)
+	attr.StartIndex, attr.EndIndex = uint32(start), uint32(start+length)
+	t.attrs.Change(attr)
+	t.layout.ContextChanged()
+	t.life.Changed()
+}
+
+func (t *TextLayout) SetPlaceholder(start int, metrics *typography.PlaceholderMetrics) {
+	utils.CheckPlaceholder(t.text, start, metrics)
+	if metrics == nil {
+		delete(t.placeholders, start)
+	} else {
+		if t.placeholders == nil {
+			t.placeholders = make(map[int]typography.PlaceholderMetrics)
+		}
+		t.placeholders[start] = *metrics
+	}
+	// Keep equal adjacent placeholders distinct. Remove only the shape type.
+	t.attrs.RemoveType(pango.AttrShape)
+	for start, metrics := range t.placeholders {
+		attr := pango.AttrShapeNew(pango.Rectangle{}, pango.Rectangle{Y: -int32(metrics.Baseline * pango.Scale), Width: int32(metrics.Width * pango.Scale), Height: int32(metrics.Height * pango.Scale)})
+		attr.StartIndex, attr.EndIndex = uint32(start), uint32(start+3)
+		t.attrs.Insert(attr)
+	}
+	t.layout.ContextChanged()
+	t.life.Changed()
+}
+
+func createFontDescription(request typography.FontInfo) (pango.FontDescription, error) {
+	font, err := utils.ResolveFont(request)
+	if err != nil {
+		return 0, err
+	}
+	desc := pango.FontDescriptionNew()
+	if desc == 0 {
+		return 0, errors.New("create pango font description failed")
+	}
+	if font.Family == "" {
+		font.Family = "sans"
+	}
+	desc.SetFamily(font.Family)
+	desc.SetSize(int(font.Size * pango.Scale))
+	desc.SetWeight(pango.Weight(font.Weight))
+	desc.SetStretch(pango.Stretch(font.Width - 1))
+	desc.SetStyle([]pango.Style{pango.StyleNormal, pango.StyleItalic, pango.StyleOblique}[font.Style])
+	return desc, nil
 }
 
 func (t *TextLayout) SetTextColor(start, length int, foreground color.Color) {
@@ -282,12 +342,28 @@ func (t *TextLayout) SetStrikethrough(start, length int, strike bool) {
 			length = len(t.text)
 		}
 
-		attr := pango.AttrStrikethroughNew(strike)
-		attr.StartIndex = uint32(start)
-		attr.EndIndex = uint32(start + length)
-		t.attrs.Change(attr)
-
-		t.layout.ContextChanged()
+		end := min(start+length, len(t.text))
+		utils.CheckTextRange(t.text, start, end-start)
+		ranges := make([]textRange, 0, len(t.strikes)+1)
+		for _, r := range t.strikes {
+			if r.end <= start || r.start >= end {
+				ranges = append(ranges, r)
+				continue
+			}
+			if r.start < start {
+				ranges = append(ranges, textRange{r.start, start})
+			}
+			if r.end > end {
+				ranges = append(ranges, textRange{end, r.end})
+			}
+		}
+		if strike {
+			ranges = append(ranges, textRange{start, end})
+		}
+		slices.SortFunc(ranges, func(a, b textRange) int { return a.start - b.start })
+		t.strikes = ranges
+		// Keep decoration out of native attributes: PangoCairo merges adjacent
+		// strikes across font runs. Changing a strike must not reshape the text.
 		t.life.Changed()
 	}
 }
@@ -339,6 +415,10 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 					LineIndex: len(lines),
 					Direction: typography.TextDirection(run.Item.Analysis.Level & 1),
 				})
+				if placeholder, ok := t.placeholders[clusterIter.GetIndex()]; ok {
+					cluster := &clusters[len(clusters)-1]
+					cluster.Y, cluster.Height = line.Baseline-placeholder.Baseline, placeholder.Height
+				}
 			}
 			if !clusterIter.NextCluster() {
 				break
@@ -464,10 +544,62 @@ func (p *textPainter) DrawTextLayout(t *TextLayout, x, y, scale float32) (err er
 	// UpdateLayout would re-shape with scale-dependent hinted advances and can
 	// change wrapping; restoring it afterwards cannot fix the pixels just drawn.
 	pango_cairo.ShowLayout(p.context, t.layout)
+	t.drawStrikethrough(p.context, x, y)
 	if status := p.context.Status(); status != 0 {
 		return fmt.Errorf("cairo draw pango layout err: %v", status)
 	}
 	return
+}
+
+func (t *TextLayout) drawStrikethrough(cr cairo.Context, originX, originY float32) {
+	if len(t.strikes) == 0 {
+		return
+	}
+	iter := t.layout.GetIter()
+	defer iter.Free()
+	for {
+		run := iter.GetRunReadonly()
+		if run != nil && run.Item != nil {
+			item := run.Item
+			metrics := pango.Font(item.Analysis.Font).GetMetrics(item.Analysis.Language)
+			thickness := float64(metrics.GetStrikethroughThickness()) / pango.Scale
+			center := float64(iter.GetBaseline()-int(run.YOffset)-metrics.GetStrikethroughPosition())/pango.Scale + float64(originY)
+			metrics.Unref()
+			r, g, b, a := toColor(t.format.TextColor)
+			for attrs := item.Analysis.ExtraAttributes(); attrs != nil; attrs = attrs.Next {
+				switch attrs.Data.Type() {
+				case pango.AttrForeground:
+					c := attrs.Data.ColorValue()
+					r, g, b = float64(c.Red)/65535, float64(c.Green)/65535, float64(c.Blue)/65535
+				case pango.AttrForegroundAlpha:
+					a = float64(attrs.Data.IntValue()) / 65535
+				}
+			}
+			_, rect := iter.GetRunExtents()
+			for _, span := range t.strikes {
+				start, end := max(span.start, int(item.Offset)), min(span.end, int(item.Offset+item.Length))
+				if start >= end {
+					continue
+				}
+				text := t.text[item.Offset : item.Offset+item.Length]
+				x1 := run.Glyphs.IndexToX(text, &item.Analysis, start-int(item.Offset), false)
+				x2 := run.Glyphs.IndexToX(text, &item.Analysis, end-int(item.Offset), false)
+				cr.SetSourceRGBA(r, g, b, a)
+				cr.Rectangle(float64(rect.X+int32(min(x1, x2)))/pango.Scale+float64(originX), center-thickness/2, float64(absInt(x2-x1))/pango.Scale, thickness)
+				cr.Fill()
+			}
+		}
+		if !iter.NextRun() {
+			break
+		}
+	}
+}
+
+func absInt(value int) int {
+	if value < 0 {
+		return -value
+	}
+	return value
 }
 
 func (p *textPainter) GetBitmap(width, height float32, buf []byte) (bitmap typography.TextBitmap) {
