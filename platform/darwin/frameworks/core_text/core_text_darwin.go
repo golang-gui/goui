@@ -75,6 +75,15 @@ func CTFontCopyFamilyName(font CTFontRef) string {
 	return CFStringToString(cfStr)
 }
 
+func CTFontCopyPostScriptName(font CTFontRef) string {
+	name := fnCTFontCopyPostScriptName(font)
+	if name == 0 {
+		return ""
+	}
+	defer CFRelease(name)
+	return CFStringToString(name)
+}
+
 // CTFontDescriptor
 
 type CTFontDescriptorRef = CFTypeRef
@@ -185,6 +194,22 @@ func CTLineGetBoundsWithOptions(line CTLineRef, options CTLineBoundsOptions) CGR
 
 type CTRunRef = CFTypeRef
 
+type CTRunDelegateRef = CFTypeRef
+
+// CTRunDelegateCallbacks matches the SDK: version, deallocate, ascent, descent,
+// width. Function pointers and refCon must outlive the native delegate.
+type CTRunDelegateCallbacks struct {
+	Version    CFIndex
+	Deallocate uintptr
+	GetAscent  uintptr
+	GetDescent uintptr
+	GetWidth   uintptr
+}
+
+func CTRunDelegateCreate(callbacks *CTRunDelegateCallbacks, refCon unsafe.Pointer) CTRunDelegateRef {
+	return fnCTRunDelegateCreate(callbacks, refCon)
+}
+
 type CTRunStatus uint32
 
 const (
@@ -273,12 +298,20 @@ func CTFontManagerRegisterFontsForURL(fontURL CFURLRef, scope CTFontManagerScope
 	ok := fnCTFontManagerRegisterFontsForURL(fontURL, scope, &err)
 	if err != 0 {
 		defer CFRelease(err)
-		return fmt.Errorf("register err: %d", CFErrorGetCode(err))
+		return CTFontManagerError(CFErrorGetCode(err))
 	}
 	if !ok {
 		return errors.New("register failed")
 	}
 	return nil
+}
+
+type CTFontManagerError CFIndex
+
+const KCTFontManagerErrorAlreadyRegistered CTFontManagerError = 105
+
+func (e CTFontManagerError) Error() string {
+	return fmt.Sprintf("CoreText font registration error: %d", e)
 }
 
 type CTParagraphStyleRef = CFTypeRef
@@ -398,6 +431,7 @@ const (
 )
 
 var (
+	KCTRunDelegateAttributeName                CFStringRef
 	KCTFontAttributeName                       CFStringRef
 	KCTForegroundColorAttributeName            CFStringRef
 	KCTForegroundColorFromContextAttributeName CFStringRef
@@ -409,9 +443,12 @@ var (
 	KCTFontTraitsAttribute                     CFStringRef
 	KCTFontWeightTrait                         CFStringRef
 	KCTFontWidthTrait                          CFStringRef
+	KCTFontSlantTrait                          CFStringRef
+	KCTFontSymbolicTrait                       CFStringRef
 )
 
 var constants = []utils.Constant{
+	utils.Const[CFStringRef]{Name: "kCTRunDelegateAttributeName", PVar: &KCTRunDelegateAttributeName},
 	utils.Const[CFStringRef]{Name: "kCTFontAttributeName", PVar: &KCTFontAttributeName},
 	utils.Const[CFStringRef]{Name: "kCTForegroundColorAttributeName", PVar: &KCTForegroundColorAttributeName},
 	utils.Const[CFStringRef]{Name: "kCTForegroundColorFromContextAttributeName", PVar: &KCTForegroundColorFromContextAttributeName},
@@ -423,9 +460,12 @@ var constants = []utils.Constant{
 	utils.Const[CFStringRef]{Name: "kCTFontTraitsAttribute", PVar: &KCTFontTraitsAttribute},
 	utils.Const[CFStringRef]{Name: "kCTFontWeightTrait", PVar: &KCTFontWeightTrait},
 	utils.Const[CFStringRef]{Name: "kCTFontWidthTrait", PVar: &KCTFontWidthTrait},
+	utils.Const[CFStringRef]{Name: "kCTFontSlantTrait", PVar: &KCTFontSlantTrait},
+	utils.Const[CFStringRef]{Name: "kCTFontSymbolicTrait", PVar: &KCTFontSymbolicTrait},
 }
 
 var functions = []utils.Function{
+	{Name: "CTRunDelegateCreate", PFunc: &fnCTRunDelegateCreate},
 	{Name: "CTFontCreateWithName", PFunc: &fnCTFontCreateWithName},
 	{Name: "CTFontCreateWithFontDescriptor", PFunc: &fnCTFontCreateWithFontDescriptor},
 	{Name: "CTFontGetAscent", PFunc: &fnCTFontGetAscent},
@@ -435,6 +475,7 @@ var functions = []utils.Function{
 	{Name: "CTFontGetUnderlineThickness", PFunc: &fnCTFontGetUnderlineThickness},
 	{Name: "CTFontGetSize", PFunc: &fnCTFontGetSize},
 	{Name: "CTFontCopyFamilyName", PFunc: &fnCTFontCopyFamilyName},
+	{Name: "CTFontCopyPostScriptName", PFunc: &fnCTFontCopyPostScriptName},
 
 	{Name: "CTFontDescriptorCreateWithAttributes", PFunc: &fnCTFontDescriptorCreateWithAttributes},
 	{Name: "CTFontDescriptorCreateWithNameAndSize", PFunc: &fnCTFontDescriptorCreateWithNameAndSize},
@@ -477,6 +518,7 @@ var functions = []utils.Function{
 }
 
 var (
+	fnCTRunDelegateCreate            func(*CTRunDelegateCallbacks, unsafe.Pointer) CTRunDelegateRef
 	fnCTFontCreateWithName           func(name CFStringRef, size CGFloat, matrix *CGAffineTransform) CTFontRef
 	fnCTFontCreateWithFontDescriptor func(descriptor CTFontDescriptorRef, size CGFloat, matrix *CGAffineTransform) CTFontRef
 	fnCTFontGetAscent                func(font CTFontRef) CGFloat
@@ -486,6 +528,7 @@ var (
 	fnCTFontGetUnderlineThickness    func(font CTFontRef) CGFloat
 	fnCTFontGetSize                  func(font CTFontRef) CGFloat
 	fnCTFontCopyFamilyName           func(font CTFontRef) CFStringRef
+	fnCTFontCopyPostScriptName       func(font CTFontRef) CFStringRef
 
 	fnCTFontDescriptorCreateWithAttributes  func(attributes CFDictionaryRef) CTFontDescriptorRef
 	fnCTFontDescriptorCreateWithNameAndSize func(name CFStringRef, size CGFloat) CTFontDescriptorRef
