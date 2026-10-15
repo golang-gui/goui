@@ -16,6 +16,24 @@ Popup、WindowChrome／BorderBox／SkipTaskbar／初始 Center、文件访问凭
 旧 P0～P4 排序和阶段日志保留在文末历史区，不再据其中“下一步”或未勾选项判断
 当前缺失能力。上一次审查与本轮分类见 [文档复核](DesignDocumentAudit.md)。
 
+## TextLayout 富文本基础：本轮已实现，应用层按需求推进
+
+字体样式与有效注册、run 级删除线、U+FFFC 纯度量行内占位已按
+[Typography 设计](DesignTypography.md) 接入三端；具体实施／验证记录见
+[PlanTextLayout](PlanTextLayout.md)，原生离屏验证不等于所有桌面组合验收。
+排版占位公开入口为 `TextLayout.SetPlaceholder`／`PlaceholderMetrics`，不创建或
+绘制行内内容；实际图片、Widget 及事件仍由上层负责。
+后续 RichTextView／Markdown 文档模型、Widget 排布、链接交互和编辑行为留在
+上层单独设计。字形外伸边界、不同桌面 DPI／GPU 继续专项验证；不预先扩展
+InkBounds、文本布局图片或 Widget 回调接口。Linux arm64 全仓的既有 libc syscall
+编译缺口需要独立切片，不能写成排版后端已经原生运行通过。
+
+待复核／评估：Begin／End 与原生段落基方向、自动方向处理的组合，确认 RTL 对齐
+是否满足公共语义；仅发现左右枚举映射差异不等于已复现缺陷。其他范围 setter 的
+非法输入防护尚未统一，需另行收敛，不能从合法输入回归推定全部错误分支一致。
+行距、上／下标、OpenType features、竖排和复杂文字背景仍为需求触发的候选，
+不因本轮基础能力完成而自动进入实施；设计与已知差异见 DesignTypography。
+
 ## 使用方开发支持
 
 - 应用开发 [Skill](../skills/goui-app/SKILL.md) 与统一 [INSTALL.md](../skills/INSTALL.md)

@@ -3,6 +3,29 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## TextLayout 富文本基础能力补全（2026-10-14）
+
+- [x] 按 [Typography 设计](DesignTypography.md) 完成 CF callbacks 地址与成员生命周期、
+  三端字体注册、FontInfo 标准枚举／完整范围替换、Pango run 删除线和三端行内占位。
+  诊断、阶段及具体环境的验证证据保留在 [PlanTextLayout](PlanTextLayout.md)。
+- [x] 旧 macOS traits 原生崩溃、旧 Pango 混合字号删除线和 macOS 纯空白丢失度量
+  均有复现与回归；补 DirectWrite bidiLevel UINT32、COM／delegate／Pango ABI 验证。
+- [x] 本机同源隔离桌面全仓非缓存：2501 通过／15 既有跳过／0 失败；相关 race
+  通过。Windows amd64／macOS arm64 全仓构建与原生离屏回归通过，具体范围见实施记录。
+- [x] Linux arm64 的受影响排版／绑定包构建通过；全仓被既有 libc SYS_PIPE／SYS_POLL
+  引用阻断，不计为通过，不扩大修改范围。
+- [x] 2026-10-15 macOS 常量加载收敛为 `Const[T]` 的可选 `PVar`／`PAddr`，移除
+  `ConstAddress`；加载器／CF 集合原生回归各 10 轮、CoreText 3 轮通过。
+  本机隔离全仓 2501 通过／15 既有跳过／0 失败，macOS 全仓构建通过，详见实施记录。
+- [x] 占位接口命名收敛为 `SetPlaceholder`／`PlaceholderMetrics`；原生 DirectWrite
+  命名及用户调整的文件组织不变。暂存树干净快照全仓 2162 通过／10 既有跳过／
+  0 失败，相关 race、Windows／macOS 构建及两端原生回归各 3 轮通过；详见实施记录。
+- [x] Typography 代码按用户授权提交为 `d67e89d`；绑定由用户另行提交。本轮将长期
+  设计拆分至 DesignTypography，PlanTextLayout 只保留实施／验收记录，不改代码。
+- [x] 文档拆分后的链接／锚点、围栏、接口名称及空白检查通过；隔离工作区快照全仓
+  2501 通过／15 既有跳过／0 失败。本轮不重跑远端或扩大桌面验收，文档按用户授权提交。
+- [ ] 新增能力的真实桌面／系统 DPI／硬件 GPU 验收；本轮不推送或修改 Release。
+
 ## 使用方 AI 应用开发 Skill
 
 - [x] 补充 [自定义 Widget／View](CustomWidgetView.md) 的六种方式、外部包示例，
