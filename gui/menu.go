@@ -9,6 +9,7 @@ import (
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform"
+	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/style"
 )
@@ -209,6 +210,7 @@ func (pm *PopoverMenu) replacePopover(transparent bool) {
 
 func (pm *PopoverMenu) Hide() {
 	if pm.content != nil {
+		pm.content.selectItem(nil)
 		for _, w := range pm.content.list.items {
 			r := w.(*menuItemRow)
 			r.setPressed(false)
@@ -256,12 +258,14 @@ type menuContent struct {
 	valid     bool
 	hChanged  signal.Handle
 	padding   float32
+	active    *MenuItem
 }
 
 func newMenuContent(m MenuModel, maxHeight float32, activate func(*MenuItem)) *menuContent {
 	mc := &menuContent{model: m, maxHeight: maxHeight}
 	mc.SetMinSize(geometry.Size{Width: menuContentMinWidth})
 	mc.delegate = &menuItemDelegate{model: m, onActivate: activate}
+	mc.delegate.onHover = mc.selectItem
 	mc.list = NewListView()
 	mc.list.SetDelegate(mc.delegate)
 	mc.sv = NewScrollView()
@@ -269,7 +273,90 @@ func newMenuContent(m MenuModel, maxHeight float32, activate func(*MenuItem)) *m
 	mc.WidgetBase.AddChild(mc, mc.sv)
 	mc.ConnectMount(mc.connectModel)
 	mc.ConnectUnmount(mc.disconnectModel)
+	key := NewKeyEventController()
+	key.SetPhase(PhaseCapture)
+	key.ConnectKeyDown(func(ctx EventContext, event events.KeyEvent) {
+		if event.Modifiers != 0 {
+			return
+		}
+		direction, edge := 0, false
+		switch event.Key {
+		case events.KeyArrowDown:
+			direction = 1
+		case events.KeyArrowUp:
+			direction = -1
+		case events.KeyHome:
+			direction, edge = 1, true
+		case events.KeyEnd:
+			direction, edge = -1, true
+		case events.KeyEnter, events.KeySpace:
+			if mc.activeIndex() < 0 {
+				mc.moveItem(1, true)
+			}
+			item := mc.active
+			if item != nil && mc.activeIndex() >= 0 {
+				activate(item)
+			}
+		default:
+			return
+		}
+		if direction != 0 {
+			mc.moveItem(direction, edge)
+		}
+		event.PreventDefault()
+		ctx.StopPropagation()
+	})
+	mc.AddEventController(key)
 	return mc
+}
+
+func (mc *menuContent) activeIndex() int {
+	if mc.active == nil || !mc.active.Enabled() || !mc.active.Visible() || mc.active.Separator() || mc.model == nil {
+		return -1
+	}
+	for i := 0; i < mc.model.ItemsCount(); i++ {
+		if mc.model.ItemAt(i) == mc.active {
+			return i
+		}
+	}
+	return -1
+}
+func (mc *menuContent) selectItem(item *MenuItem) {
+	if item != nil && (!item.Enabled() || !item.Visible() || item.Separator()) {
+		return
+	}
+	mc.active = item
+	mc.delegate.active = item
+	for _, widget := range mc.list.items {
+		row := widget.(*menuItemRow)
+		row.keyboardSelected = row.mi == item && item != nil
+		row.setHovered(false)
+		row.requestPaint()
+	}
+}
+func (mc *menuContent) moveItem(direction int, edge bool) {
+	if mc.model == nil || mc.model.ItemsCount() == 0 {
+		mc.selectItem(nil)
+		return
+	}
+	n := mc.model.ItemsCount()
+	at := mc.activeIndex()
+	if edge || at < 0 {
+		at = -1
+		if direction < 0 {
+			at = 0
+		}
+	}
+	for range n {
+		at = (at + direction + n) % n
+		item := mc.model.ItemAt(at)
+		if item != nil && item.Enabled() && item.Visible() && !item.Separator() {
+			mc.selectItem(item)
+			mc.list.Reveal(at)
+			return
+		}
+	}
+	mc.selectItem(nil)
 }
 
 func (mc *menuContent) connectModel() {
@@ -282,6 +369,7 @@ func (mc *menuContent) connectModel() {
 }
 
 func (mc *menuContent) disconnectModel() {
+	mc.selectItem(nil)
 	if mc.hChanged != nil {
 		mc.hChanged.Disconnect()
 		mc.hChanged = nil
@@ -291,6 +379,9 @@ func (mc *menuContent) disconnectModel() {
 }
 
 func (mc *menuContent) invalidate() {
+	if mc.active != nil && mc.activeIndex() < 0 {
+		mc.selectItem(nil)
+	}
 	mc.valid = false
 	mc.RequestLayout()
 }
@@ -425,10 +516,13 @@ type menuItemDelegate struct {
 	model       MenuModel
 	onActivate  func(*MenuItem)
 	trailingGap float32
+	active      *MenuItem
+	onHover     func(*MenuItem)
 }
 
 func (d *menuItemDelegate) Setup() Widget {
 	r := newMenuItemRow(d.onActivate)
+	r.onHover = d.onHover
 	r.trailingGap = d.trailingGap
 	return r
 }
@@ -441,6 +535,7 @@ func (d *menuItemDelegate) Bind(i int, w Widget) {
 		mi = d.model.ItemAt(i)
 	}
 	row.bind(mi)
+	row.keyboardSelected = mi != nil && mi == d.active && mi.Enabled() && mi.Visible() && !mi.Separator()
 }
 
 func (d *menuItemDelegate) Unbind(i int, w Widget) { w.(*menuItemRow).bind(nil) }
@@ -449,14 +544,16 @@ func (d *menuItemDelegate) Unbind(i int, w Widget) { w.(*menuItemRow).bind(nil) 
 // A separator row hides its Label, draws a thin line and is not interactive.
 type menuItemRow struct {
 	WidgetBase
-	label       *Label
-	trailingGap float32
-	mi          *MenuItem
-	activate    func(*MenuItem)
-	hovered     bool
-	pressed     bool
-	motion      *MotionEventController
-	click       *ClickEventController
+	label            *Label
+	trailingGap      float32
+	mi               *MenuItem
+	activate         func(*MenuItem)
+	hovered          bool
+	pressed          bool
+	keyboardSelected bool
+	onHover          func(*MenuItem)
+	motion           *MotionEventController
+	click            *ClickEventController
 }
 
 const (
@@ -475,6 +572,11 @@ func newMenuItemRow(activate func(*MenuItem)) *menuItemRow {
 
 	r.motion = NewMotionEventController()
 	r.motion.ConnectContainsHover(r.setHovered)
+	r.motion.ConnectMotion(func(MotionInfo) {
+		if r.onHover != nil && r.mi != nil {
+			r.onHover(r.mi)
+		}
+	})
 	r.AddEventController(r.motion)
 
 	r.click = NewClickEventController()
@@ -500,6 +602,7 @@ func (r *menuItemRow) bind(mi *MenuItem) {
 	r.click.Reset()
 	r.motion.Reset()
 	r.hovered, r.pressed = false, false
+	r.keyboardSelected = false
 	r.mi = mi
 	r.label.SetText("")
 	r.label.SetVisible(mi != nil && mi.Visible() && !mi.Separator())
@@ -563,6 +666,7 @@ func (r *menuItemRow) Paint(p Painter) {
 func (r *menuItemRow) Snapshot() WidgetInfo {
 	info := r.WidgetBase.Snapshot()
 	info.Role = RoleMenuItem
+	info.Selected = r.keyboardSelected
 	info.Enabled = info.Enabled && r.mi != nil && r.mi.Enabled()
 	if r.mi != nil {
 		info.Text = r.mi.Label()
@@ -581,7 +685,7 @@ func (r *menuItemRow) resolvedStyle() style.Style {
 		st = style.Disabled
 	} else if r.pressed {
 		st = style.Pressed
-	} else if r.hovered {
+	} else if r.hovered || r.keyboardSelected {
 		st = style.Hovered
 	}
 	return ResolveStyle(styleNameMenuItem, style.PartDefault, st)
