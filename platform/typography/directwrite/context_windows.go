@@ -414,6 +414,11 @@ func (t *TextLayout) SetTextColor(start, length int, color color.Color) {
 			Length:        uint32(endPos - startPos),
 		}
 
+		// A full foreground replacement makes every older range obsolete.
+		// Retaining them would grow memory and rendering work on every recolor.
+		if startPos == 0 && endPos == t.position.ToUtf16(len(t.text)) {
+			t.colors = t.colors[:0]
+		}
 		t.colors = append(t.colors, textColorAttr{
 			Range: textRange,
 			Color: toRGBAColor(color),
