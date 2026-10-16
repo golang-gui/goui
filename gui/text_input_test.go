@@ -602,7 +602,7 @@ func TestTextInputPasteAndDetachedSetText(t *testing.T) {
 	App.(*application).clipboard = clip
 	input.SetSelection(TextSelection{1, 2})
 	dispatchKey(t, win, events.KeyV, textCommandModifier())
-	clip.pending("1\r\n2\n3", true)
+	clip.pending("1\r\n2\n3", nil)
 	if input.Text() != "a1 2 3c" {
 		t.Fatalf("paste = %q", input.Text())
 	}
@@ -612,7 +612,7 @@ func TestTextInputPasteAndDetachedSetText(t *testing.T) {
 	}
 	dispatchKey(t, win, events.KeyV, textCommandModifier())
 	win.onInputMethod(platform.InputMethodResult{Kind: platform.InputMethodPreedit, Text: "x", Caret: 1})
-	clip.pending("stale", true)
+	clip.pending("stale", nil)
 	if input.Text() != "abc" || input.preedit == nil {
 		t.Fatal("stale paste changed composition")
 	}

@@ -392,7 +392,7 @@ func TestTextViewPreeditLifecycleAndPasteInvalidation(t *testing.T) {
 	App.(*application).clipboard = clip
 	editorKey(t, win, events.KeyV, textCommandModifier())
 	win.onInputMethod(platform.InputMethodResult{Kind: platform.InputMethodPreedit, Text: "中", Caret: 3})
-	clip.pending("stale", true)
+	clip.pending("stale", nil)
 	if editor.model.Text() != "abc" || editor.preedit == nil {
 		t.Fatal("preedit did not invalidate pending paste")
 	}

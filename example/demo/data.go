@@ -99,7 +99,16 @@ func (d *demo) dataPage() ui.View {
 			d.report(fmt.Sprintf(resource.TreeSelected(), strings.Join(ids, ", ")))
 		}).
 		ContextMenu(func(id string) []*ui.MenuItemView {
-			return []*ui.MenuItemView{ui.MenuItem(fmt.Sprintf(resource.ViewNode(), d.tree.Item(id)), func() { d.report(fmt.Sprintf(resource.NodeID(), id)) }), ui.MenuItem(resource.CopyNode(), func() { d.app.Clipboard().SetText(d.tree.Item(id)); d.report(resource.NodeCopied()) })}
+			return []*ui.MenuItemView{
+				ui.MenuItem(fmt.Sprintf(resource.ViewNode(), d.tree.Item(id)), func() { d.report(fmt.Sprintf(resource.NodeID(), id)) }),
+				ui.MenuItem(resource.CopyNode(), func() {
+					if err := d.app.Clipboard().SetText(d.tree.Item(id)); err != nil {
+						d.result(resource.CopyNode(), err)
+						return
+					}
+					d.report(resource.NodeCopied())
+				}),
+			}
 		}).OnContextMenuError(func(e error) { d.result(resource.TreeMenu(), e) })
 	table := wui.TableView(d.table,
 		wui.TableColumn("name", resource.Name(), func(_ widgets.TableRow, r record) ui.View { return ui.HBox(ui.Label(r.Name)).Padding(8) }).Width(d.tableWidths[0]).OnResize(func(width float32) { d.tableWidths[0] = width }).MinWidth(100).Resizable(true).Sortable(true),

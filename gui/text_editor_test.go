@@ -44,7 +44,7 @@ func TestTextEditorDisabledPreservesContentAndRejectsLateInput(t *testing.T) {
 		t.Fatal("disabled editor accepted native input or menu command")
 	}
 	editor.SetEnabled(true)
-	clip.pending("stale", true)
+	clip.pending("stale", nil)
 	if editor.Model().Text() != "abc" || win.FocusedWidget() != nil {
 		t.Fatal("reenable accepted old paste or stole focus")
 	}
@@ -340,7 +340,7 @@ func TestTextEditorContextMenuCommands(t *testing.T) {
 					if clip.pending == nil {
 						t.Fatal("paste did not request clipboard")
 					}
-					clip.pending("X\nY", true)
+					clip.pending("X\nY", nil)
 					want = "aX\nYef"
 					if singleLine {
 						want = "aX Yef"
@@ -583,7 +583,7 @@ func TestTextEditorContextMenuLifecycle(t *testing.T) {
 			case "stale-paste":
 				editorMenuClick(t, pm, "Paste")
 				editor.setSelectionValue(TextSelection{})
-				clip.pending("stale", true)
+				clip.pending("stale", nil)
 				if editor.model.Text() != "abcdef" {
 					t.Fatal("late menu paste changed a different selection")
 				}
@@ -594,12 +594,12 @@ func TestTextEditorContextMenuLifecycle(t *testing.T) {
 
 type editorClipboard struct {
 	text    string
-	pending func(string, bool)
+	pending func(string, error)
 }
 
-func (c *editorClipboard) SetText(s string) { c.text = s }
+func (c *editorClipboard) SetText(s string) error { c.text = s; return nil }
 
-func (c *editorClipboard) RequestText(fn func(string, bool)) { c.pending = fn }
+func (c *editorClipboard) RequestText(fn func(string, error)) { c.pending = fn }
 
 // 导航、选择、剪贴板与历史。
 
@@ -673,19 +673,19 @@ func TestTextViewPasteDropsStaleReply(t *testing.T) {
 	editor.SetSelection(TextSelection{1, 2})
 	editorKey(t, win, events.KeyV, textCommandModifier())
 	editor.SetSelection(TextSelection{3, 3})
-	clip.pending("wrong", true)
+	clip.pending("wrong", nil)
 	if editor.model.Text() != "abc" {
 		t.Fatal("stale selection received paste")
 	}
 	editorKey(t, win, events.KeyV, textCommandModifier())
-	clip.pending("\r\nX", true)
+	clip.pending("\r\nX", nil)
 	if editor.model.Text() != "abc\nX" {
 		t.Fatalf("paste not normalized: %q", editor.model.Text())
 	}
 	editorKey(t, win, events.KeyV, textCommandModifier())
 	win.SetWidget(nil)
 	win.SetWidget(editor)
-	clip.pending("wrong", true)
+	clip.pending("wrong", nil)
 	if editor.model.Text() != "abc\nX" {
 		t.Fatal("paste survived unmount/remount")
 	}
