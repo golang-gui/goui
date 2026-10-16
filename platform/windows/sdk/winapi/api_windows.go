@@ -124,11 +124,12 @@ var (
 	procRegCloseKey      = advapi32Dll.NewProc("RegCloseKey")
 
 	// Clipboard
-	procOpenClipboard    = user32Dll.NewProc("OpenClipboard")
-	procCloseClipboard   = user32Dll.NewProc("CloseClipboard")
-	procEmptyClipboard   = user32Dll.NewProc("EmptyClipboard")
-	procGetClipboardData = user32Dll.NewProc("GetClipboardData")
-	procSetClipboardData = user32Dll.NewProc("SetClipboardData")
+	procOpenClipboard              = user32Dll.NewProc("OpenClipboard")
+	procCloseClipboard             = user32Dll.NewProc("CloseClipboard")
+	procEmptyClipboard             = user32Dll.NewProc("EmptyClipboard")
+	procGetClipboardData           = user32Dll.NewProc("GetClipboardData")
+	procIsClipboardFormatAvailable = user32Dll.NewProc("IsClipboardFormatAvailable")
+	procSetClipboardData           = user32Dll.NewProc("SetClipboardData")
 
 	procGlobalAlloc  = kernel32Dll.NewProc("GlobalAlloc")
 	procGlobalLock   = kernel32Dll.NewProc("GlobalLock")
@@ -845,6 +846,11 @@ func CloseClipboard() bool {
 
 func EmptyClipboard() bool {
 	ret, _, _ := syscall.SyscallN(procEmptyClipboard.Addr())
+	return ret != 0
+}
+
+func IsClipboardFormatAvailable(format UINT) bool {
+	ret, _, _ := syscall.SyscallN(procIsClipboardFormatAvailable.Addr(), uintptr(format))
 	return ret != 0
 }
 
