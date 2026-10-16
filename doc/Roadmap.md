@@ -49,11 +49,11 @@ InkBounds、文本布局图片或 Widget 回调接口。Linux arm64 全仓的既
 
 <a id="future-submenu"></a>
 
-### 子菜单与菜单键盘导航：待实现
+### 子菜单与跨层键盘导航：待实现
 
 - 基线：MenuModel／PopoverMenu、原生独立表面、工作区退避和中性菜单样式已实现。
 - 缺口：递归 Submenu 模型、父菜单拥有子宿主、根菜单唯一模态登记、多级展开／
-  收起、活动键盘层、↑↓／左右／Enter／Esc、跨表面移动保护及递归 UI 声明。
+  收起、跨层活动键盘协调、左右／Enter／Esc、跨表面移动保护及递归 UI 声明。
 - 设计：[DesignMenuSubmenu](DesignMenuSubmenu.md)。实施前复核 Attributes 快照、
   现有定位算法所在文件、rootBase 手势／输入消费和 Window.Popovers 枚举。
 - 不借此增加模态栈、全局菜单管理器、菜单栏、富控件菜单或平台公共接口。

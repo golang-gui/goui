@@ -855,3 +855,10 @@ arm64 构建限制保留在原记录中；本轮未修改实现或复验这些�
 - [x] Windows 原生回归修复前失败、修复后 1000 轮记录数有界；DirectWrite 包测试通过。
 - [x] Linux GOUI 全仓测试及 SourceView 三端原生度量/位图联调通过，细节见 DesignTypography 第 14 节。
 - 修正提交 `227220a`；未发布，不修改已有发行版或将尚未发布的修正写成可获取依赖。
+
+## 单层菜单键盘导航（2026-10-16）
+
+- [x] 通用 PopoverMenu 支持上下/Home/End、Enter/Space、可用项跳过和虚拟行活动快照。
+- [x] 本机全仓、远端 Windows/macOS 菜单逻辑和 SourceView 原生排版测试通过。
+- [x] SourceView 在独立 X11 桌面以 Software 1x/2x、OpenGL 1x 验证菜单键盘/指针操作。
+- [ ] Windows/macOS 菜单桌面验收及跨层子菜单；细节见 [PlanMenuKeyboard](PlanMenuKeyboard.md)。

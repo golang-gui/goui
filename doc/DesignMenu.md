@@ -23,7 +23,7 @@
 | `GtkMenuButton` | `MenuButton` | 对齐 `Button` 惯例（单 child + 点击弹出） |
 | `GtkPopover::closed` | `gui.Popover.ConnectClosed` | 信号放宿主（Popover），控件转发 |
 
-**尚未实现**：子菜单及菜单自身的 ↑↓/Enter/Home/End 导航，见
+**尚未实现**：子菜单与跨层键盘导航，见
 [未来路线](Roadmap.md#future-submenu)。图标、菜单栏、模型级关闭信号和富控件菜单项
 不属于当前 Menu 契约；富内容可组合普通 Popover。工作区尺寸约束／退避、UI 菜单
 声明、通用 `OnContextMenu` 和 TabBar 上下文菜单已经实现，不能再列为缺失能力。
@@ -95,3 +95,17 @@ PopoverMenu（命令式控件）
 
 **菜单激活**：点击可用行先保存动作、`Hide()`，再调用 `Action()`；避免回调关闭窗口或重新开菜单后继续访问旧宿主。disabled 行
 无操作、不关闭（点击无反馈，与 GTK4 一致）。
+
+## 4. 单层键盘导航
+
+PopoverMenu 在自己的内容树捕获未修改的 ↑↓、Home、End、Enter 和 Space。
+↑↓ 循环选择可用项，Home/End 到首尾；跳过 nil、隐藏、禁用项与分隔线。
+Enter/Space 先使用当前可用项，没有活动项时选择首项，再复用原有 activate：
+先保存动作、隐藏并释放模态输入，再调用应用动作。Escape 仍由 Popover 负责关闭。
+
+活动项以 MenuItem 身份保存，模型更新时重新核验；关闭、卸载和模型替换清空。
+选择后通过 ListView.Reveal 请求可见，滚动仍归 ScrollView。虚拟行 Bind 同步活动状态，
+解绑清理高亮，Snapshot.Selected 表示活动项。指针移动更新活动项；键盘选择清理旧 hover。
+不夺取主窗口原生焦点，不添加对外导航/执行测试接口，不据此声称已经支持子菜单。
+
+验证见 [菜单键盘验收](PlanMenuKeyboard.md)。
