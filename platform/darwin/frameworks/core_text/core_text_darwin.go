@@ -382,6 +382,12 @@ func CTParagraphStyleCreate(settings []CTParagraphStyleSetting) CTParagraphStyle
 }
 
 func CreateParagraphStyle(alignment CTTextAlignment, lineBreakMode CTLineBreakMode) CTParagraphStyleRef {
+	return CreateParagraphStyleWithTabs(alignment, lineBreakMode, 0)
+}
+
+// CreateParagraphStyleWithTabs overrides both explicit stops and the repeating
+// interval. A zero width preserves CoreText defaults.
+func CreateParagraphStyleWithTabs(alignment CTTextAlignment, lineBreakMode CTLineBreakMode, tabWidth CGFloat) CTParagraphStyleRef {
 	settings := []CTParagraphStyleSetting{
 		{
 			Spec:      KCTParagraphStyleSpecifierAlignment,
@@ -393,6 +399,13 @@ func CreateParagraphStyle(alignment CTTextAlignment, lineBreakMode CTLineBreakMo
 			ValueSize: unsafe.Sizeof(lineBreakMode),
 			Value:     unsafe.Pointer(&lineBreakMode),
 		},
+	}
+	if tabWidth > 0 {
+		tabs := CFArrayCreate(nil)
+		defer CFRelease(tabs)
+		settings = append(settings,
+			CTParagraphStyleSetting{Spec: KCTParagraphStyleSpecifierTabStops, ValueSize: unsafe.Sizeof(tabs), Value: unsafe.Pointer(&tabs)},
+			CTParagraphStyleSetting{Spec: KCTParagraphStyleSpecifierDefaultTabInterval, ValueSize: unsafe.Sizeof(tabWidth), Value: unsafe.Pointer(&tabWidth)})
 	}
 	return CTParagraphStyleCreate(settings)
 }
