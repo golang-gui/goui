@@ -183,6 +183,9 @@ func (m *Model) UndoWithSelection() HistoryResult {
 	m.undoSteps[len(m.undoSteps)-1] = textStep{}
 	m.undoSteps = m.undoSteps[:len(m.undoSteps)-1]
 	m.groupOpen = false
+	if step.batch != nil {
+		return m.applyBatchHistory(step, true)
+	}
 	insLen := pieceRefsLen(step.inserted)
 	var removedNow []pieceRef
 	if insLen > 0 {
@@ -223,6 +226,9 @@ func (m *Model) RedoWithSelection() HistoryResult {
 	m.redoSteps[len(m.redoSteps)-1] = textStep{}
 	m.redoSteps = m.redoSteps[:len(m.redoSteps)-1]
 	m.groupOpen = false
+	if step.batch != nil {
+		return m.applyBatchHistory(step, false)
+	}
 	var removedNow []pieceRef
 	if step.oldEnd > step.start {
 		removedNow = m.tree.deleteRange(step.start, step.oldEnd)
@@ -468,13 +474,16 @@ type textStepSelection struct{ before, after Selection }
 // [start, start+len(inserted)) afterwards. Piece references keep the content
 // alive in the immutable buffers; no document snapshot is stored.
 type textStep struct {
-	start     int
-	oldEnd    int
-	removed   []pieceRef
-	inserted  []pieceRef
-	kind      textStepKind
-	side      textStepSide
-	selection *textStepSelection
+	batch       []textStep
+	batchBefore *Selection
+	batchAfter  *Selection
+	start       int
+	oldEnd      int
+	removed     []pieceRef
+	inserted    []pieceRef
+	kind        textStepKind
+	side        textStepSide
+	selection   *textStepSelection
 }
 
 type textStepKind uint8
