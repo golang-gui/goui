@@ -105,7 +105,18 @@ Enter/Space 先使用当前可用项，没有活动项时选择首项，再复�
 
 活动项以 MenuItem 身份保存，模型更新时重新核验；关闭、卸载和模型替换清空。
 选择后通过 ListView.Reveal 请求可见，滚动仍归 ScrollView。虚拟行 Bind 同步活动状态，
-解绑清理高亮，Snapshot.Selected 表示活动项。指针移动更新活动项；键盘选择清理旧 hover。
+解绑清理高亮，Snapshot.Selected 表示活动项。鼠标与键盘共用这一份活动项，
+行不另以物理 hover 驱动高亮，不手动覆盖 MotionEventController 的物理状态。
+行的 contains-enter 更新活动项，覆盖只派发 crossing 的原生 PointerEnter；
+移动监听使用 Bubble 阶段，覆盖内部 Label 被命中的情形，也允许键盘导航后在同一 Label
+内移动鼠标取回选择。指针进入禁用项/分隔线清空活动项；离开菜单保留当前项供键盘继续导航。
+同一活动项的重复移动不重新设置所有行。指针按下也接管活动项；按压样式仅用于仍为活动项的行，
+避免按住鼠标时键盘换行留下第二条强调。隐藏、解绑和重用清理状态，绘制与 Selected 始终一致。
 不夺取主窗口原生焦点，不添加对外导航/执行测试接口，不据此声称已经支持子菜单。
 
 验证见 [菜单键盘验收](PlanMenuKeyboard.md)。
+
+此处采用单一活动项，与 [Qt 6.8.3 QMenuPrivate::setCurrentAction](https://github.com/qt/qtbase/blob/v6.8.3/src/widgets/widgets/qmenu.cpp#L657)
+集中替换 currentAction 并更新新旧行的源码行为一致；其键盘与鼠标路径均调用该入口。
+仅采用状态归属，不引入 Qt 的子菜单延迟、焦点或对象体系。该参考核对于 2026-10-16，
+是源码行为依据，不表示 GOUI 已通过 Qt 所支持的所有原生平台场景。
