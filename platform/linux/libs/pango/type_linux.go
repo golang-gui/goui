@@ -14,7 +14,12 @@ const (
 type (
 	FontDescription uintptr
 	Language        uintptr
+	TabArray        uintptr
 )
+
+type TabAlign int32
+
+const TabLeft TabAlign = 0
 
 // Rectangle represents a rectangle
 type Rectangle struct {
