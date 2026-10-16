@@ -16,6 +16,10 @@ var (
 	// PangoLayout
 	pangoLayoutNew                = libpango.NewSymbol("pango_layout_new")
 	pangoLayoutSetText            = libpango.NewSymbol("pango_layout_set_text")
+	pangoLayoutSetTabs            = libpango.NewSymbol("pango_layout_set_tabs")
+	pangoTabArrayNew              = libpango.NewSymbol("pango_tab_array_new")
+	pangoTabArraySetTab           = libpango.NewSymbol("pango_tab_array_set_tab")
+	pangoTabArrayFree             = libpango.NewSymbol("pango_tab_array_free")
 	pangoLayoutSetWidth           = libpango.NewSymbol("pango_layout_set_width")
 	pangoLayoutSetWrap            = libpango.NewSymbol("pango_layout_set_wrap")
 	pangoLayoutSetAlignment       = libpango.NewSymbol("pango_layout_set_alignment")
@@ -126,6 +130,28 @@ func LayoutNew(context Context) (l Layout) {
 	// PangoLayout* pango_layout_new(PangoContext* context)
 	l.GObject, _, _ = pangoLayoutNew.CallRaw(context.GObject)
 	return
+}
+
+// SetTabs copies tabs into the layout; zero restores Pango's defaults.
+func (l Layout) SetTabs(tabs TabArray) {
+	pangoLayoutSetTabs.CallRaw(l.GObject, uintptr(tabs))
+}
+
+func TabArrayNew(size int32, positionsInPixels bool) TabArray {
+	var pixels uintptr
+	if positionsInPixels {
+		pixels = 1
+	}
+	tabs, _, _ := pangoTabArrayNew.CallRaw(uintptr(size), pixels)
+	return TabArray(tabs)
+}
+
+func (tabs TabArray) SetTab(index int32, alignment TabAlign, location int32) {
+	pangoTabArraySetTab.CallRaw(uintptr(tabs), uintptr(index), uintptr(alignment), uintptr(location))
+}
+
+func (tabs TabArray) Free() {
+	pangoTabArrayFree.CallRaw(uintptr(tabs))
 }
 
 // SetText sets the text of the layout.
