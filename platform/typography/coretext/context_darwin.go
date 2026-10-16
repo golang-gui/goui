@@ -70,6 +70,9 @@ func (c *Context) AddFont(fontFile string) error {
 }
 
 func (c *Context) NewTextLayout(text string, format typography.TextFormat, width, height float32) (typography.TextLayout, error) {
+	if err := utils.ValidateTabWidth(format.TabWidth); err != nil {
+		return nil, err
+	}
 	return newTextLayout(c, text, format, width, height)
 }
 
@@ -517,10 +520,22 @@ func (t *TextLayout) rasterize(scale float32, buf []byte) (bitmap typography.Tex
 	return t.painter.GetBitmap(width, height, buf), nil
 }
 
+func (t *TextLayout) SetTabWidth(width float32) {
+	if err := utils.ValidateTabWidth(width); err != nil {
+		panic(err)
+	}
+	if t.format.TabWidth == width {
+		return
+	}
+	t.format.TabWidth = width
+	t.updateParagraphStyle()
+	t.life.Changed()
+}
+
 func (t *TextLayout) updateParagraphStyle() {
 	alignment := convertAlignment(t.format.TextAlign)
 	lineBreak := convertLineBreakMode(t.format.WrapMode)
-	paraStyle := CreateParagraphStyle(alignment, lineBreak)
+	paraStyle := CreateParagraphStyleWithTabs(alignment, lineBreak, CGFloat(t.format.TabWidth))
 	if paraStyle != 0 {
 		defer CFRelease(paraStyle)
 		CFAttributedStringBeginEditing(t.attrString)

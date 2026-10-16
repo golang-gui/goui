@@ -45,6 +45,9 @@ type TextFormat struct {
 	// TextColor is the base foreground color. A nil value uses
 	// DefaultTextColor.
 	TextColor color.Color
+	// TabWidth is the repeating tab interval in logical units. Zero preserves
+	// the backend default; positive values must be finite and at most 1048575.
+	TabWidth float32
 }
 
 // FontInfo describes a requested font face. Font matching is performed by the

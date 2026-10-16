@@ -54,6 +54,7 @@ func (l *testTextLayout) SetTextAlignment(typography.TextAlignment) {
 	l.changed.Emit()
 }
 func (l *testTextLayout) SetWrapMode(typography.WrapMode) { l.changed.Emit() }
+func (l *testTextLayout) SetTabWidth(float32)             { l.changed.Emit() }
 func (l *testTextLayout) SetTextFont(int, int, typography.FontInfo) {
 	l.changed.Emit()
 }
