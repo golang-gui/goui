@@ -847,3 +847,11 @@ arm64 构建限制保留在原记录中；本轮未修改实现或复验这些�
 - [x] 分别记录 Windows/macOS 纯基线可复现的完整测试失败、既有 vet 诊断和独立发布限制；
   详见 [实施与验收记录](PlanSourceViewExtensions.md)。未将这些失败算作通过。
 - [ ] GOUI 发布包含这些接口的版本后，更新 SourceView 依赖并完成关闭 workspace 的独立验证。
+
+
+## DirectWrite 全范围前景覆盖（2026-10-16）
+
+- [x] 复现完整重着色累积旧颜色范围；保持公开接口及部分覆盖语义，完整覆盖时回收旧记录。
+- [x] Windows 原生回归修复前失败、修复后 1000 轮记录数有界；DirectWrite 包测试通过。
+- [x] Linux GOUI 全仓测试及 SourceView 三端原生度量/位图联调通过，细节见 DesignTypography 第 14 节。
+- 修正提交 `227220a`；未发布，不修改已有发行版或将尚未发布的修正写成可获取依赖。

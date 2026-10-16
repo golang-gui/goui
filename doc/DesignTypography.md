@@ -384,3 +384,16 @@ Pango 原生绑定只公开 TabArrayNew / SetTab / Free 与 Layout.SetTabs；创
 Pango / DirectWrite / CoreText 的 TestTabWidth 已分别在 Linux / Windows / macOS 实际执行，验证重复站点、连续 Tab、通知、恢复默认、颜色后的 Tab 坐标及非法创建参数。环境、全仓结果与既有失败见 [通用文本扩展验收](PlanSourceViewExtensions.md)；RTL / 折行 / 跨屏仍待专项验收。
 
 [Pango Layout.set_tabs](https://docs.gtk.org/Pango/method.Layout.set_tabs.html) 明确数组会被复制。重复站点采用两个末尾站点的间距，依据 [Pango 1.50.6 的 get_tab_pos 源码](https://github.com/GNOME/pango/blob/1.50.6/pango/pango-layout.c) 及本机该版本实测；未引入需要更高版本的对齐类型。
+
+
+## 14. 完整前景覆盖的记录回收（2026-10-16 工作副本）
+
+长寿命 TextLayout 可反复进行范围着色。DirectWrite 后端在 SetTextColor 完整覆盖文本时，
+丢弃已经被覆盖的全部旧颜色范围，再保存本次范围；部分范围仍遵循既有覆盖/绘制顺序。
+这保持外部颜色语义及 UTF-8→UTF-16 转换，避免完整重着色永久累积无效记录。
+不由调用方按后端定期重建布局来补偿资源增长，也不新增 API。
+
+`TestFullColorReplacementDropsObsoleteRanges` 在 Windows 10 19045 / Go 1.24.0 原生执行：
+修复前第二轮已有 4 条颜色记录而失败；修复后 1000 轮保持完整前景与局部覆盖的 2 条，
+同时检查多字节源范围转换。DirectWrite 所属包全仓测试通过；本机 GOUI 全仓测试通过。
+本修正不承诺任意局部更新序列都已合并为最小区间，原生内部 shaping/raster 工作仍由后端决定。
