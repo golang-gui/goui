@@ -1173,3 +1173,18 @@ Clipboard；Software/OpenGL/Direct2D 验证选择、裁剪、光标和 1x/2x。�
   服务退出时的原生等待、超长单段落非优化目标，仍见 DesignIME 与本文范围说明。
   其他平台窗口真实 IME/Clipboard、候选位置、输入布局及后端/HiDPI 场景由用户
   按入口编号验收，不将本次离屏 PASS 或目标编译通过解释为这些窗口项已通过。
+
+## 批量编辑公开契约补充（2026-10-16）
+
+textedit.Model.ApplyBatch(edits, BatchOptions) 提供可复用的原子批量编辑：
+输入是原始文档坐标中已排序、非重叠且起点无歧义的 Edit；所有范围、UTF-8 边界、
+规范化结果和前后选区在变更前验证。同起点插入需由调用方先合并。
+空操作不增加 revision；有变更时从右到左执行，只增加一次 revision、Change 和 undo 项。
+Change.Edits 按实际执行顺序报告，订阅方继续逐项映射，不另引一种通知坐标体系。
+
+BatchOptions 包含 Source、BeforeSelection、AfterSelection；历史保存独立选区值，
+UndoWithSelection / RedoWithSelection 一次恢复整个批次并返回对应选区和操作 revision。
+批次不并入相邻输入组。操作完成回调后的模型 revision 可能已经被重入推进，使用方应核对 HistoryResult.Revision。
+
+原子性、无效输入不变性、规范化 UTF-8、前后选区、通知顺序、undo/redo 和重入回归已通过。
+该契约属于通用 textedit，不包含语言、高亮或具体代码编辑器依赖。
