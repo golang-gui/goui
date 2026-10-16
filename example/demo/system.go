@@ -83,18 +83,25 @@ func (d *demo) systemPage() ui.View {
 	target := ui.DropTarget(ui.LocalFormat("demo-card"), ui.DragFormatFiles, ui.DragFormatText).OnDrop(d.receiveDrop).OnError(func(e error) { d.result(resource.ReceiveDrop(), e) })
 	return page("system", resource.System(), resource.SystemHint(),
 		section(resource.Clipboard(), ui.TextInput().BindText(&d.input), ui.HWrap(ui.Button(resource.CopyText()).ID("copy-text").OnClick(func() {
-			d.app.Clipboard().SetText(d.input.Get())
+			if err := d.app.Clipboard().SetText(d.input.Get()); err != nil {
+				d.result(resource.CopyText(), err)
+				return
+			}
 			d.report(resource.CopyRequested())
 		}),
 			ui.Button(resource.ReadClipboard()).ID("read-clipboard").OnClick(func() {
-				d.app.Clipboard().RequestText(func(text string, ok bool) {
-					if ok {
+				if err := d.app.Clipboard().RequestText(func(text string, err error) {
+					if err != nil {
+						d.result(resource.ReadClipboard(), err)
+					} else if text == "" {
+						d.report(resource.ClipboardEmpty())
+					} else {
 						d.input.Set(text)
 						d.report(resource.ClipboardRead())
-					} else {
-						d.report(resource.ClipboardEmpty())
 					}
-				})
+				}); err != nil {
+					d.result(resource.ReadClipboard(), err)
+				}
 			})).Spacing(12)),
 		section(resource.DialogsTitle(), ui.HWrap(ui.Button(resource.ChooseFile()).ID("choose-files").OnClick(func() {
 			d.app.FileDialog().OpenFile(ui.DialogOptions{Title: resource.ChooseDragFiles(), AllowMultiple: true}, d.selectedPaths)

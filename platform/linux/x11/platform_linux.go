@@ -238,6 +238,9 @@ func (p *Platform) Name() string {
 }
 
 func (p *Platform) Destroy() {
+	if p.clipboard != nil {
+		p.clipboard.close()
+	}
 	// TODO
 }
 

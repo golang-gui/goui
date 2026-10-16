@@ -25,9 +25,17 @@ func TestClipboard(t *testing.T) {
 	}
 
 	var clip platform.Clipboard
+	var loop platform.EventLoop
 	runOnMainThread(func() {
+		loop, err = plat.NewEventLoop()
+		if err != nil {
+			return
+		}
 		clip, err = plat.NewClipboard()
 	})
+	if loop != nil {
+		defer runOnMainThread(loop.Destroy)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,8 +121,8 @@ func TestClipboardPasteFromApp(t *testing.T) {
 		called bool
 	)
 	loop.Post(func() {
-		clip.RequestText(func(text string, ok bool) {
-			got, gotOK, called = text, ok, true
+		clip.RequestText(func(text string, err error) {
+			got, gotOK, called = text, err == nil, true
 			loop.Quit()
 		})
 	})
@@ -142,8 +150,8 @@ func clipboardRoundTrip(clip platform.Clipboard, text string) (got string, gotOK
 		if setErr = clip.SetText(text); setErr != nil {
 			return
 		}
-		clip.RequestText(func(t string, ok bool) {
-			got, gotOK, called = t, ok, true
+		clip.RequestText(func(t string, err error) {
+			got, gotOK, called = t, err == nil, true
 		})
 	})
 	return

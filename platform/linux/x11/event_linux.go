@@ -2,7 +2,9 @@ package x11
 
 import (
 	"errors"
+	"time"
 
+	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/internal/eventloop"
 	"github.com/golang-gui/goui/platform/linux/libs/libc"
 	"github.com/golang-gui/goui/platform/linux/libs/xlib"
@@ -46,13 +48,30 @@ func (l *EventLoop) Post(task func()) {
 
 func (l *EventLoop) Run() {
 	moveResizePress = nativePress{}
-	defer l.state.Quit()
+	defer func() {
+		l.state.Quit()
+		if platform != nil && platform.eventLoop == l {
+			l.abortClipboardRead()
+		}
+	}()
 	if l.state.Destroyed() {
 		return
 	}
 
 	for !l.state.Quitting() {
+		if platform.clipboard != nil {
+			platform.clipboard.expire(time.Now())
+		}
+		if l.state.Quitting() {
+			break
+		}
 		if !l.wait() {
+			break
+		}
+		if platform.clipboard != nil {
+			platform.clipboard.expire(time.Now())
+		}
+		if l.state.Quitting() {
 			break
 		}
 		l.readWake()
@@ -76,6 +95,13 @@ func (l *EventLoop) Destroy() {
 	l.closePipe()
 	if platform != nil && platform.eventLoop == l {
 		platform.eventLoop = nil
+		l.abortClipboardRead()
+	}
+}
+
+func (l *EventLoop) abortClipboardRead() {
+	if platform != nil && platform.clipboard != nil {
+		platform.clipboard.finish("", common.ErrUnavailable)
 	}
 }
 
@@ -95,6 +121,9 @@ func (l *EventLoop) processEvents() {
 	platform.display.Pending()
 	for platform.display.QLength() != 0 {
 		l.getEvent()
+		if platform.clipboard != nil {
+			platform.clipboard.expire(time.Now())
+		}
 		if l.state.Quitting() {
 			return
 		}
@@ -149,7 +178,14 @@ func (l *EventLoop) wait() bool {
 	}
 
 	for platform.display.Pending() == 0 {
-		ret, errno := libc.Poll(fds, -1)
+		timeout := -1
+		if platform.clipboard != nil {
+			timeout = platform.clipboard.pollTimeout(time.Now())
+		}
+		ret, errno := libc.Poll(fds, timeout)
+		if ret == 0 {
+			return true // Run expires the read on the platform thread.
+		}
 		if ret == -1 {
 			if errno == libc.EINTR || errno == libc.EAGAIN {
 				continue

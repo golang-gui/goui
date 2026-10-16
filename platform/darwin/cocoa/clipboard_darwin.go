@@ -1,6 +1,7 @@
 package cocoa
 
 import (
+	"errors"
 	"github.com/golang-gui/goui/platform/common"
 
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/appkit"
@@ -18,26 +19,29 @@ func newClipboard() (common.Clipboard, error) {
 }
 
 func (c *clipboard) SetText(text string) error {
+	var err error
 	AutoReleasePool(func() {
 		pb := NSPasteboardClassId.GeneralPasteboard()
 		pb.ClearContents()
-		pb.SetStringForType(ToNSString(text), ToNSString(pasteboardTextType))
+		if !pb.SetStringForType(ToNSString(text), ToNSString(pasteboardTextType)) {
+			err = errors.New("clipboard: pasteboard rejected text")
+		}
 	})
-	return nil
+	return err
 }
 
-func (c *clipboard) RequestText(callback func(text string, ok bool)) {
+func (c *clipboard) RequestText(callback func(text string, err error)) {
 	var (
 		text string
-		ok   bool
+		err  error
 	)
 	AutoReleasePool(func() {
 		pb := NSPasteboardClassId.GeneralPasteboard()
 		ns := pb.StringForType(ToNSString(pasteboardTextType))
 		if ns.ID != 0 {
 			text = ns.UTF8String()
-			ok = true
+			err = nil
 		}
 	})
-	callback(text, ok)
+	callback(text, err)
 }

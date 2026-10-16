@@ -175,9 +175,8 @@ func (p *Platform) NewSettings() (common.Settings, error) {
 }
 
 func (p *Platform) NewClipboard() (common.Clipboard, error) {
-	// The win32 clipboard is stateless (talks to the shared system clipboard),
-	// so a fresh instance per call is safe.
-	return newClipboard()
+	// Clipboard instances borrow the platform's hidden owner HWND.
+	return newClipboard(p)
 }
 
 func (p *Platform) NewFileDialog() (common.FileDialog, error) {

@@ -538,7 +538,9 @@ func (t *textEditor) copySelection(cut bool) {
 	if err != nil {
 		return
 	}
-	App.Clipboard().SetText(text)
+	if err := App.Clipboard().SetText(text); err != nil {
+		return
+	}
 	if cut && !t.readOnly {
 		t.replaceSelection("", true)
 	}
@@ -550,8 +552,8 @@ func (t *textEditor) paste() {
 	}
 	model, revision, selection, epoch := t.model, t.model.Revision(), t.selection, t.mountEpoch
 	inputRevision := t.inputRevision
-	App.Clipboard().RequestText(func(text string, ok bool) {
-		if !ok || t.owner.base().destroyed || t.suspended || !IsEnabled(t.owner) || t.readOnly || t.model != model || model.Revision() != revision || t.selection != selection || t.mountEpoch != epoch || t.inputRevision != inputRevision {
+	App.Clipboard().RequestText(func(text string, err error) {
+		if err != nil || text == "" || t.owner.base().destroyed || t.suspended || !IsEnabled(t.owner) || t.readOnly || t.model != model || model.Revision() != revision || t.selection != selection || t.mountEpoch != epoch || t.inputRevision != inputRevision {
 			return
 		}
 		t.replaceSelection(text, true)

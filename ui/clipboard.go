@@ -1,11 +1,16 @@
 package ui
 
-import "github.com/golang-gui/goui/gui"
+import (
+	"errors"
+
+	"github.com/golang-gui/goui/gui"
+)
+
+// ErrClipboardTimeout means the system clipboard owner did not answer in time.
+var ErrClipboardTimeout = gui.ErrClipboardTimeout
 
 // Clipboard is the thread-safe UI-layer view of the system clipboard.
-// It is always usable: operations run on the UI thread
-// automatically, and when the platform clipboard is unavailable they degrade to
-// no-ops / empty reads, so callers never need nil checks or thread handling.
+// Operations run on the UI thread automatically and preserve native errors.
 type Clipboard struct {
 	current   *app
 	clipboard gui.Clipboard
@@ -20,17 +25,33 @@ func (a *app) Clipboard() Clipboard {
 }
 
 // SetText replaces the clipboard contents with text. It runs on the UI thread and
-// is best-effort: failures are ignored (the clipboard may be unavailable).
-func (c Clipboard) SetText(text string) {
+// returns ErrAppStopped if the application has stopped.
+func (c Clipboard) SetText(text string) error {
+	err := error(ErrAppStopped)
 	c.current.Sync(func() {
-		c.clipboard.SetText(text)
+		if c.clipboard == nil {
+			err = errors.New("clipboard: unavailable")
+			return
+		}
+		err = c.clipboard.SetText(text)
 	})
+	return err
 }
 
-// RequestText requests the clipboard's text. The callback always runs on the UI
-// thread; ok is false when there is no text or the clipboard is unavailable.
-func (c Clipboard) RequestText(callback func(text string, ok bool)) {
+// RequestText returns ErrAppStopped without calling callback if dispatch is
+// rejected during shutdown. Otherwise it returns nil and callback runs exactly
+// once on the UI thread, possibly before this method returns. Read failures,
+// including ErrClipboardTimeout, are delivered to callback. Empty or absent
+// text is ("", nil).
+func (c Clipboard) RequestText(callback func(text string, err error)) error {
+	err := error(ErrAppStopped)
 	c.current.Sync(func() {
+		err = nil
+		if c.clipboard == nil {
+			callback("", errors.New("clipboard: unavailable"))
+			return
+		}
 		c.clipboard.RequestText(callback)
 	})
+	return err
 }
