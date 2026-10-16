@@ -34,7 +34,7 @@
 - 不默认弹错误框。是否提示、重试、替代或忽略由应用决定。错误信息用于诊断，不作为可本地化的用户提示文案。
 - 对外只承诺文档列出的错误语义；不要求应用解析原生错误字符串。底层错误的可解包性也是 API 契约，不因包装而无意承诺所有原生错误分类。
 
-当前进度：OpenURL/OpenPath 与 FileDialog 已遵循本规则；文件对话框交付 `[]FileAccess, error`，取消为 `nil, nil`，见 [文件访问](DesignFileAccess.md)。Clipboard 的 GUI 包装仍隐藏写入失败／以布尔值交付读取结果，错误反馈迁移尚未实现，列入 [未来路线](Roadmap.md#future-clipboard)。Settings 的有效默认值策略保持不变。
+当前进度：OpenURL/OpenPath 与 FileDialog 已遵循本规则；文件对话框交付 `[]FileAccess, error`，取消为 `nil, nil`，见 [文件访问](DesignFileAccess.md)。Clipboard 已迁移为 SetText 返回 error、RequestText 回调交付 (string, error)，无文本/空文本为 ("", nil)，仅实际读写失败使用 error；ui.RequestText 另返回调度受理结果，未受理不回调；实现及平台验证边界见 [Clipboard](Clipboard.md)。Settings 的有效默认值策略保持不变。
 
 ## 3. 线程模型(最容易踩坑)
 

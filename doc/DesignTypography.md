@@ -369,3 +369,18 @@ CoreFoundation 集合成员管理依据
 布局私有工作区的内存优化不能恢复共享可变 textPainter；Measure／Rasterize 的
 性能结论必须来自同环境、后端与规模的对照。未来范围和验证缺口统一记录在
 [Roadmap](Roadmap.md#textlayout-富文本基础本轮已实现应用层按需求推进)，不重新扩张本轮切片。
+
+## 13. 可配置 Tab 间隔（2026-10-16）
+
+TextFormat.TabWidth 与 TextLayout.SetTabWidth 使用 DIP；0 恢复后端默认。
+正值必须有限且不超过 1048575，以保留两个 Pango-unit 站点的 int32 表示范围。
+NewTextLayout 遇到非法值返回 error，setter 遇到非法值 panic；有效改变发 Changed，度量与 raster 缓存均失效。
+Format 返回当前间隔；文本与 UTF-8 range 不改写，Tab 保持原生 cluster。
+
+Pango 原生绑定只公开 TabArrayNew / SetTab / Free 与 Layout.SetTabs；创建两个左对齐站点的策略与临时资源所有权在 typography/pango。布局拷贝数组后释放临时资源；DirectWrite 在布局对象设置 repeating interval，
+并保存原生默认值供 0 恢复；CoreText 同时清空显式 TabStops 并设置 DefaultTabInterval，
+0 则使用未覆盖的默认段落样式。资源所有权沿用既有 native layout。
+
+Pango / DirectWrite / CoreText 的 TestTabWidth 已分别在 Linux / Windows / macOS 实际执行，验证重复站点、连续 Tab、通知、恢复默认、颜色后的 Tab 坐标及非法创建参数。环境、全仓结果与既有失败见 [通用文本扩展验收](PlanSourceViewExtensions.md)；RTL / 折行 / 跨屏仍待专项验收。
+
+[Pango Layout.set_tabs](https://docs.gtk.org/Pango/method.Layout.set_tabs.html) 明确数组会被复制。重复站点采用两个末尾站点的间距，依据 [Pango 1.50.6 的 get_tab_pos 源码](https://github.com/GNOME/pango/blob/1.50.6/pango/pango-layout.c) 及本机该版本实测；未引入需要更高版本的对齐类型。

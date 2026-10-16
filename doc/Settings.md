@@ -55,7 +55,7 @@ func (Settings) FontSize()   float32
 // 无 ConnectChanged / OnSettingsChanged —— ui.Run 内部自动监听并 RequestUpdate
 ```
 
-**类型不外泄下层**：`ColorScheme` 在 gui、ui 各用**类型别名 re-export**（`gui.ColorScheme = platform.ColorScheme`、`ui.ColorScheme = gui.ColorScheme`），签名里只出现本层类型。而 `Clipboard`/`Settings` 要在本层**适配行为**(gui 隐藏 platform 的 error 返回 + nil 安全 + 补默认;ui 线程亲和),故各层用**本层自有类型**——gui 出接口包装 platform、ui 出结构包装 gui,**不是别名**(只有零适配的纯值/枚举才用别名)。这样用 gui API 不必 import platform、用 ui API 不必 import gui。例外是**有意暴露**的低层逃生口 `App.Platform()` / `App.Typography()`。
+**类型不外泄下层**：`ColorScheme` 在 gui、ui 各用**类型别名 re-export**（`gui.ColorScheme = platform.ColorScheme`、`ui.ColorScheme = gui.ColorScheme`），签名里只出现本层类型。而 `Clipboard`/`Settings` 要在本层**适配行为**(gui 对不可用服务与 Settings 有效默认值作适配、保留 Clipboard 的 error；ui 负责线程调度),故各层用**本层自有类型**——gui 出接口包装 platform、ui 出结构包装 gui,**不是别名**(只有零适配的纯值/枚举才用别名)。这样用 gui API 不必 import platform、用 ui API 不必 import gui。例外是**有意暴露**的低层逃生口 `App.Platform()` / `App.Typography()`。
 
 fallback 默认值是 **gui 自有常量**(`gui/settings.go`),不依赖 Label,后续可调/由样式系统主导。
 
