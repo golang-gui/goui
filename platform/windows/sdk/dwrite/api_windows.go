@@ -813,6 +813,14 @@ func (this *TextFormat) SetLineSpacing(spacingMethod LineSpacingMethod, spacing,
 	return cgo.CallRet[com.HRESULT](this.class().SetLineSpacing, this, spacingMethod, spacing, baseline)
 }
 
+func (this *TextFormat) SetIncrementalTabStop(width float32) com.HRESULT {
+	return cgo.CallRet[com.HRESULT](this.class().SetIncrementalTabStop, this, width)
+}
+
+func (this *TextFormat) GetIncrementalTabStop() float32 {
+	return cgo.CallRet[float32](this.class().GetIncrementalTabStop, this)
+}
+
 func (this *TextFormat) class() *TextFormatClass {
 	return (*TextFormatClass)(this.Class)
 }
