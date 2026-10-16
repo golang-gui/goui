@@ -28,6 +28,7 @@ func (l *cacheTestLayout) SetTextAlignment(typography.TextAlignment) {
 	l.changed.Emit()
 }
 func (l *cacheTestLayout) SetWrapMode(typography.WrapMode) { l.changed.Emit() }
+func (l *cacheTestLayout) SetTabWidth(float32)             { l.changed.Emit() }
 func (l *cacheTestLayout) SetTextFont(int, int, typography.FontInfo) {
 	l.changed.Emit()
 }

@@ -8,6 +8,14 @@ import (
 	"github.com/golang-gui/goui/platform/typography"
 )
 
+// ValidateTabWidth keeps two Pango-unit stops representable in int32.
+func ValidateTabWidth(width float32) error {
+	if width < 0 || width > 1048575 || math.IsNaN(float64(width)) || math.IsInf(float64(width), 0) {
+		return fmt.Errorf("typography: invalid tab width %v", width)
+	}
+	return nil
+}
+
 // ResolveFont validates a request and resolves its platform-independent defaults.
 // Family is resolved at the native backend boundary, not here.
 func ResolveFont(font typography.FontInfo) (typography.FontInfo, error) {

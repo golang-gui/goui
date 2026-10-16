@@ -166,6 +166,9 @@ func (c *Context) fonts() *dwrite.FontCollection {
 }
 
 func (c *Context) NewTextLayout(text string, format typography.TextFormat, width, height float32) (typography.TextLayout, error) {
+	if err := utils.ValidateTabWidth(format.TabWidth); err != nil {
+		return nil, err
+	}
 	textFormat, err := c.createTextFormat(format)
 	if err != nil {
 		return nil, fmt.Errorf("create dwrite text format err: %v", err)
@@ -244,17 +247,18 @@ func (c *Context) destroyDraw() {
 }
 
 type TextLayout struct {
-	ctx          *Context
-	layout       *dwrite.TextLayout
-	text         string
-	format       typography.TextFormat
-	width        float32
-	height       float32
-	position     utils.StringPosition
-	colors       []textColorAttr
-	painter      textPainter
-	life         lifecycle.Layout
-	placeholders map[int]typography.PlaceholderMetrics
+	ctx             *Context
+	layout          *dwrite.TextLayout
+	text            string
+	format          typography.TextFormat
+	width           float32
+	height          float32
+	position        utils.StringPosition
+	colors          []textColorAttr
+	painter         textPainter
+	life            lifecycle.Layout
+	placeholders    map[int]typography.PlaceholderMetrics
+	defaultTabWidth float32
 }
 
 type textColorAttr struct {
@@ -271,7 +275,28 @@ func newTextLayout(ctx *Context, layout *dwrite.TextLayout, text string, format 
 	t.width = width
 	t.height = height
 	t.position = utils.CalcStringPosition(text)
+	t.defaultTabWidth = layout.GetIncrementalTabStop()
+	t.format.TabWidth = -1
+	t.SetTabWidth(format.TabWidth)
 	return
+}
+
+func (t *TextLayout) SetTabWidth(width float32) {
+	if err := utils.ValidateTabWidth(width); err != nil {
+		panic(err)
+	}
+	if t.format.TabWidth == width {
+		return
+	}
+	native := width
+	if native == 0 {
+		native = t.defaultTabWidth
+	}
+	if hr := t.layout.SetIncrementalTabStop(native); hr.Failed() {
+		panic(hr)
+	}
+	t.format.TabWidth = width
+	t.life.Changed()
 }
 
 func (t *TextLayout) Destroy() {

@@ -77,6 +77,9 @@ func (c *Context) AddFont(fontFile string) error {
 }
 
 func (c *Context) NewTextLayout(text string, format typography.TextFormat, width, height float32) (typography.TextLayout, error) {
+	if err := utils.ValidateTabWidth(format.TabWidth); err != nil {
+		return nil, err
+	}
 	desc, err := createFontDescription(format.Font)
 	if err != nil {
 		return nil, err
@@ -146,6 +149,8 @@ func newTextLayout(context pango.Context, layout pango.Layout, text string, form
 	t.SetSize(width, height)
 	t.SetTextAlignment(format.TextAlign)
 	t.SetWrapMode(format.WrapMode)
+	t.format.TabWidth = -1
+	t.SetTabWidth(format.TabWidth)
 	t.layout.SetAttributes(t.attrs)
 	return
 }
@@ -230,6 +235,32 @@ func (t *TextLayout) SetWrapMode(wrap typography.WrapMode) {
 		t.layout.SetWidth(roundToPixel(t.width) * pango.Scale)
 	} else {
 		t.layout.SetWidth(-1)
+	}
+	t.life.Changed()
+}
+
+func (t *TextLayout) SetTabWidth(width float32) {
+	if err := utils.ValidateTabWidth(width); err != nil {
+		panic(err)
+	}
+	if t.format.TabWidth == width {
+		return
+	}
+	t.format.TabWidth = width
+	native := int32(math.Round(float64(width * pango.Scale)))
+	if width > 0 && native == 0 {
+		native = 1
+	}
+	if native == 0 {
+		t.layout.SetTabs(0)
+	} else {
+		// Pango extrapolates using the last two stops. Keep tab policy and
+		// temporary native ownership in the typography adapter.
+		tabs := pango.TabArrayNew(2, false)
+		tabs.SetTab(0, pango.TabLeft, native)
+		tabs.SetTab(1, pango.TabLeft, native*2)
+		t.layout.SetTabs(tabs)
+		tabs.Free()
 	}
 	t.life.Changed()
 }

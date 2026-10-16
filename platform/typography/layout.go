@@ -38,6 +38,10 @@ type TextLayout interface {
 	// SetWrapMode changes automatic line wrapping within the layout width.
 	SetWrapMode(wrap WrapMode)
 
+	// SetTabWidth changes the repeating tab interval. Zero restores the native
+	// default. Negative or non-finite values panic.
+	SetTabWidth(width float32)
+
 	// SetTextFont replaces the complete font request for a non-empty range of
 	// Text; zero fields use FontInfo defaults, not the previous range values.
 	// start and length must describe valid UTF-8 rune boundaries. Invalid ranges

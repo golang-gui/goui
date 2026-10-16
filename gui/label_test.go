@@ -329,6 +329,8 @@ func (l *testTextLayout) SetWrapMode(wrap typography.WrapMode) {
 	l.changedSig.Emit()
 }
 
+func (l *testTextLayout) SetTabWidth(width float32) { l.format.TabWidth = width }
+
 func (l *testTextLayout) SetTextFont(start, length int, font typography.FontInfo) {
 	l.format.Font = font
 	l.changedSig.Emit()
