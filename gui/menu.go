@@ -214,7 +214,6 @@ func (pm *PopoverMenu) Hide() {
 		for _, w := range pm.content.list.items {
 			r := w.(*menuItemRow)
 			r.setPressed(false)
-			r.setHovered(false)
 		}
 	}
 	if pm.popover != nil {
@@ -325,12 +324,14 @@ func (mc *menuContent) selectItem(item *MenuItem) {
 	if item != nil && (!item.Enabled() || !item.Visible() || item.Separator()) {
 		return
 	}
+	if mc.active == item {
+		return
+	}
 	mc.active = item
 	mc.delegate.active = item
 	for _, widget := range mc.list.items {
 		row := widget.(*menuItemRow)
-		row.keyboardSelected = row.mi == item && item != nil
-		row.setHovered(false)
+		row.selected = row.mi == item && item != nil
 		row.requestPaint()
 	}
 }
@@ -535,7 +536,7 @@ func (d *menuItemDelegate) Bind(i int, w Widget) {
 		mi = d.model.ItemAt(i)
 	}
 	row.bind(mi)
-	row.keyboardSelected = mi != nil && mi == d.active && mi.Enabled() && mi.Visible() && !mi.Separator()
+	row.selected = mi != nil && mi == d.active && mi.Enabled() && mi.Visible() && !mi.Separator()
 }
 
 func (d *menuItemDelegate) Unbind(i int, w Widget) { w.(*menuItemRow).bind(nil) }
@@ -544,16 +545,15 @@ func (d *menuItemDelegate) Unbind(i int, w Widget) { w.(*menuItemRow).bind(nil) 
 // A separator row hides its Label, draws a thin line and is not interactive.
 type menuItemRow struct {
 	WidgetBase
-	label            *Label
-	trailingGap      float32
-	mi               *MenuItem
-	activate         func(*MenuItem)
-	hovered          bool
-	pressed          bool
-	keyboardSelected bool
-	onHover          func(*MenuItem)
-	motion           *MotionEventController
-	click            *ClickEventController
+	label       *Label
+	trailingGap float32
+	mi          *MenuItem
+	activate    func(*MenuItem)
+	pressed     bool
+	selected    bool
+	onHover     func(*MenuItem)
+	motion      *MotionEventController
+	click       *ClickEventController
 }
 
 const (
@@ -571,17 +571,25 @@ func newMenuItemRow(activate func(*MenuItem)) *menuItemRow {
 	r.WidgetBase.AddChild(r, r.label)
 
 	r.motion = NewMotionEventController()
-	r.motion.ConnectContainsHover(r.setHovered)
-	r.motion.ConnectMotion(func(MotionInfo) {
-		if r.onHover != nil && r.mi != nil {
-			r.onHover(r.mi)
+	// Motion must also reach the row when its Label is the picked target.
+	// Contains-enter covers native PointerEnter, which has no Motion delivery.
+	r.motion.SetPhase(PhaseBubble)
+	r.motion.ConnectContainsHover(func(inside bool) {
+		if inside {
+			r.selectPointer()
 		}
+	})
+	r.motion.ConnectMotion(func(MotionInfo) {
+		r.selectPointer()
 	})
 	r.AddEventController(r.motion)
 
 	r.click = NewClickEventController()
 	r.click.ConnectPressed(func(ctx EventContext, pressed bool) {
 		if r.mi != nil && r.mi.Enabled() && !r.mi.Separator() {
+			if pressed {
+				r.selectPointer()
+			}
 			r.setPressed(pressed)
 		}
 	})
@@ -601,8 +609,7 @@ func (r *menuItemRow) bind(mi *MenuItem) {
 	r.label.releaseLayout()
 	r.click.Reset()
 	r.motion.Reset()
-	r.hovered, r.pressed = false, false
-	r.keyboardSelected = false
+	r.pressed, r.selected = false, false
 	r.mi = mi
 	r.label.SetText("")
 	r.label.SetVisible(mi != nil && mi.Visible() && !mi.Separator())
@@ -666,7 +673,7 @@ func (r *menuItemRow) Paint(p Painter) {
 func (r *menuItemRow) Snapshot() WidgetInfo {
 	info := r.WidgetBase.Snapshot()
 	info.Role = RoleMenuItem
-	info.Selected = r.keyboardSelected
+	info.Selected = r.selected
 	info.Enabled = info.Enabled && r.mi != nil && r.mi.Enabled()
 	if r.mi != nil {
 		info.Text = r.mi.Label()
@@ -683,20 +690,23 @@ func (r *menuItemRow) resolvedStyle() style.Style {
 	st := style.Normal
 	if r.mi != nil && !r.mi.Enabled() {
 		st = style.Disabled
-	} else if r.pressed {
+	} else if r.pressed && r.selected {
 		st = style.Pressed
-	} else if r.hovered || r.keyboardSelected {
+	} else if r.selected {
 		st = style.Hovered
 	}
 	return ResolveStyle(styleNameMenuItem, style.PartDefault, st)
 }
 
-func (r *menuItemRow) setHovered(h bool) {
-	if r.hovered == h {
+func (r *menuItemRow) selectPointer() {
+	if r.onHover == nil {
 		return
 	}
-	r.hovered = h
-	r.requestPaint()
+	item := r.mi
+	if item != nil && (!item.Enabled() || !item.Visible() || item.Separator()) {
+		item = nil
+	}
+	r.onHover(item)
 }
 
 func (r *menuItemRow) setPressed(p bool) {

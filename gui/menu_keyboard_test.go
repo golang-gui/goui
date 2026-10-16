@@ -62,7 +62,7 @@ func TestMenuKeyboardNavigationAndActivation(t *testing.T) {
 	}
 	row := newMenuItemRow(nil)
 	row.bind(first)
-	row.keyboardSelected = true
+	row.selected = true
 	if !row.Snapshot().Selected {
 		t.Fatal("keyboard highlight missing from snapshot")
 	}
