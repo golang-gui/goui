@@ -164,13 +164,13 @@ func (r *tableRow) Paint(p gui.Painter) {
 		part = "alternate"
 	}
 	rect := geometry.Rect(0, 0, r.Rect().Width, r.Rect().Height)
-	paintStyledBox(p, rect, "table-row", part, state)
+	paintStyledBox(r, p, rect, "table-row", part, state)
 	r.paintGrid(p, rect)
 	if r.view.current == r.bound.ID && r.view.Focused() {
 		if r.view.FocusVisible() {
 			state = style.FocusVisible
 		}
-		paintStyledBorder(p, rect, gui.ResolveStyle("table-row", "current", state))
+		paintStyledBorder(p, rect, gui.ResolveWidgetStyle(r, "table-row", "current", state))
 	}
 }
 func (r *tableRow) Snapshot() gui.WidgetInfo {

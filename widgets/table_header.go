@@ -67,15 +67,15 @@ func (h *tableHeader) Paint(p gui.Painter) {
 		state = style.Pressed
 	}
 	r := geometry.Rect(0, 0, h.Rect().Width, h.Rect().Height)
-	paintStyledBox(p, r, "table-header", "", state)
-	line := min(r.Height, tableHeaderLineWidth())
+	paintStyledBox(h, p, r, "table-header", "", state)
+	line := min(r.Height, tableHeaderLineWidth(h))
 	w := h.view.columnLineWidth(h.column)
-	tablePaintLine(p, geometry.Rect(r.Width-w, 0, w, max(0, r.Height-line)), tableGridStyle("vertical"))
-	if color, ok := gui.ResolveStyle("table-header", "separator", state).ForegroundColor(); ok && color != nil {
+	tablePaintLine(p, geometry.Rect(r.Width-w, 0, w, max(0, r.Height-line)), tableGridStyle(h, "vertical"))
+	if color, ok := gui.ResolveWidgetStyle(h, "table-header", "separator", state).ForegroundColor(); ok && color != nil {
 		p.FillRect(geometry.Rect(0, r.Height-line, r.Width, line), graphics.ColorOf(color))
 	}
 	if h.view.sortColumn == h.column.id && h.view.sortOrder != SortNone {
-		if color, ok := gui.ResolveStyle("table-header", "sort", state).ForegroundColor(); ok && color != nil {
+		if color, ok := gui.ResolveWidgetStyle(h, "table-header", "sort", state).ForegroundColor(); ok && color != nil {
 			x, y := max(0, r.Width-w-20), max(0, r.Height-line)/2
 			dy := float32(3)
 			if h.view.sortOrder == SortDescending {
@@ -117,14 +117,14 @@ func (l *tableHeaderCellLayout) Measure(children []layout.Child, c layout.Constr
 		reserve += 16
 	}
 	m := children[0].Measure(layout.Loose(geometry.Size{Width: max(0, c.Max.Width-reserve), Height: layout.Inf}))
-	return layout.Measured(c.Clamp(geometry.Size{Width: l.header.column.width, Height: max(tableMinHeight, m.Height+2*tableHeaderPaddingY) + tableHeaderLineWidth()}))
+	return layout.Measured(c.Clamp(geometry.Size{Width: l.header.column.width, Height: max(tableMinHeight, m.Height+2*tableHeaderPaddingY) + tableHeaderLineWidth(l.header)}))
 }
 func (l *tableHeaderCellLayout) Arrange(children []layout.Child, rect geometry.Rectangle) {
 	reserve := 2*tableHeaderPaddingX + l.header.view.columnLineWidth(l.header.column)
 	if l.header.column.sortable {
 		reserve += 16
 	}
-	height := max(0, rect.Height-tableHeaderLineWidth())
+	height := max(0, rect.Height-tableHeaderLineWidth(l.header))
 	available := max(0, rect.Width-l.header.view.columnLineWidth(l.header.column))
 	m := children[0].Measure(layout.Loose(geometry.Size{Width: max(0, rect.Width-reserve), Height: max(0, height-2*tableHeaderPaddingY)}))
 	children[0].Arrange(geometry.Rect(min(tableHeaderPaddingX, available), max(0, (height-m.Height)/2), m.Width, m.Height))

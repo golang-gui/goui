@@ -129,7 +129,7 @@ func paintButtonFocus(p Painter, rect geometry.Rectangle, button *WidgetBase) {
 		if button.FocusVisible() {
 			state = style.FocusVisible
 		}
-		focus := ResolveStyle(buttonStyleName(button), stylePartFocus, state)
+		focus := ResolveWidgetStyle(button, buttonStyleName(button), stylePartFocus, state)
 		if bg, ok := focus.BackgroundColor(); ok && bg != nil && graphics.ColorOf(bg).A > 0 {
 			paintStyledBox(p, rect, focus)
 		} else {

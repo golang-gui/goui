@@ -118,7 +118,7 @@ func (c *dropDownContent) keyDown(ctx gui.EventContext, event events.KeyEvent) {
 }
 
 func (c *dropDownContent) Measure(constraint layout.Constraint) layout.Measurement {
-	s := gui.ResolveStyle("drop-down-popup", style.PartDefault, style.Normal)
+	s := gui.ResolveWidgetStyle(c, "drop-down-popup", style.PartDefault, style.Normal)
 	radius, _ := s.Radius()
 	border, _ := s.BorderWidth()
 	c.padding = max(float32(dropDownPopupPadding), dropDownExtent(border), dropDownExtent(radius)*(1-1/math.Sqrt2)+1)
@@ -316,9 +316,9 @@ func (r *dropDownRow) Paint(p gui.Painter) {
 		part = "selected"
 	}
 	rect := geometry.Rectangle{Size: r.Rect().Size}
-	paintStyledBox(p, rect, "drop-down-item", part, state)
+	paintStyledBox(r, p, rect, "drop-down-item", part, state)
 	if r.owner.selected == r.index {
-		s := gui.ResolveStyle("drop-down-item", "check", state)
+		s := gui.ResolveWidgetStyle(r, "drop-down-item", "check", state)
 		if mark, ok := s.ForegroundColor(); ok && mark != nil {
 			x, y := rect.Width-12, rect.Height/2
 			color := graphics.ColorOf(mark)

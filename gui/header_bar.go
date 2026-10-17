@@ -149,7 +149,7 @@ func (h *HeaderBar) Paint(p Painter) {
 		name = "header-bar"
 	}
 	paintStyledBox(p, geometry.Rect(0, 0, h.rect.Width, h.rect.Height),
-		ResolveStyle(name, style.PartDefault, style.Normal))
+		ResolveWidgetStyle(h, name, style.PartDefault, style.Normal))
 }
 
 func (h *HeaderBar) Snapshot() WidgetInfo {

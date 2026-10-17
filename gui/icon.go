@@ -112,7 +112,7 @@ func (i *Icon) Paint(p Painter) {
 	if !IsEnabled(i) {
 		state = style.Disabled
 	}
-	s := ResolveStyle(name, "", state)
+	s := ResolveWidgetStyle(i, name, "", state)
 	var foreground Color
 	if c, ok := s.ForegroundColor(); ok && c != nil {
 		foreground = graphics.ColorOf(c)

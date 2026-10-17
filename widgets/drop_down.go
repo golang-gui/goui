@@ -531,8 +531,8 @@ func (d *DropDown) Paint(p gui.Painter) {
 		state = style.Hovered
 	}
 	rect := geometry.Rectangle{Size: d.Rect().Size}
-	paintStyledBox(p, rect, name, style.PartDefault, state)
-	s := gui.ResolveStyle(name, "arrow", state)
+	paintStyledBox(d, p, rect, name, style.PartDefault, state)
+	s := gui.ResolveWidgetStyle(d, name, "arrow", state)
 	color, ok := s.ForegroundColor()
 	if ok && color != nil {
 		x, y := max(float32(0), rect.Width-d.padding-8), rect.Height/2
@@ -541,7 +541,7 @@ func (d *DropDown) Paint(p gui.Painter) {
 		p.DrawLine(geometry.Point{X: x, Y: y + 1.5}, geometry.Point{X: x + 3, Y: y - 1.5}, 1.5, c)
 	}
 	if d.FocusVisible() {
-		paintStyledBorder(p, rect, gui.ResolveStyle(name, "focus", style.FocusVisible))
+		paintStyledBorder(p, rect, gui.ResolveWidgetStyle(d, name, "focus", style.FocusVisible))
 	}
 }
 

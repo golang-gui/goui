@@ -677,7 +677,7 @@ func (v *TreeView) Paint(p gui.Painter) {
 	if name == "" {
 		name = "tree-view"
 	}
-	paintStyledBox(p, geometry.Rect(0, 0, v.Rect().Width, v.Rect().Height), name, "", style.Normal)
+	paintStyledBox(v, p, geometry.Rect(0, 0, v.Rect().Width, v.Rect().Height), name, "", style.Normal)
 }
 
 func (v *TreeView) choose(id string, primary, shift bool) {

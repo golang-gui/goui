@@ -132,11 +132,11 @@ func (b *ScrollBar) styleName() string {
 }
 
 func (b *ScrollBar) troughStyle() style.Style {
-	return ResolveStyle(b.styleName(), stylePartTrough, style.Normal)
+	return ResolveWidgetStyle(b, b.styleName(), stylePartTrough, style.Normal)
 }
 
 func (b *ScrollBar) thumbStyle() style.Style {
-	return ResolveStyle(b.styleName(), stylePartThumb, b.thumbState())
+	return ResolveWidgetStyle(b, b.styleName(), stylePartThumb, b.thumbState())
 }
 
 func (b *ScrollBar) thumbState() style.State {

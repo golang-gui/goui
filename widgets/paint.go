@@ -9,8 +9,8 @@ import (
 
 // Shared box painting for compound widgets; style resolution stays local to
 // the widget/part, never inherited from its parent.
-func paintStyledBox(p gui.Painter, rect geometry.Rectangle, name, part string, state style.State) {
-	s := gui.ResolveStyle(name, part, state)
+func paintStyledBox(widget gui.Widget, p gui.Painter, rect geometry.Rectangle, name, part string, state style.State) {
+	s := gui.ResolveWidgetStyle(widget, name, part, state)
 	radius, _ := s.Radius()
 	if bg, ok := s.BackgroundColor(); ok && bg != nil {
 		if radius > 0 {

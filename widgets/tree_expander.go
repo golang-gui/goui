@@ -141,8 +141,8 @@ func (b *treeDisclosure) Paint(p gui.Painter) {
 	if b.pressed {
 		state = style.Pressed
 	}
-	paintStyledBox(p, geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height), name, "", state)
-	fg, ok := gui.ResolveStyle(name, "", state).ForegroundColor()
+	paintStyledBox(b, p, geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height), name, "", state)
+	fg, ok := gui.ResolveWidgetStyle(b, name, "", state).ForegroundColor()
 	if !ok || fg == nil {
 		return
 	}

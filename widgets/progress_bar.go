@@ -146,7 +146,7 @@ func (p *ProgressBar) paint(painter gui.Painter, elapsed time.Duration) {
 	if name == "" {
 		name = "progress-bar"
 	}
-	s := gui.ResolveStyle(name, "", style.Normal)
+	s := gui.ResolveWidgetStyle(p, name, "", style.Normal)
 	background, _ := s.BackgroundColor()
 	foreground, _ := s.ForegroundColor()
 	if p.shape == ProgressCircular {

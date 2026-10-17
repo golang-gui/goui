@@ -519,14 +519,14 @@ func (v *TableView) rowState(index int) TableRow {
 func (v *TableView) Paint(p gui.Painter) {
 	name := v.styleName()
 	r := geometry.Rect(0, 0, v.Rect().Width, v.Rect().Height)
-	s := gui.ResolveStyle(name, "", style.Normal)
+	s := gui.ResolveWidgetStyle(v, name, "", style.Normal)
 	if bg, ok := s.BackgroundColor(); ok && bg != nil {
 		p.FillRect(r, graphics.ColorOf(bg))
 	}
 	h, w := v.borderWidths()
 	h, w = min(h, r.Height/2), min(w, r.Width/2)
-	horizontal := gui.ResolveStyle(name, "outer-horizontal", style.Normal)
-	vertical := gui.ResolveStyle(name, "outer-vertical", style.Normal)
+	horizontal := gui.ResolveWidgetStyle(v, name, "outer-horizontal", style.Normal)
+	vertical := gui.ResolveWidgetStyle(v, name, "outer-vertical", style.Normal)
 	tablePaintLine(p, geometry.Rect(0, 0, r.Width, h), horizontal)
 	tablePaintLine(p, geometry.Rect(0, r.Height-h, r.Width, h), horizontal)
 	// Horizontal sides own the corners, including translucent intersections.

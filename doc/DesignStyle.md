@@ -33,7 +33,8 @@ Three rules define the whole system:
 
 Two sources, as before:
 
-- **global / theme** (framework default sheet + application): an ordinary
+- **global / theme** (framework default sheet + application, or an explicit
+  `gui.StyleScope` subtree): an ordinary
   stylesheet defining what each semantic name looks like.
 - **local** (`.Style(name)` on a widget/view): names intent only.
 
@@ -112,7 +113,8 @@ its ordinary focused border. See DesignKeyboardNavigation §7.
 ### Theme & Tokens are not separate systems
 
 There is **one concept: the stylesheet**. A "theme" is just a complete stylesheet;
-re-skinning (light/dark) is `App.SetStyleSheet(other)` — swapping the sheet, not a
+re-skinning (light/dark) is `App.SetStyleSheet(other)` or explicitly replacing a
+subtree sheet — swapping the sheet, not a
 distinct `Theme` type. "Semantic color tokens" are just Go variables reused when
 building a sheet:
 
@@ -126,7 +128,7 @@ sheet := style.Sheet(
 
 No framework-level token table, no `Theme` abstraction, no semantic-color layer —
 only *style name* (local) and *stylesheet* (author). If a real need appears later
-(runtime token override, per-subtree theme), a token/Theme layer can be added on
+(runtime token override), a token/Theme layer can be added on
 top without reworking this. The chain builders below (`BackgroundColor(...)`,
 `Radius(...)`, …) are **kept** as the way to author a `StyleSheet`.
 
@@ -393,7 +395,7 @@ background, border, padding, or text color does not silently affect child
 widgets.
 
 If users want consistent styling across a subtree, they name the same style on
-each widget (`.Style(name)`) or install a custom application sheet. That is a
+each widget (`.Style(name)`) or install a custom application sheet or explicit StyleScope. That is a
 user decision, not a hidden framework behavior.
 
 This keeps ownership clear:
@@ -503,3 +505,26 @@ overrides, part/state styles and deterministic field-wise merge; no widget-local
 rule lists or implicit inheritance. Multi-name selectors, Class/ID selectors and
 style animation are unimplemented evaluation directions, not agreed APIs; see
 [Future Roadmap](Roadmap.md#future-style).
+
+## Explicit subtree sheets
+
+`gui.StyleScope` is a transparent single-child container selecting a complete,
+immutable `style.StyleSheet`. `ResolveWidgetStyle(widget, name, part, state)` uses
+the nearest scope, then the application/Basic sheet when no scope supplies one.
+An incomplete scope is not implicitly merged with outer sheets. Nil delegates;
+ordinary parents still do not inherit font, color or other individual properties.
+`ResolveStyle` remains explicitly application-wide. Built-in controls and compound
+widgets use the widget-aware entry; custom widgets should do likewise.
+
+This addresses embedded components with independent palettes in one window.
+The reference is [Flutter 3.35.4 Theme source](https://github.com/flutter/flutter/blob/3.35.4/packages/flutter/lib/src/material/theme.dart):
+it provides a nearest-ancestor theme. GOUI adopts explicit subtree ownership,
+using existing StyleChanged invalidation rather than dependency tracking or automatic
+rebuilds. No local concrete property setters or local rule lists are introduced.
+Scope sheet replacement invalidates descendants before layout/paint, including
+nested scopes conservatively. Reparenting uses the existing attachment invalidation.
+Sheets own no native resources; consumers retain and release their own caches.
+A native popup has a different root and does not implicitly capture the opener's
+scope. A popup-specific palette must be installed explicitly.
+
+Implementation verification and remaining platform gaps: [component styles](PlanComponentStyles.md).

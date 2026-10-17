@@ -331,7 +331,7 @@ func (b *CheckButton) Paint(p gui.Painter) {
 	} else if b.state == CheckMixed {
 		part += "-mixed"
 	}
-	s := gui.ResolveStyle(name, part, state)
+	s := gui.ResolveWidgetStyle(b, name, part, state)
 	if indicator && b.group != nil {
 		// Radio geometry is circular regardless of a square-indicator radius.
 		if bg, ok := s.BackgroundColor(); ok && bg != nil {
@@ -342,7 +342,7 @@ func (b *CheckButton) Paint(p gui.Painter) {
 			p.DrawEllipse(rect.Center(), max(0, (rect.Width-width)/2), max(0, (rect.Height-width)/2), width, graphics.ColorOf(border))
 		}
 	} else {
-		paintStyledBox(p, rect, name, part, state)
+		paintStyledBox(b, p, rect, name, part, state)
 	}
 	if fg, ok := s.ForegroundColor(); indicator && ok && fg != nil && rect.Width > 0 {
 		brush, size := graphics.ColorOf(fg), rect.Width
@@ -359,7 +359,7 @@ func (b *CheckButton) Paint(p gui.Painter) {
 		}
 	}
 	if b.FocusVisible() {
-		paintStyledBorder(p, geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height), gui.ResolveStyle(name, "focus", style.FocusVisible))
+		paintStyledBorder(p, geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height), gui.ResolveWidgetStyle(b, name, "focus", style.FocusVisible))
 	}
 }
 
@@ -397,7 +397,7 @@ func (l checkLayout) Measure(children []layout.Child, c layout.Constraint) layou
 		if name == "" {
 			name = "check-button"
 		}
-		fontSize, _ := gui.ResolveStyle(name, "button", style.Normal).FontSize()
+		fontSize, _ := gui.ResolveWidgetStyle(b, name, "button", style.Normal).FontSize()
 		// Match Button's font-derived minimum instead of a fixed 20 DIP floor.
 		floor := fontSize * 96 / 72
 		width, height = max(width, floor), max(child.Height, floor)

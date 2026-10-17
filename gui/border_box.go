@@ -84,7 +84,7 @@ func (b *BorderBox) frameStyle() style.Style {
 	if !IsEnabled(b) {
 		state = style.Disabled
 	}
-	return ResolveStyle(name, style.PartDefault, state)
+	return ResolveWidgetStyle(b, name, style.PartDefault, state)
 }
 
 func (b *BorderBox) contentInset() float32 {

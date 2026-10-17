@@ -279,7 +279,7 @@ func (b *TabBar) syncItems() {
 }
 
 func (b *TabBar) Paint(p gui.Painter) {
-	paintStyledBox(p, geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height), "tab-bar", "", style.Normal)
+	paintStyledBox(b, p, geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height), "tab-bar", "", style.Normal)
 }
 func (b *TabBar) Snapshot() gui.WidgetInfo {
 	info := b.WidgetBase.Snapshot()
@@ -389,7 +389,7 @@ func (v *tabViewport) Paint(p gui.Painter) {
 	if b.view == nil || b.lifted != nil || b.nativeDrag != nil || b.incoming != nil || b.previewMotion {
 		return // suppress separators throughout drag and settling
 	}
-	s := gui.ResolveStyle("tab-bar", "separator", style.Normal)
+	s := gui.ResolveWidgetStyle(v, "tab-bar", "separator", style.Normal)
 	color, ok := s.ForegroundColor()
 	if !ok || color == nil {
 		return
