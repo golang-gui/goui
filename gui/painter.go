@@ -46,6 +46,9 @@ type Painter interface {
 	DrawPath(path graphics.Path, strokeWidth float32, brush graphics.Brush)
 	DrawTextLayout(origin geometry.Point, layout typography.TextLayout)
 	DrawImage(rect geometry.Rectangle, img graphics.Image)
+	// DrawBoxShadow draws in local DIP under the ordinary structural clip.
+	// Reserve room inside the widget bounds for the shadow.
+	DrawBoxShadow(rect geometry.Rectangle, radius float32, shadow graphics.BoxShadow)
 }
 
 // painter adapts a surface graphics.Painter to the local drawing context used
@@ -336,4 +339,10 @@ func (p *painter) applyClip() {
 
 func emptyRect(rect geometry.Rectangle) bool {
 	return rect.Width <= 0 || rect.Height <= 0
+}
+
+func (p *painter) DrawBoxShadow(rect geometry.Rectangle, radius float32, shadow graphics.BoxShadow) {
+	if p.canDraw() {
+		p.base.DrawBoxShadow(rect, radius, shadow)
+	}
 }
