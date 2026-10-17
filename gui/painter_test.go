@@ -343,6 +343,7 @@ type recordingPainterBackend struct {
 	clip      geometry.Rectangle
 	transform geometry.Transform
 	fills     []recordedFill
+	shadows   []recordedShadow
 }
 
 func (p *recordingPainterBackend) Name() string { return "recording" }
@@ -360,6 +361,7 @@ func (p *recordingPainterBackend) SetClipRect(rect graphics.Rectangle) {
 }
 func (p *recordingPainterBackend) Clear(color graphics.Color) {}
 func (p *recordingPainterBackend) DrawBoxShadow(rect graphics.Rectangle, radius float32, shadow graphics.BoxShadow) {
+	p.shadows = append(p.shadows, recordedShadow{rect, radius, shadow, p.clip, p.transform})
 }
 func (p *recordingPainterBackend) FillRect(rect graphics.Rectangle, brush graphics.Brush) {
 	p.fills = append(p.fills, recordedFill{rect: rect, clip: p.clip, transform: p.transform})
@@ -384,4 +386,31 @@ func (p *recordingPainterBackend) DrawTextLayout(origin graphics.Point, layout t
 func (p *recordingPainterBackend) DrawImage(rect graphics.Rectangle, img graphics.Image) {}
 func (p *recordingPainterBackend) SetTransform(matrix geometry.Transform) {
 	p.transform = matrix
+}
+
+type recordedShadow struct {
+	rect      geometry.Rectangle
+	radius    float32
+	shadow    graphics.BoxShadow
+	clip      geometry.Rectangle
+	transform geometry.Transform
+}
+
+func TestPainterBoxShadowUsesLocalStateAndSuppressesEmptyClip(t *testing.T) {
+	backend := new(recordingPainterBackend)
+	shadow := graphics.BoxShadow{Color: graphics.RGB(10, 20, 30), Offset: geometry.Point{Y: 2}, BlurRadius: 6, SpreadRadius: 1}
+	widget := newPainterTestWidget(func(p Painter) {
+		p.DrawBoxShadow(geometry.Rect(4, 5, 20, 10), 3, shadow)
+		p.SetClipRect(geometry.Rect(200, 200, 1, 1))
+		p.DrawBoxShadow(geometry.Rect(4, 5, 20, 10), 3, shadow)
+	})
+	widget.Arrange(geometry.Rect(10, 15, 80, 60))
+	paintWidget(widget, newPainter(backend, geometry.Rect(0, 0, 200, 200), 2))
+	if len(backend.shadows) != 1 {
+		t.Fatalf("shadow count=%d", len(backend.shadows))
+	}
+	got := backend.shadows[0]
+	if got.rect != geometry.Rect(4, 5, 20, 10) || got.radius != 3 || got.shadow != shadow || got.clip != geometry.Rect(10, 15, 80, 60) || got.transform != geometry.Translate(10, 15) {
+		t.Fatalf("shadow state: %+v", got)
+	}
 }

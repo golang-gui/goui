@@ -112,3 +112,10 @@ Windows 增加 WARP Direct2D 清晰／柔化／降级颜色测试及 OpenGL FBO 
 综合样例 `platform/graphics/test` 用于三平台真机对照。外部影响边界允许至多一个
 物理像素误差；Direct2D 原生核允许与共享近似有细微曲线差异，但不得出现圆角
 接缝、可见硬截断或资源泄漏。
+
+## GUI facade
+
+`gui.Painter.DrawBoxShadow` forwards `graphics.BoxShadow` without converting local
+DIP to physical pixels. The existing widget transform and structural clip apply;
+empty clips suppress the call. Widgets reserve shadow room in their allocation.
+The facade does not change backend algorithms or resource ownership.

@@ -269,8 +269,8 @@ linear gradient brush；Software Painter 使用扫描器颜色函数作为确定
 `graphics.BoxShadow` 是效果值而不是 Brush，通过
 `graphics.Painter.DrawBoxShadow(rect, radius, shadow)` 绘制。模型只包含 Color、
 Offset、BlurRadius 和 SpreadRadius；归一顺序、CSS 高斯映射、圆角卷积、
-单边组合配方和三后端实现见 `doc/DesignShadow.md`。该 API 当前有意停留在
-`platform/graphics`，不扩展 `gui.Painter`。
+单边组合配方和三后端实现见 `doc/DesignShadow.md`。`gui.Painter.DrawBoxShadow` 转发同一效果值，坐标、半径、偏移均为控件局部 DIP，
+沿用普通 transform 和结构裁剪。阴影需要在控件分配范围内预留空间，不获得越界绘制权限。
 
 ### 9.3 验证
 
