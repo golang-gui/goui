@@ -1,6 +1,8 @@
 package gui
 
 import (
+	"sync"
+
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
@@ -30,12 +32,12 @@ const (
 
 // DefaultStyleSheet returns the complete Basic fallback used when the
 // application has no custom stylesheet. It does not enable Modern.
-func DefaultStyleSheet() style.StyleSheet { return defaultStyleSheet }
+func DefaultStyleSheet() style.StyleSheet { return defaultStyleSheet() }
 
 // Cache immutable fallback values; Basic does not watch system settings.
-var defaultStyleSheet = basic.Sheet()
+var defaultStyleSheet = sync.OnceValue(basic.Sheet)
 
-// DefaultStyleRules returns fresh Basic rules for all built-in controls.
+// DefaultStyleRules returns fresh Basic rules for built-in and registered controls.
 // It is retained for applications that append overrides before building a sheet.
 func DefaultStyleRules() []style.Rule { return basic.Rules() }
 
