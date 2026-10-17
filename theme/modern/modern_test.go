@@ -804,7 +804,8 @@ func TestPaletteAndCoverage(t *testing.T) {
 				t.Fatal("modern exported decoration selectors")
 			}
 			if rule.Sel.Name == "window" {
-				if !style.SameRules([]style.Rule{rule}, []style.Rule{style.Name("window").BackgroundColor(p.window)}) {
+				// Rules now includes Basic before Modern; validate the final value.
+				if !style.SameRules([]style.Rule{{Sel: rule.Sel, Style: sheet.Resolve(rule.Sel)}}, []style.Rule{style.Name("window").BackgroundColor(p.window)}) {
 					t.Fatal("window received more than a background color")
 				}
 			}

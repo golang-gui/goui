@@ -10,6 +10,7 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/style"
+	"github.com/golang-gui/goui/theme/basic"
 )
 
 const (
@@ -81,10 +82,34 @@ func FromSettings(settings Settings) style.StyleSheet {
 	})
 }
 
-// Rules returns independently owned rules. Append application rules to override
+// Rules returns complete Basic, built-in Modern and registered Modern rules.
+// The first call freezes both themes. Each result is independently owned. Append application rules to override
 // specific selectors, then pass the result to style.Sheet. No window decoration
 // selectors are supplied: window styling controls only its background.
 func Rules(options Options) []style.Rule {
+	entries := registered.snapshot()
+	options = normalizedOptions(options)
+	own := builtInRules(options)
+	rules := append(basic.Rules(), own...)
+	return registeredRules(options, style.Sheet(own...), rules, entries)
+}
+
+func registeredRules(options Options, base style.StyleSheet, rules []style.Rule, entries []modernRegistration) []style.Rule {
+	for _, entry := range entries {
+		rules = append(rules, entry.rules(options, base)...)
+	}
+	return rules
+}
+
+func normalizedOptions(options Options) Options {
+	options.AccentColor = accentColor(options.AccentColor)
+	if options.FontSize <= 0 || math.IsNaN(float64(options.FontSize)) || math.IsInf(float64(options.FontSize), 0) {
+		options.FontSize = 14
+	}
+	return options
+}
+
+func builtInRules(options Options) []style.Rule {
 	p := colorsFor(options.Dark)
 	accent := accentColor(options.AccentColor)
 	size := options.FontSize

@@ -45,9 +45,19 @@ func defaultLabelFontFamily() string {
 	}
 }
 
-// Rules returns fresh fallback rules for all built-in controls.
+// Rules returns fresh rules for built-in controls followed by registered controls.
+// The first call freezes Basic registration.
 func Rules() []style.Rule {
-	return append(coreRules(), WidgetRules()...)
+	return registeredRules(registered.snapshot())
+}
+
+func registeredRules(entries []basicRegistration) []style.Rule {
+	rules := append(coreRules(), WidgetRules()...)
+	base := style.Sheet(rules...)
+	for _, entry := range entries {
+		rules = append(rules, entry.rules(base)...)
+	}
+	return rules
 }
 
 func coreRules() []style.Rule {

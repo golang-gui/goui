@@ -98,3 +98,9 @@ PopoverMenu 已接入 8 DIP 圆角、1 DIP 边框、阴影及菜单行样式。
 相隔 6 DIP。屏幕工作区约束和位置退避已接入，见 [Popup 定位](../../doc/DesignPopupPlacement.md)。
 透明能力不可用时，菜单降级为无外围阴影的矩形；普通 Popover 的默认阴影为零，
 显式请求透明失败仍返回错误。三平台外观仍需真机验收。
+
+第三方控件必须在 init 中调用 `basic.Register` 提供默认规则，可同时调用
+`modern.Register` 适配 Modern。应用无需额外导入适配包；正常导入控件后选择 Modern
+即可。Modern 先拼接完整 Basic，因此只有 Basic 实现的控件仍有外观。各主题在首次
+构造时冻结登记，注册函数返回独立、确定的普通规则。API、回调约束与覆盖顺序见
+[第三方控件样式注册](../../doc/DesignThirdPartyStyles.md)。
