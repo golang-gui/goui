@@ -523,7 +523,7 @@ func (t *textEditor) resolvedStyle(part string) style.Style {
 	} else if t.owner.Focused() {
 		state = style.Focused
 	}
-	return ResolveStyle(name, part, state)
+	return ResolveWidgetStyle(t.owner, name, part, state)
 }
 
 func (t *textEditor) styleChanged() { t.ensureFormat() }

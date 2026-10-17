@@ -138,12 +138,12 @@ func (r *treeRow) Paint(p gui.Painter) {
 		part = "selected"
 	}
 	rect := geometry.Rect(0, 0, r.Rect().Width, r.Rect().Height)
-	paintStyledBox(p, rect, name, part, state)
+	paintStyledBox(r, p, rect, name, part, state)
 	if r.view.current == r.bound.ID && r.view.Focused() {
 		if r.view.FocusVisible() {
 			state = style.FocusVisible
 		}
-		paintStyledBorder(p, rect, gui.ResolveStyle(name, "current", state))
+		paintStyledBorder(p, rect, gui.ResolveWidgetStyle(r, name, "current", state))
 	}
 }
 func (r *treeRow) Snapshot() gui.WidgetInfo {

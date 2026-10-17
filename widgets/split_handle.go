@@ -151,7 +151,7 @@ func (h *splitHandle) Paint(p gui.Painter) {
 		state = style.Hovered
 	}
 	// Keyboard focus does not keep the pointer's visual feedback active.
-	s := gui.ResolveStyle(h.StyleName(), "", state)
+	s := gui.ResolveWidgetStyle(h, h.StyleName(), "", state)
 	ink, ok := s.ForegroundColor()
 	if !ok || ink == nil {
 		return

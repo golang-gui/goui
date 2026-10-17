@@ -304,11 +304,11 @@ func (b *Switch) Paint(p gui.Painter) {
 		suffix = "-checked"
 	}
 	track := b.trackRect()
-	paintStyledBox(p, track, name, "track"+suffix, state)
+	paintStyledBox(b, p, track, name, "track"+suffix, state)
 	diameter, gap := track.Height*.8, track.Height*.1
 	x := track.X + gap + diameter/2 + b.position*(track.Width-2*gap-diameter)
 	center := geometry.Point{X: x, Y: track.Y + track.Height/2}
-	s := gui.ResolveStyle(name, "thumb"+suffix, state)
+	s := gui.ResolveWidgetStyle(b, name, "thumb"+suffix, state)
 	if bg, ok := s.BackgroundColor(); ok && bg != nil {
 		p.FillEllipse(center, diameter/2, diameter/2, graphics.ColorOf(bg))
 	}
@@ -318,7 +318,7 @@ func (b *Switch) Paint(p gui.Painter) {
 		p.DrawEllipse(center, (diameter-width)/2, (diameter-width)/2, width, graphics.ColorOf(edge))
 	}
 	if b.FocusVisible() {
-		paintStyledBorder(p, track.Inset(-min(float32(2), b.padding)), gui.ResolveStyle(name, "focus", style.FocusVisible))
+		paintStyledBorder(p, track.Inset(-min(float32(2), b.padding)), gui.ResolveWidgetStyle(b, name, "focus", style.FocusVisible))
 	}
 }
 

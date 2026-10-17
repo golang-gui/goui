@@ -166,7 +166,7 @@ func (item *tabItem) Paint(p gui.Painter) {
 	if item.bar.lifted == item.page {
 		part = "dragging"
 	}
-	paintStyledBox(p, geometry.Rect(0, 0, item.Rect().Width, item.Rect().Height), "tab-item", part, state)
+	paintStyledBox(item, p, geometry.Rect(0, 0, item.Rect().Width, item.Rect().Height), "tab-item", part, state)
 }
 
 // Content-space positions keep scrolling independent of the slide animation.
@@ -217,7 +217,7 @@ type tabGlyph struct {
 }
 
 func (g *tabGlyph) Paint(p gui.Painter) {
-	s := gui.ResolveStyle(g.StyleName(), "", style.Normal)
+	s := gui.ResolveWidgetStyle(g, g.StyleName(), "", style.Normal)
 	color, ok := s.ForegroundColor()
 	if !ok || color == nil {
 		return

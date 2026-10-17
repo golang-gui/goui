@@ -408,7 +408,7 @@ func (mc *menuContent) Measure(c layout.Constraint) layout.Measurement {
 		return layout.Measurement{}
 	}
 	// The content owns padding, while its host owns the rounded perimeter.
-	s := ResolveStyle(styleNameMenu, style.PartDefault, style.Normal)
+	s := ResolveWidgetStyle(mc, styleNameMenu, style.PartDefault, style.Normal)
 	radius, _ := s.Radius()
 	border, _ := s.BorderWidth()
 	padding := max(float32(menuContentPadding), popoverSafeInset(normalizeLayoutValue(radius), border))
@@ -660,7 +660,7 @@ func (r *menuItemRow) Paint(p Painter) {
 	}
 	rect := geometry.Rect(0, 0, r.Rect().Width, r.Rect().Height)
 	if r.mi != nil && r.mi.Separator() {
-		s := ResolveStyle(styleNameMenuSeparator, style.PartDefault, style.Normal)
+		s := ResolveWidgetStyle(r, styleNameMenuSeparator, style.PartDefault, style.Normal)
 		if bg, ok := s.BackgroundColor(); ok && bg != nil {
 			brush := graphics.ColorOf(bg)
 			p.FillRect(geometry.Rect(menuItemPadding, rect.Height/2-0.5, rect.Width-menuItemPadding*2, 1), brush)
@@ -695,7 +695,7 @@ func (r *menuItemRow) resolvedStyle() style.Style {
 	} else if r.selected {
 		st = style.Hovered
 	}
-	return ResolveStyle(styleNameMenuItem, style.PartDefault, st)
+	return ResolveWidgetStyle(r, styleNameMenuItem, style.PartDefault, st)
 }
 
 func (r *menuItemRow) selectPointer() {
@@ -839,7 +839,7 @@ func (b *MenuButton) resolvedStyle() style.Style {
 	} else if b.hovered {
 		st = style.Hovered
 	}
-	return ResolveStyle(buttonStyleName(&b.WidgetBase), style.PartDefault, st)
+	return ResolveWidgetStyle(b, buttonStyleName(&b.WidgetBase), style.PartDefault, st)
 }
 
 func (b *MenuButton) Snapshot() WidgetInfo {

@@ -233,7 +233,7 @@ func (b *Button) requestPaint() {
 }
 
 func (b *Button) resolvedStyle() style.Style {
-	return ResolveStyle(buttonStyleName(&b.WidgetBase), style.PartDefault, b.styleState())
+	return ResolveWidgetStyle(b, buttonStyleName(&b.WidgetBase), style.PartDefault, b.styleState())
 }
 
 func (b *Button) styleState() style.State {
