@@ -47,6 +47,20 @@ InkBounds、文本布局图片或 Widget 回调接口。Linux arm64 全仓的既
 
 ## 有确认设计的待实现功能
 
+<a id="future-linux-arm64"></a>
+
+### Linux arm64：基础适配与 QEMU 桌面验收待实施
+
+- 设计：[PlanLinuxArm64](PlanLinuxArm64.md)。沿用 Linux X11／Pango／Cairo／
+  Software／OpenGL，保持 no-cgo 和现有上层 API，不另建平台后端。
+- 已确认全仓编译的首个阻塞是 libc `SYS_PIPE`／`SYS_POLL`；采用已有 x/sys 的
+  Pipe2／Poll，随后验证原生 ABI、回调、排版和绘图，不以局部交叉编译代替运行。
+- 本轮主要环境为本机 QEMU TCG 完整系统模拟的 Ubuntu 24.04 arm64／X11／VNC。
+  实体 ARM 设备不是前置；实际 Painter／GL renderer、缩放及模拟环境结果单独记录。
+- GLX／桌面 GLSL 与 CPU 架构支持分开确认，不将 Software 回落算成 OpenGL 通过。
+  EGL／GLES、Wayland、musl 和实体 GPU／真实性能留在范围之外或后续专项验证。
+- 当前只完成设计；环境、代码、窗口验收、CI 和新 Demo 产物均未据此完成或发布。
+
 <a id="future-submenu"></a>
 
 ### 子菜单与跨层键盘导航：待实现
@@ -191,8 +205,8 @@ Touch／Pen 须一起设计标识、捕获／取消、手势与多平台输入�
 
 - 托盘图标／运行期本地通知尚未实现。保持小接口、Application 生命周期和原生结果；
   Windows 不强制引入额外 SDK runtime，也不以旧托盘气泡冒充现代通知。
-- Wayland、移动端及更多目标待具体平台设计。Linux arm64 现有全仓构建限制记录在
-  Plan，修正基础适配与新增目标不是同一事项。
+- Wayland、移动端及更多目标待具体平台设计。Linux arm64 基础适配按
+  [专项计划](PlanLinuxArm64.md) 推进，不与新增窗口系统／图形后端捆绑。
 - cmd/goui 已支持原生资源、二进制／macOS .app／Linux 安装目录树；DEB／RPM、
   更完整分发签名或安装集成按需求补齐，不做 AppImage 和系统库复制。
 - Linux FileDialog portal 适配待评估，不把现有 helper 当作沙箱 FileChooser。
