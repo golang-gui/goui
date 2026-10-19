@@ -921,3 +921,21 @@ arm64 构建限制保留在原记录中；本轮未修改实现或复验这些�
 - macOS Demo 已启动并观察初始画面；本轮 VNC 点击和 Tab 未引发可观察反馈，Demo 的手工输入／语言／主题操作不计为通过，以上专项窗口结果不能替代它。未修改框架规避会话问题。
 - 验证工具曾遇 Windows 标准输入传输停滞、PowerShell 未加引号的 `-test.v` 参数拆分，以及 zsh 的只读 `status` 变量；分别改用校验 SHA256 的临时 HTTP 传输、字面参数和 `/bin/sh` 后完成验证，未更改控件或弱化断言。
 - 未执行真实中文 IME、混合 DPI、2x 及完整后端矩阵，本次也未重跑远端全仓测试或改写既有失败。测试产物和截图在仓库外；本次操作未读写剪贴板、用户文件或系统主题设置。
+
+## v0.2.0 Demo 发布版本修正（2026-10-19）
+
+- [x] Demo TOML 版本同步为 `0.2.0`、build `1`；从 `v0.2.0` 的干净源码仅应用
+  这一配置差异，重新构建 Linux amd64、Windows amd64、macOS arm64，无功能源码变更。
+- [x] 本机 Linux amd64 / Go 1.25.8 / 独立 Xvnc/Xfwm4 执行
+  `GOWORK=off CGO_ENABLED=0 GOFLAGS=-trimpath go test -json ./... -count=1`：
+  2207 项通过、10 项既有跳过、0 失败；既有窗口和图片输出限定在测试桌面与快照。
+- [x] Windows 最终 PE 的文件／产品版本和清单版本为 `0.2.0.1`，含图标和 GUI 子系统；
+  Linux Software 1x 的实际二进制启动为可见窗口，正常 Alt+F4 退出。Linux 单文件不嵌入
+  TOML 版本，本次重建与上一附件逐字节一致；不宣称窗口功能全矩阵验收。
+- [x] macOS 15.7.7 arm64 在桌面会话沿用现有 Developer ID 签名并重新公证，任务
+  `d2c1399f-b03e-43b7-9489-80a99fe50e8e` 为 Accepted；最终 ZIP 解压后包版本
+  `0.2.0`／`1`、签名、票据和 Gatekeeper（Notarized Developer ID）均通过。
+- [x] 更新 v0.2.0 Release 的 Windows／macOS 附件、SHA256SUMS、BUILD-INFO 和双语说明；
+  已发布标签仍指向 `798a523a5e231ecfc163b8d375c797cd826d2f6a`，不重写历史。
+- 本轮未重跑 Windows/macOS 的桌面交互或完整后端／DPI 矩阵；Linux arm64 仍有既有
+  SYS_PIPE／SYS_POLL 编译阻塞，无对应附件。临时产物、公证日志及旧附件备份在仓库外。

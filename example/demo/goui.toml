@@ -4,7 +4,7 @@ id = "org.golanggui.Demo"
 name = "GOUI Demo"
 executable = "goui-demo"
 main = "."
-version = "0.1.0"
+version = "0.2.0"
 build = 1
 icon = "../../doc/logo/goui-mark.svg"
 

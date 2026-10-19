@@ -66,6 +66,12 @@ Root/BuildContext/Painter 添加特例。表单现改用普通 ScrollView 的纵
 macOS 的 `.app` 和 Linux 桌面目录部署继续用现有 `package` 命令显式执行；
 裸二进制构建不承诺安装图标或显示 bundle 图标。操作步骤见例程 README。
 
+发布包含功能更新的 Demo 时，同步更新 TOML 的 `version`，不能只修改下载文件名。
+当前 Demo 为 `0.2.0`、build `1`；Windows 资源版本为 `0.2.0.1`，macOS 包版本为
+`0.2.0`／`1`。版本变化后重新构建原生资源；macOS 必须重新签名、公证、装订票据，
+并以最终 ZIP 解压后的签名、票据、Gatekeeper 和包版本检查为准。
+已发布标签不重写；若附件构建配置相对标签另有修正，在 Release 构建说明中明确记录。
+
 #### 2026-10-12 验证
 
 - 无桌面的 `env -u DISPLAY go test ./example/demo/... ./cmd/goui -count=1`
