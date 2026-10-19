@@ -862,3 +862,28 @@ arm64 构建限制保留在原记录中；本轮未修改实现或复验这些�
 - [x] 本机全仓、远端 Windows/macOS 菜单逻辑和 SourceView 原生排版测试通过。
 - [x] SourceView 在独立 X11 桌面以 Software 1x/2x、OpenGL 1x 验证菜单键盘/指针操作。
 - [ ] Windows/macOS 菜单桌面验收及跨层子菜单；细节见 [PlanMenuKeyboard](PlanMenuKeyboard.md)。
+
+## TextInput / TextView 占位提示（2026-10-19）
+
+- [x] `1ada17e` 增加 Placeholder / SetPlaceholder、每视图缓存与资源释放、IME 显隐、
+  独立语义字段及 Basic / Modern 的 placeholder 前景；模型、选区、历史及滚动范围不变。
+- [x] `c6827e9` 增加 UI 两种编辑器的 Placeholder 属性；省略时恢复为空，保留编辑状态。
+  契约与 Qt / GTK 文档取舍见 DesignTextEditing 的 Placeholder 小节。
+- [x] 新增 `tests/window/gui/textplaceholder`：检查提示像素及裁剪、测量/基线、真实值/历史、
+  焦点、共享模型、换行、字体/主题、只读/禁用、卸载/重挂载；支持截图与保留窗口检查。
+- [x] 本机 Linux amd64 / Go 1.25.8 / X11 / Xfwm4 / Pango：全仓非缓存 2545 通过、
+  15 既有跳过、0 失败；GOWORK=off 全仓通过；gui/ui/两主题 race 通过。
+  新窗口 Software 1x/2x、OpenGL 1x 通过，桌面键盘输入、清空及共享编辑/撤销已观察。
+- [x] macOS 15.7.7 arm64 / Go 1.24.9 / CoreText：受影响包通过；新窗口 Software 1x、
+  OpenGL 2x 通过。Windows 10 19045 amd64 / Go 1.24.0 / DirectWrite：受影响包通过；
+  新窗口从 RDP 交互会话启动，Direct2D 1x 全部断言通过并生成截图，实际 Painter 日志已观察。
+- GOUI 全仓远端仍有既有失败：macOS TestWindowInteractionCapabilities 的错误值断言；
+  Windows Direct2D 渐变/描边渐变像素及 Win32 TestWindowStyle 断言，均在原 903daf8 复现。
+  Windows SSH 会话的原平台窗口用例和新程序初始布局超时，按会话限制记录，不计为通过。
+- GOUI vet 仍报告既有测试的跨包未具名结构字面量；新增 placeholder 文件无该诊断。
+  没有弱化断言或扩大 skip，也没有顺带修改平台实现。
+- SourceView FindBar 已移除模拟 Label，迁移到正式接口，八语言、浮层、键盘和声明式专项
+  在 Linux 通过；其 macOS 原有计数/展开高度/菜单语言场景失败在修改前两仓复现。
+- [ ] 真实中文 IME、混合显示器 DPI 与三端完整后端矩阵；包内已覆盖预编辑显隐和状态隔离。
+- 新程序仅创建窗口及可选 PNG。全仓沿用既有桌面测试：Windows/macOS 的 TestClipboard
+  会覆盖真实剪贴板，本次运行没有保存原内容；原有窗口与图片写入副作用保持不变。
