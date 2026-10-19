@@ -133,12 +133,15 @@ func coreRules() []style.Rule {
 		style.Name(styleNameTextView).
 			BackgroundColor(color.White).
 			ForegroundColor(color.Black).
+			BorderColor(color.RGBA{R: 180, G: 180, B: 180, A: 255}).BorderWidth(1).Radius(0).
 			FontFamily(family).FontSize(size),
+		style.Name(styleNameTextView).State(style.Focused).BorderColor(accent),
 		style.Name(styleNameTextView).Part("selection").BackgroundColor(color.RGBA{R: 185, G: 210, B: 245, A: 255}),
 		style.Name(styleNameTextView).Part("caret").ForegroundColor(color.Black),
 		style.Name(styleNameTextView).Part("placeholder").ForegroundColor(color.RGBA{R: 117, G: 117, B: 117, A: 255}),
 		style.Name(styleNameTextView).Part("placeholder").State(style.Disabled).ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}),
 		style.Name(styleNameTextView).State(style.Disabled).
+			BackgroundColor(color.RGBA{R: 245, G: 245, B: 245, A: 255}).
 			ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}),
 
 		style.Name(styleNameScrollView).
