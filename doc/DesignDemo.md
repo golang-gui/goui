@@ -31,6 +31,15 @@ Root/BuildContext/Painter 添加特例。表单现改用普通 ScrollView 的纵
   主窗口关闭退出应用，最终清理由 Application 完成。
 - 未接入 DevServer，不在演示或验收中使用语义动作捷径。
 
+### 文本占位提示
+
+文本页在原有 TextInput / TextView 上设置公开的 Placeholder 属性，分别展示单行与
+两行提示；保留初始示例，页面说明引导用户清空后查看，不另建一份演示编辑状态。
+提示及说明跟随八语言资源，外观使用当前 Modern 的 placeholder 部件。
+语言、主题或分类重建不重载用户清空后的文本，也不重置文档历史。只读开关继续
+控制原有多行编辑器；空文档仍可显示提示，输入受只读约束。
+操作与逐项预期见 example/demo/README，真实输入和主题切换按平台分别验收。
+
 ### Logo 与构建资源
 
 采用用户提供的 `doc/logo/goui-mark.svg`（512×512 方形标志）和
