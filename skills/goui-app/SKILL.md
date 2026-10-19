@@ -25,6 +25,9 @@ license: MIT
 - 应用入口、状态、控件、布局、样式和资源：读 [应用开发](references/application.md)。
 - 组合、扩展或实现 Widget／View：读 [自定义组件](references/custom-widget-view.md)。
 - 构建打包、桌面验证、诊断和缺陷反馈：读 [构建与调试](references/build-and-debug.md)。
+- 应用需要源码编辑器时，按需阅读由 [GOUI SourceView](https://github.com/golang-gui/goui-sourceview)
+  独立维护的 [goui-sourceview-app 技能](https://github.com/golang-gui/goui-sourceview/blob/main/skills/goui-sourceview-app/SKILL.md)。
+  其语言、编辑规则和补全契约随 SourceView 版本维护；不自动安装技能或升级应用依赖。
 
 ## 不容易从 API 名称看出的约定
 
