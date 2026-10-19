@@ -72,6 +72,7 @@ func TestTextEditorDisableDuringSelectionNormalizationStopsCommit(t *testing.T) 
 				{Start: 3, Length: 1, X: 10, Width: 10, Height: 20},
 			}
 			paragraph.geometryValid = false
+			paragraph.measured = false // invalidate cached native metrics too
 			editor.selection = TextSelection{Anchor: 1, Caret: 1}
 			normalizations := 0
 			editor.ConnectSelection(func(TextSelection) {
@@ -1240,11 +1241,13 @@ func TestTextViewMeasuresEditingGeometryOnlyOnDemand(t *testing.T) {
 	editor, _, _ := newEditorFixture(t, strings.Repeat("abcdefghijklmnopqrst\n", 30))
 	p := editor.paragraph(1)
 	native := p.layout.(*testTextLayout)
-	if p.geometryValid || native.metricsCalls != 0 {
+	// Paragraph sizing now caches native metrics for baseline alignment, while
+	// the more expensive editing Geometry remains independent and lazy.
+	if p.geometryValid || native.metricsCalls != 1 {
 		t.Fatal("display-only paragraph eagerly built editing geometry")
 	}
 	editor.Paint(&testLabelPainter{})
-	if p.geometryValid || native.metricsCalls != 0 {
+	if p.geometryValid || native.metricsCalls != 1 {
 		t.Fatal("plain painting built unrelated editing geometry")
 	}
 	rng, _ := editor.model.LineRange(1)

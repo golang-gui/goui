@@ -50,6 +50,8 @@ const (
 // ScrollView is a single-content scrolling container. The content may be a
 // Scrollable (virtualized, e.g. ListView) or an ordinary widget tree (viewport
 // mode: the tree is arranged at a negative offset and clipped to the viewport).
+// Measure follows the child's requested height within the parent's constraints
+// and its own MinSize/MaxSize. MainWeight controls remaining-space allocation.
 //
 // ScrollView is a Bin: SetChild/Child manage the content slot. The two
 // ScrollBars and the content viewport are internal structural children; they
@@ -446,6 +448,18 @@ func (sv *ScrollView) Measure(c layout.Constraint) layout.Measurement {
 		if !ensureWidgetStyle(sc) {
 			return layout.Measurement{}
 		}
+		// Measure determines the requested viewport; ContentSize remains the
+		// independent (possibly virtualized) scrolling extent. Give the content
+		// the actual cross width and a loose height so short content can hug.
+		childConstraint := sv.layoutConstraint(c)
+		childConstraint.Min.Height = 0
+		if childConstraint.Max.Width < layout.Inf {
+			childConstraint.Min.Width = childConstraint.Max.Width
+		}
+		measured := measureWidget(sc, childConstraint)
+		if sv.Destroyed() || sv.content != sc || sc.base().destroyed {
+			return layout.Measurement{}
+		}
 		size := sc.ContentSize()
 		sv.contentWidth, sv.contentHeight = size.Width, size.Height
 		// A Scrollable fills its viewport's cross axis: the viewport is always
@@ -453,15 +467,29 @@ func (sv *ScrollView) Measure(c layout.Constraint) layout.Measurement {
 		// reported content width drives the horizontal scrollbar (hScrollable),
 		// never the size of the viewport itself — feeding a content or
 		// bar-influenced width back here would shrink the viewport each layout.
-		return layout.Measured(sv.constrain(c, geometry.Size{
-			Width:  sv.viewportWidth(c),
-			Height: sv.viewportHeight(c),
-		}))
+		width := sv.viewportWidth(sv.layoutConstraint(c))
+		if childConstraint.Max.Width >= layout.Inf {
+			width = measured.Width
+		}
+		height := measured.Height
+		if sv.canScrollX() && childConstraint.Max.Width < layout.Inf && size.Width > width {
+			height += scrollbarWidth
+		}
+		measured.Size = sv.constrain(c, geometry.Size{Width: width, Height: height})
+		return measured
 	}
 	contentSize := sv.measureContent(sv.layoutConstraint(c).Max)
-	size := geometry.Size{Width: contentSize.Width, Height: sv.viewportHeight(c)}
+	size := contentSize
+	if sv.direction == ScrollVertical {
+		if sv.layoutConstraint(c).Max.Width < layout.Inf {
+			size.Width = sv.viewportWidth(sv.layoutConstraint(c))
+		}
+	}
 	if sv.direction == ScrollHorizontal {
 		size.Width, size.Height = sv.viewportWidth(c), contentSize.Height
+	}
+	if sv.canScrollX() && contentSize.Width > sv.layoutConstraint(c).Max.Width {
+		size.Height += scrollbarWidth
 	}
 	return layout.Measured(sv.constrain(c, size))
 }
@@ -486,13 +514,6 @@ func (sv *ScrollView) viewportWidth(c layout.Constraint) float32 {
 		return 0
 	}
 	return c.Max.Width
-}
-
-func (sv *ScrollView) viewportHeight(c layout.Constraint) float32 {
-	if c.Max.Height >= layout.Inf {
-		return 0
-	}
-	return c.Max.Height
 }
 
 func (sv *ScrollView) Arrange(rect geometry.Rectangle) {

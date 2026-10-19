@@ -188,7 +188,7 @@ func (t *textEditor) hitText(point geometry.Point) textedit.Position {
 	index := t.heights.At(point.Y)
 	if p := t.paragraph(index); p != nil {
 		rng := t.displayLineRange(index)
-		point.Y -= t.heights.Top(index)
+		point.Y -= t.heights.Top(index) + p.textOffset
 		pos := p.editGeometry(t.lineHeight).Hit(point)
 		pos.Offset += rng.Start
 		if composition := t.preedit; composition != nil {

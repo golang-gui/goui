@@ -1,5 +1,10 @@
 # ScrollView 滚动方向与布局一致性
 
+后续内容驱动测量以 [TextView 尺寸设计](DesignTextViewSizing.md) 为准：
+ScrollView 在宽松高度约束中使用子项的测量高度，无界时也可随内容增长。
+固定/填满视口由父约束、MainWeight 与 CrossStretch 显式表达；不增加测量开关。
+TableView 对有界表体显式给出紧高度约束，保留其整块表格的填充行为。
+
 ## 范围与依据
 
 2026-10-07 从 demo 的表单、WrapBox 和嵌套 Stretch 场景提取本切片。

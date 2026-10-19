@@ -148,7 +148,7 @@ func TestScrollViewUnboundedCrossAxisAndOwnMaximum(t *testing.T) {
 	sv.SetDirection(ScrollVertical)
 	content := &responsiveScrollWidget{length: 400}
 	sv.SetChild(content)
-	if got := sv.Measure(layout.Unbounded()).Size; got != (geometry.Size{Width: 400}) {
+	if got := sv.Measure(layout.Unbounded()).Size; got != (geometry.Size{Width: 400, Height: 20}) {
 		t.Fatalf("unbounded viewport invented a cross size: %v", got)
 	}
 	sv.SetMaxSize(geometry.Size{Width: 100})
@@ -511,6 +511,10 @@ type mockScrollContent struct {
 	layoutCalls []geometry.Point
 }
 
+func (m *mockScrollContent) Measure(c layout.Constraint) layout.Measurement {
+	return layout.Measured(c.Clamp(geometry.Size{Width: 100, Height: m.height}))
+}
+
 func (m *mockScrollContent) ContentSize() geometry.Size {
 	return geometry.Size{Width: 100, Height: m.height}
 }
@@ -602,9 +606,9 @@ func TestScrollViewElasticMeasure(t *testing.T) {
 	if sv.MainWeight() != 1 {
 		t.Fatalf("ScrollView should default to MainWeight(1), got %v", sv.MainWeight())
 	}
-	// An unbounded scroll axis has no intrinsic viewport height.
-	if got := sv.Measure(layout.Constraint{Max: geometry.Size{Width: 100, Height: layout.Inf}}); got.Size != (geometry.Size{Width: 100}) {
-		t.Fatalf("unbounded measure should have no intrinsic scroll height, got %v", got)
+	// An unbounded height now follows content through the same Measure path.
+	if got := sv.Measure(layout.Constraint{Max: geometry.Size{Width: 100, Height: layout.Inf}}); got.Size != (geometry.Size{Width: 100, Height: 500}) {
+		t.Fatalf("unbounded measure should follow content height, got %v", got)
 	}
 	// Tight constraint (window root): c.Min == c.Max -> fills.
 	if got := sv.Measure(layout.Tight(geometry.Size{Width: 800, Height: 600})); got.Size != (geometry.Size{Width: 800, Height: 600}) {
@@ -627,8 +631,9 @@ func TestScrollViewMeasureCombinesChildSizeWithParentConstraint(t *testing.T) {
 	}
 }
 
-func TestScrollViewFillsCrossAxisByDefault(t *testing.T) {
+func TestScrollViewFillsStretchedHBox(t *testing.T) {
 	box := NewLinearBox(layout.DirectionHorizontal)
+	box.SetCrossAlign(layout.CrossStretch)
 	sv := NewScrollView()
 	sv.SetChild(&mockScrollContent{height: 500})
 	box.AddChild(sv)
@@ -686,8 +691,9 @@ func TestScrollViewSideBySideInLinearBox(t *testing.T) {
 	// Regression: two ScrollViews in an HBox previously each reported c.Max
 	// (the whole available width), overflowing the linear sum and pushing the
 	// second list out of the container. ScrollView's MainWeight(1) splits the
-	// main axis and its viewport capability fills the cross axis by default.
+	// main axis; the parent explicitly stretches the cross axis.
 	box := NewLinearBox(layout.DirectionHorizontal)
+	box.SetCrossAlign(layout.CrossStretch)
 	left := NewScrollView()
 	left.SetChild(&mockScrollContent{height: 500})
 	right := NewScrollView()

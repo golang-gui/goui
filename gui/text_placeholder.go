@@ -116,7 +116,7 @@ func (t *textEditor) paintPlaceholder(p Painter) {
 		if t.singleLine && t.hasBaseline {
 			origin.Y += t.baseline - cached.baseline
 		} else if paragraph := t.paragraphs[0]; !t.singleLine && paragraph != nil {
-			origin.Y += paragraph.editGeometry(t.lineHeight).LineMetrics(0).Baseline - cached.baseline
+			origin.Y += paragraph.baseline - cached.baseline
 		}
 	}
 	p.DrawTextLayout(origin, cached.layout)

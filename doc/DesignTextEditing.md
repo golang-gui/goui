@@ -214,8 +214,9 @@ Cluster 是本项目用户编辑操作的最小不可分割单元；模型则保
 - 活动排版范围优先覆盖视口，上方测量范围参与锚定；下方额外预排版最多四段，
   同时受下方范围边界限制，避免每次跳转都同步排版另一整屏。近期非活动段落仍可
   留在 LRU 中，活动测量范围和资源保留范围不是同一概念。
-- `MeasureSize` 与编辑几何分离：命中、导航、选择或锚定需要时才通过
-  `editGeometry` 获取行/Cluster 度量并构建 Geometry，同一测量结果按需复用。
+- 段落测量缓存原生尺寸与行/Cluster 指标，用首行基线统一文本输入的排版；
+  命中、导航、选择或锚定需要时才通过 `editGeometry` 构建编辑 Geometry。
+  测量和绘制复用原生指标，不重复构建编辑索引。
 - 换行宽度变化使尺寸测量失效，但保留原生 TextLayout；访问段落时再 SetSize
   和测量，重建对应几何。字体/换行模式变化重置段落缓存，颜色变化更新已有布局，
   光标闪烁和选区背景变化不重建文字布局。
@@ -361,6 +362,10 @@ tests/window/ui/textediting 的第 10–11 项。
   桌面的布局/剪贴板；测试窗口和隔离显示已退出。
 
 ## 6. ScrollView、TextInput 与 UI
+
+TextView 与滚动视口的内容驱动测量、单行外观和基线契约见
+[TextView 尺寸设计](DesignTextViewSizing.md)。Measure 返回当前宽度下的受限内容高度，
+不再固定六行；ScrollView 复用同一 Measure 路径，MaxSize 限制视口增长。
 
 ```go
 func (sv *ScrollView) ScrollIntoView(rect geometry.Rectangle)

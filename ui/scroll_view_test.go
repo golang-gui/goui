@@ -93,9 +93,9 @@ func TestScrollViewWeightCanBeDisabledAndRestored(t *testing.T) {
 	}
 }
 
-func TestScrollViewFillsSingleHBoxViewportByDefault(t *testing.T) {
+func TestScrollViewFillsSingleStretchedHBoxViewport(t *testing.T) {
 	root := newRoot()
-	widget := root.update(HBox(ScrollView(Label("content")))).(*gui.LinearBox)
+	widget := root.update(HBox(ScrollView(Label("content"))).CrossAlign(layout.CrossStretch)).(*gui.LinearBox)
 
 	widget.Measure(layout.Tight(geometry.Size{Width: 800, Height: 600}))
 	widget.Arrange(geometry.Rect(0, 0, 800, 600))
@@ -106,12 +106,12 @@ func TestScrollViewFillsSingleHBoxViewportByDefault(t *testing.T) {
 	}
 }
 
-func TestScrollViewSplitsTwoHBoxViewportsByDefault(t *testing.T) {
+func TestScrollViewSplitsTwoStretchedHBoxViewports(t *testing.T) {
 	root := newRoot()
 	widget := root.update(HBox(
 		ScrollView(Label("left")),
 		ScrollView(Label("right")),
-	)).(*gui.LinearBox)
+	).CrossAlign(layout.CrossStretch)).(*gui.LinearBox)
 
 	widget.Measure(layout.Tight(geometry.Size{Width: 800, Height: 600}))
 	widget.Arrange(geometry.Rect(0, 0, 800, 600))
