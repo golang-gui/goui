@@ -3,6 +3,20 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## Linux arm64 适配规划（2026-10-15）
+
+- [x] 编写 [PlanLinuxArm64](PlanLinuxArm64.md)，明确沿用 Linux X11 后端、
+  no-cgo、glibc 和 Software／OpenGL 边界，不扩展 GUI／UI API。
+- [x] 前置检查复现全仓 arm64 构建被 libc `SYS_PIPE`／`SYS_POLL` 阻塞；
+  Xlib／GLX／Cairo／Pango／Fontconfig／GLib／GTK 绑定及两绘图包局部交叉编译通过。
+  这些不是 ARM64 运行验收，也不表示修复两处调用即完成全部适配。
+- [x] 本轮文档链接／围栏／空白检查通过；Linux amd64 隔离工作区快照／桌面中
+  全仓非缓存测试 2501 通过、15 项既有跳过、0 失败，不计为 ARM64 验收。
+- [ ] 搭建本机 QEMU 完整系统模拟的 Ubuntu 24.04 arm64／X11／VNC 环境。
+- [ ] 完成 Pipe2／Poll 最小适配、ABI／离屏回归和客体 Software／OpenGL 桌面验收。
+- [ ] 本机最终回归通过后同步支持说明；实体 GPU／真实显示硬件留作后续补充。
+- 本轮只写设计与计划，不搭建环境、不修改代码、不提交或更新 Release。
+
 ## TextLayout 富文本基础能力补全（2026-10-14）
 
 - [x] 按 [Typography 设计](DesignTypography.md) 完成 CF callbacks 地址与成员生命周期、
