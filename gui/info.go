@@ -119,6 +119,8 @@ type TextEditingInfo struct {
 	Length       int           `json:"length"`
 	VisibleRange TextRange     `json:"visibleRange"`
 	VisibleText  string        `json:"visibleText"`
+	// Placeholder is view-local presentation, never part of the text value.
+	Placeholder string `json:"placeholder,omitempty"`
 	// Preedit describes temporary, uncommitted text separately. VisibleText
 	// and its range always refer to the committed model, even during IME.
 	Preedit *TextPreeditInfo `json:"preedit,omitempty"`

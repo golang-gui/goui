@@ -189,6 +189,8 @@ type textEditor struct {
 	mountEpoch        uint64
 	editOwner         *textedit.EditSource
 	preedit           *textedit.Projection
+	placeholder       string
+	placeholderLayout *textPlaceholderLayout
 	resettingIME      bool
 	nextCommitAtomic  bool
 	inputRevision     uint64
@@ -242,6 +244,7 @@ func newTextEditor(owner Widget, singleLine bool) *textEditor {
 		t.input.Reset()
 		t.disconnectModel()
 		t.releaseParagraphs()
+		t.releasePlaceholder()
 		t.disconnectInteractionTimers()
 	})
 	t.owner.ConnectFocused(func(focused bool) {
@@ -534,6 +537,7 @@ func (t *textEditor) ensureFormat() {
 		t.retainViewportAnchor()
 		t.format = format
 		t.formatValid = true
+		t.releasePlaceholder()
 		t.lineHeight = max(1, textLineHeight(format.Font.Size))
 		t.baseline, t.hasBaseline = 0, false
 		if App != nil && App.Typography() != nil {
@@ -812,6 +816,10 @@ func (t *textEditor) paint(p Painter) {
 			}
 		}
 	}
+	t.paintPlaceholder(p)
+	if t.owner.base().destroyed || t.suspended {
+		return
+	}
 	if t.owner.Focused() {
 		index := t.displayLineAt(t.displayCaret().Offset)
 		if rect, ok := t.paragraphCaret(index, t.paragraphs[index]); ok {
@@ -826,7 +834,7 @@ func (t *textEditor) paint(p Painter) {
 func (t *textEditor) snapshot() WidgetInfo {
 	info := t.owner.base().Snapshot()
 	info.Role = RoleTextView
-	state := &TextEditingInfo{ReadOnly: t.readOnly, Selection: t.selection, Length: t.model.Len()}
+	state := &TextEditingInfo{ReadOnly: t.readOnly, Selection: t.selection, Length: t.model.Len(), Placeholder: t.placeholder}
 	// Bounded, range-labelled visible content, never a copy of the full model.
 	start := t.heights.At(max(0, t.offset.Y-t.padding))
 	end := t.heights.At(max(0, t.offset.Y+t.viewport.Height-t.padding))

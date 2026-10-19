@@ -128,12 +128,16 @@ func coreRules() []style.Rule {
 			BackgroundColor(color.RGBA{R: 245, G: 245, B: 245, A: 255}).
 			ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}),
 		style.Name(styleNameTextInput).Part("selection").BackgroundColor(color.RGBA{R: 185, G: 210, B: 245, A: 255}),
+		style.Name(styleNameTextInput).Part("placeholder").ForegroundColor(color.RGBA{R: 117, G: 117, B: 117, A: 255}),
+		style.Name(styleNameTextInput).Part("placeholder").State(style.Disabled).ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}),
 		style.Name(styleNameTextView).
 			BackgroundColor(color.White).
 			ForegroundColor(color.Black).
 			FontFamily(family).FontSize(size),
 		style.Name(styleNameTextView).Part("selection").BackgroundColor(color.RGBA{R: 185, G: 210, B: 245, A: 255}),
 		style.Name(styleNameTextView).Part("caret").ForegroundColor(color.Black),
+		style.Name(styleNameTextView).Part("placeholder").ForegroundColor(color.RGBA{R: 117, G: 117, B: 117, A: 255}),
+		style.Name(styleNameTextView).Part("placeholder").State(style.Disabled).ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}),
 		style.Name(styleNameTextView).State(style.Disabled).
 			ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}),
 
