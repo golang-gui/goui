@@ -99,6 +99,9 @@ RSS includes resident shared-library pages; PSS apportions shared pages between 
 
 Core controls live in `gui`, with declarative bindings in `ui`. Additional controls live in `widgets`, with their declarative bindings in `widgets/ui`.
 
+[GOUI SourceView](https://github.com/golang-gui/goui-sourceview) is an optional code editor
+extension with syntax highlighting, completion, bracket matching, and find/replace.
+
 ## Build with an AI coding assistant
 
 The [GOUI application development Skill](skills/goui-app/SKILL.md) guides your AI through
@@ -110,6 +113,10 @@ The AI follows the [installation instructions](skills/INSTALL.md) using its tool
 skill mechanism; no GOUI-specific Agent adapter or manual file copying is required.
 Tools without Skill support can read the guide directly, but this is not a native installation.
 Installing the Skill does not install or upgrade your application's GOUI dependency.
+
+For code editor integration and customization, use the
+[SourceView application development Skill](https://github.com/golang-gui/goui-sourceview/blob/main/skills/goui-sourceview-app/SKILL.md),
+maintained in the SourceView repository with its own [installation guide](https://github.com/golang-gui/goui-sourceview/blob/main/skills/INSTALL.md).
 
 For reusable components and custom controls, see [Custom Widget and View](doc/CustomWidgetView.md)
 for composing, extending, and implementing both layers.
