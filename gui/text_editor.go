@@ -28,7 +28,10 @@ type textParagraph struct {
 	geometryValid  bool
 	width          float32
 	height         float32
-	textHeight     float32
+	textOffset     float32
+	baseline       float32
+	lines          []typography.TextLine
+	clusters       []typography.TextCluster
 }
 
 // editGeometry is independent of size measurement: displaying a paragraph
@@ -41,7 +44,7 @@ func (p *textParagraph) editGeometry(emptyHeight float32) *textedit.Geometry {
 		var clusters []typography.TextCluster
 		length := 0
 		if p.layout != nil {
-			lines, clusters = p.layout.MeasureMetrics()
+			lines, clusters = p.lines, p.clusters
 			length = len(p.layout.Text())
 		}
 		p.geometry = textedit.NewGeometry(lines, clusters, length, emptyHeight)
@@ -544,7 +547,7 @@ func (t *textEditor) ensureFormat() {
 			if sample, err := App.Typography().NewTextLayout(textInputHeightSample, format, textInputMeasureExtent, textInputMeasureExtent); err == nil {
 				_, height := sample.MeasureSize()
 				t.lineHeight = max(t.lineHeight, height)
-				if t.singleLine && height > 0 {
+				if height > 0 {
 					t.lineHeight = height
 				}
 				lines, _ := sample.MeasureMetrics()
@@ -616,9 +619,15 @@ func (t *textEditor) paragraph(index int) *textParagraph {
 	var w, h float32
 	if p.layout != nil {
 		w, h = p.layout.MeasureSize()
+		p.lines, p.clusters = p.layout.MeasureMetrics()
 	}
 	p.geometry, p.geometryValid = textedit.Geometry{}, false
-	p.width, p.height, p.textHeight = w, max(t.lineHeight, h), h
+	p.textOffset, p.baseline = 0, t.baseline
+	if len(p.lines) > 0 {
+		p.textOffset = max(0, t.baseline-p.lines[0].Baseline)
+		p.baseline = p.textOffset + p.lines[0].Baseline
+	}
+	p.width, p.height = w, max(t.lineHeight, h+p.textOffset)
 	p.measured = true
 	t.heights.Set(index, p.height)
 	t.observedWidth = max(t.observedWidth, w)
@@ -634,7 +643,43 @@ func (t *textEditor) measure(c layout.Constraint) layout.Measurement {
 		return layout.Measurement{}
 	}
 	t.ensureFormat()
-	return layout.Measured(t.owner.base().constrain(c, geometry.Size{Width: 320, Height: 6*t.lineHeight + 2*t.padding}))
+	b := t.owner.base()
+	width := b.constrain(c, geometry.Size{Width: 320}).Width
+	t.prepareWidth(max(1, width-2*t.padding-1))
+	limit := b.layoutConstraint(c).Max.Height
+	height := 2 * t.padding
+	baseline := t.baseline
+	for i := 0; i < t.displayLineCount(); i++ {
+		p := t.paragraph(i)
+		if p != nil {
+			height += p.height
+			if i == 0 {
+				baseline = p.baseline
+			}
+		} else {
+			height += t.lineHeight
+		}
+		t.textParagraphCache.trim(-1, -1)
+		if height >= limit {
+			break
+		}
+	}
+	return layout.Measurement{Size: b.constrain(c, geometry.Size{Width: width, Height: height}),
+		Baseline: t.padding + baseline, HasBaseline: t.hasBaseline}
+}
+
+// Width-sensitive paragraph measurements are shared by Measure and visible
+// layout. This never changes the viewport or scroll offset.
+func (t *textEditor) prepareWidth(width float32) {
+	if width != t.layoutWidth && t.wrap != WrapNone {
+		t.retainViewportAnchor()
+		t.heights.Reset(t.displayLineCount(), t.lineHeight)
+		t.observedWidth = 0
+		for _, p := range t.paragraphs {
+			p.measured = false
+		}
+	}
+	t.layoutWidth = width
 }
 
 func (t *textEditor) arrange(rect geometry.Rectangle) {
@@ -653,18 +698,7 @@ func (t *textEditor) layoutVisible(viewport geometry.Size, offset geometry.Point
 	t.syncBlink(false)
 	t.ensureFormat()
 	t.viewport, t.offset = viewport, offset
-	width := max(1, viewport.Width-2*t.padding-1)
-	if width != t.layoutWidth && t.wrap != WrapNone {
-		t.retainViewportAnchor()
-		// A new width invalidates measurements, not the immutable paragraph text.
-		// Retain native layouts and resize only the paragraphs actually visited.
-		t.heights.Reset(t.displayLineCount(), t.lineHeight)
-		t.observedWidth = 0
-		for _, p := range t.paragraphs {
-			p.measured = false
-		}
-	}
-	t.layoutWidth = width
+	t.prepareWidth(max(1, viewport.Width-2*t.padding-1))
 	if viewport.Height <= 0 {
 		return
 	}
@@ -766,7 +800,7 @@ func (t *textEditor) paragraphCaret(index int, p *textParagraph) (geometry.Recta
 	rng := t.displayLineRange(index)
 	pos := t.displayCaret()
 	pos.Offset -= rng.Start
-	return p.editGeometry(t.lineHeight).Caret(pos).Translate(geometry.Point{X: t.padding, Y: t.padding + t.heights.Top(index)}), true
+	return p.editGeometry(t.lineHeight).Caret(pos).Translate(geometry.Point{X: t.padding, Y: t.padding + t.heights.Top(index) + p.textOffset}), true
 }
 
 func (t *textEditor) paint(p Painter) {
@@ -790,7 +824,7 @@ func (t *textEditor) paint(p Painter) {
 		if paragraph == nil {
 			continue
 		}
-		origin := geometry.Point{X: t.padding - t.offset.X, Y: y}
+		origin := geometry.Point{X: t.padding - t.offset.X, Y: y + paragraph.textOffset}
 		rng := t.displayLineRange(i)
 		if hasSelection && selected.Start < selected.End && selected.Start <= rng.End && selected.End > rng.Start {
 			for _, rect := range paragraph.editGeometry(t.lineHeight).Selection(TextRange{selected.Start - rng.Start, selected.End - rng.Start}) {
@@ -883,7 +917,7 @@ func (t *textEditor) restoreViewportAnchor() {
 	}
 	rng, _ := t.model.LineRange(index)
 	rect := p.editGeometry(t.lineHeight).Caret(textedit.Position{Offset: offset - rng.Start, Upstream: false})
-	t.offset.Y = max(0, t.heights.Top(index)+rect.Y+t.anchor.within)
+	t.offset.Y = max(0, t.heights.Top(index)+p.textOffset+rect.Y+t.anchor.within)
 	// ScrollView may lay out twice before applying its queued scroll request.
 	// Keep the text anchor until LayoutVisible receives the requested offset.
 }
@@ -900,7 +934,7 @@ func (t *textEditor) saveViewportAnchor() {
 	if p == nil {
 		return
 	}
-	y := t.offset.Y - t.heights.Top(index)
+	y := t.offset.Y - t.heights.Top(index) - p.textOffset
 	g := p.editGeometry(t.lineHeight)
 	if t.anchor.valid && t.model.LineAt(t.anchor.offset) == index {
 		rng, _ := t.model.LineRange(index)
@@ -910,7 +944,7 @@ func (t *textEditor) saveViewportAnchor() {
 		// would then walk the anchor backwards through the paragraph. Keep
 		// it while it still explains the viewport, including DIP rounding.
 		// Actual scrolling or extent clamping establishes a new anchor below.
-		if mathx.Round(t.heights.Top(index)+rect.Y+t.anchor.within) == t.offset.Y {
+		if mathx.Round(t.heights.Top(index)+p.textOffset+rect.Y+t.anchor.within) == t.offset.Y {
 			return
 		}
 	}
@@ -941,17 +975,12 @@ func (t *textEditor) layoutSingleLine(size geometry.Size) {
 	if p != nil {
 		t.observedWidth = p.width
 	}
-	center := max(0, (size.Height-2*t.padding-t.lineHeight)/2)
-	t.offset.Y = -center
-	if p != nil && p.textHeight > 0 {
-		if t.hasBaseline {
-			// Align the actual glyph baseline to the stable sample baseline;
-			// centering each string by its own height moves Latin/CJK text.
-			t.offset.Y += p.editGeometry(t.lineHeight).LineMetrics(0).Baseline - t.baseline
-		} else {
-			t.offset.Y = -max(0, (size.Height-2*t.padding-p.textHeight)/2)
-		}
+	height := t.lineHeight
+	if p != nil {
+		height = p.height
 	}
+	center := max(0, (size.Height-2*t.padding-height)/2)
+	t.offset.Y = -center
 	t.offset.X = min(t.offset.X, max(0, t.contentSize().Width-size.Width))
 	if t.revealCaret && size.Width > 0 {
 		if rect, ok := t.caretRect(); ok {
@@ -1435,7 +1464,7 @@ func (t *textEditor) selectionContains(point geometry.Point) bool {
 	if p == nil {
 		return false
 	}
-	point.Y -= t.heights.Top(index)
+	point.Y -= t.heights.Top(index) + p.textOffset
 	g := p.editGeometry(t.lineHeight)
 	contains := func(rect geometry.Rectangle) bool {
 		return point.X >= rect.X && point.X < rect.X+rect.Width && point.Y >= rect.Y && point.Y < rect.Y+rect.Height

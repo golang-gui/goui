@@ -588,5 +588,5 @@ func (lv *ListView) Measure(c layout.Constraint) layout.Measurement {
 	if !lv.Visible() {
 		return layout.Measurement{}
 	}
-	return layout.Measured(lv.constrain(c, c.Min))
+	return layout.Measured(lv.constrain(c, lv.ContentSize()))
 }

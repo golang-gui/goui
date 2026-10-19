@@ -89,9 +89,14 @@ func (t *TextInput) Measure(c layout.Constraint) layout.Measurement {
 		return layout.Measurement{}
 	}
 	t.ensureFormat()
+	height, baseline := t.lineHeight, t.baseline
+	if p := t.paragraph(0); p != nil {
+		height, baseline = p.height, p.baseline
+	}
 	m := layout.Measurement{Size: t.constrain(c, geometry.Size{
-		Width: defaultTextInputWidth, Height: t.lineHeight + 2*t.padding,
-	}), Baseline: t.padding + t.baseline, HasBaseline: t.hasBaseline}
+		Width: defaultTextInputWidth, Height: height + 2*t.padding,
+	}), Baseline: t.padding + baseline, HasBaseline: t.hasBaseline}
+	m.Baseline += max(0, (m.Height-2*t.padding-height)/2)
 	return m
 }
 

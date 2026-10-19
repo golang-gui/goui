@@ -30,7 +30,13 @@ func (l *tableLayout) Measure(children []layout.Child, c layout.Constraint) layo
 	if height < layout.Inf {
 		height = max(0, height-header.Height)
 	}
-	body := children[1].Measure(layout.Loose(geometry.Size{Width: width, Height: height}))
+	bodyConstraint := layout.Loose(geometry.Size{Width: width, Height: height})
+	// A table explicitly fills its bounded body area. ScrollView itself now
+	// follows its child's measured height under loose constraints.
+	if height < layout.Inf {
+		bodyConstraint.Min.Height = height
+	}
+	body := children[1].Measure(bodyConstraint)
 	// The header's summed column width is scrollable content, not a minimum
 	// viewport width. Use the same viewport policy as the internal ScrollView.
 	return layout.Measured(c.Clamp(geometry.Size{Width: body.Width + 2*w, Height: header.Height + body.Height + 2*h}))
