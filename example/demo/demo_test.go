@@ -384,6 +384,39 @@ func TestLanguageChangePreservesDemoModelsAndState(t *testing.T) {
 }
 
 // 默认样例由例程持有；八语言都必须覆盖，而不是只翻译标题和按钮。
+func TestEmptyDemoEditorsSurviveLanguageChanges(t *testing.T) {
+	previous := mlang.Language()
+	t.Cleanup(func() { _ = mlang.SetLanguage(previous) })
+	if err := mlang.SetLanguage("en"); err != nil {
+		t.Fatal(err)
+	}
+	d, err := newDemo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.app = new(demoTestApp)
+	defer d.stopActivities()
+	model, original := d.text, d.text.Text()
+	d.input.Set("")
+	if err := model.ReplaceAtomic(ui.TextRange{Start: 0, End: model.Len()}, ""); err != nil {
+		t.Fatal(err)
+	}
+	revision := model.Revision()
+	for _, choice := range demoLanguages {
+		if err := mlang.SetLanguage(choice.tag); err != nil {
+			t.Fatal(err)
+		}
+		d.translateUI()
+		_ = d.textPage()
+		if d.text != model || model.Text() != "" || d.input.Get() != "" || model.Revision() != revision || !model.CanUndo() || model.CanRedo() {
+			t.Fatalf("%s: rebuilding empty editors overwrote user content or history", choice.tag)
+		}
+	}
+	if !model.Undo() || model.Text() != original || !model.Redo() || model.Text() != "" {
+		t.Fatal("translation changed the clear operation's undo/redo transaction")
+	}
+}
+
 func TestDemoSamplesUseCurrentLanguage(t *testing.T) {
 	previous := mlang.Language()
 	t.Cleanup(func() { _ = mlang.SetLanguage(previous) })
