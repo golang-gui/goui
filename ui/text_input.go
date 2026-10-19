@@ -9,6 +9,7 @@ import (
 type TextInputView struct {
 	ViewBase[TextInputView]
 	text        string
+	placeholder string
 	onText      func(string)
 	onSelection func(TextSelection)
 	onSubmit    func()
@@ -54,6 +55,12 @@ func (v *TextInputView) BindSelection(state BindState[TextSelection]) *TextInput
 func (v *TextInputView) Text(text string) *TextInputView {
 	v.text = text
 	v.fields.Set(textInputText, true)
+	return v
+}
+
+// Placeholder sets the empty-field hint. Omitted restores an empty hint.
+func (v *TextInputView) Placeholder(text string) *TextInputView {
+	v.placeholder = text
 	return v
 }
 
@@ -130,6 +137,7 @@ func (v *TextInputView) Update(ctx BuildContext, widget gui.Widget) {
 		input.SetText(v.text)
 	}
 	input.SetReadOnly(v.readOnly)
+	input.SetPlaceholder(v.placeholder)
 	if v.fields.Check(textInputSelection) && input.Selection() != v.selection {
 		input.SetSelection(v.selection)
 	}
