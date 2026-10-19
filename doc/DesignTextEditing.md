@@ -427,6 +427,43 @@ GUI 当前选择。单行省略 Text 时保留编辑器内容，显式 Text("") 
 命令式监听者，不另外实现 IME/撤销。modern 同时提供两种编辑器的正文、selection
 和 caret 样式；选中文字保持正文颜色，主题极端色也检查文字对比度。
 
+### TextInput / TextView 的 Placeholder
+
+两个控件均提供 `Placeholder() string` / `SetPlaceholder(string)`，UI 对应
+`.Placeholder(string)`；默认空字符串关闭提示。UI 更新省略该属性时恢复为空，
+与省略 Text 时保留用户编辑内容的契约独立。
+
+提示在文档字节长度为零且没有 IME 预编辑时显示，聚焦后继续显示。空格或 LF
+均属于真实内容；只读和禁用不关闭提示。取消预编辑恢复空文档提示，提交后显示正文。
+设置提示不改变模型版本、选区、历史、光标、预编辑或编辑信号，只请求绘制和语义更新。
+TextInput 沿用 NormalizeSingleLine；TextView 沿用 Normalize，保留显式换行。
+
+实现位于每控件独立的私有 textEditor，提示及原生缓存属于视图，不进入 TextModel /
+textedit。共享模型的视图可以配置不同提示，一侧的预编辑不改变另一侧的提示状态；
+SetModel 保留提示。Snapshot 的 TextEditingInfo.Placeholder 单独报告配置，文本值、
+Length、VisibleText、选区、复制及 IME surrounding text 仍仅描述正文。
+
+提示沿用正文的字体、Padding、起始对齐和裁剪区，绘制在光标之前。单行不换行，
+按既有稳定基线垂直放置；多行从正文首行开始，按 WrapMode 和可用宽度换行。
+提示不参与 Measure、ContentSize、段落高度、滚动条、命中测试或选区几何；超出视口裁剪。
+text-input / text-view 的 placeholder part 只读取前景色，Basic 提供中性灰和禁用灰，
+Modern 使用现有 muted / disabled；字体指标由正文样式确定。
+
+每视图至多保留一个原生提示布局，首次可见绘制时创建。提示文本、字体、换行方式、
+影响换行的宽度变化时释放重建；颜色变化原位更新；卸载时释放，重挂载后按需创建。
+提示只在 GUI 线程访问，释放前清空所属引用，颜色通知回调后检查生命周期和缓存身份。
+现有平台 TextLayout 足够，不新增平台接口；其 SetPlaceholder 的行内 U+FFFC 度量
+与这里的空内容提示是不同概念。
+
+参考与取舍（2026-10-19）：Qt 6.12 在线文档中的
+[QLineEdit](https://doc.qt.io/qt-6/qlineedit.html#placeholderText-prop)、
+[QPlainTextEdit](https://doc.qt.io/qt-6/qplaintextedit.html#placeholderText-prop) 和
+[QTextEdit](https://doc.qt.io/qt-6/qtextedit.html#placeholderText-prop) 均提供独立提示属性；
+QLineEdit 通常聚焦后仍显示提示，居中对齐有例外。
+GTK 4.24.1 在线 [Entry 文档](https://docs.gtk.org/gtk4/property.Entry.placeholder-text.html)
+描述为空且未聚焦时显示。GOUI 采用聚焦后保留提示，适合自动聚焦的查找框；
+多行、IME、视图隔离和滚动范围规则是本项目明确约定，不从参考文档推断原生实现。
+
 ### 文本与选区值绑定
 
 TextInputView / TextViewView 的可选声明使用普通值字段和各自独立的

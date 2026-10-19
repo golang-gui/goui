@@ -32,6 +32,14 @@ func NewTextInput() *TextInput {
 
 func (t *TextInput) Text() string { return t.model.Text() }
 
+// Placeholder is the normalized hint shown while the field is empty and has
+// no IME preedit, including while focused. It is independent of the text value.
+func (t *TextInput) Placeholder() string { return t.placeholder }
+
+// SetPlaceholder sets a single-line hint, normalizing text as SetText does.
+// Empty disables it. It does not change content, selection, history or IME.
+func (t *TextInput) SetPlaceholder(text string) { t.setPlaceholder(text) }
+
 // SetText reloads normalized single-line text: CR/CRLF become LF, each LF
 // becomes a space, and invalid UTF-8 is replaced. A changed value cancels IME,
 // clears history and puts the caret at the end. Equal text is a complete no-op.

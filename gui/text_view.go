@@ -42,6 +42,14 @@ func NewTextView() *TextView {
 
 func (t *TextView) Model() *TextModel { return t.model }
 
+// Placeholder is the normalized hint shown while the document is empty and
+// has no IME preedit, including while focused. It belongs to this view only.
+func (t *TextView) Placeholder() string { return t.placeholder }
+
+// SetPlaceholder sets a hint, preserving normalized LF breaks and following
+// WrapMode. Empty disables it. It does not affect the model or content size.
+func (t *TextView) SetPlaceholder(text string) { t.setPlaceholder(text) }
+
 // SetModel resets selection and scrolling, leaving the old model/history
 // intact. nil creates an empty model; passing the current model is a no-op.
 func (t *TextView) SetModel(model *TextModel) { t.setModel(model) }
