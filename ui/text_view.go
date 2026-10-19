@@ -26,6 +26,7 @@ type TextViewView struct {
 	ViewBase[TextViewView]
 	model       *TextModel
 	text        string
+	placeholder string
 	selection   TextSelection
 	padding     float32
 	wrap        WrapMode
@@ -64,6 +65,12 @@ func (v *TextViewView) Model(model *TextModel) *TextViewView { v.model = model; 
 func (v *TextViewView) Text(text string) *TextViewView {
 	v.text = text
 	v.fields.Set(textViewText, true)
+	return v
+}
+
+// Placeholder sets the empty-document hint. Omitted restores an empty hint.
+func (v *TextViewView) Placeholder(text string) *TextViewView {
+	v.placeholder = text
 	return v
 }
 
@@ -173,6 +180,7 @@ func (v *TextViewView) Update(ctx BuildContext, widget gui.Widget) {
 		model = s.model
 	}
 	w.SetModel(model)
+	w.SetPlaceholder(v.placeholder)
 	if v.fields.Check(textViewText) {
 		w.Model().SetText(v.text)
 	}
