@@ -12,6 +12,13 @@ GOUI is a native GUI framework written entirely in Go. Build both your interface
 
 The current version provides the foundations and controls needed for small desktop applications; public APIs are still evolving.
 
+## Companion projects
+
+| Project | Purpose |
+| --- | --- |
+| [goui-sourceview](https://github.com/golang-gui/goui-sourceview) | Code editor extension with syntax highlighting, completion, bracket matching, and find/replace. |
+| [applesdk](https://github.com/golang-gui/applesdk) | Pure Go macOS SDK bindings for services including StoreKit, iCloud, and CloudKit. |
+
 ## Try the demo
 
 The [demo](example/demo) brings together controls, text editing, layouts, data views, detachable
@@ -98,9 +105,6 @@ RSS includes resident shared-library pages; PSS apportions shared pages between 
 - **Application facilities:** timers on the GUI thread, frame-driven numeric animation, system settings, eight-language framework resources, file dialogs and access credentials, and opening URLs/files through system handlers.
 
 Core controls live in `gui`, with declarative bindings in `ui`. Additional controls live in `widgets`, with their declarative bindings in `widgets/ui`.
-
-[GOUI SourceView](https://github.com/golang-gui/goui-sourceview) is an optional code editor
-extension with syntax highlighting, completion, bracket matching, and find/replace.
 
 ## Build with an AI coding assistant
 

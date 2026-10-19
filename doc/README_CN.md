@@ -12,6 +12,13 @@ GOUI 是纯Go实现的原生 GUI 框架。用 Go 编写界面与业务逻辑，�
 
 当前版本已具备开发小型桌面应用所需的基础机制和控件，公共 API 仍在完善。
 
+## 配套项目
+
+| 项目 | 用途 |
+| --- | --- |
+| [goui-sourceview](https://github.com/golang-gui/goui-sourceview) | 代码编辑器扩展，支持语法高亮、补全、括号匹配和查找替换。 |
+| [applesdk](https://github.com/golang-gui/applesdk) | 纯 Go 的 macOS SDK 绑定，提供 StoreKit、iCloud 和 CloudKit 等服务。 |
+
 ## 体验 Demo
 
 [Demo](../example/demo) 集中展示基础控件、文本编辑、布局、数据视图、可拖出的
@@ -98,9 +105,6 @@ RSS 包含驻留的共享库页面，PSS 按进程分摊共享页面；由Linux 
 - **应用设施：** GUI 线程定时器、帧驱动数值动画、系统设置、八语言框架资源、文件对话框和访问凭据，以及通过系统默认应用打开链接／文件。
 
 核心控件位于 `gui`，声明式绑定位于 `ui`，配套控件位于 `widgets`，对应声明式绑定位于 `widgets/ui`。
-
-[GOUI SourceView](https://github.com/golang-gui/goui-sourceview) 是可选的代码编辑器扩展，
-提供语法高亮、补全、括号匹配和查找替换。
 
 ## 使用 AI 编写应用
 
