@@ -449,6 +449,12 @@ Pango / DirectWrite / CoreText 的 TestTabWidth 已分别在 Linux / Windows / m
 本修正不承诺任意局部更新序列都已合并为最小区间，原生内部 shaping/raster 工作仍由后端决定。
 
 
+### 延迟换宽
+
+可选 `ReflowLayout` 的调度、快照与阶段限制见
+[可视区缓存与分步换宽](DesignViewportTextLayout.md#当前入口与阶段边界)。
+不改变同步 TextLayout 的完整度量和绘制契约。
+
 ### RTL cluster 起点
 
 Pango 的 LayoutIter 在 RTL cluster 上定位到最后一个字符，不能将 GetIndex
