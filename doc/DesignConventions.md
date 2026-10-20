@@ -57,10 +57,17 @@ GetMessage、PeekMessage、DispatchMessage 等消息入口，以及已确认会�
 分配一个 MSG 并复用，每次取消息前清零；`new` 本身不保证堆分配，由调用边界保障
 逃逸，并核对编译器结果。
 
-普通查询和绘图沿用 Syscall/CallRaw；结构体按值及浮点等 ABI 转换继续采用原有
+普通查询和绘图沿用 Syscall/CallRaw；CallRaw 的每层 uintptr 转发入口必须在地址
+转换处提供 uintptrescapes 契约，最底层 syscall 的声明不能补救上游已丢失的指针语义。
+GOUI 原生封装依赖 cgo 的函数、Symbol、LazySymbol 三种入口；nanovgo GL 的外层
+call 也必须保留该契约。修复所需依赖版本与当前可发布状态见 [FFI 检查记录](PlanFFI.md)。
+结构体按值及浮点等 ABI 转换继续采用原有
 `cgo.Call/CallRet`。Call/CallRet 有反射与参数构造成本，不能为统一写法搬入绘图热路径。
-检查原生回调之外，也须留意地址转换后、中间 Go 包装调用的栈增长；有具体风险时
-在该入口保证逃逸或固定内存，不把参数变成 uintptr 后才补 KeepAlive 当作地址防护。
+检查原生回调之外，也须留意地址转换后、中间 Go 包装调用的栈增长；保留 typed pointer
+直到受保护的调用入口，不预先构造 Go 地址整数或 uintptr 参数表再交给桥接层。
+原生调用返回后继续保存 Go 地址时，资源所有者负责持有并固定缓冲区，释放原生对象后再 Unpin；
+例如文本光栅器的 Cairo surface/CoreGraphics context，以及软件上传期间的 XImage。
+不可复制已使用的 Pinner 值；有显式资源转移的 painter 使用指向 Pinner 的所有权指针。
 已经按生命周期固定的 OLE 对象继续由原所有者管理。原生函数若在返回后保留数据，
 仍须另外满足其所有权和长期有效期契约。
 
