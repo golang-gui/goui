@@ -74,7 +74,8 @@ CLI的临时子模块测试继承到不包含该子模块的go.work。随后在�
 
 提交前又从三仓暂存区分别导出源码快照，排除工作区原有未跟踪文件，在隔离副本中
 用修复后的本地依赖执行 GOWORK=off 的全包普通/race 测试，三仓均通过。
-GOUI 在独立 Xvnc :178 / Xfwm4、Linux/Pango、软件渲染1倍缩放下验证；
+GOUI 在独立 Xvnc :178、Linux/Pango、软件渲染1倍缩放下验证；
+本轮 Xfwm4 因 Xfconf 初始化失败退出，实际没有窗口管理器，不计为 WM 场景验收。
 NextEvent、PeekEvent 各4096次复验通过。快照初次运行cgo旧测试缺少
 testdata/test.dll；随后在副本内从已跟踪的libtest.c编译该fixture及libtest.so，
 并从libcallback.c编译libcallback.so，再执行全部测试通过，没有把生成库纳入提交。
