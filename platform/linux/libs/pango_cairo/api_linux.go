@@ -17,6 +17,8 @@ var (
 	pangoCairoUpdateContext         = libpangocairo.NewSymbol("pango_cairo_update_context")
 	pangoCairoUpdateLayout          = libpangocairo.NewSymbol("pango_cairo_update_layout")
 	pangoCairoShowLayout            = libpangocairo.NewSymbol("pango_cairo_show_layout")
+	pangoCairoFontGetScaledFont     = libpangocairo.NewSymbol("pango_cairo_font_get_scaled_font")
+	pangoCairoGlyphStringPath       = libpangocairo.NewSymbol("pango_cairo_glyph_string_path")
 )
 
 // CreateContext creates a PangoContext for the given Cairo context.
@@ -61,4 +63,15 @@ func ContextSetFontOptions(context pango.Context, options cairo.FontOptions) {
 func ShowLayout(cr cairo.Context, layout pango.Layout) {
 	// void	pango_cairo_show_layout(cairo_t* cr, PangoLayout* layout)
 	pangoCairoShowLayout.CallRaw(uintptr(cr), layout.GObject)
+}
+
+// FontScaledFont borrows the Cairo font owned by the supplied PangoCairo font.
+func FontScaledFont(font pango.Font) cairo.ScaledFont {
+	return cgo.CallRet[cairo.ScaledFont](pangoCairoFontGetScaledFont.Addr(), font)
+}
+
+// GlyphStringPath appends native glyph outlines (including missing-glyph boxes)
+// at the current baseline. It does not change the current source color/alpha.
+func GlyphStringPath(cr cairo.Context, font pango.Font, glyphs *pango.GlyphString) {
+	cgo.Call(pangoCairoGlyphStringPath.Addr(), cr, font, glyphs)
 }

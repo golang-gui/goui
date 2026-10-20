@@ -14,29 +14,32 @@ var (
 	libpangofc = cgo.NewLazyLibrary("libpangoft2-1.0.so.0")
 
 	// PangoLayout
-	pangoLayoutNew                = libpango.NewSymbol("pango_layout_new")
-	pangoLayoutSetText            = libpango.NewSymbol("pango_layout_set_text")
-	pangoLayoutSetTabs            = libpango.NewSymbol("pango_layout_set_tabs")
-	pangoTabArrayNew              = libpango.NewSymbol("pango_tab_array_new")
-	pangoTabArraySetTab           = libpango.NewSymbol("pango_tab_array_set_tab")
-	pangoTabArrayFree             = libpango.NewSymbol("pango_tab_array_free")
-	pangoLayoutSetWidth           = libpango.NewSymbol("pango_layout_set_width")
-	pangoLayoutSetWrap            = libpango.NewSymbol("pango_layout_set_wrap")
-	pangoLayoutSetAlignment       = libpango.NewSymbol("pango_layout_set_alignment")
-	pangoLayoutSetJustify         = libpango.NewSymbol("pango_layout_set_justify")
-	pangoLayoutSetAutoDir         = libpango.NewSymbol("pango_layout_set_auto_dir")
-	pangoLayoutSetSpacing         = libpango.NewSymbol("pango_layout_set_spacing")
-	pangoLayoutSetAttributes      = libpango.NewSymbol("pango_layout_set_attributes")
-	pangoLayoutSetFontDescription = libpango.NewSymbol("pango_layout_set_font_description")
-	pangoLayoutGetContext         = libpango.NewSymbol("pango_layout_get_context")
-	pangoLayoutGetSize            = libpango.NewSymbol("pango_layout_get_size")
-	pangoLayoutGetIter            = libpango.NewSymbol("pango_layout_get_iter")
-	pangoLayoutGetExtents         = libpango.NewSymbol("pango_layout_get_extents")
-	pangoLayoutGetLineCount       = libpango.NewSymbol("pango_layout_get_line_count")
-	pangoLayoutGetLineReadonly    = libpango.NewSymbol("pango_layout_get_line_readonly")
-	pangoLayoutGetCursorPos       = libpango.NewSymbol("pango_layout_get_cursor_pos")
-	pangoLayoutIndexToLineX       = libpango.NewSymbol("pango_layout_index_to_line_x")
-	pangoLayoutContextChanged     = libpango.NewSymbol("pango_layout_context_changed")
+	pangoLayoutCopy                = libpango.NewSymbol("pango_layout_copy")
+	pangoLayoutGetAttributes       = libpango.NewSymbol("pango_layout_get_attributes")
+	pangoLayoutNew                 = libpango.NewSymbol("pango_layout_new")
+	pangoLayoutSetText             = libpango.NewSymbol("pango_layout_set_text")
+	pangoLayoutSetTabs             = libpango.NewSymbol("pango_layout_set_tabs")
+	pangoTabArrayNew               = libpango.NewSymbol("pango_tab_array_new")
+	pangoTabArraySetTab            = libpango.NewSymbol("pango_tab_array_set_tab")
+	pangoTabArrayFree              = libpango.NewSymbol("pango_tab_array_free")
+	pangoLayoutSetWidth            = libpango.NewSymbol("pango_layout_set_width")
+	pangoLayoutSetWrap             = libpango.NewSymbol("pango_layout_set_wrap")
+	pangoLayoutSetAlignment        = libpango.NewSymbol("pango_layout_set_alignment")
+	pangoLayoutSetJustify          = libpango.NewSymbol("pango_layout_set_justify")
+	pangoLayoutSetAutoDir          = libpango.NewSymbol("pango_layout_set_auto_dir")
+	pangoLayoutSetSpacing          = libpango.NewSymbol("pango_layout_set_spacing")
+	pangoLayoutSetAttributes       = libpango.NewSymbol("pango_layout_set_attributes")
+	pangoLayoutSetFontDescription  = libpango.NewSymbol("pango_layout_set_font_description")
+	pangoLayoutGetContext          = libpango.NewSymbol("pango_layout_get_context")
+	pangoLayoutGetSize             = libpango.NewSymbol("pango_layout_get_size")
+	pangoLayoutGetIter             = libpango.NewSymbol("pango_layout_get_iter")
+	pangoLayoutGetExtents          = libpango.NewSymbol("pango_layout_get_extents")
+	pangoLayoutGetLineCount        = libpango.NewSymbol("pango_layout_get_line_count")
+	pangoLayoutGetLineReadonly     = libpango.NewSymbol("pango_layout_get_line_readonly")
+	pangoLayoutGetLogAttrsReadonly = libpango.NewSymbol("pango_layout_get_log_attrs_readonly")
+	pangoLayoutGetCursorPos        = libpango.NewSymbol("pango_layout_get_cursor_pos")
+	pangoLayoutIndexToLineX        = libpango.NewSymbol("pango_layout_index_to_line_x")
+	pangoLayoutContextChanged      = libpango.NewSymbol("pango_layout_context_changed")
 
 	// PangoLayoutIter
 	pangoLayoutIterCopy              = libpango.NewSymbol("pango_layout_iter_copy")
@@ -49,16 +52,31 @@ var (
 	pangoLayoutIterGetRunExtents     = libpango.NewSymbol("pango_layout_iter_get_run_extents")
 	pangoLayoutIterNextRun           = libpango.NewSymbol("pango_layout_iter_next_run")
 	pangoGlyphStringIndexToX         = libpango.NewSymbol("pango_glyph_string_index_to_x")
+	pangoItemCopy                    = libpango.NewSymbol("pango_item_copy")
+	pangoItemSplit                   = libpango.NewSymbol("pango_item_split")
+	pangoItemFree                    = libpango.NewSymbol("pango_item_free")
+	pangoGlyphItemApplyAttrs         = libpango.NewSymbol("pango_glyph_item_apply_attrs")
+	pangoGlyphItemCopy               = libpango.NewSymbol("pango_glyph_item_copy")
+	pangoGlyphItemFree               = libpango.NewSymbol("pango_glyph_item_free")
+	pangoGlyphItemGetLogicalWidths   = libpango.NewSymbol("pango_glyph_item_get_logical_widths")
+	pangoGlyphStringNew              = libpango.NewSymbol("pango_glyph_string_new")
+	pangoGlyphStringCopy             = libpango.NewSymbol("pango_glyph_string_copy")
+	pangoGlyphStringFree             = libpango.NewSymbol("pango_glyph_string_free")
+	pangoGlyphStringGetWidth         = libpango.NewSymbol("pango_glyph_string_get_width")
+	pangoGlyphStringExtents          = libpango.NewSymbol("pango_glyph_string_extents")
+	pangoShapeItem                   = libpango.NewSymbol("pango_shape_item")
 	pangoLayoutIterGetClusterExtents = libpango.NewSymbol("pango_layout_iter_get_cluster_extents")
 	pangoLayoutIterNextLine          = libpango.NewSymbol("pango_layout_iter_next_line")
 	pangoLayoutIterNextCluster       = libpango.NewSymbol("pango_layout_iter_next_cluster")
 
 	// PangoLayoutLine
-	pangoLayoutLineGetExtents = libpango.NewSymbol("pango_layout_line_get_extents")
-	pangoLayoutLineXToIndex   = libpango.NewSymbol("pango_layout_line_x_to_index")
+	pangoLayoutLineGetExtents           = libpango.NewSymbol("pango_layout_line_get_extents")
+	pangoLayoutLineXToIndex             = libpango.NewSymbol("pango_layout_line_x_to_index")
+	pangoLayoutLineGetResolvedDirection = libpango.NewSymbol("pango_layout_line_get_resolved_direction")
 
 	// PangoAttrList
 	pangoAttrListFilter = libpango.NewSymbol("pango_attr_list_filter")
+	pangoAttrListCopy   = libpango.NewSymbol("pango_attr_list_copy")
 	pangoAttrListNew    = libpango.NewSymbol("pango_attr_list_new")
 	pangoAttrListUnref  = libpango.NewSymbol("pango_attr_list_unref")
 	pangoAttrListInsert = libpango.NewSymbol("pango_attr_list_insert")
@@ -94,6 +112,7 @@ var (
 	pangoFontMetricsUnref                     = libpango.NewSymbol("pango_font_metrics_unref")
 	pangoFontMetricsGetStrikethroughPosition  = libpango.NewSymbol("pango_font_metrics_get_strikethrough_position")
 	pangoFontMetricsGetStrikethroughThickness = libpango.NewSymbol("pango_font_metrics_get_strikethrough_thickness")
+	pangoFontMetricsGetApproximateCharWidth   = libpango.NewSymbol("pango_font_metrics_get_approximate_char_width")
 	pangoFontFaceGetFaceName                  = libpango.NewSymbol("pango_font_face_get_face_name")
 	pangoFontDescriptionSetWeight             = libpango.NewSymbol("pango_font_description_set_weight")
 	pangoFontDescriptionSetStretch            = libpango.NewSymbol("pango_font_description_set_stretch")
@@ -130,6 +149,17 @@ func LayoutNew(context Context) (l Layout) {
 	// PangoLayout* pango_layout_new(PangoContext* context)
 	l.GObject, _, _ = pangoLayoutNew.CallRaw(context.GObject)
 	return
+}
+
+// Copy returns an independently mutable layout owned by the caller.
+func (l Layout) Copy() (out Layout) {
+	out.GObject = cgo.CallRet[uintptr](pangoLayoutCopy.Addr(), l.GObject)
+	return
+}
+
+// Attributes borrows the layout attribute list.
+func (l Layout) Attributes() AttrList {
+	return cgo.CallRet[AttrList](pangoLayoutGetAttributes.Addr(), l.GObject)
 }
 
 // SetTabs copies tabs into the layout; zero restores Pango's defaults.
@@ -361,7 +391,6 @@ func (ll *LayoutLine) GetExtents() (inkRect, logicalRect Rectangle) {
 }
 
 func (ll *LayoutLine) GetRuns() (runs []GlyphItem) {
-	runs = make([]GlyphItem, 0, ll.Length)
 	for run := ll.runs; run != nil; run = run.Next {
 		runs = append(runs, *run.Data)
 	}
@@ -382,6 +411,10 @@ func (ll *LayoutLine) IsParagraphStart() bool {
 	return ll.flags&0x01 != 0
 }
 
+func (ll *LayoutLine) ResolvedDirection() Direction {
+	return cgo.CallRet[Direction](pangoLayoutLineGetResolvedDirection.Addr(), ll)
+}
+
 // --- LayoutRun ---
 
 type LayoutRun = GlyphItem
@@ -394,6 +427,96 @@ type GlyphItem struct {
 	YOffset      int32
 	StartXOffset int32
 	EndXOffset   int32
+}
+
+// Copy owns a deep native copy, including its font references. Free it before
+// destroying the font facilities. It does not retain orig or its layout.
+// GlyphItemNew takes ownership of a native Item and GlyphString. Free the
+// result with Free. item must originate from Pango, not a Go struct.
+func GlyphItemNew(item *Item, glyphs *GlyphString) *GlyphItem {
+	p := (*GlyphItem)(glib.SliceAlloc0(unsafe.Sizeof(GlyphItem{})))
+	p.Item, p.Glyphs = item, glyphs
+	return p
+}
+
+// ApplyAttributes transfers ownership of g to the returned list, splitting
+// only at glyph clusters. Free each item and then the list nodes.
+func (g *GlyphItem) ApplyAttributes(text *byte, attrs AttrList) *glib.GSList[GlyphItem] {
+	return cgo.CallRet[*glib.GSList[GlyphItem]](pangoGlyphItemApplyAttrs.Addr(), g, text, attrs)
+}
+
+func (orig *GlyphItem) Copy() *GlyphItem {
+	return cgo.CallRet[*GlyphItem](pangoGlyphItemCopy.Addr(), orig)
+}
+
+func (g *GlyphItem) Free() { cgo.Call(pangoGlyphItemFree.Addr(), g) }
+
+// LogicalWidths writes one native Pango-unit advance per Unicode character.
+// text points to the entire paragraph, not item.Offset. Inputs are borrowed
+// only for this synchronous call; widths must contain Item.NumChars entries.
+func (g *GlyphItem) LogicalWidths(text *byte, widths []int32) {
+	if len(widths) < int(g.Item.NumChars) {
+		panic("pango: short logical widths buffer")
+	}
+	if len(widths) > 0 {
+		cgo.Call(pangoGlyphItemGetLogicalWidths.Addr(), g, text, &widths[0])
+	}
+}
+
+// LogAttr is the public PangoLogAttr guint bitfield. It describes a character
+// position; the terminal entry follows the final character.
+type LogAttr uint32
+
+func (a LogAttr) LineBreak() bool        { return a&1 != 0 }
+func (a LogAttr) MandatoryBreak() bool   { return a&2 != 0 }
+func (a LogAttr) CharBreak() bool        { return a&4 != 0 }
+func (a LogAttr) White() bool            { return a&8 != 0 }
+func (a LogAttr) CursorPosition() bool   { return a&16 != 0 }
+func (a LogAttr) InsertsHyphen() bool    { return a&(1<<13) != 0 }
+func (a LogAttr) RemovesPreceding() bool { return a&(1<<14) != 0 }
+
+// LogAttrs borrows read-only attributes until the layout is changed or freed.
+func (l Layout) LogAttrs() []LogAttr {
+	var n int32
+	p := cgo.CallRet[*LogAttr](pangoLayoutGetLogAttrsReadonly.Addr(), l.GObject, &n)
+	return cgo.GoSliceNTemp[LogAttr](cgo.Pointer(p), int(n))
+}
+
+func GlyphStringNew() *GlyphString {
+	return cgo.CallRet[*GlyphString](pangoGlyphStringNew.Addr())
+}
+
+func (g *GlyphString) Free() { cgo.Call(pangoGlyphStringFree.Addr(), g) }
+func (g *GlyphString) Copy() *GlyphString {
+	return cgo.CallRet[*GlyphString](pangoGlyphStringCopy.Addr(), g)
+}
+func (g *GlyphString) Width() int32 {
+	return cgo.CallRet[int32](pangoGlyphStringGetWidth.Addr(), g)
+}
+
+// LogClusters borrows the byte offset associated with each glyph, relative to
+// the shaped item. The returned storage has the same lifetime as g.
+func (g GlyphString) LogClusters() []int32 {
+	return cgo.GoSliceNTemp[int32](cgo.Pointer(g.logClusters), int(g.NumGlyphs))
+}
+
+// GlyphInfos borrows the public native glyph array. Unlike GetGlyphInfos it
+// does not copy. Mutations must be confined to an owned GlyphString and finish
+// before rendering; the view expires when g is resized or freed.
+func (g GlyphString) GlyphInfos() []GlyphInfo {
+	return cgo.GoSliceNTemp[GlyphInfo](cgo.Pointer(g.glyphs), int(g.NumGlyphs))
+}
+
+func (g *GlyphString) Extents(font Font) (ink, logical Rectangle) {
+	cgo.Call(pangoGlyphStringExtents.Addr(), g, font, &ink, &logical)
+	return
+}
+
+// ShapeItem reads the complete paragraph and the log attributes starting at
+// item's character position. It writes owned glyph storage into glyphs, and
+// retains none of the input pointers. flags is the native PangoShapeFlags value.
+func ShapeItem(item *Item, text *byte, length int, attrs *LogAttr, glyphs *GlyphString, flags uint32) {
+	cgo.Call(pangoShapeItem.Addr(), item, text, int32(length), attrs, glyphs, flags)
 }
 
 type GlyphString struct {
@@ -445,6 +568,16 @@ type Item struct {
 	Analysis Analysis
 }
 
+// Copy returns a deep native copy, including Pango's private item fields.
+func (i *Item) Copy() *Item { return cgo.CallRet[*Item](pangoItemCopy.Addr(), i) }
+func (i *Item) Free()       { cgo.Call(pangoItemFree.Addr(), i) }
+
+// Split removes a prefix (bytes, Unicode characters) from i and returns it.
+// Both resulting items are owned by the caller.
+func (i *Item) Split(bytes, chars int) *Item {
+	return cgo.CallRet[*Item](pangoItemSplit.Addr(), i, int32(bytes), int32(chars))
+}
+
 type Analysis struct {
 	ShapeEngine uintptr
 	LangEngine  uintptr
@@ -467,6 +600,9 @@ var removeAttrType = cgo.NewCallback(func(attr *Attribute, data uintptr) int32 {
 	}
 	return 0
 })
+
+// Copy returns an independent owned attribute list.
+func (al AttrList) Copy() AttrList { return cgo.CallRet[AttrList](pangoAttrListCopy.Addr(), al) }
 
 // RemoveType removes and destroys every attribute of this type.
 func (al AttrList) RemoveType(kind AttrType) {
@@ -680,6 +816,9 @@ func (m FontMetrics) GetStrikethroughPosition() int {
 }
 func (m FontMetrics) GetStrikethroughThickness() int {
 	return int(cgo.CallRet[int32](pangoFontMetricsGetStrikethroughThickness.Addr(), m))
+}
+func (m FontMetrics) ApproximateCharWidth() int32 {
+	return cgo.CallRet[int32](pangoFontMetricsGetApproximateCharWidth.Addr(), m)
 }
 
 type FontFace uintptr
