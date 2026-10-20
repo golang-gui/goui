@@ -827,7 +827,7 @@ func (t *textEditor) paint(p Painter) {
 		origin := geometry.Point{X: t.padding - t.offset.X, Y: y + paragraph.textOffset}
 		rng := t.displayLineRange(i)
 		if hasSelection && selected.Start < selected.End && selected.Start <= rng.End && selected.End > rng.Start {
-			for _, rect := range paragraph.editGeometry(t.lineHeight).Selection(TextRange{selected.Start - rng.Start, selected.End - rng.Start}) {
+			for _, rect := range t.visibleSelection(paragraph, TextRange{selected.Start - rng.Start, selected.End - rng.Start}, origin) {
 				p.FillRect(rect.Translate(origin), graphics.ColorOf(selectionColor))
 			}
 			if selected.Start <= rng.End && selected.End > rng.End && i+1 < t.displayLineCount() {
@@ -842,7 +842,7 @@ func (t *textEditor) paint(p Painter) {
 		if composition := t.preedit; composition != nil {
 			if color, ok := t.resolvedStyle("caret").ForegroundColor(); ok {
 				rangeInLine := TextRange{composition.Replacement().Start - rng.Start, composition.Replacement().Start + len(composition.Text()) - rng.Start}
-				for _, rect := range paragraph.editGeometry(t.lineHeight).Selection(rangeInLine) {
+				for _, rect := range t.visibleSelection(paragraph, rangeInLine, origin) {
 					rect.Y += rect.Height - 1
 					rect.Height = 1
 					p.FillRect(rect.Translate(origin), graphics.ColorOf(color))
@@ -863,6 +863,16 @@ func (t *textEditor) paint(p Painter) {
 			}
 		}
 	}
+}
+
+func (t *textEditor) visibleSelection(p *textParagraph, rng TextRange, origin geometry.Point) []geometry.Rectangle {
+	if t.viewport.Height <= 2*t.padding {
+		return nil
+	}
+	g := p.editGeometry(t.lineHeight)
+	first := g.LineAtY(t.padding - origin.Y)
+	end := g.LineAtY(t.viewport.Height-t.padding-origin.Y) + 1
+	return g.SelectionLines(rng, first, end)
 }
 
 func (t *textEditor) snapshot() WidgetInfo {
@@ -948,10 +958,7 @@ func (t *textEditor) saveViewportAnchor() {
 			return
 		}
 	}
-	line := 0
-	for line+1 < g.LineCount() && y >= g.LineMetrics(line).Y+g.LineMetrics(line).Height {
-		line++
-	}
+	line := g.LineAtY(y)
 	metrics := g.LineMetrics(line)
 	rng, _ := t.model.LineRange(index)
 	t.anchor = textViewportAnchor{offset: rng.Start + metrics.Start, within: y - metrics.Y, valid: true}
