@@ -47,7 +47,8 @@ TextLayout 符合这一边界；拆分必须保留所需排版上下文，不能
 文档模型、选区和编辑历史继续由上层管理。
 
 单个布局的工作量仍需单独评估。MeasureMetrics 导出整个布局的行和 Cluster 度量，
-Rasterize 也可能产生较大的位图；上层按逻辑行拆分并不能约束超长单行的工作量。
+Rasterize 接受显式像素区域；Painter 仅光栅化可见区域，避免完整超长位图。
+这不约束完整段落 shaping 的工作量，见 [区域光栅化](DesignTextRasterization.md)。
 应明确相关操作的成本、约束和失败行为，分别测量 shaping、度量导出、上层几何
 构建与栅格化；不能仅凭可见段落布局或源文本缓存预算承诺大文本延迟和原生内存上限。
 
@@ -303,8 +304,11 @@ Flutter 的 [PlaceholderDimensions](https://api.flutter.dev/flutter/painting/Pla
 
 ## 8. 栅格化与绘制缓存
 
-`Rasterize(scale float32, buf []byte) (TextBitmap, error)` 将布局输出为调用方拥有的
-CPU 位图。scale 必须有限且大于零；空结果可以返回空位图，不代表系统错误。
+`Rasterize(scale float32, region image.Rectangle, buf []byte) (TextBitmap, error)`
+将既有布局的指定像素区域输出为调用方拥有的 CPU 位图。scale 有限且大于零；
+输出严格对应 region，负坐标有效，空区域返回空位图、nil。非空区域中的空白透明，
+后端不收紧范围，不增加 Origin。尺寸/存储限制与完整契约见
+[区域光栅化](DesignTextRasterization.md)。
 
 - TextBitmap 保存 Width、Height、Stride、Pixels，并实现标准 `image.Image`。
 - 像素为 8-bit 预乘 RGBA；按 Stride 逐行访问，不假设原生 surface 的格式或存储方向。
@@ -317,10 +321,10 @@ CPU 位图。scale 必须有限且大于零；空结果可以返回空位图，�
 
 Painter 的位置、clip、Transform 与 HiDPI 不进入 Typography。OpenGL／Software
 在绘制边界根据设备倍率及变换的最大拉伸计算有效栅格倍率，再将物理像素尺寸换回
-布局逻辑尺寸绘制；平移和裁剪本身不改变栅格内容。
+布局逻辑尺寸绘制；先对齐完整布局原点，再选择区域，不为每块重新取整。
 
 OpenGL／Software 的文字 Image 缓存由各 Painter 独立管理，按布局身份与有效倍率
-复用，并订阅布局通知。Direct2D 直接绘制原生 DirectWrite layout；其 Rasterize
+及区域复用，并订阅布局通知。Direct2D 直接绘制原生 DirectWrite layout；其 Rasterize
 能力仍可供离屏输出或其他 Painter 使用。缓存容量、淘汰及绘制路径的详细设计见
 [绘制缓存设计](DesignPaint.md#31-textlayout-光栅能力与-painter-图片缓存核心收益)。
 
