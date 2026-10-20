@@ -116,3 +116,35 @@ func BenchmarkParagraphPhases(b *testing.B) {
 		}
 	}
 }
+
+// Pango's visual RTL iterator starts a cluster at its final character. Public
+// cluster ranges must instead start at the logical UTF-8 boundary of the glyph
+// cluster. e + combining acute must remain one range, even under RLO.
+func TestRTLClusterLogicalStarts(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ctx, err := NewContext()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctx.Destroy()
+	text := "\u202ee\u0301 \u202c"
+	l, err := ctx.NewTextLayout(text, typography.TextFormat{Font: typography.FontInfo{Family: "DejaVu Sans", Size: 12}}, 520, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Destroy()
+	_, clusters := l.MeasureMetrics()
+	found := false
+	for _, c := range clusters {
+		if c.Start <= 3 && c.Start+c.Length > 3 {
+			if c.Start != 3 || c.Length != 3 || c.Direction != typography.TextRightToLeft {
+				t.Fatalf("combining cluster=%+v want logical range[3,6) RTL", c)
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("combining cluster missing")
+	}
+}
