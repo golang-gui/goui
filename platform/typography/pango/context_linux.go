@@ -420,6 +420,9 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 	// produce uninitialized X positions when advancing to the next font run.
 	clusterIter := t.layout.GetIter()
 	defer clusterIter.Free()
+	var currentRun *pango.GlyphItem
+	var clusterStarts []int
+	clusterOrdinal := 0
 	for {
 		nativeLine := iter.GetLineReadonly()
 		if nativeLine == nil {
@@ -439,15 +442,30 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 		for clusterIter.GetLineReadonly() == nativeLine {
 			run := clusterIter.GetRunReadonly()
 			if run != nil && run.Item != nil {
+				if run != currentRun {
+					currentRun, clusterOrdinal = run, 0
+					clusterStarts = clusterStarts[:0]
+					logs := run.Glyphs.LogClusters()
+					for i, offset := range logs {
+						if i == 0 || offset != logs[i-1] {
+							clusterStarts = append(clusterStarts, int(run.Item.Offset+offset))
+						}
+					}
+				}
+				// Pango's RTL iterator index identifies the last character of a
+				// cluster, not its logical start. Take byte starts from the shaped
+				// glyph log instead, in the iterator's same visual cluster order.
+				start := clusterStarts[clusterOrdinal]
+				clusterOrdinal++
 				_, clusterRect := clusterIter.GetClusterExtents()
 				clusters = append(clusters, typography.TextCluster{
-					Start: clusterIter.GetIndex(),
+					Start: start,
 					X:     float32(clusterRect.X) / pango.Scale, Y: line.Y,
 					Width: float32(clusterRect.Width) / pango.Scale, Height: line.Height,
 					LineIndex: len(lines),
 					Direction: typography.TextDirection(run.Item.Analysis.Level & 1),
 				})
-				if placeholder, ok := t.placeholders[clusterIter.GetIndex()]; ok {
+				if placeholder, ok := t.placeholders[start]; ok {
 					cluster := &clusters[len(clusters)-1]
 					cluster.Y, cluster.Height = line.Baseline-placeholder.Baseline, placeholder.Height
 				}

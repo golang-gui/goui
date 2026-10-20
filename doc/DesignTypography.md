@@ -447,3 +447,12 @@ Pango / DirectWrite / CoreText 的 TestTabWidth 已分别在 Linux / Windows / m
 修复前第二轮已有 4 条颜色记录而失败；修复后 1000 轮保持完整前景与局部覆盖的 2 条，
 同时检查多字节源范围转换。DirectWrite 所属包全仓测试通过；本机 GOUI 全仓测试通过。
 本修正不承诺任意局部更新序列都已合并为最小区间，原生内部 shaping/raster 工作仍由后端决定。
+
+
+### RTL cluster 起点
+
+Pango 的 LayoutIter 在 RTL cluster 上定位到最后一个字符，不能将 GetIndex
+直接当作逻辑范围起点。范围起点从当前 GlyphString.log_clusters 的视觉次序
+取得，矩形仍由原生迭代器导出。依据为 Pango 1.50.6
+[update_cluster](https://github.com/GNOME/pango/blob/1.50.6/pango/pango-layout.c#L6984)。
+这对带组合字／连字的 RTL 控制文本同样适用，不能仅按 UTF-8 rune 对齐修补。
