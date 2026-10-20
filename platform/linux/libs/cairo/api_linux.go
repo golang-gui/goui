@@ -49,7 +49,8 @@ func ImageSurfaceCreate(format Format, width, height int) Surface {
 	return Surface(ret)
 }
 
-// ImageSurfaceCreateForData creates an image surface for the provided pixel data.
+// ImageSurfaceCreateForData creates an image surface borrowing the pixel data.
+// The owner must keep the data live and pinned until the surface is destroyed.
 func ImageSurfaceCreateForData(data []byte, format Format, width, height, stride int) Surface {
 	// cairo_surface_t* cairo_image_surface_create_for_data(unsigned char* data, cairo_format_t format, int width, int height, int stride)
 	ret, _, _ := cairoImageSurfaceCreateForData.CallRaw(uintptr(cgo.CSlice(data)), uintptr(format), uintptr(width), uintptr(height), uintptr(stride))
