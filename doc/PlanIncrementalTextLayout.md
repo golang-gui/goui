@@ -8,6 +8,7 @@
 - [x] 分开测量原生排版与度量导出，验证独立文本窗口原型的 bidi 缺陷。
 - [x] 共享几何按行索引、可视行选区查询；TextView／TextInput 和 SourceView 接入。
 - [x] 确定性回归与排版阶段 benchmark。
+- [x] 已排版光标导航复用几何，避免点击触发父层测量与宽度来回重排。
 - [ ] 可恢复、保留上下文的段落分析与 shaping 原语。
 - [ ] Root 预算内推进、测量复用、增量折行及待就绪交互契约。
 - [ ] 两个控件首次超长段落不冻结窗口的桌面验收。
@@ -100,3 +101,63 @@ Selection 的输出分配未改变。此结果说明消除了查询随整段规�
 
 窗口验证已自动关闭，无系统设置或剪贴板写入。全仓既有测试重生成了其原有图片
 输出，未纳入交付；没有迁移、删除或放宽旧测试。新回归没有 skip 分支。
+
+## 光标定位回归修复（2026-10-20）
+
+基线 `b022304`。TextView 的 setSelection 原先无条件 RequestLayout；ScrollView
+内容测量使用完整宽度，LayoutVisible 使用扣除滚动条后的宽度，同一段落缓存
+因此在每次点击后两次失效。32 KiB 连续 ASCII 样本上，原生布局宽度反复
+`733 → 741 → 733`。这是 `cb385b8` 内容尺寸测量路径与原先导航失效策略的
+组合；在几何索引优化前的 `554dbdb` 上也能复现。
+
+修复在有效段落上直接计算光标矩形并按需请求滚动，不改变文档尺寸缓存；
+目标未测量、宽度不符或尚无视口时保留布局请求。TextInput 共用该逻辑并保留
+横向滚动。原有的文本／Padding／IME 布局失效不被消费；滚动通知重入转交后续
+布局，回调替换模型、修改选择、卸载或销毁后不再通知过期选择。
+设计见 [内容测量与失效](DesignTextViewSizing.md#排版与失效)。
+
+新增包内回归覆盖点击、Shift 点击、拖选、方向键、文首／文尾、TextInput、
+未测量目标、Padding／IME／模型失效及回调重入。正常输入均走 DispatchEvent。
+以基线 text_editor.go 作 Go overlay 时，
+`TestTextViewCaretMovesReuseWrappedLayout` 在点击等子项明确失败。
+
+新增窗口程序：
+
+```bash
+XMODIFIERS=@im=none GOUI_PLAT_PAINTER=software GOUI_PLAT_SCALE=1 go run ./tests/window/gui/text_caret
+XMODIFIERS=@im=none GOUI_PLAT_PAINTER=software GOUI_PLAT_SCALE=2 go run ./tests/window/gui/text_caret
+```
+
+本机 Linux amd64／X11／XFCE（xfwm4）／Pango 1.50.6／Software，Modern，
+760×360 DIP 集成窗口，32,768 字节单段。两种缩放均通过五项操作与原生调用计数
+断言；不是物理键鼠或 IME 验收。窗口自动关闭，无剪贴板、设置或用户文件写入。
+
+同环境诊断的三次点击，基线每次两次完整排版，约 2.8 秒；修复后三次均无
+NewTextLayout／SetSize／MeasureMetrics。正式窗口回归使用基线 overlay 时，
+第一次点击在 2.868 秒后失败，resize 计数由 1 增为 3、metrics 由 2 增为 4；
+修复后全程保持初始计数（created=1、resized=1、metrics=2）。
+
+修复后的窗口采样为“事件派发开始 → 第一帧完成后的定时器回调”，定时器间隔
+20 ms，不是显示合成延迟或性能上限：1× 三次点击约 20 ms，文尾跳转约 52 ms；
+2× 点击约 32～49 ms，文尾跳转约 127 ms。跳转绘制仍有成本，首次整段排版
+也仍同步；不能将此次交互缓存复用写成原生增量排版完成。
+
+用户提供的 157,862 字节单行 JSON 只读诊断：TextView 三次点击事件处理约
+0.59～0.95 ms，随后没有新增完整度量；SourceView 启用 JSON 高亮后同样未在
+三次点击中重建布局。此临时诊断只记录调用与耗时，不替代语义／像素回归。
+另观察到 SourceView 初次滚动期间一次约 293 ms 的 MeasureSize，发生在着色
+更新后；应继续检查颜色失效是否引起原生重新排版，尚未作为本次修复的结论。
+
+本次验证：
+
+- GOUI `go test ./...`、`go test -race ./gui ./gui/textedit`；
+  补充未测量目标用例后再次全量测试和目标 race。
+- SourceView `go test ./...`、`go test -race ./...`。
+- SourceView `tests/window/editor/selection`：上述 Linux／Software 1× 下，
+  JSON／XML／HTML × Basic／Modern Light／Modern Dark 九组事件与像素检查通过。
+- GOUI `./gui` 与新窗口程序、SourceView `./...` 的 Windows amd64／macOS arm64
+  `CGO_ENABLED=0 go build`；仅交叉构建，未运行两端原生窗口。
+- SourceView 关闭工作区测试仍报 `updates to go.mod needed`，保留用户依赖配置。
+
+原生首次排版、颜色失效、2× 绘制延迟以及实际 IME／物理输入仍须继续推进；
+本节不改变上面的通用分时排版未完成状态。

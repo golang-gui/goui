@@ -184,6 +184,7 @@ type textEditor struct {
 	selectSignal      signal.Signal1[TextSelection]
 	revealSignal      signal.Signal1[geometry.Rectangle]
 	revealCaret       bool
+	revealingCaret    bool
 	im                IMContext
 	input             *textEditController
 	contextMenu       *textEditMenu
@@ -354,8 +355,14 @@ func (t *textEditor) setSelection(selection TextSelection, upstream, reveal bool
 		t.syncBlink(true)
 	}
 	if reveal {
-		t.revealCaret = true
-		t.owner.RequestLayout()
+		model, epoch, revision, input := t.model, t.mountEpoch, t.model.Revision(), t.inputRevision
+		t.requestCaretReveal()
+		// A scroll request can synchronously invoke application code. Do not
+		// notify the old selection after a replacement, unmount or nested edit.
+		if t.owner.base().destroyed || t.model != model ||
+			t.mountEpoch != epoch || model.Revision() != revision || t.inputRevision != input {
+			return
+		}
 	}
 	if changed {
 		t.updateContextMenu()
@@ -766,24 +773,53 @@ func (t *textEditor) layoutVisible(viewport geometry.Size, offset geometry.Point
 	}
 	if t.revealCaret {
 		if rect, ok := t.caretRect(); ok {
-			// A distant navigation initially targets estimated paragraph
-			// heights. Measuring the new viewport can move that target again;
-			// retain the request until the actual caret fits, rather than
-			// consuming it after the first approximate scroll.
-			target := geometry.Rect(rect.X-t.padding, rect.Y-t.padding,
-				rect.Width+2*t.padding, rect.Height+2*t.padding)
-			extent := t.contentSize()
-			// ScrollView clamps to an integer DIP range. A fractional maximum
-			// would leave the request pending at an unreachable offset even
-			// after the host has scrolled as far as its contract permits.
-			x := min(max(0, revealOffset(t.offset.X, viewport.Width, target.X, target.Width)), mathx.Floor(max(0, extent.Width-viewport.Width)))
-			y := min(max(0, revealOffset(t.offset.Y, viewport.Height, target.Y, target.Height)), mathx.Floor(max(0, extent.Height-viewport.Height)))
-			visible := x == t.offset.X && y == t.offset.Y
-			t.revealCaret = !visible
-			if !visible {
-				t.emitReveal(target)
-			}
+			t.revealCaretRect(rect)
 		}
+	}
+}
+
+// Selection does not change the requested size. Reuse current paragraph
+// geometry without invalidating the widget/ancestor measurement caches.
+// Missing or width-invalid measurements still use the normal layout path.
+func (t *textEditor) requestCaretReveal() {
+	t.revealCaret = true
+	t.anchorPending = false
+	t.ensureFormat()
+	p := t.paragraphs[t.displayLineAt(t.displayCaret().Offset)]
+	if t.revealingCaret || t.viewport.Width <= 0 || t.viewport.Height <= 0 ||
+		p == nil || !p.measured ||
+		t.wrap != WrapNone && t.layoutWidth != max(1, t.viewport.Width-2*t.padding-1) {
+		t.owner.RequestLayout()
+		return
+	}
+	if rect, ok := t.paragraphCaret(p.index, p); ok {
+		t.revealCaretRect(rect)
+	}
+}
+
+func (t *textEditor) revealCaretRect(rect geometry.Rectangle) {
+	target := geometry.Rect(rect.X-t.padding, rect.Y-t.padding,
+		rect.Width+2*t.padding, rect.Height+2*t.padding)
+	// A nested SetSelection from a reveal listener must defer to layout rather
+	// than recursively emit another request. LayoutVisible itself can refine
+	// the target synchronously while ScrollView processes this request.
+	previous := t.revealingCaret
+	t.revealingCaret = true
+	defer func() { t.revealingCaret = previous }()
+	if t.singleLine {
+		t.emitReveal(target)
+		return
+	}
+	// A distant navigation initially targets estimated paragraph heights.
+	// Retain it until measuring the new viewport puts the actual caret in view.
+	// Match ScrollView's integral range, including fractional native metrics.
+	extent, viewport := t.contentSize(), t.viewport
+	x := min(max(0, revealOffset(t.offset.X, viewport.Width, target.X, target.Width)), mathx.Floor(max(0, extent.Width-viewport.Width)))
+	y := min(max(0, revealOffset(t.offset.Y, viewport.Height, target.Y, target.Height)), mathx.Floor(max(0, extent.Height-viewport.Height)))
+	visible := x == t.offset.X && y == t.offset.Y
+	t.revealCaret = !visible
+	if !visible {
+		t.emitReveal(target)
 	}
 }
 
