@@ -4,6 +4,10 @@
 > 首版是通用纯文本编辑器，不是代码编辑器。本文记录目标契约、实际验证和已知限制。
 > 参考定位：Scintilla 为主，Monaco／VSCode 为辅；保留现有 Piece Tree，不引入原生编辑器依赖。
 
+长段落优化见 [增量排版设计](DesignIncrementalTextLayout.md)。已有度量的光标、
+命中、锚点与可视行选区查询已优化；首次原生 shaping／折行仍同步，不能将查询
+改善解释成超长段落已不会阻塞 UI。实际验证见 [实施记录](PlanIncrementalTextLayout.md)。
+
 ## 1. 目标与参考
 
 先完成多行 TextView，再将验证过的编辑逻辑复用到 TextInput。支持选择、光标导航、
