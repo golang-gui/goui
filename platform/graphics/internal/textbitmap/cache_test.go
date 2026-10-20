@@ -1,6 +1,7 @@
 package textbitmap
 
 import (
+	"image"
 	"image/color"
 	"slices"
 	"testing"
@@ -15,7 +16,7 @@ type cacheTestLayout struct {
 }
 
 func (l *cacheTestLayout) Destroy() { l.destroyed.Emit() }
-func (*cacheTestLayout) Rasterize(float32, []byte) (typography.TextBitmap, error) {
+func (*cacheTestLayout) Rasterize(float32, image.Rectangle, []byte) (typography.TextBitmap, error) {
 	return typography.TextBitmap{}, nil
 }
 func (l *cacheTestLayout) ConnectChanged(fn func()) signal.Handle { return l.changed.Connect(fn) }

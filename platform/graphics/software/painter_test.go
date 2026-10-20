@@ -24,12 +24,14 @@ type testDrawer struct {
 }
 
 type testTextLayout struct {
-	scale      float32
-	bitmap     typography.TextBitmap
-	rasterizes int
-	changed    signal.Signal0
-	destroyed  signal.Signal0
-	didDestroy bool
+	scale        float32
+	logicalScale float32
+	regions      []image.Rectangle
+	bitmap       typography.TextBitmap
+	rasterizes   int
+	changed      signal.Signal0
+	destroyed    signal.Signal0
+	didDestroy   bool
 }
 
 func (l *testTextLayout) Destroy() {
@@ -39,10 +41,19 @@ func (l *testTextLayout) Destroy() {
 	l.didDestroy = true
 	l.destroyed.Emit()
 }
-func (l *testTextLayout) Rasterize(scale float32, _ []byte) (typography.TextBitmap, error) {
+func (l *testTextLayout) Rasterize(scale float32, region image.Rectangle, _ []byte) (typography.TextBitmap, error) {
 	l.scale = scale
+	l.regions = append(l.regions, region)
 	l.rasterizes++
-	return l.bitmap, nil
+	b := typography.TextBitmap{Width: region.Dx(), Height: region.Dy(), Stride: region.Dx() * 4}
+	b.Pixels = make([]byte, b.Stride*b.Height)
+	for y := max(0, region.Min.Y); y < min(l.bitmap.Height, region.Max.Y); y++ {
+		for x := max(0, region.Min.X); x < min(l.bitmap.Width, region.Max.X); x++ {
+			si, di := l.bitmap.PixOffset(x, y), b.PixOffset(x-region.Min.X, y-region.Min.Y)
+			copy(b.Pixels[di:di+4], l.bitmap.Pixels[si:si+4])
+		}
+	}
+	return b, nil
 }
 func (l *testTextLayout) ConnectChanged(fn func()) signal.Handle { return l.changed.Connect(fn) }
 func (l *testTextLayout) ConnectDestroy(fn func()) signal.Handle { return l.destroyed.Connect(fn) }
@@ -62,7 +73,13 @@ func (l *testTextLayout) SetTextColor(int, int, color.Color)                 { l
 func (l *testTextLayout) SetUnderline(int, int, bool)                        { l.changed.Emit() }
 func (l *testTextLayout) SetStrikethrough(int, int, bool)                    { l.changed.Emit() }
 func (l *testTextLayout) SetPlaceholder(int, *typography.PlaceholderMetrics) { l.changed.Emit() }
-func (*testTextLayout) MeasureSize() (float32, float32)                      { return 0, 0 }
+func (l *testTextLayout) MeasureSize() (float32, float32) {
+	scale := l.logicalScale
+	if scale == 0 {
+		scale = 1
+	}
+	return float32(l.bitmap.Width) / scale, float32(l.bitmap.Height) / scale
+}
 func (*testTextLayout) MeasureMetrics() ([]typography.TextLine, []typography.TextCluster) {
 	return nil, nil
 }
@@ -234,7 +251,7 @@ func TestDrawTextLayoutUsesTransformRasterScaleAndLogicalSize(t *testing.T) {
 	}
 	layout := &testTextLayout{bitmap: typography.TextBitmap{
 		Width: 6, Height: 3, Stride: 6 * 4, Pixels: pixels,
-	}}
+	}, logicalScale: 3}
 	var d testDrawer
 	painter, err := NewPainter(&d)
 	if err != nil {

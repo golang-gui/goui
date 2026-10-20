@@ -98,7 +98,7 @@ func TestFontRegistration(t *testing.T) {
 	if c.fontCollection != collection {
 		t.Fatal("failed registration replaced collection")
 	}
-	if _, err := layout.Rasterize(1, nil); err != nil {
+	if _, err := layout.Rasterize(1, typographytest.RasterRegion(layout, 1), nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -210,7 +210,7 @@ func Test_TextLayout(t *testing.T) {
 	lines, clusters := layout.MeasureMetrics()
 	t.Logf("lines=%d clusters=%d", len(lines), len(clusters))
 
-	bitmap, err := layout.Rasterize(2.0, nil)
+	bitmap, err := layout.Rasterize(2.0, typographytest.RasterRegion(layout, 2.0), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,18 +253,18 @@ func TestTextLayoutsOwnRasterResources(t *testing.T) {
 
 	first := firstLayout.(*TextLayout)
 	second := secondLayout.(*TextLayout)
-	want, err := first.Rasterize(1, nil)
+	want, err := first.Rasterize(1, typographytest.RasterRegion(first, 1), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	firstWidth, firstHeight := first.painter.width, first.painter.height
-	if _, err = second.Rasterize(2, nil); err != nil {
+	if _, err = second.Rasterize(2, typographytest.RasterRegion(second, 2), nil); err != nil {
 		t.Fatal(err)
 	}
 	if second.painter.width <= 0 || second.painter.height <= 0 {
 		t.Fatal("second layout did not initialize its raster resources")
 	}
-	got, err := first.Rasterize(1, nil)
+	got, err := first.Rasterize(1, typographytest.RasterRegion(first, 1), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

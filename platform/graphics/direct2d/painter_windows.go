@@ -932,7 +932,9 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 	}
 	if textLayout, ok := layout.(*directwrite.TextLayout); ok {
 		point := d2d1.Point2F{X: origin.X, Y: origin.Y}
-		textLayout.Draw(&p.render.RenderTarget, point, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP)
+		// The Painter's clip controls visibility. Layout constraints affect
+		// shaping; they must not silently hide overflowing unwrapped text.
+		textLayout.Draw(&p.render.RenderTarget, point, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT)
 	}
 }
 

@@ -64,7 +64,7 @@ func TestFontRegistration(t *testing.T) {
 	if desc.GetFamily() != "Go" {
 		t.Fatalf("registered font matched %q instead of Go", desc.GetFamily())
 	}
-	if _, err := before.Rasterize(1, nil); err != nil {
+	if _, err := before.Rasterize(1, typographytest.RasterRegion(before, 1), nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -164,7 +164,7 @@ func Test_TextLayout(t *testing.T) {
 	lines, clusters := layout.MeasureMetrics()
 	t.Logf("lines=%d clusters=%d", len(lines), len(clusters))
 
-	bitmap, err := layout.Rasterize(2.0, nil)
+	bitmap, err := layout.Rasterize(2.0, typographytest.RasterRegion(layout, 2.0), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +206,7 @@ func TestTextLayoutEmptyMeasureMetrics(t *testing.T) {
 	if len(clusters) != 0 {
 		t.Fatalf("empty text should not produce clusters, got %d", len(clusters))
 	}
-	bitmap, err := layout.Rasterize(1, nil)
+	bitmap, err := layout.Rasterize(1, typographytest.RasterRegion(layout, 1), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +231,7 @@ func TestTextLayoutsOwnRasterResourcesAndDoNotLeakPixels(t *testing.T) {
 	}
 	defer small.Destroy()
 	smallNative := small.(*TextLayout)
-	first, err := small.Rasterize(1, nil)
+	first, err := small.Rasterize(1, typographytest.RasterRegion(small, 1), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,20 +247,20 @@ func TestTextLayoutsOwnRasterResourcesAndDoNotLeakPixels(t *testing.T) {
 	if smallNative.context.GObject == largeNative.context.GObject {
 		t.Fatal("text layouts unexpectedly share a PangoContext")
 	}
-	smallWidth, smallHeight := smallNative.painter.width, smallNative.painter.height
-	if _, err = large.Rasterize(2, nil); err != nil {
+	smallWidth, smallHeight := smallNative.painter.bitmap.Width, smallNative.painter.bitmap.Height
+	if _, err = large.Rasterize(2, typographytest.RasterRegion(large, 2), nil); err != nil {
 		t.Fatal(err)
 	}
-	if largeNative.painter.width <= 0 || largeNative.painter.height <= 0 {
+	if largeNative.painter.bitmap.Width <= 0 || largeNative.painter.bitmap.Height <= 0 {
 		t.Fatal("large layout did not initialize its raster resources")
 	}
 
-	second, err := small.Rasterize(1, nil)
+	second, err := small.Rasterize(1, typographytest.RasterRegion(small, 1), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertSameBitmap(t, first, second)
-	if smallNative.painter.width != smallWidth || smallNative.painter.height != smallHeight {
+	if smallNative.painter.bitmap.Width != smallWidth || smallNative.painter.bitmap.Height != smallHeight {
 		t.Fatal("rasterizing another layout changed the first layout's raster resources")
 	}
 }
@@ -290,7 +290,7 @@ func TestTextLayoutRasterScaleDoesNotAccumulate(t *testing.T) {
 	}
 	defer layout.Destroy()
 
-	first2x, err := layout.Rasterize(2, nil)
+	first2x, err := layout.Rasterize(2, typographytest.RasterRegion(layout, 2), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,13 +298,13 @@ func TestTextLayoutRasterScaleDoesNotAccumulate(t *testing.T) {
 	// The layout-owned retained cairo context must start every rasterization with an
 	// identity CTM, even when drawing the same layout again.
 	layout.SetTextAlignment(format.TextAlign)
-	second2x, err := layout.Rasterize(2, nil)
+	second2x, err := layout.Rasterize(2, typographytest.RasterRegion(layout, 2), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertSameBitmap(t, first2x, second2x)
 
-	actual1x, err := layout.Rasterize(1, nil)
+	actual1x, err := layout.Rasterize(1, typographytest.RasterRegion(layout, 1), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,7 +313,7 @@ func TestTextLayoutRasterScaleDoesNotAccumulate(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer fresh.Destroy()
-	want1x, err := fresh.Rasterize(1, nil)
+	want1x, err := fresh.Rasterize(1, typographytest.RasterRegion(fresh, 1), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

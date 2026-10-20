@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"image"
 	"image/color"
 	"slices"
 	"testing"
@@ -432,14 +433,14 @@ func TestStyleChangedLocalListRowRemeasures(t *testing.T) {
 	}
 }
 
-func (l *stylePixelLayout) Rasterize(float32, []byte) (typography.TextBitmap, error) {
+func (l *stylePixelLayout) Rasterize(_ float32, region image.Rectangle, _ []byte) (typography.TextBitmap, error) {
 	l.rasters++
 	r, g, b, a := l.format.TextColor.RGBA()
-	pixels := make([]byte, 4*4*4)
+	pixels := make([]byte, region.Dx()*region.Dy()*4)
 	for i := 0; i < len(pixels); i += 4 {
 		pixels[i], pixels[i+1], pixels[i+2], pixels[i+3] = byte(r>>8), byte(g>>8), byte(b>>8), byte(a>>8)
 	}
-	return typography.TextBitmap{Width: 4, Height: 4, Stride: 16, Pixels: pixels}, nil
+	return typography.TextBitmap{Width: region.Dx(), Height: region.Dy(), Stride: region.Dx() * 4, Pixels: pixels}, nil
 }
 
 type stylePixelTypography struct {
