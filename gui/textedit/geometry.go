@@ -27,6 +27,8 @@ type textVisualLine struct {
 	metrics  typography.TextLine
 	clusters []typography.TextCluster
 	stops    []textStop // visual order, left to right
+	first    int        // smallest logical stop offset
+	last     int        // largest logical stop offset
 }
 
 // Geometry indexes supplied paragraph metrics for hit testing, navigation and
@@ -35,6 +37,10 @@ type textVisualLine struct {
 type Geometry struct {
 	lines      []textVisualLine
 	boundaries []int // logical order, independent of visual order
+	// Ordinary native lines partition the paragraph in logical order. Keep
+	// the general query behavior for overlapping or unordered supplied metrics.
+	orderedOffsets bool
+	orderedY       bool
 }
 
 // LineCount returns the number of visual lines.
@@ -48,6 +54,22 @@ func (g *Geometry) LineMetrics(index int) typography.TextLine { return g.lines[i
 func (g *Geometry) LineIndex(pos Position) int {
 	line, _ := g.locate(pos)
 	return line
+}
+
+// LineAtY finds the visual line at paragraph-local y, clamping above and below
+// the paragraph. A gap belongs to the following line, as in Hit.
+func (g *Geometry) LineAtY(y float32) int {
+	if g.orderedY {
+		return min(len(g.lines)-1, sort.Search(len(g.lines), func(i int) bool {
+			line := g.lines[i].metrics
+			return !(y >= line.Y+line.Height)
+		}))
+	}
+	i := 0
+	for i+1 < len(g.lines) && y >= g.lines[i].metrics.Y+g.lines[i].metrics.Height {
+		i++
+	}
+	return i
 }
 
 // LineEdge returns the leftmost or rightmost visual stop of a line.
@@ -64,7 +86,7 @@ func (g *Geometry) LineEdge(index int, right bool) Position {
 // UTF-8 byte length. Empty metrics produce one line of at least emptyHeight.
 // Input metrics must remain unchanged for the lifetime of the index.
 func NewGeometry(lines []typography.TextLine, clusters []typography.TextCluster, length int, emptyHeight float32) Geometry {
-	g := Geometry{boundaries: []int{0, length}}
+	g := Geometry{boundaries: []int{0, length}, orderedOffsets: true, orderedY: true}
 	if len(lines) == 0 {
 		lines = []typography.TextLine{{Height: max(1, emptyHeight)}}
 	}
@@ -122,6 +144,20 @@ func NewGeometry(lines []typography.TextLine, clusters []typography.TextCluster,
 			}
 		}
 		line.stops = out
+		line.first, line.last = line.stops[0].Offset, line.stops[0].Offset
+		for _, stop := range line.stops[1:] {
+			line.first = min(line.first, stop.Offset)
+			line.last = max(line.last, stop.Offset)
+		}
+		if i > 0 {
+			prev := &g.lines[i-1]
+			// Strict progress at both ends permits checking just neighboring
+			// lines, including both affinities at a shared soft-wrap boundary.
+			g.orderedOffsets = g.orderedOffsets && prev.last <= line.first &&
+				prev.first < line.first && prev.last < line.last
+			g.orderedY = g.orderedY && prev.metrics.Y <= line.metrics.Y &&
+				prev.metrics.Y+prev.metrics.Height <= line.metrics.Y+line.metrics.Height
+		}
 	}
 	sort.Ints(g.boundaries)
 	out := g.boundaries[:0]
@@ -157,8 +193,17 @@ func (g *Geometry) Adjacent(offset int, forward bool) int {
 }
 
 func (g *Geometry) locate(pos Position) (int, int) {
+	first, end := 0, len(g.lines)
+	if g.orderedOffsets {
+		i := sort.Search(len(g.lines), func(i int) bool { return g.lines[i].last >= pos.Offset })
+		// Include the neighbors for missing affinities, positions inside a
+		// cluster, gaps, and equidistant stops. Iterate in the original visual
+		// order so ties retain exactly the same answer as the general scan.
+		first, end = max(0, i-1), min(len(g.lines), i+2)
+	}
 	lineIndex, stopIndex, best := 0, 0, int(^uint(0)>>1)
-	for i, line := range g.lines {
+	for i := first; i < end; i++ {
+		line := &g.lines[i]
 		for j, stop := range line.stops {
 			if stop.Position == pos {
 				return i, j
@@ -184,11 +229,7 @@ func (g *Geometry) Caret(pos Position) geometry.Rectangle {
 
 // Hit finds the nearest caret position in paragraph-local coordinates.
 func (g *Geometry) Hit(point geometry.Point) Position {
-	i := 0
-	for i+1 < len(g.lines) && point.Y >= g.lines[i].metrics.Y+g.lines[i].metrics.Height {
-		i++
-	}
-	return g.HitLine(i, point.X)
+	return g.HitLine(g.LineAtY(point.Y), point.X)
 }
 
 // HitLine finds a caret position on a valid visual line at local x.
@@ -250,11 +291,31 @@ func (g *Geometry) Visual(pos Position, right bool) (Position, bool) {
 // Selection returns the selected Cluster rectangles, merging adjacent spans
 // on each visual line but retaining disjoint bidirectional spans.
 func (g *Geometry) Selection(rng Range) []geometry.Rectangle {
+	return g.SelectionLines(rng, 0, len(g.lines))
+}
+
+// SelectionLines returns the selected Cluster rectangles on visual lines
+// [first, end), using the same merging and bidi semantics as Selection. Bounds
+// must satisfy 0 <= first <= end <= LineCount(). Returned rectangles retain
+// their full paragraph-local geometry; the painter still applies its clip.
+//
+// Use LineAtY to restrict painting to the viewport without traversing the
+// rest of a wrapped paragraph. This only queries supplied metrics; it does not
+// perform native shaping or make construction of a Geometry incremental.
+func (g *Geometry) SelectionLines(rng Range, first, end int) []geometry.Rectangle {
+	if first < 0 || first > end || end > len(g.lines) {
+		panic("textedit: invalid visual line range")
+	}
 	if rng.Start >= rng.End {
 		return nil
 	}
+	if g.orderedOffsets {
+		first = max(first, sort.Search(len(g.lines), func(i int) bool { return g.lines[i].last > rng.Start }))
+		end = min(end, sort.Search(len(g.lines), func(i int) bool { return g.lines[i].first >= rng.End }))
+	}
 	var result []geometry.Rectangle
-	for _, line := range g.lines {
+	for i := first; i < end; i++ {
+		line := &g.lines[i]
 		var rects []geometry.Rectangle
 		for _, c := range line.clusters {
 			if c.Start < rng.End && c.Start+c.Length > rng.Start && c.Width > 0 {
