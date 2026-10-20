@@ -18,8 +18,6 @@ var (
 	gObjectUnref = gobject.NewSymbol("g_object_unref")
 	gObjectGet   = gobject.NewSymbol("g_object_get")
 
-	gSliceAlloc0      = glib.NewSymbol("g_slice_alloc0")
-	gSListFree        = glib.NewSymbol("g_slist_free")
 	gFree             = glib.NewSymbol("g_free")
 	gGetLanguageNames = glib.NewSymbol("g_get_language_names")
 	gFilenameToURI    = glib.NewSymbol("g_filename_to_uri")
@@ -92,15 +90,6 @@ func (o Object) StringProperty(name string) (string, error) {
 	defer gFree.CallRaw(value)
 	return cgo.GoString(cgo.Pointer(value)), nil
 }
-
-// SliceAlloc0 allocates zeroed GLib slice memory. Release through the native
-// owner using g_slice_free; this is not malloc/g_free storage.
-func SliceAlloc0(size uintptr) unsafe.Pointer {
-	return cgo.CallRet[unsafe.Pointer](gSliceAlloc0.Addr(), size)
-}
-
-// Free releases list nodes, not their data.
-func (l *GSList[T]) Free() { cgo.Call(gSListFree.Addr(), l) }
 
 type GSList[T any] struct {
 	Data *T
