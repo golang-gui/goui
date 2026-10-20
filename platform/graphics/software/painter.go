@@ -51,7 +51,7 @@ func NewPainter(drawable Drawable) (graphics.Painter, error) {
 	p.drawable = drawable
 	p.transparent = drawable.Transparent()
 	p.images = make(map[*imageResource]struct{})
-	p.textImages = textbitmap.NewImageCache(4, func(img graphics.Image) { img.Destroy() })
+	p.textImages = textbitmap.NewImageCache(textbitmap.CacheCapacity, func(img graphics.Image) { img.Destroy() })
 	return p, nil
 }
 
@@ -394,53 +394,34 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 	if layout == nil {
 		return
 	}
-
 	rasterScale := textbitmap.RasterScale(p.scale, p.transform)
 	if rasterScale <= 0 {
 		return
 	}
-	if img, ok := p.textImages.Lookup(layout, rasterScale); ok {
-		p.drawTextImage(origin, rasterScale, img)
-		return
-	}
-
-	width, height := layout.MeasureSize()
-	boxWidth, _ := layout.Size()
-	region := image.Rect(0, 0, int(math.Ceil(float64(max(width, boxWidth)*rasterScale))), int(math.Ceil(float64(height*rasterScale))))
-	textBitmap, err := layout.Rasterize(rasterScale, region, p.textPixels)
-	if err != nil || textBitmap.Width <= 0 || textBitmap.Height <= 0 {
-		return
-	}
-	p.textPixels = textBitmap.Pixels
-
-	bitmap := graphics.Bitmap{
-		Width:  textBitmap.Width,
-		Height: textBitmap.Height,
-		Stride: textBitmap.Stride,
-		Format: graphics.PixelFormatRGBA,
-		Pixels: textBitmap.Pixels,
-	}
-	img, err := p.NewImage(bitmap)
-	if err != nil {
-		return
-	}
-	p.textImages.Store(layout, rasterScale, img)
-	p.drawTextImage(origin, rasterScale, img)
-}
-
-func (p *Painter) drawTextImage(origin graphics.Point, rasterScale float32, img graphics.Image) {
-	width, height := img.Size()
-	if width <= 0 || height <= 0 {
-		return
-	}
+	// Snap the complete layout once. Every region shares this pixel grid.
 	origin = textbitmap.SnapOrigin(origin, p.transform, p.scale)
-	drawRect := graphics.Rect(
-		origin.X,
-		origin.Y,
-		float32(width)/rasterScale,
-		float32(height)/rasterScale,
-	)
-	p.DrawImage(drawRect, img)
+	clip := p.bgra.Rect
+	if p.clip != (image.Rectangle{}) {
+		clip = clip.Intersect(p.clip)
+	}
+	region := textbitmap.Region(layout, origin, p.transform, p.scale, rasterScale, clip)
+	if region.Empty() {
+		return
+	}
+	img, ok := p.textImages.Lookup(layout, rasterScale, region)
+	if !ok {
+		bitmap, err := textbitmap.Rasterize(layout, rasterScale, region, p.textPixels)
+		if err != nil || bitmap.Width != region.Dx() || bitmap.Height != region.Dy() {
+			return
+		}
+		p.textPixels = bitmap.Pixels
+		img, err = p.NewImage(graphics.Bitmap{Width: bitmap.Width, Height: bitmap.Height, Stride: bitmap.Stride, Format: graphics.PixelFormatRGBA, Pixels: bitmap.Pixels})
+		if err != nil {
+			return
+		}
+		p.textImages.Store(layout, rasterScale, region, img)
+	}
+	p.DrawImage(textbitmap.DrawRect(origin, region, rasterScale), img)
 }
 
 func (p *Painter) SetTransform(t geometry.Transform) {

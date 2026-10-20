@@ -1,6 +1,7 @@
 package textbitmap
 
 import (
+	"image"
 	"math"
 
 	"github.com/golang-gui/goui/core/signal"
@@ -26,9 +27,10 @@ type layoutImages[T any] struct {
 }
 
 type imageEntry[T any] struct {
-	scale uint32
-	image T
-	age   uint64
+	scale  uint32
+	region image.Rectangle
+	image  T
+	age    uint64
 }
 
 func NewImageCache[T any](capacity int, release func(T)) *ImageCache[T] {
@@ -42,7 +44,7 @@ func NewImageCache[T any](capacity int, release func(T)) *ImageCache[T] {
 	}
 }
 
-func (c *ImageCache[T]) Lookup(layout typography.TextLayout, scale float32) (image T, ok bool) {
+func (c *ImageCache[T]) Lookup(layout typography.TextLayout, scale float32, region image.Rectangle) (image T, ok bool) {
 	if c == nil || layout == nil {
 		return image, false
 	}
@@ -53,7 +55,7 @@ func (c *ImageCache[T]) Lookup(layout typography.TextLayout, scale float32) (ima
 	key := math.Float32bits(scale)
 	for i := range record.entries {
 		entry := &record.entries[i]
-		if entry.scale == key {
+		if entry.scale == key && entry.region == region {
 			entry.age = c.nextAge()
 			return entry.image, true
 		}
@@ -61,7 +63,7 @@ func (c *ImageCache[T]) Lookup(layout typography.TextLayout, scale float32) (ima
 	return image, false
 }
 
-func (c *ImageCache[T]) Store(layout typography.TextLayout, scale float32, image T) {
+func (c *ImageCache[T]) Store(layout typography.TextLayout, scale float32, region image.Rectangle, image T) {
 	if c == nil || layout == nil {
 		if c != nil {
 			c.releaseImage(image)
@@ -84,7 +86,7 @@ func (c *ImageCache[T]) Store(layout typography.TextLayout, scale float32, image
 	key := math.Float32bits(scale)
 	for i := range record.entries {
 		entry := &record.entries[i]
-		if entry.scale == key {
+		if entry.scale == key && entry.region == region {
 			old := entry.image
 			entry.image = image
 			entry.age = c.nextAge()
@@ -93,7 +95,7 @@ func (c *ImageCache[T]) Store(layout typography.TextLayout, scale float32, image
 		}
 	}
 
-	entry := imageEntry[T]{scale: key, image: image, age: c.nextAge()}
+	entry := imageEntry[T]{scale: key, region: region, image: image, age: c.nextAge()}
 	if len(record.entries) < c.capacity {
 		record.entries = append(record.entries, entry)
 		return
