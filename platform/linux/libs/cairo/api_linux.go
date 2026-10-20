@@ -26,6 +26,8 @@ var (
 	cairoSetLineWidth                = libcairo.NewSymbol("cairo_set_line_width")
 	cairoRectangle                   = libcairo.NewSymbol("cairo_rectangle")
 	cairoFill                        = libcairo.NewSymbol("cairo_fill")
+	cairoSetScaledFont               = libcairo.NewSymbol("cairo_set_scaled_font")
+	cairoShowGlyphs                  = libcairo.NewSymbol("cairo_show_glyphs")
 	cairoSetFontOptions              = libcairo.NewSymbol("cairo_set_font_options")
 	cairoFontOptionsCreate           = libcairo.NewSymbol("cairo_font_options_create")
 	cairoFontOptionsDestroy          = libcairo.NewSymbol("cairo_font_options_destroy")
@@ -200,4 +202,22 @@ func (fo FontOptions) SetHintMetrics(metrics HintMetrics) {
 func (s Status) String() string {
 	ret, _, _ := cairoStatusToString.CallRaw(uintptr(s))
 	return cgo.GoStringTemp(cgo.Pointer(ret))
+}
+
+// ScaledFont is borrowed here; the PangoFont owner keeps it alive.
+type ScaledFont uintptr
+
+// Glyph follows cairo_glyph_t (unsigned long index, two doubles).
+type Glyph struct {
+	Index uintptr
+	X, Y  float64
+}
+
+func (cr Context) SetScaledFont(font ScaledFont) { cgo.Call(cairoSetScaledFont.Addr(), cr, font) }
+
+// ShowGlyphs borrows the array only for this synchronous call.
+func (cr Context) ShowGlyphs(glyphs []Glyph) {
+	if len(glyphs) > 0 {
+		cgo.Call(cairoShowGlyphs.Addr(), cr, &glyphs[0], int32(len(glyphs)))
+	}
 }
