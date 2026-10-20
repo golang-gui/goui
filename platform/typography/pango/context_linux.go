@@ -117,23 +117,18 @@ func (c *Context) NewTextLayout(text string, format typography.TextFormat, width
 }
 
 type TextLayout struct {
-	reflowColorsDirty           bool
-	retained                    *retainedParagraph
-	pending, prepared           *retainedReflow
-	pendingWidth, pendingHeight float32
-	hasUnderline                bool
-	context                     pango.Context
-	layout                      pango.Layout
-	text                        string
-	format                      typography.TextFormat
-	width                       float32
-	height                      float32
-	attrs                       pango.AttrList
-	chars                       int
-	painter                     textPainter
-	life                        lifecycle.Layout
-	strikes                     []textRange
-	placeholders                map[int]typography.PlaceholderMetrics
+	context      pango.Context
+	layout       pango.Layout
+	text         string
+	format       typography.TextFormat
+	width        float32
+	height       float32
+	attrs        pango.AttrList
+	chars        int
+	painter      textPainter
+	life         lifecycle.Layout
+	strikes      []textRange
+	placeholders map[int]typography.PlaceholderMetrics
 }
 
 type textRange struct{ start, end int }
@@ -166,7 +161,6 @@ func (t *TextLayout) Destroy() {
 	if !t.life.BeginDestroy() {
 		return
 	}
-	t.clearReflow()
 	t.painter.Destroy()
 	if t.layout.Valid() {
 		t.layout.Unref()
@@ -201,10 +195,8 @@ func (t *TextLayout) Size() (maxWidth, maxHeight float32) {
 
 func (t *TextLayout) SetSize(maxWidth, maxHeight float32) {
 	if t.width == maxWidth && t.height == maxHeight {
-		t.CancelReflow()
 		return
 	}
-	t.clearReflow()
 	t.width = maxWidth
 	t.height = maxHeight
 	if t.format.WrapMode != typography.WrapNone {
@@ -215,10 +207,8 @@ func (t *TextLayout) SetSize(maxWidth, maxHeight float32) {
 
 func (t *TextLayout) SetTextAlignment(align typography.TextAlignment) {
 	if t.format.TextAlign == align {
-		t.CancelReflow()
 		return
 	}
-	t.clearReflow()
 	t.format.TextAlign = align
 	switch align {
 	case typography.TextAlignBegin, typography.TextAlignFill:
@@ -234,10 +224,8 @@ func (t *TextLayout) SetTextAlignment(align typography.TextAlignment) {
 
 func (t *TextLayout) SetWrapMode(wrap typography.WrapMode) {
 	if t.format.WrapMode == wrap {
-		t.CancelReflow()
 		return
 	}
-	t.clearReflow()
 	t.format.WrapMode = wrap
 	switch wrap {
 	case typography.WrapChar:
@@ -260,7 +248,6 @@ func (t *TextLayout) SetTabWidth(width float32) {
 	if t.format.TabWidth == width {
 		return
 	}
-	t.clearReflow()
 	t.format.TabWidth = width
 	native := int32(math.Round(float64(width * pango.Scale)))
 	if width > 0 && native == 0 {
@@ -281,7 +268,6 @@ func (t *TextLayout) SetTabWidth(width float32) {
 }
 
 func (t *TextLayout) SetTextFont(start, length int, font typography.FontInfo) {
-	t.clearReflow()
 	utils.CheckTextRange(t.text, start, length)
 	desc, err := createFontDescription(font)
 	if err != nil {
@@ -296,7 +282,6 @@ func (t *TextLayout) SetTextFont(start, length int, font typography.FontInfo) {
 }
 
 func (t *TextLayout) SetPlaceholder(start int, metrics *typography.PlaceholderMetrics) {
-	t.clearReflow()
 	utils.CheckPlaceholder(t.text, start, metrics)
 	if metrics == nil {
 		delete(t.placeholders, start)
@@ -358,7 +343,6 @@ func (t *TextLayout) SetTextColor(start, length int, foreground color.Color) {
 		alpha.StartIndex = uint32(start)
 		alpha.EndIndex = uint32(start + length)
 		t.attrs.Change(alpha)
-		t.recolorReflow()
 
 		t.layout.ContextChanged()
 		t.life.Changed()
@@ -366,8 +350,6 @@ func (t *TextLayout) SetTextColor(start, length int, foreground color.Color) {
 }
 
 func (t *TextLayout) SetUnderline(start, length int, underline bool) {
-	t.hasUnderline = t.hasUnderline || underline
-	t.clearReflow()
 	if 0 <= start && start < len(t.text) {
 		if length < 0 {
 			length = len(t.text)
@@ -388,7 +370,6 @@ func (t *TextLayout) SetUnderline(start, length int, underline bool) {
 }
 
 func (t *TextLayout) SetStrikethrough(start, length int, strike bool) {
-	t.clearReflow()
 	if 0 <= start && start < len(t.text) {
 		if length < 0 {
 			length = len(t.text)
@@ -421,17 +402,11 @@ func (t *TextLayout) SetStrikethrough(start, length int, strike bool) {
 }
 
 func (t *TextLayout) MeasureSize() (width, height float32) {
-	if t.prepared != nil {
-		return t.prepared.sizeWidth, t.prepared.sizeHeight
-	}
 	_, _, width, height = t.getExtents()
 	return
 }
 
 func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []typography.TextCluster) {
-	if t.prepared != nil {
-		return t.prepared.lines, t.prepared.clusters
-	}
 	lineCount := t.layout.GetLineCount()
 	if lineCount == 0 {
 		return
@@ -526,16 +501,6 @@ func (t *TextLayout) Rasterize(scale float32, region image.Rectangle, buf []byte
 	width, height, err := utils.RasterDimensions(region)
 	if err != nil || width == 0 || height == 0 {
 		return bitmap, err
-	}
-	if t.prepared != nil {
-		t.syncReflowColors()
-		bitmap, err = t.prepared.rasterize(scale, region)
-		if err == nil && cap(buf) >= len(bitmap.Pixels) {
-			buf = buf[:len(bitmap.Pixels)]
-			copy(buf, bitmap.Pixels)
-			bitmap.Pixels = buf
-		}
-		return
 	}
 	if t.painter.bitmap.Width < width || t.painter.bitmap.Height < height {
 		// Publish capacity only after every native resource has been created.
