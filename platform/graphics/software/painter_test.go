@@ -341,7 +341,7 @@ func TestDrawTextLayoutDefersFrameInvalidationAndSupportsMultiplePainters(t *tes
 
 	first.Begin(10, 10, 1)
 	first.DrawTextLayout(graphics.Point{}, layout)
-	oldImage, ok := first.textImages.Lookup(layout, 1)
+	oldImage, ok := first.textImages.Lookup(layout, 1, layout.regions[0])
 	if !ok {
 		t.Fatal("first painter did not cache the layout")
 	}

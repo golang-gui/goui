@@ -29,6 +29,8 @@ type Painter struct {
 	pendingImages int
 	scale         float32
 	transform     geometry.Transform
+	viewport      image.Rectangle
+	clip          image.Rectangle
 
 	activeFrame bool
 	transparent bool
@@ -101,7 +103,7 @@ func NewPainter(win NativeWindow) (_ graphics.Painter, err error) {
 	}
 
 	p.images = make(map[*imageResource]struct{})
-	p.textImages = textbitmap.NewImageCache(4, func(img graphics.Image) { img.Destroy() })
+	p.textImages = textbitmap.NewImageCache(textbitmap.CacheCapacity, func(img graphics.Image) { img.Destroy() })
 	return p, nil
 }
 
@@ -269,6 +271,8 @@ func (p *Painter) Begin(width, height, scale float32) {
 	p.vg.BeginFrame(int(width), int(height), 1)
 	p.activeFrame = true
 	p.scale = scale
+	p.viewport = image.Rect(0, 0, int(width), int(height))
+	p.clip = image.Rectangle{}
 	p.SetTransform(geometry.Identity())
 }
 
@@ -412,58 +416,34 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 	if layout == nil {
 		return
 	}
-
-	// Text layouts are rasterized before NanoVG applies its transform. Match the
-	// bitmap resolution to the largest final device-space stretch so transformed
-	// text is never enlarged from a lower-resolution texture.
 	rasterScale := textbitmap.RasterScale(p.scale, p.transform)
 	if rasterScale <= 0 {
 		return
 	}
-	if img, ok := p.textImages.Lookup(layout, rasterScale); ok {
-		p.drawTextImage(origin, rasterScale, img)
-		return
-	}
-
-	width, height := layout.MeasureSize()
-	boxWidth, _ := layout.Size()
-	region := image.Rect(0, 0, int(math.Ceil(float64(max(width, boxWidth)*rasterScale))), int(math.Ceil(float64(height*rasterScale))))
-	textBitmap, err := layout.Rasterize(rasterScale, region, p.textPixels)
-	if err != nil || textBitmap.Width <= 0 || textBitmap.Height <= 0 {
-		return
-	}
-	p.textPixels = textBitmap.Pixels
-
-	bitmap := graphics.Bitmap{
-		Width:  textBitmap.Width,
-		Height: textBitmap.Height,
-		Stride: textBitmap.Stride,
-		Format: graphics.PixelFormatRGBA,
-		Pixels: textBitmap.Pixels,
-	}
-	img, err := p.NewImage(bitmap)
-	if err != nil {
-		return
-	}
-	p.textImages.Store(layout, rasterScale, img)
-	p.drawTextImage(origin, rasterScale, img)
-}
-
-func (p *Painter) drawTextImage(origin graphics.Point, rasterScale float32, img graphics.Image) {
-	width, height := img.Size()
-	if width <= 0 || height <= 0 {
-		return
-	}
-	// Keep the layout's logical size unchanged. The current NanoVG transform
-	// scales this rectangle to the physical size for which the bitmap was drawn.
+	// Snap the complete layout once. Every region shares this pixel grid.
 	origin = textbitmap.SnapOrigin(origin, p.transform, p.scale)
-	drawRect := graphics.Rect(
-		origin.X,
-		origin.Y,
-		float32(width)/rasterScale,
-		float32(height)/rasterScale,
-	)
-	p.DrawImage(drawRect, img)
+	clip := p.viewport
+	if p.clip != (image.Rectangle{}) {
+		clip = clip.Intersect(p.clip)
+	}
+	region := textbitmap.Region(layout, origin, p.transform, p.scale, rasterScale, clip)
+	if region.Empty() {
+		return
+	}
+	img, ok := p.textImages.Lookup(layout, rasterScale, region)
+	if !ok {
+		bitmap, err := textbitmap.Rasterize(layout, rasterScale, region, p.textPixels)
+		if err != nil || bitmap.Width != region.Dx() || bitmap.Height != region.Dy() {
+			return
+		}
+		p.textPixels = bitmap.Pixels
+		img, err = p.NewImage(graphics.Bitmap{Width: bitmap.Width, Height: bitmap.Height, Stride: bitmap.Stride, Format: graphics.PixelFormatRGBA, Pixels: bitmap.Pixels})
+		if err != nil {
+			return
+		}
+		p.textImages.Store(layout, rasterScale, region, img)
+	}
+	p.DrawImage(textbitmap.DrawRect(origin, region, rasterScale), img)
 }
 
 func (p *Painter) SetTransform(t geometry.Transform) {
@@ -496,6 +476,7 @@ func (p *Painter) DrawImage(rect graphics.Rectangle, img graphics.Image) {
 }
 
 func (p *Painter) SetClipRect(rect graphics.Rectangle) {
+	p.clip = image.Rectangle{}
 	// NanoVG's Scissor is transformed by the current transform. Since the
 	// clip rect is already in window-local coordinates (the transform's
 	// offset has been applied by the GUI layer), we must set the scissor in
@@ -509,6 +490,7 @@ func (p *Painter) SetClipRect(rect graphics.Rectangle) {
 		// the same pixel boundaries as the fill/stroke so it cannot attenuate
 		// the widget border a second time. Keep rounded-corner AA enabled.
 		rect = pixelsnap.Rect(rect, geometry.Identity(), p.scale)
+		p.clip = image.Rect(int(math.Floor(float64(rect.X*p.scale))), int(math.Floor(float64(rect.Y*p.scale))), int(math.Ceil(float64((rect.X+rect.Width)*p.scale))), int(math.Ceil(float64((rect.Y+rect.Height)*p.scale))))
 		p.vg.Scissor(rect.X*p.scale, rect.Y*p.scale, rect.Width*p.scale, rect.Height*p.scale)
 	}
 	p.vg.SetTransformByValue(xform[0], xform[1], xform[2], xform[3], xform[4], xform[5])
@@ -717,12 +699,12 @@ func (p *Painter) RenderImage(width, height int, scale float32, draw func()) (im
 	if status := cgo.CallRet[uint32](procGLCheckFramebufferStatus, uint32(gl.FRAMEBUFFER)); status != gl.FRAMEBUFFER_COMPLETE {
 		return nil, fmt.Errorf("opengl: incomplete offscreen framebuffer %#x", status)
 	}
-	oldScale, oldTransform := p.scale, p.transform
+	oldScale, oldTransform, oldViewport, oldClip := p.scale, p.transform, p.viewport, p.clip
 	defer func() {
 		p.vg.CancelFrame()
 		p.activeFrame = false
 		p.flushPendingImages()
-		p.scale, p.transform = oldScale, oldTransform
+		p.scale, p.transform, p.viewport, p.clip = oldScale, oldTransform, oldViewport, oldClip
 	}()
 	gl.Viewport(0, 0, width, height)
 	gl.Disable(gl.SCISSOR_TEST)
@@ -732,6 +714,7 @@ func (p *Painter) RenderImage(width, height int, scale float32, draw func()) (im
 	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT)
 	p.vg.BeginFrame(width, height, 1)
 	p.activeFrame, p.scale = true, scale
+	p.viewport = image.Rect(0, 0, width, height)
 	p.SetTransform(geometry.Identity())
 	p.SetClipRect(graphics.Rectangle{})
 	draw()

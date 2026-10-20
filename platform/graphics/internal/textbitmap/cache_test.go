@@ -49,27 +49,27 @@ func TestImageCacheLRUInvalidationAndDestroy(t *testing.T) {
 	})
 	layout := new(cacheTestLayout)
 
-	cache.Store(layout, 1, 10)
-	cache.Store(layout, 2, 20)
-	if image, ok := cache.Lookup(layout, 1); !ok || image != 10 {
+	cache.Store(layout, 1, image.Rect(0, 0, 10, 10), 10)
+	cache.Store(layout, 2, image.Rect(0, 0, 10, 10), 20)
+	if image, ok := cache.Lookup(layout, 1, image.Rect(0, 0, 10, 10)); !ok || image != 10 {
 		t.Fatalf("lookup scale 1 = %v, %v", image, ok)
 	}
-	cache.Store(layout, 3, 30)
+	cache.Store(layout, 3, image.Rect(0, 0, 10, 10), 30)
 	if !slices.Equal(released, []int{20}) {
 		t.Fatalf("LRU releases = %v, want [20]", released)
 	}
 
 	layout.changed.Emit()
-	if _, ok := cache.Lookup(layout, 1); ok {
+	if _, ok := cache.Lookup(layout, 1, image.Rect(0, 0, 10, 10)); ok {
 		t.Fatal("changed layout retained a cached image")
 	}
 	if !slices.Equal(released, []int{20, 10, 30}) {
 		t.Fatalf("invalidation releases = %v", released)
 	}
 
-	cache.Store(layout, 4, 40)
+	cache.Store(layout, 4, image.Rect(0, 0, 10, 10), 40)
 	layout.Destroy()
-	if _, ok := cache.Lookup(layout, 4); ok {
+	if _, ok := cache.Lookup(layout, 4, image.Rect(0, 0, 10, 10)); ok {
 		t.Fatal("destroyed layout retained a cached image")
 	}
 	if !slices.Equal(released, []int{20, 10, 30, 40}) {
@@ -82,8 +82,8 @@ func TestImageCacheLayoutDestroyFansOutAndCacheDestroyDisconnects(t *testing.T) 
 	firstReleased, secondReleased := 0, 0
 	first := NewImageCache(1, func(int) { firstReleased++ })
 	second := NewImageCache(1, func(int) { secondReleased++ })
-	first.Store(layout, 1, 1)
-	second.Store(layout, 1, 2)
+	first.Store(layout, 1, image.Rect(0, 0, 10, 10), 1)
+	second.Store(layout, 1, image.Rect(0, 0, 10, 10), 2)
 
 	layout.Destroy()
 	if firstReleased != 1 || secondReleased != 1 {
@@ -93,7 +93,7 @@ func TestImageCacheLayoutDestroyFansOutAndCacheDestroyDisconnects(t *testing.T) 
 	thirdReleased := 0
 	third := NewImageCache(1, func(int) { thirdReleased++ })
 	other := new(cacheTestLayout)
-	third.Store(other, 1, 3)
+	third.Store(other, 1, image.Rect(0, 0, 10, 10), 3)
 	third.Destroy()
 	other.changed.Emit()
 	other.destroyed.Emit()
