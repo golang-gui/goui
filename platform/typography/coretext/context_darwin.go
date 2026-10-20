@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/goexlib/cgo"
+	"image"
 	"image/color"
 	"math"
 	"path/filepath"
@@ -475,50 +476,30 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 	return
 }
 
-func (t *TextLayout) Rasterize(scale float32, buf []byte) (bitmap typography.TextBitmap, err error) {
+func (t *TextLayout) Rasterize(scale float32, region image.Rectangle, buf []byte) (bitmap typography.TextBitmap, err error) {
 	if t.life.IsDestroyed() {
 		return bitmap, errors.New("coretext: rasterize destroyed text layout")
 	}
 	if scale <= 0 || math.IsNaN(float64(scale)) || math.IsInf(float64(scale), 0) {
 		return bitmap, fmt.Errorf("coretext: invalid raster scale %v", scale)
 	}
-	return t.rasterize(scale, buf)
-}
-
-func (t *TextLayout) rasterize(scale float32, buf []byte) (bitmap typography.TextBitmap, err error) {
+	width, height, err := utils.RasterDimensions(region)
+	if err != nil || width == 0 || height == 0 {
+		return bitmap, err
+	}
 	t.ensureFrame()
-
-	_, _, width, height := t.getExtents()
-	if width <= 0 || height <= 0 {
-		return
-	}
-
-	width = min(width, t.width) * scale
-	height = min(height, t.height) * scale
-	if width <= 0 || height <= 0 {
-		return
-	}
-
-	pw := roundToPixel(width)
-	ph := roundToPixel(height)
-
-	if t.painter.bitmap.Width < pw || t.painter.bitmap.Height < ph {
-		widthCapacity := max(pw, t.painter.bitmap.Width)
-		heightCapacity := max(ph, t.painter.bitmap.Height)
+	if t.painter.bitmap.Width < width || t.painter.bitmap.Height < height {
 		var next textPainter
-		if err = next.Init(float32(widthCapacity), float32(heightCapacity)); err != nil {
-			return
+		if err = next.Init(width, height); err != nil {
+			return bitmap, err
 		}
 		t.painter.Destroy()
 		t.painter = next
 	}
-
-	err = t.painter.DrawTextLayout(t, scale)
-	if err != nil {
+	if err = t.painter.DrawTextLayout(t, region, scale); err != nil {
 		t.painter.Destroy()
-		return
+		return bitmap, err
 	}
-
 	return t.painter.GetBitmap(width, height, buf), nil
 }
 
@@ -572,15 +553,19 @@ func (t *TextLayout) ensureFrame() {
 		defer CFRelease(framesetter)
 
 		textRange := CFRangeMake(0, 0)
-		size := CGSize{Width: float64(t.width), Height: 20000}
+		// Shaping must cover the text independently of the raster request. The
+		// old 20000-point frame truncated tall paragraphs. Unwrapped lines also
+		// need their natural width before choosing a containing frame.
+		size := CGSize{Width: float64(t.width), Height: math.MaxFloat64}
+		if t.format.WrapMode == typography.WrapNone {
+			size.Width = math.MaxFloat64
+		}
 		t.layoutSize, _ = CTFramesetterSuggestFrameSizeWithConstraints(framesetter, textRange, 0, size)
 		frameSize := t.layoutSize
 		// The suggested footprint can have zero width for whitespace/zero-width
 		// inline objects. A degenerate path produces no lines. Lay out those runs
 		// in the requested width while keeping their measured advance unchanged.
-		if frameSize.Width == 0 {
-			frameSize.Width = size.Width
-		}
+		frameSize.Width = max(frameSize.Width, float64(t.width))
 		if frameSize.Width > 0 && frameSize.Height > 0 {
 			path := CGPathCreateWithRect(CGRect{Size: frameSize}, nil)
 			if path != 0 {
@@ -644,43 +629,27 @@ func (t *TextLayout) getExtents() (x, y, width, height float32) {
 // ========== Text Painter ==========
 
 type textPainter struct {
-	width  float32
-	height float32
 	bitmap typography.TextBitmap
 	cgCtx  CGContextRef
 	cs     CGColorSpaceRef
 }
 
-func (p *textPainter) Init(width, height float32) (err error) {
+func (p *textPainter) Init(width, height int) (err error) {
 	defer func() {
 		if err != nil {
 			p.Destroy()
 		}
 	}()
-	p.width = width
-	p.height = height
-	p.bitmap.Width = roundToPixel(width)
-	p.bitmap.Height = roundToPixel(height)
-	p.bitmap.Stride = p.bitmap.Width * 4
-	p.bitmap.Pixels = make([]byte, p.bitmap.Stride*p.bitmap.Height)
+	p.bitmap = typography.TextBitmap{Width: width, Height: height, Stride: width * 4}
+	p.bitmap.Pixels = make([]byte, p.bitmap.Stride*height)
 	p.cs = CGColorSpaceCreateDeviceRGB()
 	if p.cs == 0 {
 		return errors.New("failed to create bitmap color space")
 	}
-
-	p.cgCtx = CGBitmapContextCreate(
-		p.bitmap.Pixels,
-		p.bitmap.Width,
-		p.bitmap.Height,
-		8,
-		p.bitmap.Stride,
-		p.cs,
-		CGImageAlphaPremultipliedLast, // RGBA
-	)
+	p.cgCtx = CGBitmapContextCreate(p.bitmap.Pixels, width, height, 8, p.bitmap.Stride, p.cs, CGImageAlphaPremultipliedLast)
 	if p.cgCtx == 0 {
 		return errors.New("failed to create bitmap context")
 	}
-
 	CGContextSetShouldAntialias(p.cgCtx, true)
 	CGContextSetAllowsAntialiasing(p.cgCtx, true)
 	return nil
@@ -696,36 +665,24 @@ func (p *textPainter) Destroy() {
 	*p = textPainter{}
 }
 
-func (p *textPainter) DrawTextLayout(t *TextLayout, scale float32) error {
+func (p *textPainter) DrawTextLayout(t *TextLayout, region image.Rectangle, scale float32) error {
 	CGContextSaveGState(p.cgCtx)
 	defer CGContextRestoreGState(p.cgCtx)
-
 	CGContextClearRect(p.cgCtx, CGRectMake(0, 0, float64(p.bitmap.Width), float64(p.bitmap.Height)))
+	if t.frame == 0 {
+		return nil
+	}
+	// CoreText uses an upward Y axis. Put the requested layout pixel region
+	// at the top-left of the retained buffer, regardless of its capacity.
+	CGContextTranslateCTM(p.cgCtx, -float64(region.Min.X), float64(p.bitmap.Height)+float64(region.Min.Y)-t.layoutSize.Height*float64(scale))
 	CGContextScaleCTM(p.cgCtx, float64(scale), float64(scale))
 	CGContextSetTextMatrix(p.cgCtx, CGAffineTransformIdentity)
 	CTFrameDraw(t.frame, p.cgCtx)
 	return nil
 }
 
-func (p *textPainter) GetBitmap(width, height float32, buf []byte) (bitmap typography.TextBitmap) {
-	bitmap.Width = min(roundToPixel(width), p.bitmap.Width)
-	bitmap.Height = min(roundToPixel(height), p.bitmap.Height)
-	bitmap.Stride = bitmap.Width * 4
-	byteSize := bitmap.Stride * bitmap.Height
-	if byteSize <= cap(buf) {
-		bitmap.Pixels = buf[:byteSize]
-	} else {
-		bitmap.Pixels = make([]byte, byteSize)
-	}
-	// CoreText draws from the CGContext's bottom-left origin. When the
-	// retained bitmap is taller than this rasterization, the active rows
-	// are at the bottom of its top-to-bottom pixel buffer.
-	for y := 0; y < bitmap.Height; y++ {
-		dstOffset := bitmap.PixOffset(0, y)
-		srcOffset := p.bitmap.PixOffset(0, p.bitmap.Height-bitmap.Height+y)
-		copy(bitmap.Pixels[dstOffset:dstOffset+bitmap.Stride], p.bitmap.Pixels[srcOffset:])
-	}
-	return
+func (p *textPainter) GetBitmap(width, height int, buf []byte) typography.TextBitmap {
+	return utils.CopyBitmap(p.bitmap, width, height, buf)
 }
 
 func createCTFont(font typography.FontInfo) CTFontRef {

@@ -404,7 +404,10 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 		return
 	}
 
-	textBitmap, err := layout.Rasterize(rasterScale, p.textPixels)
+	width, height := layout.MeasureSize()
+	boxWidth, _ := layout.Size()
+	region := image.Rect(0, 0, int(math.Ceil(float64(max(width, boxWidth)*rasterScale))), int(math.Ceil(float64(height*rasterScale))))
+	textBitmap, err := layout.Rasterize(rasterScale, region, p.textPixels)
 	if err != nil || textBitmap.Width <= 0 || textBitmap.Height <= 0 {
 		return
 	}

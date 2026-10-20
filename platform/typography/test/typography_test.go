@@ -2,6 +2,7 @@ package test
 
 import (
 	"bytes"
+	"github.com/golang-gui/goui/platform/typography/internal/typographytest"
 	"image"
 	"image/color"
 	"image/png"
@@ -49,7 +50,7 @@ func TestTypography(t *testing.T) {
 		defer layout.Destroy()
 
 		// Each call is a fresh rasterization result owned by the caller.
-		bmp1, err := layout.Rasterize(1.0, nil)
+		bmp1, err := layout.Rasterize(1.0, typographytest.RasterRegion(layout, 1.0), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -58,7 +59,7 @@ func TestTypography(t *testing.T) {
 		}
 
 		reuse := make([]byte, len(bmp1.Pixels))
-		bmp2, err := layout.Rasterize(1.0, reuse[:0])
+		bmp2, err := layout.Rasterize(1.0, typographytest.RasterRegion(layout, 1.0), reuse[:0])
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -70,7 +71,7 @@ func TestTypography(t *testing.T) {
 		}
 
 		// A different scale changes physical dimensions.
-		bmp3, err := layout.Rasterize(2.0, nil)
+		bmp3, err := layout.Rasterize(2.0, typographytest.RasterRegion(layout, 2.0), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -83,14 +84,14 @@ func TestTypography(t *testing.T) {
 
 		// Layout mutations affect subsequent rasterization.
 		layout.SetTextColor(0, 3, color.RGBA{R: 200, G: 30, B: 30, A: 255})
-		bmp4, err := layout.Rasterize(1.0, nil)
+		bmp4, err := layout.Rasterize(1.0, typographytest.RasterRegion(layout, 1.0), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if bytes.Equal(bmp1.Pixels, bmp4.Pixels) {
 			t.Fatal("pixels should change after a rendering setter")
 		}
-		if _, err := layout.Rasterize(0, nil); err == nil {
+		if _, err := layout.Rasterize(0, typographytest.RasterRegion(layout, 0), nil); err == nil {
 			t.Fatal("zero raster scale did not return an error")
 		}
 	})
@@ -125,7 +126,7 @@ func TestTypography(t *testing.T) {
 		if destroyed != 1 {
 			t.Fatalf("destroy notifications = %d, want 1", destroyed)
 		}
-		if _, err := layout.Rasterize(1, nil); err == nil {
+		if _, err := layout.Rasterize(1, image.Rectangle{}, nil); err == nil {
 			t.Fatal("destroyed layout could still be rasterized")
 		}
 		destroyHandle.Disconnect()
@@ -138,7 +139,7 @@ func TestTypography(t *testing.T) {
 		}
 		defer layout.Destroy()
 
-		bitmap, err := layout.Rasterize(1.0, nil)
+		bitmap, err := layout.Rasterize(1.0, typographytest.RasterRegion(layout, 1.0), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -148,7 +149,7 @@ func TestTypography(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		bitmap, err = layout.Rasterize(2.0, nil)
+		bitmap, err = layout.Rasterize(2.0, typographytest.RasterRegion(layout, 2.0), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -165,7 +166,7 @@ func TestTypography(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		bitmap, err := layout.Rasterize(1.0, nil)
+		bitmap, err := layout.Rasterize(1.0, typographytest.RasterRegion(layout, 1.0), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -196,7 +197,7 @@ func TestTypography(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		bitmap, err := layout.Rasterize(1.0, nil)
+		bitmap, err := layout.Rasterize(1.0, typographytest.RasterRegion(layout, 1.0), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -227,7 +228,7 @@ func TestTypography(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		bitmap, err := layout.Rasterize(1.0, nil)
+		bitmap, err := layout.Rasterize(1.0, typographytest.RasterRegion(layout, 1.0), nil)
 		if err != nil {
 			t.Fatal(err)
 		}

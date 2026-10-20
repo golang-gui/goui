@@ -3,6 +3,7 @@ package pango
 import (
 	"errors"
 	"fmt"
+	"image"
 	"image/color"
 	"math"
 	"path/filepath"
@@ -411,7 +412,6 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 	}
 	lines = make([]typography.TextLine, 0, lineCount)
 	clusters = make([]typography.TextCluster, 0, t.chars)
-	xOffset, yOffset, _, _ := t.getExtents()
 	iter := t.layout.GetIter()
 	defer iter.Free()
 	// Keep independent line/cluster cursors. NextCluster skips empty lines,
@@ -427,10 +427,10 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 		_, rect := iter.GetLineExtents()
 		line := typography.TextLine{
 			Start: int(nativeLine.StartIndex), Length: int(nativeLine.Length),
-			X:     float32(rect.X)/pango.Scale - xOffset,
-			Y:     float32(rect.Y)/pango.Scale - yOffset,
+			X:     float32(rect.X) / pango.Scale,
+			Y:     float32(rect.Y) / pango.Scale,
 			Width: float32(rect.Width) / pango.Scale, Height: float32(rect.Height) / pango.Scale,
-			Baseline: float32(iter.GetBaseline())/pango.Scale - yOffset,
+			Baseline: float32(iter.GetBaseline()) / pango.Scale,
 		}
 		beg := len(clusters)
 		// NextCluster skips empty lines. Keep a separate line iterator so empty
@@ -441,7 +441,7 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 				_, clusterRect := clusterIter.GetClusterExtents()
 				clusters = append(clusters, typography.TextCluster{
 					Start: clusterIter.GetIndex(),
-					X:     float32(clusterRect.X)/pango.Scale - xOffset, Y: line.Y,
+					X:     float32(clusterRect.X) / pango.Scale, Y: line.Y,
 					Width: float32(clusterRect.Width) / pango.Scale, Height: line.Height,
 					LineIndex: len(lines),
 					Direction: typography.TextDirection(run.Item.Analysis.Level & 1),
@@ -472,45 +472,31 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 	return
 }
 
-func (t *TextLayout) Rasterize(scale float32, buf []byte) (bitmap typography.TextBitmap, err error) {
+func (t *TextLayout) Rasterize(scale float32, region image.Rectangle, buf []byte) (bitmap typography.TextBitmap, err error) {
 	if t.life.IsDestroyed() {
 		return bitmap, errors.New("pango: rasterize destroyed text layout")
 	}
 	if scale <= 0 || math.IsNaN(float64(scale)) || math.IsInf(float64(scale), 0) {
 		return bitmap, fmt.Errorf("pango: invalid raster scale %v", scale)
 	}
-	return t.rasterize(scale, buf)
-}
-
-func (t *TextLayout) rasterize(scale float32, buf []byte) (bitmap typography.TextBitmap, err error) {
-	x, y, width, height := t.getExtents()
-	if width <= 0 || height <= 0 {
-		return
+	width, height, err := utils.RasterDimensions(region)
+	if err != nil || width == 0 || height == 0 {
+		return bitmap, err
 	}
-
-	width = min(width, t.width) * scale
-	height = min(height, t.height) * scale
-	if width <= 0 || height <= 0 {
-		return
-	}
-
-	if t.painter.width < width || t.painter.height < height {
-		widthCapacity := max(width, t.painter.width)
-		heightCapacity := max(height, t.painter.height)
+	if t.painter.bitmap.Width < width || t.painter.bitmap.Height < height {
+		// Publish capacity only after every native resource has been created.
+		// A failed growth leaves the previous painter usable.
 		var next textPainter
-		if err = next.Init(widthCapacity, heightCapacity); err != nil {
-			return
+		if err = next.Init(width, height); err != nil {
+			return bitmap, err
 		}
 		t.painter.Destroy()
 		t.painter = next
 	}
-
-	err = t.painter.DrawTextLayout(t, -x, -y, scale)
-	if err != nil {
-		t.painter.Destroy()
-		return
+	if err = t.painter.DrawTextLayout(t, region, scale); err != nil {
+		t.painter.Destroy() // Cairo errors are sticky; retry with a fresh context.
+		return bitmap, err
 	}
-
 	return t.painter.GetBitmap(width, height, buf), nil
 }
 
@@ -524,35 +510,27 @@ func (t *TextLayout) getExtents() (x, y, width, height float32) {
 }
 
 type textPainter struct {
-	width   float32
-	height  float32
 	bitmap  typography.TextBitmap
 	surface cairo.Surface
 	context cairo.Context
 }
 
-func (p *textPainter) Init(width, height float32) (err error) {
+func (p *textPainter) Init(width, height int) (err error) {
 	defer func() {
 		if err != nil {
 			p.Destroy()
 		}
 	}()
-	p.width = width
-	p.height = height
-	p.bitmap.Width = roundToPixel(width)
-	p.bitmap.Height = roundToPixel(height)
-	p.bitmap.Stride = p.bitmap.Width * 4
-	p.bitmap.Pixels = make([]byte, p.bitmap.Stride*p.bitmap.Height)
-	p.surface = cairo.ImageSurfaceCreateForData(p.bitmap.Pixels, cairo.FormatARGB32, p.bitmap.Width, p.bitmap.Height, p.bitmap.Stride)
+	p.bitmap = typography.TextBitmap{Width: width, Height: height, Stride: width * 4}
+	p.bitmap.Pixels = make([]byte, p.bitmap.Stride*height)
+	p.surface = cairo.ImageSurfaceCreateForData(p.bitmap.Pixels, cairo.FormatARGB32, width, height, p.bitmap.Stride)
 	if status := p.surface.Status(); status != 0 {
 		return fmt.Errorf("create cairo image surface err: %v", status)
 	}
-
 	p.context = cairo.Create(p.surface)
 	if status := p.context.Status(); status != 0 {
 		return fmt.Errorf("create cairo context err: %v", status)
 	}
-
 	return nil
 }
 
@@ -566,24 +544,26 @@ func (p *textPainter) Destroy() {
 	*p = textPainter{}
 }
 
-func (p *textPainter) DrawTextLayout(t *TextLayout, x, y, scale float32) (err error) {
+func (p *textPainter) DrawTextLayout(t *TextLayout, region image.Rectangle, scale float32) (err error) {
 	cgo.Memset(cgo.CSlice(p.bitmap.Pixels), 0, cgo.Sizet(len(p.bitmap.Pixels)))
 	p.context.Save()
 	defer p.context.Restore()
 
-	r, g, b, a := toColor(t.format.TextColor)
+	// Translate in pixels before applying the logical-unit scale. All regions
+	// share the original layout origin and the same subpixel glyph phase.
+	p.context.Translate(-float64(region.Min.X), -float64(region.Min.Y))
 	p.context.Scale(float64(scale), float64(scale))
+	r, g, b, a := toColor(t.format.TextColor)
 	p.context.SetSourceRGBA(r, g, b, a)
-	p.context.MoveTo(float64(x), float64(y))
-	// Raster scale changes the device mapping, not the measured logical layout.
-	// UpdateLayout would re-shape with scale-dependent hinted advances and can
-	// change wrapping; restoring it afterwards cannot fix the pixels just drawn.
+	p.context.MoveTo(0, 0)
+	// UpdateLayout would reshape with scale-dependent hinted advances and can
+	// change wrapping. Render the already measured layout without updating it.
 	pango_cairo.ShowLayout(p.context, t.layout)
-	t.drawStrikethrough(p.context, x, y)
+	t.drawStrikethrough(p.context, 0, 0)
 	if status := p.context.Status(); status != 0 {
 		return fmt.Errorf("cairo draw pango layout err: %v", status)
 	}
-	return
+	return nil
 }
 
 func (t *TextLayout) drawStrikethrough(cr cairo.Context, originX, originY float32) {
@@ -637,10 +617,8 @@ func absInt(value int) int {
 	return value
 }
 
-func (p *textPainter) GetBitmap(width, height float32, buf []byte) (bitmap typography.TextBitmap) {
-	bitmap.Width = roundToPixel(width)
-	bitmap.Height = roundToPixel(height)
-	bitmap = utils.CopyBitmap(p.bitmap, bitmap.Width, bitmap.Height, buf)
+func (p *textPainter) GetBitmap(width, height int, buf []byte) (bitmap typography.TextBitmap) {
+	bitmap = utils.CopyBitmap(p.bitmap, width, height, buf)
 	utils.ReverseBitmap(bitmap)
 	return
 }

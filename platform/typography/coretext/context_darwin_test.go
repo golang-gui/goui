@@ -2,6 +2,7 @@ package coretext
 
 import (
 	"bytes"
+	"image"
 	"image/color"
 	"image/png"
 	"math"
@@ -64,7 +65,7 @@ func TestFontRegistration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer layout.Destroy()
-	if _, err := layout.Rasterize(1, nil); err != nil {
+	if _, err := layout.Rasterize(1, typographytest.RasterRegion(layout, 1), nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -221,7 +222,7 @@ func TestTextLayoutFontTraits(t *testing.T) {
 				t.Fatal("missing text metrics")
 			}
 			for _, scale := range []float32{1, 2} {
-				bitmap, err := layout.Rasterize(scale, nil)
+				bitmap, err := layout.Rasterize(scale, typographytest.RasterRegion(layout, scale), nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -279,7 +280,7 @@ func Test_TextLayout(t *testing.T) {
 	lines, clusters := layout.MeasureMetrics()
 	t.Logf("lines=%d clusters=%d", len(lines), len(clusters))
 
-	bitmap, err := layout.Rasterize(2.0, nil)
+	bitmap, err := layout.Rasterize(2.0, typographytest.RasterRegion(layout, 2.0), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +320,7 @@ func TestTextLayoutRasterScaleDoesNotAccumulate(t *testing.T) {
 	}
 	defer layout.Destroy()
 
-	first2x, err := layout.Rasterize(2, nil)
+	first2x, err := layout.Rasterize(2, typographytest.RasterRegion(layout, 2), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -327,13 +328,13 @@ func TestTextLayoutRasterScaleDoesNotAccumulate(t *testing.T) {
 	// The layout-owned retained CGContext must start every rasterization with an
 	// identity CTM, even when drawing the same layout again.
 	layout.SetTextAlignment(format.TextAlign)
-	second2x, err := layout.Rasterize(2, nil)
+	second2x, err := layout.Rasterize(2, typographytest.RasterRegion(layout, 2), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertSameBitmap(t, first2x, second2x)
 
-	actual1x, err := layout.Rasterize(1, nil)
+	actual1x, err := layout.Rasterize(1, typographytest.RasterRegion(layout, 1), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +343,7 @@ func TestTextLayoutRasterScaleDoesNotAccumulate(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer fresh.Destroy()
-	want1x, err := fresh.Rasterize(1, nil)
+	want1x, err := fresh.Rasterize(1, typographytest.RasterRegion(fresh, 1), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +352,7 @@ func TestTextLayoutRasterScaleDoesNotAccumulate(t *testing.T) {
 	// Shrinking a retained bitmap must read the same rows as a fresh context,
 	// including fractional scales and repeated changes in both directions.
 	for _, scale := range []float32{1.25, 1.5, 1.75, 2, 1.5, 1} {
-		got, err := layout.Rasterize(scale, nil)
+		got, err := layout.Rasterize(scale, typographytest.RasterRegion(layout, scale), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -359,7 +360,7 @@ func TestTextLayoutRasterScaleDoesNotAccumulate(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want, err := fresh.Rasterize(scale, nil)
+		want, err := fresh.Rasterize(scale, typographytest.RasterRegion(fresh, scale), nil)
 		fresh.Destroy()
 		if err != nil {
 			t.Fatal(err)
@@ -396,28 +397,28 @@ func TestTextLayoutsOwnRasterResources(t *testing.T) {
 
 	first := firstLayout.(*TextLayout)
 	second := secondLayout.(*TextLayout)
-	want, err := first.Rasterize(1, nil)
+	want, err := first.Rasterize(1, typographytest.RasterRegion(first, 1), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	firstWidth, firstHeight := first.painter.width, first.painter.height
-	if _, err = second.Rasterize(2, nil); err != nil {
+	firstWidth, firstHeight := first.painter.bitmap.Width, first.painter.bitmap.Height
+	if _, err = second.Rasterize(2, typographytest.RasterRegion(second, 2), nil); err != nil {
 		t.Fatal(err)
 	}
-	if second.painter.width <= 0 || second.painter.height <= 0 {
+	if second.painter.bitmap.Width <= 0 || second.painter.bitmap.Height <= 0 {
 		t.Fatal("second layout did not initialize its raster resources")
 	}
-	got, err := first.Rasterize(1, nil)
+	got, err := first.Rasterize(1, typographytest.RasterRegion(first, 1), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertSameBitmap(t, want, got)
-	if first.painter.width != firstWidth || first.painter.height != firstHeight {
+	if first.painter.bitmap.Width != firstWidth || first.painter.bitmap.Height != firstHeight {
 		t.Fatal("rasterizing another layout changed the first layout's raster resources")
 	}
 }
 
-func TestTextLayoutBitmapRespectsSize(t *testing.T) {
+func TestTextLayoutBitmapRespectsRequestedRegion(t *testing.T) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	c, err := NewContext()
@@ -438,7 +439,7 @@ func TestTextLayoutBitmapRespectsSize(t *testing.T) {
 	}
 	defer layout.Destroy()
 
-	bitmap, err := layout.Rasterize(1, nil)
+	bitmap, err := layout.Rasterize(1, image.Rect(0, 0, 40, 20), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,7 @@
 package typography
 
 import (
+	"image"
 	"image/color"
 
 	"github.com/golang-gui/goui/core/signal"
@@ -78,15 +79,25 @@ type TextLayout interface {
 	// units; Start and Length values are UTF-8 byte offsets into Text.
 	MeasureMetrics() (lines []TextLine, clusters []TextCluster)
 
-	// Rasterize renders the layout at scale physical pixels per logical unit.
-	// scale must be finite and greater than zero. The returned bitmap dimensions
-	// and stride are in physical pixels, and its pixels are premultiplied RGBA.
-	// An empty layout may produce an empty bitmap.
+	// Rasterize renders region of the existing layout at scale physical pixels
+	// per logical unit. scale must be finite and positive. region is an integer
+	// rectangle in the layout's raster pixel plane: layout position (0,0) maps
+	// to raster position (0,0), independently of the region. Negative coordinates
+	// are allowed. This operation does not change shaping or layout constraints.
+	//
+	// The result has exactly region.Dx() by region.Dy() pixels. Its local pixel
+	// (0,0) corresponds to region.Min; uncovered pixels are transparent. Backends
+	// do not crop, pad, or rebase the requested region. Empty regions return an
+	// empty bitmap and nil error. Invalid scales, oversized regions, and native
+	// rendering failures return errors. Even an empty layout produces the full
+	// transparent bitmap for a non-empty region.
+	//
+	// Dimensions and stride are in physical pixels; pixels are premultiplied RGBA.
 	//
 	// When buf has sufficient capacity its storage may be reused, in which case
 	// bitmap.Pixels aliases buf. Neither the layout nor its Context retains the
 	// returned pixel slice.
-	Rasterize(scale float32, buf []byte) (bitmap TextBitmap, err error)
+	Rasterize(scale float32, region image.Rectangle, buf []byte) (bitmap TextBitmap, err error)
 
 	// ConnectChanged registers a listener for layout changes that affect
 	// measurement or rendering. Notifications are synchronous, run on the

@@ -3,6 +3,7 @@ package directwrite
 import (
 	"errors"
 	"fmt"
+	"image"
 	"image/color"
 	"math"
 	"path/filepath"
@@ -471,8 +472,7 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 	clusters = make([]typography.TextCluster, 0, len(clusterMetrics))
 
 	pos, index := 0, 0
-	xOffset, yOffset, _, _ := t.getExtends()
-	lineY := -yOffset
+	lineY := float32(0)
 	totalUnits := t.position.ToUtf16(len(t.text))
 
 	for lineIndex, metrics := range lineMetrics {
@@ -485,7 +485,7 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 		line.Start = t.position.ToUtf8(min(pos, totalUnits))
 		line.Length = t.position.ToUtf8(contentEnd) - line.Start
 		lineX, _, _, _ := t.layout.HitTestTextPosition(pos, false)
-		line.X = lineX - xOffset
+		line.X = lineX
 		line.Y = lineY
 		line.Height = metrics.Height
 		line.Baseline = line.Y + metrics.Baseline
@@ -503,7 +503,7 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 				_, _, hit, _ := t.layout.HitTestTextPosition(pos, false)
 				cluster := typography.TextCluster{
 					Start: t.position.ToUtf8(pos),
-					X:     hit.Left - xOffset, Y: line.Y,
+					X:     hit.Left, Y: line.Y,
 					Width: dwCluster.Width, Height: line.Height, LineIndex: lineIndex,
 				}
 				cluster.Length = t.position.ToUtf8(pos+int(dwCluster.Length)) - cluster.Start
@@ -578,58 +578,36 @@ func (t *TextLayout) Draw(render *d2d1.RenderTarget, origin d2d1.Point2F, drawOp
 		t.layout.SetDrawingEffect(&d2dBrush.Unknown, attr.Range)
 	}
 
-	x, y, _, _ := t.getExtends()
-	pos := d2d1.Point2F{
-		X: origin.X - x,
-		Y: origin.Y - y,
-	}
-	render.DrawTextLayout(pos, t.layout, fgColorBrush, drawOptions)
+	render.DrawTextLayout(origin, t.layout, fgColorBrush, drawOptions)
 	return nil
 }
 
-func (t *TextLayout) Rasterize(scale float32, buf []byte) (bitmap typography.TextBitmap, err error) {
+func (t *TextLayout) Rasterize(scale float32, region image.Rectangle, buf []byte) (bitmap typography.TextBitmap, err error) {
 	if t.life.IsDestroyed() {
 		return bitmap, errors.New("directwrite: rasterize destroyed text layout")
 	}
 	if scale <= 0 || math.IsNaN(float64(scale)) || math.IsInf(float64(scale), 0) {
 		return bitmap, fmt.Errorf("directwrite: invalid raster scale %v", scale)
 	}
-	return t.rasterize(scale, buf)
-}
-
-func (t *TextLayout) rasterize(scale float32, buf []byte) (bitmap typography.TextBitmap, err error) {
+	width, height, err := utils.RasterDimensions(region)
+	if err != nil || width == 0 || height == 0 {
+		return bitmap, err
+	}
 	if err = t.ctx.prepareDraw(); err != nil {
-		return
+		return bitmap, err
 	}
-
-	_, _, width, height := t.getExtends()
-	if width <= 0 || height <= 0 {
-		return
-	}
-
-	width = min(width, t.width) * scale
-	height = min(height, t.height) * scale
-	if width <= 0 || height <= 0 {
-		return
-	}
-
 	if t.painter.width < width || t.painter.height < height {
-		widthCapacity := max(width, t.painter.width)
-		heightCapacity := max(height, t.painter.height)
 		var next textPainter
-		if err = next.Init(t.ctx.d2dFactory, t.ctx.imgFactory, widthCapacity, heightCapacity); err != nil {
-			return
+		if err = next.Init(t.ctx.d2dFactory, t.ctx.imgFactory, width, height); err != nil {
+			return bitmap, err
 		}
 		t.painter.Destroy()
 		t.painter = next
 	}
-
-	err = t.painter.DrawTextLayout(t, scale)
-	if err != nil {
+	if err = t.painter.DrawTextLayout(t, region, scale); err != nil {
 		t.painter.Destroy()
-		return
+		return bitmap, err
 	}
-
 	return t.painter.GetBitmap(width, height, buf)
 }
 
@@ -653,21 +631,19 @@ func roundPixel(v float32) int {
 }
 
 type textPainter struct {
-	width  float32
-	height float32
+	width  int
+	height int
 	colorf d2d1.ColorF
 	bitmap *wic.Bitmap
 	render *d2d1.RenderTarget
 }
 
-func (p *textPainter) Init(d2dFactory *d2d1.Factory, imgFactory *wic.ImagingFactory, width, height float32) (err error) {
+func (p *textPainter) Init(d2dFactory *d2d1.Factory, imgFactory *wic.ImagingFactory, width, height int) (err error) {
 	defer func() {
 		if err != nil {
 			p.Destroy()
 		}
 	}()
-	p.width = width
-	p.height = height
 	wicPixelFormat := wic.GUID_WICPixelFormat32bppPRGBA
 	d2dPixelFormat := d2d1.PixelFormat{
 		Format:    dxgi.DXGI_FORMAT_R8G8B8A8_UNORM,
@@ -675,7 +651,7 @@ func (p *textPainter) Init(d2dFactory *d2d1.Factory, imgFactory *wic.ImagingFact
 	}
 
 	var hr com.HRESULT
-	p.bitmap, hr = imgFactory.CreateBitmap(roundPixel(width), roundPixel(height), wicPixelFormat, wic.WICBitmapCacheOnLoad)
+	p.bitmap, hr = imgFactory.CreateBitmap(width, height, wicPixelFormat, wic.WICBitmapCacheOnLoad)
 	if hr.Failed() {
 		return fmt.Errorf("create wic bitmap err: %v", hr)
 	}
@@ -692,6 +668,7 @@ func (p *textPainter) Init(d2dFactory *d2d1.Factory, imgFactory *wic.ImagingFact
 	}
 
 	p.render.SetTextAntialiasMode(d2d1.D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE)
+	p.width, p.height = width, height
 	return nil
 }
 
@@ -705,12 +682,12 @@ func (p *textPainter) Destroy() {
 	*p = textPainter{}
 }
 
-func (p *textPainter) DrawTextLayout(layout *TextLayout, scale float32) (err error) {
-	dpi := scale * 96
-	p.render.SetDpi(dpi, dpi)
+func (p *textPainter) DrawTextLayout(layout *TextLayout, region image.Rectangle, scale float32) (err error) {
+	p.render.SetDpi(96, 96)
+	p.render.SetTransform(&d2d1.Matrix3x2F{M11: scale, M22: scale, M31: -float32(region.Min.X), M32: -float32(region.Min.Y)})
 	p.render.BeginDraw()
 	p.render.Clear(&p.colorf)
-	err = layout.Draw(p.render, d2d1.Point2F{}, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT|d2d1.D2D1_DRAW_TEXT_OPTIONS_CLIP)
+	err = layout.Draw(p.render, d2d1.Point2F{}, d2d1.D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT)
 	hr := p.render.EndDraw(nil, nil)
 	if err != nil {
 		return fmt.Errorf("directwrite draw text err: %w", err)
@@ -721,9 +698,9 @@ func (p *textPainter) DrawTextLayout(layout *TextLayout, scale float32) (err err
 	return nil
 }
 
-func (p *textPainter) GetBitmap(width, height float32, buf []byte) (bitmap typography.TextBitmap, err error) {
-	bitmap.Width = roundPixel(width)
-	bitmap.Height = roundPixel(height)
+func (p *textPainter) GetBitmap(width, height int, buf []byte) (bitmap typography.TextBitmap, err error) {
+	bitmap.Width = width
+	bitmap.Height = height
 	bitmap.Stride = bitmap.Width * 4
 	byteSize := bitmap.Stride * bitmap.Height
 	if byteSize <= cap(buf) {

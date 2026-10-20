@@ -283,7 +283,7 @@ func (l *testTextLayout) Destroy() {
 	l.destroySig.Emit()
 }
 
-func (l *testTextLayout) Rasterize(float32, []byte) (typography.TextBitmap, error) {
+func (l *testTextLayout) Rasterize(float32, image.Rectangle, []byte) (typography.TextBitmap, error) {
 	return typography.TextBitmap{}, nil
 }
 

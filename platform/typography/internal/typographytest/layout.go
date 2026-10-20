@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"golang.org/x/image/font/gofont/goregular"
+	"image"
 	"image/color"
 	"math"
 	"reflect"
@@ -30,7 +31,7 @@ func FontStyles(t *testing.T, ctx typography.Context) {
 		t.Fatal(err)
 	}
 	defer peer.Destroy()
-	original, err := base.Rasterize(2, nil)
+	original, err := base.Rasterize(2, RasterRegion(base, 2), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,13 +44,13 @@ func FontStyles(t *testing.T, ctx typography.Context) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want, err := fresh.Rasterize(2, nil)
+		want, err := fresh.Rasterize(2, RasterRegion(fresh, 2), nil)
 		fresh.Destroy()
 		if err != nil {
 			t.Fatal(err)
 		}
 		base.SetTextFont(0, len(base.Text()), font)
-		got, err := base.Rasterize(2, nil)
+		got, err := base.Rasterize(2, RasterRegion(base, 2), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -59,12 +60,12 @@ func FontStyles(t *testing.T, ctx typography.Context) {
 		if sameBitmap(original, got) {
 			t.Fatalf("font style did not change glyph pixels: %+v", font)
 		}
-		peerBitmap, err := peer.Rasterize(2, nil)
+		peerBitmap, err := peer.Rasterize(2, RasterRegion(peer, 2), nil)
 		if err != nil || !sameBitmap(original, peerBitmap) {
 			t.Fatalf("range changes polluted another layout: %v", err)
 		}
 		base.SetTextFont(0, len(base.Text()), regular)
-		restored, err := base.Rasterize(2, nil)
+		restored, err := base.Rasterize(2, RasterRegion(base, 2), nil)
 		if err != nil || !sameBitmap(original, restored) {
 			t.Fatalf("complete font replacement did not restore Regular: %v", err)
 		}
@@ -124,7 +125,7 @@ func Strikethrough(t *testing.T, ctx typography.Context, pointsToLogical, thickn
 	if len(clusters) != 9 || len(lines) != 1 {
 		t.Fatalf("unexpected whitespace metrics: %d lines %d clusters", len(lines), len(clusters))
 	}
-	baselineBitmap, err := layout.Rasterize(1, nil)
+	baselineBitmap, err := layout.Rasterize(1, RasterRegion(layout, 1), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +135,7 @@ func Strikethrough(t *testing.T, ctx typography.Context, pointsToLogical, thickn
 		t.Fatal("strikethrough changed text metrics")
 	}
 	for _, scale := range []float32{1, 1.5, 2} {
-		bitmap, err := layout.Rasterize(scale, nil)
+		bitmap, err := layout.Rasterize(scale, RasterRegion(layout, scale), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -169,7 +170,7 @@ func Strikethrough(t *testing.T, ctx typography.Context, pointsToLogical, thickn
 		}
 	}
 	layout.SetStrikethrough(0, 9, false)
-	bitmap, err := layout.Rasterize(1, nil)
+	bitmap, err := layout.Rasterize(1, RasterRegion(layout, 1), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +191,7 @@ func Placeholders(t *testing.T, ctx typography.Context) {
 		}
 		func() {
 			defer layout.Destroy()
-			original, err := layout.Rasterize(1, nil)
+			original, err := layout.Rasterize(1, RasterRegion(layout, 1), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -242,7 +243,7 @@ func Placeholders(t *testing.T, ctx typography.Context) {
 				}
 			}
 			for _, scale := range []float32{1, 1.5, 2} {
-				bitmap, err := layout.Rasterize(scale, nil)
+				bitmap, err := layout.Rasterize(scale, RasterRegion(layout, scale), nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -271,7 +272,7 @@ func Placeholders(t *testing.T, ctx typography.Context) {
 			for _, start := range positions {
 				layout.SetPlaceholder(start, nil)
 			}
-			restored, err := layout.Rasterize(1, nil)
+			restored, err := layout.Rasterize(1, RasterRegion(layout, 1), nil)
 			if err != nil || !sameBitmap(original, restored) {
 				t.Fatalf("%q: clearing placeholder did not restore native text: %v", text, err)
 			}
@@ -295,7 +296,7 @@ func Placeholders(t *testing.T, ctx typography.Context) {
 	second.SetPlaceholder(0, &typography.PlaceholderMetrics{Width: 11, Height: 19, Baseline: 10})
 	for i := 0; i < 50; i++ {
 		first.SetPlaceholder(0, &typography.PlaceholderMetrics{Width: float32(20 + i), Height: 42, Baseline: 28})
-		if _, err := first.Rasterize(1, nil); err != nil {
+		if _, err := first.Rasterize(1, RasterRegion(first, 1), nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -308,4 +309,18 @@ func Placeholders(t *testing.T, ctx typography.Context) {
 	if len(clusters) != 1 || len(lines) != 1 || clusters[0].Width != 0 || clusters[0].Height != 42 || lines[0].Height < 42 {
 		t.Fatalf("zero-width placeholder lost metrics: %+v %+v", lines, clusters)
 	}
+}
+
+// RasterRegion gives existing whole-layout tests an explicit region. Empty text
+// uses an empty request; transparent non-empty regions have separate coverage.
+func RasterRegion(layout typography.TextLayout, scale float32) image.Rectangle {
+	if layout.Text() == "" {
+		return image.Rectangle{}
+	}
+	w, h := layout.MeasureSize()
+	if format := layout.Format(); format.WrapMode != typography.WrapNone || format.TextAlign != typography.TextAlignBegin {
+		box, _ := layout.Size()
+		w = max(w, box)
+	}
+	return image.Rect(0, 0, int(math.Ceil(float64(w*scale))), int(math.Ceil(float64(h*scale))))
 }
