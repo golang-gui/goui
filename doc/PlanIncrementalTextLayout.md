@@ -2,15 +2,17 @@
 
 ## 状态
 
-2026-10-20。用户选择保持完整正确性，继续完善通用方案。设计见
-[增量排版](DesignIncrementalTextLayout.md)。
+2026-10-20。保持完整正确性，本轮修订为上层片段测量缓存及可视区布局；
+TextLayout 不承担视口或任务策略。设计见
+[片段测量与布局](DesignIncrementalTextLayout.md)。历史实验按各节原有边界理解。
 
 - [x] 分开测量原生排版与度量导出，验证独立文本窗口原型的 bidi 缺陷。
 - [x] 共享几何按行索引、可视行选区查询；TextView／TextInput 和 SourceView 接入。
 - [x] 确定性回归与排版阶段 benchmark。
 - [x] 已排版光标导航复用几何，避免点击触发父层测量与宽度来回重排。
-- [ ] 可恢复、保留上下文的段落分析与 shaping 原语。
-- [ ] Root 预算内推进、测量复用、增量折行及待就绪交互契约。
+- [x] Git 回退 Reflow 接口、后端实现、GUI 队列及专用绑定，保留独立 RTL 修复。
+- [ ] 普通值片段缓存、有限送测与边界准确性原型。
+- [ ] GUI 预算内推进、可视区发布、增量布局及待就绪交互契约。
 - [ ] 两个控件首次超长段落不冻结窗口的桌面验收。
 
 **本轮尚未完成首次排版修复。** 两个控件仍可能在原生整段测量时阻塞。
@@ -161,3 +163,32 @@ NewTextLayout／SetSize／MeasureMetrics。正式窗口回归使用基线 overla
 
 原生首次排版、颜色失效、2× 绘制延迟以及实际 IME／物理输入仍须继续推进；
 本节不改变上面的通用分时排版未完成状态。
+
+## Reflow 回退与设计修订（2026-10-20）
+
+用户要求保持 TextLayout 的排版／测量／渲染职责，缓存及布局由上层管理。
+本轮执行 Git revert，未 reset 或改写历史：
+
+- `50d202b`、`47a1e93`、`7c53b38`、`ba7804d` 分别撤回实验验收记录、
+  TextView 帧接入、Pango Reflow 及该版设计。
+- `dab0170` 部分撤回 `cf734bc` 专用原生绑定，只保留 GlyphString.LogClusters，
+  供独立的 `6b110f0` RTL cluster 起点修复使用。
+- 同期 SourceView `da26b9a`、`72e240d` 撤回其验收记录和控件接入。
+
+回退后的 platform／gui 相对 `71b25c8` 仅保留 RTL 修复及其最小绑定、回归。
+区域光栅化、几何查询、可视行装饰和光标缓存复用保持有效。
+本轮只修订片段值／视口布局设计，尚未实现新的片段排版。
+
+本机 Linux amd64，GOUI `dab0170`、SourceView `72e240d`，通过：
+
+- GOUI `GOWORK=off go test ./...`，包含原生 Pango／RTL 测量回归。
+- SourceView 本地工作区 `go test ./...`。
+- GOUI `GOWORK=off go test -race ./gui ./gui/textedit ./platform/typography/pango`。
+- SourceView 工作区 `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...`
+  和 `GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build ./...`，覆盖 GOUI 使用路径。
+
+SourceView `GOWORK=off go test ./...` 仍报 `updates to go.mod needed`，未修改
+用户原有 replace 或执行 tidy，不能声称已完成独立发布验证。
+无新长段落窗口性能结论，Windows／macOS 仅交叉构建，未原生运行；首次加载
+与换宽仍可能同步阻塞，片段设计待实现。既有全仓测试可能重生成原有图片输出，
+未纳入提交；未清理用户原有未跟踪文件。

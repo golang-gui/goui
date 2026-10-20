@@ -49,8 +49,9 @@ TextLayout 符合这一边界；拆分必须保留所需排版上下文，不能
 单个布局的工作量仍需单独评估。MeasureMetrics 导出整个布局的行和 Cluster 度量，
 Rasterize 接受显式像素区域；Painter 仅光栅化可见区域，避免完整超长位图。
 这不约束完整段落 shaping 的工作量，见 [区域光栅化](DesignTextRasterization.md)。
-长段落可恢复分析、分步测量及控件调度的目标与当前门槛见
-[增量排版](DesignIncrementalTextLayout.md)，尚未替代同步 TextLayout。
+超长文本的范围选择、测量值缓存、可视区布局及分步调度由上层承担，见
+[片段测量与布局](DesignIncrementalTextLayout.md)。TextLayout 保持同步排版契约，
+不加入视口、页缓存、帧预算或重排任务接口。
 应明确相关操作的成本、约束和失败行为，分别测量 shaping、度量导出、上层几何
 构建与栅格化；不能仅凭可见段落布局或源文本缓存预算承诺大文本延迟和原生内存上限。
 
