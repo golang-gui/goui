@@ -161,3 +161,87 @@ NewTextLayout／SetSize／MeasureMetrics。正式窗口回归使用基线 overla
 
 原生首次排版、颜色失效、2× 绘制延迟以及实际 IME／物理输入仍须继续推进；
 本节不改变上面的通用分时排版未完成状态。
+
+## 已测段落分帧换宽（2026-10-20）
+
+实现规格见 [可视区缓存与分步换宽](DesignViewportTextLayout.md)。基线 GOUI
+`71b25c8`，SourceView `e0b1a6c`。原生绑定 `cf734bc`、RTL 修正 `6b110f0`、
+Pango 重排 `6676636`、GUI/TextView 调度 `57163fd`；SourceView 接入 `cdf100c`。这一步优化已存在段落的换宽，未完成全文通用
+增量排版：首次加载仍同步；第一次保留完整分析、巨大单行／cluster、Geometry
+构造和实际绘制仍有不可抢占工作，新宽度等整段折行索引完成才统一发布。
+
+GOUI 增加可选 `typography.ReflowLayout` 与 `gui.DeferTextLayout`。Pango 保留
+完整 Unicode/logical attrs、font/item、glyph advance，使用原段落上下文对折点
+局部塑形，不独立分析子串。换宽取消旧 continuation，单次推进按显示行检查
+软期限；同 Root 队列约 2 ms、按约 250 μs 小批次轮转。TextView 已测 8 KiB
+以上段落接入；TextInput 不换行，保留原路径。隐藏暂停，卸载／原生销毁／缓存
+淘汰取消；编辑移动未修改段落时使用当前索引；换宽取消屏幕外的过期任务。
+SourceView 独立缓存和语法状态，经公共 helper 参与同一预算。
+
+原生 glyph 页只保留光栅请求区域与上下各一屏范围的显示行，滚回从测量重建；
+折行/cluster 元数据仍完整保留。颜色批量更新只登记绘制失效，首次光栅前复制
+一次属性，不在每个 token setter 中复制整份属性，也不重新折行。测量格式变化
+清除快照；不同布局独立持有 item/font/glyph，不能共享可变页。
+
+两个正确性修复随本轮交付：
+
+- Pango RTL 迭代器的 index 是 cluster 最后一个字符；改从 glyph log 取得
+  逻辑起点，矩形继续取原生迭代器。RLO+组合字独立语义回归在旧行为 overlay
+  下失败（得到 `[0,4)`，应为 `[3,6)` RTL），修正后通过。
+- Pango 1.50.6 的 show_glyph_string 共享 renderer 清除颜色但残留 alpha。
+  保留字形改由公开 Cairo scaled-font/glyph 绘制；缺字框使用 Pango 原生轮廓。
+  隔离回归显式先画半透明普通布局，再销毁它、推进并绘制另一布局，1×/2×
+  严格比较参考像素，不放宽容差。重复五次及组合运行通过。
+
+本机仍为 Linux amd64／Go 1.25.8／Pango 1.50.6／Cairo 1.16.0／X11／XFCE
+(xfwm4)。原生头文件的 C 编译器核对：GlyphItem=32、GlyphInfo=20、LogAttr=4、
+CairoGlyph=24、CairoGlyph.x offset=8；包内增加公开前缀布局断言。新路径需要
+Pango 1.50+；DirectWrite/CoreText 尚无对应实现，不能将交叉构建记为三端优化完成。
+
+### 对照与窗口范围
+
+相同 Linux/Pango/DejaVu Sans 12 pt，32,768 个 a，520 → 480 DIP，三次
+`BenchmarkDeferredResize -benchtime=1x`。两条路径都包含完整 line/cluster 导出，
+不含初始分析、绘制和 GUI Geometry：
+
+| 路径 | 累计执行耗时 | 最长单次调用 |
+| --- | --- | --- |
+| 原生 SetSize + 完整度量 | 1.848～1.881 s | 1.845～1.877 s |
+| 保留测量、分步折行 | 78.3～79.1 ms | 2.56～2.76 ms |
+
+分步 benchmark 没有帧等待；不等于新文本呈现延迟，也不证明冷分析或任意输入
+的上限。期限不是原生调用的抢占机制。固定矩阵核对 WrapChar/WrapWordChar ×
+1/17/80/480/520/700 DIP 的行范围、X/Y/宽高/baseline、glyph ID/位置/level、
+cluster 和 1×/2× 预乘 RGBA 像素；样本覆盖连字、字体范围、CJK、emoji/组合字、
+Tab、SHY/ZWSP/NBSP、RTL/isolate、跨 4 KiB 的 override、空段及段落分隔符。
+混合段落的总宽度按行矩形并集计算，不能仅取最大行宽。
+
+两仓窗口联验入口在 SourceView `tests/window/editor/reflow`，分别运行 TextView
+和 SourceView 模式。真实 X11 窗口由 xdotool 连续换宽，按钮/文本输入通过正常
+DispatchEvent。Modern 集成窗口、Software 1×/2×、OpenGL 1× 验证：
+待排版期间按钮可点击、无同步 SetSize、过期宽度取消、最终完整原生几何一致、
+有可见墨迹、点击定位正确、编辑取消资源。测试关闭行号/折叠来显式固定文本原点。
+
+32 KiB 样本在待排版期间观察到几十次 20 ms 定时器回调；1× Software 的最长
+定时器间隔约 60～70 ms，2× 约 130～150 ms，OpenGL 1× 约 30～40 ms。
+这是进程内观察，包含绘制、布局及调度影响，不是合成延迟或硬上限。高 DPI
+绘制仍需优化。用户 `1.json`（157,862 字节，单段）也通过两控件 Software 1×
+换宽/几何/点击/编辑验证，未写入文件；具体采样保留在 SourceView 实施记录。
+
+### 验证与缺口
+
+- 两仓全量 `go test ./...`，GOUI 另在 GOWORK=off 条件通过。
+- GOUI `go test -race ./gui ./gui/textedit ./platform/typography/pango`、
+  SourceView `go test -race ./...` 通过。
+- GOUI `./gui` 与 SourceView `./...` 的 Windows amd64／macOS arm64
+  `CGO_ENABLED=0 go build` 通过；两端原生排版与窗口均未运行。
+- SourceView `GOWORK=off go test ./...` 仍报 `updates to go.mod needed`，
+  未改用户现有 go.mod/replace；已发布 v0.2.0 不含所需新 API，不能独立发布。
+- 单元回归还覆盖过期 deadline 不做分析、换宽保留测量、取消不发布、字体失效、
+  颜色不重测、页淘汰再访问、两布局交错/销毁、完成回调重入、隐藏恢复、编辑
+  行号移动与缓存淘汰。窗口测试不等于真实 IME／物理键鼠验收。
+- 原有全仓测试仍会重生成其历史图片输出，未纳入提交。新增窗口不写剪贴板、
+  系统设置或用户文件，测试窗口均关闭；一次初始化诊断用 SIGQUIT 终止测试
+  进程以定位重复任务，未作为场景通过依据。
+- 新首屏提前发布、详细几何分页、检查点/宽度后缀收敛、可恢复冷分析、巨大单行
+  continuation，以及 DirectWrite/CoreText 分帧换宽仍未实现。
