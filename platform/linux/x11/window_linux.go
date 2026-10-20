@@ -565,6 +565,13 @@ func handleEvent(event xlib.Event) {
 }
 
 func (w *Window) drawImage(img graphics.Bitmap) (err error) {
+	// XCreateImage borrows the pixel address across subsequent XPutImage and
+	// XDestroyImage calls. Keep it stable until the native image is released.
+	var pixelsPin runtime.Pinner
+	if len(img.Pixels) > 0 {
+		pixelsPin.Pin(&img.Pixels[0])
+	}
+	defer pixelsPin.Unpin()
 	if w.gc == 0 {
 		w.gc = platform.display.CreateGC(xlib.Drawable(w.wid), 0, nil)
 		if w.gc == 0 {

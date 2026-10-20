@@ -7,6 +7,7 @@ import (
 	"image/color"
 	"math"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"unicode/utf8"
 
@@ -510,9 +511,10 @@ func (t *TextLayout) getExtents() (x, y, width, height float32) {
 }
 
 type textPainter struct {
-	bitmap  typography.TextBitmap
-	surface cairo.Surface
-	context cairo.Context
+	bitmap    typography.TextBitmap
+	surface   cairo.Surface
+	context   cairo.Context
+	pixelsPin *runtime.Pinner // shared only when ownership moves to TextLayout
 }
 
 func (p *textPainter) Init(width, height int) (err error) {
@@ -523,6 +525,10 @@ func (p *textPainter) Init(width, height int) (err error) {
 	}()
 	p.bitmap = typography.TextBitmap{Width: width, Height: height, Stride: width * 4}
 	p.bitmap.Pixels = make([]byte, p.bitmap.Stride*height)
+	p.pixelsPin = new(runtime.Pinner)
+	if len(p.bitmap.Pixels) > 0 {
+		p.pixelsPin.Pin(&p.bitmap.Pixels[0])
+	}
 	p.surface = cairo.ImageSurfaceCreateForData(p.bitmap.Pixels, cairo.FormatARGB32, width, height, p.bitmap.Stride)
 	if status := p.surface.Status(); status != 0 {
 		return fmt.Errorf("create cairo image surface err: %v", status)
@@ -540,6 +546,9 @@ func (p *textPainter) Destroy() {
 	}
 	if p.surface != 0 {
 		p.surface.Destroy()
+	}
+	if p.pixelsPin != nil {
+		p.pixelsPin.Unpin()
 	}
 	*p = textPainter{}
 }

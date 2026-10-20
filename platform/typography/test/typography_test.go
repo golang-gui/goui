@@ -165,6 +165,7 @@ func TestTypography(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer layout.Destroy()
 
 		bitmap, err := layout.Rasterize(1.0, typographytest.RasterRegion(layout, 1.0), nil)
 		if err != nil {
@@ -196,6 +197,7 @@ func TestTypography(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer layout.Destroy()
 
 		bitmap, err := layout.Rasterize(1.0, typographytest.RasterRegion(layout, 1.0), nil)
 		if err != nil {
@@ -227,6 +229,7 @@ func TestTypography(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer layout.Destroy()
 
 		bitmap, err := layout.Rasterize(1.0, typographytest.RasterRegion(layout, 1.0), nil)
 		if err != nil {

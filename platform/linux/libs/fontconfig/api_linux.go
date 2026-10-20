@@ -45,13 +45,12 @@ func (c Config) Destroy() {
 // If complain is true, errors are printed to stderr.
 func (c Config) ParseAndLoad(file string, complain bool) Bool {
 	// FcBool FcConfigParseAndLoad(FcConfig* config, const FcChar8* file, FcBool complain)
-	var filePtr uintptr
+	var cFile unsafe.Pointer
 	if file != "" {
-		cFile := cgo.CStringTemp(file)
-		filePtr = uintptr(cFile)
-		defer runtime.KeepAlive(cFile)
+		cFile = cgo.CStringTemp(file)
 	}
-	ret, _, _ := fcConfigParseAndLoad.CallRaw(uintptr(c), filePtr, uintptr(cgo.CBool(complain)))
+	ret, _, _ := fcConfigParseAndLoad.CallRaw(uintptr(c), uintptr(cFile), uintptr(cgo.CBool(complain)))
+	runtime.KeepAlive(cFile)
 	return Bool(ret)
 }
 

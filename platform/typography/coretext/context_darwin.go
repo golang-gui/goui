@@ -8,6 +8,7 @@ import (
 	"image/color"
 	"math"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"unsafe"
@@ -629,9 +630,10 @@ func (t *TextLayout) getExtents() (x, y, width, height float32) {
 // ========== Text Painter ==========
 
 type textPainter struct {
-	bitmap typography.TextBitmap
-	cgCtx  CGContextRef
-	cs     CGColorSpaceRef
+	bitmap    typography.TextBitmap
+	cgCtx     CGContextRef
+	cs        CGColorSpaceRef
+	pixelsPin *runtime.Pinner // pointer survives transfer of painter ownership
 }
 
 func (p *textPainter) Init(width, height int) (err error) {
@@ -642,6 +644,10 @@ func (p *textPainter) Init(width, height int) (err error) {
 	}()
 	p.bitmap = typography.TextBitmap{Width: width, Height: height, Stride: width * 4}
 	p.bitmap.Pixels = make([]byte, p.bitmap.Stride*height)
+	p.pixelsPin = new(runtime.Pinner)
+	if len(p.bitmap.Pixels) > 0 {
+		p.pixelsPin.Pin(&p.bitmap.Pixels[0])
+	}
 	p.cs = CGColorSpaceCreateDeviceRGB()
 	if p.cs == 0 {
 		return errors.New("failed to create bitmap color space")
@@ -658,6 +664,9 @@ func (p *textPainter) Init(width, height int) (err error) {
 func (p *textPainter) Destroy() {
 	if p.cgCtx != 0 {
 		CGContextRelease(p.cgCtx)
+	}
+	if p.pixelsPin != nil {
+		p.pixelsPin.Unpin()
 	}
 	if p.cs != 0 {
 		CGColorSpaceRelease(p.cs)

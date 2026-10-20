@@ -139,6 +139,8 @@ const (
 	CGTextClip
 )
 
+// CGBitmapContextCreate borrows nonempty data until the returned context is
+// released. The owner must keep that Go memory live and pinned for this lifetime.
 func CGBitmapContextCreate(data []byte, width, height, bitsPerComponent, bytesPerRow int, space CGColorSpaceRef, bitmapInfo CGBitmapInfo) CGContextRef {
 	return fnCGBitmapContextCreate(cgo.CSlice(data), width, height, bitsPerComponent, bytesPerRow, space, bitmapInfo)
 }
