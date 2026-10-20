@@ -19,7 +19,6 @@ import (
 )
 
 type textParagraph struct {
-	cancelReflow   func()
 	index          int
 	textBytes      int
 	previous, next *textParagraph
@@ -108,10 +107,6 @@ func (c *textParagraphCache) add(index, textBytes int, p *textParagraph) {
 }
 
 func (c *textParagraphCache) remove(p *textParagraph) {
-	if p.cancelReflow != nil {
-		p.cancelReflow()
-		p.cancelReflow = nil
-	}
 	c.unlink(p)
 	delete(c.paragraphs, p.index)
 	c.textBytes -= p.textBytes
@@ -626,41 +621,8 @@ func (t *textEditor) paragraph(index int) *textParagraph {
 		}
 		t.textParagraphCache.add(index, len(text), p)
 	} else if p.layout != nil {
-		if p.cancelReflow != nil {
-			p.cancelReflow()
-			p.cancelReflow = nil
-		}
-		currentWidth, currentHeight := p.layout.Size()
-		if (currentWidth != width || currentHeight != textInputMeasureExtent) && !t.singleLine && p.textBytes >= 8192 {
-			current := p
-			cancel, scheduled := DeferTextLayout(t.owner, p.layout, width, textInputMeasureExtent, func(err error) {
-				if t.owner.base().destroyed || t.suspended || t.paragraphs[current.index] != current {
-					return
-				}
-				current.cancelReflow = nil
-				if err != nil {
-					log.Printf("text reflow: %v", err)
-					return
-				}
-				t.retainViewportAnchor()
-				t.measureParagraph(current.index, current)
-				t.owner.RequestLayout()
-				t.owner.RequestPaint()
-			})
-			if scheduled {
-				p.cancelReflow, p.measured = cancel, true
-				t.heights.Set(index, p.height)
-				t.observedWidth = max(t.observedWidth, p.width)
-				return p
-			}
-		}
 		p.layout.SetSize(width, textInputMeasureExtent)
 	}
-	t.measureParagraph(index, p)
-	return p
-}
-
-func (t *textEditor) measureParagraph(index int, p *textParagraph) {
 	var w, h float32
 	if p.layout != nil {
 		w, h = p.layout.MeasureSize()
@@ -676,6 +638,7 @@ func (t *textEditor) measureParagraph(index int, p *textParagraph) {
 	p.measured = true
 	t.heights.Set(index, p.height)
 	t.observedWidth = max(t.observedWidth, w)
+	return p
 }
 
 func (t *textEditor) contentSize() geometry.Size {
@@ -719,12 +682,7 @@ func (t *textEditor) prepareWidth(width float32) {
 		t.retainViewportAnchor()
 		t.heights.Reset(t.displayLineCount(), t.lineHeight)
 		t.observedWidth = 0
-		for index, p := range t.paragraphs {
-			if p.cancelReflow != nil {
-				p.cancelReflow()
-				p.cancelReflow = nil
-			}
-			t.heights.Set(index, p.height)
+		for _, p := range t.paragraphs {
 			p.measured = false
 		}
 	}
