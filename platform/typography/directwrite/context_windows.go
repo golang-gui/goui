@@ -616,15 +616,17 @@ func (t *TextLayout) rasterize(scale float32, buf []byte) (bitmap typography.Tex
 	if t.painter.width < width || t.painter.height < height {
 		widthCapacity := max(width, t.painter.width)
 		heightCapacity := max(height, t.painter.height)
-		t.painter.Destroy()
-		err = t.painter.Init(t.ctx.d2dFactory, t.ctx.imgFactory, widthCapacity, heightCapacity)
-		if err != nil {
+		var next textPainter
+		if err = next.Init(t.ctx.d2dFactory, t.ctx.imgFactory, widthCapacity, heightCapacity); err != nil {
 			return
 		}
+		t.painter.Destroy()
+		t.painter = next
 	}
 
 	err = t.painter.DrawTextLayout(t, scale)
 	if err != nil {
+		t.painter.Destroy()
 		return
 	}
 
@@ -659,6 +661,11 @@ type textPainter struct {
 }
 
 func (p *textPainter) Init(d2dFactory *d2d1.Factory, imgFactory *wic.ImagingFactory, width, height float32) (err error) {
+	defer func() {
+		if err != nil {
+			p.Destroy()
+		}
+	}()
 	p.width = width
 	p.height = height
 	wicPixelFormat := wic.GUID_WICPixelFormat32bppPRGBA
@@ -691,12 +698,11 @@ func (p *textPainter) Init(d2dFactory *d2d1.Factory, imgFactory *wic.ImagingFact
 func (p *textPainter) Destroy() {
 	if p.render != nil {
 		p.render.Release()
-		p.render = nil
 	}
 	if p.bitmap != nil {
 		p.bitmap.Release()
-		p.bitmap = nil
 	}
+	*p = textPainter{}
 }
 
 func (p *textPainter) DrawTextLayout(layout *TextLayout, scale float32) (err error) {
