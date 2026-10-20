@@ -497,15 +497,17 @@ func (t *TextLayout) rasterize(scale float32, buf []byte) (bitmap typography.Tex
 	if t.painter.width < width || t.painter.height < height {
 		widthCapacity := max(width, t.painter.width)
 		heightCapacity := max(height, t.painter.height)
-		t.painter.Destroy()
-		err = t.painter.Init(widthCapacity, heightCapacity)
-		if err != nil {
+		var next textPainter
+		if err = next.Init(widthCapacity, heightCapacity); err != nil {
 			return
 		}
+		t.painter.Destroy()
+		t.painter = next
 	}
 
 	err = t.painter.DrawTextLayout(t, -x, -y, scale)
 	if err != nil {
+		t.painter.Destroy()
 		return
 	}
 
@@ -530,6 +532,11 @@ type textPainter struct {
 }
 
 func (p *textPainter) Init(width, height float32) (err error) {
+	defer func() {
+		if err != nil {
+			p.Destroy()
+		}
+	}()
 	p.width = width
 	p.height = height
 	p.bitmap.Width = roundToPixel(width)
@@ -538,13 +545,11 @@ func (p *textPainter) Init(width, height float32) (err error) {
 	p.bitmap.Pixels = make([]byte, p.bitmap.Stride*p.bitmap.Height)
 	p.surface = cairo.ImageSurfaceCreateForData(p.bitmap.Pixels, cairo.FormatARGB32, p.bitmap.Width, p.bitmap.Height, p.bitmap.Stride)
 	if status := p.surface.Status(); status != 0 {
-		p.Destroy()
 		return fmt.Errorf("create cairo image surface err: %v", status)
 	}
 
 	p.context = cairo.Create(p.surface)
 	if status := p.context.Status(); status != 0 {
-		p.Destroy()
 		return fmt.Errorf("create cairo context err: %v", status)
 	}
 
@@ -554,12 +559,11 @@ func (p *textPainter) Init(width, height float32) (err error) {
 func (p *textPainter) Destroy() {
 	if p.context != 0 {
 		p.context.Destroy()
-		p.context = 0
 	}
 	if p.surface != 0 {
 		p.surface.Destroy()
-		p.surface = 0
 	}
+	*p = textPainter{}
 }
 
 func (p *textPainter) DrawTextLayout(t *TextLayout, x, y, scale float32) (err error) {

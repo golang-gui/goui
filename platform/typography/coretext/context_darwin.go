@@ -505,15 +505,17 @@ func (t *TextLayout) rasterize(scale float32, buf []byte) (bitmap typography.Tex
 	if t.painter.bitmap.Width < pw || t.painter.bitmap.Height < ph {
 		widthCapacity := max(pw, t.painter.bitmap.Width)
 		heightCapacity := max(ph, t.painter.bitmap.Height)
-		t.painter.Destroy()
-		err = t.painter.Init(float32(widthCapacity), float32(heightCapacity))
-		if err != nil {
+		var next textPainter
+		if err = next.Init(float32(widthCapacity), float32(heightCapacity)); err != nil {
 			return
 		}
+		t.painter.Destroy()
+		t.painter = next
 	}
 
 	err = t.painter.DrawTextLayout(t, scale)
 	if err != nil {
+		t.painter.Destroy()
 		return
 	}
 
@@ -650,6 +652,11 @@ type textPainter struct {
 }
 
 func (p *textPainter) Init(width, height float32) (err error) {
+	defer func() {
+		if err != nil {
+			p.Destroy()
+		}
+	}()
 	p.width = width
 	p.height = height
 	p.bitmap.Width = roundToPixel(width)
@@ -657,6 +664,9 @@ func (p *textPainter) Init(width, height float32) (err error) {
 	p.bitmap.Stride = p.bitmap.Width * 4
 	p.bitmap.Pixels = make([]byte, p.bitmap.Stride*p.bitmap.Height)
 	p.cs = CGColorSpaceCreateDeviceRGB()
+	if p.cs == 0 {
+		return errors.New("failed to create bitmap color space")
+	}
 
 	p.cgCtx = CGBitmapContextCreate(
 		p.bitmap.Pixels,
@@ -668,7 +678,6 @@ func (p *textPainter) Init(width, height float32) (err error) {
 		CGImageAlphaPremultipliedLast, // RGBA
 	)
 	if p.cgCtx == 0 {
-		p.Destroy()
 		return errors.New("failed to create bitmap context")
 	}
 
@@ -680,12 +689,11 @@ func (p *textPainter) Init(width, height float32) (err error) {
 func (p *textPainter) Destroy() {
 	if p.cgCtx != 0 {
 		CGContextRelease(p.cgCtx)
-		p.cgCtx = 0
 	}
 	if p.cs != 0 {
 		CGColorSpaceRelease(p.cs)
-		p.cs = 0
 	}
+	*p = textPainter{}
 }
 
 func (p *textPainter) DrawTextLayout(t *TextLayout, scale float32) error {
