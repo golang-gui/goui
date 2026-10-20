@@ -16,6 +16,7 @@ var (
 	cairoSave                        = libcairo.NewSymbol("cairo_save")
 	cairoRestore                     = libcairo.NewSymbol("cairo_restore")
 	cairoScale                       = libcairo.NewSymbol("cairo_scale")
+	cairoTranslate                   = libcairo.NewSymbol("cairo_translate")
 	cairoSetSourceRgb                = libcairo.NewSymbol("cairo_set_source_rgb")
 	cairoSetSourceRgba               = libcairo.NewSymbol("cairo_set_source_rgba")
 	cairoPaint                       = libcairo.NewSymbol("cairo_paint")
@@ -98,6 +99,11 @@ func (cr Context) Restore() {
 
 func (cr Context) Scale(sx, sy float64) {
 	cgo.Call(cairoScale.Addr(), uintptr(cr), sx, sy)
+}
+
+// Translate changes the user-space origin by tx, ty.
+func (cr Context) Translate(tx, ty float64) {
+	cgo.Call(cairoTranslate.Addr(), uintptr(cr), tx, ty)
 }
 
 // SetSourceRGB sets the source pattern to an opaque color.
