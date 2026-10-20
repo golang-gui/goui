@@ -57,13 +57,15 @@ Painter 的 clip 是绘制约束，不是 Widget 可见范围查询接口。若�
 
 ```go
 type TextLayout interface {
-    Rasterize(scale float32, buf []byte) (TextBitmap, error)
+    Rasterize(scale float32, region image.Rectangle, buf []byte) (TextBitmap, error)
     ConnectChanged(func()) signal.Handle
     ConnectDestroy(func()) signal.Handle
 }
 ```
 
-- `Rasterize` 的 scale 是每 DIP 的物理像素数；返回紧密排列的预乘 RGBA。
+- `Rasterize` 的 scale 是每 DIP 的物理像素数；region 在布局光栅像素平面中，
+  返回对应区域的紧密预乘 RGBA，不重新 shaping 或移动输出原点。完整契约见
+  [区域光栅化](DesignTextRasterization.md)。
 - 返回像素属于调用方；`TextLayout` 和 `Context` 均不保留返回 slice。调用方传入的
   `buf` 容量足够时可以复用，但内部光栅工作区不会与返回结果共享生命周期。
 - 每个 `TextLayout` 持有自己的 `textPainter` 和可增长的临时 surface。`Destroy`
@@ -74,8 +76,8 @@ type TextLayout interface {
 三个排版后端的具体归属如下：
 
 - Pango：`Context` 只共享 `PangoFontMap`；每个 `TextLayout` 独立持有
-  `PangoContext`、`PangoLayout`、Cairo context 和 image surface。不同 scale 的
-  `pango_cairo_update_layout` 因此只会更新当前 layout 的排版环境。
+  `PangoContext`、`PangoLayout`、Cairo context 和 image surface。光栅化直接绘制
+  已测量布局，不调用会改变排版环境的 `pango_cairo_update_layout`。
 - DirectWrite：`Context` 共享 DirectWrite、Direct2D 和 WIC factory；每个
   `TextLayout` 持有自己的 `IDWriteTextLayout`、WIC bitmap 和 D2D render target。
 - CoreText：`Context` 负责框架初始化和注册字体；每个 `TextLayout` 持有自己的
@@ -86,10 +88,11 @@ type TextLayout interface {
 不改变线程模型；`Context` 和 `TextLayout` 仍然线程亲和，不支持并发调用。同一个
 `Context` 创建的所有 layout 必须在该 Context 之前销毁。
 
-OpenGL 和 Software Painter 以 `(TextLayout 对象身份, rasterScale)` 为 key 缓存
-`graphics.Image`。每个 layout 最多四个精确 scale，使用 LRU；平移、origin、clip
-不进入 key。缓存 miss 时执行一次 `Rasterize -> NewImage`，命中时直接 `DrawImage`。
-changed 释放该 layout 的全部 scale，destroy 额外断开订阅并删除记录。同一 layout
+OpenGL 和 Software Painter 以 `(TextLayout 对象身份, rasterScale, region)` 为 key
+缓存 `graphics.Image`。每个 layout 最多四张区域图片，使用 LRU；平移、origin、clip
+通过区域选择间接影响 key。缓存 miss 时按有限原生块光栅化、拼接再 NewImage；
+命中时直接 DrawImage。布局原点只对齐一次，区域按同一网格放置。
+changed 释放该 layout 的全部图片，destroy 额外断开订阅并删除记录。同一 layout
 可以被多个 Painter 使用，各 Painter 独立持有资源。
 
 Direct2D 继续直接绘制 DirectWrite layout，不经过图片缓存；DirectWrite layout
@@ -132,7 +135,7 @@ viewport 的子节点，滚动条是后置兄弟节点。绘制层级、输入�
 | 层 | 缓存什么 | 不知道什么 | 关联方式 |
 |---|---|---|---|
 | typography | TextLayout 的原生 shaping/断行数据和私有临时光栅 surface | Painter 及其图片资源 | `Rasterize` + changed/destroy signal |
-| graphics | Painter 所属的文字 `Image` | Widget 状态 | `(layout identity, rasterScale)` |
+| graphics | Painter 所属的文字 `Image` | Widget 状态 | `(layout identity, rasterScale, region)` |
 | 控件 | TextLayout 对象 | 缓存内部结构 | 字段持有，setter 失效 |
 
 typography 只返回一次性的 CPU 像素，不依赖 graphics 包的类型。graphics 把它快照为
@@ -148,12 +151,12 @@ typography 只返回一次性的 CPU 像素，不依赖 graphics 包的类型。
 - Pango 为每个 TextLayout 创建独立 PangoContext，避免光栅 transform 和 font
   options 经共享 Context 污染其他 layout。
 - TextLayout 提供 changed/destroy 通知，不缓存最终 CPU 位图，也不持有 Painter 图片。
-- OpenGL/Software Painter 缓存最终 `graphics.Image`，每 layout 最多四个 scale。
+- OpenGL/Software Painter 缓存最终 `graphics.Image`，每 layout 最多四张区域图片。
 - Direct2D 保持原生 DirectWrite 绘制；Painter 构造不再接收 Context。
 
 **测试**：
 - Rasterize buffer 复用、不同 scale、setter 后像素变化和生命周期通知。
-- 同 layout 多帧/多位置只光栅化一次，scale LRU、帧内失效和多 Painter 独立释放。
+- 同 layout 多帧/多位置只光栅化一次，scale/region LRU、帧内失效和多 Painter 独立释放。
 
 ### Phase 2：控件 TextLayout 字段化（已实现）
 
@@ -204,7 +207,9 @@ TextLayout 以 layout 私有工作区提供无结果缓存的光栅能力和
 ## 8. TextLayout 光栅工作区的内存权衡
 
 layout 私有 `textPainter` 让资源归属和隔离边界直接对应，但会使已经执行过
-`Rasterize` 的每个 layout 保留一块按其历史最大光栅尺寸增长的临时 surface。
+`Rasterize` 的每个 layout 保留自己的临时 surface，容量不足时按本次区域尺寸
+创建候选并成功替换，不累积横向/纵向历史最大值。普通 Painter 每次原生请求至多
+1024×1024；直接调用 Rasterize 的工作区仍受单次存储及原生限制。
 这块内存与 Painter 缓存的最终 `graphics.Image` 用途不同，却可能在稳定文字进入
 图片缓存后长期闲置。该问题属于工作区内存管理，不改变上述所有权设计。
 
