@@ -458,6 +458,23 @@ Pango 的 LayoutIter 在 RTL cluster 上定位到最后一个字符，不能将 
 [update_cluster](https://github.com/GNOME/pango/blob/1.50.6/pango/pango-layout.c#L6984)。
 这对带组合字／连字的 RTL 控制文本同样适用，不能仅按 UTF-8 rune 对齐修补。
 
+### DirectWrite 逐簇查询的调用边界
+
+簇坐标仍由 `IDWriteTextLayout.HitTestTextPosition` 给出，不自行累加宽度推算 RTL
+坐标。SDK 包保留原方法签名，将热路径的通用参数封送替换为既有 `CallRaw` 调用；
+两个 FLOAT 与 DWRITE_HIT_TEST_METRICS 输出放在同一个调用内工作区，并在整个原生
+调用期间 Pin，防止懒排版触发 inline object 回调、增长 Go 栈后使输出地址失效。
+返回时复制普通值，Unpin；不共享可变工作区或缓存来自不同布局的原生结果。
+
+依据 [Microsoft 的原生参数契约](https://learn.microsoft.com/en-us/windows/win32/api/dwrite/nf-dwrite-idwritetextlayout-hittesttextposition)，
+UTF-16 位置、BOOL leading/trailing 侧、输出结构和 HRESULT 保持原义。Windows 10
+19045／amd64 上逐位置、逐 leading/trailing 与原封送路径比较，全部坐标、metrics
+及 HRESULT 完全一致；覆盖折行、换行、Tab、复杂脚本、组合字、emoji 与双向控制。
+后端原生 inline object 栈增长测试继续通过。
+
+五组、每组 100000 次同布局查询，中位数约 964 ns → 521 ns，分配 135 B/4 次 →
+96 B/2 次。这只是查询边界的基准；真实输入、删除、宽高变化另作桌面验收。
+
 ### CoreText 度量导出的临时存储
 
 CoreText 继续一次排版完整输入，逐 run 读取原生 glyph positions、advances 和 string
