@@ -11,7 +11,9 @@ TextLayout 不承担视口或任务策略。设计见
 - [x] 确定性回归与排版阶段 benchmark。
 - [x] 已排版光标导航复用几何，避免点击触发父层测量与宽度来回重排。
 - [x] Git 回退 Reflow 接口、后端实现、GUI 队列及专用绑定，保留独立 RTL 修复。
-- [ ] 普通值片段缓存、有限送测与边界准确性原型。
+- [x] 普通值片段快照与详细几何分页；两控件使用方接入。
+- [x] 有限送测实验和长词／JSON 对照；保留跨窗口方向状态的失败门槛。
+- [ ] 正式片段测量的上下文衔接、范围缓存及可视区布局。
 - [ ] GUI 预算内推进、可视区发布、增量布局及待就绪交互契约。
 - [ ] 两个控件首次超长段落不冻结窗口的桌面验收。
 
@@ -192,3 +194,68 @@ SourceView `GOWORK=off go test ./...` 仍报 `updates to go.mod needed`，未修
 无新长段落窗口性能结论，Windows／macOS 仅交叉构建，未原生运行；首次加载
 与换宽仍可能同步阻塞，片段设计待实现。既有全仓测试可能重生成原有图片输出，
 未纳入提交；未清理用户原有未跟踪文件。
+
+## 普通值片段与几何工作集（2026-10-21）
+
+基线 GOUI `9c39d01`／SourceView `24edd50`。本轮未修改 platform／typography，
+没有恢复 Reflow，没有后台测量、递归 pump 或新的 Root 任务协议。
+功能提交：GOUI `42c9b42` 为片段值与详细几何分页，`22f3e4d` 为 TextView／TextInput
+接入；SourceView `5f9a81d` 为控件与原生回归接入，`cf3c544` 为有限送测实验及记录。
+
+已实现 NewFragment 的度量深拷贝、文本／坐标映射、完整显示行视图，以及每页
+32 行、每个 Geometry 最多 4 页的详细几何。查询只使用普通值，不调用原生布局。
+Native 异常／非分区度量保持已有 Geometry 语义，重复空行导致不严格有序的
+停靠范围也保留旧平局规则。边界随机回归发现并修正过跨页最近停靠点差异，
+没有放宽原断言。详见 [当前实现](DesignIncrementalTextLayout.md#12-普通值片段和详细几何分页已实现)。
+
+TextView／TextInput 首次需要几何才创建快照，换宽重测后丢弃旧快照；普通显示
+不提前复制完整度量。SourceView 的原有完整几何构造改为快照及按需详细页。
+首次原生测量、度量复制、换宽及单条巨大显示行仍有同步成本。没有实现正式的
+有限送测／事件循环测量预算，不能宣布超长文本 UI 冻结目标已达成。
+
+### 几何阶段对照
+
+Linux amd64／Go 1.25.8／Xeon Gold 5318Y。所有前后台项目验证完成后单独运行：
+
+```bash
+go test ./gui/textedit -run '^$' -bench '^BenchmarkFragmentFirstScreen' -benchtime=1x -count=3
+```
+
+相同现成度量，每行 80 cluster，测量“建立索引＋文档中部 20 行选择及一次命中”；
+Fragment 路径包含度量复制，旧路径直接借用输入。三次中位数：
+
+| 显示行数 | 原完整 Geometry | Fragment＋按需详细页 | 分配字节，旧 → 新 |
+| --- | ---: | ---: | ---: |
+| 1,000 | 13.197 ms | 3.806 ms | 31.4 MB → 7.0 MB |
+| 10,000 | 126.635 ms | 30.179 ms | 312.6 MB → 41.1 MB |
+
+这是人工度量的上层阶段对照，不包含 native shaping、绘制、事件循环等待或模型
+加载。快照复制仍随输入规模增长，不能由此承诺首次显示／严格帧延迟。
+
+### 验证与限制
+
+Linux amd64／Pango 1.50.6／Cairo 1.16.0／X11／XFCE（xfwm4），通过：
+
+- 最终 GOUI `GOWORK=off go test ./...`；另一次 `-count=1` 全仓通过。
+- `go test -race ./gui ./gui/textedit`、`go vet ./gui/textedit`。
+- SourceView 工作区全仓测试及 race；其原生测试覆盖 JSON、CJK／组合字／emoji、
+  Arabic／Hebrew、RLO／isolate，销毁原生布局后比较全部行的命中、caret、删除
+  边界及跨页选区，保留独立方向预期。
+- SourceView Windows amd64／macOS arm64 无 CGO 的 `go build ./...`。
+- `XMODIFIERS=@im=none GOUI_PLAT_PAINTER=software GOUI_PLAT_SCALE=1 go run ./tests/window/gui/text_caret`
+  及 scale=2。32 KiB、Modern 集成窗口，三次点击与文首／尾导航通过；
+  created=1、resized=1、metrics=2 均未增加。计时仅是事件至帧后定时器，
+  不作为本轮性能对照或合成延迟结论。
+- SourceView `tests/window/editor/selection`，上述 Software 1× 环境，JSON／XML／HTML
+  × Basic／Modern Light／Modern Dark 九组事件和像素检查通过。
+
+失败不计为通过：首次 GOUI 全仓在 `cmd/svgpng` 出现 `signal: segmentation fault
+(core dumped)`；该包随后 `go test -v ./cmd/svgpng -count=3`、全仓 `-count=1`
+及最终全仓均通过。尚未复现或确认根因，未把它归因为既有问题或宣称已修复。
+SourceView `go vet ./...` 在未修改的用户 `example/temp/main.go:58` 报 unreachable
+code；正式包、示例及窗口程序的定向 vet 通过，未修改用户例程。
+其 `GOWORK=off go test ./...` 仍要求更新 go.mod；依赖尚未发布，未执行 tidy。
+
+窗口自动关闭，无剪贴板、系统设置或用户文件修改。既有全仓测试可能重生成
+原有图片输出，未提交；用户未跟踪文件保留。Windows／macOS 仅交叉构建，
+没有原生窗口／IME／物理键鼠或混合 DPI 验收。
