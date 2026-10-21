@@ -248,18 +248,19 @@ func (c *Context) destroyDraw() {
 }
 
 type TextLayout struct {
-	ctx             *Context
-	layout          *dwrite.TextLayout
-	text            string
-	format          typography.TextFormat
-	width           float32
-	height          float32
-	position        utils.StringPosition
-	colors          []textColorAttr
-	painter         textPainter
-	life            lifecycle.Layout
-	placeholders    map[int]typography.PlaceholderMetrics
-	defaultTabWidth float32
+	ctx                 *Context
+	layout              *dwrite.TextLayout
+	text                string
+	format              typography.TextFormat
+	width               float32
+	height              float32
+	position            utils.StringPosition
+	colors              []textColorAttr
+	rasterColorsApplied bool // Only valid for this layout's owned painter.render.
+	painter             textPainter
+	life                lifecycle.Layout
+	placeholders        map[int]typography.PlaceholderMetrics
+	defaultTabWidth     float32
 }
 
 type textColorAttr struct {
@@ -424,6 +425,7 @@ func (t *TextLayout) SetTextColor(start, length int, color color.Color) {
 			Range: textRange,
 			Color: toRGBAColor(color),
 		})
+		t.rasterColorsApplied = false
 		t.life.Changed()
 	}
 }
@@ -544,7 +546,18 @@ func (t *TextLayout) MeasureSize() (width, height float32) {
 func (t *TextLayout) Draw(render *d2d1.RenderTarget, origin d2d1.Point2F, drawOptions d2d1.DrawTextOptions) (err error) {
 	var d2dColor d2d1.ColorF
 
-	brushs := make(map[color.RGBA]*d2d1.Brush, len(t.colors))
+	// SetDrawingEffect retains its brushes on the native layout. Repeating it
+	// for every raster tile can repeat native work even when the colors are
+	// identical. Only reuse effects on our owned target:
+	// an external target has its own resource domain and is never retained.
+	owned := render == t.painter.render
+	reuse := owned && t.rasterColorsApplied
+	t.rasterColorsApplied = false
+	brushCount := 1
+	if !reuse {
+		brushCount += len(t.colors)
+	}
+	brushs := make(map[color.RGBA]*d2d1.Brush, brushCount)
 	defer func() {
 		for _, b := range brushs {
 			b.Release()
@@ -570,13 +583,18 @@ func (t *TextLayout) Draw(render *d2d1.RenderTarget, origin d2d1.Point2F, drawOp
 		return err
 	}
 
-	for _, attr := range t.colors {
-		d2dBrush, err := getColorBrush(attr.Color)
-		if err != nil {
-			return err
+	if !reuse {
+		for _, attr := range t.colors {
+			d2dBrush, err := getColorBrush(attr.Color)
+			if err != nil {
+				return err
+			}
+			if hr := t.layout.SetDrawingEffect(&d2dBrush.Unknown, attr.Range); hr.Failed() {
+				return fmt.Errorf("directwrite set drawing effect err: %w", hr)
+			}
 		}
-		t.layout.SetDrawingEffect(&d2dBrush.Unknown, attr.Range)
 	}
+	t.rasterColorsApplied = owned
 
 	render.DrawTextLayout(origin, t.layout, fgColorBrush, drawOptions)
 	return nil
@@ -601,10 +619,12 @@ func (t *TextLayout) Rasterize(scale float32, region image.Rectangle, buf []byte
 		if err = next.Init(t.ctx.d2dFactory, t.ctx.imgFactory, width, height); err != nil {
 			return bitmap, err
 		}
+		t.rasterColorsApplied = false
 		t.painter.Destroy()
 		t.painter = next
 	}
 	if err = t.painter.DrawTextLayout(t, region, scale); err != nil {
+		t.rasterColorsApplied = false
 		t.painter.Destroy()
 		return bitmap, err
 	}
