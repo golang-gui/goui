@@ -66,6 +66,12 @@ func CFRunLoopWakeUp(runLoop CFRunLoopRef) {
 	fnCFRunLoopWakeUp(runLoop)
 }
 
+// CFRunLoopPerformBlock copies block before returning. It does not wake the
+// loop; callers that need prompt execution must call CFRunLoopWakeUp.
+func CFRunLoopPerformBlock(runLoop CFRunLoopRef, mode CFRunLoopMode, block objc.Block) {
+	fnCFRunLoopPerformBlock(runLoop, mode, block)
+}
+
 func CFRunLoopTimerCreateWithHandler(fireDate CFAbsoluteTime, interval CFTimeInterval, handler objc.Block) CFRunLoopTimerRef {
 	return fnCFRunLoopTimerCreateWithHandler(KCFAllocatorDefault, fireDate, interval, 0, 0, handler)
 }
@@ -333,6 +339,7 @@ var functions = []utils.Function{
 	{Name: "CFAbsoluteTimeGetCurrent", PFunc: &fnCFAbsoluteTimeGetCurrent},
 	{Name: "CFRunLoopGetMain", PFunc: &fnCFRunLoopGetMain},
 	{Name: "CFRunLoopWakeUp", PFunc: &fnCFRunLoopWakeUp},
+	{Name: "CFRunLoopPerformBlock", PFunc: &fnCFRunLoopPerformBlock},
 	{Name: "CFRunLoopTimerCreateWithHandler", PFunc: &fnCFRunLoopTimerCreateWithHandler},
 	{Name: "CFRunLoopTimerSetNextFireDate", PFunc: &fnCFRunLoopTimerSetNextFireDate},
 	{Name: "CFRunLoopTimerInvalidate", PFunc: &fnCFRunLoopTimerInvalidate},
@@ -375,6 +382,7 @@ var (
 	fnCFAbsoluteTimeGetCurrent        func() CFAbsoluteTime
 	fnCFRunLoopGetMain                func() CFRunLoopRef
 	fnCFRunLoopWakeUp                 func(runLoop CFRunLoopRef)
+	fnCFRunLoopPerformBlock           func(runLoop CFRunLoopRef, mode CFRunLoopMode, block objc.Block)
 	fnCFRunLoopTimerCreateWithHandler func(allocator CFAllocatorRef, fireDate CFAbsoluteTime, interval CFTimeInterval, flags CFOptionFlags, order CFIndex, handler objc.Block) CFRunLoopTimerRef
 	fnCFRunLoopTimerSetNextFireDate   func(timer CFRunLoopTimerRef, fireDate CFAbsoluteTime)
 	fnCFRunLoopTimerInvalidate        func(timer CFRunLoopTimerRef)

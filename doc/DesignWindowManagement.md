@@ -507,6 +507,34 @@ normal, hide/normal, and fullscreen/maximize/normal transitions at 1x and 2x.
 Fullscreen exit precedes the next maximize request so WM restoration does not
 discard that target. The tests query native state, not a request cache.
 
+## Native repaint requests
+
+`RequestPaint` schedules a future native paint; it does not paint synchronously.
+Requests made by a Paint callback must survive the completion of that native
+drawing cycle. GUI may discover more work while measuring a viewport, and a
+long frame can request its successor before the native callback returns.
+
+AppKit may discard a `setNeedsDisplay:` issued inside `drawRect:`. The Cocoa
+window coalesces invalidations into one block on the main run loop in common
+modes, then marks its own view dirty after the drawing callback unwinds. This
+is native invalidation delivery, not a text-layout scheduler or frame budget.
+Core Foundation copies the block; Cocoa releases its original reference after
+enqueueing. The copied block retains the Go window until execution, checks the
+native window is still valid, and performs no native calls after destruction.
+No timer, worker thread or forced synchronous display is introduced.
+
+The desktop regression `tests/window/platform/repaint` requests another paint
+twice from each of four Paint callbacks, then destroys a window with queued
+invalidation. macOS 15.7.7/arm64, Software/1x: the previous implementation stops
+at one paint and fails; deferred invalidation completes four and passes. The
+TextView long-paragraph window also resumes normal click/input/undo updates.
+This does not establish latency of native paragraph reflow or nested dialogs.
+
+See Apple's [custom view drawing guidance](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/CocoaViewsGuide/SubclassingNSView/SubclassingNSView.html)
+and [CFRunLoopPerformBlock](https://developer.apple.com/documentation/corefoundation/1542985-cfrunloopperformblock):
+the latter copies the block and requires a separate wakeup when prompt
+execution is needed.
+
 ## References
 
 - [Win32 ShowWindow](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-showwindow)

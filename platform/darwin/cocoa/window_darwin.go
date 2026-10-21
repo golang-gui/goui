@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"image"
 
+	"github.com/ebitengine/purego/objc"
+
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
@@ -24,6 +26,7 @@ type Window struct {
 	view         NSView
 	trackingArea NSTrackingArea
 	onEvent      events.EventHandler
+	paintQueued  bool // one native invalidation awaiting the main run loop
 
 	parent    common.Window
 	buttons   events.PointerButtons
@@ -230,13 +233,24 @@ func (w *Window) RequestClose() error {
 }
 
 func (w *Window) RequestPaint() error {
-	if !w.window.Valid() {
+	if !w.window.Valid() || w.paintQueued {
 		return nil
 	}
-
-	AutoReleasePool(func() {
-		w.view.SetNeedsDisplay(true)
+	// AppKit may clear a dirty flag set from inside drawRect: when that draw
+	// returns. Submit after the native draw unwinds, rather than leaving the
+	// GUI waiting forever for a paint that AppKit discarded. The main run loop
+	// owns its copied block; it retains only this Go window until execution.
+	w.paintQueued = true
+	loop := CFRunLoopGetMain()
+	block := objc.NewBlock(func(_ objc.Block) {
+		w.paintQueued = false
+		if w.window.Valid() {
+			AutoReleasePool(func() { w.view.SetNeedsDisplay(true) })
+		}
 	})
+	CFRunLoopPerformBlock(loop, KCFRunLoopCommonModes, block)
+	block.Release()
+	CFRunLoopWakeUp(loop)
 	return nil
 }
 
