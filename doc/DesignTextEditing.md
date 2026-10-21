@@ -241,6 +241,23 @@ Cluster 是本项目用户编辑操作的最小不可分割单元；模型则保
 - 普通局部编辑只失效受影响段落，其余缓存保留资源、最近使用顺序并调整逻辑索引；
   全文 Reset 或不能安全解释的版本/批量变更仍采用既有完整失效路径。
 
+TextView 的自然尺寸查询与视口排版分工：小文档保留精确 hug 测量；显示内容超过
+64 个逻辑段落或 4096 UTF-8 字节（含预编辑投影）时，Measure 从 HeightIndex 返回
+已测高度与未测估值，不访问 native 段落，不修改实际分配的换行宽度。阈值是私有
+工作量界限，不是文本截断或公共大文件模式。尺寸仍遵守 Constraint/MinSize/MaxSize，
+基线采用已缓存首段或字体探针。父布局的无约束高度查询不再遍历全文，ScrollView
+尚未扣除滚动条的外宽查询也不能破坏实际正文宽度的测量缓存。
+
+LayoutVisible 按分配后的正文宽度准备视区，若高度估计得到修正则请求父布局更新。
+改变宽度时旧段落高度保留为估值，待新宽度的测量逐项替换；避免先把长段落重置为
+一行、隐藏滚动条，然后重新测量又显示滚动条所引起的二次换宽。只改变高度不失效
+同宽测量。自然尺寸因此允许渐进收敛，不能把首次估值当作全文精确高度。
+
+这一取舍参考 [Qt 6.12 QPlainTextEdit](https://doc.qt.io/qt-6.12/qplaintextedit.html)
+对大文档使用简化布局的设计，以及既有 Scintilla 的行布局缓存；采用上层估值与复用，
+保留 GOUI 的像素滚动及 TextLayout 契约，不移植其行滚动 API。原生长段落的首次测量、
+编辑后测量和新宽度测量仍同步，尚不保证单次原生调用的延迟有界。
+
 已有对应测试：`TestTextParagraphCacheRecencyAndBudgets`、
 `TestTextViewMeasuresEditingGeometryOnlyOnDemand`、
 `TestTextViewWidthChangeReusesLayoutAndRefreshesHeight`、

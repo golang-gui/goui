@@ -666,6 +666,23 @@ func (t *textEditor) measure(c layout.Constraint) layout.Measurement {
 	t.ensureFormat()
 	b := t.owner.base()
 	width := b.constrain(c, geometry.Size{Width: 320}).Width
+	length := t.model.Len()
+	if t.preedit != nil {
+		r := t.preedit.Replacement()
+		length += len(t.preedit.Text()) - (r.End - r.Start)
+	}
+	if t.displayLineCount() > 64 || length > 4096 {
+		// Natural sizing may be unbounded (for example a LinearBox's first
+		// pass), and its cross width may include a ScrollView's scrollbar.
+		// Neither query changes the allocated text width or demands exact
+		// geometry for the entire document. LayoutVisible owns that work.
+		baseline := t.baseline
+		if p := t.paragraphs[0]; p != nil && p.measured {
+			baseline = p.baseline
+		}
+		return layout.Measurement{Size: b.constrain(c, geometry.Size{Width: width, Height: t.heights.Total() + 2*t.padding}),
+			Baseline: t.padding + baseline, HasBaseline: t.hasBaseline}
+	}
 	t.prepareWidth(max(1, width-2*t.padding-1))
 	limit := b.layoutConstraint(c).Max.Height
 	height := 2 * t.padding
@@ -694,7 +711,10 @@ func (t *textEditor) measure(c layout.Constraint) layout.Measurement {
 func (t *textEditor) prepareWidth(width float32) {
 	if width != t.layoutWidth && t.wrap != WrapNone {
 		t.retainViewportAnchor()
-		t.heights.Reset(t.displayLineCount(), t.lineHeight)
+		// Keep previous measured heights as estimates until their paragraphs
+		// are prepared for the new width. Resetting a wrapped paragraph to one
+		// line hides the scrollbar and then brings it back, changing the width
+		// a second time during the same allocation.
 		t.observedWidth = 0
 		for _, p := range t.paragraphs {
 			p.measured = false
@@ -720,6 +740,12 @@ func (t *textEditor) layoutVisible(viewport geometry.Size, offset geometry.Point
 	t.ensureFormat()
 	t.viewport, t.offset = viewport, offset
 	t.prepareWidth(max(1, viewport.Width-2*t.padding-1))
+	beforeHeight := t.heights.Total()
+	defer func() {
+		if !t.owner.base().destroyed && t.heights.Total() != beforeHeight {
+			t.owner.RequestLayout()
+		}
+	}()
 	if viewport.Height <= 0 {
 		return
 	}
