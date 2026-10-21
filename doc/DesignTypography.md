@@ -458,6 +458,21 @@ Pango 的 LayoutIter 在 RTL cluster 上定位到最后一个字符，不能将 
 [update_cluster](https://github.com/GNOME/pango/blob/1.50.6/pango/pango-layout.c#L6984)。
 这对带组合字／连字的 RTL 控制文本同样适用，不能仅按 UTF-8 rune 对齐修补。
 
+### CoreText 度量导出的临时存储
+
+CoreText 继续一次排版完整输入，逐 run 读取原生 glyph positions、advances 和 string
+indices。自动换行可能产生数千个短 run；`MeasureMetrics` 在一次调用内复用这三种
+临时数组的容量，以及逐行清空的簇索引表，不再逐 run／逐行重新分配。
+工作区归当前调用所有，峰值由本次最大的 run／行决定，返回时释放；不保存在 Context
+或 TextLayout，不与其他对象共享，也不让返回的普通坐标切片引用临时工作区。
+
+此优化不改变字体回退、原生换行、字形合并、双向文本或占位符坐标；不是分段排版、
+事件循环调度或跨输入缓存。原生复制接口采用调用方提供的缓冲区，长度为当前 run 的
+glyph count；见 Apple 的 [CTRunGetPositions](https://developer.apple.com/documentation/coretext/ctrungetpositions(_:_:_:))、
+[CTRunGetAdvances](https://developer.apple.com/documentation/coretext/ctrungetadvances(_:_:_:))。
+macOS 15.7.7／arm64 上与此前逐 run 分配的原生导出逐字段比较，并在同一进程中
+测量耗时和分配；端到端桌面输入验收单列，不能用内部基准替代。
+
 ### Pango 度量遍历的工作量
 
 逻辑尺寸及 TextLine/TextCluster 导出只请求 native logical extents，原生绑定保留

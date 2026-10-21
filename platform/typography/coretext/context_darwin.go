@@ -372,6 +372,13 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 	height := float32(t.layoutSize.Height)
 	lines = make([]typography.TextLine, 0, len(t.lines))
 	clusters = make([]typography.TextCluster, 0, t.textLength)
+	// Scratch belongs to this call, never a layout or returned result. Wrapped
+	// paragraphs may contain thousands of short native runs; retain capacity
+	// between runs instead of allocating three buffers and a map for each line.
+	var positions []CGPoint
+	var advances []CGSize
+	var indices []CFIndex
+	clusterByIndex := make(map[int]int)
 
 	for lineIndex, li := range t.lines {
 		baseline := float32(li.origin.Y)
@@ -400,7 +407,7 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 		}
 
 		clustersBeg := len(clusters)
-		clusterByIndex := make(map[int]int)
+		clear(clusterByIndex)
 
 		// Get clusters from runs
 		runs := CTLineGetGlyphRuns(li.line)
@@ -415,12 +422,12 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 				continue
 			}
 
-			positions := make([]CGPoint, glyphCount)
+			positions = slices.Grow(positions[:0], glyphCount)[:glyphCount]
 			CTRunGetPositions(run, CFRangeMake(0, 0), positions)
-			advances := make([]CGSize, glyphCount)
+			advances = slices.Grow(advances[:0], glyphCount)[:glyphCount]
 			CTRunGetAdvances(run, CFRangeMake(0, 0), advances)
 
-			indices := make([]CFIndex, glyphCount)
+			indices = slices.Grow(indices[:0], glyphCount)[:glyphCount]
 			CTRunGetStringIndices(run, CFRangeMake(0, 0), indices)
 
 			// A string index may map to several positioned glyphs. Group by
