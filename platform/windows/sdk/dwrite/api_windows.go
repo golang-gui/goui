@@ -996,8 +996,23 @@ func (this *TextLayout) HitTestPoint(x, y float32) (isTrailing, isInside bool, h
 }
 
 func (this *TextLayout) HitTestTextPosition(position int, isTrialing bool) (x, y float32, hitTestMetrics HitTestMetrics, hr com.HRESULT) {
-	hr = cgo.CallRet[com.HRESULT](this.class().HitTestTextPosition, this, position, isTrialing, &x, &y, &hitTestMetrics)
-	return
+	// This query is used for every shaped cluster. Avoid the generic argument
+	// marshaller, while keeping every output stable if lazy native work invokes
+	// an inline-object callback that grows the calling Go stack.
+	var output struct {
+		x, y    float32
+		metrics HitTestMetrics
+	}
+	var pin runtime.Pinner
+	pin.Pin(&output)
+	defer pin.Unpin()
+	var trailing uintptr
+	if isTrialing {
+		trailing = 1
+	}
+	ret, _, _ := this.class().HitTestTextPosition.CallRaw(uintptr(cgo.Pointer(this)), uintptr(position), trailing,
+		uintptr(cgo.Pointer(&output.x)), uintptr(cgo.Pointer(&output.y)), uintptr(cgo.Pointer(&output.metrics)))
+	return output.x, output.y, output.metrics, com.HRESULT(ret)
 }
 
 func (this *TextLayout) HitTestTextRange(position, length int, x, y float32) (hitTestMetrics []HitTestMetrics, hr com.HRESULT) {
