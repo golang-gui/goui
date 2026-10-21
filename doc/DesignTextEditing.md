@@ -177,6 +177,20 @@ func NewTextModel(text string) *TextModel
 
 参考方向调整不替换此存储：继续使用最多 64 KiB 的独立块、AVL 子树汇总和
 LF 顺序查询游标，不改成 Scintilla 的底层存储，也不新增可替换存储接口。
+每个块保存已存在 LF 的 uint16 byte offset，块容量最多 65,536 byte，最后一个位置
+65,535 仍可表示；查询边界以 int 比较，不能把块尾 65,536 转回 uint16。
+LineAt、片段拆分的前缀换行计数和 LineRange 的第 n 个 LF 查询使用块内二分／索引，
+不再为鼠标命中、锚点或重复段落读取反复扫描块。顺序游标命中本片段的下一 LF 时
+直接使用索引；跨越片段则走子树汇总，避免穿过超长无 LF 段落逐块遍历。
+
+初始装载构建一次块索引；追加只索引新尾部。历史／拆分片段共享块时仍按各自
+start／length 限制查询，块尾追加不能改变旧片段的范围。块与 LF 切片归同一所有者，
+在文档和历史均不引用后一起回收。额外逻辑载荷为每个 LF 两字节，另有 Go 切片
+容量及头部成本；无 LF 块不分配 LF 数组。公共模型和同步通知契约不变。
+参考 [VS Code 1.105.0 StringBuffer.lineStarts 与片段查询](https://github.com/microsoft/vscode/blob/1.105.0/src/vs/editor/common/model/pieceTreeTextBuffer/pieceTreeBase.ts#L133)
+保存块内行位置的做法；GOUI 保留 UTF-8 byte offset、LF 归一化和现有 AVL，
+不移植其 UTF-16、CRLF 分支或全局 buffer registry。
+
 模型操作只是输入响应链路的一部分，其吞吐基准不能替代原生排版、绘制和呈现的
 交互延迟测量。全文读取/绑定有复制成本，大文本继续优先 Model/OnChange 增量路径。
 

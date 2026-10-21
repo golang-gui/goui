@@ -1,6 +1,7 @@
 package textedit
 
 import (
+	"bytes"
 	"fmt"
 	"math/rand"
 	"reflect"
@@ -774,7 +775,9 @@ func checkTextModelTree(t *testing.T, m *Model) {
 		if n.piece.start < 0 || n.piece.start+n.piece.length > len(buf) {
 			t.Fatalf("piece %+v escapes its buffer", n.piece)
 		}
-		lf := pieceLFCount(buf, n.piece, n.piece.length)
+		// Check stored aggregates against actual bytes, independently of the
+		// block index used by line queries and piece splitting.
+		lf := bytes.Count(buf[n.piece.start:n.piece.start+n.piece.length], []byte{'\n'})
 		if n.lfCount != lf {
 			t.Fatalf("piece LF count = %d, want %d", n.lfCount, lf)
 		}
