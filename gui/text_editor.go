@@ -26,6 +26,8 @@ type textParagraph struct {
 	measured       bool
 	geometry       textedit.Geometry
 	geometryValid  bool
+	fragment       textedit.Fragment
+	measuredSize   geometry.Size
 	width          float32
 	height         float32
 	textOffset     float32
@@ -47,7 +49,17 @@ func (p *textParagraph) editGeometry(emptyHeight float32) *textedit.Geometry {
 			lines, clusters = p.lines, p.clusters
 			length = len(p.layout.Text())
 		}
-		p.geometry = textedit.NewGeometry(lines, clusters, length, emptyHeight)
+		if p.fragment.LineCount() == 0 && len(lines) > 0 {
+			// Copy ordinary values on first geometry demand. Plain display must
+			// not pay for a full snapshot that it never queries.
+			// Nonpartitioning metrics retain general Geometry semantics below.
+			p.fragment, _ = textedit.NewFragment(textedit.Range{End: length}, p.measuredSize, lines, clusters)
+		}
+		if p.fragment.LineCount() > 0 {
+			p.geometry = p.fragment.Geometry(emptyHeight)
+		} else {
+			p.geometry = textedit.NewGeometry(lines, clusters, length, emptyHeight)
+		}
 		p.geometryValid = true
 	}
 	return &p.geometry
@@ -628,6 +640,8 @@ func (t *textEditor) paragraph(index int) *textParagraph {
 		w, h = p.layout.MeasureSize()
 		p.lines, p.clusters = p.layout.MeasureMetrics()
 	}
+	p.measuredSize = geometry.Size{Width: w, Height: h}
+	p.fragment = textedit.Fragment{}
 	p.geometry, p.geometryValid = textedit.Geometry{}, false
 	p.textOffset, p.baseline = 0, t.baseline
 	if len(p.lines) > 0 {
