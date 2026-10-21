@@ -69,3 +69,31 @@ func TestTextViewHeightResizeDoesNotMeasureOuterScrollWidth(t *testing.T) {
 	}
 	win.SetWidget(nil)
 }
+
+func TestTextViewParagraphEditPreservesWrappedExtentUntilLayout(t *testing.T) {
+	v, scroll, win, _ := longWrappedEditor(t)
+	defer win.SetWidget(nil)
+	height := v.heights.Total()
+	if err := v.model.ReplaceAtomic(textedit.Range{}, "x"); err != nil {
+		t.Fatal(err)
+	}
+	if v.heights.Total() != height || v.paragraphs[0] != nil {
+		t.Fatal("edit collapsed the wrapped height estimate or retained stale text")
+	}
+	scroll.Arrange(scroll.Rect())
+	p := v.paragraphs[0]
+	if p == nil || p.layout.(*testTextLayout).metricsCalls != 1 || v.layoutWidth != 203 {
+		t.Fatal("one edit measured the entire paragraph at multiple scrollbar widths")
+	}
+	if err := v.model.ReplaceAtomic(textedit.Range{End: v.model.Len()}, ""); err != nil {
+		t.Fatal(err)
+	}
+	// The retained extent is an estimate, not a minimum. Exact empty-content
+	// measurement must remove the scrollbar and finish at the small height.
+	for range 3 {
+		scroll.Arrange(scroll.Rect())
+	}
+	if v.ContentSize().Height != 28 || v.heights.Total() != 20 {
+		t.Fatal("deleting the whole paragraph retained a stale scroll extent", v.ContentSize())
+	}
+}

@@ -602,8 +602,15 @@ func (t *textEditor) resetParagraphs() {
 }
 
 func (t *textEditor) spliceParagraphs(start, removed, inserted int) {
+	// A local edit invalidates text geometry, not the best height estimate.
+	// Collapsing a long wrapped paragraph to one line would temporarily hide
+	// the scrollbar and measure the replacement at two different widths.
+	estimate := t.lineHeight
+	if removed == 1 && inserted == 1 {
+		estimate = t.heights.Top(start+1) - t.heights.Top(start)
+	}
 	t.textParagraphCache.splice(start, removed, inserted)
-	t.heights.Splice(start, removed, inserted, t.lineHeight)
+	t.heights.Splice(start, removed, inserted, estimate)
 }
 
 func (t *textEditor) paragraph(index int) *textParagraph {
