@@ -2,18 +2,38 @@ package textedit
 
 import (
 	"bytes"
+	"sort"
 	"strings"
 )
 
-// textPieceMaxSize bounds both loaded and inserted blocks. A line query scans
-// at most one bounded block after descending through the subtree aggregates.
+// textPieceMaxSize bounds both loaded and inserted blocks. LF offsets fit in
+// uint16, including a separator at byte 65535 of a full block.
 const textPieceMaxSize = 64 * 1024
 
 // A block only grows at its tail; existing bytes never change. Pieces and
 // history directly own the blocks they reference, without a document-wide
 // buffer registry retaining deleted content. Losing the last reference makes
 // a block eligible for normal Go garbage collection.
-type textBlock struct{ data []byte }
+type textBlock struct {
+	data []byte
+	lf   []uint16 // sorted absolute offsets in data; tail growth preserves old entries
+}
+
+func (b *textBlock) indexTail(start int) {
+	for at := start; at < len(b.data); {
+		next := bytes.IndexByte(b.data[at:], '\n')
+		if next < 0 {
+			break
+		}
+		at += next
+		b.lf = append(b.lf, uint16(at))
+		at++
+	}
+}
+
+func (b *textBlock) lfBefore(at int) int {
+	return sort.Search(len(b.lf), func(i int) bool { return int(b.lf[i]) >= at })
+}
 
 // pieceRef identifies an immutable byte range within a bounded block.
 type pieceRef struct {
@@ -46,7 +66,7 @@ type pieceTree struct {
 }
 
 // pieceTreeLFCache remembers one found line feed so sequential line iteration
-// (line k followed by line k+1) continues scanning instead of restarting from
+// (line k followed by line k+1) can use the block index before descending from
 // the tree root.
 type pieceTreeLFCache struct {
 	node      *pieceNode
@@ -229,7 +249,7 @@ func (t *pieceTree) findLFDescend(n int) (int, bool) {
 		before += leftLF
 		start += nodeSize(node.left)
 		if n < before+node.lfCount {
-			idx := pieceLFIndex(t.buffer(node.piece), node.piece, n-before)
+			idx := pieceLFIndex(node.piece, n-before)
 			if idx >= 0 {
 				t.cacheLF(n, node, start, idx)
 				return start + idx, true
@@ -242,30 +262,21 @@ func (t *pieceTree) findLFDescend(n int) (int, bool) {
 	return 0, false
 }
 
-// findLFForward continues scanning from the cached line feed; it makes
-// sequential line queries cost the bytes actually scanned, not a full descent.
+// findLFForward uses the block's next indexed LF. When the next separator is
+// outside this piece, descend through subtree counts instead of walking an
+// arbitrarily long run of pieces with no LF.
 func (t *pieceTree) findLFForward(n int) (int, bool) {
 	cache := t.lfCache
-	// seen is the ordinal the next scanned line feed will have: the cached
-	// one is already behind us.
-	node, start, idx, seen := cache.node, cache.nodeStart, cache.idxInNode+1, cache.index+1
-	for node != nil {
-		buf := t.buffer(node.piece)
-		for i := idx; i < node.piece.length; i++ {
-			if buf[node.piece.start+i] != '\n' {
-				continue
-			}
-			if seen == n {
-				t.cacheLF(n, node, start, i)
-				return start + i, true
-			}
-			seen++
+	p := cache.node.piece
+	i := p.block.lfBefore(p.start + cache.idxInNode + 1)
+	if i < len(p.block.lf) {
+		idx := int(p.block.lf[i]) - p.start
+		if idx < p.length {
+			t.cacheLF(n, cache.node, cache.nodeStart, idx)
+			return cache.nodeStart + idx, true
 		}
-		start += node.piece.length
-		idx = 0
-		node = t.successor(node)
 	}
-	return 0, false
+	return t.findLFDescend(n)
 }
 
 func (t *pieceTree) cacheLF(n int, node *pieceNode, nodeStart, idxInNode int) {
@@ -277,14 +288,15 @@ func (t *pieceTree) cacheLF(n int, node *pieceNode, nodeStart, idxInNode int) {
 
 // pieceLFIndex returns the byte index of the n-th line feed within the piece,
 // or -1 when the piece holds fewer than n+1 line feeds.
-func pieceLFIndex(buf []byte, p pieceRef, n int) int {
-	count := 0
-	for i := 0; i < p.length; i++ {
-		if buf[p.start+i] == '\n' {
-			if count == n {
-				return i
-			}
-			count++
+func pieceLFIndex(p pieceRef, n int) int {
+	if n < 0 {
+		return -1
+	}
+	i := p.block.lfBefore(p.start) + n
+	if i < len(p.block.lf) {
+		offset := int(p.block.lf[i]) - p.start
+		if offset < p.length {
+			return offset
 		}
 	}
 	return -1
@@ -300,7 +312,7 @@ func (t *pieceTree) splitAt(offset int) {
 	if idx == 0 {
 		return
 	}
-	leftLF := pieceLFCount(t.buffer(node.piece), node.piece, idx)
+	leftLF := pieceLFCount(node.piece, idx)
 	right := &pieceNode{
 		piece:   pieceRef{block: node.piece.block, start: node.piece.start + idx, length: node.piece.length - idx},
 		lfCount: node.lfCount - leftLF,
@@ -313,8 +325,8 @@ func (t *pieceTree) splitAt(offset int) {
 }
 
 // pieceLFCount counts line feeds within the first length bytes of the piece.
-func pieceLFCount(buf []byte, p pieceRef, length int) int {
-	return bytes.Count(buf[p.start:p.start+length], []byte{'\n'})
+func pieceLFCount(p pieceRef, length int) int {
+	return p.block.lfBefore(p.start+length) - p.block.lfBefore(p.start)
 }
 
 // insertSuccessor links node into the tree directly after the in-order node
@@ -362,7 +374,7 @@ func (t *pieceTree) insertPiecesAt(offset int, refs []pieceRef) {
 		if ref.length == 0 {
 			continue
 		}
-		lf := pieceLFCount(t.buffer(ref), ref, ref.length)
+		lf := pieceLFCount(ref, ref.length)
 		node := &pieceNode{piece: ref, lfCount: lf, height: 1, size: ref.length, lineFeed: lf}
 		t.insertSuccessor(anchor, node)
 		anchor = node
@@ -400,8 +412,10 @@ func (t *pieceTree) insertText(offset int, text string) []pieceRef {
 			block.data = data
 		}
 		block.data = append(block.data, text[:count]...)
+		before := len(block.lf)
+		block.indexTail(start)
 		ref := pieceRef{block: block, start: start, length: count}
-		lf := strings.Count(text[:count], "\n")
+		lf := len(block.lf) - before
 		if anchor != nil && anchor.piece.block == block {
 			anchor.piece.length += count
 			anchor.lfCount += lf
@@ -501,11 +515,12 @@ func (t *pieceTree) build(text string) {
 	for start := 0; start < len(text); {
 		end := min(start+textPieceMaxSize, len(text))
 		block := &textBlock{data: []byte(text[start:end])}
+		block.indexTail(0)
 		n := &pieceNode{
 			piece:  pieceRef{block: block, length: end - start},
 			height: 1,
 		}
-		n.lfCount = pieceLFCount(block.data, n.piece, n.piece.length)
+		n.lfCount = len(block.lf)
 		n.size, n.lineFeed = n.piece.length, n.lfCount
 		nodes = append(nodes, n)
 		start = end

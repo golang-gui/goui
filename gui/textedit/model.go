@@ -367,7 +367,7 @@ func (m *Model) notify(change Change) {
 }
 
 // LineAt returns the zero-based logical paragraph containing a byte position. Counting the
-// LF prefix uses subtree aggregates and scans only the final piece.
+// LF prefix uses subtree aggregates and the final block's LF index.
 func (m *Model) LineAt(offset int) int {
 	offset = min(max(0, offset), m.Len())
 	n, lines := m.tree.root, 0
@@ -380,12 +380,7 @@ func (m *Model) LineAt(offset int) int {
 		lines += nodeLF(n.left)
 		offset -= left
 		if offset <= n.piece.length {
-			for _, b := range m.tree.buffer(n.piece)[n.piece.start : n.piece.start+offset] {
-				if b == '\n' {
-					lines++
-				}
-			}
-			return lines
+			return lines + pieceLFCount(n.piece, offset)
 		}
 		lines += n.lfCount
 		offset -= n.piece.length
