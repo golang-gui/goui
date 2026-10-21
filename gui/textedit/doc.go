@@ -1,5 +1,6 @@
 // Package textedit provides plain-text documents, edit history, preedit
-// projections, paragraph height indexes and Cluster-based editing geometry.
+// projections, measured fragments, paragraph height indexes and Cluster-based
+// editing geometry.
 //
 // It owns no Widgets, native layouts, windows, timers or input controllers.
 // Geometry consumes typography metrics supplied by the caller; native resource
@@ -8,5 +9,7 @@
 //
 // Mutable objects are sequential, not safe for concurrent access. Separate
 // views may share a Model but must keep their selection, Projection, Geometry
-// and HeightIndex independent. Model change signals are synchronous.
+// and HeightIndex independent. Fragment snapshots are immutable; their Geometry
+// instances keep independent sequential page caches. Model change signals are
+// synchronous.
 package textedit
