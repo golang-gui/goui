@@ -400,3 +400,66 @@ CoreText 修改之前，未删除断言、扩大 skip 或顺带修改窗口能�
 未获桌面事件发送授权；win 的 RDP 可用，但 SSH 端口返回 `Connection refused`。
 未更改权限、远程服务或连接安全设置。不能把窗口创建、CoreText 回归或目标编译
 算作实际远端编辑、滚动及拖动宽高验收，须恢复连接后继续。
+
+### 远端连接恢复后的修正与实测
+
+同日 SSH、VNC、RDP 恢复后，继续在两端仓库外隔离快照验证，未覆盖已有工作区。
+macOS 15.7.7 / M1 / CoreText / VNC 1650×1050；Windows 10 19045 / Xeon Gold
+5318Y / DirectWrite / RDP 1600×900；Go 1.25.8、Software、1x。窗口为 Modern、
+WindowChromeIntegrated、1100×760，正常平台输入，无 profile 的轮次用于对照。
+
+按功能分三项修正，具体契约与回归见 DesignWindowManagement、DesignTypography：
+
+- Cocoa 在 drawRect 内请求下一帧会丢失 SetNeedsDisplay；改用主 run loop
+  common modes 的合并请求并复查窗口有效性。独立原生重绘回归旧实现仅 1 帧
+  后超时，新实现准确 4 帧、销毁后无回调；Linux 同一窗口回归通过。
+- DirectWrite SDK 的 HitTestTextPosition 保留原生坐标与 HRESULT，以一次
+  pinned 输出工作区精简调用封送；原生精确对照和 inline callback 栈增长通过。
+- DirectWrite 自有光栅目标只在颜色变化或目标失效时重新应用范围效果，避免
+  相邻 Rasterize 区域重复设置同样效果。不保留外部 target，目标交替、重建、
+  1x/2x 重着色及逐像素原生参考回归通过。
+
+同一个 157862 byte 用户单行 JSON，通过真实滚动条远跳及正文点击到中部，执行
+插入、退格、短词输入、选词替换、撤销重做与 Delete，最后正常关闭全文恢复并
+取得进程退出 0。以下是同机 GUI capture 到末尾 Widget.Paint 的实测范围，
+排除此前平台排队、native Present、桌面合成和网络；不称为完整用户感知延迟。
+
+| 对照 | 操作 | 修改前 ms | 修改后 ms |
+| --- | --- | ---: | ---: |
+| Windows TextView，SDK 旧 2 / 新 3 轮 | 首次 x | 337.6–338.0 | 254.1–272.4 |
+| 同上 | 首次替换 | 317.8–331.2 | 245.6–257.3 |
+| Windows SourceView，颜色复用各 2 轮 | 首次 x | 613.8–629.7 | 437.9–439.2 |
+| 同上 | Backspace | 337.7–343.2 | 161.3–164.4 |
+| 同上 | Undo 替换 | 327.5–331.7 | 154.9–156.2 |
+
+Mac TextView 旧 `4018c7a` 与本轮新实现各 1 轮，两边共用 Cocoa 修正以正常呈现。
+GUI capture 到 Paint 的 Backspace 184.7 → 23.6 ms、Delete 145.8 → 36.9 ms；
+打印字符可能走 IME 而无 KeyDown，只另报模型 change 到 Paint：首次 x
+171.6 → 148.4 ms。该区间不包含控件先前同步 change 处理，不能混入上表口径。
+单轮不据此推断稳定百分比。VNC 桌面观察仍可达数秒，原始远程延迟另行保留。
+
+两端 TextView 的 3.3 MB TXT，以及 SourceView 的用户 JSON、54 MB 多行 JSON、
+2.8 MB XML、4.0 MB HTML、0.9 MB Markdown，均完成一轮中部真实输入、完整恢复
+和正常退出。XML/HTML 使用 End/Cmd+Right 实际定位行尾后测普通插入，保留标签
+联动；最初点击标签名导致双处合法编辑、脚本单处字节预期不成立的轮次记失败，
+撤销并全文核验后重跑。没有以编辑 API 或仅加载窗口替代操作。
+
+Windows TextView、SourceView 单行 JSON，以及颜色复用后的 54 MB SourceView
+JSON 六次真实改宽/高/角部拖动均观察到至少两次中间尺寸，最终尺寸与全文断言
+通过。Mac 六次最终尺寸、文本、光标及关闭校验通过，但 VNC 未采到中间尺寸，
+六项响应断言仍失败；GUI 日志记录 11 次尺寸变化、缩放区间 Timer 投递间隔最大
+约 180 ms，不能替代未通过的桌面观测。Windows TextView 同口径间隔仍约
+347 ms，单行 SourceView 颜色优化后独立缩放轮仍约 367 ms。
+
+本机两仓 `go test ./...`、GOUI `GOWORK=off go test ./...` 通过；Windows SDK /
+DirectWrite 及 Mac Cocoa / CoreText 相关普通、race 回归通过。Mac 全仓仍有
+既有 TestWindowInteractionCapabilities 及 SourceView 两种分段 probe 失败。
+Windows GOUI 服务会话全仓仍有 D2D 预乘渐变、popup/window/paint 超时和
+TestWindowStyle 失败；SourceView 的 longRLI 分段 probe 在旧、新 SDK 均同样失败。
+服务会话测试不能替代交互桌面验收，保留失败断言。SourceView 独立依赖验证仍
+报 go.mod 需要更新，未改用户的本地 replace。详细样本、轮次与失败记录在
+SourceView 的 doc/PlanRemoteEditingLatency.md。
+
+**新内容和新宽度的超长单段完整原生同步排版仍未解决**。上述减少重复工作并
+修复绘制请求丢失，没有 Reflow、后台测量或上层调度进入 typography，也不以
+近期完整输入复用或光栅化基准宣称已经实现通用分时排版。
