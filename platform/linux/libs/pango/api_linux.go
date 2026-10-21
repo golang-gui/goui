@@ -222,11 +222,10 @@ func (l Layout) GetSize() (width, height int) {
 	return int(w), int(h)
 }
 
-// GetExtents computes the ink and logical extents of the layout.
-func (l Layout) GetExtents() (inkRect, logicalRect Rectangle) {
+// GetExtents computes the requested extents. Either output may be nil.
+func (l Layout) GetExtents(inkRect, logicalRect *Rectangle) {
 	// void pango_layout_get_extents(PangoLayout* layout, PangoRectangle* ink_rect, PangoRectangle* logical_rect)
-	pangoLayoutGetExtents.CallRaw(l.GObject, uintptr(cgo.Pointer(&inkRect)), uintptr(cgo.Pointer(&logicalRect)))
-	return
+	pangoLayoutGetExtents.CallRaw(l.GObject, uintptr(cgo.Pointer(inkRect)), uintptr(cgo.Pointer(logicalRect)))
 }
 
 func (l Layout) GetIter() LayoutIter {
@@ -313,10 +312,10 @@ func (iter LayoutIter) GetLineReadonly() *LayoutLine {
 	return goPointer[LayoutLine](ret)
 }
 
-func (iter LayoutIter) GetLineExtents() (inkRect, logicalRect Rectangle) {
+// GetLineExtents fills either optional output in layout coordinates.
+func (iter LayoutIter) GetLineExtents(inkRect, logicalRect *Rectangle) {
 	// void pango_layout_iter_get_line_extents(PangoLayoutIter* iter, PangoRectangle* ink_rect, PangoRectangle* logical_rect)
-	pangoLayoutIterGetLineExtents.CallRaw(uintptr(iter), uintptr(cgo.Pointer(&inkRect)), uintptr(cgo.Pointer(&logicalRect)))
-	return
+	pangoLayoutIterGetLineExtents.CallRaw(uintptr(iter), uintptr(cgo.Pointer(inkRect)), uintptr(cgo.Pointer(logicalRect)))
 }
 
 func (iter LayoutIter) GetRunReadonly() *LayoutRun {
@@ -325,10 +324,10 @@ func (iter LayoutIter) GetRunReadonly() *LayoutRun {
 	return goPointer[LayoutRun](ret)
 }
 
-func (iter LayoutIter) GetClusterExtents() (inkRect, logicalRect Rectangle) {
+// GetClusterExtents fills either optional output in layout coordinates.
+func (iter LayoutIter) GetClusterExtents(inkRect, logicalRect *Rectangle) {
 	// void pango_layout_iter_get_cluster_extents(PangoLayoutIter* iter, PangoRectangle* ink_rect, PangoRectangle* logical_rect)
-	pangoLayoutIterGetClusterExtents.CallRaw(uintptr(iter), uintptr(cgo.Pointer(&inkRect)), uintptr(cgo.Pointer(&logicalRect)))
-	return
+	pangoLayoutIterGetClusterExtents.CallRaw(uintptr(iter), uintptr(cgo.Pointer(inkRect)), uintptr(cgo.Pointer(logicalRect)))
 }
 
 func (iter LayoutIter) NextLine() bool {
