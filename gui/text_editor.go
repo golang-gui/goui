@@ -72,6 +72,7 @@ func (p *textParagraph) editGeometry(emptyHeight float32) *textedit.Geometry {
 const (
 	textParagraphCacheLimit = 512
 	textParagraphCacheBytes = 1 << 20
+	textReplacedCacheLimit  = 4
 )
 
 type textParagraphCache struct {
@@ -128,10 +129,16 @@ func (c *textParagraphCache) remove(p *textParagraph) {
 }
 
 func (c *textParagraphCache) clear() {
-	for c.oldest != nil {
-		c.remove(c.oldest)
+	old := c.oldest
+	*c = textParagraphCache{}
+	for old != nil {
+		next := old.next
+		old.previous, old.next = nil, nil
+		if old.layout != nil {
+			old.layout.Destroy()
+		}
+		old = next
 	}
-	c.paragraphs = nil
 }
 
 func (c *textParagraphCache) trim(start, end int) {
@@ -147,10 +154,14 @@ func (c *textParagraphCache) trim(start, end int) {
 // An edit invalidates only replaced paragraphs. Keep both native resources
 // and recency order for unaffected paragraphs, remapping their logical index.
 func (c *textParagraphCache) splice(start, removed, inserted int) {
+	var released []*textParagraph
 	for p := c.oldest; p != nil; {
 		next := p.next
 		if p.index >= start && p.index < start+removed {
-			c.remove(p)
+			c.unlink(p)
+			delete(c.paragraphs, p.index)
+			c.textBytes -= p.textBytes
+			released = append(released, p)
 		}
 		p = next
 	}
@@ -163,12 +174,20 @@ func (c *textParagraphCache) splice(start, removed, inserted int) {
 		next[index] = p
 	}
 	c.paragraphs = next
+	for _, p := range released {
+		if p.layout != nil {
+			p.layout.Destroy()
+		}
+	}
 }
 
 // textEditor is private state and operations, not a Widget. Its owner is the
 // sole tree node and input target. Each control has independent resources.
 type textEditor struct {
 	textParagraphCache
+	replacedParagraphs []*textParagraph
+	replacedBytes      int
+
 	owner             Widget
 	singleLine        bool
 	model             *TextModel
@@ -435,10 +454,17 @@ func (t *textEditor) connectScrollIntoView(fn func(geometry.Rectangle)) signal.H
 }
 
 func (t *textEditor) modelChanged(change TextChange) {
+	model, epoch, revision := t.model, t.mountEpoch, t.model.Revision()
+	current := func() bool {
+		return !t.owner.base().destroyed && t.model == model && t.mountEpoch == epoch && t.model.Revision() == revision
+	}
 	// Restore the old paragraph index before applying the model change. A
 	// shared model edit invalidates the replacement range of a composition.
 	hadPreedit := t.preedit != nil
 	t.cancelPreedit(false)
+	if !current() {
+		return
+	}
 	t.hasDesiredX = false
 	oldSelection := t.selection
 	if change.Reset {
@@ -475,6 +501,9 @@ func (t *textEditor) modelChanged(change TextChange) {
 			}
 		}
 	}
+	if !current() {
+		return
+	}
 	t.seenRevision = change.Revision
 	if change.Revision == t.model.Revision() {
 		t.selection.Anchor = t.clampPosition(t.selection.Anchor)
@@ -484,8 +513,6 @@ func (t *textEditor) modelChanged(change TextChange) {
 	t.syncBlink(true)
 	t.owner.RequestLayout()
 	t.owner.base().requestSemanticUpdate()
-	model := t.model
-	epoch := t.mountEpoch
 	if hadPreedit {
 		t.resetInputMethod()
 	}
@@ -578,7 +605,15 @@ func (t *textEditor) ensureFormat() {
 		}
 		t.resetParagraphs()
 	} else if !colors.Equal(t.format.TextColor, format.TextColor) {
+		model, epoch, revision := t.model, t.mountEpoch, t.model.Revision()
+		current := func() bool {
+			return !t.owner.base().destroyed && t.model == model && t.mountEpoch == epoch && t.model.Revision() == revision && t.format.Font == format.Font && t.format.WrapMode == format.WrapMode && colors.Equal(t.format.TextColor, format.TextColor)
+		}
 		t.format = format
+		t.releaseReplacedParagraphs()
+		if !current() {
+			return
+		}
 		color := format.TextColor
 		if color == nil {
 			color = typography.DefaultTextColor()
@@ -586,13 +621,27 @@ func (t *textEditor) ensureFormat() {
 		for _, p := range t.paragraphs {
 			if p.layout != nil && len(p.layout.Text()) > 0 {
 				p.layout.SetTextColor(0, len(p.layout.Text()), color)
+				if !current() {
+					return
+				}
 			}
 		}
 	}
 }
 
 func (t *textEditor) releaseParagraphs() {
-	t.textParagraphCache.clear()
+	old := t.textParagraphCache
+	t.textParagraphCache = textParagraphCache{}
+	t.releaseReplacedParagraphs()
+	old.clear()
+}
+
+func (t *textEditor) releaseReplacedParagraphs() {
+	old := t.replacedParagraphs
+	t.replacedParagraphs, t.replacedBytes = nil, 0
+	for _, p := range old {
+		p.layout.Destroy()
+	}
 }
 
 func (t *textEditor) resetParagraphs() {
@@ -602,15 +651,38 @@ func (t *textEditor) resetParagraphs() {
 }
 
 func (t *textEditor) spliceParagraphs(start, removed, inserted int) {
+	model, epoch, revision := t.model, t.mountEpoch, t.model.Revision()
 	// A local edit invalidates text geometry, not the best height estimate.
 	// Collapsing a long wrapped paragraph to one line would temporarily hide
 	// the scrollbar and measure the replacement at two different widths.
 	estimate := t.lineHeight
 	if removed == 1 && inserted == 1 {
 		estimate = t.heights.Top(start+1) - t.heights.Top(start)
+		if p := t.paragraphs[start]; !t.singleLine && p != nil && p.measured && p.layout != nil && p.textBytes > 4096 && p.textBytes <= textParagraphCacheBytes {
+			// Retain a few expensive complete inputs for backspace/history.
+			// Detach ownership before any native destruction can call back.
+			t.textParagraphCache.unlink(p)
+			delete(t.paragraphs, start)
+			t.textParagraphCache.textBytes -= p.textBytes
+			t.replacedParagraphs = append(t.replacedParagraphs, p)
+			t.replacedBytes += p.textBytes
+		}
 	}
 	t.textParagraphCache.splice(start, removed, inserted)
+	if t.owner.base().destroyed || t.model != model || t.mountEpoch != epoch || t.model.Revision() != revision {
+		return
+	}
 	t.heights.Splice(start, removed, inserted, estimate)
+	for len(t.replacedParagraphs) > textReplacedCacheLimit || t.replacedBytes > textParagraphCacheBytes {
+		p := t.replacedParagraphs[0]
+		t.replacedParagraphs[0] = nil
+		t.replacedParagraphs = t.replacedParagraphs[1:]
+		t.replacedBytes -= p.textBytes
+		p.layout.Destroy()
+		if t.owner.base().destroyed || t.model != model || t.mountEpoch != epoch || t.model.Revision() != revision {
+			return
+		}
+	}
 }
 
 func (t *textEditor) paragraph(index int) *textParagraph {
@@ -630,6 +702,22 @@ func (t *textEditor) paragraph(index int) *textParagraph {
 	}
 	if p == nil {
 		text := t.displayParagraph(index)
+		for i := len(t.replacedParagraphs) - 1; i >= 0; i-- {
+			previous := t.replacedParagraphs[i]
+			previousWidth, _ := previous.layout.Size()
+			if previousWidth != width || previous.layout.Text() != text {
+				continue
+			}
+			copy(t.replacedParagraphs[i:], t.replacedParagraphs[i+1:])
+			last := len(t.replacedParagraphs) - 1
+			t.replacedParagraphs[last] = nil
+			t.replacedParagraphs = t.replacedParagraphs[:last]
+			t.replacedBytes -= previous.textBytes
+			t.textParagraphCache.add(index, len(text), previous)
+			t.heights.Set(index, previous.height)
+			t.observedWidth = max(t.observedWidth, previous.width)
+			return previous
+		}
 		p = &textParagraph{}
 		if text != "" || !t.singleLine {
 			var err error
