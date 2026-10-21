@@ -316,3 +316,38 @@ profile，只说明调用次数与位置，性能对照另用关闭 profile 的�
 本次曾有一次定向 gui 测试在 0.002 秒以 segmentation fault 退出，未进入断言；
 随后同一命令、旧实现失败/新实现通过对照、全仓及 race 均完成。根因未确认，
 没有把这次原生启动失败写成已修复或忽略。
+
+### Pango 度量导出减少重复原生查询
+
+`platform/typography/pango` 按已确定的字体/script run 遍历 cluster，避免每个
+cluster 都重新查询所属行和 run。保留 GetClusterExtents 原生坐标，不自行累加
+字形 advance 推导 RTL 坐标。绑定的 GetExtents/GetLineExtents/GetClusterExtents
+对应原生可空输出，普通逻辑度量不再要求未使用的 ink extents。抽象 TextLayout
+契约、排版文本和线程不变，没有 Reflow、后台测量或 GUI 策略进入后端。
+
+依据为 [Pango 1.50.6 pango-layout.c](https://github.com/GNOME/pango/blob/1.50.6/pango/pango-layout.c)
+的 next_cluster/get_cluster_extents 与 optional ink 参数；官方文档亦说明
+[cluster extents](https://docs.gtk.org/Pango/method.LayoutIter.get_cluster_extents.html)
+和 [layout extents](https://docs.gtk.org/Pango/method.Layout.get_extents.html) 两种输出
+均可 NULL。本机 Pango 1.50.6 实测，官方网页当前显示 1.58.2，未把网页版本当成本机。
+
+保留原逐 cluster 查询为测试内原生参考，对照全部行/cluster 的确切值，覆盖空行、
+Tab、换行、字体/颜色 run、CJK、组合字、emoji/ZWJ、Arabic/Hebrew、RLO/isolate，
+另有独立 UTF-8 边界预期。原生 pango 包全套通过。已预排的 139264 byte 换行样本，
+三次 BenchmarkMetricsRunQueries 的中位数：108.044 ms → 60.911 ms，
+每次分配约 17.94 MB/829149 次 → 13.60 MB/424935 次。这仅是导出度量阶段，
+不是一次编辑或完整排版的延迟；初始 wrap/shaping 仍须单独计量。
+
+用户单行 JSON 为 157862 byte，校验 SHA256
+`7baa22a894b415fdc3425c94f8a541d0ded8f77965541c46af3c95a3364c798b`。
+使用未改动输入的内存编辑、实际滚动条远跳和点击至约 77601 byte 处，各三轮
+关闭 profile 的真实输入（与上述环境一致）：中部输入中位数 / 最大值
+994/1030 → 562/563 ms，Backspace/Delete 1007/1060 → 559/581 ms，
+选词替换 993/1018 → 549/559 ms。六轮均原文逐字节恢复、脚本/窗口退出 0；
+仅运行 middle-edit 范围，不包含缩放。原始记录为仓库外 user-json-middle-text-*。
+此前一轮开启 profile 的完整场景被桌面焦点变化中断，没有完成退出核验，不计通过。
+
+上述减少了重复工作，**仍未解决新文本的单次整段测量**：同文件一次 native size
+约 290 ms，加上度量、编辑几何和绘制仍约 550 ms。不能把较旧基线的一秒降到
+半秒称为流畅。下一阶段的送测范围限制仍在控件层推进，必须保留段落双向上下文，
+不能以独立截断复杂文本、关闭自动换行或改用后台测量来替代。

@@ -457,3 +457,15 @@ Pango 的 LayoutIter 在 RTL cluster 上定位到最后一个字符，不能将 
 取得，矩形仍由原生迭代器导出。依据为 Pango 1.50.6
 [update_cluster](https://github.com/GNOME/pango/blob/1.50.6/pango/pango-layout.c#L6984)。
 这对带组合字／连字的 RTL 控制文本同样适用，不能仅按 UTF-8 rune 对齐修补。
+
+### Pango 度量遍历的工作量
+
+逻辑尺寸及 TextLine/TextCluster 导出只请求 native logical extents，原生绑定保留
+ink/logical 两个可空输出指针，调用方可按实际需要传 nil。光栅化仍按既有绘制契约
+处理全部可见像素，不把逻辑矩形误作 glyph ink 裁剪范围。
+
+MeasureMetrics 保持独立的行/cluster 迭代器，按 run 的 log_clusters 遍历视觉
+cluster 序列；只在 run 边界重新查询所属行和 run。每个 cluster 的矩形仍调用
+原生 GetClusterExtents，保留 font fallback、run offset、RTL、组合字及占位度量。
+不复制 line iterator 去遍历 cluster，不按字形宽度估算坐标，不为该优化引入缓存、
+视区或帧调度。依据与同环境对照见 [排版记录](PlanIncrementalTextLayout.md)。

@@ -420,15 +420,15 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 	// produce uninitialized X positions when advancing to the next font run.
 	clusterIter := t.layout.GetIter()
 	defer clusterIter.Free()
-	var currentRun *pango.GlyphItem
 	var clusterStarts []int
-	clusterOrdinal := 0
+	moreClusters := true
 	for {
 		nativeLine := iter.GetLineReadonly()
 		if nativeLine == nil {
 			break
 		}
-		_, rect := iter.GetLineExtents()
+		var rect pango.Rectangle
+		iter.GetLineExtents(nil, &rect)
 		line := typography.TextLine{
 			Start: int(nativeLine.StartIndex), Length: int(nativeLine.Length),
 			X:     float32(rect.X) / pango.Scale,
@@ -439,25 +439,29 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 		beg := len(clusters)
 		// NextCluster skips empty lines. Keep a separate line iterator so empty
 		// and trailing lines retain their native metrics and stable LineIndex.
-		for clusterIter.GetLineReadonly() == nativeLine {
+		for moreClusters && clusterIter.GetLineReadonly() == nativeLine {
 			run := clusterIter.GetRunReadonly()
-			if run != nil && run.Item != nil {
-				if run != currentRun {
-					currentRun, clusterOrdinal = run, 0
-					clusterStarts = clusterStarts[:0]
-					logs := run.Glyphs.LogClusters()
-					for i, offset := range logs {
-						if i == 0 || offset != logs[i-1] {
-							clusterStarts = append(clusterStarts, int(run.Item.Offset+offset))
-						}
-					}
+			if run == nil || run.Item == nil {
+				moreClusters = clusterIter.NextCluster()
+				continue
+			}
+			// The glyph log describes this run's visual cluster sequence.
+			// Keep querying native extents, but don't query the unchanged
+			// owning line/run again for every cluster in the run.
+			clusterStarts = clusterStarts[:0]
+			logs := run.Glyphs.LogClusters()
+			for i, offset := range logs {
+				if i == 0 || offset != logs[i-1] {
+					clusterStarts = append(clusterStarts, int(run.Item.Offset+offset))
 				}
-				// Pango's RTL iterator index identifies the last character of a
-				// cluster, not its logical start. Take byte starts from the shaped
-				// glyph log instead, in the iterator's same visual cluster order.
-				start := clusterStarts[clusterOrdinal]
-				clusterOrdinal++
-				_, clusterRect := clusterIter.GetClusterExtents()
+			}
+			if len(clusterStarts) == 0 {
+				moreClusters = clusterIter.NextCluster()
+				continue
+			}
+			for _, start := range clusterStarts {
+				var clusterRect pango.Rectangle
+				clusterIter.GetClusterExtents(nil, &clusterRect)
 				clusters = append(clusters, typography.TextCluster{
 					Start: start,
 					X:     float32(clusterRect.X) / pango.Scale, Y: line.Y,
@@ -469,9 +473,10 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 					cluster := &clusters[len(clusters)-1]
 					cluster.Y, cluster.Height = line.Baseline-placeholder.Baseline, placeholder.Height
 				}
-			}
-			if !clusterIter.NextCluster() {
-				break
+				moreClusters = clusterIter.NextCluster()
+				if !moreClusters {
+					break
+				}
 			}
 		}
 		line.Clusters = clusters[beg:]
@@ -520,7 +525,8 @@ func (t *TextLayout) Rasterize(scale float32, region image.Rectangle, buf []byte
 }
 
 func (t *TextLayout) getExtents() (x, y, width, height float32) {
-	_, rect := t.layout.GetExtents()
+	var rect pango.Rectangle
+	t.layout.GetExtents(nil, &rect)
 	x = float32(rect.X) / pango.Scale
 	y = float32(rect.Y) / pango.Scale
 	width = float32(rect.Width) / pango.Scale
