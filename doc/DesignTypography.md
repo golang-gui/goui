@@ -475,6 +475,31 @@ UTF-16 位置、BOOL leading/trailing 侧、输出结构和 HRESULT 保持原义
 五组、每组 100000 次同布局查询，中位数约 964 ns → 521 ns，分配 135 B/4 次 →
 96 B/2 次。这只是查询边界的基准；真实输入、删除、宽高变化另作桌面验收。
 
+### DirectWrite 自有光栅目标的颜色效果
+
+同一个 TextLayout 的相邻 Rasterize 区域共用其私有 WIC target。颜色未变时，
+不为每块重新 SetDrawingEffect；原生 layout 已持有对应效果，DrawTextLayout
+继续使用这些范围颜色。该状态只属于当前 TextLayout 的自有 textPainter，
+不跨布局、Context 或外部 graphics target 共享，也不新增 API。
+
+SetTextColor 使状态失效；自有 target 重建、光栅绘制失败或调用公开 Draw 使用
+外部 target 后，下一次 Rasterize 重新应用全部当前范围。只记录自有目标是否
+有效，不保存外部 target 指针，不延长其生命周期。范围 brush 的本次创建引用
+仍在 Draw 返回时 Release，原生 layout 的效果引用在覆盖或销毁时释放。
+
+依据 Microsoft 的 [SetDrawingEffect](https://learn.microsoft.com/en-us/windows/win32/api/dwrite/nf-dwrite-idwritetextlayout-setdrawingeffect)
+及 [Direct2D / DirectWrite 绘制说明](https://learn.microsoft.com/en-us/windows/win32/direct2d/direct2d-and-directwrite)：
+范围效果可使用 D2D brush，重复绘制已有 layout 可复用原生工作。重复设置相同
+效果为何在该系统触发额外内部工作属于推断，实测证明的是跳过重复设置可减少
+光栅耗时，而非原生具体失效算法。
+
+Windows 10 19045、Software 光栅、1x/2x，缓存命中、区域原点变化、target 扩容、
+target 销毁重建、外部 target 交替及重着色，均与独立新建原生 layout 逐像素比较
+预乘 RGBA；另检查普通文字确实出现预期前景色。含 CJK、组合字、emoji、双向
+文本，所属包全套及 race 通过。预热后 139264 byte、1000 DIP 宽的 1000×256
+区域，五组每组 30 次，中位数 38.089 → 4.951 ms；18 次分配相对旧行为 25 次。
+这只是已排版区域的重复光栅化，初次整段排版及实际编辑须另作桌面验证。
+
 ### CoreText 度量导出的临时存储
 
 CoreText 继续一次排版完整输入，逐 run 读取原生 glyph positions、advances 和 string
