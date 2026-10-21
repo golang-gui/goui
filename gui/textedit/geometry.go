@@ -32,9 +32,11 @@ type textVisualLine struct {
 }
 
 // Geometry indexes supplied paragraph metrics for hit testing, navigation and
-// selection. Construct it with NewGeometry, not its zero value. It owns no
+// selection. Construct it with NewGeometry or Fragment.Geometry, not its zero
+// value. Fragment geometry caches detailed pages on demand. Geometry owns no
 // native layout; rebuild it whenever the paragraph's text or metrics change.
 type Geometry struct {
+	pages      *fragmentGeometry
 	lines      []textVisualLine
 	boundaries []int // logical order, independent of visual order
 	// Ordinary native lines partition the paragraph in logical order. Keep
@@ -44,14 +46,28 @@ type Geometry struct {
 }
 
 // LineCount returns the number of visual lines.
-func (g *Geometry) LineCount() int { return len(g.lines) }
+func (g *Geometry) LineCount() int {
+	if g.pages != nil {
+		return g.pages.fragment.LineCount()
+	}
+	return len(g.lines)
+}
 
 // LineMetrics returns a visual line's metrics. index must be in [0, LineCount()).
 // Returned slice fields, if present, must be treated as read-only.
-func (g *Geometry) LineMetrics(index int) typography.TextLine { return g.lines[index].metrics }
+func (g *Geometry) LineMetrics(index int) typography.TextLine {
+	if g.pages != nil {
+		return g.pages.lineMetrics(index)
+	}
+	return g.lines[index].metrics
+}
 
 // LineIndex finds the visual line at pos, honoring its boundary affinity.
 func (g *Geometry) LineIndex(pos Position) int {
+	if g.pages != nil {
+		line, _, _ := g.pages.locate(pos)
+		return line
+	}
 	line, _ := g.locate(pos)
 	return line
 }
@@ -59,6 +75,9 @@ func (g *Geometry) LineIndex(pos Position) int {
 // LineAtY finds the visual line at paragraph-local y, clamping above and below
 // the paragraph. A gap belongs to the following line, as in Hit.
 func (g *Geometry) LineAtY(y float32) int {
+	if g.pages != nil {
+		return g.pages.lineAtY(y)
+	}
 	if g.orderedY {
 		return min(len(g.lines)-1, sort.Search(len(g.lines), func(i int) bool {
 			line := g.lines[i].metrics
@@ -75,6 +94,9 @@ func (g *Geometry) LineAtY(y float32) int {
 // LineEdge returns the leftmost or rightmost visual stop of a line.
 // index must be in [0, LineCount()).
 func (g *Geometry) LineEdge(index int, right bool) Position {
+	if g.pages != nil {
+		return g.pages.lineEdge(index, right)
+	}
 	stops := g.lines[index].stops
 	if right {
 		return stops[len(stops)-1].Position
@@ -172,6 +194,9 @@ func NewGeometry(lines []typography.TextLine, clusters []typography.TextCluster,
 
 // Snap clamps offset to a Cluster boundary, toward forward when inside one.
 func (g *Geometry) Snap(offset int, forward bool) int {
+	if g.pages != nil {
+		return g.pages.boundary(offset, forward, false)
+	}
 	i := sort.SearchInts(g.boundaries, offset)
 	if i == len(g.boundaries) {
 		return g.boundaries[len(g.boundaries)-1]
@@ -184,6 +209,9 @@ func (g *Geometry) Snap(offset int, forward bool) int {
 
 // Adjacent finds the preceding or following logical Cluster boundary.
 func (g *Geometry) Adjacent(offset int, forward bool) int {
+	if g.pages != nil {
+		return g.pages.boundary(offset, forward, true)
+	}
 	if forward {
 		i := sort.Search(len(g.boundaries), func(i int) bool { return g.boundaries[i] > offset })
 		return g.boundaries[min(i, len(g.boundaries)-1)]
@@ -222,6 +250,9 @@ func (g *Geometry) locate(pos Position) (int, int) {
 
 // Caret returns a 1 DIP wide caret rectangle at the nearest visual stop.
 func (g *Geometry) Caret(pos Position) geometry.Rectangle {
+	if g.pages != nil {
+		return g.pages.caret(pos)
+	}
 	i, j := g.locate(pos)
 	line := &g.lines[i]
 	return geometry.Rect(line.stops[j].x, line.metrics.Y, 1, line.metrics.Height)
@@ -234,6 +265,9 @@ func (g *Geometry) Hit(point geometry.Point) Position {
 
 // HitLine finds a caret position on a valid visual line at local x.
 func (g *Geometry) HitLine(index int, x float32) Position {
+	if g.pages != nil {
+		return g.pages.hitLine(index, x)
+	}
 	line := &g.lines[index]
 	// First choose the half of the actual cluster, not an inferred logical
 	// advance. This also disambiguates coincident bidi-run edges.
@@ -262,6 +296,9 @@ func (g *Geometry) HitLine(index int, x float32) Position {
 // press to leave the Caret stationary. Crossing a soft wrap preserves affinity.
 // false means the caller must continue into the previous/next paragraph.
 func (g *Geometry) Visual(pos Position, right bool) (Position, bool) {
+	if g.pages != nil {
+		return g.pages.visual(pos, right)
+	}
 	i, j := g.locate(pos)
 	line := &g.lines[i]
 	x := line.stops[j].x
@@ -291,7 +328,7 @@ func (g *Geometry) Visual(pos Position, right bool) (Position, bool) {
 // Selection returns the selected Cluster rectangles, merging adjacent spans
 // on each visual line but retaining disjoint bidirectional spans.
 func (g *Geometry) Selection(rng Range) []geometry.Rectangle {
-	return g.SelectionLines(rng, 0, len(g.lines))
+	return g.SelectionLines(rng, 0, g.LineCount())
 }
 
 // SelectionLines returns the selected Cluster rectangles on visual lines
@@ -301,8 +338,12 @@ func (g *Geometry) Selection(rng Range) []geometry.Rectangle {
 //
 // Use LineAtY to restrict painting to the viewport without traversing the
 // rest of a wrapped paragraph. This only queries supplied metrics; it does not
-// perform native shaping or make construction of a Geometry incremental.
+// perform native shaping. NewGeometry indexes its input eagerly; a geometry
+// obtained from Fragment prepares only the detailed pages needed by queries.
 func (g *Geometry) SelectionLines(rng Range, first, end int) []geometry.Rectangle {
+	if g.pages != nil {
+		return g.pages.selection(rng, first, end)
+	}
 	if first < 0 || first > end || end > len(g.lines) {
 		panic("textedit: invalid visual line range")
 	}
