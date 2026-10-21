@@ -366,3 +366,37 @@ Backspace 中位数 / 最大值 60/77 ms，Delete 61/74 ms，撤销替换 60/73 
 与此前约一秒的基线相比，缓存命中的编辑显著改善，新输入仍不流畅；不以查询
 复用掩盖“有限送测和段内增量排版”尚未实现。记录为仓库外
 user-json-middle-text-history-*；针对性核验后又执行两仓完整测试与 GOUI race。
+
+### 远端 macOS：CoreText 导出临时存储
+
+2026-10-21，macOS 15.7.7、Apple M1 arm64、Go 1.25.8。在远端独立临时目录中
+验证 GOUI `b50da4f` 与 SourceView `33ac118`，未覆盖远端已有仓库及未跟踪文件。
+用户 157862 byte JSON 已核对 SHA256，与 Linux 的输入相同。CoreText 初始打开
+的分析器记录 native size 约 30 ms、metrics 约 18 ms；开启了分析器，不能作为
+真实点击、输入或滚动的端到端延迟。
+
+CoreText 的 MeasureMetrics 改为在一次调用中复用 positions/advances/indices 数组
+和逐行清空的索引表；保留完整原生上下文和输出值。新回归与此前逐 run 分配的
+原生参考比较全部行/cluster，涵盖宽窄换行、RTL/override/isolate、Tab、组合字、
+emoji、颜色 run 和占位符；后续不同宽度测量不能更改已返回的普通坐标。
+
+`go test ./platform/typography/coretext -count=1` 通过；
+`go test -race ./gui ./gui/textedit ./platform/typography/coretext` 通过。
+同进程预先完成 shaping，对 188416 byte 样本导出 metrics，
+`go test ./platform/typography/coretext -run '^$' -bench '^BenchmarkMetricsScratch$' -benchtime=10x -count=5`：
+
+| 导出实现 | 五组中位数 | 每次分配字节 | 每次分配次数 |
+| --- | ---: | ---: | ---: |
+| 逐 run 分配 | 14.064 ms | 约 29837023 | 约 54356 |
+| 调用内复用 | 8.399 ms | 约 9916916 | 36250 |
+
+这只覆盖原生度量导出阶段，不改变 TextLayout 契约，不是通用分时排版完成。
+远端 GOUI `go test ./...` 存在基线失败：`platform/test` 的
+`TestWindowInteractionCapabilities` 在没有输入上下文时，resize 返回
+`ErrUnavailable`，测试期待 `ErrUnsupported`。失败发生在这项
+CoreText 修改之前，未删除断言、扩大 skip 或顺带修改窗口能力契约。
+
+桌面验证尚未完成：mac 的 SSH 可用但配置的 VNC 返回 `CONNECT_FAILED`，当前进程
+未获桌面事件发送授权；win 的 RDP 可用，但 SSH 端口返回 `Connection refused`。
+未更改权限、远程服务或连接安全设置。不能把窗口创建、CoreText 回归或目标编译
+算作实际远端编辑、滚动及拖动宽高验收，须恢复连接后继续。
