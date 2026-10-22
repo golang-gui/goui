@@ -7,6 +7,8 @@ import (
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/style"
 
 	"github.com/goexlib/mathx"
 )
@@ -76,6 +78,7 @@ type ScrollView struct {
 	revealing      bool
 	dragAutoScroll bool
 	dragMotion     *DragMotionEventController
+	frameInset     float32
 }
 
 // scrollViewport gives scrolling content a real structural clipping boundary.
@@ -130,7 +133,70 @@ func NewScrollView() *ScrollView {
 	sv.AddEventController(sv.dragMotion)
 	sv.ConnectMount(sv.connectReveal)
 	sv.ConnectUnmount(sv.disconnectReveal)
+	sv.ConnectContainsFocus(func(bool) { sv.RequestPaint() })
 	return sv
+}
+
+// StyleChanged reserves a stable inner rectangle for every focus state. A
+// thicker focus border must not change wrapping or the scroll range.
+func (sv *ScrollView) StyleChanged() {
+	sv.frameInset = 0
+	for _, state := range []style.State{style.Normal, style.Focused, style.FocusVisible, style.Disabled} {
+		s := sv.frameStyle(state)
+		border, _ := s.BorderWidth()
+		radius, _ := s.Radius()
+		border = normalizeLayoutValue(border)
+		radius = normalizeLayoutValue(radius)
+		inset := border
+		if radius > 0 {
+			// Keep rectangular children inside the rounded border, including an
+			// antialiasing margin, without requiring a rounded clipping API.
+			inset += max(0, radius-border)*(1-1/math.Sqrt2) + 1
+		}
+		sv.frameInset = max(sv.frameInset, inset)
+	}
+}
+
+func (sv *ScrollView) frameStyle(state style.State) style.Style {
+	name := sv.StyleName()
+	if name == "" {
+		name = styleNameScrollView
+	}
+	return ResolveWidgetStyle(sv, name, "frame", state)
+}
+
+func (sv *ScrollView) contentInset() float32 {
+	ensureWidgetStyle(sv)
+	return sv.frameInset
+}
+
+func (sv *ScrollView) innerRect() geometry.Rectangle {
+	return (geometry.Rectangle{Size: sv.Rect().Size}).Inset(sv.contentInset())
+}
+
+// Paint draws the shared frame behind the viewport, both bars and their corner.
+// Select an explicit StyleName to give the scroll container an editor frame.
+func (sv *ScrollView) Paint(p Painter) {
+	state := style.Normal
+	if !IsEnabled(sv) {
+		state = style.Disabled
+	} else if sv.FocusVisible() {
+		state = style.FocusVisible
+	} else if sv.Focused() || sv.ContainsFocus() {
+		state = style.Focused
+		if host, ok := sv.Root().(EventTarget); ok {
+			if focused := host.FocusedWidget(); focused != nil && focused.FocusVisible() {
+				state = style.FocusVisible
+			}
+		}
+	}
+	s := sv.frameStyle(state)
+	r := geometry.Rectangle{Size: sv.Rect().Size}
+	if bg, ok := s.BackgroundColor(); ok && bg != nil && graphics.ColorOf(bg).A > 0 {
+		paintStyledBox(p, r, s)
+	} else {
+		paintStyledBorder(p, r, s)
+	}
 }
 
 // Direction returns the scrolling axes, initially ScrollBoth.
@@ -374,7 +440,7 @@ func (sv *ScrollView) hScrollable() bool {
 // previous allocation cannot keep unnecessary bars alive. Each step can only
 // add a bar; two axes need at most three evaluations to settle their occupancy.
 func (sv *ScrollView) scrollGeometry() (area geometry.Size, horizontal, vertical bool) {
-	size := sv.Rect().Size
+	size := sv.innerRect().Size
 	for range 3 {
 		area = scrollArea(size, horizontal, vertical)
 		h := horizontal || sv.content != nil && sv.canScrollX() && sv.contentWidth > area.Width
@@ -421,7 +487,7 @@ func (sv *ScrollView) scrollRange() geometry.Size {
 
 // contentAreaRect returns the content area in ScrollView-local coordinates.
 func (sv *ScrollView) contentAreaRect() geometry.Rectangle {
-	return geometry.Rect(0, 0, sv.contentAreaSize().Width, sv.contentAreaSize().Height)
+	return geometry.Rectangle{Pos: sv.innerRect().Pos, Size: sv.contentAreaSize()}
 }
 
 func (sv *ScrollView) Snapshot() WidgetInfo {
@@ -444,6 +510,8 @@ func (sv *ScrollView) Measure(c layout.Constraint) layout.Measurement {
 	if !sv.Visible() || sv.content == nil {
 		return layout.Measurement{}
 	}
+	inset := sv.contentInset()
+	inner := sv.layoutConstraint(c).Inset(inset)
 	if sc, ok := sv.content.(Scrollable); ok {
 		if !ensureWidgetStyle(sc) {
 			return layout.Measurement{}
@@ -451,7 +519,7 @@ func (sv *ScrollView) Measure(c layout.Constraint) layout.Measurement {
 		// Measure determines the requested viewport; ContentSize remains the
 		// independent (possibly virtualized) scrolling extent. Give the content
 		// the actual cross width and a loose height so short content can hug.
-		childConstraint := sv.layoutConstraint(c)
+		childConstraint := inner
 		childConstraint.Min.Height = 0
 		if childConstraint.Max.Width < layout.Inf {
 			childConstraint.Min.Width = childConstraint.Max.Width
@@ -467,7 +535,7 @@ func (sv *ScrollView) Measure(c layout.Constraint) layout.Measurement {
 		// reported content width drives the horizontal scrollbar (hScrollable),
 		// never the size of the viewport itself — feeding a content or
 		// bar-influenced width back here would shrink the viewport each layout.
-		width := sv.viewportWidth(sv.layoutConstraint(c))
+		width := sv.viewportWidth(inner)
 		if childConstraint.Max.Width >= layout.Inf {
 			width = measured.Width
 		}
@@ -475,22 +543,27 @@ func (sv *ScrollView) Measure(c layout.Constraint) layout.Measurement {
 		if sv.canScrollX() && childConstraint.Max.Width < layout.Inf && size.Width > width {
 			height += scrollbarWidth
 		}
-		measured.Size = sv.constrain(c, geometry.Size{Width: width, Height: height})
+		measured.Size = sv.constrain(c, geometry.Size{Width: width + 2*inset, Height: height + 2*inset})
+		if measured.HasBaseline {
+			measured.Baseline += min(inset, measured.Height/2)
+		}
 		return measured
 	}
-	contentSize := sv.measureContent(sv.layoutConstraint(c).Max)
+	contentSize := sv.measureContent(inner.Max)
 	size := contentSize
 	if sv.direction == ScrollVertical {
-		if sv.layoutConstraint(c).Max.Width < layout.Inf {
-			size.Width = sv.viewportWidth(sv.layoutConstraint(c))
+		if inner.Max.Width < layout.Inf {
+			size.Width = sv.viewportWidth(inner)
 		}
 	}
 	if sv.direction == ScrollHorizontal {
-		size.Width, size.Height = sv.viewportWidth(c), contentSize.Height
+		size.Width, size.Height = sv.viewportWidth(inner), contentSize.Height
 	}
-	if sv.canScrollX() && contentSize.Width > sv.layoutConstraint(c).Max.Width {
+	if sv.canScrollX() && contentSize.Width > inner.Max.Width {
 		size.Height += scrollbarWidth
 	}
+	size.Width += 2 * inset
+	size.Height += 2 * inset
 	return layout.Measured(sv.constrain(c, size))
 }
 
@@ -520,14 +593,15 @@ func (sv *ScrollView) Arrange(rect geometry.Rectangle) {
 	sv.layoutDepth++
 	defer sv.finishContentLayout()
 	sv.WidgetBase.Arrange(rect)
+	inner := sv.innerRect()
 	if _, virtual := sv.content.(Scrollable); sv.content != nil && !virtual {
 		// Begin at the full cross extent on each allocation, then remeasure at
 		// the bar-reduced extent. Width-sensitive forms wrap at their actual
 		// viewport width, including after a resize or content shrink.
-		sv.measureContent(rect.Size)
+		sv.measureContent(inner.Size)
 		if sv.direction != ScrollBoth {
 			area := sv.contentAreaSize()
-			if area != rect.Size {
+			if area != inner.Size {
 				sv.measureContent(area)
 			}
 		}
@@ -548,7 +622,7 @@ func (sv *ScrollView) Arrange(rect geometry.Rectangle) {
 		}
 	}
 	sv.viewport.Arrange(sv.contentAreaRect())
-	sv.layoutScrollBars(rect)
+	sv.layoutScrollBars(inner)
 	sv.syncBars()
 }
 
@@ -594,7 +668,7 @@ func (sv *ScrollView) layoutScrollBars(rect geometry.Rectangle) {
 
 	if vScroll {
 		sv.vbar.SetVisible(true)
-		sv.vbar.Arrange(geometry.Rect(max(0, rect.Width-barW), 0, min(barW, max(0, rect.Width)), area.Height))
+		sv.vbar.Arrange(geometry.Rect(rect.X+max(0, rect.Width-barW), rect.Y, min(barW, rect.Width), area.Height))
 	} else {
 		sv.vbar.SetVisible(false)
 		sv.vbar.Arrange(geometry.Rect(0, 0, 0, 0))
@@ -602,7 +676,7 @@ func (sv *ScrollView) layoutScrollBars(rect geometry.Rectangle) {
 
 	if hScroll {
 		sv.hbar.SetVisible(true)
-		sv.hbar.Arrange(geometry.Rect(0, max(0, rect.Height-barW), area.Width, min(barW, max(0, rect.Height))))
+		sv.hbar.Arrange(geometry.Rect(rect.X, rect.Y+max(0, rect.Height-barW), area.Width, min(barW, rect.Height)))
 	} else {
 		sv.hbar.SetVisible(false)
 		sv.hbar.Arrange(geometry.Rect(0, 0, 0, 0))

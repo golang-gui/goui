@@ -1,5 +1,7 @@
 # ScrollView 滚动方向与布局一致性
 
+滚动容器的可选外框及编辑器组合见 [滚动外框设计](DesignScrollFrame.md)。
+
 后续内容驱动测量以 [TextView 尺寸设计](DesignTextViewSizing.md) 为准：
 ScrollView 在宽松高度约束中使用子项的测量高度，无界时也可随内容增长。
 固定/填满视口由父约束、MainWeight 与 CrossStretch 显式表达；不增加测量开关。
