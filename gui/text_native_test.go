@@ -175,11 +175,14 @@ func testTextViewNativeResizeAnchor(t *testing.T, newContext func() (typography.
 		scroll.SetScrollY(offset)
 		// Paint clips at padding, and translates text by padding-offset:
 		// the first visible content coordinate is therefore offset, not
-		// offset-padding. Derive it from native metrics, not editor.anchor.
+		// offset-padding. Native metrics are local to the paragraph layout,
+		// whose painted origin also includes the baseline's textOffset.
+		// Derive the anchor from those metrics, not editor.anchor.
 		oldIndex := editor.heights.At(scroll.ScrollY())
 		oldRange, _ := editor.model.LineRange(oldIndex)
-		oldLines, _ := editor.paragraph(oldIndex).layout.MeasureMetrics()
-		oldY := scroll.ScrollY() - editor.heights.Top(oldIndex)
+		oldParagraph := editor.paragraph(oldIndex)
+		oldLines, _ := oldParagraph.layout.MeasureMetrics()
+		oldY := scroll.ScrollY() - editor.heights.Top(oldIndex) - oldParagraph.textOffset
 		oldLine := 0
 		for oldLine+1 < len(oldLines) && oldLines[oldLine+1].Y <= oldY {
 			oldLine++
@@ -198,7 +201,7 @@ func testTextViewNativeResizeAnchor(t *testing.T, newContext func() (typography.
 			for line+1 < len(lines) && lines[line+1].Start <= old.offset-rng.Start {
 				line++
 			}
-			want := editor.heights.Top(index) + lines[line].Y + old.within
+			want := editor.heights.Top(index) + p.textOffset + lines[line].Y + old.within
 			// ScrollView rounds to integral DIP. Native line metrics need not be
 			// integral, but a whole line/paragraph jump is never rounding error.
 			if abs32(scroll.ScrollY()-want) > 1 {
