@@ -953,3 +953,23 @@ arm64 构建限制保留在原记录中；本轮未修改实现或复验这些�
   已发布标签仍指向 `798a523a5e231ecfc163b8d375c797cd826d2f6a`，不重写历史。
 - 本轮未重跑 Windows/macOS 的桌面交互或完整后端／DPI 矩阵；Linux arm64 仍有既有
   SYS_PIPE／SYS_POLL 编译阻塞，无对应附件。临时产物、公证日志及旧附件备份在仓库外。
+
+## GUI 文本测试组织（2026-10-22）
+
+- [x] 将 18 个文本测试文件归并为共用 helper、TextEditor／TextInput／TextView、
+  原生 helper 及三个平台入口，共 8 个文件；Label 保留自己的用例，通用的
+  ScrollView 测量重入用例归还 `scroll_view_test.go`。不调整生产代码、
+  `gui/textedit`、IMContext、UI、主题及独立窗口程序。
+- [x] 归并涉及的 298 个声明中移动 147 个；Go token 校验确认原声明全部保留且内容
+  一致，包括文本文件原有的 118 个 Test 声明（含平台重复入口）和 2 个 Benchmark。
+  校验保留平台后缀的适用范围，不以移动文件改变平台覆盖。
+- [x] Linux amd64／Go 1.25.8，无 DISPLAY／WAYLAND_DISPLAY：整理前执行
+  `go test -json ./gui`、整理后执行 `go test -json ./gui -count=1`，均为 914 项测试／子测试
+  通过、无失败或跳过；活动用例名称集合一致。未创建桌面窗口。
+- [ ] 单独恢复已存在但未接入平台 Test 入口的三个原生验证 helper：编辑导航、
+  文档末尾定位与调整宽度后的视口锚定；恢复入口与纯归并分项提交和验证。
+- 无显示连接时 `go test -json ./...` 未通过：既有
+  `platform/typography/test.TestTypography` 创建平台失败（`can not open display`）；
+  不修改该测试或运行开关，后续在独立 X11 会话补验。race 与跨平台编译结果也在
+  后续验证完成后补充。用户正在合并的 TextEditor
+  生产文件及其他已有工作区改动不属于本轮整理或提交范围。

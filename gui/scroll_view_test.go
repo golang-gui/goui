@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/goexlib/mathx"
-
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/events"
@@ -184,6 +183,7 @@ type extentScrollContent struct {
 }
 
 func (w *extentScrollContent) ContentSize() geometry.Size { return w.size }
+
 func (w *extentScrollContent) LayoutVisible(viewport geometry.Size, offset geometry.Point) {
 	w.viewports = append(w.viewports, viewport)
 	if w.discover != (geometry.Size{}) {
@@ -908,5 +908,24 @@ func TestScrollViewSnapshotFiltersScrollBars(t *testing.T) {
 	// Only the content child, not the scrollbars.
 	if len(info.Children) != 1 {
 		t.Fatalf("snapshot should have 1 child (content), got %d", len(info.Children))
+	}
+}
+
+type replacingMeasuredContent struct {
+	mockScrollContent
+	replace func()
+}
+
+func (c *replacingMeasuredContent) Measure(cs layout.Constraint) layout.Measurement {
+	c.replace()
+	return c.mockScrollContent.Measure(cs)
+}
+
+func TestScrollViewStopsWhenMeasurementReplacesContent(t *testing.T) {
+	scroll := NewScrollView()
+	content := &replacingMeasuredContent{replace: func() { scroll.SetChild(nil) }}
+	scroll.SetChild(content)
+	if got := scroll.Measure(layout.Loose(geometry.Size{Width: 100, Height: 100})); got != (layout.Measurement{}) || scroll.Child() != nil {
+		t.Fatalf("measurement retained replaced content: %+v", got)
 	}
 }
