@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"math"
 	"strings"
 	"time"
 
@@ -44,8 +45,7 @@ func (d *demo) loadAssets() error {
 	if err != nil {
 		return err
 	}
-	// Fixed Image sample at its native aspect ratio (1220:512).
-	d.wordmark = wordmark.WithRawColors().Image(305, 128, graphics.Color{})
+	d.wordmark = wordmark.WithRawColors()
 	d.icons = append(d.icons, &draw.Source{Draw: func(p graphics.Painter, s graphics.Size, c graphics.Color) {
 		p.FillEllipse(graphics.Point{X: s.Width / 2, Y: s.Height / 2}, s.Width*.45, s.Height*.45, c)
 		p.DrawLine(graphics.Point{X: s.Width * .3, Y: s.Height * .5}, graphics.Point{X: s.Width * .7, Y: s.Height * .5}, max(1, s.Width*.06), graphics.RGBA(255, 255, 255, 230))
@@ -71,7 +71,7 @@ func (d *demo) graphicsPage() ui.View {
 		icons = append(icons, ui.Icon(source).Size(36).Style("demo-swatch"))
 	}
 	return page("graphics", resource.Graphics(), resource.GraphicsHint(),
-		section(resource.ImagesTitle(), ui.Image(d.wordmark).MaxWidth(305).MaxHeight(128), ui.Image(d.bitmap).MaxWidth(280).MaxHeight(110), ui.HBox(icons...).Spacing(24), ui.Label(resource.IconsHint())),
+		section(resource.ImagesTitle(), newWordmark(d.wordmark).ID("wordmark"), ui.Image(d.bitmap).MaxWidth(280).MaxHeight(110), ui.HBox(icons...).Spacing(24), ui.Label(resource.IconsHint())),
 		section(resource.DrawingTitle(), newCanvas().ID("canvas").MinHeight(190).MaxHeight(190),
 			ui.Button(resource.Capture()).ID("capture-canvas").OnClick(func() {
 				w := d.app.FindWidget("main", "canvas")
@@ -81,9 +81,10 @@ func (d *demo) graphicsPage() ui.View {
 				img, err := gui.RenderWidget(w, 0)
 				if err == nil {
 					d.capture = img
+					d.captureSize = w.Rect().Size
 				}
 				d.result(resource.Offscreen(), err)
-			}), ui.Image(d.capture).Visible(d.capture != nil).MaxHeight(190)),
+			}), ui.Image(d.capture).ID("capture-preview").ContentSize(d.captureSize.Width, d.captureSize.Height).Visible(d.capture != nil).MaxHeight(190)),
 		section(resource.AnimationTitle(),
 			ui.HWrap(ui.Button(resource.Animate()).ID("animate").OnClick(d.animate), ui.Button(resource.Stop()).ID("stop-animation").OnClick(func() { d.motion.Stop(); d.busy = false; d.report(resource.AnimationStopped()) }),
 				ui.Button(resource.Finish()).OnClick(d.motion.Finish),
@@ -95,6 +96,98 @@ func (d *demo) graphicsPage() ui.View {
 			ui.Label(fmt.Sprintf(resource.AnimationValue(), d.motionValue.Get()))),
 	)
 }
+
+const wordmarkWidth, wordmarkHeight float32 = 305, 128
+
+// The horizontal SVG uses a rectangular drawing area rather than Icon's square
+// allocation. Parsing is done once; pixels follow the current paint scale.
+type wordmarkWidget struct {
+	gui.WidgetBase
+	source    *svg.Source
+	native    graphics.Image
+	pixelSize image.Point
+}
+
+func (w *wordmarkWidget) Measure(c layout.Constraint) layout.Measurement {
+	if !w.Visible() || w.source == nil {
+		return layout.Measurement{}
+	}
+	return layout.Measured(c.Clamp(geometry.Size{Width: wordmarkWidth, Height: wordmarkHeight}))
+}
+
+func (w *wordmarkWidget) Paint(p gui.Painter) {
+	if !w.Visible() || w.source == nil {
+		return
+	}
+	bounds := w.Rect()
+	fit := min(float32(1), bounds.Width/wordmarkWidth, bounds.Height/wordmarkHeight)
+	if fit <= 0 {
+		return
+	}
+	width, height := wordmarkWidth*fit, wordmarkHeight*fit
+	scale := p.PixelScale()
+	pw, ph := math.Ceil(float64(width)*float64(scale)), math.Ceil(float64(height)*float64(scale))
+	if pw < 1 || ph < 1 || pw > 4096 || ph > 4096 || math.IsNaN(pw) || math.IsNaN(ph) {
+		return
+	}
+	size := image.Pt(int(pw), int(ph))
+	if w.native == nil || w.pixelSize != size {
+		pixels := w.source.Image(size.X, size.Y, graphics.Color{})
+		if pixels == nil || pixels.Bounds().Empty() {
+			return
+		}
+		native, err := p.NewImage(pixels)
+		if err != nil {
+			return
+		}
+		w.releaseImage()
+		w.native, w.pixelSize = native, size
+	}
+	p.DrawImage(geometry.Rect(0, 0, width, height), w.native)
+}
+
+func (w *wordmarkWidget) releaseImage() {
+	if w.native != nil {
+		w.native.Destroy()
+		w.native = nil
+	}
+	w.pixelSize = image.Point{}
+}
+
+func (w *wordmarkWidget) Snapshot() gui.WidgetInfo {
+	info := w.WidgetBase.Snapshot()
+	info.Role = gui.RoleImage
+	info.Text = "GOUI"
+	return info
+}
+
+type wordmarkView struct {
+	ui.ViewBase[wordmarkView]
+	source *svg.Source
+}
+
+func newWordmark(source *svg.Source) *wordmarkView {
+	v := &wordmarkView{source: source}
+	v.Self = v
+	return v
+}
+
+func (v *wordmarkView) Build() ui.View { return v }
+func (v *wordmarkView) Mount(ui.BuildContext) gui.Widget {
+	w := &wordmarkWidget{}
+	w.ConnectUnmount(w.releaseImage)
+	return w
+}
+func (v *wordmarkView) Update(_ ui.BuildContext, widget gui.Widget) {
+	w := widget.(*wordmarkWidget)
+	if w.source != v.source {
+		w.releaseImage()
+		w.source = v.source
+		w.RequestLayout()
+	}
+}
+func (*wordmarkView) Unmount(ui.BuildContext, gui.Widget) {}
+
 func (d *demo) animate() {
 	target := float32(80)
 	if d.motionValue.Get() > 55 {

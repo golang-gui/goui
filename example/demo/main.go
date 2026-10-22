@@ -21,6 +21,7 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/example/demo/resource"
 	"github.com/golang-gui/goui/gui"
+	"github.com/golang-gui/goui/icon/svg"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/mlang"
 	"github.com/golang-gui/goui/style"
@@ -76,7 +77,9 @@ type demo struct {
 	motionValue                        ui.State[float32]
 	icons                              []gui.IconSource
 	logo                               gui.IconSource
-	wordmark, bitmap, capture          image.Image
+	wordmark                           *svg.Source
+	bitmap, capture                    image.Image
+	captureSize                        geometry.Size
 	popup                              gui.Popover
 	files                              []string
 	fileAccess                         []ui.FileAccess

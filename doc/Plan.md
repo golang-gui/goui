@@ -3,6 +3,46 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## Image 内容尺寸与 Demo HiDPI（2026-10-22）
+
+- [x] 保留默认像素宽高作为 DIP 的行为，新增 gui/ui 显式 ContentSize；尺寸变化
+  复用像素资源，声明式删除 modifier 恢复默认。设计见 [DesignImage](DesignImage.md)。
+- [x] Demo 横版 Logo 保留 SVG，按实际绘制尺寸与 PixelScale 缓存原色图片；
+  RenderWidget 预览显式使用捕获时的 DIP 尺寸，详见 [DesignDemo](DesignDemo.md)。
+- [x] 基线 `a8eafef` 加本轮指定文件的干净快照，Linux amd64 / Go 1.25.8 / 独立
+  Xvnc/Xfwm4：`GOWORK=off go test -json ./... -count=1`，2396 项通过、10 项既有
+  跳过、零失败。相关 gui/ui/Demo 的定向测试及 race 通过；原有窗口/图片测试的
+  副作用限于快照与隔离桌面，未纳入用户未跟踪文件。
+- [x] 保留 Image 默认行为断言；新回归覆盖 1x/1.25x/1.5x/2x。临时 overlay
+  恢复旧 DrawImage 参数时，截图预览回归在 1.25x 的独立蓝色色块位置失败，
+  实际得到红色；恢复修正后通过。SVG 上传分辨率、原色、缓存复用、替换、隔离、
+  释放、失败重试、隐藏、预算和窄分配场景通过。
+- [x] Linux Xvnc/Xfwm4，Software 及 OpenGL 配置（llvmpipe），应用缩放 1.5：
+  经正常输入点击图形页与 RenderWidget，Logo 清晰，预览大小和图形位置对应。
+  同环境旧版/新版 Logo 截图对照确认原固定低分辨率位图的模糊已改善；OpenGL
+  配置下另检查深色 Logo 原色。窗口均正常关闭，不使用 DevServer。
+- [x] Windows 10 19045 amd64 / Go 1.24.0：同源快照的相关 Image、Root Image、
+  Wordmark、Demo Logo 定向测试通过，ui/Demo 全包测试及 Demo 原生构建通过。
+  Direct2D、RDP 1600×900 下实际点击与滚动检查 Logo 和截图预览，尺寸对应。
+  会话实际 SystemDpi/WindowDpi 为 96，使用 `GOUI_PLAT_SCALE=1.5`；不修改系统
+  缩放，不把这次配置缩放验证写成系统 150% 或真实混合 DPI 验收。
+- Windows 扩大执行 `go test ./gui ./ui ./example/demo/... ./platform/graphics/direct2d
+  -count=1` 失败：`TestTextViewDirectWriteResizeAnchor` 和
+  `TestPremultipliedNativeColors` 的 gradient/stroke-gradient 四个子项失败。
+  未修改基线同环境定向重跑得到完全相同的偏移和颜色值，不属于本轮新增失败；
+  保留断言并记录，不改动这些无关能力。
+- `go vet ./gui ./ui ./example/demo/...` 在基线及修正快照均有 139 条既有 unkeyed
+  literal 诊断，归一化行号后诊断集合相同，无新增。本轮不处理既有静态检查问题。
+- [x] macOS arm64 `GOWORK=off CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build ./...`
+  及 `go test -exec=true ./...` 交叉构建通过，后者只编译而不执行目标测试；
+  未执行 macOS 原生桌面、真实系统 150% 或跨屏切换。
+- [x] SourceView 临时双仓工作区的 `go test ./...` 通过；没有修改其文件。单独关闭
+  工作区时，既有本地 replace 配置提示需要更新 go.mod，未擅自 tidy；双仓联调
+  不代替其独立发布依赖验证。
+- 二进制、快照、截图与日志保留在仓库外临时目录。Windows 启动时运行对话框出现
+  延迟，部分启动命令曾误入原编辑器，已撤销并核对文本及光标恢复；未保存文件。
+  本轮不改动 RenderWidget、Icon、动画或平台绘制契约。
+
 ## 标准发布流程（2026-10-19）
 
 - [x] 编写 [Release](Release.md)，固定版本／Demo 策略、提交后冻结、干净源码验证、

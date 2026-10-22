@@ -668,7 +668,11 @@ func TestDemoLogoPixels(t *testing.T) {
 			}
 		}
 	}
-	if d.wordmark == nil || d.wordmark.Bounds() != image.Rect(0, 0, 305, 128) {
+	if d.wordmark == nil {
+		t.Fatal("missing horizontal SVG source")
+	}
+	wordmark := d.wordmark.Image(305, 128, graphics.Color{})
+	if wordmark == nil || wordmark.Bounds() != image.Rect(0, 0, 305, 128) {
 		t.Fatal("wordmark must preserve its 1220:512 aspect ratio")
 	}
 	for _, sample := range []struct {
@@ -679,7 +683,7 @@ func TestDemoLogoPixels(t *testing.T) {
 		{61, 32, color.RGBA{G: 173, B: 216, A: 255}},
 		{285, 64, color.RGBA{R: 91, G: 122, B: 143, A: 255}},
 	} {
-		if got := color.RGBAModel.Convert(d.wordmark.At(sample.x, sample.y)).(color.RGBA); got != sample.want {
+		if got := color.RGBAModel.Convert(wordmark.At(sample.x, sample.y)).(color.RGBA); got != sample.want {
 			t.Errorf("wordmark (%d,%d): %v, want %v", sample.x, sample.y, got, sample.want)
 		}
 	}
