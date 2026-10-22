@@ -32,6 +32,7 @@ type Painter struct {
 	outputBuf     []byte
 	images        map[*imageResource]struct{}
 	textImages    *textbitmap.ImageCache[graphics.Image]
+	glyphImages   *textbitmap.ImageCache[graphics.Image]
 	textPixels    []byte
 	pendingImages int
 	scale         float32
@@ -52,6 +53,7 @@ func NewPainter(drawable Drawable) (graphics.Painter, error) {
 	p.transparent = drawable.Transparent()
 	p.images = make(map[*imageResource]struct{})
 	p.textImages = textbitmap.NewImageCache(textbitmap.CacheCapacity, func(img graphics.Image) { img.Destroy() })
+	p.glyphImages = textbitmap.NewImageCache(textbitmap.GlyphCacheCapacity, func(img graphics.Image) { img.Destroy() })
 	return p, nil
 }
 
@@ -64,6 +66,7 @@ func (p *Painter) Destroy() {
 		panic("software: destroy painter during active frame")
 	}
 	p.textImages.Destroy()
+	p.glyphImages.Destroy()
 	for img := range p.images {
 		img.owner = nil
 		img.bitmap.Pixels = nil
@@ -942,4 +945,39 @@ func (p *Painter) RenderImage(width, height int, scale float32, draw func()) (im
 		result.Pix[i], result.Pix[i+1], result.Pix[i+2], result.Pix[i+3] = p.bgra.Pix[i+2], p.bgra.Pix[i+1], p.bgra.Pix[i], p.bgra.Pix[i+3]
 	}
 	return result, nil
+}
+
+func (p *Painter) DrawTextGlyphs(origin graphics.Point, layout typography.GlyphLayout, start, length int, foreground color.Color) {
+	if layout == nil {
+		return
+	}
+	rasterScale := textbitmap.RasterScale(p.scale, p.transform)
+	if rasterScale <= 0 {
+		return
+	}
+	// Align the bitmap anchor while preserving the glyphs' fractional phase.
+	anchor, offset := textbitmap.GlyphOrigin(origin, p.transform, p.scale, rasterScale)
+	origin = anchor
+	clip := p.bgra.Rect
+	if p.clip != (image.Rectangle{}) {
+		clip = clip.Intersect(p.clip)
+	}
+	region := textbitmap.GlyphRegion(layout, start, length, offset, origin, p.transform, p.scale, rasterScale, clip)
+	if region.Empty() {
+		return
+	}
+	img, ok := p.glyphImages.LookupGlyphs(layout, start, length, foreground, offset, rasterScale, region)
+	if !ok {
+		bitmap, err := textbitmap.RasterizeGlyphs(layout, start, length, foreground, offset, rasterScale, region, p.textPixels)
+		if err != nil || bitmap.Width != region.Dx() || bitmap.Height != region.Dy() {
+			return
+		}
+		p.textPixels = bitmap.Pixels
+		img, err = p.NewImage(graphics.Bitmap{Width: bitmap.Width, Height: bitmap.Height, Stride: bitmap.Stride, Format: graphics.PixelFormatRGBA, Pixels: bitmap.Pixels})
+		if err != nil {
+			return
+		}
+		p.glyphImages.StoreGlyphs(layout, start, length, foreground, offset, rasterScale, region, img)
+	}
+	p.DrawImage(textbitmap.DrawRect(origin, region, rasterScale), img)
 }
