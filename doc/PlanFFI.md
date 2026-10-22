@@ -94,3 +94,25 @@ nanovgo v0.0.8；它们尚不包含本批入口修正。
 执行GOWORK=off验证。没有擅自发布依赖、构造不存在的版本或提交本机replace。
 
 日志、受控对照副本与原生程序位于本次仓库外临时目录；正式交付说明记录最终复验结果。
+
+## 2026-10-23：原生指针类型与静态诊断
+
+本轮使用已发布 cgo v0.1.1，不修改调用桥或依赖版本。发布前的 195 条 vet 诊断中，
+167 条是跨包结构体的未命名字段，28 条来自原生指针先保存为 uintptr 再转换。
+这些告警不等于 28 个已经证实的运行时故障；原生分配并不会随 Go 栈移动，
+但应在绑定中准确表达指针类型，不靠关闭检查或新建转换 helper 消除提示。
+
+- 原生指针返回值经既有 CallRet 直接接收为 `*T` 或 unsafe.Pointer；真正的整数、
+  X11 ID 和不透明句柄保留原类型。可选 Xcursor/Xrandr 调用保留符号可用性检查。
+- Fontconfig/GLib 的字符串输出槽、X11 属性和 XrmValue 的地址使用指针，复制后
+  按既有所有权释放；XIM nested list 同样保留指针到释放，不改变回调保留期。
+- Pango 的 GlyphString glyphs/logClusters、Attribute.Class、Analysis.ExtraAttrs
+  与本机 Pango 1.50.6 头文件的指针字段一致；后两者的 Go 字段类型也同步改为
+  `*AttrClass` 和 `*glib.GSList[Attribute]`。LP64 原生偏移不变，补充 ABI 断言；
+  不再保留本包重复的 uintptr 转指针 helper。
+- GLib FilenameToURI 使用 typed call 固定参数和输出槽；保留符号查找失败和 GError
+  的操作错误，不将缺失符号改为成功，也不以旧 errno 代替该 API 的错误契约。
+- 字面量补全字段名只消除对其他包字段顺序的依赖，不改变值或测试断言。
+
+所有权、线程、ABI 布局、异步借用和释放规则保持原契约。验证结果记录在 Plan
+本轮发布修正记录，历史失败与旧依赖状态不改写成当时已通过。

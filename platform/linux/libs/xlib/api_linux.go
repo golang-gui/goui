@@ -2,6 +2,7 @@ package xlib
 
 import (
 	"runtime"
+	"unsafe"
 
 	"github.com/goexlib/cgo"
 )
@@ -162,13 +163,11 @@ func (d Display) DefaultScreen() int {
 }
 
 func (d Display) DefaultScreenOfDisplay() *Screen {
-	ret, _, _ := xDefaultScreenOfDisplay.CallRaw(uintptr(d))
-	return (*Screen)(cgo.Pointer(ret))
+	return cgo.CallRet[*Screen](xDefaultScreenOfDisplay.Addr(), d)
 }
 
 func (d Display) DefaultVisual(screen int) *Visual {
-	ret, _, _ := xDefaultVisual.CallRaw(uintptr(d), uintptr(screen))
-	return (*Visual)(cgo.Pointer(ret))
+	return cgo.CallRet[*Visual](xDefaultVisual.Addr(), d, int32(screen))
 }
 
 func (d Display) DefaultDepth(screen int) (depth int) {
@@ -353,20 +352,20 @@ func (d Display) GetWindowPropertyBytes(w Window, property, reqType Atom) ([]byt
 		actualFormat int32
 		nitems       uint64
 		bytesAfter   uint64
-		prop         uintptr
+		prop         *byte
 	)
 	xGetWindowProperty.CallRaw(uintptr(d), uintptr(w), uintptr(property),
 		uintptr(0), uintptr(1<<24), uintptr(cgo.CBool(false)), uintptr(reqType),
 		uintptr(cgo.Pointer(&actualType)), uintptr(cgo.Pointer(&actualFormat)),
 		uintptr(cgo.Pointer(&nitems)), uintptr(cgo.Pointer(&bytesAfter)), uintptr(cgo.Pointer(&prop)))
-	if prop == 0 {
+	if prop == nil {
 		return nil, actualType
 	}
 	out := make([]byte, nitems)
 	if nitems > 0 {
-		copy(out, []byte(cgo.GoStringN(cgo.Pointer(prop), int(nitems))))
+		copy(out, unsafe.Slice(prop, int(nitems)))
 	}
-	Free((*byte)(cgo.Pointer(prop)))
+	Free(prop)
 	return out, actualType
 }
 
@@ -416,8 +415,7 @@ func (d Display) FreePixmap(pixmap Pixmap) {
 }
 
 func (d Display) CreateImage(visual *Visual, depth, format, offset int, data cgo.Pointer, width, height, xpad, bytesPerLine int) *Image {
-	ret, _, _ := xCreateImage.CallRaw(uintptr(d), uintptr(cgo.Pointer(visual)), uintptr(depth), uintptr(format), uintptr(offset), uintptr(data), uintptr(width), uintptr(height), uintptr(xpad), uintptr(bytesPerLine))
-	return (*Image)(cgo.Pointer(ret))
+	return cgo.CallRet[*Image](xCreateImage.Addr(), d, visual, uint32(depth), int32(format), int32(offset), data, uint32(width), uint32(height), int32(xpad), int32(bytesPerLine))
 }
 
 func (d Display) PutImage(drawable Drawable, gc GC, image *Image, srcX, srcY, dstX, dstY, width, height int) {
@@ -459,8 +457,7 @@ func (d Display) KeysymToKeycode(keysym KeySym) KeyCode {
 }
 
 func (d Display) GetModifierMapping() *ModifierKeymap {
-	ret, _, _ := xGetModifierMapping.CallRaw(uintptr(d))
-	return (*ModifierKeymap)(cgo.Pointer(ret))
+	return cgo.CallRet[*ModifierKeymap](xGetModifierMapping.Addr(), d)
 }
 
 func FreeModifiermap(mapping *ModifierKeymap) int {

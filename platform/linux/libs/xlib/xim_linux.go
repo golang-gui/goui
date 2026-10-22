@@ -123,7 +123,7 @@ func (im XIM) CreateIC(window Window, style uintptr, preedit *[4]XIMCallback) XI
 	inputStyle := cgo.CStringTemp(xnInputStyle)
 	clientWindow := cgo.CStringTemp(xnClientWindow)
 	focusWindow := cgo.CStringTemp(xnFocusWindow)
-	var list uintptr
+	var list unsafe.Pointer
 	if preedit != nil {
 		var pin runtime.Pinner
 		pin.Pin(preedit)
@@ -134,19 +134,16 @@ func (im XIM) CreateIC(window Window, style uintptr, preedit *[4]XIMCallback) XI
 		defer runtime.KeepAlive(done)
 		defer runtime.KeepAlive(draw)
 		defer runtime.KeepAlive(caret)
-		list, _, _ = xVaCreateNestedList.CallRaw(0,
-			uintptr(start), uintptr(unsafe.Pointer(&preedit[0])),
-			uintptr(done), uintptr(unsafe.Pointer(&preedit[1])),
-			uintptr(draw), uintptr(unsafe.Pointer(&preedit[2])),
-			uintptr(caret), uintptr(unsafe.Pointer(&preedit[3])), 0)
-		if list == 0 {
+		list = cgo.CallRet[unsafe.Pointer](xVaCreateNestedList.Addr(), int32(0),
+			start, &preedit[0], done, &preedit[1], draw, &preedit[2], caret, &preedit[3], uintptr(0))
+		if list == nil {
 			return 0
 		}
-		defer Free((*byte)(cgo.Pointer(list)))
+		defer Free((*byte)(list))
 	}
 	// A null attribute name terminates varargs for the no-callback case.
 	var preeditName unsafe.Pointer
-	if list != 0 {
+	if list != nil {
 		preeditName = cgo.CStringTemp(xnPreeditAttributes)
 	}
 	ret, _, _ := xCreateIC.CallRaw(
@@ -154,7 +151,7 @@ func (im XIM) CreateIC(window Window, style uintptr, preedit *[4]XIMCallback) XI
 		uintptr(inputStyle), style,
 		uintptr(clientWindow), uintptr(window),
 		uintptr(focusWindow), uintptr(window),
-		uintptr(preeditName), list, 0,
+		uintptr(preeditName), uintptr(list), 0,
 	)
 	runtime.KeepAlive(inputStyle)
 	runtime.KeepAlive(clientWindow)
@@ -191,9 +188,9 @@ func (ic XIC) ResetIC() {
 	if ic == 0 {
 		return
 	}
-	ret, _, _ := xutf8ResetIC.CallRaw(uintptr(ic))
-	if ret != 0 {
-		Free((*byte)(cgo.Pointer(ret)))
+	ret := cgo.CallRet[*byte](xutf8ResetIC.Addr(), ic)
+	if ret != nil {
+		Free(ret)
 	}
 }
 
@@ -210,12 +207,12 @@ func (ic XIC) SetSpot(x, y int16) bool {
 	// A nested list may borrow its names until XSetICValues consumes it.
 	defer runtime.KeepAlive(spotLocation)
 	defer runtime.KeepAlive(preeditAttributes)
-	list, _, _ := xVaCreateNestedList.CallRaw(0, uintptr(spotLocation), uintptr(cgo.Pointer(&spotBuf)), 0)
-	if list == 0 {
+	list := cgo.CallRet[*byte](xVaCreateNestedList.Addr(), int32(0), spotLocation, &spotBuf, uintptr(0))
+	if list == nil {
 		return false
 	}
-	failed, _, _ := xSetICValues.CallRaw(uintptr(ic), uintptr(preeditAttributes), list, 0)
-	Free((*byte)(cgo.Pointer(list)))
+	failed, _, _ := xSetICValues.CallRaw(uintptr(ic), uintptr(preeditAttributes), uintptr(unsafe.Pointer(list)), 0)
+	Free(list)
 	return failed == 0
 }
 

@@ -40,8 +40,7 @@ func CreateImage(width, height int) *Image {
 	if imageCreate.Find() != nil || imageDestroy.Find() != nil || imageLoadCursor.Find() != nil {
 		return nil
 	}
-	ret, _, _ := imageCreate.CallRaw(uintptr(width), uintptr(height))
-	return (*Image)(unsafe.Pointer(ret))
+	return cgo.CallRet[*Image](imageCreate.Addr(), int32(width), int32(height))
 }
 
 func (i *Image) Destroy() {
@@ -73,11 +72,14 @@ func LibraryLoadCursor(display xlib.Display, name string) xlib.Cursor {
 }
 
 func GetTheme(display xlib.Display) string {
-	ret, _, _ := getTheme.CallRaw(uintptr(display))
-	if ret == 0 {
+	if getTheme.Find() != nil {
 		return ""
 	}
-	return cgo.GoString(cgo.Pointer(ret))
+	ret := cgo.CallRet[cgo.Pointer](getTheme.Addr(), display)
+	if ret == nil {
+		return ""
+	}
+	return cgo.GoString(ret)
 }
 
 func SetTheme(display xlib.Display, theme string) {

@@ -15,6 +15,5 @@ func FindVisualFormat(display xlib.Display, visual *xlib.Visual) *PictFormat {
 	if err := findVisualFormat.Find(); err != nil {
 		return nil
 	}
-	ret, _, _ := findVisualFormat.CallRaw(uintptr(display), uintptr(cgo.Pointer(visual)))
-	return (*PictFormat)(cgo.Pointer(ret))
+	return cgo.CallRet[*PictFormat](findVisualFormat.Addr(), display, visual)
 }

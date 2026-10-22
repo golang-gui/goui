@@ -79,16 +79,16 @@ func (o Object) IntProperty(name string) (int32, error) {
 
 func (o Object) StringProperty(name string) (string, error) {
 	cName := cgo.CStringTemp(name)
-	var value uintptr
+	var value *byte
 	_, _, err := gObjectGet.CallRaw(o.GObject, uintptr(cName), uintptr(unsafe.Pointer(&value)), 0)
 	runtime.KeepAlive(cName)
 	if err != nil {
 		return "", err
 	}
-	if value == 0 {
+	if value == nil {
 		return "", nil
 	}
-	defer gFree.CallRaw(value)
+	defer gFree.CallRaw(uintptr(unsafe.Pointer(value)))
 	return cgo.GoString(cgo.Pointer(value)), nil
 }
 
@@ -128,28 +128,22 @@ func ErrorFree(err *GError) {
 func FilenameToURI(filename string) (string, error) {
 	name := cgo.CStringTemp(filename)
 	var nativeErr *GError
-	// CallRaw takes uintptrs; pin Go storage so stack growth cannot invalidate
-	// the input or the native GError** output slot during lazy symbol dispatch.
-	var pin runtime.Pinner
-	pin.Pin(name)
-	pin.Pin(&nativeErr)
-	defer pin.Unpin()
-	ret, _, err := gFilenameToURI.CallRaw(uintptr(name), 0, uintptr(unsafe.Pointer(&nativeErr)))
-	runtime.KeepAlive(name)
-	if nativeErr != nil {
-		err = errors.New(nativeErr.Error())
-		ErrorFree(nativeErr)
-	}
-	if ret != 0 {
-		defer gFree.CallRaw(ret)
-	}
-	if err != nil {
+	if err := gFilenameToURI.Find(); err != nil {
 		return "", err
 	}
-	if ret == 0 {
+	ret := cgo.CallRet[cgo.Pointer](gFilenameToURI.Addr(), name, uintptr(0), &nativeErr)
+	if ret != nil {
+		defer gFree.CallRaw(uintptr(ret))
+	}
+	if nativeErr != nil {
+		err := errors.New(nativeErr.Error())
+		ErrorFree(nativeErr)
+		return "", err
+	}
+	if ret == nil {
 		return "", errors.New("g_filename_to_uri returned no URI")
 	}
-	return cgo.GoString(cgo.Pointer(ret)), nil
+	return cgo.GoString(ret), nil
 }
 
 // AppInfoLaunchDefaultForURI reports GIO's synchronous launch-request result.

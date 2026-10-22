@@ -40,7 +40,7 @@ func (db ResourceDatabase) GetResource(name, class string) (string, bool) {
 	var kind uintptr
 	var value struct {
 		Size    uint32
-		Address uintptr
+		Address *byte
 	}
 	var pin runtime.Pinner
 	pin.Pin(&kind)
@@ -50,7 +50,7 @@ func (db ResourceDatabase) GetResource(name, class string) (string, bool) {
 		uintptr(cgo.Pointer(&kind)), uintptr(cgo.Pointer(&value)))
 	runtime.KeepAlive(cName)
 	runtime.KeepAlive(cClass)
-	if ret == 0 || value.Address == 0 || value.Size == 0 {
+	if ret == 0 || value.Address == nil || value.Size == 0 {
 		return "", false
 	}
 	return cgo.GoString(cgo.Pointer(value.Address)), true

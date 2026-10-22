@@ -199,8 +199,8 @@ func (fo FontOptions) SetHintMetrics(metrics HintMetrics) {
 }
 
 func (s Status) String() string {
-	ret, _, _ := cairoStatusToString.CallRaw(uintptr(s))
-	return cgo.GoStringTemp(cgo.Pointer(ret))
+	ret := cgo.CallRet[cgo.Pointer](cairoStatusToString.Addr(), s)
+	return cgo.GoStringTemp(ret)
 }
 
 // NewPath clears the current path and removes its current point.

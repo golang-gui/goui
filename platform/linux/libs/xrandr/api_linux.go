@@ -39,12 +39,12 @@ func QueryVersion(d xlib.Display) (major, minor int32, ok bool) {
 
 // GetMonitors returns an Xlib allocation; the caller must call FreeMonitors.
 func GetMonitors(d xlib.Display, window xlib.Window, active bool) (*MonitorInfo, int32) {
+	if getMonitors.Find() != nil {
+		return nil, 0
+	}
 	var count int32
-	var pin runtime.Pinner
-	pin.Pin(&count)
-	defer pin.Unpin()
-	ret, _, _ := getMonitors.CallRaw(uintptr(d), uintptr(window), uintptr(cgo.CBool(active)), uintptr(cgo.Pointer(&count)))
-	return (*MonitorInfo)(cgo.Pointer(ret)), count
+	ret := cgo.CallRet[*MonitorInfo](getMonitors.Addr(), d, window, int32(cgo.CBool(active)), &count)
+	return ret, count
 }
 
 func FreeMonitors(monitors *MonitorInfo) { freeMonitors.CallRaw(uintptr(cgo.Pointer(monitors))) }

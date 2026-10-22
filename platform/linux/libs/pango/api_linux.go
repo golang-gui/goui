@@ -251,8 +251,7 @@ func (l Layout) GetLineCount() int {
 // This is a faster alternative to GetLine, but the caller is not expected to modify the contents.
 func (l Layout) GetLineReadonly(line int) *LayoutLine {
 	// PangoLayoutLine* pango_layout_get_line_readonly(PangoLayout* layout, int line)
-	ret, _, _ := pangoLayoutGetLineReadonly.CallRaw(l.GObject, uintptr(line))
-	return goPointer[LayoutLine](ret)
+	return cgo.CallRet[*LayoutLine](pangoLayoutGetLineReadonly.Addr(), l.GObject, int32(line))
 }
 
 // GetCursorPos determines the positions of the strong and weak cursors if the insertion point is at the given index.
@@ -315,8 +314,7 @@ func (iter LayoutIter) GetBaseline() int {
 
 func (iter LayoutIter) GetLineReadonly() *LayoutLine {
 	// PangoLayoutLine* pango_layout_iter_get_line_readonly(PangoLayoutIter* iter)
-	ret, _, _ := pangoLayoutIterGetLineReadonly.CallRaw(uintptr(iter))
-	return goPointer[LayoutLine](ret)
+	return cgo.CallRet[*LayoutLine](pangoLayoutIterGetLineReadonly.Addr(), iter)
 }
 
 // GetLineExtents fills either optional output in layout coordinates.
@@ -327,8 +325,7 @@ func (iter LayoutIter) GetLineExtents(inkRect, logicalRect *Rectangle) {
 
 func (iter LayoutIter) GetRunReadonly() *LayoutRun {
 	// PangoLayoutLine* pango_layout_iter_get_line_readonly(PangoLayoutIter* iter)
-	ret, _, _ := pangoLayoutIterGetRunReadonly.CallRaw(uintptr(iter))
-	return goPointer[LayoutRun](ret)
+	return cgo.CallRet[*LayoutRun](pangoLayoutIterGetRunReadonly.Addr(), iter)
 }
 
 // GetClusterExtents fills either optional output in layout coordinates.
@@ -404,8 +401,8 @@ type GlyphItem struct {
 
 type GlyphString struct {
 	NumGlyphs   int32
-	glyphs      uintptr
-	logClusters uintptr
+	glyphs      *GlyphInfo
+	logClusters *int32
 }
 
 // LogClusters borrows the byte offset associated with each glyph, relative to
@@ -515,7 +512,7 @@ type Analysis struct {
 	Flags       uint8
 	Script      uint8
 	Language    Language
-	ExtraAttrs  uintptr
+	ExtraAttrs  *glib.GSList[Attribute]
 }
 
 // --- PangoAttrList ---
@@ -571,7 +568,7 @@ func (al AttrList) Change(attr *Attribute) {
 // --- PangoAttribute ---
 
 type Attribute struct {
-	Class      uintptr
+	Class      *AttrClass
 	StartIndex uint32
 	EndIndex   uint32
 }
@@ -594,11 +591,11 @@ type AttrColor struct {
 	Color Color
 }
 
-func (attr *Attribute) Type() AttrType { return (*AttrClass)(unsafe.Pointer(attr.Class)).Type }
+func (attr *Attribute) Type() AttrType { return attr.Class.Type }
 
 // ExtraAttributes borrows the native attributes carried by this shaped item.
 func (a Analysis) ExtraAttributes() *glib.GSList[Attribute] {
-	return (*glib.GSList[Attribute])(unsafe.Pointer(a.ExtraAttrs))
+	return a.ExtraAttrs
 }
 
 func (attr *Attribute) Destroy() {
@@ -610,17 +607,16 @@ func (attr *Attribute) Destroy() {
 func AttrFamilyNew(family string) *Attribute {
 	// PangoAttribute* pango_attr_family_new(const char *family)
 	cFamily := cgo.CStringTemp(family)
-	ret, _, _ := pangoAttrFamilyNew.CallRaw(uintptr(cFamily))
+	ret := cgo.CallRet[*Attribute](pangoAttrFamilyNew.Addr(), cFamily)
 	runtime.KeepAlive(cFamily)
-	return goPointer[Attribute](ret)
+	return ret
 }
 
 // AttrSizeNewAbsolute creates a new absolute-font-size attribute in fractional points.
 // size is in Pango units (points * Scale).
 func AttrSizeNewAbsolute(size int) *Attribute {
 	// PangoAttribute* pango_attr_size_new(int size)
-	ret, _, _ := pangoAttrSizeNewAbsolute.CallRaw(uintptr(size))
-	return goPointer[Attribute](ret)
+	return cgo.CallRet[*Attribute](pangoAttrSizeNewAbsolute.Addr(), int32(size))
 }
 
 // AttrSizeNew creates a new font-size attribute in fractional points. Unlike the
@@ -629,22 +625,19 @@ func AttrSizeNewAbsolute(size int) *Attribute {
 // size is in Pango units (points * Scale).
 func AttrSizeNew(size int) *Attribute {
 	// PangoAttribute* pango_attr_size_new(int size)
-	ret, _, _ := pangoAttrSizeNew.CallRaw(uintptr(size))
-	return goPointer[Attribute](ret)
+	return cgo.CallRet[*Attribute](pangoAttrSizeNew.Addr(), int32(size))
 }
 
 // AttrUnderlineNew create a new underline-style attribute.
 func AttrUnderlineNew(underline Underline) *Attribute {
 	// PangoAttribute* pango_attr_underline_new(PangoUnderline underline)
-	ret, _, _ := pangoAttrUnderlineNew.CallRaw(uintptr(underline))
-	return goPointer[Attribute](ret)
+	return cgo.CallRet[*Attribute](pangoAttrUnderlineNew.Addr(), underline)
 }
 
 // AttrStrikethroughNew create a new strike-through attribute.
 func AttrStrikethroughNew(strikethrough bool) *Attribute {
 	// PangoAttribute* pango_attr_strikethrough_new(gboolean strikethrough)
-	ret, _, _ := pangoAttrStrikethroughNew.CallRaw(uintptr(cgo.CBool(strikethrough)))
-	return goPointer[Attribute](ret)
+	return cgo.CallRet[*Attribute](pangoAttrStrikethroughNew.Addr(), int32(cgo.CBool(strikethrough)))
 }
 
 // AttrFontFeaturesNew creates a new font features tag attribute.
@@ -652,23 +645,21 @@ func AttrStrikethroughNew(strikethrough bool) *Attribute {
 func AttrFontFeaturesNew(features string) *Attribute {
 	// PangoAttribute* pango_attr_font_features_new(const gchar* features)
 	cFeatures := cgo.CStringTemp(features)
-	ret, _, _ := pangoAttrFontFeaturesNew.CallRaw(uintptr(cFeatures))
+	ret := cgo.CallRet[*Attribute](pangoAttrFontFeaturesNew.Addr(), cFeatures)
 	runtime.KeepAlive(cFeatures)
-	return goPointer[Attribute](ret)
+	return ret
 }
 
 // AttrForegroundNew create a new foreground color attribute.
 func AttrForegroundNew(red, green, blue uint16) *Attribute {
 	// PangoAttribute* pango_attr_foreground_new(guint16 red, guint16 green, guint16 blue)
-	ret, _, _ := pangoAttrForegroundNew.CallRaw(uintptr(red), uintptr(green), uintptr(blue))
-	return goPointer[Attribute](ret)
+	return cgo.CallRet[*Attribute](pangoAttrForegroundNew.Addr(), red, green, blue)
 }
 
 // AttrForegroundAlphaNew creates a foreground opacity attribute (0..65535).
 func AttrForegroundAlphaNew(alpha uint16) *Attribute {
 	// PangoAttribute* pango_attr_foreground_alpha_new(guint16 alpha)
-	ret, _, _ := pangoAttrForegroundAlphaNew.CallRaw(uintptr(alpha))
-	return goPointer[Attribute](ret)
+	return cgo.CallRet[*Attribute](pangoAttrForegroundAlphaNew.Addr(), alpha)
 }
 
 // --- PangoFontDescription ---
@@ -716,11 +707,11 @@ func (fd FontDescription) SetAbsoluteSize(size float64) {
 
 func (fd FontDescription) GetFamily() string {
 	// const char* pango_font_description_get_family(const PangoFontDescription* desc)
-	ret, _, _ := pangoFontDescriptionGetFamily.CallRaw(uintptr(fd))
-	if ret == 0 {
+	ret := cgo.CallRet[cgo.Pointer](pangoFontDescriptionGetFamily.Addr(), fd)
+	if ret == nil {
 		return ""
 	}
-	return cgo.GoString(cgo.Pointer(ret))
+	return cgo.GoString(ret)
 }
 
 func (fd FontDescription) GetSize() int {
@@ -771,8 +762,7 @@ func (fd FontDescription) GetStyle() Style {
 
 // AttrFontDescNew copies desc; caller may immediately free the description.
 func AttrFontDescNew(desc FontDescription) *Attribute {
-	ret, _, _ := pangoAttrFontDescNew.CallRaw(uintptr(desc))
-	return goPointer[Attribute](ret)
+	return cgo.CallRet[*Attribute](pangoAttrFontDescNew.Addr(), desc)
 }
 
 // Describe returns a new description of the actual matched font; caller frees it.
@@ -855,10 +845,6 @@ func (fm FontMap) ConfigChanged() { pangoFcFontMapConfigChanged.CallRaw(fm.GObje
 func (fm FontMap) SetConfig(config fontconfig.Config) {
 	// void pango_fc_font_map_set_config(PangoFcFontMap* fcfontmap, FcConfig* fcconfig)
 	pangoFcFontMapSetConfig.CallRaw(fm.GObject, uintptr(config))
-}
-
-func goPointer[T any](ptr uintptr) *T {
-	return (*T)(cgo.Pointer(ptr))
 }
 
 // GetSerial changes whenever the layout or its PangoContext changes.

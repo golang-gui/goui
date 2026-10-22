@@ -59,9 +59,9 @@ func GetFBConfigAttrib(display xlib.Display, config FBConfig, attr int) (value i
 
 func GetClientString(display xlib.Display, name int) string {
 	//const char*(Display dpy, int name)
-	ret, _, _ := glXGetClientString.CallRaw(uintptr(display), uintptr(name))
-	if ret != 0 {
-		return cgo.GoString(cgo.Pointer(ret))
+	ret := cgo.CallRet[cgo.Pointer](glXGetClientString.Addr(), display, int32(name))
+	if ret != nil {
+		return cgo.GoString(ret)
 	}
 	return ""
 }
@@ -109,9 +109,9 @@ func SwapBuffers(display xlib.Display, drawable xlib.Drawable) {
 
 func QueryExtensionsString(display xlib.Display, screen int) string {
 	//const char*(Display dpy, int screen)
-	ret, _, _ := glXQueryExtensionsString.CallRaw(uintptr(display), uintptr(screen))
-	if ret != 0 {
-		return cgo.GoString(cgo.Pointer(ret))
+	ret := cgo.CallRet[cgo.Pointer](glXQueryExtensionsString.Addr(), display, int32(screen))
+	if ret != nil {
+		return cgo.GoString(ret)
 	}
 	return ""
 }
@@ -135,8 +135,7 @@ func DestroyWindow(display xlib.Display, win Window) {
 
 func GetVisualFromFBConfig(display xlib.Display, config FBConfig) *xlib.VisualInfo {
 	//XVisualInfo*(Display dpy, FBConfig config)
-	ret, _, _ := glXGetVisualFromFBConfig.CallRaw(uintptr(display), uintptr(config))
-	return (*xlib.VisualInfo)(cgo.Pointer(ret))
+	return cgo.CallRet[*xlib.VisualInfo](glXGetVisualFromFBConfig.Addr(), display, config)
 }
 
 func SwapIntervalEXT(display xlib.Display, drawable xlib.Drawable, interval int) {

@@ -75,10 +75,10 @@ func (p Pattern) Destroy() {
 func (p Pattern) GetString(object string, n int) (string, Result) {
 	// FcResult FcPatternGetString(const FcPattern* p, const char* object, int n, FcChar8** s)
 	cObject := cgo.CStringTemp(object)
-	var strPtr uintptr
+	var strPtr *byte
 	ret, _, _ := fcPatternGetString.CallRaw(uintptr(p), uintptr(cObject), uintptr(n), uintptr(unsafe.Pointer(&strPtr)))
 	runtime.KeepAlive(cObject)
-	if Result(ret) == ResultMatch && strPtr != 0 {
+	if Result(ret) == ResultMatch && strPtr != nil {
 		return cgo.GoString(cgo.Pointer(strPtr)), ResultMatch
 	}
 	return "", Result(ret)
