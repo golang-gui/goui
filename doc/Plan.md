@@ -3,6 +3,45 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## v0.3.0 正式发布（2026-10-23）
+
+- [x] 修正后的候选 `ab6c753d51307609e4d65e314d0b50acff12fad9` 已推送 main，
+  annotated tag `v0.3.0` 的远端 peeled SHA 与其一致；未移动既有标签。
+  三平台 Demo 与 cmd/goui 均从该提交的干净 git archive 重建，配置为
+  0.3.0 / build 1，Go 1.25.8、GOWORK=off、CGO_ENABLED=0、trimpath、`-s -w`。
+- [x] 冻结源码在独立 Xvnc :84 / Xfwm4 下重新执行全仓非缓存测试：2421 项
+  通过、10 项既有跳过、零失败；vet 零诊断，模块 verify / tidy -diff 通过。
+  三目标全仓构建、原生 GUI / Direct2D 与 race 的结果见下节，相关 Go 源码一致。
+- [x] 最终附件经正常桌面输入复验：按钮、语言菜单、文本提交、多行编辑、
+  撤销/重做、右键菜单、滚动、SVG Logo、RenderWidget 预览及窗口调整。
+  Linux Software/Pango 为独立 2400×1600 桌面、应用 1.5，窗口从 1680×1200
+  调整为 1400×980；Windows Direct2D/DirectWrite 为 RDP 1600×900、系统 DPI 96、
+  应用 1，验证正常窗口到最大化；macOS OpenGL/CoreText 为原生默认缩放、
+  Retina 桌面 / VNC 1650×1050，验证角部调宽高。截图预览保留捕获时的逻辑尺寸。
+- [x] macOS 最终候选使用已有 Developer ID 签名、Hardened Runtime 和安全时间戳，
+  通过桌面 Terminal 公证一次：`6dfb91be-1981-4bd9-a461-c6fd9922c599`，Accepted。
+  装订后由 ditto 生成 ZIP；新目录解压后核对版本、严格签名、票据与 Gatekeeper
+  Notarized Developer ID，并用解压后的 app 完成桌面操作。回传哈希一致。
+- [x] Windows 最终 PE 的文件/产品版本均为 0.3.0.1，未执行 Authenticode；
+  Linux 为 amd64 ELF、仍需系统原生库；macOS 为 arm64 app ZIP。
+  最终 ZIP SHA256 为 `53b2f5f365863116d7d18a8c0035938b2389bbc77d8fdf97475656a27c1e51c5`。
+  三平台附件、BUILD-INFO.md、SHA256SUMS 共五份，发布页含双语 Release Notes。
+- [x] Draft 元数据、大小、digest 与原件一致；下载五份附件逐字节比较通过。
+  [正式 Release](https://github.com/golang-gui/goui/releases/tag/v0.3.0) 已公开且为
+  Latest、非预发布；公开附件再次下载、四项 SHA256SUMS 及五份原件比较通过。
+- [x] 仓库外 GOWORK=off / proxy.golang.org 查询解析到 v0.3.0、来源 SHA 为候选。
+  无 replace 的独立消费模块下载、tidy、verify、Image.ContentSize 运行验证以及
+  gui/ui/modern 三目标编译通过；未借用 SourceView 本地工作区依赖。
+- [x] 中英文 README 下载链接和 Linux chmod 命令更新至实际发布的 v0.3.0。
+  本节随文档收尾提交，标签仍固定在冻结候选，不为下载链接重打标签。
+- 最终源码、日志、截图、附件与两轮下载保存在
+  `/tmp/goui-release-v0.3.0-final-1tvo2xh8`；Mac 公证与 ZIP 在
+  `/private/tmp/goui-v0.3.0-final.L6ftFI`。三端 Demo 均已关闭，Windows 退出码 0；
+  本次签名 Terminal、独立 X11 / Xfwm4 和传输 HTTP 已关闭，保留原有远端连接。
+  Linux 测试剪贴板/图片副作用限于独立桌面和临时源码；未修改系统缩放、钥匙串
+  权限、用户未跟踪文件或 SourceView 配置。真实混合 DPI、完整 IME 和所有后端/
+  缩放组合未验证；复杂超长段落首次原生排版仍可能阻塞，不宣称这些限制已解决。
+
 ## v0.3.0 发布前回归修正（2026-10-23）
 
 - [x] 定位 Windows 调宽偏移：整数 DIP 向下取整后可能落入上一段，旧实现先按
@@ -32,8 +71,8 @@
   副作用限于独立 Linux 桌面/源码副本及远端专用目录，保留用户会话与 SourceView
   本地配置。日志在 `/tmp/goui-v030-fixes-i2qsbg3p`；Mac 目录为
   `/private/tmp/goui-v030-fixes.wCLLI4`。代码与文档按功能分别提交。
-- [ ] 原发布任务将从修正后的提交重新冻结并构建、公证；下述首次候选的旧附件
-  不用于正式发布，尚未创建公开标签或 Release。
+- [x] 已从修正后的提交重新冻结、构建、公证并正式发布，结果见前节；下述首次
+  候选的旧附件未用于正式发布。
 
 ## v0.3.0 首次候选验证（2026-10-23，已被修正替代）
 
@@ -68,9 +107,8 @@
   Windows 最终 PE 的 FileVersion/ProductVersion 为 0.3.0.1，未执行 Authenticode。
   Linux ELF 仍需系统原生运行库，macOS ZIP 保留完整签名和票据。
 - [x] 维护者要求先修复上述 Windows 失败与 vet 诊断，修正结果见前节；不按
-  已知问题直接发布此候选。尚未创建或推送 v0.3.0 标签或 Release。
-- [ ] 标签、Draft 下载、正式公开下载及 Go proxy 核对；公开下载验证后更新双语
-  README 的下载链接和启动命令。README 补丁已准备，尚未应用。
+  已知问题直接发布此候选。当时未创建或推送 v0.3.0 标签或 Release。
+- 本轮候选未执行标签和公开发布；这些步骤已在上方修正后的最终候选完成。
 - 日志、干净源码、产物、截图和 README 补丁保留在
   `/tmp/goui-release-v0.3.0.1tb7bcx1`；Mac 本轮目录为
   `/private/tmp/goui-v0.3.0.guC849`。本轮 Demo、独立 X11、传输 HTTP 和专用
