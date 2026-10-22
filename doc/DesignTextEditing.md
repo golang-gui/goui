@@ -607,13 +607,21 @@ ui.ScrollView(ui.TextView().BindText(&text).BindSelection(&selection))
 
 | 文件 | 归属 |
 | --- | --- |
-| `gui/text_editor_test.go` | 共用替身与事件入口、共享编辑行为、双向导航、剪贴板与历史、预编辑提交分组、光标计时器、原生导航验证 helper |
+| `gui/text_test_helpers_test.go` | Label 与编辑器共用的排版、绘制、剪贴板替身，窗口 fixture 和正常事件分发入口 |
+| `gui/text_editor_test.go` | 共享编辑行为、菜单、双向导航、剪贴板与历史、预编辑提交分组、Placeholder、共同基线和选区绘制 |
 | `gui/text_input_test.go` | 单行模型和编辑约束、Submit、水平滚动、baseline、绘制、样式与 Snapshot |
-| `gui/text_view_test.go` | 多行视图、共享模型、预编辑投影、视口缓存和锚定、自动滚动、原生排版定位 helper 与性能基准 |
+| `gui/text_view_test.go` | 多行视图、共享模型、预编辑投影、段落／宽度／历史缓存、测量边界、重排和锚定、自动滚动与性能基准 |
+| `gui/text_native_test.go` | 不依赖桌面的原生导航、定位、锚定和可见区光栅化验证 helper，不导入具体后端 |
+| `gui/text_native_{linux,darwin,windows}_test.go` | 各平台原生排版入口，以及只适用于该平台的回归用例 |
 
-Pango、CoreText、DirectWrite 的三个平台后缀文件仅保留原生排版测试入口，
-继续在执行原生调用的 goroutine 中锁定 OS 线程。共享 helper 不直接导入具体
-平台排版后端。`im_context_test.go` 保留 IMContext 和 Window 输入路由测试。
+Pango、CoreText、DirectWrite 由平台后缀文件选择，继续在执行原生调用的
+goroutine 中锁定 OS 线程；Linux 的完整原生上下文／宽度缓存回归保持 Linux
+范围，不因归并文件扩展到其他平台。共用替身与原生验证 helper 分开，但都属于
+包内测试；它们不创建原生窗口、不要求桌面会话。仅一个用例使用的 fixture
+就近保留，不为归并文件建立新框架。`label_test.go` 保留 Label 行为测试；
+通用 ScrollView 测量期间替换内容的回归归入 `scroll_view_test.go`，
+TextView 的滚动集成仍在 `text_view_test.go`。
+`im_context_test.go` 保留 IMContext 和 Window 输入路由测试。
 
 `gui/textedit/model_test.go` 集中模型、存储块生命周期、通知、行定位与模型
 基准；几何、高度索引、投影仍各自对应实现文件。外部包 `textedit_test` 的
@@ -633,6 +641,11 @@ Go token 哈希一致，保留名称、断言、基准参数、线程锁定与�
 macOS arm64 GUI 交叉编译仍被 Cocoa 中未解析的 `AutoReleasePool`、
 `NSApplicationClassId` 等既有错误阻挡。临时覆盖的通过不等于工作区原样通过；
 窗口手动验收本轮未执行。
+
+2026-10-22 再次归并随后增加的测试：18 个 `text_*_test.go` 收拢为上表的
+8 个文件，抽出原来散落在 Label／TextInput／编辑器文件中的真正共用 helper。
+本次只移动声明、整理 imports 和分组注释，保留 Test／Benchmark 名称、断言、
+输入路径、基准参数与平台适用范围。具体校验结果见 [Plan](Plan.md) 的本轮记录。
 
 ### 开发验证与用户窗口验收
 

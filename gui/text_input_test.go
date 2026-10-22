@@ -12,6 +12,7 @@ import (
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/graphics/software"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/style"
 )
@@ -423,90 +424,6 @@ func TestTextInputCommitInsertsAtCaret(t *testing.T) {
 	}
 }
 
-// 绘制与事件辅助。
-
-func dispatchKey(t *testing.T, win Window, key events.Key, modifiers events.Modifiers) {
-	t.Helper()
-	if err := win.DispatchEvent(events.KeyEvent{
-		EventType: events.KeyDown,
-		Key:       key,
-		Modifiers: modifiers,
-	}); err != nil {
-		t.Fatal(err)
-	}
-}
-
-type testTextInputPainter struct {
-	testLabelPainter
-	fillRect            geometry.Rectangle
-	fillRadius          float32
-	fillBrush           graphics.Brush
-	fills               []geometry.Rectangle
-	clipRect            geometry.Rectangle
-	drawRect            geometry.Rectangle
-	drawRadius          float32
-	drawRectStrokeWidth float32
-	drawRectBrush       graphics.Brush
-	drawLines           int
-	lineP0              geometry.Point
-	lineP1              geometry.Point
-	lineStrokeWidth     float32
-	lineBrush           graphics.Brush
-}
-
-func (p *testTextInputPainter) FillRect(rect geometry.Rectangle, brush graphics.Brush) {
-	if len(p.fills) == 0 {
-		p.fillRect, p.fillBrush = rect, brush
-	}
-	p.fills = append(p.fills, rect)
-}
-
-func (p *testTextInputPainter) SetClipRect(rect geometry.Rectangle) { p.clipRect = rect }
-
-func (p *testTextInputPainter) FillRoundRect(rect geometry.Rectangle, radius float32, brush graphics.Brush) {
-	p.fillRect = rect
-	p.fillRadius = radius
-	p.fillBrush = brush
-	p.fills = append(p.fills, rect)
-}
-
-func (p *testTextInputPainter) DrawRect(rect geometry.Rectangle, strokeWidth float32, brush graphics.Brush) {
-	p.drawRect = rect
-	p.drawRectStrokeWidth = strokeWidth
-	p.drawRectBrush = brush
-}
-
-func (p *testTextInputPainter) DrawRoundRect(rect geometry.Rectangle, radius, strokeWidth float32, brush graphics.Brush) {
-	p.drawRect = rect
-	p.drawRadius = radius
-	p.drawRectStrokeWidth = strokeWidth
-	p.drawRectBrush = brush
-}
-
-func (p *testTextInputPainter) DrawLine(p0, p1 geometry.Point, strokeWidth float32, brush graphics.Brush) {
-	p.drawLines++
-	p.lineP0 = p0
-	p.lineP1 = p1
-	p.lineStrokeWidth = strokeWidth
-	p.lineBrush = brush
-}
-
-// 单行模型、Cluster、滚动与 baseline。
-
-func newInputFixture(t *testing.T, text string) (*TextInput, *window, *editorTypography) {
-	t.Helper()
-	typo := &editorTypography{}
-	setTestApplication(t, typo)
-	input := NewTextInput()
-	input.SetText(text)
-	win := &window{}
-	win.SetWidget(input)
-	t.Cleanup(func() { win.SetWidget(nil) })
-	input.Arrange(geometry.Rect(0, 0, 80, 40))
-	win.SetFocusedWidget(input)
-	return input, win, typo
-}
-
 func TestTextInputSingleLineModelAndEqualReload(t *testing.T) {
 	input, win, _ := newInputFixture(t, "a\r\nb\rc\nd")
 	if input.Text() != "a b c d" || input.model.LineCount() != 1 {
@@ -744,5 +661,82 @@ func TestTextInputCommandRespectsChangedFontClusters(t *testing.T) {
 				t.Fatalf("command split a new Cluster or continued after unmount: text=%q selection=%+v suspended=%t", input.Text(), input.Selection(), input.suspended)
 			}
 		})
+	}
+}
+
+// Input focus chrome.
+
+func TestTextInputFocusVisibleKeepsOwnBorder(t *testing.T) {
+	for _, scale := range []float32{1, 2} {
+		t.Run(fmt.Sprintf("%gx", scale), func(t *testing.T) {
+			_, win, _ := newEditorFixture(t, "")
+			backend, err := software.NewPainter(&widgetRenderSurface{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer backend.Destroy()
+			win.painter = backend
+			input := NewTextInput()
+			win.SetWidget(input)
+			defer win.SetWidget(nil)
+			input.Arrange(geometry.Rect(0, 0, 80, 30))
+			border := color.RGBA{R: 70, G: 130, B: 220, A: 255}
+			App.SetStyleSheet(style.Sheet(append(DefaultStyleRules(),
+				style.Name("text-input").State(style.Focused).BorderColor(border).BorderWidth(2),
+				// Deliberately conflicting rules must not add a second focus pass
+				// or replace the editor's existing Focused border.
+				style.Name("text-input").State(style.FocusVisible).BorderColor(color.Black).BorderWidth(6),
+				style.Name("text-input").Part("focus").State(style.FocusVisible).BorderColor(color.Black).BorderWidth(6),
+			)...))
+			win.SetFocusedWidget(input)
+			for _, keyboard := range []bool{false, true} {
+				if keyboard {
+					editorKey(t, win, events.KeyTab, 0)
+				}
+				if input.FocusVisible() != keyboard {
+					t.Fatalf("unexpected input mode: keyboard=%v hint=%v", keyboard, input.FocusVisible())
+				}
+				img, err := RenderWidget(input, scale)
+				if err != nil {
+					t.Fatal(err)
+				}
+				// Straight top edge at 0/1 DIP must be exactly the opaque 2 DIP
+				// editor border; 2 DIP and the center must stay white. No glyphs,
+				// corners or caret are sampled; premultiplied sRGB bytes, no tolerance.
+				for _, y := range []int{0, 1, 2, 15} {
+					want := border
+					if y >= 2 {
+						want = color.RGBA{R: 255, G: 255, B: 255, A: 255}
+					}
+					got := color.RGBAModel.Convert(img.At(40*int(scale), y*int(scale))).(color.RGBA)
+					if got != want {
+						t.Fatalf("keyboard=%v y=%d DIP pixel=%v want=%v", keyboard, y, got, want)
+					}
+				}
+			}
+		})
+	}
+}
+
+// Horizontal caret reveal.
+
+func TestTextInputCaretRevealReusesMetrics(t *testing.T) {
+	_, _, win, typo := longWrappedEditor(t)
+	input := NewTextInput()
+	input.SetText(strings.Repeat("abcdefghij", 100))
+	win.SetWidget(input)
+	win.SetFocusedWidget(input)
+	settleEditorLayout(t, win)
+	p := input.paragraphs[0].layout.(*testTextLayout)
+	calls, layouts := p.metricsCalls, len(typo.calls)
+	for _, key := range []events.Key{events.KeyHome, events.KeyEnd, events.KeyArrowLeft} {
+		editorKey(t, win, key, 0)
+		if win.layoutDirty || p.metricsCalls != calls || len(typo.calls) != layouts {
+			t.Fatal("single-line navigation remeasured text")
+		}
+		rect, ok := input.caretRect()
+		if !ok || rect.X < input.offset.X || rect.X+rect.Width > input.offset.X+input.viewport.Width {
+			t.Fatal("single-line caret reveal lost horizontal scrolling")
+		}
 	}
 }

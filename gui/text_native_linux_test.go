@@ -12,6 +12,10 @@ import (
 	"github.com/golang-gui/goui/platform/typography/pango"
 )
 
+func TestNativeTextRasterViewport(t *testing.T) { testTextRasterViewport(t, pango.NewContext) }
+
+// Pango-specific width cache regression.
+
 // Observe only the existing Context/TextLayout contract. A decorator must not
 // need another optional interface for the editor to retain measured widths.
 type nativeWidthContext struct {
@@ -40,14 +44,17 @@ func (l *nativeWidthLayout) MeasureSize() (float32, float32) {
 	l.owner.calls.sizes++
 	return l.TextLayout.MeasureSize()
 }
+
 func (l *nativeWidthLayout) MeasureMetrics() ([]typography.TextLine, []typography.TextCluster) {
 	l.owner.calls.metrics++
 	return l.TextLayout.MeasureMetrics()
 }
+
 func (l *nativeWidthLayout) SetSize(width, height float32) {
 	l.owner.calls.resizes++
 	l.TextLayout.SetSize(width, height)
 }
+
 func (l *nativeWidthLayout) Destroy() {
 	l.owner.calls.destroyed++
 	l.TextLayout.Destroy()
