@@ -3,6 +3,81 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## v0.3.0 发布前回归修正（2026-10-23）
+
+- [x] 定位 Windows 调宽偏移：整数 DIP 向下取整后可能落入上一段，旧实现先按
+  当前偏移查段落，再误替换原字符锚点。现在先用原字符所属的有效测量验证位置，
+  保留仍匹配的锚点；主动滚动仍重新取样。未修改 Typography 或增加平台偏移补偿。
+- [x] 新增确定性回归：第一段高 81 DIP，调宽后高 20.25 DIP、宿主偏移为 20；
+  旧实现把第二段字节 81 换成第一段字节 0，明确失败。修正后往返宽度及主动滚动
+  通过。小数行高替身也修正为 SetSize 后继续保持小数度量，未放宽原生断言。
+- [x] Direct2D 改用已有 DeviceContext 的新版渐变集合绑定，显式选择预乘 sRGB
+  插值，端点参数仍为 straight alpha；原先四项颜色失败全部消除。新增四分位、
+  透明端点、方向及缓存切换回归，不增加 Painter API 或软件替代路径。
+- [x] 167 处跨包字面量补字段名；28 条指针诊断改为 typed return/output/native
+  struct 字段，原生所有权及 ABI 偏移保留，补 Pango/GLib 回归。不关闭 vet 或
+  移动不安全转换来隐藏诊断；依赖仍是已发布 cgo v0.1.1。
+- [x] Linux amd64 / Go 1.25.8 / Pango，在干净源码副本及独立 Xvnc :84 / Xfwm4
+  下，`GOWORK=off CGO_ENABLED=0 go test -json ./... -count=1`：2421 项通过、
+  10 项既有跳过、零失败。`go vet ./...` 零诊断，Linux/Windows/macOS 全仓
+  构建通过；锚点、原生指针、Pango 相关 race 通过。
+- [x] 同源测试程序在 Windows 10 19045 / amd64 原生运行：gui 包 928 项、
+  Direct2D 包 126 项（均含子测试）通过、零跳过和失败；macOS 15.7.7 / arm64
+  的 gui 包 928 项通过、零跳过和失败。两端均包括原生连续调宽和新锚点回归。
+- [x] Windows / RDP 1600×900 / 系统 DPI 96 / 应用 1.5：正式 alpha 窗口日志确认
+  Direct2D，渐变的三个内部位置与独立 CPU 参考图片比较，RGB 最大差为 1/255，
+  未超出 2/255 的量化容差；Esc 正常退出、返回 0。不等同于真实系统 150% 或
+  全部透明窗口、混合 DPI、IME 场景验收。
+- [x] 原有未跟踪测试未纳入提交；新增两个 pointer_linux_test.go 只覆盖本次边界。
+  副作用限于独立 Linux 桌面/源码副本及远端专用目录，保留用户会话与 SourceView
+  本地配置。日志在 `/tmp/goui-v030-fixes-i2qsbg3p`；Mac 目录为
+  `/private/tmp/goui-v030-fixes.wCLLI4`。代码与文档按功能分别提交。
+- [ ] 原发布任务将从修正后的提交重新冻结并构建、公证；下述首次候选的旧附件
+  不用于正式发布，尚未创建公开标签或 Release。
+
+## v0.3.0 首次候选验证（2026-10-23，已被修正替代）
+
+- [x] Demo 配置为 0.3.0 / build 1，新增 [ReleaseV030](ReleaseV030.md) 升级说明。
+  干净快照发现 x/sys 仅由间接依赖使用，同步 require 分类，不改依赖版本。
+  候选 `0bdfdc68cd779076664d294df6a00edda8f4f8fe` 已推送 origin/main；
+  构建工具与三个 Demo 均来自该提交的 git archive，不包含工作区未跟踪文件。
+- [x] Ubuntu 22.04.5 / amd64 / Go 1.25.8，关闭 workspace，使用 CGO_ENABLED=0、
+  GOFLAGS=-trimpath、ldflags `-s -w` 构建 Linux amd64、Windows amd64、macOS arm64。
+  三目标 doctor、三目标 `go build ./...`、`go mod verify`、`go mod tidy -diff` 通过。
+- [x] 独立 Xvnc `:84` / Xfwm4 合成开启，`XMODIFIERS=@im=none`，全仓非缓存
+  `go test -json ./... -count=1`：2416 项通过、10 项既有跳过、零失败。
+  core/layout/textedit/cmd/goui 及 GUI frame/popup 定向 race 通过。
+  全仓 vet 有 195 条既有诊断；与未修改 `006d4e2` 比较，归一化行号后集合相同。
+- [x] macOS 15.7.7 / M1，最终包在桌面 Terminal 中通过 Developer ID 签名，
+  启用 Hardened Runtime 和安全时间戳。公证仅提交一次，ID
+  `a674558e-5cea-46f6-8f5f-226a66762e73`，结果 Accepted。
+  装订后由 macOS ditto 生成 ZIP；解压后版本、严格签名、票据及 Gatekeeper
+  Notarized Developer ID 均通过。回传 ZIP 的 SHA256 与 Mac 一致。
+- [x] 三平台最终分发程序经正常桌面输入验证按钮、文本提交、多行编辑、撤销/重做、
+  菜单、滚动、SVG Logo、RenderWidget 预览、窗口调整及关闭。Linux Software/Pango
+  使用独立 2400×1600 桌面、应用 1.5；Windows Direct2D/DirectWrite 使用 RDP
+  1600×900、应用 1.5、系统 DPI 96；macOS OpenGL/CoreText 使用原生默认缩放、
+  内建 Retina 显示器及 VNC 1650×1050。未执行真实混合 DPI 或完整 IME 验收。
+- [x] macOS CoreText 原生 raster/navigation/reveal/resize-anchor 及 ScrollView frame
+  回归通过。Windows 对应 raster/navigation/reveal/frame 通过，但 resize-anchor
+  仍失败，scroll Y 为 1169、期望 1193.7031 DIP；Direct2D 半透明渐变及渐变描边
+  在 1/2 倍的四个子项仍失败，RGBA 为 `{64 0 64 128}`、期望 `{32 0 96 128}`。
+  同环境、同工具链重新构建未修改 `006d4e2`，两类失败与退出码均完全一致。
+  保留断言，不将这些失败写为通过，尚未修复。
+- [x] 三份附件、BUILD-INFO、SHA256SUMS 和双语 Release Notes 已生成并本地校验。
+  Windows 最终 PE 的 FileVersion/ProductVersion 为 0.3.0.1，未执行 Authenticode。
+  Linux ELF 仍需系统原生运行库，macOS ZIP 保留完整签名和票据。
+- [x] 维护者要求先修复上述 Windows 失败与 vet 诊断，修正结果见前节；不按
+  已知问题直接发布此候选。尚未创建或推送 v0.3.0 标签或 Release。
+- [ ] 标签、Draft 下载、正式公开下载及 Go proxy 核对；公开下载验证后更新双语
+  README 的下载链接和启动命令。README 补丁已准备，尚未应用。
+- 日志、干净源码、产物、截图和 README 补丁保留在
+  `/tmp/goui-release-v0.3.0.1tb7bcx1`；Mac 本轮目录为
+  `/private/tmp/goui-v0.3.0.guC849`。本轮 Demo、独立 X11、传输 HTTP 和专用
+  Terminal 窗口已关闭，保留原有远端连接和用户工作区。激活 Terminal 时曾额外
+  打开浏览器空白窗口，未填写凭据、保存文件或修改系统设置。测试剪贴板与图片
+  的副作用限于隔离桌面和临时源码；SourceView 的本地 replace 与用户文件未改。
+
 ## X11 弹窗分数缩放尺寸（2026-10-22）
 
 - [x] X11 Popup 创建和 SetSize 共用向上取整到物理像素的私有转换，保证能容纳

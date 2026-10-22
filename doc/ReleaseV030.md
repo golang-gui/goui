@@ -12,6 +12,8 @@
   减少重复排版。首次复杂超长段落仍可能需要较长的原生排版，不能保证无阻塞。
 - 文本绘制按指定像素区域光栅化，限制可见区域的位图开销；修正 Pango、
   DirectWrite、CoreText 度量、FFI 及像素缓冲的相关生命周期问题。
+- 连续调宽时跨段保留经整数 DIP 取整的文本锚点；Direct2D 显式按预乘 sRGB
+  插值，修正不同透明度端点的渐变颜色。清理既有 vet 诊断，不关闭检查。
 - Image 可显式设置 DIP 内容尺寸；Demo 的 SVG Logo 按实际缩放生成资源，
   RenderWidget 预览保留控件逻辑尺寸。
 - ScrollView 可通过 frame part 统一绘制包含滚动条的外框，TextView 的 Basic /
@@ -57,6 +59,10 @@ RenderWidget 截图时，调用 `SetContentSize(geometry.Size{...})`，声明式
 `ui.Image(...).ContentSize(width, height)`。两维必须有限且大于 0，否则恢复默认。
 
 ## 范围
+
+Linux 原生 Pango 绑定的 Attribute.Class 和 Analysis.ExtraAttrs 字段改用
+`*AttrClass` 和 `*glib.GSList[Attribute]`，与 C 指针语义一致，原生 ABI 偏移不变。
+直接构造这些底层结构的调用者需同步字段类型；普通 gui/ui 文本使用者不受影响。
 
 SourceView 是独立可选扩展，不随本模块或 Demo 自动包含。Linux 发布目标为
 amd64/X11；Linux arm64、其他窗口系统、完整 IME 和混合 DPI 能力不在本次
