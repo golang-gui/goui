@@ -30,10 +30,8 @@ GOUI 是纯Go实现的原生 GUI 框架。用 Go 编写界面与业务逻辑，�
 | macOS Apple Silicon | [下载 .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.1.0/goui-demo-v0.1.0-darwin-arm64.zip) |
 | Linux x64 / X11 | [下载可执行文件](https://github.com/golang-gui/goui/releases/download/v0.1.0/goui-demo-v0.1.0-linux-amd64) |
 
-详见 [v0.1.0 发布说明](https://github.com/golang-gui/goui/releases/tag/v0.1.0)与
-[SHA-256 校验和](https://github.com/golang-gui/goui/releases/download/v0.1.0/SHA256SUMS)。
 Linux 下载后先执行 `chmod +x goui-demo-v0.1.0-linux-amd64`，再启动程序。
-macOS 解压后打开 `GOUI Demo.app`；该应用包已使用 Developer ID 签名并通过 Apple 公证，已装订公证票据。
+macOS 解压后打开 `GOUI Demo.app`，已使用 Developer ID 签名并通过 Apple 公证。
 
 Windows
 

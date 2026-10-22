@@ -30,10 +30,8 @@ tabs, overlays, graphics, animations, and system integration. Switch between lig
 | macOS Apple Silicon | [Download .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.1.0/goui-demo-v0.1.0-darwin-arm64.zip) |
 | Linux x64 / X11 | [Download executable](https://github.com/golang-gui/goui/releases/download/v0.1.0/goui-demo-v0.1.0-linux-amd64) |
 
-See the [v0.1.0 release notes](https://github.com/golang-gui/goui/releases/tag/v0.1.0) and
-[SHA-256 checksums](https://github.com/golang-gui/goui/releases/download/v0.1.0/SHA256SUMS).
 On Linux, run `chmod +x goui-demo-v0.1.0-linux-amd64` before launching it.
-On macOS, extract and open `GOUI Demo.app`; the bundle is Developer ID signed and Apple-notarized, with the notarization ticket stapled.
+On macOS, extract and open `GOUI Demo.app`; the bundle is Developer ID signed and Apple-notarized.
 
 Windows
 
