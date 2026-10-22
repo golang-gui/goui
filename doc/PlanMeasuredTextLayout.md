@@ -182,3 +182,6 @@ go test ./gui/textedit -run '^$' -bench BenchmarkWrappingMeasuredLongParagraph -
    普通值索引并映射折叠／IME／着色；TextInput 保留不换行几何回归并接入水平片段。
 4. 完成局部编辑后的入口状态及后缀收敛、换宽复用、几屏资源边界；以完整正确性和同机
    真实操作验收，继续保留上述缩放失败，直到原断言通过。
+
+后续已完成的初始高度估计、近期完整宽度复用及独立 X11 对照见
+[分配验证](PlanTextLayoutAllocation.md)；没有将这些减少重复工作的改动标成有界分片已完成。
