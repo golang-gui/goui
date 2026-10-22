@@ -27,6 +27,7 @@ type fragmentMetrics struct {
 	clusters            [][]typography.TextCluster
 	firstStop, lastStop []int
 	orderedOffsets      bool
+	loadClusters        func(int) []typography.TextCluster
 }
 
 // NewFragment copies metrics whose byte offsets and coordinates are local to
@@ -219,7 +220,7 @@ func (f Fragment) Metrics() (lines []typography.TextLine, clusters []typography.
 		line.Baseline -= y
 		local := index - f.first
 		begin := len(clusters)
-		for _, cluster := range f.data.clusters[index] {
+		for _, cluster := range f.data.lineClusters(index) {
 			cluster.Start -= start
 			cluster.Y -= y
 			cluster.LineIndex = local
@@ -240,4 +241,11 @@ func (f Fragment) Geometry(emptyHeight float32) Geometry {
 	lines, clusters := f.Metrics()
 	rng := f.Range()
 	return NewGeometry(lines, clusters, rng.End-rng.Start, emptyHeight)
+}
+
+func (d *fragmentMetrics) lineClusters(index int) []typography.TextCluster {
+	if d.loadClusters != nil {
+		return d.loadClusters(index)
+	}
+	return d.clusters[index]
 }
