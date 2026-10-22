@@ -664,11 +664,7 @@ func (t *textEditor) spliceParagraphs(start, removed, inserted int) {
 		if p := t.paragraphs[start]; !t.singleLine && p != nil && p.measured && p.layout != nil && p.textBytes > 4096 && p.textBytes <= textParagraphCacheBytes {
 			// Retain a few expensive complete inputs for backspace/history.
 			// Detach ownership before any native destruction can call back.
-			t.textParagraphCache.unlink(p)
-			delete(t.paragraphs, start)
-			t.textParagraphCache.textBytes -= p.textBytes
-			t.replacedParagraphs = append(t.replacedParagraphs, p)
-			t.replacedBytes += p.textBytes
+			t.retainParagraph(p)
 		}
 	}
 	t.textParagraphCache.splice(start, removed, inserted)
@@ -676,6 +672,22 @@ func (t *textEditor) spliceParagraphs(start, removed, inserted int) {
 		return
 	}
 	t.heights.Splice(start, removed, inserted, estimate)
+	t.trimReplacedParagraphs()
+}
+
+// Recently used complete inputs also include expensive layouts at other
+// widths. Retain native resources with their exact metrics: changing the
+// native box back would otherwise discard its internal line-breaking result.
+func (t *textEditor) retainParagraph(p *textParagraph) {
+	t.textParagraphCache.unlink(p)
+	delete(t.paragraphs, p.index)
+	t.textParagraphCache.textBytes -= p.textBytes
+	t.replacedParagraphs = append(t.replacedParagraphs, p)
+	t.replacedBytes += p.textBytes
+}
+
+func (t *textEditor) trimReplacedParagraphs() {
+	model, epoch, revision := t.model, t.mountEpoch, t.model.Revision()
 	for len(t.replacedParagraphs) > textReplacedCacheLimit || t.replacedBytes > textParagraphCacheBytes {
 		p := t.replacedParagraphs[0]
 		t.replacedParagraphs[0] = nil
@@ -782,7 +794,9 @@ func (t *textEditor) measure(c layout.Constraint) layout.Measurement {
 		return layout.Measurement{Size: b.constrain(c, geometry.Size{Width: width, Height: t.heights.Total() + 2*t.padding}),
 			Baseline: t.padding + baseline, HasBaseline: t.hasBaseline}
 	}
-	t.prepareWidth(max(1, width-2*t.padding-1))
+	if !t.prepareWidth(max(1, width-2*t.padding-1)) {
+		return layout.Measurement{}
+	}
 	limit := b.layoutConstraint(c).Max.Height
 	height := 2 * t.padding
 	baseline := t.baseline
@@ -844,7 +858,8 @@ func (t *textEditor) estimateWrappedHeight(width float32) {
 
 // Width-sensitive paragraph measurements are shared by Measure and visible
 // layout. This never changes the viewport or scroll offset.
-func (t *textEditor) prepareWidth(width float32) {
+func (t *textEditor) prepareWidth(width float32) bool {
+	model, epoch, revision := t.model, t.mountEpoch, t.model.Revision()
 	if width != t.layoutWidth && t.wrap != WrapNone {
 		t.retainViewportAnchor()
 		// Keep previous measured heights as estimates until their paragraphs
@@ -853,10 +868,16 @@ func (t *textEditor) prepareWidth(width float32) {
 		// a second time during the same allocation.
 		t.observedWidth = 0
 		for _, p := range t.paragraphs {
-			p.measured = false
+			if p.measured && p.layout != nil && p.textBytes > 4096 && p.textBytes <= textParagraphCacheBytes {
+				t.retainParagraph(p)
+			} else {
+				p.measured = false
+			}
 		}
 	}
 	t.layoutWidth = width
+	t.trimReplacedParagraphs()
+	return !t.owner.base().destroyed && t.model == model && t.mountEpoch == epoch && model.Revision() == revision && t.layoutWidth == width
 }
 
 func (t *textEditor) arrange(rect geometry.Rectangle) {
@@ -875,7 +896,9 @@ func (t *textEditor) layoutVisible(viewport geometry.Size, offset geometry.Point
 	t.syncBlink(false)
 	t.ensureFormat()
 	t.viewport, t.offset = viewport, offset
-	t.prepareWidth(max(1, viewport.Width-2*t.padding-1))
+	if !t.prepareWidth(max(1, viewport.Width-2*t.padding-1)) {
+		return
+	}
 	beforeHeight := t.heights.Total()
 	defer func() {
 		if !t.owner.base().destroyed && t.heights.Total() != beforeHeight {
