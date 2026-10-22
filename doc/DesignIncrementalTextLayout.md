@@ -1,7 +1,7 @@
 # 文本片段测量、缓存与可视区布局
 
 > 2026-10-21：普通值片段及详细几何分页已经接入，见第 12 节。
-> 有限送测仅为实验；控件仍同步测量整段。Reflow 保持撤回，未修改 typography。
+> 有限送测仍为实验；控件仍同步测量整段。Reflow 保持撤回，公共 TextLayout 契约不变。
 > 未标为已实现的可视区测量、预算调度和增量布局仍是目标。
 > 历史实验和回退验证见 [实施记录](PlanIncrementalTextLayout.md)。
 > 自然尺寸查询与实际视区测量已分离：大 TextView 的 Measure 只读高度估计，
@@ -219,3 +219,106 @@ TextView／TextInput 在首次需要编辑几何时复制快照，普通显示�
 SourceView 的测试内实验使用 512／2048 字节候选，保留末行继续测量，确认了长词
 和 JSON 的行／cluster 可由普通值组合。跨 4 KiB RLO 的独立窗口会丢失 override，
 有明确防误用断言；该实验不在正式控件路径启用。耗时和未完成项见实施记录。
+
+## 14. 度量索引与换行分离（2026-10-22）
+
+Scintilla 5.6.7 的 PositionCache／EditView 先保留已塑形 advance，再由 WrapLine
+计算折点；宽度改变不必丢弃字符位置。采用这一分离，但不把其等宽 ASCII 优化作为
+复杂文字的替代。Monaco 的 simple 列数模型不适合作为 GOUI 通用文本的准确几何；
+advanced DOM 路径的二分查询复用同一个已排版 DOM，不等于重复原生排版不同前缀。
+
+### 14.1 普通值索引
+
+`gui/textedit.WrapMeasurements` 拷贝完整段落的逻辑 cluster advance，保留 UTF-8
+边界、前缀和、字素及 UAX #14 机会。它不持有原生对象，不读取视口。多个
+`WrapIterator` 独立前进，单个 `Next` 返回一个候选行，可在任一候选后让出事件循环。
+测量输入允许视觉顺序，构造时按逻辑范围规范化；字体 fallback 拆出的 cluster
+还须与字素边界求交，不能拆开 emoji／ZWJ。Tab 在每个新显示行的原点重新展开。
+
+宽度变化仅新建 iterator，二分查询前缀 advance，不重新逐字测量。宽度超过一行
+的单个完整 cluster 仍整体保留，确保进度；零宽前导控制符不形成一个空白候选行。
+候选不是最终坐标：行端重塑形、软连字符、双向行重排、对齐及绘制仍须使用同一份
+已确认的最终行。不能把逻辑 advance 直接当作 visual X，更不能用候选结果定位 caret。
+
+此索引已经有独立预期的测试和基准，但**尚未接入控件的正式换行路径**。构造索引
+仍需扫描／复制完整传入度量；它也不解决首次原生分析。本节不承诺超长段落已经分帧。
+上层缓存的键、预算、销毁和上下文失效继续遵守第 3、7、8 节。
+
+### 14.2 原生度量导出
+
+Pango 从原生已塑形 GlyphString 的视觉 glyph 顺序累计整数 advance，以原生 run
+原点、对齐和 bidi 分析为基准，替换逐 cluster 的迭代／extents 调用。不是逐字符
+独立测量；字体、Tab、连字及行尾处理均保留原生结果。输出仍是独立普通值。
+
+DirectWrite 一次取得范围命中框和 cluster 度量。仅在框边界完整、累计 advance
+与框宽在原生 float32 精度内一致时，推导内部 cluster 原点；不能覆盖的框继续
+使用原生位置查询。原点由 float64 前缀累计后转为 float32，保留原生 cluster
+advance，避免在超长不换行文本上累计 float32 游标而漂移。普通边界的舍入处理
+属于 textedit.Geometry 的停靠点索引，不能改写原生测量值来掩盖键盘导航问题。
+两端对齐可能单独调整内部位置，保持原生逐位置查询。完整 bidi、inline placeholder、
+换行及 UTF-8／UTF-16 转换仍按原生事实处理。
+
+两项已经接入实际 TextLayout；TextView、TextInput、SourceView 自动受益。
+CoreText 已有按 run 批量取得 positions／advances／indices 的路径，本轮不重复改写。
+公共 TextLayout 契约不变，原生后端不感知模型、视口、任务预算或交互需求。
+
+### 14.3 区域栅格化
+
+Pango 依据原生行 ink 范围选择能触及 Rasterize region 的行，保留完整段落分析和
+原生行对象，只缩小绘制遍历。按实际像素缩放保留一个物理像素的抗锯齿边缘；
+字形负 bearing、斜体及超出逻辑行框的墨迹不能仅用显示行高裁掉。
+借用原生行指针的缓存属于 TextLayout，另用 Pango layout serial 识别原生 context
+变化；比较相等性而不比较大小，避免序号回绕。任何布局或样式变化先失效缓存，再通知监听者，
+销毁先丢弃借用指针再释放原生布局。不与其他 TextLayout 共享。
+
+批量度量已经访问行范围及基线时，同步保留原生行及 ink 数据，避免绘制再次遍历；
+未查询度量的调用仍可在首次栅格化准备数据。缓存随所属布局释放。
+
+逐行绘制以矩阵平移保留原始分数基线，并清除 Cairo current point，避免 MoveTo
+在设备像素平面量化后改变分块间的 glyph phase。与原整段渲染在相同后端和字体下
+逐像素比较，覆盖 1／1.5／2 倍、负 region、混合文字、对齐、字体及范围样式变更。
+这是同步区域渲染优化，不把原生整段冷排版变成有界任务。
+
+### 14.4 上下文测量前置
+
+新增的 Linux 绑定仅表达 `pango_itemize`、`pango_shape_with_flags` 和对应资源所有权。
+先对完整段落分析，保留字体／脚本／bidi analysis，再用同一原生文本缓冲塑形有限范围，
+可以避免方向控制符前缀回放丢失非局部上下文的问题。必须使用实际 context 的 round
+positions 标志，不能把分数宽度与原来的取整宽度混用。
+
+CoreText 已通过保留完整 attributed string 的 CTTypesetter 创建有限 CTLine 的
+原生对照：长 RLO／LRO／isolate、混合文字、完整 Arabic 词、ffi 和组合字的目标
+glyph、advance、原始索引与方向同完整 CTFrame 一致。调用者拥有 typesetter／line
+引用，先释放这些引用，再销毁文字及 Context；没有截取后重新创建小 attributed string。
+
+目前仅为平台实验：它不证明任意字节切点安全，也未形成三后端公共范围布局 API。
+完整 itemization 仍是一次不可抢占调用；MB 级输入的冷分析、复杂 cluster 边界、
+行端确认、DirectWrite 对应事实及可渲染片段仍需验证。**控件当前仍会同步排完整长段落**。
+后续通用扩展只提供必要的分析／塑形事实，缓存、折行、视口和事件间隔推进留在上层；
+不恢复 Reflow，不以后台线程或延后一帧的完整测量替代有界工作。
+
+### 14.5 参考与版本
+
+- [Scintilla 5.6.7 官方源码](https://www.scintilla.org/scintilla567.tgz)：
+  `src/PositionCache.cxx`、`src/EditView.cxx`、`src/Editor.cxx` 的宽度缓存、
+  WrapLine 及 visible／idle wrapping。未采用旧 GitHub mirror 的版本号替代 5.6.7。
+- [VS Code 换行计算](https://github.com/microsoft/vscode/blob/05b953b62cc925ade75c4347ebe11e3bbca65025/src/vs/editor/common/viewModel/monospaceLineBreaksComputer.ts)、
+  [DOM 换行计算](https://github.com/microsoft/vscode/blob/05b953b62cc925ade75c4347ebe11e3bbca65025/src/vs/editor/browser/view/domLineBreaksComputer.ts)：
+  采用复用度量／折点原则，不复制其 DOM、简单列模型及超长行呈现限制。
+- [Pango shape_with_flags](https://docs.gtk.org/Pango/func.shape_with_flags.html)
+  明确接受 item 子串与段落上下文，API 自 1.44 可用；本机实测 1.50.6，在线文档 1.58.2。
+- [CTTypesetterCreateLine](https://developer.apple.com/documentation/coretext/cttypesettercreateline(_:_:))
+  表达原 attributed string 内的范围；本轮只记录上述已测条件，不推广为任意切点安全。
+- [DirectWrite HitTestTextRange](https://learn.microsoft.com/en-us/windows/win32/api/dwrite/nf-dwrite-idwritetextlayout-hittesttextrange)
+  提供范围命中框；内部 advance 推导是本项目经原生位置对照验证的选择，不是文档保证。
+- [PangoCairo show_layout_line](https://docs.gtk.org/PangoCairo/func.show_layout_line.html)、
+  [LayoutIter 行范围](https://docs.gtk.org/Pango/method.LayoutIter.get_line_extents.html)
+  确定绘制原点和 layout-local ink 坐标；
+  [Layout serial](https://docs.gtk.org/Pango/method.Layout.get_serial.html)
+  用于识别原生 context 改变，不假定借用行指针永久有效。
+
+[Qt block 布局](https://github.com/qt/qtbase/blob/4053f2e82f776bb58ace844d7793f6f8304e2534/src/widgets/widgets/qplaintextedit.cpp)、
+[Avalonia shaped-run／line-break 缓存](https://github.com/AvaloniaUI/Avalonia/blob/c4dfde67c35e6fb4732d8b4770cae9fbe56957fd/src/Avalonia.Base/Media/TextFormatting/TextFormatterImpl.cs)
+及 [GTK4 可见区／idle 验证](https://github.com/GNOME/gtk/blob/3b438f0576193689bf39835174a51aa747333281/gtk/gtktextview.c)
+支持分离工作的方向，但不能证明一个超长原生段落已被切成有界调用。本轮实测
+与失败项记录在实施文档，不由参考框架的总体流畅度推断 GOUI 的冷调用上限。
