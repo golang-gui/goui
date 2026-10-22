@@ -20,6 +20,10 @@ import (
 )
 
 type textParagraph struct {
+	released       bool
+	shape          *textedit.ShapedText
+	wrapped        *textedit.WrappedText
+	layoutWidth    float32
 	index          int
 	textBytes      int
 	previous, next *textParagraph
@@ -125,7 +129,7 @@ func (c *textParagraphCache) remove(p *textParagraph) {
 	delete(c.paragraphs, p.index)
 	c.textBytes -= p.textBytes
 	if p.layout != nil {
-		p.layout.Destroy()
+		p.releaseLayout()
 	}
 }
 
@@ -136,7 +140,7 @@ func (c *textParagraphCache) clear() {
 		next := old.next
 		old.previous, old.next = nil, nil
 		if old.layout != nil {
-			old.layout.Destroy()
+			old.releaseLayout()
 		}
 		old = next
 	}
@@ -177,7 +181,7 @@ func (c *textParagraphCache) splice(start, removed, inserted int) {
 	c.paragraphs = next
 	for _, p := range released {
 		if p.layout != nil {
-			p.layout.Destroy()
+			p.releaseLayout()
 		}
 	}
 }
@@ -621,7 +625,7 @@ func (t *textEditor) ensureFormat() {
 			color = typography.DefaultTextColor()
 		}
 		for _, p := range t.paragraphs {
-			if p.layout != nil && len(p.layout.Text()) > 0 {
+			if p.shape == nil && p.layout != nil && len(p.layout.Text()) > 0 {
 				p.layout.SetTextColor(0, len(p.layout.Text()), color)
 				if !current() {
 					return
@@ -642,7 +646,7 @@ func (t *textEditor) releaseReplacedParagraphs() {
 	old := t.replacedParagraphs
 	t.replacedParagraphs, t.replacedBytes = nil, 0
 	for _, p := range old {
-		p.layout.Destroy()
+		p.releaseLayout()
 	}
 }
 
@@ -693,7 +697,7 @@ func (t *textEditor) trimReplacedParagraphs() {
 		t.replacedParagraphs[0] = nil
 		t.replacedParagraphs = t.replacedParagraphs[1:]
 		t.replacedBytes -= p.textBytes
-		p.layout.Destroy()
+		p.releaseLayout()
 		if t.owner.base().destroyed || t.model != model || t.mountEpoch != epoch || t.model.Revision() != revision {
 			return
 		}
@@ -719,7 +723,10 @@ func (t *textEditor) paragraph(index int) *textParagraph {
 		text := t.displayParagraph(index)
 		for i := len(t.replacedParagraphs) - 1; i >= 0; i-- {
 			previous := t.replacedParagraphs[i]
-			previousWidth, _ := previous.layout.Size()
+			previousWidth := previous.layoutWidth
+			if previous.shape == nil {
+				previousWidth, _ = previous.layout.Size()
+			}
 			if previousWidth != width || previous.layout.Text() != text {
 				continue
 			}
@@ -734,7 +741,23 @@ func (t *textEditor) paragraph(index int) *textParagraph {
 			return previous
 		}
 		p = &textParagraph{}
-		if text != "" || !t.singleLine {
+		if !t.singleLine && t.wrap != WrapNone && len(text) >= 32768 {
+			for _, previous := range t.replacedParagraphs {
+				if previous.shape != nil && previous.layout.Text() == text {
+					p.shape = previous.shape.Retain()
+					break
+				}
+			}
+			if p.shape == nil {
+				if ctx, ok := App.Typography().(typography.GlyphContext); ok {
+					p.shape, _ = textedit.NewShapedText(ctx, text, t.format)
+				}
+			}
+			if p.shape != nil {
+				p.layout = p.shape.Layout()
+			}
+		}
+		if p.layout == nil && (text != "" || !t.singleLine) {
 			var err error
 			p.layout, err = App.Typography().NewTextLayout(text, t.format, width, textInputMeasureExtent)
 			if err != nil {
@@ -742,19 +765,27 @@ func (t *textEditor) paragraph(index int) *textParagraph {
 			}
 		}
 		t.textParagraphCache.add(index, len(text), p)
-	} else if p.layout != nil {
+	} else if p.layout != nil && p.shape == nil {
 		p.layout.SetSize(width, textInputMeasureExtent)
 	}
 	var w, h float32
-	if p.layout != nil {
+	p.layoutWidth = width
+	p.fragment = textedit.Fragment{}
+	if p.shape != nil {
+		p.wrapped = p.shape.Wrap(width, t.format.TabWidth, t.lineHeight, t.wrap == WrapWordChar)
+		p.fragment = p.wrapped.Fragment()
+		size := p.fragment.Size()
+		w, h = size.Width, size.Height
+	} else if p.layout != nil {
 		w, h = p.layout.MeasureSize()
 		p.lines, p.clusters = p.layout.MeasureMetrics()
 	}
 	p.measuredSize = geometry.Size{Width: w, Height: h}
-	p.fragment = textedit.Fragment{}
 	p.geometry, p.geometryValid = textedit.Geometry{}, false
 	p.textOffset, p.baseline = 0, t.baseline
-	if len(p.lines) > 0 {
+	if p.wrapped != nil {
+		p.baseline = p.shapeBaseline(t.baseline)
+	} else if len(p.lines) > 0 {
 		p.textOffset = max(0, t.baseline-p.lines[0].Baseline)
 		p.baseline = p.textOffset + p.lines[0].Baseline
 	}
@@ -1072,7 +1103,11 @@ func (t *textEditor) paint(p Painter) {
 			}
 		}
 		if paragraph.layout != nil && paragraph.layout.Text() != "" {
-			p.DrawTextLayout(origin, paragraph.layout)
+			if paragraph.wrapped != nil {
+				paragraph.wrapped.Paint(p, origin, geometry.Rect(t.padding, t.padding, max(0, t.viewport.Width-2*t.padding), max(0, t.viewport.Height-2*t.padding)), t.format.TextColor, nil)
+			} else {
+				p.DrawTextLayout(origin, paragraph.layout)
+			}
 		}
 		if composition := t.preedit; composition != nil {
 			if color, ok := t.resolvedStyle("caret").ForegroundColor(); ok {
@@ -1737,4 +1772,21 @@ func (t *textEditor) hideContextMenu() {
 	if t.contextMenu != nil {
 		t.contextMenu.popup.Hide()
 	}
+}
+
+func (p *textParagraph) releaseLayout() {
+	if p.released {
+		return
+	}
+	p.released = true
+	shape, native := p.shape, p.layout
+	if shape != nil {
+		shape.Release()
+	} else if native != nil {
+		native.Destroy()
+	}
+}
+func (p *textParagraph) shapeBaseline(base float32) float32 {
+	p.textOffset = max(0, base-p.wrapped.Baseline())
+	return p.textOffset + p.wrapped.Baseline()
 }
