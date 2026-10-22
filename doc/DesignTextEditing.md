@@ -647,6 +647,12 @@ macOS arm64 GUI 交叉编译仍被 Cocoa 中未解析的 `AutoReleasePool`、
 本次只移动声明、整理 imports 和分组注释，保留 Test／Benchmark 名称、断言、
 输入路径、基准参数与平台适用范围。具体校验结果见 [Plan](Plan.md) 的本轮记录。
 
+随后单独恢复三个共用原生 helper 的平台入口：编辑导航、文档末尾定位和宽度
+往返后的视口锚定，分别使用 Pango／CoreText／DirectWrite 工厂。锚定测试先从
+内容坐标减去段落绘制的基线位移 `textOffset`，再读取原生行坐标；重排后的预期
+加回对应位移。这个换算与实际绘制原点一致，不从编辑器的 anchor 状态生成预期，
+也不放宽原来的 1 DIP 滚动取整容差。
+
 ### 开发验证与用户窗口验收
 
 按用户最新确认的分工：窗口验证以本机为主；Windows/macOS 平台能力通过

@@ -966,10 +966,31 @@ arm64 构建限制保留在原记录中；本轮未修改实现或复验这些�
 - [x] Linux amd64／Go 1.25.8，无 DISPLAY／WAYLAND_DISPLAY：整理前执行
   `go test -json ./gui`、整理后执行 `go test -json ./gui -count=1`，均为 914 项测试／子测试
   通过、无失败或跳过；活动用例名称集合一致。未创建桌面窗口。
-- [ ] 单独恢复已存在但未接入平台 Test 入口的三个原生验证 helper：编辑导航、
+- [x] 单独恢复已存在但未接入平台 Test 入口的三个原生验证 helper：编辑导航、
   文档末尾定位与调整宽度后的视口锚定；恢复入口与纯归并分项提交和验证。
+  三个平台各增加三个入口，执行原生调用的 goroutine 仍在 helper 内锁线程。
+- [x] 入口恢复后，Pango 锚定用例首次失败：`width=532 scroll=944 want=921`。
+  核对发现旧预期把内容坐标直接当作原生行坐标，遗漏段落的 `textOffset` 基线投影。
+  修正测试采样和预期的双向坐标换算；独立原生行参考、原断言及 1 DIP 容差不变，
+  不更改生产代码或增加 skip。无显示连接执行三个 Pango 用例，含两个导航子测试
+  共 5 项通过；原有 GUI 测试保留，活动测试／子测试总数由 914 增至 919。
 - 无显示连接时 `go test -json ./...` 未通过：既有
   `platform/typography/test.TestTypography` 创建平台失败（`can not open display`）；
-  不修改该测试或运行开关，后续在独立 X11 会话补验。race 与跨平台编译结果也在
-  后续验证完成后补充。用户正在合并的 TextEditor
-  生产文件及其他已有工作区改动不属于本轮整理或提交范围。
+  不修改该测试或运行开关。
+- [x] Linux amd64／Go 1.25.8，在独立 Xvnc 1.12.0／Xfwm4 会话运行最终
+  `go test -json ./... -count=1`：2720 项测试／子测试通过、15 项既有跳过、0 失败。
+  Pango 和 GUI Software 离屏用例实际运行，光栅化用例仍覆盖 1x／2x；这不是手动
+  窗口交互验收。既有全仓测试在该隔离会话创建窗口／读写剪贴板，并更新原有 PNG
+  产物；本轮未添加这种副作用，产物不提交，未操作用户桌面或剪贴板。
+- [x] 无显示连接执行 `go test -race ./gui ./gui/textedit ./ui -count=1` 时，
+  textedit／ui 通过，gui 仅遇上述旧预期失败；修正后
+  `go test -race ./gui -count=1` 通过。
+- [x] 最终 GUI 测试分别以 `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go test -c ./gui`
+  和 `GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go test -c ./gui` 交叉编译通过，
+  产物置于仓库外；本轮未在 Windows／macOS 原生执行或进行桌面验收。
+- [x] 从已提交源码导出干净快照，仅叠加本轮四个原生测试文件，排除用户未提交的
+  生产代码合并及未跟踪文件；`GOWORK=off go test ./gui -count=1` 通过。
+  Go token 复核确认：归并后的原声明中，仅原生锚定 helper 有上述预期换算调整，
+  另新增九个按平台限定的 Test 入口。
+- 用户正在合并的 TextEditor 生产文件、已暂存删除及其他已有工作区改动不属于
+  本轮提交；按文件核对内容与暂存差异保持原样。SourceView 仓库未修改。

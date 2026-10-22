@@ -14,6 +14,18 @@ import (
 
 func TestNativeTextRasterViewport(t *testing.T) { testTextRasterViewport(t, pango.NewContext) }
 
+func TestTextEditorPangoNavigation(t *testing.T) {
+	testTextEditorNativeNavigation(t, pango.NewContext)
+}
+
+func TestTextViewPangoRevealEnd(t *testing.T) {
+	testTextViewNativeRevealEnd(t, pango.NewContext)
+}
+
+func TestTextViewPangoResizeAnchor(t *testing.T) {
+	testTextViewNativeResizeAnchor(t, pango.NewContext)
+}
+
 // Pango-specific width cache regression.
 
 // Observe only the existing Context/TextLayout contract. A decorator must not

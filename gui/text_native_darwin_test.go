@@ -7,3 +7,15 @@ import (
 )
 
 func TestNativeTextRasterViewport(t *testing.T) { testTextRasterViewport(t, coretext.NewContext) }
+
+func TestTextEditorCoreTextNavigation(t *testing.T) {
+	testTextEditorNativeNavigation(t, coretext.NewContext)
+}
+
+func TestTextViewCoreTextRevealEnd(t *testing.T) {
+	testTextViewNativeRevealEnd(t, coretext.NewContext)
+}
+
+func TestTextViewCoreTextResizeAnchor(t *testing.T) {
+	testTextViewNativeResizeAnchor(t, coretext.NewContext)
+}
