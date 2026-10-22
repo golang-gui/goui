@@ -14,6 +14,7 @@ var (
 	libpangofc = cgo.NewLazyLibrary("libpangoft2-1.0.so.0")
 
 	// PangoLayout
+	pangoLayoutGetSerial          = libpango.NewSymbol("pango_layout_get_serial")
 	pangoLayoutNew                = libpango.NewSymbol("pango_layout_new")
 	pangoLayoutSetText            = libpango.NewSymbol("pango_layout_set_text")
 	pangoLayoutSetTabs            = libpango.NewSymbol("pango_layout_set_tabs")
@@ -809,4 +810,9 @@ func (fm FontMap) SetConfig(config fontconfig.Config) {
 
 func goPointer[T any](ptr uintptr) *T {
 	return (*T)(cgo.Pointer(ptr))
+}
+
+// GetSerial changes whenever the layout or its PangoContext changes.
+func (l Layout) GetSerial() uint32 {
+	return cgo.CallRet[uint32](pangoLayoutGetSerial.Addr(), l.GObject)
 }
