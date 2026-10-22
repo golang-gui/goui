@@ -2,11 +2,10 @@ package gui
 
 import (
 	"log"
-	"math"
+	"runtime"
 	"strings"
 	"time"
 
-	"github.com/goexlib/mathx"
 	"github.com/golang-gui/goui/core/colors"
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
@@ -14,9 +13,12 @@ import (
 	"github.com/golang-gui/goui/internal/resource"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/mlang"
+	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/style"
+
+	"github.com/goexlib/mathx"
 )
 
 type textParagraph struct {
@@ -861,7 +863,7 @@ func (t *textEditor) estimateWrappedHeight(width float32) {
 	ratio := float32(t.model.Len()) / float32(end)
 	height := h * ratio
 	if h <= t.lineHeight {
-		height = float32(math.Ceil(float64(w*ratio/width))) * t.lineHeight
+		height = mathx.Ceil(w*ratio/width) * t.lineHeight
 	}
 	t.heights.Set(0, max(t.lineHeight, height))
 	t.heightEstimated = true
@@ -1757,4 +1759,777 @@ func (t *textEditor) hideContextMenu() {
 	if t.contextMenu != nil {
 		t.contextMenu.popup.Hide()
 	}
+}
+
+// Coalesce intermediate constraints of a long wrapped paragraph. Existing
+// text and hit testing keep the same measured width until the latest width is
+// ready. This does not time-slice or preempt a native paragraph measurement.
+const textResizeDelay = 150 * time.Millisecond
+
+func (t *textEditor) cancelResize() {
+	if t.resizeTimer != nil {
+		t.resizeTimer.Stop()
+	}
+	changed := t.resizeWidth != 0
+	t.resizeWidth, t.resizeReady = 0, false
+	if changed && !t.owner.base().destroyed {
+		t.owner.base().requestSemanticUpdate()
+	}
+}
+
+func (t *textEditor) deferResize(width float32) bool {
+	if width == t.layoutWidth || t.singleLine || t.wrap == WrapNone || t.preedit != nil ||
+		t.suspended || t.owner.Root() == nil || App == nil {
+		t.cancelResize()
+		return false
+	}
+	if t.resizeWidth == width {
+		if t.resizeReady {
+			t.cancelResize()
+			return false
+		}
+		if t.resizeTimer != nil && t.resizeTimer.Active() {
+			return true
+		}
+	}
+	long := false
+	first := t.heights.At(max(0, t.offset.Y-t.padding))
+	last := t.heights.At(max(0, t.offset.Y+t.viewport.Height))
+	for _, p := range t.paragraphs {
+		if p.index < first || p.index > last || !p.measured || p.layout == nil || p.textBytes < 32768 {
+			continue
+		}
+		// Restore an exact retained width immediately. The cache's complete
+		// input comparison prevents resurrection of a replaced paragraph.
+		cached := false
+		for _, previous := range t.replacedParagraphs {
+			w, _ := previous.layout.Size()
+			if w == width && previous.layout.Text() == p.layout.Text() {
+				cached = true
+				break
+			}
+		}
+		long = long || !cached
+	}
+	if !long {
+		t.cancelResize()
+		return false
+	}
+	if t.resizeTimer == nil {
+		t.resizeTimer = App.NewTimer()
+		t.resizeTimer.ConnectTimeout(func() {
+			if t.owner.base().destroyed || t.suspended || t.resizeWidth == 0 || !visibleInTree(t.owner) {
+				t.cancelResize()
+				return
+			}
+			// Only schedule layout. A newer allocation can still supersede
+			// this width before layout actually runs.
+			t.resizeReady = true
+			t.owner.RequestLayout()
+			t.owner.RequestPaint()
+		})
+	}
+	t.resizeWidth, t.resizeReady = width, false
+	t.owner.base().requestSemanticUpdate()
+	if err := t.resizeTimer.StartOnce(textResizeDelay); err != nil {
+		// No usable GUI timer: keep the existing synchronous layout path.
+		t.cancelResize()
+		return false
+	}
+	return true
+}
+
+func (t *textEditor) imContext() IMContext {
+	if t.readOnly || !IsEnabled(t.owner) {
+		return nil
+	}
+	return t.im
+}
+
+// textEditController only interprets events delivered by EventDispatcher; it
+// does not own hit testing, focus routing or a separate input dispatch path.
+type textEditController struct {
+	EventControllerBase
+	view      *textEditor
+	dragging  bool
+	gesture   *GestureParticipation
+	lastDown  time.Time
+	lastPoint geometry.Point
+	dragPoint geometry.Point
+}
+
+func (c *textEditController) CapturingPointer() bool { return c.dragging }
+func (c *textEditController) Reset() {
+	gesture := c.gesture
+	c.gesture = nil
+	gesture.Reject()
+	c.dragging = false
+	c.lastDown = time.Time{}
+	if c.view.scrollTimer != nil {
+		c.view.scrollTimer.Stop()
+	}
+	if !IsEnabled(c.view.owner) {
+		t := c.view
+		model, epoch, revision := t.model, t.mountEpoch, t.owner.base().enabledRevision
+		current := func() bool {
+			return !t.owner.base().destroyed && !IsEnabled(t.owner) && t.model == model &&
+				t.mountEpoch == epoch && t.owner.base().enabledRevision == revision
+		}
+		t.inputRevision++
+		t.hideContextMenu()
+		if !current() {
+			return
+		}
+		t.cancelPreedit(true)
+		if !current() {
+			return
+		}
+		t.model.BreakUndoGroup()
+		t.syncBlink(true)
+	}
+}
+
+func (c *textEditController) GestureAccepted(ctx EventContext) {
+	event, ok := ctx.Event().(events.PointerEvent)
+	if !ok {
+		return
+	}
+	point, ok := ctx.Position()
+	if ok {
+		c.beginSelection(ctx, event, point)
+	}
+}
+
+func (c *textEditController) GestureCanceled(GestureCancelReason) {
+	c.gesture = nil
+	c.dragging = false
+	if c.view.scrollTimer != nil {
+		c.view.scrollTimer.Stop()
+	}
+}
+
+func (c *textEditController) beginSelection(ctx EventContext, event events.PointerEvent, point geometry.Point) {
+	t := c.view
+	t.hasDesiredX = false
+	position := t.hitText(point)
+	model, epoch := t.model, t.mountEpoch
+	t.cancelPreedit(true)
+	if t.owner.base().destroyed || t.model != model || t.mountEpoch != epoch {
+		return
+	}
+	now := time.Now()
+	double := !c.lastDown.IsZero() && now.Sub(c.lastDown) <= gestureClickInterval &&
+		!gestureMoved(point, c.lastPoint, gestureDefaultDistance)
+	c.lastDown, c.lastPoint, c.dragging = now, point, true
+	c.dragPoint = point
+	ctx.StopPropagation()
+	if double {
+		c.lastDown = time.Time{}
+		rng := t.wordAt(position.Offset)
+		t.setSelection(TextSelection{rng.Start, rng.End}, false, true)
+	} else {
+		t.moveTo(position, event.Modifiers&events.ModifierShift != 0)
+	}
+}
+
+func (c *textEditController) HandleEvent(ctx EventContext) {
+	t := c.view
+	if t.owner.base().destroyed || !IsEnabled(t.owner) {
+		return
+	}
+	switch event := ctx.Event().(type) {
+	case events.WheelEvent:
+		// User browsing supersedes a pending keyboard reveal; the parent
+		// ScrollView still receives and applies the wheel event normally.
+		t.revealCaret = false
+		t.anchorPending = false
+	case events.KeyEvent:
+		if event.EventType == events.KeyDown && t.editingKey(event) {
+			event.PreventDefault()
+			ctx.StopPropagation()
+		} else if event.EventType == events.KeyDown && textInputKey(event) {
+			// Reserve text for the focused editor, but allow the native text/IME
+			// path to commit it. Capture handlers can explicitly override this.
+			ctx.StopPropagation()
+		}
+	case events.PointerEvent:
+		point, ok := ctx.Position()
+		if !ok {
+			return
+		}
+		switch event.EventType {
+		case events.PointerDown:
+			if !primaryPointer(event) {
+				return
+			}
+			if gesture := JoinGesture(ctx); gesture != nil {
+				c.gesture = gesture
+				gesture.Claim()
+				return
+			}
+			c.beginSelection(ctx, event, point)
+		case events.PointerMove:
+			if c.dragging {
+				c.dragPoint = point
+				ctx.StopPropagation()
+				t.moveTo(t.hitText(t.dragSelectionPoint()), true)
+				if !t.owner.base().destroyed {
+					t.syncAutoScroll()
+				}
+			}
+		case events.PointerUp:
+			if event.Button == events.PointerButtonLeft && c.dragging {
+				c.gesture = nil
+				c.dragging = false
+				t.syncAutoScroll()
+				ctx.StopPropagation()
+			}
+		}
+	}
+}
+
+func textInputKey(event events.KeyEvent) bool {
+	key := event.Key
+	if key != events.KeySpace && !(key >= events.KeyA && key <= events.KeyBackquote) &&
+		!(key >= events.KeyNumpad0 && key <= events.KeyNumpadDecimal) {
+		return false
+	}
+	mods := event.Modifiers &^ events.ModifierShift
+	// Ctrl+Alt can be native AltGr text. Preserve it at the text target rather
+	// than guessing a keyboard layout or manufacturing a platform AltGr flag.
+	return mods == 0 || mods == events.ModifierOption || mods == events.ModifierAltGraph || mods == events.ModifierControl|events.ModifierAlt
+}
+
+func textCommand(modifiers events.Modifiers) bool {
+	return modifiers&^events.ModifierShift == textCommandModifier()
+}
+
+func abs32(x float32) float32 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+func (t *textEditor) hitText(point geometry.Point) textedit.Position {
+	point.X += t.offset.X - t.padding
+	point.Y += t.offset.Y - t.padding
+	index := t.heights.At(point.Y)
+	if p := t.paragraph(index); p != nil {
+		rng := t.displayLineRange(index)
+		point.Y -= t.heights.Top(index) + p.textOffset
+		pos := p.editGeometry(t.lineHeight).Hit(point)
+		pos.Offset += rng.Start
+		if composition := t.preedit; composition != nil {
+			pos.Offset = composition.ModelOffset(pos.Offset, pos.Upstream)
+		}
+		return pos
+	}
+	return textedit.Position{Offset: t.selection.Caret, Upstream: t.caretUpstream}
+}
+
+func (t *textEditor) moveTo(pos textedit.Position, extend bool) {
+	selection := t.selection
+	selection.Caret = pos.Offset
+	if !extend {
+		selection.Anchor = pos.Offset
+	}
+	t.setSelection(selection, pos.Upstream, true)
+}
+
+func (t *textEditor) replaceSelection(text string, atomic bool) {
+	if t.owner.base().destroyed || !IsEnabled(t.owner) || t.readOnly || t.suspended {
+		return
+	}
+	model, epoch := t.model, t.mountEpoch
+	enabledRevision := t.owner.base().enabledRevision
+	t.cancelPreedit(true)
+	if t.owner.base().destroyed || !IsEnabled(t.owner) || t.owner.base().enabledRevision != enabledRevision || t.model != model || t.mountEpoch != epoch {
+		return
+	}
+	if !t.normalizeEditingSelection() {
+		return
+	}
+	rng := t.selection.Range()
+	before := t.selection
+	t.revealCaret = true
+	text = t.normalizeInput(text)
+	_ = model.Apply(TextEdit{Range: rng, Text: text}, textedit.EditOptions{Atomic: atomic, Source: t.editOwner, Selection: &before})
+	// Signals may edit again, replace the model, unmount, or destroy the view.
+	// The model change handler has already mapped the selection in order.
+	if t.owner.base().destroyed || t.model != model || t.mountEpoch != epoch {
+		return
+	}
+	t.caretUpstream = false
+	t.hasDesiredX = false
+	t.revealCaret = true
+	t.owner.RequestLayout()
+}
+
+func (t *textEditor) logicalAdjacent(offset int, forward bool) int {
+	index := t.model.LineAt(offset)
+	rng, _ := t.model.LineRange(index)
+	if forward && offset == rng.End && offset < t.model.Len() {
+		return offset + 1
+	}
+	if !forward && offset == rng.Start && offset > 0 {
+		return offset - 1
+	}
+	if p := t.paragraph(index); p != nil {
+		return rng.Start + p.editGeometry(t.lineHeight).Adjacent(offset-rng.Start, forward)
+	}
+	return offset // Never guess a cluster boundary from rune counts.
+}
+
+func (t *textEditor) horizontal(right bool) textedit.Position {
+	index := t.model.LineAt(t.selection.Caret)
+	rng, _ := t.model.LineRange(index)
+	pos := textedit.Position{Offset: t.selection.Caret - rng.Start, Upstream: t.caretUpstream}
+	if p := t.paragraph(index); p != nil {
+		if next, ok := p.editGeometry(t.lineHeight).Visual(pos, right); ok {
+			next.Offset += rng.Start
+			return next
+		}
+	}
+	if right && index+1 < t.model.LineCount() {
+		return textedit.Position{Offset: rng.End + 1, Upstream: false}
+	}
+	if !right && index > 0 {
+		return textedit.Position{Offset: rng.Start - 1, Upstream: true}
+	}
+	pos.Offset += rng.Start
+	return pos
+}
+
+// Collapse toward the visual endpoint, not the smaller/larger byte offset.
+// Endpoint affinity faces the selected text, so an embedded RTL run collapses
+// onto that run's edge rather than the coincident boundary of surrounding LTR.
+// Different paragraphs are ordered vertically; only a shared endpoint paragraph
+// needs layout. Never walk or shape the intervening selected document.
+func (t *textEditor) selectionEdge(right, word bool) textedit.Position {
+	rng := t.selection.Range()
+	first, last := textedit.Position{Offset: rng.Start, Upstream: false}, textedit.Position{Offset: rng.End, Upstream: true}
+	index := t.model.LineAt(rng.Start)
+	if !word && index == t.model.LineAt(rng.End) {
+		if p := t.paragraph(index); p != nil {
+			line, _ := t.model.LineRange(index)
+			a := p.editGeometry(t.lineHeight).Caret(textedit.Position{Offset: first.Offset - line.Start, Upstream: first.Upstream})
+			b := p.editGeometry(t.lineHeight).Caret(textedit.Position{Offset: last.Offset - line.Start, Upstream: last.Upstream})
+			if a.Y > b.Y || a.Y == b.Y && a.X > b.X {
+				first, last = last, first
+			}
+		}
+	}
+	if right {
+		return last
+	}
+	return first
+}
+
+func (t *textEditor) vertical(down bool, page bool) textedit.Position {
+	pos := textedit.Position{Offset: t.selection.Caret, Upstream: t.caretUpstream}
+	rect, ok := t.caretRect()
+	if !ok {
+		return pos
+	}
+	if !t.hasDesiredX {
+		t.desiredX, t.hasDesiredX = rect.X-t.padding, true
+	}
+	if page {
+		delta := max(rect.Height, t.viewport.Height)
+		if !down {
+			delta = -delta
+		}
+		return t.hitText(geometry.Point{X: t.desiredX + t.padding - t.offset.X, Y: rect.Y - t.offset.Y + delta + rect.Height/2})
+	}
+	index := t.model.LineAt(pos.Offset)
+	rng, _ := t.model.LineRange(index)
+	p := t.paragraph(index)
+	line := p.editGeometry(t.lineHeight).LineIndex(textedit.Position{Offset: pos.Offset - rng.Start, Upstream: pos.Upstream})
+	if down {
+		line++
+	} else {
+		line--
+	}
+	if line < 0 {
+		if index == 0 {
+			return pos
+		}
+		index--
+		p = t.paragraph(index)
+		if p == nil {
+			return pos
+		}
+		line = p.editGeometry(t.lineHeight).LineCount() - 1
+	} else if line >= p.editGeometry(t.lineHeight).LineCount() {
+		if index+1 == t.model.LineCount() {
+			return pos
+		}
+		index++
+		p = t.paragraph(index)
+		if p == nil {
+			return pos
+		}
+		line = 0
+	}
+	rng, _ = t.model.LineRange(index)
+	pos = p.editGeometry(t.lineHeight).HitLine(line, t.desiredX)
+	pos.Offset += rng.Start
+	return pos
+}
+
+func (t *textEditor) lineEdge(end, document bool) textedit.Position {
+	if document {
+		if end {
+			return textedit.Position{Offset: t.model.Len(), Upstream: true}
+		}
+		return textedit.Position{}
+	}
+	index := t.model.LineAt(t.selection.Caret)
+	rng, _ := t.model.LineRange(index)
+	p := t.paragraph(index)
+	if p == nil {
+		return textedit.Position{Offset: rng.Start, Upstream: false}
+	}
+	i := p.editGeometry(t.lineHeight).LineIndex(textedit.Position{Offset: t.selection.Caret - rng.Start, Upstream: t.caretUpstream})
+	pos := p.editGeometry(t.lineHeight).LineEdge(i, end)
+	pos.Offset += rng.Start
+	return pos
+}
+
+func textCommandModifier() events.Modifiers {
+	modifier, _ := ModPrimary.Resolve()
+	return modifier
+}
+
+func (t *textEditor) editingKey(event events.KeyEvent) bool {
+	if t.preedit != nil && cancelsTextPreedit(event) {
+		model, epoch := t.model, t.mountEpoch
+		t.cancelPreedit(true)
+		if t.owner.base().destroyed || t.model != model || t.mountEpoch != epoch || event.Key == events.KeyEscape {
+			return true
+		}
+	}
+	if t.preedit == nil && (cancelsTextPreedit(event) || event.Key == events.KeyC && textCommand(event.Modifiers)) && !t.normalizeEditingSelection() {
+		return true
+	}
+	shift := event.Modifiers&events.ModifierShift != 0
+	command := textCommand(event.Modifiers)
+	word := event.Modifiers&events.ModifierControl != 0
+	if runtime.GOOS == "darwin" {
+		modifier, _ := ModAlt.Resolve()
+		word = event.Modifiers&modifier != 0
+	}
+	if command {
+		switch event.Key {
+		case events.KeyA:
+			t.runEditCommand(textSelectAll)
+			return true
+		case events.KeyC:
+			t.runEditCommand(textCopy)
+			return true
+		case events.KeyX:
+			t.runEditCommand(textCut)
+			return true
+		case events.KeyV:
+			t.runEditCommand(textPaste)
+			return true
+		case events.KeyZ:
+			if shift {
+				t.runEditCommand(textRedo)
+			} else {
+				t.runEditCommand(textUndo)
+			}
+			return true
+		case events.KeyY:
+			t.runEditCommand(textRedo)
+			return true
+		}
+	}
+	if event.Key != events.KeyArrowUp && event.Key != events.KeyArrowDown && event.Key != events.KeyPageUp && event.Key != events.KeyPageDown {
+		t.hasDesiredX = false
+	}
+	switch event.Key {
+	case events.KeyEnter, events.KeyNumpadEnter:
+		if t.singleLine {
+			t.submitSignal.Emit()
+			return true
+		}
+		t.replaceSelection("\n", true)
+		return true
+	case events.KeyTab:
+		if t.acceptsTab && !shift && !command {
+			t.replaceSelection("\t", false)
+			return true
+		}
+		return false
+	case events.KeyBackspace, events.KeyDelete:
+		if t.readOnly {
+			return true
+		}
+		rng := t.selection.Range()
+		if rng.Start == rng.End {
+			forward := event.Key == events.KeyDelete
+			next := t.logicalAdjacent(rng.Start, forward)
+			if word {
+				next = t.wordAdjacent(rng.Start, forward)
+			}
+			if forward {
+				rng.End = next
+			} else {
+				rng.Start = next
+			}
+		}
+		if rng.Start != rng.End {
+			before := t.selection
+			model, epoch := t.model, t.mountEpoch
+			t.revealCaret = true
+			_ = model.Apply(TextEdit{Range: rng}, textedit.EditOptions{Source: t.editOwner, Selection: &before})
+			if !t.owner.base().destroyed && !t.suspended && t.model == model && t.mountEpoch == epoch {
+				t.revealCaret = true
+				t.owner.RequestLayout()
+			}
+		}
+		return true
+	case events.KeyArrowLeft, events.KeyArrowRight:
+		right := event.Key == events.KeyArrowRight
+		var pos textedit.Position
+		if !shift && t.selection.Anchor != t.selection.Caret {
+			pos = t.selectionEdge(right, word)
+		} else if word {
+			pos = textedit.Position{Offset: t.wordAdjacent(t.selection.Caret, right), Upstream: false}
+		} else {
+			pos = t.horizontal(right)
+		}
+		t.moveTo(pos, shift)
+		return true
+	case events.KeyArrowUp, events.KeyArrowDown, events.KeyPageUp, events.KeyPageDown:
+		if t.singleLine {
+			return false
+		}
+		t.moveTo(t.vertical(event.Key == events.KeyArrowDown || event.Key == events.KeyPageDown, event.Key == events.KeyPageUp || event.Key == events.KeyPageDown), shift)
+		return true
+	case events.KeyHome, events.KeyEnd:
+		t.moveTo(t.lineEdge(event.Key == events.KeyEnd, command), shift)
+		return true
+	}
+	return false
+}
+
+// These are commands the platform input method did not consume, not guesses
+// about which physical keys an IME should handle. Modifier-only keys preserve
+// composition; an explicit editor command finishes its temporary projection.
+func cancelsTextPreedit(event events.KeyEvent) bool {
+	switch event.Key {
+	case events.KeyEscape, events.KeyArrowLeft, events.KeyArrowRight, events.KeyArrowUp, events.KeyArrowDown,
+		events.KeyHome, events.KeyEnd, events.KeyPageUp, events.KeyPageDown, events.KeyBackspace, events.KeyDelete,
+		events.KeyEnter, events.KeyNumpadEnter, events.KeyTab:
+		return true
+	case events.KeyA, events.KeyX, events.KeyV, events.KeyZ, events.KeyY:
+		return textCommand(event.Modifiers)
+	}
+	return false
+}
+
+func (t *textEditor) undo(redo bool) {
+	model, epoch := t.model, t.mountEpoch
+	if redo && !model.CanRedo() || !redo && !model.CanUndo() {
+		return
+	}
+	t.revealCaret = true
+	var result textedit.HistoryResult
+	if redo {
+		result = model.RedoWithSelection()
+	} else {
+		result = model.UndoWithSelection()
+	}
+	if t.owner.base().destroyed || t.model != model || t.mountEpoch != epoch || !result.Applied || model.Revision() != result.Revision {
+		return
+	}
+	if result.Selection != nil {
+		// Font/width may have changed since this history entry was created.
+		t.setSelectionValue(*result.Selection)
+	} else {
+		t.revealCaret = true
+		t.owner.RequestLayout()
+	}
+}
+
+func (t *textEditor) copySelection(cut bool) {
+	if App == nil || App.Clipboard() == nil {
+		return
+	}
+	rng := t.selection.Range()
+	if rng.Start == rng.End {
+		return
+	}
+	text, err := t.model.Slice(rng)
+	if err != nil {
+		return
+	}
+	if err := App.Clipboard().SetText(text); err != nil {
+		return
+	}
+	if cut && !t.readOnly {
+		t.replaceSelection("", true)
+	}
+}
+
+func (t *textEditor) paste() {
+	if t.readOnly || !IsEnabled(t.owner) || App == nil || App.Clipboard() == nil {
+		return
+	}
+	model, revision, selection, epoch := t.model, t.model.Revision(), t.selection, t.mountEpoch
+	inputRevision := t.inputRevision
+	App.Clipboard().RequestText(func(text string, err error) {
+		if err != nil || text == "" || t.owner.base().destroyed || t.suspended || !IsEnabled(t.owner) || t.readOnly || t.model != model || model.Revision() != revision || t.selection != selection || t.mountEpoch != epoch || t.inputRevision != inputRevision {
+			return
+		}
+		t.replaceSelection(text, true)
+	})
+}
+
+func (t *textEditor) wordAt(offset int) TextRange {
+	index := t.model.LineAt(offset)
+	line, _ := t.model.LineRange(index)
+	rng := t.model.WordAt(offset)
+	if p := t.paragraph(index); p != nil {
+		return TextRange{line.Start + p.editGeometry(t.lineHeight).Snap(rng.Start-line.Start, false), line.Start + p.editGeometry(t.lineHeight).Snap(rng.End-line.Start, true)}
+	}
+	return rng
+}
+
+func (t *textEditor) wordAdjacent(offset int, forward bool) int {
+	if !forward {
+		offset = t.logicalAdjacent(offset, false)
+		return t.wordAt(offset).Start
+	}
+	rng := t.wordAt(offset)
+	if rng.End == offset {
+		return t.logicalAdjacent(offset, true)
+	}
+	// Skip adjacent whitespace, but not LF (paragraph navigation is separate).
+	index := t.model.LineAt(offset)
+	line, _ := t.model.LineRange(index)
+	rest, _ := t.model.Slice(TextRange{rng.End, line.End})
+	end := rng.End + len(rest) - len(strings.TrimLeft(rest, " \t"))
+	if p := t.paragraph(index); p != nil {
+		end = line.Start + p.editGeometry(t.lineHeight).Snap(end-line.Start, true)
+	}
+	return end
+}
+
+// One optional layout per view, separate from document paragraphs and geometry.
+// Text/font/wrap/width changes replace it; color changes reuse its geometry.
+// It is created only when visible and released on configuration change/unmount.
+type textPlaceholderLayout struct {
+	layout      typography.TextLayout
+	format      typography.TextFormat
+	width       float32
+	baseline    float32
+	hasBaseline bool
+}
+
+func (t *textEditor) setPlaceholder(text string) {
+	if t.singleLine {
+		text = textedit.NormalizeSingleLine(text)
+	} else {
+		text = textedit.Normalize(text)
+	}
+	if t.owner.base().destroyed || t.placeholder == text {
+		return
+	}
+	t.placeholder = text
+	t.releasePlaceholder()
+	t.owner.RequestPaint()
+	t.owner.base().requestSemanticUpdate()
+}
+
+func (t *textEditor) releasePlaceholder() {
+	old := t.placeholderLayout
+	t.placeholderLayout = nil
+	if old != nil {
+		old.layout.Destroy()
+	}
+}
+
+func (t *textEditor) showsPlaceholder() bool {
+	return t.placeholder != "" && t.model.Len() == 0 && t.preedit == nil
+}
+
+func (t *textEditor) ensurePlaceholder() *textPlaceholderLayout {
+	if !t.showsPlaceholder() || t.owner.base().destroyed || t.suspended || App == nil || App.Typography() == nil {
+		return nil
+	}
+	format := t.format
+	if c, ok := t.resolvedStyle("placeholder").ForegroundColor(); ok {
+		format.TextColor = c
+	}
+	width := t.layoutWidth
+	if format.WrapMode == WrapNone || width <= 0 {
+		width = textInputMeasureExtent
+	}
+	cached := t.placeholderLayout
+	if cached != nil && (cached.format.Font != format.Font || cached.format.WrapMode != format.WrapMode ||
+		cached.format.TextAlign != format.TextAlign || cached.format.TabWidth != format.TabWidth || cached.width != width) {
+		t.releasePlaceholder()
+		cached = nil
+	}
+	if cached == nil {
+		text, epoch := t.placeholder, t.mountEpoch
+		valid := func() bool {
+			return !t.owner.base().destroyed && !t.suspended && t.mountEpoch == epoch &&
+				t.placeholder == text && t.showsPlaceholder() && t.placeholderLayout == nil &&
+				t.format.Font == format.Font && t.format.WrapMode == format.WrapMode
+		}
+		if !valid() {
+			return nil
+		}
+		l, err := App.Typography().NewTextLayout(text, format, width, textInputMeasureExtent)
+		if err != nil {
+			return nil
+		}
+		if !valid() {
+			l.Destroy()
+			return nil
+		}
+		lines, _ := l.MeasureMetrics()
+		if !valid() {
+			l.Destroy()
+			return nil
+		}
+		cached = &textPlaceholderLayout{layout: l, format: format, width: width}
+		if len(lines) > 0 {
+			cached.baseline, cached.hasBaseline = lines[0].Baseline, true
+		}
+		t.placeholderLayout = cached
+	} else if !colors.Equal(cached.format.TextColor, format.TextColor) {
+		cached.format.TextColor = format.TextColor
+		c := format.TextColor
+		if c == nil {
+			c = typography.DefaultTextColor()
+		}
+		cached.layout.SetTextColor(0, len(t.placeholder), c)
+		// Layout notifications are synchronous and may unmount/change the view.
+		if t.placeholderLayout != cached || t.owner.base().destroyed || t.suspended || !t.showsPlaceholder() {
+			return nil
+		}
+	}
+	return cached
+}
+
+func (t *textEditor) paintPlaceholder(p Painter) {
+	cached := t.ensurePlaceholder()
+	if cached == nil {
+		return
+	}
+	origin := geometry.Point{X: t.padding - t.offset.X, Y: t.padding - t.offset.Y}
+	if cached.hasBaseline {
+		if t.singleLine && t.hasBaseline {
+			origin.Y += t.baseline - cached.baseline
+		} else if paragraph := t.paragraphs[0]; !t.singleLine && paragraph != nil {
+			origin.Y += paragraph.baseline - cached.baseline
+		}
+	}
+	p.DrawTextLayout(origin, cached.layout)
 }
