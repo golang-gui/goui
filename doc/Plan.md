@@ -3,6 +3,41 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## X11 弹窗分数缩放尺寸（2026-10-22）
+
+- [x] X11 Popup 创建和 SetSize 共用向上取整到物理像素的私有转换，保证能容纳
+  请求的 DIP 尺寸；普通 Window、Menu、ScrollView 和公共接口未改动。
+  GUI 仍消费实际 SizeEvent。设计见 [DesignPopupPlacement](DesignPopupPlacement.md)。
+- [x] Ubuntu 22.04.5 / amd64 / Go 1.25.8 / Pango，在已跟踪源码和本次新增文件
+  的临时快照、独立 `:84` 中执行 `GOWORK=off go test -json ./... -count=1`：
+  2416 项通过、10 项既有跳过、零失败。X11 尺寸换算、Popover 和菜单相关
+  定向 race 通过；SourceView `d5a280a` 的双仓工作区包测试 415 项通过。
+- [x] 新增 `tests/window/gui/popup_sizing`，验证创建、放大、缩小、动态标签、
+  短菜单无条、显式限高仅纵条、超宽受限菜单双条与滚轮、恢复和重新打开、
+  正常键盘激活。Xvnc / Xfwm4 合成开启：Software、OpenGL ×
+  1/1.25/1.5/1.75/2 倍共十组通过；OpenGL 使用 Mesa llvmpipe。
+- [x] 同一窗口回归加入未修改的 `1d3aebd`，1.5 倍首次创建实际为
+  `(226.66667,122.666664)`，小于请求 `(227,123.25)`，断言明确失败；修正后
+  实际为 `(227.33333,123.333336)`，无需容差掩盖一物理像素内的真实裁切。
+- [x] SourceView 实际菜单需要 `(227,544)` DIP，旧版 1.5 倍实际宽度
+  `226.66666`，滚动范围为 `(14.33334,8)`；修正后宽度 `227.33334`，范围
+  `(0,0)`。正常 Shift+F10 输入打开的 SourceView 探针在 Software 五种缩放、
+  OpenGL 1.5 倍通过。既有 `localization` 在 Software 1.5 倍下八种语言、
+  动态标签、键盘动作、重挂载及主题切换通过。
+- [x] 重建 SourceView 正式示例，在 Software 1.5 倍下用 XTest 真实鼠标右键
+  打开编辑区菜单，完整条目、底部与圆角均可见，无横纵滚动条；正常关闭菜单
+  和窗口。截图保存在仓库外临时目录，不以单张截图替代上述几何断言。
+- [x] `CGO_ENABLED=0 GOOS=windows GOARCH=amd64` 和
+  `GOOS=darwin GOARCH=arm64` 的 gui/platform 与新增窗口程序构建通过；
+  Windows/macOS 原生窗口及真实系统/混合 DPI 未执行。
+- SourceView `completion -case scroll -auto` 的 Software 1、2 倍通过；1.5 倍
+  仍报既有 `panel width changed after paint`。两仓未修改基线已在前轮确认
+  同样失败；本次取整修复未消除该失败，未放宽断言或修改补全逻辑。
+- 所有全量测试及窗口验证固定到独立 `DISPLAY=:84`。既有平台剪贴板用例的
+  写入只发生在该隔离会话；旧图片测试的产物位于临时快照，不纳入用户未跟踪
+  文件。SourceView 工作区及本地 replace 未修改，临时二进制、日志、截图均在
+  仓库外。验收结束后关闭本次窗口及 X11 会话。
+
 ## 滚动编辑区域外框（2026-10-22）
 
 - [x] ScrollView 使用既有 `frame` part 绘制统一外框，稳定预留所有焦点/禁用

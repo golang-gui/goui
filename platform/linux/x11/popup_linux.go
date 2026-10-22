@@ -2,6 +2,7 @@ package x11
 
 import (
 	"image"
+	"math"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/common"
@@ -24,7 +25,7 @@ func newPopup(owner common.Window, size geometry.Size, onEvent events.EventHandl
 	// Create at the authoritative size so the GL context binds a correctly-sized
 	// drawable (no 1x1-then-resize).
 	scale := currentScale()
-	win, err := newNativeWindow(onEvent, true, physical(size.Width, scale), physical(size.Height, scale), options.Transparent)
+	win, err := newNativeWindow(onEvent, true, popupPhysicalExtent(size.Width, scale), popupPhysicalExtent(size.Height, scale), options.Transparent)
 	if err != nil {
 		return nil, err
 	}
@@ -62,14 +63,15 @@ func (p *Popup) SetSize(width, height float32) {
 		return
 	}
 	scale := currentScale()
-	w := int(width * scale)
-	h := int(height * scale)
-	if w < 1 {
-		w = 1
-	}
-	if h < 1 {
-		h = 1
-	}
+	w := popupPhysicalExtent(width, scale)
+	h := popupPhysicalExtent(height, scale)
 	platform.display.ResizeWindow(p.win.wid, uint(w), uint(h))
 	platform.display.Flush()
+}
+
+// popupPhysicalExtent rounds outward so the native client area can contain
+// the measured logical content. Truncation can spuriously enable both bars
+// in an exact-fit menu. Creation and resizing must use the same conversion.
+func popupPhysicalExtent(logical, scale float32) int {
+	return max(1, int(math.Ceil(float64(logical)*float64(scale))))
 }

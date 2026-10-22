@@ -55,14 +55,25 @@ WorkAreaAt(point geometry.Point) (geometry.Rectangle, error)
 `platform.Popup.SetPosition`、`SetSize` 保持现有语义，不自动翻转、平移或裁剪。
 gui.Window.WorkAreaAt 已作为薄委托公开；Popover 使用所属窗口的桌面能力，UI 可通过 App.FindWindow 取得命令式窗口，不自行实现定位算法。
 
-macOS 与 Windows 的 Popup 在原生尺寸转换处向上对齐到能容纳请求大小的物理像素，
-创建和 SetSize 使用同一转换；本轮只修正 macOS，不顺带改变 X11 实现。
+macOS、Windows 与 X11 的 Popup 在原生尺寸转换处向上对齐到能容纳请求大小的
+物理像素，创建和 SetSize 使用同一转换。X11 使用 Popup 私有的
+`ceil(float64(logical)*float64(scale))` 转换并限制为至少一像素，不修改普通
+Window 使用的 `physical` 换算。这样自然测量为 227 DIP 的菜单在 1.5 倍下
+得到 341 物理像素，而不是被截断为 340 后意外触发横条，再挤出纵条。
 GUI 仍以实际 SizeEvent 为准，不以请求值覆盖
 系统报告。macOS 使用 Popup 自身的 backing scale，将整数像素尺寸转回 AppKit
 point，并正确处理 GOUI_PLAT_SCALE；普通窗口的原生尺寸行为保持不变。
 避免文字排版的小数高度被原生取整压缩后产生没有有效滚动范围的滚动条。
 不通过修改字体、增加任意留白或 ScrollView 容差掩盖尺寸不足。
 参见 Apple 的[backing 坐标与像素对齐说明](https://developer.apple.com/library/archive/documentation/GraphicsAnimation/Conceptual/HighResolutionOSX/APIs/APIs.html)。
+
+X11 依据 [X.Org Xlib 的 XResizeWindow 契约](https://www.x.org/releases/X11R7.5/doc/libX11/libX11.html)：
+width/height 是原生窗口内部的整数尺寸。向上对齐是 GOUI 在逻辑坐标边界保证
+内容容纳的选择，Xlib 不承担 DIP 换算。使用现有 XCreateWindow/XResizeWindow
+绑定和异步 ConfigureNotify，不增加同步、延迟或重试。只有真实工作区限制、
+调用方显式限高或宽标签超限时，Menu 才按既有布局显示所需滚动条。
+`tests/window/gui/popup_sizing` 覆盖创建、增大、缩小、动态标签、限高、工作区
+约束、滚轮、恢复和重开；分数缩放的取整另由 X11 包内纯逻辑回归覆盖。
 
 ### 3.2 坐标和选屏
 
