@@ -17,8 +17,8 @@ import (
 
 // Shared typography and painter doubles.
 
-// setTestApplication replaces the package-global App until test cleanup.
-// Callers must not run in parallel with other fixtures that change App.
+// setTestApplication 临时替换包级 App，并在测试清理时恢复。
+// 调用者不能与其他修改 App 的 fixture 并行执行。
 func setTestApplication(t *testing.T, typo typography.Context) {
 	t.Helper()
 	oldApp := App
@@ -295,8 +295,7 @@ func (p *testTextInputPainter) DrawLine(p0, p1 geometry.Point, strokeWidth float
 	p.lineBrush = brush
 }
 
-// newInputFixture mounts and focuses a single-line editor in a test window,
-// using deterministic typography and unmounting it during test cleanup.
+// newInputFixture 使用固定排版，在替身窗口中挂载并聚焦单行编辑器，测试清理时卸载。
 func newInputFixture(t *testing.T, text string) (*TextInput, *window, *editorTypography) {
 	t.Helper()
 	typo := &editorTypography{}
@@ -378,8 +377,7 @@ func (c *editorClipboard) SetText(s string) error { c.text = s; return nil }
 
 func (c *editorClipboard) RequestText(fn func(string, error)) { c.pending = fn }
 
-// timedEditorFixture combines deterministic typography with the controllable
-// timer queue. Tests advance time explicitly instead of sleeping.
+// timedEditorFixture 组合固定排版和可控计时队列，测试显式推进时间，不使用 sleep。
 func timedEditorFixture(t *testing.T) (*TextView, *ScrollView, *window, *timerTestQueue, *editorTypography) {
 	t.Helper()
 	q := newTimerTestQueue(t)

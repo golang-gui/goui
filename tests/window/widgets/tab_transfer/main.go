@@ -1,80 +1,75 @@
-// Cross-window TabView page transfer checks, without DevServer.
+// TabView 跨窗口页面移交验收，不使用 DevServer。
 //
-// Environment: interactive Linux/X11, Windows or macOS. Record OS, actual backend,
-// WM and scale. Run from the repository root:
+// 环境：Linux/X11、Windows 或 macOS 可交互桌面，记录 OS、实际绘制后端、窗口
+// 管理器及缩放。启动命令在仓库根目录运行：
 //
 //	go run ./tests/window/widgets/tab_transfer
 //
-// Default continuous mode starts with two pages on each side and permits repeated
-// transfers both ways, including a source's last page. The source tab hides while
-// its slot/content remain; target tabs animate aside to form a stable slot rather
-// than a vertical line. Leaving/Esc retracts the slot and restores source. Dropping
-// a last tab on the desktop creates no window; successful transfer leaves the
-// empty source window open. Add tab remains available. Linux must retain both
-// system pointer and independent preview outside the bar; Esc retains ownership.
-// Close all windows to exit; continuous mode does not report automatic PASS.
-// Use -expect accepted for strict checks. -editor, -same-window or nondefault
-// -target also select strict accepted mode implicitly.
-// Strict initial state: two Native windows, source A/B and target T, with retained
-// text in A's input. Both bars explicitly enable Reorderable and Transferable.
-// Strict steps and expected results (-expect accepted):
-//  1. Activate source, optionally edit A, then drag A outside its bar and onto
-//     T's left half. Observe the insertion slot, then release. Source falls back
-//     to B; target selects A. Preview retains hotspot and original text remains;
-//     dragging neither moves the window nor causes an extra click.
-//  2. Verify and exit on the target asserts original page/input identity, text,
-//     ownership, selection and one Unmount/Mount, then destroys source and checks
-//     target survival before exiting.
-//  3. Restart -expect canceled. Leave source until preview appears, keep holding
-//     into target, Esc, release, then Verify on the right. A/B and T stay unchanged
-//     with no extra lifecycle calls. Unchanged state without an actual canceled
-//     gesture does not verify this path.
+// 默认连续体验：左右各两页，可重复双向拖动，包括将源最后一页移入另一窗口。
+// 拖出时源标签隐藏但占位和页面内容保留；目标栏动画推开标签留空槽，不使用竖线。
+// 在目标栏移动指针，空槽应稳定切换；移出或 Esc 取消后空槽收回，源标签恢复。
+// 单标签在桌面释放不会新建窗口；成功转走后源栏为空，源窗口仍在。Add tab 可再次添加。
+// Linux 拖出栏外仍须显示系统光标及独立预览；Esc 取消不改变归属。
+// 默认模式关闭全部窗口退出，不自动判定 PASS。以下严格验收追加 -expect accepted；
+// -editor、-same-window 或非默认 -target 仍隐含严格 accepted 模式。
 //
-// Optional cases, one fresh run per mode; exhaustive combinations are unnecessary:
-//  1. -expect target-destroy: step 1 destroys target during A's Unmount. A returns
-//     to its original selected source slot/text. Verify on the left: one unmount
-//     and remount, one transfer error, no new-window detach request.
-//  2. -expect source-destroy: selection notification destroys source after A
-//     belongs to target. It stays editable; Verify on the right confirms success
-//     was not rolled back and no transfer error occurred.
-//  3. -same-window: transfer between two TabViews in one window; Verify does not
-//     destroy their shared owner.
-//  4. -target empty: an empty target retains a receiving bar row. Drop there:
-//     it contains only original A and selects it. May combine with -same-window.
-//  5. -target overflow: T1..T8. Hold A just left of the right scroll arrow without
-//     moving, wait for autoscroll to T8, and release with the slot after T8.
-//     Verify appends/selects A and retains T1..T8 order. Do not release midway;
-//     hovering must reveal hidden tabs. May combine with -same-window or canceled.
-//     An explicit minimum prevents full-row desired width from enlarging the window.
-//  6. -same-window -target mirror: both bars show one A/B/C TabView, content on
-//     the left only. Drag A down out of the left and onto B's right half in the
-//     right bar, before C (not after the last tab). Both become B/A/C, A selected,
-//     with no input unmount/remount. Verify expects one Moved(0,1), no CloseRequest.
-//     With -expect canceled use Esc: A/B/C unchanged, Moved=0.
-//  7. -chrome integrated: bars inside HeaderBars transfer tabs rather than moving
-//     the window; empty caption space still moves it. Linux needs composition;
-//     at 2x a same-window desktop of at least 2200x900 physical pixels is recommended.
-//  8. -editor uses editor.go's selection/scroll/undo/redo/input-after-source-close
-//     steps. Only accepted/canceled; do not combine with same-window/target options.
-//  9. -target relayout: T1/T2/T3 start at 100 DIP and widen to 140 on native drag
-//     entry. Hold A about 175 DIP from the left edge (old T2 right half, new T2
-//     left half), wait for width/slot updates and release without further motion.
-//     Verify expects T1/A/T2/T3, not stale T1/T2/A/T3. Canceled retains original
-//     order. RELAYOUT must appear before cancellation/drop to cover this case.
-//  10. After entering as in case 9, hold over 35 seconds, then drop or Esc.
-//     No page moves or session timeout while waiting; results match case 9.
-//     Record the hold duration independently; this program does not assert it.
+// 初始：两个 Native 窗口，源有 A/B 两页、目标有 T；A 中输入框为 retained text。
+// 两侧 TabBar 显式开启 Reorderable 和 Transferable。
 //
-// Logical 2x: set GOUI_PLAT_SCALE=2 (PowerShell: $env:GOUI_PLAT_SCALE='2') and
-// restore afterward; mixed DPI is not covered. On macOS activate source through
-// noncontrol space, and target if needed before Verify. Native previews/snapback
-// vary; record actual chrome/backend. Strict Verify prints PASS and exits for
-// valid identity/order/selection/lifecycle, FAIL/nonzero otherwise. Independently
-// inspect preview, slot animation and accidental window movement.
-// Side effects: these windows and in-memory state only, no clipboard/files/settings.
-// Reset: restart. Exit: all windows in continuous mode; strict Verify exits
-// automatically, and direct close is incomplete. New-window detach and declarative
-// subtree transfer are covered by ../tab_detach and ../ui_tab_transfer.
+// 严格模式的主要操作与预期（显式指定 -expect accepted）：
+//  1. 激活左窗，在 A 中输入内容（也可保持默认文本）。拖动 A 标签离开左侧标签栏，
+//     进入右侧标签栏 T 左半边，观察插入标记，再释放。源退避到 B，目标选中 A；
+//     标签预览跟随指针，原输入框文本不变。拖动不应移动窗口或触发额外点击。
+//  2. 点击右侧 Verify and exit。程序断言页面、输入框对象身份、文本、归属、
+//     选中状态、一次 Unmount/Mount；随后销毁源窗口，断言目标页面未被销毁并退出。
+//  3. 重新启动并加 -expect canceled：拖离源栏，确认原生预览出现，再保持左键
+//     拖到目标栏、按 Esc、松开；点击右侧 Verify and exit。
+//     预期源 A/B 与目标 T 均未改变，无额外页面卸载/挂载。不能只点击 Verify，
+//     未变化的状态本身不能证明执行过取消手势。
+//
+// 可选回归（每项重新启动，仅执行该模式，不要求穷举组合）：
+//  1. -expect target-destroy：同主要步骤 1；A 卸载时立即销毁目标窗口。
+//     预期 A 回到源窗口原位置且仍选中，文本不变；点击左侧 Verify and exit，
+//     检查一次卸载后重新挂载、一次转移错误、没有拖出新窗口请求。
+//  2. -expect source-destroy：同主要步骤 1；源选中项通知中立即销毁源窗口。
+//     预期原 A 已归目标，仍可编辑；点击右侧 Verify，检查成功未被撤销、无转移错误。
+//  3. -same-window：单窗口左右两组 TabView，按主要步骤 1、2 从左拖到右。
+//     预期同样转移原页面，Verify 不销毁双方共用的窗口。
+//  4. -target empty：目标栏初始没有标签，但保留一行接收区域；拖入其顶部空栏松开。
+//     预期目标只包含原 A，自动选中。可与 -same-window 组合。
+//  5. -target overflow：目标初始 T1..T8。拖 A 到目标栏右侧滚动箭头左边，保持按住
+//     且不移动鼠标，等待标签自动滚到 T8。空槽位于 T8 后时松开，再 Verify。
+//     预期 T1..T8 顺序不变，A 追加到最后且选中；必须依靠悬停计时滚动到隐藏标签。
+//     此模式默认验收尾部插入，不能在中途松开。可与 -same-window 或 canceled 组合。
+//     用例显式设置窗口最小尺寸，避免从整排标签期望宽度推导而撑宽窗口。
+//  6. -same-window -target mirror：左右标签栏同时展示同一个 TabView 的 A/B/C，
+//     页面内容仅在左侧。把左栏 A 先向下拖出，再放到右栏 B 的右半边（C 之前）。
+//     预期两个栏都变为 B/A/C，A 仍选中，原输入框没有卸载/挂载；右侧 Verify 检查
+//     正好一次 Moved(0,1)、零 CloseRequest。不要直接放到右栏最后。
+//     -expect canceled 时按 Esc 取消，预期两栏保持 A/B/C，Moved 为零。
+//  7. -chrome integrated：标签栏放在 HeaderBar 内，按主要步骤验证。
+//     标签拖动必须启动页面转移而不是移动整个窗口；空白标题区域仍可移动窗口。
+//     Linux 需要合成器；2x 同窗口模式建议桌面至少 2200×900 物理像素。
+//  8. -editor：编辑页状态保留的独立验收，具体步骤见 editor.go；不可与 same-window、
+//     target 等组合，仅支持 accepted/canceled。验证选区、滚动、撤销/重做和源关闭后输入。
+//  9. -target relayout：目标 T1/T2/T3 初始各宽 100 DIP，原生拖动首次进入目标栏时
+//     自动改为 140 DIP。按住 A，将指针停在目标栏左端向右约 175 DIP（初始 T2 右半，
+//     变化后 T2 左半），等待标签变宽和空槽更新后释放，不再移动指针。
+//     Verify 要求 T1/A/T2/T3，而非沿用旧插入位置 T1/T2/A/T3；取消模式仍保持原顺序。
+//     控制台必须先输出 RELAYOUT，不能把未进入目标就取消算作本项通过。
+//  10. 长时间悬停：按可选第 9 项进入目标栏后保持按住超过 35 秒，再验证投递或
+//     Esc 取消。预期等待期间页面不移动、会话不报超时；释放/取消后结果仍同该项。
+//     本例不自动断言持续时长，操作者需独立计时并记录。
+//
+// 可选逻辑 2x：POSIX 使用 GOUI_PLAT_SCALE=2 go run ./tests/window/widgets/tab_transfer；
+// PowerShell 先设 $env:GOUI_PLAT_SCALE='2' 再启动，结束后恢复原值；不代表混合 DPI。
+// 平台差异：macOS 先点击源窗口非控件区激活，必要时先激活目标再点击 Verify；原生
+// 预览与取消动画由系统决定，不要求每个平台都出现回弹动画。记录实际装饰及后端。
+// 严格模式结果：Verify 自动断言对象身份、顺序、选择和生命周期，成功输出 PASS 并退出，
+// 失败输出 FAIL 并以非零状态退出；预览、让位动画、窗口是否误移动由操作者观察。
+// 副作用：只创建/移动/销毁本例窗口，不修改剪贴板、文件或系统设置。
+// 复位：重启。退出：默认模式关闭全部窗口；严格模式 Verify 自动结束，直接关闭视为未验收。
+// 本例不覆盖拖出新窗口或声明式子树移交；对应例程为 ../tab_detach、../ui_tab_transfer。
 package main
 
 import (

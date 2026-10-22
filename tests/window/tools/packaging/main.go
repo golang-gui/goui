@@ -1,50 +1,42 @@
-// Build-resource and application-packaging desktop checks, without DevServer.
-// Environment: Windows x64, macOS arm64 or Linux X11 x64/arm64. Record OS/WM,
-// backend and scale. Build from the repository root:
+// 构建资源与应用打包的真实桌面验收，不依赖 DevServer。
+// 环境：Windows x64、macOS arm64、Linux X11 x64/arm64；记录 OS/WM、后端、缩放。
+// 启动：仓库根目录 go run ./cmd/goui build
+// -config tests/window/tools/packaging/goui.toml -target <OS/ARCH> -o <仓库外二进制绝对路径>。
+// 图标为测试用红／半透明绿矩形，透明上下留白；不是 GOUI 项目 logo。
+// 初始：Native 520×240 DIP，标题“GOUI 打包验证”，文本和关闭按钮。
 //
-//	go run ./cmd/goui build -config tests/window/tools/packaging/goui.toml -target <OS/ARCH> -o <absolute-binary-path>
+// 操作与逐项预期：
 //
-// The test icon has red/translucent green rectangles and transparent top/bottom
-// margins, not the project logo. Initially a Native 520x240 DIP window displays
-// the packaging-test title, text and a close button.
-// Steps and expected results:
+//  1. Windows：构建目标 windows/amd64 的 EXE，Explorer 大／小图标均显示测试资源，
+//     属性→详细信息为版本 0.1.0.1、产品／描述“GOUI 打包验证”。双击后不弹控制台，
+//     原生标题栏及任务栏使用资源图标；首次缓存刷新可能需要新 EXE 文件名。
 //
-//  1. Windows: build windows/amd64. Explorer large/small icons use the test asset;
-//     Properties/Details shows version 0.1.0.1 and the configured product/description.
-//     Double-click opens no console. Caption/taskbar icons use the resource.
-//     A new EXE filename may be needed to bypass the icon cache.
+//  2. macOS：先 build darwin/arm64，再从仓库根目录运行：
 //
-//  2. macOS: build darwin/arm64, then run:
+//     go run ./cmd/goui package -config tests/window/tools/packaging/goui.toml -target darwin/arm64 -format app -binary <二进制绝对路径> -o <仓库外新目录绝对路径>/Packaging.app
 //
-//     go run ./cmd/goui package -config tests/window/tools/packaging/goui.toml -target darwin/arm64 -format app -binary <absolute-binary-path> -o <new-absolute-dir>/Packaging.app
+//     plutil -lint <app>/Contents/Info.plist 成功；
+//     Finder 和 Dock 显示测试图标，open <app> 能启动且无 Bundle ID 不一致错误。
+//     裸 Mach-O 不承诺 Dock 图标；本配置未指定签名身份，不检验签名、公证或 Gatekeeper 分发。
 //
-//     plutil -lint <app>/Contents/Info.plist succeeds, Finder/Dock show the icon,
-//     and open <app> launches without a Bundle ID mismatch. Bare Mach-O promises
-//     no Dock icon. This sample has no signing identity; it does not verify
-//     signing, notarization or Gatekeeper distribution.
+//  3. Linux：先 build 对应架构，再运行（以下以 amd64 为例）：
 //
-//  3. Linux: build for the chosen architecture, then run (amd64 example):
+//     go run ./cmd/goui package -config tests/window/tools/packaging/goui.toml -target linux/amd64 -format dir -binary <二进制绝对路径> -o <仓库外新目录绝对路径>
 //
-//     go run ./cmd/goui package -config tests/window/tools/packaging/goui.toml -target linux/amd64 -format dir -binary <absolute-binary-path> -o <new-absolute-dir>
+//     desktop-file-validate <目录>/usr/share/applications/org.golang-gui.PackagingTest.desktop
+//     成功；直接运行 usr/bin/goui-packaging-test 应正常。xprop WM_CLASS 后点击窗口，
+//     res_name 为 goui-packaging-test、res_class 为 org.golang-gui.PackagingTest。
+//     需要应用启动器验证时，在明确同意安装后手工把目录内容安装到对应 usr 路径，
+//     刷新图标缓存，启动器名称／图标正确；未安装的目录不自动注册。
+//     X11 运行时没有主动设置 _NET_WM_ICON，不承诺所有 WM 的标题栏图标一致。
 //
-//     desktop-file-validate <dir>/usr/share/applications/org.golang-gui.PackagingTest.desktop
-//     succeeds; usr/bin/goui-packaging-test runs. xprop WM_CLASS reports
-//     res_name=goui-packaging-test and res_class=org.golang-gui.PackagingTest.
-//     Launcher checks require separate, explicitly approved manual installation
-//     to the matching usr paths and an icon-cache refresh. An unpacked directory
-//     does not register itself. X11 does not set _NET_WM_ICON here, so title-bar
-//     icons may differ between WMs.
+//  4. 缩放窗口、点击关闭按钮，窗口正常绘制／响应并退出；不以启动成功代替图标验收。
 //
-//  4. Resize and close: normal painting, input and exit. Startup alone does not
-//     verify icon integration.
-//
-// Platform differences: native decorations, icon caches and desktop associations
-// vary; no ELF file icon is promised. Side effects: build/generate creates Windows
-// syso/digests beside main and defaults to dist; put -o outputs outside the repo.
-// package does not install, elevate or build; macOS signing runs only when
-// configured. Reset: restart;
-// if manually installed on Linux, record exact paths and remove only those files.
-// Exit: close button or native close. -auto-close=2s probes startup only.
+// 平台差异：装饰、图标缓存、桌面关联规则由系统决定；Linux 不承诺 ELF 文件图标。
+// 副作用：build/generate 在 main 包旁生成 Windows syso 及摘要，默认输出 dist；
+// 请用仓库外 -o 放产物。package 不安装、不提权、不自动构建；macOS 显式配置签名身份时会签名。
+// 复位：重启应用；如手工安装过 Linux 文件，记录精确路径并移除这次安装的文件。
+// 退出：关闭按钮或系统关闭窗口；-auto-close=2s 可做启动探针，但不代替桌面验收。
 package main
 
 import (

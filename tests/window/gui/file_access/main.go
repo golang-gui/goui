@@ -1,38 +1,31 @@
-// File-access credential window checks using public GUI APIs, without DevServer.
+// 文件访问凭据验收，使用公开 GUI 接口，不依赖 DevServer。
 //
-// Environment: Linux X11 with zenity/kdialog/yad, or a Windows/macOS desktop.
-// Run: go run ./tests/window/gui/file_access. For macOS sandbox checks, use
-// cmd/goui to build, package and sign an .app, then launch through Finder/open;
-// go run does not exercise the application sandbox.
-// Initially no resources are open. Logs show HOME, UserConfigDir, UserCacheDir,
-// actual backend and scale. Prepare a separate temporary directory outside the
-// app with a.txt and b.txt containing arbitrary data; keep at least one entry.
-// Use disposable files and save targets, avoiding existing application data.
-// Steps and expected results:
-//  1. Cancel Open file: CANCEL without error. Select a.txt: PASS selected/read/credential,
-//     readable content, saved credential and a filename-only Name.
-//  2. Open multiple selects two readable files and shows count=2. Open folder
-//     reports entries and a credential for the directory itself.
-//  3. Save file to a nonexistent target: selection alone creates nothing; the
-//     program then writes fixed content, saves a credential and shows PASS save.
-//     The file remains for inspection.
-//  4. Close access: LocalPath/Credential return os.ErrClosed, repeated Close
-//     succeeds and Name remains. Restore saved reacquires access and shows
-//     PASS restored/read.
-//  5. Restart the same program (same signed .app on macOS), Restore saved and
-//     read the external file/directory again, refreshing and saving credentials.
-//     Exit, remove that disposable resource, restart and restore: EXPECTED restore
-//     failure, without a picker or privilege elevation.
-//  6. Invalid credential rejects corrupt input with PASS invalid credential.
-//     Reset credential removes only this example's credentials and log.
+// 环境：Linux X11（zenity/kdialog/yad 至少一种）、Windows、macOS 桌面。
+// 启动：go run ./tests/window/gui/file_access；macOS 沙箱必须用 cmd/goui
+// 构建、打包、签名 .app，再通过 Finder/open 启动，不能用 go run 代替。
+// 初始：无已打开资源；打印 HOME、UserConfigDir、UserCacheDir、实际后端和缩放。
+// 准备：在应用目录以外的独立临时目录创建 a.txt、b.txt（任意内容）；目录中
+// 至少有一项。仅使用测试文件，保存时不要覆盖业务文件。
+// 操作与预期：
+//  1. Open file 后取消：显示 CANCEL，无错误。再次打开并选择 a.txt：显示
+//     PASS selected/read/credential，能够读内容并保存凭据；Name 是文件名。
+//  2. Open multiple 选择两个文件：显示 count=2，两个文件均可读。Open folder
+//     选择准备目录：显示 entries 数量，凭据关联目录而不是目录中的某个文件。
+//  3. Save file 选择尚不存在的目标：程序断言选择没有偷偷创建文件，再写入
+//     固定测试内容、保存凭据；显示 PASS save。目标文件保留供人工检查。
+//  4. Close access：LocalPath/Credential 返回 os.ErrClosed、再次 Close 成功，
+//     Name 保留。Restore saved 可重新获得资源，显示 PASS restored/read。
+//  5. 退出并再次启动同一程序（macOS 同一签名 .app），点击 Restore saved：
+//     仍能读外部文件/目录，刷新并写回凭据。随后退出，手动移除该测试资源，
+//     重启恢复必须显示 EXPECTED restore failure，不能弹选择器或提权。
+//  6. Invalid credential：损坏输入被拒绝，显示 PASS invalid credential。
+//     Reset credential 删除本例程自己的凭据和日志，其他文件不受影响。
 //
-// Platform differences: Windows/Linux path credentials do not track renames;
-// native macOS bookmarks may track moves. In a macOS sandbox, internal config/cache
-// belong in the app container; external access follows picker authorization.
-// Side effects: the chosen Save target and access.json/results.log under
-// UserConfigDir/org.golang-gui.FileAccessTest. Open accesses are closed on exit;
-// no system settings are changed. Reset: Reset credential, then restart.
-// Exit: Exit or close the main window.
+// 平台差异：Win/Linux 路径凭据不跟踪重命名；macOS 原生书签可能跟踪移动。
+// macOS 沙箱内部配置/缓存应位于应用容器；读写外部文件以选择器授权为准。
+// 副作用：仅用户选择的 Save 目标以及 UserConfigDir/org.golang-gui.FileAccessTest
+// 中的 access.json、results.log；打开资源后退出会显式 Close。不修改系统设置。
+// 复位：Reset credential，然后重新启动。退出：Exit 或关闭主窗口。
 package main
 
 import (

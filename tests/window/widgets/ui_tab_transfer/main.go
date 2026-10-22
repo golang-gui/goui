@@ -1,68 +1,64 @@
-// Declarative TabView cross-window subtree transfer checks, without DevServer.
+// UI TabView 跨窗口子树移交验收，不使用 DevServer。
 //
-// Environment: interactive Linux/X11, Windows or macOS. Record OS, WM, actual
-// backend and scale. Run from the repository root:
+// 环境：Linux/X11、Windows 或 macOS 可交互桌面，记录 OS、窗口管理器、实际
+// 绘制后端与缩放。启动命令在仓库根目录运行：
 //
 //	go run ./tests/window/widgets/ui_tab_transfer
 //
-// Initially source has A/B and target C; inputs contain retained A/B/C. Default
-// Native chrome, -expect transferred. Run each mode independently from initial state.
-// Steps and expected results:
-//  1. Activate source and replace A's selected input text with edited A.
-//  2. Drag Document A down out of its bar, then into target's bar and release.
-//     Source keeps B; target displays original A with edited A, and TRANSFER
-//     logs once. No replacement input is constructed to copy its text.
-//  3. Rebuild on target retains A text/editability; edit to after move.
-//  4. Verify and close source checks page/input/State identity, View Mount=1 and
-//     Unmount=0, and text signal connections. Target survives source close; after
-//     that UI rebuild completes, PASS prints and the program exits.
-//  5. Restart -expect canceled without step 1: retain initial retained A. Drag
-//     outside the source until preview appears, keep holding, Esc, release and
-//     Verify either window. Zero transfers or extra GUI/View unmounts; source
-//     retains A. Do not perform steps 3/4. Unchanged state without the actual
-//     canceled gesture does not verify cancellation.
-//  6. Restart -expect detached with only source. Edit as step 1 and drop A on
-//     blank desktop outside every test window; do not move source or change scale
-//     afterward. A genuinely empty target uses source content size plus this
-//     example's overhead; position/transfer precede show. Follow steps 3/4.
-//     No visible repositioning from native defaults or transient source-tab
-//     restoration after release. Verify allows 1 DIP integral rounding for
-//     position/content sizes, not cross-screen pixel alignment.
+// 初始：source 有 A/B 两页，target 有 C；输入框初值为 retained A/B/C。
+// 默认 Native 装饰、-expect transferred；每个模式独立启动，不串联修改后的状态。
 //
-// Optional cases, one independent run per mode:
-//  1. -expect prepare-failure or prepare-cancel: leave retained A unchanged,
-//     drag it to desktop. Target stays hidden. failure uses an empty page with
-//     the same ID to reject transfer; cancel cancels explicitly. Requests are
-//     not reusable and source retains A/B. Source Verify checks no GUI/View
-//     unmount. Do not move source during preparation.
-//  2. -expect target-destroy: after steps 1/2, A's GUI Unmount destroys target.
-//     Source restores A/B with A selected. Rebuild there, edit the original input
-//     to after move, then Verify. Zero OnTransfer/DetachRequest, original State
-//     and connections retained, GUI Mount/Unmount=2/1 and View Unmount=0. Removed
-//     target declarations do not resurrect it on rebuild.
-//  3. -expect source-destroy: A's GUI Mount in target destroys source. Follow
-//     steps 3/4 on target: one OnTransfer, original State/input remain editable
-//     through rebuilds, and source declarations disappear. Source View destruction
-//     must not clear A's reconciliation records during handoff.
-//  4. -same-window: source/target share one Root. Follow steps 1-4, dropping A on
-//     C's right half for C/A order. Verify and remove source removes its container,
-//     not the window, and target retains original page/State. -target-first puts
-//     target on the left to check target-first updates. Only transferred/canceled
-//     apply; canceled follows step 5 without editing retained A. With Integrated,
-//     both bars are HeaderBar children; tab dragging must not move the window.
-//     At 2x, at least 2400x900 physical pixels is recommended; this is not mixed DPI.
+// 主要操作与预期：
+//  1. 激活 source，选中 A 输入框并输入 edited A（全选后替换）。
+//  2. 抓住 Document A 标签中部，先向下拖出栏，再拖到 target 标签栏松开。
+//     预期 source 仅剩 B；target 显示 A，输入文本仍为 edited A。
+//     控制台 TRANSFER 仅一次。不是创建另一个输入框并拷贝文本。
+//  3. 在 target 点击 Rebuild。预期 A 文本不变，仍能编辑；将内容改成 after move。
+//  4. 在 target 点击 Verify and close source。检查页面/输入框/State 身份、
+//     View Mount=1/Unmount=0、文本通知连接；关闭源窗口后目标仍正常。
+//     关闭源的 UI 重建完成后输出 PASS，程序自动退出。
+//  5. 以 -expect canceled 重新启动：不要执行步骤 1，不修改初始 retained A。
+//     拖离源栏，确认原生预览出现后保持按下、按 Esc、再松开，点击任一窗口 Verify。
+//     预期零次转移、零次额外 GUI/View 卸载，源仍持有 A；不要只点击 Verify，
+//     状态未变化不能证明执行过取消手势。此模式不执行步骤 3、4 的编辑流程。
+//  6. 以 -expect detached 重新启动：初始只有 source。按步骤 1 编辑，再把 A
+//     拖到所有测试窗口外的桌面空白处；松开后不要再移动源窗口或调整缩放。
+//     声明真正的空目标，沿用内容区大小加本例窗口开销，定位和移交后才显示；执行步骤 3、4。
+//     预期不从默认位置可见移动，源标签不在松手后先回原位再消失。
+//     Verify 以 1 DIP 整数舍入容差检查请求位置、源/目标内容区大小；不承诺跨屏像素对齐。
 //
-// -chrome integrated also checks caption/tab drag separation. Logical 2x:
-// set GOUI_PLAT_SCALE=2 (PowerShell: $env:GOUI_PLAT_SCALE='2') and restore afterward.
-// Platform differences: activate macOS first; detachable sessions suppress failed
-// snapback while Esc restores source. Windows uses an ordinary pointer in valid
-// desktop detach space and native rejection feedback over rejecting app targets.
-// Linux Integrated needs composition; record fallback. Select all uses Control+A,
-// Command+A on macOS. Verify asserts identities, connections, lifecycle and rebuild
-// results: PASS on success, nonzero for errors/incomplete actions. Independently
-// inspect previews, real typing and release position.
-// Side effects: only test windows; no settings/clipboard/files. Reset: restart.
-// Exit: Verify exits automatically; closing without verification returns failure.
+// 可选回归（每项重新启动，仅执行该模式）：
+//  1. -expect prepare-failure / -expect prepare-cancel：不要执行主要步骤 1，
+//     保持初始 retained A，拖 A 到桌面。
+//     准备窗口始终不可见；failure 使用同 ID 的空页面触发 UI 移交拒绝，
+//     cancel 主动取消请求。两者均检查请求不可复用，源仍有 A/B。
+//     点击源 Verify，断言原页面从未发生 GUI 或 View 卸载。不要在准备中移动源窗口。
+//  2. -expect target-destroy：按主要步骤 1、2 操作。A 的 GUI Unmount 回调立即销毁目标，
+//     源应恢复 A/B、A 仍选中。在源点击 Rebuild，将原输入框改成 after move，点击 Verify。
+//     预期零次 OnTransfer/DetachRequest；原 State 和连接保留，GUI Mount/Unmount=2/1，
+//     View Unmount=0；目标声明已移除，不会在重建时复活。
+//  3. -expect source-destroy：按主要步骤 1、2 操作。A 在目标的 GUI Mount 回调立即销毁源。
+//     在目标执行主要步骤 3、4，预期一次 OnTransfer，原 State/输入框仍可重建和编辑，
+//     源声明正常移除；源 View 的销毁不能清理正在移交的 A 的协调记录。
+//  4. -same-window：source/target 在同一个 Root 内，按主要步骤 1–4 验证，但将 A
+//     放在 C 右半侧，预期目标顺序 C/A；验证按钮为 Verify and remove source，
+//     移除源容器而非关闭窗口，目标仍保留原页面和 State。
+//     可加 -target-first 将目标放左侧，验证目标先于源重建的情况；只支持 transferred
+//     和 canceled。取消时按主要步骤 5 操作，同样不能先修改 retained A。
+//     Integrated 时两侧 TabBar 都是 HeaderBar 的 child，标签拖动不应移动窗口；
+//     2x 同窗口模式建议桌面至少 2400×900 物理像素，不代表真实跨屏混合 DPI。
+//
+// 可加 -chrome integrated 检查标签拖动与 HeaderBar 拖窗不会混淆。
+// 可选逻辑 2x：POSIX 使用 GOUI_PLAT_SCALE=2 go run ./tests/window/widgets/ui_tab_transfer；
+// PowerShell 先设 $env:GOUI_PLAT_SCALE='2' 再启动，结束后恢复原值；不代表混合 DPI。
+// 平台差异：macOS 先激活窗口再操作，支持拖出时禁用失败回弹动画；Esc 仍恢复源标签。
+// Windows 在可拖出桌面区域使用普通指针，本应用已注册目标拒绝时仍显示原生拒绝反馈。
+// Linux Integrated
+// 需要合成器，应记录是否回退为 Native。全选用 Ctrl+A，macOS 用 Cmd+A。
+// 结果：Verify 自动断言页面/输入框/State 身份、连接、生命周期和重建结果，成功输出
+// PASS；错误日志或未完成以非零状态退出。预览、输入体验和真实释放点需独立观察。
+// 副作用：仅创建、移动、关闭测试窗口，不改设置、剪贴板或文件。
+// 复位：重新启动。退出：Verify 自动退出；关闭窗口不算验收，返回失败状态。
 package main
 
 import (
@@ -251,7 +247,7 @@ func main() {
 			bar := app.FindWidget("source", "tab-bar")
 			requestedPosition = request.Position.Add(bar.Snapshot().Bounds.Pos.Add(request.Hotspot).Scale(-1))
 			*handled = true
-			models["target"] = []string{} // The target is genuinely empty; no placeholder page is created before transfer.
+			models["target"] = []string{} // 真正的空目标，原页面移交前不创建占位页面。
 			if *expect == "prepare-failure" {
 				models["target"] = []string{"A"} // conflicting page ID, no second editor
 			}

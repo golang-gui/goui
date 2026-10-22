@@ -1,36 +1,26 @@
-// Multilingual resources, imperative translation and declarative reconciliation
-// window checks, without DevServer.
-// Environment: Linux X11/Windows/macOS desktop. Record OS/WM, actual backend,
-// fonts and 1x/2x. Run: go run ./tests/window/ui/mlang
-// -auto checks all eight languages sequentially and closes. Use
-// GOUI_PLAT_PAINTER=software/opengl (also direct2d on Windows), GOUI_PLAT_SCALE=2.
-// Initially an English Integrated window has eight language buttons, SVG/text
-// from one resource package, declarative/imperative greetings, editable input,
-// mixed-script samples and zero saves.
-// Steps and expected results:
-//  1. Choose all eight languages: title, both greetings and Save update without
-//     manual Rebuild. Choosing the active language adds no Build. Chinese,
-//     Japanese, Korean, Russian and Arabic have no missing-glyph boxes.
-//  2. Edit/select text, then change language: content, selection and identity
-//     remain. Button clicks take normal focus; translation updates do not
-//     additionally return focus to the editor.
-//  3. Right-click or Shift+F10 in the input: seven commands use the current
-//     language, and Copy/Select All work. Cycle updates an open menu once per
-//     second, resizing it and preserving selection; click again to stop. Cycling
-//     itself accesses no clipboard. Package tests cover Copy after translation.
-//  4. Save increments its count, which survives language/Dark changes. SVG
-//     foreground follows the theme. Long Russian/French and narrow sizes reflow.
-//     Check prints LANGUAGE PASS and current labels.
-//  5. -auto checks original widget identity, text/selection, both translation
-//     paths, SVG Source identity and nonempty 1x/2x offscreen text per language.
-//     Its setters prepare data; they do not verify keyboard input.
+// 多语言资源、命令式翻译与声明式自动协调验收；不依赖 DevServer。
+// 环境：Linux X11/Windows/macOS 桌面，记录 OS/WM、实际后端、1x/2x 与字体。
+// 启动：go run ./tests/window/ui/mlang；-auto 顺序检查八语言后关闭退出。
+// GOUI_PLAT_PAINTER=software/opengl（Windows 另可 direct2d），GOUI_PLAT_SCALE=2。
+// 初始：英文 Integrated 窗口，八个语言按钮、同一 resource 包的 SVG/文本、
+// 声明式/命令式问候、可编辑输入框和多文字系统样例，保存次数为零。
+// 操作与预期：
+//  1. 依次点击八种语言：标题、两处问候和保存按钮同步切换，无需手动 Rebuild；
+//     再点同语言不增加 Build 计数。中/日/韩/俄/阿拉伯文不应有缺字方框。
+//  2. 编辑输入框并选择文本，再切换：内容、选区及 Widget 身份保留；按钮
+//     正常取得点击焦点，翻译更新本身不应额外抢回编辑焦点。
+//  3. 输入框右键或 Shift+F10：七个命令按当前语言显示，复制、全选仍有效。
+//     点击 Cycle 后展开菜单，观察每秒实时翻译、菜单尺寸调整与选区保留；
+//     再点 Cycle 停止。循环不读写剪贴板，包内另有翻译后复制命令断言。
+//  4. 保存计数递增；切换语言/Dark 后计数不丢失，SVG 前景跟随主题，长
+//     俄文/法文和缩窄窗口正常重排。Check 输出 LANGUAGE PASS 与当前文案。
+//  5. -auto 逐语言检查原 Widget、编辑内容/选区、两种翻译方式、SVG Source
+//     身份及 1x/2x 离屏文字非空。自动编辑内容由 setter 准备，不冒充键盘验收。
 //
-// Platform differences: native controls use the OS language; custom control
-// semantics follow mlang. Arabic tests shaping, not RTL widget order/window
-// mirroring. Fonts come from the system. Side effects: windows/logs; explicit
-// Copy changes the clipboard, with no automatic file/clipboard access.
-// Reset: restart. Exit: Close/native close; automatic completion prints
-// LANGUAGE EXIT PASS.
+// 差异：原生 OS 控制按钮遵循 OS 语言；自绘控制语义文本随 mlang 更新。
+// 阿拉伯文验证字形排版，不承诺 RTL 控件顺序/整窗镜像。字体由系统提供。
+// 副作用：仅窗口/日志；手动复制会写剪贴板，不自动读写文件/剪贴板。
+// 复位：重启。退出：Close/原生关闭；自动完成输出 LANGUAGE EXIT PASS。
 package main
 
 import (

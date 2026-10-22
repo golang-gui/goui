@@ -1,60 +1,54 @@
-// Detach a TabView page into a new window, without DevServer.
+// TabView 拖出创建新窗口验收，不使用 DevServer。
 //
-// Environment: interactive Linux/X11, Windows or macOS. Record OS, WM, actual
-// backend and scale. Run from the repository root:
+// 环境：Linux/X11、Windows、macOS 可交互桌面；记录 OS、窗口管理器、实际后端
+// 和缩放。启动命令在仓库根目录运行：
 //
 //	go run ./tests/window/widgets/tab_detach
 //
-// Initially one source window has A/B; A's input contains retained text.
-// Default Native chrome and continuous mode; -chrome integrated checks HeaderBar.
-// In continuous mode detach the first tab, then drop the source's last tab on the
-// desktop: it returns without creating a window or exiting. That last tab can
-// still transfer into an existing window; an empty source window stays open.
-// The dragging source tab hides but retains its slot and visible page content;
-// target tabs animate around a slot, without a vertical insertion line. Add tab
-// allows further detachments, including from new windows. Native preview must
-// not replace the pointer; Esc retains the original page. Close all windows to exit.
-// For strict checks below use -expect detached and verify after one transfer.
-// Steps and expected results:
-//  1. Activate the source and drag Document A's middle to blank desktop outside
-//     every test window. Release: A enters a new window, source retains B and
-//     original text remains. Target size is source content plus this example's
-//     layout overhead; position/transfer precede show. No visible default-position
-//     move or transient source-tab restoration is allowed. Initial positioning
-//     subtracts known bar origin/hotspot; arbitrary layouts and cross-screen DPI
-//     pixel alignment are outside this check.
-//  2. Verify and exit checks original page/input identity, mount counts, text,
-//     selection and position, then destroys the source and checks target survival.
-//     Success prints PASS and exits.
-//  3. Restart -expect canceled. Leave the bar until native preview appears,
-//     keep the left button held, Esc, release, then Verify. No new-window request;
-//     A/B remain, Mount=1/Unmount=0. Verify without a real canceled gesture does
-//     not exercise cancellation.
-//  4. Restart -expect prepare-failure and repeat step 1. Simulated preparation
-//     failure closes the still-hidden empty target before it receives a page;
-//     source/mount state remains unchanged. This does not inject native creation failure.
+// 初始：一个源窗口，A/B 两页；A 的输入框为 retained text。窗口只由本程序创建。
+// 默认 Native 装饰、连续体验模式；可加 -chrome integrated 验证 HeaderBar 集成。
+// 默认模式操作：拖出第一张标签后，将源窗口最后一张标签拖到桌面，预期释放后恢复，
+// 无新窗口、无进程退出；拖入已有新窗口的标签栏则允许转移，源栏变空但窗口不自动关闭。
+// 拖动期间源标签隐藏并留空槽，页面内容保持显示；目标栏标签动画让位，不显示竖线。
+// 点击 Add tab 后可继续拖出；新窗口也支持相同操作。
+// 拖拽预览不能替代鼠标光标；Esc 取消应保留原页面。关闭全部窗口正常退出。
+// 以下严格验收以 -expect detached 启动，不要连续进行第二次移交后再 Verify。
 //
-// Optional rejection cases, each in a fresh run:
-//  1. -expect rejected adds REJECT TARGET. Drop A there, then Verify: negotiation
-//     refuses Drop, no detach request, unchanged source identity/mount counts.
-//  2. -reject-target implies strict detached mode. Enter REJECT TARGET, keep
-//     holding, leave all test windows and release on desktop, then Verify:
-//     detachment succeeds. Both cases assert an actual rejected-target visit.
+// 主要操作与预期：
+//  1. 激活源窗口，抓住 Document A 标签中部，拖到所有测试窗口外的桌面空白处松开。
+//     默认模式：出现新窗口，A 在新窗口中，源仅剩 B；原文本保留。
+//     新窗口按源内容区尺寸加本例布局开销创建，定位和移交后再显示；
+//     不应先显示在系统默认位置再移动，也不应先恢复源标签再出现新窗口。
+//     初次位置扣除已知标签栏原点和抓取偏移，不承诺不同布局/跨屏 DPI 精确对齐。
+//  2. 点击任一窗口的 Verify and exit。程序检查原页面/输入框身份、挂载次数、
+//     文本、选择和定位，再销毁源窗口，确认目标内容仍然存活。输出 PASS 后退出。
+//  3. 以 -expect canceled 重新启动：先拖出源栏，观察到原生预览后保持左键按下，
+//     按 Esc 再松开，然后 Verify。预期不产生新窗口请求，源仍为 A/B，
+//     Mount=1、Unmount=0。不要只点击 Verify，静态断言不代替实际取消操作。
+//  4. 以 -expect prepare-failure 重新启动，按步骤 1 拖出。
+//     预期目标已创建但尚未显示时模拟准备失败，未接收页面的空目标关闭；
+//     Verify 检查源不变且没有页面卸载。这不是操作系统创建窗口失败的注入。
 //
-// Logical 2x: set GOUI_PLAT_SCALE=2 (PowerShell: $env:GOUI_PLAT_SCALE='2') before
-// running and restore afterward; this does not verify mixed DPI. Activate AppKit
-// windows first. Detachable sessions suppress failed-drop snapback; Esc still
-// restores source. Windows uses an ordinary pointer outside windows but native
-// accepted/rejected feedback over registered targets. Linux Integrated needs a
-// compositor; record fallback. Do not move source during preparation: this makes
-// the request stale. Native positioning/content-size tolerance is 1 DIP for
-// integral rounding; the system may constrain requests.
-// Strict Verify checks objects, ownership, text, lifecycle and position: PASS on
-// success, FAIL/nonzero on failure or incomplete action. Inspect preview/release
-// position independently. Side effects: only this program's windows, no settings
-// or clipboard. Reset: restart. Exit: all windows in continuous mode, Verify in
-// strict mode; direct close there is not verification. This covers imperative
-// preparation/transfer; see ../ui_tab_transfer for declarative subtrees.
+// 可选拒绝回归（每项重新启动）：
+//  1. -expect rejected：额外出现 REJECT TARGET，拖 A 到该窗口中释放再 Verify。
+//     目标在协商阶段拒绝（不接收 Drop）；无新窗口请求，源身份和挂载次数不变。
+//  2. -reject-target：仍使用默认 detached 预期。先将 A 拖入 REJECT TARGET，
+//     保持按住，再移到全部测试窗口外的桌面释放并 Verify；须正常创建窗口。
+//     这两项都会断言实际进入了拒绝目标，不能不拖动就点击 Verify 蒙混通过。
+//
+// 可选逻辑 2x：POSIX 使用 GOUI_PLAT_SCALE=2 go run ./tests/window/widgets/tab_detach；
+// PowerShell 先设 $env:GOUI_PLAT_SCALE='2' 再启动，结束后恢复原值；不代表混合 DPI。
+// 平台差异：macOS 先激活窗口再操作；允许拖出建窗的会话不播放失败回弹动画，
+// Esc 仍恢复源标签。Windows 在窗口外应显示普通光标，不显示不可放置标记；
+// 原生目标接受或本应用目标拒绝时仍使用原生反馈。
+// Linux Integrated 需要合成器，应记录实际装饰是否回退为 Native。
+// 不要在准备定位时移动源窗口；用例将其视为失效并报错。系统可能限制位置，
+// 用例以 1 DIP 原生整数舍入容差检查请求位置和内容区尺寸。
+// 严格模式结果：Verify 自动检查原对象、归属、文本、挂载次数和定位；成功 PASS、失败 FAIL，
+// 失败或未完成返回非零状态。预览外观和实际释放点由操作者独立观察核对。
+// 副作用：只创建、移动、销毁自身窗口，不改系统设置或剪贴板。
+// 复位：重启程序。退出：默认模式关闭全部窗口；严格模式 Verify 自动退出，直接关闭算未验收。
+// 本例只覆盖命令式窗口准备与移交；声明式子树协调另见 ../ui_tab_transfer。
 package main
 
 import (
@@ -72,9 +66,8 @@ import (
 	"github.com/golang-gui/goui/widgets"
 )
 
-// Record fixed document-window overhead during its first normal layout.
-// Detach reuses content size plus this example's caption/buttons/margins,
-// without measuring a hidden target.
+// 同一种文档窗口结构在首次正常布局时记录自身的固定开销。
+// 拖出只沿用内容区大小，加上本例标题栏/按钮/留白；不测量隐藏目标。
 type frameProbe struct {
 	gui.WidgetBase
 	view                  *widgets.TabView
@@ -86,10 +79,9 @@ func (p *frameProbe) Arrange(rect geometry.Rectangle) {
 	p.WidgetBase.Arrange(rect)
 	if !p.sized && p.view.Rect().Width > 0 && p.view.Rect().Height > 0 {
 		viewport := p.view.Rect().Size
-		// Content minimums may enlarge the first allocation, so read existing DIP
-		// bounds rather than treating requested size as actual. max retains native
-		// border overhead in custom chrome without counting enlargement as negative
-		// overhead or observing/laying out a hidden target.
+		// 正常首轮布局可能被内容最小尺寸放大，不能把请求尺寸当作实际尺寸。
+		// 只读源窗口已有的 DIP 边界；max 保留自绘模式的原生边框开销，
+		// 不把最小尺寸放大误记成负开销，也不观察/布局隐藏目标。
 		bounds := p.Window().Snapshot().Bounds.Size
 		p.overhead = geometry.Size{Width: max(bounds.Width, p.initialSize.Width) - viewport.Width, Height: max(bounds.Height, p.initialSize.Height) - viewport.Height}
 		p.sized = true
@@ -252,8 +244,7 @@ func run() error {
 		contentSize = request.ContentSize
 		targetOptions := *options
 		targetOptions.Size = contentSize.Add(content.overhead)
-		// Source and target use equal bar margins; use the known bar origin for
-		// initial target positioning.
+		// 本例目标标签栏与源使用相同留白，采用已知栏原点初次定位。
 		requestedPosition = request.Position.Add(sb.Snapshot().Bounds.Pos.Add(request.Hotspot).Scale(-1))
 		sourceOrigin, err := source.Position(nil)
 		if err != nil {
@@ -304,7 +295,7 @@ func run() error {
 		prepare()
 		if target != nil {
 			if err := target.Show(); err != nil {
-				// Preserve a target that has received the original page even if Show fails.
+				// 保留已接收原页面的目标，不因显示错误销毁编辑内容。
 				fail(err)
 			}
 		}

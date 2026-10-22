@@ -1,32 +1,26 @@
-// macOS initial ordinary-window positioning checks, without DevServer.
+// macOS 普通窗口默认位置验收，不使用 DevServer。
 //
-// Environment: interactive macOS arm64 desktop. Create/run the platform from main;
-// record OS, backend and scale. Run:
+// 环境：macOS arm64 可交互桌面，从 main 创建平台并运行；记录系统版本、后端和缩放。
+// 启动：go run ./tests/window/platform/window_position [-chrome=native|integrated|none] [-auto]
+// 可设置 GOUI_PLAT_PAINTER=software/opengl、GOUI_PLAT_SCALE=1/2。
+// 初始：请求 480×320 DIP 的普通窗口，无 SetPosition 请求；应在 AppKit 的原生居中
+// 位置出现，而不是桌面左下角。Native 有原生标题栏，Integrated/None 可没有标题文字。
 //
-//	go run ./tests/window/platform/window_position [-chrome=native|integrated|none] [-auto]
+// 操作与逐项预期：
+//  1. 分别用三种 Chrome 启动：初始窗口水平居中、垂直略偏上，无显示后搬动闪烁。
+//     终端 PASS default 核对隐藏状态和原生 frame/visibleFrame，不以截图代替断言。
+//  2. 按 F5：客户区定位到当前工作区 (120,80) DIP，日志确认实际 Position。
+//  3. 按 F6：隐藏后重新显示，必须保持当前位置，不重新居中。
+//     Native 可先拖动系统标题栏再按 F6，仍保持用户拖动后的原生 frame。
+//  4. 按 F7：显示 Popup，左上角相对本窗口客户区 (20,40) DIP；再按一次隐藏。
+//     Popup 不得居中屏幕，普通窗口的位置也不变。
+//  5. 按 Esc 或点击原生关闭按钮：释放窗口、Popup、Painter 和事件循环并退出。
 //
-// Optionally set GOUI_PLAT_PAINTER=software/opengl and GOUI_PLAT_SCALE=1 or 2.
-// Initially request an ordinary 480x320 DIP window without SetPosition. It should
-// appear at AppKit's native centered position, not the desktop's bottom-left.
-// Native has a native caption; Integrated/None may have no visible title text.
-// Steps and expected results:
-//  1. Start each chrome mode: horizontally centered and slightly above vertical
-//     center, with no visible repositioning. PASS default asserts hidden geometry
-//     using native frame/visibleFrame; screenshots alone do not verify it.
-//  2. F5 positions the client at work-area (120,80) DIP and logs actual Position.
-//  3. F6 hides/shows while retaining position, without recentering. For Native,
-//     first drag the system caption and verify the same native frame afterward.
-//  4. F7 toggles a Popup at client (20,40) DIP relative to this window. It does
-//     not center itself or move the ordinary window.
-//  5. Esc or native close releases windows, Popup, Painter and event loop.
-//
-// -auto creates windows on the real main thread, checking hidden defaults, show,
-// explicit position, repeated Hide/Show and Popup positioning before exit.
-// Failures exit nonzero. It depends on a desktop and is not run by go test;
-// it does not verify flicker, native dragging, multiple/mixed-DPI screens,
-// Stage Manager or Spaces. Side effects: only this program's windows and app
-// activation, no settings/clipboard changes. Reset: restart. None exits by keyboard;
-// no simulated native caption or window controls are supplied.
+// -auto：在真正主线程创建原生窗口，断言隐藏默认位置、显示、显式定位、重复 Hide/Show
+// 和 Popup 初始/锚点位置后退出；失败非零退出。包含桌面依赖，不由 go test 自动执行。
+// 自动模式不代替可见闪烁、原生拖动、多屏/混合 DPI、Stage Manager 或 Spaces 验收。
+// 副作用：仅创建/定位/显示本程序窗口，激活应用；不改系统设置或剪贴板。
+// 复位：重新启动。None 模式通过键盘退出，未模拟原生标题栏或窗口按钮。
 package main
 
 import (

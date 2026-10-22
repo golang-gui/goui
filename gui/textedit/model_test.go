@@ -11,7 +11,7 @@ import (
 	"unicode/utf8"
 )
 
-// Model edits, undo history and comparison with a reference model.
+// 模型、编辑历史与参考模型对照。
 
 func TestTextModelEmptyDocument(t *testing.T) {
 	m := NewModel("")
@@ -821,7 +821,7 @@ func abs(v int) int {
 	return v
 }
 
-// Text-block lifecycle and storage benchmarks.
+// 文本块生命周期与存储基准。
 
 // Inspect all storage roots, including cache and the unused stack capacity:
 // stale references there also retain memory. This checks ownership without
@@ -999,7 +999,7 @@ func BenchmarkTextModelEditCycles(b *testing.B) {
 	}
 }
 
-// Reentrant notifications and line lookup.
+// 重入通知与行定位。
 
 func TestTextModelReentrantNotificationOrder(t *testing.T) {
 	m := NewModel("")

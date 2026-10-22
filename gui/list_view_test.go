@@ -86,8 +86,7 @@ func (m *listInstallModel) ConnectItems(fn func()) signal.Handle {
 	return m.SliceListModel.ConnectItems(func() { m.deliveries++; fn() })
 }
 
-// Explicitly resetting the same model reconnects and unbinds rows while
-// retaining exactly one active subscription.
+// 显式重新设置同一模型必须重连、解绑，但只有一个有效订阅。
 func TestListViewExplicitReinstallation(t *testing.T) {
 	m := &listInstallModel{SliceListModel: NewSliceListModel([]int{1, 2, 3})}
 	lv := NewListView()

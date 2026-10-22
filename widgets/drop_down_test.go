@@ -17,8 +17,7 @@ import (
 	"github.com/golang-gui/goui/style"
 )
 
-// No native window is created. The Popover double replaces native display
-// only; input still travels through EventDispatcher.
+// 不创建原生窗口。Popover 替身只替代原生显示，输入仍走 EventDispatcher。
 type dropDownTestPopup struct {
 	gui.Popover
 	widget, focus gui.Widget
@@ -235,7 +234,7 @@ func TestDropDownSelectionAndModel(t *testing.T) {
 			t.Fatal("signal before commit/close")
 		}
 	})
-	d.SetSelected(1) // Programmatic selection may choose a disabled item.
+	d.SetSelected(1) // 程序可以选择禁用项。
 	d.SetSelected(999)
 	d.SetSelected(-10)
 	if calls != 0 || d.Selected() != -1 {
@@ -350,8 +349,7 @@ func TestDropDownClickAndOpenErrors(t *testing.T) {
 	defer d.SetModel(nil)
 	errorsSeen := 0
 	d.ConnectOpenError(func(error) { errorsSeen++ })
-	// An explicit Open on an unmounted widget returns an error. Only input-driven
-	// opening emits OpenError.
+	// 未挂载：主动 Open 返回错误，输入触发才发送 OpenError。
 	if d.Open() == nil || errorsSeen != 0 {
 		t.Fatal("explicit Open error contract")
 	}

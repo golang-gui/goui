@@ -6,8 +6,7 @@ import (
 	"testing"
 )
 
-// go:embed cannot read a parent directory. The demo's copied resource must
-// remain byte-for-byte identical to its design source.
+// go:embed 不能读取父目录；复制到例程的资源须与设计源文件逐字节一致。
 func TestEmbeddedLogosMatchDesigns(t *testing.T) {
 	for name, embedded := range map[string]string{
 		"goui-mark.svg": LogoMarkSVG(),

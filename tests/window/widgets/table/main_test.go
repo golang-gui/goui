@@ -10,7 +10,7 @@ import (
 	"github.com/golang-gui/goui/widgets"
 )
 
-// The example's own style/binding logic, without native windows or a desktop.
+// 例程自身的样式及绑定逻辑，不创建原生窗口，不依赖桌面。
 func TestCellEditorStyle(t *testing.T) {
 	for _, fallback := range []bool{false, true} {
 		for _, dark := range []bool{false, true} {

@@ -1,32 +1,25 @@
-// Linux Integrated window checks for content insets on all four sides.
+// Linux Integrated 四边布局避让验证。
 //
-// Environment: Linux X11 with a compositing WM. Record desktop, actual backend
-// and scale. Run: go run ./tests/window/gui/integrated_layout
-// Repeat with GOUI_PLAT_PAINTER=software/opengl and GOUI_PLAT_SCALE=1 or 2.
-// Initially the Integrated window has a 40 DIP HeaderBar, no root Padding and
-// content overflowing both axes.
-// Steps and expected results:
-//  1. Both scrollbars remain a full 8 DIP wide, with window background outside
-//     the content on every side. Drag to either end and back; outer edges remain
-//     fully visible and hittable.
-//  2. Resize from all sides/corners. The top edge outside HeaderBar resizes;
-//     the caption moves, and caption buttons do not move the window. Edge input
-//     must not reach widgets underneath.
-//  3. F7 switches title height between 40/64 DIP. Window controls stay vertically
-//     centered without duplicated right insets. F8 maximizes, removing edge
-//     margins; F9 restores them.
-//  4. Type ASCII/Chinese in an input and navigate with Tab. IME candidates follow
-//     the caret. F10 enters fullscreen; F9 restores, with no stale scrollbar/title
-//     offsets. Controls are hidden in fullscreen.
-//  5. F6 checks public Rect/Snapshot and scrollbar bounds, printing LAYOUT PASS.
-//     F11 toggles light/dark. Repeat at 1x/2x: an 8 DIP scrollbar spans 8/16 pixels.
+// 环境：Linux X11 与合成窗口管理器；记录桌面、实际后端及缩放。
+// 启动：go run ./tests/window/gui/integrated_layout
+// GOUI_PLAT_PAINTER=software/opengl、GOUI_PLAT_SCALE=1/2 可分别验证。
+// 初始：Integrated、40 DIP HeaderBar；根布局没有 Padding，内容双向溢出。
+// 操作与预期：
+//  1. 观察右侧及底部滚动条，宽度均完整为 8 DIP，外侧四边只显示窗口背景。
+//     拖动两条滑块到末尾，再回到开头：最外侧仍完整可见且可命中。
+//  2. 在四边及四角拖动缩放；HeaderBar 外侧顶部边缘用于缩放，标题内部用于
+//     移动。点击标题中的按钮不会移动窗口。边缘没有 Widget 输入穿透。
+//  3. F7 将标题高度在 40/64 DIP 间切换；窗口控制按钮保持垂直居中，右侧距离
+//     不随避让重复增加。F8 最大化、F9 恢复：最大化去掉四边留白，恢复后重现。
+//  4. 点击输入框输入 ASCII/中文，Tab 切换焦点；候选窗跟随实际光标位置。
+//     F10 全屏、F9 恢复，滚动条和标题不残留旧偏移，控制按钮全屏隐藏。
+//  5. 各状态按 F6 检查公开 Rect/Snapshot 与两条滚动条边界，输出 LAYOUT PASS；
+//     F11 切换亮暗后重复检查。1x/2x 重复操作，1x 滚动条宽 8 像素，2x 宽 16。
 //
-// Only Linux client-drawn Integrated adds these GUI insets; Windows/macOS do not.
-// Without a compositor Linux may fall back to Native and report not applicable;
-// that is not a passed Integrated check.
-// Side effects: window and logs only; no automatic clipboard/file access,
-// system changes or DevServer. Reset: F9 for normal state, restart to reset scroll
-// and title height. Exit: close the main window.
+// 平台差异：仅 Linux GUI 自绘 Integrated 自动内缩；Windows/macOS 不增加边缘。
+// Linux 无合成器时可能退回 Native，会打印“不适用”，不能记为 Linux 验收通过。
+// 副作用：仅窗口及日志，不自动修改剪贴板、文件或系统设置，不使用 DevServer。
+// 复位：F9 恢复普通状态，重新启动重置滚动/高度。退出：关闭主窗口。
 package main
 
 import (
@@ -114,8 +107,7 @@ func main() {
 	scroll.SetChild(content)
 	root.AddChild(scroll)
 	win.SetWidget(root)
-	// Keep both axes overflowing initially. The explicit minimum still describes
-	// window size rather than content size.
+	// 初始尺寸需要保留双向溢出；显式最小尺寸保持窗口尺寸语义。
 	win.SetMinSize(geometry.Size{Width: 500, Height: 300})
 	bind := func(key gui.Key, fn func()) {
 		s := gui.NewShortcut(gui.KeyGesture{Key: key})

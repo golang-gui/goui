@@ -1,37 +1,30 @@
-// ScrollView direction and layout window checks.
+// ScrollView 方向与布局窗口验收。
 //
-// Environment: Linux, Windows or macOS desktop. Record OS, backend and scale;
-// Linux Integrated requires X11 composition. Run:
+// 环境：三平台桌面；记录系统、后端和缩放，Linux Integrated 需要 X11 合成器。
+// 启动：go run ./tests/window/gui/scroll_layout；可指定 GOUI_PLAT_PAINTER 和
+// GOUI_PLAT_SCALE=1/2。初始为长表单、浅色、Integrated 窗口。
+// 操作与预期：
+//  1. 左侧表单仅有竖滚动条；缩窄/放宽窗口，文字和按钮按视口宽度换行，
+//     不出现横滚动条。滚到底部，能完整看到 END 标记；拖滑块回顶部。
+//  2. 右侧 Both 样例是 100×100 DIP 视口中的 96×200 DIP 图片。
+//     应同时显示两条滚动条，内容区 92×92，最大偏移 X=4、Y=108。
+//     拖动两条滑块，边界完整且可命中；仅看窗口启动不算通过。
+//  3. Horizontal 样例只能横滚；Shift+滚轮可移动图片，普通竖滚轮不移动它。
+//     左侧输入框能正常输入，聚焦后滚动条仍可拖动，焦点不改变滚动方向。
+//  4. F7 切换短/长表单：短内容应无滚动条，恢复长内容后重新出现；再滚到底。
+//     F8 最大化、F9 恢复，换行和滚动范围更新，不保留旧的多余滚动条。
+//  5. 每项操作后按 F6，输出 SCROLL LAYOUT PASS 和各视口/偏移的公开几何断言。
+//     F11 切换亮暗后重复检查；1x/2x 分别验收，8 DIP 滚动条宽为 8/16 像素。
+//  6. F10 定位到表单中的 Nested CrossStretch 面板，按 F6 记录外层偏移和内层 bounds。
+//     将鼠标置于内层列表中滚动，再按 F6：仅 nested 偏移改变，form 不变。
+//     滚到内层首尾后继续滚动，form 仍不变。鼠标移到面板左侧文字后滚动，
+//     form 应正常滚动。F4 将内层切为短内容，F10 重新定位并按 F6 记录；
+//     在内层短内容上滚动，form 应改变，nested 保持 0。F4 恢复长内容。
 //
-//	go run ./tests/window/gui/scroll_layout
-//
-// Set GOUI_PLAT_PAINTER and GOUI_PLAT_SCALE=1 or 2 as needed. Initially a long
-// form is shown in a light Integrated window.
-// Steps and expected results:
-//  1. The left form has only a vertical scrollbar. Narrowing/widening wraps text
-//     and buttons to the viewport without horizontal scrolling. Scroll to the
-//     complete END marker, then drag back to the top.
-//  2. Both shows a 96x200 DIP image in a 100x100 DIP viewport: both bars appear,
-//     leaving 92x92 content and maximum offsets X=4, Y=108. Drag both thumbs;
-//     boundaries remain complete and hittable. Startup alone does not verify this.
-//  3. Horizontal scrolls only horizontally. Shift+wheel moves the image; ordinary
-//     vertical wheel does not. Left inputs still accept typing and focused
-//     inputs do not prevent scrollbar dragging or change scroll direction.
-//  4. F7 switches short/long forms: bars disappear/reappear as needed. Scroll to
-//     the end again. F8 maximizes and F9 restores, updating wrapping and extents
-//     without stale bars.
-//  5. After each operation, F6 prints SCROLL LAYOUT PASS with public geometry
-//     assertions. Repeat with F11 light/dark and at 1x/2x; 8 DIP bars span 8/16 pixels.
-//  6. F10 reveals Nested CrossStretch; F6 records outer offsets and inner bounds.
-//     Wheel over the inner list: only nested changes, form stays fixed, including
-//     at either boundary. Wheel over the left text: form scrolls. F4 makes the
-//     inner list short; F10/F6 again, then wheel over it: form moves, nested=0.
-//     F4 restores the long list.
-//
-// Platform differences: fonts affect wrap thresholds; only Linux client-drawn
-// Integrated insets content. Side effects: window/logs only, no clipboard/files,
-// DevServer or system changes. Reset: F9 normal state, F7 long form, F4 long inner
-// list; restart resets offsets. Exit: close the window.
+// 平台差异：字体影响换行阈值；只有 Linux 自绘 Integrated 内缩窗口内容。
+// 副作用：窗口和日志，不读写剪贴板/文件、不启动 DevServer、不改系统设置。
+// 复位：F9 恢复普通状态，F7 恢复长表单，F4 恢复长内层列表；重启复位偏移。
+// 退出：关闭窗口。
 package main
 
 import (

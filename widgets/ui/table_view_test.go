@@ -12,8 +12,7 @@ import (
 	"testing"
 )
 
-// Verify bindings with the existing Container reconciliation double. The ui
-// package tests cover general reconciliation behavior.
+// 使用已有普通 Container 协调替身验证绑定；通用协调仍由 ui 包测试负责。
 type tableBindingModel struct {
 	*gui.SliceListModel[string]
 	connections, deliveries int

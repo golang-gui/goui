@@ -1,31 +1,29 @@
-// Default Basic and optional Modern theme window checks, without DevServer.
-// Environment: interactive Linux X11, Windows or macOS. Record OS/WM, backend
-// and scale. Run: go run ./tests/window/ui/themes
-// Use GOUI_PLAT_PAINTER=software/opengl (also direct2d on Windows),
-// GOUI_PLAT_SCALE=2 for application 2x. Initially Integrated 640x460 DIP, no
-// custom sheet, HeaderBar enabled, CheckButton/Switch selected, and two disabled
-// controls that cannot interact.
-// Steps and expected results:
-//  1. Default Basic paints check box/mark, switch track/thumb and labels. Clicking
-//     either synchronizes both and HeaderBar enabled state; disabled examples
-//     do not change. Selected boxes/on tracks add no same-color stroke; the blue
-//     switch is softened, and unchecked controls retain neutral outlines.
-//  2. Explicit Basic matches defaults. System Modern uses system mode/accent/font;
-//     Dark Modern adapts backgrounds/text. Selection, counts, widget identity and
-//     HeaderBar drag behavior survive changes.
-//  3. Default Basic restores a nil sheet without adding widgets/style manually;
-//     Basic fonts/colors return with visible controls. System Modern responds to
-//     system mode/accent through Settings-triggered rebuilds; explicit modes stay fixed.
-//  4. Tab/Shift+Tab navigate and Space toggles. Only keyboard focus shows a 2 DIP
-//     border; disabled controls cannot focus, and pointer focus adds no keyboard hint.
-//  5. F6/Check prints ASSERT PASS and BOUNDS, checking state, snapshots, identity,
-//     indicator areas and nonempty labels. Inspect pixels separately. Repeat
-//     1x/2x without clipped corners/text/thumbs, then close normally.
+// 默认 Basic 与可选 Modern 样式窗口验收，不依赖 DevServer。
+// 环境：Linux X11、Windows 或 macOS 的可交互桌面；记录 OS/WM、后端和缩放。
+// 启动：go run ./tests/window/ui/themes；GOUI_PLAT_PAINTER=software/opengl，
+// Windows 另可 direct2d；GOUI_PLAT_SCALE=2 请求应用 2x。
+// 初始：Integrated 640×460 DIP、未设置自定义样式表；HeaderBar 可用，
+// CheckButton 和 Switch 均选中，禁用的两个控件不可操作。
 //
-// Platform differences: fonts, antialiasing and decorations vary; verify
-// Windows/macOS separately. Side effects: window/logs only. The tester may change
-// system settings for step 3 and must restore them. Reset: Reset or restart to
-// restore mode. Exit: close the main window.
+// 操作与逐项预期：
+//  1. 默认 Basic 下方框、勾、开关轨道/滑块及各自文字均可见。点击任一控件，
+//     两者同步切换，HeaderBar 同步启用/禁用；禁用示例没有状态变化。
+//     Basic 选中方框和开启开关不叠加同色描边；开关蓝色稍柔和，未选中保留中性轮廓。
+//  2. 点击“显式 Basic”，外观与默认 Basic 一致；点击“系统 Modern”，外观
+//     采用系统亮暗/主题色/字体。点击“深色 Modern”，背景和文字适配深色。
+//     切换期间选中状态、计数和 Widget 身份不变，HeaderBar 拖动语义不变。
+//  3. 点击“默认 Basic”恢复 nil 样式表，不需手动追加 widgets/style；
+//     字体/颜色恢复 Basic，控件不会消失。系统 Modern 模式下改变系统亮暗
+//     或主题色，已有 Settings 自动重建应用；其他模式保持显式外观。
+//  4. Tab/Shift+Tab 导航，Space 切换选中项；只在键盘焦点显示 2 DIP 边框。
+//     默认禁用项不可聚焦；鼠标点击不额外显示键盘焦点边框。
+//  5. F6 或“检查”输出 ASSERT PASS 和 BOUNDS；检查选中/禁用、Snapshot、
+//     控件身份、指示器区域及内部标签非空。此断言不替代实际像素观察。
+//     1x/2x 重复操作，圆角、文字和滑块无裁剪；关闭后正常退出。
+//
+// 平台差异：字体/抗锯齿和实际窗口装饰可不同；Windows/macOS 需分别验收。
+// 副作用：仅窗口和标准输出；系统设置仅在第 3 步由验证者自愿改变并负责还原。
+// 复位：点击“复位”；恢复模式也可重启。退出：关闭主窗口。
 package main
 
 import (

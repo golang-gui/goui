@@ -54,8 +54,7 @@ func TestTreeViewAdapterOnlyInstallsChangedModelPointers(t *testing.T) {
 	if a.deliveries != 1 {
 		t.Fatal("same-model rebuild leaked subscriptions")
 	}
-	// Install a new model instance even if its content is equal. Reset first,
-	// then apply controlled expansion, selection and Current values.
+	// 新实例内容相同，也必须执行安装。先重置，再应用受控展开、选择和 Current。
 	b.Set("child", "Changed")
 	callbacks := 0
 	v = TreeView[string](b, nil).Expanded([]string{"root"}).Selection([]string{"child"}).Current("child").OnSelection(func([]string) { callbacks++ })
@@ -107,9 +106,8 @@ func TestTreeViewValueModelsReinstallWithoutComparison(t *testing.T) {
 	}
 }
 
-// The binding double implements only ordinary row Mount/Update/Unmount.
-// ui/list_view_test.go uses real roots to cover general reconciliation,
-// deferred completion and cross-root transfer; do not duplicate it here.
+// 绑定级替身只负责普通行的 Mount/Update/Unmount。通用协调、延迟完成和跨 Root
+// 迁移由 ui/list_view_test.go 使用真实 root 验证，不在此重复实现协调算法。
 type treeBindingContext struct {
 	tabContext
 	rows     map[baseui.Container]baseui.WidgetView

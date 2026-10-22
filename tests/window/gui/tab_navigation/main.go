@@ -1,51 +1,47 @@
-// Tab focus navigation and FocusVisible window checks, without DevServer.
+// Tab 焦点导航与 FocusVisible 窗口验证，不使用 DevServer。
 //
-// Environment: interactive Linux/X11, Windows or macOS. Record OS, Linux WM,
-// actual backend and scale. Run: go run ./tests/window/gui/tab_navigation
-// Use GOUI_PLAT_PAINTER=software/opengl (also direct2d on Windows) and
-// GOUI_PLAT_SCALE=2 for 2x. The requested Native size is 680x600 DIP; content
-// minimums and desktop limits may change the actual size. Initially Modern light
-// has no logical focus. Main content order: first, second, action, editor, far.
-// Toolbar buttons accept clicks but are excluded from Tab order. The form is on
-// the left; far starts offscreen at the bottom of the independent right ScrollView.
-// Steps and expected results:
-//  1. Tab through the five targets, revealing far, then wrap to first; Shift+Tab
-//     reverses. Focus status/logs agree. action and popup buttons show a 2 DIP
-//     rounded, softened-accent focus border without changing fill. Inputs retain
-//     their own border. With no initial focus, Shift+Tab reaches far. Held Tab repeats.
-//  2. Type ASCII/Chinese into first/second: only the focused field changes; Tab
-//     inserts nothing. Space/Enter on action each increment the action count,
-//     without key-repeat activation or activation with Ctrl/Alt. editor accepts
-//     text. Enable AcceptsTab: Tab inserts a tab and keeps focus, Shift+Tab returns
-//     to action. Disable it again: Tab moves from editor to far.
-//  3. F2 hides/shows second; F3 toggles its Focusable, not Disabled. Tab skips
-//     hidden/nonfocusable fields. F5 clears focus, then Tab starts at first.
-//     F4 enables a bubbling Tab shortcut: plain Tab prints consumed without
-//     moving focus, while editor AcceptsTab takes precedence and Shift+Tab is
-//     unaffected. Ctrl+Tab/Alt+Tab do not invoke framework traversal and may be
-//     handled by the desktop.
-//  4. F7 opens a modal Popover. Tab/Shift+Tab cycle only popup-first/popup-second;
-//     main fields retain focus but receive no text. Esc closes it; F7/Tab starts
-//     at popup-first again. Owner input resumes after close; outside clicks also close.
-//  5. Tab to action, then hover: the focus hint coexists with Hover. Click action:
-//     logical focus stays but the hint clears, and F6 shows owner-hint=false.
-//     Shift+Tab then Tab restores it. Pointer focus adds no border. F8 switches
-//     light/dark; F9 cycles blue/black/white/red accents with a softened theme
-//     border, not an overlaid fill. F10 toggles ordinary/Primary action style:
-//     both retain size and a 2 DIP inset border (2/4 physical pixels at 1x/2x),
-//     with no outward growth, square corners or clipping.
-//  6. F6 reads public Focused, FocusVisible, ContainsFocus and snapshot state,
-//     printing ASSERT PASS without changing focus. This does not verify appearance
-//     or IME. owner-hint and popup-hint are independent: a popup click leaves the
-//     owner hint; closing/reopening starts popup-hint=false. Hint changes emit no
-//     duplicate focus logs. Repeat at 1x/2x; revealed targets lie in the viewport.
+// 环境：Linux/X11、Windows 或 macOS 可交互桌面；记录 OS、Linux WM、实际
+// 后端与缩放。启动：go run ./tests/window/gui/tab_navigation。
+// GOUI_PLAT_PAINTER=software/opengl，Windows 另可 direct2d；
+// GOUI_PLAT_SCALE=2 请求 2x。初始：请求 Native 680×600 DIP，内容最小尺寸与
+// 桌面范围可调整实际大小；Modern 亮色、无逻辑焦点。
+// 主内容默认顺序：first、second、action、editor、far；工具栏不参与 Tab，
+// 但仍可鼠标点击。左侧表单，右侧独立 ScrollView，far 位于其底部，初始不可见。
 //
-// Platform differences: macOS uses physical Tab/Shift independently of Primary;
-// native shortcuts or IME candidates may consume keys first. Popovers receive
-// forwarded owner events and have no native keyboard focus.
-// Side effects: windows, logs and in-memory text; explicit copy/paste accesses
-// the clipboard. Reset: restart. Exit: close the main window; assertion failures
-// panic and return nonzero.
+// 操作及预期：
+//  1. 不点击控件，按 Tab 依次到上述五项，滚动显示 far，再按 Tab 回 first。
+//     Shift+Tab 逆序循环。状态栏及终端 focus 日志同步；Tab 聚焦的 action 与
+//     弹出按钮有 2 DIP 柔化主题色圆角边框，内部底色不变；文本框原有边框保持不变。
+//     首次无焦点时 Shift+Tab 到 far，按住 Tab 可重复转移。
+//  2. 聚焦 first/second 后键入 ASCII、中文，文字只进入当前字段；Tab 不插入。
+//     聚焦 action 后按 Space、Enter，每次分别增加状态栏和终端中的 action 计数；
+//     按住键不重复激活，带 Ctrl/Alt 修饰不激活。Tab 到 editor 后仍正常输入。
+//     点击 AcceptsTab 按钮开启插入：普通 Tab 插入制表符且保留焦点；Shift+Tab
+//     返回 action。再次点击按钮关闭插入后，Tab 从 editor 到 far。
+//  3. F2 隐藏/显示 second；F3 禁用/启用 second 的 Focusable（不是 Disabled）。
+//     Tab 跳过被隐藏或不可聚焦的字段。F5 清空焦点，Tab 从 first 开始。
+//     F4 开关自定义 Tab 快捷键（bubble）：启用后普通 Tab 输出 consumed，
+//     不转移焦点；editor 的 AcceptsTab 仍优先，Shift+Tab 不受此快捷键影响。
+//     Ctrl+Tab/Alt+Tab 等额外修饰不触发框架导航，可能由桌面系统接管。
+//  4. F7 显示模态 Popover；Tab/Shift+Tab 仅在 popup-first、popup-second 循环，
+//     主窗口字段保留焦点但不能收到键入。Esc 关闭，再次 F7/Tab 从 popup-first
+//     开始；关闭 Popover 后主窗口恢复正常输入。点击窗口外区域也会关闭它。
+//  5. Tab 到 action，移动鼠标经过它，提示仍保留且与 Hover 同时呈现；点击同一
+//     按钮，逻辑焦点保留但提示关闭，F6 显示 owner-hint=false。再按 Shift+Tab、
+//     Tab，提示恢复。鼠标聚焦不产生额外边框。F8 切换亮暗主题，边框仍可辨认；
+//     F9 循环蓝/黑/白/红主题色，边框跟随柔化后的主题焦点色，不使用底色遮罩。
+//     F10 切换 action 的普通/Primary 样式，两种均为 2 DIP 边框；控件大小不变。
+//     1x 边框宽 2 物理像素，2x 宽 4 像素，无外部扩张、方角或被截掉的边框。
+//  6. F6 检查 Widget.Focused、FocusVisible、ContainsFocus 与 Snapshot，输出 ASSERT PASS；
+//     检查只读取公开状态，不改变焦点，不等同于外观或 IME 验收。
+//     owner-hint 与 popup-hint 独立；Popover 内点击不关闭 owner 的提示，关闭、
+//     重开后 popup-hint 从 false 开始。提示切换不产生重复 focus 信号日志。
+//     1x/2x 重复前述操作，滚入目标后边界应在视口内。
+//
+// 平台差异：macOS 同样使用物理 Tab/Shift，不受 Primary 命名影响；原生系统
+// 快捷键、IME 候选窗可能先消费按键。Popover 无原生键盘焦点，由 owner 转发。
+// 副作用：窗口、终端日志与内存文字；复制/粘贴须用户主动触发，会访问剪贴板。
+// 复位：重启。退出：关闭主窗口。断言失败 panic 返回非零。
 package main
 
 import (

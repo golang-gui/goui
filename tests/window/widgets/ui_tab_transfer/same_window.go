@@ -13,10 +13,9 @@ import (
 	wui "github.com/golang-gui/goui/widgets/ui"
 )
 
-// Same-root moves still transfer reconciliation records, not just GUI parents.
-// Both initial orders exercise source-first and target-first updates. Preserve
-// the outer layout slot when removing source so ordinary positional reconciliation
-// shifts are not confused with page transfer.
+// 同 Root 仍然需要转移协调记录，而不是只修改 GUI 父节点。
+// 两种初始左右顺序覆盖源先更新、目标先更新；移除源时保留外层布局槽位，
+// 避免将普通位置协调的子节点移位与页面转移混在一起。
 func runSameWindow(expect string, chrome ui.WindowChromeMode, targetFirst bool) error {
 	models := map[string][]string{"source": {"A", "B"}, "target": {"C"}}
 	states := make(map[string]*pageState)

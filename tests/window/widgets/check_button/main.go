@@ -1,50 +1,41 @@
-// CheckButton tristate, exclusive-group, button-appearance and reconciliation
-// window checks, without DevServer.
-// Environment: interactive Linux X11, Windows or macOS. Record OS/WM, backend
-// and scale. Run: go run ./tests/window/widgets/check_button
-// Use GOUI_PLAT_PAINTER=software/opengl (also direct2d on Windows) and
-// GOUI_PLAT_SCALE=2. -fallback-style uses explicit defaults. Separately run
-// -destroy-on-change: the old member's first Radio B/C change destroys the window.
-// Initially Integrated 900x640 DIP, light/blue, Independent unchecked, Mixed mixed,
-// Radio A/Mode A checked, Toggle unchecked beside an ordinary Button with the
-// same text, and Disabled inactive. Chrome may fall back to Native. Modern uses
-// Settings UI font/size; explicit fallback keeps fixed defaults.
-// Steps and expected results:
-//  1. Both box and label toggle Independent on release, not press; release
-//     outside cancels. Clicking Mixed checks it; Mixed silently restores partial
-//     state without adding Changes.
-//  2. Radio B/C unchecks the old member before checking the new one; reselecting
-//     it does not clear it. Clear empties both groups, which remain usable.
-//     Toggle is independent; Mode A/B are exclusive button-style choices.
-//  3. Tab/Shift+Tab navigate; Space/Enter toggle once even when held. Keyboard
-//     focus alone has a softened 2 DIP border. Disabled neither interacts nor
-//     enters Tab order. Disable stops Independent; re-enable restores participation.
-//  4. Child increments ChildClicks without toggling Parent; Parent's label toggles
-//     it. Rebuild retains identity/state and one Change per operation.
-//  5. Dark/Accent changes light/dark and blue/red while preserving selection and
-//     readable content. Resize/repeat 1x/2x: circular shapes stay round and marks
-//     and borders remain clear within bounds. Ordinary Button and unchecked
-//     Toggle share size, fill, border and radius; selected Toggle changes only
-//     to neutral gray, unaffected by Accent. Indicators are 18 DIP; boxes have
-//     4 DIP corners and a solid selected fill with white check/dash. Selected
-//     radio uses the same-state solid fill and a white dot without a stroke.
-//     Modern uses accent, Basic fixed blue. Unselected radios are neutral outlines;
-//     selected fills darken on hover/press. Disabled selection is neutral with
-//     gray marks. Basic selected boxes/radios use one fill; inspect smooth 1x
-//     corners and stable hover/press geometry. Button-style controls add no sudden
-//     accent border, size or content shift. Basic ignores Dark/Accent.
-//  6. Check/F6 asserts state, groups, snapshots and identity, printing ASSERT PASS.
-//     BOUNDS is arranged window-local DIP for locating controls, not an action
-//     API. Inspect appearance/gestures separately. Closing prints DESTROY PASS;
-//     both groups have no selected member.
-//  7. Separately -destroy-on-change: F6 then click Radio B. Only the old member's
-//     one Change runs; later callbacks access no destroyed tree. DESTROY PASS,
-//     normal exit, no panic.
+// CheckButton 三态、互斥组、按钮式外观与声明协调窗口验收，不依赖 DevServer。
+// 环境：Linux X11、Windows 或 macOS 可交互桌面，记录 OS/WM、后端、缩放。
+// 启动：go run ./tests/window/widgets/check_button；GOUI_PLAT_PAINTER=software/opengl，
+// Windows 另有 direct2d；GOUI_PLAT_SCALE=2 请求 2x；-fallback-style 使用显式兜底。
+// 另加 -destroy-on-change：首次选择 Radio B/C 时旧成员回调销毁窗口，验证销毁安全。
+// 初始：Integrated 900×640 DIP，亮色蓝主题，Independent 未选中、Mixed 部分选中，
+// Radio A、Mode A 选中，Toggle 未选中，其左边是同文字的普通 Button 对照；
+// Disabled 无输入。实际装饰可能回退 Native。
+// Modern 使用 Settings 提供的界面字体和字号；显式兜底保留其固定默认字体。
 //
-// Platform differences: fonts, decoration and antialiasing vary; group selection
-// semantics agree. Group arrow navigation is not implemented.
-// Side effects: window/stdout only, no settings/files/clipboard. Reset: Reset
-// selections/counts, restart for theme/all state. Exit: close the main window.
+// 操作与逐项预期：
+//  1. 点击 Independent 的方框和文字均能切换；按下未抬起不切换，移出后抬起
+//     不切换。Mixed 点击变勾选；Mixed 按钮静默恢复部分选中，不增加 Changes。
+//  2. 选择 Radio B/C，原成员先取消，新成员选中；重复点击已选成员不取消。
+//     Clear 清空两组，后续仍可选择。Toggle 独立切换；Mode A/B 是互斥按钮。
+//  3. Tab/Shift+Tab 导航；Space/Enter 切换，长按只切换一次。只有键盘焦点有
+//     2 DIP 柔和边框，鼠标点击没有焦点装饰。Disabled 不响应，也不参与 Tab。
+//     Disable 禁用 Independent，启用后恢复操作与焦点参与。
+//  4. 点击 Child 只增加 ChildClicks，不切换 Parent；点击 Parent 文字切换父项。
+//     Rebuild 保留控件身份和选择；后续一次操作只产生一次对应 Change。
+//  5. Dark/Accent 改变亮暗及蓝/红主题，选中状态不变，内容文字独立可读。
+//     调整窗口及 1x/2x 重复，圆形不变椭圆，勾/横杠与边框清晰，无越界。
+//     普通 Button 与未选中 Toggle 的大小、底色、边框、圆角一致；选中 Toggle
+//     仅变中性灰底，Accent 切换不改变其选中底色。指示器 18 DIP；方框 4 DIP 圆角，选中为实色底
+//     与白色勾/横杠；单选选中为同状态同色的实心圆底和白色圆点，不叠加描边。
+//     Modern 使用主题色，Basic 使用固定蓝色。
+//     单选未选中保持中性空心圆；两种选中实底悬停/按下均加深。禁用选中为中性实底和灰色标记。
+//     Basic 选中方框/圆形均为一次填充；1x 放大观察圆角不过度变硬，悬停/按下形状不跳动。
+//     按钮式不突然出现主题色边框，内容或大小不跳动；Basic 不跟随 Dark/Accent 变化。
+//  6. Check 或 F6 输出 ASSERT PASS 并核对所有状态、分组、Snapshot、身份；BOUNDS
+//     是已布局的窗口局部 DIP，可供人工/Computer Use 找位置，不是动作接口。
+//     Check 不替代视觉与手势观察。关闭窗口后 DESTROY PASS，两个组无选中者。
+//  7. -destroy-on-change 独立启动，先 F6 再点击 Radio B。只发生旧成员的一个 Change，
+//     新成员及后续回调不访问已销毁树；输出 DESTROY PASS 并正常退出，无 panic。
+//
+// 平台差异：原生装饰/字体/抗锯齿可不同；基础选中语义一致；组内方向键未实现。
+// 副作用：仅窗口与标准输出；不修改系统设置/文件/剪贴板。
+// 复位：Reset 恢复初始选择与计数；重启恢复主题和全部状态。退出：关闭主窗口。
 package main
 
 import (

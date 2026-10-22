@@ -1,27 +1,23 @@
-// WrapBox desktop checks, without DevServer.
+// WrapBox 桌面验证（无 DevServer 依赖）。
 //
-// Environment: Windows/macOS/Linux desktop. Record OS, backend and scale;
-// repeat at 1x/2x. Run: go run ./tests/window/ui/wrap
-// Initially a Native 780x650 window has explicit 400x600 minimum size, wrapped
-// buttons above baseline, vertical-column and scroll samples.
-// Steps and expected results:
-//  1. Narrow/widen continuously: buttons wrap/merge in original order without
-//     overlap; shorter buttons center within their row. Width reaches 400 DIP
-//     with multiple rows, then merges again at 780 DIP. The window minimum must
-//     not force the full single-row width.
-//  2. Click an item: its name/count appear. After rebuild, each click still
-//     increments only once.
-//  3. Toggle last removes/restores the last item and reflows. Alignment cycles
-//     within-row alignment; all rows together remain top-aligned.
-//  4. Different font sizes share baselines within each Baseline row after wrapping.
-//     V1-V8 flow top-to-bottom, then left-to-right into columns at the height
-//     limit; all stay visible at 400 DIP width.
-//  5. Scroll to every numbered item. Explicit MaxWidth(360) does not stretch to
-//     viewport width under this bidirectional ScrollView constraint.
-//  6. Close to exit; restart to reset. No files or system settings are changed.
+// 环境：Windows/macOS/Linux 桌面，记录系统、绘制后端和缩放；建议分别使用 1x/2x。
+// 启动：go run ./tests/window/ui/wrap
+// 初始：780x650 原生窗口，显式最小尺寸 400x600；上方是自动换行的按钮，
+// 下方包含基线、竖向换列和滚动示例。
+// 操作与预期：
+//  1. 连续缩窄/放宽窗口，上方按钮按原顺序换行/合行，无重叠；短按钮在所在行居中。
+//     必须能缩到 400 DIP 宽，此时上方按钮分成多行；再放宽到 780 DIP 应合行。
+//     不应被“全部按钮单行宽度”的窗口最小尺寸卡住。
+//  2. 点击任意项目，顶部显示其名称及点击次数；重建后继续点击，只递增一次。
+//  3. 点击 Toggle last，末项消失/恢复并重新排布；点击 Alignment，行内对齐循环切换，
+//     行与行整体仍靠上，不应把所有行一起垂直居中。
+//  4. 调整宽度观察不同字号的 Baseline 行：同一行文字基线一致，换行后各自对齐。
+//     竖向示例 V1～V8 从上向下排列，超过限定高度后从左到右换列；400 DIP 宽时全部可见。
+//  5. 滚动底部区域，可以看到所有编号；内容显式 MaxWidth(360)，不会随视口自动铺宽。
+//     这是当前双向 ScrollView 的约束语义，不是响应式宽度示例。
+//  6. 关闭窗口退出。重新运行复位；不写文件、不改变系统设置。
 //
-// Platform differences: fonts affect wrap thresholds; order, spacing and hits
-// must remain consistent.
+// 平台差异：字体度量可能改变具体换行阈值，顺序、间距和命中行为应一致。
 package main
 
 import (

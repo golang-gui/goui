@@ -1,62 +1,58 @@
-// TabBar/TabView interaction and appearance window checks, without DevServer.
+// TabBar/TabView 基础交互与外观窗口验证，不使用 DevServer。
 //
-// Environment: interactive Linux/X11, Windows or macOS. Record OS, WM, actual
-// backend and scale. Run from the repository root:
+// 环境：Linux/X11、Windows 或 macOS 可交互桌面；记录 OS、窗口管理器、实际绘制
+// 后端和缩放比例。以下命令在仓库根目录运行：
 //
 //	go run ./tests/window/widgets/tabs
 //
-// Initially request Integrated 800x480 DIP, minimum 400x320, Modern light.
-// Document one/two/three start with one selected, empty page inputs and a reorderable
-// HeaderBar tab bar. Cross-window transfer is off; see ../tab_detach for new windows.
-// Steps and expected results:
-//  1. Type different text on one/two and switch tabs: each retains its text,
-//     caret and selection, including after Rebuild.
-//  2. Drag over 4 DIP inside the bar: the whole tab tracks its original hotspot,
-//     neighbors animate aside and reversal does not jump. Release commits one
-//     order/moved update. A short click selects; release outside or Esc cancels
-//     without reordering or creating a window.
-//  3. Add repeatedly and narrow: equal tabs shrink from 240 toward 112 DIP, with
-//     scrolling only below the minimum fit. Arrows/wheel reveal hidden tabs and
-//     selection stays visible. Widen: arrows disappear when all fit; equal tab
-//     widths grow up to 240 DIP.
-//  4. Move into content: unselected text/icons do not look disabled. Selected
-//     tabs always show close; others show it only on hover or close-button focus.
-//     Hover leaves titles/neighbors fixed. Close removes that page without first
-//     selecting it.
-//  5. Integrated tab drags reorder, while space after tabs, 4 DIP gaps and
-//     HeaderBar padding move the window. Close/scroll buttons remain clickable.
-//  6. Right-click an unselected tab or its close button: menu targets it without
-//     changing selection, reordering or closing. Close issues the same close
-//     request as its button; switch-to selects that target. Esc/outside click
-//     only closes the menu. Shift+F10 uses the focused tab; also test macOS
-//     Control+click. Blank/gap areas have no tab menu and still act as caption.
+// 初始：请求 Integrated 装饰、800×480 DIP 窗口，最小 400×320 DIP；采用 Modern
+// 亮色样式。Document one/two/three 三页中 one 选中，页内输入框为空，HeaderBar 内有
+// 可排序标签栏。未开启跨窗口转移；拖出新窗口另见 ../tab_detach。
 //
-// Optional appearance/regressions; choose relevant cases without exhaustive combinations:
-//  1. Click tab body, then arrows/Home/End: selected content agrees. Toggle Dark
-//     preserves readable text/icons, bounds and hits. Selection uses a neutral
-//     fill/thin border; Integrated resize edges do not clip the top. Close/scroll
-//     hover/press leaves titles fixed.
-//  2. Text size switches 14/24 pt: text fits vertically, HeaderBar grows with
-//     row height, close stays centered. Narrow text clips visually without
-//     ellipsis or font shrinking.
-//  3. Width mode switches 112..240/240..240 DIP. Fixed widths do not shrink and
-//     still scroll. Adjacent unselected/unhovered tabs have centered 1x16 DIP
-//     separators, hidden beside a hovered tab and throughout drag/return animation,
-//     then restored in the new order.
-//  4. Drag/release an unselected tab then leave the bar: it stays unselected and
-//     close hides. Esc/outside release is identical. Body focus does not retain
-//     close, but close-button focus does. No invisible clickable area may remain.
-//  5. Restart -fallback-style: explicit GUI+widget defaults ignore Toggle Dark/Text
-//     size but retain readable text, state fills, separators, icons and selection/reorder.
+// 主要操作与预期：
+//  1. 分别在 one 和 two 输入不同文字，切换标签。
+//     预期文字、光标和选区保留在各自页面；点击 Rebuild 后内容不重置。
+//  2. 在栏内按住标签移动超过 4 DIP。预期整张标签保持原抓取偏移跟随指针，
+//     邻居平滑让位，反向移动不跳动；松开后 order 和 moved 日志只提交一次顺序变化。
+//     短点击只选择；拖出栏外释放或按 Esc 取消，顺序不变，不创建窗口。
+//  3. 反复点击 Add，再缩窄窗口。预期标签等宽从 240 向 112 DIP 收缩，容纳不下
+//     最小宽度时才滚动；箭头和滚轮能查看隐藏标签，新选中标签可见。
+//     重新放宽：空间充足时箭头消失，标签等宽增长且不超过 240 DIP。
+//  4. 将指针移入内容区。未选中标签的文字/图标不能像禁用状态；选中标签显示关闭按钮，
+//     未选中标签仅在悬停或关闭按钮自身具有键盘焦点时显示关闭按钮。
+//     悬停、移出不改变标题和邻居位置；点击关闭只移除该页，不先选中该页。
+//  5. 在 Integrated 标签上拖动，预期排序而非移动窗口；拖动最后一个标签后的空白、
+//     标签间 4 DIP 间隙或 HeaderBar padding，预期移动窗口。关闭/滚动按钮仍可点击。
+//  6. 右键未选中标签或其关闭按钮区域，预期菜单标题指向该标签，选中页面不变，
+//     不触发排序或关闭。点“关闭”后才发出与关闭按钮相同的 close 日志并移除目标页。
+//     点“切换到此页”只切换目标页；Esc 或点菜单外部仅关闭菜单。
+//     在标签主体取得焦点后按 Shift+F10，菜单属于焦点标签；macOS 另验 Control+单击。
+//     栏内空白和间隙不显示标签菜单，仍可作为 Caption 拖动窗口。
 //
-// Logical 2x: set GOUI_PLAT_SCALE=2 (PowerShell: $env:GOUI_PLAT_SCALE='2') and
-// restore afterward; this does not verify mixed DPI. Activate macOS windows first.
-// Linux Integrated needs composition; record Native fallback. Windows supports
-// Direct2D/OpenGL/Software independently of decoration choice. Inspect manually
-// or with Computer Use: Selected/rebuilds/order status and current/close/moved logs
-// support per-step pass/fail records; normal exit alone is not an automatic PASS.
-// Side effects: this program's windows/in-memory text, no application files,
-// clipboard or settings. Reset: restart. Exit: close the window.
+// 可选外观与回归（按需选择，不必排列组合重复所有操作）：
+//  1. 点击标签主体后按方向键、Home、End，观察选中标签与内容对应；点击 Toggle Dark，
+//     检查文字、图标、边界和命中区域一致。选中标签使用中性色表面和细边框，
+//     顶边不能被 Integrated 缩放边缘裁掉；悬停/按下关闭或滚动按钮不使标题移位。
+//  2. 点击 Text size 切换 14/24 pt。预期标签文字在高度上完整、HeaderBar 随行高增长、
+//     关闭按钮垂直居中；宽度不足时仅视觉裁剪，不自动省略或缩小字体。
+//  3. 点击 Width mode 切换 112..240 / 240..240 DIP。固定宽度模式不收缩，仍可滚动。
+//     相邻未选中且未悬停的标签之间显示 1×16 DIP 居中分隔线；悬停任一相邻标签时
+//     对应线隐藏，拖动及回位过渡中全部隐藏，结束后按新顺序恢复。
+//  4. 拖动未选中标签并释放，再移入内容区：关闭按钮应隐藏，标签仍未选中。
+//     按 Esc 或栏外释放也应如此；主体焦点不会保留关闭按钮，关闭按钮自身焦点会。
+//     不应遗留不可见却可点击的关闭区域。
+//  5. 以 -fallback-style 重启，显式组合 GUI 与 widgets 兜底样式。
+//     Toggle Dark/Text size 在此模式不改变样式；检查文字可读、选择/悬停表面、
+//     分隔线和关闭/滚动图标，以及前述选择/排序行为。
+//
+// 可选逻辑 2x：POSIX 使用 GOUI_PLAT_SCALE=2 go run ./tests/window/widgets/tabs；
+// PowerShell 先设 $env:GOUI_PLAT_SCALE='2' 再启动，结束后恢复该变量原值。
+// 平台差异：macOS 先激活窗口再操作；Linux Integrated 需要合成器，记录是否回退
+// 为 Native。Windows 可选 Direct2D/OpenGL/Software；装饰差异不等于绘制后端差异。
+// 结果：本例为人工/Computer Use 观察，界面显示 Selected/rebuilds/order，控制台
+// 输出 current/close/moved。逐项记录通过/失败，不以窗口正常关闭作为自动 PASS。
+// 副作用：仅操作本例窗口和内存中的文字，不读写业务文件、不修改剪贴板或系统设置。
+// 复位：重启程序。退出：关闭窗口。逻辑 2x 不代表跨显示器混合 DPI 验证。
 package main
 
 import (

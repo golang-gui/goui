@@ -664,9 +664,8 @@ func TestChromeMoveUsesEventController(t *testing.T) {
 	}
 }
 
-// Window owns resize edges independently of widget hit testing. DispatchEvent
-// must still route input through the host controller and gesture competition;
-// calling BeginResize directly would bypass that behavior.
+// Window 拥有缩放边缘，不依赖应用树在那里命中 Widget。真实输入仍从
+// DispatchEvent 进入 host controller 和既有手势竞争，而不是直接调用 BeginResize。
 func TestIntegratedResizeWithoutWidgetHit(t *testing.T) {
 	for _, content := range []string{"normal", "disabled", "empty"} {
 		t.Run(content, func(t *testing.T) {

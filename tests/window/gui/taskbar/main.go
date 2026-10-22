@@ -1,37 +1,31 @@
-// SkipTaskbar window checks, without DevServer.
+// SkipTaskbar 窗口验收，不使用 DevServer。
 //
-// Environment: interactive Linux/X11, Windows or macOS. Record OS/WM, backend
-// and scale. Run:
+// 环境：可交互的 Linux/X11、Windows 或 macOS 桌面；记录 OS/WM、后端和缩放。
+// 启动：go run ./tests/window/gui/taskbar [-chrome=none|native|integrated] [-auto]
+// GOUI_PLAT_PAINTER=software/opengl（Windows 另可 direct2d），GOUI_PLAT_SCALE=1/2。
+// 初始：普通 Native 主窗口与 SkipTaskbar 辅助窗口均可见，无父子关系。
+// 先显示主窗口，再将隐藏的辅助窗口定位到其实际客户区 (480,80) DIP，默认使用 None；
+// None 自绘 HeaderBar 和 6 DIP 缩放命中区域，不设置置顶或禁止激活。
 //
-//	go run ./tests/window/gui/taskbar [-chrome=none|native|integrated] [-auto]
+// 操作与逐项预期：
+//  1. 查看任务栏：Windows/X11 仅有普通窗口条目，不增加辅助窗口条目；
+//     Windows Alt+Tab 也不包含辅助窗口，X11 切换器行为由 WM 决定。
+//     macOS Dock 仍为应用级图标，创建辅助窗口不能隐藏应用或其他窗口。
+//  2. 点击辅助窗口输入框，键入 taskbar-test，再点击“计数”。
+//     预期：输入与计数可见，主窗口不阻止辅助窗口获得焦点或键盘输入。
+//  3. 拖动辅助窗口标题栏（None 使用自绘 HeaderBar），再拖动右/下边缘。
+//     预期：可以移动和缩放；None 未自动配置缩放光标，不属于本例验收。
+//     Native/Integrated 外观可有系统差异；Native 内容尺寸不因工具标题栏变小。
+//  4. 在主窗口点击“重新定位”，辅助窗口回到 (480,80)；点击“检查”。
+//     预期：输出 PASS，观察到的客户区位置与请求相符，两个窗口尺寸非零。
+//  5. 点击“最小化辅助”，再点击主窗口“显示辅助”：仍能恢复并输入。
+//     macOS 原生最小化 Dock 缩略图允许出现，不用隐藏整个应用模拟此行为。
+//  6. 关闭辅助窗口后主窗口仍可用，点击“退出”释放两窗口并退出。
 //
-// Use GOUI_PLAT_PAINTER=software/opengl (also direct2d on Windows) and
-// GOUI_PLAT_SCALE=1 or 2. Initially the ordinary Native main window and an
-// unrelated SkipTaskbar auxiliary window are visible. Show the main window first,
-// position the hidden auxiliary window at client (480,80) DIP, then show it.
-// The default None auxiliary window has a custom HeaderBar and 6 DIP resize
-// hit area, without always-on-top or no-activate flags.
-// Steps and expected results:
-//  1. Windows/X11 taskbars have only the ordinary window's entry. Windows Alt+Tab
-//     also excludes the auxiliary; X11 switcher behavior depends on the WM.
-//     The macOS Dock remains application-wide without hiding the app or other windows.
-//  2. Type taskbar-test in the auxiliary input, then click Count: text/count
-//     appear, and the main window does not block auxiliary focus or input.
-//  3. Drag its caption (custom HeaderBar for None), then right/bottom edges.
-//     Movement and resizing work. None does not configure automatic resize cursors;
-//     those are outside this check. Native/Integrated appearance varies; Native
-//     content size must not shrink by a tool-window caption's height.
-//  4. Reposition returns the auxiliary to (480,80); Check prints PASS with
-//     observed client coordinates matching the request and nonzero window sizes.
-//  5. Minimize auxiliary, then Show auxiliary restores input. A native macOS
-//     minimized Dock thumbnail is allowed; do not hide the entire app to simulate it.
-//  6. Closing the auxiliary leaves the main window usable. Quit releases both.
-//
-// -auto checks creation flags, positioning before show and observed position
-// afterward, then exits after about 800 ms. It does not verify taskbar appearance,
-// activation, input or real dragging. Record WM-adjusted position failures.
-// Side effects: this program's windows and logs only, no settings or clipboard.
-// Reset: restart. Exit: Quit or close the main window.
+// -auto：自动断言原生创建标志、显示前定位请求和显示后位置，约 800ms 后退出；
+// 不代替任务栏、激活、输入、移动/缩放的真实操作。WM 可调整定位请求，失败须记录。
+// 副作用：仅创建/移动自身窗口和标准输出，不修改系统配置或剪贴板。
+// 复位：重新启动。退出：主窗口“退出”或关闭主窗口。
 package main
 
 import (

@@ -1,17 +1,13 @@
-// External X11 clipboard owner for an isolated, disposable X server only.
-// Run: go run ./tests/window/platform/clipboard/owner -mode utf8
-// After READY, start the parent directory's reader separately. Mode expectations:
-// utf8 expects U+5916 U+90E8, a space and é; fallback -> -expect 'é';
-// latin1 -> -expect 'café';
-// none -> -expect=""; silent -> -error timeout; silent plus -quit-after 100ms
-// -> -error unavailable; format/invalid/incr/refuse -> -error failure.
-// Supply the exact utf8 characters to -expect. fallback rejects TARGETS and
-// UTF8_STRING and accepts STRING.
-// oversized declares an attribute over 16 MiB; reading must fail without truncation.
-// There is no visible window or scale and no simulated input; the process answers
-// real SelectionRequest events from another process. It replaces the isolated
-// session's CLIPBOARD owner. Exit: Ctrl+C or terminate this process; the selection
-// is then lost. Reset: restart owner. Never use a normal working desktop.
+// X11 剪贴板外部所有者，只在独立、可丢弃的 X server 中启动。
+// go run ./tests/window/platform/clipboard/owner -mode utf8
+// READY 后另启上级目录的读取程序：utf8 -> -expect '外部 é'，fallback -> -expect 'é'，
+// latin1 -> -expect 'café'，none -> -expect=""，silent -> -error timeout，
+// silent 配 -quit-after 100ms -> -error unavailable，format/invalid/incr/refuse
+// -> -error failure。fallback 拒绝 TARGETS、UTF8_STRING，只接受 STRING。
+// oversized 声明超出 16 MiB 的属性；读取必须报 failure，不截断成功。
+// 无可见窗口/缩放，不发送输入；从另一进程响应真实 SelectionRequest。
+// 副作用：取代隔离会话的 CLIPBOARD 所有者。Ctrl-C 或终止此测试进程退出；
+// 退出后隔离剪贴板内容丢失。复位：重启 owner。不得在日常桌面启动。
 package main
 
 import (

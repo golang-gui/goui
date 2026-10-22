@@ -1,29 +1,23 @@
-// Premultiplied-color window checks.
+// 预乘颜色窗口验证
 //
-// Environment: Linux, Windows or macOS desktop. Record the backend, desktop/WM
-// and scale. Run: go run ./tests/window/graphics/alpha
-// Use GOUI_PLAT_PAINTER=software or opengl (also direct2d on Windows), and
-// GOUI_PLAT_SCALE=1 or 2. -transparent needs desktop composition.
-// Initially the background is white. Each row compares native brushes/text
-// on the left with reference images/text on the right.
-// Steps and expected results:
-//  1. Compare Fill, Stroke, Gradient and Shadow. Interior pink fills and shadows
-//     match the reference image, strokes match the color strips, and gradient
-//     endpoints and midpoint have no extra darkening.
-//  2. Compare the two MMMM groups in Text: default translucent and range-specific
-//     colors have equal color/opacity. Half/Zero/Half keeps the middle group's
-//     space while making it completely invisible.
-//  3. Repeat at 1x and 2x. Minor edge rasterization differences are allowed;
-//     interior colors must remain unchanged.
-//  4. With -transparent, click through reference, translucent Clear, zero-clear
-//     plus full-window FillRect, zero-clear plus full-window DrawImage, then
-//     reference again. The three solid-color modes must look identical and
-//     reveal the desktop equally. The log identifies the active mode.
+// 环境：Linux / Windows / macOS 桌面；记录后端、桌面环境、缩放比例。
+// 启动：go run ./tests/window/graphics/alpha
+// 使用 GOUI_PLAT_PAINTER=software/opengl（Windows 还可 direct2d），
+// GOUI_PLAT_SCALE=1 或 2。加 -transparent 验证透明呈现，需要桌面合成器。
+// 初始：白底，各行左侧是原生画刷／文字，右侧是参考图片／文字。
 //
-// Platform differences: transparent mode is undecorated and supplies no simulated
-// movement/resizing; normal mode uses native decorations.
-// Side effects: no system settings, clipboard or files are changed.
-// Reset: restart. Exit: Esc, or close the normal decorated window.
+// 操作与逐项预期：
+//  1. 比较 Fill、Stroke、Gradient、Shadow 行左右内容。填充和阴影内部的
+//     粉红色必须与参考图片一致；描边与参考色条一致；渐变中点和端点不偏暗。
+//  2. 比较 Text 行两组 MMMM：左侧为默认半透明颜色，右侧为局部文字颜色，
+//     颜色／透明度应一致。Half/Zero/Half 行的中间一组保留位置但完全不可见。
+//  3. 在 1x、2x 下分别运行上述步骤；允许边缘栅格化细微差异，内部颜色不能变。
+//  4. -transparent 模式下点击依次切换：对照场景 → 半透明 Clear → 清零后
+//     全窗口 FillRect → 清零后全窗口 DrawImage → 对照场景。后三种画面必须
+//     相同，桌面背景透过的程度也必须一致；日志给出当前模式。
+//
+// 平台差异：透明模式使用无装饰窗口，不提供拖动／缩放模拟；普通模式使用原生装饰。
+// 副作用：不修改系统设置、剪贴板或文件。复位：重启。退出：Esc 或关闭普通窗口。
 package main
 
 import (

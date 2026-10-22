@@ -46,7 +46,7 @@ func TestSplitViewUncontrolledAndControlledUpdates(t *testing.T) {
 	v := HSplit(baseui.Label("a"), baseui.Label("b")).Ratio(.5).OnResize(func(float32, float32) { old++ })
 	w := v.Mount(c).(*widgets.SplitView)
 	v.Update(c, w)
-	// Fix layout dimensions so this binding test does not depend on font shaping.
+	// 固定布局尺寸，避免将绑定测试变成字体排版测试。
 	w.StartChild().SetMinSize(geometry.Size{Width: 1, Height: 1})
 	w.EndChild().SetMinSize(geometry.Size{Width: 1, Height: 1})
 	size := geometry.Size{Width: 401, Height: 100}

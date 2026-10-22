@@ -1,30 +1,24 @@
-// Native clipboard result checks, run explicitly rather than by go test.
+// 原生剪贴板结果回归，必须显式运行，不由 go test 启动。
 //
-// Environment: Linux/X11, Windows or macOS. main runs on the platform startup
-// thread. This uses the real platform/event loop without a visible window;
-// typography and rendering scale do not apply. Run:
+// 环境：Linux/X11、Windows、macOS。main 在平台要求的启动线程执行。
+// 本程序没有可见窗口，使用真实平台与事件循环；排版和渲染缩放不适用。
+// 启动：go run ./tests/window/platform/clipboard -write
+// 初始：-write 明确允许用可丢弃文本覆盖剪贴板。仅在隔离 X server、Windows
+// Session 0 或专用测试桌面执行；macOS 使用外部快照/恢复全部格式的包装程序。
+// 操作：无需输入。-write 自动核对空文本、Unicode、多行连续覆盖和恰好一次回调。
+// 跨进程读取示例：
 //
-//	go run ./tests/window/platform/clipboard -write
-//
-// -write explicitly permits overwriting with disposable text. Use an isolated
-// X server, Windows Session 0 or a dedicated test desktop; on macOS use an external
-// wrapper that snapshots/restores every clipboard format.
-// No input is needed: -write checks empty text, Unicode, repeated multiline
-// writes and exactly-once callbacks. For cross-process reads, use:
-//
-//	go run ./tests/window/platform/clipboard -expect 'previously copied text'
+//	go run ./tests/window/platform/clipboard -expect '预先复制的文本'
 //	go run ./tests/window/platform/clipboard -expect=""
 //
-// -error timeout/unavailable/failure checks the five-second deadline, cancellation
-// on exit and conversion failures respectively; -quit-after 100ms tests exit
-// cancellation. PASS and exit 0 require every assertion. An external eight-second
-// watchdog does not verify the read deadline. The Linux owner subprogram provides
-// external selections including silence, invalid formats and Latin-1.
-// Side effects: -write overwrites the real clipboard. X11 ownership is lost at
-// exit; restoring text just before exit cannot restore the previous selection.
-// Windows/macOS retain the last text. Use isolation or the full-format restoration
-// wrapper above. Reset: restart the program/session. Automatic exit is expected;
-// Ctrl+C interruption is not a passed check.
+// 第二条命令显式指定空字符串，核对正常无文本的结果。
+// -error timeout/unavailable/failure
+// 分别核对五秒期限、退出取消、其他转换失败。-quit-after 100ms 测退出取消。
+// 预期：仅全部断言满足才打印 PASS 并以 0 退出；8 秒外部看门狗不能算读取期限通过。
+// Linux 的 owner 子程序用于构造外部 selection，包括无应答、格式错误和 Latin-1。
+// 副作用：-write 改写真实剪贴板；X11 退出失去所有权，不能靠退出前写回原文本恢复。
+// Windows/macOS 系统保留最后一条文本。请使用上述隔离或完整恢复措施。
+// 复位：重启程序/隔离会话。正常自动退出；Ctrl-C 中断不算通过。
 package main
 
 import (

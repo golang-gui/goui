@@ -1,48 +1,43 @@
-// TreeView model, virtualization, keyboard and binding window checks, without DevServer.
+// TreeView 模型、虚拟化、键盘交互和声明绑定验收，不使用 DevServer。
 //
-// Environment: interactive Linux/X11, Windows or macOS. Record OS, Linux WM,
-// actual backend and scale. Run from the repository root:
+// 环境：Linux/X11、Windows 或 macOS 可交互桌面。记录 OS、Linux WM、实际
+// 绘制后端和缩放；仓库根目录启动：
 //
 //	go run ./tests/window/widgets/tree_view
 //
-// Default UI, -gui for imperative controls; -fallback-style uses explicit defaults.
-// Use GOUI_PLAT_PAINTER=software/opengl (also direct2d on Windows),
-// GOUI_PLAT_SCALE=2. Initially Native 920x640 DIP, Modern light, multiselect tree
-// with no selection. Project is expanded; src, delayed and 10,000-row branches
-// are collapsed. src has ordinary, two-line and embedded-button rows.
-// Steps and expected results:
-//  1. Row clicks select; arrows only expand/collapse. Double-click a leaf under
-//     src: one activate log. Double-click a branch only toggles expansion.
-//  2. Control/Command+click multiselects; Shift+click/arrows extends and reversibly
-//     contracts ranges. Primary+arrows moves Current only, Primary+Space toggles
-//     selection. Home/End/PageUp/PageDown/left/right navigate; Primary+A selects
-//     expanded nodes only. Collapsing Current's ancestor moves Current/selection
-//     to it while preserving selected nodes outside that branch.
-//  3. Delayed emits one load and adds loaded child after about 500 ms. Collapse
-//     while loading: completion does not reopen it. Re-expansion may request
-//     again but must not insert duplicates.
-//  4. Expand 10,000 rows and wheel: no stale text/selection/arrows. Reveal last
-//     logs reveal and locates the end; later upward scrolling is not pulled back.
-//     Narrow for horizontal scrolling; vertical reveal retains horizontal offset.
-//  5. src row action logs only row-action without selecting/dragging. Row Enter
-//     activates; embedded button focus retains its own keyboard input.
-//  6. Right-click selection retains multiselect; another row becomes selected.
-//     Menu identifies its ID. Activate logs it; Delete removes node/descendants
-//     with reasonable Current fallback. Shift+F10 uses Current; also test macOS
-//     Control+click. Empty space gets tree background.
-//  7. Rebuild (GUI Refresh) retains selection, Current, expansion and offsets
-//     while updating row revision text. Toggle dark preserves state. Selected
-//     hover/press subtly changes fill; arrow states respond only to arrow input.
-//     Release/recycling clears pressed fills; Current's border leaves selection
-//     visible.
-//  8. Snapshot prints ASSERT PASS for hierarchy, sibling indices, state and virtual
-//     row count. These semantics do not replace real input/appearance checks.
+// 默认 UI；-gui 使用纯 GUI。GOUI_PLAT_PAINTER=software/opengl，Windows
+// 另可 direct2d；GOUI_PLAT_SCALE=2 请求 2x。-fallback-style 显式组合兜底样式。
+// 初始：Native 920×640 DIP、Modern 亮色、多选树，无选中项。项目目录已展开，
+// src、延迟加载分支、10000 行分支折叠；src 内有普通、两行和内嵌按钮内容。
 //
-// Platform differences: Primary follows the platform; activate macOS first.
-// Long rows scroll at natural width rather than wrapping. GUI Refresh corresponds
-// to a same-model UI rebuild. Side effects: window, in-memory data, timers/logs;
-// no disk/clipboard/network. Reset: restart. Exit: close; semantic failures panic
-// and return nonzero.
+// 操作与预期：
+//  1. 点击行体选择；点击箭头只展开折叠，不选择或激活。展开 src 后双击叶子，
+//     终端只打印一次 activate；双击分支只切换展开，不打印 activate。
+//  2. Ctrl（macOS Command）单击多选，Shift 单击连续范围；连续 Shift+方向键
+//     扩大后反向缩小范围。Primary+方向键只移当前项，Primary+Space 切换选择。
+//     Home/End、PageUp/PageDown、左右方向键导航；Primary+A 仅选展开后的节点。
+//     折叠包含当前项的分支后，当前项与选择回到该分支，分支外多选保留。
+//  3. 展开 Delayed，日志 load 只输出一次，约 500 ms 后出现 loaded child；
+//     加载期间折叠，结果不自动展开；再次展开日志可再次 request，但不重复插入。
+//  4. 展开 10000 rows，滚轮滚动，行不残留旧文字、选中背景或展开箭头。
+//     点击 Reveal last 定位末项，终端输出 reveal；随后向上滚动不会被拉回。
+//     缩窄窗口查看水平滚动，纵向定位不重置已有水平偏移。
+//  5. 展开 src 后点击 row action，日志只输出 row-action，不改变选择或启动拖动。
+//     点击行体后按 Enter 激活；行内按钮持有焦点时树不截获按钮的键盘输入。
+//  6. 右击已选行保留多选，右击未选行选择目标；菜单显示目标 ID。点击 Activate
+//     输出目标 ID；点击 Delete 移除该节点及后代，当前项合理回退。Shift+F10
+//     菜单属于当前项；macOS 另验 Control+单击。空白菜单为 tree background。
+//  7. 点击 Rebuild（GUI 为 Refresh），已有选择、当前项、展开和滚动位置保留；
+//     行内文字带更新后的版本号。Toggle dark 切换主题，不改变上述状态。
+//     选中行悬停／按下时背景有轻微变化；箭头仅在自身被悬停／按下时响应样式，
+//     松手和滚动复用后不残留按下背景。当前项细边框不遮住选中背景。
+//  8. 点击 Snapshot，检查层级、兄弟序号、当前/选择及虚拟化数量断言，输出
+//     ASSERT PASS；这仅代表语义断言，不代替实际输入和外观验收。
+//
+// 平台差异：Primary 按平台转换；macOS 先激活窗口。Tab 仅遍历已挂载控件；
+// 长行按自然宽度水平滚动，不自动折行。GUI Refresh 对应 UI 的同模型重建。
+// 副作用：本例窗口、内存数据、计时器和终端日志；不访问磁盘、剪贴板或网络。
+// 复位：重启。退出：关闭窗口。语义断言失败 panic 并返回非零。
 package main
 
 import (

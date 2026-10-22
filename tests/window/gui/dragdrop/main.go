@@ -1,51 +1,47 @@
-// GUI drag-and-drop window checks, without DevServer.
+// GUI Drag and Drop 窗口验证；不使用 DevServer。
 //
-// Environment: Linux/X11, Windows or macOS desktop. Record OS, Linux WM, actual
-// backend and scale. Use GOUI_PLAT_PAINTER=software/opengl (also direct2d on Windows)
-// and GOUI_PLAT_SCALE=1 or 2; requested values do not prove the actual backend.
-// Run: go run ./tests/window/gui/dragdrop -second-window -popover
-// PowerShell: $env:GOUI_PLAT_SCALE='2'; go run ./tests/window/gui/dragdrop
-// Custom previews are enabled on all platforms; -preview=false checks native fallback.
-// Repeat -file /absolute/path for files/directories; otherwise the program creates
-// a temporary sample with Chinese characters and spaces in its name. -large-text
-// offers 256 KiB text. -actions enables Copy/Move/Link for non-file sources;
-// file sources always offer Copy only.
-// Initially Local, Text, Files, URLs and MIME sources sit above their matching
-// targets, with Reject, Prepare/Begin/Drop/End/Click/FAIL counts and the last result.
-// -second-window adds matching targets; -popover adds a floating-panel toggle.
-// Each source offers one format; verify Files and URLs in separate target areas.
-// Steps and expected results:
-//  1. Click a source: only Click increments. Drop on its matching target:
-//     Prepare/Begin/Drop/End each increment once, Click stays unchanged and FAIL=0.
-//     Local checks object identity; Text/URLs/MIME check fixed payloads; Files
-//     checks the paths provided by the source.
-//  2. Enable Reject and drop: no Drop and End action=0. Disable to accept again.
-//     Esc or release outside a target adds no Drop/Click and reports action=0;
-//     canceled=true only where the platform distinguishes cancellation. Retry afterward.
-//  3. Drop in matching targets in the second window or visible Popover: results
-//     match step 1. Hide the Popover to inspect status. Repeat without duplicate
-//     Drop, unmatched Leave or FAIL.
-//  4. Run two processes and transfer Text/URLs/MIME between matching targets:
-//     fixed payloads show VERIFIED; Local must be rejected across processes.
-//     With -large-text in both, transfer complete 256 KiB text in each direction
-//     and verify it, including X11 INCR.
-//  5. Drop Files into an empty file-manager directory; independently check copies
-//     and that sources remain. Drop multiple files/directories back: the window
-//     shows a count and the terminal lists absolute paths. Unmatched external
-//     payloads show RECEIVED, not VERIFIED. Files/URLs need separate targets
-//     because both can use text/uri-list on X11.
-//  6. The default preview is blue/yellow with transparent edges and a black cross
-//     hotspot: 48 DIP image, cross at (12,12) DIP under the pointer. Check logical
-//     size, hotspot and transparency at 1x/2x and record backend sampling differences.
-//     Restart with -preview=false: native fallback preserves drop results. With
-//     -actions, use system modifiers and verify matching Drop/End actions;
-//     an unreported action has not been verified.
+// 环境：Linux/X11、Windows 或 macOS 桌面；记录 OS、Linux WM、实际后端
+// 和缩放。GOUI_PLAT_PAINTER=software/opengl，Windows 另可用 direct2d；
+// GOUI_PLAT_SCALE=1/2。环境变量只是请求值，不代替实际后端确认。
+// 启动：go run ./tests/window/gui/dragdrop -second-window -popover
+// Windows PowerShell：$env:GOUI_PLAT_SCALE='2'; go run ./tests/window/gui/dragdrop
+// 三个平台均默认显示自定义预览；-preview=false 验证无图时的原生回退。
+// 可重复传入 -file /absolute/path 提供文件或目录；不指定时在临时目录创建
+// 一个含中文和空格的样本。-large-text 提供 256 KiB 文本；-actions 为非文件源
+// 开启 Copy/Move/Link，文件源始终只提供 Copy。
+// 初始：主窗口上排为 Local、Text、Files、URLs、MIME 五个独立源，下排是
+// 各自同名的接收区；另有 Reject 开关、Prepare/Begin/Drop/End/Click/FAIL
+// 计数和最近结果。-second-window 增加相同目标，-popover 增加浮窗开关。
+// 五种源各只提供一种格式；Files 和 URLs 在不同接收区验收。
 //
-// Platform differences: record native previews, modifier actions and file-manager
-// behavior separately. Side effects: creates temporary sources and removes them
-// on normal exit; supplied -file paths are unmodified, and no files/URLs open
-// automatically. Finish file-manager copying before exiting and remove its copies.
-// Reset: restart. Exit: close either main window; nonzero FAIL gives a nonzero exit.
+// 操作与预期：
+//  1. 单击任一源：只增加 Click。分别拖到同名接收区：每次 Prepare、
+//     Begin、Drop、End 各增加一次，Click 不变，FAIL=0。Local 校验对象
+//     身份；Text、URLs、MIME 校验预设内容；Files 校验源提供的路径。
+//  2. 点击 Reject 后拖入同名目标：没有 Drop，End action=0；再次点击
+//     恢复接收。拖动中按 Esc 或释放到无目标区域：不增加 Drop/Click，
+//     End action=0；系统能区分取消时 canceled=true。随后仍可重新拖入。
+//  3. 将第二窗口移到旁边，或点 Show/Hide Popover 显示浮窗；拖到其中的
+//     同名目标，数据和计数与步骤 1 一致。隐藏浮窗查看完整状态，重复拖动
+//     不应出现重复 Drop、未配对 Leave 或 FAIL。
+//  4. 启动两个进程，把 Text、URLs、MIME 拖到另一进程同名目标：固定
+//     内容显示 VERIFIED；Local 拖到另一进程不得被接收。两个进程都加
+//     -large-text 后双向拖 Text：完整 256 KiB 内容应通过校验（X11 INCR）。
+//  5. Files 拖到文件管理器的空目录：独立核对复制内容和源仍存在；从文件
+//     管理器反向拖入多文件/目录，窗口显示数量，终端逐项打印绝对路径。
+//     外部数据若未匹配预设内容只显示 RECEIVED，不能算作内容校验通过。
+//     Files/URLs 分区是必要的：X11 两者均可能用 text/uri-list。
+//  6. 默认预览应是蓝黄两色、透明外边缘、黑色十字热点：图像 48 DIP，
+//     十字 (12,12) DIP 应始终位于指针位置；在 1x/2x 下核对逻辑尺寸、
+//     热点和透明边缘，记录各后端采样差异。以 -preview=false 重启，
+//     确认改用原生回退且拖放结果不变。-actions 下用系统修饰键请求
+//     动作，核对 Drop 与 End 一致；不能把未报告的动作视为已通过。
+//
+// 平台差异：原生预览样式、修饰键动作及文件管理器行为按平台分别记录。
+// 副作用：程序创建自有临时源文件，正常退出时删除；不修改 -file 指定
+// 的文件，不自动打开文件/URL。确认文件管理器复制完成后再关闭程序；
+// 文件管理器生成的副本由操作者清理。
+// 复位：重启程序。退出：关闭任一主窗口；FAIL 非零时返回非零退出码。
 package main
 
 import (

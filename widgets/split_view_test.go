@@ -15,7 +15,7 @@ import (
 	widgetstyle "github.com/golang-gui/goui/widgets/style"
 )
 
-// Deterministic logic and normal event dispatch without native windows or fonts.
+// 确定性逻辑与真实事件派发路径，不创建原生窗口、不依赖字体。
 type splitTestLayout struct {
 	desired  geometry.Size
 	measures int

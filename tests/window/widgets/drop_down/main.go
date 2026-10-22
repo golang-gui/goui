@@ -1,50 +1,40 @@
-// DropDown popup, content, pointer/keyboard selection and reconciliation window
-// checks, without DevServer.
-// Environment: interactive Linux X11, Windows or macOS. Record OS/WM, backend
-// and scale. Run: go run ./tests/window/widgets/drop_down
-// -gui selects imperative controls; -fallback-style uses explicit widget defaults;
-// -destroy-on-selected checks destruction in the signal. Use
-// GOUI_PLAT_PAINTER=software/opengl (also direct2d on Windows), GOUI_PLAT_SCALE=2.
-// Initially Integrated 850x640 DIP, light/blue: Basic unselected, Custom=0,
-// Long=9998, Uncontrolled unselected (0 with -gui), Disabled disabled at 0,
-// Empty has no items, and item 1 is disabled.
-// Steps and expected results:
-//  1. Click Basic: a separate rounded/shadowed list matches its width, with
-//     content inside corners. Press then release outside does not open it;
-//     Disabled/Empty cannot open. Item 1 cannot confirm. Choosing C increments
-//     Selected once and collapses to C; confirming C again adds no signal.
-//  2. Tab/Shift+Tab navigate; Enter/Space/Alt+Down open. Down skips disabled item 1;
-//     browsing leaves the collapsed value unchanged. Enter confirms, Esc/outside
-//     click cancels. Tab closes and moves to the next available control; Shift+Tab
-//     goes backward. Closed-state wheel leaves selection unchanged.
-//  3. Custom rows show a bullet, name and description; UI collapsed display shows
-//     only the name (-gui retains row display). Real widget instances are not
-//     moved between locations; package tests check isolation. At 1x/2x all four
-//     rows fit without a scrollbar. Close, Shrink, reopen: one row. Close, Reset,
-//     reopen: four rows with no scrollbar, including native popup resizing.
-//  4. Long shows bounded rows and a draggable bar, initially revealing selected
-//  9998. Item margins match (default 6 DIP); highlights/checks stay out of them.
-//     Clicking between items and scrollbar neither confirms nor closes. Home/End
-//     and arrows browse without constructing 10,000 rows or freezing. Height is
-//     at most 320 DIP, with stable width during scrolling. Reopening follows the
-//     moved owner's current position; near the screen bottom, placement moves
-//     above/inside the work area at both scales.
-//  5. Set silently selects Basic. Rebuild retains widget/model identity, selection
-//     and one signal connection. Uncontrolled omits Selected and keeps user edits.
-//     Shrink reduces Basic to one item and silently clears out-of-range selection;
-//     Reset restores data/counts.
-//  6. Dark/Accent switches mode and blue/red. Item fills stay neutral, with
-//     readable text/arrows/checks/shadows. Only keyboard focus adds a softened
-//     2 DIP border. Check/F6 prints ASSERT PASS and window-local DIP BOUNDS;
-//     the popup has its own Root.
-//  7. -destroy-on-selected closes on first confirmation; later Selected callbacks
-//     do not run. DESTROY PASS, no leftover popup or panic. Normal close also
-//     prints DESTROY PASS.
+// DropDown 原生浮窗、真实内容、键鼠选择和声明式协调验收，不依赖 DevServer。
+// 环境：Linux X11、Windows、macOS 可交互桌面，记录 OS/WM、后端和缩放。
+// 启动：go run ./tests/window/widgets/drop_down；-gui 使用命令式分支，
+// -fallback-style 使用 widgets 显式兜底，-destroy-on-selected 验证信号内销毁。
+// GOUI_PLAT_PAINTER=software/opengl（Windows 另有 direct2d），GOUI_PLAT_SCALE=2 为 2x。
+// 初始：Integrated 850×640 DIP、亮色蓝主题；Basic 未选、Custom 选 0、Long 选 9998、
+// Uncontrolled 未选（-gui 初始选 0），Disabled 禁用且选 0，Empty 无选项；选项 1 禁用。
 //
-// Platform differences: fonts, antialiasing and decorations vary; Integrated may
-// fall back to Native. Side effects: windows/logs only; no clipboard/files/settings.
-// Reset: Reset or restart. Exit: close the main window. State/identity/snapshot
-// assertion failures panic; inspect appearance separately.
+// 操作与逐项预期：
+//  1. 点击 Basic 后显示独立圆角阴影列表，宽度等于控件、内容不进入圆角外。
+//     鼠标按下并移出后释放不打开；Disabled 和 Empty 不打开。点击选项 1 不确认。
+//     选择 C 后只增加一次 Selected 计数，收起显示 C；再次确认 C 不增加计数。
+//  2. Tab/Shift+Tab 导航；Enter/Space/Alt+Down 打开。Down 跳过禁用项 1，
+//     浏览时收起值不变。Enter 确认，Esc 或外部点击取消。打开时 Tab 关闭并
+//     将焦点移到下一个可用控件，Shift+Tab 移到前一个；关闭时滚轮不改选择。
+//  3. Custom 的弹出行显示“● 名称 + 说明”，UI 收起只显示名称（-gui 沿用行展示）；都是实际控件，
+//     文字布局清晰，不把同一 Widget 在两个位置移动。可通过包内测试检查实例隔离。
+//     1x/2x 四行均完整可见、没有滚动条；关闭后 Shrink 再打开应只有一行，
+//     关闭后 Reset 再打开恢复四行且仍无滚动条，覆盖原生 Popup 创建与重新调整尺寸。
+//  4. Long 只显示有限行、滚动条可拖动；打开后自动显示已选的 9998。
+//     左边缘到选项与选项到滚动条的留白一致（默认 6 DIP）；高亮和勾选不进入
+//     留白区，点击选项与滚动条之间的空隙不提交选择或关闭列表。
+//     Home/End 到首尾、上下浏览后确认，不创建一万行控件或卡住；高度不超过
+//     320 DIP，宽度不随滚动跳变。移动主窗口再打开，浮窗跟随当前控件位置。
+//     将窗口移到屏幕下缘再打开，列表退避到上方或工作区内；1x/2x 均不越界。
+//  5. Set 静默设置 Basic，不增加计数。Rebuild 保留各 Widget 和模型实例、选择及
+//     单个信号；Uncontrolled 不声明 Selected，用户选择在重建后保持。Shrink
+//     将 Basic 模型缩短到一项，其越界选择静默清空；Reset 恢复所有数据和计数。
+//  6. Dark/Accent 切换亮暗及蓝红；选项背景为中性灰、不随主题色改变；文字、
+//     箭头、勾选与阴影可辨。键盘焦点为 2 DIP 柔和边框，鼠标焦点无额外边框。
+//     Check/F6 输出 ASSERT PASS 和窗口局部 DIP BOUNDS；Popup 是独立 Root。
+//  7. -destroy-on-selected：用户确认一次后立即关闭窗口，后续 Selected 回调不执行，
+//     输出 DESTROY PASS，无悬挂浮窗或 panic。常规关闭同样输出 DESTROY PASS。
+//
+// 平台差异：字体/抗锯齿及实际装饰可能不同，Integrated 可回退 Native。
+// 副作用：仅窗口和日志，不修改剪贴板、文件、系统设置。复位：Reset 或重启。
+// 退出：关闭主窗口。所有可计算的状态/身份/快照异常 panic；视觉需逐项观察。
 package main
 
 import (

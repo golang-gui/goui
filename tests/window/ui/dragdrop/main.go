@@ -1,44 +1,45 @@
-// Declarative drag-and-drop window checks, without DevServer.
+// 声明式 Drag and Drop 窗口验证；不使用 DevServer。
 //
-// Environment: Linux/X11, Windows or macOS desktop. Record OS, Linux WM, actual
-// backend and scale. Use GOUI_PLAT_PAINTER=software/opengl (also direct2d on Windows)
-// and GOUI_PLAT_SCALE=1 or 2. Call ui.Run from main on the platform startup thread.
-// Run: go run ./tests/window/ui/dragdrop
-// PowerShell: $env:GOUI_PLAT_SCALE='2'; go run ./tests/window/ui/dragdrop
-// By default Data+OnPrepare supplies a custom preview. -preview=false uses Data
-// alone without OnPrepare, checking native fallback. With previews enabled,
-// -widget-preview finds the source by ID through ui.App.FindWidget and renders
-// it using gui.RenderWidget.
-// Initially a 760x480 window has Drag source above Drop target. Rebuild, Source
-// Enabled and Bindings are usable; Revision=0, counts/FAIL=0, Last drop=none,
-// Source Enabled=true and Bindings=true.
-// Steps and expected results:
-//  1. Click source: only Click+1. Drag to target in default mode: Prepare sees
-//     Data's preset text; Prepare/Begin/Drop/End each increase once, Click stays
-//     unchanged and FAIL=0. Last drop retains the current revision's text after
-//     End. Repeat with exactly one delivery per signal.
-//  2. Rebuild increments Revision. Drag twice: each drop has the new text, old
-//     source/target callbacks never run, and counts are not duplicated.
-//  3. Set Source Enabled=false: clicking still works, but dragging produces no
-//     Prepare/Begin/Drop/End. Re-enable to resume dropping.
-//  4. Set Bindings=false: source and target drag controllers are removed, with
-//     no new drag counts. Restore to resume exactly-once delivery.
-//  5. Release outside any target or press Esc: no Drop or accidental Click,
-//     End action=0, and canceled=true only where observable. Retry successfully.
-//  6. Default preview: 48 DIP blue/yellow image, transparent edge, black cross
-//     hotspot at pointer-relative (12,12) DIP, before/after Rebuild. Resize and
-//     repeat steps 1-5 at 1x/2x; size, hotspot, transparency, hits and counts stay
-//     correct. Restart -preview=false: native fallback, Prepare=0 and normal
-//     Begin/Drop/End counts with equal data.
-//  7. Restart -widget-preview: show the current button's rendered image, correct
-//     1x/2x size and 12 DIP hotspot. Repeat after Rebuild. Missing ID, render
-//     failure or invalid scale increments FAIL.
+// 环境：Linux/X11、Windows 或 macOS 桌面；记录 OS、Linux WM、实际后端
+// 和缩放。GOUI_PLAT_PAINTER=software/opengl，Windows 另可用 direct2d；
+// GOUI_PLAT_SCALE=1/2。ui.Run 在 GUI 主线程执行。
+// 启动：go run ./tests/window/ui/dragdrop
+// Windows PowerShell：$env:GOUI_PLAT_SCALE='2'; go run ./tests/window/ui/dragdrop
+// 默认使用 Data+OnPrepare 提供自定义预览；-preview=false 使用纯 Data
+// 声明，不注册 OnPrepare，并验证无图时的原生回退。
+// -widget-preview 使用 ui.App.FindWidget 按 ID 找到源控件，再由
+// gui.RenderWidget 重绘生成预览；仅在 -preview=true 时生效。
+// 初始：760×480 窗口，上方 Drag source、下方 Drop target；Rebuild、
+// Source Enabled、Bindings 按钮均可用。Revision=0，各事件计数和 FAIL=0，
+// Last drop 为 none；Source Enabled 与 Bindings 均为 true。
 //
-// Platform differences: native cancellation observability, layout and backend
-// are recorded separately. This checks UI reconciliation; tests/window/gui/dragdrop
-// covers native files and cross-process formats.
-// Side effects: no files, clipboard or settings changed. Reset: restart.
-// Exit: close the window; nonzero FAIL gives a nonzero exit.
+// 操作与预期：
+//  1. 单击源：仅 Click+1。默认模式拖到目标时，Data 预置文本在
+//     Prepare 中可见，Prepare/Begin/Drop/End 各+1，
+//     Click 不变、FAIL=0；Last drop 显示当前 revision 的文本，End
+//     不会覆盖它。重复一次，各信号仍只增加一次。
+//  2. 点 Rebuild 后拖两次：Revision+1，目标每次收到新 revision 的文本；
+//     源/目标旧回调不得触发，计数不得重复。
+//  3. 点 Source Enabled 使其为 false：源仍可单击，但拖动不增加
+//     Prepare/Begin/Drop/End；恢复 true 后又能拖入目标。
+//  4. 点 Bindings 使其为 false：源和目标的拖放控制器都移除，拖动
+//     不增加计数；恢复 true 后每次拖动仍只触发一次。
+//  5. 拖到窗口外无接收者区域，或拖动中按 Esc：没有 Drop 或误 Click，
+//     End action=0；平台能区分取消时 canceled=true。再次拖入目标成功。
+//  6. 默认预览应为 48 DIP 蓝黄图，外边缘透明、黑色十字热点位于
+//     (12,12) DIP 的指针位置；Rebuild 前后均应显示。缩放窗口并在
+//     1x/2x 下重做步骤 1–5：逻辑尺寸、热点、透明边缘、命中和计数
+//     保持正确。以 -preview=false 重启，应改用原生回退，Prepare
+//     计数保持 0，Begin/Drop/End 正常增加且目标收到相同数据。
+//  7. 以 -widget-preview 重启，拖动时预览应是当前按钮的重绘图像；
+//     1x/2x 的尺寸与 12 DIP 热点一致。Rebuild 后重复拖动，仍使用
+//     当前控件；找不到 ID、重绘失败或缩放无效会增加 FAIL。
+//
+// 平台差异：原生取消标志可观察性不同；窗口布局与后端分别记录。
+// 本例验收 UI 协调；原生文件和跨进程格式见
+// tests/window/gui/dragdrop 的独立窗口用例。
+// 副作用：无文件、剪贴板或系统设置修改。
+// 复位：重新启动程序。退出：关闭窗口；FAIL 非零时返回非零退出码。
 package main
 
 import (

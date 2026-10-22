@@ -1,11 +1,11 @@
-# Native packaging test configuration; keep id equal to the application ID in main.go.
+# 原生打包验收配置，ID 与 main.go 保持一致。
 id = "org.golang-gui.PackagingTest"
 name = "GOUI 打包验证"
 executable = "goui-packaging-test"
 main = "."
 version = "0.1.0"
 build = 1
-# Red and translucent green rectangles test icon formats independently of the project logo.
+# 红色 + 半透明绿色矩形是格式测试资源，不是项目 logo。
 icon = "../../../../cmd/goui/testdata/icon.svg"
 
 [windows]

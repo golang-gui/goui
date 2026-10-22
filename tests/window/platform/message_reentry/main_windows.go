@@ -1,22 +1,19 @@
-// Windows Go -> Win32 -> Go message-binding reentry regression, without DevServer.
+// Windows 消息绑定的 Go -> Win32 -> Go 重入回归，不使用 DevServer。
 //
-// Environment: Windows x64 desktop session; no rendering backend/scale requirement.
-// Run from the repository root:
+// 环境：Windows x64 桌面会话，无绘制后端或缩放要求。仓库根目录启动：
 //
 //	go run ./tests/window/platform/message_reentry
 //
-// A hidden native window still depends on the Windows message system and must
-// be run explicitly. No manual input is required: another thread calls synchronous
-// SendMessage, GetMessage/PeekMessage dispatch it on the main thread, and the
-// callback grows the Go stack before posting a tagged reply.
-// Expect each MSG address to remain stable across callbacks and correct reply
-// HWND/message/parameters. Each retrieval API has independent storage so one
-// buffer's escape cannot hide the other's problem. Also check DispatchMessage
-// callbacks, GetMessage's normal WM_QUIT result and -1/error for an invalid HWND.
-// All assertions print PASS and exit. The old binding could fail address assertions
-// or crash natively. Side effects: this process's hidden windows, thread messages
-// and logs only, without desktop settings or user-data changes. Reset: restart.
-// Exit: automatic; a 15-second timeout reports an error and exits nonzero.
+// 初始：创建一个不可见的原生窗口；本例仍依赖 Windows 消息系统，须显式运行。
+// 无需手动操作：另一线程同步 SendMessage，主线程在 GetMessage/PeekMessage
+// 内派发该消息，窗口回调强制增长 Go 栈，并向队列投递带固定标记的回复。
+// 预期：两种取消息接口的 MSG 地址在回调前后不变，回复 HWND/消息号/参数正确；
+// 两种接口各自使用独立缓冲区，避免其中一个的逃逸掩盖另一个的问题。
+// 同时验证 DispatchMessage 的真实窗口回调，以及 GetMessage 的 WM_QUIT
+// 正常返回和无效 HWND 的 -1/错误返回。
+// 全部断言成功打印 PASS 后退出。旧绑定可能因 MSG 地址改变而断言失败或原生崩溃。
+// 副作用：仅本进程的隐藏窗口、线程消息和日志，不改变桌面设置或用户数据。
+// 复位：重新启动。正常自动退出；超时 15 秒会输出错误并非零退出。
 package main
 
 import (

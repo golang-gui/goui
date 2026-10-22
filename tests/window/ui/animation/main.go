@@ -1,15 +1,16 @@
-// Declarative animation window checks.
-// Environment: Linux, Windows or macOS desktop. Record backend and scale.
-// Run: go run ./tests/window/ui/animation. -auto verifies stable Widget identity,
-// final properties and idle completion, then prints UI ANIMATION PASS.
-// Initially a Modern Integrated window contains a 24 DIP vector icon and an off Switch.
-// Click Animate to transition from the current size to 80/24 DIP; repeated clicks
-// redirect. Rebuild preserves identity and the current size; Switch keeps its
-// existing click behavior. State reconciles through asynchronous RequestUpdate,
-// and final Icon.Size matches the animation value. Completion causes no ongoing
-// rebuilds/paints; resizing and theme changes do not restart the animation.
-// Side effects: windows and logs only. Reset: restart. Exit: close the window,
-// releasing animation connections.
+// 声明式动画窗口验收。
+// 环境：三平台桌面，记录后端/缩放；启动：go run ./tests/window/ui/animation。
+// -auto 自动验证稳定 Widget 身份、最终属性、完成后空闲，输出 UI ANIMATION PASS。
+// 初始：Modern Integrated 窗口，一枚 24 DIP 矢量图标和关闭的 Switch。
+// 操作：点击 Animate，图标从当前尺寸过渡到 80/24 DIP；反复点击重定向。
+//
+//	点击 Rebuild，控件保持身份/当前尺寸；切换 Switch，保留原有点击语义。
+//
+// 预期：UI 状态通过现有异步 RequestUpdate 协调，最终 Icon.Size 与动画终值一致；
+//
+//	动画结束后不持续重建/绘制。窗口尺寸拖动、亮暗主题不造成动画重启。
+//
+// 副作用：窗口、终端日志；复位：重启。退出：关闭窗口，释放动画连接。
 package main
 
 import (

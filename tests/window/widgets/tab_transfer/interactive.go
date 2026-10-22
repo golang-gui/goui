@@ -24,8 +24,7 @@ func (c *positionedColumn) Paint(gui.Painter) {
 	}
 }
 
-// Continuous mode allows repeated bidirectional transfers, page additions
-// and cancellation without a one-operation exit decision.
+// 连续体验模式：双向移动、添加页面和取消均可重复操作，不做一次性退出判定。
 func runInteractive(chrome gui.WindowChromeMode) error {
 	app, err := gui.NewApplication("org.golang-gui.TabTransferDemo")
 	if err != nil {
