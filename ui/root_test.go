@@ -292,6 +292,28 @@ func TestRootUpdatesImageAndCommonFields(t *testing.T) {
 	}
 }
 
+func TestRootReconcilesImageContentSize(t *testing.T) {
+	root := newRoot()
+	img := image.NewRGBA(image.Rect(0, 0, 600, 285))
+	w := root.update(Image(img).ContentSize(400, 190)).(*gui.Image)
+	if w.ContentSize() != (geometry.Size{Width: 400, Height: 190}) {
+		t.Fatal("initial image content size lost")
+	}
+	if root.update(Image(img).ContentSize(200, 95)) != w || w.ContentSize() != (geometry.Size{Width: 200, Height: 95}) {
+		t.Fatal("image content size was not reconciled in place")
+	}
+	// 相同图片不妨碍重新应用声明，删除 modifier 则恢复默认尺寸。
+	w.SetContentSize(geometry.Size{Width: 100, Height: 50})
+	root.update(Image(img).ContentSize(200, 95))
+	if w.ContentSize() != (geometry.Size{Width: 200, Height: 95}) {
+		t.Fatal("declared content size was not reapplied")
+	}
+	root.update(Image(img))
+	if w.ContentSize() != (geometry.Size{}) || w.Measure(layout.Unbounded()).Size != (geometry.Size{Width: 600, Height: 285}) {
+		t.Fatal("removed content size did not restore pixel dimensions")
+	}
+}
+
 func TestRootPreservesViewStateAcrossUpdatesAndUnmounts(t *testing.T) {
 	root := newRoot()
 	tracker := &lifecycleTracker{}

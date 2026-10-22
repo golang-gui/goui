@@ -87,6 +87,37 @@ OpenGL 和 Software 的 `DrawTextLayout` 以 TextLayout 身份和最终 raster s
 
 ## gui / ui 生命周期
 
+### 内容尺寸与分辨率
+
+`gui.Image` 默认将源图片的像素宽高作为内容的 DIP 宽高。这是缺少密度信息时的
+明确默认行为，不根据窗口 DPI 自动缩小图片。`image.Image`、`graphics.Image`
+仍只表示像素；`RenderWidget` 仍返回 `ceil(分配尺寸 × scale)` 的物理像素图片。
+
+```go
+func (i *Image) ContentSize() geometry.Size
+func (i *Image) SetContentSize(size geometry.Size)
+
+ui.Image(captured).ContentSize(originalSize.Width, originalSize.Height)
+```
+
+- `ContentSize` 返回配置值，零值表示使用源像素宽高，不返回推导后的有效尺寸。
+- 显式尺寸的两维都必须有限且大于零，否则整体恢复零值；不推算缺失的一维。
+- 测量以内容尺寸为自然尺寸，再应用既有控件 min/max 和父约束。
+- 绘制以内容尺寸为目标矩形，原点为控件局部 `(0, 0)`；源像素分辨率不变。
+  调用方同时指定两维，不自动保留比例；控件分配与结构裁剪继续沿用普通规则。
+- min/max 仅约束布局，不隐含内容适配。不增加 Fit 模式，也不改变默认绘制行为。
+- 修改内容尺寸仅请求布局与重绘，不重新创建或上传图片；替换源图片保留显式尺寸。
+  相同值不重复失效。nil 图片和隐藏控件仍不绘制或提供自然尺寸。
+- `ui` 每次协调应用该配置，删除 modifier 恢复默认值，复用既有源图片身份比较。
+- Snapshot 仍表示实际控件分配与 RoleImage，不用像素尺寸替换语义边界，不增加动作。
+
+参考 [Qt 6.10 High DPI](https://doc.qt.io/qt-6.10/highdpi.html) 对图片像素尺寸和
+逻辑显示尺寸的区分。Qt 用图片的 device pixel ratio 表达两者关系；GOUI 保持标准
+`image.Image`，由控件显式表达逻辑尺寸，避免增加带 DPI 的图片类型或从当前屏幕
+反推图片密度。此处是上层测量与绘制参数调整，不改变三种后端的 DrawImage 契约。
+
+### 生命周期
+
 `gui.Image` 继续接收普通 `image.Image` 作为应用数据，在第一次 `Paint` 时惰性创建
 `graphics.Image`，后续帧复用。`SetImage` 先销毁旧资源，Widget unmount 时释放当前
 资源；创建失败时本帧跳过，后续 Paint 可重试。
@@ -101,6 +132,8 @@ OpenGL 和 Software 的 `DrawTextLayout` 以 TextLayout 身份和最终 raster s
 - Software 像素测试覆盖快照、透明合成、clip、缩放、跨 Painter 和销毁后使用。
 - Update 测试覆盖同尺寸存储复用、返回后与源脱钩、尺寸变化拒绝和活动帧约束。
 - GUI 测试覆盖多帧复用、替换/unmount 释放和创建失败重试。
+- 显式内容尺寸覆盖测量/绘制一致、非法值/重置、父约束、资源复用和声明式协调；
+  Software 在 1x/1.25x/1.5x/2x 下将控件截图按原 DIP 尺寸预览，独立采样色块位置。
 - 三后端测试覆盖帧内逻辑失效、End 后释放、重复销毁与 Painter 兜底生命周期。
 - Software 覆盖呈现失败和 1x / 2x 旧图片像素；Direct2D 增加 WARP 离屏检查。
 - 桌面回归入口：`tests/window/graphics/image_lifetime`，比较销毁前记录的图片与画刷参考。

@@ -8,10 +8,13 @@ import (
 	"github.com/golang-gui/goui/platform/graphics"
 )
 
+// Image displays immutable pixels at a logical size. By default, each source
+// pixel contributes one DIP to the content's width and height.
 type Image struct {
 	WidgetBase
-	img        image.Image
-	paintImage graphics.Image
+	img         image.Image
+	contentSize geometry.Size
+	paintImage  graphics.Image
 }
 
 func NewImage(img image.Image) *Image {
@@ -34,15 +37,38 @@ func (i *Image) SetImage(img image.Image) {
 	i.requestSemanticUpdate()
 }
 
+// ContentSize returns the explicitly configured content size in DIP.
+// A zero size means that the source pixel dimensions are used as DIP.
+func (i *Image) ContentSize() geometry.Size { return i.contentSize }
+
+// SetContentSize sets the content's logical width and height independently of
+// its pixel resolution. Both dimensions must be finite and positive; otherwise
+// the size resets to zero. It does not preserve aspect ratio or fit the content
+// to the widget's allocation. Min/max sizes remain layout constraints only.
+func (i *Image) SetContentSize(size geometry.Size) {
+	if normalizeLayoutValue(size.Width) <= 0 || normalizeLayoutValue(size.Height) <= 0 {
+		size = geometry.Size{}
+	}
+	if i.contentSize == size {
+		return
+	}
+	i.contentSize = size
+	i.RequestLayout()
+}
+
+func (i *Image) naturalSize() geometry.Size {
+	if i.contentSize != (geometry.Size{}) {
+		return i.contentSize
+	}
+	bounds := i.img.Bounds()
+	return geometry.Size{Width: float32(bounds.Dx()), Height: float32(bounds.Dy())}
+}
+
 func (i *Image) Measure(c layout.Constraint) layout.Measurement {
 	if !i.Visible() || i.img == nil {
 		return layout.Measurement{}
 	}
-	bounds := i.img.Bounds()
-	return layout.Measured(i.constrain(c, geometry.Size{
-		Width:  float32(bounds.Dx()),
-		Height: float32(bounds.Dy()),
-	}))
+	return layout.Measured(i.constrain(c, i.naturalSize()))
 }
 
 func (i *Image) Paint(p Painter) {
@@ -54,8 +80,7 @@ func (i *Image) Paint(p Painter) {
 			i.paintImage, _ = p.NewImage(i.img)
 		}
 		if i.paintImage != nil {
-			width, height := i.paintImage.Size()
-			p.DrawImage(geometry.Rect(0, 0, float32(width), float32(height)), i.paintImage)
+			p.DrawImage(geometry.Rectangle{Size: i.naturalSize()}, i.paintImage)
 		}
 	}
 }

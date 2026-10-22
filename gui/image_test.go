@@ -3,11 +3,14 @@ package gui
 import (
 	"errors"
 	"image"
+	"image/color"
+	"math"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/graphics/software"
 )
 
 func TestImageSnapshot(t *testing.T) {
@@ -90,6 +93,136 @@ func TestImagePaintDrawsImage(t *testing.T) {
 	}
 	if painter.source != img || painter.image == nil {
 		t.Fatal("painter did not create and draw the image resource")
+	}
+}
+
+// 显式内容尺寸同时用于测量和绘制；父约束只改变分配，不隐含缩放或适配。
+func TestImageContentSize(t *testing.T) {
+	view := NewImage(image.NewRGBA(image.Rect(2, 3, 602, 288)))
+	view.SetContentSize(geometry.Size{Width: 400, Height: 190})
+	if got := view.Measure(layout.Unbounded()).Size; got != (geometry.Size{Width: 400, Height: 190}) {
+		t.Fatalf("logical content measured %v, want 400x190 DIP", got)
+	}
+	view.SetMaxSize(geometry.Size{Width: 100, Height: 80})
+	if got := view.Measure(layout.Tight(geometry.Size{Width: 90, Height: 70})).Size; got != (geometry.Size{Width: 90, Height: 70}) {
+		t.Fatalf("parent constraint lost: %v", got)
+	}
+	view.Arrange(geometry.Rect(10, 20, 90, 70))
+	p := new(testImagePainter)
+	view.Paint(p)
+	if p.imageRect != geometry.Rect(0, 0, 400, 190) {
+		t.Fatalf("drawn content %v, want explicit 400x190 DIP", p.imageRect)
+	}
+	if w, h := p.image.Size(); w != 600 || h != 285 {
+		t.Fatalf("source resolution changed to %dx%d", w, h)
+	}
+	info := view.Snapshot()
+	if info.Role != RoleImage || info.Bounds != geometry.Rect(10, 20, 90, 70) || len(info.Actions) != 0 {
+		t.Fatalf("unexpected image semantics: %+v", info)
+	}
+	view.SetImage(nil)
+	if got := view.Measure(layout.Unbounded()).Size; got != (geometry.Size{}) {
+		t.Fatalf("nil image measured %v", got)
+	}
+	view.SetImage(image.NewRGBA(image.Rect(0, 0, 600, 285)))
+	view.SetVisible(false)
+	if got := view.Measure(layout.Unbounded()).Size; got != (geometry.Size{}) {
+		t.Fatalf("hidden image measured %v", got)
+	}
+}
+
+func TestImageContentSizeInvalidationAndResourceReuse(t *testing.T) {
+	win := &window{}
+	view := NewImage(image.NewRGBA(image.Rect(0, 0, 600, 285)))
+	win.SetWidget(view)
+	defer win.SetWidget(nil)
+	p := new(testImagePainter)
+	view.Paint(p)
+	native := p.image.(*testNativeImage)
+	win.layoutDirty, win.paintDirty = false, false
+	size := geometry.Size{Width: 400, Height: 190}
+	view.SetContentSize(size)
+	if view.ContentSize() != size || !win.layoutDirty || !win.paintDirty {
+		t.Fatal("content size did not invalidate layout and paint")
+	}
+	view.Paint(p)
+	if native.destroyed || p.newImages != 1 || p.image != native {
+		t.Fatal("changing only logical size replaced pixel resources")
+	}
+	win.layoutDirty, win.paintDirty = false, false
+	view.SetContentSize(size)
+	if win.layoutDirty || win.paintDirty {
+		t.Fatal("unchanged content size invalidated layout")
+	}
+	view.SetImage(image.NewRGBA(image.Rect(0, 0, 1200, 570)))
+	if view.ContentSize() != size || !native.destroyed {
+		t.Fatal("source replacement lost logical size or retained old resources")
+	}
+	view.SetContentSize(geometry.Size{})
+	if got := view.Measure(layout.Unbounded()).Size; got != (geometry.Size{Width: 1200, Height: 570}) {
+		t.Fatalf("reset did not restore pixel dimensions: %v", got)
+	}
+}
+
+func TestImageInvalidContentSizeRestoresDefault(t *testing.T) {
+	for _, invalid := range []geometry.Size{
+		{}, {Width: 40}, {Height: 19}, {Width: -1, Height: 19},
+		{Width: 40, Height: -1}, {Width: float32(math.NaN()), Height: 19},
+		{Width: 40, Height: float32(math.Inf(1))}, {Width: float32(math.Inf(-1)), Height: 19},
+	} {
+		view := NewImage(image.NewRGBA(image.Rect(0, 0, 60, 30)))
+		view.SetContentSize(geometry.Size{Width: 40, Height: 19})
+		view.SetContentSize(invalid)
+		if view.ContentSize() != (geometry.Size{}) || view.Measure(layout.Unbounded()).Size != (geometry.Size{Width: 60, Height: 30}) {
+			t.Fatalf("invalid size %v did not restore source dimensions", invalid)
+		}
+	}
+}
+
+// 同一 24x12 DIP 控件在不同缩放下截图并按原逻辑尺寸预览。
+// 在不透明红、蓝区域内部采样预乘 RGBA8，精确比较，不涉及字体和抗锯齿边缘。
+func TestImageContentSizePreservesRenderWidgetPreview(t *testing.T) {
+	for _, scale := range []float32{1, 1.25, 1.5, 2} {
+		p, err := software.NewPainter(&widgetRenderSurface{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		win := &window{rootBase: rootBase{painter: p, width: 100, pixelWidth: 100 * scale}}
+		source := newPainterTestWidget(func(p Painter) {
+			p.FillRect(geometry.Rect(0, 0, 24, 12), graphics.RGB(255, 0, 0))
+			p.FillRect(geometry.Rect(12, 0, 12, 12), graphics.RGB(0, 0, 255))
+		})
+		win.SetWidget(source)
+		source.Arrange(geometry.Rect(4, 6, 24, 12))
+		captured, err := RenderWidget(source, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantBounds := image.Rect(0, 0, int(24*scale), int(12*scale))
+		if captured.Bounds() != wantBounds {
+			t.Fatalf("scale %g captured %v, want %v", scale, captured.Bounds(), wantBounds)
+		}
+		preview := NewImage(captured)
+		preview.SetContentSize(source.Rect().Size)
+		win.SetWidget(preview)
+		preview.Arrange(geometry.Rect(0, 0, 24, 12))
+		shown, err := RenderWidget(preview, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if shown.Bounds() != wantBounds {
+			t.Fatalf("scale %g preview bounds %v, want %v", scale, shown.Bounds(), wantBounds)
+		}
+		for _, sample := range []struct {
+			x    int
+			want color.RGBA
+		}{{6, color.RGBA{R: 255, A: 255}}, {14, color.RGBA{B: 255, A: 255}}} {
+			if got := color.RGBAModel.Convert(shown.At(int(float32(sample.x)*scale), int(6*scale))).(color.RGBA); got != sample.want {
+				t.Fatalf("scale %g at %d DIP: got %v, want %v", scale, sample.x, got, sample.want)
+			}
+		}
+		win.SetWidget(nil)
+		p.Destroy()
 	}
 }
 
