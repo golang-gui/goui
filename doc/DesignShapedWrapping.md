@@ -1,4 +1,9 @@
-# 完整上下文字形与上层折行
+# 完整上下文字形与上层折行（已撤回）
+
+> 2026-10-22：本文件以下内容是已撤回的实验设计，不是当前公共 API 或正式控件路径。
+> GlyphContext／GlyphLayout／GlyphMetrics、专用绘制通道及 ShapedText／WrappedText
+> 已移除。正式设计回到 [现有 TextLayout 契约](DesignIncrementalTextLayout.md#16-收敛到现有-textlayout-契约2026-10-22)。
+> 保留实验动机与证据用于解释取舍，不以本文件的接口或性能数字指导新代码接入。
 
 ## 目的与边界
 

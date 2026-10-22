@@ -3,8 +3,6 @@ package direct2d
 import (
 	"fmt"
 	"image"
-	"image/color"
-	"math"
 	"unsafe"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -12,7 +10,6 @@ import (
 	"github.com/golang-gui/goui/platform/graphics/internal/boxshadow"
 	"github.com/golang-gui/goui/platform/graphics/internal/offscreen"
 	"github.com/golang-gui/goui/platform/graphics/internal/pixelsnap"
-	"github.com/golang-gui/goui/platform/graphics/internal/textbitmap"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/directwrite"
 
@@ -25,8 +22,6 @@ import (
 )
 
 type Painter struct {
-	glyphImages  *textbitmap.ImageCache[graphics.Image]
-	textPixels   []byte
 	hwnd         uintptr
 	factory      *d2d1.Factory1
 	d3dDevice    *d3d11.Device
@@ -82,7 +77,6 @@ func NewPainter(win NativeWindow) (_ graphics.Painter, err error) {
 	p.hwnd = win.NativeHandle()
 	p.transparent = win.Transparent()
 	p.images = make(map[*imageResource]struct{})
-	p.glyphImages = textbitmap.NewImageCache(textbitmap.GlyphCacheCapacity, func(img graphics.Image) { img.Destroy() })
 
 	if p.transparent {
 		hwnd := winapi.HWND(p.hwnd)
@@ -355,7 +349,6 @@ func (p *Painter) Destroy() {
 	if p.activeFrame {
 		panic("direct2d: destroy painter during active frame")
 	}
-	p.glyphImages.Destroy()
 	p.destroyAllImages()
 	p.releaseDeviceResources()
 	if p.factory != nil {
@@ -1383,38 +1376,4 @@ func (p *Painter) RenderImage(width, height int, scale float32, draw func()) (im
 		}
 	}
 	return result, nil
-}
-
-func (p *Painter) DrawTextGlyphs(origin graphics.Point, layout typography.GlyphLayout, start, length int, foreground color.Color) {
-	if !p.activeFrame || layout == nil {
-		return
-	}
-	scale := textbitmap.RasterScale(p.scale, p.transform)
-	if scale <= 0 {
-		return
-	}
-	anchor, offset := textbitmap.GlyphOrigin(origin, p.transform, p.scale, scale)
-	origin = anchor
-	clip := image.Rect(0, 0, int(p.width), int(p.height))
-	if p.clipActive {
-		clip = clip.Intersect(image.Rect(int(math.Floor(float64(p.clip.Left*p.scale))), int(math.Floor(float64(p.clip.Top*p.scale))), int(math.Ceil(float64(p.clip.Right*p.scale))), int(math.Ceil(float64(p.clip.Bottom*p.scale)))))
-	}
-	region := textbitmap.GlyphRegion(layout, start, length, offset, origin, p.transform, p.scale, scale, clip)
-	if region.Empty() {
-		return
-	}
-	img, ok := p.glyphImages.LookupGlyphs(layout, start, length, foreground, offset, scale, region)
-	if !ok {
-		bitmap, err := textbitmap.RasterizeGlyphs(layout, start, length, foreground, offset, scale, region, p.textPixels)
-		if err != nil || bitmap.Width != region.Dx() || bitmap.Height != region.Dy() {
-			return
-		}
-		p.textPixels = bitmap.Pixels
-		img, err = p.NewImage(graphics.Bitmap{Width: bitmap.Width, Height: bitmap.Height, Stride: bitmap.Stride, Format: graphics.PixelFormatRGBA, Pixels: bitmap.Pixels})
-		if err != nil {
-			return
-		}
-		p.glyphImages.StoreGlyphs(layout, start, length, foreground, offset, scale, region, img)
-	}
-	p.DrawImage(textbitmap.DrawRect(origin, region, scale), img)
 }

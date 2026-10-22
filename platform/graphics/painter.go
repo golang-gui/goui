@@ -2,7 +2,6 @@ package graphics
 
 import (
 	"image"
-	"image/color"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/typography"
@@ -48,7 +47,5 @@ type Painter interface {
 	DrawEllipse(center Point, xRadius, yRadius, strokeWidth float32, brush Brush)
 	DrawPath(path Path, strokeWidth float32, brush Brush)
 	DrawTextLayout(origin Point, layout typography.TextLayout)
-	// DrawTextGlyphs draws a complete shaping-cluster range in range-local coordinates.
-	DrawTextGlyphs(origin Point, layout typography.GlyphLayout, start, length int, foreground color.Color)
 	DrawImage(rect Rectangle, img Image)
 }

@@ -1,5 +1,8 @@
 # 完整字形来源的折行验证
 
+> 2026-10-22：本记录中的 retained-glyph 实现已撤回。此前通过项和性能数字仅属于
+> 对应历史提交；当前接口与验证范围见文末“收敛到现有 TextLayout”。
+
 2026-10-22。设计见 [DesignShapedWrapping](DesignShapedWrapping.md)。本批已接入
 Linux/Pango 的 TextView 及独立 SourceView；不是仅运行 advance 原型。其他原生
 排版后端保留原路径，没有宣称 Windows/macOS 已获得同样收益。
@@ -92,3 +95,23 @@ SourceView `GOWORK=off go test ./...` 仍失败：`updates to go.mod needed`；�
 后缀收敛、CoreText／DirectWrite 的字形来源接入。含强制分隔符的长逻辑段落保留旧路径。
 下一批应首先拆分冷索引与折点发布，并减少编辑后必须重建的事实；继续保留完整
 上下文、字素和 bidi 正确性，不能把这批收益表述为超大文本已完全不卡 UI。
+
+
+## 收敛到现有 TextLayout（2026-10-22）
+
+用户要求使用现有原生排版契约，避免为具体优化路线引入并行接口。本次移除四笔
+实现提交新增的 GlyphContext／GlyphLayout／GlyphMetrics、Pango 字形范围缓存、
+DrawTextGlyphs 及 Software／OpenGL／Direct2D 专用链路，同时移除上层
+ShapedText／WrappedText 和仅为它们加入的 Fragment 惰性 provider。
+
+TextView 和 SourceView 回到已有 Context.NewTextLayout、MeasureMetrics、
+范围颜色与 DrawTextLayout；原有区域 Rasterize、普通值 Fragment、Geometry
+分页、宽度／历史缓存及滚动估计保留。Pango GetRuns 的容量修正独立保留。
+
+测试取舍：专门验证被撤回接口的字形范围、分段像素、专用 painter/cache 和共享
+字形来源测试随接口移除；原有 TextLayout 和图形测试不改断言。新增使用普通
+Context／TextLayout 装饰器的 >32 KiB 复杂段落回归，检查独立完整原生参考、
+近期宽度恢复无额外测量、原生对象隔离和释放、快照在销毁后继续有效。
+
+本次不宣称性能提升。首次冷排版和陌生宽度恢复完整原生布局，可能比被撤回分支慢。
+完整验收将在上层分配合并后记录。
