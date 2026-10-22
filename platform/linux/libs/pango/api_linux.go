@@ -415,6 +415,12 @@ func (g *GlyphString) IndexToX(text string, analysis *Analysis, index int, trail
 	return int(x)
 }
 
+// GlyphInfos borrows the positioned glyphs until the glyph string is changed
+// or released. The caller must not modify the returned storage.
+func (g GlyphString) GlyphInfos() []GlyphInfo {
+	return cgo.GoSliceNTemp[GlyphInfo](cgo.Pointer(g.glyphs), int(g.NumGlyphs))
+}
+
 func (g GlyphString) GetGlyphInfos() []GlyphInfo {
 	return cgo.GoSliceN[GlyphInfo](cgo.Pointer(g.glyphs), int(g.NumGlyphs))
 }
