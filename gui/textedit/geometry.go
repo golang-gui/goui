@@ -20,7 +20,8 @@ type Position struct {
 
 type textStop struct {
 	Position
-	x float32
+	x         float32
+	precision float32
 }
 
 type textVisualLine struct {
@@ -134,18 +135,19 @@ func NewGeometry(lines []typography.TextLine, clusters []typography.TextCluster,
 		line := &g.lines[c.LineIndex]
 		line.clusters = append(line.clusters, c)
 		leading, trailing := c.X, c.X+c.Width
+		precision := textStopPrecision(c.X, c.Width)
 		if c.Direction == typography.TextRightToLeft {
 			leading, trailing = trailing, leading
 		}
 		line.stops = append(line.stops,
-			textStop{Position{c.Start, false}, leading},
-			textStop{Position{c.Start + c.Length, true}, trailing})
+			textStop{Position{c.Start, false}, leading, precision},
+			textStop{Position{c.Start + c.Length, true}, trailing, precision})
 		g.boundaries = append(g.boundaries, c.Start, c.Start+c.Length)
 	}
 	for i := range g.lines {
 		line := &g.lines[i]
 		if len(line.stops) == 0 {
-			line.stops = []textStop{{Position{min(length, line.metrics.Start), false}, line.metrics.X}}
+			line.stops = []textStop{{Position{min(length, line.metrics.Start), false}, line.metrics.X, 0}}
 		}
 		sort.SliceStable(line.stops, func(i, j int) bool {
 			a, b := line.stops[i], line.stops[j]
@@ -161,9 +163,20 @@ func NewGeometry(lines []typography.TextLine, clusters []typography.TextCluster,
 		// downstream; retain different byte boundaries at bidi transitions.
 		out := line.stops[:0]
 		for _, stop := range line.stops {
-			if len(out) == 0 || out[len(out)-1].x != stop.x || out[len(out)-1].Offset != stop.Offset {
-				out = append(out, stop)
+			if len(out) > 0 {
+				last := &out[len(out)-1]
+				if last.Offset == stop.Offset && math.Abs(float64(last.x)-float64(stop.x)) <= float64(last.precision)+float64(stop.precision) {
+					// Native origins and advances are rounded independently.
+					// At one byte boundary, their addition can differ by a
+					// representable unit. Prefer the downstream edge as for
+					// exact coincidences; do not add a visual key stop for it.
+					if !stop.Upstream {
+						*last = stop
+					}
+					continue
+				}
 			}
+			out = append(out, stop)
 		}
 		line.stops = out
 		line.first, line.last = line.stops[0].Offset, line.stops[0].Offset
@@ -190,6 +203,15 @@ func NewGeometry(lines []typography.TextLine, clusters []typography.TextCluster,
 	}
 	g.boundaries = out
 	return g
+}
+
+// Bound the rounding of the native origin, width and computed endpoint in
+// float32 coordinates. This scales with their actual representation, not a
+// fixed fraction of a pixel; cancellation across zero retains the operand
+// precision. Only two stops at the same byte boundary are compared with it.
+func textStopPrecision(x, width float32) float32 {
+	magnitude := float32(math.Max(math.Abs(float64(x)), math.Max(math.Abs(float64(width)), math.Abs(float64(x+width)))))
+	return 2 * (math.Nextafter32(magnitude, float32(math.Inf(1))) - magnitude)
 }
 
 // Snap clamps offset to a Cluster boundary, toward forward when inside one.
