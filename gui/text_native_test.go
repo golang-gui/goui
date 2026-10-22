@@ -18,8 +18,6 @@ import (
 
 // Native bidi and cluster navigation.
 
-// 原生排版共享验证（入口保留平台后缀）。
-
 // Native shaping without a display: verify editing through the normal dispatcher
 // using real native clusters. Assertions are byte boundaries and visual ordering,
 // not font-dependent pixel widths. This is not a native window/IME acceptance test.
@@ -89,8 +87,6 @@ func testTextEditorNativeNavigation(t *testing.T, newContext func() (typography.
 }
 
 // Native reveal and resize anchor geometry.
-
-// 原生排版的锚定与定位验证。
 
 func testTextViewNativeRevealEnd(t *testing.T, newContext func() (typography.Context, error)) {
 	t.Helper()

@@ -475,7 +475,8 @@ func TestFlatButtonAppearance(t *testing.T) {
 					t.Fatalf("flat foreground dark=%v state=%v: %v, want %v", dark, test.state, fg, wantForeground)
 				}
 				if test.state == style.Hovered || test.state == style.Pressed {
-					// 先断言独立 RGB/宽度预期，再验证完整交互表面与普通按钮一致。
+					// Assert independent RGB and width expectations before comparing the complete
+					// interaction surface with an ordinary button.
 					ordinary := resolved(sheet, "button", test.state)
 					if !style.SameRules([]style.Rule{{Style: s}}, []style.Rule{{Style: ordinary}}) {
 						t.Fatalf("flat interaction differs from button: dark=%v state=%v", dark, test.state)
@@ -498,7 +499,8 @@ func TestFlatButtonAppearance(t *testing.T) {
 func TestButtonInteractionBorderOverrides(t *testing.T) {
 	for _, dark := range []bool{false, true} {
 		rules := Rules(Options{Dark: dark})
-		// 普通按钮仍从自身常态继承描边，不因 Flat 的状态规则被固定为 1 DIP。
+		// Ordinary buttons still inherit their normal border; Flat state rules must
+		// not force them to use a 1 DIP border.
 		for _, name := range []string{"button", Primary} {
 			custom := style.Sheet(append(rules, style.Name(name).BorderWidth(3))...)
 			for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed, style.Disabled} {
@@ -536,7 +538,8 @@ func TestButtonInteractionBorderOverrides(t *testing.T) {
 
 func TestTableStylesNeutralSelectionAndIndependentText(t *testing.T) {
 	for _, dark := range []bool{false, true} {
-		// 独立的 sRGB 字节预期；与 TreeView 使用同一中性选中色阶。
+		// Independent sRGB byte expectations use the same neutral selection palette
+		// as TreeView.
 		want := []color.RGBA{rgb(0xE1E1E3), rgb(0xD9D9DB), rgb(0xD2D2D4)}
 		if dark {
 			want = []color.RGBA{rgb(0x343438), rgb(0x3B3B3F), rgb(0x434347)}
@@ -658,7 +661,7 @@ func TestTableSurfaceHierarchy(t *testing.T) {
 
 func TestTreeSelectionColorsIgnoreAccent(t *testing.T) {
 	for _, dark := range []bool{false, true} {
-		// 固定调色板预期，不通过被测实现的 mix 函数推导。
+		// Use fixed palette expectations independently of the mix function under test.
 		want := []color.RGBA{rgb(0xE1E1E3), rgb(0xD9D9DB), rgb(0xD2D2D4)}
 		wantBorder := rgb(0x61616B)
 		if dark {

@@ -1,27 +1,30 @@
-// 栏内拖动交给原生 DnD 的独立窗口验证；不使用 DevServer。
+// Handoff from in-bar dragging to native DnD, without DevServer.
 //
-// 环境：Linux/X11、Windows 或 macOS 可交互桌面，记录后端、WM、缩放。
-// 启动：go run ./tests/window/gui/drag_handoff -expect accepted
-// 可选 -chrome integrated；默认 Native。GOUI_PLAT_SCALE=2 可复测 2x。
-// 初始：左侧 SOURCE 含一个拖动条，右侧 TARGET 为接收区；只测试一轮。
+// Environment: interactive Linux/X11, Windows or macOS desktop. Record backend,
+// WM and scale. Run: go run ./tests/window/gui/drag_handoff -expect accepted
+// Native chrome is the default; optionally use -chrome integrated and repeat
+// with GOUI_PLAT_SCALE=2. Initially SOURCE on the left contains a draggable bar;
+// TARGET on the right accepts a drop. Each run verifies one operation.
+// Steps and expected results:
+//  1. -expect local: move horizontally over 4 DIP and release inside the bar.
+//     Exactly one local Begin/End, no native Begin/End and no Click.
+//  2. -expect accepted: move inside the bar, then down out of it, keep the left
+//     button held and drop in the right window. One local Begin, no local
+//     End/Cancel, one native Begin/End, identical Go object at the target,
+//     successful Move, no Click, and a RenderWidget preview.
+//  3. -expect canceled: enter the right window, press Esc before releasing.
+//     Canceled=true, no Drop, no valid position and no Click.
+//  4. -expect unaccepted: release in blank client space below the source button.
+//     Action=0, not canceled, valid position, no Drop and no Click.
+//  5. -expect click: a short click produces one Click and no local/native drag events.
 //
-// 操作与预期：
-//  1. -expect local：按住源按钮，水平移动超过 4 DIP 后仍在条内释放。
-//     预期本地 Begin/End 各一次，无原生 Begin/End，无 Click。
-//  2. 默认 accepted：先在条内水平移动，再向下移出条，保持左键拖入右窗释放。
-//     预期本地 Begin 一次且无本地 End/Cancel；原生 Begin/End 各一次；
-//     目标收到相同 Go 对象，Move 成功，无额外 Click，预览来自 RenderWidget。
-//  3. -expect canceled：同上移出条并进入右窗，保持左键按下，按 Esc 再松手。
-//     预期原生结果 Canceled=true、无 Drop、无有效位置、无 Click。
-//  4. -expect unaccepted：移出条后在左窗按钮下方的空白客户区释放。
-//     预期 Action=0、非取消、位置有效，无 Drop、无 Click。
-//  5. -expect click：短点击按钮，只有一次 Click，本地/原生拖动计数均为零。
-//
-// 平台差异：AppKit 需要激活窗口后再拖；原生预览与取消动画由系统决定。
-// Integrated 下拖动条不得移动窗口，空 HeaderBar 区域仍用于移动窗口。
-// 副作用：只创建本例窗口，不读写文件、不修改剪贴板或系统设置。
-// 复位：重新启动。退出：一次操作结束自动退出；未操作就关闭窗口判为未完成。
-// 所有计数和数据身份自动断言；位置精度和预览外观需结合截图独立核对。
+// Platform differences: activate the AppKit window before dragging; preview and
+// cancellation animation are native. With Integrated chrome the bar must not move
+// the window; empty HeaderBar space still does.
+// Side effects: this program's windows only; no files, clipboard or system changes.
+// Reset: restart. Exit: automatically after one operation; closing before an
+// operation is incomplete. Counts and object identity are asserted; independently
+// inspect screenshots for position accuracy and preview appearance.
 package main
 
 import (

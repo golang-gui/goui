@@ -1,28 +1,34 @@
-// ProgressBar 声明式窗口验收，不依赖 DevServer。
-// 环境：三平台可交互桌面，记录 OS、Linux WM、后端与缩放。
-// 启动：go run ./tests/window/widgets/ui_progress_bar。GOUI_PLAT_PAINTER=software/opengl，
-// Windows 另可 direct2d；GOUI_PLAT_SCALE=2 请求 2x。
-// 初始：Integrated 900×560 DIP，Modern 亮色蓝主题，确定进度 25%，下方两项忙等待。
+// Declarative ProgressBar window checks, without DevServer.
+// Environment: interactive Linux, Windows or macOS. Record OS, Linux WM, backend
+// and scale. Run: go run ./tests/window/widgets/ui_progress_bar
+// Use GOUI_PLAT_PAINTER=software/opengl (also direct2d on Windows),
+// GOUI_PLAT_SCALE=2. Initially Integrated 900x560 DIP, Modern light/blue, 25%
+// determinate progress and two busy indicators below.
+// Steps and expected results:
+//  1. +25% cycles 50/75/100/0%, Reset returns 25%. Bar/ring values agree; the ring
+//     grows clockwise from the top, closes at 100% and shows only track at 0%,
+//     with stable layout.
+//  2. The busy capsule exits right and re-enters left without reversing/jumping.
+//     A fixed 90-degree round-cap arc rotates clockwise uniformly every 1.4 seconds,
+//     without stretching or cycle gaps. Rebuild retains identity and animation
+//     phase. Check inspects four widget IDs, form, value/mode and snapshots;
+//     inspect motion and pixels independently. See the legacy timer-check note below.
+//  3. Busy toggles the lower controls to saved determinate values and stops
+//     animation. Hide toggles their ancestor; showing resumes without remnants.
+//     The upper buttons remain usable.
+//  4. Dark/Accent changes mode and blue/red without restarting activity; tracks
+//     stay neutral. Resizing keeps rings round and drawing within bounds.
+//  5. Repeat 1x/2x: 4 DIP spans 4/8 pixels, without cap seams or darkening.
 //
-// 操作与预期：
-//  1. +25% 到 50%、75%、100%、0%，Reset 回 25%；长条比例与圆环同步，
-//     圆环从顶部顺时针增长，100% 闭合无接缝，0% 只显示轨道，布局不变。
-//  2. 下方长条始终向右，完整移出后从左侧循环，无回头／可见跳变；圆形为
-//     固定 90° 圆头弧段，顺时针匀速旋转，1.4 秒一圈，不伸缩、停顿或跳变。
-//     Rebuild 仅请求 UI 重建，反复点击不使动画跳回起点，也不创建新的 Timer。
-//     Check 输出 ASSERT PASS，核对四个 ID 的 Widget 身份、形态、比例／忙等待
-//     和快照；模式／隐藏变化后等 100ms 再 Check，活动 Timer 应有两个（忙且
-//     可见）或零。多次 Check 不替代动画及像素观察。
-//  3. Busy 切换下方模式，切回确定进度时停表并显示保存值。Hide 隐藏共同祖先，
-//     恢复后正常动画，无残影，上方按钮始终可用。
-//  4. Dark／Accent 切换亮暗及蓝／红，轨道中性，前景跟随主题，不重置活动。
-//     调整窗口大小，圆形不变成椭圆、绘制不越界。
-//  5. 在 1x/2x 重复以上步骤，4 DIP 对应 4/8 物理像素，圆头无接缝／加深。
-//
-// 平台差异：字体／装饰可不同，抗锯齿允许细微差别，不承诺刷新同步。
-// 副作用：窗口与日志，无系统设置／剪贴板／文件写入。
-// 复位：Reset 恢复比例，重启恢复全部状态。退出：关闭主窗口，先检查所有 Timer
-// 已停止再退出事件循环；终端输出 DESTROY PASS。断言失败 panic。
+// Known test limitation: Check still expects two active Timer objects while busy
+// and visible, although ProgressBar now uses Root frame subscriptions. That
+// legacy assertion must be updated before treating that Check mode as a passed
+// regression. Hidden or determinate mode expects zero timers. Startup alone
+// does not verify these cases.
+// Platform differences: fonts/decorations and edge antialiasing vary; refresh
+// synchronization is not promised. Side effects: window/logs only, no settings,
+// clipboard or files. Reset: Reset value, restart all state. Exit: close, check
+// timers stopped before loop exit and DESTROY PASS. Assertion failures panic.
 package main
 
 import (

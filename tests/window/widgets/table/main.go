@@ -1,62 +1,72 @@
-// TableView 多列记录、虚拟化、声明协调与现代外观验收，不使用 DevServer。
+// TableView records, virtualization, reconciliation and Modern appearance
+// window checks, without DevServer.
 //
-// 环境：Linux/X11、Windows 或 macOS 可交互桌面；记录 OS、Linux WM、实际
-// 后端与缩放。仓库根目录运行 go run ./tests/window/widgets/table；默认 UI，
-// -gui 使用命令式 GUI，-fallback-style 显式组合兜底样式。
-// -appearance=plain/zebra/rows/grid/thick 指定初始外观，默认 plain；Appearance
-// 按钮循环切换以上模式。thick 为粗线与自定义 Widget 内容避让的专项检查。
-// GOUI_PLAT_PAINTER=software/opengl，Windows 另可 direct2d；GOUI_PLAT_SCALE=2
-// 请求 2x。初始：Native 880×620 DIP、Modern 亮色、10000 条内存记录、多选、
-// 五列固定宽度；名称和大小可排序，Notes 为单行编辑器，说明自动换行，部分
-// 操作单元格含 Inspect 按钮。正文内容填满单元格，普通文本自行用容器留白。
+// Environment: interactive Linux/X11, Windows or macOS. Record OS, Linux WM,
+// actual backend and scale. Run: go run ./tests/window/widgets/table
+// Default UI; -gui uses imperative controls, -fallback-style combines explicit
+// defaults. -appearance=plain/zebra/rows/grid/thick selects initial appearance
+// (default plain); Appearance cycles it. thick checks wide lines/custom content.
+// Use GOUI_PLAT_PAINTER=software/opengl (also direct2d on Windows),
+// GOUI_PLAT_SCALE=2. Initially Native 880x620 DIP, Modern light, 10,000 records,
+// multiselection and five fixed-width columns. Name/Size sort; Notes is an input,
+// descriptions wrap, and some Action cells contain Inspect. Content fills cells;
+// ordinary text uses explicit container padding.
+// Steps and expected results:
+//  1. Click a row, Primary+click for multiselection (Command on macOS, Control
+//     elsewhere), Shift for ranges. Arrows/Home/End/Page navigate; Primary+arrows
+//     move only Current, Primary+A selects all. Enter/double-click activates;
+//     Inspect emits only cell-action without selection changes.
+//  2. Drag header right edges with horizontal resize cursors. Descriptions rewrap;
+//     header/body boundaries agree. Name min/max are 80/480 DIP. Esc restores the
+//     initial width and logs rollback; release neither sorts nor retains pressed
+//     emphasis. UI rebuild retains user widths.
+//  3. Name/Size clicks alternate ascending/descending with sort logs and arrows
+//     matching data. Selection/Current retain IDs. Other headers do not sort.
+//  4. Narrow and scroll horizontally: header/body synchronize. Vertical scrolling
+//     keeps the header fixed. Fast 10,000-row scrolling leaves no stale text/press
+//     fills. Reveal last targets record-09999 by ID rather than assuming last index.
+//  5. Right-click a selected row retains multiselection; another row becomes
+//     selected. Menu shows row/column IDs. Shift+F10 anchors at visible Current;
+//     also test macOS Control+click. Delete removes the record with nearby Current
+//     fallback. Empty body gets background; headers/scrollbars do not query row
+//     menus. Failed presentation logs menu-error.
+//  6. Rebuild (GUI Refresh) updates revision but retains selection, Current,
+//     scroll and widths. Toggle dark changes neutral appearance; text resolves
+//     its own table style and selection is not an accent fill. Modern header
+//     differs subtly from body, with 1 DIP outer/header-bottom lines stronger
+//     than row lines. Selection uses TreeView's neutral palette. Pointer selection
+//     adds no current outline; Tab away and Shift+Tab back adds a 1 DIP neutral
+//     outline that survives hover and clears on clicking the same row. First
+//     return to the top so Current is visible. Explicit fallback keeps its
+//     existing pointer-current outline and is outside this Modern convention.
+//  7. Snapshot prints ASSERT PASS for logical rows/columns, order, current/selected
+//     and virtual row count. These semantics do not verify input/appearance.
+//     Repeat main operations at 1x/2x.
+//  8. Cycle plain (no inner lines), zebra, rows (horizontal lines), grid (full grid
+//     plus stripes), thick (12 DIP vertical/6 DIP horizontal lines, separate border).
+//     The outer border stays visible around header/body/bars, vertical boundaries
+//     align and intersections do not darken. Cyan custom Action widgets fill
+//     their rectangles without lines covering their edges. Line-width changes
+//     rewrap descriptions; stripes follow row order through scroll/rebuild/sort.
+//     Cyan first paint logs backend/pixel-scale. Snapshot uses RenderWidget and
+//     samples all cyan corners in memory to check custom edges; neither this
+//     offscreen check nor startup is a frame-rate or native-appearance result.
+//  9. Edit Notes: a square 2 DIP accent border fills the cell without outside
+//     margins, retaining internal text padding. Blur removes it without a double
+//     border. A tall wrapped row keeps the input full-height and text centered;
+//     editing does not select the row. F6 snapshots without changing focus and
+//     asserts text/bounds, sampling the current input's four border corners
+//     offscreen. Inspect visible edges, clipping and HiDPI separately. Sort, scroll
+//     away/back, rebuild/refresh and dark mode retain values by RowID, never
+//     another record. Notes right-click/Shift+F10 opens its text menu, not a row
+//     menu. Grid/thick lines adjacent to the editor must not cover it.
 //
-// 操作及预期：
-//  1. 点击行体、Primary（macOS Command，其他 Ctrl）多选、Shift 范围选择；
-//     上下/Home/End/Page 导航，Primary+方向键仅改变 Current，Primary+A 全选。
-//     Enter 或双击行体输出 activate；点击 Inspect 只输出 cell-action，不改变选择。
-//  2. 拖动表头各列右边缘改变宽度，光标为水平调整；说明随宽度重新换行，全部
-//     行和表头边界一致。名称最小 80、最大 480 DIP。拖动中按 Esc 恢复起始宽度，
-//     输出 resize 回退；松手不会排序，也不残留高亮。UI 重建后保留用户宽度。
-//  3. 点击 Name 或 Size 表头，先升序后降序，输出 sort，箭头与实际数据一致；
-//     选中记录和 Current 按 ID 保留，不因排序改选别的记录。其他表头不可排序。
-//  4. 缩窄窗口并横向滚动，表头与正文同步；纵向滚动表头固定。快速滚动万行，
-//     无旧文字/按下背景残留。Reveal last 到记录 record-09999，而非假定最后索引。
-//  5. 右击行显示行/列 ID；右击选中行保留多选，未选中行改为选中该行。
-//     Shift+F10 在 Current 可见位置弹出菜单；macOS 另验 Control+单击。
-//     菜单 Delete 删除该记录，Current 邻近回退；正文空白菜单标为 background，
-//     表头和滚动条不查询正文菜单。菜单弹出失败输出 menu-error。
-//  6. Rebuild（GUI 为 Refresh）更新版本号，保留选择、Current、滚动及列宽。
-//     Toggle dark 切换中性亮暗外观；文字独立使用表格样式名，选中不是主题色底。
-//     Modern 的表头略区别于正文，1 DIP 外框/表头底线比行线稍清晰；选中行使用
-//     与 TreeView 一致的浅中性色。鼠标选择行不叠加 current 轮廓；Tab 再
-//     Shift+Tab 回到 TableView 后，当前行显示 1 DIP 中性轮廓，移动鼠标仍保留，点击
-//     同一行后消失。需要先把表格滚回顶部，确保 Current 可见且 Tab 未滚到别处。
-//     -fallback-style 保留其既有鼠标 current 轮廓，不套用 Modern 的外观约定。
-//  7. Snapshot 输出 ASSERT PASS：真实逻辑行/列数、顺序、当前/选中和虚拟行数量；
-//     此断言只验证语义，不代替实际交互和外观验收。缩放 1x/2x 重复主要操作。
-//  8. Appearance 循环 plain（无内部线）、zebra（斑马色）、rows（水平线）、
-//     grid（完整网格+斑马色）、thick（12 DIP 竖线/6 DIP 横线/独立外框）。
-//     外框不得被表头、正文或滚动条盖住；表头与正文竖线对齐，交点不加深。
-//     部分 Action 为填满自身矩形的青色自定义 Widget；thick 下其四边仍完整，
-//     不被线条覆盖。切换粗细后说明重新换行，滚动/重建/排序后条纹仍按行序交替。
-//     青色单元格首次绘制输出 backend / pixel-scale，核对实际后端而非仅启动参数。
-//     Snapshot 还使用 RenderWidget 重绘实际子树并采样青色块四角（无需截图文件），
-//     检查自绘内容边缘；这不是帧率基准，也不代替原生窗口外观观察。
-//  9. 点击 Notes 列并输入文字，预期整格出现 2 DIP 主题色直角边框，四边没有
-//     外部留白；文字保留自己的内边距。点击其他位置后边框消失，不能出现双框。
-//     长说明撑高整行时编辑器仍填满高度、文字垂直居中；编辑不改变行选择。
-//     按 F6 在不转移输入焦点的情况下执行 Snapshot，断言编辑器边界和文本。
-//     F6 还离屏采样当前编辑器的四角，检查焦点边框颜色和直角；可见桌面的
-//     四边、裁剪和 HiDPI 效果仍需实际观察，不能用该离屏检查代替桌面验收。
-//     排序、滚动到远处再返回、Rebuild/Refresh、Toggle dark 后，编辑值仍跟随
-//     原 RowID，不能串到其他记录。Notes 内右键/Shift+F10 使用文本编辑菜单，
-//     不应弹出行菜单。grid/thick 下编辑器与网格线相邻，线条不得遮挡编辑器。
-//
-// 平台差异：Primary、右键触发时机按现有事件规则转换。默认 Tab 仅遍历已挂载
-// 控件，不保证跨虚拟记录导航；首版没有列重排或表格编辑事务。副作用仅测试窗口、
-// 内存数据和终端日志；不读写
-// 文件或网络；文本编辑菜单的复制/剪切/粘贴由用户主动触发并会读写剪贴板。
-// 复位：重启；退出：关闭窗口。断言失败 panic 返回非零。
+// Platform differences: Primary/context-menu timing follow platform event rules.
+// Tab traverses mounted controls, without navigation across all virtual records.
+// Column reordering and table editing transactions are not implemented here.
+// Side effects: window, in-memory data and logs; no files/network. Explicit text
+// copy/cut/paste accesses the clipboard. Reset: restart. Exit: close the window;
+// failed assertions panic and return nonzero.
 package main
 
 import (

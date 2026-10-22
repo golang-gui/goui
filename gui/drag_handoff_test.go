@@ -9,7 +9,8 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 )
 
-// 通过正常 Window.DispatchEvent 验证已获胜手势的接管，不伪造参与者状态。
+// Exercise handoff of an already won gesture through Window.DispatchEvent,
+// without fabricating participant state.
 func TestDragSourceHandoff(t *testing.T) {
 	for _, mode := range []string{"async", "sync", "startup-error"} {
 		t.Run(mode, func(t *testing.T) {
@@ -24,7 +25,7 @@ func TestDragSourceHandoff(t *testing.T) {
 			drag.SetThreshold(4)
 			root.AddEventController(click)
 			root.AddEventController(drag)
-			source := NewDragSource() // 不注册第二个手势参与者
+			source := NewDragSource() // Reuse the existing participant; do not register a second one.
 			source.SetActions(DragMove)
 			data := new(DragData)
 			data.SetLocal("page", root)
@@ -71,14 +72,14 @@ func TestDragSourceHandoff(t *testing.T) {
 				t.Fatal("started outside a drag")
 			}
 			dispatch(events.PointerDown, 20)
-			dispatch(events.PointerMove, 30) // 赢得栏内手势
+			dispatch(events.PointerMove, 30) // Win the gesture while the pointer is still inside the bar.
 			if !drag.Dragging() || native.begin != 0 {
 				t.Fatal("local drag must start first")
 			}
 			if source.Begin(drag, data, DragPreview{}) == nil {
 				t.Fatal("handoff from outside Update was accepted")
 			}
-			dispatch(events.PointerMove, 40) // Update 内接管
+			dispatch(events.PointerMove, 40) // Hand off from inside Update.
 			if (beginErr != nil) != (mode == "startup-error") || native.begin != 1 {
 				t.Fatalf("Begin=%v, calls=%d", beginErr, native.begin)
 			}

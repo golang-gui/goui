@@ -1,34 +1,44 @@
-// DevServer 引用、文本及 Popover 窗口验证。
+// DevServer reference, text and Popover window checks.
 //
-// 环境：Linux/X11、Windows 或 macOS 桌面、原生字体库；记录后端和 1x/2x。
-// POSIX：GOUI_DEV_ADDR=:8888 go run ./tests/window/gui/dev
-// PowerShell：$env:GOUI_DEV_ADDR=':8888'; go run ./tests/window/gui/dev
-// 可加 -verify 执行本协议自身的自动断言，通过后关闭窗口；-addr 可指定服务 URL。
-// GOUI_PLAT_PAINTER=software/opengl，Windows 另有 direct2d；可用 GOUI_PLAT_SCALE=2。
-// 初始：Native 窗口，无 Window/Widget ID；单行 abc、多行 line1/line2、只读字段。
+// Environment: Linux/X11, Windows or macOS desktop with native font libraries.
+// Record backend and 1x/2x scale. Run from the repository root:
 //
-// 操作及预期：
-//  1. GET http://127.0.0.1:8888/goui/dev/snapshot。Window 和所有语义节点均有
-//     非空且互不相同的 ref；id 仍为空。后续 Snapshot 的 Window ref 保持不变。
-//  2. 按 Bounds 向 Window ref POST /event 的 pointer_down/up，点击 main-editor；
-//     POST /text {"target":"窗口ref","text":"你👋é"}，文字插入光标/替换选区。
-//     通过 /event 发送 Ctrl+A、Ctrl+Z（macOS Command），检查全选替换、撤销；
-//     /text 的空字符串不删除选区。事件返回不表示画面完成，重新读取 Snapshot 确认。
-//  3. 点击只读字段后提交，返回 ok=false，字段与主编辑框均不改变。真实 IME
-//     有非空组合时提交也应失败，保留组合；确认/取消组合后恢复提交。-verify 不测试真实 IME。
-//  4. 点击“显示模态输入面板”，Window.popovers 报告独立 ref 与局部 DIP 子树。
-//     按面板自己的 Bounds 向 Popover ref 点击 popup-editor 后提交，只有面板文字改变；
-//     向 Window ref 提交失败。向 Popover ref 发送 Ctrl/Command+A、Esc，复用模态内容
-//     分发；关闭后旧 Popover ref 返回错误，重新显示后获得新 ref。
-//  5. 点击“内置菜单”，即使应用不持有其 Popover，也能从 Snapshot 查到它；按菜单项
-//     Bounds 点击“菜单操作”，menu 计数增一且菜单关闭；不承诺菜单选项键盘导航。
-//  6. 在多行正文中点击并 /text 提交带换行的文字，Snapshot 与界面均保留换行；
-//     单行将换行归一化为空格。不存在的 ref、Widget ref、缺少 text 均明确失败。
+//	GOUI_DEV_ADDR=:8888 go run ./tests/window/gui/dev
 //
-// 平台差异：Popover 无原生键盘焦点；此例程序化提交不验收原生 Popover IME 委托。
-// 副作用：显示原生窗口，并按 GOUI_DEV_ADDR 开启开发 HTTP 服务，不访问剪贴板或文件。
-// 仅用于 DevServer 自身验收，不作为其他控件的自动化验收前置。
-// 复位：重启；退出：关闭主窗口。自动验证失败输出 FAIL、返回非零。用完恢复环境变量。
+// PowerShell: $env:GOUI_DEV_ADDR=':8888'; go run ./tests/window/gui/dev
+// -verify checks this protocol and closes the window; -addr selects the server URL.
+// Use GOUI_PLAT_PAINTER=software/opengl (also direct2d on Windows) and
+// GOUI_PLAT_SCALE=2 for 2x. Initially the Native window has no explicit Window
+// or Widget IDs; fields contain single-line abc, multiline line1/line2 and readonly text.
+// Steps and expected results:
+//  1. GET http://127.0.0.1:8888/goui/dev/snapshot: Window and semantic nodes have
+//     distinct nonempty refs and empty IDs. The Window ref survives later snapshots.
+//  2. POST pointer_down/up events to the Window ref at main-editor's Bounds.
+//     POST /text with {"target":"window-ref","text":"\u4f60👋é"} inserts at the
+//     caret or replaces selection. Send Ctrl+A and Ctrl+Z through /event (Command
+//     on macOS) to check replacement and undo. Empty /text does not delete selection.
+//     Event completion is not paint completion; reread the snapshot to confirm.
+//  3. Commit to the readonly field: ok=false and neither it nor main-editor changes.
+//     A real nonempty IME composition also rejects submission without discarding
+//     preedit; submission resumes after commit/cancel. -verify does not test real IME.
+//  4. Show the modal input panel: Window.popovers includes a separate ref and
+//     subtree in local DIP coordinates. Click popup-editor through that Popover's
+//     Bounds/ref; text changes only there, and submission through the Window ref
+//     fails. Ctrl/Command+A and Esc use its modal dispatch. Closing invalidates
+//     the ref; reopening produces a new one.
+//  5. Open the built-in menu: it appears in the snapshot even though the demo
+//     does not own its Popover. Clicking the action's Bounds increments menu
+//     once and closes it. This step verifies pointer activation only.
+//  6. Submit multiline text to the multiline editor: snapshot and display retain
+//     newlines. Single-line input normalizes them to spaces. Unknown refs, Widget
+//     refs and a missing text property all fail explicitly.
+//
+// Platform differences: Popovers have no native keyboard focus; programmatic
+// submission here does not verify native IME delegation to Popovers.
+// Side effects: creates native windows and opens the GOUI_DEV_ADDR HTTP service;
+// no clipboard or file access. This verifies DevServer itself, not other widgets.
+// Reset: restart. Exit: close the main window. Automatic failure prints FAIL and
+// exits nonzero. Restore the previous environment values afterward.
 package main
 
 import (

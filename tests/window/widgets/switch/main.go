@@ -1,42 +1,50 @@
-// Switch 两态、点击／拖动、短动画及声明协调窗口验收，不依赖 DevServer。
-// 环境：Linux X11、Windows、macOS 可交互桌面；记录 OS/WM、后端、缩放。
-// 启动：go run ./tests/window/widgets/switch；GOUI_PLAT_PAINTER=software/opengl，
-// Windows 另可 direct2d；GOUI_PLAT_SCALE=2 请求 2x；-fallback-style 使用显式兜底。
-// -destroy-on-change 独立验证首次用户切换时立即销毁窗口，后续信号不再执行。
-// 初始：Integrated 900×540 DIP，Modern 亮色蓝主题；Wi-Fi 关闭、Instant 开启、
-// Parent 关闭、Disabled 开启。三个可用项可参与 Tab，实际装饰可能回退 Native。
+// Switch state, click/drag, short animation and reconciliation window checks,
+// without DevServer.
+// Environment: interactive Linux X11, Windows or macOS. Record OS/WM, backend
+// and scale. Run: go run ./tests/window/widgets/switch
+// Use GOUI_PLAT_PAINTER=software/opengl (also direct2d on Windows),
+// GOUI_PLAT_SCALE=2; -fallback-style uses explicit defaults. Separately use
+// -destroy-on-change to destroy on the first user change and suppress later callbacks.
+// Initially Integrated 900x540 DIP, Modern light/blue: Wi-Fi off, Instant on,
+// Parent off, Disabled on. Three enabled controls enter Tab order; chrome may
+// fall back to Native.
+// Steps and expected results:
+//  1. Click Wi-Fi track/label: toggle on release, not press; releasing outside
+//     cancels. The thumb transitions over about 120 ms, redirecting from its
+//     current position on rapid clicks without jumping. Set silently changes
+//     Wi-Fi without Changes; after completion Check/F6 prints ASSERT PASS.
+//  2. Drag the thumb horizontally: state/Changes stay fixed until release while
+//     the thumb follows. Crossing the midpoint toggles once; staying on the same
+//     side retains state without an extra click. A won drag can release outside;
+//     Esc/disable/hide/focus loss cancels to committed state. Vertical or label
+//     drags do not become thumb drags. Parent gesture yielding is covered by
+//     normal-dispatch package tests, since this program has no scroll container.
+//  3. Tab/Shift+Tab navigate; Space/Enter toggle once even when held. Only keyboard
+//     focus has a softened 2 DIP border. Disabled neither interacts nor takes Tab.
+//     Disable/re-enable retains Wi-Fi state. Animated=false removes automatic
+//     transitions while still allowing pointer tracking during drag.
+//  4. Instant has no animation. Child increments ChildClicks without changing
+//     Parent; Parent's track/label toggles it. Rebuild retains identity and one
+//     Change connection.
+//  5. Dark/Accent changes mode and blue/red, not state. Off uses a subtle neutral
+//     outline, on an accent fill, with a white unstroked thumb. Modern on uses
+//     fill only; hover/press affects track color, not thumb. Disabled remains
+//     distinguishable by position with readable text. At 1x/2x and resizing,
+//     tracks stay capsules, thumbs round and content vertically centered within
+//     bounds. Inspect on-state blue 1x end curves for smooth partial coverage,
+//     not hardened overlapping fill/stroke. Dark/disabled/hover/press retain soft
+//     edges. Explicit fallback retains its existing stroke and is outside this
+//     Modern appearance check.
+//  6. Check/F6 asserts state/snapshot/identity and arranged window-local DIP
+//     BOUNDS. After 150 ms ActiveTimers=0; inspect motion separately. Closing
+//     checks timers stopped and widgets destroyed, then prints DESTROY PASS.
+//  7. -destroy-on-change: F6, then click Wi-Fi. One Change, LateChanges=0,
+//     DESTROY PASS and normal exit, with no timer leak or panic.
 //
-// 操作与逐项预期：
-//  1. 点击 Wi-Fi 的轨道或文字均能切换；按下不切换，移出后抬起不切换。
-//     滑块在约 120ms 内平滑移动；快速反复切换从当前位置续接、不先跳回端点。
-//     Set 静默切换 Wi-Fi，不增加 Changes；动画后 Check/F6 输出 ASSERT PASS。
-//  2. 从 Wi-Fi 滑块水平拖动；Changes 及布尔状态保持不变，滑块跟随指针。
-//     越过中点松手切换一次，未越过中点不切换，保持当前位置不再额外点击。
-//     获胜后可拖出控件并松手；Esc／禁用／隐藏／窗口失焦取消，回到已提交状态。
-//     纵向拖动不滑动；从文字开始拖动不变成轨道拖动。程序未含滚动容器，
-//     纵向让出父手势由包内正常事件派发测试验证。
-//  3. Tab/Shift+Tab 导航，Space/Enter 切换，长按只切换一次。键盘焦点有
-//     2 DIP 柔和边框，鼠标焦点没有。Disabled 无输入，也不参与 Tab。
-//     Disable 禁用 Wi-Fi；恢复后原状态保留。Animated 关闭自动过渡，拖动仍跟随。
-//  4. Instant 无动画；Child 只增加 ChildClicks，不切换 Parent；点击 Parent 文字
-//     或轨道切换父项。Rebuild 重复重建保留 Widget 身份和单个 Change 连接。
-//  5. Dark/Accent 切换亮暗及蓝／红主题；关闭轨道中性弱轮廓、开启为主题色，
-//     白色滑块无描边；Modern 开启轨道仅填充，悬停／按下只改变轨道配色，滑块颜色不变。
-//     Disabled 弱化但滑块仍可辨，位置区分状态；文字清晰。1x/2x 与缩放窗口时轨道为胶囊、
-//     滑块保持圆形、边框不越界，内容保持垂直居中；主题切换不改变开关状态。
-//     在亮色蓝主题 1x 下重点检查开启胶囊的左右圆弧：边缘应有平滑的半覆盖像素，
-//     不因同色填充与描边叠加而形成硬轮廓。暗色／禁用／悬停／按下也应保留柔和边缘。
-//     -fallback-style 保持显式兜底的既有描边，不作为本项 Modern 修正的验收对象。
-//  6. Check/F6 核对状态／Snapshot／身份；BOUNDS 为已布局的窗口局部 DIP。
-//     等待 150ms 后再 Check，应显示 ActiveTimers 0；不以此替代动画观察。
-//     关闭窗口后检查 Timer 全部停止、控件均已销毁，输出 DESTROY PASS 并退出。
-//  7. -destroy-on-change：先 F6 再点击 Wi-Fi。只有一个 Change，LateChanges 为 0，
-//     输出 DESTROY PASS 并正常退出；无悬挂 Timer 或 panic。
-//
-// 平台差异：原生装饰／字体／抗锯齿可不同；不承诺动画与垂直刷新同步。
-// 副作用：仅窗口和标准输出，不修改系统设置、文件或剪贴板。
-// 复位：Reset 恢复选择／计数并启用 Wi-Fi；重启恢复主题及全部选项。
-// 退出：关闭主窗口。断言失败 panic。
+// Platform differences: fonts/decorations/antialiasing vary; animation is not
+// promised to synchronize with vertical refresh. Side effects: window/stdout only,
+// no files/settings/clipboard. Reset: Reset state/counts and enable Wi-Fi;
+// restart restores theme/all options. Exit: close; assertion failures panic.
 package main
 
 import (

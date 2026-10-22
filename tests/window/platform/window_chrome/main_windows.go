@@ -1,29 +1,36 @@
-// Windows Native/Integrated/None 客户区尺寸与顶部圆角验证。
+// Windows Native/Integrated/None client-size and top-corner checks.
 //
-// 环境：Windows 10 或 Windows 11 x64；记录 OS Build、系统主题、实际 Painter、
-// 系统 DPI 和日志中的渲染缩放。窗口检查不使用 DevServer。
-// 启动：go run ./tests/window/platform/window_chrome -chrome integrated
-// 可选：-chrome native/none；-auto 仅检查隐藏窗口的初始/最小尺寸并自动退出，
-// 不代表桌面圆角验收。用 GOUI_PLAT_PAINTER=software/opengl（默认 Direct2D），
-// GOUI_PLAT_SCALE=1/2 重复；再在真实 100%/200% 系统 DPI 下验证。
-// 初始：请求 640×400 DIP 客户区，纯暗色填满，终端自动核对客户区和最小尺寸。
+// Environment: Windows 10/11 x64. Record OS build, system theme, actual Painter,
+// system DPI and logged rendering scale. No DevServer is used.
+// Run: go run ./tests/window/platform/window_chrome -chrome integrated
+// Also use -chrome native/none. -auto checks only hidden initial/minimum geometry
+// and exits; it does not verify visible corners. Repeat with
+// GOUI_PLAT_PAINTER=software/opengl (default preference: Direct2D) and
+// GOUI_PLAT_SCALE=1 or 2, then real 100%/200% system DPI.
+// Initially request 640x400 DIP client area filled dark; the log checks client
+// and minimum sizes automatically.
+// Steps and expected results:
+//  1. On a dark Windows 11 desktop, both top corners have no extra white pixels
+//     or bright row. Windows 10 may retain square native edges and one physical
+//     top pixel; no native caption covers custom content.
+//  2. F7 switches solid light/dark fill; activate another app and return. No old
+//     fill or extra white strip remains. F7 does not change the system theme;
+//     verify system theme changes separately and restore settings afterward.
+//  3. Drag the middle of Integrated's top 40 DIP and resize all edges/corners.
+//     F6 checks client geometry against SizeEvent. Win32 still owns top-edge
+//     cursor and drag hit testing.
+//  4. F8 maximizes, F6 checks, F9 restores and F6 checks again. Maximized client
+//     area matches the work area without the normal top pixel. Restore returns
+//     the OS-version-specific border without caption or rounded-corner seams.
+//  5. Restart Native/None separately. Native requested size excludes the caption;
+//     None has no native border. Both initially have exactly 640x400 DIP client
+//     area; minimum hints describe a 320x200 DIP client area.
 //
-// 操作与预期：
-//  1. Windows 11 暗色桌面观察顶部两角：无额外亮白像素/一行露白；Windows 10
-//     允许系统直角边框，顶部保留 1 物理像素，无原生标题栏覆盖自绘区域。
-//  2. F7 切换纯亮/纯暗背景，再点击其它应用后返回；边缘没有旧背景和额外白条。
-//     本键不改变系统主题；系统亮暗切换另行操作，验收后恢复原系统设置。
-//  3. Integrated 上方 40 DIP 中间区域拖动窗口，四边/四角缩放；F6 检查实际
-//     客户区与 SizeEvent 一致。顶部缩放光标和拖动行为仍由 Win32 命中处理。
-//  4. F8 最大化、F6 检查、F9 恢复、F6 再检查：最大化客户区等于当前工作区，
-//     不保留普通顶部像素；恢复后版本对应边框重现，无标题栏或圆角接缝残留。
-//  5. Native/None 分别重启：Native 请求尺寸不包含标题栏，None 无原生边框；
-//     初始客户区均准确为 640×400 DIP，最小尺寸提示均描述 320×200 DIP 客户区。
-//
-// 副作用：仅本进程窗口、终端日志；F8/F9 改变本窗口状态，不写文件/剪贴板。
-// 复位：F9 恢复、F7 切回暗色；重新启动重置大小。退出：Esc 或关闭窗口。
-// 几何失败非零退出；PASS 几何日志不代表圆角/合成外观通过。远程 Session 0
-// 可以执行隐藏几何检查，但不能代替可交互桌面、系统主题和真实 DPI 验收。
+// Side effects: this process's windows/logs only; F8/F9 change their state.
+// No files/clipboard writes. Reset: F9 normal state, F7 dark fill, restart for size.
+// Exit: Esc or close the window. Geometry failures exit nonzero; PASS geometry
+// does not verify composition/corners. Session 0 can check hidden geometry only,
+// not interactive appearance, system themes or real DPI.
 package main
 
 import (

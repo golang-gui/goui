@@ -10,8 +10,9 @@ import (
 	"github.com/golang-gui/goui/widgets"
 )
 
-// 连续体验模式：错误显示在原窗口并写终端，不因第二次拖动退出。
-// 每个新窗口同样支持添加页面及继续拖出；最后一页可转入已有窗口，但不再新建窗口。
+// Continuous mode reports errors in the source window and terminal without
+// exiting after another drag. New windows support adding/detaching pages too;
+// a last page may move to an existing window but cannot create another window.
 func runInteractive(chrome gui.WindowChromeMode) error {
 	app, err := gui.NewApplication("org.golang-gui.TabDetachDemo")
 	if err != nil {
@@ -114,7 +115,8 @@ func runInteractive(chrome gui.WindowChromeMode) error {
 				targetStatus.SetText("Page retained. Move back or add another tab.")
 				fmt.Println("DETACHED: original page transferred; continue or close windows")
 				if err := target.Show(); err != nil {
-					// 不销毁已持有原页面的目标；显示失败交给调用方处理。
+					// Keep a target that already owns the original page. Return show failure
+					// to the caller without destroying the editor content.
 					report(err)
 				}
 			}

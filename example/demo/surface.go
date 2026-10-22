@@ -9,7 +9,8 @@ import (
 	"github.com/golang-gui/goui/ui"
 )
 
-// 示例自己的 Bin：只画自身背景，不向孩子传样式，不遍历绘制子树。
+// This demo Bin paints its own background. It neither passes styles to its
+// child nor traverses the child subtree during painting.
 type surfaceWidget struct {
 	gui.WidgetBase
 	child gui.Widget

@@ -1,25 +1,31 @@
-// Icon 窗口验证：样式驱动的矢量／自定义绘制，通过 Software 生成并缓存位图，不使用 DevServer。
+// Style-driven vector/custom Icon window checks, with Software bitmap
+// generation/caching and no DevServer.
 //
-// 环境：桌面会话及相应绘制库；记录 OS、Linux 桌面环境、后端和缩放比例。
-// 启动：go run ./tests/window/ui/icon
-// 可用 GOUI_PLAT_PAINTER=software/opengl（Windows 另有 direct2d）选择后端，
-// GOUI_PLAT_SCALE=1 或 2 选择缩放。ui.Run 负责锁定 GUI 主线程。
-// 初始：亮色、蓝色主题、24 DIP；显示搜索、Path 勾号、双色标记及图标按钮。
+// Environment: desktop and rendering libraries. Record OS, Linux desktop, backend
+// and scale. Run: go run ./tests/window/ui/icon
+// Use GOUI_PLAT_PAINTER=software/opengl (also direct2d on Windows),
+// GOUI_PLAT_SCALE=1 or 2. Call ui.Run from main on the platform startup thread.
+// Initially light mode, blue accent, 24 DIP: search, Path check, two-color marker
+// and icon button.
+// Steps and expected results:
+//  1. Light/Dark changes ordinary search foreground; Accent check remains visible.
+//     The marker's orange stays fixed while its other color follows foreground,
+//     without stale colors.
+//  2. Accent cycles blue/purple/green. Accent icons and Primary fill follow it;
+//     ordinary icons stay unchanged.
+//  3. Size cycles 24/40/16 DIP. Circles stay circular, Paths keep proportions;
+//     repeat at 2x without low-resolution enlargement blur on diagonals/curves.
+//  4. Replace toggles the last icon plus/minus, updating the same source closure.
+//  5. Search-button clicks increment once. Hover/press changes the button
+//     background; the icon uses explicit PrimaryContent rather than inheriting
+//     button style. Standalone icons have neither click behavior nor focus borders.
+//  6. Resize without overflowing icon bounds and repeat after theme changes.
 //
-// 操作与预期：
-//  1. 点击 Light/Dark。普通搜索图标随正文变亮／暗，Accent 勾号保持可辨，
-//     双色标记的橙色部分不变，另一部分随前景变化，无旧颜色残留。
-//  2. 点击 Accent。蓝／紫／绿循环，主题色图标及 Primary 按钮实底跟随；普通图标不变。
-//  3. 点击 Size。24/40/16 DIP 循环，圆形仍为圆形，Path 比例不变；在 2x 下
-//     重新运行检查斜线和曲线边缘，不应出现放大低分辨率位图的模糊。
-//  4. 点击 Replace。最后一个图标在加号和减号间切换，验证同源闭包更新。
-//  5. 点击搜索图标按钮，每次计数加一；悬停／按下只改变按钮背景，图标不
-//     继承按钮样式，显式使用 PrimaryContent 对比前景；独立图标无点击行为，不出现焦点边框。
-//  6. 调整窗口大小，图标不溢出控件边界；切换主题后重复以上操作。
-//
-// 平台差异：字体／窗口装饰由现有平台处理；三后端图标几何和颜色应一致，
-// 允许边缘栅格化细微差异。半透明画刷专项验证见 tests/window/graphics/alpha。
-// 副作用：无系统设置、剪贴板或文件修改。复位：重启。退出：关闭窗口。
+// Platform differences: native fonts/decorations vary. All backends retain icon
+// geometry/color with minor edge rasterization differences. See
+// tests/window/graphics/alpha for translucent-brush checks.
+// Side effects: no settings, clipboard or files changed. Reset: restart.
+// Exit: close the window.
 package main
 
 import (

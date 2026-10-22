@@ -1,5 +1,5 @@
-# 在仓库根目录执行：go run ./cmd/goui build -config example/demo/goui.toml
-# 路径相对于本文件；ID 与 main.go 中 ui.Run 的应用 ID 保持一致。
+# Run from the repository root: go run ./cmd/goui build -config example/demo/goui.toml
+# Paths are relative to this file; keep id equal to the ui.Run application ID in main.go.
 id = "org.golanggui.Demo"
 name = "GOUI Demo"
 executable = "goui-demo"

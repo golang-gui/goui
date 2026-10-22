@@ -384,8 +384,9 @@ func TestWheelEventControllerPublic(t *testing.T) {
 	}
 }
 
-// 通过窗口正常派发路径验证嵌套滚动：消费依据是请求轴的范围，不是本次偏移
-// 是否改变。内层已到边界或小于整数 DIP 的输入也不能意外移动外层。
+// Dispatch nested scrolling through the normal window path. Consumption
+// depends on the requested axis's range, even at a boundary or for a sub-DIP
+// delta; neither case may unexpectedly move the outer scroll view.
 func TestScrollViewNestedWheelPropagation(t *testing.T) {
 	for _, tc := range []struct {
 		name      string

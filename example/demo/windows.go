@@ -156,7 +156,8 @@ func (d *demo) openWindow(options gui.WindowOptions, borderBox bool) {
 	column.SetCrossAlign(layout.CrossStretch)
 	if options.Transparent && !borderBox {
 		column.SetPadding(12)
-	} // 子树留在圆角内部，不假装背景绘制能够裁剪后续孩子。
+	} // Keep the subtree inside the rounded corners. Painting a rounded background
+	// does not clip children painted later.
 	column.AddChild(header)
 	// Keep descriptions and close controls reachable with long translations
 	// or a resized window; HeaderBar remains outside the scrolling content.
@@ -184,7 +185,8 @@ func (d *demo) openWindow(options gui.WindowOptions, borderBox bool) {
 	})
 	w.ConnectDestroy(func() { closed = true; languageChanged.Disconnect() })
 	d.app.RequestUpdate()
-	// 先选定此窗口的背景样式、创建内容，再显示；不展示默认位置后再定位。
+	// Choose this window's background style and construct its content before
+	// showing it, so the initial position is applied before it becomes visible.
 	d.app.Post(func() {
 		if closed {
 			return

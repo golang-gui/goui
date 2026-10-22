@@ -17,7 +17,7 @@ import (
 	"github.com/golang-gui/goui/style"
 )
 
-// 多行视图、模型与布局。
+// Multiline views, models and layout.
 
 func TestTextViewTabConsumptionPrecedesNavigation(t *testing.T) {
 	editor, win, _ := newEditorFixture(t, "")
@@ -209,7 +209,8 @@ func TestTextViewRevealEndUsesScheduledLayouts(t *testing.T) {
 	}
 }
 
-// 性能基准。
+// Benchmarks with deterministic typography; these measure editor work rather
+// than native shaping or end-to-end desktop interaction latency.
 
 func BenchmarkTextViewLocalEdit(b *testing.B) {
 	for _, megabytes := range []int{1, 10} {
@@ -285,7 +286,7 @@ func BenchmarkTextViewScrollAndReflow(b *testing.B) {
 	}
 }
 
-// 接口契约。
+// Compile-time interface contracts.
 
 var _ Scrollable = (*TextView)(nil)
 
@@ -293,7 +294,7 @@ var _ ScrollIntoViewRequester = (*TextView)(nil)
 
 var _ IMClient = (*TextView)(nil)
 
-// 多行预编辑投影与生命周期。
+// Multiline preedit projection and lifecycle.
 
 func TestTextViewPreeditProjectionAcrossParagraphs(t *testing.T) {
 	editor, win, typo := newEditorFixture(t, "aa\nbb\ncc\ndd")
@@ -454,7 +455,7 @@ func TestTextViewPreeditResetMayUnmountView(t *testing.T) {
 	win.inputMethod = nil
 }
 
-// 视口锚点、重排与滚动收敛。
+// Viewport anchors, reflow and scroll convergence.
 
 func anchoredEditorFixture(t *testing.T, text string) (*TextView, *ScrollView, *editorTypography) {
 	t.Helper()
@@ -702,7 +703,7 @@ func TestTextViewTypingAtTopDoesNotScrollAwayNewline(t *testing.T) {
 	}
 }
 
-// 拖选自动滚动。
+// Drag-selection autoscroll.
 
 func TestTextViewDragAutoScrollAndRelease(t *testing.T) {
 	editor, scroll, win, q, _ := timedEditorFixture(t)

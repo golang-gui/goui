@@ -1,17 +1,17 @@
-// Windows 原生消息队列 / 文字默认动作回归（显式启动的窗口测试）。
+// Windows native message-queue and default text-action window regression.
 //
-// 启动：go run ./tests/window/platform/keydefault
-// 环境：Windows User32 窗口站和原生事件循环；不依赖 Painter、字体或像素缩放。
-// 初始：创建一个不可见的自有窗口，启用普通文字输入，不抢夺桌面焦点。
-// 操作：程序只向自己的 HWND 投递 A 与 S 的原生按键消息；S 被处理，A 不处理。
-// 预期：KeyDown A 一次、S（含一次重复）两次；输入法只提交一个 a（CapsLock 时 A），
-//
-//	没有 s 和重复字符；自动打印 PASS 并退出。5 秒无结果则失败退出。
-//
-// 这验证 PostMessage -> 原生消息循环 -> KeyEvent -> TranslateMessage/WM_CHAR
-// 的衔接，不替代真实键盘布局、死键、AltGr 或中文候选窗的手动验收。
-// 副作用：短暂创建隐藏窗口；不修改系统布局、剪贴板或其他应用。
-// 复位：重跑。退出：自动退出，异常时可 Ctrl+C。
+// Run: go run ./tests/window/platform/keydefault
+// Environment: Windows User32 window station and native event loop. No Painter,
+// fonts or rendering scale are involved. It creates an invisible owned window
+// with normal text input, without taking desktop focus.
+// The program posts A and S native key messages only to its own HWND: S is
+// handled and A is not. Expect one A KeyDown, two S KeyDowns including a repeat,
+// and exactly one text commit a (A with CapsLock), with no s or duplicate text.
+// It prints PASS and exits; lack of a result within five seconds fails.
+// This checks PostMessage -> native loop -> KeyEvent -> TranslateMessage/WM_CHAR;
+// real layouts, dead keys, AltGr and Chinese candidates need manual checks.
+// Side effects: one temporary hidden window; no system layout, clipboard or
+// other-application changes. Reset: rerun. Exit: automatic, or Ctrl+C on failure.
 package main
 
 import (

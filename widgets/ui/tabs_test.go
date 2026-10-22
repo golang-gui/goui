@@ -11,7 +11,7 @@ import (
 	"github.com/golang-gui/goui/widgets"
 )
 
-// 声明协调、身份与移交。
+// Declarative reconciliation, identity and transfer.
 
 type tabContext struct {
 	state    any
@@ -192,7 +192,7 @@ func TestTabViewDuplicateIDRejectsBeforeMutation(t *testing.T) {
 	v.Update(c, view)
 }
 
-// 菜单构建与信号连接管理。
+// Menu construction and signal connection management.
 
 type menuInputHost struct {
 	root, focus gui.Widget

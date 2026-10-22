@@ -9,7 +9,8 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 )
 
-// 跨用例文件共享的固定布局与输入派发；不创建原生窗口。
+// Fixed layout and normal input dispatch shared across test files;
+// no native window is created.
 
 func dragTestBar() (*TabBar, *TabView, []*TabPage) {
 	view := NewTabView()

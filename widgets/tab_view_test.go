@@ -7,7 +7,7 @@ import (
 	"github.com/golang-gui/goui/gui"
 )
 
-// 页面管理与关闭请求。
+// Page management and close requests.
 
 func TestTabViewSelectionRemovalAndCloseRequest(t *testing.T) {
 	v := NewTabView()
@@ -92,7 +92,7 @@ func TestTabPageIndicesMapToRelativeSiblingOrder(t *testing.T) {
 	}
 }
 
-// 关闭回调安全。
+// Reentrant close callbacks.
 
 func TestTabCloseRequestCallbacksCannotUseRemovedPage(t *testing.T) {
 	view := NewTabView()

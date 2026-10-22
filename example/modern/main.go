@@ -1,19 +1,28 @@
-// Modern 样式展示。
-// 环境：桌面窗口；Linux 需要 X11，后端和应用缩放可由 GOUI_PLAT_PAINTER / GOUI_PLAT_SCALE 指定。
-// 启动：go run ./example/modern。初始：系统主题、系统主题色、启用 Modern。
-// 操作与预期：
-//  1. 切换 Mode 的 Light/Dark，文字、背景及语义色适配亮暗；切换 Accent 不改变 Warning/Error/Success。
-//  2. 悬停/按下 Flat action 和 Menu，出现与普通按钮一致的中性底色和 1 DIP 描边，文字位置不跳动；点击 Flat action 更新输入框。
-//  3. Disabled flat 无底色，不可点击或 Tab 聚焦；Flat action 的 Tab 聚焦显示 2 DIP 边框。
-//  4. 切换 Bare GUI，清空自定义 StyleName，恢复 GUI 兜底，文字不丢失。
-//  5. 打开菜单、滚动长菜单、改变窗口大小，检查菜单与控件无裁剪或透明色残留。
-//  6. Accent 按钮使用主题色实底和显式 PrimaryContent；紫/绿使用白字，黄/白使用黑字。
-//     常态/悬停/按下均不叠加普通描边，黑色仍有交互反馈；Disabled primary 使用中性底和弱化文字。
-//     Primary 的 Tab 焦点亮色为深灰 #414147、暗色为浅灰 #D8D8DE，沿用 2 DIP 贴边框，实底和文字不变。
-//     普通按钮/Flat 的焦点配色与几何不变。
+// Modern theme showcase.
+// Environment: a desktop session; Linux requires X11. Choose the backend and
+// application scale with GOUI_PLAT_PAINTER and GOUI_PLAT_SCALE.
+// Run: go run ./example/modern. Initially Modern follows the system mode and accent.
+// Steps and expected results:
+//  1. Switch Mode between Light and Dark: text, backgrounds and semantic colors
+//     follow the mode. Changing Accent leaves Warning/Error/Success unchanged.
+//  2. Hover and press Flat action and Menu: both use the ordinary button's neutral
+//     background and 1 DIP border without shifting text. Flat action updates the input.
+//  3. Disabled flat has no background and accepts neither clicks nor Tab focus.
+//     Keyboard focus on Flat action shows a 2 DIP border.
+//  4. Enable Bare GUI: clear custom StyleName values and retain text with GUI defaults.
+//  5. Open and scroll a long menu, then resize the window. Check for clipping and
+//     stale transparent pixels in menus and controls.
+//  6. Accent buttons use a solid accent and explicit PrimaryContent: white text
+//     on purple/green, black on yellow/white. Normal, hover and pressed states add
+//     no ordinary border; black still gives interaction feedback. Disabled primary
+//     uses a neutral background and subdued text. Its 2 DIP inset focus border is
+//     #414147 in light mode and #D8D8DE in dark mode; fill and text stay unchanged.
+//     Ordinary and Flat buttons retain their existing focus colors and geometry.
 //
-// Card/Sidebar 的表面消费示例见 example/demo；布局容器不因 StyleName 自动绘制背景。
-// 副作用：无系统配置/剪贴板/文件修改。复位：重新启动。退出：关闭窗口。
+// See example/demo for Card/Sidebar surfaces; layout containers do not paint
+// a background merely because a StyleName is set.
+// Side effects: no system settings, clipboard or files are changed.
+// Reset: restart. Exit: close the window.
 package main
 
 import (

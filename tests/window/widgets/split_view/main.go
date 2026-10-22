@@ -1,42 +1,47 @@
-// SplitView 两区／嵌套布局与输入验收，不使用 DevServer。
+// SplitView two-pane/nested layout and input window checks, without DevServer.
 //
-// 环境：Linux/X11、Windows 或 macOS 的可交互桌面；记录 OS、Linux WM、
-// 实际绘制后端与缩放。仓库根目录启动：
+// Environment: interactive Linux/X11, Windows or macOS. Record OS, Linux WM,
+// actual backend and scale. Run from the repository root:
 //
 //	go run ./tests/window/widgets/split_view
 //
-// 默认为 UI 声明绑定；加 -gui 验证纯 GUI 控件。GOUI_PLAT_PAINTER=software
-// 或 opengl，Windows 可选 direct2d；GOUI_PLAT_SCALE=2 请求逻辑 2x。
-// -fallback-style 改用显式 GUI+widgets 兜底样式；环境变量只代表请求。
-// 初始：Native 900×600 DIP 窗口，Modern 亮色；左侧最小 120 DIP，右侧最小
-// 240 DIP，编辑区与终端上下分区，终端初始固定 140 DIP。左侧有可输入内容。
-// 默认外层以两侧测量初始化比例，不保证居中；窗口最小提示为 360×260 DIP。
+// Default UI bindings can be replaced by -gui for imperative controls.
+// Use GOUI_PLAT_PAINTER=software/opengl (also direct2d on Windows),
+// GOUI_PLAT_SCALE=2. -fallback-style uses explicit GUI+widget defaults; environment
+// values are requests only. Initially Native 900x600 DIP, Modern light, left
+// minimum 120 DIP and right minimum 240 DIP. Editor and terminal are vertically
+// split, terminal initially fixed at 140 DIP; left content accepts text. Default
+// outer ratio follows measured panes, not necessarily 0.5; minimum window hint
+// is 360x260 DIP.
+// Steps and expected results:
+//  1. Drag the horizontal split's separator within 4 DIP on either side. Panes
+//     allocate continuously without initial jump or bounce; hover uses a resize
+//     cursor, while the line stays a neutral 1 DIP. Repeat vertically, releasing
+//     outside to stop; content stays clipped to its own pane. On Windows rapidly
+//     drag left/right for at least 20 seconds, then vertically: remain responsive
+//     without 0xC0000005. Snapshot assertions still pass after release.
+//  2. Focus the separator and use axis arrows/Shift+arrows for 1/10 DIP, Home/End
+//     for minimum-size limits. Cross-axis or Control+arrows do not resize. Esc
+//     during dragging restores the initial size; release does not reapply the
+//     canceled position. Leaving after drag removes hover emphasis while arrow
+//     adjustment remains available with focus.
+//  3. Resize the window after dragging: Ratio retains proportions, Start/End
+//     retain preferred DIP. Temporary compression recovers when room returns;
+//     insufficient combined minimums cause no negative dimensions/crash. Nested
+//     vertical panes remain independently adjustable.
+//  4. Mode cycles measured ratio/Start 220/End 400/Ratio 0.5. GUI dragging updates
+//     preferences; UI OnResize updates its model then rebuilds. Rebuild preserves
+//     uncontrolled ratio, input text/selection and scroll positions.
+//  5. Hide/Show left: right fills and outer separator disappears; showing
+//     restores sizing policy. Toggle Dark changes neutral separator color only.
+//  6. Snapshot logs actual pane/separator dimensions. Assertions check pane
+//     sum plus 1 DIP against the container axis and real subtree/separator bounds.
+//     ASSERT PASS verifies geometry, not the input/appearance steps above.
 //
-// 操作与预期：
-//  1. 在左右分隔线以及左右 4 DIP 内按住拖动；两侧实时分配且线跟随，无初始
-//     跳动或拖动中重布局回弹。悬停显示缩放光标；默认分隔线始终为 1 DIP 中性色。
-//     上下分隔条同理，拖到容器外再松手不继续拖动。内容互不越过分区裁剪。
-//     Windows 回归：持续快速左右往返拖动至少 20 秒，再操作上下分隔条；窗口
-//     应持续响应，不出现 0xC0000005。松手后点 Snapshot，几何断言仍应通过。
-//  2. 点击分隔条后按主轴方向键、Shift+方向键，分别移动 1／10 DIP；Home／End
-//     到两侧 MinSize 允许的位置。不相关方向键／Control+方向键不调整分区。
-//     拖动中按 Esc，恢复按下前的大小；松手不会重新应用已取消的位置。
-//     拖动结束并移开鼠标，分隔线不保留高亮或变粗；焦点仍在，可继续用方向键调整。
-//  3. 拖动后缩小再放大窗口，比例模式保持比例，Start／End 模式保持对应首选
-//     DIP 尺寸；不足时临时压缩、恢复后回到偏好。窗口小于内容最小总和时不得
-//     产生负尺寸或崩溃。嵌套上下分区仍可单独操作。
-//  4. 点 Mode 在内容建立的比例／Start 220／End 400／Ratio 0.5 间切换。
-//     纯 GUI 的首选值由用户拖动更新；UI 的 OnResize 更新相应模型再重建。
-//     点 Rebuild 不重置非受控比例、输入文字、选择或 ScrollView 的位置。
-//  5. 点 Hide/Show 隐藏左侧：右侧填满、外层线消失；再显示恢复尺寸策略。
-//     Toggle Dark 切换亮暗主题的中性色分隔条，不改变比例或内容。
-//  6. 点 Snapshot：终端打印两侧实际大小及 separator 范围；assertions 检查
-//     两侧之和加 1 DIP 等于容器主轴，真实内容子树与 separator 的边界及范围。
-//     显示 ASSERT PASS 仅代表这些几何断言，不能代替上述桌面输入／外观验收。
-//
-// 平台差异：本例不扩展窗口装饰，macOS 需先激活窗口；没有全局 Tab 导航。
-// 副作用：仅本例窗口、内存文字和日志；不写业务文件，不操作剪贴板或系统设置。
-// 复位：重启。退出：关闭窗口；任一几何断言失败时 panic，返回非零状态。
+// Platform differences: this adds no window-decoration behavior; activate the
+// macOS window before input. Side effects: this window, in-memory text and logs;
+// no application files, clipboard or settings changed. Reset: restart.
+// Exit: close the window; any geometry failure panics and exits nonzero.
 package main
 
 import (

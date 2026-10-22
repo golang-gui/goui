@@ -1,25 +1,38 @@
-// TextInput/TextView 占位提示窗口验证。
-// 环境：原生桌面、字体及排版库；记录 OS、WM、实际 Painter、1x/2x。
-// 启动：go run ./tests/window/gui/textplaceholder [-inspect] [-capture-dir DIR]
-// DIR 是仓库外已存在的临时目录。可设置 GOUI_PLAT_PAINTER=software/opengl
-// 和 GOUI_PLAT_SCALE=1/2；Windows 另测 direct2d，macOS 编辑快捷键使用 Cmd。
-// 初始：Basic、Modern Light、Modern Dark 三列，各有空单行框和共享空模型的多行框。
-// 自动步骤与逐项预期：
-//  1. 三列提示有实际像素，文本值/文档长度为零；聚焦与未聚焦均显示。
-//     隐藏/恢复提示不改变测量、baseline、内容范围；所有变化像素在内容裁剪区。
-//  2. 经 Window.CommitText 输入空格后单行提示隐藏；通过正常键盘全选/删除后恢复。
-//     修改提示保留文字选区；多行输入同步三个视图，单次撤销后全部恢复空文档提示。
-//  3. 多行换行开关、提示显式换行、字体放大、单列换主题后仍绘制；其他列主题独立。
-//     只读/禁用框仍有提示，重新启用后可输入；提示不产生滚动条。
-//  4. 卸载/重新挂载后提示恢复。自动步骤成功退出；失败/提前关闭返回非零。
+// TextInput/TextView placeholder window checks.
+// Environment: native desktop, fonts and typography libraries. Record OS/WM,
+// actual Painter and 1x/2x. Run:
 //
-// -inspect 成功后保留窗口：分别点击单行/多行，输入、删除、撤销，观察提示切换；
-// 缩窄窗口检查长提示换行和裁剪。真实中文 IME 组合时提示隐藏，取消后恢复，
-// 提交后只剩正文；检查候选窗跟随光标。自动步骤不替代真实 IME/桌面合成验收。
-// 像素比较只检查同控件隐藏提示前后的差异与裁剪，不跨字体比较金图；sRGB、RGBA，
-// 整数物理像素中心落在内容区内；除提示外的文字/边框应逐像素相同。
-// 副作用：创建窗口；-capture-dir 写 PNG，不修改系统设置或主动使用剪贴板。
-// 复位：重启。退出：自动完成或关闭窗口，无 DevServer 依赖。
+//	go run ./tests/window/gui/textplaceholder [-inspect] [-capture-dir DIR]
+//
+// DIR must be an existing temporary directory outside the repository. Use
+// GOUI_PLAT_PAINTER=software/opengl and GOUI_PLAT_SCALE=1 or 2; also test direct2d
+// on Windows. macOS editing shortcuts use Command.
+// Initially Basic, Modern Light and Modern Dark each show an empty input and
+// a multiline view; the multiline views share an empty model.
+// Automatic steps and expected results:
+//  1. All placeholders produce pixels while values/model length remain zero,
+//     with or without focus. Toggling visibility preserves measurement, baseline
+//     and extent, and all changed pixels stay inside the content clip.
+//  2. Commit a space through Window.CommitText: the input placeholder disappears;
+//     normal keyboard select-all/delete restores it. Changing the placeholder
+//     retains selection. Multiline input synchronizes all views, and one undo
+//     restores the shared empty document and all its placeholders.
+//  3. Wrapping toggles, explicit newlines, larger fonts and a single-column theme
+//     change still paint correctly. Other themes stay independent. Readonly and
+//     disabled fields retain hints; re-enabled inputs accept text. Hints add no bars.
+//  4. Unmount/remount restores placeholders. Success exits automatically; failures
+//     or closing early return nonzero.
+//
+// -inspect keeps the successful window open. Type/delete/undo in both editor
+// types and narrow the window to inspect wrapping and clipping. Real Chinese IME
+// preedit hides the hint, cancel restores it, and commit leaves only real text;
+// inspect candidate placement near the caret. Automated checks do not verify IME
+// or desktop composition. Pixel checks compare visibility changes within the same
+// field in sRGB RGBA at integer physical-pixel centers inside the content area;
+// other text/borders must be unchanged. There is no cross-font golden image.
+// Side effects: creates windows; -capture-dir writes PNGs. No system changes or
+// automatic clipboard access. Reset: restart. Exit: completion or close the window;
+// no DevServer is used.
 package main
 
 import (

@@ -164,8 +164,9 @@ func (d *demo) detachTab(source *tabWindow, r *wui.TabDetachRequest, handled *bo
 	*handled = true
 	d.nextWindow++
 	id := fmt.Sprintf("tabs-%d", d.nextWindow)
-	// 源和目标都使用同一个 tabContents。沿用已布局的 HeaderBar 及宿主
-	// 内缩量，不带主展厅导航/工具栏的开销，也不布局隐藏窗口。
+	// Source and target share tabContents. Reuse the arranged HeaderBar and host
+	// insets, excluding the gallery's navigation and toolbar. No hidden-window
+	// layout pass is needed.
 	bar := d.app.FindWidget(source.id, "tab-bar")
 	if bar == nil || bar.Parent() == nil || r.Window.Widget() == nil {
 		r.Cancel()
@@ -175,13 +176,15 @@ func (d *demo) detachTab(source *tabWindow, r *wui.TabDetachRequest, handled *bo
 	inset := r.Window.Widget().Rect().Pos
 	height := bar.Parent().Rect().Height
 	size := geometry.Size{Width: r.ContentSize.Width + 2*inset.X, Height: r.ContentSize.Height + height + 2*inset.Y}
-	// 暂存目标未避让控制按钮时的起点，创建后按目标的实际占位修正。
+	// Estimate the target origin before its window controls reserve space;
+	// correct it from the target's actual allocation after creation.
 	header, ok := bar.Parent().(*gui.HeaderBar)
 	if !ok {
 		r.Cancel()
 		return
 	}
-	// 目标是顶部 HeaderBar，基础 X 是 padding，不是源已避让后的 X。
+	// The target HeaderBar is at the top. Its initial X is padding, before
+	// reserving target controls, rather than the source's adjusted X.
 	barOrigin := geometry.Point{X: header.Padding(), Y: bar.Rect().Y}
 	d.detachPosition = r.Position.Add(r.Hotspot.Add(barOrigin).Add(inset).Scale(-1))
 	d.tabWindows = append(d.tabWindows, &tabWindow{id: id, size: size})
@@ -199,7 +202,8 @@ func (d *demo) prepareDetach(w *tabWindow) {
 	err := errors.New(resource.TabContainerNotReady())
 	if target != nil && view != nil {
 		position := d.detachPosition
-		// ConnectInfo 同步报告当前占位；这里一次性借用，不注册长期监听。
+		// ConnectInfo reports the current allocation synchronously; borrow it once
+		// without retaining a subscription.
 		var info gui.ChromeInfo
 		connection := target.Chrome().ConnectInfo(func(current gui.ChromeInfo) { info = current })
 		connection.Disconnect()

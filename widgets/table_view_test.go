@@ -19,7 +19,8 @@ import (
 	"testing"
 )
 
-// 表格逻辑、无字体测量及正常输入分发回归；不创建原生窗口。
+// Table logic, font-independent measurement and normal input dispatch;
+// no native window is created.
 type tableRecord struct {
 	id            string
 	units, height float32
@@ -120,7 +121,8 @@ func tablePanic(t *testing.T, fn func()) {
 	fn()
 }
 
-// 边框、内容几何和斑马色；不创建桌面窗口或字体资源。
+// Borders, content geometry and alternating row colors without native
+// windows or font resources.
 func TestTableViewCellContentFillsAllocation(t *testing.T) {
 	old := gui.App
 	gui.App = &separatorApp{sheet: style.Sheet(
@@ -358,7 +360,7 @@ func TestTableViewCurrentFocusAppearance(t *testing.T) {
 			rules := []style.Rule{
 				style.Name("table-row").BackgroundColor(color.White).BorderWidth(0).Radius(4),
 				style.Name("table-row").Part("selected").BackgroundColor(color.RGBA{G: 255, A: 255}),
-				// current 故意有不透明背景，不能覆盖选中底色。
+				// Give current an opaque background deliberately; it must not obscure selection.
 				style.Name("table-row").Part("current").BackgroundColor(color.RGBA{R: 255, A: 255}).BorderColor(color.RGBA{B: 255, A: 255}).BorderWidth(0),
 				style.Name("table-row").Part("current").State(style.FocusVisible).BorderWidth(1),
 			}

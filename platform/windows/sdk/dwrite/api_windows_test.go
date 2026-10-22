@@ -7,8 +7,9 @@ import (
 	"github.com/golang-gui/goui/platform/windows/sdk/com"
 )
 
-// 不需要桌面。两个 BOOL* 都是输出，原生 BOOL 为 32 位；检查真实 DirectWrite
-// 对内部/外部及字符前后半区的返回，防止传入 bool 值或单字节 *bool。
+// No desktop is needed. Both BOOL* arguments are 32-bit native outputs.
+// Check real DirectWrite results inside/outside the text and on both halves
+// of a character to catch bool values or one-byte *bool output storage.
 func TestTextLayoutHitTestPoint(t *testing.T) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()

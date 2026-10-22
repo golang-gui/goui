@@ -1,26 +1,29 @@
-// 左右修饰键原生事件回归。
+// Native left/right modifier event checks.
 //
-// 环境：Windows/macOS/Linux 桌面与键盘；Linux 记录 WM、布局及 XIM。
-// 不创建 Painter，不依赖字体、渲染后端或缩放。使用窗口标题和终端显示状态。
-// 启动：go run ./tests/window/platform/modifiers -modifier control
-// modifier 可选 shift/control/alt/system；macOS alt=Option、system=Command，
-// Windows system=Win，Linux system=Super。加 -reverse 交换以下左右顺序。
-// 初始：未开始，按 F8 开始普通场景；按 Escape 复位。不要启用粘滞键。
+// Environment: Windows/macOS/Linux desktop and keyboard. On Linux record WM,
+// keyboard layout and XIM. No Painter, fonts, rendering backend or scale is used;
+// status appears in the window title and terminal.
+// Run: go run ./tests/window/platform/modifiers -modifier control
+// Choose shift/control/alt/system; macOS alt is Option and system is Command,
+// Windows system is Win and Linux system is Super. -reverse exchanges left/right.
+// Initially idle: F8 starts the ordinary sequence; Escape resets. Disable Sticky Keys.
+// Steps and expected results:
+//  1. Release all modifiers, focus the window and press F8. Press left, press
+//     right, release left, press S, release right, then F8. Assert Down/Down/Up,
+//     side and modifier bits. S retains the modifier; final Up and F8 do not.
+//     Completion prints PASS.
+//  2. In another window hold both sides, return by pointer and press S to start.
+//     Release left, press S, release right, press F8: same expectations without
+//     relying on this window receiving the initial key presses.
+//  3. Lose focus, release keys externally, return and repeat step 1 with F8:
+//     no stale modifier remains.
+//  4. Repeat each modifier and -reverse. If right Alt is AltGr on Linux, ordinary
+//     Alt checks do not apply to it; changing the layout does not verify the original.
 //
-// 操作与预期：
-//  1. 所有修饰键松开，聚焦本窗口，按 F8；按左侧、按右侧、放左侧、按 S、
-//     放右侧、按 F8。程序逐项断言 Down/Down/Up、侧别和修饰位；中途 S
-//     必须仍带对应修饰位，最后抬起和 F8 必须没有它。最终打印 PASS。
-//  2. 焦点切到另一个窗口，按住左右两侧，通过鼠标切回本窗口，按 S 开始；
-//     放左侧、按 S、放右侧、按 F8。预期同上；不能依赖本窗口收到原始按下。
-//  3. 中途切走焦点并在外部松开按键，回来后按 F8 重做步骤 1，不应残留修饰位。
-//  4. 分别运行 shift/control/alt/system 和 -reverse。Linux 若右 Alt 是 AltGr，
-//     它不是普通 Alt，此场景不适用；不能修改布局后假称原布局通过。
-//
-// 系统保留组合（如 Win/Super+S 等）可能被 WM 截获，不到达应用时记为
-// 未覆盖，不当作通过。macOS 可需 Fn+F8 发送真正功能键。
-// 副作用：只创建本窗口；不修改系统设置/剪贴板。程序不请求 IME 文本输入。
-// 退出：关闭窗口；任何断言失败记录 FAIL，退出码 1，否则退出码 0。
+// System shortcuts such as Win/Super+S may be intercepted. Mark undelivered
+// combinations uncovered, not passed. macOS may require Fn+F8.
+// Side effects: this window only; no settings/clipboard changes or IME text input
+// request. Reset: Escape. Exit: close the window; any FAIL gives exit 1, otherwise 0.
 package main
 
 import (

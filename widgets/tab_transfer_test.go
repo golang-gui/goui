@@ -15,7 +15,7 @@ import (
 	"github.com/golang-gui/goui/layout"
 )
 
-// 页面移交、原生拖放状态与占位预览。
+// Page transfer, native drag state and placeholder previews.
 
 func TestTransferRequestRequiresCommitAndExpires(t *testing.T) {
 	for _, mode := range []string{"reject", "commit", "uncommitted", "target"} {
@@ -543,7 +543,7 @@ func TestIncomingDropRevalidatesAfterLayoutOrSourceChange(t *testing.T) {
 	}
 }
 
-// 拖出窗口的请求与生命周期。
+// Detach requests and lifecycle.
 
 // Only Root operations are used; no native window or display is created.
 type detachTestWindow struct {

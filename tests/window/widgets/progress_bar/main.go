@@ -1,28 +1,33 @@
-// ProgressBar 命令式窗口验收，不依赖 DevServer。
-// 环境：三平台可交互桌面，记录 OS、Linux WM、后端与缩放。
-// 启动：go run ./tests/window/widgets/progress_bar。GOUI_PLAT_PAINTER=software/opengl，
-// Windows 另可 direct2d；GOUI_PLAT_SCALE=2 请求 2x。
-// 初始：Integrated 900×560 DIP，Modern 亮色蓝主题，确定进度 25%，下方两项忙等待。
+// Imperative ProgressBar window checks, without DevServer.
+// Environment: interactive Linux, Windows or macOS. Record OS, Linux WM, backend
+// and scale. Run: go run ./tests/window/widgets/progress_bar
+// Use GOUI_PLAT_PAINTER=software/opengl (also direct2d on Windows),
+// GOUI_PLAT_SCALE=2. Initially Integrated 900x560 DIP, Modern light/blue, 25%
+// determinate progress and two busy indicators below.
+// Steps and expected results:
+//  1. +25% cycles 50/75/100/0%; Reset returns 25%. Bar length is proportional;
+//     the ring grows clockwise from the top, closes seamlessly at 100% and shows
+//     only a track at 0%. Changes leave layout stable.
+//  2. The lower capsule enters from the left and exits right, repeating without
+//     reversing or jumping. A fixed 90-degree round-cap arc rotates clockwise
+//     uniformly every 1.4 seconds without stretching, reversal or cycle gaps.
+//     Busy toggles to determinate at the saved value and back to animation.
+//     Waiting changes neither the upper value nor layout.
+//  3. Hide toggles their shared ancestor; showing restores animation without
+//     hidden remnants.
+//  4. Dark/Accent changes mode and blue/red while tracks stay neutral, with
+//     unchanged size/value/mode. Resizing leaves rings circular and within bounds.
+//  5. Check prints ASSERT PASS for role, form, value or omitted busy value,
+//     without adjustable Range/click actions. After mode/hide changes wait
+//     100 ms before Check. Root frames drive busy animation without a per-widget
+//     Timer; this assertion does not verify visual motion.
+//  6. Repeat at 1x/2x: 4 DIP equals 4/8 pixels, with no cap seams/darkening.
 //
-// 操作与预期：
-//  1. +25% 循环 50%、75%、100%、0%，Reset 回 25%；长条比例正确，圆环从
-//     顶部顺时针增长，100% 闭合无接缝，0% 只有轨道，进度变化不改变布局。
-//  2. 下方长条胶囊从左侧进入、始终向右移出，再从左侧循环，无回头或可见跳变；
-//     圆形为固定 90° 圆头弧段，顺时针匀速旋转，1.4 秒一圈，不伸缩、不倒退，
-//     周期衔接无停顿／跳变；Busy 切换为确定进度后停止，
-//     保存当前比例，再次 Busy 恢复动画。等待不改变上方进度或布局。
-//  3. Hide 隐藏下方共同祖先，再次点击恢复，动画可恢复且无隐藏残影。
-//  4. Dark／Accent 切换亮暗及蓝／红，轨道保持中性色；大小、比例和活动模式
-//     不变。拖动窗口大小，圆形不拉成椭圆，不超出控件边界。
-//  5. Check 输出 ASSERT PASS：核对角色、形态、确定值、忙等待省略值，无
-//     可调节 Range／点击动作。模式／隐藏变化后等 100ms 再 Check，同时检查
-//     控件自身不再创建 Timer，忙等待通过 Root 帧信号驱动；此断言不替代动画观察。
-//  6. 在 1x/2x 重复以上步骤，4 DIP 对应 4/8 物理像素，圆头不出现接缝／加深。
-//
-// 平台差异：字体／装饰可不同，边缘抗锯齿允许细微差别，不承诺刷新同步。
-// 副作用：窗口与终端日志，无系统设置／剪贴板／文件写入。
-// 复位：Reset 恢复比例，重启恢复全部状态。退出：关闭主窗口，先检查所有 Timer
-// 已停止再退出事件循环；终端输出 DESTROY PASS。断言失败 panic。
+// Platform differences: font/decorations vary, with minor edge antialiasing
+// differences; refresh synchronization is not promised. Side effects: window/logs
+// only, no settings/clipboard/files. Reset: Reset values, restart all state.
+// Exit: close; check all timers stopped before event-loop exit and DESTROY PASS.
+// Assertion failures panic.
 package main
 
 import (

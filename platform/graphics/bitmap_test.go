@@ -37,7 +37,7 @@ func TestMakeBitmap(t *testing.T) {
 	})
 
 	t.Run("Gray with buffer reuse", func(t *testing.T) {
-		buf := make([]byte, 100*100) // 正好 10000 字节
+		buf := make([]byte, 100*100) // Exactly 10,000 bytes.
 		bmp := MakeBitmap(10, 20, 100, 100, PixelFormatGray, buf)
 		if &bmp.Pixels[0] != &buf[0] {
 			t.Fatal("expected buffer reuse")
@@ -166,7 +166,7 @@ func TestSubImage(t *testing.T) {
 	if subImg.Width != 2 || subImg.Height != 2 {
 		t.Fatalf("wrong subimage size: %dx%d", subImg.Width, subImg.Height)
 	}
-	r, g, _, _ := subImg.GetPixel(2, 2) // 子图坐标 (2,2) 超出范围，会返回 0
+	r, g, _, _ := subImg.GetPixel(2, 2) // SubImage retains parent coordinates: (2,2) is inside bounds (1,1)-(3,3).
 	if r != 0 {
 		t.Log("out of bounds returns zero as expected")
 	}

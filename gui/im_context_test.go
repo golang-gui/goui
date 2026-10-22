@@ -8,7 +8,7 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 )
 
-// IMContext 与窗口输入路由。
+// IMContext and input-method routing through Window.
 
 // TextInput must satisfy IMClient so the window can find its context on focus.
 var _ IMClient = (*TextInput)(nil)

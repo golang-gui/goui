@@ -8,8 +8,9 @@ import (
 	"github.com/golang-gui/goui/widgets"
 )
 
-// 用例自己的 Bin 记录正常布局下文档窗口的固定开销。
-// AfterUpdate 只完成定位和移交，不测量隐藏目标、不依赖 Paint。
+// The example's Bin records document-window overhead during normal layout.
+// AfterUpdate only positions/transfers; it needs neither hidden-target measurement
+// nor a Paint callback.
 type frameWidget struct {
 	gui.WidgetBase
 	child                 gui.Widget

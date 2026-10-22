@@ -11,22 +11,26 @@ import (
 	"github.com/golang-gui/goui/widgets"
 )
 
-// 编辑页状态保留验收：go run ./tests/window/widgets/tab_transfer -editor。
-// 环境同 main.go，可追加 -chrome integrated 或 -expect canceled。
-// 初始：左窗仅有 Editor（100 行文本），右窗是空 TabView。
-//  1. 点击左窗 Prepare；通过公开 API 准备独立撤销记录、反向选区和 240 DIP 滚动，
-//     等待 PREPARED 日志。此后不要点击编辑区或调整窗口大小，以免主动改变待测状态。
-//  2. 从左窗抓住 Editor 向下拖出，再移入右窗顶栏松开。预期原页面出现在右窗，
-//     源栏为空但源窗口仍在。点击右窗 Check：断言文字、选区、滚动、对象和 Snapshot 归属；
-//     通过后关闭源窗，按钮改为 Finish，输出 RETAINED。
-//  3. 点击目标编辑区，用 Ctrl+Z（macOS Cmd+Z）撤销；再 Ctrl+Shift+Z / Cmd+Shift+Z
-//     重做；最后输入 !。点击 Finish，必须分别观察到原文、准备后的文本和后续编辑，
-//     且通过原 TextView 的 Change 信号收到通知。PASS 后自动退出。
-//  4. canceled 模式在步骤 2 保持左键按下，按 Esc 后松开；点击左窗或右窗 Check。
-//     预期没有转移/卸载/挂载，所有准备状态不变，PASS 后退出；不执行步骤 3。
+// Editor-state retention checks: go run ./tests/window/widgets/tab_transfer -editor
+// Use main.go's environment; optionally -chrome integrated or -expect canceled.
+// Initially the left has one Editor with 100 lines; the right TabView is empty.
+//  1. Prepare on the left uses public APIs to establish independent undo entries,
+//     a reversed selection and 240 DIP scroll. Wait for PREPARED, then avoid
+//     editor clicks/resizing that would deliberately change the state under test.
+//  2. Drag Editor down out of the left bar and into the right caption. The
+//     original page appears there; the empty source window stays. Check on the
+//     right asserts text, selection, scroll, identity and snapshot ownership,
+//     then closes source, changes the button to Finish and prints RETAINED.
+//  3. In the target editor undo, redo (Control+Z/Control+Shift+Z, Command on macOS),
+//     then type !. Finish must have observed original, prepared and edited text
+//     through the original TextView's Change signal. PASS exits automatically.
+//  4. In canceled mode, keep holding in step 2, Esc, release, then Check in either
+//     window. No transfer/unmount/remount, all prepared state unchanged, PASS
+//     then exit; do not perform step 3.
 //
-// 预期：页面离开不会自行关闭源窗口，只有 Check 明确关闭；不创建替代编辑器。
-// 仅准备测试文档和窗口，不改剪贴板、系统设置或磁盘文件。复位/退出规则同 main.go。
+// Source closes only when Check requests it, not merely because a page leaves.
+// No replacement editor is created. Side effects: test document/windows only;
+// no clipboard/settings/files. Reset/exit follow main.go.
 func runEditorTransfer(chrome gui.WindowChromeMode, canceled bool) error {
 	app, err := gui.NewApplication("org.golang-gui.TabEditorTransfer")
 	if err != nil {

@@ -1,41 +1,41 @@
-// SVG Icon 窗口验证（不使用 DevServer）。
+// SVG Icon window checks, without DevServer.
 //
-// 环境：Linux/Windows/macOS 桌面；Linux 记录 WM，所有平台记录后端和 DPI。
-// 启动：go run ./tests/window/ui/svgicon
-// GOUI_PLAT_PAINTER=software/opengl，Windows 还可选 direct2d。
-// GOUI_PLAT_SCALE=1/2 可分别验证；ui.Run 负责主线程。
-// 初始：亮色、蓝色主题、24 DIP。前三行是 Brain、People、Dev tool；
-// 各行依次为主题色、正文前景色、原色。下方保留孔洞、描边、渐变等辅助验证。
+// Environment: Linux/Windows/macOS desktop. Record Linux WM, backend and DPI.
+// Run: go run ./tests/window/ui/svgicon
+// Use GOUI_PLAT_PAINTER=software/opengl (also direct2d on Windows) and
+// GOUI_PLAT_SCALE=1 or 2. Call ui.Run from main on the platform startup thread.
+// Initially light mode, blue accent, 24 DIP. Brain, People and Dev tool rows
+// each show accent, text-foreground and original colors; auxiliary images cover
+// holes, strokes and gradients.
+// Steps and expected results:
+//  1. Toggle Light/Dark and Accent: accent/text columns follow their colors;
+//     original SVG black stays unchanged, even with low dark-background contrast.
+//     Holes stay transparent.
+//  2. Size cycles 16/24/40/64 DIP. Brain connections, People head holes and Dev
+//     tool wrench remain complete; round caps/stroke widths scale proportionally.
+//     Scroll to inspect content exceeding the window.
+//  3. Image calls shows requests before the rebuild. Rebuild causes a new request
+//     on the next paint; click again to see the increase. Ordinary repaint with
+//     unchanged UI/size/colors adds none. This is not a rasterization/upload count:
+//     Source may cache images; package tests check upload reuse. Color changes
+//     request another image because Source supplies final colors, not Icon tinting.
+//  4. Replace alternates the first auxiliary image between compound holes and
+//     round-cap strokes, without stale output.
+//  5. Second window reuses each SVG Source at 48 DIP/text foreground. Closing it
+//     leaves main-window resources valid without color/size contamination.
+//  6. Resize and repeat 1x/2x across the three supported backends: preserve strokes,
+//     gradients and transparency. Minor antialiasing differences are allowed;
+//     opaque rectangles, filled holes and thinning scaled strokes are not.
+//  7. The last row shows a multi-resolution bitmap and a missing placeholder.
+//     The former follows size/theme; the latter is a foreground-colored box/cross.
+//     The adjacent nil Source paints no placeholder.
 //
-// 操作与预期：
-//
-//  1. 点击 Light/Dark、Accent：三个 SVG 的主题色列跟随主题色，正文列跟随亮暗；
-//     原色列保持 SVG 默认黑色（暗背景上对比度低是预期），孔洞保持透明。
-//
-//  2. 点击 Size：16/24/40/64 DIP 循环；Brain 内部连线、People 头部孔洞、
-//     Dev tool 扳手轮廓应完整；辅助描边的圆头和线粗同比例变化。内容过高时滚动查看。
-//
-//  3. Image calls 显示重建前的取图计数；点击 Rebuild 后下一次绘制会重新取图，
-//     再次点击可看到增加的次数。没有 UI 重建、尺寸或颜色变化的普通重绘不增加。
-//     这不是栅格化/上传计数；准备好的 Source 可返回缓存图片，上传复用由包内测试验证。
-//     改颜色也应重新取图：Source 负责生成最终颜色，不由 Icon 二次着色。
-//
-//  4. 点击 Replace：辅助区第一张图在复合孔洞与圆头描边图之间切换，无旧图残留。
-//
-//  5. 点击 Second window：三个 SVG 的同一 Source 在第二个窗口以 48 DIP/正文色使用。
-//     关闭该窗口后主窗口继续工作，不出现资源失效或颜色/尺寸污染。
-//
-//  6. 调整窗口大小，分别用 1x/2x 和三个后端启动，检查描边、渐变、透明边缘。
-//     允许抗锯齿边缘细微差异；不允许方形背景、孔洞被填满或缩放后描边变细。
-//
-//  7. 最后一行显示多分辨率位图和缺失占位符；前者跟随尺寸/主题切换，后者为
-//     方框加叉且随前景换色；旁边的 nil Source 不应出现占位符。
-//
-// SVG 创建失败会在启动时返回错误，不通过控件发送异步错误通知。
-// 几何回归：Brain 连线、People 三个头部及孔洞应完整，原色与主题色轮廓一致。
-// 连续弧线解析已在自有 oksvg fork 修复；离屏对照记录见 doc/DesignSVG.md。
-// 副作用：只创建测试窗口，无文件/剪贴板/系统设置修改。
-// 复位：重启程序。退出：关闭所有窗口。此程序不证明真实跨屏 DPI 切换已验收。
+// SVG construction errors fail startup synchronously, not through widget error
+// signals. Compare complete Brain connections and People heads/holes with equal
+// original/accent silhouettes. The retained oksvg fork fixes consecutive arcs;
+// see doc/DesignSVG.md for offscreen comparisons.
+// Side effects: test windows only, no files/clipboard/settings. Reset: restart.
+// Exit: close all windows. This does not verify real cross-screen DPI changes.
 package main
 
 import (

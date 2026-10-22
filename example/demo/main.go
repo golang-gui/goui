@@ -1,10 +1,13 @@
-// GOUI 控件与功能展厅，使用 ui 与 widgets/ui 的公开接口。
-// 环境：Windows/macOS 桌面，或 Linux X11（Integrated 需要合成器）。
-// 启动：go run ./example/demo；后端/应用缩放可通过 GOUI_PLAT_PAINTER / GOUI_PLAT_SCALE 指定。
-// 初始：基础控件、系统主题；动画和计时器关闭，不启动 DevServer。
-// 操作：依次点击九个分类，按页面提示操作；具体步骤及预期见 README.md。
-// 副作用：显式点击才修改剪贴板、打开系统对话框/外部应用；不自动读写文件。
-// 复位：重新启动。退出：关闭主窗口，会停止任务并关闭其他演示窗口。
+// GOUI widget and feature gallery using the public ui and widgets/ui APIs.
+// Environment: Windows/macOS desktop or Linux X11; Integrated needs a compositor.
+// Run: go run ./example/demo. Select a backend and application scale with
+// GOUI_PLAT_PAINTER and GOUI_PLAT_SCALE.
+// Initial state: basic widgets, system theme, animations and timers stopped;
+// no DevServer is started. Visit each of the nine categories and follow its
+// instructions; example/demo/README.md lists the steps and expected results.
+// Side effects: explicit actions may change the clipboard, open system dialogs
+// or launch external applications. No files are accessed automatically.
+// Reset: restart. Exit: close the main window to stop tasks and close demo windows.
 package main
 
 import (
@@ -168,7 +171,8 @@ func (d *demo) navigate(index int) {
 	if index == d.page {
 		return
 	}
-	// 正在移交的页面必须保留源树；先取消尚未完成的脱离准备。
+	// Keep the source subtree alive during a page transfer. Cancel any pending
+	// detach preparation before changing pages.
 	if d.pendingDetach != nil {
 		d.pendingDetach.Cancel()
 		d.pendingDetach = nil
@@ -184,8 +188,9 @@ func (d *demo) build(app ui.App) ui.RootView {
 	dark := d.mode == 2 || d.mode == 0 && settings.ColorScheme() == ui.ColorSchemeDark
 	accents := []color.Color{settings.AccentColor(), color.NRGBA{R: 118, G: 74, B: 213, A: 255}, color.NRGBA{R: 30, G: 151, B: 99, A: 255}, color.NRGBA{R: 217, G: 115, B: 36, A: 255}}
 	rules := modern.Rules(modern.Options{Dark: dark, AccentColor: accents[d.accent], FontFamily: settings.FontFamily(), FontSize: settings.FontSize()})
-	// 当前分类不是主要操作：复制普通按钮的完整规则，再显式指定中性选中底色。
-	// 规则是独立的值，不引入样式继承，也不改变其子 Label 的前景。
+	// Copy the ordinary button rules and set a neutral selected background for
+	// the active category. The rules are independent values; they introduce no
+	// style inheritance and leave the child Label's foreground unchanged.
 	for _, rule := range rules {
 		if rule.Sel.Name == "button" {
 			rule.Sel.Name = "demo-nav-current"
@@ -253,8 +258,9 @@ func (d *demo) build(app ui.App) ui.RootView {
 	return ui.Root().StyleSheet(style.Sheet(rules...)).Windows(windows...)
 }
 
-// Window 已为根布局分配可用内容区，主体不再重复预留窗口边缘。
-// 导航和页面保留各自的内部 Padding，ScrollView 则填满剩余区域。
+// Window has already allocated the root's content area. Reserve window edges
+// only once; navigation and pages keep their own padding, and ScrollView fills
+// the remaining area.
 func demoBody(side, content ui.View) *ui.BoxView {
 	return ui.HBox(side, content).CrossAlign(layout.CrossStretch).MainWeight(1)
 }
@@ -267,7 +273,8 @@ func section(title string, children ...ui.View) ui.View {
 }
 func page(id, title, description string, children ...ui.View) ui.View {
 	scroll := ui.ScrollView(ui.VBox(append(heading(title, description), children...)...).Spacing(16).Padding(16).CrossAlign(layout.CrossStretch)).Direction(ui.ScrollVertical).ID("page-" + id).MainWeight(1)
-	// 页面视觉留白在视口外，才能同时避让滚动条；不承担窗口装饰补偿。
+	// Keep visual page spacing outside the viewport so it also clears scrollbars.
+	// Window decoration insets are handled by the host.
 	return ui.VBox(scroll).Padding(8).CrossAlign(layout.CrossStretch).MainWeight(1)
 }
 func fullPage(id, title, description string, children ...ui.View) ui.View {

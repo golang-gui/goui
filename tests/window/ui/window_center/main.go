@@ -1,33 +1,43 @@
-// 窗口初始居中与声明式创建选项验收，不使用 DevServer。
+// Initial window centering and declarative creation-option checks, without DevServer.
 //
-// 环境：Windows/macOS 可交互桌面，或支持工作区查询的 Linux/X11 窗口管理器。
-// 启动：go run ./tests/window/ui/window_center [-auto] [-chrome=native|integrated|none]
-// 可加 -center=false、-override、-skip-taskbar=true；用 GOUI_PLAT_SCALE=1/2 重跑，
-// 记录系统版本、窗口管理器和实际后端。应用缩放覆盖不等于真实系统 HiDPI 验收。
-// 初始：360×300 DIP 客户区，默认请求工作区数学居中；不是 AppKit 默认的垂直偏上。
-// AfterUpdate 在首次 Show 前断言隐藏状态及居中坐标；-override 随后显式定位到
-// 工作区 (120,80)，首次出现时应以这个位置为准。-center=false 不断言系统默认坐标。
+// Environment: interactive Windows/macOS desktop or a Linux/X11 WM supporting
+// work-area queries. Run:
 //
-// 操作与逐项预期：
-//  1. 三种 Chrome 分别启动：客户区中心与工作区中心重合，无先出现再搬动的视觉跳变。
-//     Native 原生标题栏不参与居中尺寸，Integrated/None 的内容区仍按同一契约定位。
-//  2. 按 F5 或点击 Move：移到工作区 (100,60)；再按 F6/Rebuild，窗口对象及位置不变。
-//  3. 按 F7/Hide-Show：隐藏后重现，保留当前位置，不重新居中。
-//     Native/Integrated 可先拖动标题栏，再重复 F6/F7，保留手动移动的位置。
-//  4. 加 -override 重启：窗口直接出现在 (120,80)，Center 不覆盖后续显式定位。
-//  5. 加 -center=false 重启：由系统选择默认位置；F5/F6/F7 的行为不变。
-//  6. 加 -skip-taskbar=true：居中、激活与按钮输入仍可用；任务栏差异见 taskbar 用例。
+//	go run ./tests/window/ui/window_center [-auto] [-chrome=native|integrated|none]
 //
-// -auto：每阶段等待 400ms 处理真实窗口事件，断言显示前位置、显示后实际尺寸/工作区
-// 对称性、显式移动、UI 重建身份与位置、Hide/Show 保持，输出 PASS 后退出。
-// 坐标容差 0.5 DIP：在指定 1x/2x 下最多允许一个物理像素的原生取整误差。
-// 系统可以约束或忽略定位，必须记录为未满足本例断言，不伪装成功；此例不覆盖多屏、
-// 混合 DPI、超大窗口、最大化或内容最小尺寸大于初始 Size 的情况。
-// 已知差异：Xfwm4 对 -center=false、没有初始位置提示的窗口，可能在 Hide/Show 后
-// 重新选择位置。本例仍报告位置保持断言失败；此行为已在修改前代码复现，不是 Center
-// 在重现时执行。Center=true 和 -override 的初始定位提示不受本次实测差异影响。
-// 副作用：仅创建、激活、移动和关闭自身窗口，不更改系统设置或剪贴板。
-// 复位：重新启动。退出：Esc、Quit 或关闭窗口；失败非零退出，自动模式自行退出。
+// Also use -center=false, -override and -skip-taskbar=true. Repeat with
+// GOUI_PLAT_SCALE=1 or 2, recording OS, WM and actual backend; application scale
+// alone does not verify native system HiDPI.
+// Initially request a 360x300 DIP client area mathematically centered in the
+// work area, unlike AppKit's slightly high default. AfterUpdate asserts hidden
+// position before first Show. -override then explicitly requests (120,80), which
+// must determine the first visible position. -center=false makes no assertion
+// about default coordinates.
+// Steps and expected results:
+//  1. Test all chrome modes: client/work-area centers coincide without a visible
+//     jump after show. Native caption size is excluded; Integrated/None follow
+//     the same client-coordinate contract.
+//  2. F5/Move sets work-area (100,60). F6/Rebuild retains window identity/position.
+//  3. F7/Hide-Show retains position without recentering. First drag the caption
+//     in Native/Integrated and verify manual position survives F6/F7 too.
+//  4. Restart -override: initially (120,80); Center does not override later positioning.
+//  5. Restart -center=false: native defaults choose position; F5/F6/F7 still work.
+//  6. -skip-taskbar=true retains centering, activation and buttons; see taskbar
+//     checks for platform task-list differences.
+//
+// -auto waits 400 ms per phase for native events, checking hidden position, actual
+// size/work-area symmetry, explicit movement, UI identity/position and Hide/Show,
+// then prints PASS and exits. The 0.5 DIP tolerance allows at most one physical
+// pixel at the specified 1x/2x. A constrained/ignored native request fails the
+// assertion and must be recorded. This does not cover multiple/mixed-DPI screens,
+// oversized/maximized windows or content minimums larger than the initial Size.
+// Known observation: Xfwm4 may reposition a -center=false window without an initial
+// position hint on Hide/Show. This assertion also failed before the centering
+// change; it is not Center running again. Observed Center=true/-override cases
+// retain their initial position hints.
+// Side effects: only this program's windows and activation; no settings/clipboard.
+// Reset: restart. Exit: Esc, Quit or native close; automatic mode exits itself,
+// and failures return nonzero.
 package main
 
 import (

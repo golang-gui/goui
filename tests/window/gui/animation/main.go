@@ -1,21 +1,27 @@
-// 帧信号与数值动画窗口验收。
+// Frame signals and numeric animation window checks.
 //
-// 环境：Linux/Windows/macOS 桌面；记录后端、缩放及 Linux 窗口管理器。
-// 启动：go run ./tests/window/gui/animation；-auto 执行公开 API 的时序断言后退出。
-// GOUI_PLAT_PAINTER=software/opengl（Windows 另可 direct2d），GOUI_PLAT_SCALE=2。
-// 初始：一枚静止圆形、关闭的开关，Popover 未打开，帧观察者不主动请求绘制。
-// 操作与预期：
-//  1. Start 同时改变圆形大小和位置，平滑前进，停止后 Check 输出 IDLE PASS。
-//     动画期间再次 Start 从当前值重定向；Stop 保留当前值，Finish 到终值。
-//  2. 点击开关，胶囊滑块在 120ms 内过渡，动画结束后 Check 不出现持续帧。
-//  3. Popup 开启圆形忙等待，持续顺时针旋转；再点 Popup 关闭，帧数停止增加。
-//     再次打开应恢复；隐藏/恢复窗口、拖动尺寸不出现重入或卡死。
-//  4. Snapshot 对同一时刻的控件离屏重绘两次，尺寸/像素一致且不发送 Frame。
-//     1x/2x、支持的各后端重复以上操作；不要仅用启动成功代替操作验收。
+// Environment: Linux, Windows or macOS desktop. Record backend, scale and Linux WM.
+// Run: go run ./tests/window/gui/animation. -auto checks public API sequencing
+// and exits. Use GOUI_PLAT_PAINTER=software/opengl (also direct2d on Windows)
+// and GOUI_PLAT_SCALE=2 to repeat at 2x.
+// Initially the circle is stationary, the switch is off and the Popover is
+// closed. Observing frames alone does not request painting.
+// Steps and expected results:
+//  1. Start animates the circle's size and position smoothly. After completion,
+//     Check prints IDLE PASS. Start during animation redirects from the current
+//     value; Stop retains it, while Finish reaches the final value.
+//  2. Click the switch: the thumb transitions over 120 ms. Check shows no ongoing
+//     frames after completion.
+//  3. Popup starts a continuously clockwise busy indicator. Closing it stops
+//     frame counts; reopening resumes. Hide/show and resize without reentry or hangs.
+//  4. Snapshot renders the same instant twice offscreen with equal sizes/pixels
+//     and no Frame signal. Repeat at 1x/2x on supported backends.
 //
-// 自动：检查双动画终值、停止后的空闲、离屏一致、Popover 更新与隐藏停止。
-// 副作用：窗口、终端日志；不更改系统设置。复位：重新启动。退出：关闭窗口；
-// -auto 最终输出 ANIMATION PASS、退出码 0；断言失败 panic。
+// -auto checks final values, idle frames, consistent offscreen output and Popover
+// update/hide behavior. It prints ANIMATION PASS and exits with code 0; failed
+// assertions panic. Successful startup alone does not verify manual interaction.
+// Side effects: windows and terminal logs; no system settings are changed.
+// Reset: restart. Exit: close the window or let -auto finish.
 package main
 
 import (

@@ -82,7 +82,8 @@ func TestWindowCapturedDragOwnsCursor(t *testing.T) {
 			}
 			pointer(events.PointerMove, 14, false)
 			pointer(events.PointerDown, 14, true)
-			// 大幅移动，且不执行布局：模拟快速拖动及尺寸达到限制后越过手柄。
+			// Move far without laying out: simulate a fast drag that passes the handle
+			// after the window reaches a size limit.
 			pointer(events.PointerMove, 200, true)
 			if win.dispatcher.captureTarget != handle || !motion.Hover() {
 				t.Fatal("drag capture and live hover must remain independent")
@@ -149,9 +150,11 @@ func TestWindowStyleNameOnlyInvalidatesOwnPaint(t *testing.T) {
 	}
 }
 
-// 物理像素采样远离圆角和抗锯齿：x=2 DIP、y=30 DIP 位于窗口背景边缘，
-// 不在 5 DIP 的控件绘制区内；(30,30) 位于辅助窗的实色内容中。输出按预乘
-// RGBA 精确比较，不涉及字体。分别覆盖应用 1x/2x 的独立背景、多窗口和重绘。
+// Sample physical pixels away from rounded and antialiased edges. (2,30) DIP
+// lies on the window background outside the control's 5 DIP paint area; (30,30)
+// lies inside the auxiliary window's solid content. Compare premultiplied RGBA
+// exactly without font pixels, covering independent backgrounds, multiple
+// windows and repainting at application scales 1x and 2x.
 func TestWindowBackgroundStyleIsIsolated(t *testing.T) {
 	for _, scale := range []float32{1, 2} {
 		t.Run(fmt.Sprintf("%gx", scale), func(t *testing.T) {
@@ -826,7 +829,8 @@ type transparentFrame struct{ image image.Image }
 func (*transparentFrame) Transparent() bool            { return true }
 func (f *transparentFrame) Draw(img image.Image) error { f.image = img; return nil }
 
-// 不额外添加 Padding；根布局、滚动条和 Snapshot 都必须位于四边缩放区域内侧。
+// Without extra Padding, root layout, scrollbars and snapshot bounds must all
+// lie inside the resize edges on every side.
 func TestIntegratedContentLayoutAvoidsResizeEdges(t *testing.T) {
 	for _, scale := range []float32{1, 1.25, 2} {
 		t.Run(fmt.Sprintf("%gx", scale), func(t *testing.T) {
@@ -869,7 +873,8 @@ func TestIntegratedContentLayoutAvoidsResizeEdges(t *testing.T) {
 					}
 				}
 			}
-			// 普通原生 Integrated、Native 和 None 都不因相同样式或透明能力而内缩。
+			// Native Integrated, Native and None windows add no GUI resize inset solely
+			// because they share a style or transparency capability.
 			w.clientChrome = false
 			w.RequestLayout()
 			w.paint()
@@ -904,7 +909,8 @@ func TestIntegratedAutomaticMinimumIncludesResizeEdges(t *testing.T) {
 		if len(native.minimums) != 1 {
 			t.Fatal("unchanged decoration reapplied the WM hint")
 		}
-		// 分数缩放只重算占用边缘；显式窗口最小尺寸不受影响。
+		// Fractional scaling recalculates only the reserved edges; the explicit
+		// window minimum size stays unchanged.
 		w.pixelWidth = w.width * 1.25
 		w.updateMinSize()
 		if !explicit {
@@ -922,8 +928,9 @@ func TestIntegratedAutomaticMinimumIncludesResizeEdges(t *testing.T) {
 	}
 }
 
-// 在胶囊滑块中段采样，避开圆角 AA；不透明预乘 RGBA 应精确覆盖完整的
-// 8 DIP 宽度（1x=8、2x=16 物理像素），紧邻外侧仍为窗口自己的白色背景。
+// Sample the middle of the capsule thumb, away from corner antialiasing.
+// Opaque premultiplied RGBA must cover all 8 DIP (8 physical pixels at 1x,
+// 16 at 2x); the adjacent outer pixel retains the window's white background.
 func TestIntegratedScrollbarPixelsKeepFullWidth(t *testing.T) {
 	for _, scale := range []float32{1, 2} {
 		t.Run(fmt.Sprintf("%gx", scale), func(t *testing.T) {

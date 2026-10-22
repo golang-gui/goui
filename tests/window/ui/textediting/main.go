@@ -1,77 +1,94 @@
-// UI 文本编辑窗口验证：共享多行模型、独立单行编辑和声明式重建。
+// UI text-editing window checks: shared multiline models, independent single-line
+// editing and declarative rebuilds.
 //
-// 环境：桌面/字体库；记录 OS、后端、缩放（1x/2x）及 Linux WM。
-// 启动：go run ./tests/window/ui/textediting -mb 1（也可 -mb 10）。
-// Windows PowerShell：$env:GOUI_PLAT_PAINTER='direct2d'; $env:GOUI_PLAT_SCALE='1';
-// go run ./tests/window/ui/textediting -mb 10
-// macOS/Linux：GOUI_PLAT_PAINTER=opengl GOUI_PLAT_SCALE=2 go run ./tests/window/ui/textediting -mb 10
-// Windows 重复 direct2d/opengl/software，macOS/Linux 重复 opengl/software，分别测 1x/2x。
-// direct2d 仅为 Windows 优先路径，可能降级；以日志实际资源类型为准。测试后恢复
-// shell 环境变量的此前值；强制 2x 不等于已验证真实 DPI 变化或跨屏候选窗坐标。
-// macOS 下文 Ctrl 编辑快捷键改用 Cmd；没有 Home/End 时用 Fn+Left/Right 组合。
-// Linux 隔离桌面若不运行外部输入法，使用 XMODIFIERS=@im=none 启动，选择
-// libX11 本地输入法；不能继承指向不存在服务的 @im=fcitx/ibus 后验收普通键入。
-// 本地输入法检查：第二个空框逐键输入 draft，再 Enter，应显示 draft 且 Submit
-// 仅增加一次；全选复制必须精确为 draft（5 字节），不能预先粘贴代替键入。
-// 真实 IME 验证则保持对应 XMODIFIERS，并确认服务运行于同一桌面；@im=none
-// 不用于验收中文组合或候选窗。配置缺失服务的测试只能计作输入法不可用场景。
-// 初始：上方两个单行输入框、中间一个值绑定多行框，下方两个共享模型的
-// 多行编辑器，modern 亮色。第一个单行框绑定 Text/Selection，第二个不声明
-// Text；状态和共享模型均在 Build 外创建。
-// 首帧日志报告实际图像资源类型/PixelScale，Submit 日志报告累计次数；
-// 不以环境变量或窗口成功启动代替实际后端和操作结果。
+// Environment: desktop and font libraries. Record OS, actual backend, 1x/2x scale
+// and Linux WM. Run with -mb 1 or -mb 10. Windows PowerShell:
 //
-// 操作与预期：
-//  1. 在第一个单行框中间定位、Shift 扩选、输入/粘贴多行文字：选区被替换，
-//     每个归一化换行变成一个空格；文字不换行，长内容水平滚动，行高不变化。
-//     Label 与输入文字的 baseline 对齐。组合字符/emoji 的导航和删除不能拆 Cluster。
-//  2. 在单行框按 Enter：Submit 计数只加一、不插入空格或 LF，触发重建后光标
-//     仍在原处。Ctrl/Cmd+Z 撤销，Shift+Ctrl/Cmd+Z 重做；一次粘贴/IME 提交一次撤销。
-//  3. 在第二个框输入，然后点 Rebuild：内容保留。重复切换 Theme/Accent 后，
-//     两个框和多行的内容、选区不变；背景/选区/光标随主题变化，字体不重复缩放。
-//  4. 在左下多行中编辑，右下立即同步；两侧独立滚动/选择。Home/End、文档首尾、
-//     跨段选区、拖选自动滚动、点击双击和只读行为与 GUI TextView 用例一致。
-//     Readonly 按钮只限制声明式单行框与左下编辑器，仍可选择/复制；右下可编辑。
-//  5. 用真实 IME 在选区组合、取消/提交；预编辑不进入 Text/共享模型，提交后同步。
-//     Windows/macOS 检查内联组合和候选位置；Linux XIM root-style 的组合由 IME 显示。
-//  6. 在 1/10 MiB、1x/2x 下滚动和 resize；布局保持可见文字锚点，选择/光标不越过
-//     输入区域裁剪。关闭正在闪烁或组合的窗口应正常退出，无遗留窗口。
-//  7. 初始第一个输入框 End、Shift+Left 后复制，应为完整 👩‍💻；接着 Left、Left、
-//     Shift+Left 后复制，应为 e + combining acute（UTF-8 共 3 字节）。第二个框
-//     粘贴 אבג，确认粘贴完成后全选、Left、Shift+Right，复制应为 ג；Backspace
-//     后全文为 אב，撤销应恢复 אבג 和选中的 ג。不要在异步粘贴完成前改变选区：
-//     过期回复应被丢弃，不能误记成粘贴成功或失败。
-//  8. Linux 键盘布局回归仅在独立桌面执行（不要修改用户桌面）：设置 fr 布局、
-//     XMODIFIERS=@im=none，第二个空框键入 a/z/é、死键 ^ 后 e、AltGr+E，
-//     全选复制应精确为 azéê€（9 UTF-8 字节），不是美式布局对应的 q/w/2 等。
-//     在左下选中最初 Edi，键入同样文字后 Enter；从右侧复制全文应精确为
-//     "azéê€\n" + 初始全文去掉前三字节，其他内容不得变化。
-//     保持程序运行，仅在独立桌面切换为 us intl；第二个框全选后键入 q/w、
-//     死键单引号后 e，复制应为 qwé（4 字节）。记录实际键盘布局与输入法；
-//     这些本地 Compose 操作不代替真实中文 IME 验收。退出并清理独立会话。
-//  9. 在中间 Notes 框输入、移动光标/反向选择，观察下方 Notes 字节数与选区。
-//     点击 Rebuild/Theme 后内容和选区保持，Ctrl/Cmd+Z 仍能撤销此前输入。
-//     点击 Replace notes：内容变为 "Replacement\n中文"，光标位于 0，旧历史清空；
-//     点击 Select notes：选中 "中文"（字节 12–18）。点击 Empty notes 清空。
-//     先开启 Auto rebuild，再在 Notes 用中文 IME 组合：每秒重建，但正文计数
-//     不包含预编辑、组合不被重建打断；提交后正文才增加，取消则正文不变。
-//     再次点击 Auto rebuild 停止计时；退出应用也自动停止。不要在组合过程中
-//     点击按钮换焦点，将焦点切换引起的取消误认为重建问题。
-//  10. 在单行框和 Notes 中分别选中一段文字，在高亮区域（包括末字符右半边）右键：
-//     出现 Undo/Redo、Cut/Copy/Paste/Delete、Select All，原选区不变。右键选区外
-//     移动插入点；macOS 同时验证 Control+左键。菜单沿用 modern 圆角、阴影与颜色。
-//     Copy 不改变文本；Cut/Delete 仅删除选区，Primary+Z 一次恢复文本和原选区；
-//     Paste 替换选区，单行中的换行变空格，Notes 保留换行；Undo/Redo 可互相恢复。
-//     无选区时 Cut/Copy/Delete 禁用；Readonly 时仅 Copy/Select All 可用。
-//     只弹出菜单不读取/改写剪贴板，空或无文本剪贴板的 Paste 不改变内容。
-//  11. Shift+F10 在光标下方打开相同菜单，Escape 关闭；外部首次点击只关闭菜单，
-//     不重新定位编辑光标。菜单打开时普通按键不进入编辑器；关闭后立即键入可继续。
-//     下滚 Notes 后重复右键，菜单应贴近点击位置；窗口贴近桌面边缘时菜单仍可见。
-//     中文预编辑时右键，未提交文字取消且不进入历史，复制只包含已提交文字。
-//     菜单打开时关闭主窗口，不能留下原生 popup 或阻止退出。
+//	$env:GOUI_PLAT_PAINTER='direct2d'; $env:GOUI_PLAT_SCALE='1'
+//	go run ./tests/window/ui/textediting -mb 10
 //
-// 副作用：仅主动复制/剪切时写剪贴板，不改文件/系统设置。无 DevServer。
-// 复位：重启程序。退出：关闭窗口。跨平台场景须分别记录，启动不代表验收通过。
+// macOS/Linux:
+//
+//	GOUI_PLAT_PAINTER=opengl GOUI_PLAT_SCALE=2 go run ./tests/window/ui/textediting -mb 10
+//
+// Repeat direct2d/opengl/software on Windows, opengl/software on macOS/Linux,
+// at 1x/2x. Direct2D may fall back; first-frame resource types and PixelScale
+// identify the actual backend. Submit logs count invocations. Restore environment
+// values afterward; forced 2x does not verify real DPI/cross-screen candidates.
+// Use Command for the editing shortcuts below on macOS; Fn+Left/Right supply
+// Home/End where needed. On isolated Linux without an external IME, use
+// XMODIFIERS=@im=none for libX11 local input. A stale fcitx/ibus setting without
+// its service does not verify typing. Type draft key-by-key in the second empty
+// input, then Enter: exactly draft (5 copied bytes) and one Submit. Pasting does
+// not verify typing. Chinese preedit needs the matching IME on the same desktop;
+// a missing-service configuration verifies only unavailability.
+// Initially two single-line inputs sit above value-bound Notes and two multiline
+// views sharing a model, in Modern light. The first input binds Text/Selection;
+// the second omits Text. State and the shared model are created outside Build.
+// Steps and expected results:
+//  1. Position/Shift-select in the first input and type/paste multiline text:
+//     replace selection, turn each normalized newline into one space, retain
+//     single-line height and horizontal reveal. Label/input baselines align;
+//     combining characters and emoji navigate/delete without splitting clusters.
+//  2. Enter emits one Submit without a space/LF; rebuild retains the caret.
+//     Control/Command+Z undoes, Shift+Control/Command+Z redoes. A paste or IME
+//     commit is undone as one operation.
+//  3. Type in the second field and Rebuild: retain text. Repeated Theme/Accent
+//     changes retain all text/selections while updating background/selection/caret
+//     without cumulative font scaling.
+//  4. Edit lower-left: lower-right synchronizes with independent scroll/selection.
+//     Home/End, document ends, paragraph-spanning selection, autoscroll, clicks,
+//     double-clicks and readonly behavior follow the GUI TextView checks. Readonly
+//     affects the controlled single-line input and lower-left only; Copy/selection
+//     remain available and lower-right stays editable.
+//  5. Real IME preedit/cancel leaves Text/shared model untouched; commit synchronizes.
+//     Check inline composition/candidates on Windows/macOS; XIM root-style
+//     composition is displayed by the IME.
+//  6. Scroll/resize at 1/10 MiB and 1x/2x: retain visible text anchors and clip
+//     caret/selection to the inputs. Closing during blink/preedit leaves no windows.
+//  7. In the initial first input, End then Shift+Left copies the complete 👩‍💻.
+//     Left, Left, Shift+Left then copies e plus combining acute (3 UTF-8 bytes).
+//     In the second input paste אבג; after the async paste completes, select all,
+//     Left, Shift+Right: copy ג. Backspace leaves אב; undo restores אבג and selected ג.
+//     Do not change selection before paste completes: stale replies should be
+//     dropped and cannot verify successful or failed paste delivery.
+//  8. In an isolated Linux desktop only, choose fr layout and XMODIFIERS=@im=none.
+//     Type a/z/é, dead ^ then e, AltGr+E into the second empty input. Copy exactly
+//     azéê€ (9 UTF-8 bytes), not US-position q/w/2. Replace initial Edi in lower-left
+//     with the same keys then Enter; copy from the right: "azéê€\n" plus the initial
+//     text after its first three bytes, with all other content unchanged. Keep
+//     running, switch only that isolated desktop to us intl, select all in the
+//     second input and type q/w, dead apostrophe then e: copy qwé (4 bytes).
+//     Record layout/IME; local Compose is not Chinese IME verification. Exit before
+//     cleaning up the session; never change the user's working desktop.
+//  9. Edit Notes, move the caret and reverse selection; its byte/selection status
+//     follows. Rebuild/Theme retains state and history. Replace notes sets
+//     "Replacement\n\u4e2d\u6587", caret=0 and clears old history. Select notes chooses
+//     U+4E2D U+6587 (bytes 12-18); Empty notes clears it. Enable Auto rebuild and
+//     compose with Chinese IME in Notes: one-second rebuilds neither count preedit
+//     as committed text nor interrupt it; commit updates text, cancel does not.
+//     Stop Auto rebuild afterward; exit also stops it. Avoid clicking during
+//     composition, which changes focus and can cancel independently of rebuilds.
+//  10. Right-click inside selection in a single-line field and Notes, including
+//     the last character's right half: Undo/Redo, Cut/Copy/Paste/Delete and Select All
+//     preserve selection. Outside selection moves the caret; also test macOS
+//     Control+click. Menus use Modern corners/shadow/colors. Copy retains text;
+//     Cut/Delete remove only selection; Primary+Z restores text/selection in one
+//     step. Paste replaces it, normalizing newlines only in single-line inputs;
+//     Undo/Redo reverse each other. With no selection Cut/Copy/Delete are disabled;
+//     readonly permits only Copy/Select All. Opening alone accesses no clipboard;
+//     empty/nontext clipboard paste changes nothing.
+//  11. Shift+F10 opens the same menu below the caret; Escape closes it. An outside
+//     click closes without moving the editor caret. Ordinary menu-time keys do
+//     not reach the editor; typing resumes immediately after close. Scroll Notes
+//     and reopen near the click; near desktop edges the menu remains visible.
+//     Right-click cancels uncommitted Chinese preedit without adding history;
+//     Copy contains only committed text. Closing the owner leaves no native popup
+//     and does not prevent exit.
+//
+// Side effects: explicit copy/cut writes clipboard; no file/settings changes or
+// DevServer. Reset: restart. Exit: close the window. Record each platform and
+// scenario separately; startup is not interaction verification.
 package main
 
 import (

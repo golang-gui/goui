@@ -19,7 +19,7 @@ import (
 	widgetstyle "github.com/golang-gui/goui/widgets/style"
 )
 
-// 布局、溢出与页面顺序同步。
+// Layout, overflow and page-order synchronization.
 
 func TestTabGlyphLocalizedSnapshot(t *testing.T) {
 	previous := mlang.Language()
@@ -151,9 +151,10 @@ func TestTabWidthRangeNormalizationAndAccessoryFloor(t *testing.T) {
 	}
 }
 
-// 页面同步与边缘滚动。
+// Page synchronization and edge scrolling.
 
-// 实际标签和箭头仅在栏可滚动时消费滚轮；空白区保持被动，不影响 Caption。
+// Tabs and arrows consume wheel input only when the bar can scroll. Empty
+// space stays passive and does not interfere with caption handling.
 func TestTabBarWheelPropagation(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -295,7 +296,7 @@ func TestTabBarEdgeScrollKeepsDragActive(t *testing.T) {
 	bar.stopDrag()
 }
 
-// 输入、排序和关闭按钮。
+// Input, reordering and close buttons.
 
 func TestTabDragUsesSharedFramesAndStops(t *testing.T) {
 	bar, _, pages := dragTestBar()
@@ -750,7 +751,7 @@ func TestTabSpacingDragThresholdWithCompressedWidths(t *testing.T) {
 	bar.cancelDrag()
 }
 
-// 分隔线绘制与状态。
+// Separator painting and state.
 
 type separatorPainter struct {
 	gui.Painter
@@ -827,7 +828,7 @@ func TestTabSeparatorStatesAndGeometry(t *testing.T) {
 	check() // transparent style disables decoration without changing geometry
 }
 
-// 上下文菜单、目标与生命周期。
+// Context menus, targets and lifecycle.
 
 func TestTabContextMenuQueriesTargetInOrderAndMayReuseModel(t *testing.T) {
 	view := NewTabView()

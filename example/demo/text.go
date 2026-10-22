@@ -32,7 +32,8 @@ func (d *demo) editorHistory(redo bool) {
 	if w == nil {
 		return
 	}
-	// 工具栏调用模型的公开历史 API，并把历史选区恢复给当前编辑视图。
+	// Invoke the model's public history API and restore the history selection
+	// to the active editor view.
 	if editor, ok := w.(*gui.TextView); ok {
 		r := d.text.UndoWithSelection
 		if redo {

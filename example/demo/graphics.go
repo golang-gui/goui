@@ -55,7 +55,7 @@ func (d *demo) loadAssets() error {
 		return err
 	}
 	d.icons = append(d.icons, colored.WithRawColors())
-	// 固定像素资源：只创建一次，不在 Build/Paint 中反复生成。
+	// Create this fixed bitmap once and reuse it across Build and Paint calls.
 	img := image.NewRGBA(image.Rect(0, 0, 280, 110))
 	for y := 0; y < 110; y++ {
 		for x := 0; x < 280; x++ {

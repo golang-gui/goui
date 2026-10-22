@@ -1,26 +1,32 @@
-// 快捷键与键盘布局窗口验证。
+// Shortcut and keyboard-layout window checks.
 //
-// 环境：Windows/macOS/Linux 桌面；记录 OS、实际键盘布局、IME、后端和缩放。
-// 启动：go run ./tests/window/ui/shortcuts；macOS 的 Primary 为 Command，其他为 Ctrl。
-// 初始：全部计数为零；快捷键启用，输入框为空。
-// 操作与预期：
-//  1. 点击按钮获得非编辑焦点，Primary+S 保存计数加一；按住不连续增加。
-//     F6 允许系统重复，按住会增加 repeat；Primary+Shift+S 不增加保存计数。
-//  2. 输入框键入 abc，Primary+A 应全选文本，不能增加 window-A；按钮获得焦点后
-//     Primary+A 应增加 window-A。输入框 F5 增加 local-F5，按钮 F5 增加 window-F5。
-//     回归重点：每次 F5 按下后保持约 100～200ms 再抬起，连续三次应只让对应计数加三；
-//     不能仅模拟同一时刻的按下/抬起。长按 F5 一秒只加一，抬起重按再加一；
-//     输入框长按 F6 仍应重复增加 repeat。Linux 在输入法中/英文模式下分别验证。
-//  3. 点击 Rebuild 多次后按 Primary+S，只增加一次；Disable 后不再增加，Enable 恢复。
-//  4. 系统切换 French AZERTY / German QWERTZ（记录所用布局），按钮获得焦点后
-//     按逻辑 Primary+Q、Primary+Y，对应 Q/Y 计数增加，不按美式固定键位判断。
-//     开/关 CapsLock 并重复；显式 Shift 是额外修饰键，不匹配上述声明。
-//  5. 输入框使用该布局的 AltGr/Option 字符、死键和中文 IME，预期正常提交且没有
-//     多余命令计数；Primary+S 激活后不向文本插入 s 或控制字符。
-//  6. 关闭窗口，应退出，无残留窗口。不要以程序启动代替以上步骤验收。
+// Environment: Windows/macOS/Linux desktop. Record OS, actual layout, IME,
+// backend and scale. Run: go run ./tests/window/ui/shortcuts
+// Primary is Command on macOS, Control elsewhere. Initially counts=0, shortcuts
+// enabled and input empty.
+// Steps and expected results:
+//  1. Focus a noneditor button. Primary+S increments Save once, including when
+//     held. F6 permits system repeat and increments repeat while held.
+//     Primary+Shift+S does not increment Save.
+//  2. Type abc in the input. Primary+A selects all without window-A; with button
+//     focus it increments window-A. Input F5 increments local-F5, button F5
+//     window-F5. Hold each of three F5 presses for 100-200 ms before release:
+//     exactly three increments. Same-instant down/up simulation is insufficient.
+//     Holding F5 one second adds only one; release/repress adds another. Held
+//     input F6 still repeats. On Linux check both Chinese/English IME modes.
+//  3. Rebuild repeatedly, then Primary+S: one increment. Disable stops it;
+//     Enable restores it.
+//  4. Use recorded French AZERTY and German QWERTZ layouts. With button focus,
+//     logical Primary+Q/Y increment the corresponding counts independently of
+//     US physical positions. Repeat with CapsLock on/off; explicit Shift is an
+//     extra modifier and does not match these declarations.
+//  5. Input the layout's AltGr/Option characters, dead keys and Chinese IME text:
+//     normal commits, no extra commands. Primary+S inserts neither s nor controls.
+//  6. Close without leftover windows. Startup alone does not verify these steps.
 //
-// 副作用：只改变程序内状态；如手动更改系统键盘布局/环境变量，退出后恢复原值。
-// 复位：重新启动。系统保留组合可能被截获，不能要求应用收到 Win 等保留快捷键。
+// Side effects: in-program state only. Restore any manually changed keyboard
+// layout/environment afterward. Reset: restart. System-reserved combinations
+// may be intercepted and are not required to reach the application.
 package main
 
 import (

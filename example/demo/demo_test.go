@@ -25,7 +25,8 @@ import (
 	wui "github.com/golang-gui/goui/widgets/ui"
 )
 
-// 校验按钮实际传入的创建选项；不为例程测试创建原生窗口或模拟 Application。
+// Check the options passed by the demo's actual buttons without creating a
+// native window or substituting an Application.
 func TestAuxWindowExampleDeclarations(t *testing.T) {
 	source, err := parser.ParseFile(token.NewFileSet(), "windows.go", nil, 0)
 	if err != nil {
@@ -100,8 +101,9 @@ func TestAuxWindowExampleDeclarations(t *testing.T) {
 	}
 }
 
-// 检查例程真实构造的根；BorderBox 不能被透明样例的外层容器包住。
-// 文字排版及原生命中另在 README 的桌面操作中验证。
+// Inspect the demo's actual root: the transparent sample must not wrap BorderBox
+// in an outer container. Typography and native hit testing need the README's
+// desktop checks.
 func TestAuxWindowContentComposition(t *testing.T) {
 	for _, test := range []struct {
 		name                   string
@@ -156,8 +158,9 @@ func TestAuxWindowContentComposition(t *testing.T) {
 	}
 }
 
-// 私有 demo-card 规则已移除，遗漏的样式引用会让浮动面板和 Dialog 透明。
-// 只检查样式调用，不把同名的应用内拖放数据格式当作样式。
+// The removed demo-card style must have no remaining references, which would
+// leave panels and dialogs transparent. Inspect style calls only; the local
+// drag data format happens to use the same name.
 func TestDemoCardStyleMigration(t *testing.T) {
 	files, err := filepath.Glob("*.go")
 	if err != nil {
@@ -191,8 +194,9 @@ func TestDemoCardStyleMigration(t *testing.T) {
 	}
 }
 
-// 检查例程真实声明，不为测试导出 UI 私有状态或重建协调器。
-// 实际高度、原生按钮避让及字体放大后的裁剪另按 README 做桌面验证。
+// Inspect the demo's actual declarations without exporting UI internals or
+// duplicating reconciliation. Use the README's desktop checks for allocated
+// height, native control avoidance and clipping with larger fonts.
 func TestDemoCompactChromeDeclaration(t *testing.T) {
 	source, err := parser.ParseFile(token.NewFileSet(), "main.go", nil, 0)
 	if err != nil {
@@ -264,7 +268,8 @@ func TestDemoCompactChromeDeclaration(t *testing.T) {
 	}
 }
 
-// Primary 的内容显式选择对比前景；侧栏选中只用中性色，不借用主要操作样式。
+// Primary content uses an explicit contrasting foreground. Sidebar selection
+// uses neutral colors independently of the primary action style.
 func TestDemoPrimaryContentDeclaration(t *testing.T) {
 	primaryCount := 0
 	for _, file := range []string{"main.go", "basic.go", "overlays.go"} {
@@ -383,7 +388,8 @@ func TestLanguageChangePreservesDemoModelsAndState(t *testing.T) {
 	}
 }
 
-// 默认样例由例程持有；八语言都必须覆盖，而不是只翻译标题和按钮。
+// The demo owns its default samples. Verify their content in all eight languages
+// as well as the translated headings and button labels.
 func TestEmptyDemoEditorsSurviveLanguageChanges(t *testing.T) {
 	previous := mlang.Language()
 	t.Cleanup(func() { _ = mlang.SetLanguage(previous) })
@@ -486,7 +492,7 @@ func TestLanguageChangeUpdatesUntouchedSamples(t *testing.T) {
 	}
 }
 
-// 即便撤销后内容恰好等于默认值，也不能丢失用户的重做历史。
+// Undo may restore text equal to the default sample; keep the user's redo history.
 func TestLanguageChangePreservesEditedSampleOwnership(t *testing.T) {
 	previous := mlang.Language()
 	t.Cleanup(func() { _ = mlang.SetLanguage(previous) })
@@ -507,7 +513,7 @@ func TestLanguageChangePreservesEditedSampleOwnership(t *testing.T) {
 	if err := document.ReplaceAtomic(ui.TextRange{Start: 0, End: 0}, "document edit\n"); err != nil {
 		t.Fatal(err)
 	}
-	d.input.Set(resource.InputSample()) // 显式赋值仍交给用户持有，不靠内容猜测。
+	d.input.Set(resource.InputSample()) // An explicit assignment transfers ownership to the user regardless of its value.
 	d.baselineInput.Set("user baseline")
 	d.splitInput.Set("user split")
 	d.inspection.SetText(`{"ID":"main","Text":"原始快照"}`)
@@ -597,7 +603,8 @@ func TestDropDescriptionTranslatesWithoutChangingPayload(t *testing.T) {
 	}
 }
 
-// 这些测试只覆盖例程自己的内存数据和布局适配，不创建窗口/事件循环。
+// These tests cover the demo's in-memory data and layout adapters without
+// creating a native window or running an event loop.
 func TestInitialModelsAndAssets(t *testing.T) {
 	d, err := newDemo()
 	if err != nil {
@@ -637,8 +644,9 @@ func TestInitialModelsAndAssets(t *testing.T) {
 	}
 }
 
-// 只在内存中栅格化。采样均远离抗锯齿边缘，按预乘 RGBA8 精确比较：
-// 512 画布的透明外角、蓝色窗框、白眼和鼻子；横版还检查灰色字母。
+// Rasterize in memory and compare premultiplied RGBA8 samples exactly, away
+// from antialiased edges: the 512-pixel canvas's transparent outer corners,
+// blue frame, white eyes and nose, plus gray lettering in the horizontal logo.
 func TestDemoLogoPixels(t *testing.T) {
 	d, err := newDemo()
 	if err != nil {
@@ -685,8 +693,9 @@ func TestDemoLogoPixels(t *testing.T) {
 	}
 }
 
-// 实际展示尺寸包含按钮、标题栏、图形样例、动画及配置 2x 缩放。
-// 只比较同一尺寸下的完整预乘 RGBA 像素，变化的前景不能染色 Logo。
+// Cover the actual button, title bar, graphics and animation sizes, including
+// configured 2x scaling. Compare full premultiplied RGBA buffers at equal sizes;
+// changing the foreground must leave the logo's original colors intact.
 func TestDemoLogoSizesPreserveColors(t *testing.T) {
 	d, err := newDemo()
 	if err != nil {
@@ -722,7 +731,8 @@ func TestDemoLogoSizesPreserveColors(t *testing.T) {
 	}
 }
 
-// 可着色图标集合不能包含 Logo 的单色副本；alpha 掩码比较不依赖前景色。
+// Tintable icons must not include a monochrome logo copy. Compare alpha masks
+// so the check is independent of foreground color.
 func TestDemoTintedIconsExcludeLogo(t *testing.T) {
 	d, err := newDemo()
 	if err != nil {
@@ -752,7 +762,8 @@ func TestDemoTintedIconsExcludeLogo(t *testing.T) {
 	}
 }
 
-// 像素正确不能证明声明使用了正确资源；检查按钮和标签页真实绑定。
+// Correct resource pixels alone do not prove that declarations use them.
+// Inspect the buttons' and tabs' actual resource bindings.
 func TestDemoBrandIconBindings(t *testing.T) {
 	for _, test := range []struct{ name, file, method string }{
 		{"button", "basic.go", "Content"},
@@ -798,8 +809,8 @@ func TestDemoBrandIconBindings(t *testing.T) {
 	}
 }
 
-// 原色资源的像素正确不代表动画声明使用了它；直接检查该声明的绑定，
-// 避免为了这一例程测试导出 UI 私有状态或实现第二套协调器。
+// Inspect the animation's resource binding as well as the resource pixels,
+// without exporting UI internals or duplicating reconciliation for this demo.
 func TestAnimatedIconUsesRawLogo(t *testing.T) {
 	source, err := parser.ParseFile(token.NewFileSet(), "graphics.go", nil, 0)
 	if err != nil {
@@ -1007,8 +1018,9 @@ func TestFormScrollViewConstrainsWidthAndScrollsHeight(t *testing.T) {
 	}
 }
 
-// 只给 BoxView 提供已构造的测试孩子；布局属性由例程真实声明的 Update 应用。
-// 不重建声明式协调器，不启动 Application 或文字排版。
+// Supply already constructed children to BoxView; apply layout properties
+// through the demo declaration's actual Update method. This needs neither
+// a second reconciler nor an Application or typography context.
 type bodyContext struct {
 	ui.BuildContext
 	children []gui.Widget
@@ -1025,8 +1037,9 @@ func (ctx bodyContext) UpdateChildren(target ui.Container, views []ui.View) []gu
 }
 
 func TestBodyUsesAllocatedContentEdges(t *testing.T) {
-	// 由宿主决定可用区域；例程不读取 Chrome 私有的边缘宽度，也不重复留白。
-	// 同时覆盖无偏移分配与非零内容起点，后者的 Snapshot 仍须使用窗口坐标。
+	// The host allocates the available area. The demo must not read private chrome
+	// edge widths or reserve the same space twice. Cover zero and nonzero content
+	// origins; semantic snapshot bounds remain in window coordinates.
 	for _, test := range []struct {
 		name   string
 		bounds geometry.Rectangle
@@ -1070,7 +1083,7 @@ func TestBodyUsesAllocatedContentEdges(t *testing.T) {
 			if got := bar.Snapshot().Bounds; got != want {
 				t.Fatalf("scrollbar bounds %v, want %v at the allocated right edge", got, want)
 			}
-			// 检查左右两个边缘都能命中完整滚动条，而不只是中心可点。
+			// Both scrollbar edges must be hittable across their full width, not just the center.
 			for _, x := range []float32{test.bounds.Width - 7.5, test.bounds.Width - .5} {
 				if got := gui.Pick(body, geometry.Point{X: x, Y: test.bounds.Height / 2}); got != bar {
 					t.Fatalf("scrollbar edge x=%v picked %T, want the scrollbar", x, got)

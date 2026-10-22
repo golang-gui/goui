@@ -7,7 +7,8 @@ import (
 	"github.com/golang-gui/goui/ui"
 )
 
-// ScrollBar 没有公共 UI 声明，此处示范如何用标准 WidgetView 作本地薄绑定。
+// ScrollBar has no dedicated public UI declaration. Use the standard
+// WidgetView as a local thin binding.
 type barView struct {
 	ui.ViewBase[barView]
 	value   float32

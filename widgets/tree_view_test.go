@@ -17,7 +17,8 @@ import (
 	"github.com/golang-gui/goui/style"
 )
 
-// 内存模型、无字体行和正常 EventDispatcher 路径，不依赖桌面。
+// In-memory models, rows without font measurement and normal EventDispatcher
+// routing; no desktop is required.
 type treeTestDelegate struct {
 	binds, setups int
 	unbound       []TreeRow
@@ -593,7 +594,8 @@ func TestTreeViewStableIDsSurviveRenameReorderAndReparent(t *testing.T) {
 	}
 }
 
-// 仅第一行很宽；它滚出视口后，选择、当前项或 Refresh 不能丢失水平范围。
+// Only the first row is wide. After it leaves the viewport, selection,
+// current-item changes and Refresh must preserve the horizontal extent.
 type treeWidthDelegate struct {
 	treeTestDelegate
 	model *TreeStore[float32]
@@ -656,7 +658,7 @@ func TestTreeViewStateRefreshRetainsMeasurementsAndBindings(t *testing.T) {
 	if s.ScrollX() != 80 {
 		t.Fatal("explicit refresh discarded an offscreen width estimate")
 	}
-	// 结构变更必须解绑旧 ID，但不应再创建同规模视口的行壳。
+	// Structural changes unbind old IDs while reusing the existing viewport row shells.
 	m.Append("", "new", 80)
 	arrange()
 	if d.setups != setups || len(d.unbound) == unbound {
@@ -675,7 +677,7 @@ func TestTreeViewNotificationsSeparateCurrentAndSelection(t *testing.T) {
 	if len(selections) != 1 || !slices.Equal(selections[0], []string{"root"}) || !slices.Equal(currents, []string{"other"}) {
 		t.Fatalf("unrelated notification suppressed or stale current delivered: %v %v", selections, currents)
 	}
-	// 同一种状态在回调里改变时，后续监听者只收到最新状态。
+	// Reentrant changes to the same state leave later listeners with only its latest value.
 	v, _ = treeFixture()
 	selections = nil
 	v.ConnectSelection(func(ids []string) {
@@ -786,7 +788,8 @@ func (p *treePaintRecorder) DrawLine(_ geometry.Point, _ geometry.Point, _ float
 func TestTreeViewCurrentOnlyPaintsOutlineAndDisclosureUsesOwnState(t *testing.T) {
 	old := gui.App
 	defer func() { gui.App = old }()
-	// current 故意不指定透明背景：继承到的默认背景也不能覆盖 selected。
+	// current deliberately inherits its default background; even that background
+	// must not obscure selected.
 	gui.App = &separatorApp{sheet: style.Sheet(
 		style.Name("tree-item").Radius(4).BackgroundColor(color.White),
 		style.Name("tree-item").Part("selected").BackgroundColor(color.Black),

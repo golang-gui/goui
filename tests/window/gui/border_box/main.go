@@ -1,32 +1,41 @@
-// BorderBox 自绘窗口边框验收，不使用 DevServer。
+// BorderBox client-drawn window border checks, without DevServer.
 //
-// 环境：可交互的 Linux/X11、Windows、macOS 桌面；记录 OS/WM、后端、缩放。
-// 启动：go run ./tests/window/gui/border_box [-auto] [-chrome=none|native|integrated]
-// GOUI_PLAT_PAINTER=software/opengl（Windows 另可 direct2d），GOUI_PLAT_SCALE=1/2。
-// 初始：左侧 Native 控制窗口；右侧透明 None 窗口，以无外观 BorderBox 为根，
-// 子内容为白底直角面板，外围 6 DIP 透明留白。透明留白仍接受鼠标输入。
+// Environment: interactive Linux/X11, Windows or macOS desktop. Record OS/WM,
+// backend and scale. Run:
 //
-// 操作与逐项预期：
-//  1. 在右窗的四边中段、四角移动鼠标，再分别拖动右边、下边、左上角。
-//     预期：对应原生方向光标；窗口大小变化且内容始终内缩，不发生控件点击。
-//  2. 拖动右窗 HeaderBar，点击“计数”并在输入框输入 border-test。
-//     预期：只有标题区域移动窗口，输入和点击正常，日志打印计数及输入文本。
-//  3. 左窗点击“圆角外观”：白色圆角边框和 1 DIP 灰描边可见，四角透明；
-//     子内容红色，用于检查其矩形边界没有盖住圆角。再次点击回到无外观。
-//  4. 切换“允许缩放”和“禁用边框”：缩放/自动光标关闭；重新开启恢复。
-//     Resizable 关闭时仍保留布局留白；Enabled 关闭时子控件也不能交互。
-//  5. 点击“嵌套边框”：BorderBox 改为普通容器的子控件，不再缩放宿主。
-//     再次点击恢复根控件，重新进入边缘能缩放，不能残留重复命中订阅。
-//  6. 点击“卸载并恢复”：右窗暂时移除子树，500ms 后重新挂载，再重复步骤 1。
-//  7. 点击“最大化/恢复”：最大化时 BorderBox 不再提供缩放光标，恢复后生效。
-//     macOS None 的状态请求以系统实际支持为准，不能把请求当成已发生状态。
-//  8. -chrome=native/integrated：BorderBox 仅装饰/布局，窗口自身装饰仍由宿主管理。
-//     这些模式不属于 None 自动缩放验收；Linux Integrated 仍有自身缩放边缘。
+//	go run ./tests/window/gui/border_box [-auto] [-chrome=none|native|integrated]
 //
-// -auto：显示后断言默认安全布局、Snapshot 子树、切换外观及关闭缩放不改变布局，
-// 打印 PASS 后退出；不替代真实鼠标/键盘操作。平台控制的光标图案可不同。
-// 副作用：仅创建、定位、移动和缩放本程序窗口；不改系统设置、剪贴板。
-// 复位：重新启动。退出：左窗“退出”或关闭左窗，自动释放右窗与计时器。
+// Use GOUI_PLAT_PAINTER=software/opengl (also direct2d on Windows) and
+// GOUI_PLAT_SCALE=1 or 2. Initially a Native control window is on the left;
+// the transparent None window on the right has a plain BorderBox root, a white
+// rectangular child and 6 DIP transparent margins that still receive pointer input.
+// Steps and expected results:
+//  1. Hover each edge midpoint and corner; drag the right edge, bottom edge and
+//     top-left corner. Native directional cursors appear, resizing preserves
+//     content insets, and edge input does not click child controls.
+//  2. Drag the right window's HeaderBar, click Count and type border-test.
+//     Only the caption moves the window; the log reports counts and input.
+//  3. Toggle rounded appearance from the left window: a white rounded border
+//     with a 1 DIP gray stroke and transparent corners surrounds a red child.
+//     The rectangular child must not cover the corners. Toggle back to plain.
+//  4. Toggle resizing and border enabled state: disabling removes resizing and
+//     automatic cursors; re-enabling restores them. Resizable=false retains
+//     layout margins; Enabled=false also disables child interaction.
+//  5. Toggle the nested border: as an ordinary child, BorderBox stops resizing
+//     the host. Restore it as root and re-enter an edge; resizing works with
+//     no duplicate hit-test subscriptions.
+//  6. Unmount and restore: the subtree returns after 500 ms. Repeat step 1.
+//  7. Maximize/restore: BorderBox supplies no resize cursor while maximized and
+//     resumes after restore. Record macOS None state requests as actually observed.
+//  8. With -chrome=native/integrated, BorderBox provides decoration/layout only.
+//     These are not None automatic-resize checks; Linux Integrated has host edges.
+//
+// -auto checks initial safe layout, snapshot subtrees, appearance changes and
+// layout stability when resizing is disabled, then prints PASS and exits.
+// It does not replace real pointer/keyboard checks; native cursor shapes may vary.
+// Side effects: creates, positions, moves and resizes only this program's windows;
+// no system settings or clipboard changes. Reset: restart. Exit: Quit or close
+// the left window, releasing the right window and timers.
 package main
 
 import (

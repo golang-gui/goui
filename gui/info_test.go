@@ -110,7 +110,8 @@ func (w *snapshotAttributeWidget) Snapshot() gui.WidgetInfo {
 	return info
 }
 
-// 外部控件无需注册；生产者复制内部可变数据，helper 不承担隐式深拷贝。
+// External widgets need no registration. Producers copy their mutable data;
+// the helper does not perform an implicit deep copy.
 func TestWidgetInfoAttributeProducerIsolation(t *testing.T) {
 	w := &snapshotAttributeWidget{values: []int{1, 2}}
 	first := w.Snapshot()

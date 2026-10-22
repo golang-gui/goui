@@ -17,6 +17,8 @@ import (
 
 // Shared typography and painter doubles.
 
+// setTestApplication replaces the package-global App until test cleanup.
+// Callers must not run in parallel with other fixtures that change App.
 func setTestApplication(t *testing.T, typo typography.Context) {
 	t.Helper()
 	oldApp := App
@@ -227,8 +229,6 @@ func (p *testLabelPainter) DrawBoxShadow(rect geometry.Rectangle, radius float32
 
 // Shared input event and painting helpers.
 
-// 绘制与事件辅助。
-
 func dispatchKey(t *testing.T, win Window, key events.Key, modifiers events.Modifiers) {
 	t.Helper()
 	if err := win.DispatchEvent(events.KeyEvent{
@@ -295,8 +295,8 @@ func (p *testTextInputPainter) DrawLine(p0, p1 geometry.Point, strokeWidth float
 	p.lineBrush = brush
 }
 
-// 单行模型、Cluster、滚动与 baseline。
-
+// newInputFixture mounts and focuses a single-line editor in a test window,
+// using deterministic typography and unmounting it during test cleanup.
 func newInputFixture(t *testing.T, text string) (*TextInput, *window, *editorTypography) {
 	t.Helper()
 	typo := &editorTypography{}
@@ -312,8 +312,6 @@ func newInputFixture(t *testing.T, text string) (*TextInput, *window, *editorTyp
 }
 
 // Deterministic editor geometry, clipboard and window fixtures.
-
-// 共用排版、剪贴板替身与事件入口。
 
 // Fixture typography has 10 DIP cells and 20 DIP lines. It is deliberately
 // independent of editor geometry; shaping/bidi contracts have separate tests.
@@ -380,8 +378,8 @@ func (c *editorClipboard) SetText(s string) error { c.text = s; return nil }
 
 func (c *editorClipboard) RequestText(fn func(string, error)) { c.pending = fn }
 
-// 光标计时器与共用计时替身。
-
+// timedEditorFixture combines deterministic typography with the controllable
+// timer queue. Tests advance time explicitly instead of sleeping.
 func timedEditorFixture(t *testing.T) (*TextView, *ScrollView, *window, *timerTestQueue, *editorTypography) {
 	t.Helper()
 	q := newTimerTestQueue(t)

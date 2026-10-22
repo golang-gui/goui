@@ -484,7 +484,7 @@ func TestTextEditorContextMenuLifecycle(t *testing.T) {
 	}
 }
 
-// 导航、选择、剪贴板与历史。
+// Navigation, selection, clipboard and editing history.
 
 func TestTextViewKeysSelectionNativeCommitAndReadonly(t *testing.T) {
 	editor, win, _ := newEditorFixture(t, "ab\ncd")
@@ -632,7 +632,7 @@ func TestTextViewReentrantModelAndSelectionCallbacks(t *testing.T) {
 	}
 }
 
-// 双向文本与视觉导航。
+// Bidirectional text and visual navigation.
 
 // Explicit geometry, not editor-derived expectations: Hebrew occupies x=10..30
 // in reverse byte order. Ordinary text uses the existing 10 DIP fixture.
@@ -738,7 +738,7 @@ func TestTextEditorCollapseSelectionAcrossLines(t *testing.T) {
 	}
 }
 
-// 预编辑提交与撤销分组。
+// Preedit commits and undo grouping.
 
 // XIM can clear/end preedit before delivering its commit in a later key event.
 // Keep that commit separate from ordinary typing on both sides, while still

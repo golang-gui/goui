@@ -17,7 +17,7 @@ import (
 	"github.com/golang-gui/goui/style"
 )
 
-// 单行控件、绘制与输入契约。
+// Single-line widget, painting and input contracts.
 
 func TestTextInputSnapshotAndFocusability(t *testing.T) {
 	input := NewTextInput()

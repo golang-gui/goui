@@ -1,36 +1,40 @@
-// 上下文菜单、公开树行组合、拖放观察与自动滚动的原生窗口验收。
+// Native window checks for context menus, composed tree rows, drag observation
+// and autoscroll.
 //
-// 环境：Linux/X11、Windows、macOS 可交互桌面；记录 OS/WM、后端和缩放。
-// 启动：go run ./tests/window/gui/interactions
-// GOUI_PLAT_PAINTER=software/opengl；Windows 另支持 direct2d。
-// GOUI_PLAT_SCALE=2 可验证 2x。初始：640×540 DIP、Modern 亮色；第一分支
-// 已展开，120 个编号节点；状态 menus/clicks/drops 均为 0，scroll=0。
-// clicks 统计选择变化次数，不是原始鼠标事件数。
+// Environment: interactive Linux/X11, Windows or macOS. Record OS/WM, backend
+// and scale. Run: go run ./tests/window/gui/interactions
+// Use GOUI_PLAT_PAINTER=software/opengl (also direct2d on Windows) and
+// GOUI_PLAT_SCALE=2 for 2x. Initially 640x540 DIP, Modern light, first branch
+// expanded, 120 numbered nodes, menus/clicks/drops=0 and scroll=0. clicks counts
+// selection changes rather than raw pointer events.
+// Steps and expected results:
+//  1. Click the first arrow: expand/collapse only. A hidden current descendant
+//     falls back to its parent under the existing tree rules. The label selects;
+//     arrow, indentation and trailing space all hit the same row. Arrow-key
+//     navigation still works after expansion.
+//  2. Right-click trailing row space: the menu identifies that node and menus
+//     increments once. Windows opens on release; Linux/macOS on press. macOS
+//     Control+click also opens it without ordinary clicks or drag Begin. Esc closes.
+//  3. Select a row and press Shift+F10: target Current, not the last pointer
+//     position. Holding the key must not reopen repeatedly. Also test the menu
+//     key on Windows/Linux. After Esc, right-click still works; caption/buttons
+//     retain their usual actions.
+//  4. Drag Drag source to a middle row: blue preview, outlined row, observer=true
+//     and Target shown. Release: drops+1, Drop ID matches the outlined row,
+//     observer=false and status stops changing. Leaving the list clears the outline.
+//  5. Hold at the bottom edge for at least one second: scroll keeps increasing
+//     and Target follows it. The viewport center stops scrolling; the top reverses
+//     it. Release: Drop ID matches the last Target. Completion or Esc stops scrolling.
+//  6. Set Auto scroll: OFF and repeat: drops still work, scroll stays unchanged.
+//     Re-enable and Reset: scroll=0 and subsequent drags still work.
+//  7. Drag a file from the native file manager to an edge: autoscroll and drops+1
+//     on release, without file modification. Repeat steps 1-6 across 1x/2x,
+//     light/dark and window sizes; hits, menus and drops stay correct.
 //
-// 操作与预期：
-//  1. 点第一行箭头：仅展开/折叠，不执行行点击；若折叠隐藏当前项，选择按树
-//     的既有规则回退到父级。点标签选择。箭头、缩进和行右侧
-//     留白都能命中相同行。展开后按方向键导航仍可用。
-//  2. 在编号行右侧留白右击，菜单显示该节点 ID，menus 恰增加 1。
-//     Windows 按下不显示、抬起显示；Linux/macOS 按下显示。macOS Control+
-//     左击也显示菜单，不增加普通点击或拖放 Begin。Esc 关闭菜单。
-//  3. 选中一行，按 Shift+F10；菜单针对 Current，而不是最后鼠标位置。
-//     长按不得重复弹出。Windows/Linux 可再用键盘菜单键验证。Esc 后再次
-//     右击应正常。标题栏及按钮原有点击不受影响。
-//  4. 从 Drag source 拖至列表中央：有蓝色图片预览，整行出现边框；observer
-//     为 true，显示 Target。松开后 drops+1，Drop ID 等于松开时边框所在行，
-//     observer 为 false，状态不再变化。拖到列表外不得继续保留行边框。
-//  5. 从 Drag source 拖至列表底部边缘，保持鼠标静止至少 1 秒：scroll 持续
-//     增加，Target 随滚动更新。移回视口中间应停止滚动；移到顶部可反向滚动。
-//     松开后 Drop ID 必须等于松开前 Target。结束或 Esc 后 scroll 保持不变。
-//  6. 点 Auto scroll: OFF，重做边缘拖动：仍可放下，但 scroll 不变化。
-//     再启用、点 Reset，scroll 回到 0，后续拖动仍正常。
-//  7. 原生文件管理器拖文件到列表边缘：自动滚动，松开 drops+1；不修改文件。
-//     1x/2x、亮暗切换与窗口大小变化后重复步骤 1–6，命中、菜单和拖放仍正确。
-//
-// 平台差异：菜单触发时机如步骤 2；原生拖放取消反馈由系统决定。
-// 副作用：仅显示菜单和拖放预览，不写文件、剪贴板或系统设置。
-// 复位：Reset 或重启；退出：关闭窗口。错误在状态和终端显示 FAIL 并非零退出。
+// Platform differences: menu timing is described above; native cancellation
+// feedback varies. Side effects: menus/previews only, no file/clipboard/settings
+// writes. Reset: Reset or restart. Exit: close the window. Errors show FAIL in
+// status/logs and cause a nonzero exit.
 package main
 
 import (

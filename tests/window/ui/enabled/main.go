@@ -1,32 +1,40 @@
-// Widget 禁用、父子状态、焦点、文字输入与声明式恢复验收；不依赖 DevServer。
-// 环境：Linux X11、Windows、macOS 可交互桌面。记录 OS/WM、后端、缩放。
-// 启动：go run ./tests/window/ui/enabled；GOUI_PLAT_PAINTER 可选 software、
-// opengl（Windows 另有 direct2d），GOUI_PLAT_SCALE=2 验证 2x。
-// 初始：Integrated 860×700 DIP、亮色；整组启用，普通/主按钮与输入框启用，
-// 固定禁用按钮不可点击，文字编辑保留初值，ReadOnly 字段可选择复制。
-// 操作与预期：
-//  1. 点击普通/主按钮、勾选/切换、下拉选择、编辑输入框，计数和文本更新。
-//  2. F1（或 Toggle group）禁用整组：保持布局和内容；文字/图标弱化；所有
-//     交互、Tab 焦点和右键编辑菜单失效。进度动画继续，外部工具栏可操作。
-//  3. F2/F3 分别改变普通按钮/输入框自身设置，即使整组禁用也保存设置；
-//     F1 恢复时按各自设置恢复，固定禁用按钮始终禁用。再按 F2/F3 恢复。
-//  4. 输入框获得焦点、输入文字（含中文预编辑）后按 F1：焦点和光标清除，
-//     未提交预编辑取消、已提交文本保留；F1 恢复不会自动抢回焦点。
-//  5. 鼠标按住普通按钮时按 F1、F1 再松手，计数不增加；重新点击有效。
-//     指针停在普通按钮上按 F2 禁用再恢复：悬停外观随状态恢复；指针离开后
-//     再切换不能凭空出现悬停。按 F7 后在两秒内展开下拉，等待整组禁用：
-//     既有失焦可能关闭弹层；若仍展开，下次鼠标或键盘操作应关闭弹层且
-//     不能提交选择。弹层模态期间快捷键由弹层接收，不能用 F1 触发此场景。
-//  6. Tab/Shift+Tab 跳过禁用项；ReadOnly 可取得焦点并复制，不能编辑。
-//  7. F4（或 Dark）切换亮暗主题，禁用色中性且可读，尺寸不跳动。F5 只移除
-//     普通按钮 Enabled 声明，恢复构造初值，但仍受整组限制。
-//  8. F6（或 Check）检查真实 Widget 状态、子树/内容、动作和 Focusable 配置；
-//     输出 ASSERT PASS 与窗口局部 DIP 边界。按 F1/F2/F3/F5 后
-//     再检查，验证多次重建。窗口级 F1～F6 在整组禁用时仍生效。
+// Disabled widgets, inherited state, focus, input and declarative restoration
+// window checks, without DevServer.
+// Environment: interactive Linux X11, Windows or macOS. Record OS/WM, backend
+// and scale. Run: go run ./tests/window/ui/enabled
+// Use GOUI_PLAT_PAINTER=software/opengl (also direct2d on Windows) and
+// GOUI_PLAT_SCALE=2 for 2x. Initially Integrated 860x700 DIP, light theme, group
+// enabled, ordinary/primary buttons and input enabled, permanently disabled
+// button inactive, initial editor text retained and ReadOnly selectable/copyable.
+// Steps and expected results:
+//  1. Use buttons, checks, switch, drop-down and editor: counts/text update.
+//  2. F1 or Toggle group disables the group without changing layout/content.
+//     Text/icons dim; interaction, Tab focus and editor context menus stop.
+//     Progress animation continues; the external toolbar remains usable.
+//  3. F2/F3 change the ordinary button/input's own settings even while their
+//     group is disabled. F1 restores each according to its own setting; the
+//     permanently disabled button stays disabled. F2/F3 restore both.
+//  4. Focus/type in the input, including Chinese preedit, then F1: focus/caret
+//     clear, uncommitted preedit cancels and committed text remains. Re-enabling
+//     does not take focus automatically.
+//  5. Hold the ordinary button, press F1 twice and release: no click count.
+//     A fresh click works. Disable/re-enable it with F2 under the pointer:
+//     hover recovers; moving away before toggling cannot create false hover.
+//     F7 schedules group disabling in two seconds; open the drop-down first.
+//     Focus loss may close it; if it stays open, the next pointer/key operation
+//     closes it without committing selection. Modal popup keys cannot invoke F1
+//     for this scenario.
+//  6. Tab/Shift+Tab skip disabled fields. ReadOnly can focus/copy but not edit.
+//  7. F4/Dark changes mode with readable neutral disabled colors and stable
+//     dimensions. F5 removes only the ordinary button's Enabled declaration,
+//     restoring its constructor default while retaining the group's restriction.
+//  8. F6/Check asserts real widget state, subtree/content, actions and Focusable,
+//     printing ASSERT PASS and window-local DIP bounds. Repeat after F1/F2/F3/F5
+//     and rebuilds; window-level F1-F6 still work while the group is disabled.
 //
-// 副作用：剪贴板复制仅按用户操作；不写文件。复位：重启例程。
-// 退出：Escape、Quit 或原生关闭按钮；正常返回输出 EXIT PASS。
-// 原生关闭触发声明式 OnDestroy 时另输出 DESTROY PASS；App.Quit 不要求此信号。
+// Side effects: clipboard copying only on request; no file writes. Reset: restart.
+// Exit: Escape, Quit or native close prints EXIT PASS. Native close also invokes
+// OnDestroy and prints DESTROY PASS; App.Quit need not emit that signal.
 package main
 
 import (
@@ -123,8 +131,8 @@ func main() {
 			}
 			fmt.Printf("ASSERT PASS clicks=%d changes=%d submits=%d text=%q\n", clicks, changes, submits, text)
 		}
-		// 快速输入可能先改变下一次声明值，再运行上一轮排队的检查。
-		// 读取最新完成构建对应的预期，不拿待协调状态比较旧控件树。
+		// Fast input can change pending state before a previous check runs. Compare
+		// against the latest completed build, not pending declarations and an older tree.
 		check := func() { app.Post(func() { verify() }) }
 		if !connected {
 			connected = true

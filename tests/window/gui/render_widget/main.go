@@ -1,18 +1,21 @@
-// RenderWidget 窗口验证；不使用 DevServer。
+// RenderWidget window checks, without DevServer.
 //
-// 环境：Linux/X11、Windows 或 macOS 桌面，GUI 主线程。
-// 启动：GOUI_PLAT_PAINTER=opengl go run ./tests/window/gui/render_widget
-// 后端可选 software / opengl，Windows 另可选 direct2d；GOUI_PLAT_SCALE=1/2。
-// -check：首次窗口绘制后自动执行断言，验证后续重绘，再关闭窗口退出。
-// 指定后端时会根据实际创建的图片资源检查后端，静默 fallback 不计为通过。
-//
-// 初始：源控件包含文字、蓝色图片、图标、圆角背景、半透明红色块；下方显示导出图。
-// 操作与预期：点击 Capture 交替以 1x/2x 导出，图片物理尺寸相应翻倍；
-// 源控件不移动、不消失，文字/图标完整，透明角落透出窗口背景。
-// 连续点击并缩放窗口，原图及导出图继续正常显示，不串色、不 panic。
-// 自动断言检查内部 RGBA 样本、透明角、尺寸、嵌套拒绝、Paint panic 后恢复及资源复用。
-// 文字边缘允许平台抗锯齿差异，不做跨平台金图比较。
-// 副作用：仅创建一个窗口，不写文件。重启复位；关闭窗口退出。
+// Environment: Linux/X11, Windows or macOS desktop on the GUI thread.
+// Run: GOUI_PLAT_PAINTER=opengl go run ./tests/window/gui/render_widget
+// Backends: software/opengl, also direct2d on Windows. Repeat with
+// GOUI_PLAT_SCALE=1 or 2. -check asserts after the first window paint, checks
+// later repainting and closes the window. Explicit backend requests are checked
+// against actual image resource types; silent fallback is not a passed check.
+// Initially the source has text, a blue image, an icon, a rounded background
+// and translucent red blocks, with its captured image displayed below.
+// Click Capture to alternate 1x/2x exports: physical dimensions double, source
+// geometry stays unchanged, text/icons remain complete and transparent corners
+// reveal the window background. Repeated captures and window resizes must retain
+// both images without color contamination or panic.
+// Automatic assertions cover interior RGBA, transparent corners, dimensions,
+// nested-render rejection, recovery after Paint panic and resource reuse.
+// Font edges may differ across platforms; no cross-platform golden image is used.
+// Side effects: one window, no file writes. Reset: restart. Exit: close the window.
 package main
 
 import (
