@@ -366,3 +366,13 @@ glyph、advance、原始索引与方向同完整 CTFrame 一致。调用者拥�
 许多未命中宽度，应与反复最大化／还原两个确切宽度分别验收，不能混报收益。
 
 具体前后对照和剩余失败见 [分配与宽度复用验证](PlanTextLayoutAllocation.md)。
+
+
+## 16. 完整字形来源与宽度投影（2026-10-22）
+
+第 14 节的普通 advance 索引现通过可选 GlyphContext／GlyphLayout 接入 Pango
+长段落正式路径。原生保留完整上下文字形与视觉顺序；gui/textedit 负责换行、L1
+行尾处理、按行几何及可见范围绘制，TextView／SourceView 接入。首次冷塑形和
+索引仍可能阻塞；CoreText／DirectWrite 继续原有准确路径。详见
+[完整上下文字形与上层折行](DesignShapedWrapping.md) 及
+[本批实测](PlanShapedWrapping.md)。前文“尚未接入”的描述是对应阶段的记录。
