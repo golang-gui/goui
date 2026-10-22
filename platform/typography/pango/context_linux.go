@@ -412,73 +412,17 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 		return
 	}
 	lines = make([]typography.TextLine, 0, lineCount)
+
 	clusters = make([]typography.TextCluster, 0, t.chars)
 	iter := t.layout.GetIter()
 	defer iter.Free()
-	// Keep independent line/cluster cursors. NextCluster skips empty lines,
-	// while copying a line cursor on Pango 1.50.6 loses end_x_offset and can
-	// produce uninitialized X positions when advancing to the next font run.
-	clusterIter := t.layout.GetIter()
-	defer clusterIter.Free()
-	var clusterStarts []int
-	moreClusters := true
-	for {
-		nativeLine := iter.GetLineReadonly()
-		if nativeLine == nil {
-			break
+	var previous *pango.LayoutLine
+	beg := 0
+	finishLine := func() {
+		if len(lines) == 0 {
+			return
 		}
-		var rect pango.Rectangle
-		iter.GetLineExtents(nil, &rect)
-		line := typography.TextLine{
-			Start: int(nativeLine.StartIndex), Length: int(nativeLine.Length),
-			X:     float32(rect.X) / pango.Scale,
-			Y:     float32(rect.Y) / pango.Scale,
-			Width: float32(rect.Width) / pango.Scale, Height: float32(rect.Height) / pango.Scale,
-			Baseline: float32(iter.GetBaseline()) / pango.Scale,
-		}
-		beg := len(clusters)
-		// NextCluster skips empty lines. Keep a separate line iterator so empty
-		// and trailing lines retain their native metrics and stable LineIndex.
-		for moreClusters && clusterIter.GetLineReadonly() == nativeLine {
-			run := clusterIter.GetRunReadonly()
-			if run == nil || run.Item == nil {
-				moreClusters = clusterIter.NextCluster()
-				continue
-			}
-			// The glyph log describes this run's visual cluster sequence.
-			// Keep querying native extents, but don't query the unchanged
-			// owning line/run again for every cluster in the run.
-			clusterStarts = clusterStarts[:0]
-			logs := run.Glyphs.LogClusters()
-			for i, offset := range logs {
-				if i == 0 || offset != logs[i-1] {
-					clusterStarts = append(clusterStarts, int(run.Item.Offset+offset))
-				}
-			}
-			if len(clusterStarts) == 0 {
-				moreClusters = clusterIter.NextCluster()
-				continue
-			}
-			for _, start := range clusterStarts {
-				var clusterRect pango.Rectangle
-				clusterIter.GetClusterExtents(nil, &clusterRect)
-				clusters = append(clusters, typography.TextCluster{
-					Start: start,
-					X:     float32(clusterRect.X) / pango.Scale, Y: line.Y,
-					Width: float32(clusterRect.Width) / pango.Scale, Height: line.Height,
-					LineIndex: len(lines),
-					Direction: typography.TextDirection(run.Item.Analysis.Level & 1),
-				})
-				if placeholder, ok := t.placeholders[start]; ok {
-					cluster := &clusters[len(clusters)-1]
-					cluster.Y, cluster.Height = line.Baseline-placeholder.Baseline, placeholder.Height
-				}
-				moreClusters = clusterIter.NextCluster()
-				if !moreClusters {
-					break
-				}
-			}
-		}
+		line := &lines[len(lines)-1]
 		line.Clusters = clusters[beg:]
 		slices.SortFunc(line.Clusters, func(a, b typography.TextCluster) int { return a.Start - b.Start })
 		for i := range line.Clusters {
@@ -488,11 +432,61 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 			}
 			line.Clusters[i].Length = end - line.Clusters[i].Start
 		}
-		lines = append(lines, line)
-		if !iter.NextLine() {
+	}
+	for {
+		nativeLine := iter.GetLineReadonly()
+		if nativeLine == nil {
+			break
+		}
+		if nativeLine != previous {
+			finishLine()
+			var rect pango.Rectangle
+			iter.GetLineExtents(nil, &rect)
+			baseline := iter.GetBaseline()
+			lines = append(lines, typography.TextLine{
+				Start: int(nativeLine.StartIndex), Length: int(nativeLine.Length),
+				X: float32(rect.X) / pango.Scale, Y: float32(rect.Y) / pango.Scale,
+				Width: float32(rect.Width) / pango.Scale, Height: float32(rect.Height) / pango.Scale,
+				Baseline: float32(baseline) / pango.Scale,
+			})
+			previous, beg = nativeLine, len(clusters)
+		}
+		run := iter.GetRunReadonly()
+		if run != nil && run.Item != nil && run.Glyphs != nil {
+			line := &lines[len(lines)-1]
+			_, rect := iter.GetRunExtents()
+			// Pango's glyph geometry already contains shaping, justification and
+			// tab advances. Sum it in native integer units, in visual order. The
+			// native iterator's run origin retains line alignment and bidi order;
+			// there is no per-character measurement or independent reshaping.
+			x := int64(rect.X) + int64(run.StartXOffset)
+			glyphs, logs := run.Glyphs.GlyphInfos(), run.Glyphs.LogClusters()
+			for i := 0; i < len(glyphs); {
+				start, advance := int(run.Item.Offset+logs[i]), int64(0)
+				j := i
+				for j < len(glyphs) && logs[j] == logs[i] {
+					advance += int64(glyphs[j].Geometry.Width)
+					j++
+				}
+				cluster := typography.TextCluster{
+					Start: start, X: float32(x) / pango.Scale, Y: line.Y,
+					Width: float32(advance) / pango.Scale, Height: line.Height,
+					LineIndex: len(lines) - 1,
+					Direction: typography.TextDirection(run.Item.Analysis.Level & 1),
+				}
+				if placeholder, ok := t.placeholders[start]; ok {
+					cluster.Y, cluster.Height = line.Baseline-placeholder.Baseline, placeholder.Height
+				}
+				clusters = append(clusters, cluster)
+				x += advance
+				i = j
+			}
+		}
+		if !iter.NextRun() {
 			break
 		}
 	}
+	finishLine()
 	return
 }
 
