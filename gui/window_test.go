@@ -1084,7 +1084,3 @@ func TestFrameStructuralClipIncludesChildrenAndDecorations(t *testing.T) {
 		t.Fatal("empty safe area drew content")
 	}
 }
-
-func (p *testGraphicsPainter) DrawTextGlyphs(origin graphics.Point, layout typography.GlyphLayout, start, length int, foreground color.Color) {
-	panic("unexpected glyph draw")
-}

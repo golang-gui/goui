@@ -48,7 +48,7 @@ func (p *fragmentGeometry) lineMetrics(index int) typography.TextLine {
 	f := p.fragment
 	line := p.line(index)
 	start, y := f.Range().Start-f.data.text.Start, f.Origin().Y
-	for _, c := range f.data.lineClusters(f.first + index) {
+	for _, c := range f.data.clusters[f.first+index] {
 		c.Start -= start
 		c.Y -= y
 		c.LineIndex = index
@@ -72,7 +72,7 @@ func (p *fragmentGeometry) page(number int) *geometryPage {
 	for i := first; i < end; i++ {
 		lines[i-first] = p.line(i)
 		begin := len(clusters)
-		for _, c := range f.data.lineClusters(f.first + i) {
+		for _, c := range f.data.clusters[f.first+i] {
 			c.Start -= start
 			c.Y -= y
 			c.LineIndex = i - first

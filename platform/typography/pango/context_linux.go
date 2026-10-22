@@ -121,7 +121,6 @@ type TextLayout struct {
 	layout           pango.Layout
 	text             string
 	format           typography.TextFormat
-	firstFont        typography.FontInfo
 	width            float32
 	height           float32
 	attrs            pango.AttrList
@@ -133,22 +132,20 @@ type TextLayout struct {
 	rasterLines      []rasterLine
 	rasterLinesValid bool
 	rasterSerial     uint32
-	glyphs           *glyphSnapshot
 }
 
 type textRange struct{ start, end int }
 
 func newTextLayout(context pango.Context, layout pango.Layout, text string, format typography.TextFormat, width, height float32) (t *TextLayout) {
 	t = &TextLayout{
-		context:   context,
-		layout:    layout,
-		text:      text,
-		format:    format,
-		firstFont: format.Font,
-		width:     width,
-		height:    height,
-		attrs:     pango.AttrListNew(),
-		chars:     utf8.RuneCountInString(text),
+		context: context,
+		layout:  layout,
+		text:    text,
+		format:  format,
+		width:   width,
+		height:  height,
+		attrs:   pango.AttrListNew(),
+		chars:   utf8.RuneCountInString(text),
 	}
 	// Force the public setters to apply the initial native values. No listener
 	// can observe these construction-time notifications.
@@ -168,7 +165,6 @@ func (t *TextLayout) Destroy() {
 		return
 	}
 	t.rasterLines = nil
-	t.glyphs = nil
 	t.painter.Destroy()
 	if t.layout.Valid() {
 		t.layout.Unref()
@@ -185,7 +181,6 @@ func (t *TextLayout) changed() {
 	// Native line pointers are borrowed only until any layout mutation.
 	t.rasterLines = nil
 	t.rasterLinesValid = false
-	t.glyphs = nil
 	t.life.Changed()
 }
 
@@ -321,9 +316,6 @@ func (t *TextLayout) SetTextFont(start, length int, font typography.FontInfo) {
 		panic(err)
 	}
 	defer desc.Free()
-	if start == 0 {
-		t.firstFont = font
-	}
 	attr := pango.AttrFontDescNew(desc)
 	attr.StartIndex, attr.EndIndex = uint32(start), uint32(start+length)
 	t.attrs.Change(attr)
@@ -594,11 +586,10 @@ func (t *TextLayout) getExtents() (x, y, width, height float32) {
 }
 
 type textPainter struct {
-	bitmap        typography.TextBitmap
-	surface       cairo.Surface
-	context       cairo.Context
-	scratchGlyphs *pango.GlyphString
-	pixelsPin     *runtime.Pinner // shared only when ownership moves to TextLayout
+	bitmap    typography.TextBitmap
+	surface   cairo.Surface
+	context   cairo.Context
+	pixelsPin *runtime.Pinner // shared only when ownership moves to TextLayout
 }
 
 func (p *textPainter) Init(width, height int) (err error) {
@@ -625,9 +616,6 @@ func (p *textPainter) Init(width, height int) (err error) {
 }
 
 func (p *textPainter) Destroy() {
-	if p.scratchGlyphs != nil {
-		p.scratchGlyphs.Free()
-	}
 	if p.context != 0 {
 		p.context.Destroy()
 	}

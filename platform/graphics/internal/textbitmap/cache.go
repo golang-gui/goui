@@ -2,10 +2,8 @@ package textbitmap
 
 import (
 	"image"
-	"image/color"
 	"math"
 
-	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/platform/typography"
 )
@@ -31,7 +29,6 @@ type layoutImages[T any] struct {
 type imageEntry[T any] struct {
 	scale  uint32
 	region image.Rectangle
-	glyph  glyphKey
 	image  T
 	age    uint64
 }
@@ -48,10 +45,6 @@ func NewImageCache[T any](capacity int, release func(T)) *ImageCache[T] {
 }
 
 func (c *ImageCache[T]) Lookup(layout typography.TextLayout, scale float32, region image.Rectangle) (image T, ok bool) {
-	return c.lookup(layout, scale, region, glyphKey{})
-}
-
-func (c *ImageCache[T]) lookup(layout typography.TextLayout, scale float32, region image.Rectangle, glyph glyphKey) (image T, ok bool) {
 	if c == nil || layout == nil {
 		return image, false
 	}
@@ -62,7 +55,7 @@ func (c *ImageCache[T]) lookup(layout typography.TextLayout, scale float32, regi
 	key := math.Float32bits(scale)
 	for i := range record.entries {
 		entry := &record.entries[i]
-		if entry.scale == key && entry.region == region && entry.glyph == glyph {
+		if entry.scale == key && entry.region == region {
 			entry.age = c.nextAge()
 			return entry.image, true
 		}
@@ -71,10 +64,6 @@ func (c *ImageCache[T]) lookup(layout typography.TextLayout, scale float32, regi
 }
 
 func (c *ImageCache[T]) Store(layout typography.TextLayout, scale float32, region image.Rectangle, image T) {
-	c.store(layout, scale, region, glyphKey{}, image)
-}
-
-func (c *ImageCache[T]) store(layout typography.TextLayout, scale float32, region image.Rectangle, glyph glyphKey, image T) {
 	if c == nil || layout == nil {
 		if c != nil {
 			c.releaseImage(image)
@@ -97,7 +86,7 @@ func (c *ImageCache[T]) store(layout typography.TextLayout, scale float32, regio
 	key := math.Float32bits(scale)
 	for i := range record.entries {
 		entry := &record.entries[i]
-		if entry.scale == key && entry.region == region && entry.glyph == glyph {
+		if entry.scale == key && entry.region == region {
 			old := entry.image
 			entry.image = image
 			entry.age = c.nextAge()
@@ -106,7 +95,7 @@ func (c *ImageCache[T]) store(layout typography.TextLayout, scale float32, regio
 		}
 	}
 
-	entry := imageEntry[T]{scale: key, region: region, glyph: glyph, image: image, age: c.nextAge()}
+	entry := imageEntry[T]{scale: key, region: region, image: image, age: c.nextAge()}
 	if len(record.entries) < c.capacity {
 		record.entries = append(record.entries, entry)
 		return
@@ -168,25 +157,4 @@ func (c *ImageCache[T]) releaseImage(image T) {
 func (c *ImageCache[T]) nextAge() uint64 {
 	c.age++
 	return c.age
-}
-
-type glyphKey struct {
-	phaseX, phaseY  uint32
-	start, length   int
-	color           color.NRGBA64
-	override, glyph bool
-}
-
-func glyphImageKey(start, length int, foreground color.Color, offset geometry.Point) glyphKey {
-	k := glyphKey{phaseX: math.Float32bits(offset.X), phaseY: math.Float32bits(offset.Y), start: start, length: length, glyph: true, override: foreground != nil}
-	if foreground != nil {
-		k.color = color.NRGBA64Model.Convert(foreground).(color.NRGBA64)
-	}
-	return k
-}
-func (c *ImageCache[T]) LookupGlyphs(layout typography.GlyphLayout, start, length int, foreground color.Color, offset geometry.Point, scale float32, region image.Rectangle) (T, bool) {
-	return c.lookup(layout, scale, region, glyphImageKey(start, length, foreground, offset))
-}
-func (c *ImageCache[T]) StoreGlyphs(layout typography.GlyphLayout, start, length int, foreground color.Color, offset geometry.Point, scale float32, region image.Rectangle, img T) {
-	c.store(layout, scale, region, glyphImageKey(start, length, foreground, offset), img)
 }

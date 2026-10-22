@@ -3,7 +3,6 @@ package gui
 import (
 	"fmt"
 	"image"
-	"image/color"
 	"strings"
 	"testing"
 
@@ -341,7 +340,6 @@ type recordedFill struct {
 }
 
 type recordingPainterBackend struct {
-	glyphs    []recordedGlyphDraw
 	clip      geometry.Rectangle
 	transform geometry.Transform
 	fills     []recordedFill
@@ -414,38 +412,5 @@ func TestPainterBoxShadowUsesLocalStateAndSuppressesEmptyClip(t *testing.T) {
 	got := backend.shadows[0]
 	if got.rect != geometry.Rect(4, 5, 20, 10) || got.radius != 3 || got.shadow != shadow || got.clip != geometry.Rect(10, 15, 80, 60) || got.transform != geometry.Translate(10, 15) {
 		t.Fatalf("shadow state: %+v", got)
-	}
-}
-
-func (p *recordingPainterBackend) DrawTextGlyphs(origin graphics.Point, layout typography.GlyphLayout, start, length int, foreground color.Color) {
-	p.glyphs = append(p.glyphs, recordedGlyphDraw{origin, layout, start, length, foreground, p.clip, p.transform})
-}
-
-type recordedGlyphDraw struct {
-	origin        geometry.Point
-	layout        typography.GlyphLayout
-	start, length int
-	color         color.Color
-	clip          geometry.Rectangle
-	transform     geometry.Transform
-}
-type glyphPainterFixture struct{ typography.GlyphLayout }
-
-func TestPainterForwardsGlyphRangeInWidgetCoordinates(t *testing.T) {
-	backend := new(recordingPainterBackend)
-	layout := new(glyphPainterFixture)
-	col := color.NRGBA{B: 120, A: 150}
-	widget := newPainterTestWidget(func(p Painter) {
-		p.SetClipRect(geometry.Rect(2, 3, 40, 50))
-		p.DrawTextGlyphs(geometry.Point{X: 4, Y: 6}, layout, 20, 12, col)
-	})
-	widget.Arrange(geometry.Rect(10, 15, 80, 80))
-	paintWidget(widget, newPainter(backend, geometry.Rect(0, 0, 200, 200), 1.5))
-	if len(backend.glyphs) != 1 {
-		t.Fatal("glyph call missing")
-	}
-	got := backend.glyphs[0]
-	if got.origin != (geometry.Point{X: 4, Y: 6}) || got.layout != layout || got.start != 20 || got.length != 12 || got.color != col || got.clip != geometry.Rect(12, 18, 40, 50) || got.transform != geometry.Translate(10, 15) {
-		t.Fatal("glyph forwarding changed range, coordinate or state", got)
 	}
 }
