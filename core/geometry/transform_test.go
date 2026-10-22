@@ -85,3 +85,19 @@ func TestChainMethods(t *testing.T) {
 		t.Errorf("chain TransformPoint(%v) = %v, want %v", p, got, want)
 	}
 }
+
+func TestTransformMaxScale(t *testing.T) {
+	for _, tc := range []struct {
+		transform Transform
+		want      float32
+	}{
+		{Identity(), 1}, {Translate(100, 200), 1}, {Rotate(37), 1},
+		{Rotate(37).Scale(-2, 3), 3}, {Transform{A11: 1, A12: 1, A22: 1}, 1.618034},
+		{Transform{}, 0}, {Transform{A11: float32(math.Inf(1))}, 0},
+		{Transform{A11: float32(math.NaN())}, 0},
+	} {
+		if got := tc.transform.MaxScale(); math.Abs(float64(got-tc.want)) > 1e-6 {
+			t.Fatalf("%+v: %v != %v", tc.transform, got, tc.want)
+		}
+	}
+}
