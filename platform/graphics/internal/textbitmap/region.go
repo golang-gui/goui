@@ -3,7 +3,9 @@ package textbitmap
 import (
 	"fmt"
 	"image"
+	"image/color"
 	"math"
+	"sort"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/typography"
@@ -14,6 +16,9 @@ import (
 // This avoids artificial antialiased edges between adjacent image quads.
 const TileSize = 1024
 const CacheCapacity = 4
+
+// A shaped source supplies many visible line/color ranges at the same time.
+const GlyphCacheCapacity = 256
 
 // Region returns a visible region in the common layout raster pixel plane.
 // Edges are aligned to stable blocks so small scrolls reuse cached images.
@@ -29,6 +34,17 @@ func Region(layout typography.TextLayout, origin geometry.Point, transform geome
 	// box as well as overflowing text, rather than treating MeasureSize as ink
 	// bounds. There is no vertical alignment in TextFormat.
 	w = max(w, boxWidth)
+	return regionForSize(w, h, origin, transform, deviceScale, rasterScale, clip)
+}
+
+func regionForSize(w, h float32, origin geometry.Point, transform geometry.Transform, deviceScale, rasterScale float32, clip image.Rectangle) image.Rectangle {
+	return regionForInk(w, h, geometry.Insets{}, origin, transform, deviceScale, rasterScale, clip)
+}
+
+func regionForInk(w, h float32, pad geometry.Insets, origin geometry.Point, transform geometry.Transform, deviceScale, rasterScale float32, clip image.Rectangle) image.Rectangle {
+	if clip.Empty() || rasterScale <= 0 || deviceScale <= 0 || !finitePoint(origin) {
+		return image.Rectangle{}
+	}
 	if w < 0 || h <= 0 || !finite(float64(w)) || !finite(float64(h)) {
 		return image.Rectangle{}
 	}
@@ -36,7 +52,13 @@ func Region(layout typography.TextLayout, origin geometry.Point, transform geome
 	if width > math.MaxInt32-2 || height > math.MaxInt32-2 {
 		return image.Rectangle{}
 	}
-	bounds := image.Rect(-1, -1, int(width)+1, int(height)+1)
+	edges := [4]float64{math.Floor(-float64(pad.Left)*float64(rasterScale)) - 1, math.Floor(-float64(pad.Top)*float64(rasterScale)) - 1, math.Ceil((float64(w)+float64(pad.Right))*float64(rasterScale)) + 1, math.Ceil((float64(h)+float64(pad.Bottom))*float64(rasterScale)) + 1}
+	for _, edge := range edges {
+		if !finite(edge) || math.Abs(edge) > math.MaxInt32-2 {
+			return image.Rectangle{}
+		}
+	}
+	bounds := image.Rect(int(edges[0]), int(edges[1]), int(edges[2]), int(edges[3]))
 	t := geometry.Scale(deviceScale, deviceScale).Multiply(transform)
 	a, b, c, d := float64(t.A11), float64(t.A12), float64(t.A21), float64(t.A22)
 	det := a*d - b*c
@@ -71,12 +93,18 @@ func Region(layout typography.TextLayout, origin geometry.Point, transform geome
 // Software and NanoVG never blend artificial tile boundaries. All blocks share
 // the layout's raster pixel grid; clipping never reshapes partial strings.
 func Rasterize(layout typography.TextLayout, scale float32, region image.Rectangle, buf []byte) (typography.TextBitmap, error) {
+	return rasterizeRegion(func(part image.Rectangle, buf []byte) (typography.TextBitmap, error) {
+		return layout.Rasterize(scale, part, buf)
+	}, region, buf)
+}
+
+func rasterizeRegion(raster func(image.Rectangle, []byte) (typography.TextBitmap, error), region image.Rectangle, buf []byte) (typography.TextBitmap, error) {
 	width, height, err := utils.RasterDimensions(region)
 	if err != nil || width == 0 || height == 0 {
 		return typography.TextBitmap{}, err
 	}
 	if width <= TileSize && height <= TileSize {
-		return layout.Rasterize(scale, region, buf)
+		return raster(region, buf)
 	}
 	bitmap := typography.TextBitmap{Width: width, Height: height, Stride: width * 4}
 	n := bitmap.Stride * height
@@ -89,7 +117,7 @@ func Rasterize(layout typography.TextLayout, scale float32, region image.Rectang
 	for y := region.Min.Y; y < region.Max.Y; y += TileSize {
 		for x := region.Min.X; x < region.Max.X; x += TileSize {
 			part := image.Rect(x, y, min(x+TileSize, region.Max.X), min(y+TileSize, region.Max.Y))
-			tile, err := layout.Rasterize(scale, part, scratch)
+			tile, err := raster(part, scratch)
 			if err != nil {
 				return typography.TextBitmap{}, err
 			}
@@ -109,4 +137,31 @@ func Rasterize(layout typography.TextLayout, scale float32, region image.Rectang
 // DrawRect places a raster region without separately snapping its origin.
 func DrawRect(origin geometry.Point, region image.Rectangle, scale float32) geometry.Rectangle {
 	return geometry.Rect(origin.X+float32(region.Min.X)/scale, origin.Y+float32(region.Min.Y)/scale, float32(region.Dx())/scale, float32(region.Dy())/scale)
+}
+
+// GlyphRegion computes visibility in range-local coordinates using ordinary
+// advances. It never queries the source's potentially overflowing whole width.
+func GlyphRegion(layout typography.GlyphLayout, start, length int, offset, origin geometry.Point, transform geometry.Transform, deviceScale, rasterScale float32, clip image.Rectangle) image.Rectangle {
+	m, err := layout.GlyphMetrics()
+	if err != nil {
+		return image.Rectangle{}
+	}
+	first := sort.Search(len(m.Clusters), func(i int) bool { return m.Clusters[i].Start >= start })
+	w := float64(0)
+	for i := first; i < len(m.Clusters) && m.Clusters[i].Start < start+length; i++ {
+		w += float64(m.Clusters[i].Width)
+	}
+	pad := m.InkPadding
+	pad.Left += float32(math.Abs(float64(offset.X)) / float64(rasterScale))
+	pad.Right += float32(math.Abs(float64(offset.X)) / float64(rasterScale))
+	pad.Top += float32(math.Abs(float64(offset.Y)) / float64(rasterScale))
+	pad.Bottom += float32(math.Abs(float64(offset.Y)) / float64(rasterScale))
+	return regionForInk(float32(w), m.Line.Y+m.Line.Height, pad, origin, transform, deviceScale, rasterScale, clip)
+}
+
+// RasterizeGlyphs uses the same pixel tiling and assembly as normal text.
+func RasterizeGlyphs(layout typography.GlyphLayout, start, length int, foreground color.Color, offset geometry.Point, scale float32, region image.Rectangle, buf []byte) (typography.TextBitmap, error) {
+	return rasterizeRegion(func(part image.Rectangle, buf []byte) (typography.TextBitmap, error) {
+		return layout.RasterizeGlyphs(start, length, foreground, offset, scale, part, buf)
+	}, region, buf)
 }

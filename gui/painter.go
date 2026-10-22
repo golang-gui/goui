@@ -3,6 +3,7 @@ package gui
 import (
 	"fmt"
 	"image"
+	"image/color"
 	"math"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -45,6 +46,8 @@ type Painter interface {
 	DrawEllipse(center geometry.Point, xRadius, yRadius, strokeWidth float32, brush graphics.Brush)
 	DrawPath(path graphics.Path, strokeWidth float32, brush graphics.Brush)
 	DrawTextLayout(origin geometry.Point, layout typography.TextLayout)
+	// DrawTextGlyphs draws a complete shaping-cluster range in range-local coordinates.
+	DrawTextGlyphs(origin geometry.Point, layout typography.GlyphLayout, start, length int, foreground color.Color)
 	DrawImage(rect geometry.Rectangle, img graphics.Image)
 	// DrawBoxShadow draws in local DIP under the ordinary structural clip.
 	// Reserve room inside the widget bounds for the shadow.
@@ -344,5 +347,11 @@ func emptyRect(rect geometry.Rectangle) bool {
 func (p *painter) DrawBoxShadow(rect geometry.Rectangle, radius float32, shadow graphics.BoxShadow) {
 	if p.canDraw() {
 		p.base.DrawBoxShadow(rect, radius, shadow)
+	}
+}
+
+func (p *painter) DrawTextGlyphs(origin geometry.Point, layout typography.GlyphLayout, start, length int, foreground color.Color) {
+	if p.canDraw() {
+		p.base.DrawTextGlyphs(origin, layout, start, length, foreground)
 	}
 }

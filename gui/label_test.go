@@ -410,3 +410,7 @@ func (p *testLabelPainter) SetTransform(matrix geometry.Transform)              
 
 func (p *testLabelPainter) DrawBoxShadow(rect geometry.Rectangle, radius float32, shadow graphics.BoxShadow) {
 }
+
+func (p *testLabelPainter) DrawTextGlyphs(origin geometry.Point, layout typography.GlyphLayout, start, length int, foreground color.Color) {
+	panic("unexpected glyph draw")
+}

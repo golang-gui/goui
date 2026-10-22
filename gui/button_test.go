@@ -820,3 +820,7 @@ func (p *testButtonBackgroundPainter) SetTransform(matrix geometry.Transform)   
 
 func (p *testButtonBackgroundPainter) DrawBoxShadow(rect geometry.Rectangle, radius float32, shadow graphics.BoxShadow) {
 }
+
+func (p *testButtonBackgroundPainter) DrawTextGlyphs(origin geometry.Point, layout typography.GlyphLayout, start, length int, foreground color.Color) {
+	panic("unexpected glyph draw")
+}

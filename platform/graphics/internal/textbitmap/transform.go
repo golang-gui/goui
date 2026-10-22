@@ -53,3 +53,23 @@ func finitePoint(point geometry.Point) bool {
 func finite(value float64) bool {
 	return !math.IsNaN(value) && !math.IsInf(value, 0)
 }
+
+// GlyphOrigin retains fractional pixel phase without subtracting two large
+// float32 layout coordinates. Doing that subtraction near a half pixel can
+// select the neighboring native hinting phase.
+func GlyphOrigin(origin geometry.Point, transform geometry.Transform, deviceScale, rasterScale float32) (geometry.Point, geometry.Point) {
+	t := geometry.Scale(deviceScale, deviceScale).Multiply(transform)
+	a, b, c, d := float64(t.A11), float64(t.A12), float64(t.A21), float64(t.A22)
+	det := a*d - b*c
+	if math.Abs(det) < 1e-12 || !finite(det) {
+		return origin, geometry.Point{}
+	}
+	x := a*float64(origin.X) + b*float64(origin.Y) + float64(t.TX)
+	y := c*float64(origin.X) + d*float64(origin.Y) + float64(t.TY)
+	if !finite(x) || !finite(y) {
+		return origin, geometry.Point{}
+	}
+	dx, dy := x-math.Round(x), y-math.Round(y)
+	lx, ly := (d*dx-b*dy)/det, (a*dy-c*dx)/det
+	return geometry.Point{X: float32(float64(origin.X) - lx), Y: float32(float64(origin.Y) - ly)}, geometry.Point{X: float32(lx * float64(rasterScale)), Y: float32(ly * float64(rasterScale))}
+}
