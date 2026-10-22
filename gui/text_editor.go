@@ -1191,6 +1191,20 @@ func (t *textEditor) saveViewportAnchor() {
 	if t.preedit != nil || t.anchorPending {
 		return
 	}
+	if t.anchor.valid {
+		index := t.model.LineAt(t.anchor.offset)
+		if p := t.paragraphs[index]; p != nil && p.measured {
+			rng, _ := t.model.LineRange(index)
+			rect := p.editGeometry(t.lineHeight).Caret(textedit.Position{Offset: t.anchor.offset - rng.Start, Upstream: false})
+			// Keep the original character while it explains the rounded
+			// viewport. Rounding a paragraph top down may put the offset in
+			// the preceding paragraph; sampling that paragraph first would
+			// replace the anchor and make subsequent width changes drift.
+			if mathx.Round(t.heights.Top(index)+p.textOffset+rect.Y+t.anchor.within) == t.offset.Y {
+				return
+			}
+		}
+	}
 	// Text is translated by padding-offset and clipped at padding, so the
 	// first visible content coordinate is offset. Sampling offset-padding
 	// can retain a preceding line hidden entirely by the content clip.
@@ -1201,18 +1215,6 @@ func (t *textEditor) saveViewportAnchor() {
 	}
 	y := t.offset.Y - t.heights.Top(index) - p.textOffset
 	g := p.editGeometry(t.lineHeight)
-	if t.anchor.valid && t.model.LineAt(t.anchor.offset) == index {
-		rng, _ := t.model.LineRange(index)
-		rect := g.Caret(textedit.Position{Offset: t.anchor.offset - rng.Start, Upstream: false})
-		// Reflow may put the retained character in the middle of a new line.
-		// Do not replace it with that line's start: repeated width changes
-		// would then walk the anchor backwards through the paragraph. Keep
-		// it while it still explains the viewport, including DIP rounding.
-		// Actual scrolling or extent clamping establishes a new anchor below.
-		if mathx.Round(t.heights.Top(index)+p.textOffset+rect.Y+t.anchor.within) == t.offset.Y {
-			return
-		}
-	}
 	line := g.LineAtY(y)
 	metrics := g.LineMetrics(line)
 	rng, _ := t.model.LineRange(index)

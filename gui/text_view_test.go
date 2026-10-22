@@ -600,7 +600,10 @@ func TestTextViewScrollReplacesReflowAnchor(t *testing.T) {
 	}
 }
 
-type fractionalEditorTypography struct{ editorTypography }
+type fractionalEditorTypography struct {
+	editorTypography
+	factor float32
+}
 
 func (c *fractionalEditorTypography) NewTextLayout(text string, format typography.TextFormat, width, height float32) (typography.TextLayout, error) {
 	l, err := c.editorTypography.NewTextLayout(text, format, width, height)
@@ -608,19 +611,64 @@ func (c *fractionalEditorTypography) NewTextLayout(text string, format typograph
 		return nil, err
 	}
 	p := l.(*testTextLayout)
-	// 20.5 DIP line metrics are legitimate; width and text boundaries stay
-	// identical to the independent 10 DIP-cell fixture.
-	for i := range p.lines {
-		p.lines[i].Y *= 1.025
-		p.lines[i].Height *= 1.025
-		p.lines[i].Baseline *= 1.025
+	factor := c.factor
+	if factor == 0 {
+		factor = 1.025
 	}
-	for i := range p.clusters {
-		p.clusters[i].Y *= 1.025
-		p.clusters[i].Height *= 1.025
+	// 调宽后也保留小数行高；横向几何仍来自独立的 10 DIP 字格。
+	p.resized = func() {
+		layoutEditorFixture(p)
+		for i := range p.lines {
+			p.lines[i].Y *= factor
+			p.lines[i].Height *= factor
+			p.lines[i].Baseline *= factor
+		}
+		for i := range p.clusters {
+			p.clusters[i].Y *= factor
+			p.clusters[i].Height *= factor
+		}
+		p.measureSize.Height *= factor
 	}
-	p.measureSize.Height *= 1.025
+	p.resized()
 	return p, nil
+}
+
+func TestTextViewResizeKeepsAnchorRoundedAboveParagraph(t *testing.T) {
+	setTestApplication(t, &fractionalEditorTypography{factor: 1.0125})
+	editor := NewTextView()
+	editor.SetModel(NewTextModel(strings.Repeat(strings.Repeat("x", 80)+"\n", 100)))
+	scroll := NewScrollView()
+	scroll.SetChild(editor)
+	win := &window{}
+	win.SetWidget(scroll)
+	defer win.SetWidget(nil)
+	arrange := func(width float32) {
+		box := geometry.Rect(0, 0, width, 108)
+		scroll.Measure(layout.Tight(box.Size))
+		for range 8 {
+			scroll.Arrange(box)
+		}
+	}
+	arrange(220)
+	// 每行 20.25 DIP；第一段四行高 81 DIP，锚点是第二段首字节 81。
+	scroll.SetScrollY(81)
+	for _, step := range []struct{ width, want float32 }{{320, 61}, {820, 20}, {220, 81}, {820, 20}, {220, 81}} {
+		arrange(step.width)
+		// 宽 820 时段顶为 20.25 DIP，宿主取整为 20，落在上一段内。
+		// 仍应保留第二段的字符；改锚定上一段会使后续调宽丢失整段位置。
+		if scroll.ScrollY() != step.want || editor.anchor.offset != 81 || editor.anchor.within != 0 || !editor.anchor.valid {
+			t.Fatalf("width=%g scroll=%g want=%g anchor=%+v", step.width, scroll.ScrollY(), step.want, editor.anchor)
+		}
+		if editor.anchorPending || scroll.revealPending {
+			t.Fatal("段落边界的锚点修正未收敛")
+		}
+	}
+	// 主动滚动 1 DIP 仍须重新采样，不能锁死保留的行内偏移。
+	scroll.SetScrollY(82)
+	arrange(820)
+	if scroll.ScrollY() != 21 || editor.anchor.offset != 81 || editor.anchor.within != 1 {
+		t.Fatalf("主动滚动未替换锚点：scroll=%g anchor=%+v", scroll.ScrollY(), editor.anchor)
+	}
 }
 
 func TestTextViewFractionalAnchorSettles(t *testing.T) {
