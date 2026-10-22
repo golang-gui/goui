@@ -233,6 +233,9 @@ type textEditor struct {
 	inputRevision     uint64
 	blinkTimer        *Timer
 	scrollTimer       *Timer
+	resizeTimer       *Timer
+	resizeWidth       float32
+	resizeReady       bool
 	windowFocusHandle signal.Handle
 	caretVisible      bool
 	anchor            textViewportAnchor
@@ -632,6 +635,7 @@ func (t *textEditor) ensureFormat() {
 }
 
 func (t *textEditor) releaseParagraphs() {
+	t.cancelResize()
 	old := t.textParagraphCache
 	t.textParagraphCache = textParagraphCache{}
 	t.releaseReplacedParagraphs()
@@ -654,6 +658,7 @@ func (t *textEditor) resetParagraphs() {
 }
 
 func (t *textEditor) spliceParagraphs(start, removed, inserted int) {
+	t.cancelResize()
 	model, epoch, revision := t.model, t.mountEpoch, t.model.Revision()
 	// A local edit invalidates text geometry, not the best height estimate.
 	// Collapsing a long wrapped paragraph to one line would temporarily hide
@@ -766,7 +771,13 @@ func (t *textEditor) paragraph(index int) *textParagraph {
 }
 
 func (t *textEditor) contentSize() geometry.Size {
-	return geometry.Size{Width: max(t.viewport.Width, t.observedWidth+2*t.padding+1), Height: t.heights.Total() + 2*t.padding}
+	width := max(t.viewport.Width, t.observedWidth+2*t.padding+1)
+	if t.resizeWidth != 0 {
+		// A temporarily retained wider layout must not introduce a horizontal
+		// scrollbar merely because its replacement width is still pending.
+		width = t.viewport.Width
+	}
+	return geometry.Size{Width: width, Height: t.heights.Total() + 2*t.padding}
 }
 
 func (t *textEditor) measure(c layout.Constraint) layout.Measurement {
@@ -896,7 +907,11 @@ func (t *textEditor) layoutVisible(viewport geometry.Size, offset geometry.Point
 	t.syncBlink(false)
 	t.ensureFormat()
 	t.viewport, t.offset = viewport, offset
-	if !t.prepareWidth(max(1, viewport.Width-2*t.padding-1)) {
+	width := max(1, viewport.Width-2*t.padding-1)
+	if t.deferResize(width) {
+		width = t.layoutWidth
+	}
+	if !t.prepareWidth(width) {
 		return
 	}
 	beforeHeight := t.heights.Total()
@@ -1132,6 +1147,9 @@ func (t *textEditor) snapshot() WidgetInfo {
 	state.VisibleRange = TextRange{first.Start, limit}
 	state.VisibleText, _ = t.model.Slice(state.VisibleRange)
 	info.TextEditing = state
+	if t.resizeWidth != 0 {
+		info.SetAttribute("goui.text", map[string]any{"layoutPending": true, "layoutWidth": t.layoutWidth})
+	}
 	return info
 }
 
@@ -1282,6 +1300,8 @@ func (t *textEditor) disconnectInteractionTimers() {
 		t.scrollTimer.Stop()
 		t.scrollTimer = nil
 	}
+	t.cancelResize()
+	t.resizeTimer = nil
 	t.caretVisible = true
 }
 

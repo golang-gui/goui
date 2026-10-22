@@ -114,4 +114,73 @@ Context／TextLayout 装饰器的 >32 KiB 复杂段落回归，检查独立完�
 近期宽度恢复无额外测量、原生对象隔离和释放、快照在销毁后继续有效。
 
 本次不宣称性能提升。首次冷排版和陌生宽度恢复完整原生布局，可能比被撤回分支慢。
-完整验收将在上层分配合并后记录。
+本次真实操作的前后对照及各项验证结果见下文。
+
+
+### 补充：TextView 的连续分配合并
+
+初次撤回后，独立 X11 的 JSON 两次 TextView 拖宽检查失败，尽管最终全文一致性
+通过。保留失败记录，不将单元测试通过写成窗口响应通过。
+随后仅在 gui/textEditor 增加最新宽度合并：保留准确旧布局和命中几何、稳定 150 ms
+后请求正常布局，精确缓存立即恢复；既有 Timer 管理等待，不添加底层接口。
+快照 goui.text 的 layoutPending/layoutWidth 使观察程序能区分旧呈现与最终就绪，
+不靠放宽拖动断言或提前结束计时取得通过。最终原生调用和冷编辑仍可能阻塞。
+
+首次合并以 80 ms 等待试验，拖动响应断言虽通过，但陌生宽度仍在拖动中出现约
+420 ms 的无中间视区帧区间，不能据通过次数宣称窗口不再卡顿。最终等待改为
+150 ms，减少观测到约 70–80 ms 的帧／分配间隙使冷调用过早启动的情况；
+它是上层合并参数，不是原生调用的时间上限。最终结果另行记录。
+
+
+### 最终验证：现有接口与上层分配合并
+
+环境：Ubuntu 22.04.5，Pango 1.50.6／Cairo 1.16.0，独立 Xvnc :191，1500×1100×24，
+xfwm4 4.16.1 开启 compositor，Software 1×，Go 1.25.8。未使用用户的原桌面。
+样本为用户只读单行 JSON，157862 byte，SHA-256
+`7baa22a894b415fdc3425c94f8a541d0ded8f77965541c46af3c95a3364c798b`；
+另用 58519 byte 的混合文字／RLO 样本验证 RTL。两控件均使用 WindowChromeIntegrated。
+
+前后同环境、同样本、同真实 XTest 输入路径。before 为 GOUI c9e07f3／SourceView
+c6b43ca；after 为移除字形接口后的直接原路径；final 为同一原路径加 TextView
+150 ms 分配合并。测量时没有并行编译或测试。JSON 每控件每阶段两轮，RTL 每控件
+每阶段一轮。输入计时至桌面采到非 pending 的绘制标记，不是物理显示器扫描时间；
+颜色分析可延迟，冷字体准备及首次载入不在下面编辑数字内。
+
+| 实操范围 | before | 直接撤回 after | final |
+| --- | --- | --- | --- |
+| TextView 中部单字符插入→就绪标记 | 199.5–214.3 ms | 465.0–481.0 ms | 465.1–480.7 ms |
+| SourceView 同一操作 | 278.5–299.4 ms | 665.0–667.7 ms | 647.9–664.1 ms |
+| TextView 拖窄期间中间视区帧 | 6／6 | 1／1（检查失败） | 12／12 |
+| TextView 拖窄最长视区帧间隔 | 97.4–106.7 ms | 451.2–487.5 ms | 86.6–104.7 ms |
+| TextView 拖窄释放→最终新宽度就绪 | 68.3–83.9 ms | 433.8–847.0 ms | 579.4–591.5 ms |
+| SourceView 拖窄最长视区帧间隔 | 70.0–77.5 ms | 349.7–352.4 ms | 365.9–366.0 ms |
+
+final 六轮真实操作全部要求 driver=0、app=0 和 verified=true；包含头／中部插入、
+替换、Backspace／Delete、约 64 KiB 粘贴删除、历史恢复、滚动条跳转、点击、
+宽／高／边角拖动、最大化还原，以及 RTL 中部插入与视觉导航。关闭时完整模型
+必须恢复原文，输入文件不写入。最大化循环的中间大小可能先触发观察条件，其结果
+仅作操作与最终还原检查，不据此声称每次都命中同一最大化宽度；精确宽度复用由
+独立原生计数回归断言。截图检查了两控件最终还原后的呈现。
+
+**限制仍然存在：** 通过“有中间帧”断言不等于无卡顿。final SourceView 拖宽仍有
+约 366 ms 的帧间隔；TextView 等待结束后的单次完整原生调用仍阻塞，冷编辑及
+SourceView 大段着色比字形实验慢。旧快照的快速帧不算最终新布局就绪。
+覆盖拖动及最终重排的 GUI Timer 最大间隔实测为 TextView 443.2–459.3 ms、
+SourceView 392.8–400.5 ms，仍有整窗事件处理阻塞。
+本次完成接口收敛及重复分配合并，未完成可抢占／有界的长段落冷排版。
+
+| 检查 | 结果 |
+| --- | --- |
+| GOUI `go test ./...`（保存 `-json` 输出） | 通过；既有 15 项手动／平台测试跳过，未计为通过 |
+| GOUI `go test -race ./gui ./gui/textedit` | 通过 |
+| SourceView `go test ./...`、`go test -race .` | 工作区通过 |
+| 两仓 Windows amd64、macOS arm64 的受影响包 `go test -exec /bin/true` | 仅编译通过，未原生运行 |
+| SourceView `GOWORK=off go test ./...` | 失败：`updates to go.mod needed; go mod tidy`；前批已有同样记录，用户 go.mod 改动逐字保留 |
+| 两仓 `git diff --check` | 通过 |
+
+跨平台编译范围：GOUI gui、gui/textedit、platform/graphics/...、platform/typography/...；
+SourceView 根包、ui 和 interaction 程序。未执行本次 Windows／macOS 原生操作、
+OpenGL／Direct2D 桌面像素或完整 HiDPI 矩阵，不以恢复旧代码代替这些验证。
+旧写图测试仍保留生成图片的副作用；不提交生成图片、二进制和用户未跟踪文件。
+原始日志、前后及最终二进制、截图、report.json 在仓库外
+`/tmp/goui-textlayout-contract-20261022/`。独立会话在验收结束后关闭。
