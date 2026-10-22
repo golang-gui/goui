@@ -2,6 +2,7 @@ package gui
 
 import (
 	"log"
+	"math"
 	"strings"
 	"time"
 
@@ -209,6 +210,7 @@ type textEditor struct {
 	hasBaseline       bool
 	layoutWidth       float32
 	observedWidth     float32
+	heightEstimated   bool
 	heights           textedit.HeightIndex
 	changeSignal      signal.Signal1[TextChange]
 	submitSignal      signal.Signal0
@@ -648,6 +650,7 @@ func (t *textEditor) resetParagraphs() {
 	t.releaseParagraphs()
 	t.heights.Reset(t.displayLineCount(), t.lineHeight)
 	t.observedWidth = 0
+	t.heightEstimated = false
 }
 
 func (t *textEditor) spliceParagraphs(start, removed, inserted int) {
@@ -767,6 +770,7 @@ func (t *textEditor) measure(c layout.Constraint) layout.Measurement {
 		length += len(t.preedit.Text()) - (r.End - r.Start)
 	}
 	if t.displayLineCount() > 64 || length > 4096 {
+		t.estimateWrappedHeight(max(1, width-2*t.padding-1))
 		// Natural sizing may be unbounded (for example a LinearBox's first
 		// pass), and its cross width may include a ScrollView's scrollbar.
 		// Neither query changes the allocated text width or demands exact
@@ -799,6 +803,43 @@ func (t *textEditor) measure(c layout.Constraint) layout.Measurement {
 	}
 	return layout.Measurement{Size: b.constrain(c, geometry.Size{Width: width, Height: height}),
 		Baseline: t.padding + baseline, HasBaseline: t.hasBaseline}
+}
+
+// A bounded sample supplies only a provisional scrolling extent. It never
+// supplies editing or rendering geometry. Starting a long wrapped input at one
+// line high would first lay out the whole paragraph without a scrollbar, then
+// repeat it at the scrollbar-reduced width. Exact paragraph metrics replace
+// this estimate during visible layout, including for atypical/zero-width text.
+func (t *textEditor) estimateWrappedHeight(width float32) {
+	if t.heightEstimated || t.singleLine || t.wrap == WrapNone || t.preedit != nil || t.model.LineCount() != 1 ||
+		t.model.Len() <= 4096 || t.heights.Total() != t.lineHeight || App == nil || App.Typography() == nil {
+		return
+	}
+	end := min(512, t.model.Len())
+	for !t.model.IsRuneBoundary(end) {
+		end--
+	}
+	text, err := t.model.Slice(TextRange{End: end})
+	if err != nil {
+		return
+	}
+	model, epoch, revision := t.model, t.mountEpoch, t.model.Revision()
+	sample, err := App.Typography().NewTextLayout(text, t.format, width, textInputMeasureExtent)
+	if err != nil {
+		return
+	}
+	w, h := sample.MeasureSize()
+	sample.Destroy()
+	if t.owner.base().destroyed || t.model != model || t.mountEpoch != epoch || model.Revision() != revision {
+		return
+	}
+	ratio := float32(t.model.Len()) / float32(end)
+	height := h * ratio
+	if h <= t.lineHeight {
+		height = float32(math.Ceil(float64(w*ratio/width))) * t.lineHeight
+	}
+	t.heights.Set(0, max(t.lineHeight, height))
+	t.heightEstimated = true
 }
 
 // Width-sensitive paragraph measurements are shared by Measure and visible
