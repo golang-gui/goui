@@ -10,10 +10,12 @@ import (
 )
 
 var (
+	pangoFontGetGlyphExtents           = libpango.NewSymbol("pango_font_get_glyph_extents")
 	libpango                           = cgo.NewLazyLibrary("libpango-1.0.so.0")
 	libpangofc                         = cgo.NewLazyLibrary("libpangoft2-1.0.so.0")
 	pangoItemize                       = libpango.NewSymbol("pango_itemize")
 	pangoItemFree                      = libpango.NewSymbol("pango_item_free")
+	pangoGlyphStringSetSize            = libpango.NewSymbol("pango_glyph_string_set_size")
 	pangoGlyphStringNew                = libpango.NewSymbol("pango_glyph_string_new")
 	pangoGlyphStringFree               = libpango.NewSymbol("pango_glyph_string_free")
 	pangoShapeWithFlags                = libpango.NewSymbol("pango_shape_with_flags")
@@ -367,7 +369,7 @@ func (ll *LayoutLine) GetExtents() (inkRect, logicalRect Rectangle) {
 }
 
 func (ll *LayoutLine) GetRuns() (runs []GlyphItem) {
-	runs = make([]GlyphItem, 0, ll.Length)
+	runs = make([]GlyphItem, 0, 4)
 	for run := ll.runs; run != nil; run = run.Next {
 		runs = append(runs, *run.Data)
 	}
@@ -864,4 +866,27 @@ func goPointer[T any](ptr uintptr) *T {
 // GetSerial changes whenever the layout or its PangoContext changes.
 func (l Layout) GetSerial() uint32 {
 	return cgo.CallRet[uint32](pangoLayoutGetSerial.Addr(), l.GObject)
+}
+
+// ResolvedDirection returns the native resolved paragraph direction.
+func (ll *LayoutLine) ResolvedDirection() Direction {
+	// PangoLayoutLine.resolved_dir is a public three-bit field after
+	// is_paragraph_start, as declared in pango-layout.h.
+	return Direction((ll.flags >> 1) & 7)
+}
+
+// SetGlyphs copies positioned glyphs into this owned native glyph string.
+func (g *GlyphString) SetGlyphs(infos []GlyphInfo, clusters []int32) {
+	if len(infos) != len(clusters) {
+		panic("pango: glyph count mismatch")
+	}
+	pangoGlyphStringSetSize.CallRaw(uintptr(cgo.Pointer(g)), uintptr(len(infos)))
+	copy(g.GlyphInfos(), infos)
+	copy(g.LogClusters(), clusters)
+}
+
+// GlyphExtents returns native glyph ink and logical bounds relative to baseline.
+func (f Font) GlyphExtents(glyph uint32) (ink, logical Rectangle) {
+	pangoFontGetGlyphExtents.CallRaw(uintptr(f), uintptr(glyph), uintptr(cgo.Pointer(&ink)), uintptr(cgo.Pointer(&logical)))
+	return
 }
