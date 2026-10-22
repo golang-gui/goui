@@ -480,7 +480,7 @@ func (t *textEditor) modelChanged(change TextChange) {
 		t.nextCommitAtomic = false
 		t.revealCaret = true
 		if t.singleLine {
-			t.selection = TextSelection{t.model.Len(), t.model.Len()}
+			t.selection = TextSelection{Anchor: t.model.Len(), Caret: t.model.Len()}
 			t.revealCaret = true
 		}
 		t.offset = geometry.Point{}
@@ -560,7 +560,7 @@ func (t *textEditor) snapPosition(offset int) int {
 func (t *textEditor) normalizeEditingSelection() bool {
 	model, epoch, revision := t.model, t.mountEpoch, t.model.Revision()
 	enabledRevision := t.owner.base().enabledRevision
-	s := TextSelection{t.snapPosition(t.selection.Anchor), t.snapPosition(t.selection.Caret)}
+	s := TextSelection{Anchor: t.snapPosition(t.selection.Anchor), Caret: t.snapPosition(t.selection.Caret)}
 	if s != t.selection {
 		t.setSelection(s, false, false)
 	}
@@ -1079,7 +1079,7 @@ func (t *textEditor) paint(p Painter) {
 		origin := geometry.Point{X: t.padding - t.offset.X, Y: y + paragraph.textOffset}
 		rng := t.displayLineRange(i)
 		if hasSelection && selected.Start < selected.End && selected.Start <= rng.End && selected.End > rng.Start {
-			for _, rect := range t.visibleSelection(paragraph, TextRange{selected.Start - rng.Start, selected.End - rng.Start}, origin) {
+			for _, rect := range t.visibleSelection(paragraph, TextRange{Start: selected.Start - rng.Start, End: selected.End - rng.Start}, origin) {
 				p.FillRect(rect.Translate(origin), graphics.ColorOf(selectionColor))
 			}
 			if selected.Start <= rng.End && selected.End > rng.End && i+1 < t.displayLineCount() {
@@ -1093,7 +1093,7 @@ func (t *textEditor) paint(p Painter) {
 		}
 		if composition := t.preedit; composition != nil {
 			if color, ok := t.resolvedStyle("caret").ForegroundColor(); ok {
-				rangeInLine := TextRange{composition.Replacement().Start - rng.Start, composition.Replacement().Start + len(composition.Text()) - rng.Start}
+				rangeInLine := TextRange{Start: composition.Replacement().Start - rng.Start, End: composition.Replacement().Start + len(composition.Text()) - rng.Start}
 				for _, rect := range t.visibleSelection(paragraph, rangeInLine, origin) {
 					rect.Y += rect.Height - 1
 					rect.Height = 1
@@ -1146,7 +1146,7 @@ func (t *textEditor) snapshot() WidgetInfo {
 	for limit > first.Start && !t.model.IsRuneBoundary(limit) {
 		limit--
 	}
-	state.VisibleRange = TextRange{first.Start, limit}
+	state.VisibleRange = TextRange{Start: first.Start, End: limit}
 	state.VisibleText, _ = t.model.Slice(state.VisibleRange)
 	info.TextEditing = state
 	if t.resizeWidth != 0 {
@@ -1652,7 +1652,7 @@ func (t *textEditor) runEditCommand(command textEditCommand) {
 	case textDeleteSelection:
 		t.replaceSelection("", true)
 	case textSelectAll:
-		t.setSelectionValue(TextSelection{0, t.model.Len()})
+		t.setSelectionValue(TextSelection{Anchor: 0, Caret: t.model.Len()})
 	}
 }
 
@@ -1735,7 +1735,7 @@ func (t *textEditor) selectionContains(point geometry.Point) bool {
 	contains := func(rect geometry.Rectangle) bool {
 		return point.X >= rect.X && point.X < rect.X+rect.Width && point.Y >= rect.Y && point.Y < rect.Y+rect.Height
 	}
-	for _, rect := range g.Selection(TextRange{selected.Start - rng.Start, selected.End - rng.Start}) {
+	for _, rect := range g.Selection(TextRange{Start: selected.Start - rng.Start, End: selected.End - rng.Start}) {
 		if contains(rect) {
 			return true
 		}
@@ -1928,7 +1928,7 @@ func (c *textEditController) beginSelection(ctx EventContext, event events.Point
 	if double {
 		c.lastDown = time.Time{}
 		rng := t.wordAt(position.Offset)
-		t.setSelection(TextSelection{rng.Start, rng.End}, false, true)
+		t.setSelection(TextSelection{Anchor: rng.Start, Caret: rng.End}, false, true)
 	} else {
 		t.moveTo(position, event.Modifiers&events.ModifierShift != 0)
 	}
@@ -2396,7 +2396,7 @@ func (t *textEditor) wordAt(offset int) TextRange {
 	line, _ := t.model.LineRange(index)
 	rng := t.model.WordAt(offset)
 	if p := t.paragraph(index); p != nil {
-		return TextRange{line.Start + p.editGeometry(t.lineHeight).Snap(rng.Start-line.Start, false), line.Start + p.editGeometry(t.lineHeight).Snap(rng.End-line.Start, true)}
+		return TextRange{Start: line.Start + p.editGeometry(t.lineHeight).Snap(rng.Start-line.Start, false), End: line.Start + p.editGeometry(t.lineHeight).Snap(rng.End-line.Start, true)}
 	}
 	return rng
 }
@@ -2413,7 +2413,7 @@ func (t *textEditor) wordAdjacent(offset int, forward bool) int {
 	// Skip adjacent whitespace, but not LF (paragraph navigation is separate).
 	index := t.model.LineAt(offset)
 	line, _ := t.model.LineRange(index)
-	rest, _ := t.model.Slice(TextRange{rng.End, line.End})
+	rest, _ := t.model.Slice(TextRange{Start: rng.End, End: line.End})
 	end := rng.End + len(rest) - len(strings.TrimLeft(rest, " \t"))
 	if p := t.paragraph(index); p != nil {
 		end = line.Start + p.editGeometry(t.lineHeight).Snap(end-line.Start, true)

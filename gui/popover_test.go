@@ -429,17 +429,17 @@ func TestPopoverPlacementGeometry(t *testing.T) {
 		insets    popoverInsets
 		want      geometry.Point
 	}{
-		{"point", geometry.Rect(10, 20, 0, 0), geometry.Size{30, 20}, PopoverPlacementPoint, popoverInsets{}, geometry.Point{10, 20}},
-		{"point slide", geometry.Rect(90, 90, 0, 0), geometry.Size{30, 20}, PopoverPlacementPoint, popoverInsets{}, geometry.Point{70, 80}},
-		{"point top left", geometry.Rect(-30, -20, 0, 0), geometry.Size{30, 20}, PopoverPlacementPoint, popoverInsets{}, geometry.Point{}},
-		{"below left", geometry.Rect(10, 10, 20, 10), geometry.Size{30, 20}, PopoverPlacementBottom, popoverInsets{}, geometry.Point{10, 20}},
-		{"below right", geometry.Rect(80, 10, 20, 10), geometry.Size{30, 20}, PopoverPlacementBottom, popoverInsets{}, geometry.Point{70, 20}},
-		{"above left", geometry.Rect(10, 85, 20, 10), geometry.Size{30, 20}, PopoverPlacementBottom, popoverInsets{}, geometry.Point{10, 65}},
-		{"above right", geometry.Rect(80, 85, 20, 10), geometry.Size{30, 20}, PopoverPlacementBottom, popoverInsets{}, geometry.Point{70, 65}},
-		{"slide before shrink", geometry.Rect(40, 40, 20, 20), geometry.Size{90, 90}, PopoverPlacementBottom, popoverInsets{}, geometry.Point{10, 10}},
-		{"shadow body alignment", geometry.Rect(10, 10, 20, 10), geometry.Size{38, 30}, PopoverPlacementBottom, popoverInsets{3, 4, 5, 6}, geometry.Point{7, 16}},
-		{"shadow containment flips", geometry.Rect(10, 70, 20, 10), geometry.Size{38, 30}, PopoverPlacementBottom, popoverInsets{3, 4, 5, 6}, geometry.Point{7, 46}},
-		{"actual rounded oversized", geometry.Rect(90, 90, 0, 0), geometry.Size{100.5, 100.5}, PopoverPlacementPoint, popoverInsets{}, geometry.Point{}},
+		{"point", geometry.Rect(10, 20, 0, 0), geometry.Size{Width: 30, Height: 20}, PopoverPlacementPoint, popoverInsets{}, geometry.Point{X: 10, Y: 20}},
+		{"point slide", geometry.Rect(90, 90, 0, 0), geometry.Size{Width: 30, Height: 20}, PopoverPlacementPoint, popoverInsets{}, geometry.Point{X: 70, Y: 80}},
+		{"point top left", geometry.Rect(-30, -20, 0, 0), geometry.Size{Width: 30, Height: 20}, PopoverPlacementPoint, popoverInsets{}, geometry.Point{}},
+		{"below left", geometry.Rect(10, 10, 20, 10), geometry.Size{Width: 30, Height: 20}, PopoverPlacementBottom, popoverInsets{}, geometry.Point{X: 10, Y: 20}},
+		{"below right", geometry.Rect(80, 10, 20, 10), geometry.Size{Width: 30, Height: 20}, PopoverPlacementBottom, popoverInsets{}, geometry.Point{X: 70, Y: 20}},
+		{"above left", geometry.Rect(10, 85, 20, 10), geometry.Size{Width: 30, Height: 20}, PopoverPlacementBottom, popoverInsets{}, geometry.Point{X: 10, Y: 65}},
+		{"above right", geometry.Rect(80, 85, 20, 10), geometry.Size{Width: 30, Height: 20}, PopoverPlacementBottom, popoverInsets{}, geometry.Point{X: 70, Y: 65}},
+		{"slide before shrink", geometry.Rect(40, 40, 20, 20), geometry.Size{Width: 90, Height: 90}, PopoverPlacementBottom, popoverInsets{}, geometry.Point{X: 10, Y: 10}},
+		{"shadow body alignment", geometry.Rect(10, 10, 20, 10), geometry.Size{Width: 38, Height: 30}, PopoverPlacementBottom, popoverInsets{3, 4, 5, 6}, geometry.Point{X: 7, Y: 16}},
+		{"shadow containment flips", geometry.Rect(10, 70, 20, 10), geometry.Size{Width: 38, Height: 30}, PopoverPlacementBottom, popoverInsets{3, 4, 5, 6}, geometry.Point{X: 7, Y: 46}},
+		{"actual rounded oversized", geometry.Rect(90, 90, 0, 0), geometry.Size{Width: 100.5, Height: 100.5}, PopoverPlacementPoint, popoverInsets{}, geometry.Point{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := popoverPlacementSnapshot{anchor: tc.anchor, placement: tc.placement, workArea: geometry.Rect(0, 0, 100, 100), constrained: true}
@@ -451,10 +451,10 @@ func TestPopoverPlacementGeometry(t *testing.T) {
 	s := popoverPlacementSnapshot{workArea: geometry.Rect(-100, -50, 300, 200)}
 	s.constrained = true
 	s.anchor = geometry.Rect(-120, -70, 0, 0)
-	if got := s.position(geometry.Size{50, 40}, popoverInsets{}); got != (geometry.Point{-100, -50}) {
+	if got := s.position(geometry.Size{Width: 50, Height: 40}, popoverInsets{}); got != (geometry.Point{X: -100, Y: -50}) {
 		t.Fatal("negative workarea lost", got)
 	}
-	if limit, err := s.bodyLimit(popoverInsets{10, 20, 30, 40}); err != nil || limit != (geometry.Size{260, 140}) {
+	if limit, err := s.bodyLimit(popoverInsets{10, 20, 30, 40}); err != nil || limit != (geometry.Size{Width: 260, Height: 140}) {
 		t.Fatal(limit, err)
 	}
 	if _, err := s.bodyLimit(popoverInsets{200, 0, 100, 0}); err == nil {
@@ -496,7 +496,7 @@ func (p *placementNative) SetPosition(x, y float32) {
 	p.positions = append(p.positions, geometry.Point{X: x, Y: y})
 }
 func (p *placementNative) SetSize(w, h float32) {
-	p.sizes = append(p.sizes, geometry.Size{w, h})
+	p.sizes = append(p.sizes, geometry.Size{Width: w, Height: h})
 	if p.onSize != nil {
 		p.onSize()
 	}
@@ -543,7 +543,7 @@ func placementFixture(t *testing.T, area geometry.Rectangle) (*popover, *placeme
 	w.SetWidget(anchor)
 	anchor.Arrange(geometry.Rect(80, 80, 20, 10))
 	p := NewPopover(anchor, nil).(*popover)
-	p.SetWidget(&popoverMeasureWidget{size: geometry.Size{30, 20}})
+	p.SetWidget(&popoverMeasureWidget{size: geometry.Size{Width: 30, Height: 20}})
 	t.Cleanup(p.Destroy)
 	return p, native, plat, app
 }
@@ -727,13 +727,13 @@ func TestMenuPlacementFallbackAndModeSwitch(t *testing.T) {
 
 func TestPopoverPlacementRefreshAndRounding(t *testing.T) {
 	p, w, plat, _ := placementFixture(t, geometry.Rect(0, 0, 100, 100))
-	p.SetPosition(geometry.Point{5, 5})
+	p.SetPosition(geometry.Point{X: 5, Y: 5})
 	if err := p.Show(); err != nil {
 		t.Fatal(err)
 	}
 	settlePlacement(t, p)
 	n := plat.natives[0]
-	if p.requestedPosition != (geometry.Point{70, 80}) || w.points[0] != (geometry.Point{85, 85}) {
+	if p.requestedPosition != (geometry.Point{X: 70, Y: 80}) || w.points[0] != (geometry.Point{X: 85, Y: 85}) {
 		t.Fatal(p.requestedPosition, w.points)
 	}
 	queries := len(w.points)
@@ -750,7 +750,7 @@ func TestPopoverPlacementRefreshAndRounding(t *testing.T) {
 	if err := p.Show(); err != nil {
 		t.Fatal(err)
 	}
-	if len(n.positions) <= positions || p.requestedPosition != (geometry.Point{50, 50}) || p.Position() != (geometry.Point{5, 5}) {
+	if len(n.positions) <= positions || p.requestedPosition != (geometry.Point{X: 50, Y: 50}) || p.Position() != (geometry.Point{X: 5, Y: 5}) {
 		t.Fatal("stale or cumulative placement", n.positions, p.Position())
 	}
 	positions = len(n.positions)
@@ -765,7 +765,7 @@ func TestPopoverPlacementRefreshAndRounding(t *testing.T) {
 	n.syncSize = false
 	queries, requests := len(w.points), len(n.sizes)
 	p.onEvent(events.SizeEvent{Width: 30.5, Height: 20.5, PixelWidth: 61, PixelHeight: 41})
-	if p.requestedPosition != (geometry.Point{49.5, 49.5}) || len(w.points) != queries || len(n.sizes) != requests {
+	if p.requestedPosition != (geometry.Point{X: 49.5, Y: 49.5}) || len(w.points) != queries || len(n.sizes) != requests {
 		t.Fatal("rounding feedback", p.requestedPosition)
 	}
 	settlePlacement(t, p)
@@ -790,7 +790,7 @@ func TestPopoverPlacementErrorsAreNotTransparencyFailures(t *testing.T) {
 	if err := p.Show(); err != nil {
 		t.Fatal(err)
 	}
-	if p.requestedPosition != (geometry.Point{80, 80}) {
+	if p.requestedPosition != (geometry.Point{X: 80, Y: 80}) {
 		t.Fatal("unsupported used fabricated area")
 	}
 	w.err = nil
@@ -820,15 +820,15 @@ func TestPopoverPlacementConstrainsBeforeCreation(t *testing.T) {
 	p, _, plat, app := placementFixture(t, geometry.Rect(0, 0, 200, 150))
 	p.transparent = true
 	app.style = style.Sheet(style.Name("popover").Shadow(style.Shadow{Color: color.Black, BlurRadius: 10}))
-	p.SetWidget(&popoverMeasureWidget{size: geometry.Size{1000, 2000}}) // deliberately ignores constraints
+	p.SetWidget(&popoverMeasureWidget{size: geometry.Size{Width: 1000, Height: 2000}}) // deliberately ignores constraints
 	if err := p.Show(); err != nil {
 		t.Fatal(err)
 	}
-	if plat.created[0] != (geometry.Size{200, 150}) || p.insets != (popoverInsets{16, 16, 16, 16}) {
+	if plat.created[0] != (geometry.Size{Width: 200, Height: 150}) || p.insets != (popoverInsets{16, 16, 16, 16}) {
 		t.Fatal(plat.created, p.insets)
 	}
 	settlePlacement(t, p)
-	if p.widget.Rect().Size != (geometry.Size{168, 118}) {
+	if p.widget.Rect().Size != (geometry.Size{Width: 168, Height: 118}) {
 		t.Fatal(p.widget.Rect())
 	}
 	p.Hide()
@@ -863,7 +863,7 @@ func TestPopoverPlacementCancelledByCallbacks(t *testing.T) {
 	}
 	n := plat.natives[0]
 	n.onSize = p.Destroy
-	p.SetWidget(&popoverMeasureWidget{size: geometry.Size{50, 40}})
+	p.SetWidget(&popoverMeasureWidget{size: geometry.Size{Width: 50, Height: 40}})
 	if !n.destroyed {
 		t.Fatal("resize callback did not destroy")
 	}
@@ -891,7 +891,7 @@ func TestMenuPlacementScreenLimitAndInput(t *testing.T) {
 	}
 	menu := pm.popover.(*popover)
 	settlePlacement(t, menu)
-	if w.points[0] != (geometry.Point{90, 85}) {
+	if w.points[0] != (geometry.Point{X: 90, Y: 85}) {
 		t.Fatal("rectangle reference is not anchor center", w.points)
 	}
 	if plat.created[0].Height != 180 || pm.maxHeight != 0 || !pm.content.sv.vScrollable() || pm.content.sv.hScrollable() {

@@ -138,7 +138,7 @@ func TestWindowCommitTextUsesEditingPath(t *testing.T) {
 	if editor.Model().Text() != "abc" || editor.Selection() != (TextSelection{Anchor: 1, Caret: 2}) {
 		t.Fatal("commit did not preserve normal undo and selection")
 	}
-	if err := win.CommitText(""); err != nil || editor.Model().Text() != "abc" || editor.Selection() != (TextSelection{1, 2}) {
+	if err := win.CommitText(""); err != nil || editor.Model().Text() != "abc" || editor.Selection() != (TextSelection{Anchor: 1, Caret: 2}) {
 		t.Fatal("empty commit deleted selection")
 	}
 }
@@ -206,7 +206,7 @@ func TestPopoverCommitTextUsesModalLogicalFocus(t *testing.T) {
 	p.SetWidget(input)
 	p.SetFocusedWidget(input)
 	win.SetModalTarget(p)
-	input.SetSelection(TextSelection{1, 2})
+	input.SetSelection(TextSelection{Anchor: 1, Caret: 2})
 	if err := p.CommitText("你👋"); err != nil || input.Text() != "a你👋c" {
 		t.Fatalf("popover text commit: %q %v", input.Text(), err)
 	}

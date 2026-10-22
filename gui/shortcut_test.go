@@ -229,7 +229,7 @@ func TestShortcutEditorFirstAndCaptureOverride(t *testing.T) {
 	s.ConnectActivate(func() { n++ })
 	w.Shortcuts().AddShortcut(s)
 	editorKey(t, w, events.KeyA, textCommandModifier())
-	if n != 0 || editor.Selection() != (TextSelection{0, 3}) {
+	if n != 0 || editor.Selection() != (TextSelection{Anchor: 0, Caret: 3}) {
 		t.Fatal("window shortcut stole editor selection")
 	}
 	w.Shortcuts().SetPhase(PhaseCapture)

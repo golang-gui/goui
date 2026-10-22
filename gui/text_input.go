@@ -57,7 +57,7 @@ func (t *TextInput) SetText(text string) {
 	if t.suspended && t.model == model && t.mountEpoch == epoch {
 		// The private model is disconnected on unmount. Explicit setters still
 		// update the field and emit notifications while detached.
-		t.selection = TextSelection{len(text), len(text)}
+		t.selection = TextSelection{Anchor: len(text), Caret: len(text)}
 		t.seenRevision = model.Revision()
 		t.resetParagraphs()
 		t.textSignal.Emit(text)

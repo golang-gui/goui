@@ -51,14 +51,14 @@ func TestTextViewViewportCacheAndLocalEdit(t *testing.T) {
 		t.Fatalf("initial layout shaped the document: %d layouts", len(typo.calls))
 	}
 	untouched := editor.paragraphs[3].layout
-	editor.SetSelection(TextSelection{1, 1})
+	editor.SetSelection(TextSelection{Anchor: 1, Caret: 1})
 	count := len(typo.calls)
 	editor.Paint(&testLabelPainter{})
 	editor.Paint(&testLabelPainter{})
 	if len(typo.calls) != count {
 		t.Fatal("selection/paint rebuilt text")
 	}
-	if err := editor.model.Replace(TextRange{0, 0}, "X"); err != nil {
+	if err := editor.model.Replace(TextRange{Start: 0, End: 0}, "X"); err != nil {
 		t.Fatal(err)
 	}
 	editor.LayoutVisible(editor.viewport, editor.offset)
@@ -101,8 +101,8 @@ func TestTextViewSharedModelAndUnmount(t *testing.T) {
 	other.SetWidget(b)
 	b.Arrange(geometry.Rect(0, 0, 209, 108))
 	t.Cleanup(func() { other.SetWidget(nil) })
-	a.SetSelection(TextSelection{1, 1})
-	b.SetSelection(TextSelection{3, 3})
+	a.SetSelection(TextSelection{Anchor: 1, Caret: 1})
+	b.SetSelection(TextSelection{Anchor: 3, Caret: 3})
 	if a.paragraphs[0].layout == b.paragraphs[0].layout {
 		t.Fatal("shared native layout")
 	}
@@ -228,7 +228,7 @@ func BenchmarkTextViewLocalEdit(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				typo.calls = nil
 				typo.layouts = nil
-				_ = editor.model.Replace(TextRange{1, 2}, "X")
+				_ = editor.model.Replace(TextRange{Start: 1, End: 2}, "X")
 				editor.LayoutVisible(editor.viewport, editor.offset)
 				if len(typo.calls) != 1 {
 					b.Fatalf("local edit shaped %d paragraphs", len(typo.calls))
@@ -297,20 +297,20 @@ var _ IMClient = (*TextView)(nil)
 
 func TestTextViewPreeditProjectionAcrossParagraphs(t *testing.T) {
 	editor, win, typo := newEditorFixture(t, "aa\nbb\ncc\ndd")
-	editor.SetSelection(TextSelection{7, 1})
+	editor.SetSelection(TextSelection{Anchor: 7, Caret: 1})
 	untouched := editor.paragraphs[3].layout
 	count := len(typo.calls)
 	win.onInputMethod(platform.InputMethodResult{Kind: platform.InputMethodPreedit, Text: "中\nX", Caret: 4})
 	if editor.model.Text() != "aa\nbb\ncc\ndd" || editor.model.Revision() != 0 || editor.model.CanUndo() {
 		t.Fatal("preedit mutated shared model/history")
 	}
-	if editor.Selection() != (TextSelection{7, 1}) {
+	if editor.Selection() != (TextSelection{Anchor: 7, Caret: 1}) {
 		t.Fatal("preedit replaced model-space selection")
 	}
 	if editor.displayLineCount() != 3 || editor.displayParagraph(0) != "a中" || editor.displayParagraph(1) != "Xc" || editor.displayParagraph(2) != "dd" {
 		t.Fatal("preedit paragraph projection is wrong")
 	}
-	if editor.displayLineRange(1) != (TextRange{5, 7}) || editor.displayLineRange(2) != (TextRange{8, 10}) {
+	if editor.displayLineRange(1) != (TextRange{Start: 5, End: 7}) || editor.displayLineRange(2) != (TextRange{Start: 8, End: 10}) {
 		t.Fatalf("display ranges wrong: %v %v", editor.displayLineRange(1), editor.displayLineRange(2))
 	}
 	editor.LayoutVisible(editor.viewport, editor.offset)
@@ -322,7 +322,7 @@ func TestTextViewPreeditProjectionAcrossParagraphs(t *testing.T) {
 		t.Fatalf("caret %v not in preedit's second line", caret)
 	}
 	state := editor.Snapshot().TextEditing
-	if state.Preedit == nil || state.Preedit.Replacement != (TextRange{1, 7}) || state.Preedit.Text != "中\nX" || state.Preedit.Caret != 4 {
+	if state.Preedit == nil || state.Preedit.Replacement != (TextRange{Start: 1, End: 7}) || state.Preedit.Text != "中\nX" || state.Preedit.Caret != 4 {
 		t.Fatalf("preedit snapshot %+v", state.Preedit)
 	}
 	committed, _ := editor.model.Slice(state.VisibleRange)
@@ -330,11 +330,11 @@ func TestTextViewPreeditProjectionAcrossParagraphs(t *testing.T) {
 		t.Fatal("snapshot mixed display offsets with committed content")
 	}
 	win.onInputMethod(platform.InputMethodResult{Kind: platform.InputMethodCommit, Text: "文"})
-	if editor.preedit != nil || editor.model.Text() != "a文c\ndd" || editor.Selection() != (TextSelection{4, 4}) {
+	if editor.preedit != nil || editor.model.Text() != "a文c\ndd" || editor.Selection() != (TextSelection{Anchor: 4, Caret: 4}) {
 		t.Fatalf("commit %q %+v", editor.model.Text(), editor.Selection())
 	}
 	editorKey(t, win, events.KeyZ, textCommandModifier())
-	if editor.model.Text() != "aa\nbb\ncc\ndd" || editor.Selection() != (TextSelection{7, 1}) {
+	if editor.model.Text() != "aa\nbb\ncc\ndd" || editor.Selection() != (TextSelection{Anchor: 7, Caret: 1}) {
 		t.Fatal("IME undo did not restore original content and directed selection")
 	}
 }
@@ -372,12 +372,12 @@ func TestTextViewPreeditIsolationAndModelChangeCancels(t *testing.T) {
 	other.SetWidget(b)
 	t.Cleanup(func() { other.SetWidget(nil) })
 	b.Arrange(geometry.Rect(0, 0, 209, 108))
-	a.SetSelection(TextSelection{1, 8})
+	a.SetSelection(TextSelection{Anchor: 1, Caret: 8})
 	win.onInputMethod(platform.InputMethodResult{Kind: platform.InputMethodPreedit, Text: "NEW", Caret: 3})
 	if b.preedit != nil || b.displayParagraph(0) != "one" || b.displayLineCount() != 3 {
 		t.Fatal("preedit leaked into other view")
 	}
-	_ = a.model.Replace(TextRange{0, 0}, "x\n")
+	_ = a.model.Replace(TextRange{Start: 0, End: 0}, "x\n")
 	if a.preedit != nil || a.displayLineCount() != 4 || a.heights.Count() != 4 {
 		t.Fatal("external edit left stale projection/index")
 	}
@@ -434,8 +434,8 @@ func TestTextViewPreeditResetCannotCommitStaleText(t *testing.T) {
 		win.onInputMethod(platform.InputMethodResult{Kind: platform.InputMethodCommit, Text: "stale"})
 		win.onInputMethod(platform.InputMethodResult{Kind: platform.InputMethodPreedit, Text: "stale", Caret: 5})
 	}}
-	editor.SetSelection(TextSelection{3, 3})
-	if editor.preedit != nil || editor.model.Text() != "abc" || editor.Selection() != (TextSelection{3, 3}) {
+	editor.SetSelection(TextSelection{Anchor: 3, Caret: 3})
+	if editor.preedit != nil || editor.model.Text() != "abc" || editor.Selection() != (TextSelection{Anchor: 3, Caret: 3}) {
 		t.Fatal("Reset callback changed document/composition")
 	}
 	win.inputMethod = nil
@@ -479,14 +479,14 @@ func TestTextViewAnchorMapsEditsAboveViewport(t *testing.T) {
 	if !old.valid {
 		t.Fatal("viewport anchor missing")
 	}
-	_ = editor.model.Replace(TextRange{0, 0}, "new\n")
+	_ = editor.model.Replace(TextRange{Start: 0, End: 0}, "new\n")
 	for range 3 {
 		scroll.Arrange(scroll.Rect())
 	}
 	if editor.anchor.offset != old.offset+4 || editor.anchor.within != old.within || scroll.ScrollY() != 1025 {
 		t.Fatalf("insertion moved anchored text: old=%+v new=%+v scroll=%g", old, editor.anchor, scroll.ScrollY())
 	}
-	_ = editor.model.Replace(TextRange{0, 4}, "")
+	_ = editor.model.Replace(TextRange{Start: 0, End: 4}, "")
 	for range 3 {
 		scroll.Arrange(scroll.Rect())
 	}
@@ -589,7 +589,7 @@ func TestTextViewScrollReplacesReflowAnchor(t *testing.T) {
 	}
 	scroll.SetScrollY(21)
 	arrange(320)
-	if err := editor.model.Replace(TextRange{0, 0}, "new\n"); err != nil {
+	if err := editor.model.Replace(TextRange{Start: 0, End: 0}, "new\n"); err != nil {
 		t.Fatal(err)
 	}
 	arrange(220)
@@ -709,7 +709,7 @@ func TestTextViewFractionalRevealEndSettles(t *testing.T) {
 	win.width, win.height = 220, 108
 	win.SetWidget(scroll)
 	defer win.SetWidget(nil)
-	editor.SetSelection(TextSelection{editor.model.Len(), editor.model.Len()})
+	editor.SetSelection(TextSelection{Anchor: editor.model.Len(), Caret: editor.model.Len()})
 	for frame := 0; win.layoutDirty && frame < 100; frame++ {
 		win.layoutContent()
 	}
@@ -722,7 +722,7 @@ func TestTextViewFractionalRevealEndSettles(t *testing.T) {
 
 func TestTextViewAnchorAtLastPageSettles(t *testing.T) {
 	editor, scroll, _ := anchoredEditorFixture(t, strings.Repeat(strings.Repeat("x", 80)+"\n", 20))
-	editor.SetSelection(TextSelection{editor.model.Len(), editor.model.Len()})
+	editor.SetSelection(TextSelection{Anchor: editor.model.Len(), Caret: editor.model.Len()})
 	for range 6 {
 		scroll.Arrange(scroll.Rect())
 	}
@@ -1050,7 +1050,7 @@ func TestTextViewMeasuresEditingGeometryOnlyOnDemand(t *testing.T) {
 
 func TestTextViewPaintSelectionDoesNotMeasureUnselectedParagraphs(t *testing.T) {
 	editor, _, _ := newEditorFixture(t, strings.Repeat("row\n", 30))
-	editor.SetSelection(TextSelection{4, 6})
+	editor.SetSelection(TextSelection{Anchor: 4, Caret: 6})
 	editor.Paint(&testLabelPainter{})
 	if !editor.paragraph(1).geometryValid || editor.paragraph(2).geometryValid {
 		t.Fatal("selection painting measured an unrelated paragraph")

@@ -301,8 +301,8 @@ func drawLayoutMetrics(painter graphics.Painter, layout typography.TextLayout, l
 	painter.DrawTextLayout(graphics.Point{}, layout)
 
 	for _, line := range lines {
-		p0 := graphics.Point{line.X, line.Baseline}
-		p1 := graphics.Point{line.X + line.Width, line.Baseline}
+		p0 := graphics.Point{X: line.X, Y: line.Baseline}
+		p1 := graphics.Point{X: line.X + line.Width, Y: line.Baseline}
 		painter.DrawLine(p0, p1, 1, baselineColor)
 		rect := graphics.Rect(line.X, line.Y, line.Width, line.Height)
 		painter.DrawRect(rect, 1, lineColor)

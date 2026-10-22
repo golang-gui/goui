@@ -12,8 +12,8 @@ func TestNearest(t *testing.T) {
 		p    geometry.Point
 		want int
 	}{
-		{geometry.Point{-150, 80}, 0}, {geometry.Point{10, 10}, 1},
-		{geometry.Point{-90, 80}, 0}, {geometry.Point{-10, 0}, 1}, {geometry.Point{500, 200}, 1},
+		{geometry.Point{X: -150, Y: 80}, 0}, {geometry.Point{X: 10, Y: 10}, 1},
+		{geometry.Point{X: -90, Y: 80}, 0}, {geometry.Point{X: -10, Y: 0}, 1}, {geometry.Point{X: 500, Y: 200}, 1},
 	} {
 		if got := Nearest(displays, tc.p); got != tc.want {
 			t.Fatalf("%v: %d, want %d", tc.p, got, tc.want)

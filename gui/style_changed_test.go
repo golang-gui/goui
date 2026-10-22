@@ -195,7 +195,7 @@ func TestStyleChangedRefreshesLabelAndTextInputResources(t *testing.T) {
 			} else {
 				input := NewTextInput()
 				input.SetText("hello")
-				input.SetSelection(TextSelection{2, 2})
+				input.SetSelection(TextSelection{Anchor: 2, Caret: 2})
 				input.onPreedit("x", 1)
 				w, cached = input, func() typography.TextLayout { return input.paragraphs[0].layout }
 			}

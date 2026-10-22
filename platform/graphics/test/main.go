@@ -129,10 +129,10 @@ func render(width, height, scale float32) {
 		painter.DrawPath(graphics.MoveTo(200, 50).QuadBezierTo(250, 100, 300, 50), 2, graphics.RGBA(100, 0, 0, 255))
 		painter.DrawPath(graphics.MoveTo(310, 50).LineTo(360, 50).ArcTo(20, 20, 0, 0, 0, 380, 70), 2, graphics.RGBA(0, 100, 0, 255))
 
-		painter.DrawEllipse(graphics.Point{480, 100}, 50, 50, 2, graphics.RGBA(50, 130, 60, 255))
-		painter.FillEllipse(graphics.Point{480, 100}, 30, 30, graphics.RGBA(50, 50, 130, 255))
-		painter.DrawLine(graphics.Point{480 - 50, 100}, graphics.Point{480 + 50, 100}, 2, graphics.RGB(130, 0, 0))
-		painter.DrawLine(graphics.Point{480, 100 - 50}, graphics.Point{480, 100 + 50}, 2, graphics.RGB(130, 0, 0))
+		painter.DrawEllipse(graphics.Point{X: 480, Y: 100}, 50, 50, 2, graphics.RGBA(50, 130, 60, 255))
+		painter.FillEllipse(graphics.Point{X: 480, Y: 100}, 30, 30, graphics.RGBA(50, 50, 130, 255))
+		painter.DrawLine(graphics.Point{X: 480 - 50, Y: 100}, graphics.Point{X: 480 + 50, Y: 100}, 2, graphics.RGB(130, 0, 0))
+		painter.DrawLine(graphics.Point{X: 480, Y: 100 - 50}, graphics.Point{X: 480, Y: 100 + 50}, 2, graphics.RGB(130, 0, 0))
 
 		painter.DrawRoundRect(graphics.Rect(430, 200, 260, 180), 12, 4, graphics.RGB(30, 100, 30))
 		painter.DrawRect(graphics.Rect(450, 220, 220, 140), 4, graphics.RGB(30, 100, 30))
@@ -195,13 +195,13 @@ func render(width, height, scale float32) {
 		// 5. Translated + rotated line (DrawLine with transform)
 		painter.SetTransform(geometry.Identity())
 		painter.SetTransform(geometry.Translate(520, 260).Rotate(45))
-		painter.DrawLine(graphics.Point{0, 0}, graphics.Point{60, 0}, 3, graphics.RGBA(255, 100, 255, 255))
+		painter.DrawLine(graphics.Point{X: 0, Y: 0}, graphics.Point{X: 60, Y: 0}, 3, graphics.RGBA(255, 100, 255, 255))
 
 		// 6. Translated ellipse (FillEllipse + DrawEllipse with transform)
 		painter.SetTransform(geometry.Identity())
 		painter.SetTransform(geometry.Translate(620, 260))
-		painter.FillEllipse(graphics.Point{0, 0}, 25, 25, graphics.RGBA(100, 200, 255, 200))
-		painter.DrawEllipse(graphics.Point{0, 0}, 30, 30, 2, graphics.RGBA(0, 100, 200, 255))
+		painter.FillEllipse(graphics.Point{X: 0, Y: 0}, 25, 25, graphics.RGBA(100, 200, 255, 200))
+		painter.DrawEllipse(graphics.Point{X: 0, Y: 0}, 30, 30, 2, graphics.RGBA(0, 100, 200, 255))
 
 		// 7. Translated + rotated path (DrawPath with transform)
 		painter.SetTransform(geometry.Identity())
@@ -222,23 +222,23 @@ func render(width, height, scale float32) {
 		if transformTextLayout != nil {
 			// 9a. Reference: no transform
 			painter.SetTransform(geometry.Identity())
-			painter.DrawTextLayout(graphics.Point{520, 460}, transformTextLayout)
+			painter.DrawTextLayout(graphics.Point{X: 520, Y: 460}, transformTextLayout)
 
 			// 9b. Translate only
 			painter.SetTransform(geometry.Translate(520, 500))
-			painter.DrawTextLayout(graphics.Point{0, 0}, transformTextLayout)
+			painter.DrawTextLayout(graphics.Point{X: 0, Y: 0}, transformTextLayout)
 
 			// 9c. Translate + Rotate 30°
 			painter.SetTransform(geometry.Translate(520, 540).Rotate(30))
-			painter.DrawTextLayout(graphics.Point{0, 0}, transformTextLayout)
+			painter.DrawTextLayout(graphics.Point{X: 0, Y: 0}, transformTextLayout)
 
 			// 9d. Translate + Scale 1.5x
 			painter.SetTransform(geometry.Translate(680, 460).Scale(1.5, 1.5))
-			painter.DrawTextLayout(graphics.Point{0, 0}, transformTextLayout)
+			painter.DrawTextLayout(graphics.Point{X: 0, Y: 0}, transformTextLayout)
 
 			// 9e. Translate + Rotate -90° (vertical text, bottom-up)
 			painter.SetTransform(geometry.Translate(780, 580).Rotate(-90))
-			painter.DrawTextLayout(graphics.Point{0, 0}, transformTextLayout)
+			painter.DrawTextLayout(graphics.Point{X: 0, Y: 0}, transformTextLayout)
 		}
 
 		// 10. Transformed image (DrawImage with transform)

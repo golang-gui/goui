@@ -53,15 +53,15 @@ func testTextEditorNativeNavigation(t *testing.T, newContext func() (typography.
 			defer win.SetWidget(nil) // all native layout cleanup precedes UnlockOSThread
 			widget.Arrange(geometry.Rect(0, 0, 200, 80))
 			win.SetFocusedWidget(widget)
-			editor.setSelectionValue(TextSelection{0, 6})
+			editor.setSelectionValue(TextSelection{Anchor: 0, Caret: 6})
 			editorKey(t, win, events.KeyArrowLeft, 0)
-			if editor.selection != (TextSelection{6, 6}) {
+			if editor.selection != (TextSelection{Anchor: 6, Caret: 6}) {
 				t.Fatalf("RTL selection collapsed left to %+v, want byte 6", editor.selection)
 			}
 			before, _ := editor.caretRect()
 			editorKey(t, win, events.KeyArrowRight, events.ModifierShift)
 			after, _ := editor.caretRect()
-			if editor.selection != (TextSelection{6, 4}) || after.X <= before.X {
+			if editor.selection != (TextSelection{Anchor: 6, Caret: 4}) || after.X <= before.X {
 				t.Fatalf("RTL Shift+Right: selection=%+v x=%g -> %g", editor.selection, before.X, after.X)
 			}
 			editorKey(t, win, events.KeyBackspace, 0)
@@ -69,11 +69,11 @@ func testTextEditorNativeNavigation(t *testing.T, newContext func() (typography.
 				t.Fatalf("deleted wrong RTL cluster: %q", editor.model.Text())
 			}
 			editorKey(t, win, events.KeyZ, textCommandModifier())
-			if editor.model.Text() != "אבג" || editor.selection != (TextSelection{6, 4}) {
+			if editor.model.Text() != "אבג" || editor.selection != (TextSelection{Anchor: 6, Caret: 4}) {
 				t.Fatal("undo did not restore RTL text and directional selection")
 			}
 			editor.model.SetText("e\u0301x")
-			editor.setSelectionValue(TextSelection{0, 0})
+			editor.setSelectionValue(TextSelection{Anchor: 0, Caret: 0})
 			editorKey(t, win, events.KeyArrowRight, 0)
 			if editor.selection.Caret != 3 {
 				t.Fatalf("navigation split native combining cluster: %+v", editor.selection)

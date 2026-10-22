@@ -122,7 +122,7 @@ func TestTextEditorCommandModifierIsNotSuper(t *testing.T) {
 		editorKey(t, win, events.KeyA, modifier)
 		want := TextSelection{}
 		if runtime.GOOS == "darwin" && modifier == events.ModifierCommand || runtime.GOOS != "darwin" && modifier == events.ModifierControl {
-			want = TextSelection{0, 3}
+			want = TextSelection{Anchor: 0, Caret: 3}
 		}
 		if editor.Selection() != want {
 			t.Fatalf("modifier %v: selection %+v, want %+v", modifier, editor.Selection(), want)
@@ -207,7 +207,7 @@ func TestTextEditorContextMenuCommands(t *testing.T) {
 		for _, command := range []string{"Undo", "Redo", "Cut", "Copy", "Paste", "Delete", "Select All"} {
 			t.Run(fmt.Sprintf("single=%t/%s", singleLine, command), func(t *testing.T) {
 				editor, win, _, clip := newEditorMenuFixture(t, singleLine)
-				editor.setSelectionValue(TextSelection{1, 4})
+				editor.setSelectionValue(TextSelection{Anchor: 1, Caret: 4})
 				if command == "Undo" || command == "Redo" {
 					editor.im.emitCommit(IMCommit{Text: "XY"})
 					if command == "Redo" {
@@ -244,12 +244,12 @@ func TestTextEditorContextMenuCommands(t *testing.T) {
 				if (command == "Cut" || command == "Copy") && clip.text != "bcd" {
 					t.Fatalf("clipboard=%q, want bcd", clip.text)
 				}
-				if command == "Select All" && editor.selection != (TextSelection{0, 6}) {
+				if command == "Select All" && editor.selection != (TextSelection{Anchor: 0, Caret: 6}) {
 					t.Fatal("menu did not select all")
 				}
 				if command == "Cut" || command == "Delete" || command == "Paste" {
 					editorKey(t, win, events.KeyZ, textCommandModifier())
-					if editor.model.Text() != "abcdef" || editor.selection != (TextSelection{1, 4}) {
+					if editor.model.Text() != "abcdef" || editor.selection != (TextSelection{Anchor: 1, Caret: 4}) {
 						t.Fatal("menu operation was not one undoable edit with selection restore")
 					}
 				}
@@ -308,7 +308,7 @@ func TestTextEditorContextMenuLanguageAndLifecycle(t *testing.T) {
 
 func TestTextEditorContextMenuPointerAndDismiss(t *testing.T) {
 	editor, win, plat, _ := newEditorMenuFixture(t, false)
-	editor.setSelectionValue(TextSelection{4, 1})
+	editor.setSelectionValue(TextSelection{Anchor: 4, Caret: 1})
 	rightClick := func(x float32) {
 		t.Helper()
 		// Windows requests on release; other platforms request on press.
@@ -320,35 +320,35 @@ func TestTextEditorContextMenuPointerAndDismiss(t *testing.T) {
 		}
 	}
 	rightClick(24) // Fixed fixture cells: padding 4 + two cells, inside [1,4).
-	if editor.contextMenu == nil || !editor.contextMenu.popup.Visible() || editor.selection != (TextSelection{4, 1}) {
+	if editor.contextMenu == nil || !editor.contextMenu.popup.Visible() || editor.selection != (TextSelection{Anchor: 4, Caret: 1}) {
 		t.Fatal("right click lost the existing reversed selection")
 	}
 	pm := editor.contextMenu.popup
-	if pm.popover.Position() != (geometry.Point{24, 12}) || editor.input.CapturingPointer() {
+	if pm.popover.Position() != (geometry.Point{X: 24, Y: 12}) || editor.input.CapturingPointer() {
 		t.Fatal("wrong local popup origin or retained selection drag")
 	}
 	editorKey(t, win, events.KeyEscape, 0)
-	if pm.Visible() || editor.selection != (TextSelection{4, 1}) || win.modalTarget != nil {
+	if pm.Visible() || editor.selection != (TextSelection{Anchor: 4, Caret: 1}) || win.modalTarget != nil {
 		t.Fatal("Escape changed selection or retained modal menu")
 	}
 	rightClick(42) // Last selected cell's trailing half maps to caret offset 4.
-	if editor.selection != (TextSelection{4, 1}) {
+	if editor.selection != (TextSelection{Anchor: 4, Caret: 1}) {
 		t.Fatal("nearest-caret rounding discarded a visually hit selection")
 	}
 	editorKey(t, win, events.KeyEscape, 0)
 	rightClick(54)
-	if editor.selection != (TextSelection{5, 5}) || !pm.Visible() || len(plat.natives) != 1 {
+	if editor.selection != (TextSelection{Anchor: 5, Caret: 5}) || !pm.Visible() || len(plat.natives) != 1 {
 		t.Fatal("right click outside selection did not position caret/reuse popup")
 	}
 	// The first outside click only dismisses; it does not move the caret.
 	win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonLeft, Position: geometry.Point{X: 4, Y: 12}})
-	if pm.Visible() || editor.selection != (TextSelection{5, 5}) {
+	if pm.Visible() || editor.selection != (TextSelection{Anchor: 5, Caret: 5}) {
 		t.Fatal("outside click leaked into editor")
 	}
 	// Shift+F10 preserves the selection and anchors at the caret bottom.
-	editor.setSelectionValue(TextSelection{1, 3})
+	editor.setSelectionValue(TextSelection{Anchor: 1, Caret: 3})
 	editorMenuOpen(t, editor, win)
-	if pm.popover.Position() != (geometry.Point{34, 24}) || editor.selection != (TextSelection{1, 3}) {
+	if pm.popover.Position() != (geometry.Point{X: 34, Y: 24}) || editor.selection != (TextSelection{Anchor: 1, Caret: 3}) {
 		t.Fatalf("keyboard popup moved selection or used wrong caret: %v", pm.popover.Position())
 	}
 	win.DispatchEvent(events.FocusEvent{Focused: false})
@@ -360,15 +360,15 @@ func TestTextEditorContextMenuPointerAndDismiss(t *testing.T) {
 func TestTextEditorContextMenuScrolledPosition(t *testing.T) {
 	editor, win, _, _ := newEditorMenuFixture(t, false)
 	editor.setModel(NewTextModel("first\nsecond\nthird"))
-	editor.setSelectionValue(TextSelection{7, 10})
+	editor.setSelectionValue(TextSelection{Anchor: 7, Caret: 10})
 	editor.revealCaret = false
-	editor.layoutVisible(geometry.Size{209, 60}, geometry.Point{Y: 20})
+	editor.layoutVisible(geometry.Size{Width: 209, Height: 60}, geometry.Point{Y: 20})
 	for _, kind := range []events.EventType{events.PointerDown, events.PointerUp} {
 		if err := win.DispatchEvent(events.PointerEvent{EventType: kind, Button: events.PointerButtonRight, Position: geometry.Point{X: 24, Y: 12}}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if editor.contextMenu == nil || !editor.contextMenu.popup.Visible() || editor.selection != (TextSelection{7, 10}) || editor.contextMenu.popup.popover.Position() != (geometry.Point{24, 12}) {
+	if editor.contextMenu == nil || !editor.contextMenu.popup.Visible() || editor.selection != (TextSelection{Anchor: 7, Caret: 10}) || editor.contextMenu.popup.popover.Position() != (geometry.Point{X: 24, Y: 12}) {
 		t.Fatal("scrolled selection or popup origin used document rather than local coordinates")
 	}
 }
@@ -384,10 +384,10 @@ func TestTextEditorControlClickContextMenu(t *testing.T) {
 
 func TestTextEditorCopyCommandDuringPreedit(t *testing.T) {
 	editor, win, _, clip := newEditorMenuFixture(t, false)
-	editor.setSelectionValue(TextSelection{1, 6})
+	editor.setSelectionValue(TextSelection{Anchor: 1, Caret: 6})
 	editor.im.emitPreedit("x", 1) // Projection is shorter than the model selection.
 	editorKey(t, win, events.KeyC, textCommandModifier())
-	if clip.text != "bcdef" || editor.preedit == nil || editor.selection != (TextSelection{1, 6}) {
+	if clip.text != "bcdef" || editor.preedit == nil || editor.selection != (TextSelection{Anchor: 1, Caret: 6}) {
 		t.Fatalf("copy normalized model positions against preedit: %q, %+v", clip.text, editor.selection)
 	}
 }
@@ -408,7 +408,7 @@ func TestTextEditorContextMenuAvailability(t *testing.T) {
 		}
 	}
 	check(textPaste, textSelectAll)
-	editor.setSelectionValue(TextSelection{1, 4})
+	editor.setSelectionValue(TextSelection{Anchor: 1, Caret: 4})
 	check(textCut, textCopy, textPaste, textDeleteSelection, textSelectAll)
 	editor.setReadOnly(true)
 	check(textCopy, textSelectAll)
@@ -423,7 +423,7 @@ func TestTextEditorContextMenuAvailability(t *testing.T) {
 		}
 	}
 	editor.setReadOnly(false)
-	_ = editor.model.Apply(TextEdit{Range: TextRange{0, 0}, Text: "!"}, textedit.EditOptions{Atomic: true})
+	_ = editor.model.Apply(TextEdit{Range: TextRange{Start: 0, End: 0}, Text: "!"}, textedit.EditOptions{Atomic: true})
 	check(textUndo, textCut, textCopy, textPaste, textDeleteSelection, textSelectAll)
 	editor.model.SetText("")
 	check(textPaste)
@@ -433,7 +433,7 @@ func TestTextEditorContextMenuLifecycle(t *testing.T) {
 	for _, kind := range []string{"unmount", "replace-model", "reopen", "preedit", "stale-paste"} {
 		t.Run(kind, func(t *testing.T) {
 			editor, win, plat, clip := newEditorMenuFixture(t, false)
-			editor.setSelectionValue(TextSelection{1, 4})
+			editor.setSelectionValue(TextSelection{Anchor: 1, Caret: 4})
 			if kind == "preedit" {
 				editor.im.emitPreedit("未提交", 3)
 			}
@@ -488,13 +488,13 @@ func TestTextEditorContextMenuLifecycle(t *testing.T) {
 
 func TestTextViewKeysSelectionNativeCommitAndReadonly(t *testing.T) {
 	editor, win, _ := newEditorFixture(t, "ab\ncd")
-	editor.SetSelection(TextSelection{1, 1})
+	editor.SetSelection(TextSelection{Anchor: 1, Caret: 1})
 	editorKey(t, win, events.KeyArrowRight, events.ModifierShift)
-	if editor.Selection() != (TextSelection{1, 2}) {
+	if editor.Selection() != (TextSelection{Anchor: 1, Caret: 2}) {
 		t.Fatalf("shift selection %+v", editor.Selection())
 	}
 	editor.im.emitCommit(IMCommit{Text: "中"})
-	if editor.model.Text() != "a中\ncd" || editor.selection != (TextSelection{4, 4}) {
+	if editor.model.Text() != "a中\ncd" || editor.selection != (TextSelection{Anchor: 4, Caret: 4}) {
 		t.Fatalf("commit result %q %+v", editor.model.Text(), editor.selection)
 	}
 	editorKey(t, win, events.KeyDelete, 0)
@@ -535,10 +535,10 @@ func TestTextViewPointerCaptureAndVerticalColumn(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if editor.selection != (TextSelection{0, 3}) || editor.input.CapturingPointer() {
+	if editor.selection != (TextSelection{Anchor: 0, Caret: 3}) || editor.input.CapturingPointer() {
 		t.Fatalf("drag selection %+v", editor.selection)
 	}
-	editor.SetSelection(TextSelection{3, 3})
+	editor.SetSelection(TextSelection{Anchor: 3, Caret: 3})
 	editorKey(t, win, events.KeyArrowDown, 0)
 	if editor.selection.Caret != 5 {
 		t.Fatalf("short line caret=%d", editor.selection.Caret)
@@ -553,9 +553,9 @@ func TestTextViewPasteDropsStaleReply(t *testing.T) {
 	editor, win, _ := newEditorFixture(t, "abc")
 	clip := &editorClipboard{}
 	App.(*application).clipboard = clip
-	editor.SetSelection(TextSelection{1, 2})
+	editor.SetSelection(TextSelection{Anchor: 1, Caret: 2})
 	editorKey(t, win, events.KeyV, textCommandModifier())
-	editor.SetSelection(TextSelection{3, 3})
+	editor.SetSelection(TextSelection{Anchor: 3, Caret: 3})
 	clip.pending("wrong", nil)
 	if editor.model.Text() != "abc" {
 		t.Fatal("stale selection received paste")
@@ -582,25 +582,25 @@ func TestTextViewUndoRestoresInvokerSelectionAndSplitsEditors(t *testing.T) {
 	other.SetWidget(b)
 	b.Arrange(geometry.Rect(0, 0, 209, 108))
 	t.Cleanup(func() { other.SetWidget(nil) })
-	a.SetSelection(TextSelection{2, 2})
-	b.SetSelection(TextSelection{2, 2})
+	a.SetSelection(TextSelection{Anchor: 2, Caret: 2})
+	b.SetSelection(TextSelection{Anchor: 2, Caret: 2})
 	a.im.emitCommit(IMCommit{Text: "x"})
 	a.im.emitCommit(IMCommit{Text: "y"})
 	b.im.emitCommit(IMCommit{Text: "z"})
 	editorKey(t, win, events.KeyZ, textCommandModifier())
-	if a.model.Text() != "abxy" || a.selection != (TextSelection{4, 4}) {
+	if a.model.Text() != "abxy" || a.selection != (TextSelection{Anchor: 4, Caret: 4}) {
 		t.Fatalf("undo from other view: %q %+v", a.model.Text(), a.selection)
 	}
-	b.SetSelection(TextSelection{0, 0})
+	b.SetSelection(TextSelection{Anchor: 0, Caret: 0})
 	editorKey(t, win, events.KeyZ, textCommandModifier())
-	if a.model.Text() != "ab" || a.selection != (TextSelection{2, 2}) || b.selection != (TextSelection{}) {
+	if a.model.Text() != "ab" || a.selection != (TextSelection{Anchor: 2, Caret: 2}) || b.selection != (TextSelection{}) {
 		t.Fatalf("undo restored wrong view: %q %+v %+v", a.model.Text(), a.selection, b.selection)
 	}
 	if a.model.CanUndo() {
 		t.Fatal("editing views should produce exactly two undo steps")
 	}
 	editorKey(t, win, events.KeyZ, textCommandModifier()|events.ModifierShift)
-	if a.model.Text() != "abxy" || a.selection != (TextSelection{4, 4}) {
+	if a.model.Text() != "abxy" || a.selection != (TextSelection{Anchor: 4, Caret: 4}) {
 		t.Fatal("redo did not restore after-selection")
 	}
 }
@@ -611,7 +611,7 @@ func TestTextViewReentrantModelAndSelectionCallbacks(t *testing.T) {
 	m := NewTextModel("a")
 	m.ConnectChange(func(change TextChange) {
 		if change.Revision == 1 {
-			_ = m.Replace(TextRange{0, 0}, "Y")
+			_ = m.Replace(TextRange{Start: 0, End: 0}, "Y")
 		}
 	})
 	editor := NewTextView()
@@ -620,9 +620,9 @@ func TestTextViewReentrantModelAndSelectionCallbacks(t *testing.T) {
 	win.SetWidget(editor)
 	t.Cleanup(func() { win.SetWidget(nil) })
 	editor.Arrange(geometry.Rect(0, 0, 209, 108))
-	editor.SetSelection(TextSelection{1, 1})
+	editor.SetSelection(TextSelection{Anchor: 1, Caret: 1})
 	editor.im.emitCommit(IMCommit{Text: "X"})
-	if m.Text() != "YaX" || editor.selection != (TextSelection{3, 3}) {
+	if m.Text() != "YaX" || editor.selection != (TextSelection{Anchor: 3, Caret: 3}) {
 		t.Fatalf("reentrant model: %q %+v", m.Text(), editor.selection)
 	}
 	editor.ConnectSelection(func(TextSelection) { win.SetWidget(nil) })
@@ -671,11 +671,11 @@ func TestTextEditorCollapseSelectionVisually(t *testing.T) {
 				selection   TextSelection
 				left, right int
 			}{
-				{"rtl", "אב", TextSelection{0, 4}, 4, 0},
-				{"rtl-reverse-selection", "אב", TextSelection{4, 0}, 4, 0},
-				{"embedded-rtl", "aאבc", TextSelection{1, 5}, 5, 1},
-				{"disjoint-selection", "aאבc", TextSelection{0, 3}, 0, 3},
-				{"ltr", "abcd", TextSelection{1, 3}, 1, 3},
+				{"rtl", "אב", TextSelection{Anchor: 0, Caret: 4}, 4, 0},
+				{"rtl-reverse-selection", "אב", TextSelection{Anchor: 4, Caret: 0}, 4, 0},
+				{"embedded-rtl", "aאבc", TextSelection{Anchor: 1, Caret: 5}, 5, 1},
+				{"disjoint-selection", "aאבc", TextSelection{Anchor: 0, Caret: 3}, 0, 3},
+				{"ltr", "abcd", TextSelection{Anchor: 1, Caret: 3}, 1, 3},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					setTestApplication(t, &bidiEditorTypography{})
@@ -701,7 +701,7 @@ func TestTextEditorCollapseSelectionVisually(t *testing.T) {
 					}{{events.KeyArrowLeft, tc.left}, {events.KeyArrowRight, tc.right}} {
 						editor.setSelectionValue(tc.selection)
 						editorKey(t, win, direction.key, 0)
-						if editor.selection != (TextSelection{direction.want, direction.want}) {
+						if editor.selection != (TextSelection{Anchor: direction.want, Caret: direction.want}) {
 							t.Fatalf("key %v collapsed to %+v, want %d", direction.key, editor.selection, direction.want)
 						}
 					}
@@ -716,9 +716,9 @@ func TestTextEditorCollapseSelectionAcrossLines(t *testing.T) {
 		name, text string
 		selection  TextSelection
 	}{
-		{"paragraphs", "abcd\ne", TextSelection{3, 6}},
-		{"soft-wrap", "abcdef", TextSelection{3, 5}},
-		{"soft-wrap-boundary", "abcdefgh", TextSelection{4, 8}},
+		{"paragraphs", "abcd\ne", TextSelection{Anchor: 3, Caret: 6}},
+		{"soft-wrap", "abcdef", TextSelection{Anchor: 3, Caret: 5}},
+		{"soft-wrap-boundary", "abcdefgh", TextSelection{Anchor: 4, Caret: 8}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			editor, win, _ := newEditorFixture(t, tc.text)
@@ -730,7 +730,7 @@ func TestTextEditorCollapseSelectionAcrossLines(t *testing.T) {
 				if key == events.KeyArrowRight {
 					want = tc.selection.Caret
 				}
-				if editor.Selection() != (TextSelection{want, want}) {
+				if editor.Selection() != (TextSelection{Anchor: want, Caret: want}) {
 					t.Fatalf("key %v = %+v, want %d", key, editor.Selection(), want)
 				}
 			}

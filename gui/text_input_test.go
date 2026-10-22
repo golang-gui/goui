@@ -107,7 +107,7 @@ func TestTextInputPaintDrawsChromeTextAndCaret(t *testing.T) {
 	win := &window{}
 	input := NewTextInput()
 	input.SetText("abc")
-	input.SetSelection(TextSelection{len("ab"), len("ab")})
+	input.SetSelection(TextSelection{Anchor: len("ab"), Caret: len("ab")})
 	input.Arrange(geometry.Rect(0, 0, 100, 24))
 	win.SetWidget(input)
 	if !win.SetFocusedWidget(input) {
@@ -412,7 +412,7 @@ func TestTextInputNativeCharactersAndCommandKeys(t *testing.T) {
 func TestTextInputCommitInsertsAtCaret(t *testing.T) {
 	input := NewTextInput()
 	input.SetText("ac")
-	input.SetSelection(TextSelection{len("a"), len("a")})
+	input.SetSelection(TextSelection{Anchor: len("a"), Caret: len("a")})
 
 	input.onCommit(IMCommit{Text: "b"})
 
@@ -435,11 +435,11 @@ func TestTextInputSingleLineModelAndEqualReload(t *testing.T) {
 	if _, scrollable := any(input).(Scrollable); scrollable || len(input.Children()) != 0 {
 		t.Fatal("TextInput became a nested/scrollable TextView")
 	}
-	input.SetSelection(TextSelection{1, 3})
+	input.SetSelection(TextSelection{Anchor: 1, Caret: 3})
 	win.onInputMethod(platform.InputMethodResult{Kind: platform.InputMethodPreedit, Text: "中\n文", Caret: 4})
 	composition, rev := input.preedit, input.model.Revision()
 	input.SetText("a\r\nb\rc\nd")
-	if input.preedit != composition || input.Selection() != (TextSelection{1, 3}) || input.model.Revision() != rev {
+	if input.preedit != composition || input.Selection() != (TextSelection{Anchor: 1, Caret: 3}) || input.model.Revision() != rev {
 		t.Fatal("equal normalized SetText disturbed selection/composition")
 	}
 	if composition.Text() != "中 文" || composition.Caret() != 4 || input.displayLineCount() != 1 {
@@ -450,11 +450,11 @@ func TestTextInputSingleLineModelAndEqualReload(t *testing.T) {
 		t.Fatalf("composition replacement = %q", input.Text())
 	}
 	dispatchKey(t, win, events.KeyZ, textCommandModifier())
-	if input.Text() != "a b c d" || input.Selection() != (TextSelection{1, 3}) {
+	if input.Text() != "a b c d" || input.Selection() != (TextSelection{Anchor: 1, Caret: 3}) {
 		t.Fatal("single undo did not restore replacement and selection")
 	}
 	input.SetText("new")
-	if input.model.CanUndo() || input.model.CanRedo() || input.Selection() != (TextSelection{3, 3}) {
+	if input.model.CanUndo() || input.model.CanRedo() || input.Selection() != (TextSelection{Anchor: 3, Caret: 3}) {
 		t.Fatal("changed SetText did not reset history/caret")
 	}
 }
@@ -502,7 +502,7 @@ func TestTextInputSubmitReadOnlyAndSnapshot(t *testing.T) {
 	dispatchKey(t, win, events.KeyBackspace, 0)
 	dispatchKey(t, win, events.KeyA, textCommandModifier())
 	info := input.Snapshot()
-	if info.Role != RoleTextInput || info.Text != "abc" || info.TextEditing == nil || !info.TextEditing.ReadOnly || info.TextEditing.Selection != (TextSelection{0, 3}) {
+	if info.Role != RoleTextInput || info.Text != "abc" || info.TextEditing == nil || !info.TextEditing.ReadOnly || info.TextEditing.Selection != (TextSelection{Anchor: 0, Caret: 3}) {
 		t.Fatalf("readonly editing state not exposed: %+v", info)
 	}
 	input.SetReadOnly(false)
@@ -517,14 +517,14 @@ func TestTextInputPasteAndDetachedSetText(t *testing.T) {
 	input, win, _ := newInputFixture(t, "abc")
 	clip := &editorClipboard{}
 	App.(*application).clipboard = clip
-	input.SetSelection(TextSelection{1, 2})
+	input.SetSelection(TextSelection{Anchor: 1, Caret: 2})
 	dispatchKey(t, win, events.KeyV, textCommandModifier())
 	clip.pending("1\r\n2\n3", nil)
 	if input.Text() != "a1 2 3c" {
 		t.Fatalf("paste = %q", input.Text())
 	}
 	dispatchKey(t, win, events.KeyZ, textCommandModifier())
-	if input.Text() != "abc" || input.Selection() != (TextSelection{1, 2}) {
+	if input.Text() != "abc" || input.Selection() != (TextSelection{Anchor: 1, Caret: 2}) {
 		t.Fatal("paste undo split or lost selection")
 	}
 	dispatchKey(t, win, events.KeyV, textCommandModifier())
@@ -572,7 +572,7 @@ func TestTextInputNeverSplitsSuppliedCluster(t *testing.T) {
 	t.Cleanup(func() { win.SetWidget(nil) })
 	win.SetFocusedWidget(input)
 	input.Arrange(geometry.Rect(0, 0, 100, 40))
-	input.SetSelection(TextSelection{1, 1})
+	input.SetSelection(TextSelection{Anchor: 1, Caret: 1})
 	if input.Selection() != (TextSelection{}) {
 		t.Fatal("setter split the combining Cluster")
 	}
@@ -647,7 +647,7 @@ func TestTextInputCommandRespectsChangedFontClusters(t *testing.T) {
 			win.SetWidget(input)
 			t.Cleanup(func() { win.SetWidget(nil) })
 			win.SetFocusedWidget(input)
-			input.SetSelection(TextSelection{1, 1})
+			input.SetSelection(TextSelection{Anchor: 1, Caret: 1})
 			typo.joined = true
 			App.(*application).SetStyleSheet(textStyleSheet(20, color.Black))
 			input.SetStyleName("text-input")
