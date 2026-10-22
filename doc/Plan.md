@@ -3,6 +3,33 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## 滚动编辑区域外框（2026-10-22）
+
+- [x] ScrollView 使用既有 `frame` part 绘制统一外框，稳定预留所有焦点/禁用
+  状态的安全内区；视口、两条滚动条和交汇角都在框内。普通滚动容器仍透明。
+  不增加公开接口，设计见 [DesignScrollFrame](DesignScrollFrame.md)。
+- [x] Basic / Modern 将 TextView 的外框移至宿主，正文无框；同步 Demo、声明式
+  文本编辑、窗口用例、接入说明与技能参考。TextInput 保留自身外框；文本尺寸
+  窗口测试精确比较正文像素，单独处理外框职责差异和分数 DIP 的几何舍入。
+- [x] Ubuntu 22.04.5 / amd64 / Go 1.25.8 / Pango，已跟踪源码与本次新增文件
+  的临时快照：`DISPLAY=:84 XMODIFIERS=@im=none GOWORK=off go test -json ./...
+  -count=1`，2405 项通过、10 项既有跳过、零失败。ScrollView / frame 定向
+  race 通过。把框内布局断言加入未修改 `006d4e2` 后，视口仍为 `(0,0,92,92)`，
+  明确失败；修正后视口与两条滚动条都按安全内区布局。
+- [x] 独立 Xvnc `:84` / Xfwm4 合成开启，SourceView 的
+  `tests/window/editor/frame`：Software 的 Basic / Modern Light / Dark ×
+  1/1.5/2 倍九组通过；OpenGL 1.5 倍通过（Mesa llvmpipe）。窗口断言覆盖
+  聚焦、滚轮、双轴拖动、禁用、换行、短文本与主题切换。另以 XTest 实际点击、
+  滚轮、拖动、1350×780 物理窗口调整和截图检查 150% 的框、圆角与条位置。
+- [x] `tests/window/gui/text_sizing` 在 Software 1/1.5/2 倍通过；
+  `text_caret` 在 1.5 倍通过，既有 32768 字节光标操作未重复原生排版。
+- [x] `CGO_ENABLED=0 GOOS=windows GOARCH=amd64` 和
+  `GOOS=darwin GOARCH=arm64` 的 gui/ui/theme/Demo 构建通过；不是原生运行验收。
+- 一轮全量测试曾误继承默认 `DISPLAY=:3.0`，既有平台用例写入了该会话的
+  CLIPBOARD；未掌握运行前内容，无法恢复。随后固定到隔离 `:84` 重新全量
+  验证。最终窗口测试不访问系统剪贴板；快照测试写出的旧测试图片位于临时
+  快照内。未纳入用户未跟踪文件，Windows/macOS 原生及混合 DPI 未执行。
+
 ## Image 内容尺寸与 Demo HiDPI（2026-10-22）
 
 - [x] 保留默认像素宽高作为 DIP 的行为，新增 gui/ui 显式 ContentSize；尺寸变化

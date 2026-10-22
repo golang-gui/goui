@@ -158,14 +158,14 @@ func main() {
 						}),
 					).Spacing(8),
 					ui.ScrollView(ui.TextView().ID("notes").BindText(&notes).
-						BindSelection(&notesSelection).ReadOnly(readonly)).MinHeight(100).MaxHeight(100),
+						BindSelection(&notesSelection).ReadOnly(readonly)).Style("text-view").MinHeight(100).MaxHeight(100),
 					ui.Label(fmt.Sprintf("Notes: %d bytes | selection %+v | Search %+v | auto rebuild %t", len(notes.Get()), notesSelection.Get(), searchSelection.Get(), rebuildTimer.Active())),
 					ui.HBox(
 						ui.ScrollView(ui.TextView().ID("left").Model(model).ReadOnly(readonly).
 							OnChange(func(ui.TextChange) { app.RequestUpdate() }).
-							OnSelection(func(s ui.TextSelection) { leftSelection = s; app.RequestUpdate() })),
+							OnSelection(func(s ui.TextSelection) { leftSelection = s; app.RequestUpdate() })).Style("text-view"),
 						ui.ScrollView(ui.TextView().ID("right").Model(model).
-							OnSelection(func(s ui.TextSelection) { rightSelection = s; app.RequestUpdate() })),
+							OnSelection(func(s ui.TextSelection) { rightSelection = s; app.RequestUpdate() })).Style("text-view"),
 					).Spacing(12).CrossAlign(layout.CrossStretch).MainWeight(1),
 					statusLabel(fmt.Sprintf("%d bytes | L %+v | R %+v | submits %d | rebuilds %d | readonly %t", model.Len(), leftSelection, rightSelection, submits, rebuilds, readonly)),
 				).Padding(12).Spacing(10).CrossAlign(layout.CrossStretch),

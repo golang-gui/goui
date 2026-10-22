@@ -202,8 +202,9 @@ func builtInRules(options Options) []style.Rule {
 		style.Name("text-input").State(style.Focused).BorderColor(focus).BorderWidth(2),
 		style.Name("text-input").State(style.Disabled).ForegroundColor(p.disabled),
 		style.Name("text-input").State(style.Disabled).BackgroundColor(p.window),
-		text("text-view").BackgroundColor(p.surface).BorderColor(p.border).BorderWidth(1).Radius(6),
-		style.Name("text-view").State(style.Focused).BorderColor(focus).BorderWidth(2),
+		text("text-view").BackgroundColor(p.surface).BorderWidth(0).Radius(0),
+		style.Name("text-view").Part("frame").BorderColor(p.border).BorderWidth(1).Radius(6),
+		style.Name("text-view").Part("frame").State(style.Focused).BorderColor(focus).BorderWidth(2),
 		style.Name("text-view").State(style.Disabled).ForegroundColor(p.disabled),
 		style.Name("text-view").State(style.Disabled).BackgroundColor(p.window),
 		style.Name("text-input").Part("selection").BackgroundColor(mix(p.surface, accent, .25)),
@@ -296,6 +297,14 @@ func builtInRules(options Options) []style.Rule {
 	rules = append(rules, checkButtonRules(p, accent, tabFocus)...)
 	rules = append(rules, switchRules(p, accent, tabFocus)...)
 	rules = append(rules, dropDownRules(p, tabFocus, options.FontFamily, size)...)
+	base := style.Sheet(rules...)
+	for _, part := range []string{"trough", "thumb"} {
+		for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed} {
+			rule := style.Rule{Sel: style.Sel{Name: "text-view", Part: part, State: state},
+				Style: base.Resolve(style.Sel{Name: "scroll-view", Part: part, State: state})}
+			rules = append(rules, rule.BorderWidth(0))
+		}
+	}
 	// Each content widget resolves its own name; state is shared through the
 	// tree, but foreground rules are explicit rather than inherited colors.
 	for _, name := range []string{"icon", AccentIcon, PrimaryContent, MutedText, Card, Sidebar, Warning, Error, Success, "check-button-text", "switch-text",

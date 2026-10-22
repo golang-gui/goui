@@ -135,6 +135,7 @@ func main() {
 	editor.SetModel(gui.NewTextModel("editor: enable AcceptsTab to insert tabs"))
 	watch(editor, "editor")
 	editorScroll := gui.NewScrollView()
+	editorScroll.SetStyleName("text-view")
 	editorScroll.SetMinSize(geometry.Size{Height: 90})
 	editorScroll.SetMaxSize(geometry.Size{Height: 90})
 	editorScroll.SetChild(editor)

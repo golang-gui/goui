@@ -93,6 +93,7 @@ func main() {
 		view.SetPlaceholder(title + " notes 中文\n" + strings.Repeat("Describe your issue here. ", 12))
 		view.SetName(title + " notes")
 		scroll := gui.NewScrollView()
+		scroll.SetStyleName("text-view")
 		scroll.SetMainWeight(1)
 		scroll.SetChild(view)
 		column.AddChild(scroll)

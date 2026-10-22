@@ -452,6 +452,7 @@ model := gui.NewTextModel("第一行\n第二行")
 editor := gui.NewTextView()
 editor.SetModel(model)
 scroll := gui.NewScrollView()
+scroll.SetStyleName("text-view")
 scroll.SetChild(editor)
 ```
 
@@ -544,7 +545,7 @@ viewBase 标记隔离测试。未重新执行跨平台编译或窗口验收，�
 text := ui.MakeState("初始内容")
 selection := ui.MakeState(ui.TextSelection{})
 // Build 内：
-ui.ScrollView(ui.TextView().BindText(&text).BindSelection(&selection))
+ui.ScrollView(ui.TextView().BindText(&text).BindSelection(&selection)).Style("text-view")
 ```
 
 - `BindText(s)` 等价于 `Text(s.Get()).OnText(s.Set)`；`BindSelection(s)` 等价于

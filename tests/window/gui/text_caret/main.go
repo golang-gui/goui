@@ -114,6 +114,7 @@ func main() {
 	must(win.SetTitle("Wrapped text caret reuse"))
 	v := gui.NewTextView()
 	scroll := gui.NewScrollView()
+	scroll.SetStyleName("text-view")
 	scroll.SetChild(v)
 	win.SetWidget(scroll)
 	must(win.Show())

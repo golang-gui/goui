@@ -29,7 +29,8 @@ func NewTextModel(text string) *TextModel { return textedit.NewModel(text) }
 // selection, input state, scrolling and native layouts belong to each view.
 // Measure follows its displayed content height at the allocated width, within
 // the parent's constraints and its own MinSize/MaxSize. Empty text takes one line.
-// Place it in a ScrollView for scrolling and scrollbars.
+// Place it in a ScrollView for scrolling and scrollbars. Set that ScrollView's
+// StyleName to "text-view" to frame the viewport and its bars as one editor.
 // Secondary click or Shift+F10 opens its standard editing context menu.
 type TextView struct {
 	WidgetBase

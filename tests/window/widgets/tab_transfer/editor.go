@@ -52,6 +52,7 @@ func runEditorTransfer(chrome gui.WindowChromeMode, canceled bool) error {
 	editor.SetID("retained-editor")
 	editor.SetModel(model)
 	scroll := gui.NewScrollView()
+	scroll.SetStyleName("text-view")
 	scroll.SetChild(editor)
 	page := widgets.NewTabPage("Editor", scroll)
 	sv, tv := widgets.NewTabView(), widgets.NewTabView()

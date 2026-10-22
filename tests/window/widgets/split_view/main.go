@@ -121,7 +121,7 @@ func runUI(fallback bool) error {
 	return ui.Run("org.golang-gui.SplitViewProbe", func(app ui.App) ui.RootView {
 		left := ui.VBox(ui.Label("Sidebar / left"), ui.TextInput().ID("sidebar-input"), ui.Label("Minimum: 120 DIP")).Padding(12).Spacing(8).MinSize(120, 0).Hidden(hidden)
 		right := wui.VSplit(
-			ui.ScrollView(ui.TextView().ID("editor").Model(model)).MinSize(0, 100),
+			ui.ScrollView(ui.TextView().ID("editor").Model(model)).Style("text-view").MinSize(0, 100),
 			ui.ScrollView(ui.Label(strings.Repeat("Terminal output\n", 40))).MinSize(0, 60),
 		).ID("inner").MinSize(240, 0).EndSize(terminal).OnResize(func(_, end float32) { terminal = end; app.RequestUpdate() })
 		split := wui.HSplit(left, right).ID("outer").OnResize(func(start, end float32) {
@@ -189,6 +189,7 @@ func runGUI(fallback bool) error {
 	editor := gui.NewTextView()
 	editor.SetModel(gui.NewTextModel(document))
 	scroll := gui.NewScrollView()
+	scroll.SetStyleName("text-view")
 	scroll.SetChild(editor)
 	scroll.SetMinSize(geometry.Size{Height: 100})
 	terminal := gui.NewScrollView()

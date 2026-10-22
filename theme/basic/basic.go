@@ -65,7 +65,7 @@ func coreRules() []style.Rule {
 	family := defaultLabelFontFamily()
 	size := defaultFontSize
 
-	return []style.Rule{
+	rules := []style.Rule{
 		style.Name("border-box").BackgroundColor(color.Transparent).
 			BorderColor(color.Transparent).BorderWidth(0).Radius(0),
 		style.Name(styleNameWindow).BackgroundColor(color.White),
@@ -133,9 +133,11 @@ func coreRules() []style.Rule {
 		style.Name(styleNameTextView).
 			BackgroundColor(color.White).
 			ForegroundColor(color.Black).
-			BorderColor(color.RGBA{R: 180, G: 180, B: 180, A: 255}).BorderWidth(1).Radius(0).
+			BorderWidth(0).Radius(0).
 			FontFamily(family).FontSize(size),
-		style.Name(styleNameTextView).State(style.Focused).BorderColor(accent),
+		style.Name(styleNameTextView).Part("frame").
+			BorderColor(color.RGBA{R: 180, G: 180, B: 180, A: 255}).BorderWidth(1).Radius(0),
+		style.Name(styleNameTextView).Part("frame").State(style.Focused).BorderColor(accent),
 		style.Name(styleNameTextView).Part("selection").BackgroundColor(color.RGBA{R: 185, G: 210, B: 245, A: 255}),
 		style.Name(styleNameTextView).Part("caret").ForegroundColor(color.Black),
 		style.Name(styleNameTextView).Part("placeholder").ForegroundColor(color.RGBA{R: 117, G: 117, B: 117, A: 255}),
@@ -184,6 +186,16 @@ func coreRules() []style.Rule {
 		style.Name(styleNameMenuSeparator).
 			BackgroundColor(color.RGBA{R: 200, G: 200, B: 200, A: 255}),
 	}
+	// The scroll host and its bars explicitly share the editor's style name.
+	base := style.Sheet(rules...)
+	for _, part := range []string{stylePartTrough, stylePartThumb} {
+		for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed} {
+			rule := style.Rule{Sel: style.Sel{Name: styleNameTextView, Part: part, State: state},
+				Style: base.Resolve(style.Sel{Name: styleNameScrollView, Part: part, State: state})}
+			rules = append(rules, rule.BorderWidth(0))
+		}
+	}
+	return rules
 }
 
 // Sheet returns an independently constructed, complete fallback stylesheet.

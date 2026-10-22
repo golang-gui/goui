@@ -45,7 +45,7 @@ func (d *demo) windowPage() ui.View {
 					d.report(fmt.Sprintf(resource.FoundWidget(), w, w.Snapshot().Role))
 				}
 			})).Spacing(10).LineSpacing(8),
-		ui.ScrollView(ui.TextView().ID("snapshot-text").Model(d.inspection).ReadOnly(true).WrapMode(ui.WrapWordChar).Padding(12)).MainWeight(1),
+		ui.ScrollView(ui.TextView().ID("snapshot-text").Model(d.inspection).ReadOnly(true).WrapMode(ui.WrapWordChar).Padding(12)).Style("text-view").MainWeight(1),
 	)
 }
 func (d *demo) inspectSnapshot() {

@@ -191,7 +191,8 @@ ui 的 OnXXX 连接由协调层管理，不要另在 build 中重复 Connect。
 - TextInput 可用 BindText(&state)。TextView 小文档可用 Text／OnText 或 BindText；
   持久编辑文档使用 build 外创建的 TextModel。非 nil Model 不能与 Text／BindText
   混用，外部替换内容可能重置历史、选区和 IME；选区端点是 UTF-8 字节位置，
-  不是 rune 索引。编辑滚动可组合 ScrollView，不手写光标／输入法状态机。
+  不是 rune 索引。编辑滚动使用 `ui.ScrollView(ui.TextView()).Style("text-view")`，
+  由宿主统一绘制包含滚动条的外框；裸 TextView 仅绘正文。不手写光标／输入法状态机。
 - SVG 通过 icon/svg.Parse(reader) 提前解析，位图 Source 使用 icon.NewImage；
   加载错误提前处理。两者默认使用前景色，Logo／多色图片使用 WithRawColors()，配置在 build
   外创建。用 embed 保存静态资源，避免依赖启动工作目录中的相对文件。

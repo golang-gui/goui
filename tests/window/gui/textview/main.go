@@ -132,6 +132,7 @@ func run(megabytes int, numbered, acceptTab bool) error {
 	scrolls.SetSpacing(12)
 	for _, editor := range []*gui.TextView{left, right} {
 		scroll := gui.NewScrollView()
+		scroll.SetStyleName("text-view")
 		scroll.SetChild(editor)
 		scroll.SetMainWeight(1)
 		scrolls.AddChild(scroll)

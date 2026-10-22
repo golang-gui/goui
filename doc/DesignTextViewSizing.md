@@ -30,7 +30,9 @@ TextInput 继续在其单行分配中垂直居中。
 显示不提前创建快照。快照独立于 native layout，换宽重新测量后使其失效。
 有序显示行超过 32 行时每页最多 32 行，保留 4 页；一般非有序度量保留旧查询语义。
 此项不改变原生整段测量，具体阶段见 [片段设计](DesignIncrementalTextLayout.md#12-普通值片段和详细几何分页已实现)。
-Basic / Modern 的 text-view 与 text-input 使用一致默认输入外观，保留独立名称。
+Basic / Modern 的 text-view 与 text-input 使用一致的文本颜色，保留独立名称。
+TextView 的外框由显式使用 `text-view` 样式的 ScrollView 统一绘制，包含
+滚动条；TextInput 保留自身外框，见 [滚动外框设计](DesignScrollFrame.md)。
 
 测量使用当前文档/预编辑、宽度、字体和 WrapMode；变化沿现有 RequestLayout
 失效到父层。颜色和闪烁只绘制。有限高度下确定已达到上限后允许停止；无界时

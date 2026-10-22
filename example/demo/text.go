@@ -23,7 +23,7 @@ func (d *demo) textPage() ui.View {
 			ui.Button(resource.Redo()).Enabled(!d.readonly && d.text.CanRedo()).OnClick(func() { d.editorHistory(true) }),
 		).Spacing(12).LineSpacing(8),
 		ui.ScrollView(ui.TextView().ID("editor").Model(d.text).Placeholder(resource.EditorPlaceholder()).WrapMode(wrap).ReadOnly(d.readonly).Padding(12).
-			OnSelection(func(s ui.TextSelection) { d.selection = s; d.app.RequestUpdate() }).OnText(func(string) { d.app.RequestUpdate() })).MainWeight(1),
+			OnSelection(func(s ui.TextSelection) { d.selection = s; d.app.RequestUpdate() }).OnText(func(string) { d.app.RequestUpdate() })).Style("text-view").MainWeight(1),
 		ui.Label(fmt.Sprintf(resource.SelectionFormat(), d.text.LineCount(), d.selection)),
 	)
 }

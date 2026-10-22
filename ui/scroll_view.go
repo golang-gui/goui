@@ -25,6 +25,8 @@ type ScrollViewView struct {
 
 // ScrollView wraps content in a viewport. Its default MainWeight is 1;
 // MainWeight(0) opts out of sharing a linear parent's remaining space.
+// ScrollView(TextView()).Style("text-view") includes both scrollbars inside
+// the editor frame. An unstyled ScrollView remains transparent.
 func ScrollView(child View) *ScrollViewView {
 	v := &ScrollViewView{dragAutoScroll: true}
 	v.Self = v

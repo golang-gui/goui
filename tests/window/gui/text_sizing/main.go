@@ -1,18 +1,14 @@
-// Text sizing and single-line appearance regression. Requires a native desktop,
-// fonts and typography libraries. Run: go run ./tests/window/gui/text_sizing
-// [-capture-dir DIR] [-inspect]. DIR must exist outside the repository.
-// Linux: optionally set GOUI_PLAT_PAINTER=software/opengl, GOUI_PLAT_SCALE=1/2,
-// XMODIFIERS=@im=none. Windows additionally verifies direct2d; macOS uses Cmd.
-// Initially Basic/Modern Light/Modern Dark show a TextInput, a bare TextView and
-// a capped ScrollView/TextView. Automatically compare same-backend RGBA pixels
-// of equal, unfocused single-line fields (including placeholders), then enter
-// and delete LF/long wrapped text through Window.DispatchEvent/CommitText.
-// Assert content growth, the 96-DIP cap, scrollbar ranges, shrink/offset reset,
-// baseline stability, and shared-model geometry isolation after a resize.
-// Captures are optional. No clipboard or system settings are changed. Automatic
-// success closes the window; early close/failure is nonzero. -inspect keeps the
-// completed window open. Restart resets everything. Physical IME/candidate
-// positioning remains manual; simulated commits do not verify physical IME.
+// 文本尺寸及单行正文像素回归。环境：桌面、原生字体与排版库。
+// 启动：go run ./tests/window/gui/text_sizing [-capture-dir DIR] [-inspect]。
+// DIR 必须是仓库外已有目录。Linux 可用 GOUI_PLAT_PAINTER=software/opengl、
+// GOUI_PLAT_SCALE=1/1.5/2、XMODIFIERS=@im=none；Windows 另测 Direct2D，macOS 用 Cmd。
+// 初始：Basic、Modern Light/Dark 各一组 TextInput、无框 TextView、带统一外框且
+// 高度受限的 ScrollView/TextView。比较单行正文与 Placeholder 的同后端 RGBA
+// 像素，外框与圆角按各自职责另验；从正常 DispatchEvent/CommitText 输入和删除
+// 换行及长文本，断言内容增长（含宿主边距）、96 DIP 上限、滚动范围、收缩复位、
+// baseline 与共享模型视图的独立排版。自动成功关闭，提前关闭或失败非零退出。
+// -inspect 保留窗口供人工检查，重启复位；不改剪贴板或系统设置。
+// 物理 IME 与候选窗仍须人工验收，模拟提交不代表真实输入法通过。
 package main
 
 import (
@@ -21,6 +17,7 @@ import (
 	"image"
 	"image/png"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -31,6 +28,7 @@ import (
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/style"
 	"github.com/golang-gui/goui/theme/basic"
 	"github.com/golang-gui/goui/theme/modern"
 )
@@ -79,6 +77,7 @@ func main() {
 		growing[i].SetModel(model)
 		growing[i].SetPlaceholder("Multiline")
 		scrolls[i] = gui.NewScrollView()
+		scrolls[i].SetStyleName("text-view")
 		scrolls[i].SetDirection(gui.ScrollVertical)
 		scrolls[i].SetMainWeight(0)
 		scrolls[i].SetMaxSize(geometry.Size{Height: 96})
@@ -115,8 +114,16 @@ func main() {
 			b, err := gui.RenderWidget(views[i], 0)
 			must(err)
 			check(a.Bounds() == b.Bounds(), "single-line raster size")
-			for y := a.Bounds().Min.Y; y < a.Bounds().Max.Y; y++ {
-				for x := a.Bounds().Min.X; x < a.Bounds().Max.X; x++ {
+			// TextInput 自绘外框，裸 TextView 仅绘正文；只剔除有契约差异的
+			// 边框/圆角带，正文及 Placeholder 仍逐像素精确比较。
+			s := gui.ResolveWidgetStyle(inputs[i], "text-input", style.PartDefault, style.Normal)
+			border, _ := s.BorderWidth()
+			radius, _ := s.Radius()
+			scale := float64(a.Bounds().Dx()) / float64(inputs[i].Rect().Width)
+			// 再排除一物理像素的笔画抗锯齿覆盖，不改变正文颜色的精确断言。
+			inset := int(math.Ceil(float64(max(border, radius))*scale)) + 1
+			for y := a.Bounds().Min.Y + inset; y < a.Bounds().Max.Y-inset; y++ {
+				for x := a.Bounds().Min.X + inset; x < a.Bounds().Max.X-inset; x++ {
 					ar, ag, ab, aa := a.At(x, y).RGBA()
 					br, bg, bb, ba := b.At(x, y).RGBA()
 					check(ar == br && ag == bg && ab == bb && aa == ba, fmt.Sprintf("single-line pixels differ theme=%d at %d,%d", i, x, y))
@@ -144,8 +151,10 @@ func main() {
 			must(win.CommitText("\nsecond"))
 		case 2:
 			for i := range inputs {
-				expected := 2*oneLine[i] - 2*growing[i].Padding()
-				check(scrolls[i].Rect().Height == expected, fmt.Sprintf("multiline height %d: got=%g want=%g", i, scrolls[i].Rect().Height, expected))
+				frameInset := scrolls[i].Children()[0].Rect().Y
+				expected := 2*oneLine[i] - 2*growing[i].Padding() - 2*frameInset
+				// 分数 DIP 的加减有浮点舍入；误差上限 0.001 DIP。
+				check(math.Abs(float64(scrolls[i].Rect().Height-expected)) < .001, fmt.Sprintf("multiline height %d: got=%g want=%g", i, scrolls[i].Rect().Height, expected))
 			}
 			must(win.CommitText(strings.Repeat("\nrow", 80)))
 		case 3:
