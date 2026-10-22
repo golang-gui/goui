@@ -7,6 +7,7 @@ import (
 	"image/color"
 	"math"
 	"path/filepath"
+	"slices"
 	"sync/atomic"
 	"unsafe"
 
@@ -471,6 +472,8 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 	lines = make([]typography.TextLine, 0, len(lineMetrics))
 
 	clusterMetrics, _ := t.layout.GetClusterMetrics()
+	runs := t.clusterMetricRuns(clusterMetrics)
+	runIndex := 0
 	clusters = make([]typography.TextCluster, 0, len(clusterMetrics))
 
 	pos, index := 0, 0
@@ -502,7 +505,22 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 			// the next line starts aligned. Other zero-width clusters still
 			// carry text ranges.
 			if clusterEnd > pos && clusterEnd <= contentEnd && !dwCluster.IsNewLine() {
-				_, _, hit, _ := t.layout.HitTestTextPosition(pos, false)
+				for runIndex < len(runs) && pos >= int(runs[runIndex].TextPosition+runs[runIndex].Length) {
+					runIndex++
+				}
+				var hit dwrite.HitTestMetrics
+				if runIndex < len(runs) && runs[runIndex].valid && int(runs[runIndex].TextPosition) <= pos && clusterEnd <= int(runs[runIndex].TextPosition+runs[runIndex].Length) {
+					run := &runs[runIndex]
+					hit.BidiLevel = run.BidiLevel
+					x := float64(run.Left) + run.advance
+					if hit.BidiLevel&1 != 0 {
+						x = float64(run.Left) + float64(run.Width) - run.advance - float64(dwCluster.Width)
+					}
+					hit.Left = float32(x)
+					run.advance += float64(dwCluster.Width)
+				} else {
+					_, _, hit, _ = t.layout.HitTestTextPosition(pos, false)
+				}
 				cluster := typography.TextCluster{
 					Start: t.position.ToUtf8(pos),
 					X:     hit.Left, Y: line.Y,
@@ -536,6 +554,50 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 	}
 
 	return
+}
+
+// Native range hit boxes preserve line alignment, resolved bidi levels and
+// inline-object placement. Inside a complete box, GetClusterMetrics supplies
+// the already shaped advances; no per-cluster native hit test is necessary.
+// Unpartitioned or adjusted boxes retain exact native position queries.
+type clusterMetricRun struct {
+	dwrite.HitTestMetrics
+	advance float64
+	valid   bool
+}
+
+func (t *TextLayout) clusterMetricRuns(clusters []dwrite.ClusterMetrics) []clusterMetricRun {
+	// Justification can adjust interior placement independently of a box sum.
+	if t.format.TextAlign == typography.TextAlignFill {
+		return nil
+	}
+	hits, hr := t.layout.HitTestTextRange(0, t.position.ToUtf16(len(t.text)), 0, 0)
+	if hr.Failed() {
+		return nil
+	}
+	slices.SortFunc(hits, func(a, b dwrite.HitTestMetrics) int { return int(a.TextPosition) - int(b.TextPosition) })
+	runs := make([]clusterMetricRun, len(hits))
+	pos, index := 0, 0
+	for i, hit := range hits {
+		start, end := int(hit.TextPosition), int(hit.TextPosition+hit.Length)
+		for index < len(clusters) && pos < start {
+			pos += int(clusters[index].Length)
+			index++
+		}
+		valid := pos == start && start < end && hit.IsTrimmed == 0
+		width := float64(0)
+		for index < len(clusters) && pos < end {
+			c := clusters[index]
+			width += float64(c.Width)
+			pos += int(c.Length)
+			index++
+		}
+		// A box may be clipped, trimmed or include special layout adjustments.
+		// Compare in native float precision before deriving interior positions.
+		valid = valid && pos == end && math.Abs(width-float64(hit.Width)) <= float64(math.Nextafter32(hit.Width, float32(math.Inf(1)))-hit.Width)*2
+		runs[i] = clusterMetricRun{HitTestMetrics: hit, valid: valid}
+	}
+	return runs
 }
 
 func (t *TextLayout) MeasureSize() (width, height float32) {
