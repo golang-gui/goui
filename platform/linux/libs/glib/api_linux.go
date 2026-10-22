@@ -19,6 +19,7 @@ var (
 	gObjectGet   = gobject.NewSymbol("g_object_get")
 
 	gFree             = glib.NewSymbol("g_free")
+	gListFree         = glib.NewSymbol("g_list_free")
 	gGetLanguageNames = glib.NewSymbol("g_get_language_names")
 	gFilenameToURI    = glib.NewSymbol("g_filename_to_uri")
 	gErrorFree        = glib.NewSymbol("g_error_free")
@@ -95,6 +96,15 @@ type GSList[T any] struct {
 	Data *T
 	Next *GSList[T]
 }
+
+// GList is GLib's doubly linked list. Free releases the list nodes only; the
+// caller must separately release any owned elements with their own allocator.
+type GList[T any] struct {
+	Data       *T
+	Next, Prev *GList[T]
+}
+
+func (l *GList[T]) Free() { gListFree.CallRaw(uintptr(unsafe.Pointer(l))) }
 
 // GError is the native GLib error layout. Copy its diagnostic before ErrorFree.
 type GError struct {

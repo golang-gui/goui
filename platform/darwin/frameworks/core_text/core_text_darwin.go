@@ -232,6 +232,14 @@ func CTRunGetTypographicBounds(run CTRunRef, r CFRange) (width, ascent, descent,
 	return
 }
 
+// CTRunGetGlyphs copies CGGlyph (UInt16) values for the requested glyph range.
+func CTRunGetGlyphs(run CTRunRef, r CFRange, glyphs []uint16) {
+	if len(glyphs) == 0 {
+		return
+	}
+	fnCTRunGetGlyphs(run, r, unsafe.Pointer(&glyphs[0]))
+}
+
 func CTRunGetPositions(run CTRunRef, r CFRange, positions []CGPoint) {
 	if len(positions) == 0 {
 		return
@@ -514,6 +522,7 @@ var functions = []utils.Function{
 	{Name: "CTRunGetGlyphCount", PFunc: &fnCTRunGetGlyphCount},
 	{Name: "CTRunGetStringRange", PFunc: &fnCTRunGetStringRange},
 	{Name: "CTRunGetTypographicBounds", PFunc: &fnCTRunGetTypographicBounds},
+	{Name: "CTRunGetGlyphs", PFunc: &fnCTRunGetGlyphs},
 	{Name: "CTRunGetPositions", PFunc: &fnCTRunGetPositions},
 	{Name: "CTRunGetAdvances", PFunc: &fnCTRunGetAdvances},
 	{Name: "CTRunGetStringIndices", PFunc: &fnCTRunGetStringIndices},
@@ -567,6 +576,7 @@ var (
 	fnCTRunGetGlyphCount        func(run CTRunRef) CFIndex
 	fnCTRunGetStringRange       func(run CTRunRef) CFRange
 	fnCTRunGetTypographicBounds func(run CTRunRef, r CFRange, ascent *CGFloat, descent *CGFloat, leading *CGFloat) CGFloat
+	fnCTRunGetGlyphs            func(run CTRunRef, r CFRange, glyphs unsafe.Pointer)
 	fnCTRunGetPositions         func(run CTRunRef, r CFRange, positions unsafe.Pointer)
 	fnCTRunGetAdvances          func(run CTRunRef, r CFRange, advances unsafe.Pointer)
 	fnCTRunGetStringIndices     func(run CTRunRef, r CFRange, indices unsafe.Pointer)

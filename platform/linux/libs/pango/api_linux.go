@@ -10,8 +10,14 @@ import (
 )
 
 var (
-	libpango   = cgo.NewLazyLibrary("libpango-1.0.so.0")
-	libpangofc = cgo.NewLazyLibrary("libpangoft2-1.0.so.0")
+	libpango                           = cgo.NewLazyLibrary("libpango-1.0.so.0")
+	libpangofc                         = cgo.NewLazyLibrary("libpangoft2-1.0.so.0")
+	pangoItemize                       = libpango.NewSymbol("pango_itemize")
+	pangoItemFree                      = libpango.NewSymbol("pango_item_free")
+	pangoGlyphStringNew                = libpango.NewSymbol("pango_glyph_string_new")
+	pangoGlyphStringFree               = libpango.NewSymbol("pango_glyph_string_free")
+	pangoShapeWithFlags                = libpango.NewSymbol("pango_shape_with_flags")
+	pangoContextGetRoundGlyphPositions = libpango.NewSymbol("pango_context_get_round_glyph_positions")
 
 	// PangoLayout
 	pangoLayoutGetSerial          = libpango.NewSymbol("pango_layout_get_serial")
@@ -455,6 +461,49 @@ type Item struct {
 	Length   int32
 	NumChars int32
 	Analysis Analysis
+}
+
+// Itemize returns owned items in logical order, including resolved font and
+// bidi analysis. The returned native items must each be freed by Item.Free.
+// Text and attributes are borrowed only for this call. List nodes are freed
+// here without releasing the items.
+func (c Context) Itemize(text string, start, length int, attrs AttrList) []*Item {
+	cText := cgo.CStringTemp(text)
+	head := cgo.CallRet[*glib.GList[Item]](pangoItemize.Addr(), c.GObject, cText, int32(start), int32(length), attrs, uintptr(0))
+	runtime.KeepAlive(cText)
+	defer head.Free()
+	var items []*Item
+	for node := head; node != nil; node = node.Next {
+		items = append(items, node.Data)
+	}
+	return items
+}
+
+func (item *Item) Free() { pangoItemFree.CallRaw(uintptr(unsafe.Pointer(item))) }
+
+func GlyphStringNew() *GlyphString { return cgo.CallRet[*GlyphString](pangoGlyphStringNew.Addr()) }
+
+func (glyphs *GlyphString) Free() { pangoGlyphStringFree.CallRaw(uintptr(unsafe.Pointer(glyphs))) }
+
+// ShapeFlags are PangoShapeFlags (Pango 1.44 and later).
+type ShapeFlags uint32
+
+const ShapeRoundPositions ShapeFlags = 1
+
+// ShapeWithFlags shapes [start,start+length) in a borrowed native UTF-8
+// paragraph buffer. Both pointers address the same allocation, as required for
+// cross-item context. Explicit length excludes the terminating NUL. The caller
+// keeps the buffer and analysis alive for this synchronous call. Passing an
+// already retained buffer avoids copying the entire paragraph per substring.
+func ShapeWithFlags(paragraph unsafe.Pointer, paragraphLength, start, length int, analysis *Analysis, glyphs *GlyphString, flags ShapeFlags) {
+	pangoShapeWithFlags.CallRaw(uintptr(unsafe.Add(paragraph, start)), uintptr(int32(length)), uintptr(paragraph), uintptr(int32(paragraphLength)), uintptr(cgo.Pointer(analysis)), uintptr(unsafe.Pointer(glyphs)), uintptr(flags))
+	runtime.KeepAlive(analysis)
+	runtime.KeepAlive(glyphs)
+}
+
+func (c Context) GetRoundGlyphPositions() bool {
+	value, _, _ := pangoContextGetRoundGlyphPositions.CallRaw(c.GObject)
+	return int32(value) != 0
 }
 
 type Analysis struct {
