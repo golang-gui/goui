@@ -1123,11 +1123,16 @@ func (p *Painter) setLinearGradient(gradient graphics.LinearGradient) bool {
 			{Position: 0, Color: d2dColor(gradient.StartColor)},
 			{Position: 1, Color: d2dColor(gradient.EndColor)},
 		}
-		var hr com.HRESULT
-		p.linearStops, hr = p.render.CreateGradientStopCollection(stops[:], d2d1.D2D1_GAMMA_2_2, d2d1.D2D1_EXTEND_MODE_CLAMP)
+		// Color parameters are straight alpha, but interpolation must operate
+		// on premultiplied sRGB channels, as in the other Painter backends.
+		collection, hr := p.render.CreateGradientStopCollection1(stops[:],
+			d2d1.D2D1_COLOR_SPACE_SRGB, d2d1.D2D1_COLOR_SPACE_SRGB,
+			d2d1.D2D1_BUFFER_PRECISION_8BPC_UNORM, d2d1.D2D1_EXTEND_MODE_CLAMP,
+			d2d1.D2D1_COLOR_INTERPOLATION_MODE_PREMULTIPLIED)
 		if hr.Failed() {
 			return false
 		}
+		p.linearStops = &collection.GradientStopCollection
 		props := d2d1.LinearGradientBrushProperties{
 			StartPoint: d2d1.Point2F{X: gradient.Start.X, Y: gradient.Start.Y},
 			EndPoint:   d2d1.Point2F{X: gradient.End.X, Y: gradient.End.Y},

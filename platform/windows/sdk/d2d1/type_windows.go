@@ -23,6 +23,32 @@ type ColorF struct {
 	R, G, B, A float32 // D3DCOLORVALUE
 }
 
+type ColorSpace uint32
+
+const (
+	D2D1_COLOR_SPACE_CUSTOM ColorSpace = 0
+	D2D1_COLOR_SPACE_SRGB   ColorSpace = 1
+	D2D1_COLOR_SPACE_SCRGB  ColorSpace = 2
+)
+
+type BufferPrecision uint32
+
+const (
+	D2D1_BUFFER_PRECISION_UNKNOWN         BufferPrecision = 0
+	D2D1_BUFFER_PRECISION_8BPC_UNORM      BufferPrecision = 1
+	D2D1_BUFFER_PRECISION_8BPC_UNORM_SRGB BufferPrecision = 2
+	D2D1_BUFFER_PRECISION_16BPC_UNORM     BufferPrecision = 3
+	D2D1_BUFFER_PRECISION_16BPC_FLOAT     BufferPrecision = 4
+	D2D1_BUFFER_PRECISION_32BPC_FLOAT     BufferPrecision = 5
+)
+
+type ColorInterpolationMode uint32
+
+const (
+	D2D1_COLOR_INTERPOLATION_MODE_STRAIGHT      ColorInterpolationMode = 0
+	D2D1_COLOR_INTERPOLATION_MODE_PREMULTIPLIED ColorInterpolationMode = 1
+)
+
 type RectF struct {
 	Left, Top, Right, Bottom float32
 }

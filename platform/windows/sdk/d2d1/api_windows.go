@@ -395,6 +395,8 @@ type GradientStopCollection struct {
 	Resource
 }
 
+type GradientStopCollection1 struct{ GradientStopCollection }
+
 type LinearGradientBrushClass struct {
 	BrushClass
 
@@ -636,6 +638,13 @@ type DeviceContextClass struct {
 }
 
 type DeviceContext struct{ RenderTarget }
+
+func (this *DeviceContext) CreateGradientStopCollection1(stops []GradientStop, pre, post ColorSpace, precision BufferPrecision, extend ExtendMode, interpolation ColorInterpolationMode) (collection *GradientStopCollection1, hr com.HRESULT) {
+	hr = cgo.CallRet[com.HRESULT]((*DeviceContextClass)(this.Class).CreateGradientStopCollection1,
+		this, cgo.CSlice(stops), uint32(len(stops)), pre, post, precision, extend, interpolation, &collection)
+	runtime.KeepAlive(stops)
+	return
+}
 
 func (this *DeviceContext) CreateBitmap1(size SizeU, data []byte, pitch uint32, props *BitmapProperties1) (bitmap *Bitmap1, hr com.HRESULT) {
 	hr = cgo.CallRet[com.HRESULT]((*DeviceContextClass)(this.Class).CreateBitmap1, this, size, cgo.CSlice(data), pitch, props, &bitmap)

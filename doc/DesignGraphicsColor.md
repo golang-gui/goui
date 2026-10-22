@@ -41,6 +41,27 @@ Direct2D 原生参数依据：[画刷颜色](https://learn.microsoft.com/en-us/w
 [渐变端点](https://learn.microsoft.com/en-us/windows/win32/api/d2d1_1/nf-d2d1_1-id2d1devicecontext-creategradientstopcollection)。
 目标位图采用预乘格式，不代表颜色参数也采用预乘格式。
 
+### Direct2D 渐变插值
+
+Direct2D 后端已有 ID2D1DeviceContext，使用其 CreateGradientStopCollection1
+绑定显式选择输入/输出 sRGB、8BPC_UNORM、CLAMP 和 PREMULTIPLIED 插值。
+端点仍先反预乘为原生 straight alpha；插值前预乘由 Direct2D 完成，不把预乘
+端点直接传给原生，也不在 Widget 或渐变值中补偿。
+
+旧 RenderTarget 版本的 CreateGradientStopCollection 在 Windows 10 / WARP
+实测对不同 alpha 的端点产生 straight 插值结果：红 alpha=64、蓝 alpha=192
+的中点为预乘 `{64,0,64,128}`，不符合既定 `{32,0,96,128}` 契约。
+采用 DeviceContext 版本的原因是其显式提供插值模式；不增加新的 Painter API、
+颜色空间选项或软件渐变替代路径，不改变既有画刷缓存的所有权和失效条件。
+
+依据：[Microsoft 的 DeviceContext 渐变契约](https://learn.microsoft.com/en-us/windows/win32/api/d2d1_1/nf-d2d1_1-id2d1devicecontext-creategradientstopcollection)
+明确区分端点参数与插值模式；sRGB → sRGB 不额外做 gamma 转换。
+参考 [Qt 6.8.0 颜色表生成](https://github.com/qt/qtbase/blob/v6.8.0/src/gui/painting/qpaintengine_raster.cpp#L3949)
+在 ColorInterpolation 模式下先预乘端点再插值的做法，沿用 GOUI 已有契约，
+不引入颜色表缓存。
+回归保留原填充/描边绝对值断言，增加 1x/1.5x/2x 的四分位采样、透明端点、
+同色端点换方向和颜色缓存切换；量化容差保持为 ±2，不扩大容差掩盖失败。
+
 ## 文字颜色
 
 TextFormat.TextColor 和 SetTextColor 使用标准 Go color.Color，而不是 graphics.Color

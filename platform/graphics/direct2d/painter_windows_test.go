@@ -552,6 +552,47 @@ func TestD2DColorBoundary(t *testing.T) {
 	}
 }
 
+func TestPremultipliedGradientInterpolation(t *testing.T) {
+	for _, scale := range []float32{1, 1.5, 2} {
+		t.Run(fmt.Sprint(scale), func(t *testing.T) {
+			// 采样落在渐变的 1/4、1/2、3/4 处，远离边缘和抗锯齿。
+			// 预期为预乘 sRGB 的独立通道插值；仅容许 8 位量化的 ±2。
+			partial := [3]color.RGBA{{R: 48, B: 48, A: 96}, {R: 32, B: 96, A: 128}, {R: 16, B: 144, A: 160}}
+			cases := []struct {
+				start, end graphics.Color
+				reverse    bool
+				want       [3]color.RGBA
+			}{
+				{graphics.RGBA(255, 0, 0, 64), graphics.RGBA(0, 0, 255, 192), false, partial},
+				{graphics.RGBA(255, 0, 0, 64), graphics.RGBA(0, 0, 255, 192), true, [3]color.RGBA{partial[2], partial[1], partial[0]}},
+				{graphics.RGBA(255, 0, 0, 0), graphics.RGB(0, 0, 255), false, [3]color.RGBA{{B: 64, A: 64}, {B: 128, A: 128}, {B: 191, A: 191}}},
+				{graphics.RGBA(255, 0, 0, 64), graphics.RGBA(0, 0, 255, 192), false, partial},
+			}
+			img := renderAlphaTestImage(t, scale, geometry.Identity(), graphics.Rectangle{}, func(p *Painter) {
+				for row, tc := range cases {
+					start, end := float32(4)+.5/scale, float32(20)+.5/scale
+					if tc.reverse {
+						start, end = end, start
+					}
+					p.FillRect(graphics.Rect(4, float32(4+row*8), 16, 6), graphics.LinearGradient{
+						Start: graphics.Point{X: start}, End: graphics.Point{X: end}, StartColor: tc.start, EndColor: tc.end,
+					})
+				}
+			})
+			for row, tc := range cases {
+				for i, x := range []int{8, 12, 16} {
+					got, want := img.RGBAAt(int(float32(x)*scale), int(float32(6+row*8)*scale)), tc.want[i]
+					for _, pair := range [][2]byte{{got.R, want.R}, {got.G, want.G}, {got.B, want.B}, {got.A, want.A}} {
+						if math.Abs(float64(pair[0])-float64(pair[1])) > 2 {
+							t.Fatalf("row=%d x=%d got %v want %v", row, x, got, want)
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
 // WARP + CPU-readable bitmaps; no HWND, display connection or desktop needed.
 func renderAlphaTestImage(t *testing.T, scale float32, transform geometry.Transform, clip graphics.Rectangle, draw func(*Painter)) *image.RGBA {
 	t.Helper()
