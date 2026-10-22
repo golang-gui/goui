@@ -20,6 +20,7 @@ var (
 	cairoSetSourceRgb                = libcairo.NewSymbol("cairo_set_source_rgb")
 	cairoSetSourceRgba               = libcairo.NewSymbol("cairo_set_source_rgba")
 	cairoPaint                       = libcairo.NewSymbol("cairo_paint")
+	cairoNewPath                     = libcairo.NewSymbol("cairo_new_path")
 	cairoMoveTo                      = libcairo.NewSymbol("cairo_move_to")
 	cairoLineTo                      = libcairo.NewSymbol("cairo_line_to")
 	cairoStroke                      = libcairo.NewSymbol("cairo_stroke")
@@ -200,4 +201,9 @@ func (fo FontOptions) SetHintMetrics(metrics HintMetrics) {
 func (s Status) String() string {
 	ret, _, _ := cairoStatusToString.CallRaw(uintptr(s))
 	return cgo.GoStringTemp(cgo.Pointer(ret))
+}
+
+// NewPath clears the current path and removes its current point.
+func (cr Context) NewPath() {
+	cairoNewPath.CallRaw(uintptr(cr))
 }

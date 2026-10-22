@@ -117,18 +117,21 @@ func (c *Context) NewTextLayout(text string, format typography.TextFormat, width
 }
 
 type TextLayout struct {
-	context      pango.Context
-	layout       pango.Layout
-	text         string
-	format       typography.TextFormat
-	width        float32
-	height       float32
-	attrs        pango.AttrList
-	chars        int
-	painter      textPainter
-	life         lifecycle.Layout
-	strikes      []textRange
-	placeholders map[int]typography.PlaceholderMetrics
+	context          pango.Context
+	layout           pango.Layout
+	text             string
+	format           typography.TextFormat
+	width            float32
+	height           float32
+	attrs            pango.AttrList
+	chars            int
+	painter          textPainter
+	life             lifecycle.Layout
+	strikes          []textRange
+	placeholders     map[int]typography.PlaceholderMetrics
+	rasterLines      []rasterLine
+	rasterLinesValid bool
+	rasterSerial     uint32
 }
 
 type textRange struct{ start, end int }
@@ -161,6 +164,7 @@ func (t *TextLayout) Destroy() {
 	if !t.life.BeginDestroy() {
 		return
 	}
+	t.rasterLines = nil
 	t.painter.Destroy()
 	if t.layout.Valid() {
 		t.layout.Unref()
@@ -171,6 +175,44 @@ func (t *TextLayout) Destroy() {
 		t.context.Unref()
 		t.context.GObject = 0
 	}
+}
+
+func (t *TextLayout) changed() {
+	// Native line pointers are borrowed only until any layout mutation.
+	t.rasterLines = nil
+	t.rasterLinesValid = false
+	t.life.Changed()
+}
+
+type rasterLine struct {
+	line *pango.LayoutLine
+	ink  pango.Rectangle
+	x, y float64
+}
+
+func (t *TextLayout) prepareRasterLines() {
+	serial := t.layout.GetSerial()
+	if t.rasterLinesValid && t.rasterSerial == serial {
+		return
+	}
+	t.rasterLines = nil
+	iter := t.layout.GetIter()
+	defer iter.Free()
+	for {
+		line := iter.GetLineReadonly()
+		if line == nil {
+			break
+		}
+		var ink, logical pango.Rectangle
+		iter.GetLineExtents(&ink, &logical)
+
+		t.rasterLines = append(t.rasterLines, rasterLine{line: line, ink: ink, x: float64(logical.X) / pango.Scale, y: float64(iter.GetBaseline()) / pango.Scale})
+		if !iter.NextLine() {
+			break
+		}
+	}
+	t.rasterLinesValid = true
+	t.rasterSerial = serial
 }
 
 func (t *TextLayout) ConnectChanged(fn func()) signal.Handle {
@@ -202,7 +244,7 @@ func (t *TextLayout) SetSize(maxWidth, maxHeight float32) {
 	if t.format.WrapMode != typography.WrapNone {
 		t.layout.SetWidth(roundToPixel(t.width) * pango.Scale)
 	}
-	t.life.Changed()
+	t.changed()
 }
 
 func (t *TextLayout) SetTextAlignment(align typography.TextAlignment) {
@@ -219,7 +261,7 @@ func (t *TextLayout) SetTextAlignment(align typography.TextAlignment) {
 		t.layout.SetAlignment(pango.AlignCenter)
 	}
 	t.layout.SetJustify(align == typography.TextAlignFill)
-	t.life.Changed()
+	t.changed()
 }
 
 func (t *TextLayout) SetWrapMode(wrap typography.WrapMode) {
@@ -238,7 +280,7 @@ func (t *TextLayout) SetWrapMode(wrap typography.WrapMode) {
 	} else {
 		t.layout.SetWidth(-1)
 	}
-	t.life.Changed()
+	t.changed()
 }
 
 func (t *TextLayout) SetTabWidth(width float32) {
@@ -264,7 +306,7 @@ func (t *TextLayout) SetTabWidth(width float32) {
 		t.layout.SetTabs(tabs)
 		tabs.Free()
 	}
-	t.life.Changed()
+	t.changed()
 }
 
 func (t *TextLayout) SetTextFont(start, length int, font typography.FontInfo) {
@@ -278,7 +320,7 @@ func (t *TextLayout) SetTextFont(start, length int, font typography.FontInfo) {
 	attr.StartIndex, attr.EndIndex = uint32(start), uint32(start+length)
 	t.attrs.Change(attr)
 	t.layout.ContextChanged()
-	t.life.Changed()
+	t.changed()
 }
 
 func (t *TextLayout) SetPlaceholder(start int, metrics *typography.PlaceholderMetrics) {
@@ -299,7 +341,7 @@ func (t *TextLayout) SetPlaceholder(start int, metrics *typography.PlaceholderMe
 		t.attrs.Insert(attr)
 	}
 	t.layout.ContextChanged()
-	t.life.Changed()
+	t.changed()
 }
 
 func createFontDescription(request typography.FontInfo) (pango.FontDescription, error) {
@@ -345,7 +387,7 @@ func (t *TextLayout) SetTextColor(start, length int, foreground color.Color) {
 		t.attrs.Change(alpha)
 
 		t.layout.ContextChanged()
-		t.life.Changed()
+		t.changed()
 	}
 }
 
@@ -365,7 +407,7 @@ func (t *TextLayout) SetUnderline(start, length int, underline bool) {
 		t.attrs.Change(attr)
 
 		t.layout.ContextChanged()
-		t.life.Changed()
+		t.changed()
 	}
 }
 
@@ -397,7 +439,7 @@ func (t *TextLayout) SetStrikethrough(start, length int, strike bool) {
 		t.strikes = ranges
 		// Keep decoration out of native attributes: PangoCairo merges adjacent
 		// strikes across font runs. Changing a strike must not reshape the text.
-		t.life.Changed()
+		t.changed()
 	}
 }
 
@@ -412,7 +454,11 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 		return
 	}
 	lines = make([]typography.TextLine, 0, lineCount)
-
+	serial := t.layout.GetSerial()
+	buildRaster := !t.rasterLinesValid || t.rasterSerial != serial
+	if buildRaster {
+		t.rasterLines = make([]rasterLine, 0, lineCount)
+	}
 	clusters = make([]typography.TextCluster, 0, t.chars)
 	iter := t.layout.GetIter()
 	defer iter.Free()
@@ -440,9 +486,16 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 		}
 		if nativeLine != previous {
 			finishLine()
-			var rect pango.Rectangle
-			iter.GetLineExtents(nil, &rect)
+			var rect, ink pango.Rectangle
+			if buildRaster {
+				iter.GetLineExtents(&ink, &rect)
+			} else {
+				iter.GetLineExtents(nil, &rect)
+			}
 			baseline := iter.GetBaseline()
+			if buildRaster {
+				t.rasterLines = append(t.rasterLines, rasterLine{line: nativeLine, ink: ink, x: float64(rect.X) / pango.Scale, y: float64(baseline) / pango.Scale})
+			}
 			lines = append(lines, typography.TextLine{
 				Start: int(nativeLine.StartIndex), Length: int(nativeLine.Length),
 				X: float32(rect.X) / pango.Scale, Y: float32(rect.Y) / pango.Scale,
@@ -487,6 +540,10 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 		}
 	}
 	finishLine()
+	if buildRaster {
+		t.rasterLinesValid = true
+		t.rasterSerial = serial
+	}
 	return
 }
 
@@ -582,10 +639,29 @@ func (p *textPainter) DrawTextLayout(t *TextLayout, region image.Rectangle, scal
 	p.context.Scale(float64(scale), float64(scale))
 	r, g, b, a := toColor(t.format.TextColor)
 	p.context.SetSourceRGBA(r, g, b, a)
-	p.context.MoveTo(0, 0)
-	// UpdateLayout would reshape with scale-dependent hinted advances and can
-	// change wrapping. Render the already measured layout without updating it.
-	pango_cairo.ShowLayout(p.context, t.layout)
+	// Render only native lines whose ink can reach the requested pixel box.
+	// The whole paragraph remains the shaping context; this changes rendering
+	// traversal, never line breaks or measured glyphs. Include a physical-pixel
+	// antialiasing fringe, including negative ink and italic overhang.
+	t.prepareRasterLines()
+	for _, line := range t.rasterLines {
+		ink := line.ink
+		left := math.Floor(float64(ink.X)/pango.Scale*float64(scale)) - 1
+		top := math.Floor(float64(ink.Y)/pango.Scale*float64(scale)) - 1
+		right := math.Ceil(float64(int64(ink.X)+int64(ink.Width))/pango.Scale*float64(scale)) + 1
+		bottom := math.Ceil(float64(int64(ink.Y)+int64(ink.Height))/pango.Scale*float64(scale)) + 1
+		if right <= float64(region.Min.X) || left >= float64(region.Max.X) || bottom <= float64(region.Min.Y) || top >= float64(region.Max.Y) {
+			continue
+		}
+		p.context.Save()
+		p.context.Translate(line.x, line.y)
+		// A Cairo path current point is quantized in device space. Translating
+		// the matrix with no current point preserves the original fractional
+		// baseline exactly, including fractional raster scales and tile offsets.
+		p.context.NewPath()
+		pango_cairo.ShowLayoutLine(p.context, line.line)
+		p.context.Restore()
+	}
 	t.drawStrikethrough(p.context, 0, 0)
 	if status := p.context.Status(); status != 0 {
 		return fmt.Errorf("cairo draw pango layout err: %v", status)

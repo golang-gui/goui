@@ -16,6 +16,7 @@ var (
 	pangoCairoContextSetFontOptions = libpangocairo.NewSymbol("pango_cairo_context_set_font_options")
 	pangoCairoUpdateContext         = libpangocairo.NewSymbol("pango_cairo_update_context")
 	pangoCairoUpdateLayout          = libpangocairo.NewSymbol("pango_cairo_update_layout")
+	pangoCairoShowLayoutLine        = libpangocairo.NewSymbol("pango_cairo_show_layout_line")
 	pangoCairoShowLayout            = libpangocairo.NewSymbol("pango_cairo_show_layout")
 )
 
@@ -61,4 +62,10 @@ func ContextSetFontOptions(context pango.Context, options cairo.FontOptions) {
 func ShowLayout(cr cairo.Context, layout pango.Layout) {
 	// void	pango_cairo_show_layout(cairo_t* cr, PangoLayout* layout)
 	pangoCairoShowLayout.CallRaw(uintptr(cr), layout.GObject)
+}
+
+// ShowLayoutLine draws the retained native line at the current Cairo point.
+// The point specifies the glyph origin at the baseline, not its top-left.
+func ShowLayoutLine(cr cairo.Context, line *pango.LayoutLine) {
+	pangoCairoShowLayoutLine.CallRaw(uintptr(cr), uintptr(cgo.Pointer(line)))
 }
