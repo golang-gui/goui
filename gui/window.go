@@ -142,6 +142,7 @@ const (
 
 type window struct {
 	rootBase
+	tooltip        tooltipState
 	id             string
 	title          string
 	styleName      string
@@ -387,6 +388,7 @@ func (w *window) Destroy() {
 		return
 	}
 	w.destroyed = true
+	w.tooltip.dismiss(false)
 	w.destroyFrames()
 	w.cancelInput(GestureHostClosed)
 	w.drag.destroy()
@@ -483,6 +485,10 @@ func (w *window) DispatchEvent(event events.Event) error {
 		w.app.dispatchDragSourceEvent(e)
 		return nil
 	}
+	if w.destroyed {
+		return nil
+	}
+	w.tooltip.dismissOnEvent(w, event)
 	if w.destroyed {
 		return nil
 	}
@@ -708,6 +714,11 @@ func (w *window) SetModalTarget(target ModalTarget) {
 		return
 	}
 	wasModal := w.modalTarget != nil
+	epoch := w.tooltip.epoch
+	w.tooltip.dismiss(false)
+	if w.destroyed || w.tooltip.epoch != epoch+1 {
+		return
+	}
 	w.modalTarget = target
 	if target != nil {
 		w.cancelInput(GestureInterrupted)
@@ -787,6 +798,10 @@ func (w *window) paint() {
 	if laidOut {
 		w.refreshDragMotion(w)
 	}
+	if w.destroyed {
+		return
+	}
+	w.tooltip.refresh(laidOut)
 	if w.destroyed {
 		return
 	}

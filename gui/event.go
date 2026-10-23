@@ -175,6 +175,15 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 		return nil
 	}
 
+	if tips := tooltipsFor(host); tips != nil {
+		moved := true
+		if pointer, ok := event.(events.PointerEvent); ok {
+			moved = !d.pointerInside || pointer.Position != d.pointerEvent.Position
+		}
+		tips.dismissOnEvent(host, event)
+		defer tips.afterEvent(host, event, moved)
+	}
+
 	root := host.Widget()
 	var sequence *gestureSequence
 	if pointer, ok := event.(events.PointerEvent); ok {

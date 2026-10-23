@@ -28,6 +28,8 @@ type WidgetInfo struct {
 	Name string `json:"name"`
 	Role Role   `json:"role"`
 	Text string `json:"text"`
+	// Tooltip is supplementary help, including while its visual popup is hidden.
+	Tooltip string `json:"tooltip,omitempty"`
 	// Bounds is the layout rectangle in window-local DIP, before clipping or
 	// occlusion. It does not guarantee that a point can receive pointer input.
 	Bounds geometry.Rectangle `json:"bounds"`
@@ -144,6 +146,7 @@ const (
 	RoleVBox          Role = "vbox"
 	RoleWrapBox       Role = "wrapbox" // ordered wrapping container, not a selectable grid
 	RoleLabel         Role = "label"
+	RoleTooltip       Role = "tooltip"
 	RoleButton        Role = "button"
 	RoleImage         Role = "image"
 	RoleTextInput     Role = "textinput"

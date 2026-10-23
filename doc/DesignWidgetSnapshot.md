@@ -189,3 +189,9 @@ Windows／macOS 原生桌面本轮未执行，Linux OpenGL／2x 也未重跑；�
 全仓原有条件跳过和 PNG 输出规则不变，不能把跳过记作桌面通过。本轮创建的两个
 窗口均已正常关闭；构建与截图只在 /tmp/goui-snapshot-build.OTJ6sT，未操作业务文件、
 真实剪贴板或系统设置。未使用 DevServer 验收控件，未提交或推送。
+
+## Tooltip
+
+WidgetInfo.Tooltip 是控件的补充说明文字，与 Name、Text 独立；即使提示尚未显示也可读取。
+可见提示子树使用 tooltip 角色，不声明 Click 或 Focus 动作。显示的原生表面仍经
+Window.Popovers 枚举，不增加执行动作接口。详见 [Tooltip](DesignTooltip.md)。
