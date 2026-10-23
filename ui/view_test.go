@@ -9,6 +9,33 @@ import (
 	"github.com/golang-gui/goui/widgets"
 )
 
+// 共享修饰器遵循显式覆盖、空值清除和省略时恢复构造默认值的协调规则。
+func TestViewTooltipRestoresInitialValue(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	declaration := func() *enabledWidgetView {
+		v := &enabledWidgetView{make: func() gui.Widget {
+			w := gui.NewLabel("content")
+			w.SetName("name")
+			w.SetTooltip("default help")
+			return w
+		}}
+		v.Self = v
+		return v
+	}
+	w := r.update(declaration().Tooltip("declared help"))
+	if w.Tooltip() != "declared help" || w.Name() != "name" || w.Snapshot().Tooltip != w.Tooltip() {
+		t.Fatal("Tooltip 修饰器没有应用或改变了名称")
+	}
+	if next := r.update(declaration().Tooltip("")); next != w || w.Tooltip() != "" {
+		t.Fatal("显式空值没有清除提示或替换了控件")
+	}
+	r.update(declaration())
+	if w.Tooltip() != "default help" {
+		t.Fatal("省略修饰器没有恢复控件的初始提示")
+	}
+}
+
 func TestViewEnabledReconcilesOwnSettingsAndSubtrees(t *testing.T) {
 	for _, test := range []struct {
 		name string

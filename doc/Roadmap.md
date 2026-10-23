@@ -103,14 +103,16 @@ InkBounds、文本布局图片或 Widget 回调接口。Linux arm64 全仓的既
 
 <a id="future-ui-popover"></a>
 
-### 通用附着浮层与 Tooltip：待重新设计
+### 通用附着浮层：待重新设计
+
+普通文字 Tooltip 已实现，使用 Widget.SetTooltip / ViewBase.Tooltip，见 [Tooltip](DesignTooltip.md)。
 
 已有 MenuButton、OnContextMenu、DropDown 和普通 Overlay，不再建设一套窗口内
-popup-manager。若应用确有通用附着 Popover／Tooltip 声明需要，应确定状态驱动显隐、
+popup-manager。若应用确有通用附着 Popover 声明需要，应确定状态驱动显隐、
 anchor 归属、独立子树协调、dismiss 回写、原生资源释放及 Snapshot 枚举。
 复用 ui.Bin／Container、局部 ID 与 Root 生命周期，不引入第二套 Key、
 BuildContext.UpdateOverlays 或 WidgetBase 具体浮层特例。旧草案不算已确认 API；
-相关边界见 [DesignUI](DesignUI.md#4-附着浮层声明待重新设计未实现)。
+相关边界见 [DesignUI](DesignUI.md#4-附着浮层声明)。
 
 <a id="future-scroll"></a>
 

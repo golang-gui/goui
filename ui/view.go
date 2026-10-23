@@ -97,6 +97,7 @@ type viewBase struct {
 	dropTarget    *DropTargetView
 	id            string
 	name          string
+	tooltip       string
 	styleName     string // semantic style name (Sel.Name); "" reverts to the widget's type default
 	minWidth      float32
 	minHeight     float32 // size preference; 0 = no min
@@ -116,6 +117,7 @@ type viewBase struct {
 const (
 	viewID = iota
 	viewName
+	viewTooltip
 	viewStyleName
 	viewMinWidth
 	viewMinHeight
@@ -152,6 +154,7 @@ type viewBaseContext struct {
 	// is stored as the widget's Visible complement.
 	initID         string
 	initName       string
+	initTooltip    string
 	initStyleName  string
 	initMinSize    geometry.Size
 	initMaxSize    geometry.Size
@@ -174,6 +177,7 @@ func (b *viewBase) base() *viewBase { return b }
 func (b *viewBase) mount(ctx *viewBaseContext, w gui.Widget) {
 	ctx.initID = w.ID()
 	ctx.initName = w.Name()
+	ctx.initTooltip = w.Tooltip()
 	ctx.initStyleName = w.StyleName()
 	ctx.initMinSize = w.MinSize()
 	ctx.initMaxSize = w.MaxSize()
@@ -284,6 +288,14 @@ func (b *ViewBase[T]) ID(id string) *T {
 func (b *ViewBase[T]) Name(name string) *T {
 	b.name = name
 	b.fields.Set(viewName, true)
+	return b.self()
+}
+
+// Tooltip assigns supplementary plain-text help. Empty removes the help;
+// omitting the modifier on a later update restores the widget's initial value.
+func (b *ViewBase[T]) Tooltip(text string) *T {
+	b.tooltip = text
+	b.fields.Set(viewTooltip, true)
 	return b.self()
 }
 
@@ -404,6 +416,11 @@ func (b *viewBase) apply(ctx *viewBaseContext, widget gui.Widget) {
 		widget.SetName(b.name)
 	} else {
 		widget.SetName(ctx.initName)
+	}
+	if b.fields.Check(viewTooltip) {
+		widget.SetTooltip(b.tooltip)
+	} else {
+		widget.SetTooltip(ctx.initTooltip)
 	}
 	if b.fields.Check(viewStyleName) {
 		widget.SetStyleName(b.styleName)
