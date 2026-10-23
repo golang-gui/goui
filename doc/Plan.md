@@ -3,6 +3,78 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## Tooltip 提交拆分与声明式手工入口（2026-10-23）
+
+- [x] 在 `feature/tooltip` 将原本地提交分为 GUI 能力与样式、声明式绑定、窗口测试
+  三部分，分别维护设计和测试；保留 `backup/tooltip-before-split-a7e525a`，未推送。
+  不改动其他分支及已有未跟踪文件，库实现与此前三平台验证的版本一致。
+- [x] 增加 `tests/window/ui/tooltip` 手工程序：真实悬停、Tab / Escape、禁用说明、
+  点击计数、延迟更新、显式清空、恢复构造默认值、隐藏／卸载、重挂载和三种主题。
+  正常声明式协调后断言提示文字、控件身份以及未受控输入的文字和选区；入口注释写明
+  操作、逐项预期、平台差异、副作用及复位方式，不以启动或状态断言替代视觉验收。
+- [x] 从已跟踪文件及新增手工程序冻结源码，Go 1.25.8 / Linux amd64 / Pango，
+  独立 Xvnc :87 / Xfwm4。`GOWORK=off go test -json ./... -count=1`
+  为 2436 PASS、10 既有 SKIP、0 FAIL；拆分后的 GUI 提交另验 gui / ui / 两主题包，
+  声明式提交另验 ui 包，均通过。不纳入用户已有的未跟踪测试或生成物。
+- [x] 新程序以 Software / Pango、应用 150% 在该独立桌面实际操作／截图核对：
+  普通与禁用提示、清空后不显示、省略后恢复默认值、两秒更新、隐藏／卸载／重挂载、
+  Basic / Modern 亮暗、Tab 提示与 Escape、点击仅计数一次。实际输入 `tooltip editing`，
+  选中 UTF-8 字节范围 0..4，更新／重建／主题切换／目标卸载重挂后文字与选区保留。
+  原生窗口从 1200×840 调整至 1050×780，控件仍可见；正常关闭窗口。
+- 独立桌面初次继承 `@im=fcitx` 而未运行 Fcitx，导致没有文字提交；该次输入验证不算
+  通过。仅对子进程设置 `XMODIFIERS=@im=none` 后重新完成实际输入及状态检查，
+  未修改平台输入实现或宿主输入法配置；用法补充在入口注释。
+- [x] 新手工程序 Windows amd64 / macOS arm64、CGO_ENABLED=0 交叉编译通过。
+  本轮未在两端原生运行该新入口；此前 GUI Tooltip 的原生运行结果及既有失败见下节。
+  本轮没有新增库行为，未重复执行远端全仓测试。屏幕边缘、混合 DPI、其他缩放及
+  HeaderBar 拖动未完成独立场景验收，保留为手工检查项。
+- [x] 新手工程序 `go vet` 零诊断，窗口及独立 X11 会话已清理；产物在仓库外。
+  程序不访问剪贴板，全仓既有剪贴板用例仅在本轮独立显示会话中执行。
+
+## Tooltip（2026-10-23）
+
+- [x] 增加 Widget / WidgetBase.Tooltip、SetTooltip 和声明式共享 `.Tooltip(text)`。
+  Name 与提示独立；空值清除，声明式省略恢复挂载默认值。WidgetInfo 保存提示文字，
+  可见提示使用 tooltip 角色、实际边界与文字，不声明 Click / Focus 动作。
+- [x] GUI 维护每窗口一份会话及单次计时，支持悬停、禁用说明、Tab 导航、连续浏览、
+  移动容差、取消、文本更新、卸载及销毁。复用非模态 Popover、Label、样式和工作区定位。
+  Basic / Modern 支持独立作用域；没有增加输入穿透或平台接口，没有改动 platform 实现。
+  具体契约见 [Tooltip](DesignTooltip.md)。
+- [x] 修正并保留回归：Popup 自身的初始 Hidden／失焦不取消锚点会话；
+  同坐标的原生 MouseMove 不抢走键盘提示；关闭回调销毁窗口或改变模态目标时停止旧操作。
+  嵌套 Popup 的锚点转换只在定位路径执行，保持菜单现有的 Root 局部命中坐标。
+- [x] 从已跟踪文件及本轮新增文件冻结到仓库外目录，Go 1.25.8、Linux amd64 / Pango、
+  独立 Xvnc :86 / Xfwm4 合成桌面。`GOWORK=off go test -json ./... -count=1`
+  为 2436 PASS、10 SKIP、0 FAIL；未修改基线 `d7280cb` 为 2421 PASS、相同 10 SKIP。
+  原有测试结果保留，新增 15 个测试／子测试结果。既有跳过包含签名、手工输入及窗口状态项，
+  不计为通过。冻结源码避免将已有未跟踪测试、生成图片和临时示例混入本次验证及提交。
+- [x] `GOWORK=off go test -race ./gui ./ui ./theme/basic ./theme/modern -count=1` 通过，
+  `GOWORK=off go vet ./...` 零诊断。相邻 SourceView 的 `go test ./...` 联调通过，
+  未修改 SourceView、依赖版本或工作区配置。最终 Go/module 文件与已测快照逐项哈希一致。
+- [x] macOS 15.7.7 arm64 / CoreText、Windows 10 amd64 / DirectWrite，Go 1.25.8、
+  GOWORK=off、CGO_ENABLED=0：最终受影响四包 gui / ui / theme/basic / theme/modern
+  原生运行各 1186 PASS、0 FAIL、0 SKIP，含上述回归；不以交叉编译替代结果。
+- [x] 独立窗口程序 `tests/window/gui/tooltip` 默认保留模拟输入断言，`-inspect`
+  在通过后保留窗口，`-manual` 仅提供真实操作，不输出 PASS 或假装执行自动断言。
+  Linux Software / OpenGL、Pango、150% 的提交候选自动场景通过；较早候选也验证了
+  Software 的 100% / 200%。Mac Software 的早期候选及最终 OpenGL / CoreText、150%
+  自动场景通过，远端桌面补查提示、亮暗与点击。Windows RDP 1600×900、系统 DPI 96、
+  应用 150%，Software 与 Direct2D 的真实悬停、多行折行、亮暗、禁用说明、Escape、
+  按钮点击计数、实际文字输入及 Tab 提示经桌面输入／截图核对。两种后端均正常关闭。
+- Windows 自动窗口脚本修复初始化状态后，仍因原生 Popup 显示重新报告真实鼠标位置、
+  覆盖脚本模拟坐标而失败；此结果保留为未通过。真实输入和模拟输入共用正常分发路径，
+  不丢弃有效移动来让自动脚本通过；本轮该端的实际操作使用明确的 -manual 模式验收。
+  屏幕垂直边缘翻转、混合 DPI 跨屏及触摸未补做独立人工场景，不扩大已验收范围。
+- 两端全仓原生测试另有已复现的基线失败：Mac 的 TestWindowInteractionCapabilities
+  期望 unsupported，实际 unavailable；Windows 的 TestWindowStyle，以及 SSH 会话中的
+  TestPopup / TestPopupPainter / TestWindow / TestWindowRequestPaint 未得到 Paint。
+  在同版本、同运行条件的未修改源码中逐项复现，未删断言或扩大 skip，也不记作通过。
+- 本轮测试窗口、专用 Terminal / console 和独立 X11 会话在完成后清理；未更改安全设置。
+  Tooltip 专项不主动读写剪贴板，但远端全仓中的既有 TestClipboard 已执行并覆盖系统
+  剪贴板。运行前未备份原值，无法恢复；不能把本轮全仓验证描述为无剪贴板副作用。Windows 启动时一次桌面焦点延迟使部分命令进入已有未保存文本，已用正常
+  Undo 撤销并截图核对原内容，未保存用户文件。Terminal / Run 会留下常规启动历史；日志、截图和程序均在仓库外临时目录。
+  发布、公证及性能结论不属于本轮验收。
+
 ## v0.3.0 正式发布（2026-10-23）
 
 - [x] 修正后的候选 `ab6c753d51307609e4d65e314d0b50acff12fad9` 已推送 main，
