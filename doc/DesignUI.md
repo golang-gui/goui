@@ -1,6 +1,6 @@
 # GOUI 声明式 UI 层设计
 
-> 状态：View、挂载目标、局部 ID 协调、显式移交及共享修饰器已实现。附着浮层尚未实现且须重新设计，见 §4；不把旧 Key／UpdateOverlays 草案当作已确认 API。
+> 状态：View、挂载目标、局部 ID 协调、显式移交及共享修饰器已实现。Tooltip 已实现；通用 Popover 附着声明仍须设计，见 §4；不把旧 Key／UpdateOverlays 草案当作已确认 API。
 > 2026-09-24：§3.6 的 ID/Name 分离与 ID 查询已实现；§3.7 的拖放源数据声明已接入。
 > 2026-10-01：§2.1 增加局部 ID 匹配与相对重排；§2.2 改为普通节点的显式移交，移除任意 State 查询。
 > 2026-10-03：BuildContext 改为可保留的节点借用上下文，延迟行构建动态解析当前 Root；详见 §2.1 和 DesignTreeView §6.3。
@@ -230,7 +230,7 @@ func Button(text ...string) *ButtonView {
 func (v *ButtonView) OnClick(fn func()) *ButtonView { v.onClick = fn; return v }
 ```
 
-> **当前实现的共享修饰器 = `Name`/`Hidden`/`Visible`/`Style`(语义名)+ `Cursor`/`Focusable`/`OnFocus` + 布局标量(`Padding`/`MinWidth`/`MainWeight`…)**(`.Style(name)` 设 `styleName`,布局标量设字段)。`Tooltip`/`ContextMenu`/`Popover` 装饰器 + `viewBase` 的 overlay 字段属 **Popup 阶段(§4),尚未实现**。`Cursor`/`Focusable` 遵循"仅显式调用才应用"约定:控件构造函数里已设的默认(gui.Button/`MenuButton`/`TextInput` 的焦点)在未调用时保留,可显式 `Focusable(false)` 剥离(如菜单栏式行)。`OnFocus(func(focused bool))` 是回调不是 setter,由 `viewBase` 的**私有生命周期**处理:reconciler 只在 node 首次 mount 时构造一个持久 `viewBaseContext`(跨 rebuild 存活,存有 `handles []signal.Handle` + 当前生效 `onFocus`),mount 时连接 `gui.Widget.ConnectFocused`、每次 update 把新 view 的回调盖进 context、unmount 时断开——闭包触发时读 context 里的最新回调,因此 rebuild 永不重连。`viewBaseContext` 是私有类型不暴露 root 内部结构,也不提升到自定义控件的公开 API;`root.go` 只做通用代理,不含任何焦点语义——任何可聚焦 View 都可用。回调**带 boolean 状态**(gain=true / loss=false):因为焦点可从当前控件移开到无物可享(如移到不可聚焦区域),若只在 gain 时触发则无法清除跟踪状态;传 boolean 让调用方在 loss 时清理(如 `if f { focused=&x } else { focused=nil }`)。注意调度顺序:焦点 A→B 时,旧 A 先得 `false`、新 B 后得 `true`,期间跟踪指针瞬时为 nil(菜单期间焦点稳定,无影响)。这是"焦点控件发布能力"的声明式入口(配合 `ui.State` 实现如"当前焦点 text 状态"的跟踪)。
+> **当前实现的共享修饰器 = `Name`/`Hidden`/`Visible`/`Style`(语义名)+ `Cursor`/`Focusable`/`OnFocus` + 布局标量(`Padding`/`MinWidth`/`MainWeight`…)**(`.Style(name)` 设 `styleName`,布局标量设字段)。Tooltip 已作为共享文字修饰器实现；通用 Popover 附着声明仍待设计（§4）。`Cursor`/`Focusable` 遵循"仅显式调用才应用"约定:控件构造函数里已设的默认(gui.Button/`MenuButton`/`TextInput` 的焦点)在未调用时保留,可显式 `Focusable(false)` 剥离(如菜单栏式行)。`OnFocus(func(focused bool))` 是回调不是 setter,由 `viewBase` 的**私有生命周期**处理:reconciler 只在 node 首次 mount 时构造一个持久 `viewBaseContext`(跨 rebuild 存活,存有 `handles []signal.Handle` + 当前生效 `onFocus`),mount 时连接 `gui.Widget.ConnectFocused`、每次 update 把新 view 的回调盖进 context、unmount 时断开——闭包触发时读 context 里的最新回调,因此 rebuild 永不重连。`viewBaseContext` 是私有类型不暴露 root 内部结构,也不提升到自定义控件的公开 API;`root.go` 只做通用代理,不含任何焦点语义——任何可聚焦 View 都可用。回调**带 boolean 状态**(gain=true / loss=false):因为焦点可从当前控件移开到无物可享(如移到不可聚焦区域),若只在 gain 时触发则无法清除跟踪状态;传 boolean 让调用方在 loss 时清理(如 `if f { focused=&x } else { focused=nil }`)。注意调度顺序:焦点 A→B 时,旧 A 先得 `false`、新 B 后得 `true`,期间跟踪指针瞬时为 nil(菜单期间焦点稳定,无影响)。这是"焦点控件发布能力"的声明式入口(配合 `ui.State` 实现如"当前焦点 text 状态"的跟踪)。
 
 两层对齐:
 
@@ -313,14 +313,17 @@ Preview 保留 image.Image/Scale/Hotspot；需要 RenderWidget 时通过 ID 查�
 回调中的业务操作不破坏声明式定位：Build 只声明能力，GUI 解释输入，业务仍显式请求更新。
 接口、校验阶段、SwiftUI 参考及验收要求见 [DnD UI 设计](DesignDragAndDrop.md#10-ui-与语义快照)。
 
-## 4. 附着浮层声明（待重新设计，未实现）
+## 4. 附着浮层声明
+
+Tooltip 已通过共享 `.Tooltip(text)` 修饰器实现，GUI 拥有显示策略及生命周期，
+见 [Tooltip 设计](DesignTooltip.md)。下面的待评估事项仅指通用 Popover 附着声明。
 
 当前已有普通 ui.Overlay、MenuButton 菜单声明和通用 OnContextMenu 输入绑定，
-但没有通用 Tooltip／Popover 附着修饰符。它们不是同一个缺口，也不要求 Menu
+但通用 Popover 附着修饰符尚未实现。它们不是同一个缺口，也不要求 Menu
 或 DropDown 迁移到窗口内 Overlay。
 
 先前 OverlaySpec.Key／BuildContext.UpdateOverlays／WidgetBase.AttachPopover
-只是未采用的草案，不是待添加接口。未来需求、状态真相、独立宿主子树协调、
+只是未采用的草案，不是待添加接口。通用 Popover 的未来需求、状态真相、独立宿主子树协调、
 dismiss 回写及生命周期边界集中记录在 [未来路线](Roadmap.md#future-ui-popover)；
 重新设计须复用已实现的挂载目标和 ID 协调，不给 Root 塞入控件特例。
 
@@ -341,7 +344,7 @@ dismiss 回写及生命周期边界集中记录在 [未来路线](Roadmap.md#fut
 
 ## 7. 后续评估边界
 
-- **糖是否要**:`Tooltip`/`ContextMenu` 单列,还是只留通用 `Popover`。倾向先只做通用 `Popover` 附着,糖等 `Menu` 基元落地、真觉啰嗦再加;且糖加在 gui(`SetTooltip`)还是 ui(`.Tooltip()`)一起定——倾向 **gui 出能力、ui 出糖**。
+- 普通文字提示使用 Widget.SetTooltip / ViewBase.Tooltip；通用 Popover 的内容、显隐及协调规则待具体需求确定，不把它们放进 Tooltip 的文字接口。
 - Menu／MenuItem 基元和分隔线已实现；子菜单与菜单键盘导航的后续设计见 [子菜单](DesignMenuSubmenu.md)。
 - 组合型 View（只 Build）的共享修饰器传播仅是评估方向，当前 normalizeView 展开
   后只应用最终 WidgetView 的修饰器，不自动传播外壳 ID／Style，也不为外壳保留
