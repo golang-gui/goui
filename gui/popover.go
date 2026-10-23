@@ -122,7 +122,8 @@ type popover struct {
 	widget                    Widget // content
 	position                  geometry.Point
 	placement                 PopoverPlacement
-	owner                     Window // resolved from the anchor; only the public Window API is used
+	anchorArea                *geometry.Rectangle // optional anchor-local area for internal presentations
+	owner                     Window              // resolved from the anchor; only the public Window API is used
 	platformPopup             platform.Popup
 	styleName                 string
 	insets                    popoverInsets
@@ -388,6 +389,7 @@ func (p *popover) Show() error {
 }
 
 func (p *popover) Hide() {
+	cancelTooltipHost(p)
 	p.suspendFrames()
 	p.lifecycle++
 	wasVisible := p.visible
@@ -443,7 +445,8 @@ func (p *popover) resetInput() {
 }
 
 // Distinguishes creation/capability failures from failures of native Show.
-// Only PopoverMenu is allowed to retry creation with an opaque configuration.
+// Framework-owned menus and tooltips may retry unsupported alpha creation
+// with an opaque configuration; native Show failures are not retried.
 type popoverCreationError struct{ error }
 
 func (e *popoverCreationError) Unwrap() error { return e.error }
@@ -537,6 +540,7 @@ func (p *popover) createNative(win Window) error {
 }
 
 func (p *popover) releaseNative() {
+	cancelTooltipHost(p)
 	p.suspendFrames()
 	p.frameRequester = nil
 	p.lifecycle++
@@ -679,10 +683,21 @@ func (p *popover) updateNaturalSize() error {
 
 func (p *popover) queryPlacement() (popoverPlacementSnapshot, error) {
 	origin := absOrigin(p.anchor)
+	if p.anchor != nil {
+		if parent, ok := p.anchor.Root().(*popover); ok {
+			origin.X += parent.requestedPosition.X
+			origin.Y += parent.requestedPosition.Y
+		}
+	}
 	snapshot := popoverPlacementSnapshot{anchor: geometry.Rect(origin.X+p.position.X, origin.Y+p.position.Y, 0, 0), placement: p.placement}
 	point := snapshot.anchor.Pos
 	if snapshot.placement == PopoverPlacementBottom && p.anchor != nil {
 		snapshot.anchor = geometry.Rectangle{Pos: origin, Size: p.anchor.Rect().Size}
+		if p.anchorArea != nil {
+			snapshot.anchor = *p.anchorArea
+			snapshot.anchor.X += origin.X
+			snapshot.anchor.Y += origin.Y
+		}
 		point = snapshot.anchor.Center()
 	}
 	if !finitePopup(point.X) || !finitePopup(point.Y) {
@@ -776,6 +791,12 @@ func (p *popover) paint() {
 	if p.destroyed {
 		return
 	}
+	if tips := tooltipsFor(p); tips != nil && tips.host == p {
+		tips.refresh(laidOut)
+		if p.destroyed {
+			return
+		}
+	}
 	background, border, shadow := p.surfaceStyle()
 	radius, _ := border.Radius()
 	width, _ := border.BorderWidth()
@@ -799,19 +820,22 @@ func (p *popover) requestPaint() error {
 // anchorWindow resolves the *window hosting anchor, or false if anchor is not
 // mounted in a window.
 func anchorWindow(anchor Widget) (Window, bool) {
-	if anchor == nil {
-		return nil, false
+	for anchor != nil {
+		if win, ok := anchor.Root().(Window); ok {
+			return win, true
+		}
+		parent, ok := anchor.Root().(*popover)
+		if !ok || parent.destroyed || !parent.visible {
+			return nil, false
+		}
+		anchor = parent.anchor
 	}
-	win := anchor.Window()
-	if win == nil {
-		return nil, false
-	}
-	return win, true
+	return nil, false
 }
 
-// absOrigin returns widget's origin in window-content coordinates by summing
-// each widget's parent-relative rect origin up the parent chain (the root is
-// arranged at (0,0)).
+// absOrigin returns a widget's origin in its Root by summing parent-relative
+// origins. queryPlacement separately converts popup-local anchors to their
+// native owner window.
 func absOrigin(w Widget) geometry.Point {
 	var o geometry.Point
 	for cur := w; cur != nil; cur = cur.Parent() {
@@ -868,7 +892,7 @@ func (p *popover) resolvedStyle() style.Style {
 	if name == "" {
 		name = styleNamePopover
 	}
-	return ResolveStyle(name, style.PartDefault, style.Normal)
+	return ResolveWidgetStyle(p.Widget(), name, style.PartDefault, style.Normal)
 }
 
 // surfaceStyle changes effective geometry, never the application's style sheet.

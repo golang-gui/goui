@@ -33,7 +33,7 @@ Flat 是“常态收起表面的普通按钮”：常态、禁用透明无框，
 | 6 | PopoverMenu 外观 | 消费样式，完成透明外壳、定位、内容、输入和降级 |
 
 普通 Overlay 容器及 UI 薄适配已实现。Menu 和 DropDown 继续用原生 Popover，
-不迁移到 Overlay；Tooltip 尚非内置完整能力，不能据此承诺承载方式。
+不迁移到 Overlay；普通文字 Tooltip 已实现并复用非模态 Popover，见 [Tooltip](DesignTooltip.md)。
 
 ## 2. BoxShadow 样式
 

@@ -70,6 +70,9 @@ func coreRules() []style.Rule {
 			BorderColor(color.Transparent).BorderWidth(0).Radius(0),
 		style.Name(styleNameWindow).BackgroundColor(color.White),
 		style.Name(styleNamePopover).BackgroundColor(color.White),
+		style.Name("tooltip").BackgroundColor(color.RGBA{R: 255, G: 255, B: 225, A: 255}).
+			BorderColor(color.RGBA{R: 150, G: 150, B: 130, A: 255}).BorderWidth(1).Radius(4),
+		style.Name("tooltip-text").ForegroundColor(color.Black).FontFamily(family).FontSize(size),
 		style.Name(styleNameIcon).ForegroundColor(color.Black),
 		style.Name(styleNameWidget).
 			BackgroundColor(color.Transparent).

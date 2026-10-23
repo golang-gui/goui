@@ -221,6 +221,9 @@ func builtInRules(options Options) []style.Rule {
 		style.Name("scroll-view").Part("thumb").State(style.Hovered).BackgroundColor(mix(p.window, p.text, .55)),
 		style.Name("scroll-view").Part("thumb").State(style.Pressed).BackgroundColor(mix(p.window, p.text, .65)),
 		text("popover").BackgroundColor(p.surface).BorderColor(p.border).BorderWidth(1).Radius(8).Shadow(style.Shadow{}),
+		text("tooltip").BackgroundColor(p.surface).BorderColor(p.border).BorderWidth(1).Radius(6).
+			Shadow(style.Shadow{Color: color.NRGBA{A: 36}, Offset: geometry.Point{Y: 2}, BlurRadius: 8}),
+		text("tooltip-text"),
 		text("menu").BackgroundColor(p.surface).BorderColor(p.border).BorderWidth(1).Radius(8).
 			Shadow(style.Shadow{Color: color.NRGBA{A: 46}, Offset: geometry.Point{Y: 4}, BlurRadius: 16}),
 		style.Name("menu-item").BackgroundColor(color.Transparent).Radius(4),

@@ -22,6 +22,9 @@ type Widget interface {
 	SetID(string)
 	Name() string
 	SetName(string)
+	// Tooltip is supplementary plain text, independent of Name. Empty disables it.
+	Tooltip() string
+	SetTooltip(string)
 	StyleName() string // explicit style override, "" when unset
 	SetStyleName(string)
 
@@ -143,6 +146,7 @@ type Bin interface {
 type WidgetBase struct {
 	id                  string
 	name                string
+	tooltip             string
 	styleName           string // style override; "" = the control resolves with its own default name
 	hidden              bool
 	disabled            bool
@@ -205,6 +209,20 @@ func (w *WidgetBase) SetName(name string) {
 	}
 }
 
+// Tooltip returns the supplementary plain-text help associated with the widget.
+func (w *WidgetBase) Tooltip() string { return w.tooltip }
+
+// SetTooltip changes supplementary help. Empty removes it. Setting detached
+// widgets allocates no timer or native surface; callers supply translated text.
+func (w *WidgetBase) SetTooltip(text string) {
+	if w.destroyed || w.tooltip == text {
+		return
+	}
+	w.tooltip = text
+	w.requestSemanticUpdate()
+	tooltipChanged(w.root(), w.self)
+}
+
 // StyleName is the explicit style override, empty when unset.
 func (w *WidgetBase) StyleName() string {
 	return w.styleName
@@ -228,6 +246,7 @@ func (w *WidgetBase) SetVisible(visible bool) {
 	if w.hidden != hidden {
 		w.hidden = hidden
 		if hidden {
+			cancelTooltipSubtree(w.root(), w.self)
 			cancelGestureSubtree(w.root(), w.self)
 			if h, ok := w.root().(EventTarget); ok && focusWithin(h, w) {
 				h.SetFocusedWidget(nil)
@@ -479,6 +498,7 @@ func (w *WidgetBase) Snapshot() WidgetInfo {
 	info := WidgetInfo{
 		ID:            w.ID(),
 		Name:          w.Name(),
+		Tooltip:       w.Tooltip(),
 		Role:          RoleWidget,
 		Bounds:        w.windowRect(),
 		Visible:       w.Visible(),
@@ -916,6 +936,7 @@ func (w *WidgetBase) emitUnmountSubtree(widget Widget) {
 	}
 	w.unmounting = true
 	defer func() { w.unmounting = false }()
+	cancelTooltipSubtree(w.root(), widget)
 	cancelGestureSubtree(w.root(), widget)
 	for _, child := range slices.Clone(w.children) {
 		child.base().emitUnmountSubtree(child)

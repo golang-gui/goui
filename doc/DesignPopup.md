@@ -4,6 +4,7 @@
 > Menu 与 DropDown 保留原生 Popover；普通 Overlay 容器和 UI 绑定已实现，不是原生 Popup 的隐式降级。
 > GUI 层已经有 Popover 与 PopoverMenu；早期代码示意以当前接口为准。
 > 当前透明表面见 [DesignTransparency](DesignTransparency.md)，未实现／待评估事项见 [Roadmap](Roadmap.md)。
+> 普通文字 Tooltip 已实现，见 [Tooltip](DesignTooltip.md)；复用非模态 Popover，不新增输入穿透接口。
 > 相关：`doc/DesignConventions.md`（跨层约定）、`doc/HiDPI.md`（坐标/缩放）、`doc/PlatformDev.md`。
 
 ---
@@ -184,9 +185,9 @@ Menu 与 DropDown 仍使用原生 Popover，不迁移到 Overlay，也不动态�
 ## 10. UI 接入与未来附着浮层
 
 MenuButton／MenuItem、DropDown、Overlay 和 OnContextMenu 已有声明式入口。
-通用 Tooltip／Popover 附着声明尚未实现，须重新设计，见
+普通文字 Tooltip 见 [DesignTooltip](DesignTooltip.md)。通用 Popover 附着声明仍待设计，见
 [未来路线](Roadmap.md#future-ui-popover)；旧 UpdateOverlays、OverlaySpec.Key、
-WidgetBase.SetTooltip／AttachPopover 等配方不作为待添加 API。
+旧 AttachPopover 配方不作为待添加 API；SetTooltip 以 Tooltip 专题的文字契约为准。
 
 ## 11. 语义与宿主枚举
 

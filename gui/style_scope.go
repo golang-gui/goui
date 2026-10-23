@@ -6,7 +6,8 @@ import (
 )
 
 // StyleScope explicitly selects a complete stylesheet for its subtree. It does
-// not inherit individual visual properties or transfer styles to native popups.
+// not inherit individual visual properties or automatically transfer styles to
+// application-created native popups. A popup may install its own root scope.
 // A nil sheet delegates to the enclosing scope or application's sheet.
 // Sheets are immutable after installation; replace one to invalidate resources.
 type StyleScope struct {
