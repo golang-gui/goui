@@ -8,6 +8,10 @@ import (
 
 func TestNativeTextRasterViewport(t *testing.T) { testTextRasterViewport(t, directwrite.NewContext) }
 
+func TestParagraphLayoutDirectWrite(t *testing.T) {
+	testParagraphLayoutNative(t, directwrite.NewContext)
+}
+
 func TestTextEditorDirectWriteNavigation(t *testing.T) {
 	testTextEditorNativeNavigation(t, directwrite.NewContext)
 }
