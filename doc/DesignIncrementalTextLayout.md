@@ -499,3 +499,39 @@ Ctrl+Right 的分块空白读取避免无意复制整段后缀，边界仍按 UA
 
 实际验收及剩余间隔见 [长单行实施记录](PlanIncrementalTextLayout.md)。同步
 Model.SetText 的归一化／建模仍可能占用事件循环；本节不宣称实现了异步文件加载。
+
+### 17.5 局部坐标与巨大文档原点（2026-10-24）
+
+长行水平滚动回归显示，第 17 节初版把原生局部 cluster 坐标平移为完整段落
+float32 坐标后再减去滚动值。达到 2^28 DIP 时相邻表示值相隔 32 DIP，文字绘制
+保留局部字形而选区／命中已经失去精度，会出现断续背景、跳字与光标错位。
+此外，直接拼接 native TextLine 把水平相邻缓存片段错误地表示成多个显示行。
+
+`ParagraphGeometry` 现在将普通值 Geometry 与 float64 文档原点 X/Y 配对返回。
+Geometry 中保留全段 byte offset，但所有像素坐标相对这份快照的原点。绘制、
+命中、caret、IME 和选区先在双精度中计算“原点 - 滚动位置”，再转换小范围 DIP；
+禁止先把鼠标位置加到巨大 float32 值上。GeometryAt 使用被请求片段自己的坐标
+基准，不能拿另一份视区快照的原点解释它。快照仍为 borrowed、只读，拥有者更新
+后调用者必须重新取得；没有增加 typography 接口或改变图形颜色／DIP 契约。
+
+HeightIndex 原有内部 sum 已是 float64，Top64 直接保留它供上层先求差；Top 的
+float32 行为不变。没有全仓替换 Point／Rectangle。未知水平窗口以样本宽度估计，
+已测块的宽度修正保存在内部 float64 Fenwick 前缀索引中，相邻已测窗口按实际
+宽度连续衔接。索引按逻辑块数分配 float64 数组，另存已测块宽度；只在 NoWrap
+使用，编辑时保留有效前缀，模型更换／销毁释放。它是段落元数据，不增加原生缓存
+数量；未测部分的全局位置仍是估计，不把样本平均宽度用于字符命中。
+
+不换行的水平窗口合为同一显示行，保留各 cluster 的方向和 byte offset；Home／End
+遵循逻辑行边界。接缝 caret 查询合用已缓存相邻窗口，保持 upstream/downstream
+亲和。编辑到普通短段落／空文本时回到原有布局路径，不留下永远等待窗口的任务。
+
+参考 [Scintilla 5.6.7 官方源码](https://www.scintilla.org/scintilla567.tgz) 中
+Geometry.h 的 double、PositionCache 的 float 残差表示：借鉴避免巨大绝对单精度
+字符位置的原则，不复制其整行位置压缩。参考
+[VS Code 1.105.0 的垂直坐标重基准](https://github.com/microsoft/vscode/blob/1.105.0/src/vs/editor/common/viewLayout/linesLayout.ts#L646)
+与 [Qt 6.8.3 的块／视口坐标转换](https://github.com/qt/qtbase/blob/v6.8.3/src/widgets/widgets/qplaintextedit.cpp)。
+前者不是本次水平实现的直接来源，后者也不证明任意巨长段落的性能。
+
+ScrollView 的公共 extent／offset／reveal 仍为 float32。当前修复保证给定视口下的
+字符几何一致，不宣称极大范围支持每 DIP 滚动；小于该位置表示间隔的增量仍可能
+被量化掉。这是滚动契约的独立边界，必须如实验收，不能用扩大选区或放宽容差掩盖。

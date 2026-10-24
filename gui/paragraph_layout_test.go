@@ -74,11 +74,11 @@ func testParagraphLayoutNative(t *testing.T, factory func() (typography.Context,
 				if page == nil {
 					t.Fatalf("第 %d 块未就绪：%v", i, p.Err())
 				}
-				origin := p.origin(page)
+				_, originY := p.origin(page)
 				for _, line := range page.lines {
 					r, ok := byStart[line.Start]
-					if !ok || r.Length != line.Length || math.Abs(float64(r.Width-line.Width)) > .1 || math.Abs(float64(r.Y-origin.Y-line.Y)) > .1 {
-						t.Fatalf("块 %d 行 %+v、Y=%g 与完整参考 %+v 不一致", i, line, origin.Y, r)
+					if !ok || r.Length != line.Length || math.Abs(float64(r.Width-line.Width)) > .1 || math.Abs(float64(float32(float64(r.Y)-originY)-line.Y)) > .1 {
+						t.Fatalf("块 %d 行 %+v、Y=%g 与完整参考 %+v 不一致", i, line, originY, r)
 					}
 				}
 				for _, c := range page.clusters {
@@ -122,6 +122,100 @@ func testParagraphLayoutNative(t *testing.T, factory func() (typography.Context,
 						t.Fatalf("接缝连续输入 %d 后光标回退：%d", n, at)
 					}
 				}
+			}
+		})
+	}
+}
+
+// 绘制与命中共用局部度量；不能先平移到数亿 DIP 后再做单精度相减。
+type paragraphPaintPositions struct {
+	Painter
+	points []geometry.Point
+}
+
+func (p *paragraphPaintPositions) Save()                          {}
+func (p *paragraphPaintPositions) Restore()                       {}
+func (p *paragraphPaintPositions) SetClipRect(geometry.Rectangle) {}
+func (p *paragraphPaintPositions) DrawTextLayout(at geometry.Point, _ typography.TextLayout) {
+	p.points = append(p.points, at)
+}
+
+func testParagraphCoordinatesNative(t *testing.T, factory func() (typography.Context, error)) {
+	for _, family := range []string{"monospace", "sans"} {
+		t.Run(family, func(t *testing.T) {
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+			context, err := factory()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer context.Destroy()
+			const index = 16384
+			const base = index * paragraphBlockBytes
+			read := func(r textedit.Range) (string, error) {
+				const pattern = "i W l M "
+				var out strings.Builder
+				for at := r.Start; at < r.End; {
+					n := min(r.End-at, len(pattern)-at%len(pattern))
+					out.WriteString(pattern[at%len(pattern) : at%len(pattern)+n])
+					at += n
+				}
+				return out.String(), nil
+			}
+			format := typography.TextFormat{Font: typography.FontInfo{Family: family, Size: 12}, WrapMode: typography.WrapNone}
+			p := NewParagraphLayout(&paragraphBoundContext{Context: context, t: t}, format, 1<<20, base+2*paragraphBlockBytes, read)
+			defer p.Destroy()
+			if p.page(0, time.Now().Add(time.Second)) == nil {
+				t.Fatal("首窗口失败")
+			}
+			// 虚拟 ASCII 前缀的状态由样本定义独立确认，无需分配或排版 64 MiB 文本。
+			state := paragraphContext{at: base, runes: base, base: '\u200e', strong: '\u200e'}
+			p.scanned, p.state = base, state
+			p.checkpoints = append(p.checkpoints, state)
+			a := p.page(index, time.Now().Add(time.Second))
+			b := p.page(index+1, time.Now().Add(time.Second))
+			if a == nil || b == nil {
+				t.Fatal("远端片段失败", p.Err())
+			}
+			frame := p.snapshot([]int{index, index + 1})
+			if frame.X < 1<<28 {
+				t.Fatal("样本未覆盖巨大坐标", frame.X)
+			}
+			if frame.LineCount() != 1 {
+				t.Fatal("水平片段被错误地当成显示行", frame.LineCount())
+			}
+			text, _ := read(textedit.Range{Start: base, End: base + 2*paragraphBlockBytes})
+			reference, err := context.NewTextLayout(text, format, 1<<20, 1<<20)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer reference.Destroy()
+			lines, clusters := reference.MeasureMetrics()
+			want := textedit.NewGeometry(lines, clusters, len(text), 20)
+			for at := paragraphBlockBytes - 24; at < paragraphBlockBytes+24; at++ {
+				cell := want.Caret(textedit.Position{Offset: at})
+				point := geometry.Point{X: cell.X + .25, Y: cell.Y + cell.Height/2}
+				got := frame.Hit(point)
+				if got.Offset != base+want.Hit(point).Offset {
+					t.Fatalf("接缝命中 at=%d got=%v want=%v", at, got, want.Hit(point))
+				}
+				caret := frame.Caret(textedit.Position{Offset: base + at})
+				if math.Abs(float64(caret.X-cell.X)) > .05 {
+					t.Fatalf("光标错位 at=%d got=%v want=%v", at, caret, cell)
+				}
+			}
+			r := textedit.Range{Start: paragraphBlockBytes - 20, End: paragraphBlockBytes + 20}
+			got, wantRects := frame.Selection(textedit.Range{Start: base + r.Start, End: base + r.End}), want.Selection(r)
+			if len(got) != 1 || len(wantRects) != 1 || math.Abs(float64(got[0].X-wantRects[0].X)) > .05 || math.Abs(float64(got[0].Width-wantRects[0].Width)) > .05 {
+				t.Fatalf("连续选区不一致：%v want %v", got, wantRects)
+			}
+			p.geometry = frame
+			p.active = []int{index, index + 1}
+			draw := &paragraphPaintPositions{}
+			origin := frame.RelativeTo(frame.X-123.25, -37.75)
+			p.Paint(draw, origin)
+			if len(draw.points) != 2 || draw.points[0] != origin || math.Abs(float64(draw.points[1].X-origin.X-a.width)) > .05 {
+				t.Fatal("原生绘制与局部几何未衔接", draw.points, origin, a.width)
 			}
 		})
 	}

@@ -149,7 +149,11 @@ func (h *HeightIndex) Set(index int, height float32) {
 func (h *HeightIndex) Total() float32 { return float32(heightSum(h.root)) }
 
 // Top returns the DIP height preceding index, clamped to [0, Count()].
-func (h *HeightIndex) Top(index int) float32 {
+func (h *HeightIndex) Top(index int) float32 { return float32(h.Top64(index)) }
+
+// Top64 returns the same prefix sum without narrowing its document coordinate.
+// Subtract a nearby origin before converting the result to local DIP values.
+func (h *HeightIndex) Top64(index int) float64 {
 	index = min(max(index, 0), heightCount(h.root))
 	n, sum := h.root, float64(0)
 	for n != nil {
@@ -167,7 +171,7 @@ func (h *HeightIndex) Top(index int) float32 {
 		}
 		n = n.right
 	}
-	return float32(sum)
+	return sum
 }
 
 // At returns the containing paragraph, clamping points outside the document.

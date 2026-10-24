@@ -131,3 +131,16 @@ func TestTextHeightsSparseMeasurementDepth(t *testing.T) {
 	}
 	depth(h.root, 0)
 }
+
+// 大文档的前缀先求差再缩小精度，保留相邻显示行的实际高度。
+func TestTextHeightsPrecisePrefix(t *testing.T) {
+	var h HeightIndex
+	h.Reset(100_000_000, 12.5)
+	const index = 50_000_000
+	if delta := h.Top64(index+1) - h.Top64(index); delta != 12.5 {
+		t.Fatal("前缀高度丢失局部精度", delta)
+	}
+	if h.Top(index) != float32(h.Top64(index)) {
+		t.Fatal("原有 Top 契约改变")
+	}
+}

@@ -46,7 +46,7 @@ type textParagraph struct {
 // on demand for each measured layout.
 func (p *textParagraph) editGeometry(emptyHeight float32) *textedit.Geometry {
 	if p.paged != nil {
-		return p.paged.Geometry()
+		return &p.paged.Geometry().Geometry
 	}
 	if !p.geometryValid {
 		var lines []typography.TextLine
@@ -75,7 +75,7 @@ func (p *textParagraph) editGeometry(emptyHeight float32) *textedit.Geometry {
 func (p *textParagraph) geometryAt(emptyHeight float32, offset int) *textedit.Geometry {
 	if p.paged != nil {
 		if g := p.paged.GeometryAt(offset); g != nil {
-			return g
+			return &g.Geometry
 		}
 	}
 	return p.editGeometry(emptyHeight)
@@ -539,10 +539,14 @@ func (t *textEditor) modelChanged(change TextChange) {
 				local := edit
 				local.Range.Start -= rng.Start
 				local.Range.End -= rng.Start
-				p.paged.Change(rng.End-rng.Start, []textedit.Edit{local})
-				p.measured = false
-				t.heightEstimated = true
-				t.queueLongLayout()
+				if rng.End-rng.Start <= 64*1024 {
+					t.spliceParagraphs(start, 1, 1)
+				} else {
+					p.paged.Change(rng.End-rng.Start, []textedit.Edit{local})
+					p.measured = false
+					t.heightEstimated = true
+					t.queueLongLayout()
+				}
 			} else {
 				t.spliceParagraphs(start, removed+1, added+1)
 			}
@@ -1134,6 +1138,11 @@ func (t *textEditor) requestCaretReveal() {
 	}
 	if rect, ok := t.paragraphCaret(p.index, p); ok {
 		t.revealCaretRect(rect)
+	} else if p.paged != nil && p.paged.Err() == nil {
+		// A keyboard destination may lie outside the retained working set.
+		// Preparing it belongs to later frames, not this input event or Paint.
+		t.queueLongLayout()
+		t.owner.RequestLayout()
 	}
 }
 
@@ -1169,7 +1178,23 @@ func (t *textEditor) caretRect() (geometry.Rectangle, bool) {
 	return t.paragraphCaret(index, p)
 }
 
+// paragraphOrigin maps the active local metrics directly into the viewport.
+func (t *textEditor) paragraphOrigin(index int, p *textParagraph) geometry.Point {
+	var x, y float64
+	if p.paged != nil {
+		frame := p.paged.Geometry()
+		x, y = frame.X, frame.Y
+	}
+	return geometry.Point{X: t.padding + float32(x-float64(t.offset.X)), Y: float32(float64(t.padding) + t.heights.Top64(index) + float64(p.textOffset) + y - float64(t.offset.Y))}
+}
+
 func (t *textEditor) paragraphCaret(index int, p *textParagraph) (geometry.Rectangle, bool) {
+	return t.paragraphCaretIn(index, p, false)
+}
+func (t *textEditor) viewportCaret(index int, p *textParagraph) (geometry.Rectangle, bool) {
+	return t.paragraphCaretIn(index, p, true)
+}
+func (t *textEditor) paragraphCaretIn(index int, p *textParagraph, viewport bool) (geometry.Rectangle, bool) {
 	if p == nil {
 		return geometry.Rectangle{}, false
 	}
@@ -1177,13 +1202,24 @@ func (t *textEditor) paragraphCaret(index int, p *textParagraph) (geometry.Recta
 	pos := t.displayCaret()
 	pos.Offset -= rng.Start
 	g := p.editGeometry(t.lineHeight)
+	var x, y float64
 	if p.paged != nil {
-		g = p.paged.CachedGeometryAt(pos.Offset)
-		if g == nil {
+		frame := p.paged.CachedGeometryAt(pos.Offset)
+		if frame == nil {
 			return geometry.Rectangle{}, false
 		}
+		g, x, y = &frame.Geometry, frame.X, frame.Y
 	}
-	return g.Caret(pos).Translate(geometry.Point{X: t.padding, Y: t.padding + t.heights.Top(index) + p.textOffset}), true
+	r := g.Caret(pos)
+	x += float64(t.padding)
+	y += float64(t.padding) + t.heights.Top64(index) + float64(p.textOffset)
+	if viewport {
+		x -= float64(t.offset.X)
+		y -= float64(t.offset.Y)
+	}
+	r.X = float32(x + float64(r.X))
+	r.Y = float32(y + float64(r.Y))
+	return r, true
 }
 
 func (t *textEditor) paint(p Painter) {
@@ -1207,7 +1243,7 @@ func (t *textEditor) paint(p Painter) {
 		if paragraph == nil {
 			continue
 		}
-		origin := geometry.Point{X: t.padding - t.offset.X, Y: y + paragraph.textOffset}
+		origin := t.paragraphOrigin(i, paragraph)
 		rng := t.displayLineRange(i)
 		if hasSelection && selected.Start < selected.End && selected.Start <= rng.End && selected.End > rng.Start {
 			for _, rect := range t.visibleSelection(paragraph, TextRange{Start: selected.Start - rng.Start, End: selected.End - rng.Start}, origin) {
@@ -1241,10 +1277,10 @@ func (t *textEditor) paint(p Painter) {
 	}
 	if t.owner.Focused() {
 		index := t.displayLineAt(t.displayCaret().Offset)
-		if rect, ok := t.paragraphCaret(index, t.paragraphs[index]); ok {
-			t.im.SetCaretRect(rect.Translate(geometry.Point{X: -t.offset.X, Y: -t.offset.Y}))
+		if rect, ok := t.viewportCaret(index, t.paragraphs[index]); ok {
+			t.im.SetCaretRect(rect)
 			if c, has := t.resolvedStyle("caret").ForegroundColor(); has && t.caretVisible {
-				p.FillRect(rect.Translate(geometry.Point{X: -t.offset.X, Y: -t.offset.Y}), graphics.ColorOf(c))
+				p.FillRect(rect, graphics.ColorOf(c))
 			}
 		}
 	}
@@ -1320,15 +1356,17 @@ func (t *textEditor) restoreViewportAnchor() {
 	}
 	rng, _ := t.model.LineRange(index)
 	g := p.editGeometry(t.lineHeight)
+	var baseY float64
 	if p.paged != nil {
-		g = p.paged.CachedGeometryAt(offset - rng.Start)
-		if g == nil {
+		frame := p.paged.CachedGeometryAt(offset - rng.Start)
+		if frame == nil {
 			t.queueLongLayout()
 			return
 		}
+		g, baseY = &frame.Geometry, frame.Y
 	}
-	rect := g.Caret(textedit.Position{Offset: offset - rng.Start, Upstream: false})
-	t.offset.Y = max(0, t.heights.Top(index)+p.textOffset+rect.Y+t.anchor.within)
+	rect := g.Caret(textedit.Position{Offset: offset - rng.Start})
+	t.offset.Y = max(0, float32(t.heights.Top64(index)+float64(p.textOffset)+baseY+float64(rect.Y)+float64(t.anchor.within)))
 	// ScrollView may lay out twice before applying its queued scroll request.
 	// Keep the text anchor until LayoutVisible receives the requested offset.
 }
@@ -1341,12 +1379,21 @@ func (t *textEditor) saveViewportAnchor() {
 		index := t.model.LineAt(t.anchor.offset)
 		if p := t.paragraphs[index]; p != nil && p.measured {
 			rng, _ := t.model.LineRange(index)
-			rect := p.editGeometry(t.lineHeight).Caret(textedit.Position{Offset: t.anchor.offset - rng.Start, Upstream: false})
+			g := p.editGeometry(t.lineHeight)
+			var baseY float64
+			if p.paged != nil {
+				frame := p.paged.CachedGeometryAt(t.anchor.offset - rng.Start)
+				if frame == nil {
+					return
+				}
+				g, baseY = &frame.Geometry, frame.Y
+			}
+			rect := g.Caret(textedit.Position{Offset: t.anchor.offset - rng.Start})
 			// Keep the original character while it explains the rounded
 			// viewport. Rounding a paragraph top down may put the offset in
 			// the preceding paragraph; sampling that paragraph first would
 			// replace the anchor and make subsequent width changes drift.
-			if mathx.Round(t.heights.Top(index)+p.textOffset+rect.Y+t.anchor.within) == t.offset.Y {
+			if mathx.Round(float32(t.heights.Top64(index)+float64(p.textOffset)+baseY+float64(rect.Y)+float64(t.anchor.within))) == t.offset.Y {
 				return
 			}
 		}
@@ -1359,7 +1406,7 @@ func (t *textEditor) saveViewportAnchor() {
 	if p == nil || p.paged != nil && p.paged.VisibleRange().End == 0 {
 		return
 	}
-	y := t.offset.Y - t.heights.Top(index) - p.textOffset
+	y := t.padding - t.paragraphOrigin(index, p).Y
 	g := p.editGeometry(t.lineHeight)
 	line := g.LineAtY(y)
 	metrics := g.LineMetrics(line)
@@ -1821,8 +1868,8 @@ func (t *textEditor) showContextMenu(point *geometry.Point) {
 		if !t.selectionContains(position) {
 			t.moveTo(t.hitText(position), false)
 		}
-	} else if caret, ok := t.caretRect(); ok {
-		position = geometry.Point{X: caret.X - t.offset.X, Y: caret.Y + caret.Height - t.offset.Y}
+	} else if caret, ok := t.viewportCaret(t.displayLineAt(t.displayCaret().Offset), t.paragraphs[t.displayLineAt(t.displayCaret().Offset)]); ok {
+		position = geometry.Point{X: caret.X, Y: caret.Y + caret.Height}
 	}
 	if t.owner.base().destroyed || t.model != model || t.mountEpoch != epoch || t.suspended {
 		return
@@ -1865,9 +1912,7 @@ func (t *textEditor) selectionContains(point geometry.Point) bool {
 	if selected.Start == selected.End {
 		return false
 	}
-	point.X += t.offset.X - t.padding
-	point.Y += t.offset.Y - t.padding
-	index := t.heights.At(point.Y)
+	index := t.heights.At(point.Y + t.offset.Y - t.padding)
 	rng := t.displayLineRange(index)
 	if selected.Start > rng.End || selected.End <= rng.Start {
 		return false
@@ -1876,7 +1921,9 @@ func (t *textEditor) selectionContains(point geometry.Point) bool {
 	if p == nil {
 		return false
 	}
-	point.Y -= t.heights.Top(index) + p.textOffset
+	origin := t.paragraphOrigin(index, p)
+	point.X -= origin.X
+	point.Y -= origin.Y
 	g := p.editGeometry(t.lineHeight)
 	contains := func(rect geometry.Rectangle) bool {
 		return point.X >= rect.X && point.X < rect.X+rect.Width && point.Y >= rect.Y && point.Y < rect.Y+rect.Height
@@ -2160,13 +2207,11 @@ func abs32(x float32) float32 {
 }
 
 func (t *textEditor) hitText(point geometry.Point) textedit.Position {
-	point.X += t.offset.X - t.padding
-	point.Y += t.offset.Y - t.padding
-	index := t.heights.At(point.Y)
+	index := t.heights.At(point.Y + t.offset.Y - t.padding)
 	if p := t.paragraph(index); p != nil {
 		rng := t.displayLineRange(index)
-		point.Y -= t.heights.Top(index) + p.textOffset
-		pos := p.editGeometry(t.lineHeight).Hit(point)
+		origin := t.paragraphOrigin(index, p)
+		pos := p.editGeometry(t.lineHeight).Hit(geometry.Point{X: point.X - origin.X, Y: point.Y - origin.Y})
 		pos.Offset += rng.Start
 		if composition := t.preedit; composition != nil {
 			pos.Offset = composition.ModelOffset(pos.Offset, pos.Upstream)
@@ -2261,9 +2306,33 @@ func (t *textEditor) selectionEdge(right, word bool) textedit.Position {
 	if !word && index == t.model.LineAt(rng.End) {
 		if p := t.paragraph(index); p != nil {
 			line, _ := t.model.LineRange(index)
-			a := p.geometryAt(t.lineHeight, first.Offset-line.Start).Caret(textedit.Position{Offset: first.Offset - line.Start, Upstream: first.Upstream})
-			b := p.geometryAt(t.lineHeight, last.Offset-line.Start).Caret(textedit.Position{Offset: last.Offset - line.Start, Upstream: last.Upstream})
-			if a.Y > b.Y || a.Y == b.Y && a.X > b.X {
+			var ax, ay, bx, by float64
+			if p.paged != nil {
+				ga := p.paged.GeometryAt(first.Offset - line.Start)
+				if ga == nil {
+					if right {
+						return last
+					}
+					return first
+				}
+				a := ga.Caret(textedit.Position{Offset: first.Offset - line.Start, Upstream: first.Upstream})
+				ax, ay = ga.X+float64(a.X), ga.Y+float64(a.Y)
+				gb := p.paged.GeometryAt(last.Offset - line.Start)
+				if gb == nil {
+					if right {
+						return last
+					}
+					return first
+				}
+				b := gb.Caret(textedit.Position{Offset: last.Offset - line.Start, Upstream: last.Upstream})
+				bx, by = gb.X+float64(b.X), gb.Y+float64(b.Y)
+			} else {
+				g := p.editGeometry(t.lineHeight)
+				a := g.Caret(textedit.Position{Offset: first.Offset - line.Start, Upstream: first.Upstream})
+				b := g.Caret(textedit.Position{Offset: last.Offset - line.Start, Upstream: last.Upstream})
+				ax, ay, bx, by = float64(a.X), float64(a.Y), float64(b.X), float64(b.Y)
+			}
+			if ay > by || ay == by && ax > bx {
 				first, last = last, first
 			}
 		}
@@ -2288,7 +2357,14 @@ func (t *textEditor) vertical(down bool, page bool) textedit.Position {
 		if !down {
 			delta = -delta
 		}
-		return t.hitText(geometry.Point{X: t.desiredX + t.padding - t.offset.X, Y: rect.Y - t.offset.Y + delta + rect.Height/2})
+		point := geometry.Point{X: t.desiredX + t.padding - t.offset.X, Y: rect.Y - t.offset.Y + delta + rect.Height/2}
+		index := t.model.LineAt(pos.Offset)
+		if p := t.paragraphs[index]; p != nil && p.paged != nil {
+			if local, ok := t.viewportCaret(index, p); ok {
+				point = geometry.Point{X: local.X, Y: local.Y + delta + local.Height/2}
+			}
+		}
+		return t.hitText(point)
 	}
 	index := t.model.LineAt(pos.Offset)
 	rng, _ := t.model.LineRange(index)
@@ -2297,13 +2373,15 @@ func (t *textEditor) vertical(down bool, page bool) textedit.Position {
 		return pos
 	}
 	if p.paged != nil {
-		g := p.geometryAt(t.lineHeight, pos.Offset-rng.Start)
-		current := g.Caret(textedit.Position{Offset: pos.Offset - rng.Start, Upstream: pos.Upstream})
+		current, ok := t.viewportCaret(index, p)
+		if !ok {
+			return pos
+		}
 		delta := max(t.lineHeight, current.Height)
 		if !down {
 			delta = -delta
 		}
-		return t.hitText(geometry.Point{X: t.desiredX + t.padding - t.offset.X, Y: t.padding + t.heights.Top(index) + current.Y - t.offset.Y + delta + current.Height/2})
+		return t.hitText(geometry.Point{X: current.X, Y: current.Y + delta + current.Height/2})
 	}
 	line := p.editGeometry(t.lineHeight).LineIndex(textedit.Position{Offset: pos.Offset - rng.Start, Upstream: pos.Upstream})
 	if down {
@@ -2347,6 +2425,12 @@ func (t *textEditor) lineEdge(end, document bool) textedit.Position {
 	}
 	index := t.model.LineAt(t.selection.Caret)
 	rng, _ := t.model.LineRange(index)
+	if t.wrap == WrapNone && rng.End-rng.Start > 64*1024 {
+		if end {
+			return textedit.Position{Offset: rng.End, Upstream: true}
+		}
+		return textedit.Position{Offset: rng.Start}
+	}
 	p := t.paragraph(index)
 	if p == nil {
 		return textedit.Position{Offset: rng.Start, Upstream: false}

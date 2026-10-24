@@ -39,12 +39,14 @@ type ParagraphLayout struct {
 	heights                             textedit.HeightIndex
 	lineHeight, blockHeight, blockWidth float32
 	runeAdvance                         float32
+	widthTree                           []float64
+	widthValues                         map[int]float64
 	viewport                            geometry.Rectangle
 	active                              []int
-	geometry                            textedit.Geometry
+	geometry                            ParagraphGeometry
 	geometryVersion                     uint64
 	geometryIndices                     []int
-	editGeometry                        *textedit.Geometry
+	editGeometry                        *ParagraphGeometry
 	editVersion                         uint64
 	editIndices                         []int
 	clock, version                      uint64
@@ -56,17 +58,32 @@ type ParagraphLayout struct {
 }
 
 type paragraphPage struct {
-	index          int
-	runesBefore    int
-	range_         textedit.Range
-	layout         typography.TextLayout
-	prefix         int
-	lines          []typography.TextLine
-	clusters       []typography.TextCluster
-	height, width  float32
-	used           uint64
-	geometry       *textedit.Geometry
-	geometryOrigin geometry.Point
+	index         int
+	runesBefore   int
+	range_        textedit.Range
+	layout        typography.TextLayout
+	prefix        int
+	lines         []typography.TextLine
+	clusters      []typography.TextCluster
+	height, width float32
+	used          uint64
+	geometry      *ParagraphGeometry
+}
+
+// ParagraphGeometry pairs measured local coordinates with their paragraph
+// origin. Byte offsets remain paragraph-relative. Convert the origin relative
+// to the viewport before adding any local coordinate; converting a large
+// absolute character position to float32 would lose hit and selection precision.
+// Geometry is borrowed from its owning ParagraphLayout until its next update.
+type ParagraphGeometry struct {
+	textedit.Geometry
+	X, Y float64
+}
+
+// RelativeTo returns this geometry's origin relative to another paragraph
+// point. The subtraction takes place before converting to local DIP values.
+func (g *ParagraphGeometry) RelativeTo(x, y float64) geometry.Point {
+	return geometry.Point{X: float32(g.X - x), Y: float32(g.Y - y)}
 }
 
 type paragraphContext struct {
@@ -86,6 +103,7 @@ func NewParagraphLayout(context typography.Context, format typography.TextFormat
 	}
 	p.blockWidth = paragraphBlockBytes * 8
 	p.heights.Reset(p.blockCount(), p.blockHeight)
+	p.resetWidths()
 	p.checkpoints = []paragraphContext{{}}
 	return p
 }
@@ -121,7 +139,12 @@ func (p *ParagraphLayout) Err() error { return p.err }
 // Size returns the currently known extent, including estimates for unseen text.
 func (p *ParagraphLayout) Size() geometry.Size {
 	if p.format.WrapMode == typography.WrapNone {
-		return geometry.Size{Width: float32(p.length) / paragraphBlockBytes * p.blockWidth, Height: p.lineHeight}
+		width := p.widthTop(p.blockCount())
+		for _, page := range p.pages {
+			x, _ := p.origin(page)
+			width = max(width, x+float64(page.width))
+		}
+		return geometry.Size{Width: float32(width), Height: p.lineHeight}
 	}
 	return geometry.Size{Width: p.width, Height: p.heights.Total()}
 }
@@ -168,7 +191,9 @@ func (p *ParagraphLayout) Change(length int, edits []textedit.Edit) {
 	p.starts = map[int]int{0: 0}
 	p.active = nil
 	p.heights.Reset(p.blockCount(), p.blockHeight)
+	p.resetWidths()
 	for index, page := range p.pages {
+		p.setWidth(index, float64(page.width))
 		p.starts[index] = page.range_.Start
 		p.starts[index+1] = page.range_.End
 		p.heights.Set(index, page.height)
@@ -422,6 +447,7 @@ func (p *ParagraphLayout) page(index int, deadline time.Time) *paragraphPage {
 	}
 	p.lineHeight = max(1, lines[0].Height)
 	if index == 0 && len(p.pages) == 0 {
+		p.runeAdvance = 0
 		if len(page.clusters) > 0 {
 			advance := page.clusters[0].Width
 			uniform := advance > 0
@@ -440,6 +466,16 @@ func (p *ParagraphLayout) page(index int, deadline time.Time) *paragraphPage {
 		p.blockHeight = max(p.lineHeight, page.height*float32(paragraphBlockBytes)/float32(max(1, end-r.Start)))
 		p.blockWidth = max(1, w*float32(paragraphBlockBytes)/float32(max(1, end-r.Start)))
 		p.heights.Reset(p.blockCount(), p.blockHeight)
+		p.resetWidths()
+	}
+	p.setWidth(index, float64(page.width))
+	if p.runeAdvance > 0 {
+		for _, c := range page.clusters {
+			if c.Width != p.runeAdvance {
+				p.runeAdvance = 0
+				break
+			}
+		}
 	}
 	if next := p.pages[index+1]; next != nil && next.range_.Start != end {
 		delete(p.pages, index+1)
@@ -514,41 +550,98 @@ func containsParagraphIndex(indices []int, index int) bool {
 	return false
 }
 
-func (p *ParagraphLayout) origin(page *paragraphPage) geometry.Point {
-	if p.format.WrapMode == typography.WrapNone {
-		if p.runeAdvance > 0 {
-			return geometry.Point{X: float32(page.runesBefore) * p.runeAdvance}
-		}
-		return geometry.Point{X: float32(page.index) * p.blockWidth}
+// The initial mean estimates unseen blocks; a Fenwick index retains measured
+// width corrections without scanning all preceding blocks on a viewport query.
+func (p *ParagraphLayout) resetWidths() {
+	if p.format.WrapMode != typography.WrapNone {
+		return
 	}
-	return geometry.Point{Y: p.heights.Top(page.index)}
+	count := p.blockCount() + 1
+	if cap(p.widthTree) < count {
+		p.widthTree = make([]float64, count)
+	} else {
+		p.widthTree = p.widthTree[:count]
+		clear(p.widthTree)
+	}
+	p.widthValues = make(map[int]float64)
 }
 
-func (p *ParagraphLayout) snapshot(indices []int) textedit.Geometry {
+func (p *ParagraphLayout) setWidth(index int, width float64) {
+	if p.format.WrapMode != typography.WrapNone {
+		return
+	}
+	old, ok := p.widthValues[index]
+	if !ok {
+		old = float64(p.blockWidth)
+	}
+	p.widthValues[index] = width
+	for i := index + 1; i < len(p.widthTree); i += i & -i {
+		p.widthTree[i] += width - old
+	}
+}
+
+func (p *ParagraphLayout) widthTop(index int) float64 {
+	x := float64(index) * float64(p.blockWidth)
+	for i := min(index, len(p.widthTree)-1); i > 0; i -= i & -i {
+		x += p.widthTree[i]
+	}
+	return x
+}
+
+func (p *ParagraphLayout) widthAt(x float64) int {
+	return max(0, sort.Search(p.blockCount(), func(i int) bool { return p.widthTop(i+1) > x }))
+}
+
+func (p *ParagraphLayout) origin(page *paragraphPage) (float64, float64) {
+	if p.format.WrapMode == typography.WrapNone {
+		if p.runeAdvance > 0 {
+			return float64(page.runesBefore) * float64(p.runeAdvance), 0
+		}
+		return p.widthTop(page.index), 0
+	}
+	return 0, p.heights.Top64(page.index)
+}
+
+func (p *ParagraphLayout) snapshot(indices []int) ParagraphGeometry {
 	var lines []typography.TextLine
 	var clusters []typography.TextCluster
+	var baseX, baseY float64
 	sort.Ints(indices)
-	for _, index := range indices {
+	for n, index := range indices {
 		page := p.pages[index]
 		if page == nil {
 			continue
 		}
-		origin := p.origin(page)
+		x, y := p.origin(page)
+		if n == 0 {
+			baseX, baseY = x, y
+		}
+		dx, dy := float32(x-baseX), float32(y-baseY)
 		first := len(lines)
+		join := p.format.WrapMode == typography.WrapNone && len(lines) > 0
+		if join {
+			first = 0
+		}
 		for _, line := range page.lines {
-			line.X += origin.X
-			line.Y += origin.Y
-			line.Baseline += origin.Y
-			lines = append(lines, line)
+			line.X += dx
+			line.Y += dy
+			line.Baseline += dy
+			if join {
+				lineEnd := line.Start + line.Length
+				lines[0].Length = max(lines[0].Start+lines[0].Length, lineEnd) - lines[0].Start
+				lines[0].Width = max(lines[0].X+lines[0].Width, line.X+line.Width) - lines[0].X
+			} else {
+				lines = append(lines, line)
+			}
 		}
 		for _, c := range page.clusters {
-			c.X += origin.X
-			c.Y += origin.Y
+			c.X += dx
+			c.Y += dy
 			c.LineIndex += first
 			clusters = append(clusters, c)
 		}
 	}
-	return textedit.NewGeometry(lines, clusters, p.length, p.lineHeight)
+	return ParagraphGeometry{Geometry: textedit.NewGeometry(lines, clusters, p.length, p.lineHeight), X: baseX, Y: baseY}
 }
 
 // Prepare prepares at most one new native window for the latest viewport. It
@@ -564,8 +657,8 @@ func (p *ParagraphLayout) Prepare(viewport geometry.Rectangle, measure bool) boo
 	}
 	first, last := p.heights.At(max(0, viewport.Y-p.lineHeight)), p.heights.At(max(0, viewport.Y+viewport.Height+p.lineHeight))
 	if p.format.WrapMode == typography.WrapNone {
-		first = int(max(0, viewport.X) / p.blockWidth)
-		last = int(max(0, viewport.X+viewport.Width) / p.blockWidth)
+		first = p.widthAt(float64(max(0, viewport.X)))
+		last = p.widthAt(float64(viewport.X) + float64(viewport.Width))
 	}
 	first = max(0, min(first, p.blockCount()-1))
 	last = max(first, min(last, p.blockCount()-1))
@@ -594,9 +687,9 @@ func (p *ParagraphLayout) Prepare(viewport geometry.Rectangle, measure bool) boo
 	return ready
 }
 
-// Geometry returns the measured viewport snapshot. Preparing a different
+// Geometry returns local measured coordinates paired with their origin. Preparing a different
 // viewport replaces it; callers must not retain its pointer across Prepare.
-func (p *ParagraphLayout) Geometry() *textedit.Geometry { return &p.geometry }
+func (p *ParagraphLayout) Geometry() *ParagraphGeometry { return &p.geometry }
 
 // VisibleRange returns the measured viewport's paragraph-local byte interval.
 func (p *ParagraphLayout) VisibleRange() textedit.Range {
@@ -615,7 +708,7 @@ func (p *ParagraphLayout) VisibleRange() textedit.Range {
 // GeometryAt prepares a bounded input window for explicit editing. A nil result
 // means the preceding text context still needs event-loop turns; it never
 // falls back to whole-paragraph measurement. It does not change the viewport.
-func (p *ParagraphLayout) GeometryAt(offset int) *textedit.Geometry {
+func (p *ParagraphLayout) GeometryAt(offset int) *ParagraphGeometry {
 	offset = max(0, min(offset, p.length))
 	deadline := time.Now().Add(2 * time.Millisecond)
 	index := min(p.blockCount()-1, offset/paragraphBlockBytes)
@@ -635,7 +728,7 @@ func (p *ParagraphLayout) GeometryAt(offset int) *textedit.Geometry {
 	}
 	indices := []int{page.index}
 	if offset-page.range_.Start < 64 && page.index > 0 {
-		if prev := p.pages[page.index-1]; prev != nil {
+		if prev := p.page(page.index-1, deadline); prev != nil {
 			indices = append(indices, prev.index)
 		}
 	}
@@ -670,21 +763,55 @@ func (p *ParagraphLayout) CachedOffset(offset int) bool {
 
 // CachedGeometryAt reads an existing editing window without allocating native
 // resources. It may be outside the prepared painting viewport.
-func (p *ParagraphLayout) CachedGeometryAt(offset int) *textedit.Geometry {
-	for i, page := range p.pages {
-		if offset >= page.range_.Start && offset <= page.range_.End {
-			return p.pageGeometry(p.pages[i])
+func (p *ParagraphLayout) CachedGeometryAt(offset int) *ParagraphGeometry {
+	var page *paragraphPage
+	for _, candidate := range p.pages {
+		r := candidate.range_
+		if offset >= r.Start && (offset < r.End || offset == r.End && offset == p.length) {
+			page = candidate
+			break
 		}
 	}
-	return nil
+	if page == nil {
+		for _, candidate := range p.pages {
+			if offset == candidate.range_.End {
+				page = candidate
+				break
+			}
+		}
+	}
+	if page == nil {
+		return nil
+	}
+	indices := []int{page.index}
+	if offset-page.range_.Start < 64 {
+		if prev := p.pages[page.index-1]; prev != nil {
+			indices = append(indices, prev.index)
+		}
+	}
+	if page.range_.End-offset < 64 {
+		if next := p.pages[page.index+1]; next != nil {
+			indices = append(indices, next.index)
+		}
+	}
+	if len(indices) == 1 {
+		return p.pageGeometry(page)
+	}
+	sort.Ints(indices)
+	if p.editGeometry == nil || p.editVersion != p.version || !slices.Equal(p.editIndices, indices) {
+		g := p.snapshot(indices)
+		p.editGeometry = &g
+		p.editVersion = p.version
+		p.editIndices = append(p.editIndices[:0], indices...)
+	}
+	return p.editGeometry
 }
 
-func (p *ParagraphLayout) pageGeometry(page *paragraphPage) *textedit.Geometry {
-	origin := p.origin(page)
-	if page.geometry == nil || page.geometryOrigin != origin {
+func (p *ParagraphLayout) pageGeometry(page *paragraphPage) *ParagraphGeometry {
+	x, y := p.origin(page)
+	if page.geometry == nil || page.geometry.X != x || page.geometry.Y != y {
 		g := p.snapshot([]int{page.index})
 		page.geometry = &g
-		page.geometryOrigin = origin
 	}
 	return page.geometry
 }
@@ -704,13 +831,13 @@ func (p *ParagraphLayout) SetTextColor(r textedit.Range, c color.Color) {
 	}
 }
 
-// Paint draws only prepared viewport windows and clips their uncommitted tails.
+// Paint draws prepared windows at the supplied widget-local geometry origin,
+// using the same relative coordinates as Geometry. Uncommitted tails are clipped.
 func (p *ParagraphLayout) Paint(draw Painter, origin geometry.Point) {
 	for _, index := range p.active {
 		page := p.pages[index]
-		at := p.origin(page)
-		at.X += origin.X
-		at.Y += origin.Y
+		x, y := p.origin(page)
+		at := geometry.Point{X: origin.X + float32(x-p.geometry.X), Y: origin.Y + float32(y-p.geometry.Y)}
 		draw.Save()
 		draw.SetClipRect(geometry.Rect(at.X, at.Y, max(p.width, page.width), page.height))
 		draw.DrawTextLayout(at, page.layout)

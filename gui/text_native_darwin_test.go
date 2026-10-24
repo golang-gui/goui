@@ -21,3 +21,7 @@ func TestTextViewCoreTextRevealEnd(t *testing.T) {
 func TestTextViewCoreTextResizeAnchor(t *testing.T) {
 	testTextViewNativeResizeAnchor(t, coretext.NewContext)
 }
+
+func TestParagraphCoordinatesNative(t *testing.T) {
+	testParagraphCoordinatesNative(t, coretext.NewContext)
+}
