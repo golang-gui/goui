@@ -929,3 +929,33 @@ func TestScrollViewStopsWhenMeasurementReplacesContent(t *testing.T) {
 		t.Fatalf("measurement retained replaced content: %+v", got)
 	}
 }
+
+// 目标末端不能先按 float32 相加；最终滚动值向可见方向取可表示的边界。
+func TestRevealOffsetPreservesLargeTargetEdges(t *testing.T) {
+	for _, tc := range []struct{ start, size, viewport float32 }{
+		{270000032, 71, 400}, {1000000000, 67, 981.65686}, {268435456, 1, 401}, {20.25, 1, 100}, {20, 200, 100},
+	} {
+		got := revealOffset(0, tc.viewport, tc.start, tc.size)
+		if tc.size > tc.viewport {
+			if got > tc.start || float64(tc.start)-float64(got) >= 1 {
+				t.Fatal("超宽目标没有对齐首端", tc, got)
+			}
+		} else if float64(got)+float64(tc.viewport) < float64(tc.start)+float64(tc.size) || got > tc.start {
+			t.Fatal("目标末端仍在视口之外", tc, got)
+		}
+	}
+}
+
+// 最大偏移也必须允许显示内容末端，两个轴均按高精度差值向外取整。
+func TestScrollViewLargeRangeContainsContentEnd(t *testing.T) {
+	sv := NewScrollView()
+	content := &extentScrollContent{size: geometry.Size{Width: 270000064, Height: 1000000000}}
+	sv.SetChild(content)
+	sv.Arrange(geometry.Rect(0, 0, 409, 219))
+	area := sv.contentAreaSize()
+	sv.SetScrollX(math.MaxFloat32)
+	sv.SetScrollY(math.MaxFloat32)
+	if float64(sv.ScrollX())+float64(area.Width) < float64(content.size.Width) || float64(sv.ScrollY())+float64(area.Height) < float64(content.size.Height) {
+		t.Fatal("范围钳制隐藏内容末端", sv.ScrollX(), sv.ScrollY(), area, content.size)
+	}
+}
