@@ -23,3 +23,7 @@ func TestTextViewDirectWriteRevealEnd(t *testing.T) {
 func TestTextViewDirectWriteResizeAnchor(t *testing.T) {
 	testTextViewNativeResizeAnchor(t, directwrite.NewContext)
 }
+
+func TestParagraphCoordinatesNative(t *testing.T) {
+	testParagraphCoordinatesNative(t, directwrite.NewContext)
+}

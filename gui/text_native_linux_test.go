@@ -162,3 +162,7 @@ func TestTextViewNativeWidthCacheKeepsCompleteContext(t *testing.T) {
 		t.Fatal("ordinary metrics did not survive native layout destruction")
 	}
 }
+
+func TestParagraphCoordinatesNative(t *testing.T) {
+	testParagraphCoordinatesNative(t, pango.NewContext)
+}

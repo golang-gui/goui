@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/golang-gui/goui/core/colors"
 	"github.com/golang-gui/goui/core/geometry"
@@ -1347,5 +1348,58 @@ func TestTextEditorSelectionCullsWrappedLines(t *testing.T) {
 		if rect != want {
 			t.Fatalf("rectangle %d = %v, want %v", i, rect, want)
 		}
+	}
+}
+
+// 通过控件的正常坐标转换验证巨大水平偏移，单独的 Geometry 测试不足以覆盖调用者。
+func TestTextViewLongHorizontalHitAndCaret(t *testing.T) {
+	v, win, _ := newEditorFixture(t, strings.Repeat("x", 27_000_000))
+	v.SetWrapMode(WrapNone)
+	v.Arrange(geometry.Rect(0, 0, 400, 120))
+	v.LayoutVisible(geometry.Size{Width: 400, Height: 120}, geometry.Point{X: 1 << 28})
+	var p *textParagraph
+	for i := 0; i < 256; i++ {
+		win.frames.Emit(time.Now())
+		p = v.paragraph(0)
+		if p != nil && p.paged != nil && p.paged.VisibleRange().Start > 20_000_000 {
+			break
+		}
+	}
+	if p == nil || p.paged == nil {
+		t.Fatal("远处窗口尚未准备")
+	}
+	const first = 26843546
+	// TextView 的默认 padding 是 4 DIP；该 byte 的 X 距滚动位置为 4 DIP。
+	for i := 0; i < 20; i++ {
+		point := geometry.Point{X: 8 + float32(i*10), Y: 14}
+		if pos := v.hitText(point); pos.Offset != first+i {
+			t.Fatalf("点击 %v 得到 %v want %d", point, pos, first+i)
+		}
+	}
+	v.SetSelection(TextSelection{Anchor: first, Caret: first + 20})
+	if caret, ok := v.viewportCaret(0, p); !ok || caret.X != 208 {
+		t.Fatal("光标位置与局部选区不一致", caret, ok)
+	}
+	if !v.selectionContains(geometry.Point{X: 15, Y: 14}) || v.selectionContains(geometry.Point{X: 215, Y: 14}) {
+		t.Fatal("选区命中使用了不同坐标系")
+	}
+	v.longPending = false
+	editorKey(t, win, events.KeyEnd, 0)
+	if v.Selection().Caret != v.Model().Len() {
+		t.Fatal("End 停在片段边界")
+	}
+	if !v.longPending {
+		t.Fatal("End 未调度缓存之外的目标位置")
+	}
+
+	editorKey(t, win, events.KeyHome, 0)
+	if v.Selection().Caret != 0 {
+		t.Fatal("Home 停在片段边界")
+	}
+	if err := v.Model().Replace(TextRange{End: v.Model().Len()}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if empty := v.paragraph(0); empty == nil || empty.paged != nil {
+		t.Fatal("删除到空文本后未返回普通排版路径")
 	}
 }

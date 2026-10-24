@@ -503,3 +503,47 @@ SourceView 的 doc/PlanRemoteEditingLatency.md。
 - 保留限制：未确认全局滚动范围仍为估计；任意复杂 UAX #9、单个超大 grapheme、
   非均匀 NoWrap 的完整坐标等价性未穷尽验证；初始同步建模、超长 Unicode 词边界
   和剩余帧间隔仍需后续优化。不再整段送测解决的是当前样本的主要阻塞路径。
+
+## 水平长行选区精度（2026-10-24）
+
+- 修正范围：ParagraphGeometry 将局部度量与 float64 原点配对；TextView 的绘制、
+  命中、caret／IME、右键菜单及滚动锚点采用相同基准。NoWrap 相邻窗口表示同一
+  显示行；宽度修正前缀索引保持已测片段连续。未修改 typography 或 core Point。
+- 原生回归通过虚拟 ASCII 前缀制造超过 2^28 DIP 的位置，不分配或送测完整大文档。
+  Pango 下等宽／比例字体均与独立的 8192-byte 原生参考对比：跨接缝的逐字符命中、
+  caret、连续选区及绘制位置一致，原生输入 guard 仍为 8192 bytes。
+  Windows／macOS 的同一回归通过对应原生 Context 工厂入口编译，未原生执行。
+- 27,000,000-byte 固定字符模型验证 TextView 与 SourceView 调用链：X=2^28 时，
+  byte 26843546 的字符屏幕坐标仍精确为 padding+4；后续 20 个字符逐个命中，
+  选区与 caret 对齐。保留原有断言；Top64 的相邻行高度在巨大前缀后仍为 12.5 DIP。
+- 手工程序增加 -nowrap 与 SCROLL／VISIBLE 日志。Linux amd64 / Go 1.25.8 / Pango，
+  独立 Xvnc :89 + Xfwm4，Integrated / Modern，样本仍为用户的 184,500,131-byte
+  单行 JSON，不写回文件。真实输入经 XTest、Window.DispatchEvent 与控件事件路径。
+- Software 100%：SourceView 在约 6.85e8 DIP 水平偏移后，跨 byte 92250112 的
+  拖选范围为 [92250058,92250135)，选区行顶采样在物理像素 [147,916) 连续。
+  连续 80 次 Right 每次推进一个 byte。TextView 在约 7.30e8 DIP 下同样完成
+  连续拖选和 80 次右移、插入／退格／撤销／重做，模型最终只增加一个 byte。
+  SourceView 键盘右键菜单在当前 caret 附近显示；没有使用语义动作捷径。
+- Software 的选区行顶采样位置避开字形，SourceView 背景 RGB=(199,217,243)，
+  TextView=(209,224,246)。OpenGL 150% 的 SourceView 背景实测为 (200,217,242)，
+  与软件存在 1 个 8-bit 通道单位的合成量化差异。连续性检查按后端从明确选区内部
+  的无字形位置采样，再检查整条区间；不将不同后端当作同一份颜色金图，不修改
+  已有颜色或预乘测试的容差。OpenGL 150% 的 [241,901) 物理像素连续，并通过
+  80 次相邻移动及编辑历史验证。Xvnc 使用 Mesa，不代表实机 GPU 性能。
+- 同时检查自动换行、宽高变化、跨行选择与 200% 绘制；截图必须等真实 paint 完成，
+  不能把选择状态先更新而画面尚未刷新时的截图算作绘制验收。
+- 发现并补充两个边界：键盘 End 目标不在缓存中时应排队后续帧；长行删除至短行／
+  空文本应退出分页路径。分别增加调度及普通路径回归，避免只改变选区却不显示目标，
+  或不断等待空窗口。
+- 保留限制：ScrollView 全局 offset／extent 仍为 float32。在上述巨大水平位置，
+  小 Shift+wheel 增量可能被量化掉；本批没有改变通用滚动契约，不能宣称逐 DIP
+  滚动精度已经解决。真实 IME、远端原生运行及任意复杂 bidi 的全段等价性未验收。
+- 最终检查：冻结已跟踪源码的副本中 `GOWORK=off go test ./... -count=1`（GOUI）
+  与工作区 `go test ./... -count=1`（SourceView）通过；两仓受影响逻辑与原生回归的
+  race、vet 通过。Windows amd64／macOS arm64 的相关 GOUI 包和 SourceView 全仓
+  `CGO_ENABLED=0 go test ... -exec=true` 交叉编译通过，未原生运行。
+- 键盘 End 另做实际验收：从首屏点击正文后按 End，偏移达到约 1.46e9 DIP，
+  VISIBLE 显示 [184496128,184500131)，确认目标原生窗口就绪后截图，再按 Home。
+  Software 200% 自动换行的多行选区在 paint 稳定后确认绘制（没有用提前截图代替）。
+- SourceView 关闭工作区的检查仍因 GOUI v0.3.0 缺少新 helper、Top64 等而构建失败。
+  没有为通过检查伪造依赖版本；用户既有未跟踪测试／示例未混入冻结副本或提交。
