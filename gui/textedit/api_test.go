@@ -1,7 +1,9 @@
 package textedit_test
 
 import (
+	"github.com/rivo/uniseg"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/golang-gui/goui/gui/textedit"
@@ -160,5 +162,29 @@ func TestProjectionMappingAndIsolation(t *testing.T) {
 	other.Update("!", 1)
 	if p.Text() != "中\nx" || m.Text() != "ab\ncd\nef" || m.Revision() != 0 || m.CanUndo() {
 		t.Fatal("preedit leaked into another projection or document history")
+	}
+}
+
+// 局部词边界必须与完整 UAX #29 分段一致，长标识符也不能吞掉连接标点。
+func TestLongLineWordAt(t *testing.T) {
+	for _, body := range []string{strings.Repeat("a", 12000), strings.Repeat("a", 6000) + "'" + strings.Repeat("b", 6000), strings.Repeat("a", 6000) + "中" + strings.Repeat("b", 6000), strings.Repeat("a", 6000) + "." + strings.Repeat("b", 6000)} {
+		text := "prefix /" + body + "/ suffix"
+		m := textedit.NewModel(text)
+		for _, at := range []int{7, 100, 6008, 10000, len(text) - 3} {
+			start, state, rest := 0, -1, text
+			var want textedit.Range
+			for len(rest) > 0 {
+				word, next, s := uniseg.FirstWordInString(rest, state)
+				end := start + len(word)
+				if at < end || end == len(text) {
+					want = textedit.Range{Start: start, End: end}
+					break
+				}
+				start, rest, state = end, next, s
+			}
+			if got := m.WordAt(at); got != want {
+				t.Fatalf("at=%d got=%v want=%v", at, got, want)
+			}
+		}
 	}
 }

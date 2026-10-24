@@ -1,19 +1,24 @@
 package textedit
 
-import "sort"
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
 
-// Projection is a view-local projection, not an edit in Model. Only the
-// surviving ends of the affected paragraphs are copied. Selecting a megabyte
-// range does not copy that range, or shape its hidden paragraphs.
+// Projection is a view-local range projection, not an edit in Model. Surviving
+// model prefixes and suffixes remain range references. Short inputs may also
+// retain a bounded materialization; long lines are read through Slice.
 type Projection struct {
-	selection      Selection
-	replacement    Range
-	first, last    int // affected model paragraph indexes, inclusive
-	origin         int // byte offset of the first affected paragraph
-	prefix, suffix string
-	text, display  string
-	caret          int     // byte offset within normalized preedit text
-	lines          []Range // paragraph ranges within display, excluding LF
+	selection                  Selection
+	replacement                Range
+	first, last                int    // affected model paragraph indexes, inclusive
+	origin                     int    // byte offset of the first affected paragraph
+	prefix, suffix             string // bounded materialization for short projected paragraphs
+	text, display              string
+	prefixLength, suffixLength int
+	caret                      int     // byte offset within normalized preedit text
+	lines                      []Range // paragraph ranges within display, excluding LF
 }
 
 // NewProjection hides a valid model selection with initially empty preedit.
@@ -24,10 +29,12 @@ func NewProjection(model *Model, selection Selection) *Projection {
 	first, last := model.LineAt(rng.Start), model.LineAt(rng.End)
 	firstRange, _ := model.LineRange(first)
 	lastRange, _ := model.LineRange(last)
-	prefix, _ := model.Slice(Range{firstRange.Start, rng.Start})
-	suffix, _ := model.Slice(Range{rng.End, lastRange.End})
 	p := &Projection{selection: selection, replacement: rng, first: first, last: last,
-		origin: firstRange.Start, prefix: prefix, suffix: suffix}
+		origin: firstRange.Start, prefixLength: rng.Start - firstRange.Start, suffixLength: lastRange.End - rng.End}
+	if p.prefixLength+p.suffixLength <= 8192 {
+		p.prefix, _ = model.Slice(Range{firstRange.Start, rng.Start})
+		p.suffix, _ = model.Slice(Range{rng.End, lastRange.End})
+	}
 	p.Update("", 0)
 	return p
 }
@@ -36,16 +43,19 @@ func NewProjection(model *Model, selection Selection) *Projection {
 // breaks; caret is a byte offset in that text and is clamped to a rune boundary.
 func (p *Projection) Update(text string, caret int) {
 	p.text, p.caret = text, ClampOffset(text, caret)
-	p.display = p.prefix + text + p.suffix
+	p.display = ""
+	if len(p.prefix)+len(p.suffix) == p.prefixLength+p.suffixLength {
+		p.display = p.prefix + text + p.suffix
+	}
 	p.lines = p.lines[:0]
 	start := 0
-	for i := 0; i < len(p.display); i++ {
-		if p.display[i] == '\n' {
-			p.lines = append(p.lines, Range{start, i})
-			start = i + 1
+	for i := 0; i < len(text); i++ {
+		if text[i] == '\n' {
+			p.lines = append(p.lines, Range{start, p.prefixLength + i})
+			start = p.prefixLength + i + 1
 		}
 	}
-	p.lines = append(p.lines, Range{start, len(p.display)})
+	p.lines = append(p.lines, Range{start, p.prefixLength + len(text) + p.suffixLength})
 }
 
 func (p *Projection) lineDelta() int { return len(p.lines) - (p.last - p.first + 1) }
@@ -109,22 +119,59 @@ func (p *Projection) LineRange(model *Model, index int) Range {
 
 // Paragraph returns a valid display paragraph's text, excluding LF.
 func (p *Projection) Paragraph(model *Model, index int) string {
-	if index >= p.first {
-		if index < p.first+len(p.lines) {
-			rng := p.lines[index-p.first]
-			return p.display[rng.Start:rng.End]
-		}
-		index -= p.lineDelta()
-	}
-	rng, _ := model.LineRange(index)
-	text, _ := model.Slice(rng)
+	text, _ := p.Slice(model, p.LineRange(model, index))
 	return text
+}
+
+// Slice reads a bounded range in projected document coordinates. The unchanged
+// model's prefix and suffix are referenced rather than copied during Update.
+func (p *Projection) Slice(model *Model, rng Range) (string, error) {
+	length := model.Len() + p.byteDelta()
+	if rng.Start < 0 || rng.End < rng.Start || rng.End > length {
+		return "", fmt.Errorf("text projection: invalid range %v", rng)
+	}
+	for _, at := range []int{rng.Start, rng.End} {
+		if at > p.replacement.Start && at < p.replacement.Start+len(p.text) {
+			if ClampOffset(p.text, at-p.replacement.Start) != at-p.replacement.Start {
+				return "", fmt.Errorf("text projection: range splits UTF-8")
+			}
+		} else if !model.IsRuneBoundary(p.ModelOffset(at, false)) {
+			return "", fmt.Errorf("text projection: range splits UTF-8")
+		}
+	}
+	start, end := p.replacement.Start, p.replacement.Start+len(p.text)
+	var out strings.Builder
+	out.Grow(rng.End - rng.Start)
+	if rng.Start < start {
+		s, err := model.Slice(Range{rng.Start, min(rng.End, start)})
+		if err != nil {
+			return "", err
+		}
+		out.WriteString(s)
+	}
+	if a, b := max(rng.Start, start), min(rng.End, end); a < b {
+		a -= start
+		b -= start
+		if ClampOffset(p.text, a) != a || ClampOffset(p.text, b) != b {
+			return "", fmt.Errorf("text projection: range splits UTF-8")
+		}
+		out.WriteString(p.text[a:b])
+	}
+	if rng.End > end {
+		a, b := max(rng.Start, end)-p.byteDelta(), rng.End-p.byteDelta()
+		s, err := model.Slice(Range{a, b})
+		if err != nil {
+			return "", err
+		}
+		out.WriteString(s)
+	}
+	return out.String(), nil
 }
 
 // LineAt finds the display paragraph containing offset.
 func (p *Projection) LineAt(model *Model, offset int) int {
 	if offset >= p.origin {
-		if offset <= p.origin+len(p.display) {
+		if offset <= p.origin+p.prefixLength+len(p.text)+p.suffixLength {
 			line := sort.Search(len(p.lines), func(i int) bool { return p.lines[i].Start > offset-p.origin }) - 1
 			return p.first + max(0, line)
 		}
