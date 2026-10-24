@@ -68,6 +68,29 @@ func TestFromSettings(t *testing.T) {
 	}
 }
 
+// Tooltip 的原生表面不为阴影扩展，以免覆盖触发按钮的留白并引起进出循环。
+func TestTooltipSurfaceHasNoShadow(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		dark bool
+	}{{"Light", false}, {"Dark", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := resolved(Sheet(Options{Dark: tc.dark}), "tooltip", style.Normal)
+			shadow, _ := s.Shadow()
+			if shadow.Color != nil {
+				if _, _, _, alpha := shadow.Color.RGBA(); alpha != 0 {
+					t.Fatal("Tooltip 仍有可见阴影")
+				}
+			}
+			radius, _ := s.Radius()
+			border, _ := s.BorderWidth()
+			if radius <= 0 || border <= 0 {
+				t.Fatal("Tooltip 丢失了圆角或边框")
+			}
+		})
+	}
+}
+
 func TestFromSettingsSnapshotIsolationAndNormalization(t *testing.T) {
 	accent := rgb(0x0078D4)
 	s := &appearanceSettings{accent: &accent, family: "First", size: 16}
