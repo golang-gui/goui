@@ -8,6 +8,8 @@ import (
 
 func TestNativeTextRasterViewport(t *testing.T) { testTextRasterViewport(t, coretext.NewContext) }
 
+func TestParagraphLayoutCoreText(t *testing.T) { testParagraphLayoutNative(t, coretext.NewContext) }
+
 func TestTextEditorCoreTextNavigation(t *testing.T) {
 	testTextEditorNativeNavigation(t, coretext.NewContext)
 }

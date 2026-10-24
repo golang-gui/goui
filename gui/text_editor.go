@@ -26,6 +26,7 @@ type textParagraph struct {
 	textBytes      int
 	previous, next *textParagraph
 	layout         typography.TextLayout
+	paged          *ParagraphLayout
 	measured       bool
 	geometry       textedit.Geometry
 	geometryValid  bool
@@ -44,6 +45,9 @@ type textParagraph struct {
 // Editing and viewport anchoring retain the same exact geometry, built once
 // on demand for each measured layout.
 func (p *textParagraph) editGeometry(emptyHeight float32) *textedit.Geometry {
+	if p.paged != nil {
+		return p.paged.Geometry()
+	}
 	if !p.geometryValid {
 		var lines []typography.TextLine
 		var clusters []typography.TextCluster
@@ -66,6 +70,15 @@ func (p *textParagraph) editGeometry(emptyHeight float32) *textedit.Geometry {
 		p.geometryValid = true
 	}
 	return &p.geometry
+}
+
+func (p *textParagraph) geometryAt(emptyHeight float32, offset int) *textedit.Geometry {
+	if p.paged != nil {
+		if g := p.paged.GeometryAt(offset); g != nil {
+			return g
+		}
+	}
+	return p.editGeometry(emptyHeight)
 }
 
 // Retain recently used native layouts per editor, not per document or backend.
@@ -129,6 +142,9 @@ func (c *textParagraphCache) remove(p *textParagraph) {
 	if p.layout != nil {
 		p.layout.Destroy()
 	}
+	if p.paged != nil {
+		p.paged.Destroy()
+	}
 }
 
 func (c *textParagraphCache) clear() {
@@ -139,6 +155,9 @@ func (c *textParagraphCache) clear() {
 		old.previous, old.next = nil, nil
 		if old.layout != nil {
 			old.layout.Destroy()
+		}
+		if old.paged != nil {
+			old.paged.Destroy()
 		}
 		old = next
 	}
@@ -180,6 +199,9 @@ func (c *textParagraphCache) splice(start, removed, inserted int) {
 	for _, p := range released {
 		if p.layout != nil {
 			p.layout.Destroy()
+		}
+		if p.paged != nil {
+			p.paged.Destroy()
 		}
 	}
 }
@@ -242,10 +264,13 @@ type textEditor struct {
 	caretVisible      bool
 	anchor            textViewportAnchor
 	anchorPending     bool
+	longFrame         signal.Handle
+	longPending       bool
+	longBudget        int
 }
 
 func newTextEditor(owner Widget, singleLine bool) *textEditor {
-	t := &textEditor{owner: owner, singleLine: singleLine, wrap: WrapWordChar, padding: 4, lineHeight: 20, editOwner: &textedit.EditSource{}, caretVisible: true}
+	t := &textEditor{owner: owner, singleLine: singleLine, wrap: WrapWordChar, padding: 4, lineHeight: 20, editOwner: &textedit.EditSource{}, caretVisible: true, longBudget: 1}
 	if singleLine {
 		t.wrap = WrapNone
 	}
@@ -275,6 +300,12 @@ func newTextEditor(owner Widget, singleLine bool) *textEditor {
 		t.connectContextMenuLanguage()
 	})
 	t.owner.ConnectUnmount(func() {
+		if t.longFrame != nil {
+			t.longFrame.Disconnect()
+			t.longFrame = nil
+		}
+		t.longPending = false
+		t.longBudget = 1
 		t.mountEpoch++
 		t.suspended = true
 		if t.contextMenu != nil && t.contextMenu.language != nil {
@@ -503,6 +534,15 @@ func (t *textEditor) modelChanged(change TextChange) {
 			removed := t.heights.Count() + added - t.model.LineCount()
 			if removed < 0 || start+removed >= t.heights.Count() {
 				t.resetParagraphs()
+			} else if p := t.paragraphs[start]; p != nil && p.paged != nil && removed == 0 && added == 0 {
+				rng := t.displayLineRange(start)
+				local := edit
+				local.Range.Start -= rng.Start
+				local.Range.End -= rng.Start
+				p.paged.Change(rng.End-rng.Start, []textedit.Edit{local})
+				p.measured = false
+				t.heightEstimated = true
+				t.queueLongLayout()
 			} else {
 				t.spliceParagraphs(start, removed+1, added+1)
 			}
@@ -549,6 +589,13 @@ func (t *textEditor) snapPosition(offset int) int {
 	i := t.model.LineAt(offset)
 	rng, _ := t.model.LineRange(i)
 	if p := t.paragraph(i); p != nil {
+		if p.paged != nil {
+			if g := p.paged.GeometryAt(offset - rng.Start); g != nil {
+				return rng.Start + g.Snap(offset-rng.Start, false)
+			}
+			t.queueLongLayout()
+			return offset
+		}
 		return rng.Start + p.editGeometry(t.lineHeight).Snap(offset-rng.Start, false)
 	}
 	return offset
@@ -626,6 +673,10 @@ func (t *textEditor) ensureFormat() {
 			color = typography.DefaultTextColor()
 		}
 		for _, p := range t.paragraphs {
+			if p.paged != nil {
+				p.paged.SetColor(color)
+				continue
+			}
 			if p.layout != nil && len(p.layout.Text()) > 0 {
 				p.layout.SetTextColor(0, len(p.layout.Text()), color)
 				if !current() {
@@ -713,6 +764,9 @@ func (t *textEditor) paragraph(index int) *textParagraph {
 		t.textParagraphCache.touch(p)
 	}
 	if p != nil && p.measured {
+		if p.paged != nil {
+			return t.prepareLongParagraph(index, p)
+		}
 		return p
 	}
 	if index < 0 || index >= t.displayLineCount() || App == nil || App.Typography() == nil {
@@ -723,6 +777,21 @@ func (t *textEditor) paragraph(index int) *textParagraph {
 		width = textInputMeasureExtent
 	}
 	if p == nil {
+		rng := t.displayLineRange(index)
+		if !t.singleLine && rng.End-rng.Start > 64*1024 {
+			p = &textParagraph{index: index}
+			p.paged = NewParagraphLayout(App.Typography(), t.format, width, rng.End-rng.Start, func(local textedit.Range) (string, error) {
+				r := t.displayLineRange(p.index)
+				local.Start += r.Start
+				local.End += r.Start
+				if t.preedit != nil {
+					return t.preedit.Slice(t.model, local)
+				}
+				return t.model.Slice(local)
+			})
+			t.textParagraphCache.add(index, 0, p)
+			return t.prepareLongParagraph(index, p)
+		}
 		text := t.displayParagraph(index)
 		for i := len(t.replacedParagraphs) - 1; i >= 0; i-- {
 			previous := t.replacedParagraphs[i]
@@ -749,6 +818,8 @@ func (t *textEditor) paragraph(index int) *textParagraph {
 			}
 		}
 		t.textParagraphCache.add(index, len(text), p)
+	} else if p.paged != nil {
+		return t.prepareLongParagraph(index, p)
 	} else if p.layout != nil {
 		p.layout.SetSize(width, textInputMeasureExtent)
 	}
@@ -769,6 +840,59 @@ func (t *textEditor) paragraph(index int) *textParagraph {
 	p.measured = true
 	t.heights.Set(index, p.height)
 	t.observedWidth = max(t.observedWidth, w)
+	return p
+}
+
+func (t *textEditor) queueLongLayout() {
+	t.longPending = true
+	if root := t.owner.Root(); root != nil {
+		if t.longFrame == nil {
+			t.longFrame = root.ConnectFrame(func(time.Time) {
+				t.longBudget = 1
+				if t.longPending {
+					t.longPending = false
+					t.owner.RequestLayout()
+				}
+			})
+		}
+		_ = root.RequestPaint()
+	}
+}
+
+func (t *textEditor) prepareLongParagraph(index int, p *textParagraph) *textParagraph {
+	model, revision, epoch := t.model, t.model.Revision(), t.mountEpoch
+	p.paged.SetWidth(t.layoutWidth)
+	if t.revealCaret && t.displayLineAt(t.displayCaret().Offset) == index {
+		r := t.displayLineRange(index)
+		if p.paged.GeometryAt(t.displayCaret().Offset-r.Start) == nil {
+			t.queueLongLayout()
+		}
+	} else if t.anchorPending && t.anchor.valid && t.model.LineAt(t.anchor.offset) == index {
+		r := t.displayLineRange(index)
+		if p.paged.GeometryAt(t.anchor.offset-r.Start) == nil {
+			t.queueLongLayout()
+		}
+	}
+	viewport := geometry.Rect(t.offset.X, max(0, t.offset.Y-t.padding-t.heights.Top(index)), t.viewport.Width, max(t.lineHeight, t.viewport.Height))
+	ready := p.paged.Prepare(viewport, t.longBudget > 0 || t.owner.Root() == nil)
+	if t.longBudget > 0 {
+		t.longBudget--
+	}
+	if t.owner.base().destroyed || t.model != model || t.model.Revision() != revision || t.mountEpoch != epoch || t.paragraphs[index] != p || p.paged.Err() != nil {
+		return nil
+	}
+	size := p.paged.Size()
+	p.width, p.height = size.Width, size.Height
+	p.measured = ready
+	p.baseline = t.baseline
+	t.heights.Set(index, p.height)
+	t.observedWidth = max(t.observedWidth, p.width)
+	if !ready {
+		t.queueLongLayout()
+	}
+	if p.paged.VisibleRange().End == 0 {
+		return nil
+	}
 	return p
 }
 
@@ -1052,7 +1176,14 @@ func (t *textEditor) paragraphCaret(index int, p *textParagraph) (geometry.Recta
 	rng := t.displayLineRange(index)
 	pos := t.displayCaret()
 	pos.Offset -= rng.Start
-	return p.editGeometry(t.lineHeight).Caret(pos).Translate(geometry.Point{X: t.padding, Y: t.padding + t.heights.Top(index) + p.textOffset}), true
+	g := p.editGeometry(t.lineHeight)
+	if p.paged != nil {
+		g = p.paged.CachedGeometryAt(pos.Offset)
+		if g == nil {
+			return geometry.Rectangle{}, false
+		}
+	}
+	return g.Caret(pos).Translate(geometry.Point{X: t.padding, Y: t.padding + t.heights.Top(index) + p.textOffset}), true
 }
 
 func (t *textEditor) paint(p Painter) {
@@ -1082,13 +1213,15 @@ func (t *textEditor) paint(p Painter) {
 			for _, rect := range t.visibleSelection(paragraph, TextRange{Start: selected.Start - rng.Start, End: selected.End - rng.Start}, origin) {
 				p.FillRect(rect.Translate(origin), graphics.ColorOf(selectionColor))
 			}
-			if selected.Start <= rng.End && selected.End > rng.End && i+1 < t.displayLineCount() {
+			if selected.Start <= rng.End && selected.End > rng.End && i+1 < t.displayLineCount() && (paragraph.paged == nil || paragraph.paged.CachedOffset(rng.End-rng.Start)) {
 				rect := paragraph.editGeometry(t.lineHeight).Caret(textedit.Position{Offset: rng.End - rng.Start, Upstream: true})
 				rect.Width = max(1, t.lineHeight/3)
 				p.FillRect(rect.Translate(origin), graphics.ColorOf(selectionColor))
 			}
 		}
-		if paragraph.layout != nil && paragraph.layout.Text() != "" {
+		if paragraph.paged != nil {
+			paragraph.paged.Paint(p, origin)
+		} else if paragraph.layout != nil && paragraph.layout.Text() != "" {
 			p.DrawTextLayout(origin, paragraph.layout)
 		}
 		if composition := t.preedit; composition != nil {
@@ -1136,6 +1269,11 @@ func (t *textEditor) snapshot() WidgetInfo {
 	end := t.heights.At(max(0, t.offset.Y+t.viewport.Height-t.padding))
 	first := t.displayLineRange(start)
 	last := t.displayLineRange(end)
+	if p := t.paragraphs[start]; p != nil && p.paged != nil {
+		r := p.paged.VisibleRange()
+		first.Start += r.Start
+		last.End = min(last.End, t.displayLineRange(start).Start+r.End)
+	}
 	if p := t.preedit; p != nil {
 		first.Start = p.ModelOffset(first.Start, false)
 		last.End = p.ModelOffset(last.End, true)
@@ -1181,7 +1319,15 @@ func (t *textEditor) restoreViewportAnchor() {
 		return
 	}
 	rng, _ := t.model.LineRange(index)
-	rect := p.editGeometry(t.lineHeight).Caret(textedit.Position{Offset: offset - rng.Start, Upstream: false})
+	g := p.editGeometry(t.lineHeight)
+	if p.paged != nil {
+		g = p.paged.CachedGeometryAt(offset - rng.Start)
+		if g == nil {
+			t.queueLongLayout()
+			return
+		}
+	}
+	rect := g.Caret(textedit.Position{Offset: offset - rng.Start, Upstream: false})
 	t.offset.Y = max(0, t.heights.Top(index)+p.textOffset+rect.Y+t.anchor.within)
 	// ScrollView may lay out twice before applying its queued scroll request.
 	// Keep the text anchor until LayoutVisible receives the requested offset.
@@ -1210,7 +1356,7 @@ func (t *textEditor) saveViewportAnchor() {
 	// can retain a preceding line hidden entirely by the content clip.
 	index := t.heights.At(max(0, t.offset.Y))
 	p := t.paragraphs[index]
-	if p == nil {
+	if p == nil || p.paged != nil && p.paged.VisibleRange().End == 0 {
 		return
 	}
 	y := t.offset.Y - t.heights.Top(index) - p.textOffset
@@ -2078,7 +2224,7 @@ func (t *textEditor) logicalAdjacent(offset int, forward bool) int {
 		return offset - 1
 	}
 	if p := t.paragraph(index); p != nil {
-		return rng.Start + p.editGeometry(t.lineHeight).Adjacent(offset-rng.Start, forward)
+		return rng.Start + p.geometryAt(t.lineHeight, offset-rng.Start).Adjacent(offset-rng.Start, forward)
 	}
 	return offset // Never guess a cluster boundary from rune counts.
 }
@@ -2088,7 +2234,7 @@ func (t *textEditor) horizontal(right bool) textedit.Position {
 	rng, _ := t.model.LineRange(index)
 	pos := textedit.Position{Offset: t.selection.Caret - rng.Start, Upstream: t.caretUpstream}
 	if p := t.paragraph(index); p != nil {
-		if next, ok := p.editGeometry(t.lineHeight).Visual(pos, right); ok {
+		if next, ok := p.geometryAt(t.lineHeight, pos.Offset).Visual(pos, right); ok {
 			next.Offset += rng.Start
 			return next
 		}
@@ -2115,8 +2261,8 @@ func (t *textEditor) selectionEdge(right, word bool) textedit.Position {
 	if !word && index == t.model.LineAt(rng.End) {
 		if p := t.paragraph(index); p != nil {
 			line, _ := t.model.LineRange(index)
-			a := p.editGeometry(t.lineHeight).Caret(textedit.Position{Offset: first.Offset - line.Start, Upstream: first.Upstream})
-			b := p.editGeometry(t.lineHeight).Caret(textedit.Position{Offset: last.Offset - line.Start, Upstream: last.Upstream})
+			a := p.geometryAt(t.lineHeight, first.Offset-line.Start).Caret(textedit.Position{Offset: first.Offset - line.Start, Upstream: first.Upstream})
+			b := p.geometryAt(t.lineHeight, last.Offset-line.Start).Caret(textedit.Position{Offset: last.Offset - line.Start, Upstream: last.Upstream})
 			if a.Y > b.Y || a.Y == b.Y && a.X > b.X {
 				first, last = last, first
 			}
@@ -2147,6 +2293,18 @@ func (t *textEditor) vertical(down bool, page bool) textedit.Position {
 	index := t.model.LineAt(pos.Offset)
 	rng, _ := t.model.LineRange(index)
 	p := t.paragraph(index)
+	if p == nil {
+		return pos
+	}
+	if p.paged != nil {
+		g := p.geometryAt(t.lineHeight, pos.Offset-rng.Start)
+		current := g.Caret(textedit.Position{Offset: pos.Offset - rng.Start, Upstream: pos.Upstream})
+		delta := max(t.lineHeight, current.Height)
+		if !down {
+			delta = -delta
+		}
+		return t.hitText(geometry.Point{X: t.desiredX + t.padding - t.offset.X, Y: t.padding + t.heights.Top(index) + current.Y - t.offset.Y + delta + current.Height/2})
+	}
 	line := p.editGeometry(t.lineHeight).LineIndex(textedit.Position{Offset: pos.Offset - rng.Start, Upstream: pos.Upstream})
 	if down {
 		line++
@@ -2193,8 +2351,9 @@ func (t *textEditor) lineEdge(end, document bool) textedit.Position {
 	if p == nil {
 		return textedit.Position{Offset: rng.Start, Upstream: false}
 	}
-	i := p.editGeometry(t.lineHeight).LineIndex(textedit.Position{Offset: t.selection.Caret - rng.Start, Upstream: t.caretUpstream})
-	pos := p.editGeometry(t.lineHeight).LineEdge(i, end)
+	g := p.geometryAt(t.lineHeight, t.selection.Caret-rng.Start)
+	i := g.LineIndex(textedit.Position{Offset: t.selection.Caret - rng.Start, Upstream: t.caretUpstream})
+	pos := g.LineEdge(i, end)
 	pos.Offset += rng.Start
 	return pos
 }
@@ -2396,7 +2555,7 @@ func (t *textEditor) wordAt(offset int) TextRange {
 	line, _ := t.model.LineRange(index)
 	rng := t.model.WordAt(offset)
 	if p := t.paragraph(index); p != nil {
-		return TextRange{Start: line.Start + p.editGeometry(t.lineHeight).Snap(rng.Start-line.Start, false), End: line.Start + p.editGeometry(t.lineHeight).Snap(rng.End-line.Start, true)}
+		return TextRange{Start: line.Start + p.geometryAt(t.lineHeight, rng.Start-line.Start).Snap(rng.Start-line.Start, false), End: line.Start + p.geometryAt(t.lineHeight, rng.End-line.Start).Snap(rng.End-line.Start, true)}
 	}
 	return rng
 }
@@ -2413,10 +2572,21 @@ func (t *textEditor) wordAdjacent(offset int, forward bool) int {
 	// Skip adjacent whitespace, but not LF (paragraph navigation is separate).
 	index := t.model.LineAt(offset)
 	line, _ := t.model.LineRange(index)
-	rest, _ := t.model.Slice(TextRange{Start: rng.End, End: line.End})
-	end := rng.End + len(rest) - len(strings.TrimLeft(rest, " \t"))
+	end := rng.End
+	for end < line.End {
+		last := min(line.End, end+4096)
+		for !t.model.IsRuneBoundary(last) {
+			last--
+		}
+		rest, _ := t.model.Slice(TextRange{Start: end, End: last})
+		n := len(rest) - len(strings.TrimLeft(rest, " \t"))
+		end += n
+		if n < len(rest) {
+			break
+		}
+	}
 	if p := t.paragraph(index); p != nil {
-		end = line.Start + p.editGeometry(t.lineHeight).Snap(end-line.Start, true)
+		end = line.Start + p.geometryAt(t.lineHeight, end-line.Start).Snap(end-line.Start, true)
 	}
 	return end
 }

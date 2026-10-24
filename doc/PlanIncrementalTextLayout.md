@@ -470,3 +470,36 @@ SourceView 的 doc/PlanRemoteEditingLatency.md。
 本轮代码、普通边界精度修复、三个后端验证、真实操作对照及未通过的缩放场景见
 [测量与段落渲染验证](PlanMeasuredTextLayout.md)。这是减负及前置验证，正式上下文
 片段／事件间隔内布局仍未完成；保持本文件顶部未完成项，不将本批提交标为整体达标。
+
+## 超长单行有界原生测量（2026-10-24）
+
+- 样本 `/data/xuyang8/temp/test.json` 为 184,500,131 bytes、无 LF/CR 的单逻辑行；
+  大部分为 ASCII，包含少量中文、组合字符和数 MB 的 JSON 字符串。不复制样本进仓库。
+- GOUI 基线 `5f30e52`，Linux amd64 / Go 1.25.8 / Pango / Software，
+  独立 Xvnc `:89`、Xfwm4 合成、100% 应用缩放，Integrated 1000×700 窗口。
+  通过相同 TextView 驱动对照：基线原生输入 184,500,131 bytes；真实按钮点击
+  未得到处理，超过 5 秒仍未首屏就绪。看门狗向本次基线进程发 SIGQUIT 取栈，
+  主线程停在 Pango GetExtents；这是人工终止的诊断，不记录为正常退出或通过。
+- 新版 TextView 在相同样本和环境中完成首屏、中部／末尾定位、连续键入 LATENCY、
+  退格、撤销、重做、末尾输入、滚轮、滚动条拖动和改变宽高。输入经 XTest 正常
+  事件路径；模型 byte 数和 caret 均按实际键入变化，截图观察文字及滚动位置。
+  原生输入最大 4,149 bytes；中部请求处理 4.16 ms，目标原生窗口实际绘制就绪
+  1.07 秒；末尾 4.13 ms／0.57 秒。这是本次观察值，不是延迟上限或性能 SLA。
+- 同步加载 423.5 ms；加载后 HEARTBEAT 的最大观察间隔 162.5 ms。
+  不能将原生输入变小等同于已消除整个 GUI 的停顿。未定位剩余间隔的全部来源。
+- 原生对照覆盖 ASCII、中文、e+combining、emoji/ZWJ、tab、RTL 基方向、跨窗口
+  RLO 与 isolate。与完整小规模原生参考比较行起止、宽高和 cluster 的 X、宽度、
+  方向。接缝连续 20 次编辑、Destroy 重入不发布过期对象也有回归。
+  测试中的原生送测 guard 为 8192 bytes，未通过放宽原有断言来取得结果。
+- 值层覆盖 2 MiB 单行 IME Projection 的范围读取、长词的 UAX #29 对照及 UTF-8
+  边界。真实 IME 候选窗口／平台提交未运行，不把 Projection 测试冒充真实 IME。
+- 冻结已跟踪源码和本批新增文件到仓库外副本，避免纳入用户既有未跟踪测试／示例。
+  副本中 `GOWORK=off go test ./... -count=1` 通过；工作仓库
+  `go test ./gui ./gui/textedit`、`go test -race ./gui ./gui/textedit -count=1`、
+  `GOWORK=off go vet ./gui ./gui/textedit` 通过。
+- Windows amd64、macOS arm64：`CGO_ENABLED=0 GOWORK=off go test ./gui ./gui/textedit
+  -exec=true` 交叉编译通过；新增对应 DirectWrite／CoreText 原生入口，未原生运行。
+  不能据此声称跨平台排版或 UI 性能通过。
+- 保留限制：未确认全局滚动范围仍为估计；任意复杂 UAX #9、单个超大 grapheme、
+  非均匀 NoWrap 的完整坐标等价性未穷尽验证；初始同步建模、超长 Unicode 词边界
+  和剩余帧间隔仍需后续优化。不再整段送测解决的是当前样本的主要阻塞路径。

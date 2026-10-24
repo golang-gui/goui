@@ -14,6 +14,8 @@ import (
 
 func TestNativeTextRasterViewport(t *testing.T) { testTextRasterViewport(t, pango.NewContext) }
 
+func TestParagraphLayoutPango(t *testing.T) { testParagraphLayoutNative(t, pango.NewContext) }
+
 func TestTextEditorPangoNavigation(t *testing.T) {
 	testTextEditorNativeNavigation(t, pango.NewContext)
 }
