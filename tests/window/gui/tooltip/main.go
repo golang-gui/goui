@@ -7,6 +7,7 @@
 // -inspect 在自动断言通过后保留窗口：悬停三组按钮观察配色、圆角、文字换行；
 // 点击按钮计数增加，输入框仍可输入，Tab 可导航；移动窗口到屏幕边缘检查提示翻转。
 // 提示不应追随同一按钮内的小幅移动；移出、点击或按键后关闭，不应吞掉原控件操作。
+// 每次显示均等待 700 ms。
 // 不要求点击提示自身穿透到下方控件，不模拟重放输入。真实桌面观察补充合成与系统事件路径。
 // -manual 从启动起只接受真实桌面输入，不运行模拟输入断言，也不输出 PASS；按上述步骤验收。
 // Windows 原生 Popup 显示可能生成当前位置的鼠标事件，覆盖模拟位置；不要把真实光标和模拟
@@ -147,7 +148,7 @@ func main() {
 	steps := []step{
 		{300 * time.Millisecond, func() { check(win.Focused(), "window not activated"); move(buttons[0]) }},
 		{100 * time.Millisecond, func() { check(!visibleTip(), "tooltip appeared before delay") }},
-		{550 * time.Millisecond, func() {
+		{700 * time.Millisecond, func() {
 			check(visibleTip() && win.FocusedWidget() == nil, "tooltip missing or stole focus")
 			p := buttons[0].Snapshot().Bounds.Center()
 			for _, kind := range []events.EventType{events.PointerDown, events.PointerUp} {
@@ -156,23 +157,23 @@ func main() {
 			check(clicks == 1 && !visibleTip(), "tooltip swallowed the normal click")
 			move(disabled[1])
 		}},
-		{600 * time.Millisecond, func() {
+		{800 * time.Millisecond, func() {
 			check(visibleTip() && !disabled[1].Enabled(), "disabled widget help missing")
 			must(win.DispatchEvent(events.WheelEvent{Position: disabled[1].Snapshot().Bounds.Center(), DeltaY: 40}))
 			check(wheels == 1 && !visibleTip(), "tooltip swallowed the wheel")
 			move(buttons[2])
 		}},
-		{600 * time.Millisecond, func() {
+		{800 * time.Millisecond, func() {
 			check(visibleTip(), "dark scoped tooltip missing")
 			key(events.KeyEscape)
 			check(!visibleTip(), "Escape did not close tooltip")
 			move(buttons[2])
 		}},
-		{600 * time.Millisecond, func() {
+		{800 * time.Millisecond, func() {
 			check(!visibleTip(), "Escape reopened tooltip without leaving")
 			buttons[2].SetTooltip("Updated tooltip text")
 		}},
-		{600 * time.Millisecond, func() {
+		{800 * time.Millisecond, func() {
 			check(visibleTip(), "updated tooltip did not appear")
 			buttons[2].SetVisible(false)
 			check(!visibleTip(), "hidden widget kept tooltip")
@@ -180,7 +181,7 @@ func main() {
 			win.SetFocusedWidget(nil)
 			key(events.KeyTab)
 		}},
-		{600 * time.Millisecond, func() {
+		{800 * time.Millisecond, func() {
 			check(win.FocusedWidget() == buttons[0] && buttons[0].FocusVisible() && visibleTip(), "Tab help missing")
 			key(events.KeyEscape)
 			win.SetFocusedWidget(fields[0])
@@ -188,7 +189,7 @@ func main() {
 			check(fields[0].Text() == "text", "tooltip changed text input")
 			move(buttons[1])
 		}},
-		{600 * time.Millisecond, func() {
+		{800 * time.Millisecond, func() {
 			check(visibleTip(), "modal transition fixture missing")
 			p := gui.NewPopover(buttons[1], nil)
 			p.SetWidget(gui.NewLabel("Modal content"))

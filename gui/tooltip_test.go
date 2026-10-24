@@ -70,9 +70,9 @@ func TestTooltipDelayJitterSwitchAndCleanup(t *testing.T) {
 	}
 	tooltipAdvance(t, q, 300*time.Millisecond)
 	tooltipMove(t, w, 42, 40)
-	tooltipAdvance(t, q, 199*time.Millisecond)
+	tooltipAdvance(t, q, 399*time.Millisecond)
 	if len(w.Popovers()) != 0 {
-		t.Fatal("初始等待不足 500ms")
+		t.Fatal("初始等待不足 700ms")
 	}
 	tooltipAdvance(t, q, time.Millisecond)
 	if len(w.Popovers()) != 1 || w.tooltip.popup == nil || w.tooltip.popup.Modal() || w.FocusedWidget() != nil {
@@ -80,13 +80,23 @@ func TestTooltipDelayJitterSwitchAndCleanup(t *testing.T) {
 	}
 	first := w.tooltip.popup
 	tooltipMove(t, w, 160, 40)
-	tooltipAdvance(t, q, 99*time.Millisecond)
+	tooltipAdvance(t, q, 699*time.Millisecond)
 	if len(w.Popovers()) != 0 || !first.destroyed || w.tooltip.target != b {
 		t.Fatal("切换目标没有释放旧提示或跳过了等待")
 	}
 	tooltipAdvance(t, q, time.Millisecond)
 	if len(w.Popovers()) != 1 || w.tooltip.text != "second" {
-		t.Fatal("连续浏览没有使用短延迟")
+		t.Fatal("切换目标等待 700ms 后没有显示提示")
+	}
+	tooltipMove(t, w, 300, 200)
+	tooltipMove(t, w, 160, 40)
+	tooltipAdvance(t, q, 699*time.Millisecond)
+	if len(w.Popovers()) != 0 {
+		t.Fatal("重进原目标没有完整等待 700ms")
+	}
+	tooltipAdvance(t, q, time.Millisecond)
+	if len(w.Popovers()) != 1 {
+		t.Fatal("重进原目标等待 700ms 后没有显示提示")
 	}
 	root.RemoveChild(b)
 	if len(w.Popovers()) != 0 || w.tooltip.target != nil || w.tooltip.timer.Active() {
@@ -103,13 +113,39 @@ func TestTooltipMovementAndQueuedCancellation(t *testing.T) {
 	if len(w.Popovers()) != 0 {
 		t.Fatal("明显移动没有重新等待")
 	}
-	q.advance(400 * time.Millisecond) // 通知已投递，尚未在 GUI 线程执行。
+	q.advance(600 * time.Millisecond) // 通知已投递，尚未在 GUI 线程执行。
 	a.SetVisible(false)
 	for len(q.posts) > 0 {
 		q.dispatch(t)
 	}
 	if len(w.Popovers()) != 0 || len(plat.created) != 0 || w.tooltip.target != nil {
 		t.Fatal("取消后过期的投递仍创建原生提示")
+	}
+}
+
+// 按钮本身与其 Label 子控件共享同一提示目标，四周留白也必须参与命中。
+func TestTooltipButtonPaddingAndContent(t *testing.T) {
+	w, _, _, _, q, _ := tooltipFixture(t)
+	button := NewButton()
+	label := NewLabel("content")
+	button.SetChild(label)
+	button.SetTooltip("button help")
+	w.SetWidget(button)
+	button.Arrange(geometry.Rect(20, 20, 180, 60))
+	label.Arrange(geometry.Rect(30, 16, 120, 28))
+	for _, point := range []geometry.Point{{X: 2, Y: 30}, {X: 178, Y: 30}, {X: 90, Y: 2}, {X: 90, Y: 58}, {X: 90, Y: 30}} {
+		tooltipMove(t, w, 300, 200)
+		tooltipMove(t, w, 20+point.X, 20+point.Y)
+		tooltipAdvance(t, q, 699*time.Millisecond)
+		if !button.hovered || w.tooltip.target != button || len(w.Popovers()) != 0 {
+			t.Fatalf("位置 %v 没有命中按钮、丢失 Hover 或过早显示提示", point)
+		}
+		tooltipAdvance(t, q, time.Millisecond)
+		p := w.tooltip.popup
+		tooltipAdvance(t, q, 2*time.Second)
+		if p == nil || w.tooltip.popup != p || !p.Visible() || !button.hovered {
+			t.Fatalf("位置 %v 的提示或 Hover 没有保持稳定", point)
+		}
 	}
 }
 

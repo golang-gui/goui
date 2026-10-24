@@ -16,7 +16,7 @@ WidgetBase 只保存文字，未挂载设置不创建计时器或原生对象。
 
 - 从实际几何命中点向祖先寻找最近的非空提示，保留裁剪及前后遮挡规则。
   禁用控件仍可说明不可用原因，不因此接收点击或普通 Hover 信号。
-- 初次停留 500 ms；已显示提示后 1 秒内浏览下一个目标使用 100 ms。
+- 每次触发统一等待 700 ms；切换目标、重新进入或更新文字均使用相同延迟。
   等待时超过 4 DIP 的移动重新计时；显示后同一目标内的移动不使浮层追随指针。
 - Tab 导航获得 FocusVisible 时延迟显示；鼠标点击获得焦点不触发提示。
   Escape 或其他按键、按下鼠标、滚轮、拖放、离开目标、窗口失焦／隐藏关闭提示。
@@ -64,6 +64,8 @@ WidgetInfo.Tooltip 保存说明文字，提示未显示时也可读；不替代 
   提供按区域查询；本轮不引入动态内容协议。
 - Qt 6 [qtooltip.cpp](https://code.qt.io/cgit/qt/qtbase.git/tree/src/widgets/kernel/qtooltip.cpp?h=6.10)
   使用延时、事件过滤和关闭管理提示。借鉴延迟与取消的职责划分，不照搬全局对象。
+- Qt 6.10.0 [QCommonStyle](https://github.com/qt/qtbase/blob/v6.10.0/src/widgets/styles/qcommonstyle.cpp)
+  的默认首次延迟为 700 ms；GOUI 按已确认需求统一使用这个延迟，不保留快速浏览状态。
 - Windows [TTTOOLINFOW](https://learn.microsoft.com/en-us/windows/win32/api/commctrl/ns-commctrl-tttoolinfow)
   的 TTF_TRANSPARENT 是可选消息转发行为；它不证明普通 Tooltip 必须具有通用输入穿透。
   GOUI 本轮通过定位及关闭策略处理交互，不扩展 platform 能力。
@@ -73,7 +75,8 @@ WidgetInfo.Tooltip 保存说明文字，提示未显示时也可读；不替代 
 ## 验证
 
 包内使用可推进的计时器测试等待、抖动、目标切换、禁用状态、取消后的过期回调、
-焦点、重入、销毁、样式及声明式默认值恢复。窗口程序通过正常 DispatchEvent
+焦点、重入、销毁、样式及声明式默认值恢复；切换和重进目标也检查 699/700 ms 边界。
+窗口程序通过正常 DispatchEvent
 验证点击、滚轮、菜单、Tab、屏幕边缘和布局变化；真实桌面补充鼠标及截图检查。
 Linux、macOS、Windows 记录后端与缩放；交叉编译不代替原生运行。
 声明式手工入口为 `tests/window/ui/tooltip`，使用正常 UI 协调及真实桌面输入。

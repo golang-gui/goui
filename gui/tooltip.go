@@ -13,28 +13,25 @@ import (
 )
 
 const (
-	tooltipDelay     = 500 * time.Millisecond
-	tooltipQuick     = 100 * time.Millisecond
-	tooltipBrowse    = time.Second
+	tooltipDelay     = 700 * time.Millisecond
 	tooltipTolerance = 4
 )
 
 // tooltipState belongs to one window, including its visible popovers. Widgets
 // carry only text; one application timer and one transient surface suffice.
 type tooltipState struct {
-	owner     *window
-	host      EventTarget
-	target    Widget
-	blocked   Widget
-	keyboard  bool
-	position  geometry.Point
-	text      string
-	bounds    geometry.Rectangle
-	epoch     uint64
-	lastShown time.Time
-	timer     *Timer
-	unmount   signal.Handle
-	popup     *popover
+	owner    *window
+	host     EventTarget
+	target   Widget
+	blocked  Widget
+	keyboard bool
+	position geometry.Point
+	text     string
+	bounds   geometry.Rectangle
+	epoch    uint64
+	timer    *Timer
+	unmount  signal.Handle
+	popup    *popover
 }
 
 func tooltipsFor(host EventTarget) *tooltipState {
@@ -51,8 +48,6 @@ func tooltipsFor(host EventTarget) *tooltipState {
 	owner.tooltip.owner = owner
 	return &owner.tooltip
 }
-
-func (t *tooltipState) now() time.Time { return t.owner.frameNow() }
 
 func (t *tooltipState) eligible(host EventTarget) bool {
 	if t.owner == nil || t.owner.destroyed || !t.owner.focused || t.owner.frameSuspended {
@@ -124,11 +119,7 @@ func (t *tooltipState) consider(host EventTarget, keyboard bool, pos geometry.Po
 		t.timer = t.owner.app.NewTimer()
 		t.timer.ConnectTimeout(t.show)
 	}
-	delay := tooltipDelay
-	if !t.lastShown.IsZero() && t.now().Sub(t.lastShown) < tooltipBrowse {
-		delay = tooltipQuick
-	}
-	if err := t.timer.StartOnce(delay); err != nil {
+	if err := t.timer.StartOnce(tooltipDelay); err != nil {
 		t.dismiss(true)
 	}
 }
@@ -178,7 +169,6 @@ func (t *tooltipState) show() {
 			return
 		}
 		if err == nil {
-			t.lastShown = t.now()
 			return
 		}
 		t.popup = nil
@@ -206,9 +196,6 @@ func (t *tooltipState) dismiss(block bool) {
 		t.unmount = nil
 	}
 	p := t.popup
-	if p != nil && p.Visible() {
-		t.lastShown = t.now()
-	}
 	t.popup, t.host, t.target, t.text = nil, nil, nil, ""
 	if p != nil {
 		p.Destroy()
