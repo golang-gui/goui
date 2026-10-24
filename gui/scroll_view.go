@@ -285,6 +285,7 @@ func (sv *ScrollView) disconnectReveal() {
 // coordinates. For a rectangle larger than the viewport its leading edge is
 // preferred. Invalid rectangles are ignored. During layout only the latest
 // request is retained and applied after the content extent has been refreshed.
+// Large coordinate conversions round toward keeping the target visible.
 func (sv *ScrollView) ScrollIntoView(rect geometry.Rectangle) {
 	if sv.destroyed || sv.content == nil || rect.Width < 0 || rect.Height < 0 {
 		return
@@ -328,13 +329,31 @@ func (sv *ScrollView) flushReveal() {
 }
 
 func revealOffset(offset, viewport, start, size float32) float32 {
-	if start < offset {
-		return float32(math.Floor(float64(start)))
+	first, last := float64(start), float64(start)+float64(size)
+	if first < float64(offset) {
+		return floorScrollCoordinate(math.Floor(first))
 	}
-	if start+size > offset+viewport {
-		return float32(math.Ceil(float64(min(start, start+size-viewport))))
+	if last > float64(offset)+float64(viewport) {
+		return ceilScrollCoordinate(math.Ceil(min(first, last-float64(viewport))))
 	}
 	return offset
+}
+
+// Directed conversion preserves containment when a document coordinate's
+// float32 spacing exceeds one DIP. Exactly representable values stay unchanged.
+func ceilScrollCoordinate(value float64) float32 {
+	n := float32(value)
+	if float64(n) < value {
+		n = math.Nextafter32(n, float32(math.Inf(1)))
+	}
+	return n
+}
+func floorScrollCoordinate(value float64) float32 {
+	n := float32(value)
+	if float64(n) > value {
+		n = math.Nextafter32(n, float32(math.Inf(-1)))
+	}
+	return n
 }
 
 func (sv *ScrollView) finishContentLayout() {
@@ -477,10 +496,10 @@ func (sv *ScrollView) scrollRange() geometry.Size {
 	area := sv.contentAreaSize()
 	var extent geometry.Size
 	if sv.canScrollX() {
-		extent.Width = max(0, sv.contentWidth-area.Width)
+		extent.Width = ceilScrollCoordinate(max(0, float64(sv.contentWidth)-float64(area.Width)))
 	}
 	if sv.canScrollY() {
-		extent.Height = max(0, sv.contentHeight-area.Height)
+		extent.Height = ceilScrollCoordinate(max(0, float64(sv.contentHeight)-float64(area.Height)))
 	}
 	return extent
 }
@@ -693,8 +712,8 @@ func (sv *ScrollView) syncBars() {
 	sv.hbar.SetValue(sv.scrollX)
 }
 
-// clampScroll keeps the scroll offsets within [0, content - contentArea], with
-// whole-pixel boundaries so the content never lands on fractional coordinates.
+// clampScroll keeps offsets within the outward, representable scroll range.
+// Whole-DIP boundaries keep ordinary content off fractional coordinates.
 func (sv *ScrollView) clampScroll() {
 	extent := sv.scrollRange()
 	maxY := mathx.Floor(extent.Height)

@@ -1346,3 +1346,13 @@ arm64 构建限制保留在原记录中；本轮未修改实现或复验这些�
   干净快照再次执行 `GOWORK=off go test -json ./... -count=1`：2388 项通过、
   10 项既有跳过、0 失败。全部 Go token／编译指令、正式示例内容及 TOML 配置
   内容核对通过；测试和断言逻辑保持不变。
+
+
+## 2026-10-24 超大滚动坐标的显露与范围取整
+
+- 基线 `69c8d99`；修正 gui/scroll_view.go，保持公共几何和滚动接口不变。目标末端和内容减视口先用 float64 运算，再按包含目标所需的方向转换为可表示 float32；超宽目标仍优先首端，两个轴同规则。
+- 旧版纯逻辑回归失败：start=270000032、size=71、viewport=400 的显露结果仍隐藏远端；宽 270000064、高 1000000000 的虚拟内容在最大滚动值仍不能显示末端。新回归对高精度不等式断言，不只比较两条实现。
+- Linux amd64 / Go 1.25.8：ScrollView 专项、相关 race 与 `go vet ./gui` 通过；独立 Xvnc/Xfwm4/Software/Pango/1x 下 `go test ./... -p 1 -timeout 120s` 全仓通过，既有生成 PNG 没有新增或改变。
+- SourceView 使用其基线 `094d46b` 加本次显露修正进行联调；184500131 字节 JSON 在 Software/Pango 的应用缩放 1x、1.5x、2x 下，通过正常事件 End/Left/Right、光标像素和最大化/恢复断言，专项程序维护在扩展仓库。旧生产文件经 Go build overlay 同环境复现 End 光标不可见。
+- SourceView 全仓工作区测试、race/vet 及 Windows amd64/macOS arm64 `CGO_ENABLED=0 go build ./...` 通过，包含本次 GOUI 改动；未执行 Windows/macOS 原生桌面、GPU 或混合 DPI 验收。不据主动截图程序的心跳日志声称性能提升。
+- 未修改 typography、声明式协议、依赖版本或无关工作区文件；测试应用及桌面均为本次独立显示，结束后关闭。
