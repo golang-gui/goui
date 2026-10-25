@@ -1,8 +1,8 @@
 # 子菜单：父子归属、输入协调与弹出定位
 
-> 状态：**设计已确认，尚未实现**。列入 [未来路线](Roadmap.md#future-submenu)。2026-10-14 复核更新依赖基线；下面新增 API 都是规划，不是当前接口。
+> 状态：**设计已确认，尚未实现**。列入 [未来路线](Roadmap.md#future-submenu)。2026-10-25 按当前代码修订；下面新增 API 都是规划，不是当前接口。
 >
-> 本文记录子菜单切片的最终设计，替换原有设计备忘。当前只更新文档；
+> 本文记录子菜单的设计，替换旧的根菜单模态登记和 UI 链式 Submenu 方案。当前只更新文档；
 > 文中的新增 API、内部状态和行为均是实施目标，不代表已经具备。
 >
 > 相关：[菜单](DesignMenu.md)、[Popup](DesignPopup.md)、
@@ -14,16 +14,17 @@
 采用以下结构：
 
 - 模型递归嵌套，父 `PopoverMenu` 递归拥有子 `PopoverMenu`。
-- Window 只登记根菜单作为唯一 `ModalTarget`。
-- 主窗口保留原生键盘焦点，向根菜单转交按键；菜单自己确定键盘活动层。
+- 根 Popover 保持现有 `ModalTarget` 登记，子 Popover 不重复登记。
+- 主窗口保留原生键盘焦点，经根 Popover 转交按键；菜单自己确定键盘活动层。
 - 显示中的子菜单不必始终占有键盘，显示分支与键盘活动分支分别记录。
 - 原生 Popup 的绘制、尺寸和常规鼠标事件仍由对应 Popover 处理。
 - 继续使用原生 Popup，不新增平台公共接口，不修改 Painter。
 
 不引入独立 `menuSession`、全局菜单管理器、模态栈或另一份展开链数组。
 
-计划完成多级展开、鼠标切换和跨菜单移动、基本键盘导航、工作区退避、
-长菜单滚动、动态模型和虚拟行生命周期、UI 递归声明及统一外观。
+当前已有单层键盘导航、工作区退避、ScrollView(ListView)、嵌套锚点 owner 解析和
+Window.Popovers 枚举。计划在此基础上完成多级展开、跨层键盘协调、鼠标跨表面
+移动、侧向定位、动态模型与虚拟行生命周期、UI 递归声明及统一外观。
 
 本次不做 Overlay、菜单栏、助记键、输入搜索、快捷键列、富控件菜单、
 可聚焦原生 Popup 或完整输入法宿主能力。
@@ -33,7 +34,7 @@
 | 层／对象 | 职责 |
 |---|---|
 | platform Popup | 原生表面、绘制通知、输入事实、坐标转换 |
-| gui.Window | 主窗口输入入口、唯一根模态目标 |
+| gui.Window | 主窗口输入入口、根 Popover 的模态登记 |
 | Popover | 表面生命周期、布局、定位、局部事件分发 |
 | PopoverMenu | 菜单交互、父子关系、键盘活动层、展开与关闭 |
 | menuContent／menuItemRow | 内容测量、滚动、绘制、事件控制器及交互反馈 |
@@ -51,6 +52,8 @@
 - 不再由 Window 提前把 Esc 转换成整链关闭请求。
 - 不在 Action 执行之后才关闭菜单。
 - 不把“最深可见菜单”无条件等同于键盘目标。
+- 不让 PopoverMenu 替代根 Popover 登记 ModalTarget。
+- UI 使用 `ui.Submenu(label, items...)`，不要求构造带 nil Action 的普通项。
 
 ## 2. 公共模型 API
 
@@ -91,16 +94,18 @@ popup.SetMenu(menu)
 | 子模型非 nil | 展开项，确认只展开，不执行自身 Action |
 | 禁用或隐藏 | 不可激活、不可展开 |
 | 分隔线 | 始终不参与交互 |
-| 子模型没有可见的非分隔项 | 不弹出空菜单，不退回执行父项 Action |
+| 子模型没有可见的非分隔项 | 呈现为不可展开状态，不弹空菜单，也不执行父项 Action |
 | 子模型只有禁用项 | 可以展开并显示禁用项 |
 
 `SetSubmenu(nil)` 恢复普通项语义。子模型改变通过现有模型通知刷新显示。
+不可展开是宿主根据子模型计算的有效状态，不反写调用方设置的 Enabled；子模型
+随后加入可见条目时，父项可恢复交互。只有禁用项的子模型仍能展开以展示其内容。
 
 展开状态、当前项、Timer、Widget 和原生资源不写入模型。同一个模型可供多个
 宿主使用，每个宿主的交互状态相互独立。GUI 状态及模型的 GUI 使用仍遵守事件线程
 约定，不因底层列表容器有锁就宣称整套菜单支持并发操作。
 
-模型结构不得形成循环。展开时检查当前祖先路径，拒绝循环分支并输出诊断；
+模型结构不得形成循环。展开时检查当前祖先路径，拒绝循环分支并按 §11.3 报告错误；
 不扫描整棵模型预建菜单，也不设置任意的固定层数上限。UI 递归构建同样必须
 防止循环声明造成无限递归；不同分支复用同一份合法数据不等于循环。
 
@@ -113,16 +118,19 @@ func (mi *MenuItem) SetAction(action func())
 ```
 
 只更新行为，不触发布局或菜单重建通知。UI 用它刷新闭包，不比较函数地址。
+当前 `ui/menu.go` 的结构指纹忽略 Action，结构不变时也不更新闭包；本切片需修正
+这条路径，避免重建声明后继续执行旧状态捕获。
 
 ## 3. 父子归属与生命周期 API
 
 ```text
-gui.Window
-└─ ModalTarget → PopoverMenu A
-                   ├─ Popover A → menuContent A
-                   └─ child → PopoverMenu B
-                                 ├─ Popover B → menuContent B
-                                 └─ child → PopoverMenu C
+PopoverMenu A
+├─ Popover A（modal）← gui.Window.ModalTarget
+│  └─ menuContent A
+└─ child → PopoverMenu B
+            ├─ Popover B（modeless）→ menuContent B
+            └─ child → PopoverMenu C
+                         └─ Popover C（modeless）→ menuContent C
 ```
 
 每一级最多展开一个子菜单，主要私有状态示意：
@@ -174,18 +182,18 @@ func (pm *PopoverMenu) Destroy()
 原生消息的接收者不等于逻辑交互的解释者。以后若 Popover 需要完整文本编辑和输入法，
 单独设计可聚焦 Popup／文本输入宿主，不把本次 KeyEvent 转发当作完整输入法支持。
 
-根 `PopoverMenu` 实现现有协议：
+根菜单继续通过底层 Popover 使用现有模态协议：
 
-```go
-func (pm *PopoverMenu) DispatchEvent(event events.Event) error
-func (pm *PopoverMenu) RequestDismiss()
-```
+- 根 Popover 配置 Modal=true，显示成功后按现有路径登记为 Window 的 ModalTarget。
+- 子 Popover 配置 Modal=false，不调用 Window.SetModalTarget，也不抢原生焦点。
+- 根 Popover 的 RequestDismiss 由根菜单处理，关闭整条链。
+- PopoverMenu 管理活动层及展开链，不新增公开 DispatchEvent／RequestDismiss 方法。
+- 普通 Popover 独立使用时保留现有模态能力和默认 Esc 关闭行为。
 
-- 根菜单显示成功后登记为 Window 的 ModalTarget。
-- 子菜单不调用 `Window.SetModalTarget`。
-- `RequestDismiss` 表示关闭整条菜单链。
-- 菜单使用的底层 Popover 不再分别登记模态目标。
-- 普通 Popover 独立使用时保持现有模态能力。
+当前 `Popover.DispatchEvent` 会检查键盘事件是否属于本表面的模态输入；不能直接向
+modeless 子 Popover 调用该公开方法，也不能删除这项检查来使转发通过。菜单私有
+路由先验证根 Popover 仍持有当前 owner 的模态输入，再向有效子表面的正常内容
+分发器交付。具体保护见 §8；这不授予普通 modeless Popover 接收键盘的公共能力。
 
 解除登记必须匹配本次登记的身份／代次。旧菜单关闭回调或旧清理不能清掉新菜单的
 登记。保护属于 Window 内部登记机制，不需要模态栈；Window 不因此认识菜单结构。
@@ -194,16 +202,17 @@ func (pm *PopoverMenu) RequestDismiss()
 
 ### 5.1 Window 只转交按键
 
-移除 Window 对 Esc 的提前拦截，所有 KeyEvent 交给模态目标：
+Window 将包括 Esc 的 KeyEvent 转交当前模态目标，保留已有的原生默认行为抑制
+和独立 Handled 结果，菜单打开期间不向主窗口 Widget 树继续分发按键。
 
-```go
-case events.KeyEvent:
-    _ = target.DispatchEvent(event)
-    return true
-```
+Popover 的 Esc 改为内容优先处理：先通过其正常内容分发路径交给控制器；若按键
+未被消费，且原表面及其模态归属仍有效，再发出默认关闭请求。菜单消费 Esc 后，
+Popover 不再执行整链关闭。普通模态 Popover 没有处理 Esc 的内容时，仍默认关闭。
+Window 继续在自己的外部按下、失焦路径请求根 Popover 关闭，不认识菜单层级。
 
-菜单打开期间按键不再进入主窗口 Widget 树。Window 仍对主窗口上的外部点击、
-失焦等情况请求根目标关闭。普通模态 Popover 在自己的路径里保留 Esc 关闭逻辑。
+这是拟修改的行为；当前 Window 和 Popover 仍会提前处理 Esc。实施时同步更新
+ModalTarget 的契约、所有已有实现和单层菜单／DropDown 的 Esc 回归，不能只修改
+菜单而遗漏通用 Popover。不得在同一事件中先发关闭请求，再尝试内容处理。
 
 ### 5.2 显示分支与键盘活动分支分离
 
@@ -212,18 +221,19 @@ case events.KeyEvent:
 - `A.child == B`：B 仍显示。
 - `A.keyboardInChild == false`：按键由 A 处理。
 
-每一级按以下规则分发：
+按以下规则分发：
 
-1. 若存在有效的活动子分支，转交子菜单。
-2. 否则交给本级 Popover 的内容事件分发器。
-3. 内容上的 KeyEventController 解释菜单行为。
+1. 根 Popover 校验其当前模态输入归属。
+2. 菜单内部沿有效的 keyboardInChild 路径找到活动层。
+3. 经私有协作入口进入该层 Popover 的正常内容事件分发器。
+4. 内容上的 KeyEventController 解释菜单行为，不再次从根路由同一事件。
 
 ```text
 原生主窗口收到按键
     ↓
 gui.Window.DispatchEvent
     ↓
-根菜单 A
+根 Popover A → 菜单内部路由
     ↓ 当前键盘活动分支
 子菜单 B
     ↓
@@ -294,7 +304,7 @@ B 的 Popover → EventDispatcher → KeyEventController
 
 ### 6.2 延迟任务与线程
 
-使用 Timer 向应用事件线程投递任务，后台回调不访问菜单或 Widget 状态。
+使用 GOUI Timer 在应用事件线程调度任务，不为展开延迟启动后台 goroutine。
 
 执行前检查：
 
@@ -339,8 +349,10 @@ EventController，不直接调用 Action。
 - 关闭前通知：表面释放前清理后代。
 - 布局完成通知：在父级布局完成后更新子菜单锚点。
 
-提供私有的“直接分发到内容”入口，完成路由后进入 EventDispatcher，
-避免再次触发输入接管造成递归。
+提供私有的内容分发入口，完成路由后进入 EventDispatcher，避免再次触发输入
+接管造成递归。转发键盘前检查根 Popover 的当前 owner、模态归属、可见性及
+生命周期代次，目标子表面须仍显示并属于同一菜单链和 owner。陈旧回调或已经
+关闭的子表面不能借此收到按键；公开 DispatchEvent 的原有检查保持有效。
 
 Popover 不保存 *PopoverMenu，不解释菜单按键，不处理兄弟分支切换。
 连接由菜单宿主管理，Popover 替换和销毁时断开；普通 Popover 无协作连接时
@@ -362,13 +374,15 @@ Popover 不保存 *PopoverMenu，不解释菜单按键，不处理兄弟分支�
 阴影占位和滚动偏移只计算一次。保留原生尺寸事件作为实际尺寸事实，
 GUI 请求值不能冒充原生观测结果。
 
-扩展内部锚点 owner 解析，让 Popover 内的 Widget 能找到真正的主窗口。
-不改变公共 Widget.Window() 的现有语义，不增加公共 OwnerWindow getter。
+复用当前 anchorWindow 沿 Popover 锚点解析主窗口的能力，以及 queryPlacement 的
+嵌套坐标换算；新增侧向候选时保持相同坐标契约。当前能力已具备，不再将 owner
+解析列为待新增接口。不改变公共 Widget.Window() 语义，不增加 OwnerWindow getter。
 
 ### 9.2 候选位置
 
 - 水平贴父菜单主体侧边，不贴带内边距的行边缘。
-- 子菜单主体顶部对齐触发行顶部。
+- 未受工作区约束时，子菜单首个条目顶部对齐触发行顶部；计算候选时扣除子菜单
+  内部留白和首项偏移，不把带阴影的表面顶部当作首项顶部。
 - 第一层优先右侧，更深层优先延续父级实际展开方向。
 - 首选侧不能容纳时尝试另一侧。
 - 两侧均不能容纳时，选择溢出较少的候选，再平移进工作区；
@@ -397,11 +411,15 @@ GUI 请求值不能冒充原生观测结果。
 
 - 当前层发生显示／结构变化：取消待展开任务，关闭依赖旧行的后代，重新布局。
 - 当前层本身保持打开；当前项仍有效则保留，否则修正或清空。
-- 子模型变化由子菜单自己订阅，不要求父模型递归转发后代通知。
+- 已展开子菜单订阅自己的模型。当前呈现层还需订阅直接引用的子模型，以刷新
+  尚未展开父项的可用状态；共享直接引用合并订阅，关闭／替换时断开，不递归监听
+  整棵树，不要求父模型递归转发后代通知。
 - 子菜单内容变空时关闭子菜单，父菜单保留。
 - Action 更新不重建显示，不关闭分支。
 
-不为了保留所有展开状态而实现复杂模型差量协调。
+不为了保留所有展开状态而实现复杂模型差量协调。复核内建 Menu 对 Insert、
+Remove、SetItems 等成员变动的条目通知接线，确保新成员可以通知、移除成员不再
+影响旧宿主；复用统一信号机制，不将子菜单挂在临时测量行或已回收行上。
 
 临时测量行只测量，不连接展开生命周期，不创建 Popup。真实行在 Unbind 前
 通知菜单控制器清理旧绑定对应的状态。恢复键盘当前项依据条目身份和布局结果，
@@ -415,13 +433,13 @@ GUI 请求值不能冒充原生观测结果。
 - 根菜单 Hide()：关闭整条链。
 - 叶子激活：保存 Action，关闭整条链，然后执行 Action。
 - 锚点卸载、窗口销毁、原生表面释放：递归清理受影响分支。
-- 外部 RequestDismiss：由根菜单结束整次交互。
+- 根 Popover 的 RequestDismiss：由根菜单结束整次交互。
 
 ### 11.2 清理顺序
 
 1. 标记关闭并使延迟任务失效。
 2. 断开旧父子关系，防止重入沿旧链操作。
-3. 根菜单解除属于自己的模态登记。
+3. 根 Popover 解除属于本次显示的模态登记，子表面不清除登记。
 4. 从最深层清理输入、隐藏／销毁表面。
 5. 对已经完成的可见→隐藏转换发送关闭信号。
 
@@ -440,11 +458,25 @@ ConnectClosed 只报告本菜单关闭，每次可见→隐藏转换最多一次
 工作区查询失败与透明创建失败分别处理。透明创建失败沿用当前重试为不透明表面的
 规则，不把布局或查询错误当成透明能力失败。
 
+同步的 PopoverMenu.ShowAt 失败通过返回值交给调用方，不再重复发送错误信号。
+悬停／点击子项等事件驱动的展开没有同步结果接收者，由根菜单统一报告；
+MenuButton 自身事件驱动打开的失败也走该通道。拟新增：
+
+```go
+func (pm *PopoverMenu) ConnectError(fn func(error)) signal.Handle
+func (b *MenuButton) ConnectError(fn func(error)) signal.Handle
+```
+
+MenuButton 转发其根菜单的异步错误，UI 的 OnError 按现有协调生命周期连接。
+一次展开尝试最多报告一次，错误回调也按可能修改状态或销毁窗口处理。不以日志、
+默认错误弹窗或连续自动重试替代操作结果。透明创建成功降级不另作失败上报；两次
+创建均失败时保留原因。循环模型与不可用表面属于展开失败，空子菜单是正常无操作。
+
 不因鼠标持续停在原位而自动不断重试；重新进入或再次点击可发起新的尝试。
 
 ## 12. 样式与语义
 
-各层级复用现有 menu、menu-item、文字及分隔线样式：
+Basic 和 Modern 均为各层级提供完整外观，复用现有 menu、menu-item、文字及分隔线样式：
 
 - 相同圆角、阴影、边框及中性高亮。
 - 展开父项和键盘当前项默认使用高亮，不新增加粗焦点边框。
@@ -461,61 +493,65 @@ ConnectClosed 只报告本菜单关闭，每次可见→隐藏转换最多一次
 
 ## 13. UI 层
 
-增加：
+增加构造函数，返回现有描述类型：
 
 ```go
-func (m *MenuItemView) Submenu(
-    items ...*MenuItemView,
-) *MenuItemView
+func Submenu(label string, items ...*MenuItemView) *MenuItemView
+func (v *MenuButtonView) OnError(fn func(error)) *MenuButtonView
 ```
 
 示例：
 
 ```go
-ui.MenuButton("文件").Menu(
-    ui.MenuItem("打开", openFile),
-    ui.MenuItem("最近打开", nil).Submenu(
-        ui.MenuItem("project-a", openProjectA),
-        ui.MenuItem("project-b", openProjectB),
-    ),
+ui.MenuButton("File").Menu(
+    ui.MenuItem("Open", openFile),
+    ui.Submenu("Recent",
+        ui.MenuItem("Project A", openProjectA),
+        ui.MenuItem("Project B", openProjectB),
+        ui.Submenu("More",
+            ui.MenuItem("Browse", browseProjects),
+        ),
+    ).Enabled(hasRecent),
     ui.MenuSeparator(),
-    ui.MenuItem("退出", quit),
+    ui.MenuItem("Quit", quit),
 )
 ```
 
+ui.Submenu 是数据描述，不是新 Widget 类型；可用于 ui.Menu、MenuButton.Menu 和
+现有上下文菜单声明。无需写 ui.MenuItem(label, nil).Submenu(...)。本切片不同时
+提供第二套链式 Submenu 入口，保留一套明确表达条目性质的声明方式。
+
 协调规则：
 
-- 递归构建 gui.Menu。
+- 递归构建 gui.Menu，复用现有 MenuItemView 的 Enabled。
 - 指纹包含子菜单存在性、层级边界、标签、启用状态和分隔线。
-- 明确区分普通项与显式声明的空子菜单，包括调用 Submenu() 不传项目的情况。
-- 结构不变时保留模型，递归调用 SetAction 刷新闭包。
+- 显式记录子菜单性质，区分普通项与 ui.Submenu("Empty")，不依赖切片是否为 nil。
+- 结构不变时保留模型，递归调用 SetAction 刷新闭包，不因 Action 更新关闭分支。
 - 结构变化沿用模型重建策略，关闭失效分支，不做复杂展开状态迁移。
 - 不比较函数地址，不保留旧闭包，不让 UI 管理展开状态。
+- OnError 连接在更新时替换、卸载时释放，复用现有声明式信号协调。
 
 ## 14. 代码组织与实施顺序
 
 | 文件 | 计划内容 |
 |---|---|
-| gui/menu.go | 模型 API、公共生命周期、行展示 |
-| gui/menu_submenu.go | 父子归属、展开切换、延迟、关闭 |
-| gui/menu_input.go | 键盘活动层、导航、跨表面指针路由和移动保护 |
-| gui/popover.go | 私有协作入口、嵌套锚点及 owner 解析 |
-| gui/popover.go | 当前定位算法实际在本文件；按需要增加侧向候选，是否拆文件到实施时决定 |
-| gui/window.go | 按键统一转交、模态登记清理保护 |
-| gui/menu.go | 使用既有 SetAttribute 提供具名展开状态，不修改 gui/info.go 的专用字段 |
-| ui/menu.go | 递归声明、指纹及 Action 更新 |
-| 对应测试及 example/modern | 自动验证、三层菜单和长子菜单体验入口 |
+| gui/menu.go | 模型 API、公共生命周期、错误信号、行展示和具名展开快照 |
+| gui/menu_submenu.go | 父子归属、切换延迟、活动层及跨表面输入协调 |
+| gui/popover.go | 私有协作、Esc 内容优先处理、侧向定位；复用现有嵌套锚点解析 |
+| gui/window.go | Esc 统一转交、模态登记清理保护 |
+| ui/menu.go | ui.Submenu、递归指纹、Action 刷新和 OnError 连接 |
+| theme/basic、theme/modern | 箭头及展开外观 |
+| 对应测试、tests/window 菜单程序及 example/modern | 正常事件回归、三层及长子菜单体验 |
 
-文件拆分服务于职责清晰，不以新增抽象数量为目标。实施时同步 Menu、
-PopupPlacement 和路线进度；本次仅更新本独立设计文档。
+文件拆分按实际职责和体量决定，不为少量输入代码预建多个小文件。实施同步更新
+Menu、Popup、PopupPlacement、外观和路线的实现状态；本轮只写入设计，不执行代码
+修改或子菜单验收，不将本功能列为当前其他工作的前置条件。
 
-实施顺序：
+分三批实施：
 
-1. 模型、父子归属、关闭与销毁。
-2. 嵌套定位及点击展开。
-3. 键盘活动层与基本导航。
-4. 悬停切换、跨表面输入、移动保护及动态更新。
-5. UI、统一外观、完整回归及三平台验收。
+1. 模型、父子归属、生命周期、错误结果、定位和点击展开。
+2. 跨层键盘、Esc 兼容、悬停切换、指针路由、移动保护和动态更新。
+3. UI、Basic／Modern 外观、完整回归及三平台验收。
 
 ## 15. 验证与验收
 
@@ -531,7 +567,10 @@ PopupPlacement 和路线进度；本次仅更新本独立设计文档。
 - 父菜单滚动、行回收、模型变化、字号／样式变化。
 - Timer 停止后已入队回调失效；关闭期间不会重新弹出。
 - 关闭信号重入、Action 新开菜单、窗口销毁、旧登记不清掉新登记。
-- 打开失败、不透明降级、查询错误、重复打开关闭后的资源释放。
+- 打开失败、不透明降级、查询错误、同步结果与异步错误不重复、错误回调重入。
+- 重复打开关闭后的资源释放；子模型在未展开时改变父项有效状态。
+- 根 Popover 唯一登记、modeless 子表面私有转发授权、旧链和旧代次输入拒绝。
+- 普通 Popover／DropDown 未处理 Esc 时仍关闭，菜单处理 Esc 后不重复默认关闭。
 - UI 深层结构指纹、空子菜单声明、模型复用和闭包刷新。
 
 时间相关测试使用可控调度；菜单语义测试通过事件路径驱动，
@@ -551,13 +590,13 @@ go test ./...
 - 主窗口原生焦点保持、菜单逻辑键盘活动层切换、失焦关闭。
 - 三层菜单鼠标进入／返回、斜向移动和兄弟切换。
 - 长子菜单滚动、父项滚出视口、方向翻转和边缘退避。
-- HiDPI、多屏及亮暗／字号切换。
+- 100%／150%／200% 缩放、多屏及亮暗／字号切换。
 
 编译通过不替代真机输入、焦点和定位验收。
 
 ### 15.3 进度
 
-- [x] 独立设计文档，确认父子归属和键盘活动层方案。
+- [x] 2026-10-25 修订设计：根 Popover 模态归属、ui.Submenu、闭包刷新和错误结果。
 - [ ] 模型与生命周期实现。
 - [ ] 嵌套定位与点击展开。
 - [ ] 键盘导航及活动层。
@@ -567,3 +606,19 @@ go test ./...
 
 核心边界始终是：**原生焦点留在 Window，键盘语义属于菜单；
 父菜单拥有子菜单，但显示中的子菜单不必始终占有键盘。**
+
+## 16. 参考依据与取舍（2026-10-25）
+
+- [GTK4 PopoverMenuFlags](https://docs.gtk.org/gtk4/flags.PopoverMenuFlags.html)：
+  官方 API 区分 sliding 与 nested（nested 自 4.0 可用）。本功能选择后者的级联
+  呈现，不实现滑动替换；当前页面为滚动文档，不能据此推定 GOUI 的实现状态。
+- [Qt 6.8.3 QMenu 源码](https://github.com/qt/qtbase/blob/v6.8.3/src/widgets/widgets/qmenu.cpp#L3229)：
+  mouseMoveEvent 结合 sloppyState 决定当前项切换，internalDelayedPopup 处理展开。
+  借鉴延迟及指向子菜单时的移动保护；250/500 ms 是 GOUI 初始设计参数，不是该
+  源码承诺的跨平台固定值，也不复制 Qt 的对象、样式或原生菜单体系。
+- [Flutter SubmenuButton 官方文档](https://api.flutter.dev/flutter/material/SubmenuButton-class.html)：
+  说明侧向级联、点击／键盘／悬停展开和空子菜单不可用。本功能采用这些明确行为，
+  保留 GOUI 的模型／宿主分离和薄 UI 绑定，不引入新的 Controller／FocusNode API。
+  官方文档按核对日期记录，不声称对应特定 Flutter 发布版本。
+
+上述区分为官方 API、固定版本源码和 GOUI 设计取舍，不是 GOUI 真机实测结果。

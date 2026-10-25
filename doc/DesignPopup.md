@@ -160,6 +160,12 @@ SetModalTarget(ModalTarget)            // 装 / 卸(nil)当前模态目标
 - popover 的 hover/点击由**它自己的表面事件**(经它自己的 `EventDispatcher`)驱动,window 只转发键盘 + 触发 dismiss,**不换算坐标**。
 - **`EventDispatcher` 独立化**:吃 `EventTarget{Widget();FocusedWidget();SetFocusedWidget()}`,window 和 popover 都实现,一份分发两处用。
 
+以上描述当前单层模态路径。[子菜单设计 §4～5](DesignMenuSubmenu.md#4-原生焦点与模态登记)
+在 2026-10-25 修订为：根 Popover 继续作为唯一 ModalTarget，子 Popover 不重复登记；
+Window 将 Esc 连同其他按键转交，Popover 先让内容处理 Esc，未处理时才默认关闭。
+菜单通过私有协作将输入交给活动层，公开 modeless Popover 的键盘归属检查保持有效。
+这项调整尚未实现，不将未来的逐层 Esc 行为写成当前通用 Popover 契约。
+
 **分层解耦原则(本轮重构确立)**:
 - 公开协议按实际替换需求设计；Widget／IMContext 等有明确约束的封印接口不被一概否定。共享 rootBase 是宿主的内部状态 helper，不是另一套公开控件体系。
 - 控件只依赖 **`Root`**(`Widget()`/`RequestPaint()`/`RequestLayout()`),绝不碰具体 `*window`/`*popover`;焦点相关经 `EventTarget`。

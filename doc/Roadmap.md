@@ -65,13 +65,16 @@ InkBounds、文本布局图片或 Widget 回调接口。Linux arm64 全仓的既
 
 ### 子菜单与跨层键盘导航：待实现
 
-- 基线：MenuModel／PopoverMenu、原生独立表面、工作区退避和中性菜单样式已实现。
-- 缺口：递归 Submenu 模型、父菜单拥有子宿主、根菜单唯一模态登记、多级展开／
-  收起、跨层活动键盘协调、左右／Enter／Esc、跨表面移动保护及递归 UI 声明。
-- 设计：[DesignMenuSubmenu](DesignMenuSubmenu.md)。实施前复核 Attributes 快照、
-  现有定位算法所在文件、rootBase 手势／输入消费和 Window.Popovers 枚举。
-- 不借此增加模态栈、全局菜单管理器、菜单栏、富控件菜单或平台公共接口。
-  先模型／生命周期，再定位／输入，最后 UI／外观和三平台验收。
+- 基线：MenuModel／PopoverMenu、单层键盘导航、原生独立表面、工作区退避、
+  嵌套锚点 owner 解析和中性菜单样式已实现。
+- 缺口：递归 Submenu 模型、父菜单拥有子宿主、多级展开／收起、跨层键盘活动层、
+  侧向定位、移动保护、动态分支清理及递归 UI 声明。
+- 设计：[DesignMenuSubmenu](DesignMenuSubmenu.md)，2026-10-25 修订。根 Popover
+  保持唯一模态登记，Esc 改为内容优先处理；声明式采用 ui.Submenu，结构不变时
+  刷新 Action 闭包，同步返回与异步错误信号分别报告结果。上述新增行为均待实现。
+- 先模型／生命周期／点击定位，再跨层输入与动态更新，最后 UI／Basic 与 Modern
+  外观及三平台验收。不增加模态栈、全局菜单管理器、菜单栏或平台公共接口；
+  不把本功能列为当前其他工作的前置条件。
 
 <a id="future-popover-ime"></a>
 
