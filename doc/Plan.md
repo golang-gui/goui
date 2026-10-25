@@ -3,6 +3,34 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## 超长行拖选的偏移与当前行边界（2026-10-25）
+
+- [x] 在 GOUI `example/temp` 的 TextView 复现：176 MiB 单行文件 End 后正向拖选，
+  水平偏移从 `1005022784` 退到 `1005022720`，文字右移 64 DIP，选区停在 EOF 前。
+  扩展仓库的同名例程是 SourceView，先前只测扩展例程没有覆盖此路径。
+- [x] `5efc894` 统一 textEditor 与 ScrollView 的最大范围计算：先以 float64 相减、
+  再向远端转换；未越界轴保持原偏移，正负步进按方向转换避免被大坐标间隔吞掉。
+  TextInput 内部偏移和 TextView 的宿主显露复用同一范围，无公开 API 或原生排版改动。
+- [x] TextView 的横向自动拖选读取当前显示行已测视觉端点；短行行尾已可见时停止，
+  真正长行仍推进。包内正常事件与可控时钟反例在旧实现出现 `offset=50`，修正后
+  保持零；TextInput、换行与缺失度量继续遵循共享编辑器契约。
+- [x] 原文件的独立 X11／Xvnc／Xfwm4、Linux amd64、Pango，Software／OpenGL ×
+  100%／150%／200% × 640／800-DIP 原生窗口，共 12 个末尾拖选组合通过；保留
+  原有 32 KiB 换行 caret 回归。修复前原生程序明确失败 `drag moved text`，
+  相同实际 XTest 操作修正后偏移不变，复制的 18 字节完整匹配原文件后缀。
+- [x] 扩展仓库 `editor/frame` 同时验证 TextView／SourceView 短行及长行拖选，
+  两后端 × 三种缩放 × Basic／Modern 共 12 组通过。新增的 TextView 点位最初
+  假设 20-DIP 行高导致选错行；改为由两行 ASCII 实际内容高度定位，原断言保留。
+- [x] 全仓 `go test -json ./... -count=1`：2792 PASS、15 SKIP、0 FAIL；跳过项是
+  `platform/test` 的 14 个人工／原生交互用例及 `cmd/goui` 的 macOS 签名项，
+  不计作通过。`go test -race ./gui ./ui ./gui/textedit -count=1` 通过。
+  SourceView 全仓另有 516 PASS、0 SKIP、0 FAIL。
+- [x] 普通 `go vet ./...` 仍因 29 条既有的未命名字段初始化告警失败，修复前生产
+  文件 overlay 得到相同告警；`go vet -composites=false ./...` 通过，不改用户测试。
+  两仓 Windows amd64／macOS arm64、CGO=0 全仓编译通过，不代表原生运行。
+- [ ] Windows／macOS 原生桌面、真实 IME、混合显示器 DPI 未在本轮验收。
+  图片与可执行产物均放仓库外；既有 PNG 哈希未变，两仓未跟踪的 temp 例程未改动。
+
 ## Tooltip 交互简化（2026-10-24）
 
 本节更新 10-23 记录中的触发延迟和 Modern 外观。

@@ -27,6 +27,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"image"
 	"image/color"
 	"log"
 	"math"
@@ -37,6 +38,7 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
+	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/style"
@@ -138,7 +140,10 @@ func main() {
 		scroll.SetStyleName("text-view")
 	}
 	scroll.SetChild(v)
-	win.SetWidget(scroll)
+	probeRoot := gui.NewOverlay()
+	probeRoot.SetChild(scroll)
+	probeRoot.AddOverlay(&painterProbe{})
+	win.SetWidget(probeRoot)
 	must(win.Show())
 	win.SetFocusedWidget(v)
 
@@ -365,4 +370,29 @@ func verifyLongHorizontal(app gui.Application, win gui.Window, v *gui.TextView, 
 	must(timer.Start(20 * time.Millisecond))
 	app.Run()
 	check(complete, "long horizontal verification aborted")
+}
+
+// 验证实际窗口的 painter，而非仅根据环境变量推断绘图后端。
+type painterProbe struct {
+	gui.WidgetBase
+	reported bool
+}
+
+func (p *painterProbe) Measure(c layout.Constraint) layout.Measurement {
+	return layout.Measured(c.Clamp(geometry.Size{Width: 1, Height: 1}))
+}
+func (p *painterProbe) Paint(draw gui.Painter) {
+	if p.reported {
+		return
+	}
+	p.reported = true
+	img, err := draw.NewImage(image.NewRGBA(image.Rect(0, 0, 1, 1)))
+	must(err)
+	name := fmt.Sprintf("%T", img)
+	img.Destroy()
+	prefer := os.Getenv("GOUI_PLAT_PAINTER")
+	if prefer == "software" || prefer == "opengl" {
+		check(strings.Contains(name, prefer+"."), "requested painter unavailable: "+name)
+	}
+	log.Printf("actual painter image=%s scale=%g", name, draw.PixelScale())
 }

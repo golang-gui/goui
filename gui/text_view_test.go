@@ -1731,3 +1731,35 @@ func TestTextViewLongWidthCacheBoundsAndReentry(t *testing.T) {
 		}
 	}
 }
+
+// 其他行撑大的滚动范围不能让当前已经选至末尾的短行持续向右滚动。
+func TestTextViewShortLineDragStopsHorizontalScroll(t *testing.T) {
+	v, scroll, win, q, _ := timedEditorFixture(t)
+	v.SetWrapMode(WrapNone)
+	v.Model().SetText(strings.Repeat("x", 120) + "\nshort")
+	win.width, win.height = 220, 108
+	win.RequestLayout()
+	settleEditorLayout(t, win)
+	editorPointer(t, win, events.PointerDown, geometry.Point{X: 15, Y: 30}, 0)
+	editorPointer(t, win, events.PointerMove, geometry.Point{X: 300, Y: 30}, 0)
+	if v.scrollTimer != nil && v.scrollTimer.Active() {
+		t.Fatal("短行行尾仍启动自动滚动时钟")
+	}
+	for range 4 {
+		q.advance(textScrollInterval)
+		for len(q.posts) > 0 {
+			q.dispatch(t)
+		}
+	}
+	if scroll.ScrollX() != 0 || v.Selection().Range().End != 126 {
+		t.Fatalf("短行末尾继续横滚：offset=%g selection=%v", scroll.ScrollX(), v.Selection())
+	}
+	editorPointer(t, win, events.PointerUp, geometry.Point{X: 300, Y: 30}, 0)
+	editorPointer(t, win, events.PointerDown, geometry.Point{X: 15, Y: 10}, 0)
+	editorPointer(t, win, events.PointerMove, geometry.Point{X: 300, Y: 10}, 0)
+	q.advance(textScrollInterval)
+	q.dispatch(t)
+	if scroll.ScrollX() <= 0 || v.Selection().Caret <= 20 {
+		t.Fatal("长行拖选无法继续横滚", scroll.ScrollX(), v.Selection())
+	}
+}
