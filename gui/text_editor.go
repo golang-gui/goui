@@ -1096,7 +1096,7 @@ func (t *textEditor) layoutVisible(viewport geometry.Size, offset geometry.Point
 		// Match SetScrollY/clampScroll independently of the previous offset.
 		// Directional floor/ceil would alternate forever around fractional
 		// native line metrics; the maximum offset must also be integral.
-		t.offset.Y = min(mathx.Floor(max(0, t.contentSize().Height-viewport.Height)),
+		t.offset.Y = min(mathx.Floor(scrollExtent(t.contentSize().Height, viewport.Height)),
 			mathx.Round(t.offset.Y))
 	}
 	if t.offset == originalOffset {
@@ -1163,8 +1163,8 @@ func (t *textEditor) revealCaretRect(rect geometry.Rectangle) {
 	// Retain it until measuring the new viewport puts the actual caret in view.
 	// Match ScrollView's integral range, including fractional native metrics.
 	extent, viewport := t.contentSize(), t.viewport
-	x := min(max(0, revealOffset(t.offset.X, viewport.Width, target.X, target.Width)), mathx.Floor(max(0, extent.Width-viewport.Width)))
-	y := min(max(0, revealOffset(t.offset.Y, viewport.Height, target.Y, target.Height)), mathx.Floor(max(0, extent.Height-viewport.Height)))
+	x := min(max(0, revealOffset(t.offset.X, viewport.Width, target.X, target.Width)), mathx.Floor(scrollExtent(extent.Width, viewport.Width)))
+	y := min(max(0, revealOffset(t.offset.Y, viewport.Height, target.Y, target.Height)), mathx.Floor(scrollExtent(extent.Height, viewport.Height)))
 	visible := x == t.offset.X && y == t.offset.Y
 	t.revealCaret = !visible
 	if !visible {
@@ -1438,7 +1438,7 @@ func (t *textEditor) layoutSingleLine(size geometry.Size) {
 	}
 	center := max(0, (size.Height-2*t.padding-height)/2)
 	t.offset.Y = -center
-	t.offset.X = min(t.offset.X, max(0, t.contentSize().Width-size.Width))
+	t.offset.X = min(t.offset.X, scrollExtent(t.contentSize().Width, size.Width))
 	if t.revealCaret && size.Width > 0 {
 		if rect, ok := t.caretRect(); ok {
 			t.emitReveal(geometry.Rect(rect.X-t.padding, rect.Y-t.padding,
@@ -1456,7 +1456,7 @@ func (t *textEditor) emitReveal(rect geometry.Rectangle) {
 		return
 	}
 	x := revealOffset(t.offset.X, t.viewport.Width, rect.X, rect.Width)
-	x = min(max(0, x), max(0, t.contentSize().Width-t.viewport.Width))
+	x = min(max(0, x), scrollExtent(t.contentSize().Width, t.viewport.Width))
 	if x != t.offset.X {
 		t.offset.X = x
 		t.owner.RequestPaint()
@@ -1562,9 +1562,20 @@ func (t *textEditor) dragScrollOffset() geometry.Point {
 	}
 	extent := t.contentSize()
 	point := t.input.dragPoint
+	advance := func(offset, delta, content, viewport float32) float32 {
+		if delta == 0 {
+			return offset
+		}
+		value := float64(offset) + float64(delta)
+		next := ceilScrollCoordinate(value)
+		if delta < 0 {
+			next = floorScrollCoordinate(value)
+		}
+		return min(max(0, next), mathx.Floor(scrollExtent(content, viewport)))
+	}
 	next := geometry.Point{
-		X: min(max(0, t.offset.X+step(point.X, t.viewport.Width)), max(0, extent.Width-t.viewport.Width)),
-		Y: min(max(0, t.offset.Y+step(point.Y, t.viewport.Height)), max(0, extent.Height-t.viewport.Height)),
+		X: advance(t.offset.X, step(point.X, t.viewport.Width), extent.Width, t.viewport.Width),
+		Y: advance(t.offset.Y, step(point.Y, t.viewport.Height), extent.Height, t.viewport.Height),
 	}
 	if t.singleLine {
 		next.Y = t.offset.Y // vertical centering is not a scroll range

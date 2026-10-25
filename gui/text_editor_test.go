@@ -1403,3 +1403,52 @@ func TestTextViewLongHorizontalHitAndCaret(t *testing.T) {
 		t.Fatal("删除到空文本后未返回普通排版路径")
 	}
 }
+
+// 宿主可表示的合法末端偏移不能被拖选内部较低精度的范围减法拉回。
+func TestTextEditorDragInsideLargeViewportPreservesOffset(t *testing.T) {
+	v, _, _ := newEditorFixture(t, "x")
+	v.releaseParagraphs() // 此用例单独验证范围运算，不提供虚假的短行边界。
+	v.viewport = geometry.Size{Width: 400, Height: 120}
+	v.observedWidth = 270000032
+	// 270000032 - 400 = 269999632，在该数量级向外取可表示偏移为 269999648。
+	v.offset = geometry.Point{X: 269999648}
+	v.input.dragPoint = geometry.Point{X: 200, Y: 30}
+	if got := v.dragScrollOffset(); got != v.offset {
+		t.Fatalf("正文内部拖选改变了合法偏移：got=%v want=%v", got, v.offset)
+	}
+}
+
+// 在 float32 的大坐标间隔中，向外拖动必须前进且不能反向越过合法末端。
+func TestTextEditorLargeDragStepsAndBounds(t *testing.T) {
+	for _, singleLine := range []bool{false, true} {
+		t.Run(fmt.Sprintf("singleLine=%t", singleLine), func(t *testing.T) {
+			view, win, _ := newEditorFixture(t, "x")
+			editor := view.textEditor
+			if singleLine {
+				input := NewTextInput()
+				win.SetWidget(input)
+				editor = input.textEditor
+			}
+			editor.setWrapMode(WrapNone)
+			editor.releaseParagraphs()
+			editor.viewport = geometry.Size{Width: 400, Height: 120}
+			editor.observedWidth = 270000032
+			for _, tc := range []struct {
+				name                string
+				offset, point, want float32
+			}{
+				{"right at maximum", 269999648, 450, 269999648},
+				{"right before maximum", 268435456, 425, 268435488},
+				{"left before maximum", 268435456, -20, 268435440},
+				{"left at zero", 0, -20, 0},
+			} {
+				editor.offset = geometry.Point{X: tc.offset}
+				editor.input.dragPoint = geometry.Point{X: tc.point, Y: 30}
+				got := editor.dragScrollOffset()
+				if got.X != tc.want || got.Y != 0 {
+					t.Fatalf("%s: offset %.0f point %.0f got %.0f want %.0f", tc.name, tc.offset, tc.point, got.X, tc.want)
+				}
+			}
+		})
+	}
+}
