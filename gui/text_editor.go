@@ -234,6 +234,8 @@ type textEditor struct {
 	hasBaseline       bool
 	layoutWidth       float32
 	observedWidth     float32
+	longWidths        map[int]float32
+	longWidth         float32
 	heightEstimated   bool
 	heights           textedit.HeightIndex
 	changeSignal      signal.Signal1[TextChange]
@@ -695,6 +697,7 @@ func (t *textEditor) releaseParagraphs() {
 	t.cancelResize()
 	old := t.textParagraphCache
 	t.textParagraphCache = textParagraphCache{}
+	t.longWidths, t.longWidth = nil, 0
 	t.releaseReplacedParagraphs()
 	old.clear()
 }
@@ -734,6 +737,21 @@ func (t *textEditor) spliceParagraphs(start, removed, inserted int) {
 		return
 	}
 	t.heights.Splice(start, removed, inserted, estimate)
+	if len(t.longWidths) > 0 {
+		widths := make(map[int]float32, len(t.longWidths))
+		t.longWidth = 0
+		for index, width := range t.longWidths {
+			if index >= start && index < start+removed {
+				continue
+			}
+			if index >= start+removed {
+				index += inserted - removed
+			}
+			widths[index] = width
+			t.longWidth = max(t.longWidth, width)
+		}
+		t.longWidths = widths
+	}
 	t.trimReplacedParagraphs()
 }
 
@@ -890,7 +908,7 @@ func (t *textEditor) prepareLongParagraph(index int, p *textParagraph) *textPara
 	p.measured = ready
 	p.baseline = t.baseline
 	t.heights.Set(index, p.height)
-	t.observedWidth = max(t.observedWidth, p.width)
+	t.setLongWidth(index, p.width)
 	if !ready {
 		t.queueLongLayout()
 	}
@@ -900,8 +918,27 @@ func (t *textEditor) prepareLongParagraph(index int, p *textParagraph) *textPara
 	return p
 }
 
+// Long-paragraph extents include replaceable estimates. Keep scalar widths
+// beyond native-cache eviction, but allow a measured correction to shrink the
+// current maximum. Ordinary paragraph measurements retain their existing cache.
+func (t *textEditor) setLongWidth(index int, width float32) {
+	if t.longWidths == nil {
+		t.longWidths = make(map[int]float32)
+	}
+	previous := t.longWidths[index]
+	t.longWidths[index] = width
+	if previous == t.longWidth && width < previous {
+		t.longWidth = 0
+		for _, value := range t.longWidths {
+			t.longWidth = max(t.longWidth, value)
+		}
+	} else {
+		t.longWidth = max(t.longWidth, width)
+	}
+}
+
 func (t *textEditor) contentSize() geometry.Size {
-	width := max(t.viewport.Width, t.observedWidth+2*t.padding+1)
+	width := max(t.viewport.Width, max(t.observedWidth, t.longWidth)+2*t.padding+1)
 	if t.resizeWidth != 0 {
 		// A temporarily retained wider layout must not introduce a horizontal
 		// scrollbar merely because its replacement width is still pending.
@@ -1008,6 +1045,7 @@ func (t *textEditor) prepareWidth(width float32) bool {
 		// line hides the scrollbar and then brings it back, changing the width
 		// a second time during the same allocation.
 		t.observedWidth = 0
+		t.longWidths, t.longWidth = nil, 0
 		for _, p := range t.paragraphs {
 			if p.measured && p.layout != nil && p.textBytes > 4096 && p.textBytes <= textParagraphCacheBytes {
 				t.retainParagraph(p)
@@ -1044,9 +1082,9 @@ func (t *textEditor) layoutVisible(viewport geometry.Size, offset geometry.Point
 	if !t.prepareWidth(width) {
 		return
 	}
-	beforeHeight := t.heights.Total()
+	beforeSize := t.contentSize()
 	defer func() {
-		if !t.owner.base().destroyed && t.heights.Total() != beforeHeight {
+		if !t.owner.base().destroyed && t.contentSize() != beforeSize {
 			t.owner.RequestLayout()
 		}
 	}()
@@ -1088,6 +1126,14 @@ func (t *textEditor) layoutVisible(viewport geometry.Size, offset geometry.Point
 		end++
 	}
 	t.textParagraphCache.trim(start, end)
+	// A thumb dragged to the current right edge must still reach the text's
+	// end when measuring its final window corrects the estimated width.
+	// Ordinary browsing retains its offset; this only follows an existing
+	// far-edge position during this layout's extent refinement.
+	if !t.revealCaret && offset.X > 0 && beforeSize.Width != t.contentSize().Width &&
+		offset.X >= mathx.Floor(scrollExtent(beforeSize.Width, viewport.Width)) {
+		t.offset.X = mathx.Floor(scrollExtent(t.contentSize().Width, viewport.Width))
+	}
 	// Measuring the overscan above the viewport must not move its top text.
 	if delta := t.heights.Top(anchor) - anchorTop; delta != 0 {
 		t.offset.Y = max(0, offset.Y+delta)

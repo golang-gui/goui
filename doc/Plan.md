@@ -3,6 +3,45 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## 超长单行的滚动条末端空白（2026-10-25）
+
+- [x] 基线 `2e3633f`。GOUI `example/temp` 使用的 TextView 打开
+  `/data/xuyang8/1.json`（157862 byte、无 LF），水平滑块拖到最右端出现整行空白；
+  End 又能显示实际末尾。独立回归使用相同系统字体、Native chrome、无编辑器
+  frame 的 ScrollView；旧生产文件 overlay 明确失败 `entirely blank text row`。
+- [x] 末块不足 4096 byte 时按实际剩余长度估宽，Fenwick 基值与测量替换差额
+  同规则。TextView 的长段落宽度使用可替换的标量记录，不再永久保留历史最大估值；
+  原生淘汰仍保留尺寸，插删重映射、换行失效和卸载清理有独立断言。
+- [x] LayoutVisible 同时通知宽高修正；位于既有水平末端时跟随本次范围收敛，
+  普通中间浏览不被拉到末端。固定 W=20/i=10-DIP 测量验证增大／缩小和独立
+  宽度总和；旧实现的末块估值及 TextView 最大宽度断言均明确失败。
+- [x] 176 MiB 样本又复现 ScrollBar 的单精度乘除丢失末端：760-DIP 轨道、
+  `Max=1005020544`，拖到远端仅发 `1005020480`。改为双精度比例后缩放，
+  两轴、760/800-DIP 轨道及不同大范围的正常 Window.DispatchEvent 回归通过。
+  滑块映射与 TextView 尺寸修正分功能提交，无公共 API 或 typography 改动。
+- [x] Linux amd64、Go 1.25.8、独立 Xvnc/Xfwm4、Pango，实际 Software/OpenGL
+  图像资源及 100%/150%/200% 应用缩放均有断言：`text_caret -file ... -scrollbar`
+  对 155 KiB 样本、640/800-DIP 窗口共 12 组；176 MiB 样本的滚动条和原有
+  End 后正向拖选共 12 组，最终 24/24 PASS。新增程序最初仅等尺寸稳定，
+  在前缀上下文仍分帧确认时过早断言；改为同一 45 秒截止时间内等待末块，
+  仍要求文字核心像素、EOF 点击和稳定偏移全部成立，保留初次失败日志。
+- [x] 同一 temp 例程经仓库外 Go overlay 自动执行原有 Model.SetText 文件加载，
+  保留控件树、系统字体和行为，仅增加公开状态日志；此项不声称验收文件对话框。
+  XTest 冷启动一步拖到终点、逐步拖到终点均能点击 EOF。末尾正向拖选后正常
+  Ctrl+C 得到 15 byte，精确匹配原文件后缀，拖选前后 offset=1266252 不变。
+  剪贴板副作用限定在私有显示会话，原文件与未跟踪例程未写入。
+- [x] 最终 `go test -json ./... -count=1`：2799 PASS、15 既有 SKIP、0 FAIL；
+  跳过仍为 `platform/test` 的 14 个人工/环境场景及 macOS 签名项。
+  `go test -race ./gui -count=1`、此前本轮 textedit/ui race、
+  `go vet -composites=false ./...` 通过；普通 composites 告警沿用前节已确认限制。
+  仅叠加 ScrollBar 修改的基线 overlay 全 gui 测试也通过。
+- [x] SourceView 本地工作区全仓测试 516 PASS；两仓 Windows amd64/macOS arm64
+  CGO=0 全仓编译通过。SourceView 未修改源码或依赖，不把本地未发布 GOUI 联调
+  写成扩展已可独立发布；既有独立依赖缺口仍见扩展验收记录。
+- [ ] Windows/macOS 原生桌面、真实 IME 和混合显示器未在本轮验收。远端前缀
+  未测部分的全局宽度仍是估计，不因本修复宣称全文精确测量或延迟无上界问题已解决。
+  产物及全部初次/最终日志在仓库外；既有 PNG 内容未变，SourceView 工作区未变。
+
 ## 超长行拖选的偏移与当前行边界（2026-10-25）
 
 - [x] 在 GOUI `example/temp` 的 TextView 复现：176 MiB 单行文件 End 后正向拖选，

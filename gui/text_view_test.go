@@ -19,6 +19,134 @@ import (
 
 // 多行视图、模型与布局。
 
+// 首末块采用不同字符宽度；修正末块后不能保留旧的最大估宽。
+// 宿主走正常 SetScrollX/Arrange；字形替身提供 W=20、i=10 DIP 的独立坐标。
+func TestTextViewLongWidthCorrectionReachesTextEnd(t *testing.T) {
+	for _, tc := range []struct {
+		name, prefix, tail     string
+		prefixWidth, tailWidth int
+		browse                 bool
+	}{
+		{"Shrink", "W", "i", 20, 10, false},
+		{"Grow", "i", "W", 10, 20, false},
+		{"Browse", "i", "W", 10, 20, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v, scroll, _, q, _ := timedEditorFixture(t)
+			q.app.typo = &tailWidthTypography{}
+			v.SetWrapMode(WrapNone)
+			length := 20*paragraphBlockBytes + 128
+			v.Model().SetText(strings.Repeat(tc.prefix, 20*paragraphBlockBytes) + strings.Repeat(tc.tail, 128))
+			box := geometry.Rect(0, 0, 800, 200)
+			scroll.Measure(layout.Tight(box.Size))
+			scroll.Arrange(box)
+			p := v.paragraphs[0]
+			if p == nil || p.paged == nil {
+				t.Fatal("未进入长段落路径")
+			}
+			before := v.ContentSize().Width
+			target := float32(1 << 30)
+			if tc.browse {
+				target = before - v.viewport.Width - 300
+			}
+			scroll.SetScrollX(target)
+			initial := scroll.ScrollX()
+			for range 6 {
+				v.longBudget = 1
+				scroll.Arrange(box)
+			}
+			want := float32(20*paragraphBlockBytes*tc.prefixWidth+128*tc.tailWidth) + 2*v.Padding() + 1
+			if v.ContentSize().Width != want {
+				t.Fatal("内容宽度不等于字符宽度的独立总和", v.ContentSize(), want)
+			}
+			if tc.browse {
+				if scroll.ScrollX() != initial {
+					t.Fatal("普通浏览位置被拉向末尾", initial, scroll.ScrollX())
+				}
+				return
+			}
+			end := p.paged.GeometryAt(length)
+			if end == nil {
+				t.Fatal("末尾几何未就绪")
+			}
+			caret := end.Caret(textedit.Position{Offset: length, Upstream: true})
+			x := float64(v.Padding()) + end.X + float64(caret.X) - float64(scroll.ScrollX())
+			if x < float64(v.Padding()) || x > float64(v.viewport.Width-v.Padding()) {
+				t.Fatalf("末尾落在视口外：x=%g，offset=%g，content=%v", x, scroll.ScrollX(), v.ContentSize())
+			}
+		})
+	}
+}
+
+// 原生窗口淘汰不删除标量宽度；非相交行的插删重映射索引，模型重置释放尺寸元数据。
+func TestTextViewLongWidthMetadataLifetime(t *testing.T) {
+	v, scroll, win, _, _ := timedEditorFixture(t)
+	v.SetWrapMode(WrapNone)
+	text := "header\n" + strings.Repeat("a", 17*paragraphBlockBytes+128) + "\nfooter"
+	v.Model().SetText(text)
+	box := geometry.Rect(0, 0, 800, 200)
+	for range 6 {
+		v.longBudget = 1
+		scroll.Arrange(box)
+	}
+	width := v.ContentSize().Width
+	p := v.paragraphs[1]
+	if p == nil || p.paged == nil || v.longWidths[1] <= 0 {
+		t.Fatal("长行宽度未记录")
+	}
+	v.textParagraphCache.remove(p)
+	if v.ContentSize().Width != width {
+		t.Fatal("淘汰原生窗口改变内容宽度")
+	}
+	if err := v.Model().Replace(TextRange{}, "\n"); err != nil {
+		t.Fatal(err)
+	}
+	if len(v.longWidths) != 1 || v.longWidths[2] <= 0 || v.ContentSize().Width != width {
+		t.Fatal("前缀插入丢失或错配未相交长行", v.longWidths, v.ContentSize())
+	}
+	line, _ := v.Model().LineRange(2)
+	if err := v.Model().Replace(TextRange{Start: line.Start, End: line.End + 1}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(v.longWidths) != 0 || v.longWidth != 0 {
+		t.Fatal("删除长行后遗留宽度", v.longWidths, v.longWidth)
+	}
+	v.Model().SetText(text)
+	for range 6 {
+		v.longBudget = 1
+		scroll.Arrange(box)
+	}
+	if len(v.longWidths) != 1 {
+		t.Fatal("模型重载未重建尺寸元数据")
+	}
+	win.SetWidget(nil)
+	if len(v.longWidths) != 0 || v.longWidth != 0 {
+		t.Fatal("卸载后遗留尺寸元数据")
+	}
+}
+
+// W 宽 20 DIP，其余字符宽 10 DIP；不依赖真实字体，也不改动被测布局状态。
+type tailWidthTypography struct{ editorTypography }
+
+func (c *tailWidthTypography) NewTextLayout(text string, format typography.TextFormat, width, height float32) (typography.TextLayout, error) {
+	native, err := c.editorTypography.NewTextLayout(text, format, width, height)
+	if err != nil || format.WrapMode != WrapNone {
+		return native, err
+	}
+	p := native.(*testTextLayout)
+	x := float32(0)
+	for i := range p.clusters {
+		c := &p.clusters[i]
+		c.X = x
+		if text[c.Start] == 'W' {
+			c.Width = 20
+		}
+		x += c.Width
+	}
+	p.lines[0].Width, p.measureSize.Width = x, x
+	return p, nil
+}
+
 func TestTextViewTabConsumptionPrecedesNavigation(t *testing.T) {
 	editor, win, _ := newEditorFixture(t, "")
 	root, next := newTestWidget(), newTestWidget()
