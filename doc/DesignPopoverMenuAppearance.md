@@ -26,7 +26,9 @@ GUI 使用独立的完整 Basic 兜底，包含菜单外壳和菜单项规则，
 菜单外壳仅绘制一次：由 Popover 使用 `menu` 样式绘制，移除 menuContent
 重复绘制的背景和边框。MenuItem 仍是数据模型，不增加外观参数。
 
-子菜单与菜单专属键盘导航尚未实现，见 [未来路线](Roadmap.md#future-submenu)。
+单层菜单键盘导航已实现，见 [菜单设计](DesignMenu.md#4-单层键盘导航)。子菜单与
+跨层键盘协调尚未实现，见 [子菜单设计](DesignMenuSubmenu.md) 和
+[未来路线](Roadmap.md#future-submenu)。子菜单的箭头列及展开高亮为待实施设计。
 工作区尺寸约束和位置退避已接入；圆角 Clip／ClearPath 仅为待评估方案，不新增
 鼠标穿透、窗口专用 Painter、隐式样式继承或第二套主题系统。
 

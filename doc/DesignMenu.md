@@ -31,7 +31,8 @@
 **ui 层**：声明式 `MenuButton`/`MenuItem`/`MenuSeparator`（`ui/menu.go`）已实现，
 只协调到 `gui.MenuButton`，不另建菜单控件体系。"文件 ▾" 用
 `ui.MenuButton("File").Menu(ui.MenuItem("Open", onOpen), …)`，子菜单的未实施设计见
-`doc/DesignMenuSubmenu.md` §6。
+[子菜单设计 §13](DesignMenuSubmenu.md#13-ui-层)。
+拟增加的 `ui.Submenu(label, items...)`、Action 闭包刷新和错误信号尚未实现。
 
 ## 2. MenuModel 复用 ListData
 
@@ -101,7 +102,9 @@ PopoverMenu（命令式控件）
 PopoverMenu 在自己的内容树捕获未修改的 ↑↓、Home、End、Enter 和 Space。
 ↑↓ 循环选择可用项，Home/End 到首尾；跳过 nil、隐藏、禁用项与分隔线。
 Enter/Space 先使用当前可用项，没有活动项时选择首项，再复用原有 activate：
-先保存动作、隐藏并释放模态输入，再调用应用动作。Escape 仍由 Popover 负责关闭。
+先保存动作、隐藏并释放模态输入，再调用应用动作。当前 Escape 仍由 Window／
+Popover 提前关闭；[子菜单设计 §5](DesignMenuSubmenu.md#5-按键路由与活动层)
+规划改为转交根 Popover、内容优先处理，以支持逐层返回；该调整尚未实施。
 
 活动项以 MenuItem 身份保存，模型更新时重新核验；关闭、卸载和模型替换清空。
 选择后通过 ListView.Reveal 请求可见，滚动仍归 ScrollView。虚拟行 Bind 同步活动状态，
