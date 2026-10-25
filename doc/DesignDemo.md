@@ -2,7 +2,7 @@
 
 ## 范围与组织
 
-`example/demo` 以“分类导航 + 可操作页面”展示 v0.1 前的既有控件和机制，不取代
+`example/demo` 以“分类导航 + 可操作页面”展示当前已具备的控件和机制，不取代
 `tests/window` 中的专项回归。初始实现不增加框架能力；后续透明背景隔离修复
 仅补充与 Popover 一致的 Window 样式名选择，不引入例程特例。参考 GTK 4.24.1 的
 [Widget Factory](https://github.com/GNOME/gtk/blob/4.24.1/demos/widget-factory/widget-factory.c)
@@ -13,6 +13,16 @@
 仅例程自己的背景 Bin、自绘图形和 ScrollBar WidgetView 作为扩展示范，不向
 Root/BuildContext/Painter 添加特例。表单现改用普通 ScrollView 的纵向方向，
 删除临时 flowWidget；框架完善与验证见 [滚动布局](DesignScrollLayout.md)。
+
+## Tooltip 展示（2026-10-25）
+
+基础控件页增加工具提示卡片。普通按钮展示鼠标悬停和 Tab 聚焦提示，禁用按钮
+说明不可用原因；启用开关同步更新目标有效状态和提示文字。复用公开 Tooltip
+声明、延迟、Esc／点击关闭、主题及宿主生命周期，不新增框架或自动化接口。
+
+五条展示资源提供现有八语言。操作步骤见例程 README；本机独立 X11 的
+Software／OpenGL、100%／150%／200% 真实输入检查提示和禁用点击，八语言另行
+检查可见内容。单独叠加本功能的基线 overlay 测试通过，不将交叉编译算作桌面验收。
 
 ## 状态、资源与生命周期
 
