@@ -46,6 +46,8 @@ type demo struct {
 	input, baselineInput, splitInput   sampleInput
 	username                           ui.State[string]
 	text                               *ui.TextModel
+	textSample                         int
+	largeText                          [2]*ui.TextModel
 	textRevision                       uint64
 	language                           string
 	selection                          ui.TextSelection

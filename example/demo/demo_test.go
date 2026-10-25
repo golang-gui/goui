@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -24,6 +25,103 @@ import (
 	"github.com/golang-gui/goui/widgets"
 	wui "github.com/golang-gui/goui/widgets/ui"
 )
+
+// 样例须为真实可编辑 JSON：单行超过长段落阈值，多行包含完整记录和明确末尾。
+func TestDemoLargeTextSampleDocuments(t *testing.T) {
+	for _, index := range []int{1, 2} {
+		text := largeTextSample(index)
+		if len(text) <= 1<<20 || !json.Valid([]byte(text)) {
+			t.Fatal("大样例须超过 1 MiB 且为合法 JSON", index, len(text))
+		}
+		var value struct {
+			Sample  string
+			Payload string
+			Entries []struct {
+				ID      int
+				Message string
+			}
+			End string
+		}
+		if err := json.Unmarshal([]byte(text), &value); err != nil {
+			t.Fatal(err)
+		}
+		if value.End != "End of sample" {
+			t.Fatal("样例缺少末尾标记")
+		}
+		if index == 1 {
+			if strings.Count(text, "\n") < 10000 || len(value.Entries) != 10000 || value.Entries[0].ID != 1 || value.Entries[9999].ID != 10000 || value.Entries[0].Message != "Hello, 世界 🌍" {
+				t.Fatal("多行样例丢失记录或混合文字")
+			}
+		} else if strings.ContainsAny(text, "\r\n") || len(value.Payload) != 1<<20 || value.Sample != "long-line" {
+			t.Fatal("单行样例没有覆盖完整长逻辑行")
+		}
+	}
+}
+
+// 切换样例按需创建模型，分别保留编辑与历史；语言变化不重新生成 JSON 数据。
+func TestDemoTextSamplesPreserveModelsAndHistory(t *testing.T) {
+	previous := mlang.Language()
+	t.Cleanup(func() { _ = mlang.SetLanguage(previous) })
+	d, err := newDemo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.app = new(demoTestApp)
+	defer d.stopActivities()
+	regular := d.text
+	if d.editorModel() != regular || d.largeText != ([2]*ui.TextModel{}) {
+		t.Fatal("启动提前生成了大样例")
+	}
+	d.selectTextSample(-1)
+	d.selectTextSample(3)
+	if d.textSample != 0 || d.largeText != ([2]*ui.TextModel{}) {
+		t.Fatal("非法选择改变了样例状态")
+	}
+	d.selectTextSample(1)
+	large := d.editorModel()
+	if d.largeText[1] != nil {
+		t.Fatal("首次选择生成了其他大样例")
+	}
+	d.selectTextSample(2)
+	line := d.editorModel()
+	for _, model := range []*ui.TextModel{regular, large, line} {
+		if model.CanUndo() || model.CanRedo() {
+			t.Fatal("初始样例带有编辑历史")
+		}
+		if err := model.Replace(ui.TextRange{}, "user edit"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	d.wrap, d.readonly = false, true
+	for _, index := range []int{0, 1, 2, 1} {
+		d.selectTextSample(index)
+		want := []*ui.TextModel{regular, large, line}[index]
+		if d.editorModel() != want || !want.CanUndo() || d.wrap || !d.readonly {
+			t.Fatal("切换样例替换模型、丢失历史或改变选项")
+		}
+	}
+	for _, language := range demoLanguages {
+		if err := mlang.SetLanguage(language.tag); err != nil {
+			t.Fatal(err)
+		}
+		d.translateUI()
+		if d.editorModel() != large || large.Revision() != 1 || line.Revision() != 1 || regular.Revision() != 1 {
+			t.Fatal("语言切换重载了用户样例")
+		}
+	}
+	if !large.UndoWithSelection().Applied || large.CanUndo() || !large.CanRedo() || !line.CanUndo() || !regular.CanUndo() {
+		t.Fatal("撤销影响了其他样例或丢失历史")
+	}
+	d.selectTextSample(2)
+	d.selectTextSample(1)
+	if d.editorModel() != large || !large.RedoWithSelection().Applied {
+		t.Fatal("切换后无法重做")
+	}
+	text, err := large.Slice(ui.TextRange{End: len("user edit")})
+	if err != nil || text != "user edit" {
+		t.Fatal("重做没有恢复用户内容", text, err)
+	}
+}
 
 // 校验按钮实际传入的创建选项；不为例程测试创建原生窗口或模拟 Application。
 func TestAuxWindowExampleDeclarations(t *testing.T) {
