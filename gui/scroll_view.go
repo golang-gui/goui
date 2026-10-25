@@ -496,12 +496,18 @@ func (sv *ScrollView) scrollRange() geometry.Size {
 	area := sv.contentAreaSize()
 	var extent geometry.Size
 	if sv.canScrollX() {
-		extent.Width = ceilScrollCoordinate(max(0, float64(sv.contentWidth)-float64(area.Width)))
+		extent.Width = scrollExtent(sv.contentWidth, area.Width)
 	}
 	if sv.canScrollY() {
-		extent.Height = ceilScrollCoordinate(max(0, float64(sv.contentHeight)-float64(area.Height)))
+		extent.Height = scrollExtent(sv.contentHeight, area.Height)
 	}
 	return extent
+}
+
+// scrollExtent preserves the reachable far edge before narrowing a range.
+// Editors which own or constrain an offset use the same range as ScrollView.
+func scrollExtent(content, viewport float32) float32 {
+	return ceilScrollCoordinate(max(0, float64(content)-float64(viewport)))
 }
 
 // contentAreaRect returns the content area in ScrollView-local coordinates.

@@ -1,3 +1,6 @@
+// 超长行补充：加 -file /outside/repo/long.json -width 800，验证只读文件的冷 End
+// 后直接正向拖选。每个事件循环推进一次鼠标，校验水平偏移、EOF 选区及光标像素。
+// 不访问系统剪贴板，不保存原文件；全程需保持窗口焦点，提前关闭或超时失败。
 // Cached long-paragraph caret regression. Requires a desktop and native fonts.
 // Run: GOUI_PLAT_PAINTER=software GOUI_PLAT_SCALE=1 go run ./tests/window/gui/text_caret
 // Also run at scale 2; use software on all platforms for the typography wrapper.
@@ -22,9 +25,13 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"image/color"
 	"log"
 	"math"
+	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -32,6 +39,7 @@ import (
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/typography"
+	"github.com/golang-gui/goui/style"
 	"github.com/golang-gui/goui/theme/modern"
 )
 
@@ -100,25 +108,44 @@ func (l *observedLayout) MeasureMetrics() ([]typography.TextLine, []typography.T
 }
 
 func main() {
+	runtime.LockOSThread()
+	file := flag.String("file", "", "existing single-line UTF-8 file to verify without writing")
+	width := flag.Float64("width", 760, "window width in DIP")
+	flag.Parse()
 	app, err := gui.NewApplication("org.golanggui.TextCaretRegression")
 	must(err)
 	ctx := &observedContext{Context: app.Typography()}
 	gui.App = observedApp{app, ctx}
-	app.SetStyleSheet(modern.Sheet(modern.Options{}))
+	sheet := modern.Sheet(modern.Options{})
+	if *file != "" {
+		sheet = caretProbeSheet{modern.FromSettings(app.Settings())}
+	}
+	app.SetStyleSheet(sheet)
+	chrome := gui.WindowChromeIntegrated
+	if *file != "" {
+		chrome = gui.WindowChromeNative
+	}
 	win, err := app.NewWindow(&gui.WindowOptions{
-		Size:   geometry.Size{Width: 760, Height: 360},
-		Chrome: gui.WindowChromeIntegrated,
+		Size:   geometry.Size{Width: float32(*width), Height: 360},
+		Chrome: chrome,
 	})
 	must(err)
 	defer win.Destroy()
 	must(win.SetTitle("Wrapped text caret reuse"))
 	v := gui.NewTextView()
 	scroll := gui.NewScrollView()
-	scroll.SetStyleName("text-view")
+	if *file == "" {
+		scroll.SetStyleName("text-view")
+	}
 	scroll.SetChild(v)
 	win.SetWidget(scroll)
 	must(win.Show())
 	win.SetFocusedWidget(v)
+
+	if *file != "" {
+		verifyLongHorizontal(app, win, v, scroll, *file)
+		return
+	}
 
 	const length = 32768
 	primary, ok := gui.ModPrimary.Resolve()
@@ -224,4 +251,118 @@ func main() {
 	must(timer.Start(20 * time.Millisecond))
 	app.Run()
 	check(complete, "caret verification aborted")
+}
+
+// 只给光标标记专用颜色；其余名称与 part 保留完整的 Modern 主题。
+type caretProbeSheet struct{ style.StyleSheet }
+
+func (s caretProbeSheet) Resolve(sel style.Sel) style.Style {
+	if sel.Name == "text-view" && sel.Part == "caret" {
+		return style.Sheet(style.Name("text-view").Part("caret").ForegroundColor(color.NRGBA{R: 255, B: 255, A: 255})).Resolve(sel)
+	}
+	return s.StyleSheet.Resolve(sel)
+}
+
+func verifyLongHorizontal(app gui.Application, win gui.Window, v *gui.TextView, scroll *gui.ScrollView, file string) {
+	data, err := os.ReadFile(file)
+	must(err)
+	v.SetWrapMode(gui.WrapNone)
+	v.Model().SetText(string(data))
+	data = nil
+	check(v.Model().LineCount() == 1, "-file expects one logical line")
+	length := v.Model().Len()
+	check(length > 64*1024, "-file expects a long single-line document")
+	stage, anchor := 0, 0
+	var end, point geometry.Point
+	var offset float32
+	var held time.Time
+	complete := false
+	deadline := time.Now().Add(45 * time.Second)
+	pointer := func(kind events.EventType, p geometry.Point) {
+		r := v.Snapshot().Bounds
+		event := events.PointerEvent{EventType: kind, Position: geometry.Point{X: r.X + p.X, Y: r.Y + p.Y}}
+		if kind == events.PointerMove {
+			event.Buttons = events.PointerButtonLeftDown
+		} else {
+			event.Button = events.PointerButtonLeft
+		}
+		must(win.DispatchEvent(event))
+	}
+	caret := func() (geometry.Point, bool) {
+		img, err := gui.RenderWidget(v, 0)
+		must(err)
+		scale := float64(img.Bounds().Dx()) / float64(v.Rect().Width)
+		left, top, bottom := img.Bounds().Dx(), img.Bounds().Dy(), -1
+		// sRGB 不透明输出，按洋红核心像素识别光标，允许字体抗锯齿差异。
+		for y := 0; y < min(img.Bounds().Dy(), int(64*scale)); y++ {
+			for x := 0; x < img.Bounds().Dx(); x++ {
+				r, g, b, a := img.At(x, y).RGBA()
+				if a == 65535 && r > 64000 && b > 64000 && g < 58000 {
+					left = min(left, x)
+					top = min(top, y)
+					bottom = max(bottom, y)
+				}
+			}
+		}
+		if bottom < 0 {
+			return geometry.Point{}, false
+		}
+		return geometry.Point{X: float32(float64(left) / scale), Y: float32(float64(top+bottom) / 2 / scale)}, true
+	}
+	timer := app.NewTimer()
+	defer timer.Stop()
+	timer.ConnectTimeout(func() {
+		check(time.Now().Before(deadline), fmt.Sprintf("long horizontal caret timed out: stage=%d selection=%v", stage, v.Selection()))
+		if !win.Focused() || v.Rect().Width <= 0 {
+			return
+		}
+		if stage >= 2 {
+			check(scroll.ScrollX() == offset, fmt.Sprintf("drag moved text: before=%.0f after=%.0f selection=%v", offset, scroll.ScrollX(), v.Selection()))
+		}
+		switch stage {
+		case 0:
+			for _, kind := range []events.EventType{events.KeyDown, events.KeyUp} {
+				must(win.DispatchEvent(events.KeyEvent{EventType: kind, Key: events.KeyEnd}))
+			}
+			stage = 1
+		case 1:
+			p, ok := caret()
+			if !ok {
+				return
+			}
+			end = p
+			offset = scroll.ScrollX()
+			point = geometry.Point{X: end.X - 100, Y: end.Y}
+			pointer(events.PointerDown, point)
+			anchor = v.Selection().Anchor
+			check(anchor < length && anchor >= length-256, "tail drag did not start in the final window")
+			log.Printf("BEGIN tail drag bytes=%d offset=%.0f end=%v anchor=%d", length, offset, end, anchor)
+			stage = 2
+		case 2:
+			point.X += 4
+			pointer(events.PointerMove, point)
+			check(v.Selection().Anchor == anchor && v.Selection().Caret >= anchor && v.Model().Len() == length, "tail drag changed anchor or document")
+			if point.X < end.X+16 {
+				return
+			}
+			check(v.Selection().Caret == length, fmt.Sprintf("tail drag missed EOF: %v want %d", v.Selection(), length))
+			held = time.Now()
+			stage = 3
+		case 3:
+			// 留出至少两个自动滚动时钟，不能在错误定时器触发前关闭窗口。
+			if time.Since(held) < 100*time.Millisecond {
+				return
+			}
+			check(v.Selection() == (gui.TextSelection{Anchor: anchor, Caret: length}), "held drag lost EOF")
+			actual, ok := caret()
+			check(ok && math.Abs(float64(actual.X-end.X)) <= 1, "final caret pixels moved")
+			pointer(events.PointerUp, point)
+			complete = true
+			log.Printf("PASS long horizontal forward drag typography=%s offset=%.0f selection=%v", app.Typography().Name(), offset, v.Selection())
+			win.Destroy()
+		}
+	})
+	must(timer.Start(20 * time.Millisecond))
+	app.Run()
+	check(complete, "long horizontal verification aborted")
 }
