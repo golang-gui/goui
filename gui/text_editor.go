@@ -1562,6 +1562,23 @@ func (t *textEditor) dragScrollOffset() geometry.Point {
 	}
 	extent := t.contentSize()
 	point := t.input.dragPoint
+	dx := step(point.X, t.viewport.Width)
+	if t.wrap != WrapNone {
+		dx = 0
+	} else if dx != 0 {
+		// Use already measured visual edges: another row's width is not a reason
+		// to scroll beyond this row's selectable text. This never shapes text.
+		row := t.heights.At(point.Y + t.offset.Y - t.padding)
+		if p := t.paragraphs[row]; p != nil && p.measured && (p.paged == nil || p.paged.VisibleRange().End > 0) {
+			g := p.editGeometry(t.lineHeight)
+			origin := t.paragraphOrigin(row, p)
+			edge := g.LineEdge(g.LineAtY(point.Y-origin.Y), dx > 0)
+			rect := g.Caret(edge).Translate(origin)
+			if dx < 0 && rect.X >= t.padding || dx > 0 && float64(rect.X)+float64(rect.Width) <= float64(t.viewport.Width-t.padding) {
+				dx = 0
+			}
+		}
+	}
 	advance := func(offset, delta, content, viewport float32) float32 {
 		if delta == 0 {
 			return offset
@@ -1574,7 +1591,7 @@ func (t *textEditor) dragScrollOffset() geometry.Point {
 		return min(max(0, next), mathx.Floor(scrollExtent(content, viewport)))
 	}
 	next := geometry.Point{
-		X: advance(t.offset.X, step(point.X, t.viewport.Width), extent.Width, t.viewport.Width),
+		X: advance(t.offset.X, dx, extent.Width, t.viewport.Width),
 		Y: advance(t.offset.Y, step(point.Y, t.viewport.Height), extent.Height, t.viewport.Height),
 	}
 	if t.singleLine {
