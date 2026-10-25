@@ -13,6 +13,10 @@ import (
 
 func (d *demo) basicPage() ui.View {
 	change := func() { d.app.RequestUpdate() }
+	tooltip := resource.TooltipText()
+	if !d.enabled {
+		tooltip = resource.TooltipDisabled()
+	}
 	return page("basic", resource.Basic(), resource.BasicHint(),
 		section(resource.Buttons(),
 			wui.Switch(resource.EnableControls()).Checked(d.enabled).OnChange(func(v bool) { d.enabled = v; change() }),
@@ -23,6 +27,12 @@ func (d *demo) basicPage() ui.View {
 			).Spacing(12).LineSpacing(12).Enabled(d.enabled),
 			ui.HWrap(ui.Button(resource.AlwaysDisabled()).Enabled(false),
 				ui.Button(resource.FlatButton()).Style(modern.Flat).ID("basic-flat-disabled").Enabled(false)).Spacing(12).LineSpacing(12)),
+		section(resource.Tooltips(),
+			ui.Label(resource.TooltipHint()).WrapMode(gui.WrapWordChar).Style(modern.MutedText),
+			ui.HWrap(
+				ui.Button(resource.TooltipTarget()).ID("tooltip-target").Enabled(d.enabled).Tooltip(tooltip).OnClick(func() { d.report(resource.NormalClicked()) }),
+				ui.Button(resource.AlwaysDisabled()).ID("tooltip-disabled").Enabled(false).Tooltip(resource.TooltipDisabled()),
+			).Spacing(12).LineSpacing(12)),
 		section(resource.SemanticStyles(),
 			ui.Label(resource.SemanticHint()).WrapMode(gui.WrapWordChar).Style(modern.MutedText),
 			ui.HWrap(
