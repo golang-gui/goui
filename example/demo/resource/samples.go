@@ -1,7 +1,14 @@
 package resource
 
 // These defaults belong to the demo until edited; user content is never translated.
+// Generated JSON data stays unchanged across language switches; its UI is localized.
 var (
+	RegularText      = text("Regular text", "常规文本", "通常のテキスト", "일반 텍스트", "Normaler Text", "Texte ordinaire", "Обычный текст", "نص عادي")
+	LargeDocument    = text("Large document", "多行文档", "大きな文書", "큰 문서", "Großes Dokument", "Grand document", "Большой документ", "مستند كبير")
+	LongJSON         = text("Single-line JSON", "单行 JSON", "1 行の JSON", "한 줄 JSON", "Einzeiliges JSON", "JSON sur une ligne", "Однострочный JSON", "JSON في سطر واحد")
+	TextSampleFormat = text("Sample: %s ▾", "样例：%s ▾", "サンプル: %s ▾", "예제: %s ▾", "Beispiel: %s ▾", "Exemple : %s ▾", "Пример: %s ▾", "مثال: %s ▾")
+	TextSamplesHint  = text("Choose a sample, then edit, select, undo or resize. Try word wrap with the single-line JSON. Each sample keeps its edits and undo history.", "选择样例后试试编辑、拖选、撤销和调整窗口。单行 JSON 可以切换自动换行；各样例分别保留编辑内容和撤销历史。", "サンプルを選び、編集・選択・元に戻す・サイズ変更を試してください。1 行 JSON は折り返しも確認できます。各サンプルの内容と履歴は保持されます。", "예제를 선택한 후 편집, 선택, 실행 취소와 창 크기 조절을 해보세요. 한 줄 JSON의 자동 줄바꿈도 확인하세요. 각 예제의 편집 내용과 기록은 유지됩니다.", "Beispiel wählen, bearbeiten, markieren, rückgängig machen oder das Fenster ändern. Beim einzeiligen JSON den Umbruch ausprobieren. Jedes Beispiel behält Änderungen und Verlauf.", "Choisissez un exemple, puis modifiez, sélectionnez, annulez ou redimensionnez. Essayez le retour automatique du JSON sur une ligne. Chaque exemple conserve ses modifications et son historique.", "Выберите пример, попробуйте редактирование, выделение, отмену и изменение размера окна. Проверьте перенос однострочного JSON. Каждый пример сохраняет изменения и историю.", "اختر مثالًا ثم جرّب التحرير والتحديد والتراجع وتغيير حجم النافذة. جرّب التفاف JSON ذي السطر الواحد. يحتفظ كل مثال بتعديلاته وسجل التراجع.")
+	TextSampleStats  = text("%d bytes · %d lines · selection %+v", "%d 字节 · %d 行 · 选区 %+v", "%d バイト · %d 行 · 選択 %+v", "%d바이트 · %d줄 · 선택 %+v", "%d Bytes · %d Zeilen · Auswahl %+v", "%d octets · %d lignes · sélection %+v", "%d байт · %d строк · выделение %+v", "%d بايت · %d أسطر · تحديد %+v")
 	InputSample      = text("Hello, GOUI", "你好，GOUI", "こんにちは、GOUI", "안녕하세요, GOUI", "Hallo, GOUI", "Bonjour, GOUI", "Привет, GOUI", "مرحبًا، GOUI")
 	BaselineSample   = text("Text baseline alignment", "文字基线对齐", "テキストのベースライン揃え", "텍스트 기준선 정렬", "Text an der Grundlinie ausrichten", "Alignement sur la ligne de base", "Выравнивание по базовой линии", "محاذاة خط أساس النص")
 	SplitInputSample = text("Edit after dragging the divider", "拖动分隔条后改变内容", "仕切りをドラッグしてから編集", "구분선을 드래그한 후 편집", "Nach Ziehen des Trenners bearbeiten", "Modifier après avoir déplacé la séparation", "Измените текст после перемещения разделителя", "حرّر النص بعد سحب الفاصل")
