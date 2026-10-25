@@ -275,5 +275,7 @@ func (b *ScrollBar) emitValueFromPos(pos geometry.Point) {
 	if start > ml-t {
 		start = ml - t
 	}
-	b.change.Emit(start * b.max / (ml - t))
+	// Normalize before scaling and keep the ratio in double precision. The
+	// far edge must request Max exactly even for billion-DIP content.
+	b.change.Emit(float32(float64(start) / float64(ml-t) * float64(b.max)))
 }

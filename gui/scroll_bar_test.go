@@ -36,6 +36,39 @@ func TestScrollBarDefaultThickness(t *testing.T) {
 	}
 }
 
+// 大范围下先用 float32 相乘再相除，会把滑块终点映射为 Max 前一个表示值。
+// 通过窗口正常分发指针输入；两个轴及两个不同乘除比例都必须准确到达端点。
+func TestScrollBarLargeRangeEndpoints(t *testing.T) {
+	for _, axis := range []layout.Direction{layout.DirectionHorizontal, layout.DirectionVertical} {
+		for _, tc := range []struct{ length, maximum float32 }{{760, 1005020544}, {800, 1000000000}} {
+			bar := NewScrollBar(axis)
+			win := &window{}
+			win.SetWidget(bar)
+			bar.SetMax(tc.maximum)
+			var got float32
+			bar.ConnectChange(func(value float32) { got = value; bar.SetValue(value) })
+			size := geometry.Size{Width: tc.length, Height: scrollbarWidth}
+			point := func(at float32) geometry.Point { return geometry.Point{X: at, Y: scrollbarWidth / 2} }
+			if axis == layout.DirectionVertical {
+				size.Width, size.Height = size.Height, size.Width
+				point = func(at float32) geometry.Point { return geometry.Point{X: scrollbarWidth / 2, Y: at} }
+			}
+			bar.Arrange(geometry.Rectangle{Size: size})
+			editorPointer(t, win, events.PointerDown, point(1), 0)
+			editorPointer(t, win, events.PointerMove, point(tc.length+100), 0)
+			if got != tc.maximum {
+				t.Fatalf("轴=%v 长度=%g：终点=%g，预期=%g", axis, tc.length, got, tc.maximum)
+			}
+			editorPointer(t, win, events.PointerMove, point(-100), 0)
+			if got != 0 {
+				t.Fatal("反向拖动没有准确回到起点", got)
+			}
+			editorPointer(t, win, events.PointerUp, point(-100), 0)
+			win.SetWidget(nil)
+		}
+	}
+}
+
 func TestScrollBarThumbGeometry(t *testing.T) {
 	b := newVerticalBar(t, 400) // content = 600, viewport = 200
 
