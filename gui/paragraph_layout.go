@@ -572,7 +572,7 @@ func (p *ParagraphLayout) setWidth(index int, width float64) {
 	}
 	old, ok := p.widthValues[index]
 	if !ok {
-		old = float64(p.blockWidth)
+		old = p.estimatedWidth(index)
 	}
 	p.widthValues[index] = width
 	for i := index + 1; i < len(p.widthTree); i += i & -i {
@@ -580,8 +580,14 @@ func (p *ParagraphLayout) setWidth(index int, width float64) {
 	}
 }
 
+func (p *ParagraphLayout) estimatedWidth(index int) float64 {
+	bytes := min(paragraphBlockBytes, max(0, p.length-index*paragraphBlockBytes))
+	return float64(p.blockWidth) * float64(bytes) / paragraphBlockBytes
+}
+
 func (p *ParagraphLayout) widthTop(index int) float64 {
-	x := float64(index) * float64(p.blockWidth)
+	bytes := min(float64(p.length), float64(index)*paragraphBlockBytes)
+	x := bytes * float64(p.blockWidth) / paragraphBlockBytes
 	for i := min(index, len(p.widthTree)-1); i > 0; i -= i & -i {
 		x += p.widthTree[i]
 	}

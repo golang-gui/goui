@@ -1,6 +1,9 @@
 // 超长行补充：加 -file /outside/repo/long.json -width 800，验证只读文件的冷 End
 // 后直接正向拖选。每个事件循环推进一次鼠标，校验水平偏移、EOF 选区及光标像素。
 // 不访问系统剪贴板，不保存原文件；全程需保持窗口焦点，提前关闭或超时失败。
+// 加 -scrollbar 时不先按 End，通过正常指针事件从首屏拖动水平滑块到最右端。
+// 等待测量收敛，检查 EOF 在可见范围、末行真实文字像素及末端点击定位；
+// 在 Software/OpenGL、1x/1.5x/2x 重复，不能将暂时空白当作验证通过。
 // Cached long-paragraph caret regression. Requires a desktop and native fonts.
 // Run: GOUI_PLAT_PAINTER=software GOUI_PLAT_SCALE=1 go run ./tests/window/gui/text_caret
 // Also run at scale 2; use software on all platforms for the typography wrapper.
@@ -112,8 +115,10 @@ func (l *observedLayout) MeasureMetrics() ([]typography.TextLine, []typography.T
 func main() {
 	runtime.LockOSThread()
 	file := flag.String("file", "", "existing single-line UTF-8 file to verify without writing")
+	scrollbar := flag.Bool("scrollbar", false, "drag the horizontal scrollbar to EOF instead of pressing End")
 	width := flag.Float64("width", 760, "window width in DIP")
 	flag.Parse()
+	check(!*scrollbar || *file != "", "-scrollbar requires -file")
 	app, err := gui.NewApplication("org.golanggui.TextCaretRegression")
 	must(err)
 	ctx := &observedContext{Context: app.Typography()}
@@ -148,7 +153,11 @@ func main() {
 	win.SetFocusedWidget(v)
 
 	if *file != "" {
-		verifyLongHorizontal(app, win, v, scroll, *file)
+		if *scrollbar {
+			verifyHorizontalScrollEnd(app, win, v, scroll, *file)
+		} else {
+			verifyLongHorizontal(app, win, v, scroll, *file)
+		}
 		return
 	}
 
@@ -256,6 +265,100 @@ func main() {
 	must(timer.Start(20 * time.Millisecond))
 	app.Run()
 	check(complete, "caret verification aborted")
+}
+
+func verifyHorizontalScrollEnd(app gui.Application, win gui.Window, v *gui.TextView, scroll *gui.ScrollView, file string) {
+	data, err := os.ReadFile(file)
+	must(err)
+	v.SetWrapMode(gui.WrapNone)
+	v.Model().SetText(string(data))
+	length := len(data)
+	data = nil
+	check(length > 64*1024 && v.Model().LineCount() == 1, "-file expects a long single-line document")
+	complete := false
+	deadline := time.Now().Add(45 * time.Second)
+	stage, step := 0, 0
+	var track geometry.Rectangle
+	var pressed time.Time
+	var priorSize geometry.Size
+	var priorOffset float32
+	stable := 0
+	pointer := func(kind events.EventType, at geometry.Point) {
+		e := events.PointerEvent{EventType: kind, Position: at, Button: events.PointerButtonLeft}
+		if kind == events.PointerMove {
+			e.Button, e.Buttons = 0, events.PointerButtonLeftDown
+		}
+		must(win.DispatchEvent(e))
+	}
+	timer := app.NewTimer()
+	defer timer.Stop()
+	timer.ConnectTimeout(func() {
+		check(time.Now().Before(deadline), fmt.Sprintf("scrollbar end timed out: stage=%d offset=%g extent=%v", stage, scroll.ScrollX(), v.ContentSize()))
+		if !win.Focused() || v.Rect().Width <= 0 {
+			return
+		}
+		switch stage {
+		case 0:
+			for _, child := range scroll.Children() {
+				if bar, ok := child.(*gui.ScrollBar); ok && bar.Visible() && bar.Orientation() == layout.DirectionHorizontal {
+					track = bar.Snapshot().Bounds
+				}
+			}
+			if track.Width <= 0 || v.Snapshot().TextEditing.VisibleRange.End == 0 {
+				return
+			}
+			pointer(events.PointerDown, geometry.Point{X: track.X + 1, Y: track.Y + track.Height/2})
+			stage = 1
+		case 1:
+			step++
+			pointer(events.PointerMove, geometry.Point{X: track.X + track.Width*float32(step)/16, Y: track.Y + track.Height/2})
+			if step < 17 {
+				return
+			}
+			pressed, stage = time.Now(), 2
+		case 2:
+			if priorSize == v.ContentSize() && priorOffset == scroll.ScrollX() {
+				stable++
+			} else {
+				stable = 0
+			}
+			priorSize, priorOffset = v.ContentSize(), scroll.ScrollX()
+			// 稳定尺寸不代表远端的前缀上下文已确认；等待同一截止时间内的末块就绪。
+			if stable < 5 || time.Since(pressed) < 200*time.Millisecond || v.Snapshot().TextEditing.VisibleRange.End != length {
+				return
+			}
+			pointer(events.PointerUp, geometry.Point{X: track.X + track.Width + 20, Y: track.Y + track.Height/2})
+			check(v.Snapshot().TextEditing.VisibleRange.End == length, "scrollbar end did not display EOF")
+			img, err := gui.RenderWidget(v, 0)
+			must(err)
+			scale := float64(img.Bounds().Dx()) / float64(v.Rect().Width)
+			ink := 0
+			// Modern 浅色主题 sRGB 输出；首行排除边缘、光标和滚动条，只计暗色字形核心。
+			for y := int(float64(v.Padding()) * scale); y < min(img.Bounds().Dy(), int(40*scale)); y++ {
+				for x := int(float64(v.Padding()) * scale); x < img.Bounds().Dx()-int(float64(v.Padding())*scale); x++ {
+					r, g, b, a := img.At(x, y).RGBA()
+					if a == 65535 && r < 30000 && g < 30000 && b < 30000 {
+						ink++
+					}
+				}
+			}
+			check(ink > 0, "scrollbar end is an entirely blank text row")
+			bounds := v.Snapshot().Bounds
+			point := geometry.Point{X: bounds.X + bounds.Width - v.Padding() - 1, Y: bounds.Y + v.Padding() + 8}
+			pointer(events.PointerDown, point)
+			pointer(events.PointerUp, point)
+			check(v.Selection().Caret == length, fmt.Sprintf("scrollbar-end click missed EOF: %v want=%d", v.Selection(), length))
+			stage = 3
+		case 3:
+			check(scroll.ScrollX() == priorOffset, "clicking EOF moved the corrected viewport")
+			complete = true
+			log.Printf("PASS scrollbar EOF bytes=%d typography=%s offset=%g extent=%v selection=%v", length, app.Typography().Name(), scroll.ScrollX(), v.ContentSize(), v.Selection())
+			win.Destroy()
+		}
+	})
+	must(timer.Start(20 * time.Millisecond))
+	app.Run()
+	check(complete, "scrollbar end verification aborted")
 }
 
 // 只给光标标记专用颜色；其余名称与 part 保留完整的 Modern 主题。

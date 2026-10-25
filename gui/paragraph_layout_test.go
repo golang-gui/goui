@@ -12,6 +12,30 @@ import (
 	"github.com/golang-gui/goui/platform/typography"
 )
 
+// 固定每字符 10 DIP，独立预期不读取被测宽度索引。未测末块只包含实际剩余字节。
+func TestParagraphLayoutPartialLastWidth(t *testing.T) {
+	for _, tail := range []int{1, 128, paragraphBlockBytes - 1, paragraphBlockBytes} {
+		length := 20*paragraphBlockBytes + tail
+		text := strings.Repeat("a", length)
+		p := NewParagraphLayout(&editorTypography{}, typography.TextFormat{WrapMode: WrapNone}, 800, length,
+			func(r textedit.Range) (string, error) { return text[r.Start:r.End], nil })
+		t.Cleanup(p.Destroy)
+		if !p.Prepare(geometry.Rect(0, 0, 800, 100), true) {
+			t.Fatal("首屏未就绪", p.Err())
+		}
+		want := float32(length * 10)
+		if got := p.Size().Width; got != want {
+			t.Fatalf("末块字节数=%d：估宽=%g，独立预期=%g", tail, got, want)
+		}
+		for range 3 {
+			p.Prepare(geometry.Rect(want-800, 0, 800, 100), true)
+		}
+		if p.Size().Width != want || p.VisibleRange().End != length {
+			t.Fatal("末屏没有收敛到 EOF", tail, p.Size(), p.VisibleRange())
+		}
+	}
+}
+
 type paragraphBoundContext struct {
 	typography.Context
 	t       *testing.T
