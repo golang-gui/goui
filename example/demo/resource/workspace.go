@@ -68,3 +68,12 @@ var (
 	PopoverHint          = text("Created through public GUI APIs; the anchor follows its window.", "由公开 GUI 接口创建，锚点跟随窗口移动。", "公開 GUI API で作成。アンカーは窓に追従。", "공개 GUI API로 생성하며 앵커는 창을 따라갑니다.", "Öffentliche GUI-API; der Anker folgt dem Fenster.", "API GUI publique ; l’ancre suit la fenêtre.", "Публичный API GUI; якорь следует за окном.", "أُنشئ عبر GUI العام؛ المرساة تتبع النافذة.")
 	ShowPopover          = text("Show Popover", "显示 Popover", "Popover を表示", "Popover 표시", "Popover anzeigen", "Afficher le Popover", "Показать Popover", "عرض Popover")
 )
+
+var (
+	MenuButtons   = text("Menu buttons", "菜单按钮", "メニューボタン", "메뉴 버튼", "Menüschaltflächen", "Boutons de menu", "Кнопки меню", "أزرار القائمة")
+	MenuGroupHint = text("Open a menu, then hover another. Use arrows, Escape or Tab. Menu actions appear in the status; Run works with one click.", "打开菜单后移到其他菜单切换；可用方向键、Esc 和 Tab。菜单动作显示在状态栏，运行按钮一次点击即可执行。", "メニューを開いて別のボタンへ移動。矢印、Esc、Tab で操作。実行結果はステータスに表示。", "메뉴를 열고 다른 버튼으로 이동하세요. 방향키, Esc, Tab을 지원합니다. 실행 결과는 상태에 표시됩니다.", "Menü öffnen und zum nächsten wechseln. Pfeile, Esc und Tab bedienen es; Aktionen erscheinen im Status.", "Ouvrez un menu, puis survolez un autre. Flèches, Échap et Tab sont disponibles ; les actions apparaissent dans le statut.", "Откройте меню и наведите на другое. Используйте стрелки, Esc и Tab; результат виден в строке состояния.", "افتح قائمة ثم مرر المؤشر إلى أخرى. استخدم الأسهم وEsc وTab؛ تظهر الإجراءات في الحالة.")
+	FileMenu      = text("File", "文件", "ファイル", "파일", "Datei", "Fichier", "Файл", "ملف")
+	EditMenu      = text("Edit", "编辑", "編集", "편집", "Bearbeiten", "Édition", "Правка", "تحرير")
+	ViewMenu      = text("View", "视图", "表示", "보기", "Ansicht", "Affichage", "Вид", "عرض")
+	RunCommand    = text("Run", "运行", "実行", "실행", "Ausführen", "Exécuter", "Запустить", "تشغيل")
+)
