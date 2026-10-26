@@ -111,6 +111,7 @@ func main() {
 	p := gui.NewPopover(open, nil)
 	defer p.Destroy()
 	p.SetModal(true)
+	p.SetAutoDismiss(true)
 	p.SetPlacement(gui.PopoverPlacementBottom)
 	panel := gui.NewLinearBox(layout.DirectionVertical)
 	panel.SetPadding(12)

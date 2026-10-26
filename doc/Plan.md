@@ -3,6 +3,22 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## Popover 非模态输入与自动关闭（2026-10-26）
+
+- [x] 将 Modal 的输入独占与 AutoDismiss 的关闭请求分开；AutoDismiss 默认 false，
+  菜单呈现器和 DropDown 及已有菜单式窗口用例显式启用。非模态外部点击关闭后
+  继续原事件，锚点属于内部区域；回调替换根、命中目标、显示新面或销毁时停止。
+- [x] 可见非模态面接受明确的 DispatchEvent(KeyEvent)，不增加自动键盘目标；
+  模态输入仍检查归属，CommitText／原生 IME 契约保持。Window 只处理通用面，
+  不识别 MenuButton 或具体组。旧面不能撤销新模态登记；Show／Hide／释放重入
+  检查原生资源、生命周期和当前输入归属。
+- [x] 真实 X11 输入发现非模态 Bottom 的透明阴影留白会挡住锚点按钮，已在通用
+  定位中裁去锚点侧留白，保持主体贴边及其余阴影；上下退避和原生取整复用该侧。
+  旧生产文件 overlay 下，上下两项原生尺寸回归均失败；修正后通过。
+- [x] Linux amd64／Go 1.25.8：仅从本次暂存索引导出独立源码，关闭工作区执行
+  `go test -json ./gui ./ui ./widgets/... -count=1`，1590 PASS、0 FAIL、0 SKIP。
+  单独提交通用能力及调用者迁移，MenuButtonGroup 接入和窗口验收另项记录。
+
 ## CheckButtonGroup 命名统一（2026-10-26）
 
 - [x] 将命令式 CheckGroup／NewCheckGroup 和声明式 CheckGroup／CheckGroupView

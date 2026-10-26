@@ -202,6 +202,7 @@ func (pm *PopoverMenu) replacePopover(transparent bool) {
 	p := NewPopover(pm.anchor, &PopoverOptions{Transparent: transparent})
 	p.SetStyleName(styleNameMenu)
 	p.SetModal(true)
+	p.SetAutoDismiss(true)
 	p.ConnectDismissRequest(pm.Hide)
 	pm.hClosed = p.ConnectClosed(pm.closed.Emit)
 	pm.popover = p

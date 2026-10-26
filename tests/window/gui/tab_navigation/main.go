@@ -183,6 +183,7 @@ func main() {
 	popupAnchor := tool("Popup (F7)", nil)
 	popup := gui.NewPopover(popupAnchor, nil)
 	popup.SetModal(true)
+	popup.SetAutoDismiss(true)
 	defer popup.Destroy()
 	popup.SetPosition(geometry.Point{Y: 40})
 	popupRoot := gui.NewLinearBox(layout.DirectionVertical)

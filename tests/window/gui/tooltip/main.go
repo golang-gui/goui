@@ -195,6 +195,7 @@ func main() {
 			p := gui.NewPopover(buttons[1], nil)
 			p.SetWidget(gui.NewLabel("Modal content"))
 			p.SetModal(true)
+			p.SetAutoDismiss(true)
 			must(p.Show())
 			check(!visibleTip(), "old tooltip covered modal content")
 			p.Destroy()

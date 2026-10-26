@@ -288,6 +288,7 @@ func TestTooltipInsideModalPopoverUsesOwnerCoordinates(t *testing.T) {
 	parent.SetWidget(content)
 	parent.SetPosition(geometry.Point{X: 200, Y: 80})
 	parent.SetModal(true)
+	parent.SetAutoDismiss(true)
 	if err := parent.Show(); err != nil {
 		t.Fatal(err)
 	}
