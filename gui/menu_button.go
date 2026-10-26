@@ -40,7 +40,9 @@ type MenuButton struct {
 	menu               MenuModel
 	pm                 *PopoverMenu
 	click              *ClickEventController
-	motion             *MotionEventController
+	motion             *menuButtonMotionController
+	motionPosition     geometry.Point
+	motionValid        bool
 	group, linkedGroup *MenuButtonGroup
 	revision           uint64
 	closed             signal.Signal1[uint64]
@@ -57,10 +59,22 @@ func NewMenuButton() *MenuButton {
 		b.RequestPaint()
 	})
 	b.SetLayoutManager(buttonContentLayout{})
-	b.motion = NewMotionEventController()
+	b.motion = &menuButtonMotionController{MotionEventController: NewMotionEventController(), button: b}
 	b.motion.SetPhase(PhaseBubble)
 	b.motion.ConnectContainsHover(b.setHovered)
-	b.motion.ConnectMotion(func(MotionInfo) {
+	b.motion.ConnectMotion(func(info MotionInfo) {
+		if b.Destroyed() {
+			return
+		}
+		// Native systems can resend motion after a popup changes without moving
+		// the pointer. Keep keyboard navigation until its owner position changes.
+		position := absOrigin(b)
+		position.X += info.Position.X
+		position.Y += info.Position.Y
+		if b.motionValid && b.motionPosition == position {
+			return
+		}
+		b.motionPosition, b.motionValid = position, true
 		if b.Opened() || b.group == nil || b.Destroyed() || !IsEnabled(b) {
 			return
 		}
@@ -397,4 +411,30 @@ func (b *MenuButton) requestPaint() {
 	if root := b.Root(); root != nil {
 		_ = root.RequestPaint()
 	}
+}
+
+// menuButtonMotionController preserves the last pointer position across native
+// crossing notifications caused by showing or hiding a no-focus surface.
+// A real departure carries a different owner position and starts a new visit.
+type menuButtonMotionController struct {
+	*MotionEventController
+	button *MenuButton
+}
+
+func (c *menuButtonMotionController) Reset() {
+	c.button.motionValid = false
+	c.MotionEventController.Reset()
+}
+func (c *menuButtonMotionController) HandleCrossing(ctx CrossingContext) {
+	if ctx.Type() == CrossingPointer && ctx.Mode() == CrossingContains && ctx.Direction() == CrossingLeave {
+		if point, ok := ctx.Position(); ok {
+			origin := absOrigin(c.button)
+			point.X += origin.X
+			point.Y += origin.Y
+			if point != c.button.motionPosition {
+				c.button.motionValid = false
+			}
+		}
+	}
+	c.MotionEventController.HandleCrossing(ctx)
 }

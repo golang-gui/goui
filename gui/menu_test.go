@@ -635,3 +635,37 @@ func TestMenuButtonOpenErrorStopsAfterDestruction(t *testing.T) {
 		t.Fatal("OpenError 回调销毁后仍通知后续监听者或残留原生菜单", calls)
 	}
 }
+
+func TestMenuButtonGroupKeepsKeyboardChoiceOnStationaryMotion(t *testing.T) {
+	w, _, buttons, _ := menuButtonGroupFixture(t)
+	menuButtonClick(t, w, 50)
+	menuButtonPointer(t, w, events.PointerMove, 150)
+	if !buttons[1].Opened() {
+		t.Fatal("真实移动没有切换菜单")
+	}
+	menuButtonKey(t, w, events.KeyArrowLeft)
+	menuButtonPointer(t, w, events.PointerMove, 150)
+	if !buttons[0].Opened() || buttons[1].Opened() {
+		t.Fatal("重复原生移动消息覆盖了键盘选择")
+	}
+	menuButtonPointer(t, w, events.PointerMove, 151)
+	if !buttons[1].Opened() {
+		t.Fatal("同一按钮内的真实移动没有恢复鼠标切换")
+	}
+	menuButtonKey(t, w, events.KeyArrowLeft)
+	menuButtonPointer(t, w, events.PointerLeave, 151)
+	menuButtonPointer(t, w, events.PointerEnter, 151)
+	menuButtonPointer(t, w, events.PointerMove, 151)
+	if !buttons[0].Opened() {
+		t.Fatal("静止位置的原生 Crossing 覆盖了键盘选择")
+	}
+	menuButtonPointer(t, w, events.PointerLeave, 450)
+	menuButtonPointer(t, w, events.PointerEnter, 151)
+	if !buttons[0].Opened() {
+		t.Fatal("仅 Crossing 打开了菜单")
+	}
+	menuButtonPointer(t, w, events.PointerMove, 151)
+	if !buttons[1].Opened() {
+		t.Fatal("移开再回到同一位置时没有切换")
+	}
+}
