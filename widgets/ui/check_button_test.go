@@ -65,7 +65,7 @@ func TestCheckButtonDeclarationRestoresExternalState(t *testing.T) {
 	b := v.Mount(ctx).(*widgets.CheckButton)
 	v.Update(ctx, b)
 	b.SetChecked(true)
-	b.SetGroup(widgets.NewCheckGroup())
+	b.SetGroup(widgets.NewCheckButtonGroup())
 	b.SetAppearance(CheckAppearanceButton)
 	b.SetPadding(0)
 	v.Update(ctx, b)

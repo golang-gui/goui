@@ -46,7 +46,7 @@ UI 的 View 是本次声明；不要为每段 UI 新建一套状态、事件或�
 - 对象声明实现 ObjectView：Build 初始化／更新 State，Object(ctx) 只读返回
   现有对象，Release(ctx) 在后代清理后释放自己拥有的资源，也须处理构建失败。
   `ui.FindAncestor[T](ctx, id)` 只查询最近的同名对象祖先，不隐式创建或跨窗口搜索。
-- CheckButton 的 .Group("id") 必须位于明确的 wui.CheckGroup("id", child)
+- CheckButton 的 .Group("id") 必须位于明确的 wui.CheckButtonGroup("id", child)
   声明内；普通按钮混排不会自动加入。不要在每次 Build 中重建组对象。
 - 直接嵌入 *ui.LabelView 等，链式方法通常仍返回内层类型。若传出这个返回值，
   外层扩展的 Update 等逻辑就丢失。独立链式扩展用自己的 ViewBase 加命名代理，

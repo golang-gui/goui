@@ -57,7 +57,7 @@ func main() {
 	fallback := flag.Bool("fallback-style", false, "使用显式组合的 widgets 兜底样式")
 	destroyOnChange := flag.Bool("destroy-on-change", false, "旧选中成员的 Change 回调销毁窗口")
 	flag.Parse()
-	var radioGroup, modeGroup *widgets.CheckGroup
+	var radioGroup, modeGroup *widgets.CheckButtonGroup
 	independent, mixed, parent := wui.CheckUnchecked, wui.CheckMixed, wui.CheckUnchecked
 	radio, mode := 1, 1
 	toggle, enabled, dark, red := false, true, false, false
@@ -206,12 +206,12 @@ func main() {
 						).Spacing(8),
 						wui.CheckButton("Independent").ID("independent").CheckState(independent).Enabled(enabled).OnChange(change(&independent)),
 						wui.CheckButton("Mixed").ID("mixed").CheckState(mixed).OnChange(change(&mixed)),
-						wui.CheckGroup("radio", ui.HBox(
+						wui.CheckButtonGroup("radio", ui.HBox(
 							wui.CheckButton("Radio A").ID("radio-1").Group("radio").Checked(radio == 1).OnChange(choice(&radio, 1)),
 							wui.CheckButton("Radio B").ID("radio-2").Group("radio").Checked(radio == 2).OnChange(choice(&radio, 2)),
 							wui.CheckButton("Radio C").ID("radio-3").Group("radio").Checked(radio == 3).OnChange(choice(&radio, 3)),
 						).Spacing(12)),
-						wui.CheckGroup("mode", ui.HBox(
+						wui.CheckButtonGroup("mode", ui.HBox(
 							ui.Button("Toggle").ID("ordinary").OnClick(func() { ordinaryClicks++; update() }),
 							wui.CheckButton("Toggle").ID("toggle").Appearance(wui.CheckAppearanceButton).Checked(toggle).OnChange(func(s wui.CheckState) { toggle = s == wui.CheckChecked; changes++; update() }),
 							wui.CheckButton("Mode A").ID("mode-1").Appearance(wui.CheckAppearanceButton).Group("mode").Checked(mode == 1).OnChange(choice(&mode, 1)),

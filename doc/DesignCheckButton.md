@@ -20,7 +20,7 @@ b.SetChild(gui.NewLabel("记住登录"))
 b.SetCheckState(widgets.CheckMixed)
 b.ConnectChange(func(state widgets.CheckState) { /* 用户操作 */ })
 
-group := widgets.NewCheckGroup()
+group := widgets.NewCheckButtonGroup()
 a.SetGroup(group)
 b.SetGroup(group)
 b.SetAppearance(widgets.CheckAppearanceButton)
@@ -116,19 +116,19 @@ wui.CheckButton("记住登录").Checked(remember).OnChange(func(s wui.CheckState
 ```
 
 通过 Child/Content/Text、Group、Appearance、CheckState、Checked、Enabled、
-Padding 与 OnChange 链式配置。命令式 SetGroup 接收 `*widgets.CheckGroup`；
-声明式 Group 引用一个明确的祖先 CheckGroup 声明：
+Padding 与 OnChange 链式配置。命令式 SetGroup 接收 `*widgets.CheckButtonGroup`；
+声明式 Group 引用一个明确的祖先 CheckButtonGroup 声明：
 
 ```go
-wui.CheckGroup("appearance", ui.HBox(
+wui.CheckButtonGroup("appearance", ui.HBox(
     wui.CheckButton("Light").Group("appearance").Checked(mode == "light"),
     wui.CheckButton("Dark").Group("appearance").Checked(mode == "dark"),
     ui.Button("Reset"),
 ))
 ```
 
-CheckGroupView 使用 ComposeBase／ObjectView，首次 Build 在节点 State 中
-创建实际 widgets.CheckGroup，Object 只返回现有实例，Release 不涉及原生
+CheckButtonGroupView 使用 ComposeBase／ObjectView，首次 Build 在节点 State 中
+创建实际 widgets.CheckButtonGroup，Object 只返回现有实例，Release 不涉及原生
 资源。声明在 Widget 树中没有占位控件，不改变 HBox 的布局和按钮位置。
 
 Group 的非空参数通过 FindAncestor 查询最近的同名对象声明。缺失／类型不符

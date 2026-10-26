@@ -30,7 +30,7 @@ func objectScope(id string, child View, create func() any) *testObjectView {
 }
 
 func groupScope(id string, child View) *testObjectView {
-	return objectScope(id, child, func() any { return widgets.NewCheckGroup() })
+	return objectScope(id, child, func() any { return widgets.NewCheckButtonGroup() })
 }
 
 func (v *testObjectView) Build(ctx BuildContext) View {
@@ -100,10 +100,10 @@ func (*groupedCheckView) Unmount(_ BuildContext, widget gui.Widget) {
 
 func (v *groupedCheckView) Reparented(ctx BuildContext) {
 	b := ctx.State().(*widgets.CheckButton)
-	var group *widgets.CheckGroup
+	var group *widgets.CheckButtonGroup
 	if v.name != "" {
 		var ok bool
-		group, ok = FindAncestor[*widgets.CheckGroup](ctx, v.name)
+		group, ok = FindAncestor[*widgets.CheckButtonGroup](ctx, v.name)
 		if !ok {
 			panic("test: missing explicit group " + v.name)
 		}
@@ -158,14 +158,14 @@ func TestObjectLookupUsesOwnerContextAndNearestID(t *testing.T) {
 	if _, ok := FindAncestor[*int](ctx, "shared"); ok {
 		t.Fatal("最近的同名声明类型不符时越过它查询了外层")
 	}
-	if value, ok := FindAncestor[*widgets.CheckGroup](ctx, "shared"); !ok || value.Checked() == nil {
+	if value, ok := FindAncestor[*widgets.CheckButtonGroup](ctx, "shared"); !ok || value.Checked() == nil {
 		t.Fatal("未用对象所属节点的 State 查询显式组")
 	}
 	if _, ok := FindAncestor[any](ctx, "absent"); ok {
 		t.Fatal("不存在的名字被隐式创建")
 	}
 	r.unmountWindow()
-	if _, ok := FindAncestor[*widgets.CheckGroup](ctx, "shared"); ok {
+	if _, ok := FindAncestor[*widgets.CheckButtonGroup](ctx, "shared"); ok {
 		t.Fatal("释放的上下文仍能取得祖先对象")
 	}
 }
@@ -207,7 +207,7 @@ func TestObjectGroupReleaseFollowsMemberDisconnect(t *testing.T) {
 		v := groupScope("shared", VBox(namedCheck("check", "shared", true)))
 		v.release = func(value any) {
 			calls++
-			if value.(*widgets.CheckGroup).Checked() != nil {
+			if value.(*widgets.CheckButtonGroup).Checked() != nil {
 				t.Fatal("对象释放时成员仍保持关联")
 			}
 		}

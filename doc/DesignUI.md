@@ -181,13 +181,13 @@ move 期间源销毁不会释放临时持有的子树；目标最终不存在则
 不自动创建、不越过同名节点猜测外层；没有全局对象表或隐式依赖追踪。
 
 ```go
-wui.CheckGroup("appearance", ui.HBox(
+wui.CheckButtonGroup("appearance", ui.HBox(
     wui.CheckButton("Light").Group("appearance"),
     wui.CheckButton("Dark").Group("appearance"),
 ))
 ```
 
-组的生命周期属于显式 CheckGroup 声明，最后一个成员离开不会删除仍在树中
+组的生命周期属于显式 CheckButtonGroup 声明，最后一个成员离开不会删除仍在树中
 的组。对象声明移除时，先释放所有后代的连接，再执行 Release(ctx)；回调
 期间销毁必须停止后续挂载。ObjectView 的首次 Build 失败时也会清理正在创建
 的节点，Release 须能处理自己尚未初始化完的 State。
@@ -204,7 +204,7 @@ wui.CheckGroup("appearance", ui.HBox(
 
 | 接口类别 | 当前做法与结论 |
 | --- | --- |
-| CheckButton.Group | 用名字引用明确的祖先 CheckGroup 声明，组对象由该声明管理。 |
+| CheckButton.Group | 用名字引用明确的祖先 CheckButtonGroup 声明，组对象由该声明管理。 |
 | TabBar(viewID) | 已用 ID 关联 TabView，在 AfterUpdate 解析，无须预先取得 Widget。 |
 | TextView.Model、ListView／TreeView／TableView.Model、SourceView.Document | 模型可在 Widget 创建前独立存在，具有业务数据与通知生命周期，保留对象。 |
 | MenuItemView、TableColumnView、TabPageView、OverlayItemView、ShortcutView、DragSourceView | 接收的是可在构建期间创建的声明描述，不是尚未创建的运行时 Widget，保留描述对象。 |
