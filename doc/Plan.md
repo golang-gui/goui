@@ -3,6 +3,21 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## MenuButton 键盘与静止指针（2026-10-26）
+
+- [x] Windows 原生桌面复现：左右键切换后，系统因弹窗显隐重发同位置移动或
+  Enter／Leave，导致菜单又跳回指针下的按钮。按钮记录最近 owner 坐标，
+  连续重复位置及同坐标 Crossing 不覆盖键盘选择；实际离开、再次进入、真实
+  移动和控制器 Reset 仍重新判定。复用 MotionEventController，Window 无菜单特例。
+- [x] 旧版 overlay 的重复移动回归失败；仅过滤移动的中间版 overlay 又在同坐标
+  Crossing 回归失败。修正后正常 Window.DispatchEvent 覆盖静止、同按钮内移动、
+  假 Crossing、真实离开再进入，未移除断言或改变输入路径。
+- [x] Linux 完整功能副本 GOUI 2527 PASS、10 SKIP，SourceView 519 PASS；
+  相关 race、普通 vet、Windows amd64／macOS arm64 全仓交叉构建通过。
+  两端相关 GUI 各 327 PASS、绑定／主题／Demo 各 744 PASS，SourceView 各
+  519 PASS。Windows Direct2D 150% 真实操作持续观察键盘选择保持，再移动
+  1 像素才恢复跟随；实际外部按钮、最新动作、Esc／Tab、亮暗和关闭另随窗口记录。
+
 ## MenuButtonGroup 命令式与声明式接入（2026-10-26）
 
 - [x] 新增 gui.MenuButtonGroup／NewMenuButtonGroup 和按钮 Group／SetGroup；组仅

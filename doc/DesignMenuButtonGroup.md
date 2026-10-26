@@ -77,7 +77,10 @@ OpenError 连接并解除关联。通用 Reparented 刷新祖先关系，整组�
 | 关闭后继续悬停 | 保持关闭，等待下一次显式开启。 |
 
 联动只响应普通 Motion 事件，布局与样式产生的合成 Hover 不开启菜单；不
-伪造 MotionEventController 的物理 Hover。命中沿用 EventDispatcher 的裁剪、
+伪造 MotionEventController 的物理 Hover。按钮记录最近的 owner 坐标，连续
+重复的位置不覆盖键盘选择；真实离开后清除，同坐标原生 Crossing 保留位置，
+重新进入或真正移动仍正常切换。
+这处理原生系统在弹窗改变后重发相同移动消息的行为。命中沿用 EventDispatcher 的裁剪、
 子树顺序和遮挡规则，不另做按钮矩形扫描或跨原生表面的鼠标事件重放。
 
 ## 键盘与关闭策略
