@@ -43,8 +43,6 @@ func (v *BorderBoxView) ResizeWidth(width float32) *BorderBoxView {
 	return v
 }
 
-func (v *BorderBoxView) Build() View { return v }
-
 func (v *BorderBoxView) Mount(ctx BuildContext) gui.Widget {
 	b := gui.NewBorderBox()
 	ctx.SetState(&borderBoxState{resizable: b.Resizable(), resizeWidth: b.ResizeWidth()})

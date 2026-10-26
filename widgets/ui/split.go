@@ -43,7 +43,6 @@ func (v *SplitViewView) OnResize(fn func(start, end float32)) *SplitViewView {
 	v.onResize = fn
 	return v
 }
-func (v *SplitViewView) Build() baseui.View { return v }
 
 type splitSlot struct {
 	view  *widgets.SplitView

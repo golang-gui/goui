@@ -53,7 +53,6 @@ func commandLabel() *commandLabelView {
 	v.Self = v
 	return v
 }
-func (v *commandLabelView) Build() ui.View { return v }
 func (*commandLabelView) Mount(ctx ui.BuildContext) gui.Widget {
 	label := gui.NewLabel("")
 	translateUI := func() { label.SetText(resource.Greeting()) }

@@ -70,7 +70,6 @@ func (v *DropDownView) SelectedItem(builder func(int, DropDownItem) baseui.View)
 }
 func (v *DropDownView) OnSelected(fn func(int)) *DropDownView    { v.onSelected = fn; return v }
 func (v *DropDownView) OnOpenError(fn func(error)) *DropDownView { v.onOpenError = fn; return v }
-func (v *DropDownView) Build() baseui.View                       { return v }
 
 type dropDownState struct {
 	ctx                baseui.BuildContext

@@ -52,8 +52,6 @@ func (v *ProgressBarView) Thickness(thickness float32) *ProgressBarView {
 	return v
 }
 
-func (v *ProgressBarView) Build() baseui.View { return v }
-
 func (v *ProgressBarView) Mount(ctx baseui.BuildContext) gui.Widget {
 	p := widgets.NewProgressBar()
 	ctx.SetState(p.Thickness())

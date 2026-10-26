@@ -189,7 +189,6 @@ func statusLabel(text string) *statusView {
 	return v
 }
 
-func (v *statusView) Build() ui.View { return v }
 func (v *statusView) Mount(ui.BuildContext) gui.Widget {
 	return &diagnosticLabel{Label: gui.NewLabel(v.text)}
 }

@@ -279,7 +279,6 @@ type afterRowView struct {
 	after func(gui.Widget)
 }
 
-func (v *afterRowView) Build() View { return v }
 func (*afterRowView) Mount(BuildContext) gui.Widget {
 	w := new(gui.WidgetBase)
 	w.SetMinSize(geometry.Size{Width: 20, Height: 20})

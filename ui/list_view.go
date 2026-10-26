@@ -49,10 +49,6 @@ func (v *ListViewView[T]) Item(item func(index int, data T) View) *ListViewView[
 	return v
 }
 
-func (v *ListViewView[T]) Build() View {
-	return v
-}
-
 func (v *ListViewView[T]) Mount(ctx BuildContext) gui.Widget {
 	lv := gui.NewListView()
 	lv.SetDelegate(newListItemDelegate(v, ctx))

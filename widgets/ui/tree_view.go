@@ -100,7 +100,6 @@ func (v *TreeViewView[T]) OnContextMenuError(fn func(error)) *TreeViewView[T] {
 	v.onContextMenuError = fn
 	return v
 }
-func (v *TreeViewView[T]) Build() baseui.View { return v }
 
 type treeState[T any] struct {
 	ctx         baseui.BuildContext

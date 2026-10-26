@@ -12,7 +12,6 @@ type afterUpdateProbe struct {
 	callback func(gui.Widget)
 }
 
-func (v *afterUpdateProbe) Build() View                   { return v }
 func (v *afterUpdateProbe) Mount(BuildContext) gui.Widget { return gui.NewButton() }
 func (v *afterUpdateProbe) Update(ctx BuildContext, widget gui.Widget) {
 	ctx.AfterUpdate(func() { v.callback(widget) })
@@ -47,7 +46,6 @@ type supersedingProbe struct {
 	called *int
 }
 
-func (v *supersedingProbe) Build() View                   { return v }
 func (v *supersedingProbe) Mount(BuildContext) gui.Widget { return gui.NewButton() }
 func (v *supersedingProbe) Update(ctx BuildContext, widget gui.Widget) {
 	ctx.UpdateChild(widget.(gui.Bin), &afterUpdateProbe{callback: func(gui.Widget) { *v.called += 100 }})

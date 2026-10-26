@@ -56,10 +56,6 @@ func (v *ButtonView) Padding(padding float32) *ButtonView {
 	return v
 }
 
-func (v *ButtonView) Build() View {
-	return v
-}
-
 func (v *ButtonView) Mount(ctx BuildContext) gui.Widget {
 	button := gui.NewButton()
 	state := &buttonState{initPadding: button.Padding()}

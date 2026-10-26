@@ -172,7 +172,6 @@ func newWordmark(source *svg.Source) *wordmarkView {
 	return v
 }
 
-func (v *wordmarkView) Build() ui.View { return v }
 func (v *wordmarkView) Mount(ui.BuildContext) gui.Widget {
 	w := &wordmarkWidget{}
 	w.ConnectUnmount(w.releaseImage)
@@ -224,7 +223,6 @@ func (w *canvasWidget) Paint(p gui.Painter) {
 type canvasView struct{ ui.ViewBase[canvasView] }
 
 func newCanvas() *canvasView                            { v := new(canvasView); v.Self = v; return v }
-func (v *canvasView) Build() ui.View                    { return v }
 func (*canvasView) Mount(ui.BuildContext) gui.Widget    { return new(canvasWidget) }
 func (*canvasView) Update(ui.BuildContext, gui.Widget)  {}
 func (*canvasView) Unmount(ui.BuildContext, gui.Widget) {}

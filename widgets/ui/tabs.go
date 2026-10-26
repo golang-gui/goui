@@ -36,7 +36,6 @@ func (p *TabPageView) Title(value string) *TabPageView         { p.title = value
 func (p *TabPageView) Icon(source gui.IconSource) *TabPageView { p.icon = source; return p }
 func (p *TabPageView) Closable(value bool) *TabPageView        { p.closable = value; return p }
 
-func (p *TabPageView) Build() baseui.View { return p }
 func (p *TabPageView) Mount(baseui.BuildContext) gui.Widget {
 	return widgets.NewTabPage(p.title, nil)
 }
@@ -108,7 +107,6 @@ func (v *TabViewView) OnMoved(fn func(string, int, int)) *TabViewView { v.onMove
 // Update both collections and request an ordinary UI update; do not rebuild
 // synchronously or recreate the page's contents.
 func (v *TabViewView) OnTransfer(fn func(TabTransfer)) *TabViewView { v.onTransfer = fn; return v }
-func (v *TabViewView) Build() baseui.View                           { return v }
 func (v *TabViewView) Mount(ctx baseui.BuildContext) gui.Widget {
 	view := widgets.NewTabView()
 	state := &tabViewState{pages: &tabPages{view: view}, coordinator: ctx.Coordinator()}
@@ -232,7 +230,6 @@ func (v *TabBarView) TabWidthRange(minWidth, maxWidth float32) *TabBarView {
 	v.minTabWidth, v.maxTabWidth = minWidth, maxWidth
 	return v
 }
-func (v *TabBarView) Build() baseui.View { return v }
 func (v *TabBarView) Mount(ctx baseui.BuildContext) gui.Widget {
 	bar := widgets.NewTabBar()
 	state := new(tabBarState)

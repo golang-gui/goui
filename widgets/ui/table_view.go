@@ -133,7 +133,6 @@ func (v *TableViewView[T]) OnContextMenuError(fn func(error)) *TableViewView[T] 
 	v.onContextMenuError = fn
 	return v
 }
-func (v *TableViewView[T]) Build() baseui.View { return v }
 
 type tableState[T any] struct {
 	ctx                   baseui.BuildContext

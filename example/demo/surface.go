@@ -54,7 +54,6 @@ type surfaceView struct {
 }
 
 func surface(child ui.View) *surfaceView { v := &surfaceView{child: child}; v.Self = v; return v }
-func (v *surfaceView) Build() ui.View    { return v }
 func (v *surfaceView) Mount(ui.BuildContext) gui.Widget {
 	w := new(surfaceWidget)
 	w.SetLayoutManager(layout.NewFillLayout())

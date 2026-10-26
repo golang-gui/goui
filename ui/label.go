@@ -26,10 +26,6 @@ func (v *LabelView) WrapMode(mode gui.WrapMode) *LabelView {
 	return v
 }
 
-func (v *LabelView) Build() View {
-	return v
-}
-
 func (v *LabelView) Mount(BuildContext) gui.Widget {
 	return gui.NewLabel(v.text)
 }
