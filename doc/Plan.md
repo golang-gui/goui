@@ -3,6 +3,53 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## MenuButtonGroup Demo 与原生验收（2026-10-26）
+
+- [x] Demo 基础页通过显式 MenuButtonGroup 组合“文件／编辑／视图”和普通“运行”
+  按钮，使用 Flat 样式、八语言文案及明确的 OnOpenError；项目只更新状态栏。
+  README 补齐操作预期；Basic／Modern 回归覆盖 expanded 背景与几何、独立
+  焦点描边及 Flat 静止透明背景。Linux Software 1x 原生桌面确认菜单切换和
+  Run 状态反馈；编译验证三平台 Demo，未发布安装包。
+- [x] 新增 tests/window/gui/menu_group，使用 Integrated 窗口和正常输入分发，
+  观察控件／组／模型身份、最新动作、语义状态及释放。F6／Check 仅观察，不提供
+  动作捷径。自动输入先等待首帧；重复位置回归在同一分发段建立位置基线，避免
+  把 Tick 间允许发生的原生 Crossing 当成静止输入，保留断言及失败原始日志。
+- [x] Linux amd64／Go 1.25.8，仓库外冻结源码与独立 Xvnc 1.12.0／Xfwm4：
+  GOUI 关闭工作区全仓测试 2527 PASS、10 既有 SKIP、0 FAIL；SourceView 使用
+  两仓 go.work 全仓 519 PASS、0 SKIP、0 FAIL。相关 gui／ui／widgets／Demo
+  race、两仓普通 vet、Windows amd64／macOS arm64 CGO=0 全仓构建均通过。
+  生成 PNG、原有窗口及剪贴板测试限定在副本／独立显示，产物不写入两仓原始
+  工作区或提交。
+- [x] 最终窗口程序：Software／OpenGL × 1x／1.5x／2x × Modern 亮／暗及 Basic，
+  共 18 组自动断言、AUTO PASS 与 DESTROY PASS 全通过；实际资源探针核对后端
+  和 PixelScale。Software 1.5x／OpenGL 2x 的真实 XTest 操作各 14 组状态断言、
+  截图和正常释放通过；不将自动派发或虚拟显示视为实体 GPU／混合 DPI 验收。
+- [x] macOS 15.7.7 arm64／Go 1.24.9、Windows 10 amd64／Go 1.25.8：
+  相关 GUI 各 327 PASS，ui／widgets／theme／Demo 各 744 PASS，SourceView
+  各 519 PASS，无失败或跳过。最终原生窗口分别实测 Software／Direct2D 150%，
+  Modern 亮／暗与 Basic 各三组自动场景及正常释放通过。
+- [x] Windows Computer Use 真实输入另通过 11 条状态观察：悬停切换，左右键，
+  键盘切换后持续静止不回跳、移动 1 像素恢复鼠标跟随，外部 Run 一次、重建后的
+  最新动作、Esc／Tab、主题切换及正常关闭。DESTROY PASS、退出码 0，专用计划
+  任务结果 0 后删除。原生窗口、SSH 检查、实际鼠标与交叉构建分别记结果。
+- [ ] macOS VNC 仍为 CONNECT_FAILED，先前一次恢复失败后不反复重连；SSH 正常。
+  本轮菜单的真实鼠标和视觉验收未执行，不能用原生自动场景替代。所有本轮原生
+  进程均已退出，保留用户原有远端连接，未改变 Defender、系统设置或其他应用。
+- 远端全仓并非通过：macOS 的 TestParagraphLayoutCoreText（ASCII／Unicode／
+  RTL／Isolate／Override）及 TestWindowInteractionCapabilities，Windows 的
+  TestWindowStyle 与 SSH 会话中的 TestPopup／TestPopupPainter／TestWindow／
+  TestWindowRequestPaint 失败。上述失败均在改名前源码副本复现；Windows 交互
+  会话重跑平台包后仅 TestWindowStyle 仍失败，其余四项通过。保留日志，不修改
+  无关平台／排版代码，不删断言、不加 skip，也不把相关控件通过写成全仓通过。
+- SourceView 再次执行 GOWORK=off go test ./... 仍编译失败：声明的 GOUI v0.3.0
+  缺少 ParagraphLayout／ParagraphGeometry、HeightIndex.Top64、Projection.Slice，
+  与既有版本条件相同。新组／声明接口也需后续真实 GOUI 发布；不伪造版本或
+  提交本机 replace。本轮 SourceView 仅有先前 CheckButtonGroup 使用方迁移提交。
+- 本机日志、冻结副本、截图及远端日志归档在 /tmp/goui-button-groups-ddl7s1_4；
+  远端原始记录位于各自 Temp/goui-button-groups-20261026-ddl7s1_4。保留中间失败
+  和旧版 overlay 复现；最终库源码逐字节核对，窗口入口的最后调整单独编译运行。
+  未将其他工作区文件纳入提交，未推送或发布；本轮桌面操作影响了指针和焦点。
+
 ## MenuButton 键盘与静止指针（2026-10-26）
 
 - [x] Windows 原生桌面复现：左右键切换后，系统因弹窗显隐重发同位置移动或

@@ -15,6 +15,43 @@ func resolved(sheet style.StyleSheet, name string, state style.State) style.Styl
 	return sheet.Resolve(style.Sel{Name: name, State: state})
 }
 
+func TestMenuButtonExpandedAppearance(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		sheet := Sheet(Options{Dark: dark})
+		// 普通和 Flat 的展开背景沿用既有 8% 中性按下色，不混入主题色。
+		want := color.RGBA{R: 237, G: 237, B: 237, A: 255}
+		if dark {
+			want = color.RGBA{R: 65, G: 65, B: 71, A: 255}
+		}
+		for _, name := range []string{"button", Flat, Primary} {
+			for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed} {
+				expanded := sheet.Resolve(style.Sel{Name: name, Part: "expanded", State: state})
+				background, _ := expanded.BackgroundColor()
+				radius, _ := expanded.Radius()
+				border, _ := expanded.BorderWidth()
+				wantBorder := float32(1)
+				if name == Primary {
+					wantBorder = 0
+				} else if rgba(background) != want {
+					t.Fatalf("dark=%v %s 状态 %v 没有保持展开背景：%v", dark, name, state, background)
+				}
+				if radius != 6 || border != wantBorder {
+					t.Fatalf("dark=%v %s 展开几何错误：radius=%g border=%g", dark, name, radius, border)
+				}
+			}
+			focus := sheet.Resolve(style.Sel{Name: name, Part: "focus", State: style.FocusVisible})
+			if width, _ := focus.BorderWidth(); width != 2 {
+				t.Fatalf("%s 展开规则破坏了独立焦点描边", name)
+			}
+		}
+		flat := sheet.Resolve(style.Sel{Name: Flat})
+		background, _ := flat.BackgroundColor()
+		if _, _, _, alpha := background.RGBA(); alpha != 0 {
+			t.Fatal("展开规则改变了普通 Flat 按钮的静止透明背景")
+		}
+	}
+}
+
 func rgba(c color.Color) color.RGBA { return color.RGBAModel.Convert(c).(color.RGBA) }
 
 // Consumer-side interface: both existing Settings APIs must work unchanged.

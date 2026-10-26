@@ -94,6 +94,28 @@ func TestCompleteFallbackGeometryAndSurfaces(t *testing.T) {
 	}
 }
 
+func TestMenuButtonExpandedAppearance(t *testing.T) {
+	sheet := Sheet()
+	for _, tc := range []struct {
+		state style.State
+		gray  uint8
+	}{
+		{style.Normal, 180}, {style.Hovered, 170}, {style.Pressed, 160}, {style.Disabled, 210},
+	} {
+		st := sheet.Resolve(style.Sel{Name: "button", Part: "expanded", State: tc.state})
+		background, _ := st.BackgroundColor()
+		radius, _ := st.Radius()
+		width, _ := st.BorderWidth()
+		if !colors.Equal(background, color.RGBA{R: tc.gray, G: tc.gray, B: tc.gray, A: 255}) || radius != 4 || width != 0 {
+			t.Fatalf("展开状态 %v 的背景或几何不符：%v / %g / %g", tc.state, background, radius, width)
+		}
+	}
+	focus := sheet.Resolve(style.Sel{Name: "button", Part: "focus", State: style.FocusVisible})
+	if width, _ := focus.BorderWidth(); width != 2 {
+		t.Fatal("展开样式影响了独立键盘焦点描边")
+	}
+}
+
 func TestSelectedSurfacesHaveSingleCoverage(t *testing.T) {
 	sheet := Sheet()
 	for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed, style.Disabled, style.Disabled | style.Hovered | style.Pressed} {

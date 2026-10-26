@@ -27,6 +27,22 @@ func (d *demo) basicPage() ui.View {
 			).Spacing(12).LineSpacing(12).Enabled(d.enabled),
 			ui.HWrap(ui.Button(resource.AlwaysDisabled()).Enabled(false),
 				ui.Button(resource.FlatButton()).Style(modern.Flat).ID("basic-flat-disabled").Enabled(false)).Spacing(12).LineSpacing(12)),
+		section(resource.MenuButtons(),
+			ui.Label(resource.MenuGroupHint()).WrapMode(gui.WrapWordChar).Style(modern.MutedText),
+			ui.MenuButtonGroup("basic-menus", ui.HWrap(
+				ui.MenuButton(resource.FileMenu()).ID("basic-menu-file").Group("basic-menus").Style(modern.Flat).Menu(
+					ui.MenuItem(resource.OpenPath(), func() { d.report(resource.OpenPath()) }),
+					ui.MenuItem(resource.MenuExecuted(), func() { d.report(resource.MenuExecuted()) }),
+				).OnOpenError(func(err error) { d.result(resource.FileMenu(), err) }),
+				ui.MenuButton(resource.EditMenu()).ID("basic-menu-edit").Group("basic-menus").Style(modern.Flat).Menu(
+					ui.MenuItem(resource.Undo(), func() { d.report(resource.Undo()) }),
+					ui.MenuItem(resource.Redo(), func() { d.report(resource.Redo()) }),
+				).OnOpenError(func(err error) { d.result(resource.EditMenu(), err) }),
+				ui.MenuButton(resource.ViewMenu()).ID("basic-menu-view").Group("basic-menus").Style(modern.Flat).Menu(
+					ui.MenuItem(resource.MenuExecuted(), func() { d.report(resource.MenuExecuted()) }),
+				).OnOpenError(func(err error) { d.result(resource.ViewMenu(), err) }),
+				ui.Button(resource.RunCommand()).ID("basic-menu-run").OnClick(func() { d.report(resource.RunCommand()) }),
+			).Spacing(8).LineSpacing(8).Enabled(d.enabled))),
 		section(resource.Tooltips(),
 			ui.Label(resource.TooltipHint()).WrapMode(gui.WrapWordChar).Style(modern.MutedText),
 			ui.HWrap(
