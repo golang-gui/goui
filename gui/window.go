@@ -77,8 +77,8 @@ type Window interface {
 	PlatformWindow() platform.Window
 
 	// SetModalTarget makes target intercept this window's input: the window
-	// forwards its keyboard to target and calls target.RequestDismiss() when it
-	// sees a dismiss-worthy interaction (outside click / Esc / focus loss). A nil
+	// forwards all keys to target and calls target.RequestDismiss() on outside
+	// presses or owner focus loss. Escape is interpreted by the target. A nil
 	// target clears it. Any modal element can be a target; the window needs only
 	// the two ModalTarget methods and never learns the concrete type.
 	SetModalTarget(ModalTarget)
@@ -157,6 +157,7 @@ type window struct {
 	cursorInside   bool
 	destroyed      bool
 	modalTarget    ModalTarget // the modal element intercepting this window's input; nil when none
+	popoversShown  uint64      // changes whenever an owned surface is shown
 	popovers       []*popover  // currently shown surfaces; lifecycle stays with each popover
 	closeRequest   signal.Signal1[*bool]
 	destroy        signal.Signal0
@@ -465,6 +466,7 @@ func (w *window) Popovers() []Popover {
 }
 
 func (w *window) addPopover(p *popover) {
+	w.popoversShown++
 	if !w.destroyed && !slices.Contains(w.popovers, p) {
 		w.popovers = append(w.popovers, p)
 	}
@@ -528,8 +530,13 @@ func (w *window) DispatchEvent(event events.Event) error {
 			controller.Reset()
 		}
 	}
-	// Dismissing a modal target can destroy its owner without consuming the event.
-	if w.routeToModalTarget(event) || w.destroyed {
+	// Only surfaces present at the start of this event may react to it. A close
+	// callback can destroy the owner or install a different input target.
+	modal := w.modalTarget
+	if w.dismissPopovers(event) || w.destroyed {
+		return nil
+	}
+	if w.modalTarget == modal && w.routeToModalTarget(event) || w.destroyed {
 		return nil
 	}
 	switch event := event.(type) {
@@ -733,10 +740,66 @@ func (w *window) SetModalTarget(target ModalTarget) {
 	w.applyCursor()
 }
 
+// dismissPopovers observes the existing surface list without owning resources
+// or replaying input. Modal input remains exclusive; modeless presses can
+// continue to the original owner target after dismissal callbacks.
+func (w *window) dismissPopovers(event events.Event) bool {
+	outside, escape, deactivated := false, false, false
+	var point geometry.Point
+	switch e := event.(type) {
+	case events.PointerEvent:
+		outside, point = e.EventType == events.PointerDown, e.Position
+	case events.KeyEvent:
+		escape = e.EventType == events.KeyDown && e.Key == events.KeyEscape
+	case events.FocusEvent:
+		deactivated = !e.Focused
+	}
+	if !outside && !escape && !deactivated || w.modalTarget != nil && !deactivated {
+		return false
+	}
+	root := w.Widget()
+	var picked Widget
+	if outside {
+		picked = w.dispatcher.pick(root, point)
+	}
+	shown := w.popoversShown
+	type entry struct {
+		surface   *popover
+		lifecycle uint64
+	}
+	entries := make([]entry, 0, len(w.popovers))
+	for _, p := range w.popovers {
+		if p.visible && !p.modal && p.autoDismiss {
+			entries = append(entries, entry{p, p.lifecycle})
+		}
+	}
+	for i := len(entries) - 1; i >= 0; i-- {
+		p := entries[i].surface
+		if p.lifecycle != entries[i].lifecycle || p.owner != w || !p.visible || p.destroyed || p.modal || !p.autoDismiss {
+			continue
+		}
+		if outside && picked != nil && p.anchor != nil && picked.base().isDescendant(picked, p.anchor) {
+			continue
+		}
+		p.RequestDismiss()
+		if escape {
+			event.(events.KeyEvent).PreventDefault()
+			return true
+		}
+		if w.destroyed {
+			return true
+		}
+		if outside && (w.popoversShown != shown || w.Widget() != root || w.dispatcher.pick(root, point) != picked) {
+			return true
+		}
+	}
+	return false
+}
+
 // routeToModalTarget forwards the window's input to its modal target (§7): the
 // target has no native focus, so the window drives the modal policy — keyboard
-// goes to the target, and an outside click / Esc / focus loss asks it to
-// dismiss. Returns true when it consumes the event.
+// including Escape goes to the target, while an outside press or owner
+// deactivation requests dismissal. Returns true when it consumes the event.
 func (w *window) routeToModalTarget(event events.Event) bool {
 	if w.modalTarget == nil {
 		return false
@@ -744,15 +807,11 @@ func (w *window) routeToModalTarget(event events.Event) bool {
 	switch e := event.(type) {
 	case events.KeyEvent:
 		e.PreventDefault() // never deliver owner text after forwarding to a popup
-		if e.EventType == events.KeyDown && e.Key == events.KeyEscape {
-			w.modalTarget.RequestDismiss()
-		} else {
-			// The owner's native default is already suppressed. Give the modal
-			// target its own consumption result so its key fallbacks can run.
-			handled := false
-			e.Handled = &handled
-			_ = w.modalTarget.DispatchEvent(e)
-		}
+		// Escape is also a key: its meaning belongs to the target's policy.
+		// Give it a separate result after suppressing the owner's native default.
+		handled := false
+		e.Handled = &handled
+		_ = w.modalTarget.DispatchEvent(e)
 		return true
 	case events.PointerEvent:
 		if e.EventType == events.PointerDown {

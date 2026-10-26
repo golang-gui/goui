@@ -406,6 +406,7 @@ func (d *DropDown) Open() error {
 		d.popup = gui.NewPopover(d, &gui.PopoverOptions{Transparent: true})
 		d.popup.SetStyleName("drop-down-popup")
 		d.popup.SetModal(true)
+		d.popup.SetAutoDismiss(true)
 		d.popup.ConnectDismissRequest(d.Close)
 		d.popup.ConnectClosed(func() { d.current = -1; d.RequestPaint() })
 		d.popup.SetWidget(d.content)

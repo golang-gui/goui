@@ -126,13 +126,17 @@ type Popover interface {
     SetWidget(Widget)
     Anchor() Widget
     Position() geometry.Point; SetPosition(geometry.Point)   // 相对 anchor 原点
-    Modal() bool; SetModal(bool)                             // 菜单式=true;默认 false=非模态(相对 owner 窗口)
+    Modal() bool; SetModal(bool)                             // 是否独占 owner 输入，默认 false
+    AutoDismiss() bool; SetAutoDismiss(bool)                 // 标准自动关闭请求，默认 false
     Show() error; Hide(); Destroy()
     ConnectDismissRequest(func()) signal.Handle              // 对齐 ConnectCloseRequest
     ConnectClosed(func()) signal.Handle
 }
 ```
-- **通用浮动窗口**:Popover 本身**无 dismiss 策略**(控件决定 show/hide/destroy)。是 Menu 还是 Tooltip 由 **`Modal` 开关**区分(v1 由控件 `SetModal` 设;默认 `false`=非模态)。`Modal` 是**相对 owner 窗口**的模态(接管其输入),不阻塞别的窗口。
+- **通用浮动窗口**：`Modal` 决定相对 owner 的输入独占，不阻塞别的窗口；
+  `AutoDismiss` 独立决定外部按下、Esc 和 owner 失去激活时是否请求关闭。两者
+  默认 false，控件显式配置并处理 DismissRequest，决定 Show／Hide／Destroy。
+  非模态菜单可保留 owner 输入；Tooltip 仍使用自己的关闭策略。
 - **内容驱动尺寸**：无 `SetSize`，`Show`/`SetWidget` 时
   `Widget.Measure(layout.Loose(available)).Size` 的返回即尺寸。
 - **widget 宿主**:`popover` 有自己的 root + `EventDispatcher` + painter,与 `gui.window` 同构。
@@ -144,7 +148,8 @@ type Popover interface {
 
 **事件模型(§7 转发,per-window)—— `ModalTarget` 公开接口**:
 
-window 是**被动的输入路由器**,只持有一个抽象模态目标,**不知道"popover"这个类型**:
+window 的模态路由只持有一个抽象目标；通用自动关闭复用已有 Popover 列表，
+不识别菜单按钮、分组或其他具体控件：
 ```go
 type ModalTarget interface {
     DispatchEvent(events.Event) error  // 转发的键盘 → 目标内容
@@ -153,9 +158,10 @@ type ModalTarget interface {
 // Window 接口新增:
 SetModalTarget(ModalTarget)            // 装 / 卸(nil)当前模态目标
 ```
-- **window 拥有 dismiss 策略**(反正 Esc/外部点击/失焦本来就是 window 收到的):自身输入在有模态目标时——`Esc`→`RequestDismiss()`;其他键→`DispatchEvent()`;`PointerDown`→`RequestDismiss()`(owner 只会收到 popup 外的点击);`FocusEvent{false}`→`RequestDismiss()`(且不消费,window 照常处理自身焦点)。
-- **popover 实现 `ModalTarget`**(`DispatchEvent`→自己的 dispatcher;`RequestDismiss`→emit `dismissRequest`);`Show` 时若 `Modal` 就经 **`anchor.Window().SetModalTarget(p)`**(纯公开 `Window` API)登记,`Hide`/`SetModal(false)`/释放时 `SetModalTarget(nil)`。
-- **只有 `Modal==true` 的 popover 登记为模态目标**;非模态 tooltip 不登记、不影响 window 自身事件(hover 照常),任意多可并存。
+- **window 路由输入及外部关闭请求**(反正 Esc/外部点击/失焦本来就是 window 收到的):自身输入在有模态目标时——全部键（含 Esc）→`DispatchEvent()`;`PointerDown`→`RequestDismiss()`(owner 只会收到 popup 外的点击);`FocusEvent{false}`→`RequestDismiss()`(且不消费,window 照常处理自身焦点)。
+- **popover 实现 `ModalTarget`**(`DispatchEvent`→自己的 dispatcher;`RequestDismiss`→在 AutoDismiss 启用时 emit `dismissRequest`);`Show` 时若 `Modal` 就经 **`anchor.Window().SetModalTarget(p)`**(纯公开 `Window` API)登记,`Hide`/`SetModal(false)`/释放时仅撤销自己仍持有的模态登记。
+- **只有 `Modal==true` 的 popover 登记为模态目标**；非模态面不登记，owner
+  自身 Motion／焦点照常处理，启用 AutoDismiss 时参与标准关闭请求。
 - v1 **单槽**:同一 window 同时只一个模态目标,**无自动 supersede**(控件保证)。
 - popover 的 hover/点击由**它自己的表面事件**(经它自己的 `EventDispatcher`)驱动,window 只转发键盘 + 触发 dismiss,**不换算坐标**。
 - **`EventDispatcher` 独立化**:吃 `EventTarget{Widget();FocusedWidget();SetFocusedWidget()}`,window 和 popover 都实现,一份分发两处用。
@@ -163,8 +169,10 @@ SetModalTarget(ModalTarget)            // 装 / 卸(nil)当前模态目标
 以上描述当前单层模态路径。[子菜单设计 §4～5](DesignMenuSubmenu.md#4-原生焦点与模态登记)
 在 2026-10-25 修订为：根 Popover 继续作为唯一 ModalTarget，子 Popover 不重复登记；
 Window 将 Esc 连同其他按键转交，Popover 先让内容处理 Esc，未处理时才默认关闭。
-菜单通过私有协作将输入交给活动层，公开 modeless Popover 的键盘归属检查保持有效。
-这项调整尚未实现，不将未来的逐层 Esc 行为写成当前通用 Popover 契约。
+当前已实现通用 Esc 转交与非模态显式按键转发；AutoDismiss 在 Popover 处理
+Esc 时请求关闭。子菜单需要的内容优先、活动层路由和逐层收起仍未实现。
+其非模态根路径需沿用 MenuButton 的明确输入转发，
+不能将未来的多级关闭行为写成当前 Popover 契约。
 
 **分层解耦原则(本轮重构确立)**:
 - 公开协议按实际替换需求设计；Widget／IMContext 等有明确约束的封印接口不被一概否定。共享 rootBase 是宿主的内部状态 helper，不是另一套公开控件体系。
@@ -227,3 +235,41 @@ Popup 可显式请求透明 surface。GUI 先清空为透明，再绘制样式�
 三平台共享逻辑半径与 HiDPI 语义，具体呈现机制见 [透明绘制](DesignTransparency.md)。
 透明像素不会自动令鼠标穿透；本契约不保证原生输入区域跟随每个 alpha 像素。
 Popup resize／重复显示／阴影占位／清空及降级验证见 [菜单外观](DesignPopoverMenuAppearance.md)。
+
+
+## 非模态关闭请求与显式键盘转发（2026-10-26）
+
+本轮扩展将输入独占和标准关闭请求分别配置。AutoDismiss 默认 false；菜单
+呈现器与 DropDown 显式启用，Tooltip 保留关闭策略，Modal 不隐式更改该值。
+启用时，外部按下、Esc、owner 失去激活发出已有 DismissRequest；控制器决定
+Hide／Destroy，Closed 仍只报告实际关闭。锚点及其后代视为内部区域，避免
+锚点按下关闭后在抬起时重开。Modal 面内透明边角也按同一属性请求关闭。
+
+窗口复用已显示的 Popover 列表，仅处理本次输入开始前存在的非模态自动关闭
+面。非模态外部按下在关闭后继续到原命中目标；回调销毁窗口、替换根／命中
+目标或显示其他面时停止该次输入，不将事件重新投递到新界面。Esc 只交给
+最上层可自动关闭面并消费；窗口失焦通知已有面。模态目标优先于底层非模态面。
+事件始终经 Window.DispatchEvent 或 Popover.DispatchEvent 的正常分发路径，
+没有 MenuButton 专用 Window 分支、跨表面的鼠标事件重放或新浮窗管理器。
+
+可见的非模态 Popover 接受显式 DispatchEvent(KeyEvent)，由拥有键盘输入的
+控件选择转发；其他模态目标拥有输入、owner 失效或面隐藏时拒绝。Modal=true
+继续由窗口转发全部键，Esc 由目标的 AutoDismiss／内容控制器解释。此改动
+不新增非模态编辑器的原生 IME，CommitText 仍遵守既有模态归属契约。
+
+MenuButton 的非模态接入与组联动在后续功能提交实施，设计见
+[分组设计](DesignMenuButtonGroup.md)。右键菜单和 DropDown 保留模态呈现。
+所有者、资源释放、DIP 及
+原生无激活表面的契约保持原有边界；旧面只撤销它仍持有的模态目标。
+
+参考：2026-10-26 核对 GTK 4.24.1
+[Popover.autohide](https://docs.gtk.org/gtk4/property.Popover.autohide.html)
+的外部关闭及焦点语义；Flutter
+[RawMenuAnchor.consumeOutsideTaps](https://api.flutter.dev/flutter/widgets/RawMenuAnchor/consumeOutsideTaps.html)
+区分外部关闭与点击消费。采用按场景显式配置与继续原事件，不照搬 GTK 的
+focus grab 或 Flutter 的 Overlay／手势对象体系。跨平台运行结果另记 Plan。
+
+非模态 Bottom 定位若能在锚点上方或下方完整放置，则不分配靠近锚点一侧的
+阴影留白，主体仍贴住锚点边缘，其他方向阴影保留。透明像素同样属于原生
+输入面，不能让这块留白挡住按钮；上下方向在一次测量中确定，原生尺寸取整
+复用该决定。Point、模态面及必须跨越锚点的超高内容沿用既有退避规则。

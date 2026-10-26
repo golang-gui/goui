@@ -159,7 +159,7 @@ func TestPopoverTabFocusAndModalIsolation(t *testing.T) {
 	second.SetFocusable(true)
 	root.AddChild(first)
 	root.AddChild(second)
-	p := &popover{modal: true, visible: true}
+	p := &popover{modal: true, autoDismiss: true, visible: true}
 	p.SetWidget(root)
 	win.SetModalTarget(p)
 	var changes []bool
@@ -196,7 +196,7 @@ func TestPopoverFocusVisibleIsolationAndReset(t *testing.T) {
 	}
 	win := &window{}
 	win.SetWidget(ownerRoot)
-	p := &popover{rootBase: rootBase{width: 100, height: 100}, modal: true, visible: true}
+	p := &popover{rootBase: rootBase{width: 100, height: 100}, modal: true, autoDismiss: true, visible: true}
 	p.SetWidget(popupRoot)
 	t.Cleanup(func() { p.SetWidget(nil); win.SetWidget(nil) })
 	_ = win.DispatchEvent(shortcutPress(events.KeyTab, 0))
@@ -284,7 +284,7 @@ func TestWindowForwardsToPopover(t *testing.T) {
 	var popCalls []string
 	content.AddEventController(newRecordingController("pop", PhaseTarget, &popCalls, nil))
 
-	p := &popover{modal: true} // menu-style: intercepts the window's input
+	p := &popover{modal: true, autoDismiss: true} // 明确启用菜单式关闭，Modal 只指定输入独占。
 	p.SetWidget(content)
 	p.visible = true
 	win.SetModalTarget(p) // what Show() does for a modal popover
@@ -562,6 +562,7 @@ func settlePlacement(t *testing.T, p *popover) {
 func TestPopoverPlacementVisibleUpdates(t *testing.T) {
 	p, _, plat, _ := placementFixture(t, geometry.Rect(0, 0, 1000, 1000))
 	p.SetModal(true)
+	p.SetAutoDismiss(true)
 	p.SetPosition(geometry.Point{X: 5, Y: 6})
 	p.widget.SetFocusable(true)
 	closed := 0
@@ -1059,5 +1060,359 @@ func TestPopoverPlacementRejectsInvalidPoint(t *testing.T) {
 	p.SetPosition(geometry.Point{X: float32(math.Inf(1))})
 	if err := p.Show(); err == nil || len(plat.created) != 0 {
 		t.Fatal(err)
+	}
+}
+
+// 非模态自动关闭不抢键盘，外部按下关闭后仍沿原窗口事件路径完成一次点击。
+func TestPopoverModelessDismissalAndExplicitKeys(t *testing.T) {
+	p, _, _, app := placementFixture(t, geometry.Rect(0, 0, 1000, 800))
+	w := app.windows[0]
+	anchor := p.anchor
+	w.SetWidget(nil)
+	root := newTestWidget()
+	root.AddChild(anchor)
+	other := NewButton()
+	root.AddChild(other)
+	w.SetWidget(root)
+	root.Arrange(geometry.Rect(0, 0, 400, 300))
+	anchor.Arrange(geometry.Rect(20, 20, 100, 40))
+	other.Arrange(geometry.Rect(200, 20, 100, 40))
+	t.Cleanup(w.Destroy)
+	keys, ownerKeys, clicks, dismissed := 0, 0, 0, 0
+	key := NewKeyEventController()
+	key.ConnectKeyDown(func(EventContext, events.KeyEvent) { keys++ })
+	p.Widget().AddEventController(key)
+	p.Widget().SetFocusable(true)
+	ownerKey := NewKeyEventController()
+	ownerKey.ConnectKeyDown(func(EventContext, events.KeyEvent) { ownerKeys++ })
+	anchor.AddEventController(ownerKey)
+	other.ConnectClicked(func() { clicks++ })
+	p.ConnectDismissRequest(func() { dismissed++; p.Hide() })
+	show := func() {
+		t.Helper()
+		if err := p.Show(); err != nil {
+			t.Fatal(err)
+		}
+		p.SetFocusedWidget(p.Widget())
+	}
+	if p.AutoDismiss() || p.Modal() {
+		t.Fatal("默认策略不是被动非模态面")
+	}
+	p.SetAutoDismiss(true)
+	show()
+	w.SetFocusedWidget(anchor)
+	if err := w.DispatchEvent(shortcutPress(events.KeyQ, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if ownerKeys != 1 || keys != 0 {
+		t.Fatal("非模态面自动抢走了键盘")
+	}
+	if err := p.DispatchEvent(shortcutPress(events.KeyQ, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if keys != 1 {
+		t.Fatal("显式键盘转发没有进入普通控制器")
+	}
+	press := func(x float32) {
+		t.Helper()
+		for _, kind := range []events.EventType{events.PointerDown, events.PointerUp} {
+			if err := w.DispatchEvent(events.PointerEvent{EventType: kind, Position: geometry.Point{X: x, Y: 30}, Button: events.PointerButtonLeft}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	press(40)
+	if !p.Visible() || dismissed != 0 {
+		t.Fatal("锚点被当作外部点击")
+	}
+	press(220)
+	if p.Visible() || clicks != 1 || dismissed != 1 {
+		t.Fatal("外部关闭吞掉、重复或阻止了原点击", clicks, dismissed)
+	}
+	if err := p.DispatchEvent(shortcutPress(events.KeyQ, 0)); err == nil {
+		t.Fatal("隐藏面仍接受键盘")
+	}
+	show()
+	handled := false
+	e := shortcutPress(events.KeyEscape, 0)
+	e.Handled = &handled
+	if err := w.DispatchEvent(e); err != nil {
+		t.Fatal(err)
+	}
+	if p.Visible() || dismissed != 2 || !handled {
+		t.Fatal("Esc 没有关闭并消费")
+	}
+	p.SetAutoDismiss(false)
+	p.SetModal(true)
+	show()
+	if err := w.DispatchEvent(shortcutPress(events.KeyEscape, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if !p.Visible() || dismissed != 2 || keys != 2 {
+		t.Fatal("持久模态面的 Esc 没有交给内容", keys, dismissed)
+	}
+	p.SetAutoDismiss(true)
+	if err := w.DispatchEvent(events.FocusEvent{Focused: false}); err != nil {
+		t.Fatal(err)
+	}
+	if p.Visible() || dismissed != 3 {
+		t.Fatal("失焦没有请求关闭")
+	}
+}
+
+// 原生面被替换后，旧面的延迟释放不能撤销新的模态登记。
+func TestPopoverResignKeepsReplacementTarget(t *testing.T) {
+	w := &window{}
+	old, next := &popover{owner: w}, &popover{owner: w}
+	w.SetModalTarget(next)
+	old.resignModalTarget()
+	if w.modalTarget != next {
+		t.Fatal("旧面清除了替换目标")
+	}
+	next.resignModalTarget()
+	if w.modalTarget != nil {
+		t.Fatal("当前目标没有正确撤销")
+	}
+}
+
+func TestPopoverModelessDismissalReentry(t *testing.T) {
+	for _, action := range []string{"new surface", "new root", "destroy"} {
+		t.Run(action, func(t *testing.T) {
+			p, _, _, app := placementFixture(t, geometry.Rect(0, 0, 1000, 800))
+			w := app.windows[0]
+			w.SetWidget(nil)
+			root := newTestWidget()
+			root.AddChild(p.anchor)
+			button := NewButton()
+			root.AddChild(button)
+			w.SetWidget(root)
+			root.Arrange(geometry.Rect(0, 0, 400, 300))
+			p.anchor.Arrange(geometry.Rect(0, 0, 80, 40))
+			button.Arrange(geometry.Rect(150, 0, 100, 40))
+			t.Cleanup(w.Destroy)
+			p.SetAutoDismiss(true)
+			var replacement Popover
+			p.ConnectDismissRequest(func() {
+				p.Hide()
+				switch action {
+				case "new surface":
+					replacement = NewPopover(p.anchor, nil)
+					replacement.SetWidget(&popoverMeasureWidget{size: geometry.Size{Width: 20, Height: 20}})
+					if err := replacement.Show(); err != nil {
+						t.Fatal(err)
+					}
+					t.Cleanup(replacement.Destroy)
+				case "new root":
+					w.SetWidget(button)
+					button.Arrange(geometry.Rect(0, 0, 400, 300))
+				case "destroy":
+					w.Destroy()
+				}
+			})
+			if err := p.Show(); err != nil {
+				t.Fatal(err)
+			}
+			if err := w.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Position: geometry.Point{X: 180, Y: 20}, Button: events.PointerButtonLeft}); err != nil {
+				t.Fatal(err)
+			}
+			if button.pressed {
+				t.Fatal("旧事件泄漏给关闭回调改变后的界面")
+			}
+			if replacement != nil && !replacement.Visible() {
+				t.Fatal("新面被原始关闭事件再次关闭")
+			}
+		})
+	}
+}
+
+func TestPopoverReopenedDuringFocusReset(t *testing.T) {
+	p, _, _, app := placementFixture(t, geometry.Rect(0, 0, 1000, 800))
+	p.SetModal(true)
+	p.SetAutoDismiss(true)
+	p.Widget().SetFocusable(true)
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	p.SetFocusedWidget(p.Widget())
+	reopen, closed := true, 0
+	p.ConnectClosed(func() { closed++ })
+	p.Widget().ConnectFocused(func(focused bool) {
+		if !focused && reopen {
+			reopen = false
+			if err := p.Show(); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+	p.Hide()
+	w := app.windows[0]
+	if !p.Visible() || w.modalTarget != p || len(w.Popovers()) != 1 || closed != 1 {
+		t.Fatal("旧 Hide 清理了回调重新显示的面", p.Visible(), closed)
+	}
+	p.Hide()
+	if p.Visible() || w.modalTarget != nil || closed != 2 {
+		t.Fatal("重新显示后的正常关闭没有完成")
+	}
+}
+
+// 登记模态输入会取消 owner 手势，取消回调可能打开另一表面。
+func TestPopoverModalShowReentryDoesNotOwnReplacement(t *testing.T) {
+	p, _, _, app := placementFixture(t, geometry.Rect(0, 0, 1000, 800))
+	w := app.windows[0]
+	w.focused = true
+	w.root.Arrange(geometry.Rect(0, 0, 100, 60))
+	replacement := NewPopover(p.anchor, nil).(*popover)
+	replacement.SetModal(true)
+	replacement.SetAutoDismiss(true)
+	replacement.SetWidget(&popoverMeasureWidget{size: geometry.Size{Width: 20, Height: 20}})
+	t.Cleanup(replacement.Destroy)
+	var click *ClickEventController
+	for _, controller := range p.anchor.EventControllers() {
+		if c, ok := controller.(*ClickEventController); ok {
+			click = c
+			break
+		}
+	}
+	if click == nil {
+		t.Fatal("anchor controller missing")
+	}
+	reentered := false
+	click.ConnectPressed(func(_ EventContext, pressed bool) {
+		if !pressed && !reentered {
+			reentered = true
+			if err := replacement.Show(); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+	if err := w.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Position: geometry.Point{X: 20, Y: 20}, Button: events.PointerButtonLeft}); err != nil {
+		t.Fatal(err)
+	}
+	if !click.Pressed() || reentered || w.dispatcher.gesture == nil {
+		t.Fatalf("无效的按下初态：pressed=%v reentered=%v", click.Pressed(), reentered)
+	}
+	p.SetModal(true)
+	p.SetAutoDismiss(true)
+	if err := p.Show(); err == nil {
+		t.Fatalf("Show 在登记回调替换输入目标后仍报告成功：reentered=%v current=%p expected=%p", reentered, w.modalTarget, replacement)
+	}
+	if !reentered || !replacement.Visible() || w.modalTarget != replacement || p.Visible() {
+		t.Fatal("失效的 Show 覆盖或保留了旧表面")
+	}
+}
+
+func TestPopoverDismissalSkipsReopenedPresentation(t *testing.T) {
+	p, _, _, app := placementFixture(t, geometry.Rect(0, 0, 1000, 800))
+	p.SetAutoDismiss(true)
+	p.ConnectDismissRequest(p.Hide)
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	next := NewPopover(p.anchor, nil)
+	next.SetAutoDismiss(true)
+	next.SetWidget(&popoverMeasureWidget{size: geometry.Size{Width: 20, Height: 20}})
+	t.Cleanup(next.Destroy)
+	next.ConnectDismissRequest(func() {
+		next.Hide()
+		p.Hide()
+		if err := p.Show(); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if err := next.Show(); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.windows[0].DispatchEvent(events.FocusEvent{Focused: false}); err != nil {
+		t.Fatal(err)
+	}
+	if !p.Visible() || next.Visible() {
+		t.Fatal("原事件关闭了回调重新显示的面")
+	}
+}
+
+func TestPopoverCannotOpenFromOwnerDestroy(t *testing.T) {
+	p, _, _, app := placementFixture(t, geometry.Rect(0, 0, 1000, 800))
+	called := false
+	app.windows[0].ConnectDestroy(func() {
+		called = true
+		if err := p.Show(); err == nil {
+			t.Fatal("销毁中的 owner 仍创建了原生面")
+		}
+	})
+	app.windows[0].Destroy()
+	if !called || p.Visible() || p.platformPopup != nil {
+		t.Fatal("销毁期间重入 Show 遗留资源")
+	}
+}
+
+// 原生透明面仍接收阴影区域内的指针；非模态 Bottom 不得挡住锚点按钮。
+func TestPopoverModelessAnchorExcludesShadow(t *testing.T) {
+	for _, tc := range []struct {
+		name                       string
+		anchorY                    float32
+		constrained                bool
+		wantTop, wantBottom, wantY float32
+	}{
+		{"below", 40, true, 0, 24, 72},
+		{"above", 160, true, 16, 0, 104},
+		{"unconstrained", 40, false, 0, 24, 72},
+		{"overlapping", 80, true, 16, 24, 64},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			height := float32(40)
+			if tc.name == "overlapping" {
+				height = 180
+			}
+			snapshot := popoverPlacementSnapshot{anchor: geometry.Rect(30, tc.anchorY, 80, 32), placement: PopoverPlacementBottom, workArea: geometry.Rect(0, 0, 300, 220), constrained: tc.constrained}
+			i := snapshot.trimAnchorShadow(geometry.Size{Width: 100, Height: height}, popoverInsets{20, 16, 20, 24})
+			if i.top != tc.wantTop || i.bottom != tc.wantBottom {
+				t.Fatal("阴影裁剪错误", i)
+			}
+			pos := snapshot.position(geometry.Size{Width: 140, Height: height + i.top + i.bottom}, i)
+			if tc.name == "overlapping" {
+				if snapshot.anchorSide != 0 {
+					t.Fatal("超高内容改变原滑移规则")
+				}
+				return
+			}
+			if pos.Y != tc.wantY {
+				t.Fatal("主体没有贴住锚点", pos)
+			}
+			if snapshot.anchorSide > 0 && pos.Y < tc.anchorY+32 || snapshot.anchorSide < 0 && pos.Y+height+i.top+i.bottom > tc.anchorY {
+				t.Fatal("原生表面挡住锚点", pos, i)
+			}
+			// 向外取整多半像素后仍不侵入锚点。
+			rounded := snapshot.position(geometry.Size{Width: 140.5, Height: height + i.top + i.bottom + .5}, i)
+			if snapshot.anchorSide > 0 && rounded.Y < tc.anchorY+32 || snapshot.anchorSide < 0 && rounded.Y+height+i.top+i.bottom+.5 > tc.anchorY+.5 {
+				t.Fatal("原生取整改变锚点关系", rounded)
+			}
+		})
+	}
+}
+
+func TestPopoverModelessNativeShadowDoesNotCoverAnchor(t *testing.T) {
+	for _, above := range []bool{false, true} {
+		t.Run(fmt.Sprint(above), func(t *testing.T) {
+			p, _, _, app := placementFixture(t, geometry.Rect(0, 0, 400, 300))
+			p.transparent = true
+			app.style = style.Sheet(style.Name("popover").Shadow(style.Shadow{Color: color.Black, BlurRadius: 16, Offset: geometry.Point{Y: 4}}))
+			anchor := geometry.Rect(80, 40, 60, 32)
+			if above {
+				anchor.Y = 240
+			}
+			p.anchor.Arrange(anchor)
+			p.SetPlacement(PopoverPlacementBottom)
+			if err := p.Show(); err != nil {
+				t.Fatal(err)
+			}
+			settlePlacement(t, p)
+			if above {
+				if p.insets.bottom != 0 || p.requestedPosition.Y+p.height > anchor.Y {
+					t.Fatal("原生阴影挡住上方菜单的锚点", p.requestedPosition, p.insets, p.height)
+				}
+			} else if p.insets.top != 0 || p.requestedPosition.Y < anchor.Y+anchor.Height {
+				t.Fatal("原生阴影挡住下方菜单的锚点", p.requestedPosition, p.insets)
+			}
+		})
 	}
 }

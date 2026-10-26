@@ -29,9 +29,9 @@ const (
 )
 
 // Popover is a borderless, no-focus floating surface anchored to a Widget, used
-// for menus, detached toolbars and tooltips. Whether it behaves as a menu or a
-// tooltip is decided by its content Widget; the Popover itself has no dismiss
-// policy — the control drives Show/Hide/Destroy.
+// for menus, detached toolbars and tooltips. Modal controls owner input
+// exclusivity; AutoDismiss enables standard dismissal requests independently.
+// The control handles those requests and drives Show/Hide/Destroy.
 //
 // A Popover belongs to its anchor's window: the native surface is created on
 // Show, bound to that window, and released when the anchor unmounts or the
@@ -64,15 +64,22 @@ type Popover interface {
 	SetPosition(geometry.Point)
 
 	// Modal reports whether this popover is modal relative to its owner window:
-	// the window forwards its keyboard here and its own clicks / Esc / focus loss
-	// request dismissal (menu-style). Default false — a modeless tooltip/panel
-	// that leaves the window's own input alone (any number can coexist). Modal is
+	// the window forwards keyboard input here and blocks owner pointer input.
+	// AutoDismiss separately controls dismissal requests. Default false; modeless
+	// surfaces receive keys only through explicit DispatchEvent calls. Modal is
 	// scoped to the owner window; it does not block other windows.
 	Modal() bool
 	SetModal(bool)
+	// AutoDismiss enables dismissal requests on outside presses, Escape and
+	// owner deactivation. The default is false, independently of Modal.
+	// The anchor is inside the region; modeless outside presses continue to
+	// their original owner target unless a callback changes that input context.
+	AutoDismiss() bool
+	SetAutoDismiss(bool)
 	// DispatchEvent uses this surface's normal input path and local DIP.
 	// Native keyboard input reaches modal popovers through their owner window.
-	// Call on the GUI thread; key events require the owner's current modal input.
+	// Call on the GUI thread. Visible modeless popovers accept explicit key
+	// forwarding; modal popovers must own their window's modal input.
 	DispatchEvent(events.Event) error
 	// CommitText submits confirmed UTF-8 text to this popover's editable logical
 	// focus. It requires a visible popover holding its owner's modal input.
@@ -86,9 +93,9 @@ type Popover interface {
 	Hide()
 	Destroy()
 
-	// ConnectDismissRequest fires when the owner window sees an interaction that
-	// usually dismisses a menu (outside click / Esc / focus loss). The control
-	// decides what to do — typically Hide.
+	// ConnectDismissRequest fires for outside presses, Escape or owner
+	// deactivation while AutoDismiss is enabled. The control decides what
+	// to do, typically Hide.
 	ConnectDismissRequest(func()) signal.Handle
 
 	// ConnectClosed fires when the popover actually hides — after any Hide /
@@ -134,9 +141,12 @@ type popover struct {
 	placementSnapshotValid    bool
 	workAreaUnsupportedLogged bool
 	lifecycle                 uint64 // invalidates in-flight native/measurement callbacks
+	releasing                 bool
+	showing                   bool
 	destroyed                 bool
 	visible                   bool
-	modal                     bool // menu-style: owner window forwards its input here (modeless by default)
+	modal                     bool
+	autoDismiss               bool // requests closing independently of modal input ownership
 
 	dismissRequest signal.Signal0
 	closed         signal.Signal0
@@ -182,6 +192,8 @@ func (p *popover) Anchor() Widget              { return p.anchor }
 func (p *popover) Position() geometry.Point    { return p.position }
 func (p *popover) Placement() PopoverPlacement { return p.placement }
 func (p *popover) Modal() bool                 { return p.modal }
+func (p *popover) AutoDismiss() bool           { return p.autoDismiss }
+func (p *popover) SetAutoDismiss(v bool)       { p.autoDismiss = v }
 func (p *popover) StyleName() string           { return p.styleName }
 
 func (p *popover) SetStyleName(name string) {
@@ -272,7 +284,8 @@ func (p *popover) ConnectClosed(fn func()) signal.Handle {
 
 // becomeModalTarget / resignModalTarget register this popover as its owner
 // window's modal input target while it is a visible modal (menu-style). Modeless
-// popovers never intercept the window. Both use only the public Window API.
+// popovers never intercept the window. Resignation checks current ownership
+// so an old surface cannot clear a replacement modal target.
 func (p *popover) becomeModalTarget() {
 	if p.owner != nil {
 		p.owner.SetModalTarget(p)
@@ -280,7 +293,11 @@ func (p *popover) becomeModalTarget() {
 }
 
 func (p *popover) resignModalTarget() {
-	if p.owner != nil {
+	if owner, ok := p.owner.(*window); ok {
+		if owner.modalTarget == p {
+			owner.SetModalTarget(nil)
+		}
+	} else if p.owner != nil {
 		p.owner.SetModalTarget(nil)
 	}
 }
@@ -297,8 +314,19 @@ func (p *popover) DispatchEvent(event events.Event) error {
 	if p.destroyed {
 		return nil
 	}
-	if _, key := event.(events.KeyEvent); key && p.owner != nil && !p.ownsModalInput() {
-		return fmt.Errorf("popover: does not own modal keyboard input")
+	if _, key := event.(events.KeyEvent); key {
+		// A never-presented, unanchored popover is also a valid offscreen GUI
+		// host. Presented or anchored surfaces must still be visible.
+		standalone := p.anchor == nil && p.owner == nil && p.lifecycle == 0
+		if !p.visible && !standalone {
+			return fmt.Errorf("popover: keyboard input requires a visible surface")
+		}
+		if p.modal && p.owner != nil && !p.ownsModalInput() {
+			return fmt.Errorf("popover: does not own modal keyboard input")
+		}
+		if owner, ok := p.owner.(*window); ok && (owner.destroyed || owner.frameSuspended || owner.modalTarget != nil && owner.modalTarget != p) {
+			return fmt.Errorf("popover: owner keyboard input is unavailable")
+		}
 	}
 	if e, ok := event.(events.DragOfferEvent); ok {
 		p.dispatchDragOffer(p, e)
@@ -308,7 +336,7 @@ func (p *popover) DispatchEvent(event events.Event) error {
 		p.dispatchDragData(p, e)
 		return nil
 	}
-	if p.modal {
+	if p.autoDismiss {
 		switch e := event.(type) {
 		case events.PointerEvent:
 			_, border, _ := p.surfaceStyle()
@@ -328,17 +356,29 @@ func (p *popover) DispatchEvent(event events.Event) error {
 	return p.dispatcher.DispatchEvent(p, event)
 }
 
-// RequestDismiss fires the dismiss-request signal so the controlling code can
-// hide/destroy the popover. Part of ModalTarget; also fine to call directly.
-func (p *popover) RequestDismiss() { p.dismissRequest.Emit() }
+// RequestDismiss asks the controller to close an active AutoDismiss surface.
+// Explicit Hide and Destroy do not depend on this policy.
+func (p *popover) RequestDismiss() {
+	if p.autoDismiss && p.visible && !p.destroyed {
+		p.dismissRequest.Emit()
+	}
+}
 
 func (p *popover) Show() error {
+	if p.releasing || p.showing {
+		return fmt.Errorf("popover: resource transition in progress")
+	}
+	p.showing = true
+	defer func() { p.showing = false }()
 	if p.destroyed {
 		return fmt.Errorf("popover: destroyed")
 	}
 	win, ok := anchorWindow(p.anchor)
 	if !ok {
 		return fmt.Errorf("popover: anchor is not mounted in a window")
+	}
+	if owner, ok := win.(*window); ok && owner.destroyed {
+		return fmt.Errorf("popover: owner is destroyed")
 	}
 	if p.platformPopup != nil && p.owner != win {
 		p.releaseNative() // anchor moved to another window; rebuild for the new one
@@ -381,9 +421,13 @@ func (p *popover) Show() error {
 	}
 	p.resumeFrames(p.platformPopup)
 	if p.modal {
-		// Only a modal (menu) popover intercepts the window's input; modeless
-		// tooltips/panels leave the window's own input untouched.
+		// Modal surfaces exclusively receive owner input. Modeless surfaces
+		// keep normal owner routing and use explicit keyboard forwarding.
 		p.becomeModalTarget()
+	}
+	if p.destroyed || p.platformPopup != native || p.lifecycle != epoch || !p.visible || p.modal && !p.ownsModalInput() {
+		p.Hide()
+		return fmt.Errorf("popover: input ownership changed while showing")
 	}
 	return nil
 }
@@ -393,6 +437,7 @@ func (p *popover) Hide() {
 	p.suspendFrames()
 	p.lifecycle++
 	wasVisible := p.visible
+	native, owner := p.platformPopup, p.owner
 	if !wasVisible && p.platformPopup == nil {
 		return
 	}
@@ -401,6 +446,14 @@ func (p *popover) Hide() {
 		owner.removePopover(p)
 	}
 	p.resetInput()
+	// Focus callbacks may reopen this same surface or replace its resources.
+	// Complete the old notification without hiding that new presentation.
+	if p.visible || p.owner != owner || p.platformPopup != native {
+		if wasVisible {
+			p.closed.Emit()
+		}
+		return
+	}
 	if wasVisible && p.modal {
 		p.resignModalTarget()
 	}
@@ -540,6 +593,11 @@ func (p *popover) createNative(win Window) error {
 }
 
 func (p *popover) releaseNative() {
+	if p.releasing {
+		return
+	}
+	p.releasing = true
+	defer func() { p.releasing = false }()
 	cancelTooltipHost(p)
 	p.suspendFrames()
 	p.frameRequester = nil
@@ -584,6 +642,7 @@ func (p *popover) releaseNative() {
 	if native != nil {
 		native.Destroy()
 	}
+	p.releasing = false
 	if wasVisible {
 		p.closed.Emit()
 	}
@@ -634,6 +693,9 @@ func (p *popover) updateNaturalSize() error {
 			}
 			size = c.Clamp(geometry.Size{Width: max(1, size.Width), Height: max(1, size.Height)})
 		}
+	}
+	if !p.modal && placement == PopoverPlacementBottom {
+		insets = snapshot.trimAnchorShadow(size, insets)
 	}
 	// Keep conservative natural shadow allocation during shrinking: negative
 	// spread may erase the smaller mask, but must not cause a sizing oscillation.
@@ -936,6 +998,7 @@ type popoverPlacementSnapshot struct {
 	placement   PopoverPlacement
 	workArea    geometry.Rectangle
 	constrained bool
+	anchorSide  int8 // resolved side for modeless surfaces that exclude anchor shadow
 }
 
 func finitePopup(v float32) bool { return !math.IsNaN(float64(v)) && !math.IsInf(float64(v), 0) }
@@ -953,6 +1016,21 @@ func (s popoverPlacementSnapshot) bodyLimit(insets popoverInsets) (geometry.Size
 	return size, nil
 }
 
+// trimAnchorShadow keeps an adjacent modeless surface out of the anchor's
+// input area. Transparent shadow pixels still belong to the native window:
+// allocate only the outward-facing vertical shadow, without moving the body.
+// Oversized surfaces that must overlap the anchor keep normal workarea sliding.
+func (s *popoverPlacementSnapshot) trimAnchorShadow(body geometry.Size, insets popoverInsets) popoverInsets {
+	if !s.constrained || s.anchor.Y+s.anchor.Height+body.Height+insets.bottom <= s.workArea.Y+s.workArea.Height {
+		s.anchorSide = 1
+		insets.top = 0
+	} else if s.anchor.Y-body.Height-insets.top >= s.workArea.Y {
+		s.anchorSide = -1
+		insets.bottom = 0
+	}
+	return insets
+}
+
 // position returns the full surface origin. Alignment is against the body,
 // containment against the surface. Oversized actual native sizes anchor at the
 // workarea origin rather than generating resize feedback loops.
@@ -963,12 +1041,28 @@ func (s popoverPlacementSnapshot) position(surface geometry.Size, insets popover
 	if s.placement == PopoverPlacementBottom {
 		preferred.Y += a.Height
 	}
+	if s.anchorSide < 0 {
+		preferred.Y = a.Y - body.Height - insets.top
+	}
 	if !s.constrained {
 		return preferred
 	}
 	area := s.workArea
 	fits := func(p geometry.Point) bool {
 		return p.X >= area.X && p.Y >= area.Y && p.X+surface.Width <= area.X+area.Width && p.Y+surface.Height <= area.Y+area.Height
+	}
+	if s.anchorSide != 0 {
+		// The side is fixed for this measurement, including native rounding.
+		// Horizontal alignment can still slide into the workarea.
+		for _, candidate := range [...]geometry.Point{preferred, {X: a.X + a.Width - body.Width - insets.left, Y: preferred.Y}} {
+			if fits(candidate) {
+				return candidate
+			}
+		}
+		return geometry.Point{
+			X: min(max(preferred.X, area.X), max(area.X, area.X+area.Width-surface.Width)),
+			Y: min(max(preferred.Y, area.Y), max(area.Y, area.Y+area.Height-surface.Height)),
+		}
 	}
 	if s.placement == PopoverPlacementBottom {
 		for _, p := range [...]geometry.Point{
