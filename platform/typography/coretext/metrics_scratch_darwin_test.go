@@ -24,14 +24,15 @@ func metricsWithPerRunStorage(t *TextLayout) (lines []typography.TextLine, clust
 		return
 	}
 
-	height := float32(t.layoutSize.Height)
+	// 坐标先以原生精度转换；这里仍保留逐 run 分配作为 scratch 复用的参考。
+	height := t.layoutSize.Height
 	lines = make([]typography.TextLine, 0, len(t.lines))
 	clusters = make([]typography.TextCluster, 0, t.textLength)
 
 	for lineIndex, li := range t.lines {
-		baseline := float32(li.origin.Y)
+		baseline := float32(height - li.origin.Y)
 		lineX := float32(li.origin.X)
-		lineY := float32(li.origin.Y + li.ascent + li.leading)
+		lineY := float32(height - (li.origin.Y + li.ascent + li.leading))
 		lineWidth := float32(li.width)
 		lineHeight := float32(li.ascent + li.descent + li.leading)
 
@@ -48,10 +49,10 @@ func metricsWithPerRunStorage(t *TextLayout) (lines []typography.TextLine, clust
 			Start:    u8Start,
 			Length:   u8End - u8Start,
 			X:        lineX,
-			Y:        height - lineY, // convert Y
+			Y:        lineY,
 			Width:    lineWidth,
 			Height:   lineHeight,
-			Baseline: height - baseline, // convert Y
+			Baseline: baseline,
 		}
 
 		clustersBeg := len(clusters)
@@ -100,7 +101,7 @@ func metricsWithPerRunStorage(t *TextLayout) (lines []typography.TextLine, clust
 				cluster := typography.TextCluster{
 					Start:     u8Pos,
 					X:         left,
-					Y:         height - lineY, // convert Y
+					Y:         lineY,
 					Width:     right - left,
 					Height:    lineHeight,
 					LineIndex: lineIndex,

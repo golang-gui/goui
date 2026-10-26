@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"testing"
 	"unsafe"
 
@@ -456,5 +457,38 @@ func assertSameBitmap(t *testing.T, want, got typography.TextBitmap) {
 	}
 	if !bytes.Equal(want.Pixels, got.Pixels) {
 		t.Fatal("bitmap pixels differ")
+	}
+}
+
+// 首行位置不应因后面增加几千行而变化；先转 float32 再相减会丢失顶部的小数。
+func TestTallLayoutPreservesFirstLinePosition(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ctx, err := NewContext()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctx.Destroy()
+	for _, size := range []float32{12.25, 14.25} {
+		format := typography.TextFormat{Font: typography.FontInfo{Family: "Arial", Size: size}, WrapMode: typography.WrapWordChar}
+		var first []typography.TextLine
+		for _, count := range []int{1, 5000} {
+			layout, err := ctx.NewTextLayout(strings.Repeat("alpha beta\n", count), format, 280, 1<<24)
+			if err != nil {
+				t.Fatal(err)
+			}
+			lines, _ := layout.MeasureMetrics()
+			layout.Destroy()
+			if len(lines) < count {
+				t.Fatalf("字号 %g：只排版了 %d/%d 行", size, len(lines), count)
+			}
+			if first == nil {
+				first = lines
+				continue
+			}
+			if math.Abs(float64(lines[0].Y-first[0].Y)) > .001 || math.Abs(float64(lines[0].Baseline-first[0].Baseline)) > .001 {
+				t.Fatalf("字号 %g：短布局首行=%+v，长布局首行=%+v", size, first[0], lines[0])
+			}
+		}
 	}
 }

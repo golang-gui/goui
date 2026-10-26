@@ -502,6 +502,14 @@ target 销毁重建、外部 target 交替及重着色，均与独立新建原�
 
 ### CoreText 度量导出的临时存储
 
+CoreText 显式使用 `kCTTypesetterOptionAllowUnboundedLayout = kCFBooleanTrue`
+创建 typesetter，再创建 framesetter，避免系统默认对长输入省略 Unicode 分析。
+这保证直接创建的 TextLayout 保留换行和双向文字语义，不承诺无界输入的耗时；
+GUI 的 ParagraphLayout 仍负责限制交互路径中每次提交的文本窗口。
+原生 Y 坐标翻转在 float64 中相减，最后才转换为局部 DIP float32，避免高文本
+布局的首行位置随整段高度发生变化。参考
+[Apple 的 framesetter 契约](https://developer.apple.com/documentation/coretext/ctframesettercreatewithattributedstring(_:))。
+
 CoreText 继续一次排版完整输入，逐 run 读取原生 glyph positions、advances 和 string
 indices。自动换行可能产生数千个短 run；`MeasureMetrics` 在一次调用内复用这三种
 临时数组的容量，以及逐行清空的簇索引表，不再逐 run／逐行重新分配。

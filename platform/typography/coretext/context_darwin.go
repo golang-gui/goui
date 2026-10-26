@@ -369,7 +369,7 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 		return
 	}
 
-	height := float32(t.layoutSize.Height)
+	height := t.layoutSize.Height
 	lines = make([]typography.TextLine, 0, len(t.lines))
 	clusters = make([]typography.TextCluster, 0, t.textLength)
 	// Scratch belongs to this call, never a layout or returned result. Wrapped
@@ -381,9 +381,9 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 	clusterByIndex := make(map[int]int)
 
 	for lineIndex, li := range t.lines {
-		baseline := float32(li.origin.Y)
+		baseline := float32(height - li.origin.Y)
 		lineX := float32(li.origin.X)
-		lineY := float32(li.origin.Y + li.ascent + li.leading)
+		lineY := float32(height - (li.origin.Y + li.ascent + li.leading))
 		lineWidth := float32(li.width)
 		lineHeight := float32(li.ascent + li.descent + li.leading)
 
@@ -400,10 +400,10 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 			Start:    u8Start,
 			Length:   u8End - u8Start,
 			X:        lineX,
-			Y:        height - lineY, // convert Y
+			Y:        lineY,
 			Width:    lineWidth,
 			Height:   lineHeight,
-			Baseline: height - baseline, // convert Y
+			Baseline: baseline,
 		}
 
 		clustersBeg := len(clusters)
@@ -452,7 +452,7 @@ func (t *TextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []t
 				cluster := typography.TextCluster{
 					Start:     u8Pos,
 					X:         left,
-					Y:         height - lineY, // convert Y
+					Y:         lineY,
 					Width:     right - left,
 					Height:    lineHeight,
 					LineIndex: lineIndex,
@@ -556,7 +556,17 @@ func (t *TextLayout) ensureFrame() {
 		return
 	}
 
-	framesetter := CTFramesetterCreateWithAttributedString(t.attrString)
+	// CoreText may otherwise omit Unicode analysis for a long paragraph.
+	// ParagraphLayout bounds interactive work; a directly created TextLayout
+	// must still preserve the requested text's shaping and writing direction.
+	options := CFDictionaryCreate([]CFTypeRef{KCTTypesetterOptionAllowUnboundedLayout}, []CFTypeRef{KCFBooleanTrue})
+	defer CFRelease(options)
+	typesetter := CTTypesetterCreateWithAttributedStringAndOptions(t.attrString, options)
+	if typesetter == 0 {
+		return
+	}
+	defer CFRelease(typesetter)
+	framesetter := CTFramesetterCreateWithTypesetter(typesetter)
 	if framesetter != 0 {
 		defer CFRelease(framesetter)
 

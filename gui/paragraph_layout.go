@@ -481,12 +481,72 @@ func (p *ParagraphLayout) page(index int, deadline time.Time) *paragraphPage {
 		delete(p.pages, index+1)
 		next.layout.Destroy()
 	}
+	if p.format.WrapMode != typography.WrapNone {
+		if previous := p.pages[index-1]; previous != nil && previous.range_.End == r.Start {
+			advance, err := p.joinAdvance(previous, page)
+			if err != nil || p.destroyed || p.version != version {
+				native.Destroy()
+				p.err = err
+				return nil
+			}
+			previous.height = advance
+			p.heights.Set(index-1, previous.height)
+		}
+		if next := p.pages[index+1]; next != nil {
+			advance, err := p.joinAdvance(page, next)
+			if err != nil || p.destroyed || p.version != version {
+				native.Destroy()
+				p.err = err
+				return nil
+			}
+			page.height = advance
+		}
+	}
 	p.starts[index+1] = end
 	p.pages[index] = page
 	p.heights.Set(index, page.height)
 	p.version++
 	p.trim(index)
 	return page
+}
+
+// A final partial line can have different fallback fonts from the complete
+// next line. Measure their shared seam in one bounded native layout instead
+// of inferring native line spacing from either line's ink box or baseline.
+func (p *ParagraphLayout) joinAdvance(previous, next *paragraphPage) (float32, error) {
+	last := previous.lines[len(previous.lines)-1]
+	r, text, err := p.readRange(last.Start, next.range_.End)
+	if err != nil {
+		return 0, err
+	}
+	state, ready := p.contextAt(r.Start, time.Now().Add(2*time.Millisecond))
+	if !ready {
+		return 0, fmt.Errorf("paragraph seam context unavailable")
+	}
+	var prefix string
+	if r.Start > 0 && (len(state.stack) > 0 || state.base == '\u200f') {
+		base := state.base
+		if base == 0 {
+			base = '\u200e'
+		}
+		prefix = string(base) + string(state.stack)
+		if state.strong != 0 {
+			prefix += string(state.strong)
+		}
+	}
+	layout, err := p.context.NewTextLayout(prefix+text, p.format, p.width, 1<<20)
+	if err != nil {
+		return 0, err
+	}
+	defer layout.Destroy()
+	lines, _ := layout.MeasureMetrics()
+	want := next.lines[0].Start - r.Start + len(prefix)
+	for _, line := range lines {
+		if line.Start == want {
+			return last.Baseline + line.Baseline - lines[0].Baseline - next.lines[0].Baseline, nil
+		}
+	}
+	return 0, fmt.Errorf("paragraph seam has no line at byte %d", next.range_.Start)
 }
 
 func (p *ParagraphLayout) alignStart(at int) (int, bool) {
@@ -650,7 +710,8 @@ func (p *ParagraphLayout) snapshot(indices []int) ParagraphGeometry {
 	return ParagraphGeometry{Geometry: textedit.NewGeometry(lines, clusters, p.length, p.lineHeight), X: baseX, Y: baseY}
 }
 
-// Prepare prepares at most one new native window for the latest viewport. It
+// Prepare prepares at most one new cached native window for the latest viewport.
+// Joining measured neighbors may also create a temporary bounded layout. It
 // returns false while context or additional viewport windows remain pending.
 // Call again on a later event-loop turn. Cached work never shapes text.
 func (p *ParagraphLayout) Prepare(viewport geometry.Rectangle, measure bool) bool {

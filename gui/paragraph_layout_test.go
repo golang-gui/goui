@@ -36,6 +36,49 @@ func TestParagraphLayoutPartialLastWidth(t *testing.T) {
 	}
 }
 
+// 每行固定推进 20 DIP，各原生窗口首行基线不同；拼接后基线仍应保持全段连续。
+func TestParagraphLayoutPageBaselines(t *testing.T) {
+	text := strings.Repeat("a", 5*paragraphBlockBytes)
+	p := NewParagraphLayout(&paragraphInsetContext{}, typography.TextFormat{WrapMode: WrapWordChar}, 100, len(text),
+		func(r textedit.Range) (string, error) { return text[r.Start:r.End], nil })
+	defer p.Destroy()
+	for i := range 4 {
+		if p.page(i, time.Now().Add(time.Second)) == nil {
+			t.Fatal("分页未就绪", i, p.Err())
+		}
+	}
+	for i := range 4 {
+		page := p.pages[i]
+		_, y := p.origin(page)
+		for _, line := range page.lines {
+			want := float64(18 + line.Start/10*20)
+			if got := y + float64(line.Baseline); got != want {
+				t.Fatalf("页 %d，字节 %d：基线=%g，独立预期=%g", i, line.Start, got, want)
+			}
+		}
+	}
+}
+
+type paragraphInsetContext struct {
+	editorTypography
+	created int
+}
+
+func (c *paragraphInsetContext) NewTextLayout(text string, f typography.TextFormat, w, h float32) (typography.TextLayout, error) {
+	native, err := c.editorTypography.NewTextLayout(text, f, w, h)
+	l := native.(*testTextLayout)
+	inset := []float32{3, -2, 1, 4}[c.created%4]
+	c.created++
+	for i := range l.lines {
+		l.lines[i].Y += inset
+		l.lines[i].Baseline += inset
+	}
+	for i := range l.clusters {
+		l.clusters[i].Y += inset
+	}
+	return l, err
+}
+
 type paragraphBoundContext struct {
 	typography.Context
 	t       *testing.T

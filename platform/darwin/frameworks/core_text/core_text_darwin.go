@@ -106,6 +106,10 @@ func CTFramesetterCreateWithAttributedString(attrString CFAttributedStringRef) C
 	return fnCTFramesetterCreateWithAttributedString(attrString)
 }
 
+func CTFramesetterCreateWithTypesetter(typesetter CTTypesetterRef) CTFramesetterRef {
+	return fnCTFramesetterCreateWithTypesetter(typesetter)
+}
+
 func CTFramesetterCreateFrame(framesetter CTFramesetterRef, stringRange CFRange, path CGPathRef, frameAttributes CFDictionaryRef) CTFrameRef {
 	return fnCTFramesetterCreateFrame(framesetter, stringRange, path, frameAttributes)
 }
@@ -273,8 +277,14 @@ func CTRunGetAttributes(run CTRunRef) CFDictionaryRef {
 
 type CTTypesetterRef = CFTypeRef
 
+var KCTTypesetterOptionAllowUnboundedLayout CFStringRef
+
 func CTTypesetterCreateWithAttributedString(attrString CFAttributedStringRef) CTTypesetterRef {
 	return fnCTTypesetterCreateWithAttributedString(attrString)
+}
+
+func CTTypesetterCreateWithAttributedStringAndOptions(attrString CFAttributedStringRef, options CFDictionaryRef) CTTypesetterRef {
+	return fnCTTypesetterCreateWithAttributedStringAndOptions(attrString, options)
 }
 
 func CTTypesetterSuggestLineBreak(typesetter CTTypesetterRef, startIndex int, width float64) int {
@@ -469,6 +479,7 @@ var (
 )
 
 var constants = []utils.Constant{
+	utils.Const[CFStringRef]{Name: "kCTTypesetterOptionAllowUnboundedLayout", PVar: &KCTTypesetterOptionAllowUnboundedLayout},
 	utils.Const[CFStringRef]{Name: "kCTRunDelegateAttributeName", PVar: &KCTRunDelegateAttributeName},
 	utils.Const[CFStringRef]{Name: "kCTFontAttributeName", PVar: &KCTFontAttributeName},
 	utils.Const[CFStringRef]{Name: "kCTForegroundColorAttributeName", PVar: &KCTForegroundColorAttributeName},
@@ -502,6 +513,7 @@ var functions = []utils.Function{
 	{Name: "CTFontDescriptorCreateWithNameAndSize", PFunc: &fnCTFontDescriptorCreateWithNameAndSize},
 
 	{Name: "CTFramesetterCreateWithAttributedString", PFunc: &fnCTFramesetterCreateWithAttributedString},
+	{Name: "CTFramesetterCreateWithTypesetter", PFunc: &fnCTFramesetterCreateWithTypesetter},
 	{Name: "CTFramesetterCreateFrame", PFunc: &fnCTFramesetterCreateFrame},
 	{Name: "CTFramesetterSuggestFrameSizeWithConstraints", PFunc: &fnCTFramesetterSuggestFrameSizeWithConstraints},
 
@@ -530,6 +542,7 @@ var functions = []utils.Function{
 	{Name: "CTRunGetAttributes", PFunc: &fnCTRunGetAttributes},
 
 	{Name: "CTTypesetterCreateWithAttributedString", PFunc: &fnCTTypesetterCreateWithAttributedString},
+	{Name: "CTTypesetterCreateWithAttributedStringAndOptions", PFunc: &fnCTTypesetterCreateWithAttributedStringAndOptions},
 	{Name: "CTTypesetterSuggestLineBreak", PFunc: &fnCTTypesetterSuggestLineBreak},
 	{Name: "CTTypesetterSuggestClusterBreak", PFunc: &fnCTTypesetterSuggestClusterBreak},
 	{Name: "CTTypesetterCreateLine", PFunc: &fnCTTypesetterCreateLine},
@@ -556,6 +569,7 @@ var (
 	fnCTFontDescriptorCreateWithNameAndSize func(name CFStringRef, size CGFloat) CTFontDescriptorRef
 
 	fnCTFramesetterCreateWithAttributedString      func(attrString CFAttributedStringRef) CTFramesetterRef
+	fnCTFramesetterCreateWithTypesetter            func(typesetter CTTypesetterRef) CTFramesetterRef
 	fnCTFramesetterCreateFrame                     func(framesetter CTFramesetterRef, stringRange CFRange, path CGPathRef, frameAttributes CFDictionaryRef) CTFrameRef
 	fnCTFramesetterSuggestFrameSizeWithConstraints func(framesetter CTFramesetterRef, stringRange CFRange, frameAttributes CFDictionaryRef, constraints CGSize, fitRange *CFRange) CGSize
 
@@ -583,10 +597,11 @@ var (
 	fnCTRunGetStatus            func(run CTRunRef) CTRunStatus
 	fnCTRunGetAttributes        func(run CTRunRef) CFDictionaryRef
 
-	fnCTTypesetterCreateWithAttributedString func(attrString CFAttributedStringRef) CTTypesetterRef
-	fnCTTypesetterSuggestLineBreak           func(typesetter CTTypesetterRef, startIndex CFIndex, width CGFloat) CFIndex
-	fnCTTypesetterSuggestClusterBreak        func(typesetter CTTypesetterRef, startIndex CFIndex, width CGFloat) CFIndex
-	fnCTTypesetterCreateLine                 func(typesetter CTTypesetterRef, stringRange CFRange) CTLineRef
+	fnCTTypesetterCreateWithAttributedString           func(attrString CFAttributedStringRef) CTTypesetterRef
+	fnCTTypesetterCreateWithAttributedStringAndOptions func(attrString CFAttributedStringRef, options CFDictionaryRef) CTTypesetterRef
+	fnCTTypesetterSuggestLineBreak                     func(typesetter CTTypesetterRef, startIndex CFIndex, width CGFloat) CFIndex
+	fnCTTypesetterSuggestClusterBreak                  func(typesetter CTTypesetterRef, startIndex CFIndex, width CGFloat) CFIndex
+	fnCTTypesetterCreateLine                           func(typesetter CTTypesetterRef, stringRange CFRange) CTLineRef
 
 	fnCTFontManagerRegisterFontsForURL func(fontURL CFURLRef, scope CTFontManagerScope, err *CFTypeRef) bool
 
