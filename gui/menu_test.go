@@ -1,10 +1,12 @@
 package gui
 
 import (
+	"errors"
 	"image/color"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/events"
 )
@@ -303,5 +305,333 @@ func TestMenuButtonKeyboardUsesOpenPath(t *testing.T) {
 			t.Fatal("keyboard bypassed menu open path")
 		}
 		win.Destroy()
+	}
+}
+
+// 复用普通原生面替身及真实 GUI 分发；不创建桌面或注入菜单语义动作。
+func menuButtonGroupFixture(t *testing.T) (*window, *testWidget, []*MenuButton, *placementPlatform) {
+	t.Helper()
+	_, _, platform, app := placementFixture(t, geometry.Rect(0, 0, 1000, 800))
+	app.typo = &testTypography{}
+	w := app.windows[0]
+	w.focused = true
+	w.SetWidget(nil)
+	root := newTestWidget()
+	w.SetWidget(root)
+	root.Arrange(geometry.Rect(0, 0, 500, 300))
+	group := NewMenuButtonGroup()
+	var buttons []*MenuButton
+	for i := 0; i < 3; i++ {
+		button := NewMenuButton()
+		button.SetGroup(group)
+		menu := NewMenu()
+		menu.Append("Action", nil)
+		button.SetMenu(menu)
+		button.SetChild(NewLabel("Menu"))
+		root.AddChild(button)
+		button.Arrange(geometry.Rect(20+float32(i)*100, 20, 80, 40))
+		button.Child().Arrange(geometry.Rect(10, 10, 60, 20))
+		buttons = append(buttons, button)
+	}
+	t.Cleanup(w.Destroy)
+	return w, root, buttons, platform
+}
+func menuButtonPointer(t *testing.T, w *window, kind events.EventType, x float32) {
+	t.Helper()
+	if err := w.DispatchEvent(events.PointerEvent{EventType: kind, Position: geometry.Point{X: x, Y: 40}, Button: events.PointerButtonLeft}); err != nil {
+		t.Fatal(err)
+	}
+}
+func menuButtonClick(t *testing.T, w *window, x float32) {
+	t.Helper()
+	menuButtonPointer(t, w, events.PointerDown, x)
+	menuButtonPointer(t, w, events.PointerUp, x)
+}
+func menuButtonKey(t *testing.T, w *window, key events.Key) {
+	t.Helper()
+	if err := w.DispatchEvent(shortcutPress(key, 0)); err != nil {
+		t.Fatal(err)
+	}
+}
+func TestMenuButtonGroupPointerKeyboardAndMixedButtons(t *testing.T) {
+	w, root, b, _ := menuButtonGroupFixture(t)
+	menuButtonPointer(t, w, events.PointerMove, 150)
+	if len(w.Popovers()) != 0 {
+		t.Fatal("空闲悬停打开了菜单")
+	}
+	menuButtonClick(t, w, 50)
+	if !b[0].Opened() || w.modalTarget != nil || w.FocusedWidget() != b[0] || b[0].pm.popover.Modal() || !b[0].pm.popover.AutoDismiss() {
+		t.Fatal("菜单没有使用非模态自动关闭及按钮焦点")
+	}
+	closed := 0
+	b[0].ConnectClosed(func() { closed++ })
+	menuButtonPointer(t, w, events.PointerMove, 150)
+	if b[0].Opened() || !b[1].Opened() || closed != 1 {
+		t.Fatal("命中 Label 后没有切换到同组菜单")
+	}
+	b[2].SetEnabled(false)
+	menuButtonPointer(t, w, events.PointerMove, 250)
+	if !b[1].Opened() || b[2].Opened() {
+		t.Fatal("禁用菜单参与了悬停切换")
+	}
+	ordinary := NewButton()
+	root.AddChild(ordinary)
+	ordinary.Arrange(geometry.Rect(350, 20, 100, 40))
+	clicks := 0
+	ordinary.ConnectClicked(func() { clicks++ })
+	menuButtonClick(t, w, 400)
+	if b[1].Opened() || clicks != 1 {
+		t.Fatal("外部点击没有关闭并执行一次混排按钮", clicks)
+	}
+	if err := b[0].Open(); err != nil {
+		t.Fatal(err)
+	}
+	menuButtonKey(t, w, events.KeyArrowRight)
+	if !b[1].Opened() || b[0].Opened() {
+		t.Fatal("右键没有切换菜单")
+	}
+	menuButtonKey(t, w, events.KeyArrowRight)
+	if !b[0].Opened() {
+		t.Fatal("没有跳过禁用成员并循环")
+	}
+	menuButtonKey(t, w, events.KeyArrowLeft)
+	if !b[1].Opened() {
+		t.Fatal("左键没有反向循环")
+	}
+	menuButtonKey(t, w, events.KeyEscape)
+	menuButtonPointer(t, w, events.PointerMove, 50)
+	if b[0].Opened() || b[1].Opened() {
+		t.Fatal("Esc 后悬停仍能开启菜单")
+	}
+	menuButtonClick(t, w, 50)
+	menuButtonClick(t, w, 50)
+	if b[0].Opened() {
+		t.Fatal("锚点点击先关闭后又重开")
+	}
+	if err := b[0].Open(); err != nil {
+		t.Fatal(err)
+	}
+	menuButtonKey(t, w, events.KeyTab)
+	if b[0].Opened() || w.FocusedWidget() != b[1] {
+		t.Fatal("Tab 没有关闭并继续焦点导航")
+	}
+	info := b[0].Snapshot()
+	data := info.Attributes[MenuButtonInfoKey].(MenuButtonInfo)
+	if info.Role != RoleButton || !data.HasMenu || !data.Grouped || data.Opened {
+		t.Fatal("菜单按钮快照错误", data)
+	}
+}
+
+func TestMenuButtonGroupEligibilityAndOrdering(t *testing.T) {
+	w, root, b, _ := menuButtonGroupFixture(t)
+	other := NewMenuButtonGroup()
+	if other == b[0].Group() {
+		t.Fatal("组没有独立身份")
+	}
+	if err := b[0].Open(); err != nil {
+		t.Fatal(err)
+	}
+	b[1].SetGroup(other)
+	menuButtonPointer(t, w, events.PointerMove, 150)
+	if !b[0].Opened() || b[1].Opened() {
+		t.Fatal("切换到了不同组")
+	}
+	b[1].SetGroup(b[0].Group())
+	separator := NewMenu()
+	separator.AppendSeparator()
+	b[1].SetMenu(separator)
+	menuButtonKey(t, w, events.KeyArrowRight)
+	if !b[2].Opened() {
+		t.Fatal("空菜单参与导航")
+	}
+	b[2].SetGroup(nil)
+	menuButtonPointer(t, w, events.PointerMove, 50)
+	if !b[2].Opened() || b[0].Opened() {
+		t.Fatal("解除分组没有结束联动或关闭独立菜单")
+	}
+	b[2].Close()
+	b[1].SetMenu(b[0].Menu())
+	root.MoveChildBefore(b[2], b[0])
+	b[2].SetGroup(b[0].Group())
+	if err := b[0].Open(); err != nil {
+		t.Fatal(err)
+	}
+	menuButtonKey(t, w, events.KeyArrowLeft)
+	if !b[2].Opened() {
+		t.Fatal("导航使用注册顺序而非实际树顺序")
+	}
+	b[2].Close()
+	disabled := NewMenu()
+	disabled.Append("Unavailable", nil).SetEnabled(false)
+	b[1].SetMenu(disabled)
+	if err := b[1].Open(); err != nil || !b[1].Opened() {
+		t.Fatal("全禁用但有可见项目的菜单被跳过", err)
+	}
+	b[1].Close()
+	cover := newTestWidget()
+	root.AddChild(cover)
+	cover.Arrange(geometry.Rect(120, 20, 80, 40))
+	if err := b[0].Open(); err != nil {
+		t.Fatal(err)
+	}
+	menuButtonPointer(t, w, events.PointerMove, 150)
+	if !b[0].Opened() || b[1].Opened() {
+		t.Fatal("遮挡对象下方的菜单参与悬停")
+	}
+}
+
+func TestMenuButtonGroupClosedReentry(t *testing.T) {
+	for _, action := range []string{"destroy source", "destroy candidate", "change group", "open another", "reopen source"} {
+		t.Run(action, func(t *testing.T) {
+			w, _, b, _ := menuButtonGroupFixture(t)
+			if err := b[0].Open(); err != nil {
+				t.Fatal(err)
+			}
+			called := false
+			b[0].ConnectClosed(func() {
+				if called {
+					return
+				}
+				called = true
+				switch action {
+				case "destroy source":
+					b[0].base().destroy(b[0])
+				case "destroy candidate":
+					b[1].base().destroy(b[1])
+				case "change group":
+					b[1].SetGroup(NewMenuButtonGroup())
+				case "open another":
+					if err := b[2].Open(); err != nil {
+						t.Fatal(err)
+					}
+				case "reopen source":
+					if err := b[0].Open(); err != nil {
+						t.Fatal(err)
+					}
+				}
+			})
+			menuButtonPointer(t, w, events.PointerMove, 150)
+			if !called || b[1].Opened() {
+				t.Fatal("关闭回调改变状态后旧切换仍执行")
+			}
+			if action == "open another" && !b[2].Opened() {
+				t.Fatal("回调打开的菜单被覆盖")
+			}
+			if action == "reopen source" && !b[0].Opened() {
+				t.Fatal("回调重开的源菜单被覆盖")
+			}
+		})
+	}
+}
+
+func TestMenuButtonGroupInputErrorsAndIsolation(t *testing.T) {
+	w, _, b, platform := menuButtonGroupFixture(t)
+	if err := b[0].Open(); err != nil {
+		t.Fatal(err)
+	}
+	platform.transparentErr = errors.New("native popup failure")
+	errorsSeen := 0
+	b[1].ConnectOpenError(func(error) { errorsSeen++ })
+	menuButtonPointer(t, w, events.PointerMove, 150)
+	if errorsSeen != 1 || b[0].Opened() || b[1].Opened() || w.modalTarget != nil || len(w.Popovers()) != 0 {
+		t.Fatal("打开失败没有清理或重复报告", errorsSeen)
+	}
+	if err := b[1].Open(); err == nil || errorsSeen != 1 {
+		t.Fatal("同步失败没有返回错误，或重复发信号")
+	}
+	platform.transparentErr = nil
+	if err := b[0].Open(); err != nil {
+		t.Fatal(err)
+	}
+	other := &window{platformWindow: &placementWindow{area: geometry.Rect(0, 0, 1000, 800)}}
+	candidate := NewMenuButton()
+	candidate.SetGroup(b[0].Group())
+	candidate.SetMenu(b[0].Menu())
+	other.SetWidget(candidate)
+	candidate.Arrange(geometry.Rect(0, 0, 80, 40))
+	t.Cleanup(other.Destroy)
+	menuButtonPointer(t, other, events.PointerMove, 40)
+	if !b[0].Opened() || candidate.Opened() {
+		t.Fatal("同组对象跨 Root 联动")
+	}
+}
+
+func TestMenuButtonClosedNotificationStopsAfterDestruction(t *testing.T) {
+	w, _, b, _ := menuButtonGroupFixture(t)
+	if err := b[0].Open(); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	b[0].ConnectClosed(func() { calls++; w.Destroy() })
+	b[0].ConnectClosed(func() { calls += 100 })
+	b[0].Close()
+	if calls != 1 || !b[0].Destroyed() {
+		t.Fatal("销毁后仍执行后续 Closed 回调", calls)
+	}
+}
+
+// 模型接口不要求可比较；切片型实现也必须能安装、重开及更新菜单。
+type menuSliceData []*MenuItem
+
+func (m menuSliceData) ItemsCount() int                   { return len(m) }
+func (m menuSliceData) ItemAt(index int) *MenuItem        { return m[index] }
+func (m menuSliceData) ConnectItems(func()) signal.Handle { return signal.Handles(nil) }
+
+func TestMenuButtonAcceptsUncomparableModel(t *testing.T) {
+	w, _, buttons, _ := menuButtonGroupFixture(t)
+	button := buttons[0]
+	model := menuSliceData{NewMenuItem("Original", nil)}
+	button.SetMenu(model)
+	button.SetMenu(model)
+	if err := button.Open(); err != nil {
+		t.Fatal(err)
+	}
+	menuButtonKey(t, w, events.KeyArrowDown)
+	if button.pm.content.active != model[0] {
+		t.Fatal("切片型菜单模型没有参与键盘导航")
+	}
+	model[0] = NewMenuItem("Replacement", nil)
+	button.SetMenu(model)
+	if !button.Opened() || button.pm.content.active != nil {
+		t.Fatal("显式重新安装模型没有清除旧选择或意外关闭菜单")
+	}
+	menuButtonKey(t, w, events.KeyArrowDown)
+	if button.pm.content.active != model[0] {
+		t.Fatal("重新安装后仍选择旧模型项目")
+	}
+	button.Close()
+	if err := button.Open(); err != nil || !button.Opened() {
+		t.Fatal("切片型菜单模型不能重新打开", err)
+	}
+}
+
+func TestMenuButtonSetMenuReinstallsSameModel(t *testing.T) {
+	w, _, buttons, _ := menuButtonGroupFixture(t)
+	button := buttons[0]
+	model := NewMenu()
+	item := model.Append("Original", nil)
+	button.SetMenu(model)
+	if err := button.Open(); err != nil {
+		t.Fatal(err)
+	}
+	menuButtonKey(t, w, events.KeyArrowDown)
+	if button.pm.content.active != item {
+		t.Fatal("初始选择无效")
+	}
+	button.SetMenu(model)
+	if !button.Opened() || button.pm.content.active != nil {
+		t.Fatal("显式 SetMenu 被相等判断吞掉，没有重新安装模型")
+	}
+}
+
+func TestMenuButtonOpenErrorStopsAfterDestruction(t *testing.T) {
+	w, _, buttons, platform := menuButtonGroupFixture(t)
+	platform.transparentErr = errors.New("原生 popup 创建失败")
+	calls := 0
+	buttons[0].ConnectOpenError(func(error) { calls++; w.Destroy() })
+	buttons[0].ConnectOpenError(func(error) { calls += 100 })
+	menuButtonClick(t, w, 50)
+	if calls != 1 || !buttons[0].Destroyed() || buttons[0].Opened() {
+		t.Fatal("OpenError 回调销毁后仍通知后续监听者或残留原生菜单", calls)
 	}
 }

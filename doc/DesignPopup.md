@@ -257,9 +257,9 @@ Hide／Destroy，Closed 仍只报告实际关闭。锚点及其后代视为内�
 继续由窗口转发全部键，Esc 由目标的 AutoDismiss／内容控制器解释。此改动
 不新增非模态编辑器的原生 IME，CommitText 仍遵守既有模态归属契约。
 
-MenuButton 的非模态接入与组联动在后续功能提交实施，设计见
-[分组设计](DesignMenuButtonGroup.md)。右键菜单和 DropDown 保留模态呈现。
-所有者、资源释放、DIP 及
+MenuButton 使用非模态菜单，自己保有逻辑焦点、转发菜单导航键；右键菜单和
+DropDown 保留模态呈现。MenuButtonGroup 的联动建立在普通 Motion／Key 控制器
+之上，见 [分组设计](DesignMenuButtonGroup.md)。所有者、资源释放、DIP 及
 原生无激活表面的契约保持原有边界；旧面只撤销它仍持有的模态目标。
 
 参考：2026-10-26 核对 GTK 4.24.1

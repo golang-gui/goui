@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
 )
 
@@ -42,12 +43,20 @@ func MenuSeparator() *MenuItemView {
 // single child (label shorthand or a custom View), and Menu holds the entries.
 type MenuButtonView struct {
 	ViewBase[MenuButtonView]
-	child View
-	items []*MenuItemView
+	child       View
+	items       []*MenuItemView
+	group       string
+	onClosed    func()
+	onOpenError func(error)
 }
 
 type menuButtonState struct {
-	lastSig string // fingerprint of the last-applied menu items
+	lastSig     string // fingerprint of the last-applied menu items
+	button      *gui.MenuButton
+	items       []*MenuItemView
+	onClosed    func()
+	onOpenError func(error)
+	handles     signal.Handles
 }
 
 // MenuButton creates a menu button. Like ui.Button, pass an optional label
@@ -76,30 +85,103 @@ func (v *MenuButtonView) Menu(items ...*MenuItemView) *MenuButtonView {
 	return v
 }
 
+// Group references an explicit ancestor MenuButtonGroup declaration by ID.
+// Empty leaves the button independent. Missing or incompatible groups panic.
+func (v *MenuButtonView) Group(id string) *MenuButtonView            { v.group = id; return v }
+func (v *MenuButtonView) OnClosed(fn func()) *MenuButtonView         { v.onClosed = fn; return v }
+func (v *MenuButtonView) OnOpenError(fn func(error)) *MenuButtonView { v.onOpenError = fn; return v }
+
 func (v *MenuButtonView) Mount(ctx BuildContext) gui.Widget {
 	button := gui.NewMenuButton()
-	ctx.SetState(&menuButtonState{})
+	s := &menuButtonState{button: button}
+	s.handles = signal.Handles{
+		button.ConnectClosed(func() {
+			if s.onClosed != nil {
+				s.onClosed()
+			}
+		}),
+		button.ConnectOpenError(func(err error) {
+			if s.onOpenError != nil {
+				s.onOpenError(err)
+			}
+		}),
+	}
+	ctx.SetState(s)
 	return button
 }
 
+func (v *MenuButtonView) applyGroup(ctx BuildContext, s *menuButtonState) {
+	if v.group == "" {
+		s.button.SetGroup(nil)
+		return
+	}
+	group, ok := FindAncestor[*gui.MenuButtonGroup](ctx, v.group)
+	if ctx.State() != s || s.button.Destroyed() {
+		return
+	}
+	if !ok || group == nil {
+		panic("ui: MenuButton requires an ancestor MenuButtonGroup with ID " + v.group)
+	}
+	s.button.SetGroup(group)
+}
 func (v *MenuButtonView) Update(ctx BuildContext, widget gui.Widget) {
-	button := widget.(*gui.MenuButton)
-	state := ctx.State().(*menuButtonState)
-
+	button, s := widget.(*gui.MenuButton), ctx.State().(*menuButtonState)
+	s.onClosed, s.onOpenError = v.onClosed, v.onOpenError
+	s.items = append(s.items[:0], v.items...)
+	v.applyGroup(ctx, s)
+	if ctx.State() != s || button.Destroyed() {
+		return
+	}
 	ctx.UpdateChild(button, v.child)
-
-	// Menu model: rebuild only when the entries changed, so an open menu is not
-	// needlessly reloaded on unrelated rebuilds. The fingerprint omits actions
-	// (they rarely change identity per rebuild); changing a label or enabled
-	// flag is what matters.
+	if ctx.State() != s || button.Destroyed() {
+		return
+	}
 	sig := signatureOf(v.items)
-	if sig != state.lastSig {
-		button.SetMenu(Menu(v.items...))
-		state.lastSig = sig
+	if sig == s.lastSig {
+		return
+	}
+	// Keep the model across unrelated rebuilds. Its action closures resolve
+	// the latest declaration through this node's state, without reloading rows.
+	model := gui.NewMenu()
+	for index, item := range v.items {
+		if item == nil {
+			continue
+		}
+		if item.separator {
+			model.AppendSeparator()
+			continue
+		}
+		model.Append(item.label, func() {
+			if index < len(s.items) {
+				item := s.items[index]
+				if item != nil && !item.separator && item.enabled && item.action != nil {
+					item.action()
+				}
+			}
+		}).SetEnabled(item.enabled)
+	}
+	s.lastSig = sig
+	button.SetMenu(model)
+}
+func (v *MenuButtonView) Unmount(ctx BuildContext, widget gui.Widget) {
+	if s, ok := ctx.State().(*menuButtonState); ok {
+		s.handles.Disconnect()
+		s.items = nil
+		s.onClosed = nil
+		s.onOpenError = nil
+	}
+	button := widget.(*gui.MenuButton)
+	button.SetGroup(nil)
+	button.Close()
+}
+func (v *MenuButtonView) Reparented(ctx BuildContext) {
+	if s, ok := ctx.State().(*menuButtonState); ok {
+		v.applyGroup(ctx, s)
 	}
 }
 
-func (v *MenuButtonView) Unmount(BuildContext, gui.Widget) {}
+var _ WidgetView = (*MenuButtonView)(nil)
+var _ ReparentedView = (*MenuButtonView)(nil)
 
 // Menu converts menu item declarations into a fresh imperative menu model.
 // It does not mount a View or execute item actions. Composite controls can use

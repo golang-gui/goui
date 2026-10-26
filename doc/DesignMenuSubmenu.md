@@ -9,6 +9,10 @@
 > [工作区约束与退避](DesignPopupPlacement.md)、
 > [PopoverMenu 外观](DesignPopoverMenuAppearance.md)、[实用化路线](Roadmap.md)。
 
+2026-10-26：MenuButtonGroup 改用非模态菜单及显式键盘转发，独立右键菜单仍
+使用模态根。本文后续的根模态登记描述仅适用于模态呈现；实施子菜单时还需
+覆盖由 MenuButton 接收键盘并转交活动层的路径，不把当前分组能力写成已有子菜单。
+
 ## 1. 核心决策与范围
 
 采用以下结构：
