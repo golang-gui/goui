@@ -3,6 +3,34 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## CheckButtonGroup 命名统一（2026-10-26）
+
+- [x] 将命令式 CheckGroup／NewCheckGroup 和声明式 CheckGroup／CheckGroupView
+  统一为 CheckButtonGroup／NewCheckButtonGroup／CheckButtonGroupView，明确只服务
+  于 CheckButton；按钮的 Group／SetGroup 及声明式 Group(string) 保持原名。
+  互斥、状态、信号、对象声明和移交行为不变，不保留旧名别名。
+- [x] 同步 Demo、现有包内与窗口测试、设计及 AI 使用参考；声明文件更名为
+  widgets/ui/check_button_group.go。SourceView 命令式示例同步使用新构造器。
+  未跟踪 example/temp 只迁移必要引用，不纳入提交。下方历史记录保留当时 API 名。
+- [x] Linux amd64／Go 1.25.8：仓库外两仓已跟踪源码副本的全仓测试，GOUI
+  2487 PASS、10 SKIP，SourceView 519 PASS、0 SKIP；相关 ui／widgets／Demo
+  race 与普通 vet 通过。独立 Xvnc／Xfwm4 的 Software 100%／OpenGL 200%
+  真实 XTest 各 26 项断言与最终释放通过。
+- [x] macOS 15.7.7 arm64／Go 1.24.9、Windows 10 amd64／Go 1.25.8：
+  ui、widgets/...、Demo 各 663 项测试及 SourceView 全仓 519 项测试均通过，
+  无失败或跳过。两端 150% 请求 Software／Direct2D 的原生窗口，经远端
+  Computer Use 各核对初始、互斥选择、按钮组及 Rebuild 后的四次状态／身份
+  断言和截图；Windows 正常关闭、DESTROY PASS、进程退出码 0。
+- [ ] macOS 在关闭测试窗口时 VNC 报 CONNECT_FAILED，恢复一次仍失败；
+  SSH 正常，已终止本轮自有进程清理窗口。正常关闭与最终析构不算通过，
+  前述已完成的操作断言保留。Windows 首次日志汇总使用默认 ANSI 失败，
+  改为明确 UTF-8 解析原始成功日志后通过，未修改产品代码或断言。
+
+验证副本及本机日志、截图在 `/tmp/goui-button-groups-ddl7s1_4`；远端各自的
+`Temp/goui-button-groups-20261026-ddl7s1_4` 保存原始日志。改名与使用方迁移
+单独提交后再实施 MenuButtonGroup，未推送或发布。独立 X11 供后续本轮验证
+继续使用；Windows 专用计划任务已清理，既有远端连接保留。
+
 ## 持久组合声明、对象声明与显式 CheckGroup（2026-10-26）
 
 - [x] 基线 GOUI `fd86a2e` 加前节未提交的分组原型，SourceView `89f045e`。

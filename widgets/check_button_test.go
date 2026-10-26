@@ -30,7 +30,7 @@ func TestCheckButtonStateAndGroup(t *testing.T) {
 		t.Fatal("mixed was lost")
 	}
 	a.SetChecked(true)
-	g := NewCheckGroup()
+	g := NewCheckButtonGroup()
 	a.SetGroup(g)
 	b.SetGroup(g)
 	if g.Checked() != a || !a.Checked() || b.Checked() {
@@ -188,11 +188,11 @@ func TestCheckButtonChildCompetition(t *testing.T) {
 	}
 }
 
-func TestCheckGroupAtomicChangeAndReentry(t *testing.T) {
+func TestCheckButtonGroupAtomicChangeAndReentry(t *testing.T) {
 	for _, reenter := range []bool{false, true} {
 		t.Run(map[bool]string{false: "atomic", true: "reentry"}[reenter], func(t *testing.T) {
 			a, b, c := NewCheckButton(), NewCheckButton(), NewCheckButton()
-			g := NewCheckGroup()
+			g := NewCheckButtonGroup()
 			for _, member := range []*CheckButton{a, b, c} {
 				member.SetGroup(g)
 			}
@@ -237,9 +237,9 @@ func TestCheckGroupAtomicChangeAndReentry(t *testing.T) {
 	}
 }
 
-func TestCheckGroupSurvivesReparenting(t *testing.T) {
+func TestCheckButtonGroupSurvivesReparenting(t *testing.T) {
 	a, b := NewCheckButton(), NewCheckButton()
-	g := NewCheckGroup()
+	g := NewCheckButtonGroup()
 	a.SetGroup(g)
 	b.SetGroup(g)
 	a.SetChecked(true)
@@ -306,10 +306,10 @@ func TestCheckButtonLayoutAndSnapshot(t *testing.T) {
 	b.SetVisible(true)
 	for _, tc := range []struct {
 		appearance CheckAppearance
-		group      *CheckGroup
+		group      *CheckButtonGroup
 		role       gui.Role
 	}{
-		{CheckAppearanceIndicator, nil, RoleCheckBox}, {CheckAppearanceIndicator, NewCheckGroup(), RoleRadioButton}, {CheckAppearanceButton, NewCheckGroup(), RoleToggleButton},
+		{CheckAppearanceIndicator, nil, RoleCheckBox}, {CheckAppearanceIndicator, NewCheckButtonGroup(), RoleRadioButton}, {CheckAppearanceButton, NewCheckButtonGroup(), RoleToggleButton},
 	} {
 		b.SetGroup(tc.group)
 		b.SetAppearance(tc.appearance)
@@ -420,7 +420,7 @@ func TestCheckButtonSoftwarePixels(t *testing.T) {
 		if got := pixel(10, 14); got.B <= 128 {
 			t.Fatalf("check mark missing at %gx: %v", scale, got)
 		}
-		b.SetGroup(NewCheckGroup())
+		b.SetGroup(NewCheckButtonGroup())
 		b.SetChecked(true)
 		draw()
 		if pixel(12, 12) != blue || pixel(4, 4) != (color.RGBA{}) {
@@ -469,7 +469,7 @@ func TestCheckButtonDefaultSoftwarePixels(t *testing.T) {
 		if pixel(15, 15) != (color.RGBA{255, 255, 255, 255}) || pixel(3, 15) != (color.RGBA{}) {
 			t.Fatal("default mixed mark / transparent padding missing")
 		}
-		b.SetGroup(NewCheckGroup())
+		b.SetGroup(NewCheckButtonGroup())
 		b.SetChecked(true)
 		draw()
 		if pixel(15, 15) != (color.RGBA{255, 255, 255, 255}) || pixel(15, 9) != (color.RGBA{51, 112, 204, 255}) || pixel(6, 6) != (color.RGBA{}) {
@@ -498,7 +498,7 @@ func TestCheckButtonBasicEdgeCoverage(t *testing.T) {
 						if shape == "mixed" {
 							b.SetCheckState(CheckMixed)
 						} else if shape == "radio" {
-							b.SetGroup(NewCheckGroup())
+							b.SetGroup(NewCheckButtonGroup())
 						}
 						host, dispatcher := &tabInputHost{root: b, focus: b}, new(gui.EventDispatcher)
 						ink := color.RGBA{R: 51, G: 112, B: 204, A: 255}
@@ -595,7 +595,7 @@ func TestCheckButtonModernSoftwarePixels(t *testing.T) {
 			if mark := pixel(15, 15); mark != (color.RGBA{R: 255, G: 255, B: 255, A: 255}) {
 				t.Fatalf("mixed mark is not white: %v", mark)
 			}
-			b.SetGroup(NewCheckGroup())
+			b.SetGroup(NewCheckButtonGroup())
 			b.SetChecked(true)
 			draw()
 			mark := pixel(15, 15)

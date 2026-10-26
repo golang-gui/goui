@@ -42,20 +42,20 @@ type CheckInfo struct {
 	Grouped    bool            `json:"grouped"`
 }
 
-// CheckGroup enforces at most one checked member. It owns neither widgets nor
+// CheckButtonGroup enforces at most one checked member. It owns neither widgets nor
 // layout. An empty group is valid; removing a selection does not choose another.
 // Like CheckButton, all operations belong to the GUI thread. The weak reference
 // lets a long-lived group outlive its members without keeping a widget tree alive.
-type CheckGroup struct {
+type CheckButtonGroup struct {
 	checked  weak.Pointer[CheckButton]
 	revision uint64
 }
 
-func NewCheckGroup() *CheckGroup { return new(CheckGroup) }
+func NewCheckButtonGroup() *CheckButtonGroup { return new(CheckButtonGroup) }
 
 // Checked returns the selected live member, or nil. Destroying the selected
 // widget leaves the group empty, even if the application retains that widget.
-func (g *CheckGroup) Checked() *CheckButton {
+func (g *CheckButtonGroup) Checked() *CheckButton {
 	if b := g.checked.Value(); b != nil && !b.Destroyed() && b.group == g && b.state == CheckChecked {
 		return b
 	}
@@ -70,7 +70,7 @@ type CheckButton struct {
 	child      gui.Widget
 	state      CheckState
 	appearance CheckAppearance
-	group      *CheckGroup
+	group      *CheckButtonGroup
 	padding    float32
 	hovered    bool
 	pressed    bool
@@ -148,12 +148,12 @@ func (b *CheckButton) SetChecked(checked bool) {
 	b.SetCheckState(state)
 }
 
-func (b *CheckButton) Group() *CheckGroup { return b.group }
+func (b *CheckButton) Group() *CheckButtonGroup { return b.group }
 
 // SetGroup assigns explicit exclusivity; parentage does not imply a group.
 // A checked member joining a group replaces the selection silently. Detaching
 // keeps its state. Group identity survives unmount/remount and window transfers.
-func (b *CheckButton) SetGroup(group *CheckGroup) {
+func (b *CheckButton) SetGroup(group *CheckButtonGroup) {
 	if b.Destroyed() || b.group == group {
 		return
 	}

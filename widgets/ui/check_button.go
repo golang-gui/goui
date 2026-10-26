@@ -20,7 +20,7 @@ const (
 )
 
 // CheckButtonView declares selection and an optional ancestor group reference.
-// The GUI CheckGroup owns exclusivity; CheckGroupView owns its lifetime.
+// The GUI CheckButtonGroup owns exclusivity; CheckButtonGroupView owns its lifetime.
 type CheckButtonView struct {
 	baseui.ViewBase[CheckButtonView]
 	child      baseui.View
@@ -70,7 +70,7 @@ func (v *CheckButtonView) Checked(checked bool) *CheckButtonView {
 	return v
 }
 
-// Group references an explicit ancestor CheckGroup declaration by ID. Empty
+// Group references an explicit ancestor CheckButtonGroup declaration by ID. Empty
 // leaves the button independent; a missing or incompatible declaration is an
 // application configuration error and never creates an implicit group.
 func (v *CheckButtonView) Group(group string) *CheckButtonView {
@@ -128,12 +128,12 @@ func (v *CheckButtonView) applyGroup(ctx baseui.BuildContext, s *checkButtonStat
 		s.button.SetGroup(nil)
 		return
 	}
-	group, ok := baseui.FindAncestor[*widgets.CheckGroup](ctx, v.group)
+	group, ok := baseui.FindAncestor[*widgets.CheckButtonGroup](ctx, v.group)
 	if ctx.State() != s || s.button.Destroyed() {
 		return
 	}
 	if !ok || group == nil {
-		panic("widgets/ui: CheckButton requires an ancestor CheckGroup with ID " + v.group)
+		panic("widgets/ui: CheckButton requires an ancestor CheckButtonGroup with ID " + v.group)
 	}
 	s.button.SetGroup(group)
 }
