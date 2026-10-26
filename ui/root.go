@@ -22,6 +22,7 @@ type root struct {
 	afterUpdate   []afterUpdateCall
 	transferAfter []afterUpdateCall
 	afterPending  bool
+	epoch         uint64
 }
 
 type afterUpdateCall struct {
@@ -34,9 +35,11 @@ type node struct {
 	root     *root
 	id       string // declaration identity, not the widget's mutable GUI ID
 	viewType reflect.Type
-	view     WidgetView
-	widget   gui.Widget
+	view     View
+	widget   gui.Widget // own WidgetView widget, or the composition's output
 	state    any
+	parent   *node
+	body     *node
 	children []*childTarget
 	released bool
 	version  uint64
@@ -65,9 +68,10 @@ func (r *root) update(view View) gui.Widget {
 }
 
 func (r *root) updateWindow(window gui.Window, view View) gui.Widget {
+	epoch := r.epoch
 	r.reconcile(view)
 	widget := r.widget()
-	if window != nil {
+	if window != nil && r.epoch == epoch {
 		window.SetWidget(widget)
 	}
 	r.flushAfterUpdate()
@@ -168,6 +172,7 @@ func (r *root) updateMounted() gui.Widget {
 
 func (r *root) unmount(detachWindow bool) {
 	r.mu.Lock()
+	r.epoch++
 	window := r.window
 	destroyHandle := r.destroyHandle
 	oldRoot := r.root
@@ -195,6 +200,7 @@ func (r *root) unmount(detachWindow bool) {
 
 func (r *root) unmountForWindowDestroy() {
 	r.mu.Lock()
+	r.epoch++
 	destroyHandle := r.destroyHandle
 	oldRoot := r.root
 	r.window = nil
@@ -212,49 +218,89 @@ func (r *root) unmountForWindowDestroy() {
 }
 
 func (r *root) updateNode(old *node, view View) *node {
-	widgetView := normalizeView(view)
-	return r.updateWidgetNode(old, widgetView)
+	return r.updateDeclaration(old, view, nil, 0)
 }
 
-func (r *root) updateWidgetNode(old *node, view WidgetView) *node {
+func (r *root) updateDeclaration(old *node, view View, parent *node, depth int) *node {
+	validateView(view)
+	epoch := r.epoch
 	if view == nil {
 		r.release(old, true)
 		return nil
 	}
-
-	viewType := reflect.TypeOf(view)
-	if old != nil && !sameWidgetIdentity(old, view) {
+	if depth >= 64 {
+		panic("ui: composition depth exceeded")
+	}
+	if old != nil && !sameViewIdentity(old, view) {
 		r.release(old, true)
 		old = nil
+		if r.epoch != epoch || parent != nil && parent.released {
+			return nil
+		}
 	}
-
 	current := old
 	if current == nil {
 		current = &node{
 			root:     r,
 			id:       view.base().id,
-			viewType: viewType,
+			viewType: reflect.TypeOf(view),
 			view:     view,
-			baseCtx:  &viewBaseContext{},
+			parent:   parent,
 			version:  1,
 		}
-		ctx := &buildContext{node: current}
-		current.widget = view.Mount(ctx)
-		if current.widget == nil {
-			r.release(current, true)
-			return nil
-		}
-		view.base().mount(current.baseCtx, current.widget)
-	}
-	if old != nil {
+	} else {
 		current.version++
+		current.view = view
+		current.parent = parent
 	}
-
+	completed := false
+	if old == nil {
+		// A fresh node is not yet owned by its parent's slot. Release its
+		// partial state if construction panics before it can be installed.
+		defer func() {
+			if !completed {
+				r.release(current, true)
+			}
+		}()
+	}
 	ctx := &buildContext{node: current}
-	current.viewType = viewType
-	current.view = view
-	view.Update(ctx, current.widget)
-	view.base().update(current.baseCtx, current.widget) // shared id/visibility/style + base signals, framework-driven
+	live := func() bool {
+		return r.epoch == epoch && !current.released && current.root == r && (parent == nil || !parent.released)
+	}
+	if widgetView, ok := view.(WidgetView); ok {
+		if old == nil {
+			current.widget = widgetView.Mount(ctx)
+			if !live() || nilWidget(current.widget) {
+				r.release(current, true)
+				return nil
+			}
+			current.baseCtx = &viewBaseContext{}
+			view.base().mount(current.baseCtx, current.widget)
+		}
+		widgetView.Update(ctx, current.widget)
+		if live() {
+			view.base().update(current.baseCtx, current.widget)
+		}
+	} else {
+		content := view.(ComposeView).Build(ctx)
+		if live() {
+			body := r.updateDeclaration(current.body, content, current, depth+1)
+			if !live() {
+				r.release(body, true)
+			} else {
+				current.body = body
+				current.widget = nil
+				if body != nil {
+					current.widget = body.widget
+				}
+			}
+		}
+	}
+	if !live() {
+		r.release(current, true)
+		return nil
+	}
+	completed = true
 	return current
 }
 
@@ -273,14 +319,19 @@ func (r *root) release(n *node, detachWidgets bool) {
 		r.releaseChildren(target, 0, detachWidgets)
 	}
 	n.children = nil
+	r.release(n.body, detachWidgets)
+	n.body = nil
 
-	if n.view != nil && n.widget != nil {
-		ctx := &buildContext{node: n}
-		n.view.Unmount(ctx, n.widget)
+	ctx := &buildContext{node: n}
+	if view, ok := n.view.(WidgetView); ok && !nilWidget(n.widget) {
+		view.Unmount(ctx, n.widget)
+	} else if view, ok := n.view.(ObjectView); ok {
+		view.Release(ctx)
 	}
 	n.view = nil
 	n.widget = nil
 	n.state = nil
+	n.parent = nil
 }
 
 func (ctx *buildContext) State() any {
@@ -332,7 +383,13 @@ func (r *root) reconcile(view View) {
 	}
 	r.reconciling = true
 	defer func() { r.reconciling = false }()
-	r.root = r.updateNode(r.root, view)
+	epoch := r.epoch
+	current := r.updateNode(r.root, view)
+	if r.epoch == epoch {
+		r.root = current
+	} else {
+		r.release(current, true)
+	}
 }
 
 func (ctx *buildContext) SetState(state any) {
@@ -394,23 +451,35 @@ func (ctx *buildContext) UpdateChild(target Bin, child View) gui.Widget {
 	if current == nil {
 		return nil
 	}
-	view := normalizeView(child)
-	if len(current.nodes) != 0 && !sameWidgetIdentity(current.nodes[0], view) {
-		r.releaseChildren(current, 0, true)
+	validateView(child)
+	epoch := r.epoch
+	var previous *node
+	var oldWidget gui.Widget
+	if len(current.nodes) != 0 {
+		previous, oldWidget = current.nodes[0], current.nodes[0].widget
 	}
-	if view != nil {
-		if len(current.nodes) != 0 {
-			r.updateWidgetNode(current.nodes[0], view)
-		} else if mounted := r.updateWidgetNode(nil, view); mounted != nil {
-			current.nodes = []*node{mounted}
-			target.SetChild(mounted.widget)
+	mounted := r.updateDeclaration(previous, child, ctx.node, 0)
+	if !ctx.live(r, epoch) {
+		r.release(mounted, true)
+		return nil
+	}
+	var widget gui.Widget
+	current.nodes = nil
+	if mounted != nil {
+		current.nodes = []*node{mounted}
+		widget = mounted.widget
+	}
+	if oldWidget != widget {
+		target.SetChild(widget)
+		if !ctx.live(r, epoch) {
+			return nil
 		}
 	}
 	if len(current.nodes) == 0 {
 		ctx.forgetEmptyTarget(current)
 		return nil
 	}
-	return current.nodes[0].widget
+	return widget
 }
 
 func (ctx *buildContext) UpdateChildren(target Container, children []View) []gui.Widget {
@@ -422,13 +491,12 @@ func (ctx *buildContext) UpdateChildren(target Container, children []View) []gui
 	if ctx.node.released || target == nil {
 		return nil
 	}
-	// Normalize and reject duplicate local IDs before modifying the target.
-	views := make([]WidgetView, len(children))
+	// Identity belongs to the declaration, including non-widget compositions.
 	ids := make(map[string]bool)
-	for i, child := range children {
-		views[i] = normalizeView(child)
-		if views[i] != nil && views[i].base().id != "" {
-			id := views[i].base().id
+	for _, child := range children {
+		validateView(child)
+		if child != nil && child.base().id != "" {
+			id := child.base().id
 			if ids[id] {
 				panic("ui: duplicate child ID " + id)
 			}
@@ -441,16 +509,32 @@ func (ctx *buildContext) UpdateChildren(target Container, children []View) []gui
 	}
 	result := make([]gui.Widget, len(children))
 	old := slices.Clone(current.nodes)
+	oldWidgets := make(map[*node]gui.Widget, len(old))
 	byID := make(map[string]*node, len(old))
 	for _, n := range old {
+		oldWidgets[n] = n.widget
 		if n.id != "" {
 			byID[n.id] = n
 		}
 	}
 	used := make(map[*node]bool, len(old))
 	next := make([]*node, 0, len(children))
+	epoch := r.epoch
+	cleanup := func() {
+		for _, n := range next {
+			if !used[n] {
+				r.release(n, true)
+			}
+		}
+	}
+	installed := false
+	defer func() {
+		if !installed {
+			cleanup()
+		}
+	}()
 	position := 0
-	for i, view := range views {
+	for i, view := range children {
 		if view == nil {
 			continue
 		}
@@ -460,16 +544,19 @@ func (ctx *buildContext) UpdateChildren(target Container, children []View) []gui
 		} else if position < len(old) && old[position].id == "" {
 			previous = old[position]
 		}
-		if !sameWidgetIdentity(previous, view) {
+		if !sameViewIdentity(previous, view) {
 			previous = nil
 		}
-		mounted := r.updateWidgetNode(previous, view)
+		mounted := r.updateDeclaration(previous, view, ctx.node, 0)
+		if !ctx.live(r, epoch) {
+			r.release(mounted, true)
+			cleanup()
+			return nil
+		}
 		if mounted == nil {
 			continue
 		}
-		if previous == nil {
-			target.AddChild(mounted.widget)
-		} else {
+		if previous != nil {
 			used[previous] = true
 		}
 		next = append(next, mounted)
@@ -478,21 +565,50 @@ func (ctx *buildContext) UpdateChildren(target Container, children []View) []gui
 	}
 	for _, n := range old {
 		if !used[n] {
-			widget := n.widget
 			r.release(n, true)
-			target.RemoveChild(widget)
+			if !ctx.live(r, epoch) {
+				cleanup()
+				return nil
+			}
 		}
 	}
 	current.nodes = next
+	installed = true
+	for _, n := range old {
+		widget := oldWidgets[n]
+		if widget != nil && (!used[n] || widget != n.widget) {
+			target.RemoveChild(widget)
+			if !ctx.live(r, epoch) {
+				return nil
+			}
+		}
+	}
+	for _, n := range next {
+		if n.widget != nil && (!used[n] || oldWidgets[n] != n.widget) {
+			target.AddChild(n.widget)
+			if !ctx.live(r, epoch) {
+				return nil
+			}
+		}
+	}
 	// Relative moves preserve focus, mounts and window resources. Non-managed
 	// children remain owned by the target; only the managed list is ordered here.
 	var sibling gui.Widget
 	for i := len(next) - 1; i >= 0; i-- {
-		target.MoveChildBefore(next[i].widget, sibling)
-		sibling = next[i].widget
+		if widget := next[i].widget; widget != nil {
+			target.MoveChildBefore(widget, sibling)
+			if !ctx.live(r, epoch) {
+				return nil
+			}
+			sibling = widget
+		}
 	}
 	ctx.forgetEmptyTarget(current)
 	return result
+}
+
+func (ctx *buildContext) live(r *root, epoch uint64) bool {
+	return !ctx.node.released && ctx.node.root == r && r.epoch == epoch
 }
 
 // Dynamic targets such as recycled list rows must not accumulate empty records.
@@ -511,7 +627,7 @@ func (r *root) releaseChildren(target *childTarget, from int, detach bool) {
 	for _, child := range target.nodes[from:] {
 		widget := child.widget
 		r.release(child, detach)
-		if detach {
+		if detach && widget != nil {
 			if target.bin != nil {
 				target.bin.SetChild(nil)
 			} else {
@@ -523,7 +639,7 @@ func (r *root) releaseChildren(target *childTarget, from int, detach bool) {
 	target.nodes = target.nodes[:from]
 }
 
-func sameWidgetIdentity(old *node, view WidgetView) bool {
+func sameViewIdentity(old *node, view View) bool {
 	return old != nil && !old.released && view != nil && old.viewType == reflect.TypeOf(view) && old.id == view.base().id
 }
 
@@ -540,15 +656,19 @@ func compactViews(views []View) []View {
 	return compacted
 }
 
-func normalizeView(view View) WidgetView {
-	for depth := 0; view != nil; depth++ {
-		if widgetView, ok := view.(WidgetView); ok {
-			return widgetView
-		}
-		if depth >= 64 {
-			panic("ui: view build depth exceeded")
-		}
-		view = view.Build()
+func validateView(view View) {
+	if view == nil {
+		return
 	}
-	return nil
+	_, widget := view.(WidgetView)
+	_, compose := view.(ComposeView)
+	if widget == compose {
+		panic("ui: a declaration must implement exactly one of WidgetView or ComposeView")
+	}
+	if compose {
+		base := view.base()
+		if base.fields.Mask&^uint64(1<<viewID) != 0 || len(base.shortcuts) != 0 || base.dragSource != nil || base.dropTarget != nil || base.onContextMenu != nil {
+			panic("ui: widget modifiers require a WidgetView; apply them to the composition's content")
+		}
+	}
 }

@@ -8,7 +8,7 @@ import (
 	"github.com/golang-gui/goui/gui"
 )
 
-// Coordinator is a borrowed, GUI-thread handle for explicit node transfers.
+// Coordinator is a borrowed, GUI-thread handle for adapter coordination.
 // It follows its node when transferred and expires on release. It does not
 // expose another View's State or establish global identity.
 type Coordinator struct{ owner *node }
@@ -37,8 +37,11 @@ func findNode(n *node, widget gui.Widget) *node {
 	if n == nil || n.released {
 		return nil
 	}
-	if n.widget == widget {
+	if _, own := n.view.(WidgetView); own && n.widget == widget {
 		return n
+	}
+	if found := findNode(n.body, widget); found != nil {
+		return found
 	}
 	for _, target := range n.children {
 		for _, child := range target.nodes {
@@ -153,10 +156,12 @@ func (c *Coordinator) TransferChild(child, to gui.Widget, move func() error, com
 				}
 			}
 			target.nodes = slices.Insert(target.nodes, insert, n)
+			n.parent = destination
 			rehomeNode(n, toRoot)
-			adopted = true
+			adopted = !n.released && n.root == toRoot && !destination.released
 		} else if !destroyedWidget(child) && !source.released && !destroyedWidget(source.widget) && source.root == fromRoot && child.Parent() == source.widget && child.Root() == source.widget.Root() {
 			from.nodes = slices.Insert(from.nodes, min(index, len(from.nodes)), n)
+			n.parent = source
 			rehomeNode(n, fromRoot)
 		} else {
 			fromRoot.release(n, false)
@@ -188,6 +193,10 @@ func (c *Coordinator) TransferChild(child, to gui.Widget, move func() error, com
 	err = move()
 	restore()
 	settled = true
+	if adopted {
+		notifyReparented(n, toRoot)
+		adopted = !n.released && n.root == toRoot && !destination.released && destination.root == toRoot && !destroyedWidget(child) && child.Parent() == destination.widget && child.Root() == destination.widget.Root()
+	}
 	if !adopted {
 		if err == nil {
 			err = fmt.Errorf("ui: GUI transaction did not establish destination ownership")
@@ -206,9 +215,33 @@ func (c *Coordinator) TransferChild(child, to gui.Widget, move func() error, com
 func rehomeNode(n *node, owner *root) {
 	n.root = owner
 	n.version++
+	if n.body != nil {
+		rehomeNode(n.body, owner)
+	}
 	for _, target := range n.children {
 		for _, child := range target.nodes {
 			rehomeNode(child, owner)
+		}
+	}
+}
+
+func notifyReparented(n *node, owner *root) {
+	if n == nil || n.released || n.root != owner {
+		return
+	}
+	if view, ok := n.view.(ReparentedView); ok {
+		view.Reparented(&buildContext{node: n})
+		if n.released || n.root != owner {
+			return
+		}
+	}
+	notifyReparented(n.body, owner)
+	for _, target := range n.children {
+		for _, child := range target.nodes {
+			notifyReparented(child, owner)
+			if n.released || n.root != owner {
+				return
+			}
 		}
 	}
 }

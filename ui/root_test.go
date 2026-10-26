@@ -435,15 +435,11 @@ type testCompositionView struct {
 	builds *int
 }
 
-func (v *testCompositionView) Build() View {
+func (v *testCompositionView) Build(BuildContext) View {
 	if v.builds != nil {
 		*v.builds = *v.builds + 1
 	}
 	return v.view
-}
-
-func (v *lifecycleView) Build() View {
-	return v
 }
 
 func (v *lifecycleView) Mount(ctx BuildContext) gui.Widget {
@@ -807,20 +803,21 @@ func TestRootIDAndTypeMustBothMatch(t *testing.T) {
 	}
 }
 
-func TestRootRejectsDuplicateNormalizedIDsBeforeMutation(t *testing.T) {
+func TestRootRejectsDuplicateDeclarationIDsBeforeMutation(t *testing.T) {
 	r := newRoot()
 	t.Cleanup(r.unmountWindow)
 	box := r.update(VBox(Label("original").ID("same"))).(*gui.LinearBox)
 	old := box.Children()[0].(*gui.Label)
 	defer func() {
 		if recover() == nil {
-			t.Fatal("duplicate normalized IDs accepted")
+			t.Fatal("duplicate declaration IDs accepted")
 		}
 		if len(box.Children()) != 1 || box.Children()[0] != old || old.Text() != "original" {
 			t.Fatal("invalid declaration modified existing children")
 		}
 	}()
-	r.update(VBox(Label("changed").ID("same"), &testCompositionView{view: Label("duplicate").ID("same")}))
+	// 身份属于组合声明本身，不再把内部输出 ID 当作父列表中的组合 ID。
+	r.update(VBox(Label("changed").ID("same"), &testCompositionView{viewBase: viewBase{id: "same"}, view: Label("duplicate")}))
 }
 
 func TestRootUnidentifiedNodesRemainPositional(t *testing.T) {
@@ -839,7 +836,6 @@ type mountingView struct {
 	update func(BuildContext)
 }
 
-func (v *mountingView) Build() View                           { return v }
 func (v *mountingView) Mount(BuildContext) gui.Widget         { return gui.NewLabel("") }
 func (v *mountingView) Unmount(BuildContext, gui.Widget)      {}
 func (v *mountingView) Update(ctx BuildContext, _ gui.Widget) { v.update(ctx) }
@@ -889,7 +885,6 @@ func TestChildTargetsAreIndependentAndOmittedCallsPreserveContent(t *testing.T) 
 
 type nilMountView struct{ viewBase }
 
-func (v *nilMountView) Build() View                    { return v }
 func (*nilMountView) Mount(BuildContext) gui.Widget    { return nil }
 func (*nilMountView) Update(BuildContext, gui.Widget)  {}
 func (*nilMountView) Unmount(BuildContext, gui.Widget) {}

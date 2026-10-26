@@ -9,8 +9,23 @@ import (
 
 type View interface {
 	base() *viewBase // seal: only an embedded ViewBase/viewBase provides it
+}
 
-	Build() View
+// ComposeView owns a persistent declarative node and builds its single content
+// view. A nil result keeps this node and its State, with no widget output.
+type ComposeView interface {
+	View
+	Build(ctx BuildContext) View
+}
+
+// ObjectView is a composition that exposes one object to descendants. Object
+// reads existing state without creating resources. Release runs once, after
+// descendants have released their connections; ownership remains the view's.
+// It also cleans up failed first builds and must tolerate partial State.
+type ObjectView interface {
+	ComposeView
+	Object(ctx BuildContext) any
+	Release(ctx BuildContext)
 }
 
 type WidgetView interface {
@@ -20,13 +35,22 @@ type WidgetView interface {
 	Unmount(ctx BuildContext, widget gui.Widget)
 }
 
+// ReparentedView refreshes ancestry-dependent connections after an explicit
+// subtree transfer. The complete logical ancestry is installed before calling
+// it, before the transfer's committed callback. Do not rebuild or replay other
+// declarative properties here. Ordinary updates already call Build or Update.
+type ReparentedView interface {
+	View
+	Reparented(ctx BuildContext)
+}
+
 // BuildContext borrows its View node on the GUI thread. A virtualized adapter
 // may retain it for delayed row builds: child updates resolve the current Root
 // and become no-ops after release. It does not extend the node's lifetime.
 type BuildContext interface {
 	State() any
 	SetState(any)
-	// Coordinator borrows this node's identity for explicit subtree transfers.
+	// Coordinator borrows this node's identity for adapter coordination.
 	// It expires on View release and follows an explicitly transferred subtree.
 	Coordinator() *Coordinator
 	// AfterUpdate runs after the entire View tree has been reconciled and
@@ -42,8 +66,9 @@ type BuildContext interface {
 	UpdateChild(target Bin, child View) gui.Widget
 	// UpdateChildren reconciles one target's list in declaration order. Results
 	// correspond to input indices; nil views/builds/mounts yield nil entries.
-	// Only actual widgets occupy reconciliation positions. An empty list clears
-	// managed children. Omitting a call does not clear a previously used target.
+	// Compositions occupy declaration positions even with no widget output.
+	// An empty list clears managed children. Omitting a call does not clear a
+	// previously used target.
 	UpdateChildren(target Container, children []View) []gui.Widget
 }
 
@@ -85,6 +110,24 @@ type TransferContainer interface {
 type ViewBase[T any] struct {
 	Self *T
 	viewBase
+}
+
+// ComposeBase supplies declarative identity without widget-only modifiers.
+// Embed it in a composition and initialize Self in its constructor.
+type ComposeBase[T any] struct {
+	Self *T
+	viewBase
+}
+
+// ID identifies this declaration within its mounting slot. It also names an
+// ObjectView for explicit ancestor lookup; it does not rename its widget output.
+func (b *ComposeBase[T]) ID(id string) *T {
+	b.id = id
+	b.fields.Set(viewID, true)
+	if b.Self == nil {
+		panic("ui: composition not initialized (ComposeBase.Self is nil)")
+	}
+	return b.Self
 }
 
 // viewBase is the non-generic core every View carries: the shared modifier state
