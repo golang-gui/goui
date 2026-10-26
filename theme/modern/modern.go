@@ -287,6 +287,10 @@ func builtInRules(options Options) []style.Rule {
 			text(button.name).ForegroundColor(foreground).BackgroundColor(button.bg[0]).BorderColor(p.border).BorderWidth(borderWidth).Radius(6),
 			hoverRule,
 			pressedRule,
+			pressedRule.Part("expanded").State(style.Normal),
+			pressedRule.Part("expanded").State(style.Hovered),
+			pressedRule.Part("expanded").State(style.Pressed),
+			style.Name(button.name).Part("expanded").State(style.Disabled).ForegroundColor(p.disabled).BackgroundColor(disabledBackground),
 			style.Name(button.name).State(style.Disabled).ForegroundColor(p.disabled).BackgroundColor(disabledBackground),
 			// Pointer focus has no decoration; keyboard focus uses a thin border.
 			// Keep the optional border color for application Focused overrides.

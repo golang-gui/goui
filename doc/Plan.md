@@ -3,6 +3,32 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## MenuButtonGroup 命令式与声明式接入（2026-10-26）
+
+- [x] 新增 gui.MenuButtonGroup／NewMenuButtonGroup 和按钮 Group／SetGroup；组仅
+  保存身份，不持有成员、布局、窗口或弹窗。活动查询复用 Window.Popovers，限定
+  同一 Widget Root；键盘顺序来自实际树。成员对象不依赖声明构造顺序。
+- [x] MenuButton 使用非模态 PopoverMenu，按钮保留 owner 逻辑焦点；开启后正常
+  Motion 切换同组菜单，左右循环，上下／Home／End／Enter／Space 转发到菜单。
+  Tab 关闭并继续导航，空闲悬停不打开，外部普通按钮点击关闭并执行一次。
+- [x] 公开 Opened／Open／Close 和 ConnectOpenError；同步错误直接返回，输入
+  错误只通知一次。切换和 Closed／OpenError 回调检查修订、生命周期、组、Root
+  和显示代次，不用清空信号掩盖回调销毁，也不吞掉真实 Closed。
+- [x] ui.MenuButtonGroup("id", child) 复用 ComposeBase／ObjectView；Group("id")
+  查找最近同名对象祖先，缺失／类型错误为配置错误，不产生包装 Widget，不向
+  Root 或 BuildContext 添加具体控件分支。覆盖同名分支、单成员及整组移交、
+  失败回滚和释放；模型复用时动作读取最新声明闭包，卸载断开并清空引用。
+- [x] Basic／Modern（含 Primary／Flat）提供独立 expanded 部件；语义保留正常
+  Button 角色及 Click，增加 MenuButtonInfo 的 HasMenu／Opened／Grouped。
+- [x] 安装 MenuModel 不比较接口值，支持切片等不可比较实现，显式 SetMenu 可
+  重新安装同一模型。旧生产文件 overlay 下，切片型模型回归触发比较 panic；
+  修正后安装、更新、导航和重开均通过。UI 只在结构变化时重新安装模型。
+- [x] 仅从组功能暂存索引导出源码，关闭工作区执行
+  `go test -json ./gui ./ui ./widgets/... ./theme/... -count=1`，1678 PASS、
+  0 FAIL、0 SKIP。完整候选的本机全仓、race、vet 和两端相关测试也已通过；
+  Demo／原生窗口和完整验收见后续专项记录。具体行为及参考依据已同步
+  DesignMenuButtonGroup／DesignPopup、Menu／UI 设计和 AI 使用参考。
+
 ## Popover 非模态输入与自动关闭（2026-10-26）
 
 - [x] 将 Modal 的输入独占与 AutoDismiss 的关闭请求分开；AutoDismiss 默认 false，

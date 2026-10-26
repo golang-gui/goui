@@ -61,15 +61,13 @@ InkBounds、文本布局图片或 Widget 回调接口。Linux arm64 全仓的既
   EGL／GLES、Wayland、musl 和实体 GPU／真实性能留在范围之外或后续专项验证。
 - 当前只完成设计；环境、代码、窗口验收、CI 和新 Demo 产物均未据此完成或发布。
 
-### MenuButton 分组切换：待实现
+### MenuButton 分组切换：已实现
 
-- 设计：[DesignMenuButtonGroup](DesignMenuButtonGroup.md)。点击开启后悬停切换
-  同组菜单，允许普通布局与功能按钮混排，不新增 MenuBar 容器。
-- 命令式 SetGroup 接收组对象，声明式 Group 接收组名；复用已实现的
-  显式 ObjectView 声明管理实例与生命周期，成员通过祖先 ID 关联，不要求
-  构建前取得控件实例。
-- 实施需补齐 owner modal 指针协作、切换重入保护、键盘、展开样式与快照；
-  不以子菜单为前置，尚未修改 MenuButton 的实现。
+- [DesignMenuButtonGroup](DesignMenuButtonGroup.md)：命令式 MenuButtonGroup 与
+  显式 ObjectView 声明、悬停／左右键切换、普通按钮混排、展开样式和语义状态。
+- 使用非模态菜单，复用通用 Popover.AutoDismiss 与明确的按键转发；Window
+  不识别 MenuButton 类型，不增加菜单专用指针协作。验收与平台缺口见 Plan。
+- 子菜单、原生菜单栏及助记符仍不属于本轮能力。
 
 <a id="future-submenu"></a>
 

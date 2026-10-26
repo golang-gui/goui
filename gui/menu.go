@@ -3,7 +3,6 @@ package gui
 import (
 	"errors"
 	"fmt"
-	"log"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
@@ -111,18 +110,30 @@ type PopoverMenu struct {
 	closed    signal.Signal0
 	hClosed   signal.Handle
 	maxHeight float32
+	modal     bool
 }
 
 const menuScrollbarGap = 6
 
 func NewPopoverMenu(anchor Widget) *PopoverMenu {
-	return &PopoverMenu{anchor: anchor}
+	return &PopoverMenu{anchor: anchor, modal: true}
 }
 
-func (pm *PopoverMenu) SetMenu(m MenuModel) {
-	if pm.model == m {
-		return
+// Modal reports the menu's input policy. Menus are modal by default.
+func (pm *PopoverMenu) Modal() bool { return pm.modal }
+
+// SetModal selects owner input exclusivity. A modeless presenter leaves key
+// forwarding to its controlling widget; automatic dismissal stays enabled.
+func (pm *PopoverMenu) SetModal(modal bool) {
+	pm.modal = modal
+	if pm.popover != nil {
+		pm.popover.SetModal(modal)
 	}
+}
+
+// SetMenu installs the model and refreshes the content, including when the same
+// instance is supplied. Model implementations need not be comparable.
+func (pm *PopoverMenu) SetMenu(m MenuModel) {
 	pm.model = m
 	if pm.content != nil {
 		pm.content.SetModel(m)
@@ -201,7 +212,7 @@ func (pm *PopoverMenu) replacePopover(transparent bool) {
 	}
 	p := NewPopover(pm.anchor, &PopoverOptions{Transparent: transparent})
 	p.SetStyleName(styleNameMenu)
-	p.SetModal(true)
+	p.SetModal(pm.modal)
 	p.SetAutoDismiss(true)
 	p.ConnectDismissRequest(pm.Hide)
 	pm.hClosed = p.ConnectClosed(pm.closed.Emit)
@@ -392,9 +403,6 @@ func (mc *menuContent) invalidate() {
 func (mc *menuContent) StyleChanged() { mc.invalidate() }
 
 func (mc *menuContent) SetModel(m ListData[*MenuItem]) {
-	if mc.model == m {
-		return
-	}
 	mc.disconnectModel()
 	mc.model = m
 	mc.delegate.model = m
@@ -720,156 +728,6 @@ func (r *menuItemRow) setPressed(p bool) {
 
 func (r *menuItemRow) requestPaint() {
 	if root := r.Root(); root != nil {
-		_ = root.RequestPaint()
-	}
-}
-
-// --- MenuButton: a button that opens a PopoverMenu below itself ---
-
-// MenuButton is a command-style button that opens a PopoverMenu on click.
-// It mirrors the Button widget's single-child, centered content layout.
-type MenuButton struct {
-	WidgetBase
-	content Widget
-	padding float32
-	hovered bool
-	pressed bool
-	menu    ListData[*MenuItem]
-	pm      *PopoverMenu
-	click   *ClickEventController
-	motion  *MotionEventController
-	closed  signal.Signal0
-}
-
-func NewMenuButton() *MenuButton {
-	b := &MenuButton{padding: defaultButtonPadding}
-	b.SetFocusable(true)
-	b.ConnectFocused(func(bool) { b.RequestPaint() })
-	b.SetLayoutManager(buttonContentLayout{})
-
-	b.motion = NewMotionEventController()
-	b.motion.ConnectContainsHover(b.setHovered)
-	b.AddEventController(b.motion)
-
-	b.click = NewClickEventController()
-	b.click.ConnectPressed(func(ctx EventContext, pressed bool) {
-		b.setPressed(pressed)
-		ctx.StopPropagation()
-	})
-	b.click.ConnectClicked(func(ctx EventContext) {
-		b.openMenu()
-		ctx.StopPropagation()
-	})
-	b.AddEventController(b.click)
-	addButtonKeys(b, b.openMenu)
-	return b
-}
-
-func (b *MenuButton) SetChild(child Widget) {
-	if b.content == child {
-		return
-	}
-	if b.content != nil {
-		b.WidgetBase.RemoveChild(b.content)
-	}
-	b.content = child
-	if child != nil {
-		b.WidgetBase.AddChild(b, child)
-	}
-	b.RequestLayout()
-}
-
-func (b *MenuButton) Child() Widget { return b.content }
-
-func (b *MenuButton) SetMenu(m MenuModel) {
-	b.menu = m
-	if b.pm != nil {
-		b.pm.SetMenu(m)
-	}
-}
-
-func (b *MenuButton) Menu() MenuModel { return b.menu }
-
-func (b *MenuButton) ConnectClosed(fn func()) signal.Handle {
-	return b.closed.Connect(fn)
-}
-
-func (b *MenuButton) openMenu() {
-	if b.menu == nil || b.Destroyed() || !IsEnabled(b) {
-		return
-	}
-	if b.pm == nil {
-		b.pm = NewPopoverMenu(b)
-		b.pm.ConnectClosed(b.closed.Emit)
-	}
-	b.pm.SetMenu(b.menu)
-	if err := b.pm.show(PopoverPlacementBottom, geometry.Point{}); err != nil {
-		log.Printf("goui: open menu: %v", err)
-	}
-}
-
-func (b *MenuButton) Measure(c layout.Constraint) layout.Measurement {
-	if !b.Visible() {
-		return layout.Measurement{}
-	}
-	return measureButtonContent(&b.WidgetBase, c, b.padding, 0)
-}
-
-func (b *MenuButton) Arrange(rect geometry.Rectangle) {
-	b.rect = rect
-	if manager := b.LayoutManager(); manager != nil {
-		manager.Arrange(b.visibleChildren(), geometry.Rect(0, 0, rect.Width, rect.Height).Inset(b.padding))
-	}
-}
-
-func (b *MenuButton) Paint(p Painter) {
-	if !b.Visible() {
-		return
-	}
-	rect := geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height)
-	paintStyledBox(p, rect, b.resolvedStyle())
-	paintButtonFocus(p, rect, &b.WidgetBase)
-}
-
-func (b *MenuButton) resolvedStyle() style.Style {
-	st := style.Normal
-	if !IsEnabled(b) {
-		st = style.Disabled
-	} else if b.pressed {
-		st = style.Pressed
-	} else if b.hovered {
-		st = style.Hovered
-	}
-	return ResolveWidgetStyle(b, buttonStyleName(&b.WidgetBase), style.PartDefault, st)
-}
-
-func (b *MenuButton) Snapshot() WidgetInfo {
-	info := b.WidgetBase.Snapshot()
-	info.Role = RoleButton
-	if info.Enabled {
-		info.Actions = append(info.Actions, ActionClick)
-	}
-	return info
-}
-
-func (b *MenuButton) setHovered(h bool) {
-	if b.hovered == h {
-		return
-	}
-	b.hovered = h
-	b.requestPaint()
-}
-
-func (b *MenuButton) setPressed(p bool) {
-	if b.pressed == p {
-		return
-	}
-	b.pressed = p
-	b.requestPaint()
-}
-
-func (b *MenuButton) requestPaint() {
-	if root := b.Root(); root != nil {
 		_ = root.RequestPaint()
 	}
 }

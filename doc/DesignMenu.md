@@ -32,10 +32,11 @@
 只协调到 `gui.MenuButton`，不另建菜单控件体系。"文件 ▾" 用
 `ui.MenuButton("File").Menu(ui.MenuItem("Open", onOpen), …)`，子菜单的未实施设计见
 [子菜单设计 §13](DesignMenuSubmenu.md#13-ui-层)。
-拟增加的 `ui.Submenu(label, items...)`、Action 闭包刷新和错误信号尚未实现。
+`ui.Submenu(label, items...)` 尚未实现。MenuButton 的声明式动作在重建后访问
+最新闭包；输入打开错误通过 OnOpenError 反馈，同步 Open 直接返回错误。
 
 MenuButton 分组切换另见 [MenuButton 分组设计](DesignMenuButtonGroup.md)，
-目前仅完成设计。拟通过命令式组对象、声明式 `.Group("name")` 组合菜单栏，
+本轮通过命令式组对象与显式声明式组、`.Group("name")` 组合菜单栏，
 允许普通按钮混排；不要求新增 MenuBar 容器，也不以子菜单实现为前置。
 
 ## 2. MenuModel 复用 ListData

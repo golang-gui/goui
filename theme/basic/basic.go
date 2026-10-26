@@ -108,6 +108,10 @@ func coreRules() []style.Rule {
 		style.Name(styleNameButton).
 			State(style.Pressed).
 			BackgroundColor(color.RGBA{R: 180, G: 180, B: 180, A: 255}),
+		style.Name(styleNameButton).Part("expanded").BackgroundColor(color.RGBA{R: 180, G: 180, B: 180, A: 255}),
+		style.Name(styleNameButton).Part("expanded").State(style.Hovered).BackgroundColor(color.RGBA{R: 170, G: 170, B: 170, A: 255}),
+		style.Name(styleNameButton).Part("expanded").State(style.Pressed).BackgroundColor(color.RGBA{R: 160, G: 160, B: 160, A: 255}),
+		style.Name(styleNameButton).Part("expanded").State(style.Disabled).ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}).BackgroundColor(color.RGBA{R: 210, G: 210, B: 210, A: 255}),
 		style.Name(styleNameButton).State(style.Disabled).
 			ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}),
 		style.Name(styleNameButton).Part(stylePartFocus).State(style.Focused).
