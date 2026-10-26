@@ -10,7 +10,7 @@ UI 的 View 是本次声明；不要为每段 UI 新建一套状态、事件或�
 | 组合 Widget | 普通 Go 工厂组合 LinearBox／Button／Label 等，返回根；需要操作内部控件时由组件对象持有引用 |
 | 扩展 Widget | 嵌入已正确初始化的具体控件，添加 setter 或重写少量方法，保留其排版／行为／资源清理 |
 | 实现 Widget | 嵌入 gui.WidgetBase，按需实现 Bin／Container、布局策略、Paint、交互与 Snapshot |
-| 组合 View | 优先用函数返回已有 View；参数化结构只实现 Build，展开为实际根 View |
+| 组合 View | 简单片段用函数；有独立身份／State 时嵌 ComposeBase 实现 ComposeView.Build(ctx) |
 | 扩展 View | 外层使用自己的 ui.ViewBase[T]，以命名字段复用原 View 并显式委托生命周期；核对上下文 State 归属 |
 | 实现 View | 实现 ui.WidgetView，将公开 setter／signal 协调到 Widget，使用 UpdateChild／UpdateChildren 管理内容 |
 
@@ -39,12 +39,15 @@ UI 的 View 是本次声明；不要为每段 UI 新建一套状态、事件或�
 ## View 必须核对的边界
 
 - 具体类型嵌入 ui.ViewBase[Concrete]，构造函数设置 `v.Self = v`，通过指针使用。
-  WidgetView 由 Mount、Update、Unmount 提供生命周期，Build 返回自身。
-- 纯 Build 组件需返回另一个有效 View。它本身没有独立协调节点或 ctx.State；
-  当前共享修饰器不会自动从组合外壳传给展开根。优先函数直接返回实际根 View，
-  或显式把业务参数作用到 Build 结果，不承诺外壳 .ID／.Style 会自动生效。
-- 协调先识别 WidgetView，再决定是否调用 Build。嵌入具体 WidgetView 后，只
-  重写 Build 不会让它按纯组合组件展开。
+  WidgetView 只由 Mount、Update、Unmount 提供生命周期，无须 Build 占位方法。
+- 组合声明嵌 ui.ComposeBase[T]，实现 Build(ctx)；节点拥有独立 State，返回 nil
+  仅清空内容。声明 ID 控制组件身份，不自动转发给输出 Widget；样式／布局
+  属性直接声明在内容上。WidgetView 和 ComposeView 不能同时实现。
+- 对象声明实现 ObjectView：Build 初始化／更新 State，Object(ctx) 只读返回
+  现有对象，Release(ctx) 在后代清理后释放自己拥有的资源，也须处理构建失败。
+  `ui.FindAncestor[T](ctx, id)` 只查询最近的同名对象祖先，不隐式创建或跨窗口搜索。
+- CheckButton 的 .Group("id") 必须位于明确的 wui.CheckGroup("id", child)
+  声明内；普通按钮混排不会自动加入。不要在每次 Build 中重建组对象。
 - 直接嵌入 *ui.LabelView 等，链式方法通常仍返回内层类型。若传出这个返回值，
   外层扩展的 Update 等逻辑就丢失。独立链式扩展用自己的 ViewBase 加命名代理，
   不同时嵌两个 base，不强行更换内层 Self 的泛型类型。
@@ -53,7 +56,7 @@ UI 的 View 是本次声明；不要为每段 UI 新建一套状态、事件或�
   状态，而非第一次创建的瞬时 View；Unmount 断开连接并释放协调资源。
 - 复用原 View 时，一个节点只有一个 State 槽。不能覆盖原 Mount 保存的状态后
   再调用原 Update／Unmount。需要独立状态时，将原 View 当真实受管孩子协调。
-- 同挂载目标中的 ID 与最终具体 WidgetView 类型控制复用；未设 ID 按位置。
+- 同挂载目标中的 ID 与声明自身具体类型控制复用；未设 ID 按位置。
   回调、模型和资源是否持久不能靠 View 指针是否相等判断。受管子树不能任意重挂。
 - 子树通过 BuildContext.UpdateChild／UpdateChildren，目标是稳定非 nil 指针。
   nil 单子／空列表用于明确清空；没有调用不代表清空。不重复 Mount 每个孩子，

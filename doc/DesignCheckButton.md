@@ -116,15 +116,48 @@ wui.CheckButton("记住登录").Checked(remember).OnChange(func(s wui.CheckState
 ```
 
 通过 Child/Content/Text、Group、Appearance、CheckState、Checked、Enabled、
-Padding 与 OnChange 链式配置。Group 在重建函数外创建；声明重建静默同步，
+Padding 与 OnChange 链式配置。命令式 SetGroup 接收 `*widgets.CheckGroup`；
+声明式 Group 引用一个明确的祖先 CheckGroup 声明：
+
+```go
+wui.CheckGroup("appearance", ui.HBox(
+    wui.CheckButton("Light").Group("appearance").Checked(mode == "light"),
+    wui.CheckButton("Dark").Group("appearance").Checked(mode == "dark"),
+    ui.Button("Reset"),
+))
+```
+
+CheckGroupView 使用 ComposeBase／ObjectView，首次 Build 在节点 State 中
+创建实际 widgets.CheckGroup，Object 只返回现有实例，Release 不涉及原生
+资源。声明在 Widget 树中没有占位控件，不改变 HBox 的布局和按钮位置。
+
+Group 的非空参数通过 FindAncestor 查询最近的同名对象声明。缺失／类型不符
+是配置错误，不能隐式创建或静默变成独立按钮。空字符串／省略表示独立按钮。
+不同声明分支可以复用相同组 ID；同一路径中内层同名声明遮蔽外层。只有显式
+成员参与互斥，普通 Button 可以混排，不根据父容器自动推断成员。
+
+重建保留对象和 Widget 身份；空内容仍保留对象声明，最后一个成员离开也
+不会删除仍在树中的组。成员 Unmount 时解除关联，后代释放后再释放对象
+声明。单成员移交通过通用 Reparented 刷新祖先关联；整组移交保留原组对象。
+Root 不持有组表，不再使用此前的 ui.BindGroup 工厂及成员计数。
+
+声明重建静默同步，
 保留 Widget 身份与单个 Change 连接，回调替换为最新闭包，卸载时断开连接。
 内容使用已有 ui.Bin 协调。Text 的 Label 显式使用 check-button-text，不继承父样式。
+
+参考官方公开契约（2026-10-25 查阅）：
+[WPF RadioButton.GroupName](https://learn.microsoft.com/en-us/dotnet/api/system.windows.controls.radiobutton.groupname?view=windowsdesktop-10.0)
+使用字符串表达互斥关联；[Qt Quick ButtonGroup](https://doc.qt.io/qt-6/qml-qtquick-controls-buttongroup.html)
+使用独立组对象及附加属性。二者说明关联可由声明层解析；GOUI 选择名字以免
+应用承担组对象的创建和跨 Build 存活。显式祖先作用域及移交规则属于 GOUI
+自身契约，不将参考框架的作用域实现推断为相同。
 
 ## 实施与验证
 
 代码涉及 widgets/check_button.go、widgets/ui、theme/basic、theme/modern、
 widgets/info.go，以及包内测试和 tests/window/widgets/check_button 独立窗口例程。
-不修改 GUI 内核或平台。验证参数／三态、组原子性与重入、正常输入派发／取消／
+不修改 GUI 控件内核或平台；声明式分组复用持久组合节点和通用祖先对象查询。
+验证参数／三态、组原子性与重入、正常输入派发／取消／
 子控件竞争、布局 baseline／硬约束、快照、亮暗主题及像素、声明协调与连接清理。
 完成后执行全仓测试、相关 race/vet、Windows amd64/macOS arm64 编译，本机
 Software/OpenGL 1x/2x 桌面操作；编译不替代两端原生桌面验收。

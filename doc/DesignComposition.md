@@ -1,6 +1,7 @@
 # 组合声明与对象声明
 
-本设计已实现（2026-10-26）。平台验收范围和限制见 Plan。
+本设计已实现（2026-10-26），替代此前 ui.BindGroup 的隐式 Root 命名组。
+平台验收范围和限制见 Plan；MenuButton 的菜单分组行为仍属于独立待实施功能。
 
 ## 契约
 
@@ -43,6 +44,20 @@ ObjectView 且 Object 的结果兼容 T，否则返回 false，不越过同名�
 对象可以是任意 Go 类型，关联范围仍有明确限制。调用方只借用对象；成员在
 Unmount 中解除关联，所有后代释放后再执行所属 ObjectView.Release。
 
+```go
+wui.CheckGroup("appearance",
+    ui.HBox(
+        wui.CheckButton("Light").Group("appearance"),
+        wui.CheckButton("Dark").Group("appearance"),
+        ui.Button("Reset"),
+    ),
+)
+```
+
+CheckGroup 声明自己持有 widgets.CheckGroup，CheckButton 的非空 Group 参数
+只引用显式祖先。缺失／类型错误属于配置错误，不能自动创建或静默变成独立
+按钮。空名表示独立。不同声明分支可复用相同组 ID；内层同名声明遮蔽外层。
+
 ## 释放、回调与移交
 
 先清理后代的声明连接，再释放对象声明；Window 销毁仍保留 GUI 树给窗口
@@ -71,5 +86,6 @@ AfterTransfer 通知仍在 committed 之后。回滚保留原声明身份；整�
 包内回归覆盖组合身份／State、空内容、输出替换、排序、位置和 ID、祖先查询
 与同名遮蔽、不同对象类型、释放顺序及回调销毁、显式移交和回滚、GUI 树与
 快照无包装节点。保留并调整原协调测试，契约改变的断言注明原因。
-新增独立组合声明窗口例程验证普通对象订阅、文字输入、内容切换与最终释放。
+现有 CheckButton 独立窗口验证改成显式组，复验真实键盘／鼠标、主题、重建
+和回调销毁；SourceView 及自定义 WidgetView 使用方同步删除无意义的 Build。
 全仓测试、相关 race／vet、Windows／macOS 编译与原生桌面结果分别记录。

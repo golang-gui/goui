@@ -57,7 +57,7 @@ func main() {
 	fallback := flag.Bool("fallback-style", false, "使用显式组合的 widgets 兜底样式")
 	destroyOnChange := flag.Bool("destroy-on-change", false, "旧选中成员的 Change 回调销毁窗口")
 	flag.Parse()
-	radioGroup, modeGroup := widgets.NewCheckGroup(), widgets.NewCheckGroup()
+	var radioGroup, modeGroup *widgets.CheckGroup
 	independent, mixed, parent := wui.CheckUnchecked, wui.CheckMixed, wui.CheckUnchecked
 	radio, mode := 1, 1
 	toggle, enabled, dark, red := false, true, false, false
@@ -91,6 +91,13 @@ func main() {
 		}
 		check := func() {
 			win := app.FindWindow("checks")
+			actualRadio := gui.FindWidget(win, "radio-1").(*widgets.CheckButton).Group()
+			actualMode := gui.FindWidget(win, "mode-1").(*widgets.CheckButton).Group()
+			if actualRadio == nil || actualMode == nil || actualRadio == actualMode ||
+				radioGroup != nil && radioGroup != actualRadio || modeGroup != nil && modeGroup != actualMode {
+				panic("named group identity/isolation incorrect")
+			}
+			radioGroup, modeGroup = actualRadio, actualMode
 			settings := app.Settings()
 			fmt.Printf("FONT family=%q size=%g\n", settings.FontFamily(), settings.FontSize())
 			want := map[string]wui.CheckState{"independent": independent, "mixed": mixed, "parent": parent, "disabled": wui.CheckChecked}
@@ -173,7 +180,7 @@ func main() {
 			ui.Window("checks").Title("GOUI CheckButton").Size(900, 640).Chrome(ui.WindowChromeIntegrated).
 				OnDestroy(func() {
 					app.Post(func() {
-						if radioGroup.Checked() != nil || modeGroup.Checked() != nil {
+						if radioGroup != nil && radioGroup.Checked() != nil || modeGroup != nil && modeGroup.Checked() != nil {
 							panic("destroyed selection retained")
 						}
 						if *destroyOnChange && (changes != 1 || lateChanges != 0) {
@@ -199,17 +206,17 @@ func main() {
 						).Spacing(8),
 						wui.CheckButton("Independent").ID("independent").CheckState(independent).Enabled(enabled).OnChange(change(&independent)),
 						wui.CheckButton("Mixed").ID("mixed").CheckState(mixed).OnChange(change(&mixed)),
-						ui.HBox(
-							wui.CheckButton("Radio A").ID("radio-1").Group(radioGroup).Checked(radio == 1).OnChange(choice(&radio, 1)),
-							wui.CheckButton("Radio B").ID("radio-2").Group(radioGroup).Checked(radio == 2).OnChange(choice(&radio, 2)),
-							wui.CheckButton("Radio C").ID("radio-3").Group(radioGroup).Checked(radio == 3).OnChange(choice(&radio, 3)),
-						).Spacing(12),
-						ui.HBox(
+						wui.CheckGroup("radio", ui.HBox(
+							wui.CheckButton("Radio A").ID("radio-1").Group("radio").Checked(radio == 1).OnChange(choice(&radio, 1)),
+							wui.CheckButton("Radio B").ID("radio-2").Group("radio").Checked(radio == 2).OnChange(choice(&radio, 2)),
+							wui.CheckButton("Radio C").ID("radio-3").Group("radio").Checked(radio == 3).OnChange(choice(&radio, 3)),
+						).Spacing(12)),
+						wui.CheckGroup("mode", ui.HBox(
 							ui.Button("Toggle").ID("ordinary").OnClick(func() { ordinaryClicks++; update() }),
 							wui.CheckButton("Toggle").ID("toggle").Appearance(wui.CheckAppearanceButton).Checked(toggle).OnChange(func(s wui.CheckState) { toggle = s == wui.CheckChecked; changes++; update() }),
-							wui.CheckButton("Mode A").ID("mode-1").Appearance(wui.CheckAppearanceButton).Group(modeGroup).Checked(mode == 1).OnChange(choice(&mode, 1)),
-							wui.CheckButton("Mode B").ID("mode-2").Appearance(wui.CheckAppearanceButton).Group(modeGroup).Checked(mode == 2).OnChange(choice(&mode, 2)),
-						).Spacing(12),
+							wui.CheckButton("Mode A").ID("mode-1").Appearance(wui.CheckAppearanceButton).Group("mode").Checked(mode == 1).OnChange(choice(&mode, 1)),
+							wui.CheckButton("Mode B").ID("mode-2").Appearance(wui.CheckAppearanceButton).Group("mode").Checked(mode == 2).OnChange(choice(&mode, 2)),
+						).Spacing(12)),
 						wui.CheckButton().ID("parent").CheckState(parent).OnChange(change(&parent)).Content(
 							ui.HBox(ui.Label("Parent"), ui.Button("Child").ID("child").OnClick(func() { childClicks++; update() })).Spacing(12),
 						),

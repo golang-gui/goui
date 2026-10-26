@@ -19,19 +19,20 @@ const (
 	CheckAppearanceButton    = widgets.CheckAppearanceButton
 )
 
-// CheckButtonView declares selection; it does not implement another state
-// machine. Keep a shared *widgets.CheckGroup outside the rebuilding function.
+// CheckButtonView declares selection and an optional ancestor group reference.
+// The GUI CheckGroup owns exclusivity; CheckGroupView owns its lifetime.
 type CheckButtonView struct {
 	baseui.ViewBase[CheckButtonView]
 	child      baseui.View
 	state      CheckState
-	group      *widgets.CheckGroup
+	group      string
 	appearance CheckAppearance
 	padding    optional.Optional[float32]
 	onChange   func(CheckState)
 }
 
 type checkButtonState struct {
+	button   *widgets.CheckButton
 	padding  float32
 	onChange func(CheckState)
 	change   signal.Handle
@@ -68,7 +69,11 @@ func (v *CheckButtonView) Checked(checked bool) *CheckButtonView {
 	}
 	return v
 }
-func (v *CheckButtonView) Group(group *widgets.CheckGroup) *CheckButtonView {
+
+// Group references an explicit ancestor CheckGroup declaration by ID. Empty
+// leaves the button independent; a missing or incompatible declaration is an
+// application configuration error and never creates an implicit group.
+func (v *CheckButtonView) Group(group string) *CheckButtonView {
 	v.group = group
 	return v
 }
@@ -84,11 +89,10 @@ func (v *CheckButtonView) OnChange(fn func(CheckState)) *CheckButtonView {
 	v.onChange = fn
 	return v
 }
-func (v *CheckButtonView) Build() baseui.View { return v }
 
 func (v *CheckButtonView) Mount(ctx baseui.BuildContext) gui.Widget {
 	b := widgets.NewCheckButton()
-	s := &checkButtonState{padding: b.Padding()}
+	s := &checkButtonState{button: b, padding: b.Padding()}
 	s.change = b.ConnectChange(func(state CheckState) {
 		if s.onChange != nil {
 			s.onChange(state)
@@ -102,17 +106,43 @@ func (v *CheckButtonView) Update(ctx baseui.BuildContext, widget gui.Widget) {
 	b := widget.(*widgets.CheckButton)
 	s := ctx.State().(*checkButtonState)
 	s.onChange = v.onChange
-	b.SetGroup(v.group)
+	v.applyGroup(ctx, s)
+	if ctx.State() != s || b.Destroyed() {
+		return
+	}
 	b.SetCheckState(v.state)
 	b.SetAppearance(v.appearance)
 	b.SetPadding(v.padding.ValueOr(s.padding))
 	ctx.UpdateChild(b, v.child)
 }
 
-func (v *CheckButtonView) Unmount(ctx baseui.BuildContext, _ gui.Widget) {
+func (v *CheckButtonView) Unmount(ctx baseui.BuildContext, widget gui.Widget) {
 	if s, ok := ctx.State().(*checkButtonState); ok {
 		s.change.Disconnect()
+	}
+	widget.(*widgets.CheckButton).SetGroup(nil)
+}
+
+func (v *CheckButtonView) applyGroup(ctx baseui.BuildContext, s *checkButtonState) {
+	if v.group == "" {
+		s.button.SetGroup(nil)
+		return
+	}
+	group, ok := baseui.FindAncestor[*widgets.CheckGroup](ctx, v.group)
+	if ctx.State() != s || s.button.Destroyed() {
+		return
+	}
+	if !ok || group == nil {
+		panic("widgets/ui: CheckButton requires an ancestor CheckGroup with ID " + v.group)
+	}
+	s.button.SetGroup(group)
+}
+
+func (v *CheckButtonView) Reparented(ctx baseui.BuildContext) {
+	if s, ok := ctx.State().(*checkButtonState); ok {
+		v.applyGroup(ctx, s)
 	}
 }
 
 var _ baseui.WidgetView = (*CheckButtonView)(nil)
+var _ baseui.ReparentedView = (*CheckButtonView)(nil)

@@ -47,18 +47,18 @@ func (d *demo) basicPage() ui.View {
 				wui.CheckButton(resource.Toggle()).Appearance(wui.CheckAppearanceButton).Checked(d.toggle).OnChange(func(v wui.CheckState) { d.toggle = v == wui.CheckChecked; change() }),
 				wui.Switch(resource.Switch()).Checked(d.switched).OnChange(func(v bool) { d.switched = v; change() }),
 			).Spacing(18).LineSpacing(12).Enabled(d.enabled),
-			ui.HBox(wui.CheckButton(resource.OptionA()).Group(d.group).Checked(d.radio == 0).OnChange(func(v wui.CheckState) {
+			wui.CheckGroup("basic-options", ui.HBox(wui.CheckButton(resource.OptionA()).Group("basic-options").Checked(d.radio == 0).OnChange(func(v wui.CheckState) {
 				if v == wui.CheckChecked {
 					d.radio = 0
 					change()
 				}
 			}),
-				wui.CheckButton(resource.OptionB()).Group(d.group).Checked(d.radio == 1).OnChange(func(v wui.CheckState) {
+				wui.CheckButton(resource.OptionB()).Group("basic-options").Checked(d.radio == 1).OnChange(func(v wui.CheckState) {
 					if v == wui.CheckChecked {
 						d.radio = 1
 						change()
 					}
-				})).Spacing(20).Enabled(d.enabled)),
+				})).Spacing(20).Enabled(d.enabled))),
 		section(resource.DropDownTitle(),
 			wui.DropDown(d.choices).ID("basic-dropdown").Selected(d.drop).OnSelected(func(i int) { d.drop = i; d.report(fmt.Sprintf(resource.SelectedItemFormat(), i+1)) }).OnOpenError(func(e error) { d.result(resource.OpenDropDown(), e) }).Enabled(d.enabled),
 			wui.DropDown(d.choices).Selected(d.fancyDrop).Item(func(i int, item wui.DropDownItem) ui.View {
