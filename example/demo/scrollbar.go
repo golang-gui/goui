@@ -24,7 +24,6 @@ func scrollBar(value float32, changed func(float32)) *barView {
 	v.Self = v
 	return v
 }
-func (v *barView) Build() ui.View { return v }
 func (*barView) Mount(ctx ui.BuildContext) gui.Widget {
 	w := gui.NewScrollBar(layout.DirectionHorizontal)
 	w.SetMax(100)

@@ -54,8 +54,6 @@ func (v *HeaderBarView) Captions(ids ...string) *HeaderBarView {
 	return v
 }
 
-func (v *HeaderBarView) Build() View { return v }
-
 func (v *HeaderBarView) Mount(ctx BuildContext) gui.Widget {
 	header := gui.NewHeaderBar()
 	state := &headerBarState{initPadding: header.Padding()}

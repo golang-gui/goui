@@ -53,10 +53,6 @@ func (v *ScrollViewView) Child(child View) *ScrollViewView {
 	return v
 }
 
-func (v *ScrollViewView) Build() View {
-	return v
-}
-
 func (v *ScrollViewView) Mount(BuildContext) gui.Widget {
 	return gui.NewScrollView()
 }

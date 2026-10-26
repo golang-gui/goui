@@ -82,10 +82,6 @@ func (v *WrapView) Children(children ...View) *WrapView {
 	return v
 }
 
-func (v *WrapView) Build() View {
-	return v
-}
-
 func (v *WrapView) Mount(BuildContext) gui.Widget {
 	return gui.NewWrapBox(v.direction)
 }

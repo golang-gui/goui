@@ -61,7 +61,6 @@ func defaultButton(onClick func()) *defaultButtonView {
 	return v
 }
 
-func (v *defaultButtonView) Build() ui.View { return v }
 func (v *defaultButtonView) Mount(ctx ui.BuildContext) gui.Widget {
 	b := gui.NewButton()
 	b.SetTooltip(defaultTooltip)

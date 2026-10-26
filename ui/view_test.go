@@ -87,7 +87,6 @@ type enabledWidgetView struct {
 	make func() gui.Widget
 }
 
-func (v *enabledWidgetView) Build() View                    { return v }
 func (v *enabledWidgetView) Mount(BuildContext) gui.Widget  { return v.make() }
 func (*enabledWidgetView) Update(BuildContext, gui.Widget)  {}
 func (*enabledWidgetView) Unmount(BuildContext, gui.Widget) {}
@@ -153,7 +152,6 @@ func newInitialIdentityView() *initialIdentityView {
 	return v
 }
 
-func (v *initialIdentityView) Build() View { return v }
 func (v *initialIdentityView) Mount(BuildContext) gui.Widget {
 	w := gui.NewLabel("content")
 	w.SetID("original-id")

@@ -33,10 +33,6 @@ func (v *ImageView) ContentSize(width, height float32) *ImageView {
 	return v
 }
 
-func (v *ImageView) Build() View {
-	return v
-}
-
 func (v *ImageView) Mount(BuildContext) gui.Widget {
 	return gui.NewImage(v.img)
 }

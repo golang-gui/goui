@@ -72,10 +72,6 @@ func (v *BoxView) Children(children ...View) *BoxView {
 	return v
 }
 
-func (v *BoxView) Build() View {
-	return v
-}
-
 func (v *BoxView) Mount(BuildContext) gui.Widget {
 	return gui.NewLinearBox(v.direction)
 }

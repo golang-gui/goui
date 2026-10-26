@@ -76,10 +76,6 @@ func (v *MenuButtonView) Menu(items ...*MenuItemView) *MenuButtonView {
 	return v
 }
 
-func (v *MenuButtonView) Build() View {
-	return v
-}
-
 func (v *MenuButtonView) Mount(ctx BuildContext) gui.Widget {
 	button := gui.NewMenuButton()
 	ctx.SetState(&menuButtonState{})

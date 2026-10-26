@@ -207,7 +207,6 @@ type transferCompletionView struct {
 	complete func(*gui.LinearBox)
 }
 
-func (v *transferCompletionView) Build() View { return v }
 func (v *transferCompletionView) Mount(BuildContext) gui.Widget {
 	return gui.NewLinearBox(layout.DirectionVertical)
 }

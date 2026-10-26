@@ -53,7 +53,6 @@ type frameView struct {
 	size   geometry.Size
 }
 
-func (v *frameView) Build() ui.View { return v }
 func (v *frameView) Mount(ui.BuildContext) gui.Widget {
 	w := &frameWidget{initialSize: v.size}
 	w.SetLayoutManager(layout.NewFillLayout())

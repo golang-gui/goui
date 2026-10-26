@@ -442,7 +442,6 @@ func paintedCellUI() *paintedCellView {
 	v.Self = v
 	return v
 }
-func (v *paintedCellView) Build() ui.View                    { return v }
 func (*paintedCellView) Mount(ui.BuildContext) gui.Widget    { return new(paintedCell) }
 func (*paintedCellView) Update(ui.BuildContext, gui.Widget)  {}
 func (*paintedCellView) Unmount(ui.BuildContext, gui.Widget) {}

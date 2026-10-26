@@ -91,10 +91,6 @@ func (v *TextInputView) Padding(padding float32) *TextInputView {
 	return v
 }
 
-func (v *TextInputView) Build() View {
-	return v
-}
-
 type textInputState struct {
 	onText      func(string)
 	onSelection func(TextSelection)

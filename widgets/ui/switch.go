@@ -47,7 +47,6 @@ func (v *SwitchView) Checked(checked bool) *SwitchView      { v.checked = checke
 func (v *SwitchView) Padding(padding float32) *SwitchView   { v.padding.SetValue(padding); return v }
 func (v *SwitchView) Animated(animated bool) *SwitchView    { v.animated.SetValue(animated); return v }
 func (v *SwitchView) OnChange(fn func(bool)) *SwitchView    { v.onChange = fn; return v }
-func (v *SwitchView) Build() baseui.View                    { return v }
 
 func (v *SwitchView) Mount(ctx baseui.BuildContext) gui.Widget {
 	b := widgets.NewSwitch()

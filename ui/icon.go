@@ -35,8 +35,6 @@ func (v *IconView) Size(size float32) *IconView {
 	return v
 }
 
-func (v *IconView) Build() View { return v }
-
 func (v *IconView) Mount(ctx BuildContext) gui.Widget {
 	icon := gui.NewIcon(v.source)
 	ctx.SetState(icon.Size())

@@ -131,8 +131,6 @@ func (v *TextViewView) ReadOnly(value bool) *TextViewView          { v.readOnly 
 func (v *TextViewView) AcceptsTab(value bool) *TextViewView        { v.acceptsTab = value; return v }
 func (v *TextViewView) OnChange(fn func(TextChange)) *TextViewView { v.onChange = fn; return v }
 
-func (v *TextViewView) Build() View { return v }
-
 type textViewState struct {
 	model       *TextModel
 	padding     float32

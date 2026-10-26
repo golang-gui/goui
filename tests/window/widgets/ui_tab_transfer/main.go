@@ -95,7 +95,6 @@ type pageView struct {
 	lifecycle func(*gui.TextInput, bool)
 }
 
-func (v *pageView) Build() ui.View { return v }
 func (v *pageView) Mount(ctx ui.BuildContext) gui.Widget {
 	if v.states[v.key] != nil {
 		panic("page was recreated: " + v.key)

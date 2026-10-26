@@ -200,7 +200,6 @@ type inspectionView struct {
 	inspect  func()
 }
 
-func (v *inspectionView) Build() ui.View { return v }
 func (v *inspectionView) Mount(ui.BuildContext) gui.Widget {
 	box := gui.NewLinearBox(layout.DirectionVertical)
 	box.SetSpacing(6)

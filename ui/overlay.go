@@ -67,8 +67,6 @@ func (v *OverlayView) Overlays(items ...*OverlayItemView) *OverlayView {
 	return v
 }
 
-func (v *OverlayView) Build() View { return v }
-
 func (v *OverlayView) Mount(ctx BuildContext) gui.Widget {
 	overlay := gui.NewOverlay()
 	ctx.SetState(&overlayChildren{overlay: overlay, items: make(map[gui.Widget]*overlayItemState)})
