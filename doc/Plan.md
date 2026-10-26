@@ -3,6 +3,27 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## v0.4.0 发布准备（2026-10-26）
+
+- [x] 核对 main 与 GitHub 的 9668f60785649a0fcac12796c93f9f3af75a2241 一致，
+  比较基线为 v0.3.0；开始时新标签和 Release 均不存在。保留用户未跟踪文件，
+  使用仓库外干净源码与独立 X11 桌面验证。
+- [x] Demo 配置升级为 0.4.0 / build 1；发布变化和 API 迁移见 ReleaseV040.md。
+- [x] 原始源码在 macOS 原生复现五组 CoreText 长段落失败。启用完整 Unicode
+  分析、坐标先以 float64 相减；以有限交界文本确认相邻页的原生基线差，避免
+  首行留白重复和混合字体末行截断误差。新增不同首行基线及高布局精度回归，
+  保留既有完整原生段落参考；同步过期的 Windows 11 样式和 macOS BeginResize
+  无输入时的测试预期，不改窗口实现或扩大 skip。
+- [x] 预备源码 Linux 独立 Xvnc／Xfwm4 全仓 2528 PASS、10 SKIP、0 FAIL；
+  macOS 15.7.7 arm64 的相关 GUI／CoreText／platform 测试 1075 PASS、9 SKIP，
+  最终接缝修正的 Paragraph 原生回归 11 PASS。此处是冻结前检查，正式候选另记。
+- [ ] 提交准备改动并冻结候选 SHA；完成全仓测试、相关 race / vet、三平台
+  构建和本轮实际窗口验收。历史记录不替代本轮候选结果。
+- [ ] 三平台 Demo、Mac Developer ID 签名／公证／装订、最终 ZIP 独立解压验证，
+  准备 BUILD-INFO.md 和 SHA256SUMS。
+- [ ] 推送不可移动的版本标签，核对 Draft 和公开附件，检查 Go module 获取，
+  发布后更新中英文 README 下载链接。
+
 ## MenuButtonGroup Demo 与原生验收（2026-10-26）
 
 - [x] Demo 基础页通过显式 MenuButtonGroup 组合“文件／编辑／视图”和普通“运行”
