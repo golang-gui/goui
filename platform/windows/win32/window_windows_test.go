@@ -16,8 +16,8 @@ func TestWindowStyle(t *testing.T) {
 	}{
 		{19045, winapi.WS_POPUP | winapi.WS_THICKFRAME | winapi.WS_MAXIMIZEBOX, 1},
 		{21999, winapi.WS_POPUP | winapi.WS_THICKFRAME | winapi.WS_MAXIMIZEBOX, 1},
-		{22000, winapi.WS_OVERLAPPEDWINDOW, 0},
-		{26100, winapi.WS_OVERLAPPEDWINDOW, 0},
+		{22000, winapi.WS_OVERLAPPED | winapi.WS_THICKFRAME | winapi.WS_MAXIMIZEBOX, 0},
+		{26100, winapi.WS_OVERLAPPED | winapi.WS_THICKFRAME | winapi.WS_MAXIMIZEBOX, 0},
 	} {
 		if style := windowStyle(common.WindowOptions{}, tc.build); style != winapi.WS_OVERLAPPEDWINDOW {
 			t.Fatalf("build %d native style: %#x", tc.build, style)

@@ -285,11 +285,10 @@ func TestWindowInteractionCapabilities(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantMove, wantResize := platform.ErrUnavailable, platform.ErrUnsupported
+	wantMove, wantResize := platform.ErrUnavailable, platform.ErrUnavailable
 	if runtime.GOOS == "windows" {
 		wantMove = platform.ErrUnsupported
-	} else if runtime.GOOS == "linux" {
-		wantResize = platform.ErrUnavailable
+		wantResize = platform.ErrUnsupported
 	}
 	if !errors.Is(moveErr, wantMove) || !errors.Is(resizeErr, wantResize) {
 		t.Fatalf("without input: move=%v want %v, resize=%v want %v", moveErr, wantMove, resizeErr, wantResize)
