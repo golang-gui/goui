@@ -180,10 +180,40 @@ move 期间源销毁不会释放临时持有的子树；目标最终不存在则
 `FindAncestor[T](ctx, id)` 查询最近的同名祖先。缺失或类型不符返回 false，
 不自动创建、不越过同名节点猜测外层；没有全局对象表或隐式依赖追踪。
 
-对象声明移除时，先释放所有后代的连接，再执行 Release(ctx)；回调期间销毁
-必须停止后续挂载。ObjectView 的首次 Build 失败时也会清理正在创建的节点，
-Release 须能处理自己尚未初始化完的 State。Root 只协调组合节点和 Widget
-输出，不保存领域对象表。详见 [组合声明设计](DesignComposition.md)。
+```go
+wui.CheckGroup("appearance", ui.HBox(
+    wui.CheckButton("Light").Group("appearance"),
+    wui.CheckButton("Dark").Group("appearance"),
+))
+```
+
+组的生命周期属于显式 CheckGroup 声明，最后一个成员离开不会删除仍在树中
+的组。对象声明移除时，先释放所有后代的连接，再执行 Release(ctx)；回调
+期间销毁必须停止后续挂载。ObjectView 的首次 Build 失败时也会清理正在创建
+的节点，Release 须能处理自己尚未初始化完的 State。
+
+不同分支可复用组 ID，相同祖先路径内最近者遮蔽外层。组件行为仍在命令式
+控件中。Root 只协调组合节点和 Widget 输出，不保存 groups／groupBinding。
+前一版 BindGroup 工厂、成员计数和根级隐式命名组已移除。
+
+详见 [组合声明设计](DesignComposition.md) 和 [CheckButton](DesignCheckButton.md)。
+
+#### 声明式接口复查结论
+
+2026-10-25 检查 ui、widgets/ui 与 SourceView 的 ui 公开输入：
+
+| 接口类别 | 当前做法与结论 |
+| --- | --- |
+| CheckButton.Group | 用名字引用明确的祖先 CheckGroup 声明，组对象由该声明管理。 |
+| TabBar(viewID) | 已用 ID 关联 TabView，在 AfterUpdate 解析，无须预先取得 Widget。 |
+| TextView.Model、ListView／TreeView／TableView.Model、SourceView.Document | 模型可在 Widget 创建前独立存在，具有业务数据与通知生命周期，保留对象。 |
+| MenuItemView、TableColumnView、TabPageView、OverlayItemView、ShortcutView、DragSourceView | 接收的是可在构建期间创建的声明描述，不是尚未创建的运行时 Widget，保留描述对象。 |
+| SourceView.Scheme／CompletionProvider、IconSource | 配色、回调与图像资源可独立于控件创建，保留原有值／对象。 |
+| TabDetachRequest.TransferTo | 事件发生后显式准备目标并移交，目标实例此时已存在；不属于构建前关联问题，本轮不改动。 |
+| App.FindWindow／FindWidget 与事件中的 Widget | 查询或事件发生后的运行时访问，不用作常规声明关联。 |
+
+未发现第二个要求在构建前取得关联 Widget／组内成员的现有声明式入口。
+此结论不承诺将全部指针型参数改成 ID。
 
 ## 3. 共享修饰器基类:`viewBase` + `ViewBase[T]`(已实现)
 

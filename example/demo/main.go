@@ -40,7 +40,6 @@ type demo struct {
 	enabled, checked, switched, toggle bool
 	mixed                              wui.CheckState
 	radio                              int
-	group                              *widgets.CheckGroup
 	drop, fancyDrop                    int
 	choices                            *gui.SliceListModel[widgets.DropDownItem]
 	input, baselineInput, splitInput   sampleInput
@@ -110,7 +109,7 @@ func main() {
 
 func newDemo() (*demo, error) {
 	d := &demo{status: resource.Welcome(), enabled: true, mixed: wui.CheckMixed,
-		group: widgets.NewCheckGroup(), drop: 0, fancyDrop: 0, wrap: true,
+		drop: 0, fancyDrop: 0, wrap: true,
 		input: newSampleInput(resource.InputSample()), baselineInput: newSampleInput(resource.BaselineSample()), splitInput: newSampleInput(resource.SplitInputSample()),
 		username: ui.MakeState("GOUI"),
 		text:     ui.NewTextModel(resource.EditorSample()), inspection: ui.NewTextModel(resource.InspectionSample()), language: mlang.Language(),

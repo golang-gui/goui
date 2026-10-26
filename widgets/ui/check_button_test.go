@@ -24,17 +24,15 @@ func checkKey(t *testing.T, b *widgets.CheckButton) {
 }
 
 func TestCheckButtonReconcileAndSignals(t *testing.T) {
-	// This adapter double calls Update directly. Shared modifiers, including
-	// Enabled, are covered by ui.TestViewEnabledReconcilesOwnSettingsAndSubtrees
-	// through the actual coordinator rather than bypassed here.
+	// 此替身直接调用 Update，验证默认值与信号绑定；命名分组通过真实协调器
+	// 的 ui/object_test.go 及现有独立窗口例程验证，不能用替身伪造组归属。
 	ctx := new(tabContext)
-	g := widgets.NewCheckGroup()
 	first, latest := 0, 0
-	v := CheckButton("Choice").Checked(true).Group(g).Appearance(CheckAppearanceButton).Padding(9).OnChange(func(CheckState) { first++ })
+	v := CheckButton("Choice").Checked(true).Appearance(CheckAppearanceButton).Padding(9).OnChange(func(CheckState) { first++ })
 	b := v.Mount(ctx).(*widgets.CheckButton)
 	v.Update(ctx, b)
 	child := b.Child()
-	if !b.Checked() || b.Group() != g || b.Appearance() != CheckAppearanceButton || b.Padding() != 9 || !b.Enabled() || child == nil || first != 0 {
+	if !b.Checked() || b.Group() != nil || b.Appearance() != CheckAppearanceButton || b.Padding() != 9 || !b.Enabled() || child == nil || first != 0 {
 		t.Fatal("initial declaration / silent synchronization failed")
 	}
 	for i := 0; i < 4; i++ {
