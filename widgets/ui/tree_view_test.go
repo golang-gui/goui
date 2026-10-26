@@ -123,7 +123,7 @@ func (c *treeBindingContext) UpdateChildren(target baseui.Container, views []bas
 	}
 	var next baseui.WidgetView
 	if len(views) > 0 && views[0] != nil {
-		next = views[0].Build().(baseui.WidgetView)
+		next = views[0].(baseui.WidgetView)
 	}
 	old, widget := c.rows[target], c.widgets[target]
 	if old != nil && (next == nil || reflect.TypeOf(old) != reflect.TypeOf(next)) {

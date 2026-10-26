@@ -14,7 +14,7 @@ Widget 是持续存在的命令式对象，负责行为、布局、绘制和语�
 | 组合 Widget | 表单行、工具栏、业务面板 | 已有 Widget 和容器的行为、布局与 Snapshot |
 | 扩展 Widget | 为已有控件增加少量属性或绘制 | 原控件初始化与实现，按需重写方法 |
 | 实现 Widget | 自绘控件、新容器、新交互 | WidgetBase 的树、状态、失效与基础语义 |
-| 组合 View | 参数化界面片段、应用组件 | 已有 View 展开后的 WidgetView |
+| 组合 View | 参数化界面片段、应用组件 | ComposeView 节点的身份／State，内容的 Widget 输出 |
 | 扩展 View | 为已有声明增加业务参数或更新逻辑 | 原 View 的 Mount／Update／Unmount |
 | 实现 View | 自定义 Widget 的声明绑定、独立协调节点 | ViewBase 的通用修饰器与 BuildContext |
 
@@ -272,7 +272,7 @@ func FieldRow(caption string, text ui.BindState[string]) *ui.BoxView {
 }
 
 type ProfileView struct {
-    ui.ViewBase[ProfileView]
+    ui.ComposeBase[ProfileView]
     title string
     child ui.View
 }
@@ -283,33 +283,35 @@ func Profile(title string, child ui.View) *ProfileView {
     return v
 }
 
-func (v *ProfileView) Build() ui.View {
+func (v *ProfileView) Build(ctx ui.BuildContext) ui.View {
     return ui.VBox(ui.Label(v.title), v.child).Spacing(8).Padding(12)
 }
 
-var _ ui.View = (*ProfileView)(nil)
+var _ ui.ComposeView = (*ProfileView)(nil)
 ```
 
 FieldRow 返回的是实际 BoxView，所以 `FieldRow(...).ID("name-row")` 作用于这个根。
-Profile 只实现 View，不实现 WidgetView；协调器调用 Build，直到得到 WidgetView。
-它不能返回自身形成循环，也没有 Mount／Unmount 或 BuildContext.State 槽。
+Profile 实现 ComposeView，不实现 WidgetView。协调器保留 Profile 自己的节点和
+State，再构建其内容；Build 返回 nil 时只清空视觉输出，Profile 节点仍存在。
+Build 不得返回自身形成循环。ComposeBase 只提供声明 ID，不暴露 Widget 修饰器。
 
-**当前纯 Build 组件的外层通用修饰器不会自动传播。** 例如给 Profile 调用
-`.Style("card")`、`.ID("profile")`，不会自动把这两个设置施加到 Build 返回的 VBox。
-展开后用于协调的身份是最终 WidgetView 的具体类型和 ID，而不是 Profile 的类型。
-不要以外层类型变化就推定内层 Widget 或状态一定会重建。
+Profile 的 ID／具体声明类型控制其节点复用，与内部 VBox 的 ID／类型独立。
+`.ID("profile")` 不会把这个 ID 写到 VBox；样式、尺寸等直接作用于内容声明。
+普通函数 FieldRow 没有自己的节点，适合不需要持久状态的界面组合。
 
-因此简单组件优先像 FieldRow 一样直接返回实际根 View。需要参数化结构类型时，
-可以显式增加业务参数，在 Build 中设置返回根的属性；需要自动通用修饰器、独立
-状态或生命周期时，实现 WidgetView，如第 6 节，而不是改协调器传播规则。
+需要管理并向后代公开对象时，实现 ObjectView：在 Build 中按需初始化自己的
+State，Object(ctx) 无副作用返回既有对象，Release(ctx) 在后代解除关联后清理
+本节点拥有的资源。Release 也可能用于首次 Build 失败，须容忍部分初始化。
+通过 `ui.FindAncestor[T](ctx, id)` 查询最近的显式对象祖先，不读取其他节点的
+私有 State，不自动创建对象。完整规则见 [组合声明](DesignComposition.md)。
 
 ## 5. 扩展 View
 
 直接嵌入已有 `*ui.LabelView` 可以提升其方法，但 `.ID`、`.Text` 等仍返回
 `*ui.LabelView`。链式调用之后返回内层对象，若把它提交给 UI，就不再使用外层
 类型的扩展实现。原 ViewBase.Self 的类型也是 LabelView，不能强行改成外层类型。
-同时，已经通过方法提升实现 WidgetView 的类型会被直接识别，不能只重写 Build
-就指望它再展开成另一棵树。
+WidgetView 与 ComposeView 是两种互斥的协调方式；不要在已有 WidgetView 上
+再增加 Build(ctx)。组合扩展使用独立 ComposeBase 声明，将原 View 作为内容。
 
 推荐需要完整链式扩展时：外层嵌入自己的 `ViewBase[外层类型]`，以**命名字段**持有
 要复用的 View，并显式委托其生命周期。下例为 Label 增加数值和单位参数：
@@ -341,8 +343,6 @@ func (v *UnitLabelView) Unit(unit string) *UnitLabelView {
     v.unit = unit
     return v
 }
-
-func (v *UnitLabelView) Build() ui.View { return v }
 
 func (v *UnitLabelView) Mount(ctx ui.BuildContext) gui.Widget {
     return v.label.Mount(ctx)
@@ -398,8 +398,6 @@ func Surface(child ui.View) *SurfaceView {
     return v
 }
 
-func (v *SurfaceView) Build() ui.View { return v }
-
 func (*SurfaceView) Mount(ui.BuildContext) gui.Widget {
     return NewSurfaceWidget()
 }
@@ -425,7 +423,7 @@ SurfaceWidget，所以它与只展开 Build 的 Profile 不同。
 | Update | 写入专属属性和当前回调，协调本次子树 | 不重建 Widget，不重复连接相同信号，不手工应用共享修饰器 |
 | Unmount | 清理自身 UI 连接、Timer 和协调资源 | 不再协调子树，不重复销毁 Window 拥有的 Widget 树 |
 
-在同一挂载目标中，最终 WidgetView 的具体类型与 ID 相同会复用节点；未设 ID 时
+在同一挂载目标中，声明自身的具体类型与 ID 相同会复用节点；未设 ID 时
 按位置协调，重排容易改变状态归属。ID／类型变化或声明删除会释放旧节点。
 新 View 对象不意味着新 Widget。通用修饰器由框架在 Update 之后应用；遗漏的
 修饰器按首次 Mount 时的默认快照恢复，不需要自定义 View 重复调用 SetID 等。
@@ -476,8 +474,6 @@ func (v *CounterView) OnIncrement(fn func()) *CounterView {
     v.onIncrement = fn
     return v
 }
-
-func (v *CounterView) Build() ui.View { return v }
 
 func (*CounterView) Mount(ctx ui.BuildContext) gui.Widget {
     button := gui.NewButton()

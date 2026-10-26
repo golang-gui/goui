@@ -49,7 +49,8 @@ func TestOverlayReconcilesFloatingPositionsAndNilItems(t *testing.T) {
 	t.Cleanup(r.unmountWindow)
 	builds := 0
 	empty := &testCompositionView{builds: &builds}
-	items := []*OverlayItemView{OverlayItem(Label("one")), OverlayItem(TextInput()), OverlayItem(Label("three"))}
+	// 空组合节点现在保留声明位置；用明确 ID 验证插入它后仍保留已有视觉项。
+	items := []*OverlayItemView{OverlayItem(Label("one").ID("one")), OverlayItem(TextInput().ID("middle")), OverlayItem(Label("three").ID("three"))}
 	v := Overlay(Label("main"), items...)
 	items[0] = nil // The caller's slice is not the declaration's storage.
 	o := r.update(v).(*gui.Overlay)
@@ -57,7 +58,7 @@ func TestOverlayReconcilesFloatingPositionsAndNilItems(t *testing.T) {
 	old := o.Children()[1:]
 	r.update(Overlay(nil).Child(Label("MAIN")).Overlays(
 		nil, OverlayItem(nil), OverlayItem(empty),
-		OverlayItem(Label("ONE")), OverlayItem(Label("replacement")), OverlayItem(Label("THREE")),
+		OverlayItem(Label("ONE").ID("one")), OverlayItem(Label("replacement").ID("middle")), OverlayItem(Label("THREE").ID("three")),
 	))
 	children := o.Children()
 	if builds != 1 || len(children) != 4 || o.Child() != main || children[1] != old[0] {

@@ -1,6 +1,6 @@
 # GOUI 声明式 UI 层设计
 
-> 状态：View、挂载目标、局部 ID 协调、显式移交及共享修饰器已实现。Tooltip 已实现；通用 Popover 附着声明仍须设计，见 §4；不把旧 Key／UpdateOverlays 草案当作已确认 API。
+> 状态：View 身份、ComposeView／ObjectView 持久组合、WidgetView、挂载目标、局部 ID 协调、显式移交及共享修饰器已实现。Tooltip 已实现；通用 Popover 附着声明仍须设计，见 §4；不把旧 Key／UpdateOverlays 草案当作已确认 API。
 > 2026-09-24：§3.6 的 ID/Name 分离与 ID 查询已实现；§3.7 的拖放源数据声明已接入。
 > 2026-10-01：§2.1 增加局部 ID 匹配与相对重排；§2.2 改为普通节点的显式移交，移除任意 State 查询。
 > 2026-10-03：BuildContext 改为可保留的节点借用上下文，延迟行构建动态解析当前 Root；详见 §2.1 和 DesignTreeView §6.3。
@@ -15,7 +15,7 @@ ui 是 gui 的**声明式简便面**,不是第二套 widget 系统。View 值描
 ## 2. View 模型(现状)
 
 - 窗口级命令通过 `App.FindWindow(id)` 借用已挂载的 `gui.Window`，复用定位/工作区等 GUI 能力，不新增位置声明或包装对象。查询可调度到 UI 线程，但返回对象仍线程亲和；完整生命周期与首次显示边界见 [窗口定位的 UI 接入](DesignWindowManagement.md#ui-access-through-mounted-window-identity)。
-- `View`:要么 `Build() View`(组合),要么是 `WidgetView`(`Mount(ctx)→gui.Widget` / `Update` / `Unmount`,映射到一个 gui widget)。
+- `View` 只定义声明身份；`ComposeView.Build(ctx)` 构建内容，`ObjectView` 增加对象访问和 Release；`WidgetView` 使用 Mount／Update／Unmount。两种构建方式互斥，组合节点保留独立 State。详见 [组合声明设计](DesignComposition.md)。
 - `Root` 协调;`BuildContext` 提供 `State`/`SetState`/`UpdateChild`/`UpdateChildren`。
 - 信号句柄对应用代码隐藏:用户写 `OnXxx` 回调 + 请求更新,ui runtime 内部管信号连接生命周期。
 - 更新显式:state 是普通 Go 变量,变了就请求更新;不引入自动依赖追踪/属性绑定(MVP 不需要)。
@@ -27,7 +27,7 @@ ui 是 gui 的**声明式简便面**,不是第二套 widget 系统。View 值描
 这样显式跨树移交不会被本轮尚未处理的旧声明再次覆盖；从树更新到完成钩子及 Show
 均禁止同步嵌套整个窗口批次，完成钩子本身不承诺布局已执行或原生尺寸已到达。
 回调内业务变更通过 `RequestUpdate` 请求下一轮，失效、已释放或被替代的 owner 跳过。
-此边界适用于所有 WidgetView，不增加 TabView 专用 Root 分支。
+此边界适用于 WidgetView 和组合节点，不增加 TabView 专用 Root 分支。
 
 虚拟化行在普通 Update 之外通过 BuildContext 构建时，子协调内部进入本次协调范围，
 完成回调通过 GUI 主循环 Post 延后到同步布局／行挂载结束后；仍核对 owner、Root 和
@@ -102,11 +102,13 @@ AddOverlay／RemoveOverlay。Root 不检查具体控件类型，绑定不访问�
 - UpdateChild 管理零或一个子节点；ID 或具体类型改变重建。
   UpdateChildren 在目标内按非空 ID／类型匹配，无 ID 按实际位置／类型匹配；
   不匹配的旧节点单独移除，不再因一个类型改变而重建整个尾部。
-  nil View／Build 不生成节点，Mount 返回 nil 也不占用协调位置。
-- 列表先展开组合 View 并检查重复非空 ID，再更新子节点；匹配节点的相对重排
+  nil View 不生成节点，WidgetView.Mount 返回 nil 也不占用位置；组合 Build 返回
+  nil 只清空内容，组合自身仍保留状态和声明位置。
+- 列表先按直接声明检查重复非空 ID，再更新子节点；匹配节点的相对重排
   不触发 Mount/Unmount，不重建信号和 State。不同目标之间没有 ID 自动认领。
 - UpdateChildren 返回结果与传入切片逐项对应，未产生 Widget 的位置为 nil；实际
-  Widget 树和复用位置跳过空项。绑定可以按声明索引更新 Fill 等逐节点配置。
+  Widget 树跳过没有输出的节点，声明复用位置保留空内容组合。绑定可以按声明
+  索引更新 Fill 等逐节点配置。
 - nil／空内容显式清空该目标；某轮没有调用目标不隐式删除内容。普通空目标记录释放，
   避免动态列表累计历史行；直接属于当前 Widget 的容器，以及通过 TransferContainer
   标识该 Widget 的容器适配器，保留空列表注册以接收明确移交。
@@ -144,8 +146,10 @@ func (*Coordinator) TransferChild(child, to gui.Widget, move func() error, commi
 func (*Coordinator) AfterTransfer(func())
 ```
 
-没有 Lookup(State) 或任意 State 访问接口。协调器只在明确移交时，以真实 Widget
-查找本应用现有协调节点。API 面向绑定实现者，普通应用仍使用 App.FindWidget / FindWindow。
+没有 Lookup(State) 或任意 State 访问接口。协调器在明确移交时，以真实 Widget
+查找本应用现有协调节点。祖先对象查询只返回显式 ObjectView 公开的对象，
+不读取其他节点的私有 State。
+这些 API 面向绑定实现者，普通应用仍使用 App.FindWidget / FindWindow。
 目标必须有唯一、已注册的所属容器。普通 Widget 容器直接识别自身；非 Widget 的
 适配器用 TransferContainer.Widget 表明所属 Widget，不创建第二棵树或全局注册表。
 已有自定义 Container 绑定须补 MoveChildBefore；页面绑定改用普通 WidgetView，
@@ -155,6 +159,8 @@ TransferChild 同步移交一个现有普通子 node、State 和信号连接，�
 不调用 View 的 Unmount/Mount。`move` 执行已有 GUI 事务；普通失败须保留源 GUI 树。
 实际 Parent、Root 和生命周期符合目标时才认定成功；返回 nil 但未移动不会被接受。
 成功采用目标实际兄弟位置接入，失败按观察到的 GUI 归属恢复或释放，不复活已销毁对象。
+挂载槽位含组合祖先时移动完整声明子树；ReparentedView 在最终祖先建立后、
+committed 前刷新关联，不重放全部 Update，不调用 ObjectView.Release。
 源与目标 Root 不允许嵌套重建，正在 Update 的树也不能发起移交；正常 RequestUpdate
 仍延迟执行。旧 AfterUpdate 作废，目标下一次 Update 再建立新绑定。
 空内容的 TabPage 仍有普通节点；不为 GUI 内部 Bin 伪造无记录移交。
@@ -166,6 +172,18 @@ move 期间源销毁不会释放临时持有的子树；目标最终不存在则
 `committed` 在节点采用成功后更新两侧业务声明；AfterTransfer 使绑定的选择通知在它
 之后发布，过期／销毁 owner 的通知跳过。异常继续传播，不发布延后的业务通知。
 不会替应用自动维护声明集合。具体接入见 [Tab 转移设计](DesignTabTransfer.md)。
+
+### 2.3 显式对象声明与祖先关联（2026-10-26）
+
+组合节点不再被 normalizeView 丢弃。ComposeBase 提供声明 ID，ObjectView
+在自己的 State 中持有对象，通过无副作用 Object(ctx) 公开；后代用
+`FindAncestor[T](ctx, id)` 查询最近的同名祖先。缺失或类型不符返回 false，
+不自动创建、不越过同名节点猜测外层；没有全局对象表或隐式依赖追踪。
+
+对象声明移除时，先释放所有后代的连接，再执行 Release(ctx)；回调期间销毁
+必须停止后续挂载。ObjectView 的首次 Build 失败时也会清理正在创建的节点，
+Release 须能处理自己尚未初始化完的 State。Root 只协调组合节点和 Widget
+输出，不保存领域对象表。详见 [组合声明设计](DesignComposition.md)。
 
 ## 3. 共享修饰器基类:`viewBase` + `ViewBase[T]`(已实现)
 
@@ -213,7 +231,6 @@ func (b *ViewBase[T]) Style(name string) *T     { b.styleName = name; return b.s
 
 type View interface {
     base() *viewBase   // 封印首位:不嵌 ViewBase 就实现不了 View,编译不过
-    Build() View
 }
 
 type ButtonView struct {
@@ -336,7 +353,7 @@ dismiss 回写及生命周期边界集中记录在 [未来路线](Roadmap.md#fut
 ## 6. 影响面
 
 **§3 已落地**:
-- 所有 View 由**值改指针**:内嵌 `ViewBase[Self]`、构造器设 `Self`、`View` 由 `*T` 实现、`Build/Mount/Update/Unmount` 改指针接收者。
+- 所有 View 由**值改指针**:内嵌 `ViewBase[Self]`、构造器设 `Self`、`View` 由 `*T` 实现、Widget 的 `Mount/Update/Unmount` 与组合的 `Build/Object/Release` 使用指针接收者。
 - 控件 `Update` 去掉 `SetID`/`SetVisible`/`SetStyleName`;reconciler `Update` 后统一 `view.base().apply(w)`。
 - 冒烟测试 `TestViewConstructorsWireSelf` 兜 `Self` 接线。
 
@@ -346,7 +363,8 @@ dismiss 回写及生命周期边界集中记录在 [未来路线](Roadmap.md#fut
 
 - 普通文字提示使用 Widget.SetTooltip / ViewBase.Tooltip；通用 Popover 的内容、显隐及协调规则待具体需求确定，不把它们放进 Tooltip 的文字接口。
 - Menu／MenuItem 基元和分隔线已实现；子菜单与菜单键盘导航的后续设计见 [子菜单](DesignMenuSubmenu.md)。
-- 组合型 View（只 Build）的共享修饰器传播仅是评估方向，当前 normalizeView 展开
-  后只应用最终 WidgetView 的修饰器，不自动传播外壳 ID／Style，也不为外壳保留
-  独立协调状态。现行使用方式与扩展限制见 [自定义 Widget／View](CustomWidgetView.md)。
+- ComposeView 已有独立身份／State，ObjectView 已有显式对象访问及释放。
+  Widget 修饰器不向内容传播；需要样式／尺寸等参数时显式作用于实际内容。
+  多输出 Fragment、兄弟对象引用及跨窗口对象查询仍不在当前契约内。
+  使用方式见 [自定义 Widget／View](CustomWidgetView.md)。
 - 若将来同一 anchor 上组合状态驱动、hover 与上下文菜单，须明确协调所有权和优先级；不预先承诺 OverlaySpec 或 Key 接口。
