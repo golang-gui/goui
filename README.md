@@ -26,11 +26,11 @@ tabs, overlays, graphics, animations, and system integration. Switch between lig
 
 | Platform | Demo download |
 | --- | --- |
-| Windows x64 | [Download EXE](https://github.com/golang-gui/goui/releases/download/v0.3.0/goui-demo-v0.3.0-windows-amd64.exe) |
-| macOS Apple Silicon | [Download .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.3.0/goui-demo-v0.3.0-darwin-arm64.zip) |
-| Linux x64 / X11 | [Download executable](https://github.com/golang-gui/goui/releases/download/v0.3.0/goui-demo-v0.3.0-linux-amd64) |
+| Windows x64 | [Download EXE](https://github.com/golang-gui/goui/releases/download/v0.4.0/goui-demo-v0.4.0-windows-amd64.exe) |
+| macOS Apple Silicon | [Download .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.4.0/goui-demo-v0.4.0-darwin-arm64.zip) |
+| Linux x64 / X11 | [Download executable](https://github.com/golang-gui/goui/releases/download/v0.4.0/goui-demo-v0.4.0-linux-amd64) |
 
-On Linux, run `chmod +x goui-demo-v0.3.0-linux-amd64` before launching it.
+On Linux, run `chmod +x goui-demo-v0.4.0-linux-amd64` before launching it.
 On macOS, extract and open `GOUI Demo.app`; the bundle is Developer ID signed and Apple-notarized.
 
 Windows

@@ -17,12 +17,40 @@
 - [x] 预备源码 Linux 独立 Xvnc／Xfwm4 全仓 2528 PASS、10 SKIP、0 FAIL；
   macOS 15.7.7 arm64 的相关 GUI／CoreText／platform 测试 1075 PASS、9 SKIP，
   最终接缝修正的 Paragraph 原生回归 11 PASS。此处是冻结前检查，正式候选另记。
-- [ ] 提交准备改动并冻结候选 SHA；完成全仓测试、相关 race / vet、三平台
-  构建和本轮实际窗口验收。历史记录不替代本轮候选结果。
-- [ ] 三平台 Demo、Mac Developer ID 签名／公证／装订、最终 ZIP 独立解压验证，
-  准备 BUILD-INFO.md 和 SHA256SUMS。
-- [ ] 推送不可移动的版本标签，核对 Draft 和公开附件，检查 Go module 获取，
-  发布后更新中英文 README 下载链接。
+- [x] 准备改动分三次提交后冻结 665f2946665fd5f45b2f3e419588f74b4528eea3。
+  冻结源码在 Linux 独立 Xvnc 1.12.0／Xfwm4／Go 1.25.8 全仓非缓存测试
+  2528 PASS、10 SKIP、0 FAIL；Windows 10 22H2 19045 amd64／Go 1.25.8
+  交互桌面任务 2651 PASS、12 SKIP、0 FAIL；macOS 15.7.7 arm64／Go 1.24.9
+  原生全仓 2478 PASS、9 SKIP、0 FAIL。计数包含命名父测试与子测试。
+  相关 gui／ui／widgets／theme／Demo race、普通 vet、mod verify／tidy -diff，
+  Linux amd64／Windows amd64／macOS arm64 全仓构建通过，未放宽 skip。
+- [x] 最终 Linux Demo 验证 Software／OpenGL、应用 1.5、2400×1600 独立显示；
+  Windows Direct2D／DirectWrite、应用 1、系统 DPI 96、RDP 1600×900；macOS
+  最终 ZIP 独立解压的 OpenGL／CoreText app、应用 1、VNC 1650×1050。实际输入
+  覆盖菜单组指针／键盘切换、Tooltip、输入，三平台均确认 1 MiB 折行 JSON 到 EOF；
+  Linux／Mac 调宽和 Windows 最大化／恢复后正常关闭。Linux 两绘图后端及 Mac
+  独立菜单窗口 AUTO／DESTROY 断言另行通过，不将自动派发当作原生鼠标验收。
+- [x] 同源 cmd/goui、Go 1.25.8、GOWORK=off、CGO_ENABLED=0、-trimpath、-s -w
+  构建三平台 Demo。Windows PE32+／GUI、四类图标／版本／清单资源和实际
+  VersionInfo 0.4.0.1 核对通过；Mac 短版本 0.4.0、build 1。
+  Developer ID Application 签名、公证 b14409f6-fa34-4771-b1e7-9b8b4a63cd1e
+  Accepted，装订及新目录解压后的严格签名／票据／Gatekeeper 检查通过。
+  Mac 最终 ZIP SHA256 为 6369f9b296079965d2888cf41d666b65002d2b4c44d00b03fd91c9bf0d13471f。
+- [x] v0.4.0 annotated tag 的远端 peeled SHA 与候选一致；GitHub 正式 Release
+  为 Latest。三平台 Demo、BUILD-INFO.md、SHA256SUMS 共五份正式附件的名称、
+  大小和服务端 digest 核对；Draft 与公开阶段分别下载，四项校验及五份原件逐字节
+  比较均通过。公共 Go proxy 返回正确源码 SHA；仓库外无 replace 的使用方完成
+  新 UI API 构造运行及 Windows／macOS 目标构建。公开下载核对后更新中英文链接。
+- 本轮仍保留手工／条件测试跳过；Windows 无符号链接权限，Linux 不提供原生
+  Integrated，非 macOS 不运行 codesign 测试。未完成实体 GPU／混合 DPI 全矩阵、
+  Windows 11 桌面和 IME／DnD 全量复验，不将应用缩放称为 Retina 验收。
+  Linux arm64／Wayland 不增加附件；新版本的完整边界记录在 BUILD-INFO.md。
+- 桌面操作改变过指针／焦点，既有全仓测试触及剪贴板。临时源码、生成图片、
+  日志及最终附件位于 /tmp/goui-release-v0.4.0-86nk1qkr，远端各自 Temp 下的
+  goui-release-v0.4.0；未纳入用户未跟踪文件。自建 X11、Windows 专用计划任务、
+  Mac 临时 Terminal 标签及本轮 VNC 连接已清理，恢复 Mac 原有拼音输入源。
+  三平台窗口均正常退出；Mac stderr 保留一条系统 TSM/CapsLock LED 诊断，
+  无 panic 或异常退出；未改变 Defender、钥匙串访问控制或其他系统安全策略。
 
 ## MenuButtonGroup Demo 与原生验收（2026-10-26）
 
