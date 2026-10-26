@@ -34,6 +34,10 @@
 [子菜单设计 §13](DesignMenuSubmenu.md#13-ui-层)。
 拟增加的 `ui.Submenu(label, items...)`、Action 闭包刷新和错误信号尚未实现。
 
+MenuButton 分组切换另见 [MenuButton 分组设计](DesignMenuButtonGroup.md)，
+目前仅完成设计。拟通过命令式组对象、声明式 `.Group("name")` 组合菜单栏，
+允许普通按钮混排；不要求新增 MenuBar 容器，也不以子菜单实现为前置。
+
 ## 2. MenuModel 复用 ListData
 
 `gui/list_model.go` 已把列表拆成两层：`ListModel`（计数 + `ConnectItems` 变更

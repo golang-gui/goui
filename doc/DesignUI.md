@@ -213,7 +213,8 @@ wui.CheckGroup("appearance", ui.HBox(
 | App.FindWindow／FindWidget 与事件中的 Widget | 查询或事件发生后的运行时访问，不用作常规声明关联。 |
 
 未发现第二个要求在构建前取得关联 Widget／组内成员的现有声明式入口。
-此结论不承诺将全部指针型参数改成 ID。
+此结论不承诺将全部指针型参数改成 ID。MenuButton 的拟议分组接口采用同样的
+命令式对象、声明式组名约定，见 [MenuButton 分组设计](DesignMenuButtonGroup.md)。
 
 ## 3. 共享修饰器基类:`viewBase` + `ViewBase[T]`(已实现)
 

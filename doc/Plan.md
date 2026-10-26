@@ -3,6 +3,121 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## 持久组合声明、对象声明与显式 CheckGroup（2026-10-26）
+
+- [x] 基线 GOUI `fd86a2e` 加前节未提交的分组原型，SourceView `89f045e`。
+  按确认接口将 View 限定为身份，ComposeView.Build(ctx) 管理组合内容，
+  ObjectView.Object／Release 管理明确的对象声明，WidgetView 保留原来的
+  Mount／Update／Unmount。WidgetView 与 ComposeView 互斥，删除控件的
+  return-self Build 占位方法；ComposeBase 只提供声明 ID。
+- [x] 组合节点保留 State、声明父级及内容节点，无内容时也保留对象；实际挂载
+  使用零／一个 Widget 输出，不新增占位控件。ID／具体声明类型参与协调，
+  空组合占声明位置，GUI 列表跳过无输出节点。更新 Bin、列表和窗口输出，
+  排序保留身份；初建失败及回调销毁不会泄漏已创建但尚未挂载的对象。
+- [x] 移除此前 ui.BindGroup、Root.groups、node.group 和组专用移交逻辑。
+  CheckGroupView 显式创建并拥有 widgets.CheckGroup，成员按 ID 查询最近
+  同名对象祖先；缺失／类型错误为配置错误，普通按钮不自动入组。查询不会
+  创建对象或读取别的节点私有 State，回调销毁／同 Root 移交后拒绝过期结果。
+- [x] 通用 ReparentedView 在完整声明子树移交后、committed 前刷新祖先关联，
+  不重新 Mount／Release，不重放旧属性覆盖实际编辑或选择；整组移动保留
+  实例，成员移动切换到目标祖先，失败回滚保留原实例。对象在后代清理后释放。
+- [x] 回归覆盖身份／State、空内容、恢复／替换、排序、GUI 树无包装、查询
+  的上下文／类型／遮蔽、资源释放及异常、完整声明移交、同 Root／跨 Root
+  关联、回滚、真实事件产生的选择不被旧声明覆盖。原隐式组原型用例按已移除
+  契约改成显式对象用例；Overlay 与重复 ID 两处旧断言调整为声明身份，保留
+  对排序复用、输入索引、预检无副作用的验证。未删断言或扩大 skip。
+- [x] Demo、独立 CheckButton 窗口、正式自定义组件文档、AI 使用参考及
+  SourceView WidgetView 使用方同步。SourceView 原有类型别名及构造器保留；
+  只移除两个 WidgetView 的占位 Build，并注明后续 GOUI 版本条件。
+- [x] Linux amd64／Go 1.25.8，仓库外完整副本、独立 Xvnc／Xfwm4 中执行
+  `GOWORK=off go test -json ./... -count=1`：2819 PASS、15 既有 SKIP、0 FAIL。
+  UI／widgets/ui／widgets／Demo 的非缓存 race 通过。原有测试的窗口、剪贴板
+  及图片输出限定在独立显示与副本，原仓生成图片未改动。
+- [x] 普通 vet 的 28 项诊断来自未跟踪 ui/text_editing_test.go 的 unkeyed
+  composite literal，与修改前副本逐项相同；普通 vet 仍记失败。
+  `go vet -composites=false` 对 ui、widgets/ui、widgets、Demo 及两个相关
+  窗口程序通过。Windows amd64／macOS arm64、CGO=0 全仓编译通过；未执行
+  两端原生桌面、Direct2D、硬件 GPU 或真实 IME，不将编译记作原生通过。
+- [x] 新增 `tests/window/ui/composition`，以第三方普通对象的信号订阅验证
+  完整公开契约。真实 XTest 在 Software 1x／1.5x、OpenGL 2x 各通过 20 项
+  断言：引用及对象复用、文字输入与重建、空内容仍保留对象、恢复／替换输出、
+  删除／重建对象、订阅断开及最终释放。原 CheckButton Software 1x／OpenGL
+  2x 各 26 项交互断言和两组回调中销毁验证通过。
+  仓库外只读 1×1 绘图探针另确认实际资源为 software.imageResource／
+  opengl.imageResource，PixelScale 为 1／1.5／2；没有用探针提供操作捷径。
+- [x] 隔离会话首轮继承宿主 `@im=fcitx` 时 ASCII 输入没有进入字段；改测试
+  环境为 `@im=none` 后保留原输入断言通过，未修改产品输入路径或放宽条件。
+  保存失败日志；此结果不代表 fcitx／真实输入法已验收。
+- [x] SourceView 在同一副本的 go.work 中 `go test ./... -count=1` 通过。
+  `GOWORK=off` 在修改前后均因旧 GOUI v0.3.0 缺少 ParagraphLayout／
+  ParagraphGeometry、Top64、Projection.Slice 编译失败，独立验证未通过。
+  新声明契约同样需要后续 GOUI 发布；未伪造版本、提交机器 replace 或修改
+  go.mod。SourceView 依赖升级及独立发布验证留待真实 GOUI 版本可获取后进行。
+- [x] [组合声明设计](DesignComposition.md)、UI／CheckButton／自定义组件文档
+  更新为实际接口；MenuButtonGroup 文档改为显式 ObjectView 声明，菜单分组
+  切换本轮没有实施。
+
+- [x] 交付按组合／对象协调、显式 CheckGroup、WidgetView 占位方法清理、
+  MenuButton 分组设计分四批提交。前三批分别导出实际暂存树，在独立 Xvnc／
+  Xfwm4 中执行 `GOWORK=off go test -json ./... -count=1`，每批均为
+  2487 PASS、10 SKIP、0 FAIL；每批的 Windows amd64／macOS arm64、CGO=0
+  全仓编译通过。副本只包含提交内容，未依赖工作区其他未跟踪源码或测试，
+  因而测试数与上述完整工作区验收不同。最终源码副本的 ui／widgets/ui／
+  widgets／Demo 非缓存 race 及这四包、两个相关窗口程序的普通 vet 均通过。
+  未跟踪测试的既有 vet 诊断仍保留在前述工作区验收记录中。
+
+完整源码副本、日志和真实操作脚本位于 `/tmp/goui-compose-s2cnf2bb`，
+分批提交的暂存树及测试日志位于 `/tmp/goui-batch-commits-bdmqjivc`。
+GOUI 相关改动已分批提交，未推送或更改发布状态；SourceView 改动仍保留在其
+工作区。测试窗口正常关闭，两次独立显示均在对应验收结束后关闭。
+
+## CheckButton 声明式命名组与菜单分组设计（2026-10-25）
+
+本节保留上一版隐式命名组原型的验收记录；实现已由上一节的显式对象声明替代。
+
+- [x] 基线 `fd86a2e`，在 `pre-release/v0.4` 修改 CheckButton 的声明式
+  Group(string)，命令式 SetGroup(*widgets.CheckGroup) 保持原有对象语义。
+  Demo 与现有独立窗口例程同步迁移，不要求 Build 前保存组对象。
+- [x] UI 通过通用 BindGroup 按 Root／组类型／名字复用组对象；只保存关联，
+  不复制互斥行为。重建采用最新 setter，改名／取消／释放移除旧引用；最后
+  一个成员离开时释放组记录。显式跨 Root 移交在完成回调前解析目标组；
+  同 Root 移交和失败回滚保留原组身份，无全局组表或具体控件内核分支。
+- [x] 新增真实协调器逻辑回归：跨容器同名关联、不同 Root／类型隔离、名字
+  与 Widget.ID 独立、重建／排序保留身份、静默同步、键盘互斥、取消／卸载、
+  最后成员释放、移交成功与回滚、最新闭包及过期上下文不再创建组，另覆盖
+  工厂／旧关联回调销毁和移交目标销毁后停止绑定及提交。原适配器
+  替身测试继续覆盖默认值和信号，原组对象输入的断言迁至真实协调与窗口验收。
+- [x] 检查 ui、widgets/ui 及 SourceView.ui 的公开输入。TabBar 已通过 viewID
+  关联；文本／列表／树／表模型、Document、配色／补全规则和声明描述可独立
+  构造；事件后的查询与移交不属于构建前关联问题。本轮未发现第二个同类入口，
+  不把全部对象参数改为 ID。详见 [UI 设计](DesignUI.md#23-显式对象声明与祖先关联2026-10-26)。
+- [x] Linux amd64／Go 1.25.8，在仓库外完整副本、独立 Xvnc／Xfwm4 环境执行
+  `GOWORK=off go test -json ./... -count=1`：2808 PASS、15 既有 SKIP、0 FAIL。
+  保留了原有未跟踪测试和跳过条件，测试生成图片和窗口／剪贴板副作用限定在
+  副本与独立显示；没有改动原仓已有生成图片。
+- [x] `go test -race ./ui ./widgets/ui ./widgets ./example/demo -count=1` 通过。
+  普通 `go vet ./ui ./widgets/ui ./widgets ./example/demo ./tests/window/widgets/check_button`
+  因未跟踪 ui/text_editing_test.go 的 28 项 unkeyed composite 字面量诊断失败；
+  HEAD 干净源码叠加相同未跟踪 UI 测试得到逐项相同诊断，确认为既有问题。
+  `go vet -composites=false` 对上述范围通过，不将普通 vet 记作通过。
+- [x] 最终原始窗口程序的 Software 1x／OpenGL 2x 真实 XTest 输入，各 26 项
+  明确状态断言通过，覆盖组互斥、取消、三态、禁用、子控件竞争、重建、主题、
+  Tab／Shift+Tab／Space／Enter 及正常关闭。两种配置另行通过旧成员 Change
+  回调内销毁窗口，后续 GUI/UI 通知被正确抑制。仓库外只读绘图探针另外确认
+  实际为 software.imageResource／opengl.imageResource，PixelScale 为 1／2。
+- [x] `CGO_ENABLED=0` 的 Windows amd64／macOS arm64 `go build ./...` 通过。
+  未执行两端原生桌面、Direct2D、硬件 GPU 或混合 DPI；编译不代表这些场景通过。
+- [x] SourceView 基线 `bea900d` 在仓库外 go.work 中与本轮 GOUI 联调，
+  `go test ./... -count=1` 通过；本任务未修改 SourceView 源码／模块配置。
+  验收范围为该基线副本，不包含随后工作区新增的其他变更。此结果不替代
+  SourceView 的独立依赖发布验证，本轮没有修改其发布版本或依赖声明。
+- [x] [MenuButton 分组设计](DesignMenuButtonGroup.md) 写入命令式组对象、声明式
+  组名、开启后悬停切换、混排、owner modal 输入、关闭重入、键盘、样式、快照
+  和跨平台验证范围；MenuButton 的实现留在待实施状态，不以子菜单为前置。
+
+日志、截图、完整源码副本及被动探针位于 `/tmp/goui-named-groups-vstc55hk`。
+独立测试应用均正常退出，桌面验证后关闭；未修改用户显示会话或发布状态。
+
 ## Demo 的 Tooltip 与长文本展示（2026-10-25）
 
 - [x] 基础控件页增加工具提示卡片，覆盖鼠标、Tab、Esc、点击和禁用原因；启用
