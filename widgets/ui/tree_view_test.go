@@ -115,7 +115,7 @@ type treeBindingContext struct {
 	contexts map[baseui.Container]*tabContext
 }
 
-func (c *treeBindingContext) UpdateChildren(target baseui.Container, views []baseui.View) []gui.Widget {
+func (c *treeBindingContext) UpdateChildren(target baseui.Container, views []baseui.View, apply ...func(int, gui.Widget)) []gui.Widget {
 	if c.rows == nil {
 		c.rows = make(map[baseui.Container]baseui.WidgetView)
 		c.widgets = make(map[baseui.Container]gui.Widget)
@@ -144,6 +144,9 @@ func (c *treeBindingContext) UpdateChildren(target baseui.Container, views []bas
 	}
 	next.Update(c.contexts[target], widget)
 	c.rows[target], c.widgets[target] = next, widget
+	if len(apply) != 0 && apply[0] != nil {
+		apply[0](0, widget)
+	}
 	return []gui.Widget{widget}
 }
 func TestTreeViewControlledUncontrolledAndCallbacks(t *testing.T) {

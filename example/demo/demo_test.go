@@ -1116,12 +1116,15 @@ type bodyContext struct {
 	children []gui.Widget
 }
 
-func (ctx bodyContext) UpdateChildren(target ui.Container, views []ui.View) []gui.Widget {
+func (ctx bodyContext) UpdateChildren(target ui.Container, views []ui.View, apply ...func(int, gui.Widget)) []gui.Widget {
 	if len(views) != len(ctx.children) {
 		panic("body declaration and test children differ")
 	}
-	for _, child := range ctx.children {
+	for i, child := range ctx.children {
 		target.AddChild(child)
+		if len(apply) != 0 && apply[0] != nil {
+			apply[0](i, child)
+		}
 	}
 	return ctx.children
 }

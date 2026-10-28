@@ -50,6 +50,9 @@ type ReparentedView interface {
 type BuildContext interface {
 	State() any
 	SetState(any)
+	// RequestUpdate asynchronously updates this node. It expires on release and
+	// follows explicit subtree transfers. It may be called from any goroutine.
+	RequestUpdate()
 	// Coordinator borrows this node's identity for adapter coordination.
 	// It expires on View release and follows an explicitly transferred subtree.
 	Coordinator() *Coordinator
@@ -63,13 +66,18 @@ type BuildContext interface {
 	// owners are skipped. Do not start nested reconciliation from this callback.
 	AfterUpdate(func())
 	// UpdateChild reconciles one target's content. nil clears the managed child.
-	UpdateChild(target Bin, child View) gui.Widget
+	// An optional apply callback configures the mounted output, including nil,
+	// after mounting and after a local composition changes that output. It is
+	// replaced on the owner's next update; it must not start reconciliation.
+	UpdateChild(target Bin, child View, apply ...func(gui.Widget)) gui.Widget
 	// UpdateChildren reconciles one target's list in declaration order. Results
 	// correspond to input indices; nil views/builds/mounts yield nil entries.
 	// Compositions occupy declaration positions even with no widget output.
+	// The optional apply callback has the same lifetime as UpdateChild's, and
+	// receives each declaration's index and current output, including nil.
 	// An empty list clears managed children. Omitting a call does not clear a
 	// previously used target.
-	UpdateChildren(target Container, children []View) []gui.Widget
+	UpdateChildren(target Container, children []View, apply ...func(int, gui.Widget)) []gui.Widget
 }
 
 // Bin is a single-child mounting target, not necessarily a Widget. Unlike
@@ -135,6 +143,7 @@ func (b *ComposeBase[T]) ID(id string) *T {
 // reconciler reads it via View.base after each Update and writes it onto the
 // mounted widget, so controls never apply these themselves.
 type viewBase struct {
+	observables   []Observable // explicit composition dependencies
 	shortcuts     []*ShortcutView
 	dragSource    *DragSourceView
 	dropTarget    *DropTargetView

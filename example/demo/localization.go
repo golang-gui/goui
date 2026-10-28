@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+
+	"github.com/golang-gui/goui/core/signal"
 	"strings"
 
 	"github.com/golang-gui/goui/example/demo/resource"
@@ -16,9 +18,10 @@ type sampleInput struct {
 	edited bool
 }
 
-func newSampleInput(text string) sampleInput { return sampleInput{state: ui.MakeState(text)} }
-func (s *sampleInput) Get() string           { return s.state.Get() }
-func (s *sampleInput) Set(text string)       { s.edited = true; s.state.Set(text) }
+func newSampleInput(text string) sampleInput           { return sampleInput{state: ui.MakeState(text)} }
+func (s *sampleInput) Connect(fn func()) signal.Handle { return s.state.Connect(fn) }
+func (s *sampleInput) Get() string                     { return s.state.Get() }
+func (s *sampleInput) Set(text string)                 { s.edited = true; s.state.Set(text) }
 func (s *sampleInput) translate(text string) {
 	if !s.edited {
 		s.state.Set(text)
