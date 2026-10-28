@@ -18,8 +18,12 @@
     通过；未删除或放宽原有有效断言。
   - 新增 [ui/binding](../tests/window/ui/binding/main.go)：双窗口共享文本、Unicode
     输入回写、属性与构建范围、通知合并、输出类型／nil 替换、Overlay Fill、Snapshot、
-    显式全量更新与关闭清理；`-auto` 全部通过。包内另覆盖未访问的虚拟子树、跨 Root
+    显式全量更新与关闭清理；`-auto` 全部通过。浮层改用居中布局容器，底层文字留在
+    左上角，避免透明 Label 原点重合造成误解；自动验收同时检查 Fill 尺寸与文字居中。
+    包内另覆盖未访问的虚拟子树、跨 Root
     排队失效移交、释放并发、AfterUpdate 次序、选区与独立文档／撤销历史。
+    展示修正后在独立 X11 会话补验 Software／OpenGL 1x／2x，新增文字居中断言
+    与原有断言均通过；真实点击和截图确认两层文字分开，全仓测试通过。
   - 本机 Linux amd64，独立 Xvnc `:79`／xfwm4 会话，Mesa llvmpipe，Software／OpenGL
     1x／2x 均通过上述自动验收；无 DevServer。独立会话不继承用户桌面的 Fcitx
     输入服务器（`XMODIFIERS=@im=none`），真实鼠标／ASCII 键盘输入、删除／撤销、F6
