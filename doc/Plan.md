@@ -3,6 +3,46 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## 初始居中降级与原生宿主终止（2026-10-28）
+
+设计见 [DesignWindowLifecycle](DesignWindowLifecycle.md)。
+
+- [x] 独立无 WM X11 复现 Center(true) 创建失败；第二 X 客户端 XDestroyWindow
+  复现 OpenGL SwapBuffers 内 SIGABRT。Software 探针未崩溃，但没有原生终止通知。
+- [x] Center 按能力缺失／暂不可用降级，意外错误继续上报并清理；包内覆盖包装错误、
+  查询/定位两阶段、未实现 DesktopWindow、失败资源回收及已有居中行为。
+- [x] 三平台 DestroyEvent、原生对象与绘制资源清理、GUI Window/Popover 接入；
+  活动帧延后释放。Popover 保留内容，可重建表面，并隔离旧表面事件。
+- [x] 独立窗口验证发现并修复 OpenGL 文字缓存先于 Painter 释放时仍绑定失效宿主的问题；
+  包内回归在恢复旧释放逻辑的 overlay 下明确 panic，新逻辑通过。
+- [x] 新增 `tests/window/gui/window_lifecycle`，入口中文说明；`-platform` 先检查原生
+  Window/Popup，再检查 GUI、关闭否决、排队绘制、重复释放及最后窗口退出。
+  Windows 的异步关闭请求在下一阶段断言；失败结果不会被后续成功覆盖。
+- [x] 本机独立会话：Ubuntu 22.04 x64，Xvnc，Xfwm4 compositor 开启、llvmpipe；
+  OpenGL/Software × 平台/GUI × 不透明/透明 × 应用配置 1x/2x，16 组通过，原生模式
+  断言实际后端名称。另一独立无 WM 会话中两后端 Center=true 创建通过，显式
+  WorkAreaAt 仍为 ErrUnsupported。真实鼠标验证关闭否决、终止计数为 1、控制窗口
+  继续使用及最后关闭退出。测试会话独立于用户当前桌面。
+- [x] 远端 Windows 10 19045 x64/RDP：Direct2D/Software 的上述 16 组通过；退出码、
+  PASS 日志及原生模式后端名称联合核对。真实桌面鼠标操作验证 Native close 后控制
+  窗口继续响应、目标任务栏项消失、最后关闭退出。未把早期错误计数断言的结果作为通过。
+- [x] 远端 macOS 15.7.7 arm64：OpenGL/Software 的上述 16 组通过，裸可执行文件；
+  真正主线程 AppKit close、透明表面、委托重入释放、GUI 控制窗口仍可操作及退出通过。
+  配置 2x 不等于真实 Retina、多屏或混合 DPI 验收。
+- [x] 独立源码副本执行 `GOWORK=off go test ./... -count=1` 通过；复制已跟踪源码与本次
+  改动，排除用户原有未跟踪测试。既有测试产生的图片留在临时副本，不写入工作区。
+  生命周期/居中/X 错误/OpenGL 缓存回归 race 通过；相关 gui/Software/OpenGL/xerrors
+  和窗口程序 vet 通过。远端两系统针对性包内测试通过。Windows amd64、Darwin arm64
+  全仓交叉编译通过。
+- 验证缺口：Windows OpenGL 在当前 RDP 会话无法取得可用像素格式，未完成有效 WGL
+  桌面动态验收；其编译和不依赖桌面的图片生命周期回归通过。Linux arm64 额外编译仍
+  被已有 `libc/syscall_linux.go` 的 SYS_PIPE/SYS_POLL 阻塞，修改前副本同样失败，
+  本轮不顺带改动该适配。
+- 诊断记录：初次单独跑完整 gui 包时出现一次进程启动 SIGSEGV，无 Go 调用栈；随后
+  未缓存全仓与完整 gui 包通过，修改前/后测试二进制各 20 次空测试启动未复现。
+  原因尚未确定，不能据此认定为既有失败或已修复；与可重复复现并已修复的 X11
+  SwapBuffers SIGABRT 分开记录。
+
 ## 圆角切点缺口修正（2026-10-28）
 
 - [x] 用户反馈 Linux / OpenGL / 1x 右下角直边与圆弧连接缺口；独立 X11 离屏
