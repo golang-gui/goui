@@ -236,7 +236,7 @@ type viewBase struct {
     name      string
     hidden    bool
     styleName string  // 语义样式名(= SetStyleName);"" 回退控件默认
-    // + 布局标量字段(minWidth/maxWidth/mainWeight…);padding 在容器视图上
+    // + 布局值字段(minWidth/maxWidth/mainWeight…);padding 在容器视图上
 }
 func (b *viewBase) base() *viewBase   { return b }   // 封印:只有嵌了才有
 func (b *viewBase) apply(w gui.Widget) {             // 框架在 Update 后统一调
@@ -279,7 +279,7 @@ func Button(text ...string) *ButtonView {
 func (v *ButtonView) OnClick(fn func()) *ButtonView { v.onClick = fn; return v }
 ```
 
-> **当前实现的共享修饰器 = `Name`/`Hidden`/`Visible`/`Style`(语义名)+ `Cursor`/`Focusable`/`OnFocus` + 布局标量(`Padding`/`MinWidth`/`MainWeight`…)**(`.Style(name)` 设 `styleName`,布局标量设字段)。Tooltip 已作为共享文字修饰器实现；通用 Popover 附着声明仍待设计（§4）。`Cursor`/`Focusable` 遵循"仅显式调用才应用"约定:控件构造函数里已设的默认(gui.Button/`MenuButton`/`TextInput` 的焦点)在未调用时保留,可显式 `Focusable(false)` 剥离(如菜单栏式行)。`OnFocus(func(focused bool))` 是回调不是 setter,由 `viewBase` 的**私有生命周期**处理:reconciler 只在 node 首次 mount 时构造一个持久 `viewBaseContext`(跨 rebuild 存活,存有 `handles []signal.Handle` + 当前生效 `onFocus`),mount 时连接 `gui.Widget.ConnectFocused`、每次 update 把新 view 的回调盖进 context、unmount 时断开——闭包触发时读 context 里的最新回调,因此 rebuild 永不重连。`viewBaseContext` 是私有类型不暴露 root 内部结构,也不提升到自定义控件的公开 API;`root.go` 只做通用代理,不含任何焦点语义——任何可聚焦 View 都可用。回调**带 boolean 状态**(gain=true / loss=false):因为焦点可从当前控件移开到无物可享(如移到不可聚焦区域),若只在 gain 时触发则无法清除跟踪状态;传 boolean 让调用方在 loss 时清理(如 `if f { focused=&x } else { focused=nil }`)。注意调度顺序:焦点 A→B 时,旧 A 先得 `false`、新 B 后得 `true`,期间跟踪指针瞬时为 nil(菜单期间焦点稳定,无影响)。这是"焦点控件发布能力"的声明式入口(配合 `ui.State` 实现如"当前焦点 text 状态"的跟踪)。
+> **当前实现的共享修饰器 = `Name`/`Hidden`/`Visible`/`Style`(语义名)+ `Cursor`/`Focusable`/`OnFocus` + 布局值(`Padding`/`Paddings`/`MinWidth`/`MainWeight`…)**(`.Style(name)` 设 `styleName`,布局值设字段)。Tooltip 已作为共享文字修饰器实现；通用 Popover 附着声明仍待设计（§4）。`Cursor`/`Focusable` 遵循"仅显式调用才应用"约定:控件构造函数里已设的默认(gui.Button/`MenuButton`/`TextInput` 的焦点)在未调用时保留,可显式 `Focusable(false)` 剥离(如菜单栏式行)。`OnFocus(func(focused bool))` 是回调不是 setter,由 `viewBase` 的**私有生命周期**处理:reconciler 只在 node 首次 mount 时构造一个持久 `viewBaseContext`(跨 rebuild 存活,存有 `handles []signal.Handle` + 当前生效 `onFocus`),mount 时连接 `gui.Widget.ConnectFocused`、每次 update 把新 view 的回调盖进 context、unmount 时断开——闭包触发时读 context 里的最新回调,因此 rebuild 永不重连。`viewBaseContext` 是私有类型不暴露 root 内部结构,也不提升到自定义控件的公开 API;`root.go` 只做通用代理,不含任何焦点语义——任何可聚焦 View 都可用。回调**带 boolean 状态**(gain=true / loss=false):因为焦点可从当前控件移开到无物可享(如移到不可聚焦区域),若只在 gain 时触发则无法清除跟踪状态;传 boolean 让调用方在 loss 时清理(如 `if f { focused=&x } else { focused=nil }`)。注意调度顺序:焦点 A→B 时,旧 A 先得 `false`、新 B 后得 `true`,期间跟踪指针瞬时为 nil(菜单期间焦点稳定,无影响)。这是"焦点控件发布能力"的声明式入口(配合 `ui.State` 实现如"当前焦点 text 状态"的跟踪)。
 
 两层对齐:
 
@@ -324,14 +324,14 @@ func (v *ButtonView) OnClick(fn func()) *ButtonView { v.onClick = fn; return v }
 | 标识/名称 | `.ID(string)` · `.Name(string)`（见 §3.6） | viewBase |
 | 显隐 | `.Visible(bool)` / `.Hidden(bool)` | viewBase |
 | **语义样式** | `.Style(name string)` | **唯一视觉入口**——命名意图(= `SetStyleName`),主题给外观 |
-| 布局标量 | `.Padding(n)` · `.MinWidth/.MaxWidth/.MinHeight/.MaxHeight(n)` · `.MinSize/.MaxSize` · `.MainWeight(n)` | 布局字段,**非样式** |
+| 布局值 | `.Padding(n)`（统一简写） · `.Paddings(geometry.Insets)`（四边） · `.MinWidth/.MaxWidth/.MinHeight/.MaxHeight(n)` · `.MinSize/.MaxSize` · `.MainWeight(n)` | 布局字段,**非样式** |
 | 结构(容器) | `.Children(...)` · `.Spacing(n)` · `.MainAlign(a)` · `.CrossAlign(a)` | 容器视图字段 |
 
 **灵魂:局部只能「选语义 + 摆布局」,不能「设具体样式」。**
 
 - `.Style(name string)` 只收单个 string(语义名),= `widget.SetStyleName(name)`,**收不到颜色/字体值**——堵死逃生口在类型上就可见;`name` 常量归应用/主题自己的包(`mystyle.Danger = "danger"`),不在 `ui`。普通控件 `Button()` 用默认样式名(`"button"`)。变体(outlined/filled)也是一个语义名,不用额外参数。
 - **移除旧 `.Style(rules ...style.Rule)`**(那是"局部设值"的口子)+ **移除 `gui.Widget` 的 `StyleRules()/SetStyleRules()`**(不再有局部 rule 覆盖);没有 `.Background()/.Foreground()`、没有 part 构造器——part/state/具体值全在主题。
-- 所有修饰器**覆盖语义**(最后一次赢):`.Style()` 与 `.Padding()/.MinWidth()` 一致,无累积、无二义。
+- 所有修饰器**覆盖语义**(最后一次赢):`.Style()` 与 `.Padding()/.Paddings()/.MinWidth()` 一致,无累积、无二义；`.Padding(n)` 等价于 `.Paddings(geometry.UniformInsets(n))`。
 - padding/align/尺寸/weight 是**布局**不是样式(DesignLayout §9/§10),和 `.Style()` 分属两个系统。
 
 ### 3.6 ID、Name 与 Widget 查询（已实现）

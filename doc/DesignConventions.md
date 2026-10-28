@@ -93,7 +93,7 @@ call 也必须保留该契约。修复所需依赖版本与当前可发布状态
 - 配置 setter → `SetXxx`(链式返回本身);服务 getter → 裸名词(`Clipboard()` / `Settings()`);动作 → 动词(`Run` / `Post` / `Sync` / `Quit` / `RequestUpdate`)。
 - **getter 返回 explicit,不返回默认**:与 setter 配对的裸 getter 返回"**你设了什么**"(round-trip:`SetX(v); X()==v`,未设 = 零值/nil),**不**在 getter 里偷偷返回默认;需要"**实际生效什么**"(含 fallback)时,用命名明确的 resolver(`resolvedXxx()` / 使用点 fallback)。理由:可预测、保留"是否设过"、fallback 集中一处。
   - 范例:`Application.StyleSheet()` 返回 nil(未设 custom,explicit)+ `ResolveStyle` 内部兜底 `DefaultStyleSheet`;`Widget.StyleName()` 返回 raw override(未设 `""`)+ 控件在调用点内联兜底自己的默认名(`if name==""{name=styleNameButton}`;**不设私有 helper——第三方控件也要能解析,故 `ResolveStyle` 公开**)。**别让一个裸 getter 两头兼职。**
-- **gui 精确、ui 简洁**:能力层 getter/setter 求精确消歧义(`StyleName`/`SetStyleName`——区别于 `style.Style` 值类型),声明式 ui 层用短修饰器(`.Style(name)` / `.Padding()`);两层命名不同是分工,不是不一致。
+- **gui 精确、ui 简洁**:能力层 getter/setter 求精确消歧义(`StyleName`/`SetStyleName`——区别于 `style.Style` 值类型),声明式 ui 层用短修饰器(`.Style(name)` / `.Padding()` / `.Paddings()`);两层命名不同是分工,不是不一致。
 
 ## 6. 依赖哲学
 

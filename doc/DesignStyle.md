@@ -146,7 +146,7 @@ Everything that bloats CSS fails the test and has another home:
 | Concern | In style? | Home |
 |---|---|---|
 | color / font / border / radius / box shadow | ✅ | **style** |
-| alignment / direction / padding / size / weight | ❌ (algorithm/scalar, not themed) | **layout** (fields) |
+| alignment / direction / padding / size / weight | ❌ (algorithm/Insets, not themed) | **layout** (fields) |
 | animation / transition | ❌ (time process; for dynamic, rebuild UI) | **animation** |
 | transform / clip / opacity | ❌ (compositing) | **scene** (DesignPaint) |
 | icon / image | ❌ (asset/content) | **asset** |
