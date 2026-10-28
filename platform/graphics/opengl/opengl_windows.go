@@ -134,7 +134,7 @@ func (c wglContext) Destroy() {
 
 func (c wglContext) MakeCurrent() error {
 	if c.window != nil && c.window.NativeHandle() == 0 {
-		return errSurfaceUnavailable
+		return ErrSurfaceUnavailable
 	}
 	return wgl.MakeCurrent(c.hdc, c.hrc)
 }
@@ -145,7 +145,7 @@ func (c wglContext) ClearCurrent() error {
 
 func (c wglContext) SwapBuffers() error {
 	if c.window != nil && c.window.NativeHandle() == 0 {
-		return errSurfaceUnavailable
+		return ErrSurfaceUnavailable
 	}
 	return winapi.SwapBuffers(c.hdc)
 }
