@@ -15,13 +15,13 @@ func TestTextDeclarationFlagsPreserveZeroValuesAndBaseModifiers(t *testing.T) {
 		t.Cleanup(r.unmountWindow)
 		w := r.update(TextView().ID("editor").Text("abc").Selection(TextSelection{Anchor: 1, Caret: 2})).(*gui.TextView)
 		r.update(TextView().ID("editor").Text("").Selection(TextSelection{}).Padding(0).WrapMode(WrapNone))
-		if w.ID() != "editor" || w.Model().Text() != "" || w.Selection() != (TextSelection{}) || w.Padding() != 0 || w.WrapMode() != WrapNone {
+		if w.ID() != "editor" || w.Model().Text() != "" || w.Selection() != (TextSelection{}) || w.Padding() != (geometry.Insets{}) || w.WrapMode() != WrapNone {
 			t.Fatal("explicit zero values or base modifier lost")
 		}
 		w.Model().SetText("kept")
 		w.SetSelection(TextSelection{Anchor: 1, Caret: 3})
 		r.update(TextView().ID("editor"))
-		if w.ID() != "editor" || w.Model().Text() != "kept" || w.Selection() != (TextSelection{Anchor: 1, Caret: 3}) || w.Padding() != 4 || w.WrapMode() != WrapWordChar {
+		if w.ID() != "editor" || w.Model().Text() != "kept" || w.Selection() != (TextSelection{Anchor: 1, Caret: 3}) || w.Padding() != geometry.UniformInsets(4) || w.WrapMode() != WrapWordChar {
 			t.Fatal("unset modifiers did not preserve content/selection or restore defaults")
 		}
 	})
@@ -30,13 +30,13 @@ func TestTextDeclarationFlagsPreserveZeroValuesAndBaseModifiers(t *testing.T) {
 		t.Cleanup(r.unmountWindow)
 		w := r.update(TextInput().ID("input").Text("abc").Selection(TextSelection{Anchor: 1, Caret: 2})).(*gui.TextInput)
 		r.update(TextInput().ID("input").Text("").Selection(TextSelection{}).Padding(0))
-		if w.ID() != "input" || w.Text() != "" || w.Selection() != (TextSelection{}) || w.Padding() != 0 {
+		if w.ID() != "input" || w.Text() != "" || w.Selection() != (TextSelection{}) || w.Padding() != (geometry.Insets{}) {
 			t.Fatal("explicit zero values or base modifier lost")
 		}
 		w.SetText("kept")
 		w.SetSelection(TextSelection{Anchor: 1, Caret: 3})
 		r.update(TextInput().ID("input"))
-		if w.ID() != "input" || w.Text() != "kept" || w.Selection() != (TextSelection{Anchor: 1, Caret: 3}) || w.Padding() != 4 {
+		if w.ID() != "input" || w.Text() != "kept" || w.Selection() != (TextSelection{Anchor: 1, Caret: 3}) || w.Padding() != (geometry.Insets{Left: 8, Top: 4, Right: 8, Bottom: 4}) {
 			t.Fatal("unset modifiers did not preserve content/selection or restore defaults")
 		}
 	})
@@ -283,11 +283,11 @@ func TestTextViewBindingDefaultsAndDeclarativeSignalBlocking(t *testing.T) {
 	v := TextView().Model(shared).ReadOnly(true).AcceptsTab(true).WrapMode(WrapNone).Padding(9).
 		Selection(TextSelection{Anchor: 1, Caret: 3}).OnSelection(func(TextSelection) { calls++ })
 	r.update(v)
-	if calls != 0 || editor.Model() != shared || editor.Selection() != (TextSelection{Anchor: 1, Caret: 3}) || !editor.ReadOnly() || !editor.AcceptsTab() || editor.WrapMode() != WrapNone || editor.Padding() != 9 {
+	if calls != 0 || editor.Model() != shared || editor.Selection() != (TextSelection{Anchor: 1, Caret: 3}) || !editor.ReadOnly() || !editor.AcceptsTab() || editor.WrapMode() != WrapNone || editor.Padding() != geometry.UniformInsets(9) {
 		t.Fatal("declarative properties emitted or were not applied")
 	}
 	r.update(TextView())
-	if editor.Model() != private || private.Text() != "private" || editor.ReadOnly() || editor.AcceptsTab() || editor.WrapMode() != WrapWordChar || editor.Padding() != 4 {
+	if editor.Model() != private || private.Text() != "private" || editor.ReadOnly() || editor.AcceptsTab() || editor.WrapMode() != WrapWordChar || editor.Padding() != geometry.UniformInsets(4) {
 		t.Fatal("removing modifiers did not restore constructor defaults")
 	}
 	if calls != 0 {

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"github.com/golang-gui/goui/core/bits"
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
 )
@@ -17,7 +18,7 @@ type TextInputView struct {
 	onSubmit        func()
 	selection       TextSelection
 	readOnly        bool
-	padding         float32
+	padding         geometry.Insets
 	fields          bits.Bitmap[uint64]
 }
 
@@ -105,9 +106,17 @@ func (v *TextInputView) OnText(fn func(string)) *TextInputView {
 	return v
 }
 
-// Padding sets the text input's inner padding. Unset leaves the built-in
-// default (4) untouched.
+// Padding sets equal inner padding on every edge. Unset leaves the built-in
+// default (8 horizontal, 4 vertical) untouched.
 func (v *TextInputView) Padding(padding float32) *TextInputView {
+	v.padding = geometry.UniformInsets(padding)
+	v.fields.Set(textInputPadding, true)
+	return v
+}
+
+// Paddings sets the per-edge inner padding. Unset leaves the built-in default
+// (8 horizontal, 4 vertical) untouched.
+func (v *TextInputView) Paddings(padding geometry.Insets) *TextInputView {
 	v.padding = padding
 	v.fields.Set(textInputPadding, true)
 	return v
@@ -118,7 +127,7 @@ type textInputState struct {
 	onSelection func(TextSelection)
 	onSubmit    func()
 	handles     signal.Handles
-	initPadding float32
+	initPadding geometry.Insets
 }
 
 func (v *TextInputView) Mount(ctx BuildContext) gui.Widget {

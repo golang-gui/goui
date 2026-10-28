@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/optional"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
@@ -10,13 +11,13 @@ type ButtonView struct {
 	ViewBase[ButtonView]
 	child   View
 	onClick func()
-	padding optional.Optional[float32]
+	padding optional.Optional[geometry.Insets]
 }
 
 type buttonState struct {
 	onClick     func()
 	click       signal.Handle
-	initPadding float32
+	initPadding geometry.Insets
 }
 
 func Button(text ...string) *ButtonView {
@@ -49,9 +50,17 @@ func (v *ButtonView) OnClick(fn func()) *ButtonView {
 	return v
 }
 
-// Padding sets the button's inner padding. Unset leaves the button's built-in
-// default (6) untouched. Negative and non-finite values are treated as zero.
+// Padding sets equal inner padding on every edge. Unset leaves the button's
+// built-in default (6) untouched. Negative and non-finite values are treated as
+// zero.
 func (v *ButtonView) Padding(padding float32) *ButtonView {
+	v.padding.SetValue(geometry.UniformInsets(padding))
+	return v
+}
+
+// Paddings sets the per-edge inner padding. Unset leaves the button's built-in
+// default untouched. Negative and non-finite edges are treated as zero.
+func (v *ButtonView) Paddings(padding geometry.Insets) *ButtonView {
 	v.padding.SetValue(padding)
 	return v
 }

@@ -14,12 +14,12 @@ import (
 type HeaderBarView struct {
 	ViewBase[HeaderBarView]
 	child      View
-	padding    optional.Optional[float32]
+	padding    optional.Optional[geometry.Insets]
 	captionIDs []string
 }
 
 type headerBarState struct {
-	initPadding float32
+	initPadding geometry.Insets
 	captionIDs  []string
 	drag        signal.Handle
 }
@@ -37,9 +37,16 @@ func (v *HeaderBarView) Child(child View) *HeaderBarView {
 	return v
 }
 
-// Padding sets inner padding in DIP. Unset restores the GUI default; negative
-// and non-finite values are normalized by gui.HeaderBar.
+// Padding sets equal inner padding in DIP. Unset restores the GUI default;
+// negative and non-finite values are normalized by gui.HeaderBar.
 func (v *HeaderBarView) Padding(padding float32) *HeaderBarView {
+	v.padding.SetValue(geometry.UniformInsets(padding))
+	return v
+}
+
+// Paddings sets the per-edge inner padding in DIP. Unset restores the GUI
+// default; negative and non-finite edges are normalized by gui.HeaderBar.
+func (v *HeaderBarView) Paddings(padding geometry.Insets) *HeaderBarView {
 	v.padding.SetValue(padding)
 	return v
 }

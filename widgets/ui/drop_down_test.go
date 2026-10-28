@@ -31,7 +31,7 @@ func TestDropDownDeclarationAndLatestSignals(t *testing.T) {
 	defer d.SetModel(nil)
 	v.Update(ctx, d)
 	d.Arrange(geometry.Rect(0, 0, 180, 32))
-	if d.Selected() != 0 || d.Padding() != 9 || d.PopupMaxHeight() != 180 || d.Placeholder() != "choose" || first != 0 {
+	if d.Selected() != 0 || d.Padding() != geometry.UniformInsets(9) || d.PopupMaxHeight() != 180 || d.Placeholder() != "choose" || first != 0 {
 		t.Fatal("initial declaration")
 	}
 	d.SetSelected(2)
@@ -39,7 +39,7 @@ func TestDropDownDeclarationAndLatestSignals(t *testing.T) {
 		v = DropDown(m).OnSelected(func(int) { latest++ }).OnOpenError(func(error) { errorsSeen++ })
 		v.Update(ctx, d)
 	}
-	if d.Selected() != 2 || m.connections != 1 || d.Padding() != 6 || d.PopupMaxHeight() != 320 || d.Placeholder() != "" {
+	if d.Selected() != 2 || m.connections != 1 || d.Padding() != geometry.UniformInsets(6) || d.PopupMaxHeight() != 320 || d.Placeholder() != "" {
 		t.Fatal("rebuild reset state/model or retained optional overrides")
 	}
 	h := &checkInputHost{widget: d}
@@ -62,7 +62,7 @@ func TestDropDownDeclarationAndLatestSignals(t *testing.T) {
 	// adapter double only invokes the control-specific Update.
 	v = DropDown(m).Selected(-1).Padding(0).PopupMaxHeight(0)
 	v.Update(ctx, d)
-	if d.Selected() != -1 || !d.Enabled() || !d.Focusable() || d.Padding() != 0 || d.PopupMaxHeight() != 0 {
+	if d.Selected() != -1 || !d.Enabled() || !d.Focusable() || d.Padding() != (geometry.Insets{}) || d.PopupMaxHeight() != 0 {
 		t.Fatal("explicit zero not applied")
 	}
 	v = DropDown(m).Selected(0).OnSelected(func(int) { latest++ })

@@ -84,7 +84,7 @@ func TestBoxLayoutModifiersUseWidgetNormalization(t *testing.T) {
 		MainWeight(float32(math.Inf(1))).
 		MinSize(float32(math.NaN()), 20).
 		MaxSize(float32(math.Inf(1)), 40)).(*gui.LinearBox)
-	if box.Spacing() != 0 || box.Padding() != 0 || box.MainWeight() != 0 {
+	if box.Spacing() != 0 || box.Padding() != (geometry.Insets{}) || box.MainWeight() != 0 {
 		t.Fatal("declarative modifiers bypassed widget normalization")
 	}
 	if box.MinSize() != (geometry.Size{Height: 20}) || box.MaxSize() != (geometry.Size{Height: 40}) {

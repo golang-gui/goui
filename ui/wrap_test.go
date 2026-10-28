@@ -12,7 +12,7 @@ func TestWrapUpdatesAndRestoresDefaults(t *testing.T) {
 	root := newRoot()
 	t.Cleanup(root.unmountWindow)
 	box := root.update(HWrap(Label("first"), nil).Spacing(8).LineSpacing(6).Padding(12).MainAlign(layout.MainEnd).CrossAlign(layout.CrossBaseline)).(*gui.WrapBox)
-	if box.Spacing() != 8 || box.LineSpacing() != 6 || box.Padding() != 12 || box.MainAlign() != layout.MainEnd || box.CrossAlign() != layout.CrossBaseline || len(box.Children()) != 1 {
+	if box.Spacing() != 8 || box.LineSpacing() != 6 || box.Padding() != geometry.UniformInsets(12) || box.MainAlign() != layout.MainEnd || box.CrossAlign() != layout.CrossBaseline || len(box.Children()) != 1 {
 		t.Fatal("modifiers not applied")
 	}
 	child := box.Children()[0]
@@ -20,7 +20,7 @@ func TestWrapUpdatesAndRestoresDefaults(t *testing.T) {
 	if updated != box || box.Children()[0] != child || child.(*gui.Label).Text() != "second" {
 		t.Fatal("widget identity not preserved")
 	}
-	if box.Direction() != layout.DirectionVertical || box.Spacing() != 0 || box.LineSpacing() != 0 || box.Padding() != 0 || box.MainAlign() != layout.MainStart || box.CrossAlign() != layout.CrossDefault {
+	if box.Direction() != layout.DirectionVertical || box.Spacing() != 0 || box.LineSpacing() != 0 || box.Padding() != (geometry.Insets{}) || box.MainAlign() != layout.MainStart || box.CrossAlign() != layout.CrossDefault {
 		t.Fatal("defaults not restored")
 	}
 	root.update(HWrap().Children(Label("third"), Label("fourth")))
@@ -43,7 +43,7 @@ func TestWrapLayoutAndSnapshot(t *testing.T) {
 		t.Fatalf("%+v", info)
 	}
 	root.update(VWrap().Spacing(-1).LineSpacing(float32(math.NaN())).Padding(float32(math.Inf(1))))
-	if box.Spacing() != 0 || box.LineSpacing() != 0 || box.Padding() != 0 {
+	if box.Spacing() != 0 || box.LineSpacing() != 0 || box.Padding() != (geometry.Insets{}) {
 		t.Fatal("invalid geometry not normalized")
 	}
 }

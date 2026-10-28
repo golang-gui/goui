@@ -2,6 +2,7 @@ package ui
 
 import (
 	"github.com/golang-gui/goui/core/bits"
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/internal/identity"
@@ -20,7 +21,8 @@ type DropDownView struct {
 	model              gui.ListData[DropDownItem]
 	selected           int
 	placeholder        string
-	padding, maxHeight float32
+	padding            geometry.Insets
+	maxHeight          float32
 	fields             bits.Bitmap[uint8]
 	item, selectedItem func(int, DropDownItem) baseui.View
 	onSelected         func(int)
@@ -51,6 +53,11 @@ func (v *DropDownView) Selected(index int) *DropDownView {
 }
 func (v *DropDownView) Placeholder(text string) *DropDownView { v.placeholder = text; return v }
 func (v *DropDownView) Padding(value float32) *DropDownView {
+	v.padding = geometry.UniformInsets(value)
+	v.fields.Set(dropDownPadding, true)
+	return v
+}
+func (v *DropDownView) Paddings(value geometry.Insets) *DropDownView {
 	v.padding = value
 	v.fields.Set(dropDownPadding, true)
 	return v
@@ -79,7 +86,8 @@ type dropDownState struct {
 	onSelected         func(int)
 	onOpenError        func(error)
 	handles            signal.Handles
-	padding, maxHeight float32
+	padding            geometry.Insets
+	maxHeight          float32
 }
 
 func (v *DropDownView) Mount(ctx baseui.BuildContext) gui.Widget {

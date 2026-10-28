@@ -2,6 +2,7 @@ package ui
 
 import (
 	"github.com/golang-gui/goui/core/bits"
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
 )
@@ -30,7 +31,7 @@ type TextViewView struct {
 	selectionSource BindState[TextSelection]
 	placeholder     string
 	selection       TextSelection
-	padding         float32
+	padding         geometry.Insets
 	wrap            WrapMode
 	readOnly        bool
 	acceptsTab      bool
@@ -140,7 +141,17 @@ func (v *TextViewView) OnSelection(fn func(TextSelection)) *TextViewView {
 	return v
 }
 
+// Padding sets equal inner padding on every edge. Unset leaves the built-in
+// default (4) untouched.
 func (v *TextViewView) Padding(value float32) *TextViewView {
+	v.padding = geometry.UniformInsets(value)
+	v.fields.Set(textViewPadding, true)
+	return v
+}
+
+// Paddings sets the per-edge inner padding. Unset leaves the built-in default
+// (4) untouched.
+func (v *TextViewView) Paddings(value geometry.Insets) *TextViewView {
 	v.padding = value
 	v.fields.Set(textViewPadding, true)
 	return v
@@ -156,7 +167,7 @@ func (v *TextViewView) OnChange(fn func(TextChange)) *TextViewView { v.onChange 
 
 type textViewState struct {
 	model       *TextModel
-	padding     float32
+	padding     geometry.Insets
 	wrap        WrapMode
 	onChange    func(TextChange)
 	onText      func(string)

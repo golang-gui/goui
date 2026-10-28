@@ -22,12 +22,12 @@ func TestHeaderBarReconcilesChildAndDefaults(t *testing.T) {
 	if updated != header || header.Child() != label || label.Text() != "second" {
 		t.Fatal("header/child reuse or update failed")
 	}
-	if header.Padding() != 0 || header.MinSize().Height != 64 {
+	if header.Padding() != (geometry.Insets{}) || header.MinSize().Height != 64 {
 		t.Fatal("explicit modifiers were not applied")
 	}
 	for _, padding := range []float32{-1, float32(math.NaN()), float32(math.Inf(1))} {
 		root.update(HeaderBar(nil).Padding(padding))
-		if header.Padding() != 0 {
+		if header.Padding() != (geometry.Insets{}) {
 			t.Fatal("invalid padding was not normalized")
 		}
 	}
