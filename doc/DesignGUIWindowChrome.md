@@ -79,8 +79,8 @@ The HeaderBar supplying this height must remain a full-width top row (or the
 relevant split segment), not be displaced by padding on a surrounding content
 box. Put application margins on a separate body container below it; use
 HeaderBar.Padding for its own content. A lower/application-inset HeaderBar must not
-silently reposition the window controls. Linux GUI-owned perimeter allocation is
-not application padding: the HeaderBar follows that root origin automatically.
+silently reposition the window controls. Linux GUI-owned resize hit zones do not reserve layout space; HeaderBar backgrounds
+fill their complete allocations.
 The filemanager example follows this composition.
 
 The background fills the HeaderBar's complete rectangle. During Arrange it
@@ -170,7 +170,7 @@ Chrome uses native SetHitTest on Windows; after ErrUnsupported it uses explicit
 BeginMove/BeginResize on X11/macOS. Resize starts on the original press; Caption
 owns its press and waits for native held motion beyond 4 DIP before BeginMove.
 Even a rejected move does not leak an unmatched release into content. Resize
-failure still leaves ordinary input intact. No screen-coordinate or arbitrary
+failure does not turn an accepted resize press into a Widget click. No screen-coordinate or arbitrary
 position API is added to GUI.
 macOS BeginResize is the bounded backend adaptation documented in
 DesignWindowHitTest.md, not a simulated native HitTest service.
@@ -255,69 +255,47 @@ surface-mask capability check or shader allocation during window creation.
 
 ### Appearance and layout
 
-- Normal floating presentation: 12 DIP rounded corners and a 1 DIP solid border.
-  There is no GOUI shadow or shadow padding. The root occupies the safe inner
-  rectangle, leaving all four resize strips to Window. This automatic allocation
-  is limited to Linux GUI-drawn Integrated; native Integrated, Native, None and
-  Popover retain their existing layout, and no wrapper Widget is inserted.
-- The body background uses the Window's explicit StyleName / default part,
-  or `window` when unset. Changing the name only repaints this Window and never
-  supplies a style to its Widgets. Radius, border
-  width and border color are GUI-owned, not `window` / `frame` application rules.
-  Private light/dark palettes follow the window background; the light border is
-  opaque RGB(165,165,165). Replacing the sheet cannot remove or reshape the frame.
-- The three GTK4-inspired controls use 24 DIP visible circles centered in 28 DIP
-  square hit boxes, 8 DIP gaps between hit boxes and a 6 DIP
-  right inset (8 DIP to the visible circle), measured from the complete window
-  edge, not added a second time to the root inset. They are vertically centered
-  in the queried HeaderBar row using the root content's Y origin; an
-  absent row uses a 40 DIP placement height, not a Window height property.
-  GUI-private normal/hover/pressed colors replace the former `window-control`
-  rules. Neither circular nor rectangular caption buttons read application
-  Button fonts or appearance. Icons use the private foreground color and the
-  existing vector minus, maximize/restore and close shapes, not font glyphs.
-  Linux circular controls use an 8 DIP glyph span within the unchanged 12 DIP
-  icon allocation; strokes remain 1 DIP. Rectangular Windows controls retain
-  their 10 DIP glyph span, and native macOS controls are unchanged.
-- Maximized and fullscreen windows lose the frame border, rounded background
-  and the content allocation/paint inset.
-  Fullscreen also hides controls. Restoring Normal restores the GUI-owned frame.
-  Only observed platform state drives these changes.
-- HeaderBar avoidance uses the existing ControlsBounds signal; custom controls
-  retain ordinary controllers, close vetoes, snapshots and window ownership.
+Normal floating presentation keeps 12 DIP rounded corners and a 1 DIP solid
+border, without a GOUI shadow. Content Measure/Arrange fills the complete client
+rectangle starting at (0, 0). Resize zones are input only; no perimeter padding,
+structural inset clip or hidden wrapper Widget is inserted. This supersedes the
+2026-10-07 safe-content allocation described in the historical record below.
+
+The Window's explicit StyleName/default part (or `window`) selects only its
+background. Radius and border remain GUI decoration policy. HeaderBar backgrounds
+and arbitrary custom Widget painting can reach all four window edges.
+
+The controls keep their GTK4-inspired geometry: 24 DIP visible circles in 28 DIP
+hit boxes, 8 DIP gaps, 6 DIP right inset and 8 DIP glyphs. They are vertically
+centered in the queried HeaderBar height from the complete client origin;
+without a row the fallback is 40 DIP. HeaderBar still avoids ControlsBounds.
+Windows rectangular controls and macOS native controls are unchanged.
+
+Maximized/fullscreen remove the border and rounding without changing the root's
+layout origin. Fullscreen also hides controls. Automatic desktop minimum hints
+use content size directly; input zones never increase them. Explicit SetMinSize
+keeps its existing client-area meaning.
 
 ### Rendering
 
-Clear transparent → styled rounded background → safe rectangular clip →
-application tree and controls → restore clip → inset border → present.
+Clear transparent → rectangular background → complete application tree and
+controls → border → Root.AfterPaint → ClearPath on four outer corners → present.
 
-The safe rectangle is both the root allocation and a structural paint boundary.
-Root Measure receives its tight size; Arrange receives its window-local origin
-and size. Descendant local coordinates, input conversion, IME caret positioning,
-Snapshot and RenderWidget use the existing Rect traversal; the native window
-origin, Position/WorkArea and complete surface size do not change. HeaderBar
-selects the row at the root's top rather than requiring window Y=0, and Chrome
-includes that origin in circular-button vertical placement. Each Widget's
-explicit clip intersects this boundary and cannot cancel it. Empty safe
-rectangles still allocate zero-sized content and suppress drawing.
+ClearPath is a general path erasure operation under ordinary Transform/Clip;
+Painter does not know WindowChrome. Four separate non-overlapping paths avoid
+expanding the existing Path value into a compound-path API. The radius clamps to
+half the shorter side. A final erasure applies coverage to already-composited
+pixels rather than reapplying the rounded clip to each Widget's background.
+The border keeps its inner contour and extends its outer contour beyond the
+final erasure boundary, avoiding double antialias attenuation at that boundary.
 
-Automatic content-derived desktop minimum hints include twice the current
-perimeter in each axis, and refresh when that perimeter changes with state or
-scale. Unchanged hints retain the previous one-time behavior. Explicit SetMinSize
-keeps its window-size semantics and is never increased by the GUI perimeter.
-
-The default 12 DIP radius uses a 5 DIP inset. Larger radii use at least
-r*(1-1/sqrt(2)) plus one physical pixel of AA clearance; the inset also covers
-the border width and is rounded inward to a physical-pixel boundary. The same
-inset defines the resize strips. The complete surface size remains unchanged.
-
-Clipping Widget content at the window-owned perimeter is intentional. Matching
-background colors blend naturally; differing Widget backgrounds leave the
-window background visible. No extra Widget padding or per-HeaderBar rounding is added.
-SurfaceClipper, its Software/OpenGL resources and the implicit End mask have
-been removed. All rendering uses the existing Clear, FillRoundRect, SetClipRect
-and border primitives. General clipping/erasure is deferred in
-[DesignGraphicsClipping.md](DesignGraphicsClipping.md).
+Input, Snapshot, IME and RenderWidget retain their existing coordinate rules.
+All root/descendant allocations use the complete client rectangle; the normal
+Widget structural clips still apply. There is no window-specific Painter.End
+mask, SurfaceClipper or full-frame readback. See
+[ClearPath and painting completion](DesignGraphicsClipping.md) for the public
+operation, Root signal, three-backend implementation and custom-window usage.
+Popover and BorderBox layout/decoration policy is not migrated in this slice.
 
 ### Interaction and limits
 
@@ -326,7 +304,9 @@ as the first region-query subscriber. HeaderBar's automatic classification leave
 these roles intact; later application subscribers may override them. Maximize and
 fullscreen suppress these automatic resize regions. Caption drag/double-click
 and native EWMH resize continue through DispatchEvent and the host controller.
-The host pointer controller runs even when neither Widget tree is hit. A resize
+The host pointer controller consumes an accepted resize press before Widget
+controllers or default focus transfer, including when full-client content is hit.
+It also runs when neither Widget tree is hit. A resize
 strip is owned by Window, not an invisible Widget; it uses the same gesture
 sequence and native takeover as input delivered inside content. Disabled or
 empty content does not disable window resizing; callback destruction cancels
@@ -349,9 +329,11 @@ decoration implementation, not a promise of identical window-manager behavior.
   corners; border width, antialiasing, circular buttons and state transitions.
 - Creation/fallback, factual native Unknown, signal overrides and ordinary
   resize/button request routing tests.
-- GUI tests verify safe root allocation and local/window coordinate conversion,
+- GUI tests verify full-client root allocation and local/window coordinate conversion,
   structural clip enforcement for children/custom clip overrides/decorations,
-  empty safe rectangles, border-state restoration and maximized/fullscreen transitions.
+  final corner erasure, border-state restoration and maximized/fullscreen transitions.
+  Resize presses on full-client Buttons cannot change focus or activate the Button;
+  explicit Client overrides restore normal Widget input.
 - `go run ./example/integrated`; repeat with `GOUI_PLAT_PAINTER=software` and
   `GOUI_PLAT_SCALE=2`. Native and GUI policies are logged. Software/OpenGL have
   been visually checked on the available composited X11 desktop; this does not
@@ -360,7 +342,7 @@ decoration implementation, not a promise of identical window-manager behavior.
   Caption double-click restore, Caption drag, right-edge resize and close button.
   These inputs entered through the native event path, not direct GUI commands.
 
-### 2026-10-07 Linux Integrated 布局修正与验证
+### 2026-10-07 Linux Integrated 布局修正与验证（历史，布局方案已替代）
 
 仅 Linux GUI 自绘 Integrated 的根布局进入既有安全矩形；四边仍用于缩放。
 HeaderBar 以根内容顶部查询高度，Chrome 计入内容 Y 起点，WindowControls 本身

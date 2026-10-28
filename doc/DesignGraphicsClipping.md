@@ -1,67 +1,88 @@
-# 通用裁剪与局部擦除：后续规划
+# 路径擦除与完整窗口内容
 
-状态：待评估，未实现，见 [未来路线](Roadmap.md#future-clipping)。当前 Linux GUI Integrated 采用圆角背景与内部安全矩形方案，
-不为模拟窗口装饰增加 Painter 圆角裁剪、路径擦除或窗口专用遮罩。
+状态：2026-10-28 已实现并完成本轮验收。本文替代 Linux Integrated 安全矩形的旧方案。
+实现与验收进度见 [Plan](Plan.md)，通用路径裁剪仍为独立的未来需求。
 
-## 职责与当前选择
+## 公共接口与契约
 
-- platform 的透明窗口能力负责提交、合成带 Alpha 的画面，不决定窗口外观。
-- graphics.Painter 提供通用绘图操作，不持有 WindowChrome、HeaderBar 等 GUI 策略。
-- gui.Window 决定窗口背景、内容布局、装饰和缩放区域。
-- 透明绘制本身是完整能力。普通 SourceOver 填充透明色不会擦除目标；Clear 清空目标与
-  透明色参与普通填充不是同一种操作。
-- SurfaceClipper 及 Painter.End 隐式窗口遮罩已移除；不补齐 Direct2D 的专用遮罩。
+`graphics.Painter` 和 `gui.Painter` 增加 `ClearPath(path graphics.Path)`。
+路径的填充区域擦除为透明黑；覆盖率为 c 时，预乘目标 RGBA 四通道均乘以 1-c。
+完全覆盖归零，外部不变；边缘保留未覆盖部分。不是透明色的 SourceOver 填充。
 
-当前 Linux 模拟 Integrated 同时限制布局和绘制：根控件的 Measure／Arrange 使用
-四边安全内容区域，窗口局部事件与 Snapshot 坐标不变；派生最小尺寸计入边缘，
-显式 MinSize 保持客户区语义。HeaderBar 查询高度及按钮定位计入内容起点。
-Window 先绘制圆角背景，再将内部安全矩形作为控件树及自绘按钮的结构 ClipRect；
-控件自己的裁剪不能扩大它。最后恢复裁剪、绘制窗口边框。
-默认半径 12 DIP 时安全内缩为 5 DIP；较大圆角/边框按几何安全距离增大内缩，
-预留一物理像素的抗锯齿余量并向内对齐物理像素。缩放热区使用同一内缩量。
-最大化、全屏不内缩。框架以安全区域布局，避免把边缘控件先铺满再裁掉；
-缩放区域属于窗口管理的装饰，契约见 [GUI WindowChrome](DesignGUIWindowChrome.md)。
-窗口背景与控件背景一致时外围自然融合；背景不同时外围显示窗口背景。
+- 路径是局部 DIP，随当前 Transform、HiDPI 和既有矩形 Clip 生效。
+- 不改变 Transform、Clip 或后续绘制的合成状态，正常绘制可以重新填满已擦区域。
+- 填充采用非零绕数规则，支持现有单轮廓路径；未闭合轮廓隐式闭合。空路径及无交集区域不绘制。
+- 不扩展多轮廓、孔洞、公开 FillRule 或任意合成模式接口。
+- 在正常帧或 RenderImage 的回调内使用；不改变窗口透明配置及鼠标输入区域。
+- 半覆盖边缘重复擦除会继续衰减，不能按幂等裁剪使用。
 
-## 方案一：通用圆角裁剪
+语义参考 [Qt CompositionMode_Clear](https://doc.qt.io/qt-6/qpainter.html#CompositionMode-enum)
+及 [Cairo CLEAR](https://www.cairographics.org/operators/#cairo_operator_clear)。
 
-适用需求：保留底层背景，只限制某组后续绘制，例如需要任意内容铺满圆角容器。
+## 三后端
 
-- GUI 决定几何边界，graphics 执行；不提供窗口专用接口。
-- 必须明确裁剪坐标系、Transform、矩形裁剪相交、替换、恢复和跨帧重置。
-- 当前 SetClipRect 会由 Widget 遍历反复设置，不能让它意外清除外层结构边界。
-- 抗锯齿裁剪需明确组合语义：逐图元重复应用覆盖率与整组内容合成后应用一次并不等价。
-- Direct2D 可利用带几何遮罩的 Layer；OpenGL/nanovgo 需要额外裁剪支持，Software
-  需要覆盖率及适当的合成实现。通用能力应在三个后端共同实现和验证。
-- 尚不确定采用 SetClipRoundRect 还是作用域式接口；不因本轮窗口需求提前定型。
+- Software：复用路径扫描，生成包围盒与 Clip 交集内的覆盖率，再修改目标 BGRA。
+  复用临时遮罩缓冲；不读回或复制整帧。scanFT 的透明 draw.Src 不保留未覆盖部分，
+  不能直接作为擦除。
+- OpenGL：nanovgo 补齐 SourceOver / DestinationOut 状态，随 Save/Restore 保存、
+  BeginFrame 重置，逐条命令记录并按顺序提交。ClearPath 用不透明填充和
+  ZERO / ONE_MINUS_SRC_ALPHA 混合。不能在延迟命令外临时切换 GL 状态，
+  不新增窗口 shader。参考上游 [NanoVG](https://github.com/memononen/nanovg/blob/master/src/nanovg_gl.h)。
+- Direct2D 1.1：保存 primitive blend，透明黑 COPY 填充 Geometry，恢复原状态。
+  COPY 的边缘公式为 S*c+D*(1-c)，见 [官方定义](https://learn.microsoft.com/en-us/windows/win32/api/d2d1_1/ne-d2d1_1-d2d1_primitive_blend)。
 
-## 方案二：ClearPath 局部擦除
+## 宿主绘制收尾
 
-适用需求：明确让已有画面的指定区域变透明，例如绘制结束后清除窗口四角。
+`Root.ConnectAfterPaint(func(Painter, geometry.Rectangle)) signal.Handle` 在 Widget、
+窗口控件及宿主边框完成后、提交前触发；Linux Integrated 最终形状处理在其后。
+Window / Popover 共用 rootBase 实现。
 
-候选接口：ClearPath(path Path)。这是一次性操作，不增加持久绘制状态；遵循当前
-Transform 和矩形 Clip，不改变之后的绘制状态。命名和与 Clear 的契约仍需正式确认。
+回调 bounds 是完整表面的局部 DIP 矩形。每位订阅者从单位变换、完整 Clip 开始，
+绘制状态独立，Save/Restore 必须配对。Painter 只在同步回调内有效。
+与 Widget.Paint 一样不能修改控件树、销毁宿主或嵌套开启绘制。
+连接不驱动连续帧；连接、阻断、断开后由调用方 RequestPaint。
+RenderWidget 不触发宿主 AfterPaint。窗口销毁使连接失效；Popover 隐藏保留连接。
 
-- 路径内部像素归零，边缘按覆盖率 a 将预乘 RGB 和 Alpha 同时乘以 1-a。
-- GUI 构造四个圆角外部区域，决定调用时机；Painter 不认识窗口圆角。
-- Direct2D 1.1 可临时设置 primitive COPY，透明黑填充几何后恢复状态；覆盖率公式为
-  S*a + D*(1-a)，S=0 时就是所需擦除。
-- Software 可复用路径扫描的覆盖率，但当前 scanFT 的透明 draw.Src 不能直接代替：
-  其实现不保留部分覆盖像素的未覆盖目标分量，需要适当的擦除像素处理。
-- nanovgo 当前延迟提交且采用固定混合方式，需要在绘制命令中记录擦除混合状态；
-  不能仅在排队绘制前后切换 GL 状态。应复用路径栅格化，不另建窗口 shader。
-- 局部擦除会同时删除下层内容，不等价于裁剪某个子控件；有窗口外阴影时，还需设计
-  绘制顺序，不能误擦需要保留的阴影。
+UI 通过 `WindowView.OnAfterPaint` 薄绑定、保存最新回调，重建不重复连接；
+`WindowView.Transparent(bool)` 只传递创建选项。用户仍需显式 RequestUpdate。
+自定义 None+Transparent 窗口在 AfterPaint 构造四角外侧路径并调用 ClearPath，
+不在父控件 Paint 中擦除后任由子控件重新覆盖。例程提供四角函数，不增加窗口
+专用 Painter 方法。透明像素不会自动穿透输入。
 
-若将来仅需要局部擦除，ClearPath 比引入完整裁剪状态体系更小；若需要通用圆角容器，
-则应按裁剪需求设计，不能用擦除偷换语义。
+## Linux GUI Integrated
 
-## 后续启用条件与验证
+根布局和结构 Clip 使用完整客户区，不再保留四边布局空白，不插入隐藏 Widget。
+自动内容最小尺寸不再附加边缘宽度；显式 SetMinSize 保持客户区含义。
+HeaderBar 及控制按钮以完整根分配定位，窗口局部输入、Snapshot、IME 坐标不变。
 
-出现明确需求后再选择方案，不同时预建两套机制。实施前重新检查三个后端和 nanovgo。
-至少覆盖路径/圆角边缘、预乘透明合成、Transform、矩形 Clip、后续状态不受污染、
-HiDPI、资源生命周期和正常帧性能；运行 go test ./... 并完成三端验证。
+顺序：透明清空 → 矩形背景 → 完整 Widget 树 → 控制按钮及边框 → AfterPaint
+→ 四角擦除 → 提交。12 DIP 半径钳制到短边一半，半径为零跳过，四块不重叠。
+最大化、全屏关闭圆角；全屏隐藏控制按钮。边框保持内轮廓，外轮廓扩展到最终
+擦除曲线外，避免外缘重复抗锯齿。无需 SurfaceClipper 或 Painter.End 的窗口行为。
 
-参考：
-[Direct2D primitive blend](https://learn.microsoft.com/en-us/windows/win32/api/d2d1_1/ne-d2d1_1-d2d1_primitive_blend)、
-[Direct2D layers](https://learn.microsoft.com/en-us/windows/win32/direct2d/direct2d-layers-overview)。
+缩放范围独立保留：约 5 DIP 边缘，16 DIP 角部延伸。宿主控制器在控件获得按下、
+焦点或手势前接管缩放，防止铺满后的按钮、滚动条抢占。已有指针捕获、模态及
+显式 Client 覆盖继续有效；不改变全局手势竞争优先级。光标来自最终 Chrome 查询。
+原生输入面保持矩形，透明角部仍可用于缩放。
+
+本切片不迁移 Popover / BorderBox 的布局与装饰策略，不新增窗口形状或输入穿透 API。
+ClearPath 会同时去除下面的内容与阴影，不替代圆角容器裁剪。
+
+## 实施与验证
+
+1. nanovgo 合成状态和延迟命令；三绘制后端及像素回归。
+2. Root AfterPaint、GUI 状态隔离、自定义透明窗口和 UI 薄绑定。
+3. Linux Integrated 铺满及缩放输入隔离，更新原有回归与文档。
+
+包内验证完全擦除、部分覆盖的独立预期、预乘、Clip、Transform、HiDPI、
+擦除后绘制、连续帧、资源生命周期及 AfterPaint 隔离。桌面程序置于 tests/window，
+使用中文说明。独立 X11 会话验证 Software/OpenGL；Windows 验证 Direct2D，
+macOS 验证 OpenGL，并记录实际环境与未验证项。执行全仓测试、相关 race/vet
+及目标构建；不能把编译通过或窗口启动记为操作验收。
+
+nanovgo 先在本地仓库提交，测试无误后发布新 tag；GOUI 直接依赖已推送的 tag，
+不提交本机 replace。用户无关文件及侧会话文档不纳入提交。
+
+实现复核发现：Direct2D 旧 FillPath 默认使用偶奇规则，与其他后端的自交轮廓结果
+可能不同。本轮仅 ClearPath 显式选择非零绕数，旧接口保留行为；后续统一 FillPath
+时需单独设计并增加三后端自交路径回归。
