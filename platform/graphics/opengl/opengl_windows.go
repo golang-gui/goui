@@ -11,9 +11,10 @@ import (
 )
 
 type wglContext struct {
-	hwnd winapi.HWND
-	hdc  winapi.HDC
-	hrc  wgl.HGLRC
+	window NativeWindow
+	hwnd   winapi.HWND
+	hdc    winapi.HDC
+	hrc    wgl.HGLRC
 }
 
 func newContext(win NativeWindow, share Context, config Config) (_ Context, err error) {
@@ -93,9 +94,10 @@ func newContext(win NativeWindow, share Context, config Config) (_ Context, err 
 		}
 
 		return wglContext{
-			hwnd: hwnd,
-			hdc:  hdc,
-			hrc:  hrc,
+			window: win,
+			hwnd:   hwnd,
+			hdc:    hdc,
+			hrc:    hrc,
 		}, nil
 	}
 
@@ -131,6 +133,9 @@ func (c wglContext) Destroy() {
 }
 
 func (c wglContext) MakeCurrent() error {
+	if c.window != nil && c.window.NativeHandle() == 0 {
+		return errSurfaceUnavailable
+	}
 	return wgl.MakeCurrent(c.hdc, c.hrc)
 }
 
@@ -139,6 +144,9 @@ func (c wglContext) ClearCurrent() error {
 }
 
 func (c wglContext) SwapBuffers() error {
+	if c.window != nil && c.window.NativeHandle() == 0 {
+		return errSurfaceUnavailable
+	}
 	return winapi.SwapBuffers(c.hdc)
 }
 

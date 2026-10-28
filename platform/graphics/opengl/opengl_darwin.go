@@ -9,6 +9,7 @@ import (
 )
 
 type nsglContext struct {
+	window      NativeWindow
 	object      NSOpenGLContext
 	pixelFormat NSOpenGLPixelFormat
 }
@@ -99,6 +100,7 @@ func newContext(win NativeWindow, share Context, config Config) (_ Context, err 
 	}
 
 	return nsglContext{
+		window:      win,
 		object:      object,
 		pixelFormat: pixelFormat,
 	}, nil
@@ -122,6 +124,9 @@ func (c nsglContext) Destroy() {
 }
 
 func (c nsglContext) MakeCurrent() error {
+	if c.window != nil && c.window.NativeHandle() == 0 {
+		return errSurfaceUnavailable
+	}
 	AutoReleasePool(func() {
 		c.object.MakeCurrentContext()
 		c.object.Update()
@@ -137,6 +142,9 @@ func (c nsglContext) ClearCurrent() error {
 }
 
 func (c nsglContext) SwapBuffers() error {
+	if c.window != nil && c.window.NativeHandle() == 0 {
+		return errSurfaceUnavailable
+	}
 	AutoReleasePool(func() {
 		// TODO: occluded state check?
 		c.object.FlushBuffer()

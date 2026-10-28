@@ -22,6 +22,7 @@ import (
 )
 
 type Painter struct {
+	window       NativeWindow
 	hwnd         uintptr
 	factory      *d2d1.Factory1
 	d3dDevice    *d3d11.Device
@@ -74,6 +75,7 @@ type NativeWindow interface {
 
 func NewPainter(win NativeWindow) (_ graphics.Painter, err error) {
 	p := new(Painter)
+	p.window = win
 	p.hwnd = win.NativeHandle()
 	p.transparent = win.Transparent()
 	p.images = make(map[*imageResource]struct{})
@@ -571,6 +573,9 @@ func (p *Painter) destroyAllImages() {
 func (p *Painter) Begin(width, height, scale float32) {
 	p.activeFrame = false
 	p.deferredFrame = false
+	if p.window.NativeHandle() == 0 {
+		return
+	}
 	if width <= 0 || height <= 0 {
 		return
 	}
@@ -647,6 +652,9 @@ func (p *Painter) End() {
 	if !p.activeFrame {
 		if p.deferredFrame {
 			p.deferredFrame = false
+			if p.window.NativeHandle() == 0 {
+				return
+			}
 			_ = winapi.InvalidateRect(winapi.HWND(p.hwnd), nil, winapi.FALSE)
 		}
 		return
@@ -658,6 +666,9 @@ func (p *Painter) End() {
 	hr := p.render.EndDraw(nil, nil)
 	p.activeFrame = false
 	p.flushPendingImages()
+	if p.window.NativeHandle() == 0 {
+		return
+	}
 	if hr.Failed() {
 		p.handleDeviceFailure(hr)
 		return

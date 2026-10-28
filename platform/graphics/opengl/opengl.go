@@ -1,5 +1,9 @@
 package opengl
 
+import "errors"
+
+var errSurfaceUnavailable = errors.New("native surface is unavailable")
+
 // Context is thread-affine. Creation, rendering and destruction must stay on
 // the same OS thread; callers must use runtime.LockOSThread to prevent goroutine
 // migration. MakeCurrent binds to the calling OS thread, not the goroutine.
