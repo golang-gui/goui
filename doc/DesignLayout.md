@@ -120,12 +120,11 @@ Arrange 的最终位置会不一致。
 
 **固有尺寸(intrinsic)**和**用户 min/max**是两层,别混:
 
-- **固有尺寸**是控件 `Measure` 按内容+样式算出的自然尺寸,是控件自己的职责。**空内容不该退化到 0**:交互控件(如 `Button`)在固有尺寸上保留一个**从字体派生的骨架下限**(`floor = textLineHeight(fontSize) + padding*2`,一个行高的方块),这样空按钮/图标按钮仍是可见可点的方块,而不是塌成一条线或消失。骨架从字号派生 → 随 DPI/字号自适应,**不是硬编码魔法像素、也不是给每个控件挂一个 minSize 常量**。
+- **固有尺寸**是控件 `Measure` 按内容+样式算出的自然尺寸,是控件自己的职责。**空内容不该退化到 0**:交互控件(如 `Button`)在固有尺寸上保留一个**从字体派生的骨架下限**(`floor = textLineHeight(fontSize) + padding.Vertical()`,一个行高的方块),这样空按钮/图标按钮仍是可见可点的方块,而不是塌成一条线或消失。骨架从字号派生 → 随 DPI/字号自适应,**不是硬编码魔法像素、也不是给每个控件挂一个 minSize 常量**。
 - **用户 min/max**(§9 的 `SetMin/MaxSize`)是在固有尺寸**之上**的显式覆盖。夹取顺序不变:`父约束.Clamp( self约束.Clamp( max(固有, 骨架) ) )` —— 骨架属于"固有"这一层,`constrain` 最后跑,所以用户 `SetMaxSize` 仍能压过骨架、`SetMinSize` 仍能抬高。**不要用 `SetMinSize` 去补固有尺寸的塌陷**——那是补错了层。
 - 只有真正会"塌成 0"的交互控件才需要骨架:`Button` 需要;`TextInput` 自带 `defaultTextInputWidth`+行高骨架、`Image` 空图=`{0,0}` 合理、`Label` 纯展示空=0 宽合理,**都不加**。骨架是控件特有逻辑,不是共享常量。
-- 相关:`Button` 构造器给内容盒一个真实的 `Padding(6)`(原为 0,导致有文字也贴边)；
-  它当前是控件的布局默认，不是 style 值。若日后要支持分轴 padding 或主题度量，
-  再扩展对应的控件/主题 API。
+- 相关:`Button` 构造器给内容盒一个真实的四边 `Padding{6,6,6,6}`(原为 0,导致有文字也贴边)；
+  它当前是控件的布局默认，不是 style 值。四边类型已经落地，主题度量仍不属于 style。
 
 ## 10. 布局属性归属(与 style 的分工)
 
@@ -135,19 +134,18 @@ Arrange 的最终位置会不一致。
 | **width / height / min / max**(尺寸约束) | app 特定、非视觉、不主题化 | **WidgetBase 字段 + ViewBase 修饰器** |
 | **padding / spacing / direction / align** | 控件内容盒或容器**如何排布子节点**的结构参数 | **具体控件或容器视图字段** |
 
-**padding 的实现落点(已落地)**:padding 是**布局标量**(不是 style),且**只属于有内容盒的 widget**,不进 `WidgetBase`(不是所有 widget 都有 padding)。落点跟着"谁负责布局":
+**padding 的实现落点(已落地)**:padding 是**四边布局值** `geometry.Insets`(不是 style),且**只属于有内容盒的 widget**,不进 `WidgetBase`(不是所有 widget 都有 padding)。落点跟着"谁负责布局":
 
-- **`LinearLayout`** 自持 `Padding`，和 `Spacing` 同属容器结构参数；manager 在
-  `Measure`/`Arrange` 内部 inset。padding=0 时行为不变。
-- **`LinearBox` 保持薄包装**:`SetPadding` 只转发 `b.layout.Padding = p`(和 `SetSpacing` 一样),**不覆盖** `Measure`/`Arrange`;`WidgetBase` 委托给 manager,padding 自动生效。
-- **`Button`** 因为需要同时处理内容 inset 和骨架下限，自持 `padding`，并在其
-  `Measure`/`Arrange` 中显式应用。
-- **`TextInput`** 自绘、**无 LayoutManager**，同样自持 `padding` 字段(文字
-  origin/高度)。
+- **`LinearLayout` / `WrapLayout`** 自持 `Padding geometry.Insets`，和 `Spacing` 同属容器结构参数；manager 在 `Measure`/`Arrange` 内部按边 inset。零值时行为不变。
+- **`LinearBox` / `WrapBox` 保持薄包装**:`SetPadding(geometry.Insets)` 只转发 layout 字段(和 `SetSpacing` 一样),**不覆盖** `Measure`/`Arrange`;`WidgetBase` 委托给 manager,padding 自动生效。
+- **`Button` / `HeaderBar` / `CheckButton` / `Switch` / `DropDown` / `TextInput` / `TextView`** 自持四边 `padding`，并在各自的 `Measure`/`Arrange`/绘制中显式应用。四边值一直保留，不折叠成水平/垂直标量。
 - **`FillLayout` 和 `WidgetBase` 无 padding**；`Label`/`Image` 自然也没有 padding。
-- **`layout` 包不读 style**(padding 是纯几何标量,这条分层不破)。
+- **`layout` 包不读 style**(padding 是纯几何值,这条分层不破)。
+- **内部非用户 padding 的几何量**（滚动条槽、窗口 resize 边、圆角安全 inset 等）不强行改类型；只有确实表达内容内缩、且需要四边的字段才用 `Insets`。table/tree 的固定内容内缩也已改为 Insets 常量，但不对应新的公开 API。
 
-声明式设法:`.Padding(n)` 是**布局修饰器**,只在容器视图(`BoxView`/`ButtonView`/`TextInputView`)上,叶子(`Label`/`Image`)没有;和 `.MinWidth()` 同为覆盖语义。margin(盒外纯间距)若做则进 `layout` 的 Child 契约,**不进 style**(与 padding 分界见 §9)。
+声明式设法:`.Padding(n)` 是**统一简写**,等价于 `.Paddings(geometry.UniformInsets(n))`；`.Paddings(geometry.Insets)` 是四边修饰器，只在有内容盒的视图上，叶子(`Label`/`Image`)没有；和 `.MinWidth()` 同为覆盖语义，后调用者生效。margin(盒外纯间距)若做则进 `layout` 的 Child 契约,**不进 style**(与 padding 分界见 §9)。
+
+**API 迁移（breaking）**:gui/widgets 控件的 `Padding()/SetPadding()` 改为 `geometry.Insets`，统一值用 `geometry.UniformInsets(n)`。`ui` 的 `.Padding(n)` 保留为统一简写，新增 `.Paddings(geometry.Insets)`；二者后调用者生效。`layout.Constraint.Inset(n)`、`Size.Inset(n)`、`Rectangle.Inset(n)` 仍是统一几何内缩的简写；四边布局用 `Constraint.Insets`、`Size.Insets`、`Rectangle.Insets`。`geometry.Insets` 是物理 left/top/right/bottom，不自动按 RTL 镜像；默认左右对称。
 
 ## 11. 各布局的约束派生(布局 = 约束变换 + 定位规则)
 
@@ -419,7 +417,7 @@ MinSize。当前收益更大，因此保留，并保证命令式和声明式 API
 `Button` 先把字号派生的骨架下限夹入用户尺寸偏好与父约束的有效范围，再去掉
 padding，把完整的内容约束传给 manager；MenuButton 复用相同流程，保留原有
 内容驱动的固有尺寸。最终 baseline 由 manager 的布局结果加上实际内边距偏移
-得到，即使按钮被分配的高度小于两倍 padding，也与 Arrange 使用的矩形一致。
+得到，即使按钮被分配的高度小于上下 padding 之和，也与 Arrange 使用的矩形一致。
 
 需要内容填满按钮时，可以显式调用 `SetLayoutManager(layout.NewFillLayout())`。
 默认 manager 下 child 的 `MainWeight` 仍可用于主轴空间分配；复杂内容保持通过
@@ -434,12 +432,12 @@ advance 计算，或由主题提供 preferred width，同时保留用户 min/max
 GUI 的公开 setter 对负数、NaN 和正负 Infinity 统一归一到 0，适用于：
 
 - Widget 的 `MainWeight`、MinSize/MaxSize 各分量；
-- LinearBox 的 spacing 和 padding；
-- Button、TextInput 的 padding。
+- LinearBox/WrapBox 的 spacing 和四边 padding；
+- Button、HeaderBar、CheckButton、Switch、DropDown、TextInput、TextView 的四边 padding。
 
 归一化发生在新旧值比较之前，getter 返回归一后的值；重复传入同一个异常值
 不会反复触发布局失效。MaxSize 的 0 仍表示清除对应轴的上限。`ui` 通过 GUI
-setter 应用相同规则，未提供 padding/weight 修饰器时继续恢复控件构造默认值。
+setter 应用相同规则，未提供 `.Padding`/`.Paddings`/weight 修饰器时继续恢复控件构造默认值。
 
 底层 `layout` 是普通值模型；直接构造 Constraint、设置 LinearLayout 字段或
 实现 `layout.Child` 的调用方应提供符合各字段契约的几何数据。归一化没有增加

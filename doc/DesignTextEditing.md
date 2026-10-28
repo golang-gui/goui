@@ -335,7 +335,8 @@ TextView 另外保留最近被单段落编辑替换的完整测量输入：最�
 
 NewTextView 默认创建空模型，SetModel 可以共享外部模型。公开 Model、Selection、
 ReadOnly、WrapMode、Padding 的 getter/setter，内容变化和选择变化使用信号。
-默认可编辑、WrapWordChar、4 DIP padding。
+默认可编辑、WrapWordChar、四边 4 DIP padding（`geometry.Insets{4,4,4,4}`）。
+Padding 是物理 left/top/right/bottom 布局值，不从 style 读取。
 
 选择值使用 `TextSelection{Anchor, Caret int}`（UTF-8 字节），`Range()` 返回有序
 半开区间。`SetSelection` 钳制文档范围并按视图 Cluster 校正，`ConnectSelection`
@@ -461,8 +462,9 @@ scroll.SetChild(editor)
 ```
 
 TextView 验证后提取私有编辑状态/操作给 TextInput，不让单行控件嵌套 TextView。
-TextInput 内部独立模型，首版不与多行共享；保留 Text/SetText/ConnectText、Padding、
-样式。单行不换行，内部水平偏移显示光标，无滚动条；Enter 发 ConnectSubmit，
+TextInput 内部独立模型，首版不与多行共享；保留 Text/SetText/ConnectText、四边 Padding、
+样式。单行默认 `{Left: 8, Top: 4, Right: 8, Bottom: 4}`，为 1-2 DIP 焦点边框留出
+水平空间；TextView 仍为四边 4 DIP。单行不换行，内部水平偏移显示光标，无滚动条；Enter 发 ConnectSubmit，
 SetText/粘贴的每个归一化 LF 转为空格，保持稳定行高/baseline。相同 SetText 无操作。
 
 实现采用 `textEditor` 私有普通结构，TextView/TextInput 分别持有一份；它不是

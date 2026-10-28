@@ -1925,3 +1925,25 @@ arm64 构建限制保留在原记录中；本轮未修改实现或复验这些�
 - SourceView 使用其基线 `094d46b` 加本次显露修正进行联调；184500131 字节 JSON 在 Software/Pango 的应用缩放 1x、1.5x、2x 下，通过正常事件 End/Left/Right、光标像素和最大化/恢复断言，专项程序维护在扩展仓库。旧生产文件经 Go build overlay 同环境复现 End 光标不可见。
 - SourceView 全仓工作区测试、race/vet 及 Windows amd64/macOS arm64 `CGO_ENABLED=0 go build ./...` 通过，包含本次 GOUI 改动；未执行 Windows/macOS 原生桌面、GPU 或混合 DPI 验收。不据主动截图程序的心跳日志声称性能提升。
 - 未修改 typography、声明式协议、依赖版本或无关工作区文件；测试应用及桌面均为本次独立显示，结束后关闭。
+
+## 2026-10-28 全控件 padding 四边化
+
+- 目标：把 gui/widgets 所有公开 padding 从标量改为 `geometry.Insets{Left, Top, Right, Bottom}`，
+  `layout.LinearLayout`/`WrapLayout` 与 `Constraint` 同步；ui 保留 `.Padding(n)` 统一简写，
+  新增 `.Paddings(geometry.Insets)`。padding 仍是布局值，不进入 style。
+- 范围：Button、MenuButton（内部）、HeaderBar、LinearBox、WrapBox、CheckButton、Switch、
+  DropDown、TextInput、TextView，以及 table header/tree row/tab body 的内部非公开内容内缩；
+  Menu/Popover/Tooltip/Table/Tree/Tabs 不新增公开 Padding API。圆角安全 inset、滚动条槽和
+  window resize 边保持既有标量几何。
+- 默认值：除 TextInput 为 `{8,4,8,4}` 外，其余控件保持原先的等值 padding（Button/CheckButton/
+  Switch/DropDown/MenuButton 6、HeaderBar 8、TextView 4、容器 0），机械迁移阶段视觉不变。
+- 新增回归：`geometry.Insets` helpers、`Size.Insets`、`Constraint.Insets`、Linear/Wrap 非对称
+  padding、Button/HeaderBar/TextInput/TextView/CheckButton/Switch/DropDown 非对称几何与 baseline、
+  ui `.Paddings` 覆盖和默认恢复、逐边非法值归一化。
+- `ui` 四边修饰器命名为 `.Paddings`；`Padding(n)` 保持统一简写。TextInput 默认水平 8 DIP
+  用于给 1–2 DIP 焦点边框留白，TextView 仍为 4 DIP。
+- 验证：`go test` 全仓（排除工作区中既有的未跟踪、无法编译的 example 临时目录）、
+  `go test -race ./core/geometry ./layout ./gui ./ui ./widgets ./widgets/ui`、
+  Windows amd64/macOS arm64 `CGO_ENABLED=0 go build`、`go vet` 通过。
+- 独立 X11（Xfwm4、Software、1x/2x）窗口验收：TextInput 默认/聚焦/输入，CheckButton 点击与
+  计数，Switch 点击；焦点 2 DIP 边框下文字 origin 不移动。未执行 Windows/macOS 原生桌面验收。
