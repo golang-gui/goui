@@ -2,10 +2,6 @@ package opengl
 
 import (
 	"errors"
-
-	. "github.com/golang-gui/goui/platform/darwin/frameworks/appkit"
-	. "github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
-	. "github.com/golang-gui/goui/platform/darwin/frameworks/opengl"
 )
 
 type nsglContext struct {
@@ -125,7 +121,7 @@ func (c nsglContext) Destroy() {
 
 func (c nsglContext) MakeCurrent() error {
 	if c.window != nil && c.window.NativeHandle() == 0 {
-		return errSurfaceUnavailable
+		return ErrSurfaceUnavailable
 	}
 	AutoReleasePool(func() {
 		c.object.MakeCurrentContext()
@@ -143,7 +139,7 @@ func (c nsglContext) ClearCurrent() error {
 
 func (c nsglContext) SwapBuffers() error {
 	if c.window != nil && c.window.NativeHandle() == 0 {
-		return errSurfaceUnavailable
+		return ErrSurfaceUnavailable
 	}
 	AutoReleasePool(func() {
 		// TODO: occluded state check?

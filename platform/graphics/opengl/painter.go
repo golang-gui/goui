@@ -152,7 +152,7 @@ func (p *Painter) surfaceAvailable() bool {
 
 func (p *Painter) NewImage(src image.Image) (graphics.Image, error) {
 	if !p.surfaceAvailable() || p.frameSkipped {
-		return nil, errSurfaceUnavailable
+		return nil, ErrSurfaceUnavailable
 	}
 	if p.vg == nil || p.ctx == nil {
 		return nil, fmt.Errorf("opengl: create image on destroyed painter")
@@ -239,7 +239,7 @@ func (p *Painter) destroyImage(img *imageResource) {
 	}
 	if img.handle != 0 && p.vg != nil {
 		if err := p.ctx.MakeCurrent(); err != nil {
-			if errors.Is(err, errSurfaceUnavailable) {
+			if errors.Is(err, ErrSurfaceUnavailable) {
 				p.finishImageDestroy(img)
 				return
 			}
@@ -292,7 +292,7 @@ func (p *Painter) Begin(width, height, scale float32) {
 		return
 	}
 	if err := p.ctx.MakeCurrent(); err != nil {
-		if errors.Is(err, errSurfaceUnavailable) {
+		if errors.Is(err, ErrSurfaceUnavailable) {
 			p.activeFrame, p.frameSkipped = true, true
 			return
 		}

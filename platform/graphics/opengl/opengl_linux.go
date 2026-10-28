@@ -117,7 +117,7 @@ func (c *glxContext) Name() string {
 
 func (c *glxContext) MakeCurrent() error {
 	if c != nil && (c.lost || c.window != nil && c.window.NativeHandle() == 0) {
-		return errSurfaceUnavailable
+		return ErrSurfaceUnavailable
 	}
 	if c == nil || c.drawable == 0 || c.handle == 0 {
 		return errors.New("GLX context is destroyed")
@@ -127,7 +127,7 @@ func (c *glxContext) MakeCurrent() error {
 	ok := glx.MakeContextCurrent(platform.display, drawable, drawable, c.handle)
 	trap.End()
 	if c.lost {
-		return errSurfaceUnavailable
+		return ErrSurfaceUnavailable
 	}
 	if !ok {
 		return errors.New("make GLX context current failed")
@@ -147,7 +147,7 @@ func (c *glxContext) ClearCurrent() error {
 
 func (c *glxContext) SwapBuffers() error {
 	if c != nil && (c.lost || c.window != nil && c.window.NativeHandle() == 0) {
-		return errSurfaceUnavailable
+		return ErrSurfaceUnavailable
 	}
 	if c == nil || c.drawable == 0 {
 		return errors.New("GLX drawable is destroyed")
@@ -156,7 +156,7 @@ func (c *glxContext) SwapBuffers() error {
 	glx.SwapBuffers(platform.display, xlib.Drawable(c.drawable))
 	trap.End()
 	if c.lost {
-		return errSurfaceUnavailable
+		return ErrSurfaceUnavailable
 	}
 	return nil
 }

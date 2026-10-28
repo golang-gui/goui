@@ -18,7 +18,7 @@ type lifetimeContext struct {
 	binds int
 }
 
-func (c *lifetimeContext) MakeCurrent() error { c.binds++; return errSurfaceUnavailable }
+func (c *lifetimeContext) MakeCurrent() error { c.binds++; return ErrSurfaceUnavailable }
 
 func TestReleaseCachedImageAfterHostTermination(t *testing.T) {
 	// 不创建原生窗口/GL 对象。Context 替身只允许 MakeCurrent，任何 GL 删除都会失败。
