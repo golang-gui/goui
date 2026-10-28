@@ -158,7 +158,9 @@ func main() {
                     Size(480, 240).
                     Content(
                         ui.VBox(
-                            ui.Label(fmt.Sprintf("Clicked %d times", count.Get())),
+                            ui.Build(func() ui.View {
+                                return ui.Label(fmt.Sprintf("Clicked %d times", count.Get()))
+                            }).Observe(&count),
                             ui.Button("Click me").OnClick(func() {
                                 // count.Set(count.Get() + 1) 的更优用法：
                                 count.Update(func(old int) int {
@@ -186,7 +188,7 @@ Windows PowerShell 使用 `$env:CGO_ENABLED='0'`，然后执行：
 
 `go build -trimpath -ldflags="-s -w -H=windowsgui" -o hello-goui.exe .`。
 
-View 是普通 Go 值；`State.Set` 会请求合并后的重建。系统设置变化也会自动重建此例并更新 Modern 样式。复杂应用可以使用函数或自定义 View 类型组合界面，也可以通过 `gui.WidgetBase` 实现控件。
+View 是普通 Go 值；通过 `BindText(&state)` 绑定属性，或用 `ui.Build(fn).Observe(&state)` 更新子树。`State.Set`／`Update` 只通知这些显式使用方，`App.RequestUpdate` 才重建全应用。系统设置变化也会自动重建此例并更新 Modern 样式。复杂应用可以使用函数或自定义 View 类型组合界面，也可以通过 `gui.WidgetBase` 实现控件。
 
 ## 平台与依赖
 

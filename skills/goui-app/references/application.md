@@ -58,8 +58,12 @@ func main() {
                     Content(
                         ui.VBox(
                             ui.TextInput().ID("name").BindText(&name),
-                            ui.Label(fmt.Sprintf("Hello, %s", name.Get())),
-                            ui.Label(fmt.Sprintf("Clicks: %d", count.Get())),
+                            ui.Build(func() ui.View {
+                                return ui.Label(fmt.Sprintf("Hello, %s", name.Get()))
+                            }).Observe(&name),
+                            ui.Build(func() ui.View {
+                                return ui.Label(fmt.Sprintf("Clicks: %d", count.Get()))
+                            }).Observe(&count),
                             ui.Button("Click me").OnClick(func() {
                                 count.Update(func(old int) int { return old + 1 })
                             }),
@@ -82,7 +86,10 @@ View 每次 build 可以新建，底层 Widget 由协调保留；不要缓存一
 生命周期里通过 BuildContext.State／SetState 管理。列表 ID 要稳定，不能使用
 每次随机生成的 ID 或随排序变化的显示序号来表示业务身份。
 
-普通字段更新后调用 app.RequestUpdate；ui.State.Set／Update 已包含更新请求。
+普通字段更新后调用 app.RequestUpdate；ui.State.Set／Update 仅通知显式绑定或 Observe 的节点。
+简单文本用 ui.Label().BindText(&text)；计算表达式或结构变化用 ui.Build(fn).Observe(&state)。
+在 fn 内 Get；不要在每次 Build 中重新创建状态源。窗口集合、标题、样式表变化仍调用
+app.RequestUpdate。BuildContext.State 仅保存自定义 View 的私有状态，不收集依赖。
 build 中读取状态，回调中改变状态；不在 build 中持续 Set／RequestUpdate 制造循环。
 后台读取文件或网络时，通过 app.Post 提交结果，处理取消和过期结果，避免已关闭
 的窗口或旧文档被异步结果重新更新。App 可跨 goroutine 调度，不代表 Widget 可并发访问。

@@ -6,56 +6,64 @@ import (
 	"github.com/golang-gui/goui/gui"
 )
 
-func TestStateSetRequestsUpdateWithoutGet(t *testing.T) {
-	app := newWindowTestApplication()
-	rt := newApp(app, func() RootView {
-		return Window("main").Content(Label("main"))
+func TestStateSetWithoutObserversDoesNotRequestUpdate(t *testing.T) {
+	fake := newWindowTestApplication()
+	value, builds := MakeState("initial"), 0
+	rt := newApp(fake, func() RootView {
+		builds++
+		return Window("main").Content(Label(value.Get()))
 	})
-	setActiveApp(rt)
-	t.Cleanup(clearActiveApp)
-
-	state := MakeState("unused")
-	state.Set("changed")
-	state.Set("changed again")
-
-	if len(app.posts) != 1 {
-		t.Fatalf("expected one coalesced update post, got %d", len(app.posts))
+	t.Cleanup(func() { rt.stop(); rt.destroyAll() })
+	if err := rt.rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	value.Set("changed")
+	value.Update(func(string) string { return "changed again" })
+	if len(fake.posts) != 0 || builds != 1 || fake.windows[0].Widget().(*gui.Label).Text() != "initial" {
+		t.Fatal("未订阅的 State 不应自动更新字面快照")
+	}
+	rt.RequestUpdate()
+	fake.runPosted()
+	if builds != 2 || fake.windows[0].Widget().(*gui.Label).Text() != "changed again" {
+		t.Fatal("显式全应用重建仍应读取当前快照")
 	}
 }
 
-func TestZeroStateSetRequestsUpdate(t *testing.T) {
+func TestZeroStateSetNotifiesWithoutRebuild(t *testing.T) {
 	app := newWindowTestApplication()
-	rt := newApp(app, func() RootView {
+	_ = newApp(app, func() RootView {
 		return Window("main").Content(Label("main"))
 	})
-	setActiveApp(rt)
-	t.Cleanup(clearActiveApp)
 
 	var state State[int]
 	if got := state.Get(); got != 0 {
 		t.Fatalf("zero State value = %d, want 0", got)
 	}
 
+	changes := 0
+	h := state.Connect(func() { changes++ })
+	defer h.Disconnect()
 	state.Set(1)
+	if changes != 1 {
+		t.Fatal("零值 State 未通知监听者")
+	}
 
 	if got := state.Get(); got != 1 {
 		t.Fatalf("updated zero State value = %d, want 1", got)
 	}
-	if len(app.posts) != 1 {
-		t.Fatalf("expected one update post, got %d", len(app.posts))
+	if len(app.posts) != 0 {
+		t.Fatalf("unobserved zero State must not post updates, got %d", len(app.posts))
 	}
 }
 
-func TestStateSetRebuildsMountedWindow(t *testing.T) {
+func TestStateSetUpdatesOnlyBoundWidget(t *testing.T) {
 	app := newWindowTestApplication()
 	title := MakeState("first")
 	builds := 0
 	rt := newApp(app, func() RootView {
 		builds++
-		return Window("main").Content(Label(title.Get()))
+		return Window("main").Content(Label().BindText(&title))
 	})
-	setActiveApp(rt)
-	t.Cleanup(clearActiveApp)
 
 	if err := rt.rebuild(); err != nil {
 		t.Fatal(err)
@@ -71,7 +79,7 @@ func TestStateSetRebuildsMountedWindow(t *testing.T) {
 	}
 
 	app.runPosted()
-	if label.Text() != "second" || builds != 2 {
+	if label.Text() != "second" || builds != 1 {
 		t.Fatalf("unexpected rebuilt state: text=%q builds=%d", label.Text(), builds)
 	}
 }

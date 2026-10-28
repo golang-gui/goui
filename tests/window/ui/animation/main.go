@@ -6,7 +6,7 @@
 //
 //	点击 Rebuild，控件保持身份/当前尺寸；切换 Switch，保留原有点击语义。
 //
-// 预期：UI 状态通过现有异步 RequestUpdate 协调，最终 Icon.Size 与动画终值一致；
+// 预期：UI 状态通过 Observe 异步局部协调，最终 Icon.Size 与动画终值一致；
 //
 //	动画结束后不持续重建/绘制。窗口尺寸拖动、亮暗主题不造成动画重启。
 //
@@ -89,7 +89,9 @@ func main() {
 		}
 		return ui.Root().Windows(ui.Window("main").Title("GOUI animation UI").Size(620, 340).Chrome(ui.WindowChromeIntegrated).OnDestroy(motion.Stop).Content(
 			ui.VBox(ui.HBox(ui.Button("Animate").OnClick(start), ui.Button("Rebuild").OnClick(app.RequestUpdate)).Spacing(10),
-				ui.Icon(source).ID("animated-icon").Size(size.Get()), wui.Switch()).Padding(20).Spacing(20),
+				ui.Build(func() ui.View {
+					return ui.Icon(source).ID("animated-icon").Size(size.Get())
+				}).Observe(&size), wui.Switch()).Padding(20).Spacing(20),
 		)).StyleSheet(modern.Sheet(modern.Options{}))
 	})
 	if err != nil {

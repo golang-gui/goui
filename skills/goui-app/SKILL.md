@@ -36,7 +36,7 @@ license: MIT
 - View 是普通 Go 声明值，build 可反复执行。持久状态、文档／数据模型、图标 Source
   和任务应有明确所有者；不要在每次 build 中重置状态、解析 SVG、连接外部信号，
   或无条件启动 goroutine、Timer、外部应用及文件操作。
-- ui.State.Set／Update 会请求 UI 更新；普通 Go 字段变化需要 App.RequestUpdate。
+- ui.State.Set／Update 仅通知显式 BindText／BindSelection 或 ComposeView.Observe 的使用方；计算表达式放入 ui.Build(fn).Observe(&state)。普通 Go 字段、窗口声明变化需要 App.RequestUpdate。
   GUI 控件使用公开 setter／signal。不要把 UI 重建、RequestLayout 和 RequestPaint
   混成同一种操作，也不要为普通状态变化重建窗口。
 - View 对象不是底层 Widget 身份。列表重排使用稳定 ID；ID 与可重复 Name 不同，
