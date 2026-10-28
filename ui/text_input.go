@@ -8,21 +8,25 @@ import (
 
 type TextInputView struct {
 	ViewBase[TextInputView]
-	text        string
-	placeholder string
-	onText      func(string)
-	onSelection func(TextSelection)
-	onSubmit    func()
-	selection   TextSelection
-	readOnly    bool
-	padding     float32
-	fields      bits.Bitmap[uint64]
+	text            string
+	textSource      BindState[string]
+	selectionSource BindState[TextSelection]
+	placeholder     string
+	onText          func(string)
+	onSelection     func(TextSelection)
+	onSubmit        func()
+	selection       TextSelection
+	readOnly        bool
+	padding         float32
+	fields          bits.Bitmap[uint64]
 }
 
 const (
 	textInputText = iota
 	textInputSelection
 	textInputPadding
+	textInputWriteText
+	textInputWriteSelection
 )
 
 func TextInput() *TextInputView {
@@ -31,29 +35,40 @@ func TextInput() *TextInputView {
 	return v
 }
 
-// BindText is Text(state.Get()).OnText(state.Set); nil is a no-op.
-// A subsequent OnText replaces the writeback callback. Custom BindState
-// implementations must arrange UI updates; ui.State already does so.
-func (v *TextInputView) BindText(state BindState[string]) *TextInputView {
-	if state != nil {
-		v.Text(state.Get())
-		v.OnText(state.Set)
+// BindText reads current values on the UI thread and writes user edits back.
+// A subsequent OnText replaces writeback; Text removes the read binding and
+// its generated writeback. nil is a no-op.
+func (v *TextInputView) BindText(source BindState[string]) *TextInputView {
+	if source != nil {
+		validateObservable(source)
+		v.textSource = source
+		v.fields.Set(textInputText, true)
+		v.onText = source.Set
+		v.fields.Set(textInputWriteText, true)
 	}
 	return v
 }
 
-// BindSelection is Selection(state.Get()).OnSelection(state.Set); nil is a
-// no-op. A subsequent OnSelection replaces the writeback callback. Text and
-// selection notifications are independent, not an atomic pair.
-func (v *TextInputView) BindSelection(state BindState[TextSelection]) *TextInputView {
-	if state != nil {
-		v.Selection(state.Get()).OnSelection(state.Set)
+// BindSelection follows selection changes independently of text. A subsequent
+// OnSelection replaces writeback; Selection removes the binding. nil is a no-op.
+func (v *TextInputView) BindSelection(source BindState[TextSelection]) *TextInputView {
+	if source != nil {
+		validateObservable(source)
+		v.selectionSource = source
+		v.fields.Set(textInputSelection, true)
+		v.onSelection = source.Set
+		v.fields.Set(textInputWriteSelection, true)
 	}
 	return v
 }
 
 func (v *TextInputView) Text(text string) *TextInputView {
 	v.text = text
+	v.textSource = nil
+	if v.fields.Check(textInputWriteText) {
+		v.onText = nil
+		v.fields.Set(textInputWriteText, false)
+	}
 	v.fields.Set(textInputText, true)
 	return v
 }
@@ -68,18 +83,25 @@ func (v *TextInputView) Placeholder(text string) *TextInputView {
 // owns its selection; rebuilding alone does not move the caret.
 func (v *TextInputView) Selection(value TextSelection) *TextInputView {
 	v.selection = value
+	v.selectionSource = nil
+	if v.fields.Check(textInputWriteSelection) {
+		v.onSelection = nil
+		v.fields.Set(textInputWriteSelection, false)
+	}
 	v.fields.Set(textInputSelection, true)
 	return v
 }
 func (v *TextInputView) ReadOnly(value bool) *TextInputView { v.readOnly = value; return v }
 func (v *TextInputView) OnSelection(fn func(TextSelection)) *TextInputView {
 	v.onSelection = fn
+	v.fields.Set(textInputWriteSelection, false)
 	return v
 }
 func (v *TextInputView) OnSubmit(fn func()) *TextInputView { v.onSubmit = fn; return v }
 
 func (v *TextInputView) OnText(fn func(string)) *TextInputView {
 	v.onText = fn
+	v.fields.Set(textInputWriteText, false)
 	return v
 }
 
@@ -129,12 +151,26 @@ func (v *TextInputView) Update(ctx BuildContext, widget gui.Widget) {
 	} else {
 		input.SetPadding(state.initPadding)
 	}
-	if v.fields.Check(textInputText) {
+	if v.textSource != nil {
+		BindValue(ctx, "text", v.textSource, func(text string) {
+			state.handles.Block()
+			defer state.handles.Unblock()
+			input.SetText(text)
+		})
+	} else if v.fields.Check(textInputText) {
 		input.SetText(v.text)
 	}
 	input.SetReadOnly(v.readOnly)
 	input.SetPlaceholder(v.placeholder)
-	if v.fields.Check(textInputSelection) && input.Selection() != v.selection {
+	if v.selectionSource != nil {
+		BindValue(ctx, "selection", v.selectionSource, func(selection TextSelection) {
+			state.handles.Block()
+			defer state.handles.Unblock()
+			if input.Selection() != selection {
+				input.SetSelection(selection)
+			}
+		})
+	} else if v.fields.Check(textInputSelection) && input.Selection() != v.selection {
 		input.SetSelection(v.selection)
 	}
 	state.onText = v.onText

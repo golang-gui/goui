@@ -268,6 +268,58 @@ func TestBindingNotificationConcurrentWithRelease(t *testing.T) {
 	}
 }
 
+func TestSelectionBindingDoesNotReplayStaticText(t *testing.T) {
+	for _, multiline := range []bool{false, true} {
+		t.Run(fmt.Sprint(multiline), func(t *testing.T) {
+			selection := MakeState(TextSelection{})
+			_, fake := bindingApp(t, func() RootView {
+				var v View = TextInput().Text("initial").BindSelection(&selection)
+				if multiline {
+					v = TextView().Text("initial").BindSelection(&selection)
+				}
+				return Window("main").Content(v)
+			})
+			w := fake.windows[0].Widget()
+			if multiline {
+				w.(*gui.TextView).Model().SetText("user text")
+			} else {
+				w.(*gui.TextInput).SetText("user text")
+			}
+			selection.Set(TextSelection{Anchor: 1, Caret: 3})
+			fake.runPosted()
+			if multiline {
+				if w.(*gui.TextView).Model().Text() != "user text" || w.(*gui.TextView).Selection() != selection.Get() {
+					t.Fatal("选区绑定重放了静态文本")
+				}
+			} else if w.(*gui.TextInput).Text() != "user text" || w.(*gui.TextInput).Selection() != selection.Get() {
+				t.Fatal("选区绑定重放了静态文本")
+			}
+		})
+	}
+}
+
+func TestTextBindingRemainsLocalAndDoesNotEcho(t *testing.T) {
+	text, selection := MakeState("abc"), MakeState(TextSelection{Anchor: 1, Caret: 2})
+	writes, global := 0, 0
+	text.Connect(func() { writes++ })
+	_, fake := bindingApp(t, func() RootView {
+		global++
+		return Window("main").Content(TextInput().BindText(&text).BindSelection(&selection))
+	})
+	input := fake.windows[0].Widget().(*gui.TextInput)
+	text.Set("new value")
+	selection.Set(TextSelection{Anchor: 2, Caret: 4})
+	fake.runPosted()
+	if input.Text() != "new value" || input.Selection() != selection.Get() || global != 1 || writes != 1 {
+		t.Fatal("文本属性绑定重建了应用或循环写回")
+	}
+	input.SetText("user edit")
+	fake.runPosted()
+	if text.Get() != "user edit" || global != 1 {
+		t.Fatal("编辑回写丢失或触发全局更新")
+	}
+}
+
 type localContextView struct {
 	ComposeBase[localContextView]
 	context *BuildContext
@@ -387,6 +439,49 @@ func TestBindingConnectsBeforeFirstRead(t *testing.T) {
 	}
 }
 
+func TestBindingDeclarationPrecedenceAndConfiguration(t *testing.T) {
+	text := MakeState("source")
+	selection := MakeState(TextSelection{})
+	calls := 0
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	input := r.update(TextInput().BindText(&text).OnText(func(string) { calls++ })).(*gui.TextInput)
+	input.SetText("custom")
+	if calls != 1 || text.Get() != "source" {
+		t.Fatal("OnText 未覆盖生成的回写")
+	}
+	r.update(TextInput().OnText(func(string) { calls++ }).BindText(&text))
+	input.SetText("write back")
+	if calls != 1 || text.Get() != "write back" {
+		t.Fatal("后声明的 BindText 未覆盖回调")
+	}
+	r.update(TextInput().BindText(&text).OnText(func(string) { calls++ }).Text("static"))
+	input.SetText("custom again")
+	if calls != 2 || text.Get() != "write back" {
+		t.Fatal("Text 不应删除显式 OnText")
+	}
+	r.update(TextInput().BindText(&text).BindText(nil).BindSelection(&selection).BindSelection(nil))
+	input.SetText("nil keeps binding")
+	if text.Get() != "nil keeps binding" {
+		t.Fatal("nil 清除了有效绑定")
+	}
+	for _, bad := range []func(){
+		func() { Build(nil) },
+		func() { Label("a", "b") },
+		func() { Build(func() View { return nil }).Observe((*bindingSource)(nil)) },
+		func() { Label().BindText((*bindingSource)(nil)) },
+	} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Error("无效配置没有拒绝")
+				}
+			}()
+			bad()
+		}()
+	}
+}
+
 type completionView struct {
 	ComposeBase[completionView]
 	text      *State[string]
@@ -427,5 +522,24 @@ func TestLocalAfterUpdateSeesAllAffectedWindows(t *testing.T) {
 	fake.runPosted()
 	if calls != 2 {
 		t.Fatalf("完成回调次数=%d", calls)
+	}
+}
+
+func TestSharedValueBindingsKeepIndependentDocumentsAndUndo(t *testing.T) {
+	text := MakeState("ab")
+	_, fake := bindingApp(t, func() RootView {
+		declaration := TextView().BindText(&text)
+		return Root().Windows(Window("a").Content(declaration), Window("b").Content(declaration))
+	})
+	a, b := fake.windows[0].Widget().(*gui.TextView), fake.windows[1].Widget().(*gui.TextView)
+	if a.Model() == b.Model() {
+		t.Fatal("共用声明导致两个节点共用文档")
+	}
+	if err := a.Model().Replace(TextRange{Start: 2, End: 2}, "c"); err != nil {
+		t.Fatal(err)
+	}
+	fake.runPosted()
+	if b.Model().Text() != "abc" || !a.Model().CanUndo() || b.Model().CanUndo() {
+		t.Fatal("值绑定回放破坏了源历史或共享了目标历史")
 	}
 }
