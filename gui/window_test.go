@@ -1046,6 +1046,65 @@ func TestWindowFrameErasureKeepsFullContentLayout(t *testing.T) {
 	}
 }
 
+type cornerPathPainter struct {
+	Painter
+	scale     float32
+	transform geometry.Transform
+	paths     []graphics.Path
+	positions []geometry.Transform
+}
+
+func (p *cornerPathPainter) PixelScale() float32               { return p.scale }
+func (p *cornerPathPainter) SetTransform(t geometry.Transform) { p.transform = t }
+func (p *cornerPathPainter) ClearPath(path graphics.Path) {
+	p.paths = append(p.paths, path)
+	p.positions = append(p.positions, p.transform)
+}
+
+// 闭合直边必须处于表面之外；与窗口边缘重合会在圆弧切点形成零宽尖端。
+// 直接检查生产路径几何，包含四角反射、非零起点、缩放和小窗口半径钳制。
+func TestRoundCornerClosuresStayOutsideSurface(t *testing.T) {
+	for _, scale := range []float32{1, 1.25, 1.5, 2} {
+		for _, rect := range []geometry.Rectangle{geometry.Rect(0, 0, 128, 96), geometry.Rect(7, 11, 8, 6)} {
+			p := &cornerPathPainter{scale: scale}
+			clearRoundCorners(p, rect, 12)
+			if len(p.paths) != 4 || p.transform != geometry.Identity() {
+				t.Fatal("未擦除完整四角或未恢复单位变换")
+			}
+			for i, path := range p.paths {
+				var first, prev geometry.Point
+				arcs := 0
+				path.Range(func(op graphics.PathOperation, args []float32) bool {
+					next := geometry.Point{X: args[len(args)-2], Y: args[len(args)-1]}
+					switch op {
+					case graphics.PathMoveTo:
+						first = next
+					case graphics.PathArcTo:
+						arcs++
+						want := min(float32(12), min(rect.Width, rect.Height)/2)
+						if args[0] != want || args[1] != want || prev != (geometry.Point{X: want}) || next != (geometry.Point{Y: want}) {
+							t.Fatal("圆弧半径或相切点发生移动")
+						}
+					case graphics.PathClose:
+						next = first
+					}
+					if op == graphics.PathLineTo || op == graphics.PathClose {
+						mid := p.positions[i].TransformPoint(geometry.Point{X: (prev.X + next.X) / 2, Y: (prev.Y + next.Y) / 2})
+						if mid.X >= rect.X && mid.X <= rect.X+rect.Width && mid.Y >= rect.Y && mid.Y <= rect.Y+rect.Height {
+							t.Errorf("scale=%g corner=%d: 闭合边进入表面或与其边缘重合: %v", scale, i, mid)
+						}
+					}
+					prev = next
+					return op == graphics.PathClose
+				})
+				if arcs != 1 {
+					t.Fatalf("每角应有一段圆弧，得到 %d", arcs)
+				}
+			}
+		}
+	}
+}
+
 func TestFrameStructuralClipIncludesChildrenAndDecorations(t *testing.T) {
 	backend := &recordingPainterBackend{}
 	root := rootBase{width: 100, height: 80, pixelWidth: 100, pixelHeight: 80, painter: backend, layoutDirty: true}

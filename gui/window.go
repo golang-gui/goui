@@ -1134,8 +1134,13 @@ func clearRoundCorners(p Painter, rect geometry.Rectangle, radius float32) {
 	if radius <= 0 {
 		return
 	}
-	path := graphics.MoveTo(0, 0).LineTo(radius, 0).
-		ArcTo(radius, radius, 0, 0, 0, 0, radius).Close()
+	// Close outside the surface. Closing along its edges creates zero-width
+	// cusps at the arc tangencies, whose AA fringes can erase the first row or
+	// column of retained pixels. Only the closure moves; the arc stays put.
+	padding := 2 / p.PixelScale()
+	path := graphics.MoveTo(-padding, -padding).LineTo(radius, -padding).
+		LineTo(radius, 0).ArcTo(radius, radius, 0, 0, 0, 0, radius).
+		LineTo(-padding, radius).Close()
 	for _, corner := range []struct{ x, y, sx, sy float32 }{
 		{rect.X, rect.Y, 1, 1}, {rect.X + rect.Width, rect.Y, -1, 1},
 		{rect.X + rect.Width, rect.Y + rect.Height, -1, -1}, {rect.X, rect.Y + rect.Height, 1, -1},
