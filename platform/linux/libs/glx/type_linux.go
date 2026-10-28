@@ -1,5 +1,12 @@
 package glx
 
+// GLX protocol errors are offsets from the server's GLX error base.
+const (
+	BadDrawable        = 2
+	BadCurrentDrawable = 11
+	BadWindow          = 12
+)
+
 type (
 	FBConfig uintptr
 	Context  uintptr

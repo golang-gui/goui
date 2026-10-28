@@ -14,6 +14,7 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
+	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/srwiley/scanFT"
@@ -1401,5 +1402,47 @@ func TestClearPathTransformAndClip(t *testing.T) {
 		assertColorNear(t, result.At(11, 9), color.RGBA{}, 0)
 		assertColorNear(t, result.At(15, 9), color.RGBA{R: 80, G: 120, B: 200, A: 255}, 0)
 		assertColorNear(t, result.At(2, 2), color.RGBA{R: 80, G: 120, B: 200, A: 255}, 0)
+	}
+}
+
+// 只有宿主不可用允许丢弃提交；意外绘制故障仍应保留诊断。
+type unavailableDrawer struct {
+	err         error
+	transparent bool
+}
+
+func (d *unavailableDrawer) Draw(image.Image) error { return d.err }
+func (d *unavailableDrawer) Transparent() bool      { return d.transparent }
+func TestEndAfterNativeTermination(t *testing.T) {
+	for _, alpha := range []bool{false, true} {
+		t.Run(fmt.Sprint(alpha), func(t *testing.T) {
+			for _, unavailable := range []bool{false, true} {
+				func() {
+					err := errors.New("unexpected presentation error")
+					if unavailable {
+						err = fmt.Errorf("closed: %w", common.ErrUnavailable)
+					}
+					p, e := NewPainter(&unavailableDrawer{err, alpha})
+					if e != nil {
+						t.Fatal(e)
+					}
+					defer p.Destroy()
+					p.Begin(8, 8, 1)
+					defer func() {
+						got := recover()
+						if unavailable && got != nil {
+							t.Fatalf("宿主已终止仍 panic: %v", got)
+						}
+						if !unavailable && got == nil {
+							t.Fatal("意外错误被静默吞掉")
+						}
+						if p.(*Painter).activeFrame {
+							t.Fatal("提交后活动帧状态没有清理")
+						}
+					}()
+					p.End()
+				}()
+			}
+		})
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/golang-gui/goui/platform/internal/xerrors"
 	"github.com/golang-gui/goui/platform/linux/libs/glx"
 	"github.com/golang-gui/goui/platform/linux/libs/xlib"
 	"github.com/golang-gui/goui/platform/linux/libs/xrender"
@@ -25,6 +26,9 @@ type glxNativeWindow interface {
 type glxContext struct {
 	drawable glx.Window
 	handle   glx.Context
+	window   NativeWindow
+	native   xlib.Window // cleanup/error matching only; never an availability test
+	lost     bool
 }
 
 func (*glxContext) isGLXContext() {}
@@ -79,6 +83,8 @@ func newContext(win NativeWindow, share Context, _ Config) (_ Context, err error
 		return &glxContext{
 			drawable: drawable,
 			handle:   ctx,
+			window:   win,
+			native:   xWindow,
 		}, nil
 	}
 	return nil, errors.New("can not create GLX context")
@@ -86,13 +92,23 @@ func newContext(win NativeWindow, share Context, _ Config) (_ Context, err error
 
 func (c *glxContext) Destroy() {
 	if c.drawable != 0 {
+		trap := c.beginSurfaceCall()
 		glx.DestroyWindow(platform.display, c.drawable)
+		trap.End()
 	}
 	if c.handle != 0 {
 		glx.DestroyContext(platform.display, c.handle)
 	}
 	c.drawable = 0
 	c.handle = 0
+	c.window = nil
+	c.native = 0
+}
+
+func (c *glxContext) beginSurfaceCall() *xerrors.Trap {
+	return xerrors.Begin(platform.display, []xlib.ID{xlib.ID(c.drawable), xlib.ID(c.native)}, &c.lost,
+		xlib.BadWindow, xlib.BadDrawable, platform.errorBase+glx.BadDrawable,
+		platform.errorBase+glx.BadCurrentDrawable, platform.errorBase+glx.BadWindow)
 }
 
 func (c *glxContext) Name() string {
@@ -100,28 +116,48 @@ func (c *glxContext) Name() string {
 }
 
 func (c *glxContext) MakeCurrent() error {
+	if c != nil && (c.lost || c.window != nil && c.window.NativeHandle() == 0) {
+		return errSurfaceUnavailable
+	}
 	if c == nil || c.drawable == 0 || c.handle == 0 {
 		return errors.New("GLX context is destroyed")
 	}
 	drawable := xlib.Drawable(c.drawable)
-	if !glx.MakeContextCurrent(platform.display, drawable, drawable, c.handle) {
+	trap := c.beginSurfaceCall()
+	ok := glx.MakeContextCurrent(platform.display, drawable, drawable, c.handle)
+	trap.End()
+	if c.lost {
+		return errSurfaceUnavailable
+	}
+	if !ok {
 		return errors.New("make GLX context current failed")
 	}
 	return nil
 }
 
 func (c *glxContext) ClearCurrent() error {
-	if !glx.MakeContextCurrent(platform.display, 0, 0, 0) {
+	trap := c.beginSurfaceCall()
+	ok := glx.MakeContextCurrent(platform.display, 0, 0, 0)
+	trap.End()
+	if !ok {
 		return errors.New("clear current GLX context failed")
 	}
 	return nil
 }
 
 func (c *glxContext) SwapBuffers() error {
+	if c != nil && (c.lost || c.window != nil && c.window.NativeHandle() == 0) {
+		return errSurfaceUnavailable
+	}
 	if c == nil || c.drawable == 0 {
 		return errors.New("GLX drawable is destroyed")
 	}
+	trap := c.beginSurfaceCall()
 	glx.SwapBuffers(platform.display, xlib.Drawable(c.drawable))
+	trap.End()
+	if c.lost {
+		return errSurfaceUnavailable
+	}
 	return nil
 }
 
@@ -237,10 +273,11 @@ func getGLXFBConfigAttrib(config glx.FBConfig, attr int) (value int) {
 }
 
 type glxPlatform struct {
-	init    bool
-	display xlib.Display
-	major   int
-	minor   int
+	init      bool
+	display   xlib.Display
+	major     int
+	minor     int
+	errorBase uint8
 
 	Extensions string
 
@@ -267,8 +304,10 @@ func (p *glxPlatform) Init(display xlib.Display) (err error) {
 
 	p.display = display
 
-	if support, _, _ := glx.QueryExtension(display); !support {
+	if support, errorBase, _ := glx.QueryExtension(display); !support {
 		return errors.New("GLX extension not found")
+	} else {
+		p.errorBase = uint8(errorBase)
 	}
 
 	if ok, major, minor := glx.QueryVersion(display); !ok {

@@ -1,6 +1,7 @@
 package software
 
 import (
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -8,6 +9,7 @@ import (
 	"math"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/internal/boxshadow"
 	"github.com/golang-gui/goui/platform/graphics/internal/offscreen"
@@ -183,7 +185,7 @@ func (p *Painter) End() {
 			Width: p.bgra.Rect.Dx(), Height: p.bgra.Rect.Dy(),
 			Stride: p.bgra.Stride, Format: graphics.PixelFormatBGRA, Pixels: p.bgra.Pix,
 		})
-		if err != nil {
+		if err != nil && !errors.Is(err, common.ErrUnavailable) {
 			panic(fmt.Errorf("software: present: %w", err))
 		}
 		return
@@ -209,7 +211,7 @@ func (p *Painter) End() {
 		Format: graphics.PixelFormatBGRA, // reversed
 		Pixels: p.outputBuf,
 	})
-	if err != nil {
+	if err != nil && !errors.Is(err, common.ErrUnavailable) {
 		panic(fmt.Errorf("software: present: %w", err))
 	}
 }

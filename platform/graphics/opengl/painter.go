@@ -1,6 +1,7 @@
 package opengl
 
 import (
+	"errors"
 	"fmt"
 	"image"
 	"math"
@@ -21,6 +22,7 @@ import (
 )
 
 type Painter struct {
+	window        NativeWindow
 	ctx           Context
 	vg            *nanovgo.Context
 	images        map[*imageResource]struct{}
@@ -32,8 +34,9 @@ type Painter struct {
 	viewport      image.Rectangle
 	clip          image.Rectangle
 
-	activeFrame bool
-	transparent bool
+	activeFrame  bool
+	frameSkipped bool
+	transparent  bool
 }
 
 type imageResource struct {
@@ -71,6 +74,7 @@ func (i *imageResource) Destroy() {
 // Destroy, on that thread. The painter must be destroyed before the window.
 func NewPainter(win NativeWindow) (_ graphics.Painter, err error) {
 	p := new(Painter)
+	p.window = win
 	p.transparent = win.Transparent()
 	alphaBits := 0
 	if p.transparent {
@@ -116,8 +120,7 @@ func (p *Painter) Destroy() {
 		panic("opengl: destroy painter during active frame")
 	}
 	if p.vg != nil {
-		p.textImages.Destroy()
-		_ = p.ctx.MakeCurrent()
+		current := p.ctx.MakeCurrent() == nil
 		for img := range p.images {
 			img.owner = nil
 			img.handle = 0
@@ -127,17 +130,30 @@ func (p *Painter) Destroy() {
 		clear(p.images)
 		p.pendingImages = 0
 		p.textPixels = nil
-		p.vg.Delete()
+		if p.textImages != nil {
+			p.textImages.Destroy()
+		}
+		if current {
+			p.vg.Delete()
+			p.ctx.ClearCurrent()
+		}
 		p.vg = nil
-		p.ctx.ClearCurrent()
 	}
 	if p.ctx != nil {
 		p.ctx.Destroy()
 		p.ctx = nil
 	}
+	p.window = nil
+}
+
+func (p *Painter) surfaceAvailable() bool {
+	return p.window != nil && p.window.NativeHandle() != 0
 }
 
 func (p *Painter) NewImage(src image.Image) (graphics.Image, error) {
+	if !p.surfaceAvailable() || p.frameSkipped {
+		return nil, errSurfaceUnavailable
+	}
 	if p.vg == nil || p.ctx == nil {
 		return nil, fmt.Errorf("opengl: create image on destroyed painter")
 	}
@@ -215,8 +231,18 @@ func (p *Painter) destroyImage(img *imageResource) {
 	if p.activeFrame {
 		return
 	}
+	if !p.surfaceAvailable() {
+		// The private context owns the remaining GPU allocation. Widget unmount
+		// can release cached images before Painter.Destroy runs.
+		p.finishImageDestroy(img)
+		return
+	}
 	if img.handle != 0 && p.vg != nil {
 		if err := p.ctx.MakeCurrent(); err != nil {
+			if errors.Is(err, errSurfaceUnavailable) {
+				p.finishImageDestroy(img)
+				return
+			}
 			// Keep the invalid resource pending for a later End or Painter.Destroy.
 			panic(fmt.Sprintf("opengl: make context current to destroy image: %v", err))
 		}
@@ -260,7 +286,16 @@ func (p *Painter) flushPendingImages() {
 }
 
 func (p *Painter) Begin(width, height, scale float32) {
+	p.frameSkipped = !p.surfaceAvailable()
+	if p.frameSkipped {
+		p.activeFrame = true
+		return
+	}
 	if err := p.ctx.MakeCurrent(); err != nil {
+		if errors.Is(err, errSurfaceUnavailable) {
+			p.activeFrame, p.frameSkipped = true, true
+			return
+		}
 		panic(fmt.Sprintf("opengl: begin frame: %v", err))
 	}
 	gl.Viewport(0, 0, int(width), int(height))
@@ -277,24 +312,42 @@ func (p *Painter) Begin(width, height, scale float32) {
 }
 
 func (p *Painter) End() {
+	if p.frameSkipped {
+		p.frameSkipped, p.activeFrame = false, false
+		p.vg.CancelFrame()
+		return
+	}
 	defer p.ctx.ClearCurrent()
 	defer func() {
 		// Discard any commands left if EndFrame panicked before submission.
 		p.vg.CancelFrame()
 		p.activeFrame = false
-		p.flushPendingImages()
+		if p.surfaceAvailable() {
+			p.flushPendingImages()
+		}
 	}()
+	if !p.surfaceAvailable() {
+		return
+	}
 	p.vg.EndFrame()
-	p.ctx.SwapBuffers()
+	if p.surfaceAvailable() {
+		p.ctx.SwapBuffers()
+	}
 }
 
 func (p *Painter) Clear(color graphics.Color) {
+	if p.frameSkipped || !p.surfaceAvailable() {
+		return
+	}
 	// glClear writes framebuffer channels directly, unlike NanoVG paints.
 	gl.ClearColor(color.R, color.G, color.B, color.A)
 	gl.Clear(gl.COLOR_BUFFER_BIT)
 }
 
 func (p *Painter) DrawBoxShadow(rect graphics.Rectangle, radius float32, shadow graphics.BoxShadow) {
+	if p.frameSkipped || !p.surfaceAvailable() {
+		return
+	}
 	if shadow.Color.A <= 0 {
 		return
 	}
@@ -364,6 +417,9 @@ func (p *Painter) FillPath(path graphics.Path, brush graphics.Brush) {
 }
 
 func (p *Painter) ClearPath(path graphics.Path) {
+	if p.frameSkipped || !p.surfaceAvailable() {
+		return
+	}
 	p.vg.Save()
 	defer p.vg.Restore()
 	p.vg.SetCompositeOperation(nanovgo.DestinationOut)
@@ -477,6 +533,9 @@ func nanoVGTransformValues(t geometry.Transform) (a, b, c, d, e, f float32) {
 }
 
 func (p *Painter) DrawImage(rect graphics.Rectangle, img graphics.Image) {
+	if p.frameSkipped || !p.surfaceAvailable() {
+		return
+	}
 	if rect.Width <= 0 || rect.Height <= 0 {
 		return
 	}
@@ -518,6 +577,9 @@ func (p *Painter) drawImageHandle(rect graphics.Rectangle, img int) {
 }
 
 func (p *Painter) beginFill(brush graphics.Brush) bool {
+	if p.frameSkipped || !p.surfaceAvailable() {
+		return false
+	}
 	p.vg.Save()
 	switch brush := brush.(type) {
 	case graphics.Color:
@@ -539,6 +601,9 @@ func (p *Painter) beginFill(brush graphics.Brush) bool {
 }
 
 func (p *Painter) beginDraw(strokeWidth float32, brush graphics.Brush) bool {
+	if p.frameSkipped || !p.surfaceAvailable() {
+		return false
+	}
 	p.vg.Save()
 	p.vg.SetStrokeWidth(strokeWidth)
 	switch brush := brush.(type) {
