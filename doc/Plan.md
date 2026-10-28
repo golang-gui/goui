@@ -36,7 +36,28 @@
     HEAD 相同，已有 framework 导入缺失，报 `undefined: NSOpenGLContext` 等。
     仅在仓库外 Go overlay 恢复三个原有 framework 导入后，窗口程序及 UI 测试目标
     编译通过；这只验证 UI 兼容性，不算未修补源码构建或 macOS 桌面验收通过。
-    本轮没有修改 platform／gui；该既有编译缺口需独立修正。
+    初始 UI 切片未修改 platform／gui；该编译缺口已在下述导入修正中处理。
+  - 远端补验（2026-10-28，e88281a）：Windows 10 19045 amd64／RDP，Direct2D／
+    Software × 实际 1x／2x；macOS 15.7.7 arm64／VNC，OpenGL／Software × 实际
+    1x／2x，八组 `-auto` 均输出 UI BINDING PASS，退出码均为 0。验证副本通过
+    一次性 OnAfterPaint 日志记录图片资源后端类型和 PixelScale，确认没有后端回退。
+    macOS 仍仅在仓库外恢复上述三个导入；未把它记作未修补源码构建通过。
+  - 两端另运行不含后端日志探针的用例，使用 remote-computer-use 实际点击、输入与
+    F6 检查：Overlay 底层文字居左上、浮层文字居中；Windows 文本输入与 macOS
+    拼音输入法提交后，Global／属性 Update 保持 1，绑定控件同步；显式 Rebuild
+    后才增加到 2。原有自动断言同时覆盖镜像窗关闭后继续更新与订阅清理。
+    测试窗口已关闭，保留原有远端连接和用户窗口。macOS 的 IMK 系统诊断仍有输出，
+    未导致本用例失败；本次不据此扩大为全部输入法场景验收。
+
+## macOS OpenGL framework 导入修正（2026-10-28）
+
+- [x] 正式源码 `opengl_darwin.go` 恢复 AppKit、Foundation、OpenGL 三个已有绑定包的
+  点导入，修复 NSOpenGLContext、NSWindow、AutoReleasePool 等未定义错误。
+- [x] 不使用 Go overlay，清空 GOFLAGS，`CGO_ENABLED=0 GOOS=darwin GOARCH=arm64
+  go build ./...` 通过；本机干净源码副本 `GOWORK=off go test ./...` 通过。
+- [x] 从上述正式源码构建窗口用例，SHA-256 与远端文件一致；macOS 15.7.7 arm64
+  下 OpenGL／Software 配置各 1x／2x 重跑 `ui/binding -auto`，四组均通过、退出码 0。
+  验证程序不再依赖临时 framework 导入或测试代码 overlay。
 
 ## 初始居中降级与原生宿主终止（2026-10-28）
 
