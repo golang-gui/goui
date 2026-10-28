@@ -2,6 +2,7 @@ package gui
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"reflect"
 	"testing"
@@ -390,18 +391,34 @@ func TestWindowCenterFallbackAndFailures(t *testing.T) {
 		}
 		win.Destroy()
 	}
+	// 居中是初始偏好；仅能力缺失或暂不可用时保留窗口，其余错误仍须上报和清理。
+	failure := errors.New("native positioning failed")
 	for _, tc := range []struct {
 		name   string
 		native platform.Window
 		want   error
 	}{
-		{"not desktop", &chromeTestWindow{}, platform.ErrUnsupported},
-		{"work area", &centerTestWindow{areaError: platform.ErrUnavailable}, platform.ErrUnavailable},
-		{"position", &centerTestWindow{desktopTestWindow: desktopTestWindow{commandError: platform.ErrUnsupported}, area: geometry.Rect(0, 0, 1920, 1040)}, platform.ErrUnsupported},
+		{"not desktop", &chromeTestWindow{}, nil},
+		{"work area unsupported", &centerTestWindow{areaError: fmt.Errorf("work area: %w", platform.ErrUnsupported)}, nil},
+		{"work area unavailable", &centerTestWindow{areaError: platform.ErrUnavailable}, nil},
+		{"position unsupported", &centerTestWindow{desktopTestWindow: desktopTestWindow{commandError: platform.ErrUnsupported}, area: geometry.Rect(0, 0, 1920, 1040)}, nil},
+		{"position unavailable", &centerTestWindow{desktopTestWindow: desktopTestWindow{commandError: fmt.Errorf("position: %w", platform.ErrUnavailable)}, area: geometry.Rect(0, 0, 1920, 1040)}, nil},
+		{"work area failure", &centerTestWindow{areaError: failure}, failure},
+		{"position failure", &centerTestWindow{desktopTestWindow: desktopTestWindow{commandError: failure}, area: geometry.Rect(0, 0, 1920, 1040)}, failure},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			app := &application{platform: &chromeTestPlatform{native: tc.native}}
 			win, err := app.NewWindow(&WindowOptions{Center: true})
+			if tc.want == nil {
+				if err != nil || win == nil || len(app.Windows()) != 1 {
+					t.Fatalf("optional centering rejected window: window=%v err=%v", win, err)
+				}
+				if native, ok := tc.native.(*centerTestWindow); ok && (native.destroyed || native.shows != 0) {
+					t.Fatal("centering fallback destroyed or showed the hidden window")
+				}
+				win.Destroy()
+				return
+			}
 			if win != nil || !errors.Is(err, tc.want) || len(app.Windows()) != 0 {
 				t.Fatalf("failed placement returned or registered a window: window=%v err=%v", win, err)
 			}
