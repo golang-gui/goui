@@ -114,7 +114,7 @@ func run() error {
 	b.SetChild(content)
 	tool.SetWidget(b)
 	panel := gui.NewLinearBox(layout.DirectionVertical)
-	panel.SetPadding(12)
+	panel.SetPadding(geometry.UniformInsets(12))
 	panel.SetSpacing(12)
 	panel.SetCrossAlign(layout.CrossStretch)
 	panel.AddChild(gui.NewLabel("右侧 None：BorderBox 为根"))

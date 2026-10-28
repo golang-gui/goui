@@ -97,7 +97,7 @@ func main() {
 		log.Fatal(err)
 	}
 	root := gui.NewLinearBox(layout.DirectionVertical)
-	root.SetPadding(12)
+	root.SetPadding(geometry.UniformInsets(12))
 	root.SetSpacing(8)
 	root.SetCrossAlign(layout.CrossStretch)
 	root.AddChild(gui.NewLabel("Tab / Shift+Tab — F6 checks focus state"))
@@ -187,7 +187,7 @@ func main() {
 	defer popup.Destroy()
 	popup.SetPosition(geometry.Point{Y: 40})
 	popupRoot := gui.NewLinearBox(layout.DirectionVertical)
-	popupRoot.SetPadding(12)
+	popupRoot.SetPadding(geometry.UniformInsets(12))
 	popupRoot.SetSpacing(8)
 	var popupButtons []gui.Widget
 	for _, id := range []string{"popup-first", "popup-second"} {

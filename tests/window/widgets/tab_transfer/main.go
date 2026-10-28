@@ -326,7 +326,7 @@ func run() error {
 		column.SetMainWeight(1)
 		column.SetCrossAlign(layout.CrossStretch)
 		column.SetSpacing(8)
-		column.SetPadding(12)
+		column.SetPadding(geometry.UniformInsets(12))
 		if decoration == gui.WindowChromeIntegrated {
 			header := gui.NewHeaderBar()
 			header.SetChild(bar)

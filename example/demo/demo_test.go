@@ -236,7 +236,7 @@ func TestAuxWindowContentComposition(t *testing.T) {
 				var panel *surfaceWidget
 				if test.transparent {
 					outer, ok := root.(*gui.LinearBox)
-					if !ok || outer.Padding() != 16 || len(outer.Children()) != 1 {
+					if !ok || outer.Padding() != geometry.UniformInsets(16) || len(outer.Children()) != 1 {
 						t.Fatal("legacy transparent example lost its outer margin")
 					}
 					panel, _ = outer.Children()[0].(*surfaceWidget)

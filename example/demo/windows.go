@@ -104,7 +104,7 @@ func (d *demo) openWindow(options gui.WindowOptions, borderBox bool) {
 	}
 	box := gui.NewLinearBox(layout.DirectionVertical)
 	box.SetSpacing(16)
-	box.SetPadding(20)
+	box.SetPadding(geometry.UniformInsets(20))
 	var labels []struct {
 		widget *gui.Label
 		text   mlang.Getter
@@ -155,7 +155,7 @@ func (d *demo) openWindow(options gui.WindowOptions, borderBox bool) {
 	column := gui.NewLinearBox(layout.DirectionVertical)
 	column.SetCrossAlign(layout.CrossStretch)
 	if options.Transparent && !borderBox {
-		column.SetPadding(12)
+		column.SetPadding(geometry.UniformInsets(12))
 	} // Keep the subtree inside the rounded corners. Painting a rounded background
 	// does not clip children painted later.
 	column.AddChild(header)
@@ -222,7 +222,7 @@ func auxWindowContent(column gui.Widget, transparent, borderBox bool) gui.Widget
 	if transparent {
 		panel.SetMainWeight(1)
 		outer := gui.NewLinearBox(layout.DirectionVertical)
-		outer.SetPadding(16)
+		outer.SetPadding(geometry.UniformInsets(16))
 		outer.SetCrossAlign(layout.CrossStretch)
 		outer.AddChild(panel)
 		return outer

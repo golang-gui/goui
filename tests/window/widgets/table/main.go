@@ -452,7 +452,7 @@ func (d *cellDelegate) Setup() gui.Widget {
 		c.SetLayoutManager(layout.NewFillLayout())
 		c.WidgetBase.AddChild(c, c.input)
 		c.input.SetStyleName("table-cell-input")
-		c.input.SetPadding(4)
+		c.input.SetPadding(geometry.UniformInsets(4))
 		c.input.ConnectText(func(text string) {
 			if c.id != "" && !c.binding {
 				d.model.setNote(c.id, text)
@@ -464,7 +464,7 @@ func (d *cellDelegate) Setup() gui.Widget {
 		c := &actionCell{LinearBox: gui.NewLinearBox(layout.DirectionVertical), button: gui.NewButton(), painted: new(paintedCell)}
 		c.SetCrossAlign(layout.CrossStretch)
 		c.SetMainAlign(layout.MainCenter)
-		c.SetPadding(4)
+		c.SetPadding(geometry.UniformInsets(4))
 		c.button.SetChild(gui.NewLabel("Inspect"))
 		c.button.ConnectClicked(func() { fmt.Printf("cell-action=%s\n", c.id) })
 		c.AddChild(c.button)
@@ -478,7 +478,7 @@ func (d *cellDelegate) Setup() gui.Widget {
 		label.SetWrapMode(gui.WrapWordChar)
 	}
 	c := &textCell{LinearBox: gui.NewLinearBox(layout.DirectionHorizontal), label: label}
-	c.SetPadding(4)
+	c.SetPadding(geometry.UniformInsets(4))
 	c.AddChild(label)
 	return c
 }
@@ -570,7 +570,7 @@ func runGUI(fallback bool, appearance int) error {
 	window.Shortcuts().AddShortcut(shortcut)
 	root := gui.NewLinearBox(layout.DirectionVertical)
 	root.SetCrossAlign(layout.CrossStretch)
-	root.SetPadding(12)
+	root.SetPadding(geometry.UniformInsets(12))
 	root.SetSpacing(8)
 	toolbar := gui.NewLinearBox(layout.DirectionHorizontal)
 	toolbar.SetSpacing(8)

@@ -71,7 +71,7 @@ func run() error {
 		app.Quit() // 退出后由 defer 释放所有目标，不留下仍否决关闭的测试窗口。
 	})
 	box := gui.NewLinearBox(layout.DirectionVertical)
-	box.SetPadding(16)
+	box.SetPadding(geometry.UniformInsets(16))
 	box.SetSpacing(10)
 	keeper.SetWidget(box)
 	status := gui.NewLabel("Waiting for native termination")

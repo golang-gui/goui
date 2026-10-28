@@ -60,7 +60,7 @@ func (d *demo) openPopover() {
 	}
 	p := gui.NewPopover(anchor, nil)
 	box := gui.NewLinearBox(layout.DirectionVertical)
-	box.SetPadding(16)
+	box.SetPadding(geometry.UniformInsets(16))
 	box.SetSpacing(12)
 	title := gui.NewLabel(resource.Popover())
 	description := gui.NewLabel(resource.PopoverHint())

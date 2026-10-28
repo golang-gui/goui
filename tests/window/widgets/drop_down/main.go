@@ -258,7 +258,7 @@ func runGUI(fallback, destroy bool) {
 	model, long := gui.NewSliceListModel(options), longModel()
 	root := gui.NewLinearBox(layout.DirectionVertical)
 	root.SetSpacing(20)
-	root.SetPadding(20)
+	root.SetPadding(geometry.UniformInsets(20))
 	root.SetCrossAlign(layout.CrossStart)
 	status := gui.NewLabel("Selected events 0")
 	root.AddChild(status)

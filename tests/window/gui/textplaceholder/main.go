@@ -73,7 +73,7 @@ func main() {
 	model := gui.NewTextModel("")
 	row := gui.NewLinearBox(layout.DirectionHorizontal)
 	row.SetSpacing(12)
-	row.SetPadding(12)
+	row.SetPadding(geometry.UniformInsets(12))
 	row.SetCrossAlign(layout.CrossStretch)
 	var inputs [3]*gui.TextInput
 	var views [3]*gui.TextView
@@ -81,7 +81,7 @@ func main() {
 	for i, title := range []string{"Basic", "Modern Light", "Modern Dark"} {
 		column := gui.NewLinearBox(layout.DirectionVertical)
 		column.SetSpacing(10)
-		column.SetPadding(8)
+		column.SetPadding(geometry.UniformInsets(8))
 		column.SetCrossAlign(layout.CrossStretch)
 		column.AddChild(&painterProbe{Label: gui.NewLabel(title)})
 		input := gui.NewTextInput()

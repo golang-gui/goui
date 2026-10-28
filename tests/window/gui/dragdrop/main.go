@@ -121,7 +121,7 @@ func run() error {
 	p := newProbe(*large)
 	p.files = append([]string(nil), files...)
 	root := gui.NewLinearBox(layout.DirectionVertical)
-	root.SetPadding(16)
+	root.SetPadding(geometry.UniformInsets(16))
 	root.SetSpacing(10)
 	root.SetCrossAlign(layout.CrossStretch)
 	root.AddChild(gui.NewLabel("Five independent formats. Local stays in this application."))

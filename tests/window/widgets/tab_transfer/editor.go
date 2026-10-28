@@ -173,7 +173,7 @@ func runEditorTransfer(chrome gui.WindowChromeMode, canceled bool) error {
 		bar.ConnectDetachRequest(func(r *widgets.TabDetachRequest, handled *bool) { r.Cancel(); fail(fmt.Errorf("unexpected detach")) })
 		column := gui.NewLinearBox(layout.DirectionVertical)
 		column.SetCrossAlign(layout.CrossStretch)
-		column.SetPadding(12)
+		column.SetPadding(geometry.UniformInsets(12))
 		column.SetSpacing(8)
 		if chrome == gui.WindowChromeIntegrated {
 			header := gui.NewHeaderBar()

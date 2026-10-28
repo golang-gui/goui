@@ -221,7 +221,7 @@ func run() error {
 		button.SetChild(gui.NewLabel("Verify and exit"))
 		button.ConnectClicked(verify)
 		column := &frameProbe{view: view, initialSize: size}
-		column.SetLayoutManager(&layout.LinearLayout{Direction: layout.DirectionVertical, CrossAlign: layout.CrossStretch, Padding: 12, Spacing: 8})
+		column.SetLayoutManager(&layout.LinearLayout{Direction: layout.DirectionVertical, CrossAlign: layout.CrossStretch, Padding: geometry.UniformInsets(12), Spacing: 8})
 		column.WidgetBase.AddChild(column, bar)
 		column.WidgetBase.AddChild(column, gui.NewLabel(label))
 		column.WidgetBase.AddChild(column, button)

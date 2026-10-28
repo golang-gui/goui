@@ -74,7 +74,7 @@ func main() {
 	root := gui.NewLinearBox(layout.DirectionVertical)
 	root.SetCrossAlign(layout.CrossStretch)
 	header := gui.NewHeaderBar()
-	header.SetPadding(4)
+	header.SetPadding(geometry.UniformInsets(4))
 	height := float32(40)
 	row := gui.NewLinearBox(layout.DirectionHorizontal)
 	row.SetSpacing(12)
@@ -84,7 +84,7 @@ func main() {
 		header.SetMinSize(geometry.Size{Height: height})
 	}
 	button := gui.NewButton()
-	button.SetPadding(4)
+	button.SetPadding(geometry.UniformInsets(4))
 	button.SetChild(gui.NewLabel("40 / 64 DIP"))
 	button.ConnectClicked(toggleHeight)
 	row.AddChild(button)

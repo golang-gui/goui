@@ -287,7 +287,7 @@ func runGUI(fallback bool) error {
 	tree.ConnectContextMenuError(func(err error) { fmt.Printf("menu-error=%v\n", err) })
 	root := gui.NewLinearBox(layout.DirectionVertical)
 	root.SetCrossAlign(layout.CrossStretch)
-	root.SetPadding(12)
+	root.SetPadding(geometry.UniformInsets(12))
 	root.SetSpacing(8)
 	toolbar := gui.NewLinearBox(layout.DirectionHorizontal)
 	toolbar.SetSpacing(8)
