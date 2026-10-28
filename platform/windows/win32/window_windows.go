@@ -27,6 +27,8 @@ type Window struct {
 	style             winapi.DWORD
 	exStyle           winapi.DWORD
 	hwnd              winapi.HWND
+	closed            bool
+	destroying        bool
 	parent            common.Window
 	onEvent           events.EventHandler
 	trackingMouse     bool
@@ -161,16 +163,24 @@ func newWindow(size geometry.Size, onEvent events.EventHandler, options common.W
 }
 
 func (w *Window) NativeHandle() uintptr {
+	if w.closed {
+		return 0
+	}
 	return uintptr(w.hwnd)
 }
 
 func (w *Window) Destroy() {
+	if w.destroying {
+		return
+	}
+	w.destroying = true
+	defer func() { w.destroying = false }()
 	if w.dnd != nil {
 		w.dnd.Destroy()
 	}
 	w.releaseUpload()
 	w.hitTest = nil
-	if w.hwnd != 0 {
+	if w.hwnd != 0 && !w.closed {
 		winapi.DestroyWindow(w.hwnd)
 	}
 }
@@ -209,13 +219,16 @@ func (w *Window) SetTitle(title string) (err error) {
 }
 
 func (w *Window) Show() error {
+	if w.NativeHandle() == 0 {
+		return common.ErrUnavailable
+	}
 	winapi.UpdateWindow(w.hwnd)
 	winapi.ShowWindow(w.hwnd, winapi.SW_SHOW)
 	return nil
 }
 
 func (w *Window) Hide() error {
-	if w.hwnd == 0 {
+	if w.closed || w.hwnd == 0 {
 		return nil
 	}
 	winapi.ShowWindow(w.hwnd, winapi.SW_HIDE)
@@ -223,21 +236,21 @@ func (w *Window) Hide() error {
 }
 
 func (w *Window) RequestClose() error {
-	if w.hwnd == 0 {
+	if w.closed || w.hwnd == 0 {
 		return nil
 	}
 	return winapi.PostMessage(w.hwnd, winapi.WM_CLOSE, 0, 0)
 }
 
 func (w *Window) RequestPaint() error {
-	if w.hwnd == 0 {
+	if w.closed || w.hwnd == 0 {
 		return nil
 	}
 	return winapi.InvalidateRect(w.hwnd, nil, winapi.FALSE)
 }
 
 func (w *Window) SetMinSize(width, height float32) {
-	if w.hwnd == 0 {
+	if w.closed || w.hwnd == 0 {
 		return
 	}
 	// Store logical (DIP) values; physical pixels are derived from the current
@@ -246,6 +259,9 @@ func (w *Window) SetMinSize(width, height float32) {
 }
 
 func (w *Window) Draw(img image.Image) error {
+	if w.NativeHandle() == 0 {
+		return common.ErrUnavailable
+	}
 	if w.transparent {
 		return w.drawTransparent(img)
 	}
@@ -293,6 +309,9 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		}
 	}
 
+	if window.closed && message != winapi.WM_NCDESTROY && message != winapi.WM_DESTROY {
+		return winapi.DefWindowProc(hwnd, message, wParam, lParam)
+	}
 	switch message {
 	case winapi.WM_NCCALCSIZE:
 		if window.integrated && wParam != 0 {
@@ -336,11 +355,19 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		return 0
 
 	case winapi.WM_DESTROY:
+		if window.closed {
+			return 0
+		}
+		window.closed = true
 		window.releaseUpload()
 		window.hitTest = nil
+		window.onEvent(events.DestroyEvent{})
+		return 0
+
+	case winapi.WM_NCDESTROY:
 		delete(windowMap, hwnd)
 		window.hwnd = 0
-		return 0
+		return winapi.DefWindowProc(hwnd, message, wParam, lParam)
 
 	case winapi.WM_WINDOWPOSCHANGED:
 		// DefWindowProc applies visibility/size consequences first. Query the
@@ -795,7 +822,7 @@ func setMaximizedBounds(mmi *winapi.MINMAXINFO, monitor winapi.MONITORINFO) {
 }
 
 func (w *Window) Chrome() common.WindowChrome {
-	if w.hwnd == 0 {
+	if w.closed || w.hwnd == 0 {
 		return common.WindowChromeUnknown
 	}
 	style, err := winapi.GetWindowLong(w.hwnd, winapi.GWL_STYLE)
@@ -821,14 +848,14 @@ func (w *Window) Chrome() common.WindowChrome {
 }
 
 func (w *Window) SetControlsPosition(*geometry.Point) error {
-	if w.hwnd == 0 {
+	if w.closed || w.hwnd == 0 {
 		return common.ErrUnavailable
 	}
 	return common.ErrUnsupported
 }
 
 func (w *Window) ControlsRect() (geometry.Rectangle, error) {
-	if w.hwnd == 0 {
+	if w.closed || w.hwnd == 0 {
 		return geometry.Rectangle{}, common.ErrUnavailable
 	}
 	if w.integrated {
@@ -876,7 +903,7 @@ func captionRect(buttons, frame winapi.RECT, clientOrigin winapi.POINT, scale fl
 }
 
 func (w *Window) SetHitTest(f func(geometry.Point) common.WindowHit) error {
-	if w.hwnd == 0 {
+	if w.closed || w.hwnd == 0 {
 		return common.ErrUnavailable
 	}
 	w.hitTest = f
@@ -885,14 +912,14 @@ func (w *Window) SetHitTest(f func(geometry.Point) common.WindowHit) error {
 
 // Windows starts native interaction through WM_NCHITTEST, not client input.
 func (w *Window) BeginMove() error {
-	if w.hwnd == 0 {
+	if w.closed || w.hwnd == 0 {
 		return common.ErrUnavailable
 	}
 	return common.ErrUnsupported
 }
 
 func (w *Window) BeginResize(common.WindowEdge) error {
-	if w.hwnd == 0 {
+	if w.closed || w.hwnd == 0 {
 		return common.ErrUnavailable
 	}
 	return common.ErrUnsupported
@@ -1147,7 +1174,7 @@ func nativePointerState() (events.PointerButtons, events.Modifiers) {
 }
 
 func (w *Window) State() common.WindowState {
-	if w.hwnd == 0 {
+	if w.closed || w.hwnd == 0 {
 		return common.WindowStateUnknown
 	}
 	if winapi.IsWindowVisible(w.hwnd) == winapi.FALSE {
@@ -1164,7 +1191,7 @@ func (w *Window) State() common.WindowState {
 }
 
 func (w *Window) RequestState(state common.WindowState) error {
-	if w.hwnd == 0 {
+	if w.closed || w.hwnd == 0 {
 		return common.ErrUnavailable
 	}
 	var command int
@@ -1217,7 +1244,7 @@ func (w *Window) Transparent() bool { return w.transparent }
 // composition swap chain, avoiding WS_EX_LAYERED's conflict with CS_OWNDC and
 // retaining ordinary client/non-client geometry. The upload image is reused.
 func (w *Window) drawTransparent(img image.Image) error {
-	if w.hwnd == 0 {
+	if w.closed || w.hwnd == 0 {
 		return common.ErrUnavailable
 	}
 	if img.Bounds().Empty() {
@@ -1271,7 +1298,7 @@ func (w *Window) releaseUpload() {
 }
 
 func (w *Window) Position(relativeTo common.Window) (geometry.Point, error) {
-	if w.hwnd == 0 {
+	if w.closed || w.hwnd == 0 {
 		return geometry.Point{}, common.ErrUnavailable
 	}
 	var offset geometry.Point
@@ -1308,7 +1335,7 @@ func (w *Window) SetPosition(relativeTo common.Window, position geometry.Point) 
 	if err := workarea.ValidatePoint(position); err != nil {
 		return err
 	}
-	if w.hwnd == 0 {
+	if w.closed || w.hwnd == 0 {
 		return common.ErrUnavailable
 	}
 	if relativeTo == nil {
@@ -1355,7 +1382,7 @@ func (w *Window) WorkAreaAt(point geometry.Point) (geometry.Rectangle, error) {
 	if err := workarea.ValidatePoint(point); err != nil {
 		return geometry.Rectangle{}, err
 	}
-	if w.hwnd == 0 {
+	if w.closed || w.hwnd == 0 {
 		return geometry.Rectangle{}, common.ErrUnavailable
 	}
 	var origin winapi.POINT

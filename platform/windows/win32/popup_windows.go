@@ -70,8 +70,8 @@ func (p *Popup) Draw(img image.Image) error { return p.win.Draw(img) }
 // Window.Show (SW_SHOW, which activates) it uses SW_SHOWNOACTIVATE, so it
 // cannot delegate to p.win.Show.
 func (p *Popup) Show() error {
-	if p.win.hwnd == 0 {
-		return nil
+	if p.win.NativeHandle() == 0 {
+		return common.ErrUnavailable
 	}
 	winapi.ShowWindow(p.win.hwnd, winapi.SW_SHOWNOACTIVATE)
 	winapi.UpdateWindow(p.win.hwnd)
@@ -81,7 +81,7 @@ func (p *Popup) Show() error {
 // SetPosition places the popup at an owner-client-local logical point, converted
 // to screen coordinates via the owner window.
 func (p *Popup) SetPosition(x, y float32) {
-	if p.win.hwnd == 0 {
+	if p.win.NativeHandle() == 0 {
 		return
 	}
 	scale := p.ownerScale()
@@ -92,7 +92,7 @@ func (p *Popup) SetPosition(x, y float32) {
 }
 
 func (p *Popup) SetSize(width, height float32) {
-	if p.win.hwnd == 0 {
+	if p.win.NativeHandle() == 0 {
 		return
 	}
 	scale := p.ownerScale()

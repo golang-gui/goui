@@ -32,6 +32,7 @@ const (
 	DragLeave
 	DragDrop
 	DragData
+	Destroy
 )
 
 type EventHandler func(event Event)

@@ -160,7 +160,7 @@ func NewPlatform(appId string) (_ *Platform, err error) {
 	platform = p
 	// The platform/display is process-lived. Keep the preceding handler for
 	// every error outside explicitly tracked external drag messages.
-	p.previousXErrorHandler = xlib.SetErrorHandler(xlib.ErrorHandler(cgo.NewCallback(p.onDragMessageError)))
+	p.previousXErrorHandler = xlib.SetErrorHandler(xlib.ErrorHandler(cgo.NewCallback(p.onXError)))
 	return platform, nil
 }
 
