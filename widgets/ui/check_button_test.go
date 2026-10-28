@@ -32,7 +32,7 @@ func TestCheckButtonReconcileAndSignals(t *testing.T) {
 	b := v.Mount(ctx).(*widgets.CheckButton)
 	v.Update(ctx, b)
 	child := b.Child()
-	if !b.Checked() || b.Group() != nil || b.Appearance() != CheckAppearanceButton || b.Padding() != 9 || !b.Enabled() || child == nil || first != 0 {
+	if !b.Checked() || b.Group() != nil || b.Appearance() != CheckAppearanceButton || b.Padding() != geometry.UniformInsets(9) || !b.Enabled() || child == nil || first != 0 {
 		t.Fatal("initial declaration / silent synchronization failed")
 	}
 	for i := 0; i < 4; i++ {
@@ -44,7 +44,7 @@ func TestCheckButtonReconcileAndSignals(t *testing.T) {
 		})
 		v.Update(ctx, b)
 	}
-	if b.Group() != nil || b.Appearance() != CheckAppearanceIndicator || b.Padding() != 6 || !b.Enabled() || b.CheckState() != CheckMixed || b.Child() != child {
+	if b.Group() != nil || b.Appearance() != CheckAppearanceIndicator || b.Padding() != geometry.UniformInsets(6) || !b.Enabled() || b.CheckState() != CheckMixed || b.Child() != child {
 		t.Fatal("removed declaration / retained identity failed")
 	}
 	b.Arrange(geometry.Rect(0, 0, 120, 32))
@@ -67,9 +67,9 @@ func TestCheckButtonDeclarationRestoresExternalState(t *testing.T) {
 	b.SetChecked(true)
 	b.SetGroup(widgets.NewCheckButtonGroup())
 	b.SetAppearance(CheckAppearanceButton)
-	b.SetPadding(0)
+	b.SetPadding(geometry.Insets{})
 	v.Update(ctx, b)
-	if b.Checked() || b.Group() != nil || b.Appearance() != CheckAppearanceIndicator || b.Padding() != 6 || !b.Enabled() {
+	if b.Checked() || b.Group() != nil || b.Appearance() != CheckAppearanceIndicator || b.Padding() != geometry.UniformInsets(6) || !b.Enabled() {
 		t.Fatal("declaration failed to restore externally changed GUI state")
 	}
 	if _, ok := any(b).(baseui.Bin); !ok {

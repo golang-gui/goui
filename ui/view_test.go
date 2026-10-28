@@ -211,11 +211,11 @@ func TestViewPaddingUnsetKeepsControlDefault(t *testing.T) {
 	// A button has a non-zero built-in padding (6); a view that never calls
 	// .Padding must not overwrite it to 0 — that is what paddingSet guards.
 	root := newRoot()
-	if b := root.update(Button("x")).(*gui.Button); b.Padding() != 6 {
+	if b := root.update(Button("x")).(*gui.Button); b.Padding() != geometry.UniformInsets(6) {
 		t.Fatalf("unset padding overwrote control default: %v (want 6)", b.Padding())
 	}
 	root2 := newRoot()
-	if b := root2.update(Button("y").Padding(10)).(*gui.Button); b.Padding() != 10 {
+	if b := root2.update(Button("y").Padding(10)).(*gui.Button); b.Padding() != geometry.UniformInsets(10) {
 		t.Fatalf("explicit padding not applied: %v (want 10)", b.Padding())
 	}
 }
@@ -301,5 +301,45 @@ func TestViewUnmountDisconnectsOnFocusHandle(t *testing.T) {
 
 	if node.baseCtx == nil || len(node.baseCtx.handles) != 0 || node.baseCtx.onFocus != nil {
 		t.Fatal("OnFocus handle and callback should be cleared on unmount")
+	}
+}
+
+func TestViewPaddingsAppliesPerEdge(t *testing.T) {
+	root := newRoot()
+	box := root.update(VBox().Paddings(geometry.Insets{Left: 10, Top: 2, Right: 6, Bottom: 4})).(*gui.LinearBox)
+	if box.Padding() != (geometry.Insets{Left: 10, Top: 2, Right: 6, Bottom: 4}) {
+		t.Fatalf("view Paddings not applied: %+v", box.Padding())
+	}
+	if got := box.Measure(layout.Loose(geometry.Size{Width: 500, Height: 500})); got.Size != (geometry.Size{Width: 16, Height: 6}) {
+		t.Fatalf("per-edge padding measurement: %+v", got)
+	}
+}
+
+func TestViewPaddingsRestoreControlDefault(t *testing.T) {
+	root := newRoot()
+	input := root.update(TextInput().Paddings(geometry.Insets{Left: 1, Top: 2, Right: 3, Bottom: 4})).(*gui.TextInput)
+	if input.Padding() != (geometry.Insets{Left: 1, Top: 2, Right: 3, Bottom: 4}) {
+		t.Fatalf("text input Paddings not applied: %+v", input.Padding())
+	}
+	root.update(TextInput())
+	if input.Padding() != (geometry.Insets{Left: 8, Top: 4, Right: 8, Bottom: 4}) {
+		t.Fatalf("text input default not restored: %+v", input.Padding())
+	}
+
+	button := root.update(Button("x").Paddings(geometry.Insets{Left: 1, Top: 2, Right: 3, Bottom: 4})).(*gui.Button)
+	if button.Padding() != (geometry.Insets{Left: 1, Top: 2, Right: 3, Bottom: 4}) {
+		t.Fatalf("button Paddings not applied: %+v", button.Padding())
+	}
+	root.update(Button("y"))
+	if button.Padding() != geometry.UniformInsets(6) {
+		t.Fatalf("button default not restored: %+v", button.Padding())
+	}
+	view := root.update(TextView().Paddings(geometry.Insets{Left: 5, Top: 6, Right: 7, Bottom: 8})).(*gui.TextView)
+	if view.Padding() != (geometry.Insets{Left: 5, Top: 6, Right: 7, Bottom: 8}) {
+		t.Fatalf("text view Paddings not applied: %+v", view.Padding())
+	}
+	root.update(TextView())
+	if view.Padding() != geometry.UniformInsets(4) {
+		t.Fatalf("text view default not restored: %+v", view.Padding())
 	}
 }

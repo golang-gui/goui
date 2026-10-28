@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/optional"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
@@ -27,13 +28,13 @@ type CheckButtonView struct {
 	state      CheckState
 	group      string
 	appearance CheckAppearance
-	padding    optional.Optional[float32]
+	padding    optional.Optional[geometry.Insets]
 	onChange   func(CheckState)
 }
 
 type checkButtonState struct {
 	button   *widgets.CheckButton
-	padding  float32
+	padding  geometry.Insets
 	onChange func(CheckState)
 	change   signal.Handle
 }
@@ -82,6 +83,10 @@ func (v *CheckButtonView) Appearance(appearance CheckAppearance) *CheckButtonVie
 	return v
 }
 func (v *CheckButtonView) Padding(padding float32) *CheckButtonView {
+	v.padding.SetValue(geometry.UniformInsets(padding))
+	return v
+}
+func (v *CheckButtonView) Paddings(padding geometry.Insets) *CheckButtonView {
 	v.padding.SetValue(padding)
 	return v
 }

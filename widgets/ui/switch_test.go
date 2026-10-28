@@ -19,7 +19,7 @@ func TestSwitchReconcile(t *testing.T) {
 	b := v.Mount(ctx).(*widgets.Switch)
 	v.Update(ctx, b)
 	child := b.Child()
-	if !b.Checked() || b.Padding() != 9 || b.Animated() || !b.Enabled() || child == nil || first != 0 {
+	if !b.Checked() || b.Padding() != geometry.UniformInsets(9) || b.Animated() || !b.Enabled() || child == nil || first != 0 {
 		t.Fatal("initial declaration / silent update")
 	}
 	for i := 0; i < 4; i++ {
@@ -31,7 +31,7 @@ func TestSwitchReconcile(t *testing.T) {
 		})
 		v.Update(ctx, b)
 	}
-	if b.Checked() || b.Padding() != 6 || !b.Animated() || !b.Enabled() || b.Child() != child {
+	if b.Checked() || b.Padding() != geometry.UniformInsets(6) || !b.Animated() || !b.Enabled() || b.Child() != child {
 		t.Fatal("default restoration / retained child")
 	}
 	b.Arrange(geometry.Rect(0, 0, 120, 32))
@@ -64,10 +64,32 @@ func TestSwitchDeclarationRestoresExternalState(t *testing.T) {
 	v.Update(ctx, b)
 	b.SetChecked(true)
 	b.SetAnimated(false)
-	b.SetPadding(0)
+	b.SetPadding(geometry.Insets{})
 	v.Update(ctx, b)
-	if b.Checked() || !b.Enabled() || !b.Animated() || b.Padding() != 6 {
+	if b.Checked() || !b.Enabled() || !b.Animated() || b.Padding() != geometry.UniformInsets(6) {
 		t.Fatal("declaration retained external state")
 	}
 	v.Unmount(ctx, b)
+}
+
+func TestSwitchPaddingsLastDeclarationWins(t *testing.T) {
+	ctx := new(tabContext)
+	v := Switch("Choice").Paddings(geometry.Insets{Left: 1, Top: 2, Right: 3, Bottom: 4})
+	b := v.Mount(ctx).(*widgets.Switch)
+	v.Update(ctx, b)
+	if b.Padding() != (geometry.Insets{Left: 1, Top: 2, Right: 3, Bottom: 4}) {
+		t.Fatalf("Paddings not applied: %+v", b.Padding())
+	}
+
+	v = Switch("Choice").Paddings(geometry.Insets{Left: 1, Top: 2, Right: 3, Bottom: 4}).Padding(9)
+	v.Update(ctx, b)
+	if b.Padding() != geometry.UniformInsets(9) {
+		t.Fatalf("Padding after Paddings did not win: %+v", b.Padding())
+	}
+
+	v = Switch("Choice")
+	v.Update(ctx, b)
+	if b.Padding() != geometry.UniformInsets(6) {
+		t.Fatalf("default not restored: %+v", b.Padding())
+	}
 }

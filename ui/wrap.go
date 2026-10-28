@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
 )
@@ -11,7 +12,7 @@ type WrapView struct {
 	direction   layout.Direction
 	spacing     float32
 	lineSpacing float32
-	padding     float32
+	padding     geometry.Insets
 	mainAlign   layout.MainAlign
 	crossAlign  layout.CrossAlign
 	children    []View
@@ -54,9 +55,16 @@ func (v *WrapView) LineSpacing(spacing float32) *WrapView {
 	return v
 }
 
-// Padding sets the box's inner padding (a layout scalar, not style).
+// Padding sets equal inner padding on every edge (a layout field, not style).
 // Negative and non-finite values are treated as zero by the widget.
 func (v *WrapView) Padding(padding float32) *WrapView {
+	v.padding = geometry.UniformInsets(padding)
+	return v
+}
+
+// Paddings sets the per-edge inner padding (a layout field, not style).
+// Negative and non-finite edges are treated as zero by the widget.
+func (v *WrapView) Paddings(padding geometry.Insets) *WrapView {
 	v.padding = padding
 	return v
 }

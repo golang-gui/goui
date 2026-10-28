@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
 )
@@ -9,7 +10,7 @@ type BoxView struct {
 	ViewBase[BoxView]
 	direction  layout.Direction
 	spacing    float32
-	padding    float32
+	padding    geometry.Insets
 	mainAlign  layout.MainAlign
 	crossAlign layout.CrossAlign
 	children   []View
@@ -44,9 +45,16 @@ func (v *BoxView) Spacing(spacing float32) *BoxView {
 	return v
 }
 
-// Padding sets the box's inner padding (a layout scalar, not style).
+// Padding sets equal inner padding on every edge (a layout field, not style).
 // Negative and non-finite values are treated as zero by the widget.
 func (v *BoxView) Padding(padding float32) *BoxView {
+	v.padding = geometry.UniformInsets(padding)
+	return v
+}
+
+// Paddings sets the per-edge inner padding (a layout field, not style).
+// Negative and non-finite edges are treated as zero by the widget.
+func (v *BoxView) Paddings(padding geometry.Insets) *BoxView {
 	v.padding = padding
 	return v
 }
