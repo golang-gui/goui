@@ -24,18 +24,20 @@ func NewTextModel(text string) *TextModel { return gui.NewTextModel(text) }
 
 type TextViewView struct {
 	ViewBase[TextViewView]
-	model       *TextModel
-	text        string
-	placeholder string
-	selection   TextSelection
-	padding     float32
-	wrap        WrapMode
-	readOnly    bool
-	acceptsTab  bool
-	onChange    func(TextChange)
-	onText      func(string)
-	onSelection func(TextSelection)
-	fields      bits.Bitmap[uint64]
+	model           *TextModel
+	text            string
+	textSource      BindState[string]
+	selectionSource BindState[TextSelection]
+	placeholder     string
+	selection       TextSelection
+	padding         float32
+	wrap            WrapMode
+	readOnly        bool
+	acceptsTab      bool
+	onChange        func(TextChange)
+	onText          func(string)
+	onSelection     func(TextSelection)
+	fields          bits.Bitmap[uint64]
 }
 
 const (
@@ -43,6 +45,8 @@ const (
 	textViewSelection
 	textViewPadding
 	textViewWrap
+	textViewWriteText
+	textViewWriteSelection
 )
 
 // TextView declares a multiline editor. Compose with ScrollView for scrolling;
@@ -64,6 +68,11 @@ func (v *TextViewView) Model(model *TextModel) *TextViewView { v.model = model; 
 // Equal text is a complete no-op. Selection, when declared, is applied next.
 func (v *TextViewView) Text(text string) *TextViewView {
 	v.text = text
+	v.textSource = nil
+	if v.fields.Check(textViewWriteText) {
+		v.onText = nil
+		v.fields.Set(textViewWriteText, false)
+	}
 	v.fields.Set(textViewText, true)
 	return v
 }
@@ -80,25 +89,33 @@ func (v *TextViewView) Placeholder(text string) *TextViewView {
 // beyond the revision of the notification that triggered this callback.
 func (v *TextViewView) OnText(fn func(string)) *TextViewView {
 	v.onText = fn
+	v.fields.Set(textViewWriteText, false)
 	return v
 }
 
-// BindText is Text(state.Get()).OnText(state.Set); nil is a no-op.
-// A subsequent OnText replaces the writeback callback. State must outlive
-// rebuilds; custom BindState implementations must arrange UI updates.
-func (v *TextViewView) BindText(state BindState[string]) *TextViewView {
-	if state != nil {
-		v.Text(state.Get()).OnText(state.Set)
+// BindText reads current values on the UI thread and writes user edits back.
+// A subsequent OnText replaces writeback; Text removes the read binding and
+// its generated writeback. nil is a no-op.
+func (v *TextViewView) BindText(source BindState[string]) *TextViewView {
+	if source != nil {
+		validateObservable(source)
+		v.textSource = source
+		v.fields.Set(textViewText, true)
+		v.onText = source.Set
+		v.fields.Set(textViewWriteText, true)
 	}
 	return v
 }
 
-// BindSelection is Selection(state.Get()).OnSelection(state.Set); nil is a
-// no-op. A subsequent OnSelection replaces the writeback callback. Text and
-// selection notifications are independent, not an atomic pair.
-func (v *TextViewView) BindSelection(state BindState[TextSelection]) *TextViewView {
-	if state != nil {
-		v.Selection(state.Get()).OnSelection(state.Set)
+// BindSelection follows selection changes independently of text. A subsequent
+// OnSelection replaces writeback; Selection removes the binding. nil is a no-op.
+func (v *TextViewView) BindSelection(source BindState[TextSelection]) *TextViewView {
+	if source != nil {
+		validateObservable(source)
+		v.selectionSource = source
+		v.fields.Set(textViewSelection, true)
+		v.onSelection = source.Set
+		v.fields.Set(textViewWriteSelection, true)
 	}
 	return v
 }
@@ -108,12 +125,18 @@ func (v *TextViewView) BindSelection(state BindState[TextSelection]) *TextViewVi
 // Unset leaves the selection under the editor's control.
 func (v *TextViewView) Selection(value TextSelection) *TextViewView {
 	v.selection = value
+	v.selectionSource = nil
+	if v.fields.Check(textViewWriteSelection) {
+		v.onSelection = nil
+		v.fields.Set(textViewWriteSelection, false)
+	}
 	v.fields.Set(textViewSelection, true)
 	return v
 }
 
 func (v *TextViewView) OnSelection(fn func(TextSelection)) *TextViewView {
 	v.onSelection = fn
+	v.fields.Set(textViewWriteSelection, false)
 	return v
 }
 
@@ -179,7 +202,13 @@ func (v *TextViewView) Update(ctx BuildContext, widget gui.Widget) {
 	}
 	w.SetModel(model)
 	w.SetPlaceholder(v.placeholder)
-	if v.fields.Check(textViewText) {
+	if v.textSource != nil {
+		BindValue(ctx, "text", v.textSource, func(text string) {
+			s.handles.Block()
+			defer s.handles.Unblock()
+			w.Model().SetText(text)
+		})
+	} else if v.fields.Check(textViewText) {
 		w.Model().SetText(v.text)
 	}
 	if v.fields.Check(textViewPadding) {
@@ -194,7 +223,15 @@ func (v *TextViewView) Update(ctx BuildContext, widget gui.Widget) {
 	}
 	w.SetReadOnly(v.readOnly)
 	w.SetAcceptsTab(v.acceptsTab)
-	if v.fields.Check(textViewSelection) && w.Selection() != v.selection {
+	if v.selectionSource != nil {
+		BindValue(ctx, "selection", v.selectionSource, func(selection TextSelection) {
+			s.handles.Block()
+			defer s.handles.Unblock()
+			if w.Selection() != selection {
+				w.SetSelection(selection)
+			}
+		})
+	} else if v.fields.Check(textViewSelection) && w.Selection() != v.selection {
 		w.SetSelection(v.selection)
 	}
 	s.onChange, s.onSelection = v.onChange, v.onSelection
