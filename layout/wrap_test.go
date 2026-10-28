@@ -27,7 +27,7 @@ func TestWrapReflowsAndTransposes(t *testing.T) {
 	for _, direction := range []Direction{DirectionHorizontal, DirectionVertical} {
 		t.Run(map[Direction]string{DirectionHorizontal: "horizontal", DirectionVertical: "vertical"}[direction], func(t *testing.T) {
 			l := NewWrapLayout(direction)
-			l.Spacing, l.LineSpacing, l.Padding = 8, 6, 2
+			l.Spacing, l.LineSpacing, l.Padding = 8, 6, geometry.UniformInsets(2)
 			l.CrossAlign = CrossStart
 			size := geometry.Size{Width: 90, Height: 20}
 			if direction == DirectionVertical {
@@ -60,7 +60,7 @@ func TestWrapReflowsAndTransposes(t *testing.T) {
 }
 
 func TestWrapEmptyUnboundedOversizeAndZero(t *testing.T) {
-	l := &WrapLayout{Padding: 2, Spacing: 5, LineSpacing: 3}
+	l := &WrapLayout{Padding: geometry.UniformInsets(2), Spacing: 5, LineSpacing: 3}
 	if m := l.Measure([]Child{nil}, Unbounded()); m.Size != (geometry.Size{Width: 4, Height: 4}) || m.HasBaseline {
 		t.Fatal(m)
 	}
@@ -126,7 +126,7 @@ func TestWrapCrossAlignmentAndStretch(t *testing.T) {
 }
 
 func TestWrapBaselinePerLineAndPropagation(t *testing.T) {
-	l := &WrapLayout{CrossAlign: CrossBaseline, LineSpacing: 4, Padding: 2}
+	l := &WrapLayout{CrossAlign: CrossBaseline, LineSpacing: 4, Padding: geometry.UniformInsets(2)}
 	a := &wrapTestChild{size: geometry.Size{Width: 20, Height: 20}, hasBaseline: true, baseline: 15}
 	b := &wrapTestChild{size: geometry.Size{Width: 20, Height: 30}, hasBaseline: true, baseline: 10}
 	c := &wrapTestChild{size: geometry.Size{Width: 40, Height: 10}, hasBaseline: true, baseline: 7}
@@ -168,5 +168,22 @@ func TestWrapRemeasuresAtActualWidth(t *testing.T) {
 	l.Arrange(children, geometry.Rect(0, 0, 60, 100))
 	if a.rect != geometry.Rect(0, 0, 60, 20) || b.rect != geometry.Rect(0, 23, 60, 20) {
 		t.Fatalf("%v %v", a.rect, b.rect)
+	}
+}
+
+func TestWrapLayoutAsymmetricPadding(t *testing.T) {
+	l := &WrapLayout{
+		Direction:  DirectionHorizontal,
+		Padding:    geometry.Insets{Left: 10, Top: 2, Right: 4, Bottom: 6},
+		CrossAlign: CrossStart,
+	}
+	first, second := &testChild{size: geometry.Size{Width: 30, Height: 20}}, &testChild{size: geometry.Size{Width: 30, Height: 20}}
+	m := l.Measure([]Child{first, second}, Loose(geometry.Size{Width: 200, Height: 100}))
+	if m.Size != (geometry.Size{Width: 74, Height: 28}) {
+		t.Fatalf("asymmetric wrap measure = %+v", m)
+	}
+	l.Arrange([]Child{first, second}, geometry.Rect(0, 0, 100, 80))
+	if first.rect != geometry.Rect(10, 2, 30, 20) || second.rect != geometry.Rect(40, 2, 30, 20) {
+		t.Fatalf("asymmetric wrap arrange = %+v / %+v", first.rect, second.rect)
 	}
 }

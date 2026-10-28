@@ -34,23 +34,29 @@ func (c Constraint) Clamp(s geometry.Size) geometry.Size {
 // Unlike geometry.Size.Inset, it preserves Inf so an unbounded axis does not
 // accidentally become a very large but finite axis after subtracting padding.
 func (c Constraint) Inset(n float32) Constraint {
+	return c.Insets(geometry.UniformInsets(n))
+}
+
+// Insets returns the constraint for content inside per-edge padding. It
+// preserves Inf on unbounded axes and clamps each axis at zero.
+func (c Constraint) Insets(padding geometry.Insets) Constraint {
 	return Constraint{
 		Min: geometry.Size{
-			Width:  insetExtent(c.Min.Width, n),
-			Height: insetExtent(c.Min.Height, n),
+			Width:  insetExtent(c.Min.Width, padding.Left, padding.Right),
+			Height: insetExtent(c.Min.Height, padding.Top, padding.Bottom),
 		},
 		Max: geometry.Size{
-			Width:  insetExtent(c.Max.Width, n),
-			Height: insetExtent(c.Max.Height, n),
+			Width:  insetExtent(c.Max.Width, padding.Left, padding.Right),
+			Height: insetExtent(c.Max.Height, padding.Top, padding.Bottom),
 		},
 	}
 }
 
-func insetExtent(v, n float32) float32 {
+func insetExtent(v, before, after float32) float32 {
 	if v >= Inf {
 		return Inf
 	}
-	v -= 2 * n
+	v -= before + after
 	return max(0, v)
 }
 

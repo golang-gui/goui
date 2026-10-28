@@ -42,3 +42,18 @@ func TestConstraintInsetPreservesUnboundedAxis(t *testing.T) {
 		t.Fatalf("unexpected inset constraint: got %+v want %+v", got, want)
 	}
 }
+
+func TestConstraintInsetsPreservesUnboundedAxis(t *testing.T) {
+	c := Constraint{
+		Min: geometry.Size{Width: 60, Height: 20},
+		Max: geometry.Size{Width: Inf, Height: 100},
+	}
+	got := c.Insets(geometry.Insets{Left: 5, Top: 2, Right: 3, Bottom: 4})
+	want := Constraint{
+		Min: geometry.Size{Width: 52, Height: 14},
+		Max: geometry.Size{Width: Inf, Height: 94},
+	}
+	if got != want {
+		t.Fatalf("unexpected asymmetric inset constraint: got %+v want %+v", got, want)
+	}
+}
