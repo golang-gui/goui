@@ -229,7 +229,7 @@ func (t *Timer) Active() bool
   回调时停止旧 Timer，再创建新的 Timer。使用后的 Timer 不应复制。
 - 调用方在不再需要时 Stop，应用退出最终兜底。View 移除不自动停止业务 Timer。
   可在已有 Window.OnDestroy 中停止窗口相关任务，不另加生命周期注册表。
-- 通知本身不请求重建。更新 ui.State 使用 Set／Update，修改普通 Go 状态后调用
+- 通知本身不请求重建。更新已绑定或 Observe 的 ui.State 使用 Set／Update，修改普通 Go 状态后调用
   App.RequestUpdate。不要在 Build 中无条件调用工厂，也不要把返回句柄保存在每次
   Build 都重新创建的临时 View 值中。
 

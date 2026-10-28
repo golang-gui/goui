@@ -552,10 +552,11 @@ selection := ui.MakeState(ui.TextSelection{})
 ui.ScrollView(ui.TextView().BindText(&text).BindSelection(&selection)).Style("text-view")
 ```
 
-- `BindText(s)` 等价于 `Text(s.Get()).OnText(s.Set)`；`BindSelection(s)` 等价于
-  `Selection(s.Get()).OnSelection(s.Set)`。nil 不改变声明。回调槽不叠加，后设置
+- `BindText(s)`／`BindSelection(s)` 在 UI 线程读取当前值并订阅变化，用户编辑回写
+  `s.Set`；不在声明时缓存 Get，不再等价于字面值加回调。通知仅应用绑定属性，
+  不重放未绑定的 Text/Selection，也不自动重建应用。nil 不改变声明。回调槽不叠加，后设置
   的 OnText/OnSelection 会替换写回；需要附加业务处理时显式使用值+回调。
-- ui.State.Set 复用 RequestUpdate 合并调度；自定义 BindState 自行安排更新。
+- State 和自定义 BindState 都通过 Connect 显式通知节点；UI 合并属性失效，不重建全应用。
   不引入依赖追踪、Controller、公共事务或 Root/BuildContext 文本特例。
 - 非 nil Model 与 Text/BindText 同时声明属于编程错误，在修改 Widget 前 panic；
   Model+OnText 可以观察全文，但大文本优先 OnChange。没有全文监听时不读取全文。
