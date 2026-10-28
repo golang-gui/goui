@@ -81,9 +81,10 @@ traffic-light bounds. HeaderBar consumes those bounds and automatically avoids
 controls. Its arranged height answers ChromeControls.Height; no creation-time
 TitleBarHeight or freely laid-out WindowControls is exposed.
 
-Linux GUI Integrated reserves its perimeter in root Measure/Arrange and structural
-clip. This is a narrow GUI adaptation, not universal FrameMetrics or mobile safe
-area propagation. See [GUI chrome](DesignGUIWindowChrome.md).
+Linux GUI Integrated lays out and paints the complete client area, then uses
+general ClearPath operations for its rounded silhouette. Its resize perimeter is
+input only. No FrameMetrics or mobile safe-area propagation is introduced. See
+[GUI chrome](DesignGUIWindowChrome.md).
 
 ## WindowControls
 

@@ -27,6 +27,7 @@ type Painter interface {
     NewImage(src image.Image) (graphics.Image, error)
     PixelScale() float32
     SetClipRect(rect geometry.Rectangle)
+    ClearPath(path graphics.Path)
     SetTransform(matrix geometry.Transform)
 
     FillRect(rect geometry.Rectangle, brush graphics.Brush)
@@ -246,3 +247,15 @@ ScrollView
 - Save/Restore 嵌套、越界、遗漏以及 Paint panic 后恢复。
 - ScrollView viewport 的绘制裁剪、滚动条命中顺序和语义过滤。
 - Window 与 Popup host 使用同一个自动遍历入口。
+
+## 路径擦除与宿主 AfterPaint（2026-10-28）
+
+ClearPath 是当前局部坐标中的一次性擦除，遵循 Transform、HiDPI、显式 Clip 与
+不可扩大的结构 Clip。覆盖率同时衰减预乘 RGBA，不改变随后绘制的状态。
+它会擦除下层像素，不是子树裁剪；父 Widget.Paint 仍先于孩子，不增加 PaintChildren。
+
+Root.ConnectAfterPaint 在树和宿主装饰完成后、提交前提供完整表面 Painter 与
+局部 bounds。每个回调均独立恢复状态、检查 Save/Restore 平衡；Paint 的同步借用、
+不改树/销毁/嵌套绘制规则同样适用。RenderWidget 不触发此宿主信号。
+Linux Integrated 的最终四角擦除在该信号之后。完整契约见
+[DesignGraphicsClipping](DesignGraphicsClipping.md)。

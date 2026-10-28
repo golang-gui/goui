@@ -3,6 +3,54 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## 通用 ClearPath 与 Linux Integrated 铺满（2026-10-28）
+
+- [x] 确认设计，更新 DesignGraphicsClipping：通用擦除、Root AfterPaint、自定义
+  透明窗口与缩放输入分离。保留无关未跟踪文件，独立 X11 会话及仓库外副本验证。
+- [x] nanovgo 逐命令 SourceOver / DestinationOut 状态、Save/Restore 与跨帧重置回归；
+  提交 763111f，annotated v0.0.10 已使用 proxy git push 推送 main 和标签。
+  GOUI 直接依赖公共 Go proxy 的 v0.0.10，保留 checksum 校验，无本机 replace。
+- [x] Software 包围盒覆盖率擦除、OpenGL DestinationOut、Direct2D 透明 COPY；
+  验证预乘 RGBA、解析半覆盖、内部／外部、空路径、非零绕数自交路径、Transform、
+  Clip、1/1.25/1.5/2x、绘制状态恢复及连续帧。旧 Direct2D FillPath 的偶奇规则差异
+  只记录到 Roadmap，不改变旧接口行为。
+- [x] Root AfterPaint 每回调状态隔离、平衡检查、RenderWidget 排除、连接生命周期；
+  UI Transparent / OnAfterPaint 保留最新闭包，不重复连接。新增 graphics/clear_path
+  和 ui/clear_path 窗口例程，包含中文步骤、自动断言及实际桌面操作说明。
+- [x] Linux Integrated 根布局／绘制／Snapshot 铺满客户区，最终圆角擦除，边框外缘
+  避免重复 AA；缩放按下在 Widget 交互／焦点前消费，显式 Client 可覆盖。
+  更新既有布局、最小尺寸、完整滚动条、状态转换与自定义越界绘制回归。
+  将旧内缩布局和缺失 StopPropagation 分别放回独立副本后，新回归均明确失败。
+- [x] 正式依赖的仓库外干净源码，全仓非缓存测试：Linux amd64 / Go 1.25.8 / 独立
+  Xvnc 1.12.0 + Xfwm4 合成桌面为 2538 PASS、10 SKIP、0 FAIL；Windows 10
+  22H2 19045 amd64 / Go 1.25.8 / 交互 Session 1 为 2661 PASS、12 SKIP、0 FAIL；
+  macOS 15.7.7 arm64 / Go 1.25.8 为 2488 PASS、9 SKIP、0 FAIL。计数含父子测试。
+  手工／条件 skip 保留；Windows 无符号链接权限，未扩大 skip 或放宽像素断言。
+- [x] 相关 gui / ui / widgets / software race、GOUI 普通 vet、mod verify、干净副本
+  tidy -diff，以及 CGO_ENABLED=0 的 Windows amd64 / macOS arm64 全仓构建通过。
+  nanovgo 本机普通测试与 race、远端 Windows/macOS 普通测试通过；其普通 vet
+  仍有旧版可独立复现的 unreachable / unkeyed composite 诊断，关闭这两类检查后通过，
+  不宣称 nanovgo 普通 vet 通过。Darwin 的字体测试改用实际存在的 Helvetica.ttc，
+  修正旧测试在该平台以空文件名打开字体的问题。
+- [x] 独立 X11 会话分别完成 Software 1x / OpenGL 2x 的原生 XTest 输入：右／顶边
+  缩放、标题拖动、HeaderBar 高度变化、滚动条拖动、最大化／恢复／全屏、亮暗及关闭。
+  两后端 ClearPath 原生离屏断言覆盖全部上述缩放；实际透明提交及 GUI 自动生命周期
+  验证另行通过。OpenGL 使用 llvmpipe，2x 是应用缩放，不冒称实体混合 DPI 验收。
+- [x] 远端 Windows Direct2D 1x / Software 2x、macOS OpenGL 2x / Software 1x 的
+  ClearPath 像素与 GUI 自动验收通过。最后补入的非零绕数路径在三平台适用后端重验通过。
+  Windows Direct2D 1x / macOS OpenGL 1x 另以 remote-computer-use 实际操作圆角开关、
+  重建、Popover 显示／外部关闭、标题栏拖动及退出，截图核对透明角与铺满背景。
+- [x] 代码按通用绘制与 Linux Integrated 分组提交：fd3198d、7bad7b5；
+  通用绘制提交的独立暂存树另行通过相关包测试及 Windows/macOS 全仓构建。
+- Windows RDP OpenGL 在创建上下文时即报 can not choose useful pixel format；
+  同环境旧版基线也失败，故列为环境验证缺口，不算本轮回归，也不称其已验收。
+  未覆盖 Windows 11、实体 GPU／混合 DPI、其他 WM 或 Wayland；不扩大为全矩阵结论。
+- 本轮使用仓库外副本排除原有未跟踪文件及侧会话文档；测试日志、截图、源码在
+  /tmp/goui-clearpath-ai_zlm0q，远端各自临时目录为 goui-clearpath-20261028。
+  既有全仓测试写图片并触及剪贴板，实际桌面操作改变过焦点／指针。
+  未修改系统安全策略；独立 X11、专用计划任务、任务窗口及新建 Terminal 标签已清理，
+  保留用户原有 SSH/VNC/RDP 会话与源码目录内未跟踪文件。
+
 ## v0.4.0 发布准备（2026-10-26）
 
 - [x] 核对 main 与 GitHub 的 9668f60785649a0fcac12796c93f9f3af75a2241 一致，
@@ -1003,7 +1051,7 @@ arm64 构建限制保留在原记录中；本轮未修改实现或复验这些�
 - [x] 开发遇到的框架使用成本、样式/窗口背景粒度等记录于 [DemoFrameworkNotes](DemoFrameworkNotes.md)，区分事实、契约限制与例程错误，不顺带扩接口。
 - [x] 第一轮反馈修复：主体 8 DIP 外侧留白避免滚动条裁剪；排除 Integrated 误触共享透明背景，显式 None 的全局副作用由下一项修复。该轮全仓 2052 通过/14 既有跳过、例程 race/vet、Windows/macOS 编译与本机指定场景通过，历史范围见 DesignDemo。
 - [x] 透明 None 背景隔离：补充 Window.StyleName / SetStyleName，透明辅助窗选择独立规则，删除例程全局背景覆盖和关闭恢复逻辑；不改平台/Painter或边缘布局。Software 1x/2x 像素回归、全仓 2055 通过/14 既有跳过、相关 race/vet、Windows/macOS 全仓和测试目标编译、本机 Software 1x/OpenGL 配置 2x 指定桌面场景通过；原生远端未复验，范围见 DesignDemo。
-- [x] Linux GUI 自绘 Integrated 布局/绘制安全边界统一：根内容整体进入四边缩放区内侧，HeaderBar 以根布局顶部查询高度、Chrome 计入内容起点；按钮控件和完整窗口右侧距离不变。派生最小尺寸计入边缘，显式 MinSize 保持语义；Native/None、Windows/macOS 原生 Integrated 和 Popover 不自动内缩。包内、像素与独立窗口验收见 DesignGUIWindowChrome。
+- [x] Linux GUI 自绘 Integrated 布局/绘制安全边界统一：根内容整体进入四边缩放区内侧，HeaderBar 以根布局顶部查询高度、Chrome 计入内容起点；按钮控件和完整窗口右侧距离不变。派生最小尺寸计入边缘，显式 MinSize 保持语义；Native/None、Windows/macOS 原生 Integrated 和 Popover 不自动内缩。此为历史方案，2026-10-28 已由完整布局和最终路径擦除替代。包内、像素与独立窗口验收见 DesignGUIWindowChrome。
 - [x] 内缩后的窗口边缘输入：无 Widget 命中时继续派发既有 host controller，普通/禁用/空内容的八方向及回调销毁回归通过。全仓 2072 通过/14 既有跳过、相关 race/vet、Windows/macOS 全仓及 GUI 测试目标编译；本机 Xfwm4 Software 1x/OpenGL 2x 指定场景通过，未执行项见 DesignGUIWindowChrome。
 - [x] demo 边缘收敛：删除主体重复的 8 DIP 外侧留白，滚动条贴合 Window 分配的内容边界；保留页面内部和透明 None 外围间距。宽/窄、零/非零起点、完整宽度/命中/Snapshot 回归、例程 race/vet、全仓 2076 通过/14 既有跳过、Windows/macOS 例程编译、本机 Software 1x/OpenGL 配置 2x 滑块/窄窗/最大化恢复通过；原生远端未复验，见 DesignDemo。
 
@@ -1381,7 +1429,7 @@ arm64 构建限制保留在原记录中；本轮未修改实现或复验这些�
 - [x] Linux GUI 自绘 Integrated：透明圆角、实线边框、GTK4 风格圆形按钮，无 GOUI 阴影；复用 Caption 双击及原生移动/缩放，不伪造平台 Integrated
 - [x] Software 1x/1.5x/2x 像素测试、真实 GLX 遮罩对照及两后端 X11 外观检查
 - [x] Integrated 最终区域查询驱动缩放光标；圆形控制按钮改为 24 DIP 可见背景、28 DIP 点击区域
-- [x] Linux GUI Integrated 移除 graphics 专用窗口遮罩。早期仅 ClipRect 的方案已被安全内容区域布局取代：根 Measure／Arrange 与结构 clip 一起避让缩放边缘，见 DesignGUIWindowChrome。
+- [x] Linux GUI Integrated 移除 graphics 专用窗口遮罩。早期仅 ClipRect 的方案曾被安全内容区域布局取代；2026-10-28 再替换为完整客户区 Measure／Arrange／绘制和最终 ClearPath，缩放边缘仅影响输入，见 DesignGUIWindowChrome。
 - [x] 边框保留八方向光标语义；X11 接入 libXcursor 主题/别名加载及 XSETTINGS、X Resources 动态更新，不按发行版分支
 
 - [x] 三平台 Window/Popup 显式透明创建与 Surface.Transparent 配置查询

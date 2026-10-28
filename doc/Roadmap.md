@@ -139,13 +139,15 @@ BuildContext.UpdateOverlays 或 WidgetBase 具体浮层特例。旧草案不算�
 
 <a id="future-clipping"></a>
 
-### 通用抗锯齿裁剪或局部擦除：待评估，择一按需求推进
+### 通用抗锯齿裁剪：需求触发
 
-Linux GUI Integrated 已使用圆角背景、安全内容布局及 ClipRect，当前无需窗口
-专用 Painter 遮罩。只有任意内容铺满圆角容器／明确局部擦除等需求出现时，再从
-[裁剪讨论](DesignGraphicsClipping.md) 选择通用裁剪或 ClearPath；两者语义不同，
-不同时预建，不承诺已确定的方法名。须共同验证 Software／OpenGL／Direct2D 的
-预乘合成、覆盖率、Transform／clip／HiDPI、状态恢复与资源成本。
+ClearPath 局部擦除已实现并完成本轮验收，Linux GUI Integrated 改为完整内容绘制后
+清理四角；设计及当前验收进度见 [路径擦除](DesignGraphicsClipping.md) / Plan。
+后续若需要保留下层内容的圆角容器或任意路径裁剪，再设计结构裁剪的组合、
+替换、恢复和分组抗锯齿语义。ClearPath 是破坏性擦除，不替代这种能力；
+不同时预建 SetClipRoundRect / SetClipPath，不添加窗口专用 Painter 遮罩。
+已发现旧 Direct2D FillPath 的偶奇填充与其他后端的非零绕数不同；
+本轮仅新 ClearPath 显式统一非零绕数，旧 FillPath 的规则统一留待独立设计和回归。
 
 <a id="future-layout"></a>
 
@@ -411,9 +413,9 @@ libc SYS_PIPE/SYS_POLL 不可用而失败，本轮未修改，详见
 体验反馈的滚动条边缘裁剪和 Integrated 辅助窗误触透明背景已在例程修复；
 后续显式透明 None 的背景串改通过最小的 Window.StyleName / SetStyleName 修复，
 沿用 Popover 的独立背景选择，不修改平台、Painter 或布局。全仓及本机指定场景
-通过，Windows/macOS 仅编译。随后确认的 Linux GUI 自绘 Integrated 自动布局
-避让已实现：根内容与安全 clip 一致，HeaderBar/按钮居中使用内容起点，四边
-仍用于窗口缩放。不影响其他窗口模式或平台，不引入公共 SafeArea；验证记录
+通过，Windows/macOS 仅编译。2026-10-07 曾实现 Linux GUI 自绘 Integrated
+自动布局避让；2026-10-28 已替代为完整客户区布局／绘制和最终四角 ClearPath，
+四边缩放仅影响输入。HeaderBar/按钮使用完整根起点，不引入公共 SafeArea；验证记录
 见 [DesignGUIWindowChrome](DesignGUIWindowChrome.md)。demo 随后移除主体重复的
 8 DIP 外侧留白，页面内部间距和透明 None 外围设计保留；包内回归、全仓及本机
 Software 1x/OpenGL 配置 2x 指定场景通过，Windows/macOS 仅交叉编译，验证见 DesignDemo。
@@ -891,8 +893,8 @@ HeaderBar 已提供 UI 单 child 绑定及 Captions 按 ID 扩展；GUI 根据�
 - 新合同迁移与 Windows/macOS Integrated 平台实现已完成，详见 [Window Chrome](DesignWindowChrome.md)、[Desktop Window](DesignWindowManagement.md) 和 [Hit Test](DesignWindowHitTest.md)。HeaderBar/WindowControls 的 GUI 信号接入已实现并由用户确认三平台验证。Linux 平台仍不报告 Integrated；GUI 现已通过透明 None 表面实现无阴影的圆角窗口装饰。
 - 原生交互按能力拆分：Windows 保留 `SetHitTest`，`BeginMove/BeginResize` 返回不支持；Linux/macOS 的 `SetHitTest` 返回不支持，Linux 提供 EWMH 移动/缩放，macOS 提供原生移动、不模拟客户区缩放。GUI Chrome 内部先尝试 `SetHitTest`，仅在不支持时从正常输入控制器调用交互请求，应用只使用 Chrome 信号。
 - Windows/macOS `Integrated` 半自绘保留原生平台机制，Linux 不伪装支持 Integrated。
-  Linux 透明表面及无阴影的 GUI Chrome 已完成；圆角背景、内部安全 ClipRect（只裁绘制）、
-  实线边框、圆形按钮和 resize 热区
+  Linux 透明表面及无阴影的 GUI Chrome 已完成；完整客户区背景／布局、最终四角擦除、
+  实线边框、圆形按钮和仅输入的 resize 热区
   由 GUI 协作；八方向边缘光标已接入最终区域查询，X11 按系统主题加载并监听配置变化。
   GUI 自绘按钮仍走正常输入、控制器与信号链路，
   原生按钮保留系统所有权；Snap 和各平台交互需真机验收。
