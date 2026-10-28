@@ -157,6 +157,7 @@ type window struct {
 	cursorPosition geometry.Point       // last client-local pointer position for chrome queries
 	cursorInside   bool
 	destroyed      bool
+	destroyPending bool        // resource cleanup waits for a reentered frame to finish
 	modalTarget    ModalTarget // the modal element intercepting this window's input; nil when none
 	popoversShown  uint64      // changes whenever an owned surface is shown
 	popovers       []*popover  // currently shown surfaces; lifecycle stays with each popover
@@ -389,8 +390,17 @@ func (w *window) Destroy() {
 		return
 	}
 	w.destroyed = true
-	w.tooltip.dismiss(false)
+	w.destroyPending = true
 	w.destroyFrames()
+	w.finishDestroy()
+}
+
+func (w *window) finishDestroy() {
+	if !w.destroyPending || w.framePainting {
+		return
+	}
+	w.destroyPending = false
+	w.tooltip.dismiss(false)
 	w.cancelInput(GestureHostClosed)
 	w.drag.destroy()
 	if c := w.dispatcher.shortcuts; c != nil {
@@ -483,6 +493,10 @@ func (w *window) CommitText(text string) error {
 }
 
 func (w *window) DispatchEvent(event events.Event) error {
+	if _, ok := event.(events.DestroyEvent); ok {
+		w.Destroy()
+		return nil
+	}
 	if e, ok := event.(events.DragSourceEvent); ok {
 		w.app.dispatchDragSourceEvent(e)
 		return nil
@@ -828,6 +842,7 @@ func (w *window) routeToModalTarget(event events.Event) bool {
 }
 
 func (w *window) paint() {
+	defer w.finishDestroy()
 	defer w.applyCursor() // layout/state changes can move a resize region beneath a stationary pointer
 	if !w.beginFrame() {
 		return

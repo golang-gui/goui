@@ -1250,3 +1250,76 @@ func TestIntegratedResizeEdgesConsumeWidgetPress(t *testing.T) {
 		t.Fatal("显式 Client 未恢复普通控件输入")
 	}
 }
+
+// 模拟原生回调重入 Begin/End，确保宿主终止立即停止帧，资源等帧退出后释放。
+type lifecyclePainter struct {
+	recordingPainterBackend
+	calls   []string
+	active  bool
+	onBegin func()
+}
+
+func (p *lifecyclePainter) Begin(float32, float32, float32) {
+	p.active = true
+	p.calls = append(p.calls, "begin")
+	if p.onBegin != nil {
+		p.onBegin()
+	}
+}
+func (p *lifecyclePainter) End() { p.calls = append(p.calls, "end"); p.active = false }
+func (p *lifecyclePainter) Destroy() {
+	if p.active {
+		panic("Painter destroyed between Begin and End")
+	}
+	p.calls = append(p.calls, "destroy")
+}
+
+func TestWindowNativeTermination(t *testing.T) {
+	for _, inFrame := range []bool{false, true} {
+		t.Run(fmt.Sprint(inFrame), func(t *testing.T) {
+			loop := &quitCountLoop{}
+			app := &application{loop: loop, quitOnLastWindowClosed: true}
+			native := &chromeTestWindow{}
+			backend := &lifecyclePainter{}
+			w := &window{platformWindow: native, rootBase: rootBase{app: app, width: 40, height: 30, pixelWidth: 40, pixelHeight: 30, painter: backend}}
+			app.windows = []*window{w}
+			root := newTestWidget()
+			w.SetWidget(root)
+			closeRequests, destroys := 0, 0
+			w.ConnectCloseRequest(func(close *bool) { closeRequests++; *close = false })
+			w.ConnectDestroy(func() { destroys++; w.Destroy() })
+			w.DispatchEvent(events.CloseEvent{})
+			if closeRequests != 1 || w.destroyed {
+				t.Fatal("关闭请求不能绕过否决")
+			}
+			terminate := func() {
+				w.DispatchEvent(events.DestroyEvent{})
+				if !w.frameDestroyed {
+					t.Fatal("终止没有停止后续帧")
+				}
+				if inFrame && native.destroyed {
+					t.Fatal("资源在活动帧内提前释放")
+				}
+			}
+			if inFrame {
+				backend.onBegin = terminate
+				w.paint()
+			} else {
+				terminate()
+			}
+			w.DispatchEvent(events.DestroyEvent{})
+			w.DispatchEvent(events.PaintEvent{})
+			w.Destroy()
+			if destroys != 1 || closeRequests != 1 || !root.Destroyed() || !native.destroyed || len(app.Windows()) != 0 || loop.quits != 1 {
+				t.Fatalf("destroy=%d close=%d root=%v native=%v windows=%d quits=%d", destroys, closeRequests, root.Destroyed(), native.destroyed, len(app.Windows()), loop.quits)
+			}
+			want := []string{"destroy"}
+			if inFrame {
+				want = []string{"begin", "end", "destroy"}
+			}
+			if !reflect.DeepEqual(backend.calls, want) {
+				t.Fatalf("calls=%v want=%v", backend.calls, want)
+			}
+		})
+	}
+}
