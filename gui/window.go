@@ -227,7 +227,7 @@ func newWindow(app *application, options WindowOptions) (*window, error) {
 				Y: (area.Height - options.Size.Height) / 2,
 			})
 		}
-		if err != nil {
+		if err != nil && !errors.Is(err, platform.ErrUnsupported) && !errors.Is(err, platform.ErrUnavailable) {
 			win.Destroy()
 			return nil, fmt.Errorf("center initial window: %w", err)
 		}

@@ -36,8 +36,9 @@ type WindowOptions struct {
 	// Center requests initial client-area centering in this window's work area,
 	// using the normalized initial Size. It is applied while creating the hidden
 	// window, not on Show. A later SetPosition overrides it; native window-manager
-	// constraints may adjust the result. Query/positioning failures are returned
-	// by NewWindow. False preserves the platform's default placement.
+	// constraints may adjust the result. Unsupported or unavailable positioning
+	// preserves the default placement; other failures are returned by NewWindow.
+	// False preserves the platform's default placement without querying it.
 	Center bool
 	// Transparent requires a native alpha surface; failure is returned, never
 	// downgraded to opaque. The window style independently controls its background.

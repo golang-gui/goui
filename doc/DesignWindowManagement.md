@@ -139,9 +139,11 @@ window ID is rejected; rebuilding the same declaration never moves the window.
   A WM may constrain size/position, including after applying a minimum-size hint.
   If actual size subsequently changes, Center does not become a persistent
   centering constraint. In particular this is not SizeToContent or autosizing.
-- Work-area/positioning failures fail NewWindow, preserve the error for the
-  caller and destroy the hidden window/painter. False performs neither request
-  and does not require a desktop positioning capability.
+- Unsupported or unavailable work-area/positioning facilities preserve native
+  default placement and allow NewWindow to succeed. Other failures preserve the
+  error and destroy the hidden window/painter. False performs neither request
+  and does not require a desktop positioning capability. Explicit WorkAreaAt and
+  SetPosition calls still return their original errors.
 
 The strategy belongs only to GUI; native WindowOptions and all three platform
 implementations are unchanged. No public Window.Center/Bounds/Size, owner,
