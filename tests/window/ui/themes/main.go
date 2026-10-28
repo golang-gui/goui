@@ -55,7 +55,7 @@ func main() {
 			s := app.Settings()
 			sheet = modern.Sheet(modern.Options{Dark: true, AccentColor: s.AccentColor(), FontFamily: s.FontFamily(), FontSize: s.FontSize()})
 		}
-		change := func(value bool) { changes++; enabled.Set(value) }
+		change := func(value bool) { changes++; enabled.Set(value); app.RequestUpdate() }
 		check := func() {
 			win := app.FindWindow("themes")
 			if (gui.App.StyleSheet() == nil) != (mode == 0) {
@@ -111,7 +111,7 @@ func main() {
 						wui.Switch("Disabled Switch").ID("disabled-switch").Checked(true).Enabled(false),
 						ui.HBox(
 							ui.Button("检查 / F6").ID("verify").OnClick(check),
-							ui.Button("复位").ID("reset").OnClick(func() { mode, changes = 0, 0; enabled.Set(true) }),
+							ui.Button("复位").ID("reset").OnClick(func() { mode, changes = 0, 0; enabled.Set(true); app.RequestUpdate() }),
 						).Spacing(8),
 					).Padding(16).Spacing(12),
 				).CrossAlign(layout.CrossStretch)),

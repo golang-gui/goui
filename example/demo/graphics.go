@@ -89,11 +89,14 @@ func (d *demo) graphicsPage() ui.View {
 			ui.HWrap(ui.Button(resource.Animate()).ID("animate").OnClick(d.animate), ui.Button(resource.Stop()).ID("stop-animation").OnClick(func() { d.motion.Stop(); d.busy = false; d.report(resource.AnimationStopped()) }),
 				ui.Button(resource.Finish()).OnClick(d.motion.Finish),
 				wui.Switch(resource.Busy()).Checked(d.busy).OnChange(func(v bool) { d.busy = v; d.app.RequestUpdate() })).Spacing(12).LineSpacing(8),
-			ui.HBox(ui.Icon(d.logo).ID("animated-icon").Size(d.motionValue.Get())).
-				MainAlign(layout.MainCenter).CrossAlign(layout.CrossCenter).MinHeight(88).MaxHeight(88),
-			wui.ProgressBar((d.motionValue.Get()-32)/48).Indeterminate(d.busy),
-			wui.ProgressBar((d.motionValue.Get()-32)/48).Shape(wui.ProgressCircular).Indeterminate(d.busy).MinSize(64, 64).MaxSize(64, 64),
-			ui.Label(fmt.Sprintf(resource.AnimationValue(), d.motionValue.Get()))),
+			ui.Build(func() ui.View {
+				return ui.VBox(
+					ui.HBox(ui.Icon(d.logo).ID("animated-icon").Size(d.motionValue.Get())).
+						MainAlign(layout.MainCenter).CrossAlign(layout.CrossCenter).MinHeight(88).MaxHeight(88),
+					wui.ProgressBar((d.motionValue.Get()-32)/48).Indeterminate(d.busy),
+					wui.ProgressBar((d.motionValue.Get()-32)/48).Shape(wui.ProgressCircular).Indeterminate(d.busy).MinSize(64, 64).MaxSize(64, 64),
+					ui.Label(fmt.Sprintf(resource.AnimationValue(), d.motionValue.Get()))).Spacing(12).CrossAlign(layout.CrossStretch)
+			}).Observe(&d.motionValue)),
 	)
 }
 

@@ -159,7 +159,9 @@ func main() {
 					).Spacing(8),
 					ui.ScrollView(ui.TextView().ID("notes").BindText(&notes).
 						BindSelection(&notesSelection).ReadOnly(readonly)).Style("text-view").MinHeight(100).MaxHeight(100),
-					ui.Label(fmt.Sprintf("Notes: %d bytes | selection %+v | Search %+v | auto rebuild %t", len(notes.Get()), notesSelection.Get(), searchSelection.Get(), rebuildTimer.Active())),
+					ui.Build(func() ui.View {
+						return ui.Label(fmt.Sprintf("Notes: %d bytes | selection %+v | Search %+v | auto rebuild %t", len(notes.Get()), notesSelection.Get(), searchSelection.Get(), rebuildTimer.Active()))
+					}).Observe(&notes, &notesSelection, &searchSelection),
 					ui.HBox(
 						ui.ScrollView(ui.TextView().ID("left").Model(model).ReadOnly(readonly).
 							OnChange(func(ui.TextChange) { app.RequestUpdate() }).

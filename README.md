@@ -158,7 +158,9 @@ func main() {
                     Size(480, 240).
                     Content(
                         ui.VBox(
-                            ui.Label(fmt.Sprintf("Clicked %d times", count.Get())),
+                            ui.Build(func() ui.View {
+                                return ui.Label(fmt.Sprintf("Clicked %d times", count.Get()))
+                            }).Observe(&count),
                             ui.Button("Click me").OnClick(func() {
                                 // Prefer Update to count.Set(count.Get() + 1):
                                 count.Update(func(old int) int {
@@ -186,7 +188,7 @@ On Windows PowerShell, use `$env:CGO_ENABLED='0'`, then run:
 
 `go build -trimpath -ldflags="-s -w -H=windowsgui" -o hello-goui.exe .`.
 
-Views are ordinary Go values. `State.Set` and `State.Update` request a coalesced rebuild. System settings changes also rebuild this example, updating its Modern stylesheet. For larger applications, compose views with functions or custom view types, or implement widgets using `gui.WidgetBase`.
+Views are ordinary Go values. Bind individual properties with `BindText(&state)`, or rebuild a subtree with `ui.Build(fn).Observe(&state)`. `State.Set` and `State.Update` notify these explicit consumers; `App.RequestUpdate` rebuilds the application. System settings changes also rebuild this example, updating its Modern stylesheet. For larger applications, compose views with functions or custom view types, or implement widgets using `gui.WidgetBase`.
 
 ## Platforms and dependencies
 

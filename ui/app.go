@@ -101,8 +101,6 @@ func Run(appId string, build func(app App) RootView) error {
 
 	var a *app
 	a = newApp(guiApp, func() RootView { return build(a) })
-	setActiveApp(a)
-	defer clearActiveApp()
 	return a.run()
 }
 
@@ -232,8 +230,7 @@ type windowMount struct {
 
 var activeApp struct {
 	sync.Mutex
-	current *app
-	ran     bool // one-shot: set on the first Run, never cleared (the loop is consumed)
+	ran bool // one-shot: set on the first Run, never cleared (the loop is consumed)
 }
 
 // activeRun claims the process-wide, one-shot Run. ui.Run may run only once: the
@@ -250,29 +247,6 @@ func activeRun() error {
 	}
 	activeApp.ran = true
 	return nil
-}
-
-// setActiveApp records the running runtime so State.Set can reach it — the one
-// internal caller with no App handle in scope. It does not gate re-runs (activeRun
-// does), so tests may install/clear a runtime without tripping the one-shot latch.
-func setActiveApp(a *app) {
-	activeApp.Lock()
-	defer activeApp.Unlock()
-	activeApp.current = a
-}
-
-// clearActiveApp drops the active runtime after Run returns; the ran latch
-// stays set so no later Run can start.
-func clearActiveApp() {
-	activeApp.Lock()
-	defer activeApp.Unlock()
-	activeApp.current = nil
-}
-
-func currentApp() *app {
-	activeApp.Lock()
-	defer activeApp.Unlock()
-	return activeApp.current
 }
 
 func newApp(guiApp gui.Application, build func() RootView) *app {

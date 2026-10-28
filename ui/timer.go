@@ -17,7 +17,7 @@ import (
 // Timers are not View declarations. Create them in event handlers or one-time
 // initialization, not unconditionally during Build. Call Stop when the task is
 // no longer needed; removing a View does not stop it. Application exit stops all
-// timers. Callbacks do not request updates automatically: use State.Set/Update or
+// timers. Callbacks do not request updates automatically: use State.Set/Update with explicit consumers, or
 // App.RequestUpdate. This timer is not a frame-synchronized animation clock.
 //
 // A nil, zero-value or exited-app Timer is inert: Stop and valid starts are no-ops,

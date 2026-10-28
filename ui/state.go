@@ -5,6 +5,10 @@ import (
 	"github.com/golang-gui/goui/core/state"
 )
 
+// State stores a synchronized value and publishes explicit change notifications.
+// Use BindText/BindSelection, or Observe on a composition, to update consumers.
+// Get does not track dependencies; Set and Update do not rebuild the application.
+// Keep the State at a stable address after connecting it to a View.
 type State[T any] struct {
 	state state.State[T]
 }
@@ -24,18 +28,10 @@ func (s *State[T]) Connect(fn func()) signal.Handle {
 
 func (s *State[T]) Set(value T) {
 	s.state.Set(value)
-	// State lives in the view tree with no App handle in scope, so it reaches the
-	// running app through the active-runtime singleton — the one internal use of it.
-	if rt := currentApp(); rt != nil {
-		rt.RequestUpdate()
-	}
 }
 
 // Update atomically replaces the value via f (read-modify-write) and emits
 // one notification; see core/state.State.Update.
 func (s *State[T]) Update(f func(before T) (after T)) {
 	s.state.Update(f)
-	if rt := currentApp(); rt != nil {
-		rt.RequestUpdate()
-	}
 }
