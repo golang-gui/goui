@@ -34,6 +34,7 @@ type ErrorHandler uintptr
 
 const (
 	BadWindow        = 3
+	BadDrawable      = 9
 	RequestSendEvent = 25
 )
 
@@ -378,6 +379,9 @@ func (e *Event) ConfigureEvent() *ConfigureEvent {
 
 func (e *Event) MapEvent() *MapEvent     { return (*MapEvent)(cgo.Pointer(e)) }
 func (e *Event) UnmapEvent() *UnmapEvent { return (*UnmapEvent)(cgo.Pointer(e)) }
+func (e *Event) DestroyWindowEvent() *DestroyWindowEvent {
+	return (*DestroyWindowEvent)(cgo.Pointer(e))
+}
 
 func (e *Event) PropertyEvent() *PropertyEvent {
 	return (*PropertyEvent)(cgo.Pointer(e))
@@ -441,6 +445,16 @@ type UnmapEvent struct {
 	Event         Window
 	Window        Window
 	FromConfigure Bool
+}
+
+// DestroyWindowEvent is XDestroyWindowEvent, including the event recipient.
+type DestroyWindowEvent struct {
+	Type      EventType
+	Serial    uint64
+	SendEvent Bool
+	Display   Display
+	Event     Window
+	Window    Window
 }
 
 type ExposeEvent struct {

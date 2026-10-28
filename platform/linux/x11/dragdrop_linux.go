@@ -16,6 +16,7 @@ import (
 	"github.com/golang-gui/goui/platform/dragdrop"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/internal/xerrors"
 	"github.com/golang-gui/goui/platform/linux/libs/xcursor"
 	"github.com/golang-gui/goui/platform/linux/libs/xlib"
 	"github.com/golang-gui/goui/platform/linux/libs/xshape"
@@ -274,8 +275,8 @@ func (p *Platform) sendDragMessageWindow(dest, messageWindow xlib.Window, typ xl
 	p.display.Flush()
 }
 
-func (p *Platform) onDragMessageError(display xlib.Display, event *xlib.ErrorEvent) int32 {
-	if display == p.display && p.consumeDragMessageError(event) {
+func (p *Platform) onXError(display xlib.Display, event *xlib.ErrorEvent) int32 {
+	if xerrors.Consume(display, event) || display == p.display && p.consumeDragMessageError(event) {
 		return 0
 	}
 	// XSetErrorHandler returns a callable default handler as well. Do not

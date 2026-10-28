@@ -15,6 +15,7 @@ import (
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/opengl"
 	"github.com/golang-gui/goui/platform/internal/workarea"
+	"github.com/golang-gui/goui/platform/internal/xerrors"
 	"github.com/golang-gui/goui/platform/linux/libs/xrandr"
 	"github.com/golang-gui/goui/platform/linux/libs/xrender"
 
@@ -202,6 +203,10 @@ func (w *Window) NativeFBConfig() glx.FBConfig {
 }
 
 func (w *Window) Destroy() {
+	w.destroyNative(false)
+}
+
+func (w *Window) destroyNative(external bool) {
 	if moveResizePress.window == w {
 		moveResizePress = nativePress{}
 	}
@@ -209,11 +214,15 @@ func (w *Window) Destroy() {
 	if w.wid == 0 {
 		return
 	}
+	id := w.wid
+	w.wid = 0
+	w.paintPending = false
+	w.dragPress = false
+	delete(windowMap, id)
 	if w.dnd != nil {
 		w.dnd.Destroy()
 	}
 
-	delete(windowMap, w.wid)
 	if w.im != nil {
 		w.im.Destroy()
 	}
@@ -222,13 +231,17 @@ func (w *Window) Destroy() {
 		w.gc = 0
 	}
 	w.resizeSync.destroy(platform.display)
-	platform.display.DestroyWindow(w.wid)
+	if !external {
+		platform.display.DestroyWindow(id)
+	}
 	if w.cmap != 0 {
 		platform.display.FreeColormap(w.cmap)
 		w.cmap = 0
 	}
 	platform.display.Flush()
-	w.wid = 0
+	if w.onEvent != nil {
+		w.onEvent(events.DestroyEvent{})
+	}
 }
 
 func (w *Window) Parent() common.Window {
@@ -378,6 +391,13 @@ var windowMap = map[xlib.Window]*Window{}
 
 // TODO: process window event
 func handleEvent(event xlib.Event) {
+	// A native lifetime event must not be swallowed by XIM or drag filtering.
+	if event.Type == xlib.DestroyNotify && event.AnyEvent().SendEvent == 0 {
+		if w := windowMap[event.DestroyWindowEvent().Window]; w != nil {
+			w.destroyNative(true)
+			return
+		}
+	}
 	if event.Type == xlib.MappingNotify {
 		xlib.RefreshKeyboardMapping(event.MappingEvent())
 		if platform != nil {
@@ -565,6 +585,18 @@ func handleEvent(event xlib.Event) {
 }
 
 func (w *Window) drawImage(img graphics.Bitmap) (err error) {
+	if w.wid == 0 {
+		return common.ErrUnavailable
+	}
+	var missing bool
+	trap := xerrors.Begin(platform.display, []xlib.ID{xlib.ID(w.wid)}, &missing, xlib.BadWindow, xlib.BadDrawable)
+	defer func() {
+		trap.End()
+		if missing {
+			w.destroyNative(true)
+			err = common.ErrUnavailable
+		}
+	}()
 	// XCreateImage borrows the pixel address across subsequent XPutImage and
 	// XDestroyImage calls. Keep it stable until the native image is released.
 	var pixelsPin runtime.Pinner
@@ -777,10 +809,19 @@ func (w *Window) sendMoveResize(event *xlib.ButtonEvent, direction int64) bool {
 	return ok != 0
 }
 
-func (w *Window) State() common.WindowState {
+func (w *Window) State() (result common.WindowState) {
 	if w.wid == 0 {
 		return common.WindowStateUnknown
 	}
+	var missing bool
+	trap := xerrors.Begin(platform.display, []xlib.ID{xlib.ID(w.wid)}, &missing, xlib.BadWindow)
+	defer func() {
+		trap.End()
+		if missing {
+			w.destroyNative(true)
+			result = common.WindowStateUnknown
+		}
+	}()
 	var attrs xlib.WindowAttributes
 	if platform.display.GetWindowAttributes(w.wid, &attrs) == 0 {
 		return common.WindowStateUnknown

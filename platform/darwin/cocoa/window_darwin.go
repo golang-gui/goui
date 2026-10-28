@@ -27,6 +27,9 @@ type Window struct {
 	trackingArea NSTrackingArea
 	onEvent      events.EventHandler
 	paintQueued  bool // one native invalidation awaiting the main run loop
+	closed       bool
+	closing      bool // AppKit is already inside close; do not call it recursively
+	destroying   bool
 
 	parent    common.Window
 	buttons   events.PointerButtons
@@ -63,6 +66,8 @@ func newNativeWindow(onEvent events.EventHandler, class NSWindowClass, styleMask
 		win.view = viewClass.Alloc().Init()
 
 		win.window = class.Alloc().InitWith(rect, styleMask, NSBackingStoreBuffered, false)
+		// Window owns its allocation, including when native code closes it first.
+		win.window.SetReleasedWhenClosed(false)
 		if transparent {
 			win.window.SetOpaque(false)
 			win.window.SetBackgroundColor(NSColorClassId.ClearColor())
@@ -128,10 +133,20 @@ func newWindow(size geometry.Size, onEvent events.EventHandler, options common.W
 func (w *Window) Transparent() bool { return w.transparent }
 
 func (w *Window) NativeHandle() uintptr {
+	if w.closed {
+		return 0
+	}
 	return uintptr(w.window.ID)
 }
 
 func (w *Window) Destroy() {
+	if w.destroying || !w.window.Valid() {
+		return
+	}
+	w.destroying = true
+	defer func() { w.destroying = false }()
+	notify := !w.closed
+	w.closed, w.paintQueued = true, false
 	if w.dnd != nil {
 		w.dnd.Destroy()
 	}
@@ -155,11 +170,17 @@ func (w *Window) Destroy() {
 		w.window.SetDelegate(NSWindowDelegate{})
 		w.delegate.Release()
 		w.view.Release()
-		w.window.Close()
+		if !w.closing {
+			w.window.Close()
+		}
+		w.window.Release()
 		w.window = NSWindow{}
 		w.delegate = NSWindowDelegate{}
 		w.view = NSView{}
 	})
+	if notify && w.onEvent != nil {
+		w.onEvent(events.DestroyEvent{})
+	}
 }
 
 func (w *Window) Parent() common.Window {
@@ -201,6 +222,9 @@ func (w *Window) SetTitle(title string) (err error) {
 }
 
 func (w *Window) Show() error {
+	if w.closed {
+		return common.ErrUnavailable
+	}
 	AutoReleasePool(func() {
 		NSApp.ActivateIgnoringOtherApps(true)
 		w.window.MakeKeyAndOrderFront(0)
@@ -212,7 +236,7 @@ func (w *Window) Show() error {
 
 func (w *Window) Hide() error {
 	w.resize = nil
-	if !w.window.Valid() {
+	if w.closed || !w.window.Valid() {
 		return nil
 	}
 	AutoReleasePool(func() {
@@ -222,7 +246,7 @@ func (w *Window) Hide() error {
 }
 
 func (w *Window) RequestClose() error {
-	if !w.window.Valid() {
+	if w.closed || !w.window.Valid() {
 		return nil
 	}
 
@@ -233,7 +257,7 @@ func (w *Window) RequestClose() error {
 }
 
 func (w *Window) RequestPaint() error {
-	if !w.window.Valid() || w.paintQueued {
+	if w.closed || !w.window.Valid() || w.paintQueued {
 		return nil
 	}
 	// AppKit may clear a dirty flag set from inside drawRect: when that draw
@@ -244,7 +268,7 @@ func (w *Window) RequestPaint() error {
 	loop := CFRunLoopGetMain()
 	block := objc.NewBlock(func(_ objc.Block) {
 		w.paintQueued = false
-		if w.window.Valid() {
+		if !w.closed && w.window.Valid() {
 			AutoReleasePool(func() { w.view.SetNeedsDisplay(true) })
 		}
 	})
@@ -255,7 +279,7 @@ func (w *Window) RequestPaint() error {
 }
 
 func (w *Window) SetMinSize(width, height float32) {
-	if !w.window.Valid() {
+	if w.closed || !w.window.Valid() {
 		return
 	}
 	w.minWidth, w.minHeight = width, height
@@ -266,6 +290,9 @@ func (w *Window) SetMinSize(width, height float32) {
 }
 
 func (w *Window) Draw(img image.Image) error {
+	if w.closed {
+		return common.ErrUnavailable
+	}
 	bmp, ok := graphics.ToBitmap(img, graphics.PixelFormatRGBA)
 	if !ok {
 		bmp = graphics.CopyToBitmap(img, graphics.PixelFormatRGBA, nil)
@@ -306,6 +333,7 @@ func initWindowClass() (err error) {
 	delegateClass, err = ImplementNSWindowDelegate("GouiWindowDelegate", NSWindowDelegateOverride{
 		WindowDidChangeOcclusionState:  windowDidChangeManagement,
 		WindowShouldClose:              windowShouldClose,
+		WindowWillClose:                windowWillClose,
 		WindowDidResize:                windowDidResize,
 		WindowDidBecomeKey:             windowDidBecomeKey,
 		WindowDidResignKey:             windowDidResignKey,
@@ -382,6 +410,28 @@ func initWindowClass() (err error) {
 	}
 
 	return
+}
+
+func windowWillClose(self NSWindowDelegate, notification NSNotification) {
+	sender := Cast[NSWindow](notification.Object())
+	w := windowMap[sender]
+	if w == nil || w.closed {
+		return
+	}
+	// GUI teardown can release these allocations. Keep them alive beyond the
+	// enclosing AppKit close call, in its outer autorelease pool, not a new pool.
+	sender.Retain()
+	defer sender.AutoRelease()
+	self.Retain()
+	defer self.AutoRelease()
+	view := w.view
+	view.Retain()
+	defer view.AutoRelease()
+	w.closed, w.closing, w.paintQueued = true, true, false
+	defer func() { w.closing = false }()
+	if w.onEvent != nil {
+		w.onEvent(events.DestroyEvent{})
+	}
 }
 
 func windowShouldClose(self NSWindowDelegate, sender NSWindow) bool {
@@ -526,7 +576,7 @@ func windowStyle(options common.WindowOptions) NSWindowStyleMask {
 }
 
 func (w *Window) Chrome() common.WindowChrome {
-	if !w.window.Valid() {
+	if w.closed || !w.window.Valid() {
 		return common.WindowChromeUnknown
 	}
 	style := w.window.StyleMask()
@@ -543,7 +593,7 @@ func (w *Window) Chrome() common.WindowChrome {
 }
 
 func (w *Window) ControlsRect() (geometry.Rectangle, error) {
-	if !w.window.Valid() || !w.view.Valid() {
+	if w.closed || !w.window.Valid() || !w.view.Valid() {
 		return geometry.Rectangle{}, common.ErrUnavailable
 	}
 	// Visibility is not required for convertRect:toView:. A prepared hidden
@@ -591,7 +641,7 @@ func controlsRectInDIP(rect, bounds NSRect, pointsPerDIP CGFloat) geometry.Recta
 }
 
 func (w *Window) SetHitTest(func(geometry.Point) common.WindowHit) error {
-	if !w.window.Valid() {
+	if w.closed || !w.window.Valid() {
 		return common.ErrUnavailable
 	}
 	return common.ErrUnsupported
@@ -615,7 +665,7 @@ func (w *Window) BeginMove() error {
 }
 
 func (w *Window) Position(relativeTo common.Window) (result geometry.Point, err error) {
-	if !w.window.Valid() {
+	if w.closed || !w.window.Valid() {
 		return result, common.ErrUnavailable
 	}
 	var offset geometry.Point
@@ -649,7 +699,7 @@ func (w *Window) SetPosition(relativeTo common.Window, position geometry.Point) 
 	if err := workarea.ValidatePoint(position); err != nil {
 		return err
 	}
-	if !w.window.Valid() {
+	if w.closed || !w.window.Valid() {
 		return common.ErrUnavailable
 	}
 	if relativeTo == nil {
@@ -694,7 +744,7 @@ func (w *Window) WorkAreaAt(point geometry.Point) (result geometry.Rectangle, er
 	if err = workarea.ValidatePoint(point); err != nil {
 		return
 	}
-	if !w.window.Valid() {
+	if w.closed || !w.window.Valid() {
 		return result, common.ErrUnavailable
 	}
 	AutoReleasePool(func() {
@@ -729,7 +779,7 @@ func (w *Window) WorkAreaAt(point geometry.Point) (result geometry.Rectangle, er
 }
 
 func (w *Window) State() common.WindowState {
-	if !w.window.Valid() {
+	if w.closed || !w.window.Valid() {
 		return common.WindowStateUnknown
 	}
 	if w.window.IsMiniaturized() {
@@ -753,7 +803,7 @@ func (w *Window) State() common.WindowState {
 }
 
 func (w *Window) RequestState(state common.WindowState) error {
-	if !w.window.Valid() {
+	if w.closed || !w.window.Valid() {
 		return common.ErrUnavailable
 	}
 	if w.stateRequest {
@@ -797,14 +847,14 @@ func (w *Window) RequestState(state common.WindowState) error {
 		if native.IsMiniaturized() {
 			native.Deminiaturize(0)
 		}
-		if !w.window.Valid() {
+		if w.closed || !w.window.Valid() {
 			err = common.ErrUnavailable
 			return
 		}
 		if !native.IsVisible() {
 			native.MakeKeyAndOrderFront(0)
 		}
-		if !w.window.Valid() {
+		if w.closed || !w.window.Valid() {
 			err = common.ErrUnavailable
 			return
 		}
@@ -812,14 +862,14 @@ func (w *Window) RequestState(state common.WindowState) error {
 		if native.StyleMask()&NSWindowStyleMaskResizable != 0 && native.IsZoomed() != wantZoom {
 			native.Zoom(0)
 		}
-		if !w.window.Valid() {
+		if w.closed || !w.window.Valid() {
 			err = common.ErrUnavailable
 			return
 		}
 		// Resize notifications can run before zoom settles. Re-read the native
 		// state after the operation; notifyState deduplicates actual observations.
 		w.notifyState()
-		if !w.window.Valid() {
+		if w.closed || !w.window.Valid() {
 			err = common.ErrUnavailable
 		}
 	})
@@ -850,7 +900,7 @@ type windowControlsPosition struct {
 }
 
 func (w *Window) SetControlsPosition(position *geometry.Point) (err error) {
-	if !w.window.Valid() {
+	if w.closed || !w.window.Valid() {
 		return common.ErrUnavailable
 	}
 	if w.Chrome() != common.WindowChromeIntegrated {

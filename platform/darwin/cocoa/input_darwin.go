@@ -20,6 +20,9 @@ type nativePress struct {
 var movePress nativePress
 
 func (w *Window) emitEvent(event events.Event) {
+	if w.closed {
+		return
+	}
 	movePress = nativePress{}
 	if w.window.Valid() {
 		w.onEvent(event)

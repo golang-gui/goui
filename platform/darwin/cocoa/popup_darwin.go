@@ -47,8 +47,8 @@ func (p *Popup) Draw(img image.Image) error { return p.win.Draw(img) }
 // owner keeps key focus (click-menu behavior). Unlike Window.Show it does not
 // make the popup key, so it cannot delegate to p.win.Show.
 func (p *Popup) Show() error {
-	if !p.win.window.Valid() {
-		return nil
+	if p.win.closed || !p.win.window.Valid() {
+		return common.ErrUnavailable
 	}
 	AutoReleasePool(func() {
 		p.win.window.OrderFront(0)
@@ -61,7 +61,7 @@ func (p *Popup) Show() error {
 // bottom-left origin with y growing upward, so y is flipped against the owner
 // content's top edge. The owner's scale maps logical coordinates to points.
 func (p *Popup) SetPosition(x, y float32) {
-	if !p.win.window.Valid() {
+	if p.win.closed || !p.win.window.Valid() {
 		return
 	}
 	AutoReleasePool(func() {
@@ -78,7 +78,7 @@ func (p *Popup) SetPosition(x, y float32) {
 }
 
 func (p *Popup) SetSize(width, height float32) {
-	if !p.win.window.Valid() {
+	if p.win.closed || !p.win.window.Valid() {
 		return
 	}
 	AutoReleasePool(func() {

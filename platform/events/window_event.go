@@ -19,6 +19,15 @@ func (e CloseEvent) Type() EventType {
 
 func (e CloseEvent) isEvent() {}
 
+// DestroyEvent reports the end of a native host's usable lifetime. It cannot
+// be cancelled. Owned native objects may remain alive until cleanup completes.
+// Delivery is at most once, on the owning thread, after NativeHandle becomes
+// zero. Hide, minimization and occlusion do not emit this event.
+type DestroyEvent struct{}
+
+func (DestroyEvent) Type() EventType { return Destroy }
+func (DestroyEvent) isEvent()        {}
+
 type SizeEvent struct {
 	// Width, Height are the logical (DIP) size used for layout and hit-testing.
 	Width  float32
@@ -55,6 +64,7 @@ func (e FocusEvent) isEvent() {}
 
 var (
 	_ Event = CloseEvent{}
+	_ Event = DestroyEvent{}
 	_ Event = SizeEvent{}
 	_ Event = PaintEvent{}
 	_ Event = FocusEvent{}

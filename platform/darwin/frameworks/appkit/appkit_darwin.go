@@ -1387,6 +1387,7 @@ func initNSWindow() {
 	NSWindowSel.SetCollectionBehavior = objc.RegisterName("setCollectionBehavior:")
 	NSWindowSel.SetAcceptsMouseMovedEvents = objc.RegisterName("setAcceptsMouseMovedEvents:")
 	NSWindowSel.SetRestorable = objc.RegisterName("setRestorable:")
+	NSWindowSel.SetReleasedWhenClosed = objc.RegisterName("setReleasedWhenClosed:")
 	NSWindowSel.BackingScaleFactor = objc.RegisterName("backingScaleFactor")
 	NSWindowSel.MakeFirstResponder = objc.RegisterName("makeFirstResponder:")
 	NSWindowSel.MakeKeyAndOrderFront = objc.RegisterName("makeKeyAndOrderFront:")
@@ -1438,6 +1439,7 @@ var (
 		SetCollectionBehavior             objc.SEL
 		SetAcceptsMouseMovedEvents        objc.SEL
 		SetRestorable                     objc.SEL
+		SetReleasedWhenClosed             objc.SEL
 		SetOpaque                         objc.SEL
 		SetHasShadow                      objc.SEL
 		SetBackgroundColor                objc.SEL
@@ -1580,6 +1582,10 @@ func (w NSWindow) SetRestorable(v bool) {
 	w.Send(NSWindowSel.SetRestorable, v)
 }
 
+func (w NSWindow) SetReleasedWhenClosed(v bool) {
+	w.Send(NSWindowSel.SetReleasedWhenClosed, v)
+}
+
 func (w NSWindow) SetOpaque(v bool)                 { w.Send(NSWindowSel.SetOpaque, v) }
 func (w NSWindow) SetHasShadow(v bool)              { w.Send(NSWindowSel.SetHasShadow, v) }
 func (w NSWindow) SetBackgroundColor(color NSColor) { w.Send(NSWindowSel.SetBackgroundColor, color) }
@@ -1698,6 +1704,7 @@ func (w NSWindow) PerformWindowDrag(event NSEvent) {
 func initNSWindowDelegate() {
 	NSWindowDelegateClassId.Class = objc.GetClass("NSWindowDelegate")
 	NSWindowDelegateSel.WindowShouldClose = objc.RegisterName("windowShouldClose:")
+	NSWindowDelegateSel.WindowWillClose = objc.RegisterName("windowWillClose:")
 	NSWindowDelegateSel.WindowDidResize = objc.RegisterName("windowDidResize:")
 	NSWindowDelegateSel.WindowDidBecomeKey = objc.RegisterName("windowDidBecomeKey:")
 	NSWindowDelegateSel.WindowDidResignKey = objc.RegisterName("windowDidResignKey:")
@@ -1717,6 +1724,7 @@ var (
 	NSWindowDelegateClassId NSWindowDelegateClass
 	NSWindowDelegateSel     struct {
 		WindowShouldClose              objc.SEL
+		WindowWillClose                objc.SEL
 		WindowDidResize                objc.SEL
 		WindowDidBecomeKey             objc.SEL
 		WindowDidResignKey             objc.SEL
@@ -1739,6 +1747,7 @@ type (
 	NSWindowDelegateOverride struct {
 		WindowDidChangeOcclusionState  func(self NSWindowDelegate, notification NSNotification)
 		WindowShouldClose              func(self NSWindowDelegate, sender NSWindow) bool
+		WindowWillClose                func(self NSWindowDelegate, notification NSNotification)
 		WindowDidResize                func(self NSWindowDelegate, notification NSNotification)
 		WindowDidBecomeKey             func(self NSWindowDelegate, notification NSNotification)
 		WindowDidResignKey             func(self NSWindowDelegate, notification NSNotification)
@@ -1756,6 +1765,14 @@ type (
 
 func ImplementNSWindowDelegate(className string, override NSWindowDelegateOverride) (class NSWindowDelegateClass, err error) {
 	methods := make([]objc.MethodDef, 0, 10)
+	if override.WindowWillClose != nil {
+		methods = append(methods, objc.MethodDef{
+			Cmd: NSWindowDelegateSel.WindowWillClose,
+			Fn: func(self objc.ID, cmd objc.SEL, arg objc.ID) {
+				override.WindowWillClose(Cast[NSWindowDelegate](self), Cast[NSNotification](arg))
+			},
+		})
+	}
 	if override.WindowShouldClose != nil {
 		methods = append(methods, objc.MethodDef{
 			Cmd: NSWindowDelegateSel.WindowShouldClose,
