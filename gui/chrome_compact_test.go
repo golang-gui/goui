@@ -26,7 +26,7 @@ func TestCircularControlsRightInset(t *testing.T) {
 			bounds := win.controls.Rect()
 			// Intersect clips against the native surface and may round the height
 			// subtraction at fractional scales; use the same geometric contract.
-			want := geometry.Rect(width-106, win.frameInset()+6, 100, 28).
+			want := geometry.Rect(width-106, float32(6), 100, 28).
 				Intersect(geometry.Rect(0, 0, win.width, win.height))
 			if bounds != want {
 				t.Fatalf("unexpected controls placement at %gx: %v", scale, bounds)
@@ -38,7 +38,7 @@ func TestCircularControlsRightInset(t *testing.T) {
 			if win.chrome.queryRegion(close.Center()) != ChromeRegionClose {
 				t.Fatal("moving controls broke close hit testing")
 			}
-			if close.X+close.Width > width-win.frameInset() {
+			if close.X+close.Width > width-win.resizeBorderWidth() {
 				t.Fatal("close button entered the frame's safe clip")
 			}
 		}
@@ -68,7 +68,7 @@ func TestCaptionGlyphSizeDoesNotChangeHitBox(t *testing.T) {
 			button.circular = circular
 		}
 		win.paint()
-		if circular && win.controls.Rect().Y != win.frameInset()+6 {
+		if circular && win.controls.Rect().Y != float32(6) {
 			t.Fatalf("controls are not centered in the 40 DIP fallback row: %v", win.controls.Rect())
 		}
 		for _, state := range []WindowState{WindowStateNormal, WindowStateMaximized} {

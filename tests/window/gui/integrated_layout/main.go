@@ -1,22 +1,22 @@
-// Linux Integrated 四边布局避让验证。
+// Linux Integrated 完整内容与独立缩放边缘验证。
 //
 // 环境：Linux X11 与合成窗口管理器；记录桌面、实际后端及缩放。
 // 启动：go run ./tests/window/gui/integrated_layout
 // GOUI_PLAT_PAINTER=software/opengl、GOUI_PLAT_SCALE=1/2 可分别验证。
 // 初始：Integrated、40 DIP HeaderBar；根布局没有 Padding，内容双向溢出。
 // 操作与预期：
-//  1. 观察右侧及底部滚动条，宽度均完整为 8 DIP，外侧四边只显示窗口背景。
-//     拖动两条滑块到末尾，再回到开头：最外侧仍完整可见且可命中。
+//  1. 观察右侧及底部滚动条，分配宽度为 8 DIP，背景绘制到窗口边缘。
+//     拖动两条滑块到末尾再回到开头：1 DIP 窗口边框覆盖最外侧；外侧 5 DIP 用于窗口缩放。
 //  2. 在四边及四角拖动缩放；HeaderBar 外侧顶部边缘用于缩放，标题内部用于
 //     移动。点击标题中的按钮不会移动窗口。边缘没有 Widget 输入穿透。
 //  3. F7 将标题高度在 40/64 DIP 间切换；窗口控制按钮保持垂直居中，右侧距离
-//     不随避让重复增加。F8 最大化、F9 恢复：最大化去掉四边留白，恢复后重现。
+//     不随避让重复增加。F8 最大化、F9 恢复：最大化去掉圆角边框，恢复后重现；根原点始终为零。
 //  4. 点击输入框输入 ASCII/中文，Tab 切换焦点；候选窗跟随实际光标位置。
 //     F10 全屏、F9 恢复，滚动条和标题不残留旧偏移，控制按钮全屏隐藏。
 //  5. 各状态按 F6 检查公开 Rect/Snapshot 与两条滚动条边界，输出 LAYOUT PASS；
 //     F11 切换亮暗后重复检查。1x/2x 重复操作，1x 滚动条宽 8 像素，2x 宽 16。
 //
-// 平台差异：仅 Linux GUI 自绘 Integrated 自动内缩；Windows/macOS 不增加边缘。
+// 平台差异：三平台内容均铺满；仅 Linux GUI 自绘 Integrated 的边缘缩放由 GUI 命中处理。
 // Linux 无合成器时可能退回 Native，会打印“不适用”，不能记为 Linux 验收通过。
 // 副作用：仅窗口及日志，不自动修改剪贴板、文件或系统设置，不使用 DevServer。
 // 复位：F9 恢复普通状态，重新启动重置滚动/高度。退出：关闭主窗口。
@@ -26,7 +26,6 @@ import (
 	"fmt"
 	"image"
 	"log"
-	"math"
 	"runtime"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -116,16 +115,11 @@ func main() {
 	}
 	bind(gui.KeyF6, func() {
 		snapshot := win.Snapshot()
-		inset := float32(0)
-		if runtime.GOOS == "linux" && info.Enabled && info.Mode == gui.WindowChromeIntegrated && win.Transparent() {
-			if win.State() != gui.WindowStateMaximized && win.State() != gui.WindowStateFullscreen {
-				inset = float32(math.Ceil(float64(5*probe.scale))) / probe.scale
-			}
-		} else if runtime.GOOS == "linux" {
+		if runtime.GOOS == "linux" && !(info.Enabled && info.Mode == gui.WindowChromeIntegrated && win.Transparent()) {
 			fmt.Println("Linux 自绘 Integrated 不适用：未建立所需窗口样式")
 			return
 		}
-		want := geometry.Rect(inset, inset, snapshot.Bounds.Width-2*inset, snapshot.Bounds.Height-2*inset)
+		want := geometry.Rect(0, 0, snapshot.Bounds.Width, snapshot.Bounds.Height)
 		if root.Rect() != want || snapshot.Widget.Bounds != want {
 			panic(fmt.Sprintf("root=%v snapshot=%v want=%v", root.Rect(), snapshot.Widget.Bounds, want))
 		}

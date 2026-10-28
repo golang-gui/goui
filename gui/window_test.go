@@ -198,7 +198,7 @@ func TestWindowBackgroundStyleIsIsolated(t *testing.T) {
 			if got := pixel(auxOutput, 30, 30); got != (color.RGBA{12, 34, 56, 255}) {
 				t.Fatalf("transparent background changed content painting: %v", got)
 			}
-			if got := pixel(mainOutput, 2, 30); got != (color.RGBA{245, 245, 245, 255}) || main.frameInset() != 5 {
+			if got := pixel(mainOutput, 2, 30); got != (color.RGBA{245, 245, 245, 255}) || main.resizeBorderWidth() != 5 {
 				t.Fatalf("auxiliary style changed the main background or chrome: %v", got)
 			}
 			aux.SetStyleName("dark-window")
@@ -826,8 +826,8 @@ type transparentFrame struct{ image image.Image }
 func (*transparentFrame) Transparent() bool            { return true }
 func (f *transparentFrame) Draw(img image.Image) error { f.image = img; return nil }
 
-// 不额外添加 Padding；根布局、滚动条和 Snapshot 都必须位于四边缩放区域内侧。
-func TestIntegratedContentLayoutAvoidsResizeEdges(t *testing.T) {
+// 根布局、滚动条和 Snapshot 铺满完整客户区；缩放热区只影响输入。
+func TestIntegratedContentLayoutFillsResizeEdges(t *testing.T) {
 	for _, scale := range []float32{1, 1.25, 2} {
 		t.Run(fmt.Sprintf("%gx", scale), func(t *testing.T) {
 			w, native := chromeFixture(t, false, false)
@@ -843,11 +843,7 @@ func TestIntegratedContentLayoutAvoidsResizeEdges(t *testing.T) {
 				native.state = state
 				_ = w.DispatchEvent(events.StateEvent{State: state})
 				w.paint()
-				inset := float32(0)
-				if state == WindowStateNormal {
-					inset = float32(math.Ceil(float64(5*scale))) / scale
-				}
-				want := geometry.Rect(inset, inset, w.width-2*inset, w.height-2*inset)
+				want := geometry.Rect(0, 0, w.width, w.height)
 				if scroll.Rect() != want || w.Snapshot().Widget.Bounds != want {
 					t.Fatalf("state=%v: root/snapshot=%v/%v, want %v", state, scroll.Rect(), w.Snapshot().Widget.Bounds, want)
 				}
@@ -863,8 +859,8 @@ func TestIntegratedContentLayoutAvoidsResizeEdges(t *testing.T) {
 				}
 				if state == WindowStateNormal {
 					for _, p := range []geometry.Point{{X: 2, Y: 100}, {X: w.width - 2, Y: 100}, {X: 100, Y: 2}, {X: 100, Y: w.height - 2}} {
-						if hitTest(scroll, p) != nil || w.chrome.queryRegion(p) < ChromeRegionTop {
-							t.Fatalf("resize edge reached Widget content: %v", p)
+						if hitTest(scroll, p) == nil || w.chrome.queryRegion(p) < ChromeRegionTop {
+							t.Fatalf("resize edge lost full content or chrome hit: %v", p)
 						}
 					}
 				}
@@ -880,7 +876,7 @@ func TestIntegratedContentLayoutAvoidsResizeEdges(t *testing.T) {
 	}
 }
 
-func TestIntegratedAutomaticMinimumIncludesResizeEdges(t *testing.T) {
+func TestIntegratedAutomaticMinimumIgnoresResizeEdges(t *testing.T) {
 	for _, explicit := range []bool{false, true} {
 		w, native := chromeFixture(t, false, false)
 		w.clientChrome = true
@@ -893,7 +889,7 @@ func TestIntegratedAutomaticMinimumIncludesResizeEdges(t *testing.T) {
 			w.SetMinSize(geometry.Size{Width: 200, Height: 100})
 		}
 		w.updateMinSize()
-		want := geometry.Size{Width: 130, Height: 70}
+		want := geometry.Size{Width: 120, Height: 60}
 		if explicit {
 			want = geometry.Size{Width: 200, Height: 100}
 		}
@@ -904,11 +900,11 @@ func TestIntegratedAutomaticMinimumIncludesResizeEdges(t *testing.T) {
 		if len(native.minimums) != 1 {
 			t.Fatal("unchanged decoration reapplied the WM hint")
 		}
-		// 分数缩放只重算占用边缘；显式窗口最小尺寸不受影响。
+		// 分数缩放和状态切换均不改变内容最小尺寸。
 		w.pixelWidth = w.width * 1.25
 		w.updateMinSize()
 		if !explicit {
-			if got := native.minimums[len(native.minimums)-1]; got != (geometry.Size{Width: 131.2, Height: 71.2}) {
+			if got := native.minimums[len(native.minimums)-1]; got != (geometry.Size{Width: 120, Height: 60}) {
 				t.Fatalf("fractional scale hint: %v", got)
 			}
 			native.state = WindowStateMaximized
@@ -922,8 +918,8 @@ func TestIntegratedAutomaticMinimumIncludesResizeEdges(t *testing.T) {
 	}
 }
 
-// 在胶囊滑块中段采样，避开圆角 AA；不透明预乘 RGBA 应精确覆盖完整的
-// 8 DIP 宽度（1x=8、2x=16 物理像素），紧邻外侧仍为窗口自己的白色背景。
+// 在滑块中段采样，避开圆角 AA；分配仍为 8 DIP，外围 1 DIP 窗口边框
+// 在内容之上绘制。逐物理像素核对两者的颜色，不再期待四边背景留白。
 func TestIntegratedScrollbarPixelsKeepFullWidth(t *testing.T) {
 	for _, scale := range []float32{1, 2} {
 		t.Run(fmt.Sprintf("%gx", scale), func(t *testing.T) {
@@ -958,15 +954,15 @@ func TestIntegratedScrollbarPixelsKeepFullWidth(t *testing.T) {
 				if end-start != int(8*scale) {
 					t.Fatalf("thumb pixel width=%d", end-start)
 				}
-				for n := start; n <= end; n++ {
+				for n := start; n < end; n++ {
 					x, y := n, fixed
 					if bar == scroll.hbar {
 						x, y = fixed, n
 					}
 					got := color.RGBAModel.Convert(output.image.At(x, y)).(color.RGBA)
 					expected := want
-					if n == end {
-						expected = color.RGBA{255, 255, 255, 255}
+					if n >= end-int(scale) {
+						expected = color.RGBA{165, 165, 165, 255}
 					}
 					if got != expected {
 						t.Fatalf("bar=%v pixel=(%d,%d): %v, want %v", bar.Orientation(), x, y, got, expected)
@@ -977,7 +973,7 @@ func TestIntegratedScrollbarPixelsKeepFullWidth(t *testing.T) {
 	}
 }
 
-func TestWindowFrameClipMatchesContentLayout(t *testing.T) {
+func TestWindowFrameErasureKeepsFullContentLayout(t *testing.T) {
 	for _, scale := range []float32{1, 1.25, 1.5, 2} {
 		w, native := chromeFixture(t, false, false)
 		w.clientChrome, w.transparent = true, true
@@ -989,7 +985,7 @@ func TestWindowFrameClipMatchesContentLayout(t *testing.T) {
 		}
 		w.painter = p
 		content := newPainterTestWidget(func(p Painter) {
-			// A custom Widget cannot cancel the structural frame clip.
+			// 任意显式裁剪和变换都不能覆盖宿主最终的圆角擦除。
 			p.SetClipRect(geometry.Rect(-100, -100, 10000, 10000))
 			p.Save()
 			p.SetTransform(geometry.Translate(-20, -20))
@@ -998,16 +994,16 @@ func TestWindowFrameClipMatchesContentLayout(t *testing.T) {
 		})
 		w.SetWidget(content)
 		w.paint()
-		_, inset := w.frameStyle()
-		bounds := geometry.Rect(inset, inset, w.width-2*inset, w.height-2*inset)
+		edge := w.resizeBorderWidth()
+		bounds := geometry.Rect(0, 0, w.width, w.height)
 		if content.Rect() != bounds || content.base().windowRect() != bounds {
-			t.Fatalf("content layout differs from frame clip: %v", content.Rect())
+			t.Fatalf("content layout differs from full client: %v", content.Rect())
 		}
-		if hitTest(content, geometry.Point{X: 2, Y: 100}) != nil || hitTest(content, geometry.Point{X: 20, Y: 100}) != content {
-			t.Fatal("Widget hit bounds differ from its safe allocation")
+		if hitTest(content, geometry.Point{X: 2, Y: 100}) != content || hitTest(content, geometry.Point{X: 20, Y: 100}) != content {
+			t.Fatal("Widget hit bounds differ from full allocation")
 		}
-		if inset < 5 || math.Abs(float64(inset*scale)-math.Round(float64(inset*scale))) > 1e-5 {
-			t.Fatalf("unsafe pixel alignment: %v at %v", inset, scale)
+		if edge < 5 || math.Abs(float64(edge*scale)-math.Round(float64(edge*scale))) > 1e-5 {
+			t.Fatalf("unsafe pixel alignment: %v at %v", edge, scale)
 		}
 		pixel := func(x, y int) color.RGBA {
 			return color.RGBAModel.Convert(output.image.At(x, y)).(color.RGBA)
@@ -1015,8 +1011,8 @@ func TestWindowFrameClipMatchesContentLayout(t *testing.T) {
 		if got := pixel(0, 0); got.A != 0 {
 			t.Fatalf("corner not transparent: %v", got)
 		}
-		if got := pixel(int(2*scale), int(100*scale)); got != (color.RGBA{255, 255, 255, 255}) {
-			t.Fatalf("Widget painted over frame at %vx: %v", scale, got)
+		if got := pixel(int(2*scale), int(100*scale)); got != (color.RGBA{40, 100, 200, 255}) {
+			t.Fatalf("Widget background did not fill frame at %vx: %v", scale, got)
 		}
 		if got := pixel(int(20*scale), int(100*scale)); got != (color.RGBA{40, 100, 200, 255}) {
 			t.Fatalf("content missing: %v", got)
@@ -1028,17 +1024,17 @@ func TestWindowFrameClipMatchesContentLayout(t *testing.T) {
 			native.state = state
 			_ = w.DispatchEvent(events.StateEvent{State: state})
 			w.paint()
-			_, inset = w.frameStyle()
-			want := geometry.Rect(inset, inset, w.width-2*inset, w.height-2*inset)
+			edge = w.resizeBorderWidth()
+			want := geometry.Rect(0, 0, w.width, w.height)
 			if content.Rect() != want {
 				t.Fatalf("state=%v: content=%v, want %v", state, content.Rect(), want)
 			}
 			if state == WindowStateNormal {
-				if pixel(0, 0).A != 0 || inset == 0 {
+				if pixel(0, 0).A != 0 || edge == 0 {
 					t.Fatal("normal frame not restored")
 				}
-			} else if pixel(0, 0) != (color.RGBA{40, 100, 200, 255}) || inset != 0 {
-				t.Fatal("maximized/fullscreen retained frame clip")
+			} else if pixel(0, 0) != (color.RGBA{40, 100, 200, 255}) || edge != 0 {
+				t.Fatal("maximized/fullscreen retained corner erasure")
 			}
 		}
 		w.clientChrome = false
@@ -1167,4 +1163,31 @@ func TestAfterPaintRejectsUnbalancedSaveAndRestoresState(t *testing.T) {
 		}
 	}()
 	b.drawFrame(nil, style.Style{})
+}
+
+// 绘制铺满后仍由宿主接管缩放，不因覆盖范围内的 Button 抢占手势或焦点。
+func TestIntegratedResizeEdgesConsumeWidgetPress(t *testing.T) {
+	w, native := chromeFixture(t, false, false)
+	w.clientChrome = true
+	w.Chrome().ConnectQueryRegion(w.chrome.queryFrameRegion)
+	button := NewButton()
+	clicks := 0
+	button.ConnectClicked(func() { clicks++ })
+	w.SetWidget(button)
+	w.paint()
+	before := w.FocusedWidget()
+	for _, p := range []geometry.Point{{X: 2, Y: 100}, {X: w.width - 2, Y: 100}, {X: 100, Y: 2}, {X: 100, Y: w.height - 2}, {X: 2, Y: 2}, {X: w.width - 2, Y: w.height - 2}} {
+		clickAt(w, p)
+		if clicks != 0 || button.pressed || w.FocusedWidget() != before {
+			t.Fatal("缩放按下泄漏到控件交互或焦点")
+		}
+	}
+	if len(native.resizeRequests) != 6 {
+		t.Fatalf("resize=%v", native.resizeRequests)
+	}
+	w.Chrome().ConnectQueryRegion(func(_ geometry.Point, result *ChromeRegion) { *result = ChromeRegionClient })
+	clickAt(w, geometry.Point{X: 2, Y: 100})
+	if clicks != 1 || w.FocusedWidget() != button {
+		t.Fatal("显式 Client 未恢复普通控件输入")
+	}
 }
