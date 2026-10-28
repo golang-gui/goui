@@ -361,3 +361,29 @@ func (c *viewportChild) Arrange(rect geometry.Rectangle) {
 func (c *viewportChild) MainWeight() float32 {
 	return c.weight
 }
+
+func TestLinearLayoutAsymmetricPadding(t *testing.T) {
+	padding := geometry.Insets{Left: 10, Top: 2, Right: 4, Bottom: 6}
+
+	horizontal := &LinearLayout{Direction: DirectionHorizontal, Padding: padding, CrossAlign: CrossStart}
+	child := &testChild{size: geometry.Size{Width: 30, Height: 20}, baseline: 15, hasBaseline: true}
+	m := horizontal.Measure([]Child{child}, Loose(geometry.Size{Width: 200, Height: 100}))
+	if m.Size != (geometry.Size{Width: 44, Height: 28}) || !m.HasBaseline || m.Baseline != 17 {
+		t.Fatalf("horizontal asymmetric padding measure = %+v", m)
+	}
+	horizontal.Arrange([]Child{child}, geometry.Rect(0, 0, 100, 80))
+	if child.rect != geometry.Rect(10, 2, 30, 20) {
+		t.Fatalf("horizontal asymmetric padding arrange = %+v", child.rect)
+	}
+
+	vertical := &LinearLayout{Direction: DirectionVertical, Padding: padding, CrossAlign: CrossStart}
+	child = &testChild{size: geometry.Size{Width: 30, Height: 20}, baseline: 15, hasBaseline: true}
+	m = vertical.Measure([]Child{child}, Loose(geometry.Size{Width: 200, Height: 100}))
+	if m.Size != (geometry.Size{Width: 44, Height: 28}) || !m.HasBaseline || m.Baseline != 17 {
+		t.Fatalf("vertical asymmetric padding measure = %+v", m)
+	}
+	vertical.Arrange([]Child{child}, geometry.Rect(0, 0, 100, 80))
+	if child.rect != geometry.Rect(10, 2, 30, 20) {
+		t.Fatalf("vertical asymmetric padding arrange = %+v", child.rect)
+	}
+}

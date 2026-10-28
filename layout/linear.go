@@ -4,8 +4,8 @@ import "github.com/golang-gui/goui/core/geometry"
 
 type LinearLayout struct {
 	Direction  Direction
-	Spacing    float32 // non-negative, finite gap between children
-	Padding    float32 // non-negative, finite inner padding
+	Spacing    float32         // non-negative, finite gap between children
+	Padding    geometry.Insets // non-negative, finite inner padding per edge
 	MainAlign  MainAlign
 	CrossAlign CrossAlign
 }
@@ -22,7 +22,7 @@ func (l *LinearLayout) Measure(children []Child, c Constraint) Measurement {
 
 func (l *LinearLayout) Arrange(children []Child, rect geometry.Rectangle) {
 	plan := l.compute(children, Tight(rect.Size))
-	inner := rect.Inset(l.Padding)
+	inner := l.innerRect(rect)
 	for _, item := range plan.items {
 		item.child.Arrange(l.childRect(
 			inner,
@@ -62,10 +62,10 @@ func (l *LinearLayout) compute(children []Child, c Constraint) linearPlan {
 	}
 
 	if len(items) == 0 {
-		return linearPlan{measured: Measured(c.Clamp(geometry.Size{}.Inset(-l.Padding)))}
+		return linearPlan{measured: Measured(c.Clamp(l.outerSize(geometry.Size{})))}
 	}
 
-	innerConstraint := c.Inset(l.Padding)
+	innerConstraint := c.Insets(l.Padding)
 	innerMax := innerConstraint.Max
 	stretchCross, stretchCrossExtent := l.stretchCrossExtent(innerConstraint)
 	var naturalMain, totalWeight float32
@@ -85,9 +85,9 @@ func (l *LinearLayout) compute(children []Child, c Constraint) linearPlan {
 	naturalMain += l.Spacing * float32(len(items)-1)
 	naturalCross, _, _ := l.crossMetrics(items)
 
-	naturalOuter := l.makeSize(naturalMain, naturalCross).Inset(-l.Padding)
+	naturalOuter := l.outerSize(l.makeSize(naturalMain, naturalCross))
 	finalSize := c.Clamp(naturalOuter)
-	innerSize := finalSize.Inset(l.Padding)
+	innerSize := l.innerSize(finalSize)
 	finalMain := l.mainSize(innerSize)
 
 	// Positive free space grows weighted children from their natural basis. If
@@ -139,9 +139,9 @@ func (l *LinearLayout) compute(children []Child, c Constraint) linearPlan {
 	// Remeasuring flexible content can change the cross extent (for example a
 	// Label gets taller after wrapping at its final width).
 	finalCrossNatural, commonBaseline, hasCommonBaseline := l.crossMetrics(items)
-	desired := l.makeSize(finalMain, finalCrossNatural).Inset(-l.Padding)
+	desired := l.outerSize(l.makeSize(finalMain, finalCrossNatural))
 	finalSize = c.Clamp(desired)
-	innerSize = finalSize.Inset(l.Padding)
+	innerSize = l.innerSize(finalSize)
 	finalCross := l.crossSize(innerSize)
 
 	usedMain := l.Spacing * float32(len(items)-1)
@@ -164,7 +164,7 @@ func (l *LinearLayout) compute(children []Child, c Constraint) linearPlan {
 
 	measured := Measured(finalSize)
 	if l.Direction == DirectionHorizontal && l.effectiveCrossAlign() == CrossBaseline && hasCommonBaseline {
-		measured.Baseline = l.Padding + commonBaseline
+		measured.Baseline = l.Padding.Top + commonBaseline
 		measured.HasBaseline = true
 	} else {
 		// A compound widget exposes its first baseline-bearing descendant so it
@@ -175,9 +175,9 @@ func (l *LinearLayout) compute(children []Child, c Constraint) linearPlan {
 				continue
 			}
 			if l.Direction == DirectionHorizontal {
-				measured.Baseline = l.Padding + item.crossPos + item.measured.Baseline
+				measured.Baseline = l.Padding.Top + item.crossPos + item.measured.Baseline
 			} else {
-				measured.Baseline = l.Padding + item.mainPos + item.measured.Baseline
+				measured.Baseline = l.Padding.Top + item.mainPos + item.measured.Baseline
 			}
 			measured.HasBaseline = true
 			break
@@ -344,6 +344,18 @@ func (l *LinearLayout) makeSize(main, cross float32) geometry.Size {
 		return geometry.Size{Width: cross, Height: main}
 	}
 	return geometry.Size{Width: main, Height: cross}
+}
+
+func (l *LinearLayout) innerRect(rect geometry.Rectangle) geometry.Rectangle {
+	return rect.Insets(l.Padding.Left, l.Padding.Top, l.Padding.Right, l.Padding.Bottom)
+}
+
+func (l *LinearLayout) innerSize(size geometry.Size) geometry.Size {
+	return size.Insets(l.Padding.Left, l.Padding.Top, l.Padding.Right, l.Padding.Bottom)
+}
+
+func (l *LinearLayout) outerSize(size geometry.Size) geometry.Size {
+	return size.Insets(-l.Padding.Left, -l.Padding.Top, -l.Padding.Right, -l.Padding.Bottom)
 }
 
 func (l *LinearLayout) childRect(rect geometry.Rectangle, mainOffset, crossOffset, mainLen, crossLen float32) geometry.Rectangle {

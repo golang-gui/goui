@@ -9,7 +9,7 @@ type WrapLayout struct {
 	Direction   Direction
 	Spacing     float32
 	LineSpacing float32
-	Padding     float32
+	Padding     geometry.Insets
 	MainAlign   MainAlign
 	CrossAlign  CrossAlign
 }
@@ -25,7 +25,7 @@ func (l *WrapLayout) Measure(children []Child, c Constraint) Measurement {
 func (l *WrapLayout) Arrange(children []Child, rect geometry.Rectangle) {
 	plan := l.compute(children, Tight(rect.Size))
 	axis := LinearLayout{Direction: l.Direction}
-	inner := rect.Inset(l.Padding)
+	inner := rect.Insets(l.Padding.Left, l.Padding.Top, l.Padding.Right, l.Padding.Bottom)
 	for _, item := range plan.items {
 		item.child.Arrange(axis.childRect(inner, item.mainPos, item.crossPos, item.mainLen, item.crossLen))
 	}
@@ -42,7 +42,7 @@ type wrapLine struct {
 // weighted allocation, implicit line widget, or retained measurement cache.
 func (l *WrapLayout) compute(children []Child, c Constraint) linearPlan {
 	axis := LinearLayout{Direction: l.Direction, Spacing: l.Spacing, MainAlign: l.MainAlign, CrossAlign: l.CrossAlign}
-	inner := c.Inset(l.Padding)
+	inner := c.Insets(l.Padding)
 	limit := axis.mainSize(inner.Max)
 	items := make([]linearItem, 0, len(children))
 	lines := make([]wrapLine, 0)
@@ -92,8 +92,8 @@ func (l *WrapLayout) compute(children []Child, c Constraint) linearPlan {
 			}
 		}
 	}
-	measured := Measured(c.Clamp(axis.makeSize(naturalMain, naturalCross).Inset(-l.Padding)))
-	finalMain := axis.mainSize(measured.Size.Inset(l.Padding))
+	measured := Measured(c.Clamp(l.outerSize(axis.makeSize(naturalMain, naturalCross))))
+	finalMain := axis.mainSize(l.innerSize(measured.Size))
 	var crossPos float32
 	for _, run := range lines {
 		mainPos, gap := axis.mainDistribution(max(0, finalMain-run.main), run.end-run.start)
@@ -105,7 +105,7 @@ func (l *WrapLayout) compute(children []Child, c Constraint) linearPlan {
 			item.crossPos = crossPos + offset
 			if !measured.HasBaseline && item.measured.HasBaseline {
 				measured.HasBaseline = true
-				measured.Baseline = l.Padding + item.measured.Baseline
+				measured.Baseline = l.Padding.Top + item.measured.Baseline
 				if l.Direction == DirectionVertical {
 					measured.Baseline += item.mainPos
 				} else {
@@ -117,4 +117,12 @@ func (l *WrapLayout) compute(children []Child, c Constraint) linearPlan {
 		crossPos += run.cross + l.LineSpacing
 	}
 	return linearPlan{measured: measured, items: items}
+}
+
+func (l *WrapLayout) innerSize(size geometry.Size) geometry.Size {
+	return size.Insets(l.Padding.Left, l.Padding.Top, l.Padding.Right, l.Padding.Bottom)
+}
+
+func (l *WrapLayout) outerSize(size geometry.Size) geometry.Size {
+	return size.Insets(-l.Padding.Left, -l.Padding.Top, -l.Padding.Right, -l.Padding.Bottom)
 }
