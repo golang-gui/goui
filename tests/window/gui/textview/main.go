@@ -167,7 +167,7 @@ func run(megabytes int, numbered, acceptTab bool) error {
 	}
 	defer connections.Disconnect()
 	root := gui.NewLinearBox(layout.DirectionVertical)
-	root.SetPadding(12)
+	root.SetPadding(geometry.UniformInsets(12))
 	root.SetSpacing(8)
 	root.SetCrossAlign(layout.CrossStretch)
 	root.AddChild(toolbar)

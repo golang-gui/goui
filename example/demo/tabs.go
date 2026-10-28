@@ -185,7 +185,7 @@ func (d *demo) detachTab(source *tabWindow, r *wui.TabDetachRequest, handled *bo
 	}
 	// The target HeaderBar is at the top. Its initial X is padding, before
 	// reserving target controls, rather than the source's adjusted X.
-	barOrigin := geometry.Point{X: header.Padding(), Y: bar.Rect().Y}
+	barOrigin := geometry.Point{X: header.Padding().Left, Y: bar.Rect().Y}
 	d.detachPosition = r.Position.Add(r.Hotspot.Add(barOrigin).Add(inset).Scale(-1))
 	d.tabWindows = append(d.tabWindows, &tabWindow{id: id, size: size})
 	d.pendingDetach, d.detachWindow = r, id

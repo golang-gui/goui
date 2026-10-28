@@ -62,7 +62,7 @@ func main() {
 	model := gui.NewTextModel("")
 	for i, title := range []string{"Basic", "Modern Light", "Modern Dark"} {
 		column := gui.NewLinearBox(layout.DirectionVertical)
-		column.SetPadding(12)
+		column.SetPadding(geometry.UniformInsets(12))
 		column.SetSpacing(8)
 		column.SetCrossAlign(layout.CrossStretch)
 		column.AddChild(&renderingProbe{Label: gui.NewLabel(title)})
@@ -152,7 +152,7 @@ func main() {
 		case 2:
 			for i := range inputs {
 				frameInset := scrolls[i].Children()[0].Rect().Y
-				expected := 2*oneLine[i] - 2*growing[i].Padding() - 2*frameInset
+				expected := 2*oneLine[i] - 2*growing[i].Padding().Vertical() - 2*frameInset
 				// 分数 DIP 的加减有浮点舍入；误差上限 0.001 DIP。
 				check(math.Abs(float64(scrolls[i].Rect().Height-expected)) < .001, fmt.Sprintf("multiline height %d: got=%g want=%g", i, scrolls[i].Rect().Height, expected))
 			}

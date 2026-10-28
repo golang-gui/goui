@@ -167,7 +167,7 @@ func main() {
 	button("Check", check)
 	body := gui.NewLinearBox(layout.DirectionVertical)
 	body.SetCrossAlign(layout.CrossStretch)
-	body.SetPadding(20)
+	body.SetPadding(geometry.UniformInsets(20))
 	body.SetSpacing(24)
 	for _, w := range []gui.Widget{status, toolbar, row("Linear value", all[0]), row("Circular value", all[1]), activity} {
 		body.AddChild(w)

@@ -89,7 +89,7 @@ func run() error {
 	button.ConnectClicked(func() { clicks++; finish() })
 	column := gui.NewLinearBox(layout.DirectionVertical)
 	column.SetCrossAlign(layout.CrossStretch)
-	column.SetPadding(12)
+	column.SetPadding(geometry.UniformInsets(12))
 	column.SetSpacing(12)
 	if mode == gui.WindowChromeIntegrated {
 		header := gui.NewHeaderBar()

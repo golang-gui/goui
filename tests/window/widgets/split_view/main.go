@@ -180,7 +180,7 @@ func runGUI(fallback bool) error {
 	}
 	window.SetMinSize(geometry.Size{Width: 360, Height: 260})
 	left := gui.NewLinearBox(layout.DirectionVertical)
-	left.SetPadding(12)
+	left.SetPadding(geometry.UniformInsets(12))
 	left.SetSpacing(8)
 	left.SetMinSize(geometry.Size{Width: 120})
 	left.AddChild(gui.NewLabel("Sidebar / left"))
@@ -210,7 +210,7 @@ func runGUI(fallback bool) error {
 	root := gui.NewLinearBox(layout.DirectionVertical)
 	root.SetCrossAlign(layout.CrossStretch)
 	toolbar := gui.NewLinearBox(layout.DirectionHorizontal)
-	toolbar.SetPadding(8)
+	toolbar.SetPadding(geometry.UniformInsets(8))
 	toolbar.SetSpacing(8)
 	mode, dark, rebuilds := 0, false, 0
 	status := gui.NewLabel(modeNames[0])

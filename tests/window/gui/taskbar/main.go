@@ -85,7 +85,7 @@ func run() error {
 		return b
 	}
 	toolContent := gui.NewLinearBox(layout.DirectionVertical)
-	toolContent.SetPadding(12)
+	toolContent.SetPadding(geometry.UniformInsets(12))
 	toolContent.SetSpacing(10)
 	input := gui.NewTextInput()
 	input.ConnectText(func(text string) { fmt.Printf("INPUT %q\n", text) })
@@ -151,7 +151,7 @@ func run() error {
 		return nil
 	}
 	mainContent := gui.NewLinearBox(layout.DirectionVertical)
-	mainContent.SetPadding(12)
+	mainContent.SetPadding(geometry.UniformInsets(12))
 	mainContent.SetSpacing(10)
 	mainContent.AddChild(gui.NewLabel("普通窗口：任务栏对照"))
 	mainContent.AddChild(button("重新定位", func() { fmt.Println("POSITION", position()) }))

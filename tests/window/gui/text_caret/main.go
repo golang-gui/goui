@@ -215,8 +215,8 @@ func main() {
 				expected = target.Start
 				bounds := v.Snapshot().Bounds
 				point := geometry.Point{
-					X: bounds.X + v.Padding() + target.X + target.Width/4,
-					Y: bounds.Y + v.Padding() + max(0, ctx.fieldBaseline-ctx.lines[0].Baseline) +
+					X: bounds.X + v.Padding().Left + target.X + target.Width/4,
+					Y: bounds.Y + v.Padding().Top + max(0, ctx.fieldBaseline-ctx.lines[0].Baseline) +
 						target.Y + target.Height/2 - scroll.ScrollY(),
 				}
 				for _, kind := range []events.EventType{events.PointerDown, events.PointerUp} {
@@ -334,8 +334,8 @@ func verifyHorizontalScrollEnd(app gui.Application, win gui.Window, v *gui.TextV
 			scale := float64(img.Bounds().Dx()) / float64(v.Rect().Width)
 			ink := 0
 			// Modern 浅色主题 sRGB 输出；首行排除边缘、光标和滚动条，只计暗色字形核心。
-			for y := int(float64(v.Padding()) * scale); y < min(img.Bounds().Dy(), int(40*scale)); y++ {
-				for x := int(float64(v.Padding()) * scale); x < img.Bounds().Dx()-int(float64(v.Padding())*scale); x++ {
+			for y := int(float64(v.Padding().Top) * scale); y < min(img.Bounds().Dy(), int(40*scale)); y++ {
+				for x := int(float64(v.Padding().Left) * scale); x < img.Bounds().Dx()-int(float64(v.Padding().Right)*scale); x++ {
 					r, g, b, a := img.At(x, y).RGBA()
 					if a == 65535 && r < 30000 && g < 30000 && b < 30000 {
 						ink++
@@ -344,7 +344,7 @@ func verifyHorizontalScrollEnd(app gui.Application, win gui.Window, v *gui.TextV
 			}
 			check(ink > 0, "scrollbar end is an entirely blank text row")
 			bounds := v.Snapshot().Bounds
-			point := geometry.Point{X: bounds.X + bounds.Width - v.Padding() - 1, Y: bounds.Y + v.Padding() + 8}
+			point := geometry.Point{X: bounds.X + bounds.Width - v.Padding().Right - 1, Y: bounds.Y + v.Padding().Top + 8}
 			pointer(events.PointerDown, point)
 			pointer(events.PointerUp, point)
 			check(v.Selection().Caret == length, fmt.Sprintf("scrollbar-end click missed EOF: %v want=%d", v.Selection(), length))

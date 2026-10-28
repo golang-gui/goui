@@ -122,7 +122,7 @@ func main() {
 		panic(err)
 	}
 	root := gui.NewLinearBox(layout.DirectionVertical)
-	root.SetPadding(16)
+	root.SetPadding(geometry.UniformInsets(16))
 	root.SetSpacing(12)
 	source := newSample()
 	preview := gui.NewImage(nil)

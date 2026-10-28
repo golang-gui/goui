@@ -173,7 +173,7 @@ func main() {
 	}
 	selected := func(access []gui.FileAccess, err error) { accept(access, err) }
 	root := gui.NewLinearBox(layout.DirectionVertical)
-	root.SetPadding(20)
+	root.SetPadding(geometry.UniformInsets(20))
 	root.SetSpacing(16)
 	root.SetCrossAlign(layout.CrossStretch)
 	root.AddChild(gui.NewLabel("FileAccess — native file picker and persistent credentials"))

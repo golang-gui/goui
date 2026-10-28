@@ -56,7 +56,7 @@ func main() {
 	defer win.Destroy()
 	must(win.SetTitle("GOUI Tooltip Verification"))
 	row := gui.NewLinearBox(layout.DirectionHorizontal)
-	row.SetPadding(20)
+	row.SetPadding(geometry.UniformInsets(20))
 	row.SetSpacing(20)
 	row.SetCrossAlign(layout.CrossStretch)
 	var buttons, disabled [3]*gui.Button
@@ -67,7 +67,7 @@ func main() {
 	for i, name := range []string{"Basic", "Modern Light", "Modern Dark"} {
 		box := gui.NewLinearBox(layout.DirectionVertical)
 		box.SetSpacing(12)
-		box.SetPadding(12)
+		box.SetPadding(geometry.UniformInsets(12))
 		box.SetCrossAlign(layout.CrossStretch)
 		box.AddChild(gui.NewLabel(name))
 		b := gui.NewButton()

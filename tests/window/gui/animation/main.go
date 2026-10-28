@@ -144,7 +144,7 @@ func main() {
 	switcher := widgets.NewSwitch()
 	body := gui.NewLinearBox(layout.DirectionVertical)
 	body.SetSpacing(16)
-	body.SetPadding(20)
+	body.SetPadding(geometry.UniformInsets(20))
 	body.AddChild(toolbar)
 	body.AddChild(switcher)
 	body.AddChild(content)

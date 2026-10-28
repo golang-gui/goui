@@ -177,7 +177,7 @@ func main() {
 	root := gui.NewLinearBox(layout.DirectionVertical)
 	root.SetCrossAlign(layout.CrossStretch)
 	root.SetSpacing(8)
-	root.SetPadding(12)
+	root.SetPadding(geometry.UniformInsets(12))
 	root.AddChild(gui.NewLabel("Menu / disclosure / drag at viewport edges"))
 	toolbar := gui.NewLinearBox(layout.DirectionHorizontal)
 	toolbar.SetSpacing(8)

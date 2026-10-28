@@ -86,7 +86,7 @@ func main() {
 		log.Fatal(err)
 	}
 	root := gui.NewLinearBox(layout.DirectionVertical)
-	root.SetPadding(16)
+	root.SetPadding(geometry.UniformInsets(16))
 	root.SetSpacing(10)
 	root.SetCrossAlign(layout.CrossStretch)
 	root.AddChild(&backendProbe{})
@@ -114,7 +114,7 @@ func main() {
 	p.SetAutoDismiss(true)
 	p.SetPlacement(gui.PopoverPlacementBottom)
 	panel := gui.NewLinearBox(layout.DirectionVertical)
-	panel.SetPadding(12)
+	panel.SetPadding(geometry.UniformInsets(12))
 	panel.SetSpacing(8)
 	panel.SetCrossAlign(layout.CrossStretch)
 	panel.SetMinSize(geometry.Size{Width: 320})

@@ -44,6 +44,7 @@ import (
 	"fmt"
 	"image/color"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/style"
@@ -117,7 +118,7 @@ func main() {
 				if b.Enabled() != (id != "disabled" && (id != "wifi" || enabled)) {
 					panic("enabled mismatch: " + id)
 				}
-				if b.Padding() != 6 || b.Animated() != (id != "instant" && animated) {
+				if b.Padding() != geometry.UniformInsets(6) || b.Animated() != (id != "instant" && animated) {
 					panic("default/animation mismatch: " + id)
 				}
 			}

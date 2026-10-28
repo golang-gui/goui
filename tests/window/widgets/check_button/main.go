@@ -43,6 +43,7 @@ import (
 	"fmt"
 	"image/color"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/style"
@@ -122,7 +123,7 @@ func main() {
 				if !ok || b.CheckState() != state || previous[id] != nil && previous[id] != b {
 					panic("state/identity incorrect: " + id)
 				}
-				if b.Padding() != 6 {
+				if b.Padding() != geometry.UniformInsets(6) {
 					panic("default padding incorrect: " + id)
 				}
 				if *destroyOnChange && previous[id] == nil && (id == "radio-1" || id == "radio-2") {
