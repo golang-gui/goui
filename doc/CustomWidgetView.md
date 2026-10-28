@@ -505,7 +505,10 @@ var _ ui.WidgetView = (*CounterView)(nil)
 ```
 
 调用方在 build 外创建 `count := ui.MakeState(0)`，在 build 内声明
-`Counter(count.Get()).OnIncrement(func() { count.Update(func(n int) int { return n + 1 }) })`。
+`ui.Build(func() ui.View { return Counter(count.Get()).OnIncrement(func() {
+count.Update(func(n int) int { return n + 1 }) }) }).Observe(&count)`。
+计算值在局部 Build 内读取；直接 `Counter(count.Get())` 只声明一次快照。
+自定义属性绑定可在 Update 中调用 `ui.BindValue(ctx, "value", &count, setter)`。
 GUI 的点击信号闭包捕获持久 state，不捕获第一次 Mount 的 View，故重建后使用
 新的回调。生产控件如会在 Update 中调用发信号的 setter，应按实际需要阻断自己的
 连接，避免声明回写变成用户操作通知；不阻断无关外部监听，不滥用清空所有信号。

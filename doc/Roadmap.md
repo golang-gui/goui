@@ -16,6 +16,16 @@ Popup、WindowChrome／BorderBox／SkipTaskbar／初始 Center、文件访问凭
 旧 P0～P4 排序和阶段日志保留在文末历史区，不再据其中“下一步”或未勾选项判断
 当前缺失能力。上一次审查与本轮分类见 [文档复核](DesignDocumentAudit.md)。
 
+## 声明式显式局部更新（2026-10-28）
+
+已实现 `ui.Build(fn).Observe(...)`、自定义 ComposeView 的 Observe、
+`BuildContext.RequestUpdate`、通用 `BindValue` 和 Label／文本编辑属性订阅。
+State.Set／Update 只通知显式使用方；App.RequestUpdate 仍负责全应用声明。
+无隐式 Get 依赖、不依赖用户 ID、不增加 GUI 状态机。节点移交后订阅与请求跟随
+目标 Root，退出断开声明式连接；验证范围和平台编译缺口见 [Plan](Plan.md)。
+详细 API／迁移见 [DesignUIUpdates](DesignUIUpdates.md)。其他 BindXxx 按需求增补，
+派生状态与隐式响应式系统不属于本切片。
+
 ## TextLayout 富文本基础：本轮已实现，应用层按需求推进
 
 字体样式与有效注册、run 级删除线、U+FFFC 纯度量行内占位已按

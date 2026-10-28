@@ -34,7 +34,7 @@ func ui.Run(appId string, build func(app ui.App) ui.RootView) error
 ```
 
 - `ui.App` 从"全局单例 var"变成**句柄接口类型**。把运行期句柄**当参数递进闭包**,等于用类型系统把"配置期 vs 运行期"这条缝画出来:`app` 只在闭包里存在,而闭包只在 `Run` 之后被调用——`Post`/`Sync`/`Quit` 天生有活对象,§1 的二义**从签名上就不可能发生**。
-- **`public var App` 退场**。当前唯一依赖它的是 `ui.State.Set → App.RequestUpdate()`;改走 app.go 里**现成的内部单例** `activeApp`(`currentApp().RequestUpdate()`)。于是 **public 面 = 递进闭包的句柄;internal 面 = 现成运行时单例**,泾渭分明。
+- **`public var App` 退场**。应用操作通过 build 闭包传入的 App 句柄。2026-10-28：State 通过显式绑定／Observe 通知所属节点，已移除 currentApp 单例寻址；进程级只保留 Run 一次的约束。详见 [局部更新与属性绑定](DesignUIUpdates.md)。
 
 ### 3.1 句柄能力 + 持久化保证
 

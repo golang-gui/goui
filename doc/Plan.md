@@ -3,6 +3,37 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## 声明式局部更新与属性绑定（2026-10-28）
+
+设计见 [DesignUIUpdates](DesignUIUpdates.md)。
+
+- [x] 明确属性级绑定和组合级观察，固定 Label/Build/Observe API 与兼容迁移。
+- [x] 节点失效、批次去重、挂载槽位及移交/完成边界。
+- [x] Build/Observe、通用绑定与文本控件接入。
+- [x] 移除 State 全局更新，迁移应用、例程、测试和文档。
+- [x] 包内、race/vet、独立 X11 会话及目标编译检查；分组提交。
+  - 干净源码副本包含本轮代码和回归（包括已有文本编辑用例的绑定契约调整），
+    不混入工作区其他未跟踪窗口测试／产物。`GOWORK=off go test ./...` 通过；
+    `go test -race ./ui ./widgets/ui`、`go vet ./ui ./widgets/ui ./example/demo ./tests/window/ui/binding`
+    通过；未删除或放宽原有有效断言。
+  - 新增 [ui/binding](../tests/window/ui/binding/main.go)：双窗口共享文本、Unicode
+    输入回写、属性与构建范围、通知合并、输出类型／nil 替换、Overlay Fill、Snapshot、
+    显式全量更新与关闭清理；`-auto` 全部通过。包内另覆盖未访问的虚拟子树、跨 Root
+    排队失效移交、释放并发、AfterUpdate 次序、选区与独立文档／撤销历史。
+  - 本机 Linux amd64，独立 Xvnc `:79`／xfwm4 会话，Mesa llvmpipe，Software／OpenGL
+    1x／2x 均通过上述自动验收；无 DevServer。独立会话不继承用户桌面的 Fcitx
+    输入服务器（`XMODIFIERS=@im=none`），真实鼠标／ASCII 键盘输入、删除／撤销、F6
+    检查通过；未据此宣称中文 IME 候选窗验收通过。
+  - 实际输入 13 字符，Global=1、属性探针 Update=1，仅属性应用和局部 Build 增加；
+    动画窗口用例 Software／OpenGL 1x `-auto` 通过，完整 App build 保持 1 次；
+    demo OpenGL 1x 补做页面切换、图形动画及编辑体验检查。不据计数推导耗时结论。
+  - Windows amd64（CGO_ENABLED=0）窗口程序及 UI 测试目标交叉编译通过；未远端运行。
+    macOS arm64 原始构建失败：`platform/graphics/opengl/opengl_darwin.go` 与本轮起始
+    HEAD 相同，已有 framework 导入缺失，报 `undefined: NSOpenGLContext` 等。
+    仅在仓库外 Go overlay 恢复三个原有 framework 导入后，窗口程序及 UI 测试目标
+    编译通过；这只验证 UI 兼容性，不算未修补源码构建或 macOS 桌面验收通过。
+    本轮没有修改 platform／gui；该既有编译缺口需独立修正。
+
 ## 初始居中降级与原生宿主终止（2026-10-28）
 
 设计见 [DesignWindowLifecycle](DesignWindowLifecycle.md)。

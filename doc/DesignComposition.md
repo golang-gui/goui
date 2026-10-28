@@ -11,7 +11,7 @@ ComposeView 基础上增加 Object(BuildContext) any 和 Release(BuildContext)�
 Object 是无副作用访问，不能在查询时创建对象。Release 清理声明自己拥有的
 资源，不自动 Close／Destroy 外部传入或借用的对象。
 
-ComposeBase 只提供 ID 和封闭接口支持；Widget 的 ViewBase 保留原有样式、
+ComposeBase 提供 ID、显式 Observe 和封闭接口支持；Widget 的 ViewBase 保留原有样式、
 尺寸、焦点等修饰器。组合声明的 ID 不转发到其输出 Widget；布局和绘制属性
 不从组合声明隐式传给下层 Widget。WidgetView 无须再提供 return self 的 Build。
 
@@ -30,7 +30,8 @@ UpdateChildren 的返回切片仍与输入索引对应，没有输出的位置�
 
 Root 负责通用节点协调，不保存组表、组工厂或组成员计数。对象创建由具体
 ObjectView 的首次 Build 完成，通常保存在自己的 State。每次 Build 都显式执行，
-沿用 RequestUpdate，不建立依赖追踪或资源注入系统。
+沿用更新队列，通过 Observe 显式订阅来源，或 BuildContext.RequestUpdate 请求当前节点；
+不推断 Get 依赖，不建立资源注入系统。
 
 ## 对象关联
 
@@ -89,3 +90,12 @@ AfterTransfer 通知仍在 committed 之后。回滚保留原声明身份；整�
 现有 CheckButton 独立窗口验证改成显式组，复验真实键盘／鼠标、主题、重建
 和回调销毁；SourceView 及自定义 WidgetView 使用方同步删除无意义的 Build。
 全仓测试、相关 race／vet、Windows／macOS 编译与原生桌面结果分别记录。
+
+## 显式局部更新（2026-10-28）
+
+属性使用 `BindText`／`BindSelection`；计算或结构使用
+`ui.Build(fn).Observe(&state)`，自定义 ComposeView 同样可 Observe。
+`BuildContext.RequestUpdate` 仅请求当前节点；`ui.BindValue` 给自定义 View 注册属性。
+State.Get 不收集依赖，Set/Update 不再自动全应用更新；窗口声明变更仍调用
+App.RequestUpdate。挂载槽回调处理局部输出替换，不增加具体控件特例。
+详见 [UI 局部更新与属性绑定](DesignUIUpdates.md)。

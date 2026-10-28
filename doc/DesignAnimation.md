@@ -139,7 +139,8 @@ size := ui.MakeState(float32(24))
 motion := animation.New(size.Get(), animation.Float32)
 motion.ConnectUpdate(size.Set)
 defer motion.Stop()
-// Build 中读取：ui.Icon(source).Size(size.Get())
+// 局部构建中读取：
+ui.Build(func() ui.View { return ui.Icon(source).Size(size.Get()) }).Observe(&size)
 // 事件中播放：motion.AnimateTo(app.FindWindow("main"), 80, duration, curve)
 ```
 
