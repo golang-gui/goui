@@ -8,7 +8,8 @@
 //     F6 输出 CHECK PASS，Global 与探针 Update 不增加，Local 随输入更新。
 //  2. 点击 Increment：计算标签增加，输入框身份、内容和光标保留。
 //  3. 点击 Cycle：中间内容依次 Label -> TextInput -> 空 -> Label，前后标签
-//     始终在原相对位置；Overlay 在奇数阶段出现并填满自身区域。
+//     始终在原相对位置；Overlay 在奇数阶段出现，浮层容器填满区域，文字居中；
+//     底层文字保持左上角，两段文字应清晰分开。Fill 只控制尺寸，不提供背景遮挡。
 //  4. 点击 Rebuild：Global 和探针 Update 各增加一次，所有同类型控件保持身份。
 //  5. 关闭镜像窗后输入：主窗继续同步，不复活镜像窗；再次 Rebuild 会按声明重建。
 //
@@ -22,6 +23,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"time"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -120,6 +122,11 @@ func main() {
 						o := app.FindWidget("main", "overlay").(*gui.Overlay)
 						floating := gui.FindWidget(win, "floating")
 						require(floating != nil && o.OverlayFill(floating) && floating.Rect().Size == o.Rect().Size, "local overlay slot/geometry")
+						label := gui.FindWidget(win, "floating-text")
+						require(label != nil, "missing overlay label")
+						center, expected := label.Snapshot().Bounds.Center(), o.Snapshot().Bounds.Center()
+						// DIP 中核对居中，容差只用于浮点运算误差，远小于一个像素。
+						require(math.Abs(float64(center.X-expected.X)) < 0.001 && math.Abs(float64(center.Y-expected.Y)) < 0.001, "overlay label is not centered")
 						click("cycle")
 					case 3:
 						require(app.FindWidget("main", "dynamic") == nil && app.FindWidget("main", "floating") == nil, "empty output")
@@ -175,7 +182,8 @@ func main() {
 						if mode.Get()%2 == 0 {
 							return nil
 						}
-						return ui.Label("Overlay Fill").ID("floating")
+						return ui.HBox(ui.Label("Overlay Fill").ID("floating-text")).ID("floating").
+							MainAlign(layout.MainCenter).CrossAlign(layout.CrossCenter)
 					}).Observe(&mode)).Fill(true)).ID("overlay").MinHeight(70).MaxHeight(70),
 				).Padding(20).Spacing(12).CrossAlign(layout.CrossStretch),
 			),
