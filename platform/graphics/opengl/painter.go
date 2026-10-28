@@ -363,6 +363,18 @@ func (p *Painter) FillPath(path graphics.Path, brush graphics.Brush) {
 	}
 }
 
+func (p *Painter) ClearPath(path graphics.Path) {
+	p.vg.Save()
+	defer p.vg.Restore()
+	p.vg.SetCompositeOperation(nanovgo.DestinationOut)
+	p.vg.SetFillColor(nanovgo.RGBA(255, 255, 255, 255))
+	p.vg.BeginPath()
+	if !p.doPath(path) {
+		p.vg.ClosePath()
+	}
+	p.vg.Fill()
+}
+
 func (p *Painter) DrawLine(p0, p1 graphics.Point, strokeWidth float32, brush graphics.Brush) {
 	if p.beginDraw(strokeWidth, brush) {
 		defer p.end()

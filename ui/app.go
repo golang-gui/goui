@@ -211,16 +211,17 @@ type app struct {
 }
 
 type windowMount struct {
-	shortcuts      shortcutBindings
-	runtime        *app
-	id             string
-	window         gui.Window
-	root           *root
-	view           WindowView
-	appliedMinSize geometry.Size // last min-size forwarded to the window; dedupes native calls
-	closeHandle    signal.Handle
-	destroyHandle  signal.Handle
-	destroying     bool
+	shortcuts        shortcutBindings
+	runtime          *app
+	id               string
+	window           gui.Window
+	root             *root
+	view             WindowView
+	appliedMinSize   geometry.Size // last min-size forwarded to the window; dedupes native calls
+	closeHandle      signal.Handle
+	afterPaintHandle signal.Handle
+	destroyHandle    signal.Handle
+	destroying       bool
 }
 
 var activeApp struct {
@@ -481,6 +482,11 @@ func (a *app) createWindow(view WindowView) (*windowMount, error) {
 }
 
 func (m *windowMount) connect() {
+	m.afterPaintHandle = m.window.ConnectAfterPaint(func(p gui.Painter, bounds geometry.Rectangle) {
+		if fn := m.view.onAfterPaint; fn != nil {
+			fn(p, bounds)
+		}
+	})
 	m.closeHandle = m.window.ConnectCloseRequest(func(allow *bool) {
 		if m.view.onCloseRequest == nil {
 			return
@@ -499,8 +505,12 @@ func (m *windowMount) update(view WindowView) error {
 	if err := m.applyWindowProperties(view); err != nil {
 		return err
 	}
+	paint := m.view.onAfterPaint != nil || view.onAfterPaint != nil
 	m.view = view
 	m.root.updateWindow(m.window, view.content)
+	if paint {
+		_ = m.window.RequestPaint()
+	}
 	return nil
 }
 
@@ -532,6 +542,10 @@ func (m *windowMount) destroy() {
 
 func (m *windowMount) disconnect() {
 	m.shortcuts.clear()
+	if m.afterPaintHandle != nil {
+		m.afterPaintHandle.Disconnect()
+		m.afterPaintHandle = nil
+	}
 	if m.closeHandle != nil {
 		m.closeHandle.Disconnect()
 		m.closeHandle = nil

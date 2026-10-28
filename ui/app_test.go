@@ -674,3 +674,56 @@ func (a *windowTestApplication) runPosted() {
 		post()
 	}
 }
+
+// 窗口绘制信号只连接一次，重建使用最新闭包，省略回调后不保留旧行为。
+func TestWindowAfterPaintUsesLatestDeclaration(t *testing.T) {
+	app := newWindowTestApplication()
+	version := 1
+	var calls []int
+	enabled := true
+	rt := newApp(app, func() RootView {
+		v := Window("custom").Chrome(WindowChromeNone).Transparent(true).Content(Label("content"))
+		captured := version
+		if enabled {
+			v = v.OnAfterPaint(func(gui.Painter, geometry.Rectangle) { calls = append(calls, captured) })
+		}
+		return v
+	})
+	if err := rt.rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	if !app.options[0].Transparent {
+		t.Fatal("透明选项未传递")
+	}
+	win := app.windows[0]
+	bounds := geometry.Rect(0, 0, 50, 40)
+	win.afterPaint.Emit(nil, bounds)
+	version = 2
+	if err := rt.rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	win.afterPaint.Emit(nil, bounds)
+	if len(calls) != 2 || calls[0] != 1 || calls[1] != 2 {
+		t.Fatalf("闭包旧值或重复连接: %v", calls)
+	}
+	enabled = false
+	if err := rt.rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	win.afterPaint.Emit(nil, bounds)
+	if len(calls) != 2 {
+		t.Fatal("省略未移除回调")
+	}
+	enabled = true
+	if err := rt.rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	rt.windows["custom"].disconnect()
+	win.afterPaint.Emit(nil, bounds)
+	if len(calls) != 2 {
+		t.Fatal("卸载后遗留连接")
+	}
+	if Window("custom").Transparent(true).Transparent(false).options.Transparent {
+		t.Fatal("false 未恢复默认值")
+	}
+}

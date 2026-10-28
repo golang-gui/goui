@@ -36,6 +36,12 @@ type Painter interface {
 	SetClipRect(rect Rectangle)
 	SetTransform(transform geometry.Transform)
 	Clear(color Color)
+	// ClearPath erases the filled path to transparent black under the current
+	// transform and clip. Antialias coverage attenuates all premultiplied RGBA
+	// channels equally. Filling uses the nonzero winding rule; an open contour
+	// is implicitly closed. Drawing state is unchanged. Transparent presentation
+	// requires an alpha-enabled surface.
+	ClearPath(path Path)
 	DrawBoxShadow(rect Rectangle, radius float32, shadow BoxShadow)
 	FillRect(rect Rectangle, brush Brush)
 	FillRoundRect(rect Rectangle, radius float32, brush Brush)

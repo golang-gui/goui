@@ -865,7 +865,7 @@ func (p *popover) paint() {
 	body := p.bodyRect()
 	inset := popoverSafeInset(radius, width)
 	safe := geometry.Rect(body.X+inset, body.Y+inset, max(0, body.Width-2*inset), max(0, body.Height-2*inset))
-	p.drawSurfaceFrame(p.widget, background, border, body, safe, shadow)
+	p.drawSurfaceFrame(p.widget, background, border, body, safe, shadow, nil)
 }
 
 // RequestLayout satisfies Root: schedule a relayout of this host.

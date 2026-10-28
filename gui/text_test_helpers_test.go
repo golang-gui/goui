@@ -433,3 +433,5 @@ func editorPointer(t *testing.T, win *window, kind events.EventType, point geome
 		t.Fatal(err)
 	}
 }
+
+func (p *testLabelPainter) ClearPath(path graphics.Path) {}

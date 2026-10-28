@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/draw"
 	"math"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -30,6 +31,7 @@ type Painter struct {
 	pixelBuf      []byte
 	lineBuf       []byte
 	outputBuf     []byte
+	clearMask     []byte
 	images        map[*imageResource]struct{}
 	textImages    *textbitmap.ImageCache[graphics.Image]
 	textPixels    []byte
@@ -73,6 +75,7 @@ func (p *Painter) Destroy() {
 	clear(p.images)
 	p.pendingImages = 0
 	p.textPixels = nil
+	p.clearMask = nil
 }
 
 func (p *Painter) NewImage(src image.Image) (graphics.Image, error) {
@@ -304,6 +307,50 @@ func (p *Painter) FillPath(path graphics.Path, brush graphics.Brush) {
 		}
 		defer p.restoreClip()
 		p.filler.Draw()
+	}
+}
+
+func (p *Painter) ClearPath(path graphics.Path) {
+	defer p.filler.Clear()
+	closed, bounds := p.doPath(p.filler, path)
+	if !closed {
+		p.filler.Stop(true)
+	}
+	bounds = bounds.Intersect(p.bgra.Rect)
+	if p.clip != (image.Rectangle{}) {
+		bounds = bounds.Intersect(p.clip)
+	}
+	if bounds.Empty() {
+		return
+	}
+	// Keep coverage separate from destination pixels: scanFT's transparent
+	// draw.Src discards the uncovered fraction of an antialiased edge.
+	size := bounds.Dx() * bounds.Dy() * 4
+	if cap(p.clearMask) < size {
+		p.clearMask = make([]byte, size)
+	}
+	pixels := p.clearMask[:size]
+	clear(pixels)
+	mask := image.RGBA{Pix: pixels, Stride: bounds.Dx() * 4, Rect: bounds}
+	scanner := p.scanner.(*scanFT.ScannerFT)
+	previous := scanner.Pntr
+	scanner.Pntr = &scanFT.RGBAColFuncPainter{RGBAPainter: *scanFT.NewRGBAPainter(&mask)}
+	scanner.Pntr.Op = draw.Src
+	scanner.Pntr.SetColor(color.White)
+	scanner.SetClip(bounds)
+	defer func() { scanner.Pntr = previous; p.restoreClip() }()
+	p.filler.Draw()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		dst := p.bgra.PixOffset(bounds.Min.X, y)
+		src := mask.PixOffset(bounds.Min.X, y)
+		for x := 0; x < bounds.Dx(); x++ {
+			remaining := uint32(255 - pixels[src+3])
+			for channel := 0; channel < 4; channel++ {
+				p.bgra.Pix[dst+channel] = uint8((uint32(p.bgra.Pix[dst+channel])*remaining + 127) / 255)
+			}
+			dst += 4
+			src += 4
+		}
 	}
 }
 

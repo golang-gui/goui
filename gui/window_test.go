@@ -1084,3 +1084,87 @@ func TestFrameStructuralClipIncludesChildrenAndDecorations(t *testing.T) {
 		t.Fatal("empty safe area drew content")
 	}
 }
+
+func (p *testGraphicsPainter) ClearPath(path graphics.Path) {}
+
+// AfterPaint 在子树及装饰之后执行；每个回调的 Clip/Transform/Save 栈独立。
+func TestAfterPaintOrderIsolationAndErasure(t *testing.T) {
+	output := &transparentFrame{}
+	backend, err := software.NewPainter(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer backend.Destroy()
+	b := rootBase{width: 32, height: 24, pixelWidth: 64, pixelHeight: 48, transparent: true, painter: backend}
+	content := newPainterTestWidget(func(p Painter) { p.FillRect(geometry.Rect(0, 0, 32, 24), graphics.RGB(30, 80, 160)) })
+	content.Arrange(geometry.Rect(0, 0, 32, 24))
+	calls := 0
+	first := b.ConnectAfterPaint(func(p Painter, bounds geometry.Rectangle) {
+		if bounds != geometry.Rect(0, 0, 32, 24) || p.PixelScale() != 2 {
+			t.Fatalf("bounds=%v scale=%v", bounds, p.PixelScale())
+		}
+		calls++
+		p.SetClipRect(geometry.Rect(0, 0, 2, 2))
+		p.SetTransform(geometry.Translate(2, 2))
+		p.Save()
+		p.Restore()
+	})
+	second := b.ConnectAfterPaint(func(p Painter, _ geometry.Rectangle) {
+		calls++
+		p.Save()
+		p.ClearPath(graphics.MoveTo(4, 4).LineTo(12, 4).LineTo(12, 12).LineTo(4, 12).Close())
+		p.FillRect(geometry.Rect(16, 4, 4, 4), graphics.RGB(200, 30, 20))
+		p.Restore()
+	})
+	b.drawFrame(content, style.Style{})
+	assert := func(x, y int, want color.RGBA) {
+		t.Helper()
+		if got := color.RGBAModel.Convert(output.image.At(x, y)).(color.RGBA); got != want {
+			t.Fatalf("(%d,%d)=%v want %v", x, y, got, want)
+		}
+	}
+	assert(16, 16, color.RGBA{})
+	assert(36, 12, color.RGBA{R: 200, G: 30, B: 20, A: 255})
+	assert(4, 4, color.RGBA{R: 30, G: 80, B: 160, A: 255})
+	if calls != 2 {
+		t.Fatal("回调没有按连接顺序执行")
+	}
+	first.Block()
+	second.Disconnect()
+	b.drawFrame(content, style.Style{})
+	assert(16, 16, color.RGBA{R: 30, G: 80, B: 160, A: 255})
+	if calls != 2 {
+		t.Fatal("Block/Disconnect 未生效")
+	}
+	first.Unblock()
+	if _, err := b.renderWidgetImage(content, 1); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 {
+		t.Fatal("RenderWidget 误触发宿主 AfterPaint")
+	}
+	b.destroyFrames()
+	b.drawFrame(content, style.Style{})
+	if calls != 2 {
+		t.Fatal("销毁后仍执行回调")
+	}
+}
+
+func TestAfterPaintRejectsUnbalancedSaveAndRestoresState(t *testing.T) {
+	backend := new(recordingPainterBackend)
+	b := rootBase{width: 20, height: 20, pixelWidth: 20, pixelHeight: 20, painter: backend}
+	b.ConnectAfterPaint(func(p Painter, _ geometry.Rectangle) {
+		p.SetClipRect(geometry.Rect(2, 2, 3, 3))
+		p.SetTransform(geometry.Translate(3, 4))
+		p.Save()
+	})
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("未配对 Save 没有报错")
+		}
+		if backend.transform != geometry.Identity() || backend.clip != (geometry.Rectangle{}) {
+			t.Error("回调异常污染状态")
+		}
+	}()
+	b.drawFrame(nil, style.Style{})
+}

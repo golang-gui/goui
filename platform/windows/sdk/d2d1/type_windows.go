@@ -2,6 +2,20 @@ package d2d1
 
 import "github.com/golang-gui/goui/platform/windows/sdk/dxgi"
 
+type FillMode uint32
+
+const (
+	D2D1_FILL_MODE_ALTERNATE FillMode = 0
+	D2D1_FILL_MODE_WINDING   FillMode = 1
+)
+
+type PrimitiveBlend uint32
+
+const (
+	D2D1_PRIMITIVE_BLEND_SOURCE_OVER PrimitiveBlend = 0
+	D2D1_PRIMITIVE_BLEND_COPY        PrimitiveBlend = 1
+)
+
 type (
 	Enum = uint32
 	Tag  = uint64

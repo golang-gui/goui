@@ -51,6 +51,7 @@ type WindowView struct {
 	content        View
 	onCloseRequest func(*bool)
 	onDestroy      func()
+	onAfterPaint   func(gui.Painter, geometry.Rectangle)
 	minWidth       float32
 	minHeight      float32 // window minimum size hint (logical DIP); merged over an unbounded base on apply
 	fields         bits.Bitmap[uint64]
@@ -112,6 +113,21 @@ func (w WindowView) SkipTaskbar(skip bool) WindowView {
 // or Show. False preserves platform defaults; a later SetPosition overrides it.
 func (w WindowView) Center(center bool) WindowView {
 	w.options.Center = center
+	return w
+}
+
+// Transparent requests an alpha-enabled native surface at creation. It does
+// not select a background style or infer an input region from transparent pixels.
+func (w WindowView) Transparent(transparent bool) WindowView {
+	w.options.Transparent = transparent
+	return w
+}
+
+// OnAfterPaint draws after the window content and decorations, before presentation.
+// Painter is borrowed synchronously; see gui.Root.ConnectAfterPaint. Rebuilds
+// replace the callback without reconnecting it or retaining previous captures.
+func (w WindowView) OnAfterPaint(fn func(gui.Painter, geometry.Rectangle)) WindowView {
+	w.onAfterPaint = fn
 	return w
 }
 

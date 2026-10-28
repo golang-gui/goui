@@ -12,15 +12,15 @@ import (
 
 // Painter is the widget-local drawing context supplied to Widget.Paint.
 //
-// A Painter is valid only for the synchronous duration of Paint. Widgets draw
-// themselves in local logical coordinates; the GUI traversal owns child
-// painting and restores all state before it enters a child or sibling.
+// A Painter is valid only during Widget.Paint or a Root.AfterPaint callback.
+// Widgets draw themselves in local logical coordinates; the GUI traversal
+// owns child painting and restores state before entering a child or sibling.
 type Painter interface {
 	// Save pushes the current clip and transform. Every Save must be paired
-	// with Restore before the current Widget.Paint call returns.
+	// with Restore before the current paint callback returns.
 	Save()
 	// Restore restores the state most recently pushed by Save. Restore panics
-	// if it would cross the current Widget.Paint boundary.
+	// if it would cross the current paint callback boundary.
 	Restore()
 	// NewImage snapshots src into a resource owned by the current platform
 	// Painter. The returned Image follows graphics.Image's lifecycle contract.
@@ -39,6 +39,10 @@ type Painter interface {
 	FillRoundRect(rect geometry.Rectangle, radius float32, brush graphics.Brush)
 	FillEllipse(center geometry.Point, xRadius, yRadius float32, brush graphics.Brush)
 	FillPath(path graphics.Path, brush graphics.Brush)
+	// ClearPath erases existing pixels under the filled path, including content
+	// underneath this Widget. It respects the current transform and structural
+	// clip; it does not establish a clip for subsequent drawing.
+	ClearPath(path graphics.Path)
 	DrawLine(p0, p1 geometry.Point, strokeWidth float32, brush graphics.Brush)
 	DrawRect(rect geometry.Rectangle, strokeWidth float32, brush graphics.Brush)
 	DrawRoundRect(rect geometry.Rectangle, radius, strokeWidth float32, brush graphics.Brush)
@@ -149,6 +153,24 @@ func (p *painter) paintWidget(widget Widget) {
 }
 
 func (p *painter) paintSelf(widget Widget, saveDepth int) {
+	p.paintCall(widgetPaintName(widget), saveDepth, func() { widget.Paint(p) })
+}
+
+func (p *painter) paintAfter(fn func(Painter, geometry.Rectangle), bounds geometry.Rectangle) {
+	state := p.state
+	depth := len(p.saves)
+	p.frames = append(p.frames, painterFrame{saveDepth: depth})
+	p.state = painterState{scopeClip: bounds, clip: bounds, userXform: geometry.Identity()}
+	p.applyState()
+	defer func() {
+		p.frames = p.frames[:len(p.frames)-1]
+		p.state = state
+		p.applyState()
+	}()
+	p.paintCall("Root.AfterPaint", depth, func() { fn(p, bounds) })
+}
+
+func (p *painter) paintCall(name string, saveDepth int, draw func()) {
 	entryState := p.state
 	defer func() {
 		recovered := recover()
@@ -163,15 +185,18 @@ func (p *painter) paintSelf(widget Widget, saveDepth int) {
 		if unbalanced != 0 {
 			panic(fmt.Sprintf(
 				"gui: %s returned with %d unbalanced Painter.Save call(s)",
-				widgetPaintName(widget), unbalanced,
+				name, unbalanced,
 			))
 		}
 	}()
 
-	widget.Paint(p)
+	draw()
 }
 
 func widgetPaintName(widget Widget) string {
+	if widget == nil {
+		return "Root.AfterPaint"
+	}
 	if id := widget.ID(); id != "" {
 		return fmt.Sprintf("%T.Paint (id %q)", widget, id)
 	}
@@ -180,14 +205,14 @@ func widgetPaintName(widget Widget) string {
 
 func (p *painter) Save() {
 	if len(p.frames) == 0 {
-		panic("gui: Painter.Save called outside Widget.Paint")
+		panic("gui: Painter.Save called outside a paint callback")
 	}
 	p.saves = append(p.saves, p.state)
 }
 
 func (p *painter) Restore() {
 	if len(p.frames) == 0 {
-		panic("gui: Painter.Restore called outside Widget.Paint")
+		panic("gui: Painter.Restore called outside a paint callback")
 	}
 	frame := p.frames[len(p.frames)-1]
 	if len(p.saves) <= frame.saveDepth {
@@ -271,6 +296,12 @@ func (p *painter) FillEllipse(center geometry.Point, xRadius, yRadius float32, b
 func (p *painter) FillPath(path graphics.Path, brush graphics.Brush) {
 	if p.canDraw() {
 		p.base.FillPath(path, brush)
+	}
+}
+
+func (p *painter) ClearPath(path graphics.Path) {
+	if p.canDraw() {
+		p.base.ClearPath(path)
 	}
 }
 

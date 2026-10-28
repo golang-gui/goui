@@ -1340,3 +1340,66 @@ func TestTransparentPresentation(t *testing.T) {
 		p.Destroy()
 	}
 }
+
+// 直接断言预乘 RGBA。半像素直边的解析覆盖率为 1/2，8 位量化允许 1；
+// 完全覆盖及路径外采样远离 AA，必须精确。每个缩放使用相同物理采样位置。
+func TestClearPathCoverageAndState(t *testing.T) {
+	for _, scale := range []float32{1, 1.25, 1.5, 2} {
+		t.Run(fmt.Sprintf("%gx", scale), func(t *testing.T) {
+			p, err := NewPainter(&testDrawer{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer p.Destroy()
+			for frame := 0; frame < 2; frame++ {
+				result, err := p.RenderImage(32, 24, scale, func() {
+					p.Clear(graphics.Color{R: .5, G: .25, B: .125, A: .5})
+					x, y, w, h := float32(4.5)/scale, float32(4)/scale, float32(12)/scale, float32(12)/scale
+					p.ClearPath(graphics.MoveTo(x, y).LineTo(x+w, y).LineTo(x+w, y+h).LineTo(x, y+h))
+					p.ClearPath(graphics.Path{})
+					// 擦除后绘制，验证恢复了普通 SourceOver 和原有扫描目标。
+					p.FillRect(graphics.Rect(20/scale, 4/scale, 4/scale, 4/scale), graphics.RGBA(0, 0, 255, 128))
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				assertColorNear(t, result.At(4, 8), color.RGBA{R: 64, G: 32, B: 16, A: 64}, 1)
+				assertColorNear(t, result.At(8, 8), color.RGBA{}, 0)
+				assertColorNear(t, result.At(2, 8), color.RGBA{R: 128, G: 64, B: 32, A: 128}, 0)
+				assertColorNear(t, result.At(21, 5), color.RGBA{R: 64, G: 32, B: 144, A: 192}, 1)
+			}
+		})
+	}
+}
+
+func TestClearPathTransformAndClip(t *testing.T) {
+	for _, transform := range []geometry.Transform{
+		geometry.Translate(8, 8),
+		geometry.Translate(8, 16).Rotate(90),
+		geometry.Translate(8, 8).Scale(2, .5),
+	} {
+		p, err := NewPainter(&testDrawer{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, err := p.RenderImage(40, 40, 1, func() {
+			p.Clear(graphics.RGB(80, 120, 200))
+			p.SetTransform(transform)
+			p.SetClipRect(graphics.Rect(0, 0, 14, 40))
+			p.ClearPath(graphics.MoveTo(0, 0).LineTo(8, 0).LineTo(8, 8).LineTo(0, 8).Close())
+			if p.(*Painter).transform != transform {
+				t.Fatal("擦除污染 Transform")
+			}
+			if p.(*Painter).clip != image.Rect(0, 0, 14, 40) {
+				t.Fatal("擦除污染 Clip")
+			}
+		})
+		p.Destroy()
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertColorNear(t, result.At(11, 9), color.RGBA{}, 0)
+		assertColorNear(t, result.At(15, 9), color.RGBA{R: 80, G: 120, B: 200, A: 255}, 0)
+		assertColorNear(t, result.At(2, 2), color.RGBA{R: 80, G: 120, B: 200, A: 255}, 0)
+	}
+}

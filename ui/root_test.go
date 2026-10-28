@@ -537,6 +537,7 @@ func (a *testApplication) runPosted() {
 }
 
 type testWindow struct {
+	afterPaint    signal.Signal2[gui.Painter, geometry.Rectangle]
 	styleName     string
 	shortcuts     *gui.ShortcutController
 	id            string
@@ -990,4 +991,8 @@ func TestChildTargetsRejectUnstableIdentityAndMixedModes(t *testing.T) {
 			r.update(&mountingView{update: test.update})
 		})
 	}
+}
+
+func (w *testWindow) ConnectAfterPaint(fn func(gui.Painter, geometry.Rectangle)) signal.Handle {
+	return w.afterPaint.Connect(fn)
 }
