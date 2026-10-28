@@ -25,6 +25,13 @@ type Root interface {
 	// Connecting does not request drawing; request the first and subsequent
 	// frames with RequestPaint. The timestamp is shared by all frame listeners.
 	ConnectFrame(func(time.Time)) signal.Handle
+	// ConnectAfterPaint draws after the Widget trees and host decorations, before
+	// presentation. bounds is the complete surface in local DIP. Each callback
+	// starts with an identity transform and full clip; Save/Restore must balance.
+	// Like Widget.Paint it must not mutate the tree, destroy the host or nest
+	// rendering. Painter is borrowed only for this call. RenderWidget does not
+	// emit this signal. Connecting does not request frames; use RequestPaint.
+	ConnectAfterPaint(func(Painter, geometry.Rectangle)) signal.Handle
 }
 
 // paintRequester is the native surface capability a host notifies to schedule
@@ -55,6 +62,7 @@ type rootBase struct {
 	focusedWidget  Widget
 	focusVisible   bool // input-managed keyboard hint mode, independent per host
 	frames         signal.Signal1[time.Time]
+	afterPaint     signal.Signal2[*painter, geometry.Rectangle]
 	framePainting  bool
 	framePending   bool
 	frameSuspended bool
@@ -153,11 +161,11 @@ func (b *rootBase) frameScale() float32 {
 func (b *rootBase) drawDecoratedFrame(content Widget, background, border style.Style, inset float32, decorations ...Widget) {
 	body := geometry.Rect(0, 0, b.width, b.height)
 	safe := geometry.Rect(inset, inset, max(0, b.width-2*inset), max(0, b.height-2*inset))
-	b.drawSurfaceFrame(content, background, border, body, safe, graphics.BoxShadow{}, decorations...)
+	b.drawSurfaceFrame(content, background, border, body, safe, graphics.BoxShadow{}, nil, decorations...)
 }
 
 // Hosts supply geometry; the frame renderer knows neither menu nor chrome policy.
-func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Style, body, safe geometry.Rectangle, shadow graphics.BoxShadow, decorations ...Widget) {
+func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Style, body, safe geometry.Rectangle, shadow graphics.BoxShadow, finish func(Painter), decorations ...Widget) {
 	if b.painter == nil {
 		return
 	}
@@ -185,11 +193,11 @@ func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Sty
 	if shadow.Color.A > 0 && body.Width > 0 && body.Height > 0 {
 		b.painter.DrawBoxShadow(body, radius, shadow)
 	}
-	// Only the host background reaches the rounded perimeter. The host supplies
-	// content allocations; structural clipping also contains custom painting.
+	// Hosts choose their background geometry and structural content clip. A
+	// final shape erasure permits full-client content with a rounded silhouette.
 	if bg, ok := background.BackgroundColor(); ok && bg != nil {
 		radius = min(normalizeLayoutValue(radius), max(0, min(body.Width, body.Height)/2))
-		if radius > 0 {
+		if radius > 0 && finish == nil {
 			guiPainter.FillRoundRect(body, radius, graphics.ColorOf(bg))
 		} else {
 			guiPainter.FillRect(body, graphics.ColorOf(bg))
@@ -205,7 +213,36 @@ func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Sty
 	}
 	guiPainter.state.scopeClip, guiPainter.state.clip = bounds, bounds
 	guiPainter.applyState()
-	paintStyledBorder(guiPainter, body, border)
+	// A final shape erasure supplies the outer AA boundary. Move the border's
+	// outer contour beyond that boundary while preserving its inner contour,
+	// so its own AA is not multiplied by the same boundary a second time.
+	borderBounds := body
+	if finish != nil && radius > 0 {
+		width, _ := border.BorderWidth()
+		if width > 0 {
+			margin := 2 / scale
+			borderBounds = body.Inset(-margin)
+			color, _ := border.BorderColor()
+			border = style.Default().Radius(radius + margin).BorderWidth(width + margin).BorderColor(color).Style
+		}
+	}
+	paintStyledBorder(guiPainter, borderBounds, border)
+	b.afterPaint.Emit(guiPainter, bounds)
+	if finish != nil {
+		finish(guiPainter)
+	}
+}
+
+// ConnectAfterPaint observes the host's real presentation frame only.
+func (b *rootBase) ConnectAfterPaint(fn func(Painter, geometry.Rectangle)) signal.Handle {
+	if fn == nil || b.frameDestroyed {
+		return signal.Handles(nil)
+	}
+	return b.afterPaint.Connect(func(p *painter, bounds geometry.Rectangle) {
+		if !b.frameDestroyed {
+			p.paintAfter(fn, bounds)
+		}
+	})
 }
 
 func (b *rootBase) renderWidgetImage(widget Widget, scale float32) (image.Image, error) {

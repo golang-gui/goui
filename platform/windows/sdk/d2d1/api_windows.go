@@ -514,6 +514,10 @@ type SimplifiedGeometrySink struct {
 	com.Unknown
 }
 
+func (this *SimplifiedGeometrySink) SetFillMode(mode FillMode) {
+	this.class().SetFillMode.CallRaw(uintptr(cgo.Pointer(this)), uintptr(mode))
+}
+
 func (this *SimplifiedGeometrySink) BeginFigure(startPoint Point2F, figureBegin FigureBegin) {
 	cgo.Call(this.class().BeginFigure, this, startPoint, figureBegin)
 }
@@ -678,6 +682,15 @@ func (this *DeviceContext) CreateCommandList() (commandList *CommandList, hr com
 func (this *DeviceContext) GetImageLocalBounds(image *Image) (bounds RectF, hr com.HRESULT) {
 	ret, _, _ := (*DeviceContextClass)(this.Class).GetImageLocalBounds.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(image)), uintptr(cgo.Pointer(&bounds)))
 	return bounds, com.HRESULT(ret)
+}
+
+func (this *DeviceContext) SetPrimitiveBlend(blend PrimitiveBlend) {
+	(*DeviceContextClass)(this.Class).SetPrimitiveBlend.CallRaw(uintptr(cgo.Pointer(this)), uintptr(blend))
+}
+
+func (this *DeviceContext) GetPrimitiveBlend() PrimitiveBlend {
+	ret, _, _ := (*DeviceContextClass)(this.Class).GetPrimitiveBlend.CallRaw(uintptr(cgo.Pointer(this)))
+	return PrimitiveBlend(ret)
 }
 
 func (this *DeviceContext) SetTarget(image *Image) {

@@ -414,3 +414,5 @@ func TestPainterBoxShadowUsesLocalStateAndSuppressesEmptyClip(t *testing.T) {
 		t.Fatalf("shadow state: %+v", got)
 	}
 }
+
+func (p *recordingPainterBackend) ClearPath(path graphics.Path) {}

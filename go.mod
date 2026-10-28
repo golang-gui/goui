@@ -6,7 +6,7 @@ require (
 	github.com/ebitengine/purego v0.10.0
 	github.com/goexlib/cgo v0.1.1
 	github.com/goexlib/mathx v0.0.1
-	github.com/golang-gui/nanovgo v0.0.9
+	github.com/golang-gui/nanovgo v0.0.10
 	github.com/golang-gui/oksvg v0.0.0-20260918033125-75e7ce872d46
 	github.com/jackmordaunt/icns/v3 v3.0.1
 	github.com/josephspurrier/goversioninfo v1.7.0

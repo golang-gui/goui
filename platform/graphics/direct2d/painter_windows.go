@@ -862,12 +862,37 @@ func (p *Painter) FillPath(path graphics.Path, brush graphics.Brush) {
 		return
 	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		geometry, err := p.createPathGeometry(path, true)
+		geometry, err := p.createPathGeometry(path, true, d2d1.D2D1_FILL_MODE_ALTERNATE)
 		if err == nil {
 			defer geometry.Release()
 			p.render.FillGeometry(geometry, d2dBrush, nil)
 		}
 	}
+}
+
+func (p *Painter) ClearPath(path graphics.Path) {
+	if !p.activeFrame {
+		return
+	}
+	// A zero Path has no figure; do not create an empty native geometry.
+	hasPoint := false
+	path.Range(func(op graphics.PathOperation, _ []float32) bool {
+		hasPoint = op == graphics.PathMoveTo
+		return hasPoint
+	})
+	if !hasPoint {
+		return
+	}
+	geometry, err := p.createPathGeometry(path, true, d2d1.D2D1_FILL_MODE_WINDING)
+	if err != nil {
+		return
+	}
+	defer geometry.Release()
+	brush := p.setColorBrush(graphics.Color{})
+	previous := p.render.GetPrimitiveBlend()
+	p.render.SetPrimitiveBlend(d2d1.D2D1_PRIMITIVE_BLEND_COPY)
+	defer p.render.SetPrimitiveBlend(previous)
+	p.render.FillGeometry(geometry, brush, nil)
 }
 
 func (p *Painter) DrawLine(p0, p1 graphics.Point, strokeWidth float32, brush graphics.Brush) {
@@ -918,7 +943,7 @@ func (p *Painter) DrawPath(path graphics.Path, strokeWidth float32, brush graphi
 		return
 	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
-		geometry, err := p.createPathGeometry(path, false)
+		geometry, err := p.createPathGeometry(path, false, d2d1.D2D1_FILL_MODE_ALTERNATE)
 		if err == nil {
 			defer geometry.Release()
 			p.render.DrawGeometry(geometry, d2dBrush, strokeWidth, nil)
@@ -1023,7 +1048,7 @@ func (p *Painter) SetClipRect(rect graphics.Rectangle) {
 	p.render.SetTransform(&prev)
 }
 
-func (p *Painter) createPathGeometry(path graphics.Path, fill bool) (geometry *d2d1.Geometry, err error) {
+func (p *Painter) createPathGeometry(path graphics.Path, fill bool, mode d2d1.FillMode) (geometry *d2d1.Geometry, err error) {
 	pathGeometry, hr := p.factory.CreatePathGeometry()
 	if hr.Failed() {
 		return nil, fmt.Errorf("create d2d path geometry err: %v", err)
@@ -1034,6 +1059,7 @@ func (p *Painter) createPathGeometry(path graphics.Path, fill bool) (geometry *d
 		return nil, fmt.Errorf("open d2d path geometry sink err: %v", err)
 	}
 	defer sink.Release()
+	sink.SetFillMode(mode)
 
 	begFigure := d2d1.D2D1_FIGURE_BEGIN_HOLLOW
 	if fill {

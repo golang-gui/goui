@@ -850,3 +850,7 @@ func TestOneShotDetachListenerCanRetainRequestAfterDisconnecting(t *testing.T) {
 		t.Fatal("retained one-shot request did not restore its source on cancel")
 	}
 }
+
+func (*tabTransferRoot) ConnectAfterPaint(func(gui.Painter, geometry.Rectangle)) signal.Handle {
+	return signal.Handles(nil)
+}

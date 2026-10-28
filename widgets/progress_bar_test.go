@@ -635,3 +635,9 @@ func TestProgressBarLinearSweepPixels(t *testing.T) {
 		}
 	}
 }
+
+func (p *progressPixelPainter) ClearPath(path graphics.Path) {}
+
+func (r *progressTestRoot) ConnectAfterPaint(func(gui.Painter, geometry.Rectangle)) signal.Handle {
+	return signal.Handles(nil)
+}
