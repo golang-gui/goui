@@ -59,7 +59,7 @@ func (l tabBodyLayout) closeSpace() float32 {
 }
 
 func tabBodyRow() layout.LinearLayout {
-	return layout.LinearLayout{Direction: layout.DirectionHorizontal, CrossAlign: layout.CrossCenter, Padding: 4, Spacing: 6}
+	return layout.LinearLayout{Direction: layout.DirectionHorizontal, CrossAlign: layout.CrossCenter, Padding: geometry.UniformInsets(4), Spacing: 6}
 }
 
 func (l tabBodyLayout) Measure(children []layout.Child, c layout.Constraint) layout.Measurement {

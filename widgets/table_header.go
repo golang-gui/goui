@@ -112,22 +112,23 @@ func (h *tableHeader) Snapshot() gui.WidgetInfo {
 type tableHeaderCellLayout struct{ header *tableHeader }
 
 func (l *tableHeaderCellLayout) Measure(children []layout.Child, c layout.Constraint) layout.Measurement {
-	reserve := 2*tableHeaderPaddingX + l.header.view.columnLineWidth(l.header.column)
+	reserve := tableHeaderPadding.Horizontal() + l.header.view.columnLineWidth(l.header.column)
 	if l.header.column.sortable {
 		reserve += 16
 	}
 	m := children[0].Measure(layout.Loose(geometry.Size{Width: max(0, c.Max.Width-reserve), Height: layout.Inf}))
-	return layout.Measured(c.Clamp(geometry.Size{Width: l.header.column.width, Height: max(tableMinHeight, m.Height+2*tableHeaderPaddingY) + tableHeaderLineWidth(l.header)}))
+	return layout.Measured(c.Clamp(geometry.Size{Width: l.header.column.width, Height: max(tableMinHeight, m.Height+tableHeaderPadding.Vertical()) + tableHeaderLineWidth(l.header)}))
 }
 func (l *tableHeaderCellLayout) Arrange(children []layout.Child, rect geometry.Rectangle) {
-	reserve := 2*tableHeaderPaddingX + l.header.view.columnLineWidth(l.header.column)
+	reserve := tableHeaderPadding.Horizontal() + l.header.view.columnLineWidth(l.header.column)
 	if l.header.column.sortable {
 		reserve += 16
 	}
 	height := max(0, rect.Height-tableHeaderLineWidth(l.header))
 	available := max(0, rect.Width-l.header.view.columnLineWidth(l.header.column))
-	m := children[0].Measure(layout.Loose(geometry.Size{Width: max(0, rect.Width-reserve), Height: max(0, height-2*tableHeaderPaddingY)}))
-	children[0].Arrange(geometry.Rect(min(tableHeaderPaddingX, available), max(0, (height-m.Height)/2), m.Width, m.Height))
+	m := children[0].Measure(layout.Loose(geometry.Size{Width: max(0, rect.Width-reserve), Height: max(0, height-tableHeaderPadding.Vertical())}))
+	children[0].Arrange(geometry.Rect(min(tableHeaderPadding.Left, available),
+		tableHeaderPadding.Top+max(0, (height-tableHeaderPadding.Vertical()-m.Height)/2), m.Width, m.Height))
 	l.header.handle.Arrange(geometry.Rect(max(0, rect.Width-8), 0, min(8, rect.Width), rect.Height))
 }
 

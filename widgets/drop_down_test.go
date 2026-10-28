@@ -224,7 +224,7 @@ func dropDownPopup(d *DropDown) *dropDownTestPopup {
 
 func TestDropDownSelectionAndModel(t *testing.T) {
 	d, m, h, dispatch := dropDownInput()
-	if d.Selected() != -1 || !d.Enabled() || !d.Focusable() || d.Padding() != 6 || d.PopupMaxHeight() != 320 || d.Opened() {
+	if d.Selected() != -1 || !d.Enabled() || !d.Focusable() || d.Padding() != geometry.UniformInsets(6) || d.PopupMaxHeight() != 320 || d.Opened() {
 		t.Fatal("defaults")
 	}
 	calls := 0
@@ -275,9 +275,9 @@ func TestDropDownSelectionAndModel(t *testing.T) {
 		t.Fatal("enabled lost focusable preference")
 	}
 	for _, value := range []float32{-1, float32(math.NaN()), float32(math.Inf(1))} {
-		d.SetPadding(value)
+		d.SetPadding(geometry.UniformInsets(value))
 		d.SetPopupMaxHeight(value)
-		if d.Padding() != 0 || d.PopupMaxHeight() != 0 {
+		if d.Padding() != (geometry.Insets{}) || d.PopupMaxHeight() != 0 {
 			t.Fatal("nonfinite layout value")
 		}
 	}
@@ -672,5 +672,20 @@ func TestDropDownSoftwarePixels(t *testing.T) {
 			t.Fatal("clip exceeded")
 		}
 		painter.Destroy()
+	}
+}
+
+func TestDropDownAsymmetricPadding(t *testing.T) {
+	d := NewDropDown()
+	d.SetPadding(geometry.Insets{Left: 10, Top: 2, Right: 6, Bottom: 4})
+	child := &dropDownFixedContent{width: 70, height: 20}
+
+	m := (dropDownLayout{d}).Measure([]layout.Child{child}, layout.Unbounded())
+	if m.Size != (geometry.Size{Width: 110, Height: 26}) || !m.HasBaseline || m.Baseline != 12 {
+		t.Fatalf("asymmetric dropdown measurement/baseline=%+v", m)
+	}
+	(dropDownLayout{d}).Arrange([]layout.Child{child}, geometry.Rectangle{Size: m.Size})
+	if got := child.Rect(); got != geometry.Rect(10, 2, 70, 20) {
+		t.Fatalf("asymmetric dropdown child=%+v", got)
 	}
 }

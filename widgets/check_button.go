@@ -1,7 +1,6 @@
 package widgets
 
 import (
-	"math"
 	"weak"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -71,7 +70,7 @@ type CheckButton struct {
 	state      CheckState
 	appearance CheckAppearance
 	group      *CheckButtonGroup
-	padding    float32
+	padding    geometry.Insets
 	hovered    bool
 	pressed    bool
 	revision   uint64
@@ -82,9 +81,10 @@ type CheckButton struct {
 }
 
 // NewCheckButton creates an unchecked, focusable square indicator with 6 DIP
-// padding, an 18 DIP indicator and an 8 DIP content gap. It has no implicit label.
+// padding on every edge, an 18 DIP indicator and an 8 DIP content gap. It has no
+// implicit label.
 func NewCheckButton() *CheckButton {
-	b := &CheckButton{padding: 6}
+	b := &CheckButton{padding: geometry.UniformInsets(6)}
 	b.WidgetBase.SetFocusable(true)
 	b.SetLayoutManager(checkLayout{button: b})
 	b.ConnectFocused(func(bool) { b.RequestPaint() })
@@ -186,13 +186,11 @@ func (b *CheckButton) SetAppearance(appearance CheckAppearance) {
 	}
 }
 
-func (b *CheckButton) Padding() float32 { return b.padding }
+func (b *CheckButton) Padding() geometry.Insets { return b.padding }
 
-// SetPadding sets equal inner padding in DIP; invalid values become zero.
-func (b *CheckButton) SetPadding(padding float32) {
-	if padding < 0 || math.IsNaN(float64(padding)) || math.IsInf(float64(padding), 0) {
-		padding = 0
-	}
+// SetPadding sets the per-edge inner padding in DIP; invalid edges become zero.
+func (b *CheckButton) SetPadding(padding geometry.Insets) {
+	padding = normalizeInsets(padding)
 	if !b.Destroyed() && b.padding != padding {
 		b.padding = padding
 		b.RequestLayout()
@@ -316,7 +314,7 @@ func (b *CheckButton) Paint(p gui.Painter) {
 	rect := geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height)
 	part, indicator := "", b.appearance == CheckAppearanceIndicator
 	if indicator {
-		inner := rect.Inset(b.padding)
+		inner := rect.Insets(b.padding.Left, b.padding.Top, b.padding.Right, b.padding.Bottom)
 		size := min(checkIndicatorSize, inner.Width, inner.Height)
 		rect = geometry.Rect(inner.X, inner.Y+(inner.Height-size)/2, size, size)
 		part = "indicator"
@@ -389,7 +387,7 @@ func (l checkLayout) content(children []layout.Child, inner geometry.Size) (layo
 
 func (l checkLayout) Measure(children []layout.Child, c layout.Constraint) layout.Measurement {
 	b := l.button
-	child, reserve := l.content(children, c.Inset(b.padding).Max)
+	child, reserve := l.content(children, c.Insets(b.padding).Max)
 	height := max(checkIndicatorSize, child.Height)
 	width := child.Width + reserve
 	if b.appearance == CheckAppearanceButton {
@@ -402,8 +400,9 @@ func (l checkLayout) Measure(children []layout.Child, c layout.Constraint) layou
 		floor := fontSize * 96 / 72
 		width, height = max(width, floor), max(child.Height, floor)
 	}
-	size := c.Clamp(geometry.Size{Width: width + 2*b.padding, Height: height + 2*b.padding})
-	inner := geometry.Rect(0, 0, size.Width, size.Height).Inset(b.padding)
+	size := c.Clamp(geometry.Size{Width: width + b.padding.Horizontal(), Height: height + b.padding.Vertical()})
+	inner := geometry.Rect(0, 0, size.Width, size.Height).
+		Insets(b.padding.Left, b.padding.Top, b.padding.Right, b.padding.Bottom)
 	return layout.Measurement{Size: size, HasBaseline: child.HasBaseline, Baseline: inner.Y + (inner.Height-child.Height)/2 + child.Baseline}
 }
 
@@ -411,7 +410,7 @@ func (l checkLayout) Arrange(children []layout.Child, rect geometry.Rectangle) {
 	if len(children) == 0 {
 		return
 	}
-	inner := rect.Inset(l.button.padding)
+	inner := rect.Insets(l.button.padding.Left, l.button.padding.Top, l.button.padding.Right, l.button.padding.Bottom)
 	child, reserve := l.content(children, inner.Size)
 	x := inner.X + reserve
 	if l.button.appearance == CheckAppearanceButton {
