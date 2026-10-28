@@ -50,7 +50,7 @@ func (c *windowControls) changed(info ChromeInfo) {
 		for i := range c.buttons {
 			button := &captionButton{Button: NewButton(), window: c.window, circular: c.window.clientChrome, close: i == 2}
 			button.SetName([]string{"window-minimize", "window-maximize", "window-close"}[i])
-			button.SetPadding(0)
+			button.SetPadding(geometry.Insets{})
 			button.SetFocusable(false) // caption buttons do not steal document focus
 			icon := &captionIcon{controls: c, index: i}
 			icon.SetMinSize(geometry.Size{Width: 12, Height: 12})

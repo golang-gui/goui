@@ -644,9 +644,9 @@ func TestLayoutSettersNormalizeInvalidValuesBeforeInvalidating(t *testing.T) {
 	}{
 		{"weight", box, box.SetMainWeight, box.MainWeight},
 		{"spacing", box, box.SetSpacing, box.Spacing},
-		{"box-padding", box, box.SetPadding, box.Padding},
-		{"button-padding", button, button.SetPadding, button.Padding},
-		{"input-padding", input, input.SetPadding, input.Padding},
+		{"box-padding", box, func(v float32) { box.SetPadding(geometry.UniformInsets(v)) }, func() float32 { return box.Padding().Left }},
+		{"button-padding", button, func(v float32) { button.SetPadding(geometry.UniformInsets(v)) }, func() float32 { return button.Padding().Left }},
+		{"input-padding", input, func(v float32) { input.SetPadding(geometry.UniformInsets(v)) }, func() float32 { return input.Padding().Left }},
 		{"min-width", box, func(v float32) { box.SetMinSize(geometry.Size{Width: v}) }, func() float32 { return box.MinSize().Width }},
 		{"min-height", box, func(v float32) { box.SetMinSize(geometry.Size{Height: v}) }, func() float32 { return box.MinSize().Height }},
 		{"max-width", box, func(v float32) { box.SetMaxSize(geometry.Size{Width: v}) }, func() float32 { return box.MaxSize().Width }},
@@ -1563,4 +1563,23 @@ func TestWidgetEnabledStopsStaleHoverAndClickCallbacks(t *testing.T) {
 	button.ConnectClicked(func() { button.SetEnabled(false); button.SetEnabled(true) })
 	button.ConnectClicked(func() { t.Fatal("stale click signal continued after disable and reenable") })
 	button.emitClicked()
+}
+
+func TestLayoutInsetsNormalizeEachEdge(t *testing.T) {
+	button := NewButton()
+	button.SetPadding(geometry.Insets{
+		Left: -1, Top: float32(math.NaN()), Right: float32(math.Inf(1)), Bottom: 2.5,
+	})
+	if got := button.Padding(); got != (geometry.Insets{Bottom: 2.5}) {
+		t.Fatalf("per-edge padding normalization = %+v", got)
+	}
+
+	button.SetPadding(geometry.Insets{Bottom: 2.5})
+	win := &window{}
+	win.SetWidget(button)
+	win.layoutDirty = false
+	button.SetPadding(geometry.Insets{Bottom: 2.5})
+	if win.layoutDirty {
+		t.Fatal("repeating an equal per-edge padding invalidated layout")
+	}
 }

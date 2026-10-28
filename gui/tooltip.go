@@ -362,7 +362,7 @@ type tooltipContent struct {
 func newTooltipContent(anchor Widget, text string) Widget {
 	b := &tooltipContent{text: text}
 	l := layout.NewLinearLayout(layout.DirectionVertical)
-	l.Padding = 8
+	l.Padding = geometry.UniformInsets(8)
 	b.SetLayoutManager(l)
 	b.SetMaxSize(geometry.Size{Width: 360})
 	label := NewLabel(text)

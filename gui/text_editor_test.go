@@ -1064,7 +1064,7 @@ func TestPlaceholderBaselineClipAndMeasurement(t *testing.T) {
 		if got := p.textOrigin.Y + lines[0].Baseline; got != before.Baseline+extra/2 {
 			t.Fatalf("hint baseline %g, want %g", got, before.Baseline+extra/2)
 		}
-		if p.clipRect != geometry.Rect(4, 4, 92, before.Height+extra-8) || w.contentSize() != size || w.offset != offset {
+		if p.clipRect != geometry.Rect(8, 4, 84, before.Height+extra-8) || w.contentSize() != size || w.offset != offset {
 			t.Fatal("hint changed content geometry or escaped content clipping")
 		}
 	}
@@ -1235,7 +1235,7 @@ func TestPlaceholderCaretPaintedLast(t *testing.T) {
 
 func TestTextEditorRevealPreservesPendingLayout(t *testing.T) {
 	v, _, win, _ := longWrappedEditor(t)
-	v.SetPadding(8)
+	v.SetPadding(geometry.UniformInsets(8))
 	v.SetSelection(TextSelection{Anchor: 50, Caret: 50})
 	if !win.layoutDirty {
 		t.Fatal("selection consumed padding invalidation")
@@ -1338,7 +1338,7 @@ func TestTextEditorSelectionCullsWrappedLines(t *testing.T) {
 	paragraph := &textParagraph{
 		geometry: textedit.NewGeometry(lines, clusters, count, 20), geometryValid: true,
 	}
-	editor := &textEditor{viewport: geometry.Size{Width: 200, Height: 48}, padding: 5}
+	editor := &textEditor{viewport: geometry.Size{Width: 200, Height: 48}, padding: geometry.UniformInsets(5)}
 	rects := editor.visibleSelection(paragraph, TextRange{End: count}, geometry.Point{Y: 5 - 10001})
 	if len(rects) != 2 {
 		t.Fatalf("selection produced %d rectangles, want 2", len(rects))
@@ -1426,6 +1426,7 @@ func TestTextEditorLargeDragStepsAndBounds(t *testing.T) {
 			editor := view.textEditor
 			if singleLine {
 				input := NewTextInput()
+				input.SetPadding(geometry.UniformInsets(4))
 				win.SetWidget(input)
 				editor = input.textEditor
 			}

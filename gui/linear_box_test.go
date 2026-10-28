@@ -52,7 +52,7 @@ func TestLinearBoxNestedStretchKeepsMeasuredMainExtent(t *testing.T) {
 			}
 			row := NewLinearBox(rowDirection)
 			row.SetCrossAlign(layout.CrossStretch)
-			row.SetPadding(16)
+			row.SetPadding(geometry.UniformInsets(16))
 			leaf := &baselineSizedWidget{measurement: layout.Measured(transpose(geometry.Size{Width: 60, Height: 20}))}
 			leaf.SetMainWeight(1)
 			row.AddChild(leaf)
@@ -82,7 +82,7 @@ func TestLinearBoxPaddingInsetsContent(t *testing.T) {
 	// Padding is a layout field handled on the WidgetBase common path, so a plain
 	// box (no custom Measure) gets it: content is inset in Arrange, added in Measure.
 	box := NewLinearBox(layout.DirectionVertical)
-	box.SetPadding(10)
+	box.SetPadding(geometry.UniformInsets(10))
 	child := newSizedWidget(geometry.Size{Width: 30, Height: 20})
 	box.AddChild(child)
 

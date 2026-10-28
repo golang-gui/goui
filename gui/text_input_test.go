@@ -81,6 +81,9 @@ func TestTextInputMeasureReportsStableBaseline(t *testing.T) {
 	}
 	setTestApplication(t, typo)
 	input := NewTextInput()
+	if got := input.Padding(); got != (geometry.Insets{Left: 8, Top: 4, Right: 8, Bottom: 4}) {
+		t.Fatalf("default text input padding = %+v", got)
+	}
 
 	measured := input.Measure(layout.Loose(geometry.Size{Width: 300, Height: 100}))
 	if measured.Size != (geometry.Size{Width: defaultTextInputWidth, Height: 26}) {
@@ -129,10 +132,10 @@ func TestTextInputPaintDrawsChromeTextAndCaret(t *testing.T) {
 	call := typo.calls[1]
 	// A single line is shaped unconstrained; the allocated content rectangle
 	// clips rendering and horizontal scrolling, never truncates the layout.
-	if call.text != "abc" || call.width != textInputMeasureExtent || call.height != textInputMeasureExtent || painter.clipRect != geometry.Rect(4, 4, 92, 16) {
+	if call.text != "abc" || call.width != textInputMeasureExtent || call.height != textInputMeasureExtent || painter.clipRect != geometry.Rect(8, 4, 84, 16) {
 		t.Fatalf("unexpected text layout call: %+v", call)
 	}
-	if painter.textOrigin != (geometry.Point{X: 4, Y: 4}) {
+	if painter.textOrigin != (geometry.Point{X: 8, Y: 4}) {
 		t.Fatalf("unexpected text origin: %+v", painter.textOrigin)
 	}
 	if painter.textLayout != typo.layouts[1] {
@@ -142,7 +145,7 @@ func TestTextInputPaintDrawsChromeTextAndCaret(t *testing.T) {
 	if typo.layouts[1].destroyed {
 		t.Fatal("paint should cache text layout for reuse")
 	}
-	if len(painter.fills) != 2 || painter.fills[1] != geometry.Rect(24, 5, 1, 18) {
+	if len(painter.fills) != 2 || painter.fills[1] != geometry.Rect(28, 5, 1, 18) {
 		t.Fatalf("unexpected caret rectangle: %+v", painter.fills)
 	}
 }
@@ -189,7 +192,7 @@ func TestTextInputPaintEmptyFocusedSkipsTextLayoutAndDrawsCaret(t *testing.T) {
 	}
 	// Empty-line geometry uses the stable font height. A short allocation
 	// clips it to the content box rather than changing the font's metrics.
-	if len(painter.fills) != 2 || painter.fills[1] != geometry.Rect(4, 4, 1, input.lineHeight) || painter.clipRect != geometry.Rect(4, 4, 92, 16) {
+	if len(painter.fills) != 2 || painter.fills[1] != geometry.Rect(8, 4, 1, input.lineHeight) || painter.clipRect != geometry.Rect(8, 4, 84, 16) {
 		t.Fatalf("unexpected empty caret/clip: %+v / %+v", painter.fills, painter.clipRect)
 	}
 }
@@ -214,7 +217,7 @@ func TestTextInputUsesStyleSheetForChromeAndText(t *testing.T) {
 	})
 
 	input := NewTextInput()
-	input.SetPadding(6) // padding is a layout field, not style
+	input.SetPadding(geometry.UniformInsets(6)) // padding is a layout field, not style
 	input.SetText("abc")
 	input.Arrange(geometry.Rect(0, 0, 100, 24))
 
@@ -463,7 +466,7 @@ func TestTextInputHorizontalRevealAndStableGeometry(t *testing.T) {
 	input, win, typo := newInputFixture(t, strings.Repeat("x", 100))
 	before := input.Measure(layout.Unbounded())
 	caret, _ := input.caretRect()
-	if input.offset.X <= 0 || caret.X-input.offset.X < input.padding || caret.X+caret.Width-input.offset.X > input.Rect().Width-input.padding {
+	if input.offset.X <= 0 || caret.X-input.offset.X < input.padding.Left || caret.X+caret.Width-input.offset.X > input.Rect().Width-input.padding.Right {
 		t.Fatalf("end caret not horizontally visible: caret=%v offset=%v", caret, input.offset)
 	}
 	count := len(typo.calls)
@@ -738,5 +741,33 @@ func TestTextInputCaretRevealReusesMetrics(t *testing.T) {
 		if !ok || rect.X < input.offset.X || rect.X+rect.Width > input.offset.X+input.viewport.Width {
 			t.Fatal("single-line caret reveal lost horizontal scrolling")
 		}
+	}
+}
+
+func TestTextInputAsymmetricPadding(t *testing.T) {
+	typo := &testTypography{
+		measureSize: geometry.Size{Width: 30, Height: 18},
+		lines: []typography.TextLine{
+			{Start: 0, Length: len(textInputHeightSample), Width: 30, Height: 18, Baseline: 14},
+		},
+	}
+	setTestApplication(t, typo)
+	input := NewTextInput()
+	input.SetPadding(geometry.Insets{Left: 10, Top: 2, Right: 6, Bottom: 5})
+	input.SetText("ab")
+
+	measured := input.Measure(layout.Loose(geometry.Size{Width: 300, Height: 100}))
+	if measured.Size.Height != 25 || !measured.HasBaseline || measured.Baseline != 16 {
+		t.Fatalf("asymmetric text input measure = %+v", measured)
+	}
+	input.Arrange(geometry.Rect(0, 0, 100, 25))
+
+	painter := new(testTextInputPainter)
+	input.Paint(painter)
+	if painter.textOrigin != (geometry.Point{X: 10, Y: 2}) {
+		t.Fatalf("asymmetric text origin = %+v", painter.textOrigin)
+	}
+	if painter.clipRect != geometry.Rect(10, 2, 84, 18) {
+		t.Fatalf("asymmetric text clip = %+v", painter.clipRect)
 	}
 }

@@ -35,7 +35,7 @@ type MenuButtonInfo struct {
 type MenuButton struct {
 	WidgetBase
 	content            Widget
-	padding            float32
+	padding            geometry.Insets
 	hovered, pressed   bool
 	menu               MenuModel
 	pm                 *PopoverMenu
@@ -50,7 +50,7 @@ type MenuButton struct {
 }
 
 func NewMenuButton() *MenuButton {
-	b := &MenuButton{padding: defaultButtonPadding}
+	b := &MenuButton{padding: geometry.UniformInsets(defaultButtonPadding)}
 	b.SetFocusable(true)
 	b.ConnectFocused(func(focused bool) {
 		if !focused {
@@ -360,7 +360,8 @@ func (b *MenuButton) Measure(c layout.Constraint) layout.Measurement {
 func (b *MenuButton) Arrange(rect geometry.Rectangle) {
 	b.rect = rect
 	if manager := b.LayoutManager(); manager != nil {
-		manager.Arrange(b.visibleChildren(), geometry.Rect(0, 0, rect.Width, rect.Height).Inset(b.padding))
+		manager.Arrange(b.visibleChildren(), geometry.Rect(0, 0, rect.Width, rect.Height).
+			Insets(b.padding.Left, b.padding.Top, b.padding.Right, b.padding.Bottom))
 	}
 }
 func (b *MenuButton) Paint(p Painter) {
