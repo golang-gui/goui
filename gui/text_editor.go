@@ -224,7 +224,7 @@ type textEditor struct {
 	readOnly          bool
 	acceptsTab        bool
 	wrap              WrapMode
-	padding           float32
+	padding           geometry.Insets
 	viewport          geometry.Size
 	offset            geometry.Point
 	format            typography.TextFormat
@@ -271,8 +271,8 @@ type textEditor struct {
 	longBudget        int
 }
 
-func newTextEditor(owner Widget, singleLine bool) *textEditor {
-	t := &textEditor{owner: owner, singleLine: singleLine, wrap: WrapWordChar, padding: 4, lineHeight: 20, editOwner: &textedit.EditSource{}, caretVisible: true, longBudget: 1}
+func newTextEditor(owner Widget, singleLine bool, padding geometry.Insets) *textEditor {
+	t := &textEditor{owner: owner, singleLine: singleLine, wrap: WrapWordChar, padding: padding, lineHeight: 20, editOwner: &textedit.EditSource{}, caretVisible: true, longBudget: 1}
 	if singleLine {
 		t.wrap = WrapNone
 	}
@@ -475,14 +475,17 @@ func (t *textEditor) setWrapMode(value WrapMode) {
 	t.resetParagraphs()
 	t.owner.RequestLayout()
 }
-func (t *textEditor) setPadding(value float32) {
-	value = normalizeLayoutValue(value)
+func (t *textEditor) setPadding(value geometry.Insets) {
+	value = normalizeInsets(value)
 	if t.padding == value {
 		return
 	}
 	t.padding = value
 	t.owner.RequestLayout()
 }
+
+func (t *textEditor) horizontalPadding() float32 { return t.padding.Horizontal() }
+func (t *textEditor) verticalPadding() float32   { return t.padding.Vertical() }
 func (t *textEditor) connectChange(fn func(TextChange)) signal.Handle {
 	return t.changeSignal.Connect(fn)
 }
@@ -895,7 +898,7 @@ func (t *textEditor) prepareLongParagraph(index int, p *textParagraph) *textPara
 			t.queueLongLayout()
 		}
 	}
-	viewport := geometry.Rect(t.offset.X, max(0, t.offset.Y-t.padding-t.heights.Top(index)), t.viewport.Width, max(t.lineHeight, t.viewport.Height))
+	viewport := geometry.Rect(t.offset.X, max(0, t.offset.Y-t.padding.Top-t.heights.Top(index)), t.viewport.Width, max(t.lineHeight, t.viewport.Height))
 	ready := p.paged.Prepare(viewport, t.longBudget > 0 || t.owner.Root() == nil)
 	if t.longBudget > 0 {
 		t.longBudget--
@@ -938,13 +941,13 @@ func (t *textEditor) setLongWidth(index int, width float32) {
 }
 
 func (t *textEditor) contentSize() geometry.Size {
-	width := max(t.viewport.Width, max(t.observedWidth, t.longWidth)+2*t.padding+1)
+	width := max(t.viewport.Width, max(t.observedWidth, t.longWidth)+t.horizontalPadding()+1)
 	if t.resizeWidth != 0 {
 		// A temporarily retained wider layout must not introduce a horizontal
 		// scrollbar merely because its replacement width is still pending.
 		width = t.viewport.Width
 	}
-	return geometry.Size{Width: width, Height: t.heights.Total() + 2*t.padding}
+	return geometry.Size{Width: width, Height: t.heights.Total() + t.verticalPadding()}
 }
 
 func (t *textEditor) measure(c layout.Constraint) layout.Measurement {
@@ -960,7 +963,7 @@ func (t *textEditor) measure(c layout.Constraint) layout.Measurement {
 		length += len(t.preedit.Text()) - (r.End - r.Start)
 	}
 	if t.displayLineCount() > 64 || length > 4096 {
-		t.estimateWrappedHeight(max(1, width-2*t.padding-1))
+		t.estimateWrappedHeight(max(1, width-t.horizontalPadding()-1))
 		// Natural sizing may be unbounded (for example a LinearBox's first
 		// pass), and its cross width may include a ScrollView's scrollbar.
 		// Neither query changes the allocated text width or demands exact
@@ -969,14 +972,14 @@ func (t *textEditor) measure(c layout.Constraint) layout.Measurement {
 		if p := t.paragraphs[0]; p != nil && p.measured {
 			baseline = p.baseline
 		}
-		return layout.Measurement{Size: b.constrain(c, geometry.Size{Width: width, Height: t.heights.Total() + 2*t.padding}),
-			Baseline: t.padding + baseline, HasBaseline: t.hasBaseline}
+		return layout.Measurement{Size: b.constrain(c, geometry.Size{Width: width, Height: t.heights.Total() + t.verticalPadding()}),
+			Baseline: t.padding.Top + baseline, HasBaseline: t.hasBaseline}
 	}
-	if !t.prepareWidth(max(1, width-2*t.padding-1)) {
+	if !t.prepareWidth(max(1, width-t.horizontalPadding()-1)) {
 		return layout.Measurement{}
 	}
 	limit := b.layoutConstraint(c).Max.Height
-	height := 2 * t.padding
+	height := t.verticalPadding()
 	baseline := t.baseline
 	for i := 0; i < t.displayLineCount(); i++ {
 		p := t.paragraph(i)
@@ -994,7 +997,7 @@ func (t *textEditor) measure(c layout.Constraint) layout.Measurement {
 		}
 	}
 	return layout.Measurement{Size: b.constrain(c, geometry.Size{Width: width, Height: height}),
-		Baseline: t.padding + baseline, HasBaseline: t.hasBaseline}
+		Baseline: t.padding.Top + baseline, HasBaseline: t.hasBaseline}
 }
 
 // A bounded sample supplies only a provisional scrolling extent. It never
@@ -1075,7 +1078,7 @@ func (t *textEditor) layoutVisible(viewport geometry.Size, offset geometry.Point
 	t.syncBlink(false)
 	t.ensureFormat()
 	t.viewport, t.offset = viewport, offset
-	width := max(1, viewport.Width-2*t.padding-1)
+	width := max(1, viewport.Width-t.horizontalPadding()-1)
 	if t.deferResize(width) {
 		width = t.layoutWidth
 	}
@@ -1104,7 +1107,7 @@ func (t *textEditor) layoutVisible(viewport geometry.Size, offset geometry.Point
 	offset = t.offset
 	anchor := t.heights.At(max(0, offset.Y))
 	anchorTop := t.heights.Top(anchor)
-	start := t.heights.At(max(0, offset.Y-t.padding-viewport.Height))
+	start := t.heights.At(max(0, offset.Y-t.padding.Top-viewport.Height))
 	end := start
 	// Above-viewport measurement participates in the retained text anchor.
 	// Preserve that range, but do not synchronously shape another full screen
@@ -1113,10 +1116,10 @@ func (t *textEditor) layoutVisible(viewport geometry.Size, offset geometry.Point
 	trailing := 0
 	for end < t.displayLineCount() {
 		top := t.heights.Top(end)
-		if top > offset.Y-t.padding+2*viewport.Height && end > anchor {
+		if top > offset.Y-t.padding.Top+2*viewport.Height && end > anchor {
 			break
 		}
-		if top > offset.Y-t.padding+viewport.Height && end > anchor {
+		if top > offset.Y-t.padding.Top+viewport.Height && end > anchor {
 			if trailing == trailingOverscanParagraphs {
 				break
 			}
@@ -1178,7 +1181,7 @@ func (t *textEditor) requestCaretReveal() {
 	p := t.paragraphs[t.displayLineAt(t.displayCaret().Offset)]
 	if t.revealingCaret || t.viewport.Width <= 0 || t.viewport.Height <= 0 ||
 		p == nil || !p.measured ||
-		t.wrap != WrapNone && t.layoutWidth != max(1, t.viewport.Width-2*t.padding-1) {
+		t.wrap != WrapNone && t.layoutWidth != max(1, t.viewport.Width-t.horizontalPadding()-1) {
 		t.owner.RequestLayout()
 		return
 	}
@@ -1193,8 +1196,8 @@ func (t *textEditor) requestCaretReveal() {
 }
 
 func (t *textEditor) revealCaretRect(rect geometry.Rectangle) {
-	target := geometry.Rect(rect.X-t.padding, rect.Y-t.padding,
-		rect.Width+2*t.padding, rect.Height+2*t.padding)
+	target := geometry.Rect(rect.X-t.padding.Left, rect.Y-t.padding.Top,
+		rect.Width+t.horizontalPadding(), rect.Height+t.verticalPadding())
 	// A nested SetSelection from a reveal listener must defer to layout rather
 	// than recursively emit another request. LayoutVisible itself can refine
 	// the target synchronously while ScrollView processes this request.
@@ -1231,7 +1234,7 @@ func (t *textEditor) paragraphOrigin(index int, p *textParagraph) geometry.Point
 		frame := p.paged.Geometry()
 		x, y = frame.X, frame.Y
 	}
-	return geometry.Point{X: t.padding + float32(x-float64(t.offset.X)), Y: float32(float64(t.padding) + t.heights.Top64(index) + float64(p.textOffset) + y - float64(t.offset.Y))}
+	return geometry.Point{X: t.padding.Left + float32(x-float64(t.offset.X)), Y: float32(float64(t.padding.Top) + t.heights.Top64(index) + float64(p.textOffset) + y - float64(t.offset.Y))}
 }
 
 func (t *textEditor) paragraphCaret(index int, p *textParagraph) (geometry.Rectangle, bool) {
@@ -1257,8 +1260,8 @@ func (t *textEditor) paragraphCaretIn(index int, p *textParagraph, viewport bool
 		g, x, y = &frame.Geometry, frame.X, frame.Y
 	}
 	r := g.Caret(pos)
-	x += float64(t.padding)
-	y += float64(t.padding) + t.heights.Top64(index) + float64(p.textOffset)
+	x += float64(t.padding.Left)
+	y += float64(t.padding.Top) + t.heights.Top64(index) + float64(p.textOffset)
 	if viewport {
 		x -= float64(t.offset.X)
 		y -= float64(t.offset.Y)
@@ -1273,15 +1276,16 @@ func (t *textEditor) paint(p Painter) {
 		return
 	}
 	paintStyledBox(p, geometry.Rect(0, 0, t.owner.Rect().Width, t.owner.Rect().Height), t.resolvedStyle(style.PartDefault))
-	p.SetClipRect(geometry.Rect(t.padding, t.padding, max(0, t.owner.Rect().Width-2*t.padding), max(0, t.owner.Rect().Height-2*t.padding)))
+	p.SetClipRect(geometry.Rect(t.padding.Left, t.padding.Top,
+		max(0, t.owner.Rect().Width-t.horizontalPadding()), max(0, t.owner.Rect().Height-t.verticalPadding())))
 	selected := t.selection.Range()
 	if t.preedit != nil {
 		selected = TextRange{}
 	}
 	selectionColor, hasSelection := t.resolvedStyle("selection").BackgroundColor()
-	start := t.heights.At(max(0, t.offset.Y-t.padding))
+	start := t.heights.At(max(0, t.offset.Y-t.padding.Top))
 	for i := start; i < t.displayLineCount(); i++ {
-		y := t.padding + t.heights.Top(i) - t.offset.Y
+		y := t.padding.Top + t.heights.Top(i) - t.offset.Y
 		if y >= t.viewport.Height {
 			break
 		}
@@ -1333,12 +1337,12 @@ func (t *textEditor) paint(p Painter) {
 }
 
 func (t *textEditor) visibleSelection(p *textParagraph, rng TextRange, origin geometry.Point) []geometry.Rectangle {
-	if t.viewport.Height <= 2*t.padding {
+	if t.viewport.Height <= t.verticalPadding() {
 		return nil
 	}
 	g := p.editGeometry(t.lineHeight)
-	first := g.LineAtY(t.padding - origin.Y)
-	end := g.LineAtY(t.viewport.Height-t.padding-origin.Y) + 1
+	first := g.LineAtY(t.padding.Top - origin.Y)
+	end := g.LineAtY(t.viewport.Height-t.padding.Bottom-origin.Y) + 1
 	return g.SelectionLines(rng, first, end)
 }
 
@@ -1347,8 +1351,8 @@ func (t *textEditor) snapshot() WidgetInfo {
 	info.Role = RoleTextView
 	state := &TextEditingInfo{ReadOnly: t.readOnly, Selection: t.selection, Length: t.model.Len(), Placeholder: t.placeholder}
 	// Bounded, range-labelled visible content, never a copy of the full model.
-	start := t.heights.At(max(0, t.offset.Y-t.padding))
-	end := t.heights.At(max(0, t.offset.Y+t.viewport.Height-t.padding))
+	start := t.heights.At(max(0, t.offset.Y-t.padding.Top))
+	end := t.heights.At(max(0, t.offset.Y+t.viewport.Height-t.padding.Bottom))
 	first := t.displayLineRange(start)
 	last := t.displayLineRange(end)
 	if p := t.paragraphs[start]; p != nil && p.paged != nil {
@@ -1452,7 +1456,7 @@ func (t *textEditor) saveViewportAnchor() {
 	if p == nil || p.paged != nil && p.paged.VisibleRange().End == 0 {
 		return
 	}
-	y := t.padding - t.paragraphOrigin(index, p).Y
+	y := t.padding.Top - t.paragraphOrigin(index, p).Y
 	g := p.editGeometry(t.lineHeight)
 	line := g.LineAtY(y)
 	metrics := g.LineMetrics(line)
@@ -1482,13 +1486,13 @@ func (t *textEditor) layoutSingleLine(size geometry.Size) {
 	if p != nil {
 		height = p.height
 	}
-	center := max(0, (size.Height-2*t.padding-height)/2)
+	center := max(0, (size.Height-t.verticalPadding()-height)/2)
 	t.offset.Y = -center
 	t.offset.X = min(t.offset.X, scrollExtent(t.contentSize().Width, size.Width))
 	if t.revealCaret && size.Width > 0 {
 		if rect, ok := t.caretRect(); ok {
-			t.emitReveal(geometry.Rect(rect.X-t.padding, rect.Y-t.padding,
-				rect.Width+2*t.padding, rect.Height+2*t.padding))
+			t.emitReveal(geometry.Rect(rect.X-t.padding.Left, rect.Y-t.padding.Top,
+				rect.Width+t.horizontalPadding(), rect.Height+t.verticalPadding()))
 		}
 	}
 	t.syncBlink(false)
@@ -1590,12 +1594,12 @@ func (t *textEditor) syncBlink(restart bool) {
 }
 
 func (t *textEditor) dragScrollOffset() geometry.Point {
-	step := func(point, extent float32) float32 {
+	step := func(point, before, after, extent float32) float32 {
 		var distance float32
-		if point < t.padding {
-			distance = point - t.padding
-		} else if point > extent-t.padding {
-			distance = point - (extent - t.padding)
+		if point < before {
+			distance = point - before
+		} else if point > extent-after {
+			distance = point - (extent - after)
 		}
 		if distance == 0 {
 			return 0
@@ -1608,19 +1612,19 @@ func (t *textEditor) dragScrollOffset() geometry.Point {
 	}
 	extent := t.contentSize()
 	point := t.input.dragPoint
-	dx := step(point.X, t.viewport.Width)
+	dx := step(point.X, t.padding.Left, t.padding.Right, t.viewport.Width)
 	if t.wrap != WrapNone {
 		dx = 0
 	} else if dx != 0 {
 		// Use already measured visual edges: another row's width is not a reason
 		// to scroll beyond this row's selectable text. This never shapes text.
-		row := t.heights.At(point.Y + t.offset.Y - t.padding)
+		row := t.heights.At(point.Y + t.offset.Y - t.padding.Top)
 		if p := t.paragraphs[row]; p != nil && p.measured && (p.paged == nil || p.paged.VisibleRange().End > 0) {
 			g := p.editGeometry(t.lineHeight)
 			origin := t.paragraphOrigin(row, p)
 			edge := g.LineEdge(g.LineAtY(point.Y-origin.Y), dx > 0)
 			rect := g.Caret(edge).Translate(origin)
-			if dx < 0 && rect.X >= t.padding || dx > 0 && float64(rect.X)+float64(rect.Width) <= float64(t.viewport.Width-t.padding) {
+			if dx < 0 && rect.X >= t.padding.Left || dx > 0 && float64(rect.X)+float64(rect.Width) <= float64(t.viewport.Width-t.padding.Right) {
 				dx = 0
 			}
 		}
@@ -1636,9 +1640,10 @@ func (t *textEditor) dragScrollOffset() geometry.Point {
 		}
 		return min(max(0, next), mathx.Floor(scrollExtent(content, viewport)))
 	}
+	dy := step(point.Y, t.padding.Top, t.padding.Bottom, t.viewport.Height)
 	next := geometry.Point{
 		X: advance(t.offset.X, dx, extent.Width, t.viewport.Width),
-		Y: advance(t.offset.Y, step(point.Y, t.viewport.Height), extent.Height, t.viewport.Height),
+		Y: advance(t.offset.Y, dy, extent.Height, t.viewport.Height),
 	}
 	if t.singleLine {
 		next.Y = t.offset.Y // vertical centering is not a scroll range
@@ -1682,8 +1687,8 @@ func (t *textEditor) autoScroll() {
 
 func (t *textEditor) dragSelectionPoint() geometry.Point {
 	point := t.input.dragPoint
-	point.X = min(max(t.padding, point.X), max(t.padding, t.viewport.Width-t.padding-1))
-	point.Y = min(max(t.padding, point.Y), max(t.padding, t.viewport.Height-t.padding-1))
+	point.X = min(max(t.padding.Left, point.X), max(t.padding.Left, t.viewport.Width-t.padding.Right-1))
+	point.Y = min(max(t.padding.Top, point.Y), max(t.padding.Top, t.viewport.Height-t.padding.Bottom-1))
 	return point
 }
 
@@ -1936,7 +1941,7 @@ func (t *textEditor) showContextMenu(point *geometry.Point) {
 	}
 	t.input.Reset()
 	t.hasDesiredX = false
-	position := geometry.Point{X: t.padding, Y: t.padding + t.lineHeight}
+	position := geometry.Point{X: t.padding.Left, Y: t.padding.Top + t.lineHeight}
 	if point != nil {
 		position = *point
 		if !t.selectionContains(position) {
@@ -1986,7 +1991,7 @@ func (t *textEditor) selectionContains(point geometry.Point) bool {
 	if selected.Start == selected.End {
 		return false
 	}
-	index := t.heights.At(point.Y + t.offset.Y - t.padding)
+	index := t.heights.At(point.Y + t.offset.Y - t.padding.Top)
 	rng := t.displayLineRange(index)
 	if selected.Start > rng.End || selected.End <= rng.Start {
 		return false
@@ -2062,7 +2067,7 @@ func (t *textEditor) deferResize(width float32) bool {
 		}
 	}
 	long := false
-	first := t.heights.At(max(0, t.offset.Y-t.padding))
+	first := t.heights.At(max(0, t.offset.Y-t.padding.Top))
 	last := t.heights.At(max(0, t.offset.Y+t.viewport.Height))
 	for _, p := range t.paragraphs {
 		if p.index < first || p.index > last || !p.measured || p.layout == nil || p.textBytes < 32768 {
@@ -2281,7 +2286,7 @@ func abs32(x float32) float32 {
 }
 
 func (t *textEditor) hitText(point geometry.Point) textedit.Position {
-	index := t.heights.At(point.Y + t.offset.Y - t.padding)
+	index := t.heights.At(point.Y + t.offset.Y - t.padding.Top)
 	if p := t.paragraph(index); p != nil {
 		rng := t.displayLineRange(index)
 		origin := t.paragraphOrigin(index, p)
@@ -2424,14 +2429,14 @@ func (t *textEditor) vertical(down bool, page bool) textedit.Position {
 		return pos
 	}
 	if !t.hasDesiredX {
-		t.desiredX, t.hasDesiredX = rect.X-t.padding, true
+		t.desiredX, t.hasDesiredX = rect.X-t.padding.Left, true
 	}
 	if page {
 		delta := max(rect.Height, t.viewport.Height)
 		if !down {
 			delta = -delta
 		}
-		point := geometry.Point{X: t.desiredX + t.padding - t.offset.X, Y: rect.Y - t.offset.Y + delta + rect.Height/2}
+		point := geometry.Point{X: t.desiredX + t.padding.Left - t.offset.X, Y: rect.Y - t.offset.Y + delta + rect.Height/2}
 		index := t.model.LineAt(pos.Offset)
 		if p := t.paragraphs[index]; p != nil && p.paged != nil {
 			if local, ok := t.viewportCaret(index, p); ok {
@@ -2853,7 +2858,7 @@ func (t *textEditor) paintPlaceholder(p Painter) {
 	if cached == nil {
 		return
 	}
-	origin := geometry.Point{X: t.padding - t.offset.X, Y: t.padding - t.offset.Y}
+	origin := geometry.Point{X: t.padding.Left - t.offset.X, Y: t.padding.Top - t.offset.Y}
 	if cached.hasBaseline {
 		if t.singleLine && t.hasBaseline {
 			origin.Y += t.baseline - cached.baseline

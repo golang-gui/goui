@@ -14,6 +14,10 @@ const (
 	textInputHeightSample = "Ag中"
 )
 
+// defaultTextInputPadding clears the frame and its 1-2 DIP focus border while
+// keeping the single-line height compact.
+var defaultTextInputPadding = geometry.Insets{Left: 8, Top: 4, Right: 8, Bottom: 4}
+
 // TextInput is a single-line editor with its own private document/history.
 // It shares editing operations with TextView, not a child Widget or model.
 // Secondary click or Shift+F10 opens its standard editing context menu.
@@ -25,7 +29,7 @@ type TextInput struct {
 
 func NewTextInput() *TextInput {
 	t := &TextInput{}
-	t.textEditor = newTextEditor(t, true)
+	t.textEditor = newTextEditor(t, true, defaultTextInputPadding)
 	t.connectChange(func(TextChange) { t.textSignal.Emit(t.Text()) })
 	return t
 }
@@ -75,14 +79,14 @@ func (t *TextInput) SetSelection(s TextSelection) { t.setSelectionValue(s) }
 func (t *TextInput) ConnectSelection(fn func(TextSelection)) signal.Handle {
 	return t.connectSelection(fn)
 }
-func (t *TextInput) ReadOnly() bool         { return t.readOnly }
-func (t *TextInput) SetReadOnly(value bool) { t.setReadOnly(value) }
-func (t *TextInput) Padding() float32       { return t.padding }
+func (t *TextInput) ReadOnly() bool           { return t.readOnly }
+func (t *TextInput) SetReadOnly(value bool)   { t.setReadOnly(value) }
+func (t *TextInput) Padding() geometry.Insets { return t.padding }
 
-// SetPadding sets the content inset in DIP; invalid values become zero.
-func (t *TextInput) SetPadding(value float32) { t.setPadding(value) }
-func (t *TextInput) IMContext() IMContext     { return t.imContext() }
-func (t *TextInput) StyleChanged()            { t.styleChanged() }
+// SetPadding sets the per-edge content inset in DIP; invalid edges become zero.
+func (t *TextInput) SetPadding(value geometry.Insets) { t.setPadding(value) }
+func (t *TextInput) IMContext() IMContext             { return t.imContext() }
+func (t *TextInput) StyleChanged()                    { t.styleChanged() }
 
 func (t *TextInput) Measure(c layout.Constraint) layout.Measurement {
 	if !t.Visible() {
@@ -94,9 +98,9 @@ func (t *TextInput) Measure(c layout.Constraint) layout.Measurement {
 		height, baseline = p.height, p.baseline
 	}
 	m := layout.Measurement{Size: t.constrain(c, geometry.Size{
-		Width: defaultTextInputWidth, Height: height + 2*t.padding,
-	}), Baseline: t.padding + baseline, HasBaseline: t.hasBaseline}
-	m.Baseline += max(0, (m.Height-2*t.padding-height)/2)
+		Width: defaultTextInputWidth, Height: height + t.verticalPadding(),
+	}), Baseline: t.padding.Top + baseline, HasBaseline: t.hasBaseline}
+	m.Baseline += max(0, (m.Height-t.verticalPadding()-height)/2)
 	return m
 }
 

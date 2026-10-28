@@ -10,8 +10,8 @@ import (
 
 type Button struct {
 	WidgetBase
-	content Widget  // single child (0 or 1); Button is not a Container
-	padding float32 // self-held: button overrides Measure/Arrange (skeleton floor)
+	content Widget          // single child (0 or 1); Button is not a Container
+	padding geometry.Insets // self-held: button overrides Measure/Arrange (skeleton floor)
 	hovered bool
 	pressed bool
 	clicked signal.Signal1[uint64]
@@ -21,14 +21,14 @@ type Button struct {
 
 const defaultButtonPadding = 6
 
-// NewButton creates a focusable button with centered content and 6 DIP padding.
+// NewButton creates a focusable button with centered content and 6 DIP padding on every edge.
 // A custom LayoutManager can override the content policy, for example
 // layout.NewFillLayout to stretch the child across the content area.
 func NewButton() *Button {
 	button := new(Button)
 	button.SetFocusable(true)
 	button.ConnectFocused(func(bool) { button.RequestPaint() })
-	button.padding = defaultButtonPadding
+	button.padding = geometry.UniformInsets(defaultButtonPadding)
 	button.SetLayoutManager(buttonContentLayout{})
 
 	button.motion = NewMotionEventController()
@@ -90,11 +90,12 @@ func (b *Button) Child() Widget {
 	return b.content
 }
 
-func (b *Button) Padding() float32 { return b.padding }
+func (b *Button) Padding() geometry.Insets { return b.padding }
 
-// SetPadding sets the inner padding. Negative and non-finite values become 0.
-func (b *Button) SetPadding(padding float32) {
-	padding = normalizeLayoutValue(padding)
+// SetPadding sets the per-edge inner padding in DIP. Negative and non-finite
+// edges become 0.
+func (b *Button) SetPadding(padding geometry.Insets) {
+	padding = normalizeInsets(padding)
 	if b.padding == padding {
 		return
 	}
@@ -111,24 +112,26 @@ func (b *Button) Measure(c layout.Constraint) layout.Measurement {
 	// zero. This is the widget's own intrinsic floor, not a user override; a
 	// user's SetMin/MaxSize and the parent's hard limits still bound this floor.
 	fontSize, _ := b.resolvedStyle().FontSize()
-	floor := textLineHeight(fontSize) + b.padding*2
+	floor := textLineHeight(fontSize) + b.padding.Vertical()
 	return measureButtonContent(&b.WidgetBase, c, b.padding, floor)
 }
 
 // measureButtonContent lets Button and MenuButton measure their content with
 // the same constraints used for placement. The optional skeleton floor is
 // clamped by user preferences and parent limits before reaching the manager.
-func measureButtonContent(w *WidgetBase, c layout.Constraint, padding, floor float32) layout.Measurement {
+func measureButtonContent(w *WidgetBase, c layout.Constraint, padding geometry.Insets, floor float32) layout.Measurement {
 	c = w.layoutConstraint(c)
 	c.Min = c.Clamp(geometry.Size{Width: floor, Height: floor})
 	var measured layout.Measurement
 	if manager := w.LayoutManager(); manager != nil {
-		measured = manager.Measure(w.visibleChildren(), c.Inset(padding))
+		measured = manager.Measure(w.visibleChildren(), c.Insets(padding))
 	}
-	measured.Size = c.Clamp(measured.Size.Inset(-padding))
+	measured.Size = c.Clamp(measured.Size.Insets(-padding.Left, -padding.Top, -padding.Right, -padding.Bottom))
 	if measured.HasBaseline {
-		// Rectangle.Inset also handles a parent allocation smaller than 2*padding.
-		inner := geometry.Rect(0, 0, measured.Width, measured.Height).Inset(padding)
+		// Rectangle.Insets also handles a parent allocation smaller than the
+		// summed horizontal or vertical padding.
+		inner := geometry.Rect(0, 0, measured.Width, measured.Height).
+			Insets(padding.Left, padding.Top, padding.Right, padding.Bottom)
 		measured.Baseline += inner.Y
 	}
 	return measured
@@ -169,7 +172,8 @@ func (b *Button) Arrange(rect geometry.Rectangle) {
 	if manager == nil {
 		return
 	}
-	manager.Arrange(b.visibleChildren(), geometry.Rect(0, 0, rect.Width, rect.Height).Inset(b.padding))
+	manager.Arrange(b.visibleChildren(), geometry.Rect(0, 0, rect.Width, rect.Height).
+		Insets(b.padding.Left, b.padding.Top, b.padding.Right, b.padding.Bottom))
 }
 
 func (b *Button) Paint(p Painter) {

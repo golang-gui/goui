@@ -55,7 +55,7 @@ func TestTextViewLongWidthCorrectionReachesTextEnd(t *testing.T) {
 				v.longBudget = 1
 				scroll.Arrange(box)
 			}
-			want := float32(20*paragraphBlockBytes*tc.prefixWidth+128*tc.tailWidth) + 2*v.Padding() + 1
+			want := float32(20*paragraphBlockBytes*tc.prefixWidth+128*tc.tailWidth) + v.Padding().Horizontal() + 1
 			if v.ContentSize().Width != want {
 				t.Fatal("内容宽度不等于字符宽度的独立总和", v.ContentSize(), want)
 			}
@@ -70,8 +70,8 @@ func TestTextViewLongWidthCorrectionReachesTextEnd(t *testing.T) {
 				t.Fatal("末尾几何未就绪")
 			}
 			caret := end.Caret(textedit.Position{Offset: length, Upstream: true})
-			x := float64(v.Padding()) + end.X + float64(caret.X) - float64(scroll.ScrollX())
-			if x < float64(v.Padding()) || x > float64(v.viewport.Width-v.Padding()) {
+			x := float64(v.Padding().Left) + end.X + float64(caret.X) - float64(scroll.ScrollX())
+			if x < float64(v.Padding().Left) || x > float64(v.viewport.Width-v.Padding().Right) {
 				t.Fatalf("末尾落在视口外：x=%g，offset=%g，content=%v", x, scroll.ScrollX(), v.ContentSize())
 			}
 		})
@@ -962,8 +962,8 @@ func testTextViewFastScrollCoverage(t *testing.T, ctx typography.Context) {
 
 func assertTextViewViewportMeasured(t *testing.T, editor *TextView) {
 	t.Helper()
-	first := editor.heights.At(max(0, editor.offset.Y-editor.padding))
-	last := editor.heights.At(max(0, editor.offset.Y+editor.viewport.Height-editor.padding-1))
+	first := editor.heights.At(max(0, editor.offset.Y-editor.padding.Top))
+	last := editor.heights.At(max(0, editor.offset.Y+editor.viewport.Height-editor.padding.Bottom-1))
 	for index := first; index <= last; index++ {
 		p := editor.paragraphs[index]
 		if p == nil || !p.measured {
@@ -978,7 +978,7 @@ func TestTextViewTrailingOverscanIsBounded(t *testing.T) {
 		editor.LayoutVisible(geometry.Size{Width: 1200, Height: height}, geometry.Point{})
 		count := 0
 		for index := range editor.paragraphs {
-			if editor.heights.Top(index) > height-editor.padding {
+			if editor.heights.Top(index) > height-editor.padding.Bottom {
 				count++
 			}
 		}
@@ -1763,7 +1763,7 @@ func TestTextViewPendingResizeUsesDisplayedHitGeometry(t *testing.T) {
 	width, before := v.layoutWidth, len(typo.calls)
 	scroll.Arrange(geometry.Rect(0, 0, 300, 200))
 	point := geometry.Point{X: 29, Y: 14}
-	want := old.geometry.Hit(geometry.Point{X: point.X - v.padding, Y: point.Y - v.padding}).Offset
+	want := old.geometry.Hit(geometry.Point{X: point.X - v.padding.Left, Y: point.Y - v.padding.Top}).Offset
 	editorPointer(t, win, events.PointerDown, point, 0)
 	editorPointer(t, win, events.PointerUp, point, 0)
 	if v.Selection() != (TextSelection{Anchor: want, Caret: want}) || v.paragraph(0) != old || len(typo.calls) != before {
@@ -1889,5 +1889,19 @@ func TestTextViewShortLineDragStopsHorizontalScroll(t *testing.T) {
 	q.dispatch(t)
 	if scroll.ScrollX() <= 0 || v.Selection().Caret <= 20 {
 		t.Fatal("长行拖选无法继续横滚", scroll.ScrollX(), v.Selection())
+	}
+}
+
+func TestTextViewAsymmetricPadding(t *testing.T) {
+	v, _, _ := newEditorFixture(t, "row\nrow")
+	v.SetPadding(geometry.Insets{Left: 12, Top: 6, Right: 4, Bottom: 2})
+
+	measured := v.Measure(layout.Loose(geometry.Size{Width: 200, Height: 1000}))
+	if measured.Size.Height != 48 || !measured.HasBaseline || measured.Baseline != 21 {
+		t.Fatalf("asymmetric text view measure = %+v", measured)
+	}
+	v.Arrange(geometry.Rect(0, 0, 200, 100))
+	if got := v.ContentSize().Height; got != 48 {
+		t.Fatalf("asymmetric text view content height = %v", got)
 	}
 }

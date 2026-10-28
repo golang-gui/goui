@@ -1,6 +1,9 @@
 package gui
 
-import "github.com/golang-gui/goui/layout"
+import (
+	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/layout"
+)
 
 type LinearBox struct {
 	WidgetBase
@@ -57,14 +60,14 @@ func (b *LinearBox) SetSpacing(spacing float32) {
 	b.RequestLayout()
 }
 
-func (b *LinearBox) Padding() float32 {
+func (b *LinearBox) Padding() geometry.Insets {
 	return b.layout.Padding
 }
 
-// SetPadding sets the inner padding. Negative and non-finite values are
-// treated as zero.
-func (b *LinearBox) SetPadding(padding float32) {
-	padding = normalizeLayoutValue(padding)
+// SetPadding sets the per-edge inner padding in DIP. Negative and non-finite
+// edges are treated as zero.
+func (b *LinearBox) SetPadding(padding geometry.Insets) {
+	padding = normalizeInsets(padding)
 	if b.layout.Padding == padding {
 		return
 	}

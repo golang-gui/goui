@@ -39,7 +39,7 @@ type TextView struct {
 
 func NewTextView() *TextView {
 	t := &TextView{}
-	t.textEditor = newTextEditor(t, false)
+	t.textEditor = newTextEditor(t, false, geometry.UniformInsets(4))
 	return t
 }
 
@@ -60,15 +60,15 @@ func (t *TextView) Selection() TextSelection  { return t.selection }
 
 // SetSelection clamps UTF-8 byte offsets to the document and whole Cluster
 // boundaries when typography is available, preserving selection direction.
-func (t *TextView) SetSelection(s TextSelection) { t.setSelectionValue(s) }
-func (t *TextView) ReadOnly() bool               { return t.readOnly }
-func (t *TextView) SetReadOnly(value bool)       { t.setReadOnly(value) }
-func (t *TextView) AcceptsTab() bool             { return t.acceptsTab }
-func (t *TextView) SetAcceptsTab(value bool)     { t.setAcceptsTab(value) }
-func (t *TextView) WrapMode() WrapMode           { return t.wrap }
-func (t *TextView) SetWrapMode(value WrapMode)   { t.setWrapMode(value) }
-func (t *TextView) Padding() float32             { return t.padding }
-func (t *TextView) SetPadding(value float32)     { t.setPadding(value) }
+func (t *TextView) SetSelection(s TextSelection)     { t.setSelectionValue(s) }
+func (t *TextView) ReadOnly() bool                   { return t.readOnly }
+func (t *TextView) SetReadOnly(value bool)           { t.setReadOnly(value) }
+func (t *TextView) AcceptsTab() bool                 { return t.acceptsTab }
+func (t *TextView) SetAcceptsTab(value bool)         { t.setAcceptsTab(value) }
+func (t *TextView) WrapMode() WrapMode               { return t.wrap }
+func (t *TextView) SetWrapMode(value WrapMode)       { t.setWrapMode(value) }
+func (t *TextView) Padding() geometry.Insets         { return t.padding }
+func (t *TextView) SetPadding(value geometry.Insets) { t.setPadding(value) }
 func (t *TextView) ConnectChange(fn func(TextChange)) signal.Handle {
 	return t.connectChange(fn)
 }

@@ -17,7 +17,7 @@ import (
 type HeaderBar struct {
 	WidgetBase
 	child       Widget
-	padding     float32
+	padding     geometry.Insets
 	info        ChromeInfo
 	connections signal.Handles
 	dragRegion  signal.Signal2[geometry.Point, *bool]
@@ -25,7 +25,7 @@ type HeaderBar struct {
 }
 
 func NewHeaderBar() *HeaderBar {
-	h := &HeaderBar{padding: 8}
+	h := &HeaderBar{padding: geometry.UniformInsets(8)}
 	h.SetMinSize(geometry.Size{Height: 40})
 	h.ConnectMount(h.mountChrome)
 	h.ConnectUnmount(func() {
@@ -54,9 +54,12 @@ func (h *HeaderBar) SetChild(child Widget) {
 	h.RequestLayout()
 }
 
-func (h *HeaderBar) Padding() float32 { return h.padding }
-func (h *HeaderBar) SetPadding(padding float32) {
-	padding = normalizeLayoutValue(padding)
+func (h *HeaderBar) Padding() geometry.Insets { return h.padding }
+
+// SetPadding sets the per-edge content inset in DIP. Negative and non-finite
+// edges become 0. It separates content from both window edges and controls.
+func (h *HeaderBar) SetPadding(padding geometry.Insets) {
+	padding = normalizeInsets(padding)
 	if h.padding != padding {
 		h.padding = padding
 		h.RequestLayout()
@@ -80,10 +83,10 @@ func (h *HeaderBar) Measure(constraint layout.Constraint) layout.Measurement {
 	constraint = h.layoutConstraint(constraint)
 	var m layout.Measurement
 	if child := h.liveChild(); child != nil && child.Visible() {
-		m = measureWidget(child, layout.Loose(constraint.Inset(h.padding).Max))
+		m = measureWidget(child, layout.Loose(constraint.Insets(h.padding).Max))
 	}
 	childHeight := m.Height
-	width := m.Width + 2*h.padding
+	width := m.Width + h.padding.Horizontal()
 	if constraint.Max.Width < layout.Inf {
 		// Choose the available width within the effective parent/self limits.
 		// In an unbounded axis (e.g. a weighted row's initial measure), keep
@@ -92,11 +95,12 @@ func (h *HeaderBar) Measure(constraint layout.Constraint) layout.Measurement {
 	}
 	m.Size = constraint.Clamp(geometry.Size{
 		Width:  width,
-		Height: m.Height + 2*h.padding,
+		Height: m.Height + h.padding.Vertical(),
 	})
 	// Header contents are centered vertically.
 	if m.HasBaseline {
-		inner := geometry.Rect(0, 0, m.Width, m.Height).Inset(h.padding)
+		inner := geometry.Rect(0, 0, m.Width, m.Height).
+			Insets(h.padding.Left, h.padding.Top, h.padding.Right, h.padding.Bottom)
 		m.Baseline += inner.Y + max(0, (inner.Height-childHeight)/2)
 	}
 	return m
@@ -123,12 +127,12 @@ func (h *HeaderBar) Arrange(rect geometry.Rectangle) {
 func (h *HeaderBar) contentRect() geometry.Rectangle {
 	bounds := geometry.Rect(0, 0, h.rect.Width, h.rect.Height)
 	if !h.info.Enabled || emptyRect(h.info.ControlsBounds) {
-		return bounds.Inset(h.padding)
+		return bounds.Insets(h.padding.Left, h.padding.Top, h.padding.Right, h.padding.Bottom)
 	}
 	occupied := h.info.ControlsBounds
 	own := h.windowRect()
 	if emptyRect(own.Intersect(occupied)) {
-		return bounds.Inset(h.padding)
+		return bounds.Insets(h.padding.Left, h.padding.Top, h.padding.Right, h.padding.Bottom)
 	}
 	// This is the same side policy as the window-owned controls, not a
 	// per-HeaderBar choice. Window coordinates handle split header rows.
@@ -140,7 +144,7 @@ func (h *HeaderBar) contentRect() geometry.Rectangle {
 	} else {
 		bounds.Width = max(0, min(bounds.Width, occupied.X-own.X))
 	}
-	return bounds.Inset(h.padding)
+	return bounds.Insets(h.padding.Left, h.padding.Top, h.padding.Right, h.padding.Bottom)
 }
 
 func (h *HeaderBar) Paint(p Painter) {

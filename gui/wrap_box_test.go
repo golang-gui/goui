@@ -55,7 +55,8 @@ func TestWrapBoxSettersInvalidateOnlyOnChange(t *testing.T) {
 		set func(float32)
 		get func() float32
 	}{
-		{box.SetSpacing, box.Spacing}, {box.SetLineSpacing, box.LineSpacing}, {box.SetPadding, box.Padding},
+		{box.SetSpacing, box.Spacing}, {box.SetLineSpacing, box.LineSpacing},
+		{func(v float32) { box.SetPadding(geometry.UniformInsets(v)) }, func() float32 { return box.Padding().Left }},
 	}
 	for _, s := range setters {
 		for _, invalid := range []float32{-1, float32(math.NaN()), float32(math.Inf(1))} {

@@ -41,7 +41,7 @@ func TestIntegratedHeaderBarUsesContentTop(t *testing.T) {
 					if win.chrome.controlsHeight != height || controls.Center().Y != own.Center().Y {
 						t.Fatalf("state=%v: height=%v, header=%v, controls=%v", state, win.chrome.controlsHeight, own, controls)
 					}
-					if controls.X+controls.Width != win.width-6 || right.Padding() != 8 {
+					if controls.X+controls.Width != win.width-6 || right.Padding() != geometry.UniformInsets(8) {
 						t.Fatal("content inset was added to controls/right padding twice")
 					}
 					if !emptyRect(right.Child().base().windowRect().Intersect(controls)) {
@@ -229,7 +229,7 @@ func TestHeaderBarPaddingParticipatesInDragQuery(t *testing.T) {
 	win, native := chromeFixture(t, false, true)
 	root := NewLinearBox(layout.DirectionVertical)
 	header := NewHeaderBar()
-	header.SetPadding(16)
+	header.SetPadding(geometry.UniformInsets(16))
 	header.SetMinSize(geometry.Size{Height: 64})
 	button := NewButton()
 	button.SetMinSize(geometry.Size{Height: 24})
@@ -352,7 +352,7 @@ func TestHeaderBarAutomaticControlsAvoidance(t *testing.T) {
 			if !emptyRect(header.Child().base().windowRect().Intersect(occupied)) {
 				t.Fatalf("child overlapped controls: %v / %v", header.Child().Rect(), occupied)
 			}
-			if header.Padding() != 8 {
+			if header.Padding() != geometry.UniformInsets(8) {
 				t.Fatal("avoidance mutated padding")
 			}
 		}
@@ -360,12 +360,12 @@ func TestHeaderBarAutomaticControlsAvoidance(t *testing.T) {
 			t.Fatal("unrelated row was inset")
 		}
 		if nativeButtons {
-			if left.Child().Rect().X != occupied.X+occupied.Width+left.Padding() || right.Child().Rect().X != 8 {
+			if left.Child().Rect().X != occupied.X+occupied.Width+left.Padding().Left || right.Child().Rect().X != 8 {
 				t.Fatal("native left reservation not local to the intersecting segment")
 			}
 			// Padding belongs to the remaining content area, including when it
 			// is larger than the controls' reservation.
-			left.SetPadding(80)
+			left.SetPadding(geometry.UniformInsets(80))
 			arrange()
 			if left.Child().Rect().X != occupied.X+occupied.Width+80 {
 				t.Fatal("controls consumed content padding")
@@ -665,5 +665,18 @@ func TestHeaderHeightQueryAfterWindowShrink(t *testing.T) {
 	win.paint()
 	if win.chrome.info.ControlsBounds.Center().Y != 40 {
 		t.Fatal("a clipped old controls region prevented the new height query")
+	}
+}
+
+func TestHeaderBarAsymmetricPadding(t *testing.T) {
+	header := NewHeaderBar()
+	header.SetMinSize(geometry.Size{})
+	header.SetPadding(geometry.Insets{Left: 10, Top: 2, Right: 6, Bottom: 4})
+	child := newSizedWidget(geometry.Size{Width: 20, Height: 10})
+	header.SetChild(child)
+
+	header.Arrange(geometry.Rect(0, 0, 100, 60))
+	if got := child.Rect(); got != geometry.Rect(10, 24, 84, 10) {
+		t.Fatalf("asymmetric header content = %+v", got)
 	}
 }

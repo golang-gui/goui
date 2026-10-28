@@ -822,3 +822,28 @@ func (p *testButtonBackgroundPainter) DrawBoxShadow(rect geometry.Rectangle, rad
 }
 
 func (p *testButtonBackgroundPainter) ClearPath(path graphics.Path) {}
+
+func TestButtonAsymmetricPadding(t *testing.T) {
+	button := NewButton()
+	button.SetPadding(geometry.Insets{Left: 10, Top: 2, Right: 6, Bottom: 4})
+	button.SetLayoutManager(&testLayoutManager{
+		measureSize:     geometry.Size{Width: 20, Height: 30},
+		measureBaseline: 7,
+		hasBaseline:     true,
+	})
+	button.SetChild(newTestWidget())
+
+	measured := button.Measure(layout.Unbounded())
+	if measured.Size != (geometry.Size{Width: 36, Height: 36}) || !measured.HasBaseline || measured.Baseline != 9 {
+		t.Fatalf("asymmetric padding measure = %+v", measured)
+	}
+
+	filled := NewButton()
+	filled.SetPadding(geometry.Insets{Left: 10, Top: 2, Right: 6, Bottom: 4})
+	filled.SetLayoutManager(layout.NewFillLayout())
+	filled.SetChild(newTestWidget())
+	filled.Arrange(geometry.Rect(0, 0, 100, 60))
+	if got := filled.Child().Rect(); got != geometry.Rect(10, 2, 84, 54) {
+		t.Fatalf("asymmetric padding arrange = %+v", got)
+	}
+}

@@ -429,6 +429,15 @@ func normalizeLayoutValue(v float32) float32 {
 	return v
 }
 
+func normalizeInsets(padding geometry.Insets) geometry.Insets {
+	return geometry.Insets{
+		Left:   normalizeLayoutValue(padding.Left),
+		Top:    normalizeLayoutValue(padding.Top),
+		Right:  normalizeLayoutValue(padding.Right),
+		Bottom: normalizeLayoutValue(padding.Bottom),
+	}
+}
+
 func (w *WidgetBase) MinSize() geometry.Size {
 	return geometry.Size{Width: w.minWidth, Height: w.minHeight}
 }
