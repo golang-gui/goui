@@ -3,6 +3,37 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## 圆角切点缺口修正（2026-10-28）
+
+- [x] 用户反馈 Linux / OpenGL / 1x 右下角直边与圆弧连接缺口；独立 X11 离屏
+  复现同一问题，普通 FillPath 也可复现。原路径在表面边缘形成零宽相切尖端，
+  AA 条带侵入保留区域；不是透明合成或圆角半径错误。上轮独立圆形覆盖测试没有
+  覆盖这一遮罩几何，故未发现缺口。
+- [x] GUI 和两个窗口例程将闭合边外延到表面之外 2 物理像素，保持圆弧位置、
+  半径、最终布局和缩放输入不变。不增加公共接口、不改绘制后端或 nanovgo 依赖。
+- [x] 生产路径几何回归检查四角反射、闭合边、圆弧不变、非零起点和小窗口钳制；
+  原生像素回归检查四角各两个相切方向、有无边框及 1/1.25/1.5/2x。
+  改回旧路径后两类新断言均失败，旧 OpenGL 1x 切点 Alpha=0，独立几何参考下界=186。
+  初版固定 16/255 Alpha 差值断言在新 OpenGL 1.25x 也失败（217 与圆面积 235）；
+  最终采用圆内外各 1/4 物理像素的几何参考区间，不要求不同 AA 曲线给出同一 Alpha。
+- [x] 仓库外干净源码，Linux amd64 / Go 1.25.8 / 独立 Xvnc + Xfwm4 合成会话：
+  全仓非缓存 go test ./... 为 2539 PASS、10 既有 SKIP、0 FAIL；gui race、普通
+  vet 及 CGO_ENABLED=0 的 Windows amd64 / macOS arm64 全仓构建通过。
+  Software / OpenGL 均通过四种离屏缩放的切点断言及两种应用缩放的实际提交；
+  两后端 UI 自动生命周期通过。实际 Integrated OpenGL 1x 截图确认连接连续、
+  无缺口，正常事件路径的右边缩放和关闭通过，根布局仍从 (0,0) 铺满。
+- [x] Windows 10 22H2 19045 amd64 / macOS 15.7.7 arm64，均使用 Go 1.25.8：
+  gui 包各 1004 PASS、0 FAIL；Windows Direct2D 1x / Software 2x，macOS OpenGL 1x /
+  Software 2x 的原生像素例程通过，内部覆盖 1/1.25/1.5/2x；Windows UI 同配置、
+  macOS UI OpenGL 2x / Software 1x 的自动断言通过。用 remote-computer-use
+  截图核对 Windows Direct2D 1x / macOS OpenGL 1x 四角及透明圆孔，真实点击重绘后
+  Escape 正常退出。本轮没有再跑远端全仓；Windows RDP OpenGL 仍保留上轮环境缺口，
+  Linux 为 llvmpipe；未扩大到实体 GPU、混合 DPI 或其他 WM 的验收结论。
+- 日志、独立副本及截图位于 /tmp/goui-corner-fix-hkntkeds，远端复用各自临时目录
+  goui-clearpath-20261028 的 goui-corner 子目录。保留无关未跟踪文件，未改系统设置。
+  全仓旧测试触及剪贴板并在副本中写图片；实际输入改变了指针／焦点。专用 X11、
+  计划任务和任务窗口已清理，保留用户原有 SSH/VNC/RDP 会话。
+
 ## 通用 ClearPath 与 Linux Integrated 铺满（2026-10-28）
 
 - [x] 确认设计，更新 DesignGraphicsClipping：通用擦除、Root AfterPaint、自定义

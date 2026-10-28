@@ -75,7 +75,10 @@ func corners(p gui.Painter, b geometry.Rectangle, r float32) {
 	if r <= 0 {
 		return
 	}
-	path := graphics.MoveTo(0, 0).LineTo(r, 0).ArcTo(r, r, 0, 0, 0, 0, r).Close()
+	// 闭合边放在表面外，避免切点处的零宽尖端让 AA 擦除直边像素。
+	padding := 2 / p.PixelScale()
+	path := graphics.MoveTo(-padding, -padding).LineTo(r, -padding).
+		LineTo(r, 0).ArcTo(r, r, 0, 0, 0, 0, r).LineTo(-padding, r).Close()
 	p.Save()
 	defer p.Restore()
 	for _, c := range [][4]float32{{b.X, b.Y, 1, 1}, {b.X + b.Width, b.Y, -1, 1}, {b.X + b.Width, b.Y + b.Height, -1, -1}, {b.X, b.Y + b.Height, 1, -1}} {

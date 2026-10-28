@@ -5,7 +5,8 @@
 // GOUI_PLAT_PAINTER=software/opengl，Windows 另可用 direct2d。
 // 初始：透明无框窗口，四色底板及透明圆孔；自动先执行 1/1.25/1.5/2x 离屏像素断言。
 // 操作与预期：
-//  1. 四个外角及中央圆孔应显露桌面，弧线平滑，没有黑边或颜色残留。
+//  1. 四个外角及中央圆孔应显露桌面，弧线平滑，没有黑边或颜色残留；
+//     圆弧与直边相切处连续，不能出现一像素缺口或突然缩进。
 //  2. 点击任意非透明区域重绘；圆孔、角部和颜色保持一致，不能擦掉整个底板。
 //  3. 调整 GOUI_PLAT_SCALE=1/2 重启，分别验证各后端；圆角不变为直角。
 //  4. 检查终端 PIXELS PASS、实际 Painter 与 scale；失败打印 FAIL 并非零退出。
@@ -76,11 +77,7 @@ func run() error {
 		r := min(size.Width, size.Height) / 5
 		cx, cy := size.Width/2, size.Height/2
 		painter.ClearPath(graphics.MoveTo(cx-r, cy).ArcTo(r, r, 0, 0, 1, cx+r, cy).ArcTo(r, r, 0, 0, 1, cx-r, cy).Close())
-		corner := graphics.MoveTo(0, 0).LineTo(24, 0).ArcTo(24, 24, 0, 0, 0, 0, 24).Close()
-		for _, c := range [][4]float32{{0, 0, 1, 1}, {size.Width, 0, -1, 1}, {size.Width, size.Height, -1, -1}, {0, size.Height, 1, -1}} {
-			painter.SetTransform(geometry.Translate(c[0], c[1]).Scale(c[2], c[3]))
-			painter.ClearPath(corner)
-		}
+		clearCorners(painter, size.Width, size.Height, 24, size.PixelWidth/size.Width)
 		painter.End()
 		if *auto {
 			loop.Post(loop.Quit)
@@ -132,6 +129,19 @@ func rectangle(x, y, w, h float32) graphics.Path {
 	return graphics.MoveTo(x, y).LineTo(x+w, y).LineTo(x+w, y+h).LineTo(x, y+h).Close()
 }
 
+func clearCorners(p graphics.Painter, width, height, radius, scale float32) {
+	// 两物理像素的外延只移动闭合边，不移动圆弧及其相切点。
+	padding := 2 / scale
+	corner := graphics.MoveTo(-padding, -padding).LineTo(radius, -padding).
+		LineTo(radius, 0).ArcTo(radius, radius, 0, 0, 0, 0, radius).
+		LineTo(-padding, radius).Close()
+	for _, c := range [][4]float32{{0, 0, 1, 1}, {width, 0, -1, 1}, {width, height, -1, -1}, {0, height, 1, -1}} {
+		p.SetTransform(geometry.Translate(c[0], c[1]).Scale(c[2], c[3]))
+		p.ClearPath(corner)
+	}
+	p.SetTransform(geometry.Identity())
+}
+
 func checkPixels(p graphics.Painter) error {
 	pixels := image.NewRGBA(image.Rect(0, 0, 2, 2))
 	for y := 0; y < 2; y++ {
@@ -145,6 +155,9 @@ func checkPixels(p graphics.Painter) error {
 	}
 	defer img.Destroy()
 	for _, scale := range []float32{1, 1.25, 1.5, 2} {
+		if err := checkCornerTangencies(p, scale); err != nil {
+			return err
+		}
 		for frame := 0; frame < 2; frame++ {
 			result, err := p.RenderImage(32, 24, scale, func() {
 				p.Clear(graphics.Color{R: .5, G: .25, B: .125, A: .5})
@@ -236,6 +249,63 @@ func checkPixels(p graphics.Painter) error {
 			}{{11, 9, color.RGBA{}}, {15, 9, color.RGBA{R: 80, G: 120, B: 200, A: 255}}, {2, 2, color.RGBA{R: 80, G: 120, B: 200, A: 255}}} {
 				if err := pixelNear(result, s.x, s.y, s.want, 0); err != nil {
 					return fmt.Errorf("transform=%v: %w", transform, err)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func checkCornerTangencies(p graphics.Painter, scale float32) error {
+	w, h := int(128*scale), int(96*scale)
+	for _, border := range []bool{false, true} {
+		img, err := p.RenderImage(w, h, scale, func() {
+			p.Clear(graphics.Color{})
+			p.FillRect(graphics.Rect(0, 0, 128, 96), graphics.RGB(245, 246, 248))
+			if border {
+				// 与 Integrated 一样保持内轮廓、把边框外轮廓放到最终遮罩以外。
+				margin := 2 / scale
+				stroke := float32(1) + margin
+				half := stroke / 2
+				p.DrawRoundRect(graphics.Rect(-margin+half, -margin+half, 128+2*margin-stroke, 96+2*margin-stroke),
+					12+margin-half, stroke, graphics.RGB(165, 165, 165))
+			}
+			clearCorners(p, 128, 96, 12, scale)
+		})
+		if err != nil {
+			return err
+		}
+		for step := 0; step < 3; step++ {
+			y := int(12*scale) - 1 - step
+			// 用圆的面积独立估算边缘像素覆盖率，采用 64x64 子像素采样。
+			// 切点处要求轮廓落在原始圆内外各 1/4 物理像素的面积上下界中，
+			// 容纳路径细分和原生 AA 曲线，而非人为固定两后端的 Alpha 差值。
+			// 旧路径将这些大部分在圆内的像素整颗擦除，明确违反该下界。
+			var inside [2]int
+			const samples = 64
+			r := float64(12 * scale)
+			for sy := 0; sy < samples; sy++ {
+				for sx := 0; sx < samples; sx++ {
+					dx := (float64(sx)+.5)/samples - r
+					dy := float64(y) + (float64(sy)+.5)/samples - r
+					for i, limit := range []float64{r - .25, r + .25} {
+						if dx*dx+dy*dy <= limit*limit {
+							inside[i]++
+						}
+					}
+				}
+			}
+			// 面积采样及 8 位量化的边界各留 2，不放宽几何误差范围。
+			lower := int(math.Round(float64(inside[0])*255/(samples*samples))) - 2
+			upper := int(math.Round(float64(inside[1])*255/(samples*samples))) + 2
+			for _, q := range [][2]int{{0, y}, {y, 0}, {w - 1, y}, {w - 1 - y, 0},
+				{w - 1, h - 1 - y}, {w - 1 - y, h - 1}, {0, h - 1 - y}, {y, h - 1}} {
+				got := color.RGBAModel.Convert(img.At(q[0], q[1])).(color.RGBA)
+				if int(got.A) < lower || int(got.A) > upper {
+					return fmt.Errorf("corner tangent %s scale=%g border=%v pixel=%v alpha=%d want=[%d,%d]", p.Name(), scale, border, q, got.A, lower, upper)
+				}
+				if got.R > got.A || got.G > got.A || got.B > got.A {
+					return fmt.Errorf("corner tangent invalid premultiplied pixel %v", got)
 				}
 			}
 		}
