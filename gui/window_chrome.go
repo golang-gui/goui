@@ -520,6 +520,8 @@ func (controller *chromeInteractionController) handleGesture(ctx EventContext, n
 			now.Sub(controller.lastClick) >= 0 && now.Sub(controller.lastClick) <= gestureClickInterval && captionNear(controller.lastPos, e.Position)
 		if region != ChromeRegionCaption {
 			controller.gesture.Claim()
+			// Resize owns this press even when content paints underneath the border.
+			ctx.StopPropagation()
 		}
 	case events.PointerMove:
 		if controller.gesture == nil || controller.region != ChromeRegionCaption {

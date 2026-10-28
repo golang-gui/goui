@@ -685,8 +685,8 @@ func TestIntegratedResizeWithoutWidgetHit(t *testing.T) {
 			win.paint()
 			points := []geometry.Point{{X: 100, Y: 2}, {X: 100, Y: 398}, {X: 2, Y: 100}, {X: 638, Y: 100}, {X: 2, Y: 2}, {X: 638, Y: 2}, {X: 2, Y: 398}, {X: 638, Y: 398}}
 			for i, point := range points {
-				if target := win.dispatcher.pick(win.Widget(), point); target != nil {
-					t.Fatalf("resize perimeter hit a Widget: %v", target)
+				if target := win.dispatcher.pick(win.Widget(), point); (target == nil) != (content == "empty") {
+					t.Fatalf("resize perimeter content extent mismatch: %v", target)
 				}
 				_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Position: point, Button: events.PointerButtonLeft, Buttons: events.PointerButtonLeftDown})
 				_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerUp, Position: point, Button: events.PointerButtonLeft})

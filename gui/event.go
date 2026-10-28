@@ -307,6 +307,13 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 		}
 	}
 
+	// Host-owned gestures may consume a press before it moves Widget focus.
+	if pointer, ok := event.(events.PointerEvent); ok && pointer.EventType == events.PointerDown {
+		focusNearest(host, target)
+		if ctx.alive != nil && !ctx.alive() {
+			return nil
+		}
+	}
 	d.dispatchShortcuts(ctx, PhaseCapture)
 	if ctx.PropagationStopped() {
 		return nil
@@ -361,9 +368,6 @@ func (d *EventDispatcher) target(host EventTarget, root Widget, event events.Eve
 		target := d.pick(root, event.Position)
 		if target != nil && !IsEnabled(target) {
 			return nil
-		}
-		if event.EventType == events.PointerDown {
-			focusNearest(host, target)
 		}
 		return target
 	case events.WheelEvent:

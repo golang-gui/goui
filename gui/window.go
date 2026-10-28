@@ -14,6 +14,7 @@ import (
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/style"
 )
 
@@ -165,7 +166,6 @@ type window struct {
 	stateChanged   signal.Signal1[WindowState]
 	minSize        geometry.Size // explicit minimum from SetMinSize; zero means derive from tree
 	minSizeApplied bool          // true once the first layout has derived and applied the min-size hint
-	minSizeInset   float32       // perimeter used by the automatic hint; changes with state/scale
 	chrome         *windowChrome
 	controls       *windowControls
 	layingOut      bool
@@ -686,16 +686,14 @@ func (w *window) SetMinSize(size geometry.Size) {
 }
 
 // updateMinSize derives and applies the window-manager min-size hint from the
-// widget tree when no explicit SetMinSize was given. Linux GUI-drawn Integrated
-// includes its reserved perimeter and reapplies the hint when that changes.
+// widget tree when no explicit SetMinSize was given. Resize hit zones do not
+// consume layout space or increase the content-derived minimum.
 // The content is measured unbounded to discover its preferred intrinsic size.
 func (w *window) updateMinSize() {
-	inset := w.frameInset()
-	if w.minSizeApplied && w.minSizeInset == inset {
+	if w.minSizeApplied {
 		return
 	}
 	w.minSizeApplied = true
-	w.minSizeInset = inset
 	// Explicit SetMinSize wins over auto-derivation.
 	if w.minSize.Width > 0 || w.minSize.Height > 0 {
 		return
@@ -706,7 +704,7 @@ func (w *window) updateMinSize() {
 	}
 	pref := measureWidget(w.root, layout.Unbounded()).Size
 	if pref.Width > 0 || pref.Height > 0 {
-		native.SetMinSize(pref.Width+2*inset, pref.Height+2*inset)
+		native.SetMinSize(pref.Width, pref.Height)
 	}
 }
 
@@ -868,8 +866,13 @@ func (w *window) paint() {
 		w.controls.layout()
 		controls = w.controls
 	}
-	border, inset := w.frameStyle()
-	w.drawDecoratedFrame(w.root, w.backgroundStyle(), border, inset, controls)
+	border := w.frameStyle()
+	bounds := w.contentBounds()
+	var finish func(Painter)
+	if w.floatingFrame() {
+		finish = func(p Painter) { clearRoundCorners(p, bounds, windowFrameRadius) }
+	}
+	w.drawSurfaceFrame(w.root, w.backgroundStyle(), border, bounds, bounds, graphics.BoxShadow{}, finish, controls)
 }
 
 func (w *window) layoutContent() {
@@ -878,11 +881,9 @@ func (w *window) layoutContent() {
 	w.layoutFrameIn(w.root, w.contentBounds())
 }
 
-// Only Linux GUI-drawn Integrated owns a perimeter outside Widget layout.
-// Its bounds match the structural paint clip and the resize strips exactly.
+// Content uses the complete client area; resize hit zones are input only.
 func (w *window) contentBounds() geometry.Rectangle {
-	inset := w.frameInset()
-	return geometry.Rect(inset, inset, max(0, w.width-2*inset), max(0, w.height-2*inset))
+	return geometry.Rect(0, 0, max(0, w.width), max(0, w.height))
 }
 
 // PlatformWindow is the escape hatch to the underlying platform window.
@@ -1107,30 +1108,42 @@ func (w *window) frameCursor() CursorShape {
 	}
 }
 
-// The frame owns the perimeter outside content layout. Coordinates still use
-// the complete native surface; Widgets and controls avoid the resize strips.
-func (w *window) frameStyle() (style.Style, float32) {
+// The frame is drawn over full-client content without reserving layout space.
+func (w *window) frameStyle() style.Style {
 	if !w.floatingFrame() {
-		return style.Style{}, 0
+		return style.Style{}
 	}
 	frame := style.Default().Radius(windowFrameRadius).BorderWidth(windowFrameBorder).
 		BorderColor(w.decorationPalette(true).frame).Style
-	return frame, w.frameInset()
+	return frame
 }
 
-// Resize input and paint clipping share fixed geometry, independent of colors
-// and application style resolution.
-func (w *window) frameInset() float32 {
+// resizeBorderWidth is independent of window rounding and content layout.
+func (w *window) resizeBorderWidth() float32 {
 	if !w.floatingFrame() {
 		return 0
 	}
-	radius := min(windowFrameRadius, max(0, min(w.width, w.height)/2))
 	scale := w.frameScale()
-	// An equally inset rectangle lies inside a round corner when its inset
-	// is at least r*(1-1/sqrt(2)). Keep an extra physical pixel for AA and
-	// round inward so backend pixel snapping cannot expose the corner.
-	inset := max(float32(5), windowFrameBorder, radius*(1-1/math.Sqrt2)+1/scale)
-	return float32(math.Ceil(float64(inset*scale))) / scale
+	return float32(math.Ceil(float64(5*scale))) / scale
+}
+
+// clearRoundCorners is host policy implemented with ordinary drawing. Each
+// reflected path erases only one corner; no compound path or window API is needed.
+func clearRoundCorners(p Painter, rect geometry.Rectangle, radius float32) {
+	radius = min(normalizeLayoutValue(radius), max(0, min(rect.Width, rect.Height)/2))
+	if radius <= 0 {
+		return
+	}
+	path := graphics.MoveTo(0, 0).LineTo(radius, 0).
+		ArcTo(radius, radius, 0, 0, 0, 0, radius).Close()
+	for _, corner := range []struct{ x, y, sx, sy float32 }{
+		{rect.X, rect.Y, 1, 1}, {rect.X + rect.Width, rect.Y, -1, 1},
+		{rect.X + rect.Width, rect.Y + rect.Height, -1, -1}, {rect.X, rect.Y + rect.Height, 1, -1},
+	} {
+		p.SetTransform(geometry.Translate(corner.x, corner.y).Scale(corner.sx, corner.sy))
+		p.ClearPath(path)
+	}
+	p.SetTransform(geometry.Identity())
 }
 
 // These are GUI resize affordances, not a native input-region mask. Transparent
@@ -1140,7 +1153,7 @@ func (c *windowChrome) queryFrameRegion(p geometry.Point, result *ChromeRegion) 
 	if !w.floatingFrame() || !containsPoint(geometry.Rect(0, 0, w.width, w.height), p) {
 		return
 	}
-	edge := w.frameInset()
+	edge := w.resizeBorderWidth()
 	const corner float32 = 16
 	left, right := p.X < edge, p.X >= w.width-edge
 	top, bottom := p.Y < edge, p.Y >= w.height-edge
