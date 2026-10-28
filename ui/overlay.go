@@ -83,13 +83,13 @@ func (v *OverlayView) Update(ctx BuildContext, widget gui.Widget) {
 			children[i] = item.child
 		}
 	}
-	for i, child := range ctx.UpdateChildren(floating, children) {
+	ctx.UpdateChildren(floating, children, func(i int, child gui.Widget) {
 		if child != nil {
 			item := v.items[i]
 			floating.items[child].onPosition = item.onPosition
 			overlay.SetOverlayFill(child, item.fill)
 		}
-	}
+	})
 	// Callback identity cannot be compared; captured state may have changed.
 	overlay.RequestLayout()
 }

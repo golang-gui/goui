@@ -55,13 +55,16 @@ func (c *tabContext) SetState(v any) { c.state = v }
 
 func (c *tabContext) AfterUpdate(fn func()) { c.after = append(c.after, fn) }
 
-func (c *tabContext) UpdateChild(target baseui.Bin, child baseui.View) gui.Widget {
+func (c *tabContext) UpdateChild(target baseui.Bin, child baseui.View, apply ...func(gui.Widget)) gui.Widget {
 	if c.children == nil {
 		c.children = make(map[baseui.Bin]gui.Widget)
 	}
 	if child == nil {
 		delete(c.children, target)
 		target.SetChild(nil)
+		if len(apply) != 0 && apply[0] != nil {
+			apply[0](nil)
+		}
 		return nil
 	}
 	widget := c.children[target]
@@ -70,12 +73,15 @@ func (c *tabContext) UpdateChild(target baseui.Bin, child baseui.View) gui.Widge
 		c.children[target] = widget
 		target.SetChild(widget)
 	}
+	if len(apply) != 0 && apply[0] != nil {
+		apply[0](widget)
+	}
 	return widget
 }
 
 // This adapter-level double executes page bindings; generic reconciliation and
 // node transfer use the real root in ui's tests, not this simplified double.
-func (c *tabContext) UpdateChildren(target baseui.Container, views []baseui.View) []gui.Widget {
+func (c *tabContext) UpdateChildren(target baseui.Container, views []baseui.View, apply ...func(int, gui.Widget)) []gui.Widget {
 	if c.lists == nil {
 		c.lists = make(map[baseui.Container][]*tabTestNode)
 	}
@@ -119,6 +125,11 @@ func (c *tabContext) UpdateChildren(target baseui.Container, views []baseui.View
 	for i := len(next) - 1; i >= 0; i-- {
 		target.MoveChildBefore(next[i].widget, sibling)
 		sibling = next[i].widget
+	}
+	if len(apply) != 0 && apply[0] != nil {
+		for i, widget := range result {
+			apply[0](i, widget)
+		}
 	}
 	return result
 }
@@ -349,3 +360,5 @@ func TestTabBarContextMenuDeclarationsAreIndependentForSharedView(t *testing.T) 
 		t.Fatal("second bar used another declaration's menu")
 	}
 }
+
+func (*tabContext) RequestUpdate() {}

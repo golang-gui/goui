@@ -9,11 +9,6 @@ type State[T any] struct {
 	state state.State[T]
 }
 
-type BindState[T any] interface {
-	Get() T
-	Set(T)
-}
-
 func MakeState[T any](value T) (s State[T]) {
 	s.state = state.Make(value)
 	return

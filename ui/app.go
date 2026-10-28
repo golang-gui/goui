@@ -28,7 +28,8 @@ type App interface {
 	Sync(func())
 	// Quit asks the running app to stop.
 	Quit()
-	// RequestUpdate coalesces a declarative rebuild on the UI thread.
+	// RequestUpdate coalesces an application-wide declarative rebuild on the UI
+	// thread. Use property bindings or ComposeBase.Observe for local updates.
 	RequestUpdate()
 	// FindWindow borrows the currently mounted GUI window with id. Empty or
 	// missing IDs, an unmounting window, and a stopped app return nil. Lookup is
@@ -203,6 +204,11 @@ type app struct {
 	updatingWindows    bool // guards the whole batch, including completion callbacks and Show
 	reconcilingWindows bool // defer root completion callbacks until every window tree is updated
 	appliedSheet       style.StyleSheet
+	fullUpdate         bool
+	dirty              map[*node]updateKind
+	dirtyOrder         []*node
+	updateDepth        int
+	batch              uint64
 	updatePending      bool
 	stopping           bool
 	finished           chan struct{} // closed only after run returns, not on a Quit request
@@ -298,38 +304,44 @@ func (a *app) postTask(f func()) bool {
 // RequestUpdate coalesces a declarative rebuild onto the UI thread.
 func (a *app) RequestUpdate() {
 	a.mu.Lock()
-	if a.updatePending {
-		a.mu.Unlock()
-		return
+	if !a.stopping {
+		a.fullUpdate = true
 	}
-	a.updatePending = true
 	a.mu.Unlock()
-
-	if !a.postTask(func() {
-		a.runPendingUpdate()
-	}) {
-		a.mu.Lock()
-		a.updatePending = false
-		a.mu.Unlock()
-	}
+	a.scheduleUpdate()
 }
 
 func (a *app) runPendingUpdate() {
 	a.mu.Lock()
-	if a.stopping || !a.updatePending {
-		a.updatePending = false
+	a.updatePending = false
+	if a.stopping || a.updateDepth != 0 {
 		a.mu.Unlock()
 		return
 	}
-	a.updatePending = false
+	full := a.fullUpdate
+	jobs := make([]nodeUpdate, 0, len(a.dirtyOrder))
+	for _, n := range a.dirtyOrder {
+		jobs = append(jobs, nodeUpdate{n, a.dirty[n]})
+	}
+	a.fullUpdate = false
+	a.dirty = nil
+	a.dirtyOrder = nil
 	a.mu.Unlock()
-
-	if err := a.rebuild(); err != nil {
+	var err error
+	if full {
+		err = a.rebuildWith(jobs)
+	} else if len(jobs) > 0 {
+		err = a.reconcileBatch(nil, jobs, false)
+	}
+	if err != nil {
 		a.fail(err)
 	}
 }
 
-func (a *app) rebuild() error {
+func (a *app) rebuild() error { return a.rebuildWith(nil) }
+
+func (a *app) rebuildWith(jobs []nodeUpdate) error {
+	defer a.holdUpdates()()
 	if a.build == nil {
 		return ErrAppBuildNil
 	}
@@ -338,7 +350,7 @@ func (a *app) rebuild() error {
 		return err
 	}
 	a.applyStyleSheet(sheet)
-	return a.reconcileWindows(windows)
+	return a.reconcileBatch(windows, jobs, true)
 }
 
 // resolveRoot extracts the windows and the optional application style sheet from
@@ -386,7 +398,9 @@ func sameSheet(a, b style.StyleSheet) bool {
 	return reflect.DeepEqual(a, b)
 }
 
-func (a *app) reconcileWindows(views []WindowView) error {
+func (a *app) reconcileWindows(views []WindowView) error { return a.reconcileBatch(views, nil, true) }
+
+func (a *app) reconcileBatch(views []WindowView, jobs []nodeUpdate, full bool) error {
 	seen := make(map[string]WindowView, len(views))
 	for _, view := range views {
 		if view.id == "" {
@@ -401,6 +415,8 @@ func (a *app) reconcileWindows(views []WindowView) error {
 	if a.updatingWindows {
 		return fmt.Errorf("ui: cannot nest window reconciliation; request a later update")
 	}
+	defer a.holdUpdates()()
+	a.batch++
 	a.updatingWindows, a.reconcilingWindows = true, true
 	defer func() { a.updatingWindows, a.reconcilingWindows = false, false }()
 	mounted := make([]*windowMount, 0, len(views))
@@ -420,13 +436,16 @@ func (a *app) reconcileWindows(views []WindowView) error {
 		mounted = append(mounted, mount)
 	}
 
-	for id, mount := range a.windows {
-		if _, exists := seen[id]; exists {
-			continue
+	if full {
+		for id, mount := range a.windows {
+			if _, exists := seen[id]; exists {
+				continue
+			}
+			delete(a.windows, id)
+			mount.destroy()
 		}
-		delete(a.windows, id)
-		mount.destroy()
 	}
+	localRoots := a.processNodeUpdates(jobs)
 	// Completion callbacks can transfer nodes and update the declarations. No
 	// tree may still consume this rebuild's old declarations after that point.
 	a.reconcilingWindows = false
@@ -434,6 +453,9 @@ func (a *app) reconcileWindows(views []WindowView) error {
 		if !mount.destroying {
 			mount.root.flushAfterUpdate()
 		}
+	}
+	for _, r := range localRoots {
+		r.flushAfterUpdate()
 	}
 	for _, mount := range created {
 		if !mount.destroying {
@@ -599,6 +621,9 @@ func (a *app) Quit() {
 		return
 	}
 	a.stopping = true
+	a.fullUpdate = false
+	a.dirty = nil
+	a.dirtyOrder = nil
 	a.mu.Unlock()
 
 	if a.gui != nil {
@@ -618,13 +643,23 @@ func (a *app) isStopping() bool {
 // finished: a currently executing callback may still be writing caller results.
 func (a *app) stop() {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	a.stopping = true
 	a.updatePending = false
+	a.fullUpdate = false
+	a.dirty = nil
+	a.dirtyOrder = nil
 	select {
 	case <-a.finished:
+		a.mu.Unlock()
+		return
 	default:
 		close(a.finished)
+	}
+	a.mu.Unlock()
+	// The loop may exit while native windows still exist. Release declarative
+	// connections without taking the GUI window's ownership of its widget tree.
+	for _, mount := range a.windows {
+		mount.root.unmountForWindowDestroy()
 	}
 }
 

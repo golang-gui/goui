@@ -32,18 +32,29 @@ type afterUpdateCall struct {
 }
 
 type node struct {
-	root     *root
-	id       string // declaration identity, not the widget's mutable GUI ID
-	viewType reflect.Type
-	view     View
-	widget   gui.Widget // own WidgetView widget, or the composition's output
-	state    any
-	parent   *node
-	body     *node
-	children []*childTarget
-	released bool
-	version  uint64
-	baseCtx  *viewBaseContext // persistent cross-cutting signal context, reused across rebuilds
+	updateLife
+	runtime       *app // immutable scheduler identity; current root stays UI-thread-affine
+	target        *childTarget
+	slotApply     func(gui.Widget)
+	builtBatch    uint64
+	boundBatch    uint64
+	collecting    bool
+	observed      []Observable
+	subscriptions map[Observable]*nodeSubscription
+	bindings      map[string]valueBinding
+	bindingOrder  []string
+	root          *root
+	id            string // declaration identity, not the widget's mutable GUI ID
+	viewType      reflect.Type
+	view          View
+	widget        gui.Widget // own WidgetView widget, or the composition's output
+	state         any
+	parent        *node
+	body          *node
+	children      []*childTarget
+	released      bool
+	version       uint64
+	baseCtx       *viewBaseContext // persistent cross-cutting signal context, reused across rebuilds
 }
 
 type buildContext struct {
@@ -242,6 +253,7 @@ func (r *root) updateDeclaration(old *node, view View, parent *node, depth int) 
 	if current == nil {
 		current = &node{
 			root:     r,
+			runtime:  r.runtime,
 			id:       view.base().id,
 			viewType: reflect.TypeOf(view),
 			view:     view,
@@ -263,6 +275,9 @@ func (r *root) updateDeclaration(old *node, view View, parent *node, depth int) 
 			}
 		}()
 	}
+	current.alive.Store(true)
+	defer current.finishBindings()
+	current.beginBindings()
 	ctx := &buildContext{node: current}
 	live := func() bool {
 		return r.epoch == epoch && !current.released && current.root == r && (parent == nil || !parent.released)
@@ -301,6 +316,10 @@ func (r *root) updateDeclaration(old *node, view View, parent *node, depth int) 
 		return nil
 	}
 	completed = true
+	if r.runtime != nil {
+		current.builtBatch = r.runtime.batch
+		current.boundBatch = r.runtime.batch
+	}
 	return current
 }
 
@@ -309,6 +328,8 @@ func (r *root) release(n *node, detachWidgets bool) {
 		return
 	}
 	n.released = true
+	n.alive.Store(false)
+	n.releaseBindings()
 	n.root = nil
 
 	if n.view != nil && n.widget != nil && n.baseCtx != nil {
@@ -332,6 +353,8 @@ func (r *root) release(n *node, detachWidgets bool) {
 	n.widget = nil
 	n.state = nil
 	n.parent = nil
+	n.target = nil
+	n.slotApply = nil
 }
 
 func (ctx *buildContext) State() any {
@@ -352,7 +375,14 @@ func (ctx *buildContext) beginBuild() (*root, func()) {
 		return r, func() {}
 	}
 	r.reconciling = true
+	var resume func()
+	if r.runtime != nil {
+		resume = r.runtime.holdUpdates()
+	}
 	return r, func() {
+		if resume != nil {
+			defer resume()
+		}
 		r.reconciling = false
 		r.scheduleAfterUpdate()
 	}
@@ -382,6 +412,9 @@ func (r *root) reconcile(view View) {
 		panic("ui: cannot nest reconciliation or reconcile during child transfer; request a later update")
 	}
 	r.reconciling = true
+	if r.runtime != nil {
+		defer r.runtime.holdUpdates()()
+	}
 	defer func() { r.reconciling = false }()
 	epoch := r.epoch
 	current := r.updateNode(r.root, view)
@@ -441,7 +474,10 @@ func (ctx *buildContext) childTarget(target any, single bool) *childTarget {
 	return current
 }
 
-func (ctx *buildContext) UpdateChild(target Bin, child View) gui.Widget {
+func (ctx *buildContext) UpdateChild(target Bin, child View, apply ...func(gui.Widget)) gui.Widget {
+	if len(apply) > 1 {
+		panic("ui: UpdateChild accepts at most one apply function")
+	}
 	r, finish := ctx.beginBuild()
 	defer finish()
 	if r == nil {
@@ -467,10 +503,21 @@ func (ctx *buildContext) UpdateChild(target Bin, child View) gui.Widget {
 	current.nodes = nil
 	if mounted != nil {
 		current.nodes = []*node{mounted}
+		mounted.target = current
+		mounted.slotApply = nil
+		if len(apply) == 1 {
+			mounted.slotApply = apply[0]
+		}
 		widget = mounted.widget
 	}
 	if oldWidget != widget {
 		target.SetChild(widget)
+		if !ctx.live(r, epoch) {
+			return nil
+		}
+	}
+	if len(apply) == 1 && apply[0] != nil {
+		apply[0](widget)
 		if !ctx.live(r, epoch) {
 			return nil
 		}
@@ -482,7 +529,10 @@ func (ctx *buildContext) UpdateChild(target Bin, child View) gui.Widget {
 	return widget
 }
 
-func (ctx *buildContext) UpdateChildren(target Container, children []View) []gui.Widget {
+func (ctx *buildContext) UpdateChildren(target Container, children []View, apply ...func(int, gui.Widget)) []gui.Widget {
+	if len(apply) > 1 {
+		panic("ui: UpdateChildren accepts at most one apply function")
+	}
 	r, finish := ctx.beginBuild()
 	defer finish()
 	if r == nil {
@@ -559,6 +609,11 @@ func (ctx *buildContext) UpdateChildren(target Container, children []View) []gui
 		if previous != nil {
 			used[previous] = true
 		}
+		mounted.target = current
+		mounted.slotApply = nil
+		if len(apply) == 1 && apply[0] != nil {
+			mounted.slotApply = func(widget gui.Widget) { apply[0](i, widget) }
+		}
 		next = append(next, mounted)
 		result[i] = mounted.widget
 		position++
@@ -601,6 +656,14 @@ func (ctx *buildContext) UpdateChildren(target Container, children []View) []gui
 				return nil
 			}
 			sibling = widget
+		}
+	}
+	if len(apply) == 1 && apply[0] != nil {
+		for i, widget := range result {
+			apply[0](i, widget)
+			if !ctx.live(r, epoch) {
+				return nil
+			}
 		}
 	}
 	ctx.forgetEmptyTarget(current)
@@ -664,6 +727,9 @@ func validateView(view View) {
 	_, compose := view.(ComposeView)
 	if widget == compose {
 		panic("ui: a declaration must implement exactly one of WidgetView or ComposeView")
+	}
+	if widget && len(view.base().observables) != 0 {
+		panic("ui: Observe requires a ComposeView; use property bindings on WidgetView")
 	}
 	if compose {
 		base := view.base()

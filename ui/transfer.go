@@ -137,6 +137,9 @@ func (c *Coordinator) TransferChild(child, to gui.Widget, move func() error, com
 	if err := checkTransferIDs(child, toRoot.widget()); err != nil {
 		return err
 	}
+	if fromRoot.runtime != nil {
+		defer fromRoot.runtime.holdUpdates()()
+	}
 	fromRoot.transferring, toRoot.transferring = true, true
 	from.nodes = slices.Delete(from.nodes, index, index+1)
 	rehomeNode(n, nil)
@@ -157,11 +160,14 @@ func (c *Coordinator) TransferChild(child, to gui.Widget, move func() error, com
 			}
 			target.nodes = slices.Insert(target.nodes, insert, n)
 			n.parent = destination
+			n.target = target
+			n.slotApply = nil
 			rehomeNode(n, toRoot)
 			adopted = !n.released && n.root == toRoot && !destination.released
 		} else if !destroyedWidget(child) && !source.released && !destroyedWidget(source.widget) && source.root == fromRoot && child.Parent() == source.widget && child.Root() == source.widget.Root() {
 			from.nodes = slices.Insert(from.nodes, min(index, len(from.nodes)), n)
 			n.parent = source
+			n.target = from
 			rehomeNode(n, fromRoot)
 		} else {
 			fromRoot.release(n, false)
