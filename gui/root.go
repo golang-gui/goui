@@ -181,6 +181,9 @@ func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Sty
 	guiPainter := newPainter(b.painter, bounds, scale)
 	b.painter.Begin(pixelWidth, pixelHeight, scale)
 	defer b.painter.End()
+	if b.frameDestroyed || b.frameSuspended || b.surfaceEpoch != b.frameEpoch {
+		return
+	}
 	// Initialize storage independently of the visible body background. Opaque
 	// surfaces use black for uncovered pixels; alpha surfaces use transparent zero.
 	clearColor := graphics.Color{}

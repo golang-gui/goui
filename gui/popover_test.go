@@ -1416,3 +1416,56 @@ func TestPopoverModelessNativeShadowDoesNotCoverAnchor(t *testing.T) {
 		})
 	}
 }
+
+func TestPopoverNativeTerminationPreservesContent(t *testing.T) {
+	for _, inFrame := range []bool{false, true} {
+		t.Run(fmt.Sprint(inFrame), func(t *testing.T) {
+			p, _, plat, _ := placementFixture(t, geometry.Rect(0, 0, 1000, 1000))
+			p.SetModal(true)
+			content := p.Widget()
+			if err := p.Show(); err != nil {
+				t.Fatal(err)
+			}
+			settlePlacement(t, p)
+			old := plat.natives[0]
+			backend := &lifecyclePainter{}
+			p.painter = backend
+			closed := 0
+			p.ConnectClosed(func() { closed++ })
+			terminate := func() { old.handler(events.DestroyEvent{}) }
+			if inFrame {
+				backend.onBegin = terminate
+				p.paint()
+			} else {
+				terminate()
+			}
+			old.handler(events.DestroyEvent{})
+			old.handler(events.PaintEvent{})
+			if p.Visible() || p.platformPopup != nil || p.painter != nil || p.destroyed || content.base().destroyed || p.Widget() != content || closed != 1 || !old.destroyed {
+				t.Fatalf("终止后状态错误: visible=%v destroyed=%v closed=%d", p.Visible(), p.destroyed, closed)
+			}
+			want := []string{"destroy"}
+			if inFrame {
+				want = []string{"begin", "end", "destroy"}
+			}
+			if fmt.Sprint(backend.calls) != fmt.Sprint(want) {
+				t.Fatalf("calls=%v want=%v", backend.calls, want)
+			}
+			if err := p.Show(); err != nil {
+				t.Fatal(err)
+			}
+			if len(plat.natives) != 2 || p.Widget() != content || !p.Visible() {
+				t.Fatal("内容没有在新原生表面中复用")
+			}
+			old.handler(events.DestroyEvent{})
+			old.handler(events.PaintEvent{})
+			if !p.Visible() || closed != 1 || p.platformPopup != plat.natives[1] {
+				t.Fatal("旧表面的事件污染了重新打开的 Popover")
+			}
+			p.Destroy()
+			if p.Widget() != nil || content.Root() != nil || closed != 2 {
+				t.Fatal("最终 Destroy 没有解除内容的挂载")
+			}
+		})
+	}
+}

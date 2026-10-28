@@ -142,6 +142,7 @@ type popover struct {
 	workAreaUnsupportedLogged bool
 	lifecycle                 uint64 // invalidates in-flight native/measurement callbacks
 	releasing                 bool
+	releasePending            bool // native termination may reenter a frame
 	showing                   bool
 	destroyed                 bool
 	visible                   bool
@@ -305,6 +306,10 @@ func (p *popover) resignModalTarget() {
 // DispatchEvent routes an event the owner window forwards (keyboard nav, since
 // the popover has no native focus) to the popover's content. Part of ModalTarget.
 func (p *popover) DispatchEvent(event events.Event) error {
+	if _, ok := event.(events.DestroyEvent); ok {
+		p.releaseNative()
+		return nil
+	}
 	if e, ok := event.(events.DragSourceEvent); ok {
 		if app := dragAppOf(p); app != nil {
 			app.dispatchDragSourceEvent(e)
@@ -472,7 +477,6 @@ func (p *popover) Destroy() {
 	p.destroyed = true
 	p.destroyFrames()
 	p.releaseNative()
-	p.widget = nil
 }
 
 // Reset controller state as well as dispatch paths. The menu additionally
@@ -596,6 +600,12 @@ func (p *popover) releaseNative() {
 	if p.releasing {
 		return
 	}
+	if p.framePainting {
+		p.releasePending = true
+		p.suspendFrames()
+		return
+	}
+	p.releasePending = false
 	p.releasing = true
 	defer func() { p.releasing = false }()
 	cancelTooltipHost(p)
@@ -642,9 +652,18 @@ func (p *popover) releaseNative() {
 	if native != nil {
 		native.Destroy()
 	}
+	if p.destroyed {
+		p.widget = nil
+	}
 	p.releasing = false
 	if wasVisible {
 		p.closed.Emit()
+	}
+}
+
+func (p *popover) finishRelease() {
+	if p.releasePending && !p.framePainting {
+		p.releaseNative()
 	}
 }
 
@@ -822,6 +841,7 @@ func (p *popover) onEvent(event platform.Event) {
 }
 
 func (p *popover) paint() {
+	defer p.finishRelease()
 	if p.painter == nil || p.destroyed {
 		return
 	}
