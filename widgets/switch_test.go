@@ -42,7 +42,7 @@ func TestSwitchSettersAndInput(t *testing.T) {
 		}
 		changes++
 	})
-	if b.Checked() || !b.Animated() || !b.Enabled() || !b.Focusable() || b.Padding() != 6 {
+	if b.Checked() || !b.Animated() || !b.Enabled() || !b.Focusable() || b.Padding() != geometry.UniformInsets(6) {
 		t.Fatal("unexpected defaults")
 	}
 	b.SetChecked(true)
@@ -89,8 +89,8 @@ func TestSwitchSettersAndInput(t *testing.T) {
 		t.Fatal("enabled lost focusable preference")
 	}
 	for _, value := range []float32{-1, float32(math.NaN()), float32(math.Inf(1))} {
-		b.SetPadding(value)
-		if b.Padding() != 0 {
+		b.SetPadding(geometry.UniformInsets(value))
+		if b.Padding() != (geometry.Insets{}) {
 			t.Fatal("invalid padding retained")
 		}
 	}
@@ -243,7 +243,7 @@ func TestSwitchLayoutAndSnapshot(t *testing.T) {
 	if r := b.trackRect(); r.Width != 36 || r.Height != 20 {
 		t.Fatal("track expanded with available space")
 	}
-	b.SetPadding(0)
+	b.SetPadding(geometry.Insets{})
 	b.Arrange(geometry.Rect(0, 0, 18, 10))
 	if b.trackRect().Size != (geometry.Size{Width: 18, Height: 10}) {
 		t.Fatal("tight track did not scale uniformly")
@@ -272,7 +272,7 @@ func TestSwitchLayoutAndSnapshot(t *testing.T) {
 		t.Fatal("disabled semantics advertise activation")
 	}
 	child.SetVisible(false)
-	b.SetPadding(6)
+	b.SetPadding(geometry.UniformInsets(6))
 	if m := b.Measure(layout.Unbounded()); m.HasBaseline || m.Width != 48 {
 		t.Fatal("hidden child retained gap / baseline")
 	}
@@ -539,4 +539,21 @@ func switchCircleCoverage(x, y int, cx, cy, radius float64) float64 {
 		}
 	}
 	return float64(inside) / (samples * samples)
+}
+
+func TestSwitchAsymmetricPadding(t *testing.T) {
+	b := NewSwitch()
+	child := new(gui.WidgetBase)
+	child.SetLayoutManager(checkBaselineLayout{})
+	b.SetChild(child)
+	b.SetPadding(geometry.Insets{Left: 10, Top: 2, Right: 6, Bottom: 4})
+
+	m := b.Measure(layout.Unbounded())
+	if m.Size != (geometry.Size{Width: 100, Height: 26}) || !m.HasBaseline || m.Baseline != 15 {
+		t.Fatalf("asymmetric switch measurement/baseline=%+v", m)
+	}
+	b.Arrange(geometry.Rectangle{Size: m.Size})
+	if got := child.Rect(); got != geometry.Rect(54, 6, 40, 12) {
+		t.Fatalf("asymmetric switch child=%+v", got)
+	}
 }

@@ -45,7 +45,8 @@ type DropDown struct {
 	placeholder                string
 	selected, current, bound   int
 	hovered, pressed           bool
-	padding, popupMaxHeight    float32
+	padding                    geometry.Insets
+	popupMaxHeight             float32
 	revision                   uint64
 	selectedSignal             signal.Signal2[int, uint64]
 	openError                  signal.Signal2[error, uint64]
@@ -57,9 +58,10 @@ type DropDown struct {
 }
 
 // NewDropDown creates an enabled, focusable control with no selection, 6 DIP
-// padding and a 320 DIP maximum popup body height. Native resources are lazy.
+// padding on every edge and a 320 DIP maximum popup body height. Native resources
+// are lazy.
 func NewDropDown() *DropDown {
-	d := &DropDown{selected: -1, current: -1, bound: -1, padding: 6, popupMaxHeight: 320}
+	d := &DropDown{selected: -1, current: -1, bound: -1, padding: geometry.UniformInsets(6), popupMaxHeight: 320}
 	d.WidgetBase.SetFocusable(true)
 	d.SetLayoutManager(dropDownLayout{d})
 	d.placeholderLabel = gui.NewLabel("")
@@ -232,11 +234,13 @@ func dropDownExtent(value float32) float32 {
 	return value
 }
 
-func (d *DropDown) Padding() float32 { return d.padding }
-func (d *DropDown) SetPadding(value float32) {
-	value = dropDownExtent(value)
-	if !d.Destroyed() && value != d.padding {
-		d.padding = value
+func (d *DropDown) Padding() geometry.Insets { return d.padding }
+
+// SetPadding sets the per-edge inner padding in DIP; invalid edges become zero.
+func (d *DropDown) SetPadding(padding geometry.Insets) {
+	padding = normalizeInsets(padding)
+	if !d.Destroyed() && padding != d.padding {
+		d.padding = padding
 		d.RequestLayout()
 	}
 }
@@ -536,7 +540,8 @@ func (d *DropDown) Paint(p gui.Painter) {
 	s := gui.ResolveWidgetStyle(d, name, "arrow", state)
 	color, ok := s.ForegroundColor()
 	if ok && color != nil {
-		x, y := max(float32(0), rect.Width-d.padding-8), rect.Height/2
+		x := max(float32(0), rect.Width-d.padding.Right-8)
+		y := d.padding.Top + (rect.Height-d.padding.Vertical())/2
 		c := graphics.ColorOf(color)
 		p.DrawLine(geometry.Point{X: x - 3, Y: y - 1.5}, geometry.Point{X: x, Y: y + 1.5}, 1.5, c)
 		p.DrawLine(geometry.Point{X: x, Y: y + 1.5}, geometry.Point{X: x + 3, Y: y - 1.5}, 1.5, c)
@@ -586,13 +591,13 @@ func (*dropDownLabelDelegate) Unbind(int, gui.Widget) {}
 type dropDownLayout struct{ owner *DropDown }
 
 func (l dropDownLayout) Measure(children []layout.Child, c layout.Constraint) layout.Measurement {
-	inner := c.Inset(l.owner.padding)
+	inner := c.Insets(l.owner.padding)
 	var content layout.Measurement
 	if len(children) > 0 {
 		content = children[0].Measure(layout.Loose(geometry.Size{Width: max(0, inner.Max.Width-24), Height: inner.Max.Height}))
 	}
-	size := c.Clamp(geometry.Size{Width: content.Width + 24 + 2*l.owner.padding, Height: max(float32(16), content.Height) + 2*l.owner.padding})
-	content.Baseline += (size.Height - content.Height) / 2
+	size := c.Clamp(geometry.Size{Width: content.Width + 24 + l.owner.padding.Horizontal(), Height: max(float32(16), content.Height) + l.owner.padding.Vertical()})
+	content.Baseline += l.owner.padding.Top + (size.Height-l.owner.padding.Vertical()-content.Height)/2
 	content.Size = size
 	return content
 }
@@ -600,7 +605,7 @@ func (l dropDownLayout) Arrange(children []layout.Child, rect geometry.Rectangle
 	if len(children) == 0 {
 		return
 	}
-	inner := rect.Inset(l.owner.padding)
+	inner := rect.Insets(l.owner.padding.Left, l.owner.padding.Top, l.owner.padding.Right, l.owner.padding.Bottom)
 	area := geometry.Size{Width: max(0, inner.Width-24), Height: inner.Height}
 	content := children[0].Measure(layout.Loose(area))
 	children[0].Arrange(geometry.Rect(inner.X, inner.Y+(inner.Height-content.Height)/2, area.Width, content.Height))

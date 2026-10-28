@@ -10,9 +10,10 @@ import (
 
 const (
 	treeRowMinHeight float32 = 28
-	treeRowPadding   float32 = 4
 	treeExpanderSize float32 = 20
 )
+
+var treeRowPadding = geometry.UniformInsets(4)
 
 type treeListDelegate struct {
 	view     *TreeView

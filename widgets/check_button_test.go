@@ -20,7 +20,7 @@ import (
 
 func TestCheckButtonStateAndGroup(t *testing.T) {
 	a, b := NewCheckButton(), NewCheckButton()
-	if a.CheckState() != CheckUnchecked || a.Checked() || a.Group() != nil || !a.Focusable() || !a.Enabled() || a.Padding() != 6 {
+	if a.CheckState() != CheckUnchecked || a.Checked() || a.Group() != nil || !a.Focusable() || !a.Enabled() || a.Padding() != geometry.UniformInsets(6) {
 		t.Fatal("unexpected defaults")
 	}
 	changes := 0
@@ -60,8 +60,8 @@ func TestCheckButtonStateAndGroup(t *testing.T) {
 		t.Fatal("invalid values / silent setters")
 	}
 	for _, invalid := range []float32{-1, float32(math.NaN()), float32(math.Inf(1))} {
-		a.SetPadding(invalid)
-		if a.Padding() != 0 {
+		a.SetPadding(geometry.UniformInsets(invalid))
+		if a.Padding() != (geometry.Insets{}) {
 			t.Fatal("invalid padding retained")
 		}
 	}
@@ -387,7 +387,7 @@ func TestCheckButtonSoftwarePixels(t *testing.T) {
 		b := NewCheckButton()
 		// Constrain the 18 DIP indicator to 16 DIP with explicit padding. These samples test
 		// premultiplied painting, not the separately asserted default padding.
-		b.SetPadding(4)
+		b.SetPadding(geometry.UniformInsets(4))
 		b.SetCheckState(CheckMixed)
 		b.Arrange(geometry.Rect(0, 0, 24, 24))
 		out := new(progressPixelSurface)
@@ -612,5 +612,21 @@ func TestCheckButtonModernSoftwarePixels(t *testing.T) {
 			}
 			native.Destroy()
 		}
+	}
+}
+
+func TestCheckButtonAsymmetricPadding(t *testing.T) {
+	b, child := NewCheckButton(), new(gui.WidgetBase)
+	child.SetLayoutManager(checkBaselineLayout{})
+	b.SetChild(child)
+	b.SetPadding(geometry.Insets{Left: 10, Top: 2, Right: 6, Bottom: 4})
+
+	m := b.Measure(layout.Unbounded())
+	if m.Size != (geometry.Size{Width: 82, Height: 24}) || !m.HasBaseline || m.Baseline != 14 {
+		t.Fatalf("asymmetric indicator measurement/baseline=%+v", m)
+	}
+	b.Arrange(geometry.Rectangle{Size: m.Size})
+	if got := child.Rect(); got != geometry.Rect(36, 5, 40, 12) {
+		t.Fatalf("asymmetric indicator child=%+v", got)
 	}
 }

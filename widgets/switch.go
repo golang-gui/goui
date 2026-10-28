@@ -30,7 +30,7 @@ type Switch struct {
 	gui.WidgetBase
 	child                         gui.Widget
 	checked, animated             bool
-	padding                       float32
+	padding                       geometry.Insets
 	hovered, pressed, mounted     bool
 	revision                      uint64
 	change                        signal.Signal2[bool, func() bool]
@@ -43,9 +43,10 @@ type Switch struct {
 }
 
 // NewSwitch creates an enabled, focusable switch, initially off. The track is
-// 36x20 DIP with a 16 DIP thumb, 6 DIP padding and an 8 DIP content gap.
+// 36x20 DIP with a 16 DIP thumb, 6 DIP padding on every edge and an 8 DIP
+// content gap.
 func NewSwitch() *Switch {
-	b := &Switch{animated: true, padding: 6}
+	b := &Switch{animated: true, padding: geometry.UniformInsets(6)}
 	b.transition = animation.New(float32(0), animation.Float32)
 	b.transition.ConnectUpdate(func(position float32) {
 		if b.Destroyed() {
@@ -173,11 +174,11 @@ func (b *Switch) ConnectChange(fn func(bool)) signal.Handle {
 	})
 }
 
-func (b *Switch) Padding() float32 { return b.padding }
-func (b *Switch) SetPadding(padding float32) {
-	if padding < 0 || math.IsNaN(float64(padding)) || math.IsInf(float64(padding), 0) {
-		padding = 0
-	}
+func (b *Switch) Padding() geometry.Insets { return b.padding }
+
+// SetPadding sets the per-edge inner padding in DIP; invalid edges become zero.
+func (b *Switch) SetPadding(padding geometry.Insets) {
+	padding = normalizeInsets(padding)
 	if !b.Destroyed() && b.padding != padding {
 		b.cancelInput()
 		b.padding = padding
@@ -270,7 +271,8 @@ func (b *Switch) moveToTarget() {
 }
 
 func (b *Switch) trackRect() geometry.Rectangle {
-	inner := geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height).Inset(b.padding)
+	inner := geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height).
+		Insets(b.padding.Left, b.padding.Top, b.padding.Right, b.padding.Bottom)
 	scale := max(0, min(float32(1), min(inner.Width/36, inner.Height/20)))
 	return geometry.Rect(inner.X, inner.Y+(inner.Height-20*scale)/2, 36*scale, 20*scale)
 }
@@ -318,7 +320,14 @@ func (b *Switch) Paint(p gui.Painter) {
 		p.DrawEllipse(center, (diameter-width)/2, (diameter-width)/2, width, graphics.ColorOf(edge))
 	}
 	if b.FocusVisible() {
-		paintStyledBorder(p, track.Inset(-min(float32(2), b.padding)), gui.ResolveWidgetStyle(b, name, "focus", style.FocusVisible))
+		outset := geometry.Insets{
+			Left:   min(float32(2), b.padding.Left),
+			Top:    min(float32(2), b.padding.Top),
+			Right:  min(float32(2), b.padding.Right),
+			Bottom: min(float32(2), b.padding.Bottom),
+		}
+		paintStyledBorder(p, track.Insets(-outset.Left, -outset.Top, -outset.Right, -outset.Bottom),
+			gui.ResolveWidgetStyle(b, name, "focus", style.FocusVisible))
 	}
 }
 
@@ -397,16 +406,17 @@ func (l switchLayout) content(children []layout.Child, inner geometry.Size) (lay
 }
 func (l switchLayout) Measure(children []layout.Child, c layout.Constraint) layout.Measurement {
 	b := l.button
-	child, reserve := l.content(children, c.Inset(b.padding).Max)
-	size := c.Clamp(geometry.Size{Width: reserve + child.Width + 2*b.padding, Height: max(float32(20), child.Height) + 2*b.padding})
-	inner := geometry.Rect(0, 0, size.Width, size.Height).Inset(b.padding)
+	child, reserve := l.content(children, c.Insets(b.padding).Max)
+	size := c.Clamp(geometry.Size{Width: reserve + child.Width + b.padding.Horizontal(), Height: max(float32(20), child.Height) + b.padding.Vertical()})
+	inner := geometry.Rect(0, 0, size.Width, size.Height).
+		Insets(b.padding.Left, b.padding.Top, b.padding.Right, b.padding.Bottom)
 	return layout.Measurement{Size: size, HasBaseline: child.HasBaseline, Baseline: inner.Y + (inner.Height-child.Height)/2 + child.Baseline}
 }
 func (l switchLayout) Arrange(children []layout.Child, rect geometry.Rectangle) {
 	if len(children) == 0 {
 		return
 	}
-	inner := rect.Inset(l.button.padding)
+	inner := rect.Insets(l.button.padding.Left, l.button.padding.Top, l.button.padding.Right, l.button.padding.Bottom)
 	child, reserve := l.content(children, inner.Size)
 	children[0].Arrange(geometry.Rect(inner.X+reserve, inner.Y+(inner.Height-child.Height)/2, child.Width, child.Height))
 }

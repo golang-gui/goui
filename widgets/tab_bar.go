@@ -115,7 +115,7 @@ func (b *TabBar) addWheel(widget gui.Widget) {
 
 func tabArrow(direction int, bar *TabBar) *gui.Button {
 	button := gui.NewButton()
-	button.SetPadding(0)
+	button.SetPadding(geometry.Insets{})
 	button.SetMinSize(geometry.Size{Width: tabButtonWidth, Height: tabButtonWidth})
 	button.SetMaxSize(geometry.Size{Width: tabButtonWidth})
 	button.SetStyleName("tab-scroll-button")

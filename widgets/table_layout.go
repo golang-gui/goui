@@ -7,11 +7,9 @@ import (
 	"github.com/golang-gui/goui/layout"
 )
 
-const (
-	tableMinHeight      float32 = 32
-	tableHeaderPaddingX float32 = 8
-	tableHeaderPaddingY float32 = 4
-)
+const tableMinHeight float32 = 32
+
+var tableHeaderPadding = geometry.Insets{Left: 8, Top: 4, Right: 8, Bottom: 4}
 
 type tableLayout struct{ view *TableView }
 

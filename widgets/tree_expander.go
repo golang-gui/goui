@@ -180,14 +180,14 @@ func (e *TreeExpander) Snapshot() gui.WidgetInfo {
 type treeExpanderLayout struct{ e *TreeExpander }
 
 func (l *treeExpanderLayout) prefix() float32 {
-	return treeRowPadding + float32(l.e.depth)*l.e.indentation + treeExpanderSize
+	return treeRowPadding.Left + float32(l.e.depth)*l.e.indentation + treeExpanderSize
 }
 func (l *treeExpanderLayout) Measure(children []layout.Child, c layout.Constraint) layout.Measurement {
-	w, h := l.prefix()+treeRowPadding, treeRowMinHeight
+	w, h := l.prefix()+treeRowPadding.Right, treeRowMinHeight
 	if len(children) > 1 {
-		m := children[1].Measure(layout.Loose(geometry.Size{Width: max(0, c.Max.Width-w), Height: max(0, c.Max.Height-2*treeRowPadding)}))
+		m := children[1].Measure(layout.Loose(geometry.Size{Width: max(0, c.Max.Width-w), Height: max(0, c.Max.Height-treeRowPadding.Vertical())}))
 		w += m.Width
-		h = max(h, m.Height+2*treeRowPadding)
+		h = max(h, m.Height+treeRowPadding.Vertical())
 	}
 	return layout.Measured(c.Clamp(geometry.Size{Width: w, Height: h}))
 }
@@ -197,9 +197,11 @@ func (l *treeExpanderLayout) Arrange(children []layout.Child, r geometry.Rectang
 	}
 	prefix := l.prefix()
 	h := min(treeExpanderSize, r.Height)
-	children[0].Arrange(geometry.Rect(r.X+prefix-treeExpanderSize, r.Y+(r.Height-h)/2, min(treeExpanderSize, max(0, r.Width-prefix+treeExpanderSize)), h))
+	children[0].Arrange(geometry.Rect(r.X+prefix-treeExpanderSize,
+		r.Y+treeRowPadding.Top+max(0, (r.Height-treeRowPadding.Vertical()-h)/2), min(treeExpanderSize, max(0, r.Width-prefix+treeExpanderSize)), h))
 	if len(children) > 1 {
-		m := children[1].Measure(layout.Loose(geometry.Size{Width: max(0, r.Width-prefix-treeRowPadding), Height: max(0, r.Height-2*treeRowPadding)}))
-		children[1].Arrange(geometry.Rect(r.X+prefix, r.Y+(r.Height-m.Height)/2, max(0, r.Width-prefix-treeRowPadding), m.Height))
+		m := children[1].Measure(layout.Loose(geometry.Size{Width: max(0, r.Width-prefix-treeRowPadding.Right), Height: max(0, r.Height-treeRowPadding.Vertical())}))
+		children[1].Arrange(geometry.Rect(r.X+prefix,
+			r.Y+treeRowPadding.Top+max(0, (r.Height-treeRowPadding.Vertical()-m.Height)/2), max(0, r.Width-prefix-treeRowPadding.Right), m.Height))
 	}
 }

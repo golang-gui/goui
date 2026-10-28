@@ -47,7 +47,7 @@ func newTabItem(bar *TabBar, page *TabPage) *tabItem {
 	item.WidgetBase.AddChild(item, body)
 
 	closeButton := gui.NewButton()
-	closeButton.SetPadding(0)
+	closeButton.SetPadding(geometry.Insets{})
 	closeButton.SetMinSize(geometry.Size{Width: 24, Height: 24})
 	closeButton.SetMaxSize(geometry.Size{Width: 24, Height: 24})
 	closeButton.SetStyleName("tab-close-button")
