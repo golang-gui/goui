@@ -279,6 +279,10 @@ type Child interface {
 - `Image` / `ScrollView` / `ListView` 等没有文本行语义的控件不报告 baseline。
 - 容器可以把第一个有效子 baseline 转换到自己的坐标系后上传。
 
+`LinearLayout` / `WrapLayout` 的基线偏移取自与 Arrange 相同的实际内矩形。
+当父约束使高度小于或等于上下 padding 之和时，`Rectangle.Insets` 会把零高
+内容区的原点放到纵轴中点；Measure 也使用该原点，不能继续直接加 `Padding.Top`。
+
 不增加依赖“上次 Measure”隐藏状态的 `Baseline()` 方法；这样可避免约束
 变化后读到过期基线，也避免再次调用平台文字排版。
 
