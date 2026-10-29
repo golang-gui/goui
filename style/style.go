@@ -2,9 +2,10 @@ package style
 
 import (
 	"image/color"
+	"math/bits"
 	"slices"
 
-	"github.com/golang-gui/goui/core/bits"
+	corebits "github.com/golang-gui/goui/core/bits"
 	"github.com/golang-gui/goui/core/colors"
 )
 
@@ -25,18 +26,40 @@ const (
 	FontStyleOblique
 )
 
-type State int
+// State is a set of simultaneous widget states. Normal is the empty set.
+// Numeric values are not a persistence contract; use the named flags.
+type State uint32
+
+const Normal State = 0
 
 const (
-	Normal State = iota
-	Hovered
+	Hovered State = 1 << iota
 	Pressed
 	Focused
 	Disabled
-	// FocusVisible is keyboard-indicated focus. It falls back to Focused for
-	// the same part before applying its own overrides.
+	// FocusVisible implies Focused when resolving a stylesheet.
 	FocusVisible
+	ContainsFocus
+	Selected
+	Checked
+	Mixed
+	DropActive
 )
+
+// Has reports whether all flags are present. Has(Normal) is always true.
+func (s State) Has(flags State) bool { return s&flags == flags }
+
+// Normalized returns the state used for stylesheet matching. Disabled removes
+// transient interaction states; keyboard-indicated focus implies logical focus.
+func (s State) Normalized() State {
+	if s.Has(Disabled) {
+		return s &^ (Hovered | Pressed | Focused | FocusVisible | ContainsFocus)
+	}
+	if s.Has(FocusVisible) {
+		s |= Focused
+	}
+	return s
+}
 
 const PartDefault = ""
 
@@ -59,7 +82,7 @@ type Style struct {
 	underline       bool
 	strikethrough   bool
 	shadow          Shadow
-	fields          bits.Bitmap[uint64]
+	fields          corebits.Bitmap[uint64]
 }
 
 const (
@@ -330,7 +353,18 @@ type StyleSheet interface {
 }
 
 func Sheet(rules ...Rule) StyleSheet {
-	return sheet{rules: slices.Clone(rules)}
+	ordered := slices.Clone(rules)
+	slices.SortStableFunc(ordered, func(a, b Rule) int {
+		ka, kb := stateOrder(a.Sel.State), stateOrder(b.Sel.State)
+		if ka < kb {
+			return -1
+		}
+		if ka > kb {
+			return 1
+		}
+		return 0
+	})
+	return sheet{rules: ordered}
 }
 
 type sheet struct {
@@ -341,47 +375,43 @@ func (s sheet) Resolve(sel Sel) Style {
 	return resolveRules(sel, s.rules, Style{})
 }
 
-// resolveRules accumulates every rule that matches a step of the fallback chain,
-// later (more specific) matches merging over earlier ones. There is no local
-// override list anymore: local code names a style, it does not supply rules.
+// Rules are sorted once by Sheet. Normal defaults and the requested Part
+// precede subset-matching state rules; states from other Parts never leak.
 func resolveRules(sel Sel, rules []Rule, base Style) Style {
-	for _, candidate := range fallbackChain(sel) {
+	state := sel.State.Normalized()
+	for _, rule := range rules {
+		if rule.Sel.Name == sel.Name && rule.Sel.Part == PartDefault && rule.Sel.State == Normal {
+			base = base.merge(rule.Style)
+		}
+	}
+	if sel.Part != PartDefault {
 		for _, rule := range rules {
-			if rule.Sel == candidate {
+			if rule.Sel.Name == sel.Name && rule.Sel.Part == sel.Part && rule.Sel.State == Normal {
 				base = base.merge(rule.Style)
 			}
+		}
+	}
+	for _, rule := range rules {
+		if rule.Sel.Name == sel.Name && rule.Sel.Part == sel.Part && rule.Sel.State != Normal && state.Has(rule.Sel.State) {
+			base = base.merge(rule.Style)
 		}
 	}
 	return base
 }
 
-func fallbackChain(sel Sel) []Sel {
-	normalDefault := Sel{
-		Name:  sel.Name,
-		Part:  PartDefault,
-		State: Normal,
+func stateOrder(s State) uint64 {
+	// Specificity first, then a fixed order for equally specific conditions.
+	// Disabled rules override every enabled-state condition.
+	key := uint64(bits.OnesCount32(uint32(s))) << 32
+	for i, flag := range [...]State{ContainsFocus, Selected, Checked, Mixed, DropActive, Focused, FocusVisible, Hovered, Pressed, Disabled} {
+		if s.Has(flag) {
+			key |= 1 << i
+		}
 	}
-	chain := []Sel{normalDefault}
-	partNormal := Sel{
-		Name:  sel.Name,
-		Part:  sel.Part,
-		State: Normal,
+	if s.Has(Disabled) {
+		key |= 1 << 48
 	}
-	if partNormal != chain[len(chain)-1] {
-		chain = append(chain, partNormal)
-	}
-	if sel.State == FocusVisible {
-		chain = append(chain, Sel{Name: sel.Name, Part: sel.Part, State: Focused})
-	}
-	exact := Sel{
-		Name:  sel.Name,
-		Part:  sel.Part,
-		State: sel.State,
-	}
-	if exact != chain[len(chain)-1] {
-		chain = append(chain, exact)
-	}
-	return chain
+	return key
 }
 
 func SameRules(a, b []Rule) bool {

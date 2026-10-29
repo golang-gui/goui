@@ -215,3 +215,62 @@ func TestTextStyleFieldsAndEquality(t *testing.T) {
 		}
 	}
 }
+
+// 组合规则按包含关系匹配；绘制状态不会被悬停/按下压成单个枚举。
+func TestResolveCombinedStates(t *testing.T) {
+	s := Sheet(
+		Name("control").State(Hovered|Selected).BackgroundColor(color.White),
+		Name("control").State(Pressed).BackgroundColor(color.Black),
+		Name("control").State(Hovered).BackgroundColor(color.Gray{90}),
+		Name("control").State(Focused).BorderWidth(1),
+		Name("control").State(FocusVisible).BorderColor(color.White),
+		Name("control").State(Checked).Radius(9),
+		Name("control").State(Disabled).BackgroundColor(color.Gray{40}),
+		Name("control").State(Disabled|Checked).Radius(3),
+		Name("control").BackgroundColor(color.Gray{10}),
+	)
+	for _, tc := range []struct {
+		state          State
+		bg             color.Color
+		radius, border float32
+	}{
+		{Hovered | Pressed, color.Black, 0, 0},
+		{Hovered | Pressed | Selected, color.White, 0, 0},
+		{Hovered | FocusVisible | Checked, color.Gray{90}, 9, 1},
+		{Disabled | Hovered | Pressed | FocusVisible | Checked, color.Gray{40}, 3, 0},
+	} {
+		got := s.Resolve(Sel{Name: "control", State: tc.state})
+		bg, _ := got.BackgroundColor()
+		radius, _ := got.Radius()
+		border, _ := got.BorderWidth()
+		if !colors.Equal(bg, tc.bg) || radius != tc.radius || border != tc.border {
+			t.Fatalf("state=%v bg=%v radius=%v border=%v", tc.state, bg, radius, border)
+		}
+	}
+	focus := s.Resolve(Sel{Name: "control", State: FocusVisible | Hovered})
+	if c, ok := focus.BorderColor(); !ok || !colors.Equal(c, color.White) {
+		t.Fatal("悬停覆盖了键盘焦点提示")
+	}
+}
+
+func TestResolveStatePartIsolationAndStableDuplicates(t *testing.T) {
+	rules := []Rule{
+		Name("control").Radius(4),
+		Name("control").State(Hovered).BackgroundColor(color.Black),
+		Name("control").Part("indicator").BackgroundColor(color.White),
+		Name("control").Part("indicator").State(Checked | Hovered).BorderWidth(2),
+		Name("control").Part("indicator").State(Checked | Hovered).BorderWidth(3),
+	}
+	s := Sheet(rules...)
+	rules[0] = Name("control").Radius(99) // Sheet 不保留调用方切片。
+	got := s.Resolve(Sel{Name: "control", Part: "indicator", State: Checked | Hovered | Pressed})
+	bg, _ := got.BackgroundColor()
+	radius, _ := got.Radius()
+	border, _ := got.BorderWidth()
+	if !colors.Equal(bg, color.White) || radius != 4 || border != 3 {
+		t.Fatalf("Part 隔离/重复规则顺序错误: bg=%v radius=%v border=%v", bg, radius, border)
+	}
+	if !((Hovered | Checked).Has(Hovered | Checked)) || (Hovered | Checked).Has(Pressed) || !Normal.Has(Normal) {
+		t.Fatal("Has 必须测试全部标志")
+	}
+}
