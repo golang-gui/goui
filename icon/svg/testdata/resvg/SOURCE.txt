@@ -1,0 +1,3 @@
+Repository: https://github.com/linebender/resvg-test-suite
+Commit: d8e064337faf01bc5a9579187a56dbdbe3eacc72
+Files are unmodified originals. See LICENSE.

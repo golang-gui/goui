@@ -13,13 +13,11 @@ package main
 
 import (
 	"bytes"
-	"encoding/xml"
 	"errors"
 	"flag"
 	"fmt"
 	"image"
 	"image/png"
-	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -122,10 +120,7 @@ func convert(file, outDir string, specs []sizeSpec) ([]string, error) {
 		return nil, err
 	}
 	source = source.WithRawColors()
-	aspect, err := aspectRatio(data)
-	if err != nil {
-		return nil, err
-	}
+	aspect := source.AspectRatio()
 	base := strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
 	var written []string
 	for _, spec := range specs {
@@ -141,49 +136,6 @@ func convert(file, outDir string, specs []sizeSpec) ([]string, error) {
 		written = append(written, name)
 	}
 	return written, nil
-}
-
-// aspectRatio reads the root viewBox, falling back to width/height, the same
-// attributes icon/svg uses to map the drawing into the requested canvas.
-func aspectRatio(data []byte) (float64, error) {
-	decoder := xml.NewDecoder(bytes.NewReader(data))
-	for {
-		token, err := decoder.Token()
-		if err == io.EOF {
-			return 0, errors.New("missing svg root")
-		}
-		if err != nil {
-			return 0, err
-		}
-		root, ok := token.(xml.StartElement)
-		if !ok {
-			continue
-		}
-		var viewBox, width, height string
-		for _, attr := range root.Attr {
-			switch attr.Name.Local {
-			case "viewBox":
-				viewBox = attr.Value
-			case "width":
-				width = attr.Value
-			case "height":
-				height = attr.Value
-			}
-		}
-		if fields := strings.FieldsFunc(viewBox, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' || r == '\n' || r == '\r' }); len(fields) == 4 {
-			w, errW := strconv.ParseFloat(fields[2], 64)
-			h, errH := strconv.ParseFloat(fields[3], 64)
-			if errW == nil && errH == nil && w > 0 && h > 0 {
-				return w / h, nil
-			}
-		}
-		w, errW := strconv.ParseFloat(strings.TrimSuffix(width, "px"), 64)
-		h, errH := strconv.ParseFloat(strings.TrimSuffix(height, "px"), 64)
-		if errW == nil && errH == nil && w > 0 && h > 0 {
-			return w / h, nil
-		}
-		return 0, errors.New("root needs a positive viewBox or width/height")
-	}
 }
 
 // writePNG encodes img; image.RGBA is premultiplied and png.Encode converts

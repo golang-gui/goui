@@ -74,6 +74,7 @@ pixels.Tint 对 RGBA/NRGBA 直接读取第四字节的 alpha，按源 Stride 逐
 svg.Source 负责解析结果、最近一次原始栅格和着色结果；仅换前景色不重新栅格化。
 WithRawColors 返回共享解析内容的独立配置，适合在 UI build 外创建。
 支持范围与限制见 [DesignSVG](DesignSVG.md)。
+SVG 的解析/栅格化由自维护 oksvg v0.1.0 负责，GOUI 只保留尺寸限制、颜色策略和缓存。
 
 ### 自定义绘制
 
