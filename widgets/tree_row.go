@@ -51,11 +51,7 @@ func (d *treeListDelegate) Setup() gui.Widget {
 			return
 		}
 		if count == 2 {
-			if r.view.model.Expandable(id) {
-				r.view.SetExpanded(id, !r.view.Expanded(id))
-			} else {
-				r.view.activate.Emit(id, version)
-			}
+			r.view.activate.Emit(id, version)
 		}
 	})
 	r.AddEventController(r.click)

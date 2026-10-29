@@ -304,8 +304,7 @@ TreeView 持有真实键盘焦点，当前项保存为 ID。普通行和展开�
 | Shift＋单击 | 从锚点到目标的逻辑行替换范围选择 |
 | Primary＋Shift＋单击 | 将该范围加入已有选择 |
 | 单击展开器 | 只展开／折叠，不因这次点击额外选中或激活 |
-| 双击分支行体 | 展开／折叠，不发 Activate |
-| 双击叶子行体 | 发 Activate |
+| 双击行体 | 分支和叶子都发一次 Activate，不自动展开／折叠 |
 | Enter | 激活当前项，分支也允许发 Activate |
 | Up／Down、Home／End | 导航当前项并单选 |
 | Primary＋上述导航键 | 只移动当前项，不改变选择 |
@@ -319,6 +318,23 @@ TreeView 持有真实键盘焦点，当前项保存为 ID。普通行和展开�
 | Primary＋A | 多选模式选择全部逻辑可见行，不含折叠后代 |
 | 单击空白 | 清空选择，保留当前项 |
 | Shift＋F10 | 请求当前项上下文菜单 |
+
+2026-10-29：上述双击契约替代最初的“分支只展开、叶子才激活”。Expandable 只描述
+节点能力，不决定业务激活。TreeView 保有展开状态和当前项的左右键导航；TreeExpander
+只在箭头按钮上请求 Toggle，不判断行体的业务行为。应用需要双击分支展开时，在
+Activate 处理者中显式调用 SetExpanded，框架不随后再次切换。
+
+这一取舍参考 GTK4 当前 main 的
+[TreeExpander 箭头手势](https://github.com/GNOME/gtk/blob/main/gtk/gtktreeexpander.c#L144)
+（2026-10-29 读取，控制器安装在 expander_icon），以及 Qt 6.8.3 的
+[mouseDoubleClickEvent](https://github.com/qt/qtbase/blob/v6.8.3/src/widgets/itemviews/qtreeview.cpp#L1872)
+（允许激活后按配置展开）。两者并非相同策略；GOUI 选择较小的默认激活契约，保留应用
+显式组合，不增加 ExpandsOnDoubleClick 属性。
+
+行内 ClickEventController 获胜会取消祖先行的点击参与者，语义回调发生在手势裁决之后。
+因此不能给整个 TreeExpander 添加“仅处理双击”的普通点击控制器，再靠不调用
+StopPropagation 将单击交回行容器。保持现有手势竞争：箭头、行体和行内控件各处理
+自己的输入，不修改 GUI 手势内核，也不引入树专用传播规则。
 
 范围选择按当前平铺顺序计算，不受 Widget 是否实现影响。连续 Shift 导航保持锚点，
 反向移动可以缩小范围；普通选择重置锚点。Primary＋Shift 是叠加，不因反向移动删除
@@ -738,7 +754,8 @@ Activate 是用户请求，处理者可以展开或折叠节点，后续处理�
 - 本机桌面：Linux X11／Xfwm4，Software 1x UI＋Modern 亮暗；选择和 Shift／Primary
   导航、行内按钮、500 ms 延迟加载、右键／Shift+F10 菜单、重建、跨视口 Reveal、
   用户继续滚动及 Snapshot 通过。展开后 10010 个逻辑行，观察到 18–19 个实现行。
-  最终版本追加验证分支双击只切换展开、叶子双击仅一次 Activate、菜单删除后的当前项
+  当时追加验证分支双击只切换展开（此旧契约已由 §4 的 2026-10-29 调整替代）、
+  叶子双击仅一次 Activate、菜单删除后的当前项
   回退及窗口从 920×640 缩到 600×450 DIP 的布局／裁剪，均通过。
   OpenGL 2x GUI＋显式兜底样式验证展开、键盘多选、行内按钮、延迟加载、Refresh、
   万行定位与 Snapshot，通过；该视口观察到 10 个实现行。数量是各自实际视口结果，

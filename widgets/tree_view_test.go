@@ -197,6 +197,47 @@ func TestTreeViewNavigationSelectionAndDisclosure(t *testing.T) {
 		t.Fatal("expander altered selection or failed")
 	}
 }
+
+func TestTreeViewBodyActivation(t *testing.T) {
+	for _, tc := range []struct {
+		name, id       string
+		expanded, bare bool
+		y              float32
+	}{
+		{name: "折叠分支", id: "root", y: 14},
+		{name: "展开分支", id: "root", expanded: true, y: 14},
+		{name: "叶子", id: "other", y: 42},
+		{name: "无展开器的自定义行", id: "root", bare: true, y: 14},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v, _ := treeFixture()
+			if tc.bare {
+				v.SetDelegate(treeContentDelegate{setup: func() gui.Widget { return splitTestChild(160, 20) }})
+			}
+			v.SetExpanded("root", tc.expanded)
+			treeLayout(v, 180, 0)
+			var activated []string
+			v.ConnectActivate(func(id string) { activated = append(activated, id) })
+			d, host := new(gui.EventDispatcher), &tabInputHost{root: v}
+			for range 2 {
+				dispatchTabPointer(t, d, host, events.PointerDown, 60, tc.y)
+				dispatchTabPointer(t, d, host, events.PointerUp, 60, tc.y)
+			}
+			if !slices.Equal(activated, []string{tc.id}) || v.Expanded("root") != tc.expanded {
+				t.Fatalf("行体双击必须只激活一次，不自动展开：activate=%v expanded=%v", activated, v.Expanded("root"))
+			}
+			checkTreeState(t, v, tc.id, tc.id)
+			host.SetFocusedWidget(v)
+			if err := d.DispatchEvent(host, events.KeyEvent{EventType: events.KeyDown, Key: events.KeyEnter}); err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(activated, []string{tc.id, tc.id}) || v.Expanded("root") != tc.expanded {
+				t.Fatalf("Enter 与双击的激活语义不一致：%v", activated)
+			}
+		})
+	}
+}
+
 func TestTreeViewNotificationsSurviveViewChanges(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
