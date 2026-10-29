@@ -3,6 +3,40 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## Software 栅格依赖统一（2026-10-29）
+
+设计见 [DesignGraphicsColor](DesignGraphicsColor.md#software-栅格器依赖)。本切片独立于前一轮
+SVG 接入，不修改 OpenGL、Direct2D、GUI/UI 或 Painter 公共接口。
+
+- [x] Software Painter 与直接扫描器测试使用 golang-gui/rasterx、scanFT v0.1.0；
+  删除 srwiley 模块及校验记录，不修改其他依赖版本，不增加 replace。
+- [x] 补充负坐标边界覆盖率：6 个矩形、4 个缩放、纯色/恒色渐变、矩形/正反绕向
+  Path，共 144 组。预期来自独立像素交集面积，不扩大原有容差。旧依赖可复现覆盖率
+  翻倍，迁移后通过；原 Software 全部测试通过。
+- [x] 干净源码副本 `GOWORK=off GOUI_PLAT_PAINTER=software go test -mod=readonly
+  -json ./... -count=1`：2864 个测试/子测试通过，10 个既有 skip，0 失败。
+  skip 为 macOS 签名和原生手动测试，不算通过。旧测试的窗口/剪贴板及文件副作用隔离
+  在独立 X11 和仓库外源码副本，不混入用户原有未跟踪文件。
+- [x] `go test -mod=readonly -race ./platform/graphics/software ./icon/... ./gui ./ui
+  -count=1` 与 `go mod verify` 通过；依赖图不再包含 srwiley 模块。
+- [x] Linux amd64 / Ubuntu 22.04，独立 Xvnc `:81` + xfwm4 合成器，Mesa 23.2.1
+  llvmpipe：svgicon 的 Software/OpenGL 各 1x/2x 完成真实鼠标亮暗/主题/尺寸/替换/
+  共享窗口、滚动、窗口缩放及正常退出；实际后端和稳定后的 PixelScale 有日志确认。
+- [x] 独立会话执行 graphics/alpha 普通与透明窗口、graphics/clear_path，各 1x/2x。
+  真实点击切换 Clear/FillRect/DrawImage，蓝色背景 `{158,199,232}` 上的半透明红均为
+  `{207,99,116}`，符合 source-over，三种方式相同；填充/阴影/渐变与参考图片相符。
+  ClearPath 的角部和中孔显示下层背景，点击重绘前后像素一致，1/1.25/1.5/2x
+  RenderImage 自动像素断言和销毁检查通过。程序均由 Escape 正常退出。
+  首次自动采样受 xdotool 3.20160805 对原生外框重复计偏移影响，改用 xwininfo 的真实
+  绝对坐标后通过；未修改框架坐标或放宽原有像素断言。
+- [x] Windows amd64 / macOS arm64 的 Software 测试目标、ClearPath/SVG 窗口例程
+  `CGO_ENABLED=0` 交叉编译通过；本轮未执行远端原生运行。
+- Linux arm64：Software 包测试目标编译通过；窗口例程编译被既有 libc 中
+  `syscall.SYS_PIPE` / `SYS_POLL` 未定义阻塞，迁移前源码复跑出现相同错误；后续 SVG
+  窗口目标未继续执行。此缺口属于 Linux arm64 平台适配，不以包编译代替窗口验收。
+
+日志、源码副本和截图保存在仓库外 `/tmp/goui-software-v0.1.0-7bxh73ix`。
+
 ## SVG 原生栅格化接入（2026-10-29）
 
 设计见 [DesignSVG](DesignSVG.md)。仅升级 SVG 链路，不迁移 Software Painter。

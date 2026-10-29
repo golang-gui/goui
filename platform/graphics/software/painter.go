@@ -17,8 +17,8 @@ import (
 	"github.com/golang-gui/goui/platform/graphics/utils"
 	"github.com/golang-gui/goui/platform/typography"
 
-	"github.com/srwiley/rasterx"
-	"github.com/srwiley/scanFT"
+	"github.com/golang-gui/rasterx"
+	"github.com/golang-gui/scanFT"
 	"golang.org/x/image/math/fixed"
 )
 

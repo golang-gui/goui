@@ -74,10 +74,11 @@ cmd/goui 继续通过相同 Source 生成 ICO/ICNS，不另建 SVG 解析或绘�
 
 ## Software 范围
 
-本切片不迁移 Software Painter。它仍使用原来的 srwiley/rasterx、srwiley/scanFT，
-原版本与绘制代码保持不变。新 oksvg 间接依赖 golang-gui/rasterx、golang-gui/scanFT
-的 v0.1.0；两个模块家族暂时并存，不混传各自的命名类型。
-Software 的依赖统一另行设计和验收；SVG 使用新 CPU 位图并按普通图片接入三个绘制后端。
+SVG 接入切片未迁移 Software Painter；后续独立切片将它也迁移到
+golang-gui/rasterx、golang-gui/scanFT v0.1.0，移除 srwiley 两项依赖。
+两条链路现在使用相同版本，但不共享可变 Scanner、Stroker 或目标缓冲区。
+Software 的使用方契约与像素回归见 [绘制颜色设计](DesignGraphicsColor.md#software-栅格器依赖)。
+SVG 仍先输出 CPU 位图，再按普通图片接入三个绘制后端，不借用 Software Painter 来解释 SVG。
 
 ## 测试与验收
 

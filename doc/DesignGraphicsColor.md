@@ -62,6 +62,26 @@ Direct2D 后端已有 ID2D1DeviceContext，使用其 CreateGradientStopCollectio
 回归保留原填充/描边绝对值断言，增加 1x/1.5x/2x 的四分位采样、透明端点、
 同色端点换方向和颜色缓存切换；量化容差保持为 ±2，不扩大容差掩盖失败。
 
+## Software 栅格器依赖
+
+Software Painter 使用自维护 `github.com/golang-gui/rasterx v0.1.0` 和
+`github.com/golang-gui/scanFT v0.1.0`，与 icon/svg 统一依赖，不使用 replace 或本地路径。
+修改仅涉及 Painter 及直接扫描器测试的 import，不增加公共 API 或另一套绘制适配。
+
+rasterx 负责路径填充/描边轮廓，scanFT 负责覆盖率与颜色合成。几何或扫描错误在所属库
+修复，GOUI 不按图形做坐标/透明度补偿。每个 Painter 继续独立持有可变 Scanner、Filler、
+Stroker 和 BGRA 缓冲区；SVG Source 与 Painter 不共享这些状态。
+
+负坐标的 26.6 定点分解必须向下取整：`[-0.25,0.25] × [1,2]` 在 `(0,1)`
+只有 0.25 的覆盖面积，不能把画布外面积算进来。回归通过公开 FillRect/FillPath 和
+RenderImage，以像素交集面积独立计算预乘 RGBA；覆盖正反绕向、恒色 ColorFunc、
+画布外/包围画布、1/1.25/1.5/2x。容差为既有 12 位覆盖率至 8 位通道的 ±1 量化误差。
+新测试在旧依赖上失败、迁移后通过，不以两条扫描路径彼此相同作为正确性证据。
+
+ClearPath 的覆盖度掩码及 destination-out 实现保持不变。现有零 clip 哨兵的处理也保留；
+本轮没有把这些既定语义改成新的裁剪或清除模型。原有预乘、透明合成、渐变、
+变换、HiDPI、文字图片缓存及资源释放断言继续全部执行。结果见 [Plan](Plan.md)。
+
 ## 文字颜色
 
 TextFormat.TextColor 和 SetTextColor 使用标准 Go color.Color，而不是 graphics.Color
