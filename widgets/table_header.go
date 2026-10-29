@@ -1,22 +1,22 @@
 package widgets
 
 import (
+	"slices"
+
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/style"
-	"slices"
 )
 
 type tableHeader struct {
 	gui.WidgetBase
-	view           *TableView
-	column         *TableColumn
-	label          *gui.Label
-	handle         *tableResizeHandle
-	hover, pressed bool
+	view   *TableView
+	column *TableColumn
+	label  *gui.Label
+	handle *tableResizeHandle
 }
 
 func newTableHeader(v *TableView, c *TableColumn) *tableHeader {
@@ -27,10 +27,9 @@ func newTableHeader(v *TableView, c *TableColumn) *tableHeader {
 	h.WidgetBase.AddChild(h, h.handle)
 	h.SetLayoutManager(&tableHeaderCellLayout{header: h})
 	motion := gui.NewMotionEventController()
-	motion.ConnectContainsHover(func(hover bool) { h.hover = hover; h.RequestPaint() })
 	h.AddEventController(motion)
 	click := gui.NewClickEventController()
-	click.ConnectPressed(func(_ gui.EventContext, pressed bool) { h.pressed = pressed; h.RequestPaint() })
+	click.ConnectPressed(func(_ gui.EventContext, pressed bool) { h.SetState(style.Pressed, pressed) })
 	click.ConnectClicked(func(ctx gui.EventContext) { ctx.StopPropagation(); v.requestSort(c) })
 	h.AddEventController(click)
 	keys := gui.NewKeyEventController()
@@ -59,12 +58,9 @@ func (h *tableHeader) update() {
 	h.RequestPaint()
 }
 func (h *tableHeader) Paint(p gui.Painter) {
-	state := style.Normal
-	if h.hover && h.column.sortable {
-		state = style.Hovered
-	}
-	if h.pressed && h.column.sortable {
-		state = style.Pressed
+	state := h.State()
+	if !h.column.sortable {
+		state &^= style.Hovered | style.Pressed
 	}
 	r := geometry.Rect(0, 0, h.Rect().Width, h.Rect().Height)
 	paintStyledBox(h, p, r, "table-header", "", state)

@@ -3,6 +3,13 @@ package widgets
 import (
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	"image/draw"
+	"math"
+	"slices"
+	"testing"
+
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
@@ -11,12 +18,6 @@ import (
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/software"
 	"github.com/golang-gui/goui/style"
-	"image"
-	"image/color"
-	"image/draw"
-	"math"
-	"slices"
-	"testing"
 )
 
 // 表格逻辑、无字体测量及正常输入分发回归；不创建原生窗口。
@@ -454,14 +455,15 @@ func TestTableViewAlternateRowsAndStatePriority(t *testing.T) {
 	check(v.realized["r0"], color.RGBA{R: 255, G: 255, B: 255, A: 255})
 	row := v.realized["r1"]
 	check(row, color.RGBA{R: 220, G: 220, B: 220, A: 255})
-	row.hover = true
+	testWidgetHover(t, row, true)
 	check(row, color.RGBA{B: 255, A: 255})
-	row.pressed = true
+	row.SetState(style.Pressed, true)
 	check(row, color.RGBA{G: 255, A: 255})
 	v.SetSelection([]string{"r1"})
 	check(row, color.RGBA{R: 255, A: 255})
 	v.SetSelection(nil)
-	row.hover, row.pressed = false, false
+	testWidgetHover(t, row, false)
+	row.SetState(style.Pressed, false)
 	m.Modify(func(rows []tableRecord) []tableRecord { rows[0], rows[1] = rows[1], rows[0]; return rows })
 	tableArrange(v, 200, 160)
 	check(v.realized["r1"], color.RGBA{R: 255, G: 255, B: 255, A: 255})

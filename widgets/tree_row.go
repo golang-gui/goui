@@ -31,10 +31,9 @@ func (d *treeListDelegate) Setup() gui.Widget {
 		r.WidgetBase.AddChild(r, r.content)
 	}
 	r.motion = gui.NewMotionEventController()
-	r.motion.ConnectContainsHover(func(hover bool) { r.hover = hover; r.RequestPaint() })
 	r.AddEventController(r.motion)
 	r.click = gui.NewClickEventController()
-	r.click.ConnectPressed(func(_ gui.EventContext, pressed bool) { r.pressed = pressed; r.RequestPaint() })
+	r.click.ConnectPressed(func(_ gui.EventContext, pressed bool) { r.SetState(style.Pressed, pressed) })
 	r.click.ConnectClick(func(ctx gui.EventContext, count int) {
 		if r.bound.ID == "" || r.view.Destroyed() {
 			return
@@ -77,6 +76,7 @@ func (d *treeListDelegate) Bind(index int, widget gui.Widget) {
 		d.Unbind(index, widget)
 	}
 	r.bound, r.flat = row, flat
+	r.SetState(style.Selected, row.Selected)
 	v.realized[row.ID] = r
 	r.RequestLayout()
 	if r.delegate != nil && r.content != nil {
@@ -90,6 +90,7 @@ func (d *treeListDelegate) Unbind(_ int, widget gui.Widget) {
 		return
 	}
 	r.bound = TreeRow{}
+	r.SetState(style.Selected, false)
 	if d.view.realized[old.ID] == r {
 		delete(d.view.realized, old.ID)
 	}
@@ -109,40 +110,34 @@ func (v *TreeView) rowState(flat flatTreeRow) TreeRow {
 
 type treeRow struct {
 	gui.WidgetBase
-	view           *TreeView
-	delegate       TreeItemDelegate
-	bound          TreeRow
-	flat           flatTreeRow
-	content        gui.Widget
-	motion         *gui.MotionEventController
-	click          *gui.ClickEventController
-	hover, pressed bool
+	view     *TreeView
+	delegate TreeItemDelegate
+	bound    TreeRow
+	flat     flatTreeRow
+	content  gui.Widget
+	motion   *gui.MotionEventController
+	click    *gui.ClickEventController
 }
 
 func (r *treeRow) Paint(p gui.Painter) {
 	if r.bound.ID == "" {
 		return
 	}
-	state := style.Normal
-	if r.hover {
-		state = style.Hovered
-	}
-	if r.pressed {
-		state = style.Pressed
-	}
+	state := r.State()
 	name := r.StyleName()
 	if name == "" {
 		name = "tree-item"
 	}
 	part := ""
-	if r.view.selected[r.bound.ID] {
+	if state.Has(style.Selected) {
 		part = "selected"
 	}
 	rect := geometry.Rect(0, 0, r.Rect().Width, r.Rect().Height)
 	paintStyledBox(r, p, rect, name, part, state)
 	if r.view.current == r.bound.ID && r.view.Focused() {
+		state |= style.Focused
 		if r.view.FocusVisible() {
-			state = style.FocusVisible
+			state |= style.FocusVisible
 		}
 		paintStyledBorder(p, rect, gui.ResolveWidgetStyle(r, name, "current", state))
 	}
@@ -150,7 +145,7 @@ func (r *treeRow) Paint(p gui.Painter) {
 func (r *treeRow) Snapshot() gui.WidgetInfo {
 	info := r.WidgetBase.Snapshot()
 	info.Role = RoleTreeItem
-	info.Selected = r.view.selected[r.bound.ID]
+	info.Selected = r.State().Has(style.Selected)
 	info.SetAttribute(HierarchyInfoKey, HierarchyInfo{
 		NodeID: r.bound.ID, ParentID: r.flat.parent, Level: r.flat.depth + 1,
 		PositionInSet: r.flat.position, SetSize: r.flat.siblings,

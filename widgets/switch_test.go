@@ -66,7 +66,7 @@ func TestSwitchSettersAndInput(t *testing.T) {
 	dispatchTabPointer(t, d, h, events.PointerDown, 90, 16)
 	dispatchTabPointer(t, d, h, events.PointerMove, 150, 16)
 	dispatchTabPointer(t, d, h, events.PointerUp, 150, 16)
-	if b.Checked() || changes != 2 || b.pressed {
+	if b.Checked() || changes != 2 || b.State().Has(style.Pressed) {
 		t.Fatal("outside release activated")
 	}
 	switchKey(t, d, h, events.KeySpace, false)
@@ -156,7 +156,7 @@ func TestSwitchDragAndCancellation(t *testing.T) {
 				b.SetChecked(true)
 			}
 			dispatchTabPointer(t, d, h, events.PointerUp, 28, 16)
-			if b.Checked() != (kind == "setter") || changes != 0 || b.drag.Dragging() || b.pressed || b.position != b.target() {
+			if b.Checked() != (kind == "setter") || changes != 0 || b.drag.Dragging() || b.State().Has(style.Pressed) || b.position != b.target() {
 				t.Fatal("canceled drag committed / retained interaction")
 			}
 		})
@@ -194,7 +194,7 @@ func TestSwitchContentAndReentry(t *testing.T) {
 	b.Arrange(geometry.Rect(0, 0, 120, 32))
 	dispatchTabPointer(t, d, h, events.PointerDown, 60, 16)
 	dispatchTabPointer(t, d, h, events.PointerUp, 60, 16)
-	if clicks != 1 || b.Checked() || b.pressed {
+	if clicks != 1 || b.Checked() || b.State().Has(style.Pressed) {
 		t.Fatal("interactive child also activated parent")
 	}
 	child.RemoveEventController(click)

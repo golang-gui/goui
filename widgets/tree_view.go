@@ -494,6 +494,9 @@ func (v *TreeView) notify(oldExpanded, oldSelection []string, oldCurrent string)
 	}
 	version := v.revision
 	selected, current := v.Selection(), v.current
+	for id, row := range v.realized {
+		row.SetState(style.Selected, v.selected[id])
+	}
 	// State changes update only changed bindings during layout; they must not
 	// flush measurements or rebuild every visible content subtree.
 	v.RequestLayout()

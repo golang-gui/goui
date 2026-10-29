@@ -49,3 +49,19 @@ func dispatchTabPointer(t *testing.T, d *gui.EventDispatcher, host *tabInputHost
 		t.Fatal(err)
 	}
 }
+
+// 通过正常 crossing 路径设置指针事实；不向生产 API 增加测试专用 setter。
+func testWidgetHover(t *testing.T, widget gui.Widget, hover bool) {
+	t.Helper()
+	host := &tabInputHost{root: widget}
+	dispatcher := new(gui.EventDispatcher)
+	point := widget.Rect().Pos.Add(geometry.Point{X: 1, Y: 1})
+	if err := dispatcher.DispatchEvent(host, events.PointerEvent{EventType: events.PointerMove, Position: point}); err != nil {
+		t.Fatal(err)
+	}
+	if !hover {
+		if err := dispatcher.DispatchEvent(host, events.PointerEvent{EventType: events.PointerLeave, Position: point}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

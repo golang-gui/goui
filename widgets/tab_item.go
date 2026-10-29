@@ -13,15 +13,14 @@ import (
 
 type tabItem struct {
 	gui.WidgetBase
-	bar              *TabBar
-	page             *TabPage
-	body             *tabBody
-	close            *gui.Button
-	hovered, pressed bool
-	width            float32
-	reservedHeight   float32 // measured before hiding the native source
-	motion           tabMotion
-	widthMotion      tabMotion
+	bar            *TabBar
+	page           *TabPage
+	body           *tabBody
+	close          *gui.Button
+	width          float32
+	reservedHeight float32 // measured before hiding the native source
+	motion         tabMotion
+	widthMotion    tabMotion
 }
 
 type tabBody struct {
@@ -77,13 +76,13 @@ func newTabItem(bar *TabBar, page *TabPage) *tabItem {
 	bar.addWheel(item)
 
 	motion := gui.NewMotionEventController()
-	motion.ConnectContainsHover(func(v bool) {
-		item.hovered = v
-		item.RequestLayout()
-	})
+	motion.ConnectContainsHover(func(bool) { item.RequestLayout() })
 	item.AddEventController(motion)
 	click := gui.NewClickEventController()
-	click.ConnectPressed(func(_ gui.EventContext, v bool) { item.pressed = v; item.RequestLayout() })
+	click.ConnectPressed(func(_ gui.EventContext, v bool) {
+		item.SetState(style.Pressed, v)
+		item.RequestLayout() // close disclosure depends on an ongoing body press
+	})
 	click.ConnectClicked(func(_ gui.EventContext) {
 		if bar.view != nil {
 			bar.view.SetCurrent(page)
@@ -125,6 +124,7 @@ func (item *tabItem) updateMetadata() {
 }
 func (item *tabItem) updateSelection() {
 	selected := item.bar.view != nil && item.bar.view.Current() == item.page
+	item.SetState(style.Selected, selected)
 	textStyle := "tab-item-text"
 	iconStyle := "tab-item-icon"
 	if selected {
@@ -146,19 +146,14 @@ func (item *tabItem) Arrange(rect geometry.Rectangle) {
 	// Pointer-down focuses the body even when the following drag does not
 	// select this page. Body focus alone must not keep an inactive close shown;
 	// retain it only when the close button itself owns keyboard focus.
-	show := item.page.closable && (selected || item.hovered || item.close.ContainsFocus())
+	show := item.page.closable && (selected || item.State().Has(style.Hovered) || item.close.ContainsFocus())
 	// Do not introduce a sibling hit target underneath an ongoing body click.
 	// Its release must still select the tab even if a frame runs in between.
-	item.close.SetVisible(show && (!item.pressed || item.close.Visible()))
+	item.close.SetVisible(show && (!item.State().Has(style.Pressed) || item.close.Visible()))
 	item.WidgetBase.Arrange(rect)
 }
 func (item *tabItem) Paint(p gui.Painter) {
-	state := style.Normal
-	if item.pressed {
-		state = style.Pressed
-	} else if item.hovered {
-		state = style.Hovered
-	}
+	state := item.State()
 	part := ""
 	if item.bar.view != nil && item.bar.view.Current() == item.page {
 		part = "selected"

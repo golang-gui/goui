@@ -98,7 +98,7 @@ func TestCheckButtonInput(t *testing.T) {
 	dispatchTabPointer(t, d, host, events.PointerDown, 8, 16)
 	dispatchTabPointer(t, d, host, events.PointerMove, 150, 16)
 	dispatchTabPointer(t, d, host, events.PointerUp, 150, 16)
-	if b.Checked() || len(states) != 2 || b.pressed {
+	if b.Checked() || len(states) != 2 || b.State().Has(style.Pressed) {
 		t.Fatal("outside release activated / retained press")
 	}
 	dispatchTabPointer(t, d, host, events.PointerDown, 8, 16)
@@ -106,7 +106,7 @@ func TestCheckButtonInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	dispatchTabPointer(t, d, host, events.PointerUp, 8, 16)
-	if b.Checked() || len(states) != 2 || b.pressed {
+	if b.Checked() || len(states) != 2 || b.State().Has(style.Pressed) {
 		t.Fatal("lost-focus gesture activated / retained press")
 	}
 	b.SetCheckState(CheckMixed)
@@ -169,7 +169,7 @@ func TestCheckButtonChildCompetition(t *testing.T) {
 	host, d := &tabInputHost{root: b}, new(gui.EventDispatcher)
 	dispatchTabPointer(t, d, host, events.PointerDown, 40, 16)
 	dispatchTabPointer(t, d, host, events.PointerUp, 40, 16)
-	if b.Checked() || b.pressed || clicks != 1 {
+	if b.Checked() || b.State().Has(style.Pressed) || clicks != 1 {
 		t.Fatal("child click also toggled parent / retained press")
 	}
 	child.RemoveEventController(click)

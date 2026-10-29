@@ -4,8 +4,6 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
-	"github.com/golang-gui/goui/platform/graphics"
-	"github.com/golang-gui/goui/style"
 	"github.com/golang-gui/goui/ui"
 )
 
@@ -35,16 +33,7 @@ func (w *surfaceWidget) Snapshot() gui.WidgetInfo {
 	return info
 }
 func (w *surfaceWidget) Paint(p gui.Painter) {
-	s := gui.ResolveStyle(w.StyleName(), style.PartDefault, style.Normal)
-	r := geometry.Rectangle{Size: w.Rect().Size}
-	radius, _ := s.Radius()
-	if c, ok := s.BackgroundColor(); ok && c != nil {
-		p.FillRoundRect(r, radius, graphics.ColorOf(c))
-	}
-	width, _ := s.BorderWidth()
-	if c, ok := s.BorderColor(); ok && c != nil && width > 0 {
-		p.DrawRoundRect(r.Inset(width/2), max(0, radius-width/2), width, graphics.ColorOf(c))
-	}
+	gui.PaintWidgetStyle(p, w, "widget")
 }
 
 type surfaceView struct {

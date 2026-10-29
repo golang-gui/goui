@@ -26,7 +26,7 @@ const (
 	// AccentIcon uses a contrast-adjusted accent foreground for drawing icons.
 	AccentIcon = "accent-icon"
 	// Card is a rounded, subtly bordered surface without a shadow. The widget
-	// must paint its own background; layout-only boxes do not become cards.
+	// must explicitly paint its background. LinearBox and WrapBox support this directly.
 	Card = "card"
 	// Sidebar is a neutral, square surface without a border. It does not style
 	// navigation items or supply padding to its children.

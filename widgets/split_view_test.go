@@ -352,7 +352,7 @@ func TestSplitViewHandleIndependentStyleAndGeometry(t *testing.T) {
 		if p.rect != geometry.Rect(4, 0, 1, 100) || p.brush != graphics.ColorOf(ink) {
 			t.Fatalf("normal separator paint=%v %v", p.rect, p.brush)
 		}
-		v.handle.hovered = true
+		testWidgetHover(t, v.handle, true)
 		v.handle.Paint(p)
 		active, _ := app.sheet.Resolve(style.Sel{Name: "split-handle", State: style.Hovered}).ForegroundColor()
 		if p.rect != geometry.Rect(4, 0, 1, 100) || p.brush != graphics.ColorOf(active) || !colorEqual(ink, active) {
@@ -360,7 +360,7 @@ func TestSplitViewHandleIndependentStyleAndGeometry(t *testing.T) {
 		}
 		v.SetRatio(0)
 		arrangeSplit(v, 801, 100)
-		v.handle.hovered = false
+		testWidgetHover(t, v.handle, false)
 		v.handle.Paint(p)
 		if v.handle.Rect().Width != 5 || p.rect.X != 0 {
 			t.Fatal("edge hit clipping moved visible gap center")
@@ -442,7 +442,7 @@ func TestSplitViewHandlePointerFeedbackAndFocus(t *testing.T) {
 					}
 					paint(ink)
 					point(events.PointerMove, 240, false)
-					if !v.handle.hovered {
+					if !v.handle.State().Has(style.Hovered) {
 						t.Fatal("pointer entry did not set hover")
 					}
 					paint(hover)
@@ -459,7 +459,7 @@ func TestSplitViewHandlePointerFeedbackAndFocus(t *testing.T) {
 					point(events.PointerUp, 280, false)
 					paint(hover)
 					point(events.PointerMove, 600, false)
-					if v.handle.hovered || v.handle.dragging || !v.handle.Focused() || !v.handle.Snapshot().Focused {
+					if v.handle.State().Has(style.Hovered) || v.handle.dragging || !v.handle.Focused() || !v.handle.Snapshot().Focused {
 						t.Fatal("pointer exit did not clear feedback while retaining semantic focus")
 					}
 					paint(ink)

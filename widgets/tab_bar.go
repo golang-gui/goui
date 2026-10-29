@@ -405,7 +405,7 @@ func (v *tabViewport) Paint(p gui.Painter) {
 	pages := b.view.Pages()
 	for i := 1; i < len(pages); i++ {
 		left, right := b.items[pages[i-1]], b.items[pages[i]]
-		if pages[i-1] == b.view.Current() || pages[i] == b.view.Current() || left.hovered || right.hovered {
+		if pages[i-1] == b.view.Current() || pages[i] == b.view.Current() || left.State().Has(style.Hovered) || right.State().Has(style.Hovered) {
 			continue
 		}
 		x := left.Rect().X + left.Rect().Width + tabSpacing/2 - .5

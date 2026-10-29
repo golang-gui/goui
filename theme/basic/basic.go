@@ -165,7 +165,7 @@ func coreRules() []style.Rule {
 			ForegroundColor(color.RGBA{R: 120, G: 120, B: 120, A: 255}),
 
 		// ScrollBar parts (resolved under the same "scroll-view" name; ScrollView
-		// and ScrollBar are one unit in the style system). fallbackChain lets
+		// and ScrollBar are one unit in the style system). Normal Part defaults let
 		// these inherit the base scroll-view rule above.
 		style.Name(styleNameScrollView).Part(stylePartTrough).
 			BackgroundColor(color.RGBA{R: 0, G: 0, B: 0, A: 24}).

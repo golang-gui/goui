@@ -204,11 +204,10 @@ func (d *dropDownListDelegate) Setup() gui.Widget {
 		r.WidgetBase.AddChild(r, r.content)
 	}
 	r.motion = gui.NewMotionEventController()
-	r.motion.ConnectContainsHover(func(hover bool) { r.hovered = hover; r.RequestPaint() })
 	r.AddEventController(r.motion)
 	r.AddEventController(&dropDownDisabledInput{EventControllerBase: gui.NewEventControllerBase(gui.PhaseCapture), row: r})
 	r.click = gui.NewClickEventController()
-	r.click.ConnectPressed(func(_ gui.EventContext, pressed bool) { r.pressed = pressed; r.RequestPaint() })
+	r.click.ConnectPressed(func(_ gui.EventContext, pressed bool) { r.SetState(style.Pressed, pressed) })
 	r.click.ConnectClicked(func(ctx gui.EventContext) {
 		if r.bound && !r.disabled {
 			ctx.StopPropagation()
@@ -250,7 +249,8 @@ func (*dropDownListDelegate) Unbind(_ int, widget gui.Widget) {
 		return
 	}
 	index := r.index
-	r.bound, r.index, r.hovered, r.pressed = false, -1, false, false
+	r.bound, r.index = false, -1
+	r.SetState(style.Pressed, false)
 	r.click.Reset()
 	r.motion.Reset()
 	if r.delegate != nil && r.content != nil {
@@ -260,14 +260,14 @@ func (*dropDownListDelegate) Unbind(_ int, widget gui.Widget) {
 
 type dropDownRow struct {
 	gui.WidgetBase
-	owner                             *DropDown
-	delegate                          gui.ListItemDelegate
-	content                           gui.Widget
-	index                             int
-	trailingGap                       float32
-	bound, disabled, hovered, pressed bool
-	motion                            *gui.MotionEventController
-	click                             *gui.ClickEventController
+	owner           *DropDown
+	delegate        gui.ListItemDelegate
+	content         gui.Widget
+	index           int
+	trailingGap     float32
+	bound, disabled bool
+	motion          *gui.MotionEventController
+	click           *gui.ClickEventController
 }
 
 func (r *dropDownRow) Measure(constraint layout.Constraint) layout.Measurement {
@@ -303,14 +303,11 @@ func (r *dropDownRow) Paint(p gui.Painter) {
 	if !r.bound {
 		return
 	}
-	state := style.Normal
-	if r.disabled {
-		state = style.Disabled
-	} else if r.pressed {
-		state = style.Pressed
-	} else if r.hovered || r.owner.current == r.index {
-		state = style.Hovered
+	state := r.State()
+	if !state.Has(style.Disabled) && r.owner.current == r.index {
+		state |= style.Hovered
 	}
+
 	part := style.PartDefault
 	if r.owner.selected == r.index {
 		part = "selected"
@@ -330,7 +327,9 @@ func (r *dropDownRow) Paint(p gui.Painter) {
 
 func (r *dropDownRow) Snapshot() gui.WidgetInfo {
 	info := r.WidgetBase.Snapshot()
-	info.Role, info.Enabled, info.Selected = RoleOption, info.Enabled && r.bound && !r.disabled && gui.IsEnabled(r.owner), r.bound && r.owner.selected == r.index
+	state := r.State()
+	info.Role, info.Enabled, info.Selected = RoleOption, info.Enabled && r.bound && !state.Has(style.Disabled), state.Has(style.Selected)
+	info.Hovered, info.Pressed = state.Has(style.Hovered), state.Has(style.Pressed)
 	if r.owner.Destroyed() || !gui.IsEnabled(r.owner) {
 		disableDropDownSnapshot(&info)
 	}
@@ -363,4 +362,17 @@ func (dropDownRowLayout) Arrange(children []layout.Child, rect geometry.Rectangl
 	area := geometry.Size{Width: max(0, rect.Width-30), Height: max(0, rect.Height-12)}
 	content := children[0].Measure(layout.Loose(area))
 	children[0].Arrange(geometry.Rect(rect.X+6, rect.Y+(rect.Height-content.Height)/2, area.Width, content.Height))
+}
+
+// Record constraints are projected without disabling pointer observation used
+// by the popup's browsing policy. Selection remains owned by the model.
+func (r *dropDownRow) State() style.State {
+	state := r.WidgetBase.State()
+	if r.bound && r.owner.selected == r.index {
+		state |= style.Selected
+	}
+	if r.disabled || !gui.IsEnabled(r.owner) {
+		state = (state | style.Disabled).Normalized() &^ style.DropActive
+	}
+	return state
 }
