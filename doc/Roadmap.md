@@ -29,8 +29,9 @@ State.Set／Update 只通知显式使用方；App.RequestUpdate 仍负责全应�
 ## Label 展示文本切片（2026-10-29）
 
 详细契约见 [DesignLabel](DesignLabel.md)，验证记录见 [Plan](Plan.md)。已实现格式字符串、命名样式范围、主题切换、
-本地化和纯文本语义；解析包位于 gui/textformat，普通文案仍使用原有 Label/Text/BindText 入口。可选择文本为下一
-独立切片，尚未实现。TextInput/TextView 的正文与 Placeholder 不解析格式。
+本地化和纯文本语义；解析包位于 gui/textformat，普通文案仍使用原有 Label/Text/BindText 入口。
+可选的单 Label 选择、复制与 UI 选区绑定已接入，验证进度见 Plan；跨控件选择、触摸手柄、
+边缘自动滚动与富文本剪贴板待后续需求。TextInput/TextView 的正文与 Placeholder 不解析格式。
 
 ## TextLayout 富文本基础：本轮已实现，应用层按需求推进
 
