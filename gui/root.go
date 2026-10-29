@@ -381,3 +381,36 @@ func (b *rootBase) destroyFrames() {
 	b.suspendFrames()
 	b.frameRequester = nil
 }
+
+type stateMeasurement struct {
+	constraint layout.Constraint
+	result     layout.Measurement
+	valid      bool
+}
+
+func (b *rootBase) updateStateStyles() {
+	pending := b.stateStyles
+	b.stateStyles = nil // callbacks can schedule a later notification
+	for widget, before := range pending {
+		if b.frameDestroyed {
+			return
+		}
+		root := widget.Root()
+		owner, ok := root.(interface{ rootState() *rootBase })
+		if widget.base().destroyed || !ok || owner.rootState() != b {
+			continue
+		}
+		if !ensureWidgetStyle(widget) || widget.Root() != root {
+			continue
+		}
+		if !b.layoutDirty && before.valid {
+			after := measureWidget(widget, before.constraint)
+			if widget.base().destroyed || widget.Root() != root {
+				continue
+			}
+			if after != before.result {
+				widget.RequestLayout()
+			}
+		}
+	}
+}
