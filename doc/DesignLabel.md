@@ -184,6 +184,8 @@ Software 原生排版像素比较用同后端独立构造的 TextLayout 作参�
 预期、副作用与退出。GUI 例程覆盖 Basic/Modern 亮暗、嵌套、字体/大小、装饰、换行、
 格式参数、出错降级、主题和文本切换、TextInput/TextView 的原样显示；UI 例程验证现有
 Text/BindText 和 mlang 路径，无 DevServer。支持自动断言和保留窗口截图的人工检查。
+两个例程的根容器不设置 Padding，HeaderBar 位于内容区顶部；正文用独立容器留白。
+自动检查 HeaderBar 贴顶，以及自绘窗口按钮与它的垂直中心一致，防止示例误导用法。
 
 阶段：解析与独立测试 → 样式和 Label 及语义 → UI/窗口例程 → 本机独立 X11 全仓/race/
 Software+OpenGL 1x/2x → Windows Direct2D/OpenGL/Software 与 macOS OpenGL/Software

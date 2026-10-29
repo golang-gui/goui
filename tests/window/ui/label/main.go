@@ -2,6 +2,7 @@
 // 环境：Linux X11/Windows/macOS 桌面，系统字体；与 GUI label 例程相同的后端和倍率。
 // 启动：go run ./tests/window/ui/label [-auto] [-capture-dir DIR]；DIR 为仓库外已有目录。
 // 两种启动均先自动断言；普通启动保留窗口，待 PASS 后再执行手动操作。
+// 布局：HeaderBar 贴内容区顶部；正文独立留白，窗口按钮与 HeaderBar 垂直居中。
 // 初始：Modern 亮色，格式化翻译、局部绑定 Label、保留原始语法的编辑框。
 // 操作与预期：
 //  1. 点 Cycle：绑定内容依次格式化、错误源串、普通文本；只有属性更新，控件身份不变。
@@ -21,6 +22,7 @@ import (
 	"fmt"
 	"image/png"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"time"
@@ -74,6 +76,15 @@ func main() {
 		}
 		theme := func() { dark = !dark; app.RequestUpdate() }
 		check := func() {
+			win := app.FindWindow("main")
+			headerBounds := app.FindWidget("main", "header").Snapshot().Bounds
+			require(headerBounds.Y == win.Widget().Snapshot().Bounds.Y, "HeaderBar is inset below the content top")
+			var chrome gui.ChromeInfo
+			handle := win.Chrome().ConnectInfo(func(info gui.ChromeInfo) { chrome = info })
+			handle.Disconnect()
+			if chrome.Enabled && chrome.Controls == gui.ChromeControlsCustom {
+				require(math.Abs(float64(chrome.ControlsBounds.Center().Y-headerBounds.Center().Y)) < .001, "window controls are not vertically centered in HeaderBar")
+			}
 			label := app.FindWidget("main", "bound").(*gui.Label)
 			parsed, e := textformat.Parse(source.Get())
 			expected := parsed.Plain
@@ -90,7 +101,7 @@ func main() {
 				expectedPrompt = "是否保存" + file + "？尚有修改"
 			}
 			require(translated.PlainText() == expectedPrompt, "translation/range or literal argument mismatch")
-			log.Printf("CHECK PASS step=%d builds=%d language=%s typography=%s allocation=%+v", step, builds, mlang.Language(), gui.App.Typography().Name(), app.FindWindow("main").Widget().Rect())
+			log.Printf("CHECK PASS step=%d builds=%d language=%s typography=%s chrome=%t headerCenter=%g controlsCenter=%g", step, builds, mlang.Language(), gui.App.Typography().Name(), chrome.Enabled, headerBounds.Center().Y, chrome.ControlsBounds.Center().Y)
 			if *capture != "" {
 				img, e := gui.RenderWidget(app.FindWindow("main").Widget(), 0)
 				must(e)
@@ -152,16 +163,18 @@ func main() {
 		return ui.Root().StyleSheet(modern.Sheet(modern.Options{Dark: dark})).Windows(
 			ui.Window("main").Title("GOUI UI Label format").Size(780, 500).Center(true).Chrome(gui.WindowChromeIntegrated).Content(
 				ui.VBox(
-					ui.HeaderBar(ui.Label("UI Label — Text / BindText / mlang")),
-					ui.HBox(ui.Button("Cycle").OnClick(cycleText), ui.Button("Language").OnClick(language), ui.Button("Theme").OnClick(theme), ui.Button("Check").OnClick(check)).Spacing(8),
-					ui.Label(fmt.Sprintf(template, textformat.EscapeArg(template, file))).ID("translated").WrapMode(ui.WrapWordChar),
-					ui.Label(`\{format\}\{bold:Nested \{italic:styles\}\} / \{underline:underline\} / \{strikethrough:strike\}`),
-					ui.Label().ID("bound").BindText(&source).WrapMode(ui.WrapWordChar),
-					ui.TextInput().ID("input").BindText(&source),
-					ui.ScrollView(ui.TextView().ID("readonly").ReadOnly(true).BindText(&source)).MinHeight(80).MaxHeight(80),
-					ui.Label(`Raw: \{bold:literal\}  < > &`),
-					ui.Label("Label remains non-selectable; editors display the source."),
-				).Padding(16).Spacing(12).CrossAlign(layout.CrossStretch),
+					ui.HeaderBar(ui.Label("UI Label — Text / BindText / mlang")).ID("header"),
+					ui.VBox(
+						ui.HBox(ui.Button("Cycle").OnClick(cycleText), ui.Button("Language").OnClick(language), ui.Button("Theme").OnClick(theme), ui.Button("Check").OnClick(check)).Spacing(8),
+						ui.Label(fmt.Sprintf(template, textformat.EscapeArg(template, file))).ID("translated").WrapMode(ui.WrapWordChar),
+						ui.Label(`\{format\}\{bold:Nested \{italic:styles\}\} / \{underline:underline\} / \{strikethrough:strike\}`),
+						ui.Label().ID("bound").BindText(&source).WrapMode(ui.WrapWordChar),
+						ui.TextInput().ID("input").BindText(&source),
+						ui.ScrollView(ui.TextView().ID("readonly").ReadOnly(true).BindText(&source)).MinHeight(80).MaxHeight(80),
+						ui.Label(`Raw: \{bold:literal\}  < > &`),
+						ui.Label("Label remains non-selectable; editors display the source."),
+					).Padding(16).Spacing(12).CrossAlign(layout.CrossStretch).MainWeight(1),
+				).CrossAlign(layout.CrossStretch),
 			),
 		)
 	})
