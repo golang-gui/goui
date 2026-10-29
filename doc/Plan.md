@@ -3,6 +3,39 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## Software 平直边缘像素对齐（2026-10-29）
+
+设计见 [DesignGraphicsColor](DesignGraphicsColor.md#ui-平直边缘的像素对齐)。
+
+- [x] 五个 Software 绘制入口复用既有 pixelsnap；不修改 GUI/UI、样式或窗口实现。
+  26.6 定点转换改为最近值，避免浮点尾差截退 1/64 像素。Path 保留亚像素精度。
+- [x] 144 组独立直边断言在修复前失败、修复后通过，覆盖纯平移、1/2 物理像素宽度、
+  1/1.25/1.5/2x、矩形/圆角及水平/垂直线；圆角仍须有抗锯齿。新增定点转换回归。
+  原 144 组负坐标面积回归保留，FillRect 显式缩放以验证不对齐路径的原始覆盖率。
+- [x] 既有 CheckButton/Switch 圆角面积回归按对齐后的外框更新独立几何预期；Radio
+  椭圆预期不变，不删除断言或扩大容差。初跑全仓的相关失败保留日志，修正预期后重跑。
+- [x] 干净源码副本 `GOWORK=off GOUI_PLAT_PAINTER=software go test -mod=readonly
+  -json ./... -count=1`：3010 个测试/子测试通过，10 个既有 skip，无失败。
+  skip 为 macOS 签名和原生手动项目，不算验收通过；旧测试副作用隔离在源码副本与
+  独立桌面中。初轮因旧几何预期产生的 69 项失败保留日志，不以扩大容差消除。
+- [x] `go test -mod=readonly -race ./platform/graphics/software
+  ./platform/graphics/internal/pixelsnap ./gui ./ui -count=1` 通过。
+  Windows amd64 / macOS arm64 的窗口例程交叉编译通过（CGO_ENABLED=0）；
+  Windows Software 包测试目标交叉编译及真机执行通过，共 436 个测试/子测试。
+- [x] Windows 10 22H2 build 19045.6466 / amd64 / RDP / Software 实际 1x：
+  上传前后两版窗口例程并核对 SHA256，经 remote-computer-use 在交互桌面启动；
+  后端日志确认 `*software.imageResource scale=1`。前后截图显示最小化横线从两行
+  灰色像素变成一行实线，最大化方框和普通/35.25 DIP 按钮下边框对齐，圆角和斜线
+  继续抗锯齿。真实鼠标点击计数至 2、亮暗往返、最大化/还原、拖动缩放及关闭完成；
+  重建保留计数，stderr 无错误。系统缩放未修改，不据此宣称 Windows 其他 DPI 验收。
+- [x] Linux amd64 / Ubuntu 22.04，独立 Xvnc `:81` + xfwm4 合成会话、Mesa llvmpipe：
+  Software 1/1.25/1.5/2x，OpenGL 1/2x 的真实点击、亮暗、计数保留、WM 调整大小和
+  关闭通过；均有实际后端/比例日志、截图与退出码 0。未执行 macOS 原生窗口验收。
+
+日志和前后截图位于仓库外 `/tmp/goui-pixelsnap-0nl1vi77`；新入口为
+[tests/window/ui/pixel_snap](../tests/window/ui/pixel_snap/main.go)。远端验证使用
+remote-shell 与 remote-computer-use 技能，仅创建本轮测试目录，不改系统设置或其他应用。
+
 ## Software 栅格依赖统一（2026-10-29）
 
 设计见 [DesignGraphicsColor](DesignGraphicsColor.md#software-栅格器依赖)。本切片独立于前一轮

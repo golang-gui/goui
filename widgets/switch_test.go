@@ -493,7 +493,11 @@ func testSwitchCapsuleCoverage(t *testing.T, sheet style.StyleSheet) {
 					// Compare premultiplied sRGB RGBA8 over transparent. Ten byte levels
 					// allow 26.6 path quantization, the cubic circle approximation and
 					// RGBA8 rounding, but reject the former ~25% double-AA coverage error.
-					cx, cy, radius := float64((16+offset)*scale), float64((16+offset)*scale), float64(10*scale)
+					// 胶囊外框先按物理像素对齐；独立圆面积公式使用更新后的边界，
+					// 不调用 Painter 的对齐 helper，也不扩大既有 10/255 容差。
+					radius := float64(10 * scale)
+					corner := math.Floor(float64((6+offset)*scale) + .5)
+					cx, cy := corner+radius, corner+radius
 					boundary := 0
 					for y := 0; y < out.pixels.Bounds().Dy(); y++ {
 						for x := 0; float64(x+1) <= cx; x++ {

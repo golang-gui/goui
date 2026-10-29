@@ -529,7 +529,11 @@ func TestCheckButtonBasicEdgeCoverage(t *testing.T) {
 						// Premultiplied sRGB RGBA8 over transparent; the existing 10-level
 						// circle tolerance covers path quantization/approximation/rounding,
 						// but not a second same-color antialiased stroke (see Switch test).
-						cx, cy, radius := float64((10+offset)*scale), float64((10+offset)*scale), float64(4*scale)
+						// 矩形外边界先按物理像素四舍五入；以对齐后的左上角独立计算圆心。
+						// 圆形原语不参与矩形像素对齐，仍使用原始小数坐标。
+						radius := float64(4 * scale)
+						corner := math.Floor(float64((6+offset)*scale) + .5)
+						cx, cy := corner+radius, corner+radius
 						if shape == "radio" {
 							cx, cy, radius = float64((15+offset)*scale), float64((15+offset)*scale), float64(9*scale)
 						}

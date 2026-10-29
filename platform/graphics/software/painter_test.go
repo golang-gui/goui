@@ -1083,6 +1083,7 @@ func TestRawRasterizerReference(t *testing.T) {
 }
 
 // 交集面积独立给出覆盖率，检查负坐标不会把画布外面积计入最外行/列。
+// 普通矩形按 UI 像素对齐；这里通过显式缩放保留小数边界，Path 不进行像素对齐。
 // 预乘 sRGB 各分量乘面积，允许 scanFT 12 位覆盖率到 8 位通道的 1/255 量化误差。
 func TestSubpixelCoverageAtCanvasBounds(t *testing.T) {
 	ink := graphics.Color{R: .5, G: .25, B: .125, A: .5}
@@ -1110,7 +1111,8 @@ func TestSubpixelCoverageAtCanvasBounds(t *testing.T) {
 								brush = graphics.LinearGradient{End: graphics.Point{X: 4}, StartColor: ink, EndColor: ink}
 							}
 							if shape == "rect" {
-								p.FillRect(rect, brush)
+								p.SetTransform(geometry.Scale(2, 2))
+								p.FillRect(rect.Scale(.5), brush)
 								return
 							}
 							x0, y0, x1, y1 := rect.X, rect.Y, rect.X+rect.Width, rect.Y+rect.Height
@@ -1137,6 +1139,116 @@ func TestSubpixelCoverageAtCanvasBounds(t *testing.T) {
 								if !near(got, want) {
 									t.Fatalf("(%d,%d)=%v，面积 %.4f，期望预乘颜色 %v±1", x, y, got, w*h, want)
 								}
+							}
+						}
+					})
+				}
+			}
+		}
+	}
+}
+
+// 26.6 定点使用最近值量化，正负坐标对称；不把浮点尾差截退一格。
+func TestFixedPointConversionRoundsNearest(t *testing.T) {
+	for _, test := range []struct {
+		value float32
+		want  int32
+	}{
+		{1 - 1e-7, 64}, {-1 + 1e-7, -64},
+		{.49 / 64, 0}, {.51 / 64, 1}, {-.51 / 64, -1},
+		{1.5 / 64, 2}, {-1.5 / 64, -2},
+	} {
+		point := toFixedP(test.value, -test.value)
+		if int32(point.X) != test.want || int32(point.Y) != -test.want || int32(toFixedI(test.value)) != test.want {
+			t.Fatalf("%g 的 26.6 定点转换=%v/%v，期望 %d", test.value, point, toFixedI(test.value), test.want)
+		}
+	}
+}
+
+// 期望来自独立的物理像素边界公式；直边必须完整覆盖，不能分摊至相邻像素。
+// 检查预乘 RGBA；中段避开圆角和线帽，角部仍须保留抗锯齿。
+func TestAxisAlignedPrimitivePixelSnap(t *testing.T) {
+	ink := graphics.Color{R: .5, G: .25, B: .125, A: .5}
+	outer := graphics.Rect(8.25, 8.25, 24, 20.25)
+	for _, scale := range []float32{1, 1.25, 1.5, 2} {
+		for _, offset := range []geometry.Point{{}, {X: .25, Y: .5}, {X: -.25, Y: -.5}} {
+			for _, pixels := range []int{1, 2} {
+				for _, shape := range []string{"fill", "round-fill", "stroke", "round-stroke", "horizontal", "vertical"} {
+					t.Run(fmt.Sprintf("%gx/%v/%dpx/%s", scale, offset, pixels, shape), func(t *testing.T) {
+						width := float32(pixels) / scale
+						p, err := NewPainter(&renderImageSurface{})
+						if err != nil {
+							t.Fatal(err)
+						}
+						defer p.Destroy()
+						img, err := p.RenderImage(48, 48, scale, func() {
+							p.Clear(graphics.Color{})
+							p.SetTransform(geometry.Translate(offset.X, offset.Y))
+							switch shape {
+							case "fill":
+								p.FillRect(outer, ink)
+							case "round-fill":
+								p.FillRoundRect(outer, 4, ink)
+							case "stroke":
+								p.DrawRect(outer.Inset(width/2), width, ink)
+							case "round-stroke":
+								p.DrawRoundRect(outer.Inset(width/2), 4-width/2, width, ink)
+							case "horizontal":
+								p.DrawLine(outer.LeftTop(), geometry.Point{X: outer.X + outer.Width, Y: outer.Y}, width, ink)
+							case "vertical":
+								p.DrawLine(outer.LeftTop(), geometry.Point{X: outer.X, Y: outer.Y + outer.Height}, width, ink)
+							}
+						})
+						if err != nil {
+							t.Fatal(err)
+						}
+						edge := func(v, translation float32) int {
+							return int(math.Floor(float64((v+translation)*scale) + .5))
+						}
+						left, top := edge(outer.X, offset.X), edge(outer.Y, offset.Y)
+						right, bottom := edge(outer.X+outer.Width, offset.X), edge(outer.Y+outer.Height, offset.Y)
+						check := func(x, y int, covered bool) {
+							t.Helper()
+							want := color.RGBA{}
+							if covered {
+								want = color.RGBA{R: 128, G: 64, B: 32, A: 128}
+							}
+							assertColorNear(t, img.At(x, y), want, 0)
+						}
+						if shape != "vertical" {
+							for y := 0; y < img.Bounds().Dy(); y++ {
+								covered := y >= top && y < bottom
+								if shape == "stroke" || shape == "round-stroke" {
+									covered = covered && (y < top+pixels || y >= bottom-pixels)
+								} else if shape == "horizontal" {
+									start := edge(outer.Y-width/2, offset.Y)
+									covered = y >= start && y < start+pixels
+								}
+								check((left+right)/2, y, covered)
+							}
+						}
+						if shape != "horizontal" {
+							for x := 0; x < img.Bounds().Dx(); x++ {
+								covered := x >= left && x < right
+								if shape == "stroke" || shape == "round-stroke" {
+									covered = covered && (x < left+pixels || x >= right-pixels)
+								} else if shape == "vertical" {
+									start := edge(outer.X-width/2, offset.X)
+									covered = x >= start && x < start+pixels
+								}
+								check(x, (top+bottom)/2, covered)
+							}
+						}
+						if shape == "round-fill" || shape == "round-stroke" {
+							antialiased := false
+							for y := top; y < top+int(4*scale); y++ {
+								for x := left; x < left+int(4*scale); x++ {
+									_, _, _, a := img.At(x, y).RGBA()
+									antialiased = antialiased || (a > 0 && a < 128*257)
+								}
+							}
+							if !antialiased {
+								t.Fatal("圆角抗锯齿被禁用")
 							}
 						}
 					})

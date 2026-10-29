@@ -13,6 +13,7 @@ import (
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/internal/boxshadow"
 	"github.com/golang-gui/goui/platform/graphics/internal/offscreen"
+	"github.com/golang-gui/goui/platform/graphics/internal/pixelsnap"
 	"github.com/golang-gui/goui/platform/graphics/internal/textbitmap"
 	"github.com/golang-gui/goui/platform/graphics/utils"
 	"github.com/golang-gui/goui/platform/typography"
@@ -264,6 +265,7 @@ func (p *Painter) DrawBoxShadow(rect graphics.Rectangle, radius float32, shadow 
 func (p *Painter) FillRect(rect graphics.Rectangle, brush graphics.Brush) {
 	if p.setBrush(brush) {
 		defer p.filler.Clear()
+		rect = pixelsnap.Rect(rect, p.transform, p.scale)
 		clip := p.addRect(p.filler, rect)
 		if !p.setShapeClip(clip) {
 			return
@@ -276,6 +278,7 @@ func (p *Painter) FillRect(rect graphics.Rectangle, brush graphics.Brush) {
 func (p *Painter) FillRoundRect(rect graphics.Rectangle, radius float32, brush graphics.Brush) {
 	if p.setBrush(brush) {
 		defer p.filler.Clear()
+		rect = pixelsnap.Rect(rect, p.transform, p.scale)
 		clip := p.addRoundRect(p.filler, rect, radius)
 		if !p.setShapeClip(clip) {
 			return
@@ -359,6 +362,7 @@ func (p *Painter) ClearPath(path graphics.Path) {
 func (p *Painter) DrawLine(p0, p1 graphics.Point, strokeWidth float32, brush graphics.Brush) {
 	if p.setBrush(brush) {
 		defer p.stroker.Clear()
+		p0, p1 = pixelsnap.Line(p0, p1, strokeWidth, p.transform, p.scale)
 		p0, p1 = p.devicePoint(p0), p.devicePoint(p1)
 		strokeWidth = p.deviceStrokeWidth(strokeWidth)
 		if !p.setShapeClip(p.clipForPoints([]graphics.Point{p0, p1}, strokeWidth/2)) {
@@ -378,6 +382,7 @@ func (p *Painter) DrawLine(p0, p1 graphics.Point, strokeWidth float32, brush gra
 func (p *Painter) DrawRect(rect graphics.Rectangle, strokeWidth float32, brush graphics.Brush) {
 	if p.setBrush(brush) {
 		defer p.stroker.Clear()
+		rect = pixelsnap.StrokeRect(rect, strokeWidth, p.transform, p.scale)
 		strokeWidth = p.deviceStrokeWidth(strokeWidth)
 		// rasterx expands the stroke while path segments are added, so the
 		// requested width must be configured before building the path.
@@ -394,6 +399,7 @@ func (p *Painter) DrawRect(rect graphics.Rectangle, strokeWidth float32, brush g
 func (p *Painter) DrawRoundRect(rect graphics.Rectangle, radius, strokeWidth float32, brush graphics.Brush) {
 	if p.setBrush(brush) {
 		defer p.stroker.Clear()
+		rect = pixelsnap.StrokeRect(rect, strokeWidth, p.transform, p.scale)
 		strokeWidth = p.deviceStrokeWidth(strokeWidth)
 		p.stroker.SetStroke(toFixedI(strokeWidth), toFixedI(4), rasterx.ButtCap, nil, rasterx.FlatGap, rasterx.MiterClip)
 		clip := p.addRoundRect(p.stroker, rect, radius)
@@ -908,13 +914,14 @@ func reverseColor(c color.Color) color.RGBA {
 }
 
 func toFixedP(x, y float32) (p fixed.Point26_6) {
-	p.X = fixed.Int26_6(x * 64)
-	p.Y = fixed.Int26_6(y * 64)
+	// Preserve aligned device edges despite float32 transform roundoff.
+	p.X = toFixedI(x)
+	p.Y = toFixedI(y)
 	return
 }
 
 func toFixedI(v float32) fixed.Int26_6 {
-	return fixed.Int26_6(v * 64)
+	return fixed.Int26_6(math.Round(float64(v) * 64))
 }
 
 func toClipRect(x, y, w, h float32) image.Rectangle {
