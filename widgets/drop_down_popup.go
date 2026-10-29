@@ -335,7 +335,7 @@ func (r *dropDownRow) Snapshot() gui.WidgetInfo {
 		disableDropDownSnapshot(&info)
 	}
 	if r.bound && r.index < r.owner.count() {
-		info.Text = plainDisplayText(r.owner.model.ItemAt(r.index).Text)
+		info.Text = dropDownDisplayText(r.content, r.owner.model.ItemAt(r.index).Text)
 	}
 	if info.Enabled {
 		info.Actions = append(info.Actions, gui.ActionClick)

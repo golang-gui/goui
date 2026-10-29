@@ -2005,3 +2005,33 @@ arm64 构建限制保留在原记录中；本轮未修改实现或复验这些�
 - Windows RDP 中观察 Direct2D 1x 的实际亮暗窗口，并通过正常鼠标事件点击 Light / Check；
   格式化行与 reference 同步通过。保留窗口及临时 Terminal / cmd 在操作结束后关闭；
   保留原有远端连接，恢复 macOS 输入源，不修改系统主题、语言或安全设置。
+
+
+## 2026-10-29 格式文本职责收敛
+
+- 基线 e112661。设计与修订见 DesignLabel、DesignWidgetSnapshot、DesignDropDown。
+- [x] textformat 移到 gui/textformat，保持纯解析包；更新库／窗口例程及资源文档的导入。
+- [x] 删除 gui 与 widgets 两套同义文本重解析；已有 Label 读取其 PlainText 缓存。
+  TabPage 标题没有对应的 Label，在构造／SetTitle 时使用统一 PlainText 入口保存显示标题。
+- [x] 保持 Tooltip 的纯文本契约，内部 Label 使用 Literal 保护文字，Snapshot 与显示一致。
+  DropDown 自定义展示优先提供自身 Snapshot.Text，未提供时原样保留模型语义名称。
+- [x] 补充默认／自定义 Delegate、字面标记、语义兜底与 Tooltip 显示／快照回归。
+- [x] 包内与全仓回归、相关 race、本机独立 X11 例程及 Windows/macOS 编译。
+- 本轮不修改平台、排版、GUI 更新调度或选择能力，不将上一轮远端结果算作本轮重新验收。
+
+- Linux amd64 / Go 1.25.8，已跟踪源码加本轮新增文件的独立副本中运行
+  `GOWORK=off go test -json ./... -count=1`：2679 项测试／子测试通过，10 项既有跳过，
+  0 失败；没有纳入用户原有未跟踪文件。新增 Tooltip／自定义 DropDown 回归在修改前
+  e112661 的副本中失败，修正后通过；默认 Label 用例改为真正的默认 Delegate。
+- `go test -race ./gui/textformat ./gui ./ui ./widgets -count=1` 通过；标题显示缓存最终
+  调整后再次执行全仓、widgets race 及 Windows amd64／macOS arm64 编译，通过。
+  `go list -deps ./gui/textformat` 确认不依赖 gui 本包或 platform。
+- 独立 Xvnc/Xfwm4 会话 :73 中，GUI/UI Label 例程在 Software / OpenGL 的 1x / 2x
+  共八次运行通过；没有修改排版或后端行为。
+- Tooltip 例程初次在无合成器会话中报告 `tooltip missing or stole focus`，修改前版本
+  也复现；已核实该会话 `_NET_WM_CM_S0` 无 owner，透明 Popup 不具备创建条件。
+  替换 WM 的过渡阶段另一次运行报告 `window not activated`。没有修改断言或框架来兜底。
+  在全新、稳定启用合成器的独立 :74 会话中，既有 GUI Tooltip 自动例程的 Software 1x
+  与 OpenGL 2x 均 PASS，覆盖等待、点击／滚轮、禁用、Escape、更新、焦点和模态切换。
+- 本轮没有远端原生运行；Windows/macOS 仅记为编译通过。测试程序、日志、配置及构建
+  产物放在仓库外，验证后关闭本轮独立会话，保留用户已有桌面。

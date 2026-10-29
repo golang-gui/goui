@@ -27,8 +27,11 @@ type WidgetInfo struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Role Role   `json:"role"`
+	// Text is semantic display text rather than a format source. Literal markup
+	// characters may still be document or application content. Consumers must
+	// not interpret formatting syntax in this field.
 	Text string `json:"text"`
-	// Tooltip is supplementary help, including while its visual popup is hidden.
+	// Tooltip is supplementary plain-text help, even while its popup is hidden.
 	Tooltip string `json:"tooltip,omitempty"`
 	// Bounds is the layout rectangle in window-local DIP, before clipping or
 	// occlusion. It does not guarantee that a point can receive pointer input.

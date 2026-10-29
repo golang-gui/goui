@@ -20,6 +20,7 @@ import (
 func TestDropDownFormattedTextSnapshot(t *testing.T) {
 	d, m, _, _ := dropDownInput()
 	defer d.SetModel(nil)
+	d.SetDelegate(nil) // 使用真正的默认 Label，不能用自定义替身模拟格式化展示。
 	source := `\{format\}\{bold:选项\}`
 	m.Set(0, DropDownItem{Text: source})
 	d.SetSelected(0)
@@ -40,6 +41,65 @@ func TestDropDownFormattedTextSnapshot(t *testing.T) {
 	d.SetPlaceholder(source)
 	if d.Snapshot().Text != "选项" {
 		t.Fatal("占位文案泄漏格式标记")
+	}
+	m.Set(0, DropDownItem{Text: `\{format\}`})
+	d.SetSelected(0)
+	if d.Snapshot().Text != "" {
+		t.Fatal("默认 Label 的有意空文本不应退回模型源码")
+	}
+}
+
+type dropDownSemanticDelegate struct{ text string }
+
+func (d dropDownSemanticDelegate) Setup() gui.Widget {
+	return &dropDownSemanticContent{dropDownFixedContent: dropDownFixedContent{height: 16}, text: d.text}
+}
+func (dropDownSemanticDelegate) Bind(int, gui.Widget)   {}
+func (dropDownSemanticDelegate) Unbind(int, gui.Widget) {}
+
+type dropDownSemanticContent struct {
+	dropDownFixedContent
+	text string
+}
+
+func (c *dropDownSemanticContent) Snapshot() gui.WidgetInfo {
+	info := c.WidgetBase.Snapshot()
+	info.Text = c.text
+	return info
+}
+
+func TestDropDownCustomDisplayOwnsTextSemantics(t *testing.T) {
+	source := `\{format\}\{bold:模型内容\}`
+	for _, tc := range []struct {
+		name, selected, item, wantSelected, wantItem string
+	}{
+		{"独立语义", "收起内容", "列表内容", "收起内容", "列表内容"},
+		{"字面格式", source, source, source, source},
+		{"模型兜底", "", "", source, source},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d, m, _, _ := dropDownInput()
+			defer d.SetModel(nil)
+			m.Set(0, DropDownItem{Text: source})
+			d.SetDelegate(dropDownSemanticDelegate{tc.item})
+			d.SetSelectedDelegate(dropDownSemanticDelegate{tc.selected})
+			d.SetSelected(0)
+			if got := d.Snapshot().Text; got != tc.wantSelected {
+				t.Fatalf("收起语义=%q，期望=%q", got, tc.wantSelected)
+			}
+			dropDownPopup(d)
+			if err := d.Open(); err != nil {
+				t.Fatal(err)
+			}
+			d.content.Measure(layout.Unbounded())
+			d.content.Arrange(geometry.Rect(0, 0, 180, 120))
+			if got := d.content.list.Children()[0].Snapshot().Text; got != tc.wantItem {
+				t.Fatalf("列表语义=%q，期望=%q", got, tc.wantItem)
+			}
+			if m.ItemAt(0).Text != source {
+				t.Fatal("读取快照修改了模型")
+			}
+		})
 	}
 }
 

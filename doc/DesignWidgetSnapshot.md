@@ -8,6 +8,12 @@ Snapshot 是用于理解界面和规划输入的时点数据，不是活体 Widg
 控件属性系统。公共身份、角色、边界、状态、动作和子树继续使用 gui.WidgetInfo
 的明确字段；控件包的详细语义通过具名 Attributes 扩展。
 
+Text 是显示内容的语义文字。Label 返回解析后的 PlainText，格式源码由 Label.Text()
+保留；消费者不解释或剥离格式。编辑器正在展示的格式源码本身也是文档文字，必须
+保留。Tooltip 是纯文本帮助。自定义 Widget 应明确提供自己的语义文字，不能由上层
+根据字符串前缀猜测其绘制方法。格式状态／诊断使用控件专属 Attributes。
+Snapshot 组装优先复用控件已有数据，不承担另一套格式解析与排版。
+
 保持 Widget.Snapshot() WidgetInfo、Window.Snapshot() WindowInfo 和
 Application.Snapshot() ApplicationInfo 不变。不引入注册表、属性绑定、自动类型
 恢复或新的 UI 协调机制；动作仍通过 Window.DispatchEvent 的正常输入路径执行。

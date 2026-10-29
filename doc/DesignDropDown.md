@@ -58,6 +58,15 @@ choice := wui.DropDown(model).Selected(selected).Placeholder("选择外观").OnS
 省略 Selected 时保留控件的用户选择；自定义 Item / SelectedItem 时自行为内容
 设置 StyleName，Disabled 等数据不会通过父控件隐式传递子样式。
 
+## 文本与语义
+
+默认内容是 Label，模型 Text 可包含 Label 格式语法；Snapshot.Text 从实际 Label 的
+PlainText 读取，占位内容同样读取占位 Label 的解析结果。模型原文不修改。
+自定义 Item / SelectedItem 通过自己的 Widget.Snapshot().Text 提供显示语义；非空
+时优先使用，缺省时模型 Text 原样作为语义名称，不自动解释模型里的格式字符。
+两种展示分别组装语义，不聚合或猜测任意子树中的 Label。不增加 Delegate 方法或
+Widget 接口，已有 Label 使用缓存；明确格式源码的提取规则见 DesignLabel。
+
 ## 输入和生命周期
 
 selected 为已提交值，current 为弹出期间浏览位置。打开时从 selected 或第一个

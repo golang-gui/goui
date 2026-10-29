@@ -62,6 +62,34 @@ func TestTooltipTextIsIndependentAndDetached(t *testing.T) {
 	}
 }
 
+func TestTooltipMarkupIsLiteralInDisplayAndSnapshot(t *testing.T) {
+	for _, source := range []string{`\{format\}\{bold:帮助\}`, `\{format\}\{bold:未闭合`, `普通 <>& \{bold:字面值\}`} {
+		w := newTestWidget()
+		w.SetTooltip(source)
+		if w.Tooltip() != source || w.Snapshot().Tooltip != source {
+			t.Fatalf("Tooltip 属性或语义解释了格式：%q", source)
+		}
+		content := newTooltipContent(w, source)
+		found := 0
+		var inspect func(WidgetInfo)
+		inspect = func(info WidgetInfo) {
+			if info.Role == RoleTooltip || info.Role == RoleLabel {
+				found++
+				if info.Text != source {
+					t.Fatalf("%s 显示语义=%q，期望字面值=%q", info.Role, info.Text, source)
+				}
+			}
+			for _, child := range info.Children {
+				inspect(child)
+			}
+		}
+		inspect(content.Snapshot())
+		if found != 2 {
+			t.Fatal("没有验证 Tooltip 和实际 Label 两个节点")
+		}
+	}
+}
+
 func TestTooltipDelayJitterSwitchAndCleanup(t *testing.T) {
 	w, root, a, b, q, _ := tooltipFixture(t)
 	tooltipMove(t, w, 40, 40)
