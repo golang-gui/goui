@@ -40,20 +40,21 @@ func (d *treeListDelegate) Setup() gui.Widget {
 		}
 		ctx.StopPropagation()
 		id := r.bound.ID
+		version := r.view.modelRevision
 		e, ok := ctx.Event().(events.PointerEvent)
 		if !ok {
 			return
 		}
 		primary, shift := treeModifiers(e.Modifiers)
 		r.view.choose(id, primary, shift)
-		if r.bound.ID != id || r.view.Destroyed() {
+		if !r.view.validModel(version) {
 			return
 		}
 		if count == 2 {
 			if r.view.model.Expandable(id) {
 				r.view.SetExpanded(id, !r.view.Expanded(id))
 			} else {
-				r.view.activate.Emit(id, r.view.revision)
+				r.view.activate.Emit(id, version)
 			}
 		}
 	})

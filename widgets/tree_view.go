@@ -63,7 +63,8 @@ type TreeView struct {
 	indentation                   float32
 	realized                      map[string]*treeRow
 	loads                         map[string]bool
-	revision                      uint64 // lifecycle/model/binding generation, not selection/current
+	revision                      uint64 // lifecycle/model/row-binding generation
+	modelRevision                 uint64 // lifecycle/model generation, independent of view state
 	synchronizing, syncPending    bool
 	items                         signal.Signal0
 	selection                     signal.Signal2[[]string, uint64]
@@ -101,6 +102,7 @@ func NewTreeView() *TreeView {
 	})
 	v.ConnectMount(func() {
 		v.revision++
+		v.modelRevision++
 		if v.model != nil && v.modelHandle == nil {
 			v.modelHandle = v.model.ConnectItems(func() {
 				if !v.Destroyed() {
@@ -113,6 +115,7 @@ func NewTreeView() *TreeView {
 	})
 	v.ConnectUnmount(func() {
 		v.revision++
+		v.modelRevision++
 		if v.modelHandle != nil {
 			v.modelHandle.Disconnect()
 			v.modelHandle = nil
@@ -161,6 +164,7 @@ func (v *TreeView) SetModel(model TreeModel) {
 	clear(v.loads)
 	v.current, v.anchor, v.revealID = "", "", ""
 	v.revision++
+	v.modelRevision++
 	if model != nil {
 		v.modelHandle = model.ConnectItems(func() {
 			if !v.Destroyed() {
@@ -464,6 +468,7 @@ func (v *TreeView) modelChanged() {
 	// Invalidate in-flight notifications immediately, even when the next
 	// synchronization must wait for a model callback to return.
 	v.revision++
+	v.modelRevision++
 	if v.synchronizing {
 		v.syncPending = true
 		return
@@ -474,6 +479,7 @@ func (v *TreeView) modelChanged() {
 		v.syncPending = false
 		oldRows, oldExpanded, oldSelection, oldCurrent := slices.Clone(v.rows), v.ExpandedIDs(), v.Selection(), v.current
 		v.revision++
+		v.modelRevision++
 		v.flatten()
 		v.normalize(oldRows, oldCurrent)
 		v.closeMenu()
@@ -492,7 +498,7 @@ func (v *TreeView) notify(oldExpanded, oldSelection []string, oldCurrent string)
 	if v.Destroyed() {
 		return
 	}
-	version := v.revision
+	version := v.modelRevision
 	selected, current := v.Selection(), v.current
 	for id, row := range v.realized {
 		row.SetState(style.Selected, v.selected[id])
@@ -524,7 +530,7 @@ func (v *TreeView) notify(oldExpanded, oldSelection []string, oldCurrent string)
 			if old[id] != v.expanded[id] {
 				v.expansion.Emit(id, v.expanded[id], version)
 			}
-			if !v.valid(version) {
+			if !v.validModel(version) {
 				return
 			}
 		}
@@ -532,17 +538,20 @@ func (v *TreeView) notify(oldExpanded, oldSelection []string, oldCurrent string)
 	if !slices.Equal(selected, oldSelection) && v.selectionMatches(selected) {
 		v.selection.Emit(selected, version)
 	}
-	if !v.valid(version) {
+	if !v.validModel(version) {
 		return
 	}
 	if oldCurrent != current && current == v.current {
 		v.currentSignal.Emit(current, version)
 	}
-	if v.valid(version) {
+	if v.validModel(version) {
 		v.requestChildren()
 	}
 }
 func (v *TreeView) valid(version uint64) bool { return !v.Destroyed() && v.revision == version }
+func (v *TreeView) validModel(version uint64) bool {
+	return !v.Destroyed() && v.modelRevision == version
+}
 func (v *TreeView) requestChildren() {
 	if v.Destroyed() || v.Root() == nil {
 		return
@@ -575,14 +584,14 @@ func (v *TreeView) requestChildren() {
 }
 func (v *TreeView) ConnectSelection(fn func([]string)) signal.Handle {
 	return v.selection.Connect(func(ids []string, version uint64) {
-		if v.valid(version) && v.selectionMatches(ids) {
+		if v.validModel(version) && v.selectionMatches(ids) {
 			fn(slices.Clone(ids))
 		}
 	})
 }
 
-// The generation guards row order. Checking only the selected IDs avoids
-// walking the entire flattened tree once per signal receiver.
+// The model generation guards row order. Ordinary expansion or delegate changes
+// must not interrupt a notification whose selection still matches.
 func (v *TreeView) selectionMatches(ids []string) bool {
 	if len(ids) != len(v.selected) {
 		return false
@@ -596,21 +605,21 @@ func (v *TreeView) selectionMatches(ids []string) bool {
 }
 func (v *TreeView) ConnectCurrent(fn func(string)) signal.Handle {
 	return v.currentSignal.Connect(func(id string, version uint64) {
-		if v.valid(version) && id == v.current {
+		if v.validModel(version) && id == v.current {
 			fn(id)
 		}
 	})
 }
 func (v *TreeView) ConnectExpanded(fn func(string, bool)) signal.Handle {
 	return v.expansion.Connect(func(id string, expanded bool, version uint64) {
-		if v.valid(version) && v.expanded[id] == expanded {
+		if v.validModel(version) && v.expanded[id] == expanded {
 			fn(id, expanded)
 		}
 	})
 }
 func (v *TreeView) ConnectActivate(fn func(string)) signal.Handle {
 	return v.activate.Connect(func(id string, version uint64) {
-		if v.valid(version) {
+		if v.validModel(version) {
 			fn(id)
 		}
 	})
@@ -777,7 +786,7 @@ func (v *TreeView) keyDown(ctx gui.EventContext, event events.KeyEvent) {
 		if !hasCurrent {
 			return
 		}
-		v.activate.Emit(v.rows[index].id, v.revision)
+		v.activate.Emit(v.rows[index].id, v.modelRevision)
 		navigation = false
 	case events.KeyA:
 		if !primary || v.mode != SelectionMultiple {
