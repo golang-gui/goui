@@ -823,7 +823,7 @@ func TestTreeViewCurrentOnlyPaintsOutlineAndDisclosureUsesOwnState(t *testing.T)
 	dispatchTabPointer(t, dispatcher, host, events.PointerUp, 14, 14)
 	v.LayoutVisible(geometry.Size{Width: 300, Height: 100}, geometry.Point{})
 	for _, row := range v.realized {
-		if row.content.(*TreeExpander).button.pressed {
+		if row.content.(*TreeExpander).button.State().Has(style.Pressed) {
 			t.Fatal("recycled disclosure retained pressed state")
 		}
 	}

@@ -31,7 +31,7 @@ type Switch struct {
 	child                         gui.Widget
 	checked, animated             bool
 	padding                       geometry.Insets
-	hovered, pressed, mounted     bool
+	mounted                       bool
 	revision                      uint64
 	change                        signal.Signal2[bool, func() bool]
 	motion                        *gui.MotionEventController
@@ -66,9 +66,8 @@ func NewSwitch() *Switch {
 	b.ConnectUnmount(func() { b.mounted = false; b.revision++; b.cancelInput(); b.finishAnimation() })
 	b.ConnectFocused(func(bool) { b.RequestPaint() })
 	b.motion = gui.NewMotionEventController()
-	b.motion.ConnectContainsHover(func(v bool) { b.hovered = v; b.RequestPaint() })
 	b.click = gui.NewClickEventController()
-	b.click.ConnectPressed(func(_ gui.EventContext, v bool) { b.pressed = v; b.RequestPaint() })
+	b.click.ConnectPressed(func(_ gui.EventContext, _ bool) { b.syncPressed() })
 	b.click.ConnectClicked(func(ctx gui.EventContext) {
 		ctx.StopPropagation()
 		b.setChecked(!b.checked, true)
@@ -78,6 +77,7 @@ func NewSwitch() *Switch {
 	b.drag.ConnectBegin(func(p geometry.Point, _ events.Modifiers) {
 		b.stopAnimation()
 		b.dragX, b.dragPosition = p.X, b.position
+		b.syncPressed()
 		b.RequestPaint()
 	})
 	b.drag.ConnectUpdate(func(p geometry.Point, _ events.Modifiers) { b.dragTo(p) })
@@ -87,12 +87,13 @@ func NewSwitch() *Switch {
 		if b.position != .5 {
 			checked = b.position > .5
 		}
+		b.syncPressed()
 		b.setChecked(checked, true)
 	})
-	b.drag.ConnectCancel(func() { b.moveToTarget(); b.RequestPaint() })
+	b.drag.ConnectCancel(func() { b.syncPressed(); b.moveToTarget(); b.RequestPaint() })
 	b.keys = gui.NewKeyEventController()
 	b.keys.ConnectKeyDown(func(ctx gui.EventContext, e events.KeyEvent) {
-		if (gui.KeyGesture{Key: gui.KeyEscape}).Matches(e) && (b.drag.armed || b.pressed) {
+		if (gui.KeyGesture{Key: gui.KeyEscape}).Matches(e) && (b.drag.armed || b.State().Has(style.Pressed)) {
 			b.cancelInput()
 			b.moveToTarget()
 		} else if (gui.KeyGesture{Key: gui.KeySpace}).Matches(e) || (gui.KeyGesture{Key: gui.KeyEnter}).Matches(e) {
@@ -154,6 +155,7 @@ func (b *Switch) setChecked(checked, notify bool) {
 	if changed {
 		b.stopAnimation()
 		b.checked = checked
+		b.SetState(style.Checked, checked)
 		b.revision++
 	}
 	b.moveToTarget()
@@ -221,7 +223,7 @@ func (b *Switch) addControllers() {
 func (b *Switch) cancelInput() {
 	b.drag.Reset()
 	b.click.Reset()
-	b.pressed = false
+	b.SetState(style.Pressed, false)
 }
 
 func (b *Switch) target() float32 {
@@ -293,14 +295,7 @@ func (b *Switch) Paint(p gui.Painter) {
 	if name == "" {
 		name = "switch"
 	}
-	state := style.Normal
-	if !gui.IsEnabled(b) {
-		state = style.Disabled
-	} else if b.pressed || b.drag.Dragging() {
-		state = style.Pressed
-	} else if b.hovered {
-		state = style.Hovered
-	}
+	state := b.State()
 	suffix := ""
 	if b.checked {
 		suffix = "-checked"
@@ -327,7 +322,7 @@ func (b *Switch) Paint(p gui.Painter) {
 			Bottom: min(float32(2), b.padding.Bottom),
 		}
 		paintStyledBorder(p, track.Insets(-outset.Left, -outset.Top, -outset.Right, -outset.Bottom),
-			gui.ResolveWidgetStyle(b, name, "focus", style.FocusVisible))
+			gui.ResolveWidgetStyle(b, name, "focus", b.State()))
 	}
 }
 
@@ -423,3 +418,5 @@ func (l switchLayout) Arrange(children []layout.Child, rect geometry.Rectangle) 
 
 var _ gui.Bin = (*Switch)(nil)
 var _ gui.GestureController = (*switchDrag)(nil)
+
+func (b *Switch) syncPressed() { b.SetState(style.Pressed, b.click.Pressed() || b.drag.Dragging()) }

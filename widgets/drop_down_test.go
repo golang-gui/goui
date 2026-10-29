@@ -380,6 +380,9 @@ func TestDropDownBrowseConfirmCancel(t *testing.T) {
 	if err := d.Open(); err != nil {
 		t.Fatal(err)
 	}
+	if !d.State().Has(style.Pressed) {
+		t.Fatal("展开状态没有投影为按下外观")
+	}
 	p.key(t, events.KeyArrowDown, 0)
 	if d.current != 2 || d.Selected() != 0 || calls != 0 {
 		t.Fatal("browse committed selection")
@@ -390,7 +393,7 @@ func TestDropDownBrowseConfirmCancel(t *testing.T) {
 		t.Fatal("rebuild interrupted browse")
 	}
 	p.key(t, events.KeyEscape, 0)
-	if d.Opened() || d.Selected() != 0 || d.current != -1 {
+	if d.Opened() || d.State().Has(style.Pressed) || d.Selected() != 0 || d.current != -1 {
 		t.Fatal("cancel changed selection")
 	}
 	_ = d.Open()
@@ -664,6 +667,9 @@ func TestDropDownOptionInputSnapshotAndReentry(t *testing.T) {
 	rows := d.content.list.Children()
 	if len(rows) != 4 {
 		t.Fatal("realized rows")
+	}
+	if !rows[1].State().Has(style.Disabled) {
+		t.Fatal("禁用记录没有投影到 Widget.State")
 	}
 	h := &tabInputHost{root: d.content, focus: d.content}
 	dispatch := new(gui.EventDispatcher)

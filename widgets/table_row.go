@@ -1,11 +1,12 @@
 package widgets
 
 import (
+	"slices"
+
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/style"
-	"slices"
 )
 
 type tableListDelegate struct{ view *TableView }
@@ -14,10 +15,9 @@ func (d *tableListDelegate) Setup() gui.Widget {
 	r := &tableRow{view: d.view}
 	r.SetLayoutManager(&tableRowLayout{row: r})
 	r.motion = gui.NewMotionEventController()
-	r.motion.ConnectContainsHover(func(hover bool) { r.hover = hover; r.RequestPaint() })
 	r.AddEventController(r.motion)
 	r.click = gui.NewClickEventController()
-	r.click.ConnectPressed(func(_ gui.EventContext, pressed bool) { r.pressed = pressed; r.RequestPaint() })
+	r.click.ConnectPressed(func(_ gui.EventContext, pressed bool) { r.SetState(style.Pressed, pressed) })
 	r.click.ConnectClick(func(ctx gui.EventContext, count int) {
 		if r.bound.ID == "" || r.view.Destroyed() {
 			return
@@ -54,9 +54,11 @@ func (d *tableListDelegate) Bind(index int, widget gui.Widget) {
 		return
 	}
 	r.bound = row
+	r.SetState(style.Selected, row.Selected)
 	v.realized[row.ID] = r
 	for _, cell := range slices.Clone(r.cells) {
 		cell.bound = row
+		cell.SetState(style.Selected, row.Selected)
 		if cell.delegate != nil && cell.content != nil {
 			cell.delegate.Bind(row, cell.content)
 		}
@@ -74,6 +76,7 @@ func (d *tableListDelegate) Unbind(_ int, widget gui.Widget) {
 		return
 	}
 	r.bound = TableRow{}
+	r.SetState(style.Selected, false)
 	if d.view.realized[old.ID] == r {
 		delete(d.view.realized, old.ID)
 	}
@@ -88,12 +91,11 @@ func (d *tableListDelegate) Unbind(_ int, widget gui.Widget) {
 
 type tableRow struct {
 	gui.WidgetBase
-	view           *TableView
-	bound          TableRow
-	cells          []*tableCell
-	motion         *gui.MotionEventController
-	click          *gui.ClickEventController
-	hover, pressed bool
+	view   *TableView
+	bound  TableRow
+	cells  []*tableCell
+	motion *gui.MotionEventController
+	click  *gui.ClickEventController
 }
 
 func (r *tableRow) syncCells() {
@@ -150,25 +152,20 @@ func (r *tableRow) Paint(p gui.Painter) {
 	if r.bound.ID == "" {
 		return
 	}
-	state := style.Normal
-	if r.hover {
-		state = style.Hovered
-	}
-	if r.pressed {
-		state = style.Pressed
-	}
+	state := r.State()
 	part := ""
-	if r.view.selected[r.bound.ID] {
+	if state.Has(style.Selected) {
 		part = "selected"
-	} else if state == style.Normal && r.bound.Index%2 == 1 {
+	} else if state&(style.Hovered|style.Pressed) == 0 && r.bound.Index%2 == 1 {
 		part = "alternate"
 	}
 	rect := geometry.Rect(0, 0, r.Rect().Width, r.Rect().Height)
 	paintStyledBox(r, p, rect, "table-row", part, state)
 	r.paintGrid(p, rect)
 	if r.view.current == r.bound.ID && r.view.Focused() {
+		state |= style.Focused
 		if r.view.FocusVisible() {
-			state = style.FocusVisible
+			state |= style.FocusVisible
 		}
 		paintStyledBorder(p, rect, gui.ResolveWidgetStyle(r, "table-row", "current", state))
 	}
@@ -176,7 +173,7 @@ func (r *tableRow) Paint(p gui.Painter) {
 func (r *tableRow) Snapshot() gui.WidgetInfo {
 	info := r.WidgetBase.Snapshot()
 	info.Role = RoleTableRow
-	info.Selected = r.view.selected[r.bound.ID]
+	info.Selected = r.State().Has(style.Selected)
 	info.SetAttribute(TableInfoKey, TableInfo{RowID: r.bound.ID, RowIndex: r.bound.Index + 1, Current: r.view.current == r.bound.ID})
 	if info.Enabled {
 		info.Actions = append(info.Actions, gui.ActionClick)
@@ -199,6 +196,7 @@ func (c *tableCell) unbind() {
 		return
 	}
 	c.bound = TableRow{}
+	c.SetState(style.Selected, false)
 	tableRelinquishFocus(c, c.row.view)
 	if c.delegate != nil && c.content != nil {
 		c.delegate.Unbind(old, c.content)
@@ -225,6 +223,6 @@ func (c *tableCell) Snapshot() gui.WidgetInfo {
 	info.Role = RoleTableCell
 	index := slices.Index(c.row.view.columns, c.column)
 	info.SetAttribute(TableInfoKey, TableInfo{RowID: c.bound.ID, RowIndex: c.bound.Index + 1, ColumnID: c.column.id, ColumnIndex: index + 1, Current: c.row.view.current == c.bound.ID})
-	info.Selected = c.row.view.selected[c.bound.ID]
+	info.Selected = c.State().Has(style.Selected)
 	return info
 }

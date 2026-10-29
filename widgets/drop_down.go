@@ -46,7 +46,6 @@ type DropDown struct {
 	placeholderLabel           *gui.Label
 	placeholder                string
 	selected, current, bound   int
-	hovered, pressed           bool
 	padding                    geometry.Insets
 	popupMaxHeight             float32
 	revision                   uint64
@@ -70,9 +69,8 @@ func NewDropDown() *DropDown {
 	d.placeholderLabel.SetStyleName("drop-down-placeholder")
 	d.WidgetBase.AddChild(d, d.placeholderLabel)
 	d.motion = gui.NewMotionEventController()
-	d.motion.ConnectContainsHover(func(v bool) { d.hovered = v; d.RequestPaint() })
 	d.click = gui.NewClickEventController()
-	d.click.ConnectPressed(func(_ gui.EventContext, v bool) { d.pressed = v; d.RequestPaint() })
+	d.click.ConnectPressed(func(_ gui.EventContext, _ bool) { d.syncPressed() })
 	d.click.ConnectClicked(func(ctx gui.EventContext) {
 		ctx.StopPropagation()
 		d.openFromInput()
@@ -102,7 +100,8 @@ func NewDropDown() *DropDown {
 			d.content.list.SetModel(nil)
 		}
 		d.unbindDisplay()
-		d.current, d.pressed, d.hovered = -1, false, false
+		d.current = -1
+		d.SetState(style.Pressed, false)
 	})
 	return d
 }
@@ -219,7 +218,7 @@ func (d *DropDown) SetVisible(visible bool) {
 	if !visible {
 		d.Close()
 		d.click.Reset()
-		d.pressed = false
+		d.SetState(style.Pressed, false)
 	}
 	d.WidgetBase.SetVisible(visible)
 }
@@ -414,7 +413,7 @@ func (d *DropDown) Open() error {
 		d.popup.SetModal(true)
 		d.popup.SetAutoDismiss(true)
 		d.popup.ConnectDismissRequest(d.Close)
-		d.popup.ConnectClosed(func() { d.current = -1; d.RequestPaint() })
+		d.popup.ConnectClosed(func() { d.current = -1; d.SetState(style.Pressed, false); d.RequestPaint() })
 		d.popup.SetWidget(d.content)
 	}
 	d.popup.SetPlacement(gui.PopoverPlacementBottom)
@@ -439,6 +438,7 @@ func (d *DropDown) Open() error {
 		return fmt.Errorf("drop-down: released during focus")
 	}
 	d.content.list.Reveal(index)
+	d.syncPressed()
 	d.RequestPaint()
 	return nil
 }
@@ -448,11 +448,11 @@ func (d *DropDown) Close() {
 		d.popup.Hide()
 	}
 	d.current = -1
-	d.pressed = false
+	d.SetState(style.Pressed, false)
 	if d.content != nil {
 		for _, widget := range d.content.list.Children() {
 			r := widget.(*dropDownRow)
-			r.hovered, r.pressed = false, false
+			r.SetState(style.Pressed, false)
 		}
 	}
 	d.RequestPaint()
@@ -529,14 +529,7 @@ func (d *DropDown) Paint(p gui.Painter) {
 	if name == "" {
 		name = "drop-down"
 	}
-	state := style.Normal
-	if !gui.IsEnabled(d) {
-		state = style.Disabled
-	} else if d.pressed || d.Opened() {
-		state = style.Pressed
-	} else if d.hovered {
-		state = style.Hovered
-	}
+	state := d.State()
 	rect := geometry.Rectangle{Size: d.Rect().Size}
 	paintStyledBox(d, p, rect, name, style.PartDefault, state)
 	s := gui.ResolveWidgetStyle(d, name, "arrow", state)
@@ -549,7 +542,7 @@ func (d *DropDown) Paint(p gui.Painter) {
 		p.DrawLine(geometry.Point{X: x, Y: y + 1.5}, geometry.Point{X: x + 3, Y: y - 1.5}, 1.5, c)
 	}
 	if d.FocusVisible() {
-		paintStyledBorder(p, rect, gui.ResolveWidgetStyle(d, name, "focus", style.FocusVisible))
+		paintStyledBorder(p, rect, gui.ResolveWidgetStyle(d, name, "focus", d.State()))
 	}
 }
 
@@ -627,3 +620,5 @@ func (l dropDownLayout) Arrange(children []layout.Child, rect geometry.Rectangle
 	content := children[0].Measure(layout.Loose(area))
 	children[0].Arrange(geometry.Rect(inner.X, inner.Y+(inner.Height-content.Height)/2, area.Width, content.Height))
 }
+
+func (d *DropDown) syncPressed() { d.SetState(style.Pressed, d.click.Pressed() || d.Opened()) }

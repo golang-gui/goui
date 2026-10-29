@@ -32,14 +32,13 @@ func NewTreeExpander() *TreeExpander {
 	e.button = &treeDisclosure{expander: e}
 	e.button.click = gui.NewClickEventController()
 	e.button.motion = gui.NewMotionEventController()
-	e.button.click.ConnectPressed(func(_ gui.EventContext, v bool) { e.button.pressed = v; e.button.RequestPaint() })
+	e.button.click.ConnectPressed(func(_ gui.EventContext, v bool) { e.button.SetState(style.Pressed, v) })
 	e.button.click.ConnectClicked(func(ctx gui.EventContext) {
 		ctx.StopPropagation()
 		if !e.Destroyed() && e.expandable {
 			e.toggle.Emit()
 		}
 	})
-	e.button.motion.ConnectHover(func(v bool) { e.button.hover = v; e.button.RequestPaint() })
 	e.WidgetBase.AddStructuralChild(e, e.button)
 	return e
 }
@@ -98,7 +97,7 @@ func (e *TreeExpander) SetExpandable(v bool) {
 	} else {
 		e.button.RemoveEventController(e.button.click)
 		e.button.RemoveEventController(e.button.motion)
-		e.button.pressed, e.button.hover = false, false
+		e.button.SetState(style.Pressed, false)
 	}
 	e.button.RequestPaint()
 }
@@ -119,10 +118,9 @@ func (e *TreeExpander) ConnectToggle(fn func()) signal.Handle {
 
 type treeDisclosure struct {
 	gui.WidgetBase
-	expander       *TreeExpander
-	click          *gui.ClickEventController
-	motion         *gui.MotionEventController
-	hover, pressed bool
+	expander *TreeExpander
+	click    *gui.ClickEventController
+	motion   *gui.MotionEventController
 }
 
 func (b *treeDisclosure) Paint(p gui.Painter) {
@@ -134,13 +132,7 @@ func (b *treeDisclosure) Paint(p gui.Painter) {
 	if name == "" {
 		name = "tree-expander"
 	}
-	state := style.Normal
-	if b.hover {
-		state = style.Hovered
-	}
-	if b.pressed {
-		state = style.Pressed
-	}
+	state := b.State()
 	paintStyledBox(b, p, geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height), name, "", state)
 	fg, ok := gui.ResolveWidgetStyle(b, name, "", state).ForegroundColor()
 	if !ok || fg == nil {

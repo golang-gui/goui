@@ -629,7 +629,7 @@ func TestInactiveTabCloseHidesAfterDrag(t *testing.T) {
 			if !item.body.Focused() || !item.ContainsFocus() || host.FocusedWidget() != item.body {
 				t.Fatal("hiding close must not clear tab focus")
 			}
-			if item.hovered || item.close.Visible() || item.close.Snapshot().Visible {
+			if item.State().Has(style.Hovered) || item.close.Visible() || item.close.Snapshot().Visible {
 				t.Fatal("inactive close stayed visible after drag and pointer leave")
 			}
 			point := geometry.Point{X: item.Rect().X + 84, Y: 20}

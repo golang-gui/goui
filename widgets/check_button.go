@@ -71,8 +71,6 @@ type CheckButton struct {
 	appearance CheckAppearance
 	group      *CheckButtonGroup
 	padding    geometry.Insets
-	hovered    bool
-	pressed    bool
 	revision   uint64
 	change     signal.Signal2[CheckState, func() bool]
 	motion     *gui.MotionEventController
@@ -89,9 +87,8 @@ func NewCheckButton() *CheckButton {
 	b.SetLayoutManager(checkLayout{button: b})
 	b.ConnectFocused(func(bool) { b.RequestPaint() })
 	b.motion = gui.NewMotionEventController()
-	b.motion.ConnectContainsHover(func(v bool) { b.hovered = v; b.RequestPaint() })
 	b.click = gui.NewClickEventController()
-	b.click.ConnectPressed(func(_ gui.EventContext, v bool) { b.pressed = v; b.RequestPaint() })
+	b.click.ConnectPressed(func(_ gui.EventContext, v bool) { b.SetState(style.Pressed, v) })
 	b.click.ConnectClicked(func(ctx gui.EventContext) { ctx.StopPropagation(); b.activate() })
 	b.keys = gui.NewKeyEventController()
 	b.keys.ConnectKeyDown(func(ctx gui.EventContext, e events.KeyEvent) {
@@ -231,6 +228,8 @@ func (b *CheckButton) activate() {
 func (b *CheckButton) commit(state CheckState) {
 	if b.state != state {
 		b.state = state
+		b.SetState(style.Checked, state == CheckChecked)
+		b.SetState(style.Mixed, state == CheckMixed)
 		b.revision++
 		b.RequestPaint()
 	}
@@ -303,14 +302,7 @@ func (b *CheckButton) Paint(p gui.Painter) {
 	if name == "" {
 		name = "check-button"
 	}
-	state := style.Normal
-	if !gui.IsEnabled(b) {
-		state = style.Disabled
-	} else if b.pressed {
-		state = style.Pressed
-	} else if b.hovered {
-		state = style.Hovered
-	}
+	state := b.State()
 	rect := geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height)
 	part, indicator := "", b.appearance == CheckAppearanceIndicator
 	if indicator {
@@ -357,7 +349,7 @@ func (b *CheckButton) Paint(p gui.Painter) {
 		}
 	}
 	if b.FocusVisible() {
-		paintStyledBorder(p, geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height), gui.ResolveWidgetStyle(b, name, "focus", style.FocusVisible))
+		paintStyledBorder(p, geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height), gui.ResolveWidgetStyle(b, name, "focus", b.State()))
 	}
 }
 

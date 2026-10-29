@@ -449,6 +449,12 @@ func (v *TableView) notify(oldSelection []string, oldCurrent string) {
 		return
 	}
 	version, selection, current := v.revision, v.Selection(), v.current
+	for id, row := range v.realized {
+		row.SetState(style.Selected, v.selected[id])
+		for _, cell := range row.cells {
+			cell.SetState(style.Selected, v.selected[id])
+		}
+	}
 	v.RequestLayout()
 	v.RequestPaint()
 	// A model reorder alone must not emit a selection change.

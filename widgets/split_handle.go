@@ -11,11 +11,11 @@ import (
 
 type splitHandle struct {
 	gui.WidgetBase
-	view              *SplitView
-	drag              *gui.DragEventController
-	hovered, dragging bool
-	before            splitPreference
-	grabOffset        float32
+	view       *SplitView
+	drag       *gui.DragEventController
+	dragging   bool
+	before     splitPreference
+	grabOffset float32
 }
 
 func newSplitHandle(view *SplitView) *splitHandle {
@@ -25,7 +25,6 @@ func newSplitHandle(view *SplitView) *splitHandle {
 	h.SetVisible(false)
 	h.updateCursor()
 	motion := gui.NewMotionEventController()
-	motion.ConnectHover(func(hovered bool) { h.hovered = hovered; h.RequestPaint() })
 	h.AddEventController(motion)
 	h.ConnectFocused(func(bool) { h.RequestPaint() })
 	h.drag = gui.NewDragEventController()
@@ -35,6 +34,7 @@ func newSplitHandle(view *SplitView) *splitHandle {
 			return
 		}
 		h.dragging, h.before = true, view.preference
+		h.SetState(style.Pressed, true)
 		h.grabOffset = view.point(point.Add(h.Rect().Pos)) - view.startSize
 		h.RequestPaint()
 	})
@@ -44,6 +44,7 @@ func newSplitHandle(view *SplitView) *splitHandle {
 		if h.Destroyed() {
 			return
 		}
+		h.SetState(style.Pressed, false)
 		h.dragging = false
 		h.RequestPaint()
 	})
@@ -71,6 +72,7 @@ func (h *splitHandle) cancel() {
 	if !h.dragging {
 		return
 	}
+	h.SetState(style.Pressed, false)
 	h.dragging = false // Reset may recursively deliver ConnectCancel.
 	h.drag.Reset()
 	v := h.view
@@ -143,13 +145,7 @@ func (h *splitHandle) keyDown(ctx gui.EventContext, event events.KeyEvent) {
 }
 func (h *splitHandle) Paint(p gui.Painter) {
 	const width float32 = 1
-	state := style.Normal
-	switch {
-	case h.dragging:
-		state = style.Pressed
-	case h.hovered:
-		state = style.Hovered
-	}
+	state := h.State() &^ (style.Focused | style.FocusVisible | style.ContainsFocus)
 	// Keyboard focus does not keep the pointer's visual feedback active.
 	s := gui.ResolveWidgetStyle(h, h.StyleName(), "", state)
 	ink, ok := s.ForegroundColor()
