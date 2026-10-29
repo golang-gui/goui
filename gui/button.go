@@ -12,8 +12,6 @@ type Button struct {
 	WidgetBase
 	content Widget          // single child (0 or 1); Button is not a Container
 	padding geometry.Insets // self-held: button overrides Measure/Arrange (skeleton floor)
-	hovered bool
-	pressed bool
 	clicked signal.Signal1[uint64]
 	motion  *MotionEventController
 	click   *ClickEventController
@@ -32,7 +30,6 @@ func NewButton() *Button {
 	button.SetLayoutManager(buttonContentLayout{})
 
 	button.motion = NewMotionEventController()
-	button.motion.ConnectContainsHover(button.setHovered)
 	button.AddEventController(button.motion)
 
 	button.click = NewClickEventController()
@@ -54,7 +51,7 @@ func NewButton() *Button {
 func addButtonKeys(button Widget, activate func()) {
 	keys := NewKeyEventController()
 	keys.ConnectKeyDown(func(ctx EventContext, event events.KeyEvent) {
-		if !button.base().focused || button.base().destroyed || !IsEnabled(button) {
+		if !button.Focused() || button.base().destroyed || !IsEnabled(button) {
 			return
 		}
 		if !(KeyGesture{Key: KeySpace}).Matches(event) && !(KeyGesture{Key: KeyEnter}).Matches(event) {
@@ -181,7 +178,7 @@ func (b *Button) Paint(p Painter) {
 		return
 	}
 	rect := geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height)
-	paintStyledBox(p, rect, b.resolvedStyle())
+	PaintStyledBox(p, rect, b.resolvedStyle())
 	paintButtonFocus(p, rect, &b.WidgetBase)
 }
 
@@ -208,47 +205,8 @@ func (b *Button) emitClicked() {
 	}
 }
 
-func (b *Button) setHovered(hovered bool) {
-	if b.hovered == hovered {
-		return
-	}
-	b.hovered = hovered
-	if !hovered && b.pressed {
-		b.setPressed(false)
-		return
-	}
-	b.requestPaint()
-}
-
-func (b *Button) setPressed(pressed bool) {
-	if b.pressed == pressed {
-		return
-	}
-	b.pressed = pressed
-	b.requestPaint()
-}
-
-func (b *Button) requestPaint() {
-	// Root is the widget host (a window or a popover); Window() would be nil for a
-	// widget hosted in a popover, so a repaint request would be dropped.
-	if r := b.Root(); r != nil {
-		_ = r.RequestPaint()
-	}
-}
+func (b *Button) setPressed(value bool) { b.SetState(style.Pressed, value) }
 
 func (b *Button) resolvedStyle() style.Style {
-	return ResolveWidgetStyle(b, buttonStyleName(&b.WidgetBase), style.PartDefault, b.styleState())
-}
-
-func (b *Button) styleState() style.State {
-	if !IsEnabled(b) {
-		return style.Disabled
-	}
-	if b.pressed {
-		return style.Pressed
-	}
-	if b.hovered {
-		return style.Hovered
-	}
-	return style.Normal
+	return ResolveWidgetStyle(b, buttonStyleName(&b.WidgetBase), style.PartDefault, b.State())
 }

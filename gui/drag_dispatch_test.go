@@ -10,6 +10,7 @@ import (
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/dragdrop"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/style"
 )
 
 type testDragOffer struct {
@@ -234,7 +235,7 @@ func TestDropTargetDispatchThroughWindowAndSemanticState(t *testing.T) {
 	if reply != dragdrop.Copy || offer.read != dragdrop.FormatFiles || len(offer.finished) != 0 {
 		t.Fatalf("negotiation reply=%d read=%s finished=%v", reply, offer.read, offer.finished)
 	}
-	if info := child.Snapshot().DragDrop; info == nil || !info.DropActive || info.TargetActions != DragCopy {
+	if info := child.Snapshot().DragDrop; info == nil || !info.DropActive || !child.State().Has(style.DropActive) || info.TargetActions != DragCopy {
 		t.Fatalf("active target snapshot: %+v", info)
 	}
 	data := new(dragdrop.Data)
@@ -245,7 +246,7 @@ func TestDropTargetDispatchThroughWindowAndSemanticState(t *testing.T) {
 	if !slices.Equal(calls, []string{"enter", "motion", "motion", "drop", "leave"}) {
 		t.Fatalf("callbacks: %q", calls)
 	}
-	if !slices.Equal(offer.finished, []dragdrop.Action{dragdrop.Copy}) || child.Snapshot().DragDrop.DropActive {
+	if !slices.Equal(offer.finished, []dragdrop.Action{dragdrop.Copy}) || child.Snapshot().DragDrop.DropActive || child.State().Has(style.DropActive) {
 		t.Fatalf("result=%v snapshot=%+v", offer.finished, child.Snapshot().DragDrop)
 	}
 }
@@ -293,7 +294,7 @@ func TestDropTargetHostCancellationFinishesPendingRead(t *testing.T) {
 		t.Fatal("drop did not start reading")
 	}
 	win.cancelInput(GestureHostClosed)
-	if !slices.Equal(offer.finished, []dragdrop.Action{0}) || target.active {
+	if !slices.Equal(offer.finished, []dragdrop.Action{0}) || target.active || root.State().Has(style.DropActive) {
 		t.Fatalf("pending offer was not rejected: finish=%v active=%v", offer.finished, target.active)
 	}
 	data := new(dragdrop.Data)

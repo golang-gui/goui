@@ -36,7 +36,6 @@ type MenuButton struct {
 	WidgetBase
 	content            Widget
 	padding            geometry.Insets
-	hovered, pressed   bool
 	menu               MenuModel
 	pm                 *PopoverMenu
 	click              *ClickEventController
@@ -61,7 +60,6 @@ func NewMenuButton() *MenuButton {
 	b.SetLayoutManager(buttonContentLayout{})
 	b.motion = &menuButtonMotionController{MotionEventController: NewMotionEventController(), button: b}
 	b.motion.SetPhase(PhaseBubble)
-	b.motion.ConnectContainsHover(b.setHovered)
 	b.motion.ConnectMotion(func(info MotionInfo) {
 		if b.Destroyed() {
 			return
@@ -369,18 +367,11 @@ func (b *MenuButton) Paint(p Painter) {
 		return
 	}
 	rect := geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height)
-	paintStyledBox(p, rect, b.resolvedStyle())
+	PaintStyledBox(p, rect, b.resolvedStyle())
 	paintButtonFocus(p, rect, &b.WidgetBase)
 }
 func (b *MenuButton) resolvedStyle() style.Style {
-	state := style.Normal
-	if !IsEnabled(b) {
-		state = style.Disabled
-	} else if b.pressed {
-		state = style.Pressed
-	} else if b.hovered {
-		state = style.Hovered
-	}
+	state := b.State()
 	part := style.PartDefault
 	if b.Opened() {
 		part = "expanded"
@@ -396,23 +387,7 @@ func (b *MenuButton) Snapshot() WidgetInfo {
 	info.SetAttribute(MenuButtonInfoKey, MenuButtonInfo{HasMenu: b.hasMenu(), Opened: b.Opened(), Grouped: b.group != nil})
 	return info
 }
-func (b *MenuButton) setHovered(value bool) {
-	if b.hovered != value {
-		b.hovered = value
-		b.requestPaint()
-	}
-}
-func (b *MenuButton) setPressed(value bool) {
-	if b.pressed != value {
-		b.pressed = value
-		b.requestPaint()
-	}
-}
-func (b *MenuButton) requestPaint() {
-	if root := b.Root(); root != nil {
-		_ = root.RequestPaint()
-	}
-}
+func (b *MenuButton) setPressed(value bool) { b.SetState(style.Pressed, value) }
 
 // menuButtonMotionController preserves the last pointer position across native
 // crossing notifications caused by showing or hiding a no-focus surface.

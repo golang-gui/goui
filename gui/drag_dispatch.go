@@ -11,6 +11,7 @@ import (
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/dragdrop"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/style"
 )
 
 type dragHostState struct {
@@ -400,6 +401,7 @@ func (b *rootBase) negotiateDragTarget(host EventTarget, e events.DragOfferEvent
 			}
 			if initial {
 				t.active = true
+				w.base().SetState(style.DropActive, true)
 				w.base().requestSemanticUpdate()
 				b.dragTarget = dragTargetState{offer: e.Offer, target: t, format: chosen}
 				t.enter.Emit(request)
@@ -509,7 +511,7 @@ func (b *rootBase) leaveDragTarget() {
 	if target != nil && target.active {
 		target.active = false
 		if target.owner != nil && !target.owner.base().destroyed {
-			target.owner.base().requestSemanticUpdate()
+			target.owner.base().SetState(style.DropActive, false)
 		}
 		target.leave.Emit()
 	}

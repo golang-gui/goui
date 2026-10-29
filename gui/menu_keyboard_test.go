@@ -1,8 +1,10 @@
 package gui
 
 import (
-	"github.com/golang-gui/goui/platform/events"
 	"testing"
+
+	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/style"
 )
 
 func TestMenuKeyboardNavigationAndActivation(t *testing.T) {
@@ -62,7 +64,7 @@ func TestMenuKeyboardNavigationAndActivation(t *testing.T) {
 	}
 	row := newMenuItemRow(nil)
 	row.bind(first)
-	row.selected = true
+	row.SetState(style.Selected, true)
 	if !row.Snapshot().Selected {
 		t.Fatal("keyboard highlight missing from snapshot")
 	}

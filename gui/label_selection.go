@@ -324,12 +324,7 @@ func (s *labelSelection) showMenu(point geometry.Point) {
 
 func (s *labelSelection) ink(part string) color.Color {
 	l := s.label
-	state := style.Normal
-	if !IsEnabled(l) {
-		state = style.Disabled
-	} else if l.Focused() {
-		state = style.Focused
-	}
+	state := l.State()
 	field := func(v style.Style) (color.Color, bool) {
 		if part == "selection" {
 			return v.BackgroundColor()

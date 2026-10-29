@@ -110,3 +110,6 @@ func (b *LinearBox) Snapshot() WidgetInfo {
 	}
 	return info
 }
+
+// Paint draws only the box decoration; layout and children are handled separately.
+func (b *LinearBox) Paint(p Painter) { PaintWidgetStyle(p, b, "linear-box") }

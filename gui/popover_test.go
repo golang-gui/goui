@@ -1215,7 +1215,7 @@ func TestPopoverModelessDismissalReentry(t *testing.T) {
 			if err := w.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Position: geometry.Point{X: 180, Y: 20}, Button: events.PointerButtonLeft}); err != nil {
 				t.Fatal(err)
 			}
-			if button.pressed {
+			if button.State().Has(style.Pressed) {
 				t.Fatal("旧事件泄漏给关闭回调改变后的界面")
 			}
 			if replacement != nil && !replacement.Visible() {

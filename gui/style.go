@@ -78,25 +78,60 @@ func textLineHeight(sizePt float32) float32 {
 	return sizePt * 96.0 / 72.0
 }
 
-// paintStyledBox paints a widget's background and border from its resolved
-// style. Unset fields are skipped: no background color means no fill, and a
-// missing border width or color means no border. Widgets trust the resolved
-// style and carry no hard-coded fallbacks of their own.
-func paintStyledBox(p Painter, rect geometry.Rectangle, s style.Style) {
-	radius, _ := s.Radius()
-	if bg, ok := s.BackgroundColor(); ok && bg != nil {
-		fill := graphics.ColorOf(bg)
-		if radius > 0 {
-			p.FillRoundRect(rect, radius, fill)
-		} else {
-			p.FillRect(rect, fill)
-		}
+// WidgetStyle resolves a widget's own name, part and current state through the
+// nearest StyleScope. An empty StyleName uses defaultName; styles do not inherit
+// from parent widgets.
+func WidgetStyle(widget Widget, defaultName, part string) style.Style {
+	name := widget.StyleName()
+	if name == "" {
+		name = defaultName
 	}
-	paintStyledBorder(p, rect, s)
+	return ResolveWidgetStyle(widget, name, part, widget.State())
 }
 
-func paintStyledBorder(p Painter, rect geometry.Rectangle, s style.Style) {
+// PaintWidgetStyle paints the default Part over the widget's local bounds.
+// Call explicitly from Paint. It does not paint children or change layout/clip.
+func PaintWidgetStyle(p Painter, widget Widget, defaultName string) {
+	PaintStyledBox(p, geometry.Rectangle{Size: widget.Rect().Size}, WidgetStyle(widget, defaultName, style.PartDefault))
+}
+
+// PaintStyledBackground paints the specified style's background, including its
+// radius. Missing or transparent colors and empty rectangles emit no commands.
+// A rounded background does not clip children.
+func PaintStyledBackground(p Painter, rect geometry.Rectangle, s style.Style) {
+	if rect.Width <= 0 || rect.Height <= 0 {
+		return
+	}
+	bg, ok := s.BackgroundColor()
+	if !ok || bg == nil {
+		return
+	}
+	fill := graphics.ColorOf(bg)
+	if fill.A == 0 {
+		return
+	}
 	radius, _ := s.Radius()
+	if radius > 0 {
+		p.FillRoundRect(rect, radius, fill)
+	} else {
+		p.FillRect(rect, fill)
+	}
+}
+
+// PaintStyledBox paints the background then the border. Shadow and text are
+// separate drawing operations; unset fields emit no commands.
+func PaintStyledBox(p Painter, rect geometry.Rectangle, s style.Style) {
+	PaintStyledBackground(p, rect, s)
+	PaintStyledBorder(p, rect, s)
+}
+
+// PaintStyledBorder paints an inset border without repainting the background.
+// It does not reserve layout space. Missing/transparent colors, nonpositive
+// widths and empty rectangles emit no commands.
+func PaintStyledBorder(p Painter, rect geometry.Rectangle, s style.Style) {
+	if rect.Width <= 0 || rect.Height <= 0 {
+		return
+	}
 	width, ok := s.BorderWidth()
 	if !ok || width <= 0 {
 		return
@@ -106,8 +141,19 @@ func paintStyledBorder(p Painter, rect geometry.Rectangle, s style.Style) {
 		return
 	}
 	stroke := graphics.ColorOf(bc)
-	// Stroke primitives are centered on their path. Keep the complete border
-	// inside the Widget's clip by moving its centerline inward by half its width.
+	if stroke.A == 0 {
+		return
+	}
+	radius, _ := s.Radius()
+	// Once the inner contour collapses, the border covers the whole shape.
+	if width >= min(rect.Width, rect.Height)/2 {
+		if radius > 0 {
+			p.FillRoundRect(rect, radius, stroke)
+		} else {
+			p.FillRect(rect, stroke)
+		}
+		return
+	}
 	halfWidth := width / 2
 	borderRect := rect.Inset(halfWidth)
 	borderRadius := max(radius-halfWidth, 0)
@@ -129,17 +175,13 @@ func buttonStyleName(button *WidgetBase) string {
 // optional tint and border do not alter the child widgets' styles.
 func paintButtonFocus(p Painter, rect geometry.Rectangle, button *WidgetBase) {
 	if IsEnabled(button) && button.Focused() {
-		state := style.Focused
-		if button.FocusVisible() {
-			state = style.FocusVisible
-		}
-		focus := ResolveWidgetStyle(button, buttonStyleName(button), stylePartFocus, state)
+		focus := ResolveWidgetStyle(button, buttonStyleName(button), stylePartFocus, button.State())
 		if bg, ok := focus.BackgroundColor(); ok && bg != nil && graphics.ColorOf(bg).A > 0 {
-			paintStyledBox(p, rect, focus)
+			PaintStyledBox(p, rect, focus)
 		} else {
 			// The default pointer-focus background is transparent: skip the
 			// no-op fill while retaining an application's optional border.
-			paintStyledBorder(p, rect, focus)
+			PaintStyledBorder(p, rect, focus)
 		}
 	}
 }

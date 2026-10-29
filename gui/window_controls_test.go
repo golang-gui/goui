@@ -56,7 +56,8 @@ func TestRectangularCaptionAppearance(t *testing.T) {
 					t.Fatalf("caption width: %g", button.Rect().Width)
 				}
 				check := func(hover, pressed bool) (color.Color, color.Color) {
-					button.hovered, button.pressed = hover, pressed
+					button.updateState(style.Hovered, hover)
+					button.SetState(style.Pressed, pressed)
 					s := button.decorationStyle()
 					if radius, _ := s.Radius(); radius != 0 {
 						t.Fatal("rectangular caption inherited rounded corners")
@@ -98,7 +99,8 @@ func TestRectangularCaptionAppearance(t *testing.T) {
 				for _, focused := range []bool{false, true} {
 					win.setFocused(focused)
 					for state, expected := range []color.Color{palette.button, palette.hovered, palette.pressed} {
-						button.hovered, button.pressed = state == 1, state == 2
+						button.updateState(style.Hovered, state == 1)
+						button.SetState(style.Pressed, state == 2)
 						s := button.decorationStyle()
 						circle, _ := s.BackgroundColor()
 						ink, _ := s.ForegroundColor()
@@ -126,13 +128,13 @@ func TestCaptionTranslucentColorsAreNotPremultipliedTwice(t *testing.T) {
 	win, _ := chromeFixture(t, false, true)
 	win.setFocused(true)
 	button := win.controls.buttons[0]
-	button.hovered = true
+	button.updateState(style.Hovered, true)
 	p := new(testButtonBackgroundPainter)
 	button.Paint(p)
 	if p.brush != graphics.RGBA(255, 255, 255, 26) {
 		t.Fatalf("dark hover RGB was attenuated before blending: %+v", p.brush)
 	}
-	button.hovered = false
+	button.updateState(style.Hovered, false)
 	win.setFocused(false)
 	foreground, _ := button.decorationStyle().ForegroundColor()
 	if brush := button.decorationBrush(foreground); brush != graphics.RGBA(255, 255, 255, 102) {
@@ -152,7 +154,8 @@ func TestCaptionTranslucentColorsAreNotPremultipliedTwice(t *testing.T) {
 		hovered, pressed bool
 		want             uint32
 	}{{false, false, 32}, {true, false, 55}, {true, true, 77}} {
-		button.hovered, button.pressed = test.hovered, test.pressed
+		button.updateState(style.Hovered, test.hovered)
+		button.SetState(style.Pressed, test.pressed)
 		win.paint()
 		r, g, b, _ := frame.image.At(int((button.windowRect().X+3)*2), 10*2).RGBA()
 		if r>>8 < test.want-1 || r>>8 > test.want+1 || r != g || g != b {
@@ -280,11 +283,11 @@ func TestWindowControlsHoverAndCaptureAcrossTrees(t *testing.T) {
 	button := win.controls.buttons[0]
 	point := button.windowRect().Center()
 	_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: point})
-	if !button.hovered {
+	if !button.State().Has(style.Hovered) {
 		t.Fatal("decoration did not receive hover")
 	}
 	_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: geometry.Point{X: 20, Y: 200}})
-	if button.hovered {
+	if button.State().Has(style.Hovered) {
 		t.Fatal("cross-tree leave was lost")
 	}
 	clickAt(win, point)
@@ -322,17 +325,17 @@ func TestWindowControlsPressMoveAndCancel(t *testing.T) {
 			// Capture switches the native input path, which may emit Enter before Move.
 			send(events.PointerEnter, moved, events.PointerButtonLeftDown)
 			send(events.PointerMove, moved, events.PointerButtonLeftDown)
-			if !button.pressed || !button.click.pressed || clicks != 0 {
+			if !button.State().Has(style.Pressed) || !button.click.pressed || clicks != 0 {
 				t.Fatal("moving within the button lost the press or clicked early")
 			}
 			send(events.PointerUp, moved, 0)
-			if button.pressed || clicks != 1 {
+			if button.State().Has(style.Pressed) || clicks != 1 {
 				t.Fatal("release did not click exactly once")
 			}
 			send(events.PointerDown, point, events.PointerButtonLeftDown)
 			outside := geometry.Point{X: 20, Y: 200}
 			send(events.PointerMove, outside, events.PointerButtonLeftDown)
-			if button.pressed || button.click.pressed {
+			if button.State().Has(style.Pressed) || button.click.pressed {
 				t.Fatal("leaving the button did not cancel the press")
 			}
 			send(events.PointerUp, outside, 0)

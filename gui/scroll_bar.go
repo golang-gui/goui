@@ -109,8 +109,8 @@ func (b *ScrollBar) Paint(p Painter) {
 		return
 	}
 	r := geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height)
-	paintStyledBox(p, r, b.troughStyle())
-	paintStyledBox(p, b.thumbRect(), b.thumbStyle())
+	PaintStyledBox(p, r, b.troughStyle())
+	PaintStyledBox(p, b.thumbRect(), b.thumbStyle())
 }
 
 func (b *ScrollBar) Snapshot() WidgetInfo {
@@ -132,7 +132,7 @@ func (b *ScrollBar) styleName() string {
 }
 
 func (b *ScrollBar) troughStyle() style.Style {
-	return ResolveWidgetStyle(b, b.styleName(), stylePartTrough, style.Normal)
+	return ResolveWidgetStyle(b, b.styleName(), stylePartTrough, b.State())
 }
 
 func (b *ScrollBar) thumbStyle() style.Style {
@@ -140,13 +140,11 @@ func (b *ScrollBar) thumbStyle() style.Style {
 }
 
 func (b *ScrollBar) thumbState() style.State {
-	if b.drag != nil && b.drag.Dragging() {
-		return style.Pressed
+	state := b.State() &^ style.Hovered
+	if b.thumbHovered && !state.Has(style.Disabled) {
+		state |= style.Hovered
 	}
-	if b.thumbHovered {
-		return style.Hovered
-	}
-	return style.Normal
+	return state
 }
 
 func (b *ScrollBar) setThumbHovered(v bool) {
@@ -236,6 +234,7 @@ func (b *ScrollBar) onDragBegin(pos geometry.Point, _ events.Modifiers) {
 		// point, then continue dragging from there.
 		b.grabOffset = b.thumbLen() / 2
 	}
+	b.SetState(style.Pressed, true)
 	b.emitValueFromPos(pos)
 	b.RequestPaint()
 }
@@ -249,6 +248,7 @@ func (b *ScrollBar) onDragEnd(_ geometry.Point, _ events.Modifiers) {
 }
 
 func (b *ScrollBar) finishDrag() {
+	b.SetState(style.Pressed, false)
 	b.grabOffset = 0
 	// The thumb state (Pressed -> Normal/Hovered) changed, but no value change
 	// follows a release, so nothing else repaints. Without this the thumb stays

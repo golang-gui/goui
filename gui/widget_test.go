@@ -1219,11 +1219,11 @@ func TestWidgetEnabledPointerDoesNotPassThrough(t *testing.T) {
 	}
 	front.SetEnabled(true)
 	pointer(events.PointerDown)
-	if !front.pressed {
+	if !front.State().Has(style.Pressed) {
 		t.Fatal("enabled button was not pressed")
 	}
 	front.SetEnabled(false)
-	if front.pressed || front.hovered || win.FocusedWidget() != nil {
+	if front.State().Has(style.Pressed) || front.State().Has(style.Hovered) || win.FocusedWidget() != nil {
 		t.Fatal("disable did not cancel press, hover and focus")
 	}
 	front.SetEnabled(true)
@@ -1469,13 +1469,13 @@ func TestWidgetEnabledRestoresStationaryHoverInEveryHost(t *testing.T) {
 			}
 			group.SetEnabled(false)
 			group.SetEnabled(true)
-			if !button.hovered || !slices.Equal(hover, []bool{true, false, true}) {
+			if !button.State().Has(style.Hovered) || !slices.Equal(hover, []bool{true, false, true}) {
 				t.Fatalf("stationary hover did not recover: %v", hover)
 			}
 			_ = host.DispatchEvent(events.PointerEvent{EventType: events.PointerLeave})
 			group.SetEnabled(false)
 			group.SetEnabled(true)
-			if button.hovered || !slices.Equal(hover, []bool{true, false, true, false}) {
+			if button.State().Has(style.Hovered) || !slices.Equal(hover, []bool{true, false, true, false}) {
 				t.Fatal("reenable restored hover after the pointer left the surface")
 			}
 		})
@@ -1555,7 +1555,7 @@ func TestWidgetEnabledStopsStaleHoverAndClickCallbacks(t *testing.T) {
 		}
 	})
 	_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: geometry.Point{X: 10, Y: 10}})
-	if IsEnabled(button) || button.hovered || enters != 0 {
+	if IsEnabled(button) || button.State().Has(style.Hovered) || enters != 0 {
 		t.Fatal("hover crossing continued after disable inside an earlier controller")
 	}
 	button.RemoveEventController(first)

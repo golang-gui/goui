@@ -254,7 +254,7 @@ func (l *Label) newTextLayout(base labelTextStyle, size geometry.Size) typograph
 		for _, run := range l.parsed.Runs {
 			value := base
 			for _, name := range run.Styles {
-				value = value.with(ResolveWidgetStyle(l, name, style.PartDefault, l.textState()))
+				value = value.with(ResolveWidgetStyle(l, name, style.PartDefault, l.State()))
 			}
 			textLayout.SetTextFont(run.Start, run.End-run.Start, value.format.Font)
 			color := value.format.TextColor
@@ -271,18 +271,11 @@ func (l *Label) newTextLayout(base labelTextStyle, size geometry.Size) typograph
 
 func (l *Label) resolvedTextFormat() typography.TextFormat { return l.resolvedTextStyle().format }
 
-func (l *Label) textState() style.State {
-	if !IsEnabled(l) {
-		return style.Disabled
-	}
-	return style.Normal
-}
-
 func (l *Label) resolvedTextStyle() labelTextStyle {
 	value := labelTextStyle{format: typography.TextFormat{WrapMode: l.wrapMode, TextAlign: l.textAlign}}
-	value = value.with(ResolveWidgetStyle(l, styleNameLabel, style.PartDefault, l.textState()))
+	value = value.with(ResolveWidgetStyle(l, styleNameLabel, style.PartDefault, l.State()))
 	if name := l.StyleName(); name != "" && name != styleNameLabel {
-		value = value.with(ResolveWidgetStyle(l, name, style.PartDefault, l.textState()))
+		value = value.with(ResolveWidgetStyle(l, name, style.PartDefault, l.State()))
 	}
 	return value
 }

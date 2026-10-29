@@ -1,6 +1,8 @@
 package gui
 
 import (
+	"image/color"
+
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/internal/resource"
@@ -8,7 +10,6 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/style"
-	"image/color"
 )
 
 const (
@@ -88,10 +89,10 @@ func (b *captionButton) decorationStyle() style.Style {
 		// independent of application Button styles and accent colors.
 		var background color.Color = color.Transparent
 		var foreground color.Color = palette.foreground
-		if b.close && (b.hovered || b.pressed) {
+		if b.close && (b.State().Has(style.Hovered) || b.State().Has(style.Pressed)) {
 			background = color.NRGBA{R: 196, G: 43, B: 28, A: 255}
 			foreground = color.White
-			if b.pressed {
+			if b.State().Has(style.Pressed) {
 				background = color.NRGBA{R: 176, G: 37, B: 26, A: 255}
 			}
 		} else {
@@ -99,9 +100,9 @@ func (b *captionButton) decorationStyle() style.Style {
 			if palette.foreground.Y > 128 {
 				ink = 255
 			}
-			if b.hovered || b.pressed {
+			if b.State().Has(style.Hovered) || b.State().Has(style.Pressed) {
 				alpha := uint8(26)
-				if b.pressed {
+				if b.State().Has(style.Pressed) {
 					alpha = 51
 				}
 				background = color.NRGBA{R: ink, G: ink, B: ink, A: alpha}
@@ -112,9 +113,9 @@ func (b *captionButton) decorationStyle() style.Style {
 		return style.Default().BackgroundColor(background).ForegroundColor(foreground).Radius(0).Style
 	}
 	background := palette.button
-	if b.pressed {
+	if b.State().Has(style.Pressed) {
 		background = palette.pressed
-	} else if b.hovered {
+	} else if b.State().Has(style.Hovered) {
 		background = palette.hovered
 	}
 	return style.Default().BackgroundColor(background).ForegroundColor(palette.foreground).
@@ -129,7 +130,7 @@ func (b *captionButton) Paint(p Painter) {
 	if b.circular {
 		inset := (circularControlSize - circularControlDiameter) / 2
 		rect = rect.Inset(inset)
-		paintStyledBox(p, rect, b.decorationStyle())
+		PaintStyledBox(p, rect, b.decorationStyle())
 		return
 	}
 	background, _ := b.decorationStyle().BackgroundColor()
@@ -161,7 +162,7 @@ func (c *windowControls) layout() {
 			for _, button := range c.buttons {
 				button.click.Reset()
 				button.setPressed(false)
-				button.setHovered(false)
+				button.updateState(style.Hovered, false)
 			}
 		}
 		c.hidden = true

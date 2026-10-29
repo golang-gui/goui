@@ -101,14 +101,14 @@ func TestButtonHoverBackgroundFromApplicationStyleSheet(t *testing.T) {
 		t.Fatalf("unexpected normal background: %+v", painter.brush)
 	}
 
-	button.setHovered(true)
+	button.updateState(style.Hovered, true)
 	painter = new(testButtonBackgroundPainter)
 	button.Paint(painter)
 	if painter.brush != graphics.ColorOf(hoverBackground) {
 		t.Fatalf("unexpected hover background: %+v", painter.brush)
 	}
 
-	button.setHovered(false)
+	button.updateState(style.Hovered, false)
 	painter = new(testButtonBackgroundPainter)
 	button.Paint(painter)
 	if painter.brush != graphics.ColorOf(normalBackground) {
