@@ -59,3 +59,22 @@ ui.Button(resource.Save()).OnClick(save)
 ```bash
 go run ./tests/window/ui/mlang
 ```
+
+Label 可以把强调范围和完整译文一起保存在资源里。只在字符串起始处使用
+`\{format\}` 才开启格式；样式名不随语言更名，范围位置可随语序调整：
+
+```go
+var deletePrompt = mlang.String(
+    mlang.En(`\{format\}Delete \{bold:%[1]s\}?`),
+    mlang.ZhCN(`\{format\}确定删除 \{bold:%[1]s\} 吗？`),
+)
+
+func DeletePrompt(name string) string {
+    template := deletePrompt()
+    return fmt.Sprintf(template, textformat.EscapeArg(template, name))
+}
+```
+
+这里 `textformat` 是独立包，不改变 mlang.Getter。EscapeArg 根据模板是否开启格式
+保护 `%s` 参数中的反斜杠；不要直接将不可信参数插入格式正文。普通译文无需修改，
+同一个资源函数也允许某个翻译没有格式。TextInput/TextView 不解释这些标记。

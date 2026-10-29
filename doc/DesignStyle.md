@@ -528,3 +528,19 @@ A native popup has a different root and does not implicitly capture the opener's
 scope. A popup-specific palette must be installed explicitly.
 
 Implementation verification and remaining platform gaps: [component styles](PlanComponentStyles.md).
+
+## Named inline text styles
+
+Labels recognize `\{format\}` at the start of their source; the body can use
+`\{styleName:body\}` with nested ranges. The current `label` style is the baseline,
+then the Label's own style and each outer-to-inner range override only fields
+that are set. This is explicit composition within one Label, without introducing
+selector fallback or inheritance between widgets.
+
+FontWeight, FontStyle, Underline and Strikethrough are optional fields alongside
+FontFamily, FontSize and ForegroundColor. Explicit normal/false cancels an outer
+value. Basic supplies partial `bold`, `italic`, `underline` and `strikethrough`
+rules. Modern's `warning`, `error`, `success` and `muted-text` are color-only
+rules; none resets a heading's size. An explicitly set FontSize is absolute in
+points. Box fields do not apply to inline ranges. Editors keep literal strings.
+See [Label formatting](DesignLabel.md) for syntax, escaping and lifecycle.
