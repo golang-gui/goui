@@ -60,14 +60,14 @@ allocate rendering resources or grant widgets automatic out-of-bounds painting.
 
 `Widget.StyleChanged` now invalidates derived resources before subsequent
 framework layout/paint. Changes are marked on sheet replacement, local style-name
-changes, effective enabled-state changes and attachment, then coalesced until
+changes, widget-state changes and attachment, then coalesced until
 framework use. Invalidations need not result in different resolved style values.
 ScrollView also
 delivers pending notifications before querying specialized Scrollable geometry.
 The base implementation is a no-op; the framework handles measurement invalidation
 and scheduling independently of overrides. Detached widgets are refreshed on
 attachment, not kept in a global registry. This is a framework hook, not another
-application signal. Hover/pressed state remains the widget's responsibility.
+application signal. Widget.State provides simultaneous flags; the core owns hover/focus/enabled facts, while controls synchronize their own pressed/selected/checked display state. See [Widget state and painting](DesignWidgetState.md).
 
 UI subscribes to system
 Settings changes and requests a rebuild internally; user state still uses explicit
@@ -162,15 +162,21 @@ The core model is intentionally small:
 ```go
 package style
 
-type State int
+type State uint32
+
+const Normal State = 0
 
 const (
-	Normal State = iota
-	Hovered
+	Hovered State = 1 << iota
 	Pressed
 	Focused
 	Disabled
 	FocusVisible
+	ContainsFocus
+	Selected
+	Checked
+	Mixed
+	DropActive
 )
 
 type Sel struct {
@@ -198,10 +204,7 @@ combination of selector data and style data. `Resolve` takes only a selector —
 there is no local-override list, because local code names a style, it does not
 supply rules (see Non-Goals and Declarative UI Responsibilities).
 
-`State` is an integer because the supported widget states are fixed and should
-be fast to compare. States are not treated as a bitset in the MVP. A widget asks
-for one effective state at a time, such as default, hovered, pressed, focused,
-or disabled.
+`State` is a uint32 flag set. Normal is zero; simultaneous states are queried with Has. State rules match subsets, then merge by specificity and fixed priority; disabled rules apply last. FocusVisible implies Focused; Disabled removes transient input conditions. Normal defaults are shared with a requested Part, but nonzero state rules remain isolated by Part. See [Widget state](DesignWidgetState.md) for ownership and ordering.
 
 `Name` and `Part` are strings because both need to be open to user-defined
 values.
@@ -305,38 +308,17 @@ Resolution is **one seam, three layers**, and no widget is threaded into the
 resolver:
 
 ```go
-// 1. control → name: the explicit override, else the control's own constant.
-//    The control inlines this (a single if) using the public StyleName();
-//    there is deliberately no WidgetBase helper — a private method could not
-//    serve controls defined in other packages.
-name := b.StyleName()
-if name == "" {
-	name = styleNameButton
-}
+// Resolve the widget's own name, current simultaneous state and nearest scope.
+s := gui.WidgetStyle(widget, "button", style.PartDefault)
 
-// 2. name → Style: the single exported entry point, gui.ResolveStyle; it knows
-//    nothing about widgets, so third-party controls call the very same seam.
-ResolveStyle(name, style.PartDefault, state)
-
-// 3. inside ResolveStyle: pick the current sheet, then Resolve.
-// A custom sheet still replaces Basic; there is no implicit per-field overlay.
-sheet := DefaultStyleSheet()
-if App != nil {
-	if s := App.StyleSheet(); s != nil {
-		sheet = s
-	}
-}
-return sheet.Resolve(style.Sel{Name: name, Part: part, State: state})
+// Or draw the default Part explicitly over the local widget bounds.
+gui.PaintWidgetStyle(painter, widget, "button")
 ```
 
-`StyleName()` stays the raw override (`""` when unset); the control inlines the
-fallback to its own default constant, and the fallback to `DefaultStyleSheet`
-lives in `ResolveStyle` — resolver jobs, not getter jobs (see DesignConventions
-§5: explicit getter + named resolver). **`ResolveStyle` is exported on purpose:**
-resolving a style is not a `gui`-internal privilege, so a control in another
-package uses the same public seam — `Widget.StyleName()` + its own name constant
-+ `gui.ResolveStyle` — with no private `WidgetBase` helper to lock control
-authorship inside `gui`.
+`StyleName()` remains the raw override. WidgetStyle supplies a caller-chosen
+default name and routes through ResolveWidgetStyle, respecting StyleScope.
+ResolveWidgetStyle also accepts explicit name/part/state requests for compound
+controls and inline text styles; ResolveStyle remains application-wide.
 
 ## Resolution Rules
 
@@ -347,22 +329,11 @@ Within one sheet, resolution matches intuition:
 - part-specific fields override default-part fields.
 - fields a rule did not set keep the previously resolved value.
 
-The fallback chain for a selector (later overrides earlier, field-wise):
-
-```text
-Name + default part + Normal
-Name + Part         + Normal
-Name + Part         + Focused      (only when exact state is FocusVisible)
-Name + Part         + exact state
-```
-
-Every rule whose `Sel` equals a step is merged in order. This gives useful
-same-widget defaults without parent inheritance: a text input sets a foreground
-on its default part, and its placeholder part overrides the foreground only when
-it needs a different one — a same-widget fallback, not a parent-to-child cascade.
-
-Duplicate steps collapse. A non-default part does not inherit another part's
-state-specific fields; the Focused step above always uses the requested Part.
+Resolution first merges default-Part Normal rules, then requested-Part Normal
+rules. Nonzero state rules only apply to the requested Part and must be subsets
+of the query. Fewer conditions precede more conditions. Ties use a fixed priority
+and duplicate conditions retain declaration order. Disabled rules apply last;
+FocusVisible implies Focused. See [Widget state](DesignWidgetState.md).
 
 There is **no local layer** and no cross-widget cascade: a widget resolves one
 name against one sheet. Different appearance = a different name (`.Style(name)`)

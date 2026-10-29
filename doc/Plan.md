@@ -3,6 +3,37 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## Widget 组合状态与显式样式绘制（2026-10-29）
+
+设计见 [DesignWidgetState](DesignWidgetState.md)。
+
+- [x] `style.State` 位标志与子集匹配；按条件数/固定优先级稳定合并，Disabled 最后，
+  保留 Part 隔离和重复规则声明顺序。数值不兼容旧枚举，按命名标志使用。
+- [x] `Widget.State`、实现方受控 `SetState`；内核统一维护悬停/焦点/禁用事实，
+  Snapshot 投影同一状态；卸载/禁用清除临时状态，模型选择保留。
+- [x] State 引起的 StyleChanged 合并至帧开始，在既有约束下比较测量结果后才请求
+  布局，避免指针 crossing 让 chrome 命中失效。卸载/销毁清理待通知引用。
+- [x] Button/MenuButton、菜单、滚动条、CheckButton/Switch/DropDown、SplitView、
+  Tab、Tree/Table 状态迁移，保留部件状态、模型与手势竞争；焦点 Part 支持组合状态。
+- [x] 公共 WidgetStyle/PaintWidgetStyle 与背景/边框辅助函数；透明/空值零指令、
+  内缩描边、退化内轮廓处理。LinearBox/WrapBox 支持自身背景，不影响布局和子树裁剪；
+  widgets/demo 复用同一绘制入口，未增加 Painter 接口或自动装饰步骤。
+- [x] 新增 [gui/widget_state](../tests/window/gui/widget_state/main.go)，中文步骤与自动
+  断言；外部自定义 Widget、Box、StyleScope、状态字体尺寸、预乘透明合成均覆盖。
+- [x] 本机 Ubuntu 22.04 / Linux amd64，独立 Xvnc `:74` + xfwm4 合成器、Mesa
+  llvmpipe；Software/OpenGL 各 1x/2x 自动断言通过。XTest 真实鼠标点击取消选中、
+  Tab+Space 切换复选状态均有业务信号确认；边缘拖动将宽度从 760 改为 842，正常存活。
+- [x] 干净源码副本 `GOWORK=off go test -json ./... -count=1`：2705 个测试/子测试
+  通过，10 个既有 skip，0 失败。skip 为 macOS 签名及原生窗口手动项目，不算验收通过。
+  源码副本包含全部跟踪文件与本轮新增文件，不混入用户原有未跟踪测试/例程/产物。
+  既有窗口/剪贴板及图片产物副作用隔离在本轮 X11 会话和仓库外目录。
+- [x] `go test -race ./style ./gui ./gui/textedit ./ui ./widgets ./widgets/ui
+  ./theme/basic ./theme/modern -count=1`、相关包 `go vet`、demo 构建通过；窗口例程
+  Windows amd64 / macOS arm64 的 `CGO_ENABLED=0` 交叉编译通过。本轮未做远端
+  原生运行，不能据交叉编译宣称 Windows Direct2D/macOS 桌面效果已验收。
+- [x] 同步 DesignStyle/CustomWidgetView 与使用方技能，技能结构校验通过；按样式模型、
+  GUI 内核、控件、例程与文档分组提交，不推送。
+
 ## Label 可选择文本（2026-10-29）
 
 设计与边界见 [DesignLabel](DesignLabel.md#7-可选择文本)。
