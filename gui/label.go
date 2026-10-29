@@ -2,10 +2,10 @@ package gui
 
 import (
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/gui/textformat"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/style"
-	"github.com/golang-gui/goui/textformat"
 )
 
 const labelMeasureExtent = 1 << 20
@@ -288,16 +288,6 @@ func (v labelTextStyle) with(s style.Style) labelTextStyle {
 		v.strike = value
 	}
 	return v
-}
-
-// labelPlainText is for semantic fields which display Label source without
-// retaining a Label. It never creates typography or other native resources.
-func labelPlainText(source string) string {
-	parsed, err := textformat.Parse(source)
-	if err != nil {
-		return source
-	}
-	return parsed.Plain
 }
 
 func measureTextSize(available geometry.Size) geometry.Size {

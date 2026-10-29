@@ -1,9 +1,6 @@
 package widgets
 
-import (
-	"github.com/golang-gui/goui/gui"
-	"github.com/golang-gui/goui/textformat"
-)
+import "github.com/golang-gui/goui/gui"
 
 // Semantic roles supplied by this widget package. Values remain stable across
 // implementation changes; generic GUI snapshot consumers need no tab knowledge.
@@ -58,14 +55,4 @@ type HierarchyInfo struct {
 	Expandable    bool   `json:"expandable"`
 	Expanded      bool   `json:"expanded"`
 	Current       bool   `json:"current"`
-}
-
-// plainDisplayText keeps semantic display names aligned with Label rendering,
-// including malformed-format fallback. Model values themselves stay unchanged.
-func plainDisplayText(source string) string {
-	parsed, err := textformat.Parse(source)
-	if err != nil {
-		return source
-	}
-	return parsed.Plain
 }

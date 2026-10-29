@@ -90,3 +90,16 @@ func FuzzLiteral(f *testing.F) {
 		}
 	})
 }
+
+func TestPlainText(t *testing.T) {
+	for _, tc := range []struct{ source, want string }{
+		{`普通 \{bold:文本\}`, `普通 \{bold:文本\}`},
+		{`\{format\}请\{bold:保存\}`, "请保存"},
+		{`\{format\}\{bold:未闭合`, `\{format\}\{bold:未闭合`},
+		{`\{format\}`, ""},
+	} {
+		if got := PlainText(tc.source); got != tc.want {
+			t.Errorf("%q 的显示文本=%q，期望=%q", tc.source, got, tc.want)
+		}
+	}
+}

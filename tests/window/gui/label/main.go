@@ -36,10 +36,10 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
+	"github.com/golang-gui/goui/gui/textformat"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/style"
-	"github.com/golang-gui/goui/textformat"
 	"github.com/golang-gui/goui/theme/basic"
 	"github.com/golang-gui/goui/theme/modern"
 )

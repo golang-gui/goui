@@ -127,6 +127,18 @@ func Parse(source string) (Text, error) {
 	return Text{Plain: plain.String(), Runs: runs, Formatted: true}, nil
 }
 
+// PlainText extracts display text from a format source. Invalid syntax returns
+// the complete source, matching Label's verbatim fallback. Use an existing
+// Label's PlainText method when available to reuse its parsed text. This is not
+// a general operation on semantic strings, which may contain literal markup.
+func PlainText(source string) string {
+	text, err := Parse(source)
+	if err != nil {
+		return source
+	}
+	return text.Plain
+}
+
 // EscapeArg prepares a literal string argument for %s or %[n]s substitution
 // into template. It is a no-op for plain templates and escapes backslashes for
 // format-prefixed templates. It does not format arguments or validate template.

@@ -6,6 +6,7 @@ import (
 
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
+	"github.com/golang-gui/goui/gui/textformat"
 	"github.com/golang-gui/goui/layout"
 )
 
@@ -14,6 +15,7 @@ import (
 type TabPage struct {
 	gui.WidgetBase
 	title        string
+	plainTitle   string
 	icon         gui.IconSource
 	closable     bool
 	child        gui.Widget
@@ -22,7 +24,8 @@ type TabPage struct {
 }
 
 func NewTabPage(title string, child gui.Widget) *TabPage {
-	p := &TabPage{title: title}
+	p := &TabPage{}
+	p.SetTitle(title)
 	p.SetLayoutManager(layout.NewFillLayout())
 	p.SetChild(child)
 	return p
@@ -32,6 +35,7 @@ func (p *TabPage) Title() string { return p.title }
 func (p *TabPage) SetTitle(title string) {
 	if p.title != title {
 		p.title = title
+		p.plainTitle = textformat.PlainText(title)
 		p.changed()
 	}
 }
@@ -70,7 +74,7 @@ func (p *TabPage) changed() {
 }
 func (p *TabPage) Snapshot() gui.WidgetInfo {
 	info := p.WidgetBase.Snapshot()
-	info.Role, info.Text = RoleTabPanel, plainDisplayText(p.title)
+	info.Role, info.Text = RoleTabPanel, p.plainTitle
 	info.Selected = p.view != nil && p.view.current == p
 	return info
 }

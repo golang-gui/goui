@@ -22,6 +22,16 @@ func TestTabFormattedTitleSnapshot(t *testing.T) {
 	if item := bar.items[page]; item == nil || item.Snapshot().Text != "页签" {
 		t.Fatal("标签按钮语义泄漏格式标记")
 	}
+	for _, tc := range []struct{ source, plain string }{
+		{`\{format\}\{italic:新标题\}`, "新标题"},
+		{`\{format\}`, ""},
+		{`\{format\}\{bold:错误`, `\{format\}\{bold:错误`},
+	} {
+		page.SetTitle(tc.source)
+		if page.Title() != tc.source || page.Snapshot().Text != tc.plain || bar.items[page].Snapshot().Text != tc.plain {
+			t.Fatal("修改标题没有同步源串、页面语义和标签显示")
+		}
+	}
 }
 
 func TestTabViewSelectionRemovalAndCloseRequest(t *testing.T) {

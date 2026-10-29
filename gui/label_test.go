@@ -320,9 +320,10 @@ func TestLabelFormattedSnapshotFallbackAndEmptyBaseline(t *testing.T) {
 		t.Fatal("普通快照分配额外属性或创建原生排版")
 	}
 	w := newTestWidget()
-	w.SetTooltip(`\{format\}\{bold:帮助\}`)
-	if w.Tooltip() == "帮助" || w.Snapshot().Tooltip != "帮助" {
-		t.Fatal("Tooltip 源串与显示语义未区分")
+	help := `\{format\}\{bold:帮助\}`
+	w.SetTooltip(help)
+	if w.Tooltip() != help || w.Snapshot().Tooltip != help {
+		t.Fatal("Tooltip 纯文本契约不应自动解释格式语法")
 	}
 	input := NewTextInput()
 	input.SetText(`\{format\}\{bold:原样\}`)

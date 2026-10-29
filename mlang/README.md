@@ -75,6 +75,6 @@ func DeletePrompt(name string) string {
 }
 ```
 
-这里 `textformat` 是独立包，不改变 mlang.Getter。EscapeArg 根据模板是否开启格式
-保护 `%s` 参数中的反斜杠；不要直接将不可信参数插入格式正文。普通译文无需修改，
+这里 `textformat` 从 `github.com/golang-gui/goui/gui/textformat` 导入，不改变 mlang.Getter。
+EscapeArg 根据模板是否开启格式保护 `%s` 参数中的反斜杠；不要直接将不可信参数插入格式正文。普通译文无需修改，
 同一个资源函数也允许某个翻译没有格式。TextInput/TextView 不解释这些标记。

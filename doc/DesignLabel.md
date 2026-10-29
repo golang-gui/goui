@@ -9,7 +9,7 @@ Label 是小段展示文本。格式化不需要新增控件类型、格式模�
 本轮实现格式字符串、命名文字样式、嵌套范围、主题失效、纯文本语义和验证程序。
 **可选择文本尚未实现**：Selectable、选区、复制、菜单、焦点及相关 UI 绑定均留待后续。
 TextInput/TextView 的正文和 Placeholder 始终是纯文本，包括只读状态。
-窗口标题、ID、Name 等非 Label 内容不解释格式。首版不包含链接、图片、内嵌 Widget、
+Tooltip、窗口标题、ID、Name 等纯文本入口不解释格式。首版不包含链接、图片、内嵌 Widget、
 跨控件选择、富文本编辑或 HTML/Markdown。
 
 参考证据：Pango 1.58.2 文档说明将格式与整句翻译一起保存可以避免维护字符下标；
@@ -56,9 +56,12 @@ GTK 4.24.1 的 Label 与 Qt 6.12 QLabel 允许可选选择。采用范围随文�
 SetText 不改变签名，不新增错误信号、日志或默认错误弹窗。应用可单独 Parse 提前校验；
 Snapshot 的 `goui.label` 属性报告格式状态和可选错误。
 
-## 3. 独立 textformat 包
+## 3. gui/textformat 子包
 
-根目录的 textformat 不依赖 gui、platform、style 或 mlang，仅处理字符串和名称范围。
+gui/textformat 是 GUI 展示文字的纯解析子包，不依赖 gui 本包、platform、style 或
+mlang，资源包可单独导入它而不加载 GUI 运行时。它不属于 core 的通用基础类型，也不
+占用根目录的独立公共模块。解析和转义入口保持同一个包，导入路径为
+`github.com/golang-gui/goui/gui/textformat`。
 
 ```go
 type Run struct {
@@ -71,13 +74,17 @@ type Text struct {
     Formatted bool
 }
 func Parse(source string) (Text, error)
+func PlainText(source string) string
 func EscapeArg(template, value string) string
 func Literal(value string) string
 ```
 
 Run 是纯文本的 UTF-8 半开范围，Styles 从外到内；范围不重叠，相邻同路径段合并。
 结果属于调用方，无原生资源或全局可变缓存。没有开启标记时 Parse 不分配范围、不改文字。
-解析失败返回错误，不在纯包里选择 GUI 降级策略。
+Parse 解析失败返回错误；PlainText 是显式的显示文字提取入口，错误时返回完整源串，
+与 Label 的降级保持一致。它只用于明确承载格式源码、但没有 Label 的元数据，例如
+TabPage 的标题，在构造／setter 中调用；已有 Label 应读取其 PlainText() 缓存，
+不在 Snapshot 中再次解析。
 
 EscapeArg 对未开启格式的模板原样返回参数；开启格式时转义参数中的反斜杠，供 `%s` /
 `%[n]s` 插值，不重新实现 fmt。Literal 返回保证 Label 显示原始 value 的源字符串，
@@ -138,8 +145,25 @@ TextInput/TextView 不解释标记；共用文字格式构造可以读取新增�
 `ui.Label(resource.Message())`、Text、BindText 保留，无格式开关或协调器特例。
 Label Snapshot 的 Text 为显示纯文本、Role 为 Label；用 `goui.label` 附带 Formatted 和
 可选 FormatError，普通 Label 不必创建 Attributes，不使用 TextEditingInfo。
-菜单项、Tooltip、标签页等对显示文案直接建立语义字段时，也需使用纯文本；业务模型
-和源字符串 getter 不改。Snapshot 不创建 TextLayout 或其他原生资源。
+Snapshot.Text 的含义是用于理解界面的显示语义，不是所有输入字符串的属性转储。
+菜单项、表头、标签按钮等持有 Label 时直接使用 Label.PlainText；没有 Label 的
+TabPage 标题明确承载 Label 源码，构造／SetTitle 时使用 gui/textformat.PlainText 提取并保存，
+Snapshot 只读取结果。
+业务模型和源字符串 getter 不改，Snapshot 消费方不再解释格式，且不创建原生资源。
+
+Tooltip 保留既有纯文本契约：WidgetInfo.Tooltip 原样返回；内部 Label 通过 Literal
+保护字面值，tooltipContent 从实际 Label 读取文字。TextInput/TextView 展示的格式源码
+仍是文档内容，不因 Snapshot 使用纯文本语义就删除其中标记。
+
+DropDown 默认展示 Label、占位 Label 直接读取 PlainText。自定义 Delegate 的内容
+提供非空 Snapshot.Text 时使用它；未提供则原样使用模型 Text 作为语义名称，不假设
+自定义 Widget 使用了 Label 语法。收起内容与列表内容各自负责自己的语义。
+不新增通用 Widget 文本接口，也不让 WidgetBase/Snapshot 消费方承担格式解析。
+
+原文与显示文本分离也参考 GTK4 4.23.4 的
+[get_text](https://docs.gtk.org/gtk4/method.Label.get_text.html) 和
+[get_label](https://docs.gtk.org/gtk4/method.Label.get_label.html) 契约；它不代表采用 GTK
+的 XML 语法。GOUI 的控件专属 Attributes 可报告格式状态和错误，Text 的语义保持统一。
 
 ## 7. 后续可选择文本（本轮不实现）
 

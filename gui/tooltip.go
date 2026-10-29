@@ -6,6 +6,7 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
+	"github.com/golang-gui/goui/gui/textformat"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
@@ -356,16 +357,16 @@ func (s tooltipSheet) Resolve(sel style.Sel) style.Style {
 
 type tooltipContent struct {
 	WidgetBase
-	text string
+	label *Label
 }
 
 func newTooltipContent(anchor Widget, text string) Widget {
-	b := &tooltipContent{text: text}
+	b := &tooltipContent{label: NewLabel(textformat.Literal(text))}
 	l := layout.NewLinearLayout(layout.DirectionVertical)
 	l.Padding = geometry.UniformInsets(8)
 	b.SetLayoutManager(l)
 	b.SetMaxSize(geometry.Size{Width: 360})
-	label := NewLabel(text)
+	label := b.label
 	label.SetStyleName("tooltip-text")
 	label.SetWrapMode(WrapWordChar)
 	b.WidgetBase.AddChild(b, label)
@@ -377,6 +378,6 @@ func newTooltipContent(anchor Widget, text string) Widget {
 
 func (b *tooltipContent) Snapshot() WidgetInfo {
 	info := b.WidgetBase.Snapshot()
-	info.Role, info.Text = RoleTooltip, labelPlainText(b.text)
+	info.Role, info.Text = RoleTooltip, b.label.PlainText()
 	return info
 }

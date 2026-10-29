@@ -16,6 +16,8 @@ import (
 // DropDownItem describes an option. Business values belong to the application;
 // the selected index refers to the current model order, not object identity.
 type DropDownItem struct {
+	// Text is the default Label source. With a custom delegate, it is the
+	// fallback semantic name, used verbatim if the content reports no Text.
 	Text     string
 	Disabled bool
 }
@@ -555,15 +557,30 @@ func (d *DropDown) Snapshot() gui.WidgetInfo {
 	info := d.WidgetBase.Snapshot()
 	info.Role = RoleComboBox
 	if d.selected >= 0 && d.selected < d.count() {
-		info.Text = plainDisplayText(d.model.ItemAt(d.selected).Text)
+		info.Text = dropDownDisplayText(d.display, d.model.ItemAt(d.selected).Text)
 	} else {
-		info.Text = plainDisplayText(d.placeholder)
+		info.Text = d.placeholderLabel.PlainText()
 	}
 	if info.Enabled {
 		info.Actions = append(info.Actions, gui.ActionClick)
 	}
 	info.SetAttribute(DropDownInfoKey, DropDownInfo{Count: d.count(), Index: d.selected, Expanded: d.Opened()})
 	return info
+}
+
+// dropDownDisplayText uses the content's own text semantics. The built-in Label
+// already has parsed text; custom content may provide a different semantic name.
+// Missing custom text falls back to the model without interpreting its syntax.
+func dropDownDisplayText(content gui.Widget, fallback string) string {
+	if label, ok := content.(*gui.Label); ok {
+		return label.PlainText()
+	}
+	if content != nil {
+		if text := content.Snapshot().Text; text != "" {
+			return text
+		}
+	}
+	return fallback
 }
 
 type dropDownLabelDelegate struct {

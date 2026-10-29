@@ -507,7 +507,7 @@ func (w *WidgetBase) Snapshot() WidgetInfo {
 	info := WidgetInfo{
 		ID:            w.ID(),
 		Name:          w.Name(),
-		Tooltip:       labelPlainText(w.Tooltip()),
+		Tooltip:       w.Tooltip(),
 		Role:          RoleWidget,
 		Bounds:        w.windowRect(),
 		Visible:       w.Visible(),
