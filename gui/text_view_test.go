@@ -1905,3 +1905,49 @@ func TestTextViewAsymmetricPadding(t *testing.T) {
 		t.Fatalf("asymmetric text view content height = %v", got)
 	}
 }
+
+// 每段固定 20 DIP 高、三个 UTF-8 字节（末段除外）。期望范围由行号独立给出，
+// 不能包含完全落在 padding 内或恰好始于裁剪下边界的段落；快照不额外排版。
+func TestTextViewSnapshotRespectsContentPadding(t *testing.T) {
+	lines := make([]string, 30)
+	for i := range lines {
+		lines[i] = fmt.Sprintf("%02d", i)
+	}
+	for _, tc := range []struct {
+		name      string
+		padding   geometry.Insets
+		size      geometry.Size
+		scrollY   float32
+		wantRange TextRange
+		wantText  string
+	}{
+		{"top", geometry.Insets{Top: 40}, geometry.Size{Width: 200, Height: 100}, 0, TextRange{End: 8}, "00\n01\n02"},
+		{"bottom", geometry.Insets{Bottom: 40}, geometry.Size{Width: 200, Height: 100}, 0, TextRange{End: 8}, "00\n01\n02"},
+		{"split", geometry.Insets{Top: 10, Bottom: 30}, geometry.Size{Width: 200, Height: 100}, 0, TextRange{End: 8}, "00\n01\n02"},
+		{"scrolled", geometry.Insets{Top: 40}, geometry.Size{Width: 200, Height: 100}, 100, TextRange{Start: 15, End: 23}, "05\n06\n07"},
+		{"partly-visible", geometry.Insets{Top: 10, Bottom: 30}, geometry.Size{Width: 200, Height: 100}, 105, TextRange{Start: 15, End: 26}, "05\n06\n07\n08"},
+		{"fractional-boundary", geometry.Insets{Top: 10, Bottom: 30}, geometry.Size{Width: 200, Height: 99.5}, 100.5, TextRange{Start: 15, End: 23}, "05\n06\n07"},
+		{"empty-height", geometry.Insets{Top: 10, Bottom: 30}, geometry.Size{Width: 200, Height: 40}, 0, TextRange{}, ""},
+		{"excess-padding", geometry.Insets{Bottom: 40}, geometry.Size{Width: 200, Height: 30}, 0, TextRange{}, ""},
+		{"empty-width", geometry.Insets{Left: 100, Right: 100}, geometry.Size{Width: 200, Height: 100}, 0, TextRange{}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v, _, typo := newEditorFixture(t, strings.Join(lines, "\n"))
+			v.SetPadding(tc.padding)
+			v.Arrange(geometry.Rectangle{Size: tc.size})
+			v.revealCaret = false // 测试浏览视口，不请求显露原来的光标。
+			v.LayoutVisible(tc.size, geometry.Point{Y: tc.scrollY})
+			if v.offset.Y != tc.scrollY {
+				t.Fatalf("视口偏移=%v，期望=%v", v.offset.Y, tc.scrollY)
+			}
+			calls := len(typo.calls)
+			info := v.Snapshot().TextEditing
+			if info == nil || info.VisibleRange != tc.wantRange || info.VisibleText != tc.wantText {
+				t.Fatalf("快照=%+v，期望范围=%+v、文本=%q", info, tc.wantRange, tc.wantText)
+			}
+			if len(typo.calls) != calls {
+				t.Fatal("获取快照触发了额外文字排版")
+			}
+		})
+	}
+}

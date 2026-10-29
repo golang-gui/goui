@@ -1947,3 +1947,23 @@ arm64 构建限制保留在原记录中；本轮未修改实现或复验这些�
   Windows amd64/macOS arm64 `CGO_ENABLED=0 go build`、`go vet` 通过。
 - 独立 X11（Xfwm4、Software、1x/2x）窗口验收：TextInput 默认/聚焦/输入，CheckButton 点击与
   计数，Switch 点击；焦点 2 DIP 边框下文字 origin 不移动。未执行 Windows/macOS 原生桌面验收。
+
+### 2026-10-29 Review 修正
+
+- 基线 `feature/widget-padding@bc83819`。TextView 的 Snapshot 按正文 clip 换算文档范围，
+  排除被 padding 完全遮挡及恰好始于下边界的段落；内容区任一轴为空时返回空文本范围。
+  保留按段落截取、至多 4096 字节和不额外排版的既有策略。
+- LinearLayout / WrapLayout 的基线偏移统一使用 Arrange 的实际内矩形原点，覆盖父约束
+  使高度小于、等于或大于上下 padding 总和的情况；不改变矩形内缩或子内容溢出策略。
+- 修正使用方 Skill 中的 `SetPadding(20)` 示例为 `SetPadding(geometry.UniformInsets(20))`；
+  同步 DesignLayout / DesignTextEditing 的基线和快照坐标约定。
+- 新增 `TestTextViewSnapshotRespectsContentPadding` 和
+  `TestLayoutBaselineUsesClampedPaddingOrigin`：旧实现确定性失败，修正后通过。
+  前者独立断言文本和 UTF-8 范围、非对称留白、滚动、小数边界和空内容区；后者覆盖
+  Linear/Wrap、横纵方向及 CrossBaseline，并独立核对测量和最终布局的基线。
+- Linux amd64 / Go 1.25.8，在仅含已跟踪源码和本次修改的干净副本、独立 Xvnc/Xfwm4
+  会话执行 `GOWORK=off go test -json ./... -count=1`：2645 项测试／子测试通过，
+  10 项既有跳过、0 失败。既有测试的桌面副作用限定在该会话，结束后关闭本次会话。
+- `go test -race ./core/geometry ./layout ./gui ./ui ./widgets ./widgets/ui`、
+  Windows amd64 / macOS arm64 `CGO_ENABLED=0 go build ./...` 通过；Skill 中的命令式
+  应用示例单独提取后编译通过。未执行独立窗口交互验收或远端原生运行，交叉编译不代替桌面验收。

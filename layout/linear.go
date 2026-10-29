@@ -163,8 +163,9 @@ func (l *LinearLayout) compute(children []Child, c Constraint) linearPlan {
 	}
 
 	measured := Measured(finalSize)
+	inner := l.innerRect(geometry.Rectangle{Size: finalSize})
 	if l.Direction == DirectionHorizontal && l.effectiveCrossAlign() == CrossBaseline && hasCommonBaseline {
-		measured.Baseline = l.Padding.Top + commonBaseline
+		measured.Baseline = inner.Y + commonBaseline
 		measured.HasBaseline = true
 	} else {
 		// A compound widget exposes its first baseline-bearing descendant so it
@@ -175,9 +176,9 @@ func (l *LinearLayout) compute(children []Child, c Constraint) linearPlan {
 				continue
 			}
 			if l.Direction == DirectionHorizontal {
-				measured.Baseline = l.Padding.Top + item.crossPos + item.measured.Baseline
+				measured.Baseline = inner.Y + item.crossPos + item.measured.Baseline
 			} else {
-				measured.Baseline = l.Padding.Top + item.mainPos + item.measured.Baseline
+				measured.Baseline = inner.Y + item.mainPos + item.measured.Baseline
 			}
 			measured.HasBaseline = true
 			break

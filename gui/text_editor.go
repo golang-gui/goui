@@ -1350,9 +1350,16 @@ func (t *textEditor) snapshot() WidgetInfo {
 	info := t.owner.base().Snapshot()
 	info.Role = RoleTextView
 	state := &TextEditingInfo{ReadOnly: t.readOnly, Selection: t.selection, Length: t.model.Len(), Placeholder: t.placeholder}
-	// Bounded, range-labelled visible content, never a copy of the full model.
-	start := t.heights.At(max(0, t.offset.Y-t.padding.Top))
-	end := t.heights.At(max(0, t.offset.Y+t.viewport.Height-t.padding.Bottom))
+	// Text is translated by padding-offset and clipped to the padded viewport.
+	// Return bounded paragraph text intersecting that clip, without shaping it.
+	content := t.viewport.Insets(t.padding.Left, t.padding.Top, t.padding.Right, t.padding.Bottom)
+	start := t.heights.At(max(0, t.offset.Y))
+	bottom := t.offset.Y + content.Height
+	end := t.heights.At(max(0, bottom))
+	if end > start && t.heights.Top64(end) >= float64(bottom) {
+		// A paragraph starting exactly at the lower clip edge is not visible.
+		end--
+	}
 	first := t.displayLineRange(start)
 	last := t.displayLineRange(end)
 	if p := t.paragraphs[start]; p != nil && p.paged != nil {
@@ -1367,6 +1374,9 @@ func (t *textEditor) snapshot() WidgetInfo {
 		state.Preedit = &TextPreeditInfo{Replacement: p.Replacement(), Text: strings.Clone(p.Text()[:limit]), Caret: p.Caret(), Length: len(p.Text())}
 	}
 	limit := min(last.End, first.Start+4096)
+	if content.Width <= 0 || content.Height <= 0 {
+		limit = first.Start
+	}
 	for limit > first.Start && !t.model.IsRuneBoundary(limit) {
 		limit--
 	}
