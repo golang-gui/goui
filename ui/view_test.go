@@ -372,3 +372,84 @@ func TestLabelFormattedTextAndBinding(t *testing.T) {
 		t.Fatal("普通重建改变控件身份")
 	}
 }
+
+func TestLabelSelectableReconciliation(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	changes := 0
+	build := func() *LabelView {
+		return Label(`\{format\}A\{bold:中文\}`).Selectable(true).OnSelection(func(TextSelection) { changes++ })
+	}
+	label := r.update(build()).(*gui.Label)
+	if !label.Selectable() || !label.Focusable() || label.Cursor() != gui.CursorText {
+		t.Fatal("声明式选择默认值未生效")
+	}
+	label.SetSelection(TextSelection{Anchor: 1, Caret: 7})
+	if changes != 1 {
+		t.Fatal("用户选择通知未到达")
+	}
+	if next := r.update(build()); next != label || label.Selection() != (TextSelection{Anchor: 1, Caret: 7}) || changes != 1 {
+		t.Fatal("重建改变身份或复位选择")
+	}
+	r.update(build().Selection(TextSelection{Caret: 1}))
+	if changes != 1 || label.Selection() != (TextSelection{Caret: 1}) {
+		t.Fatal("声明式选择回写了通知")
+	}
+	r.update(build().Focusable(false).Cursor(gui.CursorCrosshair))
+	if label.Focusable() || label.Cursor() != gui.CursorCrosshair {
+		t.Fatal("显式共享修饰器被选择默认值覆盖")
+	}
+	r.update(Label(label.Text()))
+	if label.Selectable() || label.Focusable() || label.Cursor() != nil || label.Selection() != (TextSelection{}) {
+		t.Fatal("省略 Selectable 未恢复普通 Label")
+	}
+	r.update(build())
+	label.SetSelection(TextSelection{Caret: 1})
+	if changes != 2 {
+		t.Fatal("启用后信号丢失")
+	}
+}
+
+func TestLabelSelectionBindingAndTextReset(t *testing.T) {
+	text := MakeState(`\{format\}A\{bold:中文\}`)
+	selection := MakeState(TextSelection{Anchor: 1, Caret: 7})
+	builds := 0
+	rt, fake := bindingApp(t, func() RootView {
+		builds++
+		return Window("main").Content(Label().BindText(&text).Selectable(true).BindSelection(&selection))
+	})
+	label := fake.windows[0].Widget().(*gui.Label)
+	if label.Selection() != selection.Get() || !label.Focusable() {
+		t.Fatal("初始绑定未应用")
+	}
+	label.SetSelection(TextSelection{Caret: 1})
+	if selection.Get() != label.Selection() {
+		t.Fatal("用户选择未回写")
+	}
+	fake.runPosted()
+	selection.Set(TextSelection{Anchor: 7, Caret: 1})
+	fake.runPosted()
+	if label.Selection() != selection.Get() || builds != 1 {
+		t.Fatal("选区属性绑定引发全局重建或未应用")
+	}
+	text.Set(`\{format\}A\{italic:中文\}`)
+	fake.runPosted()
+	if label.Selection() != selection.Get() {
+		t.Fatal("格式变化重置绑定选区")
+	}
+	text.Set("new")
+	fake.runPosted()
+	if label.Selection() != (TextSelection{Anchor: 3, Caret: 1}) || selection.Get() != (TextSelection{Anchor: 7, Caret: 1}) {
+		t.Fatal("正文绑定后应按声明的选区重新钳制而不回写外部状态", label.Selection(), selection.Get(), builds)
+	}
+	selection.Set(TextSelection{Caret: 2})
+	fake.runPosted()
+	if label.Selection() != selection.Get() {
+		t.Fatal("重置后绑定不再有效")
+	}
+	rt.RequestUpdate()
+	fake.runPosted()
+	if builds != 2 || fake.windows[0].Widget() != label || label.Selection() != selection.Get() {
+		t.Fatal("全量重建丢失选择或控件身份")
+	}
+}
