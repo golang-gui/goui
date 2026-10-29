@@ -1967,3 +1967,41 @@ arm64 构建限制保留在原记录中；本轮未修改实现或复验这些�
 - `go test -race ./core/geometry ./layout ./gui ./ui ./widgets ./widgets/ui`、
   Windows amd64 / macOS arm64 `CGO_ENABLED=0 go build ./...` 通过；Skill 中的命令式
   应用示例单独提取后编译通过。未执行独立窗口交互验收或远端原生运行，交叉编译不代替桌面验收。
+
+## 2026-10-29 Label 格式化文本
+
+- 设计见 [DesignLabel](DesignLabel.md)。当前分支 feature/label-format-text，基线 756ced1。
+- 本轮仅实现格式化文本：独立 textformat 解析/转义、局部文字样式、Label 排版/缓存/纯文本
+  语义、现有 UI 入口与窗口例程。不实现 Selectable、选区、复制或编辑控件的格式解析。
+- [x] 解析、样式、GUI/UI 和语义实现及包内回归。
+- [x] 本机独立 X11 全仓/race/Software+OpenGL 1x/2x 验证。
+- [x] Windows/macOS 远端原生运行与桌面检查（Windows RDP 的 WGL 环境缺口见下）。
+- [x] 按既有风格分组提交已验证实现：解析／样式、Label／语义、窗口例程／设计文档。
+
+- 本机 Linux amd64 / Go 1.25.8，在仅含已跟踪源码与本轮新增文件的副本、独立 Xvnc :73 /
+  Xfwm4 会话执行 `GOWORK=off go test -json ./... -count=1`：2673 项测试／子测试通过，
+  10 项既有签名／手动桌面测试跳过、0 失败；未纳入用户已有的未跟踪测试或其他代码。
+- `go test -race ./textformat ./style ./theme/basic ./theme/modern ./gui ./ui ./widgets -count=1`
+  通过；`GOMAXPROCS=4 go test ./textformat -fuzz '^FuzzLiteral$' -fuzztime=10s` 通过，
+  执行约 59 万次字面值往返输入。Windows amd64 / macOS arm64 `CGO_ENABLED=0 go build ./...` 通过。
+- GUI 与 UI 两个例程在 Software / OpenGL、1x / 2x 的本机窗口矩阵通过。GUI 使用同一
+  原生排版后端、手工给定范围的独立 TextLayout，逐像素核对预乘 RGBA 和混合字号 baseline；
+  UI 核对源码与纯文本、Snapshot、BindText 无全局重建以及主题／语言重建后 Widget 身份。
+  X11 正常鼠标点击切换 Light / Check 和改变窗口宽度后通过；PNG、日志均在仓库外。
+- macOS 15.7.7 arm64 / CoreText：七个相关包的回归测试原生运行通过，GUI/UI 例程在
+  OpenGL / Software、1x / 2x 共八次运行通过。通过桌面 Terminal 启动，并以 VNC 观察
+  亮暗窗口、实际点击 Light / Check；修改后 UI 例程重新完成矩阵。二进制按 SHA-256 校验。
+- 窗口检查不假定定时通知晚于首次绘制：RenderWidget 调用前等待有效分配，保留超时和
+  后续独立断言，避免 Windows 2x 下首次 WM_PAINT 尚未布局就截图。不新增框架时序补偿。
+- 以上不代表真实 IME、所有字体、实体 GPU 或未实现选择／复制的验收；已有桌面测试的
+  窗口副作用限定在独立会话，本轮创建的原生测试窗口在验证后关闭。
+
+- Windows 10 22H2 amd64 / DirectWrite：七个相关包的回归原生运行通过，GUI/UI 在
+  Direct2D / Software、1x / 2x 共八次运行通过，二进制按 SHA-256 校验。
+  RDP 中 OpenGL 的首个 GUI 1x 运行在创建 Painter 时失败：
+  `create opengl context err: can not choose useful pixel format`；未进入 Label 绘制。
+  该会话的其余 OpenGL UI/2x 场景未执行，不能记为通过，也未以其他后端回落代替。
+
+- Windows RDP 中观察 Direct2D 1x 的实际亮暗窗口，并通过正常鼠标事件点击 Light / Check；
+  格式化行与 reference 同步通过。保留窗口及临时 Terminal / cmd 在操作结束后关闭；
+  保留原有远端连接，恢复 macOS 输入源，不修改系统主题、语言或安全设置。

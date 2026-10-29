@@ -409,3 +409,13 @@ dismiss 回写及生命周期边界集中记录在 [未来路线](Roadmap.md#fut
 State.Get 不收集依赖，Set/Update 不再自动全应用更新；窗口声明变更仍调用
 App.RequestUpdate。挂载槽回调处理局部输出替换，不增加具体控件特例。
 详见 [UI 局部更新与属性绑定](DesignUIUpdates.md)。
+
+## Label 格式化文本
+
+Label 的文本仍是普通 string，文案开头准确匹配 `\{format\}` 才开启命名范围。
+`ui.Label(resource.Message())`、`.Text(...)`、`.BindText(&state)` 都复用现有路径，
+不新增格式模式或 View 类型。BindText 的局部 setter 会更新 Label 缓存及 Snapshot，
+语言变化沿现有 App 级通知重建翻译文本；主题变化沿 StyleChanged 重新解析文字样式，
+保留控件身份。TextInput/TextView 的正文与占位文字保持原样，即使只读也不解释格式。
+参数需在完整句子的 fmt.Sprintf 前按模板调用 textformat.EscapeArg；不是 UI 自动插值。
+格式语法、错误降级和本轮未实现的选择能力见 [DesignLabel](DesignLabel.md)。

@@ -26,6 +26,12 @@ State.Set／Update 只通知显式使用方；App.RequestUpdate 仍负责全应�
 详细 API／迁移见 [DesignUIUpdates](DesignUIUpdates.md)。其他 BindXxx 按需求增补，
 派生状态与隐式响应式系统不属于本切片。
 
+## Label 展示文本切片（2026-10-29）
+
+详细契约见 [DesignLabel](DesignLabel.md)，验证记录见 [Plan](Plan.md)。已实现格式字符串、命名样式范围、主题切换、
+本地化和纯文本语义；普通文案仍使用原有 Label/Text/BindText 入口。可选择文本为下一
+独立切片，尚未实现。TextInput/TextView 的正文与 Placeholder 不解析格式。
+
 ## TextLayout 富文本基础：本轮已实现，应用层按需求推进
 
 字体样式与有效注册、run 级删除线、U+FFFC 纯度量行内占位已按
