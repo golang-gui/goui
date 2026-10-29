@@ -30,6 +30,13 @@ UI 的 View 是本次声明；不要为每段 UI 新建一套状态、事件或�
 - Paint 借用同步 Painter，只画自身局部 DIP，子树由 GUI 遍历。变换／clip 不自动
   成为孩子布局属性；背景圆角不等于圆角裁剪。颜色用 graphics.ColorOf 转换，
   不二次预乘；不要在缓存里保留 Painter。
+- 自身背景／圆角／边框在 Paint 内显式调用 `gui.PaintWidgetStyle(p, w, "widget")`；
+  LinearBox／WrapBox 已支持这些字段，无需再包装自绘容器。复杂 Part 用 WidgetStyle
+  配合 PaintStyledBackground／PaintStyledBorder；解析遵循最近 StyleScope，不继承父样式。
+- 用 `w.State().Has(style.Pressed | style.Checked)` 查询组合状态，不从 Snapshot 反查。
+  WidgetBase.SetState 只供实现方同步 Pressed／Selected／Checked／Mixed／DropActive；
+  Hovered／Focused／ContainsFocus／FocusVisible／Disabled 归 GUI 管理。取消或复用时清理
+  自己的临时状态；CheckState 等业务值仍通过专门 setter 修改。
 - 改尺寸／文字等请求布局；只改外观请求绘制。StyleChanged 清理本控件派生缓存。
   Snapshot 保留基类的子树与状态，补正确 Role／Text／Attributes；不伪造动作，
   不把 Widget／native resource／回调放进 Attributes。

@@ -138,11 +138,8 @@ var _ gui.Widget = (*AttentionLabel)(nil)
 package custom
 
 import (
-    "github.com/golang-gui/goui/core/geometry"
     "github.com/golang-gui/goui/gui"
     "github.com/golang-gui/goui/layout"
-    "github.com/golang-gui/goui/platform/graphics"
-    "github.com/golang-gui/goui/style"
 )
 
 type SurfaceWidget struct {
@@ -174,22 +171,7 @@ func (w *SurfaceWidget) SetChild(child gui.Widget) {
 }
 
 func (w *SurfaceWidget) Paint(p gui.Painter) {
-    name := w.StyleName()
-    if name == "" {
-        name = "widget"
-    }
-    state := style.Normal
-    if !gui.IsEnabled(w) {
-        state = style.Disabled
-    }
-    s := gui.ResolveStyle(name, style.PartDefault, state)
-    background, ok := s.BackgroundColor()
-    if !ok || background == nil {
-        return
-    }
-    radius, _ := s.Radius()
-    rect := geometry.Rectangle{Size: w.Rect().Size}
-    p.FillRoundRect(rect, radius, graphics.ColorOf(background))
+    gui.PaintWidgetStyle(p, w, "widget")
 }
 
 func (w *SurfaceWidget) Snapshot() gui.WidgetInfo {
@@ -202,9 +184,14 @@ var _ gui.Widget = (*SurfaceWidget)(nil)
 var _ gui.Bin = (*SurfaceWidget)(nil)
 ```
 
-Surface 没有默认装饰，样式未设置背景时不画底色；应用可选择 Modern 的 Card
-或自己的样式。它不实现 Border／Shadow 等字段的绘制，不能仅因设了这些样式字段
-就期待出现边框／阴影。单纯的圆角背景也不等于圆角裁剪：孩子仍受矩形结构裁剪，
+Surface 通过显式 helper 绘制自身背景、圆角和内缩边框；透明或未设置字段不发绘制指令。
+应用可选择 Modern 的 Card 或自己的样式；Shadow 仍需显式绘制。
+`gui.WidgetStyle(w, defaultName, part)` 按自身 StyleName、State 和最近 StyleScope 解析；
+复杂控件可分别调用 PaintStyledBackground／PaintStyledBorder，不能从 Snapshot 反查绘制状态。
+`State()` 返回组合标志；实现自定义控件时用 `SetState(style.Pressed, pressed)` 同步自己
+负责的显示状态，Hovered／Focused／Disabled／ContainsFocus／FocusVisible 由 GUI 维护。
+LinearBox／WrapBox 已支持同一套背景与边框绘制，单纯需要样式盒子时无需实现 Surface。
+单纯的圆角背景也不等于圆角裁剪：孩子仍受矩形结构裁剪，
 需要安全留白时给内部容器设置 Padding，不宣称存在尚未提供的圆角 Clip 接口。
 
 ### 控件树与布局
