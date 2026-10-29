@@ -20,6 +20,15 @@ import (
 )
 
 // 表格逻辑、无字体测量及正常输入分发回归；不创建原生窗口。
+func TestTableFormattedHeaderSnapshot(t *testing.T) {
+	source := `\{format\}\{bold:列名\}`
+	column := NewTableColumn("column", source)
+	header := newTableHeader(NewTableView(), column)
+	if column.Title() != source || header.Snapshot().Text != "列名" {
+		t.Fatal("表头语义应为纯文本，源标题不变")
+	}
+}
+
 type tableRecord struct {
 	id            string
 	units, height float32

@@ -61,8 +61,10 @@ func textFormatFromStyle(s style.Style, wrap typography.WrapMode, align typograp
 	family, _ := s.FontFamily()
 	size, _ := s.FontSize()
 	foreground, _ := s.ForegroundColor()
+	weight, _ := s.FontWeight()
+	slant, _ := s.FontStyle()
 	return typography.TextFormat{
-		Font:      typography.FontInfo{Family: family, Size: size},
+		Font:      typography.FontInfo{Family: family, Size: size, Weight: typography.FontWeight(weight), Style: typography.FontStyle(slant)},
 		WrapMode:  wrap,
 		TextAlign: align,
 		TextColor: foreground,

@@ -377,6 +377,6 @@ func newTooltipContent(anchor Widget, text string) Widget {
 
 func (b *tooltipContent) Snapshot() WidgetInfo {
 	info := b.WidgetBase.Snapshot()
-	info.Role, info.Text = RoleTooltip, b.text
+	info.Role, info.Text = RoleTooltip, labelPlainText(b.text)
 	return info
 }

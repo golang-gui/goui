@@ -15,6 +15,17 @@ var layoutLooseFull = layout.Constraint{Min: geometry.Size{}, Max: geometry.Size
 
 // --- Menu model ---
 
+func TestMenuFormattedLabelSnapshot(t *testing.T) {
+	source := `\{format\}复\{bold:制\}`
+	m := NewMenu()
+	item := m.Append(source, nil)
+	row := newMenuItemRow(nil)
+	row.bind(item)
+	if info := row.Snapshot(); info.Role != RoleMenuItem || info.Text != "复制" || item.Label() != source {
+		t.Fatal("菜单语义泄漏格式标记或修改了模型源文案")
+	}
+}
+
 func TestMenuModelAppendAndQuery(t *testing.T) {
 	m := NewMenu()
 	copy := m.Append("Copy", func() {})

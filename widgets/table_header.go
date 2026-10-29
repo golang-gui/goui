@@ -89,7 +89,7 @@ func (h *tableHeader) Paint(p gui.Painter) {
 }
 func (h *tableHeader) Snapshot() gui.WidgetInfo {
 	info := h.WidgetBase.Snapshot()
-	info.Role, info.Text = RoleColumnHeader, h.column.title
+	info.Role, info.Text = RoleColumnHeader, h.label.PlainText()
 	data := TableInfo{ColumnID: h.column.id, ColumnIndex: slices.Index(h.view.columns, h.column) + 1}
 	if h.view.sortColumn == h.column.id {
 		if h.view.sortOrder == SortAscending {

@@ -70,7 +70,7 @@ func (p *TabPage) changed() {
 }
 func (p *TabPage) Snapshot() gui.WidgetInfo {
 	info := p.WidgetBase.Snapshot()
-	info.Role, info.Text = RoleTabPanel, p.title
+	info.Role, info.Text = RoleTabPanel, plainDisplayText(p.title)
 	info.Selected = p.view != nil && p.view.current == p
 	return info
 }

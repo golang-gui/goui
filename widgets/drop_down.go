@@ -555,9 +555,9 @@ func (d *DropDown) Snapshot() gui.WidgetInfo {
 	info := d.WidgetBase.Snapshot()
 	info.Role = RoleComboBox
 	if d.selected >= 0 && d.selected < d.count() {
-		info.Text = d.model.ItemAt(d.selected).Text
+		info.Text = plainDisplayText(d.model.ItemAt(d.selected).Text)
 	} else {
-		info.Text = d.placeholder
+		info.Text = plainDisplayText(d.placeholder)
 	}
 	if info.Enabled {
 		info.Actions = append(info.Actions, gui.ActionClick)

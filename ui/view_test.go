@@ -343,3 +343,32 @@ func TestViewPaddingsRestoreControlDefault(t *testing.T) {
 		t.Fatalf("text view default not restored: %+v", view.Padding())
 	}
 }
+
+// 格式控制仅来自文案，普通 Text 与 BindText 不增加新的协调入口。
+func TestLabelFormattedTextAndBinding(t *testing.T) {
+	state := MakeState(`\{format\}A\{bold:中\}`)
+	builds := 0
+	rt, fake := bindingApp(t, func() RootView {
+		builds++
+		return Window("main").Content(Label().BindText(&state))
+	})
+	label := fake.windows[0].Widget().(*gui.Label)
+	if label.Text() != state.Get() || label.PlainText() != "A中" {
+		t.Fatal("绑定未解析文案", label.Text())
+	}
+	state.Set("plain")
+	fake.runPosted()
+	if builds != 1 || label.Text() != "plain" || label.PlainText() != "plain" || label.Focusable() {
+		t.Fatal("局部绑定没有恢复普通文案，或触发全量构建")
+	}
+	state.Set(`\{format\}B\{italic:字\}`)
+	fake.runPosted()
+	if fake.windows[0].Widget() != label || label.Snapshot().Text != "B字" {
+		t.Fatal("绑定更新替换了 Widget 或泄露标记")
+	}
+	rt.RequestUpdate()
+	fake.runPosted()
+	if builds != 2 || fake.windows[0].Widget() != label {
+		t.Fatal("普通重建改变控件身份")
+	}
+}
