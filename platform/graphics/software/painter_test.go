@@ -17,7 +17,7 @@ import (
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
-	"github.com/srwiley/scanFT"
+	"github.com/golang-gui/scanFT"
 )
 
 type testDrawer struct {
@@ -1078,6 +1078,70 @@ func TestRawRasterizerReference(t *testing.T) {
 			t.Errorf("raw scanner got=%v want=%v", got, want)
 		} else {
 			t.Logf("raw scanner matches image/draw: %v", got)
+		}
+	}
+}
+
+// 交集面积独立给出覆盖率，检查负坐标不会把画布外面积计入最外行/列。
+// 预乘 sRGB 各分量乘面积，允许 scanFT 12 位覆盖率到 8 位通道的 1/255 量化误差。
+func TestSubpixelCoverageAtCanvasBounds(t *testing.T) {
+	ink := graphics.Color{R: .5, G: .25, B: .125, A: .5}
+	for _, rect := range []graphics.Rectangle{
+		graphics.Rect(-.25, 1, .5, 1),
+		graphics.Rect(1, -.25, 1, .5),
+		graphics.Rect(-.25, -.25, .5, .5),
+		graphics.Rect(.25, .25, 2.5, 2.5),
+		graphics.Rect(-1.75, -1.75, 1.5, 1.5),
+		graphics.Rect(-.25, -.25, 4.5, 4.5),
+	} {
+		for _, scale := range []float32{1, 1.25, 1.5, 2} {
+			for _, gradient := range []bool{false, true} {
+				for _, shape := range []string{"rect", "path", "reverse-path"} {
+					t.Run(fmt.Sprintf("%v/%gx/gradient=%v/%s", rect, scale, gradient, shape), func(t *testing.T) {
+						p, err := NewPainter(&renderImageSurface{})
+						if err != nil {
+							t.Fatal(err)
+						}
+						defer p.Destroy()
+						img, err := p.RenderImage(4, 4, scale, func() {
+							p.Clear(graphics.Color{})
+							var brush graphics.Brush = ink
+							if gradient {
+								brush = graphics.LinearGradient{End: graphics.Point{X: 4}, StartColor: ink, EndColor: ink}
+							}
+							if shape == "rect" {
+								p.FillRect(rect, brush)
+								return
+							}
+							x0, y0, x1, y1 := rect.X, rect.Y, rect.X+rect.Width, rect.Y+rect.Height
+							path := graphics.MoveTo(x0, y0)
+							if shape == "path" {
+								path = path.LineTo(x1, y0).LineTo(x1, y1).LineTo(x0, y1)
+							} else {
+								path = path.LineTo(x0, y1).LineTo(x1, y1).LineTo(x1, y0)
+							}
+							p.FillPath(path.Close(), brush)
+						})
+						if err != nil {
+							t.Fatal(err)
+						}
+						x0, y0 := float64(rect.X*scale), float64(rect.Y*scale)
+						x1, y1 := float64((rect.X+rect.Width)*scale), float64((rect.Y+rect.Height)*scale)
+						for y := 0; y < img.Bounds().Dy(); y++ {
+							for x := 0; x < img.Bounds().Dx(); x++ {
+								w := math.Max(0, math.Min(float64(x+1), x1)-math.Max(float64(x), x0))
+								h := math.Max(0, math.Min(float64(y+1), y1)-math.Max(float64(y), y0))
+								component := func(v float64) uint8 { return uint8(math.Round(v * w * h)) }
+								want := color.RGBA{R: component(128), G: component(64), B: component(32), A: component(128)}
+								got := color.RGBAModel.Convert(img.At(x, y)).(color.RGBA)
+								if !near(got, want) {
+									t.Fatalf("(%d,%d)=%v，面积 %.4f，期望预乘颜色 %v±1", x, y, got, w*h, want)
+								}
+							}
+						}
+					})
+				}
+			}
 		}
 	}
 }

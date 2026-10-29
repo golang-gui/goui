@@ -853,7 +853,8 @@ Window 不管理特殊图层；Overlay 可放在窗口根部、局部内容区�
 
 当前接入改为 oksvg v0.1.0 的解析/Rasterize，删除 GOUI 自有 SVG 补偿；
 缓存、着色和资源限制仍由 icon/svg 管理，见 [DesignSVG](DesignSVG.md)。
-Software Painter 的 srwiley 绘制依赖本切片不动，后续迁移需单独验收。
+后续独立切片已将 Software Painter 迁移到同版 rasterx/scanFT，并移除 srwiley 依赖；
+绘制 API、资源归属及预乘契约不变，验证结果见 Plan。
 本机窗口验收进度见 Plan，不将底层库验收等同于 GOUI 后端验收。
 
 首个绘制型 Icon 切片已实现，详见 [Icon 设计](DesignIcon.md)：
