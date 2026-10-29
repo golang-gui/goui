@@ -138,7 +138,7 @@ func run() error {
         return err
     }
     box := gui.NewLinearBox(layout.DirectionVertical)
-    box.SetPadding(20)
+    box.SetPadding(geometry.UniformInsets(20))
     box.SetSpacing(12)
     label := gui.NewLabel("Clicks: 0")
     button := gui.NewButton()
