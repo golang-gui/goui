@@ -63,6 +63,10 @@ func (*TreeView) RowAt(geometry.Point) (TreeRow, geometry.Rectangle, bool)
 TreeExpander 是普通 Bin，负责缩进、展开按钮与内容布局；不持有 TreeModel 或
 TreeView。Toggle 表达用户请求，SetExpanded 同步实际状态，不产生 Toggle。
 TreeView 内部行容器继续负责选择、当前项、通用行输入和树项 Snapshot。
+2026-10-29：行体双击与 Enter 均激活分支或叶子，不自动切换展开。TreeExpander 的
+Toggle 仅来自展开按钮；应用可在 Activate 中显式切换。输入与重入有效性契约以
+[TreeView §4、§8](DesignTreeView.md#4-输入和上下文菜单) 为准，不给整个展开器
+追加竞争行体单击的控制器。
 
 TreeItemDelegate 的方法签名保留，但 Setup 返回整行可定制内容：调用方可以
 用 TreeExpander 组合内容，或在其外部包装自绘反馈。原有内置缩进/箭头迁到

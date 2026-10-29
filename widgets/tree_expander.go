@@ -13,8 +13,9 @@ import (
 
 // TreeExpander composes indentation, a disclosure button and one content child.
 // It has no model or TreeView ownership. Toggle requests an application update;
-// SetExpanded synchronizes state without emitting Toggle. All methods run on
-// the GUI thread. Content keeps its own StyleName.
+// SetExpanded synchronizes state without emitting Toggle. Only the disclosure
+// button requests Toggle; content double clicks belong to the containing row.
+// All methods run on the GUI thread. Content keeps its own StyleName.
 type TreeExpander struct {
 	gui.WidgetBase
 	child                gui.Widget

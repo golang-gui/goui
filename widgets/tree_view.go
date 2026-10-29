@@ -617,6 +617,9 @@ func (v *TreeView) ConnectExpanded(fn func(string, bool)) signal.Handle {
 		}
 	})
 }
+
+// ConnectActivate reports a row-body double click or Enter on the current node.
+// Branches and leaves both activate; activation does not change expansion.
 func (v *TreeView) ConnectActivate(fn func(string)) signal.Handle {
 	return v.activate.Connect(func(id string, version uint64) {
 		if v.validModel(version) {
