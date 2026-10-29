@@ -188,3 +188,24 @@ func TestLongLineWordAt(t *testing.T) {
 		}
 	}
 }
+
+// 字符串分词与模型共用 UAX #29，调用者仍需要原生 Cluster 校正。
+func TestStringWordAt(t *testing.T) {
+	for _, tc := range []struct {
+		text string
+		at   int
+		want textedit.Range
+	}{
+		{"hello world", 0, textedit.Range{Start: 0, End: 5}},
+		{"hello world", 11, textedit.Range{Start: 6, End: 11}},
+		{"a\nhello", 3, textedit.Range{Start: 2, End: 7}},
+		{"a\n", 2, textedit.Range{Start: 2, End: 2}},
+		{"é x", 2, textedit.Range{Start: 0, End: 3}},
+		{"don't!", 3, textedit.Range{Start: 0, End: 5}},
+		{"", 0, textedit.Range{}},
+	} {
+		if got := textedit.WordAt(tc.text, tc.at); got != tc.want {
+			t.Fatalf("%q at %d: %v want %v", tc.text, tc.at, got, tc.want)
+		}
+	}
+}

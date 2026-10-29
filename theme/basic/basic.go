@@ -95,6 +95,9 @@ func coreRules() []style.Rule {
 			FontSize(size),
 		style.Name(styleNameLabel).State(style.Disabled).
 			ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}),
+		style.Name(styleNameLabel).Part("selection").BackgroundColor(color.RGBA{R: 220, G: 225, B: 232, A: 255}),
+		style.Name(styleNameLabel).Part("selection").State(style.Focused).BackgroundColor(color.RGBA{R: 185, G: 210, B: 245, A: 255}),
+		style.Name(styleNameLabel).Part("caret").ForegroundColor(color.Black),
 		style.Name(styleNameIcon).State(style.Disabled).
 			ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}),
 

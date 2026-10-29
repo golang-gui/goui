@@ -33,23 +33,26 @@ const (
 // LabelInfoKey identifies Label-specific data in WidgetInfo.Attributes.
 const LabelInfoKey = "goui.label"
 
-// LabelInfo describes text interpretation without exposing source markup or
-// native layout resources. Text itself is reported in WidgetInfo.Text.
+// LabelInfo describes text interpretation and selection without exposing source
+// markup or native resources. Text itself is reported in WidgetInfo.Text.
 type LabelInfo struct {
-	Formatted   bool   `json:"formatted"`
-	FormatError string `json:"formatError,omitempty"`
+	Formatted   bool          `json:"formatted"`
+	FormatError string        `json:"formatError,omitempty"`
+	Selectable  bool          `json:"selectable"`
+	Selection   TextSelection `json:"selection"`
 }
 
 // Label displays text. A leading \{format\} enables nested \{styleName:body\}
 // ranges using the current stylesheet; other sources are displayed verbatim.
-// Malformed syntax falls back to the entire source. Label is not selectable.
+// Malformed syntax falls back to the entire source. Selection is opt-in.
 type Label struct {
 	WidgetBase
-	text      string
-	parsed    textformat.Text
-	formatErr error
-	wrapMode  WrapMode
-	textAlign TextAlign
+	text        string
+	parsed      textformat.Text
+	formatErr   error
+	wrapMode    WrapMode
+	textAlign   TextAlign
+	selectState *labelSelection
 
 	// TextLayout cache. Reused across Measure and Paint. Invalidated by
 	// SetText / SetWrapMode / SetTextAlign / StyleChanged. Released on unmount.
@@ -62,7 +65,12 @@ type Label struct {
 func NewLabel(text string) *Label {
 	label := &Label{}
 	label.SetText(text)
-	label.ConnectUnmount(label.releaseLayout)
+	label.ConnectUnmount(func() {
+		label.releaseLayout()
+		if s := label.selectState; s != nil {
+			s.cancel()
+		}
+	})
 	return label
 }
 
@@ -85,10 +93,19 @@ func (l *Label) SetText(text string) {
 	if err != nil {
 		parsed = textformat.Text{Plain: text}
 	}
+	plainChanged := l.PlainText() != parsed.Plain
 	l.text, l.parsed, l.formatErr = text, parsed, err
 	l.invalidateLayout()
 	l.RequestLayout()
 	l.requestSemanticUpdate()
+	if s := l.selectState; s != nil && plainChanged {
+		previous := s.value
+		s.value, s.upstream = TextSelection{}, false
+		s.cancel()
+		if !l.Destroyed() && l.text == text && s.value == (TextSelection{}) && previous != s.value {
+			s.changed.Emit(s.value, s.revision)
+		}
+	}
 }
 
 func (l *Label) WrapMode() WrapMode {
@@ -149,16 +166,26 @@ func (l *Label) Paint(p Painter) {
 	}
 	textLayout := l.ensureLayout(l.Rect().Size)
 	if textLayout != nil {
+		if l.Selectable() {
+			l.selectState.paint(p)
+		}
 		p.DrawTextLayout(geometry.Point{}, textLayout)
 	}
+}
+
+func (l *Label) Arrange(rect geometry.Rectangle) {
+	if l.Rect().Size != rect.Size {
+		l.invalidateSelectionGeometry()
+	}
+	l.WidgetBase.Arrange(rect)
 }
 
 func (l *Label) Snapshot() WidgetInfo {
 	info := l.WidgetBase.Snapshot()
 	info.Role = RoleLabel
 	info.Text = l.PlainText()
-	if l.parsed.Formatted || l.formatErr != nil {
-		value := LabelInfo{Formatted: l.parsed.Formatted}
+	if l.parsed.Formatted || l.formatErr != nil || l.Selectable() {
+		value := LabelInfo{Formatted: l.parsed.Formatted, Selectable: l.Selectable(), Selection: l.Selection()}
 		if l.formatErr != nil {
 			value.FormatError = l.formatErr.Error()
 		}
@@ -169,6 +196,7 @@ func (l *Label) Snapshot() WidgetInfo {
 
 func (l *Label) invalidateLayout() {
 	l.layoutValid = false
+	l.invalidateSelectionGeometry()
 }
 
 // StyleChanged releases the old font/color resources; they are rebuilt lazily.
@@ -186,6 +214,7 @@ func (l *Label) ensureLayout(size geometry.Size) typography.TextLayout {
 	}
 
 	if l.cachedWidth != size.Width || l.cachedHeight != size.Height {
+		l.invalidateSelectionGeometry()
 		l.cachedLayout.SetSize(size.Width, size.Height)
 		l.cachedWidth = size.Width
 		l.cachedHeight = size.Height
@@ -195,6 +224,7 @@ func (l *Label) ensureLayout(size geometry.Size) typography.TextLayout {
 }
 
 func (l *Label) releaseLayout() {
+	l.invalidateSelectionGeometry()
 	if l.cachedLayout != nil {
 		l.cachedLayout.Destroy()
 		l.cachedLayout = nil

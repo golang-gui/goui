@@ -80,16 +80,33 @@ func (m *Model) WordAt(offset int) Range {
 		}
 	}
 	text, _ := m.Slice(rng)
-	start, state := rng.Start, -1
-	for len(text) > 0 {
-		word, rest, next := uniseg.FirstWordInString(text, state)
-		end := start + len(word)
-		if offset < end || end == rng.End {
-			return Range{start, end}
-		}
-		start, text, state = end, rest, next
+	r := WordAt(text, offset-rng.Start)
+	return Range{Start: rng.Start + r.Start, End: rng.Start + r.End}
+}
+
+// WordAt returns the Unicode word segment at a UTF-8 offset in a plain string.
+// Whitespace and punctuation may be segments. Callers using shaped text must
+// also snap both endpoints to their layout's Cluster boundaries.
+func WordAt(text string, offset int) Range {
+	offset = ClampOffset(text, offset)
+	// Stay within the logical line containing the offset; newlines are separate
+	// segments, and an end-of-text hit selects the preceding segment.
+	start := strings.LastIndexByte(text[:offset], '\n') + 1
+	end := len(text)
+	if next := strings.IndexByte(text[offset:], '\n'); next >= 0 {
+		end = offset + next
 	}
-	return rng
+	at, state := start, -1
+	rest := text[start:end]
+	for len(rest) > 0 {
+		word, next, nextState := uniseg.FirstWordInString(rest, state)
+		last := at + len(word)
+		if offset < last || last == end {
+			return Range{Start: at, End: last}
+		}
+		at, rest, state = last, next, nextState
+	}
+	return Range{Start: start, End: end}
 }
 
 func asciiWord(text string) bool {
