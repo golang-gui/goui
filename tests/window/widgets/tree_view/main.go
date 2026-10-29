@@ -7,12 +7,15 @@
 //
 // 默认 UI；-gui 使用纯 GUI。GOUI_PLAT_PAINTER=software/opengl，Windows
 // 另可 direct2d；GOUI_PLAT_SCALE=2 请求 2x。-fallback-style 显式组合兜底样式。
+// -expand-on-activate 验证应用在激活回调里显式切换展开；GUI 模式同时记录第二个监听者。
 // 初始：Native 920×640 DIP、Modern 亮色、多选树，无选中项。项目目录已展开，
 // src、延迟加载分支、10000 行分支折叠；src 内有普通、两行和内嵌按钮内容。
 //
 // 操作与预期：
 //  1. 点击行体选择；点击箭头只展开折叠，不选择或激活。展开 src 后双击叶子，
-//     终端只打印一次 activate；双击分支只切换展开，不打印 activate。
+//     终端只打印一次 activate；双击分支同样激活一次，展开状态不变。
+//     GUI 每次激活还应打印一次 activate-observer。加 -expand-on-activate 时，
+//     分支双击或 Enter 都只切换一次展开，activate 与第二个监听者日志仍各一次。
 //  2. Ctrl（macOS Command）单击多选，Shift 单击连续范围；连续 Shift+方向键
 //     扩大后反向缩小范围。Primary+方向键只移当前项，Primary+Space 切换选择。
 //     Home/End、PageUp/PageDown、左右方向键导航；Primary+A 仅选展开后的节点。
@@ -131,20 +134,21 @@ func assertTree(tree *widgets.TreeView) {
 func main() {
 	guiMode := flag.Bool("gui", false, "use imperative GUI")
 	fallback := flag.Bool("fallback-style", false, "use explicitly composed fallback styles")
+	expandOnActivate := flag.Bool("expand-on-activate", false, "应用在激活回调中切换展开，验证后续监听者仍收到通知")
 	flag.Parse()
 	var err error
 	if *guiMode {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
-		err = runGUI(*fallback)
+		err = runGUI(*fallback, *expandOnActivate)
 	} else {
-		err = runUI(*fallback)
+		err = runUI(*fallback, *expandOnActivate)
 	}
 	if err != nil {
 		log.Fatal(err)
 	}
 }
-func runUI(fallback bool) error {
+func runUI(fallback, expandOnActivate bool) error {
 	m := newModel()
 	version, dark := 0, false
 	expanded := []string{"project"}
@@ -170,7 +174,13 @@ func runUI(fallback bool) error {
 				fmt.Printf("expanded=%s:%v\n", id, value)
 				app.RequestUpdate()
 			}).
-			OnActivate(func(id string) { fmt.Printf("activate=%s\n", id) }).
+			OnActivate(func(id string) {
+				fmt.Printf("activate=%s\n", id)
+				if expandOnActivate {
+					tree := app.FindWidget("tree-window", "tree").(*widgets.TreeView)
+					tree.SetExpanded(id, !tree.Expanded(id))
+				}
+			}).
 			ContextMenu(func(id string) []*ui.MenuItemView {
 				if id == "" {
 					return []*ui.MenuItemView{ui.MenuItem("tree background", nil).Enabled(false)}
@@ -239,7 +249,7 @@ func (d *delegate) Bind(row widgets.TreeRow, widget gui.Widget) {
 	c.button.SetVisible(value.action)
 }
 func (*delegate) Unbind(_ widgets.TreeRow, widget gui.Widget) { widget.(*rowContent).id = "" }
-func runGUI(fallback bool) error {
+func runGUI(fallback, expandOnActivate bool) error {
 	app, err := gui.NewApplication("org.golang-gui.TreeViewGUIProbe")
 	if err != nil {
 		return err
@@ -272,7 +282,13 @@ func runGUI(fallback bool) error {
 	tree.ConnectSelection(func(ids []string) { fmt.Printf("selection=%v\n", ids) })
 	tree.ConnectCurrent(func(id string) { fmt.Printf("current=%s\n", id) })
 	tree.ConnectExpanded(func(id string, expanded bool) { fmt.Printf("expanded=%s:%v\n", id, expanded) })
-	tree.ConnectActivate(func(id string) { fmt.Printf("activate=%s\n", id) })
+	tree.ConnectActivate(func(id string) {
+		fmt.Printf("activate=%s\n", id)
+		if expandOnActivate {
+			tree.SetExpanded(id, !tree.Expanded(id))
+		}
+	})
+	tree.ConnectActivate(func(id string) { fmt.Printf("activate-observer=%s\n", id) })
 	tree.ConnectContextMenu(func(id string, result *gui.MenuModel) {
 		menu := gui.NewMenu()
 		if id == "" {
