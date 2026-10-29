@@ -183,6 +183,9 @@ func builtInRules(options Options) []style.Rule {
 		text("widget").BackgroundColor(color.Transparent).BorderWidth(0).Radius(0),
 		style.Name("widget").State(style.Disabled).ForegroundColor(p.disabled),
 		text("label"),
+		style.Name("label").Part("selection").BackgroundColor(mix(p.surface, p.text, .12)),
+		style.Name("label").Part("selection").State(style.Focused).BackgroundColor(mix(p.surface, accent, .25)),
+		style.Name("label").Part("caret").ForegroundColor(p.text),
 		text(PrimaryContent).ForegroundColor(primaryText),
 		style.Name("icon").ForegroundColor(p.text),
 		style.Name("progress-bar").BackgroundColor(progressTrack).

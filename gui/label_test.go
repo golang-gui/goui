@@ -1,12 +1,16 @@
 package gui
 
 import (
+	"errors"
 	"image/color"
 	"testing"
+	"time"
 
 	"github.com/golang-gui/goui/core/colors"
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/style"
 )
@@ -352,5 +356,320 @@ func TestLabelUnknownInlineStylePreservesBase(t *testing.T) {
 	run := typo.records[0]
 	if len(run.fonts) != 1 || run.fonts[0].start != 1 || run.fonts[0].length != 3 || run.fonts[0].font != base.Font || !colors.Equal(run.ink[0], base.TextColor) {
 		t.Fatal("未知范围没有保留 Label 基础格式", run.fonts)
+	}
+}
+
+// 固定 Cluster 指标覆盖选区，避免把 Unicode 码点误当成可拆分字形。
+func labelSelectionFixture(t *testing.T, text string) (*Label, *window, *editorTypography) {
+	t.Helper()
+	typo := &editorTypography{}
+	setTestApplication(t, typo)
+	label := NewLabel(text)
+	label.SetSelectable(true)
+	win := &window{}
+	win.SetWidget(label)
+	label.Arrange(geometry.Rect(0, 0, 200, 80))
+	if err := win.DispatchEvent(events.FocusEvent{Focused: true}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { win.SetWidget(nil) })
+	return label, win, typo
+}
+
+func TestLabelSelectionDefaultsAndLifetime(t *testing.T) {
+	label := NewLabel("hello")
+	if label.Selectable() || label.Focusable() || label.selectState != nil {
+		t.Fatal("普通 Label 不应分配选择状态或接收焦点")
+	}
+	label.SetSelection(TextSelection{Caret: 2})
+	if label.Selection() != (TextSelection{}) || label.selectState != nil {
+		t.Fatal("关闭选择时 setter 应无操作")
+	}
+	label.SetFocusable(true)
+	label.SetCursor(CursorCrosshair)
+	count := 0
+	label.ConnectSelection(func(TextSelection) { count++ })
+	label.SetSelectable(true)
+	if !label.Focusable() || label.Cursor() != CursorText {
+		t.Fatal("未设置选择默认交互")
+	}
+	label.SetSelection(TextSelection{Anchor: 4, Caret: 1})
+	if label.SelectedText() != "ell" || count != 1 {
+		t.Fatal("反向选区未保留", label.Selection())
+	}
+	old := label.Snapshot().Attributes[LabelInfoKey].(LabelInfo)
+	label.SetSelectable(false)
+	if !label.Focusable() || label.Cursor() != CursorCrosshair || len(label.EventControllers()) != 0 || label.Selection() != (TextSelection{}) || count != 2 {
+		t.Fatal("关闭选择未还原默认值/释放控制器/清空选区")
+	}
+	if !old.Selectable || old.Selection != (TextSelection{Anchor: 4, Caret: 1}) {
+		t.Fatal("快照持有可变状态")
+	}
+	label.SetSelectable(true)
+	label.SetSelection(TextSelection{Caret: 2})
+	if count != 3 {
+		t.Fatal("重新启用丢失信号连接")
+	}
+	label.SetCursor(CursorPointing)
+	label.SetFocusable(false)
+	label.SetSelectable(false)
+	if label.Cursor() != CursorPointing || label.Focusable() {
+		t.Fatal("禁用选择覆盖了用户交互配置")
+	}
+}
+
+func TestLabelSelectionClustersTextChangesAndCache(t *testing.T) {
+	label, win, typo := labelSelectionFixture(t, `\{format\}é\{bold:中文\}x`)
+	label.ensureLayout(label.Rect().Size)
+	native := typo.layouts[0]
+	native.clusters = []typography.TextCluster{
+		{Start: 0, Length: 3, Width: 10, Height: 20},
+		{Start: 3, Length: 3, X: 10, Width: 10, Height: 20},
+		{Start: 6, Length: 3, X: 20, Width: 10, Height: 20},
+		{Start: 9, Length: 1, X: 30, Width: 10, Height: 20},
+	}
+	label.SetSelection(TextSelection{Anchor: 10, Caret: 2})
+	if label.Selection() != (TextSelection{Anchor: 10, Caret: 0}) || label.SelectedText() != "é中文x" {
+		t.Fatal("UTF-8 或 Cluster 边界校正错误", label.Selection())
+	}
+	changes := 0
+	label.ConnectSelection(func(TextSelection) { changes++ })
+	win.layoutDirty, win.paintDirty = false, false
+	label.SetSelection(TextSelection{Anchor: 3, Caret: 9})
+	label.Paint(&testLabelPainter{})
+	if win.layoutDirty || !win.paintDirty || len(typo.calls) != 1 || native.metricsCalls != 1 || native.destroyed {
+		t.Fatal("改变选区重建了排版或几何")
+	}
+	label.SetText(`\{format\}é\{italic:中文\}x`)
+	if label.Selection() != (TextSelection{Anchor: 3, Caret: 9}) || changes != 1 {
+		t.Fatal("仅格式变化重置了选区")
+	}
+	label.StyleChanged()
+	label.Paint(&testLabelPainter{})
+	if changes != 1 {
+		t.Fatal("绘制/样式失效不得发送选区通知")
+	}
+	label.SetText("new")
+	if label.Selection() != (TextSelection{}) || changes != 2 {
+		t.Fatal("正文变化没有重置选区")
+	}
+	label.SelectAll()
+	selection := label.Selection()
+	win.SetWidget(nil)
+	if label.Selection() != selection || label.selectState.geometry != nil || !typo.layouts[len(typo.layouts)-1].destroyed {
+		t.Fatal("卸载未释放原生资源或意外重置数据")
+	}
+	win.SetWidget(label)
+	label.SetSelection(TextSelection{Caret: 1})
+	if changes != 4 {
+		t.Fatal("重新挂载丢失信号")
+	}
+}
+
+func TestLabelSelectionDispatchCaptureAndKeys(t *testing.T) {
+	label, win, _ := labelSelectionFixture(t, "hello world")
+	primary := textCommandModifier()
+	pointer := func(kind events.EventType, x float32, mods events.Modifiers) {
+		t.Helper()
+		e := events.PointerEvent{EventType: kind, Position: geometry.Point{X: x, Y: 10}, Button: events.PointerButtonLeft, Modifiers: mods}
+		if kind != events.PointerUp {
+			e.Buttons = events.PointerButtonLeftDown
+		}
+		if err := win.DispatchEvent(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pointer(events.PointerDown, 12, 0)
+	pointer(events.PointerMove, 240, 0)
+	pointer(events.PointerUp, 240, 0)
+	if !label.Focused() || label.Selection() != (TextSelection{Anchor: 1, Caret: 11}) || label.selectState.controller.dragging {
+		t.Fatal("选择未捕获边界外事件", label.Selection())
+	}
+	label.selectState.controller.lastDown = time.Time{}
+	pointer(events.PointerDown, 32, events.ModifierShift)
+	pointer(events.PointerUp, 32, events.ModifierShift)
+	if label.Selection() != (TextSelection{Anchor: 1, Caret: 3}) {
+		t.Fatal("Shift 点击改变了锚点", label.Selection())
+	}
+	now := time.Unix(100, 0)
+	label.selectState.controller.now = func() time.Time { return now }
+	pointer(events.PointerDown, 72, 0)
+	pointer(events.PointerUp, 72, 0)
+	now = now.Add(100 * time.Millisecond)
+	pointer(events.PointerDown, 72, 0)
+	pointer(events.PointerUp, 72, 0)
+	if label.SelectedText() != "world" {
+		t.Fatal("双击未选择词", label.Selection(), label.SelectedText())
+	}
+	editorKey(t, win, events.KeyArrowLeft, 0)
+	if label.Selection() != (TextSelection{Anchor: 6, Caret: 6}) {
+		t.Fatal("左键未折叠选区", label.Selection())
+	}
+	editorKey(t, win, events.KeyEnd, events.ModifierShift)
+	if label.SelectedText() != "world" {
+		t.Fatal("Shift End 未扩展", label.Selection())
+	}
+	editorKey(t, win, events.KeyA, primary)
+	clip := &editorClipboard{}
+	App.(*application).clipboard = clip
+	editorKey(t, win, events.KeyC, primary)
+	if clip.text != label.PlainText() {
+		t.Fatal("未复制纯文本")
+	}
+	editorKey(t, win, events.KeyEscape, 0)
+	if label.Selection().Anchor != label.Selection().Caret {
+		t.Fatal("Escape 未折叠")
+	}
+	handled := false
+	if err := win.DispatchEvent(events.KeyEvent{EventType: events.KeyDown, Key: events.KeyF5, Handled: &handled}); err != nil || handled {
+		t.Fatal("吞掉了无关按键", err)
+	}
+	label.SelectAll()
+	before := label.Selection()
+	label.SetEnabled(false)
+	editorKey(t, win, events.KeyArrowLeft, 0)
+	if label.Selection() != before || label.selectState.controller.dragging {
+		t.Fatal("禁用未取消交互或修改了选区")
+	}
+}
+
+// 相邻 RTL 字形的逻辑顺序与视觉顺序相反；选区背景只能覆盖实际选中的字形。
+func TestLabelSelectionBidiPaintAndResize(t *testing.T) {
+	label, win, typo := labelSelectionFixture(t, "aאבz")
+	label.ensureLayout(label.Rect().Size)
+	native := typo.layouts[0]
+	native.clusters = []typography.TextCluster{
+		{Start: 0, Length: 1, Width: 10, Height: 20},
+		{Start: 1, Length: 2, X: 20, Width: 10, Height: 20, Direction: typography.TextRightToLeft},
+		{Start: 3, Length: 2, X: 10, Width: 10, Height: 20, Direction: typography.TextRightToLeft},
+		{Start: 5, Length: 1, X: 30, Width: 10, Height: 20},
+	}
+	App.(*application).style = style.Sheet(style.Name("label").Part("selection").BackgroundColor(color.RGBA{R: 20, A: 255}))
+	label.SetSelection(TextSelection{Anchor: 0, Caret: 3})
+	p := &labelSelectionPainter{}
+	label.Paint(p)
+	if len(p.fills) != 2 || p.fills[0] != geometry.Rect(0, 0, 10, 20) || p.fills[1] != geometry.Rect(20, 0, 10, 20) || !p.textAfterFill {
+		t.Fatal("双向选区背景错误或覆盖了文字", p.fills)
+	}
+	if label.selectState.geometry == nil {
+		t.Fatal("几何未缓存")
+	}
+	label.Arrange(geometry.Rect(0, 0, 100, 80))
+	if label.selectState.geometry != nil {
+		t.Fatal("Arrange 没有使旧几何失效")
+	}
+	label.Paint(p)
+	if native.metricsCalls != 2 {
+		t.Fatal("尺寸改变未重新获取指标", native.metricsCalls)
+	}
+	win.SetFocusedWidget(label)
+	editorKey(t, win, events.KeyArrowRight, 0)
+	if label.Selection().Anchor != label.Selection().Caret {
+		t.Fatal("双向选区没有折叠")
+	}
+}
+
+type labelSelectionPainter struct {
+	testLabelPainter
+	fills         []geometry.Rectangle
+	textAfterFill bool
+}
+
+func (p *labelSelectionPainter) FillRect(r geometry.Rectangle, _ graphics.Brush) {
+	p.fills = append(p.fills, r)
+}
+func (p *labelSelectionPainter) DrawTextLayout(o geometry.Point, l typography.TextLayout) {
+	p.textAfterFill = len(p.fills) > 0
+	p.testLabelPainter.DrawTextLayout(o, l)
+}
+
+type labelFailClipboard struct {
+	err   error
+	calls int
+}
+
+func (c *labelFailClipboard) SetText(string) error            { c.calls++; return c.err }
+func (c *labelFailClipboard) RequestText(func(string, error)) {}
+
+func TestLabelSelectionCopyErrorsAndReentrancy(t *testing.T) {
+	label, win, typo := labelSelectionFixture(t, "éx")
+	label.SetSelection(TextSelection{Anchor: 0, Caret: len(label.PlainText())})
+	fail := errors.New("测试剪贴板失败")
+	clip := &labelFailClipboard{err: fail}
+	App.(*application).clipboard = clip
+	errorsSeen := 0
+	label.ConnectCopyError(func(err error) {
+		if !errors.Is(err, fail) {
+			t.Fatal(err)
+		}
+		errorsSeen++
+	})
+	if err := label.Copy(); !errors.Is(err, fail) || errorsSeen != 0 {
+		t.Fatal("直接 Copy 不应重复通知", err)
+	}
+	win.SetFocusedWidget(label)
+	editorKey(t, win, events.KeyC, textCommandModifier())
+	if errorsSeen != 1 || clip.calls != 2 {
+		t.Fatal("内置动作未单次反馈错误")
+	}
+	// 模拟新字体将 e+组合音标合成一个 Cluster，Paint 不通知，输入前才归一。
+	native := typo.layouts[0]
+	native.clusters = []typography.TextCluster{{Start: 0, Length: 3, Width: 10, Height: 20}, {Start: 3, Length: 1, X: 10, Width: 10, Height: 20}}
+	label.invalidateSelectionGeometry()
+	label.selectState.value = TextSelection{Anchor: 1, Caret: 4}
+	label.ConnectSelection(func(TextSelection) { label.SetEnabled(false) })
+	label.Paint(&testLabelPainter{})
+	if !label.Enabled() {
+		t.Fatal("Paint 发出了选择信号")
+	}
+	editorKey(t, win, events.KeyC, textCommandModifier())
+	if label.Enabled() || clip.calls != 2 {
+		t.Fatal("归一回调禁用后仍访问剪贴板")
+	}
+	label.SetEnabled(true)
+	label.SetSelectable(false)
+	label.SetSelectable(true)
+	first := label.ConnectSelection(func(TextSelection) { label.WidgetBase.destroy(label) })
+	defer first.Disconnect()
+	late := 0
+	label.ConnectSelection(func(TextSelection) { late++ })
+	label.SelectAll()
+	if !label.Destroyed() || late != 0 {
+		t.Fatal("对象销毁后继续调用信号观察者")
+	}
+}
+
+func TestLabelSelectionAtomicClustersAndWrappedLines(t *testing.T) {
+	for _, text := range []string{"é", "👩‍💻", "ffi"} {
+		t.Run(text, func(t *testing.T) {
+			typo := &testTypography{lines: []typography.TextLine{{Length: len(text) + 1, Height: 30}}, clusters: []typography.TextCluster{{Start: 0, Length: len(text), Width: 24, Height: 30}, {Start: len(text), Length: 1, X: 24, Width: 10, Height: 30}}}
+			setTestApplication(t, typo)
+			label := NewLabel(text + "x")
+			label.SetSelectable(true)
+			label.Arrange(geometry.Rect(0, 0, 100, 40))
+			t.Cleanup(label.releaseLayout)
+			label.SetSelection(TextSelection{Anchor: len(text) + 1, Caret: 1})
+			if label.Selection().Caret != 0 || label.SelectedText() != text+"x" {
+				t.Fatal("Cluster 被拆分", label.Selection())
+			}
+		})
+	}
+	label, win, _ := labelSelectionFixture(t, "abcdefghij")
+	label.SetWrapMode(WrapChar)
+	label.Arrange(geometry.Rect(0, 0, 40, 100))
+	win.SetFocusedWidget(label)
+	label.SetSelection(TextSelection{Caret: 2, Anchor: 2})
+	editorKey(t, win, events.KeyArrowDown, events.ModifierShift)
+	if label.Selection() != (TextSelection{Anchor: 2, Caret: 6}) {
+		t.Fatal("视觉行上下导航未保持 X", label.Selection())
+	}
+	label.SelectAll()
+	if label.SelectedText() != "abcdefghij" {
+		t.Fatal("软换行不应新增字符")
+	}
+	label.SetText("abc\ndef")
+	label.SelectAll()
+	if label.SelectedText() != "abc\ndef" {
+		t.Fatal("硬换行应保留")
 	}
 }
