@@ -343,8 +343,7 @@ func (mc *menuContent) selectItem(item *MenuItem) {
 	mc.delegate.active = item
 	for _, widget := range mc.list.items {
 		row := widget.(*menuItemRow)
-		row.selected = row.mi == item && item != nil
-		row.requestPaint()
+		row.SetState(style.Selected, row.mi == item && item != nil)
 	}
 }
 func (mc *menuContent) moveItem(direction int, edge bool) {
@@ -545,7 +544,7 @@ func (d *menuItemDelegate) Bind(i int, w Widget) {
 		mi = d.model.ItemAt(i)
 	}
 	row.bind(mi)
-	row.selected = mi != nil && mi == d.active && mi.Enabled() && mi.Visible() && !mi.Separator()
+	row.SetState(style.Selected, mi != nil && mi == d.active && mi.Enabled() && mi.Visible() && !mi.Separator())
 }
 
 func (d *menuItemDelegate) Unbind(i int, w Widget) { w.(*menuItemRow).bind(nil) }
@@ -558,8 +557,6 @@ type menuItemRow struct {
 	trailingGap float32
 	mi          *MenuItem
 	activate    func(*MenuItem)
-	pressed     bool
-	selected    bool
 	onHover     func(*MenuItem)
 	motion      *MotionEventController
 	click       *ClickEventController
@@ -618,7 +615,7 @@ func (r *menuItemRow) bind(mi *MenuItem) {
 	r.label.releaseLayout()
 	r.click.Reset()
 	r.motion.Reset()
-	r.pressed, r.selected = false, false
+	r.SetState(style.Pressed|style.Selected, false)
 	r.mi = mi
 	r.label.SetText("")
 	r.label.SetVisible(mi != nil && mi.Visible() && !mi.Separator())
@@ -676,13 +673,15 @@ func (r *menuItemRow) Paint(p Painter) {
 		}
 		return
 	}
-	paintStyledBox(p, rect, r.resolvedStyle())
+	PaintStyledBox(p, rect, r.resolvedStyle())
 }
 
 func (r *menuItemRow) Snapshot() WidgetInfo {
 	info := r.WidgetBase.Snapshot()
 	info.Role = RoleMenuItem
-	info.Selected = r.selected
+	info.Selected = r.State().Has(style.Selected)
+	info.Hovered = r.State().Has(style.Hovered)
+	info.Pressed = r.State().Has(style.Pressed)
 	info.Enabled = info.Enabled && r.mi != nil && r.mi.Enabled()
 	if r.mi != nil {
 		info.Text = r.label.PlainText()
@@ -695,14 +694,23 @@ func (r *menuItemRow) Snapshot() WidgetInfo {
 	return info
 }
 
-func (r *menuItemRow) resolvedStyle() style.Style {
-	st := style.Normal
+// Model-disabled rows still receive pointer observations to clear the menu's
+// current item; they expose Disabled without changing that navigation policy.
+func (r *menuItemRow) State() style.State {
+	state := r.WidgetBase.State()
 	if r.mi != nil && !r.mi.Enabled() {
-		st = style.Disabled
-	} else if r.pressed && r.selected {
-		st = style.Pressed
-	} else if r.selected {
-		st = style.Hovered
+		state = (state | style.Disabled).Normalized() &^ style.DropActive
+	}
+	return state
+}
+
+func (r *menuItemRow) resolvedStyle() style.Style {
+	st := r.State() &^ (style.Hovered | style.Pressed)
+	if st.Has(style.Selected) {
+		st |= style.Hovered
+		if r.State().Has(style.Pressed) {
+			st |= style.Pressed
+		}
 	}
 	return ResolveWidgetStyle(r, styleNameMenuItem, style.PartDefault, st)
 }
@@ -719,15 +727,5 @@ func (r *menuItemRow) selectPointer() {
 }
 
 func (r *menuItemRow) setPressed(p bool) {
-	if r.pressed == p {
-		return
-	}
-	r.pressed = p
-	r.requestPaint()
-}
-
-func (r *menuItemRow) requestPaint() {
-	if root := r.Root(); root != nil {
-		_ = root.RequestPaint()
-	}
+	r.SetState(style.Pressed, p)
 }

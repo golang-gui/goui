@@ -12,6 +12,7 @@ import (
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/platform/dragdrop"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/style"
 )
 
 type DragAction = dragdrop.Action
@@ -474,7 +475,7 @@ func (t *DropTarget) Reset() {
 	if t.active {
 		t.active = false
 		if t.owner != nil && !t.owner.base().destroyed {
-			t.owner.base().requestSemanticUpdate()
+			t.owner.base().SetState(style.DropActive, false)
 		}
 		t.leave.Emit()
 	}

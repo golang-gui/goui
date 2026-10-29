@@ -165,13 +165,13 @@ func TestTooltipButtonPaddingAndContent(t *testing.T) {
 		tooltipMove(t, w, 300, 200)
 		tooltipMove(t, w, 20+point.X, 20+point.Y)
 		tooltipAdvance(t, q, 699*time.Millisecond)
-		if !button.hovered || w.tooltip.target != button || len(w.Popovers()) != 0 {
+		if !button.State().Has(style.Hovered) || w.tooltip.target != button || len(w.Popovers()) != 0 {
 			t.Fatalf("位置 %v 没有命中按钮、丢失 Hover 或过早显示提示", point)
 		}
 		tooltipAdvance(t, q, time.Millisecond)
 		p := w.tooltip.popup
 		tooltipAdvance(t, q, 2*time.Second)
-		if p == nil || w.tooltip.popup != p || !p.Visible() || !button.hovered {
+		if p == nil || w.tooltip.popup != p || !p.Visible() || !button.State().Has(style.Hovered) {
 			t.Fatalf("位置 %v 的提示或 Hover 没有保持稳定", point)
 		}
 	}

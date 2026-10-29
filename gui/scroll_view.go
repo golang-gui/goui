@@ -3,14 +3,13 @@ package gui
 import (
 	"math"
 
+	"github.com/goexlib/mathx"
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/style"
-
-	"github.com/goexlib/mathx"
 )
 
 // Scrollable is implemented by scrollable content: the content knows
@@ -177,25 +176,25 @@ func (sv *ScrollView) innerRect() geometry.Rectangle {
 // Paint draws the shared frame behind the viewport, both bars and their corner.
 // Select an explicit StyleName to give the scroll container an editor frame.
 func (sv *ScrollView) Paint(p Painter) {
-	state := style.Normal
+	state := sv.State()
 	if !IsEnabled(sv) {
 		state = style.Disabled
 	} else if sv.FocusVisible() {
-		state = style.FocusVisible
+		state |= style.FocusVisible
 	} else if sv.Focused() || sv.ContainsFocus() {
-		state = style.Focused
+		state |= style.Focused
 		if host, ok := sv.Root().(EventTarget); ok {
 			if focused := host.FocusedWidget(); focused != nil && focused.FocusVisible() {
-				state = style.FocusVisible
+				state |= style.FocusVisible
 			}
 		}
 	}
 	s := sv.frameStyle(state)
 	r := geometry.Rectangle{Size: sv.Rect().Size}
 	if bg, ok := s.BackgroundColor(); ok && bg != nil && graphics.ColorOf(bg).A > 0 {
-		paintStyledBox(p, r, s)
+		PaintStyledBox(p, r, s)
 	} else {
-		paintStyledBorder(p, r, s)
+		PaintStyledBorder(p, r, s)
 	}
 }
 

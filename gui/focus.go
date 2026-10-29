@@ -19,7 +19,7 @@ func setFocusVisible(host EventTarget, visible bool) {
 	}
 	state.focusVisible = visible
 	if focused := host.FocusedWidget(); focused != nil && !focused.base().destroyed {
-		focused.RequestPaint()
+		focused.base().invalidateState()
 		focused.base().requestSemanticUpdate()
 	}
 }

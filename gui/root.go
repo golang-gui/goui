@@ -57,6 +57,7 @@ type rootBase struct {
 	height         float32 // logical (DIP)
 	pixelWidth     float32 // physical (backing) pixels
 	pixelHeight    float32 // physical (backing) pixels
+	stateStyles    map[Widget]stateMeasurement
 	layoutDirty    bool
 	paintDirty     bool
 	focusedWidget  Widget
@@ -229,7 +230,7 @@ func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Sty
 			border = style.Default().Radius(radius + margin).BorderWidth(width + margin).BorderColor(color).Style
 		}
 	}
-	paintStyledBorder(guiPainter, borderBounds, border)
+	PaintStyledBorder(guiPainter, borderBounds, border)
 	b.afterPaint.Emit(guiPainter, bounds)
 	if finish != nil {
 		finish(guiPainter)
@@ -340,6 +341,7 @@ func (b *rootBase) beginFrame() bool {
 	b.framePainting = true
 	b.lastFrame, b.frameEpoch = b.frameNow(), b.surfaceEpoch
 	b.frames.Emit(b.lastFrame)
+	b.updateStateStyles()
 	if b.frameDestroyed || b.frameSuspended || b.surfaceEpoch != b.frameEpoch {
 		b.endFrame()
 		return false
@@ -375,6 +377,7 @@ func (b *rootBase) resumeFrames(native paintRequester) {
 
 func (b *rootBase) destroyFrames() {
 	b.frameDestroyed = true
+	b.stateStyles = nil
 	b.suspendFrames()
 	b.frameRequester = nil
 }

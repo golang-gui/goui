@@ -124,3 +124,6 @@ func (b *WrapBox) Snapshot() WidgetInfo {
 	info.Role = RoleWrapBox
 	return info
 }
+
+// Paint draws only the box decoration; layout and children are handled separately.
+func (b *WrapBox) Paint(p Painter) { PaintWidgetStyle(p, b, "wrap-box") }

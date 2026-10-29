@@ -80,10 +80,7 @@ func (b *BorderBox) frameStyle() style.Style {
 	if name == "" {
 		name = "border-box"
 	}
-	state := style.Normal
-	if !IsEnabled(b) {
-		state = style.Disabled
-	}
+	state := b.State()
 	return ResolveWidgetStyle(b, name, style.PartDefault, state)
 }
 
@@ -127,7 +124,7 @@ func (b *BorderBox) Arrange(rect geometry.Rectangle) {
 }
 
 func (b *BorderBox) Paint(p Painter) {
-	paintStyledBox(p, geometry.Rect(0, 0, b.rect.Width, b.rect.Height), b.frameStyle())
+	PaintStyledBox(p, geometry.Rect(0, 0, b.rect.Width, b.rect.Height), b.frameStyle())
 }
 
 func (b *BorderBox) Snapshot() WidgetInfo {

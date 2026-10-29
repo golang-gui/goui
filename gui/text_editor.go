@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/goexlib/mathx"
 	"github.com/golang-gui/goui/core/colors"
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
@@ -17,8 +18,6 @@ import (
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/style"
-
-	"github.com/goexlib/mathx"
 )
 
 type textParagraph struct {
@@ -632,13 +631,7 @@ func (t *textEditor) resolvedStyle(part string) style.Style {
 			name = styleNameTextInput
 		}
 	}
-	state := style.Normal
-	if !IsEnabled(t.owner) {
-		state = style.Disabled
-	} else if t.owner.Focused() {
-		state = style.Focused
-	}
-	return ResolveWidgetStyle(t.owner, name, part, state)
+	return ResolveWidgetStyle(t.owner, name, part, t.owner.State()&^style.FocusVisible)
 }
 
 func (t *textEditor) styleChanged() { t.ensureFormat() }
@@ -1275,7 +1268,7 @@ func (t *textEditor) paint(p Painter) {
 	if !t.owner.Visible() || t.owner.base().destroyed {
 		return
 	}
-	paintStyledBox(p, geometry.Rect(0, 0, t.owner.Rect().Width, t.owner.Rect().Height), t.resolvedStyle(style.PartDefault))
+	PaintStyledBox(p, geometry.Rect(0, 0, t.owner.Rect().Width, t.owner.Rect().Height), t.resolvedStyle(style.PartDefault))
 	p.SetClipRect(geometry.Rect(t.padding.Left, t.padding.Top,
 		max(0, t.owner.Rect().Width-t.horizontalPadding()), max(0, t.owner.Rect().Height-t.verticalPadding())))
 	selected := t.selection.Range()

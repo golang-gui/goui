@@ -8,7 +8,6 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/graphics"
-	"github.com/golang-gui/goui/style"
 )
 
 // IconSource is prepared icon content, independent of a Window or native Painter.
@@ -108,10 +107,7 @@ func (i *Icon) Paint(p Painter) {
 	if name == "" {
 		name = styleNameIcon
 	}
-	state := style.Normal
-	if !IsEnabled(i) {
-		state = style.Disabled
-	}
+	state := i.State()
 	s := ResolveWidgetStyle(i, name, "", state)
 	var foreground Color
 	if c, ok := s.ForegroundColor(); ok && c != nil {

@@ -1237,7 +1237,7 @@ func TestIntegratedResizeEdgesConsumeWidgetPress(t *testing.T) {
 	before := w.FocusedWidget()
 	for _, p := range []geometry.Point{{X: 2, Y: 100}, {X: w.width - 2, Y: 100}, {X: 100, Y: 2}, {X: 100, Y: w.height - 2}, {X: 2, Y: 2}, {X: w.width - 2, Y: w.height - 2}} {
 		clickAt(w, p)
-		if clicks != 0 || button.pressed || w.FocusedWidget() != before {
+		if clicks != 0 || button.State().Has(style.Pressed) || w.FocusedWidget() != before {
 			t.Fatal("缩放按下泄漏到控件交互或焦点")
 		}
 	}

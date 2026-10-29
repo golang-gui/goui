@@ -9,6 +9,7 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/style"
 )
 
 type Widget interface {
@@ -25,6 +26,8 @@ type Widget interface {
 	// Tooltip is supplementary plain text, independent of Name. Empty disables it.
 	Tooltip() string
 	SetTooltip(string)
+	// State returns simultaneous effective states, without constructing a snapshot.
+	State() style.State
 	StyleName() string // explicit style override, "" when unset
 	SetStyleName(string)
 
@@ -85,7 +88,7 @@ type Widget interface {
 
 	// StyleChanged invalidates this widget's style-dependent resources. The
 	// framework calls it before subsequent layout or paint after a style sheet,
-	// style name, or effective enabled-state change, and on first use or
+	// style name, or widget-state change, and on first use or
 	// reattachment. Invalidations may be coalesced and need not result in
 	// different style values. It is not an input or business-state notification.
 	//
@@ -153,8 +156,7 @@ type WidgetBase struct {
 	inheritedDisabled   bool
 	enabledRevision     uint64
 	focusable           bool
-	focused             bool
-	containsFocus       bool
+	state               style.State
 	rect                geometry.Rectangle
 	parentWidget        Widget
 	parentRoot          Root
@@ -277,11 +279,11 @@ func (w *WidgetBase) SetFocusable(focusable bool) {
 }
 
 func (w *WidgetBase) Focused() bool {
-	return w.focused
+	return w.state.Has(style.Focused)
 }
 
 func (w *WidgetBase) FocusVisible() bool {
-	if !w.focused || w.destroyed {
+	if !w.Focused() || w.destroyed || !w.isEnabled() {
 		return false
 	}
 	owner, ok := w.root().(interface{ rootState() *rootBase })
@@ -297,7 +299,7 @@ func (w *WidgetBase) SetCursor(cursor Cursor) {
 }
 
 func (w *WidgetBase) ContainsFocus() bool {
-	return w.containsFocus
+	return w.state.Has(style.ContainsFocus)
 }
 
 func (w *WidgetBase) ConnectFocused(fn func(bool)) signal.Handle {
@@ -504,6 +506,7 @@ func (w *WidgetBase) Paint(Painter) {}
 func (w *WidgetBase) StyleChanged() {}
 
 func (w *WidgetBase) Snapshot() WidgetInfo {
+	state := w.State()
 	info := WidgetInfo{
 		ID:            w.ID(),
 		Name:          w.Name(),
@@ -516,6 +519,9 @@ func (w *WidgetBase) Snapshot() WidgetInfo {
 		Focused:       w.Focused(),
 		FocusVisible:  w.FocusVisible(),
 		ContainsFocus: w.ContainsFocus(),
+		Hovered:       state.Has(style.Hovered),
+		Pressed:       state.Has(style.Pressed),
+		Selected:      state.Has(style.Selected),
 	}
 	for _, controller := range w.controllers {
 		switch c := controller.(type) {
@@ -944,6 +950,10 @@ func (w *WidgetBase) emitUnmountSubtree(widget Widget) {
 		return
 	}
 	w.unmounting = true
+	if owner, ok := w.root().(interface{ rootState() *rootBase }); ok {
+		delete(owner.rootState().stateStyles, widget)
+	}
+	w.updateState(style.Hovered|style.Pressed|style.DropActive, false)
 	defer func() { w.unmounting = false }()
 	cancelTooltipSubtree(w.root(), widget)
 	cancelGestureSubtree(w.root(), widget)
@@ -970,24 +980,30 @@ func (w *WidgetBase) isDescendant(widget, ancestor Widget) bool {
 }
 
 func (w *WidgetBase) setFocused(focused bool) {
-	if w.focused == focused {
+	if w.Focused() == focused {
 		return
 	}
-	w.focused = focused
+	w.updateState(style.Focused, focused)
 	w.focusedSignal.Emit(focused)
 	w.requestSemanticUpdate()
 }
 
 func (w *WidgetBase) setContainsFocus(containsFocus bool) {
-	if w.containsFocus == containsFocus {
+	if w.ContainsFocus() == containsFocus {
 		return
 	}
-	w.containsFocus = containsFocus
+	w.updateState(style.ContainsFocus, containsFocus)
 	w.containsFocusSignal.Emit(containsFocus)
 	w.requestSemanticUpdate()
 }
 
 func (w *WidgetBase) handleCrossing(ctx CrossingContext) {
+	if ctx.Type() == CrossingPointer {
+		if ctx.Mode() == CrossingContains {
+			w.updateState(style.Hovered, ctx.Direction() == CrossingEnter)
+		}
+		return
+	}
 	if ctx.Type() != CrossingFocus {
 		return
 	}
@@ -1165,6 +1181,9 @@ func (w *WidgetBase) propagateEnabled(oldEnabled bool) {
 			return
 		}
 		base.enabledRevision++
+		if !base.isEnabled() {
+			base.state &^= style.Hovered | style.Pressed | style.DropActive
+		}
 		base.styleValid, base.measureValid = false, false
 		changes = append(changes, enabledChange{base, base.enabledRevision})
 		for _, child := range base.children {
