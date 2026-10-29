@@ -3,6 +3,41 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## SVG 原生栅格化接入（2026-10-29）
+
+设计见 [DesignSVG](DesignSVG.md)。仅升级 SVG 链路，不迁移 Software Painter。
+
+- [x] 固定 oksvg v0.1.0，删除 normalize / 逐图形编译 / 手工描边缩放补偿。
+- [x] Source 使用 Rasterize，保留原色/前景策略、尺寸限制、缓存与共享隔离。
+- [x] AspectRatio 只读查询供 cmd/svgpng 复用，移除工具内第二套 XML 解析。
+- [x] 包内/工具回归、全仓测试、race/fuzz、跨目标编译。
+- [x] 本机独立 X11 的 Software/OpenGL 1x/2x 与实际鼠标交互验收。
+- [x] 干净源码副本 `GOWORK=off go test -mod=readonly -json ./... -count=1`：
+  2719 个测试/子测试通过，10 个既有 skip，0 失败。skip 为 macOS 签名及原生窗口
+  手动项目，不算验收通过。副本包含全部跟踪文件与本轮新增素材，不混入用户原有
+  未跟踪测试/例程/产物；原有 137 个未跟踪文件经哈希核对未变。
+  首次独立 X11 子进程随命令退出，导致 10 项 `can not open display`；保持会话存活后
+  重跑通过，保留首次失败日志，不将其计为通过。
+- [x] `go test -race ./icon/... ./gui ./ui ./cmd/svgpng ./cmd/goui -count=1` 通过；
+  增补连续弧线回归后再跑 `go test -race ./icon/svg -count=1` 通过。
+  `go test ./icon/svg -run '^$' -fuzz '^FuzzParse$' -fuzztime=15s -parallel=2`
+  通过，188367 次执行，不据此承诺完整不可信 SVG 安全性。`go mod verify` 通过。
+- [x] Linux amd64 / Ubuntu 22.04，独立 Xvnc + xfwm4 合成会话；OpenGL 使用 Mesa
+  23.2.1 llvmpipe。Software/OpenGL 各 1x/2x，实际图片类型与稳定后 PixelScale 有日志
+  确认。XTest 真实点击完成亮暗/主题/24→40→64 DIP/替换/重建/共享窗口操作；
+  滚轮查看底部，窗口管理器快捷键调整大小，正常关闭，四组均退出 0。
+  逐图检查 Brain/People/Dev tool、DOCTYPE、class/use、仿射描边、圆外焦点、近直线
+  端部与非等比视口；原色蓝/绿像素跨亮暗模式计数不变，孔洞/透明处无背景填充。
+  启动尺寸事件到达前可能先报告 1x，2x 验收等待后续实际 2x；不代表跨屏 DPI 验收。
+- 首轮 OpenGL 移动窗口后抓到一次全黑截图，未将该截图计为外观通过；后续真实输入
+  重绘正常，复跑四组增加画面内容断言后通过。未据此改动窗口或 Painter 实现。
+  首轮直接边缘拖动的自动化未改变尺寸，改用 WM 标准 Alt+F8/方向键验收窗口缩放。
+- [x] SVG 包测试目标、窗口例程与 cmd/svgpng 的 Windows amd64 / macOS arm64
+  `CGO_ENABLED=0` 交叉编译通过；本轮未执行远端原生窗口验收，Direct2D/macOS
+  桌面合成仍为验证缺口。Software Painter 全部原代码及 srwiley 两项版本固定未变。
+
+本轮日志与截图保存在仓库外 `/tmp/goui-svg-v0.1.0-2h6k2d47`，不作为运行资源提交。
+
 ## Widget 组合状态与显式样式绘制（2026-10-29）
 
 设计见 [DesignWidgetState](DesignWidgetState.md)。

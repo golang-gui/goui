@@ -4,6 +4,8 @@
 // 启动：go run ./tests/window/ui/svgicon
 // GOUI_PLAT_PAINTER=software/opengl，Windows 还可选 direct2d。
 // GOUI_PLAT_SCALE=1/2 可分别验证；从 main 在平台保留的启动线程调用 ui.Run。
+// 首帧及缩放变化时输出实际原生图片类型和 PixelScale，用于识别后端是否降级。
+// 初始尺寸事件尚未到达时可能先输出 1x，以窗口稳定后的比例为准。
 // 初始：亮色、蓝色主题、24 DIP。前三行是 Brain、People、Dev tool；
 // 各行依次为主题色、正文前景色、原色。下方保留孔洞、描边、渐变等辅助验证。
 //
@@ -30,6 +32,11 @@
 //
 //  7. 最后一行显示多分辨率位图和缺失占位符；前者跟随尺寸/主题切换，后者为
 //     方框加叉且随前景换色；旁边的 nil Source 不应出现占位符。
+//
+//  8. 向下滚动到 Native SVG compatibility：每行左为主题色、右为原色。
+//     DOCTYPE/metadata 为完整蓝色方形；Class/use 为带透明孔洞的图形；Affine
+//     stroke 保持连续描边；External focus 的圆锥外透明；Near-line caps 两端平整，
+//     不出现尖角；Aspect none 按 SVG 自身声明拉伸。切换主题与尺寸后重复检查。
 //
 // SVG 创建失败会在启动时返回错误，不通过控件发送异步错误通知。
 // 几何回归：Brain 连线、People 三个头部及孔洞应完整，原色与主题色轮廓一致。
@@ -106,21 +113,48 @@ func main() {
 		panic(err)
 	}
 	holeOriginal, strokeOriginal, gradientOriginal := hole.WithRawColors(), stroke.WithRawColors(), gradient.WithRawColors()
+	type svgCase struct {
+		name        string
+		source, raw *svg.Source
+	}
+	var cases []svgCase
+	for _, item := range []struct{ name, data string }{
+		{"DOCTYPE / metadata", `<!DOCTYPE svg SYSTEM "https://invalid.example/icon.dtd"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" xml:space="preserve"><metadata><rect width="20" height="20" fill="red"/></metadata><rect x="2" y="2" width="16" height="16" fill="blue" clip-rule="evenodd"/></svg>`},
+		{"Class / use", `<svg viewBox="0 0 20 20"><style>.shape {fill:blue;fill-rule:evenodd}</style><use href="#shape" class="shape"/><defs><path id="shape" d="M2 2H18V18H2Z M6 6H14V14H6Z"/></defs></svg>`},
+		{"Affine stroke", `<svg viewBox="0 0 24 24"><path d="M3 8H12V16H3" transform="matrix(1.2 .3 .2 1 0 0)" fill="none" stroke="blue" stroke-width="2" stroke-linecap="round"/></svg>`},
+		{"External focus", `<svg viewBox="0 0 100 100"><radialGradient id="g" gradientUnits="userSpaceOnUse" cx="10" cy="10" r="75" fx="83.33" fy="75"><stop offset="0" stop-color="white"/><stop offset="1" stop-color="black"/></radialGradient><rect width="100" height="100" fill="url(#g)"/></svg>`},
+		{"Near-line caps", `<svg viewBox="0 0 200 200"><path d="M20 160C20.1 160 160 20 160.1 20" fill="none" stroke="green" stroke-width="20"/></svg>`},
+		{"Aspect none", `<svg viewBox="0 0 20 10" preserveAspectRatio="none"><circle cx="10" cy="5" r="4" fill="blue"/></svg>`},
+	} {
+		source := parseSVG(item.data)
+		cases = append(cases, svgCase{item.name, source, source.WithRawColors()})
+	}
 	draw := &drawicon.Source{Draw: func(p graphics.Painter, size graphics.Size, c graphics.Color) {
 		p.FillEllipse(geometry.Point{X: size.Width / 2, Y: size.Height / 2}, size.Width*.4, size.Height*.4, c)
 	}}
 	dark, replaced, extra := false, false, false
+	var reportedScale float32
 	sizeIndex, accentIndex, rebuilds := 1, 0, 0
 	sizes := []float32{16, 24, 40, 64}
 	accents := []color.Color{color.RGBA{R: 40, G: 120, B: 220, A: 255}, color.RGBA{R: 160, G: 60, B: 200, A: 255}}
 	err = ui.Run("org.golang-gui.SVGIconTest", func(app ui.App) ui.RootView {
+		fmt.Printf("SVG state dark=%t accent=%d size=%.0f rebuilds=%d replaced=%t extra=%t\n", dark, accentIndex, sizes[sizeIndex], rebuilds, replaced, extra)
 		current, original := hole, holeOriginal
 		if replaced {
 			current, original = stroke, strokeOriginal
 		}
 		size := sizes[sizeIndex]
+		var compatibility []ui.View
+		compatibility = append(compatibility, ui.Label("Native SVG compatibility | Accent | Raw colors"))
+		for _, item := range cases {
+			compatibility = append(compatibility, ui.HBox(
+				ui.Label(item.name).MinWidth(180),
+				ui.Icon(item.source).Size(max(48, size)).Style(modern.AccentIcon),
+				ui.Icon(item.raw).Size(max(48, size)),
+			).Spacing(30))
+		}
 		windows := []ui.WindowView{
-			ui.Window("svg").Title("GOUI SVG Icon validation").Size(780, 640).Chrome(ui.WindowChromeIntegrated).Content(
+			ui.Window("svg").Title("GOUI SVG Icon validation").Size(780, 840).Chrome(ui.WindowChromeIntegrated).Content(
 				ui.VBox(
 					ui.HeaderBar(ui.Label("SVG IconSource")),
 					ui.ScrollView(ui.VBox(
@@ -143,9 +177,22 @@ func main() {
 						ui.HBox(ui.Icon(current).Size(size).Style(modern.AccentIcon), ui.Icon(original).Size(size), ui.Icon(draw).Size(size)).Spacing(30),
 						ui.HBox(ui.Icon(gradient).Size(size).Style(modern.AccentIcon), ui.Icon(gradientOriginal).Size(size), ui.Icon(probe).Size(size).Style(modern.AccentIcon)).Spacing(30),
 						ui.HBox(ui.Icon(bitmapSource).Size(size).Style(modern.AccentIcon), ui.Icon(missing).Size(size).Style(modern.AccentIcon), ui.Icon(nil).Size(size)).Spacing(30),
+						ui.VBox(compatibility...).Spacing(12),
 					).Padding(16).Spacing(16)),
 				),
-			),
+			).OnAfterPaint(func(p ui.Painter, _ geometry.Rectangle) {
+				if reportedScale == p.PixelScale() {
+					return
+				}
+				// 只观察公共 NewImage 的实际后端；不绘制像素，帧结束时安全释放。
+				native, err := p.NewImage(image.NewRGBA(image.Rect(0, 0, 1, 1)))
+				if err != nil {
+					panic(err)
+				}
+				fmt.Printf("SVG backend %T scale=%.0f\n", native, p.PixelScale())
+				native.Destroy()
+				reportedScale = p.PixelScale()
+			}),
 		}
 		if extra {
 			windows = append(windows, ui.Window("svg-shared").Title("Shared Source / independent images").Size(360, 200).Chrome(ui.WindowChromeIntegrated).Content(
