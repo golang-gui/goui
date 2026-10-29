@@ -3,6 +3,45 @@
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 
+## Label 可选择文本（2026-10-29）
+
+设计与边界见 [DesignLabel](DesignLabel.md#7-可选择文本)。
+
+- [x] GUI 可选选择、PlainText UTF-8 / shaping Cluster 端点、手势捕获、视觉导航、
+  双击分词、纯文本复制、内置菜单、错误结果及信号生命周期防护。
+- [x] 复用单 TextLayout 与缓存的 textedit.Geometry；选区只重绘背景，不修改行内
+  文字颜色或重新上传文字位图。普通 Label 不分配选择控制器/几何。
+- [x] Basic/Modern 的活动、失焦选区与静态位置线；LabelInfo 的值语义；UI
+  Selectable/Selection/BindSelection/OnSelection/OnCopyError，无公共协调器特例。
+- [x] 回归集中在 gui/label_test.go、ui/view_test.go、textedit/api_test.go，覆盖
+  UTF-8、组合字符、emoji、不可拆分字形、双向分离矩形、换行、缩放布局失效、
+  拖出边界、Shift/双击、快捷键、复制错误及回调中禁用/销毁。
+- [x] 新增 [ui/label_selection](../tests/window/ui/label_selection/main.go)，中文操作
+  说明；正常启动先自动断言再保留窗口，-auto 完成后退出；不依赖 DevServer。
+  使用正常 Window.DispatchEvent 和真实桌面鼠标/键盘，自动断言系统剪贴板往返，
+  复制不会带入格式标记或额外软换行。窗口验收会覆盖系统剪贴板为测试文案。
+- [x] 干净源码副本的 `GOWORK=off go test -json ./... -count=1`：2691 个测试/
+  子测试通过，10 个既有 skip，无失败；`go test -race ./gui ./gui/textedit ./ui
+  ./theme/basic ./theme/modern -count=1` 通过。源码副本含全部跟踪文件与本轮新增文件，
+  不混入用户原有未跟踪的测试、例程和生成物。
+  - 初步直接在工作区运行相关包全量测试时，未跟踪的 ui/timer_native_test.go 中
+    TestTimerNativeRuntime/runtime 失败：`explicit state update failed or rebuilding
+    restarted a completed timer`。该文件未纳入上述干净副本；未改动、删除或扩大 skip，
+    也未将这一额外测试的失败算作已解决。
+- [x] Linux amd64 / Ubuntu 22.04，独立 Xvnc :74 + xfwm4 合成会话（Mesa llvmpipe）：
+  Software/OpenGL 1x/2x 自动验收通过；补做真实拖选、菜单复制/粘贴和截图检查。
+  不触碰用户 :3、:42 会话。独立会话不连接系统输入法，不据此宣称 IME/触摸验收。
+- [x] Windows amd64 / Windows 10 22H2 RDP，DirectWrite：Direct2D/Software
+  1x/2x 原生自动验收通过；Direct2D 1x 补验真实拖选、右键 Copy 和粘贴。
+- [x] macOS arm64 / 15.7.7 VNC，CoreText：OpenGL/Software 1x/2x 原生自动验收
+  通过；OpenGL 1x 补验真实拖选和菜单。使用当前桌面 Terminal 启动，未把 SSH 启动
+  等同于桌面验收；传输构建产物的 SHA-256 与本地一致。
+- [ ] Windows OpenGL 桌面验收：RDP 下上下文创建报 `can not choose useful pixel
+  format`，没有进入 Label 绘制；未将它算作通过，也未用 Software 回退冒充 OpenGL。
+
+首版不支持跨 Label 选择、触摸手柄、选中文字拖出、边缘自动滚动、Linux PRIMARY
+selection 或富文本剪贴板；这些留在 DesignLabel 的后续范围，不阻塞本切片。
+
 ## 声明式局部更新与属性绑定（2026-10-28）
 
 设计见 [DesignUIUpdates](DesignUIUpdates.md)。

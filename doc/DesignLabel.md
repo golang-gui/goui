@@ -6,8 +6,8 @@ Label 是小段展示文本。格式化不需要新增控件类型、格式模�
 `NewLabel`、`Text/SetText`、`ui.Label`、`BindText` 保留，由文案开头的 `\{format\}`
 决定是否解释格式。
 
-本轮实现格式字符串、命名文字样式、嵌套范围、主题失效、纯文本语义和验证程序。
-**可选择文本尚未实现**：Selectable、选区、复制、菜单、焦点及相关 UI 绑定均留待后续。
+已实现格式字符串、命名文字样式、嵌套范围、主题失效、纯文本语义及可选的单 Label 选择。
+可选择切片复用原生 Cluster 与已有 GUI 交互机制，不接入编辑模型。
 TextInput/TextView 的正文和 Placeholder 始终是纯文本，包括只读状态。
 Tooltip、窗口标题、ID、Name 等纯文本入口不解释格式。首版不包含链接、图片、内嵌 Widget、
 跨控件选择、富文本编辑或 HTML/Markdown。
@@ -165,13 +165,73 @@ DropDown 默认展示 Label、占位 Label 直接读取 PlainText。自定义 De
 [get_label](https://docs.gtk.org/gtk4/method.Label.get_label.html) 契约；它不代表采用 GTK
 的 XML 语法。GOUI 的控件专属 Attributes 可报告格式状态和错误，Text 的语义保持统一。
 
-## 7. 后续可选择文本（本轮不实现）
+## 7. 可选择文本
 
-计划提供 Selectable、Selection、SelectedText、ConnectSelection 和对应 UI 绑定。
-默认不可选择，选择坐标是 PlainText 的 UTF-8 范围，按实际 Cluster 校正。
-未来控制器复用事件分发、手势竞争、Unicode 分词、剪贴板和现有菜单，不创建 TextModel、
-编辑历史或 IME。失焦保留选区，Unmount 释放窗口相关交互，保留 Widget 自身状态。
-不新增 EventDispatcher/Root/BuildContext 的 Label 特例。
+默认 Selectable=false。Label 自己管理选区，复用同一个 TextLayout、textedit.Geometry、
+手势竞争、ContextMenuEventController、PopoverMenu 与系统剪贴板。不创建 TextModel、
+撤销历史或 IME，不向 EventDispatcher/Root/BuildContext 加 Label 分支。
+
+```go
+func (l *Label) Selectable() bool
+func (l *Label) SetSelectable(bool)
+func (l *Label) Selection() TextSelection
+func (l *Label) SetSelection(TextSelection)
+func (l *Label) SelectedText() string
+func (l *Label) SelectAll()
+func (l *Label) Copy() error
+func (l *Label) ConnectSelection(func(TextSelection)) signal.Handle
+func (l *Label) ConnectCopyError(func(error)) signal.Handle
+```
+
+Selection 的 Anchor/Caret 是 PlainText UTF-8 字节位置，保留方向，范围半开；超出文本
+时钳制。已有实际分配与排版时按 shaping Cluster 校正，未排版时仅保证 UTF-8 边界。
+字体变化后的边界在下次输入或 Copy 前校正，Measure/Paint 不发送选区通知。
+SelectedText 是无副作用的逻辑切片，不创建原生资源；Copy 先校正，再写纯文本。
+软换行不产生新字符，源文本里的硬换行保留，不复制格式语法。
+
+启用时提供 Focusable=true 与 CursorText 默认值；调用者可覆盖。关闭时清空选区并
+移除控制器；默认值未改变时恢复启用前的值，不覆盖期间明确设置的不同值。
+选择状态与信号按需分配，UI 普通 Label 也不建立选择信号连接。信号连接在开关和
+重新挂载之间保留，控件最终销毁后不再调用观察者。外部回调改变正文、选区、启用状态、
+挂载或销毁对象时，停止后续陈旧输入动作与通知。
+
+交互：单击定位，Shift 单击延伸，拖动捕获直到边界外，双击 Unicode 单词并向外对齐
+Cluster；箭头沿视觉字形和视觉行导航，Home/End 定位行端，Primary+Home/End 定位
+全文首尾，Shift 扩展；Primary+A/C 全选/复制，Escape 取消拖选并折叠选区。
+其余按键继续传播，Label 不处理输入、删除、剪切和粘贴。
+可选 Label 主动认领选择手势，因此在 HeaderBar、Button 或 DragSource 内也优先选择；
+普通 Label 的命中/拖动行为保持不变。Tab 可以到达可选 Label，失焦保留选区。
+
+右键或 Shift+F10/Menu 打开 Copy/SelectAll；右键不移动已有选区。菜单使用框架已有
+本地化资源。Copy 直接调用只返回错误；内置输入操作失败时单次发出 CopyError，
+不重复报告、不弹默认对话框；菜单呈现为尽力而为。
+卸载、隐藏、禁用取消活动选择和菜单；卸载销毁原生菜单与排版，但保留选区数据。
+相同 source SetText 无操作；PlainText 相同的格式变更保留选区，正文变化清空选区。
+
+样式：label 的 selection Part 用 BackgroundColor，Focused 是活动背景、Normal 是
+较弱的失焦背景；caret Part 的 ForegroundColor 用于空选区的静态 1 DIP 位置线，
+不引入闪烁计时器。先画背景再画原有文字，保留行内颜色/字重/装饰，不提供选中文字
+前景覆盖，不因拖动重复 SetTextColor 或失效文字位图。控件自己的 StyleName 可以
+覆盖相应 Part，未提供的颜色沿用 label 基础值。
+
+UI：Label(...).Selectable(true).Selection(...) / BindSelection(&state)、OnSelection、
+OnCopyError。默认自身管理选区；省略 Selection 不复位。绑定使用通用 BindValue 与
+既有显式更新，不自动追踪；声明式应用与归一不回写通知。一次属性更新会按声明顺序
+应用此节点的所有绑定，正文改变后，若声明了选区绑定，继续应用它并按新正文钳制。
+Focusable/Cursor 共享修饰器可以显式覆盖选择默认值，不改 UI 公共协调流程。
+
+Snapshot 仍是 RoleLabel、Text=PlainText；goui.label 增加 Selectable、Selection，
+值拷贝脱离控件，非编辑器，不使用 TextEditingInfo 或通用条目 Selected 状态。
+自动化仍经过正常 DispatchEvent，未增加语义动作捷径。
+
+参考：GTK 4.24.1 [Label](https://docs.gtk.org/gtk4/class.Label.html) 的可选选择、键盘和
+selection 样式节点；Qt 6.12 [QLabel](https://doc.qt.io/qt-6/qlabel.html#textInteractionFlags-prop)
+的选择可选项；Avalonia 11.3.10
+[SelectableTextBlock 实现](https://github.com/AvaloniaUI/Avalonia/blob/11.3.10/src/Avalonia.Controls/SelectableTextBlock.cs)
+的独立选区状态与背景。采用单控件选择和独立背景绘制，不复制富文本编辑器结构。
+
+首版不包含跨 Label 选择、触摸手柄、选中文字拖出、边缘自动滚动、Linux PRIMARY
+selection、富文本剪贴板或三击段落。它们不是本轮验收承诺。
 
 ## 8. 测试与实施
 
@@ -190,4 +250,6 @@ Text/BindText 和 mlang 路径，无 DevServer。支持自动断言和保留窗�
 阶段：解析与独立测试 → 样式和 Label 及语义 → UI/窗口例程 → 本机独立 X11 全仓/race/
 Software+OpenGL 1x/2x → Windows Direct2D/OpenGL/Software 与 macOS OpenGL/Software
 的 1x/2x 原生验证。交叉编译不代替运行，真实窗口不等于真实输入法验收。
-本轮无选择功能，不以复制、手势或编辑器动作作为验收项目。
+可选择窗口例程 tests/window/ui/label_selection 另外覆盖指针/键盘、Cluster、复制、菜单、
+失焦、开关、主题与 UI 绑定；
+不把已有格式化例程的通过当作选择功能验收。

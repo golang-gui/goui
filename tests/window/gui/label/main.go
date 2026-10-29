@@ -13,7 +13,8 @@
 //  2. 点击 Basic/Light/Dark 切换主题，再点 Check。文字和局部颜色跟随主题，
 //     AB...G 的 Label 与独立 native reference 行的字体、颜色、大小和装饰一致。
 //  3. 把窗口缩窄再放宽，长 Label 正常换行，括号/空格保留；编辑框可输入原始语法，
-//     只读 TextView 的模型仍包含标记；本轮没有选择 Label 或复制的能力。
+//     只读 TextView 的模型仍包含标记；本例未开启 Selectable，选择/复制另见
+//     tests/window/ui/label_selection。
 //  4. 自动步骤/Check 比较同一排版后端独立构造 TextLayout 的尺寸、基线和 RGBA 像素，
 //     并检查错误原样显示、源串/纯文本和 Snapshot，无原生输入/IME 验收承诺。
 //
