@@ -197,6 +197,137 @@ func TestTreeViewNavigationSelectionAndDisclosure(t *testing.T) {
 		t.Fatal("expander altered selection or failed")
 	}
 }
+func TestTreeViewNotificationsSurviveViewChanges(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		change func(*TreeView)
+	}{
+		{"展开", func(v *TreeView) { v.SetExpanded("root", true) }},
+		{"更换行委托", func(v *TreeView) { v.SetDelegate(&treeTestDelegate{view: v}) }},
+		{"刷新", func(v *TreeView) { v.Refresh() }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Run("选择和当前项", func(t *testing.T) {
+				v, _ := treeFixture()
+				treeLayout(v, 180, 0)
+				first, second, current := 0, 0, 0
+				v.ConnectSelection(func([]string) { first++; tc.change(v) })
+				v.ConnectSelection(func(ids []string) {
+					second++
+					if !slices.Equal(ids, []string{"root"}) {
+						t.Fatalf("选择通知错误：%v", ids)
+					}
+				})
+				v.ConnectCurrent(func(id string) {
+					current++
+					if id != "root" {
+						t.Fatalf("当前项通知错误：%q", id)
+					}
+				})
+				d, host := new(gui.EventDispatcher), &tabInputHost{root: v}
+				dispatchTabPointer(t, d, host, events.PointerDown, 60, 14)
+				dispatchTabPointer(t, d, host, events.PointerUp, 60, 14)
+				if first != 1 || second != 1 || current != 1 {
+					t.Fatalf("普通视图变化截断通知：first=%d second=%d current=%d", first, second, current)
+				}
+			})
+			t.Run("激活", func(t *testing.T) {
+				v, _ := treeFixture()
+				v.SetCurrent("root")
+				treeLayout(v, 180, 0)
+				first, second := 0, 0
+				v.ConnectActivate(func(string) { first++; tc.change(v) })
+				v.ConnectActivate(func(id string) {
+					second++
+					if id != "root" {
+						t.Fatalf("激活目标错误：%q", id)
+					}
+				})
+				host := &tabInputHost{root: v, focus: v}
+				if err := new(gui.EventDispatcher).DispatchEvent(host, events.KeyEvent{EventType: events.KeyDown, Key: events.KeyEnter}); err != nil {
+					t.Fatal(err)
+				}
+				if first != 1 || second != 1 {
+					t.Fatalf("普通视图变化截断激活：first=%d second=%d", first, second)
+				}
+			})
+		})
+	}
+}
+
+func TestTreeViewExpansionNotificationsReenter(t *testing.T) {
+	v, _ := treeFixture()
+	var expanded []string
+	v.ConnectExpanded(func(id string, value bool) {
+		if id == "root" && value {
+			v.SetExpanded("a", true)
+		}
+	})
+	v.ConnectExpanded(func(id string, value bool) {
+		if value {
+			expanded = append(expanded, id)
+		}
+	})
+	v.SetExpanded("root", true)
+	if !slices.Equal(expanded, []string{"a", "root"}) {
+		t.Fatalf("另一分支展开不应截断有效通知：%v", expanded)
+	}
+
+	// 同一节点的状态被改回时，后续监听者不能再收到过期的 true。
+	v, _ = treeFixture()
+	var values []bool
+	v.ConnectExpanded(func(id string, value bool) {
+		if value {
+			v.SetExpanded(id, false)
+		}
+	})
+	v.ConnectExpanded(func(_ string, value bool) { values = append(values, value) })
+	v.SetExpanded("root", true)
+	if !slices.Equal(values, []bool{false}) {
+		t.Fatalf("发送了过期的展开状态：%v", values)
+	}
+}
+
+func TestTreeViewActivationInvalidatesWithModelOrHost(t *testing.T) {
+	for _, change := range []string{"移除节点", "重装模型", "替换为同 ID 模型", "卸载", "卸载后重挂载"} {
+		t.Run(change, func(t *testing.T) {
+			v, m := treeFixture()
+			owner := gui.NewPopover(nil, nil)
+			defer owner.Destroy()
+			owner.SetWidget(v)
+			v.SetCurrent("root")
+			treeLayout(v, 180, 0)
+			first, second := 0, 0
+			v.ConnectActivate(func(string) {
+				first++
+				switch change {
+				case "移除节点":
+					m.Remove("root")
+				case "重装模型":
+					v.SetModel(m)
+				case "替换为同 ID 模型":
+					next := NewTreeStore[string]()
+					next.Append("", "root", "Another root")
+					v.SetModel(next)
+				case "卸载":
+					owner.SetWidget(nil)
+				case "卸载后重挂载":
+					owner.SetWidget(nil)
+					owner.SetWidget(v)
+				}
+			})
+			v.ConnectActivate(func(string) { second++ })
+			host := &tabInputHost{root: v, focus: v}
+			if err := new(gui.EventDispatcher).DispatchEvent(host, events.KeyEvent{EventType: events.KeyDown, Key: events.KeyEnter}); err != nil {
+				t.Fatal(err)
+			}
+			if first != 1 || second != 0 {
+				t.Fatalf("失效的激活继续通知：first=%d second=%d", first, second)
+			}
+		})
+	}
+}
+
 func TestTreeViewRowsSnapshotDelegateAndVirtualization(t *testing.T) {
 	v, _ := treeFixture()
 	v.SetExpandedIDs([]string{"root", "a"})
