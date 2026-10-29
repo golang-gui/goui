@@ -707,6 +707,9 @@ Activate 是用户请求，处理者可以展开或折叠节点，后续处理�
 - 插入、删除、排序、换父级、折叠后的状态保留、可见性过滤和当前项回退。
 - Shift 范围反向缩小、Primary 多选、折叠后代不进入选择。
 - 行内交互控件不触发行选择，拖动胜出后不产生点击／双击。
+- 分支／叶子及无 TreeExpander 的自定义行双击和 Enter 激活一致，不自动展开；
+  处理者中展开／换 delegate／Refresh 不截断通知，同一状态重入跳过过期值，
+  模型替换／删除和卸载／重新挂载仍中止旧通知，声明层使用最新 OnActivate。
 - 首末行、首次布局前、可变行高和超高行 Reveal，确认估计定位最终收敛且不抢后续滚动。
 - TreeView 转发内部列表请求时坐标正确；实际偏移只由 ScrollView 更新，垂直定位不改变
   水平偏移，不为目标尚未实现而创建全部前置行。
@@ -830,6 +833,30 @@ TreeView 的测试资源。新增包内测试不写源码目录，窗口截图�
   关闭，截图及构建产物位于 `/tmp/goui-model-install-oFGpFu`，未使用 DevServer。
 - 图片、菜单、文本编辑 setter 及样式／资源比较契约未改。菜单作为 ListView 调用方
   经现有包内测试和上述窗口操作回归；其开放接口直接比较问题仍需单独处理。
+
+### 9.8 激活与通知边界验证（2026-10-29）
+
+- 先在旧实现运行新增回归，确认分支双击不激活，以及展开／更换 delegate 截断后续
+  Selection、Current、Activate、Expanded 的失败；保留原有状态重入、模型重入和卸载覆盖。
+  修正后相关测试及声明层最新 OnActivate、回调内显式展开全部通过。
+- 在仅含已跟踪源码与本轮改动的仓库外副本、独立 Xvnc `:83`／Xfwm4 合成会话运行
+  `GOWORK=off GOUI_PLAT_PAINTER=software go test -mod=readonly -json ./... -count=1`：
+  3033 个测试／子测试通过，10 个既有签名／手动桌面测试跳过，0 失败。未纳入用户
+  未跟踪文件；旧测试的窗口、剪贴板及图像文件副作用均留在独立会话／临时副本。
+- `go test -mod=readonly -race ./widgets/... -count=1` 通过。Windows amd64 与
+  macOS arm64 的 widgets、widgets/ui 测试目标及 TreeView 窗口例程在
+  `CGO_ENABLED=0` 下交叉编译通过；本轮未执行两平台原生窗口验收。
+- 本机 Ubuntu 22.04.5 amd64／Go 1.25.8，Xvnc／Xfwm4、Mesa 23.2.1 llvmpipe：
+  GUI／UI × Software／OpenGL × 1x／2x 共 8 组真实 X11 输入通过。分支双击和 Enter
+  各激活一次、不自动展开，箭头仅展开，叶子激活、行内按钮隔离、左右键展开／折叠、
+  Snapshot、亮暗往返及正常关闭均通过；未以 DevServer 或直接调用语义信号替代输入。
+- 新增窗口参数 `-expand-on-activate`，应用在 Activate 里显式切换展开。GUI／UI 各在
+  Software 1x、OpenGL 2x 完成共 4 组操作，分支双击和 Enter 都只切换一次；GUI 的
+  第二个 Activate 监听者每次均收到通知。全部 12 组进程退出码为 0。
+
+日志、桌面驱动和截图保存在仓库外 `/tmp/goui-tree-activation-IrP9Qa43`；本轮独立
+显示会话验证后关闭，不影响用户原有桌面。不将 llvmpipe 或交叉编译视为实体 GPU、
+Windows／macOS 原生桌面或所有 IME／拖放组合的验收。
 
 ## 10. 文件管理例程与应用拖放边界
 

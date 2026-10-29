@@ -8,6 +8,7 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
+	"github.com/golang-gui/goui/platform/events"
 	baseui "github.com/golang-gui/goui/ui"
 	"github.com/golang-gui/goui/widgets"
 )
@@ -200,6 +201,50 @@ func TestTreeViewControlledUncontrolledAndCallbacks(t *testing.T) {
 		t.Fatal("unmounted binding retained callback")
 	}
 }
+func TestTreeViewActivationBindings(t *testing.T) {
+	m := newTreeBindingModel()
+	c := new(treeBindingContext)
+	old, latest, after := 0, 0, 0
+	v := TreeView[string](m, nil).OnActivate(func(string) { old++ })
+	tree := v.Mount(c).(*widgets.TreeView)
+	defer v.Unmount(c, tree)
+	v.Update(c, tree)
+	tree.Arrange(geometry.Rect(0, 0, 200, 100))
+	tree.LayoutVisible(geometry.Size{Width: 200, Height: 100}, geometry.Point{})
+	d, host := new(gui.EventDispatcher), &splitUIHost{root: tree}
+	// 声明层自动组合的 TreeExpander 不应拦截分支行体激活。
+	for range 2 {
+		for _, kind := range []events.EventType{events.PointerDown, events.PointerUp} {
+			buttons := events.PointerButtonLeftDown
+			if kind == events.PointerUp {
+				buttons = 0
+			}
+			if err := d.DispatchEvent(host, events.PointerEvent{
+				EventType: kind, Position: geometry.Point{X: 60, Y: 14},
+				Button: events.PointerButtonLeft, Buttons: buttons,
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if old != 1 || tree.Expanded("root") {
+		t.Fatalf("声明层分支双击错误：old=%d expanded=%v", old, tree.Expanded("root"))
+	}
+	v = TreeView[string](m, nil).OnActivate(func(id string) {
+		latest++
+		tree.SetExpanded(id, true)
+	})
+	v.Update(c, tree)
+	tree.ConnectActivate(func(string) { after++ })
+	host.SetFocusedWidget(tree)
+	if err := d.DispatchEvent(host, events.KeyEvent{EventType: events.KeyDown, Key: events.KeyEnter}); err != nil {
+		t.Fatal(err)
+	}
+	if old != 1 || latest != 1 || after != 1 || !tree.Expanded("root") {
+		t.Fatalf("最新回调或回调中展开截断通知：old=%d latest=%d after=%d expanded=%v", old, latest, after, tree.Expanded("root"))
+	}
+}
+
 func TestTreeViewRowUnbindAndContentReplacement(t *testing.T) {
 	m := widgets.NewTreeStore[int]()
 	m.Append("", "a", 1)

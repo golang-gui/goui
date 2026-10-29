@@ -91,6 +91,9 @@ func (v *TreeViewView[T]) OnExpanded(fn func(string, bool)) *TreeViewView[T] {
 	v.onExpanded = fn
 	return v
 }
+
+// OnActivate handles row-body double clicks and Enter for both branches and leaves.
+// Expansion is unchanged unless the handler updates it explicitly.
 func (v *TreeViewView[T]) OnActivate(fn func(string)) *TreeViewView[T] { v.onActivate = fn; return v }
 func (v *TreeViewView[T]) ContextMenu(fn func(string) []*baseui.MenuItemView) *TreeViewView[T] {
 	v.contextMenu = fn

@@ -1811,6 +1811,7 @@ arm64 构建限制保留在原记录中；本轮未修改实现或复验这些�
 - [x] TreeView UI、样式和语义：widgets/ui 链式绑定、widgets/style 兜底／Modern 外观、HierarchyInfo；包内测试与 tests/window/widgets/tree_view GUI／UI 例程已实现。本机 Linux/X11/Xfwm4 Software 1x UI、OpenGL 2x GUI 核心交互通过；Windows amd64／macOS arm64 例程交叉编译通过。
 - [ ] TreeView Windows／macOS 原生桌面验收：选择／导航、平台菜单触发、窗口 resize、主题／缩放和行内控件；不以交叉编译代替真实操作。
 - [x] TreeView 质量调整：区分状态／内容／结构刷新，保留同 delegate 行池和离屏宽度估计；修正状态通知重入、右键子控件优先级；补齐 selected／expander 交互样式，current 仅画边框，Reveal 完成判断统一到 ListView。验证记录见 DesignTreeView。
+- [x] TreeView 激活与通知边界（2026-10-29）：双击行体与 Enter 对分支／叶子统一激活，箭头独立展开；区分行结构与模型／生命周期版本，保留重入后的有效通知及模型／卸载失效防护。3033 项全仓测试、widgets race、独立 X11 的 GUI／UI × Software／OpenGL × 1x／2x 及 4 组回调内展开通过；Windows／macOS 仅交叉编译，未做原生桌面验收，详见 DesignTreeView §9.8。
 - [x] TreeView Modern 中性高亮（2026-10-04）：selected 三态背景及 current 边框不再跟随主题色，仅跟随亮暗模式；保留样式覆盖、圆角和交互状态。对应调色板及回归说明见 DesignTreeView。
 - [x] ListView／TreeView 模型安装边界（2026-10-04）：命令式 SetModel／SetDelegate 显式重新设置，UI 按稳定模型指针避免重复安装并复用 Delegate；移除 sameListObject／treeSameObject，补齐订阅计数、重置／保留状态及不可比较值回归。验证见 DesignTreeView。
 - [x] 内存文件管理例程（2026-10-04）：example/filemanager 用现有公开 API 组合树／列表拖放、同级排序、整棵子树移动、多选去重和自定义反馈；模型及 Snapshot 回归、全仓测试、本机 Software 1x 主要操作与 OpenGL 1x 排序／亮暗通过。Windows／macOS 仅交叉编译；整行外壳、悬停展开和拖动自动滚动限制见 DesignTreeView 第 10 节，未扩展控件 API。
