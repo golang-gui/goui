@@ -11,7 +11,9 @@ type LabelView struct {
 	wrapMode   gui.WrapMode
 }
 
-// Label declares plain text. Omission means empty text; at most one argument is allowed.
+// Label declares display text. A leading \{format\} enables named style ranges
+// as documented by gui.Label. Omission means empty text; at most one argument
+// is allowed.
 func Label(text ...string) *LabelView {
 	if len(text) > 1 {
 		panic("ui: Label accepts at most one text argument")

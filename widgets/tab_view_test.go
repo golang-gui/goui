@@ -9,6 +9,21 @@ import (
 
 // 页面管理与关闭请求。
 
+func TestTabFormattedTitleSnapshot(t *testing.T) {
+	source := `\{format\}页\{bold:签\}`
+	page := NewTabPage(source, nil)
+	if page.Title() != source || page.Snapshot().Text != "页签" {
+		t.Fatal("标签页面语义泄漏格式标记，或修改了源标题")
+	}
+	view := NewTabView()
+	view.AppendPage(page)
+	bar := NewTabBar()
+	bar.SetView(view)
+	if item := bar.items[page]; item == nil || item.Snapshot().Text != "页签" {
+		t.Fatal("标签按钮语义泄漏格式标记")
+	}
+}
+
 func TestTabViewSelectionRemovalAndCloseRequest(t *testing.T) {
 	v := NewTabView()
 	a, b, c := NewTabPage("A", gui.NewLabel("a")), NewTabPage("B", gui.NewLabel("b")), NewTabPage("C", gui.NewLabel("c"))

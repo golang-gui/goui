@@ -17,6 +17,32 @@ import (
 	"github.com/golang-gui/goui/style"
 )
 
+func TestDropDownFormattedTextSnapshot(t *testing.T) {
+	d, m, _, _ := dropDownInput()
+	defer d.SetModel(nil)
+	source := `\{format\}\{bold:选项\}`
+	m.Set(0, DropDownItem{Text: source})
+	d.SetSelected(0)
+	if d.Snapshot().Text != "选项" || m.ItemAt(0).Text != source {
+		t.Fatal("选项语义应为纯文本，模型源串不变")
+	}
+	dropDownPopup(d)
+	if err := d.Open(); err != nil {
+		t.Fatal(err)
+	}
+	d.content.Measure(layout.Unbounded())
+	d.content.Arrange(geometry.Rect(0, 0, 180, 120))
+	if got := d.content.list.Children()[0].Snapshot().Text; got != "选项" {
+		t.Fatalf("展开选项语义=%q", got)
+	}
+	d.Close()
+	d.SetSelected(-1)
+	d.SetPlaceholder(source)
+	if d.Snapshot().Text != "选项" {
+		t.Fatal("占位文案泄漏格式标记")
+	}
+}
+
 // 不创建原生窗口。Popover 替身只替代原生显示，输入仍走 EventDispatcher。
 type dropDownTestPopup struct {
 	gui.Popover

@@ -685,7 +685,7 @@ func (r *menuItemRow) Snapshot() WidgetInfo {
 	info.Selected = r.selected
 	info.Enabled = info.Enabled && r.mi != nil && r.mi.Enabled()
 	if r.mi != nil {
-		info.Text = r.mi.Label()
+		info.Text = r.label.PlainText()
 		if r.mi.Separator() {
 			info.Role = RoleMenuSeparator
 		} else if info.Enabled {

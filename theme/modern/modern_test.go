@@ -827,7 +827,18 @@ func TestPaletteAndCoverage(t *testing.T) {
 			family, _ := s.FontFamily()
 			size, _ := s.FontSize()
 			fg, ok := s.ForegroundColor()
-			if family != "Test Family" || size != 17 || !ok || fg == nil {
+			// 颜色语义样式现在是局部覆盖；字体由 Label 基础格式提供。
+			if name == MutedText || name == Warning || name == Error || name == Success {
+				if _, set := s.FontSize(); set {
+					t.Fatalf("%s 不应重置范围字号", name)
+				}
+				if _, set := s.FontFamily(); set {
+					t.Fatalf("%s 不应重置范围字体", name)
+				}
+				if !ok || fg == nil {
+					t.Fatalf("%s 缺少前景色", name)
+				}
+			} else if family != "Test Family" || size != 17 || !ok || fg == nil {
 				t.Fatalf("incomplete typography: %s", name)
 			}
 		}

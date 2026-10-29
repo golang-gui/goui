@@ -201,7 +201,7 @@ func (m *tabMotion) advance(elapsed time.Duration) {
 }
 func (item *tabItem) Snapshot() gui.WidgetInfo {
 	info := item.WidgetBase.Snapshot()
-	info.Role, info.Text = RoleTab, item.page.title
+	info.Role, info.Text = RoleTab, item.body.label.PlainText()
 	info.Selected = item.bar.view != nil && item.bar.view.Current() == item.page
 	if !item.Visible() {
 		info.Children = nil // the reserved slot has no clickable content

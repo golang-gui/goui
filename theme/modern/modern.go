@@ -189,14 +189,14 @@ func builtInRules(options Options) []style.Rule {
 			ForegroundColor(focusColor(accent, p.text, []color.RGBA{progressTrack, p.window})).Radius(2),
 		style.Name(AccentIcon).ForegroundColor(focus),
 		text("label").State(style.Disabled).ForegroundColor(p.disabled),
-		text(MutedText).ForegroundColor(p.muted),
+		style.Name(MutedText).ForegroundColor(p.muted),
 		text(Card).BackgroundColor(p.surface).BorderColor(mix(p.surface, p.text, .12)).
 			BorderWidth(1).Radius(10).Shadow(style.Shadow{}),
 		text(Sidebar).BackgroundColor(p.sidebar).
 			BorderWidth(0).Radius(0).Shadow(style.Shadow{}),
-		text(Warning).ForegroundColor(p.warning),
-		text(Error).ForegroundColor(p.error),
-		text(Success).ForegroundColor(p.success),
+		style.Name(Warning).ForegroundColor(p.warning),
+		style.Name(Error).ForegroundColor(p.error),
+		style.Name(Success).ForegroundColor(p.success),
 		text("header-bar").BackgroundColor(p.window),
 		text("text-input").BackgroundColor(p.surface).BorderColor(p.border).BorderWidth(1).Radius(6),
 		style.Name("text-input").State(style.Focused).BorderColor(focus).BorderWidth(2),
