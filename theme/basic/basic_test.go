@@ -9,6 +9,34 @@ import (
 	"github.com/golang-gui/goui/style"
 )
 
+func TestInlineTextPresetsArePartial(t *testing.T) {
+	sheet := Sheet()
+	for _, name := range []string{"bold", "italic", "underline", "strikethrough"} {
+		s := sheet.Resolve(style.Sel{Name: name})
+		if _, ok := s.FontSize(); ok {
+			t.Fatalf("%s 不应重置外层字号", name)
+		}
+		if _, ok := s.FontFamily(); ok {
+			t.Fatalf("%s 不应重置外层字体", name)
+		}
+		if _, ok := s.ForegroundColor(); ok {
+			t.Fatalf("%s 不应重置外层颜色", name)
+		}
+	}
+	if w, ok := sheet.Resolve(style.Sel{Name: "bold"}).FontWeight(); !ok || w != style.FontWeightBold {
+		t.Fatal("bold 缺少字重")
+	}
+	if s, ok := sheet.Resolve(style.Sel{Name: "italic"}).FontStyle(); !ok || s != style.FontStyleItalic {
+		t.Fatal("italic 缺少斜体")
+	}
+	if v, ok := sheet.Resolve(style.Sel{Name: "underline"}).Underline(); !ok || !v {
+		t.Fatal("underline 缺少下划线")
+	}
+	if v, ok := sheet.Resolve(style.Sel{Name: "strikethrough"}).Strikethrough(); !ok || !v {
+		t.Fatal("strikethrough 缺少删除线")
+	}
+}
+
 func TestCompleteFallbackTextAndStates(t *testing.T) {
 	sheet := Sheet()
 	wantFamily := ""

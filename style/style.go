@@ -8,6 +8,23 @@ import (
 	"github.com/golang-gui/goui/core/colors"
 )
 
+// FontWeight is an OpenType weight request. Zero uses the native regular face.
+type FontWeight uint16
+
+const (
+	FontWeightNormal FontWeight = 400
+	FontWeightBold   FontWeight = 700
+)
+
+// FontStyle requests an upright, italic or oblique font face.
+type FontStyle uint8
+
+const (
+	FontStyleNormal FontStyle = iota
+	FontStyleItalic
+	FontStyleOblique
+)
+
 type State int
 
 const (
@@ -37,6 +54,10 @@ type Style struct {
 	radius          float32
 	fontFamily      string
 	fontSize        float32
+	fontWeight      FontWeight
+	fontStyle       FontStyle
+	underline       bool
+	strikethrough   bool
 	shadow          Shadow
 	fields          bits.Bitmap[uint64]
 }
@@ -49,6 +70,10 @@ const (
 	fieldRadius
 	fieldFontFamily
 	fieldFontSize
+	fieldFontWeight
+	fieldFontStyle
+	fieldUnderline
+	fieldStrikethrough
 	fieldShadow
 )
 
@@ -78,6 +103,20 @@ func (s Style) FontFamily() (string, bool) {
 
 func (s Style) FontSize() (float32, bool) {
 	return s.fontSize, s.fields.Check(fieldFontSize)
+}
+
+// FontWeight returns the font weight and whether it was explicitly set.
+func (s Style) FontWeight() (FontWeight, bool) { return s.fontWeight, s.fields.Check(fieldFontWeight) }
+
+// FontStyle returns the font slant and whether it was explicitly set.
+func (s Style) FontStyle() (FontStyle, bool) { return s.fontStyle, s.fields.Check(fieldFontStyle) }
+
+// Underline returns the decoration and its presence, including explicit false.
+func (s Style) Underline() (bool, bool) { return s.underline, s.fields.Check(fieldUnderline) }
+
+// Strikethrough returns the decoration and its presence, including explicit false.
+func (s Style) Strikethrough() (bool, bool) {
+	return s.strikethrough, s.fields.Check(fieldStrikethrough)
 }
 
 // Shadow returns the complete shadow value and whether it was explicitly set.
@@ -147,6 +186,22 @@ func (s Style) merge(override Style) Style {
 	}
 	if override.fields.Check(fieldFontSize) {
 		s.setFontSize(override.fontSize)
+	}
+	if override.fields.Check(fieldFontWeight) {
+		s.fontWeight = override.fontWeight
+		s.fields.Set(fieldFontWeight, true)
+	}
+	if override.fields.Check(fieldFontStyle) {
+		s.fontStyle = override.fontStyle
+		s.fields.Set(fieldFontStyle, true)
+	}
+	if override.fields.Check(fieldUnderline) {
+		s.underline = override.underline
+		s.fields.Set(fieldUnderline, true)
+	}
+	if override.fields.Check(fieldStrikethrough) {
+		s.strikethrough = override.strikethrough
+		s.fields.Set(fieldStrikethrough, true)
 	}
 	if override.fields.Check(fieldShadow) {
 		s.setShadow(override.shadow)
@@ -226,6 +281,40 @@ func (r Rule) FontFamily(family string) Rule {
 
 func (r Rule) FontSize(size float32) Rule {
 	r.Style.setFontSize(size)
+	return r
+}
+
+// FontWeight sets a font weight. Zero selects regular; other values must be 100-900.
+func (r Rule) FontWeight(weight FontWeight) Rule {
+	if weight != 0 && (weight < 100 || weight > 900) {
+		panic("style: invalid font weight")
+	}
+	r.Style.fontWeight = weight
+	r.Style.fields.Set(fieldFontWeight, true)
+	return r
+}
+
+// FontStyle sets a font slant, including an explicit upright face.
+func (r Rule) FontStyle(slant FontStyle) Rule {
+	if slant > FontStyleOblique {
+		panic("style: invalid font style")
+	}
+	r.Style.fontStyle = slant
+	r.Style.fields.Set(fieldFontStyle, true)
+	return r
+}
+
+// Underline enables or explicitly disables underlining for Label text.
+func (r Rule) Underline(value bool) Rule {
+	r.Style.underline = value
+	r.Style.fields.Set(fieldUnderline, true)
+	return r
+}
+
+// Strikethrough enables or explicitly disables strikethrough for Label text.
+func (r Rule) Strikethrough(value bool) Rule {
+	r.Style.strikethrough = value
+	r.Style.fields.Set(fieldStrikethrough, true)
 	return r
 }
 
@@ -312,6 +401,8 @@ func sameStyle(a, b Style) bool {
 		a.radius == b.radius &&
 		a.fontFamily == b.fontFamily &&
 		a.fontSize == b.fontSize &&
+		a.fontWeight == b.fontWeight && a.fontStyle == b.fontStyle &&
+		a.underline == b.underline && a.strikethrough == b.strikethrough &&
 		colors.Equal(a.shadow.Color, b.shadow.Color) &&
 		a.shadow.Offset == b.shadow.Offset &&
 		a.shadow.BlurRadius == b.shadow.BlurRadius &&

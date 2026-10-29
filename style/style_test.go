@@ -191,3 +191,27 @@ func TestSameRulesComparesStyleValues(t *testing.T) {
 		t.Fatal("different rules should not compare equal")
 	}
 }
+
+// 文字字段按存在性叠加；显式正常字形和 false 必须取消前层值。
+func TestTextStyleFieldsAndEquality(t *testing.T) {
+	initial := Name("text").FontWeight(FontWeightBold).FontStyle(FontStyleItalic).Underline(true).Strikethrough(true)
+	reset := Name("text").State(Disabled).FontWeight(FontWeightNormal).FontStyle(FontStyleNormal).Underline(false).Strikethrough(false)
+	result := Sheet(initial, reset).Resolve(Sel{Name: "text", State: Disabled})
+	if v, ok := result.FontWeight(); !ok || v != FontWeightNormal {
+		t.Fatal("字重没有重置", v, ok)
+	}
+	if v, ok := result.FontStyle(); !ok || v != FontStyleNormal {
+		t.Fatal("字形没有显式重置", v, ok)
+	}
+	if v, ok := result.Underline(); !ok || v {
+		t.Fatal("下划线没有显式关闭", v, ok)
+	}
+	if v, ok := result.Strikethrough(); !ok || v {
+		t.Fatal("删除线没有显式关闭", v, ok)
+	}
+	for _, rule := range []Rule{Name("text").FontWeight(FontWeightBold), Name("text").FontStyle(FontStyleNormal), Name("text").Underline(false), Name("text").Strikethrough(false)} {
+		if SameRules([]Rule{Name("text")}, []Rule{rule}) {
+			t.Fatal("文字字段变化没有进入样式比较", rule)
+		}
+	}
+}
