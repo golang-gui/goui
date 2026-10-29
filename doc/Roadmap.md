@@ -851,6 +851,11 @@ Window 不管理特殊图层；Overlay 可放在窗口根部、局部内容区�
 
 ### P1.4 样式驱动 Icon 与后续静态 SVG
 
+当前接入改为 oksvg v0.1.0 的解析/Rasterize，删除 GOUI 自有 SVG 补偿；
+缓存、着色和资源限制仍由 icon/svg 管理，见 [DesignSVG](DesignSVG.md)。
+Software Painter 的 srwiley 绘制依赖本切片不动，后续迁移需单独验收。
+本机窗口验收进度见 Plan，不将底层库验收等同于 GOUI 后端验收。
+
 首个绘制型 Icon 切片已实现，详见 [Icon 设计](DesignIcon.md)：
 
 - `gui.Icon` 接受公开 IconSource.Image 接口，传入所需物理像素尺寸与自身样式前景，等比居中显示最终图片；默认 16 DIP。固定多尺寸图片、SVG、自定义 Software 离屏绘制统一接入。
@@ -865,7 +870,7 @@ Window 不管理特殊图层；Overlay 可放在窗口根部、局部内容区�
 - 普通画刷重复预乘已按 [绘制颜色契约](DesignGraphicsColor.md) 统一修复三后端及文字颜色入口，不由 Icon 补偿；Windows/macOS 运行验收待执行。
 
 受限 SVG 切片已实现，见 [SVG 设计](DesignSVG.md)：可选 icon/svg 包，默认前景着色、
-WithOriginalColors 保留原色；SVG Source 缓存原始像素与着色结果，Icon 持有最终图片/原生缓存，替换资源在
+WithRawColors 保留原色；SVG Source 缓存原始像素与着色结果，Icon 持有最终图片/原生缓存，替换资源在
 End 后释放。全仓/race/像素测试和 Windows/macOS 交叉编译通过；窗口验收待执行
 （`tests/window/ui/svgicon`）。
 
