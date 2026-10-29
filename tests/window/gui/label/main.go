@@ -4,6 +4,7 @@
 // GOUI_PLAT_PAINTER=software/opengl（Windows 另测 direct2d），GOUI_PLAT_SCALE=1/2。
 // DIR 必须是仓库外已有目录；-auto 完成 Basic/Modern Light/Dark 后输出 PASS 并退出。
 // 普通启动同样先自动断言，再保留窗口供手动操作；请待 PASS 后操作。
+// 布局：HeaderBar 贴内容区顶部；留白仅用于正文，窗口按钮与 HeaderBar 垂直居中。
 // 初始：Integrated 窗口、Basic；原样文本、嵌套粗斜体/语义颜色、混合字号、装饰、
 // UTF-8 参数、错误降级，以及仍显示原始语法的 TextInput/只读 TextView。
 // 操作与预期：
@@ -97,31 +98,36 @@ func main() {
 	win.SetTitle("GOUI Label format")
 	root := gui.NewLinearBox(layout.DirectionVertical)
 	root.SetCrossAlign(layout.CrossStretch)
-	root.SetPadding(geometry.UniformInsets(14))
-	root.SetSpacing(10)
+	// HeaderBar 须位于内容区顶部；把正文留白放到单独的容器中。
+	body := gui.NewLinearBox(layout.DirectionVertical)
+	body.SetCrossAlign(layout.CrossStretch)
+	body.SetPadding(geometry.UniformInsets(14))
+	body.SetSpacing(10)
+	body.SetMainWeight(1)
 	title := &probe{Label: gui.NewLabel("GOUI Label format — Basic / Light / Dark")}
 	header := gui.NewHeaderBar()
 	header.SetChild(title)
 	root.AddChild(header)
+	root.AddChild(body)
 	toolbar := gui.NewLinearBox(layout.DirectionHorizontal)
 	toolbar.SetSpacing(8)
-	root.AddChild(toolbar)
+	body.AddChild(toolbar)
 	plain := gui.NewLabel(`Raw: a < b & C:\Users\Example \{bold:literal\}`)
-	root.AddChild(plain)
+	body.AddChild(plain)
 	heading := gui.NewLabel(`\{format\}Heading 24 pt — \{warning:warning \{bold:bold\}\} / \{italic:italic\}`)
 	heading.SetStyleName("heading")
 	heading.SetWrapMode(gui.WrapWordChar)
-	root.AddChild(heading)
+	body.AddChild(heading)
 	mixed := gui.NewLabel(`\{format\}Size: \{small:12 pt\} / \{big:28 pt\} / \{underline:下划线\} / \{strikethrough:删除线\}`)
-	root.AddChild(mixed)
+	body.AddChild(mixed)
 	template := `\{format\}File: \{bold:%s\} — é / 中文 / العربية / 🙂`
 	file := `C:\data\{format\}\{bold:literal\}.txt`
 	message := gui.NewLabel(fmt.Sprintf(template, textformat.EscapeArg(template, file)))
 	message.SetWrapMode(gui.WrapWordChar)
-	root.AddChild(message)
+	body.AddChild(message)
 	badSource := `\{format\}\{bold:unclosed`
 	bad := gui.NewLabel(badSource)
-	root.AddChild(bad)
+	body.AddChild(bad)
 	source := `\{format\}A\{bold:B\}\{italic:C\}\{red:D\}\{underline:E\}\{strikethrough:F\}\{big:G\}`
 	sample := gui.NewLabel(source)
 	sample.SetStyleName("sample")
@@ -139,17 +145,17 @@ func main() {
 	row.SetCrossAlign(layout.CrossStart)
 	row.AddChild(sample)
 	row.AddChild(ref)
-	root.AddChild(row)
+	body.AddChild(row)
 	input := gui.NewTextInput()
 	input.SetText(source)
-	root.AddChild(input)
+	body.AddChild(input)
 	view := gui.NewTextView()
 	view.SetReadOnly(true)
 	view.SetMaxSize(geometry.Size{Height: 62})
 	view.Model().SetText(source)
-	root.AddChild(view)
+	body.AddChild(view)
 	status := gui.NewLabel("Checking native text layout and source/plain contracts…")
-	root.AddChild(status)
+	body.AddChild(status)
 	win.SetWidget(root)
 	mode := 0
 	apply := func(index int) {
@@ -163,6 +169,14 @@ func main() {
 	}
 	apply(0)
 	verify := func() {
+		headerBounds := header.Snapshot().Bounds
+		check(headerBounds.Y == root.Snapshot().Bounds.Y, "HeaderBar is inset below the content top")
+		var chrome gui.ChromeInfo
+		handle := win.Chrome().ConnectInfo(func(info gui.ChromeInfo) { chrome = info })
+		handle.Disconnect()
+		if chrome.Enabled && chrome.Controls == gui.ChromeControlsCustom {
+			check(math.Abs(float64(chrome.ControlsBounds.Center().Y-headerBounds.Center().Y)) < .001, "window controls are not vertically centered in HeaderBar")
+		}
 		check(sample.Text() == source && sample.PlainText() == "ABCDEFG" && sample.Snapshot().Text == "ABCDEFG", "source/plain/Snapshot mismatch")
 		check(!sample.Focusable() && input.Text() == source && view.Model().Text() == source, "Label became selectable or editor interpreted format")
 		check(bad.PlainText() == badSource, "invalid format was partially displayed")
@@ -209,7 +223,7 @@ func main() {
 			}
 		}
 		status.SetText(fmt.Sprintf("CHECK PASS theme=%d typography=%s native baseline=%.2f", mode, app.Typography().Name(), measured.Baseline))
-		log.Printf("CHECK PASS theme=%d typography=%s baseline=%g", mode, app.Typography().Name(), measured.Baseline)
+		log.Printf("CHECK PASS theme=%d typography=%s baseline=%g chrome=%t headerCenter=%g controlsCenter=%g", mode, app.Typography().Name(), measured.Baseline, chrome.Enabled, headerBounds.Center().Y, chrome.ControlsBounds.Center().Y)
 		if *capture != "" {
 			img, e := gui.RenderWidget(root, 0)
 			must(e)

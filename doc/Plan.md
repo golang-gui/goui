@@ -2035,3 +2035,17 @@ arm64 构建限制保留在原记录中；本轮未修改实现或复验这些�
   与 OpenGL 2x 均 PASS，覆盖等待、点击／滚轮、禁用、Escape、更新、焦点和模态切换。
 - 本轮没有远端原生运行；Windows/macOS 仅记为编译通过。测试程序、日志、配置及构建
   产物放在仓库外，验证后关闭本轮独立会话，保留用户已有桌面。
+
+
+## 2026-10-29 Label 例程标题栏布局修正
+
+- 基线 0e1e7d9。GUI/UI Label 例程原来对根 VBox 留白，使 HeaderBar 下移并失去顶部
+  按钮高度查询资格。保留框架顶部 HeaderBar 契约，只将例程留白移到独立正文容器。
+- [x] 调整两个例程，入口说明正确布局；增加贴顶和自绘按钮垂直居中的窗口断言。
+- [x] 本机独立 X11 合成会话的 Software/OpenGL 1x/2x、全仓及目标编译验证。
+- Linux amd64 / Go 1.25.8，独立 Xvnc :74 / Xfwm4 合成会话：GUI/UI 两个例程在
+  Software/OpenGL、1x/2x 共八次通过；Chrome 均启用，HeaderBar 与按钮组中心均为
+  Y=20 DIP。OpenGL 1x 实际窗口截图复核通过；原有排版像素和绑定／语言断言保留。
+- 干净源码副本 `go test -json ./... -count=1`：2679 项测试／子测试通过、10 项既有
+  跳过、0 失败。两个例程的 Windows amd64 / macOS arm64 `CGO_ENABLED=0 go build`
+  通过，本轮未执行远端原生验证。产物在仓库外，验证后关闭本轮独立会话。
