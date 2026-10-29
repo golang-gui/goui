@@ -2,99 +2,107 @@
 
 ## 范围与分层
 
-`icon/svg` 是可选资源适配包，直接实现公开的 gui.IconSource.Image 接口。
-gui/ui 不反向依赖解析器；platform 不认识 SVG、主题或控件。没有图标名称注册、
-系统主题搜索、字体图标或全局资源管理器。
+`icon/svg` 是实现 `gui.IconSource` 的可选资源适配包。SVG 的 XML、命名空间、样式、
+引用、路径、变换和栅格化统一由自维护 `github.com/golang-gui/oksvg v0.1.0` 负责。
+GOUI 只负责输入/图片尺寸限制、原色或前景着色、CPU 图片缓存与控件接入。
+不重写 SVG、不剥离属性、不按图形重复编译，也不在 GOUI 补偿底层绘制错误。
 
 ```go
 source, err := svg.Parse(strings.NewReader(svgText))
 if err != nil {
     return err
 }
-// 在 UI build 外解析；source 可供多个控件共享。
+// Prepare sources outside UI build to preserve their image caches.
 original := source.WithRawColors()
 ui.Icon(source).Size(20).Style(modern.AccentIcon)
 ui.Icon(original).Size(20)
 ```
 
-入口为 `Parse(io.Reader) (*Source, error)`，返回值直接提供 Image 和 WithRawColors。
-失败返回 nil 与 error。文件、embed 和网络加载
-由应用负责；解析器不访问外部资源。返回值默认按完整图像 alpha 遮罩重新着色，
-不是把 SVG 中某一个颜色替换成主题色。WithRawColors 保留原始 RGBA。
-currentColor 在本 profile 中固定解析为黑色（默认模式只关心覆盖度），不实现 CSS
-color 继承；原色模式也遵守此约定。
+保持 `Parse(io.Reader) (*Source, error)`、`WithRawColors` 和
+`Image(width, height int, foreground gui.Color) image.Image`。不修改 IconSource、
+gui/ui 或 Painter 的接口。文件、embed 及网络加载仍由应用完成。
 
-## 首版支持范围
+## 解析与错误
 
-这是明确受限的静态图标 profile，不承诺浏览器 SVG 兼容性。
+Parse 最多读取 4 MiB，然后直接调用 `oksvg.ReadIconStream(..., StrictErrorMode)`。
+不建立 GOUI 自有属性白名单；底层已经支持的内容不会在适配层再次拒绝。
+DOCTYPE、xml:space、clip-rule、命名空间元数据交由解析器处理；不获取 DTD、
+不展开自定义实体、不读取外部文件或 URL。未知属性的前向兼容与已知未实现绘制能力的
+Strict 拒绝由同一个解析器决定。clip-rule 不代替 fill-rule，也不意味着支持 clipPath。
 
-- 单个 svg 根，有限且正的 viewBox，或 width/height；非零 viewBox 原点。
-- 按比例居中 contain（xMidYMid meet），透明补边，不新增 Icon Fit 属性。
-- path、rect、circle、ellipse、line、polyline、polygon、嵌套 g。
-- fill/stroke、nonzero/evenodd 填充、线宽、端点、连接、miterlimit、dash/offset。
-- 固定颜色、fill-opacity/stroke-opacity，祖先继承及局部覆盖；简单 inline style。
-- translate、scale、rotate、matrix；描边局部变换仅支持等比伸缩、旋转和反射。
-- defs 中直接定义的 linearGradient/radialGradient、stop、objectBoundingBox。
-  渐变必须先定义后引用，不支持带局部变换的渐变图形。
-- title/desc、常见 aria/data 元数据不转化为 Widget 语义。
+解析错误返回 nil Source 和带上下文的 error，不返回部分文档。不使用宽泛 recover
+将程序缺陷转换为普通加载错误；可复现的解析器/栅格器缺陷在相应自维护仓库修复。
+完整深度、引用和数值校验由固定版本的 oksvg 实现，不能据此承诺完整不可信 SVG 沙箱。
 
-明确拒绝：text、image、use、clip/mask/filter、script/animation、外部引用、CSS
-样式表/选择器、非 1 的整体 opacity（需要离屏组透明合成）、gradientTransform、
-userSpaceOnUse、非均匀/剪切描边变换、嵌套 svg、其他 preserveAspectRatio 模式。
-不完整支持的内容不能靠日志告警后继续绘制；Parse 返回错误及 nil Source。
+支持路径、基本形状、局部 use、简单 class/inline 样式、color/currentColor 继承、
+填充规则、描边/虚线、百分比及绝对单位、仿射变换、线性/径向渐变、后置资源定义等。
+支持范围以固定版本的 [oksvg 说明](https://github.com/golang-gui/oksvg/tree/v0.1.0)
+为准，不扩展为浏览器 SVG 或完整 CSS 的承诺。文本、外部图像、filter、mask、实际 clipPath、
+pattern、非 1 整体 opacity、嵌套 svg 等未实现绘制仍报错。
+非零 fr 及边界焦点配合 repeat/reflect 的部分退化语义仍不是完整支持能力。
 
-XML 上限 4 MiB、嵌套深度 64；栅格输出单边最多 4096 像素。这些是图标资源限制，
-不是完整不可信 SVG 沙箱。该包用于应用选定的静态资产，不适合任意网络文档。
-未承诺 SVG 全规范的非法值恢复和 CSS 长度单位；资源宜使用 viewBox 内的数值坐标。
+## 栅格化与颜色
 
-## 实现与依赖证据
+Source 私有持有解析后的 SvgIcon，不向调用方暴露可变解析结构。
+Image 对合法尺寸直接调用 `SvgIcon.Rasterize`，获得透明初始化的预乘 `image.RGBA`。
+viewBox、非零原点、preserveAspectRatio、局部及视口描边缩放全部由该接口处理。
+默认 xMidYMid meet；文档显式声明的 none、其他对齐和 slice 按文档生效。
+GOUI 不再创建 SVG Scanner、遍历 SVGPaths 或重复缩放线宽、dash 和 offset。
 
-采用 `github.com/golang-gui/oksvg v0.0.0-20260918033125-75e7ce872d46`
-解析几何与绘制样式。该 fork 基于 `fyne-io/oksvg v0.2.0`，复用仓库已有 rasterx
-和 scanFT 栅格化。该依赖使 x/image 升至 v0.24.0，并引入对应 x/net/x/text 版本；
-已将文字、图形包包含在全仓回归中。
+默认模式按完整图像 alpha 遮罩和 Icon 的预乘前景色着色，复用 icon/internal/pixels.Tint。
+这不等于把 SVG 内的 currentColor 替换为前景色。WithRawColors 保留文档 RGBA，忽略前景参数；
+原色模式的 currentColor 遵循 SVG 自身 color 及其继承，无声明时为默认黑色。
+项目 Logo 继续使用原色配置。
 
-分成三个步骤，而不是重写 Path 解析器：
+## 缓存与资源归属
 
-1. normalize：检查支持范围，规范化继承、不完整的变换及描边处理。
-2. compile：使用 oksvg 解析每个图形及祖先样式/共享 defs，保存不可变路径。
-3. rasterize：创建当前尺寸 scanner，复制路径绘制状态，生成预乘 image.RGBA。
+Source 保留一个有锁的最近尺寸原图缓存和一个最近前景色的着色缓存。
+相同尺寸/前景返回同一张不可变图片；仅更换前景不重复解析或栅格化；尺寸变化才重新栅格化。
+旧返回图片不再修改。WithRawColors 创建共享解析结果、缓存互相独立的新配置。
+底层 Rasterize 使用调用局部状态，多个配置可并发使用同一解析结果。
 
-固定版本的 [oksvg 源码](https://github.com/fyne-io/oksvg/tree/v0.2.0) 有几处影响
-本接口承诺的行为，均由包内像素回归约束：
+每边输出仍限定 1..4096 物理像素。nil/零值 Source 或非法尺寸返回 nil；
+有效空 SVG 返回有尺寸的透明图片，不显示缺失占位。Image 不添加错误回调。
+Source 不持有 graphics.Image、Painter 或 Window；gui.Icon 继续管理原生上传缓存和释放时机。
 
-- 路径坐标随变换变化，但描边宽度、dash/offset 需同步缩放。
-- SetTarget 的组合不能直接满足非零 viewBox 原点的映射；使用
-  T(居中) × S(等比缩放) × T(-viewBox 原点)，不修改共享 SvgIcon。
-- 解析器未应用 fill-rule。按图形编译后设置公开的 UseNonZeroWinding，避免靠
-  路径序号猜测（空图形不一定产生路径）、修改全局默认或访问私有字段。
-- 填充/描边 opacity 的局部覆盖需在适配层归一；group opacity 不冒充它们。
+## 工具接入
 
-这部分编译只发生在 Parse 时；共享 definitions 会按图形重复编译，不作为大型
-SVG 文档的高性能导入器。后续依赖升级若原生修复相应问题，应由回归测试指导简化。
-使用 scanFT 保留复合路径的 winding 规则，不用忽略该规则的 scanner 代替。
+`Source.AspectRatio() float64` 返回解析后 viewBox 宽/高，与请求图片尺寸无关；
+nil 或未初始化的 Source 返回零。它只属于具体 svg.Source，不扩展 IconSource。
+cmd/svgpng 用该只读值处理长边尺寸，移除其独立 XML/长度解析；显式 WxH 仍请求指定画布。
+cmd/goui 继续通过相同 Source 生成 ICO/ICNS，不另建 SVG 解析或绘制路径。
 
-设计参考 [Qt QSvgRenderer](https://doc.qt.io/qt-6/qsvgrenderer.html) 的资源/控件分离，
-但不照搬 QObject 生命周期、共享可变 renderer 或完整 SVG API。GOUI 保持 Source
-内容不可变，Source 负责最终像素和颜色策略，Icon 负责样式解析与原生缓存；
-资源生命周期详见当前 [IconSource 与 Icon 实现](../gui/icon.go)。
+## Software 范围
 
-## 缓存、错误与并发
+本切片不迁移 Software Painter。它仍使用原来的 srwiley/rasterx、srwiley/scanFT，
+原版本与绘制代码保持不变。新 oksvg 间接依赖 golang-gui/rasterx、golang-gui/scanFT
+的 v0.1.0；两个模块家族暂时并存，不混传各自的命名类型。
+Software 的依赖统一另行设计和验收；SVG 使用新 CPU 位图并按普通图片接入三个绘制后端。
 
-SVG 文档不持有 graphics.Image 或 Painter。每次栅格化只使用局部 scanner 和路径
-状态；Source 自持一个有锁的最近尺寸原图/前景色结果缓存，返回的旧图片不再修改。
-尺寸不同、颜色模式不同的 Icon 互不污染。包内并发测试同时渲染共享文档及调用
-公开 Image，检查像素一致性并通过 race 检查。
+## 测试与验收
 
-Parse 返回加载/格式/不支持错误，并将第三方解析 panic 转换为错误。
-Image(width, height, foreground) 不返回 error；资源已在 Parse 阶段准备完成。
-请求超出每边 1..4096 像素或未初始化的 Source 返回 nil，由 Icon 使用缺失占位符；
-有效的空 SVG 返回透明图片，不显示占位符。不将程序缺陷或 OOM 转换成加载错误。
-Source 缓存原始像素，因此仅换前景色不重复解析或栅格化；Icon 不再二次着色。
-原色模式忽略前景，但 Icon 无需识别此模式：Source 返回原有图片时可复用原生资源。
-与 icon.Image 共用的着色算法位于 icon/internal/pixels；graphics 不提供图标着色工具。
-WithRawColors 创建独立配置，请在 UI build 外创建并复用资源以保留内部缓存。
-UI 重建会重新取图，不比较 Source；返回相同不可变图片时，Icon 复用已有原生上传资源。
+包内保留原有缓存、孔洞、描边/虚线缩放、透明度、渐变、并发、尺寸限制和非法输入覆盖。
+原来因适配层限制拒绝的合法 SVG 改为独立像素正向断言；不删除有效断言或扩大容差。
+补充 DOCTYPE、命名空间、clip-rule、class/use、后置渐变、非均匀描边、preserveAspectRatio、
+圆外焦点和近直线端部。固定 resvg 原始素材附来源及许可；测试不访问网络。
+
+本机独立 X11 会话运行 tests/window/ui/svgicon：Software/OpenGL 的 1x/2x，
+检查 Brain/People/Dev tool、亮暗/主题/尺寸、资源替换、多窗口共享及新增兼容性行。
+真实操作经过正常平台事件；不以 DevServer 或仅打开窗口代替操作验收。
+执行全仓 go test、相关 race/fuzz、Windows amd64/macOS arm64 编译；实际结果另记 Plan。
+
+### v0.1.0 接入验收（2026-10-29）
+
+同一公开 Parse/Image 最小例程确认：改动前 DOCTYPE、xml:space、clip-rule、
+color/currentColor 四组被适配层拒绝，改动后均按独立预期输出蓝色内部像素。
+新增固定素材和解析圆盘断言覆盖圆外焦点、近直线端部和连续弧线；不靠改写素材或
+扩大容差通过。包内、全仓、race/fuzz、跨目标编译及本机独立 X11 四组窗口验收已完成，
+环境、跳过项及异常记录见 [Plan](Plan.md#svg-原生栅格化接入2026-10-29)。
+Windows/macOS 只完成交叉编译，未将其计为原生窗口验收。Software Painter 未修改。
+
+## 历史验证记录
+
+下列日期记录对应旧适配实现及当时限制；旧 normalize/逐图形编译与补偿不是当前方案。
 
 ## 验证记录（2026-09-17）
 

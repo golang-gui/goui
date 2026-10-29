@@ -44,21 +44,44 @@ func TestSizeResolve(t *testing.T) {
 	}
 }
 
-func TestAspectRatio(t *testing.T) {
-	cases := map[string]float64{
-		`<svg viewBox="0 0 200 100"/>`:                         2,
-		`<svg viewBox="10,10 50,100" width="1" height="1"/>`:   0.5,
-		`<?xml version="1.0"?><svg width="30px" height="10"/>`: 3,
-	}
-	for body, want := range cases {
-		got, err := aspectRatio([]byte(body))
-		if err != nil || got != want {
-			t.Errorf("aspectRatio(%s) = %v, %v; want %v", body, got, err, want)
+// 尺寸统一来自 svg.Parse 的结果，包括单位换算、DOCTYPE 与非零 viewBox。
+func TestConvertUsesParsedAspectRatio(t *testing.T) {
+	for index, test := range []struct {
+		body          string
+		width, height int
+	}{
+		{`<svg viewBox="0 0 200 100"/>`, 40, 20},
+		{`<svg viewBox="10,10 50,100" width="1" height="1"/>`, 20, 40},
+		{`<?xml version="1.0"?><svg width="30px" height="10"/>`, 40, 13},
+		{`<!DOCTYPE svg><svg width="2in" height="1in" xml:space="preserve"/>`, 40, 20},
+	} {
+		dir := t.TempDir()
+		file := filepath.Join(dir, "source.svg")
+		if err := os.WriteFile(file, []byte(test.body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		written, err := convert(file, dir, []sizeSpec{{edge: 40}})
+		if err != nil {
+			t.Fatalf("用例 %d: %v", index, err)
+		}
+		f, err := os.Open(written[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := png.DecodeConfig(f)
+		f.Close()
+		if err != nil || cfg.Width != test.width || cfg.Height != test.height {
+			t.Fatalf("用例 %d: 尺寸 %dx%d，期望 %dx%d，错误 %v", index, cfg.Width, cfg.Height, test.width, test.height, err)
 		}
 	}
 	for _, body := range []string{``, `<svg/>`, `<svg viewBox="0 0 0 10"/>`} {
-		if _, err := aspectRatio([]byte(body)); err == nil {
-			t.Errorf("aspectRatio(%s) succeeded", body)
+		dir := t.TempDir()
+		file := filepath.Join(dir, "invalid.svg")
+		if err := os.WriteFile(file, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := convert(file, dir, []sizeSpec{{edge: 40}}); err == nil {
+			t.Fatalf("不应接受 %s", body)
 		}
 	}
 }
