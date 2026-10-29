@@ -66,6 +66,10 @@ func coreRules() []style.Rule {
 	size := defaultFontSize
 
 	rules := []style.Rule{
+		style.Name("bold").FontWeight(style.FontWeightBold),
+		style.Name("italic").FontStyle(style.FontStyleItalic),
+		style.Name("underline").Underline(true),
+		style.Name("strikethrough").Strikethrough(true),
 		style.Name("border-box").BackgroundColor(color.Transparent).
 			BorderColor(color.Transparent).BorderWidth(0).Radius(0),
 		style.Name(styleNameWindow).BackgroundColor(color.White),
