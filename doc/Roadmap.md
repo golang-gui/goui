@@ -1,5 +1,11 @@
 # GOUI 实用化与未来路线
 
+## DrawingArea（2026-10-30）
+
+新增显式软件绘图区域，绘制函数与重绘查询分开，缓存由控件持有；不扩展样式
+系统的复杂边框／软件回退，不引入异步渲染。设计与验收见
+[DesignDrawingArea](DesignDrawingArea.md)／[Plan](Plan.md)。
+
 ## 按钮分组职责收敛（2026-10-30）
 
 ButtonGroup 负责连排外观，MenuButtonGroup 负责局部菜单联动容器，CheckButtonGroup

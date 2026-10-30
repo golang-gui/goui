@@ -12,7 +12,8 @@ import (
 
 // Painter is the widget-local drawing context supplied to Widget.Paint.
 //
-// A Painter is valid only during Widget.Paint or a Root.AfterPaint callback.
+// A Painter is valid only during Widget.Paint, a DrawingArea draw function,
+// or a Root.AfterPaint callback.
 // Widgets draw themselves in local logical coordinates; the GUI traversal
 // owns child painting and restores state before entering a child or sibling.
 type Painter interface {
@@ -157,6 +158,10 @@ func (p *painter) paintSelf(widget Widget, saveDepth int) {
 }
 
 func (p *painter) paintAfter(fn func(Painter, geometry.Rectangle), bounds geometry.Rectangle) {
+	p.paintInBounds("Root.AfterPaint", func(p Painter) { fn(p, bounds) }, bounds)
+}
+
+func (p *painter) paintInBounds(name string, fn func(Painter), bounds geometry.Rectangle) {
 	state := p.state
 	depth := len(p.saves)
 	p.frames = append(p.frames, painterFrame{saveDepth: depth})
@@ -167,7 +172,7 @@ func (p *painter) paintAfter(fn func(Painter, geometry.Rectangle), bounds geomet
 		p.state = state
 		p.applyState()
 	}()
-	p.paintCall("Root.AfterPaint", depth, func() { fn(p, bounds) })
+	p.paintCall(name, depth, func() { fn(p) })
 }
 
 func (p *painter) paintCall(name string, saveDepth int, draw func()) {

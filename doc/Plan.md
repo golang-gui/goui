@@ -1,5 +1,14 @@
 # Plan
 
+## DrawingArea 软件绘图区域（2026-10-30）
+
+设计见 [DesignDrawingArea](DesignDrawingArea.md)。样式不接入软件回退。
+
+- [x] GUI 绘制函数、重绘查询、软件缓存、生命周期与包内测试。
+  gui 全包与 DrawingArea／Painter 定向 race 通过；真实窗口验收随最后阶段完成。
+- [ ] UI 稳定回调代理、查询连接管理与协调回归。
+- [ ] 本机独立窗口用例、全仓／race／跨平台编译及分阶段提交。
+
 ## ButtonGroup 与局部分组简化（2026-10-30）
 
 设计见 [DesignButtonGroup](DesignButtonGroup.md)，覆盖旧 MenuButtonGroup／CheckButton
