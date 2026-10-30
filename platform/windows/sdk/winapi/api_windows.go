@@ -30,6 +30,7 @@ var (
 	procDestroyWindow            = user32Dll.NewProc("DestroyWindow")
 	procEnableWindow             = user32Dll.NewProc("EnableWindow")
 	procShowWindow               = user32Dll.NewProc("ShowWindow")
+	procSetForegroundWindow      = user32Dll.NewProc("SetForegroundWindow")
 	procUpdateWindow             = user32Dll.NewProc("UpdateWindow")
 	procSetParent                = user32Dll.NewProc("SetParent")
 	procGetWindowRect            = user32Dll.NewProc("GetWindowRect")
@@ -355,6 +356,13 @@ func SetParent(wnd, parent HWND) (HWND, error) {
 
 func ShowWindow(wnd HWND, cmd int) BOOL {
 	ret, _, _ := syscall.SyscallN(procShowWindow.Addr(), uintptr(wnd), uintptr(cmd))
+	return BOOL(ret)
+}
+
+// SetForegroundWindow returns zero when the system declines activation. That
+// result does not use LastError and must not be reported as a syscall failure.
+func SetForegroundWindow(wnd HWND) BOOL {
+	ret, _, _ := syscall.SyscallN(procSetForegroundWindow.Addr(), uintptr(wnd))
 	return BOOL(ret)
 }
 

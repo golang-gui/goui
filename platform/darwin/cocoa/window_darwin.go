@@ -221,17 +221,38 @@ func (w *Window) SetTitle(title string) (err error) {
 	return nil
 }
 
-func (w *Window) Show() error {
-	if w.closed {
+func (w *Window) Show() (err error) {
+	if w.closed || !w.window.Valid() {
 		return common.ErrUnavailable
 	}
 	AutoReleasePool(func() {
+		// AppKit notifications can reenter Go and destroy this window. Keep the
+		// native receiver alive, and stop after callbacks end its GUI lifetime.
+		native := w.window
+		native.Retain()
+		defer native.Release()
+		if native.IsMiniaturized() {
+			native.Deminiaturize(0)
+		}
+		if w.closed || !w.window.Valid() {
+			err = common.ErrUnavailable
+			return
+		}
 		NSApp.ActivateIgnoringOtherApps(true)
-		w.window.MakeKeyAndOrderFront(0)
+		if w.closed || !w.window.Valid() {
+			err = common.ErrUnavailable
+			return
+		}
+		native.MakeKeyAndOrderFront(0)
+		if w.closed || !w.window.Valid() {
+			err = common.ErrUnavailable
+			return
+		}
 		w.updateControlsPosition()
-		w.window.MakeFirstResponder(w.view.NSResponder)
+		// The content view became first responder during creation. Repeated
+		// Show must not reset native editing or the logical widget focus.
 	})
-	return nil
+	return err
 }
 
 func (w *Window) Hide() error {

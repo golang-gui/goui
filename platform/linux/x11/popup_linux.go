@@ -40,7 +40,7 @@ func (p *Popup) Transparent() bool     { return p.win.Transparent() }
 func (p *Popup) NativeFBConfig() glx.FBConfig { return p.win.NativeFBConfig() }
 
 func (p *Popup) Destroy()                   { p.win.Destroy() }
-func (p *Popup) Show() error                { return p.win.Show() }
+func (p *Popup) Show() error                { return p.win.mapWindow() }
 func (p *Popup) Hide() error                { return p.win.Hide() }
 func (p *Popup) RequestPaint() error        { return p.win.RequestPaint() }
 func (p *Popup) Draw(img image.Image) error { return p.win.Draw(img) }

@@ -35,6 +35,7 @@ type Platform struct {
 		WM_PROTOCOLS                 xlib.Atom
 		WM_DELETE_WINDOW             xlib.Atom
 		_NET_SUPPORTED               xlib.Atom
+		_NET_ACTIVE_WINDOW           xlib.Atom
 		_NET_WM_STATE                xlib.Atom
 		_NET_WM_STATE_SKIP_TASKBAR   xlib.Atom
 		_NET_WM_MOVERESIZE           xlib.Atom
@@ -83,6 +84,7 @@ type Platform struct {
 	cursorTheme         *cursorTheme
 	nextDragOfferID     uint64
 	dragSource          *xdndSource
+	lastUserTime        xlib.Time // latest native button/key press, including XIM-filtered input
 
 	dragMessages          map[uintptr]xlib.Window // outstanding, externally addressed SendEvent requests
 	previousXErrorHandler xlib.ErrorHandler
@@ -114,6 +116,7 @@ func NewPlatform(appId string) (_ *Platform, err error) {
 	p.atoms.WM_PROTOCOLS = p.display.InternAtom("WM_PROTOCOLS", false)
 	p.atoms.WM_DELETE_WINDOW = p.display.InternAtom("WM_DELETE_WINDOW", false)
 	p.atoms._NET_SUPPORTED = p.display.InternAtom("_NET_SUPPORTED", false)
+	p.atoms._NET_ACTIVE_WINDOW = p.display.InternAtom("_NET_ACTIVE_WINDOW", false)
 	p.atoms._NET_WM_STATE = p.display.InternAtom("_NET_WM_STATE", false)
 	p.atoms._NET_WM_STATE_SKIP_TASKBAR = p.display.InternAtom("_NET_WM_STATE_SKIP_TASKBAR", false)
 	p.atoms._NET_WM_MOVERESIZE = p.display.InternAtom("_NET_WM_MOVERESIZE", false)

@@ -19,6 +19,12 @@ type Window interface {
 	SetParent(parent Window) error
 	Title() string
 	SetTitle(title string) error
+	// Show makes the window visible. On desktops it requests foreground
+	// activation and restores a minimized window using native behavior.
+	// Maximized and fullscreen modes are preserved. Success means submitted,
+	// not that the system granted focus. Only native events report the result.
+	// A destroyed window returns ErrUnavailable. Popup has a separate,
+	// non-activating Show contract.
 	Show() error
 	// Hide unmaps the native window without destroying it, so it can be shown
 	// again later.

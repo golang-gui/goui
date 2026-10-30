@@ -222,8 +222,24 @@ func (w *Window) Show() error {
 	if w.NativeHandle() == 0 {
 		return common.ErrUnavailable
 	}
+	command := winapi.SW_SHOW
+	if winapi.IsIconic(w.hwnd) != winapi.FALSE {
+		command = winapi.SW_RESTORE
+	}
+	winapi.ShowWindow(w.hwnd, command)
+	if w.NativeHandle() == 0 {
+		return common.ErrUnavailable
+	}
+	// SW_SHOW alone does not reliably foreground an already visible window.
+	// A refusal is normal foreground-lock policy, not a LastError failure.
+	winapi.SetForegroundWindow(w.hwnd)
+	if w.NativeHandle() == 0 {
+		return common.ErrUnavailable
+	}
 	winapi.UpdateWindow(w.hwnd)
-	winapi.ShowWindow(w.hwnd, winapi.SW_SHOW)
+	if w.NativeHandle() == 0 {
+		return common.ErrUnavailable
+	}
 	return nil
 }
 

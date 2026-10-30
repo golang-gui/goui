@@ -46,6 +46,71 @@ supports AppKit move and limited backend-managed native frame-tracking resize. S
 [native interaction contract](DesignWindowHitTest.md) for input ownership and
 error semantics. No platform backend simulates a GUI hit-test policy.
 
+## Show and foreground activation
+
+Desktop `Window.Show() error` presents an existing window to the user: it makes
+the window visible, restores it if minimized, and requests foreground activation.
+Calling it again on a visible window makes the same request. It preserves an
+existing maximized/fullscreen mode, logical widget focus, text and selection.
+Restoration uses the native window system's previous presentation, not
+`RequestState(Normal)`. `RequestState` continues to request a specific presentation
+state; focus is a separate observation, not another WindowState.
+
+There is no additional Present/Activate/Raise API. UI uses the existing
+`App.FindWindow(id)` and explicitly calls Show on the returned GUI window. Ordinary
+UI reconciliation only shows newly created windows, so unrelated updates do not
+repeatedly request foreground activation.
+
+Success means that the native request was submitted. The window manager may
+decline activation, keep the window on another workspace or apply its own
+foreground policy. `Focused`/`ConnectFocus` and observed state events remain the
+facts; Show never synthesizes them or resets the focused Widget. Destroyed native
+or GUI windows return ErrUnavailable. Native activation may synchronously reenter
+application callbacks, so the caller checks lifetime before subsequent work.
+
+Backend mapping:
+
+- X11 maps/deiconifies the managed window, then sends `_NET_ACTIVE_WINDOW` to the
+  root with `SubstructureRedirectMask | SubstructureNotifyMask`, source 1
+  (application), the last native button/key-press server timestamp and no invented
+  active-window ID. Before any native user input, timestamp is CurrentTime (0).
+  Activity is recorded before XIM/drag filtering; synthetic SendEvent input and
+  unrelated windows do not supply user activity. The atom is platform-owned.
+  No direct XSetInputFocus, retry, delay, XSync or workspace-changing policy is
+  added. A WM without the protocol may ignore the activation request; mapping
+  still works, including on an X server without a WM.
+- Win32 uses SW_RESTORE only when IsIconic reports a minimized window; otherwise
+  SW_SHOW preserves its existing presentation. It then requests
+  SetForegroundWindow. Foreground-lock refusal is not a LastError failure and
+  does not imply an invented focus event. No AttachThreadInput or topmost toggle
+  is used to bypass system restrictions.
+- AppKit explicitly deminiaturizes, activates the application and uses
+  makeKeyAndOrderFront. The native receiver is retained across callbacks;
+  destruction stops subsequent access. The content view is already first
+  responder at creation, so repeated Show does not reassign it.
+
+Popup.Show retains its independent non-activating contract. X11 Popup and explicit
+state requests use a private map operation; Win32/AppKit retain their existing
+non-activating Popup paths. Menu, DropDown and Tooltip must not activate a window
+as a consequence of sharing native window machinery.
+
+Evidence: [GTK4 present](https://docs.gtk.org/gtk4/method.Window.present.html)
+documents the combined presentation intent. [GTK 4.18.6 X11 focus implementation](https://github.com/GNOME/gtk/blob/4.18.6/gdk/x11/gdksurface-x11.c#L1983)
+and [EWMH 1.5 §3.8](https://specifications.freedesktop.org/wm/1.5/ar01s03.html#idm45446104463728)
+provide the activation message. GOUI uses the managed WM request and does not
+adopt GTK's direct-input-focus fallback. [ShowWindow](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-showwindow)
+and [SetForegroundWindow](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow)
+define the Win32 behavior and foreground restrictions. AppKit uses the existing
+deminiaturize/activation/key-window bindings. Native macOS verification is separate
+from cross-compilation; see Plan for this slice's actual coverage.
+
+Window verification: `go run ./tests/window/gui/window_show [-auto]
+[-chrome=native|integrated|none]`. The program checks repeated/hidden/minimized
+Show, maximized restoration, selection/focus preservation, non-activating Popup
+and destroyed-window errors. Optional `-fullscreen` exercises supported native
+fullscreen requests. Native desktop observation is required; headless unit tests
+only cover protocol construction, user timestamps and GUI lifecycle boundaries.
+
 ## Default initial placement
 
 When no position is requested, each backend uses its native placement facility:
