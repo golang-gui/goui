@@ -8,7 +8,7 @@ import (
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
 )
 
-// Pure size conversion: no AppKit calls or desktop connection.
+// 只验证大小换算，不调用 AppKit 或连接桌面。
 func TestPopupSizeInPoints(t *testing.T) {
 	for _, tt := range []struct {
 		name           string
