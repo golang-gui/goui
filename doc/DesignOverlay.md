@@ -200,14 +200,18 @@ func (v *OverlayView) Overlays(items ...*OverlayItemView) *OverlayView
 
 func OverlayItem(child View) *OverlayItemView
 func (v *OverlayItemView) Fill(fill bool) *OverlayItemView
+func (v *OverlayItemView) Modal(modal bool) *OverlayItemView
 func (v *OverlayItemView) OnPosition(
     fn func(available, size geometry.Size, position *geometry.Point),
 ) *OverlayItemView
 ```
 
-OverlayItemView 仅描述子 View 与 Overlay 的布局关系，不实现 View，不嵌入 ViewBase，
+OverlayItemView 描述子 View 与 Overlay 的布局及可选模态关系，不实现 View，不嵌入 ViewBase，
 不创建额外 Widget。Visible、Style、MinSize／MaxSize 等修饰符属于内部 Child。
 Fill 默认 false；OnPosition 替换回调，nil 或下一轮未设置时恢复原点定位。
+Modal 默认 false；为 true 时委托 gui.ModalScope 限制所属 Root 的内容输入，
+不强制 Fill、不绘制遮罩、不处理关闭。Visible 仍属于 Child；隐藏撤销模态参与，
+再次显示复用关联。false 或省略仅移除 UI 持有的边界，不修改控件自有模态资源。
 Overlays 替换整个列表，不累积添加。nil 项、nil Child 和 Build 返回 nil 的内容不生成节点。
 
 ```go
@@ -220,12 +224,13 @@ ui.Overlay(
         p.X = available.Width - size.Width - 8
         p.Y = 8
     }),
-    ui.OverlayItem(confirmationLayer.Visible(showConfirmation)).Fill(true),
+    ui.OverlayItem(confirmationLayer.Visible(showConfirmation)).Fill(true).Modal(true),
 )
 ```
 
 confirmationLayer 可以继续使用 `ui.Overlay(mask, ui.OverlayItem(panel).OnPosition(...))`
-组合遮罩和居中面板。UI 不添加点击外部关闭、键盘模态或焦点恢复策略。
+组合遮罩和居中面板。UI 不添加点击外部关闭策略；模态与焦点恢复委托
+[ModalScope](DesignModal.md)，没有另一套 UI 状态机。
 
 协调约定：
 
@@ -241,6 +246,8 @@ confirmationLayer 可以继续使用 `ui.Overlay(mask, ui.OverlayItem(panel).OnP
   统一管理各目标的节点生命周期。不增加独立 Root、包装 Widget 或控件专属协调分支。
 - 每个覆盖节点只连接一次 GUI 定位信号，重建时刷新回调和 Fill，移除／卸载时断开。
   更新后请求布局；窗口尺寸变化会在 GUI Arrange 中重新查询定位，无须 UI 重建。
+- Modal 的 Scope 保存在同一个覆盖项状态中，重建复用，输出替换／移除／声明释放时
+  清理；局部 Build 输出变更复用既有 apply 回调重新配置。不会增加包装 Widget。
 - 定位查询仍受 GUI 的同步约束：不保留结果指针，不在回调中改变控件树或同步重建布局。
 - 主槽位与覆盖列表有独立、稳定的目标身份，Root 无需识别 Overlay。普通卸载调用
   挂载目标清理 UI 管理的节点；窗口销毁路径仅释放 UI 连接及状态，不先拆走 GUI 控件树。
@@ -259,4 +266,6 @@ confirmationLayer 可以继续使用 `ui.Overlay(mask, ui.OverlayItem(panel).OnP
 - UI 主节点独立协调、覆盖列表局部 ID／类型复用及重排、无 ID 回退、nil 项和组合 View 展开。
 - UI Fill／回调更新与重置、隐藏后保留实例、无重建缩放定位、连接复用及单次释放。
 - UI 普通卸载与窗口销毁路径，以及嵌套确认层的快照和真实输入分发。
+- UI Modal 的缺省／显式取消、隐藏保留、焦点恢复、非 Fill 输入边界、Tab 循环、
+  重排、局部组合替换输出与 GUI 自有边界归属；真实窗口例程见 tests/window/ui/modal。
 - 运行 `go test ./...`；不修改平台或事件命中机制。
