@@ -64,6 +64,48 @@ func TestCoordinatorTransferRetainsStateAndSurvivesBothUpdateOrders(t *testing.T
 	}
 }
 
+func TestModifiedSubtreeTransferRetainsOwnerAndLocalUpdates(t *testing.T) {
+	value := MakeState("before")
+	rt, fake := bindingApp(t, func() RootView {
+		return Root().Windows(
+			Window("source").Content(VBox(Modify(Build(func() View {
+				return Label(value.Get()).MainWeight(9)
+			})).ID("page").MainWeight(1).Style("card"))),
+			Window("target").Content(VBox()),
+		)
+	})
+	a, b := rt.windows["source"].root, rt.windows["target"].root
+	from, to := fake.windows[0].Widget().(*gui.LinearBox), fake.windows[1].Widget().(*gui.LinearBox)
+	n := a.root.children[0].nodes[0]
+	w := n.widget
+	base := n.body.body.baseCtx
+	value.Set("queued before move")
+	if err := (&Coordinator{owner: a.root}).TransferChild(w, to, func() error {
+		from.RemoveChild(w)
+		to.AddChild(w)
+		value.Set("during move")
+		return nil
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	rt.windows["source"].window.Destroy()
+	fake.runPosted()
+	if n.root != b || n.widget != w || n.body.body.baseCtx != base || n.released ||
+		w.(*gui.Label).Text() != "during move" || w.MainWeight() != 1 || w.StyleName() != "card" || w.ID() != "page" {
+		t.Fatal("移交丢失修饰、上下文、排队状态或重新创建内容")
+	}
+	value.Set("after move")
+	fake.runPosted()
+	if w.(*gui.Label).Text() != "after move" || w.MainWeight() != 1 {
+		t.Fatal("目标 Root 局部更新丢失外层修饰")
+	}
+	rt.destroyAll()
+	value.Set("released")
+	if len(base.handles) != 0 || len(fake.posts) != 0 {
+		t.Fatal("移交节点释放后保留连接或状态通知")
+	}
+}
+
 func TestCoordinatorTransferFailureAndPanicRetainRecord(t *testing.T) {
 	for _, panicMove := range []bool{false, true} {
 		a, b := transferRoots()
