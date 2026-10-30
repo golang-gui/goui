@@ -97,6 +97,8 @@ func NewTableColumn(id, title string) *TableColumn
 func (c *TableColumn) ID() string
 func (c *TableColumn) Title() string
 func (c *TableColumn) SetTitle(string)
+func (c *TableColumn) Visible() bool
+func (c *TableColumn) SetVisible(bool)
 func (c *TableColumn) Width() float32
 func (c *TableColumn) SetWidth(float32)
 func (c *TableColumn) MinWidth() float32
@@ -125,10 +127,21 @@ func (v *TableView) Columns() []*TableColumn
 func (v *TableView) SetColumns(...*TableColumn)
 ```
 
-Columns 返回副本，参数顺序就是显示顺序。先验证完整集合，再修改现有集合；拒绝
+Columns 返回所有已配置列的副本（包括隐藏列），参数顺序就是显示顺序。先验证完整集合，再修改现有集合；拒绝
 nil、重复 ID、重复对象或属于其他表格的列。相同指针可保留内容，相同 ID 的新对象
 表示替换，不隐式继承旧对象的可变状态。零列合法，保留模型但不实现记录行。
 首版不添加另一组插入／重排接口。
+
+2026-10-30 补充列显隐：`Visible` 默认 true。`SetVisible(false)` 不从 Columns 删除
+列，保留 ID、归属、顺序、配置列宽及排序状态；不占宽、不绘制、不命中，表头与单元格
+从可见快照移除，ColumnCount 和 ColumnIndex 按可见列连续计数。隐藏时取消该列表头
+拖动，安全移交表头／单元格焦点，并解绑、卸载隐藏单元格；不承诺保留内容 Widget 实例。
+全部隐藏时保留模型与行交互状态，但不实现记录行，重新显示后按需恢复。
+
+UI 提供 `.Visible(bool)`，默认 true；同 ID 的隐藏声明仍保留 Column 和协调记录，
+更新后显示使用最新 cell 构建器。省略列仍表示删除，重新添加不承诺恢复旧列宽等状态。
+该能力参考 GTK4 [ColumnViewColumn.set_visible](https://docs.gtk.org/gtk4/method.ColumnViewColumn.set_visible.html)，
+不引入新的 Widget／GUI 公共机制。
 
 ### 3.2 Delegate
 

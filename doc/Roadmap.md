@@ -929,6 +929,7 @@ Popup 在亮暗、主题色和缩放下形成一致视觉体系。
 ## 6. P3 · 高级 GUI 能力
 
 **TableView 首版代码及本机主要场景已实现／验证（2026-10-05）**，见 [设计与验证](DesignTableView.md)。
+2026-10-30 补充列 Visible：保留隐藏列配置，布局、命中和快照使用可见列；详细契约及验证范围见设计文档与 Plan。
 面向多列记录展示，组合现有 ScrollView／ListView，支持固定表头、稳定行身份、
 行虚拟化、列宽拖动、选择、排序请求、菜单及 UI 声明。先以独立回归稳定 ListView
 的 RequestLayout／Refresh 与历史尺寸估计契约，不新增 InvalidateMeasurements，

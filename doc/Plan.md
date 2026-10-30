@@ -1798,6 +1798,7 @@ arm64 构建限制保留在原记录中；本轮未修改实现或复验这些�
 - [x] 本轮属性扩展的全仓／race／无桌面快照测试、Windows amd64／macOS arm64 编译和本机 Software 1x Table UI／Tree GUI 的 Snapshot 集成验证通过；结果统一记录在 DesignWidgetSnapshot §9，不扩大为原生交互全面复验。
 - [x] 2026-10-04 通用交互扩展：ContextMenuEventController、UI OnContextMenu／Label.WrapMode；公开 TreeExpander、整行委托及 RowAt；DragMotionEventController、ScrollView 拖放自动滚动、嵌套每轴仲裁及静止指针再次命中。未改 ListView 公共契约或文件管理业务。全仓、相关 race、Windows/macOS 编译与原生相关逻辑测试通过；Linux Software/OpenGL、Windows Direct2D、macOS OpenGL 的 Integrated 1x 核心菜单／滚动／投递／取消通过。新窗口例程和具体缺口见 [交互扩展设计](DesignInteractionExtensions.md#7-进度与验证记录)。
 - [x] TableView 详细设计（2026-10-04）：见 [TableView](DesignTableView.md)。稳定行 ID、列委托、固定表头、行虚拟化、选择／排序请求／菜单、UI 与样式；明确不新增 InvalidateMeasurements，复用 RequestLayout／Refresh。
+- [x] TableView 列显隐（2026-10-30）：TableColumn.Visible／SetVisible 与声明层 Visible；隐藏保留列身份、宽度、排序及模型，移交焦点并解绑隐藏内容，快照只报告可见列。包内回归通过，独立 X11 验收待执行，见 DesignTableView。
 - [x] TableView 前置（2026-10-05）：独立回归验证局部布局失效、Refresh 与离屏估计；复现并修正 ListView 宽度失效后的定位前缀，Reveal 完成要求有效实测行。未新增衍生控件特例或公开清缓存接口。
 - [x] TableView 首版代码与本机主要验收（2026-10-05）：widgets／widgets/ui、独立样式、TableInfo 快照、包内回归及 tests/window/widgets/table 已实现；全仓、相关 race、无 DISPLAY 表格测试、Windows amd64／macOS arm64 编译通过；Linux/Xfwm4 Software 1x UI、OpenGL 1x GUI、Software 2x UI 的已操作场景通过。具体范围见 [验证记录](DesignTableView.md#13-首版实现与验证记录2026-10-05)。
 - [ ] TableView Windows／macOS 原生桌面及完整 2x 菜单／拖宽验收；Linux arm64 额外编译被既有 libc SYS_PIPE／SYS_POLL 绑定阻塞，未在本切片修改平台。

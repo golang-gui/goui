@@ -18,6 +18,7 @@ type TableColumnView[T any] struct {
 	cell                      func(widgets.TableRow, T) baseui.View
 	width, minWidth, maxWidth float32
 	resizable, sortable       bool
+	visible                   bool
 	fields                    bits.Bitmap[uint8]
 	onResize                  func(float32)
 }
@@ -25,7 +26,13 @@ type TableColumnView[T any] struct {
 const tableColumnWidth = 0
 
 func TableColumn[T any](id, title string, cell func(widgets.TableRow, T) baseui.View) *TableColumnView[T] {
-	return &TableColumnView[T]{id: id, title: title, cell: cell, minWidth: 40, resizable: true}
+	return &TableColumnView[T]{id: id, title: title, cell: cell, minWidth: 40, resizable: true, visible: true}
+}
+
+// Visible keeps the column declared while omitting its header and cells.
+func (c *TableColumnView[T]) Visible(visible bool) *TableColumnView[T] {
+	c.visible = visible
+	return c
 }
 
 // Width is controlled when declared. Omission retains user resizing, including
@@ -233,6 +240,7 @@ func (v *TableViewView[T]) Update(ctx baseui.BuildContext, widget gui.Widget) {
 		c.column.SetMaxWidth(declaration.maxWidth)
 		c.column.SetResizable(declaration.resizable)
 		c.column.SetSortable(declaration.sortable)
+		c.column.SetVisible(declaration.visible)
 		if declaration.fields.Check(tableColumnWidth) {
 			c.column.SetWidth(declaration.width)
 		}
