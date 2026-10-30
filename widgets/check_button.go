@@ -331,6 +331,8 @@ func (b *CheckButton) Paint(p gui.Painter) {
 		if border, ok := s.BorderColor(); ok && border != nil && width > 0 {
 			p.DrawEllipse(rect.Center(), max(0, (rect.Width-width)/2), max(0, (rect.Height-width)/2), width, graphics.ColorOf(border))
 		}
+	} else if !indicator {
+		gui.PaintButtonBox(p, b, s)
 	} else {
 		paintStyledBox(b, p, rect, name, part, state)
 	}
@@ -349,7 +351,12 @@ func (b *CheckButton) Paint(p gui.Painter) {
 		}
 	}
 	if b.FocusVisible() {
-		paintStyledBorder(p, geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height), gui.ResolveWidgetStyle(b, name, "focus", b.State()))
+		focus := gui.ResolveWidgetStyle(b, name, "focus", b.State())
+		if indicator {
+			paintStyledBorder(p, geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height), focus)
+		} else {
+			gui.PaintButtonFocus(p, b, focus)
+		}
 	}
 }
 
