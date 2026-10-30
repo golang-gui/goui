@@ -1,6 +1,6 @@
 # DrawingArea 软件绘图区域
 
-状态：2026-10-30 已确认，分阶段实现；进度与验证见 Plan。
+状态：2026-10-30 已实现并完成本机独立 X11 验证；验证范围及缺口见 Plan。
 
 ## 边界
 
@@ -33,6 +33,37 @@ SetDrawFunc 是显式替换，默认请求重新生成；不比较函数指针�
 ui.DrawingArea(draw).OnShouldDraw(fn) 保存最新闭包，挂载时安装稳定代理函数，
 普通重建不调用 SetDrawFunc、不生成新像素。业务闭包变化是否需更新内容，由
 ShouldDraw 显式判断。卸载断开查询连接并清空声明闭包，GUI 保留最终销毁归属。
+
+## 使用示例
+
+```go
+dirty := false
+area := gui.NewDrawingArea(func(p gui.Painter, size geometry.Size) {
+    p.FillRoundRect(geometry.Rectangle{Size: size}, 8, gui.Color{B: 1, A: 1})
+    dirty = false
+})
+area.SetMinSize(geometry.Size{Width: 240, Height: 120})
+area.ConnectShouldDraw(func(redraw *bool) {
+    *redraw = *redraw || dirty
+})
+
+// From a GUI-thread input or frame callback:
+dirty = true
+area.RequestPaint()
+```
+
+```go
+ui.DrawingArea(draw).
+    ID("preview").
+    MinSize(240, 120).
+    OnShouldDraw(func(redraw *bool) {
+        *redraw = *redraw || contentChanged
+    })
+```
+
+设置查询为始终 true 只表示每次实际绘图时重新生成，不表示持续请求帧。
+窗口例程 `tests/window/ui/drawing_area` 给出 Default／Veto／Each paint、帧连接、
+函数闭包更新和停止帧申请的完整用法；不需要系统桌面以外的自动化服务。
 
 ## 软件与缓存
 
