@@ -39,6 +39,18 @@ func TestReadCoreStateTracksComposition(t *testing.T) {
 	}
 }
 
+func BenchmarkStateSnapshotRead(b *testing.B) {
+	value := MakeState(1)
+	for name, read := range map[string]func() int{"Get": value.Get, "Peek": value.Peek} {
+		b.Run(name, func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				readBenchmarkValue = read()
+			}
+		})
+	}
+}
+
 func TestStateSetWithoutObserversDoesNotRequestUpdate(t *testing.T) {
 	fake := newWindowTestApplication()
 	value, builds := MakeState("initial"), 0
