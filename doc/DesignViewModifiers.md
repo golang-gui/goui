@@ -1,6 +1,6 @@
 # 任意 View 的显式修饰
 
-> 2026-10-30：已确认设计，分阶段实现与验证；进度见 Plan。
+> 2026-10-30：已实现并完成本机验收；跨平台范围及既有缺口见下文与 Plan。
 
 ## API 与范围
 
@@ -78,3 +78,28 @@ Snapshot、独立挂载边界、连接去重、销毁重入及跨 Root。全仓�
 与 [Expanded](https://api.flutter.dev/flutter/widgets/Expanded-class.html)：声明可以为内容提供布局配置。
 采用显式组合与输出归属，不照搬 Element/ParentData，不引入布局注册体系；不是原生平台
 行为的等价承诺。
+
+## 验证记录（2026-10-30）
+
+Ubuntu 22.04.5 amd64 / Go 1.25.8；独立 Xvnc :0 + Xfwm4 4.16.1 合成会话，
+OpenGL 为 Mesa 23.2.1 llvmpipe。使用只包含跟踪源码与本轮新增文件的临时副本，
+不混入用户未跟踪的旧测试、例程及产物，不使用 DevServer。
+
+- `GOWORK=off GOUI_PLAT_PAINTER=software GOUI_PLAT_SCALE=1 go test -mod=readonly -json ./... -count=1`：
+  3173 项测试/子测试通过、10 项已有跳过、0 失败；不删除断言或扩大 skip。
+- 无 DISPLAY/WAYLAND_DISPLAY 的 `go test -mod=readonly -race ./ui ./widgets/ui -count=1` 通过；
+  `go vet ./ui ./widgets/ui ./tests/window/ui/modifiers` 通过。
+- `tests/window/ui/modifiers -auto`，Software/OpenGL 各 1x/2x 四组均退出 0，
+  各 7 次 CHECK PASS，最后 UI MODIFIERS PASS。覆盖窗口缩放、接口/组合输出、类型/nil、
+  输入与局部快捷键/菜单、显隐/禁用、全局重建身份，以及应用禁用修饰时失焦回调销毁窗口。
+  自动操作使用 Window.DispatchEvent/CommitText；截图检查缩放后的布局与实际 Widget 输出。
+- OpenGL 1x 补做外部 XTEST 鼠标/键盘操作：Cycle、输入 ASCII、F8、Label 的 Shift+F10、
+  重建、显隐、禁用及失焦销毁均通过，计数/属性由 F6 断言；未据此宣称系统 IME 验收。
+- CGO_ENABLED=0 的 Windows amd64/macOS arm64：UI 与 widgets/ui 测试目标和窗口例程
+  交叉编译通过；本轮未执行远端或这两平台的原生桌面验收。
+- Linux arm64 额外编译未通过：libc/syscall_linux.go 引用该架构没有的 syscall.SYS_PIPE
+  和 syscall.SYS_POLL。修改前基线 60e1b54 编译 ./ui 重现相同错误，是既有平台适配缺口，
+  本轮未修改平台绑定，不计为通过。
+
+全仓历史测试的图片/剪贴板副作用限于临时副本和独立桌面；验证结束关闭本轮独立会话。
+无额外 Widget 不等于无开销：Modify 增加声明节点和合并步骤，本轮未作性能提升结论。

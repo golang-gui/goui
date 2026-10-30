@@ -2,7 +2,9 @@
 
 ## 任意 View 修饰（2026-10-30）
 
-按 [DesignViewModifiers](DesignViewModifiers.md) 增补 ui.Modify，复用现有 Widget 与信号归属；实施和验收见 Plan。
+已实现 [ui.Modify](DesignViewModifiers.md)，复用现有 Widget 与信号归属；本机包内、race/vet、
+独立 X11 Software/OpenGL 1x/2x 及 Windows/macOS 编译通过。Linux arm64 的既有 libc
+编译缺口与原生平台未验收范围见 Plan。
 
 ## 当前基线（2026-10-14）
 

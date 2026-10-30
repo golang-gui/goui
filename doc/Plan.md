@@ -6,7 +6,15 @@
 
 - [x] Modify／ModifiedView、最终属性合并与基础回归。
 - [x] 属性绑定、事件连接、释放与跨 Root 移交回归。
-- [ ] 独立窗口例程、全仓／race／vet、目标编译与独立 X11 验收；分阶段提交。
+- [x] 独立窗口例程、全仓／race／vet、目标编译与独立 X11 验收；分阶段提交。
+  - 干净源码副本 3173 项通过、10 项已有跳过、0 失败；相关 race/vet 通过。
+  - 独立 Xvnc/Xfwm4，Software/OpenGL 1x/2x 四组 -auto 和 OpenGL 1x 外部鼠标/键盘
+    操作通过；禁用修饰触发失焦回调销毁窗口时安全退出，不用 DevServer。
+  - 初次窗口验收因例程误把 TextInput 内置编辑控制器算作重复而失败；按控件类型明确
+    校验新增控制器及内置控制器，并区分内置编辑菜单优先消费后，所有计数断言通过。
+  - Windows amd64/macOS arm64 交叉编译通过，未做原生运行验收。Linux arm64 编译仍被
+    libc 的 SYS_PIPE/SYS_POLL 阻断；修改前 60e1b54 重现，未越界修改平台代码。
+  - 完整命令、范围及限制见 [验收记录](DesignViewModifiers.md#验证记录2026-10-30)。
 
 ## Win32／Cocoa 测试文件整理（2026-10-30）
 
