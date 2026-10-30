@@ -195,6 +195,11 @@ func builtInRules(options Options) []style.Rule {
 		style.Name(MutedText).ForegroundColor(p.muted),
 		text(Card).BackgroundColor(p.surface).BorderColor(mix(p.surface, p.text, .12)).
 			BorderWidth(1).Radius(10).Shadow(style.Shadow{}),
+		style.Name("dialog").Part("backdrop").BackgroundColor(color.NRGBA{A: 110}),
+		style.Name("dialog").Part("card").BackgroundColor(p.surface).BorderColor(mix(p.surface, p.text, .14)).
+			BorderWidth(1).Radius(12).Shadow(style.Shadow{Color: color.NRGBA{A: 64}, Offset: geometry.Point{Y: 4}, BlurRadius: 20}),
+		style.Name("toast").BackgroundColor(p.surface).BorderColor(mix(p.surface, p.text, .14)).
+			BorderWidth(1).Radius(8).Shadow(style.Shadow{Color: color.NRGBA{A: 48}, Offset: geometry.Point{Y: 3}, BlurRadius: 12}),
 		text(Sidebar).BackgroundColor(p.sidebar).
 			BorderWidth(0).Radius(0).Shadow(style.Shadow{}),
 		style.Name(Warning).ForegroundColor(p.warning),
