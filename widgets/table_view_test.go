@@ -948,6 +948,125 @@ func TestTableViewRevealAndReentrantCallbacks(t *testing.T) {
 	}
 }
 
+func TestTableViewColumnVisibility(t *testing.T) {
+	v, m, first, _ := tableFixture(20)
+	defer v.SetModel(nil)
+	second := NewTableColumn("other", "Other")
+	second.SetWidth(120)
+	second.SetSortable(true)
+	second.SetDelegate(&tableTestDelegate{model: m})
+	v.SetColumns(first, second)
+	v.SetSort("other", SortDescending)
+	v.SetSelection([]string{"r0"})
+	v.SetCurrent("r0")
+	tableArrange(v, 300, 180)
+	retained := v.realized["r0"].cells[0]
+	first.SetWidth(180)
+	second.SetVisible(false)
+	second.SetVisible(false)
+	tableArrange(v, 300, 180)
+	if !first.Visible() || second.Visible() || len(v.Columns()) != 2 || second.owner != v || second.Width() != 120 {
+		t.Fatal("隐藏列丢失了配置或归属")
+	}
+	if v.columnWidth != 180 || len(v.realized["r0"].cells) != 1 || v.realized["r0"].cells[0] != retained || v.headers[second].Visible() {
+		t.Fatal("隐藏列仍占空间，或无关单元格被重建")
+	}
+	if id, order := v.Sort(); id != "other" || order != SortDescending || v.Current() != "r0" || !slices.Equal(v.Selection(), []string{"r0"}) {
+		t.Fatal("隐藏列改变了排序、当前项或选择")
+	}
+	info := v.Snapshot()
+	if info.Attributes[TableInfoKey].(TableInfo).ColumnCount != 1 {
+		t.Fatal("快照列数仍包含隐藏列")
+	}
+	for _, row := range info.Children[1:] {
+		if len(row.Children) != 1 || row.Children[0].Attributes[TableInfoKey].(TableInfo).ColumnID != "name" {
+			t.Fatal("快照仍包含隐藏单元格")
+		}
+	}
+	// 已配置列顺序包含隐藏列；重新显示时使用其最新位置，索引连续。
+	v.SetColumns(second, first)
+	second.SetVisible(true)
+	tableArrange(v, 300, 180)
+	row := v.realized["r0"]
+	if row.cells[0].column != second || row.cells[1] != retained || row.cells[1].Rect().X != 120 || row.cells[0].bound.ID != "r0" {
+		t.Fatal("重新显示后顺序、绑定或列宽不正确")
+	}
+	if header := v.headers[first].Snapshot().Attributes[TableInfoKey].(TableInfo); header.ColumnIndex != 2 {
+		t.Fatal("显示列索引不连续")
+	}
+	// 全部隐藏会回收已实现行，恢复一列后仍使用原模型及交互状态。
+	first.SetVisible(false)
+	second.SetVisible(false)
+	tableArrange(v, 300, 180)
+	if v.list.ItemsCount() != 0 || len(v.realized) != 0 || len(v.Snapshot().Children) != 0 {
+		t.Fatal("全部隐藏后仍有可交互表头或单元格")
+	}
+	first.SetVisible(true)
+	tableArrange(v, 300, 180)
+	if len(v.realized) == 0 || v.Model() != m || v.Current() != "r0" || !slices.Equal(v.Selection(), []string{"r0"}) {
+		t.Fatal("恢复列丢失模型或交互状态")
+	}
+}
+
+func TestTableViewHiddenColumnInputAndFocus(t *testing.T) {
+	v, m, first, _ := tableFixture(2)
+	second := NewTableColumn("other", "Other")
+	second.SetDelegate(&tableTestDelegate{model: m, setup: func() gui.Widget {
+		w := splitTestChild(60, 20)
+		w.SetFocusable(true)
+		return w
+	}})
+	v.SetColumns(first, second)
+	owner := gui.NewPopover(nil, nil)
+	defer owner.Destroy()
+	owner.SetWidget(v)
+	tableArrange(v, 400, 180)
+	editor := v.realized["r0"].cells[1].content
+	focus := owner.(gui.EventTarget)
+	if !focus.SetFocusedWidget(editor) {
+		t.Fatal("无法聚焦单元格内容")
+	}
+	second.SetVisible(false)
+	if focus.FocusedWidget() != v || editor.Parent().Root() != nil {
+		t.Fatal("隐藏列没有安全移交焦点或卸载内容")
+	}
+	first.SetVisible(false)
+	second.SetVisible(true)
+	tableArrange(v, 400, 180)
+	columnID := ""
+	v.ConnectContextMenu(func(_, column string, _ *gui.MenuModel) { columnID = column })
+	d, host := new(gui.EventDispatcher), &tabInputHost{root: v}
+	for _, kind := range []events.EventType{events.PointerDown, events.PointerUp} {
+		if err := d.DispatchEvent(host, events.PointerEvent{EventType: kind, Position: geometry.Point{X: 30, Y: 48}, Button: events.PointerButtonRight}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if columnID != "other" || v.realized["r0"].cells[0].Snapshot().Attributes[TableInfoKey].(TableInfo).ColumnIndex != 1 {
+		t.Fatal("命中或语义索引仍使用隐藏前的列顺序")
+	}
+}
+
+func TestTableViewHideColumnCancelsResizeReentrantly(t *testing.T) {
+	v, _, column, _ := tableFixture(2)
+	defer v.SetModel(nil)
+	other := NewTableColumn("other", "Other")
+	v.SetColumns(column, other)
+	tableArrange(v, 400, 180)
+	d, host := new(gui.EventDispatcher), &tabInputHost{root: v}
+	dispatchTabPointer(t, d, host, events.PointerDown, 156, 16)
+	dispatchTabPointer(t, d, host, events.PointerMove, 196, 16)
+	if column.Width() != 200 {
+		t.Fatal("测试未开始列宽拖动")
+	}
+	column.ConnectResize(func(float32) { v.SetColumns(other) })
+	column.SetVisible(false)
+	tableArrange(v, 400, 180)
+	if column.owner != nil || !column.Visible() || column.Width() != 160 || !slices.Equal(v.Columns(), []*TableColumn{other}) {
+		t.Fatal("取消拖动后的重入导致半更新列集合")
+	}
+	v.Snapshot()
+}
+
 func TestTableViewBalancedColumnWidthsAndNarrowViewport(t *testing.T) {
 	v, m, c, _ := tableFixture(100)
 	defer v.SetModel(nil)

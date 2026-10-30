@@ -25,6 +25,7 @@ type TableView struct {
 	model                         TableModel
 	modelHandle                   signal.Handle
 	columns                       []*TableColumn
+	visibleColumns                []*TableColumn
 	columnX                       []float32
 	columnWidth                   float32
 	rowIDs                        []string
@@ -131,7 +132,7 @@ func NewTableView() *TableView {
 type tableListModel struct{ view *TableView }
 
 func (m *tableListModel) ItemsCount() int {
-	if len(m.view.columns) == 0 {
+	if len(m.view.visibleColumns) == 0 {
 		return 0
 	}
 	return len(m.view.rowIDs)
@@ -250,7 +251,7 @@ func (v *TableView) modelChanged() {
 	}
 }
 
-// Columns returns a copy in display order.
+// Columns returns all configured columns in display order, including hidden ones.
 func (v *TableView) Columns() []*TableColumn { return slices.Clone(v.columns) }
 
 // SetColumns validates the whole collection before changing ownership. Reused
@@ -292,7 +293,7 @@ func (v *TableView) SetColumns(columns ...*TableColumn) {
 			c.owner = nil
 		}
 	}
-	wasEmpty := len(v.columns) == 0
+	wasEmpty := len(v.visibleColumns) == 0
 	v.columns = slices.Clone(columns)
 	v.updateColumnGeometry()
 	for _, c := range v.columns {
@@ -303,6 +304,10 @@ func (v *TableView) SetColumns(columns ...*TableColumn) {
 			v.headerRow.AddChild(v.headerRow, h)
 		}
 		v.headerRow.MoveChildBefore(v.headers[c], nil)
+		v.headers[c].SetVisible(c.visible)
+		if !v.valid(version) {
+			return
+		}
 	}
 	for _, row := range v.realized {
 		row.syncCells()
@@ -314,7 +319,42 @@ func (v *TableView) SetColumns(columns ...*TableColumn) {
 		v.SetSort("", SortNone)
 	}
 	v.columnsChanged()
-	if wasEmpty || len(columns) == 0 {
+	if wasEmpty || len(v.visibleColumns) == 0 {
+		v.items.Emit()
+	}
+}
+
+func (v *TableView) setColumnVisible(c *TableColumn, visible bool) {
+	v.revision++
+	version := v.revision
+	header := v.headers[c]
+	if !visible {
+		// Cancellation can emit Resize and replace the column collection.
+		header.handle.cancel()
+		if !v.valid(version) || c.owner != v {
+			return
+		}
+		tableRelinquishFocus(header, v)
+		if !v.valid(version) || c.owner != v {
+			return
+		}
+	}
+	wasEmpty := len(v.visibleColumns) == 0
+	c.visible = visible
+	v.closeMenu()
+	v.updateColumnGeometry()
+	header.SetVisible(visible)
+	if !v.valid(version) {
+		return
+	}
+	for _, row := range v.realized {
+		row.syncCells()
+		if !v.valid(version) {
+			return
+		}
+	}
+	v.columnsChanged()
+	if wasEmpty || len(v.visibleColumns) == 0 {
 		v.items.Emit()
 	}
 }
@@ -332,9 +372,15 @@ func (v *TableView) columnsChanged() {
 	v.Refresh()
 }
 func (v *TableView) updateColumnGeometry() {
-	v.columnX = make([]float32, len(v.columns))
+	v.visibleColumns = v.visibleColumns[:0]
+	for _, c := range v.columns {
+		if c.visible {
+			v.visibleColumns = append(v.visibleColumns, c)
+		}
+	}
+	v.columnX = make([]float32, len(v.visibleColumns))
 	v.columnWidth = 0
-	for i, c := range v.columns {
+	for i, c := range v.visibleColumns {
 		v.columnX[i] = v.columnWidth
 		v.columnWidth += c.width
 	}
@@ -542,12 +588,12 @@ func (v *TableView) Paint(p gui.Painter) {
 func (v *TableView) Snapshot() gui.WidgetInfo {
 	info := v.WidgetBase.Snapshot()
 	info.Role, info.ItemCount = RoleTable, len(v.rowIDs)
-	info.SetAttribute(TableInfoKey, TableInfo{RowCount: len(v.rowIDs), ColumnCount: len(v.columns)})
+	info.SetAttribute(TableInfoKey, TableInfo{RowCount: len(v.rowIDs), ColumnCount: len(v.visibleColumns)})
 	scroll, list := v.scroll.Snapshot(), v.list.Snapshot()
 	info.ScrollX, info.ScrollY, info.MaxScrollX, info.MaxScrollY = scroll.ScrollX, scroll.ScrollY, scroll.MaxScrollX, scroll.MaxScrollY
 	info.VisibleStart, info.VisibleEnd = list.VisibleStart, list.VisibleEnd
 	info.Children = nil
-	for _, c := range v.columns {
+	for _, c := range v.visibleColumns {
 		info.Children = append(info.Children, v.headers[c].Snapshot())
 	}
 	info.Children = append(info.Children, list.Children...)

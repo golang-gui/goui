@@ -102,7 +102,7 @@ func (r *tableRow) syncCells() {
 	v := r.view
 	version := v.revision
 	for _, cell := range slices.Clone(r.cells) {
-		if !slices.Contains(v.columns, cell.column) {
+		if !slices.Contains(v.visibleColumns, cell.column) {
 			r.cells = slices.DeleteFunc(r.cells, func(previous *tableCell) bool { return previous == cell })
 			cell.unbind()
 			r.RemoveChild(cell)
@@ -111,8 +111,8 @@ func (r *tableRow) syncCells() {
 			}
 		}
 	}
-	next := make([]*tableCell, 0, len(v.columns))
-	for _, c := range v.columns {
+	next := make([]*tableCell, 0, len(v.visibleColumns))
+	for _, c := range v.visibleColumns {
 		var cell *tableCell
 		for _, previous := range r.cells {
 			if previous.column == c {
@@ -221,7 +221,7 @@ func tableRelinquishFocus(widget gui.Widget, view *TableView) {
 func (c *tableCell) Snapshot() gui.WidgetInfo {
 	info := c.WidgetBase.Snapshot()
 	info.Role = RoleTableCell
-	index := slices.Index(c.row.view.columns, c.column)
+	index := slices.Index(c.row.view.visibleColumns, c.column)
 	info.SetAttribute(TableInfoKey, TableInfo{RowID: c.bound.ID, RowIndex: c.bound.Index + 1, ColumnID: c.column.id, ColumnIndex: index + 1, Current: c.row.view.current == c.bound.ID})
 	info.Selected = c.State().Has(style.Selected)
 	return info

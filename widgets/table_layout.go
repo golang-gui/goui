@@ -56,14 +56,14 @@ type tableHeaderLayout struct{ view *TableView }
 func (l *tableHeaderLayout) Measure(children []layout.Child, c layout.Constraint) layout.Measurement {
 	height := tableMinHeight
 	for i, child := range children {
-		m := child.Measure(layout.Loose(geometry.Size{Width: l.view.columns[i].width, Height: layout.Inf}))
+		m := child.Measure(layout.Loose(geometry.Size{Width: l.view.visibleColumns[i].width, Height: layout.Inf}))
 		height = max(height, m.Height)
 	}
 	return layout.Measured(c.Clamp(geometry.Size{Width: l.view.columnWidth, Height: height}))
 }
 func (l *tableHeaderLayout) Arrange(children []layout.Child, rect geometry.Rectangle) {
 	for i, child := range children {
-		size := geometry.Size{Width: l.view.columns[i].width, Height: rect.Height}
+		size := geometry.Size{Width: l.view.visibleColumns[i].width, Height: rect.Height}
 		child.Measure(layout.Tight(size))
 		child.Arrange(geometry.Rectangle{Pos: geometry.Point{X: l.view.columnX[i]}, Size: size})
 	}

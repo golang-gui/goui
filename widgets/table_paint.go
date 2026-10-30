@@ -39,7 +39,7 @@ func (v *TableView) borderWidths() (horizontal, vertical float32) {
 // Each interior boundary belongs to the preceding column/row. The last column
 // and record have no interior separator; the outer frame belongs to the view.
 func (v *TableView) columnLineWidth(c *TableColumn) float32 {
-	if len(v.columns) == 0 || v.columns[len(v.columns)-1] == c {
+	if len(v.visibleColumns) == 0 || v.visibleColumns[len(v.visibleColumns)-1] == c {
 		return 0
 	}
 	return min(c.width, tableLineWidth(tableGridStyle(v, "vertical")))
@@ -64,7 +64,7 @@ func tablePaintLine(p gui.Painter, rect geometry.Rectangle, s style.Style) {
 func (r *tableRow) paintGrid(p gui.Painter, rect geometry.Rectangle) {
 	h := min(rect.Height, r.lineHeight())
 	vertical := tableGridStyle(r, "vertical")
-	for i, c := range r.view.columns {
+	for i, c := range r.view.visibleColumns {
 		w := r.view.columnLineWidth(c)
 		// Stop above the horizontal band: translucent intersections must not
 		// be painted twice. Content uses the same non-overlapping geometry.

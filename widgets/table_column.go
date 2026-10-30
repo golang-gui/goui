@@ -10,6 +10,7 @@ type TableColumn struct {
 	id, title                 string
 	width, minWidth, maxWidth float32
 	resizable, sortable       bool
+	visible                   bool
 	delegate                  TableCellDelegate
 	owner                     *TableView
 	resize                    signal.Signal1[tableColumnResize]
@@ -25,7 +26,7 @@ func NewTableColumn(id, title string) *TableColumn {
 	if id == "" {
 		panic("widgets: empty table column ID")
 	}
-	return &TableColumn{id: id, title: title, width: 160, minWidth: 40, resizable: true}
+	return &TableColumn{id: id, title: title, width: 160, minWidth: 40, resizable: true, visible: true}
 }
 func (c *TableColumn) ID() string    { return c.id }
 func (c *TableColumn) Title() string { return c.title }
@@ -38,6 +39,23 @@ func (c *TableColumn) SetTitle(title string) {
 		c.owner.updateHeaders()
 	}
 }
+
+// Visible reports whether the column participates in layout and input.
+func (c *TableColumn) Visible() bool { return c.visible }
+
+// SetVisible hides or shows the column without removing its configuration,
+// width, display order or sort state. Hidden cell widgets may be recycled.
+func (c *TableColumn) SetVisible(visible bool) {
+	if c.visible == visible {
+		return
+	}
+	if c.owner == nil || c.owner.Destroyed() {
+		c.visible = visible
+		return
+	}
+	c.owner.setColumnVisible(c, visible)
+}
+
 func (c *TableColumn) Width() float32    { return c.width }
 func (c *TableColumn) MinWidth() float32 { return c.minWidth }
 func (c *TableColumn) MaxWidth() float32 { return c.maxWidth }

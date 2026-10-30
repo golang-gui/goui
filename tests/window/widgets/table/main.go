@@ -51,6 +51,9 @@
 //     排序、滚动到远处再返回、Rebuild/Refresh、Toggle dark 后，编辑值仍跟随
 //     原 RowID，不能串到其他记录。Notes 内右键/Shift+F10 使用文本编辑菜单，
 //     不应弹出行菜单。grid/thick 下编辑器与网格线相邻，线条不得遮挡编辑器。
+//  10. 先调整 Notes 列宽并编辑文字，点击 Notes 隐藏该列，其他列立即补上位置。
+//     Snapshot 的列数及索引只包含可见列。Rebuild/Refresh、排序、主题切换后
+//     再次点击 Notes，原列宽、文本和顺序恢复；隐藏列不触发正文菜单或保留焦点。
 //
 // 平台差异：Primary、右键触发时机按现有事件规则转换。默认 Tab 仅遍历已挂载
 // 控件，不保证跨虚拟记录导航；首版没有列重排或表格编辑事务。副作用仅测试窗口、
@@ -188,10 +191,11 @@ func sheet(dark, fallback bool, appearance int) style.StyleSheet {
 }
 func assertTable(table *widgets.TableView, m *model) {
 	info := table.Snapshot()
-	columns := table.Columns()
+	configured := table.Columns()
+	columns := slices.DeleteFunc(configured, func(c *widgets.TableColumn) bool { return !c.Visible() })
 	count := len(columns)
 	tableInfo, ok := info.Attributes[widgets.TableInfoKey].(widgets.TableInfo)
-	if count != 5 || info.Role != widgets.RoleTable || !ok || tableInfo.ColumnCount != count || tableInfo.RowCount != table.Model().ItemsCount() || len(info.Children) < count || len(info.Children) > 90 {
+	if len(table.Columns()) != 5 || info.Role != widgets.RoleTable || !ok || tableInfo.ColumnCount != count || tableInfo.RowCount != table.Model().ItemsCount() || len(info.Children) < count || len(info.Children) > 90 {
 		panic("table extent/virtualization")
 	}
 	seen := make(map[string]bool)
@@ -217,7 +221,10 @@ func assertTable(table *widgets.TableView, m *model) {
 			}
 			if c.ColumnID == "note" {
 				input, found := editorInfo(cell)
-				line, _ := gui.ResolveStyle("table-grid", "vertical", style.Normal).BorderWidth()
+				line := float32(0)
+				if i < count-1 {
+					line, _ = gui.ResolveStyle("table-grid", "vertical", style.Normal).BorderWidth()
+				}
 				want := cell.Bounds
 				want.Width = max(0, want.Width-line)
 				if !found || !input.Focusable || input.Bounds != want || input.Text != m.note(r.RowID) {
@@ -332,6 +339,7 @@ func main() {
 func runUI(fallback bool, appearance int) error {
 	m := newModel()
 	dark, version := false, 0
+	notesVisible := true
 	widths := map[string]float32{"name": 240, "note": 200, "action": 100, "size": 140, "description": 420}
 	return ui.Run("org.golang-gui.TableViewProbe", func(app ui.App) ui.RootView {
 		column := func(id, title string, cell func(widgets.TableRow, record) ui.View) *wui.TableColumnView[record] {
@@ -347,7 +355,7 @@ func runUI(fallback bool, appearance int) error {
 		note := column("note", "Notes", func(row widgets.TableRow, _ record) ui.View {
 			return ui.TextInput().Style("table-cell-input").Text(m.note(row.ID)).Padding(4).
 				OnText(func(text string) { m.setNote(row.ID, text) })
-		}).MinWidth(80)
+		}).MinWidth(80).Visible(notesVisible)
 		action := column("action", "Action", func(row widgets.TableRow, value record) ui.View {
 			if value.action {
 				return ui.HBox(ui.Button("Inspect").OnClick(func() { fmt.Printf("cell-action=%s\n", row.ID) })).Padding(4)
@@ -385,6 +393,7 @@ func runUI(fallback bool, appearance int) error {
 					fmt.Printf("appearance=%s\n", appearances[appearance])
 					app.RequestUpdate()
 				}),
+				ui.Button("Notes").OnClick(func() { notesVisible = !notesVisible; app.RequestUpdate() }),
 			).Spacing(8), ui.Label("Edit Notes / F6 verify; sortable Name / Size; resize edges / Esc; Shift+F10 menu"), table).CrossAlign(layout.CrossStretch).Padding(12).Spacing(8),
 		))
 	})
@@ -589,6 +598,7 @@ func runGUI(fallback bool, appearance int) error {
 		fmt.Printf("appearance=%s\n", appearances[appearance])
 		app.SetStyleSheet(sheet(dark, fallback, appearance))
 	})
+	button("Notes", func() { columns[1].SetVisible(!columns[1].Visible()) })
 	root.AddChild(toolbar)
 	root.AddChild(gui.NewLabel("Edit Notes / F6 verify; sortable Name / Size; resize edges / Esc; Shift+F10 menu"))
 	root.AddChild(table)

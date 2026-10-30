@@ -120,6 +120,45 @@ func TestTableViewColumnIdentityAndUncontrolledState(t *testing.T) {
 		t.Fatal("duplicate model subscription")
 	}
 }
+func TestTableViewHiddenColumnRetainsDeclaration(t *testing.T) {
+	m := newTableBindingModel()
+	ctx := new(treeBindingContext)
+	column := func(visible bool, prefix string) *TableColumnView[string] {
+		return TableColumn("name", "Name", func(_ widgets.TableRow, value string) baseui.View {
+			return baseui.Label(prefix + value)
+		}).Visible(visible).Sortable(true)
+	}
+	v := TableView[string](m, column(true, "before:"))
+	table := v.Mount(ctx).(*widgets.TableView)
+	defer table.SetModel(nil)
+	defer v.Unmount(ctx, table)
+	v.Update(ctx, table)
+	tableBindingArrange(table)
+	c := table.Columns()[0]
+	c.SetWidth(220)
+	table.SetSort("name", widgets.SortAscending)
+	v = TableView[string](m, column(false, "hidden:"))
+	v.Update(ctx, table)
+	tableBindingArrange(table)
+	if c.Visible() || table.Columns()[0] != c || c.Width() != 220 || len(ctx.widgets) != 0 || len(ctx.State().(*tableState[string]).columns) != 1 {
+		t.Fatal("隐藏列删除了协调状态、列宽或保留了声明子树")
+	}
+	if id, order := table.Sort(); id != "name" || order != widgets.SortAscending {
+		t.Fatal("隐藏声明清除了排序状态")
+	}
+	v = TableView[string](m, column(true, "after:"))
+	v.Update(ctx, table)
+	tableBindingArrange(table)
+	if !c.Visible() || table.Columns()[0] != c || c.Width() != 220 || m.connections != 1 || len(ctx.widgets) != 3 {
+		t.Fatal("重新显示列重装了模型或列配置")
+	}
+	for _, widget := range ctx.widgets {
+		if label := widget.(*gui.Label); label.Text() != "after:a" && label.Text() != "after:b" && label.Text() != "after:c" {
+			t.Fatal("恢复列没有使用最新的单元格声明")
+		}
+	}
+}
+
 func TestTableViewColumnRemovalReorderAndModelReplacement(t *testing.T) {
 	m, next := newTableBindingModel(), newTableBindingModel()
 	ctx := new(treeBindingContext)
