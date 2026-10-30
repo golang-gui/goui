@@ -19,6 +19,8 @@ const (
 	RoleComboBox     gui.Role = "combobox"
 	RoleListBox      gui.Role = "listbox"
 	RoleOption       gui.Role = "option"
+	RoleDialog       gui.Role = "dialog"
+	RoleToast        gui.Role = "status"
 )
 
 // Snapshot attribute keys describe semantic capabilities, not concrete widget

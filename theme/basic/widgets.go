@@ -64,6 +64,13 @@ func WidgetRules() []style.Rule {
 		style.Name("tab-scroll-button").BackgroundColor(color.Transparent).Radius(4).FontSize(size),
 		style.Name("tab-scroll-button-text").ForegroundColor(color.Black).FontFamily(family).FontSize(size),
 		style.Name("split-handle").ForegroundColor(color.RGBA{R: 198, G: 198, B: 206, A: 255}),
+		style.Name("dialog").Part("backdrop").BackgroundColor(color.NRGBA{A: 110}),
+		style.Name("dialog").Part("card").BackgroundColor(color.White).
+			BorderColor(color.RGBA{R: 190, G: 190, B: 198, A: 255}).BorderWidth(1).Radius(10).
+			Shadow(style.Shadow{Color: color.NRGBA{A: 48}, BlurRadius: 16}),
+		style.Name("toast").BackgroundColor(color.White).
+			BorderColor(color.RGBA{R: 190, G: 190, B: 198, A: 255}).BorderWidth(1).Radius(8).
+			Shadow(style.Shadow{Color: color.NRGBA{A: 40}, BlurRadius: 12}),
 	}
 	rules = append(rules, checkButtonRules()...)
 	rules = append(rules, dropDownRules()...)
