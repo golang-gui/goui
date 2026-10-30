@@ -1,5 +1,45 @@
 # Plan
 
+## Window.Show 唤起已有窗口（2026-10-30）
+
+契约见 [DesignWindowManagement](DesignWindowManagement.md#show-and-foreground-activation)。
+沿用 Show，不增加 Present／Activate／Raise；显式状态变化继续使用 RequestState。
+
+- [x] 三平台原生 Show 统一显示、取消最小化和请求前台激活；保留最大化／全屏与
+  编辑状态，不伪造 Focus／State。Linux Popup／显式状态请求独立映射，不请求激活。
+- [x] 原生同步回调和 GUI Show 增加销毁防护；X11 用户时间在 XIM／拖放过滤前记录。
+- [x] 包内回归覆盖 EWMH 消息、原生输入时间／合成事件／回绕，以及 GUI 重复请求、
+  错误传递、逻辑焦点和观察信号边界、同步激活回调销毁后的安全退出。
+- [x] 干净源码副本 `DISPLAY=:85 XMODIFIERS=@im=none GOUI_PLAT_PAINTER=software
+  GOWORK=off go test -mod=readonly -json ./...`：3106 项测试／子测试通过、10 项既有
+  opt-in／人工／签名测试跳过，无失败。`go test -mod=readonly -race
+  ./gui ./ui ./platform/linux/x11 -count=1` 与相关 `go vet` 通过。
+- [x] `CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -mod=readonly ./...`、
+  `GOOS=darwin GOARCH=arm64` 全仓构建及两目标窗口例程编译通过。
+- [x] Linux amd64 / Ubuntu 22.04.5 / 独立 Xvnc :85 + Xfwm4 合成桌面：
+  Software 1x Native、Software 2x None、OpenGL 2x Integrated 自动断言通过；前后两组
+  另含全屏保留。覆盖隐藏、普通／最大化最小化恢复、重复前置激活、逻辑焦点和
+  选区保留、Popup 不抢焦点、销毁错误。OpenGL 1x Integrated 真实鼠标点击／键盘
+  输入 NativeShow123、选择前三字节、切出后再 Show，文字／选区保留且 Target
+  成为实际活动窗口；Popup 显示时活动窗口仍为 Target，截图及原生观察一致。
+- [x] 对照 HEAD 040fba8 的独立源码副本，同一窗口用例稳定在 visible target
+  foreground 失败：Controller 仍有焦点，Target 未获得焦点；新实现同项通过。
+- [x] 独立裸 Xvnc :86 无 WM／_NET_SUPPORTED：平台 Show 返回成功，另一 X
+  连接独立查询 MapState=IsViewable；不把该映射结果算作获得焦点。
+- [x] Windows 10 22H2 build 19045.6466 / amd64 / RDP / Direct2D 1x：
+  SHA256 核对后，Integrated 自动模式全部断言通过、退出码 0；特别验证最大化→
+  最小化→Show 恢复为最大化。真实鼠标和键盘输入 WindowsShow123、选择前三字节，
+  切出／Show 后文字与选区保留；Popup 保持所属窗口原生焦点，手动模式退出码 0。
+  远端 GUI Show 包内回归另以无头测试方式执行。
+- [ ] macOS 本轮按用户范围不做原生桌面验收，仅有交叉编译；Windows 11、其他
+  Windows 后端／DPI、其他 WM、跨虚拟桌面及系统拒绝后台激活未验收。
+
+原工作区有 137 个既有未跟踪测试／产物，直接运行定向测试时被其中旧
+`dragdrop_linux_test.go` 的 `onDragMessageError` 引用阻塞。保留原文件，后续在
+只包含受版本管理源码及本轮新文件的仓库外副本验证，不把该失败算作通过。
+日志／截图存放 `/tmp/goui-window-show-y1em5341`。
+两次独立 X11 会话与本轮原生窗口完成后清理，保留原有远端连接及用户程序。
+
 ## Dialog、Toast 与声明绑定（2026-10-30）
 
 契约与用法见 [DesignModal](DesignModal.md)。未修改 gui、platform、Root／BuildContext。
