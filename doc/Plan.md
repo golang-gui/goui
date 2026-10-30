@@ -8,7 +8,26 @@
   gui 全包与 DrawingArea／Painter 定向 race 通过；真实窗口验收随最后阶段完成。
 - [x] UI 稳定回调代理、查询连接管理与协调回归。
   ui／gui 包内通过，ui DrawingArea race 通过；覆盖最新闭包、连接不累加、卸载与移交。
-- [ ] 本机独立窗口用例、全仓／race／跨平台编译及分阶段提交。
+- [x] 独立窗口 tests/window/ui/drawing_area：普通 Paint、声明重建、显式内容变化、
+  否决尺寸变化、恢复默认、主题、每次绘制、帧驱动及停止均有断言。
+- [x] Ubuntu 22.04.5 amd64、Xvnc :85、xfwm4 4.16.1（合成关闭，Chrome 回退 Native）：
+  Software／OpenGL × 1x／1.5x／2x 六组 -auto 全通过，2x 初始暗色且各组切换主题。
+  绘图回调实际 Image 类型均为 software.imageResource，目标分别为 Software／OpenGL。
+- [x] 真实 X11 指针／键盘：OpenGL 1x 的 Paint／Rebuild 计数不变，Veto＋Wider
+  仍保留原尺寸图，Default 后补画当前尺寸并使用最新闭包；F6 输出边界和计数。
+  OpenGL 2x 暗色图像检查，圆角／透明挖孔与局部绘制正确。
+- [x] 已跟踪源码加本轮文件的隔离副本，在 DISPLAY=:85 下 go test ./... 通过；
+  gui／ui 全包 race 通过。像素测试覆盖预乘、clip／Transform、1x／1.5x／2x、
+  小数尺寸补齐以及否决后原尺寸保留；生命周期含回调销毁／替换、上传重试和重入。
+- [x] Windows amd64／macOS arm64、CGO_ENABLED=0：go build ./... 与 gui／ui
+  go test -c 均通过。本轮未执行远端原生桌面，不视为桌面验收通过。
+
+原工作区 `go test ./...`（无 DISPLAY）失败：未跟踪旧例程存在 Padding、分组等
+旧接口，既有 platform/typography/test.TestTypography 需要显示连接。未迁移这些
+文件或弱化断言；该 Typography 测试在隔离 X11 环境通过。测试产物留在仓库外，
+原工作区既有测试会改写的未跟踪 PNG 在运行前备份、运行后恢复。
+设计不承诺软件绘制的帧率；每帧模式只验证用户可以显式驱动及停止。
+
 
 ## ButtonGroup 与局部分组简化（2026-10-30）
 
