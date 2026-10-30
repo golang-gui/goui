@@ -64,6 +64,9 @@ func (t *tooltipState) eligible(host EventTarget) bool {
 
 func tooltipAncestor(widget Widget) Widget {
 	for w := widget; w != nil; w = w.Parent() {
+		if !modalWidgetAllowed(w) {
+			return nil
+		}
 		if w.Tooltip() != "" {
 			return w
 		}

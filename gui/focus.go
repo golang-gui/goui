@@ -48,9 +48,16 @@ func (d *EventDispatcher) navigateTab(host EventTarget, event events.Event) {
 			visit(child)
 		}
 	}
-	visit(host.Widget())
-	visit(d.decoration)
+	if scope := modalScopeOf(host); scope != nil {
+		visit(scope.widget)
+	} else {
+		visit(host.Widget())
+		visit(d.decoration)
+	}
 	if len(candidates) == 0 {
+		if modalScopeOf(host) != nil {
+			key.PreventDefault()
+		}
 		return
 	}
 

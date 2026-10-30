@@ -36,7 +36,7 @@ func (c *DragMotionEventController) ConnectMotion(fn func(geometry.Point)) signa
 }
 func (c *DragMotionEventController) connectPoint(s *signal.Signal2[geometry.Point, uint64], fn func(geometry.Point)) signal.Handle {
 	return s.Connect(func(p geometry.Point, generation uint64) {
-		if generation == c.generation && c.owner != nil && !c.owner.base().destroyed && IsEnabled(c.owner) {
+		if generation == c.generation && c.owner != nil && !c.owner.base().destroyed && IsEnabled(c.owner) && modalWidgetAllowed(c.owner) {
 			fn(p)
 		}
 	})
@@ -125,11 +125,12 @@ func (b *rootBase) updateDragMotion(host EventTarget, e events.DragOfferEvent) {
 		return
 	}
 	target := b.dispatcher.pick(root, e.Position)
-	if target != nil && !IsEnabled(target) {
+	if target != nil && (!IsEnabled(target) || !modalInputAllowed(host, target)) {
 		b.clearDragMotion()
 		return
 	}
 	path := widgetPath(b.dispatcher.treeRoot(root, target), target)
+	path = modalPath(host, path)
 	var observers []*DragMotionEventController
 	for _, w := range path {
 		for _, controller := range w.EventControllers() {
