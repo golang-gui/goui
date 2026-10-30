@@ -5,6 +5,8 @@
 // -gui 使用命令式 GUI，-fallback-style 显式组合兜底样式。
 // -appearance=plain/zebra/rows/grid/thick 指定初始外观，默认 plain；Appearance
 // 按钮循环切换以上模式。thick 为粗线与自定义 Widget 内容避让的专项检查。
+// 状态文本显示实际主题、亮暗与外观模式。默认已应用 Modern；这些外观模式是
+// 例程追加的样式覆盖，并非 Modern 的默认外观。Basic 为固定亮色，Dark 不改变它。
 // GOUI_PLAT_PAINTER=software/opengl，Windows 另可 direct2d；GOUI_PLAT_SCALE=2
 // 请求 2x。初始：Native 880×620 DIP、Modern 亮色、10000 条内存记录、多选、
 // 五列固定宽度；名称和大小可排序，Notes 为单行编辑器，说明自动换行，部分
@@ -40,6 +42,7 @@
 //     部分 Action 为填满自身矩形的青色自定义 Widget；thick 下其四边仍完整，
 //     不被线条覆盖。切换粗细后说明重新换行，滚动/重建/排序后条纹仍按行序交替。
 //     青色单元格首次绘制输出 backend / pixel-scale，核对实际后端而非仅启动参数。
+//     grid 模式下，亮暗两种斑马行内的竖线及行底横线都应可辨，不出现隔行断线。
 //     Snapshot 还使用 RenderWidget 重绘实际子树并采样青色块四角（无需截图文件），
 //     检查自绘内容边缘；这不是帧率基准，也不代替原生窗口外观观察。
 //  9. 点击 Notes 列并输入文字，预期整格出现 2 DIP 主题色直角边框，四边没有
@@ -148,10 +151,22 @@ func (m *model) remove(id string) {
 
 var appearances = []string{"plain", "zebra", "rows", "grid", "thick"}
 
+func appearanceStatus(dark, fallback bool, appearance int) string {
+	theme := "Modern light"
+	if fallback {
+		theme = "Basic (fixed light)"
+	} else if dark {
+		theme = "Modern dark"
+	}
+	return fmt.Sprintf("%s · %s (example styles) · F6 verify", theme, appearances[appearance])
+}
+
 func sheet(dark, fallback bool, appearance int) style.StyleSheet {
-	rules := modern.Rules(modern.Options{Dark: dark})
+	var rules []style.Rule
 	if fallback {
 		rules = append(gui.DefaultStyleRules(), widgetstyle.Rules()...)
+	} else {
+		rules = modern.Rules(modern.Options{Dark: dark})
 	}
 	// Copy the editor's rules under an independent name. This is explicit
 	// composition, not style inheritance from the cell or another style name.
@@ -178,6 +193,15 @@ func sheet(dark, fallback bool, appearance int) style.StyleSheet {
 		if dark && !fallback {
 			alternate = color.RGBA{R: 43, G: 43, B: 47, A: 255}
 		}
+	}
+	if appearance == 3 {
+		// The example's zebra surface needs a matching grid palette. Keep
+		// Modern's default subtle separators unchanged in other modes.
+		grid := color.RGBA{R: 220, G: 220, B: 225, A: 255}
+		if dark && !fallback {
+			grid = color.RGBA{R: 58, G: 58, B: 64, A: 255}
+		}
+		rules = append(rules, style.Name("table-grid").BorderColor(grid))
 	}
 	if appearance == 4 {
 		h, w = 6, 12
@@ -408,7 +432,7 @@ func runUI(fallback bool, appearance int) error {
 				}),
 				ui.Button("Notes").OnClick(func() { notesVisible = !notesVisible; app.RequestUpdate() }),
 				ui.Button("Expand last").OnClick(func() { expandLast = !expandLast; app.RequestUpdate() }),
-			).Spacing(8), ui.Label("Edit Notes / F6 verify; sortable Name / Size; resize edges / Esc; Shift+F10 menu"), table).CrossAlign(layout.CrossStretch).Padding(12).Spacing(8),
+			).Spacing(8), ui.Label(appearanceStatus(dark, fallback, appearance)), table).CrossAlign(layout.CrossStretch).Padding(12).Spacing(8),
 		))
 	})
 }
@@ -603,19 +627,24 @@ func runGUI(fallback bool, appearance int) error {
 		b.ConnectClicked(fn)
 		toolbar.AddChild(b)
 	}
+	status := gui.NewLabel(appearanceStatus(dark, fallback, appearance))
+	updateAppearance := func() {
+		app.SetStyleSheet(sheet(dark, fallback, appearance))
+		status.SetText(appearanceStatus(dark, fallback, appearance))
+	}
 	button("Refresh", func() { version++; table.Refresh() })
-	button("Toggle dark", func() { dark = !dark; app.SetStyleSheet(sheet(dark, fallback, appearance)) })
+	button("Toggle dark", func() { dark = !dark; updateAppearance() })
 	button("Reveal last", func() { table.Reveal("record-09999") })
 	button("Snapshot", verify)
 	button("Appearance", func() {
 		appearance = (appearance + 1) % len(appearances)
 		fmt.Printf("appearance=%s\n", appearances[appearance])
-		app.SetStyleSheet(sheet(dark, fallback, appearance))
+		updateAppearance()
 	})
 	button("Notes", func() { columns[1].SetVisible(!columns[1].Visible()) })
 	button("Expand last", func() { columns[4].SetExpand(!columns[4].Expand()) })
 	root.AddChild(toolbar)
-	root.AddChild(gui.NewLabel("Edit Notes / F6 verify; sortable Name / Size; resize edges / Esc; Shift+F10 menu"))
+	root.AddChild(status)
 	root.AddChild(table)
 	window.SetWidget(root)
 	if err = window.Show(); err != nil {
