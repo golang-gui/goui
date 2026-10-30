@@ -6,6 +6,7 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/widgets"
 )
 
@@ -63,6 +64,141 @@ func TestModifySharedContentMountsIndependently(t *testing.T) {
 	r.update(HBox(Modify(shared).ID("b"), Modify(shared).ID("a")))
 	if box.Children()[0] != b || box.Children()[1] != a || !b.Visible() || a.StyleName() != "original" {
 		t.Fatal("包装的外层 ID 重排没有保留内容，或省略修饰没有恢复内层")
+	}
+}
+
+func TestModifyBehaviorOverridesClearAndRestoreWithoutDuplicateControllers(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	host := &overlayInputWindow{testWindow: newTestWindow()}
+	inner, outer := 0, 0
+	content := func() View {
+		return Label("content").Focusable(true).
+			OnFocus(func(bool) { inner++ }).
+			OnContextMenu(func(ctx gui.EventContext) { inner++; ctx.StopPropagation() }).
+			Shortcuts(Shortcut(KeyF5).OnActivate(func() { inner++ })).
+			DragSource(DragSource().Actions(DragCopy)).DropTarget(DropTarget(DragFormatText))
+	}
+	declaration := func() *ModifiedView {
+		return Modify(content()).OnFocus(func(bool) { outer++ }).
+			OnContextMenu(func(ctx gui.EventContext) { outer++; ctx.StopPropagation() }).
+			Shortcuts(Shortcut(KeyF5).OnActivate(func() { outer++ })).
+			DragSource(DragSource().Actions(DragMove)).DropTarget(DropTarget(DragFormatFiles))
+	}
+	w := r.updateWindow(host, declaration())
+	ctx := r.root.body.baseCtx
+	controllers := w.EventControllers()
+	for range 3 {
+		r.updateWindow(host, declaration())
+		if len(w.EventControllers()) != 4 || r.root.body.baseCtx != ctx {
+			t.Fatal("重复协调创建了多份控制器或连接上下文")
+		}
+		for i, c := range w.EventControllers() {
+			if c != controllers[i] {
+				t.Fatal("配置更新替换了已有控制器")
+			}
+		}
+	}
+	drag := w.Snapshot().DragDrop
+	if drag == nil || drag.SourceActions != DragMove || len(drag.TargetFormats) != 1 || drag.TargetFormats[0] != DragFormatFiles {
+		t.Fatal("外层拖放配置未覆盖内层")
+	}
+	host.SetFocusedWidget(w)
+	for _, event := range []events.KeyEvent{
+		{EventType: events.KeyDown, Key: events.KeyF5},
+		{EventType: events.KeyDown, Key: events.KeyF10, Modifiers: events.ModifierShift},
+	} {
+		if err := host.DispatchEvent(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 单独检查连接路由；按键部分仍经过真实 EventDispatcher。
+	ctx.onFocus(true)
+	if inner != 0 || outer != 3 {
+		t.Fatalf("回调未替换：inner=%d outer=%d", inner, outer)
+	}
+	r.updateWindow(host, Modify(content()).OnFocus(nil).OnContextMenu(nil).Shortcuts().DragSource(nil).DropTarget(nil))
+	if len(w.EventControllers()) != 0 || ctx.onFocus != nil || w.Snapshot().DragDrop != nil {
+		t.Fatal("显式 nil 或空列表未清除内层行为")
+	}
+	r.updateWindow(host, Modify(content()))
+	if len(w.EventControllers()) != 4 || w.Snapshot().DragDrop.SourceActions != DragCopy {
+		t.Fatal("省略外层行为没有恢复当前内层声明")
+	}
+	if err := host.DispatchEvent(events.KeyEvent{EventType: events.KeyDown, Key: events.KeyF5}); err != nil {
+		t.Fatal(err)
+	}
+	if inner != 1 || outer != 3 {
+		t.Fatal("恢复后仍调用旧回调或重复执行")
+	}
+	r.unmountWindow()
+	if len(w.EventControllers()) != 0 || len(ctx.handles) != 0 {
+		t.Fatal("释放后仍保留 UI 连接")
+	}
+}
+
+// 自定义 setter 可执行外部代码，不能在释放 owner 后继续应用后面的修饰。
+type modifierReleaseLabel struct {
+	*gui.Label
+	release      func()
+	onAdd        func(gui.EventController)
+	enabledCalls int
+}
+
+func (w *modifierReleaseLabel) AddEventController(controller gui.EventController) {
+	w.Label.AddEventController(controller)
+	if w.onAdd != nil {
+		w.onAdd(controller)
+	}
+}
+
+func (w *modifierReleaseLabel) SetFocusable(value bool) {
+	w.Label.SetFocusable(value)
+	if !value && w.release != nil {
+		w.release()
+	}
+}
+func (w *modifierReleaseLabel) SetEnabled(value bool) {
+	w.enabledCalls++
+	w.Label.SetEnabled(value)
+}
+
+func TestModifySetterMayReleaseOwner(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	w := &modifierReleaseLabel{Label: gui.NewLabel("release")}
+	makeView := func() *enabledWidgetView {
+		v := &enabledWidgetView{make: func() gui.Widget { return w }}
+		v.Self = v
+		return v
+	}
+	r.update(Modify(makeView()).Focusable(true))
+	w.enabledCalls = 0
+	w.release = r.unmountWindow
+	if got := r.update(Modify(makeView()).Focusable(false).Enabled(false)); got != nil || w.enabledCalls != 0 {
+		t.Fatal("setter 释放节点后仍继续设置属性或复活输出")
+	}
+}
+
+func TestModifyControllerInstallationMayReleaseOwner(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	w := &modifierReleaseLabel{Label: gui.NewLabel("release")}
+	makeView := func() *enabledWidgetView {
+		v := &enabledWidgetView{make: func() gui.Widget { return w }}
+		v.Self = v
+		return v
+	}
+	r.update(Modify(makeView()))
+	ctx := r.root.body.baseCtx
+	w.onAdd = func(controller gui.EventController) {
+		if _, ok := controller.(*gui.ShortcutController); ok {
+			r.unmountWindow()
+		}
+	}
+	got := r.update(Modify(makeView()).Shortcuts(Shortcut(KeyF5).OnActivate(func() { t.Fatal("已释放回调仍执行") })))
+	if got != nil || len(w.EventControllers()) != 0 || ctx.shortcuts.controller != nil || len(ctx.shortcuts.entries) != 0 || len(ctx.handles) != 0 {
+		t.Fatal("安装控制器期间释放 owner 后泄漏或重新创建了连接")
 	}
 }
 

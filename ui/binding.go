@@ -212,6 +212,9 @@ func (n *node) applyBindings() {
 			b.apply()
 		}
 	}
+	if !n.released && n.root == r {
+		n.applyOutputModifiers()
+	}
 }
 
 // BindValue registers and immediately applies one property during a View's

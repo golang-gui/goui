@@ -537,6 +537,45 @@ func TestAutomaticReadNotificationsFollowTransfer(t *testing.T) {
 	}
 }
 
+type modifierSizeView struct {
+	ViewBase[modifierSizeView]
+	size    *State[geometry.Size]
+	updates *int
+}
+
+func (v *modifierSizeView) Mount(BuildContext) gui.Widget {
+	w := gui.NewLabel("size")
+	w.SetMinSize(v.size.Peek())
+	return w
+}
+func (v *modifierSizeView) Update(ctx BuildContext, w gui.Widget) {
+	*v.updates++
+	BindValue(ctx, "size", v.size, w.SetMinSize)
+}
+func (*modifierSizeView) Unmount(BuildContext, gui.Widget) {}
+
+func TestModifyBindingOverridesOnlyExplicitAxes(t *testing.T) {
+	size := MakeState(geometry.Size{Width: 100, Height: 24})
+	updates, builds := 0, 0
+	_, fake := bindingApp(t, func() RootView {
+		builds++
+		v := &modifierSizeView{size: &size, updates: &updates}
+		v.Self = v
+		return Window("main").Content(Modify(v).MinWidth(200).Name("outer"))
+	})
+	w := fake.windows[0].Widget()
+	size.Set(geometry.Size{Width: 300, Height: 48})
+	fake.runPosted()
+	if w.MinSize() != (geometry.Size{Width: 200, Height: 48}) || w.Name() != "outer" || updates != 1 || builds != 1 {
+		t.Fatal("绑定覆盖了外层宽度，或重新应用默认值损坏绑定高度／执行完整更新")
+	}
+	size.Set(geometry.Size{Width: 60, Height: 72})
+	fake.runPosted()
+	if w.MinSize() != (geometry.Size{Width: 200, Height: 72}) || updates != 1 {
+		t.Fatal("连续属性通知没有保持外层逐轴修饰")
+	}
+}
+
 func TestBindingsStayLocalAndShareOneSubscription(t *testing.T) {
 	source := &bindingSource{value: "initial"}
 	global, local := 0, 0

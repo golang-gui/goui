@@ -364,6 +364,31 @@ func (n *node) updateModifiers() {
 	b.update(n.baseCtx, widget, live)
 }
 
+// Binding callbacks may update shared properties directly. Reapply only the
+// explicit outer overrides, never unrelated defaults or WidgetView.Update.
+func (n *node) applyOutputModifiers() {
+	owner := n
+	for owner != nil && !owner.released {
+		if _, widget := owner.view.(WidgetView); widget {
+			break
+		}
+		owner = owner.body
+	}
+	if owner == nil || owner.released || owner.root == nil || nilWidget(owner.widget) {
+		return
+	}
+	outer, found := owner.outputModifiers()
+	if !found {
+		return
+	}
+	r, version, widget := owner.root, owner.version, owner.widget
+	epoch := r.epoch
+	live := func() bool {
+		return !owner.released && owner.root == r && r.epoch == epoch && owner.version == version && owner.widget == widget && !destroyedWidget(widget)
+	}
+	outer.apply(nil, widget, live)
+}
+
 func (r *root) release(n *node, detachWidgets bool) {
 	defer pauseReadTracking()()
 	if n == nil || n.released {
