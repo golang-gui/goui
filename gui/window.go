@@ -249,12 +249,14 @@ func newWindow(app *application, options WindowOptions) (*window, error) {
 // onInputMethod is the window's platform.InputMethodHandler: it routes native
 // input-method output to the focused widget's IMContext (see doc/DesignIME.md §3).
 func (w *window) onInputMethod(r platform.InputMethodResult) {
-	if w.destroyed || w.activeIM == nil {
+	previous := w.activeIM
+	ensureModal(w)
+	if w.destroyed || w.activeIM == nil || previous != w.activeIM {
 		return
 	}
 	// A modal target owns keyboard input. A trailing native result must not
 	// edit the underlying field; allow only the cancellation of its preedit.
-	if w.modalTarget != nil && (r.Kind != platform.InputMethodPreedit || r.Text != "") {
+	if (w.modalTarget != nil || w.focusedWidget == nil || !modalWidgetAllowed(w.focusedWidget)) && (r.Kind != platform.InputMethodPreedit || r.Text != "") {
 		return
 	}
 	switch r.Kind {
@@ -318,11 +320,12 @@ func (w *window) Focused() bool {
 }
 
 func (w *window) SetFocusedWidget(widget Widget) bool {
+	ensureModal(w)
 	if widget == nil {
 		w.setFocusedWidget(nil)
 		return true
 	}
-	if w.destroyed || widget.base().destroyed || widget.Window() != w || !widget.Focusable() || !IsEnabled(widget) || !visibleInTree(widget) {
+	if w.destroyed || widget.base().destroyed || widget.Root() != w || !widget.Focusable() || !IsEnabled(widget) || !visibleInTree(widget) || !modalWidgetAllowed(widget) {
 		return false
 	}
 	if w.focusedWidget == widget {
@@ -353,6 +356,8 @@ func (w *window) SetWidget(widget Widget) {
 		adoptWidget(widget, w)
 	}
 	w.root = widget
+	modalChanged(w)
+	ensureModal(w)
 	w.dragControllersChanged()
 	w.requestLayout()
 }
@@ -501,6 +506,10 @@ func (w *window) DispatchEvent(event events.Event) error {
 		w.app.dispatchDragSourceEvent(e)
 		return nil
 	}
+	if w.destroyed {
+		return nil
+	}
+	ensureModal(w)
 	if w.destroyed {
 		return nil
 	}
@@ -730,6 +739,9 @@ func (w *window) onEvent(event events.Event) {
 // See the Window interface.
 func (w *window) SetModalTarget(target ModalTarget) {
 	if w.destroyed {
+		return
+	}
+	if target != nil && !modalTargetAllowed(w, target) {
 		return
 	}
 	wasModal := w.modalTarget != nil

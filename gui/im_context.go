@@ -135,6 +135,7 @@ func commitText(root Root, text string) error {
 }
 
 func textInputFocus(root Root) (Widget, error) {
+	ensureModalRoot(root)
 	switch host := root.(type) {
 	case *window:
 		if host.destroyed || host.frameSuspended {
@@ -153,7 +154,7 @@ func textInputFocus(root Root) (Widget, error) {
 	}
 	focused := root.(EventTarget).FocusedWidget()
 	if focused == nil || focused.base().destroyed || focused.Root() != root ||
-		!focused.Focused() || !visibleInTree(focused) || !IsEnabled(focused) {
+		!focused.Focused() || !visibleInTree(focused) || !IsEnabled(focused) || !modalWidgetAllowed(focused) {
 		return nil, fmt.Errorf("commit text: no editable focus")
 	}
 	return focused, nil

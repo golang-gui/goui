@@ -147,6 +147,7 @@ type Bin interface {
 }
 
 type WidgetBase struct {
+	modal               *ModalScope
 	id                  string
 	name                string
 	tooltip             string
@@ -247,11 +248,14 @@ func (w *WidgetBase) SetVisible(visible bool) {
 	hidden := !visible
 	if w.hidden != hidden {
 		w.hidden = hidden
+		root := w.root()
+		modalChanged(root)
+		defer ensureModalRoot(root)
 		if hidden {
 			cancelTooltipSubtree(w.root(), w.self)
 			cancelGestureSubtree(w.root(), w.self)
 			if h, ok := w.root().(EventTarget); ok && focusWithin(h, w) {
-				h.SetFocusedWidget(nil)
+				clearSubtreeFocus(h, w)
 			}
 		}
 		w.RequestLayout()
@@ -523,6 +527,9 @@ func (w *WidgetBase) Snapshot() WidgetInfo {
 		Pressed:       state.Has(style.Pressed),
 		Selected:      state.Has(style.Selected),
 	}
+	if w.modal != nil {
+		info.SetAttribute(ModalInfoKey, ModalInfo{Active: w.modal.Active()})
+	}
 	for _, controller := range w.controllers {
 		switch c := controller.(type) {
 		case *DragSource:
@@ -760,6 +767,7 @@ func (w *WidgetBase) moveChild(child, sibling Widget, after bool) {
 	}
 	w.children = slices.Delete(w.children, from, from+1)
 	w.children = slices.Insert(w.children, index, child)
+	modalChanged(w.root())
 	w.RequestLayout()
 	w.requestSemanticUpdate()
 }
@@ -798,7 +806,7 @@ func (w *WidgetBase) setParent(child, parent Widget) {
 	if rootChanged && oldRoot != nil {
 		w.emitUnmountSubtree(child)
 		if h, ok := oldRoot.(EventTarget); ok && focusWithin(h, child.base()) {
-			h.SetFocusedWidget(nil)
+			clearSubtreeFocus(h, child.base())
 		}
 	}
 	// Lifecycle/focus callbacks may destroy either endpoint. Destruction wins;
@@ -820,6 +828,10 @@ func (w *WidgetBase) setParent(child, parent Widget) {
 	if rootChanged && newRoot != nil && child.Root() == newRoot {
 		w.emitMountSubtree(child)
 	}
+	modalChanged(oldRoot)
+	modalChanged(newRoot)
+	ensureModalRoot(oldRoot)
+	ensureModalRoot(newRoot)
 }
 
 func (w *WidgetBase) root() Root {
@@ -854,7 +866,7 @@ func (w *WidgetBase) detachRoot(child Widget) {
 	if oldRoot != nil {
 		w.emitUnmountSubtree(child)
 		if h, ok := oldRoot.(EventTarget); ok && focusWithin(h, child.base()) {
-			h.SetFocusedWidget(nil)
+			clearSubtreeFocus(h, child.base())
 		}
 	}
 	w.detach(child)
@@ -869,6 +881,7 @@ func (w *WidgetBase) attachChild(parent, child Widget) {
 	w.parentWidget = parent
 	w.parentRoot = nil
 	parentBase.children = append(parentBase.children, child)
+	modalChanged(parent.Root())
 	invalidateStyleSubtree(child)
 	parent.RequestLayout()
 	parentBase.requestSemanticUpdate()
@@ -885,6 +898,7 @@ func (w *WidgetBase) detach(child Widget) {
 		if index >= 0 {
 			parentBase.children = slices.Delete(parentBase.children, index, index+1)
 		}
+		modalChanged(parent.Root())
 		w.parentWidget = nil
 		parent.RequestLayout()
 		parentBase.requestSemanticUpdate()
@@ -909,10 +923,13 @@ func (w *WidgetBase) destroy(widget Widget) {
 	if oldRoot != nil {
 		w.emitUnmountSubtree(widget)
 		if h, ok := oldRoot.(EventTarget); ok && focusWithin(h, widget.base()) {
-			h.SetFocusedWidget(nil)
+			clearSubtreeFocus(h, widget.base())
 		}
 	}
 	w.detach(widget)
+	if w.modal != nil {
+		w.modal.Destroy()
+	}
 
 	for _, child := range slices.Clone(w.children) {
 		child.base().destroy(child)
@@ -929,6 +946,9 @@ func (w *WidgetBase) emitMountSubtree(widget Widget) {
 		return
 	}
 	w.self = widget
+	if w.modal != nil {
+		w.modal.mount()
+	}
 	for _, controller := range w.controllers {
 		if owned, ok := controller.(interface{ setWidget(Widget) }); ok {
 			owned.setWidget(widget)
@@ -950,6 +970,10 @@ func (w *WidgetBase) emitUnmountSubtree(widget Widget) {
 		return
 	}
 	w.unmounting = true
+	modalChanged(w.root())
+	if w.modal != nil {
+		w.modal.unmount()
+	}
 	if owner, ok := w.root().(interface{ rootState() *rootBase }); ok {
 		delete(owner.rootState().stateStyles, widget)
 	}
@@ -1349,7 +1373,9 @@ func refreshEnabledHover(root Root) {
 	if host, ok := root.(interface{ rootState() *rootBase }); ok {
 		d := &host.rootState().dispatcher
 		if d.pointerInside {
-			d.updateHover(root.Widget(), d.pointerEvent)
+			if target, ok := root.(EventTarget); ok {
+				d.updateHover(target, root.Widget(), d.pointerEvent)
+			}
 		}
 	}
 	if host, ok := root.(interface{ applyCursor() }); ok {

@@ -317,6 +317,12 @@ func (c *windowChrome) queryRegion(p geometry.Point) ChromeRegion {
 	defer func() { c.querying = false }()
 	result := ChromeRegionDefault
 	c.signals.region.Emit(p, &result)
+	if modalScopeOf(w) != nil && (result == ChromeRegionCaption || result == ChromeRegionClient) {
+		target := w.dispatcher.pick(w.Widget(), p)
+		if !modalInputAllowed(w, target) {
+			result = ChromeRegionClient
+		}
+	}
 	if !c.live() || result > ChromeRegionBottomRight {
 		return ChromeRegionDefault
 	}

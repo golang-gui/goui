@@ -168,7 +168,8 @@ func (p *popover) RequestPaint() error {
 }
 
 func (p *popover) SetFocusedWidget(widget Widget) bool {
-	if widget != nil && (p.destroyed || widget.base().destroyed || widget.Root() != p || !widget.Focusable() || !IsEnabled(widget) || !visibleInTree(widget)) {
+	ensureModal(p)
+	if widget != nil && (p.destroyed || widget.base().destroyed || widget.Root() != p || !widget.Focusable() || !IsEnabled(widget) || !visibleInTree(widget) || !modalWidgetAllowed(widget)) {
 		return false
 	}
 	p.focusedWidget = widget
@@ -240,6 +241,8 @@ func (p *popover) SetWidget(widget Widget) {
 		adoptWidget(widget, p)
 	}
 	p.widget = widget
+	modalChanged(p)
+	ensureModal(p)
 	p.dragControllersChanged()
 	p.layoutDirty = true
 	if p.visible {
@@ -319,6 +322,14 @@ func (p *popover) DispatchEvent(event events.Event) error {
 	if p.destroyed {
 		return nil
 	}
+	ensureModal(p)
+	if p.destroyed {
+		return nil
+	}
+	if p.anchor != nil && !modalWidgetAllowed(p.anchor) {
+		modalPreventDefault(event)
+		return nil
+	}
 	if _, key := event.(events.KeyEvent); key {
 		// A never-presented, unanchored popover is also a valid offscreen GUI
 		// host. Presented or anchored surfaces must still be visible.
@@ -370,6 +381,9 @@ func (p *popover) RequestDismiss() {
 }
 
 func (p *popover) Show() error {
+	if p.anchor != nil && !modalWidgetAllowed(p.anchor) {
+		return fmt.Errorf("popover: anchor is outside the active input context")
+	}
 	if p.releasing || p.showing {
 		return fmt.Errorf("popover: resource transition in progress")
 	}

@@ -187,6 +187,9 @@ type guiDragSession struct {
 }
 
 func (a *application) startDrag(host Root, widget Widget, source *DragSource, data *DragData, preview DragPreview, actions DragAction) error {
+	if !modalWidgetAllowed(widget) {
+		return errors.New("gui: drag source is outside the active input context")
+	}
 	if a.dragSession != nil {
 		return fmt.Errorf("gui: another drag session is active")
 	}
@@ -295,6 +298,7 @@ type dragTargetState struct {
 }
 
 func (b *rootBase) dispatchDragOffer(host EventTarget, e events.DragOfferEvent) {
+	ensureModal(host)
 	if e.Offer == nil {
 		return
 	}
@@ -349,13 +353,16 @@ func (b *rootBase) dispatchDragOffer(host EventTarget, e events.DragOfferEvent) 
 }
 
 func (b *rootBase) negotiateDragTarget(host EventTarget, e events.DragOfferEvent) DragAction {
+	ensureModal(host)
+	revision := modalRevision(host)
 	root := host.Widget()
 	pathTarget := b.dispatcher.pick(root, e.Position)
-	if pathTarget != nil && !IsEnabled(pathTarget) {
+	if pathTarget != nil && (!IsEnabled(pathTarget) || !modalInputAllowed(host, pathTarget)) {
 		b.leaveDragTarget()
 		return 0
 	}
 	path := widgetPath(b.dispatcher.treeRoot(root, pathTarget), pathTarget)
+	path = modalPath(host, path)
 	if len(path) == 0 {
 		b.leaveDragTarget()
 		return 0
@@ -409,7 +416,7 @@ func (b *rootBase) negotiateDragTarget(host EventTarget, e events.DragOfferEvent
 				t.motion.Emit(request)
 			}
 			request.local = nil
-			if t.owner != w || w.base().destroyed || !IsEnabled(w) || w.Root() != host.(Root) || !t.enabled ||
+			if t.owner != w || w.base().destroyed || !IsEnabled(w) || modalRevision(host) != revision || !modalWidgetAllowed(w) || w.Root() != host.(Root) || !t.enabled ||
 				!request.Action.ValidResult() || request.Action&allowed == 0 {
 				b.leaveDragTarget()
 				continue
@@ -456,7 +463,7 @@ func (b *rootBase) dispatchDragData(host EventTarget, e events.DragDataEvent) {
 		data = &DragData{portable: *e.Data.Clone()}
 	}
 	target := state.target
-	if target == nil || target.owner == nil || target.owner.base().destroyed ||
+	if target == nil || target.owner == nil || target.owner.base().destroyed || !modalWidgetAllowed(target.owner) ||
 		target.owner.Root() != host.(Root) || !IsEnabled(target.owner) || !target.enabled || !slices.Contains(target.formats, state.format) ||
 		target.actions&state.action == 0 {
 		b.finishDragDataError(nil)

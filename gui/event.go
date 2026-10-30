@@ -174,6 +174,8 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 	if host == nil {
 		return nil
 	}
+	ensureModal(host)
+	revision := modalRevision(host)
 
 	if tips := tooltipsFor(host); tips != nil {
 		moved := true
@@ -239,7 +241,7 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 	if pointerEvent, ok := event.(events.PointerEvent); ok {
 		switch pointerEvent.EventType {
 		case events.PointerEnter, events.PointerMove, events.PointerDown, events.PointerUp:
-			d.updateHover(root, pointerEvent)
+			d.updateHover(host, root, pointerEvent)
 			if pointerEvent.EventType == events.PointerEnter {
 				return nil
 			}
@@ -250,6 +252,9 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 	}
 
 	target := d.target(host, root, event)
+	if target != nil && !IsEnabled(target) && modalScopeOf(host) != nil {
+		modalPreventDefault(event)
+	}
 	if target == nil {
 		// A host-owned pointer region need not belong to either Widget tree
 		// (for example Window's resize perimeter). Keep its controller in the
@@ -262,7 +267,7 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 			}
 		}
 		// Window shortcuts remain available when its entire content is disabled.
-		if _, key := event.(events.KeyEvent); key {
+		if _, key := event.(events.KeyEvent); key && modalScopeOf(host) == nil {
 			ctx := &eventContext{event: event}
 			if d.shortcuts != nil {
 				d.shortcuts.HandleEvent(ctx)
@@ -271,11 +276,15 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 				d.navigateTab(host, event)
 			}
 		}
+		if modalScopeOf(host) != nil {
+			modalPreventDefault(event)
+		}
 		return nil
 	}
 
 	root = d.treeRoot(root, target)
 	path := widgetPath(root, target)
+	path = modalPath(host, path)
 	if len(path) == 0 {
 		return nil
 	}
@@ -288,6 +297,7 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 		target:     target,
 		alive: func() bool {
 			return liveRoot(root) != nil && !target.base().destroyed && IsEnabled(target) &&
+				modalRevision(host) == revision && modalInputAllowed(host, target) &&
 				target.base().enabledRevision == enabledRevision && visibleInTree(target) &&
 				(host.Widget() == root || d.decoration == root) && len(widgetPath(root, target)) != 0
 		},
@@ -344,6 +354,9 @@ func (d *EventDispatcher) DispatchEvent(host EventTarget, event events.Event) er
 }
 
 func (d *EventDispatcher) dispatchShortcuts(ctx *eventContext, phase PropagationPhase) {
+	if ctx.host != nil && modalScopeOf(ctx.host) != nil {
+		return
+	}
 	if ctx.alive != nil && !ctx.alive() {
 		ctx.StopPropagation()
 		return
@@ -366,15 +379,22 @@ func (d *EventDispatcher) target(host EventTarget, root Widget, event events.Eve
 	switch event := event.(type) {
 	case events.PointerEvent:
 		target := d.pick(root, event.Position)
-		if target != nil && !IsEnabled(target) {
+		if target != nil && (!IsEnabled(target) || !modalInputAllowed(host, target)) {
 			return nil
 		}
 		return target
 	case events.WheelEvent:
-		return enabledAncestor(d.pick(root, event.Position))
+		target := enabledAncestor(d.pick(root, event.Position))
+		if target != nil && modalInputAllowed(host, target) {
+			return target
+		}
+		return nil
 	case events.KeyEvent:
-		if focused := host.FocusedWidget(); focused != nil && IsEnabled(focused) {
+		if focused := host.FocusedWidget(); focused != nil && IsEnabled(focused) && modalInputAllowed(host, focused) {
 			return focused
+		}
+		if scope := modalScopeOf(host); scope != nil {
+			return scope.widget
 		}
 		if root != nil && IsEnabled(root) {
 			return root
@@ -397,6 +417,9 @@ func (d *EventDispatcher) target(host EventTarget, root Widget, event events.Eve
 // Focusable applies only to the widget itself, not to its descendants.
 func focusNearest(host EventTarget, target Widget) {
 	for widget := target; widget != nil; widget = widget.Parent() {
+		if !modalInputAllowed(host, widget) {
+			return
+		}
 		if IsEnabled(widget) && widget.Focusable() {
 			_ = host.SetFocusedWidget(widget)
 			return
@@ -441,10 +464,11 @@ func (d *EventDispatcher) dispatchPhase(ctx *eventContext, widgets []Widget, pha
 	}
 }
 
-func (d *EventDispatcher) updateHover(root Widget, event events.PointerEvent) {
+func (d *EventDispatcher) updateHover(host EventTarget, root Widget, event events.PointerEvent) {
 	d.pointerEvent, d.pointerInside = event, true
 	target := d.pick(root, event.Position)
 	path := enabledHoverPath(widgetPath(d.treeRoot(root, target), target))
+	path = modalPath(host, path)
 	d.updatePointerHoverPath(path, event)
 }
 

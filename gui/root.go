@@ -44,6 +44,7 @@ type paintRequester interface {
 // frame, input, drag-and-drop and the current native surface. Each host embeds
 // its own instance; native window and popover policy remains in those hosts.
 type rootBase struct {
+	modal          *modalState
 	app            *application
 	dispatcher     EventDispatcher
 	drag           dragHostState
@@ -101,7 +102,7 @@ func adoptWidget(widget Widget, newRoot Root) {
 	if oldRoot != nil {
 		widget.base().emitUnmountSubtree(widget)
 		if h, ok := oldRoot.(EventTarget); ok && focusWithin(h, widget.base()) {
-			h.SetFocusedWidget(nil)
+			clearSubtreeFocus(h, widget.base())
 		}
 	}
 	widget.base().detach(widget)
@@ -137,6 +138,13 @@ func (b *rootBase) layoutFrame(content Widget) {
 // layoutFrameIn lets a host reserve its own perimeter without wrapping the
 // user's root or changing Widget-local coordinates. Popovers use the full frame.
 func (b *rootBase) layoutFrameIn(content Widget, bounds geometry.Rectangle) {
+	if b.modal != nil {
+		host := b.modal.host
+		ensureModal(host)
+		if b.frameDestroyed || host.Widget() != content {
+			return
+		}
+	}
 	if content == nil {
 		b.layoutDirty = false
 		return
@@ -377,6 +385,7 @@ func (b *rootBase) resumeFrames(native paintRequester) {
 
 func (b *rootBase) destroyFrames() {
 	b.frameDestroyed = true
+	b.modal = nil
 	b.stateStyles = nil
 	b.suspendFrames()
 	b.frameRequester = nil
