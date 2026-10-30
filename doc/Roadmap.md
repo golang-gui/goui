@@ -13,6 +13,14 @@ Popup、WindowChrome／BorderBox／SkipTaskbar／初始 Center、文件访问凭
 与 Popover 引用、cmd/goui 构建打包。**实现不等于每种平台／后端／DPI 都已验收**；
 各设计中的带日期记录与 [Plan](Plan.md) 分开维护验证范围。
 
+## Window.Show 唤起已有窗口（2026-10-30）
+
+统一桌面 Show 为显示、取消最小化并请求前台激活，重复调用同样有效；保留已有
+最大化／全屏模式与逻辑焦点，不额外增加 Present。Popup 仍不激活，RequestState
+继续负责显式展示状态。系统可拒绝激活，实际焦点／状态仍由原生事件报告。
+设计、逐平台行为及验收范围见 [窗口契约](DesignWindowManagement.md#show-and-foreground-activation)
+与 [Plan](Plan.md)。
+
 旧 P0～P4 排序和阶段日志保留在文末历史区，不再据其中“下一步”或未勾选项判断
 当前缺失能力。上一次审查与本轮分类见 [文档复核](DesignDocumentAudit.md)。
 
