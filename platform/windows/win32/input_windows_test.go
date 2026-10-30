@@ -30,8 +30,8 @@ func TestConsumedQueuedKey(t *testing.T) {
 		e.PreventDefault()
 	}}
 	windowMap[hwnd] = w
-	// No real HWND/desktop is needed: only the calling thread's keyboard state
-	// is read. The native TranslateMessage path is covered by the window case.
+	// 只读取当前线程的键盘状态，不需要真实 HWND 或桌面。
+	// 原生 TranslateMessage 路径由窗口例程验证。
 	dispatchMessage(&winapi.MSG{Hwnd: hwnd, Message: winapi.WM_KEYDOWN, WParam: 'S'})
 	if calls != 1 {
 		t.Fatalf("key delivered %d times", calls)
@@ -39,16 +39,15 @@ func TestConsumedQueuedKey(t *testing.T) {
 }
 
 func TestLogicalWindowsLetters(t *testing.T) {
-	// wParam is already translated by the active Windows keyboard layout.
-	// Vary physical scan positions to ensure GOUI does not undo that mapping.
+	// wParam 已按当前 Windows 键盘布局翻译；改变物理扫描码，确认 GOUI 不撤销布局映射。
 	for _, tt := range []struct {
 		vk   int
 		scan uintptr
 		want events.Key
 	}{
-		{'A', 0x10, events.KeyA}, // French A at US Q position.
+		{'A', 0x10, events.KeyA}, // 法语布局的 A 位于美式 Q 的位置。
 		{'Q', 0x1e, events.KeyQ},
-		{'Y', 0x2c, events.KeyY}, // German Y at US Z position.
+		{'Y', 0x2c, events.KeyY}, // 德语布局的 Y 位于美式 Z 的位置。
 		{'Z', 0x15, events.KeyZ},
 	} {
 		key, location := keyFromVirtualKey(tt.vk, winapi.LPARAM(tt.scan<<16))
@@ -58,7 +57,7 @@ func TestLogicalWindowsLetters(t *testing.T) {
 	}
 }
 
-// Pure mapping/state tests: no native window or desktop session is required.
+// 只验证映射与状态，不需要原生窗口或桌面会话。
 func TestWindowsLogoKey(t *testing.T) {
 	for _, tt := range []struct {
 		vk       int
@@ -103,13 +102,12 @@ func TestWindowsSidedModifiers(t *testing.T) {
 		{winapi.VK_LWIN, winapi.VK_RWIN, events.KeyWin, events.ModifierWin},
 	} {
 		for i, sides := range [][2]bool{{true, false}, {true, true}, {false, true}, {false, false}, {true, false}} {
-			// Each invocation is an independent native message snapshot, including
-			// keys held before focus and keys released while another window owned it.
+			// 每次调用都是独立的原生消息快照，覆盖获得焦点前按住及在其他窗口释放的按键。
 			state := func(vk int) winapi.SHORT {
 				if vk == tc.left && sides[0] || vk == tc.right && sides[1] {
 					return -32768
 				}
-				return 1 // low toggle bit alone does not mean pressed
+				return 1 // 只有低位切换标志不表示按下。
 			}
 			want := events.Modifiers(0)
 			if sides[0] || sides[1] {

@@ -44,8 +44,7 @@ func TestCustomWindowSize(t *testing.T) {
 					{Left: 15, Top: 1, Right: 15, Bottom: 15},
 					{Left: 16, Right: 16, Bottom: 16},
 				} {
-					// Insets are an independent native observation, not logical
-					// padding. In particular the Win10 top stays one pixel at 2x.
+					// Insets 来自原生边框观察，不是逻辑 Padding；Win10 顶边在 2x 时仍为一个物理像素。
 					got, err := windowSizeRect(geometry.Size{Width: 320, Height: 200}, scale, dpi, chrome, 0, frame)
 					if err != nil {
 						t.Fatal(err)
@@ -137,7 +136,7 @@ func TestWindowsBuild(t *testing.T) {
 	if p.buildNumber != build {
 		t.Fatal("build observation was not cached on Platform")
 	}
-	// A cached build needs no native query and can be used without windows.
+	// 已缓存的系统版本不需要再次原生查询，也不需要创建窗口。
 	p.buildNumber = 22000
 	if got, err := p.windowsBuild(); got != 22000 || err != nil {
 		t.Fatalf("cached build=%d error=%v", got, err)

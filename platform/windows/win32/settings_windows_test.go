@@ -6,7 +6,7 @@ import (
 	"golang.org/x/text/language"
 )
 
-// Calls the real Windows language API, without creating a window or event loop.
+// 调用真实 Windows 语言 API，不创建窗口或事件循环。
 func TestSettingsLanguageNative(t *testing.T) {
 	got, err := (Settings{}).Language()
 	if err != nil {
