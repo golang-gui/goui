@@ -13,7 +13,8 @@
 //  5. 点 Popup：内部原生 Popover 可交互，Esc 先关闭 Popover，确认层继续显示；
 //     再按 Esc 关闭确认层，焦点回到打开前的后台控件；F5 随后恢复。
 //  6. 在卡片外遮罩空白处拖动：Integrated/None 支持范围内窗口可移动；卡片不能
-//     被误当成 Caption，点击遮罩不关闭。双击 Caption 沿用最大化/恢复语义。
+//     被误当成 Caption，逐一拖动卡片内边距及控件间隙，窗口位置应保持不变。
+//     点击遮罩不关闭。双击 Caption 沿用最大化/恢复语义。
 //  7. 调整窗口大小、最大化/还原，再次打开/关闭确认层，文字和输入仍正常。
 //  8. 点 Theme 切换亮暗；模态行为不变，卡片、遮罩和圆角边缘无裁剪异常。
 //
@@ -96,6 +97,26 @@ func (c *confirmation) Paint(p gui.Painter) {
 		fmt.Printf("FRAME backend=%T scale=%g\n", resource, p.PixelScale())
 		resource.Destroy()
 	}
+}
+
+// Chrome 查询采用窗口坐标；卡片内边距和控件间隙同样属于卡片。
+func (c *confirmation) chromeRegion(point geometry.Point) gui.ChromeRegion {
+	if !c.Visible() {
+		return gui.ChromeRegionDefault
+	}
+	for widget := gui.Widget(c); widget != nil; widget = widget.Parent() {
+		rect := widget.Rect()
+		point.X -= rect.X
+		point.Y -= rect.Y
+	}
+	if point.X >= c.card.X && point.X < c.card.X+c.card.Width &&
+		point.Y >= c.card.Y && point.Y < c.card.Y+c.card.Height {
+		return gui.ChromeRegionClient
+	}
+	if gui.Pick(c, point) == c {
+		return gui.ChromeRegionCaption
+	}
+	return gui.ChromeRegionDefault
 }
 
 func button(text string, fn func()) *gui.Button {
@@ -204,8 +225,8 @@ func main() {
 	})
 	root.AddEventController(ancestor)
 	win.Chrome().ConnectQueryRegion(func(p geometry.Point, r *gui.ChromeRegion) {
-		if layer.Visible() && gui.Pick(root, p) == layer {
-			*r = gui.ChromeRegionCaption
+		if region := layer.chromeRegion(p); region != gui.ChromeRegionDefault {
+			*r = region
 		}
 	})
 	win.ConnectDestroy(func() {
@@ -254,6 +275,15 @@ func main() {
 			layer.SetVisible(true)
 		case 1:
 			require(layer.scope.Active() && win.FocusedWidget() == input, "initial modal focus")
+			origin := layer.Snapshot().Bounds.Pos
+			for _, point := range []geometry.Point{
+				{X: layer.card.X + 8, Y: layer.card.Y + 8},
+				{X: layer.card.X + layer.card.Width - 8, Y: layer.card.Y + layer.card.Height - 8},
+				layer.card.Center(),
+			} {
+				require(layer.chromeRegion(origin.Add(point)) == gui.ChromeRegionClient, "card blank space must not move window")
+			}
+			require(layer.chromeRegion(origin.Add(geometry.Point{X: 20, Y: layer.Rect().Height - 20})) == gui.ChromeRegionCaption, "backdrop caption missing")
 			key(events.KeyF5)
 			key(events.KeyF6)
 			click(backCount)
