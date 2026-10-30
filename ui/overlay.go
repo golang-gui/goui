@@ -8,12 +8,14 @@ import (
 	"github.com/golang-gui/goui/gui"
 )
 
-// OverlayItemView describes a floating child and its placement in an Overlay.
+// OverlayItemView describes a floating child, its placement and optional modal
+// input boundary in an Overlay.
 // Like MenuItemView, it is not a View and creates no wrapper widget. Visibility,
 // style and size preferences belong to the child View, not this descriptor.
 type OverlayItemView struct {
 	child      View
 	fill       bool
+	modal      bool
 	onPosition func(available, size geometry.Size, position *geometry.Point)
 }
 
@@ -28,6 +30,16 @@ func (v *OverlayItemView) Fill(fill bool) *OverlayItemView {
 	return v
 }
 
+// Modal restricts the owning Root's content input to this child's subtree while
+// it is mounted and visible. It defaults to false and does not imply Fill, draw
+// a backdrop or handle dismissal. The item owns its ModalScope; do not attach
+// another scope directly to the same child. Rebuilds reuse the existing scope.
+// False or omission releases only this item's scope without changing child visibility.
+func (v *OverlayItemView) Modal(modal bool) *OverlayItemView {
+	v.modal = modal
+	return v
+}
+
 // OnPosition replaces the positioning callback. It runs during GUI Arrange,
 // after measurement, with Overlay-local DIP coordinates and an initial position
 // of zero. nil restores default positioning. Do not retain position, mutate the
@@ -37,8 +49,8 @@ func (v *OverlayItemView) OnPosition(fn func(available, size geometry.Size, posi
 	return v
 }
 
-// OverlayView binds gui.Overlay without adding window-level layers, focus policy
-// or hit testing. Only the main child contributes to its desired size.
+// OverlayView binds gui.Overlay. Only the main child contributes to its desired
+// size. Modal items delegate their input policy to gui.ModalScope.
 type OverlayView struct {
 	ViewBase[OverlayView]
 	child View
@@ -88,6 +100,7 @@ func (v *OverlayView) Update(ctx BuildContext, widget gui.Widget) {
 			item := v.items[i]
 			floating.items[child].onPosition = item.onPosition
 			overlay.SetOverlayFill(child, item.fill)
+			floating.items[child].setModal(child, item.modal)
 		}
 	})
 	// Callback identity cannot be compared; captured state may have changed.
@@ -136,6 +149,19 @@ func (s *overlayChildren) MoveChildBefore(child, sibling gui.Widget) {
 type overlayItemState struct {
 	position   signal.Handle
 	onPosition func(available, size geometry.Size, position *geometry.Point)
+	scope      *gui.ModalScope
+}
+
+func (s *overlayItemState) setModal(child gui.Widget, modal bool) {
+	if modal {
+		if s.scope == nil {
+			s.scope = gui.NewModalScope(child)
+		}
+	} else if s.scope != nil {
+		scope := s.scope
+		s.scope = nil
+		scope.Destroy()
+	}
 }
 
 func (s *overlayItemState) disconnect() {
@@ -144,4 +170,5 @@ func (s *overlayItemState) disconnect() {
 		s.position = nil
 	}
 	s.onPosition = nil
+	s.setModal(nil, false)
 }

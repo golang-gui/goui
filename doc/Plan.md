@@ -1,5 +1,42 @@
 # Plan
 
+## OverlayItem.Modal 与卡片拖窗范围（2026-10-30）
+
+设计见 [DesignModal](DesignModal.md#ui-覆盖项声明) 与 [DesignOverlay](DesignOverlay.md)。
+
+- [x] 修正 GUI 窗口例程的 Caption 查询：卡片完整矩形返回 Client，包含内边距及
+  控件间隙；只有卡片外遮罩可 Caption。查询按窗口 DIP 转换至控件局部坐标。
+  -auto 增加卡片内边距／中心与外部遮罩的明确断言，操作说明增加空白处拖动步骤。
+- [x] UI 仅在 OverlayItem 增加 Modal(bool)，默认 false，与 Fill／Visible 独立。
+  Scope 保存在既有覆盖项状态中，普通重建复用，取消声明、替换输出、移除及
+  释放时清理；隐藏保留关联，GUI 决定是否活动。不增加包装 Widget、Root／
+  BuildContext 特例或 GUI 公共接口。未声明 Modal 不改动 Widget 自有边界。
+- [x] 五组包内回归覆盖：显示／隐藏与焦点恢复、显式／缺省取消、普通重建保留内部
+  焦点、非 Fill 的指针／Tab／Shift+Tab／祖先传播隔离、局部组合换类型和空输出、
+  重排与窗口释放、控件自有资源归属。Windows amd64 真机同组回归通过。
+- [x] 干净源码副本 `DISPLAY=:83 XMODIFIERS=@im=none GOUI_PLAT_PAINTER=software
+  GOWORK=off go test -mod=readonly -json ./... -count=1`：3069 项测试／子测试通过，
+  10 项既有跳过，无失败；`go test -mod=readonly -race ./gui ./ui -count=1` 通过。
+  副本未包含用户已有未跟踪测试与二进制，旧桌面测试副作用隔离于副本和独立会话。
+- [x] Linux amd64 / Ubuntu 22.04.5 / 独立 Xvnc :83 + xfwm4：GUI 例程 OpenGL 1x
+  自动断言通过。真实拖动卡片内边距和控件间隙前后窗口位置均为 (310,195)，
+  拖动外部遮罩后变为 (382,231)，验证范围区分生效。
+- [x] Linux 同会话的 UI 例程：Software 1x／2x、OpenGL 1x／2x 自动断言通过。
+  OpenGL 1x 真实键鼠验证输入、F5 屏蔽／恢复、Tab／Shift+Tab、全应用重建及 Esc
+  关闭；重建后仍显示内部输入 inside-native，后台 native-background 未变化。
+  独立会话使用 XMODIFIERS=@im=none，不据此宣称系统中文预编辑已验收。
+- [x] Windows 10 22H2 build 19045.6466 / amd64 / RDP / Direct2D 1x：上传 GUI、UI
+  例程并核对 SHA256，两者 -auto 均通过；GUI 例程包含本轮新增的卡片 Caption 断言。
+  UI 真实键鼠验证 Unicode 中文提交、Tab／Shift+Tab、重建后文字保留、Esc 关闭和
+  F5 恢复，正常退出码 0。例程等待首次有效布局后才启动断言，避免原生初始化较慢
+  时使用零尺寸坐标；不以固定等待时长代替布局状态。未验收 IME 候选窗。
+- [x] Windows amd64／macOS arm64 的 GUI、UI 窗口例程交叉编译通过（CGO_ENABLED=0）。
+  macOS 已关机，继续按用户要求跳过真机；交叉编译不计为桌面验收。
+
+新增 UI 窗口入口 `tests/window/ui/modal`，验证声明式开关、Tab／快捷键、文本绑定、
+完整重建与身份保留。其状态变化由普通 Build.Observe 和 GUI Scope 完成。
+日志、截图及核对记录位于仓库外 `/tmp/goui-overlay-modal-fjssu_qj`。
+
 ## 通用 Modal 输入边界（2026-10-30）
 
 设计见 [DesignModal](DesignModal.md)。采用普通 Overlay 组合，不增加 HostOverlay。

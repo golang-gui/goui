@@ -1,6 +1,6 @@
 # 通用模态与窗口内 Dialog、Toast
 
-> 状态（2026-10-30）：通用 ModalScope 已实现；Dialog、Toast 及其声明绑定仍为后续切片。
+> 状态（2026-10-30）：通用 ModalScope 与 OverlayItem.Modal 已实现；Dialog、Toast 及其声明绑定仍为后续切片。
 > 采用普通 Overlay 组合，不增加 HostOverlay。验证范围见 [Plan](Plan.md)。
 
 ## 1. 分层和边界
@@ -42,7 +42,32 @@ layer.SetVisible(true)
 ```
 
 隐藏 layer 撤销边界，再次显示重新参与；无需每次展示重新创建 scope。
-UI 自定义 View 仍通过 Build／Update 管理同一个 GUI Widget，不增加 Overlay 专用声明。
+UI 自定义 View 仍通过 Build／Update 管理同一个 GUI Widget。
+
+### UI 覆盖项声明
+
+```go
+func (v *OverlayItemView) Modal(modal bool) *OverlayItemView
+
+ui.Overlay(
+    content,
+    ui.OverlayItem(confirmationLayer.Visible(showDialog)).Fill(true).Modal(true),
+)
+```
+
+Modal 默认 false，不放入 ViewBase；Root 级输入约束在覆盖项关系上显式声明，避免
+普通 Label／Button 的公共修饰符带来意外的窗口级影响。Visible 属于 Child，Fill
+决定布局，Modal 决定输入策略，彼此独立。非铺满覆盖项也可模态；不自动绘制遮罩、
+关闭内容或赋予 Caption。false 或下一轮省略 Modal 只移除 UI 创建的边界，保留内容。
+
+每个已输出 Widget 的覆盖项状态持有一个 Scope，普通重建复用；隐藏自动撤销参与，
+重新显示保留最近焦点。子输出替换、Build 返回 nil、覆盖项移除或声明释放时清理，
+新输出按原槽位声明重新关联。重排沿用 GUI 绘制顺序，窗口销毁只先释放 UI 关联，
+不代替 Window 拆除或销毁控件树。沿用 UpdateChildren 的 apply 回调处理局部更新，
+不增加 Root／BuildContext 特例、包装 Widget 或 UI 输入状态机。
+
+关联由 UI 覆盖项唯一拥有，不同时对同一个 Child 手动 NewModalScope；重复关联
+沿用 GUI 的编程错误契约。未声明 Modal 的覆盖项不干预控件自有的 Scope。
 
 ## 3. 输入与焦点
 
@@ -69,11 +94,14 @@ ModalScope 不安装为 Window.SetModalTarget，避免把 Widget 边界误作独
 WindowChrome 继续负责真实窗口控制和缩放。被覆盖的后台 HeaderBar 不得命中；
 活动遮罩可显式报告 Caption，沿用拖动及双击最大化/恢复语义。Caption 区域不同时
 触发遮罩点击关闭。Native Chrome 的支持范围遵循现有能力，不模拟窗口移动。
+自绘卡片的内边距和控件间隙也属于卡片，应明确报告 Client；不能仅用 Pick 命中
+遮罩 Widget 就报告 Caption，因为同一 Widget.Paint 可能同时绘制遮罩与卡片。
 
 ## 5. 普通 Dialog（待实现）
 
 Dialog 为可放入普通 Overlay 的单子 Widget，使用 Fill(true)，自身绘制遮罩和卡片，
-内容由正常遍历绘制；内部 ModalScope 关联整个 Dialog。通过 Visible 开关展示。
+内容由正常遍历绘制。模态关联整个 Dialog：命令式按需 NewModalScope(dialog)，
+声明式由 OverlayItem.Modal 管理；Dialog 不重复创建边界。通过 Visible 开关展示。
 提供 Child、Padding（默认 24 DIP）、BackdropCaption（默认 false）、
 CloseOnOutside（默认 false）和 CloseRequest 信号。不预置标题、操作按钮或业务结果。
 Escape 在内容/IME 未消费时请求关闭，遮罩完整左键点击可选请求关闭，不自动更改

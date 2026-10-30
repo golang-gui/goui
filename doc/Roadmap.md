@@ -39,9 +39,12 @@ State.Set／Update 只通知显式使用方；App.RequestUpdate 仍负责全应�
 快捷键、IME 和拖放，并通过 Anchor 判断附着浮层的上下文；窗口自身装饰操作保留。
 使用普通 Overlay 和自定义 Widget 即可组合模态内容，不增加 HostOverlay 或
 专用 Window 图层。语义采用通用 Attributes，外观、布局与关闭仍由组件负责。
+UI 已接入 `OverlayItem(...).Modal(true)`，关联由覆盖项状态持有，支持普通重建、
+局部组合替换输出和重排；不向所有 View 添加 Modal，也不改 Root／BuildContext。
 
 后续待实现：`widgets.Dialog`、`widgets.Toast`、Basic／Modern 外观和声明式绑定，
-包括 `ToastHandle` 的命令请求、计时与声明生命周期协调。当前没有交付这些控件。
+包括 `ToastHandle` 的命令请求、计时与声明生命周期协调。Dialog 模态由组合方关联，
+不在内部重复创建 Scope。当前没有交付这些控件。
 设计见 [DesignModal](DesignModal.md)，平台与倍率的实际验证范围见 [Plan](Plan.md)。
 
 ## TextLayout 富文本基础：本轮已实现，应用层按需求推进
