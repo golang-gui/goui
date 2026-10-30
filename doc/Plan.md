@@ -1,5 +1,41 @@
 # Plan
 
+## 通用 Modal 输入边界（2026-10-30）
+
+设计见 [DesignModal](DesignModal.md)。采用普通 Overlay 组合，不增加 HostOverlay。
+
+- [x] ModalScope、Root 内容输入边界、焦点恢复及挂载／可见性／重排生命周期。
+  Active 查询不触发焦点回调；禁用内容不撤销模态；Snapshot 使用 goui.modal 属性。
+- [x] Popover Anchor、Chrome、IME、快捷键、Tab、拖放接入。12 个包内测试组覆盖
+  完整事件路径、空候选、前方遮挡、嵌套／移除中间层、迁移、失效焦点和回调销毁；
+  额外覆盖旧按压取消、布局中销毁及后台 Popover 的原生销毁通知仍须清理资源。
+- [x] 干净源码副本 `DISPLAY=:82 XMODIFIERS=@im=none GOUI_PLAT_PAINTER=software
+  GOWORK=off go test -mod=readonly -json ./... -count=1`：3064 项测试／子测试通过，
+  10 项既有跳过，无失败。跳过项是 macOS 签名与既有原生手动测试，不计为通过。
+  `go test -mod=readonly -race ./gui ./ui -count=1` 通过。源码副本未包含用户已有的
+  未跟踪测试与二进制；旧桌面测试副作用隔离于该副本和独立显示会话。
+- [x] Linux amd64 / Ubuntu 22.04.5 / 独立 Xvnc :82 + xfwm4 合成会话：Software
+  1x／2x、OpenGL 1x／2x 的窗口自动断言全部通过，实际资源类型与比例有日志。
+  OpenGL 1x 的真实键鼠验证覆盖后台／内部输入、F5／F6 隔离、Tab／Shift+Tab、
+  内部计数、Popover、Esc 逐层关闭、焦点恢复、遮罩拖窗、双击最大化／还原、
+  亮暗切换和关闭。独立会话禁用外部 XIM；不据此宣称系统中文预编辑已验收。
+- [x] Windows 10 22H2 build 19045.6466 / amd64 / RDP / Direct2D 1x：核对上传
+  SHA256 后从交互桌面启动。窗口自动断言与真机 Modal 包内回归通过；真实鼠标、
+  原生英文／Unicode 中文提交、Tab／Shift+Tab、后台快捷键隔离、内部计数、Popover、
+  Esc 逐层关闭、遮罩拖窗、亮暗切换和窗口关闭通过。Unicode 提交不代替 IME 候选窗验收。
+- [x] Windows amd64／macOS arm64 的 gui 测试目标与窗口例程交叉编译通过
+  （CGO_ENABLED=0）。编译通过不等于 macOS 真机验收。
+
+验证缺口：Windows OpenGL 在该 RDP 会话中创建上下文失败：`can not choose useful
+pixel format`，未进行该后端窗口验收。macOS 已关机，按用户要求跳过真机验证。
+首轮窗口自动断言因例程 Escape 控制器使用默认 Target 阶段失败，改为明确的 Bubble
+阶段后通过；失败日志保留，没有弱化断言。
+
+后续：普通 Dialog／Toast、Basic／Modern 样式与声明绑定仍未实现，见
+[Roadmap](Roadmap.md)。本切片不新增 HostOverlay。
+窗口入口为 `tests/window/gui/modal`，操作说明位于 main.go 顶部；日志、截图、
+交叉编译与核对记录位于仓库外 `/tmp/goui-modal-h21j2j0b`。
+
 本篇维护实现与验收记录；未来功能统一在 [Roadmap](Roadmap.md) 分类，不从历史
 未勾选项推定当前缺失能力。原生验收缺口、已知限制与未实现功能是三种不同状态。
 

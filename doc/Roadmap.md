@@ -33,6 +33,17 @@ State.Set／Update 只通知显式使用方；App.RequestUpdate 仍负责全应�
 可选的单 Label 选择、复制与 UI 选区绑定已接入，验证进度见 Plan；跨控件选择、触摸手柄、
 边缘自动滚动与富文本剪贴板待后续需求。TextInput/TextView 的正文与 Placeholder 不解析格式。
 
+## 通用 Modal 与 Dialog／Toast（2026-10-30）
+
+通用 `gui.ModalScope` 已实现，约束 Window／Popover 的内容输入、焦点、Tab、
+快捷键、IME 和拖放，并通过 Anchor 判断附着浮层的上下文；窗口自身装饰操作保留。
+使用普通 Overlay 和自定义 Widget 即可组合模态内容，不增加 HostOverlay 或
+专用 Window 图层。语义采用通用 Attributes，外观、布局与关闭仍由组件负责。
+
+后续待实现：`widgets.Dialog`、`widgets.Toast`、Basic／Modern 外观和声明式绑定，
+包括 `ToastHandle` 的命令请求、计时与声明生命周期协调。当前没有交付这些控件。
+设计见 [DesignModal](DesignModal.md)，平台与倍率的实际验证范围见 [Plan](Plan.md)。
+
 ## TextLayout 富文本基础：本轮已实现，应用层按需求推进
 
 字体样式与有效注册、run 级删除线、U+FFFC 纯度量行内占位已按
