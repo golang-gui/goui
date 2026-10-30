@@ -48,6 +48,19 @@ Button、MenuButton 和按钮式 CheckButton 显式调用 GUI 按钮绘制辅助
 隐藏项不占接缝序位，单项保留完整轮廓；容器无独立点击／焦点动作，子项语义保留。
 MenuButtonGroup 使用可配置间距的水平线性布局；ButtonGroup 的连接间距固定为零。
 
+## 实现入口
+
+- `gui.NewButtonGroup()`、`SetDirection(layout.Direction)`、`AddChild`／`RemoveChild`／
+  相对重排；`ui.ButtonGroup(children...).Direction(...)`。
+- `gui.PaintButtonBox(p, widget, resolvedStyle)` 根据直接父 ButtonGroup 确定外露圆角，
+  普通按钮直接复用既有绘制；`gui.PaintButtonFocus` 始终绘制完整焦点边。
+  自定义按钮可显式调用，两者不主动改变焦点或解析子项样式。
+- 菜单组复用 LinearBox 的布局字段，重写 AddChild 保证父对象是实际 MenuButtonGroup，
+  并使用自己的默认样式名 `menu-button-group`。声明层仍是普通 Container 协调。
+- ButtonGroup 的默认样式名为 `button-group`；两个容器默认不绘制独立装饰。
+  Basic／Modern 原有按钮、expanded、focus 和按钮式 CheckButton 部件直接适用，
+  无需额外主题匹配或父样式继承。自定义 StyleName 仍按子项自身解析。
+
 ## 生命周期与验证
 
 保留已有 MenuButton 关闭／错误反馈、正常事件路径、原生 Popup 所有权、重入防护、

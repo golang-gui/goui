@@ -371,6 +371,7 @@ func (p checkPixelPainter) DrawRoundRect(r geometry.Rectangle, s, w float32, b g
 func (p checkPixelPainter) DrawRect(r geometry.Rectangle, w float32, b graphics.Brush) {
 	p.native.DrawRect(r, w, b)
 }
+func (p checkPixelPainter) FillPath(path graphics.Path, b graphics.Brush) { p.native.FillPath(path, b) }
 func (p checkPixelPainter) DrawPath(path graphics.Path, w float32, b graphics.Brush) {
 	p.native.DrawPath(path, w, b)
 }
@@ -632,5 +633,53 @@ func TestCheckButtonAsymmetricPadding(t *testing.T) {
 	b.Arrange(geometry.Rectangle{Size: m.Size})
 	if got := child.Rect(); got != geometry.Rect(36, 5, 40, 12) {
 		t.Fatalf("asymmetric indicator child=%+v", got)
+	}
+}
+
+// 按钮式 CheckButton 复用连排几何，互斥组只影响选择，不覆盖每项样式。
+func TestCheckButtonConnectedPixels(t *testing.T) {
+	useProgressApplication(t, &progressTestApplication{sheet: style.Sheet(
+		style.Name("check-button").Part("button").BackgroundColor(color.NRGBA{R: 255, A: 128}).BorderColor(color.Black).BorderWidth(1).Radius(6),
+		style.Name("check-button").Part("button-checked").BackgroundColor(color.NRGBA{B: 255, A: 128}).BorderColor(color.Black).BorderWidth(1).Radius(6),
+	)})
+	for _, scale := range []float32{1, 2} {
+		group := gui.NewButtonGroup()
+		exclusive := NewCheckButtonGroup()
+		a, b := NewCheckButton(), NewCheckButton()
+		for _, button := range []*CheckButton{a, b} {
+			button.SetAppearance(CheckAppearanceButton)
+			button.SetGroup(exclusive)
+			group.AddChild(button)
+		}
+		b.SetChecked(true)
+		a.Arrange(geometry.Rect(0, 0, 40, 30))
+		b.Arrange(geometry.Rect(40, 0, 40, 30))
+		out := new(progressPixelSurface)
+		native, err := software.NewPainter(out)
+		if err != nil {
+			t.Fatal(err)
+		}
+		native.Begin(80*scale, 30*scale, scale)
+		native.Clear(graphics.Color{})
+		a.Paint(checkPixelPainter{native: native})
+		native.SetTransform(geometry.Translate(40, 0))
+		b.Paint(checkPixelPainter{native: native})
+		native.End()
+		native.Destroy()
+		// 在圆角外、内侧直角、接缝两侧采样预乘 sRGB，直线没有部分覆盖，精确断言。
+		n := int(scale)
+		for _, sample := range []struct {
+			x, y int
+			want color.RGBA
+		}{
+			{0, 0, color.RGBA{}}, {39 * n, 3 * n, color.RGBA{R: 128, A: 128}},
+			{39 * n, 15 * n, color.RGBA{R: 128, A: 128}}, {40 * n, 15 * n, color.RGBA{A: 255}},
+			{41 * n, 15 * n, color.RGBA{B: 128, A: 128}},
+		} {
+			got := color.RGBAModel.Convert(out.pixels.At(sample.x, sample.y)).(color.RGBA)
+			if got != sample.want {
+				t.Fatalf("%gx (%d,%d)=%v，预期%v", scale, sample.x, sample.y, got, sample.want)
+			}
+		}
 	}
 }

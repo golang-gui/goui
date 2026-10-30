@@ -14,3 +14,5 @@ func NewMenuButtonGroup() *MenuButtonGroup {
 }
 
 func (g *MenuButtonGroup) AddChild(child Widget) { g.WidgetBase.AddChild(g, child) }
+
+func (g *MenuButtonGroup) Paint(p Painter) { PaintWidgetStyle(p, g, "menu-button-group") }

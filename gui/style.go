@@ -173,15 +173,9 @@ func buttonStyleName(button *WidgetBase) string {
 
 // Focus is an independent pass over the button's hover/press background. Its
 // optional tint and border do not alter the child widgets' styles.
-func paintButtonFocus(p Painter, rect geometry.Rectangle, button *WidgetBase) {
+func paintButtonFocus(p Painter, widget Widget, button *WidgetBase) {
 	if IsEnabled(button) && button.Focused() {
 		focus := ResolveWidgetStyle(button, buttonStyleName(button), stylePartFocus, button.State())
-		if bg, ok := focus.BackgroundColor(); ok && bg != nil && graphics.ColorOf(bg).A > 0 {
-			PaintStyledBox(p, rect, focus)
-		} else {
-			// The default pointer-focus background is transparent: skip the
-			// no-op fill while retaining an application's optional border.
-			PaintStyledBorder(p, rect, focus)
-		}
+		PaintButtonFocus(p, widget, focus)
 	}
 }

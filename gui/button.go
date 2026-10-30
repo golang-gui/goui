@@ -177,9 +177,8 @@ func (b *Button) Paint(p Painter) {
 	if !b.Visible() {
 		return
 	}
-	rect := geometry.Rect(0, 0, b.Rect().Width, b.Rect().Height)
-	PaintStyledBox(p, rect, b.resolvedStyle())
-	paintButtonFocus(p, rect, &b.WidgetBase)
+	PaintButtonBox(p, b, b.resolvedStyle())
+	paintButtonFocus(p, b, &b.WidgetBase)
 }
 
 func (b *Button) Snapshot() WidgetInfo {
