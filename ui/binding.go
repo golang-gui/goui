@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 
 	"github.com/golang-gui/goui/core/signal"
+	"github.com/xuges/gothread"
 )
 
 // Observable publishes change notifications. Sources must be stable, non-nil
@@ -23,6 +24,75 @@ type ReadState[T any] interface {
 type BindState[T any] interface {
 	ReadState[T]
 	Set(T)
+}
+
+// Read reads a source and tracks it during a ComposeView.Build. The source
+// must be a stable non-nil pointer, and must report every change to its value.
+// Reads inside the source's getter are not tracked separately. Outside a build,
+// Read only reads the value; the source retains its own threading contract.
+func Read[T any](source ReadState[T]) T {
+	validateObservable(source)
+	trackRead(source)
+	defer pauseReadTracking()()
+	return source.Get()
+}
+
+// Only the UI thread mutates a capture. Background readers inspect its
+// immutable thread ID before accessing any node or dependency collection.
+type readCapture struct {
+	owner    *node
+	root     *root
+	version  uint64
+	epoch    uint64
+	threadID int
+	sources  map[Observable]struct{}
+}
+
+var activeReads atomic.Pointer[readCapture]
+
+func (c *readCapture) live() bool {
+	return !c.owner.released && c.owner.root == c.root && c.owner.version == c.version && c.root.epoch == c.epoch
+}
+
+func trackRead(source Observable) {
+	c := activeReads.Load()
+	if c == nil || c.threadID != gothread.GetId() || !c.live() {
+		return
+	}
+	if _, seen := c.sources[source]; seen {
+		return
+	}
+	if c.sources == nil {
+		c.sources = make(map[Observable]struct{})
+	}
+	c.sources[source] = struct{}{}
+	// Connect before reading, so a concurrent writer either changes the value
+	// we read or requests another update. Subscription setup is untracked.
+	c.owner.subscribe(source, updateBuild)
+}
+
+// A worker must not suspend the UI thread's active capture. The no-capture
+// path also avoids querying the OS thread for ordinary state reads/writes.
+func pauseReadTracking() func() {
+	c := activeReads.Load()
+	if c == nil || c.threadID != gothread.GetId() {
+		return func() {}
+	}
+	activeReads.Store(nil)
+	return func() { activeReads.Store(c) }
+}
+
+func (n *node) buildComposition(view ComposeView, ctx BuildContext) View {
+	c := &readCapture{owner: n, root: n.root, version: n.version, epoch: n.root.epoch, threadID: gothread.GetId()}
+	previous := activeReads.Swap(c)
+	defer activeReads.Store(previous)
+	content := view.Build(ctx)
+	if c.live() {
+		// Commit only after a successful return. A panic retains the previous
+		// set; finishBindings then discards newly connected, unused sources.
+		n.tracked = c.sources
+	}
+	return content
 }
 
 type valueBinding struct {
@@ -60,6 +130,7 @@ func (n *node) subscribe(source Observable, kind updateKind) {
 	sub.active.Store(true)
 	sub.kind.Store(uint32(kind))
 	n.subscriptions[source] = sub
+	defer pauseReadTracking()()
 	sub.handle = source.Connect(func() {
 		if sub.active.Load() {
 			n.requestUpdate(updateKind(sub.kind.Load()))
@@ -67,6 +138,11 @@ func (n *node) subscribe(source Observable, kind updateKind) {
 	})
 	if sub.handle == nil {
 		panic("ui: observable returned a nil connection")
+	}
+	// Connect is external code and can release the owner before returning.
+	if n.released || n.subscriptions[source] != sub {
+		sub.active.Store(false)
+		sub.handle.Disconnect()
 	}
 }
 func (n *node) beginBindings() {
@@ -86,6 +162,9 @@ func (n *node) finishBindings() {
 	for _, source := range n.observed {
 		wanted[source] |= updateBuild
 	}
+	for source := range n.tracked {
+		wanted[source] |= updateBuild
+	}
 	for key, b := range n.bindings {
 		if b.version != n.version {
 			delete(n.bindings, key)
@@ -97,27 +176,33 @@ func (n *node) finishBindings() {
 		if kind := wanted[source]; kind != 0 {
 			sub.kind.Store(uint32(kind))
 		} else {
+			delete(n.subscriptions, source)
 			sub.active.Store(false)
 			if sub.handle != nil {
 				sub.handle.Disconnect()
 			}
-			delete(n.subscriptions, source)
+			if n.released {
+				return
+			}
 		}
 	}
 }
 func (n *node) releaseBindings() {
-	for _, sub := range n.subscriptions {
+	subscriptions := n.subscriptions
+	n.subscriptions = nil
+	n.tracked = nil
+	n.bindings = nil
+	n.bindingOrder = nil
+	n.observed = nil
+	for _, sub := range subscriptions {
 		sub.active.Store(false)
 		if sub.handle != nil {
 			sub.handle.Disconnect()
 		}
 	}
-	n.subscriptions = nil
-	n.bindings = nil
-	n.bindingOrder = nil
-	n.observed = nil
 }
 func (n *node) applyBindings() {
+	defer pauseReadTracking()()
 	r := n.root
 	for _, key := range n.bindingOrder {
 		if n.released || n.root != r {
@@ -154,7 +239,10 @@ func BindValue[T any](ctx BuildContext, property string, source ReadState[T], ap
 	if old, ok := n.bindings[property]; !ok || old.version != n.version {
 		n.bindingOrder = append(n.bindingOrder, property)
 	}
-	fn := func() { apply(source.Get()) }
+	fn := func() {
+		defer pauseReadTracking()()
+		apply(source.Get())
+	}
 	n.bindings[property] = valueBinding{source: source, apply: fn, version: n.version}
 	fn()
 }

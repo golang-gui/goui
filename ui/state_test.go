@@ -1,10 +1,43 @@
 package ui
 
 import (
+	"strconv"
 	"testing"
 
+	"github.com/golang-gui/goui/core/state"
 	"github.com/golang-gui/goui/gui"
 )
+
+func TestStatePeekAndReadWithoutBuild(t *testing.T) {
+	var value State[int]
+	if value.Peek() != 0 || Read[int](&value) != 0 {
+		t.Fatal("零值 State 的普通读取不正确")
+	}
+	value.Set(4)
+	if value.Peek() != 4 || Read[int](&value) != 4 || activeReads.Load() != nil {
+		t.Fatal("构建范围外的读取不应创建收集器")
+	}
+	model := state.Make("model")
+	if Read[string](&model) != "model" {
+		t.Fatal("core/state 未能通过 Read 使用")
+	}
+}
+
+func TestReadCoreStateTracksComposition(t *testing.T) {
+	value := state.Make(1)
+	builds := 0
+	_, fake := bindingApp(t, func() RootView {
+		return Window("main").Content(Build(func() View {
+			builds++
+			return Label(strconv.Itoa(Read(&value)))
+		}))
+	})
+	value.Set(2)
+	fake.runPosted()
+	if builds != 2 || fake.windows[0].Widget().(*gui.Label).Text() != "2" {
+		t.Fatal("core/state 通过 Read 没有建立局部依赖")
+	}
+}
 
 func TestStateSetWithoutObserversDoesNotRequestUpdate(t *testing.T) {
 	fake := newWindowTestApplication()

@@ -42,6 +42,7 @@ type node struct {
 	boundBatch    uint64
 	collecting    bool
 	observed      []Observable
+	tracked       map[Observable]struct{}
 	subscriptions map[Observable]*nodeSubscription
 	bindings      map[string]valueBinding
 	bindingOrder  []string
@@ -235,6 +236,7 @@ func (r *root) updateNode(old *node, view View) *node {
 }
 
 func (r *root) updateDeclaration(old *node, view View, parent *node, depth int) *node {
+	defer pauseReadTracking()()
 	validateView(view)
 	epoch := r.epoch
 	if view == nil {
@@ -299,7 +301,7 @@ func (r *root) updateDeclaration(old *node, view View, parent *node, depth int) 
 			view.base().update(current.baseCtx, current.widget)
 		}
 	} else {
-		content := view.(ComposeView).Build(ctx)
+		content := current.buildComposition(view.(ComposeView), ctx)
 		if live() {
 			body := r.updateDeclaration(current.body, content, current, depth+1)
 			if !live() {
@@ -326,6 +328,7 @@ func (r *root) updateDeclaration(old *node, view View, parent *node, depth int) 
 }
 
 func (r *root) release(n *node, detachWidgets bool) {
+	defer pauseReadTracking()()
 	if n == nil || n.released {
 		return
 	}
@@ -477,6 +480,7 @@ func (ctx *buildContext) childTarget(target any, single bool) *childTarget {
 }
 
 func (ctx *buildContext) UpdateChild(target Bin, child View, apply ...func(gui.Widget)) gui.Widget {
+	defer pauseReadTracking()()
 	if len(apply) > 1 {
 		panic("ui: UpdateChild accepts at most one apply function")
 	}
@@ -532,6 +536,7 @@ func (ctx *buildContext) UpdateChild(target Bin, child View, apply ...func(gui.W
 }
 
 func (ctx *buildContext) UpdateChildren(target Container, children []View, apply ...func(int, gui.Widget)) []gui.Widget {
+	defer pauseReadTracking()()
 	if len(apply) > 1 {
 		panic("ui: UpdateChildren accepts at most one apply function")
 	}

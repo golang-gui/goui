@@ -18,13 +18,14 @@ Popup、WindowChrome／BorderBox／SkipTaskbar／初始 Center、文件访问凭
 
 ## 声明式显式局部更新（2026-10-28）
 
-已实现 `ui.Build(fn).Observe(...)`、自定义 ComposeView 的 Observe、
+已实现 `ui.Build(fn)`、自定义 ComposeView 的 Observe、
 `BuildContext.RequestUpdate`、通用 `BindValue` 和 Label／文本编辑属性订阅。
-State.Set／Update 只通知显式使用方；App.RequestUpdate 仍负责全应用声明。
-无隐式 Get 依赖、不依赖用户 ID、不增加 GUI 状态机。节点移交后订阅与请求跟随
+State.Set／Update 通知订阅使用方；App.RequestUpdate 仍负责全应用声明。
+2026-10-30 增补明确组合构建范围内的 State.Get 自动依赖、Peek 和自定义来源 Read；
+Observe 保留为补充入口，当前实现／验收进度见 Plan。不依赖用户 ID，不增加 GUI 状态机。节点移交后订阅与请求跟随
 目标 Root，退出断开声明式连接；验证范围和平台编译缺口见 [Plan](Plan.md)。
 详细 API／迁移见 [DesignUIUpdates](DesignUIUpdates.md)。其他 BindXxx 按需求增补，
-派生状态与隐式响应式系统不属于本切片。
+派生状态、任意路径的隐式追踪及完整响应式系统不属于本切片。
 
 ## Label 展示文本切片（2026-10-29）
 

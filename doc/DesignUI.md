@@ -18,7 +18,7 @@ ui 是 gui 的**声明式简便面**,不是第二套 widget 系统。View 值描
 - `View` 只定义声明身份；`ComposeView.Build(ctx)` 构建内容，`ObjectView` 增加对象访问和 Release；`WidgetView` 使用 Mount／Update／Unmount。两种构建方式互斥，组合节点保留独立 State。详见 [组合声明设计](DesignComposition.md)。
 - `Root` 协调;`BuildContext` 提供 `State`/`SetState`/`UpdateChild`/`UpdateChildren`。
 - 信号句柄对应用代码隐藏:用户写 `OnXxx` 回调 + 请求更新,ui runtime 内部管信号连接生命周期。
-- 更新显式:state 是普通 Go 变量,变了就请求更新;不引入自动依赖追踪/属性绑定(MVP 不需要)。
+- 更新由明确的状态写入或更新请求驱动。ui.State.Get 只在 ComposeView.Build 同步范围内自动登记依赖，属性绑定仅更新对应属性；普通 Go 变量及范围外读取不会隐式关联 UI，窗口集合仍显式 RequestUpdate。
 
 `AfterUpdate` 是一次性协调完成钩子，不是绘制或计时回调。独立 Root 在整棵树
 更新并挂到 Window 后执行；App 的多窗口重建先按声明顺序更新全部窗口树、清理
@@ -179,7 +179,7 @@ move 期间源销毁不会释放临时持有的子树；目标最终不存在则
 组合节点不再被 normalizeView 丢弃。ComposeBase 提供声明 ID，ObjectView
 在自己的 State 中持有对象，通过无副作用 Object(ctx) 公开；后代用
 `FindAncestor[T](ctx, id)` 查询最近的同名祖先。缺失或类型不符返回 false，
-不自动创建、不越过同名节点猜测外层；没有全局对象表或隐式依赖追踪。
+不自动创建、不越过同名节点猜测外层；没有全局对象表，也不因祖先对象查询自动登记依赖。
 
 ```go
 wui.CheckButtonGroup("appearance", ui.HBox(
@@ -404,9 +404,10 @@ dismiss 回写及生命周期边界集中记录在 [未来路线](Roadmap.md#fut
 ## 显式局部更新（2026-10-28）
 
 属性使用 `BindText`／`BindSelection`；计算或结构使用
-`ui.Build(fn).Observe(&state)`，自定义 ComposeView 同样可 Observe。
+`ui.Build(fn)`，自定义 ComposeView 同样自动收集同步执行中的 ui.State.Get／ui.Read。
+Observe 保留为补充依赖；Peek 只读当前值，不增加自动依赖。
 `BuildContext.RequestUpdate` 仅请求当前节点；`ui.BindValue` 给自定义 View 注册属性。
-State.Get 不收集依赖，Set/Update 不再自动全应用更新；窗口声明变更仍调用
+State.Get 在构建范围外保持快照语义，Set/Update 不自动全应用更新；窗口声明变更仍调用
 App.RequestUpdate。挂载槽回调处理局部输出替换，不增加具体控件特例。
 详见 [UI 局部更新与属性绑定](DesignUIUpdates.md)。
 

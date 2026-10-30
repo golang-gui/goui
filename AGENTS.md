@@ -63,7 +63,7 @@ gui -> platform
 - 信号是 `gui` 层统一通知机制。不要为同一事件同时提供 signal 和 `SetOnXXX` 两套 API；`ui` 的 `OnXXX` 只是声明式语法，内部应由协调过程管理 signal handle。
 - 真实输入和模拟输入必须走同一路径：`platform event -> Window.DispatchEvent -> EventDispatcher -> EventController -> Widget state/signal -> layout/paint -> semantic snapshot`。
 - `EventDispatcher` 负责命中测试、传播路径和传播阶段；`EventController` 负责把输入解释为控件状态和语义信号。应用通常监听信号，而不是直接处理原始平台事件。
-- `ui` 是 `gui` 的薄适配层。View 是普通 Go 值，更新必须显式请求；不要在 MVP 路径上引入完整响应式系统、隐式依赖追踪或并行控件体系。
+- `ui` 是 `gui` 的薄适配层。View 是普通 Go 值，更新由显式状态写入或更新请求驱动；只在明确的 ComposeView.Build 同步范围内收集 ui.State 读取，范围外保持普通 Go 求值。不扩展为任意路径的隐式追踪、完整响应式系统、并行构建或并行控件体系。
 - 复用已有 UI 更新调度、信号连接管理和通用协调扩展；不为单个控件不断向 Root / BuildContext 增加具体类型特例，也不在 UI 层重复实现 GUI 状态机。
 - 布局算法尽量独立于 Widget。`Measure` 计算期望尺寸，`Arrange` 写入最终矩形；控件绘制使用自身局部坐标，语义快照使用窗口局部绝对坐标。
 - 生命周期和资源归属要可解释：`Window` 对 Widget 树和窗口资源做最终兜底清理；控件用 mount/unmount 释放能明确释放的资源；`ui` Root 负责清理声明式连接和协调状态，不夺走窗口对 Widget 销毁的所有权。

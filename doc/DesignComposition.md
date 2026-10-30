@@ -94,8 +94,9 @@ AfterTransfer 通知仍在 committed 之后。回滚保留原声明身份；整�
 ## 显式局部更新（2026-10-28）
 
 属性使用 `BindText`／`BindSelection`；计算或结构使用
-`ui.Build(fn).Observe(&state)`，自定义 ComposeView 同样可 Observe。
+`ui.Build(fn)`，自定义 ComposeView 同样自动收集同步执行中的 ui.State.Get／ui.Read。
+Observe 仍可显式补充依赖，Peek 不添加自动依赖。
 `BuildContext.RequestUpdate` 仅请求当前节点；`ui.BindValue` 给自定义 View 注册属性。
-State.Get 不收集依赖，Set/Update 不再自动全应用更新；窗口声明变更仍调用
+State.Get 在构建范围外保持快照语义，Set/Update 不自动全应用更新；窗口声明变更仍调用
 App.RequestUpdate。挂载槽回调处理局部输出替换，不增加具体控件特例。
 详见 [UI 局部更新与属性绑定](DesignUIUpdates.md)。

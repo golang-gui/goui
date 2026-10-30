@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"runtime"
 	"sync"
 	"testing"
 
@@ -42,6 +43,9 @@ func (h *bindingConnection) Disconnect() {
 
 func bindingApp(t *testing.T, build func() RootView) (*app, *windowTestApplication) {
 	t.Helper()
+	// 自动读取按 OS 线程隔离；锁定真正执行构建与队列的测试 goroutine。
+	runtime.LockOSThread()
+	t.Cleanup(runtime.UnlockOSThread)
 	fake := newWindowTestApplication()
 	rt := newApp(fake, build)
 	t.Cleanup(func() { rt.stop(); rt.destroyAll() })
@@ -49,6 +53,211 @@ func bindingApp(t *testing.T, build func() RootView) (*app, *windowTestApplicati
 		t.Fatal(err)
 	}
 	return rt, fake
+}
+
+func TestBuildTracksStateReadsAndBranches(t *testing.T) {
+	show, chooseLeft := MakeState(true), MakeState(true)
+	left, right := MakeState("left"), MakeState("right")
+	builds := 0
+	rt, fake := bindingApp(t, func() RootView {
+		return Window("main").Content(Build(func() View {
+			builds++
+			if !show.Get() {
+				return nil
+			}
+			if chooseLeft.Get() {
+				return Label(left.Get())
+			}
+			return Label(right.Get())
+		}))
+	})
+	n := rt.windows["main"].root.root
+	left.Set("new left")
+	left.Set("latest left")
+	if len(fake.posts) != 1 || builds != 1 {
+		t.Fatal("自动依赖没有延迟合并通知")
+	}
+	fake.runPosted()
+	if builds != 2 || fake.windows[0].Widget().(*gui.Label).Text() != "latest left" {
+		t.Fatal("自动依赖没有更新当前分支")
+	}
+	chooseLeft.Set(false)
+	fake.runPosted()
+	left.Set("unused")
+	if len(fake.posts) != 0 || len(n.tracked) != 3 {
+		t.Fatal("分支切换没有解除旧依赖")
+	}
+	right.Set("new right")
+	fake.runPosted()
+	if builds != 4 || fake.windows[0].Widget().(*gui.Label).Text() != "new right" {
+		t.Fatal("没有收集新分支的来源")
+	}
+	show.Set(false)
+	fake.runPosted()
+	chooseLeft.Set(true)
+	left.Set("restored")
+	right.Set("hidden")
+	if len(fake.posts) != 0 || fake.windows[0].Widget() != nil || len(n.tracked) != 1 {
+		t.Fatal("空输出仍订阅不可见分支")
+	}
+	show.Set(true)
+	fake.runPosted()
+	if builds != 6 || rt.windows["main"].root.root != n || fake.windows[0].Widget().(*gui.Label).Text() != "restored" {
+		t.Fatal("空组合没有保留身份或恢复订阅")
+	}
+}
+
+func TestAutomaticReadsStayWithTheirMountedComposition(t *testing.T) {
+	parentValue, childValue := MakeState("parent"), MakeState("child")
+	parents, children := 0, 0
+	shared := Build(func() View { children++; return Label(childValue.Get()) })
+	rt, fake := bindingApp(t, func() RootView {
+		return Root().Windows(
+			Window("parent").Content(Build(func() View {
+				parents++
+				return VBox(Label(parentValue.Get()), shared)
+			})),
+			Window("other").Content(shared),
+		)
+	})
+	childValue.Set("both")
+	fake.runPosted()
+	if parents != 1 || children != 4 || fake.windows[0].Widget().Children()[1].(*gui.Label).Text() != "both" || fake.windows[1].Widget().(*gui.Label).Text() != "both" {
+		t.Fatal("子构建依赖泄漏给父节点，或共享声明合并了两个挂载")
+	}
+	parentValue.Set("new parent")
+	fake.runPosted()
+	if parents != 2 || children != 5 {
+		t.Fatal("父子更新范围错误")
+	}
+	rt.windows["parent"].window.Destroy()
+	childValue.Set("survivor")
+	fake.runPosted()
+	if children != 6 || fake.windows[1].Widget().(*gui.Label).Text() != "survivor" || rt.windows["parent"] != nil {
+		t.Fatal("一个挂载释放影响了另一个挂载的自动订阅")
+	}
+}
+
+func TestBuildReadAndObserveShareConnections(t *testing.T) {
+	source := new(getterNotificationSource)
+	manual, builds := true, 0
+	rt, fake := bindingApp(t, func() RootView {
+		v := Build(func() View {
+			builds++
+			return Label(Read[string](source) + Read[string](source))
+		})
+		if manual {
+			v.Observe(source, source)
+		} else {
+			v.Observe()
+		}
+		return Window("main").Content(v)
+	})
+	if source.connects != 1 || len(fake.posts) != 1 {
+		t.Fatal("Read 未在首次 Get 前连接，或与 Observe 重复连接")
+	}
+	fake.runPosted()
+	if builds != 2 || source.reads != 4 {
+		t.Fatal("首次读取中的通知丢失")
+	}
+	manual = false
+	rt.RequestUpdate()
+	fake.runPosted()
+	source.Set("automatic")
+	fake.runPosted()
+	if builds != 4 || source.connects != 1 || source.disconnects != 0 {
+		t.Fatal("Observe() 错误清除了自动依赖，或重建重复连接")
+	}
+	rt.destroyAll()
+	source.last()
+	if source.disconnects != 1 || len(fake.posts) != 0 {
+		t.Fatal("自动来源释放或迟到通知不正确")
+	}
+}
+
+func TestAutomaticReadSharesPropertyBindingConnection(t *testing.T) {
+	source := &bindingSource{value: "before"}
+	builds, applies := 0, 0
+	rt, fake := bindingApp(t, func() RootView {
+		return Window("main").Content(trackingView(func(ctx BuildContext) View {
+			builds++
+			BindValue(ctx, "text", source, func(string) { applies++ })
+			return Label(Read[string](source))
+		}).Observe(source))
+	})
+	source.Set("after")
+	fake.runPosted()
+	n := rt.windows["main"].root.root
+	if builds != 2 || applies != 2 || source.connects != 1 || len(n.subscriptions) != 1 || updateKind(n.subscriptions[source].kind.Load()) != updateBuild|updateBindings {
+		t.Fatal("自动读取、Observe 和属性绑定重复订阅或重复应用")
+	}
+	for range 3 {
+		rt.RequestUpdate()
+		fake.runPosted()
+	}
+	if source.connects != 1 || source.disconnects != 0 {
+		t.Fatal("完整重建没有复用同一节点的来源连接")
+	}
+}
+
+func TestBuildPeekAndCapturedValuesStaySnapshots(t *testing.T) {
+	value, debug, captured := MakeState("value"), MakeState("debug"), MakeState("captured")
+	snapshot := captured.Get()
+	builds, latestDebug := 0, ""
+	_, fake := bindingApp(t, func() RootView {
+		return Window("main").Content(Build(func() View {
+			builds++
+			latestDebug = debug.Peek()
+			return Label(snapshot + value.Get())
+		}))
+	})
+	debug.Set("new debug")
+	captured.Set("new captured")
+	if len(fake.posts) != 0 {
+		t.Fatal("Peek 或构建前捕获值建立了自动依赖")
+	}
+	value.Set("new value")
+	fake.runPosted()
+	if builds != 2 || latestDebug != "new debug" || fake.windows[0].Widget().(*gui.Label).Text() != "capturednew value" {
+		t.Fatal("Peek 未读到当前值，或改变了 Go 闭包快照语义")
+	}
+}
+
+type readTrackingView struct {
+	ComposeBase[readTrackingView]
+	build func(BuildContext) View
+}
+
+func trackingView(build func(BuildContext) View) *readTrackingView {
+	v := &readTrackingView{build: build}
+	v.Self = v
+	return v
+}
+func (v *readTrackingView) Build(ctx BuildContext) View { return v.build(ctx) }
+
+func TestBuildCallbacksAndBindingsDoNotAddDependencies(t *testing.T) {
+	bound, noise, notified := MakeState("bound"), MakeState("noise"), MakeState(0)
+	builds, applies := 0, 0
+	handle := notified.Connect(func() { noise.Get() })
+	defer handle.Disconnect()
+	_, fake := bindingApp(t, func() RootView {
+		return Window("main").Content(trackingView(func(ctx BuildContext) View {
+			builds++
+			BindValue(ctx, "value", &bound, func(string) { applies++; noise.Get() })
+			notified.Set(1)
+			notified.Update(func(value int) int { noise.Get(); return value + 1 })
+			return Label("composition")
+		}))
+	})
+	noise.Set("ignored")
+	if len(fake.posts) != 0 {
+		t.Fatal("通知／Update 或绑定 apply 的读取污染了构建依赖")
+	}
+	bound.Set("new bound")
+	fake.runPosted()
+	if builds != 1 || applies != 2 {
+		t.Fatal("绑定 getter 的 Get 同时请求了完整构建")
+	}
 }
 
 func TestBindingsStayLocalAndShareOneSubscription(t *testing.T) {
@@ -467,6 +676,8 @@ func TestBindingDeclarationPrecedenceAndConfiguration(t *testing.T) {
 	}
 	for _, bad := range []func(){
 		func() { Build(nil) },
+		func() { Read[string](nil) },
+		func() { Read[string]((*bindingSource)(nil)) },
 		func() { Label("a", "b") },
 		func() { Build(func() View { return nil }).Observe((*bindingSource)(nil)) },
 		func() { Label().BindText((*bindingSource)(nil)) },

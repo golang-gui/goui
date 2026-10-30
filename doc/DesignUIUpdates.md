@@ -1,6 +1,6 @@
 # 声明式局部更新与状态绑定
 
-> 2026-10-28：本切片已实现，迁移与验收范围见 [Plan](Plan.md)。本篇是实现契约，不代表已发布版本。
+> 2026-10-28：局部更新与属性绑定已实现。2026-10-30 增补组合构建内的自动读取追踪，替代早期 Get 不收集依赖的约定；本轮实现及验收进度见 [Plan](Plan.md)。
 
 ## 使用入口
 
@@ -11,13 +11,36 @@ ui.TextInput().BindText(&text)
 ui.Build(func() ui.View {
     if !visible.Get() { return nil }
     return ui.Label(title.Get())
-}).Observe(&visible, &title)
+})
 ```
 
 Label 接收零或一个文本参数，多于一个 panic，和现有 Button 一致。Text 与 BindText 后调用者决定来源。
-Build 返回普通 ComposeView 声明，不立即调用函数，不创建包装 Widget。闭包不接收 BuildContext；函数按普通 Go 捕获规则读取数据，不自动追踪 Get。Observe 在 ComposeBase 上，替换显式来源列表；空列表清除，重复来源去重。构建函数为 nil 是配置错误。nil 输出保留组合身份和订阅。
+Build 返回普通 ComposeView 声明，不立即调用函数，不创建包装 Widget。闭包不接收 BuildContext；函数按普通 Go 捕获规则读取数据。ui.State.Get 在 ComposeView.Build 的同步执行范围内收集依赖；普通辅助函数中的读取归属当前构建节点，返回后不追踪事件／计时器回调。构建函数为 nil 是配置错误。nil 输出保留组合身份和本轮实际读取的订阅。
 
-State 只存值并发通知，不查找当前 App。Get 不记录依赖；每次 Set/Update 仍通知，包括同值。未订阅的 State 不触发 UI。状态在构建函数外持有，或由自定义组合的私有持久状态持有，使用后不可复制。
+State 只存值并发通知，不持有 App／节点。每次 Set/Update 仍通知，包括同值。未订阅的 State 不触发 UI。状态在构建函数外持有，或由自定义组合的私有持久状态持有，使用后不可复制。
+
+## 自动读取追踪
+
+```go
+func (s *State[T]) Get() T
+func (s *State[T]) Peek() T
+func Read[T any](source ReadState[T]) T
+```
+
+- Get 在 ui.Build 和自定义 ComposeView.Build 中登记来源，范围外仍为线程安全的普通读取。
+- Peek 不登记自动依赖；不会取消其它 Get 或显式 Observe 已建立的依赖。
+- Read 让自定义 ReadState／core/state.State 接入自动追踪。先订阅提供的来源，再暂停外围追踪调用其 Get，不顺带登记其内部状态。来源仍须完整报告值变化并遵守自身线程契约。
+- Observe 仍替换显式来源列表；与自动读取和属性绑定取并集、按节点去重。Observe() 只清除显式来源，不关闭 Get 追踪。
+- WidgetView 生命周期、BindValue 的 getter／apply、子树协调／释放和订阅维护不进入外围构建的收集范围。ui.State.Set/Update 的同步回调同样暂停收集。
+- 不追踪 ui.Run 顶层的窗口集合和样式表构建；仍用 App.RequestUpdate。ListView／TableView 的延迟行构建器没有独立组合身份，动态部分应返回 ui.Build，不对控件增加特殊处理。
+
+依赖属于每个挂载 node，不修改临时 View 值或 viewBase.observables。同一个 View 值多次挂载不共享自动依赖集合。构建成功返回后替换自动依赖，条件分支未再读取的来源解除订阅；返回 nil 也提交本轮集合。原先已排队的通知允许多执行一轮，不增加新的取消系统。
+
+执行 ComposeView.Build 时安装只读归属信息的私有收集器，记录 owner／Root／版本／OS 线程 ID。当前收集器通过原子指针发布；Get 先检查当前 OS 线程，非所属线程只读值，不访问 node／依赖 map。复用现有 gothread，不使用 goroutine ID、调用栈扫描或新的平台绑定；不支持并行 UI 构建。没有活动收集器时不查询线程 ID。
+
+第一次读取先建立连接、再读取值。订阅与解除连接都暂停追踪；连接返回后若 owner 已释放或连接已被替换，立即断开新 handle。构建范围用 defer 恢复，panic 不提交本轮自动依赖；现有节点保留上轮集合，由正常清理丢弃未提交的新连接，新节点仍走既有释放流程。不引入整树事务回滚。
+
+普通 Go 求值不变：在 Build 外执行 Get 后捕获其结果，只保留字面快照。构建应读取状态并生成声明，业务写入放到事件／任务回调。不扫描普通字段、闭包捕获或任意自定义 Get，不增加派生状态、自动缓存或完整响应式系统。跨多个 State 不提供原子事务快照。
 
 ## 来源与绑定
 
@@ -27,7 +50,7 @@ type ReadState[T any] interface { Observable; Get() T }
 type BindState[T any] interface { ReadState[T]; Set(T) }
 ```
 
-来源为稳定、非 nil 指针，以指针身份比较，不深比较内容/闭包。Observable 供 Observe，ReadState 供 Label，BindState 供编辑器。core/state.State 可直接满足接口。自定义 BindState 必须补 Connect，不保留全局重建 fallback。
+来源为稳定、非 nil 指针，以指针身份比较，不深比较内容/闭包。Observable 供 Observe，ReadState 供 Read／Label，BindState 供编辑器。core/state.State 可直接满足接口，但其 Get 不感知 UI，自动追踪使用 ui.Read。自定义 BindState 必须补 Connect，不保留全局重建 fallback。
 
 Label.BindText 单向读取；TextInput/TextView.BindText、BindSelection 读取并回写用户编辑。来源在应用绑定时读取，不在声明构造时保存 Get 快照。现有 BindText(nil)/BindSelection(nil) 保持 no-op；typed nil 非有效来源。
 
@@ -64,12 +87,14 @@ UpdateChild/UpdateChildren 增加零或一个可选 apply 回调，分别接收 
 
 ## 迁移与范围
 
-Get 返回字面快照；持续跟随改 BindText，结构/计算表达式放在 Build 或自定义 ComposeView 并 Observe。窗口集合、标题、应用样式表仍显式 RequestUpdate。Settings/mlang 的现有全局请求保留。移除 State 专用当前 App 引用，保留 Run 的一次运行约束。
+构建范围外 Get 返回字面快照；持续跟随可用 BindText，结构／计算表达式放在 Build 或自定义 ComposeView，ui.State 的读取自动登记依赖，外部来源用 Read 或 Observe。窗口集合、标题、应用样式表仍显式 RequestUpdate。Settings/mlang 的现有全局请求保留。保留 Run 的一次运行约束，不向 State 增加 App 引用。
 
-首切片覆盖节点调度、Build/Observe、通用 BindValue、Label、TextInput、TextView，以及 demo/正式例程迁移。其他 BindXxx 按需求扩展，不建立属性路径、反射映射、隐式 Get 依赖或派生状态系统。
+首切片覆盖节点调度、Build/Observe、通用 BindValue、Label、TextInput、TextView，以及 demo/正式例程迁移。本轮在明确的组合构建范围内补充自动 Get 依赖；其他 BindXxx 按需求扩展，不建立属性路径、反射映射或派生状态系统。
 
 包内测试集中在既有 state/root/composition/text_editing/app/after_update 等文件；绑定基础设施可有专门 binding_test.go。覆盖更新隔离、通知合并/重入、虚拟行、来源替换/卸载、并发、输出替换/槽位配置、编辑反馈/历史/选区和跨窗口移交。独立窗口用例 tests/window/ui/binding 使用真实输入及计数断言，不用 DevServer。验证完成运行 go test ./...、相关 race/vet 和目标编译。
 
 ## 参考
 
 2026-10-28 核对官方 API 与所示源码：Flutter [Element.markNeedsBuild](https://api.flutter.dev/flutter/widgets/Element/markNeedsBuild.html) 的节点标脏/去重，[Builder](https://api.flutter.dev/flutter/widgets/Builder-class.html) 与 [ListenableBuilder](https://api.flutter.dev/flutter/widgets/ListenableBuilder-class.html) 的回调构建与显式来源；GObject [bind_property](https://docs.gtk.org/gobject/method.Object.bind_property.html) 的来源/目标和 [unbind](https://docs.gtk.org/gobject/method.Binding.unbind.html) 的连接生命周期。仅借鉴机制，GOUI 保持普通 Go 状态、现有 UI 调度和 GUI setter；不照搬 GObject 属性系统或 Flutter 帧调度。
+
+2026-10-30 增补：Flutter [构建依赖接口](https://api.flutter.dev/flutter/widgets/BuildContext/dependOnInheritedWidgetOfExactType.html) 将依赖关联到挂载构建上下文；Vue [effect.ts](https://github.com/vuejs/core/blob/main/packages/reactivity/src/effect.ts)（当日查阅 main）在运行前切换订阅者，并在 finally 清理依赖、恢复上下文。采用节点归属和同步收集范围，不照搬继承查找、JS 全局执行假设或响应式图；Go 的后台读取通过 OS 线程隔离。

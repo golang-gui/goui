@@ -29,7 +29,7 @@ type App interface {
 	// Quit asks the running app to stop.
 	Quit()
 	// RequestUpdate coalesces an application-wide declarative rebuild on the UI
-	// thread. Use property bindings or ComposeBase.Observe for local updates.
+	// thread. Use property bindings or ComposeView.Build for local updates.
 	RequestUpdate()
 	// FindWindow borrows the currently mounted GUI window with id. Empty or
 	// missing IDs, an unmounting window, and a stopped app return nil. Lookup is
