@@ -102,7 +102,7 @@ func main() {
 			require(data.Opened == b.Opened() && data.Grouped && data.HasMenu, "snapshot mismatch")
 		}
 		require(opened <= 1 && button("other").Group() != group, "group isolation lost")
-		require(app.FindWidget("menus", "main-menu") == nil, "object declaration created a widget")
+		require(app.FindWidget("menus", "main-menu") == group && group.Snapshot().Role == gui.RoleHBox, "menu group is not the actual layout container")
 		require(failures == 0, "unexpected open error")
 		state := map[string]any{"file": button("file").Opened(), "edit": button("edit").Opened(), "view": button("view").Opened(), "runs": runs, "actions": actions, "actionGeneration": actionGeneration, "generation": generation, "closed": closed, "errors": failures, "painter": p.painter, "scale": p.scale}
 		data, err := json.Marshal(state)
@@ -218,7 +218,7 @@ func main() {
 		return ui.Root().StyleSheet(sheet).Windows(ui.Window("menus").Title("GOUI MenuButtonGroup").Chrome(ui.WindowChromeIntegrated).Size(760, 420).Content(
 			ui.VBox(
 				ui.HeaderBar(ui.Label("MenuButtonGroup")),
-				ui.MenuButtonGroup(ui.HBox(menu("File", "file"), menu("Edit", "edit"), menu("View", "view"), ui.Button("Run").ID("run").OnClick(func() { runs++; app.RequestUpdate() }), ui.MenuButton("Disabled").ID("disabled").Enabled(false).Menu(ui.MenuItem("No", nil)), ui.MenuButton("Empty").ID("empty")).Spacing(8)),
+				ui.MenuButtonGroup(menu("File", "file"), menu("Edit", "edit"), menu("View", "view"), ui.Button("Run").ID("run").OnClick(func() { runs++; app.RequestUpdate() }), ui.MenuButton("Disabled").ID("disabled").Enabled(false).Menu(ui.MenuItem("No", nil)), ui.MenuButton("Empty").ID("empty")).ID("main-menu").Spacing(8),
 				ui.MenuButtonGroup(ui.MenuButton("Other").ID("other").Menu(ui.MenuItem("Other action", nil))),
 				ui.TextInput().ID("input").BindText(&input).MinWidth(280),
 				ui.HBox(ui.Button("Rebuild").ID("rebuild").OnClick(func() { generation++; app.RequestUpdate() }), ui.Button("Dark").ID("dark").OnClick(func() { *dark = !*dark; app.RequestUpdate() }), ui.Button("Check").ID("check").OnClick(check)).Spacing(10),

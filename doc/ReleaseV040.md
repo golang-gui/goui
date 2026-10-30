@@ -4,6 +4,9 @@
 0.4.0、build 1。最终构建、签名公证、验证环境及下载校验结果以 Release 附件
 `BUILD-INFO.md` 和本仓库 Plan 的本轮记录为准；本文不将待验收项视为通过。
 
+> 下文接口示例记录 v0.4.0；main 分支的按钮分组已改为局部容器／自动作用域，
+> 当前用法见 [ButtonGroup 设计](DesignButtonGroup.md)。
+
 ## 主要变化
 
 - Widget 增加普通文字 Tooltip，命令式使用 `SetTooltip`，声明式使用
