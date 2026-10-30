@@ -14,6 +14,10 @@ var tableHeaderPadding = geometry.Insets{Left: 8, Top: 4, Right: 8, Bottom: 4}
 type tableLayout struct{ view *TableView }
 
 func (l *tableLayout) Measure(children []layout.Child, c layout.Constraint) layout.Measurement {
+	if c.Max.Width >= layout.Inf {
+		// An unbounded measurement has no extra width to distribute.
+		l.view.setColumnViewportWidth(0)
+	}
 	h, w := l.view.borderWidths()
 	width, height := c.Max.Width, c.Max.Height
 	// Inf is a finite sentinel. Preserve it when reserving the frame/header,
@@ -56,14 +60,14 @@ type tableHeaderLayout struct{ view *TableView }
 func (l *tableHeaderLayout) Measure(children []layout.Child, c layout.Constraint) layout.Measurement {
 	height := tableMinHeight
 	for i, child := range children {
-		m := child.Measure(layout.Loose(geometry.Size{Width: l.view.visibleColumns[i].width, Height: layout.Inf}))
+		m := child.Measure(layout.Loose(geometry.Size{Width: l.view.visibleColumns[i].allocatedWidth, Height: layout.Inf}))
 		height = max(height, m.Height)
 	}
 	return layout.Measured(c.Clamp(geometry.Size{Width: l.view.columnWidth, Height: height}))
 }
 func (l *tableHeaderLayout) Arrange(children []layout.Child, rect geometry.Rectangle) {
 	for i, child := range children {
-		size := geometry.Size{Width: l.view.visibleColumns[i].width, Height: rect.Height}
+		size := geometry.Size{Width: l.view.visibleColumns[i].allocatedWidth, Height: rect.Height}
 		child.Measure(layout.Tight(size))
 		child.Arrange(geometry.Rectangle{Pos: geometry.Point{X: l.view.columnX[i]}, Size: size})
 	}
@@ -87,6 +91,9 @@ func (b *tableBody) LayoutVisible(viewport geometry.Size, offset geometry.Point)
 	if v.Destroyed() {
 		return
 	}
+	// ScrollView owns scrollbar occupancy. Allocate from its actual viewport,
+	// never from the TableView's outer width or the sum of column preferences.
+	v.setColumnViewportWidth(viewport.Width)
 	headerRect := v.headerViewport.Rect()
 	headerRect.Width = max(0, viewport.Width)
 	v.headerViewport.Arrange(headerRect)
@@ -123,7 +130,7 @@ type tableRowLayout struct{ row *tableRow }
 func (l *tableRowLayout) Measure(children []layout.Child, c layout.Constraint) layout.Measurement {
 	height := tableMinHeight
 	for i, child := range children {
-		m := child.Measure(layout.Loose(geometry.Size{Width: l.row.cells[i].column.width, Height: layout.Inf}))
+		m := child.Measure(layout.Loose(geometry.Size{Width: l.row.cells[i].column.allocatedWidth, Height: layout.Inf}))
 		height = max(height, m.Height)
 	}
 	return layout.Measured(c.Clamp(geometry.Size{Width: l.row.view.columnWidth, Height: height + l.row.lineHeight()}))
@@ -131,7 +138,7 @@ func (l *tableRowLayout) Measure(children []layout.Child, c layout.Constraint) l
 func (l *tableRowLayout) Arrange(children []layout.Child, rect geometry.Rectangle) {
 	height := max(0, rect.Height-l.row.lineHeight())
 	for i, child := range children {
-		size := geometry.Size{Width: l.row.cells[i].column.width, Height: height}
+		size := geometry.Size{Width: l.row.cells[i].column.allocatedWidth, Height: height}
 		child.Measure(layout.Tight(size))
 		child.Arrange(geometry.Rectangle{Pos: geometry.Point{X: l.row.view.columnX[i]}, Size: size})
 	}

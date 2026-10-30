@@ -113,7 +113,7 @@ func (l *tableHeaderCellLayout) Measure(children []layout.Child, c layout.Constr
 		reserve += 16
 	}
 	m := children[0].Measure(layout.Loose(geometry.Size{Width: max(0, c.Max.Width-reserve), Height: layout.Inf}))
-	return layout.Measured(c.Clamp(geometry.Size{Width: l.header.column.width, Height: max(tableMinHeight, m.Height+tableHeaderPadding.Vertical()) + tableHeaderLineWidth(l.header)}))
+	return layout.Measured(c.Clamp(geometry.Size{Width: l.header.column.allocatedWidth, Height: max(tableMinHeight, m.Height+tableHeaderPadding.Vertical()) + tableHeaderLineWidth(l.header)}))
 }
 func (l *tableHeaderCellLayout) Arrange(children []layout.Child, rect geometry.Rectangle) {
 	reserve := tableHeaderPadding.Horizontal() + l.header.view.columnLineWidth(l.header.column)
@@ -134,6 +134,7 @@ type tableResizeHandle struct {
 	drag           *gui.DragEventController
 	dragging       bool
 	before, startX float32
+	startWidth     float32
 }
 
 func newTableResizeHandle(header *tableHeader) *tableResizeHandle {
@@ -147,6 +148,7 @@ func newTableResizeHandle(header *tableHeader) *tableResizeHandle {
 			return
 		}
 		h.dragging, h.before, h.startX = true, header.column.width, tablePoint(h, point, header.view).X
+		h.startWidth = header.column.allocatedWidth
 	})
 	h.drag.ConnectUpdate(func(point geometry.Point, _ events.Modifiers) { h.move(point) })
 	h.drag.ConnectEnd(func(point geometry.Point, _ events.Modifiers) { h.move(point); h.dragging = false })
@@ -174,7 +176,11 @@ func (h *tableResizeHandle) move(point geometry.Point) {
 		h.cancel()
 		return
 	}
-	width := c.clamp(h.before + tablePoint(h, point, v).X - h.startX)
+	delta := tablePoint(h, point, v).X - h.startX
+	width := c.clamp(h.startWidth + delta)
+	if delta == 0 {
+		width = c.clamp(h.before)
+	}
 	if width == c.width {
 		return
 	}
@@ -210,7 +216,7 @@ func (h *tableResizeHandle) Snapshot() gui.WidgetInfo {
 	if maximum == 0 {
 		maximum = layout.Inf
 	}
-	info.Range = &gui.RangeInfo{Value: c.width, Min: c.minWidth, Max: max(c.minWidth, maximum), Direction: layout.DirectionHorizontal}
+	info.Range = &gui.RangeInfo{Value: c.allocatedWidth, Min: c.minWidth, Max: max(c.minWidth, maximum), Direction: layout.DirectionHorizontal}
 	if info.Enabled {
 		info.Actions = []gui.Action{gui.ActionFocus}
 	}

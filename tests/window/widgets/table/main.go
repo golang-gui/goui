@@ -54,6 +54,11 @@
 //  10. 先调整 Notes 列宽并编辑文字，点击 Notes 隐藏该列，其他列立即补上位置。
 //     Snapshot 的列数及索引只包含可见列。Rebuild/Refresh、排序、主题切换后
 //     再次点击 Notes，原列宽、文本和顺序恢复；隐藏列不触发正文菜单或保留焦点。
+//  11. 点击 Expand last，放大窗口至宽于列总基础宽度（约 1250 DIP）。末列填满
+//     剩余内容视口，右侧垂直滚动条不被覆盖，不因伸展出现横向滚动条。缩窄时
+//     各列不小于基础宽度，空间不足则横向滚动。关闭伸展恢复原基础列宽。
+//     F6 输出每列 base/allocated；窗口缩放不输出 resize，用户拖动仍输出 resize，
+//     Esc 恢复拖动前的基础宽度与伸展。隐藏 Notes 后，其空间重新分给末列。
 //
 // 平台差异：Primary、右键触发时机按现有事件规则转换。默认 Tab 仅遍历已挂载
 // 控件，不保证跨虚拟记录导航；首版没有列重排或表格编辑事务。副作用仅测试窗口、
@@ -216,7 +221,7 @@ func assertTable(table *widgets.TableView, m *model) {
 		}
 		for i, cell := range row.Children {
 			c, ok := cell.Attributes[widgets.TableInfoKey].(widgets.TableInfo)
-			if cell.Role != widgets.RoleTableCell || !ok || c.ColumnID != columns[i].ID() || c.RowID != r.RowID || c.ColumnIndex != i+1 || cell.Bounds.Width != columns[i].Width() || cell.Bounds.X != info.Children[i].Bounds.X {
+			if cell.Role != widgets.RoleTableCell || !ok || c.ColumnID != columns[i].ID() || c.RowID != r.RowID || c.ColumnIndex != i+1 || cell.Bounds.Width != info.Children[i].Bounds.Width || cell.Bounds.X != info.Children[i].Bounds.X {
 				panic("cell/header geometry")
 			}
 			if c.ColumnID == "note" {
@@ -288,6 +293,13 @@ func assertTable(table *widgets.TableView, m *model) {
 		}
 	}
 	checkContent(table)
+	for i, column := range columns {
+		width := info.Children[i].Bounds.Width
+		if width < column.Width() || !column.Expand() && width != column.Width() || column.MaxWidth() > 0 && width > max(column.MinWidth(), column.MaxWidth()) {
+			panic("column base/allocation contract")
+		}
+		fmt.Printf("column=%s base=%g allocated=%g\n", column.ID(), column.Width(), width)
+	}
 	fmt.Printf("ASSERT PASS logical=%d realized=%d current=%s selection=%v scroll=(%g,%g)\n", tableInfo.RowCount, len(seen), table.Current(), table.Selection(), info.ScrollX, info.ScrollY)
 }
 func editorInfo(info gui.WidgetInfo) (gui.WidgetInfo, bool) {
@@ -340,6 +352,7 @@ func runUI(fallback bool, appearance int) error {
 	m := newModel()
 	dark, version := false, 0
 	notesVisible := true
+	expandLast := false
 	widths := map[string]float32{"name": 240, "note": 200, "action": 100, "size": 140, "description": 420}
 	return ui.Run("org.golang-gui.TableViewProbe", func(app ui.App) ui.RootView {
 		column := func(id, title string, cell func(widgets.TableRow, record) ui.View) *wui.TableColumnView[record] {
@@ -370,7 +383,7 @@ func runUI(fallback bool, appearance int) error {
 		}).Sortable(true)
 		description := column("description", "Description", func(_ widgets.TableRow, row record) ui.View {
 			return textCellUI(row.description, true)
-		})
+		}).Expand(expandLast)
 		table := wui.TableView(m, name, note, action, size, description).ID("table").SelectionMode(widgets.SelectionMultiple).
 			OnSelection(func(ids []string) { fmt.Printf("selection=%v\n", ids) }).OnCurrent(func(id string) { fmt.Printf("current=%s\n", id) }).
 			OnActivate(func(id string) { fmt.Printf("activate=%s\n", id) }).
@@ -394,6 +407,7 @@ func runUI(fallback bool, appearance int) error {
 					app.RequestUpdate()
 				}),
 				ui.Button("Notes").OnClick(func() { notesVisible = !notesVisible; app.RequestUpdate() }),
+				ui.Button("Expand last").OnClick(func() { expandLast = !expandLast; app.RequestUpdate() }),
 			).Spacing(8), ui.Label("Edit Notes / F6 verify; sortable Name / Size; resize edges / Esc; Shift+F10 menu"), table).CrossAlign(layout.CrossStretch).Padding(12).Spacing(8),
 		))
 	})
@@ -599,6 +613,7 @@ func runGUI(fallback bool, appearance int) error {
 		app.SetStyleSheet(sheet(dark, fallback, appearance))
 	})
 	button("Notes", func() { columns[1].SetVisible(!columns[1].Visible()) })
+	button("Expand last", func() { columns[4].SetExpand(!columns[4].Expand()) })
 	root.AddChild(toolbar)
 	root.AddChild(gui.NewLabel("Edit Notes / F6 verify; sortable Name / Size; resize edges / Esc; Shift+F10 menu"))
 	root.AddChild(table)

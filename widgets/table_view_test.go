@@ -1067,6 +1067,145 @@ func TestTableViewHideColumnCancelsResizeReentrantly(t *testing.T) {
 	v.Snapshot()
 }
 
+func TestTableViewColumnExpansionAllocation(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		viewport float32
+		expand   [3]bool
+		maximum  [3]float32
+		want     [3]float32
+	}{
+		{"末列填充", 600, [3]bool{false, false, true}, [3]float32{}, [3]float32{100, 100, 400}},
+		{"多列平分", 600, [3]bool{false, true, true}, [3]float32{}, [3]float32{100, 250, 250}},
+		{"上限重新分配", 600, [3]bool{false, true, true}, [3]float32{0, 120, 0}, [3]float32{100, 120, 380}},
+		{"全部达到上限", 600, [3]bool{false, true, true}, [3]float32{0, 120, 140}, [3]float32{100, 120, 140}},
+		{"空间不足不压缩", 200, [3]bool{true, true, true}, [3]float32{}, [3]float32{100, 100, 100}},
+		{"无界基础宽度", 0, [3]bool{true, true, true}, [3]float32{}, [3]float32{100, 100, 100}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := NewTableView()
+			columns := []*TableColumn{NewTableColumn("a", "A"), NewTableColumn("b", "B"), NewTableColumn("c", "C")}
+			for i, column := range columns {
+				column.SetWidth(100)
+				column.SetExpand(tc.expand[i])
+				column.SetMaxWidth(tc.maximum[i])
+			}
+			v.SetColumns(columns...)
+			v.setColumnViewportWidth(tc.viewport)
+			x := float32(0)
+			for i, column := range columns {
+				if column.allocatedWidth != tc.want[i] || column.Width() != 100 || v.columnX[i] != x {
+					t.Fatalf("第 %d 列分配=%g 基础宽度=%g，预期 %g/100", i, column.allocatedWidth, column.Width(), tc.want[i])
+				}
+				x += tc.want[i]
+			}
+		})
+	}
+}
+
+func TestTableViewExpansionFractionalWidths(t *testing.T) {
+	// 横向滚动依据严格大于判断；浮点累加向上舍入也不能凭空产生滚动条。
+	for count := 2; count <= 8; count++ {
+		v := NewTableView()
+		columns := make([]*TableColumn, count)
+		for i := range columns {
+			c := NewTableColumn(fmt.Sprint(i), "Column")
+			c.SetWidth(100)
+			c.SetExpand(true)
+			columns[i] = c
+		}
+		v.SetColumns(columns...)
+		for step := 1; step < 1000; step++ {
+			width := float32(count*100) + float32(step)/10
+			v.setColumnViewportWidth(width)
+			if v.columnWidth > width || width-v.columnWidth > .001 {
+				t.Fatalf("%d 列分配溢出或剩余过多：viewport=%g sum=%g", count, width, v.columnWidth)
+			}
+		}
+	}
+}
+
+func TestTableViewExpansionUsesActualViewport(t *testing.T) {
+	v, m, first, _ := tableFixture(100)
+	defer v.SetModel(nil)
+	first.SetWidth(100)
+	last := NewTableColumn("last", "Last")
+	last.SetWidth(100)
+	last.SetExpand(true)
+	last.SetDelegate(&tableTestDelegate{model: m})
+	v.SetColumns(first, last)
+	resizes := 0
+	last.ConnectResize(func(float32) { resizes++ })
+	check := func(width float32) {
+		t.Helper()
+		tableArrange(v, width, 180)
+		if v.columnWidth != v.body.Rect().Width || v.scroll.Snapshot().MaxScrollX != 0 || first.Width() != 100 || last.Width() != 100 || resizes != 0 {
+			t.Fatalf("额外滚动条或窗口分配改写基础宽度：columns=%g viewport=%g maxX=%g widths=%g/%g resizes=%d", v.columnWidth, v.body.Rect().Width, v.scroll.Snapshot().MaxScrollX, first.Width(), last.Width(), resizes)
+		}
+		for _, row := range v.realized {
+			for _, cell := range row.cells {
+				if cell.Rect().Width != v.headers[cell.column].Rect().Width || cell.Rect().X != v.headers[cell.column].Rect().X {
+					t.Fatal("伸展列的表头和单元格未共享分配")
+				}
+			}
+		}
+	}
+	for _, width := range []float32{400, 560, 400.25, 550.1, 220} {
+		check(width)
+	}
+	tableArrange(v, 150, 180)
+	if first.allocatedWidth != 100 || last.allocatedWidth != 100 || v.scroll.Snapshot().MaxScrollX <= 0 {
+		t.Fatal("窄视口压缩了基础列宽或缺少横向滚动")
+	}
+	check(400)
+	last.SetMaxWidth(180)
+	tableArrange(v, 400, 180)
+	if last.allocatedWidth != 180 || v.columnWidth != 280 {
+		t.Fatal("只修改上限没有重新分配额外空间")
+	}
+	last.SetMaxWidth(0)
+	check(400)
+	withBar := last.allocatedWidth
+	m.Modify(func(rows []tableRecord) []tableRecord { return rows[:1] })
+	check(400)
+	if last.allocatedWidth <= withBar {
+		t.Fatal("垂直滚动条消失后没有回收其空间")
+	}
+	first.SetVisible(false)
+	check(400)
+	if last.allocatedWidth != v.body.Rect().Width {
+		t.Fatal("隐藏列仍参与额外空间分配")
+	}
+	v.Measure(layout.Unbounded())
+	if last.allocatedWidth != 100 || v.columnWidth != 100 {
+		t.Fatal("无界测量沿用了有界视口的伸展宽度")
+	}
+}
+
+func TestTableViewExpandedColumnResizeAndCancel(t *testing.T) {
+	v, _, column, _ := tableFixture(20)
+	defer v.SetModel(nil)
+	column.SetWidth(100)
+	column.SetExpand(true)
+	tableArrange(v, 400, 180)
+	allocated := column.allocatedWidth
+	var widths []float32
+	column.ConnectResize(func(width float32) { widths = append(widths, width) })
+	d, host := new(gui.EventDispatcher), &tabInputHost{root: v}
+	bounds := v.headers[column].Snapshot().Bounds
+	x := bounds.X + bounds.Width - 4
+	dispatchTabPointer(t, d, host, events.PointerDown, x, 16)
+	dispatchTabPointer(t, d, host, events.PointerMove, x+40, 16)
+	if column.Width() != allocated+40 {
+		t.Fatalf("拖动没有从实际分配边缘开始：got=%g actual=%g", column.Width(), allocated)
+	}
+	tableKey(t, d, host, events.KeyEscape, 0)
+	tableArrange(v, 400, 180)
+	if column.Width() != 100 || column.allocatedWidth != allocated || !column.Expand() || !slices.Equal(widths, []float32{allocated + 40, 100}) {
+		t.Fatal("Esc 未恢复伸展前的基础宽度或发出了多余 Resize")
+	}
+}
+
 func TestTableViewBalancedColumnWidthsAndNarrowViewport(t *testing.T) {
 	v, m, c, _ := tableFixture(100)
 	defer v.SetModel(nil)
