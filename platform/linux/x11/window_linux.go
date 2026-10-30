@@ -280,6 +280,33 @@ func (w *Window) SetTitle(title string) (err error) {
 }
 
 func (w *Window) Show() error {
+	if err := w.mapWindow(); err != nil {
+		return err
+	}
+	// The WM owns stacking, deiconification and focus policy. CurrentTime (0)
+	// is used until there has been native user input; never invent a timestamp
+	// or bypass focus-stealing prevention with XSetInputFocus.
+	message := activationMessage(w.wid, platform.atoms._NET_ACTIVE_WINDOW, platform.lastUserTime)
+	if platform.display.SendEvent(platform.defScreen.Root, false,
+		xlib.EventMaskSubstructureRedirect|xlib.EventMaskSubstructureNotify, &message) == 0 {
+		return fmt.Errorf("send _NET_ACTIVE_WINDOW failed")
+	}
+	platform.display.Flush()
+	return nil
+}
+
+func activationMessage(window xlib.Window, atom xlib.Atom, timestamp xlib.Time) xlib.Event {
+	var message xlib.Event
+	*message.ClientMessageEvent() = xlib.ClientMessageEvent{
+		Type: xlib.ClientMessage, Window: window, MessageType: atom,
+		Format: 32, L: [5]int64{1, int64(uint32(timestamp)), 0, 0, 0},
+	}
+	return message
+}
+
+// mapWindow also deiconifies managed windows, without an activation request.
+// Popup and explicit state changes share this operation, not Window.Show.
+func (w *Window) mapWindow() error {
 	if w.wid == 0 {
 		return common.ErrUnavailable
 	}
@@ -389,8 +416,25 @@ func (w *Window) Draw(img image.Image) error {
 
 var windowMap = map[xlib.Window]*Window{}
 
+func (p *Platform) recordUserTime(event *xlib.Event) {
+	if event.AnyEvent().SendEvent != 0 || windowMap[event.AnyEvent().Window] == nil {
+		return
+	}
+	switch event.Type {
+	case xlib.ButtonPress:
+		p.lastUserTime = event.ButtonEvent().Time
+	case xlib.KeyPress:
+		p.lastUserTime = event.KeyEvent().Time
+	}
+}
+
 // TODO: process window event
 func handleEvent(event xlib.Event) {
+	// Capture actual user activity before XIM or drag handling consumes it.
+	// Synthetic SendEvent input does not authorize foreground activation.
+	if platform != nil {
+		platform.recordUserTime(&event)
+	}
 	// A native lifetime event must not be swallowed by XIM or drag filtering.
 	if event.Type == xlib.DestroyNotify && event.AnyEvent().SendEvent == 0 {
 		if w := windowMap[event.DestroyWindowEvent().Window]; w != nil {
@@ -904,7 +948,7 @@ func (w *Window) RequestState(state common.WindowState) error {
 	}
 	// Validate support before mapping. X requests stay ordered: map/deiconify
 	// first, then request the explicit target rather than historical restore.
-	if err := w.Show(); err != nil {
+	if err := w.mapWindow(); err != nil {
 		return err
 	}
 	// Leave fullscreen before setting the next presentation. A WM may restore

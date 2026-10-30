@@ -19,6 +19,60 @@ import (
 	"github.com/golang-gui/goui/style"
 )
 
+type showTestWindow struct {
+	platform.Window
+	show   func() error
+	paints int
+}
+
+func (n *showTestWindow) Show() error         { return n.show() }
+func (n *showTestWindow) Destroy()            {}
+func (n *showTestWindow) RequestPaint() error { n.paints++; return nil }
+
+func TestWindowShow(t *testing.T) {
+	// 每次 Show 都提交原生请求；不直接伪造焦点或状态，不修改逻辑焦点。
+	native := &showTestWindow{}
+	w := &window{platformWindow: native}
+	w.frameSuspended = true
+	w.focusedWidget = newTestWidget()
+	focused := w.focusedWidget
+	calls, notifications := 0, 0
+	w.ConnectFocus(func(bool) { notifications++ })
+	w.ConnectState(func(WindowState) { notifications++ })
+	native.show = func() error { calls++; return nil }
+	for range 2 {
+		if err := w.Show(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if calls != 2 || w.Focused() || notifications != 0 || w.focusedWidget != focused || w.frameSuspended || native.paints == 0 {
+		t.Fatalf("Show 未保留请求与观察的边界：calls=%d focus=%v notifications=%d paints=%d", calls, w.Focused(), notifications, native.paints)
+	}
+
+	w.frameSuspended = true
+	want := errors.New("native show failed")
+	native.show = func() error { return want }
+	if err := w.Show(); !errors.Is(err, want) || !w.frameSuspended {
+		t.Fatalf("Show 失败应保留错误且不恢复绘制：%v", err)
+	}
+}
+
+func TestWindowShowDestroyedDuringActivation(t *testing.T) {
+	native := &showTestWindow{}
+	w := &window{platformWindow: native}
+	native.show = func() error {
+		// Win32/AppKit 原生激活可同步回调到应用，应用允许在回调中销毁窗口。
+		w.Destroy()
+		return nil
+	}
+	if err := w.Show(); !errors.Is(err, platform.ErrUnavailable) || native.paints != 0 || !w.frameSuspended {
+		t.Fatalf("销毁后不应恢复帧或访问原生窗口：err=%v paints=%d", err, native.paints)
+	}
+	if err := w.Show(); !errors.Is(err, platform.ErrUnavailable) {
+		t.Fatalf("已销毁窗口应返回不可用：%v", err)
+	}
+}
+
 func TestWindowSetWidget(t *testing.T) {
 	win := &window{}
 	root := newTestWidget()

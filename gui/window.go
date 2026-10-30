@@ -55,6 +55,11 @@ type Window interface {
 	FocusedWidget() Widget
 	SetFocusedWidget(Widget) bool
 
+	// Show makes the window visible, restores it if minimized, and requests
+	// foreground activation without changing its maximized/fullscreen mode or
+	// logical widget focus. The system may refuse activation; observe Focused
+	// and ConnectFocus for the actual result. A destroyed window returns
+	// platform.ErrUnavailable. Call on the GUI thread, including repeated requests.
 	Show() error
 
 	// WorkAreaAt returns the work area containing point (or the nearest one),
@@ -363,10 +368,15 @@ func (w *window) SetWidget(widget Widget) {
 }
 
 func (w *window) Show() error {
-	if w.platformWindow == nil {
-		return nil
+	if w.destroyed || w.platformWindow == nil {
+		return platform.ErrUnavailable
 	}
 	err := w.platformWindow.Show()
+	// Showing or activating can synchronously dispatch native callbacks, and
+	// application handlers may destroy the window before the request returns.
+	if w.destroyed || w.platformWindow == nil {
+		return platform.ErrUnavailable
+	}
 	if err == nil {
 		w.resumeFrames(w.platformWindow)
 	}
