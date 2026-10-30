@@ -1,5 +1,44 @@
 # Plan
 
+## Dialog、Toast 与声明绑定（2026-10-30）
+
+契约与用法见 [DesignModal](DesignModal.md)。未修改 gui、platform、Root／BuildContext。
+
+- [x] widgets.Dialog：普通单子 Widget，卡片内容决定尺寸，四边 Padding、遮罩、
+  外部点击／Escape 的关闭请求及可选 BackdropCaption。调用方控制 Visible 与模态。
+  卡片空白始终为 Client；窗口控制按钮和缩放区域保留既有操作。
+- [x] widgets.Toast：Show 替换当前请求、Close／Closed、自隐藏、暂停／剩余时长，
+  GUI Timer 惰性创建，卸载释放。展示版本与调度版本分别拦截旧超时；普通 SetChild
+  不重启计时，Visible(true) 不复活已结束的展示。Basic／Modern 独立外观与语义角色完成。
+- [x] widgets/ui.Dialog 复用 Bin、现有属性与信号协调；ToastHandle 线程安全提交，
+  ToastView 复用 ObjectView／ComposeView 和局部更新，空请求不输出 Widget。
+  AfterUpdate 在挂载后启动新请求，普通重建不重启，局部空输出隐藏／恢复，释放解绑。
+- [x] 包内回归覆盖布局／硬约束、卡片命中、内容消费 Escape、回调销毁、内容归属、
+  旧超时、暂停、关闭后不复活、三种样式、默认属性恢复、并发请求、解绑与重复绑定、
+  普通重建和局部输出。Windows amd64 真机对应 Widget／UI 回归通过。
+- [x] 干净源码副本 `DISPLAY=:84 XMODIFIERS=@im=none GOUI_PLAT_PAINTER=software
+  GOWORK=off go test -mod=readonly -json ./...`：3087 项测试／子测试通过，10 项既有
+  跳过，无失败。`go test -mod=readonly -race ./widgets ./widgets/ui ./ui -count=1` 通过。
+  副本未包含原有未跟踪测试／二进制；旧桌面测试副作用隔离于副本与独立显示会话。
+- [x] Linux amd64 / Ubuntu 22.04.5 / 独立 Xvnc :84 + xfwm4：Software 1x／2x、
+  OpenGL 1x／2x 的窗口自动断言通过，覆盖真实 Timer、悬停／内部焦点暂停、
+  替换后旧超时无效、重建不重启、Dismiss 与最终句柄释放。
+  OpenGL 1x 真实鼠标验证卡片内边距不拖动（位置保持 300,170）、外部遮罩拖动至
+  (372,206)，Dialog 显示期间窗口宽度从 840 调整至 880；Modern 亮／暗与 Basic
+  卡片、Toast 外观经截图检查，Caption 不同时触发点击外部关闭。
+- [x] Windows 10 22H2 build 19045.6466 / amd64 / RDP / Direct2D 1x：上传前后核对
+  SHA256，窗口自动断言通过。真实键鼠验证 Dialog 内 Unicode 中文提交、Tab／Shift+Tab、
+  后台 F5 隔离、重建、Esc 关闭后的 F5 恢复，以及持久 Toast 与主题切换。
+- [x] Windows amd64／macOS arm64 窗口例程交叉编译通过（CGO_ENABLED=0）。
+  macOS 已关机，按用户要求继续跳过真机；其他 Windows 后端／DPI 未验收。
+
+初轮全仓有一项既有测试依赖 Basic 规则首项为 tab-bar；新增规则改为追加并保留
+原断言后通过。窗口首轮把 OnDestroy 当成 UI 清理完成而失败，已把释放断言移至
+ui.Run 返回后，保留释放检查。失败日志均保留，未弱化断言或扩大 skip。
+
+窗口入口为 `tests/window/widgets/dialog_toast`，日志与截图位于仓库外
+`/tmp/goui-dialog-toast-8e81rbp9`。Unicode 提交与 XIM 禁用会话不代表系统 IME 候选窗验收。
+
 ## OverlayItem.Modal 与卡片拖窗范围（2026-10-30）
 
 设计见 [DesignModal](DesignModal.md#ui-覆盖项声明) 与 [DesignOverlay](DesignOverlay.md)。
@@ -68,8 +107,8 @@ pixel format`，未进行该后端窗口验收。macOS 已关机，按用户要�
 首轮窗口自动断言因例程 Escape 控制器使用默认 Target 阶段失败，改为明确的 Bubble
 阶段后通过；失败日志保留，没有弱化断言。
 
-后续：普通 Dialog／Toast、Basic／Modern 样式与声明绑定仍未实现，见
-[Roadmap](Roadmap.md)。本切片不新增 HostOverlay。
+该切片之后的普通 Dialog／Toast、Basic／Modern 样式与声明绑定已在本篇顶部记录完成，
+见 [Roadmap](Roadmap.md)。本切片不新增 HostOverlay。
 窗口入口为 `tests/window/gui/modal`，操作说明位于 main.go 顶部；日志、截图、
 交叉编译与核对记录位于仓库外 `/tmp/goui-modal-h21j2j0b`。
 

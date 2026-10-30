@@ -42,9 +42,10 @@ State.Set／Update 只通知显式使用方；App.RequestUpdate 仍负责全应�
 UI 已接入 `OverlayItem(...).Modal(true)`，关联由覆盖项状态持有，支持普通重建、
 局部组合替换输出和重排；不向所有 View 添加 Modal，也不改 Root／BuildContext。
 
-后续待实现：`widgets.Dialog`、`widgets.Toast`、Basic／Modern 外观和声明式绑定，
-包括 `ToastHandle` 的命令请求、计时与声明生命周期协调。Dialog 模态由组合方关联，
-不在内部重复创建 Scope。当前没有交付这些控件。
+`widgets.Dialog`、`widgets.Toast`、Basic／Modern 外观与声明式绑定已实现。
+ToastHandle 通过已有局部更新调度提交单条可替换请求，计时由 GUI Timer 承担；
+Dialog 模态由组合方关联，不在内部重复创建 Scope。不增加专用宿主或原生窗口。
+通知队列、进出场动画与系统级通知不包含在本切片。
 设计见 [DesignModal](DesignModal.md)，平台与倍率的实际验证范围见 [Plan](Plan.md)。
 
 ## TextLayout 富文本基础：本轮已实现，应用层按需求推进
