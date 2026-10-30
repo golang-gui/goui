@@ -3,7 +3,7 @@
 ## 按钮分组职责收敛（2026-10-30）
 
 ButtonGroup 负责连排外观，MenuButtonGroup 负责局部菜单联动容器，CheckButtonGroup
-保留独立互斥关系并简化默认作用域。按批实现、验证与提交；旧组名声明契约由
+保留独立互斥关系并简化默认作用域。代码及本机独立 X11 验证已完成；旧组名声明契约由
 [DesignButtonGroup](DesignButtonGroup.md) 覆盖，实际进度与验收缺口见 [Plan](Plan.md)。
 
 ## 任意 View 修饰（2026-10-30）

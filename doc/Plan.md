@@ -10,9 +10,30 @@
   无布局包装、嵌套组、失效上下文、显式对象／独立、重建及移交后的默认关系。
 - [x] MenuButtonGroup 改为局部容器、自动成员、组内树顺序及 UI／用例迁移。
 - [x] ButtonGroup 连排几何、公共按钮绘制辅助、UI、Basic／Modern 和像素／逻辑测试。
-- [ ] demo、独立 X11 Software／OpenGL 1x／2x 验证、全仓／race／目标编译。
+- [x] demo 增加“撤销／重做／文件”连排；独立窗口用例 button_groups 与 menu_group
+  使用实际容器，覆盖自动互斥、显式对象／nil、嵌套组、布局、隐藏与重排、键盘激活。
+- [x] 本机 Ubuntu 22.04.5 amd64、Xvnc :85、xfwm4 4.16.1（关闭合成，装饰回退
+  Native）验证。两个窗口用例 × Software／OpenGL × 1x／2x × Basic／Modern，
+  共 16 组 -auto 全通过；菜单用例输出实际 imageResource 类型及 PixelScale。
+  菜单例程去掉额外 HBox 后，又通过 Software 1x／OpenGL 2x 自动断言。
+- [x] 真实 X11 指针／键盘验证：Software 1x 的点击计数、Tab 完整焦点框、Space
+  激活、Check B 选择、File→Edit 悬停切换与 Esc 关闭；OpenGL 2x 暗色截图
+  确认横竖连排及选中外观。Demo OpenGL 1x 的连排点击、状态反馈及菜单验证通过。
+- [x] Software 1x／2x 像素回归：直线采样精确检查 1 DIP 接缝、外角透明、内角
+  无洞、完整焦点边，以及按钮式 CheckButton 的预乘半透明色；布局／隐藏／重排
+  与语义子树有独立断言。Basic／Modern 沿用子按钮自己的样式与部件。
+- [x] 隔离源码副本（已跟踪源码加本轮新文件）在 DISPLAY=:85 下 `go test ./...`
+  通过；gui／ui／widgets／widgets/ui 的 `go test -race` 通过。
+- [x] Windows amd64／macOS arm64、CGO_ENABLED=0：`go build ./...`，以及 gui／ui／
+  widgets／widgets/ui 的 `go test -c` 均通过。这只证明编译，不算原生桌面验收。
+- [ ] Windows Direct2D／OpenGL 与 macOS 的真实按钮外观和输入待验收，本轮按要求
+  仅在本机独立会话操作，未执行远端。
 
-工作记录与临时产物位于 `/tmp/goui-button-groups-current` 所指向的仓库外目录。
+验证限制：直接对原工作区运行 `go test ./...` 受未跟踪旧例程的 Padding 接口
+不匹配影响；未擅自迁移这些文件，临时 example/temp 也保留原始内容（包含旧分组
+签名）。无 DISPLAY 时既有 platform/typography/test.TestTypography 报 can not open display，独立 X11 下通过；该测试生成图片只落在隔离副本。原工作区的既有
+Software 测试会改写其未跟踪 output.png，本轮未将该产物纳入提交。
+本机验证不等于所有系统与装饰模式均已验收，具体命令和日志保存在仓库外临时目录。
 
 ## 任意 View 的显式修饰（2026-10-30）
 

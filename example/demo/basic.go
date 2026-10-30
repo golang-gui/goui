@@ -26,7 +26,12 @@ func (d *demo) basicPage() ui.View {
 				ui.Button().Content(ui.HBox(ui.Icon(d.logo).Size(18), ui.Label(resource.IconButton())).Spacing(8)).OnClick(func() { d.report(resource.IconClicked()) }),
 			).Spacing(12).LineSpacing(12).Enabled(d.enabled),
 			ui.HWrap(ui.Button(resource.AlwaysDisabled()).Enabled(false),
-				ui.Button(resource.FlatButton()).Style(modern.Flat).ID("basic-flat-disabled").Enabled(false)).Spacing(12).LineSpacing(12)),
+				ui.Button(resource.FlatButton()).Style(modern.Flat).ID("basic-flat-disabled").Enabled(false)).Spacing(12).LineSpacing(12),
+			ui.ButtonGroup(
+				ui.Button(resource.Undo()).OnClick(func() { d.report(resource.Undo()) }),
+				ui.Button(resource.Redo()).OnClick(func() { d.report(resource.Redo()) }),
+				ui.MenuButton(resource.FileMenu()).Menu(ui.MenuItem(resource.OpenPath(), func() { d.report(resource.OpenPath()) })).OnOpenError(func(err error) { d.result(resource.FileMenu(), err) }),
+			).Enabled(d.enabled)),
 		section(resource.MenuButtons(),
 			ui.Label(resource.MenuGroupHint()).WrapMode(gui.WrapWordChar).Style(modern.MutedText),
 			ui.MenuButtonGroup(ui.HWrap(

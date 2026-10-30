@@ -51,10 +51,8 @@ func (v *MenuButtonGroupView) MainAlign(align layout.MainAlign) *MenuButtonGroup
 	return v
 }
 
-// CrossAlign sets how each child sits on the cross axis. CrossDefault (also
-// used when unset) means Center in HBox and Start in VBox. CrossBaseline applies
-// to horizontal boxes and falls back to Start in vertical boxes. CrossStretch
-// fills the cross axis; the other policies preserve the child's natural size.
+// CrossAlign sets vertical alignment within the horizontal group. CrossDefault
+// centers children; CrossStretch fills the height and CrossBaseline aligns text.
 func (v *MenuButtonGroupView) CrossAlign(align layout.CrossAlign) *MenuButtonGroupView {
 	v.crossAlign = align
 	return v

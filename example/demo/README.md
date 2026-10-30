@@ -227,3 +227,11 @@ go run ./cmd/goui build -config example/demo/goui.toml
 `surface.go` / `scrollbar.go` 示范标准 Bin / WidgetView / Scrollable 扩展，无核心改动。
 不依赖桌面的例程逻辑测试：`go test ./example/demo`。
 开发中发现的框架问题与易用性限制见 [DemoFrameworkNotes](../../doc/DemoFrameworkNotes.md)。
+
+## 按钮分组
+
+基础控件页的“撤销／重做／文件”展示 ButtonGroup：零间距连排、首尾圆角与
+单条接缝，点击分别反馈操作或打开菜单；它不改变子按钮的交互行为。
+菜单按钮区使用 MenuButtonGroup 自动关联后代，无需组 ID 或逐个 Group 绑定。
+单选示例由 CheckButtonGroup 建立自动互斥作用域，不额外生成布局 Widget。
+更多横竖方向、隐藏重排、独立选择与跨区域互斥操作见 tests/window/gui/button_groups。
