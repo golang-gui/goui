@@ -53,6 +53,7 @@ type node struct {
 	widget        gui.Widget // own WidgetView widget, or the composition's output
 	state         any
 	parent        *node
+	bodyChild     bool // this edge projects the parent's output, rather than mounting an independent slot
 	body          *node
 	children      []*childTarget
 	released      bool
@@ -232,10 +233,10 @@ func (r *root) unmountForWindowDestroy() {
 }
 
 func (r *root) updateNode(old *node, view View) *node {
-	return r.updateDeclaration(old, view, nil, 0)
+	return r.updateDeclaration(old, view, nil, 0, false)
 }
 
-func (r *root) updateDeclaration(old *node, view View, parent *node, depth int) *node {
+func (r *root) updateDeclaration(old *node, view View, parent *node, depth int, bodyChild bool) *node {
 	defer pauseReadTracking()()
 	validateView(view)
 	epoch := r.epoch
@@ -280,6 +281,7 @@ func (r *root) updateDeclaration(old *node, view View, parent *node, depth int) 
 		}()
 	}
 	current.alive.Store(true)
+	current.bodyChild = bodyChild
 	defer current.finishBindings()
 	current.beginBindings()
 	ctx := &buildContext{node: current}
@@ -298,12 +300,17 @@ func (r *root) updateDeclaration(old *node, view View, parent *node, depth int) 
 		}
 		widgetView.Update(ctx, current.widget)
 		if live() {
-			view.base().update(current.baseCtx, current.widget)
+			current.updateModifiers()
 		}
 	} else {
-		content := current.buildComposition(view.(ComposeView), ctx)
+		var content View
+		if modified, ok := view.(*ModifiedView); ok {
+			content = modified.content
+		} else {
+			content = current.buildComposition(view.(ComposeView), ctx)
+		}
 		if live() {
-			body := r.updateDeclaration(current.body, content, current, depth+1)
+			body := r.updateDeclaration(current.body, content, current, depth+1, true)
 			if !live() {
 				r.release(body, true)
 			} else {
@@ -325,6 +332,36 @@ func (r *root) updateDeclaration(old *node, view View, parent *node, depth int) 
 		current.boundBatch = r.runtime.batch
 	}
 	return current
+}
+
+// outputModifiers walks only declared projection edges. These edges are
+// installed before Build/Update, including during the first mount; parent.body
+// may still refer to the previous output at that time.
+func (n *node) outputModifiers() (viewBase, bool) {
+	var result viewBase
+	found := false
+	for child := n; child.bodyChild && child.parent != nil; child = child.parent {
+		if modified, ok := child.parent.view.(*ModifiedView); ok {
+			result.overlay(modified.base())
+			found = true
+		}
+	}
+	return result, found
+}
+
+func (n *node) updateModifiers() {
+	b := n.view.base()
+	if outer, found := n.outputModifiers(); found {
+		effective := *b
+		effective.overlay(&outer)
+		b = &effective
+	}
+	r, version, widget := n.root, n.version, n.widget
+	epoch := r.epoch
+	live := func() bool {
+		return !n.released && n.root == r && r.epoch == epoch && n.version == version && n.widget == widget && !destroyedWidget(widget)
+	}
+	b.update(n.baseCtx, widget, live)
 }
 
 func (r *root) release(n *node, detachWidgets bool) {
@@ -500,7 +537,7 @@ func (ctx *buildContext) UpdateChild(target Bin, child View, apply ...func(gui.W
 	if len(current.nodes) != 0 {
 		previous, oldWidget = current.nodes[0], current.nodes[0].widget
 	}
-	mounted := r.updateDeclaration(previous, child, ctx.node, 0)
+	mounted := r.updateDeclaration(previous, child, ctx.node, 0, false)
 	if !ctx.live(r, epoch) {
 		r.release(mounted, true)
 		return nil
@@ -604,7 +641,7 @@ func (ctx *buildContext) UpdateChildren(target Container, children []View, apply
 		if !sameViewIdentity(previous, view) {
 			previous = nil
 		}
-		mounted := r.updateDeclaration(previous, view, ctx.node, 0)
+		mounted := r.updateDeclaration(previous, view, ctx.node, 0, false)
 		if !ctx.live(r, epoch) {
 			r.release(mounted, true)
 			cleanup()
@@ -738,7 +775,7 @@ func validateView(view View) {
 	if widget && len(view.base().observables) != 0 {
 		panic("ui: Observe requires a ComposeView; use property bindings on WidgetView")
 	}
-	if compose {
+	if _, modified := view.(*ModifiedView); compose && !modified {
 		base := view.base()
 		if base.fields.Mask&^uint64(1<<viewID) != 0 || len(base.shortcuts) != 0 || base.dragSource != nil || base.dropTarget != nil || base.onContextMenu != nil {
 			panic("ui: widget modifiers require a WidgetView; apply them to the composition's content")
@@ -870,7 +907,7 @@ func (r *root) updateLocal(n *node) {
 	for child, p := n, n.parent; p != nil && p.body == child; child, p = p, p.parent {
 		depth++
 	}
-	current := r.updateDeclaration(n, n.view, n.parent, depth)
+	current := r.updateDeclaration(n, n.view, n.parent, depth, n.bodyChild)
 	if current == nil || n.released || n.root != r || r.epoch != epoch {
 		return
 	}

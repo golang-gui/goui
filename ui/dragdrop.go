@@ -65,6 +65,7 @@ func (v DragSourceView) prepareRequest(request *DragPrepare) {
 
 func (b *ViewBase[T]) DragSource(source *DragSourceView) *T {
 	b.dragSource = source
+	b.fields.Set(viewDragSource, true)
 	return b.self()
 }
 
@@ -98,6 +99,7 @@ func (v *DropTargetView) OnError(fn func(error)) *DropTargetView        { v.onEr
 
 func (b *ViewBase[T]) DropTarget(target *DropTargetView) *T {
 	b.dropTarget = target
+	b.fields.Set(viewDropTarget, true)
 	return b.self()
 }
 

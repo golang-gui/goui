@@ -181,6 +181,27 @@ func (v *BuildView) Build(BuildContext) View {
 	return v.build()
 }
 
+// ModifiedView configures its content's widget output without adding a widget
+// or layout boundary. Only explicitly declared modifiers override the content;
+// outer ModifiedViews take precedence. ID identifies both this declaration and
+// its output widget. Keep the wrapper present across updates to retain identity.
+type ModifiedView struct {
+	ViewBase[ModifiedView]
+	content View
+}
+
+// Modify provides shared modifiers for any View, including compositions and
+// interface-typed values. It does not mutate content. A nil content keeps an
+// empty declaration. It adds no implicit binding or update request.
+func Modify(content View) *ModifiedView {
+	v := &ModifiedView{content: content}
+	v.Self = v
+	return v
+}
+
+// Build returns the content declaration without creating a widget.
+func (v *ModifiedView) Build(BuildContext) View { return v.content }
+
 // viewBase is the non-generic core every View carries: the shared modifier state
 // (id, visibility, style) plus the base() seal that forces embedding. The
 // reconciler reads it via View.base after each Update and writes it onto the
@@ -224,6 +245,10 @@ const (
 	viewFocusable
 	viewCursor
 	viewOnFocus
+	viewOnContextMenu
+	viewShortcuts
+	viewDragSource
+	viewDropTarget
 )
 
 // viewBaseContext is the persistent lifecycle context of viewBase: root creates
@@ -291,7 +316,7 @@ func (b *viewBase) mount(ctx *viewBaseContext, w gui.Widget) {
 
 // update refreshes the shared callbacks after each rebuild and applies the
 // shared modifiers onto the widget (missing modifiers restore the snapshot).
-func (b *viewBase) update(ctx *viewBaseContext, w gui.Widget) {
+func (b *viewBase) update(ctx *viewBaseContext, w gui.Widget, live func() bool) {
 	ctx.onFocus = b.onFocus
 	ctx.onContextMenu = b.onContextMenu
 	if b.onContextMenu != nil && ctx.contextMenu == nil {
@@ -303,24 +328,40 @@ func (b *viewBase) update(ctx *viewBaseContext, w gui.Widget) {
 		})
 		w.AddEventController(ctx.contextMenu)
 	} else if b.onContextMenu == nil && ctx.contextMenu != nil {
-		w.RemoveEventController(ctx.contextMenu)
-		ctx.contextMenuHandle.Disconnect()
+		controller, handle := ctx.contextMenu, ctx.contextMenuHandle
 		ctx.contextMenu, ctx.contextMenuHandle = nil, nil
+		w.RemoveEventController(controller)
+		handle.Disconnect()
+	}
+	if !live() {
+		return
 	}
 	ctx.dragSource.update(w, b.dragSource)
+	if !live() {
+		return
+	}
 	ctx.dropTarget.update(w, b.dropTarget)
+	if !live() {
+		return
+	}
 	if len(b.shortcuts) != 0 {
 		controller := ctx.shortcuts.controller
 		if controller == nil {
 			controller = gui.NewShortcutController()
+			ctx.shortcuts.controller = controller
 			w.AddEventController(controller)
+			if !live() {
+				return
+			}
 		}
 		ctx.shortcuts.update(controller, b.shortcuts)
 	} else if ctx.shortcuts.controller != nil {
 		w.RemoveEventController(ctx.shortcuts.controller)
 		ctx.shortcuts.clear()
 	}
-	b.apply(ctx, w)
+	if live() {
+		b.apply(ctx, w, live)
+	}
 }
 
 // unmount disconnects all registered shared signal handles and clears the
@@ -366,6 +407,7 @@ func (b *ViewBase[T]) self() *T {
 // requests have no pointer position and should use the control's current item.
 func (b *ViewBase[T]) OnContextMenu(fn func(gui.EventContext)) *T {
 	b.onContextMenu = fn
+	b.fields.Set(viewOnContextMenu, true)
 	return b.self()
 }
 
@@ -496,73 +538,192 @@ func (b *ViewBase[T]) OnFocus(fn func(focused bool)) *T {
 	return b.self()
 }
 
-// apply writes the shared modifier state onto a mounted widget. The
-// reconciler calls it after every Update, so no control does id/visibility/style
-// wiring itself. When a modifier was not set in this frame (bit not set) the
-// widget is restored to the snapshot captured at mount, keeping the widget's
-// private defaults private.
-func (b *viewBase) apply(ctx *viewBaseContext, widget gui.Widget) {
-	if b.fields.Check(viewID) {
-		widget.SetID(b.id)
-	} else {
-		widget.SetID(ctx.initID)
+// apply writes a complete declaration using the initial snapshot. A nil ctx
+// instead applies only explicit overrides, preserving unrelated binding values.
+func (b *viewBase) apply(ctx *viewBaseContext, widget gui.Widget, live func() bool) {
+	if ctx != nil || b.fields.Check(viewID) {
+		value := b.id
+		if ctx != nil && !b.fields.Check(viewID) {
+			value = ctx.initID
+		}
+		widget.SetID(value)
+		if !live() {
+			return
+		}
 	}
-	if b.fields.Check(viewName) {
-		widget.SetName(b.name)
-	} else {
-		widget.SetName(ctx.initName)
+	if ctx != nil || b.fields.Check(viewName) {
+		value := b.name
+		if ctx != nil && !b.fields.Check(viewName) {
+			value = ctx.initName
+		}
+		widget.SetName(value)
+		if !live() {
+			return
+		}
 	}
-	if b.fields.Check(viewTooltip) {
-		widget.SetTooltip(b.tooltip)
-	} else {
-		widget.SetTooltip(ctx.initTooltip)
+	if ctx != nil || b.fields.Check(viewTooltip) {
+		value := b.tooltip
+		if ctx != nil && !b.fields.Check(viewTooltip) {
+			value = ctx.initTooltip
+		}
+		widget.SetTooltip(value)
+		if !live() {
+			return
+		}
 	}
-	if b.fields.Check(viewStyleName) {
-		widget.SetStyleName(b.styleName)
-	} else {
-		widget.SetStyleName(ctx.initStyleName)
+	if ctx != nil || b.fields.Check(viewStyleName) {
+		value := b.styleName
+		if ctx != nil && !b.fields.Check(viewStyleName) {
+			value = ctx.initStyleName
+		}
+		widget.SetStyleName(value)
+		if !live() {
+			return
+		}
 	}
-	// MinSize: merge per-axis bits into snapshot, then set once.
-	min := ctx.initMinSize
-	if b.fields.Check(viewMinWidth) {
-		min.Width = b.minWidth
+	if ctx != nil || b.fields.Check(viewMinWidth) || b.fields.Check(viewMinHeight) {
+		var value geometry.Size
+		if ctx != nil {
+			value = ctx.initMinSize
+		} else {
+			value = widget.MinSize()
+		}
+		if b.fields.Check(viewMinWidth) {
+			value.Width = b.minWidth
+		}
+		if b.fields.Check(viewMinHeight) {
+			value.Height = b.minHeight
+		}
+		widget.SetMinSize(value)
+		if !live() {
+			return
+		}
 	}
-	if b.fields.Check(viewMinHeight) {
-		min.Height = b.minHeight
+	if ctx != nil || b.fields.Check(viewMaxWidth) || b.fields.Check(viewMaxHeight) {
+		var value geometry.Size
+		if ctx != nil {
+			value = ctx.initMaxSize
+		} else {
+			value = widget.MaxSize()
+		}
+		if b.fields.Check(viewMaxWidth) {
+			value.Width = b.maxWidth
+		}
+		if b.fields.Check(viewMaxHeight) {
+			value.Height = b.maxHeight
+		}
+		widget.SetMaxSize(value)
+		if !live() {
+			return
+		}
 	}
-	widget.SetMinSize(min)
-	// MaxSize: merge per-axis bits into snapshot, then set once.
-	max := ctx.initMaxSize
-	if b.fields.Check(viewMaxWidth) {
-		max.Width = b.maxWidth
+	if ctx != nil || b.fields.Check(viewMainWeight) {
+		value := b.mainWeight
+		if ctx != nil && !b.fields.Check(viewMainWeight) {
+			value = ctx.initMainWeight
+		}
+		widget.SetMainWeight(value)
+		if !live() {
+			return
+		}
 	}
-	if b.fields.Check(viewMaxHeight) {
-		max.Height = b.maxHeight
+	if ctx != nil || b.fields.Check(viewHidden) {
+		value := b.hidden
+		if ctx != nil && !b.fields.Check(viewHidden) {
+			value = ctx.initHidden
+		}
+		widget.SetVisible(!value)
+		if !live() {
+			return
+		}
 	}
-	widget.SetMaxSize(max)
-	if b.fields.Check(viewMainWeight) {
-		widget.SetMainWeight(b.mainWeight)
-	} else {
-		widget.SetMainWeight(ctx.initMainWeight)
+	if ctx != nil || b.fields.Check(viewFocusable) {
+		value := b.focusable
+		if ctx != nil && !b.fields.Check(viewFocusable) {
+			value = ctx.initFocusable
+		}
+		widget.SetFocusable(value)
+		if !live() {
+			return
+		}
 	}
-	if b.fields.Check(viewHidden) {
-		widget.SetVisible(!b.hidden)
-	} else {
-		widget.SetVisible(!ctx.initHidden)
+	if ctx != nil || b.fields.Check(viewEnabled) {
+		value := b.enabled
+		if ctx != nil && !b.fields.Check(viewEnabled) {
+			value = ctx.initEnabled
+		}
+		widget.SetEnabled(value)
+		if !live() {
+			return
+		}
 	}
-	if b.fields.Check(viewFocusable) {
-		widget.SetFocusable(b.focusable)
-	} else {
-		widget.SetFocusable(ctx.initFocusable)
+	if ctx != nil || b.fields.Check(viewCursor) {
+		value := b.cursor
+		if ctx != nil && !b.fields.Check(viewCursor) {
+			value = ctx.initCursor
+		}
+		widget.SetCursor(value)
+		if !live() {
+			return
+		}
 	}
-	if b.fields.Check(viewEnabled) {
-		widget.SetEnabled(b.enabled)
-	} else {
-		widget.SetEnabled(ctx.initEnabled)
+}
+
+// overlay combines explicit declarations without changing either input owner.
+func (b *viewBase) overlay(outer *viewBase) {
+	if outer.fields.Check(viewID) {
+		b.id = outer.id
 	}
-	if b.fields.Check(viewCursor) {
-		widget.SetCursor(b.cursor)
-	} else {
-		widget.SetCursor(ctx.initCursor)
+	if outer.fields.Check(viewName) {
+		b.name = outer.name
 	}
+	if outer.fields.Check(viewTooltip) {
+		b.tooltip = outer.tooltip
+	}
+	if outer.fields.Check(viewStyleName) {
+		b.styleName = outer.styleName
+	}
+	if outer.fields.Check(viewMinWidth) {
+		b.minWidth = outer.minWidth
+	}
+	if outer.fields.Check(viewMinHeight) {
+		b.minHeight = outer.minHeight
+	}
+	if outer.fields.Check(viewMaxWidth) {
+		b.maxWidth = outer.maxWidth
+	}
+	if outer.fields.Check(viewMaxHeight) {
+		b.maxHeight = outer.maxHeight
+	}
+	if outer.fields.Check(viewMainWeight) {
+		b.mainWeight = outer.mainWeight
+	}
+	if outer.fields.Check(viewHidden) {
+		b.hidden = outer.hidden
+	}
+	if outer.fields.Check(viewEnabled) {
+		b.enabled = outer.enabled
+	}
+	if outer.fields.Check(viewFocusable) {
+		b.focusable = outer.focusable
+	}
+	if outer.fields.Check(viewCursor) {
+		b.cursor = outer.cursor
+	}
+	if outer.fields.Check(viewOnFocus) {
+		b.onFocus = outer.onFocus
+	}
+	if outer.fields.Check(viewOnContextMenu) {
+		b.onContextMenu = outer.onContextMenu
+	}
+	if outer.fields.Check(viewShortcuts) {
+		b.shortcuts = outer.shortcuts
+	}
+	if outer.fields.Check(viewDragSource) {
+		b.dragSource = outer.dragSource
+	}
+	if outer.fields.Check(viewDropTarget) {
+		b.dropTarget = outer.dropTarget
+	}
+	b.fields.Mask |= outer.fields.Mask
 }
