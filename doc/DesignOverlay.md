@@ -80,7 +80,8 @@ MainWeight 由线性父布局解释，Overlay 不使用覆盖节点的 MainWeigh
 需要几个彼此分离的浮动按钮时，分别 AddOverlay，而不是用铺满容器制造空白区域。
 
 这些都不等于键盘模态。Overlay 不改变焦点、输入法、键盘传播或已有指针捕获。
-Dialog 的焦点恢复、背景快捷键屏蔽等需要单独设计，不能以铺满遮罩代替。
+焦点恢复、背景快捷键屏蔽等由独立的 [ModalScope](DesignModal.md) 提供，
+不能以铺满遮罩代替。自定义确认层可以关联 ModalScope；Overlay 本身不切换输入策略。
 现有面向原生 Popover 的 `Window.SetModalTarget` 也不直接用于窗口内覆盖节点。
 
 节点通过现有挂载／卸载流程管理资源，Window 对仍在树中的节点执行最终销毁。
