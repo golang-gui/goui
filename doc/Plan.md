@@ -1,5 +1,42 @@
 # Plan
 
+## Win32／Cocoa 测试文件整理（2026-10-30）
+
+组织见 [Testing](Testing.md#win32-与-cocoa-包内测试组织)。本轮包含两个目录中原有的
+10 个未跟踪测试文件，不修改其他目录的未跟踪文件或生产代码。
+
+- [x] Win32：10 个文件合为 7 个，拖放 source／target 归入 dragdrop，IME factory／
+  text 归入 ime，cursor_shapes 改名为 cursor。Cocoa 保留 7 个独立主题，只把
+  ime_factory／popup 改名为 ime／window。统一中文说明与 import，辅助函数就近放置。
+- [x] Windows 28 个 Test、macOS 15 个 Test 完整保留；包括辅助函数的 29／15 个
+  函数 AST 去掉注释后完全一致，无名称归一化、断言修改或生产接口补偿。
+  保留全部原生线程锁定、资源释放和已有运行条件。
+- [x] 整理前后 Windows amd64／macOS arm64 测试目标 `CGO_ENABLED=0 go test -c`
+  均编译通过；原始文件与未合并基线已保存在仓库外。
+- [x] Windows 10 22H2 build 19045 / amd64 / SSH Session 0：上传前后核对 SHA256，
+  使用远端 Go 1.23.7 的 test2json 执行本机 Go 1.25.8 构建的测试二进制。
+  原始基线和整理后均为 56 项测试／子测试通过，无失败或跳过，完整路径与逐项
+  结果一致；`-test.shuffle=20261030 -test.count=3` 另有 168 项通过。
+  包含隐藏 HWND 的类图标生命周期原生调用，但没有窗口展示或交互拖放验收，
+  不能将 Session 0 结果当成交互桌面通过；本轮不涉及 Painter／缩放视觉检查。
+- [x] Cocoa 目标 `go vet` 通过。Win32 的 `go vet` 仍失败：整理前后均有 40 条
+  生产代码 unsafe.Pointer 告警，路径、行号及内容完全相同；另有 2 条测试中原生
+  ABI 指针转换告警，仅因合并改变了文件／行号。未新增告警，也未关闭检查或
+  顺带修改已验证的生产 FFI。完整前后日志保留，不能把该 vet 结果记为通过。
+- [x] 干净源码副本包含受版本管理源码及本轮全部 Win32／Cocoa 测试，独立 Linux
+  amd64 / Ubuntu 22.04.5 / Xvnc :85 + Xfwm4：
+  `DISPLAY=:85 XMODIFIERS=@im=none GOUI_PLAT_PAINTER=software GOWORK=off
+  go test -mod=readonly -json ./...`，3164 项测试／子测试通过、10 项既有跳过。
+  该 Linux 结果不包含 Windows／macOS 目标测试的原生执行。
+- [x] 实际工作区全仓编译检查仍被其他目录未跟踪旧例程的 Padding／BuildContext
+  旧接口阻塞，日志保留；119 个范围外未跟踪文件的内容哈希保持一致。
+  所有生产代码保持不变，没有通过删除断言或扩大 skip 使验证通过。
+- [ ] macOS SSH（47.97.0.76:2202）返回 Connection refused，本轮原生运行未执行，
+  不把交叉编译记为原生通过。
+
+临时源码、原始文件、AST 对比与验证日志位于 `/tmp/goui-native-tests-cl0sqqkj`。
+本轮独立 Xvnc／Xfwm4 及测试进程完成后清理，保留原有远端连接及用户显示会话。
+
 ## X11 测试文件整理（2026-10-30）
 
 组织与保留的历史桌面项见 [Testing](Testing.md#x11-包内测试组织)。

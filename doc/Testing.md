@@ -144,6 +144,40 @@ go test ./...
 独立 X11 会话中执行，并单独记录上述两项及整体结果。保留原生库依赖，
 不把“无桌面”误写成“没有系统依赖”。实际验证记录见 [Plan](Plan.md)。
 
+## Win32 与 Cocoa 包内测试组织
+
+2026-10-30 沿用功能主题划分，保留测试名称、输入、断言、线程锁定和资源释放顺序，
+只整理文件、中文说明和 import 分组。不为文件数量一致而合并独立职责。
+
+Win32 的 10 个文件集中为 7 个：
+
+| 文件 | 覆盖主题 |
+| --- | --- |
+| `application_windows_test.go` | 应用图标提取、窗口类图标与资源生命周期 |
+| `window_windows_test.go` | 窗口样式、客户区几何、系统版本与命中区域 |
+| `cursor_windows_test.go` | 缩放光标的原生资源 ID |
+| `dragdrop_windows_test.go` | OLE 对象身份／引用计数、回调 ABI、数据、预览与反馈 |
+| `ime_windows_test.go` | 创建失败、UTF-16 拼接、重置与提交来源 |
+| `input_windows_test.go` | 已消费按键、逻辑按键与左右修饰键快照 |
+| `settings_windows_test.go` | 原生系统语言查询 |
+
+Cocoa 保留已有 7 个主题文件：application、window、ime、input、dragdrop、
+file_access、settings，均使用 `_darwin_test.go` 后缀。
+`ime_factory_darwin_test.go`、`popup_darwin_test.go` 分别归入
+`ime_darwin_test.go`、`window_darwin_test.go`；Bundle 身份、文件访问凭据及语言查询
+仍各自独立。Win32 同样把 factory／text 合并至 ime，source／target 合并至 dragdrop。
+
+`TestApplicationClassIcons` 是历史窗口系统测试，会创建隐藏 HWND，不能称为纯逻辑
+测试；本次保留既有入口与线程锁定，后续迁移遵循相同的独立窗口程序规范。
+OLE／Objective-C／Foundation 的对象与 ABI 测试保留相应原生库和服务依赖；
+不能仅凭测试名中的 Headless 就推断任意远端会话都能运行。
+AppKit 的真正主线程要求也不能以测试 goroutine 的 LockOSThread 代替。
+原生运行须分别记录实际会话和适用条件，交叉编译不等于这些测试已经执行。
+本次不新增 skip 或迁移历史窗口测试，不重复验收交互拖放场景。
+
+整理前后的函数 AST 及测试清单用于检查覆盖保留；原生运行结果与当前平台缺口见
+[Plan](Plan.md)。
+
 ## Tooltip 验证入口
 
 `gui/tooltip_test.go` 使用可推进计时器及正常事件分发验证目标、延迟、取消、重入和资源清理；
