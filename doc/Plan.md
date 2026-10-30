@@ -294,7 +294,11 @@ selection 或富文本剪贴板；这些留在 DesignLabel 的后续范围，不
 - [x] 明确属性级绑定和组合级观察，固定 Label/Build/Observe API 与兼容迁移。
 - [x] 节点失效、批次去重、挂载槽位及移交/完成边界。
 - [x] Build/Observe、通用绑定与文本控件接入。
-- [ ] 2026-10-30 组合构建自动读取：ui.State.Get／Peek、ui.Read、动态依赖与生命周期／线程隔离；补充回归、独立 X11、基准及目标编译，按阶段提交。明确替代早期 Get 不追踪约定，不扩展 GUI 或 core/state。
+- [x] 2026-10-30 组合构建自动读取：ui.State.Get／Peek、ui.Read、动态依赖与生命周期／线程隔离；明确替代早期 Get 不追踪约定，不扩展 GUI 或 core/state。
+  - 干净源码副本全仓 3101 项通过、10 项已有跳过、0 失败；相关 race／vet 通过。
+  - 独立 Xvnc／Xfwm4，Software 1x、OpenGL 1x／2x 的 binding -auto 全部通过；不使用 DevServer。
+  - Windows amd64／macOS arm64 UI 测试目标与例程交叉编译通过；本轮未做两平台原生验收。
+  - 旧版最小回归确认缺失自动订阅；新增实现通过。稳态构建基准表明自动追踪有额外开销，范围外 Get／Peek 均 0 分配，详见 [验收及基准记录](DesignUIUpdates.md#自动读取验收2026-10-30)。
 - [x] 移除 State 全局更新，迁移应用、例程、测试和文档。
 - [x] 包内、race/vet、独立 X11 会话及目标编译检查；分组提交。
   - 干净源码副本包含本轮代码和回归（包括已有文本编辑用例的绑定契约调整），

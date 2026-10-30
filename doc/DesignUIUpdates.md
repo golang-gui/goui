@@ -93,6 +93,49 @@ UpdateChild/UpdateChildren 增加零或一个可选 apply 回调，分别接收 
 
 包内测试集中在既有 state/root/composition/text_editing/app/after_update 等文件；绑定基础设施可有专门 binding_test.go。覆盖更新隔离、通知合并/重入、虚拟行、来源替换/卸载、并发、输出替换/槽位配置、编辑反馈/历史/选区和跨窗口移交。独立窗口用例 tests/window/ui/binding 使用真实输入及计数断言，不用 DevServer。验证完成运行 go test ./...、相关 race/vet 和目标编译。
 
+## 自动读取验收（2026-10-30）
+
+本轮只修改 UI 协调、状态读取、文档和相关测试，不修改 gui、platform 或 core/state。
+回归覆盖分支增删依赖、nil 输出、共享声明的独立挂载、父子作用域、Observe／属性绑定去重、
+首次读取通知、Peek、后台读写、panic 恢复、释放重入及跨 Root 移交。旧版源码运行
+“Build 中 Get 后 Set 应更新 Label”的最小回归时失败（构建次数仍为 1，文字仍为 before）；
+新实现对应断言通过。
+
+在只包含受版本控制源码和本轮修改的临时副本验证，排除工作区原有未跟踪例程及产物。
+Ubuntu 22.04.5 amd64、Go 1.25.8，独立 Xvnc／Xfwm4 4.16.1 会话：
+
+- `GOWORK=off GOUI_PLAT_PAINTER=software GOUI_PLAT_SCALE=1 go test -mod=readonly -json ./... -count=1`：
+  3101 项测试／子测试通过，10 项已有跳过，0 失败。跳过项为原生手动交互／窗口状态测试和 macOS 签名测试；未扩大 skip。
+- 无 DISPLAY／WAYLAND_DISPLAY 时，`go test -mod=readonly -race ./ui ./widgets/ui -count=1` 通过；
+  `go vet ./ui ./widgets/ui ./tests/window/ui/binding` 通过。
+- 独立窗口例程 `tests/window/ui/binding -auto` 在 Software 1x、OpenGL 1x／2x 均通过；
+  每组 5 次计数／快照检查，验证 Unicode 输入、局部更新、Overlay 显隐依赖和关闭镜像窗口后的清理。
+  自动操作经过正常 DispatchEvent／CommitText 和原生事件循环；截图确认浮层文字居中。
+  未使用 DevServer，不将这些操作称作外部鼠标或系统 IME 验收。
+- Windows amd64、macOS arm64 在 `CGO_ENABLED=0` 下编译 UI／widgets UI 测试目标和窗口例程通过；
+  本轮未执行这两平台的原生运行验收。
+
+全仓测试的图片／剪贴板副作用限于临时副本与独立桌面；未在用户桌面执行。
+
+### 开销边界
+
+同机、`GOMAXPROCS=1`、每组 5 次 200ms，比较已挂载且返回 nil 的组合稳态重建；
+不含 Widget／文字排版／绘制。旧版 Observe + Get 与新版 Observe + Peek 都表示显式依赖、
+普通取值；自动组用 Get 且不写 Observe。下表为中位数，不据此推导帧率：
+
+| 路径 | 来源数 | ns/op | B/op | allocs/op |
+| --- | ---: | ---: | ---: | ---: |
+| 旧版显式 Observe | 1 | 281.5 | 8 | 1 |
+| 新版显式 Observe + Peek | 1 | 638.2 | 56 | 2 |
+| 新版自动 Get | 1 | 1149 | 312 | 4 |
+| 旧版显式 Observe | 16 | 3615 | 1392 | 6 |
+| 新版显式 Observe + Peek | 16 | 3959 | 1440 | 7 |
+| 新版自动 Get | 16 | 9662 | 3080 | 14 |
+
+范围外 Get／Peek 分别为 26.04／25.53 ns/op，均 0 分配。自动追踪是易用性改进，
+不是性能优化；活动构建内有线程检查、依赖集合和连接管理开销。高频属性更新仍优先
+BindText／BindValue，只读快照可用 Peek；不因本轮增加自动缓存或派生状态。
+
 ## 参考
 
 2026-10-28 核对官方 API 与所示源码：Flutter [Element.markNeedsBuild](https://api.flutter.dev/flutter/widgets/Element/markNeedsBuild.html) 的节点标脏/去重，[Builder](https://api.flutter.dev/flutter/widgets/Builder-class.html) 与 [ListenableBuilder](https://api.flutter.dev/flutter/widgets/ListenableBuilder-class.html) 的回调构建与显式来源；GObject [bind_property](https://docs.gtk.org/gobject/method.Object.bind_property.html) 的来源/目标和 [unbind](https://docs.gtk.org/gobject/method.Binding.unbind.html) 的连接生命周期。仅借鉴机制，GOUI 保持普通 Go 状态、现有 UI 调度和 GUI setter；不照搬 GObject 属性系统或 Flutter 帧调度。
