@@ -15,6 +15,8 @@ type View interface {
 
 // ComposeView owns a persistent declarative node and builds its single content
 // view. A nil result keeps this node and its State, with no widget output.
+// Synchronous State.Get and Read calls in Build track dependencies of this
+// mounted node. Event callbacks and widget lifecycle calls are not tracked.
 type ComposeView interface {
 	View
 	Build(ctx BuildContext) View
@@ -142,7 +144,8 @@ func (b *ComposeBase[T]) ID(id string) *T {
 
 // Observe replaces this composition's explicit change sources. Empty clears
 // the list. Dependencies belong to each mounted node; IDs are not required.
-// Sources are stable, non-nil pointers. Get does not infer dependencies.
+// Sources are stable, non-nil pointers. These sources are combined with the
+// State.Get/Read dependencies collected during Build; empty does not clear them.
 func (b *ComposeBase[T]) Observe(sources ...Observable) *T {
 	for _, source := range sources {
 		validateObservable(source)
@@ -162,8 +165,9 @@ type BuildView struct {
 }
 
 // Build declares a function-built subtree. fn runs on the UI thread at mount,
-// when the parent updates this declaration, or when an observed source changes.
-// Values must be read inside fn; Go closure capture rules are unchanged.
+// when the parent updates this declaration, or when a dependency changes.
+// State.Get/Read calls inside fn track dependencies automatically. Values read
+// before fn runs remain snapshots; Go closure capture rules are unchanged.
 func Build(fn func() View) *BuildView {
 	if fn == nil {
 		panic("ui: Build requires a function")
