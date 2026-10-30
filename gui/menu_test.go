@@ -331,15 +331,16 @@ func menuButtonGroupFixture(t *testing.T) (*window, *testWidget, []*MenuButton, 
 	w.SetWidget(root)
 	root.Arrange(geometry.Rect(0, 0, 500, 300))
 	group := NewMenuButtonGroup()
+	root.AddChild(group)
+	group.Arrange(geometry.Rect(0, 0, 500, 300))
 	var buttons []*MenuButton
 	for i := 0; i < 3; i++ {
 		button := NewMenuButton()
-		button.SetGroup(group)
 		menu := NewMenu()
 		menu.Append("Action", nil)
 		button.SetMenu(menu)
 		button.SetChild(NewLabel("Menu"))
-		root.AddChild(button)
+		group.AddChild(button)
 		button.Arrange(geometry.Rect(20+float32(i)*100, 20, 80, 40))
 		button.Child().Arrange(geometry.Rect(10, 10, 60, 20))
 		buttons = append(buttons, button)
@@ -365,7 +366,7 @@ func menuButtonKey(t *testing.T, w *window, key events.Key) {
 	}
 }
 func TestMenuButtonGroupPointerKeyboardAndMixedButtons(t *testing.T) {
-	w, root, b, _ := menuButtonGroupFixture(t)
+	w, _, b, _ := menuButtonGroupFixture(t)
 	menuButtonPointer(t, w, events.PointerMove, 150)
 	if len(w.Popovers()) != 0 {
 		t.Fatal("空闲悬停打开了菜单")
@@ -386,7 +387,7 @@ func TestMenuButtonGroupPointerKeyboardAndMixedButtons(t *testing.T) {
 		t.Fatal("禁用菜单参与了悬停切换")
 	}
 	ordinary := NewButton()
-	root.AddChild(ordinary)
+	b[0].Group().AddChild(ordinary)
 	ordinary.Arrange(geometry.Rect(350, 20, 100, 40))
 	clicks := 0
 	ordinary.ConnectClicked(func() { clicks++ })
@@ -442,12 +443,14 @@ func TestMenuButtonGroupEligibilityAndOrdering(t *testing.T) {
 	if err := b[0].Open(); err != nil {
 		t.Fatal(err)
 	}
-	b[1].SetGroup(other)
+	root.AddChild(other)
+	other.Arrange(geometry.Rect(0, 0, 500, 300))
+	other.AddChild(b[1])
 	menuButtonPointer(t, w, events.PointerMove, 150)
 	if !b[0].Opened() || b[1].Opened() {
 		t.Fatal("切换到了不同组")
 	}
-	b[1].SetGroup(b[0].Group())
+	b[0].Group().AddChild(b[1])
 	separator := NewMenu()
 	separator.AppendSeparator()
 	b[1].SetMenu(separator)
@@ -455,15 +458,19 @@ func TestMenuButtonGroupEligibilityAndOrdering(t *testing.T) {
 	if !b[2].Opened() {
 		t.Fatal("空菜单参与导航")
 	}
-	b[2].SetGroup(nil)
+	root.AddChild(b[2])
+	// 移出容器卸载旧面；重新开启后作为独立菜单保留。
+	if err := b[2].Open(); err != nil {
+		t.Fatal(err)
+	}
 	menuButtonPointer(t, w, events.PointerMove, 50)
 	if !b[2].Opened() || b[0].Opened() {
 		t.Fatal("解除分组没有结束联动或关闭独立菜单")
 	}
 	b[2].Close()
 	b[1].SetMenu(b[0].Menu())
-	root.MoveChildBefore(b[2], b[0])
-	b[2].SetGroup(b[0].Group())
+	b[0].Group().AddChild(b[2])
+	b[0].Group().MoveChildBefore(b[2], b[0])
 	if err := b[0].Open(); err != nil {
 		t.Fatal(err)
 	}
@@ -494,7 +501,7 @@ func TestMenuButtonGroupEligibilityAndOrdering(t *testing.T) {
 func TestMenuButtonGroupClosedReentry(t *testing.T) {
 	for _, action := range []string{"destroy source", "destroy candidate", "change group", "open another", "reopen source"} {
 		t.Run(action, func(t *testing.T) {
-			w, _, b, _ := menuButtonGroupFixture(t)
+			w, root, b, _ := menuButtonGroupFixture(t)
 			if err := b[0].Open(); err != nil {
 				t.Fatal(err)
 			}
@@ -510,7 +517,9 @@ func TestMenuButtonGroupClosedReentry(t *testing.T) {
 				case "destroy candidate":
 					b[1].base().destroy(b[1])
 				case "change group":
-					b[1].SetGroup(NewMenuButtonGroup())
+					other := NewMenuButtonGroup()
+					root.AddChild(other)
+					other.AddChild(b[1])
 				case "open another":
 					if err := b[2].Open(); err != nil {
 						t.Fatal(err)
@@ -556,14 +565,16 @@ func TestMenuButtonGroupInputErrorsAndIsolation(t *testing.T) {
 	}
 	other := &window{platformWindow: &placementWindow{area: geometry.Rect(0, 0, 1000, 800)}}
 	candidate := NewMenuButton()
-	candidate.SetGroup(b[0].Group())
 	candidate.SetMenu(b[0].Menu())
-	other.SetWidget(candidate)
+	otherGroup := NewMenuButtonGroup()
+	other.SetWidget(otherGroup)
+	otherGroup.AddChild(candidate)
+	otherGroup.Arrange(geometry.Rect(0, 0, 80, 40))
 	candidate.Arrange(geometry.Rect(0, 0, 80, 40))
 	t.Cleanup(other.Destroy)
 	menuButtonPointer(t, other, events.PointerMove, 40)
 	if !b[0].Opened() || candidate.Opened() {
-		t.Fatal("同组对象跨 Root 联动")
+		t.Fatal("不同窗口的局部组发生联动")
 	}
 }
 
@@ -678,5 +689,33 @@ func TestMenuButtonGroupKeepsKeyboardChoiceOnStationaryMotion(t *testing.T) {
 	menuButtonPointer(t, w, events.PointerMove, 151)
 	if !buttons[1].Opened() {
 		t.Fatal("移开再回到同一位置时没有切换")
+	}
+}
+
+// 导航只访问当前容器的可见后代，嵌套组和普通按钮不占菜单顺序。
+func TestMenuButtonGroupNestedBoundary(t *testing.T) {
+	w, _, buttons, _ := menuButtonGroupFixture(t)
+	outer := buttons[0].Group()
+	nested := NewMenuButtonGroup()
+	outer.AddChild(nested)
+	nested.AddChild(buttons[1])
+	nested.Arrange(geometry.Rect(0, 0, 500, 300))
+	if err := buttons[0].Open(); err != nil {
+		t.Fatal(err)
+	}
+	menuButtonKey(t, w, events.KeyArrowRight)
+	if !buttons[2].Opened() || buttons[1].Opened() {
+		t.Fatal("导航进入了嵌套组")
+	}
+	buttons[2].Close()
+	if err := buttons[1].Open(); err != nil {
+		t.Fatal(err)
+	}
+	menuButtonKey(t, w, events.KeyArrowRight)
+	if !buttons[1].Opened() {
+		t.Fatal("单个嵌套成员切换到了外层组")
+	}
+	if info := outer.Snapshot(); info.Role != RoleHBox || len(info.Children) != 3 || len(info.Actions) != 0 {
+		t.Fatal("容器的语义子树或动作不正确", info)
 	}
 }

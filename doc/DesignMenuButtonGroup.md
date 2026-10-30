@@ -1,13 +1,12 @@
 # MenuButton 分组与菜单栏组合
 
-> 状态：2026-10-26 已实现。CheckButtonGroup 已单独完成命名迁移；本轮按
-> 非模态菜单与通用 AutoDismiss 方案实现，最终命令、结果与缺口见 Plan。
+> 状态：2026-10-30 迁移为局部容器；分组职责另见 [ButtonGroup 设计](DesignButtonGroup.md)。
 
 ## 目的与边界
 
-多个 MenuButton 显式组成一组。点击打开菜单后，真实鼠标移到同组另一按钮
-即切换菜单。应用通过 HBox、WrapBox 等普通布局组合菜单栏，也可混排普通
-Button。组只表达关系，不拥有布局，不增加 MenuBar 容器。
+MenuButtonGroup 是水平线性容器，可设置间距、内边距和对齐，也允许混排普通
+Button。后代 MenuButton 自动归属最近的组，嵌套组形成边界；不需要组 ID、
+显式绑定或成员注册。它不自动提供连排外观，该职责由 ButtonGroup 承担。
 
 菜单按钮使用非模态 PopoverMenu，通过通用 AutoDismiss 请求外部按下、Esc
 及窗口失焦关闭。正常 owner Motion 与键盘控制器完成联动；Window 不识别
@@ -21,7 +20,6 @@ MenuButton 或组，Root／BuildContext 也不增加具体控件分支。
 ```go
 func NewMenuButtonGroup() *MenuButtonGroup
 func (*MenuButton) Group() *MenuButtonGroup
-func (*MenuButton) SetGroup(*MenuButtonGroup)
 func (*MenuButton) Opened() bool
 func (*MenuButton) Open() error
 func (*MenuButton) Close()
@@ -32,36 +30,25 @@ func (*MenuButton) ConnectOpenError(func(error)) signal.Handle
 的失败发一次信号。空菜单、不可见／禁用按钮为无操作。至少一个 Visible 且
 非 Separator 项目即可打开；全部项目禁用仍可查看。
 
-MenuButtonGroup 不保存成员列表或弹窗引用，不管理原生资源。按钮显式保存
-组身份；活动菜单从所属窗口已显示的 Popover 中查询，严格限制相同 Widget
-Root。键盘顺序来自实际 Widget 树，不依赖注册、Mount 或声明构造顺序。
-组具有非零大小，避免不同实例受零尺寸对象地址规则影响。
-
-SetGroup(nil) 解除关系；更换已打开按钮的组结束本次联动，菜单继续独立存在。
-下一次打开才启用新的联动关系。卸载／销毁沿用 Popover 锚点生命周期。
+MenuButtonGroup 不保存成员注册表或弹窗引用；Group() 实时查询祖先关系。
+活动菜单从所属窗口已显示的 Popover 中查询，并限制相同 Widget Root。
+键盘顺序只遍历当前组子树，跳过嵌套组；不扫描整个窗口。
+移动按钮或整组后自动采用新关系；卸载沿用 Popover 锚点生命周期关闭旧面。
 
 ## 声明式接入
 
 ```go
-ui.MenuButtonGroup("main-menu", ui.HBox(
-    ui.MenuButton("File").Group("main-menu").Menu(
-        ui.MenuItem("Open", openFile),
-    ).OnOpenError(reportError),
-    ui.MenuButton("Edit").Group("main-menu").Menu(
-        ui.MenuItem("Undo", undo),
-    ),
+ui.MenuButtonGroup(
+    ui.MenuButton("File").Menu(ui.MenuItem("Open", openFile)).OnOpenError(reportError),
+    ui.MenuButton("Edit").Menu(ui.MenuItem("Undo", undo)),
     ui.Button("Run").OnClick(run),
-))
+).Spacing(4)
 ```
 
-MenuButtonGroupView 复用 ComposeBase／ObjectView，在自己的 State 创建组，
-Object 无副作用返回已有实例，后代解除关联后释放状态。不生成包装 Widget。
-Group(string) 查询最近的同名对象祖先，缺失或类型不符报告配置错误；空名
-表示独立。不同声明分支可使用同名组，Group 声明的 ID 同时是其关联名字。
-
-重建保留 Widget、组和未变的菜单模型。动作通过节点状态访问最新声明闭包，
-不因重新创建函数而重装正在展开的菜单；卸载清空动作引用、断开 Closed／
-OpenError 连接并解除关联。通用 Reparented 刷新祖先关系，整组移交保留实例。
+MenuButtonGroupView 是普通 WidgetView，复用 UpdateChildren 与 Container 协调。
+重建保留 Widget、组和未变的菜单模型。动作通过节点状态访问最新声明闭包；
+卸载清空动作引用并断开 Closed／OpenError 连接。单项或整组移交都由实际
+GUI 父子关系确定成员身份，不使用 ObjectView 或 Reparented 分组适配。
 
 ## 鼠标行为
 
@@ -116,7 +103,7 @@ Closed 回调销毁／迁移对象、更换组、重新打开源或显示其他�
 翻到上方时裁去底部留白。主体位置和其余阴影保持，通用规则见 Popup 设计。
 
 MenuButton 保留 RoleButton 与正常 Click 动作，增加 gui.MenuButtonInfoKey
-下的 MenuButtonInfo：HasMenu、Opened、Grouped。组对象不产生语义容器，
+下的 MenuButtonInfo：HasMenu、Opened、Grouped。组容器报告 RoleHBox 与实际子树，
 不公开直接切换组的动作；打开的 Popup 继续沿既有 Window 快照／枚举呈现。
 
 ## 参考与验证
