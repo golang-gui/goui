@@ -207,16 +207,16 @@ func main() {
 						).Spacing(8),
 						wui.CheckButton("Independent").ID("independent").CheckState(independent).Enabled(enabled).OnChange(change(&independent)),
 						wui.CheckButton("Mixed").ID("mixed").CheckState(mixed).OnChange(change(&mixed)),
-						wui.CheckButtonGroup("radio", ui.HBox(
-							wui.CheckButton("Radio A").ID("radio-1").Group("radio").Checked(radio == 1).OnChange(choice(&radio, 1)),
-							wui.CheckButton("Radio B").ID("radio-2").Group("radio").Checked(radio == 2).OnChange(choice(&radio, 2)),
-							wui.CheckButton("Radio C").ID("radio-3").Group("radio").Checked(radio == 3).OnChange(choice(&radio, 3)),
+						wui.CheckButtonGroup(ui.HBox(
+							wui.CheckButton("Radio A").ID("radio-1").Checked(radio == 1).OnChange(choice(&radio, 1)),
+							wui.CheckButton("Radio B").ID("radio-2").Checked(radio == 2).OnChange(choice(&radio, 2)),
+							wui.CheckButton("Radio C").ID("radio-3").Checked(radio == 3).OnChange(choice(&radio, 3)),
 						).Spacing(12)),
-						wui.CheckButtonGroup("mode", ui.HBox(
+						wui.CheckButtonGroup(ui.HBox(
 							ui.Button("Toggle").ID("ordinary").OnClick(func() { ordinaryClicks++; update() }),
 							wui.CheckButton("Toggle").ID("toggle").Appearance(wui.CheckAppearanceButton).Checked(toggle).OnChange(func(s wui.CheckState) { toggle = s == wui.CheckChecked; changes++; update() }),
-							wui.CheckButton("Mode A").ID("mode-1").Appearance(wui.CheckAppearanceButton).Group("mode").Checked(mode == 1).OnChange(choice(&mode, 1)),
-							wui.CheckButton("Mode B").ID("mode-2").Appearance(wui.CheckAppearanceButton).Group("mode").Checked(mode == 2).OnChange(choice(&mode, 2)),
+							wui.CheckButton("Mode A").ID("mode-1").Appearance(wui.CheckAppearanceButton).Checked(mode == 1).OnChange(choice(&mode, 1)),
+							wui.CheckButton("Mode B").ID("mode-2").Appearance(wui.CheckAppearanceButton).Checked(mode == 2).OnChange(choice(&mode, 2)),
 						).Spacing(12)),
 						wui.CheckButton().ID("parent").CheckState(parent).OnChange(change(&parent)).Content(
 							ui.HBox(ui.Label("Parent"), ui.Button("Child").ID("child").OnClick(func() { childClicks++; update() })).Spacing(12),

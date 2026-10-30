@@ -1,5 +1,19 @@
 # Plan
 
+## ButtonGroup 与局部分组简化（2026-10-30）
+
+设计见 [DesignButtonGroup](DesignButtonGroup.md)，覆盖旧 MenuButtonGroup／CheckButton
+声明设计中组名与显式重复 Group 的用法；历史验收记录保留。
+
+- [x] CheckButtonGroup 自动作用域、显式对象／nil、通用按类型祖先查询及相关迁移。
+  ui／widgets/ui／widgets 包内测试与 ui／widgets/ui race 通过；覆盖最近兼容对象、
+  无布局包装、嵌套组、失效上下文、显式对象／独立、重建及移交后的默认关系。
+- [ ] MenuButtonGroup 改为局部容器、自动成员、组内树顺序及 UI／用例迁移。
+- [ ] ButtonGroup 连排几何、公共按钮绘制辅助、UI、Basic／Modern 和像素／逻辑测试。
+- [ ] demo、独立 X11 Software／OpenGL 1x／2x 验证、全仓／race／目标编译。
+
+工作记录与临时产物位于 `/tmp/goui-button-groups-current` 所指向的仓库外目录。
+
 ## 任意 View 的显式修饰（2026-10-30）
 
 设计见 [DesignViewModifiers](DesignViewModifiers.md)。

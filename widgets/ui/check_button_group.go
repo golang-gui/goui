@@ -5,22 +5,19 @@ import (
 	"github.com/golang-gui/goui/widgets"
 )
 
-// CheckButtonGroupView owns a nonvisual exclusivity group. Its ID names the group
-// for descendant CheckButtons, independently of the projected widget tree.
+// CheckButtonGroupView owns the default exclusivity group for descendant
+// CheckButtons, independently of the projected widget tree.
 type CheckButtonGroupView struct {
 	baseui.ComposeBase[CheckButtonGroupView]
 	child baseui.View
 }
 
-// CheckButtonGroup declares an explicit group around one content view. Equal IDs in
-// separate declaration branches are independent; the nearest ancestor wins.
-func CheckButtonGroup(id string, child baseui.View) *CheckButtonGroupView {
-	if id == "" {
-		panic("widgets/ui: CheckButtonGroup requires a nonempty ID")
-	}
+// CheckButtonGroup supplies a default group without adding a layout widget.
+// The nearest scope wins; explicit CheckButton.Group values override it.
+func CheckButtonGroup(child baseui.View) *CheckButtonGroupView {
 	v := &CheckButtonGroupView{child: child}
 	v.Self = v
-	return v.ID(id)
+	return v
 }
 
 func (v *CheckButtonGroupView) Build(ctx baseui.BuildContext) baseui.View {

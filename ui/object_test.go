@@ -71,6 +71,7 @@ type groupedCheckView struct {
 	ViewBase[groupedCheckView]
 	name    string
 	checked bool
+	auto    bool
 	saved   *BuildContext
 }
 
@@ -101,7 +102,9 @@ func (*groupedCheckView) Unmount(_ BuildContext, widget gui.Widget) {
 func (v *groupedCheckView) Reparented(ctx BuildContext) {
 	b := ctx.State().(*widgets.CheckButton)
 	var group *widgets.CheckButtonGroup
-	if v.name != "" {
+	if v.auto {
+		group, _ = FindAncestor[*widgets.CheckButtonGroup](ctx)
+	} else if v.name != "" {
 		var ok bool
 		group, ok = FindAncestor[*widgets.CheckButtonGroup](ctx, v.name)
 		if !ok {
@@ -109,6 +112,67 @@ func (v *groupedCheckView) Reparented(ctx BuildContext) {
 		}
 	}
 	b.SetGroup(group)
+}
+
+func TestObjectTypedLookupUsesNearestCompatibleScope(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	var ctx BuildContext
+	check := namedCheck("auto", "", true)
+	check.auto, check.saved = true, &ctx
+	outer := widgets.NewCheckButtonGroup()
+	inner := widgets.NewCheckButtonGroup()
+	view := objectScope("", VBox(
+		objectScope("unrelated", check, func() any { return new(int) }),
+		objectScope("", func() View {
+			v := namedCheck("inner", "", true)
+			v.auto = true
+			return v
+		}(), func() any { return inner }),
+	), func() any { return outer })
+	box := r.update(view)
+	a := box.Children()[0].(*widgets.CheckButton)
+	b := box.Children()[1].(*widgets.CheckButton)
+	if a.Group() != outer || b.Group() != inner || !a.Checked() || !b.Checked() {
+		t.Fatal("自动作用域未跳过不兼容对象或隔离内层组")
+	}
+	if got, ok := FindAncestor[*widgets.CheckButtonGroup](ctx); !ok || got != outer {
+		t.Fatal("未按类型查询最近的兼容对象")
+	}
+	if _, ok := FindAncestor[*widgets.CheckButtonGroup](ctx, ""); ok {
+		t.Fatal("显式空 ID 改变了原有查找语义")
+	}
+	r.unmountWindow()
+	if _, ok := FindAncestor[*widgets.CheckButtonGroup](ctx); ok {
+		t.Fatal("已释放上下文仍可查询默认作用域")
+	}
+}
+
+func TestObjectTypedScopeFollowsTransfer(t *testing.T) {
+	a, b := transferRoots()
+	defer a.unmountWindow()
+	defer b.unmountWindow()
+	auto := func(id string, checked bool) *groupedCheckView {
+		v := namedCheck(id, "", checked)
+		v.auto = true
+		return v
+	}
+	source := a.update(groupScope("", VBox(auto("moving", true)))).(*gui.LinearBox)
+	target := b.update(groupScope("", VBox(auto("resident", true)))).(*gui.LinearBox)
+	moving, resident := source.Children()[0].(*widgets.CheckButton), target.Children()[0].(*widgets.CheckButton)
+	old, next := moving.Group(), resident.Group()
+	err := (&Coordinator{owner: a.root.body}).TransferChild(moving, target, func() error {
+		source.RemoveChild(moving)
+		target.AddChild(moving)
+		return nil
+	}, func() {
+		if moving.Group() != next || resident.Checked() || !moving.Checked() {
+			t.Fatal("移交后默认作用域或互斥状态错误")
+		}
+	})
+	if err != nil || old.Checked() != nil {
+		t.Fatal("移交保留了旧组", err)
+	}
 }
 
 func TestObjectGroupReconcilesAcrossContainersAndIsolatesDeclarations(t *testing.T) {

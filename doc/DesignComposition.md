@@ -48,18 +48,19 @@ ObjectView 且 Object 的结果兼容 T，否则返回 false，不越过同名�
 Unmount 中解除关联，所有后代释放后再执行所属 ObjectView.Release。
 
 ```go
-wui.CheckButtonGroup("appearance",
+wui.CheckButtonGroup(
     ui.HBox(
-        wui.CheckButton("Light").Group("appearance"),
-        wui.CheckButton("Dark").Group("appearance"),
+        wui.CheckButton("Light"),
+        wui.CheckButton("Dark"),
         ui.Button("Reset"),
     ),
 )
 ```
 
-CheckButtonGroup 声明自己持有 widgets.CheckButtonGroup，CheckButton 的非空 Group 参数
-只引用显式祖先。缺失／类型错误属于配置错误，不能自动创建或静默变成独立
-按钮。空名表示独立。不同声明分支可复用相同组 ID；内层同名声明遮蔽外层。
+CheckButtonGroup 持有稳定的 widgets.CheckButtonGroup；成员默认通过
+FindAncestor[T](ctx) 使用最近的兼容对象作用域。显式 Group(shared) 覆盖该默认值，
+Group(nil) 保持独立。FindAncestor[T](ctx, id) 仍保留精确 ID 和同名遮蔽语义，
+供其他显式对象声明使用；不引入全局组表。详见 DesignButtonGroup.md。
 
 ## 释放、回调与移交
 

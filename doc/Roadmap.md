@@ -1,5 +1,11 @@
 # GOUI 实用化与未来路线
 
+## 按钮分组职责收敛（2026-10-30）
+
+ButtonGroup 负责连排外观，MenuButtonGroup 负责局部菜单联动容器，CheckButtonGroup
+保留独立互斥关系并简化默认作用域。按批实现、验证与提交；旧组名声明契约由
+[DesignButtonGroup](DesignButtonGroup.md) 覆盖，实际进度与验收缺口见 [Plan](Plan.md)。
+
 ## 任意 View 修饰（2026-10-30）
 
 已实现 [ui.Modify](DesignViewModifiers.md)，复用现有 Widget 与信号归属；本机包内、race/vet、
