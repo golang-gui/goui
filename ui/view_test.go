@@ -9,6 +9,63 @@ import (
 	"github.com/golang-gui/goui/widgets"
 )
 
+func TestModifyMergesExplicitValuesAndRestoresContent(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	content := func() View {
+		return Label("content").ID("inside").Name("inside name").Tooltip("inside help").
+			Style("inside style").MinSize(100, 24).MaxSize(500, 80).
+			MainWeight(2).Cursor(CursorText).Focusable(true)
+	}
+	w := r.update(Modify(Modify(content()).MinHeight(32).MaxWidth(400).MainWeight(3)).
+		ID("outside").Name("").Tooltip("").Style("").MinWidth(200).MaxHeight(60).
+		MainWeight(0).Cursor(nil).Visible(false).Enabled(false).Focusable(false))
+	if w.ID() != "outside" || w.Name() != "" || w.Tooltip() != "" || w.StyleName() != "" ||
+		w.MinSize() != (geometry.Size{Width: 200, Height: 32}) ||
+		w.MaxSize() != (geometry.Size{Width: 400, Height: 60}) || w.MainWeight() != 0 ||
+		w.Cursor() != nil || w.Visible() || w.Enabled() || w.Focusable() {
+		t.Fatalf("外层显式值或逐轴合并错误：%+v", w.Snapshot())
+	}
+	if r.root.body.body.id != "inside" || r.root.baseCtx != nil || r.root.body.baseCtx != nil {
+		t.Fatal("包装改写了内容身份或持有重复的 Widget 上下文")
+	}
+	if got := r.update(Modify(Modify(content())).ID("outside")); got != w ||
+		w.MinSize() != (geometry.Size{Width: 100, Height: 24}) ||
+		w.MaxSize() != (geometry.Size{Width: 500, Height: 80}) || w.MainWeight() != 2 ||
+		!w.Visible() || !w.Enabled() || !w.Focusable() || w.Cursor() != CursorText ||
+		w.Name() != "inside name" || w.Tooltip() != "inside help" || w.StyleName() != "inside style" {
+		t.Fatal("省略外层配置未恢复当前内容声明，或重新创建了 Widget")
+	}
+	if got := r.update(Modify(Modify(Label("plain").ID("inside"))).ID("outside")); got != w ||
+		w.MinSize() != (geometry.Size{}) || w.MaxSize() != (geometry.Size{}) || w.MainWeight() != 0 || w.Focusable() {
+		t.Fatal("内外声明都省略配置时没有恢复构造默认值")
+	}
+}
+
+func TestModifySharedContentMountsIndependently(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	shared := Label("shared").MainWeight(2).Style("original")
+	box := r.update(HBox(
+		Modify(shared).ID("a").Style("first").MainWeight(1),
+		Modify(shared).ID("b").Style("second").Visible(false),
+	)).(*gui.LinearBox)
+	a, b := box.Children()[0], box.Children()[1]
+	if a == b || a.StyleName() != "first" || b.StyleName() != "second" || a.MainWeight() != 1 ||
+		b.MainWeight() != 2 || !a.Visible() || b.Visible() || shared.styleName != "original" || shared.mainWeight != 2 {
+		t.Fatal("两个挂载共享了可变资源，或 Modify 修改了原声明")
+	}
+	info := box.Snapshot()
+	if len(info.Children) != 2 || info.Children[0].ID != "a" || info.Children[1].ID != "b" ||
+		len(info.Children[0].Children) != 0 || info.Children[1].Visible {
+		t.Fatal("Snapshot 增加了包装节点或未报告最终 ID／状态")
+	}
+	r.update(HBox(Modify(shared).ID("b"), Modify(shared).ID("a")))
+	if box.Children()[0] != b || box.Children()[1] != a || !b.Visible() || a.StyleName() != "original" {
+		t.Fatal("包装的外层 ID 重排没有保留内容，或省略修饰没有恢复内层")
+	}
+}
+
 // 共享修饰器遵循显式覆盖、空值清除和省略时恢复构造默认值的协调规则。
 func TestViewTooltipRestoresInitialValue(t *testing.T) {
 	r := newRoot()

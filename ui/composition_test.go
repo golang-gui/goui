@@ -9,6 +9,62 @@ import (
 
 type compositionState struct{ builds int }
 
+func TestModifyTracksLocalOutputWithoutRebuildingWrapper(t *testing.T) {
+	mode := MakeState(0)
+	global, builds := 0, 0
+	_, fake := bindingApp(t, func() RootView {
+		global++
+		return Window("main").Content(Modify(Build(func() View {
+			builds++
+			switch mode.Get() {
+			case 0:
+				return Label("label").MainWeight(9)
+			case 1:
+				return TextInput().Text("input")
+			default:
+				return nil
+			}
+		})).ID("output").MainWeight(1).MinWidth(240).Tooltip("outer"))
+	})
+	first := fake.windows[0].Widget()
+	for _, value := range []int{0, 1, 2, 0} {
+		mode.Set(value)
+		fake.runPosted()
+		w := fake.windows[0].Widget()
+		if value == 2 {
+			if w != nil {
+				t.Fatal("空内容产生了占位 Widget")
+			}
+			continue
+		}
+		if w == nil || w.ID() != "output" || w.MainWeight() != 1 || w.MinSize().Width != 240 || w.Tooltip() != "outer" {
+			t.Fatal("局部重建、类型替换或空内容恢复后丢失外层修饰")
+		}
+		if builds == 2 && w != first {
+			t.Fatal("同类型局部重建替换了内容 Widget")
+		}
+	}
+	if global != 1 || builds != 5 {
+		t.Fatal("内部更新重建了外层窗口声明")
+	}
+}
+
+func TestModifyStopsAtWidgetAndIndependentMountingBoundaries(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	bin := new(testBinTarget)
+	decl := trackingView(func(ctx BuildContext) View {
+		ctx.UpdateChild(bin, Label("independent"))
+		return VBox(Label("child"))
+	})
+	box := r.update(Modify(decl).Style("card").MainWeight(1).Enabled(false)).(*gui.LinearBox)
+	if box.StyleName() != "card" || box.MainWeight() != 1 || box.Enabled() ||
+		box.Children()[0].StyleName() != "" || !box.Children()[0].Enabled() ||
+		bin.child.StyleName() != "" || bin.child.MainWeight() != 0 || !bin.child.Enabled() {
+		t.Fatal("修饰越过实际 Widget 或独立挂载槽边界")
+	}
+}
+
 type stateComposition struct {
 	ComposeBase[stateComposition]
 	child View

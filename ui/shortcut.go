@@ -50,6 +50,7 @@ func (s *ShortcutView) OnActivate(fn func()) *ShortcutView {
 // by position among non-nil entries, not by descriptor pointer.
 func (v *ViewBase[T]) Shortcuts(bindings ...*ShortcutView) *T {
 	v.shortcuts = slices.Clone(bindings)
+	v.fields.Set(viewShortcuts, true)
 	return v.self()
 }
 

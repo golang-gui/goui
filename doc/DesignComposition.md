@@ -1,5 +1,7 @@
 # 组合声明与对象声明
 
+任意 View 返回值的通用修饰使用 `ui.Modify(view)`，契约见 [显式修饰设计](DesignViewModifiers.md)。
+
 本设计已实现（2026-10-26），替代此前 ui.BindGroup 的隐式 Root 命名组。
 平台验收范围和限制见 Plan；MenuButton 的菜单分组行为仍属于独立待实施功能。
 

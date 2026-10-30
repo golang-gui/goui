@@ -1,5 +1,18 @@
 # 自定义 Widget 与 View
 
+任意 View 返回值的通用修饰使用 `ui.Modify(view)`，契约见 [显式修饰设计](DesignViewModifiers.md)。
+
+组件返回 `ui.View` 后可继续配置输出，不需要类型断言或操作内部 Base：
+
+```go
+func content() ui.View { return ui.VBox(ui.Label("Details"), ui.TextInput()) }
+
+ui.Modify(content()).MainWeight(1).MinWidth(240)
+```
+
+包装不修改 content 声明，也不增加 GUI 容器；只作用于最终输出 Widget。
+
+
 本文面向使用 GOUI 编写应用或控件库的开发者，说明当前公开接口的六种扩展方式。
 以应用实际依赖版本的源码为准；这里不新增框架 API，也不将 Go 嵌入解释成继承体系。
 

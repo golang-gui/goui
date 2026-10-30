@@ -1,5 +1,13 @@
 # Plan
 
+## 任意 View 的显式修饰（2026-10-30）
+
+设计见 [DesignViewModifiers](DesignViewModifiers.md)。
+
+- [x] Modify／ModifiedView、最终属性合并与基础回归。
+- [ ] 属性绑定、事件连接、释放与跨 Root 移交回归。
+- [ ] 独立窗口例程、全仓／race／vet、目标编译与独立 X11 验收；分阶段提交。
+
 ## Win32／Cocoa 测试文件整理（2026-10-30）
 
 组织见 [Testing](Testing.md#win32-与-cocoa-包内测试组织)。本轮包含两个目录中原有的

@@ -1,5 +1,7 @@
 # GOUI 声明式 UI 层设计
 
+任意 View 返回值的通用修饰使用 `ui.Modify(view)`，契约见 [显式修饰设计](DesignViewModifiers.md)。
+
 > 状态：View 身份、ComposeView／ObjectView 持久组合、WidgetView、挂载目标、局部 ID 协调、显式移交及共享修饰器已实现。Tooltip 已实现；通用 Popover 附着声明仍须设计，见 §4；不把旧 Key／UpdateOverlays 草案当作已确认 API。
 > 2026-09-24：§3.6 的 ID/Name 分离与 ID 查询已实现；§3.7 的拖放源数据声明已接入。
 > 2026-10-01：§2.1 增加局部 ID 匹配与相对重排；§2.2 改为普通节点的显式移交，移除任意 State 查询。

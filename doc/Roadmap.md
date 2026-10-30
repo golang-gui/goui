@@ -1,5 +1,9 @@
 # GOUI 实用化与未来路线
 
+## 任意 View 修饰（2026-10-30）
+
+按 [DesignViewModifiers](DesignViewModifiers.md) 增补 ui.Modify，复用现有 Widget 与信号归属；实施和验收见 Plan。
+
 ## 当前基线（2026-10-14）
 
 本轮按 pre-release/v0.1 的实现复核设计文档，不修改代码、不重新扩大首版范围。
