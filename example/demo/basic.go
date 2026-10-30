@@ -63,13 +63,13 @@ func (d *demo) basicPage() ui.View {
 				wui.CheckButton(resource.Toggle()).Appearance(wui.CheckAppearanceButton).Checked(d.toggle).OnChange(func(v wui.CheckState) { d.toggle = v == wui.CheckChecked; change() }),
 				wui.Switch(resource.Switch()).Checked(d.switched).OnChange(func(v bool) { d.switched = v; change() }),
 			).Spacing(18).LineSpacing(12).Enabled(d.enabled),
-			wui.CheckButtonGroup("basic-options", ui.HBox(wui.CheckButton(resource.OptionA()).Group("basic-options").Checked(d.radio == 0).OnChange(func(v wui.CheckState) {
+			wui.CheckButtonGroup(ui.HBox(wui.CheckButton(resource.OptionA()).Checked(d.radio == 0).OnChange(func(v wui.CheckState) {
 				if v == wui.CheckChecked {
 					d.radio = 0
 					change()
 				}
 			}),
-				wui.CheckButton(resource.OptionB()).Group("basic-options").Checked(d.radio == 1).OnChange(func(v wui.CheckState) {
+				wui.CheckButton(resource.OptionB()).Checked(d.radio == 1).OnChange(func(v wui.CheckState) {
 					if v == wui.CheckChecked {
 						d.radio = 1
 						change()

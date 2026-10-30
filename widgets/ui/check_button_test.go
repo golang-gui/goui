@@ -24,7 +24,7 @@ func checkKey(t *testing.T, b *widgets.CheckButton) {
 }
 
 func TestCheckButtonReconcileAndSignals(t *testing.T) {
-	// 此替身直接调用 Update，验证默认值与信号绑定；命名分组通过真实协调器
+	// 此替身直接调用 Update，验证默认值与信号绑定；自动分组通过真实协调器
 	// 的 ui/object_test.go 及现有独立窗口例程验证，不能用替身伪造组归属。
 	ctx := new(tabContext)
 	first, latest := 0, 0
@@ -56,6 +56,50 @@ func TestCheckButtonReconcileAndSignals(t *testing.T) {
 	checkKey(t, b)
 	if latest != 1 || b.Checked() {
 		t.Fatal("unmount retained UI signal / destroyed GUI widget")
+	}
+}
+
+func TestCheckButtonExplicitGroupAndDefaultScope(t *testing.T) {
+	ctx := new(tabContext)
+	group := widgets.NewCheckButtonGroup()
+	v := CheckButton("A").Group(group).Checked(true)
+	b := v.Mount(ctx).(*widgets.CheckButton)
+	v.Update(ctx, b)
+	if b.Group() != group || group.Checked() != b {
+		t.Fatal("显式对象未关联")
+	}
+	v = CheckButton("A").Group(nil).Checked(true)
+	if !v.group.HasValue() || v.group.Value() != nil {
+		t.Fatal("未区分独立按钮与默认作用域")
+	}
+	v.Update(ctx, b)
+	if b.Group() != nil || group.Checked() != nil {
+		t.Fatal("显式 nil 未解除关联")
+	}
+	v = CheckButton("A")
+	if v.group.HasValue() {
+		t.Fatal("省略 Group 未恢复自动查找")
+	}
+	v.Update(ctx, b)
+	if b.Group() != nil {
+		t.Fatal("没有祖先时应保持独立")
+	}
+	v.Unmount(ctx, b)
+}
+
+func TestCheckButtonGroupScopeKeepsObjectWithoutLayout(t *testing.T) {
+	ctx := new(tabContext)
+	child := baseui.HBox(CheckButton("A"), CheckButton("B"))
+	v := CheckButtonGroup(child)
+	if v.Build(ctx) != child {
+		t.Fatal("作用域增加了包装布局")
+	}
+	first := v.Object(ctx)
+	if _, ok := first.(*widgets.CheckButtonGroup); !ok {
+		t.Fatal("未持有互斥对象")
+	}
+	if v.Build(ctx) != child || v.Object(ctx) != first {
+		t.Fatal("重建替换了互斥组")
 	}
 }
 

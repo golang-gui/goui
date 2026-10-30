@@ -184,9 +184,9 @@ move 期间源销毁不会释放临时持有的子树；目标最终不存在则
 不自动创建、不越过同名节点猜测外层；没有全局对象表，也不因祖先对象查询自动登记依赖。
 
 ```go
-wui.CheckButtonGroup("appearance", ui.HBox(
-    wui.CheckButton("Light").Group("appearance"),
-    wui.CheckButton("Dark").Group("appearance"),
+wui.CheckButtonGroup(ui.HBox(
+    wui.CheckButton("Light"),
+    wui.CheckButton("Dark"),
 ))
 ```
 
@@ -195,7 +195,9 @@ wui.CheckButtonGroup("appearance", ui.HBox(
 期间销毁必须停止后续挂载。ObjectView 的首次 Build 失败时也会清理正在创建
 的节点，Release 须能处理自己尚未初始化完的 State。
 
-不同分支可复用组 ID，相同祖先路径内最近者遮蔽外层。组件行为仍在命令式
+2026-10-30：CheckButton 默认按类型使用最近的兼容对象作用域，显式 Group(shared)
+传入稳定对象，Group(nil) 保持独立；不需要组 ID。带 ID 的通用 FindAncestor 仍保留
+原有同名遮蔽语义。组件行为仍在命令式
 控件中。Root 只协调组合节点和 Widget 输出，不保存 groups／groupBinding。
 前一版 BindGroup 工厂、成员计数和根级隐式命名组已移除。
 
@@ -207,7 +209,7 @@ wui.CheckButtonGroup("appearance", ui.HBox(
 
 | 接口类别 | 当前做法与结论 |
 | --- | --- |
-| CheckButton.Group | 用名字引用明确的祖先 CheckButtonGroup 声明，组对象由该声明管理。 |
+| CheckButton.Group | 默认使用最近的作用域，显式对象覆盖默认值，显式 nil 保持独立。 |
 | TabBar(viewID) | 已用 ID 关联 TabView，在 AfterUpdate 解析，无须预先取得 Widget。 |
 | TextView.Model、ListView／TreeView／TableView.Model、SourceView.Document | 模型可在 Widget 创建前独立存在，具有业务数据与通知生命周期，保留对象。 |
 | MenuItemView、TableColumnView、TabPageView、OverlayItemView、ShortcutView、DragSourceView | 接收的是可在构建期间创建的声明描述，不是尚未创建的运行时 Widget，保留描述对象。 |
@@ -217,7 +219,7 @@ wui.CheckButtonGroup("appearance", ui.HBox(
 
 未发现第二个要求在构建前取得关联 Widget／组内成员的现有声明式入口。
 此结论不承诺将全部指针型参数改成 ID。MenuButton 分组接口采用同样的
-命令式对象、声明式组名约定，见 [MenuButton 分组设计](DesignMenuButtonGroup.md)。
+局部容器方向，见 [按钮分组设计](DesignButtonGroup.md)。
 
 ## 3. 共享修饰器基类:`viewBase` + `ViewBase[T]`(已实现)
 

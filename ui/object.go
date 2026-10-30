@@ -1,15 +1,23 @@
 package ui
 
-// FindAncestor borrows the object exposed by the nearest ancestor declaration
-// with id. Missing declarations, non-object declarations and incompatible types
-// return false; a matching ID shadows outer declarations regardless of type.
+// FindAncestor borrows the nearest compatible ancestor object. With an ID it
+// instead looks up that exact declaration: a matching ID shadows outer objects
+// even when it exposes no compatible value. An explicitly empty ID finds nothing.
 // Object receives its own node's context, never the caller's private State.
 // Lookup has no creation, subscription or update side effects and belongs to
 // the GUI thread. Released contexts cannot resolve objects.
-func FindAncestor[T any](ctx BuildContext, id string) (T, bool) {
+func FindAncestor[T any](ctx BuildContext, ids ...string) (T, bool) {
+	if len(ids) > 1 {
+		panic("ui: FindAncestor accepts at most one ID")
+	}
+	named := len(ids) == 1
+	id := ""
+	if named {
+		id = ids[0]
+	}
 	var zero T
 	c := ctx.Coordinator()
-	if id == "" || c == nil || c.owner == nil || c.owner.released || c.owner.root == nil {
+	if named && id == "" || c == nil || c.owner == nil || c.owner.released || c.owner.root == nil {
 		return zero, false
 	}
 	owner, r := c.owner, c.owner.root
@@ -17,12 +25,15 @@ func FindAncestor[T any](ctx BuildContext, id string) (T, bool) {
 		if n.released || n.root != r {
 			return zero, false
 		}
-		if n.id != id {
+		if named && n.id != id {
 			continue
 		}
 		view, ok := n.view.(ObjectView)
 		if !ok {
-			return zero, false
+			if named {
+				return zero, false
+			}
+			continue
 		}
 		version, callerVersion := n.version, owner.version
 		object := view.Object(&buildContext{node: n})
@@ -30,7 +41,9 @@ func FindAncestor[T any](ctx BuildContext, id string) (T, bool) {
 			return zero, false
 		}
 		value, ok := object.(T)
-		return value, ok
+		if named || ok {
+			return value, ok
+		}
 	}
 	return zero, false
 }

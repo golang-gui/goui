@@ -20,13 +20,13 @@ const (
 	CheckAppearanceButton    = widgets.CheckAppearanceButton
 )
 
-// CheckButtonView declares selection and an optional ancestor group reference.
+// CheckButtonView declares selection and an optional explicit group reference.
 // The GUI CheckButtonGroup owns exclusivity; CheckButtonGroupView owns its lifetime.
 type CheckButtonView struct {
 	baseui.ViewBase[CheckButtonView]
 	child      baseui.View
 	state      CheckState
-	group      string
+	group      optional.Optional[*widgets.CheckButtonGroup]
 	appearance CheckAppearance
 	padding    optional.Optional[geometry.Insets]
 	onChange   func(CheckState)
@@ -71,11 +71,10 @@ func (v *CheckButtonView) Checked(checked bool) *CheckButtonView {
 	return v
 }
 
-// Group references an explicit ancestor CheckButtonGroup declaration by ID. Empty
-// leaves the button independent; a missing or incompatible declaration is an
-// application configuration error and never creates an implicit group.
-func (v *CheckButtonView) Group(group string) *CheckButtonView {
-	v.group = group
+// Group overrides the nearest CheckButtonGroup scope. An explicit nil keeps
+// this button independent; omission restores automatic ancestor lookup.
+func (v *CheckButtonView) Group(group *widgets.CheckButtonGroup) *CheckButtonView {
+	v.group.SetValue(group)
 	return v
 }
 func (v *CheckButtonView) Appearance(appearance CheckAppearance) *CheckButtonView {
@@ -129,16 +128,12 @@ func (v *CheckButtonView) Unmount(ctx baseui.BuildContext, widget gui.Widget) {
 }
 
 func (v *CheckButtonView) applyGroup(ctx baseui.BuildContext, s *checkButtonState) {
-	if v.group == "" {
-		s.button.SetGroup(nil)
-		return
+	group := v.group.Value()
+	if !v.group.HasValue() {
+		group, _ = baseui.FindAncestor[*widgets.CheckButtonGroup](ctx)
 	}
-	group, ok := baseui.FindAncestor[*widgets.CheckButtonGroup](ctx, v.group)
 	if ctx.State() != s || s.button.Destroyed() {
 		return
-	}
-	if !ok || group == nil {
-		panic("widgets/ui: CheckButton requires an ancestor CheckButtonGroup with ID " + v.group)
 	}
 	s.button.SetGroup(group)
 }

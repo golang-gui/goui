@@ -116,30 +116,22 @@ wui.CheckButton("记住登录").Checked(remember).OnChange(func(s wui.CheckState
 ```
 
 通过 Child/Content/Text、Group、Appearance、CheckState、Checked、Enabled、
-Padding 与 OnChange 链式配置。命令式 SetGroup 接收 `*widgets.CheckButtonGroup`；
-声明式 Group 引用一个明确的祖先 CheckButtonGroup 声明：
+Padding 与 OnChange 链式配置。命令式 SetGroup 接收 *widgets.CheckButtonGroup。
+声明式默认使用最近的 CheckButtonGroup 作用域，不需要组名或重复配置：
 
 ```go
-wui.CheckButtonGroup("appearance", ui.HBox(
-    wui.CheckButton("Light").Group("appearance").Checked(mode == "light"),
-    wui.CheckButton("Dark").Group("appearance").Checked(mode == "dark"),
+wui.CheckButtonGroup(ui.HBox(
+    wui.CheckButton("Light").Checked(mode == "light"),
+    wui.CheckButton("Dark").Checked(mode == "dark"),
     ui.Button("Reset"),
 ))
 ```
 
-CheckButtonGroupView 使用 ComposeBase／ObjectView，首次 Build 在节点 State 中
-创建实际 widgets.CheckButtonGroup，Object 只返回现有实例，Release 不涉及原生
-资源。声明在 Widget 树中没有占位控件，不改变 HBox 的布局和按钮位置。
-
-Group 的非空参数通过 FindAncestor 查询最近的同名对象声明。缺失／类型不符
-是配置错误，不能隐式创建或静默变成独立按钮。空字符串／省略表示独立按钮。
-不同声明分支可以复用相同组 ID；同一路径中内层同名声明遮蔽外层。只有显式
-成员参与互斥，普通 Button 可以混排，不根据父容器自动推断成员。
-
-重建保留对象和 Widget 身份；空内容仍保留对象声明，最后一个成员离开也
-不会删除仍在树中的组。成员 Unmount 时解除关联，后代释放后再释放对象
-声明。单成员移交通过通用 Reparented 刷新祖先关联；整组移交保留原组对象。
-Root 不持有组表，不再使用此前的 ui.BindGroup 工厂及成员计数。
+作用域复用 ComposeBase／ObjectView，持有稳定的互斥对象，不生成包装 Widget。
+嵌套组互相隔离；普通 Button 不参与互斥。省略 Group 自动使用最近的兼容对象祖先；
+Group(shared) 使用外部稳定持有的 *widgets.CheckButtonGroup，允许跨区域关联；
+显式 Group(nil) 保持独立。移交后的 Reparented 只重新解析关联，不重放 Checked。
+本节 2026-10-30 契约覆盖此前按字符串引用组名的设计，见 DesignButtonGroup.md。
 
 声明重建静默同步，
 保留 Widget 身份与单个 Change 连接，回调替换为最新闭包，卸载时断开连接。
@@ -148,8 +140,8 @@ Root 不持有组表，不再使用此前的 ui.BindGroup 工厂及成员计数�
 参考官方公开契约（2026-10-25 查阅）：
 [WPF RadioButton.GroupName](https://learn.microsoft.com/en-us/dotnet/api/system.windows.controls.radiobutton.groupname?view=windowsdesktop-10.0)
 使用字符串表达互斥关联；[Qt Quick ButtonGroup](https://doc.qt.io/qt-6/qml-qtquick-controls-buttongroup.html)
-使用独立组对象及附加属性。二者说明关联可由声明层解析；GOUI 选择名字以免
-应用承担组对象的创建和跨 Build 存活。显式祖先作用域及移交规则属于 GOUI
+使用独立组对象及附加属性。GOUI 常规用法由声明作用域持有对象，特殊用法可显式引用
+稳定对象。自动祖先作用域及移交规则属于 GOUI
 自身契约，不将参考框架的作用域实现推断为相同。
 
 ## 实施与验证
