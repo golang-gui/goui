@@ -9,8 +9,9 @@ import "github.com/golang-gui/goui/core/signal"
 type TableColumn struct {
 	id, title                 string
 	width, minWidth, maxWidth float32
+	allocatedWidth            float32
 	resizable, sortable       bool
-	visible                   bool
+	visible, expand           bool
 	delegate                  TableCellDelegate
 	owner                     *TableView
 	resize                    signal.Signal1[tableColumnResize]
@@ -26,7 +27,7 @@ func NewTableColumn(id, title string) *TableColumn {
 	if id == "" {
 		panic("widgets: empty table column ID")
 	}
-	return &TableColumn{id: id, title: title, width: 160, minWidth: 40, resizable: true, visible: true}
+	return &TableColumn{id: id, title: title, width: 160, allocatedWidth: 160, minWidth: 40, resizable: true, visible: true}
 }
 func (c *TableColumn) ID() string    { return c.id }
 func (c *TableColumn) Title() string { return c.title }
@@ -56,6 +57,23 @@ func (c *TableColumn) SetVisible(visible bool) {
 	c.owner.setColumnVisible(c, visible)
 }
 
+// Expand reports whether the column shares unused viewport width.
+func (c *TableColumn) Expand() bool { return c.expand }
+
+// SetExpand shares extra space equally among visible expanding columns, up to
+// MaxWidth. It does not shrink configured widths or emit Resize.
+func (c *TableColumn) SetExpand(expand bool) {
+	if c.expand == expand {
+		return
+	}
+	c.expand = expand
+	if c.owner != nil {
+		c.owner.columnsChanged()
+	}
+}
+
+// Width returns the configured base width. An expanding column's actual width
+// can be larger; use its header or cell Snapshot bounds for allocated geometry.
 func (c *TableColumn) Width() float32    { return c.width }
 func (c *TableColumn) MinWidth() float32 { return c.minWidth }
 func (c *TableColumn) MaxWidth() float32 { return c.maxWidth }
@@ -77,26 +95,40 @@ func (c *TableColumn) SetWidth(width float32) {
 	c.width = width
 	if c.owner != nil {
 		c.owner.columnsChanged()
+	} else {
+		c.allocatedWidth = width
 	}
 }
 func (c *TableColumn) SetMinWidth(width float32) {
 	if !splitFinite(width) {
 		width = 0
 	}
-	c.minWidth = max(0, width)
-	c.SetWidth(c.width)
+	width = max(0, width)
+	if c.minWidth == width {
+		return
+	}
+	c.minWidth = width
+	c.width = c.clamp(c.width)
 	if c.owner != nil {
-		c.owner.updateHeaders()
+		c.owner.columnsChanged()
+	} else {
+		c.allocatedWidth = c.width
 	}
 }
 func (c *TableColumn) SetMaxWidth(width float32) {
 	if !splitFinite(width) {
 		width = 0
 	}
-	c.maxWidth = max(0, width)
-	c.SetWidth(c.width)
+	width = max(0, width)
+	if c.maxWidth == width {
+		return
+	}
+	c.maxWidth = width
+	c.width = c.clamp(c.width)
 	if c.owner != nil {
-		c.owner.updateHeaders()
+		c.owner.columnsChanged()
+	} else {
+		c.allocatedWidth = c.width
 	}
 }
 func (c *TableColumn) Resizable() bool { return c.resizable }

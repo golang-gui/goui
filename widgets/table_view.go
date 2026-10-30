@@ -1,6 +1,7 @@
 package widgets
 
 import (
+	"math"
 	"slices"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -28,6 +29,7 @@ type TableView struct {
 	visibleColumns                []*TableColumn
 	columnX                       []float32
 	columnWidth                   float32
+	columnViewportWidth           float32
 	rowIDs                        []string
 	indices                       map[string]int
 	selected                      map[string]bool
@@ -379,10 +381,69 @@ func (v *TableView) updateColumnGeometry() {
 		}
 	}
 	v.columnX = make([]float32, len(v.visibleColumns))
-	v.columnWidth = 0
+	width := float64(0)
+	var expanding []*TableColumn
+	for _, c := range v.visibleColumns {
+		c.allocatedWidth = c.width
+		width += float64(c.width)
+		if c.expand && (c.maxWidth <= 0 || c.width < c.maxWidth) {
+			expanding = append(expanding, c)
+		}
+	}
+	remaining := max(0, float64(v.columnViewportWidth)-width)
+	for len(expanding) > 0 && remaining > 0 {
+		share := remaining / float64(len(expanding))
+		used := float64(0)
+		next := expanding[:0]
+		for _, c := range expanding {
+			target := float64(c.allocatedWidth) + share
+			if c.maxWidth > 0 {
+				target = min(target, float64(c.maxWidth))
+			}
+			allocated := float32(target)
+			// Round shares down: a subpixel rounding excess must not create
+			// a horizontal scrollbar when the columns fit the viewport.
+			if float64(allocated) > target {
+				allocated = math.Nextafter32(allocated, 0)
+			}
+			used += float64(allocated) - float64(c.allocatedWidth)
+			c.allocatedWidth = allocated
+			if c.maxWidth <= 0 || c.allocatedWidth < c.maxWidth {
+				next = append(next, c)
+			}
+		}
+		remaining = max(0, remaining-used)
+		// Without a newly capped column, another pass only redistributes
+		// floating-point residue; no column can make meaningful progress.
+		if len(next) == len(expanding) || used <= 0 {
+			break
+		}
+		expanding = next
+	}
+	width = 0
 	for i, c := range v.visibleColumns {
-		v.columnX[i] = v.columnWidth
-		v.columnWidth += c.width
+		v.columnX[i] = float32(width)
+		width += float64(c.allocatedWidth)
+	}
+	v.columnWidth = float32(width)
+}
+
+func (v *TableView) setColumnViewportWidth(width float32) {
+	if v.columnViewportWidth == width {
+		return
+	}
+	old := make([]float32, len(v.visibleColumns))
+	for i, c := range v.visibleColumns {
+		old[i] = c.allocatedWidth
+	}
+	v.columnViewportWidth = width
+	v.updateColumnGeometry()
+	for i, c := range v.visibleColumns {
+		if old[i] != c.allocatedWidth {
+			v.headerRow.RequestLayout()
+			v.list.Refresh()
+			return
+		}
 	}
 }
 func (v *TableView) updateHeaders() {

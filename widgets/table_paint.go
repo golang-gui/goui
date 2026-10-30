@@ -42,7 +42,7 @@ func (v *TableView) columnLineWidth(c *TableColumn) float32 {
 	if len(v.visibleColumns) == 0 || v.visibleColumns[len(v.visibleColumns)-1] == c {
 		return 0
 	}
-	return min(c.width, tableLineWidth(tableGridStyle(v, "vertical")))
+	return min(c.allocatedWidth, tableLineWidth(tableGridStyle(v, "vertical")))
 }
 
 func (r *tableRow) lineHeight() float32 {
@@ -68,7 +68,7 @@ func (r *tableRow) paintGrid(p gui.Painter, rect geometry.Rectangle) {
 		w := r.view.columnLineWidth(c)
 		// Stop above the horizontal band: translucent intersections must not
 		// be painted twice. Content uses the same non-overlapping geometry.
-		tablePaintLine(p, geometry.Rect(r.view.columnX[i]+c.width-w, 0, w, max(0, rect.Height-h)), vertical)
+		tablePaintLine(p, geometry.Rect(r.view.columnX[i]+c.allocatedWidth-w, 0, w, max(0, rect.Height-h)), vertical)
 	}
 	tablePaintLine(p, geometry.Rect(0, rect.Height-h, min(rect.Width, r.view.columnWidth), h), tableGridStyle(r, "horizontal"))
 }

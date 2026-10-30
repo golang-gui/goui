@@ -18,7 +18,7 @@ type TableColumnView[T any] struct {
 	cell                      func(widgets.TableRow, T) baseui.View
 	width, minWidth, maxWidth float32
 	resizable, sortable       bool
-	visible                   bool
+	visible, expand           bool
 	fields                    bits.Bitmap[uint8]
 	onResize                  func(float32)
 }
@@ -32,6 +32,12 @@ func TableColumn[T any](id, title string, cell func(widgets.TableRow, T) baseui.
 // Visible keeps the column declared while omitting its header and cells.
 func (c *TableColumnView[T]) Visible(visible bool) *TableColumnView[T] {
 	c.visible = visible
+	return c
+}
+
+// Expand shares unused viewport width without changing the configured Width.
+func (c *TableColumnView[T]) Expand(expand bool) *TableColumnView[T] {
+	c.expand = expand
 	return c
 }
 
@@ -241,6 +247,7 @@ func (v *TableViewView[T]) Update(ctx baseui.BuildContext, widget gui.Widget) {
 		c.column.SetResizable(declaration.resizable)
 		c.column.SetSortable(declaration.sortable)
 		c.column.SetVisible(declaration.visible)
+		c.column.SetExpand(declaration.expand)
 		if declaration.fields.Check(tableColumnWidth) {
 			c.column.SetWidth(declaration.width)
 		}

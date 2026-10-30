@@ -159,6 +159,38 @@ func TestTableViewHiddenColumnRetainsDeclaration(t *testing.T) {
 	}
 }
 
+func TestTableViewExpansionBindingPreservesBaseWidth(t *testing.T) {
+	m := newTableBindingModel()
+	ctx := new(treeBindingContext)
+	resizes := 0
+	column := func(expand bool) *TableColumnView[string] {
+		return TableColumn[string]("name", "Name", nil).Expand(expand).OnResize(func(float32) { resizes++ })
+	}
+	v := TableView[string](m, column(true))
+	table := v.Mount(ctx).(*widgets.TableView)
+	defer table.SetModel(nil)
+	defer v.Unmount(ctx, table)
+	v.Update(ctx, table)
+	tableBindingArrange(table)
+	c := table.Columns()[0]
+	if !c.Expand() || c.Width() != 160 || table.Snapshot().Children[0].Bounds.Width <= c.Width() || resizes != 0 {
+		t.Fatal("声明伸展未生效或自动分配产生了 Resize")
+	}
+	c.SetWidth(180)
+	v = TableView[string](m, column(true))
+	v.Update(ctx, table)
+	tableBindingArrange(table)
+	if table.Columns()[0] != c || c.Width() != 180 || resizes != 0 || m.connections != 1 {
+		t.Fatal("重建改写了基础宽度、列身份或模型订阅")
+	}
+	v = TableView[string](m, column(false))
+	v.Update(ctx, table)
+	tableBindingArrange(table)
+	if c.Expand() || table.Snapshot().Children[0].Bounds.Width != 180 || resizes != 0 {
+		t.Fatal("取消伸展后没有使用保留的基础宽度")
+	}
+}
+
 func TestTableViewColumnRemovalReorderAndModelReplacement(t *testing.T) {
 	m, next := newTableBindingModel(), newTableBindingModel()
 	ctx := new(treeBindingContext)

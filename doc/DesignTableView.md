@@ -99,6 +99,8 @@ func (c *TableColumn) Title() string
 func (c *TableColumn) SetTitle(string)
 func (c *TableColumn) Visible() bool
 func (c *TableColumn) SetVisible(bool)
+func (c *TableColumn) Expand() bool
+func (c *TableColumn) SetExpand(bool)
 func (c *TableColumn) Width() float32
 func (c *TableColumn) SetWidth(float32)
 func (c *TableColumn) MinWidth() float32
@@ -142,6 +144,27 @@ UI 提供 `.Visible(bool)`，默认 true；同 ID 的隐藏声明仍保留 Colum
 更新后显示使用最新 cell 构建器。省略列仍表示删除，重新添加不承诺恢复旧列宽等状态。
 该能力参考 GTK4 [ColumnViewColumn.set_visible](https://docs.gtk.org/gtk4/method.ColumnViewColumn.set_visible.html)，
 不引入新的 Widget／GUI 公共机制。
+
+2026-10-30 补充剩余空间分配：`Expand` 默认 false；UI 使用 `.Expand(bool)`。
+Width 始终表示基础宽度（包括用户调整结果），不是随窗口变化的实际分配宽度；实际
+几何由表头／单元格 Snapshot.Bounds 表达。非伸展列保持基础宽度；可见伸展列平分
+基础总宽之外的额外空间，达到 MaxWidth 的列退出分配，余量分给其它伸展列。上限全部
+达到后允许空白。空间不足不压缩基础宽度，继续横向滚动；无界测量不虚构额外空间。
+
+分配依据是 ScrollView 给 TableBody.LayoutVisible 的实际视口，计入边框、滚动条
+占用及其显隐变化。表头、正文、网格、命中与调整手柄共享同一实际宽度；行宽变化复用
+ListView.Refresh 及已有测量失效机制，不新增 gui 接口。自动分配不调用 SetWidth、
+不发送 Resize，UI 重建也不能把实际宽度写回基础宽度。
+
+伸展列保留 Resizable：拖动从当前实际分配边缘计算新的基础宽度，之后仍按 Expand
+分配额外空间；向左拖动可能因剩余空间补齐而不改变最终宽度。Esc 恢复拖动前的基础
+宽度，保留 Expand；仅按下／松开不应把实际分配宽度写回配置。Width 仍可由 OnResize
+控制，不在一次鼠标拖动中隐式关闭 Expand。
+
+该较小模型参考 GTK4 [ColumnViewColumn.set_expand](https://docs.gtk.org/gtk4/method.ColumnViewColumn.set_expand.html)
+（在线文档 4.23.x，2026-10-30 查阅）对额外空间的平均分配契约；没有引入权重列宽、
+内容扫描、Qt 的多套 ResizeMode 或末列专属表格开关。Visible 与 Expand 均属于列配置，
+与样式、数据模型及底层平台无关。
 
 ### 3.2 Delegate
 
@@ -230,7 +253,7 @@ TableBody 实现现有 Scrollable，并转发内部列表的 ScrollIntoView 请�
 
 ### 5.1 列分配与测量
 
-首版默认列宽 160 DIP、最小宽度 40 DIP、最大宽度无限制，Resizable=true，
+默认基础列宽 160 DIP、最小宽度 40 DIP、最大宽度无限制，Resizable=true，
 Sortable=false。所有数值规范化沿用既有尺寸 API 风格，不让负数或 NaN 进入计算；
 MaxWidth=0 表示无限制，设置时先归一化再计算有效上限。有效上限不能小于最小宽度。
 
@@ -817,3 +840,50 @@ F6 均通过真实输入触发，断言编辑器与内容区同大小、业务�
 未执行：Windows／macOS 原生桌面、Direct2D、OpenGL 2x、IME／编辑菜单／全部
 组合键；Linux arm64 的既有绑定编译阻塞仍保留为此前记录，本轮没有重复尝试。
 上述缺口不以交叉编译或其它后端替代。
+
+## 16. 列显隐与额外空间分配验证（2026-10-30）
+
+实现契约见 §3.1。此次只修改 widgets、widgets/ui 和表格窗口例程，不修改 gui、
+ListView 公共接口、样式或平台绑定。普通表格默认行为保持不变，新增配置均在列上。
+
+包内回归覆盖：
+
+- 隐藏／恢复、配置列重排、全部隐藏后恢复；列身份、基础宽度、排序与行状态保留，
+  不重建其它列的单元格。快照、网格和右键命中只使用可见列，索引连续。
+- 隐藏列安全移交焦点；隐藏时取消列宽拖动，取消回调重装列集合后不继续旧操作。
+  UI 保留隐藏列的协调记录，解绑旧内容，恢复时使用最新 cell 声明和原模型订阅。
+- 单列伸展、多列平均分配、上限余量再分配、全部达到上限、窄视口和无界测量；
+  滚动条出现／消失、隐藏列及仅修改 MaxWidth 都更新实际分配。
+- 配置宽度与实际分配分离；窗口缩放／UI 重建不发 Resize，手动拖动从实际边缘
+  开始，Esc 恢复原基础宽度。2–8 列、每组 999 个小数视口宽度不产生舍入超配。
+  该回归曾复现 384.1 DIP 视口被分配为 384.10004 DIP；现在以 float64 计算、
+  伸展份额向下舍入为 float32，总宽不会仅因舍入超过视口而制造水平滚动条。
+
+验证在仅含已跟踪源码及本轮改动的仓库外副本中执行，未纳入用户未跟踪文件：
+
+- 独立 Xvnc／Xfwm4 会话运行
+  `GOWORK=off GOUI_PLAT_PAINTER=software go test -mod=readonly -json ./... -count=1`：
+  3048 个测试／子测试通过，10 个既有测试跳过，0 失败。既有窗口、剪贴板和图片
+  输出副作用仅留在该独立会话／临时副本，未改变既有测试的跳过或断言规则。
+- 移除 DISPLAY／WAYLAND_DISPLAY 后，`go test -mod=readonly ./widgets/...
+  ./tests/window/widgets/table -count=1` 与相同范围的 `-race` 检查通过。
+- `CGO_ENABLED=0` 下，Windows amd64／macOS arm64 的 widgets、widgets/ui 测试
+  目标及表格窗口程序交叉编译通过。本轮未执行远端或两平台原生桌面验收。
+
+本机 Ubuntu 22.04.5 amd64／Go 1.25.8，Xvnc、Xfwm4 4.16.1 合成会话；OpenGL
+使用 Mesa 23.2.1 llvmpipe。`tests/window/widgets/table` 通过真实 X11 输入验收：
+
+| 模式 | 本轮已验证 |
+| --- | --- |
+| GUI／UI × Software／OpenGL，1x，共 4 组 | 拖动 Notes 列宽、隐藏／恢复、Refresh／Rebuild、亮暗切换；末列伸展、隐藏列后再分配、缩窄横向滚动、再次放大、关闭伸展和 F6 语义／内容边缘断言 |
+| UI／OpenGL 2x，GUI／Software 2x，共 2 组 | 隐藏 Notes 后放大窗口、末列补齐、缩窄／再放大、重新显示 Notes；基础宽度保留，F6 几何和实际子树边缘采样通过 |
+
+Software UI 1x 另验证 Notes 内通过独立会话剪贴板粘贴 `retained`，隐藏、重建、
+排序和恢复后编辑值仍按 RowID 保存；伸展列拖宽、Esc 回退的 Resize 只包含用户
+调整与回退，窗口缩放不产生 Resize。2x 采用隐藏 Notes 后扩展，以适应独立桌面的
+物理宽度，未声称完整复验 2x 菜单／拖宽／IME。截图同时确认伸展后无多余横向
+滚动条，表头与正文对齐；不以 F6 或离屏重绘取代实际外观观察。
+
+测试窗口和独立显示会话已关闭。构建、日志与截图保存在仓库外
+`/tmp/goui-table-columns-biowlj8s`；未改用户桌面、系统设置或业务文件。llvmpipe
+不代表实体 GPU；本轮不作性能结论，Windows／macOS 原生窗口与 Direct2D 仍待验收。

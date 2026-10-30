@@ -183,7 +183,7 @@ func (v *TableView) contextMenuRequested(ctx gui.EventContext) {
 	}
 	x := point.X + v.scroll.ScrollX()
 	for i, c := range v.visibleColumns {
-		if x >= v.columnX[i] && x < v.columnX[i]+c.width {
+		if x >= v.columnX[i] && x < v.columnX[i]+c.allocatedWidth {
 			columnID = c.id
 			break
 		}
