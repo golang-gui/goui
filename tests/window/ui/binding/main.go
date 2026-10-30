@@ -1,4 +1,4 @@
-// 声明式局部更新与属性绑定窗口验收，不依赖 DevServer。
+// 声明式自动读取追踪、局部更新与属性绑定窗口验收，不依赖 DevServer。
 // 环境：Linux X11 / Windows / macOS 桌面，记录后端和缩放。
 // 启动：go run ./tests/window/ui/binding；-auto 经正常窗口输入路径自动断言后退出。
 // 可用 GOUI_PLAT_PAINTER=software/opengl、GOUI_PLAT_SCALE=1/2 重复。
@@ -12,9 +12,11 @@
 //     底层文字保持左上角，两段文字应清晰分开。Fill 只控制尺寸，不提供背景遮挡。
 //  4. 点击 Rebuild：Global 和探针 Update 各增加一次，所有同类型控件保持身份。
 //  5. 关闭镜像窗后输入：主窗继续同步，不复活镜像窗；再次 Rebuild 会按声明重建。
+//  6. 构建均不声明 Observe。Overlay 显示 count；可见时 Increment 更新居中文本，
+//     隐藏时 Increment 不执行 Overlay 构建。F6 的 overlayBuild 可核对条件依赖。
 //
 // -auto 检查输入回写、通知合并、属性更新与 Build 的范围、空输出、槽位、Snapshot、
-// 全量更新及窗口关闭。它不替代不同字体/主题下的人工外观观察。
+// 全量更新、窗口关闭和可见／隐藏时的动态依赖。它不替代不同字体/主题下的人工外观观察。
 // 平台差异：仅装饰和字体可能不同，更新语义一致；无真实系统设置/剪贴板副作用。
 // 复位：重新启动。退出：关闭主窗（同时关闭镜像窗），或 -auto 完成后退出。
 package main
@@ -63,7 +65,8 @@ func main() {
 	auto := flag.Bool("auto", false, "自动验证后退出")
 	flag.Parse()
 	text, count, mode := ui.MakeState(""), ui.MakeState(0), ui.MakeState(0)
-	global, local, updates, applies := 0, 0, 0, 0
+	global, local, updates, applies, overlayBuilds := 0, 0, 0, 0, 0
+	overlayBefore := 0
 	started, step := false, 0
 	var original gui.Widget
 	err := ui.Run("org.golang-gui.UIBinding", func(app ui.App) ui.RootView {
@@ -78,7 +81,7 @@ func main() {
 			if mirror := app.FindWindow("mirror"); mirror != nil {
 				require(gui.FindWidget(mirror, "mirror-text").Snapshot().Text == text.Get(), "mirror snapshot mismatch")
 			}
-			fmt.Printf("CHECK PASS global=%d local=%d propertyUpdate=%d propertyApply=%d text=%q\n", global, local, updates, applies, text.Get())
+			fmt.Printf("CHECK PASS global=%d local=%d propertyUpdate=%d propertyApply=%d overlayBuild=%d text=%q\n", global, local, updates, applies, overlayBuilds, text.Get())
 			for _, id := range []string{"input", "increment", "cycle", "rebuild"} {
 				b := gui.FindWidget(w, id).Snapshot().Bounds
 				fmt.Printf("BOUNDS %s %.1f %.1f %.1f %.1f\n", id, b.X, b.Y, b.Width, b.Height)
@@ -143,6 +146,18 @@ func main() {
 					case 6:
 						check()
 						require(app.FindWindow("mirror") == nil && global == 2 && updates == 2, "closed window resurrected")
+						overlayBefore = overlayBuilds
+						count.Update(func(value int) int { return value + 1 })
+					case 7:
+						require(overlayBuilds == overlayBefore+1, "visible overlay failed to track count")
+						mode.Update(func(value int) int { return value + 1 })
+					case 8:
+						require(app.FindWidget("main", "floating") == nil, "overlay did not hide")
+						overlayBefore = overlayBuilds
+						count.Update(func(value int) int { return value + 1 })
+					case 9:
+						require(overlayBuilds == overlayBefore, "hidden overlay retained count dependency")
+						check()
 						timer.Stop()
 						fmt.Println("UI BINDING PASS")
 						win.Destroy()
@@ -166,7 +181,7 @@ func main() {
 					ui.Build(func() ui.View {
 						local++
 						return ui.Label(fmt.Sprintf("Local %d | count %d | text %s", local, count.Get(), text.Get()))
-					}).Observe(&text, &count),
+					}),
 					ui.HBox(ui.Button("Increment").ID("increment").OnClick(func() { count.Update(func(v int) int { return v + 1 }) }), ui.Button("Cycle").ID("cycle").OnClick(func() { mode.Update(func(v int) int { return v + 1 }) }), ui.Button("Rebuild").ID("rebuild").OnClick(app.RequestUpdate)).Spacing(10),
 					ui.VBox(ui.Label("before"), ui.Build(func() ui.View {
 						switch mode.Get() % 3 {
@@ -177,14 +192,15 @@ func main() {
 						default:
 							return nil
 						}
-					}).Observe(&mode), ui.Label("after")).Spacing(6),
+					}), ui.Label("after")).Spacing(6),
 					ui.Overlay(ui.Label("Overlay base"), ui.OverlayItem(ui.Build(func() ui.View {
+						overlayBuilds++
 						if mode.Get()%2 == 0 {
 							return nil
 						}
-						return ui.HBox(ui.Label("Overlay Fill").ID("floating-text")).ID("floating").
+						return ui.HBox(ui.Label(fmt.Sprintf("Overlay Fill · count %d", count.Get())).ID("floating-text")).ID("floating").
 							MainAlign(layout.MainCenter).CrossAlign(layout.CrossCenter)
-					}).Observe(&mode)).Fill(true)).ID("overlay").MinHeight(70).MaxHeight(70),
+					})).Fill(true)).ID("overlay").MinHeight(70).MaxHeight(70),
 				).Padding(20).Spacing(12).CrossAlign(layout.CrossStretch),
 			),
 			ui.Window("mirror").Title("GOUI UI binding mirror").Size(320, 160).Content(ui.VBox(ui.Label("Shared source"), ui.Label().ID("mirror-text").BindText(&text)).Padding(20).Spacing(12)),

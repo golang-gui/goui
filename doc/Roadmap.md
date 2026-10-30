@@ -21,8 +21,9 @@ Popup、WindowChrome／BorderBox／SkipTaskbar／初始 Center、文件访问凭
 已实现 `ui.Build(fn)`、自定义 ComposeView 的 Observe、
 `BuildContext.RequestUpdate`、通用 `BindValue` 和 Label／文本编辑属性订阅。
 State.Set／Update 通知订阅使用方；App.RequestUpdate 仍负责全应用声明。
-2026-10-30 增补明确组合构建范围内的 State.Get 自动依赖、Peek 和自定义来源 Read；
-Observe 保留为补充入口，当前实现／验收进度见 Plan。不依赖用户 ID，不增加 GUI 状态机。节点移交后订阅与请求跟随
+2026-10-30 已增补明确组合构建范围内的 State.Get 自动依赖、Peek 和自定义来源 Read；
+Observe 保留为补充入口。本机包内、race／vet、独立 X11 及目标编译通过，基准明确记录自动追踪开销。
+不依赖用户 ID，不增加 GUI 状态机。节点移交后订阅与请求跟随
 目标 Root，退出断开声明式连接；验证范围和平台编译缺口见 [Plan](Plan.md)。
 详细 API／迁移见 [DesignUIUpdates](DesignUIUpdates.md)。其他 BindXxx 按需求增补，
 派生状态、任意路径的隐式追踪及完整响应式系统不属于本切片。
