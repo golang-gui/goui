@@ -115,6 +115,35 @@ go test ./...
 
 `example/` 继续用于展示 API 用法，不强制迁移为测试。后续新增的专门回归验证程序遵循本文；现有测试的整理若要推进，另行确认范围。
 
+## X11 包内测试组织
+
+2026-10-30 按已确认范围将 `platform/linux/x11` 的 15 个测试文件集中为 8 个主题文件：
+
+| 文件 | 覆盖主题 |
+| --- | --- |
+| `window_linux_test.go` | 窗口身份、定位、显示／激活消息、Popup 尺寸 |
+| `input_linux_test.go` | 按键、修饰键、重复事件、焦点恢复快照 |
+| `ime_linux_test.go` | 创建失败、预编辑、上下文隔离与生命周期 |
+| `cursor_linux_test.go` | 光标映射、主题解析／加载、原生主题生命周期 |
+| `clipboard_linux_test.go` | 剪贴板状态、超时、重入与编码 |
+| `dragdrop_linux_test.go` | XDND、错误分流、超时、数据解码与预览 |
+| `dialog_linux_test.go` | 文件对话框 helper 的输出、取消与错误 |
+| `settings_linux_test.go` | locale 解析与无桌面 GLib 语言查询 |
+
+辅助函数与使用它的测试就近放置；保留原有测试名称、断言、Fuzz 种子和运行条件。
+此次只合并文件、整理说明，并修正测试中已经更名的私有错误处理入口，未修改生产代码。
+
+`TestWindowApplicationClass`、`TestNativeCursorThemeLifecycle` 是历史桌面依赖测试，
+本次保留其 `DISPLAY` 检查、线程锁定和原生资源释放；不是无桌面测试。
+前者创建不映射的原生窗口读取 `WM_CLASS`；后者使用私有窗口和 selection，
+验证原生属性通知、光标缓存与主题重载，不修改真实桌面 XSETTINGS owner。
+无 `DISPLAY` 时这两项仍跳过，不能算作通过；后续迁至独立窗口程序时需保留有效覆盖，
+不能为从包外调用私有实现而导出生产接口。本次整理不新增桌面测试例外规则。
+
+无桌面验证可用 `env -u DISPLAY go test ./platform/linux/x11`；完整原生包验证应在
+独立 X11 会话中执行，并单独记录上述两项及整体结果。保留原生库依赖，
+不把“无桌面”误写成“没有系统依赖”。实际验证记录见 [Plan](Plan.md)。
+
 ## Tooltip 验证入口
 
 `gui/tooltip_test.go` 使用可推进计时器及正常事件分发验证目标、延迟、取消、重入和资源清理；
