@@ -9,8 +9,8 @@ import (
 	"golang.org/x/text/language"
 )
 
-// Foundation locale objects need no NSApplication, window or desktop session.
-// AppKit initialization here only loads existing NSArray method bindings.
+// Foundation locale 查询不需要 NSApplication、窗口或桌面会话。
+// 此处初始化 AppKit 仅加载现有 NSArray 方法绑定。
 func TestSettingsLanguageNative(t *testing.T) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()

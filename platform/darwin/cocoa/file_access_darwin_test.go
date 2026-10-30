@@ -17,14 +17,14 @@ func TestFileDialogResponse(t *testing.T) {
 	if err := fileDialogResponseError(NSModalResponseCancel); err != nil {
 		t.Fatal(err)
 	}
-	// AppKit NSModalResponseAbort is -1001, not user cancellation (0).
+	// AppKit 的 NSModalResponseAbort 为 -1001，与用户取消的 0 不同。
 	if err := fileDialogResponseError(NSModalResponse(-1001)); err == nil {
 		t.Fatal("aborted native panel reported as user cancellation")
 	}
 }
 
-// Foundation bookmarks do not require a desktop or an NSApplication. Native
-// calls execute on this locked thread, with their own autorelease pools.
+// Foundation bookmark 不需要桌面或 NSApplication；原生调用在本测试锁定的线程
+// 及对应 autorelease pool 中执行。
 func TestFileAccessNativeBookmark(t *testing.T) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
