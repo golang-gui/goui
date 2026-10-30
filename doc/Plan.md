@@ -1,5 +1,43 @@
 # Plan
 
+## X11 测试文件整理（2026-10-30）
+
+组织与保留的历史桌面项见 [Testing](Testing.md#x11-包内测试组织)。
+本轮包含 x11 目录原有 8 个未跟踪测试文件，不修改其他目录的未跟踪文件。
+
+- [x] 15 个测试文件集中为 window／input／ime／cursor／clipboard／dragdrop／dialog／
+  settings 8 个主题；辅助代码就近放置，统一中文说明与 import 分组。
+- [x] 49 个 Test、1 个 Fuzz 的名称完整保留；53 个函数（包含辅助函数）的 AST
+  去除注释后完全一致，仅允许原有三处 onDragMessageError → onXError 的更名。
+  Fuzz 种子、输入、断言和 skip 条件均未改变，不修改生产代码。
+- [x] 修正旧拖放测试的过时回调名。原始工作区编译失败日志保留；另建只修正该
+  三处调用、未合并文件的基线，供运行结果对照。
+- [x] 实际工作区无 DISPLAY 的 x11 包测试：83 项测试／子测试通过，2 项历史桌面
+  测试跳过；修正后的未合并基线具有相同结果。
+- [x] Linux amd64 / Ubuntu 22.04.5 / 独立 Xvnc :85 + Xfwm4：实际工作区的
+  `DISPLAY=:85 XMODIFIERS=@im=none go test -mod=readonly -json
+  ./platform/linux/x11 -count=1` 全部 85 项通过、无跳过；修正后的未合并基线也为
+  85 项通过。两种环境的完整测试路径与逐项 pass／skip 结果前后一致，不只比较数量。
+  原生窗口身份与主题生命周期两项实际执行；这些是原生属性／光标测试，不涉及 Painter。
+- [x] 无桌面 `go test -mod=readonly -race ./platform/linux/x11 -count=1` 通过；
+  独立 X11 下 `-race -shuffle=20261030 -count=3` 通过，检查重排后全局登记表隔离。
+  相关 `go vet` 通过。仓库外副本 `-fuzz '^FuzzParseCursorSettings$'
+  -fuzztime=3s -parallel=2` 通过，执行 85111 次，未产生失败语料。
+- [x] 受版本管理源码 + 本轮全部 x11 测试的干净副本：
+  `DISPLAY=:85 XMODIFIERS=@im=none GOUI_PLAT_PAINTER=software GOWORK=off
+  go test -mod=readonly -json ./...`，3164 项测试／子测试通过、10 项既有跳过，
+  无失败。原有窗口／剪贴板测试副作用限制在独立显示会话与仓库外副本。
+- [x] 实际工作区全仓编译检查 `env -u DISPLAY go test -mod=readonly -run '^$'
+  ./...` 仍失败：其他目录未跟踪旧例程使用旧的 Padding／BuildContext 接口，
+  包括 example/integrated、example/gui_window_chrome、example/filemanager、
+  tests/window/gui/window_position 等。本轮未修改这些文件；129 个范围外未跟踪
+  文件的内容哈希保持一致，未通过忽略失败、改断言或修改生产接口来掩盖问题。
+- [x] 所有生产代码保持不变；两项历史桌面测试仍待后续按 Testing 约定迁移。
+  本轮仅 Linux 测试组织整理，Windows／macOS 验证不适用。
+
+临时源码、基线、AST 对比及日志位于 `/tmp/goui-x11-tests-1v8jxj41`。
+验证完成后停止本轮 Xvnc／Xfwm4 会话，保留用户原有显示会话。
+
 ## Window.Show 唤起已有窗口（2026-10-30）
 
 契约见 [DesignWindowManagement](DesignWindowManagement.md#show-and-foreground-activation)。

@@ -26,8 +26,7 @@ func TestLocaleLanguage(t *testing.T) {
 	}
 }
 
-// GLib uses process locale preferences without a display. Isolate its per-thread
-// cache and environment in child processes; do not mutate the parent test suite.
+// GLib 查询进程语言偏好无需显示连接。子进程隔离线程缓存与环境，避免影响父测试进程。
 func TestSettingsLanguageNative(t *testing.T) {
 	if want := os.Getenv("GOUI_TEST_LANGUAGE_EXPECT"); want != "" {
 		got, err := (Settings{}).Language()

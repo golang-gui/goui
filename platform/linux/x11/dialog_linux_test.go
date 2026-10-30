@@ -8,8 +8,8 @@ import (
 	"testing"
 )
 
-// No desktop: an isolated helper emulates stdout, successful stderr warnings,
-// user cancellation and process errors through the actual exec boundary.
+// 无需桌面：独立 helper 经真实 exec 边界模拟 stdout、成功时的 stderr 警告、
+// 用户取消及进程错误。
 func TestDialogHelperOutputAndErrors(t *testing.T) {
 	dir := t.TempDir()
 	script := "#!/bin/sh\nprintf 'helper warning\\n' >&2\nprintf '%s\\n' \"$GOUI_DIALOG_TEST_PATH\"\nexit \"$GOUI_DIALOG_TEST_EXIT\"\n"

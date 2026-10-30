@@ -22,7 +22,7 @@ func TestClipboardReadDeadlineAndReentry(t *testing.T) {
 		if text != "" || !errors.Is(err, common.ErrClipboardTimeout) || c.pending != nil {
 			t.Fatal("timeout did not release read state before callback", text, err)
 		}
-		c.pending = next // completion must not erase a reentrant request.
+		c.pending = next // 完成通知不能清除重入的新请求。
 	}}
 	if c.pollTimeout(now) != 1 {
 		t.Fatal("sub-millisecond deadline was truncated")
