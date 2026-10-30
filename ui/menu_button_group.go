@@ -1,33 +1,81 @@
 package ui
 
-import "github.com/golang-gui/goui/gui"
+import (
+	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/gui"
+	"github.com/golang-gui/goui/layout"
+)
 
-// MenuButtonGroupView owns a nonvisual menu group for descendant declarations.
 type MenuButtonGroupView struct {
-	ComposeBase[MenuButtonGroupView]
-	child View
+	ViewBase[MenuButtonGroupView]
+	spacing    float32
+	padding    geometry.Insets
+	mainAlign  layout.MainAlign
+	crossAlign layout.CrossAlign
+	children   []View
 }
 
-// MenuButtonGroup declares a group with explicit ancestor scope. Members use
-// Group(id); ordinary buttons in the content remain independent.
-func MenuButtonGroup(id string, child View) *MenuButtonGroupView {
-	if id == "" {
-		panic("ui: MenuButtonGroup requires a nonempty ID")
-	}
-	v := &MenuButtonGroupView{child: child}
+// MenuButtonGroup arranges children horizontally. Descendant menu buttons
+// automatically switch within the nearest group; ordinary buttons stay independent.
+func MenuButtonGroup(children ...View) *MenuButtonGroupView {
+	v := &MenuButtonGroupView{children: compactViews(children)}
 	v.Self = v
-	return v.ID(id)
+	return v
 }
-func (v *MenuButtonGroupView) Build(ctx BuildContext) View {
-	if ctx.State() == nil {
-		ctx.SetState(gui.NewMenuButtonGroup())
-	}
-	return v.child
+
+// Spacing sets the gap between children. Negative and non-finite values are
+// treated as zero by the widget.
+func (v *MenuButtonGroupView) Spacing(spacing float32) *MenuButtonGroupView {
+	v.spacing = spacing
+	return v
 }
-func (*MenuButtonGroupView) Object(ctx BuildContext) any { return ctx.State() }
 
-// Release has no native resources. Descendants disconnect before this state
-// is released, and the group holds no member or surface references.
-func (*MenuButtonGroupView) Release(BuildContext) {}
+// Padding sets equal inner padding on every edge (a layout field, not style).
+// Negative and non-finite values are treated as zero by the widget.
+func (v *MenuButtonGroupView) Padding(padding float32) *MenuButtonGroupView {
+	v.padding = geometry.UniformInsets(padding)
+	return v
+}
 
-var _ ObjectView = (*MenuButtonGroupView)(nil)
+// Paddings sets the per-edge inner padding (a layout field, not style).
+// Negative and non-finite edges are treated as zero by the widget.
+func (v *MenuButtonGroupView) Paddings(padding geometry.Insets) *MenuButtonGroupView {
+	v.padding = padding
+	return v
+}
+
+// MainAlign sets how children are packed along the main axis (the flow
+// direction): Start / Center / End / SpaceBetween. Container-level.
+func (v *MenuButtonGroupView) MainAlign(align layout.MainAlign) *MenuButtonGroupView {
+	v.mainAlign = align
+	return v
+}
+
+// CrossAlign sets how each child sits on the cross axis. CrossDefault (also
+// used when unset) means Center in HBox and Start in VBox. CrossBaseline applies
+// to horizontal boxes and falls back to Start in vertical boxes. CrossStretch
+// fills the cross axis; the other policies preserve the child's natural size.
+func (v *MenuButtonGroupView) CrossAlign(align layout.CrossAlign) *MenuButtonGroupView {
+	v.crossAlign = align
+	return v
+}
+
+func (v *MenuButtonGroupView) Children(children ...View) *MenuButtonGroupView {
+	v.children = compactViews(children)
+	return v
+}
+
+func (v *MenuButtonGroupView) Mount(BuildContext) gui.Widget {
+	return gui.NewMenuButtonGroup()
+}
+
+func (v *MenuButtonGroupView) Update(ctx BuildContext, widget gui.Widget) {
+	box := widget.(*gui.MenuButtonGroup)
+	box.SetSpacing(v.spacing)
+	box.SetPadding(v.padding)
+	box.SetMainAlign(v.mainAlign)
+	box.SetCrossAlign(v.crossAlign)
+	ctx.UpdateChildren(box, v.children)
+}
+
+func (v *MenuButtonGroupView) Unmount(BuildContext, gui.Widget) {}

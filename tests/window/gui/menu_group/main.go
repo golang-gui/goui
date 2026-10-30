@@ -205,7 +205,7 @@ func main() {
 		}
 		captured := generation
 		menu := func(label, id string) *ui.MenuButtonView {
-			return ui.MenuButton(label).ID(id).Group("main-menu").Menu(
+			return ui.MenuButton(label).ID(id).Menu(
 				ui.MenuItem("Action", func() { actions++; actionGeneration = captured; app.RequestUpdate() }),
 				ui.MenuItem("Unavailable", nil).Enabled(false),
 			).OnClosed(func() { closed++; app.RequestUpdate() }).OnOpenError(func(error) { failures++ })
@@ -218,8 +218,8 @@ func main() {
 		return ui.Root().StyleSheet(sheet).Windows(ui.Window("menus").Title("GOUI MenuButtonGroup").Chrome(ui.WindowChromeIntegrated).Size(760, 420).Content(
 			ui.VBox(
 				ui.HeaderBar(ui.Label("MenuButtonGroup")),
-				ui.MenuButtonGroup("main-menu", ui.HBox(menu("File", "file"), menu("Edit", "edit"), menu("View", "view"), ui.Button("Run").ID("run").OnClick(func() { runs++; app.RequestUpdate() }), ui.MenuButton("Disabled").ID("disabled").Group("main-menu").Enabled(false).Menu(ui.MenuItem("No", nil)), ui.MenuButton("Empty").ID("empty").Group("main-menu")).Spacing(8)),
-				ui.MenuButtonGroup("other-menu", ui.MenuButton("Other").ID("other").Group("other-menu").Menu(ui.MenuItem("Other action", nil))),
+				ui.MenuButtonGroup(ui.HBox(menu("File", "file"), menu("Edit", "edit"), menu("View", "view"), ui.Button("Run").ID("run").OnClick(func() { runs++; app.RequestUpdate() }), ui.MenuButton("Disabled").ID("disabled").Enabled(false).Menu(ui.MenuItem("No", nil)), ui.MenuButton("Empty").ID("empty")).Spacing(8)),
+				ui.MenuButtonGroup(ui.MenuButton("Other").ID("other").Menu(ui.MenuItem("Other action", nil))),
 				ui.TextInput().ID("input").BindText(&input).MinWidth(280),
 				ui.HBox(ui.Button("Rebuild").ID("rebuild").OnClick(func() { generation++; app.RequestUpdate() }), ui.Button("Dark").ID("dark").OnClick(func() { *dark = !*dark; app.RequestUpdate() }), ui.Button("Check").ID("check").OnClick(check)).Spacing(10),
 				ui.Label(fmt.Sprintf("Actions %d (generation %d) | Runs %d | Closed %d", actions, actionGeneration, runs, closed)),

@@ -55,7 +55,7 @@ UI 的 View 是本次声明；不要为每段 UI 新建一套状态、事件或�
   `ui.FindAncestor[T](ctx, id)` 只查询最近的同名对象祖先，不隐式创建或跨窗口搜索。
 - CheckButton 默认使用最近的 wui.CheckButtonGroup(child)；显式 .Group(shared)
   使用稳定持有的互斥对象，.Group(nil) 保持独立。不要在每次 Build 中重建组对象。
-- MenuButton 使用 ui.MenuButtonGroup("id", child) 显式声明组，成员 .Group("id")。
+- `ui.MenuButtonGroup(children...)` 是普通布局容器；后代 MenuButton 自动加入最近的组，嵌套组独立。不要使用 ObjectView 或组名绑定。
   菜单为非模态自动关闭面；通过 OnOpenError 处理输入失败，Open 的错误直接处理。
   自定义非模态 Popover 可显式 DispatchEvent 转发需要的键，不抢占统一键盘目标。
 - 直接嵌入 *ui.LabelView 等，链式方法通常仍返回内层类型。若传出这个返回值，

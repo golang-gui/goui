@@ -36,7 +36,7 @@
 最新闭包；输入打开错误通过 OnOpenError 反馈，同步 Open 直接返回错误。
 
 MenuButton 分组切换另见 [MenuButton 分组设计](DesignMenuButtonGroup.md)，
-本轮通过命令式组对象与显式声明式组、`.Group("name")` 组合菜单栏，
+通过局部 MenuButtonGroup 容器自动关联后代菜单按钮，
 允许普通按钮混排；不要求新增 MenuBar 容器，也不以子菜单实现为前置。
 
 ## 2. MenuModel 复用 ListData

@@ -144,18 +144,18 @@ func TestMenuButtonGroupDeclarationsAndLatestActions(t *testing.T) {
 	build := func() View {
 		captured := generation
 		return VBox(
-			MenuButtonGroup("menus", HBox(
-				MenuButton("File").ID("file").Group("menus").Menu(MenuItem("Open", func() { got = captured })),
-				MenuButton("Edit").ID("edit").Group("menus").Menu(MenuItem("Undo", nil)),
+			MenuButtonGroup(
+				MenuButton("File").ID("file").Menu(MenuItem("Open", func() { got = captured })),
+				MenuButton("Edit").ID("edit").Menu(MenuItem("Undo", nil)),
 				Button("Run"),
-			)),
-			VBox(MenuButtonGroup("menus", MenuButton("View").Group("menus").Menu(MenuItem("Zoom", nil)))).ID("second"),
+			),
+			VBox(MenuButtonGroup(MenuButton("View").Menu(MenuItem("Zoom", nil)))).ID("second"),
 		)
 	}
 	root := r.update(build()).(*gui.LinearBox)
-	box := root.Children()[0].(*gui.LinearBox)
+	box := root.Children()[0].(*gui.MenuButtonGroup)
 	file, edit := box.Children()[0].(*gui.MenuButton), box.Children()[1].(*gui.MenuButton)
-	other := root.Children()[1].(*gui.LinearBox).Children()[0].(*gui.MenuButton)
+	other := root.Children()[1].Children()[0].Children()[0].(*gui.MenuButton)
 	group := file.Group()
 	model := file.Menu()
 	if group == nil || edit.Group() != group || other.Group() == group || box.ID() != "" || len(box.Children()) != 3 {
@@ -170,7 +170,7 @@ func TestMenuButtonGroupDeclarationsAndLatestActions(t *testing.T) {
 	if got != 2 {
 		t.Fatal("稳定菜单模型仍使用旧动作闭包", got)
 	}
-	r.update(MenuButtonGroup("menus", MenuButton("File").Group("menus").Menu(MenuItem("Open", nil))))
+	r.update(MenuButtonGroup(MenuButton("File").Menu(MenuItem("Open", nil))))
 	if file.Group() != nil || edit.Group() != nil || other.Group() != nil {
 		t.Fatal("移除声明后成员仍关联旧组")
 	}
@@ -181,22 +181,26 @@ func TestMenuButtonGroupDeclarationsAndLatestActions(t *testing.T) {
 	}
 }
 
-func TestMenuButtonGroupRequiresExplicitCompatibleAncestor(t *testing.T) {
-	for _, view := range []View{
-		MenuButton("Missing").Group("menus"),
-		MenuButtonGroup("menus", MenuButton("Wrong").Group("other")),
-		objectScope("menus", MenuButton("Wrong type").Group("menus"), func() any { return new(int) }),
-	} {
-		func() {
-			r := newRoot()
-			defer r.unmountWindow()
-			defer func() {
-				if recover() == nil {
-					t.Fatal("接受了不存在或类型错误的显式组")
-				}
-			}()
-			r.update(view)
-		}()
+func TestMenuButtonGroupNearestContainer(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	root := r.update(MenuButtonGroup(
+		MenuButton("Outer"),
+		MenuButtonGroup(MenuButton("Inner")),
+		HBox(MenuButton("Descendant"), Button("Ordinary")),
+	)).(*gui.MenuButtonGroup)
+	outer := root.Children()[0].(*gui.MenuButton)
+	inner := root.Children()[1].(*gui.MenuButtonGroup)
+	descendant := root.Children()[2].Children()[0].(*gui.MenuButton)
+	if outer.Group() != root || descendant.Group() != root || inner.Children()[0].(*gui.MenuButton).Group() != inner {
+		t.Fatal("没有采用最近的实际容器")
+	}
+	independent := r.update(MenuButton("Independent")).(*gui.MenuButton)
+	if outer.Group() != nil || descendant.Group() != nil {
+		t.Fatal("销毁后仍保留组")
+	}
+	if independent.Group() != nil {
+		t.Fatal("独立按钮关联了旧组")
 	}
 }
 
@@ -209,19 +213,19 @@ func TestMenuButtonGroupTransferUpdatesAncestorWithoutReplacingState(t *testing.
 			generation, called := 1, 0
 			declaration := func() *MenuButtonView {
 				captured := generation
-				return MenuButton("Moving").ID("moving").Group("menus").Menu(
+				return MenuButton("Moving").ID("moving").Menu(
 					MenuItem("Action", func() { called = captured }),
 				)
 			}
-			source := a.update(MenuButtonGroup("menus", VBox(declaration()))).(*gui.LinearBox)
-			target := b.update(MenuButtonGroup("menus", VBox(
-				MenuButton("Resident").ID("resident").Group("menus").Menu(MenuItem("Other", nil)),
-			))).(*gui.LinearBox)
+			source := a.update(MenuButtonGroup(declaration())).(*gui.MenuButtonGroup)
+			target := b.update(MenuButtonGroup(
+				MenuButton("Resident").ID("resident").Menu(MenuItem("Other", nil)),
+			)).(*gui.MenuButtonGroup)
 			moving := source.Children()[0].(*gui.MenuButton)
 			old, destination := moving.Group(), target.Children()[0].(*gui.MenuButton).Group()
 			model := moving.Menu()
 			failure := errors.New("移交失败")
-			err := (&Coordinator{owner: a.root.body}).TransferChild(moving, target, func() error {
+			err := (&Coordinator{owner: a.root}).TransferChild(moving, target, func() error {
 				if fail {
 					return failure
 				}
@@ -243,10 +247,10 @@ func TestMenuButtonGroupTransferUpdatesAncestorWithoutReplacingState(t *testing.
 				t.Fatal(err)
 			}
 			generation = 2
-			b.update(MenuButtonGroup("menus", VBox(
-				MenuButton("Resident").ID("resident").Group("menus").Menu(MenuItem("Other", nil)),
+			b.update(MenuButtonGroup(
+				MenuButton("Resident").ID("resident").Menu(MenuItem("Other", nil)),
 				declaration(),
-			)))
+			))
 			a.unmountWindow()
 			if moving.Group() != destination || moving.Menu() != model || target.Children()[1] != moving {
 				t.Fatal("移交后重建或源 Root 卸载改变了组、模型或 Widget")
@@ -267,10 +271,10 @@ func TestMenuButtonGroupDeclarationTransfersWithContent(t *testing.T) {
 	a, b := transferRoots()
 	t.Cleanup(a.unmountWindow)
 	t.Cleanup(b.unmountWindow)
-	source := a.update(VBox(MenuButtonGroup("menus", HBox(
-		MenuButton("File").Group("menus").Menu(MenuItem("Open", nil)),
-		MenuButton("Edit").Group("menus").Menu(MenuItem("Undo", nil)),
-	)))).(*gui.LinearBox)
+	source := a.update(VBox(MenuButtonGroup(
+		MenuButton("File").Menu(MenuItem("Open", nil)),
+		MenuButton("Edit").Menu(MenuItem("Undo", nil)),
+	))).(*gui.LinearBox)
 	target := b.update(VBox()).(*gui.LinearBox)
 	content := source.Children()[0]
 	file, edit := content.Children()[0].(*gui.MenuButton), content.Children()[1].(*gui.MenuButton)
@@ -284,7 +288,7 @@ func TestMenuButtonGroupDeclarationTransfersWithContent(t *testing.T) {
 	}
 	a.unmountWindow()
 	if file.Group() != group || edit.Group() != group || target.Children()[0] != content {
-		t.Fatal("完整对象声明移交后组实例被重新创建或释放")
+		t.Fatal("完整容器声明移交后组实例被重新创建或释放")
 	}
 	b.unmountWindow()
 	if file.Group() != nil || edit.Group() != nil {

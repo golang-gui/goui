@@ -10,14 +10,6 @@ import (
 	"github.com/golang-gui/goui/style"
 )
 
-// MenuButtonGroup identifies buttons whose open menus follow pointer and
-// horizontal keyboard navigation. It owns no widgets, layout or native state.
-// Use on the GUI thread; membership does not imply a common layout parent.
-type MenuButtonGroup struct{ identity byte }
-
-// NewMenuButtonGroup creates an independent menu-switching identity.
-func NewMenuButtonGroup() *MenuButtonGroup { return new(MenuButtonGroup) }
-
 // MenuButtonInfoKey identifies MenuButtonInfo in semantic snapshots.
 const MenuButtonInfoKey = "goui.menuButton"
 
@@ -31,21 +23,21 @@ type MenuButtonInfo struct {
 
 // MenuButton opens a modeless, automatically dismissed menu. It keeps logical
 // focus in the owner and forwards menu keys through the popover's event path.
-// A group adds switching without changing the button's layout or ownership.
+// The nearest MenuButtonGroup ancestor provides local menu switching.
 type MenuButton struct {
 	WidgetBase
-	content            Widget
-	padding            geometry.Insets
-	menu               MenuModel
-	pm                 *PopoverMenu
-	click              *ClickEventController
-	motion             *menuButtonMotionController
-	motionPosition     geometry.Point
-	motionValid        bool
-	group, linkedGroup *MenuButtonGroup
-	revision           uint64
-	closed             signal.Signal1[uint64]
-	openError          signal.Signal2[error, uint64]
+	content        Widget
+	padding        geometry.Insets
+	menu           MenuModel
+	pm             *PopoverMenu
+	click          *ClickEventController
+	motion         *menuButtonMotionController
+	motionPosition geometry.Point
+	motionValid    bool
+	linkedGroup    *MenuButtonGroup
+	revision       uint64
+	closed         signal.Signal1[uint64]
+	openError      signal.Signal2[error, uint64]
 }
 
 func NewMenuButton() *MenuButton {
@@ -73,7 +65,7 @@ func NewMenuButton() *MenuButton {
 			return
 		}
 		b.motionPosition, b.motionValid = position, true
-		if b.Opened() || b.group == nil || b.Destroyed() || !IsEnabled(b) {
+		if b.Opened() || b.Group() == nil || b.Destroyed() || !IsEnabled(b) {
 			return
 		}
 		if active := b.activeGroupMenu(); active != nil && active != b {
@@ -130,17 +122,19 @@ func (b *MenuButton) SetMenu(m MenuModel) {
 	}
 	b.RequestPaint()
 }
-func (b *MenuButton) Menu() MenuModel         { return b.menu }
-func (b *MenuButton) Group() *MenuButtonGroup { return b.group }
+func (b *MenuButton) Menu() MenuModel { return b.menu }
 
-// SetGroup changes explicit membership. An already open menu remains usable
-// independently; its current group session ends until the next open.
-func (b *MenuButton) SetGroup(group *MenuButtonGroup) {
-	if b.Destroyed() || b.group == group {
-		return
+// Group returns the nearest menu group ancestor, or nil for an independent button.
+func (b *MenuButton) Group() *MenuButtonGroup {
+	if b.Destroyed() {
+		return nil
 	}
-	b.revision++
-	b.group, b.linkedGroup = group, nil
+	for parent := b.Parent(); parent != nil; parent = parent.Parent() {
+		if group, ok := parent.(*MenuButtonGroup); ok {
+			return group
+		}
+	}
+	return nil
 }
 func (b *MenuButton) Opened() bool { return b.pm != nil && b.pm.Visible() }
 
@@ -189,7 +183,7 @@ func (b *MenuButton) showMenu() error {
 	if b.Destroyed() || b.revision != revision || !b.Opened() {
 		return fmt.Errorf("menu-button: released while opening")
 	}
-	b.linkedGroup = b.group
+	b.linkedGroup = b.Group()
 	b.RequestPaint()
 	return nil
 }
@@ -242,7 +236,7 @@ func (b *MenuButton) hasMenu() bool {
 	return false
 }
 func (b *MenuButton) activeGroupMenu() *MenuButton {
-	if b.group == nil || b.Root() == nil {
+	if b.Group() == nil || b.Root() == nil {
 		return nil
 	}
 	owner, ok := anchorWindow(b)
@@ -251,7 +245,7 @@ func (b *MenuButton) activeGroupMenu() *MenuButton {
 	}
 	for _, p := range owner.Popovers() {
 		candidate, ok := p.Anchor().(*MenuButton)
-		if ok && candidate != b && candidate.Root() == b.Root() && candidate.group == b.group && candidate.linkedGroup == b.group && candidate.Opened() {
+		if ok && candidate != b && candidate.Root() == b.Root() && candidate.Group() == b.Group() && candidate.linkedGroup == b.Group() && candidate.Opened() {
 			return candidate
 		}
 	}
@@ -262,7 +256,7 @@ func (b *MenuButton) activeGroupMenu() *MenuButton {
 // that changes either endpoint or shows another surface cancels this switch.
 func (b *MenuButton) switchMenu(next *MenuButton, fromInput bool) error {
 	group, root := b.linkedGroup, b.Root()
-	if group == nil || b.group != group || !b.Opened() || next == nil || next == b || next.group != group || next.Root() != root || !IsEnabled(next) || !visibleInTree(next) || !next.hasMenu() {
+	if group == nil || b.Group() != group || !b.Opened() || next == nil || next == b || next.Group() != group || next.Root() != root || !IsEnabled(next) || !visibleInTree(next) || !next.hasMenu() {
 		return nil
 	}
 	owner, ok := anchorWindow(b)
@@ -276,7 +270,7 @@ func (b *MenuButton) switchMenu(next *MenuButton, fromInput bool) error {
 	}
 	previous, candidate := b.revision, next.revision
 	b.Close()
-	if b.Destroyed() || next.Destroyed() || b.revision != previous+1 || next.revision != candidate || b.Root() != root || next.Root() != root || b.group != group || next.group != group || w != nil && (w.destroyed || w.popoversShown != shown) {
+	if b.Destroyed() || next.Destroyed() || b.revision != previous+1 || next.revision != candidate || b.Root() != root || next.Root() != root || b.Group() != group || next.Group() != group || w != nil && (w.destroyed || w.popoversShown != shown) {
 		return nil
 	}
 	if fromInput {
@@ -296,14 +290,17 @@ func (b *MenuButton) neighbor(direction int) *MenuButton {
 		if widget == nil || !widget.Visible() || widget.base().destroyed {
 			return
 		}
-		if candidate, ok := widget.(*MenuButton); ok && candidate.group == b.linkedGroup && IsEnabled(candidate) && candidate.hasMenu() {
+		if group, ok := widget.(*MenuButtonGroup); ok && group != b.linkedGroup {
+			return
+		}
+		if candidate, ok := widget.(*MenuButton); ok && candidate.Group() == b.linkedGroup && IsEnabled(candidate) && candidate.hasMenu() {
 			members = append(members, candidate)
 		}
 		for _, child := range widget.Children() {
 			walk(child)
 		}
 	}
-	walk(b.Root().Widget())
+	walk(b.linkedGroup)
 	for i, member := range members {
 		if member == b && len(members) > 1 {
 			return members[(i+direction+len(members))%len(members)]
@@ -384,7 +381,7 @@ func (b *MenuButton) Snapshot() WidgetInfo {
 	if info.Enabled {
 		info.Actions = append(info.Actions, ActionClick)
 	}
-	info.SetAttribute(MenuButtonInfoKey, MenuButtonInfo{HasMenu: b.hasMenu(), Opened: b.Opened(), Grouped: b.group != nil})
+	info.SetAttribute(MenuButtonInfoKey, MenuButtonInfo{HasMenu: b.hasMenu(), Opened: b.Opened(), Grouped: b.Group() != nil})
 	return info
 }
 func (b *MenuButton) setPressed(value bool) { b.SetState(style.Pressed, value) }

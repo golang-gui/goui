@@ -45,7 +45,6 @@ type MenuButtonView struct {
 	ViewBase[MenuButtonView]
 	child       View
 	items       []*MenuItemView
-	group       string
 	onClosed    func()
 	onOpenError func(error)
 }
@@ -85,9 +84,6 @@ func (v *MenuButtonView) Menu(items ...*MenuItemView) *MenuButtonView {
 	return v
 }
 
-// Group references an explicit ancestor MenuButtonGroup declaration by ID.
-// Empty leaves the button independent. Missing or incompatible groups panic.
-func (v *MenuButtonView) Group(id string) *MenuButtonView            { v.group = id; return v }
 func (v *MenuButtonView) OnClosed(fn func()) *MenuButtonView         { v.onClosed = fn; return v }
 func (v *MenuButtonView) OnOpenError(fn func(error)) *MenuButtonView { v.onOpenError = fn; return v }
 
@@ -110,25 +106,10 @@ func (v *MenuButtonView) Mount(ctx BuildContext) gui.Widget {
 	return button
 }
 
-func (v *MenuButtonView) applyGroup(ctx BuildContext, s *menuButtonState) {
-	if v.group == "" {
-		s.button.SetGroup(nil)
-		return
-	}
-	group, ok := FindAncestor[*gui.MenuButtonGroup](ctx, v.group)
-	if ctx.State() != s || s.button.Destroyed() {
-		return
-	}
-	if !ok || group == nil {
-		panic("ui: MenuButton requires an ancestor MenuButtonGroup with ID " + v.group)
-	}
-	s.button.SetGroup(group)
-}
 func (v *MenuButtonView) Update(ctx BuildContext, widget gui.Widget) {
 	button, s := widget.(*gui.MenuButton), ctx.State().(*menuButtonState)
 	s.onClosed, s.onOpenError = v.onClosed, v.onOpenError
 	s.items = append(s.items[:0], v.items...)
-	v.applyGroup(ctx, s)
 	if ctx.State() != s || button.Destroyed() {
 		return
 	}
@@ -171,17 +152,10 @@ func (v *MenuButtonView) Unmount(ctx BuildContext, widget gui.Widget) {
 		s.onOpenError = nil
 	}
 	button := widget.(*gui.MenuButton)
-	button.SetGroup(nil)
 	button.Close()
-}
-func (v *MenuButtonView) Reparented(ctx BuildContext) {
-	if s, ok := ctx.State().(*menuButtonState); ok {
-		v.applyGroup(ctx, s)
-	}
 }
 
 var _ WidgetView = (*MenuButtonView)(nil)
-var _ ReparentedView = (*MenuButtonView)(nil)
 
 // Menu converts menu item declarations into a fresh imperative menu model.
 // It does not mount a View or execute item actions. Composite controls can use
