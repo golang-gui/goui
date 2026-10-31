@@ -108,6 +108,57 @@ func TestScrollViewSingleAxisMeasuresActualViewport(t *testing.T) {
 	}
 }
 
+// Measure 可以被父布局或状态样式比较单独调用，不能覆盖已排列的范围。
+// 400 DIP 内容每行/列 20 DIP；长内容的交叉轴须始终扣除 8 DIP 滚动条。
+func TestScrollViewRemeasurePreservesArrangedGeometry(t *testing.T) {
+	for _, direction := range []ScrollDirection{ScrollVertical, ScrollHorizontal} {
+		t.Run(map[ScrollDirection]string{ScrollVertical: "vertical", ScrollHorizontal: "horizontal"}[direction], func(t *testing.T) {
+			horizontal := direction == ScrollHorizontal
+			sv := NewScrollView()
+			sv.SetDirection(direction)
+			content := &responsiveScrollWidget{length: 400, horizontal: horizontal}
+			sv.SetChild(content)
+			for _, cross := range []float32{100, 120, 80, 400, 100} {
+				size := geometry.Size{Width: cross, Height: 60}
+				area := size
+				if cross < 400 {
+					area.Width -= 8
+				}
+				extent := geometry.Size{Width: area.Width, Height: 20 * float32(math.Ceil(400/float64(area.Width)))}
+				if horizontal {
+					size.Width, size.Height = size.Height, size.Width
+					area.Width, area.Height = area.Height, area.Width
+					extent.Width, extent.Height = extent.Height, extent.Width
+				}
+				sv.Measure(layout.Tight(size))
+				sv.Arrange(geometry.Rectangle{Size: size})
+				if content.Rect().Size != extent || sv.viewport.Rect().Size != area {
+					t.Fatalf("初次排列尺寸错误：content=%v viewport=%v，预期 %v / %v", content.Rect(), sv.viewport.Rect(), extent, area)
+				}
+				before := sv.Snapshot()
+				viewport, vbar, hbar := sv.viewport.Rect(), sv.vbar.Rect(), sv.hbar.Rect()
+				for _, c := range []layout.Constraint{layout.Tight(size), layout.Loose(geometry.Size{Width: 800, Height: 500}), layout.Unbounded()} {
+					sv.Measure(c)
+					if sv.contentWidth != extent.Width || sv.contentHeight != extent.Height {
+						t.Fatalf("重测覆盖了已排列内容尺寸：%g×%g，预期 %v，约束 %v", sv.contentWidth, sv.contentHeight, extent, c)
+					}
+					if after := sv.Snapshot(); after.MaxScrollX != before.MaxScrollX || after.MaxScrollY != before.MaxScrollY {
+						t.Fatalf("重测改变了快照滚动范围：%g/%g -> %g/%g", before.MaxScrollX, before.MaxScrollY, after.MaxScrollX, after.MaxScrollY)
+					}
+					if horizontal {
+						sv.SetScrollX(sv.ScrollX() + 10)
+					} else {
+						sv.SetScrollY(sv.ScrollY() + 10)
+					}
+					if content.Rect().Size != extent || sv.viewport.Rect() != viewport || sv.vbar.Rect() != vbar || sv.hbar.Rect() != hbar {
+						t.Fatalf("重测后滚动改变了尺寸或滚动条占位：content=%v viewport=%v", content.Rect(), sv.viewport.Rect())
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestScrollViewDirectionOffsetsWheelAndSnapshot(t *testing.T) {
 	sv := NewScrollView()
 	sv.SetChild(&mockWidget{size: geometry.Size{Width: 500, Height: 500}})
@@ -204,6 +255,29 @@ func TestScrollViewVirtualExtentAndDisabledAxis(t *testing.T) {
 	sv.Arrange(sv.Rect())
 	if content.ContentSize().Width != 96 || sv.Snapshot().MaxScrollX != 0 || sv.hbar.Visible() || content.Rect() != geometry.Rect(0, 0, 92, 100) {
 		t.Fatal("host changed virtual content policy instead of disabling its scroll axis")
+	}
+}
+
+// 虚拟内容也只在排列时发布新范围；Measure 不应让滚动范围先于视口变化。
+func TestScrollViewVirtualRemeasurePreservesArrangedExtent(t *testing.T) {
+	sv := NewScrollView()
+	content := &extentScrollContent{size: geometry.Size{Width: 200, Height: 300}}
+	sv.SetChild(content)
+	sv.Measure(layout.Tight(geometry.Size{Width: 100, Height: 100}))
+	sv.Arrange(geometry.Rect(0, 0, 100, 100))
+	content.size = geometry.Size{Width: 400, Height: 500}
+	sv.Measure(layout.Tight(geometry.Size{Width: 100, Height: 100}))
+	if info := sv.Snapshot(); info.MaxScrollX != 108 || info.MaxScrollY != 208 {
+		t.Fatalf("重测提前发布了虚拟内容范围：%g/%g", info.MaxScrollX, info.MaxScrollY)
+	}
+	sv.Arrange(sv.Rect())
+	if info := sv.Snapshot(); info.MaxScrollX != 308 || info.MaxScrollY != 408 || content.Rect().Size != (geometry.Size{Width: 92, Height: 92}) {
+		t.Fatalf("重新排列没有发布新范围：%g/%g，content=%v", info.MaxScrollX, info.MaxScrollY, content.Rect())
+	}
+	content.size = geometry.Size{Width: 80, Height: 80}
+	sv.Arrange(sv.Rect())
+	if info := sv.Snapshot(); info.MaxScrollX != 0 || info.MaxScrollY != 0 || sv.vbar.Visible() || sv.hbar.Visible() || content.Rect().Size != (geometry.Size{Width: 100, Height: 100}) {
+		t.Fatalf("虚拟内容缩短后仍保留旧范围或滚动条：%g/%g，content=%v", info.MaxScrollX, info.MaxScrollY, content.Rect())
 	}
 }
 

@@ -5,7 +5,9 @@
 // GOUI_PLAT_SCALE=1/2。初始为长表单、浅色、Integrated 窗口。
 // 操作与预期：
 //  1. 左侧表单仅有竖滚动条；缩窄/放宽窗口，文字和按钮按视口宽度换行，
-//     不出现横滚动条。滚到底部，能完整看到 END 标记；拖滑块回顶部。
+//     不出现横滚动条。真实拖动窗口边框后先按 F6，再滚动并按 F6：内容右边距
+//     应保持一致，不能因滚动多占用或少占用一条滚动条宽度。
+//     滚到底部，能完整看到 END 标记；拖滑块回顶部。
 //  2. 右侧 Both 样例是 100×100 DIP 视口中的 96×200 DIP 图片。
 //     应同时显示两条滚动条，内容区 92×92，最大偏移 X=4、Y=108。
 //     拖动两条滑块，边界完整且可命中；仅看窗口启动不算通过。
@@ -20,8 +22,11 @@
 //     滚到内层首尾后继续滚动，form 仍不变。鼠标移到面板左侧文字后滚动，
 //     form 应正常滚动。F4 将内层切为短内容，F10 重新定位并按 F6 记录；
 //     在内层短内容上滚动，form 应改变，nested 保持 0。F4 恢复长内容。
+//  7. F5 只查询表单在当前紧约束及其他宽松约束下的测量结果，不安排新尺寸；
+//     应输出 REMEASURE PASS，视口、内容及滚动范围不变。再滚动并按 F6，
+//     右边距仍不变。窗口变宽/变窄、F11 切换亮暗后重复此项。
 //
-// 平台差异：字体影响换行阈值；只有 Linux 自绘 Integrated 内缩窗口内容。
+// 平台差异：字体影响换行阈值；Linux 无桌面合成时 Integrated 回退 Native。
 // 副作用：窗口和日志，不读写剪贴板/文件、不启动 DevServer、不改系统设置。
 // 复位：F9 恢复普通状态，F7 恢复长表单，F4 恢复长内层列表；重启复位偏移。
 // 退出：关闭窗口。
@@ -130,6 +135,7 @@ func main() {
 	}
 	panel := new(gui.WidgetBase)
 	panel.SetMinSize(geometry.Size{Height: 110})
+	panel.SetMaxSize(geometry.Size{Height: 110}) // 固定面板高度，内层 ScrollView 才有有限视口。
 	panel.SetLayoutManager(layout.NewFillLayout())
 	stretch := gui.NewLinearBox(layout.DirectionHorizontal)
 	stretch.SetCrossAlign(layout.CrossStretch)
@@ -193,6 +199,16 @@ func main() {
 			label.SetVisible(!nestedShort)
 		}
 		fmt.Printf("nested-short=%v\n", nestedShort)
+	})
+	bind(gui.KeyF5, func() {
+		before, bounds := form.Snapshot(), content.Rect()
+		form.Measure(layout.Tight(form.Rect().Size))
+		form.Measure(layout.Loose(geometry.Size{Width: 320, Height: 240}))
+		after := form.Snapshot()
+		if content.Rect() != bounds || after.MaxScrollX != before.MaxScrollX || after.MaxScrollY != before.MaxScrollY {
+			panic(fmt.Sprintf("remeasure changed allocated geometry: content=%v -> %v max=%g/%g -> %g/%g", bounds, content.Rect(), before.MaxScrollX, before.MaxScrollY, after.MaxScrollX, after.MaxScrollY))
+		}
+		fmt.Println("REMEASURE PASS")
 	})
 	bind(gui.KeyF6, func() {
 		b := both.Snapshot()

@@ -64,8 +64,8 @@ type ScrollView struct {
 	direction      ScrollDirection
 	scrollY        float32
 	scrollX        float32 // horizontal scroll offset
-	contentWidth   float32 // measured content or Scrollable extent
-	contentHeight  float32 // refreshed at the actual viewport during Arrange
+	contentWidth   float32 // committed content extent at the allocated viewport
+	contentHeight  float32 // Measure must not overwrite the current scroll geometry
 	lineHeight     float32 // WheelDeltaLine height; 0 = default text line height
 	wheel          *WheelEventController
 	vbar           *ScrollBar // vertical scrollbar (right column)
@@ -553,7 +553,6 @@ func (sv *ScrollView) Measure(c layout.Constraint) layout.Measurement {
 			return layout.Measurement{}
 		}
 		size := sc.ContentSize()
-		sv.contentWidth, sv.contentHeight = size.Width, size.Height
 		// A Scrollable fills its viewport's cross axis: the viewport is always
 		// sized from the parent constraint, not from ContentSize().Width. The
 		// reported content width drives the horizontal scrollbar (hScrollable),
@@ -593,6 +592,7 @@ func (sv *ScrollView) Measure(c layout.Constraint) layout.Measurement {
 
 // measureContent releases scrolling axes, keeping a finite non-scrolling
 // axis tight. With an unbounded cross axis there is no invented viewport size.
+// Measurement queries do not publish new geometry for an existing allocation.
 func (sv *ScrollView) measureContent(viewport geometry.Size) geometry.Size {
 	c := layout.Unbounded()
 	if sv.direction == ScrollVertical && viewport.Width < layout.Inf {
@@ -601,9 +601,7 @@ func (sv *ScrollView) measureContent(viewport geometry.Size) geometry.Size {
 	if sv.direction == ScrollHorizontal && viewport.Height < layout.Inf {
 		c.Min.Height, c.Max.Height = max(0, viewport.Height), max(0, viewport.Height)
 	}
-	size := measureWidget(sv.content, c).Constrain(c).Size
-	sv.contentWidth, sv.contentHeight = size.Width, size.Height
-	return size
+	return measureWidget(sv.content, c).Constrain(c).Size
 }
 
 func (sv *ScrollView) viewportWidth(c layout.Constraint) float32 {
@@ -618,15 +616,28 @@ func (sv *ScrollView) Arrange(rect geometry.Rectangle) {
 	defer sv.finishContentLayout()
 	sv.WidgetBase.Arrange(rect)
 	inner := sv.innerRect()
-	if _, virtual := sv.content.(Scrollable); sv.content != nil && !virtual {
+	if sc, virtual := sv.content.(Scrollable); virtual {
+		if ensureWidgetStyle(sc) {
+			// Seed first-pass growth, but retain the allocated extent until
+			// LayoutVisible refreshes it. Editors can temporarily report a small
+			// estimate while replacing text or deferring width-sensitive work.
+			// Dropping the old extent here would remove a bar for one pass and
+			// lay out the retained text at the wrong width.
+			size := sc.ContentSize()
+			sv.contentWidth = max(sv.contentWidth, size.Width)
+			sv.contentHeight = max(sv.contentHeight, size.Height)
+		}
+	} else if sv.content != nil {
 		// Begin at the full cross extent on each allocation, then remeasure at
 		// the bar-reduced extent. Width-sensitive forms wrap at their actual
 		// viewport width, including after a resize or content shrink.
-		sv.measureContent(inner.Size)
+		size := sv.measureContent(inner.Size)
+		sv.contentWidth, sv.contentHeight = size.Width, size.Height
 		if sv.direction != ScrollBoth {
 			area := sv.contentAreaSize()
 			if area != inner.Size {
-				sv.measureContent(area)
+				size = sv.measureContent(area)
+				sv.contentWidth, sv.contentHeight = size.Width, size.Height
 			}
 		}
 	}
@@ -650,9 +661,9 @@ func (sv *ScrollView) Arrange(rect geometry.Rectangle) {
 	sv.syncBars()
 }
 
-// refreshContentSize re-reads a Scrollable content's extent after layout and
-// returns whether the cached extent changed. Virtualized content measures its
-// items lazily (during LayoutVisible), so this catches the first-pass growth.
+// refreshContentSize publishes a Scrollable content's extent for layout or a
+// reveal request. LayoutVisible may measure items lazily, so layout also calls
+// this after arranging to catch first-pass growth.
 func (sv *ScrollView) refreshContentSize() bool {
 	sc, ok := sv.content.(Scrollable)
 	if !ok {
