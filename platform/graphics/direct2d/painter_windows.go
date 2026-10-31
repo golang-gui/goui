@@ -56,6 +56,7 @@ type Painter struct {
 	scale                float32
 	transform            geometry.Transform
 	matrix               d2d1.Matrix3x2F
+	frameID              uint64
 	activeFrame          bool
 	deferredFrame        bool
 	occluded             bool
@@ -458,11 +459,11 @@ func (p *Painter) NewImage(src image.Image) (graphics.Image, error) {
 }
 
 func (p *Painter) updateImage(img *imageResource, src image.Image) error {
-	if p.activeFrame {
-		panic("direct2d: update image during active frame")
-	}
 	if img == nil || img.destroyed || img.owner != p {
 		return fmt.Errorf("direct2d: update invalid image")
+	}
+	if p.activeFrame && img.lastDrawFrame == p.frameID {
+		panic("direct2d: update image after DrawImage before End")
 	}
 	if src == nil {
 		return fmt.Errorf("direct2d: update image from nil source")
@@ -571,6 +572,7 @@ func (p *Painter) destroyAllImages() {
 }
 
 func (p *Painter) Begin(width, height, scale float32) {
+	p.frameID++
 	p.activeFrame = false
 	p.deferredFrame = false
 	if p.window.NativeHandle() == 0 {
@@ -1016,6 +1018,7 @@ func (p *Painter) DrawImage(rect graphics.Rectangle, img graphics.Image) {
 		}
 		native.bitmap = bitmap
 	}
+	native.lastDrawFrame = p.frameID
 	p.drawNativeImage(rect, native.bitmap)
 }
 
@@ -1294,6 +1297,7 @@ type imageResource struct {
 	bitmap         *d2d1.Bitmap
 	destroyed      bool
 	pendingDestroy bool
+	lastDrawFrame  uint64
 }
 
 func (i *imageResource) Size() (width, height int) {
@@ -1371,6 +1375,7 @@ func (p *Painter) RenderImage(width, height int, scale float32, draw func()) (im
 	p.render.SetDpi(96*scale, 96*scale)
 	p.render.SetTextAntialiasMode(d2d1.D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE)
 	p.render.BeginDraw()
+	p.frameID++
 	p.activeFrame, p.scale = true, scale
 	defer func() {
 		if p.activeFrame {

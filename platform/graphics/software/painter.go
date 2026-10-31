@@ -42,6 +42,7 @@ type Painter struct {
 	scale         float32
 	transform     geometry.Transform
 	clip          image.Rectangle
+	frameID       uint64
 	activeFrame   bool
 	transparent   bool
 }
@@ -100,11 +101,11 @@ func (p *Painter) NewImage(src image.Image) (graphics.Image, error) {
 }
 
 func (p *Painter) updateImage(img *imageResource, src image.Image) error {
-	if p.activeFrame {
-		panic("software: update image during active frame")
-	}
 	if img == nil || img.destroyed || img.owner != p {
 		return fmt.Errorf("software: update invalid image")
+	}
+	if p.activeFrame && img.lastDrawFrame == p.frameID {
+		panic("software: update image after DrawImage before End")
 	}
 	if src == nil {
 		return fmt.Errorf("software: update image from nil source")
@@ -153,6 +154,7 @@ func (p *Painter) flushPendingImages() {
 }
 
 func (p *Painter) Begin(width, height, scale float32) {
+	p.frameID++
 	// TODO: scale
 	viewport := graphics.Rect(0, 0, width, height)
 	if p.viewport.Width != viewport.Width || p.viewport.Height != viewport.Height || p.scale != scale {
@@ -624,6 +626,7 @@ func (p *Painter) DrawImage(rect graphics.Rectangle, img graphics.Image) {
 	if !ok || native == nil || native.owner != p || native.destroyed {
 		panic("software: image does not belong to painter or was destroyed")
 	}
+	native.lastDrawFrame = p.frameID
 	if !p.drawAxisAlignedBitmap(rect, native.bitmap) {
 		p.drawBitmap(rect, native.bitmap)
 	}
@@ -945,6 +948,7 @@ type imageResource struct {
 	bitmap         graphics.Bitmap
 	destroyed      bool
 	pendingDestroy bool
+	lastDrawFrame  uint64
 }
 
 func (i *imageResource) Size() (width, height int) {

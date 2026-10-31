@@ -1622,3 +1622,62 @@ func TestEndAfterNativeTermination(t *testing.T) {
 		})
 	}
 }
+
+// 同一图片提交后才冻结；其他图片、下一帧和离屏目标互不污染。
+func TestImageUpdateBeforeDraw(t *testing.T) {
+	var d alphaDrawer
+	p, err := NewPainter(&d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Destroy()
+	src := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	a, err := p.NewImage(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Destroy()
+	b, err := p.NewImage(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Destroy()
+	for frame := 0; frame < 3; frame++ {
+		p.Begin(8, 4, 1)
+		p.Clear(graphics.Color{})
+		p.DrawImage(graphics.Rect(0, 0, 0, 4), a)
+		src.SetRGBA(0, 0, color.RGBA{R: 128, A: 128})
+		if err := a.Update(src); err != nil {
+			t.Fatal(err)
+		}
+		src.SetRGBA(0, 0, color.RGBA{B: 128, A: 128})
+		if err := a.Update(src); err != nil {
+			t.Fatal(err)
+		}
+		src.SetRGBA(0, 0, color.RGBA{})
+		p.DrawImage(graphics.Rect(0, 0, 4, 4), a)
+		assertPanics(t, func() { _ = a.Update(src) })
+		src.SetRGBA(0, 0, color.RGBA{G: 255, A: 255})
+		if err := b.Update(src); err != nil {
+			t.Fatal(err)
+		}
+		p.DrawImage(graphics.Rect(4, 0, 4, 4), b)
+		p.End()
+		// 透明呈现使用预乘 BGRA，内部采样允许一次 8 位量化误差。
+		assertColorNear(t, d.pixels.At(0, 0), color.RGBA{B: 128, A: 128}, 1)
+		assertColorNear(t, d.pixels.At(4, 0), color.RGBA{G: 255, A: 255}, 1)
+		if err := a.Update(src); err != nil {
+			t.Fatal(err)
+		}
+		_, err := p.RenderImage(4, 4, 1, func() {
+			if err := a.Update(src); err != nil {
+				t.Fatal(err)
+			}
+			p.DrawImage(graphics.Rect(0, 0, 4, 4), a)
+			assertPanics(t, func() { _ = a.Update(src) })
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}

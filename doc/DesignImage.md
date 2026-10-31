@@ -34,7 +34,11 @@ type Painter interface {
   调用后立即逻辑失效，不能再 DrawImage 或 Update，但 Size 保持不变。
   帧内调用时保留底层资源到 End 消费或丢弃已记录命令后释放，之前的绘制仍然有效。
   帧外调用立即释放。不增加 DestroyOnEnd、引用计数或调用方的退休资源队列。
-  `Update` 和 `Painter.Destroy` 仍不得在有效帧内调用。
+  `Painter.Destroy` 仍不得在有效帧内调用。
+- `Update` 可在帧外或本帧首次非空 `DrawImage` 使用此图片之前调用；一经绘制，
+  到 `End` 之前更新它属于编程错误并 panic。绘制 A 不影响 B 的更新，下一帧恢复
+  更新资格。`RenderImage` 同样建立独立帧，恢复目标状态时不回退帧代次。
+  各 Painter 递增帧代次，图片记录最后使用代次，不逐帧遍历或重置图片集合。
 - `DrawImage` 只接受有效且属于当前 Painter 的资源。跨 Painter 或销毁后使用属于
   编程错误，后端确定性 panic，避免静默绘制错误纹理。
 - `NewImage(nil)` 和空图片返回错误。`DrawImage` 的目标矩形为空时不绘制。
@@ -64,6 +68,8 @@ stride 的 sub-image；`NewImage` 返回后所有后端都与 `src` 脱钩。
 pending 标记，在 EndFrame 消费命令后释放纹理；异常路径先 CancelFrame 再清理，
 并保证解除当前 context。无需等待 GPU 完全空闲，已提交资源由原生驱动管理。
 Painter 销毁时 NanoVG context 统一兜底。
+帧内 Update 复用 Begin 已绑定的 context；只有帧外更新才自行绑定和解除。
+NanoVG 延迟提交绘制，因此不能在已记录 DrawImage 后覆盖相同纹理。
 
 ### Direct2D 1.1
 
@@ -71,6 +77,8 @@ Painter 销毁时 NanoVG context 统一兜底。
 保留一份规范化 CPU 快照：发生 `D2DERR_RECREATE_TARGET`、device removed 或 reset
 时释放所有 device-dependent bitmap，但保留逻辑资源；新设备建立后在首次绘制时
 惰性重建。`Update` 使用 `CopyFromMemory` 更新同尺寸 bitmap 和恢复快照。
+原生允许 BeginDraw 期间复制；GOUI 额外禁止更新本帧已绘制图片，保持三后端契约一致。
+复制失败不承诺旧内容不变，调用方保留源像素以便重试。
 帧内 Destroy 标记逻辑失效；EndDraw 后释放 bitmap 和 CPU 快照，包括 EndDraw 失败。
 设备资源被丢弃时同样清理 pending 图片，不能在新设备上重新创建已销毁图片。
 
@@ -151,3 +159,15 @@ ui.Image(captured).ContentSize(originalSize.Width, originalSize.Height)
 - Windows amd64 / macOS arm64：`CGO_ENABLED=0 go test -exec=true ./...` 交叉编译通过。
   此命令不执行目标测试；Windows WARP、新窗口例程的 Direct2D 与 macOS 原生运行未验证。
 - 既有全仓测试会产生排版图片产物；本次窗口截图和输入验证辅助文件仅放在仓库外临时目录。
+
+### 2026-10-31 首次绘制前更新
+
+使用逐图片帧代次允许更新尚未提交的图片，普通与离屏帧使用同一递增代次，
+目标恢复不回退它。保留提交后的 panic，避免 NanoVG 记录的纹理引用读到新内容。
+原生依据：[Direct2D CopyFromMemory](https://learn.microsoft.com/en-us/windows/win32/api/d2d1/nf-d2d1-id2d1bitmap-copyfrommemory)
+允许更新 bitmap，也说明活动批次可能被刷新；GOUI 不依赖此行为实现帧中途换图。
+NanoVG 依据为当前 nanovgo v0.0.10 的 `Context.UpdateImage`／`renderUpdateTexture`
+及 EndFrame 批提交：帧内沿用当前 context，只有帧外更新自行绑定与解除。
+
+新增独立窗口入口 `tests/window/graphics/image_update`；本机、Windows、macOS 的
+实际后端、缩放、原生运行及 Windows RDP OpenGL 限制记录在 [Plan](Plan.md)。

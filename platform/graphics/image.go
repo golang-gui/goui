@@ -15,7 +15,10 @@ type Image interface {
 	// Size returns the immutable raster dimensions in physical pixels.
 	Size() (width, height int)
 	// Update replaces all pixels without changing Size. It snapshots src before
-	// returning and must not be called during an active Painter frame.
+	// returning. During a Painter frame it is allowed until the first non-empty
+	// DrawImage using this image. Updating it after that draw and before End
+	// panics. Other images remain writable; the next frame allows updates again.
+	// RenderImage starts a separate frame with the same rules.
 	Update(src image.Image) error
 	Destroy()
 }

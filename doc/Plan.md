@@ -1,5 +1,26 @@
 # Plan
 
+## Image 帧内更新与 DrawingArea 复用（2026-10-31）
+
+设计见 [DesignImage](DesignImage.md)／[DesignDrawingArea](DesignDrawingArea.md)。
+
+- [x] 三后端按图片与帧代次限制 Update：首次 DrawImage 前允许，之后到 End 禁止。
+- [x] 第一阶段包内像素／生命周期及 Software／OpenGL race；旧实现 overlay 运行
+  TestImageUpdateBeforeDraw 在合法更新处 panic，修正后通过。
+- [x] 独立 Xvnc :85／xfwm4 4.16.1、Ubuntu 22.04.5 amd64：Software／OpenGL ×
+  1x／2x；Windows 10 19045 amd64：Software／Direct2D × 1x／2x；macOS 15.7.7
+  arm64：Software／OpenGL × 1x／2x，image_update 自动断言全部通过。
+  各组含 1／1.5／2x 离屏预乘像素、clip／Transform、源快照、其他图片更新、
+  连续帧与普通／离屏帧切换。Windows Direct2D WARP 全包原生测试通过。
+- [x] 真实输入与截图：Linux OpenGL 1x、Windows Direct2D 1x、macOS OpenGL 2x，
+  点击后左侧由蓝变红、右侧保持绿色，正常 Escape 退出。
+- [ ] Windows OpenGL：RDP Session 1 创建 context 返回 can not choose useful pixel format；
+  未执行绘图验收，其他平台 OpenGL 已验证，不以编译代替此项。
+- [x] 第一阶段隔离源码副本 DISPLAY=:85 下 go test ./... 通过；原工作区同命令因
+  未跟踪旧例程的 Padding／BuildContext 等旧接口失败，保留文件，恢复测试改写 PNG。
+- [ ] DrawingArea 同物理尺寸复用 Image.Update，尺寸变化才重建；失败保留软件结果重试。
+- [ ] 全仓、race、跨平台编译与分阶段提交。
+
 ## CheckButton 独立开关例程修正（2026-10-31）
 
 - [x] 按 [ButtonGroup 设计](DesignButtonGroup.md) 给 Toggle 显式设置 `Group(nil)`，
