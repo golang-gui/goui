@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/example/demo/resource"
@@ -12,35 +13,48 @@ import (
 	"github.com/golang-gui/goui/ui"
 )
 
-func (d *demo) overlaysPage() ui.View {
+// overlaysDemo owns this feature for the lifetime of the gallery.
+// host is borrowed for shared assets and application operations.
+type overlaysDemo struct {
+	host       *demo
+	panel      ui.State[bool]
+	mask       ui.State[bool]
+	toast      ui.State[string]
+	toastTimer *ui.Timer
+	popup      gui.Popover
+}
+
+func (d *overlaysDemo) View() ui.View { return ui.Build(d.view) }
+
+func (d *overlaysDemo) view() ui.View {
 	long := make([]*ui.MenuItemView, 45)
 	for i := range long {
-		long[i] = ui.MenuItem(fmt.Sprintf(resource.LongMenuItem(), i+1), func() { d.report(fmt.Sprintf(resource.MenuSelected(), i+1)) })
+		long[i] = ui.MenuItem(fmt.Sprintf(resource.LongMenuItem(), i+1), func() { d.host.report(fmt.Sprintf(resource.MenuSelected(), i+1)) })
 	}
 	base := page("overlay-content", resource.Overlays(), resource.OverlaysHint(),
 		section("PopoverMenu",
-			ui.HWrap(ui.MenuButton(resource.ActionsMenu()).Menu(ui.MenuItem(resource.Execute(), func() { d.report(resource.MenuExecuted()) }), ui.MenuItem(resource.DisabledMenuItem(), nil).Enabled(false), ui.MenuSeparator(), ui.MenuItem(resource.ShowToast(), func() { d.showToast(resource.MenuToast()) })),
+			ui.HWrap(ui.MenuButton(resource.ActionsMenu()).Menu(ui.MenuItem(resource.Execute(), func() { d.host.report(resource.MenuExecuted()) }), ui.MenuItem(resource.DisabledMenuItem(), nil).Enabled(false), ui.MenuSeparator(), ui.MenuItem(resource.ShowToast(), func() { d.showToast(resource.MenuToast()) })),
 				ui.MenuButton(resource.LongMenu()).Menu(long...),
 				ui.Button(resource.Popover()).ID("popover-anchor").OnClick(d.openPopover)).Spacing(12).LineSpacing(8)),
 		section("Overlay",
-			ui.HWrap(ui.Button(resource.SearchPanel()).ID("open-panel").OnClick(func() { d.panel = !d.panel; d.app.RequestUpdate() }),
+			ui.HWrap(ui.Button(resource.SearchPanel()).ID("open-panel").OnClick(func() { d.panel.Set(!d.panel.Get()) }),
 				ui.Button(resource.MaskDialog()).ID("open-dialog").OnClick(func() {
 					if d.popup != nil {
 						d.popup.Hide()
 					}
-					d.mask = true
-					d.app.RequestUpdate()
+					d.mask.Set(true)
+					d.host.app.RequestUpdate()
 				}),
 				ui.Button(resource.ToastButton()).ID("open-toast").OnClick(func() { d.showToast(resource.ToastHint()) })).Spacing(12).LineSpacing(8),
-			ui.TextInput().BindText(&d.input), ui.Button(resource.BackgroundAction()).OnClick(func() { d.report(resource.BackgroundClicked()) }),
+			ui.TextInput().BindText(&d.host.input), ui.Button(resource.BackgroundAction()).OnClick(func() { d.host.report(resource.BackgroundClicked()) }),
 			ui.Label(resource.MaskHint())),
 		section(resource.ScrollableBackground(), ui.VBox(chipsCopy(25)...).Spacing(12)),
 	)
-	panel := surface(ui.VBox(ui.Label(resource.Search()).Style("demo-subheading"), ui.TextInput().BindText(&d.input), ui.Button(resource.ClosePanel()).OnClick(func() { d.panel = false; d.app.RequestUpdate() })).Padding(16).Spacing(12).CrossAlign(layout.CrossStretch)).Style(modern.Card).MinWidth(300).MaxWidth(330).Visible(d.panel)
+	panel := surface(ui.VBox(ui.Label(resource.Search()).Style("demo-subheading"), ui.TextInput().BindText(&d.host.input), ui.Button(resource.ClosePanel()).OnClick(func() { d.panel.Set(false) })).Padding(16).Spacing(12).CrossAlign(layout.CrossStretch)).Style(modern.Card).MinWidth(300).MaxWidth(330).Visible(d.panel.Get())
 	dialog := surface(ui.VBox(ui.Label(resource.ConfirmQuestion()).Style("demo-subheading"), ui.Label(resource.ConfirmHint()),
-		ui.HBox(ui.Button(resource.Cancel()).OnClick(func() { d.mask = false; d.app.RequestUpdate() }), ui.Button().Content(ui.Label(resource.Confirm()).Style(modern.PrimaryContent)).Style(modern.Primary).OnClick(func() { d.mask = false; d.showToast(resource.Confirmed()) })).Spacing(12).MainAlign(layout.MainEnd)).Padding(24).Spacing(16).CrossAlign(layout.CrossStretch)).Style(modern.Card).MaxWidth(450)
-	mask := ui.Overlay(surface(nil).Style("demo-mask"), ui.OverlayItem(dialog).OnPosition(center)).Visible(d.mask)
-	toast := surface(ui.HBox(ui.Label(d.toast)).Padding(12)).Style(modern.Card).Visible(d.toast != "").MinHeight(48).MinWidth(280)
+		ui.HBox(ui.Button(resource.Cancel()).OnClick(func() { d.mask.Set(false) }), ui.Button().Content(ui.Label(resource.Confirm()).Style(modern.PrimaryContent)).Style(modern.Primary).OnClick(func() { d.mask.Set(false); d.showToast(resource.Confirmed()) })).Spacing(12).MainAlign(layout.MainEnd)).Padding(24).Spacing(16).CrossAlign(layout.CrossStretch)).Style(modern.Card).MaxWidth(450)
+	mask := ui.Overlay(surface(nil).Style("demo-mask"), ui.OverlayItem(dialog).OnPosition(center)).Visible(d.mask.Get())
+	toast := surface(ui.HBox(ui.Label(d.toast.Get())).Padding(12)).Style(modern.Card).Visible(d.toast.Get() != "").MinHeight(48).MinWidth(280)
 	return ui.Overlay(base,
 		ui.OverlayItem(panel).OnPosition(func(a, s geometry.Size, p *geometry.Point) { *p = geometry.Point{X: max(0, a.Width-s.Width-20), Y: 20} }),
 		ui.OverlayItem(mask).Fill(true),
@@ -49,12 +63,12 @@ func (d *demo) overlaysPage() ui.View {
 		}),
 	).ID("page-overlays").MainWeight(1)
 }
-func (d *demo) openPopover() {
+func (d *overlaysDemo) openPopover() {
 	if d.popup != nil {
 		d.popup.Destroy()
 		d.popup = nil
 	}
-	anchor := d.app.FindWidget("main", "popover-anchor")
+	anchor := d.host.app.FindWidget("main", "popover-anchor")
 	if anchor == nil {
 		return
 	}
@@ -87,5 +101,17 @@ func (d *demo) openPopover() {
 	if err != nil {
 		languageChanged.Disconnect()
 	}
-	d.result(resource.ShowPopover(), err)
+	d.host.result(resource.ShowPopover(), err)
+}
+
+func (d *overlaysDemo) showToast(text string) {
+	d.toast.Set(text)
+	if d.toastTimer != nil {
+		d.toastTimer.Stop()
+	}
+	d.toastTimer = d.host.app.TimeoutFunc(3*time.Second, func() { d.toast.Set(""); d.toastTimer = nil })
+}
+
+func newOverlaysDemo(host *demo) *overlaysDemo {
+	return &overlaysDemo{host: host}
 }

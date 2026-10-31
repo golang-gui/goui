@@ -10,17 +10,31 @@ import (
 	wui "github.com/golang-gui/goui/widgets/ui"
 )
 
-func (d *demo) layoutPage() ui.View {
+// layoutDemo owns this feature for the lifetime of the gallery.
+// host is borrowed for shared assets and application operations.
+type layoutDemo struct {
+	host                     *demo
+	username                 ui.State[string]
+	splitInput               sampleInput
+	scrollValue              ui.State[float32]
+	layoutStart, layoutRatio float32
+}
+
+func (d *layoutDemo) View() ui.View { return ui.Build(d.view) }
+
+func (d *layoutDemo) view() ui.View {
 	chips := make([]ui.View, 18)
 	for i := range chips {
-		chips[i] = ui.Button(fmt.Sprintf(resource.WrapItem(), i+1)).OnClick(func() { d.report(fmt.Sprintf(resource.WrapClicked(), i+1)) })
+		chips[i] = ui.Button(fmt.Sprintf(resource.WrapItem(), i+1)).OnClick(func() { d.host.report(fmt.Sprintf(resource.WrapClicked(), i+1)) })
 	}
 	vertical := make([]ui.View, 8)
 	for i := range vertical {
 		vertical[i] = ui.Label(fmt.Sprintf("VWrap %02d", i+1))
 	}
 	return page("layout", resource.Layout(), resource.LayoutHint(),
-		section(resource.ScrollBarTitle(), scrollBar(d.scrollValue, func(value float32) { d.scrollValue = value; d.app.RequestUpdate() }), ui.Label(fmt.Sprintf(resource.ScrollPosition(), d.scrollValue))),
+		section(resource.ScrollBarTitle(), ui.Build(func() ui.View {
+			return ui.VBox(scrollBar(d.scrollValue.Get(), d.scrollValue.Set).ID("layout-scrollbar"), ui.Label(fmt.Sprintf(resource.ScrollPosition(), d.scrollValue.Get())).ID("scroll-value")).Spacing(12).CrossAlign(layout.CrossStretch)
+		})),
 		section("HBox / VBox / Baseline",
 			ui.HBox(ui.Label(resource.Username()), ui.TextInput().BindText(&d.username).MainWeight(1), ui.Button(resource.OK())).CrossAlign(layout.CrossBaseline).Spacing(12),
 			ui.HBox(surface(ui.HBox(ui.Label(resource.WeightOne())).Padding(12)).Style(modern.Card).MainWeight(1), surface(ui.HBox(ui.Label(resource.WeightTwo())).Padding(12)).Style(modern.Card).MainWeight(2)).Spacing(12)),
@@ -43,4 +57,8 @@ func chipsCopy(n int) []ui.View {
 		rows[i] = ui.Label(fmt.Sprintf(resource.ScrollRow(), i+1))
 	}
 	return rows
+}
+
+func newLayoutDemo(host *demo) *layoutDemo {
+	return &layoutDemo{host: host, username: ui.MakeState("GOUI"), splitInput: newSampleInput(resource.SplitInputSample()), layoutStart: 200, layoutRatio: .4}
 }

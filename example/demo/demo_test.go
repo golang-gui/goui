@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"go/ast"
+	"go/format"
 	"go/parser"
 	"go/token"
 	"image"
@@ -68,22 +70,22 @@ func TestDemoTextSamplesPreserveModelsAndHistory(t *testing.T) {
 	}
 	d.app = new(demoTestApp)
 	defer d.stopActivities()
-	regular := d.text
-	if d.editorModel() != regular || d.largeText != ([2]*ui.TextModel{}) {
+	regular := d.editor.text
+	if d.editor.editorModel() != regular || d.editor.largeText != ([2]*ui.TextModel{}) {
 		t.Fatal("启动提前生成了大样例")
 	}
-	d.selectTextSample(-1)
-	d.selectTextSample(3)
-	if d.textSample != 0 || d.largeText != ([2]*ui.TextModel{}) {
+	d.editor.selectTextSample(-1)
+	d.editor.selectTextSample(3)
+	if d.editor.textSample.Get() != 0 || d.editor.largeText != ([2]*ui.TextModel{}) {
 		t.Fatal("非法选择改变了样例状态")
 	}
-	d.selectTextSample(1)
-	large := d.editorModel()
-	if d.largeText[1] != nil {
+	d.editor.selectTextSample(1)
+	large := d.editor.editorModel()
+	if d.editor.largeText[1] != nil {
 		t.Fatal("首次选择生成了其他大样例")
 	}
-	d.selectTextSample(2)
-	line := d.editorModel()
+	d.editor.selectTextSample(2)
+	line := d.editor.editorModel()
 	for _, model := range []*ui.TextModel{regular, large, line} {
 		if model.CanUndo() || model.CanRedo() {
 			t.Fatal("初始样例带有编辑历史")
@@ -92,11 +94,14 @@ func TestDemoTextSamplesPreserveModelsAndHistory(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	d.wrap, d.readonly = false, true
+	{
+		d.editor.wrap.Set(false)
+		d.editor.readonly.Set(true)
+	}
 	for _, index := range []int{0, 1, 2, 1} {
-		d.selectTextSample(index)
+		d.editor.selectTextSample(index)
 		want := []*ui.TextModel{regular, large, line}[index]
-		if d.editorModel() != want || !want.CanUndo() || d.wrap || !d.readonly {
+		if d.editor.editorModel() != want || !want.CanUndo() || d.editor.wrap.Get() || !d.editor.readonly.Get() {
 			t.Fatal("切换样例替换模型、丢失历史或改变选项")
 		}
 	}
@@ -105,16 +110,16 @@ func TestDemoTextSamplesPreserveModelsAndHistory(t *testing.T) {
 			t.Fatal(err)
 		}
 		d.translateUI()
-		if d.editorModel() != large || large.Revision() != 1 || line.Revision() != 1 || regular.Revision() != 1 {
+		if d.editor.editorModel() != large || large.Revision() != 1 || line.Revision() != 1 || regular.Revision() != 1 {
 			t.Fatal("语言切换重载了用户样例")
 		}
 	}
 	if !large.UndoWithSelection().Applied || large.CanUndo() || !large.CanRedo() || !line.CanUndo() || !regular.CanUndo() {
 		t.Fatal("撤销影响了其他样例或丢失历史")
 	}
-	d.selectTextSample(2)
-	d.selectTextSample(1)
-	if d.editorModel() != large || !large.RedoWithSelection().Applied {
+	d.editor.selectTextSample(2)
+	d.editor.selectTextSample(1)
+	if d.editor.editorModel() != large || !large.RedoWithSelection().Applied {
 		t.Fatal("切换后无法重做")
 	}
 	text, err := large.Slice(ui.TextRange{End: len("user edit")})
@@ -292,10 +297,15 @@ func TestDemoCardStyleMigration(t *testing.T) {
 // 检查例程真实声明，不为测试导出 UI 私有状态或重建协调器。
 // 实际高度、原生按钮避让及字体放大后的裁剪另按 README 做桌面验证。
 func TestDemoCompactChromeDeclaration(t *testing.T) {
-	source, err := parser.ParseFile(token.NewFileSet(), "main.go", nil, 0)
+	source, err := parser.ParseFile(token.NewFileSet(), "gallery.go", nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
+	styleSource, err := parser.ParseFile(token.NewFileSet(), "styles.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source.Decls = append(source.Decls, styleSource.Decls...)
 	var content *ast.CallExpr
 	var mainWindow ast.Node
 	var titleStyle ast.Node
@@ -365,13 +375,13 @@ func TestDemoCompactChromeDeclaration(t *testing.T) {
 // Primary 的内容显式选择对比前景；侧栏选中只用中性色，不借用主要操作样式。
 func TestDemoPrimaryContentDeclaration(t *testing.T) {
 	primaryCount := 0
-	for _, file := range []string{"main.go", "basic.go", "overlays.go"} {
+	for _, file := range []string{"gallery.go", "basic.go", "overlays.go"} {
 		positions := token.NewFileSet()
 		source, err := parser.ParseFile(positions, file, nil, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if file == "main.go" && !demoHasCall(source, "Style", `"demo-nav-current"`) {
+		if file == "gallery.go" && !demoHasCall(source, "Style", `"demo-nav-current"`) {
 			t.Error("sidebar current item must have its own neutral style")
 		}
 		ast.Inspect(source, func(node ast.Node) bool {
@@ -388,7 +398,7 @@ func TestDemoPrimaryContentDeclaration(t *testing.T) {
 				return true
 			}
 			primaryCount++
-			if file == "main.go" || !demoHasCall(method.X, "Style", "modern.PrimaryContent") {
+			if file == "gallery.go" || !demoHasCall(method.X, "Style", "modern.PrimaryContent") {
 				t.Errorf("%s: primary action needs explicit contrasting content, not a navigation item", positions.Position(call.Pos()))
 			}
 			return true
@@ -410,17 +420,9 @@ func demoHasCall(node ast.Node, method, value string) bool {
 		if !ok || selector.Sel.Name != method {
 			return true
 		}
-		var argument string
-		switch arg := call.Args[0].(type) {
-		case *ast.BasicLit:
-			argument = arg.Value
-		case *ast.Ident:
-			argument = arg.Name
-		case *ast.SelectorExpr:
-			if qualifier, ok := arg.X.(*ast.Ident); ok {
-				argument = qualifier.Name + "." + arg.Sel.Name
-			}
-		}
+		var output bytes.Buffer
+		_ = format.Node(&output, token.NewFileSet(), call.Args[0])
+		argument := output.String()
 		found = found || argument == value
 		return true
 	})
@@ -436,18 +438,22 @@ func TestLanguageChangePreservesDemoModelsAndState(t *testing.T) {
 	}
 	d.app = new(demoTestApp)
 	defer d.stopActivities()
-	choices, tree, list, table, model := d.choices, d.tree, d.list, d.table, d.text
+	choices, tree, list, table, model := d.basic.choices, d.data.tree, d.data.list, d.data.table, d.editor.text
 	d.input.Set("user input")
-	d.username.Set("user name")
-	d.text.SetText("user editor text")
-	d.selection = ui.TextSelection{Anchor: 1, Caret: 5}
-	d.drop, d.fancyDrop, d.page = 3, 1, 1
-	d.tableWidths[0] = 257
-	d.table.setNote("file-000", "edited note")
-	d.table.sort("size", widgets.SortDescending)
-	firstRow := d.table.RowID(0)
-	d.documents["document-1"].SetText("edited document")
-	d.tabWindows[0].current = "document-2"
+	d.layout.username.Set("user name")
+	d.editor.text.SetText("user editor text")
+	d.editor.selection.Set(ui.TextSelection{Anchor: 1, Caret: 5})
+	{
+		d.basic.drop.Set(3)
+		d.basic.fancyDrop.Set(1)
+		d.page.Set(1)
+	}
+	d.data.tableWidths[0] = 257
+	d.data.table.setNote("file-000", "edited note")
+	d.data.table.sort("size", widgets.SortDescending)
+	firstRow := d.data.table.RowID(0)
+	d.tabs.documents["document-1"].SetText("edited document")
+	d.tabs.tabWindows[0].current = "document-2"
 	canUndo := model.CanUndo()
 	listener := mlang.ConnectChanged(d.translateUI)
 	defer listener.Disconnect()
@@ -456,13 +462,13 @@ func TestLanguageChangePreservesDemoModelsAndState(t *testing.T) {
 			t.Fatal(err)
 		}
 		d.translateUI()
-		if choices != d.choices || tree != d.tree || list != d.list || table != d.table || model != d.text {
+		if choices != d.basic.choices || tree != d.data.tree || list != d.data.list || table != d.data.table || model != d.editor.text {
 			t.Fatal("language change replaced a persistent model")
 		}
-		if d.input.Get() != "user input" || d.username.Get() != "user name" || model.Text() != "user editor text" || model.CanUndo() != canUndo ||
-			d.selection != (ui.TextSelection{Anchor: 1, Caret: 5}) || d.page != 1 || d.drop != 3 || d.fancyDrop != 1 ||
-			d.tableWidths[0] != 257 || d.table.RowID(0) != firstRow || d.documents["document-1"].Text() != "edited document" ||
-			d.tabWindows[0].current != "document-2" {
+		if d.input.Get() != "user input" || d.layout.username.Get() != "user name" || model.Text() != "user editor text" || model.CanUndo() != canUndo ||
+			d.editor.selection.Get() != (ui.TextSelection{Anchor: 1, Caret: 5}) || d.page.Get() != 1 || d.basic.drop.Get() != 3 || d.basic.fancyDrop.Get() != 1 ||
+			d.data.tableWidths[0] != 257 || d.data.table.RowID(0) != firstRow || d.tabs.documents["document-1"].Text() != "edited document" ||
+			d.tabs.tabWindows[0].current != "document-2" {
 			t.Fatal("translation overwrote user state")
 		}
 		for i := 0; i < table.ItemsCount(); i++ {
@@ -494,7 +500,7 @@ func TestEmptyDemoEditorsSurviveLanguageChanges(t *testing.T) {
 	}
 	d.app = new(demoTestApp)
 	defer d.stopActivities()
-	model, original := d.text, d.text.Text()
+	model, original := d.editor.text, d.editor.text.Text()
 	d.input.Set("")
 	if err := model.ReplaceAtomic(ui.TextRange{Start: 0, End: model.Len()}, ""); err != nil {
 		t.Fatal(err)
@@ -505,8 +511,8 @@ func TestEmptyDemoEditorsSurviveLanguageChanges(t *testing.T) {
 			t.Fatal(err)
 		}
 		d.translateUI()
-		_ = d.textPage()
-		if d.text != model || model.Text() != "" || d.input.Get() != "" || model.Revision() != revision || !model.CanUndo() || model.CanRedo() {
+		_ = d.editor.View()
+		if d.editor.text != model || model.Text() != "" || d.input.Get() != "" || model.Revision() != revision || !model.CanUndo() || model.CanRedo() {
 			t.Fatalf("%s: rebuilding empty editors overwrote user content or history", choice.tag)
 		}
 	}
@@ -528,17 +534,17 @@ func TestDemoSamplesUseCurrentLanguage(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer d.stopActivities()
-			if d.input.Get() != resource.InputSample() || d.text.Text() != resource.EditorSample() ||
-				d.inspection.Text() != resource.InspectionSample() || d.tree.Item("project") != resource.SampleProject() ||
-				d.list.ItemAt(999) != fmt.Sprintf(resource.ListRow(), 1000) ||
-				d.documents["document-2"].Text() != fmt.Sprintf(resource.DocumentSample(), "2") {
+			if d.input.Get() != resource.InputSample() || d.editor.text.Text() != resource.EditorSample() ||
+				d.windows.inspection.Text() != resource.InspectionSample() || d.data.tree.Item("project") != resource.SampleProject() ||
+				d.data.list.ItemAt(999) != fmt.Sprintf(resource.ListRow(), 1000) ||
+				d.tabs.documents["document-2"].Text() != fmt.Sprintf(resource.DocumentSample(), "2") {
 				t.Fatal("initial samples did not use the current language")
 			}
-			row := d.table.ItemAt(0)
+			row := d.data.table.ItemAt(0)
 			if row.Name != fmt.Sprintf(resource.RecordName(), 1) || row.Kind != resource.RecordDocument() || row.Note != resource.RecordNote() {
 				t.Fatal("table sample data not localized")
 			}
-			if d.tree.Item("main") != "main.go" || row.ID != "file-000" || !strings.Contains(d.text.Text(), "👨‍👩‍👧‍👦") || !strings.Contains(d.text.Text(), "é") {
+			if d.data.tree.Item("main") != "main.go" || row.ID != "file-000" || !strings.Contains(d.editor.text.Text(), "👨‍👩‍👧‍👦") || !strings.Contains(d.editor.text.Text(), "é") {
 				t.Fatal("translation changed IDs, filenames or editing test characters")
 			}
 		})
@@ -555,15 +561,15 @@ func TestLanguageChangeUpdatesUntouchedSamples(t *testing.T) {
 	}
 	d.app = new(demoTestApp)
 	defer d.stopActivities()
-	model, document := d.text, d.documents["document-1"]
+	model, document := d.editor.text, d.tabs.documents["document-1"]
 	for _, choice := range demoLanguages {
 		_ = mlang.SetLanguage(choice.tag)
 		d.translateUI()
-		if d.text != model || d.documents["document-1"] != document || model.Text() != resource.EditorSample() ||
+		if d.editor.text != model || d.tabs.documents["document-1"] != document || model.Text() != resource.EditorSample() ||
 			document.Text() != fmt.Sprintf(resource.DocumentSample(), "1") || d.input.Get() != resource.InputSample() ||
-			d.baselineInput.Get() != resource.BaselineSample() || d.splitInput.Get() != resource.SplitInputSample() ||
-			d.inspection.Text() != resource.InspectionSample() || d.dropDescription() != resource.DropZoneHint() ||
-			d.tree.Item("project") != resource.SampleProject() || d.list.ItemAt(0) != fmt.Sprintf(resource.ListRow(), 1) {
+			d.basic.baselineInput.Get() != resource.BaselineSample() || d.layout.splitInput.Get() != resource.SplitInputSample() ||
+			d.windows.inspection.Text() != resource.InspectionSample() || d.system.dropDescription() != resource.DropZoneHint() ||
+			d.data.tree.Item("project") != resource.SampleProject() || d.data.list.ItemAt(0) != fmt.Sprintf(resource.ListRow(), 1) {
 			t.Fatalf("%s: untouched samples not refreshed in place", choice.tag)
 		}
 		revision := model.Revision()
@@ -572,14 +578,14 @@ func TestLanguageChangeUpdatesUntouchedSamples(t *testing.T) {
 			t.Fatal("translation created edit history or was not idempotent")
 		}
 	}
-	d.addTab(d.tabWindows[0])
-	id := d.tabWindows[0].current
-	if d.documents[id].Text() != fmt.Sprintf(resource.DocumentSample(), "4") {
+	d.tabs.addTab(d.tabs.tabWindows[0])
+	id := d.tabs.tabWindows[0].current
+	if d.tabs.documents[id].Text() != fmt.Sprintf(resource.DocumentSample(), "4") {
 		t.Fatal("new tab ignored the current language")
 	}
-	d.requestTabClose(d.tabWindows[0], id)
-	d.closeTab(d.tabWindows[0])
-	if _, ok := d.documentRevisions[id]; ok {
+	d.tabs.requestTabClose(d.tabs.tabWindows[0], id)
+	d.tabs.closeTab(d.tabs.tabWindows[0])
+	if _, ok := d.tabs.documentRevisions[id]; ok {
 		t.Fatal("closed document retained localization bookkeeping")
 	}
 }
@@ -594,37 +600,37 @@ func TestLanguageChangePreservesEditedSampleOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer d.stopActivities()
-	original := d.text.Text()
-	if err := d.text.ReplaceAtomic(ui.TextRange{Start: 0, End: 0}, "user edit\n"); err != nil {
+	original := d.editor.text.Text()
+	if err := d.editor.text.ReplaceAtomic(ui.TextRange{Start: 0, End: 0}, "user edit\n"); err != nil {
 		t.Fatal(err)
 	}
-	if !d.text.Undo() || d.text.Text() != original || !d.text.CanRedo() {
+	if !d.editor.text.Undo() || d.editor.text.Text() != original || !d.editor.text.CanRedo() {
 		t.Fatal("invalid regression setup")
 	}
-	document := d.documents["document-1"]
+	document := d.tabs.documents["document-1"]
 	if err := document.ReplaceAtomic(ui.TextRange{Start: 0, End: 0}, "document edit\n"); err != nil {
 		t.Fatal(err)
 	}
 	d.input.Set(resource.InputSample()) // 显式赋值仍交给用户持有，不靠内容猜测。
-	d.baselineInput.Set("user baseline")
-	d.splitInput.Set("user split")
-	d.inspection.SetText(`{"ID":"main","Text":"原始快照"}`)
-	d.table.setNote("file-000", resource.RecordNote())
-	d.table.sort("size", widgets.SortDescending)
-	first := d.table.RowID(0)
+	d.basic.baselineInput.Set("user baseline")
+	d.layout.splitInput.Set("user split")
+	d.windows.inspection.SetText(`{"ID":"main","Text":"原始快照"}`)
+	d.data.table.setNote("file-000", resource.RecordNote())
+	d.data.table.sort("size", widgets.SortDescending)
+	first := d.data.table.RowID(0)
 	_ = mlang.SetLanguage("zh-CN")
 	d.translateUI()
-	if d.text.Text() != original || !d.text.CanRedo() || !document.CanUndo() ||
+	if d.editor.text.Text() != original || !d.editor.text.CanRedo() || !document.CanUndo() ||
 		!strings.HasPrefix(document.Text(), "document edit\n") || d.input.Get() != "Hello, GOUI" ||
-		d.baselineInput.Get() != "user baseline" || d.splitInput.Get() != "user split" ||
-		d.inspection.Text() != `{"ID":"main","Text":"原始快照"}` || d.table.RowID(0) != first {
+		d.basic.baselineInput.Get() != "user baseline" || d.layout.splitInput.Get() != "user split" ||
+		d.windows.inspection.Text() != `{"ID":"main","Text":"原始快照"}` || d.data.table.RowID(0) != first {
 		t.Fatal("language change replaced user-owned state or undo history")
 	}
-	if !d.text.Redo() || d.text.Text() != "user edit\n"+original || !document.Undo() {
+	if !d.editor.text.Redo() || d.editor.text.Text() != "user edit\n"+original || !document.Undo() {
 		t.Fatal("history no longer works after translation")
 	}
-	for i := 0; i < d.table.ItemsCount(); i++ {
-		r := d.table.ItemAt(i)
+	for i := 0; i < d.data.table.ItemsCount(); i++ {
+		r := d.data.table.ItemAt(i)
 		if r.ID == "file-000" && r.Note != "Editable note" {
 			t.Fatal("explicit note edit was mistaken for an untouched default")
 		}
@@ -632,11 +638,11 @@ func TestLanguageChangePreservesEditedSampleOwnership(t *testing.T) {
 			t.Fatal("untouched note did not follow the language")
 		}
 	}
-	d.table.resetNote("file-000")
+	d.data.table.resetNote("file-000")
 	_ = mlang.SetLanguage("de")
 	d.translateUI()
-	for i := 0; i < d.table.ItemsCount(); i++ {
-		if row := d.table.ItemAt(i); row.Note != resource.RecordNote() {
+	for i := 0; i < d.data.table.ItemsCount(); i++ {
+		if row := d.data.table.ItemAt(i); row.Note != resource.RecordNote() {
 			t.Fatal("reset note did not return ownership to the demo")
 		}
 	}
@@ -666,14 +672,14 @@ func TestDropDescriptionTranslatesWithoutChangingPayload(t *testing.T) {
 			data := new(gui.DragData)
 			test.data(data)
 			r := &ui.DropRequest{Data: data}
-			d.receiveDrop(r)
+			d.system.receiveDrop(r)
 			if !r.Accepted {
 				t.Fatal("demo rejected a supported drop")
 			}
 			for _, choice := range demoLanguages {
 				_ = mlang.SetLanguage(choice.tag)
 				d.translateUI()
-				if d.dropped != test.raw || d.droppedKind != test.kind {
+				if d.system.dropped.Get() != test.raw || d.system.droppedKind.Get() != test.kind {
 					t.Fatal("translation changed the raw payload or format")
 				}
 				want := resource.LocalCardReceived()
@@ -682,15 +688,15 @@ func TestDropDescriptionTranslatesWithoutChangingPayload(t *testing.T) {
 				} else if test.kind == demoDropText {
 					want = fmt.Sprintf(resource.TextReceived(), test.raw)
 				}
-				if d.dropDescription() != want {
+				if d.system.dropDescription() != want {
 					t.Fatal("drop description did not follow the language")
 				}
 			}
 		})
 	}
 	unsupported := &ui.DropRequest{Data: new(gui.DragData)}
-	d.receiveDrop(unsupported)
-	if unsupported.Accepted || d.dropped != "goui-demo-card" {
+	d.system.receiveDrop(unsupported)
+	if unsupported.Accepted || d.system.dropped.Get() != "goui-demo-card" {
 		t.Fatal("unsupported data overwrote the accepted drop")
 	}
 }
@@ -701,20 +707,20 @@ func TestInitialModelsAndAssets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer d.motion.Stop()
-	if d.list.ItemsCount() != 1000 || d.table.ItemsCount() != 120 || len(d.tabWindows) != 1 {
+	defer d.graphics.motion.Stop()
+	if d.data.list.ItemsCount() != 1000 || d.data.table.ItemsCount() != 120 || len(d.tabs.tabWindows) != 1 {
 		t.Fatal("unexpected initial model sizes")
 	}
-	if !slices.Equal(d.tree.Children("src"), []string{"main", "view"}) {
+	if !slices.Equal(d.data.tree.Children("src"), []string{"main", "view"}) {
 		t.Fatal("missing tree children")
 	}
-	first := d.documents["document-1"]
-	second := d.documents["document-2"]
+	first := d.tabs.documents["document-1"]
+	second := d.tabs.documents["document-2"]
 	first.SetText("edited")
 	if first == second || second.Text() == "edited" {
 		t.Fatal("documents share mutable state")
 	}
-	if d.motion.Running() || d.busy || d.tickTimer != nil {
+	if d.graphics.motion.Running() || d.graphics.busy.Get() || d.system.tickTimer != nil {
 		t.Fatal("demo must start idle")
 	}
 	for i, source := range d.icons {
@@ -888,7 +894,7 @@ func TestDemoBrandIconBindings(t *testing.T) {
 					}
 				}
 				found = true
-				if !demoHasCall(call, "Icon", "d.logo") {
+				if !demoHasCall(call, "Icon", "d.host.logo") {
 					t.Error("brand icon must use the original-color d.logo, not a tintable sample")
 				}
 				return false
@@ -979,20 +985,20 @@ func TestTabCloseConfirmationBelongsToCurrentWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 	d.app = new(demoTestApp)
-	main := d.tabWindows[0]
+	main := d.tabs.tabWindows[0]
 	target := &tabWindow{id: "target", pages: []string{"document-2"}, current: "document-2"}
 	main.pages = []string{"document-1", "document-3"}
-	d.tabWindows = append(d.tabWindows, target)
-	d.page = 1
-	d.requestTabClose(target, "document-2")
-	if target.closing != "document-2" || main.closing != "" || d.page != 1 {
+	d.tabs.tabWindows = append(d.tabs.tabWindows, target)
+	d.page.Set(1)
+	d.tabs.requestTabClose(target, "document-2")
+	if target.closing != "document-2" || main.closing != "" || d.page.Get() != 1 {
 		t.Fatal("close request escaped its workspace")
 	}
-	d.closeTab(target)
-	if target.closing != "" || len(target.pages) != 0 || d.documents["document-2"] != nil || len(main.pages) != 2 {
+	d.tabs.closeTab(target)
+	if target.closing != "" || len(target.pages) != 0 || d.tabs.documents["document-2"] != nil || len(main.pages) != 2 {
 		t.Fatal("confirmation closed the wrong page")
 	}
-	d.requestTabClose(target, "document-1")
+	d.tabs.requestTabClose(target, "document-1")
 	if target.closing != "" {
 		t.Fatal("accepted a page owned by another window")
 	}
@@ -1004,13 +1010,13 @@ func TestTabTransferCancelsSourceConfirmation(t *testing.T) {
 		t.Fatal(err)
 	}
 	d.app = new(demoTestApp)
-	source := d.tabWindows[0]
+	source := d.tabs.tabWindows[0]
 	target := &tabWindow{id: "target"}
-	d.tabWindows = append(d.tabWindows, target)
-	d.requestTabClose(source, "document-2")
-	d.transferTab(wui.TabTransfer{SourceWindow: source.id, TargetWindow: target.id, PageID: "document-2", Index: 0})
-	d.closeTab(source) // A stale confirmation must not remove the moved model.
-	if source.closing != "" || target.current != "document-2" || d.documents["document-2"] == nil {
+	d.tabs.tabWindows = append(d.tabs.tabWindows, target)
+	d.tabs.requestTabClose(source, "document-2")
+	d.tabs.transferTab(wui.TabTransfer{SourceWindow: source.id, TargetWindow: target.id, PageID: "document-2", Index: 0})
+	d.tabs.closeTab(source) // A stale confirmation must not remove the moved model.
+	if source.closing != "" || target.current != "document-2" || d.tabs.documents["document-2"] == nil {
 		t.Fatal("transfer left a stale confirmation")
 	}
 }
@@ -1182,5 +1188,84 @@ func TestBodyUsesAllocatedContentEdges(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// 高频呈现值和导航只通知局部订阅；窗口集合变化仍请求宿主协调。
+func TestDemoLocalStateDoesNotRebuildApplication(t *testing.T) {
+	d, err := newDemo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := new(demoTestApp)
+	d.app = app
+	defer d.stopActivities()
+	status, scroll, selection, navigation := 0, 0, 0, 0
+	handles := []interface{ Disconnect() }{
+		d.status.Connect(func() { status++ }),
+		d.layout.scrollValue.Connect(func() { scroll++ }),
+		d.editor.selection.Connect(func() { selection++ }),
+		d.page.Connect(func() { navigation++ }),
+	}
+	defer func() {
+		for _, h := range handles {
+			h.Disconnect()
+		}
+	}()
+	d.report("local status")
+	d.layout.scrollValue.Set(42)
+	d.editor.selection.Set(ui.TextSelection{Anchor: 1, Caret: 4})
+	d.navigate(2)
+	if status != 2 || scroll != 1 || selection != 1 || navigation != 1 || app.updates != 0 {
+		t.Fatal("局部操作触发全应用重建或丢失通知", status, scroll, selection, navigation, app.updates)
+	}
+	d.tabs.newTabWindow()
+	if app.updates == 0 || len(d.tabs.tabWindows) != 2 {
+		t.Fatal("窗口集合变化没有请求宿主协调")
+	}
+}
+
+// 构建声明不创建大文档、启动任务、改变业务模型或请求重建。
+func TestDemoViewConstructionHasNoBusinessSideEffects(t *testing.T) {
+	d, err := newDemo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := new(demoTestApp)
+	d.app = app
+	defer d.stopActivities()
+	for range 3 {
+		for _, view := range []func() ui.View{d.basic.View, d.editor.View, d.layout.View, d.data.View, d.overlays.View, d.graphics.View, d.system.View, d.windows.View} {
+			view().(*ui.BuildView).Build(nil)
+		}
+		d.tabs.View()
+	}
+	if app.updates != 0 || d.graphics.motion.Running() || d.system.tickTimer != nil || d.editor.largeText != ([2]*ui.TextModel{}) || d.editor.text.Revision() != 0 || len(d.tabs.documents) != 3 {
+		t.Fatal("视图构建产生业务副作用")
+	}
+}
+
+func TestDemoTextEventsFollowDocumentAndDisconnect(t *testing.T) {
+	d, err := newDemo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.stopActivities()
+	calls := 0
+	h := d.editor.events[d.editor.text].Connect(func() { calls++ })
+	if err := d.editor.text.Replace(ui.TextRange{}, "edit"); err != nil {
+		t.Fatal(err)
+	}
+	d.editor.selectTextSample(1)
+	if err := d.editor.editorModel().Replace(ui.TextRange{}, "other"); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatal("另一个文档污染订阅", calls)
+	}
+	h.Disconnect()
+	d.editor.text.SetText("after release")
+	if calls != 1 {
+		t.Fatal("断开后仍接收文档事件")
 	}
 }

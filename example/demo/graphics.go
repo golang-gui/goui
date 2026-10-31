@@ -3,16 +3,13 @@ package main
 import (
 	"fmt"
 	"image"
-	"image/color"
 	"math"
-	"strings"
 	"time"
 
 	"github.com/golang-gui/goui/animation"
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/example/demo/resource"
 	"github.com/golang-gui/goui/gui"
-	"github.com/golang-gui/goui/icon/draw"
 	"github.com/golang-gui/goui/icon/svg"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/graphics"
@@ -21,80 +18,49 @@ import (
 	wui "github.com/golang-gui/goui/widgets/ui"
 )
 
-func (d *demo) loadAssets() error {
-	logo, err := svg.Parse(strings.NewReader(resource.LogoMarkSVG()))
-	if err != nil {
-		return err
-	}
-	// Branding always keeps its original colors, independently of icon styles.
-	// Never add a tintable copy of the logo to the ordinary icon samples.
-	d.logo = logo.WithRawColors()
-	paths := []string{
-		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M6 3H14L19 8V21H6Z M14 3V8H19 M9 12H16 M9 16H16" fill="none" stroke="#303840" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 5H10L12 7H22V20H2Z" fill="#e0ac42"/><path d="M3 9H21V19H3Z" fill="#f4cd6b"/></svg>`,
-		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="#30a878" stroke-width="2"/><path d="M6 12L10 16L18 7" fill="none" stroke="#30a878" stroke-width="2"/></svg>`,
-	}
-	for _, text := range paths {
-		s, err := svg.Parse(strings.NewReader(text))
-		if err != nil {
-			return err
-		}
-		d.icons = append(d.icons, s)
-	}
-	wordmark, err := svg.Parse(strings.NewReader(resource.LogoSVG()))
-	if err != nil {
-		return err
-	}
-	d.wordmark = wordmark.WithRawColors()
-	d.icons = append(d.icons, &draw.Source{Draw: func(p graphics.Painter, s graphics.Size, c graphics.Color) {
-		p.FillEllipse(graphics.Point{X: s.Width / 2, Y: s.Height / 2}, s.Width*.45, s.Height*.45, c)
-		p.DrawLine(graphics.Point{X: s.Width * .3, Y: s.Height * .5}, graphics.Point{X: s.Width * .7, Y: s.Height * .5}, max(1, s.Width*.06), graphics.RGBA(255, 255, 255, 230))
-	}})
-	colored, err := svg.Parse(strings.NewReader(paths[1]))
-	if err != nil {
-		return err
-	}
-	d.icons = append(d.icons, colored.WithRawColors())
-	// Create this fixed bitmap once and reuse it across Build and Paint calls.
-	img := image.NewRGBA(image.Rect(0, 0, 280, 110))
-	for y := 0; y < 110; y++ {
-		for x := 0; x < 280; x++ {
-			img.SetRGBA(x, y, color.RGBA{R: byte(40 + x*150/280), G: byte(70 + y*100/110), B: 180, A: 255})
-		}
-	}
-	d.bitmap = img
-	return nil
+// graphicsDemo owns this feature for the lifetime of the gallery.
+// host is borrowed for shared assets and application operations.
+type graphicsDemo struct {
+	host        *demo
+	busy        ui.State[bool]
+	motion      *animation.Animation[float32]
+	motionValue ui.State[float32]
+	capture     ui.State[image.Image]
+	captureSize geometry.Size
 }
-func (d *demo) graphicsPage() ui.View {
+
+func (d *graphicsDemo) View() ui.View { return ui.Build(d.view) }
+
+func (d *graphicsDemo) view() ui.View {
 	icons := []ui.View{}
-	for _, source := range d.icons {
+	for _, source := range d.host.icons {
 		icons = append(icons, ui.Icon(source).Size(36).Style("demo-swatch"))
 	}
 	return page("graphics", resource.Graphics(), resource.GraphicsHint(),
-		section(resource.ImagesTitle(), newWordmark(d.wordmark).ID("wordmark"), ui.Image(d.bitmap).MaxWidth(280).MaxHeight(110), ui.HBox(icons...).Spacing(24), ui.Label(resource.IconsHint())),
+		section(resource.ImagesTitle(), newWordmark(d.host.wordmark).ID("wordmark"), ui.Image(d.host.bitmap).MaxWidth(280).MaxHeight(110), ui.HBox(icons...).Spacing(24), ui.Label(resource.IconsHint())),
 		section(resource.DrawingTitle(), newCanvas().ID("canvas").MinHeight(190).MaxHeight(190),
 			ui.Button(resource.Capture()).ID("capture-canvas").OnClick(func() {
-				w := d.app.FindWidget("main", "canvas")
+				w := d.host.app.FindWidget("main", "canvas")
 				if w == nil {
 					return
 				}
 				img, err := gui.RenderWidget(w, 0)
 				if err == nil {
-					d.capture = img
+					d.capture.Set(img)
 					d.captureSize = w.Rect().Size
 				}
-				d.result(resource.Offscreen(), err)
-			}), ui.Image(d.capture).ID("capture-preview").ContentSize(d.captureSize.Width, d.captureSize.Height).Visible(d.capture != nil).MaxHeight(190)),
+				d.host.result(resource.Offscreen(), err)
+			}), ui.Image(d.capture.Get()).ID("capture-preview").ContentSize(d.captureSize.Width, d.captureSize.Height).Visible(d.capture.Get() != nil).MaxHeight(190)),
 		section(resource.AnimationTitle(),
-			ui.HWrap(ui.Button(resource.Animate()).ID("animate").OnClick(d.animate), ui.Button(resource.Stop()).ID("stop-animation").OnClick(func() { d.motion.Stop(); d.busy = false; d.report(resource.AnimationStopped()) }),
+			ui.HWrap(ui.Button(resource.Animate()).ID("animate").OnClick(d.animate), ui.Button(resource.Stop()).ID("stop-animation").OnClick(func() { d.motion.Stop(); d.busy.Set(false); d.host.report(resource.AnimationStopped()) }),
 				ui.Button(resource.Finish()).OnClick(d.motion.Finish),
-				wui.Switch(resource.Busy()).Checked(d.busy).OnChange(func(v bool) { d.busy = v; d.app.RequestUpdate() })).Spacing(12).LineSpacing(8),
+				wui.Switch(resource.Busy()).Checked(d.busy.Get()).OnChange(func(v bool) { d.busy.Set(v) })).Spacing(12).LineSpacing(8),
 			ui.Build(func() ui.View {
 				return ui.VBox(
-					ui.HBox(ui.Icon(d.logo).ID("animated-icon").Size(d.motionValue.Get())).
+					ui.HBox(ui.Icon(d.host.logo).ID("animated-icon").Size(d.motionValue.Get())).
 						MainAlign(layout.MainCenter).CrossAlign(layout.CrossCenter).MinHeight(88).MaxHeight(88),
-					wui.ProgressBar((d.motionValue.Get()-32)/48).Indeterminate(d.busy),
-					wui.ProgressBar((d.motionValue.Get()-32)/48).Shape(wui.ProgressCircular).Indeterminate(d.busy).MinSize(64, 64).MaxSize(64, 64),
+					wui.ProgressBar((d.motionValue.Get()-32)/48).Indeterminate(d.busy.Get()),
+					wui.ProgressBar((d.motionValue.Get()-32)/48).Shape(wui.ProgressCircular).Indeterminate(d.busy.Get()).MinSize(64, 64).MaxSize(64, 64),
 					ui.Label(fmt.Sprintf(resource.AnimationValue(), d.motionValue.Get()))).Spacing(12).CrossAlign(layout.CrossStretch)
 			}).Observe(&d.motionValue)),
 	)
@@ -190,12 +156,12 @@ func (v *wordmarkView) Update(_ ui.BuildContext, widget gui.Widget) {
 }
 func (*wordmarkView) Unmount(ui.BuildContext, gui.Widget) {}
 
-func (d *demo) animate() {
+func (d *graphicsDemo) animate() {
 	target := float32(80)
 	if d.motionValue.Get() > 55 {
 		target = 32
 	}
-	d.result(resource.StartAnimation(), d.motion.AnimateTo(d.app.FindWindow("main"), target, 650*time.Millisecond, animation.EaseOutCubic))
+	d.host.result(resource.StartAnimation(), d.motion.AnimateTo(d.host.app.FindWindow("main"), target, 650*time.Millisecond, animation.EaseOutCubic))
 }
 
 type canvasWidget struct{ gui.WidgetBase }
@@ -229,3 +195,11 @@ func newCanvas() *canvasView                            { v := new(canvasView); 
 func (*canvasView) Mount(ui.BuildContext) gui.Widget    { return new(canvasWidget) }
 func (*canvasView) Update(ui.BuildContext, gui.Widget)  {}
 func (*canvasView) Unmount(ui.BuildContext, gui.Widget) {}
+
+func newGraphicsDemo(host *demo) *graphicsDemo {
+	d := &graphicsDemo{host: host, motionValue: ui.MakeState(float32(32))}
+	d.motion = animation.New(float32(32), animation.Float32)
+	d.motion.ConnectUpdate(d.motionValue.Set)
+
+	return d
+}

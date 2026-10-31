@@ -1,5 +1,19 @@
 # Plan
 
+## Demo v0.4 后能力更新（2026-10-31）
+
+设计见 [DesignDemo](DesignDemo.md)。
+
+- [x] 功能对象、状态归属与局部更新；保留模型、历史和跨窗口协调。
+  页面持有 State／模型，宿主只管理共享资源、导航与窗口集合；独立 View 构建无业务副作用。
+  Demo 包内和 race 通过，既有语言／Logo／列宽／标签归属测试按新对象路径保留。
+- [x] 第一阶段 Ubuntu 22.04.5 amd64、独立 Xvnc :85／xfwm4 4.16.1，OpenGL 1x：
+  导航、滚动条拖至 100、切页后保留；文本选区、粘贴、撤销／重做、F5 及切页后
+  内容／历史保留，通过独立会话剪贴板回读断言。原生键盘 ASCII 输入在该无 IME
+  会话未提交文字，未据此算作输入法验收；未扩大本轮到平台输入修复。
+- [ ] Label、Dialog／Toast／Modal、DrawingArea、数据视图与四边 Padding 展示。
+- [ ] 本机独立 X11、全仓／race／目标编译验证，按阶段提交。
+
 ## Image 帧内更新与 DrawingArea 复用（2026-10-31）
 
 设计见 [DesignImage](DesignImage.md)／[DesignDrawingArea](DesignDrawingArea.md)。
