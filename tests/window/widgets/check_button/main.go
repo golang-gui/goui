@@ -12,7 +12,8 @@
 //  1. 点击 Independent 的方框和文字均能切换；按下未抬起不切换，移出后抬起
 //     不切换。Mixed 点击变勾选；Mixed 按钮静默恢复部分选中，不增加 Changes。
 //  2. 选择 Radio B/C，原成员先取消，新成员选中；重复点击已选成员不取消。
-//     Clear 清空两组，后续仍可选择。Toggle 独立切换；Mode A/B 是互斥按钮。
+//     Clear 清空两组，后续仍可选择。Toggle 通过 Group(nil) 独立切换，不改变
+//     Mode A/B 的互斥选择；切换 Toggle 后 Rebuild，再 Check/F6 仍应通过。
 //  3. Tab/Shift+Tab 导航；Space/Enter 切换，长按只切换一次。只有键盘焦点有
 //     2 DIP 柔和边框，鼠标点击没有焦点装饰。Disabled 不响应，也不参与 Tab。
 //     Disable 禁用 Independent，启用后恢复操作与焦点参与。
@@ -149,8 +150,8 @@ func main() {
 				if id[:min(len(id), 6)] == "radio-" && (b.Group() != radioGroup || info.Role != widgets.RoleRadioButton) {
 					panic("radio group/role mismatch")
 				}
-				if id == "toggle" && info.Role != widgets.RoleToggleButton {
-					panic("toggle role mismatch")
+				if id == "toggle" && (b.Group() != nil || info.Role != widgets.RoleToggleButton) {
+					panic("toggle independence/role mismatch")
 				}
 			}
 			if (radioGroup.Checked() == nil) != (radio == 0) || (modeGroup.Checked() == nil) != (mode == 0) {
@@ -214,7 +215,7 @@ func main() {
 						).Spacing(12)),
 						wui.CheckButtonGroup(ui.HBox(
 							ui.Button("Toggle").ID("ordinary").OnClick(func() { ordinaryClicks++; update() }),
-							wui.CheckButton("Toggle").ID("toggle").Appearance(wui.CheckAppearanceButton).Checked(toggle).OnChange(func(s wui.CheckState) { toggle = s == wui.CheckChecked; changes++; update() }),
+							wui.CheckButton("Toggle").ID("toggle").Group(nil).Appearance(wui.CheckAppearanceButton).Checked(toggle).OnChange(func(s wui.CheckState) { toggle = s == wui.CheckChecked; changes++; update() }),
 							wui.CheckButton("Mode A").ID("mode-1").Appearance(wui.CheckAppearanceButton).Checked(mode == 1).OnChange(choice(&mode, 1)),
 							wui.CheckButton("Mode B").ID("mode-2").Appearance(wui.CheckAppearanceButton).Checked(mode == 2).OnChange(choice(&mode, 2)),
 						).Spacing(12)),
