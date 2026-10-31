@@ -9,10 +9,26 @@
   Demo 包内和 race 通过，既有语言／Logo／列宽／标签归属测试按新对象路径保留。
 - [x] 第一阶段 Ubuntu 22.04.5 amd64、独立 Xvnc :85／xfwm4 4.16.1，OpenGL 1x：
   导航、滚动条拖至 100、切页后保留；文本选区、粘贴、撤销／重做、F5 及切页后
-  内容／历史保留，通过独立会话剪贴板回读断言。原生键盘 ASCII 输入在该无 IME
-  会话未提交文字，未据此算作输入法验收；未扩大本轮到平台输入修复。
-- [ ] Label、Dialog／Toast／Modal、DrawingArea、数据视图与四边 Padding 展示。
-- [ ] 本机独立 X11、全仓／race／目标编译验证，按阶段提交。
+  内容／历史保留，通过独立会话剪贴板回读断言。初次继承的 fcitx 环境未提交模拟
+  ASCII 输入；隔离为 XMODIFIERS=@im=none、GTK_IM_MODULE=simple 后原生键入和
+  回读通过。这是测试会话配置修正，不代表中文输入法验收或平台输入修复。
+- [x] Label、Dialog／Toast／Modal、DrawingArea、数据视图、四边 Padding 与 Show
+  激活已有窗口展示；普通 Box 直接绘制卡片，标签窗口使用 ComposeView 完成钩子。
+  新文案八语言齐全，格式化句子样式有解析断言；既有语言、Logo、列宽与历史回归保留。
+- [x] 独立 Xvnc :85，OpenGL 1x：Label 格式、复制为纯文字、输入绑定预览、中英／
+  亮暗／主题色、Tree 激活、Table 列显隐与扩展通过；Dialog 阻挡侧栏和 F5，Tab 保持
+  模态范围；标签跨窗移交保留输入，关闭确认归属目标窗；Show 激活辅助窗有原生断言。
+- [x] 独立 Xvnc :86（3000×2000）、xfwm4，Software 1x／OpenGL 2x：实际 Integrated
+  窗口的 Dialog 与亮暗绘制通过；Software 检查 Toast 替换后重新计时及最终消失。
+  两后端像素断言：重新生成改变内容，帧模式持续变化，停止后间隔采样完全相同。
+  OpenGL 2x 实际拖出标签创建新窗口并正常关闭，无 panic。:85 合成关闭时回退 Native，
+  :86 具备合成能力；2x 是应用倍率覆盖，不是混合 DPI。
+- [x] Demo 包内／race／vet 通过；仅已跟踪源码加本轮修改的独立副本在 DISPLAY=:85 下
+  `go test ./... -count=1` 通过。Windows amd64／macOS arm64、CGO_ENABLED=0 的 Demo
+  包及测试目标编译通过，未执行远端桌面。原工作区全仓命令因未跟踪旧例程的 Padding／
+  BuildContext／分组旧 API 编译失败，未跟踪 ui/timer_native_test.go 也报告计时断言失败；
+  均保留，既有测试改写的未跟踪 PNG 已备份恢复。减少更新范围不作为帧率提升结论。
+- [x] 按功能对象与局部更新、新能力展示两阶段提交；不修改平台／GUI／UI 内核。
 
 ## Image 帧内更新与 DrawingArea 复用（2026-10-31）
 

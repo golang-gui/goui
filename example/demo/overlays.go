@@ -11,17 +11,17 @@ import (
 	"github.com/golang-gui/goui/mlang"
 	"github.com/golang-gui/goui/theme/modern"
 	"github.com/golang-gui/goui/ui"
+	wui "github.com/golang-gui/goui/widgets/ui"
 )
 
 // overlaysDemo owns this feature for the lifetime of the gallery.
 // host is borrowed for shared assets and application operations.
 type overlaysDemo struct {
-	host       *demo
-	panel      ui.State[bool]
-	mask       ui.State[bool]
-	toast      ui.State[string]
-	toastTimer *ui.Timer
-	popup      gui.Popover
+	host  *demo
+	panel ui.State[bool]
+	mask  ui.State[bool]
+	popup gui.Popover
+	toast wui.ToastHandle
 }
 
 func (d *overlaysDemo) View() ui.View { return ui.Build(d.view) }
@@ -43,26 +43,41 @@ func (d *overlaysDemo) view() ui.View {
 						d.popup.Hide()
 					}
 					d.mask.Set(true)
-					d.host.app.RequestUpdate()
 				}),
 				ui.Button(resource.ToastButton()).ID("open-toast").OnClick(func() { d.showToast(resource.ToastHint()) })).Spacing(12).LineSpacing(8),
 			ui.TextInput().BindText(&d.host.input), ui.Button(resource.BackgroundAction()).OnClick(func() { d.host.report(resource.BackgroundClicked()) }),
-			ui.Label(resource.MaskHint())),
+			ui.Label(resource.ModalHint()).WrapMode(gui.WrapWordChar)),
 		section(resource.ScrollableBackground(), ui.VBox(chipsCopy(25)...).Spacing(12)),
 	)
-	panel := surface(ui.VBox(ui.Label(resource.Search()).Style("demo-subheading"), ui.TextInput().BindText(&d.host.input), ui.Button(resource.ClosePanel()).OnClick(func() { d.panel.Set(false) })).Padding(16).Spacing(12).CrossAlign(layout.CrossStretch)).Style(modern.Card).MinWidth(300).MaxWidth(330).Visible(d.panel.Get())
-	dialog := surface(ui.VBox(ui.Label(resource.ConfirmQuestion()).Style("demo-subheading"), ui.Label(resource.ConfirmHint()),
-		ui.HBox(ui.Button(resource.Cancel()).OnClick(func() { d.mask.Set(false) }), ui.Button().Content(ui.Label(resource.Confirm()).Style(modern.PrimaryContent)).Style(modern.Primary).OnClick(func() { d.mask.Set(false); d.showToast(resource.Confirmed()) })).Spacing(12).MainAlign(layout.MainEnd)).Padding(24).Spacing(16).CrossAlign(layout.CrossStretch)).Style(modern.Card).MaxWidth(450)
-	mask := ui.Overlay(surface(nil).Style("demo-mask"), ui.OverlayItem(dialog).OnPosition(center)).Visible(d.mask.Get())
-	toast := surface(ui.HBox(ui.Label(d.toast.Get())).Padding(12)).Style(modern.Card).Visible(d.toast.Get() != "").MinHeight(48).MinWidth(280)
+	panel := ui.VBox(ui.Label(resource.Search()).Style("demo-subheading"), ui.TextInput().BindText(&d.host.input), ui.Button(resource.ClosePanel()).OnClick(func() { d.panel.Set(false) })).Padding(16).Spacing(12).CrossAlign(layout.CrossStretch).Style(modern.Card).MinWidth(300).MaxWidth(330).Visible(d.panel.Get())
 	return ui.Overlay(base,
 		ui.OverlayItem(panel).OnPosition(func(a, s geometry.Size, p *geometry.Point) { *p = geometry.Point{X: max(0, a.Width-s.Width-20), Y: 20} }),
-		ui.OverlayItem(mask).Fill(true),
-		ui.OverlayItem(toast).OnPosition(func(a, s geometry.Size, p *geometry.Point) {
-			*p = geometry.Point{X: max(0, (a.Width-s.Width)/2), Y: max(0, a.Height-s.Height-20)}
-		}),
 	).ID("page-overlays").MainWeight(1)
 }
+
+func (d *overlaysDemo) dialog() ui.View {
+	if !d.mask.Get() {
+		return nil
+	}
+	return wui.Dialog(ui.VBox(
+		ui.Label(resource.ConfirmQuestion()).Style("demo-subheading"),
+		ui.Label(resource.ModalHint()).WrapMode(gui.WrapWordChar),
+		ui.TextInput().ID("dialog-input").Placeholder(resource.InputPlaceholder()),
+		ui.HBox(ui.Button(resource.Cancel()).ID("dialog-cancel").OnClick(d.closeDialog),
+			ui.Button().ID("dialog-confirm").Content(ui.Label(resource.Confirm()).Style(modern.PrimaryContent)).Style(modern.Primary).OnClick(func() { d.closeDialog(); d.showToast(resource.Confirmed()) })).Spacing(12).MainAlign(layout.MainEnd),
+	).Spacing(16).CrossAlign(layout.CrossStretch).MaxWidth(450)).Padding(24).OnCloseRequest(d.closeDialog).ID("demo-dialog")
+}
+func (d *overlaysDemo) closeDialog() { d.mask.Set(false) }
+func (d *overlaysDemo) stop() {
+	_ = d.toast.Close() // Best effort: the declaration can already have been released.
+	if d.popup != nil {
+		d.popup.Destroy()
+		d.popup = nil
+	}
+	d.panel.Set(false)
+	d.mask.Set(false)
+}
+
 func (d *overlaysDemo) openPopover() {
 	if d.popup != nil {
 		d.popup.Destroy()
@@ -105,13 +120,9 @@ func (d *overlaysDemo) openPopover() {
 }
 
 func (d *overlaysDemo) showToast(text string) {
-	d.toast.Set(text)
-	if d.toastTimer != nil {
-		d.toastTimer.Stop()
+	if err := d.toast.Show(ui.Label(text).WrapMode(gui.WrapWordChar), 3*time.Second); err != nil {
+		d.host.result(resource.ToastButton(), err)
 	}
-	d.toastTimer = d.host.app.TimeoutFunc(3*time.Second, func() { d.toast.Set(""); d.toastTimer = nil })
 }
 
-func newOverlaysDemo(host *demo) *overlaysDemo {
-	return &overlaysDemo{host: host}
-}
+func newOverlaysDemo(host *demo) *overlaysDemo { return &overlaysDemo{host: host} }

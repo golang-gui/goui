@@ -10,7 +10,6 @@ import (
 	"github.com/golang-gui/goui/example/demo/resource"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
-	"github.com/golang-gui/goui/theme/modern"
 	"github.com/golang-gui/goui/ui"
 	"github.com/golang-gui/goui/widgets"
 	wui "github.com/golang-gui/goui/widgets/ui"
@@ -84,11 +83,18 @@ func (d *tabsDemo) View() ui.View {
 }
 
 func (d *tabsDemo) tabWorkspace(w *tabWindow) *ui.OverlayView {
-	confirm := surface(ui.VBox(ui.Label(resource.CloseTabQuestion()).Style("demo-subheading"), ui.Label(resource.CloseTabHint()),
-		ui.HBox(ui.Button(resource.Cancel()).OnClick(func() { w.closing = ""; d.host.app.RequestUpdate() }), ui.Button(resource.Close()).OnClick(func() { d.closeTab(w) })).Spacing(12)).Padding(20).Spacing(12)).Style(modern.Card).MaxWidth(440)
-	layer := ui.Overlay(surface(nil).Style("demo-mask"), ui.OverlayItem(confirm).OnPosition(center)).ID("tab-close-confirm").Visible(w.closing != "")
-	return ui.Overlay(d.tabContents(w), ui.OverlayItem(layer).Fill(true))
+	var confirm ui.View
+	if w.id != "main" && w.closing != "" {
+		confirm = d.confirmClose(w)
+	}
+	return ui.Overlay(d.tabContents(w), ui.OverlayItem(confirm).Fill(true).Modal(true))
 }
+func (d *tabsDemo) confirmClose(w *tabWindow) ui.View {
+	return wui.Dialog(ui.VBox(ui.Label(resource.CloseTabQuestion()).Style("demo-subheading"), ui.Label(resource.CloseTabHint()).WrapMode(gui.WrapWordChar),
+		ui.HBox(ui.Button(resource.Cancel()).OnClick(func() { w.closing = ""; d.host.app.RequestUpdate() }), ui.Button(resource.Close()).OnClick(func() { d.closeTab(w) })).Spacing(12),
+	).Spacing(12).MaxWidth(440)).Padding(20).OnCloseRequest(func() { w.closing = ""; d.host.app.RequestUpdate() }).ID("tab-close-confirm")
+}
+
 func (d *tabsDemo) requestTabClose(w *tabWindow, id string) {
 	if d.tabState(w.id) != w || !slices.Contains(w.pages, id) {
 		return
@@ -162,7 +168,7 @@ func (d *tabsDemo) newTabWindow() {
 	d.addTab(w)
 }
 func (d *tabsDemo) tabWindowView(w *tabWindow) ui.WindowView {
-	content := surface(d.tabWorkspace(w)).Style("demo-background")
+	content := afterUpdate(d.tabWorkspace(w).Style("demo-background"), nil)
 	if d.pendingDetach != nil && d.detachWindow == w.id {
 		content.after = func() { d.prepareDetach(w) }
 	}

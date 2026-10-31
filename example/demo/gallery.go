@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/example/demo/resource"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/icon/svg"
@@ -12,6 +13,7 @@ import (
 	"github.com/golang-gui/goui/style"
 	"github.com/golang-gui/goui/theme/modern"
 	"github.com/golang-gui/goui/ui"
+	wui "github.com/golang-gui/goui/widgets/ui"
 )
 
 var pageNames = []mlang.Getter{resource.Basic, resource.Text, resource.Layout, resource.Data, resource.Tabs, resource.Overlays, resource.Graphics, resource.System, resource.Windows}
@@ -66,20 +68,12 @@ func (d *demo) result(operation string, err error) {
 	}
 }
 func (d *demo) stopActivities() {
-	d.graphics.motion.Stop()
-	d.graphics.busy.Set(false)
+	d.graphics.stop()
 	if d.system.tickTimer != nil {
 		d.system.tickTimer.Stop()
 		d.system.tickTimer = nil
 	}
-	if d.overlays.toastTimer != nil {
-		d.overlays.toastTimer.Stop()
-		d.overlays.toastTimer = nil
-	}
-	if d.overlays.popup != nil {
-		d.overlays.popup.Destroy()
-		d.overlays.popup = nil
-	}
+	d.overlays.stop()
 }
 func (d *demo) navigate(index int) {
 	if index == d.page.Get() {
@@ -92,12 +86,7 @@ func (d *demo) navigate(index int) {
 		d.tabs.pendingDetach = nil
 	}
 	d.stopActivities()
-	{
-		d.page.Set(index)
-		d.overlays.panel.Set(false)
-		d.overlays.mask.Set(false)
-		d.overlays.toast.Set("")
-	}
+	d.page.Set(index)
 	d.report(fmt.Sprintf(resource.CurrentPageFormat(), pageNames[index]()))
 }
 
@@ -119,16 +108,20 @@ func (d *demo) build(app ui.App) ui.RootView {
 	).CrossAlign(layout.CrossStretch)
 	windows := []ui.WindowView{ui.Window("main").Title(resource.Title()).Chrome(ui.WindowChromeIntegrated).Size(1120, 800).MinSize(820, 600).Center(true).
 		Shortcuts(ui.Shortcut(ui.KeyF5).OnActivate(func() { app.RequestUpdate(); d.report(resource.Refreshed()) })).
-		OnDestroy(func() { d.stopActivities(); d.system.closeFiles(); app.Quit() }).Content(surface(content).Style("demo-background"))}
+		OnDestroy(func() { d.stopActivities(); d.system.closeFiles(); app.Quit() }).Content(ui.Overlay(content.Style("demo-background"),
+		ui.OverlayItem(ui.Build(d.mainDialog)).Fill(true).Modal(true),
+		ui.OverlayItem(wui.Toast(&d.overlays.toast).ID("demo-toast")).OnPosition(func(a, s geometry.Size, p *geometry.Point) {
+			*p = geometry.Point{X: max(0, (a.Width-s.Width)/2), Y: max(0, a.Height-s.Height-48)}
+		}),
+	))}
 	for _, window := range d.tabs.tabWindows[1:] {
 		windows = append(windows, d.tabs.tabWindowView(window))
 	}
 	return ui.Root().StyleSheet(style.Sheet(rules...)).Windows(windows...)
 }
 
-// Window has already allocated the root's content area. Reserve window edges
-// only once; navigation and pages keep their own padding, and ScrollView fills
-// the remaining area.
+// Window owns its decoration and hit testing. Navigation and pages keep their
+// own padding, and ScrollView fills the remaining content area.
 func demoBody(side, content ui.View) *ui.BoxView {
 	return ui.HBox(side, content).CrossAlign(layout.CrossStretch).MainWeight(1)
 }
@@ -137,7 +130,7 @@ func heading(title, description string) []ui.View {
 	return []ui.View{ui.Label(title).Style("demo-heading"), ui.Label(description).WrapMode(gui.WrapWordChar).Style(modern.MutedText)}
 }
 func section(title string, children ...ui.View) ui.View {
-	return surface(ui.VBox(append([]ui.View{ui.Label(title).Style("demo-subheading")}, children...)...).Spacing(12).Padding(16).CrossAlign(layout.CrossStretch)).Style(modern.Card)
+	return ui.VBox(append([]ui.View{ui.Label(title).Style("demo-subheading")}, children...)...).Spacing(12).Padding(16).CrossAlign(layout.CrossStretch).Style(modern.Card)
 }
 func page(id, title, description string, children ...ui.View) ui.View {
 	scroll := ui.ScrollView(ui.VBox(append(heading(title, description), children...)...).Spacing(16).Padding(16).CrossAlign(layout.CrossStretch)).Direction(ui.ScrollVertical).ID("page-" + id).MainWeight(1)
@@ -187,4 +180,11 @@ func (d *demo) sidebar() ui.View {
 
 		return ui.VBox(side...).Spacing(8).Padding(12).CrossAlign(layout.CrossStretch).Style(modern.Sidebar).ID("demo-sidebar").MinWidth(190).MaxWidth(190)
 	})
+}
+
+func (d *demo) mainDialog() ui.View {
+	if d.page.Get() == 4 && d.tabs.tabWindows[0].closing != "" {
+		return d.tabs.confirmClose(d.tabs.tabWindows[0])
+	}
+	return d.overlays.dialog()
 }

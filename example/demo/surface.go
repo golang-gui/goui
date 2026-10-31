@@ -1,9 +1,7 @@
 package main
 
 import (
-	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
-	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/ui"
 )
 
@@ -36,25 +34,21 @@ func (w *surfaceWidget) Paint(p gui.Painter) {
 	gui.PaintWidgetStyle(p, w, "widget")
 }
 
-type surfaceView struct {
-	ui.ViewBase[surfaceView]
+// afterView adds a declarative completion hook without a layout Widget.
+type afterView struct {
+	ui.ComposeBase[afterView]
 	child ui.View
 	after func()
 }
 
-func surface(child ui.View) *surfaceView { v := &surfaceView{child: child}; v.Self = v; return v }
-func (v *surfaceView) Mount(ui.BuildContext) gui.Widget {
-	w := new(surfaceWidget)
-	w.SetLayoutManager(layout.NewFillLayout())
-	return w
+func afterUpdate(child ui.View, fn func()) *afterView {
+	v := &afterView{child: child, after: fn}
+	v.Self = v
+	return v
 }
-func (v *surfaceView) Update(ctx ui.BuildContext, w gui.Widget) {
-	ctx.UpdateChild(w.(*surfaceWidget), v.child)
+func (v *afterView) Build(ctx ui.BuildContext) ui.View {
 	if v.after != nil {
 		ctx.AfterUpdate(v.after)
 	}
-}
-func (*surfaceView) Unmount(ui.BuildContext, gui.Widget) {}
-func center(available, size geometry.Size, p *geometry.Point) {
-	*p = geometry.Point{X: max(0, (available.Width-size.Width)/2), Y: max(0, (available.Height-size.Height)/2)}
+	return v.child
 }

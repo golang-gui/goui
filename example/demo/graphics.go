@@ -8,12 +8,14 @@ import (
 
 	"github.com/golang-gui/goui/animation"
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/example/demo/resource"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/icon/svg"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/style"
+	"github.com/golang-gui/goui/theme/modern"
 	"github.com/golang-gui/goui/ui"
 	wui "github.com/golang-gui/goui/widgets/ui"
 )
@@ -21,12 +23,17 @@ import (
 // graphicsDemo owns this feature for the lifetime of the gallery.
 // host is borrowed for shared assets and application operations.
 type graphicsDemo struct {
-	host        *demo
-	busy        ui.State[bool]
-	motion      *animation.Animation[float32]
-	motionValue ui.State[float32]
-	capture     ui.State[image.Image]
-	captureSize geometry.Size
+	host              *demo
+	busy              ui.State[bool]
+	motion            *animation.Animation[float32]
+	motionValue       ui.State[float32]
+	capture           ui.State[image.Image]
+	captureSize       geometry.Size
+	drawingGeneration ui.State[int]
+	drawingFrames     ui.State[bool]
+	drawingDirty      bool
+	frameConnection   signal.Handle
+	drawingStarted    time.Time
 }
 
 func (d *graphicsDemo) View() ui.View { return ui.Build(d.view) }
@@ -51,6 +58,7 @@ func (d *graphicsDemo) view() ui.View {
 				}
 				d.host.result(resource.Offscreen(), err)
 			}), ui.Image(d.capture.Get()).ID("capture-preview").ContentSize(d.captureSize.Width, d.captureSize.Height).Visible(d.capture.Get() != nil).MaxHeight(190)),
+		d.cachedDrawing(),
 		section(resource.AnimationTitle(),
 			ui.HWrap(ui.Button(resource.Animate()).ID("animate").OnClick(d.animate), ui.Button(resource.Stop()).ID("stop-animation").OnClick(func() { d.motion.Stop(); d.busy.Set(false); d.host.report(resource.AnimationStopped()) }),
 				ui.Button(resource.Finish()).OnClick(d.motion.Finish),
@@ -62,7 +70,7 @@ func (d *graphicsDemo) view() ui.View {
 					wui.ProgressBar((d.motionValue.Get()-32)/48).Indeterminate(d.busy.Get()),
 					wui.ProgressBar((d.motionValue.Get()-32)/48).Shape(wui.ProgressCircular).Indeterminate(d.busy.Get()).MinSize(64, 64).MaxSize(64, 64),
 					ui.Label(fmt.Sprintf(resource.AnimationValue(), d.motionValue.Get()))).Spacing(12).CrossAlign(layout.CrossStretch)
-			}).Observe(&d.motionValue)),
+			})),
 	)
 }
 
@@ -173,7 +181,7 @@ func (w *canvasWidget) Snapshot() gui.WidgetInfo {
 	return i
 }
 func (w *canvasWidget) Paint(p gui.Painter) {
-	s := gui.ResolveStyle("demo-swatch", style.PartDefault, style.Normal)
+	s := gui.WidgetStyle(w, "demo-swatch", style.PartDefault)
 	c, _ := s.ForegroundColor()
 	fg := graphics.ColorOf(c)
 	width := w.Rect().Width
@@ -202,4 +210,58 @@ func newGraphicsDemo(host *demo) *graphicsDemo {
 	d.motion.ConnectUpdate(d.motionValue.Set)
 
 	return d
+}
+
+func (d *graphicsDemo) cachedDrawing() ui.View {
+	generation := d.drawingGeneration.Get()
+	return section(resource.CachedDrawing(),
+		ui.Label(resource.CachedDrawingHint()).WrapMode(gui.WrapWordChar).Style(modern.MutedText),
+		ui.DrawingArea(func(p gui.Painter, size geometry.Size) {
+			d.drawingDirty = false
+			phase := float32(generation) * .5
+			if d.drawingFrames.Peek() {
+				phase += float32(time.Since(d.drawingStarted).Seconds()) * 2
+			}
+			p.FillRoundRect(geometry.Rectangle{Size: size}.Inset(1), 12, graphics.RGBA(40, 115, 190, 150))
+			x := size.Width/2 + float32(math.Sin(float64(phase)))*max(0, size.Width/2-50)
+			p.FillEllipse(geometry.Point{X: x, Y: size.Height / 2}, 30, 30, graphics.RGBA(245, 170, 55, 220))
+			p.Save()
+			p.SetClipRect(geometry.Rect(16, 16, max(0, size.Width-32), max(0, size.Height-32)))
+			p.SetTransform(geometry.Translate(size.Width*.65, size.Height/2).Rotate(phase * 30))
+			p.DrawRect(geometry.Rect(-25, -25, 50, 50), 3, graphics.RGB(240, 245, 255))
+			p.Restore()
+			p.ClearPath(graphics.MoveTo(size.Width-45, 16).LineTo(size.Width-16, 16).LineTo(size.Width-16, 45).Close())
+		}).ID("cached-drawing").MinHeight(150).MaxHeight(150).OnShouldDraw(func(redraw *bool) { *redraw = *redraw || d.drawingDirty || d.drawingFrames.Peek() }),
+		ui.HWrap(ui.Button(resource.RegenerateDrawing()).ID("drawing-regenerate").OnClick(d.regenerateDrawing),
+			wui.Switch(resource.DrawingFrames()).ID("drawing-frames").Checked(d.drawingFrames.Get()).OnChange(d.setDrawingFrames),
+			ui.Label(fmt.Sprintf(resource.DrawingGeneration(), generation)),
+		).Spacing(12).LineSpacing(8),
+	)
+}
+func (d *graphicsDemo) regenerateDrawing() {
+	d.drawingDirty = true
+	d.drawingGeneration.Set(d.drawingGeneration.Peek() + 1)
+}
+func (d *graphicsDemo) setDrawingFrames(on bool) {
+	d.drawingFrames.Set(on)
+	if d.frameConnection != nil {
+		d.frameConnection.Disconnect()
+		d.frameConnection = nil
+	}
+	if !on {
+		return
+	}
+	w := d.host.app.FindWindow("main")
+	if w == nil {
+		d.drawingFrames.Set(false)
+		return
+	}
+	d.drawingStarted = time.Now()
+	d.frameConnection = w.ConnectFrame(func(time.Time) { _ = w.RequestPaint() })
+	_ = w.RequestPaint()
+}
+func (d *graphicsDemo) stop() {
+	d.motion.Stop()
+	d.busy.Set(false)
+	d.setDrawingFrames(false)
 }
