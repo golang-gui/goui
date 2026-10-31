@@ -1,5 +1,28 @@
 # Plan
 
+## ScrollView 缩放与重测几何一致性（2026-10-31）
+
+设计见 [DesignScrollLayout](DesignScrollLayout.md)。
+
+- [x] 旧实现复现：独立 X11 拖动 Demo 窗口后滚动，内容宽度变化 8 DIP；包内
+  竖／横向重测回归和虚拟范围回归均在旧实现失败。
+- [x] 测量仅返回期望尺寸；Arrange 发布实际内容范围，保留虚拟内容延迟测量和可见请求。
+  不修改 Demo Padding、Root、UI 或公共接口。
+- [x] 包内滚动／外框／文本缩放回归、GUI／UI／widgets／Demo 通过，定向 race 和 vet
+  通过；仅已跟踪源码加本轮修改的隔离副本在 DISPLAY=:85 下全仓非缓存测试通过。
+  Windows amd64／macOS arm64 的 GUI／UI／widgets／窗口例程目标编译通过，未执行远端。
+- [x] Ubuntu 22.04.5 amd64、独立 Xvnc :85／xfwm4 4.16.1，Integrated，OpenGL 1x／
+  2x、Software 1x：缩放、F5 测量、F6 几何检查和滚轮通过；OpenGL 两组还检查亮暗，
+  1x 另验证长短内容切换不保留多余占位。旧实现对照同一窗口例程，F5 在滚动范围
+  不一致处报错，修正后通过。
+  例程固定 110 DIP 面板补齐 MaxHeight，保留原有 110 DIP 断言；之前仅 MinHeight
+  不能约束内容驱动测量后的高度，没有通过放宽断言掩盖失败。
+- [x] Demo 实际拖动边框后滚动，内容宽度前后均为 1188 DIP（视口外框 1196，扣条 8），
+  子项宽度也不变，仅 Y 偏移由 0 变为 -19；临时观察代码及截图留在仓库外。
+- [x] 原工作区 `DISPLAY=:85 go test ./...` 仍因既有未跟踪例程使用旧 Padding／
+  BuildContext／分组接口及未跟踪 ui/timer_native_test.go 的计时断言失败；已跟踪源码
+  副本通过，未迁移这些文件或修改断言。工作区测试改写的未跟踪 PNG 已恢复。
+
 ## Demo v0.4 后能力更新（2026-10-31）
 
 设计见 [DesignDemo](DesignDemo.md)。
