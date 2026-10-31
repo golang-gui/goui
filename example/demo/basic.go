@@ -104,7 +104,12 @@ func (d *basicDemo) view() ui.View {
 				OnSelected(func(i int) { d.fancyDrop.Set(i) }).OnOpenError(func(e error) { d.host.result(resource.OpenCustomDropDown(), e) }).Enabled(d.enabled.Get()),
 			ui.Label(resource.DisabledHint()).Style(modern.MutedText)),
 		section(resource.TextLayout(), ui.HBox(ui.Label("Baseline"), ui.TextInput().ID("baseline-input").BindText(&d.baselineInput).MinWidth(240)).CrossAlign(layout.CrossBaseline).Spacing(12),
-			ui.Label(resource.LabelHint())),
+			ui.Label(resource.LabelHint()),
+			ui.Label(resource.FormattedLabel()).ID("formatted-label").Selectable(true).WrapMode(gui.WrapWordChar).OnCopyError(func(err error) { d.host.result(resource.CopyText(), err) }),
+			ui.Label(resource.LabelSelectHint()).WrapMode(gui.WrapWordChar).Style(modern.MutedText),
+			ui.TextInput().ID("binding-input").BindText(&d.host.input),
+			ui.Label().ID("binding-preview").BindText(&d.host.input).Selectable(true).WrapMode(gui.WrapWordChar),
+		),
 	)
 }
 

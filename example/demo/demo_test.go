@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/example/demo/resource"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
@@ -94,10 +95,8 @@ func TestDemoTextSamplesPreserveModelsAndHistory(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	{
-		d.editor.wrap.Set(false)
-		d.editor.readonly.Set(true)
-	}
+	d.editor.wrap.Set(false)
+	d.editor.readonly.Set(true)
 	for _, index := range []int{0, 1, 2, 1} {
 		d.editor.selectTextSample(index)
 		want := []*ui.TextModel{regular, large, line}[index]
@@ -443,11 +442,9 @@ func TestLanguageChangePreservesDemoModelsAndState(t *testing.T) {
 	d.layout.username.Set("user name")
 	d.editor.text.SetText("user editor text")
 	d.editor.selection.Set(ui.TextSelection{Anchor: 1, Caret: 5})
-	{
-		d.basic.drop.Set(3)
-		d.basic.fancyDrop.Set(1)
-		d.page.Set(1)
-	}
+	d.basic.drop.Set(3)
+	d.basic.fancyDrop.Set(1)
+	d.page.Set(1)
 	d.data.tableWidths[0] = 257
 	d.data.table.setNote("file-000", "edited note")
 	d.data.table.sort("size", widgets.SortDescending)
@@ -1267,5 +1264,39 @@ func TestDemoTextEventsFollowDocumentAndDisconnect(t *testing.T) {
 	d.editor.text.SetText("after release")
 	if calls != 1 {
 		t.Fatal("断开后仍接收文档事件")
+	}
+}
+
+func TestDemoDialogAndDrawingActivityOwnership(t *testing.T) {
+	d, err := newDemo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.app = new(demoTestApp)
+	defer d.stopActivities()
+	if d.overlays.dialog() != nil {
+		t.Fatal("启动时不应创建对话框")
+	}
+	d.overlays.mask.Set(true)
+	if _, ok := d.mainDialog().(*wui.DialogView); !ok {
+		t.Fatal("主窗口没有使用正式 Dialog")
+	}
+	d.overlays.closeDialog()
+	if d.mainDialog() != nil {
+		t.Fatal("关闭后仍有对话框输出")
+	}
+	d.graphics.regenerateDrawing()
+	if !d.graphics.drawingDirty || d.graphics.drawingGeneration.Get() != 1 {
+		t.Fatal("内容请求未失效")
+	}
+	var frames signal.Signal0
+	calls := 0
+	d.graphics.frameConnection = frames.Connect(func() { calls++ })
+	d.graphics.drawingFrames.Set(true)
+	frames.Emit()
+	d.navigate(3)
+	frames.Emit()
+	if calls != 1 || d.graphics.frameConnection != nil || d.graphics.drawingFrames.Get() || d.graphics.motion.Running() {
+		t.Fatal("离开页面没有释放绘图帧订阅")
 	}
 }

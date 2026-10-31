@@ -1,5 +1,22 @@
 # Demo 开发发现的框架问题与使用体验
 
+## 2026-10-31 更新观察
+
+本轮只更新 Demo，没有新增框架缺陷修复或性能承诺。实际使用公开 API 得出的约束：
+
+- 普通 Box 已支持 PaintWidgetStyle，原有装饰性 surface View 可以删除；自定义 GUI
+  Bin 仅留作辅助窗口组合示范。此前关于“不绘制 Box 背景”的处理属于历史记录。
+- Demo 将模态承载放在主窗口外层 Overlay，才能隔离侧栏、工具栏与页面的输入；
+  浮动查找保持普通 Overlay。仅绘制遮罩不等于建立 ModalScope。
+- TextModel 的变更不是 State，需要用既有 Observable 接口桥接局部 Build；Demo
+  用小适配器监听文档事件，统计读取 Len／LineCount，不为每次输入取全文或重建应用。
+- 标签移交会改变窗口集合，继续使用应用更新和公开 AfterUpdate；没有为了彻底
+  局部化再创建窗口协调器。普通状态变化与窗口结构变化采用不同更新范围。
+- GUI ScrollBar 和通用 Popover 仍由标准 WidgetView／命令式接口桥接；本轮不为
+  展示增加 UI 特例。DrawingArea 直接使用已有 UI View 与 Image.Update 缓存机制。
+
+实际验证见 [Plan](Plan.md) 的 Demo v0.4 后能力更新；下方保留早期发现及处理。
+
 记录时间：2026-10-07。范围：`example/demo`；本机 Linux/X11、Xfwm4 合成桌面，
 Software 配置 1x/2x、OpenGL 配置 1x，具体操作和后端判定边界见 DesignDemo。
 只记录有代码依据或实际观察的事项，不把例程失误写成框架缺陷。

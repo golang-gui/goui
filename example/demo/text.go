@@ -79,10 +79,8 @@ func (d *textDemo) selectTextSample(index int) {
 		d.largeText[index-1] = ui.NewTextModel(largeTextSample(index))
 		d.events[d.largeText[index-1]] = &textEvents{model: d.largeText[index-1]}
 	}
-	{
-		d.textSample.Set(index)
-		d.selection.Set(ui.TextSelection{})
-	}
+	d.textSample.Set(index)
+	d.selection.Set(ui.TextSelection{})
 }
 
 func largeTextSample(index int) string {

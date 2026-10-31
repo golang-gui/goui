@@ -45,7 +45,7 @@ func (d *demo) styleRules(settings ui.Settings) []style.Rule {
 		style.Name("demo-title").ForegroundColor(fg).FontSize(fontSize).FontFamily(settings.FontFamily()),
 		style.Name("demo-heading").ForegroundColor(fg).FontSize(22).FontFamily(settings.FontFamily()),
 		style.Name("demo-subheading").ForegroundColor(fg).FontSize(16).FontFamily(settings.FontFamily()),
-		style.Name("demo-mask").BackgroundColor(color.NRGBA{A: 140}),
+		style.Name("demo-accent-text").ForegroundColor(accents[d.accent]),
 		style.Name("demo-swatch").ForegroundColor(accents[d.accent]),
 		style.Name("demo-cell-edit").ForegroundColor(fg).FontFamily(settings.FontFamily()).FontSize(fontSize).BackgroundColor(color.Transparent).Radius(0).BorderWidth(0),
 		style.Name("demo-cell-edit").State(style.Focused).BorderColor(accents[d.accent]).BorderWidth(1),

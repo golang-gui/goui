@@ -27,6 +27,8 @@ type dataDemo struct {
 	sortColumn           ui.State[string]
 	sortOrder            ui.State[widgets.SortOrder]
 	dataStart, dataRatio float32
+	showKind             ui.State[bool]
+	expandName           ui.State[bool]
 }
 
 type record struct {
@@ -115,6 +117,7 @@ func (d *dataDemo) view() ui.View {
 			d.treeSelection.Set(slices.Clone(ids))
 			d.host.report(fmt.Sprintf(resource.TreeSelected(), strings.Join(ids, ", ")))
 		}).
+		OnActivate(func(id string) { d.host.report(fmt.Sprintf(resource.NodeActivated(), d.tree.Item(id))) }).
 		ContextMenu(func(id string) []*ui.MenuItemView {
 			return []*ui.MenuItemView{
 				ui.MenuItem(fmt.Sprintf(resource.ViewNode(), d.tree.Item(id)), func() { d.host.report(fmt.Sprintf(resource.NodeID(), id)) }),
@@ -128,8 +131,8 @@ func (d *dataDemo) view() ui.View {
 			}
 		}).OnContextMenuError(func(e error) { d.host.result(resource.TreeMenu(), e) })
 	table := wui.TableView(d.table,
-		wui.TableColumn("name", resource.Name(), func(_ widgets.TableRow, r record) ui.View { return ui.HBox(ui.Label(r.Name)).Padding(8) }).Width(d.tableWidths[0]).OnResize(func(width float32) { d.tableWidths[0] = width }).MinWidth(100).Resizable(true).Sortable(true),
-		wui.TableColumn("kind", resource.Kind(), func(_ widgets.TableRow, r record) ui.View { return ui.HBox(ui.Label(r.Kind)).Padding(8) }).Width(d.tableWidths[1]).OnResize(func(width float32) { d.tableWidths[1] = width }).Resizable(true).Sortable(true),
+		wui.TableColumn("name", resource.Name(), func(_ widgets.TableRow, r record) ui.View { return ui.HBox(ui.Label(r.Name)).Padding(8) }).Width(d.tableWidths[0]).OnResize(func(width float32) { d.tableWidths[0] = width }).MinWidth(100).Resizable(true).Sortable(true).Expand(d.expandName.Get()),
+		wui.TableColumn("kind", resource.Kind(), func(_ widgets.TableRow, r record) ui.View { return ui.HBox(ui.Label(r.Kind)).Padding(8) }).Width(d.tableWidths[1]).OnResize(func(width float32) { d.tableWidths[1] = width }).Resizable(true).Sortable(true).Visible(d.showKind.Get()),
 		wui.TableColumn("size", resource.SizeKB(), func(_ widgets.TableRow, r record) ui.View { return ui.HBox(ui.Label(fmt.Sprint(r.Size))).Padding(8) }).Width(d.tableWidths[2]).OnResize(func(width float32) { d.tableWidths[2] = width }).Resizable(true).Sortable(true),
 		wui.TableColumn("note", resource.Note(), func(_ widgets.TableRow, r record) ui.View {
 			return ui.TextInput().Style("demo-cell-edit").Text(r.Note).OnText(func(value string) { d.table.setNote(r.ID, value) })
@@ -140,10 +143,8 @@ func (d *dataDemo) view() ui.View {
 			d.host.report(fmt.Sprintf(resource.TableSelected(), len(ids)))
 		}).
 		OnSortRequest(func(column string, order widgets.SortOrder) {
-			{
-				d.sortColumn.Set(column)
-				d.sortOrder.Set(order)
-			}
+			d.sortColumn.Set(column)
+			d.sortOrder.Set(order)
 			d.table.sort(column, order)
 		}).
 		ContextMenu(func(id, column string) []*ui.MenuItemView {
@@ -153,6 +154,7 @@ func (d *dataDemo) view() ui.View {
 	left := ui.VBox(ui.Label(resource.TreeActions()), ui.ScrollView(tree).MainWeight(1)).CrossAlign(layout.CrossStretch).Spacing(8).MinWidth(160)
 	right := ui.VBox(ui.Label(resource.TableActions()), table.MainWeight(1)).CrossAlign(layout.CrossStretch).Spacing(8).MinWidth(250)
 	return fullPage("data", resource.Data(), resource.DataHint(),
+		ui.HWrap(wui.Switch(resource.KindColumn()).ID("table-kind").Checked(d.showKind.Get()).OnChange(d.showKind.Set), wui.Switch(resource.ExpandColumn()).ID("table-expand").Checked(d.expandName.Get()).OnChange(d.expandName.Set)).Spacing(16).LineSpacing(8),
 		wui.VSplit(wui.HSplit(left, right).StartSize(d.dataStart).OnResize(func(start, _ float32) { d.dataStart = start }),
 			ui.VBox(ui.Label(resource.ListRows()), ui.ScrollView(ui.ListView(d.list, func(i int, text string) ui.View {
 				return ui.Button(text).OnClick(func() { d.host.report(fmt.Sprintf(resource.ListSelected(), i+1)) })
@@ -177,7 +179,7 @@ func setMember(ids []string, id string, present bool) []string {
 }
 
 func newDataDemo(host *demo) *dataDemo {
-	d := &dataDemo{host: host, expanded: ui.MakeState([]string{"project", "src"}), dataStart: 220, dataRatio: .68}
+	d := &dataDemo{host: host, expanded: ui.MakeState([]string{"project", "src"}), dataStart: 220, dataRatio: .68, showKind: ui.MakeState(true), expandName: ui.MakeState(true)}
 	d.tree = widgets.NewTreeStore[string]()
 	d.tree.Append("", "project", resource.SampleProject())
 	d.tree.Append("project", "src", "src")

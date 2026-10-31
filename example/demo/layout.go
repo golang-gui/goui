@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/example/demo/resource"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/theme/modern"
@@ -37,7 +38,8 @@ func (d *layoutDemo) view() ui.View {
 		})),
 		section("HBox / VBox / Baseline",
 			ui.HBox(ui.Label(resource.Username()), ui.TextInput().BindText(&d.username).MainWeight(1), ui.Button(resource.OK())).CrossAlign(layout.CrossBaseline).Spacing(12),
-			ui.HBox(surface(ui.HBox(ui.Label(resource.WeightOne())).Padding(12)).Style(modern.Card).MainWeight(1), surface(ui.HBox(ui.Label(resource.WeightTwo())).Padding(12)).Style(modern.Card).MainWeight(2)).Spacing(12)),
+			ui.HBox(ui.HBox(ui.Label(resource.WeightOne())).Padding(12).Style(modern.Card).MainWeight(1), ui.HBox(ui.Label(resource.WeightTwo())).Padding(12).Style(modern.Card).MainWeight(2)).Spacing(12)),
+		section(resource.EdgePadding(), ui.VBox(ui.Label(resource.EdgePaddingHint()).WrapMode(ui.WrapWordChar)).Paddings(geometry.Insets{Left: 28, Top: 8, Right: 12, Bottom: 20}).Style(modern.Sidebar)),
 		section(resource.HWrapTitle(), ui.HWrap(chips...).Spacing(8).LineSpacing(8)),
 		section(resource.VWrapTitle(), ui.VWrap(vertical...).Spacing(8).LineSpacing(20).MinHeight(95).MaxHeight(95)),
 		section(resource.SplitTitle(),

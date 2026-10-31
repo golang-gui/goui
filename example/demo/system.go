@@ -36,20 +36,14 @@ const (
 // is a successful drop, rather than the initial invitation.
 func (d *systemDemo) receiveDrop(r *ui.DropRequest) {
 	if paths, ok := r.Data.Files(); ok {
-		{
-			d.dropped.Set(strings.Join(paths, "\n"))
-			d.droppedKind.Set(demoDropFiles)
-		}
+		d.dropped.Set(strings.Join(paths, "\n"))
+		d.droppedKind.Set(demoDropFiles)
 	} else if text, ok := r.Data.Text(); ok {
-		{
-			d.dropped.Set(text)
-			d.droppedKind.Set(demoDropText)
-		}
+		d.dropped.Set(text)
+		d.droppedKind.Set(demoDropText)
 	} else if value, ok := r.Data.Local("demo-card"); ok {
-		{
-			d.dropped.Set(fmt.Sprint(value))
-			d.droppedKind.Set(demoDropCard)
-		}
+		d.dropped.Set(fmt.Sprint(value))
+		d.droppedKind.Set(demoDropCard)
 	} else {
 		return
 	}
@@ -176,7 +170,7 @@ func (d *systemDemo) view() ui.View {
 			ui.HWrap(ui.Button(resource.DragText()).ID("drag-text").DragSource(source("drag-text", textData)),
 				ui.Button(resource.DragLocal()).ID("drag-local").DragSource(source("drag-local", localData)),
 				ui.Button(resource.DragFiles()).ID("drag-files").Enabled(len(d.files.Get()) > 0).DragSource(source("drag-files", filesData))).Spacing(12).LineSpacing(8),
-			surface(ui.HBox(ui.Label(d.dropDescription()).WrapMode(ui.WrapWordChar).MainWeight(1)).Padding(16)).Style(modern.Card).ID("drop-zone").MinHeight(110).DropTarget(target),
+			ui.HBox(ui.Label(d.dropDescription()).WrapMode(ui.WrapWordChar).MainWeight(1)).Padding(16).Style(modern.Card).ID("drop-zone").MinHeight(110).DropTarget(target),
 			ui.Label(resource.DragHint())),
 	)
 }

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/golang-gui/goui/gui/textformat"
 	"github.com/golang-gui/goui/mlang"
 )
 
@@ -80,4 +81,28 @@ func TestEightLanguageResources(t *testing.T) {
 		t.Fatal("no resources validated")
 	}
 	t.Logf("validated %d resources in eight languages", count)
+}
+
+// 八种译文必须保留同样的样式语义，显示文本中不应泄漏控制字符串。
+func TestFormattedLabelTranslations(t *testing.T) {
+	previous := mlang.Language()
+	t.Cleanup(func() { _ = mlang.SetLanguage(previous) })
+	for _, language := range []string{"en", "zh-CN", "ja", "ko", "de", "fr", "ru", "ar"} {
+		if err := mlang.SetLanguage(language); err != nil {
+			t.Fatal(err)
+		}
+		parsed, err := textformat.Parse(FormattedLabel())
+		if err != nil || !parsed.Formatted || strings.Contains(parsed.Plain, `\{`) {
+			t.Fatal(language, parsed, err)
+		}
+		found := map[string]bool{}
+		for _, run := range parsed.Runs {
+			for _, name := range run.Styles {
+				found[name] = true
+			}
+		}
+		if len(found) != 3 || !found["bold"] || !found["italic"] || !found["demo-accent-text"] {
+			t.Fatal("翻译改变了样式含义", language, found)
+		}
+	}
 }

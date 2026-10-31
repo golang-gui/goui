@@ -19,6 +19,7 @@ type windowsDemo struct {
 	host               *demo
 	inspection         *ui.TextModel
 	inspectionRevision uint64
+	latest             gui.Window
 }
 
 func (d *windowsDemo) View() ui.View { return ui.Build(d.view) }
@@ -48,6 +49,7 @@ func (d *windowsDemo) view() ui.View {
 				d.host.app.FindWindow("main").RequestState(gui.WindowStateNormal)
 				d.host.report(resource.NormalRequested())
 			}),
+			ui.Button(resource.ShowExisting()).ID("show-existing").OnClick(d.showExisting),
 			ui.Button(resource.ReadPositionArea()).OnClick(d.inspectPosition), ui.Button(resource.ReadSnapshot()).ID("snapshot").OnClick(d.inspectSnapshot),
 			ui.Button(resource.FindID()).OnClick(func() {
 				w := d.host.app.FindWidget("main", "snapshot")
@@ -193,9 +195,16 @@ func (d *windowsDemo) openWindow(options gui.WindowOptions, borderBox bool) {
 			item.widget.SetText(item.text())
 		}
 	})
-	w.ConnectDestroy(func() { closed = true; languageChanged.Disconnect() })
+	w.ConnectDestroy(func() {
+		closed = true
+		languageChanged.Disconnect()
+		if d.latest == w {
+			d.latest = nil
+		}
+	})
 	// Choose this window's background style and construct its content before
 	// showing it, so the initial position is applied before it becomes visible.
+	d.latest = w
 	d.host.app.Post(func() {
 		if closed {
 			return
@@ -241,4 +250,19 @@ func auxWindowContent(column gui.Widget, transparent, borderBox bool) gui.Widget
 
 func newWindowsDemo(host *demo) *windowsDemo {
 	return &windowsDemo{host: host, inspection: ui.NewTextModel(resource.InspectionSample())}
+}
+
+func (d *windowsDemo) showExisting() {
+	w := d.latest
+	if w == nil {
+		w = d.host.app.FindWindow("main")
+	}
+	if w == nil {
+		return
+	}
+	if err := w.Show(); err != nil {
+		d.host.result(resource.ShowExisting(), err)
+	} else {
+		d.host.report(resource.ExistingShown())
+	}
 }

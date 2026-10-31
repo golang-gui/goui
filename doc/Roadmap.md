@@ -1,5 +1,17 @@
 # GOUI 实用化与未来路线
 
+## Demo 当前能力与局部更新（2026-10-31）
+
+`example/demo` 以稳定功能对象管理各页状态，宿主管理导航、资源和窗口；采用
+BindText／BindSelection 与局部 Build，仅主题、语言及跨窗口协调保留应用更新。
+补齐格式化／可选择 Label、四边 Padding、Tree 激活、Table 列显隐与扩展、正式
+Dialog／Toast／Modal、DrawingArea 缓存和帧驱动，以及已有窗口 Show 激活示范。
+普通 Box 直接绘制背景，不增加框架抽象；新文案覆盖八语言，现有交互和原色 Logo 保留。
+
+本机独立 X11 的 Software 1x、OpenGL 1x／2x 指定交互通过，隔离源码全仓、Demo
+race／vet 与 Windows／macOS 目标编译通过；未执行远端桌面。工作区旧未跟踪用例的
+失败单独保留，实际范围见 [Plan](Plan.md)，组织与使用见 [DesignDemo](DesignDemo.md)。
+
 ## DrawingArea（2026-10-30）
 
 已实现显式软件绘图区域及 UI 绑定，本机独立 X11 验证通过。绘制函数与重绘查询
