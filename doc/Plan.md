@@ -1,5 +1,16 @@
 # Plan
 
+## CheckButton 独立开关例程修正（2026-10-31）
+
+- [x] 按 [ButtonGroup 设计](DesignButtonGroup.md) 给 Toggle 显式设置 `Group(nil)`，
+  保持 Mode A/B 的自动互斥组；操作说明和 Check/F6 同步检查独立分组。
+- [x] 独立 Xvnc :88／Xfwm4、Software 1x：Toggle 开／关、Rebuild、Mode B 和
+  Reset 的六次断言通过，保留控件身份，关闭输出 DESTROY PASS。
+- [x] 已跟踪源码加本轮修改的隔离副本执行 `go test ./... -count=1`：3205 项测试／
+  子测试通过、10 项条件跳过、0 失败；macOS arm64、CGO_ENABLED=0 例程编译通过。
+- [ ] 本轮 macOS 原生复验：SSH Connection refused、VNC CONNECT_FAILED，未执行。
+  前一轮相同 `Group(nil)` 修改的临时副本已通过，不计为本轮重新验收。
+
 ## DrawingArea 软件绘图区域（2026-10-30）
 
 设计见 [DesignDrawingArea](DesignDrawingArea.md)。样式不接入软件回退。
