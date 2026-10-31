@@ -2,10 +2,9 @@ package main
 
 import (
 	"fmt"
-
-	"github.com/golang-gui/goui/core/signal"
 	"strings"
 
+	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/example/demo/resource"
 	"github.com/golang-gui/goui/mlang"
 	"github.com/golang-gui/goui/ui"
@@ -49,29 +48,29 @@ func (d *demo) translateUI() {
 	}
 	d.language = mlang.Language()
 	d.input.translate(resource.InputSample())
-	d.baselineInput.translate(resource.BaselineSample())
-	d.splitInput.translate(resource.SplitInputSample())
-	translateSample(d.text, &d.textRevision, resource.EditorSample())
-	translateSample(d.inspection, &d.inspectionRevision, resource.InspectionSample())
-	for id, model := range d.documents {
-		revision := d.documentRevisions[id]
+	d.basic.baselineInput.translate(resource.BaselineSample())
+	d.layout.splitInput.translate(resource.SplitInputSample())
+	translateSample(d.editor.text, &d.editor.textRevision, resource.EditorSample())
+	translateSample(d.windows.inspection, &d.windows.inspectionRevision, resource.InspectionSample())
+	for id, model := range d.tabs.documents {
+		revision := d.tabs.documentRevisions[id]
 		translateSample(model, &revision, documentSample(id))
-		d.documentRevisions[id] = revision
+		d.tabs.documentRevisions[id] = revision
 	}
 	labels := []string{resource.DefaultOption(), resource.CustomOption(), resource.DisabledOption(), resource.LastOption()}
 	for i, label := range labels {
-		item := d.choices.ItemAt(i)
+		item := d.basic.choices.ItemAt(i)
 		if item.Text != label {
 			item.Text = label
-			d.choices.Set(i, item)
+			d.basic.choices.Set(i, item)
 		}
 	}
-	d.tree.Set("project", resource.SampleProject())
-	d.list.Modify(func(rows []string) []string {
+	d.data.tree.Set("project", resource.SampleProject())
+	d.data.list.Modify(func(rows []string) []string {
 		for i := range rows {
 			rows[i] = fmt.Sprintf(resource.ListRow(), i+1)
 		}
 		return rows
 	})
-	d.table.translate()
+	d.data.table.translate()
 }

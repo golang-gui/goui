@@ -13,7 +13,17 @@ import (
 	"github.com/golang-gui/goui/ui"
 )
 
-func (d *demo) windowPage() ui.View {
+// windowsDemo owns this feature for the lifetime of the gallery.
+// host is borrowed for shared assets and application operations.
+type windowsDemo struct {
+	host               *demo
+	inspection         *ui.TextModel
+	inspectionRevision uint64
+}
+
+func (d *windowsDemo) View() ui.View { return ui.Build(d.view) }
+
+func (d *windowsDemo) view() ui.View {
 	return fullPage("windows", resource.WindowHeading(), resource.WindowHint(),
 		ui.HWrap(ui.Button(resource.NativeWindow()).ID("native-window").OnClick(func() {
 			d.openWindow(gui.WindowOptions{Chrome: gui.WindowChromeNative}, false)
@@ -31,25 +41,25 @@ func (d *demo) windowPage() ui.View {
 				d.openWindow(gui.WindowOptions{Chrome: gui.WindowChromeNone, Transparent: true}, true)
 			})).Spacing(12).LineSpacing(8),
 		ui.HWrap(ui.Button(resource.Maximize()).OnClick(func() {
-			d.app.FindWindow("main").RequestState(gui.WindowStateMaximized)
-			d.report(resource.MaximizeRequested())
+			d.host.app.FindWindow("main").RequestState(gui.WindowStateMaximized)
+			d.host.report(resource.MaximizeRequested())
 		}),
 			ui.Button(resource.NormalState()).OnClick(func() {
-				d.app.FindWindow("main").RequestState(gui.WindowStateNormal)
-				d.report(resource.NormalRequested())
+				d.host.app.FindWindow("main").RequestState(gui.WindowStateNormal)
+				d.host.report(resource.NormalRequested())
 			}),
 			ui.Button(resource.ReadPositionArea()).OnClick(d.inspectPosition), ui.Button(resource.ReadSnapshot()).ID("snapshot").OnClick(d.inspectSnapshot),
 			ui.Button(resource.FindID()).OnClick(func() {
-				w := d.app.FindWidget("main", "snapshot")
+				w := d.host.app.FindWidget("main", "snapshot")
 				if w != nil {
-					d.report(fmt.Sprintf(resource.FoundWidget(), w, w.Snapshot().Role))
+					d.host.report(fmt.Sprintf(resource.FoundWidget(), w, w.Snapshot().Role))
 				}
 			})).Spacing(10).LineSpacing(8),
 		ui.ScrollView(ui.TextView().ID("snapshot-text").Model(d.inspection).ReadOnly(true).WrapMode(ui.WrapWordChar).Padding(12)).Style("text-view").MainWeight(1),
 	)
 }
-func (d *demo) inspectSnapshot() {
-	w := d.app.FindWindow("main")
+func (d *windowsDemo) inspectSnapshot() {
+	w := d.host.app.FindWindow("main")
 	if w == nil {
 		return
 	}
@@ -57,30 +67,30 @@ func (d *demo) inspectSnapshot() {
 	if err == nil {
 		d.inspection.SetText(string(data))
 	}
-	d.result(resource.ReadSemantics(), err)
+	d.host.result(resource.ReadSemantics(), err)
 }
-func (d *demo) inspectPosition() {
-	w := d.app.FindWindow("main")
+func (d *windowsDemo) inspectPosition() {
+	w := d.host.app.FindWindow("main")
 	pos, err := w.Position(nil)
 	if err != nil {
-		d.result(resource.ReadPosition(), err)
+		d.host.result(resource.ReadPosition(), err)
 		return
 	}
 	area, err := w.WorkAreaAt(geometry.Point{})
 	if err != nil {
-		d.result(resource.ReadWorkArea(), err)
+		d.host.result(resource.ReadWorkArea(), err)
 		return
 	}
-	d.report(fmt.Sprintf(resource.PositionFormat(), pos.X, pos.Y, area.Width, area.Height, w.State()))
+	d.host.report(fmt.Sprintf(resource.PositionFormat(), pos.X, pos.Y, area.Width, area.Height, w.State()))
 }
-func (d *demo) openWindow(options gui.WindowOptions, borderBox bool) {
+func (d *windowsDemo) openWindow(options gui.WindowOptions, borderBox bool) {
 	options.Size = geometry.Size{Width: 440, Height: 300}
 	if options.SkipTaskbar || borderBox {
 		options.Size = geometry.Size{Width: 500, Height: 380}
 	}
 	w, err := gui.App.NewWindow(&options)
 	if err != nil {
-		d.result(resource.CreateWindow(), err)
+		d.host.result(resource.CreateWindow(), err)
 		return
 	}
 	if options.SkipTaskbar || borderBox {
@@ -96,7 +106,7 @@ func (d *demo) openWindow(options gui.WindowOptions, borderBox bool) {
 	}
 	if err := w.SetTitle(windowTitle()); err != nil {
 		w.Destroy()
-		d.result(resource.SetTitle(), err)
+		d.host.result(resource.SetTitle(), err)
 		return
 	}
 	if options.Transparent {
@@ -139,7 +149,7 @@ func (d *demo) openWindow(options gui.WindowOptions, borderBox bool) {
 	move := gui.NewButton()
 	move.SetChild(label(resource.MoveWindow))
 	move.ConnectClicked(func() {
-		d.result(resource.RelativePosition(), w.SetPosition(d.app.FindWindow("main"), geometry.Point{X: 240, Y: 160}))
+		d.host.result(resource.RelativePosition(), w.SetPosition(d.host.app.FindWindow("main"), geometry.Point{X: 240, Y: 160}))
 	})
 	box.AddChild(move)
 	closeButton := gui.NewButton()
@@ -167,14 +177,14 @@ func (d *demo) openWindow(options gui.WindowOptions, borderBox bool) {
 	scroll.SetChild(box)
 	column.AddChild(scroll)
 	w.SetWidget(auxWindowContent(column, options.Transparent, borderBox))
-	w.ConnectState(func(state gui.WindowState) { d.report(fmt.Sprintf(resource.WindowState(), state)) })
+	w.ConnectState(func(state gui.WindowState) { d.host.report(fmt.Sprintf(resource.WindowState(), state)) })
 	closed := false
 	languageChanged := mlang.ConnectChanged(func() {
 		if closed {
 			return
 		}
 		if err := w.SetTitle(windowTitle()); err != nil {
-			d.result(resource.SetTitle(), err)
+			d.host.result(resource.SetTitle(), err)
 		}
 		for _, item := range labels {
 			if closed {
@@ -184,23 +194,22 @@ func (d *demo) openWindow(options gui.WindowOptions, borderBox bool) {
 		}
 	})
 	w.ConnectDestroy(func() { closed = true; languageChanged.Disconnect() })
-	d.app.RequestUpdate()
 	// Choose this window's background style and construct its content before
 	// showing it, so the initial position is applied before it becomes visible.
-	d.app.Post(func() {
+	d.host.app.Post(func() {
 		if closed {
 			return
 		}
-		positionErr := w.SetPosition(d.app.FindWindow("main"), geometry.Point{X: 180, Y: 120})
+		positionErr := w.SetPosition(d.host.app.FindWindow("main"), geometry.Point{X: 180, Y: 120})
 		if err := w.Show(); err != nil {
 			w.Destroy()
-			d.result(resource.ShowWindow(), err)
+			d.host.result(resource.ShowWindow(), err)
 			return
 		}
 		if positionErr != nil {
-			d.result(resource.PositionAfterShow(), positionErr)
+			d.host.result(resource.PositionAfterShow(), positionErr)
 		} else {
-			d.report(resource.WindowShown())
+			d.host.report(resource.WindowShown())
 		}
 	})
 }
@@ -228,4 +237,8 @@ func auxWindowContent(column gui.Widget, transparent, borderBox bool) gui.Widget
 		return outer
 	}
 	return panel
+}
+
+func newWindowsDemo(host *demo) *windowsDemo {
+	return &windowsDemo{host: host, inspection: ui.NewTextModel(resource.InspectionSample())}
 }

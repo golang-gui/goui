@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/example/demo/resource"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/mlang"
@@ -12,7 +13,23 @@ import (
 	wui "github.com/golang-gui/goui/widgets/ui"
 )
 
-func (d *demo) textPage() ui.View {
+// textDemo owns this feature for the lifetime of the gallery.
+// host is borrowed for shared assets and application operations.
+type textDemo struct {
+	events       map[*ui.TextModel]*textEvents
+	host         *demo
+	text         *ui.TextModel
+	textSample   ui.State[int]
+	largeText    [2]*ui.TextModel
+	textRevision uint64
+	selection    ui.State[ui.TextSelection]
+	readonly     ui.State[bool]
+	wrap         ui.State[bool]
+}
+
+func (d *textDemo) View() ui.View { return ui.Build(d.view) }
+
+func (d *textDemo) view() ui.View {
 	model := d.editorModel()
 	labels := []mlang.Getter{resource.RegularText, resource.LargeDocument, resource.LongJSON}
 	items := make([]*ui.MenuItemView, len(labels))
@@ -20,43 +37,52 @@ func (d *demo) textPage() ui.View {
 		items[i] = ui.MenuItem(label(), func() { d.selectTextSample(i) })
 	}
 	wrap := ui.WrapNone
-	if d.wrap {
+	if d.wrap.Get() {
 		wrap = ui.WrapWordChar
 	}
 	return fullPage("text", resource.Text(), resource.TextHint()+" "+resource.PlaceholderHint(),
-		ui.TextInput().ID("single-input").BindText(&d.input).Placeholder(resource.InputPlaceholder()).OnSubmit(func() { d.report(fmt.Sprintf(resource.Submitted(), d.input.Get())) }),
+		ui.TextInput().ID("single-input").BindText(&d.host.input).Placeholder(resource.InputPlaceholder()).OnSubmit(func() { d.host.report(fmt.Sprintf(resource.Submitted(), d.host.input.Get())) }),
 		ui.HWrap(
-			ui.MenuButton(fmt.Sprintf(resource.TextSampleFormat(), labels[d.textSample]())).ID("text-samples").Menu(items...),
-			wui.Switch(resource.Wrap()).ID("text-wrap").Checked(d.wrap).OnChange(func(v bool) { d.wrap = v; d.app.RequestUpdate() }),
-			wui.Switch(resource.ReadOnly()).ID("text-readonly").Checked(d.readonly).OnChange(func(v bool) { d.readonly = v; d.app.RequestUpdate() }),
-			ui.Button(resource.Undo()).ID("text-undo").Enabled(!d.readonly && model.CanUndo()).OnClick(func() { d.editorHistory(false) }),
-			ui.Button(resource.Redo()).ID("text-redo").Enabled(!d.readonly && model.CanRedo()).OnClick(func() { d.editorHistory(true) }),
+			ui.MenuButton(fmt.Sprintf(resource.TextSampleFormat(), labels[d.textSample.Get()]())).ID("text-samples").Menu(items...),
+			wui.Switch(resource.Wrap()).ID("text-wrap").Checked(d.wrap.Get()).OnChange(func(v bool) { d.wrap.Set(v) }),
+			wui.Switch(resource.ReadOnly()).ID("text-readonly").Checked(d.readonly.Get()).OnChange(func(v bool) { d.readonly.Set(v) }),
+			ui.Build(func() ui.View {
+				return ui.HBox(
+					ui.Button(resource.Undo()).ID("text-undo").Enabled(!d.readonly.Get() && model.CanUndo()).OnClick(func() { d.editorHistory(false) }),
+					ui.Button(resource.Redo()).ID("text-redo").Enabled(!d.readonly.Get() && model.CanRedo()).OnClick(func() { d.editorHistory(true) }),
+				).Spacing(12)
+			}).Observe(d.events[model]),
 		).Spacing(12).LineSpacing(8),
 		ui.Label(resource.TextSamplesHint()).WrapMode(gui.WrapWordChar).Style(modern.MutedText),
-		ui.ScrollView(ui.TextView().ID("editor").Model(model).Placeholder(resource.EditorPlaceholder()).WrapMode(wrap).ReadOnly(d.readonly).Padding(12).
-			OnSelection(func(s ui.TextSelection) { d.selection = s; d.app.RequestUpdate() }).OnChange(func(ui.TextChange) { d.app.RequestUpdate() })).Style("text-view").MainWeight(1),
-		ui.Label(fmt.Sprintf(resource.TextSampleStats(), model.Len(), model.LineCount(), d.selection)).ID("text-stats").WrapMode(gui.WrapWordChar),
+		ui.ScrollView(ui.TextView().ID("editor").Model(model).Placeholder(resource.EditorPlaceholder()).WrapMode(wrap).ReadOnly(d.readonly.Get()).Padding(12).
+			BindSelection(&d.selection)).Style("text-view").MainWeight(1),
+		ui.Build(func() ui.View {
+			return ui.Label(fmt.Sprintf(resource.TextSampleStats(), model.Len(), model.LineCount(), d.selection.Get())).ID("text-stats").WrapMode(gui.WrapWordChar)
+		}).Observe(d.events[model]),
 	)
 }
 
-func (d *demo) editorModel() *ui.TextModel {
-	if d.textSample == 0 {
+func (d *textDemo) editorModel() *ui.TextModel {
+	if d.textSample.Get() == 0 {
 		return d.text
 	}
-	return d.largeText[d.textSample-1]
+	return d.largeText[d.textSample.Get()-1]
 }
 
-func (d *demo) selectTextSample(index int) {
-	if index < 0 || index > len(d.largeText) || index == d.textSample {
+func (d *textDemo) selectTextSample(index int) {
+	if index < 0 || index > len(d.largeText) || index == d.textSample.Get() {
 		return
 	}
 	// Build only declares the current model. Generate each larger sample once,
 	// on explicit selection, and retain its independent editing history.
 	if index > 0 && d.largeText[index-1] == nil {
 		d.largeText[index-1] = ui.NewTextModel(largeTextSample(index))
+		d.events[d.largeText[index-1]] = &textEvents{model: d.largeText[index-1]}
 	}
-	d.textSample, d.selection = index, ui.TextSelection{}
-	d.app.RequestUpdate()
+	{
+		d.textSample.Set(index)
+		d.selection.Set(ui.TextSelection{})
+	}
 }
 
 func largeTextSample(index int) string {
@@ -76,8 +102,8 @@ func largeTextSample(index int) string {
 	return text.String()
 }
 
-func (d *demo) editorHistory(redo bool) {
-	w := d.app.FindWidget("main", "editor")
+func (d *textDemo) editorHistory(redo bool) {
+	w := d.host.app.FindWidget("main", "editor")
 	if w == nil {
 		return
 	}
@@ -92,6 +118,17 @@ func (d *demo) editorHistory(redo bool) {
 		if result.Applied && result.Selection != nil {
 			editor.SetSelection(*result.Selection)
 		}
-		d.app.RequestUpdate()
 	}
+}
+
+func newTextDemo(host *demo) *textDemo {
+	model := ui.NewTextModel(resource.EditorSample())
+	return &textDemo{host: host, text: model, wrap: ui.MakeState(true), events: map[*ui.TextModel]*textEvents{model: {model: model}}}
+}
+
+// textEvents borrows a document; View reconciliation owns the subscriptions.
+type textEvents struct{ model *ui.TextModel }
+
+func (s *textEvents) Connect(fn func()) signal.Handle {
+	return s.model.ConnectChange(func(ui.TextChange) { fn() })
 }
