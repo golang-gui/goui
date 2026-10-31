@@ -34,6 +34,7 @@ type Painter struct {
 	viewport      image.Rectangle
 	clip          image.Rectangle
 
+	frameID      uint64
 	activeFrame  bool
 	frameSkipped bool
 	transparent  bool
@@ -46,6 +47,7 @@ type imageResource struct {
 	handle         int
 	destroyed      bool
 	pendingDestroy bool
+	lastDrawFrame  uint64
 }
 
 func (i *imageResource) Size() (width, height int) {
@@ -188,11 +190,11 @@ func (p *Painter) NewImage(src image.Image) (graphics.Image, error) {
 }
 
 func (p *Painter) updateImage(img *imageResource, src image.Image) error {
-	if p.activeFrame {
-		panic("opengl: update image during active frame")
-	}
 	if img == nil || img.destroyed || img.owner != p || img.handle == 0 || p.vg == nil || p.ctx == nil {
 		return fmt.Errorf("opengl: update invalid image")
+	}
+	if p.activeFrame && img.lastDrawFrame == p.frameID {
+		panic("opengl: update image after DrawImage before End")
 	}
 	if src == nil {
 		return fmt.Errorf("opengl: update image from nil source")
@@ -201,12 +203,17 @@ func (p *Painter) updateImage(img *imageResource, src image.Image) error {
 	if bounds.Dx() != img.width || bounds.Dy() != img.height {
 		return fmt.Errorf("opengl: update image size %dx%d, want %dx%d", bounds.Dx(), bounds.Dy(), img.width, img.height)
 	}
+	if !p.surfaceAvailable() || p.frameSkipped {
+		return ErrSurfaceUnavailable
+	}
 	bitmap := imageUploadBitmap(src)
-	if err := p.ctx.MakeCurrent(); err != nil {
-		return fmt.Errorf("opengl: make context current to update image: %w", err)
+	if !p.activeFrame {
+		if err := p.ctx.MakeCurrent(); err != nil {
+			return fmt.Errorf("opengl: make context current to update image: %w", err)
+		}
+		defer p.ctx.ClearCurrent()
 	}
 	err := p.vg.UpdateImage(img.handle, bitmap.Pixels)
-	p.ctx.ClearCurrent()
 	if err != nil {
 		return fmt.Errorf("opengl: update native image: %w", err)
 	}
@@ -286,6 +293,7 @@ func (p *Painter) flushPendingImages() {
 }
 
 func (p *Painter) Begin(width, height, scale float32) {
+	p.frameID++
 	p.frameSkipped = !p.surfaceAvailable()
 	if p.frameSkipped {
 		p.activeFrame = true
@@ -543,6 +551,7 @@ func (p *Painter) DrawImage(rect graphics.Rectangle, img graphics.Image) {
 	if !ok || native == nil || native.owner != p || native.destroyed || native.handle == 0 {
 		panic("opengl: image does not belong to painter or was destroyed")
 	}
+	native.lastDrawFrame = p.frameID
 	p.drawImageHandle(rect, native.handle)
 }
 
@@ -789,6 +798,7 @@ func (p *Painter) RenderImage(width, height int, scale float32, draw func()) (im
 	gl.StencilMask(0xffffffff)
 	gl.ClearColor(0, 0, 0, 0)
 	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT)
+	p.frameID++
 	p.vg.BeginFrame(width, height, 1)
 	p.activeFrame, p.scale = true, scale
 	p.viewport = image.Rect(0, 0, width, height)
