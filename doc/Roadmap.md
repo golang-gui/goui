@@ -3,8 +3,9 @@
 ## DrawingArea（2026-10-30）
 
 已实现显式软件绘图区域及 UI 绑定，本机独立 X11 验证通过。绘制函数与重绘查询
-分开，缓存由控件持有；不扩展样式
-系统的复杂边框／软件回退，不引入异步渲染。设计与验收见
+分开，缓存由控件持有；同物理尺寸重绘通过 Image.Update 复用 native 资源。
+2026-10-31 已完成本机及 Windows／macOS 验证，Windows RDP OpenGL 限制见 Plan。
+不扩展样式系统的复杂边框／软件回退，不引入异步渲染。设计与验收见
 [DesignDrawingArea](DesignDrawingArea.md)／[Plan](Plan.md)。
 
 ## 按钮分组职责收敛（2026-10-30）

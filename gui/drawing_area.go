@@ -114,7 +114,20 @@ func (a *DrawingArea) Paint(p Painter) {
 		}
 	}
 	if a.needsUpload && a.raster != nil {
-		native, err := p.NewImage(a.raster.surface.pixels)
+		pixels := a.raster.surface.pixels
+		bounds := pixels.Bounds()
+		reuse := false
+		if a.image != nil {
+			w, h := a.image.Size()
+			reuse = w == bounds.Dx() && h == bounds.Dy()
+		}
+		var native graphics.Image
+		var err error
+		if reuse {
+			err = a.image.Update(pixels)
+		} else {
+			native, err = p.NewImage(pixels)
+		}
 		if !valid() {
 			if native != nil {
 				native.Destroy()
@@ -122,11 +135,20 @@ func (a *DrawingArea) Paint(p Painter) {
 			return
 		}
 		if err != nil {
+			if native != nil {
+				native.Destroy()
+			}
 			a.reportDrawError(err)
+			if reuse {
+				// Update is not transactional. Keep the CPU result for retry,
+				// but do not draw potentially partially updated native pixels.
+				return
+			}
 		} else {
-			a.releaseImage()
-			a.image = native
-			bounds := a.raster.surface.pixels.Bounds()
+			if !reuse {
+				a.releaseImage()
+				a.image = native
+			}
 			a.imageSize = geometry.Size{Width: float32(bounds.Dx()) / a.scale, Height: float32(bounds.Dy()) / a.scale}
 			a.needsUpload = false
 			a.lastError = ""
