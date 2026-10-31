@@ -18,8 +18,21 @@
   未执行绘图验收，其他平台 OpenGL 已验证，不以编译代替此项。
 - [x] 第一阶段隔离源码副本 DISPLAY=:85 下 go test ./... 通过；原工作区同命令因
   未跟踪旧例程的 Padding／BuildContext 等旧接口失败，保留文件，恢复测试改写 PNG。
-- [ ] DrawingArea 同物理尺寸复用 Image.Update，尺寸变化才重建；失败保留软件结果重试。
-- [ ] 全仓、race、跨平台编译与分阶段提交。
+- [x] DrawingArea 同物理尺寸复用 Image.Update，尺寸变化才重建；失败保留软件结果重试。
+  更新失败不绘制可能不完整的 native 像素，保留资源用于下一次更新；没有退休队列。
+  包内验证创建／更新次数、资源身份、DIP／比例变化但物理尺寸相同的复用、失败与回调销毁。
+  真实 Software RenderWidget 在 1／1.5／2x 下验证复用后的预乘像素、clip／Transform。
+- [x] 第二阶段 DrawingArea 原生自动验收：本机 Software／OpenGL × 1／1.5／2x，
+  Windows Software／Direct2D × 1／2x，macOS Software／OpenGL × 1／2x 全通过。
+  普通重绘、声明重建、显式生成、否决／恢复尺寸、主题、逐帧生成与停止均有断言。
+- [x] 真实指针检查 Linux OpenGL 2x 暗色、Windows Direct2D 1x、macOS OpenGL 1x：
+  Paint／Rebuild 后 draws=1、observed=1；Regenerate 后 draws=2、observed=2，
+  图片绿色竖条更新，透明圆角／挖孔、叠色和周围 UI 正确；正常关闭并删除临时计划任务。
+- [x] 第二阶段隔离副本 `DISPLAY=:85 go test ./... -count=1` 与 gui／ui 全包 race 通过。
+  Windows amd64／macOS arm64 `CGO_ENABLED=0 go test -exec=true ./...` 编译全部包／测试通过，
+  交叉编译未执行目标测试；上述窗口程序是另外在原生会话执行的验收。
+- [x] 两阶段分别提交 Image 契约和 DrawingArea 复用；不修改既有未跟踪文件。
+  本轮只验证资源复用和功能，不据此宣称具体帧率或耗时提升。
 
 ## CheckButton 独立开关例程修正（2026-10-31）
 

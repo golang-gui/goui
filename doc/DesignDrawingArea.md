@@ -1,6 +1,6 @@
 # DrawingArea 软件绘图区域
 
-状态：2026-10-30 已实现并完成本机独立 X11 验证；验证范围及缺口见 Plan。
+状态：已实现；2026-10-31 补充同尺寸 Image.Update 复用，验证范围及缺口见 Plan。
 
 ## 边界
 
@@ -72,9 +72,13 @@ ui.DrawingArea(draw).
 图片的像素尺寸向上取整，呈现区域使用 pixelSize/rasterScale，避免把补齐像素
 压缩到逻辑尺寸；Widget 自身边界继续裁剪。透明区域使用预乘 RGBA 契约。
 
-软件输出可借用其 Painter 的缓冲；窗口 Image 在 NewImage 返回前已复制。
-缓存命中只 DrawImage。上传失败保留软件结果，之后可重试上传，不因此反复调用
-绘制函数；保持旧可用图或透明，不显示伪造内容。资源／尺寸失败属于呈现失败，
+软件输出可借用其 Painter 的缓冲；窗口 Image 在 NewImage／Update 返回前已复制。
+缓存命中只 DrawImage。重新生成后，物理尺寸相同就调用 Image.Update，尺寸变化
+才创建替换资源；即使 DIP 尺寸或 PixelScale 变化，只要物理尺寸相同也复用，
+成功上传后更新呈现逻辑尺寸。Update 发生在本帧此图片的 DrawImage 之前。
+上传失败保留软件结果，之后可重试上传，不因此反复调用绘制函数；NewImage
+失败保留旧可用图，Update 失败不承诺旧像素完整，因此本帧跳过显示，之后继续
+尝试更新同一资源。不为此增加额外图片或退休队列。资源／尺寸失败属于呈现失败，
 在新的失败状态记录一次诊断；不增加应用错误弹窗。
 
 Unmount 清理软件与窗口 Image，重挂后重新生成。回调可能销毁／迁移对象、
@@ -100,7 +104,7 @@ Unmount 清理软件与窗口 Image，重挂后重新生成。回调可能销毁
 包内测试覆盖默认命中／失效、信号顺序／否决、显式函数替换、上传重试、
 主题及普通重建不重新生成、原尺寸保留、1x／2x 与 Transform／clip、预乘颜色、
 绘图状态隔离、回调销毁／迁移／重入以及资源释放。
-独立窗口程序验证实际软件与 OpenGL 资源、缓存计数、尺寸变化、手动绘图请求、
+独立窗口程序验证实际 Software／OpenGL／Direct2D 资源、缓存计数、尺寸变化、手动绘图请求、
 按帧绘制与停止、主题重建、指针输入；不依赖 DevServer。执行全仓、相关 race
 以及 Windows amd64／macOS arm64 编译；原生桌面未测范围单独记录。
 
@@ -109,3 +113,11 @@ Unmount 清理软件与窗口 Image，重挂后重新生成。回调可能销毁
 通知方式。绘制函数是操作，ShouldDraw 是查询，属于不同契约，遵循用户确认。
 Flutter 的 [CustomPainter.shouldRepaint](https://api.flutter.dev/flutter/rendering/CustomPainter/shouldRepaint.html)
 用于理解内容变化与绘制的区分；GOUI 不比较 delegate 或函数身份，不引入隐式失效。
+
+### 2026-10-31 同尺寸复用验收
+
+同一图片多次生成时仅首次 NewImage，后续 Update；尺寸变化才重建。包内替身
+明确统计创建和更新次数，并用真实 Software 的 RenderWidget 断言更新后的预乘
+像素及资源身份。更新失败保留 CPU 结果、不重新执行绘图函数；销毁回调后不提交。
+既有 `tests/window/ui/drawing_area -auto` 在三平台继续覆盖帧内更新路径及停止绘制；
+实际后端、缩放、指针／截图结果和 Windows RDP OpenGL 缺口见 [Plan](Plan.md)。
