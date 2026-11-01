@@ -310,7 +310,7 @@ func (c *windowChrome) queryRegion(p geometry.Point) ChromeRegion {
 		return ChromeRegionDefault
 	}
 	w := c.window
-	if w.modalTarget != nil || w.dispatcher.captureTarget != nil {
+	if modalRootBlocked(w) || w.modalTarget != nil || w.dispatcher.captureTarget != nil {
 		return ChromeRegionClient
 	}
 	c.querying = true

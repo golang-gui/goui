@@ -163,6 +163,7 @@ type window struct {
 	cursorInside   bool
 	destroyed      bool
 	destroyPending bool        // resource cleanup waits for a reentered frame to finish
+	inputBlocked   bool        // private host input boundary during an owned native dialog
 	modalTarget    ModalTarget // the modal element intercepting this window's input; nil when none
 	popoversShown  uint64      // changes whenever an owned surface is shown
 	popovers       []*popover  // currently shown surfaces; lifecycle stays with each popover
@@ -261,7 +262,7 @@ func (w *window) onInputMethod(r platform.InputMethodResult) {
 	}
 	// A modal target owns keyboard input. A trailing native result must not
 	// edit the underlying field; allow only the cancellation of its preedit.
-	if (w.modalTarget != nil || w.focusedWidget == nil || !modalWidgetAllowed(w.focusedWidget)) && (r.Kind != platform.InputMethodPreedit || r.Text != "") {
+	if (modalRootBlocked(w) || w.modalTarget != nil || w.focusedWidget == nil || !modalWidgetAllowed(w.focusedWidget)) && (r.Kind != platform.InputMethodPreedit || r.Text != "") {
 		return
 	}
 	switch r.Kind {
@@ -518,6 +519,29 @@ func (w *window) DispatchEvent(event events.Event) error {
 	}
 	if w.destroyed {
 		return nil
+	}
+	if modalRootBlocked(w) {
+		switch e := event.(type) {
+		case events.KeyEvent:
+			modalPreventDefault(e)
+			return nil
+		case events.PointerEvent:
+			// Preserve pointer facts without running hover or gesture controllers.
+			w.cursorPosition = e.Position
+			w.cursorInside = e.EventType != events.PointerLeave && containsPoint(geometry.Rect(0, 0, w.width, w.height), e.Position)
+			w.dispatcher.pointerEvent = e
+			w.dispatcher.pointerInside = w.cursorInside
+			return nil
+		case events.WheelEvent, events.CloseEvent:
+			return nil
+		case events.DragOfferEvent:
+			if e.EventType == events.DragDrop {
+				_ = e.Offer.Finish(0)
+			}
+			return nil
+		case events.DragDataEvent:
+			return nil
+		}
 	}
 	ensureModal(w)
 	if w.destroyed {
@@ -981,7 +1005,7 @@ func (w *window) updateInputMethod(focused Widget) {
 
 func (w *window) imSetEnabled(enabled bool) {
 	if w.inputMethod != nil {
-		w.inputMethod.SetEnabled(enabled && w.modalTarget == nil)
+		w.inputMethod.SetEnabled(enabled && !modalRootBlocked(w) && w.modalTarget == nil)
 	}
 }
 

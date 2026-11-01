@@ -69,6 +69,7 @@ type modalHost interface {
 }
 
 type modalState struct {
+	blocked    bool // a native modal surface owns all input, outside the Widget tree
 	host       modalHost
 	scopes     map[*ModalScope]struct{}
 	active     *ModalScope
@@ -223,31 +224,13 @@ func ensureModal(host EventTarget) {
 	}
 	s, b := h.rootState().modal, h.rootState()
 	s.selectScope()
-	if s.updating || !s.pending || b.frameDestroyed {
+	if s.blocked || s.updating || !s.pending || b.frameDestroyed {
 		return
 	}
 	s.updating, s.pending = true, false
 	defer func() { s.updating = false }()
 	revision := s.revision
-	b.cancelInput(GestureInterrupted)
-	if app := b.app; app != nil && app.dragSession != nil && app.dragSession.host == h && !modalWidgetAllowed(app.dragSession.widget) {
-		app.dragSession.cancel()
-	}
-	b.dispatcher.updatePointerHoverPath(nil, b.dispatcher.pointerEvent)
-	if tips := tooltipsFor(host); tips != nil {
-		tips.dismiss(false)
-	}
-	if w, ok := host.(*window); ok {
-		for _, p := range slices.Clone(w.popovers) {
-			if p.visible && !modalWidgetAllowed(p.anchor) {
-				p.Hide()
-			}
-		}
-		if target := w.modalTarget; target != nil && !modalTargetAllowed(w, target) {
-			w.SetModalTarget(nil)
-			target.RequestDismiss()
-		}
-	}
+	resetModalInput(h)
 	s.selectScope()
 	if b.frameDestroyed || s.revision != revision {
 		return
@@ -282,6 +265,92 @@ func ensureModal(host EventTarget) {
 		}
 		if window, ok := host.(*window); ok {
 			window.applyCursor()
+		}
+	}
+}
+
+// A native picker has no Widget subtree. It shares the ordinary modal input
+// checks and reset path, while leaving the active Widget scope and focus intact.
+func modalRootBlocked(host EventTarget) bool {
+	h, ok := host.(modalHost)
+	return ok && h.rootState().modal != nil && h.rootState().modal.blocked
+}
+
+func blockModalInput(w *window) {
+	b := w.rootState()
+	if b.modal == nil {
+		b.modal = &modalState{host: w, scopes: make(map[*ModalScope]struct{})}
+	}
+	b.modal.blocked = true
+	b.modal.revision++
+	resetModalInput(w)
+	if !w.destroyed {
+		w.imReset()
+	}
+	if !w.destroyed {
+		w.imSetEnabled(false)
+		w.applyCursor()
+	}
+}
+
+func unblockModalInput(w *window) {
+	if w.modal == nil {
+		return
+	}
+	w.modal.blocked = false
+	w.modal.revision++
+	if w.destroyed {
+		return
+	}
+	ensureModal(w)
+	if w.destroyed {
+		return
+	}
+	w.imSetEnabled(w.activeIM != nil)
+	if w.dispatcher.pointerInside {
+		w.dispatcher.updateHover(w, w.Widget(), w.dispatcher.pointerEvent)
+	}
+	if !w.destroyed {
+		w.applyCursor()
+		w.requestPaint()
+	}
+}
+
+func resetModalInput(h modalHost) {
+	host := EventTarget(h)
+	b := h.rootState()
+	b.cancelInput(GestureInterrupted)
+	if b.frameDestroyed {
+		return
+	}
+	if app := b.app; app != nil && app.dragSession != nil && app.dragSession.host == h && !modalWidgetAllowed(app.dragSession.widget) {
+		app.dragSession.cancel()
+	}
+	if b.frameDestroyed {
+		return
+	}
+	b.dispatcher.updatePointerHoverPath(nil, b.dispatcher.pointerEvent)
+	if b.frameDestroyed {
+		return
+	}
+	if tips := tooltipsFor(host); tips != nil {
+		tips.dismiss(false)
+	}
+	if w, ok := host.(*window); ok {
+		if w.destroyed {
+			return
+		}
+		for _, p := range slices.Clone(w.popovers) {
+			if p.visible && !modalWidgetAllowed(p.anchor) {
+				p.Hide()
+			}
+			if w.destroyed {
+				return
+			}
+		}
+		if target := w.modalTarget; target != nil && !modalTargetAllowed(w, target) {
+			w.SetModalTarget(nil)
+			target.RequestDismiss()
 		}
 	}
 }
@@ -326,6 +395,9 @@ func modalWidgetAllowed(w Widget) bool {
 		if !ok {
 			return true
 		}
+		if modalRootBlocked(host) {
+			return false
+		}
 		if scope := modalScopeOf(host); scope != nil && !w.base().isDescendant(w, scope.widget) {
 			return false
 		}
@@ -339,7 +411,7 @@ func modalWidgetAllowed(w Widget) bool {
 }
 
 func modalInputAllowed(host EventTarget, target Widget) bool {
-	if target == nil {
+	if target == nil || modalRootBlocked(host) {
 		return false
 	}
 	// Window-owned decorations are outside ordinary content modality.
@@ -373,6 +445,9 @@ type AnchoredModalTarget interface {
 }
 
 func modalTargetAllowed(host EventTarget, target ModalTarget) bool {
+	if modalRootBlocked(host) {
+		return false
+	}
 	if modalScopeOf(host) == nil {
 		return true
 	}
