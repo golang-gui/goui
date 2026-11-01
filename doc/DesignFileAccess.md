@@ -80,13 +80,18 @@ beginWithCompletionHandler:（独立 modeless panel），替换统一 runModal�
 后端持有 panel 和 completion block 至完成，先 orderOut，再处理结果并释放。
 owner 销毁/退出时 cancel 原生 panel。绑定扩展既有 NSSavePanel 类型。
 
-Linux 保留 zenity/kdialog/yad 路线，GUI 线程启动进程、后台等待退出与收集输出，
-再投递回 X11 事件循环转换 FileAccess。worker 不操作 Xlib、GUI 或原生资源。
-有 owner 时使用 helper 的 attach（zenity/yad 另加 modal）参数建立原生关联；
-输入契约由 GUI 共同模态边界保证，不把 WM 差异当作输入隔离。本机 zenity
-3.42.1 实测接受 attach 但未设置 WM_TRANSIENT_FOR，故不承诺 helper 的层叠、
-位置和原生边框交互与其他平台一致；内容和 GUI 绘制装饰的输入不积累。owner 销毁/退出
-会终止对应 helper；registry 与窗口状态只在平台线程访问。
+Linux 优先使用 godbus + Portal FileChooser，后台查询能力、发送请求和接收响应，
+再投递回 X11 事件循环转换 FileAccess。worker 不操作 Xlib、GUI 或原生窗口。
+有 owner 时传真实 XID 与 modal=true；nil 明确传 modal=false。取消 owner 或退出时
+关闭远端 Request；Request.Close 不会再发 Response，本地操作独立结束。
+
+Portal 明确不可用或缺少操作所需能力时保留 zenity/kdialog/yad 降级，GUI 线程启动
+进程、后台等待退出；取消／拒绝／不确定超时不重新弹出 helper。helper 的 attach／
+modal 支持仍受其实现限制，本机 zenity 3.42.1 未设置 WM_TRANSIENT_FOR，不能把
+降级内容输入隔离当作完整原生模态。registry 与窗口状态仍只在平台线程访问，
+owner 销毁／退出会终止对应 helper。协议与生命周期见
+[Portal 文件选择](DesignFileDialog.md#linux-portal-改造设计2026-11-01)；本轮不扩展
+路径凭据为永久沙箱资格，也不修改 Settings 或输入法。
 
 同一 owner 的重复请求报告 ErrDialogBusy。正常取消仍为空结果/nil error，
 owner 销毁报告 ErrUnavailable。结果排队期间 owner 已失效时关闭所有迟到的

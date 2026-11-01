@@ -50,7 +50,7 @@ func (l *EventLoop) Run() {
 	moveResizePress = nativePress{}
 	defer func() {
 		l.state.Quit()
-		cancelFileDialogs(nil)
+		closeFileDialogs()
 		if platform != nil && platform.eventLoop == l {
 			l.abortClipboardRead()
 		}
@@ -93,7 +93,7 @@ func (l *EventLoop) Quit() {
 
 func (l *EventLoop) Destroy() {
 	l.state.Destroy()
-	cancelFileDialogs(nil)
+	closeFileDialogs()
 	l.closePipe()
 	if platform != nil && platform.eventLoop == l {
 		platform.eventLoop = nil

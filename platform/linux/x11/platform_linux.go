@@ -18,6 +18,7 @@ import (
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/opengl"
 	"github.com/golang-gui/goui/platform/graphics/software"
+	"github.com/golang-gui/goui/platform/linux/internal/portal"
 	"github.com/golang-gui/goui/platform/linux/libs/libc"
 	"github.com/golang-gui/goui/platform/linux/libs/xlib"
 	"github.com/golang-gui/goui/platform/linux/libs/xsync"
@@ -81,6 +82,7 @@ type Platform struct {
 	im                  xlib.XIM    // display input method; 0 when none is available
 	resizeSyncAvailable bool
 	eventLoop           *EventLoop
+	fileChooser         *portal.FileChooser
 	cursorTheme         *cursorTheme
 	nextDragOfferID     uint64
 	dragSource          *xdndSource

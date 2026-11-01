@@ -1,5 +1,30 @@
 # Plan
 
+## Linux D-Bus 与 Portal 文件选择（2026-11-01）
+
+- [x] 选定 godbus；独立设计见 [DesignDBus](DesignDBus.md)，记录 GIO／libdbus
+  比较、客户端体积与内存观测、线程／资源边界、未来用途及 Wayland 的适用范围。
+- [x] 设计阶段仅写入文档；实现阶段增加 godbus v5.2.4，Settings 与 XIM 均未修改。
+- [x] FileChooser 请求、响应、取消、能力与 helper 降级设计见
+  [DesignFileDialog](DesignFileDialog.md#linux-portal-改造设计2026-11-01)。
+- [x] 文档本地链接与 git diff --check 通过，运行时验证结果单独记录如下。
+- [x] 实现 Portal 文件／目录／保存选择，按需连接、调用前响应订阅、迟到句柄取消、
+  服务退出／断线、能力探测与 helper 降级；复用现有 GUI 模态与 FileAccess 契约。
+- [x] 独立 session bus 假服务验证参数、原始消息中的过滤器签名、快速响应、并发
+  路由、取消、关闭、服务退出、断线、恢复与拒绝／不确定超时不降级；定向 race／vet 通过。
+- [x] Ubuntu 22.04.5 amd64，独立 Xvnc :88／xfwm4 4.16.1，Portal 1.14.4 +
+  GTK 后端 1.14.0，Native／OpenGL 1x：真实 transient/modal 属性、点击 A 回到
+  选择器且 B 可激活、输入丢弃与无补执行、文件／目录／保存、空格与百分号文件名、
+  无 owner、owner 销毁及回调一次／退出通过。保存目标未被创建。
+- [x] 同环境另验证真实 Text／All files 过滤器切换与 Ctrl 多选，两个返回的
+  FileAccess 路径正确并关闭；Software 1x 验证 Portal 无 owner 的双窗口交互、
+  打开期间退出关闭选择器；不可达总线验证 zenity 降级、取消及输入恢复。独立会话已清理。
+- [x] 已跟踪源码加本轮新增文件的隔离副本全仓测试通过；原工作区仍受既有未跟踪旧
+  例程接口／ui 计时断言阻断，测试改写的既有 PNG 已恢复，不弱化旧断言。
+- [x] CGO_ENABLED=0 的本机例程、Windows amd64／macOS arm64 例程与 Linux arm64
+  Portal 测试目标编译通过。完整 Linux arm64 构建仍因既有 libc 的 SYS_PIPE／SYS_POLL
+  未定义失败，本轮不修改其绑定；未执行远端桌面或 KDE 后端验收。
+
 ## 窗口最小尺寸显式声明（2026-11-01）
 
 设计见 [DesignLayout §5](DesignLayout.md#5-窗口最小尺寸只来自显式声明)。
@@ -54,7 +79,8 @@ Demo 自身的显式 820×600 最小尺寸本轮保持不变。
   文件对话框定向测试、Cocoa/AppKit 包检查及 go test -count=1 ./... 通过。
   校验哈希的窗口例程成功启动，但桌面停在 Apple 用户锁屏，未做交互验收；
   本次测试进程已停止，用户决定自行进行桌面验证。
-- [ ] macOS／Windows 真实桌面场景由用户手工验收，本轮按用户要求先提交。
+- [x] 用户反馈 macOS／Windows 行为正确；Linux 不再积压输入，但仍可激活 owner。
+  Linux 原生所属关系按上方 Portal 设计继续推进，不将内容输入隔离等同于完整模态体验。
 
 ## 三平台原生输入诊断例程（2026-10-31）
 
