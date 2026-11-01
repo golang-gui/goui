@@ -4,6 +4,7 @@ go 1.24
 
 require (
 	github.com/ebitengine/purego v0.10.0
+	github.com/godbus/dbus/v5 v5.2.4
 	github.com/goexlib/cgo v0.1.1
 	github.com/goexlib/mathx v0.0.1
 	github.com/golang-gui/nanovgo v0.0.10
