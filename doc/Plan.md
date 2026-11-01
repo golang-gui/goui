@@ -1,5 +1,29 @@
 # Plan
 
+## 遮罩覆盖 HeaderBar 时保持窗口按钮布局（2026-11-01）
+
+设计见 [DesignGUIWindowChrome](DesignGUIWindowChrome.md#headerbar) 与
+[DesignModal](DesignModal.md#4-popover-与-chrome)。
+
+- [x] 旧实现使用输入命中决定标题栏高度；全窗口覆盖层令高度变为 0，圆形、矩形与
+  原生按钮均回退到默认位置。回归用例在旧实现复现三种模式及普通／模态覆盖层。
+- [x] HeaderBar 依据布局及祖先边界回答高度查询，覆盖关系仅影响输入命中。
+  保留真实高度变化、隐藏、移除、分段标题栏、父级裁剪及信号连接顺序的行为；
+  不缓存旧高度，不修改 Dialog、ModalScope、平台后端或公共 API。
+- [x] GUI／widgets／widgets/ui 包测试、定向 race／vet 及已跟踪源码隔离副本的
+  `go test -count=1 ./...` 通过。更新 Dialog／Toast 例程为 64 DIP 标题栏，自动断言
+  遮罩显示与关闭时的按钮几何；Native 降级时明确跳过专属几何检查，其余断言保留。
+- [x] Ubuntu 22.04.5 amd64，独立 Xvnc :86／xfwm4 4.16.1 合成会话：
+  OpenGL 1x／2x、Software 1x 自动交互通过；真实鼠标打开、关闭遮罩，窗口按钮
+  保持居中，后台标题栏拖动不生效，关闭后正常退出。关闭本会话合成器后另验证
+  Native 降级：明确跳过专属几何检查，Dialog／Toast 其余自动交互通过。
+- [x] 远端 Windows 10 19045 amd64／Direct2D 1x 与 macOS 15.7.7 arm64／OpenGL
+  1x：包内回归、窗口例程构建及自动交互通过；真实鼠标打开、重建、关闭 Dialog，
+  截图对照按钮位置不变。验收使用普通输入路径，不依赖 DevServer。
+- [x] 原工作区 `go test ./...` 仍受既有未跟踪旧例程的 Padding／分组／BuildContext
+  接口错误及 `ui/timer_native_test.go` 计时断言阻断；未修改这些文件或放宽旧断言。
+  全仓测试改写的三个既有未跟踪 PNG 已恢复。
+
 ## Linux D-Bus 与 Portal 文件选择（2026-11-01）
 
 - [x] 选定 godbus；独立设计见 [DesignDBus](DesignDBus.md)，记录 GIO／libdbus

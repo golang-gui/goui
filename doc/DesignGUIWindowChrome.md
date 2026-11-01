@@ -71,9 +71,16 @@ SetMinSize/SetMaxSize and parent constraints determine its actual height.
 
 A visible, arranged HeaderBar answers QueryControls only if it touches the top of
 the root content allocation and covers the controls' outer horizontal anchor (left for native,
-right for custom). Covered headers do not answer. Other split segments and lower
+right for custom). Eligibility follows layout geometry and ancestor bounds;
+covering siblings, including modal Dialog overlays, do not remove this height.
+Hidden or unmounted headers do not answer. Other split segments and lower
 rows only consume ControlsBounds for avoidance. All callbacks still run in
 connection order; this selection rule belongs to HeaderBar, not a Chrome registry.
+
+Height queries and input picking have separate responsibilities. An overlay can
+block a background HeaderBar's caption region without changing the window
+controls' size or position. Actual header layout changes still update the controls
+while the overlay is visible; no previous-height fallback is retained.
 
 The HeaderBar supplying this height must remain a full-width top row (or the
 relevant split segment), not be displaced by padding on a surrounding content

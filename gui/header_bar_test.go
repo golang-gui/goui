@@ -599,7 +599,7 @@ func TestHeaderBarHeightQueryChoosesOuterTopSegment(t *testing.T) {
 	}
 }
 
-func TestCoveredHeaderDoesNotSupplyHeight(t *testing.T) {
+func TestCoveredHeaderKeepsControlsHeight(t *testing.T) {
 	win, _ := chromeFixture(t, false, true)
 	root := newTestWidget()
 	root.SetLayoutManager(layout.NewFillLayout())
@@ -610,8 +610,100 @@ func TestCoveredHeaderDoesNotSupplyHeight(t *testing.T) {
 	answer := float32(-1)
 	win.Chrome().ConnectQueryControls(func(result *ChromeControls) { answer = result.Height })
 	win.paint()
-	if answer != 0 {
-		t.Fatal("covered header supplied a height")
+	if answer != header.Rect().Height {
+		t.Fatalf("覆盖层改变了标题栏高度查询：got=%v header=%v", answer, header.Rect())
+	}
+}
+
+func TestHeaderBarControlsHeightWithOverlay(t *testing.T) {
+	for _, mode := range []string{"native", "rectangular", "circular"} {
+		for _, modal := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/modal=%v", mode, modal), func(t *testing.T) {
+				win, native := chromeFixture(t, mode == "native", true)
+				if mode == "circular" {
+					win.clientChrome = true
+					for _, button := range win.controls.buttons {
+						button.circular = true
+					}
+				}
+				content := NewLinearBox(layout.DirectionVertical)
+				content.SetCrossAlign(layout.CrossStretch)
+				header := NewHeaderBar()
+				header.SetMinSize(geometry.Size{Height: 64})
+				content.AddChild(header)
+				overlay := NewOverlay()
+				overlay.SetChild(content)
+				panel := newTestWidget()
+				panel.SetVisible(false)
+				overlay.AddOverlay(panel)
+				overlay.SetOverlayFill(panel, true)
+				if modal {
+					scope := NewModalScope(panel)
+					defer scope.Destroy()
+				}
+				win.SetWidget(overlay)
+				win.paint()
+				before := chromeInfo(win.Chrome()).ControlsBounds
+				point := geometry.Point{X: 200, Y: 20}
+				if before.Center().Y != 32 || native.hitTest(point) != platform.WindowHitCaption {
+					t.Fatalf("初始标题栏布局或命中错误：controls=%v", before)
+				}
+				panel.SetVisible(true)
+				win.paint()
+				if got := chromeInfo(win.Chrome()).ControlsBounds; got != before {
+					t.Fatalf("覆盖层改变了窗口按钮位置：before=%v after=%v", before, got)
+				}
+				if native.hitTest(point) == platform.WindowHitCaption {
+					t.Fatal("高度查询穿透覆盖层，恢复了后台标题栏拖动")
+				}
+				// 遮罩仍显示时，真实布局变化也必须生效，不能缓存旧高度兜底。
+				header.SetMinSize(geometry.Size{Height: 96})
+				win.paint()
+				if got := chromeInfo(win.Chrome()).ControlsBounds; got.Center().Y != 48 {
+					t.Fatalf("覆盖层阻止了真实标题栏高度变化：%v", got)
+				}
+				header.SetVisible(false)
+				win.paint()
+				if win.chrome.controlsHeight != 0 {
+					t.Fatal("隐藏的标题栏仍提供高度")
+				}
+				header.SetVisible(true)
+				panel.SetVisible(false)
+				win.paint()
+				if got := chromeInfo(win.Chrome()).ControlsBounds; got.Center().Y != 48 || native.hitTest(point) != platform.WindowHitCaption {
+					t.Fatalf("关闭覆盖层后未恢复标题栏：%v", got)
+				}
+				content.RemoveChild(header)
+				win.paint()
+				if win.chrome.controlsHeight != 0 {
+					t.Fatal("移除的标题栏仍提供高度")
+				}
+			})
+		}
+	}
+}
+
+func TestHeaderBarControlsHeightRespectsAncestorBounds(t *testing.T) {
+	win, _ := chromeFixture(t, false, true)
+	root, parent := newTestWidget(), newTestWidget()
+	header := NewHeaderBar()
+	root.AddChild(parent)
+	parent.AddChild(header)
+	win.SetWidget(root)
+	win.paint()
+	root.Arrange(geometry.Rect(0, 0, 640, 400))
+	header.Arrange(geometry.Rect(0, 0, 640, 64))
+	for _, width := range []float32{100, 640} {
+		parent.Arrange(geometry.Rect(0, 0, width, 64))
+		var result ChromeControls
+		header.queryControls(&result)
+		want := float32(0)
+		if width == 640 {
+			want = 64
+		}
+		if result.Height != want {
+			t.Fatalf("父级裁剪后的高度查询错误：width=%v got=%v want=%v", width, result.Height, want)
+		}
 	}
 }
 

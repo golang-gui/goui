@@ -2,10 +2,11 @@
 //
 // 环境：Linux X11、Windows 或 macOS 桌面。启动：go run ./tests/window/widgets/dialog_toast。
 // GOUI_PLAT_PAINTER 选择后端、GOUI_PLAT_SCALE 选择倍率；-auto 经正常输入路径断言。
-// 初始：Integrated 窗口、后台编辑框、Dialog 隐藏、Toast 为空；使用 Modern 亮色。
+// 初始：Integrated 窗口、64 DIP HeaderBar、后台编辑框、Dialog 隐藏、Toast 为空；使用 Modern 亮色。
 // 操作与预期：
 //  1. 点 Open dialog：焦点进入内容，Tab/Shift+Tab 仅在内部循环；F5 不作用于后台。
 //     输入中文，点 Rebuild：内容、焦点范围与输入保留。Esc 提出关闭请求，由状态隐藏。
+//     打开、重建和关闭 Dialog 时，窗口按钮的大小和位置始终不变，仍在 HeaderBar 垂直居中。
 //  2. Caption 默认关闭，点击遮罩按 CloseOnOutside 提出关闭请求；卡片内边距和控件
 //     间隙不关闭。关闭后，打开 Caption 再开 Dialog：只有外部遮罩可拖动窗口，卡片
 //     空白不可拖动；Caption 不同时触发外部点击关闭。原生控制按钮仍可关闭窗口。
@@ -16,8 +17,9 @@
 //  5. Theme 在 Modern 亮／暗和 Basic 间切换：Dialog、Toast 均有背景、边框和圆角；
 //     阴影保留在自己的区域，内容文字和按钮维持自身样式。调整窗口大小应仍合理布局。
 //
-// -auto 覆盖模态、文字、真实 Timer、悬停暂停、替换、关闭、普通重建与句柄释放。
+// -auto 覆盖窗口按钮位置、模态、文字、真实 Timer、悬停暂停、替换、关闭、普通重建与句柄释放。
 // 平台差异：Chrome 拖动遵循现有平台能力；CommitText 不模拟 IME 预编辑或候选窗。
+// Linux 无合成器而回退 Native 时，-auto 明确跳过 Integrated 按钮几何检查，其余检查继续。
 // 副作用：仅本进程窗口，不改系统设置或剪贴板。复位：重新启动。
 // 退出：关闭窗口或 Exit；-auto 输出 PASS 后退出；启动方应设置约 20 秒的进程超时。
 package main
@@ -53,6 +55,7 @@ func main() {
 	var toast wui.ToastHandle
 	started, caption := false, false
 	mode, keys, closeRequests, step, builds := 0, 0, 0, 0, 0
+	var controlsBefore geometry.Rectangle
 	err := ui.Run("org.golang-gui.DialogToast", func(app ui.App) ui.RootView {
 		builds++
 		requestToast := func(message string, duration time.Duration) {
@@ -98,11 +101,23 @@ func main() {
 					}
 					return nil
 				}
+				controlsInfo := func() (info gui.ChromeInfo) {
+					win.Chrome().ConnectInfo(func(current gui.ChromeInfo) { info = current }).Disconnect()
+					return info
+				}
 				switch step {
 				case 0:
+					info := controlsInfo()
+					controlsBefore = info.ControlsBounds
+					if info.Enabled {
+						require(controlsBefore.Height > 0 && controlsBefore.Center().Y == 32, "窗口按钮未在 64 DIP HeaderBar 中居中")
+					} else {
+						fmt.Println("SKIP Integrated 按钮几何：已回退原生装饰")
+					}
 					key(events.KeyF5)
 					click("open")
 				case 1:
+					require(controlsInfo().ControlsBounds == controlsBefore, "Dialog 改变了窗口按钮位置")
 					d := widget("dialog")
 					info, ok := d.Snapshot().Attributes[gui.ModalInfoKey].(gui.ModalInfo)
 					require(ok && info.Active && win.FocusedWidget() == widget("edit"), "dialog focus / modal")
@@ -117,6 +132,7 @@ func main() {
 					}
 					key(events.KeyEscape)
 				case 2:
+					require(controlsInfo().ControlsBounds == controlsBefore, "关闭 Dialog 改变了窗口按钮位置")
 					require(!show.Get() && text.Get() == "Dialog 中文" && closeRequests == 1, "dialog close request / text")
 					requestToast("timed original", time.Second)
 				case 3:
@@ -161,7 +177,7 @@ func main() {
 		return ui.Root().StyleSheet(sheet).Windows(ui.Window("main").Title("GOUI Dialog / Toast").Chrome(ui.WindowChromeIntegrated).Center(true).Size(840, 660).
 			Shortcuts(ui.Shortcut(ui.KeyF5).OnActivate(func() { keys++; fmt.Printf("F5=%d\n", keys); app.RequestUpdate() })).
 			Content(ui.Overlay(
-				ui.VBox(ui.HeaderBar(ui.Label("Dialog / Toast — ordinary Overlay composition")), ui.VBox(
+				ui.VBox(ui.HeaderBar(ui.Label("Dialog / Toast — ordinary Overlay composition")).MinHeight(64), ui.VBox(
 					ui.Label(fmt.Sprintf("Build %d | F5 %d | Close requests %d", builds, keys, closeRequests)),
 					ui.TextInput().ID("background").Text("background"),
 					ui.Button("Open dialog").ID("open").OnClick(func() { show.Set(true) }),
