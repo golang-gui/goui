@@ -93,6 +93,8 @@ Popover 依据 Anchor 判断所属上下文，并沿锚点链处理跨 Root。�
 
 ModalScope 不安装为 Window.SetModalTarget，避免把 Widget 边界误作独立原生表面。
 WindowChrome 继续负责真实窗口控制和缩放。被覆盖的后台 HeaderBar 不得命中；
+但其布局几何仍参与窗口按钮高度查询，遮罩不改变按钮位置或大小。标题栏真实隐藏、
+移除或尺寸改变时，按钮按新的布局更新，不能缓存旧高度掩盖变化。
 活动遮罩可显式报告 Caption，沿用拖动及双击最大化/恢复语义。Caption 区域不同时
 触发遮罩点击关闭。Native Chrome 的支持范围遵循现有能力，不模拟窗口移动。
 自绘卡片的内边距和控件间隙也属于卡片，应明确报告 Client；不能仅用 Pick 命中

@@ -188,6 +188,7 @@ func (h *HeaderBar) mountChrome() {
 // Only the segment at the root content's top covering the outer anchor supplies height.
 // The horizontal reservation is known before layout; the controls' current
 // vertical placement is deliberately irrelevant to choosing the segment.
+// Covering siblings affect input picking, not the underlying row's geometry.
 func (h *HeaderBar) queryControls(result *ChromeControls) {
 	win := h.Window()
 	if win == nil || !h.arranged || !visibleInTree(h) || !h.info.Enabled {
@@ -208,9 +209,10 @@ func (h *HeaderBar) queryControls(result *ChromeControls) {
 	if !containsPoint(own, point) {
 		return
 	}
-	target := hitTest(win.Widget(), point)
-	if target == nil || !target.base().isDescendant(target, h) {
-		return
+	for parent := h.Parent(); parent != nil; parent = parent.Parent() {
+		if !containsPoint(parent.base().windowRect(), point) {
+			return
+		}
 	}
 	result.Height = own.Height
 }
