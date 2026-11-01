@@ -228,6 +228,9 @@ func (a *application) timerActive(t *Timer) bool {
 }
 
 func (a *application) Run() {
+	if dialog, ok := a.fileDialog.(*fileDialog); ok {
+		defer dialog.close()
+	}
 	if a.timers != nil {
 		defer a.timers.finish()
 	}

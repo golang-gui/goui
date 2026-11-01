@@ -141,7 +141,7 @@ func textInputFocus(root Root) (Widget, error) {
 		if host.destroyed || host.frameSuspended {
 			return nil, fmt.Errorf("commit text: window is unavailable")
 		}
-		if host.modalTarget != nil {
+		if modalRootBlocked(host) || host.modalTarget != nil {
 			return nil, fmt.Errorf("commit text: window input is blocked by a modal target")
 		}
 	case *popover:
