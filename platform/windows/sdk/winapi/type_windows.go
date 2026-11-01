@@ -44,7 +44,27 @@ type (
 type (
 	HANDLE  = syscall.Handle
 	HGLOBAL = syscall.Handle
+	HHOOK   = syscall.Handle
 )
+
+const (
+	WH_GETMESSAGE  = 3
+	WH_CALLWNDPROC = 4
+)
+
+type HOOKPROC uintptr
+
+type CWPSTRUCT struct {
+	LParam  LPARAM
+	WParam  WPARAM
+	Message UINT
+	Hwnd    HWND
+}
+
+type INPUT_MESSAGE_SOURCE struct {
+	DeviceType INT
+	OriginId   INT
+}
 
 const (
 	CF_UNICODETEXT = 13
