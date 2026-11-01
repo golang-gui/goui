@@ -1,5 +1,28 @@
 # Plan
 
+## Integrated 关闭图标的像素定位（2026-11-01）
+
+设计见 [DesignWindowChrome](DesignWindowChrome.md#gui-painted-mode)。
+
+- [x] 独立诊断确认 Windows Direct2D 的 352 组斜线与原生调用逐像素一致；
+  1x 下半像素位移会令 1 DIP、45° 斜线的最高覆盖率从约 91% 降至 67%。
+  NanoVG 的 fringe 近似存在后端差异，不通过通用斜线取整或替换 SVG 处理。
+- [x] 仅对齐 GUI 自绘关闭 X 的整体物理像素中心，保留大小、线宽、斜率、布局与命中。
+- [x] 回归覆盖圆形／矩形按钮、奇偶／小数标题高度、分数位置及 1x／分数／2x 缩放；
+  旧实现明确失败，Software 像素与独立面积预期验证已通过。
+- [x] 已跟踪源码及本轮修改的独立副本在 Linux amd64／Go 1.25.8 下运行
+  `go test -json -count=1 ./...`：3274 项测试／子测试通过，10 项既有跳过
+  （平台人工窗口用例及 macOS 签名）；GUI race、定向 vet、Windows amd64 与
+  macOS arm64 例程编译通过。原工作区仍有未跟踪旧例程接口错误及旧 timer 断言
+  失败，未改动；全仓测试生成的既有 PNG 已恢复。
+- [x] 独立 Xvnc :86／xfwm4 4.16.1 合成会话中，OpenGL 1x／1.25x／2x、
+  Software 1x／2x，五种标题高度与亮暗模式共 50 次对照通过；关闭图标中心区域
+  像素不变，Count 点击与关闭按钮正常。仅调整该独立会话的分辨率以容纳 2x 窗口。
+- [x] Windows 10 19045 amd64／Direct2D 1x：包内回归原生运行通过，RDP 桌面
+  中切换五种高度及亮暗模式后关闭图标像素一致；Count 点击与关闭正常。
+  Windows OpenGL 在该 RDP 会话创建上下文失败（`can not choose useful pixel format`），
+  未进入绘制、不计为通过；没有改动后端或用回落替代验收。macOS 原生按钮未修改。
+
 ## 遮罩覆盖 HeaderBar 时保持窗口按钮布局（2026-11-01）
 
 设计见 [DesignGUIWindowChrome](DesignGUIWindowChrome.md#headerbar) 与
