@@ -1,5 +1,43 @@
 # Plan
 
+## v0.5.0 正式发布（2026-11-01）
+
+- [x] 用户已合入 main；正式候选为 14b394d94227cc0a9d5a9bc9a95e8a711330b333，
+  同时匹配 GitHub main。准备阶段 DrawingArea 修复合入后提交为 5001f57；
+  使用候选的干净 git archive，不携带未跟踪文件、go.work 或本地 replace。
+- [x] Go 1.25.8、CGO_ENABLED=0、GOWORK=off、-trimpath；go mod verify 和
+  tidy -diff 通过。冻结源码三目标 go build ./... 及同源 cmd/goui Demo 构建通过。
+  Demo 版本 0.5.0／build 1，Windows 原生版本资源为 0.5.0.1。
+- [x] 冻结源码三端原生 go test -json ./... -count=1：Linux 3275 通过／10 跳过、
+  Windows 3314 通过／12 跳过、macOS 3148 通过／9 跳过，均为 0 失败；计数含
+  命名子测试，跳过不算通过。Linux gui／ui／widgets／widgets/ui／Demo 的
+  race 与相关 vet 通过。原工作区旧未跟踪用例问题保留，不修改用户文件或断言。
+- [x] 正式 Demo 原生桌面验收：Ubuntu 22.04.5 amd64 独立 Xvnc／xfwm4 4.16.1
+  合成会话、Windows 10 22H2 amd64 RDP、macOS 15.7.7 arm64 VNC；应用缩放 1x，
+  Painter 偏好依次为 OpenGL、Direct2D、OpenGL。保留平台正常回退策略，最终程序
+  未自行报告实际 Painter，偏好设置不作为后端独立确认；系统 DPI 未另行测量。
+- [x] 三端按钮、菜单组切换、文本输入及撤销／重做、DropDown、Dialog 模态输入／
+  确认、滚动、DrawingArea 立即重画、文件选择取消及窗口调整通过。Linux、Windows
+  正常关闭退出 0；macOS 无 panic／崩溃，open -W 返回 0。未使用 DevServer 验收。
+- [x] macOS Developer ID／Hardened Runtime／时间戳、公证 Accepted，submission ID
+  为 0ebe2f6e-113c-4c60-b5c4-4710735ed4ff；已装订票据。最终 ZIP 新目录解压后
+  plist 版本、codesign 严格检查、stapler validate、Gatekeeper
+  accepted／Notarized Developer ID 及真实启动通过；原 ZIP 字节回传，未重打包。
+- [x] annotated tag v0.5.0 已推送，peeled SHA 为上述候选；Draft 的五份附件名称、
+  大小、GitHub digest、下载校验及逐字节原件比较均通过。2026-11-01 12:51:26 UTC
+  正式发布并设为 Latest，公开下载再次校验及逐字节比较通过。
+- [x] Go proxy 返回 v0.5.0 与上述完整 SHA；独立无 replace 消费模块引用正式版本，
+  README 完整例程以 CGO_ENABLED=0 在 Linux amd64／Windows amd64／Darwin arm64
+  编译通过。双语 README 仅更新正式 Demo 下载入口和启动文件名；发布特性与迁移
+  仍集中于 [ReleaseV050](ReleaseV050.md)。收尾文档作为新提交，不移动已推送标签。
+- [x] 发布地址：https://github.com/golang-gui/goui/releases/tag/v0.5.0 。正式附件
+  BUILD-INFO.md／SHA256SUMS 记录最终摘要；本机日志、截图、产物及下载副本位于
+  /tmp/goui-release-v0.5.0-3ac238pl，远端为各自 Temp 下 goui-release-v0.5.0 目录。
+  已关闭自建 X11、专用 Windows 计划任务、Mac 新建 Terminal 标签及临时 GUI 连接，
+  保留原有 SSH、用户应用与工作区；测试涉及独立目录内 PNG 和测试桌面剪贴板／焦点。
+- [ ] 未覆盖真实触摸板／IME、混合 DPI、全部后端与外部 DnD 组合；不据本轮冒烟
+  验收宣称通过。Linux arm64、原生 Wayland 等后续范围仍按 Roadmap 推进。
+
 ## v0.5.0 发布准备（2026-11-01）
 
 - [x] 比较基线为 v0.4.0，当前工作分支为 pre-release/v0.5；开始准备时 GitHub
@@ -30,10 +68,10 @@
   接口错误和 ui/timer_native_test.go 计时断言失败；未迁移、删除或放宽旧断言，
   测试改写的三个既有未跟踪 PNG 已恢复。日志、截图及预备产物位于
   /tmp/goui-v0.5.0-prep-vtmjhvuh，PREPARATION-INFO.json 明确标记非正式产物。
-- [ ] 将准备提交合入 main，冻结正式候选 SHA。
-- [ ] 按 [发布流程](Release.md) 构建并验收三平台正式 Demo，完成 macOS 签名／公证、
+- [x] 将准备提交合入 main，冻结正式候选 SHA；结果见上方正式发布记录。
+- [x] 按 [发布流程](Release.md) 构建并验收三平台正式 Demo，完成 macOS 签名／公证、
   最终压缩包检查、BUILD-INFO 与 SHA256SUMS；不得用准备构建替代正式附件。
-- [ ] 推送标签、核对 Draft 附件后公开发布，再复核下载及 Go module 并更新链接。
+- [x] 推送标签、核对 Draft 附件后公开发布，再复核下载及 Go module 并更新链接。
 
 ## Integrated 关闭图标的像素定位（2026-11-01）
 

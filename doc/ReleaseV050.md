@@ -1,9 +1,12 @@
 # GOUI v0.5.0 发布说明
 
-比较基线为 v0.4.0。本轮计划同步发布 Linux amd64/X11、Windows amd64、macOS
-arm64 Demo，版本为 0.5.0、build 1。当前处于发布准备阶段；正式候选提交、最终
-构建、桌面验收、签名公证及下载结果以 Release 附件 `BUILD-INFO.md` 和
-[Plan](Plan.md) 的本轮记录为准，不将此前切片验收视为正式附件已通过。
+比较基线为 v0.4.0。[v0.5.0 已正式发布](https://github.com/golang-gui/goui/releases/tag/v0.5.0)，
+同步提供 Linux amd64/X11、Windows amd64、macOS arm64 Demo 0.5.0／build 1。
+标签及三份正式附件冻结于提交 `14b394d94227cc0a9d5a9bc9a95e8a711330b333`；
+macOS 已通过 Developer ID 签名、Apple 公证及票据检查。构建参数、文件摘要、
+三平台桌面验收和未覆盖范围见 Release 附件
+[BUILD-INFO.md](https://github.com/golang-gui/goui/releases/download/v0.5.0/BUILD-INFO.md)
+与 [Plan](Plan.md) 的正式发布记录。
 
 ## 主要变化
 
@@ -170,6 +173,7 @@ Gatekeeper 状态须以本轮最终 ZIP 的验证为准。
 - The refreshed Demo demonstrates stable feature ownership and local state
   updates. Review the migration notes for State, padding, button groups, file
   dialog ownership, and custom widget/painter implementations before upgrading.
-- Demo 0.5.0 build 1 is planned for Windows amd64, macOS arm64 and Linux amd64/X11.
-  Final artifact verification and macOS notarization are tracked separately;
-  release preparation does not imply those steps have completed.
+- Demo 0.5.0 build 1 is available for Windows amd64, macOS arm64 and Linux
+  amd64/X11. The macOS app is Developer ID signed, notarized and stapled.
+  Native desktop checks and download checksums passed for the final artifacts;
+  see BUILD-INFO.md for the environment and coverage limits.
