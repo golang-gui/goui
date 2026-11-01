@@ -1,11 +1,14 @@
 package x11
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/internal/fileaccess"
@@ -88,56 +91,17 @@ func buildFilterArgs(helper dialogHelper, filters []common.FileFilter) []string 
 
 // OpenFile opens a native file-selection dialog for selecting one or more files.
 func (fd *fileDialog) OpenFile(owner common.Window, opts common.DialogOptions, cb func([]common.FileAccess, error)) {
-	args := buildOpenFileArgs(fd.helper, opts)
-	output, err := runDialog(fd.helper, args)
-	if err != nil {
-		if errors.Is(err, errDialogCancelled) {
-			cb(nil, nil)
-			return
-		}
-		cb(nil, err)
-		return
-	}
-
-	paths := parseOutput(fd.helper, output, opts.AllowMultiple)
-	access, err := fileaccess.Paths(paths)
-	cb(access, err)
+	fd.open(owner, buildOpenFileArgs(fd.helper, opts), opts.AllowMultiple, cb)
 }
 
 // OpenDirectory opens a native dialog for selecting a directory.
 func (fd *fileDialog) OpenDirectory(owner common.Window, opts common.DialogOptions, cb func([]common.FileAccess, error)) {
-	args := buildOpenDirectoryArgs(fd.helper, opts)
-	output, err := runDialog(fd.helper, args)
-	if err != nil {
-		if errors.Is(err, errDialogCancelled) {
-			cb(nil, nil)
-			return
-		}
-		cb(nil, err)
-		return
-	}
-
-	paths := parseOutput(fd.helper, output, false)
-	access, err := fileaccess.Paths(paths)
-	cb(access, err)
+	fd.open(owner, buildOpenDirectoryArgs(fd.helper, opts), false, cb)
 }
 
 // SaveFile opens a native save-file dialog.
 func (fd *fileDialog) SaveFile(owner common.Window, opts common.DialogOptions, cb func([]common.FileAccess, error)) {
-	args := buildSaveFileArgs(fd.helper, opts)
-	output, err := runDialog(fd.helper, args)
-	if err != nil {
-		if errors.Is(err, errDialogCancelled) {
-			cb(nil, nil)
-			return
-		}
-		cb(nil, err)
-		return
-	}
-
-	paths := parseOutput(fd.helper, output, false)
-	access, err := fileaccess.Paths(paths)
-	cb(access, err)
+	fd.open(owner, buildSaveFileArgs(fd.helper, opts), false, cb)
 }
 
 func (fd *fileDialog) RestoreAccess(credential []byte) (common.FileAccess, error) {
@@ -146,8 +110,104 @@ func (fd *fileDialog) RestoreAccess(credential []byte) (common.FileAccess, error
 
 var errDialogCancelled = errors.New("dialog cancelled")
 
-// runDialog executes a dialog helper command and returns its stdout output.
-func runDialog(helper dialogHelper, args []string) (string, error) {
+// Native picker processes belong to their owner window and event loop. Registry
+// state is GUI-thread-only; the worker only waits and reads process output.
+type fileDialogCall struct {
+	owner     *Window
+	cmd       *exec.Cmd
+	mutex     sync.Mutex // serialize worker posting with GUI-thread cancellation
+	done      func([]common.FileAccess, error)
+	cancelled bool
+}
+
+var nativeFileDialogs = map[*fileDialogCall]struct{}{}
+
+func cancelFileDialogs(owner *Window) {
+	for call := range nativeFileDialogs {
+		if owner == nil || call.owner == owner {
+			call.mutex.Lock()
+			call.cancelled = true
+			call.mutex.Unlock()
+			delete(nativeFileDialogs, call)
+			_ = call.cmd.Process.Kill()
+			call.done(nil, common.ErrUnavailable)
+		}
+	}
+}
+
+func (fd *fileDialog) open(owner common.Window, args []string, multiple bool, cb func([]common.FileAccess, error)) {
+	if platform == nil || platform.eventLoop == nil || platform.eventLoop.state.Quitting() || platform.eventLoop.state.Destroyed() {
+		cb(nil, common.ErrUnavailable)
+		return
+	}
+	var w *Window
+	if owner != nil {
+		var ok bool
+		w, ok = owner.(*Window)
+		if !ok || w.wid == 0 {
+			cb(nil, common.ErrUnavailable)
+			return
+		}
+		args = append(args, dialogOwnerArgs(fd.helper, uintptr(w.wid))...)
+	}
+	cmd, err := dialogCommand(fd.helper, args)
+	if err != nil {
+		cb(nil, err)
+		return
+	}
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		cb(nil, fmt.Errorf("dialog failed: %w", err))
+		return
+	}
+	call := &fileDialogCall{owner: w, cmd: cmd, done: cb}
+	nativeFileDialogs[call] = struct{}{}
+	loop := platform.eventLoop
+	go func() {
+		waitErr := cmd.Wait()
+		call.mutex.Lock()
+		defer call.mutex.Unlock()
+		if call.cancelled {
+			return
+		}
+		loop.Post(func() {
+			delete(nativeFileDialogs, call)
+			if call.cancelled {
+				return
+			}
+			if w != nil && w.wid == 0 {
+				cb(nil, common.ErrUnavailable)
+				return
+			}
+			output, err := dialogOutput(stdout.Bytes(), stderr.Bytes(), waitErr)
+			if errors.Is(err, errDialogCancelled) {
+				cb(nil, nil)
+				return
+			}
+			if err != nil {
+				cb(nil, err)
+				return
+			}
+			access, err := fileaccess.Paths(parseOutput(fd.helper, output, multiple))
+			cb(access, err)
+		})
+	}()
+}
+
+func dialogOwnerArgs(helper dialogHelper, owner uintptr) []string {
+	id := strconv.FormatUint(uint64(owner), 10)
+	switch helper {
+	case dialogZenity, dialogYad:
+		return []string{"--attach=" + id, "--modal"}
+	case dialogKdialog:
+		return []string{"--attach", id}
+	}
+	return nil
+}
+
+func dialogCommand(helper dialogHelper, args []string) (*exec.Cmd, error) {
 	var name string
 	switch helper {
 	case dialogZenity:
@@ -157,20 +217,18 @@ func runDialog(helper dialogHelper, args []string) (string, error) {
 	case dialogYad:
 		name = "yad"
 	default:
-		return "", errors.New("unknown dialog helper")
+		return nil, errors.New("unknown dialog helper")
 	}
+	return exec.Command(name, args...), nil
+}
 
-	cmd := exec.Command(name, args...)
-	// Helpers print diagnostic warnings to stderr even on success. They must
-	// never become part of the selected filename.
-	output, err := cmd.Output()
+func dialogOutput(output, stderr []byte, err error) (string, error) {
 	if err != nil {
-		// zenity/kdialog exit code 1 means user cancelled
 		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
 			return "", errDialogCancelled
 		}
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return "", fmt.Errorf("dialog failed: %w: %s", err, strings.TrimSpace(string(exitErr.Stderr)))
+		if len(stderr) > 0 {
+			return "", fmt.Errorf("dialog failed: %w: %s", err, strings.TrimSpace(string(stderr)))
 		}
 		return "", fmt.Errorf("dialog failed: %w", err)
 	}

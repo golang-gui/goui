@@ -3,7 +3,9 @@ package x11
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -31,5 +33,34 @@ func TestDialogHelperOutputAndErrors(t *testing.T) {
 	t.Setenv("GOUI_DIALOG_TEST_EXIT", "2")
 	if _, err := runDialog(dialogZenity, nil); err == nil || errors.Is(err, errDialogCancelled) || !strings.Contains(err.Error(), "helper warning") {
 		t.Fatal(err)
+	}
+}
+
+// 通过真实进程边界验证 helper 协议，不创建原生窗口。
+func runDialog(helper dialogHelper, args []string) (string, error) {
+	cmd, err := dialogCommand(helper, args)
+	if err != nil {
+		return "", err
+	}
+	output, err := cmd.Output()
+	var stderr []byte
+	if e, ok := err.(*exec.ExitError); ok {
+		stderr = e.Stderr
+	}
+	return dialogOutput(output, stderr, err)
+}
+
+func TestDialogOwnerArguments(t *testing.T) {
+	for _, test := range []struct {
+		helper dialogHelper
+		want   []string
+	}{
+		{dialogZenity, []string{"--attach=1234", "--modal"}},
+		{dialogYad, []string{"--attach=1234", "--modal"}},
+		{dialogKdialog, []string{"--attach", "1234"}},
+	} {
+		if got := dialogOwnerArgs(test.helper, 1234); !reflect.DeepEqual(got, test.want) {
+			t.Fatalf("helper=%d owner 参数=%v", test.helper, got)
+		}
 	}
 }

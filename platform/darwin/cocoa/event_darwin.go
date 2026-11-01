@@ -22,6 +22,7 @@ type EventLoop struct {
 
 func newEventLoop() (l *EventLoop, err error) {
 	l = new(EventLoop)
+	fileDialogsStopping = false
 	l.runLoop = CFRunLoopGetMain()
 	if l.runLoop == 0 {
 		return nil, errors.New("get main run loop failed")
@@ -50,7 +51,7 @@ func (l *EventLoop) Post(task func()) {
 
 func (l *EventLoop) Run() {
 	movePress = nativePress{}
-	defer l.state.Quit()
+	defer func() { l.state.Quit(); cancelFileDialogs(nil) }()
 	if l.state.Destroyed() || l.state.Quitting() {
 		return
 	}
@@ -77,6 +78,7 @@ func (l *EventLoop) Destroy() {
 	}
 
 	l.state.Destroy()
+	cancelFileDialogs(nil)
 	CFRunLoopTimerInvalidate(l.timer)
 	CFRelease(l.timer)
 	l.timer = 0
@@ -99,6 +101,7 @@ func (l *EventLoop) runTasks() {
 	movePress = nativePress{}
 	l.state.RunTasks()
 	if l.state.Quitting() {
+		cancelFileDialogs(nil)
 		NSApp.Stop()
 		l.postWakeEvent()
 	}

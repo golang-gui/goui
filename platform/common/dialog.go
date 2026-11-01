@@ -40,17 +40,20 @@ type DialogOptions struct {
 // must be used on the thread that owns the platform.
 type FileDialog interface {
 	// OpenFile opens a native file dialog for selecting one or more files.
-	// owner is the parent window; nil means desktop-centered.
+	// owner requests native association; nil leaves the dialog unowned.
+	// Positioning is controlled by the operating system.
 	// cb is called exactly once on the platform thread with caller-owned access.
 	// Cancel is reported as empty slice with nil error.
 	OpenFile(owner Window, opts DialogOptions, cb func([]FileAccess, error))
 	// OpenDirectory opens a native dialog for selecting a directory.
-	// owner is the parent window; nil means desktop-centered.
+	// owner requests native association; nil leaves the dialog unowned.
+	// Positioning is controlled by the operating system.
 	// cb is called exactly once on the platform thread with caller-owned access.
 	// Cancel is reported as empty slice with nil error.
 	OpenDirectory(owner Window, opts DialogOptions, cb func([]FileAccess, error))
 	// SaveFile opens a native save-file dialog.
-	// owner is the parent window; nil means desktop-centered.
+	// owner requests native association; nil leaves the dialog unowned.
+	// Positioning is controlled by the operating system.
 	// cb is called exactly once on the platform thread with caller-owned access.
 	// The dialog selects a destination; it does not create or write a file.
 	// Cancel is reported as empty slice with nil error.

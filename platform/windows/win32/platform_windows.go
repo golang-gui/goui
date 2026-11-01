@@ -34,6 +34,7 @@ type Platform struct {
 	helperWindow     winapi.HWND
 	windowClass      winapi.LPWSTR
 	windowTitle      winapi.LPWSTR
+	eventLoop        *EventLoop
 	wakeHandler      func()
 	buildNumber      uint32 // cached on the first Integrated window request
 }

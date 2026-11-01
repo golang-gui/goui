@@ -336,6 +336,12 @@ func (d *FileDialog) Show(hwnd uintptr) com.HRESULT {
 	return com.HRESULT(ret)
 }
 
+// Close dismisses an active modal dialog with the supplied result.
+func (d *FileDialog) Close(result com.HRESULT) com.HRESULT {
+	ret, _, _ := d.class().Close.CallRaw(uintptr(cgo.Pointer(d)), uintptr(result))
+	return com.HRESULT(ret)
+}
+
 func (d *FileDialog) SetTitle(title string) com.HRESULT {
 	wTitle, _ := syscall.UTF16PtrFromString(title)
 	defer runtime.KeepAlive(wTitle)

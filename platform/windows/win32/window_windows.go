@@ -175,6 +175,7 @@ func (w *Window) Destroy() {
 	}
 	w.destroying = true
 	defer func() { w.destroying = false }()
+	cancelFileDialogs(w)
 	if w.dnd != nil {
 		w.dnd.Destroy()
 	}
@@ -375,6 +376,7 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 			return 0
 		}
 		window.closed = true
+		cancelFileDialogs(window)
 		window.releaseUpload()
 		window.hitTest = nil
 		window.onEvent(events.DestroyEvent{})
