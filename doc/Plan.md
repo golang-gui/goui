@@ -1,5 +1,40 @@
 # Plan
 
+## 三平台原生输入诊断例程（2026-10-31）
+
+设计与原生记录边界见 [DesignInputTrace](DesignInputTrace.md)。
+
+- [x] 新增 `tests/window/platform/input_trace`：同一 TreeView／TableView 场景、
+  临时文件或排他指定路径、分段标记、派发后状态及原生／GOUI 时间序列。
+  不修改输入转换或事件循环，所需 API 仅扩展既有 WinAPI、Xlib、GLX 和 AppKit 绑定。
+- [x] 日志逻辑测试、定向 race／vet、Windows x64／macOS arm64 目标编译通过；
+  已跟踪源码加本轮新增文件的隔离副本在独立 X11 会话中
+  `go test -count=1 ./...` 通过。
+- [x] Ubuntu 22.04.5 amd64、独立 Xvnc :86／xfwm4，OpenGL 1x／2x：
+  原生键／按钮记录、GOUI 双轴滚轮、树焦点保持、左右键展开折叠、F7 状态、
+  F8 复位及正常关闭通过；3／4 个滚轮步进分别得到 57／76 DIP 偏移。
+  2x 验证还确认在非零绘制尺寸后安装并发布就绪状态。输入由 XTEST 产生，
+  不代表物理触摸板、手势或 VNC 客户端验收。
+- [x] 远端 Windows 10 19045 amd64，SSH Session 0：日志与 SDK 结构体 ABI 测试
+  通过；原生 queue 滚轮／HSCROLL／未知消息、sent-window 回调、按键转换为
+  GOUI KeyEvent 并展开／折叠树、卸载与进程退出码 0 通过。Windows 核对了上传
+  EXE 的 SHA-256；该会话没有实际绘制，滚轮控件命中未验收。
+  macOS 15.7.7 arm64 经 remote-shell 验证 NSEvent local monitor
+  安装、Objective-C block 回调、原事件返回和移除／释放通过，未作桌面手势验收。
+- [x] 使用方回传 Linux/X11、OpenGL 1x 的远程触控日志：纵向为 Button4／5，
+  转为 WheelEvent 后命中表格；横向原生为 keycode 83／85，当前会话映射为
+  KP_Left／KP_Right，分别 24／26 次按下，随后正常触发持焦点树的键盘导航。
+  未出现 Button6／7 或横向 WheelEvent。使用方另反馈 Windows 其他应用也出现
+  横向触控控制文本光标；现有证据支持继续排查上游输入转换，未确定具体驱动或
+  远程链路责任方，未增加 GUI 输入补偿。
+- [ ] 真实 Windows／macOS 桌面及三平台触摸板、鼠标、VNC／RDP 的消息差异
+  待硬件日志反馈；不以无桌面的零边界状态证明滚轮命中。
+- [ ] 额外 Linux arm64 编译检查受既有 `libc/syscall_linux.go` 中
+  `syscall.SYS_PIPE`／`SYS_POLL` 未定义阻塞；本轮未修改 libc 或扩大 ARM 适配范围。
+- [x] 原工作区 `go test ./...` 仍受既有未跟踪旧例程的 Padding／BuildContext／
+  分组接口编译失败和未跟踪 `ui/timer_native_test.go` 计时断言影响；隔离副本通过。
+  未修改这些文件或放宽测试，测试改写的既有未跟踪 PNG 已恢复。
+
 ## ScrollView 缩放与重测几何一致性（2026-10-31）
 
 设计见 [DesignScrollLayout](DesignScrollLayout.md)。
