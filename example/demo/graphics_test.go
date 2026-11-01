@@ -11,6 +11,7 @@ import (
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/ui"
 )
 
 // 检查实际控件上传的位图尺寸，而不是只调用 SVG Source 验证其本身。
@@ -174,3 +175,68 @@ type wordmarkTestImage struct {
 func (i *wordmarkTestImage) Size() (int, int)         { return i.size.X, i.size.Y }
 func (i *wordmarkTestImage) Update(image.Image) error { return nil }
 func (i *wordmarkTestImage) Destroy()                 { i.destroyed = true }
+
+// 原生重绘可能早于排队的声明更新；旧回调也必须绘制当前内容版本。
+func TestCachedDrawingUsesCurrentGenerationBeforeRebuild(t *testing.T) {
+	d, err := newDemo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.stopActivities()
+	ctx := new(drawingDeclarationContext)
+	view := d.graphics.cachedDrawing().(ui.WidgetView)
+	box := view.Mount(ctx)
+	view.Update(ctx, box)
+	var declaration *ui.DrawingAreaView
+	for _, child := range ctx.children {
+		if area, ok := child.(*ui.DrawingAreaView); ok {
+			declaration = area
+		}
+	}
+	if declaration == nil {
+		t.Fatal("例程没有声明 DrawingArea")
+	}
+	area := declaration.Mount(ctx).(*gui.DrawingArea)
+	defer declaration.Unmount(ctx, area)
+	painter := new(drawingGenerationPainter)
+	for i, wantX := range []float32{100, 123.97128, 142.07355} {
+		if i > 0 {
+			d.graphics.regenerateDrawing()
+		}
+		// 不调用声明的 Update，复现重绘先于局部重建的顺序。数值为 200×100 DIP
+		// 区域内 phase=0／0.5／1 时圆心的独立期望，不比较两条实现路径。
+		area.DrawFunc()(painter, geometry.Size{Width: 200, Height: 100})
+		if math.Abs(float64(painter.center.X-wantX)) > 0.0001 || painter.center.Y != 50 || d.graphics.drawingDirty {
+			t.Fatalf("版本 %d 使用了旧绘制状态：center=%v wantX=%v dirty=%v", i, painter.center, wantX, d.graphics.drawingDirty)
+		}
+	}
+}
+
+type drawingDeclarationContext struct {
+	ui.BuildContext
+	children []ui.View
+	state    any
+}
+
+func (c *drawingDeclarationContext) State() any         { return c.state }
+func (c *drawingDeclarationContext) SetState(state any) { c.state = state }
+func (c *drawingDeclarationContext) UpdateChildren(_ ui.Container, views []ui.View, _ ...func(int, gui.Widget)) []gui.Widget {
+	c.children = views
+	return nil
+}
+
+type drawingGenerationPainter struct {
+	gui.Painter
+	center geometry.Point
+}
+
+func (*drawingGenerationPainter) FillRoundRect(geometry.Rectangle, float32, graphics.Brush) {}
+func (p *drawingGenerationPainter) FillEllipse(center geometry.Point, _, _ float32, _ graphics.Brush) {
+	p.center = center
+}
+func (*drawingGenerationPainter) Save()                                                {}
+func (*drawingGenerationPainter) Restore()                                             {}
+func (*drawingGenerationPainter) SetClipRect(geometry.Rectangle)                       {}
+func (*drawingGenerationPainter) SetTransform(geometry.Transform)                      {}
+func (*drawingGenerationPainter) DrawRect(geometry.Rectangle, float32, graphics.Brush) {}
+func (*drawingGenerationPainter) ClearPath(graphics.Path)                              {}
