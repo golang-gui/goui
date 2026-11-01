@@ -218,7 +218,8 @@ func (d *graphicsDemo) cachedDrawing() ui.View {
 		ui.Label(resource.CachedDrawingHint()).WrapMode(gui.WrapWordChar).Style(modern.MutedText),
 		ui.DrawingArea(func(p gui.Painter, size geometry.Size) {
 			d.drawingDirty = false
-			phase := float32(generation) * .5
+			// Paint may precede the queued declaration update.
+			phase := float32(d.drawingGeneration.Peek()) * .5
 			if d.drawingFrames.Peek() {
 				phase += float32(time.Since(d.drawingStarted).Seconds()) * 2
 			}
