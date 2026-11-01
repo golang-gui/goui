@@ -61,15 +61,26 @@ gui 现在的 `root.Measure(size)` 本质就是"紧约束/窗口驱动"那条路
 
 因此"允许 min ⟹ 必须让 Widget 撑开顶层窗口"这个担心**不成立**:顶层窗口里 min 是被夹住 + 溢出,不是撑窗口。
 
-## 5. "内容 min → 窗口"的正当通道:窗口最小尺寸 hint
+## 5. 窗口最小尺寸只来自显式声明
 
-内容的 min 仍可**合法地影响窗口**,但不是命令式 resize,而是把根 Widget 的 min 作为**窗口最小尺寸 hint** 报给 WM/合成器:
+2026-11-01 修正：保留单个 `Measure` 结果，不增加最小尺寸／自然尺寸两套查询。
 
-- X11 `WM_NORMAL_HINTS.min_size`、win32 `WM_GETMINMAXINFO`、cocoa `contentMinSize`、Wayland `xdg_toplevel.set_min_size`。
-- 语义 = **"别让用户把我缩到比可用还小"**;桌面 + Wayland 原生支持,Android 忽略(本就固定/铺满)。
-- 这是**咨询性下限**,不是内容任意撑开窗口;它让"内容 min"触达窗口,却不破坏"窗口尺寸是平台事实"这条线。
+- `Measure(Constraint)` 返回当前约束下的期望尺寸；无界测量通常用于取得内容自然大小。
+- `Widget.MinSize` 是用户给布局的约束，仍服从父级最终约束与裁剪，不自动成为原生窗口限制。
+- `Window.SetMinSize`／`ui.Window.MinSize` 是用户显式声明的客户区 DIP 最小尺寸，
+  仅这类声明会转发给 `DesktopWindow.SetMinSize`；未声明时保留平台默认限制。
+- 零分量清除对应轴的应用限制，`(0, 0)` 清除两轴；首次绘制、重排、换根、主题、
+  缩放和窗口状态变化均不以内容测量重新设置该限制。非桌面宿主保持无操作。
 
-DesktopWindow.SetMinSize 已实现；GUI 显式最小尺寸优先，否则从根测量派生提示。换行内容的自然尺寸不等于固有最小尺寸，此限制需后续单独评估。
+原生接入继续使用 X11 `WM_NORMAL_HINTS.min_size`、Win32 `WM_GETMINMAXINFO`、
+AppKit `contentMinSize` 等既有机制。它是原生窗口系统处理的提示，系统可以施加自身
+限制或拒绝状态请求；框架不虚构最大化成功，也不根据工作区偷偷降低显式限制。
+例如应用声明最小宽 820 DIP，而工作区仅宽 600 DIP，Xfwm4 可能拒绝最大化。
+支持窄屏应由应用调整声明及布局，不能把内容无界测量的单行宽度升级为硬限制。
+
+参考 [Qt minimumSize](https://doc.qt.io/qt-6.8/qwidget.html#minimumSize-prop) 和
+[GTK4 default_size](https://docs.gtk.org/gtk4/method.Window.set_default_size.html) 对
+显式限制与初始偏好的区分；GOUI 采用自己的单测量值模型，不引入其双尺寸测量 API。
 
 ## 6. 创建尺寸的 API 约定(本轮落地)
 
@@ -231,11 +242,12 @@ HBox/VBox 中都不需要知道父容器方向。
 2. ~~**Widget min/max + ViewBase 尺寸修饰器**:`sizeConstraint` 字段 + `.MinWidth/...`;夹取顺序(§9)。~~ **已完成。** `WidgetBase` 加 `minWidth/minHeight/maxWidth/maxHeight`(0 max = 无上限)+ `selfConstraint()`/`constrain()`(`c.Clamp(self.Clamp(intrinsic))`,父约束最后夹取=胜)+ 6 个 setter 上到 `Widget` 接口;四个叶子(Label/Button/Image/TextInput)在固有尺寸上套 `constrain`。ui:`viewBase` 尺寸字段 + `apply()` 下发 + `ViewBase[T].MinWidth/MaxWidth/MinHeight/MaxHeight/MinSize/MaxSize`。
 3. ~~**对齐**:LinearLayout 的 `MainAlign` / `CrossAlign`(§12)。~~ **已完成。** `LinearLayout` 保留容器级 `MainAlign`/`CrossAlign`，按相对主/交叉轴(`mainSize`/`crossSize`/`makeSize`)进行 Measure 与 Arrange。`CrossStart/Center/End` 保持 child 固有交叉尺寸，`CrossStretch` 在有限交叉轴上传递紧约束并填满交叉轴；`MainWeight` child 先以主轴无界约束计算 flex basis,再瓜分主轴余量。`WidgetBase`/`Widget` 不携带 CrossAlign，`LinearBox`/`BoxView` 提供容器级对齐属性。
 4. **已完成：溢出 + ScrollView**：默认结构裁剪，Direction 选择放松的滚动轴；普通内容与虚拟内容分别处理。
-5. **已完成：窗口 min-size hint**：显式客户区最小尺寸或根测量派生提示 → DesktopWindow.SetMinSize。自然尺寸与固有最小尺寸的区别仍待评估。
+5. **已完成：显式窗口 min-size hint**：仅客户区最小尺寸声明 → DesktopWindow.SetMinSize；零值清除应用限制，根测量不再生成窗口限制，见 §5。
 
 ---
 
-**一句话**:顶层 Window 外生(平台约束 Widget、无 `SetSize`、尺寸经 `SizeEvent`、创建尺寸=hint);Popup 内生(Widget 撑开、创建尺寸=权威 + `SetSize`);二者用"Measure 吃约束、吐期望尺寸"统一;Widget min/max 由约束松紧决定是撑大 surface(Popup)还是夹住+溢出+给 WM 最小尺寸 hint(Window)。Wayland/Android 均不破。
+顶层 Window 由平台尺寸约束 Widget；Popup 按内容度量请求尺寸。二者共用
+`Measure(Constraint)`；Widget min/max 参与布局，原生窗口最小尺寸由应用独立显式设置。
 
 ## 15. 实用化升级：baseline、对齐与布局缓存
 

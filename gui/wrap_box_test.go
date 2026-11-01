@@ -159,9 +159,7 @@ func TestWrapBoxOwnWeightIsUsedByLinearParent(t *testing.T) {
 	}
 }
 
-// A wrapping layout's unbounded preferred width is not a desktop minimum.
-// Hosts that need reflow currently supply an explicit window minimum. Keep
-// that hint authoritative through automatic minimum derivation and resizing.
+// 无界测量宽度用于内容布局；显式窗口最小尺寸不随换行或缩窗变化。
 func TestWrapBoxWindowExplicitMinimumAllowsReflow(t *testing.T) {
 	box := NewWrapBox(layout.DirectionHorizontal)
 	box.SetSpacing(8)
@@ -178,18 +176,20 @@ func TestWrapBoxWindowExplicitMinimumAllowsReflow(t *testing.T) {
 	t.Cleanup(win.Destroy)
 	minimum := geometry.Size{Width: 400, Height: 600}
 	win.SetMinSize(minimum)
-	win.updateMinSize()
-	win.updateMinSize()
 	if len(native.minimums) != 1 || native.minimums[0] != minimum {
 		t.Fatalf("explicit minimum overwritten by single-line width: %v", native.minimums)
 	}
 	for _, tc := range []struct{ width, lastX, lastY float32 }{
 		{780, 376, 0}, {400, 0, 30}, {780, 376, 0},
 	} {
-		measureWidget(box, layout.Tight(geometry.Size{Width: tc.width, Height: 600}))
-		box.Arrange(geometry.Rect(0, 0, tc.width, 600))
+		win.width, win.height = tc.width, 600
+		win.RequestLayout()
+		win.paint()
 		if got := box.Children()[2].Rect(); got != geometry.Rect(tc.lastX, tc.lastY, 180, 24) {
 			t.Fatalf("width=%v last child=%v", tc.width, got)
+		}
+		if len(native.minimums) != 1 || native.minimums[0] != minimum {
+			t.Fatalf("缩窗换行改变了显式窗口限制：%v", native.minimums)
 		}
 	}
 }

@@ -225,11 +225,11 @@ ClearPath 局部擦除已实现并完成本轮验收，Linux GUI Integrated 改�
 
 <a id="future-layout"></a>
 
-### 内容最小尺寸、视觉度量与二维布局：待评估
+### 视觉度量与二维布局：待评估
 
 Constraint、baseline、Linear 默认值、测量缓存、WrapBox 与单轴 ScrollView 均已实现。
-当前自动窗口最小尺寸取根自然测量，WrapBox 的无界单行宽度不等于可换行最小宽度；
-暂由应用显式 Window.MinSize 控制，后续需分别设计“期望尺寸”和“可用最小尺寸”。
+2026-11-01 窗口最小尺寸改为仅由显式 Window.MinSize 声明，未声明时保留平台默认；
+移除根测量自动生成原生限制的行为，不引入第二套最小尺寸／自然尺寸查询。
 TextInput 的建议宽度仍为 160 DIP；若按文字容量／字体度量调整，保留 min/max 和父
 硬约束优先，不把 Padding 擅自搬入样式系统。Grid／FormLayout 按跨行列对齐需求评估，
 不把 LinearBox 重新定义成 FlexBox。见 [DesignLayout](DesignLayout.md)／[WrapBox](DesignWrapBox.md)。
@@ -770,8 +770,9 @@ Window / Popover 公开接口统一嵌入 Root，查询不依赖内部类型断�
 前一切片 WrapBox：纯算法、GUI/UI 容器、语义快照和测试例程已实现；
 Linux 全仓/race 检查、Windows amd64/macOS arm64 交叉编译通过。
 示例显式设置窗口最小尺寸后，Linux/Xfwm4、1x（含显式 Software）的缩窗换行、
-点击及滚动已验证；其他平台和 2x 桌面验收待进行。窗口自动最小尺寸的通用
-推导策略仍需单独设计。详见 [WrapBox 设计](DesignWrapBox.md) 与 Plan。
+点击及滚动已验证；其他平台和 2x 桌面验收待进行。窗口最小尺寸现按显式声明转发，
+不再规划内容自动推导。详见 [DesignLayout §5](DesignLayout.md#5-窗口最小尺寸只来自显式声明)、
+[WrapBox 设计](DesignWrapBox.md) 与 Plan。
 保留现有 gui 包结构，不继续迁移既有控件；新增的复杂 TabBar/TabView
 放在同仓库 `widgets`，声明式适配位于 `widgets/ui`。见 [Tabs 设计](DesignTabs.md)。
 标签跟手排序、相邻让位过渡、字体自适应高度与 HeaderBar 空白 Caption 已接入；

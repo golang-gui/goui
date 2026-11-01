@@ -849,14 +849,72 @@ func TestNonDesktopWindowNeedsNoDesktopImplementation(t *testing.T) {
 	}
 	win.RequestState(WindowStateNormal)
 	win.SetMinSize(geometry.Size{Width: 100, Height: 50})
-	win.updateMinSize()
 }
 
-func TestAutomaticMinimumOnlyAppliesToDesktop(t *testing.T) {
+// 根的期望尺寸及 Widget.MinSize 都不能隐式变成原生窗口限制。
+func TestWindowContentDoesNotDeclareMinimum(t *testing.T) {
+	for _, widgetMinimum := range []bool{false, true} {
+		t.Run(fmt.Sprintf("widgetMinimum=%t", widgetMinimum), func(t *testing.T) {
+			native := &desktopTestWindow{state: WindowStateNormal}
+			w := &window{platformWindow: native}
+			t.Cleanup(w.Destroy)
+			w.width, w.height = 400, 300
+			var content Widget = &countingMeasureWidget{size: geometry.Size{Width: 1600, Height: 900}}
+			if widgetMinimum {
+				content = newTestWidget()
+				content.SetMinSize(geometry.Size{Width: 1600, Height: 900})
+			}
+			w.SetWidget(content)
+			w.paint()
+			w.RequestLayout()
+			w.paint()
+			if len(native.minimums) != 0 {
+				t.Fatalf("内容测量不应设置原生最小尺寸：%v", native.minimums)
+			}
+			want := geometry.Rect(0, 0, 400, 300)
+			if content.Rect() != want || w.Snapshot().Widget.Bounds != want {
+				t.Fatalf("根布局及快照应服从客户区：rect=%v snapshot=%v", content.Rect(), w.Snapshot().Widget.Bounds)
+			}
+		})
+	}
+}
+
+// 首次绘制前清除限制，也不能回落到内容测量；后续更新仍直接转发。
+func TestWindowMinimumUpdatesAndClears(t *testing.T) {
+	native := &desktopTestWindow{state: WindowStateNormal}
+	w := &window{platformWindow: native}
+	t.Cleanup(w.Destroy)
+	w.width, w.height = 400, 300
+	w.SetWidget(&countingMeasureWidget{size: geometry.Size{Width: 1600, Height: 900}})
+	minimum := geometry.Size{Width: 200, Height: 100}
+	w.SetMinSize(minimum)
+	w.SetMinSize(geometry.Size{})
+	w.paint()
+	want := []geometry.Size{minimum, {}}
+	if !reflect.DeepEqual(native.minimums, want) {
+		t.Fatalf("首次绘制恢复了已清除的限制：%v，期望 %v", native.minimums, want)
+	}
+	for _, size := range []geometry.Size{{Width: 240}, {Height: 120}, {}} {
+		w.SetMinSize(size)
+		want = append(want, size)
+		w.SetWidget(&countingMeasureWidget{size: geometry.Size{Width: 2000, Height: 1200}})
+		w.paint()
+		if !reflect.DeepEqual(native.minimums, want) {
+			t.Fatalf("内容变化覆盖了显式限制：%v，期望 %v", native.minimums, want)
+		}
+	}
+	w.Destroy()
+	w.SetMinSize(minimum)
+	if !reflect.DeepEqual(native.minimums, want) {
+		t.Fatal("销毁后仍提交了最小尺寸")
+	}
+}
+
+func TestContentMeasurementOnlyParticipatesInLayout(t *testing.T) {
 	size := geometry.Size{Width: 120, Height: 40}
 	child := &countingMeasureWidget{size: size}
 	win := &window{platformWindow: &chromeTestWindow{}, root: child}
-	win.updateMinSize()
+	win.SetMinSize(size)
 	if child.measures != 0 {
 		t.Fatal("non-desktop host measured desktop minimum")
 	}
@@ -867,10 +925,12 @@ func TestAutomaticMinimumOnlyAppliesToDesktop(t *testing.T) {
 	native := &desktopTestWindow{}
 	child = &countingMeasureWidget{size: size}
 	win = &window{platformWindow: native, root: child}
-	win.updateMinSize()
-	win.updateMinSize()
-	if child.measures != 1 || !reflect.DeepEqual(native.minimums, []geometry.Size{size}) {
-		t.Fatal("derived minimum changed")
+	win.SetMinSize(size)
+	if child.measures != 0 || !reflect.DeepEqual(native.minimums, []geometry.Size{size}) {
+		t.Fatal("显式窗口限制不应测量内容")
+	}
+	if got := measureWidget(child, layout.Unbounded()).Size; got != size {
+		t.Fatal("控件测量语义改变")
 	}
 	win.Destroy()
 }
@@ -930,11 +990,10 @@ func TestIntegratedContentLayoutFillsResizeEdges(t *testing.T) {
 	}
 }
 
-func TestIntegratedAutomaticMinimumIgnoresResizeEdges(t *testing.T) {
+func TestIntegratedMinimumOnlyUsesExplicitCalls(t *testing.T) {
 	for _, explicit := range []bool{false, true} {
 		w, native := chromeFixture(t, false, false)
 		w.clientChrome = true
-		w.minSizeApplied = false
 		native.minimums = nil
 		content := newTestWidget()
 		content.SetMinSize(geometry.Size{Width: 120, Height: 60})
@@ -942,32 +1001,24 @@ func TestIntegratedAutomaticMinimumIgnoresResizeEdges(t *testing.T) {
 		if explicit {
 			w.SetMinSize(geometry.Size{Width: 200, Height: 100})
 		}
-		w.updateMinSize()
-		want := geometry.Size{Width: 120, Height: 60}
+		w.paint()
+		var want []geometry.Size
 		if explicit {
-			want = geometry.Size{Width: 200, Height: 100}
+			want = []geometry.Size{{Width: 200, Height: 100}}
 		}
-		if !reflect.DeepEqual(native.minimums, []geometry.Size{want}) {
+		if !reflect.DeepEqual(native.minimums, want) {
 			t.Fatalf("explicit=%v: minimums=%v, want %v", explicit, native.minimums, want)
 		}
-		w.updateMinSize()
-		if len(native.minimums) != 1 {
-			t.Fatal("unchanged decoration reapplied the WM hint")
-		}
-		// 分数缩放和状态切换均不改变内容最小尺寸。
+		// 分数缩放和原生状态变化均不能添加或覆盖窗口限制。
 		w.pixelWidth = w.width * 1.25
-		w.updateMinSize()
-		if !explicit {
-			if got := native.minimums[len(native.minimums)-1]; got != (geometry.Size{Width: 120, Height: 60}) {
-				t.Fatalf("fractional scale hint: %v", got)
+		for _, state := range []WindowState{WindowStateNormal, WindowStateMaximized, WindowStateFullscreen, WindowStateNormal} {
+			native.state = state
+			_ = w.DispatchEvent(events.StateEvent{State: state})
+			w.RequestLayout()
+			w.paint()
+			if !reflect.DeepEqual(native.minimums, want) {
+				t.Fatalf("explicit=%t state=%v: 最小尺寸被状态或缩放覆盖：%v", explicit, state, native.minimums)
 			}
-			native.state = WindowStateMaximized
-			w.updateMinSize()
-			if got := native.minimums[len(native.minimums)-1]; got != (geometry.Size{Width: 120, Height: 60}) {
-				t.Fatalf("maximized hint retained floating edges: %v", got)
-			}
-		} else if len(native.minimums) != 1 {
-			t.Fatal("scale overrode the explicit minimum")
 		}
 	}
 }

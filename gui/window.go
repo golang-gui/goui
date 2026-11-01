@@ -11,7 +11,6 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
-	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
@@ -95,6 +94,9 @@ type Window interface {
 	// SetMinSize supplies a desktop WM hint in DIP; it is a no-op for non-desktop
 	// hosts. Like the creation size, it describes the client area irrespective
 	// of Chrome. Widget layout constraints are independent of this advisory hint.
+	// Only explicit calls set this hint; content measurement never supplies it.
+	// Zero components clear the application constraint on those axes, preserving
+	// any native system limits.
 	SetMinSize(geometry.Size)
 
 	Snapshot() WindowInfo
@@ -171,8 +173,6 @@ type window struct {
 	destroy        signal.Signal0
 	focusChanged   signal.Signal1[bool]
 	stateChanged   signal.Signal1[WindowState]
-	minSize        geometry.Size // explicit minimum from SetMinSize; zero means derive from tree
-	minSizeApplied bool          // true once the first layout has derived and applied the min-size hint
 	chrome         *windowChrome
 	controls       *windowControls
 	layingOut      bool
@@ -736,32 +736,8 @@ func positionReference(relativeTo Window) (platform.Window, error) {
 }
 
 func (w *window) SetMinSize(size geometry.Size) {
-	w.minSize = size
 	if native, err := w.desktopWindow(); err == nil {
 		native.SetMinSize(size.Width, size.Height)
-	}
-}
-
-// updateMinSize derives and applies the window-manager min-size hint from the
-// widget tree when no explicit SetMinSize was given. Resize hit zones do not
-// consume layout space or increase the content-derived minimum.
-// The content is measured unbounded to discover its preferred intrinsic size.
-func (w *window) updateMinSize() {
-	if w.minSizeApplied {
-		return
-	}
-	w.minSizeApplied = true
-	// Explicit SetMinSize wins over auto-derivation.
-	if w.minSize.Width > 0 || w.minSize.Height > 0 {
-		return
-	}
-	native, err := w.desktopWindow()
-	if w.root == nil || err != nil {
-		return
-	}
-	pref := measureWidget(w.root, layout.Unbounded()).Size
-	if pref.Width > 0 || pref.Height > 0 {
-		native.SetMinSize(pref.Width, pref.Height)
 	}
 }
 
@@ -901,7 +877,6 @@ func (w *window) paint() {
 	if w.destroyed {
 		return
 	}
-	w.updateMinSize()
 	laidOut := w.layoutDirty
 	w.layoutContent()
 	if w.chrome != nil && w.chrome.afterLayout() && !w.destroyed {
