@@ -347,7 +347,7 @@ func TestAppReplacesWindowWhenIDChanges(t *testing.T) {
 
 func TestAppWindowMinSize(t *testing.T) {
 	app := newWindowTestApplication()
-	mode := 0 // 0: width only, 1: both axes, 2: no declaration
+	mode := -1 // -1：初始未声明，0：仅宽度，1：双轴，2：移除声明。
 	rt := newApp(app, func() RootView {
 		wv := Window("main").Content(Label("main"))
 		switch mode {
@@ -363,6 +363,12 @@ func TestAppWindowMinSize(t *testing.T) {
 		t.Fatal(err)
 	}
 	win := app.windows[0]
+	if len(win.minSizes) != 0 {
+		t.Fatalf("未声明时不应设置窗口最小尺寸：%v", win.minSizes)
+	}
+	mode = 0
+	rt.RequestUpdate()
+	app.runPosted()
 
 	// Width-only declaration forwards exactly once.
 	want := geometry.Size{Width: 320}

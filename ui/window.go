@@ -53,7 +53,7 @@ type WindowView struct {
 	onDestroy      func()
 	onAfterPaint   func(gui.Painter, geometry.Rectangle)
 	minWidth       float32
-	minHeight      float32 // window minimum size hint (logical DIP); merged over an unbounded base on apply
+	minHeight      float32 // explicit window minimum hint in DIP; absent axes resolve to zero
 	fields         bits.Bitmap[uint64]
 }
 
@@ -153,7 +153,8 @@ func (w WindowView) OnDestroy(fn func()) WindowView {
 // same client-area convention as Size. This does not replace Widget layout
 // constraints or add space for a HeaderBar. Like the widget-level viewBase,
 // declared axes are merged on each rebuild; an axis without a declaration
-// falls back to the window default, which is no constraint at all.
+// has no application constraint. Content measurement does not supply a hint;
+// zero clears a previous declaration while preserving native system limits.
 func (w WindowView) MinWidth(v float32) WindowView {
 	w.minWidth = v
 	w.fields.Set(viewMinWidth, true)
