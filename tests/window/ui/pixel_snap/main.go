@@ -1,14 +1,19 @@
-// Software 平直边缘像素对齐回归，不使用 DevServer。
+// 平直边缘与窗口关闭图标的像素对齐回归，不使用 DevServer。
 //
 // 环境：Windows、Linux X11 或 macOS 桌面；记录 OS/WM、实际后端与缩放。
 // 启动：GOUI_PLAT_PAINTER=software GOUI_PLAT_SCALE=1 go run ./tests/window/ui/pixel_snap
+// 可选 -height 41 指定初始 HeaderBar 高度，-dark 以暗色启动。
 // Windows PowerShell 先设置上述环境变量；另用 opengl/direct2d（仅 Windows）作对照。
-// 初始：Modern 亮色 Integrated 窗口，计数 0；第二排按钮高度为 35.25 DIP。
+// 初始：Modern 亮色 Integrated 窗口，计数 0，HeaderBar 高度 40 DIP；
+// 第二排按钮高度为 35.25 DIP。终端输出实际高度请求、后端和 PixelScale。
 //
 // 操作与逐项预期：
 //  1. Windows 100% 下观察标题栏最小化横线、最大化方框和平直按钮下边框。
 //     1 DIP 直边应集中于一个物理像素，不应变成相邻两行/列的浅色条。
 //     关闭符号的斜线及按钮圆角仍应抗锯齿，不能因修复变成锯齿。
+//     点击 Height 或按 F7，依次切换 40/41/48/49/40.5 DIP：关闭 X 的大小、
+//     粗细和清晰度保持一致，不因奇偶高度变化变成一片灰；图标仍居中，允许
+//     最多半个物理像素的视觉定位差。悬停和点击的按钮区域仍跟随 HeaderBar。
 //  2. 点击 Count 两次：计数变成 2。点击 Theme 切到暗色，再切回亮色；
 //     计数保留，普通/Primary 及小数高度按钮的边框均完整，无浅色带或漏背景。
 //  3. 拖动标题栏、改变窗口大小，再最大化/还原；控件保持可操作，边框不变虚。
@@ -23,8 +28,10 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"image"
+	"math"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/theme/modern"
@@ -32,21 +39,43 @@ import (
 )
 
 func main() {
-	dark, clicks := false, 0
+	heightFlag := flag.Float64("height", 40, "初始 HeaderBar 高度（DIP，至少 40）")
+	darkFlag := flag.Bool("dark", false, "以暗色启动")
+	flag.Parse()
+	if math.IsNaN(*heightFlag) || math.IsInf(*heightFlag, 0) || *heightFlag < 40 || *heightFlag > math.MaxFloat32 {
+		panic("height must be finite and at least 40 DIP")
+	}
+	dark, clicks := *darkFlag, 0
+	height := float32(*heightFlag)
+	heights := []float32{40, 41, 48, 49, 40.5}
 	var reportedScale float32
 	if err := ui.Run("org.golang-gui.PixelSnap", func(app ui.App) ui.RootView {
-		fmt.Printf("STATE dark=%t clicks=%d\n", dark, clicks)
+		fmt.Printf("STATE dark=%t clicks=%d height=%g\n", dark, clicks, height)
 		count := func() { clicks++; app.RequestUpdate() }
+		cycleHeight := func() {
+			next := heights[0]
+			for i, candidate := range heights {
+				if candidate == height {
+					next = heights[(i+1)%len(heights)]
+					break
+				}
+			}
+			height = next
+			app.RequestUpdate()
+		}
 		return ui.Root().StyleSheet(modern.Sheet(modern.Options{Dark: dark})).Windows(
 			ui.Window("pixel-snap").Title("GOUI pixel alignment").Size(720, 400).
+				Shortcuts(ui.Shortcut(ui.KeyF7).OnActivate(cycleHeight)).
 				Chrome(ui.WindowChromeIntegrated).Content(ui.VBox(
-				ui.HeaderBar(ui.Label("Pixel alignment | caption controls")).Padding(6),
+				ui.HeaderBar(ui.Label(fmt.Sprintf("Pixel alignment | HeaderBar %g DIP", height))).
+					Padding(6).MinHeight(height).MaxHeight(height),
 				ui.VBox(
 					ui.Label("Compare straight bottom borders and caption symbols."),
 					ui.HBox(
 						ui.Button("Count").MinWidth(160).OnClick(count),
 						ui.Button("Primary").MinWidth(160).Style(modern.Primary).OnClick(count),
 						ui.Button("Theme").MinWidth(160).OnClick(func() { dark = !dark; app.RequestUpdate() }),
+						ui.Button("Height / F7").OnClick(cycleHeight),
 					).Spacing(12),
 					ui.HBox(
 						ui.Button("35.25 DIP").MinWidth(160).MinHeight(35.25).MaxHeight(35.25).OnClick(count),

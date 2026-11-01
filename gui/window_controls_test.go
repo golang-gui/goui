@@ -3,6 +3,7 @@ package gui
 import (
 	"image"
 	"image/color"
+	"math"
 	"testing"
 
 	"github.com/golang-gui/goui/core/colors"
@@ -461,6 +462,127 @@ func TestWindowControlsSoftwareFrame(t *testing.T) {
 		win.paint()
 		if frame.frames != 2 {
 			t.Fatal("empty-content window did not paint controls")
+		}
+	}
+}
+
+type captionPixelRecorder struct {
+	captionIconRecorder
+	scale float32
+}
+
+func (p *captionPixelRecorder) PixelScale() float32 { return p.scale }
+
+// 标题高度和分数窗口宽度只影响图标的整体定位，不能改变 X 的几何或按钮布局。
+func TestCloseCaptionGlyphDevicePlacement(t *testing.T) {
+	for _, circular := range []bool{false, true} {
+		win, _ := chromeFixture(t, false, true)
+		win.clientChrome = circular
+		for _, button := range win.controls.buttons {
+			button.circular = circular
+		}
+		header := NewHeaderBar()
+		root := NewLinearBox(layout.DirectionVertical)
+		root.SetCrossAlign(layout.CrossStretch)
+		root.AddChild(header)
+		win.SetWidget(root)
+		for _, width := range []float32{640, 640.25, 640.5} {
+			win.width = width
+			for _, height := range []float32{40, 41, 48, 49, 40.5, 73.25} {
+				header.SetMinSize(geometry.Size{Height: height})
+				win.RequestLayout()
+				win.paint()
+				button := win.controls.buttons[2]
+				icon := button.content
+				bounds, hit := icon.base().windowRect(), button.windowRect()
+				for _, scale := range []float32{0, 1, 1.25, 1.5, 1.75, 2} {
+					p := &captionPixelRecorder{scale: scale}
+					icon.Paint(p)
+					if len(p.points) != 4 || len(p.widths) != 2 || p.widths[0] != 1 || p.widths[1] != 1 {
+						t.Fatal("关闭图标必须仍为两条 1 DIP 斜线")
+					}
+					span := float32(10)
+					if circular {
+						span = 8
+					}
+					a, b, c, d := p.points[0], p.points[1], p.points[2], p.points[3]
+					if b.X-a.X != span || b.Y-a.Y != span || c.X != b.X || c.Y != a.Y || d.X != a.X || d.Y != b.Y {
+						t.Fatalf("circular=%t height=%g scale=%g: X 的长度、角度或对称性改变：%v", circular, height, scale, p.points)
+					}
+					for _, axis := range [][2]float32{{bounds.X, (a.X + b.X) / 2}, {bounds.Y, (a.Y + b.Y) / 2}} {
+						if scale == 0 {
+							if axis[1] != 6 {
+								t.Fatal("无有效像素比例时不应调整图标")
+							}
+							continue
+						}
+						center := float64(axis[0]+axis[1]) * float64(scale)
+						if math.Abs(center-math.Round(center)) > 0.0001 || math.Abs(float64(axis[1]-6)*float64(scale)) > 0.5001 {
+							t.Fatalf("circular=%t width=%g height=%g scale=%g: 图标中心未对齐或位移超过半像素：%v", circular, width, height, scale, axis)
+						}
+					}
+					if icon.base().windowRect() != bounds || button.windowRect() != hit || win.chrome.queryRegion(hit.Center()) != ChromeRegionClose {
+						t.Fatal("绘制改变了布局或关闭按钮命中区域")
+					}
+				}
+			}
+		}
+	}
+}
+
+type captionPixelTarget struct{ controlsFrame }
+
+func (*captionPixelTarget) Transparent() bool { return true }
+
+// 透明预乘 RGBA 的 alpha 表示几何覆盖率。45° 线经过像素中心时，覆盖面积为
+// 1-max(0, 1-width/sqrt(2))²；Software 的 26.6 定点描边与 8 位输出允许 3/255。
+// 采样远离端帽和两条斜线的交点，同时比较完整图标，避免仅比较两份错误图像。
+func TestCloseCaptionGlyphPixelCoverage(t *testing.T) {
+	for _, circular := range []bool{false, true} {
+		win, _ := chromeFixture(t, false, true)
+		win.focused = true
+		win.controls.buttons[2].circular = circular
+		backend, err := software.NewPainter(new(captionPixelTarget))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(backend.Destroy)
+		for _, scale := range []float32{1, 1.25, 1.5, 1.75, 2} {
+			var reference *image.RGBA
+			for _, x := range []float32{17, 17.25, 17.5} {
+				for _, height := range []float32{40, 41, 48, 49, 40.5, 73.25} {
+					glyph := &captionIcon{controls: win.controls, index: 2}
+					glyph.Arrange(geometry.Rect(x, (height-12)/2, 12, 12))
+					img, err := backend.RenderImage(128, 128, scale, func() {
+						paintWidget(glyph, newPainter(backend, geometry.Rect(0, 0, 128/scale, 128/scale), scale))
+					})
+					if err != nil {
+						t.Fatal(err)
+					}
+					cx := int(math.Floor(float64((x+6)*scale) + 0.5))
+					cy := int(math.Floor(float64(height*scale/2) + 0.5))
+					_, _, _, alpha := img.At(cx-2, cy-2).RGBA()
+					want := 1 - math.Pow(max(0, 1-float64(scale)/math.Sqrt2), 2)
+					if math.Abs(float64(alpha)/65535-want) > 3.0/255 {
+						t.Fatalf("circular=%t scale=%g x=%g height=%g: 斜线覆盖率=%g，独立面积预期=%g", circular, scale, x, height, float64(alpha)/65535, want)
+					}
+					centered := image.NewRGBA(image.Rect(0, 0, 32, 32))
+					for dy := range 32 {
+						for dx := range 32 {
+							centered.Set(dx, dy, img.At(cx-16+dx, cy-16+dy))
+						}
+					}
+					if reference == nil {
+						reference = centered
+						continue
+					}
+					for n, value := range centered.Pix {
+						if value != reference.Pix[n] {
+							t.Fatalf("circular=%t scale=%g x=%g height=%g: 仅改变布局位置却改变了图标像素 %d：%d != %d", circular, scale, x, height, n, value, reference.Pix[n])
+						}
+					}
+				}
+			}
 		}
 	}
 }

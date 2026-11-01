@@ -2,6 +2,7 @@ package gui
 
 import (
 	"image/color"
+	"math"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
@@ -269,7 +270,17 @@ func (i *captionIcon) Paint(p Painter) {
 			p.DrawRect(geometry.Rect(left, left, span, span), 1, brush)
 		}
 	case 2:
-		p.DrawLine(geometry.Point{X: left, Y: left}, geometry.Point{X: right, Y: right}, 1, brush)
-		p.DrawLine(geometry.Point{X: right, Y: left}, geometry.Point{X: left, Y: right}, 1, brush)
+		// Position the whole X on the device pixel grid. Centering in an odd
+		// titlebar height otherwise weakens both diagonals. Keep their slope,
+		// length and stroke width; only the glyph's visual center moves.
+		var offset geometry.Point
+		if scale := float64(p.PixelScale()); scale > 0 {
+			origin := i.windowRect().Pos
+			cx, cy := float64(origin.X)+6, float64(origin.Y)+6
+			offset.X = float32(math.Round(cx*scale)/scale - cx)
+			offset.Y = float32(math.Round(cy*scale)/scale - cy)
+		}
+		p.DrawLine(geometry.Point{X: left, Y: left}.Add(offset), geometry.Point{X: right, Y: right}.Add(offset), 1, brush)
+		p.DrawLine(geometry.Point{X: right, Y: left}.Add(offset), geometry.Point{X: left, Y: right}.Add(offset), 1, brush)
 	}
 }

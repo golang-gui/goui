@@ -99,6 +99,21 @@ existing vetoable RequestClose path. Maximize-related visuals change only
 after querying an authoritative native observation, not after issuing a request.
 Unsupported and unknown observations must not be rendered as confirmed false.
 
+Caption glyphs use vector primitives at a fixed logical size. The close X keeps
+its 1 DIP stroke and diagonal geometry, but its complete visual center is aligned
+to the physical pixel grid using its window-local origin and the current paint
+scale. Each axis may move by at most half a physical pixel. This prevents odd or
+fractional HeaderBar heights from distributing the thin diagonals over different
+pixel rows. The icon allocation, button hit area, Snapshot bounds and HeaderBar
+layout are unchanged; minimize/maximize retain their existing drawing policy.
+
+This is small-icon placement, not a change to arbitrary-line rasterization.
+Generic diagonal lines and paths retain their coordinates and antialiasing;
+native macOS controls remain owned and rendered by AppKit. Software pixel tests
+check an independent 45-degree coverage formula as well as placement stability.
+The desktop regression is `tests/window/ui/pixel_snap`, with Height/F7 cycling
+40, 41, 48, 49 and 40.5 DIP at different paint scales.
+
 ### Native mode
 
 The native window retains ownership of its real buttons. WindowControls is a
