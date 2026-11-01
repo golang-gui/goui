@@ -147,6 +147,12 @@ import (
     "github.com/golang-gui/goui/ui"
 )
 
+func counterText(count *ui.State[int]) ui.View {
+    return ui.Build(func() ui.View {
+        return ui.Label(fmt.Sprintf("Clicked %d times", count.Get()))
+    })
+}
+
 func main() {
     count := ui.MakeState(0)
     err := ui.Run("com.example.Hello", func(app ui.App) ui.RootView {
@@ -158,9 +164,7 @@ func main() {
                     Size(480, 240).
                     Content(
                         ui.VBox(
-                            ui.Build(func() ui.View {
-                                return ui.Label(fmt.Sprintf("Clicked %d times", count.Get()))
-                            }).Observe(&count),
+                            ui.Modify(counterText(&count)).MainWeight(1),
                             ui.Button("Click me").OnClick(func() {
                                 // count.Set(count.Get() + 1) 的更优用法：
                                 count.Update(func(old int) int {
@@ -188,7 +192,7 @@ Windows PowerShell 使用 `$env:CGO_ENABLED='0'`，然后执行：
 
 `go build -trimpath -ldflags="-s -w -H=windowsgui" -o hello-goui.exe .`。
 
-View 是普通 Go 值；通过 `BindText(&state)` 绑定属性，或用 `ui.Build(fn).Observe(&state)` 更新子树。`State.Set`／`Update` 只通知这些显式使用方，`App.RequestUpdate` 才重建全应用。系统设置变化也会自动重建此例并更新 Modern 样式。复杂应用可以使用函数或自定义 View 类型组合界面，也可以通过 `gui.WidgetBase` 实现控件。
+View 是普通 Go 值。`ui.Build` 会自动追踪同步构建期间的 `State.Get()` 读取，状态变化时更新对应子树；像此例的 `count` 一样，将状态保存在反复构建的视图之外。函数返回 `ui.View` 时，通过 `ui.Modify` 设置公共修饰，不增加 Widget 或布局边界。单个属性仍可用 `BindText(&state)` 等绑定；`App.RequestUpdate` 显式重建全应用。系统设置变化也会自动重建此例并更新 Modern 样式。
 
 ## 平台与依赖
 

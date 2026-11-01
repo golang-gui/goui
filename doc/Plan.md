@@ -1,5 +1,40 @@
 # Plan
 
+## v0.5.0 发布准备（2026-11-01）
+
+- [x] 比较基线为 v0.4.0，当前工作分支为 pre-release/v0.5；开始准备时 GitHub
+  main 为 b5d8421e9a9416694fc634fff5e8deea12b8d998，尚未包含本分支全部改动。
+  已查询远端引用及 Release 列表，v0.5.0 标签和 Release 均不存在。
+- [x] Demo 配置更新为 0.5.0／build 1；新增功能、修复、API 迁移和范围限制集中于
+  [ReleaseV050](ReleaseV050.md)，不把历史切片验收或准备构建算作正式附件验收。
+- [x] 中英文 README 仅更新入门例程：ui.Build 自动追踪 State.Get，组合函数返回
+  ui.View 时使用 ui.Modify 设置公共修饰。保留既有下载链接，正式附件发布后再更新。
+- [x] Go 1.25.8，go mod verify／tidy -diff 通过，无本地 replace。README 中英文
+  完整例程与 Release Notes 的 API 片段均在 Linux amd64／Windows amd64／macOS
+  arm64、CGO_ENABLED=0 下编译通过，文档本地链接及 diff 检查通过。
+- [x] Ubuntu 22.04.5 amd64，独立 Xvnc :86／xfwm4 4.16.1 合成会话，已跟踪
+  源码加本轮变更的隔离副本执行 go test -json ./... -count=1：3275 项测试／
+  子测试通过、10 项已有手工／条件测试跳过、0 失败；UI／widgets/ui／Demo 的
+  race 与相关 vet 通过。原生副作用限于本会话窗口、剪贴板及副本内生成的 PNG。
+- [x] README 例程以普通 X11 输入点击三次，再按空格和 Enter，正确显示计数 5。
+  Demo 预检使用 OpenGL 偏好、应用 1x；菜单组切换、Dialog 输入／确认与 Toast、
+  滚动及 960×720 调宽通过，正常关闭退出码为 0。未把该预检算作正式附件验收。
+- [x] 预检发现 Demo 绘图回调捕获旧版本：重新生成后仅计数变化、调整大小才更新。
+  修正为绘制时 Peek 当前版本，提交 5d1bc55；新增无桌面回归在旧实现稳定失败，
+  修正后通过。独立桌面中连续两次重画均立即改变像素，不依赖缩放或下次声明更新。
+- [x] 同源 cmd/goui 在 CGO_ENABLED=0、GOWORK=off、-trimpath、-s -w 下生成
+  三平台预备 Demo；ELF／PE32+ GUI／Mach-O 架构及 Windows 实际版本资源
+  0.5.0.1、macOS plist 0.5.0／build 1 核对通过。修正 Demo 后已重新构建，
+  本轮未执行远端运行、Developer ID 签名或公证。
+- [x] 原工作区 go test ./... 仍因既有未跟踪旧例程的 Padding／分组／BuildContext
+  接口错误和 ui/timer_native_test.go 计时断言失败；未迁移、删除或放宽旧断言，
+  测试改写的三个既有未跟踪 PNG 已恢复。日志、截图及预备产物位于
+  /tmp/goui-v0.5.0-prep-vtmjhvuh，PREPARATION-INFO.json 明确标记非正式产物。
+- [ ] 将准备提交合入 main，冻结正式候选 SHA。
+- [ ] 按 [发布流程](Release.md) 构建并验收三平台正式 Demo，完成 macOS 签名／公证、
+  最终压缩包检查、BUILD-INFO 与 SHA256SUMS；不得用准备构建替代正式附件。
+- [ ] 推送标签、核对 Draft 附件后公开发布，再复核下载及 Go module 并更新链接。
+
 ## Integrated 关闭图标的像素定位（2026-11-01）
 
 设计见 [DesignWindowChrome](DesignWindowChrome.md#gui-painted-mode)。

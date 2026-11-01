@@ -147,6 +147,12 @@ import (
     "github.com/golang-gui/goui/ui"
 )
 
+func counterText(count *ui.State[int]) ui.View {
+    return ui.Build(func() ui.View {
+        return ui.Label(fmt.Sprintf("Clicked %d times", count.Get()))
+    })
+}
+
 func main() {
     count := ui.MakeState(0)
     err := ui.Run("com.example.Hello", func(app ui.App) ui.RootView {
@@ -158,9 +164,7 @@ func main() {
                     Size(480, 240).
                     Content(
                         ui.VBox(
-                            ui.Build(func() ui.View {
-                                return ui.Label(fmt.Sprintf("Clicked %d times", count.Get()))
-                            }).Observe(&count),
+                            ui.Modify(counterText(&count)).MainWeight(1),
                             ui.Button("Click me").OnClick(func() {
                                 // Prefer Update to count.Set(count.Get() + 1):
                                 count.Update(func(old int) int {
@@ -188,7 +192,7 @@ On Windows PowerShell, use `$env:CGO_ENABLED='0'`, then run:
 
 `go build -trimpath -ldflags="-s -w -H=windowsgui" -o hello-goui.exe .`.
 
-Views are ordinary Go values. Bind individual properties with `BindText(&state)`, or rebuild a subtree with `ui.Build(fn).Observe(&state)`. `State.Set` and `State.Update` notify these explicit consumers; `App.RequestUpdate` rebuilds the application. System settings changes also rebuild this example, updating its Modern stylesheet. For larger applications, compose views with functions or custom view types, or implement widgets using `gui.WidgetBase`.
+Views are ordinary Go values. `ui.Build` automatically tracks `State.Get()` reads during its synchronous build; changes rebuild that subtree. Keep state outside repeatedly built views, as `count` is here. Use `ui.Modify` to apply common modifiers to a function's `ui.View` result without adding a widget or layout boundary. Individual properties can use bindings such as `BindText(&state)`; `App.RequestUpdate` explicitly rebuilds the application. System settings changes also rebuild this example, updating its Modern stylesheet.
 
 ## Platforms and dependencies
 
