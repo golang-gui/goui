@@ -11,6 +11,7 @@ var (
 	libgl = cgo.NewLazyLibrary("libGL.so.1")
 
 	glXGetFBConfigs          = libgl.NewSymbol("glXGetFBConfigs")
+	glXGetCurrentDisplay     = libgl.NewSymbol("glXGetCurrentDisplay")
 	glXGetFBConfigAttrib     = libgl.NewSymbol("glXGetFBConfigAttrib")
 	glXGetClientString       = libgl.NewSymbol("glXGetClientString")
 	glXQueryExtension        = libgl.NewSymbol("glXQueryExtension")
@@ -38,6 +39,11 @@ func init() {
 	glXSwapIntervalSGI = getProcAddress("glXSwapIntervalSGI")
 	glXSwapIntervalMESA = getProcAddress("glXSwapIntervalMESA")
 	glXCreateContextAttribsARB = getProcAddress("glXCreateContextAttribsARB")
+}
+
+// GetCurrentDisplay returns the display of the calling thread's current GLX context.
+func GetCurrentDisplay() xlib.Display {
+	return cgo.CallRet[xlib.Display](glXGetCurrentDisplay.Addr())
 }
 
 func GetFBConfigs(display xlib.Display, screen int) []FBConfig {

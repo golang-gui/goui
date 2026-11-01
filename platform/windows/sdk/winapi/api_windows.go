@@ -21,6 +21,7 @@ var (
 	procLocalFree                   = kernel32Dll.NewProc("LocalFree")
 	procWaitForSingleObjectEx       = kernel32Dll.NewProc("WaitForSingleObjectEx")
 	procCloseHandle                 = kernel32Dll.NewProc("CloseHandle")
+	procGetCurrentThreadId          = kernel32Dll.NewProc("GetCurrentThreadId")
 
 	// Window
 	procRegisterClassExW         = user32Dll.NewProc("RegisterClassExW")
@@ -73,15 +74,19 @@ var (
 	procSystemParametersInfoW         = user32Dll.NewProc("SystemParametersInfoW")
 
 	// Message
-	procGetMessageW      = user32Dll.NewProc("GetMessageW")
-	procWaitMessage      = user32Dll.NewProc("WaitMessage")
-	procPeekMessageW     = user32Dll.NewProc("PeekMessageW")
-	procTranslateMessage = user32Dll.NewProc("TranslateMessage")
-	procDispatchMessageW = user32Dll.NewProc("DispatchMessageW")
-	procSendMessageW     = user32Dll.NewProc("SendMessageW")
-	procPostMessageW     = user32Dll.NewProc("PostMessageW")
-	procPostQuitMessage  = user32Dll.NewProc("PostQuitMessage")
-	procDefWindowProcW   = user32Dll.NewProc("DefWindowProcW")
+	procGetMessageW                  = user32Dll.NewProc("GetMessageW")
+	procWaitMessage                  = user32Dll.NewProc("WaitMessage")
+	procPeekMessageW                 = user32Dll.NewProc("PeekMessageW")
+	procTranslateMessage             = user32Dll.NewProc("TranslateMessage")
+	procDispatchMessageW             = user32Dll.NewProc("DispatchMessageW")
+	procSendMessageW                 = user32Dll.NewProc("SendMessageW")
+	procPostMessageW                 = user32Dll.NewProc("PostMessageW")
+	procPostQuitMessage              = user32Dll.NewProc("PostQuitMessage")
+	procDefWindowProcW               = user32Dll.NewProc("DefWindowProcW")
+	procSetWindowsHookExW            = user32Dll.NewProc("SetWindowsHookExW")
+	procUnhookWindowsHookEx          = user32Dll.NewProc("UnhookWindowsHookEx")
+	procCallNextHookEx               = user32Dll.NewProc("CallNextHookEx")
+	procGetCurrentInputMessageSource = user32Dll.NewProc("GetCurrentInputMessageSource")
 
 	procBeginPaint = user32Dll.NewProc("BeginPaint")
 	procEndPaint   = user32Dll.NewProc("EndPaint")
@@ -167,6 +172,38 @@ func MakeWindowProc(wndProcFn WindowProcFunc) WNDPROC {
 
 func GetDefWindowProc() uintptr {
 	return procDefWindowProcW.Addr()
+}
+
+func GetCurrentThreadId() DWORD {
+	ret, _, _ := syscall.SyscallN(procGetCurrentThreadId.Addr())
+	return DWORD(ret)
+}
+
+func SetWindowsHookEx(kind int32, callback HOOKPROC, module HINSTANCE, thread DWORD) (HHOOK, error) {
+	ret, _, err := syscall.SyscallN(procSetWindowsHookExW.Addr(), uintptr(kind), uintptr(callback), uintptr(module), uintptr(thread))
+	if ret == 0 {
+		return 0, err
+	}
+	return HHOOK(ret), nil
+}
+
+func UnhookWindowsHookEx(hook HHOOK) error {
+	ret, _, err := syscall.SyscallN(procUnhookWindowsHookEx.Addr(), uintptr(hook))
+	if ret == 0 {
+		return err
+	}
+	return nil
+}
+
+func CallNextHookEx(hook HHOOK, code int32, wParam WPARAM, lParam LPARAM) LRESULT {
+	ret, _, _ := syscall.SyscallN(procCallNextHookEx.Addr(), uintptr(hook), uintptr(code), uintptr(wParam), uintptr(lParam))
+	return LRESULT(ret)
+}
+
+func GetCurrentInputMessageSource(source *INPUT_MESSAGE_SOURCE) BOOL {
+	ret, _, _ := procGetCurrentInputMessageSource.Call(uintptr(unsafe.Pointer(source)))
+	runtime.KeepAlive(source)
+	return BOOL(ret)
 }
 
 func GetModuleHandle(name LPCWSTR) (HMODULE, error) {

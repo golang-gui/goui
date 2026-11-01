@@ -19,6 +19,7 @@ var (
 	xSendEvent               = libx11.NewSymbol("XSendEvent")
 	xNextEvent               = libx11.NewSymbol("XNextEvent")
 	xPeekEvent               = libx11.NewSymbol("XPeekEvent")
+	xESetWireToEvent         = libx11.NewSymbol("XESetWireToEvent")
 	xInternAtom              = libx11.NewSymbol("XInternAtom")
 	xDefaultScreen           = libx11.NewSymbol("XDefaultScreen")
 	xDefaultScreenOfDisplay  = libx11.NewSymbol("XDefaultScreenOfDisplay")
@@ -140,6 +141,17 @@ func (d Display) NextRequest() uintptr {
 func (d Display) LastKnownRequestProcessed() uintptr {
 	ret, _, _ := xLastKnownRequestProcessed.CallRaw(uintptr(d))
 	return ret
+}
+
+// SetWireToEvent replaces an event decoder and returns its predecessor.
+// The callback must preserve Xlib's wire-to-host conversion and queueing contract.
+func (d Display) SetWireToEvent(eventNumber int32, decoder WireToEvent) WireToEvent {
+	return cgo.CallRet[WireToEvent](xESetWireToEvent.Addr(), d, eventNumber, decoder)
+}
+
+// Call converts a borrowed 32-byte wire event using this native decoder.
+func (decoder WireToEvent) Call(d Display, event *Event, wire *[32]byte) Bool {
+	return cgo.CallRet[Bool](uintptr(decoder), d, event, wire)
 }
 
 func (d Display) NextEvent() (ev Event) {

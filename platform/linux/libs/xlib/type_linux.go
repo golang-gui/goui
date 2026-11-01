@@ -331,6 +331,9 @@ func (m *ModifierKeymap) Keycodes() []KeyCode {
 	return cgo.GoSliceN[KeyCode](cgo.Pointer(m.Modifiermap), int(m.MaxKeypermod)*8)
 }
 
+// WireToEvent is an Xlib wire-to-host event conversion callback.
+type WireToEvent uintptr
+
 type Event struct {
 	Type    EventType
 	padding [32]uintptr

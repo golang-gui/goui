@@ -631,23 +631,35 @@ func initNSEvent() {
 	NSEventSel.KeyCode = objc.RegisterName("keyCode")
 	NSEventSel.IsARepeat = objc.RegisterName("isARepeat")
 	NSEventSel.CharactersIgnoringModifiers = objc.RegisterName("charactersIgnoringModifiers")
+	NSEventSel.AddLocalMonitor = objc.RegisterName("addLocalMonitorForEventsMatchingMask:handler:")
+	NSEventSel.RemoveMonitor = objc.RegisterName("removeMonitor:")
+	NSEventSel.Phase = objc.RegisterName("phase")
+	NSEventSel.MomentumPhase = objc.RegisterName("momentumPhase")
+	NSEventSel.WindowNumber = objc.RegisterName("windowNumber")
+	NSEventSel.IsDirectionInvertedFromDevice = objc.RegisterName("isDirectionInvertedFromDevice")
 }
 
 var (
 	NSEventClassId NSEventClass
 	NSEventSel     struct {
-		OtherEventWithType          objc.SEL
-		LocationInWindow            objc.SEL
-		Type                        objc.SEL
-		Timestamp                   objc.SEL
-		ModifierFlags               objc.SEL
-		ButtonNumber                objc.SEL
-		ScrollingDeltaX             objc.SEL
-		ScrollingDeltaY             objc.SEL
-		HasPreciseScrollingDeltas   objc.SEL
-		KeyCode                     objc.SEL
-		IsARepeat                   objc.SEL
-		CharactersIgnoringModifiers objc.SEL
+		OtherEventWithType            objc.SEL
+		LocationInWindow              objc.SEL
+		Type                          objc.SEL
+		Timestamp                     objc.SEL
+		ModifierFlags                 objc.SEL
+		ButtonNumber                  objc.SEL
+		ScrollingDeltaX               objc.SEL
+		ScrollingDeltaY               objc.SEL
+		HasPreciseScrollingDeltas     objc.SEL
+		KeyCode                       objc.SEL
+		IsARepeat                     objc.SEL
+		CharactersIgnoringModifiers   objc.SEL
+		AddLocalMonitor               objc.SEL
+		RemoveMonitor                 objc.SEL
+		Phase                         objc.SEL
+		MomentumPhase                 objc.SEL
+		WindowNumber                  objc.SEL
+		IsDirectionInvertedFromDevice objc.SEL
 	}
 )
 
@@ -657,6 +669,36 @@ type (
 )
 
 type NSEventType NSUInteger
+
+type NSEventPhase NSUInteger
+
+// AddLocalMonitor installs a monitor for this process's NSApplication events.
+// The handler returns the event to dispatch, or zero to discard the event.
+// RemoveMonitor must be called on the main thread before releasing the handler.
+func (c NSEventClass) AddLocalMonitor(mask NSEventMask, handler objc.Block) (monitor NSObject) {
+	monitor.ID = c.Send(NSEventSel.AddLocalMonitor, mask, handler)
+	return
+}
+
+func (c NSEventClass) RemoveMonitor(monitor NSObject) {
+	c.Send(NSEventSel.RemoveMonitor, monitor)
+}
+
+func (e NSEvent) Phase() NSEventPhase {
+	return objc.Send[NSEventPhase](e.ID, NSEventSel.Phase)
+}
+
+func (e NSEvent) MomentumPhase() NSEventPhase {
+	return objc.Send[NSEventPhase](e.ID, NSEventSel.MomentumPhase)
+}
+
+func (e NSEvent) WindowNumber() NSInteger {
+	return objc.Send[NSInteger](e.ID, NSEventSel.WindowNumber)
+}
+
+func (e NSEvent) IsDirectionInvertedFromDevice() bool {
+	return objc.Send[bool](e.ID, NSEventSel.IsDirectionInvertedFromDevice)
+}
 
 const (
 	NSEventTypeLeftMouseDown      NSEventType = 1
