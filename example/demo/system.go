@@ -124,13 +124,17 @@ func (d *systemDemo) view() ui.View {
 				}
 			})).Spacing(12)),
 		section(resource.DialogsTitle(), ui.HWrap(ui.Button(resource.ChooseFile()).ID("choose-files").OnClick(func() {
-			d.host.app.FileDialog().OpenFile(ui.DialogOptions{Title: resource.ChooseDragFiles(), AllowMultiple: true}, d.selectedPaths)
+			if err := d.host.app.FileDialog().OpenFile("main", ui.DialogOptions{Title: resource.ChooseDragFiles(), AllowMultiple: true}, d.selectedPaths); err != nil {
+				d.host.result(resource.ChooseFile(), err)
+			}
 		}),
 			ui.Button(resource.ChooseFolder()).OnClick(func() {
-				d.host.app.FileDialog().OpenDirectory(ui.DialogOptions{Title: resource.ChooseFolderTitle()}, d.selectedPaths)
+				if err := d.host.app.FileDialog().OpenDirectory("main", ui.DialogOptions{Title: resource.ChooseFolderTitle()}, d.selectedPaths); err != nil {
+					d.host.result(resource.ChooseFolder(), err)
+				}
 			}),
 			ui.Button(resource.SaveDialog()).OnClick(func() {
-				d.host.app.FileDialog().SaveFile(ui.DialogOptions{Title: resource.SaveDialogTitle(), DefaultName: "demo.txt"}, func(access []ui.FileAccess, err error) {
+				if err := d.host.app.FileDialog().SaveFile("main", ui.DialogOptions{Title: resource.SaveDialogTitle(), DefaultName: "demo.txt"}, func(access []ui.FileAccess, err error) {
 					if err != nil {
 						d.host.result(resource.SaveDialogTitle(), err)
 						return
@@ -146,7 +150,9 @@ func (d *systemDemo) view() ui.View {
 						}
 						d.host.report(fmt.Sprintf(resource.SavePath(), path))
 					}
-				})
+				}); err != nil {
+					d.host.result(resource.SaveDialogTitle(), err)
+				}
 			}),
 			ui.Button(resource.OpenWebsite()).OnClick(func() {
 				d.host.result(resource.OpenBrowser(), d.host.app.OpenURL("https://github.com/golang-gui/goui"))

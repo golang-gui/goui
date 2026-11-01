@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/golang-gui/goui/gui"
@@ -11,6 +12,9 @@ type FileFilter = gui.FileFilter
 
 // DialogOptions configures a native file dialog.
 type DialogOptions = gui.DialogOptions
+
+// ErrDialogBusy means the owner already has an active file picker.
+var ErrDialogBusy = gui.ErrDialogBusy
 
 // FileDialog is the thread-safe UI-layer view of the system file dialog,
 // obtained via App.FileDialog(). Operations run on the UI thread automatically
@@ -29,41 +33,62 @@ func (a *app) FileDialog() FileDialog {
 	}
 }
 
-// OpenFile opens a native file-selection dialog for selecting one or more files.
-// It is safe to call from any goroutine; the callback is invoked on the UI thread.
-func (f FileDialog) OpenFile(opts DialogOptions, cb func([]FileAccess, error)) {
-	if f.current == nil || f.dlg == nil {
-		return
-	}
-	f.current.Sync(func() {
-		f.dlg.OpenFile(nil, opts, f.callback(cb))
+// OpenFile requests a file picker owned by windowID. Empty means unowned.
+// It returns ErrAppStopped without calling cb if dispatch is not accepted.
+// Accepted requests deliver results on the UI thread while the app runs.
+// Late access during shutdown is released without calling cb. A missing nonempty ID
+// is reported to cb; it never falls back to an unowned picker.
+func (f FileDialog) OpenFile(windowID string, opts DialogOptions, cb func([]FileAccess, error)) error {
+	return f.open(windowID, opts, cb, func(w gui.Window, o DialogOptions, done func([]gui.FileAccess, error)) { f.dlg.OpenFile(w, o, done) })
+}
+
+// OpenDirectory follows OpenFile's owner, dispatch and completion rules.
+func (f FileDialog) OpenDirectory(windowID string, opts DialogOptions, cb func([]FileAccess, error)) error {
+	return f.open(windowID, opts, cb, func(w gui.Window, o DialogOptions, done func([]gui.FileAccess, error)) {
+		f.dlg.OpenDirectory(w, o, done)
 	})
 }
 
-// OpenDirectory opens a native dialog for selecting a directory.
-// It is safe to call from any goroutine; the callback is invoked on the UI thread.
-func (f FileDialog) OpenDirectory(opts DialogOptions, cb func([]FileAccess, error)) {
-	if f.current == nil || f.dlg == nil {
-		return
-	}
-	f.current.Sync(func() {
-		f.dlg.OpenDirectory(nil, opts, f.callback(cb))
-	})
+// SaveFile follows OpenFile's owner, dispatch and completion rules.
+func (f FileDialog) SaveFile(windowID string, opts DialogOptions, cb func([]FileAccess, error)) error {
+	return f.open(windowID, opts, cb, func(w gui.Window, o DialogOptions, done func([]gui.FileAccess, error)) { f.dlg.SaveFile(w, o, done) })
 }
 
-// SaveFile opens a native save-file dialog.
-// It is safe to call from any goroutine; the callback is invoked on the UI thread.
-func (f FileDialog) SaveFile(opts DialogOptions, cb func([]FileAccess, error)) {
-	if f.current == nil || f.dlg == nil {
+func (f FileDialog) open(id string, opts DialogOptions, cb func([]FileAccess, error), start func(gui.Window, DialogOptions, func([]gui.FileAccess, error))) (err error) {
+	if cb == nil {
+		panic("ui: nil file dialog callback")
+	}
+	err = ErrAppStopped
+	if f.current == nil {
 		return
 	}
 	f.current.Sync(func() {
-		f.dlg.SaveFile(nil, opts, f.callback(cb))
+		err = nil
+		if f.dlg == nil {
+			cb(nil, fmt.Errorf("file dialog: unavailable"))
+			return
+		}
+		var owner gui.Window
+		if id != "" {
+			owner = f.current.FindWindow(id)
+			if owner == nil {
+				cb(nil, fmt.Errorf("file dialog: window %q is unavailable", id))
+				return
+			}
+		}
+		start(owner, opts, f.callback(cb))
 	})
+	return
 }
 
 func (f FileDialog) callback(cb func([]FileAccess, error)) func([]gui.FileAccess, error) {
 	return func(accesses []gui.FileAccess, err error) {
+		if f.current == nil || f.current.isStopping() {
+			for _, access := range accesses {
+				_ = access.Close()
+			}
+			return
+		}
 		result := make([]FileAccess, len(accesses))
 		for i, access := range accesses {
 			result[i] = FileAccess{current: f.current, access: access, name: access.Name()}

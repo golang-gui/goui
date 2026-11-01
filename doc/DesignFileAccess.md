@@ -43,6 +43,67 @@ Platform/GUI 对象操作线程亲和；UI 返回轻量包装，在所属 GUI �
   操作或结果转换失败返回 error。多选转换失败清理全部已取得资源，不返回半份
   成功结果。GUI 保存 NewFileDialog 创建错误，不能将失败伪装成取消。
 
+## 文件对话框的所属窗口与模态（2026-11-01）
+
+GUI 保留 `OpenFile/OpenDirectory/SaveFile(owner Window, opts, callback)`。
+有 owner 时限制该窗口及其弹出层输入，其他窗口继续工作；nil 表示独立对话框，
+不限制应用的其他窗口，位置交给操作系统，不再承诺“桌面居中”。
+三个操作及时返回，选择结果异步交付。选项中的过滤器/模式切片在投递前复制，
+调用方返回后修改原选项不影响已发起操作。绘制、布局、计时器与事件循环持续运行。
+被阻止的鼠标、滚轮、键盘、快捷键、文本提交及拖放直接拒绝，关闭后不补执行。
+
+UI 对应接口为：
+
+```go
+func (FileDialog) OpenFile(windowID string, opts DialogOptions, callback func([]FileAccess, error)) error
+func (FileDialog) OpenDirectory(windowID string, opts DialogOptions, callback func([]FileAccess, error)) error
+func (FileDialog) SaveFile(windowID string, opts DialogOptions, callback func([]FileAccess, error)) error
+```
+
+非空 ID 在 UI 线程解析到本次窗口实例，不存在时通过回调报告错误，不降级为独立
+选择器。空 ID 明确表示无 owner。返回 error 仅表示调度未受理（ErrAppStopped），
+已受理的系统结果通过回调交付。Demo 的文件入口显式使用主窗口 ID。
+
+整窗输入限制放在已有私有 `modalState`，与 ModalScope 共用 modalWidgetAllowed、
+modalInputAllowed、手势/拖放取消、悬停清理和弹出层退出逻辑。Native 对话框没有
+Widget 子树，整窗限制优先于现有 Widget scope；scope 和逻辑焦点保留，期间的
+scope 变化在结束时按原规则协调。不修改 Widget.Enabled 或样式 Disabled，
+不增加公开的输入锁或另一套模态系统。限制在 GUI 投递启动前建立，在业务完成
+回调前释放，避免转换完成与业务处理之间出现输入空隙。
+
+Windows 仍在 GUI STA 调用 Common Item Dialog.Show(owner HWND)，由系统提供
+嵌套消息循环；GUI 先投递启动任务，使调用者及时返回。对话框注册在原生运行期，
+owner 销毁或事件循环退出时调用 IFileDialog.Close，COM 引用仍由启动路径释放。
+
+macOS 使用 beginSheetModalForWindow:completionHandler:（有 owner）或
+beginWithCompletionHandler:（独立 modeless panel），替换统一 runModal。
+后端持有 panel 和 completion block 至完成，先 orderOut，再处理结果并释放。
+owner 销毁/退出时 cancel 原生 panel。绑定扩展既有 NSSavePanel 类型。
+
+Linux 保留 zenity/kdialog/yad 路线，GUI 线程启动进程、后台等待退出与收集输出，
+再投递回 X11 事件循环转换 FileAccess。worker 不操作 Xlib、GUI 或原生资源。
+有 owner 时使用 helper 的 attach（zenity/yad 另加 modal）参数建立原生关联；
+输入契约由 GUI 共同模态边界保证，不把 WM 差异当作输入隔离。本机 zenity
+3.42.1 实测接受 attach 但未设置 WM_TRANSIENT_FOR，故不承诺 helper 的层叠、
+位置和原生边框交互与其他平台一致；内容和 GUI 绘制装饰的输入不积累。owner 销毁/退出
+会终止对应 helper；registry 与窗口状态只在平台线程访问。
+
+同一 owner 的重复请求报告 ErrDialogBusy。正常取消仍为空结果/nil error，
+owner 销毁报告 ErrUnavailable。结果排队期间 owner 已失效时关闭所有迟到的
+FileAccess，不能把有效资源交给已经结束的窗口流程。应用事件循环退出时清理
+原生选择器；停止后不承诺业务回调继续执行。GUI 在事件循环返回时关闭尚未交付
+的 FileAccess，业务回调已取得的对象仍由调用方负责。UI 已进入停止阶段时，
+迟到结果直接在 GUI 线程释放，不先包装成已不能 Close 的 UI FileAccess。
+
+验证程序：`go run ./tests/window/gui/file_dialog`，中文入口注释规定双窗口、
+三类选择器、独立选择器、计时、输入不积累、owner 销毁与退出的操作及预期。
+进度及平台验证边界见 Plan。
+
+参考：[GTK4 FileDialog 模态](https://docs.gtk.org/gtk4/method.FileDialog.set_modal.html)、
+[Apple sheet](https://developer.apple.com/documentation/appkit/nssavepanel/beginsheetmodal(for:completionhandler:))、
+[Apple 独立 panel](https://developer.apple.com/documentation/appkit/nssavepanel/begin(completionhandler:))、
+[IModalWindow.Show](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-imodalwindow-show)。
+
 ## 后端实现
 
 Windows/当前非沙箱 Linux 返回轻量路径对象；Close 无系统授权操作。凭据保存
