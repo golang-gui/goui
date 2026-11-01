@@ -144,6 +144,7 @@ func (w *Window) Destroy() {
 		return
 	}
 	w.destroying = true
+	cancelFileDialogs(w)
 	defer func() { w.destroying = false }()
 	notify := !w.closed
 	w.closed, w.paintQueued = true, false
@@ -449,6 +450,7 @@ func windowWillClose(self NSWindowDelegate, notification NSNotification) {
 	view.Retain()
 	defer view.AutoRelease()
 	w.closed, w.closing, w.paintQueued = true, true, false
+	cancelFileDialogs(w)
 	defer func() { w.closing = false }()
 	if w.onEvent != nil {
 		w.onEvent(events.DestroyEvent{})

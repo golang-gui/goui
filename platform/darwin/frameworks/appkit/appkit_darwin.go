@@ -2132,6 +2132,9 @@ func initNSSavePanel() {
 	NSSavePanelClassId.Class = objc.GetClass("NSSavePanel")
 	NSSavePanelSel.Init = objc.RegisterName("init")
 	NSSavePanelSel.RunModal = objc.RegisterName("runModal")
+	NSSavePanelSel.Begin = objc.RegisterName("beginWithCompletionHandler:")
+	NSSavePanelSel.BeginSheetModal = objc.RegisterName("beginSheetModalForWindow:completionHandler:")
+	NSSavePanelSel.Cancel = objc.RegisterName("cancel:")
 	NSSavePanelSel.SetTitle = objc.RegisterName("setTitle:")
 	NSSavePanelSel.SetAllowedFileTypes = objc.RegisterName("setAllowedFileTypes:")
 	NSSavePanelSel.SetDirectoryURL = objc.RegisterName("setDirectoryURL:")
@@ -2144,6 +2147,9 @@ var (
 	NSSavePanelSel     struct {
 		Init                    objc.SEL
 		RunModal                objc.SEL
+		Begin                   objc.SEL
+		BeginSheetModal         objc.SEL
+		Cancel                  objc.SEL
 		SetTitle                objc.SEL
 		SetAllowedFileTypes     objc.SEL
 		SetDirectoryURL         objc.SEL
@@ -2170,6 +2176,16 @@ func (p NSSavePanel) Init() (res NSSavePanel) {
 func (p NSSavePanel) RunModal() NSInteger {
 	return objc.Send[NSInteger](p.ID, NSSavePanelSel.RunModal)
 }
+
+// Begin presents an unowned modeless panel. AppKit copies handler until completion.
+func (p NSSavePanel) Begin(handler objc.Block) { p.Send(NSSavePanelSel.Begin, handler) }
+
+// BeginSheetModal presents a sheet modal to owner, returning immediately.
+func (p NSSavePanel) BeginSheetModal(owner NSWindow, handler objc.Block) {
+	p.Send(NSSavePanelSel.BeginSheetModal, owner, handler)
+}
+
+func (p NSSavePanel) Cancel(sender objc.ID) { p.Send(NSSavePanelSel.Cancel, sender) }
 
 func (p NSSavePanel) SetTitle(title string) {
 	p.Send(NSSavePanelSel.SetTitle, ToNSString(title))

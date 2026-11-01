@@ -14,6 +14,7 @@ type EventLoop struct {
 
 func newEventLoop(p *Platform) (*EventLoop, error) {
 	l := new(EventLoop)
+	p.eventLoop = l
 	// Inject task draining into the helper window's wake handler so tasks run
 	// under any message pump — the main loop or a nested modal loop (window
 	// move/resize, menus, dialogs) — that dispatches the wake message.
@@ -28,7 +29,7 @@ func (l *EventLoop) Post(task func()) {
 }
 
 func (l *EventLoop) Run() {
-	defer l.state.Quit()
+	defer func() { l.state.Quit(); cancelFileDialogs(nil) }()
 	if l.state.Destroyed() {
 		return
 	}
@@ -83,6 +84,10 @@ func (l *EventLoop) Quit() {
 
 func (l *EventLoop) Destroy() {
 	l.state.Destroy()
+	cancelFileDialogs(nil)
+	if platform != nil && platform.eventLoop == l {
+		platform.eventLoop = nil
+	}
 }
 
 func (l *EventLoop) wake() {
@@ -95,4 +100,7 @@ func (l *EventLoop) wake() {
 
 func (l *EventLoop) runTasks() {
 	l.state.RunTasks()
+	if l.state.Quitting() {
+		cancelFileDialogs(nil)
+	}
 }

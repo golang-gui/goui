@@ -216,6 +216,7 @@ func (w *Window) destroyNative(external bool) {
 	}
 	id := w.wid
 	w.wid = 0
+	cancelFileDialogs(w)
 	w.paintPending = false
 	w.dragPress = false
 	delete(windowMap, id)

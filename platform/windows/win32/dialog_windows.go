@@ -61,17 +61,7 @@ func (fd *fileDialog) OpenFile(owner common.Window, opts common.DialogOptions, c
 		return
 	}
 
-	hwnd := uintptr(0)
-	if owner != nil {
-		hwnd = owner.NativeHandle()
-	}
-	hr = dlg.Show(hwnd)
-	if hr.Failed() {
-		if hr == shell.HRESULT_CANCEL {
-			cb(nil, nil)
-			return
-		}
-		cb(nil, hr)
+	if !showFileDialog(owner, &dlg.FileDialog, cb) {
 		return
 	}
 
@@ -151,17 +141,7 @@ func (fd *fileDialog) OpenDirectory(owner common.Window, opts common.DialogOptio
 		return
 	}
 
-	hwnd := uintptr(0)
-	if owner != nil {
-		hwnd = owner.NativeHandle()
-	}
-	hr = dlg.Show(hwnd)
-	if hr.Failed() {
-		if hr == shell.HRESULT_CANCEL {
-			cb(nil, nil)
-			return
-		}
-		cb(nil, hr)
+	if !showFileDialog(owner, &dlg.FileDialog, cb) {
 		return
 	}
 
@@ -225,17 +205,7 @@ func (fd *fileDialog) SaveFile(owner common.Window, opts common.DialogOptions, c
 		return
 	}
 
-	hwnd := uintptr(0)
-	if owner != nil {
-		hwnd = owner.NativeHandle()
-	}
-	hr = dlg.Show(hwnd)
-	if hr.Failed() {
-		if hr == shell.HRESULT_CANCEL {
-			cb(nil, nil)
-			return
-		}
-		cb(nil, hr)
+	if !showFileDialog(owner, &dlg.FileDialog, cb) {
 		return
 	}
 
@@ -252,6 +222,60 @@ func (fd *fileDialog) SaveFile(owner common.Window, opts common.DialogOptions, c
 	}
 	access, err := fileaccess.Paths([]string{name})
 	cb(access, err)
+}
+
+// The native modal loop can reenter window destruction or application quit.
+// Keep each COM dialog registered only while Show owns it, on the GUI thread.
+type fileDialogCall struct {
+	owner     *Window
+	dialog    *shell.FileDialog
+	cancelled bool
+}
+
+var nativeFileDialogs = map[*fileDialogCall]struct{}{}
+
+func cancelFileDialogs(owner *Window) {
+	for call := range nativeFileDialogs {
+		if !call.cancelled && (owner == nil || call.owner == owner) {
+			call.cancelled = true
+			_ = call.dialog.Close(shell.HRESULT_CANCEL)
+		}
+	}
+}
+
+func showFileDialog(owner common.Window, dialog *shell.FileDialog, cb func([]common.FileAccess, error)) bool {
+	if platform == nil || platform.eventLoop == nil || platform.eventLoop.state.Quitting() || platform.eventLoop.state.Destroyed() {
+		cb(nil, common.ErrUnavailable)
+		return false
+	}
+	var w *Window
+	var hwnd uintptr
+	if owner != nil {
+		var ok bool
+		w, ok = owner.(*Window)
+		if !ok || w.destroying || w.closed || w.hwnd == 0 {
+			cb(nil, common.ErrUnavailable)
+			return false
+		}
+		hwnd = owner.NativeHandle()
+	}
+	call := &fileDialogCall{owner: w, dialog: dialog}
+	nativeFileDialogs[call] = struct{}{}
+	hr := dialog.Show(hwnd)
+	delete(nativeFileDialogs, call)
+	if call.cancelled || w != nil && (w.closed || w.hwnd == 0) {
+		cb(nil, common.ErrUnavailable)
+		return false
+	}
+	if hr == shell.HRESULT_CANCEL {
+		cb(nil, nil)
+		return false
+	}
+	if hr.Failed() {
+		cb(nil, hr)
+		return false
+	}
+	return true
 }
 
 func (fd *fileDialog) RestoreAccess(credential []byte) (common.FileAccess, error) {

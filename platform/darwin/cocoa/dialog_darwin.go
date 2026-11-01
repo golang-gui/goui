@@ -3,6 +3,8 @@ package cocoa
 import (
 	"fmt"
 
+	"github.com/ebitengine/purego/objc"
+
 	"github.com/golang-gui/goui/platform/common"
 
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/appkit"
@@ -51,12 +53,6 @@ func (fd *fileDialog) OpenFile(owner common.Window, opts common.DialogOptions, c
 		return
 	}
 
-	defer func() {
-		AutoReleasePool(func() {
-			panel.Release()
-		})
-	}()
-
 	if opts.Title != "" {
 		AutoReleasePool(func() {
 			panel.SetTitle(opts.Title)
@@ -88,21 +84,20 @@ func (fd *fileDialog) OpenFile(owner common.Window, opts common.DialogOptions, c
 		panel.SetAllowsMultipleSelection(opts.AllowMultiple)
 	})
 
-	// Run modal
-	result := panel.RunModal()
-	if result != NSModalResponseOK {
-		cb(nil, fileDialogResponseError(result))
-		return
-	}
-
-	// Get selected URLs
-	var access []common.FileAccess
-	var err error
-	AutoReleasePool(func() {
-		access, err = fd.selectedAccess(panel.URLs())
+	fd.present(owner, panel.NSSavePanel, func(result NSModalResponse, presentErr error) {
+		if presentErr != nil {
+			cb(nil, presentErr)
+			return
+		}
+		if result != NSModalResponseOK {
+			cb(nil, fileDialogResponseError(result))
+			return
+		}
+		var access []common.FileAccess
+		var err error
+		AutoReleasePool(func() { access, err = fd.selectedAccess(panel.URLs()) })
+		cb(access, err)
 	})
-
-	cb(access, err)
 }
 
 // OpenDirectory opens a native dialog for selecting a directory.
@@ -115,12 +110,6 @@ func (fd *fileDialog) OpenDirectory(owner common.Window, opts common.DialogOptio
 		cb(nil, fmt.Errorf("file dialog: create NSOpenPanel failed"))
 		return
 	}
-
-	defer func() {
-		AutoReleasePool(func() {
-			panel.Release()
-		})
-	}()
 
 	if opts.Title != "" {
 		AutoReleasePool(func() {
@@ -141,21 +130,20 @@ func (fd *fileDialog) OpenDirectory(owner common.Window, opts common.DialogOptio
 		panel.SetCanChooseDirectories(true)
 	})
 
-	// Run modal
-	result := panel.RunModal()
-	if result != NSModalResponseOK {
-		cb(nil, fileDialogResponseError(result))
-		return
-	}
-
-	// Get selected URL
-	var access []common.FileAccess
-	var err error
-	AutoReleasePool(func() {
-		access, err = fd.selectedAccess(panel.URLs())
+	fd.present(owner, panel.NSSavePanel, func(result NSModalResponse, presentErr error) {
+		if presentErr != nil {
+			cb(nil, presentErr)
+			return
+		}
+		if result != NSModalResponseOK {
+			cb(nil, fileDialogResponseError(result))
+			return
+		}
+		var access []common.FileAccess
+		var err error
+		AutoReleasePool(func() { access, err = fd.selectedAccess(panel.URLs()) })
+		cb(access, err)
 	})
-
-	cb(access, err)
 }
 
 // SaveFile opens a native save-file dialog.
@@ -168,12 +156,6 @@ func (fd *fileDialog) SaveFile(owner common.Window, opts common.DialogOptions, c
 		cb(nil, fmt.Errorf("file dialog: create NSSavePanel failed"))
 		return
 	}
-
-	defer func() {
-		AutoReleasePool(func() {
-			panel.Release()
-		})
-	}()
 
 	if opts.Title != "" {
 		AutoReleasePool(func() {
@@ -208,25 +190,93 @@ func (fd *fileDialog) SaveFile(owner common.Window, opts common.DialogOptions, c
 		})
 	}
 
-	// Run modal
-	result := panel.RunModal()
-	if result != NSModalResponseOK {
-		cb(nil, fileDialogResponseError(result))
-		return
-	}
-
-	// Get selected URL
-	var access common.FileAccess
-	var err error
-	AutoReleasePool(func() {
-		access, err = fd.newAccess(panel.URL(), false)
+	fd.present(owner, panel, func(result NSModalResponse, presentErr error) {
+		if presentErr != nil {
+			cb(nil, presentErr)
+			return
+		}
+		if result != NSModalResponseOK {
+			cb(nil, fileDialogResponseError(result))
+			return
+		}
+		var access common.FileAccess
+		var err error
+		AutoReleasePool(func() { access, err = fd.newAccess(panel.URL(), false) })
+		if err != nil {
+			cb(nil, err)
+			return
+		}
+		cb([]common.FileAccess{access}, nil)
 	})
+}
 
-	if err != nil {
-		cb(nil, err)
+type fileDialogCall struct {
+	owner     *Window
+	panel     NSSavePanel
+	handler   objc.Block
+	cancelled bool
+	finished  bool
+	done      func(NSModalResponse, error)
+}
+
+var nativeFileDialogs = map[*fileDialogCall]struct{}{}
+var fileDialogsStopping bool
+
+func cancelFileDialogs(owner *Window) {
+	if owner == nil {
+		fileDialogsStopping = true
+	}
+	for call := range nativeFileDialogs {
+		if !call.cancelled && (owner == nil || call.owner == owner) {
+			call.cancelled = true
+			call.panel.Cancel(0)
+		}
+	}
+}
+
+func (fd *fileDialog) present(owner common.Window, panel NSSavePanel, done func(NSModalResponse, error)) {
+	if fileDialogsStopping {
+		panel.Release()
+		done(NSModalResponseCancel, common.ErrUnavailable)
 		return
 	}
-	cb([]common.FileAccess{access}, nil)
+	var w *Window
+	if owner != nil {
+		var ok bool
+		w, ok = owner.(*Window)
+		if !ok || w.destroying || w.closed || !w.window.Valid() {
+			panel.Release()
+			done(NSModalResponseCancel, common.ErrUnavailable)
+			return
+		}
+	}
+	call := &fileDialogCall{owner: w, panel: panel, done: done}
+	call.handler = objc.NewBlock(func(_ objc.Block, response NSModalResponse) { call.finish(response) })
+	panel.SetReleasedWhenClosed(false)
+	nativeFileDialogs[call] = struct{}{}
+	if w != nil {
+		panel.BeginSheetModal(w.window, call.handler)
+	} else {
+		panel.Begin(call.handler)
+	}
+}
+
+func (call *fileDialogCall) finish(response NSModalResponse) {
+	if call.finished {
+		return
+	}
+	call.finished = true
+	delete(nativeFileDialogs, call)
+	// A sheet's completion can run while it is still onscreen. Hide it before
+	// application completion, and release our allocation and block afterwards.
+	call.panel.OrderOut(0)
+	defer call.panel.Release()
+	defer call.handler.Release()
+	if call.cancelled || call.owner != nil && call.owner.closed {
+		call.done(NSModalResponseCancel, common.ErrUnavailable)
+		return
+	}
+	call.done(response, nil)
 }
 
 func fileDialogResponseError(response NSModalResponse) error {
