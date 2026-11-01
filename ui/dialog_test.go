@@ -42,10 +42,14 @@ func (a *dialogTestAccess) Close() error { a.calls++; a.closed = true; return ni
 type dialogTestService struct {
 	gui.FileDialog
 	access gui.FileAccess
+	owner  gui.Window
+	calls  int
 	err    error
 }
 
-func (d *dialogTestService) OpenFile(_ gui.Window, _ gui.DialogOptions, cb func([]gui.FileAccess, error)) {
+func (d *dialogTestService) OpenFile(owner gui.Window, _ gui.DialogOptions, cb func([]gui.FileAccess, error)) {
+	d.owner = owner
+	d.calls++
 	if d.access == nil {
 		cb(nil, d.err)
 	} else {
@@ -61,7 +65,7 @@ func TestFileDialogErrorsAndOwnership(t *testing.T) {
 	defer a.stop()
 	failure := errors.New("picker failed")
 	d := FileDialog{current: a, dlg: &dialogTestService{err: failure}}
-	d.OpenFile(DialogOptions{}, func(access []FileAccess, err error) {
+	d.OpenFile("", DialogOptions{}, func(access []FileAccess, err error) {
 		if len(access) != 0 || err != failure {
 			t.Fatal("error swallowed", err)
 		}
@@ -72,7 +76,7 @@ func TestFileDialogErrorsAndOwnership(t *testing.T) {
 	native := &dialogTestAccess{}
 	d.dlg = &dialogTestService{access: native}
 	var picked FileAccess
-	d.OpenFile(DialogOptions{}, func(access []FileAccess, err error) {
+	d.OpenFile("", DialogOptions{}, func(access []FileAccess, err error) {
 		if err != nil || len(access) != 1 {
 			t.Fatal(err)
 		}
@@ -137,5 +141,54 @@ func TestFileAccessWorkerAndStoppedApplication(t *testing.T) {
 	}
 	if native.calls != len(operations) {
 		t.Fatal("native calls after stop")
+	}
+}
+
+func TestFileDialogResolvesOwnerAndReportsStoppedApp(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	a := newApp(newWindowTestApplication(), nil)
+	native := &dialogTestService{}
+	d := FileDialog{current: a, dlg: native}
+	w := newTestWindow()
+	a.windows["main"] = &windowMount{window: w, root: newRoot()}
+	count := 0
+	if err := d.OpenFile("main", DialogOptions{}, func([]FileAccess, error) { count++ }); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 || native.owner != w {
+		t.Fatal("窗口 ID 未解析成相应实例")
+	}
+	if err := d.OpenFile("missing", DialogOptions{}, func(_ []FileAccess, err error) {
+		count++
+		if err == nil {
+			t.Fatal("缺失窗口被降级为独立对话框")
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if native.calls != 1 || count != 2 {
+		t.Fatal("缺失窗口仍调用了原生操作")
+	}
+	if err := d.OpenFile("", DialogOptions{}, func([]FileAccess, error) {}); err != nil || native.owner != nil {
+		t.Fatal("空 ID 应明确表示无 owner")
+	}
+	a.stop()
+	if err := d.OpenFile("main", DialogOptions{}, func([]FileAccess, error) { t.Fatal("停止后不得回调") }); !errors.Is(err, ErrAppStopped) {
+		t.Fatal(err)
+	}
+}
+
+func TestFileDialogReleasesAccessWhenUIStops(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	a := newApp(newWindowTestApplication(), nil)
+	f := FileDialog{current: a}
+	result := &dialogTestAccess{}
+	callback := f.callback(func([]FileAccess, error) { t.Fatal("停止后调用业务回调") })
+	a.stop()
+	callback([]gui.FileAccess{result}, nil)
+	if !result.closed {
+		t.Fatal("UI 停止后无法通过 UI FileAccess.Close 释放资源，应直接释放原生访问")
 	}
 }

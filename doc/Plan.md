@@ -1,5 +1,36 @@
 # Plan
 
+## 文件对话框窗口模态与事件循环（2026-11-01）
+
+设计见 [DesignFileAccess](DesignFileAccess.md#文件对话框的所属窗口与模态2026-11-01)。
+
+- [x] GUI 与 ModalScope 共享私有 modalState、输入许可及重置；整窗限制不修改 Enabled。
+  GUI 投递启动，完成时先解除限制再回调；owner 销毁后清理迟到 FileAccess。
+- [x] UI 三个操作显式传 windowID；空 ID 独立显示，缺失 ID 报错；返回调度受理错误。
+  Demo 文件入口传主窗口 ID。
+- [x] Linux helper 异步等待、attach/modal 与取消；Windows owner/原生 Close；
+  macOS 异步 sheet/modeless panel 及 cancel，均沿原有绑定组织实现。
+- [x] ModalScope 共存、焦点恢复、快捷键/IME/文本提交、重复请求、owner 失效、
+  UI owner 解析与停止后的受理错误逻辑测试通过。退出时未交付及迟到访问资源
+  会在所属 GUI 线程释放，成功交给调用方的资源不被框架提前关闭。
+- [x] Ubuntu 22.04.5 amd64，独立 Xvnc :95／xfwm4，zenity 3.42.1，Native：
+  OpenGL 1x 验证 file/folder/save 取消、owner 输入丢弃与无补执行、其他窗口 F5、
+  持续 tick、独立选择器、owner 销毁关闭 helper；Software 1x 另验证成功选择与
+  FileAccess 关闭、保存只返回目标而不创建文件、退出关闭独立 helper。
+  最终构建又验证 owner 销毁、回调与其他窗口输入。helper 未设置 WM_TRANSIENT_FOR，
+  不把 attach 提交等同于原生父子关系已生效。独立会话已清理。
+- [x] 定向 GUI/UI/ModalScope 回归、过滤器快照、未交付资源在退出时释放、race／vet
+  通过。已跟踪源码加本轮新例程的隔离副本全仓非缓存测试通过。
+  Windows amd64／macOS arm64 的 GUI、UI、原生后端、SDK 及新例程编译通过。
+- [x] 原工作区 go test ./... 仍因未跟踪旧例程的 Padding／分组／BuildContext
+  接口及 ui/timer_native_test.go 计时断言失败；没有删除或放宽旧断言。
+  本次签名变更涉及的两个未跟踪例程只补充窗口 ID；测试改写的既有 PNG 已恢复。
+- [x] 远端 macOS 15.7.7 arm64、Go 1.24.9：独立源码副本的 GUI/UI 模态与
+  文件对话框定向测试、Cocoa/AppKit 包检查及 go test -count=1 ./... 通过。
+  校验哈希的窗口例程成功启动，但桌面停在 Apple 用户锁屏，未做交互验收；
+  本次测试进程已停止，用户决定自行进行桌面验证。
+- [ ] macOS／Windows 真实桌面场景由用户手工验收，本轮按用户要求先提交。
+
 ## 三平台原生输入诊断例程（2026-10-31）
 
 设计与原生记录边界见 [DesignInputTrace](DesignInputTrace.md)。

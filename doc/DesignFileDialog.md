@@ -1,7 +1,7 @@
 # GOUI 文件对话框设计
 
 状态：三平台文件选择、GUI／UI 接入及 FileAccess 凭据已实现。2026-10-14 同步
-当前契约，替代早期 []string／ErrCancelled 草案；详细资源归属和分平台验证见
+当前契约，替代早期 []string／ErrCancelled 草案。2026-11-01 增补窗口模态与异步启动；详细资源归属和分平台验证见
 [文件访问](DesignFileAccess.md)，错误规则见 [跨层约定](DesignConventions.md#错误反馈规则)。
 
 ## 定位与分层
@@ -53,7 +53,12 @@ FileAccess 提供 Name、LocalPath、Credential、Close：
 | Windows | IFileDialog／IFileOpenDialog，GUI 线程 COM／OLE 环境，owner HWND 作为父；Shell 与 COM 绑定留在既有 SDK 包，普通路径对象不模拟沙箱授权。 |
 | macOS | NSOpenPanel／NSSavePanel，AppKit 主线程；访问对象保留 URL 与 security-scoped 访问，凭据恢复按实际系统结果交付。沙箱打包与签名见文件访问设计。 |
 
-Linux 当前 helper 后端不能据公共 owner 参数承诺真正的原生父窗口挂接。
+有 owner 时采用窗口级模态，无 owner 时独立显示。UI 的三个操作显式接收 windowID，
+返回调度受理错误；具体接口及 ModalScope 复用方案见
+[文件访问中的模态设计](DesignFileAccess.md#文件对话框的所属窗口与模态2026-11-01)。
+Linux helper 的 attach/modal 参数只表示提交原生关联请求，是否实际形成父子关系
+取决于 helper。实测 zenity 3.42.1 的文件选择器接受参数并设置 modal hint，
+但未观察到 WM_TRANSIENT_FOR；内容输入隔离由 GUI 保证，不伪造原生父窗口事实。
 xdg-desktop-portal 只是 [待评估方向](Roadmap.md#future-system-integration)，本轮不新增 DBus 依赖。
 
 ## 验证
