@@ -298,7 +298,9 @@ Touch／Pen 须一起设计标识、捕获／取消、手势与多平台输入�
   [专项计划](PlanLinuxArm64.md) 推进，不与新增窗口系统／图形后端捆绑。
 - cmd/goui 已支持原生资源、二进制／macOS .app／Linux 安装目录树；DEB／RPM、
   更完整分发签名或安装集成按需求补齐，不做 AppImage 和系统库复制。
-- Linux FileDialog portal 适配待评估，不把现有 helper 当作沙箱 FileChooser。
+- Linux FileDialog 已实现 godbus + Portal，并完成本机独立 X11 会话验收，保留 helper 降级；
+  见 [D-Bus 设计](DesignDBus.md)。Settings、输入法及其他服务按后续问题或需求接入，
+  不把文件选择切片等同于完整沙箱支持。
 - GUI owner／transient 窗口、更丰富浮窗焦点策略、Docking／高级控件按具体应用需求
   扩展；platform.Window 已有 Parent／SetParent，不等于 GUI 已提供业务 owner 策略。
   不为一般对话框绕开已有 Overlay，也不把 SkipTaskbar 改成 Popup 类型。

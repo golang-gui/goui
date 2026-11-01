@@ -1,6 +1,8 @@
 // 原生文件对话框的窗口模态、事件循环及 owner 生命周期验收；不使用 DevServer。
 //
-// 环境：Linux/X11（安装 zenity、kdialog 或 yad）、Windows 或 macOS 可交互桌面。
+// 环境：Linux/X11、Windows 或 macOS 可交互桌面。Linux 优先使用当前 session bus
+// 的 xdg-desktop-portal FileChooser 和桌面后端（如 xdg-desktop-portal-gtk）；
+// 目录选择要求 FileChooser version>=3。Portal 不可用时才降级到 zenity/kdialog/yad。
 // 启动：go run ./tests/window/gui/file_dialog；-log 可指定新日志文件，默认临时文件。
 // 记录 OS、Linux WM、绘制后端及缩放。GOUI_PLAT_PAINTER 可选 software/opengl，
 // Windows 另可 direct2d；GOUI_PLAT_SCALE=2 请求 2x。初始为两个 Native 窗口，
@@ -10,14 +12,21 @@
 //  1. 在 A 点击 Open file，反复点击 Increment A、滚动、按 F5 并尝试输入。
 //     预期 A 不响应；B 的 Increment B 和 F5 仍有效；A 的 Ticks 持续增长。
 //     取消选择器，预期 A 的计数和文本没有补执行；随后点击/输入立即恢复。
+//     Linux Portal 场景另核对选择器的 WM_TRANSIENT_FOR 指向 A，并有 MODAL hint；
+//     点击 A 后应回到选择器，点击 B 仍可激活。记录实际 WM 的激活结果。
 //  2. Open folder、Save file 重复第 1 项，选择成功和取消均应恢复输入。
 //     Save 仅选择路径，不创建文件。本例成功后打印所选名称并关闭 FileAccess。
+//     Open file 支持 Ctrl 多选；文件／保存选择器提供 Text 和 All files 过滤器，
+//     切换后应正确展示候选文件，选择多项时逐一打印并释放。
 //  3. Unowned file 打开独立选择器，预期 A、B 都可操作。macOS 为独立 panel，
-//     有 owner 时为 sheet；Linux 层叠与位置受当前 helper/WM 控制。
+//     有 owner 时为 sheet；Linux Portal 无 owner 时不应设置所属窗口和 MODAL hint。
 //  4. A 再次打开选择器，在 B 点击 Destroy A。预期选择器关闭，终端报告
 //     owner unavailable，B 保持可用，不出现孤儿 helper 或迟到的有效文件结果。
 //  5. 在有/无 owner 的选择器打开期间，从 B 点击 Quit。预期进程正常退出，
 //     选择器一并关闭；应用停止后不要求业务回调继续执行。
+//  6. Linux 在单独启动的测试进程中令 session bus 不可达，复验 helper 降级的
+//     选择、取消与 owner 输入隔离；helper 原生激活仍受其实现限制。正常取消和系统
+//     错误不应再次弹出选择器。Portal 与 helper 的结果分开记录，不能互相替代验收。
 //
 // 日志记录 open/complete、计数、文本及每秒 tick。副作用：两个窗口、原生选择器、
 // 临时日志；不读取、写入或删除选择的文件，不修改剪贴板/系统设置。
@@ -115,7 +124,8 @@ func run(path string) error {
 		cb := func(access []gui.FileAccess, err error) {
 			out.Printf("COMPLETE %s owned=%t error=%v A=%d B=%d alive=%t", kind, owned, err, countA, countB, alive)
 			for _, item := range access {
-				out.Printf("SELECTED %q", item.Name())
+				path, pathErr := item.LocalPath()
+				out.Printf("SELECTED %q path=%q error=%v", item.Name(), path, pathErr)
 				if err := item.Close(); err != nil {
 					out.Printf("CLOSE %v", err)
 				}
@@ -123,11 +133,13 @@ func run(path string) error {
 		}
 		switch kind {
 		case "file":
-			dialog.OpenFile(owner, gui.DialogOptions{Title: "GOUI choose file"}, cb)
+			dialog.OpenFile(owner, gui.DialogOptions{Title: "GOUI choose file", AllowMultiple: true,
+				Filters: []gui.FileFilter{{Name: "Text", Patterns: []string{"*.txt", "*.md"}}, {Name: "All files", Patterns: []string{"*"}}}}, cb)
 		case "folder":
 			dialog.OpenDirectory(owner, gui.DialogOptions{Title: "GOUI choose folder"}, cb)
 		case "save":
-			dialog.SaveFile(owner, gui.DialogOptions{Title: "GOUI choose destination", DefaultName: "goui-modal.txt"}, cb)
+			dialog.SaveFile(owner, gui.DialogOptions{Title: "GOUI choose destination", DefaultName: "goui-modal.txt",
+				Filters: []gui.FileFilter{{Name: "Text", Patterns: []string{"*.txt", "*.md"}}, {Name: "All files", Patterns: []string{"*"}}}}, cb)
 		}
 	}
 	rootA := box()

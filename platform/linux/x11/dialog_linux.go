@@ -2,16 +2,19 @@ package x11
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/internal/fileaccess"
+	"github.com/golang-gui/goui/platform/linux/internal/portal"
 )
 
 // fileDialog implements the native file dialog capability for X11.
@@ -21,9 +24,6 @@ type fileDialog struct {
 
 func newFileDialog() (common.FileDialog, error) {
 	helper := detectDialogHelper()
-	if helper == dialogNone {
-		return nil, common.ErrUnsupported
-	}
 	return &fileDialog{helper: helper}, nil
 }
 
@@ -91,17 +91,17 @@ func buildFilterArgs(helper dialogHelper, filters []common.FileFilter) []string 
 
 // OpenFile opens a native file-selection dialog for selecting one or more files.
 func (fd *fileDialog) OpenFile(owner common.Window, opts common.DialogOptions, cb func([]common.FileAccess, error)) {
-	fd.open(owner, buildOpenFileArgs(fd.helper, opts), opts.AllowMultiple, cb)
+	fd.open(owner, portal.OpenFile, opts, cb)
 }
 
 // OpenDirectory opens a native dialog for selecting a directory.
 func (fd *fileDialog) OpenDirectory(owner common.Window, opts common.DialogOptions, cb func([]common.FileAccess, error)) {
-	fd.open(owner, buildOpenDirectoryArgs(fd.helper, opts), false, cb)
+	fd.open(owner, portal.OpenDirectory, opts, cb)
 }
 
 // SaveFile opens a native save-file dialog.
 func (fd *fileDialog) SaveFile(owner common.Window, opts common.DialogOptions, cb func([]common.FileAccess, error)) {
-	fd.open(owner, buildSaveFileArgs(fd.helper, opts), false, cb)
+	fd.open(owner, portal.SaveFile, opts, cb)
 }
 
 func (fd *fileDialog) RestoreAccess(credential []byte) (common.FileAccess, error) {
@@ -110,11 +110,12 @@ func (fd *fileDialog) RestoreAccess(credential []byte) (common.FileAccess, error
 
 var errDialogCancelled = errors.New("dialog cancelled")
 
-// Native picker processes belong to their owner window and event loop. Registry
-// state is GUI-thread-only; the worker only waits and reads process output.
+// Registry, owner and helper state belong to the platform thread. The mutex only
+// serializes worker posting with cancellation before the wake pipe is closed.
 type fileDialogCall struct {
 	owner     *Window
 	cmd       *exec.Cmd
+	cancel    context.CancelFunc
 	mutex     sync.Mutex // serialize worker posting with GUI-thread cancellation
 	done      func([]common.FileAccess, error)
 	cancelled bool
@@ -129,13 +130,24 @@ func cancelFileDialogs(owner *Window) {
 			call.cancelled = true
 			call.mutex.Unlock()
 			delete(nativeFileDialogs, call)
-			_ = call.cmd.Process.Kill()
+			call.cancel()
+			if call.cmd != nil {
+				_ = call.cmd.Process.Kill()
+			}
 			call.done(nil, common.ErrUnavailable)
 		}
 	}
 }
 
-func (fd *fileDialog) open(owner common.Window, args []string, multiple bool, cb func([]common.FileAccess, error)) {
+func closeFileDialogs() {
+	cancelFileDialogs(nil)
+	if platform != nil && platform.fileChooser != nil {
+		platform.fileChooser.Close()
+		platform.fileChooser = nil
+	}
+}
+
+func (fd *fileDialog) open(owner common.Window, action portal.Action, opts common.DialogOptions, cb func([]common.FileAccess, error)) {
 	if platform == nil || platform.eventLoop == nil || platform.eventLoop.state.Quitting() || platform.eventLoop.state.Destroyed() {
 		cb(nil, common.ErrUnavailable)
 		return
@@ -148,50 +160,112 @@ func (fd *fileDialog) open(owner common.Window, args []string, multiple bool, cb
 			cb(nil, common.ErrUnavailable)
 			return
 		}
-		args = append(args, dialogOwnerArgs(fd.helper, uintptr(w.wid))...)
+	}
+	parent := ""
+	if w != nil {
+		parent = fmt.Sprintf("x11:%x", w.wid)
+	}
+	opts.Filters = slices.Clone(opts.Filters)
+	for i := range opts.Filters {
+		opts.Filters[i].Patterns = slices.Clone(opts.Filters[i].Patterns)
+	}
+	if platform.fileChooser == nil {
+		platform.fileChooser = portal.NewFileChooser()
+	}
+	chooser := platform.fileChooser
+	ctx, cancel := context.WithCancel(context.Background())
+	call := &fileDialogCall{owner: w, cancel: cancel, done: cb}
+	nativeFileDialogs[call] = struct{}{}
+	loop := platform.eventLoop
+	go func() {
+		paths, err := chooser.Open(ctx, action, parent, opts)
+		call.post(loop, func() {
+			if errors.Is(err, portal.ErrUnsupported) {
+				fd.startHelper(loop, call, action, opts)
+				return
+			}
+			call.finish(paths, err)
+		})
+	}()
+}
+
+func (call *fileDialogCall) post(loop *EventLoop, task func()) {
+	call.mutex.Lock()
+	defer call.mutex.Unlock()
+	if !call.cancelled {
+		loop.Post(func() {
+			if !call.cancelled {
+				task()
+			}
+		})
+	}
+}
+
+func (call *fileDialogCall) finish(paths []string, err error) {
+	delete(nativeFileDialogs, call)
+	call.cancel()
+	if call.owner != nil && call.owner.wid == 0 {
+		call.done(nil, common.ErrUnavailable)
+		return
+	}
+	var access []common.FileAccess
+	if err == nil && len(paths) > 0 {
+		access, err = fileaccess.Paths(paths)
+	}
+	call.done(access, err)
+}
+
+func (fd *fileDialog) startHelper(loop *EventLoop, call *fileDialogCall, action portal.Action, opts common.DialogOptions) {
+	if fd.helper == dialogNone {
+		call.finish(nil, common.ErrUnsupported)
+		return
+	}
+	var args []string
+	switch action {
+	case portal.OpenFile:
+		args = buildOpenFileArgs(fd.helper, opts)
+	case portal.OpenDirectory:
+		args = buildOpenDirectoryArgs(fd.helper, opts)
+	case portal.SaveFile:
+		args = buildSaveFileArgs(fd.helper, opts)
+	}
+	if call.owner != nil {
+		if call.owner.wid == 0 {
+			call.finish(nil, common.ErrUnavailable)
+			return
+		}
+		args = append(args, dialogOwnerArgs(fd.helper, uintptr(call.owner.wid))...)
 	}
 	cmd, err := dialogCommand(fd.helper, args)
 	if err != nil {
-		cb(nil, err)
+		call.finish(nil, err)
 		return
 	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
-		cb(nil, fmt.Errorf("dialog failed: %w", err))
+		call.finish(nil, fmt.Errorf("dialog failed: %w", err))
 		return
 	}
-	call := &fileDialogCall{owner: w, cmd: cmd, done: cb}
-	nativeFileDialogs[call] = struct{}{}
-	loop := platform.eventLoop
+	call.cmd = cmd
 	go func() {
 		waitErr := cmd.Wait()
-		call.mutex.Lock()
-		defer call.mutex.Unlock()
-		if call.cancelled {
-			return
-		}
-		loop.Post(func() {
-			delete(nativeFileDialogs, call)
-			if call.cancelled {
-				return
-			}
-			if w != nil && w.wid == 0 {
-				cb(nil, common.ErrUnavailable)
-				return
-			}
+		call.post(loop, func() {
 			output, err := dialogOutput(stdout.Bytes(), stderr.Bytes(), waitErr)
 			if errors.Is(err, errDialogCancelled) {
-				cb(nil, nil)
+				call.finish(nil, nil)
 				return
 			}
 			if err != nil {
-				cb(nil, err)
+				call.finish(nil, err)
 				return
 			}
-			access, err := fileaccess.Paths(parseOutput(fd.helper, output, multiple))
-			cb(access, err)
+			paths := parseOutput(fd.helper, output, action == portal.OpenFile && opts.AllowMultiple)
+			if len(paths) == 0 {
+				err = errors.New("file dialog returned no selection")
+			}
+			call.finish(paths, err)
 		})
 	}()
 }
