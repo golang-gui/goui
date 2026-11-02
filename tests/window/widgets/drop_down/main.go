@@ -10,9 +10,14 @@
 //  1. 点击 Basic 后显示独立圆角阴影列表，宽度等于控件、内容不进入圆角外。
 //     鼠标按下并移出后释放不打开；Disabled 和 Empty 不打开。点击选项 1 不确认。
 //     选择 C 后只增加一次 Selected 计数，收起显示 C；再次确认 C 不增加计数。
+//     连续选择 A、C、D，每次关闭后再打开：只有已选项保留勾选。将鼠标移到
+//     另一可用项时，该项可以悬停高亮；移出列表后该项的悬停高亮消失，旧选项不得残留
+//     悬停背景。对 Custom、Long 重复操作，并在 Long 滚动后重新选择。
 //  2. Tab/Shift+Tab 导航；Enter/Space/Alt+Down 打开。Down 跳过禁用项 1，
 //     浏览时收起值不变。Enter 确认，Esc 或外部点击取消。打开时 Tab 关闭并
 //     将焦点移到下一个可用控件，Shift+Tab 移到前一个；关闭时滚轮不改选择。
+//     鼠标悬停后 Esc 关闭再打开，旧悬停不得重现；键盘浏览位置仍可高亮，
+//     不能为了去掉残留而关闭正常的悬停或键盘反馈。
 //  3. Custom 的弹出行显示“● 名称 + 说明”，UI 收起只显示名称（-gui 沿用行展示）；都是实际控件，
 //     文字布局清晰，不把同一 Widget 在两个位置移动。可通过包内测试检查实例隔离。
 //     1x/2x 四行均完整可见、没有滚动条；关闭后 Shrink 再打开应只有一行，
@@ -40,6 +45,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"image"
 	"image/color"
 	"runtime"
 
@@ -89,6 +95,22 @@ func longModel() *gui.SliceListModel[widgets.DropDownItem] {
 	return gui.NewSliceListModel(items)
 }
 
+func backendReporter() func(gui.Painter, geometry.Rectangle) {
+	var scale float32
+	return func(p gui.Painter, _ geometry.Rectangle) {
+		if scale == p.PixelScale() {
+			return
+		}
+		img, err := p.NewImage(image.NewRGBA(image.Rect(0, 0, 1, 1)))
+		if err != nil {
+			panic(err)
+		}
+		fmt.Printf("BACKEND %T scale=%g\n", img, p.PixelScale())
+		img.Destroy()
+		scale = p.PixelScale()
+	}
+}
+
 func check(win gui.Window, previous map[string]*widgets.DropDown, want map[string]int, changes, late int) {
 	for _, id := range []string{"basic", "custom", "long", "uncontrolled", "disabled", "empty"} {
 		d, ok := gui.FindWidget(win, id).(*widgets.DropDown)
@@ -121,6 +143,7 @@ func runUI(fallback, destroy bool) {
 	dark, red := false, false
 	previous := make(map[string]*widgets.DropDown)
 	connected := false
+	reportBackend := backendReporter()
 	err := ui.Run("org.golang-gui.DropDownTest", func(app ui.App) ui.RootView {
 		gui.App.SetQuitOnLastWindowClosed(false)
 		update := func() { app.RequestUpdate() }
@@ -154,6 +177,7 @@ func runUI(fallback, destroy bool) {
 		}
 		return ui.Root().StyleSheet(sheet(dark, red, fallback, settings.FontFamily(), settings.FontSize())).Windows(
 			ui.Window("choices").Title("GOUI DropDown").Size(850, 640).Chrome(ui.WindowChromeIntegrated).
+				OnAfterPaint(reportBackend).
 				OnDestroy(func() {
 					app.Post(func() {
 						for _, d := range previous {
@@ -344,6 +368,7 @@ func runGUI(fallback, destroy bool) {
 	}
 	root.AddChild(buttons)
 	win.SetWidget(root)
+	win.ConnectAfterPaint(backendReporter())
 	verify := gui.NewShortcut(gui.KeyGesture{Key: gui.KeyF6})
 	verify.ConnectActivate(func() { check(win, previous, nil, changes, late) })
 	win.Shortcuts().AddShortcut(verify)

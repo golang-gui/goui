@@ -80,6 +80,11 @@ Window.DispatchEvent 导航，不绕过正常路径。关闭时滚轮不改值�
 声明同步不打断浏览。信号、Delegate、原生操作可能重入或销毁，后续检查版本及
 生命周期。控件负责关闭 / 释放其 Popover，UI 只释放自己的协调状态和连接。
 
+Popover 关闭时沿原命中路径发送 pointer crossing leave，再重置控制器和分发器，
+同步清除 Widget 的 Hovered 与语义快照。DropDown 可以继续复用选项行；不在行的
+样式或每次 Open 时单独补偿旧悬停。Selected、键盘浏览 current 和真实指针悬停
+仍是不同状态，当前鼠标项或键盘浏览项可以与已提交的选中项同时有反馈。
+
 ## 尺寸、样式、快照
 
 收起按当前内容 / Placeholder、箭头、Padding 测量，不扫描全部文本。弹出内容

@@ -496,23 +496,46 @@ func (p *popover) Destroy() {
 // Reset controller state as well as dispatch paths. The menu additionally
 // resets its presentation state, since Controller.Reset need not emit signals.
 func (p *popover) resetInput() {
-	setFocusVisible(p, false)
-	p.SetFocusedWidget(nil)
+	epoch, root := p.lifecycle, p.Widget()
+	// Callbacks may reopen or replace this surface during any cleanup step.
+	current := func() bool {
+		return p.lifecycle == epoch && !p.visible && p.Widget() == root
+	}
 	p.cancelInput(GestureHostClosed)
+	if !current() {
+		return
+	}
+	// Deliver leaves while the old hit path is still available. Resetting
+	// controllers alone does not clear Widget's pointer-crossing state.
+	p.dispatcher.clearHover(p.dispatcher.pointerEvent)
+	if !current() {
+		return
+	}
+	setFocusVisible(p, false)
+	if !current() {
+		return
+	}
+	p.SetFocusedWidget(nil)
+	if !current() {
+		return
+	}
 	p.dispatcher = EventDispatcher{}
 	var reset func(Widget)
 	reset = func(w Widget) {
-		if w == nil || w.base().destroyed {
+		if w == nil || w.base().destroyed || !current() || w.Root() != p {
 			return
 		}
 		for _, c := range w.EventControllers() {
 			c.Reset()
+			if w.base().destroyed || !current() || w.Root() != p {
+				return
+			}
 		}
 		for _, child := range w.Children() {
 			reset(child)
 		}
 	}
-	reset(p.Widget())
+	reset(root)
 }
 
 // Distinguishes creation/capability failures from failures of native Show.

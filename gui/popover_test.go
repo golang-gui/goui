@@ -1255,6 +1255,124 @@ func TestPopoverReopenedDuringFocusReset(t *testing.T) {
 	}
 }
 
+// 使用原生浮窗替身，所有鼠标输入仍经过 Popover.DispatchEvent。
+func popoverHoverFixture(t *testing.T) (*popover, *testWidget, *testWidget) {
+	t.Helper()
+	p, _, _, _ := placementFixture(t, geometry.Rect(0, 0, 1000, 800))
+	root, first, second := newTestWidget(), newTestWidget(), newTestWidget()
+	root.SetMinSize(geometry.Size{Width: 100, Height: 100})
+	root.AddChild(first)
+	root.AddChild(second)
+	for _, row := range []*testWidget{first, second} {
+		row.AddEventController(NewMotionEventController())
+	}
+	p.SetWidget(root)
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	root.Arrange(geometry.Rect(0, 0, 100, 100))
+	first.Arrange(geometry.Rect(5, 5, 90, 35))
+	second.Arrange(geometry.Rect(5, 50, 90, 35))
+	return p, first, second
+}
+
+func TestPopoverCloseClearsHover(t *testing.T) {
+	for _, release := range []bool{false, true} {
+		t.Run(fmt.Sprintf("release=%t", release), func(t *testing.T) {
+			p, first, second := popoverHoverFixture(t)
+			motion := first.EventControllers()[0].(*MotionEventController)
+			second.SetState(style.Selected, true)
+			leaves := 0
+			motion.ConnectContainsHover(func(inside bool) {
+				if !inside {
+					leaves++
+				}
+			})
+			for range 3 {
+				if err := p.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: first.windowRect().Center()}); err != nil {
+					t.Fatal(err)
+				}
+				if !first.State().Has(style.Hovered) || !motion.Hover() || !motion.ContainsHover() {
+					t.Fatal("没有建立初始悬停")
+				}
+				before := leaves
+				if release {
+					p.releaseNative()
+				} else {
+					p.Hide()
+				}
+				if p.Widget().State().Has(style.Hovered) || first.Snapshot().Hovered || second.Snapshot().Hovered ||
+					motion.Hover() || motion.ContainsHover() || leaves != before+1 || !second.State().Has(style.Selected) {
+					t.Fatal("关闭后控件、快照、控制器的悬停状态不一致，或错误清除了选中状态")
+				}
+				if err := p.Show(); err != nil {
+					t.Fatal(err)
+				}
+				if err := p.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: second.windowRect().Center()}); err != nil {
+					t.Fatal(err)
+				}
+				if first.Snapshot().Hovered || !second.Snapshot().Hovered || !second.Snapshot().Selected {
+					t.Fatal("重新显示后保留旧行悬停，或丢失当前行的正常悬停／选中")
+				}
+			}
+		})
+	}
+}
+
+func TestPopoverHoverLeaveReentry(t *testing.T) {
+	for _, action := range []string{"reopen", "replace", "destroy"} {
+		t.Run(action, func(t *testing.T) {
+			p, first, second := popoverHoverFixture(t)
+			motion := first.EventControllers()[0].(*MotionEventController)
+			armed, closed := true, 0
+			p.ConnectClosed(func() { closed++ })
+			motion.ConnectHover(func(inside bool) {
+				if inside || !armed {
+					return
+				}
+				armed = false
+				if action == "destroy" {
+					p.Destroy()
+					return
+				}
+				if action == "replace" {
+					second = newTestWidget()
+					second.SetMinSize(geometry.Size{Width: 100, Height: 100})
+					second.AddEventController(NewMotionEventController())
+					p.SetWidget(second)
+				}
+				if err := p.Show(); err != nil {
+					t.Fatal(err)
+				}
+				if action == "replace" {
+					second.Arrange(geometry.Rect(0, 0, 100, 100))
+				}
+				if err := p.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: second.windowRect().Center()}); err != nil {
+					t.Fatal(err)
+				}
+			})
+			if err := p.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: first.windowRect().Center()}); err != nil {
+				t.Fatal(err)
+			}
+			p.Hide()
+			if action == "destroy" {
+				if !p.destroyed || p.Visible() || first.State().Has(style.Hovered) {
+					t.Fatal("离开回调销毁后仍保留悬停或浮窗")
+				}
+				return
+			}
+			currentMotion := second.EventControllers()[0].(*MotionEventController)
+			if !p.Visible() || closed != 1 || !second.State().Has(style.Hovered) || !currentMotion.ContainsHover() || len(p.dispatcher.hoverPath) == 0 {
+				t.Fatal("旧的关闭清理覆盖了离开回调中新显示表面的输入状态")
+			}
+			p.Hide()
+			if p.Visible() || second.State().Has(style.Hovered) || currentMotion.ContainsHover() {
+				t.Fatal("重新显示后的正常关闭未清理悬停")
+			}
+		})
+	}
+}
+
 // 登记模态输入会取消 owner 手势，取消回调可能打开另一表面。
 func TestPopoverModalShowReentryDoesNotOwnReplacement(t *testing.T) {
 	p, _, _, app := placementFixture(t, geometry.Rect(0, 0, 1000, 800))
