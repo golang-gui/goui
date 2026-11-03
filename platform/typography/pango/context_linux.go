@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/golang-gui/goui/core/signal"
+	"github.com/golang-gui/goui/internal/diagnostic"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/internal/lifecycle"
 	"github.com/golang-gui/goui/platform/typography/utils"
@@ -113,7 +114,9 @@ func (c *Context) NewTextLayout(text string, format typography.TextFormat, width
 	layout.SetText(text)
 	layout.SetFontDescription(desc)
 
-	return newTextLayout(layoutContext, layout, text, format, width, height), nil
+	result := newTextLayout(layoutContext, layout, text, format, width, height)
+	diagnostic.Record(diagnostic.LayoutCreate, 1)
+	return result, nil
 }
 
 type TextLayout struct {
@@ -164,6 +167,7 @@ func (t *TextLayout) Destroy() {
 	if !t.life.BeginDestroy() {
 		return
 	}
+	diagnostic.Record(diagnostic.LayoutDestroy, 1)
 	t.rasterLines = nil
 	t.painter.Destroy()
 	if t.layout.Valid() {
@@ -239,6 +243,7 @@ func (t *TextLayout) SetSize(maxWidth, maxHeight float32) {
 	if t.width == maxWidth && t.height == maxHeight {
 		return
 	}
+	diagnostic.Record(diagnostic.LayoutResize, 1)
 	t.width = maxWidth
 	t.height = maxHeight
 	if t.format.WrapMode != typography.WrapNone {
@@ -572,6 +577,7 @@ func (t *TextLayout) Rasterize(scale float32, region image.Rectangle, buf []byte
 		t.painter.Destroy() // Cairo errors are sticky; retry with a fresh context.
 		return bitmap, err
 	}
+	diagnostic.Record(diagnostic.TextRasterize, 1)
 	return t.painter.GetBitmap(width, height, buf), nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"github.com/golang-gui/goui/core/signal"
+	"github.com/golang-gui/goui/internal/diagnostic"
 	"github.com/golang-gui/goui/platform/typography"
 )
 
@@ -50,6 +51,7 @@ func (c *ImageCache[T]) Lookup(layout typography.TextLayout, scale float32, regi
 	}
 	record := c.records[layout]
 	if record == nil {
+		diagnostic.Record(diagnostic.TextCacheMiss, 1)
 		return image, false
 	}
 	key := math.Float32bits(scale)
@@ -57,9 +59,11 @@ func (c *ImageCache[T]) Lookup(layout typography.TextLayout, scale float32, regi
 		entry := &record.entries[i]
 		if entry.scale == key && entry.region == region {
 			entry.age = c.nextAge()
+			diagnostic.Record(diagnostic.TextCacheHit, 1)
 			return entry.image, true
 		}
 	}
+	diagnostic.Record(diagnostic.TextCacheMiss, 1)
 	return image, false
 }
 
@@ -107,6 +111,7 @@ func (c *ImageCache[T]) Store(layout typography.TextLayout, scale float32, regio
 			lru = i
 		}
 	}
+	diagnostic.Record(diagnostic.TextCacheInvalidate, 1)
 	old := record.entries[lru].image
 	record.entries[lru] = entry
 	c.releaseImage(old)
@@ -142,6 +147,7 @@ func (c *ImageCache[T]) remove(record *layoutImages[T]) {
 }
 
 func (c *ImageCache[T]) releaseEntries(record *layoutImages[T]) {
+	diagnostic.Record(diagnostic.TextCacheInvalidate, uint64(len(record.entries)))
 	for _, entry := range record.entries {
 		c.releaseImage(entry.image)
 	}

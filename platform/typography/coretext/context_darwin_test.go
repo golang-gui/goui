@@ -492,3 +492,6 @@ func TestTallLayoutPreservesFirstLinePosition(t *testing.T) {
 		}
 	}
 }
+
+// 原生资源统计不能改变创建、重排、栅格化和幂等销毁的契约。
+func TestDiagnosticsResources(t *testing.T) { typographytest.Diagnostics(t, NewContext) }

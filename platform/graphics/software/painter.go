@@ -9,6 +9,7 @@ import (
 	"math"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/internal/diagnostic"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/internal/boxshadow"
@@ -71,6 +72,9 @@ func (p *Painter) Destroy() {
 	}
 	p.textImages.Destroy()
 	for img := range p.images {
+		if !img.destroyed {
+			diagnostic.Record(diagnostic.ImageDestroy, 1)
+		}
 		img.owner = nil
 		img.bitmap.Pixels = nil
 		img.destroyed = true
@@ -97,6 +101,7 @@ func (p *Painter) NewImage(src image.Image) (graphics.Image, error) {
 		bitmap: graphics.CopyToBitmap(src, graphics.PixelFormatBGRA, nil),
 	}
 	p.images[img] = struct{}{}
+	diagnostic.RecordImage(diagnostic.ImageCreate, img.width, img.height)
 	return img, nil
 }
 
@@ -115,6 +120,7 @@ func (p *Painter) updateImage(img *imageResource, src image.Image) error {
 		return fmt.Errorf("software: update image size %dx%d, want %dx%d", bounds.Dx(), bounds.Dy(), img.width, img.height)
 	}
 	img.bitmap = graphics.CopyToBitmap(src, graphics.PixelFormatBGRA, img.bitmap.Pixels)
+	diagnostic.RecordImage(diagnostic.ImageUpdate, img.width, img.height)
 	return nil
 }
 
@@ -122,6 +128,7 @@ func (p *Painter) destroyImage(img *imageResource) {
 	if img == nil || img.destroyed || img.owner != p {
 		return
 	}
+	diagnostic.Record(diagnostic.ImageDestroy, 1)
 	img.destroyed = true
 	if p.activeFrame {
 		img.pendingDestroy = true

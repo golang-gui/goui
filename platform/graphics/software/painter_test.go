@@ -14,6 +14,7 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
+	"github.com/golang-gui/goui/internal/diagnostic"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
@@ -22,6 +23,78 @@ import (
 
 type testDrawer struct {
 	result image.Image
+}
+
+// 诊断只计操作，不改变像素输出、Update 时机或延迟释放；失败与幂等调用不重复计数。
+func TestDiagnosticResourceCountsPreservePixelsAndLifetime(t *testing.T) {
+	render := func(capture bool) ([]byte, diagnostic.Values) {
+		var session *diagnostic.Session
+		if capture {
+			var err error
+			session, err = diagnostic.Start()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer session.Stop()
+		}
+		d := new(testDrawer)
+		base, err := NewPainter(d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p := base.(*Painter)
+		pixels := image.NewRGBA(image.Rect(0, 0, 2, 2))
+		for i := range pixels.Pix {
+			pixels.Pix[i] = 255
+		}
+		img, err := p.NewImage(pixels)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p.Begin(16, 16, 1)
+		p.Clear(graphics.Color{})
+		if err := img.Update(pixels); err != nil {
+			t.Fatal(err)
+		}
+		p.DrawImage(graphics.Rect(2, 3, 8, 8), img)
+		img.Destroy()
+		img.Destroy()
+		if len(p.images) != 1 {
+			t.Fatal("诊断改变了帧内延迟释放")
+		}
+		p.End()
+		if len(p.images) != 0 {
+			t.Fatal("End 未释放图像")
+		}
+		if err := img.Update(pixels); err == nil {
+			t.Fatal("诊断允许更新已销毁资源")
+		}
+		if _, err := p.NewImage(nil); err == nil {
+			t.Fatal("接受无效创建")
+		}
+		_, err = p.NewImage(pixels)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, g, b, a := d.result.At(3, 4).RGBA()
+		if r != 65535 || g != 65535 || b != 65535 || a != 65535 {
+			t.Fatal("验证场景未实际画出图像")
+		}
+		result := graphics.CopyToBitmap(d.result, graphics.PixelFormatRGBA, nil).Pixels
+		p.Destroy()
+		if session == nil {
+			return result, diagnostic.Values{}
+		}
+		return result, session.Values()
+	}
+	a, _ := render(false)
+	b, c := render(true)
+	if !bytes.Equal(a, b) {
+		t.Fatal("开启诊断改变像素")
+	}
+	if c[diagnostic.ImageCreate] != 2 || c[diagnostic.ImageUpdate] != 1 || c[diagnostic.ImageDestroy] != 2 || c[diagnostic.ImageBytes] != 48 {
+		t.Fatal("成功操作、失败、销毁或字节计数错误", c)
+	}
 }
 
 type testTextLayout struct {
