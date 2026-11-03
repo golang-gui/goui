@@ -1113,3 +1113,115 @@ cgo 包；两种 iOS 各收集 bridge 与 runtime/cgo。基座消费仍由普通
 剩余工作包括 fork 的可分发版本与依赖接入、宿主工具/SDK 组件的再分发审核和
 供应链认证、Windows 消费运行、iOS 真机与 Android 16 KiB 内核验收，最后才是
 面向用户的 `cmd/goui` 编排和 platform 移动 UI 集成。
+
+## 16. 第四阶段：无原生编译器的消费构建编排（2026-11-03）
+
+### 16.1 本阶段边界
+
+将前三阶段已经验证的手工命令封装到 `internal/mobilebase.Build`，并由维护者
+入口 `goui-base build` 调用。它输出 Android `.so` 或与显式宿主链接后的 iOS
+可执行文件；不是 APK/IPA，不提前改变 `cmd/goui build` 的桌面语义。
+基座、目标链接输入、宿主链接工具仍是独立组件，不引入包含 UI 的大基座。
+组件下载、认证、公开发行和正式移动 UI 宿主不在本阶段一起实现。
+
+`BuildOptions` 显式传入 Go、适配后的 Go driver、goui-link、三个组件清单、
+主包目录/包名/输出，以及独立宿主对象、库和 framework。目标、架构、变体、
+最低系统版本与 buildmode 从组件读取，不要求调用方再重复声明一套。
+三个组件在启动源码构建前验证；不兼容的目标、变体、最低系统版本、Go 版本
+或宿主工具立即失败。iOS 必须显式提供至少一个宿主对象。
+
+### 16.2 受控构建与发布
+
+- 继续由原有 Go build 解析模块/工作区、依赖和缓存，正常 Go 包照常源码编译。
+  子进程环境指定匹配的 GOROOT、目标、架构等级、实验选项和固定 Go 版本，
+  `CGO_ENABLED=1` 用于选择真正 runtime/cgo，不能把它误称为内部全程 CGO=0。
+- CC/CXX 指向只链接的 goui-link，原生编译请求明确拒绝；缺失原生包仍由已验证
+  的 Go action hook 报错。消费端不回退到系统 C 编译器，也不修改用户环境。
+- 保留普通 Go 模块网络配置、GOCACHE 和 GOWORK；不把工具生成阶段使用的
+  GOWORK=off/GOENV=off 不加区分地套到应用构建。额外 GOFLAGS 或自定义
+  CGO 编译/链接 flags 明确拒绝，避免与固定原生归档的语义产生歧义。
+- 参数只通过 argv/response file 传递，不经 shell。遵循 Go 1.25.8 的
+  cmd/internal/quoted 规则，不能使用 JSON 转义代替 Go flags quoting。
+  Android 直接复用 cmd/go 的 setextld：从 CC/CXX 传入只链接驱动及可选的
+  host response argv，避免再经 -ldflags 嵌套转义。该 Go 格式本身不能表达
+  同一参数同时包含单、双引号的情况；不能静默猜测。
+- Android 经 Go driver 的 c-shared/external-link 输出，iOS 经 c-archive/
+  Go pack 生成归档，再复用 RunNativeLink 与调用方指定宿主完成最终链接。
+  原生链接仍由独立 LLD 组件完成，Go runtime 不另行实现。
+- 构建写入输出同一文件系统的临时目录，保持最终 basename，所有阶段和
+  最终 ELF/Mach-O 校验成功、且未取消后才发布。失败保留旧文件；临时归档、
+  response/header 等辅助产物随临时目录清理，不写应用源码树。
+
+对应源码依据为 [Go 1.25.8 quoted](https://github.com/golang/go/blob/go1.25.8/src/cmd/internal/quoted/quoted.go)
+与 [external link/archive](https://github.com/golang/go/blob/go1.25.8/src/cmd/link/internal/ld/lib.go)。
+正式组件索引和自动下载应在公开分发契约确定后实现，本阶段接受已准备清单路径。
+
+### 16.3 文件与验证
+
+实现主要在 `internal/mobilebase/build.go`、`build_test.go`、维护者 CLI 与测试
+fixture。逻辑测试覆盖组件不匹配、错误 Go 环境、argv/路径、取消、失败及
+输出不被覆盖；假构建器只验证进程编排，不作为 native ABI 的证据。
+
+本机继续使用第三阶段的真实最小 FFI 工程，对三种移动目标各自空缓存构建。
+远端 Windows amd64 使用固定 Go 版本、预置的 Windows LLD 和已验证的目标
+组件消费同一份源码，不安装 SDK/C 编译器；产物再交 Android/iOS 模拟器运行。
+Windows 原生编译、模拟器执行、iOS Device 仅链接、尚未运行的场景分别记录，
+不把交叉构建或格式检查写成真机运行。每阶段更新 Plan/Roadmap。
+
+维护者 Go driver 的生成另外使用临时的空 GOMODCACHE。自动下载的 Go 1.25.8
+位于用户模块缓存内，Go 1.25.8 work/init.go 会拒绝覆盖被视为模块依赖的文件；
+工具生成只依赖 GOROOT，因此使用独立缓存让 GOROOT 与应用模块依赖分离。
+这一设置只作用于该子进程，不改变真实缓存、不复制或改写 GOROOT。包内回归
+把 GOMODCACHE 设为 GOROOT 父目录复现该条件，并核对原源码保持不变。
+
+### 16.4 实现和验收结果
+
+- `Build` 与 `goui-base build` 已实现。组件不匹配、错误 Go 版本/flags、缺少宿主、
+  Go/最终链接失败、无效输出和取消均有回归，原输出保留。取消保留 context 错误
+  身份；进程环境不变。测试构建器/链接器仅用于编排，不作为原生执行证据。
+- Linux amd64 / Go 1.25.8 与 Windows 10 amd64 / Go 1.25.8 均从独立空 GOCACHE
+  构建 Android ARM64、iOS ARM64 Simulator/Device。Go 日志确认普通包源码编译，
+  使用对应原生归档，未运行 cgo 生成；只链接驱动不能调用原生编译器。
+  额外宿主 response file、库与 framework 路径均在真实链接中覆盖。
+- 两个宿主均覆盖空格路径及中文宿主名；Android 使用带空格/单引号的链接工具路径
+  另行冷构建通过。复用 Go 的 CC→setextld 传递，避免嵌套编码误伤合法路径。
+- 真实执行在远端 macOS 15.7.7 ARM64 上进行：iOS 26.3.1 ARM64 Simulator 和
+  Android 11 ARM64 ATD 分别运行 Windows/Linux 产物，四组均为 28/28，8 个
+  pthread 各 8 轮重复错误为零。iOS 使用 ad-hoc 签名和 simctl spawn；本阶段是
+  无窗口 FFI 进程验收，不声称 APK/IPA 或完整移动 GUI 已可用。专用模拟器/ADB
+  均已清理；iOS Device 仍仅验证编译/链接，没有真机或 16 KiB 内核运行。
+- 隔离的已跟踪源码加本阶段文件，全仓测试 3481 项通过、10 项既有跳过；新增
+  构建/driver 回归的 race 与 mobilebase/两个工具入口的 vet 通过。
+  原工作区未跟踪的四个旧例程和 PNG 等文件保持原样，不移入本阶段提交。
+- Windows 上传的 Linux 交叉编译版 goui-base.exe 返回 Access denied。其 ACL
+  允许执行、没有 Zone stream，Defender 未查询到对应威胁记录；未确认拒绝原因，
+  未更改安全策略。用远端标准 Go 从相同工具源码本机构建后可运行，预编译 Rust
+  LLD 也可运行，随后完成上述消费与原生运行。公开工具附件的执行验收仍需单独
+  处理，不能把本机 Go 编译成功写成上传版附件已验证。
+- 维护者测试脚本首次误替换 GOROOT/使用 PowerShell 只读 Host 变量的问题均已
+  修正。手写 Windows 绝对斜杠工作区路径导致 stock Go 和 driver 都报模块不在
+  workspace；改用可移植相对路径后两者通过，未以框架特例补偿 Go 模块发现。
+  构建失败和修正后的日志都保留于 `/tmp/goui-mobile-build-stage4`。
+
+示例维护者命令（所有路径均为调用方准备的组件，不执行下载）：
+
+```sh
+goui-base build -go /path/to/go1.25.8/bin/go \
+  -driver /path/to/go-mobile -linker /path/to/goui-link \
+  -base /components/android/base.json \
+  -inputs /components/android-inputs/inputs.json \
+  -tools /components/host-tools/tools.json \
+  -dir /path/to/application -o /output/libapp.so .
+
+# iOS 的 SDK 输入、基座变体和独立宿主必须一致。
+goui-base build -go /path/to/go1.25.8/bin/go \
+  -driver /path/to/go-mobile -linker /path/to/goui-link \
+  -base /components/ios-sim/base.json \
+  -inputs /components/ios-sim-inputs/inputs.json \
+  -tools /components/host-tools/tools.json \
+  -object /platform-host/simulator.o -framework CoreFoundation \
+  -dir /path/to/application -o /output/Probe .
+```
+
+组件索引/认证分发、已修复 FFI 的公开版本、APK/IPA 组装签名、正式移动平台
+接入仍为后续阶段；没有将上述私有 SDK/工具二进制或个人签名材料加入仓库。
