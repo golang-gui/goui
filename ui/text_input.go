@@ -18,6 +18,9 @@ type TextInputView struct {
 	onSubmit        func()
 	selection       TextSelection
 	readOnly        bool
+	obscured        bool
+	obscureChar     rune
+	inputFilter     gui.InputFilter
 	padding         geometry.Insets
 	fields          bits.Bitmap[uint64]
 }
@@ -93,6 +96,20 @@ func (v *TextInputView) Selection(value TextSelection) *TextInputView {
 	return v
 }
 func (v *TextInputView) ReadOnly(value bool) *TextInputView { v.readOnly = value; return v }
+
+// Obscured hides displayed and semantic text while preserving the bound value.
+func (v *TextInputView) Obscured(value bool) *TextInputView { v.obscured = value; return v }
+
+// ObscureChar selects the masking rune. Zero/unset uses U+2022; it does not
+// enable obscuring. The same rune validation as gui.TextInput applies.
+func (v *TextInputView) ObscureChar(char rune) *TextInputView { v.obscureChar = char; return v }
+
+// InputFilter sets the user-edit policy. Unset removes it; assignments through
+// Text or BindText and history replay are not filtered.
+func (v *TextInputView) InputFilter(filter gui.InputFilter) *TextInputView {
+	v.inputFilter = filter
+	return v
+}
 func (v *TextInputView) OnSelection(fn func(TextSelection)) *TextInputView {
 	v.onSelection = fn
 	v.fields.Set(textInputWriteSelection, false)
@@ -155,6 +172,9 @@ func (v *TextInputView) Update(ctx BuildContext, widget gui.Widget) {
 	state := ctx.State().(*textInputState)
 	state.handles.Block()
 	defer state.handles.Unblock()
+	input.SetInputFilter(v.inputFilter)
+	input.SetObscureChar(v.obscureChar)
+	input.SetObscured(v.obscured)
 	if v.fields.Check(textInputPadding) {
 		input.SetPadding(v.padding)
 	} else {

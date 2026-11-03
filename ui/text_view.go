@@ -35,6 +35,7 @@ type TextViewView struct {
 	wrap            WrapMode
 	readOnly        bool
 	acceptsTab      bool
+	inputFilter     gui.InputFilter
 	onChange        func(TextChange)
 	onText          func(string)
 	onSelection     func(TextSelection)
@@ -81,6 +82,13 @@ func (v *TextViewView) Text(text string) *TextViewView {
 // Placeholder sets the empty-document hint. Omitted restores an empty hint.
 func (v *TextViewView) Placeholder(text string) *TextViewView {
 	v.placeholder = text
+	return v
+}
+
+// InputFilter sets this view's user-edit policy. Unset removes it; shared model
+// mutations, declarative assignments and history replay are not filtered.
+func (v *TextViewView) InputFilter(filter gui.InputFilter) *TextViewView {
+	v.inputFilter = filter
 	return v
 }
 
@@ -207,6 +215,7 @@ func (v *TextViewView) Update(ctx BuildContext, widget gui.Widget) {
 	w, s := widget.(*gui.TextView), ctx.State().(*textViewState)
 	s.handles.Block()
 	defer s.handles.Unblock()
+	w.SetInputFilter(v.inputFilter)
 	model := v.model
 	if model == nil {
 		model = s.model
