@@ -1,5 +1,37 @@
 # Plan
 
+## 移动端基座：第一阶段（2026-11-03）
+
+- 设计与当前边界见 [PlanMobileBuild 第 13 节](PlanMobileBuild.md#13-正式基座第一阶段冷缓存归档接入2026-11-03)。
+  开发位于独立的 goui2 / feature/mobile-base；cgo 仓库同名分支已创建，尚未修改 FFI。
+- [x] 维护者工具 `cmd/goui-base` 与 `internal/mobilebase`：导出实际需要 cgo 的包、
+  组件清单、SHA-256、路径边界、选中源码、模块/Go 语言版本及依赖导出身份校验。
+- [x] 固定 Go 1.25.8，校验原始构建驱动源码后通过临时 overlay 构建独立 cmd/go。
+  不更改用户 GOROOT 或 Go compiler/linker/runtime，不缓存分发整套标准库。
+- [x] Linux amd64 两版普通 Go 应用，独立空缓存、无可用 C 编译器；同一基座各完成
+  512 次 pthread 回调、GC、栈增长验证。缺失组件、源码、依赖 ABI、语言版本和
+  不支持参数的失败路径通过；新包测试、race 与 vet 通过。
+- [x] Android ARM64 API29 c-shared，以及 iOS ARM64 Simulator/Device 最低15.0
+  c-archive 冷构建和原生链接通过。iOS 原生支持包在 macOS arm64 制作，Linux
+  正常构建图中消费；普通 Go 包从源码编译，消费阶段 C 编译器调用为零。
+  最终重新构建的三个产物与原生运行送验产物 SHA-256 一致。
+- [x] iOS 26.3.1 ARM64 模拟器：安装 Linux 构建的 app，独立 XCTest 仅操作已安装
+  应用；启动、原生按钮、GC、前后台切换、Go 主入口一次、UI 主线程检查通过。
+  本次只作 ad-hoc 模拟器签名，未进行真机及正式签名验收。
+- [x] Android 11 ARM64 AOSP ATD：安装、原生点击、GC、前后台切换通过；Activity
+  重建后仍为同一 Go runtime/进程，Go 主入口只执行一次。初次安装因测试旧版本
+  残留被拒绝，清理本次专用 AVD 内测试 app；另修正临时组包脚本误压缩资源表，
+  保留 AAPT2 的 resources.arsc 存储方式并重新对齐后，安装器验收通过。
+  iOS 专用模拟器已删除，Android 模拟器和专用 ADB server 已停止。
+- [x] 工作区 `go test ./...` 仅被四个既有未跟踪旧例程 API 编译错误阻塞，原文件
+  保留；已跟踪源码加本轮文件的独立副本全仓测试为 3431 项通过、10 项跳过、
+  无失败。Windows amd64、macOS arm64、Linux arm64 维护者工具交叉构建通过。
+- [ ] 目标链接输入/工具的正式组件、复杂 FFI 已知移动 ABI 修复、真机、Windows
+  消费运行、组件发布及 cmd/goui 接入仍待后续，不将本阶段视为已支持 GOUI 移动应用。
+- 本地验证日志/组件位于 `/tmp/goui-base-driver-zm84lx0x`；远端生产及模拟器验收
+  位于 `/tmp/goui-mobile-base-formal-zm84lx0x`。没有将基座二进制、SDK 或测试密钥
+  加入仓库。旧手动 importcfg 实验与本轮冷构建证据分开记录。
+
 ## Go 标准帧追踪（2026-11-05）
 
 - [x] 在 rootBase 的现有帧、回调、样式、布局、Painter.Begin／Paint／End 边界
