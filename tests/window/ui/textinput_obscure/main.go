@@ -2,23 +2,28 @@
 //
 // 环境：Linux X11 / Windows / macOS 桌面、原生字体与事件循环。
 // 启动：GOUI_PLAT_PAINTER=opengl GOUI_PLAT_SCALE=1 go run ./tests/window/ui/textinput_obscure
-// 另验 software、倍率 2；Windows 可另验 direct2d。默认自动断言后退出。
-// -auto=false 保留窗口手工操作，-hold 在自动检查后保留窗口。
+// 另验 software、倍率 2；Windows 可另验 direct2d。默认手动验收，使用正常 Modern
+// 主题与自然测量高度，保留光标闪烁、焦点边框和选区高亮。
+// -auto 启用专用样式及像素断言后退出；-auto -hold 在检查后保留测试外观。
 // 独立 X11 会话没有输入法服务时使用 XMODIFIERS=@im=none，不继承其它桌面的 Fcitx。
-// 初始：遮蔽框开启 2 秒反馈；下方独立参考框只用于像素断言。
+// 初始：遮蔽框开启 2 秒反馈；下方普通输入框可独立输入，比较焦点／选区／光标。
 // 操作与预期：
 //  1. 新输入一个中文、组合字素或 Emoji：只有这个完整字素短暂显示，2 秒后遮蔽。
-//  2. 点击 Rebuild：控件身份、正文与选区不变，倒计时不延长。
+//  2. 输入英文字母、全选／拖选，检查文字在框内居中，无裁剪，有光标与选区高亮。
+//     点击 Rebuild：正文与选区保留；按钮获得焦点时密码立即遮蔽。自动步骤在不转移
+//     焦点的情况下请求重建，另外断言重建不会延长倒计时。
 //  3. 移动光标、改变选区、焦点移至参考框：立即遮蔽；重新聚焦不恢复显露。
 //  4. 多字符提交、程序赋值不显露；窗口自动步骤检查相同行为及源字素导航。
-//  5. 原生输入复验：重启 -auto=false，在密码框键入 ab#12 后立即按 F7，
+//  5. 原生输入像素复验：启动 -auto -hold，等待 PASS 后点 Reset，
+//     在密码框键入 ab#12 后立即按 F7，
 //     检查画面与 ••••2 一致；等待超过 2 秒按 F6，检查画面与 ••••• 一致。
 //     F6/F7 均断言 Snapshot 无正文。日志 READY 给出鼠标命中区域，供真实桌面操作。
 //
 // 自动步骤使用 Window.CommitText / DispatchEvent，检查 UI 绑定写回与重建不重启计时。
 // 比较同倍率、同字体的非空预乘 RGBA，不使用跨平台字体金图；RenderWidget 是离屏
 // 像素检查，不等同于桌面合成验收。测试样式统一两框边框并隐藏光标，避免焦点闪烁
-// 干扰像素比较；正常主题的光标和 IME 候选交互需人工另验。
+// 干扰像素比较；这些设置仅用于 -auto 模式，界面会明确标记。
+// 正常主题的光标、选区、焦点和 IME 候选交互在默认手动模式观察。
 // 副作用：仅创建窗口，不操作剪贴板、网络或系统设置，不写入源码目录。
 // 复位：Reset 或重启。退出：自动 PASS 后或关闭窗口，提前退出和超时返回非零。
 package main
@@ -40,6 +45,7 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/style"
+	"github.com/golang-gui/goui/theme/modern"
 	"github.com/golang-gui/goui/ui"
 )
 
@@ -93,7 +99,7 @@ func pixels(w gui.Widget) []byte {
 }
 
 func main() {
-	auto := flag.Bool("auto", true, "自动验收后退出")
+	auto := flag.Bool("auto", false, "自动验收后退出")
 	hold := flag.Bool("hold", false, "自动验收后保留窗口")
 	flag.Parse()
 	const delay = 2 * time.Second
@@ -104,17 +110,35 @@ func main() {
 		style.Name("obscure-test").FontSize(18).ForegroundColor(color.Black).BackgroundColor(color.White).BorderWidth(1).BorderColor(color.Gray{Y: 150}).Radius(4),
 		style.Name("obscure-test").Part("caret").ForegroundColor(color.RGBA{}),
 	)
-	sheet := style.Sheet(rules...)
+	pixelSheet := style.Sheet(rules...)
 	started, done, phase := false, false, 0
 	var committed time.Time
 	var original *gui.TextInput
 	deadline := time.Now().Add(20 * time.Second)
 	err := ui.Run("org.golanggui.ObscureDelay", func(app ui.App) ui.RootView {
+		var sheet style.StyleSheet
+		mode := "Manual check — normal controls"
+		referenceTitle := "Plain text input: caret / selection / focus"
+		input := ui.TextInput().ID("secret").BindText(&text).Obscured(true).ObscureDelay(delay)
+		reference := ui.TextInput().ID("reference")
+		if *auto {
+			sheet = pixelSheet
+			mode = "Pixel check — caret and highlights hidden"
+			referenceTitle = "Independent display reference"
+			// Use equal, generous viewports for pixel comparison. Assert below
+			// that native text fits, rather than comparing two clipped images.
+			input.Style("obscure-test").MinHeight(64).MaxHeight(64)
+			reference.Style("obscure-test").MinHeight(64).MaxHeight(64)
+		} else {
+			sheet = modern.FromSettings(app.Settings())
+		}
 		if !started {
 			started = true
 			var timer *ui.Timer
 			timer = app.TickFunc(80*time.Millisecond, func() {
-				check(time.Now().Before(deadline), "obscure delay verification timed out")
+				if *auto && !done {
+					check(time.Now().Before(deadline), "obscure delay verification timed out")
+				}
 				if probe.probe.frames == 0 {
 					return
 				}
@@ -123,6 +147,9 @@ func main() {
 				reference := app.FindWidget("main", "reference").(*gui.TextInput)
 				compare := func(expected string) {
 					reference.SetText(expected)
+					for _, field := range []*gui.TextInput{input, reference} {
+						check(field.Rect().Height >= field.Measure(layout.Unbounded()).Height, "pixel-check viewport clips native text")
+					}
 					a, b := pixels(input), pixels(reference)
 					check(bytes.Equal(a, b), fmt.Sprintf("phase %d: display pixels differ from independent reference", phase))
 					reference.SetText("")
@@ -133,21 +160,32 @@ func main() {
 				}
 				if original == nil {
 					original = input
+					if !*auto {
+						check(win.SetFocusedWidget(input), "cannot focus manual input")
+					}
+					for _, field := range []*gui.TextInput{input, reference} {
+						natural := field.Measure(layout.Unbounded()).Height
+						check(field.Rect().Height >= natural, "initial field clips native text")
+						fmt.Printf("HEIGHT %s allocated=%g natural=%g\n", field.ID(), field.Rect().Height, natural)
+					}
 					bounds, e := json.Marshal(input.Snapshot().Bounds)
 					must(e)
 					fmt.Printf("READY %s\n", bounds)
-					for _, entry := range []struct {
-						key  gui.Key
-						name string
-						want string
-					}{{gui.KeyF7, "F7", "••••2"}, {gui.KeyF6, "F6", "•••••"}} {
-						s := gui.NewShortcut(gui.KeyGesture{Key: entry.key})
-						s.ConnectActivate(func() {
-							check(input.Text() == "ab#12", "native input did not reach the bound editor")
-							compare(entry.want)
-							fmt.Println("PASS native input", entry.name)
-						})
-						win.Shortcuts().AddShortcut(s)
+					fmt.Println("MODE", mode)
+					if *auto {
+						for _, entry := range []struct {
+							key  gui.Key
+							name string
+							want string
+						}{{gui.KeyF7, "F7", "••••2"}, {gui.KeyF6, "F6", "•••••"}} {
+							s := gui.NewShortcut(gui.KeyGesture{Key: entry.key})
+							s.ConnectActivate(func() {
+								check(input.Text() == "ab#12", "native input did not reach the bound editor")
+								compare(entry.want)
+								fmt.Println("PASS native input", entry.name)
+							})
+							win.Shortcuts().AddShortcut(s)
+						}
 					}
 				}
 				if !*auto || done {
@@ -208,13 +246,17 @@ func main() {
 				phase++
 			})
 		}
-		return ui.Root().Windows(ui.Window("main").Title("GOUI ObscureDelay").Size(520, 230).Center(true).Content(
+		return ui.Root().Windows(ui.Window("main").Title("GOUI ObscureDelay").Size(560, 320).Center(true).Content(
 			ui.VBox(
+				ui.Label(mode),
 				ui.Label("Password: last grapheme visible for 2 seconds"),
-				ui.TextInput().ID("secret").BindText(&text).Obscured(true).ObscureDelay(delay).Style("obscure-test").MinHeight(36).MaxHeight(36),
-				ui.Label("Independent display reference"),
-				ui.TextInput().ID("reference").Style("obscure-test").MinHeight(36).MaxHeight(36),
-				ui.HBox(ui.Button("Rebuild").OnClick(app.RequestUpdate), ui.Button("Reset").OnClick(func() { text.Set("") })).Spacing(8),
+				input,
+				ui.Label(referenceTitle),
+				reference,
+				ui.HBox(ui.Button("Rebuild").OnClick(app.RequestUpdate), ui.Button("Reset").OnClick(func() {
+					text.Set("")
+					app.FindWidget("main", "reference").(*gui.TextInput).SetText("")
+				})).Spacing(8),
 				probe.MinHeight(1).MaxHeight(1),
 			).Padding(12).Spacing(8).CrossAlign(layout.CrossStretch),
 		)).StyleSheet(sheet)

@@ -111,5 +111,8 @@ ui.TextInput().BindText(&secret).
 - UI：省略恢复、重建不重置历史／IME、绑定写回及不比较函数。
 - 本机独立 X11 会话，以 Software / OpenGL 的 1x / 2x 验证像素、输入、滚动、预编辑
   及剪贴板。窗口用例记录操作和独立断言，不使用 DevServer 验收。
+- `tests/window/ui/textinput_obscure` 默认手动验收：正常 Modern 主题、自然测量高度，
+  保留焦点、选区与光标。`-auto` 才启用统一边框、透明光标及等尺寸视口的像素断言，
+  并检查视口足以容纳原生行高；`-auto -hold` 可保留测试外观供原生输入像素检查。
 
 实际执行与未验收项见 [Plan](Plan.md#textinput-遮蔽与共享输入策略2026-11-03)。
