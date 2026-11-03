@@ -229,6 +229,8 @@ type textEditor struct {
 	inputFilter       InputFilter
 	obscured          bool
 	obscureChar       rune
+	obscureDelay      time.Duration
+	obscureHint       *textObscureHint
 	acceptsTab        bool
 	wrap              WrapMode
 	padding           geometry.Insets
@@ -316,6 +318,8 @@ func newTextEditor(owner Widget, singleLine bool, padding geometry.Insets) *text
 		t.connectContextMenuLanguage()
 	})
 	t.owner.ConnectUnmount(func() {
+		t.stopObscureHint()
+		t.obscureHint = nil
 		if t.longFrame != nil {
 			t.longFrame.Disconnect()
 			t.longFrame = nil
@@ -461,6 +465,12 @@ func (t *textEditor) setReadOnly(value bool) {
 	}
 	t.readOnly = value
 	model, epoch := t.model, t.mountEpoch
+	if value {
+		t.hideObscureHint()
+	}
+	if t.owner.base().destroyed || t.model != model || t.mountEpoch != epoch || t.readOnly != value {
+		return
+	}
 	t.cancelPreedit(true)
 	if t.owner.base().destroyed || t.model != model || t.mountEpoch != epoch {
 		return
@@ -845,7 +855,11 @@ func (t *textEditor) paragraph(index int) *textParagraph {
 		}
 		p = &textParagraph{}
 		if t.obscured {
-			p.obscured = textedit.NewObscuredText(text, t.obscureChar)
+			reveal := TextRange{}
+			if hint := t.obscureHint; hint != nil && hint.revision == t.model.Revision() && t.preedit == nil {
+				reveal = hint.span
+			}
+			p.obscured = textedit.NewRevealedText(text, t.obscureChar, reveal)
 			text = p.obscured.Text()
 		}
 		if text != "" || !t.singleLine {
@@ -1812,6 +1826,12 @@ func (t *textEditor) onPreedit(text string, caret int) {
 	if t.owner.base().destroyed || t.suspended || !IsEnabled(t.owner) || t.readOnly || t.resettingIME {
 		return
 	}
+	model, epoch, revision, input := t.model, t.mountEpoch, t.model.Revision(), t.inputRevision
+	t.hideObscureHint()
+	if t.owner.base().destroyed || t.suspended || !IsEnabled(t.owner) || t.readOnly ||
+		t.model != model || t.mountEpoch != epoch || model.Revision() != revision || t.inputRevision != input {
+		return
+	}
 	if text == "" {
 		t.cancelPreedit(false)
 		return
@@ -1861,7 +1881,9 @@ func (t *textEditor) onCommit(commit IMCommit) {
 		t.cancelPreedit(false)
 	}
 	t.nextCommitAtomic = false
-	t.replaceSelection(commit.Text, atomic)
+	if edit, applied := t.replaceSelection(commit.Text, atomic); applied {
+		t.showObscureHint(edit, commit.Text)
+	}
 }
 
 // cancelPreedit restores committed content without modifying model/history.
@@ -2223,6 +2245,7 @@ func (c *textEditController) Reset() {
 	if c.view.scrollTimer != nil {
 		c.view.scrollTimer.Stop()
 	}
+	c.view.hideObscureHint()
 	if !IsEnabled(c.view.owner) {
 		t := c.view
 		model, epoch, revision := t.model, t.mountEpoch, t.owner.base().enabledRevision
@@ -2390,21 +2413,21 @@ func (t *textEditor) moveTo(pos textedit.Position, extend bool) {
 	t.setSelection(selection, pos.Upstream, true)
 }
 
-func (t *textEditor) replaceSelection(text string, atomic bool) {
+func (t *textEditor) replaceSelection(text string, atomic bool) (TextEdit, bool) {
 	if t.owner.base().destroyed || !IsEnabled(t.owner) || t.readOnly || t.suspended {
-		return
+		return TextEdit{}, false
 	}
 	model, epoch := t.model, t.mountEpoch
 	enabledRevision := t.owner.base().enabledRevision
 	t.cancelPreedit(true)
 	if t.owner.base().destroyed || !IsEnabled(t.owner) || t.owner.base().enabledRevision != enabledRevision || t.model != model || t.mountEpoch != epoch {
-		return
+		return TextEdit{}, false
 	}
 	if !t.normalizeEditingSelection() {
-		return
+		return TextEdit{}, false
 	}
 	rng := t.selection.Range()
-	t.applyUserEdit(TextEdit{Range: rng, Text: text}, atomic)
+	return t.applyUserEdit(TextEdit{Range: rng, Text: text}, atomic)
 }
 
 func (t *textEditor) filterUserEdit(edit TextEdit) (TextEdit, bool) {
@@ -2428,25 +2451,30 @@ func (t *textEditor) filterUserEdit(edit TextEdit) (TextEdit, bool) {
 	return edit, true
 }
 
-func (t *textEditor) applyUserEdit(edit TextEdit, atomic bool) {
+func (t *textEditor) applyUserEdit(edit TextEdit, atomic bool) (TextEdit, bool) {
 	if edit, accept := t.filterUserEdit(edit); accept {
-		t.commitUserEdit(edit, atomic)
+		return edit, t.commitUserEdit(edit, atomic)
 	}
+	return TextEdit{}, false
 }
 
-func (t *textEditor) commitUserEdit(edit TextEdit, atomic bool) {
+func (t *textEditor) commitUserEdit(edit TextEdit, atomic bool) bool {
 	model, epoch, before := t.model, t.mountEpoch, t.selection
+	revision, input, enabled := model.Revision(), t.inputRevision, t.owner.base().enabledRevision
 	t.revealCaret = true
-	_ = model.Apply(edit, textedit.EditOptions{Atomic: atomic, Source: t.editOwner, Selection: &before})
+	err := model.Apply(edit, textedit.EditOptions{Atomic: atomic, Source: t.editOwner, Selection: &before})
 	// Signals may edit again, replace the model, unmount, or destroy the view.
 	// The model change handler has already mapped the selection in order.
 	if t.owner.base().destroyed || t.model != model || t.mountEpoch != epoch {
-		return
+		return false
 	}
 	t.caretUpstream = false
 	t.hasDesiredX = false
 	t.revealCaret = true
 	t.owner.RequestLayout()
+	end := edit.Range.Start + len(edit.Text)
+	return err == nil && model.Revision() == revision+1 && t.selection == (TextSelection{Anchor: end, Caret: end}) &&
+		t.inputRevision == input && t.owner.base().enabledRevision == enabled
 }
 
 func (t *textEditor) logicalAdjacent(offset int, forward bool) int {

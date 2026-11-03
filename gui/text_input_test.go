@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/golang-gui/goui/core/colors"
 	"github.com/golang-gui/goui/core/geometry"
@@ -41,6 +42,259 @@ func TestTextInputSnapshotAndFocusability(t *testing.T) {
 	}
 	if info.Bounds != geometry.Rect(1, 2, 160, 24) {
 		t.Fatalf("unexpected snapshot bounds: %+v", info.Bounds)
+	}
+}
+
+// 用可推进 GUI 计时队列验证遮蔽，不等待真实时间、不创建原生窗口。
+func obscuredInputFixture(t *testing.T) (*TextInput, *window, *timerTestQueue) {
+	t.Helper()
+	_, _, win, q, _ := timedEditorFixture(t)
+	input := NewTextInput()
+	input.SetObscured(true)
+	input.SetObscureDelay(600 * time.Millisecond)
+	box := NewLinearBox(layout.DirectionVertical)
+	box.AddChild(input)
+	win.SetWidget(box)
+	input.Arrange(geometry.Rect(0, 0, 240, 36))
+	win.SetFocusedWidget(input)
+	return input, win, q
+}
+
+func obscuredLayoutText(input *TextInput) string { return input.paragraph(0).layout.Text() }
+
+func advanceObscureTimer(t *testing.T, q *timerTestQueue, delay time.Duration) {
+	t.Helper()
+	q.advance(delay)
+	for len(q.posts) > 0 {
+		q.dispatch(t)
+	}
+}
+
+func TestTextInputObscureDelayAndRestart(t *testing.T) {
+	input, _, q := obscuredInputFixture(t)
+	input.SetText("é")
+	input.im.emitCommit(IMCommit{Text: "中"})
+	if got := obscuredLayoutText(input); got != "•中" {
+		t.Fatal("最后一个提交字素没有显露", got)
+	}
+	info := input.Snapshot()
+	if !info.TextEditing.Obscured || info.Text != "" || info.TextEditing.VisibleText != "" {
+		t.Fatal("短暂显露泄露语义正文", info)
+	}
+	revision, selection := input.model.Revision(), input.Selection()
+	timer := input.obscureHint.timer
+	advanceObscureTimer(t, q, 599*time.Millisecond)
+	input.SetObscureDelay(600 * time.Millisecond)
+	input.SetObscured(true)
+	input.SetObscureChar('•')
+	if got := obscuredLayoutText(input); got != "•中" {
+		t.Fatal("相同配置提前隐藏提示", got)
+	}
+	advanceObscureTimer(t, q, time.Millisecond)
+	if got := obscuredLayoutText(input); got != "••" || timer.Active() {
+		t.Fatal("相同配置重新启动了倒计时，或到期未遮蔽", got)
+	}
+	if input.model.Revision() != revision || input.Selection() != selection || !input.model.CanUndo() {
+		t.Fatal("视觉计时改变了正文、选区或历史")
+	}
+	input.im.emitCommit(IMCommit{Text: "a"})
+	q.advance(600 * time.Millisecond) // 原到期通知已经排队，但尚未派发。
+	input.im.emitCommit(IMCommit{Text: "👨‍👩‍👧‍👦"})
+	for len(q.posts) > 0 {
+		q.dispatch(t)
+	}
+	if got := obscuredLayoutText(input); got != "•••👨‍👩‍👧‍👦" || input.obscureHint.timer != timer {
+		t.Fatal("旧通知遮蔽了新输入，或没有复用计时器", got)
+	}
+	advanceObscureTimer(t, q, 599*time.Millisecond)
+	if got := obscuredLayoutText(input); got != "•••👨‍👩‍👧‍👦" {
+		t.Fatal("新输入没有获得完整显示时间", got)
+	}
+	advanceObscureTimer(t, q, time.Millisecond)
+	if got := obscuredLayoutText(input); got != "••••" {
+		t.Fatal("新输入到期未遮蔽", got)
+	}
+}
+
+func TestTextInputObscureDelayCancellation(t *testing.T) {
+	for _, action := range []string{"selection", "arrow", "focus", "window_focus", "disable", "parent_disable", "hide", "unmount", "destroy", "read_only", "zero_delay", "changed_delay", "character", "toggle", "model", "preedit"} {
+		t.Run(action, func(t *testing.T) {
+			input, win, q := obscuredInputFixture(t)
+			input.SetText("a")
+			input.im.emitCommit(IMCommit{Text: "中"})
+			if obscuredLayoutText(input) != "•中" {
+				t.Fatal("取消前没有显露")
+			}
+			timer := input.obscureHint.timer
+			switch action {
+			case "selection":
+				input.SetSelection(TextSelection{})
+			case "arrow":
+				editorKey(t, win, events.KeyArrowLeft, 0)
+			case "focus":
+				win.SetFocusedWidget(nil)
+			case "window_focus":
+				_ = win.DispatchEvent(events.FocusEvent{Focused: false})
+			case "disable":
+				input.SetEnabled(false)
+			case "parent_disable":
+				input.Parent().SetEnabled(false)
+			case "hide":
+				input.SetVisible(false)
+			case "unmount":
+				win.SetWidget(nil)
+			case "destroy":
+				input.WidgetBase.destroy(input)
+			case "read_only":
+				input.SetReadOnly(true)
+			case "zero_delay":
+				input.SetObscureDelay(-time.Second)
+			case "changed_delay":
+				input.SetObscureDelay(time.Second)
+			case "character":
+				input.SetObscureChar('*')
+			case "toggle":
+				input.SetObscured(false)
+				input.SetObscured(true)
+			case "model":
+				input.SetText("other")
+			case "preedit":
+				input.im.emitPreedit("候选", 3)
+			}
+			if timer.Active() || input.obscureHint != nil && input.obscureHint.span != (TextRange{}) {
+				t.Fatal("取消后仍保留计时或可见范围")
+			}
+			advanceObscureTimer(t, q, time.Second)
+			if !input.Destroyed() && !input.suspended {
+				got := obscuredLayoutText(input)
+				if strings.ContainsAny(got, "a中候选other") {
+					t.Fatal("取消后仍显示正文", got)
+				}
+			}
+		})
+	}
+}
+
+func TestTextInputObscureDelayEditOrigins(t *testing.T) {
+	for _, action := range []string{"default", "multi", "paste", "programmatic", "history", "reject", "transform_many", "truncate_multi"} {
+		t.Run(action, func(t *testing.T) {
+			input, win, _ := obscuredInputFixture(t)
+			switch action {
+			case "default":
+				input.SetObscureDelay(0)
+				input.im.emitCommit(IMCommit{Text: "x"})
+			case "multi":
+				input.im.emitCommit(IMCommit{Text: "xy", Composed: true})
+			case "paste":
+				clip := &editorClipboard{}
+				App.(*application).clipboard = clip
+				editorKey(t, win, events.KeyV, textCommandModifier())
+				clip.pending("x", nil)
+			case "programmatic":
+				input.SetText("x")
+			case "history":
+				input.im.emitCommit(IMCommit{Text: "x"})
+				editorKey(t, win, events.KeyZ, textCommandModifier())
+				editorKey(t, win, events.KeyZ, textCommandModifier()|events.ModifierShift)
+			case "reject":
+				input.SetInputFilter(textedit.DigitsOnly())
+				input.im.emitCommit(IMCommit{Text: "x"})
+			case "transform_many":
+				input.SetInputFilter(func(textedit.Input) (string, bool) { return "xy", true })
+				input.im.emitCommit(IMCommit{Text: "x"})
+			case "truncate_multi":
+				input.SetInputFilter(textedit.LimitLength(1))
+				input.im.emitCommit(IMCommit{Text: "xy"})
+			}
+			if input.obscureHint != nil && input.obscureHint.span != (TextRange{}) {
+				t.Fatal("非单字素用户提交触发了显露")
+			}
+			if action == "default" && input.obscureHint != nil {
+				t.Fatal("默认关闭仍分配了反馈计时器")
+			}
+		})
+	}
+}
+
+func TestTextInputObscureDelayCompositionReentryAndUnavailableTimer(t *testing.T) {
+	input, _, q := obscuredInputFixture(t)
+	input.SetText("e")
+	input.im.emitCommit(IMCommit{Text: "́"})
+	if obscuredLayoutText(input) != "é" {
+		t.Fatal("连接到前一个字符的组合符没有显露完整字素")
+	}
+	input.im.emitPreedit("候", 3)
+	if obscuredLayoutText(input) != "••" {
+		t.Fatal("预编辑没有遮蔽")
+	}
+	input.im.emitCommit(IMCommit{Text: "中", Composed: true})
+	if obscuredLayoutText(input) != "•中" {
+		t.Fatal("单字素 IME 最终提交没有显露")
+	}
+	input.ConnectText(func(string) { input.SetSelection(TextSelection{}) })
+	input.im.emitCommit(IMCommit{Text: "x"})
+	if input.obscureHint.span != (TextRange{}) {
+		t.Fatal("选区回调取消后又显露了过期输入")
+	}
+	// 新控件使用已停止的应用计时器，尽力反馈失败应保持立即遮蔽。
+	q.s.close()
+	other := NewTextInput()
+	input.Parent().(*LinearBox).AddChild(other)
+	other.SetObscured(true)
+	other.SetObscureDelay(time.Second)
+	other.Arrange(geometry.Rect(0, 40, 240, 36))
+	input.Window().SetFocusedWidget(other)
+	other.im.emitCommit(IMCommit{Text: "x"})
+	if other.obscureHint.timer.Active() || obscuredLayoutText(other) != "•" {
+		t.Fatal("计时器失败后仍显露输入")
+	}
+}
+
+func TestTextInputObscureTimeoutKeepsPendingPasteAndHandlesDestruction(t *testing.T) {
+	t.Run("pending_paste", func(t *testing.T) {
+		input, win, q := obscuredInputFixture(t)
+		input.im.emitCommit(IMCommit{Text: "x"})
+		clip := &editorClipboard{}
+		App.(*application).clipboard = clip
+		editorKey(t, win, events.KeyV, textCommandModifier())
+		if clip.pending == nil {
+			t.Fatal("未发起剪贴板读取")
+		}
+		advanceObscureTimer(t, q, 600*time.Millisecond)
+		clip.pending("y", nil)
+		if input.Text() != "xy" || obscuredLayoutText(input) != "••" {
+			t.Fatal("遮蔽计时使正常粘贴失效，或粘贴显露正文")
+		}
+	})
+	t.Run("destroy_callback", func(t *testing.T) {
+		input, _, q := obscuredInputFixture(t)
+		input.im.emitCommit(IMCommit{Text: "x"})
+		timer := input.obscureHint.timer
+		input.paragraph(0).layout.ConnectDestroy(func() { input.WidgetBase.destroy(input) })
+		advanceObscureTimer(t, q, 600*time.Millisecond)
+		if !input.Destroyed() || timer.Active() || input.obscureHint != nil {
+			t.Fatal("超时释放排版的回调销毁控件后仍保留计时或显露状态")
+		}
+	})
+}
+
+func TestTextInputObscureCancelPreeditStopsAfterLayoutCallback(t *testing.T) {
+	for _, readOnly := range []bool{false, true} {
+		t.Run(fmt.Sprint(readOnly), func(t *testing.T) {
+			input, _, _ := obscuredInputFixture(t)
+			input.im.emitCommit(IMCommit{Text: "x"})
+			input.paragraph(0).layout.ConnectDestroy(func() {
+				if readOnly {
+					input.SetReadOnly(true)
+				} else {
+					input.SetEnabled(false)
+				}
+			})
+			input.im.emitPreedit("候选", 3)
+			if input.preedit != nil || input.obscureHint.timer.Active() {
+				t.Fatal("停止显露的销毁回调改变可编辑状态后，继续了过期预编辑")
+			}
+		})
 	}
 }
 
