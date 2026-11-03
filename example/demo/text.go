@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/example/demo/resource"
 	"github.com/golang-gui/goui/gui"
+	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/mlang"
-	"github.com/golang-gui/goui/theme/modern"
 	"github.com/golang-gui/goui/ui"
 	wui "github.com/golang-gui/goui/widgets/ui"
 )
@@ -25,6 +26,8 @@ type textDemo struct {
 	selection    ui.State[ui.TextSelection]
 	readonly     ui.State[bool]
 	wrap         ui.State[bool]
+	inputs       *textInputs
+	inputWidth   float32
 }
 
 func (d *textDemo) View() ui.View { return ui.Build(d.view) }
@@ -41,9 +44,18 @@ func (d *textDemo) view() ui.View {
 		wrap = ui.WrapWordChar
 	}
 	return fullPage("text", resource.Text(), resource.TextHint()+" "+resource.PlaceholderHint(),
+		wui.HSplit(
+			ui.ScrollView(d.inputs.View()).Direction(ui.ScrollVertical).ID("input-examples-scroll").MinWidth(220),
+			d.editorView(model, labels, items, wrap),
+		).ID("text-panes").StartSize(d.inputWidth).OnResize(func(start, _ float32) { d.inputWidth = start }).MainWeight(1),
+	)
+}
+
+func (d *textDemo) editorView(model *ui.TextModel, labels []mlang.Getter, items []*ui.MenuItemView, wrap ui.WrapMode) ui.View {
+	return ui.VBox(
 		ui.TextInput().ID("single-input").BindText(&d.host.input).Placeholder(resource.InputPlaceholder()).OnSubmit(func() { d.host.report(fmt.Sprintf(resource.Submitted(), d.host.input.Get())) }),
 		ui.HWrap(
-			ui.MenuButton(fmt.Sprintf(resource.TextSampleFormat(), labels[d.textSample.Get()]())).ID("text-samples").Menu(items...),
+			ui.MenuButton(fmt.Sprintf(resource.TextSampleFormat(), labels[d.textSample.Get()]())).ID("text-samples").Tooltip(resource.TextSamplesHint()).Menu(items...),
 			wui.Switch(resource.Wrap()).ID("text-wrap").Checked(d.wrap.Get()).OnChange(func(v bool) { d.wrap.Set(v) }),
 			wui.Switch(resource.ReadOnly()).ID("text-readonly").Checked(d.readonly.Get()).OnChange(func(v bool) { d.readonly.Set(v) }),
 			ui.Build(func() ui.View {
@@ -53,13 +65,12 @@ func (d *textDemo) view() ui.View {
 				).Spacing(12)
 			}).Observe(d.events[model]),
 		).Spacing(12).LineSpacing(8),
-		ui.Label(resource.TextSamplesHint()).WrapMode(gui.WrapWordChar).Style(modern.MutedText),
 		ui.ScrollView(ui.TextView().ID("editor").Model(model).Placeholder(resource.EditorPlaceholder()).WrapMode(wrap).ReadOnly(d.readonly.Get()).Padding(12).
 			BindSelection(&d.selection)).Style("text-view").MainWeight(1),
 		ui.Build(func() ui.View {
 			return ui.Label(fmt.Sprintf(resource.TextSampleStats(), model.Len(), model.LineCount(), d.selection.Get())).ID("text-stats").WrapMode(gui.WrapWordChar)
 		}).Observe(d.events[model]),
-	)
+	).Spacing(12).CrossAlign(layout.CrossStretch).Paddings(geometry.Insets{Left: 12})
 }
 
 func (d *textDemo) editorModel() *ui.TextModel {
@@ -121,7 +132,8 @@ func (d *textDemo) editorHistory(redo bool) {
 
 func newTextDemo(host *demo) *textDemo {
 	model := ui.NewTextModel(resource.EditorSample())
-	return &textDemo{host: host, text: model, wrap: ui.MakeState(true), events: map[*ui.TextModel]*textEvents{model: {model: model}}}
+	return &textDemo{host: host, text: model, wrap: ui.MakeState(true), inputs: newTextInputs(), inputWidth: 280,
+		events: map[*ui.TextModel]*textEvents{model: {model: model}}}
 }
 
 // textEvents borrows a document; View reconciliation owns the subscriptions.

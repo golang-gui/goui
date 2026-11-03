@@ -7,6 +7,7 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/example/demo/resource"
 	"github.com/golang-gui/goui/gui"
+	"github.com/golang-gui/goui/gui/diagnostics"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/mlang"
 	"github.com/golang-gui/goui/theme/modern"
@@ -20,12 +21,25 @@ type windowsDemo struct {
 	inspection         *ui.TextModel
 	inspectionRevision uint64
 	latest             gui.Window
+	capture            *diagnostics.Capture
+	capturing          ui.State[bool]
+	captureWidgets     ui.State[bool]
+	captureRevision    ui.State[int]
+	captureResult      diagnostics.Snapshot
 }
 
 func (d *windowsDemo) View() ui.View { return ui.Build(d.view) }
 
 func (d *windowsDemo) view() ui.View {
 	return fullPage("windows", resource.WindowHeading(), resource.WindowHint(),
+		ui.ScrollView(d.inspectorView()).ID("inspection-scroll").Direction(ui.ScrollVertical).MainWeight(1),
+	)
+}
+
+// Scroll the page on short windows and bound the nested reader: a large JSON
+// snapshot should not become the page's unbounded natural height.
+func (d *windowsDemo) inspectorView() ui.View {
+	return ui.VBox(
 		ui.HWrap(ui.Button(resource.NativeWindow()).ID("native-window").OnClick(func() {
 			d.openWindow(gui.WindowOptions{Chrome: gui.WindowChromeNative}, false)
 		}),
@@ -57,8 +71,10 @@ func (d *windowsDemo) view() ui.View {
 					d.host.report(fmt.Sprintf(resource.FoundWidget(), w, w.Snapshot().Role))
 				}
 			})).Spacing(10).LineSpacing(8),
-		ui.ScrollView(ui.TextView().ID("snapshot-text").Model(d.inspection).ReadOnly(true).WrapMode(ui.WrapWordChar).Padding(12)).Style("text-view").MainWeight(1),
-	)
+		d.diagnosticsView(),
+		ui.ScrollView(ui.TextView().ID("snapshot-text").Model(d.inspection).ReadOnly(true).WrapMode(ui.WrapWordChar).Padding(12)).
+			Style("text-view").MinHeight(320).MaxHeight(320),
+	).Spacing(12).CrossAlign(layout.CrossStretch)
 }
 func (d *windowsDemo) inspectSnapshot() {
 	w := d.host.app.FindWindow("main")

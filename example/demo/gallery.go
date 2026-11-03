@@ -104,11 +104,18 @@ func (d *demo) build(app ui.App) ui.RootView {
 			ui.Label(fmt.Sprintf(resource.LanguageStatus(), settings.Language(), mlang.Language())).ID("language-status").Style(modern.MutedText),
 		).Padding(12).Spacing(10).LineSpacing(8),
 		demoBody(d.sidebar(), ui.Modify(ui.Build(func() ui.View { return pages[d.page.Get()]() })).MainWeight(1)),
-		ui.HBox(ui.Label().BindText(&d.status).ID("status").WrapMode(gui.WrapWordChar).Style(modern.MutedText).MainWeight(1)).Padding(6).MinHeight(28),
+		ui.HBox(ui.Label().BindText(&d.status).ID("status").WrapMode(gui.WrapWordChar).Style(modern.MutedText).MainWeight(1),
+			ui.Build(func() ui.View {
+				if !d.windows.capturing.Get() {
+					return nil
+				}
+				return ui.Label(resource.CaptureActive()).ID("diagnostics-active").Style(modern.Warning)
+			}),
+		).Spacing(12).Padding(6).MinHeight(28),
 	).CrossAlign(layout.CrossStretch)
 	windows := []ui.WindowView{ui.Window("main").Title(resource.Title()).Chrome(ui.WindowChromeIntegrated).Size(1120, 800).MinSize(820, 600).Center(true).
 		Shortcuts(ui.Shortcut(ui.KeyF5).OnActivate(func() { app.RequestUpdate(); d.report(resource.Refreshed()) })).
-		OnDestroy(func() { d.stopActivities(); d.system.closeFiles(); app.Quit() }).Content(ui.Overlay(content.Style("demo-background"),
+		OnDestroy(func() { d.stopActivities(); d.windows.closeCapture(); d.system.closeFiles(); app.Quit() }).Content(ui.Overlay(content.Style("demo-background"),
 		ui.OverlayItem(ui.Build(d.mainDialog)).Fill(true).Modal(true),
 		ui.OverlayItem(wui.Toast(&d.overlays.toast).ID("demo-toast")).OnPosition(func(a, s geometry.Size, p *geometry.Point) {
 			*p = geometry.Point{X: max(0, (a.Width-s.Width)/2), Y: max(0, a.Height-s.Height-48)}
