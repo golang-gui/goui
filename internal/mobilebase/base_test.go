@@ -2,6 +2,7 @@ package mobilebase
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestBaseIntegrity(t *testing.T) {
@@ -151,5 +153,38 @@ func TestNativeHostToolEnvironment(t *testing.T) {
 	}
 	if values["GOOS"] != runtime.GOOS || values["GOARCH"] != runtime.GOARCH || values["GOENV"] != "" || values["CGO_ENABLED"] != "0" {
 		t.Fatalf("宿主环境被污染: %s", output)
+	}
+}
+
+// 自动下载的 Go 位于模块缓存中；生成工具不能因此拒绝只读的 GOROOT overlay。
+func TestDriverToolchainInsideModuleCache(t *testing.T) {
+	if runtime.Version() != baseGoVersion {
+		t.Skip("本工具固定 Go 1.25.8")
+	}
+	goName := "go"
+	if runtime.GOOS == "windows" {
+		goName += ".exe"
+	}
+	goCommand := filepath.Join(runtime.GOROOT(), "bin", goName)
+	original, err := os.ReadFile(filepath.Join(runtime.GOROOT(), "src/cmd/go/internal/work/exec.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOMODCACHE", filepath.Dir(runtime.GOROOT()))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	driver := filepath.Join(t.TempDir(), goName)
+	var log bytes.Buffer
+	if err := BuildDriver(ctx, goCommand, driver, &log); err != nil {
+		t.Fatalf("生成 driver: %v\n%s", err, &log)
+	}
+	cmd := exec.CommandContext(ctx, driver, "version")
+	cmd.Env = baseDriverEnv()
+	if output, err := cmd.CombinedOutput(); err != nil || !bytes.Contains(output, []byte(baseGoVersion)) {
+		t.Fatalf("driver: %v, %s", err, output)
+	}
+	after, err := os.ReadFile(filepath.Join(runtime.GOROOT(), "src/cmd/go/internal/work/exec.go"))
+	if err != nil || !bytes.Equal(original, after) {
+		t.Fatal("生成工具改写了 GOROOT 源码")
 	}
 }
