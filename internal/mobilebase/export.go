@@ -1,0 +1,182 @@
+package mobilebase
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+)
+
+// ExportOptions describe a maintainer build. The environment selects the target
+// and real C compiler. Production is intentionally separate from consumption.
+type ExportOptions struct {
+	GoCommand      string
+	Directory      string
+	Output         string
+	BuildMode      string
+	Variant        string
+	MinimumVersion string
+	Package        string
+}
+
+type baseListedPackage struct {
+	Module                                                                                                                       *struct{ Path, Version, GoVersion string }
+	Dir, ImportPath, Name, Export, BuildID                                                                                       string
+	GoFiles, CgoFiles, CFiles, CXXFiles, MFiles, HFiles, FFiles, SFiles, SysoFiles, SwigFiles, SwigCXXFiles, EmbedFiles, Imports []string
+}
+
+// Export builds and copies only packages that actually require cgo or SWIG.
+// Output must not exist; failed production leaves no partially valid component.
+func Export(ctx context.Context, options ExportOptions, log io.Writer) (err error) {
+	if options.GoCommand == "" {
+		options.GoCommand = "go"
+	}
+	if options.Package == "" {
+		options.Package = "."
+	}
+	if options.Variant == "" || options.MinimumVersion == "" {
+		return fmt.Errorf("variant and minimum version are required provenance")
+	}
+	command := exec.CommandContext(ctx, options.GoCommand, "env", "-json", "GOVERSION", "GOOS", "GOARCH", "GOARM64", "GOAMD64", "GOEXPERIMENT", "CGO_ENABLED")
+	command.Dir = options.Directory
+	data, err := command.Output()
+	if err != nil {
+		return fmt.Errorf("inspect producer toolchain: %w", err)
+	}
+	var env map[string]string
+	if err = json.Unmarshal(data, &env); err != nil {
+		return err
+	}
+	if env["GOVERSION"] != baseGoVersion || env["CGO_ENABLED"] != "1" {
+		return fmt.Errorf("base production requires %s and CGO_ENABLED=1", baseGoVersion)
+	}
+	if os.Getenv("GOUI_BASE") != "" || os.Getenv("GOFLAGS") != "" {
+		return fmt.Errorf("base production requires empty GOUI_BASE and GOFLAGS")
+	}
+	output, err := filepath.Abs(options.Output)
+	if err != nil {
+		return err
+	}
+	if _, err = os.Stat(output); err == nil {
+		return fmt.Errorf("output already exists: %s", output)
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err = os.MkdirAll(filepath.Dir(output), 0755); err != nil {
+		return err
+	}
+	temp, err := os.MkdirTemp(filepath.Dir(output), ".goui-base-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(temp)
+	if err = os.Mkdir(filepath.Join(temp, "packages"), 0755); err != nil {
+		return err
+	}
+	command = exec.CommandContext(ctx, options.GoCommand, "list", "-deps", "-export", "-compiled", "-json", "-trimpath", "-pgo=off", "-buildmode="+options.BuildMode, options.Package)
+	command.Dir = options.Directory
+	command.Stderr = log
+	stream, err := command.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	if err = command.Start(); err != nil {
+		return err
+	}
+	packages := make(map[string]baseListedPackage)
+	decoder := json.NewDecoder(stream)
+	for {
+		var pkg baseListedPackage
+		if err = decoder.Decode(&pkg); err == io.EOF {
+			err = nil
+			break
+		}
+		if err != nil {
+			break
+		}
+		packages[pkg.ImportPath] = pkg
+	}
+	if err != nil {
+		command.Process.Kill()
+		command.Wait()
+		return fmt.Errorf("read producer package list: %w", err)
+	}
+	if err = command.Wait(); err != nil {
+		return fmt.Errorf("produce native support: %w", err)
+	}
+	m := BaseManifest{Format: 1, GoVersion: env["GOVERSION"], GOOS: env["GOOS"], GOARCH: env["GOARCH"], Architecture: env["GOARM64"], Experiment: env["GOEXPERIMENT"], BuildMode: options.BuildMode, Variant: options.Variant, MinimumVersion: options.MinimumVersion, Packages: make(map[string]BasePackage)}
+	if m.GOARCH == "amd64" {
+		m.Architecture = env["GOAMD64"]
+	}
+	for name, pkg := range packages {
+		if len(pkg.CgoFiles)+len(pkg.SwigFiles)+len(pkg.SwigCXXFiles) == 0 {
+			continue
+		}
+		if pkg.Name == "main" {
+			return fmt.Errorf("cannot precompile application main; put fixed native entry in a support package")
+		}
+		record := BasePackage{BuildID: pkg.BuildID, Imports: make(map[string]string)}
+		if pkg.Module != nil {
+			record.ModulePath = pkg.Module.Path
+			record.ModuleVersion = pkg.Module.Version
+			record.ModuleGoVersion = pkg.Module.GoVersion
+		}
+		record.SourceSHA256, err = BaseSourceHash(pkg.Dir, pkg.GoFiles, pkg.CgoFiles, pkg.CFiles, pkg.CXXFiles, pkg.MFiles, pkg.HFiles, pkg.FFiles, pkg.SFiles, pkg.SysoFiles, pkg.SwigFiles, pkg.SwigCXXFiles, pkg.EmbedFiles)
+		if err != nil {
+			return err
+		}
+		for _, depName := range pkg.Imports {
+			dep := packages[depName]
+			if dep.Export == "" {
+				continue
+			}
+			record.Imports[depName], err = BaseExportHash(dep.Export)
+			if err != nil {
+				return fmt.Errorf("export %s dependency %s: %w", name, depName, err)
+			}
+		}
+		// The content hash is a portable filename, independent of package paths.
+		record.SHA256, err = baseHash(pkg.Export)
+		if err != nil {
+			return err
+		}
+		record.Archive = "packages/" + record.SHA256 + ".a"
+		if err = baseCopy(pkg.Export, filepath.Join(temp, filepath.FromSlash(record.Archive))); err != nil {
+			return err
+		}
+		m.Packages[name] = record
+	}
+	data, err = json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(temp, "base.json")
+	if err = os.WriteFile(path, append(data, '\n'), 0644); err != nil {
+		return err
+	}
+	if _, err = BaseOpen(path); err != nil {
+		return err
+	}
+	return os.Rename(temp, output)
+}
+
+func baseCopy(source, destination string) error {
+	input, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer input.Close()
+	output, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(output, input)
+	closeErr := output.Close()
+	if err != nil {
+		return err
+	}
+	return closeErr
+}
