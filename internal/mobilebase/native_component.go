@@ -284,16 +284,20 @@ func ExportNativeTools(ctx context.Context, specPath, source, output string) err
 		if err != nil {
 			return err
 		}
-		command := exec.CommandContext(ctx, filepath.Join(tools.root, filepath.FromSlash(tools.LLD.File)), "-flavor", "gnu", "--version")
-		data, err := command.CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("check tool %s: %w: %s", tools.LLD.File, err, data)
-		}
-		if !nativeLLDVersion(string(data), tools.LLD.Version) {
-			return fmt.Errorf("tool %s: version mismatch, expected %s", tools.LLD.File, tools.LLD.Version)
-		}
-		return nil
+		return verifyNativeToolVersions(ctx, tools)
 	})
+}
+
+func verifyNativeToolVersions(ctx context.Context, tools *NativeTools) error {
+	command := exec.CommandContext(ctx, filepath.Join(tools.root, filepath.FromSlash(tools.LLD.File)), "-flavor", "gnu", "--version")
+	data, err := command.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("check tool %s: %w: %s", tools.LLD.File, err, data)
+	}
+	if !nativeLLDVersion(string(data), tools.LLD.Version) {
+		return fmt.Errorf("tool %s: version mismatch, expected %s", tools.LLD.File, tools.LLD.Version)
+	}
+	return nil
 }
 
 func nativeExport(source, output, name string, files map[string]string, manifest any, verify func(string) error) (err error) {
