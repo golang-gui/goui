@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"time"
+
 	"github.com/golang-gui/goui/core/bits"
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
@@ -20,6 +22,7 @@ type TextInputView struct {
 	readOnly        bool
 	obscured        bool
 	obscureChar     rune
+	obscureDelay    time.Duration
 	inputFilter     gui.InputFilter
 	padding         geometry.Insets
 	fields          bits.Bitmap[uint64]
@@ -104,6 +107,13 @@ func (v *TextInputView) Obscured(value bool) *TextInputView { v.obscured = value
 // enable obscuring. The same rune validation as gui.TextInput applies.
 func (v *TextInputView) ObscureChar(char rune) *TextInputView { v.obscureChar = char; return v }
 
+// ObscureDelay briefly reveals a single user-committed grapheme. Zero/unset
+// masks immediately. Rebuilding with the same delay does not restart feedback.
+func (v *TextInputView) ObscureDelay(delay time.Duration) *TextInputView {
+	v.obscureDelay = delay
+	return v
+}
+
 // InputFilter sets the user-edit policy. Unset removes it; assignments through
 // Text or BindText and history replay are not filtered.
 func (v *TextInputView) InputFilter(filter gui.InputFilter) *TextInputView {
@@ -175,6 +185,7 @@ func (v *TextInputView) Update(ctx BuildContext, widget gui.Widget) {
 	input.SetInputFilter(v.inputFilter)
 	input.SetObscureChar(v.obscureChar)
 	input.SetObscured(v.obscured)
+	input.SetObscureDelay(v.obscureDelay)
 	if v.fields.Check(textInputPadding) {
 		input.SetPadding(v.padding)
 	} else {
