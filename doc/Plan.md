@@ -1,5 +1,46 @@
 # Plan
 
+## 移动端基座：第三阶段 ARM64 FFI（2026-11-03）
+
+- 设计见 [PlanMobileBuild 第 15 节](PlanMobileBuild.md#15-第三阶段移动-arm64-ffi-abi2026-11-03)。
+  第二阶段已按功能提交：e96f30c、820d666、655cc64、2f16a37，均未推送。
+- [x] purego 独立 feature/mobile-base 分支基于 upstream v0.10.2，接入 Android/iOS
+  结构体支持与 Apple ABI；修复混合结构体、嵌套/数组 HFA、整组溢出、银行耗尽、
+  间接参数、固定签名 ...any 展开、浮点返回与栈打包。不改变 stock Go runtime。
+- [x] cgo 同名分支修复 iOS 的自然栈布局及普通聚合的八字节字组布局，大结构体
+  降低为指针后正确对齐；包内 ARM64 测试覆盖具体偏移与独立预期。
+- [x] cgo/testdata/mobileabi 独立模块和 C/pthread 宿主：28 项参数/返回/回调/GC/
+  栈增长，8 原生线程 × 8 轮。Linux ARM64 QEMU、Android 11 ARM64 ATD 与
+  iOS 26.3.1 ARM64 Simulator 均 28/28，通过退出码与零重复错误确认。
+- [x] Go 1.25.8、Linux amd64 消费端对 Android/iOS Simulator/Device 各自空缓存
+  从源码编译普通 Go 包；用正式基座/链接组件完成输出，C 编译器调用为零。
+  Android 实际导出 3 个 cgo 包，iOS 各 2 个；不把维护者原生 fixture 编译算入
+  无编译器消费流程。iOS Device 只验证编译/链接，未验证真机签名和运行。
+- [x] purego 全量测试：Linux amd64 34 通过/16 既有跳过，macOS arm64 77 通过；
+  cgo 全量：Linux amd64 42 通过，macOS arm64 44 通过/3 既有跳过。独立 C
+  fixture 另覆盖旧回环测试跳过的栈参数。ARM64 新逻辑测试的 Linux/QEMU 与
+  macOS 原生运行通过，目标 Windows amd64 测试二进制交叉编译通过，未运行。
+- [x] purego 定向 race/vet 与 cgo 全包 race 通过；cgo 全包 vet 仍报告 cast.go、
+  extern.go、utils.go 三项 unsafe.Pointer 用法，已在未修改 HEAD 的独立副本确认
+  同样存在，不算通过，也不扩大本阶段修复。Go 1.23.12 下 cgo 现有依赖全包
+  测试及 purego 修改范围的测试通过；未提高库/主项目最低 Go 版本。
+- [x] GOUI 已跟踪源码的隔离副本通过临时 replace 接入本地 FFI 后，全仓
+  go test -count=1 ./... 为 3466 通过/10 既有跳过。原工作区四个未跟踪旧例程
+  未修改，不再把其编译失败与本阶段混合。所有测试产物保留在仓库外副本。
+- 发现并保留的失败证据：旧 purego 的 Linux ARM64 十二项为 11/12；完整 Mac
+  回归捕获普通结构体栈对齐错误，修正后原断言通过；回调计划单测捕获间接指针
+  偏移 1/8 差异。首次 GOUI 全仓临时 GOWORK 使 cmd/goui 创建的独立模块不在
+  workspace 中，8 项失败；改为仅在隔离副本使用 replace 后通过，未改测试。
+  Go 1.23 首次验证继承错误的 GOROOT，明确指定匹配路径后通过；失败日志保留。
+- 提交：purego 4538144；cgo 2b9d16a（回调修复）、047c9b3（原生验收例程）。
+  均在 feature/mobile-base 本地分支，未推送。
+- [ ] fork 尚未发布/推送，主项目依赖未切换；当前仅显式开发 workspace 使用修复。
+  可分发工具/SDK 审核、Windows 消费运行、iOS 真机、Android 16 KiB 内核和
+  cmd/goui 移动编排、platform UI 集成仍待后续，不承诺已支持完整移动应用。
+- 源码和产物：goui2、cgo、purego 的独立 feature/mobile-base 分支；本机/远端
+  /tmp/goui-mobile-ffi-stage3 保留日志、私有组件和运行结果。测试专用 iOS 设备
+  已删除，Android 模拟器/专用 ADB 已停止；未触及主会话工作区或个人签名材料。
+
 ## 移动端基座：第二阶段（2026-11-03）
 
 - 设计见 [PlanMobileBuild 第 14 节](PlanMobileBuild.md#14-第二阶段独立链接组件和-go-链接驱动2026-11-03)。
