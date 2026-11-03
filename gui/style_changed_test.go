@@ -228,7 +228,8 @@ func TestStyleChangedRefreshesLabelAndTextInputResources(t *testing.T) {
 			old = cached().(*testTextLayout)
 			app.SetStyleSheet(textStyleSheet(20, color.White))
 			paintStyleTestWidget(w)
-			if (kind == "label" && !old.destroyed) || (kind == "text-input" && (old.destroyed || cached() != old)) || !colors.Equal(cached().Format().TextColor, color.White) {
+			// 颜色变更复用排版；Label 的范围 setter 契约另由 labelFormatLayout 验证。
+			if old.destroyed || cached() != old || !colors.Equal(cached().Format().TextColor, color.White) {
 				t.Fatal("color-only change left stale text resources")
 			}
 			if input, ok := w.(*TextInput); ok && (input.Text() != "hello" || input.Selection().Caret != 2 || input.preedit == nil || input.preedit.Text() != "x" || input.preedit.Caret() != 1) {
@@ -486,7 +487,8 @@ func TestStyleChangedUpdatesPixelsAndReusesImageCache(t *testing.T) {
 	for range 4 {
 		win.paint()
 	}
-	if !colors.Equal(output.image.At(1, 1), blue) || len(typo.pixels) != 2 || typo.pixels[1].rasters != 1 || !typo.pixels[0].destroyed {
+	// 新颜色必须实际重绘；其后仍复用同一排版与文字图片缓存。
+	if !colors.Equal(output.image.At(1, 1), blue) || len(typo.pixels) != 1 || typo.pixels[0].rasters != 2 || typo.pixels[0].destroyed {
 		t.Fatal("style change retained old image pixels or broke stable-frame caching")
 	}
 }
