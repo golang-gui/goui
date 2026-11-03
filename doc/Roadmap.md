@@ -7,7 +7,9 @@ UI/生命周期仍归 platform。本轮隔离在 goui2 的 feature/mobile-base �
 实现了精确 Go 版本的基座制作/校验与冷缓存包 action 接入，普通 Go 包照常编译。
 Android ARM64 c-shared 和 iOS ARM64 c-archive 的跨宿主消费通过；模拟器实测、
 已知 FFI 缺陷、真机及分发缺口见 [Plan](Plan.md) 与 [PlanMobileBuild](PlanMobileBuild.md)。
-下一阶段完善独立链接组件与 FFI ABI，之后再接 cmd/goui 和 platform 移动 UI；
+第二阶段已实现独立链接组件与 Go 链接驱动，原生归档复用 Go pack；普通 Go
+冷构建及两端模拟器交互通过。下一阶段修复复杂 FFI ABI、完善可分发组件与
+宿主/真机验证，再接 cmd/goui 和 platform 移动 UI；
 此项不改变现有桌面构建命令，也不是当前已发布的移动端支持承诺。
 
 ## 当前能力基线：v0.6.0（2026-11-03）
