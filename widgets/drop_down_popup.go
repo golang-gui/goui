@@ -17,12 +17,10 @@ const dropDownPopupPadding = 6
 // Its ListView remains a layout/recycling mechanism; selection stays in owner.
 type dropDownContent struct {
 	gui.WidgetBase
-	owner      *DropDown
-	list       *gui.ListView
-	scroll     *gui.ScrollView
-	padding    float32
-	primeWidth float32
-	primeDirty bool
+	owner   *DropDown
+	list    *gui.ListView
+	scroll  *gui.ScrollView
+	padding float32
 }
 
 func newDropDownContent(owner *DropDown) *dropDownContent {
@@ -127,19 +125,17 @@ func (c *dropDownContent) Measure(constraint layout.Constraint) layout.Measureme
 	if c.owner.popupMaxHeight > 0 {
 		limit = min(limit, c.owner.popupMaxHeight)
 	}
-	// Prime at most one modest viewport to seed ListView's own height estimate.
-	// With no user cap the natural height can be large, but the Popover then
-	// remeasures against its work area before constructing the native surface.
+	// Seed ListView's height estimate only before any rows are realized.
+	// Once arranged, measuring must preserve its allocated viewport, rows and
+	// scrollbar gutter. ScrollView.Arrange refines dirty row measurements at
+	// the actual viewport width and requests layout when the extent changes.
 	warm := max(float32(0), min(limit, float32(320))-2*c.padding)
-	if c.primeDirty || c.primeWidth != width || len(c.list.Children()) == 0 {
-		c.primeDirty, c.primeWidth = false, width
+	if len(c.list.Children()) == 0 {
 		c.list.LayoutVisible(geometry.Size{Width: max(0, width-2*c.padding), Height: warm}, geometry.Point{X: c.scroll.ScrollX(), Y: c.scroll.ScrollY()})
 	}
 	height := min(c.list.ContentSize().Height+2*c.padding, limit)
 	return layout.Measured(constraint.Clamp(geometry.Size{Width: width, Height: height}))
 }
-
-func (c *dropDownContent) StyleChanged() { c.primeDirty = true }
 
 func (c *dropDownContent) Arrange(rect geometry.Rectangle) {
 	c.WidgetBase.Arrange(rect)

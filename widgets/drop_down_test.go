@@ -592,6 +592,101 @@ func TestDropDownPopupGutters(t *testing.T) {
 	checkGutters(true)
 }
 
+// 已安排的行、命中边界和滚动条不能因重新测量而变化；新约束只影响期望尺寸。
+func TestDropDownPopupMeasurePreservesAllocatedGeometry(t *testing.T) {
+	for _, height := range []float32{96, 320, 480, 0} {
+		t.Run(fmt.Sprintf("height=%g", height), func(t *testing.T) {
+			d, _, _, _ := dropDownInput()
+			defer d.SetModel(nil)
+			items := make([]DropDownItem, 24)
+			d.SetModel(gui.NewSliceListModel(items))
+			d.SetPopupMaxHeight(height)
+			delegate := new(dropDownTestDelegate)
+			d.SetDelegate(delegate)
+			c := newDropDownContent(d)
+			d.content = c
+			size := c.Measure(layout.Unbounded()).Size
+			c.Arrange(geometry.Rectangle{Size: size})
+			c.scroll.SetScrollY(min(56, c.scroll.Snapshot().MaxScrollY))
+			rows := c.list.Children()
+			rects, bounds := make([]geometry.Rectangle, len(rows)), make([]geometry.Rectangle, len(rows))
+			for i, row := range rows {
+				rects[i], bounds[i] = row.Rect(), row.Snapshot().Bounds
+			}
+			bar := dropDownVerticalBar(t, c)
+			barRect, barVisible := bar.Rect(), bar.Visible()
+			setups, binds := delegate.setups, delegate.binds
+			for _, constraint := range []layout.Constraint{
+				layout.Tight(size), layout.Unbounded(), layout.Loose(geometry.Size{Width: 100, Height: 210}),
+			} {
+				// 指针进出会使 StyleChanged 后进入同一测量路径。
+				c.StyleChanged()
+				c.Measure(constraint)
+				after := c.list.Children()
+				if len(after) != len(rows) || bar.Rect() != barRect || bar.Visible() != barVisible || delegate.setups != setups || delegate.binds != binds {
+					t.Fatal("测量改变了已实现行或滚动条")
+				}
+				for i, row := range after {
+					if row != rows[i] || row.Rect() != rects[i] || row.Snapshot().Bounds != bounds[i] {
+						t.Fatalf("测量改变行 %d 的布局／命中／快照边界：%v -> %v", i, rects[i], row.Rect())
+					}
+					if barVisible && bar.Rect().X-row.Rect().X-row.Rect().Width != 6 {
+						t.Fatal("选项与滚动条之间的 6 DIP 留白消失")
+					}
+				}
+			}
+		})
+	}
+}
+
+// 保留首次打开的尺寸估算，并由 Arrange 在实际视口下细化可变行高。
+func TestDropDownPopupSizingAfterContentChanges(t *testing.T) {
+	d, _, _, _ := dropDownInput()
+	defer d.SetModel(nil)
+	model := gui.NewSliceListModel(make([]DropDownItem, 24))
+	d.SetModel(model)
+	d.SetDelegate(new(dropDownTestDelegate))
+	c := newDropDownContent(d)
+	d.content = c
+	layoutContent := func() geometry.Size {
+		t.Helper()
+		for range 6 {
+			size := c.Measure(layout.Unbounded()).Size
+			c.Arrange(geometry.Rectangle{Size: size})
+			if c.Measure(layout.Unbounded()).Size == size {
+				return size
+			}
+		}
+		t.Fatal("列表尺寸没有随可见行测量收敛")
+		return geometry.Size{}
+	}
+	if got := layoutContent(); got != (geometry.Size{Width: 180, Height: 320}) {
+		t.Fatal("默认高度未限制长列表", got)
+	}
+	model.SetItems(make([]DropDownItem, 4))
+	if got := layoutContent(); got.Height != 124 || dropDownVerticalBar(t, c).Visible() {
+		t.Fatal("缩短模型后未恢复内容尺寸", got)
+	}
+	for _, widget := range c.list.Children() {
+		content := widget.(*dropDownRow).content.(*dropDownFixedContent)
+		content.height = 32
+		content.RequestLayout()
+	}
+	c.StyleChanged()
+	c.list.StyleChanged()
+	if got := layoutContent(); got.Height != 188 || dropDownVerticalBar(t, c).Visible() {
+		t.Fatal("行高失效后没有细化自然尺寸", got)
+	}
+	d.Arrange(geometry.Rect(0, 0, 240, 32))
+	if got := layoutContent(); got.Width != 240 || got.Height != 188 {
+		t.Fatal("锚点宽度变化后尺寸错误", got)
+	}
+	model.SetItems(make([]DropDownItem, 24))
+	if got := layoutContent(); got.Height != 320 || !dropDownVerticalBar(t, c).Visible() {
+		t.Fatal("恢复长列表后滚动条或高度错误", got)
+	}
+}
+
 func TestDropDownPopupGutterPreservesWideContent(t *testing.T) {
 	d, _, _, _ := dropDownInput()
 	defer d.SetModel(nil)

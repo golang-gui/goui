@@ -2,6 +2,7 @@
 // 环境：Linux X11、Windows、macOS 可交互桌面，记录 OS/WM、后端和缩放。
 // 启动：go run ./tests/window/widgets/drop_down；-gui 使用命令式分支，
 // -fallback-style 使用 widgets 显式兜底，-destroy-on-selected 验证信号内销毁。
+// -long-max-height 96/320/480/0 切换 Long 的限高，0 仍受桌面工作区限制。
 // GOUI_PLAT_PAINTER=software/opengl（Windows 另有 direct2d），GOUI_PLAT_SCALE=2 为 2x。
 // 初始：Integrated 850×640 DIP、亮色蓝主题；Basic 未选、Custom 选 0、Long 选 9998、
 // Uncontrolled 未选（-gui 初始选 0），Disabled 禁用且选 0，Empty 无选项；选项 1 禁用。
@@ -25,8 +26,12 @@
 //  4. Long 只显示有限行、滚动条可拖动；打开后自动显示已选的 9998。
 //     左边缘到选项与选项到滚动条的留白一致（默认 6 DIP）；高亮和勾选不进入
 //     留白区，点击选项与滚动条之间的空隙不提交选择或关闭列表。
-//     Home/End 到首尾、上下浏览后确认，不创建一万行控件或卡住；高度不超过
-//     320 DIP，宽度不随滚动跳变。移动主窗口再打开，浮窗跟随当前控件位置。
+//     将鼠标反复移入选项、移到弹窗外再返回，并反复滚动、关闭重开：间距始终
+//     保持 6 DIP，不因悬停变化贴到滚动条。用不同 -long-max-height 重复验证；
+//     无滚动条时左右留白仍对称，选项不能因一次重新测量而缺失。
+//     Home/End 到首尾、上下浏览后确认，不创建一万行控件或卡住；默认高度不超过
+//     320 DIP（指定限高时遵循参数），宽度不随滚动跳变。移动主窗口再打开，
+//     浮窗跟随当前控件位置。
 //     将窗口移到屏幕下缘再打开，列表退避到上方或工作区内；1x/2x 均不越界。
 //  5. Set 静默设置 Basic，不增加计数。Rebuild 保留各 Widget 和模型实例、选择及
 //     单个信号；Uncontrolled 不声明 Selected，用户选择在重建后保持。Shrink
@@ -47,6 +52,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"math"
 	"runtime"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -68,11 +74,15 @@ func main() {
 	imperative := flag.Bool("gui", false, "命令式分支")
 	fallback := flag.Bool("fallback-style", false, "显式兜底")
 	destroy := flag.Bool("destroy-on-selected", false, "首次用户选择后销毁")
+	longHeight := flag.Float64("long-max-height", 320, "Long 最大高度（DIP，0 仅受工作区限制）")
 	flag.Parse()
+	if math.IsNaN(*longHeight) || math.IsInf(*longHeight, 0) || *longHeight < 0 || *longHeight > math.MaxFloat32 {
+		panic("long-max-height must be finite and non-negative")
+	}
 	if *imperative {
-		runGUI(*fallback, *destroy)
+		runGUI(*fallback, *destroy, float32(*longHeight))
 	} else {
-		runUI(*fallback, *destroy)
+		runUI(*fallback, *destroy, float32(*longHeight))
 	}
 }
 
@@ -134,7 +144,7 @@ func check(win gui.Window, previous map[string]*widgets.DropDown, want map[strin
 	fmt.Printf("ASSERT PASS changes=%d late=%d retained=true\n", changes, late)
 }
 
-func runUI(fallback, destroy bool) {
+func runUI(fallback, destroy bool, longHeight float32) {
 	model := gui.NewSliceListModel(options)
 	long := longModel()
 	empty := gui.NewSliceListModel[widgets.DropDownItem](nil)
@@ -223,7 +233,7 @@ func runUI(fallback, destroy bool) {
 							return ui.VBox(ui.Label("● "+item.Text).Style(name), ui.Label("A custom Widget subtree").Style(modern.MutedText)).Spacing(2)
 						}).
 						SelectedItem(func(_ int, item wui.DropDownItem) ui.View { return ui.Label(item.Text).Style("drop-down-text") })).Spacing(16),
-					ui.HBox(ui.Label("Long"), makeChoice("long", long).Selected(longSelection).OnSelected(change("long", &longSelection))).Spacing(16),
+					ui.HBox(ui.Label("Long"), makeChoice("long", long).PopupMaxHeight(longHeight).Selected(longSelection).OnSelected(change("long", &longSelection))).Spacing(16),
 					ui.HBox(ui.Label("Uncontrolled"), makeChoice("uncontrolled", model).OnSelected(func(index int) {
 						changes++
 						fmt.Printf("SELECT uncontrolled %d changes=%d\n", index, changes)
@@ -267,7 +277,7 @@ func (d customDelegate) Bind(index int, w gui.Widget) {
 }
 func (customDelegate) Unbind(int, gui.Widget) {}
 
-func runGUI(fallback, destroy bool) {
+func runGUI(fallback, destroy bool, longHeight float32) {
 	app, err := gui.NewApplication("org.golang-gui.DropDownTest")
 	if err != nil {
 		panic(err)
@@ -307,6 +317,7 @@ func runGUI(fallback, destroy bool) {
 			d.SetSelected(0)
 		}
 		if id == "long" {
+			d.SetPopupMaxHeight(longHeight)
 			d.SetSelected(9998)
 		}
 		if id == "disabled" {
