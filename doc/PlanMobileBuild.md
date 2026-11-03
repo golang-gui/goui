@@ -1038,3 +1038,78 @@ SHA-256 一致。
 LLD 输出独立严格验签并确认 Identifier=Probe，随后完整 app ad-hoc 签名、安装
 与启动通过，Go/UI 线程断言保持。该专用模拟器已删除；LLVM 临时签名不代替
 最终 app 的资源签名。最终 Android 字节与已执行完整交互验收的产物一致。
+
+## 15. 第三阶段：移动 ARM64 FFI ABI（2026-11-03）
+
+### 15.1 范围与版本选择
+
+本阶段只修复底层 FFI，不把 Activity/UIKit、窗口、事件循环或 GUI 策略加入基座。
+代码分别位于独立的 `cgo` 与 `purego` 仓库，均使用 `feature/mobile-base` 分支；
+GOUI 仅同步设计和进度，主工作区与已发布桌面依赖保持不变。
+
+purego 分支基于 upstream **v0.10.2**。v0.11.2 已包含移动系统枚举与部分返回值修正，
+但其 go.mod 要求 Go 1.25；本轮采用必要修正和独立 ABI 修复，保留 v0.10.2 的
+Go 1.18 声明，不为 FFI 升高 GOUI 的 Go 1.24 或 goexlib/cgo 的 Go 1.23 下限。
+固定 Go 1.25.8 的基座生产/消费契约与库自身的最低 Go 版本是两件事。
+
+开发通过仓库外显式 `GOWORK` 连接三个源码模块，不提交绝对路径 replace，
+不修改全局 Go 配置，也不先更新主项目到一个尚未发布的 fork 版本。
+此阶段完成本地修复和验证；fork 的发布、上游提交及正式依赖版本接入另行推进。
+
+依据使用 [AAPCS64 2025Q1](https://github.com/ARM-software/abi-aa/blob/2025Q1/aapcs64/aapcs64.rst)、
+[Apple ARM64 ABI](https://developer.apple.com/documentation/xcode/writing-arm64-code-for-apple-platforms)，
+以及 [purego v0.10.2](https://github.com/ebitengine/purego/tree/v0.10.2) /
+[v0.11.2](https://github.com/ebitengine/purego/tree/v0.11.2) 源码。
+官方规则、Clang 生成代码和原生运行分别作为契约、实现与实测证据，不互相替代。
+
+### 15.2 参数和返回值
+
+- Android/iOS 接入已有结构体检查，iOS 使用 Apple ARM64 ABI，不能因 GOOS
+  字符串不同而退回通用的八字节标量栈槽。
+- 普通小结构体按连续整数寄存器字组传递，不依据单个字段把整数和浮点分到
+  两个银行。整数数组是普通聚合，不能当作原生 SIMD HVA。
+- HFA 递归展开嵌套结构体和数组，最多四个同类型浮点叶子；发现混合字段后
+  不能被后续嵌套结构体重置。HFA 与普通结构体都必须整体放入寄存器或栈，
+  放不下时耗尽对应银行，后续参数不能复用剩余寄存器。
+- 大于 16 字节的非 HFA 通过间接指针传递；即使此前浮点银行已溢出，也不能
+  直接把结构体内容追加到栈。返回继续使用原有 X8 隐藏结果地址。
+- ARM64 的 `...any` 先按实际类型展开，再统一分配寄存器和栈。这是固定 C
+  函数签名的类型展开，不是对 C variadic 函数的支持。
+- 标准 AAPCS64 的栈参数使用八字节槽；Apple 标量和 HFA 使用自然大小/对齐。
+  普通小结构体仍按八字节字组对齐并占用舍入后的大小。12 字节普通结构体
+  不能套用 12 字节 HFA 的规则：Xcode 26.3 自带 Clang 对 macOS/iOS Simulator 的独立函数
+  均显示窄参数在 SP+0、普通结构体在 SP+8、后续窄参数在 SP+24。
+- goexlib/cgo 的回调栈计划同步处理上述差异。大结构体降低为指针后，使用指针
+  的栈对齐，不能直接沿用前一个窄参数后的未对齐偏移。
+- 保留原有 Go runtime、原生线程接入和 Go/汇编调用入口。字符串转换、切片及
+  间接参数的所有者保活至同步调用返回；不承诺 C 可以在返回后保留 Go 内存。
+  不修改编译器，不增加另一套 GC 或自行替换 runtime 的 callback 机制。
+
+### 15.3 可重复的独立 C 验收
+
+`cgo/testdata/mobileabi` 是嵌套的维护者测试模块，操作说明放在其 README。
+它包含独立的 C fixture、一个测试用 cgo 导出入口和独立 pthread 宿主，不包含
+UI。根包的 `go test ./...` 不会隐式要求 Android SDK/Xcode。
+
+28 项固定预期覆盖浮点、HFA、混合/嵌套/数组/大结构体、整组溢出、窄栈参数、
+间接指针、返回值、回调期间 GC 和 Go 栈增长。首次全部通过后，再由 8 个
+pthread 各重复 8 轮，最终退出码必须为零。普通 Go→Go 回环测试仅作补充，
+不能替代 C 编译器生成的独立调用方和被调用方。
+
+维护者分别生产三种基座：Android ARM64 c-shared、iOS Simulator/Device ARM64
+c-archive。Android 自动收集 bridge、purego/internal/cgo、runtime/cgo 三个真正的
+cgo 包；两种 iOS 各收集 bridge 与 runtime/cgo。基座消费仍由普通 Go 包从源码
+冷构建，`CC/CXX` 设置为记录后失败的程序，PATH 不含原生编译器或 SDK；最终
+链接只使用第 14 节的原生输入/工具组件。iOS 测试宿主只请求 CoreFoundation。
+
+### 15.4 验证记录与边界
+
+结果和失败命令统一记录于 Plan。验收产物位于仓库外
+`/tmp/goui-mobile-ffi-stage3`，远端 Mac 使用同名目录。修复前 Linux ARM64
+原有十二项中混合结构体失败；完整 macOS 回归还捕获了普通结构体栈对齐错误，
+原测试断言保留。回调栈计划测试独立复现了窄参数后间接指针偏移 1 而非 8 的问题。
+
+当前基座工具和桌面 API 不变；没有借 FFI 修复向 platform 添加窗口能力。
+剩余工作包括 fork 的可分发版本与依赖接入、宿主工具/SDK 组件的再分发审核和
+供应链认证、Windows 消费运行、iOS 真机与 Android 16 KiB 内核验收，最后才是
+面向用户的 `cmd/goui` 编排和 platform 移动 UI 集成。
