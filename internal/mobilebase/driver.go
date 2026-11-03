@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 )
 
 // The complete replacement sources are embedded, so building the driver never
@@ -99,10 +100,10 @@ func baseDriverEnv() []string {
 	for _, item := range os.Environ() {
 		key, _, _ := bytes.Cut([]byte(item), []byte("="))
 		switch string(key) {
-		case "GOOS", "GOARCH", "GOARM64", "GOAMD64", "GOEXPERIMENT", "GOFLAGS", "GOWORK", "CGO_ENABLED", "GOTOOLCHAIN", "GOUI_BASE":
+		case "GOOS", "GOARCH", "GOARM64", "GOAMD64", "GOEXPERIMENT", "GOFLAGS", "GOWORK", "CGO_ENABLED", "GOTOOLCHAIN", "GOUI_BASE", "GOENV":
 			continue
 		}
 		env = append(env, item)
 	}
-	return append(env, "GOWORK=off", "CGO_ENABLED=0", "GOTOOLCHAIN=local", "GOFLAGS=")
+	return append(env, "GOWORK=off", "CGO_ENABLED=0", "GOTOOLCHAIN=local", "GOFLAGS=", "GOENV=off", "GOOS="+runtime.GOOS, "GOARCH="+runtime.GOARCH, "GOARM64=v8.0", "GOAMD64=v1", "GOEXPERIMENT=")
 }
