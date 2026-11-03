@@ -831,9 +831,10 @@ SHA-256 只校验完整性，不代替未来下载渠道的可信版本与签名
 ### 13.4 自动化验收边界
 
 包内测试不依赖桌面。Linux amd64 / Go 1.25.8 的 `TestColdBuild` 需要维护者
-工具 cc、ld、Python3，缺失或目标不符时明确跳过，不将跳过算作通过。
+工具 cc、ld，缺失或目标不符时明确跳过，不将跳过算作通过。
 C 编译仅用于制作基座与独立验证宿主；消费时 PATH 不含可用编译器，CC/CXX
-指向记录后失败的脚本，最终通过仅链接适配器调用 GNU ld。
+指向记录后失败的脚本，最终通过仅链接适配器调用 GNU ld。第一阶段曾使用
+Python 控制组驱动，第二阶段已将该测试驱动改为 Go，当前测试不要求 Python。
 
 两版应用修改普通 Go 逻辑包中的常量，使用各自空 GOCACHE 和同一基座；
 独立 C 宿主分别验证 4 个 pthread、512 次调用、GC 与递归栈增长，检查结果
@@ -877,9 +878,163 @@ Android 安装验收还发现临时 ZIP 重组代码把 `resources.arsc` 错误�
 
 ### 13.5 下一阶段
 
-1. 固定原生链接工具和目标链接输入的独立组件格式、来源及版本；将测试使用
-   的脚本适配器转为受约束、可测试的 Go 链接驱动，不向用户要求 Python。
+1. 独立链接组件和 Go 链接驱动已由第 14 节实现；工具/SDK 的公开分发仍待
+   单独完成。当前消费不要求 Python，也不再另带 llvm-ar。
 2. 在 cgo 分支和需要的上游 fork 中修复第 11 节确认的移动 ABI 缺陷，完成
    独立 C fixture 的结构体、浮点、溢出栈参数、回调与线程验证。
 3. 制作可分发组件及 Windows/Linux 消费验收，随后集成 `cmd/goui`；不在
    此前声称已完成移动端开发支持。平台 UI 集成按职责单独推进。
+
+## 14. 第二阶段：独立链接组件和 Go 链接驱动（2026-11-03）
+
+### 14.1 范围与归属
+
+本阶段继续只开发构建基座，不修改 platform、gui、ui，不把 Activity/UIKit
+宿主或生命周期策略放入通用组件。实现位于 `internal/mobilebase/native_*.go`、
+维护者命令 `cmd/goui-base` 和内部外部链接入口 `cmd/goui-link`。
+仍未改变面向应用的 `goui build` 桌面契约。
+
+将链接依赖分成两个独立目录：
+
+- `inputs.json`：目标 OS/ARCH、device/simulator、最低系统版本、所用 SDK/API
+  版本、原始来源/许可状态、精确的文件 SHA-256，以及 CRT/builtins/library
+  目录或 iOS sysroot 的角色。Android 的 SDK/API 版本是所选 NDK stub API，
+  与 APK manifest 的 targetSdkVersion 分开。
+- `tools.json`：宿主 OS/ARCH、LLD 文件/版本、需要随附的工具运行库及其
+  SHA-256、来源/许可状态。它不包含目标 SDK 或应用配置。
+
+`goui-base link-inputs` / `link-tools` 从维护者准备的最小文件树和 JSON 规格
+制作组件，规格中的空摘要由工具计算，已有摘要不匹配则拒绝；只有全部文件、
+清单和校验成功后才发布目录。工具生产另外运行 LLD `--version` 验证版本。
+消费验证全部已声明文件，也拒绝组件目录内未声明的文件，不能从未校验的
+附加 stub 取符号。组件目录不应作为构建输出目录使用。
+
+SHA-256 与元数据不代表下载认证或再分发授权。本轮组件仅用于本机/远端私有
+验收，不把 SDK、工具、密钥或二进制加入仓库；公开组件的许可审核、签名、
+下载渠道与宿主最低系统版本仍属于后续分发切片。
+
+### 14.2 链接驱动
+
+`goui-link` 只链接已经生成的原生 `.o`/`.a`。通过进程私有环境选择组件：
+
+```text
+GOUI_LINK_INPUTS=/components/android/inputs.json
+GOUI_LINK_TOOLS=/components/linux-amd64/tools.json
+```
+
+驱动显式转换受支持的 GCC/Clang 驱动参数、`-Wl,`、`-Xlinker` 与 Go 的逐行
+quoted response file。C/Objective-C/汇编源文件、编译模式、未知参数、变更目标
+架构/SDK 搜索路径、降低页对齐/关闭 RELRO 等请求明确失败。Go 的可选链接器
+能力探测仍可能请求编译 trivial.c；本驱动拒绝，不伪装编译成功，也不临时调用
+C 编译器。正常链接无需这些可选探测成功。
+
+LLD 始终由独立的已校验宿主组件调用。驱动与 LLD 之间始终使用临时 response
+file，避免这段进程边界受长命令行限制；GNU flavor 显式选择 POSIX quoting，
+Mach-O flavor 使用其固定 GNU tokenizer。Go→驱动一段仅实现已经发出的 Go
+response 格式；Windows 上游 Go 对超长输入的可选 C 编译探测仍未特别适配，
+不据此承诺任意规模的 Windows 命令行已经验收。
+
+- Android：显式 ARM64 ELF、CRT 起止、compiler builtins、已声明系统库，
+  启用 NOW/RELRO/无未解析符号、16 KiB max/common page size。不隐式链接
+  platform host，宿主对象和所需库由最终调用方传入。
+- iOS：显式 ARM64、device/simulator、deployment/SDK 版本、声明的 sysroot，
+  `-Z` 移除标准目录，设置组件内的库和 framework 搜索路径。使用 `-all_load`
+  装入 Go 链接器生成的完整原生归档，UIKit/Foundation 等由宿主自行请求。
+
+链接先写同文件系统的临时目录，目录内保留最终文件名，校验后才替换目的文件。
+LLD 22.1.8 的 Mach-O ad-hoc 签名标识取输出 basename；随机临时文件名会污染
+标识和可重复构建，因此不使用随机文件名作为 `-o`。失败和取消不覆盖既有产物。ELF 校验包括 ARM64/DYN、LOAD 16 KiB 对齐、RELRO 尾端、不可执行栈、
+无 TEXTREL 和 NOW；Mach-O 校验包括 ARM64 executable、精确 platform/min/SDK
+及存在 DATA_CONST 时的 SG_READ_ONLY。它们不替代实际安装、签名与执行。
+
+### 14.3 复用 Go pack，不另带 llvm-ar
+
+Go 1.25.8 链接器生成 c-archive 时，以固定的 `-q -c -s output objects...`
+调用外部归档工具。`goui-link` 在该入口复用相同 Go 版本的 `go tool pack c`，
+原生对象仍由原有 Go 链接器产生；不自行编写 Mach-O/ELF 或 ar 编解码器。
+
+```text
+GOOS=ios GOARCH=arm64 CGO_ENABLED=1 \
+GOUI_BASE=/components/ios-base/base.json \
+GOUI_GO=/path/to/go1.25.8/bin/go \
+  go-mobile build -trimpath -pgo=off -buildmode=c-archive \
+  -ldflags='-linkmode=external -extar=/path/to/goui-link' ./app
+```
+
+宿主 Go 工具的调用显式指定本机 GOOS/GOARCH、基础架构选项、CGO_ENABLED=0、
+GOENV=off、GOTOOLCHAIN=local，不继承用户持久化的交叉编译配置，也不修改它。
+归档同样经临时文件发布。它不含原生符号索引，仅用于本驱动最终的
+`-all_load` 流程，不承诺是可交给任意 C 项目按符号抽取的通用静态库。
+本阶段不再要求携带独立 llvm-ar，Linux 控制组的 Python 测试驱动也改为 Go。
+
+### 14.4 维护者命令与模板
+
+```sh
+# 规格与准备树由对应 SDK/工具版本的维护者构建步骤提供。
+goui-base link-inputs -config android-inputs.json -dir prepared-target -o components/android
+goui-base link-tools -config llvm-host.json -dir prepared-tools -o components/host
+
+# Android 的 platform host 通过 extldflags 单独传入，不能预置在通用驱动中。
+GOOS=android GOARCH=arm64 CGO_ENABLED=1 \
+GOUI_BASE=/components/base/base.json \
+GOUI_LINK_INPUTS=/components/android/inputs.json \
+GOUI_LINK_TOOLS=/components/host/tools.json \
+  go-mobile build -trimpath -pgo=off -buildmode=c-shared \
+  -ldflags='-linkmode=external -extld=/path/to/goui-link -extldflags "/path/to/host.o -landroid"' ./app
+
+# iOS Go 归档完成后，由独立宿主要求其 UI framework。
+GOUI_LINK_INPUTS=/components/ios-simulator/inputs.json \
+GOUI_LINK_TOOLS=/components/host/tools.json \
+  goui-link -o Probe go.a host.o -lobjc \
+  -framework CoreFoundation -framework Foundation -framework UIKit
+```
+
+LLD 的明确 target 行为及 Mach-O response tokenizer 依据：
+[LLVM 22.1.8 ELF driver](https://github.com/llvm/llvm-project/blob/llvmorg-22.1.8/lld/ELF/Driver.cpp)、
+[Mach-O DriverUtils](https://github.com/llvm/llvm-project/blob/llvmorg-22.1.8/lld/MachO/DriverUtils.cpp)。
+16 KiB 与 RELRO 检查参考 [Android 官方说明](https://developer.android.com/guide/practices/page-sizes)。
+
+### 14.5 阶段性验证
+
+- 包内逻辑测试验证组件封装/损坏/缺失、参数映射与拒绝、Go response 文件、
+  宿主环境隔离、归档委托及链接失败/无效输出不覆盖旧产物。合成 ELF/Mach-O
+  只测试格式约束；假 LLD 只测试进程与文件发布路径，不作为真实链接证据。
+- 真正链接使用独立私有组件：Android 8 个文件 865916 字节；iOS Simulator
+  7 个 TBD 10189925 字节；iOS Device 7 个 TBD 10170071 字节。均不带头文件。
+  iOS 集合在初次链接时发现缺少 libobjc.A 与 FileProvider 的重导出 stub，
+  从匹配 Xcode SDK 补齐后由 LLD 验证，不放宽符号或搜索路径检查。
+- 宿主链接工具暂用已安装 Rust 工具链提供的 LLD 22.1.8，携带其 libLLVM、
+  zlib/libgcc_s 支持文件和现有 LLVM 许可文本，作为私有测试组件；其体积与
+  可公开分发的独立工具包尚需后续处理，不代表公开宿主支持矩阵已经完成。
+- Android ARM64、iOS ARM64 Simulator/Device 各自空缓存，普通 Go 包从源码
+  编译，通过 Go 链接驱动和组件完成最终链接，消费时 C 编译器调用为零。
+  iOS 归档生产已完全使用 Go pack，不再调用 LLVM ar。
+- 原生运行、全仓测试和当前未覆盖项由 Plan 记录；不将真机目标编译成功写成
+  真机安装/运行验收，也不把 ad-hoc 模拟器签名写成正式应用签名完成。
+
+
+第二阶段最终验收补充：新包 race/vet 通过；已跟踪源码加本轮文件的隔离副本
+全仓测试 3466 项通过、10 项既有跳过，无失败。当前工作区全仓测试仍仅被
+四个未跟踪旧例程编译错误阻塞，原文件未动；原有测试写入的 PNG 均按运行前
+备份恢复。两个维护者入口在 Windows amd64/macOS arm64/Linux arm64 交叉构建通过。
+
+iOS 26.3.1 ARM64 模拟器与 Android 11 ARM64 ATD 运行了新的 Linux 构建产物。
+启动、按钮、GC、前后台切换、状态保留通过，Go main 一次、UI 主线程与 PID
+检查通过；Android Activity 重建后值保留。iOS 使用独立 XCTest 操作已安装 app，
+不重建被测 app，模拟器 ad-hoc 签名通过。测试专用 iOS 设备已删除，Android
+模拟器和专用 ADB server 已停止。没有进行 iOS 真机签名/安装、Android 16K
+内核、Windows 消费运行或公开组件分发验收。产物及日志在
+`/tmp/goui-mobile-link-xslbk_kb`，SDK 和工具二进制未加入仓库。
+
+最终复核额外覆盖了 GNU response 引用（空格、中文、实际制表符不能按 Go 的
+反斜线转义输出）和逻辑输出 basename。LLD 22.1.8 的
+[CodeSignatureSection](https://github.com/llvm/llvm-project/blob/llvmorg-22.1.8/lld/MachO/SyntheticSections.cpp)
+直接取输出 basename 作为临时 ad-hoc 标识；使用保留名称的临时目录后，两种
+iOS 目标的重复链接字节一致。回归中的假链接器也会拒绝错误的输出 basename，
+不能靠清理/重签后才能发现该差异。Android 最终产物与已执行模拟器验收的产物
+SHA-256 一致。
+
+最终输出名称修复后，iOS Simulator/Device 重复链接字节一致；Mac 上对未封装的
+LLD 输出独立严格验签并确认 Identifier=Probe，随后完整 app ad-hoc 签名、安装
+与启动通过，Go/UI 线程断言保持。该专用模拟器已删除；LLVM 临时签名不代替
+最终 app 的资源签名。最终 Android 字节与已执行完整交互验收的产物一致。

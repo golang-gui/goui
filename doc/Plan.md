@@ -1,5 +1,36 @@
 # Plan
 
+## 移动端基座：第二阶段（2026-11-03）
+
+- 设计见 [PlanMobileBuild 第 14 节](PlanMobileBuild.md#14-第二阶段独立链接组件和-go-链接驱动2026-11-03)。
+  第一阶段已在 feature/mobile-base 提交：894af9e、000a7ab、1612d14。
+- [x] 独立宿主 tools.json 与目标 inputs.json：来源/版本、精确文件列表及 SHA-256，
+  库目录/CRT/builtins/sysroot 角色，版本探测、路径和未声明文件检查、完整后发布。
+  私有验收组件不含头文件或完整 SDK，不作为已许可公开分发的工具包。
+- [x] Go 外部链接入口 cmd/goui-link：受支持参数与 response 转换，明确拒绝原生
+  编译/未知选项/错误库/搜索路径覆盖，LLVM 生成后校验 ELF/Mach-O 再替换输出；
+  失败保留原文件。SDK 与独立 platform host 不放进通用运行时或驱动。
+- [x] iOS 原生归档复用固定 Go 版本的 pack，完整归档以 -all_load 链接，不另带
+  llvm-ar；控制组也改为 Go 测试驱动。宿主工具隔离 GOENV 与持久化交叉目标，
+  不改变用户设置。Go→驱动的 Windows 超长命令行探测仍未特别适配。
+- [x] Linux amd64 / Go 1.25.8 的 Android ARM64、iOS Simulator/Device ARM64
+  独立空缓存构建及最终链接通过，消费 C 编译器调用为零。iOS 最小 7 个 TBD
+  首次发现 libobjc.A/FileProvider 重导出缺项，补齐匹配 SDK 输入后通过 LLD，
+  不增加宿主 SDK 搜索或放宽错误处理。
+- [x] 远端 macOS arm64 上，iOS 26.3.1 ARM64 Simulator 与 Android 11 ARM64
+  ATD 安装上述 Linux 产物，启动、原生按钮、GC、前后台及状态保留通过；Go main
+  只执行一次，Go/native PID 与 UI 线程检查通过。iOS 独立 XCTest 通过，Android
+  Activity 重建后状态保留；专用模拟器和 ADB 服务已清理。
+- [x] 新包 race/vet 通过；隔离的已跟踪源码加本轮文件全仓测试为 3466 项通过、
+  10 项既有跳过。原工作区 go test ./... 仍仅有四个未跟踪旧例程编译失败，
+  保留原文件；既有 PNG 在运行前备份并恢复。维护者与链接命令的 Windows amd64、
+  macOS arm64、Linux arm64 交叉编译通过，未把编译写成对应宿主原生运行。
+- [ ] 后续：移动复杂 FFI 的 ABI 修复、真机/16 KiB 内核运行、Windows 消费实际
+  执行、可分发工具与 SDK 组件、组件选择/下载/认证及 cmd/goui 集成。
+- 日志、私有组件、构建与运行产物：`/tmp/goui-mobile-link-xslbk_kb`；远端对应同名
+  临时目录。组件和测试证书未加入仓库。本阶段不改 platform/gui/ui 或 cgo 源码。
+
+
 ## 移动端基座：第一阶段（2026-11-03）
 
 - 设计与当前边界见 [PlanMobileBuild 第 13 节](PlanMobileBuild.md#13-正式基座第一阶段冷缓存归档接入2026-11-03)。
