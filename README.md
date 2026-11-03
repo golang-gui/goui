@@ -30,6 +30,8 @@ tabs, overlays, graphics, animations, and system integration. Switch between lig
 | macOS Apple Silicon | [Download .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.5.0/goui-demo-v0.5.0-darwin-arm64.zip) |
 | Linux x64 / X11 | [Download executable](https://github.com/golang-gui/goui/releases/download/v0.5.0/goui-demo-v0.5.0-linux-amd64) |
 
+The downloads above are the published v0.5.0 demo. The current source includes the v0.6.0 additions described below.
+
 On Linux, run `chmod +x goui-demo-v0.5.0-linux-amd64` before launching it.
 On macOS, extract and open `GOUI Demo.app`; the bundle is Developer ID signed and Apple-notarized.
 
@@ -72,6 +74,8 @@ Rendering builds on native Direct2D/DirectWrite, Core Text, and Pango/Cairo, alo
 
 GOUI is a lightweight native GUI framework. Actual executable size and runtime memory usage depend on the application and rendering backend.
 
+These are historical development-build measurements, not v0.6.0 release measurements.
+
 ### Executable size
 
 Built with Go 1.25.8, `CGO_ENABLED=0`, `-trimpath`, and `-ldflags="-s -w"`, with `-H=windowsgui` also set on Windows.
@@ -95,14 +99,30 @@ RSS includes resident shared-library pages; PSS apportions shared pages between 
 
 ## What you can build with today
 
-- **Controls:** buttons, labels, images/icons, text inputs, multi-line text views, menus, dropdowns, check/radio/toggle buttons, switches, and linear/circular progress indicators.
-- **Layout and data:** horizontal/vertical boxes, wrapping, baseline alignment, scrolling, overlays, split views, virtualized lists, tree views, and tables with custom cells, sortable headers, and resizable columns.
-- **Workspaces:** tabs with close requests and context menus, drag reordering, transfers between windows, and detaching into new windows.
-- **Input:** Unicode editing, CJK IME, selection, undo/redo, clipboard, shortcuts, Tab focus navigation, and drag and drop within and across applications.
-- **Appearance:** Modern light/dark styles, accent and semantic colors, SVG and style-aware icons, HiDPI, transparency, shadows, and custom widget painting.
-- **Application facilities:** timers on the GUI thread, frame-driven numeric animation, system settings, eight-language framework resources, file dialogs and access credentials, and opening URLs/files through system handlers.
+| Area | Supported capabilities |
+| --- | --- |
+| Declarative UI | State and property bindings, local dependency tracking and subtree updates, composed views, common view modifiers, and custom Widgets/Views. |
+| Controls | Buttons and connected button groups, images/icons, check/radio/toggle buttons and groups, switches, dropdowns, and linear/circular progress indicators. |
+| Text | Formatted and selectable Labels; Unicode single-line/multiline editing, native window IME, selection, clipboard, undo/redo, placeholders, configurable obscuring, brief last-grapheme reveal, and composable input filters. |
+| Layout | Constraint-based horizontal/vertical boxes, wrapping, baseline alignment, per-edge padding, scrolling, split views, and overlays. |
+| Data views | Virtualized lists, trees with reusable expanders, and tables with custom editable cells, column visibility/stretching, sorting, resizing, grid lines, and alternating row colors. |
+| Tabbed workspaces | Close requests and context menus, drag reordering, shrinking and overflow scrolling, cross-window transfer, and detaching into new windows. |
+| Menus and overlays | Menu buttons and coordinated menu groups, context menus, popovers, tooltips, modal input boundaries, in-window Dialogs, and Toasts. |
+| Input | Shortcuts, Tab navigation and keyboard focus hints, event controllers, gesture competition, and drag and drop within and across applications. |
+| Graphics and appearance | Software/OpenGL/Direct2D backends, HiDPI, transforms, clipping and path erasure, transparency/shadows, SVG and style-aware icons, custom painting, cached DrawingArea rendering, and offscreen widget rendering. |
+| Themes and localization | Basic fallback and Modern themes, light/dark modes, accent and semantic colors, style scopes, system settings, localization resources, and built-in text in eight languages. |
+| Windows and system integration | Native/integrated/custom chrome, HeaderBar and window controls, transparent windows, positioning/initial centering, taskbar preferences, file dialogs and access credentials, clipboard, and opening URLs/files. |
+| Timing and developer tools | GUI-thread timers, frame-driven animation with custom interpolation/curves, semantic snapshots and input automation, opt-in CPU-frame/resource diagnostics, and build/package tools. |
 
-Core controls live in `gui`, with declarative bindings in `ui`. Additional controls live in `widgets`, with their declarative bindings in `widgets/ui`.
+Core controls live in `gui`, with declarative bindings in `ui`. Additional controls live in
+`widgets`, with their declarative bindings in `widgets/ui`. Platform behavior and validation
+limits are recorded in the [Roadmap](doc/Roadmap.md) and individual design documents.
+
+### v0.6.0 preparation
+
+- **Input policies and obscuring:** try username/digit limits, a small multiline limit, custom masking characters, and optional brief reveal in the demo's Text editing page. Programmatic assignments and history replay retain their own semantics.
+- **Optional diagnostics:** start a capture in Windows & inspection, explore other pages, then read or stop it. CPU-frame timings and resource operations are sampled explicitly; they are not GPU timings, monitor refresh rates, or memory-use measurements.
+- **Rendering stability:** preserve Label text caches across equivalent styles and measurement queries; keep allocated editor/table geometry stable during measurement, and fix popup hover state and dropdown scrollbar spacing.
 
 ## Build with an AI coding assistant
 
@@ -278,6 +298,10 @@ GOUI_DEV_ADDR=127.0.0.1:8888 ./your-app
 ```
 
 The service provides semantic snapshots, input event dispatch, and text submission. Use it only for local development; enabling it in production is not recommended.
+
+The separate [`gui/diagnostics`](gui/diagnostics) package offers explicitly controlled CPU-frame
+and resource captures without a development server. The dev adapter also exposes
+`/goui/dev/diagnostics` for starting, reading, and stopping a capture; reading alone never enables it.
 
 ## A small, layered design
 

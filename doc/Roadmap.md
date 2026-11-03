@@ -1,5 +1,30 @@
 # GOUI 实用化与未来路线
 
+## 当前能力基线：v0.6.0 准备（2026-11-03）
+
+完整简要清单见[中文 README](README_CN.md#当前源码支持的能力)，此处按已落地机制维护路线：
+
+- 三层内核、Widget 状态／生命周期／信号、语义快照、可扩展 Widget／View；
+  声明式 State、属性绑定、同步构建内依赖追踪、局部更新、通用 View 修饰。
+- Button／ButtonGroup、菜单按钮分组、复选／单选／切换及分组、Switch、DropDown、
+  Image／Icon、线性／圆形进度；约束布局、四边 Padding、Wrap、baseline、Scroll、Split。
+- 格式化／可选择 Label，TextInput／TextView 的 Unicode 编辑、窗口 IME、历史、选区、
+  占位提示；共享输入策略、用户名／数字／长度策略、可配置遮蔽与末字素短暂显露。
+- 虚拟化列表、TreeView／TreeExpander、带自定义编辑单元格／列显隐／伸展／网格的表格，
+  TabBar／TabView 排序、压缩／滚动、关闭／菜单、跨窗移交及拖出窗口。
+- Overlay、ModalScope、Dialog／Toast、Tooltip、Popover、菜单／右键菜单，
+  快捷键、Tab／FocusVisible、事件控制器、手势竞争、应用内及跨应用拖放。
+- 三绘制后端、变换／clip／ClearPath、HiDPI、透明／阴影、SVG／样式化图标、
+  DrawingArea 缓存、RenderWidget；Basic／Modern、主题色／语义色、样式作用域与八语言。
+- 原生／Integrated／None 窗口装饰、HeaderBar／Controls、定位／初始 Center／SkipTaskbar、
+  文件对话框与访问凭据、剪贴板、OpenURL／OpenPath、GUI Timer／帧动画、系统设置。
+- dev 语义引用与输入自动化、显式 CPU 帧／资源 diagnostics、cmd/goui 构建打包和应用开发 Skill。
+
+本轮 Demo 增加输入策略分栏和跨页诊断采集，文案保持八语言，源码元数据准备为 0.6.0。
+正式下载链接在附件发布后更新，未将准备工作写成已发布。实现范围与实际平台验收分开记录；
+Linux arm64、原生 Wayland、触摸、系统通知／托盘、子菜单仍按后文规划推进。
+
+
 ## Demo 当前能力与局部更新（2026-10-31）
 
 `example/demo` 以稳定功能对象管理各页状态，宿主管理导航、资源和窗口；采用
@@ -32,17 +57,13 @@ ButtonGroup 负责连排外观，MenuButtonGroup 负责局部菜单联动容器�
 独立 X11 Software/OpenGL 1x/2x 及 Windows/macOS 编译通过。Linux arm64 的既有 libc
 编译缺口与原生平台未验收范围见 Plan。
 
-## 当前基线（2026-10-14）
+## 历史文档复核基线（2026-10-14）
 
-本轮按 pre-release/v0.1 的实现复核设计文档，不修改代码、不重新扩大首版范围。
+当时按 pre-release/v0.1 的实现复核设计文档，不修改代码、不重新扩大首版范围。
 未来事项分为“待实现（已有确认设计）”“待重新设计／评估”和“需求或测量触发”。
 这不是发布承诺或自动实施授权；具体切片仍按设计、确认、实现、验证推进。
 
-当前已具备：三层内核、Basic／Modern、文本编辑与快捷键／Tab、普通 Overlay、
-WrapBox、拖放和标签移交、TreeView／TableView／SplitView、CheckButton／Switch／
-ProgressBar／DropDown、帧更新与纯 animation、SVG Icon、多语言、透明 Window／
-Popup、WindowChrome／BorderBox／SkipTaskbar／初始 Center、文件访问凭据、dev 文本
-与 Popover 引用、cmd/goui 构建打包。**实现不等于每种平台／后端／DPI 都已验收**；
+当前能力以本文开头及 README 为准。**实现不等于每种平台／后端／DPI 都已验收**；
 各设计中的带日期记录与 [Plan](Plan.md) 分开维护验证范围。
 
 ## Window.Show 唤起已有窗口（2026-10-30）
@@ -247,12 +268,17 @@ StyleSheet、不破坏独立 Widget 样式和原生装饰隔离。
 
 <a id="future-performance"></a>
 
-### 高频更新与渲染资源优化：测量触发，暂缓实现
+### 进一步高频更新与渲染优化：测量触发
 
 Root.ConnectFrame、Switch／ProgressBar／Tab 帧驱动和 TextLayout→Image 缓存已实现。
 原生 vsync／帧时钟尚未接入，不把 compositor 或 Present 的同步等同于动画时间戳同步。
 
-后续先建立同环境、同后端、同规模的延迟／资源预算，再评估：
+可选 CPU 帧／资源 diagnostics 已落地，支持显式启停、只读快照及 dev 端点；
+Label 已修正等价样式及测量查询导致的资源失效，TextView／TableView 的测量与
+已分配几何已隔离。诊断不是 GPU 计时、显示刷新率或实时内存统计，见
+[DesignDiagnostics](DesignDiagnostics.md)。
+
+后续继续按同环境、同后端、同规模的延迟／资源预算评估：
 
 - 文本编辑的失效范围、排版预算与缓存淘汰；
 - layout 私有 textPainter 工作区的按需创建／收缩／释放，不重新共享可变 Pango 状态；
