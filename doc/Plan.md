@@ -1,5 +1,35 @@
 # Plan
 
+## 移动端基座：第四阶段消费构建（2026-11-03）
+
+- 设计及命令见 [PlanMobileBuild 第 16 节](PlanMobileBuild.md#16-第四阶段无原生编译器的消费构建编排2026-11-03)。
+  第三阶段已提交：purego 4538144；cgo 2b9d16a、047c9b3；goui2 90db66c。均未推送。
+- [x] internal/mobilebase.Build 与 goui-base build：独立组件校验/目标匹配、版本和
+  flags 前置检查、受控子进程环境、Go 源码编译、原生链接、输出校验与原子发布。
+  平台宿主对象/库/framework 显式提供，不引入 UI 依赖或安装包语义。
+- [x] CC/CXX 仅指向 goui-link；Android 复用 Go 的 CC→setextld 和 host response
+  传递，iOS 复用 Go pack + RunNativeLink。保留应用 GOWORK、GOCACHE 与模块
+  网络配置；不修改用户环境。空格/中文及带单引号的工具路径真实链接通过。
+- [x] 生成 Go driver 时为该子进程分配独立模块缓存，支持缓存中的自动下载 Go
+  工具链；源码只读 overlay，未改写 GOROOT。包内模拟缓存位置回归及真实 Windows
+  工具链验证通过。该设置不应用到应用的普通 Go 模块构建。
+- [x] Linux amd64 和 Windows 10 amd64 / Go 1.25.8 三目标空缓存消费构建通过。
+  Windows PATH 仅有 Go、测试工具和系统目录；Go 日志确认原生归档和普通源码
+  编译，未运行 cgo 生成。iOS Device 仅编译/链接，不算真机验收。
+- [x] 在 macOS 15.7.7 ARM64 上运行两宿主的 Android/iOS Simulator 产物，四组
+  均为 28/28，8 原生线程 × 8 轮重复无失败；专用模拟器和 ADB 已清理。
+- [x] 隔离源码全仓 go test -count=1 ./...：3481 通过/10 既有跳过；新增构建和
+  driver 回归 race、mobilebase/两个工具入口 vet 通过。取消、失败/无效输出不
+  覆盖已有文件，辅助文件在临时目录中清理。原工作区的未跟踪旧文件未改动。
+- [ ] Windows 上传版交叉编译 goui-base.exe 的执行拒绝原因尚未确认。未改安全
+  策略；用远端标准 Go 本机构建后完成所有消费。公开附件的原生执行仍待单独验收。
+- [ ] 公开 FFI/组件版本与分发、APK/IPA 和签名、正式 platform 移动 UI、iOS 真机、
+  Android 16 KiB 内核仍待后续。当前未改变面向用户的 cmd/goui 桌面命令。
+- 代码提交：b3bbed0（缓存工具链生成修复）、c2a9d4a（消费构建编排），
+  均在 feature/mobile-base，未推送。
+- 本机与 Mac 产物/日志：/tmp/goui-mobile-build-stage4；Windows 使用本轮唯一的
+  goui-mobile-build-* 临时目录。失败日志保留，SDK/工具及签名材料未加入仓库。
+
 ## 移动端基座：第三阶段 ARM64 FFI（2026-11-03）
 
 - 设计见 [PlanMobileBuild 第 15 节](PlanMobileBuild.md#15-第三阶段移动-arm64-ffi-abi2026-11-03)。

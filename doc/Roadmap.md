@@ -9,8 +9,10 @@ Android ARM64 c-shared 和 iOS ARM64 c-archive 的跨宿主消费通过；模拟
 已知 FFI 缺陷、真机及分发缺口见 [Plan](Plan.md) 与 [PlanMobileBuild](PlanMobileBuild.md)。
 第二阶段已实现独立链接组件与 Go 链接驱动，原生归档复用 Go pack；普通 Go
 冷构建及两端模拟器交互通过。第三阶段已实现独立 purego/cgo 分支的 ARM64
-结构体、栈布局和回调修复，验证与发布缺口见 PlanMobileBuild 第 15 节。下一步
-接入可分发依赖和组件，补充宿主/真机验证，再接 cmd/goui 和 platform 移动 UI；
+结构体、栈布局和回调修复。第四阶段已实现消费构建编排，Windows/Linux 的三目标
+冷构建及两宿主产物的 Android/iOS 模拟器执行通过；具体范围见 PlanMobileBuild
+第 15、16 节。下一步接入可分发依赖和组件、APK/IPA 打包与正式移动平台 UI，
+补充真机/16 KiB 及公开工具附件验收；
 此项不改变现有桌面构建命令，也不是当前已发布的移动端支持承诺。
 
 ## 当前能力基线：v0.6.0（2026-11-03）
