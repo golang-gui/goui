@@ -121,6 +121,9 @@ type DragDropInfo struct {
 // document. VisibleText corresponds exactly to VisibleRange (UTF-8 bytes) and
 // may be truncated; Length is the size of the complete document.
 type TextEditingInfo struct {
+	// Obscured suppresses plaintext fields; lengths and selections still use
+	// source UTF-8 byte coordinates, not the replacement text's byte length.
+	Obscured     bool          `json:"obscured,omitempty"`
 	ReadOnly     bool          `json:"readOnly"`
 	Selection    TextSelection `json:"selection"`
 	Length       int           `json:"length"`

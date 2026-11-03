@@ -1453,3 +1453,130 @@ func TestTextEditorLargeDragStepsAndBounds(t *testing.T) {
 		})
 	}
 }
+
+// 两类编辑控件经同一输入／删除／剪切入口过滤，模型与历史回放保持无策略。
+func TestTextEditorInputFiltersAndHistory(t *testing.T) {
+	for _, single := range []bool{false, true} {
+		t.Run(fmt.Sprint(single), func(t *testing.T) {
+			setTestApplication(t, &editorTypography{})
+			var owner Widget
+			var editor *textEditor
+			if single {
+				w := NewTextInput()
+				owner, editor = w, w.textEditor
+			} else {
+				w := NewTextView()
+				owner, editor = w, w.textEditor
+			}
+			win := &window{}
+			win.SetWidget(owner)
+			owner.Arrange(geometry.Rect(0, 0, 220, 80))
+			win.SetFocusedWidget(owner)
+			t.Cleanup(func() { win.SetWidget(nil) })
+			editor.model.SetText("12")
+			editor.setSelectionValue(TextSelection{Anchor: 2, Caret: 2})
+			editor.inputFilter = textedit.Chain(textedit.DigitsOnly(), textedit.LimitLength(3))
+			changes := 0
+			editor.connectChange(func(TextChange) { changes++ })
+			editor.im.emitCommit(IMCommit{Text: "x"})
+			if editor.model.Text() != "12" || changes != 0 || editor.model.CanUndo() {
+				t.Fatal("拒绝的输入修改了正文或历史")
+			}
+			editor.im.emitCommit(IMCommit{Text: "345"})
+			if editor.model.Text() != "123" || changes != 1 || editor.selection.Caret != 3 {
+				t.Fatal("提交没有限长或更新选区", editor.model.Text(), editor.selection)
+			}
+			editor.inputFilter = func(textedit.Input) (string, bool) { return "", false }
+			selection := editor.selection
+			revision := editor.model.Revision()
+			editorKey(t, win, events.KeyBackspace, 0)
+			if editor.model.Revision() != revision || editor.selection != selection {
+				t.Fatal("删除绕过了策略")
+			}
+			editorKey(t, win, events.KeyZ, textCommandModifier())
+			if editor.model.Text() != "12" {
+				t.Fatal("撤销错误地再次过滤")
+			}
+			editorKey(t, win, events.KeyZ, textCommandModifier()|events.ModifierShift)
+			if editor.model.Text() != "123" {
+				t.Fatal("重做错误地再次过滤")
+			}
+			clip := &editorClipboard{text: "unchanged"}
+			App.(*application).clipboard = clip
+			editor.setSelectionValue(TextSelection{Anchor: 0, Caret: 2})
+			editorKey(t, win, events.KeyX, textCommandModifier())
+			if clip.text != "unchanged" || editor.model.Text() != "123" {
+				t.Fatal("被拒剪切仍改变了剪贴板或正文")
+			}
+			editor.inputFilter = textedit.DigitsOnly()
+			editorKey(t, win, events.KeyX, textCommandModifier())
+			if clip.text != "12" || editor.model.Text() != "3" {
+				t.Fatal("有效剪切失败")
+			}
+			editorKey(t, win, events.KeyV, textCommandModifier())
+			if clip.pending == nil {
+				t.Fatal("没有请求粘贴")
+			}
+			clip.pending("45x", nil)
+			if editor.model.Text() != "3" {
+				t.Fatal("粘贴绕过策略")
+			}
+			editor.model.SetText("programmatic")
+			if editor.model.Text() != "programmatic" {
+				t.Fatal("程序赋值被过滤")
+			}
+		})
+	}
+}
+
+// 一个视图的策略不能污染另一个视图或共享模型；预编辑不提前过滤。
+func TestTextEditorInputPolicyIsolationAndComposition(t *testing.T) {
+	a, _, _ := newEditorFixture(t, "")
+	b := NewTextView()
+	b.SetModel(a.Model())
+	a.SetInputFilter(textedit.DigitsOnly())
+	b.SetInputFilter(textedit.ASCIIUsername(10))
+	b.replaceSelection("abc", true)
+	if a.Model().Text() != "abc" {
+		t.Fatal("另一个视图未写入共享模型")
+	}
+	a.SetSelection(TextSelection{Anchor: 3, Caret: 3})
+	a.im.emitPreedit("候选", len("候"))
+	if a.preedit == nil || a.Model().Text() != "abc" {
+		t.Fatal("预编辑被过早拒绝")
+	}
+	a.im.emitCommit(IMCommit{Text: "候选", Composed: true})
+	if a.preedit != nil || a.Model().Text() != "abc" {
+		t.Fatal("非法组合提交没有被拒绝")
+	}
+	a.im.emitCommit(IMCommit{Text: "12"})
+	if a.Model().Text() != "abc12" {
+		t.Fatal("字符策略错误地检查并拒绝了既有内容")
+	}
+}
+
+// 用户过滤函数虽应纯计算，仍须防护异常回调造成的过期写入。
+func TestTextEditorInputFilterReentry(t *testing.T) {
+	for _, action := range []string{"text", "selection", "disable", "destroy"} {
+		t.Run(action, func(t *testing.T) {
+			v, _, _ := newEditorFixture(t, "abc")
+			v.SetInputFilter(func(in textedit.Input) (string, bool) {
+				switch action {
+				case "text":
+					v.Model().SetText("external")
+				case "selection":
+					v.SetSelection(TextSelection{Anchor: 1, Caret: 1})
+				case "disable":
+					v.SetEnabled(false)
+				case "destroy":
+					v.WidgetBase.destroy(v)
+				}
+				return in.Text, true
+			})
+			v.im.emitCommit(IMCommit{Text: "must not insert"})
+			if strings.Contains(v.Model().Text(), "must not insert") {
+				t.Fatal("回调后继续提交过期编辑")
+			}
+		})
+	}
+}

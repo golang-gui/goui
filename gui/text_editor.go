@@ -30,6 +30,7 @@ type textParagraph struct {
 	geometry       textedit.Geometry
 	geometryValid  bool
 	fragment       textedit.Fragment
+	obscured       *textedit.ObscuredText
 	measuredSize   geometry.Size
 	width          float32
 	height         float32
@@ -54,6 +55,9 @@ func (p *textParagraph) editGeometry(emptyHeight float32) *textedit.Geometry {
 		if p.layout != nil {
 			lines, clusters = p.lines, p.clusters
 			length = len(p.layout.Text())
+			if p.obscured != nil {
+				length = p.obscured.SourceLength()
+			}
 		}
 		if p.fragment.LineCount() == 0 && len(lines) > 0 {
 			// Copy ordinary values on first geometry demand. Plain display must
@@ -222,6 +226,9 @@ type textEditor struct {
 	selection         TextSelection
 	caretUpstream     bool
 	readOnly          bool
+	inputFilter       InputFilter
+	obscured          bool
+	obscureChar       rune
 	acceptsTab        bool
 	wrap              WrapMode
 	padding           geometry.Insets
@@ -837,6 +844,10 @@ func (t *textEditor) paragraph(index int) *textParagraph {
 			return previous
 		}
 		p = &textParagraph{}
+		if t.obscured {
+			p.obscured = textedit.NewObscuredText(text, t.obscureChar)
+			text = p.obscured.Text()
+		}
 		if text != "" || !t.singleLine {
 			var err error
 			p.layout, err = App.Typography().NewTextLayout(text, t.format, width, textInputMeasureExtent)
@@ -854,6 +865,9 @@ func (t *textEditor) paragraph(index int) *textParagraph {
 	if p.layout != nil {
 		w, h = p.layout.MeasureSize()
 		p.lines, p.clusters = p.layout.MeasureMetrics()
+		if p.obscured != nil {
+			p.lines, p.clusters = p.obscured.Metrics(p.lines, p.clusters)
+		}
 	}
 	p.measuredSize = geometry.Size{Width: w, Height: h}
 	p.fragment = textedit.Fragment{}
@@ -1399,6 +1413,14 @@ func (t *textEditor) snapshot() WidgetInfo {
 	info := t.owner.base().Snapshot()
 	info.Role = RoleTextView
 	state := &TextEditingInfo{ReadOnly: t.readOnly, Selection: t.selection, Length: t.model.Len(), Placeholder: t.placeholder}
+	if t.obscured {
+		state.Obscured = true
+		if p := t.preedit; p != nil {
+			state.Preedit = &TextPreeditInfo{Replacement: p.Replacement(), Caret: p.Caret(), Length: len(p.Text())}
+		}
+		info.TextEditing = state
+		return info
+	}
 	// Text is translated by padding-offset and clipped to the padded viewport.
 	// Return bounded paragraph text intersecting that clip, without shaping it.
 	content := t.viewport.Insets(t.padding.Left, t.padding.Top, t.padding.Right, t.padding.Bottom)
@@ -1939,9 +1961,9 @@ func (t *textEditor) canEditCommand(command textEditCommand) bool {
 	case textRedo:
 		return !t.readOnly && t.model.CanRedo()
 	case textCopy:
-		return selected && App != nil && App.Clipboard() != nil
+		return !t.obscured && selected && App != nil && App.Clipboard() != nil
 	case textCut:
-		return !t.readOnly && selected && App != nil && App.Clipboard() != nil
+		return !t.obscured && !t.readOnly && selected && App != nil && App.Clipboard() != nil
 	case textPaste:
 		// Clipboard has no format query. Do not fetch potentially sensitive text
 		// merely to display a menu; an unsuccessful request is a paste no-op.
@@ -2382,10 +2404,40 @@ func (t *textEditor) replaceSelection(text string, atomic bool) {
 		return
 	}
 	rng := t.selection.Range()
-	before := t.selection
+	t.applyUserEdit(TextEdit{Range: rng, Text: text}, atomic)
+}
+
+func (t *textEditor) filterUserEdit(edit TextEdit) (TextEdit, bool) {
+	edit.Text = t.normalizeInput(edit.Text)
+	if t.inputFilter == nil {
+		return edit, true
+	}
+	model, epoch, revision, selection := t.model, t.mountEpoch, t.model.Revision(), t.selection
+	inputRevision, enabledRevision := t.inputRevision, t.owner.base().enabledRevision
+	in, err := textedit.NewInput(model, edit)
+	if err != nil {
+		return edit, false
+	}
+	text, accept := t.inputFilter(in)
+	if !accept || t.owner.base().destroyed || t.suspended || !IsEnabled(t.owner) || t.readOnly ||
+		t.model != model || t.mountEpoch != epoch || model.Revision() != revision || t.selection != selection ||
+		t.inputRevision != inputRevision || t.owner.base().enabledRevision != enabledRevision {
+		return edit, false
+	}
+	edit.Text = t.normalizeInput(text)
+	return edit, true
+}
+
+func (t *textEditor) applyUserEdit(edit TextEdit, atomic bool) {
+	if edit, accept := t.filterUserEdit(edit); accept {
+		t.commitUserEdit(edit, atomic)
+	}
+}
+
+func (t *textEditor) commitUserEdit(edit TextEdit, atomic bool) {
+	model, epoch, before := t.model, t.mountEpoch, t.selection
 	t.revealCaret = true
-	text = t.normalizeInput(text)
-	_ = model.Apply(TextEdit{Range: rng, Text: text}, textedit.EditOptions{Atomic: atomic, Source: t.editOwner, Selection: &before})
+	_ = model.Apply(edit, textedit.EditOptions{Atomic: atomic, Source: t.editOwner, Selection: &before})
 	// Signals may edit again, replace the model, unmount, or destroy the view.
 	// The model change handler has already mapped the selection in order.
 	if t.owner.base().destroyed || t.model != model || t.mountEpoch != epoch {
@@ -2664,14 +2716,7 @@ func (t *textEditor) editingKey(event events.KeyEvent) bool {
 			}
 		}
 		if rng.Start != rng.End {
-			before := t.selection
-			model, epoch := t.model, t.mountEpoch
-			t.revealCaret = true
-			_ = model.Apply(TextEdit{Range: rng}, textedit.EditOptions{Source: t.editOwner, Selection: &before})
-			if !t.owner.base().destroyed && !t.suspended && t.model == model && t.mountEpoch == epoch {
-				t.revealCaret = true
-				t.owner.RequestLayout()
-			}
+			t.applyUserEdit(TextEdit{Range: rng}, false)
 		}
 		return true
 	case events.KeyArrowLeft, events.KeyArrowRight:
@@ -2739,7 +2784,7 @@ func (t *textEditor) undo(redo bool) {
 }
 
 func (t *textEditor) copySelection(cut bool) {
-	if App == nil || App.Clipboard() == nil {
+	if t.obscured || App == nil || App.Clipboard() == nil {
 		return
 	}
 	rng := t.selection.Range()
@@ -2750,11 +2795,22 @@ func (t *textEditor) copySelection(cut bool) {
 	if err != nil {
 		return
 	}
+	model, epoch, revision, selection := t.model, t.mountEpoch, t.model.Revision(), t.selection
+	inputRevision := t.inputRevision
+	edit := TextEdit{Range: rng}
+	if cut {
+		var accept bool
+		edit, accept = t.filterUserEdit(edit)
+		if !accept {
+			return
+		}
+	}
 	if err := App.Clipboard().SetText(text); err != nil {
 		return
 	}
-	if cut && !t.readOnly {
-		t.replaceSelection("", true)
+	if cut && !t.owner.base().destroyed && !t.suspended && IsEnabled(t.owner) && !t.readOnly &&
+		t.model == model && t.mountEpoch == epoch && model.Revision() == revision && t.selection == selection && t.inputRevision == inputRevision {
+		t.commitUserEdit(edit, true)
 	}
 }
 
@@ -2773,6 +2829,9 @@ func (t *textEditor) paste() {
 }
 
 func (t *textEditor) wordAt(offset int) TextRange {
+	if t.obscured {
+		return TextRange{End: t.model.Len()}
+	}
 	index := t.model.LineAt(offset)
 	line, _ := t.model.LineRange(index)
 	rng := t.model.WordAt(offset)
@@ -2783,6 +2842,12 @@ func (t *textEditor) wordAt(offset int) TextRange {
 }
 
 func (t *textEditor) wordAdjacent(offset int, forward bool) int {
+	if t.obscured {
+		if forward {
+			return t.model.Len()
+		}
+		return 0
+	}
 	if !forward {
 		offset = t.logicalAdjacent(offset, false)
 		return t.wordAt(offset).Start
