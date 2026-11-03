@@ -8,6 +8,7 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
+	"github.com/golang-gui/goui/internal/diagnostic"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/software"
@@ -201,6 +202,7 @@ func (a *DrawingArea) rasterize(size geometry.Size, scale float32, valid func() 
 	if !valid() {
 		return false
 	}
+	diagnostic.Record(diagnostic.DrawingGenerate, 1)
 	a.raster = r
 	a.size, a.scale, a.dirty, a.needsUpload = size, scale, false, true
 	retained = true

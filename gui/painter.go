@@ -6,6 +6,7 @@ import (
 	"math"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/internal/diagnostic"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
 )
@@ -68,9 +69,10 @@ type painter struct {
 	scale  float32
 
 	appliedClip  geometry.Rectangle
-	clipApplied  bool
 	appliedXform geometry.Transform
+	clipApplied  bool
 	xformApplied bool
+	offscreen    bool
 }
 
 type painterState struct {
@@ -154,6 +156,15 @@ func (p *painter) paintWidget(widget Widget) {
 }
 
 func (p *painter) paintSelf(widget Widget, saveDepth int) {
+	if session := diagnostic.Current(); session != nil && session.WidgetsEnabled() {
+		if s := diagnosticWidgetFor(session, widget.base()); s != nil {
+			if p.offscreen {
+				s.OffscreenPaintCalls++
+			} else {
+				s.PaintCalls++
+			}
+		}
+	}
 	p.paintCall(widgetPaintName(widget), saveDepth, func() { widget.Paint(p) })
 }
 

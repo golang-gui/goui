@@ -6,6 +6,7 @@ import (
 	"reflect"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/internal/diagnostic"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/graphics"
 )
@@ -149,6 +150,7 @@ func (i *Icon) paintImage(p Painter, rect geometry.Rectangle, foreground Color) 
 	}
 	key := iconImageKey{width: int(w), height: int(h), color: foreground}
 	if !i.cache.valid || i.cache.key != key {
+		diagnostic.Record(diagnostic.IconGenerate, 1)
 		bitmap := i.source.Image(key.width, key.height, foreground)
 		if bitmap != nil && bitmap.Bounds().Empty() {
 			bitmap = nil

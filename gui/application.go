@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/golang-gui/goui/core/signal"
+	"github.com/golang-gui/goui/internal/diagnostic"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/style"
@@ -228,6 +229,7 @@ func (a *application) timerActive(t *Timer) bool {
 }
 
 func (a *application) Run() {
+	defer diagnostic.StopOwner(a)
 	if dialog, ok := a.fileDialog.(*fileDialog); ok {
 		defer dialog.close()
 	}
