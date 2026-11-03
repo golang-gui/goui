@@ -135,8 +135,11 @@ TextInput/TextView 不解释标记；共用文字格式构造可以读取新增�
 格式化空字符串与普通空 Label 的测量和 HasBaseline 行为一致。
 
 - 源字符串变化才重新解析；同源 SetText 无操作。
-- StyleChanged 释放排版，保留解析结果及名称；主题切换不重复解析。
-- 尺寸变化复用 SetSize，重新计算 native 行和 Cluster，不缓存旧 baseline。
+- StyleChanged 比较基础及范围的最终文字属性；等价结果保留资源。颜色变化复用排版并
+  更新范围颜色，基础色覆盖全文后恢复范围色；字体／文字装饰变化延迟重建。
+  解析结果及名称保留；颜色保存为预乘 RGBA 值快照，不比较接口身份。
+- 尺寸变化复用 SetSize；换行／对齐使用既有 setter，重新计算 native 行和 Cluster。
+  仅颜色变化保留选区几何，字体、段落和尺寸变化不缓存旧 baseline。
 - Unmount 释放 TextLayout，保留 Widget 自身的源文字和解析值；Destroy 最终兜底。
 - 不增加全局缓存；Measure 与 Paint 继续共享对象。
 
@@ -253,3 +256,14 @@ Software+OpenGL 1x/2x → Windows Direct2D/OpenGL/Software 与 macOS OpenGL/Soft
 可选择窗口例程 tests/window/ui/label_selection 另外覆盖指针/键盘、Cluster、复制、菜单、
 失焦、开关、主题与 UI 绑定；
 不把已有格式化例程的通过当作选择功能验收。
+
+## 2026-11-03 资源缓存失效修正
+
+诊断观测发现 StyleChanged 的无条件销毁与测量／显示尺寸往返修改会使图片缓存失效。
+分两阶段修复：先比较实际文字样式，再隔离测量查询与显示排版；保留 Painter 的
+Changed／Destroy 订阅及倍率／区域缓存键，不放宽平台失效契约。
+
+参考 GTK 4.20.0 [gtk_label_css_changed](https://github.com/GNOME/gtk/blob/4.20.0/gtk/gtklabel.c#L880)
+按文字属性影响更新，以及 [gtk_label_get_measuring_layout](https://github.com/GNOME/gtk/blob/4.20.0/gtk/gtklabel.c#L976)
+在不同查询宽度下使用独立排版、可安全复用时借用既有排版的源码行为。
+GOUI 不引入 CSS 变化标志或 Pango 专属复制接口，按自身 TextLayout 契约实现。

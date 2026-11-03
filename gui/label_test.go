@@ -2,6 +2,7 @@ package gui
 
 import (
 	"errors"
+	"fmt"
 	"image/color"
 	"testing"
 	"time"
@@ -215,7 +216,13 @@ type labelFormatLayout struct {
 		font          typography.FontInfo
 	}
 	ink               []color.Color
+	inkRanges         []labelInkRange
 	underline, strike []bool
+}
+
+type labelInkRange struct {
+	start, length int
+	ink           color.Color
 }
 
 func (l *labelFormatLayout) SetTextFont(start, length int, font typography.FontInfo) {
@@ -224,9 +231,12 @@ func (l *labelFormatLayout) SetTextFont(start, length int, font typography.FontI
 		font          typography.FontInfo
 	}{start, length, font})
 }
-func (l *labelFormatLayout) SetTextColor(_, _ int, c color.Color) { l.ink = append(l.ink, c) }
-func (l *labelFormatLayout) SetUnderline(_, _ int, v bool)        { l.underline = append(l.underline, v) }
-func (l *labelFormatLayout) SetStrikethrough(_, _ int, v bool)    { l.strike = append(l.strike, v) }
+func (l *labelFormatLayout) SetTextColor(start, length int, c color.Color) {
+	l.ink = append(l.ink, c)
+	l.inkRanges = append(l.inkRanges, labelInkRange{start, length, c})
+}
+func (l *labelFormatLayout) SetUnderline(_, _ int, v bool)     { l.underline = append(l.underline, v) }
+func (l *labelFormatLayout) SetStrikethrough(_, _ int, v bool) { l.strike = append(l.strike, v) }
 
 type labelFormatTypography struct {
 	testTypography
@@ -671,5 +681,136 @@ func TestLabelSelectionAtomicClustersAndWrappedLines(t *testing.T) {
 	label.SelectAll()
 	if label.SelectedText() != "abc\ndef" {
 		t.Fatal("硬换行应保留")
+	}
+}
+
+// 无关视觉属性和状态通知不得销毁文字资源；颜色比较不依赖接口可比较性。
+func TestLabelStyleChangeRetainsEquivalentTextResources(t *testing.T) {
+	typo := &labelFormatTypography{}
+	setTestApplication(t, typo)
+	app := App.(*application)
+	ink := &color.RGBA{R: 40, G: 80, B: 120, A: 255}
+	app.style = style.Sheet(style.Name("label").FontSize(14).ForegroundColor(ink))
+	label := NewLabel("stable")
+	t.Cleanup(label.releaseLayout)
+	label.Arrange(geometry.Rect(0, 0, 100, 30))
+	label.Paint(&testLabelPainter{})
+	native := typo.records[0]
+	app.style = style.Sheet(style.Name("label").FontSize(14).
+		ForegroundColor(labelTestColor{40 * 257, 80 * 257, 120 * 257, 65535}).
+		BackgroundColor(color.White).BorderWidth(2))
+	for range 5 {
+		label.StyleChanged()
+		label.Paint(&testLabelPainter{})
+	}
+	if len(typo.records) != 1 || native.destroyed || len(native.inkRanges) != 0 {
+		t.Fatal("等价文字样式重建或修改了排版", len(typo.records), native.destroyed, native.inkRanges)
+	}
+	// 修改原先的可变颜色对象不会改写已保存的样式快照。
+	app.style = style.Sheet(style.Name("label").FontSize(14).ForegroundColor(ink))
+	ink.R = 200
+	label.StyleChanged()
+	label.Paint(&testLabelPainter{})
+	if len(typo.records) != 1 || native.destroyed || len(native.inkRanges) != 1 || !colors.Equal(native.inkRanges[0].ink, ink) {
+		t.Fatal("原地改变颜色未更新，或无意义重建了排版", native.inkRanges)
+	}
+}
+
+type labelTestColor []uint32
+
+func (c labelTestColor) RGBA() (r, g, b, a uint32) { return c[0], c[1], c[2], c[3] }
+
+// 基础色覆盖全文后须恢复范围颜色；范围 setter 不应改写 Format 的基础值。
+func TestLabelColorChangeRetainsLayoutAndRestoresRanges(t *testing.T) {
+	typo := &labelFormatTypography{}
+	setTestApplication(t, typo)
+	app := App.(*application)
+	sheet := func(base, accent color.Color) style.StyleSheet {
+		return style.Sheet(style.Name("label").FontSize(14).ForegroundColor(base),
+			style.Name("accent").ForegroundColor(accent))
+	}
+	red := color.RGBA{R: 220, A: 255}
+	app.style = sheet(color.Black, red)
+	label := NewLabel(`\{format\}a\{accent:b\}c\{inherit:d\}`)
+	t.Cleanup(label.releaseLayout)
+	label.Arrange(geometry.Rect(0, 0, 100, 30))
+	label.Paint(&testLabelPainter{})
+	native := typo.records[0]
+	for _, tc := range []struct{ base, accent color.Color }{
+		{color.White, red}, {color.White, color.RGBA{B: 200, A: 128}}, {color.Black, red},
+	} {
+		app.style = sheet(tc.base, tc.accent)
+		label.StyleChanged()
+		label.Paint(&testLabelPainter{})
+		if native.destroyed || len(typo.records) != 1 || len(native.fonts) != 2 {
+			t.Fatal("仅颜色改变重建了排版或重设字体")
+		}
+		for i := range 4 {
+			got := native.Format().TextColor
+			for _, run := range native.inkRanges {
+				if run.start <= i && i < run.start+run.length {
+					got = run.ink
+				}
+			}
+			want := tc.base
+			if i == 1 {
+				want = tc.accent
+			}
+			if !colors.Equal(got, want) {
+				t.Fatalf("字节 %d 的最终颜色错误：got=%v want=%v", i, got, want)
+			}
+		}
+	}
+}
+
+// 颜色更新不影响选区几何；换行、对齐通过原有 setter 更新同一排版。
+func TestLabelStyleChangePreservesSelectionAndUpdatesParagraph(t *testing.T) {
+	label, _, typo := labelSelectionFixture(t, "abc")
+	label.SetSelection(TextSelection{Anchor: 0, Caret: 2})
+	native := label.cachedLayout
+	geometry := label.selectState.geometry
+	changes := 0
+	label.ConnectSelection(func(TextSelection) { changes++ })
+	App.(*application).style = style.Sheet(append(DefaultStyleRules(), style.Name("label").ForegroundColor(color.White))...)
+	label.StyleChanged()
+	label.Paint(&testLabelPainter{})
+	if label.cachedLayout != native || label.selectState.geometry != geometry || changes != 0 {
+		t.Fatal("颜色更新改变了排版身份、选区几何或选区通知")
+	}
+	label.SetWrapMode(WrapWordChar)
+	label.SetTextAlign(TextAlignCenter)
+	label.Paint(&testLabelPainter{})
+	if label.cachedLayout != native || len(typo.calls) != 1 || native.Format().WrapMode != WrapWordChar || native.Format().TextAlign != TextAlignCenter || changes != 0 {
+		t.Fatal("段落参数变更未复用排版，或发出了选区通知")
+	}
+}
+
+// Destroy 的外部订阅可改变正文或销毁控件；返回后不能继续用旧格式创建资源。
+func TestLabelRebuildRechecksDestroyCallback(t *testing.T) {
+	for _, destroy := range []bool{false, true} {
+		t.Run(fmt.Sprintf("destroy=%t", destroy), func(t *testing.T) {
+			typo := &labelFormatTypography{}
+			setTestApplication(t, typo)
+			label := NewLabel("old")
+			t.Cleanup(label.releaseLayout)
+			label.Arrange(geometry.Rect(0, 0, 100, 30))
+			label.Paint(&testLabelPainter{})
+			typo.records[0].ConnectDestroy(func() {
+				if destroy {
+					label.WidgetBase.destroy(label)
+				} else {
+					label.SetText(`\{format\}\{bold:updated\}`)
+				}
+			})
+			label.SetText("trigger rebuild")
+			label.Paint(&testLabelPainter{})
+			if destroy {
+				if len(typo.records) != 1 || label.cachedLayout != nil {
+					t.Fatal("销毁后继续建立了排版")
+				}
+			} else if len(typo.records) != 2 || typo.records[1].Text() != "updated" || len(typo.records[1].fonts) != 1 {
+				t.Fatal("销毁通知后仍使用过期正文或范围样式")
+			}
+		})
 	}
 }
