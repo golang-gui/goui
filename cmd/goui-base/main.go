@@ -1,4 +1,4 @@
-// Command goui-base produces and verifies native support components.
+// Command goui-base produces, verifies and consumes native support components.
 // This maintainer tool is separate from the application build/package interface.
 package main
 
@@ -23,7 +23,7 @@ func main() {
 }
 func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: goui-base <driver|export|verify|link-inputs|link-tools> [options]")
+		return fmt.Errorf("usage: goui-base <driver|export|verify|link-inputs|link-tools|build> [options]")
 	}
 	fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	fs.SetOutput(errOut)
@@ -68,6 +68,28 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 			return mobilebase.ExportNativeInputs(*spec, *source, *output)
 		}
 		return mobilebase.ExportNativeTools(ctx, *spec, *source, *output)
+	case "build":
+		var options mobilebase.BuildOptions
+		fs.StringVar(&options.GoCommand, "go", "go", "exact Go toolchain command")
+		fs.StringVar(&options.GoDriver, "driver", "", "adapted Go driver")
+		fs.StringVar(&options.Linker, "linker", "", "goui-link command")
+		fs.StringVar(&options.Base, "base", "", "native Go base manifest")
+		fs.StringVar(&options.Inputs, "inputs", "", "target link inputs manifest")
+		fs.StringVar(&options.Tools, "tools", "", "host link tools manifest")
+		fs.StringVar(&options.Directory, "dir", ".", "main module directory")
+		fs.StringVar(&options.Output, "o", "", "native output file")
+		fs.BoolVar(&options.Verbose, "x", false, "print Go build commands")
+		fs.Var((*buildList)(&options.Objects), "object", "native host object/archive (repeatable)")
+		fs.Var((*buildList)(&options.Libraries), "library", "target library name (repeatable)")
+		fs.Var((*buildList)(&options.Frameworks), "framework", "target framework name (repeatable)")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if fs.NArg() != 1 {
+			return fmt.Errorf("build requires one main package")
+		}
+		options.Package = fs.Arg(0)
+		return mobilebase.Build(ctx, options, out, errOut)
 	case "verify":
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
@@ -85,3 +107,9 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		return fmt.Errorf("unknown command %q", args[0])
 	}
 }
+
+// buildList accepts repeated values without inventing a shell parsing layer.
+type buildList []string
+
+func (v *buildList) String() string         { return fmt.Sprint([]string(*v)) }
+func (v *buildList) Set(value string) error { *v = append(*v, value); return nil }
