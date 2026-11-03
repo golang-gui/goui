@@ -1,5 +1,28 @@
 # Plan
 
+## 清理失效例程与修正原生测试（2026-11-03）
+
+- [x] 按确认范围移除五个未跟踪旧例程：`example/filemanager`、`gui_transparency`、
+  `gui_window_chrome`、`integrated`、`overlay`；其它未跟踪文件保留。旧源码在仓库外
+  `/tmp/goui-test-cleanup-t5ichj5z/removed-examples` 备份，文档中的当前入口改用 Demo
+  及现有独立窗口程序，文件管理例程的设计与验收历史保留并标明已清理。
+- [x] `tests/window/gui/window_position` 使用 UniformInsets 适配四边 Padding，保留
+  显示前、工作区／相对／自身定位、重复请求、不跟随、非法值和销毁对象的原有断言。
+- [x] 将旧 `ui/timer_native_test.go` 的两种原生循环场景迁至独立
+  `tests/window/ui/timer`，不再通过包内 init 启动。保留线程、单次／周期、重用、
+  Stop、非法重启及退出检查；未消费 State 更新断言不重建，另一次通知显式请求
+  全应用更新并等待构建完成。初次声明失败时以公共 GUI Timer 检查共享调度器关闭，
+  不读取 UI Timer 私有字段，不新增生产接口；包内状态／绑定测试继续覆盖局部更新。
+- [x] 原工作区 `DISPLAY=:86 go test -json -count=1 ./...`：3626项通过、15项跳过、
+  零失败，含保留的未跟踪测试。`go test -race -count=1 ./ui ./gui` 与两个命令包的
+  vet 通过；未调整其它旧测试的断言或 skip。测试写入的16个既有 PNG 已恢复。
+- [x] Ubuntu 22.04.5 amd64、独立 Xvnc :86／xfwm4：Timer 两场景的正常及 race
+  版本通过，race 覆盖 GOMAXPROCS=1／2，保留正常异步抢占；无可见窗口、不使用
+  Painter。窗口定位 Software、1x／2x、None／Native／Integrated 六组自动模式通过。
+  两程序 Windows amd64／macOS arm64、CGO_ENABLED=0 交叉构建通过；未执行远端
+  原生验收、多屏／混合 DPI 或手动交互。日志及备份见上述临时目录。
+
+
 ## v0.6.0 Demo 与完整能力清单（2026-11-03）
 
 - 设计见 [DesignDemo](DesignDemo.md#v060-展示与文档更新2026-11-03)。

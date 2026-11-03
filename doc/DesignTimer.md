@@ -268,14 +268,23 @@ App 的 finished 通道仅在 run 结束时关闭，不能在 Quit 请求时提�
 执行的同步操作可能仍在写入调用方结果。该机制由 App 共用，Timer 不自行实现退出
 等待。同步等待只阻塞调用者，不为每个 Timer 创建 goroutine。
 
-UI 单元测试覆盖参数校验、失效句柄、同步调用等待与退出、回调内 Quit。原生子进程
-测试在原始主线程运行 ui.Run，从其他 goroutine 创建／查询／启停 Timer，验证单次、
-周期、重复启动复用回调、回调内启停、模式切换、显式状态更新、重建不重启以及初次
-Build 失败的真实 GUI 任务清理。不为 UI 测试向 GUI 暴露调度器或额外工厂接口。
+UI 单元测试覆盖参数校验、失效句柄、同步调用等待与退出、回调内 Quit。
+2026-11-03 将旧的 UI 原生子进程测试迁至 `tests/window/ui/timer`，显式启动程序；
+不再通过包内 init 环境变量执行原生验收。程序在原始主线程运行 ui.Run，从其他
+goroutine 创建／查询／启停 Timer，保留单次、周期、重复启动复用回调、回调内启停、
+模式切换和退出检查。未被消费的 State.Update 只改变值，不能要求全应用重建；
+另一轮 Timer 通知显式 RequestUpdate，并等待构建完成，检查已完成任务没有重启。
+局部依赖与属性绑定仍由包内 State／binding 测试验证，不要求 Timer 自动请求更新。
+
+初次 Build 失败场景在独立进程执行，既检查 UI Timer，也检查同一调度器上的公共
+GUI Timer 已停止且不能重启，避免 UI 包装层的停止保护掩盖底层任务仍活动。
+不访问 UI Timer 私有字段，不为测试暴露调度器或额外工厂接口。
 
 ```sh
 go test ./...
 go test -race ./ui ./gui -run 'TestTimer|TestAppSync|TestSettings|TestApplicationQuits' -count=1
+go run ./tests/window/ui/timer -scenario=runtime
+go run ./tests/window/ui/timer -scenario=initial-failure
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go test -exec=true ./...
 GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go test -exec=true ./...
 ```

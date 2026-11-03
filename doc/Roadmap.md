@@ -1050,7 +1050,8 @@ ListView／TreeView 命令式模型／Delegate 设置现为显式重新安装；
 时复用稳定模型指针；非指针模型每次声明按替换处理。
 不以树拖放重排、行内重命名或多列树扩大本轮边界；后续继续既定高级控件路线。
 
-应用验证已补 `example/filemanager`：不新增控件 API，使用现有树／列表、公开 Pick、
+历史应用验证使用 `example/filemanager`（2026-11-03已移除，当前入口为 Demo 和专项窗口例程）：
+不新增控件 API，使用现有树／列表、公开 Pick、
 自定义行及 DragDrop，实现内存同级排序、子树移动和多选校验。本机 Software 1x
 主要交互及 OpenGL 1x 排序／亮暗通过；Windows／macOS 仅交叉编译。内容区域方案
 不能覆盖私有缩进／展开器，后续可组合行外壳及拖动滚动能力仍待设计，见 TreeView

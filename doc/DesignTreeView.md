@@ -860,6 +860,10 @@ Windows／macOS 原生桌面或所有 IME／拖放组合的验收。
 
 ## 10. 文件管理例程与应用拖放边界
 
+> 历史记录：旧 `example/filemanager` 已于2026-11-03清理，不再作为当前运行入口。
+> 本节保留当时的应用设计、验证结果及边界；当前树／数据展示见 `example/demo`，
+> 树与拖放的独立验收见 `tests/window/widgets/tree_view` 和 `tests/window/gui/dragdrop`。
+
 2026-10-04 新增 `example/filemanager`，先以现有公开 API 编写内存文件管理应用，
 再判断树拖放是否真的缺少基础能力。本轮不增加 TreeView／ListView／GUI／UI API，
 也不将应用数据移动策略放入控件。该例程不访问真实文件系统，不实现外部文件拖放。
