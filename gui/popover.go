@@ -888,21 +888,8 @@ func (p *popover) paint() {
 	defer p.endFrame()
 	p.widget = liveRoot(p.widget)
 	laidOut := p.layoutDirty
-	if p.layoutDirty {
-		p.layoutDirty = false
-		if err := p.updateNaturalSize(); err != nil {
-			log.Printf("goui: popup layout: %v", err)
-			return // retain the last completed native frame on query failure
-		}
-		epoch := p.lifecycle
-		if p.widget != nil {
-			body := p.bodyRect()
-			measureWidget(p.widget, layout.Tight(body.Size))
-			p.widget.Arrange(body)
-		}
-		if p.lifecycle != epoch || p.painter == nil || p.destroyed {
-			return
-		}
+	if laidOut && !p.layoutContent() {
+		return
 	}
 	if laidOut {
 		p.refreshDragMotion(p)
@@ -923,6 +910,27 @@ func (p *popover) paint() {
 	inset := popoverSafeInset(radius, width)
 	safe := geometry.Rect(body.X+inset, body.Y+inset, max(0, body.Width-2*inset), max(0, body.Height-2*inset))
 	p.drawSurfaceFrame(p.widget, background, border, body, safe, shadow, nil)
+}
+
+// layoutContent preserves the last completed native frame on a failed query.
+func (p *popover) layoutContent() bool {
+	observation := p.observeLayout()
+	defer observation.end()
+	p.layoutDirty = false
+	if err := p.updateNaturalSize(); err != nil {
+		log.Printf("goui: popup layout: %v", err)
+		return false // retain the last completed native frame on query failure
+	}
+	epoch := p.lifecycle
+	if p.widget != nil {
+		body := p.bodyRect()
+		measureWidget(p.widget, layout.Tight(body.Size))
+		p.widget.Arrange(body)
+	}
+	if p.lifecycle != epoch || p.painter == nil || p.destroyed {
+		return false
+	}
+	return true
 }
 
 // RequestLayout satisfies Root: schedule a relayout of this host.

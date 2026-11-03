@@ -8,6 +8,7 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
+	"github.com/golang-gui/goui/internal/diagnostic"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/style"
 )
@@ -572,6 +573,9 @@ func (w *WidgetBase) windowRect() geometry.Rectangle {
 }
 
 func (w *WidgetBase) RequestLayout() {
+	if s := diagnosticWidget(w); s != nil {
+		s.LayoutRequests++
+	}
 	w.invalidateMeasureToRoot()
 	// Reach the host through the Root interface (window or popover) — never the
 	// concrete *window, which is nil for a popover-hosted widget.
@@ -612,6 +616,9 @@ func ensureWidgetStyle(widget Widget) bool {
 	}
 	base := widget.base()
 	if !base.styleValid {
+		if s := diagnosticWidget(base); s != nil {
+			s.StyleChangedCalls++
+		}
 		base.styleValid = true // consume before calling out; do not lose a new invalidation
 		base.measureValid = false
 		widget.StyleChanged()
@@ -629,7 +636,19 @@ func measureWidget(widget Widget, c layout.Constraint) layout.Measurement {
 	}
 	base := widget.base()
 	if base.measureValid && base.measureConstraint == c {
+		if session := diagnostic.Current(); session != nil && session.WidgetsEnabled() {
+			if s := diagnosticWidgetFor(session, base); s != nil {
+				s.MeasureQueries++
+				s.MeasureHits++
+			}
+		}
 		return base.measureResult
+	}
+	if session := diagnostic.Current(); session != nil && session.WidgetsEnabled() {
+		if s := diagnosticWidgetFor(session, base); s != nil {
+			s.MeasureQueries++
+			s.MeasureCalls++
+		}
 	}
 	measured := widget.Measure(c)
 	measured.Size = c.Clamp(measured.Size)
@@ -640,6 +659,9 @@ func measureWidget(widget Widget, c layout.Constraint) layout.Measurement {
 }
 
 func (w *WidgetBase) RequestPaint() {
+	if s := diagnosticWidget(w); s != nil {
+		s.PaintRequests++
+	}
 	// Same as RequestLayout: reach the host through Root, never through Window().
 	if r := w.root(); r != nil {
 		_ = r.RequestPaint()

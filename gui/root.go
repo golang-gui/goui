@@ -9,6 +9,7 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
+	"github.com/golang-gui/goui/internal/diagnostic"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/graphics"
@@ -71,6 +72,7 @@ type rootBase struct {
 	frameDestroyed bool
 	frameEpoch     uint64
 	lastFrame      time.Time
+	frameCapture   *diagnostic.FrameRecord
 	frameTimer     *Timer
 	frameRequester paintRequester
 }
@@ -111,6 +113,9 @@ func adoptWidget(widget Widget, newRoot Root) {
 
 // requestLayout schedules a relayout of the next frame.
 func (b *rootBase) requestLayout(platform paintRequester) {
+	if r := diagnosticRoot(b); r != nil {
+		r.LayoutRequests++
+	}
 	b.layoutDirty = true
 	b.requestPaint(platform)
 }
@@ -150,6 +155,8 @@ func (b *rootBase) layoutFrameIn(content Widget, bounds geometry.Rectangle) {
 		return
 	}
 	if b.layoutDirty {
+		observation := b.observeLayout()
+		defer observation.end()
 		b.layoutDirty = false
 		measureWidget(content, layout.Tight(bounds.Size)) // hosts are extrinsic: content fills them
 		content.Arrange(bounds)
@@ -188,8 +195,25 @@ func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Sty
 
 	bounds := geometry.Rect(0, 0, size.Width, size.Height)
 	guiPainter := newPainter(b.painter, bounds, scale)
-	b.painter.Begin(pixelWidth, pixelHeight, scale)
-	defer b.painter.End()
+	drawn := false
+	if f := b.frameCapture; f != nil {
+		backend := b.painter // Preserve the receiver across user callbacks, like defer End below.
+		started := time.Now()
+		backend.Begin(pixelWidth, pixelHeight, scale)
+		f.Begin += time.Since(started)
+		defer func() {
+			started := time.Now()
+			backend.End()
+			f.End += time.Since(started)
+			f.EndReturned = true
+			f.Completed = drawn
+		}()
+		started = time.Now()
+		defer func() { f.Paint += time.Since(started) }()
+	} else {
+		b.painter.Begin(pixelWidth, pixelHeight, scale)
+		defer b.painter.End()
+	}
 	if b.frameDestroyed || b.frameSuspended || b.surfaceEpoch != b.frameEpoch {
 		return
 	}
@@ -243,6 +267,7 @@ func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Sty
 	if finish != nil {
 		finish(guiPainter)
 	}
+	drawn = !b.frameDestroyed && !b.frameSuspended && b.surfaceEpoch == b.frameEpoch
 }
 
 // ConnectAfterPaint observes the host's real presentation frame only.
@@ -269,8 +294,12 @@ func (b *rootBase) renderWidgetImage(widget Widget, scale float32) (image.Image,
 	if scale <= 0 || math.IsNaN(w) || math.IsNaN(h) || w <= 0 || h <= 0 || w > 16384 || h > 16384 {
 		return nil, fmt.Errorf("gui: invalid widget render size or scale")
 	}
+	if r := diagnosticRoot(b); r != nil {
+		r.Offscreen++
+	}
 	return b.painter.RenderImage(int(w), int(h), scale, func() {
 		p := newPainter(b.painter, geometry.Rect(0, 0, rect.Width, rect.Height), scale)
+		p.offscreen = true
 		// Cancel only this root's parent-relative position. Descendants keep
 		// their ordinary local allocations and structural clips.
 		p.state.offset = geometry.Point{X: -rect.X, Y: -rect.Y}
@@ -294,6 +323,9 @@ func (b *rootBase) ConnectFrame(fn func(time.Time)) signal.Handle {
 }
 
 func (b *rootBase) requestPaint(native paintRequester) error {
+	if r := diagnosticRoot(b); r != nil {
+		r.PaintRequests++
+	}
 	b.paintDirty = true
 	b.frameRequester = native
 	if native == nil || b.frameDestroyed || b.frameSuspended || b.framePainting || b.framePending {
@@ -348,8 +380,18 @@ func (b *rootBase) beginFrame() bool {
 	b.framePending, b.paintDirty = false, false
 	b.framePainting = true
 	b.lastFrame, b.frameEpoch = b.frameNow(), b.surfaceEpoch
-	b.frames.Emit(b.lastFrame)
-	b.updateStateStyles()
+	b.frameCapture = b.beginDiagnosticFrame()
+	if f := b.frameCapture; f != nil {
+		started := time.Now()
+		b.frames.Emit(b.lastFrame)
+		f.Callbacks = time.Since(started)
+		started = time.Now()
+		b.updateStateStyles()
+		f.Styles = time.Since(started)
+	} else {
+		b.frames.Emit(b.lastFrame)
+		b.updateStateStyles()
+	}
 	if b.frameDestroyed || b.frameSuspended || b.surfaceEpoch != b.frameEpoch {
 		b.endFrame()
 		return false
@@ -358,6 +400,10 @@ func (b *rootBase) beginFrame() bool {
 }
 
 func (b *rootBase) endFrame() {
+	if f := b.frameCapture; f != nil {
+		b.frameCapture = nil
+		f.Finish()
+	}
 	b.framePainting = false
 	if b.paintDirty && !b.frameDestroyed && !b.frameSuspended {
 		if err := b.requestPaint(b.frameRequester); err != nil {
