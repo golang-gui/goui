@@ -18,6 +18,8 @@ func TestCommandArguments(t *testing.T) {
 		{[]string{"export", "."}, "requires -o"},
 		{[]string{"verify"}, "requires a base.json"},
 		{[]string{"verify", "one", "two"}, "requires a base.json"},
+		{[]string{"link-inputs"}, "requires -config"},
+		{[]string{"link-tools"}, "requires -config"},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			var output bytes.Buffer

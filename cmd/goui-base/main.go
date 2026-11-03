@@ -23,7 +23,7 @@ func main() {
 }
 func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: goui-base <driver|export|verify> [options]")
+		return fmt.Errorf("usage: goui-base <driver|export|verify|link-inputs|link-tools> [options]")
 	}
 	fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	fs.SetOutput(errOut)
@@ -54,6 +54,20 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		}
 		options.Package = fs.Arg(0)
 		return mobilebase.Export(ctx, options, errOut)
+	case "link-inputs", "link-tools":
+		spec := fs.String("config", "", "component source specification")
+		source := fs.String("dir", ".", "prepared component source directory")
+		output := fs.String("o", "", "new component output directory")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if *spec == "" || *output == "" || fs.NArg() != 0 {
+			return fmt.Errorf("%s requires -config, -o and no positional arguments", args[0])
+		}
+		if args[0] == "link-inputs" {
+			return mobilebase.ExportNativeInputs(*spec, *source, *output)
+		}
+		return mobilebase.ExportNativeTools(ctx, *spec, *source, *output)
 	case "verify":
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
