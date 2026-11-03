@@ -26,26 +26,26 @@ tabs, overlays, graphics, animations, and system integration. Switch between lig
 
 | Platform | Demo download |
 | --- | --- |
-| Windows x64 | [Download EXE](https://github.com/golang-gui/goui/releases/download/v0.5.0/goui-demo-v0.5.0-windows-amd64.exe) |
-| macOS Apple Silicon | [Download .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.5.0/goui-demo-v0.5.0-darwin-arm64.zip) |
-| Linux x64 / X11 | [Download executable](https://github.com/golang-gui/goui/releases/download/v0.5.0/goui-demo-v0.5.0-linux-amd64) |
+| Windows x64 | [Download EXE](https://github.com/golang-gui/goui/releases/download/v0.6.0/goui-demo-v0.6.0-windows-amd64.exe) |
+| macOS Apple Silicon | [Download .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.6.0/goui-demo-v0.6.0-darwin-arm64.zip) |
+| Linux x64 / X11 | [Download executable](https://github.com/golang-gui/goui/releases/download/v0.6.0/goui-demo-v0.6.0-linux-amd64) |
 
-The downloads above are the published v0.5.0 demo. The current source includes the v0.6.0 additions described below.
+The downloads above are Demo **0.6.0 / build 1**. See the [release notes](https://github.com/golang-gui/goui/releases/tag/v0.6.0) and its BUILD-INFO.md / SHA256SUMS attachments for provenance and validation scope.
 
-On Linux, run `chmod +x goui-demo-v0.5.0-linux-amd64` before launching it.
+On Linux, run `chmod +x goui-demo-v0.6.0-linux-amd64` before launching it.
 On macOS, extract and open `GOUI Demo.app`; the bundle is Developer ID signed and Apple-notarized.
 
-Windows
+Windows — Direct2D, dark appearance
 
-<img src="doc/images/demo-windows.png" alt="GOUI Demo on Windows">
+<img src="doc/images/demo-windows.png" alt="GOUI Demo v0.6.0 on Windows">
 
-macOS
+macOS — OpenGL, light appearance
 
-<img src="doc/images/demo-macOS.png" alt="GOUI Demo on macOS">
+<img src="doc/images/demo-macOS.png" alt="GOUI Demo v0.6.0 on macOS">
 
-Linux
+Linux / X11 — OpenGL, light appearance
 
-<img src="doc/images/demo-linux.png" alt="GOUI Demo on Linux">
+<img src="doc/images/demo-linux.png" alt="GOUI Demo v0.6.0 on Linux">
 
 To run the current source from the repository root:
 
@@ -118,7 +118,7 @@ Core controls live in `gui`, with declarative bindings in `ui`. Additional contr
 `widgets`, with their declarative bindings in `widgets/ui`. Platform behavior and validation
 limits are recorded in the [Roadmap](doc/Roadmap.md) and individual design documents.
 
-### v0.6.0 preparation
+### v0.6.0 highlights
 
 - **Input policies and obscuring:** try username/digit limits, a small multiline limit, custom masking characters, and optional brief reveal in the demo's Text editing page. Programmatic assignments and history replay retain their own semantics.
 - **Optional diagnostics:** start a capture in Windows & inspection, explore other pages, then read or stop it. CPU-frame timings and resource operations are sampled explicitly; they are not GPU timings, monitor refresh rates, or memory-use measurements.

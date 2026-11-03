@@ -65,7 +65,8 @@ Linux 查询进程 locale 环境，中立 C/POSIX 由 GUI 默认英文；不修�
 
 页面整体可纵向滚动，JSON 预览保留320 DIP阅读高度并独立滚动；窄窗口下仍可访问全部操作。
 
-本轮为源码准备，`goui.toml` 版本为0.6.0；正式附件及跨平台发布验收遵循仓库 Release 流程。
+Demo 0.6.0 / build 1 已同步发布；正式附件、摘要及三平台验收范围见
+[v0.6.0 发布说明](../../doc/ReleaseV060.md)和 Release 的 BUILD-INFO.md。
 
 ## 代码组织与状态更新
 

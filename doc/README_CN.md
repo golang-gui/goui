@@ -26,26 +26,26 @@ GOUI 是纯Go实现的原生 GUI 框架。用 Go 编写界面与业务逻辑，�
 
 | 平台 | Demo 下载 |
 | --- | --- |
-| Windows x64 | [下载 EXE](https://github.com/golang-gui/goui/releases/download/v0.5.0/goui-demo-v0.5.0-windows-amd64.exe) |
-| macOS Apple Silicon | [下载 .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.5.0/goui-demo-v0.5.0-darwin-arm64.zip) |
-| Linux x64 / X11 | [下载可执行文件](https://github.com/golang-gui/goui/releases/download/v0.5.0/goui-demo-v0.5.0-linux-amd64) |
+| Windows x64 | [下载 EXE](https://github.com/golang-gui/goui/releases/download/v0.6.0/goui-demo-v0.6.0-windows-amd64.exe) |
+| macOS Apple Silicon | [下载 .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.6.0/goui-demo-v0.6.0-darwin-arm64.zip) |
+| Linux x64 / X11 | [下载可执行文件](https://github.com/golang-gui/goui/releases/download/v0.6.0/goui-demo-v0.6.0-linux-amd64) |
 
-上方下载为已发布的 v0.5.0 Demo；当前源码另包含下文列出的 v0.6.0 准备内容。
+上方为已发布的 **Demo 0.6.0 / build 1**。来源、摘要和验收范围见[发布说明](https://github.com/golang-gui/goui/releases/tag/v0.6.0)及其 BUILD-INFO.md / SHA256SUMS 附件。
 
-Linux 下载后先执行 `chmod +x goui-demo-v0.5.0-linux-amd64`，再启动程序。
+Linux 下载后先执行 `chmod +x goui-demo-v0.6.0-linux-amd64`，再启动程序。
 macOS 解压后打开 `GOUI Demo.app`，已使用 Developer ID 签名并通过 Apple 公证。
 
-Windows
+Windows — Direct2D，暗色外观
 
-<img src="images/demo-windows.png" alt="Windows 上的 GOUI Demo">
+<img src="images/demo-windows.png" alt="Windows 上的 GOUI Demo v0.6.0">
 
-macOS
+macOS — OpenGL，亮色外观
 
-<img src="images/demo-macOS.png" alt="macOS 上的 GOUI Demo">
+<img src="images/demo-macOS.png" alt="macOS 上的 GOUI Demo v0.6.0">
 
-Linux
+Linux / X11 — OpenGL，亮色外观
 
-<img src="images/demo-linux.png" alt="Linux 上的 GOUI Demo">
+<img src="images/demo-linux.png" alt="Linux 上的 GOUI Demo v0.6.0">
 
 也可以在仓库根目录直接运行当前源码：
 
@@ -117,7 +117,7 @@ RSS 包含驻留的共享库页面，PSS 按进程分摊共享页面；由Linux 
 核心控件位于 `gui`，声明式绑定位于 `ui`；配套控件位于 `widgets`，对应绑定位于
 `widgets/ui`。各平台的行为差异及验收范围见 [Roadmap](Roadmap.md) 和专题设计文档。
 
-### v0.6.0 准备内容
+### v0.6.0 主要变化
 
 - **输入策略与遮蔽：** Demo 文本页可体验用户名／数字限制、小型多行限长、自定义遮蔽字符和末字素短暂显露；程序赋值与历史回放保持各自语义。
 - **可选诊断：** 在“窗口与检查”页开始采集，切换页面操作后再读取或停止。手动查看 CPU 帧耗时与资源操作量，不将它们解释为 GPU 耗时、显示刷新率或内存占用。

@@ -1,5 +1,33 @@
 # Plan
 
+## v0.6.0 正式发布（2026-11-03）
+
+- [x] 以 v0.5.0 为基线，冻结 GitHub main 提交
+  `691493afe4a390de52a9036b84990a35ed827ed4`；annotated tag v0.6.0 已推送并核对
+  peeled SHA 一致，不改写标签。Demo 0.6.0 / build 1；正式发布且 Latest 为 v0.6.0。
+- [x] 干净候选源码全仓 `CGO_ENABLED=0 go test -json -count=1 ./...` 在独立 X11
+  通过3415项、跳过10项、零失败；Linux amd64／Windows amd64／macOS arm64 全仓
+  构建通过，GUI／UI／diagnostics／textedit／Demo／资源包 race 通过。
+  使用候选构建的 cmd/goui、Go 1.25.8、GOWORK=off、trimpath、-s -w 构建正式附件。
+- [x] 最终分发程序原生键鼠验收：Ubuntu 22.04.5／独立 Xvnc／xfwm4／OpenGL
+  llvmpipe、Windows 10 19045／RDP／Direct2D、macOS 15.7.7 M1／VNC／OpenGL，
+  应用请求1x；基础控件、文本、输入策略／遮蔽、滚动、下拉重开、跨页诊断、窗口调整
+  和正常退出通过。Windows 使用最大化／恢复验证窗口调整；实际系统 DPI 条件见附件。
+  未重新覆盖全部后端／DPI、真实中文 IME、多屏、拖放或触摸，不以公证替代桌面操作。
+- [x] Windows PE GUI 子系统及版本0.6.0.1核对通过，无 Authenticode 签名。
+  Mac 公证 ID `a74f26f8-f35f-4bb8-8b54-d087a08130e1` 为 Accepted；Developer ID、
+  runtime、时间戳及最终 ZIP 解压后的0.6.0／1、签名、staple、Gatekeeper 检查通过。
+- [x] Draft 五份附件的名称／大小／GitHub digest、下载摘要及原件逐字节比较通过；
+  公开后再次下载校验通过，匿名 SHA256SUMS 下载一致。Go 官方代理解析 v0.6.0 的
+  Origin.Hash 为候选 SHA；仓库外独立模块以 v0.6.0 验证 State 与输入策略通过，无 replace。
+- [x] 中英文 README 下载链接、Demo 说明、Roadmap 与 [ReleaseV060](ReleaseV060.md)
+  已更新；三张 Demo 截图替换为本次最终产物的真实基础控件页，统一1120×800，
+  裁除桌面背景并保留窗口外观，标注后端／亮暗模式，不改已发布附件。正式链接：https://github.com/golang-gui/goui/releases/tag/v0.6.0 。
+- [x] 独立 X11 与本轮创建的远程桌面连接已关闭，保留远端用户窗口及既有 SSH 连接；
+  Mac 输入源恢复为简体拼音。日志、产物、原生截图与工具问题记录在
+  `/tmp/goui-release-v060-hi951a3x`，Mac 原件在 `/tmp/goui-release-v0.6.0.h7RjVo`。
+
+
 ## 清理失效例程与修正原生测试（2026-11-03）
 
 - [x] 按确认范围移除五个未跟踪旧例程：`example/filemanager`、`gui_transparency`、
