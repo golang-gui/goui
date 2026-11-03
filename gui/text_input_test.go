@@ -8,6 +8,7 @@ import (
 
 	"github.com/golang-gui/goui/core/colors"
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/gui/textedit"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
@@ -769,5 +770,103 @@ func TestTextInputAsymmetricPadding(t *testing.T) {
 	}
 	if painter.clipRect != geometry.Rect(10, 2, 84, 18) {
 		t.Fatalf("asymmetric text clip = %+v", painter.clipRect)
+	}
+}
+
+// 掩码排版只包含替代字符，几何使用原文 UTF-8 坐标而非掩码字节坐标。
+func TestTextInputObscuredGeometryHistoryAndSnapshot(t *testing.T) {
+	typo := &editorTypography{}
+	setTestApplication(t, typo)
+	input := NewTextInput()
+	input.SetObscureChar('*')
+	input.SetObscured(true)
+	secret := "é中👨‍👩‍👧‍👦"
+	input.SetText(secret)
+	win := &window{}
+	win.SetWidget(input)
+	t.Cleanup(func() { win.SetWidget(nil) })
+	input.Arrange(geometry.Rect(0, 0, 160, 32))
+	win.SetFocusedWidget(input)
+	input.SetSelection(TextSelection{})
+	input.Paint(&testTextInputPainter{})
+	p := input.paragraph(0)
+	if p.layout.Text() != "***" || input.Text() != secret {
+		t.Fatal("原文送入了排版，或模型被替换")
+	}
+	for _, end := range []int{3, 6, len(secret)} {
+		editorKey(t, win, events.KeyArrowRight, 0)
+		if input.Selection().Caret != end {
+			t.Fatal("掩码命中未映射回原文边界", input.Selection(), end)
+		}
+	}
+	editorKey(t, win, events.KeyBackspace, 0)
+	if input.Text() != "é中" {
+		t.Fatal("删除拆开了 Emoji 字素", input.Text())
+	}
+	editorKey(t, win, events.KeyZ, textCommandModifier())
+	if input.Text() != secret {
+		t.Fatal("掩码编辑历史没有保存原文")
+	}
+	input.SetSelection(TextSelection{Anchor: 3, Caret: 6})
+	snapshot := input.Snapshot()
+	if snapshot.Text != "" || snapshot.TextEditing.VisibleText != "" || !snapshot.TextEditing.Obscured || snapshot.TextEditing.Length != len(secret) || snapshot.TextEditing.Selection != input.Selection() {
+		t.Fatal("掩码快照泄露正文或破坏源坐标", snapshot)
+	}
+	selection := input.Selection()
+	revision := input.model.Revision()
+	native := input.paragraph(0).layout.(*testTextLayout)
+	input.SetObscured(false)
+	if !native.destroyed || input.model.Revision() != revision || input.Selection() != selection || !input.model.CanRedo() {
+		t.Fatal("切换模式未释放排版，或改变模型／历史／选区")
+	}
+	input.Paint(&testTextInputPainter{})
+	if input.paragraph(0).layout.Text() != secret || input.Snapshot().Text != secret {
+		t.Fatal("退出遮蔽未恢复普通语义")
+	}
+}
+
+// 密码模式禁止复制和剪切；预编辑同样遮蔽且候选位置来自映射几何。
+func TestTextInputObscuredClipboardAndPreedit(t *testing.T) {
+	setTestApplication(t, &editorTypography{})
+	clip := &editorClipboard{text: "keep"}
+	App.(*application).clipboard = clip
+	input := NewTextInput()
+	input.SetObscured(true)
+	input.SetText("é中")
+	win := &window{}
+	win.SetWidget(input)
+	t.Cleanup(func() { win.SetWidget(nil) })
+	input.Arrange(geometry.Rect(0, 0, 160, 32))
+	win.SetFocusedWidget(input)
+	input.SetSelection(TextSelection{Anchor: 0, Caret: len(input.Text())})
+	for _, key := range []events.Key{events.KeyC, events.KeyX} {
+		editorKey(t, win, key, textCommandModifier())
+		if clip.text != "keep" || input.Text() != "é中" {
+			t.Fatal("遮蔽控件执行了复制／剪切")
+		}
+	}
+	input.SetSelection(TextSelection{Anchor: 6, Caret: 6})
+	input.im.emitPreedit("候选", len("候"))
+	input.Paint(&testTextInputPainter{})
+	if input.paragraph(0).layout.Text() != "••••" {
+		t.Fatal("预编辑没有遮蔽")
+	}
+	caret, ok := input.caretRect()
+	if !ok || caret.X != input.Padding().Left+30 {
+		t.Fatal("原生候选位置不在掩码预编辑光标处", caret)
+	}
+	info := input.Snapshot().TextEditing
+	if info.Preedit == nil || info.Preedit.Text != "" || info.Preedit.Caret != 3 || info.VisibleText != "" {
+		t.Fatal("快照暴露预编辑文本或偏移错误", info)
+	}
+	input.im.emitCommit(IMCommit{Text: "文", Composed: true})
+	if input.Text() != "é中文" {
+		t.Fatal("组合提交未保留真实文本")
+	}
+	input.SetInputFilter(textedit.DigitsOnly())
+	editorKey(t, win, events.KeyV, textCommandModifier())
+	clip.pending("12", nil)
+	if input.Text() != "é中文12" {
+		t.Fatal("遮蔽控件不能粘贴")
 	}
 }

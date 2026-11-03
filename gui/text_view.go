@@ -22,6 +22,10 @@ type TextEdit = textedit.Edit
 // TextChange reports one committed model revision.
 type TextChange = textedit.Change
 
+// InputFilter transforms or rejects user edits. It does not filter model
+// mutations, declarative assignments or history replay.
+type InputFilter = textedit.InputFilter
+
 // NewTextModel creates a document with normalized UTF-8 text and LF line breaks.
 func NewTextModel(text string) *TextModel { return textedit.NewModel(text) }
 
@@ -60,15 +64,20 @@ func (t *TextView) Selection() TextSelection  { return t.selection }
 
 // SetSelection clamps UTF-8 byte offsets to the document and whole Cluster
 // boundaries when typography is available, preserving selection direction.
-func (t *TextView) SetSelection(s TextSelection)     { t.setSelectionValue(s) }
-func (t *TextView) ReadOnly() bool                   { return t.readOnly }
-func (t *TextView) SetReadOnly(value bool)           { t.setReadOnly(value) }
-func (t *TextView) AcceptsTab() bool                 { return t.acceptsTab }
-func (t *TextView) SetAcceptsTab(value bool)         { t.setAcceptsTab(value) }
-func (t *TextView) WrapMode() WrapMode               { return t.wrap }
-func (t *TextView) SetWrapMode(value WrapMode)       { t.setWrapMode(value) }
-func (t *TextView) Padding() geometry.Insets         { return t.padding }
-func (t *TextView) SetPadding(value geometry.Insets) { t.setPadding(value) }
+func (t *TextView) SetSelection(s TextSelection) { t.setSelectionValue(s) }
+func (t *TextView) ReadOnly() bool               { return t.readOnly }
+func (t *TextView) InputFilter() InputFilter     { return t.inputFilter }
+
+// SetInputFilter replaces the view-local policy for future user edits. Nil
+// removes it; replacing a policy does not edit text, clear history or reset IME.
+func (t *TextView) SetInputFilter(filter InputFilter) { t.inputFilter = filter }
+func (t *TextView) SetReadOnly(value bool)            { t.setReadOnly(value) }
+func (t *TextView) AcceptsTab() bool                  { return t.acceptsTab }
+func (t *TextView) SetAcceptsTab(value bool)          { t.setAcceptsTab(value) }
+func (t *TextView) WrapMode() WrapMode                { return t.wrap }
+func (t *TextView) SetWrapMode(value WrapMode)        { t.setWrapMode(value) }
+func (t *TextView) Padding() geometry.Insets          { return t.padding }
+func (t *TextView) SetPadding(value geometry.Insets)  { t.setPadding(value) }
 func (t *TextView) ConnectChange(fn func(TextChange)) signal.Handle {
 	return t.connectChange(fn)
 }

@@ -80,6 +80,63 @@ func (t *TextInput) ConnectSelection(fn func(TextSelection)) signal.Handle {
 	return t.connectSelection(fn)
 }
 func (t *TextInput) ReadOnly() bool           { return t.readOnly }
+func (t *TextInput) InputFilter() InputFilter { return t.inputFilter }
+
+// SetInputFilter replaces the policy for future user edits. Nil removes it;
+// programmatic text, history, selection and IME are not changed.
+func (t *TextInput) SetInputFilter(filter InputFilter) { t.inputFilter = filter }
+
+// Obscured reports whether display and semantic text are hidden. Application
+// Text and ConnectText still use the actual value. Copy and cut are disabled.
+func (t *TextInput) Obscured() bool { return t.obscured }
+
+// SetObscured changes view-local presentation without editing text or history.
+func (t *TextInput) SetObscured(value bool) {
+	if t.Destroyed() || t.obscured == value {
+		return
+	}
+	t.obscured = value
+	t.refreshObscuring()
+}
+
+// ObscureChar returns the repeated replacement rune, defaulting to U+2022.
+func (t *TextInput) ObscureChar() rune {
+	if t.obscureChar == 0 {
+		return '•'
+	}
+	return t.obscureChar
+}
+
+// SetObscureChar sets the masking rune. Zero restores U+2022. Invalid, control,
+// whitespace and combining runes panic. It does not enable obscuring.
+func (t *TextInput) SetObscureChar(char rune) {
+	if !textedit.ValidObscureChar(char) {
+		panic("gui: invalid obscuring character")
+	}
+	if char == 0 {
+		char = '•'
+	}
+	if t.Destroyed() || t.ObscureChar() == char {
+		return
+	}
+	t.obscureChar = char
+	if t.obscured {
+		t.refreshObscuring()
+	}
+}
+
+func (t *TextInput) refreshObscuring() {
+	t.inputRevision++
+	t.resetParagraphs()
+	if t.Destroyed() {
+		return
+	}
+	t.hasDesiredX = false
+	t.revealCaret = true
+	t.updateContextMenu()
+	t.RequestLayout()
+	t.requestSemanticUpdate()
+}
 func (t *TextInput) SetReadOnly(value bool)   { t.setReadOnly(value) }
 func (t *TextInput) Padding() geometry.Insets { return t.padding }
 
@@ -115,6 +172,8 @@ func (t *TextInput) Paint(p Painter) {
 func (t *TextInput) Snapshot() WidgetInfo {
 	info := t.snapshot()
 	info.Role = RoleTextInput
-	info.Text = t.Text()
+	if !t.obscured {
+		info.Text = t.Text()
+	}
 	return info
 }
