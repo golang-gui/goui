@@ -47,8 +47,8 @@ TextInput 保持单行规范化，TextView 保留 LF；过滤结果在 GUI 边�
 Obscured 默认 false；ObscureChar 默认 U+2022，可设为 * 等单个可显示 rune；0 恢复默认。
 控制、空白、组合标记、格式控制字符和非法 rune 不作为替代字符，非法设置 panic。
 
-模型和 Text / ConnectText / BindText 使用真实文本。只有原生排版输入被替换为每字素
-一个替代字符；映射只保存边界，不保存原文。将原生度量中的 UTF-8 位置映射回投影原文
+模型和 Text / ConnectText / BindText 使用真实文本。原生排版默认接收每字素一个
+替代字符；可选反馈期间仅保留显露的单个字素，映射不保存完整原文。将原生度量中的 UTF-8 位置映射回投影原文
 坐标，复用 Cluster 的命中／几何／选择／导航，不假装圆点字节偏移就是模型偏移。
 IME 投影先组合，再生成遮蔽排版；绘制、预编辑下划线、滚动及原生候选定位共用此几何。
 按词导航／双击将遮蔽内容当作整体；普通左右和删除仍按映射后的 Cluster 边界。
@@ -57,12 +57,37 @@ IME 投影先组合，再生成遮蔽排版；绘制、预编辑下划线、滚�
 正文不输出原文，TextEditingInfo.Obscured 标记隐藏；长度和选区仍是原文 UTF-8 单位。
 不把替代文字放进按原文范围解释的 VisibleText。退出遮蔽恢复普通文本语义。
 切换模式或替代字符只清理视图排版／几何和更新菜单，不改模型／历史／逻辑选区。
-不引入自动显露末字符或内置眼睛按钮，不承诺 Go 堆内存清零或系统级安全输入。
+不引入内置眼睛按钮，不承诺 Go 堆内存清零或系统级安全输入。
+
+### 末字素短暂显露
+
+TextInput.ObscureDelay / SetObscureDelay(time.Duration) 控制可选反馈，默认 0，非正值
+均为立即遮蔽。与 Obscured、ObscureChar 独立，不自动启用遮蔽。推荐应用按需要设置
+600ms 左右；窗口测试使用 2 秒，以便真实输入与声明式重建的观察。
+
+- 仅成功提交的单个完整字素触发；过滤前提交与过滤后插入都须是单字素。一次 IME
+  最终提交一个字素可触发，预编辑始终遮蔽。组合符连接到既有字符时显露整个结果字素。
+- 复制／剪切及 Snapshot 的保密契约不变。粘贴、程序赋值、历史、多字素提交不显露。
+  不从 TextChanged 猜测输入来源；只有 IMContext 的提交入口启动反馈。
+- 新提交先隐藏前一次反馈；最多显示一个字素。选区／光标改变、控件／窗口失焦、隐藏、
+  禁用、只读、卸载、正文变更及遮蔽配置改变均取消反馈。重新聚焦或重新启用不恢复。
+- 相同 setter 为 no-op，声明式重建不重启计时；相同正文赋值不清除反馈。到期仅改变
+  显示，不修改模型、选区、历史或输入版本，也不让等待中的粘贴失效。
+- GUI 按需创建并复用一个单次 Timer，卸载停止并释放引用；默认关闭时不分配计时器。
+  Timer 失败确定性退化为立即遮蔽，已排队的旧通知由现有 Timer 取消／重启契约防护。
+- 混合显示记录显露区域的显示字节范围，度量转换时恢复源字素边界；原生字体回退
+  分裂的同一显露字素合并几何。到期重新排版，命中、光标、滚动均使用当前显示度量。
+
+参考：GTK4 的 gtk-entry-password-hint-timeout 默认 0，并建议启用时可用 600ms；
+Qt 6 提供 SH_LineEdit_PasswordMaskDelay。GOUI 采用控件实例上的显式时长，不新增
+平台设置查询或主题行为策略。
+- https://docs.gtk.org/gtk4/property.Settings.gtk-entry-password-hint-timeout.html
+- https://doc.qt.io/qt-6/qstyle.html#StyleHint-enum
 
 ## 声明式接入
 
-TextInput.Obscured(bool) / ObscureChar(rune) / InputFilter(filter)。TextView.InputFilter(filter)。
-省略恢复 false／默认替代字符／nil；不向状态源回写转换后的程序赋值，不比较函数身份。
+TextInput.Obscured(bool) / ObscureChar(rune) / ObscureDelay(time.Duration) / InputFilter(filter)。
+TextView.InputFilter(filter)。省略恢复 false／默认替代字符／0／nil；不向状态源回写转换后的程序赋值，不比较函数身份。
 协调时先配置显示／策略，再绑定文本和选区。输入经过 GUI 的同一条用户编辑路径。
 
 ```go

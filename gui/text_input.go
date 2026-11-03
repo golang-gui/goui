@@ -1,10 +1,13 @@
 package gui
 
 import (
+	"time"
+
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui/textedit"
 	"github.com/golang-gui/goui/layout"
+	"github.com/rivo/uniseg"
 )
 
 const (
@@ -30,7 +33,13 @@ type TextInput struct {
 func NewTextInput() *TextInput {
 	t := &TextInput{}
 	t.textEditor = newTextEditor(t, true, defaultTextInputPadding)
-	t.connectChange(func(TextChange) { t.textSignal.Emit(t.Text()) })
+	t.connectChange(func(TextChange) {
+		t.hideObscureHint()
+		if !t.Destroyed() {
+			t.textSignal.Emit(t.Text())
+		}
+	})
+	t.connectSelection(func(TextSelection) { t.hideObscureHint() })
 	return t
 }
 
@@ -96,6 +105,7 @@ func (t *TextInput) SetObscured(value bool) {
 		return
 	}
 	t.obscured = value
+	t.stopObscureHint()
 	t.refreshObscuring()
 }
 
@@ -120,22 +130,96 @@ func (t *TextInput) SetObscureChar(char rune) {
 		return
 	}
 	t.obscureChar = char
+	t.stopObscureHint()
 	if t.obscured {
 		t.refreshObscuring()
 	}
 }
 
+// ObscureDelay is how long a newly committed grapheme remains visible while
+// Obscured is true. The default zero masks immediately.
+func (t *TextInput) ObscureDelay() time.Duration { return t.obscureDelay }
+
+// SetObscureDelay configures optional last-grapheme feedback. Nonpositive values
+// disable it. Paste, programmatic assignments, history and multi-grapheme commits
+// never reveal text. Changing the delay ends an active hint; an equal value is a
+// no-op. This does not enable obscuring or change the model/selection/history.
+func (t *TextInput) SetObscureDelay(delay time.Duration) {
+	delay = max(0, delay)
+	if t.Destroyed() || t.obscureDelay == delay {
+		return
+	}
+	t.obscureDelay = delay
+	t.hideObscureHint()
+}
+
 func (t *TextInput) refreshObscuring() {
 	t.inputRevision++
+	t.invalidateObscuring()
+	if !t.Destroyed() {
+		t.requestSemanticUpdate()
+	}
+}
+
+// A hint is allocated only when an eligible user commit can start a GUI timer.
+// The range and revision identify source text; the hint retains no plaintext.
+type textObscureHint struct {
+	span     TextRange
+	revision uint64
+	timer    *Timer
+}
+
+func (t *textEditor) stopObscureHint() bool {
+	hint := t.obscureHint
+	if hint == nil {
+		return false
+	}
+	hint.timer.Stop()
+	active := hint.span.Start < hint.span.End
+	hint.span = TextRange{}
+	return active
+}
+
+func (t *textEditor) hideObscureHint() {
+	if t.stopObscureHint() {
+		t.invalidateObscuring()
+	}
+}
+
+func (t *textEditor) showObscureHint(edit TextEdit, committed string) {
+	if !t.obscured || t.obscureDelay <= 0 || t.readOnly || t.preedit != nil || !t.interactive() || App == nil ||
+		uniseg.GraphemeClusterCount(t.normalizeInput(committed)) != 1 || uniseg.GraphemeClusterCount(edit.Text) != 1 {
+		return
+	}
+	if t.obscureHint == nil {
+		hint := &textObscureHint{timer: App.NewTimer()}
+		hint.timer.ConnectTimeout(func() {
+			if t.obscureHint == hint {
+				t.hideObscureHint()
+			}
+		})
+		t.obscureHint = hint
+	}
+	hint := t.obscureHint
+	if err := hint.timer.StartOnce(t.obscureDelay); err != nil {
+		// Optional visual feedback can fall back to immediate masking.
+		t.hideObscureHint()
+		return
+	}
+	hint.span = TextRange{Start: edit.Range.Start, End: edit.Range.Start + len(edit.Text)}
+	hint.revision = t.model.Revision()
+	t.invalidateObscuring()
+}
+
+func (t *textEditor) invalidateObscuring() {
 	t.resetParagraphs()
-	if t.Destroyed() {
+	if t.owner.base().destroyed || t.suspended {
 		return
 	}
 	t.hasDesiredX = false
 	t.revealCaret = true
 	t.updateContextMenu()
-	t.RequestLayout()
-	t.requestSemanticUpdate()
+	t.owner.RequestLayout()
 }
 func (t *TextInput) SetReadOnly(value bool)   { t.setReadOnly(value) }
 func (t *TextInput) Padding() geometry.Insets { return t.padding }
