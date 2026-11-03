@@ -19,6 +19,7 @@ func main() {
 		log.Fatal(err)
 	}
 	defer d.stopActivities()
+	defer d.windows.closeCapture()
 	languageChanged := mlang.ConnectChanged(d.translateUI)
 	defer languageChanged.Disconnect()
 	if err := ui.Run("org.golanggui.Demo", d.build); err != nil {

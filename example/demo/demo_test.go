@@ -15,11 +15,14 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/example/demo/resource"
 	"github.com/golang-gui/goui/gui"
+	"github.com/golang-gui/goui/gui/diagnostics"
+	"github.com/golang-gui/goui/gui/textedit"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/mlang"
 	"github.com/golang-gui/goui/platform/graphics"
@@ -28,6 +31,82 @@ import (
 	"github.com/golang-gui/goui/widgets"
 	wui "github.com/golang-gui/goui/widgets/ui"
 )
+
+// 核对展示实际安装的策略边界；程序赋值与页面／语言切换保持独立状态。
+func TestDemoInputPolicyExamples(t *testing.T) {
+	d, err := newDemo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.app = new(demoTestApp)
+	inputs := d.editor.inputs
+	for _, tc := range []struct {
+		filter     gui.InputFilter
+		text, want string
+		accept     bool
+	}{
+		{inputs.usernameFilter, "user.name_123456789", "user.name_123456", true},
+		{inputs.usernameFilter, "user@name", "", false},
+		{inputs.digitsFilter, "01234567", "012345", true},
+		{inputs.digitsFilter, "123x", "", false},
+		{inputs.passwordFilter, "中 👨‍👩‍👧‍👦", "中 👨‍👩‍👧‍👦", true},
+		{inputs.passwordFilter, "abc\t", "", false},
+		{inputs.noteFilter, strings.Repeat("é", 81), strings.Repeat("é", 80), true},
+	} {
+		in, err := textedit.NewInput(textedit.NewModel(""), textedit.Edit{Text: tc.text})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, accepted := tc.filter(in)
+		if got != tc.want || accepted != tc.accept {
+			t.Fatalf("示例策略：%q/%v，期望 %q/%v", got, accepted, tc.want, tc.accept)
+		}
+	}
+	inputs.username.Set("owner")
+	inputs.password.Set("private-value")
+	inputs.note.Set("own note")
+	beforeStatus := d.status.Get()
+	previous := mlang.Language()
+	t.Cleanup(func() { _ = mlang.SetLanguage(previous) })
+	for _, language := range demoLanguages {
+		_ = mlang.SetLanguage(language.tag)
+		d.translateUI()
+		d.navigate(1)
+		d.navigate(8)
+		if inputs.username.Get() != "owner" || inputs.password.Get() != "private-value" || inputs.note.Get() != "own note" {
+			t.Fatal("导航或翻译覆盖了用户输入")
+		}
+		if strings.Contains(d.status.Get(), "private-value") {
+			t.Fatal("密码进入了状态反馈")
+		}
+	}
+	d.status.Set(beforeStatus)
+	inputs.clear()
+	if inputs.username.Get() != "" || inputs.password.Get() != "" || inputs.note.Get() != "" || d.status.Get() != beforeStatus {
+		t.Fatal("清空输入影响了无关状态")
+	}
+	if d.windows.capture != nil || d.windows.capturing.Get() {
+		t.Fatal("普通导航自动启动了诊断")
+	}
+}
+
+// 摘要明确选主窗口，不能把其它窗口帧率相加；创建量不冒充内存或存活量。
+func TestDemoCaptureSummary(t *testing.T) {
+	previous := mlang.Language()
+	t.Cleanup(func() { _ = mlang.SetLanguage(previous) })
+	_ = mlang.SetLanguage("en")
+	if captureSummary(diagnostics.Snapshot{}) != resource.CaptureInitial() {
+		t.Fatal("未采样时输出了伪造的帧率")
+	}
+	snapshot := diagnostics.Snapshot{Started: time.Now(),
+		Roots:     []diagnostics.Root{{Ref: 1, ID: "other", Completed: 999, FPS: 999}, {Ref: 2, ID: "main", Completed: 3, FPS: 12.5}},
+		Frames:    []diagnostics.Frame{{RootRef: 2, Completed: true, Total: 4 * time.Millisecond}, {RootRef: 1, Completed: true, Total: 999 * time.Millisecond}},
+		Resources: diagnostics.Resources{LayoutsCreated: 2, TextRasterizations: 3, ImagesCreated: 4, ImagesUpdated: 5, TextCacheHits: 6, TextCacheMisses: 7}}
+	summary := captureSummary(snapshot)
+	if !strings.Contains(summary, "3 CPU frames") || !strings.Contains(summary, "12.5 FPS") || !strings.Contains(summary, "4.00 ms") || !strings.Contains(summary, "4/5") || !strings.Contains(summary, "6/7") || strings.Contains(summary, "999") {
+		t.Fatal("摘要混淆主窗口、最近帧或资源操作", summary)
+	}
+}
 
 // 样例须为真实可编辑 JSON：单行超过长段落阈值，多行包含完整记录和明确末尾。
 func TestDemoLargeTextSampleDocuments(t *testing.T) {
