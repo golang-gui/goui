@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 // The complete replacement sources are embedded, so building the driver never
@@ -84,7 +85,10 @@ func BuildDriver(ctx context.Context, goCommand, output string, log io.Writer) e
 	}
 	command = exec.CommandContext(ctx, goCommand, "build", "-trimpath", "-overlay="+overlayFile, "-o", output, "cmd/go")
 	command.Dir = temp
-	command.Env = baseDriverEnv()
+	// Downloaded Go toolchains live under the user's module cache. Tool generation
+	// uses only GOROOT packages, so give this invocation its own empty module cache;
+	// the overlay then belongs to the toolchain, not to application dependencies.
+	command.Env = buildEnv(baseDriverEnv(), map[string]string{"GOMODCACHE": filepath.Join(temp, "modules")})
 	command.Stdout = log
 	command.Stderr = log
 	if err = command.Run(); err != nil {
@@ -106,4 +110,25 @@ func baseDriverEnv() []string {
 		env = append(env, item)
 	}
 	return append(env, "GOWORK=off", "CGO_ENABLED=0", "GOTOOLCHAIN=local", "GOFLAGS=", "GOENV=off", "GOOS="+runtime.GOOS, "GOARCH="+runtime.GOARCH, "GOARM64=v8.0", "GOAMD64=v1", "GOEXPERIMENT=")
+}
+
+func buildEnv(env []string, values map[string]string) []string {
+	result := make([]string, 0, len(env)+len(values))
+	for _, entry := range env {
+		key, _, _ := strings.Cut(entry, "=")
+		replaced := false
+		for name := range values {
+			if strings.EqualFold(key, name) {
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			result = append(result, entry)
+		}
+	}
+	for key, value := range values {
+		result = append(result, key+"="+value)
+	}
+	return result
 }
