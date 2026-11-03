@@ -1,5 +1,21 @@
 # Plan
 
+## TextInput 显露例程的手动／自动外观（2026-11-03）
+
+- [x] 默认手动模式使用正常 Modern 主题和自然测量高度，保留光标／焦点／选区。
+  专用样式仅用于 `-auto`，界面标记模式；像素视口检查原生行高以免同时裁剪误判。
+  原生输入像素检查改用 `-auto -hold`；不改变 Widget 或样式系统实现。
+- [x] Ubuntu 22.04.5 amd64、独立 Xvnc :86／xfwm4 4.16.1：Software 1x／OpenGL
+  （llvmpipe）2x 手动模式经原生键鼠验证，初始焦点可直接输入；自然高度与实际高度均为
+  28 DIP，截图断言确认光标闪烁、全选高亮及切换焦点边框，人工复核文字无裁剪。
+  Software／OpenGL 1x／2x 自动模式均通过，64 DIP 视口通过原生行高断言；
+  `-auto -hold` 的原生 F7／F6 显露／遮蔽像素检查通过，关闭退出 0。
+- [x] 已跟踪源码副本 `DISPLAY=:86 go test -json -count=1 ./...`：3413 项通过、
+  10 项既有跳过；最终例程编译检查及 Windows amd64／macOS arm64 交叉构建通过。
+  未进行远端桌面验收。原工作区全仓测试仍有六个未跟踪旧例程编译错误；UI 进程首次
+  启动段错误，单包复验未复现，复验只重现既有未跟踪 timer 断言失败。保留这些文件，
+  未放宽断言；16 个既有 PNG 已恢复。日志与截图见 `/tmp/goui-obscure-example-5qx0zyx8`。
+
 ## TextInput 单字素显露反馈（2026-11-03）
 
 - 设计见 [DesignTextInput](DesignTextInput.md#末字素短暂显露)。
