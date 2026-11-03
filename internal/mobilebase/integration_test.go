@@ -13,14 +13,14 @@ import (
 	"time"
 )
 
-// TestColdBuild 需要 Linux amd64、Go 1.25.8、cc、ld 和 Python3，无需桌面。
+// TestColdBuild 需要 Linux amd64、Go 1.25.8、cc 和 ld，无需桌面。
 // 维护者阶段允许 C 编译；消费阶段使用独立空缓存、拒绝编译器和仅链接驱动。
 // 两版普通 Go 业务包共用相同基座，由独立 C 宿主验证回调、GC 和栈增长。
 func TestColdBuild(t *testing.T) {
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" || runtime.Version() != baseGoVersion {
 		t.Skip("本验收针对 Linux amd64 / Go 1.25.8；其它平台需运行对应基座验收")
 	}
-	for _, tool := range []string{"cc", "ld", "python3"} {
+	for _, tool := range []string{"cc", "ld"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			t.Skipf("维护者工具不可用: %s", tool)
 		}
@@ -69,12 +69,10 @@ func TestColdBuild(t *testing.T) {
 		t.Fatal(err)
 	}
 	linkDriver := filepath.Join(root, "link-driver")
-	data, err := os.ReadFile("testdata/link.py")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = os.WriteFile(linkDriver, data, 0700); err != nil {
-		t.Fatal(err)
+	command = exec.CommandContext(ctx, "go", "build", "-o", linkDriver, "./testdata/link")
+	command.Env = append(os.Environ(), "CGO_ENABLED=0")
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("link driver: %v\n%s", err, output)
 	}
 	if err = os.WriteFile(filepath.Join(root, "gcc"), []byte("#!/bin/sh\nexit 98\n"), 0700); err != nil {
 		t.Fatal(err)

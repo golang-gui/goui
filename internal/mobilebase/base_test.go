@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -125,5 +127,29 @@ func TestExportIdentity(t *testing.T) {
 	os.WriteFile(broken, bytes.Repeat([]byte("x"), 100), 0600)
 	if _, err = BaseExportHash(broken); err == nil {
 		t.Fatal("不应接受非 Go 归档")
+	}
+}
+
+func TestNativeHostToolEnvironment(t *testing.T) {
+	// 宿主工具不继承用户的交叉编译目标或 go env 持久化配置。
+	config := filepath.Join(t.TempDir(), "go.env")
+	if err := os.WriteFile(config, []byte("GOOS=windows\nGOARCH=386\nGOAMD64=v3\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOENV", config)
+	t.Setenv("GOOS", "ios")
+	t.Setenv("GOARCH", "arm64")
+	command := exec.Command("go", "env", "-json", "GOOS", "GOARCH", "GOENV", "CGO_ENABLED", "GOAMD64", "GOARM64")
+	command.Env = baseDriverEnv()
+	output, err := command.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var values map[string]string
+	if err = json.Unmarshal(output, &values); err != nil {
+		t.Fatal(err)
+	}
+	if values["GOOS"] != runtime.GOOS || values["GOARCH"] != runtime.GOARCH || values["GOENV"] != "" || values["CGO_ENABLED"] != "0" {
+		t.Fatalf("宿主环境被污染: %s", output)
 	}
 }
