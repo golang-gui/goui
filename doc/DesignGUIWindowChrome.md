@@ -88,7 +88,7 @@ box. Put application margins on a separate body container below it; use
 HeaderBar.Padding for its own content. A lower/application-inset HeaderBar must not
 silently reposition the window controls. Linux GUI-owned resize hit zones do not reserve layout space; HeaderBar backgrounds
 fill their complete allocations.
-The filemanager example follows this composition.
+The demo follows this composition.
 
 The background fills the HeaderBar's complete rectangle. During Arrange it
 intersects ControlsBounds with its own window rectangle and reserves space on
@@ -199,9 +199,10 @@ and clears the sequence. Other buttons, Client regions, focus/size/state changes
 modal input and leaving the window cancel the candidate. No public double-click
 signal or settings API is introduced. Native Windows thresholds remain system-owned.
 
-Example: `go run ./example/gui_window_chrome -none -transparent`. The example
-registers eight resize zones after HeaderBars, and deliberately leaves cursor
-feedback unchanged. The alpha surface still has its normal styled background.
+The former `example/gui_window_chrome -none -transparent` registered eight
+resize zones after HeaderBars. That legacy example was removed on 2026-11-03;
+use `go run ./tests/window/gui/border_box` for the current public resize wrapper,
+or the demo's Windows & inspection page for transparent None windows.
 The public cursor set includes horizontal, vertical and both diagonal resize
 shapes. None callers may select them explicitly; automatic feedback is confined
 to GUI-drawn Integrated.
@@ -233,11 +234,13 @@ slice; the prior platform acceptance does not verify these new layout rules.
 
 ## Example
 
-Run go run ./example/gui_window_chrome. The application creates two HeaderBars
-with ordinary child rows and never constructs or positions controls. Passive
-labels/backgrounds use automatic dragging, without explicit query callbacks.
-Buttons retain ordinary client input. The example supports -native
-and -quit-after=500ms for fallback and startup/shutdown checks.
+Run `go run ./example/demo`. The application uses HeaderBar and window-owned
+controls; its Windows & inspection page provides Native, Integrated and None
+windows. Passive labels/backgrounds use automatic dragging; buttons retain
+ordinary client input. The former two-HeaderBar `example/gui_window_chrome`
+program was removed on 2026-11-03. HeaderBar and hit-region behavior remains
+covered by GUI/UI tests and the independent `tests/window/gui/integrated_layout`
+and `tests/window/gui/border_box` programs.
 
 Automated checks include 1x/2x Software frames proving that controls paint above
 full-client content in the same frame, without an application root. Cross-platform
@@ -341,9 +344,10 @@ decoration implementation, not a promise of identical window-manager behavior.
   final corner erasure, border-state restoration and maximized/fullscreen transitions.
   Resize presses on full-client Buttons cannot change focus or activate the Button;
   explicit Client overrides restore normal Widget input.
-- `go run ./example/integrated`; repeat with `GOUI_PLAT_PAINTER=software` and
-  `GOUI_PLAT_SCALE=2`. Native and GUI policies are logged. Software/OpenGL have
-  been visually checked on the available composited X11 desktop; this does not
+- Current entry: `go run ./tests/window/gui/integrated_layout`; repeat with
+  `GOUI_PLAT_PAINTER=software` and `GOUI_PLAT_SCALE=2`. The former
+  `example/integrated` was removed on 2026-11-03. Software/OpenGL were visually
+  checked on the available composited X11 desktop during implementation; this does not
   replace testing other window managers or physical multi-monitor transitions.
 - Native XTest input on the available X11 desktop verified the maximize button,
   Caption double-click restore, Caption drag, right-edge resize and close button.

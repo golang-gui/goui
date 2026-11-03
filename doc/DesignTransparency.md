@@ -169,8 +169,9 @@ GOUI_PLAT_PAINTER=opengl go run ./example/transparency
 示例点击任意表面后清空/恢复内容，Popup 部分超出 owner；用于肉眼检查边缘和残留。
 只有 Window 保留原生标题栏便于移动和关闭，不把自绘标题栏策略混入示例。
 
-GUI 示例：`go run ./example/gui_transparency`，可切换 Window/Popover 背景、显隐 Popover、
-移除/恢复其内容；同样可通过 `GOUI_PLAT_PAINTER` 选择绘制后端。
+GUI 的旧 `example/gui_transparency` 已于2026-11-03移除。当前可运行 `go run ./example/demo`，
+在“窗口与检查”中打开透明 None／BorderBox 窗口；Window／Popup 透明表面的专项检查
+仍使用上述平台例程。同样可通过 `GOUI_PLAT_PAINTER` 选择绘制后端。
 
 ## 原生依据
 
