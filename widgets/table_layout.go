@@ -14,10 +14,6 @@ var tableHeaderPadding = geometry.Insets{Left: 8, Top: 4, Right: 8, Bottom: 4}
 type tableLayout struct{ view *TableView }
 
 func (l *tableLayout) Measure(children []layout.Child, c layout.Constraint) layout.Measurement {
-	if c.Max.Width >= layout.Inf {
-		// An unbounded measurement has no extra width to distribute.
-		l.view.setColumnViewportWidth(0)
-	}
 	h, w := l.view.borderWidths()
 	width, height := c.Max.Width, c.Max.Height
 	// Inf is a finite sentinel. Preserve it when reserving the frame/header,
@@ -58,12 +54,20 @@ func (l *tableLayout) Arrange(children []layout.Child, rect geometry.Rectangle) 
 type tableHeaderLayout struct{ view *TableView }
 
 func (l *tableHeaderLayout) Measure(children []layout.Child, c layout.Constraint) layout.Measurement {
-	height := tableMinHeight
+	height, width := tableMinHeight, float32(0)
 	for i, child := range children {
-		m := child.Measure(layout.Loose(geometry.Size{Width: l.view.visibleColumns[i].allocatedWidth, Height: layout.Inf}))
+		column := l.view.visibleColumns[i]
+		columnWidth := column.allocatedWidth
+		if c.Max.Width >= layout.Inf {
+			// A natural-size query has no extra space to distribute, but must
+			// preserve the actual column geometry used by painting and input.
+			columnWidth = column.width
+		}
+		m := child.Measure(layout.Loose(geometry.Size{Width: columnWidth, Height: layout.Inf}))
 		height = max(height, m.Height)
+		width += columnWidth
 	}
-	return layout.Measured(c.Clamp(geometry.Size{Width: l.view.columnWidth, Height: height}))
+	return layout.Measured(c.Clamp(geometry.Size{Width: width, Height: height}))
 }
 func (l *tableHeaderLayout) Arrange(children []layout.Child, rect geometry.Rectangle) {
 	for i, child := range children {
