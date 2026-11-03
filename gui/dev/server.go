@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/golang-gui/goui/gui"
+	"github.com/golang-gui/goui/gui/diagnostics"
 )
 
 // Protocol endpoints served over loopback HTTP.
@@ -73,6 +74,10 @@ func newHandler(appFn func() gui.Application) http.Handler {
 	mux.HandleFunc(SnapshotPath, h.handleSnapshot)
 	mux.HandleFunc(EventPath, h.handleEvent)
 	mux.HandleFunc(TextPath, h.handleText)
+	captureHandler := &diagnosticsHandler{host: h, start: func(app gui.Application, options diagnostics.Options) (diagnosticsCapture, error) {
+		return diagnostics.Start(app, options)
+	}}
+	mux.HandleFunc(DiagnosticsPath, captureHandler.serveHTTP)
 	return mux
 }
 
