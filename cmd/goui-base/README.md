@@ -39,5 +39,30 @@ complete Android/iOS application build command.
 
 See [the design and validation record](../../doc/PlanMobileBuild.md#13-正式基座第一阶段冷缓存归档接入2026-11-03).
 Run `go test ./internal/mobilebase ./cmd/goui-base` for logic checks and the
-Linux amd64 cold-build integration check. The latter requires Go 1.25.8, cc, ld,
-and Python3 for the maintainer/test harness, and does not require a desktop.
+Linux amd64 cold-build integration check. The latter requires Go 1.25.8, cc and ld
+for the maintainer/test harness, and does not require a desktop.
+
+
+## Native link components
+
+`goui-base link-inputs -config inputs-spec.json -dir prepared-target -o target`
+and `goui-base link-tools -config tools-spec.json -dir prepared-tools -o host`
+seal separate target and host components. Source specs use the corresponding
+`NativeInputs`/`NativeTools` JSON fields; list each selected relative file path in
+`files`, with either an expected SHA-256 or an empty string to calculate it.
+Sources, versions and license/review status are required provenance. Output must
+not exist. Host tools are checked by executing their declared version.
+
+The internal `goui-link` command consumes `GOUI_LINK_INPUTS` and
+`GOUI_LINK_TOOLS`. It adapts a deliberately small set of external-link arguments,
+rejects compilation requests and unknown options, and verifies native outputs
+before replacing them. Platform host objects/frameworks remain explicit inputs.
+
+For the pinned Go linker's external-archive invocation it reuses `go tool pack`
+through `GOUI_GO`. This archive has no native symbol index and is intended only
+for the final `-all_load` link; it is not a general-purpose C static library.
+No separate llvm-ar or Python runtime is required for consumption.
+
+See [the second-stage design](../../doc/PlanMobileBuild.md#14-第二阶段独立链接组件和-go-链接驱动2026-11-03)
+for component identities, SDK boundaries, supported invocation examples and the
+remaining distribution/host-validation limitations.
