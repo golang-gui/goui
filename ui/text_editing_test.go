@@ -6,6 +6,7 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
+	"github.com/golang-gui/goui/gui/textedit"
 	"github.com/golang-gui/goui/platform/events"
 )
 
@@ -337,5 +338,65 @@ func TestTextInputSubmitBindingUsesEventDispatcherAndLatestHandler(t *testing.T)
 	enter()
 	if first != 1 || second != 1 || input.Text() != "" {
 		t.Fatalf("submit binding duplicated or retained handler: %d/%d", first, second)
+	}
+}
+
+// 函数策略用 setter 替换，不比较函数身份；省略恢复默认且不改状态源。
+func TestTextInputPolicyAndObscuringDeclaration(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	win := &overlayInputWindow{testWindow: newTestWindow()}
+	text := MakeState("original")
+	calls := 0
+	filter := func(in textedit.Input) (string, bool) { calls++; return in.Text, false }
+	build := func() View {
+		return TextInput().ID("secret").BindText(&text).Obscured(true).ObscureChar('*').InputFilter(filter)
+	}
+	w := r.updateWindow(win, build()).(*gui.TextInput)
+	w.Arrange(geometry.Rect(0, 0, 200, 40))
+	win.SetFocusedWidget(w)
+	w.SetSelection(TextSelection{Anchor: len(w.Text()), Caret: len(w.Text())})
+	for range 4 {
+		r.updateWindow(win, build())
+	}
+	// 此替身无原生字体；用明确选区触发删除，不推测缺少 Cluster 的退格边界。
+	w.SetSelection(TextSelection{Anchor: 0, Caret: 1})
+	if !w.Obscured() || w.ObscureChar() != '*' || w.Text() != "original" || text.Get() != "original" {
+		t.Fatal("声明未配置遮蔽，或策略过滤了状态赋值")
+	}
+	if err := win.DispatchEvent(events.KeyEvent{EventType: events.KeyDown, Key: events.KeyBackspace}); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 || w.Text() != "original" || text.Get() != "original" {
+		t.Fatal("删除没有经过配置的策略")
+	}
+	r.updateWindow(win, TextInput().ID("secret").BindText(&text))
+	if w.Obscured() || w.ObscureChar() != '•' || w.InputFilter() != nil || w.Text() != "original" {
+		t.Fatal("省略未恢复默认，或清除了正文")
+	}
+	if err := win.DispatchEvent(events.KeyEvent{EventType: events.KeyDown, Key: events.KeyBackspace}); err != nil {
+		t.Fatal(err)
+	}
+	if text.Get() != "riginal" {
+		t.Fatal("移除策略后输入及绑定未恢复", text.Get())
+	}
+}
+
+func TestTextViewInputPolicyDeclarationKeepsSharedHistory(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountWindow)
+	m := NewTextModel("abc")
+	m.Replace(TextRange{Start: 3, End: 3}, "d")
+	filter := textedit.DigitsOnly()
+	w := r.update(TextView().Model(m).InputFilter(filter)).(*gui.TextView)
+	for range 4 {
+		r.update(TextView().Model(m).InputFilter(filter))
+	}
+	if w.InputFilter() == nil || w.Model() != m || m.Text() != "abcd" || !m.CanUndo() {
+		t.Fatal("设置策略重置了共享文档或历史")
+	}
+	r.update(TextView().Model(m))
+	if w.InputFilter() != nil || m.Text() != "abcd" || !m.CanUndo() {
+		t.Fatal("移除策略错误影响模型")
 	}
 }

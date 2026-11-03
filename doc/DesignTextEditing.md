@@ -1,5 +1,7 @@
 # 文本编辑：TextModel、TextView 与 TextInput
 
+输入策略与 TextInput 遮蔽设计见 [DesignTextInput](DesignTextInput.md)。
+
 > 状态：首版代码及开发验证已完成；其他平台窗口用例交用户验收，不阻塞后续开发。
 > 首版是通用纯文本编辑器，不是代码编辑器。本文记录目标契约、实际验证和已知限制。
 > 参考定位：Scintilla 为主，Monaco／VSCode 为辅；保留现有 Piece Tree，不引入原生编辑器依赖。
