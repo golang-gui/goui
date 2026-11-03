@@ -13,6 +13,7 @@ import (
 
 	"github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/core/signal"
+	"github.com/golang-gui/goui/internal/diagnostic"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/internal/lifecycle"
 	"github.com/golang-gui/goui/platform/typography/utils"
@@ -182,7 +183,9 @@ func (c *Context) NewTextLayout(text string, format typography.TextFormat, width
 		return nil, fmt.Errorf("create dwrite text layout err: %v", hr)
 	}
 
-	return newTextLayout(c, textLayout, text, format, width, height), nil
+	result := newTextLayout(c, textLayout, text, format, width, height)
+	diagnostic.Record(diagnostic.LayoutCreate, 1)
+	return result, nil
 }
 
 func (c *Context) createTextFormat(format typography.TextFormat) (textFormat *dwrite.TextFormat, err error) {
@@ -306,6 +309,7 @@ func (t *TextLayout) Destroy() {
 	if !t.life.BeginDestroy() {
 		return
 	}
+	diagnostic.Record(diagnostic.LayoutDestroy, 1)
 	t.painter.Destroy()
 	if t.layout != nil {
 		t.layout.Release()
@@ -341,6 +345,7 @@ func (t *TextLayout) SetSize(maxWidth, maxHeight float32) {
 	if t.width == maxWidth && t.height == maxHeight {
 		return
 	}
+	diagnostic.Record(diagnostic.LayoutResize, 1)
 	t.width, t.height = maxWidth, maxHeight
 	t.layout.SetMaxWidth(maxWidth)
 	t.layout.SetMaxHeight(maxHeight)
@@ -690,7 +695,11 @@ func (t *TextLayout) Rasterize(scale float32, region image.Rectangle, buf []byte
 		t.painter.Destroy()
 		return bitmap, err
 	}
-	return t.painter.GetBitmap(width, height, buf)
+	bitmap, err = t.painter.GetBitmap(width, height, buf)
+	if err == nil {
+		diagnostic.Record(diagnostic.TextRasterize, 1)
+	}
+	return bitmap, err
 }
 
 func (t *TextLayout) getExtends() (x, y, width, height float32) {

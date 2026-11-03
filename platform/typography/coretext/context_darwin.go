@@ -14,6 +14,7 @@ import (
 	"unsafe"
 
 	"github.com/golang-gui/goui/core/signal"
+	"github.com/golang-gui/goui/internal/diagnostic"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/internal/lifecycle"
 	"github.com/golang-gui/goui/platform/typography/utils"
@@ -75,7 +76,11 @@ func (c *Context) NewTextLayout(text string, format typography.TextFormat, width
 	if err := utils.ValidateTabWidth(format.TabWidth); err != nil {
 		return nil, err
 	}
-	return newTextLayout(c, text, format, width, height)
+	layout, err := newTextLayout(c, text, format, width, height)
+	if err == nil {
+		diagnostic.Record(diagnostic.LayoutCreate, 1)
+	}
+	return layout, err
 }
 
 // TextLayout implements typography.TextLayout using Core Text.
@@ -213,6 +218,7 @@ func (t *TextLayout) Destroy() {
 	if !t.life.BeginDestroy() {
 		return
 	}
+	diagnostic.Record(diagnostic.LayoutDestroy, 1)
 	t.painter.Destroy()
 	t.releaseFrame()
 	if t.attrString != 0 {
@@ -249,6 +255,7 @@ func (t *TextLayout) SetSize(maxWidth, maxHeight float32) {
 	if t.width == maxWidth && t.height == maxHeight {
 		return
 	}
+	diagnostic.Record(diagnostic.LayoutResize, 1)
 	t.width, t.height = maxWidth, maxHeight
 	t.dirty = true
 	t.life.Changed()
@@ -508,6 +515,7 @@ func (t *TextLayout) Rasterize(scale float32, region image.Rectangle, buf []byte
 		t.painter.Destroy()
 		return bitmap, err
 	}
+	diagnostic.Record(diagnostic.TextRasterize, 1)
 	return t.painter.GetBitmap(width, height, buf), nil
 }
 

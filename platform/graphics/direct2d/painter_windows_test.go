@@ -1,6 +1,7 @@
 package direct2d
 
 import (
+	"bytes"
 	"fmt"
 	"image"
 	"image/color"
@@ -11,12 +12,54 @@ import (
 
 	"github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/internal/diagnostic"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/windows/sdk/com"
 	"github.com/golang-gui/goui/platform/windows/sdk/d2d1"
 	"github.com/golang-gui/goui/platform/windows/sdk/d3d11"
 	"github.com/golang-gui/goui/platform/windows/sdk/dxgi"
 )
+
+// WARP 离屏验证开关前后的像素与逻辑销毁；不需要桌面或 HWND。
+func TestDiagnosticImageCountersPreservePixels(t *testing.T) {
+	render := func() *image.RGBA {
+		return renderAlphaTestImage(t, 1, geometry.Identity(), graphics.Rectangle{}, func(p *Painter) {
+			// 此离屏夹具直接 BeginDraw，补齐正式 Begin 的帧序号。
+			p.frameID++
+			src := image.NewRGBA(image.Rect(0, 0, 2, 2))
+			for y := range 2 {
+				for x := range 2 {
+					src.SetRGBA(x, y, color.RGBA{R: 128, A: 128})
+				}
+			}
+			img, err := p.NewImage(src)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := img.Update(src); err != nil {
+				t.Fatal(err)
+			}
+			p.DrawImage(graphics.Rect(4, 4, 16, 16), img)
+			img.Destroy()
+			img.Destroy()
+		})
+	}
+	before := render()
+	s, err := diagnostic.Start()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Stop()
+	after := render()
+	c := after.RGBAAt(12, 12)
+	if !bytes.Equal(before.Pix, after.Pix) || c.R < 127 || c.R > 129 || c.G != 0 || c.B != 0 || c.A < 127 || c.A > 129 {
+		t.Fatal("诊断改变了预乘像素或结果为空", c)
+	}
+	v := s.Values()
+	if v[diagnostic.ImageCreate] != 1 || v[diagnostic.ImageUpdate] != 1 || v[diagnostic.ImageDestroy] != 1 || v[diagnostic.ImageBytes] != 32 {
+		t.Fatal("图像操作漏计或延迟释放重复计数", v)
+	}
+}
 
 func TestSwapChainPresentationPolicy(t *testing.T) {
 	opaque := swapChainCandidates(false)

@@ -6,6 +6,7 @@ import (
 	"unsafe"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/internal/diagnostic"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/internal/boxshadow"
 	"github.com/golang-gui/goui/platform/graphics/internal/offscreen"
@@ -455,6 +456,7 @@ func (p *Painter) NewImage(src image.Image) (graphics.Image, error) {
 		bitmap: bitmap,
 	}
 	p.images[img] = struct{}{}
+	diagnostic.RecordImage(diagnostic.ImageCreate, img.width, img.height)
 	return img, nil
 }
 
@@ -494,6 +496,7 @@ func (p *Painter) updateImage(img *imageResource, src image.Image) error {
 		return fmt.Errorf("direct2d: update native image: %v", hr)
 	}
 	img.pixels = pixels
+	diagnostic.RecordImage(diagnostic.ImageUpdate, img.width, img.height)
 	return nil
 }
 
@@ -514,6 +517,7 @@ func (p *Painter) destroyImage(img *imageResource) {
 	if img == nil || img.destroyed || img.owner != p {
 		return
 	}
+	diagnostic.Record(diagnostic.ImageDestroy, 1)
 	img.destroyed = true
 	if p.activeFrame {
 		img.pendingDestroy = true
@@ -562,6 +566,9 @@ func (p *Painter) releaseImageNatives() {
 func (p *Painter) destroyAllImages() {
 	p.releaseImageNatives()
 	for img := range p.images {
+		if !img.destroyed {
+			diagnostic.Record(diagnostic.ImageDestroy, 1)
+		}
 		img.owner = nil
 		img.pixels.Pixels = nil
 		img.destroyed = true

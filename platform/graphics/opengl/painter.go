@@ -9,6 +9,7 @@ import (
 
 	"github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/internal/diagnostic"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/internal/boxshadow"
 	"github.com/golang-gui/goui/platform/graphics/internal/offscreen"
@@ -124,6 +125,9 @@ func (p *Painter) Destroy() {
 	if p.vg != nil {
 		current := p.ctx.MakeCurrent() == nil
 		for img := range p.images {
+			if !img.destroyed {
+				diagnostic.Record(diagnostic.ImageDestroy, 1)
+			}
 			img.owner = nil
 			img.handle = 0
 			img.destroyed = true
@@ -186,6 +190,7 @@ func (p *Painter) NewImage(src image.Image) (graphics.Image, error) {
 		handle: handle,
 	}
 	p.images[img] = struct{}{}
+	diagnostic.RecordImage(diagnostic.ImageCreate, img.width, img.height)
 	return img, nil
 }
 
@@ -217,6 +222,7 @@ func (p *Painter) updateImage(img *imageResource, src image.Image) error {
 	if err != nil {
 		return fmt.Errorf("opengl: update native image: %w", err)
 	}
+	diagnostic.RecordImage(diagnostic.ImageUpdate, img.width, img.height)
 	return nil
 }
 
@@ -232,6 +238,7 @@ func (p *Painter) destroyImage(img *imageResource) {
 	if img == nil || img.destroyed || img.owner != p {
 		return
 	}
+	diagnostic.Record(diagnostic.ImageDestroy, 1)
 	img.destroyed = true
 	img.pendingDestroy = true
 	p.pendingImages++

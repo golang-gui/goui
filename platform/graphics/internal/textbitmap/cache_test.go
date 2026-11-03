@@ -7,12 +7,42 @@ import (
 	"testing"
 
 	"github.com/golang-gui/goui/core/signal"
+	"github.com/golang-gui/goui/internal/diagnostic"
 	"github.com/golang-gui/goui/platform/typography"
 )
 
 type cacheTestLayout struct {
 	changed   signal.Signal0
 	destroyed signal.Signal0
+}
+
+// 命中、首次未命中、LRU 淘汰和布局失效分别按独立操作序列计数。
+func TestDiagnosticCacheCounters(t *testing.T) {
+	s, err := diagnostic.Start()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Stop()
+	c := NewImageCache(1, func(int) {})
+	defer c.Destroy()
+	l := new(cacheTestLayout)
+	r := image.Rect(0, 0, 10, 10)
+	if _, ok := c.Lookup(l, 1, r); ok {
+		t.Fatal("未存入却命中")
+	}
+	c.Store(l, 1, r, 1)
+	if got, ok := c.Lookup(l, 1, r); !ok || got != 1 {
+		t.Fatal("已存入却未命中")
+	}
+	c.Store(l, 2, r, 2)
+	l.SetSize(20, 20)
+	if _, ok := c.Lookup(l, 2, r); ok {
+		t.Fatal("失效后仍命中")
+	}
+	v := s.Values()
+	if v[diagnostic.TextCacheHit] != 1 || v[diagnostic.TextCacheMiss] != 2 || v[diagnostic.TextCacheInvalidate] != 2 {
+		t.Fatal("缓存计数不符合操作序列", v)
+	}
 }
 
 func (l *cacheTestLayout) Destroy() { l.destroyed.Emit() }
