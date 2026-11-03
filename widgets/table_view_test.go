@@ -1176,9 +1176,70 @@ func TestTableViewExpansionUsesActualViewport(t *testing.T) {
 	if last.allocatedWidth != v.body.Rect().Width {
 		t.Fatal("隐藏列仍参与额外空间分配")
 	}
+	allocated, extent := last.allocatedWidth, v.columnWidth
 	v.Measure(layout.Unbounded())
-	if last.allocatedWidth != 100 || v.columnWidth != 100 {
-		t.Fatal("无界测量沿用了有界视口的伸展宽度")
+	if last.allocatedWidth != allocated || v.columnWidth != extent {
+		t.Fatal("无界尺寸查询改写了已分配的伸展列宽")
+	}
+}
+
+// 无界查询只计算期望尺寸；表头、单元格、快照及命中坐标保留实际列分配。
+func TestTableViewMeasurePreservesColumnAllocation(t *testing.T) {
+	v, m, first, delegate := tableFixture(100)
+	defer v.SetModel(nil)
+	first.SetWidth(100)
+	first.SetExpand(true)
+	last := NewTableColumn("last", "Last")
+	last.SetWidth(100)
+	last.SetExpand(true)
+	last.SetDelegate(&tableTestDelegate{model: m})
+	v.SetColumns(first, last)
+	tableArrange(v, 400, 180)
+	if first.allocatedWidth != 195 || last.allocatedWidth != 195 {
+		t.Fatal("未建立扣除外框与滚动条的两列伸展场景")
+	}
+	before, binds := v.Snapshot(), delegate.binds
+	for _, constraint := range []layout.Constraint{
+		layout.Unbounded(), layout.Loose(geometry.Size{Width: 200, Height: 100}),
+		layout.Tight(geometry.Size{Width: 400, Height: 180}),
+	} {
+		v.Measure(constraint)
+		if first.allocatedWidth != 195 || last.allocatedWidth != 195 || v.columnX[1] != 195 ||
+			v.realized["r0"].cells[1].Rect().X != 195 {
+			t.Fatal("测量覆盖了已分配的列宽或命中坐标")
+		}
+		after, _ := json.Marshal(v.Snapshot())
+		want, _ := json.Marshal(before)
+		if string(after) != string(want) {
+			t.Fatal("尺寸查询改写了表格语义快照")
+		}
+	}
+	tableArrange(v, 400, 180)
+	if delegate.binds != binds {
+		t.Fatal("尺寸查询导致已绑定行被无意义重绑", binds, delegate.binds)
+	}
+}
+
+// 表头自然高度使用基础列宽计算，不能为此修改列的实际分配。
+func TestTableHeaderNaturalMeasureUsesBaseWidths(t *testing.T) {
+	v := NewTableView()
+	c := NewTableColumn("name", "Name")
+	c.SetWidth(100)
+	c.SetExpand(true)
+	v.SetColumns(c)
+	v.setColumnViewportWidth(300)
+	probe := &tableTestContent{units: 360, height: 20}
+	l := tableHeaderLayout{view: v}
+	for _, tc := range []struct {
+		constraint layout.Constraint
+		want       geometry.Size
+	}{
+		{layout.Unbounded(), geometry.Size{Width: 100, Height: 80}},
+		{layout.Loose(geometry.Size{Width: 300, Height: layout.Inf}), geometry.Size{Width: 300, Height: 40}},
+	} {
+		if got := l.Measure([]layout.Child{probe}, tc.constraint).Size; got != tc.want || c.allocatedWidth != 300 {
+			t.Fatalf("表头测量=%v，预期 %v，实际列分配=%g", got, tc.want, c.allocatedWidth)
+		}
 	}
 }
 

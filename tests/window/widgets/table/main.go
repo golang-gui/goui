@@ -62,6 +62,8 @@
 //     各列不小于基础宽度，空间不足则横向滚动。关闭伸展恢复原基础列宽。
 //     F6 输出每列 base/allocated；窗口缩放不输出 resize，用户拖动仍输出 resize，
 //     Esc 恢复拖动前的基础宽度与伸展。隐藏 Notes 后，其空间重新分给末列。
+//     伸展后按 F6：无界测量前后的 Snapshot 必须完全一致，列宽、调整手柄范围与
+//     单元格编辑内容均保留；反复悬停、移出和重建也不能把伸展宽度重置为基础宽度。
 //
 // 平台差异：Primary、右键触发时机按现有事件规则转换。默认 Tab 仅遍历已挂载
 // 控件，不保证跨虚拟记录导航；首版没有列重排或表格编辑事务。副作用仅测试窗口、
@@ -71,6 +73,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/golang-gui/goui/core/geometry"
@@ -220,6 +224,15 @@ func sheet(dark, fallback bool, appearance int) style.StyleSheet {
 }
 func assertTable(table *widgets.TableView, m *model) {
 	info := table.Snapshot()
+	before, err := json.Marshal(info)
+	if err != nil {
+		panic(err)
+	}
+	table.Measure(layout.Unbounded())
+	after, err := json.Marshal(table.Snapshot())
+	if err != nil || !bytes.Equal(before, after) {
+		panic("natural measurement changed allocated table geometry")
+	}
 	configured := table.Columns()
 	columns := slices.DeleteFunc(configured, func(c *widgets.TableColumn) bool { return !c.Visible() })
 	count := len(columns)
