@@ -1,5 +1,33 @@
 # Plan
 
+## DropDown 重新测量后滚动条间距丢失（2026-11-02）
+
+- [x] 复现已布局后 StyleChanged／Measure 把行宽增加 8 DIP、原 6 DIP 间距
+  变成 -2 DIP；96／320／480 限高均可触发，无限高时还会改变已实现行数。
+- [x] 尺寸预热限定为尚无已实现行；后续测量不改写既有几何，行高与范围细化
+  留给 ScrollView.Arrange。移除 primeWidth／primeDirty，无新增公共接口。
+- [x] 回归覆盖测量约束变化、滚动偏移、Rect／Snapshot、模型缩短与恢复、
+  行高失效和锚点宽度变化；窗口例程增加 Long 限高参数及鼠标进出步骤。
+- [x] 已跟踪源码加本轮修改的独立副本，Xvnc 会话中执行
+  `go test -json -count=1 ./...`：3288 项测试／子测试通过，10 项既有跳过、
+  0 失败；widgets／widgets/ui race 及相关 vet 通过。原工作区完整测试仍因
+  未跟踪旧例程的接口错误及 ui/timer_native_test.go 旧断言失败，未改动这些文件；
+  已恢复测试改写的既有 PNG，未新增源码目录产物。
+- [x] Ubuntu 22.04.5 amd64，独立 Xvnc :86／xfwm4 4.16.1 合成会话：旧实现
+  原生鼠标移入后像素间距降为 0；修正后 1x 的 OpenGL 320／480 限高、Software
+  96／无限高，以及 2x 的两后端 320 限高均通过。每组重复移入／移出三次、
+  滚动、关闭重开，采样间距恒为 6／12 物理像素。主窗口实际后端由资源类型确认，
+  浮窗沿用同一后端偏好，未单独探测其 Painter 类型；未使用 DevServer。
+- [x] Windows 10 19045 amd64，Go 1.25.8 交叉编译的 DropDown 包内测试经 SSH
+  原生运行通过；macOS 15.7.7 arm64 原机分别用 Go 1.24.9／1.25.8 编译运行
+  `go test -count=1 ./widgets ./widgets/ui` 均通过。两平台窗口例程交叉编译通过，
+  本轮未进行远端桌面验收。
+- [ ] macOS 验证差异：本机 Go 1.25.8 交叉编译的 widgets 测试产物，在进入
+  测试前于 mlang.String 初始化报 concurrent map read and map write；相同工具链
+  在远端原机编译测试通过，旧实现的交叉产物也通过启动。原因尚未确定，不将该
+  交叉产物计为通过，也不据此修改多语言或平台实现。日志、截图、旧／新窗口对照
+  与构建副本保留在 /tmp/goui-dropdown-gutter-mrmijpt4。
+
 ## Popover 复用后的悬停残留（2026-11-02）
 
 - [x] 逻辑回归复现关闭后 Widget.Hovered 仍为 true、Motion.Hover 已为 false，
