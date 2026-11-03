@@ -3,6 +3,7 @@ package ui
 import (
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
@@ -350,7 +351,7 @@ func TestTextInputPolicyAndObscuringDeclaration(t *testing.T) {
 	calls := 0
 	filter := func(in textedit.Input) (string, bool) { calls++; return in.Text, false }
 	build := func() View {
-		return TextInput().ID("secret").BindText(&text).Obscured(true).ObscureChar('*').InputFilter(filter)
+		return TextInput().ID("secret").BindText(&text).Obscured(true).ObscureChar('*').ObscureDelay(600 * time.Millisecond).InputFilter(filter)
 	}
 	w := r.updateWindow(win, build()).(*gui.TextInput)
 	w.Arrange(geometry.Rect(0, 0, 200, 40))
@@ -361,7 +362,7 @@ func TestTextInputPolicyAndObscuringDeclaration(t *testing.T) {
 	}
 	// 此替身无原生字体；用明确选区触发删除，不推测缺少 Cluster 的退格边界。
 	w.SetSelection(TextSelection{Anchor: 0, Caret: 1})
-	if !w.Obscured() || w.ObscureChar() != '*' || w.Text() != "original" || text.Get() != "original" {
+	if !w.Obscured() || w.ObscureChar() != '*' || w.ObscureDelay() != 600*time.Millisecond || w.Text() != "original" || text.Get() != "original" {
 		t.Fatal("声明未配置遮蔽，或策略过滤了状态赋值")
 	}
 	if err := win.DispatchEvent(events.KeyEvent{EventType: events.KeyDown, Key: events.KeyBackspace}); err != nil {
@@ -371,7 +372,7 @@ func TestTextInputPolicyAndObscuringDeclaration(t *testing.T) {
 		t.Fatal("删除没有经过配置的策略")
 	}
 	r.updateWindow(win, TextInput().ID("secret").BindText(&text))
-	if w.Obscured() || w.ObscureChar() != '•' || w.InputFilter() != nil || w.Text() != "original" {
+	if w.Obscured() || w.ObscureChar() != '•' || w.ObscureDelay() != 0 || w.InputFilter() != nil || w.Text() != "original" {
 		t.Fatal("省略未恢复默认，或清除了正文")
 	}
 	if err := win.DispatchEvent(events.KeyEvent{EventType: events.KeyDown, Key: events.KeyBackspace}); err != nil {

@@ -1,5 +1,28 @@
 # Plan
 
+## TextInput 单字素显露反馈（2026-11-03）
+
+- 设计见 [DesignTextInput](DesignTextInput.md#末字素短暂显露)。
+- [x] 增加 ObscureDelay 与混合遮蔽映射，复用 GUI 单次 Timer；仅成功的用户单字素
+  提交触发，默认关闭不分配反馈对象；Snapshot、复制／剪切限制始终保持。
+- [x] 回归覆盖超时、已排队通知后的重启、相同 setter、组合符连接／Emoji、字体回退
+  分裂、显露字符比掩码更短的源坐标、非输入来源，以及焦点／配置／生命周期取消。
+  超时不取消异步粘贴；排版销毁回调改变可编辑状态后停止过期预编辑，补防护前该回归
+  在只读场景失败，未弱化断言。销毁、计时器关闭及声明式省略恢复覆盖保留。
+- [x] UI 声明协调与独立窗口用例 `tests/window/ui/textinput_obscure` 完成；两次全应用
+  重建不重启倒计时，正文绑定与控件身份保留。测试统一边框、透明光标，比较同倍率
+  下独立参考的非空预乘 RGBA，不把离屏比较等同于桌面合成像素验收。
+- [x] Ubuntu 22.04.5 amd64、独立 Xvnc :86／xfwm4 4.16.1，Software／OpenGL
+  （llvmpipe）1x／2x 自动窗口检查均通过；OpenGL 1x／Software 2x 另经 xdotool
+  原生鼠标键盘输入，F7 验显露、等待后 F6 验遮蔽，正常关闭退出 0。本地 XIM 支持
+  本次 ASCII 原生输入；真正中文输入法候选交互、远端窗口及物理 GPU 未验收。
+- [x] 最终已跟踪源码加本轮文件的独立副本 `DISPLAY=:86 go test -json -count=1 ./...`：
+  3413 项通过、10 项既有跳过、零失败。相关五包 race、最终 GUI／UI race、相关 vet、
+  Windows amd64／macOS arm64 全仓交叉构建均通过，未改 platform 或绘图后端。
+- 原工作区 `go test ./...` 仍被六个未跟踪旧例程编译错误及未跟踪 timer 旧断言阻塞；
+  未更改或跳过这些测试，16 个既有 PNG 已按运行前副本恢复。验证副本、失败日志和
+  各后端窗口日志保存在 `/tmp/goui-obscure-delay-givk4jlg`。
+
 ## TextInput 遮蔽与共享输入策略（2026-11-03）
 
 - 设计见 [DesignTextInput](DesignTextInput.md)。
