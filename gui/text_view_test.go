@@ -1576,6 +1576,91 @@ func TestTextViewHistoryEvictionReentryPreservesReplacementModel(t *testing.T) {
 
 // Bounded measurement and retained viewport geometry.
 
+// 短文档的精确尺寸查询不能覆盖正文、滚动范围、光标命中和绘制所用的已分配排版。
+func TestTextViewShortMeasurePreservesAllocatedGeometry(t *testing.T) {
+	v, _, _ := newEditorFixture(t, strings.Repeat("a", 120))
+	p := v.paragraphs[0]
+	native := p.layout.(*testTextLayout)
+	width, height, metrics := v.layoutWidth, v.ContentSize().Height, native.metricsCalls
+	point := geometry.Point{X: 25, Y: 25}
+	hit := v.hitText(point)
+	for _, tc := range []struct {
+		constraint layout.Constraint
+		height     float32
+	}{
+		{layout.Loose(geometry.Size{Width: 109, Height: 300}), 248},
+		{layout.Tight(geometry.Size{Width: 209, Height: 108}), 108},
+		{layout.Unbounded(), 88},
+	} {
+		if m := v.Measure(tc.constraint); m.Height != tc.height || m.Baseline != 19 {
+			t.Fatalf("短文档没有按查询宽度精确测量：%+v，预期高度 %g", m, tc.height)
+		}
+		painter := new(testLabelPainter)
+		v.Paint(painter)
+		if v.layoutWidth != width || v.ContentSize().Height != height || v.hitText(point) != hit ||
+			v.paragraphs[0] != p || native.width != width || native.metricsCalls != metrics || painter.textLayout != native {
+			t.Fatal("尺寸查询改变了已分配段落的绘制／命中／滚动几何")
+		}
+	}
+}
+
+// 正常指针输入后的颜色重测可以直接进入绘制，不能偷偷使用滚动条占位前的外宽排版。
+func TestTextViewHoverMeasurePreservesAllocatedGeometry(t *testing.T) {
+	v, scroll, win, _, _ := timedEditorFixture(t)
+	v.Model().SetText(strings.Repeat("a", 130))
+	win.width, win.height = 209, 108
+	win.updateStateStyles()
+	scroll.RequestLayout()
+	settleEditorLayout(t, win)
+	width, extent := v.layoutWidth, v.ContentSize()
+	point := geometry.Point{X: 25, Y: 25}
+	hit := v.hitText(point)
+	if width != 192 || scroll.viewport.Rect().Width != 201 || hit.Offset != 21 {
+		t.Fatal("未建立含 8 DIP 滚动条的固定排版场景", width, scroll.viewport.Rect(), hit)
+	}
+	editorPointer(t, win, events.PointerMove, point, 0)
+	win.updateStateStyles()
+	win.layoutFrame(win.Widget())
+	painter := new(testLabelPainter)
+	v.Paint(painter)
+	if v.layoutWidth != width || v.ContentSize() != extent || v.hitText(point) != hit ||
+		painter.textLayout.(*testTextLayout).width != width {
+		t.Fatal("悬停帧改变了已分配正文的换行或光标命中")
+	}
+}
+
+// 仅保留有界的标量结果；临时 native 布局立即释放，文字和预编辑变化不能命中旧尺寸。
+func TestTextViewShortMeasureCacheAndLifetime(t *testing.T) {
+	v, win, typo := newEditorFixture(t, strings.Repeat("a", 120))
+	c := layout.Loose(geometry.Size{Width: 109, Height: 500})
+	before := len(typo.layouts)
+	if got := v.Measure(c).Height; got != 248 {
+		t.Fatal("初次短文档尺寸错误", got)
+	}
+	if len(typo.layouts) != before+1 || !typo.layouts[before].destroyed {
+		t.Fatal("尺寸查询未释放临时排版")
+	}
+	if got := v.Measure(c).Height; got != 248 || len(typo.layouts) != before+1 {
+		t.Fatal("重复查询没有复用标量尺寸")
+	}
+	v.Model().SetText(strings.Repeat("b", 130))
+	if got := v.Measure(c).Height; got != 268 {
+		t.Fatal("正文变化复用了旧测量", got)
+	}
+	v.onPreedit("c", 1)
+	if got := v.Measure(c).Height; got != 288 {
+		t.Fatal("预编辑变化复用了旧测量", got)
+	}
+	v.cancelPreedit(false)
+	if got := v.Measure(c).Height; got != 268 {
+		t.Fatal("取消预编辑没有恢复正文尺寸", got)
+	}
+	win.SetWidget(nil)
+	if v.shortMeasure.text != "" || v.shortMeasure.height != 0 {
+		t.Fatal("卸载后保留测量文本")
+	}
+}
+
 func TestTextViewLargeMeasureDoesNotWalkDocument(t *testing.T) {
 	v, _, typo := newEditorFixture(t, strings.Repeat("row\n", 100000))
 	v.releaseParagraphs()

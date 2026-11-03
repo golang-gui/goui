@@ -211,6 +211,7 @@ type textEditor struct {
 	textParagraphCache
 	replacedParagraphs []*textParagraph
 	replacedBytes      int
+	shortMeasure       textViewMeasureCache
 
 	owner             Widget
 	singleLine        bool
@@ -268,6 +269,13 @@ type textEditor struct {
 	longFrame         signal.Handle
 	longPending       bool
 	longBudget        int
+}
+
+// Only scalar natural-size results are retained here. Allocated paragraphs,
+// their native layouts and editing geometry remain owned by visible layout.
+type textViewMeasureCache struct {
+	text                           string
+	width, limit, height, baseline float32
 }
 
 func newTextEditor(owner Widget, singleLine bool, padding geometry.Insets) *textEditor {
@@ -691,6 +699,7 @@ func (t *textEditor) ensureFormat() {
 
 func (t *textEditor) releaseParagraphs() {
 	t.cancelResize()
+	t.shortMeasure = textViewMeasureCache{}
 	old := t.textParagraphCache
 	t.textParagraphCache = textParagraphCache{}
 	t.longWidths, t.longWidth = nil, 0
@@ -968,29 +977,76 @@ func (t *textEditor) measure(c layout.Constraint) layout.Measurement {
 		return layout.Measurement{Size: b.constrain(c, geometry.Size{Width: width, Height: t.heights.Total() + t.verticalPadding()}),
 			Baseline: t.padding.Top + baseline, HasBaseline: t.hasBaseline}
 	}
-	if !t.prepareWidth(max(1, width-t.horizontalPadding()-1)) {
+	height, baseline, valid := t.measureShortContent(max(1, width-t.horizontalPadding()-1),
+		max(0, b.layoutConstraint(c).Max.Height-t.verticalPadding()), length)
+	if !valid {
 		return layout.Measurement{}
 	}
-	limit := b.layoutConstraint(c).Max.Height
-	height := t.verticalPadding()
-	baseline := t.baseline
-	for i := 0; i < t.displayLineCount(); i++ {
-		p := t.paragraph(i)
-		if p != nil {
-			height += p.height
-			if i == 0 {
-				baseline = p.baseline
+	return layout.Measurement{Size: b.constrain(c, geometry.Size{Width: width, Height: height + t.verticalPadding()}),
+		Baseline: t.padding.Top + baseline, HasBaseline: t.hasBaseline}
+}
+
+// Querying a different width must not resize the native layouts used by Paint,
+// caret hit tests or ContentSize. Short documents have a bounded sizing cost;
+// the single result cache is cleared with font/wrap changes and on unmount.
+func (t *textEditor) measureShortContent(width, limit float32, length int) (height, baseline float32, valid bool) {
+	if t.wrap == WrapNone {
+		width = textInputMeasureExtent
+	}
+	var text string
+	if t.preedit != nil {
+		text, _ = t.preedit.Slice(t.model, TextRange{End: length})
+	} else {
+		text = t.model.Text()
+	}
+	if cached := t.shortMeasure; cached.height > 0 && cached.text == text && cached.width == width && cached.limit == limit {
+		return cached.height, cached.baseline, true
+	}
+	model, revision, epoch, input := t.model, t.model.Revision(), t.mountEpoch, t.inputRevision
+	format := t.format
+	current := func() bool {
+		return !t.owner.base().destroyed && t.model == model && model.Revision() == revision &&
+			t.mountEpoch == epoch && t.inputRevision == input && t.format.Font == format.Font && t.wrap == format.WrapMode
+	}
+	baseline = t.baseline
+	cacheable := true
+	for i, paragraph := range strings.Split(text, "\n") {
+		h, b := t.lineHeight, t.baseline
+		if p := t.paragraphs[i]; p != nil && p.measured && (t.layoutWidth == width || t.wrap == WrapNone) {
+			h, b = p.height, p.baseline
+		} else if App != nil && App.Typography() != nil {
+			native, err := App.Typography().NewTextLayout(paragraph, format, width, textInputMeasureExtent)
+			if err == nil {
+				_, measured := native.MeasureSize()
+				lines, _ := native.MeasureMetrics()
+				offset := float32(0)
+				if len(lines) > 0 {
+					offset = max(0, t.baseline-lines[0].Baseline)
+					b = offset + lines[0].Baseline
+				}
+				h = max(h, measured+offset)
+				native.Destroy()
+			} else {
+				cacheable = false
 			}
 		} else {
-			height += t.lineHeight
+			cacheable = false
 		}
-		t.textParagraphCache.trim(-1, -1)
+		if !current() {
+			return 0, 0, false
+		}
+		height += h
+		if i == 0 {
+			baseline = b
+		}
 		if height >= limit {
 			break
 		}
 	}
-	return layout.Measurement{Size: b.constrain(c, geometry.Size{Width: width, Height: height}),
-		Baseline: t.padding.Top + baseline, HasBaseline: t.hasBaseline}
+	if cacheable {
+		t.shortMeasure = textViewMeasureCache{text: text, width: width, limit: limit, height: height, baseline: baseline}
+	}
+	return height, baseline, true
 }
 
 // A bounded sample supplies only a provisional scrolling extent. It never
@@ -1030,8 +1086,8 @@ func (t *textEditor) estimateWrappedHeight(width float32) {
 	t.heightEstimated = true
 }
 
-// Width-sensitive paragraph measurements are shared by Measure and visible
-// layout. This never changes the viewport or scroll offset.
+// Visible layout owns width-sensitive paragraph measurements. Natural-size
+// queries use measureShortContent and never replace these allocated layouts.
 func (t *textEditor) prepareWidth(width float32) bool {
 	model, epoch, revision := t.model, t.mountEpoch, t.model.Revision()
 	if width != t.layoutWidth && t.wrap != WrapNone {

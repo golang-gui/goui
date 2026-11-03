@@ -7,6 +7,9 @@
 // 像素，外框与圆角按各自职责另验；从正常 DispatchEvent/CommitText 输入和删除
 // 换行及长文本，断言内容增长（含宿主边距）、96 DIP 上限、滚动范围、收缩复位、
 // baseline 与共享模型视图的独立排版。自动成功关闭，提前关闭或失败非零退出。
+// 第 8 阶段以不同约束查询已分配的短换行正文：自身及同模型视图的滚动范围、
+// Rect 和正文 RGBA 像素必须不变。-inspect 下反复移入／移出正文、拖选、滚动，
+// 文字换行和选择命中保持一致，不能因悬停改变正文宽度或滚动条占位。
 // -inspect 保留窗口供人工检查，重启复位；不改剪贴板或系统设置。
 // 物理 IME 与候选窗仍须人工验收，模拟提交不代表真实输入法通过。
 package main
@@ -42,6 +45,22 @@ func check(ok bool, message string) {
 	if !ok {
 		log.Fatal(message)
 	}
+}
+
+func equalPixels(a, b image.Image) bool {
+	if a.Bounds() != b.Bounds() {
+		return false
+	}
+	for y := a.Bounds().Min.Y; y < a.Bounds().Max.Y; y++ {
+		for x := a.Bounds().Min.X; x < a.Bounds().Max.X; x++ {
+			ar, ag, ab, aa := a.At(x, y).RGBA()
+			br, bg, bb, ba := b.At(x, y).RGBA()
+			if ar != br || ag != bg || ab != bb || aa != ba {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func main() {
@@ -183,14 +202,20 @@ func main() {
 			must(win.DispatchEvent(events.SizeEvent{Width: 900, Height: 480, PixelWidth: 900 * scale, PixelHeight: 480 * scale}))
 		case 7:
 			compare()
-			// Equal model, different view width: reflow one view through Measure
-			// and verify its peer's native extent is unchanged.
-			before := growing[1].ContentSize()
-			growing[0].Measure(layout.Loose(geometry.Size{Width: 120, Height: 96}))
-			check(growing[1].ContentSize() == before, "shared model leaked reflow")
-			// Return to normal host layout before capturing: the measurement
-			// above intentionally used a width different from the allocation.
-			growing[0].RequestLayout()
+			for i, view := range growing {
+				before, e := gui.RenderWidget(view, 0)
+				must(e)
+				extent, rect := view.ContentSize(), view.Rect()
+				for _, c := range []layout.Constraint{
+					layout.Loose(geometry.Size{Width: 120, Height: 96}), layout.Unbounded(),
+				} {
+					view.Measure(c)
+					after, e := gui.RenderWidget(view, 0)
+					must(e)
+					check(view.ContentSize() == extent && view.Rect() == rect && equalPixels(before, after),
+						fmt.Sprintf("measurement changed allocated text geometry/pixels theme=%d", i))
+				}
+			}
 		case 8:
 			if *out != "" {
 				img, e := gui.RenderWidget(root, 0)

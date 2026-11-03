@@ -1,5 +1,32 @@
 # Plan
 
+## TextView 测量与已分配排版隔离（2026-11-03）
+
+- [x] 旧实现包内回归复现：短文档宽度查询改写正文 native 布局、HeightIndex 和
+  光标命中；正常指针悬停帧中排版从 192 变为 200 DIP，却未请求重新布局。
+- [x] 小文档保持精确高度／基线查询，用临时排版并立即释放，只保留有界显示文本与
+  单份标量结果；按内容／投影、宽度和高度上限区分，字体／换行变化与卸载清理。
+  查询不改写正文缓存或编辑几何；无新增公共 API，长文档估计路径不变。
+- [x] 新增测量／绘制／命中／范围、正常悬停帧及临时资源／缓存失效回归。
+  text_sizing 的查询阶段增加自身 Rect／范围／RGBA 不变断言，不再补做 Arrange。
+- [x] 包含本轮 TextView／TableView 修正的已跟踪源码独立副本，在 Xvnc 会话运行
+  `go test -json -count=1 ./...`：3293 项测试／子测试通过，10 项既有跳过。
+  gui／widgets／widgets/ui race、相关 vet、Windows amd64／macOS arm64 窗口
+  例程交叉编译通过。原工作区完整测试仍受未跟踪旧例程接口与旧 timer 断言阻塞；
+  保留原文件，已恢复测试改写的三个 PNG。
+- [x] Ubuntu 22.04.5 amd64，独立 Xvnc :86／xfwm4 4.16.1 合成会话：仓库外原生
+  Pango 窗口诊断，Modern 亮／暗、OpenGL／Software、1x／2x，反复不同约束查询
+  并通过正常 DispatchEvent 派发指针进出；自身范围、矩形与 RenderWidget RGBA
+  精确不变。实际窗口后端由资源类型及倍率日志确认；RenderWidget 为离屏像素检查，
+  不代替 GPU 桌面像素验收。相同诊断换回旧实现，首轮即断言失败。
+- [x] remote-shell 原生无头测试：Windows 10 19045 amd64 的 TextView／Table
+  相关测试 143 项通过；macOS 15.7.7 arm64 原机 Go 1.25.8 编译运行 gui／widgets／
+  widgets/ui，1607 项通过。本轮未操作远端桌面，不宣称 Direct2D／CoreText 窗口验收。
+- [ ] 既有 text_sizing 窗口例程在本机 Pango／Software 1x 首阶段报
+  single-line pixels differ theme=0 at 56,10；同环境旧实现也在相同位置失败，
+  未弱化断言，本轮新增查询阶段因此未在该完整例程中到达。
+  日志、旧／新窗口诊断、构建副本及截图位于 /tmp/goui-measure-fix-ni9ppn1s。
+
 ## DropDown 重新测量后滚动条间距丢失（2026-11-02）
 
 - [x] 复现已布局后 StyleChanged／Measure 把行宽增加 8 DIP、原 6 DIP 间距
