@@ -768,13 +768,13 @@ func TestLabelStyleChangePreservesSelectionAndUpdatesParagraph(t *testing.T) {
 	label, _, typo := labelSelectionFixture(t, "abc")
 	label.SetSelection(TextSelection{Anchor: 0, Caret: 2})
 	native := label.cachedLayout
-	geometry := label.selectState.geometry
+	selectionGeometry := label.selectState.geometry
 	changes := 0
 	label.ConnectSelection(func(TextSelection) { changes++ })
 	App.(*application).style = style.Sheet(append(DefaultStyleRules(), style.Name("label").ForegroundColor(color.White))...)
 	label.StyleChanged()
 	label.Paint(&testLabelPainter{})
-	if label.cachedLayout != native || label.selectState.geometry != geometry || changes != 0 {
+	if label.cachedLayout != native || label.selectState.geometry != selectionGeometry || changes != 0 {
 		t.Fatal("颜色更新改变了排版身份、选区几何或选区通知")
 	}
 	label.SetWrapMode(WrapWordChar)
@@ -783,6 +783,134 @@ func TestLabelStyleChangePreservesSelectionAndUpdatesParagraph(t *testing.T) {
 	if label.cachedLayout != native || len(typo.calls) != 1 || native.Format().WrapMode != WrapWordChar || native.Format().TextAlign != TextAlignCenter || changes != 0 {
 		t.Fatal("段落参数变更未复用排版，或发出了选区通知")
 	}
+}
+
+// 已显示的排版与选区不应被测量查询改写；两个常见约束的结果均能复用。
+func TestLabelMeasurementDoesNotMutateDisplayedLayout(t *testing.T) {
+	label, _, typo := labelSelectionFixture(t, "abc")
+	label.SetSelection(TextSelection{Anchor: 0, Caret: 2})
+	native := label.cachedLayout.(*testTextLayout)
+	selectionGeometry := label.selectState.geometry
+	width, height := native.Size()
+	resizes := 0
+	native.resized = func() { resizes++ }
+	a, b := layout.Loose(geometry.Size{Width: 90, Height: 60}), layout.Loose(geometry.Size{Width: 120, Height: 70})
+	for range 4 {
+		for _, c := range []layout.Constraint{a, b} {
+			measured := label.Measure(c)
+			if measured.Width != 30 || measured.Height != 20 || !measured.HasBaseline || measured.Baseline != 15 {
+				t.Fatalf("测量值没有保留独立预期：%+v", measured)
+			}
+			label.Paint(&testLabelPainter{})
+		}
+	}
+	if w, h := native.Size(); w != width || h != height || resizes != 0 || label.cachedLayout != native || label.selectState.geometry != selectionGeometry {
+		t.Fatal("测量改变了显示排版或选区几何", resizes, width, height, native.width, native.height)
+	}
+	if len(typo.layouts) != 3 || !typo.layouts[1].destroyed || !typo.layouts[2].destroyed || native.destroyed {
+		t.Fatal("查询没有复用纯值结果，或临时资源未释放", len(typo.layouts))
+	}
+	// 最小尺寸不是原生排版键，每次返回仍要应用当前的约束。
+	tight := layout.Tight(a.Max)
+	if got := label.Measure(tight); got.Size != a.Max || len(typo.layouts) != 3 {
+		t.Fatal("相同上限的缓存错误保留了先前约束", got)
+	}
+}
+
+// 真实分配变化只在显示排版上修改一次；旧约束查询不得把尺寸改回去。
+func TestLabelMeasurementCacheSurvivesDisplayResize(t *testing.T) {
+	typo := &testTypography{measureSize: geometry.Size{Width: 42, Height: 18}}
+	setTestApplication(t, typo)
+	label := NewLabel("hello")
+	t.Cleanup(label.releaseLayout)
+	c := layout.Loose(geometry.Size{Width: 100, Height: 50})
+	label.Measure(c)
+	if len(typo.layouts) != 1 || typo.layouts[0].destroyed {
+		t.Fatal("首份测量排版未留给首次绘制")
+	}
+	label.Arrange(geometry.Rect(0, 0, 80, 30))
+	label.Paint(&testLabelPainter{})
+	native := label.cachedLayout.(*testTextLayout)
+	resizes := 0
+	native.resized = func() { resizes++ }
+	label.Arrange(geometry.Rect(0, 0, 90, 30))
+	label.Paint(&testLabelPainter{})
+	for range 5 {
+		label.RequestLayout()
+		label.Measure(c)
+		label.Paint(&testLabelPainter{})
+	}
+	if resizes != 1 || len(typo.layouts) != 1 || native.width != 90 || native.height != 30 {
+		t.Fatal("重复测量使显示排版尺寸往返修改", resizes, len(typo.layouts))
+	}
+}
+
+// 测量保留精确换行结果；颜色不丢结果，段落／正文变化必须使旧结果失效。
+func TestLabelMeasurementInvalidationAndWrapping(t *testing.T) {
+	typo := &editorTypography{}
+	setTestApplication(t, typo)
+	label := NewLabel("abcdef")
+	t.Cleanup(label.releaseLayout)
+	label.SetWrapMode(WrapChar)
+	c := layout.Loose(geometry.Size{Width: 20, Height: 100})
+	if m := label.Measure(c); m.Width != 20 || m.Height != 60 || m.Baseline != 15 {
+		t.Fatal("独立的三行换行预期不匹配", m)
+	}
+	label.Arrange(geometry.Rect(0, 0, 60, 20))
+	label.Paint(&testLabelPainter{})
+	calls := len(typo.calls)
+	App.(*application).style = style.Sheet(append(DefaultStyleRules(), style.Name("label").ForegroundColor(color.White))...)
+	label.StyleChanged()
+	if m := label.Measure(c); m.Height != 60 || len(typo.calls) != calls {
+		t.Fatal("颜色改变丢失了可复用的测量结果", m, len(typo.calls))
+	}
+	label.SetWrapMode(WrapNone)
+	if m := label.Measure(c); m.Width != 20 || m.Height != 20 {
+		t.Fatal("换行参数改变仍使用旧测量结果", m)
+	}
+	label.SetText("x")
+	if m := label.Measure(c); m.Width != 10 || m.Height != 20 {
+		t.Fatal("正文改变仍使用旧测量结果", m)
+	}
+}
+
+// 失败结果不能进入缓存；卸载后再测量须重新建立资源。
+func TestLabelMeasurementRetriesFailureAndClearsOnUnmount(t *testing.T) {
+	typo := &labelFailTypography{}
+	setTestApplication(t, typo)
+	label := NewLabel("abc")
+	win := &window{}
+	win.SetWidget(label)
+	t.Cleanup(func() { win.SetWidget(nil) })
+	label.Arrange(geometry.Rect(0, 0, 200, 80))
+	label.Paint(&testLabelPainter{})
+	c := layout.Loose(geometry.Size{Width: 90, Height: 60})
+	typo.fail = true
+	if m := label.Measure(c); m != (layout.Measurement{}) {
+		t.Fatal("测量失败没有保留原有空结果语义", m)
+	}
+	typo.fail = false
+	if m := label.Measure(c); m.Width != 30 || m.Height != 20 {
+		t.Fatal("失败后没有重新尝试测量", m)
+	}
+	calls := len(typo.calls)
+	win.SetWidget(nil)
+	win.SetWidget(label)
+	if m := label.Measure(c); m.Width != 30 || len(typo.calls) != calls+1 {
+		t.Fatal("重新挂载错误保留了原生资源或旧缓存", m)
+	}
+}
+
+type labelFailTypography struct {
+	editorTypography
+	fail bool
+}
+
+func (c *labelFailTypography) NewTextLayout(text string, f typography.TextFormat, w, h float32) (typography.TextLayout, error) {
+	if c.fail {
+		return nil, errors.New("测试测量失败")
+	}
+	return c.editorTypography.NewTextLayout(text, f, w, h)
 }
 
 // Destroy 的外部订阅可改变正文或销毁控件；返回后不能继续用旧格式创建资源。
@@ -812,5 +940,40 @@ func TestLabelRebuildRechecksDestroyCallback(t *testing.T) {
 				t.Fatal("销毁通知后仍使用过期正文或范围样式")
 			}
 		})
+	}
+}
+
+// WrapBox + ScrollView 会交替完整宽度、滚动条宽度、限高和自然尺寸四种查询。
+func TestLabelMeasurementCacheCoversNestedLayoutQueries(t *testing.T) {
+	typo := &editorTypography{}
+	setTestApplication(t, typo)
+	label := NewLabel("item")
+	t.Cleanup(label.releaseLayout)
+	label.Arrange(geometry.Rect(0, 0, 72, 20))
+	label.Paint(&testLabelPainter{})
+	constraints := []layout.Constraint{
+		layout.Loose(geometry.Size{Width: 838, Height: layout.Inf}),
+		layout.Loose(geometry.Size{Width: 830, Height: layout.Inf}),
+		layout.Loose(geometry.Size{Width: 830, Height: 60}),
+		layout.Unbounded(),
+	}
+	for range 10 {
+		for _, c := range constraints {
+			if m := label.Measure(c); m.Width != 40 || m.Height != 20 || m.Baseline != 15 {
+				t.Fatal("测量值错误", m)
+			}
+		}
+		if m := label.Measure(layout.Tight(label.Rect().Size)); m.Size != label.Rect().Size {
+			t.Fatal("实际分配约束未生效", m)
+		}
+		label.Paint(&testLabelPainter{})
+	}
+	if len(typo.layouts) != 5 || typo.layouts[0].destroyed {
+		t.Fatal("固定四种约束造成临时排版反复创建", len(typo.layouts))
+	}
+	for _, native := range typo.layouts[1:] {
+		if !native.destroyed {
+			t.Fatal("临时排版未释放")
+		}
 	}
 }

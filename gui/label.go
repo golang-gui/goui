@@ -68,6 +68,17 @@ type Label struct {
 	cachedWidth  float32
 	cachedHeight float32
 	layoutValid  bool
+
+	// Nested layouts can alternate several constraints. Retain only detached
+	// metrics, not a second native layout or any shaping/selection geometry.
+	measurements [4]labelMeasurement
+	measureNext  uint8
+}
+
+type labelMeasurement struct {
+	size  geometry.Size
+	value layout.Measurement
+	valid bool
 }
 
 func NewLabel(text string) *Label {
@@ -126,6 +137,7 @@ func (l *Label) SetWrapMode(mode WrapMode) {
 	}
 	l.wrapMode = mode
 	l.textStyleValid = false
+	l.clearMeasurements()
 	l.invalidateSelectionGeometry()
 	l.RequestLayout()
 }
@@ -140,6 +152,7 @@ func (l *Label) SetTextAlign(align TextAlign) {
 	}
 	l.textAlign = align
 	l.textStyleValid = false
+	l.clearMeasurements()
 	l.invalidateSelectionGeometry()
 	l.RequestLayout()
 }
@@ -148,15 +161,42 @@ func (l *Label) Measure(c layout.Constraint) layout.Measurement {
 	if !l.Visible() {
 		return layout.Measurement{}
 	}
-	textLayout := l.ensureLayout(measureTextSize(c.Max))
+	l.ensureTextStyle()
+	if l.Destroyed() {
+		return layout.Measurement{}
+	}
+	size := measureTextSize(c.Max)
+	for _, cached := range l.measurements {
+		if cached.valid && cached.size == size {
+			measured := cached.value
+			measured.Size = l.constrain(c, measured.Size)
+			return measured
+		}
+	}
+	var textLayout typography.TextLayout
+	cacheResult := true
+	if !l.layoutValid || l.cachedLayout == nil {
+		// Keep the first layout for display; later measurement queries never
+		// change the native layout used by painting and selection.
+		textLayout = l.ensureLayout(size)
+	} else if l.cachedWidth == size.Width && l.cachedHeight == size.Height {
+		textLayout = l.cachedLayout
+		// Display metrics are already available without reshaping. Do not
+		// evict an independent query result to retain the same information.
+		cacheResult = false
+	} else {
+		textLayout = l.newTextLayout(l.textStyle, size)
+		if textLayout != nil {
+			defer textLayout.Destroy()
+		}
+	}
 	if textLayout == nil {
 		return layout.Measurement{}
 	}
 
 	width, height := textLayout.MeasureSize()
 	if height <= 0 {
-		format := l.resolvedTextFormat()
-		height = textLineHeight(format.Font.Size)
+		height = textLineHeight(l.textStyle.format.Font.Size)
 	}
 	measured := layout.Measured(geometry.Size{Width: width, Height: height})
 	if l.PlainText() != "" {
@@ -165,6 +205,10 @@ func (l *Label) Measure(c layout.Constraint) layout.Measurement {
 			measured.Baseline = lines[0].Baseline
 			measured.HasBaseline = true
 		}
+	}
+	if cacheResult {
+		l.measurements[l.measureNext] = labelMeasurement{size: size, value: measured, valid: true}
+		l.measureNext = (l.measureNext + 1) % uint8(len(l.measurements))
 	}
 	measured.Size = l.constrain(c, measured.Size)
 	return measured
@@ -207,6 +251,7 @@ func (l *Label) Snapshot() WidgetInfo {
 func (l *Label) invalidateLayout() {
 	l.layoutValid = false
 	l.textStyleValid = false
+	l.clearMeasurements()
 	l.invalidateSelectionGeometry()
 }
 
@@ -253,6 +298,7 @@ func (l *Label) ensureTextStyle() {
 	}
 	current := func() bool { return !l.Destroyed() && l.layoutValid && l.cachedLayout == native && l.textStyleValid }
 	if previous.format.WrapMode != next.format.WrapMode {
+		l.clearMeasurements()
 		l.invalidateSelectionGeometry()
 		native.SetWrapMode(next.format.WrapMode)
 		if !current() {
@@ -260,6 +306,7 @@ func (l *Label) ensureTextStyle() {
 		}
 	}
 	if previous.format.TextAlign != next.format.TextAlign {
+		l.clearMeasurements()
 		l.invalidateSelectionGeometry()
 		native.SetTextAlignment(next.format.TextAlign)
 		if !current() {
@@ -316,6 +363,7 @@ func (l *Label) ensureLayout(size geometry.Size) typography.TextLayout {
 }
 
 func (l *Label) releaseLayout() {
+	l.clearMeasurements()
 	l.invalidateSelectionGeometry()
 	native := l.cachedLayout
 	l.cachedLayout = nil
@@ -323,6 +371,11 @@ func (l *Label) releaseLayout() {
 	if native != nil {
 		native.Destroy()
 	}
+}
+
+func (l *Label) clearMeasurements() {
+	l.measurements = [4]labelMeasurement{}
+	l.measureNext = 0
 }
 
 func (l *Label) newTextLayout(base labelTextStyle, size geometry.Size) typography.TextLayout {

@@ -130,7 +130,7 @@ TextInput/TextView 不解释标记；共用文字格式构造可以读取新增�
 
 ## 5. 排版、缓存与生命周期
 
-每个 Label 只拥有一个 TextLayout。先解析纯文本和范围，再创建基础 layout 并应用
+每个 Label 长期只拥有一个显示 TextLayout。先解析纯文本和范围，再创建基础 layout 并应用
 完整范围字体、颜色和装饰，最后 Measure/MeasureMetrics/Paint；不拆成多个布局。
 格式化空字符串与普通空 Label 的测量和 HasBaseline 行为一致。
 
@@ -141,7 +141,13 @@ TextInput/TextView 不解释标记；共用文字格式构造可以读取新增�
 - 尺寸变化复用 SetSize；换行／对齐使用既有 setter，重新计算 native 行和 Cluster。
   仅颜色变化保留选区几何，字体、段落和尺寸变化不缓存旧 baseline。
 - Unmount 释放 TextLayout，保留 Widget 自身的源文字和解析值；Destroy 最终兜底。
-- 不增加全局缓存；Measure 与 Paint 继续共享对象。
+- Measure 不修改已有显示排版。同尺寸查询只读复用；不同尺寸查询创建临时排版，
+  测量完成立即释放。尚无排版时首份测量对象可留给首次绘制，避免双重创建。
+- 四个固定槽位保存查询上限、未裁剪占用尺寸与首行 baseline，不保留行／Cluster
+  或第二个原生对象。字体／装饰、正文、换行／对齐变化与卸载清理；颜色变化保留。
+  返回时仍应用当前 MinSize／MaxSize 和父约束，失败结果不缓存。
+- 显示排版只随实际尺寸更新，选择命中始终使用它。倍率／可见区域变化仍按 Painter
+  原有缓存键处理，不增加全局缓存、TextLayout 克隆接口或 UI 特例。
 
 ## 6. UI 与语义
 
@@ -267,3 +273,13 @@ Changed／Destroy 订阅及倍率／区域缓存键，不放宽平台失效契�
 按文字属性影响更新，以及 [gtk_label_get_measuring_layout](https://github.com/GNOME/gtk/blob/4.20.0/gtk/gtklabel.c#L976)
 在不同查询宽度下使用独立排版、可安全复用时借用既有排版的源码行为。
 GOUI 不引入 CSS 变化标志或 Pango 专属复制接口，按自身 TextLayout 契约实现。
+
+验证入口：`tests/window/gui/label_cache`。普通／格式化 Label 与独立重建的参考比较
+预乘 RGBA，验证查询不改显示、颜色和字体确实更新、换行／对齐一致；诊断计数分别
+检查预热后重复布局、两种查询及等价样式均不重建资源。四个槽位可被第五种不同约束
+淘汰；测试切换阶段须按相同失效路径预热，不能把首次查询当作稳定命中。
+
+实施时 demo 观测表明，WrapBox／ScrollView 的嵌套测量在同一稳定布局下交替四种
+上限（如 838×Inf、830×Inf、830×60、Inf×Inf）。原定两个纯值槽位会抖动，
+因此调整为四项固定数组；显示尺寸的度量直接读取现有排版，不占这些槽位，
+避免挤掉独立查询结果。不保留额外原生排版、不使用 map／动态 LRU。
