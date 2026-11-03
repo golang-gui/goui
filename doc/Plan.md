@@ -1,5 +1,46 @@
 # Plan
 
+## 可选绘制与资源诊断（2026-11-03）
+
+- [x] 按复核后的 [DesignDiagnostics](DesignDiagnostics.md) 分离公开 `gui/diagnostics`、
+  中立会话／历史记录与 GUI 私有弱引用适配器；启用后按需关联，无 init 注册或公共内核桥。
+- [x] 移除控件及 WidgetBase.Arrange 中的计数，不新增分配 setter，不改变 LayoutManager
+  语义；只保留明确的测量缓存、Paint、StyleChanged、请求和资源操作计数。
+- [x] rootBase 封装布局阶段，Popover 独立 layoutContent 限定时段；容量满时直接跳过
+  新项，清理移到 Snapshot，避免每次遗漏都扫描全表；查询只读缓存字段。
+- [x] 新增公共入口／归属与懒初始化、容量清理边界、重复 Arrange、无用户 getter 查询、
+  Popover 布局阶段与失败回归；旧的像素、资源、生命周期和协议覆盖继续保留。
+- [x] 当前已跟踪源码及本轮文件的独立副本 `go test -json -count=1 ./...`：3317 项
+  通过、10 项既有跳过；相关八个包 race、GUI／公开诊断／协议／内部会话 vet 通过。
+  Windows amd64、macOS arm64 全仓交叉构建和 Windows 八个测试目标编译通过。
+  原工作区 `go test ./...` 仍被未跟踪旧例程和 TestTimerNativeRuntime 旧断言阻塞；
+  未改这些文件，测试改写的既有 PNG 已恢复。
+- [x] Ubuntu 22.04.5 amd64，独立 Xvnc :86／xfwm4 合成会话：公开入口窗口程序的
+  OpenGL／Software、1x／2x 均通过；HTTP 显式启停、正常输入、空闲轮询、冻结与
+  重启通过。Software 1x 初次与 HTTP 点击场景并行时，空闲断言遇到额外帧；
+  保留断言，独占桌面串行重验通过，例程补充独占要求和完整失败数据。
+- [x] remote-shell 无头：Windows 10 19045 amd64 八个目标 1760 项通过，含 DirectWrite
+  与 Direct2D WARP；macOS 15.7.7 arm64 原机 Go 1.25.8 七个目标 1681 项通过，
+  最终 GUI 诊断目标另复验通过。本轮未操作远端桌面。Windows 初次阶段测试因极短
+  时段记录为零失败；测试查询加入已知耗时，保留原断言后通过，不更改计时实现或容差。
+- [x] 同核心 CPU 10、GOMAXPROCS=1、每项 5×400ms，本次调整前后缓存测量中位数：
+  关闭约 9.75 → 9.82 ns/op，仅帧约 11.15 → 9.96 ns/op，逐 Widget 约 72.48 →
+  68.77 ns/op；均保持零分配。逐 Widget 的调整前数据存在波动，不外推应用加速结论。
+  测量入口保留可内联的关闭门禁，避免分包后额外的函数调用。
+
+- [x] 使用公开 API 及诊断 HTTP 端点观测临时副本，Ubuntu 22.04.5 amd64、独立
+  Xvnc／xfwm4 4.16.1，OpenGL（llvmpipe）／Software 1x：20 次静态重绘均只有
+  20 次文字缓存命中，无排版／位图／图片重建；图片与 DrawingArea 更新复用资源，
+  空闲查询不增加帧，停止后结果冻结。该观测未修改正式 demo 或控件实现。
+- [x] demo 实际悬停、滚轮与 ScrollBar 拖动观测完成。两后端 10 次悬停往返均产生
+  40 次 TextLayout 创建及栅格化；最小场景中文案／样式／窗口尺寸不变，仅请求
+  Label 重新布局仍产生 2 次 SetSize、1 次栅格化和图片重建。原始结果保存在
+  /tmp/goui-diagnostics-observe-ij_9hnz1；资源是进程操作量，阶段耗时包含等待，
+  不将输入合并后的帧数或虚拟桌面数据外推为真机 GPU 性能。
+- [ ] 下一轮优化 Label 测量与绘制共用可变 TextLayout，以及 StyleChanged 无条件
+  释放布局导致的过宽失效；修复后复用相同工作负载对照，保留必要失效与像素正确性。
+  本切片不含该优化、UI Build 追踪、逐 Widget 资源归因或 GPU／合成器计时。
+
 ## TableView 自然测量保留伸展列分配（2026-11-03）
 
 - [x] 旧实现回归复现：无界查询使两列实际宽度从 195／195 变为 100／100 DIP，

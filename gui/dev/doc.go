@@ -31,4 +31,9 @@
 // call SetText or simulate an input-method composition. Successful responses
 // confirm dispatch, not completed painting. Queued canceled requests do not run;
 // already-started input cannot be rolled back or safely retried automatically.
+//
+// GET /goui/dev/diagnostics reads optional CPU-frame and resource counters.
+// POST {"enabled":true,"widgets":true} to that path explicitly enables a
+// bounded capture; POST {"enabled":false} freezes it. Queries never request
+// drawing. Completed CPU frames do not confirm GPU/compositor presentation.
 package dev
