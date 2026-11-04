@@ -1,6 +1,7 @@
 # 移动端启动、线程与生命周期
 
-状态：第一切片入口注册、固定 ABI 和事件线程已实现并完成阶段验收；尚未接入 GUI 窗口。
+状态：第一切片启动/事件线程、第二切片逻辑窗口/Software 表面已实现并完成下述阶段验收；
+尚未注册完整移动 Platform，也未接入 GUI/UI 窗口。
 构建基座与链接工具见 [PlanMobileBuild](PlanMobileBuild.md)。开发使用独立的
 `goui2/feature/mobile-base`，不改变主会话的桌面实现。
 
@@ -151,3 +152,86 @@ Activity 重建不卸载仍在运行的 runtime。测试专用 iOS 设备已删�
 表面交接、GUI/UI、生命周期公开契约、退出、输入和渲染恢复；iOS 真机及
 Android 16 KiB 内核运行仍未验收。本机及 Mac 的产物/日志目录为
 /tmp/goui-mobile-start-stage1-xq3iq5zk；Windows 使用同名用户临时目录。
+
+## 第二切片：逻辑窗口与 Software 表面（2026-11-04）
+
+common.Surface 增加 SurfaceState 查询（Ready、Generation），替换式目标通过
+SurfaceEvent 通知；VisibilityEvent 与 Focus/桌面 WindowState 分开。桌面目标
+保持 generation=1，最终不可用由既有 DestroyEvent 报告；移动目标替换或绘制
+配置改变时推进 generation。Ready 不等于可见，NativeHandle 查询不延长借用期。
+
+platform/mobile.Window 实现 common.Window，先创建逻辑对象，实际 Size 来自
+原生回调。Show/Hide 请求 OS 托管内容视图可见性，不负责启动 Activity 或将
+应用移到前台。只支持一个不透明内容窗口；Title/Parent 等未接入能力返回
+ErrUnsupported，不伪造桌面能力。尚不注册为完整 Platform，也不修改 GUI/UI。
+
+每个原生目标有可撤销绘制许可。Native callback 可同步撤销许可并等待正在
+进行的 native present 结束，再异步上报 GUI；撤销不等待 GUI 处理消息。已排队
+的 attach/paint 使用目标与 generation 检查，不能复活失效目标。Software CPU
+栅格化可以结束，但 End 不得访问已撤销目标；失效请求保留至恢复后重绘。
+
+平台宿主源码位于 platform/mobile/native，独立于最小入口归档：
+
+- Android：NativeActivity 回调、ALooper/eventfd 主线程命令、JNI decor view
+  可见性、ANativeWindow RGBX 呈现。销毁回调同步撤销；RedrawNeeded 等待
+  GOUI 绘制通知完成，期间 Go present 不等待 Android UI 线程。输入队列只排空
+  并返回未处理，避免阻塞系统；本切片不提供 Go 触摸/键盘语义。
+- iOS：UIKit Scene 与内容 view、尺寸/scale、CGImage 层呈现。Go 像素在 native
+  调用返回前复制，不异步保存 Go 内存；待呈现图片仅保留最新一张。主线程检查
+  generation/view 后才更新图层；断开时先撤销，再清理 pending image 与 view。
+
+native/host.h 是私有版本化 ABI；32 字节事实包在 Go 回调中立即复制，不保存
+原生栈指针。C/Objective-C 代码只作为 platform 宿主预编译，不并入 runtime
+策略；普通窗口/绘制许可、队列及 Software 继续从 Go 源码编译。
+
+tests/window/platform/mobile_surface 使用正式宿主和 Software Painter；测试包装
+仅提供应用私有状态路径。Run 前创建 Window/Painter/图片，周期重绘并记录
+nonce、尺寸、generation、丢失与恢复、线程与呈现计数。验收旋转、前后台、
+Android Activity 重建，检查窗口未 Destroy、图片未重建、状态未清零，以及
+撤销后的提交被拒绝。iOS Scene disconnect/reconnect 如未触发真实系统场景，
+必须标为逻辑测试覆盖、原生运行待验，不以后台返回替代断开验收。
+
+### 第二切片实现与验收
+
+2026-11-04，Go 1.25.8，使用第三阶段 purego/cgo 修复分支。正式宿主和验收
+程序分别位于 platform/mobile/native 与 tests/window/platform/mobile_surface；
+最小 runtime/cgo 入口归档没有增加 UIKit、Activity 或绘制策略。Windows/Linux
+消费端复用预编译宿主对象和链接组件，仍从源码编译普通 Go 平台代码。
+
+桌面 Window/Popup 只增加 SurfaceState 查询，沿用既有销毁与绘制行为，没有
+新增桌面 SurfaceEvent/VisibilityEvent 发送。公共配置读取另修正
+GOUI_PLAT_SCALE=Inf 被当作有效比例的问题；测试覆盖非法值及有效的 1.5。
+
+| 验证 | 环境与结果 |
+| --- | --- |
+| Linux 消费 | amd64 / Go 1.25.8；Android、iOS Simulator、iOS Device 三目标编译/链接通过；PATH 无原生编译器，日志确认复用入口归档，未执行 cgo 源码生成 |
+| Windows 消费 | Windows 10 amd64 / Go 1.25.8；同三目标通过，编译器调用为零，源码注册文件未落入应用目录；未改变 Defender 或其他系统安全配置 |
+| Android 原生 | macOS 15.7.7 ARM64 上 Android 11 ARM64 ATD / NativeActivity / Software 1x；十次横竖屏、三次 Home/返回、Back 结束 Activity 后同 PID 重建通过；nonce 与缓存图片保留，destroyed=0、threadFailures=0，最终 submitted=84、ready=15、lost=14 |
+| iOS 原生 | 同一 Mac 上 iOS 26.3.1 ARM64 Simulator / UIKit / Software 3x；XCTest 八次旋转与三次 Home/返回通过，尺寸观测包括 393×852 和 852×393 DIP；destroyed=0、threadFailures=0、submitted=255、ready=9、lost=8。一次失效呈现被许可拒绝，随后恢复 |
+| 画面 | 两端最终稳定截图的纯色内部与不透明 sRGB 预期一致；绿色缓存图为 Android 32×32、iOS 96×96 物理像素，红色标记为 10×10/30×30。跳过系统栏与圆角抗锯齿；横屏几何由原生尺寸事件验收，截图只验证稳定画面的颜色和图片物理像素大小 |
+| 生命周期逻辑 | 旧排队 Paint 被新 generation 替换后继续重绘、已撤销 attach 不复活、present 与撤销互斥、GUI 尚未处理 detach 时拒绝原生访问、回调销毁不再投递后续事件，独立断言通过 |
+| 包内与编译 | mobile/common/events 定向 race、Software race 和相关 vet 通过；Windows amd64 win32、macOS arm64 cocoa 测试目标交叉编译通过，不等同于桌面交互复验 |
+| 全仓 | 已跟踪源码及新增文件的隔离副本、显式 replace 到 FFI 修复分支：go test -count=1 ./... 为 3505 通过、10 既有跳过、0 失败。已核对全部 Go 源码与交付源码一致，未删除或放宽断言 |
+
+直接在原工作区执行 go test ./... 仍因四个未跟踪旧 example 目录的过期接口
+编译失败；本轮未修改这些文件，未把该命令记为通过。本轮未重现第一切片记录的
+demo 启动段错误，也不因此宣告旧问题已修复。现有测试产生的图片保留在原有
+位置，新增验收产物均在仓库外。两端原生测试运行的是 Linux 消费产物；Windows
+产物本轮只验证构建，未将其视为独立的原生运行验收。
+
+最终全仓复验还发生过一次 xerrors 测试进程在执行测试前段错误：该轮 3496
+通过、10 跳过、1 包失败。该包及其依赖链源码不包含本轮改动；用未修改的
+2c2950b 与当前源码编译的独立测试程序各执行五十次均未复现。根因仍未定位，
+不能宣告已修复，也未认定它与第一切片的 demo 启动失败同源。失败 JSON、
+core 检查记录和对照结果保留在本轮临时目录；最终重新执行结果单独列在表中。
+
+iOS Scene disconnect/reconnect 没有触发实际系统场景，仍为原生待验；逻辑
+许可测试不替代它。iOS Device 仅链接，真机、Android 16 KiB 内核、触摸/键盘/
+IME、GPU 后端、完整 Platform 服务和 GUI/UI 接入均未完成。当前一个进程只
+接入一个逻辑内容窗口；Activity 结束不销毁它，显式退出与系统进程终止的契约
+留在后续切片。后台被系统挂起与进程重启不承诺保留 Go 内存。
+
+本轮创建的专用 iOS 模拟器已删除，Android 模拟器与私有 ADB 已停止，没有
+修改用户已有模拟器或桌面。可复核日志、状态历史、截图、消费哈希与 receipt.json
+保留在本机 /tmp/goui-mobile-surface-stage2-r_fhc5l4，Mac 同名目录；Windows
+使用同名用户临时目录。SDK、组件、二进制和签名材料未加入仓库。

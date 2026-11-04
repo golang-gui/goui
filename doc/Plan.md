@@ -1,5 +1,29 @@
 # Plan
 
+## 移动端平台：第二切片逻辑窗口与 Software 表面（2026-11-04）
+
+- 设计和验证范围见 [DesignMobileLifecycle](DesignMobileLifecycle.md#第二切片逻辑窗口与-software-表面2026-11-04)。
+- [x] common.SurfaceState、SurfaceEvent、VisibilityEvent；桌面 Window/Popup
+  仅补目标状态查询，不改变原生绘制或销毁。无穷大比例配置由公共读取入口拒绝。
+- [x] mobile.Window 在原生目标出现前创建；可见性、尺寸和绘制许可独立于逻辑
+  生命周期。原生销毁同步撤销许可，旧消息不能复活目标，恢复后继续重绘。
+- [x] 独立 platform 宿主：Android NativeActivity/ANativeWindow 与 UIKit Scene/
+  CGImage Software 呈现；主线程所有权明确，不将平台 UI 并入最小 runtime 基座。
+- [x] Linux/Windows 三目标无原生编译器消费通过。Android Software 1x 十次旋转、
+  三次后台往返、同进程 Activity 重建；iOS Simulator Software 3x 八次旋转、
+  三次后台往返通过，状态/缓存图片保留，线程错误和逻辑窗口 Destroy 均为零。
+- [x] 独立生命周期断言、相关 race/vet、桌面目标编译和稳定画面纯色像素检查通过。
+  隔离源码全仓 3505 通过/10 既有跳过/0 失败；原目录仍有四个未跟踪旧 example
+  编译错误，不将原目录全仓记为通过。一次全仓复验的 xerrors 进程启动段错误
+  未定位，对照与重跑范围见设计文档；未删除断言或放宽跳过。专用模拟器/ADB
+  已清理，材料均在仓库外。
+- 代码提交：e4f44df（比例校验）、ec36a78（表面状态契约）、6cd4fed（逻辑
+  窗口）、66925db（原生 Software 宿主）、e70b926（验收例程）；均为
+  feature/mobile-base 本地提交，未推送。
+- [ ] iOS Scene 断开重连的真实系统场景、iOS 真机与 Android 16 KiB 内核运行。
+- [ ] 下一切片：最小 Platform 服务及 GUI/UI 单内容窗口接入；另行明确退出，
+  逐步增加文字排版、输入/IME 和 GPU。当前不承诺完整移动应用或正式 APK/IPA。
+
 ## 移动端平台：第一切片启动与事件线程（2026-11-04）
 
 - 设计与实测范围见 [DesignMobileLifecycle](DesignMobileLifecycle.md)。
@@ -16,7 +40,7 @@
 - [x] 本轮专用模拟器/ADB 清理；无 SDK、二进制或签名材料入库。
 - 代码提交：9668c66（启动层）、572b3aa（自动注册）、951ec39（原生验收例程）；
   均为 feature/mobile-base 本地提交，未推送。
-- [ ] 下一切片为逻辑窗口与 Software 表面交接，随后 GUI/UI 和退出契约。
+- [x] 逻辑窗口与 Software 表面交接已在第二切片完成，随后接入 GUI/UI 和退出契约。
   iOS Device 目前仅链接；公开 FFI/工具分发、正式 APK/IPA、GPU、输入待后续。
 
 ## 移动端基座：第四阶段消费构建（2026-11-03）

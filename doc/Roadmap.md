@@ -13,8 +13,11 @@ FFI 修复、真机及分发缺口见 [Plan](Plan.md) 与 [PlanMobileBuild](Plan
 冷构建及两宿主产物的 Android/iOS 模拟器执行通过；具体范围见 PlanMobileBuild
 第 15、16 节。平台接入第一切片已实现固定 ABI、main 自动注册和独立 GOUI
 事件线程，Windows/Linux 消费与 Android/iOS 模拟器真实输入/生命周期通过，
-见 [DesignMobileLifecycle](DesignMobileLifecycle.md)。下一步先实现逻辑窗口与
-Software 表面交接，再接 GUI/UI；可分发依赖和组件、APK/IPA、真机/16 KiB
+见 [DesignMobileLifecycle](DesignMobileLifecycle.md)。第二切片已实现独立于原生
+目标的逻辑窗口、可同步撤销的绘制许可、尺寸/可见性事实和 Software 呈现；
+Android 旋转/后台/同进程 Activity 重建、iOS Simulator 旋转/后台及两宿主消费
+通过，iOS Scene 断开重连仍待原生验收。下一步接入最小 Platform 与 GUI/UI；
+可分发依赖和组件、APK/IPA、真机/16 KiB
 及公开工具附件仍待验收；
 此项不改变现有桌面构建命令，也不是当前已发布的移动端支持承诺。
 
