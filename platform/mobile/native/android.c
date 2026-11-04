@@ -26,6 +26,9 @@ static AInputQueue *input;
 // Process bootstrap survives Activity recreation and never retains an Activity.
 static _Atomic(JavaVM *) java_vm;
 static jobject class_loader;
+#if GOUI_GLES
+#include "android_gles.inc"
+#endif
 __attribute__((visibility("default"))) uintptr_t goui_android_java_vm(void) { return (uintptr_t)java_vm; }
 __attribute__((visibility("default"))) uintptr_t goui_android_class_loader(void) { return java_vm?(uintptr_t)class_loader:0; }
 
@@ -41,7 +44,11 @@ static void Revoke(void) {
 static void Target(ANativeWindow *next) {
     int w=next?ANativeWindow_getWidth(next):0,h=next?ANativeWindow_getHeight(next):0;
     if (next==window && w==width && h==height) return;
-    Revoke(); window=next; width=w; height=h; generation++;
+    Revoke();
+#if GOUI_GLES
+    HostGLTarget(next);
+#endif
+    window=next; width=w; height=h; generation++;
     if (window && width>0 && height>0) Emit(GOUI_TARGET,0);
 }
 static void Wake(void) {
@@ -72,7 +79,7 @@ static int Commands(int fd,int events,void *data) {
     (void)events; (void)data;
     uint64_t count; (void)read(fd,&count,sizeof(count));
     Visibility();
-    if (window) { generation++; Emit(GOUI_TARGET,0); }
+    if (window) { Revoke(); generation++; Emit(GOUI_TARGET,0); }
     return 1;
 }
 __attribute__((visibility("default"))) int32_t goui_host_bind(uintptr_t fn,uint32_t version) {
@@ -106,7 +113,15 @@ __attribute__((visibility("default"))) int32_t goui_host_present(uintptr_t handl
 static void OnStart(ANativeActivity *a){(void)a; started=1; Visibility();}
 static void OnStop(ANativeActivity *a){(void)a; started=0; Emit(GOUI_VISIBLE,0);}
 static void OnFocus(ANativeActivity *a,int focus){(void)a; Emit(GOUI_FOCUS,focus);}
-static void OnWindow(ANativeActivity *a,ANativeWindow *w){(void)a; ANativeWindow_setBuffersGeometry(w,0,0,WINDOW_FORMAT_RGBX_8888); Target(w);}
+static void OnWindow(ANativeActivity *a,ANativeWindow *w){
+    (void)a;
+#if GOUI_GLES
+    ANativeWindow_setBuffersGeometry(w,0,0,gl_visual);
+#else
+    ANativeWindow_setBuffersGeometry(w,0,0,WINDOW_FORMAT_RGBX_8888);
+#endif
+    Target(w);
+}
 static void OnResize(ANativeActivity *a,ANativeWindow *w){(void)a; Target(w);}
 static void OnRedraw(ANativeActivity *a,ANativeWindow *w){(void)a; Target(w); Emit(GOUI_REDRAW,0);}
 static void OnLost(ANativeActivity *a,ANativeWindow *w){(void)a; if(window==w) Target(NULL);}
@@ -137,6 +152,9 @@ static void OnInput(ANativeActivity *a,AInputQueue *q){(void)a;input=q;AInputQue
 static void OnInputLost(ANativeActivity *a,AInputQueue *q){(void)a;AInputQueue_detachLooper(q);if(input==q)input=NULL;}
 __attribute__((visibility("default"))) void ANativeActivity_onCreate(ANativeActivity *a,void *saved,size_t size){
     (void)saved;(void)size; activity=a; started=0;
+#if GOUI_GLES
+    HostGLInit();
+#endif
     if(!java_vm){
         JNIEnv *env=a->env;
         jclass cls=(*env)->GetObjectClass(env,a->clazz);
