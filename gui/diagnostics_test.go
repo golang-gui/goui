@@ -93,6 +93,54 @@ func TestDiagnosticsStartStopNeverSchedulesFrames(t *testing.T) {
 	}
 }
 
+func TestDiagnosticsReadRootKeepsCompletedFrameAndIdentity(t *testing.T) {
+	d, a := startTestDiagnostics(t, true)
+	w := &window{rootBase: rootBase{app: a}}
+	other := &window{rootBase: rootBase{app: a}}
+	if _, ok := d.ReadRoot(w); ok || d.Source() != nil {
+		t.Fatal("单根查询提前创建了采集器")
+	}
+	r := diagnosticRoot(&w.rootBase)
+	r.Backend = "test-backend"
+	f := d.BeginFrame(r)
+	f.Paint = time.Millisecond
+	f.Completed, f.EndReturned = true, true
+	f.Finish()
+	completed := r.LastFrame()
+	// 其它窗口的完成帧以及当前窗口的未完成帧，均不能覆盖已完成样本。
+	f = d.BeginFrame(diagnosticRoot(&other.rootBase))
+	f.Paint, f.Completed, f.EndReturned = time.Second, true, true
+	f.Finish()
+	f = d.BeginFrame(r)
+	f.Paint = 2 * time.Second
+	sample, ok := d.ReadRoot(w)
+	if !ok || sample.Root.Ref != r.Ref || sample.Root.Backend != "test-backend" || sample.Frame != completed {
+		t.Fatal("单根样本混入当前帧或其它窗口", sample)
+	}
+	f.Finish() // 中断帧也不得取代最近完成帧。
+	sample, _ = d.ReadRoot(w)
+	if sample.Frame != completed {
+		t.Fatal("中断帧覆盖了已完成样本")
+	}
+	collector := d.Source().(*diagnosticCollector)
+	roots := len(collector.roots)
+	for _, target := range []any{nil, struct{}{}, &window{}, &window{rootBase: rootBase{app: a}}} {
+		if _, ok := d.ReadRoot(target); ok {
+			t.Fatal("读取了错误归属或没有记录的根")
+		}
+	}
+	if len(collector.roots) != roots {
+		t.Fatal("单根查询创建了额外记录")
+	}
+	if allocations := testing.AllocsPerRun(100, func() { _, _ = d.ReadRoot(w) }); allocations != 0 {
+		t.Fatal("单根查询产生堆分配", allocations)
+	}
+	d.Stop()
+	if _, ok := d.ReadRoot(w); ok {
+		t.Fatal("停止后仍可访问采集器")
+	}
+}
+
 type diagnosticPanicWidget struct{ mockWidget }
 
 func (*diagnosticPanicWidget) Paint(Painter) { panic("diagnostic paint regression") }

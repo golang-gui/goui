@@ -18,6 +18,8 @@
 // 像素比较只比较同后端、同次运行、同倍率的离屏结果，不作跨平台字体金图比较。
 // 副作用：创建一个窗口和短暂 Popover；协议模式开放指定的本机端口；不写文件。
 // 重启复位；自动模式输出 PASS 后退出，手工模式关闭主窗口退出。
+// -hud 切换到 HUD 专项：透传点击、连续帧、位置、闲置、离屏隔离和停止清理。
+// HUD 逐项操作及预期见 hud.go；可组合 -hud -auto=false 手工验证。
 package main
 
 import (
@@ -89,12 +91,17 @@ func total(s diagnostics.Snapshot) (n uint64) {
 
 func main() {
 	auto := flag.Bool("auto", true, "自动断言后退出")
+	hud := flag.Bool("hud", false, "验证显式性能浮层")
 	flag.Parse()
 	app, err := gui.NewApplication("org.golang-gui.Diagnostics")
 	if err != nil {
 		log.Fatal(err)
 	}
 	app.SetStyleSheet(modern.Sheet(modern.Options{}))
+	if *hud {
+		runHUD(app, *auto)
+		return
+	}
 	win, err := app.NewWindow(&gui.WindowOptions{Size: geometry.Size{Width: 540, Height: 360}})
 	must(err)
 	defer win.Destroy()
