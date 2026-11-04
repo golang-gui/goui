@@ -53,21 +53,62 @@ type Shortcut struct {
 	enabled    bool
 	autoRepeat bool
 	activate   signal.Signal1[func() bool]
+	command    *Command
+	revision   uint64
 }
 
 func NewShortcut(gesture KeyGesture) *Shortcut { return &Shortcut{gesture: gesture, enabled: true} }
 func (s *Shortcut) Gesture() KeyGesture        { return s.gesture }
-func (s *Shortcut) SetGesture(g KeyGesture)    { s.gesture = g }
-func (s *Shortcut) Enabled() bool              { return s.enabled }
-func (s *Shortcut) SetEnabled(enabled bool)    { s.enabled = enabled }
-func (s *Shortcut) AutoRepeat() bool           { return s.autoRepeat }
-func (s *Shortcut) SetAutoRepeat(repeat bool)  { s.autoRepeat = repeat }
+func (s *Shortcut) SetGesture(g KeyGesture) {
+	if s.gesture == g {
+		return
+	}
+	s.gesture = g
+	s.revision++
+	if s.command != nil {
+		s.command.shortcutsChanged.Emit()
+	}
+}
+func (s *Shortcut) Enabled() bool { return s.enabled }
+func (s *Shortcut) SetEnabled(enabled bool) {
+	if s.enabled != enabled {
+		s.enabled = enabled
+		s.revision++
+	}
+}
+func (s *Shortcut) AutoRepeat() bool          { return s.autoRepeat }
+func (s *Shortcut) SetAutoRepeat(repeat bool) { s.autoRepeat = repeat }
 func (s *Shortcut) ConnectActivate(fn func()) signal.Handle {
 	return s.activate.Connect(func(alive func() bool) {
 		if alive() {
 			fn()
 		}
 	})
+}
+
+func (s *Shortcut) Command() *Command { return s.command }
+
+// SetCommand associates an operation without registering the shortcut. Pass nil
+// when an owned shortcut is no longer needed to release its reverse reference.
+func (s *Shortcut) SetCommand(command *Command) {
+	if s.command == command {
+		return
+	}
+	previous := s.command
+	s.command = command
+	s.revision++
+	if previous != nil {
+		previous.shortcuts = slices.DeleteFunc(previous.shortcuts, func(other *Shortcut) bool { return other == s })
+	}
+	if command != nil {
+		command.shortcuts = append(command.shortcuts, s)
+	}
+	if previous != nil {
+		previous.shortcutsChanged.Emit()
+	}
+	if command != nil && s.command == command {
+		command.shortcutsChanged.Emit()
+	}
 }
 
 // ShortcutController participates in normal event propagation. Bubble (the
@@ -103,7 +144,7 @@ func (c *ShortcutController) HandleEvent(ctx EventContext) {
 		return
 	}
 	for _, s := range c.shortcuts {
-		if !s.enabled || !s.gesture.Matches(e) {
+		if !s.enabled || s.command != nil && !s.command.Enabled() || !s.gesture.Matches(e) {
 			continue
 		}
 		ctx.StopPropagation()
@@ -111,15 +152,24 @@ func (c *ShortcutController) HandleEvent(ctx EventContext) {
 		if e.Repeat && !s.autoRepeat {
 			return
 		}
-		s.activate.Emit(func() bool {
-			if c.destroyed || !slices.Contains(c.shortcuts, s) {
+		revision, command := s.revision, s.command
+		var commandRevision uint64
+		if command != nil {
+			commandRevision = command.revision
+		}
+		alive := func() bool {
+			if c.destroyed || !s.enabled || s.revision != revision || !slices.Contains(c.shortcuts, s) || command != nil && (!command.Enabled() || command.revision != commandRevision) {
 				return false
 			}
 			if native, ok := ctx.(*eventContext); ok && native.alive != nil {
 				return native.alive()
 			}
 			return true
-		})
+		}
+		s.activate.Emit(alive)
+		if command != nil && alive() {
+			command.Activate()
+		}
 		return
 	}
 }

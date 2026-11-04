@@ -369,3 +369,28 @@ events 枚举独立性与 platform/test 日志名称的定向 race 测试通过�
 Windows amd64 的 win32/GUI、macOS arm64 的 Cocoa/GUI 测试目标交叉编译通过，
 产物位于仓库外临时目录；不代表 Windows/macOS 原生运行通过。
 `git diff --check` 通过。全仓既有图片测试仍有 PNG 输出副作用；本轮未执行真实窗口验收。
+
+## 可选共享命令与展示文字（2026-11-04）
+
+```go
+save := gui.NewCommand()
+save.ConnectActivate(saveDocument)
+shortcut := gui.NewShortcut(gui.KeyGesture{Key: gui.KeyS, Modifiers: gui.ModPrimary})
+shortcut.SetCommand(save)
+window.Shortcuts().AddShortcut(shortcut)
+```
+
+Shortcut 保留直接回调，并可关联 Command；按键配置仍属于 Shortcut。
+匹配输入时直接读取操作 Enabled，不订阅、不复制其启用状态；禁用候选不消费输入。
+ConnectActivate 是绑定激活通知，关联操作由分发路径调用一次。通知期间换目标、
+移除注册、禁用再恢复或销毁宿主都不能继续执行过期目标。RemoveShortcut 仅移除
+该 Controller 的注册；所有者结束使用时另调用 SetCommand(nil) 解除反向关联。
+
+KeyGesture.DisplayText 生成本平台提示，Primary 显示 Ctrl 或 ⌘，等价修饰去重，
+未知或本平台不支持的组合返回空。它不解析字符串、不注册快捷键、不保证系统保留键。
+菜单从 Command 的关联配置取提示，不按实时焦点或局部禁用筛选。
+
+声明式保留 Shortcut(key).Modifiers(...).Enabled(...).AutoRepeat(...).OnActivate(...)，
+增加 Command("id") 选择目标；后者替换直接回调。定义由祖先 CommandScope 管理，
+既有按位置协调保持 Shortcut 身份，卸载自动解除 UI 自己创建的关联与注册。
+不增加 UseShortcut，也不复制操作对象。完整契约见 [DesignCommand](DesignCommand.md)。
