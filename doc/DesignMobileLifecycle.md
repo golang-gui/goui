@@ -1,7 +1,7 @@
 # 移动端启动、线程与生命周期
 
 状态：第一切片启动/事件线程、第二切片逻辑窗口/Software 表面已实现并完成下述阶段验收；
-尚未注册完整移动 Platform，也未接入 GUI/UI 窗口。
+Android Platform/GUI 正在按第三切片接入；iOS 工厂与 GUI/UI 尚未接入。
 后续包结构、两端共用 OpenGL ES 和文字接入顺序以
 [DesignMobilePlatform](DesignMobilePlatform.md) 为准；本篇保留已实现的生命周期契约。
 构建基座与链接工具见 [PlanMobileBuild](PlanMobileBuild.md)。开发使用独立的
@@ -238,3 +238,84 @@ IME、GPU 后端、完整 Platform 服务和 GUI/UI 接入均未完成。当前�
 修改用户已有模拟器或桌面。可复核日志、状态历史、截图、消费哈希与 receipt.json
 保留在本机 /tmp/goui-mobile-surface-stage2-r_fhc5l4，Mac 同名目录；Windows
 使用同名用户临时目录。SDK、组件、二进制和签名材料未加入仓库。
+
+## 第三切片：Android 工厂与 GUI 内容窗口（2026-11-04）
+
+目标是让普通 `gui.NewApplication/NewWindow/Run` 复用现有控件树、布局、
+排版和绘制，而不是再维护应用侧 mobile 窗口 API。当前先接 Android，
+iOS CoreText/工厂在下一切片；触摸、IME 和 GLES 各自独立接入。
+
+### 设计与边界
+
+- DefaultName 在 Android 为 android；Linux 工厂显式排除 Android，避免 Go 的
+  android 同时匹配 linux 而拉入 X11/GLX/Pango。移动启动由 host 创建已锁定并
+  attach JVM 的 GOUI 线程，不在包 init 再锁住 runtime 初始化线程。
+- Android Platform 提供单个 EventLoop、系统内容 Window、androidtext 与
+  Software。Integrated 是可选偏好，平台返回不支持后 GUI 沿用已有 Native
+  降级；不冒充 DesktopWindow，不提供桌面位置、状态或窗口控制按钮。
+- 剪贴板、Settings、Popup、IME、Cursor、DnD、文件服务与 URL 尚未接入，明确
+  返回 ErrUnsupported。已有 GUI Settings/可选服务规则处理默认值，不在平台
+  伪造设置。Window 标题修改仍不支持，因此本轮仅验证命令式 GUI，不声称 UI
+  Window 的 Title 已兼容。
+- rootBase 每次开始、提交帧及关键回调边界查询实时 SurfaceState。原生目标可
+  先于排队通知撤销，不能仅依靠最近的 SurfaceEvent。丢失时保留 paintDirty，
+  停止待提交帧与帧定时器；恢复后重新布局/绘制，保留 Painter 和控件树。
+- Window 消费 SurfaceEvent，使旧帧 epoch 失效；VisibilityEvent 暂停/恢复帧。
+  后台 Timer 仍按普通计时器契约工作，但不驱动画面 Frame。Surface 丢失/Activity
+  重建都不发 GUI Destroy；显式 Quit、Back 与系统结束策略仍为后续工作。
+- 原型验证程序仍直接使用 mobile.Window/EventLoop。本轮暂不迁移它们，避免
+  工厂接入同时破坏既有 iOS 基线。两端工厂齐备后再将共享实现移入 internal，
+  各平台 native 宿主归位；不保留第二套长期公开窗口接口。
+
+参考与证据：NDK [ANativeActivityCallbacks](https://developer.android.com/ndk/reference/struct/a-native-activity-callbacks)
+规定回调在应用主线程，onNativeWindowDestroyed 返回前不能再访问旧窗口。
+Flutter [AndroidShellHolder](https://github.com/flutter-team-archive/engine/blob/main/shell/platform/android/android_shell_holder.cc)
+也区分平台线程与引擎工作任务（参考归档源码，读取日期 2026-11-04）；本项目只
+采用线程职责分离，继续使用 Go 现有 GUI 事件队列，不照搬引擎线程/渲染架构。
+
+### 验证计划
+
+包内测试覆盖表面未就绪、隐藏、同步撤销先于通知、目标替换和控件树保留。
+`tests/window/platform/android_gui` 维护者脚本预制作宿主/Dex，消费 PATH 无原生
+编译器；APK 在专用 ARM64 模拟器验证工厂、排版、布局、普通输入派发、旋转与
+后台恢复。通过 JSON 明确比较 PID、OS 线程、控件地址、输入内容与帧数；真实
+截图按语义色块边界采样。测试流程见该程序 README，结果在验收后填写。
+
+### 本轮验收结果
+
+2026-11-04，Go 1.25.8，Linux x64 维护者制作/消费，远端 macOS 15.7.7 的
+Android 11/API 30 ARM64 ATD、Software 1x、480×800，CheckJNI 开启：
+
+- 普通 gui 工厂启动、Run 前逻辑窗口与无 drawable、Integrated 偏好降级、
+  GUI/系统线程分离、普通 Timer/Frame/AfterPaint、按钮正常事件派发通过。
+- 多语言 Label、Button、程序设置的 TextInput 正常显示，布局/语义快照一致。
+  旋转前后 480×800 → 800×480 → 480×800；同 PID 1479、GOUI 线程 1509、
+  同控件对象，点击保持一次、输入文本保持不变；surface generation 为 1/3/5/7。
+- Home 后两次采样 ticks 15→20，frames 保持 19；恢复 frames 增长至 21。
+  回调线程断言全部通过，JNI DETECTED ERROR 与 Fatal signal 为零。
+- 实际截图色块中心 (240,236) 为 sRGB RGB(32,144,96)，和独立预期完全相等
+  （允许每通道误差 1），文字画面已检查，不使用跨平台字体金图。
+- 首轮截图暴露独立 Label 高度为零：GUI 把 layout.Inf=1e9 直接作为 Typography
+  尺寸，Android 的有限坐标验证拒绝后 Label 返回空测量。修正 GUI 的已有测量
+  转换，将无界轴转成 labelMeasureExtent；新增水平/垂直/双向断言，APK 中对
+  三个独立 Label 的正尺寸作断言后重跑通过。保留首轮截图和状态，未放宽原生
+  范围验证，也未通过固定控件高度绕过问题。
+- 隔离已跟踪源码及本轮新增文件，GOWORK=off `go test ./... -json`：3515
+  通过、10 既有跳过、0 失败；相关 gui/mobile race 与 gui/mobile/platform vet
+  通过。跳过为 9 个手工平台窗口用例和 macOS 原生签名测试，未计入通过。
+  原工作区未跟踪旧 example 不纳入隔离副本，不改变此前记录的原目录失败。
+- Windows x64、macOS ARM64 的 GUI 测试目标交叉编译通过；仅编译结果。
+  本机独立 Xvnc/xfwm4、Software 1x 的既有 animation -auto 通过动画终值、
+  帧空闲、离屏快照和 Popover 更新/隐藏断言，未占用用户桌面。
+
+最终 APK SHA-256：
+`dd1d1840e0690fa931863c2df6d239141ecc6c786469b4ff1371e4fa32374065`。
+消费使用固定入口归档，消费 PATH 不提供 C 编译器/javac，未执行 C 编译；原生
+宿主字节与前轮相同。最终 APK 对应的 14 个相关 Go/C/Java/Python 源文件与工作
+区逐字节一致。材料位于本机及 Mac 的 `/tmp/goui-android-gui-x02s60ng`；专用
+Android 模拟器、私有 ADB、独立 X11 会话已结束，旋转设置已恢复。
+
+未执行：API 29/31+、Android 真机/16 KiB、iOS 本切片 GUI 和桌面远端运行。
+未实现：触摸、IME、GLES、标题/系统服务、完整 UI 接入，以及原型目录迁移。
+WrapChar 继续单独排期，不作为基础 GUI 接通的前置；按用户要求不为原生
+uintptr 静态诊断增加无关封装或阻塞本轮进度。
