@@ -170,6 +170,12 @@ NDK AFontMatcher/AFont 提供字体匹配和字体信息，不是完整段落排
 
 ## 7. 实施顺序
 
+2026-11-04 最新执行顺序：Android 文字与 GUI 启动切片完成后，暂停 GUI 扩展，
+先完成两端 Typography/Graphics 的平台层最小验证。先接 iOS CoreText/Software，
+再适配 GLES 3 与 Android EGL/iOS EAGL；全部通过后再实施
+[触摸设计](DesignTouchInput.md) 与后续 IME。以下列表保留总体能力依赖，不表示
+GUI 输入先于平台绘制验证。
+
 1. 当前：写入本计划，先验证 Android 系统文字路线，确定可行性与缺口。
 2. 整理平台包、原生绑定与 build tags；重跑已有启动和 Software 生命周期验收，
    不在重排目录时同时修改行为。
