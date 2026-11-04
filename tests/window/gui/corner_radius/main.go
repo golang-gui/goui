@@ -8,7 +8,9 @@
 // 操作：切换样式、悬停／点击分组、打开Popover；弹窗左上与右上角应跟随样式切换，
 // 阴影轮廓匹配，没有角部接缝或半透明色变深，透明外角露出后方窗口。
 // 调整窗口大小后重复，按钮共享边不能重复加粗，Snapshot角色／动作不变。
+// 浅灰边框外侧应只呈边框与透明区域的AA过渡，不能出现蓝色毛边；
 // 自动模式以真实宿主的 RenderWidget 验证切换前后的四角、透明外部与中心颜色，
+// 并以独立边框遮罩检查1x／2x外缘颜色，排除蓝色背景泄漏，
 // 在原生Popover显示时再次切换样式，并断言显示／隐藏及销毁，输出 PASS 后退出。
 // 平台差异：原生窗口装饰仍归系统／GUI，不受自定义控件圆角影响；字体和AA允许差异。
 // 副作用：仅本进程窗口和Popover、终端输出，不写文件／系统设置，不用DevServer。
@@ -43,9 +45,23 @@ func check(value bool, message string) {
 	}
 }
 
-type surface struct{ gui.WidgetBase }
+type surface struct {
+	gui.WidgetBase
+	paintPart string
+}
 
-func (s *surface) Paint(p gui.Painter) { gui.PaintWidgetStyle(p, s, "corner-surface") }
+func (s *surface) Paint(p gui.Painter) {
+	resolved := gui.WidgetStyle(s, "corner-surface", "")
+	rect := geometry.Rectangle{Size: s.Rect().Size}
+	switch s.paintPart {
+	case "background":
+		gui.PaintStyledBackground(p, rect, resolved)
+	case "border":
+		gui.PaintStyledBorder(p, rect, resolved)
+	default:
+		gui.PaintStyledBox(p, rect, resolved)
+	}
+}
 func main() {
 	auto := flag.Bool("auto", false, "自动断言后退出")
 	flag.Parse()
@@ -133,6 +149,35 @@ func main() {
 			check(left.A == 255 && right.A == 0, "样式切换未更新角部")
 		}
 		check(probe.Snapshot().Role == gui.RoleWidget, "装饰改变了控件角色")
+		for _, scale := range []float32{1, 2} {
+			combined, err := gui.RenderWidget(probe, scale)
+			must(err)
+			probe.paintPart = "border"
+			border, err := gui.RenderWidget(probe, scale)
+			must(err)
+			probe.paintPart = "background"
+			background, err := gui.RenderWidget(probe, scale)
+			probe.paintPart = ""
+			must(err)
+			checked := 0
+			for y := range combined.Bounds().Dy() {
+				for x := range combined.Bounds().Dx() {
+					bg := color.RGBAModel.Convert(background.At(x, y)).(color.RGBA)
+					want := color.RGBAModel.Convert(border.At(x, y)).(color.RGBA)
+					if bg.A < 8 || bg.A > 247 || want.A < 8 || want.A > 247 {
+						continue
+					}
+					got := color.RGBAModel.Convert(combined.At(x, y)).(color.RGBA)
+					for i, v := range []uint8{got.R, got.G, got.B, got.A} {
+						w := []uint8{want.R, want.G, want.B, want.A}[i]
+						check(int(v)-int(w) >= -2 && int(v)-int(w) <= 2,
+							fmt.Sprintf("%gx外缘(%d,%d)混入背景：%v，参考%v", scale, x, y, got, want))
+					}
+					checked++
+				}
+			}
+			check(checked > 0, "没有检查到边框AA外缘")
+		}
 	}
 	step := 0
 	if *auto {

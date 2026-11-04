@@ -375,7 +375,8 @@ func TestTextInputPaintDrawsChromeTextAndCaret(t *testing.T) {
 	painter := new(testTextInputPainter)
 	input.Paint(painter)
 
-	if painter.fillRect != geometry.Rect(0, 0, 100, 24) || painter.fillBrush != graphics.RGB(255, 255, 255) {
+	// 1 DIP 不透明边框覆盖背景的AA边缘，背景退至其中线。
+	if painter.fillRect != geometry.Rect(0.5, 0.5, 99, 23) || painter.fillBrush != graphics.RGB(255, 255, 255) {
 		t.Fatalf("unexpected fill: rect=%+v brush=%+v", painter.fillRect, painter.fillBrush)
 	}
 	if painter.drawRect != geometry.Rect(0.5, 0.5, 99, 23) || painter.drawRectStrokeWidth != 1 || painter.drawRectBrush != graphics.RGB(70, 130, 220) {
@@ -479,7 +480,7 @@ func TestTextInputUsesStyleSheetForChromeAndText(t *testing.T) {
 	painter := new(testTextInputPainter)
 	input.Paint(painter)
 
-	if painter.fillRect != geometry.Rect(0, 0, 100, 24) || painter.fillRadius != 3 || painter.fillBrush != graphics.ColorOf(background) {
+	if painter.fillRect != geometry.Rect(1, 1, 98, 22) || painter.fillRadius != 2 || painter.fillBrush != graphics.ColorOf(background) {
 		t.Fatalf("unexpected styled fill: rect=%+v radius=%v brush=%+v", painter.fillRect, painter.fillRadius, painter.fillBrush)
 	}
 	if painter.drawRect != geometry.Rect(1, 1, 98, 22) || painter.drawRadius != 2 || painter.drawRectStrokeWidth != 2 || painter.drawRectBrush != graphics.ColorOf(border) {

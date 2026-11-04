@@ -237,7 +237,8 @@ func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Sty
 	if bg, ok := background.BackgroundColor(); ok && bg != nil {
 		radius = radius.Normalize(body.Size)
 		if finish == nil {
-			paintRoundedBackground(guiPainter, body, radius, graphics.ColorOf(bg))
+			inset := opaqueBorderInset(border)
+			paintRoundedBackground(guiPainter, body.Inset(inset), radius.Inset(inset), graphics.ColorOf(bg))
 		} else {
 			guiPainter.FillRect(body, graphics.ColorOf(bg))
 		}
