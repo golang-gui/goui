@@ -72,6 +72,46 @@ func (w *Window) NativeHandle() uintptr {
 	}
 	return w.target.handle
 }
+
+// AcquireTarget borrows the current target until Release. Native revocation
+// rejects new borrowers immediately and waits for existing borrowers, without
+// waiting for GOUI event dispatch. Finish painting before destroying Window.
+func (w *Window) AcquireTarget() (common.NativeTarget, error) {
+	if w.destroyed || w.target == nil {
+		return nil, common.ErrUnavailable
+	}
+	target := w.target
+	if !target.users.TryRLock() {
+		return nil, common.ErrUnavailable
+	}
+	if !target.ready() {
+		target.users.RUnlock()
+		return nil, common.ErrUnavailable
+	}
+	return &targetLease{target: target}, nil
+}
+
+type targetLease struct{ target *surfaceTarget }
+
+func (l *targetLease) NativeHandle() uintptr {
+	if l.target == nil {
+		return 0
+	}
+	return l.target.handle
+}
+func (l *targetLease) Generation() uint64 {
+	if l.target == nil {
+		return 0
+	}
+	return l.target.generation
+}
+func (l *targetLease) Release() {
+	if l.target != nil {
+		target := l.target
+		l.target = nil
+		target.users.RUnlock()
+	}
+}
 func (w *Window) Show() error {
 	if w.destroyed {
 		return common.ErrUnavailable
@@ -200,6 +240,7 @@ func (w *Window) emit(event events.Event) {
 // not synchronously wait for the system UI thread or retain Go image storage.
 type surfaceTarget struct {
 	mu         sync.Mutex
+	users      sync.RWMutex
 	handle     uintptr
 	generation uint64
 	alive      bool
@@ -211,8 +252,18 @@ func (t *surfaceTarget) ready() bool {
 	defer t.mu.Unlock()
 	return t.alive && t.handle != 0
 }
-func (t *surfaceTarget) revoke() { t.mu.Lock(); defer t.mu.Unlock(); t.alive = false }
+func (t *surfaceTarget) revoke() {
+	t.mu.Lock()
+	t.alive = false
+	t.mu.Unlock()
+	t.users.Lock()
+	t.users.Unlock()
+}
 func (t *surfaceTarget) draw(img image.Image) error {
+	if !t.users.TryRLock() {
+		return common.ErrUnavailable
+	}
+	defer t.users.RUnlock()
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if !t.alive {
