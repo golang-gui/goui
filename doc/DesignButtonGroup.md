@@ -64,6 +64,18 @@ MenuButtonGroup 使用可配置间距的水平线性布局；ButtonGroup 的连�
 两个普通相邻矩形路径独立复现，不属于上述端点斜接。当前不承诺独立 Path 的
 亚像素拼接等同于单次并集填充；通用处理另行设计，见 [Roadmap](Roadmap.md)。
 
+### 自定义按钮焦点部件
+
+`focus` 是按钮自己的独立绘制部件，不参与接缝归属。自定义 StyleName 应完整定义
+该部件：Normal 显式使用透明背景和零边宽，FocusVisible 再定义所需边框。
+否则 Part 会继承同名默认样式的背景和边宽，鼠标点击产生逻辑焦点时就会重画
+完整按钮，表现为共享边或按下配色发生变化。Basic／Modern 内置名称已有相应规则。
+保留 Part 的默认值合并、显式 Focused 覆盖和既有焦点状态机，不在核心特殊处理例程。
+
+`tests/window/gui/corner_radius` 使用2 DIP白色键盘焦点边框；鼠标 Hover／Pressed
+只改变背景。自动模式经 Window.DispatchEvent 验证各项按压／释放、移出取消、
+Tab／Shift+Tab目标、FocusVisible和Snapshot，并对接缝及完整焦点尾边做像素断言。
+
 ## 实现入口
 
 - `gui.NewButtonGroup()`、`SetDirection(layout.Direction)`、`AddChild`／`RemoveChild`／

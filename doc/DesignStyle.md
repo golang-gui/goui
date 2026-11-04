@@ -123,8 +123,12 @@ The pass paints optional background and border before child widgets. Application
 can override either state; FocusVisible inherits fields not explicitly replaced
 from the same part's Focused rules. Its default background/color/width are explicit,
 so customize keyboard borders with FocusVisible, not a less-specific Focused rule.
-Custom complete sheets should explicitly
-set a transparent focus background when they only want a border. TextInput retains
+Custom button StyleNames should explicitly reset the normal `focus` part to a
+transparent background and BorderWidth 0 when only keyboard focus should be visible,
+then define their FocusVisible border. Otherwise the part inherits the button's
+normal background and border, and logical pointer focus can repaint the entire box.
+This is a stylesheet responsibility; explicit Focused overrides remain supported.
+TextInput retains
 its ordinary focused border. See DesignKeyboardNavigation §7.
 
 ### Theme & Tokens are not separate systems
