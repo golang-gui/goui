@@ -530,8 +530,9 @@ func (this *SimplifiedGeometrySink) AddLines(points []Point2F) {
 	this.class().AddLines.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.CSlice(points)), uintptr(len(points)))
 }
 
-func (this *SimplifiedGeometrySink) Close() {
-	this.class().Close.CallRaw(uintptr(cgo.Pointer(this)))
+func (this *SimplifiedGeometrySink) Close() com.HRESULT {
+	ret, _, _ := this.class().Close.CallRaw(uintptr(cgo.Pointer(this)))
+	return com.HRESULT(ret)
 }
 
 func (this *SimplifiedGeometrySink) class() *SimplifiedGeometrySinkClass {

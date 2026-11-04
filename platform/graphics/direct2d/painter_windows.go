@@ -1072,12 +1072,17 @@ func (p *Painter) SetClipRect(rect graphics.Rectangle) {
 func (p *Painter) createPathGeometry(path graphics.Path, fill bool, mode d2d1.FillMode) (geometry *d2d1.Geometry, err error) {
 	pathGeometry, hr := p.factory.CreatePathGeometry()
 	if hr.Failed() {
-		return nil, fmt.Errorf("create d2d path geometry err: %v", err)
+		return nil, fmt.Errorf("create d2d path geometry: %v", hr)
 	}
+	defer func() {
+		if err != nil {
+			pathGeometry.Release()
+		}
+	}()
 
 	sink, hr := pathGeometry.Open()
 	if hr.Failed() {
-		return nil, fmt.Errorf("open d2d path geometry sink err: %v", err)
+		return nil, fmt.Errorf("open d2d path geometry sink: %v", hr)
 	}
 	defer sink.Release()
 	sink.SetFillMode(mode)
@@ -1086,7 +1091,7 @@ func (p *Painter) createPathGeometry(path graphics.Path, fill bool, mode d2d1.Fi
 	if fill {
 		begFigure = d2d1.D2D1_FIGURE_BEGIN_FILLED
 	}
-	closed := false
+	figureOpen := false
 
 	var (
 		arc    d2d1.ArcSegment
@@ -1096,7 +1101,11 @@ func (p *Painter) createPathGeometry(path graphics.Path, fill bool, mode d2d1.Fi
 	path.Range(func(op graphics.PathOperation, args []float32) (stop bool) {
 		switch op {
 		case graphics.PathMoveTo:
+			if figureOpen {
+				sink.EndFigure(d2d1.D2D1_FIGURE_END_OPEN)
+			}
 			sink.BeginFigure(d2d1.Point2F{X: args[0], Y: args[1]}, begFigure)
+			figureOpen = true
 
 		case graphics.PathLineTo:
 			sink.AddLine(d2d1.Point2F{X: args[0], Y: args[1]})
@@ -1110,15 +1119,19 @@ func (p *Painter) createPathGeometry(path graphics.Path, fill bool, mode d2d1.Fi
 			sink.AddBezier(&bezier)
 
 		case graphics.PathClose:
-			closed = true
-			sink.EndFigure(d2d1.D2D1_FIGURE_END_CLOSED)
+			if figureOpen {
+				sink.EndFigure(d2d1.D2D1_FIGURE_END_CLOSED)
+				figureOpen = false
+			}
 		}
-		return closed
+		return false
 	})
-	if !closed {
+	if figureOpen {
 		sink.EndFigure(d2d1.D2D1_FIGURE_END_OPEN)
 	}
-	sink.Close()
+	if hr := sink.Close(); hr.Failed() {
+		return nil, fmt.Errorf("close d2d path geometry sink: %v", hr)
+	}
 
 	return &pathGeometry.Geometry, nil
 }

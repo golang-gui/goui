@@ -871,6 +871,7 @@ func (p *Painter) doPath(add rasterx.Adder, path graphics.Path) (closed bool, cl
 	path.Range(func(op graphics.PathOperation, args []float32) (stop bool) {
 		switch op {
 		case graphics.PathMoveTo:
+			closed = false
 			add.Start(devicePoint(args[0], args[1]))
 			px, py = args[0], args[1]
 
@@ -891,7 +892,7 @@ func (p *Painter) doPath(add rasterx.Adder, path graphics.Path) (closed bool, cl
 			add.Stop(true)
 		}
 
-		return closed
+		return false
 	})
 
 	return closed, p.clipForPoints(points, 0)

@@ -658,6 +658,7 @@ func (p *Painter) doPath(path graphics.Path) (closed bool) {
 	path.Range(func(op graphics.PathOperation, args []float32) (stop bool) {
 		switch op {
 		case graphics.PathMoveTo:
+			closed = false
 			p.vg.MoveTo(args[0], args[1])
 			x, y = args[0], args[1]
 
@@ -676,8 +677,10 @@ func (p *Painter) doPath(path graphics.Path) (closed bool) {
 		case graphics.PathClose:
 			closed = true
 			p.vg.ClosePath()
+		case graphics.PathHole:
+			p.vg.PathWinding(nanovgo.Hole)
 		}
-		return closed
+		return false
 	})
 	return
 }
