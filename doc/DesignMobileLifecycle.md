@@ -1,7 +1,9 @@
 # 移动端启动、线程与生命周期
 
 状态：第一切片启动/事件线程、第二切片逻辑窗口/Software 表面已实现并完成下述阶段验收；
-Android Platform/GUI 正在按第三切片接入；iOS 工厂与 GUI/UI 尚未接入。
+Android Platform/GUI 第三切片已接入；iOS 工厂与 GUI/UI 尚未接入。
+后续 Typography/GLES 最小后端、原生目标借用与 iOS 后台执行保护见
+[DesignMobilePlatform 第 10 节](DesignMobilePlatform.md#10-两端-typography--graphics-最小实现2026-11-04)。
 后续包结构、两端共用 OpenGL ES 和文字接入顺序以
 [DesignMobilePlatform](DesignMobilePlatform.md) 为准；本篇保留已实现的生命周期契约。
 构建基座与链接工具见 [PlanMobileBuild](PlanMobileBuild.md)。开发使用独立的

@@ -3,7 +3,8 @@
 状态：2026-11-04 更新的实施计划。基座、启动、逻辑窗口及 Software 已完成的
 范围见 [PlanMobileBuild](PlanMobileBuild.md) 与
 [DesignMobileLifecycle](DesignMobileLifecycle.md)。本篇规定后续结构与顺序，
-不表示完整目录迁移、GPU 或全部移动能力已经实现。Android 文字基础包装已实现，
+不表示完整目录迁移或全部移动能力已经实现。两端排版/绘图的最小切片见第 10 节；
+它不等同于完整 Platform 工厂、GUI/UI 或真机支持。Android 文字基础包装已实现，
 当前限制与验收见 [DesignAndroidTypography](DesignAndroidTypography.md)。
 
 ## 1. 目标与边界
@@ -93,10 +94,11 @@ Metal 是后续路线，不作为当前移动端接入的前置条件。
 
 Android 的 EGL/GLES 是公开系统能力。iOS GLES 已被 Apple 弃用，作为首版明确
 接受的兼容选择；支持范围以实际 SDK、模拟器和真机验证为准，不承诺长期可用。
-当前 NanoVGo 虽有移动 shader，却混用 GLSL ES 100 与强制加载的 GL3 函数；
+NanoVGo v0.0.10 虽有移动 shader，却混用 GLSL ES 100 与强制加载的 GL3 函数；
 不能只补上下文便宣称完成。第一份 GPU 验证优先固定 GLES 3.0，核对 shader、
 VAO、纹理格式、stencil、ClearPath、透明合成与离屏输出。是否支持 ES2 另行按
 真实需求设计，不默默改变最低设备要求，也不因 GPU 不可用隐瞒错误。
+本轮独立 NanoVGo 分支已完成这组修正，实际覆盖见第 10 节。
 
 绘图资源归 Painter，窗口/原生视图生命周期归平台后端。GPU 许可保护绑定和
 提交等原生目标访问；表面替换尽量保留 context 与图片，context 真正丢失时明确
@@ -176,15 +178,13 @@ NDK AFontMatcher/AFont 提供字体匹配和字体信息，不是完整段落排
 [触摸设计](DesignTouchInput.md) 与后续 IME。以下列表保留总体能力依赖，不表示
 GUI 输入先于平台绘制验证。
 
-1. 当前：写入本计划，先验证 Android 系统文字路线，确定可行性与缺口。
-2. 整理平台包、原生绑定与 build tags；重跑已有启动和 Software 生命周期验收，
-   不在重排目录时同时修改行为。
-3. 接入 iOS CoreText 与通过验证的 Android 文字路线，先跑共同 TextLayout
-   测试，再做移动平台例程；未通过的能力明确设计，不伪造成功。
-4. 最小完整 Platform、基础触摸/指针和 GUI 单内容窗口；再接 ui、IME、生命周期
-   查询与退出。位置/工作区等桌面能力不在移动端模拟。
-5. Android EGL/GLES 与 iOS EAGL/GLES；复用 Painter 和缓存，验收目标重建、
-   context loss、颜色、clip、Transform、HiDPI 与资源销毁。
+1. Android 的公开系统文字路线和正式 TextLayout 包装，保留能力边界。
+2. iOS CoreText 解除桌面初始化依赖，先用 Software 验证相同 API 与位图契约。
+3. GLES 3 NanoVGo、Android EGL 与 iOS EAGL；验证绘图、目标替换和后台保护。
+4. 不依赖 GUI 的双端排版/绘图验收通过后，再整理目标包结构、补齐 iOS 工厂和
+   两端绘图选择；目录迁移与行为变化分开验证，不在原型上扩大另一套平台 API。
+5. 按 DesignTouchInput 接入原生触摸、GUI 指针/竞争/滚动/编辑，再单独接移动 IME。
+   UI、生命周期查询与退出按实际需求推进，不在移动端模拟桌面工作区/位置。
 6. cmd/goui 移动构建、组包签名与组件分发；真机、16 KiB Android 内核与正式
    APK/IPA 另做发布验收。Metal、多 Scene、更广设备版本留在未来路线。
 
@@ -368,3 +368,116 @@ API，cmd/goui 的临时模块又不属于该 go.work。两类原始日志保留
 仍待：API 29/31+、真机、生产对象/失效/销毁、完整字体与对齐/换行能力、性能
 与内存对照。LINEAR_TEXT_FLAG 仍只是本轮小数度量配置，不能据此承诺生产
 hinting/cache 性能；桌面后端的交互粒度审视单列，不纳入本轮通过结论。
+
+## 10. 两端 Typography / Graphics 最小实现（2026-11-04）
+
+### 10.1 实现边界
+
+本轮只改平台层和独立窗口验证，不增加 gui/ui 触摸实现。触摸、滚动竞争和 IME
+设计已记录在 DesignTouchInput，待平台切片完成再推进。
+
+CoreText.NewContext 改用 frameworks.InitTypography，只初始化 CF/CG/CT，幂等
+状态与已有总入口共用锁。macOS 原生窗口仍可调用完整 Init；不以 iOS 需求改变
+既有字体单位、每 Layout 状态隔离或 Rasterize 契约。Android 继续复用正式
+androidtext，不另写一套测量/栅格化，也不访问系统私有 Skia/HarfBuzz。
+
+移动 OpenGL Context 通过独立宿主的私有 GLES ABI 创建、绑定、解绑、提交和释放。
+Android 使用 EGL ES3 context + window surface + 1x1 pbuffer；iOS 使用 EAGL ES3
+context + CAEAGLLayer drawable FBO + 私有 scratch FBO。所有 GL 调用和 context
+资源归 GOUI 固定线程，Activity/Scene、窗口、图层属性及目标替换归原生 UI 线程。
+宿主按 GOUI_GLES=0/1 制作独立 Software/GLES 组件，不能在运行中混用呈现方式。
+这些组件仍属于 platform，不加入最小 runtime/cgo 基座。
+
+common.NativeTarget 表达可释放的原生目标借用。mobile.Window.AcquireTarget
+在绑定前取得同代目标；Context.ClearCurrent 后释放。原生撤销先拒绝新借用，
+再等待已开始的 GPU 帧或 Software present；不等待 GOUI 消息循环处理丢失事件。
+绑定期间不得同步等待原生 UI 线程，也必须先结束绘制再 Destroy Window。
+TryRLock 拒绝撤销中的嵌套借用/Draw，避免持有旧借用时被排队 writer 阻塞。
+
+窗口目标替换重新建立 EGL surface / EAGL drawable，不重建逻辑窗口、context
+或 graphics.Image。Painter 构造结束主动解绑，避免首帧之前仍占用目标借用。
+iOS 另有原生执行锁，覆盖没有窗口目标的 scratch 操作；进入后台和 Scene 断开
+关闭执行许可并等待当前操作结束。首版每次解绑用 glFinish 排空 GPU 后清除
+当前 context，确保后台回调返回后没有遗留命令。这是明确的保守实现，尚未做
+性能结论；后续可设计专门的停绘屏障，不能直接移除同步保证。
+
+GLES 固定 RGBA8/depth24/stencil8，不支持 MSAA、共享 context、stereo 或 sRGB
+请求；iOS swap interval 返回 Unsupported。iOS 首轮在前台 target Ready 后创建
+Painter，首个 Scene 前的 GPU 构造仍待工厂切片设计。真正的 EGL context loss
+报告原生失败，不承诺自动恢复未保留源像素的图片。
+
+### 10.2 NanoVGo 修正与失败证据
+
+独立 nanovgo-mobile 的 feature/mobile-base 分支基于 v0.0.10；主会话 nanovgo
+仓库未修改。当前消费使用显式 workspace，不把未发布分支写成正式 tag 依赖。
+
+- 移动 shader 使用 GLSL ES 300 与 GL3 路径，版本声明位于首行。Android 实际
+  编译器拒绝原先的前置换行；旧 createInternal 忽略 renderCreate 错误，导致
+  返回没有 VBO/VAO 的半成品，后续 BufferData 才报 0x502。现在原错误返回，
+  清理部分 shader/program，并补初始化失败回归；临时诊断未进入生产代码。
+- iOS 首轮在字体图集创建后留下 0x502。GLES 3 的单通道纹理采用 R8 内部存储，
+  源格式仍为 RED/UNSIGNED_BYTE；两者不能像原 wrapper 一样总传相同常量。
+  增加显式内部格式入口并保留旧 wrapper，修正图集创建。错误不能靠日志读取
+  glGetError 后被吞掉，最终使用无诊断构建重跑像素断言。
+- 删除 Context 时同时释放原来遗漏的 VAO 和默认白色纹理。普通图片所有权与
+  预乘契约不变，没有将系统字体排版改成 NanoVGo 字体引擎。
+
+规范依据为 [GLES 3.0.6](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf)
+第 3.8 节的存储/上传格式表；后台约束见
+[Apple 多任务 GLES 指南](https://developer.apple.com/library/archive/documentation/3DDrawing/Conceptual/OpenGLES_ProgrammingGuide/ImplementingaMultitasking-awareOpenGLESApplication/ImplementingaMultitasking-awareOpenGLESApplication.html)，
+context 线程约束见 [Apple 并发指南](https://developer.apple.com/library/archive/documentation/3DDrawing/Conceptual/OpenGLES_ProgrammingGuide/ConcurrencyandOpenGLES/ConcurrencyandOpenGLES.html)。
+Android 销毁回调的有效期仍以 [NDK 文档](https://developer.android.com/ndk/reference/struct/a-native-activity-callbacks) 为准。
+这些为原生契约；项目实际执行范围在下一节单列。
+
+### 10.3 验收范围与后续
+
+正式例程 `tests/window/platform/mobile_paint` 不导入 gui/ui。共同检查字体注册、
+行与交互单元、范围格式/布局隔离、占位、1x/2x/3x 区域栅格和复用缓冲；Painter
+检查图片更新、预乘透明合成、clip、Transform、ClearPath、文字上传及离屏读回。
+具体启动、维护者制作组件、像素预期、旋转/Home 和清理见该例程 README。
+
+本轮最终实测（Linux Go 1.25.8 消费，消费阶段没有原生编译器调用）：
+
+| 原生环境 | 路径 | 自动断言 | 生命周期 |
+| --- | --- | --- | --- |
+| Android 11/API 30 ARM64 ATD，1x，CheckJNI | Android Layout + Software | 264 项通过 | 横/竖屏、一次 Home/恢复，后台帧数不变，同 PID/nonce |
+| 同上，SwiftShader GLES 3 | Android Layout + OpenGL | 266 项通过 | 同上，目标 generation 更新，context/图片持续有效 |
+| iOS 26.3 ARM64 Simulator，3x | CoreText + Software | 265 项通过 | 八次旋转、三次 Home/恢复，后台帧数不变，nonce 不变 |
+| 同上，EAGL GLES 3 | CoreText + OpenGL | 267 项通过 | 同上，三个实际后台窗口均超过一秒，复用布局和 GPU 图片 |
+
+自动数目不同包含 CoreText 不加载桌面库、GLES 版本等目标专属断言，不能当作
+后端性能比较。四条路径还各自执行 1x/2x RenderImage；文字 Rasterize 执行
+1x/2x/3x。iOS device ARM64 的 Software/GLES 均完成链接，没有签名或真机运行。
+
+Linux amd64 独立 Xvnc :77 / Xfwm4 合成会话，已跟踪源码加本轮新增文件、显式
+替换到三个实验依赖的隔离副本：`GOWORK=off go test -json -count=1 ./...` 为
+3516 项通过、10 项既有跳过、0 失败。未跟踪旧 example 的过期接口没有纳入
+副本，也没有修改或删除；这不等于原工作区直接全仓通过。mobile/opengl/software
+的 race 通过；image_update、clear_path 原生例程的 Software/OpenGL 1x/2x 共
+八次通过，覆盖构造解绑后的普通帧、离屏、图片更新和资源销毁。Windows amd64、
+macOS arm64 的全仓 CGO_ENABLED=0 交叉编译通过。macOS 15.7.7 ARM64 的
+CoreText 原生测试 51 个通过项；这是排版测试，不是本轮 macOS 窗口 GPU 验收。
+NanoVGo 全包测试通过，独立分支提交 3a93aef，未推送/打 tag。
+
+最终四条路径的竖屏、iOS 两路径的横屏截图及三块纯色内部采样独立记录，源像素、
+实际 scale 和原生截图坐标一致；iOS 横屏按已知 LandscapeLeft 方向归一。
+不使用 GUI DevServer，不以文字日志代替画面采样。
+原生错误的首轮材料保留：Android shader 初始化失败、iOS R8 图集错误，以及
+一次 iOS Home 动画后观察间隔不足的脚本失败。后者延长真实后台观察时间后
+保留原停绘断言复验，没有放宽条件或在框架中加延迟。
+另有横屏截图在新尺寸画面提交前取样的失败；尺寸事件不代表完成呈现。
+等待至少两个新尺寸完成帧，核对截图前后尺寸并归一原生物理方向后，像素通过，
+没有修改框架坐标、增加绘制补偿或根据颜色猜测采样点。
+
+当前 iOS 26.3 模拟器截图有 Emoji LastResort 占位，系统日志请求的
+AppleColorEmoji.ttc 文件路径确实不存在；没有用自带字体掩盖，也没有证明是
+GOUI 缺陷或所有 iOS 版本都如此。字体资产/原生参考及真机另验。当前内容使用
+完整原生表面，顶部可能处于状态栏/刘海下方；safe area 的报告/GUI 使用尚未实现。
+不能把本轮文字基础检查描述成全部 Emoji 和系统字体通过。
+
+原生材料与消费日志保留在 Linux/Mac 的 `/tmp/goui-mobile-paint-7d58902l`，
+最终报告/截图在 gles/final-evidence.tar.gz。签名、SDK、对象和截图不提交仓库。
+本轮专用模拟器和私有 ADB 已清理，没有修改用户设备、签名身份、安全设置、
+主会话仓库或 cgo/purego 源码。iOS Scene 断开/重连、真机/16 KiB 内核、GPU
+性能/内存、真正的 context loss 恢复、正式工厂/绘图选择、目录迁移、触摸/IME
+及发布组件均未完成。后续先收敛平台工厂和组件选择，再按设计接 GUI 输入。

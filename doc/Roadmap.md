@@ -2,9 +2,13 @@
 
 ## 移动平台当前优先级（2026-11-04）
 
-[触摸设计](DesignTouchInput.md) 已记录，尚未实施。按最新安排，先补齐
-Android/iOS Typography、Software 与 GLES 的平台层最小实现和原生验证，再
-推进 GUI 触摸/滚动/编辑与 IME；已有 Android GUI 启动切片不继续扩展。
+[触摸设计](DesignTouchInput.md) 已记录，尚未实施。Android/iOS Typography、
+Software 与 GLES 的平台层最小实现和模拟器验证现已
+完成：Android API 30/1x 两条路径 264/266 项、iOS 26.3 Simulator/3x 265/267 项，
+旋转、后台停绘及资源恢复通过。具体范围和字体/真机缺口见
+[平台设计第 10 节](DesignMobilePlatform.md#10-两端-typography--graphics-最小实现2026-11-04)。
+下一步先收敛 iOS 工厂、绘图组件选择和目录，再推进 GUI 触摸/滚动/编辑与 IME；
+已有 Android GUI 启动切片保留，本轮没有新增 GUI/UI 实现。
 
 ## 移动端构建基座与平台接入（2026-11-04）
 
@@ -34,7 +38,8 @@ Android 工厂与普通 GUI 窗口随后接通：API 30 ARM64/Software 1x 下文
 普通输入派发、旋转、后台暂停帧及同控件状态恢复通过，见 DesignMobileLifecycle
 第三切片。同步修正 GUI Label 的无界轴测量转换；全仓隔离源码 3515 通过/10
 既有跳过，本机独立 X11 的桌面帧/Popover 回归通过。
-WrapChar、完整共同原生 Go 测试、CoreText/iOS 工厂、触摸/IME、GLES、UI 标题与
+CoreText 共享初始化与 GLES 最小上下文随后完成，消费使用独立 NanoVGo 分支，
+尚未发布 tag。WrapChar、完整共同原生 Go 测试、iOS 工厂、触摸/IME、UI 标题与
 服务适配、原型目录迁移继续分阶段推进。原生 uintptr 诊断按用户要求不阻塞
 基础功能接入。可分发依赖和组件、正式 APK/IPA、真机/16 KiB
 及公开工具附件仍待验收；此项不改变现有桌面构建命令，也不是已发布的移动端承诺。

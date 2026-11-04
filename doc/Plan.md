@@ -5,11 +5,22 @@
 - 触摸设计已写入 [DesignTouchInput](DesignTouchInput.md)，尚未实现。
 - 按用户最新顺序：先完成 Android/iOS Typography 与 Graphics 平台层最小
   实现/验证，再动 GUI/UI。已有 Android GUI 切片保留，不继续扩展。
-- [ ] iOS CoreText 解除桌面 framework 初始化依赖，Software 平台例程验证。
-- [ ] GLES 3 NanoVGo 与 Painter、Android EGL / iOS EAGL 最小验证；保持绘制
+- [x] iOS CoreText 解除桌面 framework 初始化依赖，Software 平台例程验证。
+- [x] GLES 3 NanoVGo 与 Painter、Android EGL / iOS EAGL 最小验证；保持绘制
   资源和原生目标的生命周期隔离，执行颜色/clip/Transform/文字/图片/恢复检查。
+- [x] Android API 30 ARM64/1x：Software 264、GLES 266 项；iOS 26.3 ARM64
+  Simulator/3x：Software 265、GLES 267 项。旋转、后台停绘、同进程恢复及实际
+  图片采样通过；iOS 两后端各八次旋转/三次后台往返，Android 各横竖屏/一次往返。
+- [x] 隔离源码全仓 3516 通过/10 既有跳过，相关 race、独立 X11 Software/
+  OpenGL 1x/2x 八次原生回归，Windows/macOS 全仓编译；macOS CoreText 51
+  个原生通过项。消费构建零原生编译器调用；真机未执行。
+- [ ] iOS 工厂/正式绘图选择、原型目录迁移、safe area、组件分发；先完成平台
+  收敛再接 GUI。NanoVGo 使用独立分支 3a93aef，未发布依赖 tag。
 - [ ] 两端平台路径通过后再实施触摸事件、GUI 竞争/滚动/编辑，随后单独接 IME。
 - Android WrapChar 与完整移动能力另行排期；首轮不扩大 GUI 或 runtime 基座。
+- 结果、限制及首轮失败见 [DesignMobilePlatform 第 10 节](DesignMobilePlatform.md#10-两端-typography--graphics-最小实现2026-11-04)。
+  iOS 模拟器 Emoji 的 LastResort 回退与请求字体路径缺失单列，不计完整 Emoji 通过；
+  截图须等待新尺寸完成帧，并按已知系统方向归一，不能只等 SizeEvent。
 
 ## Android Platform 与 GUI 内容窗口（2026-11-04）
 
@@ -21,7 +32,7 @@
   旋转、后台帧暂停和状态保留通过，真实截图/色块采样通过。
 - [x] 隔离源码全仓 3515 通过/10 既有跳过，相关 race/vet、Windows/macOS
   GUI 目标编译通过；本机独立 Xvnc/xfwm4 的既有动画/Popover 用例通过。
-- [ ] iOS 工厂/CoreText、共享实现目录迁移、触摸与 IME 另行切片。
+- [ ] iOS 工厂、共享实现目录迁移、触摸与 IME 另行切片；CoreText 后端见本页最新切片。
 - WrapChar 暂不作为工厂/GUI 首轮接入的前置；原生 uintptr 诊断按用户要求不阻塞。
 
 ## Android Typography 正式包装（2026-11-04）
