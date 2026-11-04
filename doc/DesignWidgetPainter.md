@@ -167,6 +167,11 @@ paintWidget(widget):
 父 Widget 的显式 clip 和 transform 在进入第一个子节点前已经恢复。子 Widget
 只继承由 Widget 层级形成的窗口原点和结构 clip，不继承父 Widget 的绘图状态。
 
+2026-11-04：进入 Widget 时若结构 clip 为空，跳过自身 Paint 与整个子树。
+部分可见照常调用 Paint；布局、状态和 Snapshot 不因剔除改变。Paint 不是时钟或
+生命周期回调。屏幕查询、请求过滤及 RenderWidget 的独立目标规则见
+[DesignDrawable](DesignDrawable.md)。
+
 ## 5. 坐标、Transform 与 Clip
 
 Painter 内部状态为：

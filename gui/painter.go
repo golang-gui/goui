@@ -121,13 +121,12 @@ func paintWidget(widget Widget, p *painter) {
 
 func (p *painter) paintWidget(widget Widget) {
 	parentState := p.state
+	offset, scopeClip := widgetClip(parentState.offset, parentState.scopeClip, widget.Rect())
+	if emptyRect(scopeClip) {
+		return
+	}
 	saveDepth := len(p.saves)
 	p.frames = append(p.frames, painterFrame{widget: widget, saveDepth: saveDepth})
-
-	rect := widget.Rect()
-	offset := parentState.offset.Add(rect.Pos)
-	localBounds := geometry.Rect(0, 0, rect.Width, rect.Height)
-	scopeClip := parentState.scopeClip.Intersect(localBounds.Translate(offset))
 	p.state = painterState{
 		scopeClip: scopeClip,
 		clip:      scopeClip,
