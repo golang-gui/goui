@@ -81,7 +81,7 @@ func (c *confirmation) Arrange(rect geometry.Rectangle) {
 }
 func (c *confirmation) Paint(p gui.Painter) {
 	p.FillRect(geometry.Rectangle{Size: c.Rect().Size}, graphics.ColorOf(color.NRGBA{A: 110}))
-	p.DrawBoxShadow(c.card, 12, graphics.BoxShadow{Color: graphics.ColorOf(color.NRGBA{A: 70}), Offset: geometry.Point{Y: 4}, BlurRadius: 10})
+	p.DrawBoxShadow(c.card, geometry.UniformCornerRadius(12), graphics.BoxShadow{Color: graphics.ColorOf(color.NRGBA{A: 70}), Offset: geometry.Point{Y: 4}, BlurRadius: 10})
 	background := color.RGBA{R: 250, G: 250, B: 252, A: 255}
 	if c.dark {
 		background = color.RGBA{R: 38, G: 38, B: 42, A: 255}

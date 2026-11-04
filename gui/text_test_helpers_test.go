@@ -224,7 +224,7 @@ func (p *testLabelPainter) DrawImage(rect geometry.Rectangle, img graphics.Image
 
 func (p *testLabelPainter) SetTransform(matrix geometry.Transform) {}
 
-func (p *testLabelPainter) DrawBoxShadow(rect geometry.Rectangle, radius float32, shadow graphics.BoxShadow) {
+func (p *testLabelPainter) DrawBoxShadow(rect geometry.Rectangle, radius geometry.CornerRadius, shadow graphics.BoxShadow) {
 }
 
 // Shared input event and painting helpers.

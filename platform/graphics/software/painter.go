@@ -18,7 +18,6 @@ import (
 	"github.com/golang-gui/goui/platform/graphics/internal/textbitmap"
 	"github.com/golang-gui/goui/platform/graphics/utils"
 	"github.com/golang-gui/goui/platform/typography"
-
 	"github.com/golang-gui/rasterx"
 	"github.com/golang-gui/scanFT"
 	"golang.org/x/image/math/fixed"
@@ -235,7 +234,7 @@ func (p *Painter) Clear(color graphics.Color) {
 	}
 }
 
-func (p *Painter) DrawBoxShadow(rect graphics.Rectangle, radius float32, shadow graphics.BoxShadow) {
+func (p *Painter) DrawBoxShadow(rect graphics.Rectangle, radius geometry.CornerRadius, shadow graphics.BoxShadow) {
 	if shadow.Color.A <= 0 {
 		return
 	}

@@ -13,7 +13,6 @@ import (
 	"github.com/golang-gui/goui/platform/graphics/internal/pixelsnap"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/directwrite"
-
 	"github.com/golang-gui/goui/platform/windows/sdk/com"
 	"github.com/golang-gui/goui/platform/windows/sdk/d2d1"
 	"github.com/golang-gui/goui/platform/windows/sdk/d3d11"
@@ -706,7 +705,7 @@ func (p *Painter) Clear(color graphics.Color) {
 	p.render.Clear(&p.color)
 }
 
-func (p *Painter) DrawBoxShadow(rect graphics.Rectangle, radius float32, shadow graphics.BoxShadow) {
+func (p *Painter) DrawBoxShadow(rect graphics.Rectangle, radius geometry.CornerRadius, shadow graphics.BoxShadow) {
 	if !p.activeFrame {
 		return
 	}
@@ -730,9 +729,23 @@ func (p *Painter) DrawBoxShadow(rect graphics.Rectangle, radius float32, shadow 
 }
 
 func (p *Painter) drawClearBoxShadow(shape boxshadow.Shape, color d2d1.ColorF) {
-	p.setRoundRect(shape.Rect, shape.Radius)
 	p.colorBrush.SetColor(&color)
-	p.render.FillRoundedRectangle(&p.roundRect, &p.colorBrush.Brush)
+	p.fillShadowContour(p.render, shape.Rect, shape.Radius, &p.colorBrush.Brush)
+}
+
+func (p *Painter) fillShadowContour(target *d2d1.DeviceContext, rect graphics.Rectangle, radius geometry.CornerRadius, brush *d2d1.Brush) bool {
+	if radius.Uniform() {
+		p.setRoundRect(rect, radius.TopLeft)
+		target.FillRoundedRectangle(&p.roundRect, brush)
+		return true
+	}
+	contour, err := p.createPathGeometry(graphics.RoundRectPath(rect, radius), true, d2d1.D2D1_FILL_MODE_WINDING)
+	if err != nil {
+		return false
+	}
+	defer contour.Release()
+	target.FillGeometry(contour, brush, nil)
+	return true
 }
 
 func (p *Painter) releaseShadowResources() {
@@ -800,15 +813,11 @@ func (p *Painter) shadowCommandList(shape boxshadow.Shape) *d2d1.CommandList {
 	p.shadowRender.BeginDraw()
 	identity := d2d1.Matrix3x2F{M11: 1, M22: 1}
 	p.shadowRender.SetTransform(&identity)
-	roundRect := d2d1.RoundRect{
-		Rect:    d2d1.RectF{Right: shape.Rect.Width, Bottom: shape.Rect.Height},
-		RadiusX: shape.Radius, RadiusY: shape.Radius,
-	}
-	p.shadowRender.FillRoundedRectangle(&roundRect, &p.shadowBrush.Brush)
+	filled := p.fillShadowContour(p.shadowRender, graphics.Rect(0, 0, shape.Rect.Width, shape.Rect.Height), shape.Radius, &p.shadowBrush.Brush)
 	hr = p.shadowRender.EndDraw(nil, nil)
 	p.shadowRender.SetTarget(nil)
 	closeHR := list.Close()
-	if hr.Failed() || closeHR.Failed() {
+	if !filled || hr.Failed() || closeHR.Failed() {
 		list.Release()
 		return nil
 	}
@@ -1350,7 +1359,10 @@ const frameSyncInterval uint32 = 0
 
 const frameWaitTimeoutMillis winapi.DWORD = 1
 
-type shadowCacheKey struct{ Width, Height, Radius float32 }
+type shadowCacheKey struct {
+	Width, Height float32
+	Radius        geometry.CornerRadius
+}
 type shadowCacheEntry struct {
 	key  shadowCacheKey
 	list *d2d1.CommandList

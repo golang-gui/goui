@@ -111,7 +111,7 @@ func render(width, height, scale float32) {
 	painter.Begin(width, height, scale)
 	{
 		painter.Clear(graphics.RGBA(90, 160, 200, 255))
-		painter.DrawBoxShadow(graphics.Rect(50, 50, 100, 60), 12, graphics.BoxShadow{
+		painter.DrawBoxShadow(graphics.Rect(50, 50, 100, 60), geometry.UniformCornerRadius(12), graphics.BoxShadow{
 			Color: graphics.ColorOf(color.NRGBA{R: 20, G: 20, B: 30, A: 150}), BlurRadius: 10, SpreadRadius: 2,
 		})
 		painter.FillRoundRect(graphics.Rect(50, 50, 100, 60), 12, graphics.RGBA(90, 50, 50, 255))
@@ -145,16 +145,16 @@ func render(width, height, scale float32) {
 			EndColor:   graphics.RGB(60, 40, 220),
 		}
 		// Bottom-only recipe: negative spread hides the side influence under the body.
-		painter.DrawBoxShadow(graphics.Rect(180, 480, 220, 24), 4, graphics.BoxShadow{
+		painter.DrawBoxShadow(graphics.Rect(180, 480, 220, 24), geometry.UniformCornerRadius(4), graphics.BoxShadow{
 			Color: graphics.ColorOf(color.NRGBA{R: 20, G: 20, B: 30, A: 180}), Offset: graphics.Point{Y: 6},
 			BlurRadius: 6, SpreadRadius: -6,
 		})
 		painter.FillRect(graphics.Rect(180, 480, 220, 24), gradient)
 		// Two calls compose shadows with independent colors and softness.
-		painter.DrawBoxShadow(graphics.Rect(180, 514, 220, 40), 10, graphics.BoxShadow{
+		painter.DrawBoxShadow(graphics.Rect(180, 514, 220, 40), geometry.UniformCornerRadius(10), graphics.BoxShadow{
 			Color: graphics.ColorOf(color.NRGBA{R: 255, G: 80, B: 30, A: 70}), Offset: graphics.Point{X: -3}, BlurRadius: 8,
 		})
-		painter.DrawBoxShadow(graphics.Rect(180, 514, 220, 40), 10, graphics.BoxShadow{
+		painter.DrawBoxShadow(graphics.Rect(180, 514, 220, 40), geometry.UniformCornerRadius(10), graphics.BoxShadow{
 			Color: graphics.ColorOf(color.NRGBA{R: 20, G: 20, B: 100, A: 100}), Offset: graphics.Point{X: 4, Y: 3}, BlurRadius: 12,
 		})
 		painter.FillRoundRect(graphics.Rect(180, 514, 220, 40), 10, graphics.LinearGradient{
@@ -212,7 +212,7 @@ func render(width, height, scale float32) {
 		// 8. Translated + rotated round rect (FillRoundRect / DrawRoundRect with transform)
 		painter.SetTransform(geometry.Identity())
 		painter.SetTransform(geometry.Translate(700, 360).Rotate(20))
-		painter.DrawBoxShadow(graphics.Rect(0, 0, 80, 50), 10, graphics.BoxShadow{
+		painter.DrawBoxShadow(graphics.Rect(0, 0, 80, 50), geometry.UniformCornerRadius(10), graphics.BoxShadow{
 			Color: graphics.ColorOf(color.NRGBA{R: 30, G: 10, B: 40, A: 160}), Offset: graphics.Point{Y: 5}, BlurRadius: 7,
 		})
 		painter.FillRoundRect(graphics.Rect(0, 0, 80, 50), 10, graphics.RGBA(200, 50, 200, 180))
@@ -260,12 +260,12 @@ func render(width, height, scale float32) {
 
 		// Clip applies in window coordinates; the right half of this shadow is clipped.
 		painter.SetClipRect(graphics.Rect(640, 545, 55, 45))
-		painter.DrawBoxShadow(graphics.Rect(640, 550, 100, 30), 8, graphics.BoxShadow{
+		painter.DrawBoxShadow(graphics.Rect(640, 550, 100, 30), geometry.UniformCornerRadius(8), graphics.BoxShadow{
 			Color: graphics.RGBA(0, 0, 0, 180), BlurRadius: 8,
 		})
 		painter.SetClipRect(graphics.Rectangle{})
 		// Transparent colors are intentional no-ops and safe to leave in visual scenarios.
-		painter.DrawBoxShadow(graphics.Rect(640, 550, 100, 30), 8, graphics.BoxShadow{
+		painter.DrawBoxShadow(graphics.Rect(640, 550, 100, 30), geometry.UniformCornerRadius(8), graphics.BoxShadow{
 			Color: graphics.Color{}, BlurRadius: 8,
 		})
 	}

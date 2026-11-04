@@ -7,9 +7,74 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 )
 
+func TestIndependentCornersAndNarrowGaussian(t *testing.T) {
+	for _, r := range []geometry.CornerRadius{{TopLeft: 20, TopRight: 0, BottomRight: 4, BottomLeft: 12}, {TopLeft: 160, TopRight: 0, BottomRight: 160, BottomLeft: 0}, {TopLeft: 150, TopRight: 20, BottomRight: 0, BottomLeft: 5}} {
+		s, ok := Normalize(geometry.Rect(0, 0, 180, 170), r, geometry.Point{}, 2, 0)
+		if !ok {
+			t.Fatal("有效四角被拒绝")
+		}
+		for _, point := range []geometry.Point{{X: .5, Y: .5}, {X: 179.5, Y: .5}, {X: 179.5, Y: 169.5}, {X: .5, Y: 169.5}, {X: 12, Y: 12}, {X: 45, Y: 45}, {X: 90, Y: 85}, {X: 7, Y: 130}, {X: 130, Y: 7}, {X: -1, Y: 85}} {
+			want := referenceCoverage(s, point)
+			if got := float64(s.Alpha(point)); math.Abs(got-want) > .008 {
+				t.Fatalf("圆角%+v 位置%+v：高斯覆盖%g，独立积分%g", r, point, got, want)
+			}
+		}
+	}
+	r := geometry.CornerRadius{TopLeft: 20, TopRight: 6, BottomRight: 2}
+	s, ok := Normalize(geometry.Rect(0, 0, 100, 80), r, geometry.Point{X: 3, Y: 4}, 4, -2)
+	if !ok || s.Rect != geometry.Rect(5, 6, 96, 76) || s.Radius != (geometry.CornerRadius{TopLeft: 18, TopRight: 4}) {
+		t.Fatal("Spread／Offset没有逐角生效", s)
+	}
+}
+
+// 独立参考：按竖向截面求圆弧交区，使用标准库 Erf 和4096点积分；
+// 不调用角缺口、SignedDistance 或生产近似误差函数。
+func referenceCoverage(s Shape, p geometry.Point) float64 {
+	sigma := float64(s.Sigma())
+	width, height := float64(s.Rect.Width), float64(s.Rect.Height)
+	px, py := float64(p.X-s.Rect.X), float64(p.Y-s.Rect.Y)
+	lo, hi := math.Max(0, px-6*sigma), math.Min(width, px+6*sigma)
+	if hi <= lo {
+		return 0
+	}
+	dx := (hi - lo) / 4096
+	sum := 0.0
+	for i := 0; i < 4096; i++ {
+		x := lo + (float64(i)+.5)*dx
+		top, bottom := 0.0, height
+		for j, radius := range []float32{s.Radius.TopLeft, s.Radius.TopRight, s.Radius.BottomRight, s.Radius.BottomLeft} {
+			r := float64(radius)
+			if r <= 0 {
+				continue
+			}
+			cx := r
+			if j == 1 || j == 2 {
+				cx = width - r
+			}
+			outside := (j == 0 || j == 3) && x < r || (j == 1 || j == 2) && x > width-r
+			if !outside {
+				continue
+			}
+			arc := math.Sqrt(math.Max(0, r*r-(x-cx)*(x-cx)))
+			if j < 2 {
+				top = math.Max(top, r-arc)
+			} else {
+				bottom = math.Min(bottom, height-r+arc)
+			}
+		}
+		if bottom <= top {
+			continue
+		}
+		z := (x - px) / sigma
+		y := .5 * (math.Erf((bottom-py)/(sigma*math.Sqrt2)) - math.Erf((top-py)/(sigma*math.Sqrt2)))
+		sum += math.Exp(-.5*z*z) / (sigma * math.Sqrt(2*math.Pi)) * y * dx
+	}
+	return sum
+}
+
 func TestNormalizeAppliesOffsetSpreadAndRadius(t *testing.T) {
 	shape, ok := Normalize(
-		geometry.Rect(10, 20, 30, 20), 8,
+		geometry.Rect(10, 20, 30, 20), geometry.UniformCornerRadius(8),
 		geometry.Point{X: 3, Y: -2}, 0.1, 4,
 	)
 	if !ok {
@@ -18,7 +83,7 @@ func TestNormalizeAppliesOffsetSpreadAndRadius(t *testing.T) {
 	if want := geometry.Rect(9, 14, 38, 28); shape.Rect != want {
 		t.Fatalf("rect = %+v, want %+v", shape.Rect, want)
 	}
-	if shape.Radius != 12 {
+	if shape.Radius != geometry.UniformCornerRadius(12) {
 		t.Fatalf("radius = %v, want 12", shape.Radius)
 	}
 	if shape.BlurRadius != 0.5 {
@@ -27,27 +92,27 @@ func TestNormalizeAppliesOffsetSpreadAndRadius(t *testing.T) {
 }
 
 func TestNormalizeNegativeSpreadAndRadiusClamp(t *testing.T) {
-	shape, ok := Normalize(geometry.Rect(0, 0, 20, 10), 20, geometry.Point{}, 2, -3)
+	shape, ok := Normalize(geometry.Rect(0, 0, 20, 10), geometry.UniformCornerRadius(20), geometry.Point{}, 2, -3)
 	if !ok {
 		t.Fatal("Normalize rejected non-empty inset shadow")
 	}
 	if want := geometry.Rect(3, 3, 14, 4); shape.Rect != want {
 		t.Fatalf("rect = %+v, want %+v", shape.Rect, want)
 	}
-	if shape.Radius != 2 {
+	if shape.Radius != geometry.UniformCornerRadius(2) {
 		t.Fatalf("radius = %v, want height/2 = 2", shape.Radius)
 	}
 
-	if _, ok := Normalize(geometry.Rect(0, 0, 4, 4), 2, geometry.Point{}, 1, -2); ok {
+	if _, ok := Normalize(geometry.Rect(0, 0, 4, 4), geometry.UniformCornerRadius(2), geometry.Point{}, 1, -2); ok {
 		t.Fatal("Normalize accepted a contour contracted to empty")
 	}
-	if _, ok := Normalize(geometry.Rectangle{}, 0, geometry.Point{}, 1, 0); ok {
+	if _, ok := Normalize(geometry.Rectangle{}, geometry.UniformCornerRadius(0), geometry.Point{}, 1, 0); ok {
 		t.Fatal("Normalize accepted an empty source rectangle")
 	}
 }
 
 func TestShapeBoundsDistanceAndAlpha(t *testing.T) {
-	shape, ok := Normalize(geometry.Rect(10, 10, 20, 10), 3, geometry.Point{}, 2, 0)
+	shape, ok := Normalize(geometry.Rect(10, 10, 20, 10), geometry.UniformCornerRadius(3), geometry.Point{}, 2, 0)
 	if !ok {
 		t.Fatal("Normalize rejected valid shadow")
 	}
@@ -96,7 +161,7 @@ func TestAlphaAtDistanceUsesCSSGaussianMapping(t *testing.T) {
 }
 
 func TestRoundedConvolutionIsSymmetricMonotonicAndAccurate(t *testing.T) {
-	shape, ok := Normalize(geometry.Rect(0, 0, 18, 12), 5, geometry.Point{}, 6, 0)
+	shape, ok := Normalize(geometry.Rect(0, 0, 18, 12), geometry.UniformCornerRadius(5), geometry.Point{}, 6, 0)
 	if !ok {
 		t.Fatal("Normalize rejected valid shadow")
 	}
@@ -143,7 +208,7 @@ func denseCornerCutout(px, py, ex, ey, radius, sigma, sx, sy float64, samples in
 }
 
 func TestClearShapeAlpha(t *testing.T) {
-	shape, ok := Normalize(geometry.Rect(0, 0, 10, 10), 0, geometry.Point{}, -4, 0)
+	shape, ok := Normalize(geometry.Rect(0, 0, 10, 10), geometry.UniformCornerRadius(0), geometry.Point{}, -4, 0)
 	if !ok {
 		t.Fatal("Normalize rejected valid clear shadow")
 	}

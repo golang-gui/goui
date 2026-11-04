@@ -708,7 +708,7 @@ func BenchmarkDrawImageRotated256(b *testing.B) {
 
 func TestBoxShadowFullAndSingleBottomEdge(t *testing.T) {
 	img := renderPainter(t, 40, 35, 1, geometry.Identity(), graphics.Rectangle{}, func(p graphics.Painter) {
-		p.DrawBoxShadow(graphics.Rect(10, 10, 20, 10), 3, graphics.BoxShadow{
+		p.DrawBoxShadow(graphics.Rect(10, 10, 20, 10), geometry.UniformCornerRadius(3), graphics.BoxShadow{
 			Color:      graphics.RGBA(255, 0, 0, 255),
 			BlurRadius: 4,
 		})
@@ -722,7 +722,7 @@ func TestBoxShadowFullAndSingleBottomEdge(t *testing.T) {
 	img = renderPainter(t, 40, 35, 1, geometry.Identity(), graphics.Rectangle{}, func(p graphics.Painter) {
 		blur := float32(4)
 		rect := graphics.Rect(10, 10, 20, 10)
-		p.DrawBoxShadow(rect, 2, graphics.BoxShadow{
+		p.DrawBoxShadow(rect, geometry.UniformCornerRadius(2), graphics.BoxShadow{
 			Color:        graphics.RGBA(0, 0, 0, 220),
 			Offset:       graphics.Point{Y: blur},
 			BlurRadius:   blur,
@@ -738,10 +738,10 @@ func TestBoxShadowFullAndSingleBottomEdge(t *testing.T) {
 
 func TestBoxShadowCompositionClipTransformAndHiDPI(t *testing.T) {
 	img := renderPainter(t, 60, 40, 1, geometry.Identity(), graphics.Rect(15, 0, 30, 40), func(p graphics.Painter) {
-		p.DrawBoxShadow(graphics.Rect(10, 10, 20, 10), 0, graphics.BoxShadow{
+		p.DrawBoxShadow(graphics.Rect(10, 10, 20, 10), geometry.UniformCornerRadius(0), graphics.BoxShadow{
 			Color: graphics.ColorOf(color.NRGBA{R: 255, A: 128}), BlurRadius: 4,
 		})
-		p.DrawBoxShadow(graphics.Rect(10, 10, 20, 10), 0, graphics.BoxShadow{
+		p.DrawBoxShadow(graphics.Rect(10, 10, 20, 10), geometry.UniformCornerRadius(0), graphics.BoxShadow{
 			Color: graphics.ColorOf(color.NRGBA{B: 255, A: 128}), Offset: graphics.Point{X: 2}, BlurRadius: 4,
 		})
 	})
@@ -750,7 +750,7 @@ func TestBoxShadowCompositionClipTransformAndHiDPI(t *testing.T) {
 	assertAlphaRange(t, img.At(15, 15), 40, 200)
 
 	img = renderPainter(t, 80, 50, 2, geometry.Translate(10, 10).Rotate(90), graphics.Rectangle{}, func(p graphics.Painter) {
-		p.DrawBoxShadow(graphics.Rect(0, -4, 8, 4), 0, graphics.BoxShadow{
+		p.DrawBoxShadow(graphics.Rect(0, -4, 8, 4), geometry.UniformCornerRadius(0), graphics.BoxShadow{
 			Color: graphics.RGBA(0, 255, 0, 255), BlurRadius: 1,
 		})
 	})
@@ -760,7 +760,7 @@ func TestBoxShadowCompositionClipTransformAndHiDPI(t *testing.T) {
 	assertAlphaRange(t, img.At(5, 5), 0, 2)
 
 	img = renderPainter(t, 50, 30, 1, geometry.Translate(5, 5).Scale(2, 1), graphics.Rectangle{}, func(p graphics.Painter) {
-		p.DrawBoxShadow(graphics.Rect(0, 0, 5, 5), 0, graphics.BoxShadow{
+		p.DrawBoxShadow(graphics.Rect(0, 0, 5, 5), geometry.UniformCornerRadius(0), graphics.BoxShadow{
 			Color: graphics.RGBA(0, 255, 0, 255), BlurRadius: 1,
 		})
 	})
@@ -770,7 +770,7 @@ func TestBoxShadowCompositionClipTransformAndHiDPI(t *testing.T) {
 
 func TestBoxShadowFractionalHiDPI(t *testing.T) {
 	img := renderPainter(t, 40, 30, 1.25, geometry.Identity(), graphics.Rectangle{}, func(p graphics.Painter) {
-		p.DrawBoxShadow(graphics.Rect(8, 6, 8, 8), 3, graphics.BoxShadow{
+		p.DrawBoxShadow(graphics.Rect(8, 6, 8, 8), geometry.UniformCornerRadius(3), graphics.BoxShadow{
 			Color: graphics.RGBA(20, 40, 80, 200), BlurRadius: 2,
 		})
 	})
@@ -780,10 +780,10 @@ func TestBoxShadowFractionalHiDPI(t *testing.T) {
 
 func TestBoxShadowTransparentColorAndContractedEmptyAreNoOps(t *testing.T) {
 	img := renderPainter(t, 20, 20, 1, geometry.Identity(), graphics.Rectangle{}, func(p graphics.Painter) {
-		p.DrawBoxShadow(graphics.Rect(4, 4, 8, 8), 2, graphics.BoxShadow{
+		p.DrawBoxShadow(graphics.Rect(4, 4, 8, 8), geometry.UniformCornerRadius(2), graphics.BoxShadow{
 			Color: graphics.RGBA(255, 0, 0, 0), BlurRadius: 4,
 		})
-		p.DrawBoxShadow(graphics.Rect(4, 4, 8, 8), 2, graphics.BoxShadow{
+		p.DrawBoxShadow(graphics.Rect(4, 4, 8, 8), geometry.UniformCornerRadius(2), graphics.BoxShadow{
 			Color: graphics.RGB(255, 0, 0), SpreadRadius: -4,
 		})
 	})
@@ -1056,8 +1056,12 @@ func TestSoftwareContract(t *testing.T) {
 			p.FillRect(rect, graphics.LinearGradient{Start: graphics.Point{X: 4}, End: graphics.Point{X: 20}, StartColor: c, EndColor: c})
 		}},
 		{"DegenerateGradient", 12, 12, func(p graphics.Painter) { p.FillRect(rect, graphics.LinearGradient{StartColor: c, EndColor: c}) }},
-		{"ShadowClear", 12, 12, func(p graphics.Painter) { p.DrawBoxShadow(rect, 0, graphics.BoxShadow{Color: c}) }},
-		{"ShadowSoftInterior", 12, 12, func(p graphics.Painter) { p.DrawBoxShadow(rect, 0, graphics.BoxShadow{Color: c, BlurRadius: 1}) }},
+		{"ShadowClear", 12, 12, func(p graphics.Painter) {
+			p.DrawBoxShadow(rect, geometry.UniformCornerRadius(0), graphics.BoxShadow{Color: c})
+		}},
+		{"ShadowSoftInterior", 12, 12, func(p graphics.Painter) {
+			p.DrawBoxShadow(rect, geometry.UniformCornerRadius(0), graphics.BoxShadow{Color: c, BlurRadius: 1})
+		}},
 		{"DrawImage", 12, 12, func(p graphics.Painter) {
 			src := image.NewNRGBA(image.Rect(0, 0, 16, 16))
 			draw.Draw(src, src.Bounds(), image.NewUniform(ink), image.Point{}, draw.Src)
@@ -1354,7 +1358,7 @@ func TestDisjointShapeClip(t *testing.T) {
 		{"stroke-ellipse", func(p graphics.Painter, _ graphics.Image) { p.DrawEllipse(center, 4, 3, 2, red) }},
 		{"stroke-path", func(p graphics.Painter, _ graphics.Image) { p.DrawPath(path, 2, red) }},
 		{"shadow", func(p graphics.Painter, _ graphics.Image) {
-			p.DrawBoxShadow(r, 2, graphics.BoxShadow{Color: red, BlurRadius: 2})
+			p.DrawBoxShadow(r, geometry.UniformCornerRadius(2), graphics.BoxShadow{Color: red, BlurRadius: 2})
 		}},
 		{"gradient", func(p graphics.Painter, _ graphics.Image) {
 			p.FillRect(r, graphics.LinearGradient{Start: start, End: center, StartColor: red, EndColor: graphics.RGB(0, 255, 0)})
@@ -1524,7 +1528,7 @@ func TestBoxShadowPremultipliedPixels(t *testing.T) {
 					// These are premultiplied RGB values, as produced by ColorOf.
 					ink := color.RGBA{R: 96, G: 48, B: 24, A: 128}
 					for range layers {
-						p.DrawBoxShadow(graphics.Rect(16, 16, 32, 32), 4, graphics.BoxShadow{
+						p.DrawBoxShadow(graphics.Rect(16, 16, 32, 32), geometry.UniformCornerRadius(4), graphics.BoxShadow{
 							Color: graphics.ColorOf(ink), BlurRadius: blur,
 						})
 					}

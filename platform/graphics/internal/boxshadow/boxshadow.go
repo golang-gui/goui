@@ -18,19 +18,20 @@ const (
 // Shape is a normalized rounded-rectangle shadow contour.
 type Shape struct {
 	Rect       geometry.Rectangle
-	Radius     float32
+	Radius     geometry.CornerRadius
 	BlurRadius float32
 }
 
 // Normalize applies offset and spread, clamps the resulting corner radius and
 // normalizes every positive blur to at least half a logical unit.
-func Normalize(rect geometry.Rectangle, radius float32, offset geometry.Point, blurRadius, spreadRadius float32) (Shape, bool) {
+func Normalize(rect geometry.Rectangle, radius geometry.CornerRadius, offset geometry.Point, blurRadius, spreadRadius float32) (Shape, bool) {
 	if !finite(rect.X) || !finite(rect.Y) || !finite(rect.Width) || !finite(rect.Height) ||
-		!finite(radius) || !finite(offset.X) || !finite(offset.Y) ||
+		!finite(radius.TopLeft) || !finite(radius.TopRight) || !finite(radius.BottomRight) || !finite(radius.BottomLeft) || !finite(offset.X) || !finite(offset.Y) ||
 		!finite(blurRadius) || !finite(spreadRadius) || rect.Width <= 0 || rect.Height <= 0 {
 		return Shape{}, false
 	}
 
+	radius = radius.Normalize(rect.Size)
 	rect.X += offset.X - spreadRadius
 	rect.Y += offset.Y - spreadRadius
 	rect.Width += 2 * spreadRadius
@@ -39,16 +40,7 @@ func Normalize(rect geometry.Rectangle, radius float32, offset geometry.Point, b
 		return Shape{}, false
 	}
 
-	radius += spreadRadius
-	if !finite(radius) {
-		return Shape{}, false
-	}
-	if radius < 0 {
-		radius = 0
-	}
-	if limit := min(rect.Width, rect.Height) / 2; radius > limit {
-		radius = limit
-	}
+	radius = radius.Inset(-spreadRadius).Normalize(rect.Size)
 	if blurRadius > 0 && blurRadius < minimumBlurRadius {
 		blurRadius = minimumBlurRadius
 	} else if blurRadius < 0 {
@@ -77,14 +69,44 @@ func (s Shape) Bounds() geometry.Rectangle {
 // coverage is computed by convolving the complete finite shape instead of by
 // fading this distance.
 func (s Shape) SignedDistance(point geometry.Point) float32 {
-	halfWidth := s.Rect.Width / 2
-	halfHeight := s.Rect.Height / 2
-	center := s.Rect.Center()
-	qx := abs(point.X-center.X) - halfWidth + s.Radius
-	qy := abs(point.Y-center.Y) - halfHeight + s.Radius
-	outside := float32(math.Hypot(float64(max(qx, 0)), float64(max(qy, 0))))
-	inside := min(max(qx, qy), 0)
-	return outside + inside - s.Radius
+	if s.Radius.Uniform() {
+		radius := s.Radius.TopLeft
+		halfWidth, halfHeight := s.Rect.Width/2, s.Rect.Height/2
+		center := s.Rect.Center()
+		qx, qy := abs(point.X-center.X)-halfWidth+radius, abs(point.Y-center.Y)-halfHeight+radius
+		return float32(math.Hypot(float64(max(qx, 0)), float64(max(qy, 0)))) + min(max(qx, qy), 0) - radius
+	}
+	// Distance to each line segment and quarter-circle; large corners can
+	// cross the rectangle center, so quadrant-based radius selection is invalid.
+	x, y := float64(point.X-s.Rect.X), float64(point.Y-s.Rect.Y)
+	w, h := float64(s.Rect.Width), float64(s.Rect.Height)
+	tl, tr, br, bl := float64(s.Radius.TopLeft), float64(s.Radius.TopRight), float64(s.Radius.BottomRight), float64(s.Radius.BottomLeft)
+	distance := math.Inf(1)
+	segment := func(x0, y0, x1, y1 float64) {
+		dx, dy := x1-x0, y1-y0
+		t := 0.0
+		if length := dx*dx + dy*dy; length > 0 {
+			t = clamp64(((x-x0)*dx+(y-y0)*dy)/length, 0, 1)
+		}
+		distance = math.Min(distance, math.Hypot(x-x0-t*dx, y-y0-t*dy))
+	}
+	segment(tl, 0, w-tr, 0)
+	segment(w, tr, w, h-br)
+	segment(w-br, h, bl, h)
+	segment(0, h-bl, 0, tl)
+	for _, c := range [][5]float64{{tl, tl, tl, -1, -1}, {w - tr, tr, tr, 1, -1}, {w - br, h - br, br, 1, 1}, {bl, h - bl, bl, -1, 1}} {
+		if c[2] <= 0 {
+			continue
+		}
+		dx, dy := x-c[0], y-c[1]
+		if dx*c[3] >= 0 && dy*c[4] >= 0 {
+			distance = math.Min(distance, math.Abs(math.Hypot(dx, dy)-c[2]))
+		}
+	}
+	if s.Radius.Contains(s.Rect, point) {
+		distance = -distance
+	}
+	return float32(distance)
 }
 
 // Alpha returns the Gaussian convolution of the rounded-rectangle mask at a
@@ -109,14 +131,11 @@ func (s Shape) Alpha(point geometry.Point) float32 {
 	py := float64(point.Y - center.Y)
 	ex := float64(s.Rect.Width / 2)
 	ey := float64(s.Rect.Height / 2)
-	radius := float64(s.Radius)
 
 	coverage := gaussianRange(-ex, ex, px, sigma) * gaussianRange(-ey, ey, py, sigma)
-	if radius > 0 {
-		for _, sx := range [...]float64{-1, 1} {
-			for _, sy := range [...]float64{-1, 1} {
-				coverage -= cornerCutout(px, py, ex, ey, radius, sigma, sx, sy)
-			}
+	for _, c := range [][3]float64{{float64(s.Radius.TopLeft), -1, -1}, {float64(s.Radius.TopRight), 1, -1}, {float64(s.Radius.BottomRight), 1, 1}, {float64(s.Radius.BottomLeft), -1, 1}} {
+		if c[0] > 0 {
+			coverage -= cornerCutout(px, py, ex, ey, c[0], sigma, c[1], c[2])
 		}
 	}
 	return float32(clamp64(coverage, 0, 1))
@@ -150,10 +169,15 @@ func cornerCutout(px, py, ex, ey, radius, sigma, sx, sy float64) float64 {
 	if px < x0-cutoff || px > x1+cutoff || py < y0-cutoff || py > y1+cutoff {
 		return 0
 	}
-	dx := radius / cornerSamples
+	center := sx * (px - cx)
+	u0, u1 := math.Max(0, center-cutoff), math.Min(radius, center+cutoff)
+	if u1 <= u0 {
+		return 0
+	}
+	dx := (u1 - u0) / cornerSamples
 	sum := 0.0
 	for i := 0; i < cornerSamples; i++ {
-		u := (float64(i) + 0.5) * dx
+		u := u0 + (float64(i)+0.5)*dx
 		x := cx + sx*u
 		arc := math.Sqrt(math.Max(radius*radius-u*u, 0))
 		y0 := cy + sy*arc
