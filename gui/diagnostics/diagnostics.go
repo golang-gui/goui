@@ -5,6 +5,7 @@ package diagnostics
 import (
 	"errors"
 
+	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/internal/diagnostic"
 )
@@ -35,8 +36,13 @@ type Widget = diagnostic.Widget
 type Snapshot = diagnostic.Snapshot
 
 // Capture owns optional diagnostics until Stop or Application.Run returns.
-// All methods must run on the GUI thread. It never requests layout or painting.
-type Capture struct{ session *diagnostic.Session }
+// All methods must run on the GUI thread. Collection alone never requests
+// layout or painting; ShowHUD explicitly adds an on-screen observer.
+type Capture struct {
+	session *diagnostic.Session
+	huds    map[gui.Window]*HUD
+	stopped signal.Handle
+}
 
 // Start starts a fresh capture for the GOUI application (including before Run).
 // Only one capture can be active. Native resource counters are process-wide.

@@ -5,6 +5,8 @@ import (
 	"slices"
 	"sync/atomic"
 	"time"
+
+	"github.com/golang-gui/goui/core/signal"
 )
 
 const HistoryLimit = 120
@@ -17,9 +19,17 @@ type GUIData struct {
 }
 
 // Source is an internal GUI-thread query bridge, not a user callback or event
-// observer. The GUI attaches it lazily; only Snapshot and Stop query it.
+// observer. The GUI attaches it lazily; queries never schedule GUI work.
 type Source interface {
 	Snapshot(time.Time) GUIData
+	ReadRoot(any, time.Time) (RootSample, bool)
+}
+
+// RootSample borrows no history or live GUI objects. Frame is the most recent
+// completed frame, so an in-flight AfterPaint never reads its own unfinished work.
+type RootSample struct {
+	Root  Root
+	Frame Frame
 }
 
 // Session owns one capture. Only operation counters may be recorded from other
@@ -35,6 +45,7 @@ type Session struct {
 	history     [HistoryLimit]Frame
 	next, count int
 	frozen      Snapshot
+	stopped     signal.Signal0
 }
 
 var current atomic.Pointer[Session]
@@ -60,6 +71,19 @@ func (s *Session) Source() Source          { return s.source }
 func (s *Session) SetSource(source Source) { s.source = source }
 func (s *Session) NextRef() uint64         { s.serial++; return s.serial }
 
+// ConnectStop releases optional observers on both explicit Stop and owner exit.
+// Call only while active, on the GUI thread.
+func (s *Session) ConnectStop(fn func()) signal.Handle { return s.stopped.Connect(fn) }
+
+// ReadRoot reads one existing record without copying the capture's history or
+// enumerating widgets. It does not create a collector or a root record.
+func (s *Session) ReadRoot(target any) (RootSample, bool) {
+	if s == nil || !s.active || s.source == nil {
+		return RootSample{}, false
+	}
+	return s.source.ReadRoot(target, time.Now())
+}
+
 func StopOwner(owner any) {
 	if s := Current(); s != nil && s.owner == owner {
 		s.Stop()
@@ -76,6 +100,7 @@ func (s *Session) Stop() {
 	s.active = false
 	s.frozen = s.snapshot(time.Now())
 	s.source, s.owner = nil, nil
+	s.stopped.Emit()
 }
 
 func (s *Session) Snapshot() Snapshot {
@@ -108,6 +133,7 @@ func (s *Session) snapshot(now time.Time) Snapshot {
 type RootRecord struct {
 	Root
 	current     FrameRecord
+	last        Frame
 	times       [HistoryLimit]time.Time
 	next, count int
 }
@@ -133,6 +159,7 @@ func (f *FrameRecord) Finish() {
 	r.Frames++
 	if f.Completed {
 		r.Completed++
+		r.last = f.Frame
 		if r.count > 0 && now.Sub(r.times[(r.next-1+len(r.times))%len(r.times)]) > time.Second {
 			r.count = 0
 		}
@@ -146,6 +173,8 @@ func (f *FrameRecord) Finish() {
 	s.next = (s.next + 1) % len(s.history)
 	s.count = min(s.count+1, len(s.history))
 }
+
+func (r *RootRecord) LastFrame() Frame { return r.last }
 
 func (r *RootRecord) Snapshot(now time.Time, closed, suspended bool) Root {
 	out := r.Root

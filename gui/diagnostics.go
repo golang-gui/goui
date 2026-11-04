@@ -135,6 +135,28 @@ func (d *diagnosticCollector) rootMetadata(b *rootBase, r *diagnostic.RootRecord
 	}
 }
 
+// ReadRoot uses the same private identity as recording. HUD queries do not walk
+// widget trees, allocate snapshots or create missing diagnostic records.
+func (d *diagnosticCollector) ReadRoot(target any, now time.Time) (diagnostic.RootSample, bool) {
+	owner, ok := target.(interface{ rootState() *rootBase })
+	if !ok {
+		return diagnostic.RootSample{}, false
+	}
+	b := owner.rootState()
+	if b == nil || b.app != d.app {
+		return diagnostic.RootSample{}, false
+	}
+	r := d.roots[weak.Make(b)]
+	if r == nil {
+		return diagnostic.RootSample{}, false
+	}
+	// Live metadata is unnecessary here: the overlay only needs the backend,
+	// completion intervals and last completed frame.
+	return diagnostic.RootSample{
+		Root: r.Snapshot(now, b.frameDestroyed, b.frameSuspended), Frame: r.LastFrame(),
+	}, true
+}
+
 func (d *diagnosticCollector) Snapshot(now time.Time) diagnostic.GUIData {
 	out := diagnostic.GUIData{DroppedRoots: d.droppedRoots, DroppedWidgets: d.droppedWidgets}
 	pruneRoots := len(d.roots) == diagnosticRoots

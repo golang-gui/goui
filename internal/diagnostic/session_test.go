@@ -8,6 +8,10 @@ import (
 
 type countingSource struct{ queries int }
 
+func (s *countingSource) ReadRoot(any, time.Time) (RootSample, bool) {
+	return RootSample{}, false
+}
+
 func (s *countingSource) Snapshot(time.Time) GUIData {
 	s.queries++
 	return GUIData{Roots: []Root{{Ref: 1, ID: "root"}}}

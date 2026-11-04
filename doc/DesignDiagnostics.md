@@ -4,7 +4,8 @@
 
 区分框架测量缓存查询、Paint 调用、文字栅格化和图片操作，提供 GUI 线程帧阶段耗时。
 默认关闭；不因诊断修改失效、缓存、布局、绘制、输入或帧调度策略。
-本切片不同时优化缓存，不引入绘制指令缓存、局部重绘、HUD 或原生 vsync。
+基础采集不同时优化缓存，不引入绘制指令缓存、局部重绘或原生 vsync。
+2026-11-04 增加显式开启的 HUD，设计见下文；只读采集保持原有行为。
 
 本次参考 Flutter main 的 [RenderObject.layout](https://api.flutter.dev/flutter/rendering/RenderObject/layout.html)
 及其内嵌实现：布局入口与 performLayout 分工明确，追踪发生在已知调用边界。
@@ -152,3 +153,108 @@ JSON 的 Widget 字段使用 measureCalls／paintCalls／offscreenPaintCalls／s
 
 本切片不含 UI Build 追踪、逐 Widget 资源归因和 GPU 计时，不以桌面启动或交叉编译
 代替实际操作验收。后续缓存优化必须基于同环境、同工作量的测量证据。
+
+## 显式性能浮层 HUD（2026-11-04）
+
+### 定位与接入
+
+HUD 属于 `gui/diagnostics`，由现有 Capture 持有，不扩展 Widget、Root、Painter
+公共接口，不参与 Widget 树、布局、输入、焦点或语义快照。它通过已有
+`Window.ConnectAfterPaint` 在内容和装饰后绘制。默认未启用。
+
+```go
+capture, err := diagnostics.Start(app, diagnostics.Options{})
+if err != nil {
+    return err
+}
+hud, err := capture.ShowHUD(window)
+if err != nil {
+    capture.Stop()
+    return err
+}
+hud.SetPosition(geometry.Point{X: 12, Y: 48})
+// hud.Destroy() removes only the overlay; capture.Stop() also releases it.
+```
+
+公共 API：
+
+```go
+func (c *Capture) ShowHUD(window gui.Window) (*HUD, error)
+func (h *HUD) SetPosition(position geometry.Point)
+func (h *HUD) Destroy()
+```
+
+所有调用在 GUI 线程；窗口必须是该次采集所属应用的存活窗口。同一窗口重复 ShowHUD
+返回已有 HUD。初始位置为窗口局部 `(12, 12)` DIP，调用方可调整以避让标题栏按钮。
+位置可为负，超出窗口的部分由现有绘制裁剪处理；非有限值 panic。
+ShowHUD 报告初始文字资源创建及首次请求绘制的错误，中途失败释放已取得的资源。
+
+只读 Snapshot、Start 的原有无重绘契约不变。显式显示、移动或移除 HUD 会请求一次
+正常重绘以应用外观变化。HUD 不开启 Timer、goroutine、动画或持续 RequestPaint。
+
+### 指标、更新与开销
+
+显示 Draw FPS、Frame／Layout／Paint／End 毫秒数及后端名称：
+
+- Draw FPS 复用 Root 最近完成帧的间隔估计，不是显示刷新率。
+- 阶段耗时取该窗口最近一份已完成帧，不读取正在绘制且尚未 End 的当前帧。
+- Frame 是 GUI 帧的墙钟耗时，包含等待，不是 CPU 忙碌时间；End 不证明 GPU 完成或
+  合成器实际呈现。不虚构 GPU 耗时、原生同步来源、掉帧率或高刷状态。
+- 首次没有足够样本时显示 `--`，不显示虚假的零耗时或稳定帧率。
+- HUD 文案注明 recent CPU frames。应用静止时保留最后读数，不为了改成 Idle 单独刷新；
+  恢复绘制后继续使用现有 Idle／样本重置规则。
+
+每次正常帧复用已有 TextLayout，最多每 250 ms 读取一次统计并尝试更新文字。
+文字未变化时不重建布局；文字不可变的 TextLayout 仅在文本变化时替换。
+字体为 9 pt，使用固定深色半透明背景和浅色文字以便在不同主题下阅读，使用预乘颜色。
+已有文字栅格与 Painter 图像缓存继续生效。暂时的更新失败保留上次可读资源。
+
+通过 internal/diagnostic 的内部 Source 桥读取指定根的现有记录，不复制完整 Snapshot、
+不遍历 Widget、不调用原生窗口 getter，也不为查询创建记录。RootRecord 额外保存最近
+完成 Frame 的纯值，内存上界仍受现有根容量限制；普通记录路径不新增外部观察回调。
+
+HUD 自身的排版、栅格化、图像和绘制操作计入采集，不人为扣除。需要测量应用本身时
+关闭 HUD，继续使用手动 Snapshot；逐控件统计仍需显式开启 Widgets。
+
+### 资源与结束
+
+Capture 持有每个窗口一个 HUD，HUD 持有两份信号 handle 和一个 TextLayout。
+Destroy 幂等断开 AfterPaint／Destroy 信号，释放文字并从 Capture 移除。
+窗口销毁时不再请求重绘；显式 Destroy 和采集停止时请求一次重绘擦除浮层。
+内部 Session 的停止信号保证 Application.Run 返回引发 StopOwner 时也完成清理，
+不只依赖用户调用公开 Capture.Stop。停止后的采集结果继续冻结。
+首版不为 Popover 增加 HUD；Popover 的统计仍在 Snapshot 中。
+
+### 验证与示例
+
+- 包内替身测试：重复显示、位置、所有权／失败清理、字体失败保留旧资源、窗口销毁、
+  应用停止清理、无主动帧请求、250 ms 查询节流和相同文字布局复用。
+- GUI 适配器测试：单根读取隔离，不创建记录／快照，返回最近完成帧，避免当前帧及
+  其它窗口帧混入；采集停止后不可读取。
+- `tests/window/gui/diagnostics -hud`：真实窗口检查透传点击、显示／移动／移除、
+  连续帧、闲置无额外帧、RenderWidget 不包含 HUD、停止冻结及资源释放。
+- Demo 的“窗口与检查”使用已有采集，提供显示 HUD 开关，跨页面保留。
+
+GTK/GDK 4.24.1 的 FPS 定义见本文开头。Flutter
+[PerformanceOverlay](https://api.flutter.dev/flutter/widgets/PerformanceOverlay-class.html)
+展示帧阶段预算；GOUI 当前只显示实际具备的 GUI 阶段统计，不照搬其双线程渲染指标。
+
+## 后续帧调度规划（未实现）
+
+当前 `gui/root.go` 的主动重绘仍以 60 Hz 节流，本次 HUD 不改变帧调度。
+后续独立切片保留 RequestPaint／ConnectFrame／animation 使用方式：
+
+1. 将固定间隔改为窗口刷新节奏感知；未知时才用 60 Hz 兼容值，标明估算来源。
+2. 接入原生绘制机会，按需预约、合并请求，隐藏／销毁停止，过期通知不得访问窗口。
+3. platform 负责原生机会，GUI 负责失效与绘制阶段，Painter 继续只负责绘制／提交。
+   具体平台接口在该切片前细化，不把 HUD 当作调度驱动器。
+
+候选路径：macOS 14+ 的窗口／View 关联 CADisplayLink；Windows 11 的合成器时钟需
+核对混合刷新率，Windows 10 先采用刷新周期感知定时降级；Linux/X11 评估 Present MSC
+通知，缺失时以 RandR 信息定时降级。原生接口失败不能阻止正常绘制。
+
+参考：[Apple NSWindow DisplayLink](https://developer.apple.com/documentation/appkit/nswindow/displaylink(target:selector:))、
+[DCompositionWaitForCompositorClock](https://learn.microsoft.com/en-us/windows/win32/api/dcomp/nf-dcomp-dcompositionwaitforcompositorclock)
+（最低 Build 22000，阻塞调用线程）、[XCB Present](https://xcb.freedesktop.org/manual/group__XCB__Present__API.html)。
+调度机会不等同实际呈现反馈；不简单统一 SwapInterval(1)／Present(1)，也不在 GUI 线程
+阻塞等待垂直消隐。真实高刷、跨屏和混合刷新率需实际硬件验证，VNC／RDP 只验证功能。
