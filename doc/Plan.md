@@ -13,6 +13,29 @@
   区分端点几何与此通用限制，不把分数物理坐标的拼接算作本轮修复通过。
   证据及旧代码回归保留在 `/tmp/goui-button-seams-zzlyn8gu`，规划见 Roadmap。
 
+## 圆角例程按钮交互（2026-11-04）
+
+- [x] 为 corner-button 补全 Hover／Pressed 和 focus 部件：鼠标只变背景，
+  Normal focus透明／零边宽，FocusVisible白色2 DIP。没有修改全局样式合并、
+  Focused覆盖或输入分发。临时副本移除focus规则后，第一次按下即在尾边像素
+  失败（预期按压背景90,130,180，实际边框60,80,110），修正配置后通过。
+- [x] 窗口自动回归通过正常 DispatchEvent 检查三项悬停、按下、释放、移出取消、
+  Tab／Shift+Tab及鼠标退出键盘提示；断言状态、Snapshot、接缝两端／中段和
+  完整键盘焦点尾边。保留已有表面AA、圆角切换、Popover显示／隐藏／销毁断言。
+- [x] Ubuntu 22.04.5 amd64，独立 Xvnc :90／xfwm4 4.16.1（合成开启），
+  Software／OpenGL（Mesa llvmpipe）1x／2x 四组自动验收通过，检查实际后端。
+  OpenGL 1x 实际鼠标悬停、按住、释放、移出取消及Tab／Shift+Tab、切换四角与
+  Popover外观检查通过。例程自动像素仍由RenderWidget使用Software计算，
+  不将其当作OpenGL读回；屏幕外观为单独观察。非对齐拼接限制见上一节。
+- [x] `DISPLAY=:90 GOWORK=off go test -json -count=1 ./...`：3798项通过、
+  15项既有跳过、零失败，含保留的未跟踪测试。跳过为平台手工交互／剪贴板和
+  macOS签名环境；全仓既有窗口测试的桌面副作用限制在独立会话。
+  gui／theme／ui的race、受影响包及窗口程序vet通过；Windows amd64／
+  macOS arm64的相关包及窗口程序CGO_ENABLED=0构建通过，未执行远端原生验收。
+- 日志、旧代码复现和截图在 `/tmp/goui-button-seams-zzlyn8gu`；本轮仅改变
+  GUI端点几何及例程样式／验证，不修改三后端或nanovgo依赖。
+  本轮窗口及Popover正常关闭，独立X11会话已停止。
+
 ## 圆角边框外侧毛边（2026-11-04）
 
 - [x] 复现 tests/window/gui/corner_radius 首个蓝底／4 DIP浅灰边框的外侧毛边。
