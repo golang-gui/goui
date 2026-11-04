@@ -1,5 +1,21 @@
 # Plan
 
+## Cluster 交互原则与 Android Layout 验证（2026-11-04）
+
+- [x] 固定 Cluster 为布局中的最小文本交互单元，非必须等同于 shaping cluster；
+  统一 DesignTypography、TextEditing、MobilePlatform 与公开接口注释，结构不变。
+- [x] Android Layout 导出交互边界与几何，接入现有 textedit.Geometry；验证命中、
+  光标、选区、RTL、组合字符、零宽与软换行。保留原 shaping 对照，不将其当作
+  交互契约失败，不引入 go-text 或生产文字后端。
+- [x] Android 11 ARM64/Software 1x：18 组、40 项原生边界/行检查、3814 项
+  Go Geometry 检查通过。59 次原始命中策略差异保留：30 次重合点、25 次软换行
+  亲和性、4 次字素吸附；首轮 37 项不一致和修正记录见 DesignMobilePlatform 9.5。
+- [x] 本机隔离副本全仓 3507 通过/10 既有跳过，相关 race/vet 通过；原目录的
+  未跟踪旧例程及 GOWORK 临时模块失败保留记录，不将原目录计为全仓通过。
+- [ ] API 29/31+、真机、正式 TextLayout 后端和性能验证；本轮不据单版本实验
+  宣称完整移动文字支持。
+- [ ] 已有桌面后端的粒度一致性另行审视；本轮不重写已验证的实现。
+
 ## 移动平台结构与 Android 系统排版验证（2026-11-04）
 
 - 设计见 [DesignMobilePlatform](DesignMobilePlatform.md)。

@@ -129,9 +129,10 @@ NDK AFontMatcher/AFont 提供字体匹配和字体信息，不是完整段落排
 ### 6.1 必须满足的现有契约
 
 - 文字不可变，布局尺寸及范围格式可变；UTF-8 字节范围与 Java UTF-16 索引
-  明确转换，不能把 code unit、字素或 glyph ID 当作 shaping Cluster。
+  明确转换。Cluster 的语义为最小文本交互单元，遵循 DesignTypography 第 6 节，
+  不能将 glyph ID 或 code unit 直接当作交互单元。
 - MeasureMetrics 返回行、baseline、方向、Cluster 的文字范围与几何，和实际
-  Rasterize 使用的同一布局一致；不能用每字符宽度猜测复杂文字 cluster。
+  Rasterize 使用的同一布局一致；不能用每字符宽度猜测复杂文字几何。
 - 支持 wrapping/alignment、Tab、颜色/字体/下划线/删除线与占位 metrics。
 - Rasterize(scale, region, buf) 不改变 shaping/布局，精确返回指定像素区域，
   含负原点、透明空白和可复用输出缓冲，输出预乘 RGBA。
@@ -153,7 +154,7 @@ NDK AFontMatcher/AFont 提供字体匹配和字体信息，不是完整段落排
 | 项目 | 独立预期/检查 |
 | --- | --- |
 | 启动/线程 | 正常 APK、GOUI 固定线程经 JNI 调用；不在 Android UI 主线程运行排版 |
-| 索引/Cluster | 同一固定字体以 HarfBuzz 参考 shaping 取得 cluster 范围，比较公开 cursor/advance 能否无损表达；另测代理对、组合音标、连字、RTL、印度文字、ZWJ emoji |
+| 索引/Cluster | 验证原生交互边界、逻辑范围、光标/选择与画面一致；HarfBuzz 只用于区分 shaping 与编辑分组的对照，不要求分组等价；覆盖代理对、组合音标、连字、RTL、印度文字、ZWJ emoji |
 | 行与 bidi | 文本范围覆盖、方向与 baseline；混合 RTL 运行的视觉位置，换行及末尾空行；不以内存中的任意 RTL 标志代替系统度量 |
 | 范围格式/占位/Tab | 确定颜色及占位宽高/baseline；格式改变不能污染其他 Layout；Tab 的位置由明确间隔决定 |
 | 区域栅格化 | 直接绘制与平移/clip 后区域逐像素相等；负原点/空白透明；1x/2x 不改变布局度量；半透明像素满足预乘约束 |
@@ -162,7 +163,8 @@ NDK AFontMatcher/AFont 提供字体匹配和字体信息，不是完整段落排
 
 公开 cursor API 返回的合法编辑位置不一定就是 shaping cluster。glyph 数量、
 字形位置或零 advance 也不能单独证明原始文字到 glyph 的对应关系。若存在
-无法满足的映射，应记录失败样本和 API 缺口，不放宽 Cluster 契约或访问私有 API。
+无法满足的交互几何，应记录失败样本和 API 缺口，不访问私有 API，也不把原生
+交互粒度与 shaping 粒度的合理差异当作失败。
 这轮能力验证通过也不等于完整 Android TextLayout 后端已经实现。
 
 ## 7. 实施顺序
@@ -259,12 +261,33 @@ Android 实际也形成连字，而非仅据另一套引擎推断：
 
 系统允许在部分连字内部编辑；零宽字符又可能被光标导航跳过。它们是合法的
 系统行为。非零 advance 能识别此处的连字，却会丢失零宽 shaping cluster。
-因此不能直接用光标或非零 advance 替代 GOUI 的 shaping Cluster；也不能通过
-删除不可见文字、扩大 cluster、放宽断言或改公共契约使候选检查转为通过。
+这些反例否定的是严格 shaping 等价，不表示 Android 的编辑能力不符合 GOUI。
+本轮之后已明确 Cluster 为最小交互单元，取代此前过窄的“GOUI shaping Cluster”
+表述；原始对照断言与结果保留，不把合理的交互粒度差异改记为 shaping 等价。
 
-实测结论只否定这两种直接映射，不证明所有公开系统 API 组合都不可能满足
-契约。正式 Android TextLayout 的 cluster 方案仍未确定，应先继续核对公开
-能力，必要时比较自带 shaping 组件/独立文字后端，再决定生产实现。
+实测结论只否定这两种直接映射；后续先按更新的交互原则验证 Android Layout，
+不以 shaping 等价不成立为理由优先更换排版引擎。正式后端尚未实现。
+
+### 9.3.1 本轮交互验证方案
+
+使用公开 Android ICU 字素分段和同一 StaticLayout 的方向、行、选区路径及
+光标坐标构造现有 TextLine/TextCluster，传给真实 gui/textedit.Geometry 验证。
+不增加公共 Run、HitTest 或选区绘制接口，不实现生产 androidtext。
+
+验收包括组合字符/emoji 不可内部停靠、ffi 可独立编辑、样式边界不拆字素、零宽
+范围不丢失、RTL/软换行的坐标和亲和性；选区与同一 Layout 的 getSelectionPath
+在实际文字行范围内一致。GOUI 不必复制原生选区延伸到整行空白的高亮策略。
+几何比较使用独立原生查询，不能只把同一批 Cluster 互相比对。
+
+原生选区路径通过 Region 转为像素覆盖参考，Go 根据现有选区矩形计算覆盖；
+由于 Region 整数栅格与 float32 逻辑几何的量化，最多允许原生边界一个 1x
+物理像素内的差异，内部和外部必须严格一致。重合的零宽/bidi 边界允许返回不同
+合法偏移，但必须具有相同视觉坐标；必须单独报告此类差异，不能吞掉文字范围。
+
+不要求复制 Android 的命中策略：GOUI 按 Cluster 边界及 Position 亲和性命中。
+原生 getOffsetForHorizontal 的原始值必须保留；测试参考若吸附字素内部位置，
+或保留软换行上游行尾，必须以原生端点坐标独立计算并标明原因，不能把任意
+字节差异算作通过。生产后端只需输出布局事实，GUI 仍使用自己的 Geometry。
 
 ### 9.4 验证范围、保留材料及下一步
 
@@ -284,3 +307,57 @@ Go 回归：相关 race/vet 通过；已跟踪 Go 源码及本例的隔离副本
 b88b6ead6c1f2b35e76f8ffc9ecb1198f238e3623f428a9a9ca5fbc4632abfe0。
 首轮未通过的小数断言和失败结果一并保留。专用模拟器与 ADB 已停止，未修改
 用户签名、安全配置或其他设备；字体和产物没有加入仓库。
+
+### 9.5 最小交互单元实测（2026-11-04）
+
+结论：公开 ICU + StaticLayout 足以表达本轮样本的 TextLine/TextCluster，现有
+gui/textedit.Geometry 可以消费这些值，无需新增公共 HitTest 或 Run，也无需
+为这轮需求改用 go-text。此结论是能力验证，不是完整 Android 排版后端交付。
+
+环境沿用 Android 11/API 30 ARM64 ATD、Software 1x；Linux Go 1.25.8 无原生
+编译器消费，Mac ARM64 上运行专用模拟器。Java helper 与原生测试包装属于
+验证程序，未并入 runtime/cgo 基座，也没有改变平台与 GUI 的依赖方向。
+
+- 18 组：ffi/office、组合字符、Emoji/ZWJ/旗帜、印度元音/合字、阿拉伯文、
+  混合 bidi、连续零宽/纯零宽/RTL 零宽、软换行、空行、LTR/RTL 末尾换行、
+  跨颜色/字号的组合字符与 Tab。40 项原生边界/行断言全部通过。
+- 导出 28 行、94 个交互单元、116 个原生光标、847 个命中点、525 个完整选区。
+  实际 Go Geometry 的 3814 项检查全部通过：UTF-8 覆盖、字素内部 Snap、原生
+  主光标、命中、视觉前进/终止及选区像素覆盖。所选样本的边界像素差异为 0；
+  测试仍保留有依据的 1 px 整数 Region 边界量化上限。
+- 原始 getOffsetForHorizontal 与 GOUI 相差 59 次，全部保留：30 次零宽/bidi
+  重合视觉点，25 次软换行上游行尾，4 次字号范围切进组合字符后的内部命中。
+  后两类用原生端点坐标建立显式契约参考，现有 GUI 算法未修改。
+
+软换行差异有源码依据：Android 11 的
+[Layout.getOffsetForHorizontal](https://github.com/aosp-mirror/platform_frameworks_base/blob/android-11.0.0_r1/core/java/android/text/Layout.java#L1426)
+限制非末行的最大命中偏移；GOUI Position 已支持同一偏移的上游/下游位置。
+字号切进字素后的内部命中是此版本实测，不推断所有版本相同。不能直接把
+原生命中结果当成 GOUI Cluster 边界；以 ICU 分段、同一 Layout 的方向和几何
+导出交互单元，再由既有 Geometry 处理即可保持完整字素。
+
+首轮 17 组有 37 项不一致，原始证据保留。除了上述命中策略差异，首轮把
+getLineWidth 中的换行符宽度当成实际文字范围，导致选区多出约 12.5 DIP。
+测试适配已改为使用硬换行前的原生光标确定文字边界，不伪造可见换行 Cluster；
+新增 RTL 末尾换行复验。旧 shaping 对照仍有 9 项不等价，没有删除或改为通过。
+原有 36 项基础检查、1x/2x 区域栅格化、预乘像素及真实 Software 呈现继续通过。
+
+材料在 Linux/Mac 的 /tmp/goui-android-interaction-ywqhwcai：first-evidence 与
+final-evidence 归档、report.json、interaction-go.json、Go 帧/线程记录、截图及
+消费构建日志。最终 APK SHA256：
+2345a9b01c6aacc5acc111991e00be298747a8812eb0151cb431bbdad6c675a6。
+专用模拟器与 ADB 已退出；没有修改桌面主分支、cgo/purego、签名或安全配置。
+
+本机校验：隔离的已跟踪源码副本仅替换到本轮 FFI 分支，GOWORK=off
+go test ./... 为 3507 项通过、10 项既有跳过、0 失败；跳过为 9 项需人工操作的
+窗口测试及本机不适用的 macOS 签名测试。相关比较器/textedit 的 race 与 vet
+通过。原工作区直接带 GOWORK 执行全仓仍失败：四个未跟踪旧 example 使用过期
+API，cmd/goui 的临时模块又不属于该 go.work。两类原始日志保留，未删除例程、
+放宽测试或把环境错误算作通过；隔离副本通过不等于原目录全仓通过。
+验证程序另提供非 Android 提示入口，Linux amd64、Windows amd64、Darwin arm64
+的 CGO_ENABLED=0 编译通过，不因新增可移植逻辑比较器破坏桌面 go build；
+这不是 Windows/macOS 原生排版验收。
+
+仍待：API 29/31+、真机、生产对象/失效/销毁、完整字体与对齐/换行能力、性能
+与内存对照。LINEAR_TEXT_FLAG 仍只是本轮小数度量配置，不能据此承诺生产
+hinting/cache 性能；桌面后端的交互粒度审视单列，不纳入本轮通过结论。
