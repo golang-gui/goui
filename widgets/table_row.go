@@ -159,7 +159,9 @@ func (r *tableRow) Paint(p gui.Painter) {
 	} else if state&(style.Hovered|style.Pressed) == 0 && r.bound.Index%2 == 1 {
 		part = "alternate"
 	}
-	rect := geometry.Rect(0, 0, r.Rect().Width, r.Rect().Height)
+	// ListView may allocate a viewport-wide shell. Row decoration follows the
+	// allocated columns, leaving the rest to the table's viewport background.
+	rect := geometry.Rect(0, 0, min(r.Rect().Width, r.view.columnWidth), r.Rect().Height)
 	paintStyledBox(r, p, rect, "table-row", part, state)
 	r.paintGrid(p, rect)
 	if r.view.current == r.bound.ID && r.view.Focused() {

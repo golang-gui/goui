@@ -582,6 +582,10 @@ style.Name("table-row").Part("alternate").BackgroundColor(alternate).Radius(0)
   选中 Part（含其 Hovered / Pressed）优先；未选中时 Pressed > Hovered >
   alternate > 普通背景。alternate 用于 Normal，hover / pressed 仍使用公共行状态。
   Current 轮廓独立。正常背景与条纹分别通过自己的明确样式解析，不覆盖子树样式。
+- 行装饰与网格使用同一数据区范围：宽度为行分配宽度与实际列总宽度的较小值。
+  普通／斑马／Hover／Pressed／Selected背景及Current轮廓均止于末列；右侧空白
+  显示table-view背景。使用包含伸展的实际分配列宽，开启伸展时自然填满视口。
+  ListView的行壳分配、Snapshot边界与整行命中语义保持，不修改布局或事件策略。
 - 样式变动使用已有 StyleChanged 与测量失效；没有额外样式监听、缓存版本或 UI
   专用协调入口。默认水平线与外框为 1 DIP、竖线为零、条纹继承普通背景。
 

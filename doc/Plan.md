@@ -1,5 +1,28 @@
 # Plan
 
+## TableView 行装饰范围（2026-11-04）
+
+- [x] 行背景、Hover／Pressed／Selected及Current轮廓统一使用行分配宽度与
+  实际分配列总宽度的较小值；右侧空白由TableView背景承接。伸展列按实际宽度
+  铺满，关闭伸展恢复空白。不改ListView布局、行命中、Snapshot或Painter。
+- [x] 扩展已有状态优先级与焦点测试：1x／2x精确检查预乘RGBA、末列内侧颜色与
+  外侧透明、键盘／显式Focused轮廓尾边，保留原状态及输入断言；另检查排序／
+  回收和伸展开关后的范围。旧1398487配新增断言失败，外侧RGBA为不透明白／绿；
+  修正后通过，未放宽容差或删除旧条件。例程注释同步明确装饰与视口背景边界。
+- [x] Ubuntu 22.04.5 amd64，独立Xvnc :90／xfwm4 4.16.1（合成开启）：
+  UI／Software 1x、GUI／OpenGL 1x、GUI／Software 2x、UI／OpenGL 2x，
+  八条数据的实际后端／PixelScale、F6几何／内容和截图采样均通过。旧Software
+  1x右侧空白含RGB(235,235,239)与(246,246,248)两种颜色，修正后四组均为统一
+  视口RGB(246,246,248)，真实悬停、按住和选中后仍一致；网格保留8条底线和5条
+  右边线。OpenGL 1x伸展／关闭伸展的屏幕采样及F6通过，2x横向滚动检查通过。
+- [x] `DISPLAY=:90 GOWORK=off go test -json -count=1 ./...`：3896项通过、
+  15项既有跳过、零失败，含保留的未跟踪测试；跳过为平台手工交互／剪贴板及
+  macOS签名环境。widgets／widgets/ui的race、相关包／例程vet通过；Windows
+  amd64／macOS arm64的相关包及例程CGO_ENABLED=0构建通过，未执行远端原生验收。
+- 日志、旧源码、截图和屏幕采样结果在 `/tmp/goui-table-row-bounds-tdhegpa0`。
+  OpenGL为Mesa llvmpipe，本轮不作性能结论；既有全仓窗口测试副作用限制于独立
+  会话，不修改用户桌面或系统设置。本轮窗口正常关闭，独立会话已停止。
+
 ## TableView 末项网格收口（2026-11-04）
 
 - [x] 修正省略末行底线／末列右边线的旧契约：网格跟随数据收口，外框仍独立包围
