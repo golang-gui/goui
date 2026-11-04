@@ -39,7 +39,7 @@ public final class TextProbe {
         if (!pass) failures++;
     }
 
-    // 候选映射不成立也是本次实验的有效结论，必须独立报告，不能算作后端通过。
+    // 保留早期 shaping 等价实验；差异不等于交互单元契约失败。
     private void candidate(String name, boolean pass, Object detail) throws Exception {
         checks.put(new JSONObject().put("name", name).put("pass", pass).put("candidate", true).put("detail", detail));
         if (!pass) candidatesFailed++;
@@ -232,7 +232,7 @@ public final class TextProbe {
 
     private Bitmap picture() {
         Bitmap b = Bitmap.createBitmap(800,1100,Bitmap.Config.ARGB_8888);Canvas c = new Canvas(b);c.drawColor(0xffeef4fa);
-        String[] rows = {"Android system text / JNI", "Latin: office affinity ffi", "\u4e2d\u6587\uff1a\u7a97\u53e3\u5185\u7684 Go", "\u65e5\u672c\u8a9e\uff1a\u304b\u306a\u3068\u6f22\u5b57", "\ud55c\uad6d\uc5b4: \uc548\ub155\ud558\uc138\uc694", "\u0627\u0644\u0639\u0631\u0628\u064a\u0629: \u0627\u0644\u0633\u0644\u0627\u0645 \u0639\u0644\u064a\u0643\u0645", "\u05e2\u05d1\u05e8\u05d9\u05ea: ABC \u05d0\u05d1\u05d2 DEF", "\u0939\u093f\u0928\u094d\u0926\u0940: \u0928\u092e\u0938\u094d\u0924\u0947", "Emoji: \ud83d\ude00 \ud83d\udc69\u200d\ud83d\udcbb \ud83c\udde8\ud83c\uddf3", "Core failures: " + failures, "Cluster candidate failures: " + candidatesFailed};
+        String[] rows = {"Android system text / JNI", "Latin: office affinity ffi", "\u4e2d\u6587\uff1a\u7a97\u53e3\u5185\u7684 Go", "\u65e5\u672c\u8a9e\uff1a\u304b\u306a\u3068\u6f22\u5b57", "\ud55c\uad6d\uc5b4: \uc548\ub155\ud558\uc138\uc694", "\u0627\u0644\u0639\u0631\u0628\u064a\u0629: \u0627\u0644\u0633\u0644\u0627\u0645 \u0639\u0644\u064a\u0643\u0645", "\u05e2\u05d1\u05e8\u05d9\u05ea: ABC \u05d0\u05d1\u05d2 DEF", "\u0939\u093f\u0928\u094d\u0926\u0940: \u0928\u092e\u0938\u094d\u0924\u0947", "Emoji: \ud83d\ude00 \ud83d\udc69\u200d\ud83d\udcbb \ud83c\udde8\ud83c\uddf3", "Core failures: " + failures, "Shaping boundary differences: " + candidatesFailed};
         int y = 26;
         for (String row : rows) {
             TextPaint p = paint(); p.setTypeface(Typeface.DEFAULT); p.setTextSize(32);
@@ -247,6 +247,7 @@ public final class TextProbe {
             .put("thread",Thread.currentThread().getName()).put("workerThread",Looper.myLooper()!=Looper.getMainLooper());
         p.check("jni-worker-thread",Looper.myLooper()!=Looper.getMainLooper(), Thread.currentThread().getName());
         p.clusters(context, report);p.paragraphs(report);p.spans();p.rasterRegions();
+        report.put("interaction", LayoutInteractionProbe.run(p.fixture));
         report.put("checks",p.checks).put("coreFailures",p.failures).put("candidateFailures",p.candidatesFailed)
             .put("candidateCompatible",p.candidatesFailed==0).put("width",800).put("height",1100);
         File dir = new File(directory);
