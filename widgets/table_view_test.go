@@ -531,6 +531,10 @@ func TestTableViewCurrentFocusAppearance(t *testing.T) {
 				if got := pixels.RGBAAt(x*int(scale), 12*int(scale)); got != want {
 					t.Fatalf("sample x=%d: %v, want %v (focus-visible=%v)", x, got, want, v.FocusVisible())
 				}
+				// 行壳撑满视口，背景和Current轮廓仍只能占用实际列宽。
+				if got := pixels.RGBAAt(int((v.columnWidth+1)*scale), 12*int(scale)); got != (color.RGBA{}) {
+					t.Fatalf("焦点／背景超出末列：%v (focus-visible=%v)", got, v.FocusVisible())
+				}
 			}
 			green, blue := color.RGBA{G: 255, A: 255}, color.RGBA{B: 255, A: 255}
 			click()
@@ -543,6 +547,7 @@ func TestTableViewCurrentFocusAppearance(t *testing.T) {
 				t.Fatal("Tab did not enable the keyboard hint")
 			}
 			check(0, blue)
+			check(int(v.columnWidth)-1, blue)
 			check(1, green)
 			check(10, green)
 			dispatch(events.PointerEvent{EventType: events.PointerMove, Position: row.Snapshot().Bounds.Pos.Add(geometry.Point{X: 25, Y: 12})})
@@ -556,6 +561,7 @@ func TestTableViewCurrentFocusAppearance(t *testing.T) {
 			// applications may explicitly opt into their own current decoration.
 			app.sheet = style.Sheet(append(rules, style.Name("table-row").Part("current").BorderWidth(2))...)
 			check(1, blue)
+			check(int(v.columnWidth)-1, blue)
 			owner.(gui.EventTarget).SetFocusedWidget(nil)
 			check(1, green)
 		})
@@ -573,13 +579,21 @@ func TestTableViewAlternateRowsAndStatePriority(t *testing.T) {
 	)}
 	gui.App = app
 	t.Cleanup(func() { gui.App = old })
-	v, m, _, _ := tableFixture(1000)
+	v, m, column, _ := tableFixture(1000)
 	tableArrange(v, 200, 160)
 	check := func(row *tableRow, want color.RGBA) {
 		t.Helper()
-		pixels := tablePixels(t, row.Rect().Size, 1, func(p *tablePixelPainter) { row.Paint(p) })
-		if got := pixels.RGBAAt(0, 10); got != want {
-			t.Fatalf("row=%s index=%d background=%v want=%v", row.bound.ID, row.bound.Index, got, want)
+		for _, scale := range []float32{1, 2} {
+			pixels := tablePixels(t, row.Rect().Size, scale, func(p *tablePixelPainter) { row.Paint(p) })
+			// 均采样直边内的满覆盖像素，预乘RGBA精确相等；末列外侧应保持透明。
+			for _, x := range []float32{0, v.columnWidth - 2} {
+				if got := pixels.RGBAAt(int(x*scale), int(10*scale)); got != want {
+					t.Fatalf("row=%s index=%d background=%v want=%v at %gx x=%g", row.bound.ID, row.bound.Index, got, want, scale, x)
+				}
+			}
+			if got := pixels.RGBAAt(int((v.columnWidth+1)*scale), int(10*scale)); got != (color.RGBA{}) {
+				t.Fatalf("行%q背景超出末列：%v at %gx", row.bound.ID, got, scale)
+			}
 		}
 	}
 	check(v.realized["r0"], color.RGBA{R: 255, G: 255, B: 255, A: 255})
@@ -599,6 +613,18 @@ func TestTableViewAlternateRowsAndStatePriority(t *testing.T) {
 	check(v.realized["r1"], color.RGBA{R: 255, G: 255, B: 255, A: 255})
 	v.Reveal("r999")
 	tableArrange(v, 200, 160)
+	check(v.realized["r999"], color.RGBA{R: 220, G: 220, B: 220, A: 255})
+	column.SetExpand(true)
+	tableArrange(v, 260, 160)
+	if v.columnWidth <= column.Width() {
+		t.Fatal("伸展列没有占用额外视口宽度")
+	}
+	check(v.realized["r999"], color.RGBA{R: 220, G: 220, B: 220, A: 255})
+	column.SetExpand(false)
+	tableArrange(v, 260, 160)
+	if v.realized["r999"].Rect().Width <= v.columnWidth {
+		t.Fatal("回归场景没有形成末列右侧空白")
+	}
 	check(v.realized["r999"], color.RGBA{R: 220, G: 220, B: 220, A: 255})
 }
 func TestTableViewColumnsAndIdentity(t *testing.T) {
