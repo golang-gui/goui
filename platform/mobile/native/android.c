@@ -23,6 +23,11 @@ static uint64_t generation;
 static int width,height,started,shown;
 static float density=1;
 static AInputQueue *input;
+// Process bootstrap survives Activity recreation and never retains an Activity.
+static _Atomic(JavaVM *) java_vm;
+static jobject class_loader;
+__attribute__((visibility("default"))) uintptr_t goui_android_java_vm(void) { return (uintptr_t)java_vm; }
+__attribute__((visibility("default"))) uintptr_t goui_android_class_loader(void) { return java_vm?(uintptr_t)class_loader:0; }
 
 static void Emit(int kind,int value) {
     GoUIHostCallback fn=(GoUIHostCallback)atomic_load(&callback);
@@ -132,6 +137,17 @@ static void OnInput(ANativeActivity *a,AInputQueue *q){(void)a;input=q;AInputQue
 static void OnInputLost(ANativeActivity *a,AInputQueue *q){(void)a;AInputQueue_detachLooper(q);if(input==q)input=NULL;}
 __attribute__((visibility("default"))) void ANativeActivity_onCreate(ANativeActivity *a,void *saved,size_t size){
     (void)saved;(void)size; activity=a; started=0;
+    if(!java_vm){
+        JNIEnv *env=a->env;
+        jclass cls=(*env)->GetObjectClass(env,a->clazz);
+        jmethodID get=(*env)->GetMethodID(env,cls,"getClassLoader","()Ljava/lang/ClassLoader;");
+        jobject loader=(*env)->CallObjectMethod(env,a->clazz,get);
+        if((*env)->ExceptionCheck(env) || !loader)abort();
+        class_loader=(*env)->NewGlobalRef(env,loader);
+        (*env)->DeleteLocalRef(env,loader);(*env)->DeleteLocalRef(env,cls);
+        if(!class_loader)abort();
+        java_vm=a->vm;
+    }
     pthread_mutex_lock(&command_lock);
     wake_fd=eventfd(0,EFD_NONBLOCK|EFD_CLOEXEC);
     if(wake_fd<0)abort();

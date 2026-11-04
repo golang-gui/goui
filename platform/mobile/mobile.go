@@ -9,6 +9,8 @@ import (
 
 var process entryPoint
 
+var enterThread func() func()
+
 // RegisterMain registers the application's entry point. The mobile build tool
 // generates this call in a main-package init function. It must be called exactly
 // once with a non-nil function, before the native host requests startup.
@@ -45,6 +47,10 @@ func (e *entryPoint) start() bool {
 	go func() {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
+		if enterThread != nil {
+			leave := enterThread()
+			defer leave()
+		}
 		main()
 	}()
 	return true
