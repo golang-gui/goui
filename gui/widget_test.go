@@ -1696,7 +1696,7 @@ func TestStyledPaintingHelpersAndBoxes(t *testing.T) {
 		box.base().SetState(style.Checked|style.Selected, true)
 		p = new(styledCommandPainter)
 		box.Paint(p)
-		if p.fills != 1 || p.borders != 1 || p.rect != geometry.Rect(0, 0, 100, 60) || p.radius != 12 || p.drawRect != geometry.Rect(1, 1, 98, 58) || p.drawRadius != 11 || p.brush != graphics.ColorOf(color.NRGBA{R: 200, A: 128}) {
+		if p.fills != 1 || p.borders != 1 || p.rect != geometry.Rect(1, 1, 98, 58) || p.radius != 11 || p.drawRect != geometry.Rect(1, 1, 98, 58) || p.drawRadius != 11 || p.brush != graphics.ColorOf(color.NRGBA{R: 200, A: 128}) {
 			t.Fatalf("局部坐标/组合规则/预乘色错误: %+v", p)
 		}
 	}

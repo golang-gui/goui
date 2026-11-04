@@ -100,6 +100,10 @@ func PaintWidgetStyle(p Painter, widget Widget, defaultName string) {
 // radius. Missing or transparent colors and empty rectangles emit no commands.
 // A rounded background does not clip children.
 func PaintStyledBackground(p Painter, rect geometry.Rectangle, s style.Style) {
+	paintStyledBackground(p, rect, s, 0)
+}
+
+func paintStyledBackground(p Painter, rect geometry.Rectangle, s style.Style, inset float32) {
 	if rect.Width <= 0 || rect.Height <= 0 {
 		return
 	}
@@ -112,10 +116,17 @@ func PaintStyledBackground(p Painter, rect geometry.Rectangle, s style.Style) {
 		return
 	}
 	radius, _ := s.CornerRadius()
+	if inset > 0 {
+		radius = radius.Normalize(rect.Size).Inset(inset)
+		rect = rect.Inset(inset)
+	}
 	paintRoundedBackground(p, rect, radius, fill)
 }
 
 func paintRoundedBackground(p Painter, rect geometry.Rectangle, radius geometry.CornerRadius, brush graphics.Brush) {
+	if emptyRect(rect) {
+		return
+	}
 	radius = radius.Normalize(rect.Size)
 	if radius == (geometry.CornerRadius{}) {
 		p.FillRect(rect, brush)
@@ -126,11 +137,24 @@ func paintRoundedBackground(p Painter, rect geometry.Rectangle, radius geometry.
 	}
 }
 
-// PaintStyledBox paints the background then the border. Shadow and text are
-// separate drawing operations; unset fields emit no commands.
+// PaintStyledBox paints the background then the border. An opaque border hides
+// the background's AA edge beneath its centerline. Translucent borders retain
+// the complete background beneath them. Shadow and text are separate operations.
 func PaintStyledBox(p Painter, rect geometry.Rectangle, s style.Style) {
-	PaintStyledBackground(p, rect, s)
+	paintStyledBackground(p, rect, s, opaqueBorderInset(s))
 	PaintStyledBorder(p, rect, s)
+}
+
+func opaqueBorderInset(s style.Style) float32 {
+	width, ok := s.BorderWidth()
+	width = normalizeLayoutValue(width)
+	border, hasColor := s.BorderColor()
+	if ok && hasColor && width > 0 && border != nil {
+		if _, _, _, alpha := border.RGBA(); alpha == 65535 {
+			return width / 2
+		}
+	}
+	return 0
 }
 
 // PaintStyledBorder paints an inset border without repainting the background.

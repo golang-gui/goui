@@ -1,5 +1,32 @@
 # Plan
 
+## 圆角边框外侧毛边（2026-11-04）
+
+- [x] 复现 tests/window/gui/corner_radius 首个蓝底／4 DIP浅灰边框的外侧毛边。
+  独立 Software 像素回归在旧代码失败，旧599f9eb配新增 OpenGL 窗口断言也失败
+  （外缘RGBA为86,97,107,135，独立边框参考73,73,73,80）；不通过放宽容差掩盖。
+- [x] GUI 对不透明边框将背景退入其中线，四角同步归一与收缩；ButtonGroup 的
+  共享尾边保持背景覆盖，宿主普通表面同步。独立背景／边框、半透明 Over、
+  最终擦除模式及三绘制后端的 API／native 顺序不变；不修改 nanovgo。
+  设计与 Flutter 3.38.0 源码依据见 [DesignCornerRadius](DesignCornerRadius.md)。
+- [x] 外缘回归覆盖 Software 的1／1.25／1.5／2x、统一／独立圆角、背景alpha128／
+  255、clip、90度旋转及非等比缩放；透明组合的中心／直边颜色以标准库 Over 参考
+  断言，固定容差为两级8位量化。更新四项旧指令测试的背景矩形／半径预期，
+  保留边框、布局、文本、插入符及颜色断言，不弱化已有条件。
+- [x] Ubuntu 22.04.5 amd64，独立 Xvnc :90／xfwm4 4.16.1（合成开启），Software／
+  OpenGL（Mesa llvmpipe）1x／2x 四组窗口验收通过，内部新增外缘颜色检查覆盖两种
+  RasterScale。实际鼠标切换、Popover及1x截图检查通过；固定位置的外缘屏幕RGB由
+  192,204,217变为238,238,239，外侧蓝色消失，圆角与分组共享边保持。
+- [x] 全仓 go test：3701项通过、15项既有跳过、零失败，含保留的未跟踪测试。
+  gui／widgets／theme／ui 的 race 与受影响包／窗口程序 vet 通过；Windows amd64／
+  macOS arm64 的相关包和窗口程序 CGO_ENABLED=0 构建通过。本轮未执行远端原生验收，
+  本机 llvmpipe 结果不作为硬件 GPU 性能结论。
+- 同 Go 1.25.8／CPU／GOMAXPROCS=1、200ms×3 的 PaintStyledBox helper 对照：
+  统一值迁移前150.8～163.1ns、后183.8～190.0ns，均32B／2 alloc；四角前571.6～
+  582.3ns、后623.5～646.2ns，均608B／4 alloc。新增几何计算，无额外绘图资源或
+  常规绘制命令；不是整帧性能测量。日志、截图及旧源码在 `/tmp/goui-border-aa-04as42e4`。
+  本轮窗口和 Popover 正常关闭，独立 X11 会话已停止。
+
 ## 绘图路径工具归属（2026-11-04）
 
 - [x] RoundRectPath／RoundRectBorderPath 及其曲线计算迁到 graphics/utils，

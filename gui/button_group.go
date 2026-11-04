@@ -123,13 +123,30 @@ func paintButtonBox(p Painter, widget Widget, s style.Style, focus bool) {
 	}
 	radius, _ := s.CornerRadius()
 	radius = buttonCornerRadius(radius, corners).Normalize(rect.Size)
+	if focus {
+		omitEdge = -1
+	}
 	if bg, ok := s.BackgroundColor(); ok && bg != nil {
 		fill := graphics.ColorOf(bg)
 		if fill.A > 0 {
-			p.FillPath(buttonContour(rect, radius, corners, -1), fill)
+			background, backgroundRadius := rect, radius
+			if inset := opaqueBorderInset(s); inset > 0 {
+				left, top, right, bottom := inset, inset, inset, inset
+				if omitEdge == 1 {
+					right = 0
+				} else if omitEdge == 2 {
+					bottom = 0
+				}
+				background = rect.Insets(left, top, right, bottom)
+				backgroundRadius = radius.Inset(inset)
+			}
+			if !emptyRect(background) {
+				p.FillPath(buttonContour(background, backgroundRadius, corners, -1), fill)
+			}
 		}
 	}
 	width, _ := s.BorderWidth()
+	width = normalizeLayoutValue(width)
 	border, ok := s.BorderColor()
 	if !ok || border == nil || width <= 0 {
 		return
@@ -141,9 +158,6 @@ func paintButtonBox(p Painter, widget Widget, s style.Style, focus bool) {
 	if width >= min(rect.Width, rect.Height)/2 {
 		p.FillPath(buttonContour(rect, radius, corners, -1), stroke)
 		return
-	}
-	if focus {
-		omitEdge = -1
 	}
 	if omitEdge < 0 {
 		p.FillPath(utils.RoundRectBorderPath(rect, buttonCornerRadius(radius, corners), width), stroke)
