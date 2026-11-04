@@ -133,6 +133,14 @@ func TestColdBuild(t *testing.T) {
 		}
 	}
 	checkFailure("flags", manifest, "unsupported build flags", "-gcflags=example.com/baseprobe/bridge=-N")
+	// 任意依赖覆盖仍须拒绝；不能因允许 main 注册模板就绕过归档源码检查。
+	logic := filepath.Join(source, "logic/logic.go")
+	overlayData, _ := json.Marshal(struct{ Replace map[string]string }{map[string]string{logic: logic}})
+	overlayPath := filepath.Join(root, "invalid-overlay.json")
+	if err = os.WriteFile(overlayPath, overlayData, 0600); err != nil {
+		t.Fatal(err)
+	}
+	checkFailure("overlay", manifest, "invalid entry overlay path", "-overlay="+overlayPath)
 	contract := filepath.Join(source, "contract/contract.go")
 	contractSource, err := os.ReadFile(contract)
 	if err != nil {

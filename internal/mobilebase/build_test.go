@@ -172,6 +172,46 @@ func TestBuildPublication(t *testing.T) {
 	}
 }
 
+func TestBuildEntry(t *testing.T) {
+	options := buildTestOptions(t, "android")
+	options.Entry = true
+	if err := os.Mkdir(filepath.Join(options.Directory, "main"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := Build(context.Background(), options, io.Discard, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Open(os.Getenv("GOUI_TEST_BUILD_LOG"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	decoder := json.NewDecoder(f)
+	found := false
+	for {
+		var row map[string]any
+		if err = decoder.Decode(&row); err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if row["args"].([]any)[0] != "build" {
+			continue
+		}
+		found = true
+		if row["entry"] != entrySource {
+			t.Fatalf("没有注入规定入口: %v", row)
+		}
+		if _, err = os.Stat(row["entryTarget"].(string)); !os.IsNotExist(err) {
+			t.Fatal("注册文件写入了用户项目")
+		}
+	}
+	if !found {
+		t.Fatal("没有执行消费构建")
+	}
+}
+
 func TestBuildPreflight(t *testing.T) {
 	options := buildTestOptions(t, "ios")
 	cases := []struct {

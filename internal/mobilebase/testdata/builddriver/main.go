@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -15,6 +17,26 @@ func main() {
 			panic(err)
 		}
 		values := map[string]any{"args": os.Args[1:]}
+		for _, arg := range os.Args[1:] {
+			if !strings.HasPrefix(arg, "-overlay=") {
+				continue
+			}
+			data, err := os.ReadFile(strings.TrimPrefix(arg, "-overlay="))
+			if err != nil {
+				panic(err)
+			}
+			var overlay struct{ Replace map[string]string }
+			if err := json.Unmarshal(data, &overlay); err != nil {
+				panic(err)
+			}
+			for target, source := range overlay.Replace {
+				data, err := os.ReadFile(source)
+				if err != nil {
+					panic(err)
+				}
+				values["entry"], values["entryTarget"] = string(data), target
+			}
+		}
 		for _, key := range []string{"GOOS", "GOARCH", "GOARM64", "GOEXPERIMENT", "GOROOT", "GOTOOLCHAIN", "GOWORK", "GOCACHE", "GOPROXY", "GOFLAGS", "CGO_ENABLED", "CC", "CXX", "GOUI_BASE", "GOUI_LINK_INPUTS", "GOUI_LINK_TOOLS", "GOUI_GO"} {
 			values[key] = os.Getenv(key)
 		}
@@ -34,6 +56,16 @@ func main() {
 		}
 		values := map[string]string{"GOVERSION": version, "GOROOT": "fixture-goroot", "GOFLAGS": os.Getenv("GOFLAGS"), "CGO_CFLAGS": "-O2 -g", "CGO_CPPFLAGS": "", "CGO_CXXFLAGS": "-O2 -g", "CGO_FFLAGS": "-O2 -g", "CGO_LDFLAGS": "-O2 -g"}
 		if err := json.NewEncoder(os.Stdout).Encode(values); err != nil {
+			panic(err)
+		}
+		return
+	}
+	if os.Args[1] == "list" {
+		dir, err := filepath.Abs("main")
+		if err != nil {
+			panic(err)
+		}
+		if err = json.NewEncoder(os.Stdout).Encode(map[string]string{"Name": "main", "Dir": dir}); err != nil {
 			panic(err)
 		}
 		return
