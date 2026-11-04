@@ -1,5 +1,42 @@
 # Plan
 
+## 共享命令、菜单列与声明式作用域（2026-11-04）
+
+- [x] 实现 `gui.Command` 的激活、Enabled 通知及 Shortcut 只读反向关联；按键仍属于
+  Shortcut，输入时检查操作可用性，不增加 Button.Command、CommandButton、WidgetBase
+  限制位或平台修改。`KeyGesture.DisplayText` 按本平台语义显示并合并等价修饰。
+- [x] MenuItem 可选 Command，保留自身 Enabled 和直接函数；打开的 PopoverMenu 按
+  Command 去重观察，隐藏后解绑。实时禁用取消旧活动／按下项，Close 回调换目标、
+  禁用再恢复或销毁 owner 均不执行旧操作。标题与提示独立 Label、独立样式、共享列宽。
+- [x] `ui.CommandScope(...).Commands(ui.Command("id")...)` 通过现有 ObjectView 实现，
+  MenuItem／Shortcut 按祖先 ID 引用，稳定对象复用、最新闭包、内层遮蔽、移除回退及
+  显式移交均已覆盖。Root 仅传递通用 BuildContext 给共享修饰符，无命令表／类型分支。
+  上下文菜单使用 `MenuFor(ctx,...)`，Tree/Table/Tab 的适配同步。
+- [x] 回归补齐通知中卸载导致的列表越界、ObjectView 查询中释放引用导致的空调用；
+  两项在加保护前均失败，保护后通过。菜单旧的固定宽文字盒也通过 overlay 回归失败，
+  自然文字框贴齐列右侧后通过；保留了失败日志，没有放宽断言。
+- [x] 本机 Ubuntu 22.04.5 amd64、Go 1.25.8、独立 Xvnc :90 1920×1200／xfwm4 4.16.1
+  合成开启：GUI/UI 两个例程各完成 Software 1x、OpenGL 1x、Software 2x、OpenGL 2x
+  自动场景，含 Basic／Modern 与亮暗组合，均通过。以实际 Image 类型及 PixelScale 核对
+  后端；2x 是应用覆盖值，不代表真实混合 DPI。OpenGL 为 Mesa 23.2.1 llvmpipe，
+  不作硬件性能结论。
+- [x] 真实 X11 输入（xdotool，未经 DevServer）：GUI/OpenGL 1x 打开中文菜单，
+  按住保存项、F6 禁用／恢复、松开后仍为 0；F7 改键后 Ctrl+Shift+S 恰好保存 1 次。
+  原生截图确认短／长提示视觉右齐、实时灰显。UI/OpenGL 1x 暗色验证 F6/F7、
+  Ctrl+Shift+C、局部菜单及 F9 删除内层定义；最终外层 2／局部 1，global=1、local=5。
+- [x] 最终 `DISPLAY=:90 XMODIFIERS=@im=none GOWORK=off go test -json -count=1 ./...`：
+  3930 项测试／子测试通过、15 项既有跳过、零失败，含保留的未跟踪测试。跳过为
+  macOS 签名及显式启用的手工输入、剪贴板、GLX／透明、窗口状态／交互用例。
+  GUI/UI/widgets-ui 的 Command/Shortcut/Menu/Object race 及相关包／窗口例程 vet 通过。
+- [x] Windows amd64、macOS arm64 的 GUI/UI/widgets-ui 测试目标、两个窗口例程
+  CGO_ENABLED=0 交叉编译通过；demo 目标也构建通过。本轮没有远端原生运行验收。
+- 验收产物：`/tmp/goui-command-1wmkdsjc`，含最终全仓 JSON、逐组合日志、交叉编译、
+  overlay 失败对照、两个重入失败日志及原生截图。初版绘图探针因零尺寸未绘制，改为
+  正常正尺寸后完整重验；一次与全仓窗口测试共用会话并发时菜单关闭导致场景失败，
+  保留日志，最终采用独占会话顺序验收，未跳过失败步骤。既有窗口／剪贴板测试仅在
+  隔离桌面执行；本轮窗口已关闭，独立会话已停止。完整设计与 API 见
+  [DesignCommand](DesignCommand.md)。
+
 ## ListView末尾交互与测量缓存（2026-11-04）
 
 - [x] 独立X11诊断确认：ListView的Hovered状态通知会进入StyleChanged，无条件
