@@ -110,6 +110,12 @@ func NewPainter(win NativeWindow) (_ graphics.Painter, err error) {
 
 	p.images = make(map[*imageResource]struct{})
 	p.textImages = textbitmap.NewImageCache(textbitmap.CacheCapacity, func(img graphics.Image) { img.Destroy() })
+	// Construction does not leave a native target borrowed or a context bound.
+	// In particular a mobile target may be revoked before the first frame.
+	if err = p.ctx.ClearCurrent(); err != nil {
+		p.Destroy()
+		return nil, fmt.Errorf("clear context after initialization: %w", err)
+	}
 	return p, nil
 }
 

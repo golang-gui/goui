@@ -16,6 +16,9 @@ static CGImageRef pending_image;
 static uintptr_t pending_handle;
 static uint64_t pending_generation;
 static int image_scheduled;
+#if GOUI_GLES
+#include "ios_gles.inc"
+#endif
 
 static void Emit(int kind,int value){
     GoUIHostCallback fn=(GoUIHostCallback)atomic_load(&callback);if(!fn)return;
@@ -35,6 +38,9 @@ static void Target(void){
     if(w==width && h==height && s==scale)return;
     Lose();width=w;height=h;scale=s;
     view.contentScaleFactor=s;view.layer.contentsScale=s;
+#if GOUI_GLES
+    atomic_store(&gl_layer,(uintptr_t)(__bridge void*)view.layer);
+#endif
     Emit(GOUI_TARGET,0);
 }
 static void Visibility(void){
@@ -46,7 +52,7 @@ __attribute__((visibility("default"))) int32_t goui_host_bind(uintptr_t fn,uint3
     atomic_store(&callback,fn);if(!fn)atomic_store(&wanted,0);
     dispatch_async(dispatch_get_main_queue(),^{
         if(!fn){ClearImage();view.layer.contents=nil;}
-        Visibility();if(view && width>0){generation++;Emit(GOUI_TARGET,0);}
+        Visibility();if(view && width>0){Lose();Emit(GOUI_TARGET,0);}
     });
     return 0;
 }
@@ -85,7 +91,16 @@ __attribute__((visibility("default"))) int32_t goui_host_present(uintptr_t handl
 @interface GoUIContent:UIViewController
 @end
 @implementation GoUIContent
-- (void)loadView {self.view=[[UIView alloc]initWithFrame:CGRectZero];self.view.backgroundColor=UIColor.blackColor;}
+- (void)loadView {
+#if GOUI_GLES
+    self.view=[[GoUIGLESView alloc]initWithFrame:CGRectZero];
+    CAEAGLLayer *layer=(CAEAGLLayer*)self.view.layer;
+    layer.opaque=YES;layer.drawableProperties=@{kEAGLDrawablePropertyRetainedBacking:@NO,kEAGLDrawablePropertyColorFormat:kEAGLColorFormatRGBA8};
+#else
+    self.view=[[UIView alloc]initWithFrame:CGRectZero];
+#endif
+    self.view.backgroundColor=UIColor.blackColor;
+}
 - (void)viewDidLayoutSubviews {[super viewDidLayoutSubviews];Target();}
 @end
 @interface GoUIScene:UIResponder<UIWindowSceneDelegate>
@@ -97,11 +112,30 @@ __attribute__((visibility("default"))) int32_t goui_host_present(uintptr_t handl
     window.rootViewController=[[GoUIContent alloc]init];view=window.rootViewController.view;
     width=height=0;[window makeKeyAndVisible];Target();Visibility();
 }
-- (void)sceneWillEnterForeground:(UIScene*)scene{(void)scene;foreground=1;Visibility();}
-- (void)sceneDidEnterBackground:(UIScene*)scene{(void)scene;foreground=0;Visibility();}
+- (void)sceneWillEnterForeground:(UIScene*)scene{(void)scene;foreground=1;
+#if GOUI_GLES
+    atomic_store(&gl_allowed,1);width=height=0;Target();
+#endif
+    Visibility();
+}
+- (void)sceneDidEnterBackground:(UIScene*)scene{(void)scene;foreground=0;
+#if GOUI_GLES
+    HostGLSuspend();Lose();atomic_store(&gl_layer,0);
+#endif
+    Visibility();
+}
 - (void)sceneDidBecomeActive:(UIScene*)scene{(void)scene;Emit(GOUI_FOCUS,window.isKeyWindow);}
 - (void)sceneWillResignActive:(UIScene*)scene{(void)scene;Emit(GOUI_FOCUS,0);}
-- (void)sceneDidDisconnect:(UIScene*)scene{(void)scene;Lose();foreground=0;Visibility();window.hidden=YES;window.rootViewController=nil;view=nil;window=nil;width=height=0;}
+- (void)sceneDidDisconnect:(UIScene*)scene{(void)scene;
+#if GOUI_GLES
+    HostGLSuspend();
+#endif
+    Lose();foreground=0;Visibility();
+#if GOUI_GLES
+    atomic_store(&gl_layer,0);
+#endif
+    window.hidden=YES;window.rootViewController=nil;view=nil;window=nil;width=height=0;
+}
 @end
 @interface GoUIDelegate:UIResponder<UIApplicationDelegate>
 @end
