@@ -30,7 +30,7 @@ type Context struct {
 }
 
 func NewContext() (typography.Context, error) {
-	err := frameworks.Init()
+	err := frameworks.InitTypography()
 	if err != nil {
 		return nil, err
 	}

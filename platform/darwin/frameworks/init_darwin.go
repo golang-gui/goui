@@ -13,9 +13,35 @@ import (
 )
 
 var (
-	inited  bool
-	initMtx sync.Mutex
+	inited           bool
+	typographyInited bool
+	initMtx          sync.Mutex
 )
+
+// InitTypography loads only CoreFoundation, CoreGraphics and CoreText. It is
+// shared by macOS and iOS and does not initialize AppKit or desktop OpenGL.
+func InitTypography() error {
+	initMtx.Lock()
+	defer initMtx.Unlock()
+	return initTypography()
+}
+
+func initTypography() (err error) {
+	if typographyInited {
+		return nil
+	}
+	if err = InitCoreFoundation(); err != nil {
+		return err
+	}
+	if err = InitCoreGraphics(); err != nil {
+		return err
+	}
+	if err = InitCoreText(); err != nil {
+		return err
+	}
+	typographyInited = true
+	return nil
+}
 
 func Init() (err error) {
 	initMtx.Lock()
@@ -24,15 +50,7 @@ func Init() (err error) {
 		return nil
 	}
 
-	err = InitCoreFoundation()
-	if err != nil {
-		return
-	}
-	err = InitCoreGraphics()
-	if err != nil {
-		return
-	}
-	err = InitCoreText()
+	err = initTypography()
 	if err != nil {
 		return
 	}
