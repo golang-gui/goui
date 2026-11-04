@@ -77,6 +77,14 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"image"
+	"image/color"
+	"log"
+	"math"
+	"runtime"
+	"slices"
+	"strings"
+
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
@@ -87,13 +95,6 @@ import (
 	"github.com/golang-gui/goui/widgets"
 	widgetstyle "github.com/golang-gui/goui/widgets/style"
 	wui "github.com/golang-gui/goui/widgets/ui"
-	"image"
-	"image/color"
-	"log"
-	"math"
-	"runtime"
-	"slices"
-	"strings"
 )
 
 type record struct {
@@ -296,9 +297,9 @@ func assertTable(table *widgets.TableView, m *model) {
 			if check {
 				s := gui.ResolveStyle(content.StyleName(), "", style.Focused)
 				width, _ := s.BorderWidth()
-				radius, _ := s.Radius()
+				radius, _ := s.CornerRadius()
 				border, _ := s.BorderColor()
-				if width != 2 || radius != 0 || border == nil {
+				if width != 2 || radius != (geometry.CornerRadius{}) || border == nil {
 					panic("focused editor must have a 2 DIP square border")
 				}
 				ink = color.RGBAModel.Convert(border).(color.RGBA)

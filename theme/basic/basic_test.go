@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/golang-gui/goui/core/colors"
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/style"
 )
 
@@ -100,9 +101,9 @@ func TestCompleteFallbackGeometryAndSurfaces(t *testing.T) {
 		s := sheet.Resolve(sel)
 		bg, ok := s.BackgroundColor()
 		width, _ := s.BorderWidth()
-		radius, _ := s.Radius()
-		if !ok || !colors.Equal(bg, tc.background) || width != tc.width || radius != tc.radius {
-			t.Errorf("%+v background=%v width=%g radius=%g; want %v/%g/%g", sel, bg, width, radius, tc.background, tc.width, tc.radius)
+		radius, _ := s.CornerRadius()
+		if !ok || !colors.Equal(bg, tc.background) || width != tc.width || radius != geometry.UniformCornerRadius(tc.radius) {
+			t.Errorf("%+v background=%v width=%v radius=%v; want %v/%v/%v", sel, bg, width, radius, tc.background, tc.width, tc.radius)
 		}
 	}
 	for _, sel := range []style.Sel{
@@ -132,10 +133,10 @@ func TestMenuButtonExpandedAppearance(t *testing.T) {
 	} {
 		st := sheet.Resolve(style.Sel{Name: "button", Part: "expanded", State: tc.state})
 		background, _ := st.BackgroundColor()
-		radius, _ := st.Radius()
+		radius, _ := st.CornerRadius()
 		width, _ := st.BorderWidth()
-		if !colors.Equal(background, color.RGBA{R: tc.gray, G: tc.gray, B: tc.gray, A: 255}) || radius != 4 || width != 0 {
-			t.Fatalf("展开状态 %v 的背景或几何不符：%v / %g / %g", tc.state, background, radius, width)
+		if !colors.Equal(background, color.RGBA{R: tc.gray, G: tc.gray, B: tc.gray, A: 255}) || radius != geometry.UniformCornerRadius(4) || width != 0 {
+			t.Fatalf("展开状态 %v 的背景或几何不符：%v / %v / %v", tc.state, background, radius, width)
 		}
 	}
 	focus := sheet.Resolve(style.Sel{Name: "button", Part: "focus", State: style.FocusVisible})

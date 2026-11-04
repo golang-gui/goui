@@ -4,6 +4,7 @@ import (
 	"image/color"
 	"testing"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	basestyle "github.com/golang-gui/goui/style"
 	"github.com/golang-gui/goui/theme/basic"
@@ -58,9 +59,9 @@ func TestProgressFallbackIsAutomatic(t *testing.T) {
 	s := sheet.Resolve(basestyle.Sel{Name: "progress-bar"})
 	bg, _ := s.BackgroundColor()
 	fg, _ := s.ForegroundColor()
-	radius, _ := s.Radius()
+	radius, _ := s.CornerRadius()
 	if bg != (color.RGBA{R: 225, G: 225, B: 225, A: 255}) ||
-		fg != (color.RGBA{R: 70, G: 130, B: 220, A: 255}) || radius != 2 {
+		fg != (color.RGBA{R: 70, G: 130, B: 220, A: 255}) || radius != geometry.UniformCornerRadius(2) {
 		t.Fatal("missing progress track / foreground / radius")
 	}
 	if fg, ok := gui.DefaultStyleSheet().Resolve(basestyle.Sel{Name: "progress-bar"}).ForegroundColor(); !ok || fg != (color.RGBA{R: 70, G: 130, B: 220, A: 255}) {
@@ -111,8 +112,8 @@ func TestCheckButtonFallbackMatchesButtons(t *testing.T) {
 		toggle := sheet.Resolve(basestyle.Sel{Name: "check-button", Part: "button", State: state})
 		wantBG, _ := ordinary.BackgroundColor()
 		gotBG, _ := toggle.BackgroundColor()
-		wantRadius, _ := ordinary.Radius()
-		gotRadius, _ := toggle.Radius()
+		wantRadius, _ := ordinary.CornerRadius()
+		gotRadius, _ := toggle.CornerRadius()
 		wantEdge, _ := ordinary.BorderColor()
 		gotEdge, _ := toggle.BorderColor()
 		if gotBG != wantBG || gotRadius != wantRadius || gotEdge != wantEdge {
@@ -120,7 +121,7 @@ func TestCheckButtonFallbackMatchesButtons(t *testing.T) {
 		}
 		for _, selection := range []string{"", "-checked", "-mixed"} {
 			s := sheet.Resolve(basestyle.Sel{Name: "check-button", Part: "indicator" + selection, State: state})
-			if radius, _ := s.Radius(); radius != 4 {
+			if radius, _ := s.CornerRadius(); radius != geometry.UniformCornerRadius(4) {
 				t.Fatal("checkbox radius is not 4 DIP")
 			}
 			if state != basestyle.Disabled {

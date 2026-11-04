@@ -60,7 +60,7 @@ func TestRectangularCaptionAppearance(t *testing.T) {
 					button.updateState(style.Hovered, hover)
 					button.SetState(style.Pressed, pressed)
 					s := button.decorationStyle()
-					if radius, _ := s.Radius(); radius != 0 {
+					if radius, _ := s.CornerRadius(); radius != geometry.UniformCornerRadius(0) {
 						t.Fatal("rectangular caption inherited rounded corners")
 					}
 					bg, _ := s.BackgroundColor()
@@ -105,9 +105,9 @@ func TestRectangularCaptionAppearance(t *testing.T) {
 						s := button.decorationStyle()
 						circle, _ := s.BackgroundColor()
 						ink, _ := s.ForegroundColor()
-						radius, _ := s.Radius()
+						radius, _ := s.CornerRadius()
 						if !colors.Equal(circle, expected) || !colors.Equal(ink, palette.foreground) ||
-							radius != circularControlDiameter/2 || button.decorationBrush(ink) != graphics.ColorOf(ink) {
+							radius != geometry.UniformCornerRadius(circularControlDiameter/2) || button.decorationBrush(ink) != graphics.ColorOf(ink) {
 							t.Fatal("circular decoration appearance changed")
 						}
 					}

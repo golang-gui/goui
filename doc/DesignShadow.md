@@ -4,7 +4,8 @@
 
 `platform/graphics` 提供可组合的圆角矩形外阴影，并在 Direct2D、OpenGL 和
 Software 后端保持一致的几何、Transform、clip 与 HiDPI 语义。阴影是绘制效果，
-不是 Brush；平台类型不进入 `gui.Painter` 或 `ui`，也不参与布局空间计算。
+不是 Brush；`gui.Painter` 复用其局部绘制能力，`ui` 不直接依赖平台类型。
+绘制调用本身不参与布局空间计算。
 样式层现已增加独立的 `style.Shadow` 值，不依赖 platform；GUI 宿主消费和占位
 计算已由 PopoverMenu 消费，见 [菜单外观](DesignPopoverMenuAppearance.md)。
 
@@ -39,9 +40,9 @@ type Painter interface {
 
 输入按以下顺序归一：
 
-1. 原矩形按 `Offset` 平移；
-2. `SpreadRadius` 同时扩张四边，负值表示向内收缩；
-3. 源四角先按源矩形归一；各半径变为 `max(radius+SpreadRadius, 0)`，按扩缩后的边长重新归一；
+1. 源四角先按源矩形归一；
+2. 原矩形按 `Offset` 平移，`SpreadRadius` 同时扩张四边，负值表示向内收缩；
+3. 各半径变为 `max(radius+SpreadRadius, 0)`，按扩缩后的边长重新归一；
 4. 正 `BlurRadius` 最小归一到 `0.5` 逻辑单位，非正值表示清晰轮廓。
 
 透明颜色、空源矩形、非有限参数或 spread 后为空的轮廓不绘制。正模糊采用与

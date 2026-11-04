@@ -71,8 +71,21 @@ func TestStyledBoxClampsBorderRadiusAfterInset(t *testing.T) {
 	painter := new(testButtonBackgroundPainter)
 	button.Paint(painter)
 
-	if painter.drawRect != geometry.Rect(2, 2, 76, 26) || painter.drawRadius != 0 || painter.drawStrokeWidth != 4 {
-		t.Fatalf("unexpected inset border: rect=%+v radius=%v width=%v", painter.drawRect, painter.drawRadius, painter.drawStrokeWidth)
+	// 小圆角不能因中心线退化被绘成直角；环带外轮廓仍为半径1，
+	// 内部矩形从(4,4)开始，保留已有内缩宽度并使用同一边框颜色。
+	var starts []geometry.Point
+	curves := 0
+	painter.fillPath.Range(func(op graphics.PathOperation, args []float32) bool {
+		if op == graphics.PathMoveTo {
+			starts = append(starts, geometry.Point{X: args[0], Y: args[1]})
+		}
+		if op == graphics.PathBezierTo {
+			curves++
+		}
+		return false
+	})
+	if len(starts) != 2 || starts[0] != (geometry.Point{X: 1}) || starts[1] != (geometry.Point{X: 4, Y: 4}) || curves != 4 || painter.brush != graphics.ColorOf(border) {
+		t.Fatalf("小圆角环带几何错误：起点%v 圆弧%d 画刷%v", starts, curves, painter.brush)
 	}
 }
 
@@ -191,7 +204,7 @@ func TestStyleNameSelectsRuleSet(t *testing.T) {
 	if !ok || !colors.Equal(background, color.RGBA{R: 210, G: 210, B: 210, A: 255}) {
 		t.Fatalf("button style name should resolve button background: %v ok=%v", background, ok)
 	}
-	if radius, ok := resolved.Radius(); !ok || radius != 4 {
+	if radius, ok := resolved.CornerRadius(); !ok || radius != geometry.UniformCornerRadius(4) {
 		t.Fatalf("button style name should resolve button radius: %v ok=%v", radius, ok)
 	}
 }

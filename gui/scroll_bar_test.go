@@ -291,7 +291,7 @@ func TestScrollBarStyleParts(t *testing.T) {
 	if r != 0 || g != 0 || bl != 0 || a != 24*0x101 {
 		t.Fatalf("trough bg: want rgba(0,0,0,24), got r=%d g=%d b=%d a=%d", r, g, bl, a)
 	}
-	if radius, ok := trough.Radius(); !ok || radius != scrollbarWidth/2 {
+	if radius, ok := trough.CornerRadius(); !ok || radius != geometry.UniformCornerRadius(scrollbarWidth/2) {
 		t.Fatalf("trough radius: want %v, got %v (set=%v)", scrollbarWidth/2, radius, ok)
 	}
 
@@ -305,7 +305,7 @@ func TestScrollBarStyleParts(t *testing.T) {
 	if r != 140*0x101 || g != 140*0x101 || bl != 140*0x101 {
 		t.Fatalf("thumb normal bg: want rgb(140,140,140), got r=%d g=%d b=%d a=%d", r, g, bl, a)
 	}
-	if radius, ok := thumb.Radius(); !ok || radius != scrollbarWidth/2 {
+	if radius, ok := thumb.CornerRadius(); !ok || radius != geometry.UniformCornerRadius(scrollbarWidth/2) {
 		t.Fatalf("thumb radius: want %v, got %v (set=%v)", scrollbarWidth/2, radius, ok)
 	}
 

@@ -168,10 +168,10 @@ func (p *ProgressBar) paint(painter gui.Painter, elapsed time.Duration) {
 	}
 	thickness := min(p.thickness, p.Rect().Height)
 	rect := geometry.Rect(0, (p.Rect().Height-thickness)/2, p.Rect().Width, thickness)
-	radius, _ := s.Radius()
-	radius = min(progressNonnegative(radius), thickness/2)
+	radius, _ := s.CornerRadius()
+	radius = radius.Normalize(rect.Size)
 	if background != nil {
-		painter.FillRoundRect(rect, radius, graphics.ColorOf(background))
+		gui.PaintStyledBackground(painter, rect, style.Default().CornerRadius(radius).BackgroundColor(background).Style)
 	}
 	if p.indeterminate {
 		position, length := progressLinearMotion(elapsed)
@@ -180,7 +180,7 @@ func (p *ProgressBar) paint(painter gui.Painter, elapsed time.Duration) {
 		rect.Width *= p.value
 	}
 	if foreground != nil && rect.Width > 0 {
-		painter.FillRoundRect(rect, min(radius, rect.Width/2), graphics.ColorOf(foreground))
+		gui.PaintStyledBackground(painter, rect, style.Default().CornerRadius(radius).BackgroundColor(foreground).Style)
 	}
 }
 

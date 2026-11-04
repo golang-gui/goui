@@ -757,6 +757,7 @@ func (w *paintCountingWidget) Paint(p Painter) {
 }
 
 type testButtonBackgroundPainter struct {
+	fillPath        graphics.Path
 	rect            geometry.Rectangle
 	radius          float32
 	brush           graphics.Brush
@@ -790,7 +791,10 @@ func (p *testButtonBackgroundPainter) FillRoundRect(rect geometry.Rectangle, rad
 func (p *testButtonBackgroundPainter) FillEllipse(center geometry.Point, xRadius, yRadius float32, brush graphics.Brush) {
 }
 
-func (p *testButtonBackgroundPainter) FillPath(path graphics.Path, brush graphics.Brush) {}
+func (p *testButtonBackgroundPainter) FillPath(path graphics.Path, brush graphics.Brush) {
+	p.fillPath = path
+	p.brush = brush
+}
 
 func (p *testButtonBackgroundPainter) DrawLine(p0, p1 geometry.Point, strokeWidth float32, brush graphics.Brush) {
 }

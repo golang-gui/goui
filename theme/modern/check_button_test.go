@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"testing"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/style"
 )
 
@@ -29,7 +30,7 @@ func TestCheckButtonMatchesModernButtons(t *testing.T) {
 						if rgba(edge) != p.border || width != 1 {
 							t.Errorf("state=%v selection=%q changed the neutral button outline: %v/%v", state, selection, edge, width)
 						}
-						if radius, _ := button.Radius(); radius != 6 {
+						if radius, _ := button.CornerRadius(); radius != geometry.UniformCornerRadius(6) {
 							t.Errorf("button radius=%v; want 6", radius)
 						}
 						if selection != "" && state != style.Disabled {
@@ -49,7 +50,7 @@ func TestCheckButtonMatchesModernButtons(t *testing.T) {
 					for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed} {
 						indicator := sheet.Resolve(style.Sel{Name: "check-button", Part: "indicator" + selection, State: state})
 						edge, _ := indicator.BorderColor()
-						if radius, _ := indicator.Radius(); radius != 4 || selection == "" && rgba(edge) != rgba(normalEdge) {
+						if radius, _ := indicator.CornerRadius(); radius != geometry.UniformCornerRadius(4) || selection == "" && rgba(edge) != rgba(normalEdge) {
 							t.Errorf("indicator selection=%q state=%v: radius/outline changed", selection, state)
 						}
 						if selection != "" {
@@ -104,7 +105,7 @@ func TestRadioSolidSelection(t *testing.T) {
 					if width, _ := radio.BorderWidth(); width != 0 {
 						t.Fatalf("solid radio outline width=%v; want no overlapping stroke", width)
 					}
-					if radius, _ := radio.Radius(); radius != 9 {
+					if radius, _ := radio.CornerRadius(); radius != geometry.UniformCornerRadius(9) {
 						t.Fatalf("radio radius=%v; want 9 DIP", radius)
 					}
 					for _, part := range []string{"indicator-checked", "indicator-mixed"} {

@@ -228,16 +228,16 @@ func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Sty
 	}
 	b.painter.Clear(clearColor)
 	guiPainter.applyState()
-	radius, _ := border.Radius()
+	radius, _ := border.CornerRadius()
 	if shadow.Color.A > 0 && body.Width > 0 && body.Height > 0 {
-		b.painter.DrawBoxShadow(body, geometry.UniformCornerRadius(radius), shadow)
+		b.painter.DrawBoxShadow(body, radius, shadow)
 	}
 	// Hosts choose their background geometry and structural content clip. A
 	// final shape erasure permits full-client content with a rounded silhouette.
 	if bg, ok := background.BackgroundColor(); ok && bg != nil {
-		radius = min(normalizeLayoutValue(radius), max(0, min(body.Width, body.Height)/2))
-		if radius > 0 && finish == nil {
-			guiPainter.FillRoundRect(body, radius, graphics.ColorOf(bg))
+		radius = radius.Normalize(body.Size)
+		if finish == nil {
+			paintRoundedBackground(guiPainter, body, radius, graphics.ColorOf(bg))
 		} else {
 			guiPainter.FillRect(body, graphics.ColorOf(bg))
 		}
@@ -257,13 +257,13 @@ func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Sty
 	// outer contour beyond that boundary while preserving its inner contour,
 	// so its own AA is not multiplied by the same boundary a second time.
 	borderBounds := body
-	if finish != nil && radius > 0 {
+	if finish != nil && radius.Max() > 0 {
 		width, _ := border.BorderWidth()
 		if width > 0 {
 			margin := 2 / scale
 			borderBounds = body.Inset(-margin)
 			color, _ := border.BorderColor()
-			border = style.Default().Radius(radius + margin).BorderWidth(width + margin).BorderColor(color).Style
+			border = style.Default().CornerRadius(radius.Inset(-margin)).BorderWidth(width + margin).BorderColor(color).Style
 		}
 	}
 	PaintStyledBorder(guiPainter, borderBounds, border)

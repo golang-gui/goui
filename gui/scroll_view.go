@@ -143,14 +143,14 @@ func (sv *ScrollView) StyleChanged() {
 	for _, state := range []style.State{style.Normal, style.Focused, style.FocusVisible, style.Disabled} {
 		s := sv.frameStyle(state)
 		border, _ := s.BorderWidth()
-		radius, _ := s.Radius()
+		radius, _ := s.CornerRadius()
 		border = normalizeLayoutValue(border)
-		radius = normalizeLayoutValue(radius)
+		maximum := radius.Max()
 		inset := border
-		if radius > 0 {
+		if maximum > 0 {
 			// Keep rectangular children inside the rounded border, including an
 			// antialiasing margin, without requiring a rounded clipping API.
-			inset += max(0, radius-border)*(1-1/math.Sqrt2) + 1
+			inset += max(0, maximum-border)*(1-1/math.Sqrt2) + 1
 		}
 		sv.frameInset = max(sv.frameInset, inset)
 	}

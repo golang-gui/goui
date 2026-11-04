@@ -482,7 +482,7 @@ func TestAppAppliesRootStyleSheetOnChange(t *testing.T) {
 	if len(app.sheets) != 1 {
 		t.Fatalf("expected the root sheet applied once, got %d", len(app.sheets))
 	}
-	if r, ok := app.sheets[0].Resolve(style.Sel{Name: "button"}).Radius(); !ok || r != 4 {
+	if r, ok := app.sheets[0].Resolve(style.Sel{Name: "button"}).CornerRadius(); !ok || r != geometry.UniformCornerRadius(4) {
 		t.Fatalf("applied the wrong sheet: radius=%v ok=%v", r, ok)
 	}
 
@@ -503,7 +503,7 @@ func TestAppAppliesRootStyleSheetOnChange(t *testing.T) {
 	if len(app.sheets) != 2 {
 		t.Fatalf("swapped sheet should re-apply, got %d applications", len(app.sheets))
 	}
-	if r, ok := app.sheets[1].Resolve(style.Sel{Name: "button"}).Radius(); !ok || r != 8 {
+	if r, ok := app.sheets[1].Resolve(style.Sel{Name: "button"}).CornerRadius(); !ok || r != geometry.UniformCornerRadius(8) {
 		t.Fatalf("applied the wrong swapped sheet: radius=%v ok=%v", r, ok)
 	}
 }
