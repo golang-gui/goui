@@ -14,28 +14,38 @@ import (
 	"github.com/golang-gui/goui/platform/typography"
 )
 
-const hudInterval = 250 * time.Millisecond
+const (
+	hudInterval     = 250 * time.Millisecond
+	hudIdleInterval = time.Second
+)
 
 // HUD draws recent CPU-frame statistics over a window without taking input or
 // participating in layout. Its owner is the Capture; window destruction and
 // capture stop release it automatically. All methods run on the GUI thread.
-// While idle, the display retains its last sample without requesting new frames.
+// After one second without drawing, one repaint changes FPS to zero. The other
+// readings retain the last completed sample; no continuous frame loop is added.
 type HUD struct {
-	capture  *Capture
-	window   gui.Window
-	position geometry.Point
-	paint    signal.Handle
-	destroy  signal.Handle
-	layout   typography.TextLayout
-	size     geometry.Size
-	updated  time.Time
+	capture   *Capture
+	window    gui.Window
+	position  geometry.Point
+	paint     signal.Handle
+	destroy   signal.Handle
+	layout    typography.TextLayout
+	size      geometry.Size
+	updated   time.Time
+	timer     *gui.Timer
+	timeout   signal.Handle
+	lastPaint time.Time
+	idle      bool
+	idlePaint bool
 }
 
 // ShowHUD displays one overlay for window in this active capture. Repeated
 // calls return the existing HUD. The window must belong to the captured app.
 // The initial position is (12, 12) DIP; use SetPosition to avoid title controls.
 // Showing requests one repaint. Subsequent updates only use ordinary window
-// frames, at most four text updates per second; no timer or frame loop is added.
+// frames, at most four text updates per second. A one-shot idle timer requests
+// one repaint to show zero FPS after a second without drawing.
 // Draw FPS measures CPU-frame completion, not GPU or display presentation.
 func (c *Capture) ShowHUD(window gui.Window) (*HUD, error) {
 	if c == nil || c.session == nil || !c.session.Active() {
@@ -62,6 +72,8 @@ func (c *Capture) ShowHUD(window gui.Window) (*HUD, error) {
 	if err := h.setText(hudText(diagnostic.RootSample{}, false)); err != nil {
 		return nil, err
 	}
+	h.timer = app.NewTimer()
+	h.timeout = h.timer.ConnectTimeout(h.onIdle)
 	if c.huds == nil {
 		c.huds = make(map[gui.Window]*HUD)
 	}
@@ -107,7 +119,10 @@ func (h *HUD) release(repaint bool) {
 	h.window, h.capture = nil, nil
 	h.paint.Disconnect()
 	h.destroy.Disconnect()
+	h.timer.Stop()
+	h.timeout.Disconnect()
 	h.paint, h.destroy = nil, nil
+	h.timer, h.timeout = nil, nil
 	h.layout.Destroy()
 	h.layout = nil
 	delete(capture.huds, window)
@@ -151,9 +166,25 @@ func (h *HUD) draw(p gui.Painter, bounds geometry.Rectangle) {
 		return
 	}
 	now := time.Now()
+	if h.idlePaint {
+		// This repaint only clears FPS. It must not restart its own idle timer.
+		h.idlePaint = false
+	} else {
+		h.lastPaint = now
+		if h.idle {
+			h.idle = false
+			h.updated = time.Time{}
+		}
+		if !h.timer.Active() {
+			_ = h.timer.StartOnce(hudIdleInterval)
+		}
+	}
 	if h.updated.IsZero() || now.Sub(h.updated) >= hudInterval {
 		h.updated = now
 		sample, ok := h.capture.session.ReadRoot(h.window)
+		if h.idle {
+			sample.Root.Idle = true
+		}
 		// A transient native text failure retains the previous readable sample.
 		_ = h.setText(hudText(sample, ok))
 	}
@@ -164,10 +195,37 @@ func (h *HUD) draw(p gui.Painter, bounds geometry.Rectangle) {
 	p.DrawTextLayout(h.position.Add(geometry.Point{X: 10, Y: 8}), h.layout)
 }
 
+func (h *HUD) onIdle() {
+	if h.window == nil || h.idle || h.lastPaint.IsZero() {
+		return
+	}
+	last := h.lastPaint
+	if sample, ok := h.capture.session.ReadRoot(h.window); ok && sample.Frame.Completed {
+		// End may block after AfterPaint. Count the silence from completion,
+		// rather than clearing FPS while the preceding frame is still finishing.
+		if completed := sample.Frame.Started.Add(sample.Frame.Total); completed.After(last) {
+			last = completed
+		}
+	}
+	if delay := hudIdleInterval - time.Since(last); delay > 0 {
+		// Ordinary frames only update lastPaint; reschedule here, rather than
+		// removing and reinserting a timer on every animation frame.
+		_ = h.timer.StartOnce(delay)
+		return
+	}
+	h.idle, h.idlePaint = true, true
+	h.updated = time.Time{}
+	if err := h.window.RequestPaint(); err != nil {
+		h.idlePaint = false
+	}
+}
+
 func hudText(sample diagnostic.RootSample, ok bool) string {
 	fps, frame, layout, paint, end, backend := "--", "--", "--", "--", "--", "--"
 	if ok {
-		if sample.Root.FPS > 0 && !sample.Root.Idle {
+		if sample.Root.Idle && sample.Frame.Completed {
+			fps = "0"
+		} else if sample.Root.FPS > 0 && !sample.Root.Idle {
 			fps = fmt.Sprintf("%.1f", sample.Root.FPS)
 		}
 		if f := sample.Frame; f.Completed {

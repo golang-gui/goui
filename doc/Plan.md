@@ -1,5 +1,20 @@
 # Plan
 
+## HUD 空闲 FPS 清零（2026-11-04）
+
+- [x] 静止一秒后用单次 Timer 请求一次清零重绘，FPS 显示 0 并保留最近完成帧耗时；
+  该重绘不重新启动空闲检测，普通绘制恢复统计。包含 Painter.End 的实际完成时刻。
+- [x] 停止采集／销毁 HUD／关闭窗口时停止并断开 Timer；同步八语言 Demo 提示、
+  设计与窗口验证步骤，替代初版“静止保留 FPS”行为。
+- [x] `DISPLAY=:88 go test -json -count=1 ./...`：3633项通过、15项既有跳过、零失败；
+  diagnostics／internal diagnostic 的 race、受影响包 vet 通过。
+- [x] Ubuntu 22.04.5 amd64、独立 Xvnc :88／xfwm4 4.16.1，Software／OpenGL
+  1x／2x 四组窗口自动验收通过：空闲仅一次清零帧和文字重建，此后帧／资源稳定，
+  恢复两秒主动绘制后正常增长；停止采集和退出清理正常。实际桌面截图确认 0 FPS
+  及恢复后的活动读数。OpenGL 为 Mesa llvmpipe，不作为硬件性能或高刷验收。
+- [x] Windows amd64／macOS arm64 的 HUD、Demo 和窗口程序 `CGO_ENABLED=0`
+  交叉构建通过；未执行远端原生验收。日志及截图在 `/tmp/goui-hud-idle-yCcCOQ`。
+
 ## 显式 diagnostics HUD（2026-11-04）
 
 - 设计见 [DesignDiagnostics](DesignDiagnostics.md#显式性能浮层-hud2026-11-04)。
