@@ -295,7 +295,7 @@ func (r *root) updateDeclaration(old *node, view View, parent *node, depth int, 
 				r.release(current, true)
 				return nil
 			}
-			current.baseCtx = &viewBaseContext{}
+			current.baseCtx = &viewBaseContext{context: ctx}
 			view.base().mount(current.baseCtx, current.widget)
 		}
 		widgetView.Update(ctx, current.widget)

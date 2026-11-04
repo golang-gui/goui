@@ -235,6 +235,12 @@ func notifyReparented(n *node, owner *root) {
 	if n == nil || n.released || n.root != owner {
 		return
 	}
+	if n.baseCtx != nil {
+		n.baseCtx.shortcuts.reparented()
+		if n.released || n.root != owner {
+			return
+		}
+	}
 	if view, ok := n.view.(ReparentedView); ok {
 		view.Reparented(&buildContext{node: n})
 		if n.released || n.root != owner {

@@ -16,10 +16,11 @@ type ShortcutView struct {
 	enabled    bool
 	repeat     bool
 	onActivate func()
+	commandID  string
 }
 
 // Shortcut declares an enabled binding with no modifiers and no auto-repeat.
-// Without an OnActivate callback it does not intercept key events.
+// Without an OnActivate callback or a resolved Command it does not intercept key events.
 func Shortcut(key Key) *ShortcutView {
 	return &ShortcutView{gesture: gui.KeyGesture{Key: key}, enabled: true}
 }
@@ -42,6 +43,15 @@ func (s *ShortcutView) AutoRepeat(repeat bool) *ShortcutView {
 
 func (s *ShortcutView) OnActivate(fn func()) *ShortcutView {
 	s.onActivate = fn
+	s.commandID = ""
+	return s
+}
+
+// Command selects an operation from the nearest ancestor command scope.
+// It replaces OnActivate; an unresolved reference does not consume input.
+func (s *ShortcutView) Command(id string) *ShortcutView {
+	s.commandID = id
+	s.onActivate = nil
 	return s
 }
 
@@ -66,18 +76,31 @@ type shortcutEntry struct {
 	shortcut *gui.Shortcut
 	handle   signal.Handle
 	callback func()
+	command  commandReference
 }
 
 type shortcutBindings struct {
 	controller *gui.ShortcutController
 	entries    []*shortcutEntry
+	version    uint64
 }
 
-func (b *shortcutBindings) update(controller *gui.ShortcutController, views []*ShortcutView) {
+func (b *shortcutBindings) update(controller *gui.ShortcutController, views []*ShortcutView, contexts ...BuildContext) {
+	var ctx BuildContext
+	if len(contexts) > 0 {
+		ctx = contexts[0]
+	}
 	if b.controller != controller {
+		previous := b.version
 		b.clear()
+		if b.version != previous+1 {
+			return
+		}
 		b.controller = controller
 	}
+	b.version++
+	version := b.version
+	current := func() bool { return b.version == version && b.controller == controller }
 	i := 0
 	for _, v := range views {
 		if v == nil {
@@ -96,26 +119,49 @@ func (b *shortcutBindings) update(controller *gui.ShortcutController, views []*S
 		e := b.entries[i]
 		e.callback = v.onActivate
 		e.shortcut.SetGesture(v.gesture)
-		e.shortcut.SetEnabled(v.enabled && v.onActivate != nil)
+		if !current() {
+			return
+		}
+		e.shortcut.SetEnabled(v.enabled && (v.onActivate != nil || v.commandID != ""))
+		e.command.update(ctx, v.commandID, e.shortcut.SetCommand)
+		if !current() {
+			return
+		}
 		e.shortcut.SetAutoRepeat(v.repeat)
 		i++
 	}
 	for len(b.entries) > i {
 		last := len(b.entries) - 1
 		e := b.entries[last]
-		e.handle.Disconnect()
-		b.controller.RemoveShortcut(e.shortcut)
-		e.callback = nil
 		b.entries = b.entries[:last]
+		e.handle.Disconnect()
+		e.command.clear()
+		controller.RemoveShortcut(e.shortcut)
+		e.callback = nil
+		e.shortcut.SetCommand(nil)
+		if !current() {
+			return
+		}
 	}
 }
 
 func (b *shortcutBindings) clear() {
-	for _, e := range b.entries {
+	// Publish detachment before external command notifications can release or
+	// rebuild this owner. Cleanup must not overwrite a newer binding list.
+	entries, controller := b.entries, b.controller
+	b.version++
+	b.entries, b.controller = nil, nil
+	for _, e := range entries {
 		e.handle.Disconnect()
-		b.controller.RemoveShortcut(e.shortcut)
+		e.command.clear()
+		controller.RemoveShortcut(e.shortcut)
 		e.callback = nil
+		e.shortcut.SetCommand(nil)
 	}
-	b.entries = nil
-	b.controller = nil
+}
+
+func (b *shortcutBindings) reparented() {
+	for _, entry := range b.entries {
+		entry.command.reparent()
+	}
 }

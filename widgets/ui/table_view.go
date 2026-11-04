@@ -193,7 +193,7 @@ func (v *TableViewView[T]) Mount(ctx baseui.BuildContext) gui.Widget {
 		}),
 		table.ConnectContextMenu(func(row, column string, result *gui.MenuModel) {
 			if s.contextMenu != nil {
-				*result = baseui.Menu(s.contextMenu(row, column)...)
+				*result = baseui.MenuFor(ctx, s.contextMenu(row, column)...)
 			}
 		}),
 		table.ConnectContextMenuError(func(err error) {

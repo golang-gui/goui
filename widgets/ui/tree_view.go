@@ -144,7 +144,7 @@ func (v *TreeViewView[T]) Mount(ctx baseui.BuildContext) gui.Widget {
 		}),
 		tree.ConnectContextMenu(func(id string, result *gui.MenuModel) {
 			if state.contextMenu != nil {
-				*result = baseui.Menu(state.contextMenu(id)...)
+				*result = baseui.MenuFor(ctx, state.contextMenu(id)...)
 			}
 		}),
 		tree.ConnectContextMenuError(func(err error) {
