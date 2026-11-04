@@ -190,7 +190,8 @@ func (h *HUD) Destroy()
 ShowHUD 报告初始文字资源创建及首次请求绘制的错误，中途失败释放已取得的资源。
 
 只读 Snapshot、Start 的原有无重绘契约不变。显式显示、移动或移除 HUD 会请求一次
-正常重绘以应用外观变化。HUD 不开启 Timer、goroutine、动画或持续 RequestPaint。
+正常重绘以应用外观变化。HUD 使用 Application 的单次空闲 Timer，不新增 goroutine、
+动画或持续 RequestPaint；普通采集与只读查询仍不启动 Timer。
 
 ### 指标、更新与开销
 
@@ -201,11 +202,17 @@ ShowHUD 报告初始文字资源创建及首次请求绘制的错误，中途失
 - Frame 是 GUI 帧的墙钟耗时，包含等待，不是 CPU 忙碌时间；End 不证明 GPU 完成或
   合成器实际呈现。不虚构 GPU 耗时、原生同步来源、掉帧率或高刷状态。
 - 首次没有足够样本时显示 `--`，不显示虚假的零耗时或稳定帧率。
-- HUD 文案注明 recent CPU frames。应用静止时保留最后读数，不为了改成 Idle 单独刷新；
-  恢复绘制后继续使用现有 Idle／样本重置规则。
+- HUD 文案注明 recent CPU frames。完成绘制后连续一秒没有新绘制时，额外重绘一次
+  显示 `0 FPS`，保留最近完成帧耗时。初始样本不足仍显示 `--`。
+  清零重绘自身不重新预约空闲 Timer；下一次普通绘制恢复采样和空闲检测。
+  这次清零也是实际 CPU 帧，照常计入采集，不删除或伪造统计记录。
 
 每次正常帧复用已有 TextLayout，最多每 250 ms 读取一次统计并尝试更新文字。
 文字未变化时不重建布局；文字不可变的 TextLayout 仅在文本变化时替换。
+空闲切换和恢复采样立即更新文字。普通帧只记录活动时刻，不逐帧重启 Timer；
+单次超时检查最近绘制及已完成帧的实际完成时刻，必要时预约剩余延时，避免较慢的
+Painter.End 导致过早清零。清零请求与原生绘制可能合并，后续普通帧恢复采样，
+无需给 GUI 输入或帧分发增加诊断专用标记。
 字体为 9 pt，使用固定深色半透明背景和浅色文字以便在不同主题下阅读，使用预乘颜色。
 已有文字栅格与 Painter 图像缓存继续生效。暂时的更新失败保留上次可读资源。
 
@@ -218,8 +225,9 @@ HUD 自身的排版、栅格化、图像和绘制操作计入采集，不人为�
 
 ### 资源与结束
 
-Capture 持有每个窗口一个 HUD，HUD 持有两份信号 handle 和一个 TextLayout。
-Destroy 幂等断开 AfterPaint／Destroy 信号，释放文字并从 Capture 移除。
+Capture 持有每个窗口一个 HUD，HUD 持有 AfterPaint／Destroy／Timeout 信号 handle、
+一个 TextLayout 和一个 Application Timer。Destroy 幂等停止 Timer、断开信号，
+释放文字并从 Capture 移除；已失效的超时通知不得请求绘制。
 窗口销毁时不再请求重绘；显式 Destroy 和采集停止时请求一次重绘擦除浮层。
 内部 Session 的停止信号保证 Application.Run 返回引发 StopOwner 时也完成清理，
 不只依赖用户调用公开 Capture.Stop。停止后的采集结果继续冻结。
@@ -232,7 +240,8 @@ Destroy 幂等断开 AfterPaint／Destroy 信号，释放文字并从 Capture �
 - GUI 适配器测试：单根读取隔离，不创建记录／快照，返回最近完成帧，避免当前帧及
   其它窗口帧混入；采集停止后不可读取。
 - `tests/window/gui/diagnostics -hud`：真实窗口检查透传点击、显示／移动／移除、
-  连续帧、闲置无额外帧、RenderWidget 不包含 HUD、停止冻结及资源释放。
+  连续帧、闲置仅一次清零帧／文字更新、之后帧与资源稳定、恢复绘制、
+  RenderWidget 不包含 HUD、停止冻结及资源释放。
 - Demo 的“窗口与检查”使用已有采集，提供显示 HUD 开关，跨页面保留。
 
 GTK/GDK 4.24.1 的 FPS 定义见本文开头。Flutter

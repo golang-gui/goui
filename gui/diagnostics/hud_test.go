@@ -24,6 +24,9 @@ type hudApplication struct {
 func (a *hudApplication) Windows() []gui.Window          { return a.windows }
 func (a *hudApplication) Typography() typography.Context { return &a.typo }
 
+// 无 Application 的 Timer 仅用于连接与停止；真实期限投递在独立窗口程序验证。
+func (a *hudApplication) NewTimer() *gui.Timer { return new(gui.Timer) }
+
 type hudTypography struct {
 	typography.Context
 	created, destroyed int
@@ -232,7 +235,76 @@ func TestHUDTextReportsCompletedCPUFrames(t *testing.T) {
 		}
 	}
 	sample.Root.Idle = true
-	if strings.Contains(hudText(sample, true), "120.0") {
-		t.Fatal("闲置时仍报告有效帧率")
+	if text := hudText(sample, true); !strings.Contains(text, "Draw FPS   0\n") || !strings.Contains(text, "3.00 ms") {
+		t.Fatal("闲置未清零 FPS 或丢失最近耗时", text)
+	}
+}
+
+func TestHUDIdleRepaintsOnceAndResumes(t *testing.T) {
+	c, _, w := startHUDTest(t)
+	source := &hudSource{sample: diagnostic.RootSample{
+		Root:  diagnostic.Root{FPS: 60, Backend: "Software"},
+		Frame: diagnostic.Frame{Completed: true, Total: 2 * time.Millisecond},
+	}}
+	c.session.SetSource(source)
+	h, err := c.ShowHUD(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &hudPainter{}
+	bounds := geometry.Rect(0, 0, 400, 300)
+	h.draw(p, bounds)
+	// 明确处于静止阈值之后，不以 sleep 或几毫秒误差作为预期。
+	h.lastPaint = time.Now().Add(-2 * hudIdleInterval)
+	h.onIdle()
+	if !h.idle || !h.idlePaint || w.paints != 2 {
+		t.Fatal("静止未安排一次清零重绘")
+	}
+	h.draw(p, bounds)
+	if !h.idle || h.idlePaint || !strings.Contains(h.layout.Text(), "Draw FPS   0\n") || !strings.Contains(h.layout.Text(), "2.00 ms") {
+		t.Fatal("清零重绘恢复了活动状态或丢失耗时", h.layout.Text())
+	}
+	for range 10 {
+		h.onIdle()
+	}
+	if w.paints != 2 || h.timer.Active() {
+		t.Fatal("清零形成了持续刷新循环")
+	}
+	// 下一次普通绘制恢复采样，并允许下一轮静止清零。
+	source.sample.Root.FPS = 30
+	h.draw(p, bounds)
+	if h.idle || !strings.Contains(h.layout.Text(), "Draw FPS   30.0") {
+		t.Fatal("普通绘制后未恢复统计", h.layout.Text())
+	}
+	h.lastPaint = time.Now().Add(-2 * hudIdleInterval)
+	h.onIdle()
+	if w.paints != 3 {
+		t.Fatal("恢复后无法再次进入静止")
+	}
+	h.Destroy()
+	h.onIdle()
+	if h.timer != nil || h.timeout != nil || w.paints != 4 {
+		t.Fatal("销毁后仍持有定时器或响应超时")
+	}
+}
+
+func TestHUDIdleWaitsForRecentPaintAndCompletion(t *testing.T) {
+	c, _, w := startHUDTest(t)
+	source := &hudSource{}
+	c.session.SetSource(source)
+	h, err := c.ShowHUD(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.lastPaint = time.Now().Add(time.Hour)
+	h.onIdle()
+	if h.idle || w.paints != 1 {
+		t.Fatal("普通绘制后旧的超时过早清零")
+	}
+	h.lastPaint = time.Now().Add(-2 * hudIdleInterval)
+	source.sample.Frame = diagnostic.Frame{Started: time.Now().Add(time.Hour), Completed: true}
+	h.onIdle()
+	if h.idle || w.paints != 1 {
+		t.Fatal("忽略了 AfterPaint 之后的帧完成时刻")
 	}
 }

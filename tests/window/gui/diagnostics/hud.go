@@ -23,13 +23,14 @@ import (
 //  1. 点击浮层覆盖处的 Count：计数增加，浮层不拦截点击，也不移动其它控件。
 //  2. 点击 Animate：约两秒内连续绘制，HUD 的 FPS／毫秒数和后端名称可见更新。
 //     数字表示最近 CPU 帧；本例不检查显示刷新率，也不要求精确 60 FPS。
-//  3. 停止操作两秒：没有持续帧请求，浮层保留最近读数；不是实时屏幕 FPS。
+//  3. 停止操作一秒：浮层只重绘一次将 FPS 改为 0，保留最近耗时，之后不持续刷新。
+//     再点 Animate 应恢复统计，停止后再次自动清零；不是实时屏幕 FPS。
 //  4. Move HUD 移动浮层，Toggle HUD 移除／重新显示，原先覆盖处完整重绘。
 //  5. Stop capture：浮层消失，Count／Animate 继续有效；再次开始采集可重新显示。
 //  6. 改变窗口大小，检查文字／背景裁剪和倍率；关闭窗口退出，重启复位。
 //
 // 自动模式补充断言：RenderWidget 结果不受 HUD 影响、后绘制回调仍执行、
-// 闲置帧和资源数稳定、采集结果冻结、停止后拒绝 ShowHUD、退出清理。
+// 闲置只多一帧及一次文字更新，之后帧和资源数稳定、恢复绘制、采集冻结与退出清理。
 // 像素比较仅比较同后端同次运行的离屏预乘 RGBA，不使用跨平台字体金图。
 // 副作用仅为本例窗口与终端输出，不启动 DevServer、不写文件。
 func runHUD(app gui.Application, auto bool) {
@@ -47,7 +48,7 @@ func runHUD(app gui.Application, auto bool) {
 		status.SetText(fmt.Sprintf("Count %d", count))
 	})
 	root.AddChild(countButton)
-	root.AddChild(gui.NewLabel("HUD: recent CPU frames, not display FPS.\nIdle retains the last reading without a refresh loop."))
+	root.AddChild(gui.NewLabel("HUD: recent CPU frames, not display FPS.\nIdle shows 0 FPS after one second, then stops refreshing."))
 	root.AddChild(status)
 	var capture *diagnostics.Capture
 	var hud *diagnostics.HUD
@@ -154,11 +155,24 @@ func runHUD(app gui.Application, auto bool) {
 		case 10:
 			settled = capture.Snapshot()
 			require(settled.Resources.LayoutsCreated > 0 && settled.Roots[0].Backend != "", "HUD resources or backend missing")
-		case 11, 12, 13, 14:
+		case 11, 12:
+			// 等待最后一次移动绘制满一秒，允许唯一的清零重绘。
+		case 13:
+			s := capture.Snapshot()
+			require(total(s) == total(settled)+1 && s.Roots[0].FPS == 0, "idle did not request exactly one zero-FPS frame")
+			require(s.Resources.LayoutsCreated == settled.Resources.LayoutsCreated+1, "idle did not update text exactly once")
+			settled = s
+		case 14, 15, 16, 17:
 			s := capture.Snapshot()
 			require(total(s) == total(settled), "HUD requested idle frames; check external exposure/input")
 			require(s.Resources == settled.Resources, "HUD rebuilt resources while idle")
-		case 15:
+		case 18:
+			animate()
+		case 19, 20, 21, 22, 23, 24, 25:
+			// 再次绘制后计数必须增长，不能停留在清零状态。
+		case 26:
+			require(ticks > 5 && frames == nil && total(capture.Snapshot()) > total(settled), "painting did not resume after idle")
+		case 27:
 			capture.Stop()
 			frozen = capture.Snapshot()
 			if _, err := capture.ShowHUD(win); err == nil {
@@ -166,7 +180,7 @@ func runHUD(app gui.Application, auto bool) {
 			}
 			priorPaints = paints
 			must(win.RequestPaint())
-		case 16:
+		case 28:
 			require(paints > priorPaints && reflect.DeepEqual(frozen, capture.Snapshot()), "stop changed snapshot or disabled painting")
 			start()
 			timer.Stop()
@@ -176,7 +190,7 @@ func runHUD(app gui.Application, auto bool) {
 	})
 	must(timer.Start(300 * time.Millisecond))
 	app.Run()
-	require(step == 17 && !capture.Snapshot().Active, "owner exit did not stop HUD capture")
+	require(step == 29 && !capture.Snapshot().Active, "owner exit did not stop HUD capture")
 	// 退出后的旧 HUD 句柄必须安全、幂等，不再连接窗口绘制。
 	hud.Destroy()
 	hud.Destroy()
