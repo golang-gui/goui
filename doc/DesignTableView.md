@@ -546,8 +546,8 @@ StyleChanged 使用现有失效路径，本轮不为行高和 padding 增加新�
 | table-view / 默认 | BackgroundColor 为全视口背景；BorderColor / BorderWidth 为外框默认值 |
 | table-view / outer-horizontal | 覆盖上、下外框颜色／宽度 |
 | table-view / outer-vertical | 覆盖左、右外框颜色／宽度 |
-| table-grid / horizontal | BorderColor / BorderWidth 为行间线 |
-| table-grid / vertical | BorderColor / BorderWidth 为列间线，表头、正文共享 |
+| table-grid / horizontal | BorderColor / BorderWidth 为每行底线，包含末行 |
+| table-grid / vertical | BorderColor / BorderWidth 为每列右边线，包含末列；表头、正文共享 |
 | table-row / 默认 | 普通行 BackgroundColor |
 | table-row / alternate | 奇数零基模型索引的 BackgroundColor（第二、四……行） |
 | table-header / separator | ForegroundColor / BorderWidth 为表头底部分隔线 |
@@ -568,8 +568,10 @@ style.Name("table-row").Part("alternate").BackgroundColor(alternate).Radius(0)
 
 - 外框向视口内部预留空间，覆盖区域包括滚动条；表头／ScrollView 位于框内。
   表体同步表头实际视口宽度时保留外框的 X/Y，不通过绘制偏移补偿。
-- 列间线归前一列，在该列右边独占线宽；最后一列无内部右边线。行间线归前一行，
-  在行底部独占线高；最后一条记录无内部下边线。空白视口不虚构记录／网格。
+- 每列在自身右边独占网格线宽，每行在自身底部独占网格线高，包括最后一列和
+  最后一条记录。网格跟随数据区收口；外框独立包围整个视口，不代替末项网格。
+  空白视口不虚构记录／网格。此处按2026-11-04的末项修正更新，覆盖此前省略
+  末行底线／末列右边线的约定。
 - 自定义内容先扣线区域，填满剩余矩形；正文 Cell 不再额外扣固定内边距。内容
   若需要留白自行组合容器。其测量／布局矩形不与线条相交；行高
   加入线高，而不是压缩已测得内容。极窄约束钳制到零，内容仍遵循既有结构裁剪。
@@ -582,6 +584,14 @@ style.Name("table-row").Part("alternate").BackgroundColor(alternate).Radius(0)
   Current 轮廓独立。正常背景与条纹分别通过自己的明确样式解析，不覆盖子树样式。
 - 样式变动使用已有 StyleChanged 与测量失效；没有额外样式监听、缓存版本或 UI
   专用协调入口。默认水平线与外框为 1 DIP、竖线为零、条纹继承普通背景。
+
+2026-11-04修正依据：原先假定外框可替代末项边线，但外框按视口分配，少量数据或
+列宽总和小于视口时无法收口。Qt 6.8.0的
+[QTableView绘制源码](https://github.com/qt/qtbase/blob/v6.8.0/src/widgets/itemviews/qtableview.cpp#L1524)
+同样为最后可见行／列绘制底部／右侧网格；这是源码行为参考，不是对GOUI后端的
+验证。GOUI保留既有样式开关与独占线带，用共享lineHeight／columnLineWidth同步
+正文测量、内容分配、表头和网格，不增加公开API或改变Painter。末行自然高度加入
+线高，末列内容宽度扣除线宽；基础列宽、伸展及视口外框的几何含义保持。
 
 ### 10.3 Snapshot
 
