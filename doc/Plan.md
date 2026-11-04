@@ -1,5 +1,16 @@
 # Plan
 
+## 移动平台下一切片顺序（2026-11-04）
+
+- 触摸设计已写入 [DesignTouchInput](DesignTouchInput.md)，尚未实现。
+- 按用户最新顺序：先完成 Android/iOS Typography 与 Graphics 平台层最小
+  实现/验证，再动 GUI/UI。已有 Android GUI 切片保留，不继续扩展。
+- [ ] iOS CoreText 解除桌面 framework 初始化依赖，Software 平台例程验证。
+- [ ] GLES 3 NanoVGo 与 Painter、Android EGL / iOS EAGL 最小验证；保持绘制
+  资源和原生目标的生命周期隔离，执行颜色/clip/Transform/文字/图片/恢复检查。
+- [ ] 两端平台路径通过后再实施触摸事件、GUI 竞争/滚动/编辑，随后单独接 IME。
+- Android WrapChar 与完整移动能力另行排期；首轮不扩大 GUI 或 runtime 基座。
+
 ## Android Platform 与 GUI 内容窗口（2026-11-04）
 
 - 设计：[DesignMobileLifecycle](DesignMobileLifecycle.md#第三切片android-工厂与-gui-内容窗口2026-11-04)。
