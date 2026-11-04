@@ -42,6 +42,7 @@ type ProgressBar struct {
 	thickness     float32
 	mounted       bool
 	frame         signal.Handle
+	afterPaint    signal.Handle
 	started       time.Time
 	elapsed       time.Duration
 }
@@ -229,6 +230,17 @@ func (p *ProgressBar) syncAnimation() {
 		}
 		p.tick(now)
 	})
+	p.afterPaint = root.ConnectAfterPaint(func(gui.Painter, geometry.Rectangle) {
+		if p.Root() != root || !p.canAnimate() {
+			p.stopAnimation()
+			return
+		}
+		// Layout is complete here. Keep the passive connection while clipped,
+		// so a later scroll/layout frame can resume activity without a timer.
+		if gui.IsDrawable(p) && root.RequestPaint() != nil {
+			p.stopAnimation()
+		}
+	})
 	if root.RequestPaint() != nil {
 		p.stopAnimation()
 	}
@@ -240,15 +252,16 @@ func (p *ProgressBar) tick(now time.Time) {
 		return
 	}
 	p.elapsed = max(0, now.Sub(p.started))
-	if p.Root().RequestPaint() != nil {
-		p.stopAnimation()
-	}
 }
 
 func (p *ProgressBar) stopAnimation() {
 	if p.frame != nil {
 		p.frame.Disconnect()
 		p.frame = nil
+	}
+	if p.afterPaint != nil {
+		p.afterPaint.Disconnect()
+		p.afterPaint = nil
 	}
 	p.started = time.Time{}
 	p.elapsed = 0

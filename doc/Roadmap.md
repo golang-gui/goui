@@ -274,6 +274,10 @@ StyleSheet、不破坏独立 Widget 样式和原生装饰隔离。
 Root.ConnectFrame、Switch／ProgressBar／Tab 帧驱动和 TextLayout→Image 缓存已实现。
 原生 vsync／帧时钟尚未接入，不把 compositor 或 Present 的同步等同于动画时间戳同步。
 
+非显示区域优化见 [DesignDrawable](DesignDrawable.md)：统一 IsDrawable、空结构裁剪
+子树剔除、稳定离屏重绘请求过滤，ProgressBar／Demo 无限视觉动画按绘制后几何续帧。
+普通数值动画和业务计时不受裁剪影响；鼠标移动额外重绘与节拍调整保留为后续切片。
+
 可选 CPU 帧／资源 diagnostics 已落地，支持显式启停、只读快照及 dev 端点；
 增加 Capture 显式开启的窗口 HUD，复用帧后绘制，静止一秒后仅重绘一次清零 FPS，
 随后不持续刷新，保留最近一帧耗时；

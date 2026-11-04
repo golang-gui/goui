@@ -4,6 +4,10 @@
 
 ## 设计与分层
 
+2026-11-04：屏幕上的无限视觉动画在绘制后用 `gui.IsDrawable` 判断续帧，
+保留被动 Frame 连接以便滚回后恢复。普通数值动画不自动因裁剪停止；
+`RenderWidget` 不参与屏幕续帧。详见 [DesignDrawable](DesignDrawable.md)。
+
 Root 在布局、绘制前发送 ConnectFrame(time.Time)，连接本身不启动绘制。
 唯一绘制请求仍是 RequestPaint。动画在启动时请求首帧，收到帧通知后计算值、
 发送 Update，尚未结束则请求下一帧；结束或 Stop 时断开 signal.Handle。

@@ -1,5 +1,26 @@
 # Plan
 
+## 非显示区域绘制与续帧（2026-11-04）
+
+- 设计见 [DesignDrawable](DesignDrawable.md)。
+- [x] 通用 IsDrawable、空结构裁剪子树剔除及保守的 Widget 请求过滤，不依赖
+  ScrollView 类型；未显示／暂停的宿主不可绘制，布局与待状态样式仍正常处理。
+- [x] ProgressBar 与 Demo 无限视觉动画改为绘制后判断续帧，保留离屏渲染契约。
+  RenderWidget 使用独立目标，不发送屏幕帧信号，不改变屏幕裁剪或启动续帧。
+- [x] `DISPLAY=:88 go test -json -count=1 ./...`：3638项通过、15项既有跳过、零失败；
+  跳过为平台手工交互／剪贴板及 macOS 签名环境用例，不计作通过。
+  `go test -race ./gui ./widgets ./example/demo/...` 和受影响包／专项窗口程序 vet 通过。
+- [x] Ubuntu 22.04.5 amd64，独立 Xvnc :88／xfwm4 4.16.1（合成开启）：Software／
+  OpenGL 1x／2x Native 四组及 Software 1x、OpenGL 1x／2x Integrated 三组通过。
+  自动断言覆盖完全裁出后帧／资源稳定、部分可见、滚回恢复、最新内容、布局失效
+  及屏幕外 RenderWidget。Demo 实际鼠标／滚轮操作与截图确认忙等待、DrawingArea
+  各自可见时运行、裁出后 HUD 为 0、滚回恢复且开关保持。OpenGL 为 Mesa llvmpipe，
+  2x 为应用缩放覆盖，不作为硬件性能／高刷／混合 DPI 验收。
+- [x] Windows amd64／macOS arm64 的受影响包、Demo 及专项程序 `CGO_ENABLED=0`
+  交叉构建通过，未执行远端原生验收。本轮 Demo 与独立会话已关闭，验证日志和截图
+  在 `/tmp/goui-drawable-HxoNcd`。按通用绘制内核、视觉动画／Demo 接入拆分提交。
+- 鼠标移动额外重绘、固定节拍与原生帧时钟留待后续。
+
 ## HUD 空闲 FPS 清零（2026-11-04）
 
 - [x] 静止一秒后用单次 Timer 请求一次清零重绘，FPS 显示 0 并保留最近完成帧耗时；
