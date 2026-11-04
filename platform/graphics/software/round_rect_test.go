@@ -6,6 +6,7 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/graphics/utils"
 )
 
 func TestRoundRectBorderCoverage(t *testing.T) {
@@ -19,7 +20,7 @@ func TestRoundRectBorderCoverage(t *testing.T) {
 			rect := geometry.Rect(4, 4, 48, 40)
 			img, err := p.RenderImage(int(64*scale), int(54*scale), scale, func() {
 				p.Clear(graphics.Color{})
-				p.FillPath(graphics.RoundRectBorderPath(rect, radius, 6), graphics.RGBA(200, 80, 40, 128))
+				p.FillPath(utils.RoundRectBorderPath(rect, radius, 6), graphics.RGBA(200, 80, 40, 128))
 			})
 			if err != nil {
 				t.Fatal(err)

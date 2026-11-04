@@ -379,7 +379,7 @@ func (p *Painter) DrawBoxShadow(rect graphics.Rectangle, radius geometry.CornerR
 		if shape.Radius.Uniform() {
 			p.vg.RoundedRect(rect.X, rect.Y, rect.Width, rect.Height, shape.Radius.TopLeft)
 		} else {
-			p.doPath(graphics.RoundRectPath(rect, shape.Radius))
+			p.doPath(utils.RoundRectPath(rect, shape.Radius))
 		}
 		p.vg.SetFillColor(color)
 	} else {

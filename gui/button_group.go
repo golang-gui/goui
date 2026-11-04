@@ -4,6 +4,7 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/graphics/utils"
 	"github.com/golang-gui/goui/style"
 )
 
@@ -145,7 +146,7 @@ func paintButtonBox(p Painter, widget Widget, s style.Style, focus bool) {
 		omitEdge = -1
 	}
 	if omitEdge < 0 {
-		p.FillPath(graphics.RoundRectBorderPath(rect, buttonCornerRadius(radius, corners), width), stroke)
+		p.FillPath(utils.RoundRectBorderPath(rect, buttonCornerRadius(radius, corners), width), stroke)
 	} else {
 		outer := buttonContour(rect, radius, corners, omitEdge)
 		innerRect := rect.Inset(width)

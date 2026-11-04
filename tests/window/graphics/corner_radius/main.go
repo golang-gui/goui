@@ -29,6 +29,7 @@ import (
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/graphics/utils"
 )
 
 var cases = []geometry.CornerRadius{{TopLeft: 1, TopRight: 18, BottomRight: 5, BottomLeft: 0}, {TopLeft: 36, TopRight: 0, BottomRight: 36, BottomLeft: 0}, geometry.UniformCornerRadius(1), {TopLeft: 0, TopRight: 0, BottomRight: 18, BottomLeft: 18}}
@@ -74,11 +75,11 @@ func run() error {
 		for i := range 4 {
 			r := cases[(i+order)%len(cases)]
 			body := geometry.Rect(30+float32(i)*160, 45, 120, 100)
-			painter.FillPath(graphics.RoundRectBorderPath(body, r, 8), graphics.RGBA(80, 180, 230, 190))
+			painter.FillPath(utils.RoundRectBorderPath(body, r, 8), graphics.RGBA(80, 180, 230, 190))
 			body.Y = 210
 			painter.DrawBoxShadow(body, r, graphics.BoxShadow{Color: graphics.Color{A: .5}, Offset: geometry.Point{Y: 5}, BlurRadius: 12})
-			painter.FillPath(graphics.RoundRectPath(body, r), graphics.RGB(210, 215, 220))
-			painter.FillPath(graphics.RoundRectBorderPath(body, r, 2), graphics.RGB(100, 140, 200))
+			painter.FillPath(utils.RoundRectPath(body, r), graphics.RGB(210, 215, 220))
+			painter.FillPath(utils.RoundRectBorderPath(body, r, 2), graphics.RGB(100, 140, 200))
 		}
 		painter.End()
 		if *auto {
@@ -146,7 +147,7 @@ func checkPixels(p graphics.Painter) error {
 				r = r.Normalize(rect.Size)
 				img, err := p.RenderImage(int(64*scale), int(54*scale), scale, func() {
 					p.Clear(graphics.Color{})
-					p.FillPath(graphics.RoundRectBorderPath(rect, r, width), graphics.RGBA(200, 80, 40, 128))
+					p.FillPath(utils.RoundRectBorderPath(rect, r, width), graphics.RGBA(200, 80, 40, 128))
 				})
 				if err != nil {
 					return err

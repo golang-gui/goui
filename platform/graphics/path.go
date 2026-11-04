@@ -70,15 +70,6 @@ func (p Path) BezierTo(c1x, c1y, c2x, c2y, x, y float32) Path {
 	return p
 }
 
-func (p Path) QuadBezierTo(cx, cy, x, y float32) Path {
-	x0, y0 := p.CurrentPos()
-	return p.BezierTo(
-		x0+2.0/3.0*(cx-x0), y0+2.0/3.0*(cy-y0),
-		x+2.0/3.0*(cx-x), y+2.0/3.0*(cy-y),
-		x, y,
-	)
-}
-
 func (p Path) Close() Path {
 	p.data = append(p.data, float32(PathClose), 0, 0)
 	return p

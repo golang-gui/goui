@@ -11,6 +11,7 @@ import (
 	"github.com/golang-gui/goui/platform/graphics/internal/boxshadow"
 	"github.com/golang-gui/goui/platform/graphics/internal/offscreen"
 	"github.com/golang-gui/goui/platform/graphics/internal/pixelsnap"
+	"github.com/golang-gui/goui/platform/graphics/utils"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/directwrite"
 	"github.com/golang-gui/goui/platform/windows/sdk/com"
@@ -739,7 +740,7 @@ func (p *Painter) fillShadowContour(target *d2d1.DeviceContext, rect graphics.Re
 		target.FillRoundedRectangle(&p.roundRect, brush)
 		return true
 	}
-	contour, err := p.createPathGeometry(graphics.RoundRectPath(rect, radius), true, d2d1.D2D1_FILL_MODE_WINDING)
+	contour, err := p.createPathGeometry(utils.RoundRectPath(rect, radius), true, d2d1.D2D1_FILL_MODE_WINDING)
 	if err != nil {
 		return false
 	}

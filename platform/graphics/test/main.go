@@ -14,6 +14,7 @@ import (
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/graphics/utils"
 	"github.com/golang-gui/goui/platform/typography"
 )
 
@@ -126,7 +127,7 @@ func render(width, height, scale float32) {
 		painter.DrawImage(graphics.Rect(50, 260, 300, 200), img)
 		painter.DrawImage(graphics.Rect(50, 480, 100, 100), img)
 
-		painter.DrawPath(graphics.MoveTo(200, 50).QuadBezierTo(250, 100, 300, 50), 2, graphics.RGBA(100, 0, 0, 255))
+		painter.DrawPath(utils.QuadBezierTo(graphics.MoveTo(200, 50), 250, 100, 300, 50), 2, graphics.RGBA(100, 0, 0, 255))
 		painter.DrawPath(graphics.MoveTo(310, 50).LineTo(360, 50).ArcTo(20, 20, 0, 0, 0, 380, 70), 2, graphics.RGBA(0, 100, 0, 255))
 
 		painter.DrawEllipse(graphics.Point{X: 480, Y: 100}, 50, 50, 2, graphics.RGBA(50, 130, 60, 255))

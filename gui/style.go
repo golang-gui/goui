@@ -5,6 +5,7 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/graphics/utils"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/style"
 	"github.com/golang-gui/goui/theme/basic"
@@ -121,7 +122,7 @@ func paintRoundedBackground(p Painter, rect geometry.Rectangle, radius geometry.
 	} else if radius.Uniform() {
 		p.FillRoundRect(rect, radius.TopLeft, brush)
 	} else {
-		p.FillPath(graphics.RoundRectPath(rect, radius), brush)
+		p.FillPath(utils.RoundRectPath(rect, radius), brush)
 	}
 }
 
@@ -162,7 +163,7 @@ func PaintStyledBorder(p Painter, rect geometry.Rectangle, s style.Style) {
 	// Small radii cannot retain their outer contour through a centerline
 	// stroke. Fill the actual ring, including when inner corners collapse.
 	if !radius.Uniform() || radius.TopLeft > 0 && radius.TopLeft < width/2 {
-		p.FillPath(graphics.RoundRectBorderPath(rect, radius, width), stroke)
+		p.FillPath(utils.RoundRectBorderPath(rect, radius, width), stroke)
 		return
 	}
 	halfWidth := width / 2

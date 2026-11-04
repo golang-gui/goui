@@ -1,5 +1,31 @@
 # Plan
 
+## 绘图路径工具归属（2026-11-04）
+
+- [x] RoundRectPath／RoundRectBorderPath 及其曲线计算迁到 graphics/utils，
+  三后端／GUI／例程／测试通过公开 Path 操作构造，不直接访问指令切片。
+- [x] Path 增加 MoveTo／Hole／Grow 基本记录能力，保留48／96槽位预分配；
+  CurrentPos 跳过孔洞标记，Close 返回当前轮廓起点。二次到三次曲线换算迁为
+  utils.QuadBezierTo，原 Path 方法及两个调用点同步迁移。纯路径与曲线逻辑测试
+  放所属包，不改变三后端的绘制、资源或 native 调用顺序。
+- [x] `DISPLAY=:90 GOWORK=off go test -json -count=1 ./...`：3645项通过、
+  15项既有跳过、零失败，含保留的未跟踪测试；跳过为平台手工交互／剪贴板及
+  macOS 签名环境场景。graphics／utils／Software／gui 的 race、受影响包及两个
+  圆角窗口程序的 vet 通过，Windows amd64／macOS arm64 的相关 graphics／GUI／
+  窗口程序 CGO_ENABLED=0 目标构建通过，未执行本轮远端原生验收。
+- [x] Ubuntu 22.04.5 amd64，独立 Xvnc :90／xfwm4 4.16.1（合成开启），
+  Software／OpenGL（Mesa 23.2.1 llvmpipe）：圆角像素与 GUI 1x／2x 共八组、
+  ClearPath 两后端1x两组自动验收通过。实际鼠标切换四角、打开 Popover 的外观
+  检查通过，按钮共享边与阴影无变化，正常关闭无异常；不作为硬件 GPU 性能验收。
+- [x] 同 Go 1.25.8／CPU／GOMAXPROCS=1、200ms×3 的 PaintStyledBox 对照：
+  统一值迁移前后均为32B／2 alloc，四角均为608B／4 alloc，未增加切片扩容；
+  不由 helper 耗时推导整帧性能。前置 Path 提交单独导出源码验证相关测试通过，
+  按基础记录能力、工具算法迁移及适配拆分提交。
+- 日志、截图与前置提交验证源码在 `/tmp/goui-graphics-utils-g7i38tws`；
+  本轮窗口已正常关闭，独立 X11 会话已停止。
+- 不修改 nanovgo，不发布新 tag；正式依赖仍为 v0.0.11。一个未跟踪旧 Overlay
+  例程同步必要调用以保留工作区可编译，不纳入提交。
+
 ## 四角圆角与盒形阴影（2026-11-04）
 
 - 设计见 [DesignCornerRadius](DesignCornerRadius.md)。
