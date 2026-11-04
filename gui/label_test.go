@@ -126,6 +126,33 @@ func TestLabelMeasureUsesUnboundedExtentForZeroAvailableSize(t *testing.T) {
 	}
 }
 
+func TestLabelMeasureConvertsUnboundedLayoutAxes(t *testing.T) {
+	// LinearBox/ScrollView 的无界轴是布局标记，不能作为 1e9 的原生排版尺寸。
+	for _, tc := range []struct {
+		name            string
+		available, want geometry.Size
+	}{
+		{"水平", geometry.Size{Width: layout.Inf, Height: 80}, geometry.Size{Width: labelMeasureExtent, Height: 80}},
+		{"垂直", geometry.Size{Width: 400, Height: layout.Inf}, geometry.Size{Width: 400, Height: labelMeasureExtent}},
+		{"双向", geometry.Size{Width: layout.Inf, Height: layout.Inf}, geometry.Size{Width: labelMeasureExtent, Height: labelMeasureExtent}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			typo := &testTypography{measureSize: geometry.Size{Width: 42, Height: 18}}
+			setTestApplication(t, typo)
+			label := NewLabel("unbounded label")
+			t.Cleanup(label.releaseLayout)
+			measured := label.Measure(layout.Loose(tc.available))
+			if len(typo.calls) != 1 || measured.Size.Height != 18 {
+				t.Fatalf("Label 未正常测量：calls=%d measured=%+v", len(typo.calls), measured)
+			}
+			call := typo.calls[0]
+			if call.width != tc.want.Width || call.height != tc.want.Height {
+				t.Fatalf("原生尺寸=%gx%g，预期=%+v", call.width, call.height, tc.want)
+			}
+		})
+	}
+}
+
 func TestLabelPaintDrawsTextLayout(t *testing.T) {
 	typo := &testTypography{
 		measureSize: geometry.Size{Width: 42, Height: 18},
