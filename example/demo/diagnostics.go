@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/example/demo/resource"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/gui/diagnostics"
@@ -27,13 +28,37 @@ func (d *windowsDemo) diagnosticsView() ui.View {
 				ui.Button(resource.CaptureStop()).ID("capture-stop").Enabled(active).OnClick(d.stopCapture),
 				wui.CheckButton(resource.CaptureWidgets()).ID("capture-widgets").Checked(d.captureWidgets.Get()).Enabled(!active).
 					OnChange(func(v wui.CheckState) { d.captureWidgets.Set(v == wui.CheckChecked) }),
+				wui.CheckButton(resource.CaptureHUD()).ID("capture-hud").Checked(d.hudVisible.Get()).Enabled(active).
+					OnChange(func(v wui.CheckState) { d.showHUD(v == wui.CheckChecked) }),
 			).Spacing(10).LineSpacing(8),
+			ui.Label(resource.CaptureHUDHint()).WrapMode(gui.WrapWordChar).Style(modern.MutedText),
 			ui.Build(func() ui.View {
 				_ = d.captureRevision.Get()
 				return ui.Label(captureSummary(d.captureResult)).ID("capture-summary").WrapMode(gui.WrapWordChar).Style(modern.MutedText)
 			}),
 		).Spacing(8)
 	})
+}
+
+func (d *windowsDemo) showHUD(visible bool) {
+	if !visible {
+		d.hud.Destroy()
+		d.hud = nil
+		d.hudVisible.Set(false)
+		return
+	}
+	if d.capture == nil {
+		return
+	}
+	hud, err := d.capture.ShowHUD(d.host.app.FindWindow("main"))
+	if err != nil {
+		d.host.result(resource.CaptureHUD(), err)
+		return
+	}
+	// Leave the title controls visible; the HUD never intercepts sidebar clicks.
+	hud.SetPosition(geometry.Point{X: 12, Y: 52})
+	d.hud = hud
+	d.hudVisible.Set(true)
 }
 
 func (d *windowsDemo) startCapture() {
@@ -70,6 +95,8 @@ func (d *windowsDemo) readCapture() {
 func (d *windowsDemo) stopCapture() {
 	if d.capture != nil {
 		d.capture.Stop()
+		d.hud = nil
+		d.hudVisible.Set(false)
 		d.capturing.Set(false)
 		d.readCapture()
 		d.host.report(resource.CaptureStopped())
@@ -81,6 +108,7 @@ func (d *windowsDemo) closeCapture() {
 		d.capture.Stop()
 		d.capture = nil
 	}
+	d.hud = nil
 }
 
 func captureSummary(result diagnostics.Snapshot) string {

@@ -1,5 +1,27 @@
 # Plan
 
+## 显式 diagnostics HUD（2026-11-04）
+
+- 设计见 [DesignDiagnostics](DesignDiagnostics.md#显式性能浮层-hud2026-11-04)。
+- [x] Capture.ShowHUD／HUD.SetPosition／Destroy，复用 AfterPaint 与单窗口纯值读取，
+  250 ms 更新文字，窗口销毁／采集停止／应用退出释放，不启动刷新循环。
+- [x] Demo 接入已有诊断采集，八语言开关与统计说明。
+- [x] `DISPLAY=:88 go test -json -count=1 ./...`：3631项通过、15项跳过、零失败。
+  跳过为现有平台交互／剪贴板用例与 macOS 签名环境测试，不计作桌面验收。
+  `go test -race ./gui/diagnostics ./internal/diagnostic ./gui` 和受影响包 vet 通过；
+  单窗口简要读取的包内检查为零堆分配。
+- [x] Ubuntu 22.04.5 amd64，独立 Xvnc :88／xfwm4 4.16.1（合成开启），Software
+  与 OpenGL 1x／2x HUD 四组自动验收通过。OpenGL 为 Mesa 23.2.1 llvmpipe，
+  不是硬件性能／高刷验收。原 diagnostics 主窗口／Popover 用例两后端 1x 通过。
+  实际桌面输入与截图确认点击穿透、位置更新、动画数字显示；Demo 的 Integrated
+  主窗口验证启用／跨页保留／停止移除，所有进程与独立会话在验收后清理。
+- [x] `CGO_ENABLED=0` Windows amd64／macOS arm64 的 HUD、Demo 与专项程序构建通过。
+  未执行远端或 Direct2D 原生验收。额外 Linux arm64 构建失败于未改动的
+  `platform/linux/libs/libc/syscall_linux.go`：`syscall.SYS_PIPE`／`SYS_POLL` 未定义；
+  不扩大本次范围，保留到 [Linux arm64 计划](PlanLinuxArm64.md)。
+- 验证日志与本机截图：`/tmp/goui-hud-cOzWKO`；按核心功能、Demo 接入分两次提交。
+  原生帧调度和高刷新率支持留待后续，不包含本次实现。
+
 ## v0.6.0 正式发布（2026-11-03）
 
 - [x] 以 v0.5.0 为基线，冻结 GitHub main 提交

@@ -275,6 +275,8 @@ Root.ConnectFrame、Switch／ProgressBar／Tab 帧驱动和 TextLayout→Image �
 原生 vsync／帧时钟尚未接入，不把 compositor 或 Present 的同步等同于动画时间戳同步。
 
 可选 CPU 帧／资源 diagnostics 已落地，支持显式启停、只读快照及 dev 端点；
+增加 Capture 显式开启的窗口 HUD，复用帧后绘制，静止时保留最近读数而不持续刷新；
+当前帧率仍是 CPU 完成间隔，原生帧调度及高刷接入列为后续切片。
 Label 已修正等价样式及测量查询导致的资源失效，TextView／TableView 的测量与
 已分配几何已隔离。诊断不是 GPU 计时、显示刷新率或实时内存统计，见
 [DesignDiagnostics](DesignDiagnostics.md)。
