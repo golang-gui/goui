@@ -22,6 +22,8 @@ type windowsDemo struct {
 	inspectionRevision uint64
 	latest             gui.Window
 	capture            *diagnostics.Capture
+	hud                *diagnostics.HUD
+	hudVisible         ui.State[bool]
 	capturing          ui.State[bool]
 	captureWidgets     ui.State[bool]
 	captureRevision    ui.State[int]
