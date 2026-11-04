@@ -1,5 +1,17 @@
 # Plan
 
+## Android Typography 正式包装（2026-11-04）
+
+- 设计：[DesignAndroidTypography](DesignAndroidTypography.md)。
+- [x] JNI/启动线程支撑与 NDK Bitmap 绑定，不扩大 runtime/cgo 基座。
+- [x] 独立 androidtext Context/TextLayout、批量度量与区域栅格化。
+- [x] TTF/TTC、范围格式、Tab、占位、对齐与 1/64 DIP 内部单位。
+- [x] API 30 ARM64/Software 1x、CheckJNI：170 项包装检查及原生像素对照、
+  原有 3814 项交互检查、Activity 重建/后台恢复通过。缓存命中返回独立切片。
+- [x] 隔离副本全仓 3509 通过/10 既有跳过，相关 Linux race/vet 通过。
+  Android vet 的 4 项原生指针诊断保留，详见 DesignAndroidTypography，不计通过。
+- [ ] WrapChar、完整共同 Go 测试运行器、更多系统版本/真机及平台工厂接入。
+
 ## Cluster 交互原则与 Android Layout 验证（2026-11-04）
 
 - [x] 固定 Cluster 为布局中的最小文本交互单元，非必须等同于 shaping cluster；

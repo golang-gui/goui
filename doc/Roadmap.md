@@ -22,7 +22,10 @@ Android 旋转/后台/同进程 Activity 重建、iOS Simulator 旋转/后台及
 Cluster 已明确为最小文本交互单元，不强制等同于 shaping cluster。Android 11/
 Software 的公开 ICU + Layout 已通过 18 组样本及现有 Geometry 的 3814 项检查；
 原生命中策略差异与早期 shaping 对照均保留，完整文字后端仍待实现，见上述
-计划第 9.5 节。下一步整理包结构并接入 CoreText/Android 文字、
+计划第 9.5 节。Android 文字基础包装随后完成，170 项 API 30 ARM64/Software
+检查及 Activity 重建/恢复通过，见 [DesignAndroidTypography](DesignAndroidTypography.md)。
+WrapChar、完整共同原生 Go 测试及工厂仍未接入；Android vet 的原生指针诊断
+保留。下一步补齐这些缺口、整理包结构并接入 CoreText/Android 文字、
 最小 Platform 与 GUI/UI。可分发依赖和组件、正式 APK/IPA、真机/16 KiB
 及公开工具附件仍待验收；此项不改变现有桌面构建命令，也不是已发布的移动端承诺。
 
