@@ -258,7 +258,16 @@ func (d *graphicsDemo) setDrawingFrames(on bool) {
 		return
 	}
 	d.drawingStarted = time.Now()
-	d.frameConnection = w.ConnectFrame(func(time.Time) { _ = w.RequestPaint() })
+	area := d.host.app.FindWidget("main", "cached-drawing")
+	d.frameConnection = w.ConnectAfterPaint(func(gui.Painter, geometry.Rectangle) {
+		// Reacquire only if reconciliation replaced the borrowed widget.
+		if area == nil || area.Root() != w {
+			area = d.host.app.FindWidget("main", "cached-drawing")
+		}
+		if gui.IsDrawable(area) {
+			_ = w.RequestPaint()
+		}
+	})
 	_ = w.RequestPaint()
 }
 func (d *graphicsDemo) stop() {

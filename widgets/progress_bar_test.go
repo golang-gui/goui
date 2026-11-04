@@ -148,6 +148,7 @@ type progressTestRoot struct {
 	paints, layouts int
 	visible         bool
 	frames          signal.Signal1[time.Time]
+	afterPaint      signal.Signal2[gui.Painter, geometry.Rectangle]
 	connects        int
 	err             error
 }
@@ -170,6 +171,7 @@ func (h *progressTestHost) Root() gui.Root { return h.root }
 func newProgressTestHost() *progressTestHost {
 	h := new(progressTestHost)
 	h.root = &progressTestRoot{widget: h, visible: true}
+	h.Arrange(geometry.Rect(0, 0, 500, 500))
 	return h
 }
 
@@ -182,6 +184,7 @@ func TestProgressBarAnimationLifecycle(t *testing.T) {
 	box.AddChild(p)
 	host.AddChild(host, box)
 	t.Cleanup(func() { host.RemoveChild(box) })
+	box.Arrange(geometry.Rect(0, 0, 100, 100))
 	p.Arrange(geometry.Rect(0, 0, 100, 20))
 	if !p.mounted || len(app.timers) != 0 {
 		t.Fatal("determinate widget allocated a timer or was not mounted")
@@ -200,13 +203,30 @@ func TestProgressBarAnimationLifecycle(t *testing.T) {
 	}
 	host.root.paints, host.root.layouts = 0, 0
 	host.root.frames.Emit(started.Add(time.Second))
-	if host.root.paints != 1 || host.root.layouts != 0 || p.Value() != .7 || p.started != started {
+	if host.root.paints != 0 || host.root.layouts != 0 || p.Value() != .7 || p.started != started || p.elapsed != time.Second {
 		t.Fatal("tick changed layout, progress or clock")
+	}
+	host.root.afterPaint.Emit(nil, host.Rect())
+	if host.root.paints != 1 {
+		t.Fatal("可绘制的忙等待没有在绘制后续帧")
+	}
+	// 裁出只暂停续帧，不断开连接；重新分配进显示区后自动恢复。
+	p.Arrange(geometry.Rect(0, 200, 100, 20))
+	host.root.paints = 0
+	host.root.frames.Emit(started.Add(1500 * time.Millisecond))
+	host.root.afterPaint.Emit(nil, host.Rect())
+	if host.root.paints != 0 || p.frame != frame || p.afterPaint == nil {
+		t.Fatal("裁出仍续帧或断开了恢复所需的被动连接")
+	}
+	p.Arrange(geometry.Rect(0, 0, 100, 20))
+	host.root.afterPaint.Emit(nil, host.Rect())
+	if host.root.paints != 1 || p.started != started || !p.Indeterminate() {
+		t.Fatal("重新显示没有恢复原有忙等待")
 	}
 	box.SetVisible(false)
 	host.root.paints = 0
 	host.root.frames.Emit(started.Add(2 * time.Second))
-	if p.frame != nil || p.canAnimate() || host.root.paints != 0 {
+	if p.frame != nil || p.afterPaint != nil || p.canAnimate() || host.root.paints != 0 {
 		t.Fatal("hidden ancestor retained activity or repainted")
 	}
 	box.SetVisible(true)
@@ -638,6 +658,6 @@ func TestProgressBarLinearSweepPixels(t *testing.T) {
 
 func (p *progressPixelPainter) ClearPath(path graphics.Path) {}
 
-func (r *progressTestRoot) ConnectAfterPaint(func(gui.Painter, geometry.Rectangle)) signal.Handle {
-	return signal.Handles(nil)
+func (r *progressTestRoot) ConnectAfterPaint(fn func(gui.Painter, geometry.Rectangle)) signal.Handle {
+	return r.afterPaint.Connect(fn)
 }

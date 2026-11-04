@@ -59,12 +59,17 @@ Overlay 组合，不引入文本格式、任务绑定、取消按钮或父子样
 
 ## 4. 时间与生命周期
 
-按需连接所属 Root 的 `ConnectFrame(func(time.Time))`，启动与每次活动帧只通过
-`RequestPaint` 驱动下一帧，不为控件创建 Timer 或 goroutine。根据单调经过时间
+按需连接所属 Root 的 `ConnectFrame(func(time.Time))` 采样时间；绘制后的
+`ConnectAfterPaint` 查询 `gui.IsDrawable`，可绘制才 RequestPaint 续帧，不为控件
+创建 Timer 或 goroutine。根据单调经过时间
 计算姿态，落后的帧跳过而不补播；不请求布局、UI 更新或语义更新。Root 调度
 不是原生 vsync 承诺，详见 [动画设计](DesignAnimation.md)。
 
 切回确定进度、有效隐藏、零尺寸／零厚度、卸载／销毁时断开 frame handle；
+frame 与 after-paint handle 一起释放。仅结构裁出时保留被动连接而不续帧，
+滚动／重新布局产生的正常帧会在布局完成后恢复；保留原始起始时间及业务状态，
+不补画离屏期间帧。RenderWidget 不发出上述 Root 信号，因此不会启动屏幕续帧。
+细节见 [DesignDrawable](DesignDrawable.md)。
 重新得到可绘制布局时按需连接。回调检查 Root 归属，跨窗口不沿用旧连接；
 重复声明不增加连接。请求绘制失败时停止，保留静态忙等待图形，不主动重试。
 首版不增加原生窗口遮挡检测。
