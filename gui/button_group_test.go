@@ -3,6 +3,7 @@ package gui
 import (
 	"fmt"
 	"image/color"
+	"math"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -11,6 +12,81 @@ import (
 	"github.com/golang-gui/goui/platform/graphics/software"
 	"github.com/golang-gui/goui/style"
 )
+
+// 无背景、预乘RGBA：接缝与外框的交点应满覆盖，不能因斜切端点而变浅。
+// 各段主轴长度为40／32 DIP，在所测缩放上接缝均对齐物理像素；
+// 分别验证完整直边像素，将路径闭合缺口与独立AA层的分数像素拼接区分。
+func TestButtonGroupSeamEnds(t *testing.T) {
+	for _, vertical := range []bool{false, true} {
+		for _, scale := range []float32{1, 1.25, 1.5, 2} {
+			for _, width := range []float32{1, 2, 4} {
+				for _, radius := range []geometry.CornerRadius{geometry.UniformCornerRadius(8), {TopLeft: 24, TopRight: 2, BottomRight: 12, BottomLeft: 4}} {
+					for _, alpha := range []uint8{128, 255} {
+						t.Run(fmt.Sprintf("vertical=%v/%gx/w%g/r%v/a%d", vertical, scale, width, radius, alpha), func(t *testing.T) {
+							setTestApplication(t, nil)
+							backend, err := software.NewPainter(&widgetRenderSurface{})
+							if err != nil {
+								t.Fatal(err)
+							}
+							defer backend.Destroy()
+							ink := color.RGBA{R: 60, G: 80, B: 110, A: alpha}
+							scope := NewStyleScope()
+							scope.SetStyleSheet(style.Sheet(style.Name("seam").BorderColor(ink).BorderWidth(width).CornerRadius(radius)))
+							group := NewButtonGroup()
+							scope.SetChild(group)
+							win := &window{rootBase: rootBase{painter: backend}}
+							win.SetWidget(scope)
+							defer win.Destroy()
+							for range 3 {
+								b := NewButton()
+								b.SetStyleName("seam")
+								b.SetMinSize(geometry.Size{Width: 40, Height: 32})
+								group.AddChild(b)
+							}
+							size, along, across := geometry.Size{Width: 120, Height: 32}, float32(40), float32(32)
+							if vertical {
+								group.SetDirection(layout.DirectionVertical)
+								size, along, across = geometry.Size{Width: 40, Height: 96}, 32, 40
+							}
+							group.Arrange(geometry.Rectangle{Size: size})
+							img, err := RenderWidget(group, scale)
+							if err != nil {
+								t.Fatal(err)
+							}
+							checked := 0
+							for _, edge := range []float32{0, across - width} {
+								for cross := int(math.Ceil(float64(edge * scale))); cross < int(math.Floor(float64((edge+width)*scale))); cross++ {
+									for _, seam := range []float32{along, along * 2} {
+										for axis := int((seam - width - 1) * scale); axis < int((seam+width+1)*scale); axis++ {
+											x, y := axis, cross
+											if vertical {
+												x, y = cross, axis
+											}
+											got := color.RGBAModel.Convert(img.At(x, y)).(color.RGBA)
+											for c, value := range []uint8{got.R, got.G, got.B, got.A} {
+												want := []uint8{ink.R, ink.G, ink.B, ink.A}[c]
+												if delta := int(value) - int(want); delta < -2 || delta > 2 {
+													t.Fatalf("接缝端点(%d,%d)不连续：%v，预期满覆盖%v", x, y, got, ink)
+												}
+											}
+											checked++
+										}
+									}
+								}
+							}
+							if checked == 0 {
+								t.Fatal("未检查到满覆盖交点")
+							}
+							if radius, _ := WidgetStyle(group.Children()[0], "seam", "").CornerRadius(); radius == (geometry.CornerRadius{}) {
+								t.Fatal("回归未使用圆角样式")
+							}
+						})
+					}
+				}
+			}
+		}
+	}
+}
 
 func TestButtonGroupLayoutAndMembership(t *testing.T) {
 	group := NewButtonGroup()

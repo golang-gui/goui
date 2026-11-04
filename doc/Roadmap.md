@@ -37,6 +37,11 @@ Windows RDP OpenGL 缺口和实际测试范围见 [Plan](Plan.md)。详细契约
 [DesignCornerRadius](DesignCornerRadius.md)。PathShadow、四边宽色及圆角子树裁剪
 不属于当前能力，按具体需求另行设计。
 
+ButtonGroup 的 C 形边框端点改为垂直封口，像素对齐的共享接缝已补回归。
+待评估：独立 Path 在分数物理坐标相接时，AA 覆盖按 Over 合成可能产生细线；
+1.25x 下两个普通相邻矩形 Path 也能复现。像素对齐或联合覆盖需要单独设计，
+不能以按钮几何偏移、扩大绘制范围或降低断言掩盖；本轮不扩展 Painter。
+
 
 ## Demo 当前能力与局部更新（2026-10-31）
 

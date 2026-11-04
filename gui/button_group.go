@@ -131,13 +131,7 @@ func paintButtonBox(p Painter, widget Widget, s style.Style, focus bool) {
 		if fill.A > 0 {
 			background, backgroundRadius := rect, radius
 			if inset := opaqueBorderInset(s); inset > 0 {
-				left, top, right, bottom := inset, inset, inset, inset
-				if omitEdge == 1 {
-					right = 0
-				} else if omitEdge == 2 {
-					bottom = 0
-				}
-				background = rect.Insets(left, top, right, bottom)
+				background = buttonInsetRect(rect, inset, omitEdge)
 				backgroundRadius = radius.Inset(inset)
 			}
 			if !emptyRect(background) {
@@ -163,7 +157,7 @@ func paintButtonBox(p Painter, widget Widget, s style.Style, focus bool) {
 		p.FillPath(utils.RoundRectBorderPath(rect, buttonCornerRadius(radius, corners), width), stroke)
 	} else {
 		outer := buttonContour(rect, radius, corners, omitEdge)
-		innerRect := rect.Inset(width)
+		innerRect := buttonInsetRect(rect, width, omitEdge)
 		inner := buttonContourReverse(innerRect, radius.Inset(width).Normalize(innerRect.Size), corners, omitEdge)
 		inner.Range(func(op graphics.PathOperation, args []float32) bool {
 			switch op {
@@ -176,6 +170,18 @@ func paintButtonBox(p Painter, widget Widget, s style.Style, focus bool) {
 		})
 		p.FillPath(outer.Close(), stroke)
 	}
+}
+
+// An omitted edge must retain its coordinate in both contours, so the border
+// closes perpendicular to that edge instead of ending in a tapered notch.
+func buttonInsetRect(rect geometry.Rectangle, inset float32, omitEdge int) geometry.Rectangle {
+	left, top, right, bottom := inset, inset, inset, inset
+	if omitEdge == 1 {
+		right = 0
+	} else if omitEdge == 2 {
+		bottom = 0
+	}
+	return rect.Insets(left, top, right, bottom)
 }
 
 // A closed contour walks clockwise. Starting after the omitted edge produces
