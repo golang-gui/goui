@@ -2,6 +2,7 @@ package gui
 
 import (
 	"errors"
+	"image"
 	"reflect"
 	"testing"
 	"time"
@@ -10,7 +11,83 @@ import (
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/style"
 )
+
+type changingSurface struct {
+	state platform.SurfaceState
+}
+
+func (s *changingSurface) SurfaceState() platform.SurfaceState { return s.state }
+func (*changingSurface) Transparent() bool                     { return false }
+func (*changingSurface) NativeHandle() uintptr                 { return 1 }
+func (*changingSurface) Draw(image.Image) error                { return nil }
+func (*changingSurface) RequestPaint() error                   { return nil }
+
+func TestRootReplaceableSurface(t *testing.T) {
+	// 逻辑窗口先于 drawable；就绪、隐藏、丢失、恢复不卸载控件或丢弃脏状态。
+	surface := new(changingSurface)
+	native := new(showTestWindow)
+	w := &window{rootBase: rootBase{surface: surface}, platformWindow: native}
+	child := newTestWidget()
+	w.SetWidget(child)
+	frames := 0
+	w.ConnectFrame(func(time.Time) { frames++ })
+	if native.paints != 0 || w.beginFrame() || !w.paintDirty || w.framePending {
+		t.Fatal("原生目标出现前启动了帧")
+	}
+	surface.state = platform.SurfaceState{Ready: true, Generation: 1}
+	_ = w.DispatchEvent(events.SurfaceEvent{State: surface.state})
+	if native.paints != 1 || !w.layoutDirty {
+		t.Fatal("首次表面未安排布局/绘制")
+	}
+	if !w.beginFrame() {
+		t.Fatal("表面就绪后未恢复帧")
+	}
+	w.endFrame()
+	_ = w.DispatchEvent(events.VisibilityEvent{Visible: false})
+	_ = w.RequestPaint()
+	if native.paints != 1 || w.beginFrame() || frames != 1 {
+		t.Fatal("后台窗口仍然推进帧")
+	}
+	surface.state.Ready = false
+	_ = w.DispatchEvent(events.SurfaceEvent{State: surface.state})
+	_ = w.DispatchEvent(events.VisibilityEvent{Visible: true})
+	if native.paints != 1 || w.framePending || w.beginFrame() {
+		t.Fatal("尚未恢复 drawable 就提交绘制")
+	}
+	surface.state = platform.SurfaceState{Ready: true, Generation: 2}
+	_ = w.DispatchEvent(events.SurfaceEvent{State: surface.state})
+	if native.paints != 2 || !w.beginFrame() || frames != 2 {
+		t.Fatal("替换表面未恢复帧")
+	}
+	w.endFrame()
+	if w.Widget() != child || child.Root() != w || w.destroyed {
+		t.Fatal("表面替换改变了逻辑控件树")
+	}
+}
+
+func TestRootSurfaceRevokedBeforeNotification(t *testing.T) {
+	// 模拟原生线程先撤销许可、SurfaceEvent 尚未被 GOUI 线程处理。
+	surface := &changingSurface{state: platform.SurfaceState{Ready: true, Generation: 1}}
+	backend := new(testGraphicsPainter)
+	b := &rootBase{surface: surface, painter: backend}
+	later := false
+	b.ConnectFrame(func(time.Time) { surface.state.Ready = false })
+	b.ConnectFrame(func(time.Time) { later = true })
+	if b.beginFrame() || later || b.framePainting {
+		t.Fatal("撤销后继续帧回调或遗留绘制状态")
+	}
+	b.drawFrame(nil, style.Style{})
+	if backend.begins != 0 || backend.ends != 0 {
+		t.Fatal("撤销后仍然调用绘制后端")
+	}
+	requester := new(frameRequesterTest)
+	_ = b.requestPaint(requester)
+	if requester.requests != 0 || !b.paintDirty {
+		t.Fatal("撤销后仍请求原生绘制或丢失脏状态")
+	}
+}
 
 type frameRequesterTest struct {
 	requests int

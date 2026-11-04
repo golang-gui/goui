@@ -13,6 +13,11 @@ import (
 )
 
 func init() {
+	if runtime.GOOS == "android" || runtime.GOOS == "ios" {
+		// The mobile host enters the app on its own locked GOUI thread after
+		// runtime initialization. That thread is distinct from the system UI thread.
+		return
+	}
 	// Keep main on the startup OS thread before application initialization.
 	// Locking only in Run is too late for AppKit and previously created resources.
 	// Retain the lock after Run returns so native cleanup stays on this thread.
@@ -172,8 +177,9 @@ var ErrUnavailable = common.ErrUnavailable
 // Initialize once per process. An ID does not install icon resources or turn a
 // bare macOS executable into an application bundle.
 // Call from main and run the event loop on that same goroutine. Importing this
-// package locks main to the startup OS thread; it does not dispatch calls from
-// other goroutines to that thread. Use EventLoop.Post for background work.
+// package locks desktop main to the startup OS thread. Mobile hosts invoke main
+// on their locked GOUI thread. Neither path dispatches calls from other
+// goroutines to that thread. Use EventLoop.Post for background work.
 // On failure, the returned Platform interface is nil.
 func NewPlatform(name, appId string) (Platform, error) {
 	if err := checkAppId(appId); err != nil {
@@ -186,6 +192,8 @@ func DefaultName() string {
 	switch runtime.GOOS {
 	case "windows":
 		return "win32"
+	case "android":
+		return "android"
 	case "linux":
 		return "x11"
 	case "darwin":

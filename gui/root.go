@@ -83,6 +83,19 @@ type rootBase struct {
 
 func (b *rootBase) rootState() *rootBase { return b }
 
+// Query the live lease, rather than relying on a queued SurfaceEvent. Native
+// destruction can revoke it while the GOUI thread is still processing a frame.
+func (b *rootBase) surfaceReady() bool {
+	return b.surface == nil || b.surface.SurfaceState().Ready
+}
+
+func (b *rootBase) surfaceChanged() {
+	b.surfaceEpoch++
+	b.framePending = false
+	b.paintDirty = true
+	b.stopFrameTimer()
+}
+
 func (b *rootBase) cancelInput(reason GestureCancelReason) {
 	b.clearDragMotion()
 	b.dispatcher.cancelInput(reason)
@@ -186,7 +199,7 @@ func (b *rootBase) drawDecoratedFrame(content Widget, background, border style.S
 
 // Hosts supply geometry; the frame renderer knows neither menu nor chrome policy.
 func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Style, body, safe geometry.Rectangle, shadow graphics.BoxShadow, finish func(Painter), decorations ...Widget) {
-	if b.painter == nil {
+	if b.painter == nil || !b.surfaceReady() {
 		return
 	}
 	size := geometry.Size{Width: b.width, Height: b.height}
@@ -220,7 +233,7 @@ func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Sty
 		defer b.endPainter(b.painter)
 	}
 	b.traceFramePhase("goui.paint")
-	if b.frameDestroyed || b.frameSuspended || b.surfaceEpoch != b.frameEpoch {
+	if b.frameDestroyed || b.frameSuspended || b.surfaceEpoch != b.frameEpoch || !b.surfaceReady() {
 		return
 	}
 	// Initialize storage independently of the visible body background. Opaque
@@ -275,7 +288,7 @@ func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Sty
 	if finish != nil {
 		finish(guiPainter)
 	}
-	drawn = !b.frameDestroyed && !b.frameSuspended && b.surfaceEpoch == b.frameEpoch
+	drawn = !b.frameDestroyed && !b.frameSuspended && b.surfaceEpoch == b.frameEpoch && b.surfaceReady()
 }
 
 func (b *rootBase) endPainter(backend graphics.Painter) {
@@ -334,7 +347,7 @@ func (b *rootBase) ConnectFrame(fn func(time.Time)) signal.Handle {
 		return signal.Handles(nil)
 	}
 	return b.frames.Connect(func(now time.Time) {
-		if !b.frameDestroyed && !b.frameSuspended && b.surfaceEpoch == b.frameEpoch {
+		if !b.frameDestroyed && !b.frameSuspended && b.surfaceEpoch == b.frameEpoch && b.surfaceReady() {
 			fn(now)
 		}
 	})
@@ -346,7 +359,7 @@ func (b *rootBase) requestPaint(native paintRequester) error {
 	}
 	b.paintDirty = true
 	b.frameRequester = native
-	if native == nil || b.frameDestroyed || b.frameSuspended || b.framePainting || b.framePending {
+	if native == nil || b.frameDestroyed || b.frameSuspended || b.framePainting || b.framePending || !b.surfaceReady() {
 		return nil
 	}
 	if b.frameTimer != nil && b.frameTimer.Active() {
@@ -375,7 +388,7 @@ func (b *rootBase) frameNow() time.Time {
 }
 
 func (b *rootBase) submitFrame() error {
-	if !b.paintDirty || b.frameDestroyed || b.frameSuspended || b.frameRequester == nil {
+	if !b.paintDirty || b.frameDestroyed || b.frameSuspended || b.frameRequester == nil || !b.surfaceReady() {
 		return nil
 	}
 	b.framePending = true
@@ -388,6 +401,11 @@ func (b *rootBase) submitFrame() error {
 
 func (b *rootBase) beginFrame() bool {
 	if b.frameDestroyed || b.frameSuspended {
+		return false
+	}
+	if !b.surfaceReady() {
+		b.framePending, b.paintDirty = false, true
+		b.stopFrameTimer()
 		return false
 	}
 	if b.framePainting {
@@ -422,7 +440,7 @@ func (b *rootBase) beginFrame() bool {
 		b.updateStateStyles()
 	}
 	b.traceFramePhase("")
-	if b.frameDestroyed || b.frameSuspended || b.surfaceEpoch != b.frameEpoch {
+	if b.frameDestroyed || b.frameSuspended || b.surfaceEpoch != b.frameEpoch || !b.surfaceReady() {
 		b.endFrame()
 		return false
 	}
