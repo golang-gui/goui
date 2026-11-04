@@ -18,7 +18,7 @@
 | GTK4 | GOUI | 取舍 |
 |---|---|---|
 | `GMenu`（GMenuModel 实现） | `Menu`（内嵌 `SliceListModel[*MenuItem]`） | `MenuModel` 嵌入 `ListData[*MenuItem]`，不另建列表通知协议，见 §2 |
-| `GActionMap`/`SimpleAction` | `MenuItem.Action() func()` | 动作直接是 Go 闭包，不引入字符串动作注册表 |
+| `GActionMap`/`SimpleAction` | `MenuItem.Action() func()` | GUI 动作使用 Go 闭包或可选 Command，不引入 GUI 字符串动作注册表 |
 | `GtkPopoverMenu`（渲染器控件） | `PopoverMenu`（命令式控件） | 渲染器内部化：内部 `menuContent` 未导出 |
 | `GtkMenuButton` | `MenuButton` | 对齐 `Button` 惯例（单 child + 点击弹出） |
 | `GtkPopover::closed` | `gui.Popover.ConnectClosed` | 信号放宿主（Popover），控件转发 |
@@ -128,3 +128,19 @@ Popover 提前关闭；[子菜单设计 §5](DesignMenuSubmenu.md#5-按键路由
 集中替换 currentAction 并更新新旧行的源码行为一致；其键盘与鼠标路径均调用该入口。
 仅采用状态归属，不引入 Qt 的子菜单延迟、焦点或对象体系。该参考核对于 2026-10-16，
 是源码行为依据，不表示 GOUI 已通过 Qt 所支持的所有原生平台场景。
+
+## 共享命令与快捷键列（2026-11-04）
+
+MenuItem 增加 Command/SetCommand 和 SetAction；后设置的操作来源替换前者。
+Enabled 仍表示入口自身值，绘制、导航、点击与 Snapshot 另组合 Command.Enabled；
+局部禁用不修改共享操作。PopoverMenu 在显示期间去重监听 Command，隐藏后断开。
+活动／按下项实时禁用时取消未完成点击，关闭回调使来源失效后不再执行旧操作。
+
+标题与快捷键由两个独立样式的 Label 承载，全菜单共享测量后的两列；不解析标题中的
+空格或 Tab 作为布局语法。默认提示从 Command.Shortcuts 中首个有效 Gesture 获取。
+保持 160 DIP 最小主体和既有工作区／滚动限制，详见 [DesignCommand](DesignCommand.md)。
+
+UI 采用 CommandScope(...).Commands(Command("id")...)；MenuItem.Command("id") 与
+Shortcut.Command("id") 引用最近祖先定义。命令 ID 独立于 Widget ID，同一作用域内唯一。
+上下文菜单转换使用 MenuFor(ctx,...)，按模型观察生命期维持作用域引用。Button 保持
+普通回调，命令和快捷键不成为 Snapshot Widget 或自动化动作捷径。

@@ -10,23 +10,25 @@ import (
 )
 
 const (
-	styleNameWindow               = "window"
-	styleNamePopover              = "popover"
-	styleNameWidget               = "widget"
-	styleNameLabel                = "label"
-	styleNameIcon                 = "icon"
-	styleNameButton               = "button"
-	styleNameTextInput            = "text-input"
-	styleNameTextView             = "text-view"
-	styleNameScrollView           = "scroll-view"
-	stylePartTrough               = "trough"
-	stylePartThumb                = "thumb"
-	stylePartFocus                = "focus"
-	styleNameMenu                 = "menu"
-	styleNameMenuItem             = "menu-item"
-	styleNameMenuItemText         = "menu-item-text"
-	styleNameMenuItemTextDisabled = "menu-item-text-disabled"
-	styleNameMenuSeparator        = "menu-separator"
+	styleNameWindow                   = "window"
+	styleNamePopover                  = "popover"
+	styleNameWidget                   = "widget"
+	styleNameLabel                    = "label"
+	styleNameIcon                     = "icon"
+	styleNameButton                   = "button"
+	styleNameTextInput                = "text-input"
+	styleNameTextView                 = "text-view"
+	styleNameScrollView               = "scroll-view"
+	stylePartTrough                   = "trough"
+	stylePartThumb                    = "thumb"
+	stylePartFocus                    = "focus"
+	styleNameMenu                     = "menu"
+	styleNameMenuItem                 = "menu-item"
+	styleNameMenuItemText             = "menu-item-text"
+	styleNameMenuItemTextDisabled     = "menu-item-text-disabled"
+	styleNameMenuItemShortcut         = "menu-item-shortcut"
+	styleNameMenuItemShortcutDisabled = "menu-item-shortcut-disabled"
+	styleNameMenuSeparator            = "menu-separator"
 )
 
 const defaultFontSize float32 = 14
@@ -191,6 +193,8 @@ func coreRules() []style.Rule {
 		style.Name(styleNameMenuItemTextDisabled).
 			FontFamily(family).FontSize(size).
 			ForegroundColor(color.RGBA{R: 160, G: 160, B: 160, A: 255}),
+		style.Name(styleNameMenuItemShortcut).FontFamily(family).FontSize(size).ForegroundColor(color.RGBA{R: 100, G: 100, B: 100, A: 255}),
+		style.Name(styleNameMenuItemShortcutDisabled).FontFamily(family).FontSize(size).ForegroundColor(color.RGBA{R: 160, G: 160, B: 160, A: 255}),
 		style.Name(styleNameMenuItem).
 			State(style.Hovered).
 			BackgroundColor(color.RGBA{R: 225, G: 232, B: 240, A: 255}),

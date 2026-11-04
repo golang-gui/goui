@@ -719,3 +719,182 @@ func TestMenuButtonGroupNestedBoundary(t *testing.T) {
 		t.Fatal("容器的语义子树或动作不正确", info)
 	}
 }
+
+func TestMenuCommandLiveEnablementAndCancelledPress(t *testing.T) {
+	c := NewCommand()
+	activated := 0
+	c.ConnectActivate(func() { activated++ })
+	model := NewMenu()
+	first := model.Append("Copy", nil)
+	first.SetCommand(c)
+	second := model.Append("Other", nil)
+	content := newMenuContent(model, 0, func(item *MenuItem) {
+		if item.Command() != nil {
+			item.Command().Activate()
+		}
+	})
+	win := &window{}
+	win.SetWidget(content)
+	defer win.Destroy()
+	content.observeCommands(true)
+	size := content.Measure(layout.Unbounded()).Size
+	content.Arrange(geometry.Rect(0, 0, size.Width, size.Height))
+	if len(content.commands) != 1 {
+		t.Fatal("命令观察未去重或缺失")
+	}
+	row := content.list.items[0].(*menuItemRow)
+	point := row.Snapshot().Bounds.Center()
+	for _, kind := range []events.EventType{events.PointerMove, events.PointerDown} {
+		_ = win.DispatchEvent(events.PointerEvent{EventType: kind, Position: point, Button: events.PointerButtonLeft})
+	}
+	c.SetEnabled(false)
+	info := row.Snapshot()
+	if info.Enabled || info.Pressed || info.Selected || content.active != nil || !first.Enabled() {
+		t.Fatal("实时禁用状态或局部 Enabled 被错误覆盖")
+	}
+	c.SetEnabled(true)
+	_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerUp, Position: point, Button: events.PointerButtonLeft})
+	if activated != 0 {
+		t.Fatal("禁用再恢复后执行了过期点击")
+	}
+	c.SetEnabled(false)
+	_ = win.DispatchEvent(shortcutPress(events.KeyHome, 0))
+	if content.active != second {
+		t.Fatal("键盘导航未跳过禁用操作")
+	}
+	first.SetEnabled(false)
+	c.SetEnabled(true)
+	if row.Snapshot().Enabled {
+		t.Fatal("恢复命令错误恢复了局部禁用入口")
+	}
+	content.observeCommands(false)
+	if len(content.commands) != 0 {
+		t.Fatal("菜单隐藏仍保留观察连接")
+	}
+}
+
+func TestMenuCommandColumnsAndLiveGesture(t *testing.T) {
+	useTestApplication(t, &application{typo: &styleTypography{}, style: textStyleSheet(10, color.Black)})
+	a, b := NewCommand(), NewCommand()
+	x := NewShortcut(KeyGesture{Key: KeyN, Modifiers: ModControl})
+	x.SetCommand(a)
+	y := NewShortcut(KeyGesture{Key: KeyS, Modifiers: ModControl | ModShift})
+	y.SetCommand(b)
+	model := NewMenu()
+	model.Append("New", nil).SetCommand(a)
+	model.AppendSeparator()
+	model.Append("A longer title", nil).SetCommand(b)
+	model.Append("No shortcut", nil)
+	content := newMenuContent(model, 0, nil)
+	win := &window{}
+	win.SetWidget(content)
+	defer win.Destroy()
+	content.observeCommands(true)
+	arrange := func() {
+		size := content.Measure(layout.Unbounded()).Size
+		content.Arrange(geometry.Rect(0, 0, size.Width, size.Height))
+	}
+	arrange()
+	first, last := content.list.items[0].(*menuItemRow), content.list.items[2].(*menuItemRow)
+	if first.shortcut.Text() != x.Gesture().DisplayText() || last.shortcut.Text() != y.Gesture().DisplayText() {
+		t.Fatal("提示未从关联命令获取")
+	}
+	right := func(r *menuItemRow) float32 { return r.shortcut.Rect().X + r.shortcut.Rect().Width }
+	if first.shortcut.Rect().Width != measureWidget(first.shortcut, layout.Unbounded()).Width {
+		t.Fatal("短快捷键必须以自然文字框贴齐列右侧")
+	}
+	if right(first) != right(last) || first.label.Rect().X != last.label.Rect().X {
+		t.Fatal("菜单未共享列边界")
+	}
+	// 图标／字体无关：按独立测量结果检验总宽，不依赖被测列宽计算。
+	titleW := float32(len("A longer title") * 10)
+	hintW := measureWidget(last.shortcut, layout.Unbounded()).Width
+	if content.naturalW != titleW+hintW+menuShortcutGap+2*menuItemPadding+2*menuContentPadding {
+		t.Fatalf("自然列宽错误：%v", content.naturalW)
+	}
+	y.SetGesture(KeyGesture{Key: KeyF2})
+	if last.shortcut.Text() != "F2" || content.valid {
+		t.Fatal("打开期间的手势修改没有更新文字／尺寸")
+	}
+	arrange()
+	if right(first) != right(last) {
+		t.Fatal("动态缩短提示后列边界不一致")
+	}
+	x.SetEnabled(false)
+	if first.shortcut.Text() == "" || !first.Snapshot().Enabled {
+		t.Fatal("局部快捷键禁用不应隐藏提示或禁用菜单")
+	}
+	y.SetCommand(nil)
+	if last.shortcut.Visible() {
+		t.Fatal("解除末个快捷键关联后仍显示旧提示")
+	}
+	if got := first.Snapshot().Attributes[MenuItemInfoKey].(MenuItemInfo).Shortcut; got != x.Gesture().DisplayText() {
+		t.Fatal("快照未反映最新提示")
+	}
+}
+
+func TestMenuCommandObservationFollowsVisibleModel(t *testing.T) {
+	a, b := NewCommand(), NewCommand()
+	m := NewMenu()
+	m.Append("First", nil).SetCommand(a)
+	m.Append("Again", nil).SetCommand(a)
+	c := newMenuContent(m, 0, nil)
+	win := &window{}
+	win.SetWidget(c)
+	defer win.Destroy()
+	c.observeCommands(true)
+	if len(c.commands) != 1 {
+		t.Fatal("同一操作被重复订阅")
+	}
+	m.ItemAt(0).SetCommand(b)
+	if len(c.commands) != 2 {
+		t.Fatal("模型修改没有更新命令集合")
+	}
+	m.ItemAt(1).SetVisible(false)
+	if len(c.commands) != 1 {
+		t.Fatal("不可见项目仍保留命令观察")
+	}
+	replacement := NewMenu()
+	replacement.Append("Replacement", nil).SetCommand(a)
+	c.SetModel(replacement)
+	if !c.observing || len(c.commands) != 1 || c.commands[a] == nil {
+		t.Fatal("打开期间更换模型丢失观察或保留旧关系")
+	}
+	c.observeCommands(false)
+	a.SetEnabled(false)
+	c.observeCommands(true)
+	if len(c.commands) != 1 {
+		t.Fatal("重新打开没有恢复观察")
+	}
+}
+
+func TestMenuCommandCloseCallbackInvalidatesActivation(t *testing.T) {
+	for _, mode := range []string{"replace", "disable-cycle", "destroy"} {
+		t.Run(mode, func(t *testing.T) {
+			old, next := NewCommand(), NewCommand()
+			n := 0
+			old.ConnectActivate(func() { n++ })
+			next.ConnectActivate(func() { n++ })
+			item := NewMenuItem("Run", nil)
+			item.SetCommand(old)
+			owner := &window{}
+			p := &popover{owner: owner, visible: true}
+			pm := &PopoverMenu{popover: p}
+			p.ConnectClosed(func() {
+				switch mode {
+				case "replace":
+					item.SetCommand(next)
+				case "disable-cycle":
+					old.SetEnabled(false)
+					old.SetEnabled(true)
+				case "destroy":
+					owner.Destroy()
+				}
+			})
+			pm.activate(item)
+			if n != 0 {
+				t.Fatal("关闭回调改变生命周期后仍执行过期操作")
+			}
+		})
+	}
+}
