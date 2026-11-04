@@ -116,7 +116,7 @@ func TestCellEditorStyle(t *testing.T) {
 }
 
 func TestNoteCellBindingKeepsEditsByRowID(t *testing.T) {
-	m := newModel()
+	m := newModel(10000)
 	version := 0
 	d := &cellDelegate{model: m, column: "note", version: &version}
 	cell := d.Setup().(*noteCell)

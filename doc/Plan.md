@@ -13,6 +13,26 @@
   修正后通过。同步三项原有测试的末项线宽／行高／像素预期，保留内容高度、
   列位置、外框和透明色几何等断言，不删除既有覆盖。widgets／widgets/ui及
   例程包测试通过。
+- [x] 既有窗口例程增加-rows（默认10000），支持3／1／0条数据；Reveal last
+  仍按初始稳定ID，F6编辑器断言同步末列避让，不另建测试程序或修改事件路径。
+- [x] Ubuntu 22.04.5 amd64，独立Xvnc :90／xfwm4 4.16.1（合成开启）：
+  UI／Software 1x、GUI／OpenGL 1x、GUI／Software 2x、UI／OpenGL 2x，
+  各8条数据的F6几何／内容断言及实际屏幕网格通过。以原生Image资源类型与
+  PixelScale核对实际后端／缩放；四组截图按不透明RGB(220,220,225)精确采样，
+  均为8条底线、5条右边线，物理宽度各1／2像素，右下交点颜色一致。
+- [x] OpenGL 1x的3条数据验证亮暗、grid／thick、Notes隐藏／恢复、末列伸展、
+  TextInput焦点边框及粘贴retained，模型与F6文本一致。OpenGL 2x缩窄后真实
+  横向滚轮滚至X=226 DIP，F6及屏幕表头／正文对齐通过；Software 1x补空表／
+  单行窗口。未逐项重验万行菜单、排序或全部编辑组合键。
+- [x] `DISPLAY=:90 GOWORK=off go test -json -count=1 ./...`：3896项通过、
+  15项既有跳过、零失败，含保留的未跟踪测试；跳过为平台手工交互／剪贴板及
+  macOS签名环境。widgets／widgets/ui／例程的race、vet通过，Windows amd64／
+  macOS arm64的相关包及窗口程序CGO_ENABLED=0构建通过，未执行远端原生验收。
+- 日志、旧代码失败、截图和屏幕像素记录在 `/tmp/goui-table-trailing-4d9joo9e`。
+  OpenGL为Mesa llvmpipe，不作硬件GPU或性能结论；全仓既有窗口测试及粘贴仅
+  使用独立桌面／剪贴板，不影响用户会话。本轮窗口正常关闭，独立会话已停止。
+  首次外部窗口脚本将Software资源类型误写为common.Image；按源码校正为实际的
+  software.imageResource后完整重验通过，没有接受后端回退或放宽类型检查。
 
 ## ButtonGroup 接缝端点（2026-11-04）
 
