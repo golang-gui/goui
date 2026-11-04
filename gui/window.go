@@ -597,6 +597,18 @@ func (w *window) DispatchEvent(event events.Event) error {
 		return nil
 	}
 	switch event := event.(type) {
+	case events.SurfaceEvent:
+		w.surfaceChanged()
+		if event.State.Ready {
+			w.requestLayout()
+		}
+	case events.VisibilityEvent:
+		if event.Visible {
+			w.resumeFrames(w.platformWindow)
+		} else {
+			w.suspendFrames()
+			w.cancelInput(GestureInterrupted)
+		}
 	case events.CloseEvent:
 		allow := true
 		w.closeRequest.Emit(&allow)

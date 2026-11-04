@@ -1,3 +1,5 @@
+//go:build !android
+
 package platform
 
 import "github.com/golang-gui/goui/platform/linux/x11"

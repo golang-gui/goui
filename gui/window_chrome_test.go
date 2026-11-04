@@ -22,7 +22,10 @@ type chromeTestWindow struct {
 	handler   platform.EventHandler
 }
 
-func (w *chromeTestWindow) Title() string       { return "" }
+func (w *chromeTestWindow) Title() string { return "" }
+func (*chromeTestWindow) SurfaceState() platform.SurfaceState {
+	return platform.SurfaceState{Ready: true, Generation: 1}
+}
 func (w *chromeTestWindow) RequestPaint() error { return nil }
 func (w *chromeTestWindow) Show() error         { return nil }
 func (w *chromeTestWindow) RequestClose() error {
