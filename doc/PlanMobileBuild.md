@@ -1,13 +1,14 @@
 # 移动端构建：最小预编译基座
 
-状态：已进入正式基座开发。第一阶段实现了原生支持包的导出、清单校验和
-冷缓存接入；普通 Go 依赖仍由原有 Go 工具从源码编译。Android/iOS 的仓库外
-最小应用路径与阶段性验收记录保留在后文。不改变现有桌面构建命令，也尚未
-接入 GOUI 移动端 UI。当前复杂 FFI 兼容性仍有未通过项。
+状态：基座、原生链接组件、移动 ARM64 FFI 修复和 Linux/Windows 消费构建
+四个阶段已完成，记录见第 13–16 节。普通 Go 依赖仍从源码编译；Android/iOS
+模拟器的 ABI 运行通过，iOS 真机和 Android 16 KiB 内核运行仍待验收。
+正式平台启动与生命周期另见 [DesignMobileLifecycle](DesignMobileLifecycle.md)。
+尚未接入 GOUI 移动 UI 或改变面向用户的桌面构建命令。
 
 开发隔离在 `/data/xuyang8/repos/goui2` 的 `feature/mobile-base` 分支；
-`/data/xuyang8/repos/cgo` 同名分支留给后续 FFI 修改，不改主会话的工作区。
-正式实现与当前限制见第 13 节。
+`/data/xuyang8/repos/cgo` 与 purego 同名分支包含移动 ARM64 FFI 修复，不改主会话
+的工作区。构建实现与当前限制见第 13–16 节，平台启动见上述生命周期文档。
 
 ## 1. 目标与约束
 

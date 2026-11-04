@@ -1,5 +1,24 @@
 # Plan
 
+## 移动端平台：第一切片启动与事件线程（2026-11-04）
+
+- 设计与实测范围见 [DesignMobileLifecycle](DesignMobileLifecycle.md)。
+- [x] 纯 Go main 注册、固定 goui_run ABI 和独立固定 OS 线程；启动不等待 main，
+  并发/重复启动及 main 返回后均不重跑。原生支持保持最小，事件队列从源码编译。
+- [x] goui-base build -entry：受限 main 注册 overlay，list -find 定位、拒绝依赖
+  覆盖/既有文件/模板修改；保留基座源码、模块、导出 ABI 和 build ID 校验。
+- [x] Linux/Windows、Go 1.25.8 三目标无原生编译器消费通过。Android/iOS ARM64
+  模拟器真实宿主十次输入和三次前后台通过；Android 同 PID Activity 重建保留
+  计数，iOS 退出 Go loop 后重复请求不重启；两端 mainCalls=1、threadFailures=0。
+- [x] 包内、定向 race/vet、隔离源码全仓 3491 通过/10 既有跳过。原目录全仓
+  仍有未跟踪旧例程编译失败及一次未定位 demo 启动段错误，独立 HEAD 全仓和
+  demo 二十次重复未复现；完整区分见设计文档，不修改旧文件或放宽测试。
+- [x] 本轮专用模拟器/ADB 清理；无 SDK、二进制或签名材料入库。
+- 代码提交：9668c66（启动层）、572b3aa（自动注册）、951ec39（原生验收例程）；
+  均为 feature/mobile-base 本地提交，未推送。
+- [ ] 下一切片为逻辑窗口与 Software 表面交接，随后 GUI/UI 和退出契约。
+  iOS Device 目前仅链接；公开 FFI/工具分发、正式 APK/IPA、GPU、输入待后续。
+
 ## 移动端基座：第四阶段消费构建（2026-11-03）
 
 - 设计及命令见 [PlanMobileBuild 第 16 节](PlanMobileBuild.md#16-第四阶段无原生编译器的消费构建编排2026-11-03)。

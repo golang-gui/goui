@@ -1,18 +1,21 @@
 # GOUI 实用化与未来路线
 
-## 移动端构建基座（2026-11-03）
+## 移动端构建基座与平台接入（2026-11-04）
 
 应用开发者纯 Go、无需安装原生编译工具链；维护者预编译支持包与链接组件，
 UI/生命周期仍归 platform。本轮隔离在 goui2 的 feature/mobile-base 分支，第一阶段
 实现了精确 Go 版本的基座制作/校验与冷缓存包 action 接入，普通 Go 包照常编译。
 Android ARM64 c-shared 和 iOS ARM64 c-archive 的跨宿主消费通过；模拟器实测、
-已知 FFI 缺陷、真机及分发缺口见 [Plan](Plan.md) 与 [PlanMobileBuild](PlanMobileBuild.md)。
+FFI 修复、真机及分发缺口见 [Plan](Plan.md) 与 [PlanMobileBuild](PlanMobileBuild.md)。
 第二阶段已实现独立链接组件与 Go 链接驱动，原生归档复用 Go pack；普通 Go
 冷构建及两端模拟器交互通过。第三阶段已实现独立 purego/cgo 分支的 ARM64
 结构体、栈布局和回调修复。第四阶段已实现消费构建编排，Windows/Linux 的三目标
 冷构建及两宿主产物的 Android/iOS 模拟器执行通过；具体范围见 PlanMobileBuild
-第 15、16 节。下一步接入可分发依赖和组件、APK/IPA 打包与正式移动平台 UI，
-补充真机/16 KiB 及公开工具附件验收；
+第 15、16 节。平台接入第一切片已实现固定 ABI、main 自动注册和独立 GOUI
+事件线程，Windows/Linux 消费与 Android/iOS 模拟器真实输入/生命周期通过，
+见 [DesignMobileLifecycle](DesignMobileLifecycle.md)。下一步先实现逻辑窗口与
+Software 表面交接，再接 GUI/UI；可分发依赖和组件、APK/IPA、真机/16 KiB
+及公开工具附件仍待验收；
 此项不改变现有桌面构建命令，也不是当前已发布的移动端支持承诺。
 
 ## 当前能力基线：v0.6.0（2026-11-03）
