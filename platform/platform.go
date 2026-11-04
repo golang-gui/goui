@@ -25,6 +25,7 @@ type (
 	Settings           = common.Settings
 	ColorScheme        = common.ColorScheme
 	Surface            = common.Surface
+	SurfaceState       = common.SurfaceState
 	Window             = common.Window
 	DesktopWindow      = common.DesktopWindow
 	WindowOptions      = common.WindowOptions

@@ -23,11 +23,14 @@ type Window interface {
 	// activation and restores a minimized window using native behavior.
 	// Maximized and fullscreen modes are preserved. Success means submitted,
 	// not that the system granted focus. Only native events report the result.
+	// Mobile hosts request visibility of their OS-managed content view; this
+	// does not bring the application to the foreground.
 	// A destroyed window returns ErrUnavailable. Popup has a separate,
 	// non-activating Show contract.
 	Show() error
 	// Hide unmaps the native window without destroying it, so it can be shown
-	// again later.
+	// again later. On mobile it hides the owned content view without finishing
+	// the Activity/Scene or moving the application to the background.
 	Hide() error
 	// RequestClose sends a close request notification. It does not destroy the
 	// window; the event handler decides whether to call Destroy.

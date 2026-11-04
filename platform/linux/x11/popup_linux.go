@@ -75,3 +75,7 @@ func (p *Popup) SetSize(width, height float32) {
 func popupPhysicalExtent(logical, scale float32) int {
 	return max(1, int(math.Ceil(float64(logical)*float64(scale))))
 }
+
+func (p *Popup) SurfaceState() common.SurfaceState {
+	return common.SurfaceState{Ready: p.NativeHandle() != 0, Generation: 1}
+}

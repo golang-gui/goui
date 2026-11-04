@@ -33,6 +33,8 @@ const (
 	DragDrop
 	DragData
 	Destroy
+	Surface
+	Visibility
 )
 
 type EventHandler func(event Event)

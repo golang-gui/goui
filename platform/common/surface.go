@@ -7,12 +7,17 @@ import "image"
 //   - NativeHandle binds a GPU rendering context (OpenGL / Direct2D).
 //   - Draw presents a finished image, the software painter's fallback path.
 type Surface interface {
+	// SurfaceState observes the current drawing target. Ready is independent of
+	// visibility. Generation identifies one native target and changes when that
+	// target is replaced; it is never a logical window ID.
+	SurfaceState() SurfaceState
 	// Transparent reports whether the surface was created with per-pixel alpha.
 	// It does not describe input hit testing or guarantee a compositor remains
 	// available after creation. The property is immutable.
 	Transparent() bool
-	// NativeHandle returns the native host handle, or zero once its usable
-	// lifetime has ended. Owned objects may remain retained for cleanup.
+	// NativeHandle borrows the current native target, or returns zero while it
+	// is unavailable or destroyed. Temporary target loss does not destroy the
+	// logical window. A query does not extend a native object's lifetime.
 	NativeHandle() uintptr
 	// Draw blits a finished image onto the surface. It is the present path used
 	// by the software painter. A transparent surface consumes premultiplied
@@ -20,4 +25,12 @@ type Surface interface {
 	Draw(img image.Image) error
 
 	RequestPaint() error
+}
+
+// SurfaceState describes an observed native drawing target. Generation is
+// monotonic within one Surface. A lost target retains its generation until a
+// replacement arrives. Final window destruction is reported separately.
+type SurfaceState struct {
+	Ready      bool
+	Generation uint64
 }
