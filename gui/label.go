@@ -468,10 +468,12 @@ func (v labelTextStyle) with(s style.Style) labelTextStyle {
 }
 
 func measureTextSize(available geometry.Size) geometry.Size {
-	if available.Width <= 0 {
+	// Layout's unbounded-axis sentinel is not a native text coordinate.
+	// Use the same finite measuring extent as unspecified dimensions.
+	if available.Width <= 0 || available.Width >= layout.Inf {
 		available.Width = labelMeasureExtent
 	}
-	if available.Height <= 0 {
+	if available.Height <= 0 || available.Height >= layout.Inf {
 		available.Height = labelMeasureExtent
 	}
 	return available
