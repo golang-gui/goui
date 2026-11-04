@@ -3,6 +3,7 @@ package gui
 import (
 	"image"
 	"image/color"
+	"maps"
 	"slices"
 	"testing"
 	"unicode/utf8"
@@ -355,11 +356,13 @@ func TestStyleChangedScrollableInvalidatesSizesWithoutReload(t *testing.T) {
 	pool := slices.Clone(lv.pool)
 	first := lv.items[lv.VisibleIndexes()[0]]
 	counts := *d
+	heights, widths := maps.Clone(lv.heights), maps.Clone(lv.widths)
+	index, prefix := lv.first, lv.firstY
 	app.SetStyleSheet(style.Sheet(style.Name("row").FontSize(10).ForegroundColor(color.White)))
 	// ScrollView calls ContentSize instead of measuring its Scrollable child.
 	measureWidget(sv, layout.Tight(geometry.Size{Width: 120, Height: 60}))
-	if len(lv.heights) != 0 || len(lv.widths) != 0 || lv.first != 0 || lv.firstY != 0 {
-		t.Fatal("Scrollable retained its own size/position caches")
+	if !maps.Equal(lv.heights, heights) || !maps.Equal(lv.widths, widths) || lv.first != index || lv.firstY != prefix {
+		t.Fatal("仅变色的通知不应丢弃离屏尺寸估计和定位前缀")
 	}
 	if !slices.Equal(lv.pool, pool) || *d != counts || sv.ScrollY() != 20 || sv.ScrollX() != 20 {
 		t.Fatal("style invalidation reloaded rows, cleared the pool or reset scrolling")
@@ -382,6 +385,16 @@ func TestStyleChangedScrollableInvalidatesSizesWithoutReload(t *testing.T) {
 	}
 	if sv.ScrollY() != 20 || sv.ScrollX() != 20 {
 		t.Fatal("font growth reset an offset that is still in range")
+	}
+	if lv.heights[0] != 10 {
+		t.Fatal("离屏历史尺寸应保留为估计，不能随可见行重测被丢弃")
+	}
+	sv.SetScrollY(0)
+	for range 3 {
+		win.layoutFrame(sv)
+	}
+	if lv.heights[0] != 20 || lv.items[0].Rect().Height != 20 {
+		t.Fatal("重新绑定离屏行后，仍把旧样式尺寸当作精确测量")
 	}
 	counts = *d
 	for range 5 {

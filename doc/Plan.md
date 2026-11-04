@@ -1,5 +1,38 @@
 # Plan
 
+## ListView末尾交互与测量缓存（2026-11-04）
+
+- [x] 独立X11诊断确认：ListView的Hovered状态通知会进入StyleChanged，无条件
+  清空行尺寸；随后点击／重布局仅重测末屏，使平均估算变化。旧表格网格例程的
+  最大偏移从678896降至635771 DIP，可见行55／124 DIP不变；单纯移入就可将
+  16项测量清成0。诊断副本和堆栈在 `/tmp/goui-list-reveal-2kmsglxo`。
+- [x] 删除ListView无条件清测量的StyleChanged覆盖，保留历史离屏尺寸作为估计；
+  可见行继续由真实样式／RequestLayout／Bind触发重测，视口宽度变化按原规则
+  刷新。LayoutVisible入口先消费自身样式通知，避免首次绘制／状态通知在布局后
+  丢失缓存；不改公共接口、ScrollView或TableView状态机。
+- [x] 新增两项无桌面回归：万行变高列表经DispatchEvent悬停／离开、按下／抬起、
+  焦点及Tab后，末行矩形、可见索引、范围和首屏离屏测量稳定，Reveal只完成一次、
+  不增加Setup／Bind；直接LayoutVisible先于绘制消费通知。旧4961a2c配相同回归
+  两项失败，修正后通过。原有样式用例改为断言变色保留历史尺寸与前缀，保留所有
+  池、偏移及真实字体10→20重测断言，并补重新绑定离屏行更新旧尺寸的检查。
+- [x] 既有表格例程补末尾操作说明，F6增加可见索引和max-scroll输出。Ubuntu
+  22.04.5 amd64、独立Xvnc :90／xfwm4 4.16.1（合成开启）：UI／Software 1x、
+  GUI／OpenGL 1x、GUI／Software 2x、UI／OpenGL 2x，均以实际Image资源类型和
+  PixelScale核对后端。万行grid模式完成Reveal、移入／离开、实际滚动条拖到底、
+  按住／点击末行、三次反复移入、亮暗切换九阶段：scrollY／maxY始终678896，
+  可见索引9993～10000稳定，点击后Current为record-09999。截图确认末行与滚动条
+  不回跳；F6原有几何／内容断言通过。默认plain模式Software 1x也通过全部阶段，
+  scrollY／maxY稳定668896。普通真实行高变化仍允许更新估算，不声称全局精确行高。
+- [x] `DISPLAY=:90 GOWORK=off go test -json -count=1 ./...`：3898项通过、
+  15项既有跳过、零失败，含保留的未跟踪测试；跳过为手工桌面／剪贴板及macOS
+  签名环境。gui／widgets／widgets/ui／ui的race、相关包及窗口例程vet通过；
+  Windows amd64／macOS arm64的相关包和窗口例程CGO_ENABLED=0构建通过，
+  未执行远端原生验收。OpenGL为Mesa llvmpipe，本轮不作硬件GPU性能结论。
+- 日志、源码基线、屏幕截图和九阶段断言在 `/tmp/goui-list-state-cache-_fifxhbq`。
+  默认模式的首次外部脚本因坐标误算未点击到末行，Current断言失败；按截图修正
+  坐标后完整复验通过，保留失败脚本／日志，未放宽输入或状态断言。
+  本轮窗口正常关闭，独立X11会话已停止；未修改用户桌面或系统设置。
+
 ## TableView 行装饰范围（2026-11-04）
 
 - [x] 行背景、Hover／Pressed／Selected及Current轮廓统一使用行分配宽度与

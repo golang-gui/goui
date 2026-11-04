@@ -339,6 +339,12 @@ Reveal 使用正文坐标，由内部 ScrollView 执行，不能往请求矩形�
 | Delegate 整体表现改变 | Refresh | 更新可见绑定，处理离屏历史尺寸的可信度 |
 | 样式改变 | StyleChanged 流程 | 使相关尺寸失效并重新布局 |
 
+2026-11-04修正：ListView自身的Hovered／Focused等通知不代表所有行的尺寸失效，
+不能据此清空heights／widths。保留离屏历史尺寸作为估计；可见行由自身样式通知、
+RequestLayout和重新Bind触发重测，实际视口宽度变化仍按原规则刷新测量。
+直接LayoutVisible入口先消费ListView的样式通知，保证绘制阶段不再使本轮测量失效。
+普通指针／焦点变化、完成后的Reveal及重复布局必须保持末行位置和滚动范围稳定。
+
 RequestLayout 不等于重新 Bind，也不递归清空所有后代缓存；单行变化不能退化为
 全表测量失效。仅在父容器 RequestLayout 不能自动发现闭包读取的任意外部状态。
 TableView 负责把共享列宽变化落实到行布局状态，并通过已有 Refresh 表达整体

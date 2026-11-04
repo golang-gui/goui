@@ -21,6 +21,16 @@ ListView 已实现测量式变高行、行壳复用、宽度／高度缓存、Re
 GUI 与 UI 接入均已完成；当前源码入口为
 [ScrollView](../gui/scroll_view.go)、[ListView](../gui/list_view.go) 和 [UI ListView](../ui/list_view.go)。
 
+### ListView测量缓存与状态（2026-11-04）
+
+ListView自身的Hover／Focus状态通知不清空行尺寸。实际行的StyleChanged、
+RequestLayout、重新Bind及视口宽度变化决定是否重测；离屏历史尺寸在重新绑定前
+只作为估计保留，避免纯输入状态变化改变整份文档的平均高度和滚动范围。
+直接LayoutVisible入口先消费列表的待处理样式通知，绘制阶段不再使刚建立的
+测量失效。真实字体／内容变化仍须更新可见行及其范围，不能冻结旧尺寸。
+本切片修正错误失效，不新增滚动模型、锚点API或统一动画／延迟补偿；相关契约
+与回归见 [TableView §6](DesignTableView.md#6-listview-稳定契约不新增测量失效接口)。
+
 ## 业界参考
 
 | 框架 | 抽象 | 模型 |
