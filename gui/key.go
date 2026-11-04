@@ -2,6 +2,8 @@ package gui
 
 import (
 	"runtime"
+	"strconv"
+	"strings"
 
 	"github.com/golang-gui/goui/platform/events"
 )
@@ -236,4 +238,78 @@ func (k Key) resolve(goos string) (events.Key, bool) {
 		}
 	}
 	return events.Key(k), true
+}
+
+// DisplayText formats a gesture for the current platform. Empty or unsupported
+// gestures produce no hint. It neither registers keys nor queries keyboard focus.
+func (g KeyGesture) DisplayText() string { return g.displayText(runtime.GOOS) }
+
+func (g KeyGesture) displayText(goos string) string {
+	key, keyOK := g.Key.resolve(goos)
+	mods, modsOK := g.Modifiers.resolve(goos)
+	if !keyOK || !modsOK {
+		return ""
+	}
+	var name string
+	switch {
+	case key >= events.KeyA && key <= events.KeyZ:
+		name = string(rune('A' + key - events.KeyA))
+	case key >= events.Key0 && key <= events.Key9:
+		name = string(rune('0' + key - events.Key0))
+	case key >= events.KeyF1 && key <= events.KeyF24:
+		name = "F" + strconv.Itoa(int(key-events.KeyF1)+1)
+	case key >= events.KeyNumpad0 && key <= events.KeyNumpad9:
+		name = "Num " + string(rune('0'+key-events.KeyNumpad0))
+	default:
+		name = map[events.Key]string{
+			events.KeyEscape: "Esc", events.KeyEnter: "Enter", events.KeyTab: "Tab",
+			events.KeyBackspace: "Backspace", events.KeyDelete: "Delete", events.KeyInsert: "Insert", events.KeySpace: "Space",
+			events.KeyArrowLeft: "Left", events.KeyArrowRight: "Right", events.KeyArrowUp: "Up", events.KeyArrowDown: "Down",
+			events.KeyHome: "Home", events.KeyEnd: "End", events.KeyPageUp: "Page Up", events.KeyPageDown: "Page Down",
+			events.KeyCapsLock: "Caps Lock", events.KeyNumLock: "Num Lock", events.KeyPrintScreen: "Print Screen",
+			events.KeyScrollLock: "Scroll Lock", events.KeyPause: "Pause", events.KeyMenu: "Menu",
+			events.KeyMinus: "-", events.KeyEqual: "=", events.KeyBracketLeft: "[", events.KeyBracketRight: "]",
+			events.KeyBackslash: "\\", events.KeySemicolon: ";", events.KeyQuote: "'", events.KeyComma: ",",
+			events.KeyPeriod: ".", events.KeySlash: "/", events.KeyBackquote: "`", events.KeyNumpadAdd: "Num +",
+			events.KeyNumpadSubtract: "Num -", events.KeyNumpadMultiply: "Num *", events.KeyNumpadDivide: "Num /",
+			events.KeyNumpadDecimal: "Num .", events.KeyNumpadEnter: "Num Enter",
+		}[key]
+	}
+	entries := []struct {
+		bit  events.Modifiers
+		name string
+		key  events.Key
+	}{
+		{events.ModifierControl, "Ctrl", events.KeyControl}, {events.ModifierAlt, "Alt", events.KeyAlt},
+		{events.ModifierShift, "Shift", events.KeyShift}, {events.ModifierWin, "Win", events.KeyWin},
+		{events.ModifierSuper, "Super", events.KeySuper}, {events.ModifierAltGraph, "AltGr", events.KeyAltGraph},
+	}
+	separator := "+"
+	if goos == "darwin" {
+		separator = ""
+		entries = []struct {
+			bit  events.Modifiers
+			name string
+			key  events.Key
+		}{
+			{events.ModifierControl, "⌃", events.KeyControl}, {events.ModifierOption, "⌥", events.KeyOption},
+			{events.ModifierShift, "⇧", events.KeyShift}, {events.ModifierCommand, "⌘", events.KeyCommand},
+		}
+	}
+	var parts []string
+	for _, entry := range entries {
+		if key == entry.key {
+			name = entry.name
+			mods &^= entry.bit
+		}
+	}
+	if name == "" {
+		return ""
+	}
+	for _, entry := range entries {
+		if mods&entry.bit != 0 {
+			parts = append(parts, entry.name)
+		}
+	}
+	return strings.Join(append(parts, name), separator)
 }
