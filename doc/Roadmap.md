@@ -16,10 +16,14 @@ FFI 修复、真机及分发缺口见 [Plan](Plan.md) 与 [PlanMobileBuild](Plan
 见 [DesignMobileLifecycle](DesignMobileLifecycle.md)。第二切片已实现独立于原生
 目标的逻辑窗口、可同步撤销的绘制许可、尺寸/可见性事实和 Software 呈现；
 Android 旋转/后台/同进程 Activity 重建、iOS Simulator 旋转/后台及两宿主消费
-通过，iOS Scene 断开重连仍待原生验收。下一步接入最小 Platform 与 GUI/UI；
-可分发依赖和组件、APK/IPA、真机/16 KiB
-及公开工具附件仍待验收；
-此项不改变现有桌面构建命令，也不是当前已发布的移动端支持承诺。
+通过，iOS Scene 断开重连仍待原生验收。最新
+[移动平台计划](DesignMobilePlatform.md) 确定 darwin/ios 与 android 后端分离、
+首版两端共用 GLES、Metal 后续实现。
+Android 11/Software 首轮系统排版基础验证已通过，光标与非零 advance 两种
+Cluster 直接映射被反例否定，完整文字后端仍待设计；具体证据见上述计划第 9 节。
+下一步整理包结构并明确可靠 Cluster 提取，再接入 CoreText/Android 文字、
+最小 Platform 与 GUI/UI。可分发依赖和组件、正式 APK/IPA、真机/16 KiB
+及公开工具附件仍待验收；此项不改变现有桌面构建命令，也不是已发布的移动端承诺。
 
 ## 当前能力基线：v0.6.0（2026-11-03）
 

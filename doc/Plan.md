@@ -1,5 +1,22 @@
 # Plan
 
+## 移动平台结构与 Android 系统排版验证（2026-11-04）
+
+- 设计见 [DesignMobilePlatform](DesignMobilePlatform.md)。
+- [x] 更新完整路线：darwin/ios 与 cocoa 平级，android 独立；共享 Go 支持、
+  固定 ABI、原生宿主和 runtime 基座保持分离。Android/iOS 首版共用 GLES，
+  Metal 后续再做；iOS 复用 CoreText，Android 先验证公开系统文字接口。
+- [x] JNI/StaticLayout 能力实验：Linux 无原生编译器消费、Mac 上 Android 11
+  ARM64 ATD/Software 1x 运行；36 项基础检查通过。18 项严格 Cluster 候选检查
+  中 9 项不匹配，确认光标边界与非零 advance 都不能直接替代 shaping Cluster。
+  真实连字、零宽字符反例与小数度量配置对照见设计文档第 9 节，未修改生产后端。
+- [x] 定向 race/vet、隔离源码全仓 3505 通过/10 既有跳过；实际截图核对和专用
+  模拟器/ADB 清理完成。没有使用系统私有文字库或提交 SDK/字体/签名材料。
+- 能力验证例程提交：3420771，位于 feature/mobile-base，未推送。
+- [ ] 继续设计可靠 Cluster 提取；系统路线的完整 TextLayout 可行性尚未确认。
+- [ ] 平台包迁移与 build tags、完整移动文字后端、Platform/GUI/UI 和 GLES
+  均是后续切片，本轮不同时实施。
+
 ## 移动端平台：第二切片逻辑窗口与 Software 表面（2026-11-04）
 
 - 设计和验证范围见 [DesignMobileLifecycle](DesignMobileLifecycle.md#第二切片逻辑窗口与-software-表面2026-11-04)。
@@ -21,8 +38,8 @@
   窗口）、66925db（原生 Software 宿主）、e70b926（验收例程）；均为
   feature/mobile-base 本地提交，未推送。
 - [ ] iOS Scene 断开重连的真实系统场景、iOS 真机与 Android 16 KiB 内核运行。
-- [ ] 下一切片：最小 Platform 服务及 GUI/UI 单内容窗口接入；另行明确退出，
-  逐步增加文字排版、输入/IME 和 GPU。当前不承诺完整移动应用或正式 APK/IPA。
+- [ ] 后续按 DesignMobilePlatform 先验证排版、整理包结构，再接最小 Platform
+  及 GUI/UI 单内容窗口；明确退出、输入/IME 和 GLES。当前不承诺完整移动应用。
 
 ## 移动端平台：第一切片启动与事件线程（2026-11-04）
 
