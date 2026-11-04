@@ -252,18 +252,43 @@ Windows／macOS 保留原生绘制。Pango 文字仍由原生引擎绘制，但�
 
 ## 6. TextLine、Cluster 与基线
 
-`MeasureMetrics` 返回行与 shaping cluster，作为上层光标、命中、选区和视觉导航的
+`MeasureMetrics` 返回行与文本交互 Cluster，作为上层光标、命中、选区和视觉导航的
 几何依据；不增加另一套文字索引，也不在 Typography 内部保存编辑器光标。
 
 - TextLine 包含原文本范围、行矩形、布局局部基线和本行的 Clusters。
 - TextCluster 包含原文本范围、矩形、LineIndex 和已解析的 Direction。
 - Cluster 可能包含多个 Unicode code point、UTF-8 字节或定位字形，不等同于单 rune。
 - Start／Length 使用逻辑文本顺序；视觉几何及 Direction 保留原生双向排版结果。
-- 上层按 Cluster 处理不可分隔的排版单元；不能按字节比例推算文字位置。
+- 上层默认以 Cluster 为最小交互单元，内部不提供独立光标停靠点；不能按字节
+  比例推算位置，也不能以字形 ink bounds 替代逻辑交互范围。
 - 修改约束、字体或占位后应重新获取度量，不继续依赖旧的几何信息。
 
-Cluster 是排版结果，不声称与 Unicode grapheme segmentation 完全等价。编辑器的
-逻辑移动、视觉移动、命令选择与文档索引映射仍由上层负责。
+### 6.1 最小交互单元原则（2026-11-04）
+
+Cluster 是当前布局中默认光标移动、命中与选择的最小单元，不是绝对不可修改的
+存储实体，也不强制等同于某个引擎的 shaping cluster 或单个 glyph。以 Unicode
+字素边界和原生排版能力为依据，允许后端在复杂文字、连字等处有少量粒度差异。
+同一后端、同一份布局的文字范围、光标、选区与画面必须自洽。
+
+- UTF-8 索引合法，不能切入编码或 UTF-16 代理对；正常组合字符、受保护的 emoji
+  序列等内部不能产生独立停靠点。不能因字体连字而把普通整词强制变成一个单位。
+- 默认按边界进行用户交互，不表示文本模型禁止程序按合法文字范围修改内容。
+  逻辑/视觉导航、删除命令、选区状态仍由 GUI 决定，Typography 不保存编辑状态。
+- 零宽内容不能从文字范围中消失；可保留零宽单元，或由明确的原生交互划分归入
+  邻近单元。空行与换行分隔符沿用既有行/段落契约，不伪造有宽度的可见字符。
+- Line/Run/Cluster 是可用的内部组织；Run 的字体或样式边界不必是交互边界。
+  组合字符跨样式范围仍须保持交互完整，不为了层级而新增公共 Run API。
+- 逻辑文字顺序与视觉顺序分开，保留 RTL 方向及边界亲和性；一个文字偏移可能
+  有两个视觉位置。现有 GUI Geometry/Position 负责解释这些布局事实。
+
+不要求逐单元复制 HarfBuzz 输出，也不以跨后端 Cluster 数量完全相同作为验收。
+此前注释中的 shaping cluster 是过窄的描述；现有后端行为尚须按此原则分别审视，
+不因文字注释更新就宣称三个桌面后端已完成粒度调整。
+
+参考：[Unicode UAX #29](https://unicode.org/reports/tr29/tr29-49.html)、
+[Qt 有效光标位置](https://doc.qt.io/qt-6/qtextlayout.html#isValidCursorPosition)、
+[Pango 光标属性](https://docs.gtk.org/Pango/struct.LogAttr.html)。这些均区分用户交互
+边界与字形形成；GOUI 保留小的值模型，先验证原生事实能否满足现有几何。
 
 ## 7. 行内占位
 
