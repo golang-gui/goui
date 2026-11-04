@@ -934,3 +934,16 @@ GUI／OpenGL 的 Modern 1x 亮暗切换，及 UI／Software 的 Basic 固定亮�
 
 窗口及独立会话已关闭。日志与截图保存在 `/tmp/goui-table-grid-l_6cdp7h`，未修改
 用户桌面、剪贴板或系统设置。本轮未执行远端、Direct2D 或新的 2x 验收，不作性能结论。
+
+## 18. 末项网格验收入口（2026-11-04）
+
+`tests/window/widgets/table` 增加 `-rows`，默认10000保留原场景；`-rows=3`用于
+数据未铺满视口的收口，`-rows=1`验证单行，`-rows=0`验证仅表头。Reveal last
+仍指向初始最后一条记录的稳定ID，空数据时不请求定位；F6的编辑器避让断言
+不再假定最后一列没有网格。具体操作及预期见例程入口注释。
+
+本机独立X11验收覆盖Software／OpenGL 1x／2x的少量记录、表头与正文对齐、
+完整底线／右边线和自定义内容边缘；另检查亮暗／粗线、隐藏列、伸展、横向滚动、
+编辑与空表。包内回归覆盖末列隐藏／恢复及末行增删，不依赖DevServer。
+实际屏幕采样与RenderWidget的Software离屏断言分开记录，平台及命令结果见
+[Plan](Plan.md#tableview-末项网格收口2026-11-04)。

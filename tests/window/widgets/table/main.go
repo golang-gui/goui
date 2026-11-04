@@ -5,6 +5,7 @@
 // -gui 使用命令式 GUI，-fallback-style 显式组合兜底样式。
 // -appearance=plain/zebra/rows/grid/thick 指定初始外观，默认 plain；Appearance
 // 按钮循环切换以上模式。thick 为粗线与自定义 Widget 内容避让的专项检查。
+// -rows=3 改用少量数据检查网格收口，-rows=0 检查仅表头；默认仍为10000条。
 // 状态文本显示实际主题、亮暗与外观模式。默认已应用 Modern；这些外观模式是
 // 例程追加的样式覆盖，并非 Modern 的默认外观。Basic 为固定亮色，Dark 不改变它。
 // GOUI_PLAT_PAINTER=software/opengl，Windows 另可 direct2d；GOUI_PLAT_SCALE=2
@@ -22,7 +23,8 @@
 //  3. 点击 Name 或 Size 表头，先升序后降序，输出 sort，箭头与实际数据一致；
 //     选中记录和 Current 按 ID 保留，不因排序改选别的记录。其他表头不可排序。
 //  4. 缩窄窗口并横向滚动，表头与正文同步；纵向滚动表头固定。快速滚动万行，
-//     无旧文字/按下背景残留。Reveal last 到记录 record-09999，而非假定最后索引。
+//     无旧文字/按下背景残留。Reveal last 到初始最后一条记录（默认record-09999），
+//     而非排序后的最后索引。
 //  5. 右击行显示行/列 ID；右击选中行保留多选，未选中行改为选中该行。
 //     Shift+F10 在 Current 可见位置弹出菜单；macOS 另验 Control+单击。
 //     菜单 Delete 删除该记录，Current 邻近回退；正文空白菜单标为 background，
@@ -64,6 +66,11 @@
 //     Esc 恢复拖动前的基础宽度与伸展。隐藏 Notes 后，其空间重新分给末列。
 //     伸展后按 F6：无界测量前后的 Snapshot 必须完全一致，列宽、调整手柄范围与
 //     单元格编辑内容均保留；反复悬停、移出和重建也不能把伸展宽度重置为基础宽度。
+//  12. 用 -rows=3 -appearance=grid 启动，放大窗口至显示全部列。末行下边线和
+//     末列右边线应完整收口，表头末列同步有右边线；空白视口不延伸虚构网格。
+//     切换thick、亮暗、隐藏／恢复Notes列、横向滚动及Refresh/Rebuild后重复。
+//     编辑器仍填满扣除网格后的单元格，不被边线盖住。-rows=1仍有底线／右边线，
+//     -rows=0只有表头右边线和分隔线；外框独立包围整个视口。
 //
 // 平台差异：Primary、右键触发时机按现有事件规则转换。默认 Tab 仅遍历已挂载
 // 控件，不保证跨虚拟记录导航；首版没有列重排或表格编辑事务。副作用仅测试窗口、
@@ -108,8 +115,8 @@ type model struct {
 }
 
 func (m *model) RowID(i int) string { return m.ItemAt(i).id }
-func newModel() *model {
-	rows := make([]record, 10000)
+func newModel(count int) *model {
+	rows := make([]record, count)
 	for i := range rows {
 		description := "A record with fixed column widths and stable identity."
 		if i%7 == 0 {
@@ -264,10 +271,7 @@ func assertTable(table *widgets.TableView, m *model) {
 			}
 			if c.ColumnID == "note" {
 				input, found := editorInfo(cell)
-				line := float32(0)
-				if i < count-1 {
-					line, _ = gui.ResolveStyle("table-grid", "vertical", style.Normal).BorderWidth()
-				}
+				line, _ := gui.ResolveStyle("table-grid", "vertical", style.Normal).BorderWidth()
 				want := cell.Bounds
 				want.Width = max(0, want.Width-line)
 				if !found || !input.Focusable || input.Bounds != want || input.Text != m.note(r.RowID) {
@@ -279,7 +283,8 @@ func assertTable(table *widgets.TableView, m *model) {
 			}
 		}
 	}
-	// Exercise the real GUI traversal and backend, not a separate test renderer.
+	// RenderWidget exercises GUI traversal with Software; the native window's
+	// backend and appearance are checked separately on screen.
 	img, err := gui.RenderWidget(table, 1)
 	if err != nil {
 		panic(err)
@@ -369,25 +374,29 @@ func main() {
 	guiMode := flag.Bool("gui", false, "use imperative GUI")
 	fallback := flag.Bool("fallback-style", false, "compose fallback style")
 	appearance := flag.String("appearance", "plain", "plain/zebra/rows/grid/thick")
+	rows := flag.Int("rows", 10000, "记录数量，少量数据用于验证末行／末列网格")
 	flag.Parse()
 	look := slices.Index(appearances, *appearance)
 	if look < 0 {
 		log.Fatal("invalid -appearance")
 	}
+	if *rows < 0 {
+		log.Fatal("-rows must be nonnegative")
+	}
 	var err error
 	if *guiMode {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
-		err = runGUI(*fallback, look)
+		err = runGUI(*fallback, look, *rows)
 	} else {
-		err = runUI(*fallback, look)
+		err = runUI(*fallback, look, *rows)
 	}
 	if err != nil {
 		log.Fatal(err)
 	}
 }
-func runUI(fallback bool, appearance int) error {
-	m := newModel()
+func runUI(fallback bool, appearance, rows int) error {
+	m := newModel(rows)
 	dark, version := false, 0
 	notesVisible := true
 	expandLast := false
@@ -437,7 +446,11 @@ func runUI(fallback bool, appearance int) error {
 			ui.VBox(ui.HBox(
 				ui.Button("Rebuild").OnClick(func() { version++; app.RequestUpdate() }),
 				ui.Button("Toggle dark").OnClick(func() { dark = !dark; app.RequestUpdate() }),
-				ui.Button("Reveal last").OnClick(func() { app.FindWidget("table-window", "table").(*widgets.TableView).Reveal("record-09999") }),
+				ui.Button("Reveal last").OnClick(func() {
+					if rows > 0 {
+						app.FindWidget("table-window", "table").(*widgets.TableView).Reveal(fmt.Sprintf("record-%05d", rows-1))
+					}
+				}),
 				ui.Button("Snapshot").OnClick(verify),
 				ui.Button("Appearance").OnClick(func() {
 					appearance = (appearance + 1) % len(appearances)
@@ -577,7 +590,7 @@ func (*cellDelegate) Unbind(_ widgets.TableRow, widget gui.Widget) {
 		c.id = ""
 	}
 }
-func runGUI(fallback bool, appearance int) error {
+func runGUI(fallback bool, appearance, rows int) error {
 	app, err := gui.NewApplication("org.golang-gui.TableViewGUIProbe")
 	if err != nil {
 		return err
@@ -592,7 +605,7 @@ func runGUI(fallback bool, appearance int) error {
 		return err
 	}
 	window.SetMinSize(geometry.Size{Width: 400, Height: 240})
-	m := newModel()
+	m := newModel(rows)
 	table := widgets.NewTableView()
 	version, dark := 0, false
 	var columns []*widgets.TableColumn
@@ -648,7 +661,11 @@ func runGUI(fallback bool, appearance int) error {
 	}
 	button("Refresh", func() { version++; table.Refresh() })
 	button("Toggle dark", func() { dark = !dark; updateAppearance() })
-	button("Reveal last", func() { table.Reveal("record-09999") })
+	button("Reveal last", func() {
+		if rows > 0 {
+			table.Reveal(fmt.Sprintf("record-%05d", rows-1))
+		}
+	})
 	button("Snapshot", verify)
 	button("Appearance", func() {
 		appearance = (appearance + 1) % len(appearances)
