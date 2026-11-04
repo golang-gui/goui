@@ -260,6 +260,7 @@ const (
 // snapshot (bit not set), so the widget's private defaults stay private and
 // a missing modifier naturally reverts. The context is private.
 type viewBaseContext struct {
+	context           BuildContext
 	shortcuts         shortcutBindings
 	dragSource        dragSourceBinding
 	dropTarget        dropTargetBinding
@@ -354,7 +355,7 @@ func (b *viewBase) update(ctx *viewBaseContext, w gui.Widget, live func() bool) 
 				return
 			}
 		}
-		ctx.shortcuts.update(controller, b.shortcuts)
+		ctx.shortcuts.update(controller, b.shortcuts, ctx.context)
 	} else if ctx.shortcuts.controller != nil {
 		w.RemoveEventController(ctx.shortcuts.controller)
 		ctx.shortcuts.clear()
@@ -384,6 +385,7 @@ func (b *viewBase) unmount(ctx *viewBaseContext, w gui.Widget) {
 	}
 	ctx.handles = nil
 	ctx.onFocus = nil
+	ctx.context = nil
 	ctx.initID = ""
 	ctx.initName = ""
 	ctx.initStyleName = ""

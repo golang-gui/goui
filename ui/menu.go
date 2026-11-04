@@ -15,15 +15,26 @@ type MenuModel = gui.MenuModel
 type MenuItemView struct {
 	label     string
 	action    func()
+	commandID string
 	enabled   bool
 	separator bool
 	submenu   []*MenuItemView // reserved for the future submenu slice
 }
 
 // MenuItem creates an enabled, single-selectable menu entry.
-func MenuItem(label string, action func()) *MenuItemView {
-	return &MenuItemView{label: label, action: action, enabled: true}
+func MenuItem(label string, action ...func()) *MenuItemView {
+	if len(action) > 1 {
+		panic("ui: MenuItem accepts at most one action")
+	}
+	v := &MenuItemView{label: label, enabled: true}
+	if len(action) > 0 {
+		v.action = action[0]
+	}
+	return v
 }
+
+// Command selects an operation from ancestor scopes instead of a direct action.
+func (m *MenuItemView) Command(id string) *MenuItemView { m.commandID = id; m.action = nil; return m }
 
 // Enabled marks the item's enable state; re-evaluate each rebuild to react to
 // state changes (e.g. Enabled(canOpen.Get())).
@@ -56,6 +67,7 @@ type menuButtonState struct {
 	onClosed    func()
 	onOpenError func(error)
 	handles     signal.Handles
+	commands    []commandReference
 }
 
 // MenuButton creates a menu button. Like ui.Button, pass an optional label
@@ -119,8 +131,16 @@ func (v *MenuButtonView) Update(ctx BuildContext, widget gui.Widget) {
 	}
 	sig := signatureOf(v.items)
 	if sig == s.lastSig {
+		references := s.commands
+		for i := range references {
+			references[i].reparent()
+		}
 		return
 	}
+	for i := range s.commands {
+		s.commands[i].clear()
+	}
+	s.commands = make([]commandReference, 0, len(v.items))
 	// Keep the model across unrelated rebuilds. Its action closures resolve
 	// the latest declaration through this node's state, without reloading rows.
 	model := gui.NewMenu()
@@ -132,14 +152,19 @@ func (v *MenuButtonView) Update(ctx BuildContext, widget gui.Widget) {
 			model.AppendSeparator()
 			continue
 		}
-		model.Append(item.label, func() {
+		entry := model.Append(item.label, func() {
 			if index < len(s.items) {
 				item := s.items[index]
 				if item != nil && !item.separator && item.enabled && item.action != nil {
 					item.action()
 				}
 			}
-		}).SetEnabled(item.enabled)
+		})
+		entry.SetEnabled(item.enabled)
+		if item.commandID != "" {
+			s.commands = append(s.commands, commandReference{})
+			s.commands[len(s.commands)-1].update(ctx, item.commandID, entry.SetCommand)
+		}
 	}
 	s.lastSig = sig
 	button.SetMenu(model)
@@ -147,6 +172,10 @@ func (v *MenuButtonView) Update(ctx BuildContext, widget gui.Widget) {
 func (v *MenuButtonView) Unmount(ctx BuildContext, widget gui.Widget) {
 	if s, ok := ctx.State().(*menuButtonState); ok {
 		s.handles.Disconnect()
+		for i := range s.commands {
+			s.commands[i].clear()
+		}
+		s.commands = nil
 		s.items = nil
 		s.onClosed = nil
 		s.onOpenError = nil
@@ -158,10 +187,13 @@ func (v *MenuButtonView) Unmount(ctx BuildContext, widget gui.Widget) {
 var _ WidgetView = (*MenuButtonView)(nil)
 
 // Menu converts menu item declarations into a fresh imperative menu model.
-// It does not mount a View or execute item actions. Composite controls can use
+// It does not mount a View or execute item actions. Command IDs remain disabled
+// without a scope context; use MenuFor from a composite View. Controls can use
 // it when coordinating their own menu declarations, including menus queried
 // at input time. An empty declaration produces an empty model.
-func Menu(items ...*MenuItemView) MenuModel {
+func Menu(items ...*MenuItemView) MenuModel { return makeMenu(items...) }
+
+func makeMenu(items ...*MenuItemView) *gui.Menu {
 	m := gui.NewMenu()
 	for _, it := range items {
 		if it == nil {
@@ -172,6 +204,11 @@ func Menu(items ...*MenuItemView) MenuModel {
 			continue
 		}
 		mi := m.Append(it.label, it.action)
+		if it.commandID != "" {
+			missing := gui.NewCommand()
+			missing.SetEnabled(false)
+			mi.SetCommand(missing)
+		}
 		if !it.enabled {
 			mi.SetEnabled(false)
 		}
@@ -194,6 +231,9 @@ func signatureOf(items []*MenuItemView) string {
 			b = append(b, '|')
 			continue
 		}
+		b = strAppendUint(b, uint64(len(it.commandID)))
+		b = append(b, ':')
+		b = append(b, it.commandID...)
 		b = strAppendUint(b, uint64(len(it.label)))
 		b = append(b, it.label...)
 		if it.enabled {
@@ -219,4 +259,71 @@ func strAppendUint(b []byte, v uint64) []byte {
 		v /= 10
 	}
 	return append(b, tmp[i:]...)
+}
+
+func (*MenuButtonView) Reparented(ctx BuildContext) {
+	if s, ok := ctx.State().(*menuButtonState); ok {
+		references := s.commands
+		for i := range references {
+			references[i].reparent()
+		}
+	}
+}
+
+// MenuFor resolves command IDs for a context-menu request. While a presenter
+// observes the returned model, scope membership changes also refresh its IDs.
+// The context is borrowed and follows explicit subtree transfers.
+func MenuFor(ctx BuildContext, items ...*MenuItemView) MenuModel {
+	model := &scopedMenu{Menu: makeMenu(items...), ctx: ctx}
+	index := 0
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		if item.commandID != "" {
+			model.targets = append(model.targets, scopedMenuTarget{item: model.ItemAt(index), id: item.commandID})
+		}
+		index++
+	}
+	if len(model.targets) == 0 {
+		return model.Menu
+	}
+	model.refresh()
+	return model
+}
+
+type scopedMenuTarget struct {
+	item    *gui.MenuItem
+	id      string
+	missing *gui.Command
+}
+type scopedMenu struct {
+	*gui.Menu
+	ctx     BuildContext
+	targets []scopedMenuTarget
+}
+
+func (m *scopedMenu) refresh() {
+	for i := range m.targets {
+		target := &m.targets[i]
+		command, ok := FindCommand(m.ctx, target.id)
+		if !ok {
+			if target.missing == nil {
+				target.missing = gui.NewCommand()
+				target.missing.SetEnabled(false)
+			}
+			command = target.missing
+		}
+		target.item.SetCommand(command)
+	}
+}
+func (m *scopedMenu) ConnectItems(fn func()) signal.Handle {
+	m.refresh()
+	handles := signal.Handles{m.Menu.ConnectItems(fn)}
+	if m.ctx != nil {
+		if scope, ok := FindAncestor[*commandScope](m.ctx); ok {
+			handles = append(handles, scope.changed.Connect(m.refresh))
+		}
+	}
+	return handles
 }

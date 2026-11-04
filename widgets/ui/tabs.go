@@ -236,7 +236,7 @@ func (v *TabBarView) Mount(ctx baseui.BuildContext) gui.Widget {
 	state.handles = signal.Handles{
 		bar.ConnectContextMenu(func(page *widgets.TabPage, menu *gui.MenuModel) {
 			if state.contextMenu != nil {
-				*menu = baseui.Menu(state.contextMenu(pageID(page))...)
+				*menu = baseui.MenuFor(ctx, state.contextMenu(pageID(page))...)
 			}
 		}),
 		bar.ConnectContextMenuError(func(err error) {
