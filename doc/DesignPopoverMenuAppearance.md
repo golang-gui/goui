@@ -84,6 +84,8 @@ SetStyleName(name string)
 | `menu-item` | 行背景、边框、圆角、交互状态 | 4 DIP 圆角，正常背景透明；悬停、按下使用固定中性色，不随主题色变化 |
 | `menu-item-text` | 菜单项 Label 的字体和文字颜色 | 使用主题正文颜色和字号 |
 | `menu-item-text-disabled` | 禁用菜单项 Label 的字体和文字颜色 | 使用主题禁用文字颜色和字号 |
+| `menu-item-shortcut` | 快捷键 Label 的字体和颜色 | 正文同字号，稍弱的中性色 |
+| `menu-item-shortcut-disabled` | 禁用快捷键 Label 的字体和颜色 | 明确的禁用颜色 |
 | `menu-separator` | 分隔线 | 沿用现有分隔线颜色 |
 
 以下是 Modern 的默认阴影，不自动加入 GUI 兜底规则：
@@ -410,3 +412,14 @@ macOS Popup 配置。不借本切片重构不相关的绘制、布局或文字�
 自动化测试、交叉编译和三平台真机验收分别记录，不以文档写入或测试目标编译
 代替功能完成。共享阴影值、颜色适配、宿主和菜单外观均已实现，跨平台目测仍待验收；
 分阶段验证记录见 [Modern 样式](DesignModernStyle.md)。
+
+## 命令驱动的实时呈现（2026-11-04）
+
+菜单可选关联 Command，显示期间观察操作启用及关联快捷键配置，隐藏时解除观察。
+单行背景仍由 menuItemRow 绘制，标题与提示分别使用普通 Label，不直接持有 TextLayout。
+快捷键列全菜单共享宽度，与标题至少相隔 24 DIP；无提示时不占列和间距。
+Label 用自然文字框贴齐共享列右边，同一行按基线对齐。滚动复用和分隔线不改变列边界。
+
+未实现的虚拟行在绑定时读取最新 Command 状态；开关操作不重新加载 ListView 模型。
+真实字体／提示尺寸变化继续更新自然宽度和原生弹窗尺寸。Snapshot 的 goui.menu-item
+Attribute 包含配置提示，Text 保持标题 PlainText。详见 [DesignCommand](DesignCommand.md)。

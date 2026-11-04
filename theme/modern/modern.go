@@ -236,6 +236,8 @@ func builtInRules(options Options) []style.Rule {
 		style.Name("menu-item").BackgroundColor(color.Transparent).Radius(4),
 		text("menu-item-text"),
 		text("menu-item-text-disabled").ForegroundColor(p.disabled),
+		text("menu-item-shortcut").ForegroundColor(mix(p.surface, p.text, .7)),
+		text("menu-item-shortcut-disabled").ForegroundColor(p.disabled),
 		style.Name("menu-item").State(style.Hovered).BackgroundColor(p.menuHover),
 		style.Name("menu-item").State(style.Pressed).BackgroundColor(p.menuPressed),
 		style.Name("menu-separator").BackgroundColor(p.border),
