@@ -1,5 +1,47 @@
 # Plan
 
+## 四角圆角与盒形阴影（2026-11-04）
+
+- 设计见 [DesignCornerRadius](DesignCornerRadius.md)。
+- [x] 共享 CornerRadius、比例归一与轮廓命中；背景／环带路径及多轮廓遍历。
+  环带内轮廓反向且显式标记孔洞。Direct2D 检查 GeometrySink.Close HRESULT，
+  失败时释放几何资源。原型发现的 NanoVG AA 重复合成用 stencil 覆盖处理修正，
+  没有引入 CPU 读回、纹理／FBO 缓存或逐后端视觉补偿。
+- [x] 三阴影后端、完整圆角样式与消费者迁移；统一值保留绘制快捷路径。
+  nanovgo 分为 AA 修正 `3a6078d`、四角阴影 `ba74253`，已推送 main 与
+  annotated tag `v0.0.11`。GOUI 使用该正式依赖，无 replace／仓库内 workspace。
+  Style.Radius getter 迁为 CornerRadius；DrawBoxShadow 统一值显式用
+  UniformCornerRadius 包装。Rule.Radius、BoxShadow 参数及统一边框宽色不变。
+- [x] `DISPLAY=:89 GOWORK=off go test -json -count=1 ./...`：3642项通过、
+  15项既有跳过、零失败，包含保留的未跟踪旧测试。跳过为平台手工交互／剪贴板及
+  macOS 签名环境用例，不计作通过。相关 geometry／style／graphics／gui／widgets／
+  theme／ui race、nanovgo 全包 race 与受影响包／专项窗口程序 vet 通过。
+  首次全仓运行的8项 cmd/goui 失败来自临时 go.work 排除 fixture 模块；换正式
+  tag、GOWORK=off 后全部通过，未修改断言或 skip。vet 的新增未命名字段字面量已修正。
+- [x] Ubuntu 22.04.5 amd64，独立 Xvnc :89／xfwm4（合成开启）、Mesa llvmpipe：
+  Software／OpenGL 的窗口与离屏像素验收通过，GUI 1x／2x 四组通过。环带及阴影
+  离屏矩阵覆盖1／1.25／1.5／2x、旋转／缩放、clip、半透明、正负 Spread、小圆角
+  粗边框及半径150／sigma1；实际鼠标切换四角、ButtonGroup 接缝及 Popover 外观通过。
+  正式 tag 下重验 Software 像素、OpenGL 2x 像素、Software 2x GUI 和 ClearPath。
+- [x] Windows 10 19045 amd64／RDP／Direct2D 与 macOS 15.7.7 M1 arm64／VNC／
+  OpenGL，窗口1x／2x 自动验收通过；原生桌面实际切换与 Popover 外观检查通过，
+  正常关闭无异常。Direct2D 原生核相对独立高斯中心积分最大差3.534/255，按既有
+  一物理像素足迹包络验收，固定色值余量3/255；初版严格中心相等的失败及原因见设计。
+  Windows RDP 的 OpenGL 创建失败（can not choose useful pixel format），属于环境
+  验证缺口，未回退冒充通过。未验收硬件 GPU 性能、混合 DPI 或 Linux arm64。
+- [x] Windows amd64／macOS arm64 的受影响包与专项窗口程序 CGO_ENABLED=0 构建
+  通过。按几何路径、阴影后端、样式消费者、窗口验收拆分；前置提交单独导出源码
+  验证编译与相关测试，避免中间提交依赖未提交实现。
+- 同 Go 1.25.8／CPU、GOMAXPROCS=1、200ms×3 的 PaintStyledBox helper 对照：
+  旧统一值118.1～128.7ns、32B／2 alloc；新统一值152.2～153.1ns、32B／2 alloc；
+  四角564.3～575.9ns、608B／4 alloc。仅测记录型 Painter 的值处理／路径构造，
+  不代表 GPU、软件栅格或整帧性能；未引入额外路径缓存。
+- 验证日志、截图与对照源码位于 `/tmp/goui-corners-gzvnkvl2`；远端临时目录为
+  `goui-corners-20261104`。本轮窗口、Popover 及新开的终端正常关闭，临时桌面连接
+  断开，独立 X11 会话已停止；既有 SSH 与用户窗口保留。两个未跟踪旧例程仅同步
+  必要 API，不纳入提交。
+- PathShadow、四边分色和圆角子树裁剪留待具体需求。
+
 ## 非显示区域绘制与续帧（2026-11-04）
 
 - 设计见 [DesignDrawable](DesignDrawable.md)。

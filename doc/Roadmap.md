@@ -25,6 +25,17 @@ v0.6.0 已正式发布，三平台 Demo 为0.6.0 / build 1，增加输入策略�
 实现范围与实际平台验收分开记录；
 Linux arm64、原生 Wayland、触摸、系统通知／托盘、子菜单仍按后文规划推进。
 
+## 四角圆角与盒形阴影（2026-11-04）
+
+已实现 `geometry.CornerRadius`、四角样式、背景／统一宽色环带边框和三后端
+BoxShadow。保留 `Rule.Radius` 简写，样式 getter 及阴影绘制参数迁移为完整四角；
+ButtonGroup、Popover、BorderBox 等消费者同步，窗口原生装饰归属不变。
+nanovgo 使用正式 `v0.0.11`，含四角高斯阴影与半透明曲线 AA 修正。
+本机独立 X11 Software／OpenGL、远端 Windows Direct2D／macOS OpenGL 验收通过；
+Windows RDP OpenGL 缺口和实际测试范围见 [Plan](Plan.md)。详细契约及迁移见
+[DesignCornerRadius](DesignCornerRadius.md)。PathShadow、四边宽色及圆角子树裁剪
+不属于当前能力，按具体需求另行设计。
+
 
 ## Demo 当前能力与局部更新（2026-10-31）
 
