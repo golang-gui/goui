@@ -2,6 +2,8 @@
 
 状态：第一切片启动/事件线程、第二切片逻辑窗口/Software 表面已实现并完成下述阶段验收；
 尚未注册完整移动 Platform，也未接入 GUI/UI 窗口。
+后续包结构、两端共用 OpenGL ES 和文字接入顺序以
+[DesignMobilePlatform](DesignMobilePlatform.md) 为准；本篇保留已实现的生命周期契约。
 构建基座与链接工具见 [PlanMobileBuild](PlanMobileBuild.md)。开发使用独立的
 `goui2/feature/mobile-base`，不改变主会话的桌面实现。
 
@@ -106,8 +108,9 @@ context loss 需要明确资源恢复契约。graphics.Image 不保留源图片�
    Run 期间原生循环仍工作，重复启动不重跑，GC/线程回调后线程归属不变。
 2. 原生逻辑窗口和 Software 表面：先创建后 Run；旋转、前后台、表面替换，
    销毁后零访问与无旧帧提交。
-3. GUI/UI：延迟 Painter、树保留、恢复布局和状态；连接不重复。
-4. 生命周期和退出契约；随后接入排版、输入法、触摸、GPU 和资源恢复。
+3. 先验证 Android 排版，整理平台包与构建选择，再接 iOS CoreText/Android 文字。
+4. 最小 Platform、触摸和 GUI/UI：延迟 Painter、树保留、恢复布局；随后补齐
+   生命周期/退出、IME 与两端 GLES，具体顺序见 DesignMobilePlatform。
 
 第一切片不修改 gui/ui，不以测试宿主自带的原生文字/按钮声称 GOUI 控件已运行。
 包内测试覆盖注册/重复启动、队列次序、重入、取消和并发 Post/Quit；测试宿主

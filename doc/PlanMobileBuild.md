@@ -4,6 +4,7 @@
 四个阶段已完成，记录见第 13–16 节。普通 Go 依赖仍从源码编译；Android/iOS
 模拟器的 ABI 运行通过，iOS 真机和 Android 16 KiB 内核运行仍待验收。
 正式平台启动与生命周期另见 [DesignMobileLifecycle](DesignMobileLifecycle.md)。
+最新包结构、首版两端 GLES 和文字排版路线见 [DesignMobilePlatform](DesignMobilePlatform.md)。
 尚未接入 GOUI 移动 UI 或改变面向用户的桌面构建命令。
 
 开发隔离在 `/data/xuyang8/repos/goui2` 的 `feature/mobile-base` 分支；
