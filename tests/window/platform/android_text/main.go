@@ -2,7 +2,7 @@
 
 // Android 系统排版能力验证，环境、构建和逐项预期见 README.md。
 // Go 固定线程经 JNI 调用公开排版 API，再由正式移动 Window/Software 显示结果。
-// report.json 中候选 Cluster 映射失败必须报告；程序启动不等于排版后端通过。
+// 历史 shaping 对照与当前交互验证独立报告；程序启动不等于排版后端通过。
 package main
 
 import (
@@ -51,6 +51,26 @@ func main() {
 	ffi.Call(symbol("probe_free"), address)
 	bitmap := &image.RGBA{Pix: pixels, Stride: int(b.Stride), Rect: image.Rect(0, 0, int(b.Width), int(b.Height))}
 	dir := ffi.GoString(ffi.Pointer(ffi.CallRet[uintptr](symbol("probe_directory"))))
+	var report struct {
+		Interaction struct {
+			Cases []interactionCase
+		}
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "report.json"))
+	if err != nil {
+		panic(err)
+	}
+	if err = json.Unmarshal(data, &report); err != nil {
+		panic(err)
+	}
+	interactions := verifyInteractions(report.Interaction.Cases)
+	data, err = json.MarshalIndent(interactions, "", "  ")
+	if err != nil {
+		panic(err)
+	}
+	if err = os.WriteFile(filepath.Join(dir, "interaction-go.json"), data, 0600); err != nil {
+		panic(err)
+	}
 	loop := mobile.NewEventLoop()
 	defer loop.Destroy()
 	var painter graphics.Painter
@@ -71,7 +91,7 @@ func main() {
 			painter.DrawImage(graphics.Rect(0, 0, float32(b.Width)*scale, float32(b.Height)*scale), img)
 			painter.End()
 			frames++
-			data, _ := json.Marshal(map[string]any{"frames": frames, "owner": owner, "nativeThread": b.Thread, "width": size.Width, "height": size.Height})
+			data, _ := json.Marshal(map[string]any{"frames": frames, "owner": owner, "nativeThread": b.Thread, "width": size.Width, "height": size.Height, "interactionFailures": interactions.Failures})
 			if err := os.WriteFile(filepath.Join(dir, "go.json"), data, 0600); err != nil {
 				panic(err)
 			}

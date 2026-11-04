@@ -87,7 +87,7 @@ def main():
     classes.mkdir(exist_ok=True)
     dex.mkdir(exist_ok=True)
     run([config["java"], "-m", "jdk.compiler/com.sun.tools.javac.Main", "--release", "8", "-classpath", config["androidJar"],
-         "-d", classes, source / "native/TextProbe.java"], "maintainer-java")
+         "-d", classes, *sorted((source / "native").glob("*.java"))], "maintainer-java")
     run([config["java"], "-cp", config["d8"], "com.android.tools.r8.D8", "--lib", config["androidJar"],
          "--min-api", "29", "--output", dex, *sorted(classes.rglob("*.class"))], "maintainer-dex")
     run([config["cc"], "-O2", "-std=gnu11", "-c", source / "native/android.c", "-o", root / "probe.o"], "maintainer-native")
