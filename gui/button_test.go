@@ -820,7 +820,7 @@ func (p *testButtonBackgroundPainter) DrawTextLayout(origin geometry.Point, layo
 func (p *testButtonBackgroundPainter) DrawImage(rect geometry.Rectangle, img graphics.Image) {}
 func (p *testButtonBackgroundPainter) SetTransform(matrix geometry.Transform)                {}
 
-func (p *testButtonBackgroundPainter) DrawBoxShadow(rect geometry.Rectangle, radius float32, shadow graphics.BoxShadow) {
+func (p *testButtonBackgroundPainter) DrawBoxShadow(rect geometry.Rectangle, radius geometry.CornerRadius, shadow graphics.BoxShadow) {
 }
 
 func (p *testButtonBackgroundPainter) ClearPath(path graphics.Path) {}

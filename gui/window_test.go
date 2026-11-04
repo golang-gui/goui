@@ -565,7 +565,7 @@ func (p *testGraphicsPainter) SetClipRect(rect graphics.Rectangle) {}
 
 func (p *testGraphicsPainter) Clear(color graphics.Color) {}
 
-func (p *testGraphicsPainter) DrawBoxShadow(rect graphics.Rectangle, radius float32, shadow graphics.BoxShadow) {
+func (p *testGraphicsPainter) DrawBoxShadow(rect graphics.Rectangle, radius geometry.CornerRadius, shadow graphics.BoxShadow) {
 }
 
 func (p *testGraphicsPainter) FillRect(rect graphics.Rectangle, brush graphics.Brush) {}

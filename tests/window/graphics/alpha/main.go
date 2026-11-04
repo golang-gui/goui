@@ -116,7 +116,7 @@ func run(transparent bool) error {
 		p.DrawImage(graphics.Rect(340, 78, 120, 8), swatch)
 		p.FillRect(graphics.Rect(190, 140, 120, 40), graphics.LinearGradient{Start: graphics.Point{X: 190}, End: graphics.Point{X: 310}, StartColor: graphics.RGBA(255, 0, 0, 64), EndColor: graphics.RGBA(0, 0, 255, 192)})
 		p.DrawImage(graphics.Rect(340, 140, 120, 40), gradient)
-		p.DrawBoxShadow(graphics.Rect(190, 202, 120, 40), 4, graphics.BoxShadow{Color: c, BlurRadius: 4})
+		p.DrawBoxShadow(graphics.Rect(190, 202, 120, 40), geometry.UniformCornerRadius(4), graphics.BoxShadow{Color: c, BlurRadius: 4})
 		p.DrawImage(graphics.Rect(340, 202, 120, 40), swatch)
 		p.DrawTextLayout(graphics.Point{X: 190, Y: 264}, labels[6])
 		p.DrawTextLayout(graphics.Point{X: 340, Y: 264}, labels[7])

@@ -22,7 +22,7 @@ type BoxShadow struct {
 }
 
 type Painter interface {
-    DrawBoxShadow(rect Rectangle, radius float32, shadow BoxShadow)
+    DrawBoxShadow(rect Rectangle, radius geometry.CornerRadius, shadow BoxShadow)
 }
 ```
 
@@ -41,7 +41,7 @@ type Painter interface {
 
 1. 原矩形按 `Offset` 平移；
 2. `SpreadRadius` 同时扩张四边，负值表示向内收缩；
-3. 圆角变为 `clamp(radius + SpreadRadius, 0, min(width,height)/2)`；
+3. 源四角先按源矩形归一；各半径变为 `max(radius+SpreadRadius, 0)`，按扩缩后的边长重新归一；
 4. 正 `BlurRadius` 最小归一到 `0.5` 逻辑单位，非正值表示清晰轮廓。
 
 透明颜色、空源矩形、非有限参数或 spread 后为空的轮廓不绘制。正模糊采用与
@@ -57,15 +57,15 @@ extent = 3 * sigma = 1.5 * BlurRadius
 圆角附近由完整有限形状卷积决定，不强行保证轮廓处恰好 50%。清晰轮廓在内部
 及边界为 100%，外部为 0%。
 
-共享算法先解析积分完整矩形，再减去四个圆角缺口；每个缺口使用固定 16 点中点
-积分。Go 与 NanoVG shader 使用同一 erf 近似和常量。Software 是确定性参考，
+共享算法先解析积分完整矩形，再减去四个圆角缺口；每个缺口使用独立半径，并将积分区间限制到采样点左右3σ，再固定16点中点
+积分。大半径、小模糊不会漏采整个高斯峰值。Go 与 NanoVG shader 使用同一 erf 近似和常量。Software 是确定性参考，
 OpenGL 与它计算同一个解析近似。
 
 常用的下边缘强调配方仍为：
 
 ```go
 blur := float32(6)
-p.DrawBoxShadow(rect, radius, graphics.BoxShadow{
+p.DrawBoxShadow(rect, geometry.UniformCornerRadius(radius), graphics.BoxShadow{
     Color:        shadowColor,
     Offset:       graphics.Point{Y: blur},
     BlurRadius:   blur,
@@ -80,14 +80,14 @@ p.DrawBoxShadow(rect, radius, graphics.BoxShadow{
 
 - 共享实现位于 `platform/graphics/internal/boxshadow`，负责归一、`sigma`、
   `3σ` 影响范围、清晰轮廓 signed-distance 和高斯透明度。
-- OpenGL 使用团队维护的 NanoVG `BoxShadow` Paint，在单个 fragment shader
+- OpenGL 使用团队维护的 NanoVG `BoxShadowVarying` Paint，在单个 fragment shader
   pass 中计算共享高斯近似；不创建临时纹理或 FBO。
 - Software 将设备像素中心经设备 Transform 的逆矩阵映回局部坐标，逐像素运行
   共享实现并生成预乘 alpha。
 - Direct2D 使用 D3D11 BGRA device、DXGI swap chain 和 `ID2D1DeviceContext`。
-  圆角矩形录制为 CommandList，交给原生 `CLSID_D2D1Shadow`，其中
+  四角轮廓（统一值保留原生快捷路径）录制为 CommandList，交给原生 `CLSID_D2D1Shadow`，其中
   `BlurStandardDeviation=BlurRadius/2` 且优化模式为 QUALITY。CommandList 按
-  `{width,height,radius}` 缓存 16 项 LRU。
+  `{width,height,CornerRadius}` 缓存 16 项 LRU。
 - Direct2D 首选硬件 D3D11，失败后尝试 WARP。透明 surface 使用 DirectComposition
   与 flip swap chain；不透明 HWND 使用 sequential，失败时尝试 discard，而不是
   将透明呈现路径套给所有窗口。D2D1.1 初始化失败时由 Windows 平台继续选择 OpenGL、
@@ -119,3 +119,14 @@ Windows 增加 WARP Direct2D 清晰／柔化／降级颜色测试及 OpenGL FBO 
 DIP to physical pixels. The existing widget transform and structural clip apply;
 empty clips suppress the call. Widgets reserve shadow room in their allocation.
 The facade does not change backend algorithms or resource ownership.
+
+## 四角扩展与迁移（2026-11-04）
+
+详见 [DesignCornerRadius](DesignCornerRadius.md)。DrawBoxShadow 的 radius 参数为
+geometry.CornerRadius，原单值用 UniformCornerRadius 包装；效果值本身不存几何。
+清晰和降级阴影绘制同一有效轮廓；缓存覆盖全部四角，颜色／位置不使轮廓失效。
+
+Software/OpenGL 的像素对照使用独立高斯截面积分，按中心采样误差3/255检查；
+Direct2D 保持原生核，按既定最多一物理像素的几何包络检查（采样点左右各半物理像素
+的独立参考覆盖率范围，加3/255核近似／量化余量），不强制其曲线与专用shader相同。
+环带也检查透明中心、半透明不重复合成、clip和变换。实测结果记录在Plan。

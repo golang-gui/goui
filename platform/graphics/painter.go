@@ -42,7 +42,7 @@ type Painter interface {
 	// is implicitly closed. Drawing state is unchanged. Transparent presentation
 	// requires an alpha-enabled surface.
 	ClearPath(path Path)
-	DrawBoxShadow(rect Rectangle, radius float32, shadow BoxShadow)
+	DrawBoxShadow(rect Rectangle, radius geometry.CornerRadius, shadow BoxShadow)
 	FillRect(rect Rectangle, brush Brush)
 	FillRoundRect(rect Rectangle, radius float32, brush Brush)
 	FillEllipse(center Point, xRadius, yRadius float32, brush Brush)

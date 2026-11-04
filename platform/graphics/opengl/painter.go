@@ -17,7 +17,6 @@ import (
 	"github.com/golang-gui/goui/platform/graphics/internal/textbitmap"
 	"github.com/golang-gui/goui/platform/graphics/utils"
 	"github.com/golang-gui/goui/platform/typography"
-
 	"github.com/golang-gui/nanovgo"
 	"github.com/golang-gui/nanovgo/gl"
 )
@@ -359,7 +358,7 @@ func (p *Painter) Clear(color graphics.Color) {
 	gl.Clear(gl.COLOR_BUFFER_BIT)
 }
 
-func (p *Painter) DrawBoxShadow(rect graphics.Rectangle, radius float32, shadow graphics.BoxShadow) {
+func (p *Painter) DrawBoxShadow(rect graphics.Rectangle, radius geometry.CornerRadius, shadow graphics.BoxShadow) {
 	if p.frameSkipped || !p.surfaceAvailable() {
 		return
 	}
@@ -377,14 +376,18 @@ func (p *Painter) DrawBoxShadow(rect graphics.Rectangle, radius float32, shadow 
 	p.vg.BeginPath()
 	if shape.BlurRadius <= 0 {
 		rect := pixelsnap.Rect(shape.Rect, p.transform, p.scale)
-		p.vg.RoundedRect(rect.X, rect.Y, rect.Width, rect.Height, shape.Radius)
+		if shape.Radius.Uniform() {
+			p.vg.RoundedRect(rect.X, rect.Y, rect.Width, rect.Height, shape.Radius.TopLeft)
+		} else {
+			p.doPath(graphics.RoundRectPath(rect, shape.Radius))
+		}
 		p.vg.SetFillColor(color)
 	} else {
 		bounds := shape.Bounds()
 		p.vg.Rect(bounds.X, bounds.Y, bounds.Width, bounds.Height)
-		p.vg.SetFillPaint(nanovgo.BoxShadow(
+		p.vg.SetFillPaint(nanovgo.BoxShadowVarying(
 			shape.Rect.X, shape.Rect.Y, shape.Rect.Width, shape.Rect.Height,
-			shape.Radius, shape.BlurRadius, color,
+			shape.Radius.TopLeft, shape.Radius.TopRight, shape.Radius.BottomRight, shape.Radius.BottomLeft, shape.BlurRadius, color,
 		))
 	}
 	p.vg.Fill()

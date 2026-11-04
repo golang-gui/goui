@@ -230,7 +230,7 @@ func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Sty
 	guiPainter.applyState()
 	radius, _ := border.Radius()
 	if shadow.Color.A > 0 && body.Width > 0 && body.Height > 0 {
-		b.painter.DrawBoxShadow(body, radius, shadow)
+		b.painter.DrawBoxShadow(body, geometry.UniformCornerRadius(radius), shadow)
 	}
 	// Hosts choose their background geometry and structural content clip. A
 	// final shape erasure permits full-client content with a rounded silhouette.

@@ -567,7 +567,9 @@ func TestPremultipliedNativeColors(t *testing.T) {
 			{"gradient", 12, 12, color.RGBA{R: 32, B: 96, A: 128}, func(p *Painter) { p.FillRect(rect, gradient) }},
 			{"stroke-gradient", 12, 4, color.RGBA{R: 32, B: 96, A: 128}, func(p *Painter) { p.DrawRect(rect, 4, gradient) }},
 			{"degenerate", 12, 12, color.RGBA{R: 128, A: 128}, func(p *Painter) { p.FillRect(rect, graphics.LinearGradient{StartColor: ink, EndColor: ink}) }},
-			{"shadow", 12, 12, color.RGBA{R: 128, A: 128}, func(p *Painter) { p.DrawBoxShadow(rect, 0, graphics.BoxShadow{Color: ink}) }},
+			{"shadow", 12, 12, color.RGBA{R: 128, A: 128}, func(p *Painter) {
+				p.DrawBoxShadow(rect, geometry.UniformCornerRadius(0), graphics.BoxShadow{Color: ink})
+			}},
 			{"over-white", 12, 12, color.RGBA{R: 255, G: 127, B: 127, A: 255}, func(p *Painter) { p.Clear(graphics.RGB(255, 255, 255)); p.FillRect(rect, ink) }},
 		} {
 			t.Run(fmt.Sprintf("%s/%g", tc.name, scale), func(t *testing.T) {
@@ -743,7 +745,7 @@ func TestBoxShadowPremultipliedColor(t *testing.T) {
 							blur = 0
 						}
 						for range layers {
-							p.DrawBoxShadow(graphics.Rect(8, 8, 24, 16), 3, graphics.BoxShadow{
+							p.DrawBoxShadow(graphics.Rect(8, 8, 24, 16), geometry.UniformCornerRadius(3), graphics.BoxShadow{
 								Color: graphics.ColorOf(color.RGBA{R: 96, G: 48, B: 24, A: 128}), BlurRadius: blur,
 							})
 						}
@@ -775,7 +777,7 @@ func TestBoxShadowPremultipliedColor(t *testing.T) {
 func TestBoxShadowTransparentDoesNotDraw(t *testing.T) {
 	img := renderTestImage(t, 1, geometry.Identity(), graphics.Rectangle{}, func(p *Painter) {
 		for _, blur := range []float32{0, 4} {
-			p.DrawBoxShadow(graphics.Rect(8, 8, 24, 16), 3, graphics.BoxShadow{
+			p.DrawBoxShadow(graphics.Rect(8, 8, 24, 16), geometry.UniformCornerRadius(3), graphics.BoxShadow{
 				Color: graphics.Color{R: 1, G: 1, B: 1}, BlurRadius: blur,
 			})
 		}
