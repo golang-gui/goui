@@ -34,3 +34,14 @@ type SurfaceState struct {
 	Ready      bool
 	Generation uint64
 }
+
+// NativeTarget is a borrowed native drawing target. A backend may expose an
+// AcquireTarget method returning it when native target destruction can race
+// rendering. The lease must be released on the acquiring thread before window
+// destruction, including on failure. Release is idempotent. It protects the
+// target's lifetime, not its visibility or the success of presentation.
+type NativeTarget interface {
+	NativeHandle() uintptr
+	Generation() uint64
+	Release()
+}

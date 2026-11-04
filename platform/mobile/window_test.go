@@ -83,6 +83,42 @@ func TestSurfaceRevocationJoinsPresent(t *testing.T) {
 	}
 }
 
+func TestNativeTargetLeaseRevocation(t *testing.T) {
+	target := &surfaceTarget{handle: 17, generation: 3, alive: true}
+	w := &Window{target: target}
+	lease, err := w.AcquireTarget()
+	if err != nil || lease.NativeHandle() != 17 || lease.Generation() != 3 {
+		t.Fatalf("借用失败：%v", err)
+	}
+	finished := make(chan struct{})
+	go func() { target.revoke(); close(finished) }()
+	deadline := time.Now().Add(time.Second)
+	for target.ready() && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if target.ready() {
+		t.Fatal("原生撤销没有立即拒绝新借用")
+	}
+	if _, err = w.AcquireTarget(); !errors.Is(err, common.ErrUnavailable) {
+		t.Fatalf("撤销期间仍可借用：%v", err)
+	}
+	if err := target.draw(image.NewRGBA(image.Rect(0, 0, 1, 1))); !errors.Is(err, common.ErrUnavailable) {
+		t.Fatalf("撤销期间 Draw 未拒绝：%v", err)
+	}
+	select {
+	case <-finished:
+		t.Fatal("借用未释放就完成撤销")
+	default:
+	}
+	lease.Release()
+	lease.Release()
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("释放后撤销未结束")
+	}
+}
+
 func TestWindowDestroyFromCallback(t *testing.T) {
 	loop := NewEventLoop()
 	defer loop.Destroy()
