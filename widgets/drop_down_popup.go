@@ -117,9 +117,9 @@ func (c *dropDownContent) keyDown(ctx gui.EventContext, event events.KeyEvent) {
 
 func (c *dropDownContent) Measure(constraint layout.Constraint) layout.Measurement {
 	s := gui.ResolveWidgetStyle(c, "drop-down-popup", style.PartDefault, style.Normal)
-	radius, _ := s.Radius()
+	radius, _ := s.CornerRadius()
 	border, _ := s.BorderWidth()
-	c.padding = max(float32(dropDownPopupPadding), dropDownExtent(border), dropDownExtent(radius)*(1-1/math.Sqrt2)+1)
+	c.padding = max(float32(dropDownPopupPadding), dropDownExtent(border), radius.Max()*(1-1/math.Sqrt2)+1)
 	width := constraint.Clamp(geometry.Size{Width: c.owner.Rect().Width}).Width
 	limit := constraint.Max.Height
 	if c.owner.popupMaxHeight > 0 {

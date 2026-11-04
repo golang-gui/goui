@@ -45,8 +45,8 @@ func surfaceInsets(s style.Style) geometry.Insets {
 
 func paintSurface(p gui.Painter, rect geometry.Rectangle, s style.Style) {
 	if shadow, ok := s.Shadow(); ok && shadow.Color != nil {
-		radius, _ := s.Radius()
-		p.DrawBoxShadow(rect, geometry.UniformCornerRadius(radius), graphics.BoxShadow{Color: graphics.ColorOf(shadow.Color),
+		radius, _ := s.CornerRadius()
+		p.DrawBoxShadow(rect, radius, graphics.BoxShadow{Color: graphics.ColorOf(shadow.Color),
 			Offset: shadow.Offset, BlurRadius: shadow.BlurRadius, SpreadRadius: shadow.SpreadRadius})
 	}
 	gui.PaintStyledBox(p, rect, s)

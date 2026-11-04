@@ -1,8 +1,10 @@
 package modern
 
 import (
-	"github.com/golang-gui/goui/style"
 	"testing"
+
+	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/style"
 )
 
 func TestBorderBoxInvisibleDefault(t *testing.T) {
@@ -15,8 +17,8 @@ func TestBorderBoxInvisibleDefault(t *testing.T) {
 			}
 			_, _, _, a := bg.RGBA()
 			width, _ := s.BorderWidth()
-			radius, _ := s.Radius()
-			if a != 0 || width != 0 || radius != 0 {
+			radius, _ := s.CornerRadius()
+			if a != 0 || width != 0 || radius != geometry.UniformCornerRadius(0) {
 				t.Fatal("modern theme decorated default frame")
 			}
 		}

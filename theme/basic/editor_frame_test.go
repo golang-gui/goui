@@ -29,8 +29,8 @@ func TestEditorFrameParts(t *testing.T) {
 			want := sheet.Resolve(style.Sel{Name: "scroll-view", Part: part, State: state})
 			gotBG, _ := got.BackgroundColor()
 			wantBG, _ := want.BackgroundColor()
-			gotRadius, _ := got.Radius()
-			wantRadius, _ := want.Radius()
+			gotRadius, _ := got.CornerRadius()
+			wantRadius, _ := want.CornerRadius()
 			width, _ := got.BorderWidth()
 			if !reflect.DeepEqual(gotBG, wantBG) || gotRadius != wantRadius || width != 0 {
 				t.Fatalf("bar style differs: %s/%v got=%#v want=%#v", part, state, got, want)

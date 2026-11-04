@@ -5,7 +5,31 @@ import (
 	"testing"
 
 	"github.com/golang-gui/goui/core/colors"
+	"github.com/golang-gui/goui/core/geometry"
 )
+
+func TestCornerRadiusAtomicOverride(t *testing.T) {
+	r := geometry.CornerRadius{TopLeft: 12, TopRight: 6, BottomRight: 3}
+	base := Name("card").Radius(8).CornerRadius(r)
+	sheet := Sheet(base, Name("card").State(Hovered).BackgroundColor(color.White), Name("card").State(Pressed).Radius(0))
+	for _, state := range []State{Normal, Hovered} {
+		if got, set := sheet.Resolve(Sel{Name: "card", State: state}).CornerRadius(); !set || got != r {
+			t.Fatal("完整圆角值未保留", got, set)
+		}
+	}
+	if got, set := sheet.Resolve(Sel{Name: "card", State: Pressed}).CornerRadius(); !set || got != (geometry.CornerRadius{}) {
+		t.Fatal("显式零没有关闭全部圆角", got, set)
+	}
+	if SameRules([]Rule{base}, []Rule{Name("card").CornerRadius(geometry.CornerRadius{TopLeft: 12, TopRight: 6, BottomLeft: 3})}) {
+		t.Fatal("样式比较遗漏角部差异")
+	}
+	if !SameRules([]Rule{Name("card").Radius(8)}, []Rule{Name("card").CornerRadius(geometry.UniformCornerRadius(8))}) {
+		t.Fatal("统一简便构造产生不同样式")
+	}
+	if got, _ := Sheet(Name("card").CornerRadius(r).Radius(4)).Resolve(Sel{Name: "card"}).CornerRadius(); got != geometry.UniformCornerRadius(4) {
+		t.Fatal("后续统一圆角未整体覆盖", got)
+	}
+}
 
 func TestResolveUsesSimpleStateFallback(t *testing.T) {
 	normalBackground := color.RGBA{R: 210, G: 210, B: 210, A: 255}
@@ -30,8 +54,8 @@ func TestResolveUsesSimpleStateFallback(t *testing.T) {
 	if !ok || !colors.Equal(hoverColor, hoverBackground) {
 		t.Fatalf("unexpected hover background: %v ok=%v", hoverColor, ok)
 	}
-	radius, ok := hover.Radius()
-	if !ok || radius != 4 {
+	radius, ok := hover.CornerRadius()
+	if !ok || radius != geometry.UniformCornerRadius(4) {
 		t.Fatalf("hover should keep normal radius, got %v ok=%v", radius, ok)
 	}
 
@@ -66,8 +90,8 @@ func TestResolveUsesPartFallback(t *testing.T) {
 	if !ok || !colors.Equal(foreground, selectionColor) {
 		t.Fatalf("selection hover should keep selection normal foreground: %v ok=%v", foreground, ok)
 	}
-	radius, ok := resolved.Radius()
-	if !ok || radius != defaultRadius {
+	radius, ok := resolved.CornerRadius()
+	if !ok || radius != geometry.UniformCornerRadius(defaultRadius) {
 		t.Fatalf("selection should fall back to text input default radius: %v ok=%v", radius, ok)
 	}
 }
@@ -95,8 +119,8 @@ func TestResolveFocusVisibleFallback(t *testing.T) {
 			if width, ok := resolved.BorderWidth(); !ok || width != 2 {
 				t.Fatalf("Focused border not inherited: %g, set=%v", width, ok)
 			}
-			if radius, ok := resolved.Radius(); !ok || radius != 6 {
-				t.Fatalf("normal radius not inherited: %g, set=%v", radius, ok)
+			if radius, ok := resolved.CornerRadius(); !ok || radius != geometry.UniformCornerRadius(6) {
+				t.Fatalf("normal radius not inherited: %v, set=%v", radius, ok)
 			}
 			// Explicit zero/transparent values still override the Focused step.
 			custom := Sheet(append(rules, Name("button").Part(part).State(FocusVisible).
@@ -163,8 +187,8 @@ func TestResolvePreservesExplicitZeroValues(t *testing.T) {
 	if !ok || borderWidth != 0 {
 		t.Fatalf("explicit zero border width was not preserved: ok=%v value=%v", ok, borderWidth)
 	}
-	radius, ok := resolved.Radius()
-	if !ok || radius != 0 {
+	radius, ok := resolved.CornerRadius()
+	if !ok || radius != geometry.UniformCornerRadius(0) {
 		t.Fatalf("explicit zero radius was not preserved: ok=%v value=%v", ok, radius)
 	}
 	background, ok := resolved.BackgroundColor()
@@ -241,9 +265,9 @@ func TestResolveCombinedStates(t *testing.T) {
 	} {
 		got := s.Resolve(Sel{Name: "control", State: tc.state})
 		bg, _ := got.BackgroundColor()
-		radius, _ := got.Radius()
+		radius, _ := got.CornerRadius()
 		border, _ := got.BorderWidth()
-		if !colors.Equal(bg, tc.bg) || radius != tc.radius || border != tc.border {
+		if !colors.Equal(bg, tc.bg) || radius != geometry.UniformCornerRadius(tc.radius) || border != tc.border {
 			t.Fatalf("state=%v bg=%v radius=%v border=%v", tc.state, bg, radius, border)
 		}
 	}
@@ -265,9 +289,9 @@ func TestResolveStatePartIsolationAndStableDuplicates(t *testing.T) {
 	rules[0] = Name("control").Radius(99) // Sheet 不保留调用方切片。
 	got := s.Resolve(Sel{Name: "control", Part: "indicator", State: Checked | Hovered | Pressed})
 	bg, _ := got.BackgroundColor()
-	radius, _ := got.Radius()
+	radius, _ := got.CornerRadius()
 	border, _ := got.BorderWidth()
-	if !colors.Equal(bg, color.White) || radius != 4 || border != 3 {
+	if !colors.Equal(bg, color.White) || radius != geometry.UniformCornerRadius(4) || border != 3 {
 		t.Fatalf("Part 隔离/重复规则顺序错误: bg=%v radius=%v border=%v", bg, radius, border)
 	}
 	if !((Hovered | Checked).Has(Hovered | Checked)) || (Hovered | Checked).Has(Pressed) || !Normal.Has(Normal) {

@@ -4,6 +4,7 @@ import (
 	"image/color"
 	"testing"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/style"
 )
 
@@ -22,7 +23,7 @@ func TestProgressBarStyle(t *testing.T) {
 			} else if rgba(bg) != track {
 				t.Fatal("neutral track changes with accent")
 			}
-			if r, _ := s.Radius(); r != 2 {
+			if r, _ := s.CornerRadius(); r != geometry.UniformCornerRadius(2) {
 				t.Fatal("missing capsule radius")
 			}
 		}

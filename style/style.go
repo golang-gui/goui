@@ -7,6 +7,7 @@ import (
 
 	corebits "github.com/golang-gui/goui/core/bits"
 	"github.com/golang-gui/goui/core/colors"
+	"github.com/golang-gui/goui/core/geometry"
 )
 
 // FontWeight is an OpenType weight request. Zero uses the native regular face.
@@ -74,7 +75,7 @@ type Style struct {
 	foregroundColor color.Color
 	borderColor     color.Color
 	borderWidth     float32
-	radius          float32
+	cornerRadius    geometry.CornerRadius
 	fontFamily      string
 	fontSize        float32
 	fontWeight      FontWeight
@@ -116,8 +117,10 @@ func (s Style) BorderWidth() (float32, bool) {
 	return s.borderWidth, s.fields.Check(fieldBorderWidth)
 }
 
-func (s Style) Radius() (float32, bool) {
-	return s.radius, s.fields.Check(fieldRadius)
+// CornerRadius returns the complete four-corner value and its presence.
+// Explicit zero corners override earlier rules as a single style field.
+func (s Style) CornerRadius() (geometry.CornerRadius, bool) {
+	return s.cornerRadius, s.fields.Check(fieldRadius)
 }
 
 func (s Style) FontFamily() (string, bool) {
@@ -168,8 +171,8 @@ func (s *Style) setBorderWidth(width float32) {
 	s.fields.Set(fieldBorderWidth, true)
 }
 
-func (s *Style) setRadius(radius float32) {
-	s.radius = radius
+func (s *Style) setRadius(radius geometry.CornerRadius) {
+	s.cornerRadius = radius
 	s.fields.Set(fieldRadius, true)
 }
 
@@ -202,7 +205,7 @@ func (s Style) merge(override Style) Style {
 		s.setBorderWidth(override.borderWidth)
 	}
 	if override.fields.Check(fieldRadius) {
-		s.setRadius(override.radius)
+		s.setRadius(override.cornerRadius)
 	}
 	if override.fields.Check(fieldFontFamily) {
 		s.setFontFamily(override.fontFamily)
@@ -292,7 +295,15 @@ func (r Rule) BorderWidth(width float32) Rule {
 	return r
 }
 
+// Radius is the uniform shorthand for CornerRadius.
 func (r Rule) Radius(radius float32) Rule {
+	r.Style.setRadius(geometry.UniformCornerRadius(radius))
+	return r
+}
+
+// CornerRadius sets all four corners as one optional style value. Radius is
+// the uniform shorthand; later calls to either replace the complete value.
+func (r Rule) CornerRadius(radius geometry.CornerRadius) Rule {
 	r.Style.setRadius(radius)
 	return r
 }
@@ -428,7 +439,7 @@ func sameStyle(a, b Style) bool {
 		colors.Equal(a.foregroundColor, b.foregroundColor) &&
 		colors.Equal(a.borderColor, b.borderColor) &&
 		a.borderWidth == b.borderWidth &&
-		a.radius == b.radius &&
+		a.cornerRadius == b.cornerRadius &&
 		a.fontFamily == b.fontFamily &&
 		a.fontSize == b.fontSize &&
 		a.fontWeight == b.fontWeight && a.fontStyle == b.fontStyle &&

@@ -136,9 +136,9 @@ func TestDialogToastSurfaceThemes(t *testing.T) {
 			for _, sel := range []style.Sel{{Name: "dialog", Part: "card"}, {Name: "toast"}} {
 				s := sheet.Resolve(sel)
 				bg, ok := s.BackgroundColor()
-				radius, _ := s.Radius()
+				radius, _ := s.CornerRadius()
 				width, _ := s.BorderWidth()
-				if !ok || bg == nil || radius <= 0 || width != 1 || surfaceInsets(s) == (geometry.Insets{}) {
+				if !ok || bg == nil || radius.Max() <= 0 || width != 1 || surfaceInsets(s) == (geometry.Insets{}) {
 					t.Fatalf("缺少完整外观：%s/%s", sel.Name, sel.Part)
 				}
 			}

@@ -49,6 +49,16 @@ the *local* surface (semantic names, not values) and the boundary (see Non-Goals
 > are specified in [Modern style](DesignModernStyle.md), in six ordered slices.
 > A nil custom sheet keeps the minimal GUI fallback; it does not enable Modern.
 
+### Independent corners (2026-11-04)
+
+`Style.CornerRadius` returns `geometry.CornerRadius` and its presence. The old scalar
+getter `Style.Radius` is replaced; readers must consume all four corners.
+`Rule.Radius(n)` remains a uniform shorthand; `Rule.CornerRadius(value)` sets the
+same optional atomic field. Later rules replace the complete value, including
+explicit zero corners. `SameRules` compares all four values. Border width and
+color stay uniform; the style does not create painter resources or clip children.
+See [CornerRadius](DesignCornerRadius.md) for geometry, painting and migration.
+
 ### Box shadow and runtime updates
 
 `style.Shadow` is one optional, atomic style field containing a `color.Color`, a

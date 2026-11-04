@@ -137,10 +137,10 @@ func main() {
 			// 边框/圆角带，正文及 Placeholder 仍逐像素精确比较。
 			s := gui.ResolveWidgetStyle(inputs[i], "text-input", style.PartDefault, style.Normal)
 			border, _ := s.BorderWidth()
-			radius, _ := s.Radius()
+			radius, _ := s.CornerRadius()
 			scale := float64(a.Bounds().Dx()) / float64(inputs[i].Rect().Width)
 			// 再排除一物理像素的笔画抗锯齿覆盖，不改变正文颜色的精确断言。
-			inset := int(math.Ceil(float64(max(border, radius))*scale)) + 1
+			inset := int(math.Ceil(float64(max(border, radius.Max()))*scale)) + 1
 			for y := a.Bounds().Min.Y + inset; y < a.Bounds().Max.Y-inset; y++ {
 				for x := a.Bounds().Min.X + inset; x < a.Bounds().Max.X-inset; x++ {
 					ar, ag, ab, aa := a.At(x, y).RGBA()

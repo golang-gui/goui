@@ -20,8 +20,8 @@ func TestDefaultStyleSheetResolvesBuiltInStyles(t *testing.T) {
 	if !ok || !colors.Equal(background, color.RGBA{R: 230, G: 230, B: 230, A: 255}) {
 		t.Fatalf("unexpected button hover background: %v ok=%v", background, ok)
 	}
-	radius, ok := button.Radius()
-	if !ok || radius != 4 {
+	radius, ok := button.CornerRadius()
+	if !ok || radius != geometry.UniformCornerRadius(4) {
 		t.Fatalf("unexpected button radius: %v ok=%v", radius, ok)
 	}
 
@@ -140,5 +140,25 @@ func TestStyleSheetReplacementAndRestoreBasic(t *testing.T) {
 	bg, ok = ResolveStyle("switch", "track-checked", style.Normal).BackgroundColor()
 	if app.StyleSheet() != nil || !ok || !colors.Equal(bg, blue) {
 		t.Fatal("clearing the custom sheet did not restore Basic")
+	}
+}
+
+// 同环境前后对照：统一圆角保持快捷路径；独立四角另测固定规模路径分配。
+func BenchmarkStyledBoxUniform(b *testing.B) {
+	p := new(testButtonBackgroundPainter)
+	s := style.Default().Radius(8).BorderWidth(1).BorderColor(color.Black).BackgroundColor(color.White).Style
+	rect := geometry.Rect(0, 0, 120, 40)
+	b.ReportAllocs()
+	for b.Loop() {
+		PaintStyledBox(p, rect, s)
+	}
+}
+func BenchmarkStyledBoxCorners(b *testing.B) {
+	p := new(testButtonBackgroundPainter)
+	s := style.Default().CornerRadius(geometry.CornerRadius{TopLeft: 12, TopRight: 0, BottomRight: 8, BottomLeft: 4}).BorderWidth(1).BorderColor(color.Black).BackgroundColor(color.White).Style
+	rect := geometry.Rect(0, 0, 120, 40)
+	b.ReportAllocs()
+	for b.Loop() {
+		PaintStyledBox(p, rect, s)
 	}
 }

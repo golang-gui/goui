@@ -356,7 +356,7 @@ func (p *popover) DispatchEvent(event events.Event) error {
 		switch e := event.(type) {
 		case events.PointerEvent:
 			_, border, _ := p.surfaceStyle()
-			radius, _ := border.Radius()
+			radius, _ := border.CornerRadius()
 			if e.EventType == events.PointerDown && !roundedBodyContains(p.bodyRect(), radius, e.Position) {
 				setFocusVisible(p, false)
 				p.RequestDismiss()
@@ -729,10 +729,10 @@ func (p *popover) updateNaturalSize() error {
 	size.Width, size.Height = max(1, size.Width), max(1, size.Height)
 	s := p.resolvedStyle()
 	shadow, _ := s.Shadow()
-	radius, _ := s.Radius()
+	radius, _ := s.CornerRadius()
 	insets := popoverInsets{}
 	if p.transparent {
-		insets = popoverShadowInsets(size, radius, shadow)
+		insets = popoverShadowInsets(size, radius.Max(), shadow)
 	}
 	if snapshot.constrained {
 		limit, err := snapshot.bodyLimit(insets)
@@ -904,10 +904,10 @@ func (p *popover) paint() {
 		}
 	}
 	background, border, shadow := p.surfaceStyle()
-	radius, _ := border.Radius()
+	radius, _ := border.CornerRadius()
 	width, _ := border.BorderWidth()
 	body := p.bodyRect()
-	inset := popoverSafeInset(radius, width)
+	inset := popoverSafeInset(radius.Max(), width)
 	safe := geometry.Rect(body.X+inset, body.Y+inset, max(0, body.Width-2*inset), max(0, body.Height-2*inset))
 	p.drawSurfaceFrame(p.widget, background, border, body, safe, shadow, nil)
 }
@@ -1025,14 +1025,14 @@ func (p *popover) resolvedStyle() style.Style {
 // surfaceStyle changes effective geometry, never the application's style sheet.
 func (p *popover) surfaceStyle() (style.Style, style.Style, graphics.BoxShadow) {
 	s := p.resolvedStyle()
-	radius, _ := s.Radius()
-	radius = min(normalizeLayoutValue(radius), max(0, min(p.bodyRect().Width, p.bodyRect().Height)/2))
+	radius, _ := s.CornerRadius()
+	radius = radius.Normalize(p.bodyRect().Size)
 	if !p.transparent {
-		radius = 0
+		radius = geometry.CornerRadius{}
 	}
 	width, _ := s.BorderWidth()
 	color, _ := s.BorderColor()
-	border := style.Name("").Radius(radius).BorderWidth(normalizeLayoutValue(width)).BorderColor(color).Style
+	border := style.Name("").CornerRadius(radius).BorderWidth(normalizeLayoutValue(width)).BorderColor(color).Style
 	var shadow graphics.BoxShadow
 	if p.transparent && p.insets != (popoverInsets{}) {
 		v, _ := s.Shadow()
@@ -1046,14 +1046,8 @@ func (p *popover) bodyRect() geometry.Rectangle {
 	return geometry.Rect(i.left, i.top, max(0, p.width-i.left-i.right), max(0, p.height-i.top-i.bottom))
 }
 
-func roundedBodyContains(rect geometry.Rectangle, radius float32, point geometry.Point) bool {
-	if point.X < rect.X || point.Y < rect.Y || point.X >= rect.X+rect.Width || point.Y >= rect.Y+rect.Height {
-		return false
-	}
-	radius = min(normalizeLayoutValue(radius), min(rect.Width, rect.Height)/2)
-	x := point.X - min(max(point.X, rect.X+radius), rect.X+rect.Width-radius)
-	y := point.Y - min(max(point.Y, rect.Y+radius), rect.Y+rect.Height-radius)
-	return x*x+y*y <= radius*radius
+func roundedBodyContains(rect geometry.Rectangle, radius geometry.CornerRadius, point geometry.Point) bool {
+	return radius.Contains(rect, point)
 }
 
 // One solve uses one owner-local snapshot. No native objects or widgets are

@@ -417,9 +417,9 @@ func (mc *menuContent) Measure(c layout.Constraint) layout.Measurement {
 	}
 	// The content owns padding, while its host owns the rounded perimeter.
 	s := ResolveWidgetStyle(mc, styleNameMenu, style.PartDefault, style.Normal)
-	radius, _ := s.Radius()
+	radius, _ := s.CornerRadius()
 	border, _ := s.BorderWidth()
-	padding := max(float32(menuContentPadding), popoverSafeInset(normalizeLayoutValue(radius), border))
+	padding := max(float32(menuContentPadding), popoverSafeInset(radius.Max(), border))
 	if padding != mc.padding {
 		mc.padding, mc.valid = padding, false
 	}

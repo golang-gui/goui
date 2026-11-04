@@ -264,3 +264,10 @@ Root.ConnectAfterPaint 在树和宿主装饰完成后、提交前提供完整表
 不改树/销毁/嵌套绘制规则同样适用。RenderWidget 不触发此宿主信号。
 Linux Integrated 的最终四角擦除在该信号之后。完整契约见
 [DesignGraphicsClipping](DesignGraphicsClipping.md)。
+
+## 四角圆角（2026-11-04）
+
+DrawBoxShadow 接收 geometry.CornerRadius；统一值通过 UniformCornerRadius 构造。
+四角背景和边框复用通用 Path，统一背景／边框保留快捷路径。PathHole 标记几何构造器
+生成的反向孔洞轮廓，遍历不在第一处Close提前结束；不引入窗口或样式专用Painter接口。
+样式辅助函数不建立子树圆角裁剪。详见 [DesignCornerRadius](DesignCornerRadius.md)。

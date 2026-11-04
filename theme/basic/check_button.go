@@ -3,6 +3,7 @@ package basic
 import (
 	"image/color"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/style"
 )
 
@@ -20,7 +21,7 @@ func checkButtonRules() []style.Rule {
 	button := defaults.Resolve(style.Sel{Name: "button"})
 	buttonEdge, _ := button.BorderColor()
 	buttonWidth, _ := button.BorderWidth()
-	buttonRadius, _ := button.Radius()
+	buttonRadius, _ := button.CornerRadius()
 	var text color.Color = color.Black
 	var border color.Color = color.RGBA{R: 160, G: 160, B: 168, A: 255}
 	selected := [3]color.Color{
@@ -38,7 +39,7 @@ func checkButtonRules() []style.Rule {
 	rules := []style.Rule{style.Name("check-button").BackgroundColor(color.Transparent).BorderWidth(0)}
 	for _, shape := range []string{"indicator", "radio", "button"} {
 		ordinary := [3]color.Color{color.White, color.RGBA{R: 245, G: 245, B: 245, A: 255}, color.RGBA{R: 232, G: 232, B: 232, A: 255}}
-		radius, width, outline := float32(4), float32(1), border
+		radius, width, outline := geometry.UniformCornerRadius(4), float32(1), border
 		if shape == "button" {
 			ordinary, radius, width, outline = buttonBackgrounds, buttonRadius, buttonWidth, buttonEdge
 		}
@@ -57,7 +58,7 @@ func checkButtonRules() []style.Rule {
 				}
 			}
 			if shape == "radio" {
-				partRadius = 9
+				partRadius = geometry.UniformCornerRadius(9)
 			}
 			disabledBackground, disabledEdge := ordinary[0], outline
 			if state != "" {
@@ -73,7 +74,7 @@ func checkButtonRules() []style.Rule {
 			}
 			part := shape + state
 			rules = append(rules,
-				style.Name("check-button").Part(part).BackgroundColor(backgrounds[0]).ForegroundColor(fg).BorderColor(edges[0]).BorderWidth(partWidth).Radius(partRadius),
+				style.Name("check-button").Part(part).BackgroundColor(backgrounds[0]).ForegroundColor(fg).BorderColor(edges[0]).BorderWidth(partWidth).CornerRadius(partRadius),
 				style.Name("check-button").Part(part).State(style.Hovered).BackgroundColor(backgrounds[1]).BorderColor(edges[1]),
 				style.Name("check-button").Part(part).State(style.Pressed).BackgroundColor(backgrounds[2]).BorderColor(edges[2]),
 				style.Name("check-button").Part(part).State(style.Disabled).BackgroundColor(disabledBackground).ForegroundColor(disabled).BorderColor(disabledEdge),
@@ -81,7 +82,7 @@ func checkButtonRules() []style.Rule {
 		}
 	}
 	rules = append(rules,
-		style.Name("check-button").Part("focus").BackgroundColor(color.Transparent).BorderWidth(0).Radius(buttonRadius),
+		style.Name("check-button").Part("focus").BackgroundColor(color.Transparent).BorderWidth(0).CornerRadius(buttonRadius),
 		style.Name("check-button").Part("focus").State(style.FocusVisible).BorderColor(focus).BorderWidth(2),
 	)
 	return rules

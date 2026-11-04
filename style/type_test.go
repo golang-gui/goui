@@ -47,7 +47,7 @@ func TestShadowResolution(t *testing.T) {
 			}
 		})
 	}
-	if radius, set := sheet.Resolve(Sel{Name: "menu", State: Hovered}).Radius(); !set || radius != 8 {
+	if radius, set := sheet.Resolve(Sel{Name: "menu", State: Hovered}).CornerRadius(); !set || radius != geometry.UniformCornerRadius(8) {
 		t.Fatal("disabling a shadow changed another style field")
 	}
 }

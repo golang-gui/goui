@@ -4,6 +4,7 @@ import (
 	"image/color"
 	"testing"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/style"
 )
 
@@ -28,7 +29,7 @@ func TestSwitchTheme(t *testing.T) {
 					if width != wantWidth {
 						t.Fatalf("track%s border width=%v want %v", suffix, width, wantWidth)
 					}
-					if radius, _ := track.Radius(); radius != 10 {
+					if radius, _ := track.CornerRadius(); radius != geometry.UniformCornerRadius(10) {
 						t.Fatal("track must retain its capsule radius")
 					}
 					if width, _ := thumb.BorderWidth(); width != 0 {

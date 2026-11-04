@@ -87,12 +87,13 @@ func (b *BorderBox) frameStyle() style.Style {
 func (b *BorderBox) contentInset() float32 {
 	s := b.frameStyle()
 	border, _ := s.BorderWidth()
-	radius, _ := s.Radius()
+	radius, _ := s.CornerRadius()
+	maximum := radius.Max()
 	inset := max(b.resizeWidth, normalizeLayoutValue(border))
-	if radius = normalizeLayoutValue(radius); radius > 0 {
+	if maximum > 0 {
 		// A rectangular child must stay inside the rounded surface. One DIP
 		// also separates it from the antialiased edge, without a rounded clip.
-		inset = max(inset, radius*(1-1/math.Sqrt2)+1)
+		inset = max(inset, maximum*(1-1/math.Sqrt2)+1)
 	}
 	return inset
 }

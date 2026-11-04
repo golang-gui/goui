@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/style"
 	"github.com/golang-gui/goui/ui"
@@ -27,7 +28,7 @@ func TestMenuButtonExpandedAppearance(t *testing.T) {
 			for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed} {
 				expanded := sheet.Resolve(style.Sel{Name: name, Part: "expanded", State: state})
 				background, _ := expanded.BackgroundColor()
-				radius, _ := expanded.Radius()
+				radius, _ := expanded.CornerRadius()
 				border, _ := expanded.BorderWidth()
 				wantBorder := float32(1)
 				if name == Primary {
@@ -35,8 +36,8 @@ func TestMenuButtonExpandedAppearance(t *testing.T) {
 				} else if rgba(background) != want {
 					t.Fatalf("dark=%v %s 状态 %v 没有保持展开背景：%v", dark, name, state, background)
 				}
-				if radius != 6 || border != wantBorder {
-					t.Fatalf("dark=%v %s 展开几何错误：radius=%g border=%g", dark, name, radius, border)
+				if radius != geometry.UniformCornerRadius(6) || border != wantBorder {
+					t.Fatalf("dark=%v %s 展开几何错误：radius=%v border=%v", dark, name, radius, border)
 				}
 			}
 			focus := sheet.Resolve(style.Sel{Name: name, Part: "focus", State: style.FocusVisible})
@@ -119,9 +120,9 @@ func TestTooltipSurfaceHasNoShadow(t *testing.T) {
 					t.Fatal("Tooltip 仍有可见阴影")
 				}
 			}
-			radius, _ := s.Radius()
+			radius, _ := s.CornerRadius()
 			border, _ := s.BorderWidth()
-			if radius <= 0 || border <= 0 {
+			if radius.Max() <= 0 || border <= 0 {
 				t.Fatal("Tooltip 丢失了圆角或边框")
 			}
 		})
@@ -278,8 +279,8 @@ func TestButtonFocusAppearance(t *testing.T) {
 					if width, ok := s.BorderWidth(); !ok || width != wantWidth {
 						t.Fatalf("focus width: state=%v got=%g want=%g, set=%v", state, width, wantWidth, ok)
 					}
-					if radius, _ := s.Radius(); radius != 6 {
-						t.Fatalf("focus did not preserve button radius: %g", radius)
+					if radius, _ := s.CornerRadius(); radius != geometry.UniformCornerRadius(6) {
+						t.Fatalf("focus did not preserve button radius: %v", radius)
 					}
 				}
 				customRules := append(rules, style.Name(name).Part("focus").State(style.Focused).BorderWidth(3).Radius(9))
@@ -291,7 +292,7 @@ func TestButtonFocusAppearance(t *testing.T) {
 				if width, _ := custom.Resolve(sel).BorderWidth(); width != 2 {
 					t.Fatal("generic Focused replaced the more specific keyboard border")
 				}
-				if radius, _ := custom.Resolve(sel).Radius(); radius != 9 {
+				if radius, _ := custom.Resolve(sel).CornerRadius(); radius != geometry.UniformCornerRadius(9) {
 					t.Fatal("unset FocusVisible radius did not inherit Focused")
 				}
 				custom = style.Sheet(append(customRules, style.Name(name).Part("focus").State(style.FocusVisible).
@@ -392,9 +393,9 @@ func TestSurfacePresets(t *testing.T) {
 					s := resolved(sheet, test.name, state)
 					bg, ok := s.BackgroundColor()
 					width, hasWidth := s.BorderWidth()
-					radius, hasRadius := s.Radius()
-					if !ok || rgba(bg) != test.background || !hasWidth || width != test.width || !hasRadius || radius != test.radius {
-						t.Fatalf("surface %s dark=%v state=%v: bg=%v border=%g radius=%g", test.name, dark, state, bg, width, radius)
+					radius, hasRadius := s.CornerRadius()
+					if !ok || rgba(bg) != test.background || !hasWidth || width != test.width || !hasRadius || radius != geometry.UniformCornerRadius(test.radius) {
+						t.Fatalf("surface %s dark=%v state=%v: bg=%v border=%v radius=%v", test.name, dark, state, bg, width, radius)
 					}
 					if shadow, ok := s.Shadow(); !ok || shadow != (style.Shadow{}) {
 						t.Fatal("surface should explicitly have no shadow")
@@ -409,7 +410,7 @@ func TestSurfacePresets(t *testing.T) {
 			if width, _ := resolved(custom, Card, style.Normal).BorderWidth(); width != 0 {
 				t.Fatal("card application override ignored")
 			}
-			if radius, _ := resolved(custom, Card, style.Normal).Radius(); radius != 14 {
+			if radius, _ := resolved(custom, Card, style.Normal).CornerRadius(); radius != geometry.UniformCornerRadius(14) {
 				t.Fatal("card radius override ignored")
 			}
 			if bg, _ := resolved(custom, Sidebar, style.Normal).BackgroundColor(); bg != color.Black {
@@ -444,7 +445,7 @@ func TestSemanticForegroundPresets(t *testing.T) {
 					}
 					_, background := s.BackgroundColor()
 					_, border := s.BorderWidth()
-					_, radius := s.Radius()
+					_, radius := s.CornerRadius()
 					_, shadow := s.Shadow()
 					if background || border || radius || shadow {
 						t.Fatal("foreground-only semantic style added surface decoration")
@@ -523,7 +524,7 @@ func TestFlatButtonAppearance(t *testing.T) {
 				if ink, ok := s.BorderColor(); !ok || rgba(ink) != border {
 					t.Fatalf("flat border color dark=%v state=%v: %v, want %v", dark, test.state, ink, border)
 				}
-				if radius, _ := s.Radius(); radius != 6 {
+				if radius, _ := s.CornerRadius(); radius != geometry.UniformCornerRadius(6) {
 					t.Fatal("flat button lost its rounded interaction surface")
 				}
 				fg, _ := s.ForegroundColor()
@@ -609,7 +610,7 @@ func TestTableStylesNeutralSelectionAndIndependentText(t *testing.T) {
 				if !ok || rgba(bg) != want[i] {
 					t.Fatalf("table selection dark=%v state=%v: %v", dark, state, bg)
 				}
-				if radius, _ := selected.Radius(); radius != 4 {
+				if radius, _ := selected.CornerRadius(); radius != geometry.UniformCornerRadius(4) {
 					t.Fatal("table selection lost its rounded corners")
 				}
 				fg, _ := resolved(sheet, "table-cell-text", style.Normal).ForegroundColor()
@@ -734,7 +735,7 @@ func TestTreeSelectionColorsIgnoreAccent(t *testing.T) {
 				if !ok || rgba(bg) != want[i] {
 					t.Fatalf("dark=%v accent=%v state=%v: selected=%v, want %v", dark, accent, state, bg, want[i])
 				}
-				if radius, _ := selected.Radius(); radius != 4 {
+				if radius, _ := selected.CornerRadius(); radius != geometry.UniformCornerRadius(4) {
 					t.Fatal("selected row lost its rounded corners")
 				}
 				text, _ := resolved(sheet, "tree-item-text", style.Normal).ForegroundColor()
@@ -843,7 +844,7 @@ func TestPaletteAndCoverage(t *testing.T) {
 			}
 		}
 		for name, want := range map[string]float32{"button": 6, Primary: 6, "text-input": 6, "menu-item": 4, "menu": 8, "popover": 8} {
-			if got, _ := resolved(sheet, name, style.Normal).Radius(); got != want {
+			if got, _ := resolved(sheet, name, style.Normal).CornerRadius(); got != geometry.UniformCornerRadius(want) {
 				t.Fatalf("%s radius=%v, want %v", name, got, want)
 			}
 		}
@@ -856,9 +857,9 @@ func TestPaletteAndCoverage(t *testing.T) {
 		for _, part := range []string{"trough", "thumb"} {
 			for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed} {
 				s := sheet.Resolve(style.Sel{Name: "scroll-view", Part: part, State: state})
-				radius, _ := s.Radius()
+				radius, _ := s.CornerRadius()
 				bg, ok := s.BackgroundColor()
-				if radius != 4 || !ok || rgba(bg).A != 255 {
+				if radius != geometry.UniformCornerRadius(4) || !ok || rgba(bg).A != 255 {
 					t.Fatalf("scrollbar lost opaque capsule: %s state=%v", part, state)
 				}
 			}
@@ -911,7 +912,7 @@ func TestOptionsOwnershipAndOverrides(t *testing.T) {
 	}
 	custom := style.Sheet(append(Rules(Options{}), style.Name("menu").Radius(3).Shadow(style.Shadow{}))...)
 	s := resolved(custom, "menu", style.Normal)
-	if radius, _ := s.Radius(); radius != 3 {
+	if radius, _ := s.CornerRadius(); radius != geometry.UniformCornerRadius(3) {
 		t.Fatal("appended application rule did not override")
 	}
 	if shadow, _ := s.Shadow(); shadow != (style.Shadow{}) {

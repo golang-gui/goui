@@ -13,7 +13,7 @@ func TestDropDownFallbackRules(t *testing.T) {
 		if width, _ := s.BorderWidth(); width != 1 {
 			t.Fatal("missing surface outline")
 		}
-		if radius, _ := s.Radius(); radius <= 0 {
+		if radius, _ := s.CornerRadius(); radius.Max() <= 0 {
 			t.Fatal("missing surface radius")
 		}
 	}

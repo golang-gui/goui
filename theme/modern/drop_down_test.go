@@ -4,6 +4,7 @@ import (
 	"image/color"
 	"testing"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/style"
 )
 
@@ -26,7 +27,7 @@ func TestDropDownModernRules(t *testing.T) {
 			t.Fatal("mouse focus got keyboard border")
 		}
 		popup := blue.Resolve(style.Sel{Name: "drop-down-popup"})
-		if radius, _ := popup.Radius(); radius != 8 {
+		if radius, _ := popup.CornerRadius(); radius != geometry.UniformCornerRadius(8) {
 			t.Fatal("popup radius")
 		}
 		if shadow, _ := popup.Shadow(); shadow.BlurRadius != 16 || shadow.Color == nil {

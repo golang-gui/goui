@@ -4,6 +4,7 @@ import (
 	"image/color"
 	"testing"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/style"
 )
 
@@ -44,9 +45,9 @@ func TestTabSurfacesAreNeutralAndReadable(t *testing.T) {
 						}
 					}
 					width, _ := s.BorderWidth()
-					radius, _ := s.Radius()
-					if radius != 6 || (part == "" && width != 0) || (part != "" && width != 1) {
-						t.Fatalf("unexpected tab outline: radius=%g width=%g", radius, width)
+					radius, _ := s.CornerRadius()
+					if radius != geometry.UniformCornerRadius(6) || (part == "" && width != 0) || (part != "" && width != 1) {
+						t.Fatalf("unexpected tab outline: radius=%v width=%v", radius, width)
 					}
 				}
 			}

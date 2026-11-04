@@ -110,11 +110,18 @@ func PaintStyledBackground(p Painter, rect geometry.Rectangle, s style.Style) {
 	if fill.A == 0 {
 		return
 	}
-	radius, _ := s.Radius()
-	if radius > 0 {
-		p.FillRoundRect(rect, radius, fill)
+	radius, _ := s.CornerRadius()
+	paintRoundedBackground(p, rect, radius, fill)
+}
+
+func paintRoundedBackground(p Painter, rect geometry.Rectangle, radius geometry.CornerRadius, brush graphics.Brush) {
+	radius = radius.Normalize(rect.Size)
+	if radius == (geometry.CornerRadius{}) {
+		p.FillRect(rect, brush)
+	} else if radius.Uniform() {
+		p.FillRoundRect(rect, radius.TopLeft, brush)
 	} else {
-		p.FillRect(rect, fill)
+		p.FillPath(graphics.RoundRectPath(rect, radius), brush)
 	}
 }
 
@@ -133,6 +140,7 @@ func PaintStyledBorder(p Painter, rect geometry.Rectangle, s style.Style) {
 		return
 	}
 	width, ok := s.BorderWidth()
+	width = normalizeLayoutValue(width)
 	if !ok || width <= 0 {
 		return
 	}
@@ -144,19 +152,22 @@ func PaintStyledBorder(p Painter, rect geometry.Rectangle, s style.Style) {
 	if stroke.A == 0 {
 		return
 	}
-	radius, _ := s.Radius()
+	radius, _ := s.CornerRadius()
+	radius = radius.Normalize(rect.Size)
 	// Once the inner contour collapses, the border covers the whole shape.
 	if width >= min(rect.Width, rect.Height)/2 {
-		if radius > 0 {
-			p.FillRoundRect(rect, radius, stroke)
-		} else {
-			p.FillRect(rect, stroke)
-		}
+		paintRoundedBackground(p, rect, radius, stroke)
+		return
+	}
+	// Small radii cannot retain their outer contour through a centerline
+	// stroke. Fill the actual ring, including when inner corners collapse.
+	if !radius.Uniform() || radius.TopLeft > 0 && radius.TopLeft < width/2 {
+		p.FillPath(graphics.RoundRectBorderPath(rect, radius, width), stroke)
 		return
 	}
 	halfWidth := width / 2
 	borderRect := rect.Inset(halfWidth)
-	borderRadius := max(radius-halfWidth, 0)
+	borderRadius := max(radius.TopLeft-halfWidth, 0)
 	if borderRadius > 0 {
 		p.DrawRoundRect(borderRect, borderRadius, width, stroke)
 	} else {

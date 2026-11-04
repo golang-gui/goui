@@ -4,6 +4,7 @@ import (
 	"image/color"
 	"testing"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/style"
 	"github.com/golang-gui/goui/theme/modern"
@@ -65,14 +66,14 @@ func TestCellEditorStyle(t *testing.T) {
 				for _, state := range []style.State{style.Normal, style.Focused} {
 					editor := sheet.Resolve(style.Sel{Name: "table-cell-input", State: state})
 					width, _ := editor.BorderWidth()
-					radius, _ := editor.Radius()
+					radius, _ := editor.CornerRadius()
 					bg, ok := editor.BackgroundColor()
 					want := float32(0)
 					if state == style.Focused {
 						want = 2
 					}
-					if width != want || radius != 0 || !ok || color.RGBAModel.Convert(bg).(color.RGBA).A != 0 {
-						t.Fatalf("editor appearance: fallback=%v dark=%v state=%v width=%g radius=%g background=%v", fallback, dark, state, width, radius, bg)
+					if width != want || radius != geometry.UniformCornerRadius(0) || !ok || color.RGBAModel.Convert(bg).(color.RGBA).A != 0 {
+						t.Fatalf("editor appearance: fallback=%v dark=%v state=%v width=%v radius=%v background=%v", fallback, dark, state, width, radius, bg)
 					}
 					base := source.Resolve(style.Sel{Name: "text-input", State: state})
 					foreground, _ := editor.ForegroundColor()
@@ -103,8 +104,8 @@ func TestCellEditorStyle(t *testing.T) {
 				}
 				base := source.Resolve(style.Sel{Name: "text-input"})
 				ordinary := sheet.Resolve(style.Sel{Name: "text-input"})
-				baseRadius, _ := base.Radius()
-				radius, _ := ordinary.Radius()
+				baseRadius, _ := base.CornerRadius()
+				radius, _ := ordinary.CornerRadius()
 				width, _ := ordinary.BorderWidth()
 				if width != 1 || radius != baseRadius {
 					t.Fatal("cell-specific rules changed ordinary TextInput")
