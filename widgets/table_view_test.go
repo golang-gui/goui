@@ -155,14 +155,14 @@ func TestTableViewCellContentFillsAllocation(t *testing.T) {
 	if row.Rect().Height != 69 || row.cells[0].Rect().Height != 64 {
 		t.Fatalf("row must use the tallest content plus one grid band: %v", row.Rect())
 	}
-	for i, want := range []geometry.Rectangle{geometry.Rect(0, 0, 93, 64), geometry.Rect(0, 0, 70, 64)} {
+	for i, want := range []geometry.Rectangle{geometry.Rect(0, 0, 93, 64), geometry.Rect(0, 0, 63, 64)} {
 		if got := row.cells[i].content.Rect(); got != want {
 			t.Fatalf("cell %d content=%v, want full allocation %v", i, got, want)
 		}
 	}
-	// Last records do not reserve another horizontal grid band.
-	if last := v.realized["r1"]; last.Rect().Height != 64 || last.cells[0].content.Rect().Height != 64 {
-		t.Fatal("last record lost content height or duplicated a grid band")
+	// 末行同样预留独立底线，保持完整内容高度。
+	if last := v.realized["r1"]; last.Rect().Height != 69 || last.cells[0].content.Rect().Height != 64 {
+		t.Fatal("末行没有预留底线或压缩了内容高度")
 	}
 	column.SetMinWidth(0)
 	column.SetWidth(3)
@@ -199,8 +199,8 @@ func TestTableViewDecorationLayout(t *testing.T) {
 	if content.Rect() != geometry.Rect(0, 0, 68, 32) || row.Rect().Height != 38 || row.cells[0].Rect().Height != 32 {
 		t.Fatalf("content squeezed by grid: content=%v row=%v cell=%v", content.Rect(), row.Rect(), row.cells[0].Rect())
 	}
-	if v.realized["r1"].Rect().Height != 32 || v.columnLineWidth(other) != 0 || row.cells[1].Rect().X != 80 {
-		t.Fatal("last boundary duplicated or column allocation shifted")
+	if v.realized["r1"].Rect().Height != 38 || v.columnLineWidth(other) != 12 || row.cells[1].Rect().X != 80 {
+		t.Fatal("末项未预留网格或改变了列位置")
 	}
 	for _, cell := range row.cells {
 		h := v.headers[cell.column]
@@ -331,7 +331,7 @@ func TestTableViewDecorationPixels(t *testing.T) {
 			for _, sample := range []struct {
 				x, y int
 				want color.RGBA
-			}{{69, 20, color.RGBA{R: 128, A: 128}}, {79, 37, color.RGBA{R: 128, A: 128}}, {100, 33, color.RGBA{R: 128, A: 128}}, {0, 0, color.RGBA{G: 255, A: 255}}, {67, 31, color.RGBA{G: 255, A: 255}}, {67, 20, color.RGBA{G: 255, A: 255}}, {159, 20, color.RGBA{}}} {
+			}{{69, 20, color.RGBA{R: 128, A: 128}}, {79, 37, color.RGBA{R: 128, A: 128}}, {100, 33, color.RGBA{R: 128, A: 128}}, {0, 0, color.RGBA{G: 255, A: 255}}, {67, 31, color.RGBA{G: 255, A: 255}}, {67, 20, color.RGBA{G: 255, A: 255}}, {159, 20, color.RGBA{R: 128, A: 128}}} {
 				got := pixels.RGBAAt(sample.x*int(scale), sample.y*int(scale))
 				for i, channel := range []uint8{got.R, got.G, got.B, got.A} {
 					want := []uint8{sample.want.R, sample.want.G, sample.want.B, sample.want.A}[i]
@@ -356,6 +356,136 @@ func TestTableViewDecorationPixels(t *testing.T) {
 			}
 		})
 	}
+}
+
+// 末行、末列的网格属于数据区；内容少于视口时也必须收口。
+// 无背景透明画布，整数DIP色带在1x／2x满覆盖，比较预乘RGBA，容差仅一级8位量化。
+func TestTableViewTrailingGrid(t *testing.T) {
+	old := gui.App
+	app := &separatorApp{}
+	gui.App = app
+	t.Cleanup(func() { gui.App = old })
+	for _, rows := range []int{0, 1, 3} {
+		for _, columns := range []int{1, 3} {
+			for _, widths := range []geometry.Size{{}, {Height: 2}, {Width: 4}, {Width: 4, Height: 2}} {
+				for _, alpha := range []uint8{128, 255} {
+					for _, scale := range []float32{1, 2} {
+						t.Run(fmt.Sprintf("rows%d/cols%d/lines%v/a%d/%gx", rows, columns, widths, alpha, scale), func(t *testing.T) {
+							ink := color.RGBA{R: alpha, A: alpha}
+							green := color.RGBA{G: 255, A: 255}
+							blue := color.RGBA{B: 255, A: 255}
+							app.sheet = style.Sheet(
+								style.Name("table-grid").Part("vertical").BorderWidth(widths.Width).BorderColor(ink),
+								style.Name("table-grid").Part("horizontal").BorderWidth(widths.Height).BorderColor(ink),
+								style.Name("table-header").Part("separator").BorderWidth(2).ForegroundColor(blue),
+							)
+							v, m, first, _ := tableFixture(rows)
+							defer v.SetModel(nil)
+							all := []*TableColumn{first}
+							for i := 1; i < columns; i++ {
+								all = append(all, NewTableColumn(fmt.Sprint(i), "Column"))
+							}
+							for _, c := range all {
+								c.SetWidth(80)
+								c.SetDelegate(&tableTestDelegate{model: m})
+							}
+							v.SetColumns(all...)
+							tableArrange(v, 320, 220)
+							pixel := func(img *image.RGBA, x, y float32, want color.RGBA) {
+								t.Helper()
+								got := img.RGBAAt(int(x*scale), int(y*scale))
+								for i, channel := range []uint8{got.R, got.G, got.B, got.A} {
+									if delta := int(channel) - int([]uint8{want.R, want.G, want.B, want.A}[i]); delta < -1 || delta > 1 {
+										t.Fatalf("网格像素(%g,%g)=%v，预期%v", x, y, got, want)
+									}
+								}
+							}
+							for _, row := range v.realized {
+								if row.Rect().Height != 32+widths.Height {
+									t.Fatalf("行%q未预留底线或压缩内容：%v", row.bound.ID, row.Rect())
+								}
+								img := tablePixels(t, geometry.Size{Width: v.columnWidth + 8, Height: row.Rect().Height + 8}, scale, func(p *tablePixelPainter) {
+									row.Paint(p)
+									for _, cell := range row.cells {
+										content := cell.content.(*tableTestContent)
+										if content.Rect().Size != (geometry.Size{Width: 80 - widths.Width, Height: 32}) {
+											t.Fatalf("单元格没有避让尾边：%v", content.Rect())
+										}
+										content.ink = graphics.ColorOf(green)
+										p.native.SetTransform(geometry.Translate(cell.Rect().X+content.Rect().X, content.Rect().Y))
+										content.Paint(p) // 后画且填满内容，不能覆盖已预留的网格。
+									}
+								})
+								vertical, horizontal := green, green
+								if widths.Width > 0 {
+									vertical = ink
+								}
+								if widths.Height > 0 {
+									horizontal = ink
+								}
+								pixel(img, v.columnWidth-1, 10, vertical)
+								pixel(img, 10, row.Rect().Height-1, horizontal)
+								corner := vertical
+								if widths.Height > 0 {
+									corner = ink // 横线拥有交点，半透明alpha不能叠加。
+								}
+								pixel(img, v.columnWidth-1, row.Rect().Height-1, corner)
+								pixel(img, v.columnWidth+2, 10, color.RGBA{})
+								pixel(img, 10, row.Rect().Height+2, color.RGBA{})
+							}
+							if len(v.realized) != rows {
+								t.Fatalf("少量／空数据生成了错误的行数：%d，预期%d", len(v.realized), rows)
+							}
+							header := v.headers[all[len(all)-1]]
+							img := tablePixels(t, header.Rect().Size, scale, func(p *tablePixelPainter) { header.Paint(p) })
+							want := color.RGBA{}
+							if widths.Width > 0 {
+								want = ink
+							}
+							pixel(img, 79, 10, want)
+							pixel(img, 79, header.Rect().Height-1, blue)
+						})
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestTableViewTrailingGridChanges(t *testing.T) {
+	old := gui.App
+	gui.App = &separatorApp{sheet: style.Sheet(
+		style.Name("table-grid").Part("vertical").BorderWidth(4),
+		style.Name("table-grid").Part("horizontal").BorderWidth(2),
+	)}
+	t.Cleanup(func() { gui.App = old })
+	v, m, first, _ := tableFixture(2)
+	defer v.SetModel(nil)
+	first.SetWidth(80)
+	last := NewTableColumn("last", "Last")
+	last.SetWidth(80)
+	last.SetDelegate(&tableTestDelegate{model: m})
+	v.SetColumns(first, last)
+	check := func(count int, column *TableColumn) {
+		t.Helper()
+		tableArrange(v, 320, 220)
+		row := v.realized[m.RowID(count-1)]
+		cell := row.cells[len(row.cells)-1]
+		if len(v.realized) != count || cell.column != column || cell.content.Rect().Width != 76 ||
+			row.Rect().Height != 34 || cell.content.Rect().Height != 32 ||
+			v.headers[column].Rect().X != cell.Rect().X {
+			t.Fatalf("增删／隐藏后末项没有保持网格避让：rows=%d row=%v cell=%v", len(v.realized), row.Rect(), cell.content.Rect())
+		}
+	}
+	check(2, last)
+	last.SetVisible(false)
+	check(2, first)
+	m.Append(tableRecord{"new", 60, 20})
+	check(3, first)
+	m.Modify(func(rows []tableRecord) []tableRecord { return rows[:2] })
+	check(2, first)
+	last.SetVisible(true)
+	check(2, last)
 }
 
 func TestTableViewCurrentFocusAppearance(t *testing.T) {

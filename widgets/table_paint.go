@@ -36,17 +36,17 @@ func (v *TableView) borderWidths() (horizontal, vertical float32) {
 		tableLineWidth(gui.ResolveWidgetStyle(v, name, "outer-vertical", style.Normal))
 }
 
-// Each interior boundary belongs to the preceding column/row. The last column
-// and record have no interior separator; the outer frame belongs to the view.
+// Each column/row owns its trailing grid band, including the last one. The grid
+// follows the records; the viewport frame is independent of the content extent.
 func (v *TableView) columnLineWidth(c *TableColumn) float32 {
-	if len(v.visibleColumns) == 0 || v.visibleColumns[len(v.visibleColumns)-1] == c {
+	if len(v.visibleColumns) == 0 {
 		return 0
 	}
 	return min(c.allocatedWidth, tableLineWidth(tableGridStyle(v, "vertical")))
 }
 
 func (r *tableRow) lineHeight() float32 {
-	if r.bound.ID == "" || r.bound.Index >= len(r.view.rowIDs)-1 {
+	if r.bound.ID == "" {
 		return 0
 	}
 	return tableLineWidth(tableGridStyle(r, "horizontal"))
