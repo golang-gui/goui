@@ -25,6 +25,9 @@
 //  4. 缩窄窗口并横向滚动，表头与正文同步；纵向滚动表头固定。快速滚动万行，
 //     无旧文字/按下背景残留。Reveal last 到初始最后一条记录（默认record-09999），
 //     而非排序后的最后索引。
+//     Reveal完成后移入／移出列表，再将垂直滚动条拖到底并点击末行；末行始终在
+//     视口内，不能重新出现后续行或向上回跳。重复按F6，未改变尺寸／数据／样式时，
+//     scroll和max-scroll应保持一致，滚动条不因悬停、点击而来回变化。
 //  5. 右击行显示行/列 ID；右击选中行保留多选，未选中行改为选中该行。
 //     Shift+F10 在 Current 可见位置弹出菜单；macOS 另验 Control+单击。
 //     菜单 Delete 删除该记录，Current 邻近回退；正文空白菜单标为 background，
@@ -345,7 +348,13 @@ func assertTable(table *widgets.TableView, m *model) {
 		}
 		fmt.Printf("column=%s base=%g allocated=%g\n", column.ID(), column.Width(), width)
 	}
-	fmt.Printf("ASSERT PASS logical=%d realized=%d current=%s selection=%v scroll=(%g,%g)\n", tableInfo.RowCount, len(seen), table.Current(), table.Selection(), info.ScrollX, info.ScrollY)
+	start, end := 0, 0
+	if len(info.Children) > count {
+		start = info.Children[count].Attributes[widgets.TableInfoKey].(widgets.TableInfo).RowIndex
+		end = info.Children[len(info.Children)-1].Attributes[widgets.TableInfoKey].(widgets.TableInfo).RowIndex
+	}
+	fmt.Printf("ASSERT PASS logical=%d realized=%d visible=(%d,%d) current=%s selection=%v scroll=(%g,%g) max-scroll=(%g,%g)\n",
+		tableInfo.RowCount, len(seen), start, end, table.Current(), table.Selection(), info.ScrollX, info.ScrollY, info.MaxScrollX, info.MaxScrollY)
 }
 func editorInfo(info gui.WidgetInfo) (gui.WidgetInfo, bool) {
 	if info.Role == gui.RoleTextInput {

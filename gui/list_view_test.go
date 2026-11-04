@@ -8,7 +8,104 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/platform/events"
 )
+
+// 变高行的大跨度Reveal完成后，悬停／焦点只能更新状态，不能重估整份文档。
+// 使用真实DispatchEvent与样式／布局／绘制遍历，不创建原生窗口。
+func TestListViewRevealEndSurvivesPointerAndFocus(t *testing.T) {
+	setTestApplication(t, nil)
+	lv := NewListView()
+	lv.SetFocusable(true)
+	lv.SetModel(NewSliceListModel(make([]int, 10000)))
+	d := newMockListDelegate(make(map[int]float32))
+	d.widths = make(map[int]float32)
+	for i := 0; i < 10000; i++ {
+		d.heights[i], d.widths[i] = 55, 1100
+		if i%7 == 0 {
+			d.heights[i] = 124
+		}
+	}
+	lv.SetDelegate(d)
+	sv := NewScrollView()
+	sv.SetChild(lv)
+	win := &window{rootBase: rootBase{width: 320, height: 500}}
+	win.SetWidget(sv)
+	defer win.Destroy()
+	settle := func() {
+		t.Helper()
+		for range 20 {
+			win.updateStateStyles()
+			win.layoutFrame(sv)
+			paintStyleTestWidget(sv)
+			if !win.layoutDirty && len(win.stateStyles) == 0 {
+				return
+			}
+		}
+		t.Fatal("列表布局没有收敛")
+	}
+	settle()
+	completed := 0
+	lv.ConnectRevealed(func(index int) {
+		if index != 9999 {
+			t.Fatalf("Reveal完成目标错误：%d", index)
+		}
+		completed++
+	})
+	lv.Reveal(9999)
+	settle()
+	last := lv.items[9999]
+	if completed != 1 || last == nil || last.Rect().Y < 0 || last.Rect().Y+last.Rect().Height > lv.viewport.Height {
+		t.Fatalf("末行未完整到达视口：completed=%d visible=%v", completed, lv.VisibleIndexes())
+	}
+	before, extent, rect := sv.Snapshot(), lv.ContentSize(), last.Rect()
+	indexes := lv.VisibleIndexes()
+	measured, setups, binds := len(lv.heights), d.setups, len(d.binds)
+	if measured <= len(indexes) || lv.heights[0] != 124 {
+		t.Fatal("回归场景必须保留首屏的离屏行高")
+	}
+	point := last.Snapshot().Bounds.Pos.Add(geometry.Point{X: 10, Y: 5})
+	for _, event := range []events.Event{
+		events.PointerEvent{EventType: events.PointerMove, Position: point},
+		events.PointerEvent{EventType: events.PointerDown, Position: point, Button: events.PointerButtonLeft, Buttons: events.PointerButtonLeftDown},
+		events.PointerEvent{EventType: events.PointerUp, Position: point, Button: events.PointerButtonLeft},
+		events.PointerEvent{EventType: events.PointerLeave, Position: point},
+		events.KeyEvent{EventType: events.KeyDown, Key: events.KeyTab},
+	} {
+		if err := win.DispatchEvent(event); err != nil {
+			t.Fatal(err)
+		}
+		settle()
+		// 滚动条消费端使用SetScrollY；这里单独验证已在末尾时的重复设置。
+		sv.SetScrollY(sv.Snapshot().MaxScrollY)
+		settle()
+		if lv.ContentSize() != extent || len(lv.heights) != measured || lv.heights[0] != 124 ||
+			sv.ScrollY() != before.ScrollY || sv.Snapshot().MaxScrollY != before.MaxScrollY ||
+			lv.items[9999] != last || last.Rect() != rect || !slices.Equal(lv.VisibleIndexes(), indexes) ||
+			d.setups != setups || len(d.binds) != binds || completed != 1 {
+			t.Fatalf("%T使末尾回跳或丢失测量：offset=%g/%g extent=%v/%v cached=%d/%d visible=%v", event,
+				sv.ScrollY(), before.ScrollY, lv.ContentSize(), extent, len(lv.heights), measured, lv.VisibleIndexes())
+		}
+	}
+}
+
+func TestListViewDirectLayoutConsumesStyleBeforeRows(t *testing.T) {
+	setTestApplication(t, nil)
+	lv := NewListView()
+	lv.SetModel(NewSliceListModel(make([]int, 100)))
+	lv.SetDelegate(newMockListDelegate(nil))
+	defer lv.SetModel(nil)
+	// TableView等组合控件可以直接调用LayoutVisible，不经过ScrollView对ListView的Measure。
+	lv.LayoutVisible(geometry.Size{Width: 100, Height: 30}, geometry.Point{})
+	if !lv.styleValid {
+		t.Fatal("直接布局未先消费样式通知，绘制阶段仍可能使测量失效")
+	}
+	before, count := lv.ContentSize(), len(lv.heights)
+	paintStyleTestWidget(lv)
+	if lv.ContentSize() != before || len(lv.heights) != count {
+		t.Fatal("绘制阶段改变了刚完成的列表测量")
+	}
+}
 
 func TestListViewRevealEstimatedVariableAndOversizedRows(t *testing.T) {
 	for _, oversized := range []bool{false, true} {

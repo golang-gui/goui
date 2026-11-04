@@ -39,8 +39,8 @@ type ListView struct {
 
 	items   map[int]Widget  // index -> attached widget (visible only)
 	pool    []Widget        // detached shells, ready to be re-bound (reuse pool)
-	heights map[int]float32 // index -> measured height (exact after Bind)
-	widths  map[int]float32 // index -> measured row width (natural, >= viewport)
+	heights map[int]float32 // index -> last measured height; offscreen values are estimates
+	widths  map[int]float32 // index -> last measured row width (natural, >= viewport)
 
 	estimate   float32 // estimated height of unmeasured items
 	seedHeight float32 // first measured height after Bind (estimate seed)
@@ -73,17 +73,6 @@ func NewListView() *ListView {
 		items:   make(map[int]Widget),
 		heights: make(map[int]float32),
 	}
-}
-
-// StyleChanged drops exact row measurements, not the rows or their bindings.
-// Keep the previous mean/width as estimates until LayoutVisible remeasures, so
-// ScrollView does not clamp its offset against a transient empty extent.
-func (lv *ListView) StyleChanged() {
-	clear(lv.heights)
-	clear(lv.widths)
-	lv.seedHeight = lv.estimate
-	lv.first, lv.firstY = 0, 0
-	lv.lastContentHeight = 0
 }
 
 // Model returns the current data model.
@@ -226,8 +215,9 @@ func (lv *ListView) reload() {
 	lv.RequestLayout()
 }
 
-// ContentSize implements Scrollable. Height is the exact sum of measured items
-// plus an estimate for the rest (it grows as items are measured). Width is the
+// ContentSize implements Scrollable. Height combines the last measured sizes
+// with an estimate for never-measured items. Offscreen sizes remain estimates
+// across presentation changes until their rows are rebound. Width is the
 // horizontal scroll extent: the widest measured row (its natural width, at
 // least the viewport width). It only reflects measured rows, so it can grow as
 // wider rows are revealed by scrolling; ScrollView re-lays out when it changes.
@@ -260,7 +250,7 @@ func (lv *ListView) ItemsCount() int {
 // and measures items until the viewport is filled, and unbinds items that
 // scrolled out.
 func (lv *ListView) LayoutVisible(viewport geometry.Size, offset geometry.Point) {
-	if lv.Destroyed() {
+	if !ensureWidgetStyle(lv) {
 		return
 	}
 	revision := lv.revision
@@ -345,9 +335,9 @@ func (lv *ListView) LayoutVisible(viewport geometry.Size, offset geometry.Point)
 			break
 		}
 		h, known := lv.heights[last]
-		// A local style/text change invalidates the row through RequestLayout
-		// even when this list's own style did not change. Do not let the
-		// per-index cache hide that invalidation (including a rebound shell).
+		// Row styles and RequestLayout invalidate live measurements; re-binding
+		// does the same for a historical offscreen estimate. A state notification
+		// on the list itself must not discard unrelated row measurements.
 		if !known || !w.base().measureValid {
 			oldWidth := lv.widths[last]
 			oldHeight := lv.heightAt(last)
