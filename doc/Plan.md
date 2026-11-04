@@ -1,5 +1,18 @@
 # Plan
 
+## Android Platform 与 GUI 内容窗口（2026-11-04）
+
+- 设计：[DesignMobileLifecycle](DesignMobileLifecycle.md#第三切片android-工厂与-gui-内容窗口2026-11-04)。
+- [x] Android 工厂、桌面 build 选择隔离、Software/androidtext 与普通 GUI 接入。
+- [x] rootBase 实时绘制许可、Surface/Visibility 处理及包内回归；修正 Label
+  无界布局轴直接传入原生排版的问题，补充水平/垂直/双向回归。
+- [x] API 30 ARM64/Software 1x、CheckJNI：独立 APK 布局、普通事件派发、
+  旋转、后台帧暂停和状态保留通过，真实截图/色块采样通过。
+- [x] 隔离源码全仓 3515 通过/10 既有跳过，相关 race/vet、Windows/macOS
+  GUI 目标编译通过；本机独立 Xvnc/xfwm4 的既有动画/Popover 用例通过。
+- [ ] iOS 工厂/CoreText、共享实现目录迁移、触摸与 IME 另行切片。
+- WrapChar 暂不作为工厂/GUI 首轮接入的前置；原生 uintptr 诊断按用户要求不阻塞。
+
 ## Android Typography 正式包装（2026-11-04）
 
 - 设计：[DesignAndroidTypography](DesignAndroidTypography.md)。
@@ -10,7 +23,8 @@
   原有 3814 项交互检查、Activity 重建/后台恢复通过。缓存命中返回独立切片。
 - [x] 隔离副本全仓 3509 通过/10 既有跳过，相关 Linux race/vet 通过。
   Android vet 的 4 项原生指针诊断保留，详见 DesignAndroidTypography，不计通过。
-- [ ] WrapChar、完整共同 Go 测试运行器、更多系统版本/真机及平台工厂接入。
+- [ ] WrapChar、完整共同 Go 测试运行器、更多系统版本/真机；平台工厂的基础
+  接入已由上方 Android Platform/GUI 切片完成。
 
 ## Cluster 交互原则与 Android Layout 验证（2026-11-04）
 

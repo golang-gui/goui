@@ -3,7 +3,8 @@
 状态：2026-11-04 更新的实施计划。基座、启动、逻辑窗口及 Software 已完成的
 范围见 [PlanMobileBuild](PlanMobileBuild.md) 与
 [DesignMobileLifecycle](DesignMobileLifecycle.md)。本篇规定后续结构与顺序，
-不表示目录迁移、GPU 或文字后端已经实现。
+不表示完整目录迁移、GPU 或全部移动能力已经实现。Android 文字基础包装已实现，
+当前限制与验收见 [DesignAndroidTypography](DesignAndroidTypography.md)。
 
 ## 1. 目标与边界
 
@@ -57,7 +58,7 @@ platform/
     coretext/                   macOS 与 iOS 共用
     directwrite/
     pango/
-    androidtext/                Android 系统文字适配，验证后实现
+    androidtext/                Android 系统文字适配，基础包装已实现
 ```
 
 这是一份目标结构，不预先创建空包。iOS 的 UIKit 绑定是 frameworks/uikit，
