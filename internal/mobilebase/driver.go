@@ -24,6 +24,9 @@ var baseSource []byte
 //go:embed hook.go.txt
 var hookSource []byte
 
+//go:embed entry.go
+var entrySourceFile []byte
+
 const baseGoVersion = "go1.25.8"
 const execSourceSHA256 = "0bb5e63cec9ee583f15d5c20bdaf356df9059a1ca15b4d4177a46549594d86f1"
 
@@ -62,7 +65,12 @@ func BuildDriver(ctx context.Context, goCommand, output string, log io.Writer) e
 		return err
 	}
 	defer os.RemoveAll(temp)
-	files := map[string][]byte{"exec.go": bytes.Replace(data, marker, replacement, 1), "goui_base.go": bytes.Replace(baseSource, []byte("package mobilebase"), []byte("package work"), 1), "goui_base_hook.go": hookSource}
+	files := map[string][]byte{
+		"exec.go":           bytes.Replace(data, marker, replacement, 1),
+		"goui_base.go":      bytes.Replace(baseSource, []byte("package mobilebase"), []byte("package work"), 1),
+		"goui_base_hook.go": hookSource,
+		"goui_entry.go":     bytes.Replace(entrySourceFile, []byte("package mobilebase"), []byte("package work"), 1),
+	}
 	overlay := struct{ Replace map[string]string }{make(map[string]string)}
 	for name, content := range files {
 		dest := filepath.Join(temp, name)

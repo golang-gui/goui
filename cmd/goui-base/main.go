@@ -79,6 +79,7 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		fs.StringVar(&options.Directory, "dir", ".", "main module directory")
 		fs.StringVar(&options.Output, "o", "", "native output file")
 		fs.BoolVar(&options.Verbose, "x", false, "print Go build commands")
+		fs.BoolVar(&options.Entry, "entry", false, "register application main for the mobile host")
 		fs.Var((*buildList)(&options.Objects), "object", "native host object/archive (repeatable)")
 		fs.Var((*buildList)(&options.Libraries), "library", "target library name (repeatable)")
 		fs.Var((*buildList)(&options.Frameworks), "framework", "target framework name (repeatable)")

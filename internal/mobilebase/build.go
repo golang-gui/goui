@@ -30,6 +30,8 @@ type BuildOptions struct {
 	Libraries  []string
 	Frameworks []string
 	Verbose    bool
+	// Entry registers the application's main for the fixed mobile ABI entry.
+	Entry bool
 }
 
 // Build compiles ordinary Go source with verified native support archives, then
@@ -147,6 +149,13 @@ func Build(ctx context.Context, options BuildOptions, out, errOut io.Writer) err
 		return err
 	}
 	args := []string{"build", "-trimpath", "-pgo=off", "-buildmode=" + base.BuildMode, "-ldflags=" + encoded, "-o", goOutput}
+	if options.Entry {
+		overlay, err := createEntryOverlay(ctx, options, base.BuildMode, env, temporary)
+		if err != nil {
+			return err
+		}
+		args = append(args, "-overlay="+overlay)
+	}
 	if options.Verbose {
 		args = append(args, "-x")
 	}
