@@ -1141,3 +1141,7 @@ func windowDidFailChangeFullscreen(self NSWindowDelegate, window NSWindow) {
 }
 
 var _ common.DesktopWindow = (*Window)(nil)
+
+func (w *Window) SurfaceState() common.SurfaceState {
+	return common.SurfaceState{Ready: w.NativeHandle() != 0, Generation: 1}
+}

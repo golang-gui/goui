@@ -2,6 +2,20 @@ package events
 
 import "github.com/golang-gui/goui/platform/common"
 
+// SurfaceEvent reports a replaceable drawing target becoming available or lost.
+// It does not unmount the logical window. Terminal destruction uses DestroyEvent.
+type SurfaceEvent struct{ State common.SurfaceState }
+
+func (SurfaceEvent) Type() EventType { return Surface }
+func (SurfaceEvent) isEvent()        {}
+
+// VisibilityEvent reports whether the native content is visible. Backgrounding
+// is distinct from desktop minimization, focus, and drawing-target availability.
+type VisibilityEvent struct{ Visible bool }
+
+func (VisibilityEvent) Type() EventType { return Visibility }
+func (VisibilityEvent) isEvent()        {}
+
 // StateEvent reports presentation observed in response to native events.
 // Requests never synthesize completion. Unknown means observation is unavailable.
 type StateEvent struct {

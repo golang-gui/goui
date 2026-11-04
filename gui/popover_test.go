@@ -1587,3 +1587,7 @@ func TestPopoverNativeTerminationPreservesContent(t *testing.T) {
 		})
 	}
 }
+
+func (*recordingPlatformPopup) SurfaceState() platform.SurfaceState {
+	return platform.SurfaceState{Ready: true, Generation: 1}
+}

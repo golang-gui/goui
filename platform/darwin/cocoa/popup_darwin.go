@@ -104,3 +104,7 @@ func popupSizeInPoints(width, height float32, backingScale, preferScale CGFloat)
 		Height: CGFloat(math.Ceil(float64(max(1, height))*float64(scale))) / backingScale,
 	}
 }
+
+func (p *Popup) SurfaceState() common.SurfaceState {
+	return common.SurfaceState{Ready: p.NativeHandle() != 0, Generation: 1}
+}

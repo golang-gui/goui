@@ -1225,3 +1225,7 @@ func desktopWorkArea(desktop uint32, areas []uint32) (geometry.Rectangle, error)
 }
 
 var _ common.DesktopWindow = (*Window)(nil)
+
+func (w *Window) SurfaceState() common.SurfaceState {
+	return common.SurfaceState{Ready: w.NativeHandle() != 0, Generation: 1}
+}

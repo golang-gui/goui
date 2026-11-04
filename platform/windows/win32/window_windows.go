@@ -1428,3 +1428,7 @@ func (w *Window) WorkAreaAt(point geometry.Point) (geometry.Rectangle, error) {
 	}
 	return result, nil
 }
+
+func (w *Window) SurfaceState() common.SurfaceState {
+	return common.SurfaceState{Ready: w.NativeHandle() != 0, Generation: 1}
+}

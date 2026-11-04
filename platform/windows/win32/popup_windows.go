@@ -119,3 +119,7 @@ func popupPhysicalExtent(logical, scale float32) int {
 func (p *Popup) ownerScale() float32 {
 	return hwndScale(winapi.HWND(p.owner.NativeHandle()))
 }
+
+func (p *Popup) SurfaceState() common.SurfaceState {
+	return common.SurfaceState{Ready: p.NativeHandle() != 0, Generation: 1}
+}
