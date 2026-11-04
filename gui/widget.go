@@ -101,9 +101,14 @@ type Widget interface {
 	StyleChanged()
 
 	// Paint draws this Widget itself in local coordinates. The GUI traversal
-	// automatically paints visible children after Paint returns.
+	// paints children after Paint returns and skips fully clipped subtrees.
+	// Calls are demand-driven; business state and final cleanup must not depend
+	// on Paint running for every host frame.
 	Paint(p Painter)
 	RequestLayout()
+	// RequestPaint invalidates visual content. A known, fully clipped allocation
+	// need not wake the host. Pending layout/style work is still processed, and
+	// the next visible paint reads the widget's latest state and dirty caches.
 	RequestPaint()
 
 	// Children returns the direct children in sibling order: painting visits
@@ -664,8 +669,81 @@ func (w *WidgetBase) RequestPaint() {
 	}
 	// Same as RequestLayout: reach the host through Root, never through Window().
 	if r := w.root(); r != nil {
+		if owner, ok := r.(interface{ rootState() *rootBase }); ok && w.self != nil {
+			host := owner.rootState()
+			if host.frameDestroyed || host.frameSuspended {
+				return
+			}
+			// Old allocations cannot establish invisibility while geometry or
+			// state-dependent measurements may still change.
+			if host.screenClipValid && !host.layoutDirty && len(host.stateStyles) == 0 && !IsDrawable(w.self) {
+				return
+			}
+		}
 		_ = r.RequestPaint()
 	}
+}
+
+// IsDrawable reports whether widget has a potentially drawable screen area in
+// its current allocation. It intersects ancestor structural bounds and the
+// host's prepared screen clip; it never flushes layout or queries native
+// occlusion. Pending allocations may differ from this observation.
+//
+// Detached, hidden, destroyed and fully clipped widgets return false. Built-in
+// hosts also return false before their first prepared frame and while suspended.
+// Other Root implementations use their root widget's bounds and, if supplied,
+// Visible state. This does not inspect container types or drawing transforms.
+// True does not imply that opaque siblings or other windows leave pixels visible.
+// Call on the GUI thread. RenderWidget uses its own target clip independently.
+func IsDrawable(widget Widget) bool {
+	if widget == nil || widget.base().destroyed || widget.base().unmounting {
+		return false
+	}
+	root := widget.Root()
+	if root == nil {
+		return false
+	}
+	var clip geometry.Rectangle
+	if owner, ok := root.(interface{ rootState() *rootBase }); ok {
+		state := owner.rootState()
+		if state.frameDestroyed || state.frameSuspended || !state.screenClipValid {
+			return false
+		}
+		clip = state.screenClip
+	} else {
+		if host, ok := root.(interface{ Visible() bool }); ok && !host.Visible() {
+			return false
+		}
+		content := root.Widget()
+		if content == nil {
+			return false
+		}
+		clip = content.Rect()
+	}
+	_, clip = allocatedWidgetClip(widget, clip)
+	return !emptyRect(clip)
+}
+
+// widgetClip is shared by screen queries and paint traversal. All geometry is
+// logical; a widget's local transform cannot enlarge its structural bounds.
+func widgetClip(origin geometry.Point, clip, rect geometry.Rectangle) (geometry.Point, geometry.Rectangle) {
+	origin = origin.Add(rect.Pos)
+	return origin, clip.Intersect(geometry.Rectangle{Pos: origin, Size: rect.Size})
+}
+
+func allocatedWidgetClip(widget Widget, clip geometry.Rectangle) (geometry.Point, geometry.Rectangle) {
+	base := widget.base()
+	if base.destroyed || base.unmounting || !widget.Visible() {
+		return geometry.Point{}, geometry.Rectangle{}
+	}
+	var origin geometry.Point
+	if parent := base.parentWidget; parent != nil {
+		origin, clip = allocatedWidgetClip(parent, clip)
+	}
+	if emptyRect(clip) {
+		return origin, clip
+	}
+	return widgetClip(origin, clip, widget.Rect())
 }
 
 // liveRoot returns root, or nil if it has been destroyed — letting a host drop

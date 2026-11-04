@@ -181,7 +181,7 @@ type window struct {
 
 func newWindow(app *application, options WindowOptions) (*window, error) {
 	win := &window{
-		rootBase: rootBase{app: app, layoutDirty: true, paintDirty: true, transparent: options.Transparent},
+		rootBase: rootBase{app: app, layoutDirty: true, paintDirty: true, frameSuspended: true, transparent: options.Transparent},
 	}
 
 	mode := options.Chrome

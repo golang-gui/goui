@@ -63,6 +63,7 @@ func TestStyleChangedCoalescesBeforeMeasureAndPaint(t *testing.T) {
 		t.Fatalf("measurement used stale style: %+v", got)
 	}
 	measureWidget(w, c)
+	w.Arrange(geometry.Rect(0, 0, 20, 20))
 	paintStyleTestWidget(w)
 	paintStyleTestWidget(w)
 	if !slices.Equal(w.events, []string{"style", "measure", "paint", "paint"}) {

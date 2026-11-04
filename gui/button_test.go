@@ -231,6 +231,8 @@ func TestButtonUsesWidgetBaseLayoutAndPaint(t *testing.T) {
 	if manager.arrangeRect != geometry.Rect(6, 6, 68, 18) {
 		t.Fatalf("unexpected layout arrange rect: %+v", manager.arrangeRect)
 	}
+	// 替身布局器只记录参数；绘制遍历现在只调用有可绘制分配的子控件。
+	child.Arrange(manager.arrangeRect)
 
 	backend := new(recordingPainterBackend)
 	paintWidget(button, newPainter(backend, geometry.Rect(0, 0, 80, 30), 1))

@@ -75,6 +75,9 @@ type rootBase struct {
 	frameCapture   *diagnostic.FrameRecord
 	frameTimer     *Timer
 	frameRequester paintRequester
+
+	screenClip      geometry.Rectangle // host-provided structural clip, never an offscreen target
+	screenClipValid bool
 }
 
 func (b *rootBase) rootState() *rootBase { return b }
@@ -240,6 +243,7 @@ func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Sty
 		}
 	}
 	guiPainter.state.scopeClip, guiPainter.state.clip = safe, safe
+	b.screenClip, b.screenClipValid = safe.Intersect(bounds), true
 	guiPainter.applyState()
 	if !emptyRect(safe) {
 		paintWidget(content, guiPainter)
@@ -420,6 +424,7 @@ func (b *rootBase) stopFrameTimer() {
 
 func (b *rootBase) suspendFrames() {
 	b.frameSuspended = true
+	b.screenClipValid = false
 	b.framePending = false
 	b.stopFrameTimer()
 }
