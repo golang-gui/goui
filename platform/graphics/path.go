@@ -1,5 +1,7 @@
 package graphics
 
+import "slices"
+
 type Path struct {
 	data []float32
 }
@@ -36,9 +38,21 @@ func (op PathOperation) String() string {
 	}
 }
 
-func MoveTo(x, y float32) (p Path) {
+func MoveTo(x, y float32) Path {
+	return Path{}.MoveTo(x, y)
+}
+
+// Grow reserves space for n additional float32 entries in the instruction
+// buffer without changing the path. A negative n panics.
+func (p Path) Grow(n int) Path {
+	p.data = slices.Grow(p.data, n)
+	return p
+}
+
+// MoveTo starts a new contour without discarding earlier contours.
+func (p Path) MoveTo(x, y float32) Path {
 	p.data = append(p.data, float32(PathMoveTo), x, y)
-	return
+	return p
 }
 
 func (p Path) LineTo(x, y float32) Path {
@@ -70,6 +84,13 @@ func (p Path) Close() Path {
 	return p
 }
 
+// Hole marks the current contour as subtractive without moving the current
+// point. Its segments must wind opposite to the enclosing contour.
+func (p Path) Hole() Path {
+	p.data = append(p.data, float32(PathHole), 0, 0)
+	return p
+}
+
 func (p Path) Range(f func(op PathOperation, args []float32) (stop bool)) {
 	var args []float32
 	for i := 0; i < len(p.data); i++ {
@@ -89,9 +110,21 @@ func (p Path) Range(f func(op PathOperation, args []float32) (stop bool)) {
 	}
 }
 
+// CurrentPos returns the last drawing point. Close returns to the current
+// contour's start; contour markers do not move the point. An empty path is at 0,0.
 func (p Path) CurrentPos() (x, y float32) {
-	if length := len(p.data); length != 0 {
-		return p.data[length-2], p.data[length-1]
-	}
+	var startX, startY float32
+	p.Range(func(op PathOperation, args []float32) bool {
+		switch op {
+		case PathMoveTo:
+			startX, startY = args[0], args[1]
+			x, y = startX, startY
+		case PathLineTo, PathArcTo, PathBezierTo:
+			x, y = args[len(args)-2], args[len(args)-1]
+		case PathClose:
+			x, y = startX, startY
+		}
+		return false
+	})
 	return
 }

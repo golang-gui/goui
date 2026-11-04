@@ -271,3 +271,8 @@ DrawBoxShadow 接收 geometry.CornerRadius；统一值通过 UniformCornerRadius
 四角背景和边框复用通用 Path，统一背景／边框保留快捷路径。PathHole 标记几何构造器
 生成的反向孔洞轮廓，遍历不在第一处Close提前结束；不引入窗口或样式专用Painter接口。
 样式辅助函数不建立子树圆角裁剪。详见 [DesignCornerRadius](DesignCornerRadius.md)。
+
+Path.MoveTo 追加新轮廓，Path.Hole 标记当前反向轮廓为孔洞；二者只记录指令，
+不生成形状或反转控制点。Path.Grow 预留额外 float32 指令槽位，返回值须接回；
+不改变路径内容或暴露内部切片。CurrentPos 返回记录中的实际位置，Close 回到
+当前轮廓起点，Hole 不移动当前位置。
