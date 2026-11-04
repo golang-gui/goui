@@ -74,7 +74,7 @@ type TextLayout interface {
 	// constraints and formatting, in logical units.
 	MeasureSize() (width, height float32)
 
-	// MeasureMetrics returns line and shaping-cluster metrics for the current
+	// MeasureMetrics returns line and interaction-cluster metrics for the current
 	// layout. Coordinates are relative to the layout origin and use logical
 	// units; Start and Length values are UTF-8 byte offsets into Text.
 	MeasureMetrics() (lines []TextLine, clusters []TextCluster)
@@ -143,13 +143,17 @@ type TextLine struct {
 	Height float32
 	// Baseline is the vertical baseline coordinate relative to the layout origin.
 	Baseline float32
-	// Clusters contains the shaping clusters belonging to this line.
+	// Clusters contains the interaction units belonging to this line.
 	Clusters []TextCluster
 }
 
-// TextCluster describes a backend shaping result associated with a text range,
-// in layout-local logical coordinates. A cluster may contain multiple Unicode
-// code points, UTF-8 bytes, or positioned glyphs.
+// TextCluster describes a layout-local unit for default caret movement, hit
+// testing and selection. Its interior is not an independent caret stop. It
+// covers a contiguous UTF-8 range and may contain several code points or glyphs.
+// Boundaries follow Unicode grapheme behavior and native layout capabilities;
+// they need not match glyphs or a shaping engine's clusters across backends.
+// Zero-width units still retain their text ranges. Coordinates are logical
+// layout-local units, and Width is a logical interaction extent, not ink width.
 type TextCluster struct {
 	// Start is the UTF-8 byte offset of the cluster in TextLayout.Text.
 	Start int
@@ -169,7 +173,7 @@ type TextCluster struct {
 	Direction TextDirection
 }
 
-// TextDirection is the resolved writing direction of a shaping cluster.
+// TextDirection is the resolved writing direction of an interaction cluster.
 type TextDirection int
 
 const (

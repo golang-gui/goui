@@ -212,6 +212,11 @@ start／length 限制查询，块尾追加不能改变旧片段的范围。块�
 
 复用现有 TextLine/TextCluster，不新增 TextLayout.HitTest 或选区绘制接口。
 Cluster 是本项目用户编辑操作的最小不可分割单元；模型则保存独立于字体的字节位置。
+这里的“不可分割”约束默认用户交互，不强制等同于 HarfBuzz shaping cluster 或
+单 glyph；Unicode 字素与原生排版允许少量差异。准确契约见
+[Typography 最小交互单元原则](DesignTypography.md#61-最小交互单元原则2026-11-04)。
+行度量、命中、视觉导航、选择与绘制须在同一后端内自洽；不能用严格的字形分组
+等价测试替代交互验收，也不能因此先引入另一套排版引擎或新 HitTest API。
 
 先校正三后端已有度量契约：末尾 Cluster 长度、多 glyph 的同一 Cluster、RTL 实际
 位置和方向、零宽内容范围。不得凭逻辑宽度累加推断双向文字的视觉坐标。
