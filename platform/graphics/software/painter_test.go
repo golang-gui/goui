@@ -17,6 +17,7 @@ import (
 	"github.com/golang-gui/goui/internal/diagnostic"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/graphics/utils"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/scanFT"
 )
@@ -860,7 +861,7 @@ func TestPainter(t *testing.T) {
 	painter.Begin(800, 600, 2.0)
 	painter.Clear(graphics.RGBA(90, 160, 200, 255))
 	painter.FillRoundRect(graphics.Rect(50, 50, 100, 60), 12, graphics.RGBA(90, 50, 50, 255))
-	painter.DrawPath(graphics.MoveTo(200, 50).QuadBezierTo(250, 100, 300, 50), 2, graphics.RGBA(100, 0, 0, 255))
+	painter.DrawPath(utils.QuadBezierTo(graphics.MoveTo(200, 50), 250, 100, 300, 50), 2, graphics.RGBA(100, 0, 0, 255))
 	painter.DrawPath(graphics.MoveTo(310, 50).LineTo(360, 50).ArcTo(20, 20, 0, 0, 0, 380, 70), 2, graphics.RGBA(0, 100, 0, 255))
 	painter.DrawEllipse(graphics.Point{X: 480, Y: 100}, 50, 50, 2, graphics.RGBA(50, 130, 60, 255))
 	painter.FillEllipse(graphics.Point{X: 480, Y: 100}, 30, 30, graphics.RGBA(50, 50, 130, 255))

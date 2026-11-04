@@ -25,14 +25,24 @@ graphics.Painter／gui.Painter.DrawBoxShadow 的 radius 参数改为 CornerRadiu
 
 ## 路径和边框
 
-路径构造属于 graphics，基础几何属于 geometry。RoundRectPath 是有效的闭合轮廓。
-RoundRectBorderPath 是外轮廓减去内缩轮廓的环带；内半径为 max(外半径-width,0)，
+基础几何属于 geometry；graphics 保留绘制类型、接口和 Path 的指令记录／遍历能力。
+图形轮廓生成与曲线换算算法位于 graphics/utils，不由 graphics 包依赖这些工具。
+utils.RoundRectPath 是有效的闭合轮廓。utils.RoundRectBorderPath 是外轮廓减去
+内缩轮廓的环带；内半径为 max(外半径-width,0)，
 再按内矩形归一；内部消失时填满外轮廓。半透明边框一次合成，不覆盖中心的目标像素。
 
 原型验证确认：单一路径往返连接在 NanoVG AA 条带中产生重复合成，不能使用。
 补齐现有遍历对多条闭合轮廓的处理；RoundRectBorderPath 生成外轮廓及反向内轮廓，
 用 PathHole 标记后者供需要显式孔洞方向的后端消费。其他后端按反向轮廓／奇偶规则处理。
-不增加通用路径编辑／填充规则配置接口。未闭合的尾轮廓仍按既有入口规则处理。
+Path.MoveTo 追加轮廓，Path.Hole 记录孔洞标记，不自动反转几何；这两项是通用指令
+记录能力。Path.Grow 仅预留额外 float32 记录槽位，工具保留原有48／96槽位分配，
+不暴露底层切片，不增加通用路径编辑／填充规则配置接口。
+CurrentPos 按记录查询实际当前位置：Close 回到当前轮廓起点，Hole 不改变位置。
+未闭合的尾轮廓仍按既有入口规则处理。
+
+二次贝塞尔到三次贝塞尔的换算迁为 utils.QuadBezierTo(path, cx, cy, x, y)，
+返回追加后的 Path；Path.BezierTo 仍只记录原生三次曲线指令。调用原
+path.QuadBezierTo 的代码改用工具函数，不保留会形成反向依赖的包装入口。
 
 NanoVG 非凸填充改为先绘内部，再用 stencil 消费每个 AA 像素一次，最后清理标记；
 半透明曲线凸轮廓也使用该路径，避免小圆角短线段的 AA 三角形重复合成。

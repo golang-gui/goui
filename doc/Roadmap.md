@@ -30,7 +30,8 @@ Linux arm64、原生 Wayland、触摸、系统通知／托盘、子菜单仍按�
 已实现 `geometry.CornerRadius`、四角样式、背景／统一宽色环带边框和三后端
 BoxShadow。保留 `Rule.Radius` 简写，样式 getter 及阴影绘制参数迁移为完整四角；
 ButtonGroup、Popover、BorderBox 等消费者同步，窗口原生装饰归属不变。
-nanovgo 使用正式 `v0.0.11`，含四角高斯阴影与半透明曲线 AA 修正。
+轮廓生成／曲线换算工具位于 `graphics/utils`；nanovgo 使用正式 `v0.0.11`，
+含四角高斯阴影与半透明曲线 AA 修正。
 本机独立 X11 Software／OpenGL、远端 Windows Direct2D／macOS OpenGL 验收通过；
 Windows RDP OpenGL 缺口和实际测试范围见 [Plan](Plan.md)。详细契约及迁移见
 [DesignCornerRadius](DesignCornerRadius.md)。PathShadow、四边宽色及圆角子树裁剪
