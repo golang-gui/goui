@@ -68,6 +68,7 @@ def main():
     root = Path(config["output"]).resolve()
     root.mkdir(parents=True, exist_ok=True)
     source = Path(__file__).resolve().parent
+    repo = source.parents[3]
     assets = root / "assets"
     assets.mkdir(exist_ok=True)
     font = Path(config["font"])
@@ -87,11 +88,15 @@ def main():
     classes.mkdir(exist_ok=True)
     dex.mkdir(exist_ok=True)
     run([config["java"], "-m", "jdk.compiler/com.sun.tools.javac.Main", "--release", "8", "-classpath", config["androidJar"],
-         "-d", classes, *sorted((source / "native").glob("*.java"))], "maintainer-java")
+         "-d", classes, *sorted((source / "native").glob("*.java")),
+         *sorted((repo / "platform/typography/androidtext/java").rglob("*.java"))], "maintainer-java")
     run([config["java"], "-cp", config["d8"], "com.android.tools.r8.D8", "--lib", config["androidJar"],
          "--min-api", "29", "--output", dex, *sorted(classes.rglob("*.class"))], "maintainer-dex")
     run([config["cc"], "-O2", "-std=gnu11", "-c", source / "native/android.c", "-o", root / "probe.o"], "maintainer-native")
-    repo = source.parents[3]
+    if config.get("compileHost", False):
+        config["host"] = str(root / "host.o")
+        run([config["cc"], "-O2", "-std=gnu11", "-DANativeActivity_onCreate=goui_android_create", "-c",
+             repo / "platform/mobile/native/android.c", "-o", config["host"]], "maintainer-host")
     workspace = root / "go.work"
     workspace.write_text("go 1.25.8\nuse (\n" + "".join(" " + json.dumps(str(Path(p).resolve())) + "\n" for p in [repo, config["cgo"], config["purego"]]) + ")\n")
     env = os.environ.copy()

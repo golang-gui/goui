@@ -33,6 +33,7 @@ hasCode=true。Go 用户代码不使用 import C，不访问系统私有文字�
   "inputs": "/组件/inputs.json",
   "tools": "/组件/tools.json",
   "host": "/组件/正式Android宿主.o",
+  "compileHost": true,
   "consumerPath": "/只含消费构建所需工具的目录",
   "aapt2": "/工具/aapt2",
   "signer": "/工具/apksign",
@@ -46,12 +47,17 @@ host 是 platform/mobile/native/android.c 以
 -DANativeActivity_onCreate=goui_android_create 单独预编译的正式宿主；不把本例
 helper 并入 runtime/cgo 基座。签名仅用临时测试身份，不修改系统安全配置。
 build-receipt.json 和 consume.log 区分维护者编译与无原生编译器消费。
+compileHost=true 时在维护者阶段从当前正式源码生成输出目录的 host.o；false
+时复用 host 参数。宿主须包含 JavaVM/ClassLoader bootstrap，旧宿主不适用。
+维护者 Java 阶段同时编译 androidtext 的生产 helper 与本目录的独立参考，消费
+构建不运行 javac、D8 或 NDK。测试包仍不是公开移动构建命令。
 
 启动：安装输出目录的 probe.apk，然后启动
 org.golanggui.androidtext/android.app.NativeActivity。初始画面是浅色背景的多语言
 文字，包括 Latin、中、日、韩、阿拉伯、希伯来、印地语和 emoji；下方给出
-core failures 与 shaping boundary differences。整个图片由系统 Canvas 生成，再
-通过 GOUI Software Painter/graphics.Image 呈现，不是主线程 TextView 截图。
+后端与交互失败数。主画面由 androidtext.Context/TextLayout 经 Software 的
+DrawTextLayout 绘制；files/text.png 保留独立系统 Canvas 参考图，不能把它
+误认为当前屏幕截图。程序不使用主线程 TextView 替代排版接入。
 
 操作与逐项预期：
 
@@ -99,6 +105,23 @@ core failures 与 shaping boundary differences。整个图片由系统 Canvas �
 不依赖桌面的比较器回归：go test ./tests/window/platform/android_text。此测试使用
 独立手工原生参考，并故意引入错误几何确认能被检出；它不能代替 Android 运行。
 Android 11 ARM64/Software 1x 的实测材料与限制见 doc/DesignMobilePlatform.md 9.5。
+
+生产包装验收还须读取 files/backend-go.json，Failures=0、Checks 至少 170 项。
+原生参考独立于生产 Java helper，检查行/光标、1x/1.5x/2x 的完整 RGBA 字节，
+以及直接 Canvas.drawText 的两端对齐/下划线/删除线像素。另测 TTF/TTC 族匹配、
+字体替换、跨样式字素、重叠范围恢复、零宽、空行、带小数及对齐后的 Tab、
+占位几何、buf 复用、透明区域、度量切片隔离和 Changed/Destroy 通知。
+半透明 glyph 与装饰线重叠会按 source-over 增大 alpha，不能用单次覆盖上限
+检查叠加结果；纯文字预乘和装饰结果分别断言，不放宽原有颜色检查。
+
+建议在本次专用模拟器启用 debug.checkjni，检查异常消费、UTF-16 中的 NUL/
+代理对和 JNI 参数；不得修改用户其他设备。原生头文件同时静态校验 JNI 表
+位置、jvalue 与 AndroidBitmapInfo 布局。旋转/Activity 重建及后台恢复后应继续
+绘制，进程/GOUI 线程不变，字体/布局不随 Activity 失效。复位设备旋转设置。
+
+WrapChar 仍明确不支持，测试其失败反馈，不能计为字符换行已经验收。其余范围、
+内部子像素单位及已知系统差异见 doc/DesignAndroidTypography.md。本例的耗时/
+分配只作当前模拟器的观测，不构成跨引擎或真机性能结论。
 
 退出：系统返回/强制停止本测试应用；复位：清除本包数据或卸载。只使用专用
 模拟器和 ADB 端口，验收后清理本次设备，不接管用户其他设备。实验字体、APK、

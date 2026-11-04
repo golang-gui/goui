@@ -1,10 +1,27 @@
 // 测试包装：复用正式宿主，仅增加从 Go 线程调用 Java 能力测试的固定入口。
 #include <android/native_activity.h>
+#include <android/bitmap.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+// 用 NDK 头文件独立校验 Go JNI 绑定使用的表位置与结构体布局。
+#define JNI_SLOT(name,index) _Static_assert(offsetof(struct JNINativeInterface,name)==(index)*sizeof(void*),"JNI slot " #name)
+JNI_SLOT(FindClass,6); JNI_SLOT(ExceptionOccurred,15); JNI_SLOT(ExceptionClear,17);
+JNI_SLOT(PushLocalFrame,19); JNI_SLOT(PopLocalFrame,20); JNI_SLOT(NewGlobalRef,21);
+JNI_SLOT(DeleteGlobalRef,22); JNI_SLOT(DeleteLocalRef,23); JNI_SLOT(NewObjectA,30);
+JNI_SLOT(GetObjectClass,31); JNI_SLOT(GetMethodID,33); JNI_SLOT(CallObjectMethodA,36);
+JNI_SLOT(CallVoidMethodA,63); JNI_SLOT(GetStaticMethodID,113); JNI_SLOT(CallStaticObjectMethodA,116);
+JNI_SLOT(NewString,163); JNI_SLOT(GetStringLength,164); JNI_SLOT(GetArrayLength,171);
+JNI_SLOT(NewObjectArray,172); JNI_SLOT(GetObjectArrayElement,173); JNI_SLOT(SetObjectArrayElement,174);
+JNI_SLOT(NewIntArray,179); JNI_SLOT(GetIntArrayRegion,203); JNI_SLOT(GetFloatArrayRegion,205);
+JNI_SLOT(SetIntArrayRegion,211); JNI_SLOT(GetStringRegion,220); JNI_SLOT(ExceptionCheck,228);
+_Static_assert(offsetof(struct JNIInvokeInterface,GetEnv)==6*sizeof(void*),"JavaVM GetEnv");
+_Static_assert(offsetof(struct JNIInvokeInterface,AttachCurrentThreadAsDaemon)==7*sizeof(void*),"JavaVM attach");
+_Static_assert(offsetof(struct JNIInvokeInterface,DetachCurrentThread)==5*sizeof(void*),"JavaVM detach");
+_Static_assert(sizeof(jvalue)==8 && sizeof(AndroidBitmapInfo)==20 && offsetof(AndroidBitmapInfo,flags)==16,"JNI/bitmap layout");
 
 extern void goui_android_create(ANativeActivity *, void *, size_t);
 static JavaVM *vm;
@@ -20,6 +37,17 @@ typedef struct {
 _Static_assert(sizeof(ProbeBitmap)==32 && offsetof(ProbeBitmap,pixels)==16,"test bitmap ABI");
 
 __attribute__((visibility("default"))) const char *probe_directory(void) { return directory; }
+__attribute__((visibility("default"))) int32_t probe_reference(void) {
+    JNIEnv *env=NULL;
+    if((*vm)->GetEnv(vm,(void**)&env,JNI_VERSION_1_6)!=JNI_OK)return -1;
+    if((*env)->PushLocalFrame(env,8)<0)return -1;
+    jmethodID method=(*env)->GetStaticMethodID(env,probe,"reference","(Ljava/lang/String;)V");
+    jstring path=(*env)->NewStringUTF(env,directory);
+    if(method)(*env)->CallStaticVoidMethod(env,probe,method,path);
+    int failed=(*env)->ExceptionCheck(env);
+    if(failed){(*env)->ExceptionDescribe(env);(*env)->ExceptionClear(env);}
+    (*env)->PopLocalFrame(env,NULL);return failed?-1:0;
+}
 __attribute__((visibility("default"))) void probe_free(ProbeBitmap *b) { if(b){free(b->pixels);free(b);} }
 __attribute__((visibility("default"))) ProbeBitmap *probe_run(void) {
     JNIEnv *env=NULL; int attached=0;

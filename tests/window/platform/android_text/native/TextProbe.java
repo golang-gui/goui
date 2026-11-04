@@ -256,4 +256,6 @@ public final class TextProbe {
         try (FileOutputStream out = new FileOutputStream(new File(dir,"text.png"))) { b.compress(Bitmap.CompressFormat.PNG,100,out); }
         byte[] pixels = bytes(b);b.recycle();return pixels;
     }
+
+    public static void reference(String directory) throws Exception { BackendReference.write(directory); }
 }
