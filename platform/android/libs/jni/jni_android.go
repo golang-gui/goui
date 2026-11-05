@@ -96,6 +96,9 @@ func (e Env) CallObject(obj Object, method Method, args ...Value) Object {
 func (e Env) CallStaticObject(class Object, method Method, args ...Value) Object {
 	return Object(e.invoke(116, class, method, args))
 }
+func (e Env) CallInt(obj Object, method Method, args ...Value) int32 {
+	return int32(e.invoke(51, obj, method, args))
+}
 func (e Env) CallVoid(obj Object, method Method, args ...Value) { e.invoke(63, obj, method, args) }
 
 func (e Env) NewString(text string) Object {
