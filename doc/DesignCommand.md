@@ -1,7 +1,8 @@
 # 共享操作与声明式命令作用域
 
 > 状态：2026-11-04 命令、菜单与 UI 作用域已实现，本机独立 X11 验证通过。
-> Windows/macOS 仅交叉编译通过，本轮未执行远端原生运行；实际范围见 Plan。
+> 2026-11-05 扩展：子树声明、BindEnabled、直接对象引用已实现，本机验证结果见 Plan。
+> Windows/macOS 的实际运行范围及后续结果见 Plan。
 
 ## 职责
 
@@ -77,11 +78,12 @@ ui.CommandScope(
 
 CommandScope 是 ObjectView，无占位 Widget 和布局边界。命令 ID 仅在作用域内唯一，
 不与 Widget ID 混用。按祖先作用域查找，最近同名定义遮蔽外层；未定义时向外查找，
-不跨窗口。空定义 ID／同一组重复 ID 立即报告声明错误。未解析引用呈禁用，
+不跨窗口。空定义 ID 及重复 ID 报告声明错误；同一作用域的分布式重复在本轮协调
+结束时检查。未解析引用呈禁用，
 FindCommand(ctx, id) 返回对象与成功标志，供自定义 View 查询和诊断，不能执行旧目标。
 
 底层 gui.Command 以作用域与命令 ID 保持身份，顺序变化不重建，回调读取最新声明。
-移除定义时先从集合删除、禁用并解除激活连接；存活的引用重新解析或禁用。
+移除定义在本轮结束时从集合删除、禁用并解除激活连接；存活引用重新解析或禁用。
 作用域通过自身集合变化信号通知引用方，不在 Root 加命令注册表。
 内层作用域跟随外层集合与 ancestry；显式子树移交后重新解析，不重放业务操作。
 Scope.Release 由 ObjectView 在后代清理后执行，清理全部命令与父作用域连接。
@@ -90,7 +92,67 @@ MenuItem.Command(string) 与 Shortcut.Command(string) 选择操作来源，替�
 局部 Enabled 仍属于该入口。MenuItem 函数参数可省略。构造声明没有副作用。
 UI 继续协调自己创建的 Shortcut，卸载时移除注册、SetCommand(nil)，不保留旧命令引用。
 菜单引用与快捷键引用解析到同一运行对象，不创建两份命令，不引入 UseShortcut、
-用户持有的命令模型、全局 ID 或新的 BuildContext 命令接口。
+全局 ID 或新的 BuildContext 命令接口。
+
+## 子树声明与启用绑定
+
+```go
+ui.CommandScope(
+    ui.VBox(
+        ui.MenuButton("File").Menu(
+            ui.MenuItem("Close").Command("file.close"),
+        ),
+        ui.Command("file.close").BindEnabled(&hasDocument).OnActivate(closeFile),
+        editor,
+    ).Shortcuts(ui.Shortcut(ui.KeyW).Modifiers(ui.ModPrimary).Command("file.close")),
+)
+```
+
+Command 是返回 nil 内容的 ObjectView，使用既有 Build、Release、Reparented 协调。
+它可以出现在任意后代 View 中，不生成 Widget、测量尺寸、容器间距或 Snapshot 节点。
+构造 Go 值没有注册副作用；必须进入 View 树或 Commands 列表才生效。无祖先作用域的
+独立声明报告错误。隐藏 Widget 不卸载声明；移除 View 才注销定义。
+
+最近的 CommandScope 集中拥有 gui.Command。每份定义只属于最近作用域，同一作用域
+内一个 ID 只能有一份定义；内层可同名遮蔽并向外回退，不按焦点自动挑选同名定义。
+.Commands(...) 是直接挂在作用域上的简写，使用相同定义注册、属性绑定和发布路径。
+简写以操作 ID 保留定义；独立节点按普通 View 身份协调，不将命令 ID 用作 Widget ID。
+
+各定义只提交自己当前的 ID、回调和可用性，作用域通过自己的 AfterUpdate 一次发布
+本轮最终集合，发布前完整验证唯一性，再复用同 ID 对象、移除过期对象并通知引用。
+同一轮中先添加新位置再移除旧位置不会误判重复，也不会把原命令禁用再重建。
+前向引用最初可为禁用占位，集合发布后在布局／绘制前解析完成。FindCommand 返回
+最近一次已发布对象；在首次 Build 中可能尚未解析，不能依靠子节点声明顺序取对象。
+AfterUpdate 仍按既有注册顺序执行，不承诺早于命令作用域的其他完成钩子已看到本轮集合。
+
+BindEnabled(ReadState[bool]) 复用 BindValue、来源订阅和节点更新队列，只更新操作可用性，
+不重建父节点、编辑器或菜单。Enabled(value) 替换绑定，BindEnabled(source) 替换值，
+nil 绑定不改变声明；换源、取消和卸载解除旧订阅。结构增删继续通过 Build 表达。
+
+显式移交重新确定定义的最近作用域及所有引用；本次移交全部 ancestry 安装并完成
+committed 回调后，借助既有 AfterTransfer 发布两侧集合，返回调用方前生效。
+移交整个 CommandScope 保留其对象，移交定义至不同作用域由目标作用域拥有新对象，
+源对象禁用。输入仍只经过现有 Dispatcher／Controller，不在 Root 添加命令分支。
+
+## 借用命令式对象
+
+```go
+ui.MenuItem("Export").CommandRef(exportCommand)
+ui.Shortcut(ui.KeyE).Modifiers(ui.ModPrimary).CommandRef(exportCommand)
+```
+
+Command(string) 保留作用域内 ID 语义；CommandRef(*gui.Command) 是显式借用外部对象，
+无需作用域，不使用 any 参数或运行时重载。菜单的直接 Action、ID 和外部对象来源互斥；
+快捷键的 OnActivate、ID 和外部对象来源同样互斥，最后设置者生效。CommandRef(nil)
+清除操作。Window.Shortcuts 可直接引用对象，不反向查找 Content 内的命令作用域。
+
+UI 不改变外部 Command.Enabled、不替换其业务处理者，也不因卸载而禁用外部对象。
+UI 只管理自己创建的 Shortcut、关联及观察连接；解绑调用 SetCommand(nil)。
+应用事件循环退出但原生窗口尚未销毁时，App.stop 也清理声明层的窗口级 Shortcut，
+保留命令式注册；不靠关闭进程掩盖外部 Command 持有的关联。
+直接对象替换保持未变菜单模型，GUI MenuItem.SetCommand 使打开菜单实时更新。
+Menu(...)、MenuFor(...) 和控件的 Menu 声明均支持直接对象；其中只有 ID 路径需要上下文。
+外部命令须遵守 GUI 线程契约，生命周期由提供者负责，不隐式注册 ID 或转移所有权。
 
 ## 转换入口与共享修饰符
 
@@ -115,6 +177,11 @@ Root／BuildContext 没有命令表、命令接口或具体命令类型分支。
 - GTK4 [动作](https://docs.gtk.org/gtk4/actions.html) 与
   [set_accels_for_action](https://docs.gtk.org/gtk4/method.Application.set_accels_for_action.html)：
   采用操作与入口分离、首个快捷键提示，不采用字符串动作注册与 GVariant 参数系统。
+- Qt Quick Controls 6.12 [Action](https://doc.qt.io/qt-6/qml-qtquick-controls-action.html)：
+  支持声明共享操作并由外部传给入口；采用声明与对象借用，仍不把文字、图标、
+  按键定义或通用 Button 绑定纳入 GOUI Command。
+- Flutter [Actions and Shortcuts](https://docs.flutter.dev/ui/interactivity/actions-and-shortcuts)：
+  参考操作定义和按键入口可以分处子树的职责分离，不引入 Intent／Dispatcher 类型体系。
 - Qt 6 [reservedShortcutWidth](https://doc.qt.io/qt-6/qstyleoptionmenuitem.html#reservedShortcutWidth-var)：
   采用菜单统一预留快捷键列，不让调用方补空格。
 - Avalonia 11.3.0 [Button](https://github.com/AvaloniaUI/Avalonia/blob/11.3.0/src/Avalonia.Controls/Button.cs#L201)：
@@ -137,6 +204,8 @@ Root／BuildContext 没有命令表、命令接口或具体命令类型分支。
 
 - `go run ./tests/window/gui/commands`：对象关联、实时灰显、改键及独立入口启用。
 - `go run ./tests/window/ui/commands`：ID 定义、局部更新、同名遮蔽／移除回退。
+- UI 例程另覆盖先引用后子树声明、BindEnabled 不重建、局部分支移除回退、
+  Window.Shortcuts 直接借用外部命令及运行循环退出后的关联清理。
 - 两者默认人工操作；`-auto` 通过正常 DispatchEvent 验证后退出，`-basic`、`-dark`
   选择外观，`GOUI_PLAT_PAINTER` 与 `GOUI_PLAT_SCALE` 选择后端和覆盖倍率。
 - 包内回归包括关联去重与解除、通知重入、回调中卸载、旧激活取消、列宽及自然文字框
