@@ -29,8 +29,9 @@ Linux arm64、原生 Wayland、触摸、系统通知／托盘、子菜单仍按�
 
 已实现 GUI Command、Shortcut 对象关联、按平台生成的快捷键文字、菜单双列布局与
 打开期间的实时更新；UI 使用局部 CommandScope 按 ID 协调命令、菜单和快捷键，
-沿用 ObjectView 及既有更新／移交机制。2026-11-05 增加任意后代的非可视 Command
-声明、批次发布、BindEnabled 局部属性更新及 MenuItem／Shortcut.CommandRef 外部借用；
+沿用 ObjectView 及既有更新／移交机制。2026-11-05 调整为 MenuItem／Shortcut 的
+DefineCommand 入口声明，Command 为普通描述值；支持批次发布、BindEnabled 局部
+属性更新及 MenuItem／Shortcut.CommandRef 外部借用；
 同轮移动定义保持对象，跨窗移交重新归属。Button 保持普通回调，平台层不增加策略。
 本机独立 X11 Software/OpenGL 1x/2x 及原生输入通过，Windows/macOS 本轮仅编译。
 详见 [DesignCommand](DesignCommand.md) 与 [Plan](Plan.md)。
