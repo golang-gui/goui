@@ -3985,3 +3985,19 @@ cmd/goui-base、cmd/goui-link 及文档已更新，新包与原运行时启动�
 APK/IPA 组包与签名，以仅使用 platform 的例程完成 Android/iOS 真机安装、绘制与
 前后台恢复。GUI 触摸、IME 和安全区域暂不实现。当前构建与启动解释见
 [PlanMobileBuild 第 19 节](PlanMobileBuild.md#19-当前纯-go-应用的构建与运行路径2026-11-05)。
+
+## 正式移动构建与真机闭环：开发设计（2026-11-05）
+
+见 [DesignMobileBuild](DesignMobileBuild.md)。本轮只完成设计，未修改公开 cmd/goui
+或宣称已有物理设备验收。保持 build/package 分工，拟新增显式 build -package
+组合入口；消费端只需 Go + goui + 开发者签名材料，原生组件由维护者预制。
+
+- [x] 固化构建/启动解释、组件职责、命令与配置、标准库差异和真机验收边界。
+- [ ] B1：本地组件索引、依赖选择、正式移动编译和构建记录；Android net 支持。
+- [ ] B2：无测试宿主的 APK、开发/自有签名、4/16 KiB、Android 真机操作验收。
+- [ ] B3：iOS bundle/profile/entitlements、Mac 参考与跨宿主签名、iPhone 真机验收。
+- [ ] B4：一步组合构建、组件分发/许可、依赖正式版本与干净消费环境验收。
+
+Go 1.25.8 下 iOS net、os/user、crypto/x509 的实际 CgoFiles 为空，仍需系统链接
+依赖；runtime/cgo 继续由基座提供。Android net 则需要按需标准库归档。包清单核对
+不等于 DNS/HTTPS/系统证书运行通过；联网和私有目录用例随 B1–B3 补齐。

@@ -5,7 +5,9 @@ Go 平台适配收敛已完成，历史实验见第 13–18 节，当前构建�
 普通 Go 依赖仍从源码编译；Android/iOS 模拟器的 Software/GLES 与生命周期
 验证通过。Android/iOS 真机、Android 16 KiB 内核运行、正式组件分发和公开
 `goui build` 移动目标仍待完成，不能将已有维护者工具描述成正式使用流程。
-正式平台启动与生命周期另见 [DesignMobileLifecycle](DesignMobileLifecycle.md)。
+正式 CLI、组件、组包和真机验收的下一阶段设计见
+[DesignMobileBuild](DesignMobileBuild.md)。正式平台启动与生命周期另见
+[DesignMobileLifecycle](DesignMobileLifecycle.md)。
 最新包结构、首版两端 GLES 和文字排版路线见 [DesignMobilePlatform](DesignMobilePlatform.md)。
 尚未接入 GOUI 移动 UI 或改变面向用户的桌面构建命令。
 

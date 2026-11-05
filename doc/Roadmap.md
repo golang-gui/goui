@@ -1,5 +1,14 @@
 # GOUI 实用化与未来路线
 
+## 移动构建与真机闭环：当前下一阶段（2026-11-05）
+
+[DesignMobileBuild](DesignMobileBuild.md) 已细化公开构建工具：本地组件与依赖选择
+→ 正式 Android APK/16 KiB → iOS profile/签名/IPA → 一步构建与可分发组件。
+保持 build 编译与 package 组包的边界，显式 build -package 提供一条命令产出 App。
+以公开 platform API 的例程在物理 Android/iPhone 验证安装、绘制、前后台和更新；
+不以模拟器或签名器成功代替。当前仅完成该设计，正式 CLI 尚未实现，GUI 触摸/
+IME/SafeArea 后置；具体检查点见 Plan。
+
 ## 安全区域与条件布局：后续设计（2026-11-05）
 
 [DesignSafeArea](DesignSafeArea.md) 记录了平台安全 Insets、屏幕缺口/圆角、
