@@ -140,7 +140,7 @@ Enabled 仍表示入口自身值，绘制、导航、点击与 Snapshot 另组�
 空格或 Tab 作为布局语法。默认提示从 Command.Shortcuts 中首个有效 Gesture 获取。
 保持 160 DIP 最小主体和既有工作区／滚动限制，详见 [DesignCommand](DesignCommand.md)。
 
-UI 使用 CommandScope 管理普通 Command 声明值，可通过 Scope.Commands 集中提供，
+UI 使用 CommandGroup 管理普通 Command 声明值，可通过 Scope.Commands 集中提供，
 也可在 MenuButton 的 MenuItem.DefineCommand 或后代 Shortcut.DefineCommand 中提供并
 使用；MenuItem.Command("id") 与 Shortcut.Command("id") 只引用最近祖先定义。
 CommandRef(object) 借用外部对象。命令 ID 独立于 Widget ID，同一作用域内只能有一份定义，

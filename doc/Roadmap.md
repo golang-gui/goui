@@ -28,7 +28,7 @@ Linux arm64、原生 Wayland、触摸、系统通知／托盘、子菜单仍按�
 ## 共享操作与菜单快捷键列（2026-11-04）
 
 已实现 GUI Command、Shortcut 对象关联、按平台生成的快捷键文字、菜单双列布局与
-打开期间的实时更新；UI 使用局部 CommandScope 按 ID 协调命令、菜单和快捷键，
+打开期间的实时更新；UI 使用局部 CommandGroup 按 ID 协调命令、菜单和快捷键，
 沿用 ObjectView 及既有更新／移交机制。2026-11-05 调整为 MenuItem／Shortcut 的
 DefineCommand 入口声明，Command 为普通描述值；支持批次发布、BindEnabled 局部
 属性更新及 MenuItem／Shortcut.CommandRef 外部借用；

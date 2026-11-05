@@ -41,7 +41,7 @@ func (m *MenuItemView) Command(id string) *MenuItemView {
 	return m
 }
 
-// CommandRef borrows an external operation without requiring a CommandScope.
+// CommandRef borrows an external operation without requiring a CommandGroup.
 // It replaces Command and the direct action; the caller retains ownership.
 func (m *MenuItemView) CommandRef(command *gui.Command) *MenuItemView {
 	m.commandRef, m.commandID, m.definition, m.action = command, "", nil, nil
@@ -49,7 +49,7 @@ func (m *MenuItemView) CommandRef(command *gui.Command) *MenuItemView {
 }
 
 // DefineCommand supplies a scope-local definition and uses it for this entry.
-// It requires a mounted MenuButton below a CommandScope. Temporary Menu/MenuFor
+// It requires a mounted MenuButton below a CommandGroup. Temporary Menu/MenuFor
 // models must use Command or CommandRef instead. nil clears the operation.
 func (m *MenuItemView) DefineCommand(command *CommandView) *MenuItemView {
 	m.definition, m.commandID, m.commandRef, m.action = command, "", nil, nil
@@ -387,7 +387,7 @@ func (m *scopedMenu) ConnectItems(fn func()) signal.Handle {
 	m.refresh()
 	handles := signal.Handles{m.Menu.ConnectItems(fn)}
 	if m.ctx != nil {
-		if scope, ok := FindAncestor[*commandScope](m.ctx); ok {
+		if scope, ok := FindAncestor[*commandGroup](m.ctx); ok {
 			handles = append(handles, scope.changed.Connect(m.refresh))
 		}
 	}
