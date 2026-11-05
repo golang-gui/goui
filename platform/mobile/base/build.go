@@ -1,4 +1,4 @@
-package mobilebase
+package base
 
 import (
 	"context"
@@ -227,7 +227,13 @@ func buildNativeExtras(options *BuildOptions, inputs *NativeInputs) ([]string, e
 }
 
 func buildEnvironment(ctx context.Context, options BuildOptions, base *BaseManifest) ([]string, error) {
-	env := buildEnv(os.Environ(), map[string]string{"GOTOOLCHAIN": "local"})
+	compiler, err := buildQuoted([]string{options.Linker})
+	if err != nil {
+		return nil, err
+	}
+	// Even go env may probe CC when querying cgo flags. Select the link-only
+	// frontend before inspection, so no ambient native compiler is invoked.
+	env := buildEnv(os.Environ(), map[string]string{"GOTOOLCHAIN": "local", "CC": compiler, "CXX": compiler})
 	command := exec.CommandContext(ctx, options.GoCommand, "env", "-json", "GOVERSION", "GOROOT", "GOFLAGS", "CGO_CFLAGS", "CGO_CPPFLAGS", "CGO_CXXFLAGS", "CGO_FFLAGS", "CGO_LDFLAGS")
 	command.Dir, command.Env = options.Directory, env
 	data, err := command.Output()
@@ -248,10 +254,6 @@ func buildEnvironment(ctx context.Context, options BuildOptions, base *BaseManif
 		if values[key] != want {
 			return nil, fmt.Errorf("native base build does not accept custom %s", key)
 		}
-	}
-	compiler, err := buildQuoted([]string{options.Linker})
-	if err != nil {
-		return nil, err
 	}
 	env = buildEnv(env, map[string]string{
 		"GOROOT": values["GOROOT"], "GOOS": base.GOOS, "GOARCH": base.GOARCH, "GOARM64": base.Architecture, "GOEXPERIMENT": base.Experiment, "CGO_ENABLED": "1", "GOFLAGS": "",
