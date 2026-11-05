@@ -413,9 +413,14 @@ Android 另使用 aapt2、android_jar、dex、signer、verifier 相对路径及 
 QuartzCore/OpenGLES/Security。SDK stub 只参与链接，不打入 App，不把完整 SDK
 目录传给消费者。工具选择不是自由配置脚本，消费阶段不会调用生成器或 C/Java 编译器。
 
-开发版本还需要显式 go.work 连接未发布的移动 FFI/渲染分支；当前不自动改 go.mod。
+移动 FFI/渲染依赖现已使用正式版本：goexlib/cgo v0.1.2、官方 purego v0.10.2、
+nanovgo v0.0.12。正常模块下载即可获取，不再需要移动版 purego 分支或依赖仓库的
+本地 replace/go.work。开发尚未发布的 GOUI 本身时，仍可显式用 go.work 连接应用与
+GOUI 源码；这不等于依赖私有 FFI 补丁。
+
 Android net 的支持归档由维护者在 producer main 导入 net/http 后使用现有 export
-制作，仍只导出实际需要原生编译的包。正式依赖版本和自动组件分发在后续阶段。
+制作，仍只导出实际需要原生编译的包。预编译组件继续由维护者显式提供；公开组件
+下载、缓存、再分发许可审核和真机验收尚未完成，不能与 Go 依赖发布混为一谈。
 
 App 构建/运行的可复现入口见
 [mobile_std](../tests/window/platform/mobile_std/README.md)。产物与最终原生证据见
