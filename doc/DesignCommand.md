@@ -1,7 +1,8 @@
 # 共享操作与声明式命令作用域
 
 > 状态：2026-11-04 命令、菜单与 UI 作用域已实现，本机独立 X11 验证通过。
-> 2026-11-05 扩展：子树声明、BindEnabled、直接对象引用已实现，本机验证结果见 Plan。
+> 2026-11-05 修订：Command 是普通声明值，通过 MenuItem／Shortcut.DefineCommand
+> 或 CommandScope.Commands 提供；不再作为独立 View。本机独立 X11 验证通过。
 > Windows/macOS 的实际运行范围及后续结果见 Plan。
 
 ## 职责
@@ -88,51 +89,71 @@ FindCommand(ctx, id) 返回对象与成功标志，供自定义 View 查询和�
 内层作用域跟随外层集合与 ancestry；显式子树移交后重新解析，不重放业务操作。
 Scope.Release 由 ObjectView 在后代清理后执行，清理全部命令与父作用域连接。
 
-MenuItem.Command(string) 与 Shortcut.Command(string) 选择操作来源，替换直接回调；
+MenuItem.Command(string) 与 Shortcut.Command(string) 选择引用来源，替换直接回调或定义；
 局部 Enabled 仍属于该入口。MenuItem 函数参数可省略。构造声明没有副作用。
 UI 继续协调自己创建的 Shortcut，卸载时移除注册、SetCommand(nil)，不保留旧命令引用。
 菜单引用与快捷键引用解析到同一运行对象，不创建两份命令，不引入 UseShortcut、
 全局 ID 或新的 BuildContext 命令接口。
 
-## 子树声明与启用绑定
+## 入口定义与启用绑定
 
 ```go
 ui.CommandScope(
     ui.VBox(
         ui.MenuButton("File").Menu(
-            ui.MenuItem("Close").Command("file.close"),
+            ui.MenuItem("Close").DefineCommand(
+                ui.Command("file.close").
+                    BindEnabled(&hasDocument).
+                    OnActivate(closeFile),
+            ),
         ),
-        ui.Command("file.close").BindEnabled(&hasDocument).OnActivate(closeFile),
         editor,
     ).Shortcuts(ui.Shortcut(ui.KeyW).Modifiers(ui.ModPrimary).Command("file.close")),
 )
 ```
 
-Command 是返回 nil 内容的 ObjectView，使用既有 Build、Release、Reparented 协调。
-它可以出现在任意后代 View 中，不生成 Widget、测量尺寸、容器间距或 Snapshot 节点。
-构造 Go 值没有注册副作用；必须进入 View 树或 Commands 列表才生效。无祖先作用域的
-独立声明报告错误。隐藏 Widget 不卸载声明；移除 View 才注销定义。
+也可以由 Shortcut.DefineCommand 提供相同声明，由菜单项 Command("file.close") 引用。
+DefineCommand 同时提供定义和使用该操作，入口自身不再重复写 ID；Command(id) 只引用，
+CommandRef(object) 只借用外部对象。各方法互斥，最后设置者生效；DefineCommand(nil)
+清除来源。Shortcut.OnActivate 恢复直接回调，不隐式把回调注册为共享命令。
 
-最近的 CommandScope 集中拥有 gui.Command。每份定义只属于最近作用域，同一作用域
-内一个 ID 只能有一份定义；内层可同名遮蔽并向外回退，不按焦点自动挑选同名定义。
-.Commands(...) 是直接挂在作用域上的简写，使用相同定义注册、属性绑定和发布路径。
-简写以操作 ID 保留定义；独立节点按普通 View 身份协调，不将命令 ID 用作 Widget ID。
+Command 是普通声明数据，与 MenuItemView／ShortcutView 一样不实现 View。构造、组合
+声明没有注册副作用；声明由已挂载的 MenuButton、共享 Shortcuts 或 Scope.Commands
+协调。CommandScope 仍是单 child 的 ObjectView，不引入额外 Widget、特殊布局叶子、
+多输出 View、Fragment 或 Root／BuildContext 命令分支。
 
-各定义只提交自己当前的 ID、回调和可用性，作用域通过自己的 AfterUpdate 一次发布
-本轮最终集合，发布前完整验证唯一性，再复用同 ID 对象、移除过期对象并通知引用。
-同一轮中先添加新位置再移除旧位置不会误判重复，也不会把原命令禁用再重建。
-前向引用最初可为禁用占位，集合发布后在布局／绘制前解析完成。FindCommand 返回
-最近一次已发布对象；在首次 Build 中可能尚未解析，不能依靠子节点声明顺序取对象。
-AfterUpdate 仍按既有注册顺序执行，不承诺早于命令作用域的其他完成钩子已看到本轮集合。
+最近的 CommandScope 集中拥有 gui.Command。每个承载定义的 UI 节点保存自己的贡献，
+每份定义只属于最近作用域，同一作用域内一个 ID 只能有一份定义；内层可同名遮蔽并
+向外回退，不按焦点自动挑选定义。Commands(...) 提供集中声明方式，与入口定义使用
+相同注册、属性绑定和发布路径。重建描述值不改变同一作用域、同一 ID 的运行对象。
 
-BindEnabled(ReadState[bool]) 复用 BindValue、来源订阅和节点更新队列，只更新操作可用性，
-不重建父节点、编辑器或菜单。Enabled(value) 替换绑定，BindEnabled(source) 替换值，
-nil 绑定不改变声明；换源、取消和卸载解除旧订阅。结构增删继续通过 Build 表达。
+菜单定义在 MenuButton.Update 时登记，Shortcut 定义在其所属 View 的修饰符协调时
+登记；不等待点击或弹出。菜单关闭、菜单项或 Shortcut 局部禁用、承载 Widget 隐藏
+不会注销定义；声明移除／换来源／承载节点卸载才注销。移除后其他引用回退或禁用，
+不把旧回调保存到作用域结束。发布前验证同一入口及跨入口唯一性，不采用“先注册
+者获胜”，不比较函数指针或声明对象地址来静默合并。
+
+各定义提交当前 ID、回调和可用性，作用域通过自己的 AfterUpdate 一次发布本轮最终
+集合，再复用同 ID 对象、移除过期对象并通知引用。同一轮中先添加新位置再移除旧位置
+不会误判重复，也不会把原命令禁用再重建。前向引用最初可为禁用占位，集合发布后在
+布局／绘制前解析完成。FindCommand 返回最近一次已发布对象；首次 Build 中可能尚未
+解析，不能依靠声明顺序取对象。AfterUpdate 按既有注册顺序执行，不承诺早于命令作用域
+的其他完成钩子已看到本轮集合。
+
+BindEnabled(ReadState[bool]) 复用承载节点的 BindValue、来源订阅和更新队列，只更新
+共享操作可用性，不重建父节点、编辑器或菜单。Enabled(value) 替换绑定，BindEnabled
+替换值，nil 绑定不改变声明；换源、取消、卸载解除旧订阅。入口自身的 Enabled 独立于
+Command.Enabled，不因局部禁用而撤销命令定义。结构增删继续通过 Build 表达。
 
 显式移交重新确定定义的最近作用域及所有引用；本次移交全部 ancestry 安装并完成
 committed 回调后，借助既有 AfterTransfer 发布两侧集合，返回调用方前生效。
 移交整个 CommandScope 保留其对象，移交定义至不同作用域由目标作用域拥有新对象，
-源对象禁用。输入仍只经过现有 Dispatcher／Controller，不在 Root 添加命令分支。
+源对象禁用。绑定的 apply 使用持久贡献对象，后续状态更新跟随目标作用域。
+
+Menu(...)／MenuFor(...) 是临时模型转换，没有持久声明宿主，不接受 DefineCommand，
+遇到时报告声明错误。尤其右键请求发生时才构建的菜单，不应成为长期快捷键命令的唯一
+来源；使用 Scope.Commands、已挂载菜单／Shortcut 提供定义，临时菜单按 ID 或对象引用。
+这也避免了弹出后才生效的快捷键、菜单关闭后悬留回调及不在 Build 中注册属性绑定。
 
 ## 借用命令式对象
 
@@ -162,8 +183,8 @@ MenuFor(ctx, items...)；TreeView/TableView/TabView 的 UI 适配已使用此入
 返回模型在有 ConnectItems 观察者期间跟随作用域集合变化，解除模型观察即解除对应连接。
 FindCommand(ctx, id) 是供自定义 View 借用的公开查询，不转移命令所有权。
 
-Shortcut 的 ID 引用必须位于 CommandScope 的后代声明；Window.Shortcuts 不属于
-Content 内的祖先作用域，不能倒查后代。将命令快捷键声明到作用域内根 Widget 的
+Shortcut 的 ID 引用及 DefineCommand 必须位于 CommandScope 的后代声明；Window.Shortcuts 不属于
+Content 内的祖先作用域，不能倒查后代，也不接受 DefineCommand。将命令快捷键声明到作用域内根 Widget 的
 Shortcuts，原有窗口 OnActivate 快捷键保持不变。
 共享修饰符的持久上下文仅保存通用 BuildContext；移交时刷新其 ancestry 绑定。
 Root／BuildContext 没有命令表、命令接口或具体命令类型分支。
@@ -177,6 +198,10 @@ Root／BuildContext 没有命令表、命令接口或具体命令类型分支。
 - GTK4 [动作](https://docs.gtk.org/gtk4/actions.html) 与
   [set_accels_for_action](https://docs.gtk.org/gtk4/method.Application.set_accels_for_action.html)：
   采用操作与入口分离、首个快捷键提示，不采用字符串动作注册与 GVariant 参数系统。
+- SwiftUI [Commands](https://developer.apple.com/documentation/swiftui/commands) 和
+  [菜单示例](https://developer.apple.com/documentation/swiftui/building-and-customizing-the-menu-bar-with-swiftui)：
+  命令有独立声明体系，也可将操作及快捷键放在菜单入口附近。GOUI 采用入口描述值，
+  不再把资源声明伪装为普通布局 View；不照搬 Scene 菜单或 Result Builder。
 - Qt Quick Controls 6.12 [Action](https://doc.qt.io/qt-6/qml-qtquick-controls-action.html)：
   支持声明共享操作并由外部传给入口；采用声明与对象借用，仍不把文字、图标、
   按键定义或通用 Button 绑定纳入 GOUI Command。
@@ -204,7 +229,7 @@ Root／BuildContext 没有命令表、命令接口或具体命令类型分支。
 
 - `go run ./tests/window/gui/commands`：对象关联、实时灰显、改键及独立入口启用。
 - `go run ./tests/window/ui/commands`：ID 定义、局部更新、同名遮蔽／移除回退。
-- UI 例程另覆盖先引用后子树声明、BindEnabled 不重建、局部分支移除回退、
+- UI 例程另覆盖菜单／快捷键双向 DefineCommand、BindEnabled 不重建、局部分支移除回退、
   Window.Shortcuts 直接借用外部命令及运行循环退出后的关联清理。
 - 两者默认人工操作；`-auto` 通过正常 DispatchEvent 验证后退出，`-basic`、`-dark`
   选择外观，`GOUI_PLAT_PAINTER` 与 `GOUI_PLAT_SCALE` 选择后端和覆盖倍率。

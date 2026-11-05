@@ -13,8 +13,9 @@
 //     再按 F9 恢复遮蔽，外层与内层对象互不污染。
 //  5. F8/Check 输出构建次数、计数与 BOUNDS；局部设置不重建 Window，未变化菜单模型
 //     和命令对象保留。正常使用时点击按钮，自动模式用相同事件路径触发控制操作。
-//  6. copy 在菜单之后的子 View 声明，BindEnabled 变化不重建其余内容。
-//     F9 只重建定义所在分支；没有额外 Widget、空行或容器间距。
+//  6. 外层 copy 由根控件的 Shortcut.DefineCommand 提供，菜单按 ID 引用；内层由
+//     MenuItem.DefineCommand 提供。BindEnabled 变化不重建其余内容，F9 只更新局部菜单。
+//     声明不生成额外 Widget、空行或容器间距，也不依赖菜单是否打开。
 //  7. “External”菜单及窗口 F12 借用同一 gui.Command；F4 切换其启用状态，打开的
 //     菜单实时灰显，copy 不受影响。F12 和菜单各增加外部计数一次。
 //
@@ -266,19 +267,16 @@ func main() {
 			if shifted.Get() {
 				mods |= ui.ModShift
 			}
-			inner := ui.CommandScope(ui.VBox(
-				ui.MenuButton("局部").ID("inner").Menu(ui.MenuItem("Copy").Command("copy")),
-				ui.Build(func() ui.View {
-					definitionBuilds++
-					if override.Get() {
-						return ui.Command("copy").OnActivate(func() { innerCount++; report() })
-					}
-					return nil
-				}),
-			))
+			inner := ui.CommandScope(ui.Build(func() ui.View {
+				definitionBuilds++
+				item := ui.MenuItem("Copy").Command("copy")
+				if override.Get() {
+					item.DefineCommand(ui.Command("copy").OnActivate(func() { innerCount++; report() }))
+				}
+				return ui.MenuButton("局部").ID("inner").Menu(item)
+			}))
 			return ui.CommandScope(ui.VBox(
 				ui.HBox(ui.MenuButton("编辑").ID("edit").Menu(ui.MenuItem("Copy").Command("copy").Enabled(itemEnabled.Get()), ui.MenuItem("没有快捷键的长菜单项", func() {}), ui.MenuItem("External").CommandRef(external)), inner).Spacing(12),
-				ui.Command("copy").BindEnabled(&enabled).OnActivate(func() { outerCount++; report() }),
 				ui.Label("F6：操作启用　F7：按键　F9：局部定义"), ui.Label().BindText(&status),
 				ui.Button("切换操作启用").ID("enable").OnClick(toggle),
 				ui.Button("修改快捷键").ID("gesture").OnClick(change),
@@ -286,7 +284,7 @@ func main() {
 				ui.Button("切换菜单入口").ID("menu-entry").OnClick(toggleItem),
 				ui.Button("切换快捷键入口").ID("binding").OnClick(toggleBinding),
 				ui.Button("Check").ID("check").OnClick(check), newProbe(p),
-			).Spacing(10).Padding(16).Shortcuts(ui.Shortcut(ui.KeyC).Modifiers(mods).Enabled(bindingEnabled.Get()).Command("copy")))
+			).Spacing(10).Padding(16).Shortcuts(ui.Shortcut(ui.KeyC).Modifiers(mods).Enabled(bindingEnabled.Get()).DefineCommand(ui.Command("copy").BindEnabled(&enabled).OnActivate(func() { outerCount++; report() }))))
 		})
 		win := ui.Window("commands").Title("GOUI UI CommandScope").Size(620, 490).Center(true).Content(content).Shortcuts(
 			ui.Shortcut(ui.KeyF6).OnActivate(toggle), ui.Shortcut(ui.KeyF7).OnActivate(change), ui.Shortcut(ui.KeyF8).OnActivate(check), ui.Shortcut(ui.KeyF9).OnActivate(toggleOverride), ui.Shortcut(ui.KeyF10).OnActivate(toggleItem), ui.Shortcut(ui.KeyF11).OnActivate(toggleBinding),

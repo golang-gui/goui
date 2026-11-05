@@ -391,6 +391,10 @@ KeyGesture.DisplayText 生成本平台提示，Primary 显示 Ctrl 或 ⌘，等
 菜单从 Command 的关联配置取提示，不按实时焦点或局部禁用筛选。
 
 声明式保留 Shortcut(key).Modifiers(...).Enabled(...).AutoRepeat(...).OnActivate(...)，
-增加 Command("id") 选择目标；后者替换直接回调。定义由祖先 CommandScope 管理，
-既有按位置协调保持 Shortcut 身份，卸载自动解除 UI 自己创建的关联与注册。
+增加 Command("id") 选择目标、CommandRef(object) 借用外部操作，以及
+DefineCommand(Command("id").BindEnabled(...).OnActivate(...)) 提供并使用定义。
+这些来源与直接回调互斥。定义由祖先 CommandScope 管理，与引用顺序无关，
+局部 Enabled 不撤销定义或修改 Command.Enabled；窗口级 Shortcuts 无内容作用域，
+不接受 DefineCommand。既有按位置协调保持 Shortcut 身份，卸载自动解除 UI 自己
+创建的关联与注册，作用域定义随其宿主移除或移交。
 不增加 UseShortcut，也不复制操作对象。完整契约见 [DesignCommand](DesignCommand.md)。

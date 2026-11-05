@@ -8,11 +8,11 @@ import (
 	"github.com/golang-gui/goui/gui"
 )
 
-// CommandView declares a nonvisual operation anywhere below a CommandScope, or
-// in its Commands shorthand. The nearest scope owns the operation and its ID
-// namespace, independently of Widget IDs. Construct fresh values each build.
+// CommandView describes an operation supplied to CommandScope.Commands or an
+// entry's DefineCommand. It is a declaration value, not a View. The nearest
+// scope owns the operation and its ID namespace, independently of Widget IDs.
+// Construct fresh values each build.
 type CommandView struct {
-	ComposeBase[CommandView]
 	id            string
 	enabled       bool
 	enabledSource ReadState[bool]
@@ -24,9 +24,7 @@ func Command(id string) *CommandView {
 	if id == "" {
 		panic("ui: empty command ID")
 	}
-	v := &CommandView{id: id, enabled: true}
-	v.Self = v
-	return v
+	return &CommandView{id: id, enabled: true}
 }
 
 // Enabled declares operation availability, independently of individual entries.
@@ -65,8 +63,8 @@ func CommandScope(child View) *CommandScopeView {
 func (v *CommandScopeView) Child(child View) *CommandScopeView { v.child = child; return v }
 
 // Commands replaces definitions attached directly to this scope. Nil entries
-// are ignored. IDs must be unique across this list and all descendant Command
-// declarations in the same scope. Nested scopes may shadow the same IDs.
+// are ignored. IDs must be unique across this list and descendant menu/shortcut
+// definitions in the same scope. Nested scopes may shadow the same IDs.
 func (v *CommandScopeView) Commands(commands ...*CommandView) *CommandScopeView {
 	v.commands = slices.Clone(commands)
 	return v
@@ -81,7 +79,7 @@ type commandScope struct {
 	ctx          BuildContext
 	commands     map[string]*scopedCommand
 	definitions  map[*commandDefinition]struct{}
-	shorthand    map[string]*commandDefinition
+	shorthand    commandDefinitions
 	dirty        bool
 	parent       *commandScope
 	parentHandle signal.Handle
@@ -89,60 +87,13 @@ type commandScope struct {
 	released     bool
 }
 
-// A definition belongs to its declaration node; the scope owns the operation.
-// Shorthand definitions use the same registration and binding paths.
+// A definition belongs to its declaring menu, shortcut list or scope. All
+// hosts use the same registration and property binding paths.
 type commandDefinition struct {
 	scope    *commandScope
 	id       string
 	enabled  bool
 	callback func()
-}
-
-func (v *CommandView) Build(ctx BuildContext) View {
-	if ctx.State() == nil {
-		ctx.SetState(new(commandDefinition))
-	}
-	d := ctx.State().(*commandDefinition)
-	scope, ok := FindAncestor[*commandScope](ctx)
-	if !ok {
-		// Ancestor lookup can release the caller through a custom ObjectView.
-		if ctx.State() == d {
-			panic("ui: Command requires an ancestor CommandScope")
-		}
-		return nil
-	}
-	if ctx.State() == d {
-		d.update(ctx, scope, v, "enabled")
-	}
-	return nil
-}
-func (*CommandView) Object(ctx BuildContext) any { return ctx.State() }
-func (*CommandView) Release(ctx BuildContext) {
-	if d, ok := ctx.State().(*commandDefinition); ok {
-		d.detach()
-	}
-}
-func (*CommandView) Reparented(ctx BuildContext) {
-	d, ok := ctx.State().(*commandDefinition)
-	if !ok {
-		return
-	}
-	scope, _ := FindAncestor[*commandScope](ctx)
-	if ctx.State() != d {
-		return
-	}
-	old := d.scope
-	d.attach(scope)
-	// A transfer installs all ancestry before these callbacks run. Publishing
-	// here also covers transfers outside an application update batch.
-	ctx.Coordinator().AfterTransfer(func() {
-		if old != nil {
-			old.commit()
-		}
-		if d.scope != nil {
-			d.scope.commit()
-		}
-	})
 }
 
 func (d *commandDefinition) attach(scope *commandScope) {
@@ -183,9 +134,17 @@ func (d *commandDefinition) setEnabled(enabled bool) {
 	}
 }
 
-func (v *CommandScopeView) Build(ctx BuildContext) View {
-	seen := make(map[string]bool)
-	for _, view := range v.commands {
+// commandDefinitions tracks declarations owned by one existing UI host. It
+// creates no View nodes; bindings belong to that host's normal update cycle.
+type commandDefinitions struct {
+	ctx     BuildContext
+	entries map[string]*commandDefinition
+	version uint64
+}
+
+func (d *commandDefinitions) update(ctx BuildContext, scope *commandScope, views []*CommandView, property string) {
+	seen := make(map[string]bool, len(views))
+	for _, view := range views {
 		if view == nil {
 			continue
 		}
@@ -194,11 +153,103 @@ func (v *CommandScopeView) Build(ctx BuildContext) View {
 		}
 		seen[view.id] = true
 	}
+	if len(seen) == 0 {
+		d.clear()
+		return
+	}
+	if ctx == nil {
+		panic("ui: DefineCommand requires an ancestor CommandScope; Window.Shortcuts cannot define scoped commands")
+	}
+	d.version++
+	version := d.version
+	coordinator := ctx.Coordinator()
+	if coordinator == nil || coordinator.owner == nil || coordinator.owner.released || coordinator.owner.root == nil {
+		return
+	}
+	owner := coordinator.owner
+	root, nodeVersion := owner.root, owner.version
+	epoch := root.epoch
+	live := func() bool {
+		return d.version == version && !owner.released && owner.root == root && root.epoch == epoch && owner.version == nodeVersion
+	}
+	if scope == nil {
+		scope, _ = FindAncestor[*commandScope](ctx)
+	}
+	if !live() {
+		return
+	}
+	if scope == nil || scope.released {
+		panic("ui: DefineCommand requires an ancestor CommandScope")
+	}
+	d.ctx = ctx
+	if d.entries == nil {
+		d.entries = make(map[string]*commandDefinition, len(seen))
+	}
+	for id, entry := range d.entries {
+		if !seen[id] {
+			delete(d.entries, id)
+			entry.detach()
+			entry.callback = nil
+		}
+	}
+	for _, view := range views {
+		if view == nil {
+			continue
+		}
+		entry := d.entries[view.id]
+		if entry == nil {
+			entry = new(commandDefinition)
+			d.entries[view.id] = entry
+		}
+		entry.update(ctx, scope, view, property+view.id)
+		if !live() {
+			return
+		}
+	}
+}
+
+func (d *commandDefinitions) clear() {
+	entries := d.entries
+	d.version++
+	d.ctx, d.entries = nil, nil
+	for _, entry := range entries {
+		entry.detach()
+		entry.callback = nil
+	}
+}
+
+func (d *commandDefinitions) reparented() {
+	if d.ctx == nil || len(d.entries) == 0 {
+		return
+	}
+	d.version++
+	version := d.version
+	ctx := d.ctx
+	scope, _ := FindAncestor[*commandScope](ctx)
+	if d.version != version {
+		return
+	}
+	var previous *commandScope
+	for _, entry := range d.entries {
+		previous = entry.scope
+		entry.attach(scope)
+	}
+	// Transfer callbacks run after every descendant has its final ancestry.
+	ctx.Coordinator().AfterTransfer(func() {
+		if previous != nil {
+			previous.commit()
+		}
+		if scope != nil {
+			scope.commit()
+		}
+	})
+}
+
+func (v *CommandScopeView) Build(ctx BuildContext) View {
 	if ctx.State() == nil {
 		ctx.SetState(&commandScope{
 			commands:    make(map[string]*scopedCommand),
 			definitions: make(map[*commandDefinition]struct{}),
-			shorthand:   make(map[string]*commandDefinition),
 		})
 	}
 	s := ctx.State().(*commandScope)
@@ -207,25 +258,9 @@ func (v *CommandScopeView) Build(ctx BuildContext) View {
 	if s.released {
 		return nil
 	}
-	for id, definition := range s.shorthand {
-		if !seen[id] {
-			delete(s.shorthand, id)
-			definition.detach()
-		}
-	}
-	for _, view := range v.commands {
-		if view == nil {
-			continue
-		}
-		d := s.shorthand[view.id]
-		if d == nil {
-			d = new(commandDefinition)
-			s.shorthand[view.id] = d
-		}
-		d.update(ctx, s, view, "command-enabled:"+view.id)
-		if s.released {
-			return nil
-		}
+	s.shorthand.update(ctx, s, v.commands, "scope-command:")
+	if s.released {
+		return nil
 	}
 	// Always queue against the current scope version: an earlier queued hook
 	// can have been superseded while its descendants remain mounted.
@@ -249,7 +284,8 @@ func (*CommandScopeView) Release(ctx BuildContext) {
 		d.scope = nil
 		d.callback = nil
 	}
-	s.definitions, s.shorthand = nil, nil
+	s.definitions = nil
+	s.shorthand.clear()
 	for id, entry := range s.commands {
 		delete(s.commands, id)
 		entry.definition = nil

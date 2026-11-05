@@ -18,6 +18,7 @@ type ShortcutView struct {
 	onActivate func()
 	commandID  string
 	commandRef *gui.Command
+	definition *CommandView
 }
 
 // Shortcut declares an enabled binding with no modifiers and no auto-repeat.
@@ -46,6 +47,7 @@ func (s *ShortcutView) OnActivate(fn func()) *ShortcutView {
 	s.onActivate = fn
 	s.commandID = ""
 	s.commandRef = nil
+	s.definition = nil
 	return s
 }
 
@@ -54,6 +56,7 @@ func (s *ShortcutView) OnActivate(fn func()) *ShortcutView {
 func (s *ShortcutView) Command(id string) *ShortcutView {
 	s.commandID = id
 	s.commandRef = nil
+	s.definition = nil
 	s.onActivate = nil
 	return s
 }
@@ -62,7 +65,19 @@ func (s *ShortcutView) Command(id string) *ShortcutView {
 // It replaces Command and OnActivate. Unmount only detaches this binding;
 // the caller retains ownership of the command and its activation handlers.
 func (s *ShortcutView) CommandRef(command *gui.Command) *ShortcutView {
-	s.commandRef, s.commandID, s.onActivate = command, "", nil
+	s.commandRef, s.commandID, s.definition, s.onActivate = command, "", nil, nil
+	return s
+}
+
+// DefineCommand supplies a scope-local definition and uses it for this binding.
+// It requires a view below a CommandScope; Window.Shortcuts has no such context.
+// Binding Enabled remains independent of the command's availability.
+// nil clears the operation.
+func (s *ShortcutView) DefineCommand(command *CommandView) *ShortcutView {
+	s.definition, s.commandID, s.commandRef, s.onActivate = command, "", nil, nil
+	if command != nil {
+		s.commandID = command.id
+	}
 	return s
 }
 
@@ -91,9 +106,10 @@ type shortcutEntry struct {
 }
 
 type shortcutBindings struct {
-	controller *gui.ShortcutController
-	entries    []*shortcutEntry
-	version    uint64
+	controller  *gui.ShortcutController
+	entries     []*shortcutEntry
+	version     uint64
+	definitions commandDefinitions
 }
 
 func (b *shortcutBindings) update(controller *gui.ShortcutController, views []*ShortcutView, contexts ...BuildContext) {
@@ -112,6 +128,16 @@ func (b *shortcutBindings) update(controller *gui.ShortcutController, views []*S
 	b.version++
 	version := b.version
 	current := func() bool { return b.version == version && b.controller == controller }
+	var definitions []*CommandView
+	for _, view := range views {
+		if view != nil && view.definition != nil {
+			definitions = append(definitions, view.definition)
+		}
+	}
+	b.definitions.update(ctx, nil, definitions, "shortcut-command:")
+	if !current() {
+		return
+	}
 	i := 0
 	for _, v := range views {
 		if v == nil {
@@ -167,6 +193,7 @@ func (b *shortcutBindings) clear() {
 	entries, controller := b.entries, b.controller
 	b.version++
 	b.entries, b.controller = nil, nil
+	b.definitions.clear()
 	for _, e := range entries {
 		e.handle.Disconnect()
 		e.command.clear()
@@ -177,6 +204,7 @@ func (b *shortcutBindings) clear() {
 }
 
 func (b *shortcutBindings) reparented() {
+	b.definitions.reparented()
 	for _, entry := range b.entries {
 		entry.command.reparent()
 	}
