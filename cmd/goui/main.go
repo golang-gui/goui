@@ -50,6 +50,15 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		fs.StringVar(&binaryPath, "binary", "", "existing binary (default: build output)")
 		fs.StringVar(&format, "format", "", "app for macOS, dir for Linux; defaults to target format")
 	}
+	var mobile mobileOptions
+	fs.StringVar(&mobile.Components, "components", os.Getenv("GOUI_MOBILE_COMPONENTS"), "prepared local mobile component directory")
+	fs.StringVar(&mobile.Variant, "variant", "", "mobile device or simulator variant (default: device)")
+	if command == "build" {
+		fs.StringVar(&mobile.Package, "package", "", "explicitly build and package a mobile app (apk, app, ipa)")
+	}
+	if command == "build" || command == "package" {
+		fs.BoolVar(&mobile.Unsigned, "unsigned", false, "produce an iOS app/IPA for subsequent signing")
+	}
 	if err := fs.Parse(args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -66,6 +75,19 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	c, err := loadConfig(*configPath)
 	if err != nil {
 		return err
+	}
+	if target.mobile() {
+		return runMobile(ctx, command, c, target, mobile, output, tags, ldflags, binaryPath, format, out, errOut)
+	}
+	usedMobileFlag := false
+	fs.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "components", "variant", "package", "unsigned":
+			usedMobileFlag = true
+		}
+	})
+	if usedMobileFlag {
+		return fmt.Errorf("mobile component/variant/package options require an Android or iOS target")
 	}
 	switch command {
 	case "doctor":

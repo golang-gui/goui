@@ -35,6 +35,15 @@ type config struct {
 	Linux struct {
 		Categories []string `toml:"categories"`
 	} `toml:"linux"`
+	Android struct {
+		MinSDK     int  `toml:"min_sdk"`
+		TargetSDK  int  `toml:"target_sdk"`
+		Internet   bool `toml:"internet"`
+		Debuggable bool `toml:"debuggable"`
+	} `toml:"android"`
+	IOS struct {
+		MinimumVersion string `toml:"minimum_version"`
+	} `toml:"ios"`
 
 	dir string
 }
@@ -47,10 +56,10 @@ func (t target) folder() string { return t.OS + "-" + t.Arch }
 func parseTarget(value string) (target, error) {
 	osName, arch, _ := strings.Cut(value, "/")
 	switch value {
-	case "windows/amd64", "darwin/arm64", "linux/amd64", "linux/arm64":
+	case "windows/amd64", "darwin/arm64", "linux/amd64", "linux/arm64", "android/arm64", "ios/arm64":
 		return target{osName, arch}, nil
 	}
-	return target{}, fmt.Errorf("unsupported target %q (windows/amd64, darwin/arm64, linux/amd64, linux/arm64)", value)
+	return target{}, fmt.Errorf("unsupported target %q (windows/amd64, darwin/arm64, linux/amd64, linux/arm64, android/arm64, ios/arm64)", value)
 }
 
 var (
