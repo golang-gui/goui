@@ -1,3 +1,5 @@
+//go:build !ios
+
 package platform
 
 import "github.com/golang-gui/goui/platform/darwin/cocoa"

@@ -5,40 +5,32 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/platform/android/libs/jni"
 )
 
 var host struct {
-	sync.Once
-	getVM, getLoader uintptr
-	err              error
+	sync.RWMutex
+	vm     jni.VM
+	loader jni.Object
 }
 
-func bootstrap() (jni.VM, jni.Object, error) {
-	host.Do(func() {
-		getVM, err := cgo.Dlsym(cgo.RTLD_DEFAULT, "goui_android_java_vm")
-		if err != nil {
-			host.err = err
-			return
-		}
-		getLoader, err := cgo.Dlsym(cgo.RTLD_DEFAULT, "goui_android_class_loader")
-		if err != nil {
-			host.err = err
-			return
-		}
-		host.getVM = getVM
-		host.getLoader = getLoader
-	})
-	if host.err != nil {
-		return 0, 0, host.err
+// Initialize adopts the process VM and a retained application class loader.
+// The platform calls it on the native thread before starting application main.
+func Initialize(vm jni.VM, loader jni.Object) {
+	host.Lock()
+	defer host.Unlock()
+	if host.vm != 0 {
+		return
 	}
-	vm := jni.VM(cgo.CallRet[uintptr](host.getVM))
-	loader := jni.Object(cgo.CallRet[uintptr](host.getLoader))
-	if vm == 0 || loader == 0 {
+	host.vm, host.loader = vm, loader
+}
+func bootstrap() (jni.VM, jni.Object, error) {
+	host.RLock()
+	defer host.RUnlock()
+	if host.vm == 0 || host.loader == 0 {
 		return 0, 0, fmt.Errorf("Android Java bootstrap unavailable")
 	}
-	return vm, loader, nil
+	return host.vm, host.loader, nil
 }
 
 // EnterThread attaches only the current fixed OS thread. The startup owner

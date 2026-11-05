@@ -8,9 +8,10 @@ import (
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/graphics/opengl"
 	"github.com/golang-gui/goui/platform/graphics/software"
 	"github.com/golang-gui/goui/platform/internal/androidruntime"
-	"github.com/golang-gui/goui/platform/mobile"
+	"github.com/golang-gui/goui/platform/internal/mobile"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/androidtext"
 )
@@ -19,8 +20,8 @@ import (
 // thread-affine to the GOUI thread; Android callbacks remain on the system thread.
 type Platform struct {
 	appID     string
-	loop      *mobile.EventLoop
-	window    *mobile.Window
+	loop      *EventLoop
+	window    *Window
 	destroyed bool
 }
 
@@ -65,7 +66,7 @@ func (p *Platform) NewEventLoop() (common.EventLoop, error) {
 	if p.loop != nil {
 		return nil, common.ErrUnsupported
 	}
-	p.loop = mobile.NewEventLoop()
+	p.loop = &EventLoop{mobile.NewEventLoop()}
 	return p.loop, nil
 }
 
@@ -76,7 +77,7 @@ func (p *Platform) NewWindow(size geometry.Size, handler events.EventHandler, op
 	if p.window != nil || options.Chrome == common.WindowChromeIntegrated {
 		return nil, common.ErrUnsupported
 	}
-	w, err := mobile.NewWindow(p.loop, size, handler, options)
+	w, err := newWindow(p.loop, size, handler, options)
 	if err != nil {
 		return nil, err
 	}
@@ -90,12 +91,16 @@ func (p *Platform) NewPainter(surface common.Surface) (graphics.Painter, error) 
 	if p.destroyed || surface == nil || surface != p.window {
 		return nil, common.ErrUnavailable
 	}
-	// GLES is a later slice. An explicit unsupported backend is not silently
-	// substituted; the current default is the verified Software presentation path.
-	if prefer := common.GetPreferPainter(); prefer != "" && prefer != "software" {
+	// Software supports construction before the native target is attached.
+	// An explicit GPU request never silently selects another backend.
+	switch common.GetPreferPainter() {
+	case "", "software":
+		return software.NewPainter(surface)
+	case "opengl":
+		return opengl.NewPainter(p.window)
+	default:
 		return nil, common.ErrUnsupported
 	}
-	return software.NewPainter(surface)
 }
 
 func (*Platform) NewImage(width, height uint) (common.Image, error) {

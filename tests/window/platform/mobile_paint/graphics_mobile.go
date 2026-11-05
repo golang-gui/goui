@@ -31,8 +31,7 @@ func verifyGraphics(p graphics.Painter, ctx typography.Context, gpu bool) {
 	for _, scale := range []float32{1, 2} {
 		result, err := p.RenderImage(int(128*scale), int(96*scale), scale, func() {
 			if gpu {
-				load := symbol("goui_host_gles_proc")
-				get := ffi.CallRet[uintptr](load, ffi.CStringTemp("glGetString"))
+				get := nativeGLSymbol("glGetString")
 				version := ffi.GoString(ffi.Pointer(ffi.CallRet[uintptr](get, uint32(0x1F02))))
 				expect("实际 OpenGL ES 3 上下文", strings.HasPrefix(version, "OpenGL ES 3"))
 			}

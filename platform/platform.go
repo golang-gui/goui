@@ -198,6 +198,8 @@ func DefaultName() string {
 		return "x11"
 	case "darwin":
 		return "cocoa"
+	case "ios":
+		return "ios"
 	}
 	return ""
 }
