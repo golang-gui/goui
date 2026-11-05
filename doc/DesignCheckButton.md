@@ -12,6 +12,33 @@ checkbox、radio 和 toggle button。Switch 已作为独立控件实现，见 [S
 成员再次点击不会取消；初始组可以为空。GTK 的 inconsistent 只控制外观；GOUI
 采用显式 CheckState 表达部分选中，不照搬其 active/inconsistent 双属性。
 
+## 待实施：确定的分组生命周期（2026-11-05）
+
+本节是已确认的后续设计，尚未实现；当前代码仍使用 weak.Pointer。
+CheckButtonGroup 不需要以 GC 回收时机决定业务关联。计划将 checked 改为普通
+*CheckButton；分组只表达互斥关系，不取得按钮的销毁所有权，也不增加成员表。
+
+- 在 Widget/WidgetBase 增加 ConnectDestroy(func()) signal.Handle，沿用 Window
+  与 TextLayout 的命名。最终销毁时在 GUI 线程同步通知一次，通知前 Destroyed
+  已为真；普通 Unmount、重新挂载和跨窗口移交不触发。窗口销毁其控件树时逐项
+  通知，不新增由调用方随意销毁 Widget 的接口。
+- CheckButton 在最终销毁通知中调用私有分组清理：清空自身 group，若自己是
+  当前选中者则清空 group.checked 并增加 revision。不能转调因 Destroyed 而
+  提前返回的 SetGroup(nil)，不发送用户 Change，也不自动选择替代成员。
+- SetGroup(nil)、切换组和选择替换继续显式维护关联；普通卸载/重挂载保留逻辑
+  分组及选择。离树控件由其明确所有者管理，放弃关联时调用 SetGroup(nil)；
+  声明层已有的 Unmount 清理继续保留。
+- Checked 返回值不依赖 GC。普通引用不意味着生命周期所有权；Go 的循环引用
+  本身无需弱引用处理。也不增加 finalizer、全局分组注册或窗口中的具体控件分支。
+- 回归覆盖窗口最终销毁、已卸载后进入最终销毁、重复销毁与销毁重入、切换组、
+  选择变化通知中销毁、普通卸载/移交保持状态，以及声明层移除关联。检查关联
+  当场清空，不依赖强制 GC 或任意等待。
+
+参考 Qt 6.10.0 QAbstractButton 析构时主动 removeButton 的实现：
+[源码](https://github.com/qt/qtbase/blob/v6.10.0/src/widgets/widgets/qabstractbutton.cpp)。
+GOUI 采用显式最终销毁解除关联的原则，继续使用自身的信号和窗口所有权契约。
+本次只记录设计，不修改 gui 或 widgets 实现；后文弱引用说明为当前实现状态。
+
 ## API 与行为
 
 ```go
