@@ -1,5 +1,39 @@
 # Plan
 
+## 声明式命令分布定义与绑定（2026-11-05）
+
+- [x] CommandView 以非可视 ObjectView 在任意后代挂载，由最近 CommandScope 集中
+  拥有 gui.Command；Commands 简写共用定义注册及发布。定义在本轮协调结束时统一
+  验证唯一性、按 ID 复用对象，支持向前引用和先添加后移除的跨分支移动；无 Widget、
+  布局间距或 Snapshot 节点。嵌套回退、显式移交及移交前待发布定义均有回归。
+- [x] BindEnabled 复用属性绑定队列，覆盖子树声明和 Commands 简写、换源／取消／
+  卸载、移交后跟随新作用域，不重建菜单或编辑内容。结构增删仍由 Build 表达。
+- [x] MenuItem／Shortcut.CommandRef 借用外部对象，菜单替换对象保留未变模型；
+  ID／对象／回调来源互斥。覆盖直接／上下文／窗口快捷键入口、旧关联解除、禁用和
+  通知内销毁。未修改 gui、platform、Button、Root 或 BuildContext 接口。
+- [x] 窗口验收新增退出断言揭示 App.stop 只清理子树、遗漏窗口级 Shortcut 的旧路径。
+  增加针对性清理与包内回归：停止后只解绑声明层 Shortcut，保留命令式注册和外部
+  Command 状态，不销毁 GUI Window。修正前回归失败，修正后通过；初轮四组合的
+  退出断言失败日志保留，修正后四组合完整复验通过，没有删除或放宽断言。
+- [x] Ubuntu 22.04.5 amd64、Go 1.25.8、独立 Xvnc :90 1920×1200／xfwm4 4.16.1
+  合成开启：UI 例程以 Software 1x Basic、OpenGL 1x Modern 亮、Software 2x Modern 暗、
+  OpenGL 2x Modern 暗完成全部 23 阶段及退出检查。实际 Image 类型和 PixelScale 核验
+  后端／倍率；2x 为应用覆盖值，OpenGL 为 Mesa 23.2.1 llvmpipe，不作硬件性能结论。
+- [x] 同一独立桌面的 xdotool 原生鼠标／键盘验证 Modern 暗／OpenGL 1x：菜单打开时
+  F6 灰显及恢复，local 始终 1；F7 改键后 Ctrl+Shift+C 激活；F9 移除／恢复定义时
+  local 始终 2，仅 definitions 递增；内层及外部 F12 操作结果为外层 2／内层 1／外部 2。
+  截图确认提示右齐、禁用项灰显及独立状态，正常关闭窗口。未使用 DevServer。
+- [x] 最终 `DISPLAY=:90 XMODIFIERS=@im=none GOWORK=off go test -json -count=1 ./...`：
+  3949 项测试／子测试通过、15 项既有跳过、零失败，保留工作区原有未跟踪测试。
+  跳过为 macOS 签名及需显式开启的输入、剪贴板、GLX／透明、窗口状态／交互用例。
+  UI／widgets-ui 的 Command／Shortcut／Menu／Object／Transfer race、相关包及例程 vet 通过。
+- [x] Windows amd64／macOS arm64：UI、widgets-ui 测试目标和 UI commands、demo
+  CGO_ENABLED=0 交叉编译通过；本轮未执行远端原生运行，不将构建算作平台验收。
+- 验收产物：`/tmp/goui-command-scope-13irp1he`，含全仓 JSON、跳过清单、race／vet、
+  四组逐阶段日志、交叉编译记录、App.stop 修正前后回归及原生输入日志／截图。
+  本轮窗口正常关闭、独立会话已停止；没有修改用户桌面设置或提交原有未跟踪文件。
+  设计见 [DesignCommand](DesignCommand.md)。
+
 ## 共享命令、菜单列与声明式作用域（2026-11-04）
 
 - [x] 实现 `gui.Command` 的激活、Enabled 通知及 Shortcut 只读反向关联；按键仍属于
