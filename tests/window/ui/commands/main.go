@@ -13,6 +13,10 @@
 //     再按 F9 恢复遮蔽，外层与内层对象互不污染。
 //  5. F8/Check 输出构建次数、计数与 BOUNDS；局部设置不重建 Window，未变化菜单模型
 //     和命令对象保留。正常使用时点击按钮，自动模式用相同事件路径触发控制操作。
+//  6. copy 在菜单之后的子 View 声明，BindEnabled 变化不重建其余内容。
+//     F9 只重建定义所在分支；没有额外 Widget、空行或容器间距。
+//  7. “External”菜单及窗口 F12 借用同一 gui.Command；F4 切换其启用状态，打开的
+//     菜单实时灰显，copy 不受影响。F12 和菜单各增加外部计数一次。
 //
 // 自动场景还检查重复关联、最新操作回调、删除后的回退、重开菜单和绘图后端／倍率。
 // 自动派发不替代原生菜单 grab、IME 和桌面输入；不使用 DevServer 或语义动作捷径。
@@ -114,7 +118,15 @@ func main() {
 	itemEnabled, bindingEnabled := ui.MakeState(true), ui.MakeState(true)
 	status := ui.MakeState("外层：0　局部：0")
 	outerCount, innerCount, global, local := 0, 0, 0, 0
+	externalCount, definitionBuilds, buildsBeforeAvailability := 0, 0, 0
+	buildsBeforeDefinition, definitionsBeforeUpdate := 0, 0
+	external := gui.NewCommand()
 	report := func() { status.Set(fmt.Sprintf("外层：%d　局部：%d", outerCount, innerCount)) }
+	external.ConnectActivate(func() {
+		externalCount++
+		status.Set(fmt.Sprintf("外部：%d", externalCount))
+	})
+	toggleExternal := func() { external.SetEnabled(!external.Enabled()) }
 	p := new(painterProbe)
 	started, complete, step := false, false, 0
 	var app ui.App
@@ -135,7 +147,7 @@ func main() {
 		if originalModel == nil {
 			originalModel = m
 		}
-		fmt.Printf("CHECK global=%d local=%d outer=%d inner=%d enabled=%t\n", global, local, outerCount, innerCount, command.Enabled())
+		fmt.Printf("CHECK global=%d local=%d definitions=%d outer=%d inner=%d external=%d enabled=%t\n", global, local, definitionBuilds, outerCount, innerCount, externalCount, command.Enabled())
 		for _, id := range []string{"edit", "inner", "enable", "gesture", "scope", "menu-entry", "binding", "check"} {
 			b := app.FindWidget("commands", id).Snapshot().Bounds
 			fmt.Printf("BOUNDS %s %.1f %.1f %.1f %.1f\n", id, b.X, b.Y, b.Width, b.Height)
@@ -163,13 +175,16 @@ func main() {
 						click(w, menu("edit").Snapshot().Bounds.Center())
 					case 1:
 						require(row().Enabled, "initial menu disabled")
+						buildsBeforeAvailability = local
 						key(w, events.KeyF6, 0)
 					case 2:
 						require(!row().Enabled && menu("edit").Opened(), "local update did not disable open menu")
 						require(menu("edit").Menu() == originalModel, "command state reloaded unchanged menu")
+						require(local == buildsBeforeAvailability, "BindEnabled rebuilt content")
 						key(w, events.KeyF6, 0)
 					case 3:
 						require(row().Enabled, "open menu did not reenable")
+						require(local == buildsBeforeAvailability, "BindEnabled reenable rebuilt content")
 						key(w, events.KeyF7, 0)
 					case 4:
 						expected := original.Shortcuts()[0].Gesture().DisplayText()
@@ -187,9 +202,11 @@ func main() {
 						click(pop(), row().Bounds.Center())
 					case 8:
 						require(innerCount == 1 && outerCount == 2, "inner command used wrong callback")
+						buildsBeforeDefinition, definitionsBeforeUpdate = local, definitionBuilds
 						key(w, events.KeyF9, 0)
 					case 9:
 						require(menu("inner").Menu().ItemAt(0).Command() == original, "removed definition did not fall back")
+						require(local == buildsBeforeDefinition && definitionBuilds == definitionsBeforeUpdate+1, "definition update did not stay local")
 						click(w, menu("inner").Snapshot().Bounds.Center())
 					case 10:
 						click(pop(), row().Bounds.Center())
@@ -216,6 +233,22 @@ func main() {
 						click(pop(), row().Bounds.Center())
 					case 17:
 						require(outerCount == 5 && innerCount == 1 && global == 1, "incorrect counts or global rebuild")
+						key(w, events.KeyF12, 0)
+					case 18:
+						require(externalCount == 1, "window shortcut did not borrow external command")
+						click(w, menu("edit").Snapshot().Bounds.Center())
+					case 19:
+						key(w, events.KeyF4, 0)
+					case 20:
+						ext, ok := findRow(pop().Widget().Snapshot(), "External")
+						require(ok && !ext.Enabled && row().Enabled, "external enabled state did not update independently")
+						key(w, events.KeyF4, 0)
+					case 21:
+						ext, ok := findRow(pop().Widget().Snapshot(), "External")
+						require(ok && ext.Enabled, "external menu did not reenable")
+						click(pop(), ext.Bounds.Center())
+					case 22:
+						require(externalCount == 2 && len(external.Shortcuts()) == 1, "external menu duplicated or lost operation")
 						check()
 						require(p.backend != "", "no actual paint")
 						complete = true
@@ -233,12 +266,19 @@ func main() {
 			if shifted.Get() {
 				mods |= ui.ModShift
 			}
-			inner := ui.CommandScope(ui.MenuButton("局部").ID("inner").Menu(ui.MenuItem("Copy").Command("copy")))
-			if override.Get() {
-				inner.Commands(ui.Command("copy").OnActivate(func() { innerCount++; report() }))
-			}
+			inner := ui.CommandScope(ui.VBox(
+				ui.MenuButton("局部").ID("inner").Menu(ui.MenuItem("Copy").Command("copy")),
+				ui.Build(func() ui.View {
+					definitionBuilds++
+					if override.Get() {
+						return ui.Command("copy").OnActivate(func() { innerCount++; report() })
+					}
+					return nil
+				}),
+			))
 			return ui.CommandScope(ui.VBox(
-				ui.HBox(ui.MenuButton("编辑").ID("edit").Menu(ui.MenuItem("Copy").Command("copy").Enabled(itemEnabled.Get()), ui.MenuItem("没有快捷键的长菜单项", func() {})), inner).Spacing(12),
+				ui.HBox(ui.MenuButton("编辑").ID("edit").Menu(ui.MenuItem("Copy").Command("copy").Enabled(itemEnabled.Get()), ui.MenuItem("没有快捷键的长菜单项", func() {}), ui.MenuItem("External").CommandRef(external)), inner).Spacing(12),
+				ui.Command("copy").BindEnabled(&enabled).OnActivate(func() { outerCount++; report() }),
 				ui.Label("F6：操作启用　F7：按键　F9：局部定义"), ui.Label().BindText(&status),
 				ui.Button("切换操作启用").ID("enable").OnClick(toggle),
 				ui.Button("修改快捷键").ID("gesture").OnClick(change),
@@ -246,10 +286,11 @@ func main() {
 				ui.Button("切换菜单入口").ID("menu-entry").OnClick(toggleItem),
 				ui.Button("切换快捷键入口").ID("binding").OnClick(toggleBinding),
 				ui.Button("Check").ID("check").OnClick(check), newProbe(p),
-			).Spacing(10).Padding(16).Shortcuts(ui.Shortcut(ui.KeyC).Modifiers(mods).Enabled(bindingEnabled.Get()).Command("copy"))).Commands(ui.Command("copy").Enabled(enabled.Get()).OnActivate(func() { outerCount++; report() }))
+			).Spacing(10).Padding(16).Shortcuts(ui.Shortcut(ui.KeyC).Modifiers(mods).Enabled(bindingEnabled.Get()).Command("copy")))
 		})
 		win := ui.Window("commands").Title("GOUI UI CommandScope").Size(620, 490).Center(true).Content(content).Shortcuts(
 			ui.Shortcut(ui.KeyF6).OnActivate(toggle), ui.Shortcut(ui.KeyF7).OnActivate(change), ui.Shortcut(ui.KeyF8).OnActivate(check), ui.Shortcut(ui.KeyF9).OnActivate(toggleOverride), ui.Shortcut(ui.KeyF10).OnActivate(toggleItem), ui.Shortcut(ui.KeyF11).OnActivate(toggleBinding),
+			ui.Shortcut(ui.KeyF4).OnActivate(toggleExternal), ui.Shortcut(ui.KeyF12).CommandRef(external),
 		)
 		root := ui.Root().Windows(win)
 		if !*basic {
@@ -260,5 +301,6 @@ func main() {
 	must(err)
 	if *auto {
 		require(complete, "automatic verification exited early")
+		require(external.Enabled() && len(external.Shortcuts()) == 0, "unmount mutated or retained external command association")
 	}
 }
