@@ -43,6 +43,11 @@ type App interface {
 	// FindWidget borrows the currently mounted widget with id in a Window's
 	// content tree. Missing IDs return nil
 	FindWidget(windowID, widgetID string) gui.Widget
+	// FindCommand borrows a published command from a window's default group.
+	// It does not search descendant groups or create commands. Empty/missing IDs,
+	// an unmounting window or a stopped app return nil. The returned object stays
+	// GUI-thread-affine, like FindWidget; look it up again after definition changes.
+	FindCommand(windowID, commandID string) *gui.Command
 	// Clipboard returns the system clipboard view (never nil).
 	Clipboard() Clipboard
 	// Settings returns the system settings view (never nil).
@@ -194,6 +199,18 @@ func (a *app) FindWidget(windowID, widgetID string) (widget gui.Widget) {
 	return
 }
 
+func (a *app) FindCommand(windowID, commandID string) (command *gui.Command) {
+	if windowID == "" || commandID == "" {
+		return nil
+	}
+	a.Sync(func() {
+		if mount := a.windows[windowID]; mount != nil && !mount.destroying && mount.commands != nil {
+			command = mount.commands.find(commandID)
+		}
+	})
+	return
+}
+
 type app struct {
 	mu                 sync.Mutex
 	gui                gui.Application
@@ -216,6 +233,7 @@ type app struct {
 
 type windowMount struct {
 	shortcuts        shortcutBindings
+	commands         *commandGroup
 	runtime          *app
 	id               string
 	window           gui.Window
@@ -472,7 +490,7 @@ func (a *app) createWindow(view WindowView) (*windowMount, error) {
 	a.windows[view.id] = mount
 	mount.connect()
 	mount.root.mountWindow(window, func() View {
-		return mount.view.content
+		return mount.contentView()
 	})
 	return mount, nil
 }
@@ -503,7 +521,7 @@ func (m *windowMount) update(view WindowView) error {
 	}
 	paint := m.view.onAfterPaint != nil || view.onAfterPaint != nil
 	m.view = view
-	m.root.updateWindow(m.window, view.content)
+	m.root.updateWindow(m.window, m.contentView())
 	if paint {
 		_ = m.window.RequestPaint()
 	}
@@ -521,9 +539,6 @@ func (m *windowMount) applyWindowProperties(view WindowView) error {
 	if min := view.mergedMinSize(); min != m.appliedMinSize {
 		m.appliedMinSize = min
 		m.window.SetMinSize(min)
-	}
-	if len(view.shortcuts) != 0 || m.shortcuts.controller != nil {
-		m.shortcuts.update(m.window.Shortcuts(), view.shortcuts)
 	}
 	return nil
 }
@@ -558,6 +573,11 @@ func (a *app) windowDestroyed(mount *windowMount) {
 		delete(a.windows, mount.id)
 	}
 
+	// End declarative lifetimes before detaching window bindings or invoking
+	// user callbacks. Those notifications may try to activate a borrowed command.
+	if mount.root != nil {
+		mount.root.unmountForWindowDestroy()
+	}
 	mount.disconnect()
 	if mount.view.onDestroy != nil {
 		mount.view.onDestroy()

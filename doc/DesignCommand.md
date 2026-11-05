@@ -2,7 +2,8 @@
 
 > 状态：2026-11-04 命令、菜单与 UI 作用域已实现，本机独立 X11 验证通过。
 > 2026-11-05 修订：Command 是普通声明值，通过 MenuItem／Shortcut.DefineCommand
-> 或 CommandGroup.Commands 提供；不再作为独立 View。本机独立 X11 验证通过。
+> 或 CommandGroup.Commands 提供；不再作为独立 View。
+> 已增加窗口默认分组与无 BuildContext 的外部查询，本机独立 X11 验证通过。
 > Windows/macOS 的实际运行范围及后续结果见 Plan。
 
 ## 职责
@@ -81,13 +82,14 @@ CommandGroup 是 ObjectView，无占位 Widget 和布局边界。命令 ID 仅�
 不与 Widget ID 混用。按祖先作用域查找，最近同名定义遮蔽外层；未定义时向外查找，
 不跨窗口。空定义 ID 及重复 ID 报告声明错误；同一作用域的分布式重复在本轮协调
 结束时检查。未解析引用呈禁用，
-FindCommand(ctx, id) 返回对象与成功标志，供自定义 View 查询和诊断，不能执行旧目标。
+外部通过 App.FindCommand(windowID, commandID) 借用窗口默认操作，未找到返回 nil；
+内部上下文解析为私有 findCommand(ctx, id)，不要求业务回调提供 BuildContext。
 
 底层 gui.Command 以作用域与命令 ID 保持身份，顺序变化不重建，回调读取最新声明。
 移除定义在本轮结束时从集合删除、禁用并解除激活连接；存活引用重新解析或禁用。
 作用域通过自身集合变化信号通知引用方，不在 Root 加命令注册表。
 内层作用域跟随外层集合与 ancestry；显式子树移交后重新解析，不重放业务操作。
-Scope.Release 由 ObjectView 在后代清理后执行，清理全部命令与父作用域连接。
+CommandGroup.Release 由 ObjectView 在后代清理后执行，清理全部命令与父作用域连接。
 
 MenuItem.Command(string) 与 Shortcut.Command(string) 选择引用来源，替换直接回调或定义；
 局部 Enabled 仍属于该入口。MenuItem 函数参数可省略。构造声明没有副作用。
@@ -118,7 +120,7 @@ CommandRef(object) 只借用外部对象。各方法互斥，最后设置者生�
 清除来源。Shortcut.OnActivate 恢复直接回调，不隐式把回调注册为共享命令。
 
 Command 是普通声明数据，与 MenuItemView／ShortcutView 一样不实现 View。构造、组合
-声明没有注册副作用；声明由已挂载的 MenuButton、共享 Shortcuts 或 Scope.Commands
+声明没有注册副作用；声明由已挂载的 MenuButton、共享 Shortcuts 或 Group.Commands
 协调。CommandGroup 仍是单 child 的 ObjectView，不引入额外 Widget、特殊布局叶子、
 多输出 View、Fragment 或 Root／BuildContext 命令分支。
 
@@ -136,7 +138,7 @@ Command 是普通声明数据，与 MenuItemView／ShortcutView 一样不实现 
 各定义提交当前 ID、回调和可用性，作用域通过自己的 AfterUpdate 一次发布本轮最终
 集合，再复用同 ID 对象、移除过期对象并通知引用。同一轮中先添加新位置再移除旧位置
 不会误判重复，也不会把原命令禁用再重建。前向引用最初可为禁用占位，集合发布后在
-布局／绘制前解析完成。FindCommand 返回最近一次已发布对象；首次 Build 中可能尚未
+布局／绘制前解析完成。命令查询返回最近一次已发布对象；首次 Build 中可能尚未
 解析，不能依靠声明顺序取对象。AfterUpdate 按既有注册顺序执行，不承诺早于命令作用域
 的其他完成钩子已看到本轮集合。
 
@@ -149,10 +151,13 @@ Command.Enabled，不因局部禁用而撤销命令定义。结构增删继续�
 committed 回调后，借助既有 AfterTransfer 发布两侧集合，返回调用方前生效。
 移交整个 CommandGroup 保留其对象，移交定义至不同作用域由目标作用域拥有新对象，
 源对象禁用。绑定的 apply 使用持久贡献对象，后续状态更新跟随目标作用域。
+分组查找、发布与业务激活同时检查声明节点是否存活；释放已开始但 ObjectView.Release
+尚未运行的区间也视为失效。窗口销毁先结束声明生命周期，再解除窗口绑定和调用用户
+回调，防止快捷键关联通知中激活已经失效的操作。
 
 Menu(...)／MenuFor(...) 是临时模型转换，没有持久声明宿主，不接受 DefineCommand，
 遇到时报告声明错误。尤其右键请求发生时才构建的菜单，不应成为长期快捷键命令的唯一
-来源；使用 Scope.Commands、已挂载菜单／Shortcut 提供定义，临时菜单按 ID 或对象引用。
+来源；使用 Group.Commands、已挂载菜单／Shortcut 提供定义，临时菜单按 ID 或对象引用。
 这也避免了弹出后才生效的快捷键、菜单关闭后悬留回调及不在 Build 中注册属性绑定。
 
 ## 借用命令式对象
@@ -175,17 +180,63 @@ UI 只管理自己创建的 Shortcut、关联及观察连接；解绑调用 SetC
 Menu(...)、MenuFor(...) 和控件的 Menu 声明均支持直接对象；其中只有 ID 路径需要上下文。
 外部命令须遵守 GUI 线程契约，生命周期由提供者负责，不隐式注册 ID 或转移所有权。
 
+## 窗口默认分组与外部查询
+
+```go
+ui.Window("main").Content(
+    ui.VBox(
+        ui.MenuButton("File").Menu(
+            ui.MenuItem("Close").DefineCommand(
+                ui.Command("file.close").BindEnabled(&hasDocument).OnActivate(closeFile),
+            ),
+        ),
+        editor,
+    ),
+).Shortcuts(ui.Shortcut(ui.KeyW).Modifiers(ui.ModPrimary).Command("file.close"))
+
+// In a UI-thread event handler; lookup does not require a BuildContext.
+command := app.FindCommand("main", "file.close")
+```
+
+ui.Window 自动提供一个默认 CommandGroup，不要求应用手动包裹 Content。
+Window.Commands(...) 可直接提供集中定义，Window.Shortcuts 可以引用或 DefineCommand。
+Content 中未被显式局部分组包裹的菜单／快捷键也贡献到同一默认分组。一份 ID 仍只能有
+一个定义，窗口和后代同时定义同名操作时报告声明错误，不采用先后覆盖。
+
+局部 ui.CommandGroup 保留独立命名空间，同名操作可以遮蔽默认组；局部引用按祖先回退。
+窗口级快捷键和外部窗口查询只看默认组，不向下遍历局部定义，不按焦点选择同名实现。
+默认组与 Window 的协调状态共同存活，Content 的控件类型替换或空内容不重建该组；
+窗口关闭／销毁／应用停止时，清理声明连接并禁用自己创建的操作。复用窗口 ID 代表新实例。
+
+内部用两个普通组合节点将窗口默认组和窗口绑定投影到 Content，均不产生 Widget、
+布局间距或 Snapshot 节点。窗口绑定与内容一样复用属性绑定、节点生命周期及现有协调器；
+Root／BuildContext 不增加命令字段或类型分支，gui／platform 不增加命名注册或分组。
+GUI Command 继续使用对象身份，MenuItem／Shortcut 继续 SetCommand(*Command)。
+ID 只用于 UI 声明复用、名称解析与局部命名空间，不给 gui.Command 增加 ID。
+
+外部入口为 App.FindCommand(windowID, commandID) *gui.Command，缺失／空 ID、卸载中窗口
+或停止的应用返回 nil，不创建对象。查询经 App.Sync 在 UI 线程执行，返回值仍为 GUI 线程
+借用对象；后台工作需要通过 Post／Sync 执行实际操作。查询返回最近一次已发布状态，
+窗口初次同步 Build 中可能尚无目标，内容 AfterUpdate 时默认组已完成本轮发布。
+定义移除后旧对象失效，重新声明或重建窗口应重新查询，不把旧指针自动重定向。
+
+不新增遍历整棵声明树的通用 FindObject，不混合 Widget ID、ObjectView 节点 ID 与命令 ID。
+通用祖先对象查询 FindAncestor[T] 继续保留；内部私有 findCommand(ctx, id) 只供引用与菜单
+适配，不再导出带 BuildContext 的命令查询函数。旧 CommandScope 名称由 CommandGroup
+统一替代，不保留别名。临时 Menu／MenuFor 仍只引用定义，不获取声明所有权。
+
 ## 转换入口与共享修饰符
 
 内置 MenuButton 直接使用自身 BuildContext 解析命令 ID。独立的 ui.Menu(...) 没有上下文，
 只转换普通回调，含命令 ID 的项保持禁用。自定义复合 View 在请求上下文菜单时使用
 MenuFor(ctx, items...)；TreeView/TableView/TabView 的 UI 适配已使用此入口。
 返回模型在有 ConnectItems 观察者期间跟随作用域集合变化，解除模型观察即解除对应连接。
-FindCommand(ctx, id) 是供自定义 View 借用的公开查询，不转移命令所有权。
+App.FindCommand(windowID, commandID) 是外部借用入口，不转移命令所有权；
+私有 findCommand(ctx, id) 只供声明式引用解析使用。
 
-Shortcut 的 ID 引用及 DefineCommand 必须位于 CommandGroup 的后代声明；Window.Shortcuts 不属于
-Content 内的祖先作用域，不能倒查后代，也不接受 DefineCommand。将命令快捷键声明到作用域内根 Widget 的
-Shortcuts，原有窗口 OnActivate 快捷键保持不变。
+Shortcut 的 ID 引用及 DefineCommand 使用最近分组。Window.Shortcuts 与 Window.Commands
+及默认 Content 共享窗口分组，支持按 ID 引用及定义；不向下查找 Content 中显式局部分组。
+局部快捷键继续使用所在 View 的 Shortcuts，普通窗口 OnActivate 回调保持不变。
 共享修饰符的持久上下文仅保存通用 BuildContext；移交时刷新其 ancestry 绑定。
 Root／BuildContext 没有命令表、命令接口或具体命令类型分支。
 
@@ -229,7 +280,8 @@ Root／BuildContext 没有命令表、命令接口或具体命令类型分支。
 
 - `go run ./tests/window/gui/commands`：对象关联、实时灰显、改键及独立入口启用。
 - `go run ./tests/window/ui/commands`：ID 定义、局部更新、同名遮蔽／移除回退。
-- UI 例程另覆盖菜单／快捷键双向 DefineCommand、BindEnabled 不重建、局部分支移除回退、
+- UI 例程另覆盖窗口默认分组、Window.Commands、窗口 ID 快捷键及 App.FindCommand，
+  菜单／快捷键双向 DefineCommand、BindEnabled 不重建、局部分支移除回退、
   Window.Shortcuts 直接借用外部命令及运行循环退出后的关联清理。
 - 两者默认人工操作；`-auto` 通过正常 DispatchEvent 验证后退出，`-basic`、`-dark`
   选择外观，`GOUI_PLAT_PAINTER` 与 `GOUI_PLAT_SCALE` 选择后端和覆盖倍率。

@@ -158,7 +158,7 @@ func (d *commandDefinitions) update(ctx BuildContext, scope *commandGroup, views
 		return
 	}
 	if ctx == nil {
-		panic("ui: DefineCommand requires an ancestor CommandGroup; Window.Shortcuts cannot define scoped commands")
+		panic("ui: DefineCommand requires a mounted command group")
 	}
 	d.version++
 	version := d.version
@@ -310,8 +310,16 @@ func (s *commandGroup) invalidate() {
 	}
 }
 
+func (s *commandGroup) live() bool {
+	if s.released || s.ctx == nil {
+		return false
+	}
+	coordinator := s.ctx.Coordinator()
+	return coordinator != nil && coordinator.owner != nil && !coordinator.owner.released && coordinator.owner.root != nil
+}
+
 func (s *commandGroup) commit() {
-	if s.released || !s.dirty {
+	if !s.live() || !s.dirty {
 		return
 	}
 	definitions := make(map[string]*commandDefinition, len(s.definitions))
@@ -331,7 +339,7 @@ func (s *commandGroup) commit() {
 		if entry == nil {
 			entry = &scopedCommand{command: gui.NewCommand()}
 			entry.activate = entry.command.ConnectActivate(func() {
-				if definition := entry.definition; !s.released && definition != nil && definition.scope == s && definition.callback != nil {
+				if definition := entry.definition; s.live() && definition != nil && definition.scope == s && definition.callback != nil {
 					definition.callback()
 				}
 			})
@@ -349,12 +357,12 @@ func (s *commandGroup) commit() {
 		}
 	}
 	for _, entry := range next {
-		if s.released {
+		if !s.live() {
 			return
 		}
 		entry.command.SetEnabled(entry.definition.enabled)
 	}
-	if changed && !s.released {
+	if changed && s.live() {
 		s.changed.Emit()
 	}
 }
@@ -381,7 +389,7 @@ func (s *commandGroup) reparent(ctx BuildContext) {
 	s.changed.Emit()
 }
 func (s *commandGroup) find(id string) *gui.Command {
-	for current := s; current != nil && !current.released; current = current.parent {
+	for current := s; current != nil && current.live(); current = current.parent {
 		if entry := current.commands[id]; entry != nil {
 			return entry.command
 		}
@@ -389,11 +397,11 @@ func (s *commandGroup) find(id string) *gui.Command {
 	return nil
 }
 
-// FindCommand borrows an ancestor scope's last published operation. Definitions
+// findCommand borrows an ancestor group's last published operation. Definitions
 // are published after reconciliation, before layout/paint; the initial Build
 // may not resolve a definition yet. Missing or expired references return
 // (nil, false), never an operation from another root.
-func FindCommand(ctx BuildContext, id string) (*gui.Command, bool) {
+func findCommand(ctx BuildContext, id string) (*gui.Command, bool) {
 	if ctx == nil || id == "" {
 		return nil, false
 	}
@@ -453,7 +461,7 @@ func (r *commandReference) resolve() {
 	}
 	// ObjectView lookup may run user code and release or replace this reference.
 	version := r.version
-	command, ok := FindCommand(r.ctx, r.id)
+	command, ok := findCommand(r.ctx, r.id)
 	if r.version != version || r.apply == nil {
 		return
 	}

@@ -70,7 +70,8 @@ func (s *ShortcutView) CommandRef(command *gui.Command) *ShortcutView {
 }
 
 // DefineCommand supplies a scope-local definition and uses it for this binding.
-// It requires a view below a CommandGroup; Window.Shortcuts has no such context.
+// Views use their nearest CommandGroup; Window.Shortcuts uses the window's
+// default group, never a descendant group in Content.
 // Binding Enabled remains independent of the command's availability.
 // nil clears the operation.
 func (s *ShortcutView) DefineCommand(command *CommandView) *ShortcutView {

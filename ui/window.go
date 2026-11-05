@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"slices"
+
 	"github.com/golang-gui/goui/core/bits"
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
@@ -45,6 +47,7 @@ func (r RootNode) Windows(windows ...WindowView) RootNode {
 // WindowView describes one top-level window.
 type WindowView struct {
 	shortcuts      []*ShortcutView
+	commands       []*CommandView
 	options        gui.WindowOptions
 	id             string
 	title          string
@@ -137,6 +140,14 @@ func (w WindowView) Content(content View) WindowView {
 	return w
 }
 
+// Commands declares operations in this window's default command group. The
+// content and Window.Shortcuts share that group. Descendant CommandGroups can
+// shadow these IDs locally; window bindings never search descendant groups.
+func (w WindowView) Commands(commands ...*CommandView) WindowView {
+	w.commands = slices.Clone(commands)
+	return w
+}
+
 // OnCloseRequest sets the handler called before a close request is accepted.
 func (w WindowView) OnCloseRequest(fn func(allow *bool)) WindowView {
 	w.onCloseRequest = fn
@@ -191,4 +202,41 @@ func (w WindowView) mergedMinSize() geometry.Size {
 		s.Height = w.minHeight
 	}
 	return s
+}
+
+// Window declarations are RootViews rather than ordinary Views. Adapt their
+// bindings through the same composition lifecycle as the projected content,
+// beneath a default CommandGroup. No widget or Root-specific lookup is needed.
+func (m *windowMount) contentView() View {
+	content := &windowContentView{mount: m, child: m.view.content, shortcuts: m.view.shortcuts}
+	content.Self = content
+	return CommandGroup(content).Commands(m.view.commands...)
+}
+
+type windowContentView struct {
+	ComposeBase[windowContentView]
+	mount     *windowMount
+	child     View
+	shortcuts []*ShortcutView
+}
+
+func (v *windowContentView) Build(ctx BuildContext) View {
+	ctx.SetState(v.mount)
+	v.mount.commands, _ = FindAncestor[*commandGroup](ctx)
+	if len(v.shortcuts) != 0 || v.mount.shortcuts.controller != nil {
+		v.mount.shortcuts.update(v.mount.window.Shortcuts(), v.shortcuts, ctx)
+	}
+	if ctx.State() != v.mount || v.mount.destroying {
+		return nil
+	}
+	return v.child
+}
+
+func (*windowContentView) Object(ctx BuildContext) any { return ctx.State() }
+
+func (*windowContentView) Release(ctx BuildContext) {
+	if mount, ok := ctx.State().(*windowMount); ok {
+		mount.commands = nil
+		mount.shortcuts.clear()
+	}
 }

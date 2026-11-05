@@ -1,8 +1,10 @@
 package ui
 
 import (
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/platform/events"
@@ -126,10 +128,10 @@ func TestCommandGroupContextMenuAndDirectCallbackModes(t *testing.T) {
 	var ctx BuildContext
 	probe := objectScope("probe", Label("probe"), func() any { return new(int) })
 	probe.read = func(owner BuildContext) any { ctx = owner; return new(int) }
-	// 使用真实子节点上下文，查询公共解析接口，不访问另一 View 的私有 State。
+	// 使用真实子节点上下文检查内部解析，不访问另一 View 的私有 State。
 	r.update(CommandGroup(probe).Commands(Command("copy")))
 	ctx = &buildContext{node: r.root.body}
-	command, ok := FindCommand(ctx, "copy")
+	command, ok := findCommand(ctx, "copy")
 	if !ok {
 		t.Fatal("公开查询找不到祖先命令")
 	}
@@ -140,11 +142,11 @@ func TestCommandGroupContextMenuAndDirectCallbackModes(t *testing.T) {
 	if Menu(MenuItem("Copy").Command("copy")).ItemAt(0).Command().Enabled() {
 		t.Fatal("无上下文转换不应暴露启用的未解析命令")
 	}
-	if _, ok := FindCommand(ctx, "missing"); ok {
+	if _, ok := findCommand(ctx, "missing"); ok {
 		t.Fatal("未知 ID 错误解析")
 	}
 	r.unmountWindow()
-	if _, ok := FindCommand(ctx, "copy"); ok {
+	if _, ok := findCommand(ctx, "copy"); ok {
 		t.Fatal("过期上下文仍可解析")
 	}
 }
@@ -516,7 +518,7 @@ func TestCommandBindEnabledFollowsTransferredDefinition(t *testing.T) {
 	a, b := rt.windows["source"].root, rt.windows["target"].root
 	source, target := a.widget(), b.widget()
 	moving := source.Children()[0]
-	if err := (&Coordinator{owner: a.root.body}).TransferChild(moving, target, func() error {
+	if err := (&Coordinator{owner: windowContentNode(a).body}).TransferChild(moving, target, func() error {
 		source.(*gui.LinearBox).RemoveChild(moving)
 		target.(*gui.LinearBox).AddChild(moving)
 		return nil
@@ -667,11 +669,11 @@ func TestCommandDefinitionHostErrors(t *testing.T) {
 	}{
 		{"temporary-menu", func() { Menu(MenuItem("Run").DefineCommand(Command("run"))) }, "temporary menus must reference a command"},
 		{"temporary-context-menu", func() { MenuFor(nil, MenuItem("Run").DefineCommand(Command("run"))) }, "temporary menus must reference a command"},
-		{"window-shortcut", func() {
-			mount := &windowMount{window: newTestWindow()}
-			defer mount.disconnect()
-			_ = mount.applyWindowProperties(Window("main").Shortcuts(Shortcut(KeyF5).DefineCommand(Command("run"))))
-		}, "Window.Shortcuts cannot define scoped commands"},
+		{"unmounted-shortcut", func() {
+			var bindings shortcutBindings
+			defer bindings.clear()
+			bindings.update(gui.NewShortcutController(), []*ShortcutView{Shortcut(KeyF5).DefineCommand(Command("run"))})
+		}, "DefineCommand requires a mounted command group"},
 		{"shortcut-outside-scope", func() {
 			r := newRoot()
 			defer r.unmountWindow()
@@ -754,7 +756,7 @@ func TestShortcutDefinitionBindingFollowsTransfer(t *testing.T) {
 	source, target := a.widget().(*gui.LinearBox), b.widget().(*gui.LinearBox)
 	moving := source.Children()[0]
 	old := moving.Children()[0].(*gui.MenuButton).Menu().ItemAt(0).Command()
-	if err := (&Coordinator{owner: a.root.body}).TransferChild(moving, target, func() error { source.RemoveChild(moving); target.AddChild(moving); return nil }, nil); err != nil {
+	if err := (&Coordinator{owner: windowContentNode(a).body}).TransferChild(moving, target, func() error { source.RemoveChild(moving); target.AddChild(moving); return nil }, nil); err != nil {
 		t.Fatal(err)
 	}
 	command := target.Children()[0].(*gui.MenuButton).Menu().ItemAt(0).Command()
@@ -771,5 +773,263 @@ func TestShortcutDefinitionBindingFollowsTransfer(t *testing.T) {
 	fake.runPosted()
 	if !command.Enabled() {
 		t.Fatal("快捷键定义的绑定未在目标恢复")
+	}
+}
+
+// 三种声明宿主均进入窗口默认分组，窗口快捷键和菜单在首次绘制前关联同一对象。
+func TestWindowDefaultCommandGroup(t *testing.T) {
+	for _, host := range []string{"menu", "shortcut", "window"} {
+		t.Run(host, func(t *testing.T) {
+			enabled := MakeState(true)
+			calls, builds, step := 0, 0, 1
+			rt, fake := bindingApp(t, func() RootView {
+				builds++
+				value := step
+				definition := Command("run").BindEnabled(&enabled).OnActivate(func() { calls += value })
+				item := MenuItem("Run").Command("run")
+				key := Shortcut(KeyF5).Command("run")
+				window := Window("main")
+				switch host {
+				case "menu":
+					item.DefineCommand(definition)
+				case "shortcut":
+					key.DefineCommand(definition)
+				case "window":
+					window = window.Commands(definition)
+				}
+				return window.Content(MenuButton("Menu").Menu(item)).Shortcuts(key)
+			})
+			w := fake.windows[0]
+			button := w.Widget().(*gui.MenuButton)
+			command, model := rt.FindCommand("main", "run"), button.Menu()
+			if command == nil || model.ItemAt(0).Command() != command || len(command.Shortcuts()) != 1 || button.Opened() || calls != 0 {
+				t.Fatal("默认分组未关联菜单／窗口快捷键，或构建执行了操作")
+			}
+			// 窗口替身不运行原生调度，仅将同一个窗口控制器接到根控件，仍走真实 Dispatcher。
+			button.AddEventController(w.Shortcuts())
+			var dispatcher gui.EventDispatcher
+			press := func(wantHandled bool) {
+				t.Helper()
+				handled := false
+				if err := dispatcher.DispatchEvent(w, events.KeyEvent{EventType: events.KeyDown, Key: events.KeyF5, Handled: &handled}); err != nil {
+					t.Fatal(err)
+				}
+				if handled != wantHandled {
+					t.Fatalf("快捷键消费=%t，期望 %t", handled, wantHandled)
+				}
+			}
+			press(true)
+			enabled.Set(false)
+			fake.runPosted()
+			press(false)
+			if calls != 1 || command.Enabled() || builds != 1 || button.Menu() != model {
+				t.Fatal("启用绑定没有局部更新，或重建了菜单")
+			}
+			enabled.Set(true)
+			fake.runPosted()
+			step = 10
+			if err := rt.rebuild(); err != nil {
+				t.Fatal(err)
+			}
+			if rt.FindCommand("main", "run") != command || button.Menu() != model {
+				t.Fatal("重建替换了默认分组对象或模型")
+			}
+			press(true)
+			if calls != 11 {
+				t.Fatal("重建后没有执行最新操作")
+			}
+			rt.stop()
+			if rt.FindCommand("main", "run") != nil || command.Enabled() || len(command.Shortcuts()) != 0 {
+				t.Fatal("退出后暴露或保留了默认分组资源")
+			}
+		})
+	}
+}
+
+func TestAppFindCommandGroupBoundaries(t *testing.T) {
+	rt, fake := bindingApp(t, func() RootView {
+		return Root().Windows(
+			Window("main").Commands(Command("run")).Content(CommandGroup(
+				MenuButton("Local").Menu(MenuItem("Run").DefineCommand(Command("run")), MenuItem("Local only").DefineCommand(Command("local"))),
+			)).Shortcuts(Shortcut(KeyF5).Command("run")),
+			Window("other").Commands(Command("run")),
+		)
+	})
+	main, other := rt.FindCommand("main", "run"), rt.FindCommand("other", "run")
+	local := fake.windows[0].Widget().(*gui.MenuButton).Menu().ItemAt(0).Command()
+	if main == nil || other == nil || main == other || local == main || local == other || rt.windows["main"].shortcuts.entries[0].shortcut.Command() != main {
+		t.Fatal("窗口默认分组、局部分组或窗口之间的同名命令混淆")
+	}
+	for _, ids := range [][2]string{{"main", "local"}, {"missing", "run"}, {"main", "missing"}, {"", "run"}, {"main", ""}} {
+		if rt.FindCommand(ids[0], ids[1]) != nil {
+			t.Fatalf("查找越过命名边界：%q", ids)
+		}
+	}
+	if len(fake.windows) != 2 {
+		t.Fatal("查询创建了额外窗口")
+	}
+}
+
+func TestWindowCommandGroupContentAndDefinitionLifecycle(t *testing.T) {
+	defined, mode := true, 0
+	rt, fake := bindingApp(t, func() RootView {
+		var content View
+		switch mode {
+		case 0:
+			content = Label("first")
+		case 1:
+			content = TextInput().Text("second")
+		}
+		window := Window("main").Content(content).Shortcuts(Shortcut(KeyF5).Command("run"))
+		if defined {
+			window = window.Commands(Command("run"))
+		}
+		return window
+	})
+	window, command := rt.FindWindow("main"), rt.FindCommand("main", "run")
+	for _, value := range []int{1, 2, 0} {
+		mode = value
+		if err := rt.rebuild(); err != nil {
+			t.Fatal(err)
+		}
+		if rt.FindWindow("main") != window || rt.FindCommand("main", "run") != command {
+			t.Fatal("内容类型替换或空内容重建了窗口默认操作")
+		}
+		if mode == 2 && fake.windows[0].Widget() != nil {
+			t.Fatal("默认分组产生了占位 Widget")
+		}
+	}
+	defined = false
+	if err := rt.rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	if rt.FindCommand("main", "run") != nil || command.Enabled() || rt.windows["main"].shortcuts.entries[0].shortcut.Command().Enabled() {
+		t.Fatal("移除定义仍返回或使用旧操作")
+	}
+	defined = true
+	if err := rt.rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	restored := rt.FindCommand("main", "run")
+	if restored == nil || restored == command {
+		t.Fatal("重新定义复活了失效的旧对象")
+	}
+	fake.windows[0].Destroy()
+	if rt.FindCommand("main", "run") != nil || restored.Enabled() {
+		t.Fatal("原生关闭后命令仍可查询或启用")
+	}
+	if err := rt.rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	if next := rt.FindCommand("main", "run"); next == nil || next == restored || rt.FindWindow("main") == window {
+		t.Fatal("同 ID 新窗口复用了旧窗口的命令")
+	}
+}
+
+func TestAppFindCommandBeforeAndAfterPublication(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	fake := newWindowTestApplication()
+	var rt *app
+	before, after := false, false
+	rt = newApp(fake, func() RootView {
+		return Window("main").Commands(Command("run")).Content(trackingView(func(ctx BuildContext) View {
+			before = rt.FindCommand("main", "run") == nil
+			ctx.AfterUpdate(func() { after = rt.FindCommand("main", "run") != nil })
+			return Label("ready")
+		}))
+	})
+	defer rt.stop()
+	defer rt.destroyAll()
+	if rt.FindCommand("main", "run") != nil {
+		t.Fatal("挂载前的查询创建了命令")
+	}
+	if err := rt.rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	if !before || !after {
+		t.Fatal("查询没有遵守批次发布边界")
+	}
+}
+
+// 查询本身可跨线程同步投递，返回值仍是 GUI 线程上借用的对象。
+type commandLookupApplication struct {
+	*windowTestApplication
+	tasks chan func()
+}
+
+func (a *commandLookupApplication) Post(fn func()) { a.tasks <- fn }
+
+func TestAppFindCommandFromWorker(t *testing.T) {
+	for _, mode := range []string{"execute", "removed", "exit"} {
+		t.Run(mode, func(t *testing.T) {
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+			fake := &commandLookupApplication{newWindowTestApplication(), make(chan func(), 1)}
+			rt := newApp(fake, nil)
+			defer rt.stop()
+			defer rt.destroyAll()
+			if err := rt.reconcileWindows([]WindowView{Window("main").Commands(Command("run"))}); err != nil {
+				t.Fatal(err)
+			}
+			want := rt.FindCommand("main", "run")
+			result := make(chan *gui.Command, 1)
+			go func() { result <- rt.FindCommand("main", "run") }()
+			var task func()
+			select {
+			case task = <-fake.tasks:
+			case <-time.After(time.Second):
+				t.Fatal("后台查询没有投递到 UI 线程")
+			}
+			select {
+			case <-result:
+				t.Fatal("UI 派发前查询已经完成")
+			default:
+			}
+			switch mode {
+			case "removed":
+				fake.windows[0].Destroy()
+				want = nil
+				task()
+			case "exit":
+				want = nil
+				rt.stop()
+			default:
+				task()
+			}
+			select {
+			case got := <-result:
+				if got != want {
+					t.Fatal("查询没有读取执行时的窗口状态")
+				}
+			case <-time.After(time.Second):
+				t.Fatal("后台查询未结束")
+			}
+			if mode == "exit" {
+				task()
+			}
+		})
+	}
+}
+
+// 解除快捷键会通知外部；窗口已退出或销毁时，通知中不能再执行业务命令。
+func TestWindowCommandDoesNotActivateDuringTeardown(t *testing.T) {
+	for _, mode := range []string{"destroy", "stop"} {
+		t.Run(mode, func(t *testing.T) {
+			calls := 0
+			rt, fake := bindingApp(t, func() RootView {
+				return Window("main").Commands(Command("run").OnActivate(func() { calls++ })).Shortcuts(Shortcut(KeyF5).Command("run"))
+			})
+			command := rt.FindCommand("main", "run")
+			command.ConnectShortcuts(func() { command.Activate() })
+			if mode == "destroy" {
+				fake.windows[0].Destroy()
+			} else {
+				rt.stop()
+			}
+			if calls != 0 || command.Enabled() {
+				t.Fatal("清理关联时执行了已失效窗口的命令")
+			}
+		})
 	}
 }
