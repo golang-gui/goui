@@ -32,6 +32,7 @@ func (d *windowsDemo) diagnosticsView() ui.View {
 					OnChange(func(v wui.CheckState) { d.showHUD(v == wui.CheckChecked) }),
 			).Spacing(10).LineSpacing(8),
 			ui.Label(resource.CaptureHUDHint()).WrapMode(gui.WrapWordChar).Style(modern.MutedText),
+			ui.Label(resource.TraceHint()).ID("trace-hint").WrapMode(gui.WrapWordChar).Style(modern.MutedText),
 			ui.Build(func() ui.View {
 				_ = d.captureRevision.Get()
 				return ui.Label(captureSummary(d.captureResult)).ID("capture-summary").WrapMode(gui.WrapWordChar).Style(modern.MutedText)

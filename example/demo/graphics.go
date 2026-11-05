@@ -45,6 +45,12 @@ func (d *graphicsDemo) view() ui.View {
 	}
 	return page("graphics", resource.Graphics(), resource.GraphicsHint(),
 		section(resource.ImagesTitle(), newWordmark(d.host.wordmark).ID("wordmark"), ui.Image(d.host.bitmap).MaxWidth(280).MaxHeight(110), ui.HBox(icons...).Spacing(24), ui.Label(resource.IconsHint())),
+		section(resource.CornerTitle(),
+			ui.Label(resource.CornerHint()).WrapMode(gui.WrapWordChar).Style(modern.MutedText),
+			ui.HWrap(
+				ui.VBox(newCornerSample().ID("corner-first").Style("demo-corner-first"), ui.Label("24 / 4 / 24 / 4 DIP")).CrossAlign(layout.CrossCenter),
+				ui.VBox(newCornerSample().ID("corner-second").Style("demo-corner-second"), ui.Label("4 / 24 / 4 / 24 DIP")).CrossAlign(layout.CrossCenter),
+			).Spacing(20).LineSpacing(16)),
 		section(resource.DrawingTitle(), newCanvas().ID("canvas").MinHeight(190).MaxHeight(190),
 			ui.Button(resource.Capture()).ID("capture-canvas").OnClick(func() {
 				w := d.host.app.FindWidget("main", "canvas")
@@ -73,6 +79,44 @@ func (d *graphicsDemo) view() ui.View {
 			})),
 	)
 }
+
+// Shadow space is owned by this sample, inside its normal rectangular clip.
+// Both shadow and body use the same resolved style and native Painter backend.
+type cornerSampleWidget struct{ gui.WidgetBase }
+
+func (w *cornerSampleWidget) Measure(c layout.Constraint) layout.Measurement {
+	if !w.Visible() {
+		return layout.Measurement{}
+	}
+	return layout.Measured(c.Clamp(geometry.Size{Width: 240, Height: 136}))
+}
+
+func (w *cornerSampleWidget) Paint(p gui.Painter) {
+	s := gui.WidgetStyle(w, "widget", "")
+	rect := geometry.Rectangle{Size: w.Rect().Size}.Inset(20)
+	if rect.Width <= 0 || rect.Height <= 0 {
+		return
+	}
+	radius, _ := s.CornerRadius()
+	if shadow, ok := s.Shadow(); ok && shadow.Color != nil {
+		p.DrawBoxShadow(rect, radius, graphics.BoxShadow{Color: graphics.ColorOf(shadow.Color), Offset: shadow.Offset, BlurRadius: shadow.BlurRadius, SpreadRadius: shadow.SpreadRadius})
+	}
+	gui.PaintStyledBox(p, rect, s)
+}
+
+func (w *cornerSampleWidget) Snapshot() gui.WidgetInfo {
+	info := w.WidgetBase.Snapshot()
+	info.Role = gui.RoleImage
+	info.Text = resource.CornerTitle()
+	return info
+}
+
+type cornerSampleView struct{ ui.ViewBase[cornerSampleView] }
+
+func newCornerSample() *cornerSampleView                      { v := new(cornerSampleView); v.Self = v; return v }
+func (*cornerSampleView) Mount(ui.BuildContext) gui.Widget    { return new(cornerSampleWidget) }
+func (*cornerSampleView) Update(ui.BuildContext, gui.Widget)  {}
+func (*cornerSampleView) Unmount(ui.BuildContext, gui.Widget) {}
 
 const wordmarkWidth, wordmarkHeight float32 = 305, 128
 

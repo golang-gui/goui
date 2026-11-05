@@ -114,7 +114,10 @@ func (d *demo) build(app ui.App) ui.RootView {
 		).Spacing(12).Padding(6).MinHeight(28),
 	).CrossAlign(layout.CrossStretch)
 	windows := []ui.WindowView{ui.Window("main").Title(resource.Title()).Chrome(ui.WindowChromeIntegrated).Size(1120, 800).MinSize(820, 600).Center(true).
-		Shortcuts(ui.Shortcut(ui.KeyF5).OnActivate(func() { app.RequestUpdate(); d.report(resource.Refreshed()) })).
+		Commands(d.overlays.command()).
+		Shortcuts(ui.Shortcut(ui.KeyF5).OnActivate(func() { app.RequestUpdate(); d.report(resource.Refreshed()) }),
+			ui.Shortcut(ui.KeyF6).Command("demo.execute"),
+			ui.Shortcut(ui.KeyF7).OnActivate(d.overlays.toggleCommand)).
 		OnDestroy(func() { d.stopActivities(); d.windows.closeCapture(); d.system.closeFiles(); app.Quit() }).Content(ui.Overlay(content.Style("demo-background"),
 		ui.OverlayItem(ui.Build(d.mainDialog)).Fill(true).Modal(true),
 		ui.OverlayItem(wui.Toast(&d.overlays.toast).ID("demo-toast")).OnPosition(func(a, s geometry.Size, p *geometry.Point) {

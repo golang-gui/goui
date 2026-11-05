@@ -1316,7 +1316,7 @@ func TestDemoViewConstructionHasNoBusinessSideEffects(t *testing.T) {
 		}
 		d.tabs.View()
 	}
-	if app.updates != 0 || d.graphics.motion.Running() || d.system.tickTimer != nil || d.editor.largeText != ([2]*ui.TextModel{}) || d.editor.text.Revision() != 0 || len(d.tabs.documents) != 3 {
+	if app.updates != 0 || d.graphics.motion.Running() || d.system.tickTimer != nil || d.editor.largeText != ([2]*ui.TextModel{}) || d.editor.text.Revision() != 0 || len(d.tabs.documents) != 3 || d.overlays.commandCount.Get() != 0 || !d.overlays.commandEnabled.Get() {
 		t.Fatal("视图构建产生业务副作用")
 	}
 }
