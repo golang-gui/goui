@@ -1,6 +1,6 @@
-// Package mobilebase manages versioned native support archives for Go builds.
+// Package base manages versioned native support archives for Go builds.
 // It contains no windowing, event-loop, or application lifecycle policy.
-package mobilebase
+package base
 
 import (
 	"bytes"

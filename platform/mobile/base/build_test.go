@@ -1,4 +1,4 @@
-package mobilebase
+package base
 
 import (
 	"bytes"
@@ -88,6 +88,8 @@ func TestBuildPublication(t *testing.T) {
 			t.Setenv("GOPROXY", "https://proxy.example.invalid")
 			t.Setenv("GOOS", "wrong-target")
 			t.Setenv("CGO_ENABLED", "0")
+			t.Setenv("CC", "unavailable-ambient-compiler")
+			t.Setenv("CXX", "unavailable-ambient-compiler")
 			t.Setenv("GOUI_TEST_LLD_NAME", filepath.Base(options.Output))
 			var log bytes.Buffer
 			if err := Build(context.Background(), options, &log, &log); err != nil {
@@ -118,6 +120,9 @@ func TestBuildPublication(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+				if row["CC"] != row["CXX"] || !strings.Contains(row["CC"].(string), options.Linker) {
+					t.Error("包含 go env 在内的所有消费步骤都不能回退到系统 C 编译器")
+				}
 				args := row["args"].([]any)
 				if args[0] != "build" {
 					continue
@@ -128,14 +133,11 @@ func TestBuildPublication(t *testing.T) {
 						t.Errorf("%s=%v, want %q", key, row[key], value)
 					}
 				}
-				if row["CC"] != row["CXX"] || !strings.Contains(row["CC"].(string), options.Linker) {
-					t.Error("不能回退到系统 C 编译器")
-				}
 			}
 			if builds != 1 {
 				t.Fatalf("Go 构建次数=%d", builds)
 			}
-			if os.Getenv("GOOS") != "wrong-target" || os.Getenv("CGO_ENABLED") != "0" {
+			if os.Getenv("GOOS") != "wrong-target" || os.Getenv("CGO_ENABLED") != "0" || os.Getenv("CC") != "unavailable-ambient-compiler" {
 				t.Fatal("污染了调用方环境")
 			}
 			// 生成了临时文件之后失败，仍须保留已发布结果。

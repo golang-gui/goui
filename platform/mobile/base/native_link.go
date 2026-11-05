@@ -1,4 +1,4 @@
-package mobilebase
+package base
 
 import (
 	"bufio"

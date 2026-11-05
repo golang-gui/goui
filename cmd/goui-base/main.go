@@ -10,7 +10,7 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/golang-gui/goui/internal/mobilebase"
+	mobilebase "github.com/golang-gui/goui/platform/mobile/base"
 )
 
 func main() {
