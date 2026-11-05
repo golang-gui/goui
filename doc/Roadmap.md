@@ -1,5 +1,12 @@
 # GOUI 实用化与未来路线
 
+## 安全区域与条件布局：后续设计（2026-11-05）
+
+[DesignSafeArea](DesignSafeArea.md) 记录了平台安全 Insets、屏幕缺口/圆角、
+Chrome 局部占位和应用条件布局的职责。GOUI 接受按窗口尺寸、平台和公开屏幕
+特征单独组织 UI，不承诺同一份声明自动适配全部设备。当前仅保存设计，不实现
+查询、容器或 UI 绑定；先关注移动平台基本可用性。
+
 ## 移动平台当前优先级（2026-11-04）
 
 [触摸设计](DesignTouchInput.md) 已记录，尚未实施。Android/iOS Typography、
@@ -7,8 +14,9 @@ Software 与 GLES 的平台层最小实现和模拟器验证现已
 完成：Android API 30/1x 两条路径 264/266 项、iOS 26.3 Simulator/3x 265/267 项，
 旋转、后台停绘及资源恢复通过。具体范围和字体/真机缺口见
 [平台设计第 10 节](DesignMobilePlatform.md#10-两端-typography--graphics-最小实现2026-11-04)。
-下一步先收敛 iOS 工厂、绘图组件选择和目录，再推进 GUI 触摸/滚动/编辑与 IME；
-已有 Android GUI 启动切片保留，本轮没有新增 GUI/UI 实现。
+截至 2026-11-05，iOS 工厂、绘图组件归属与 Go 平台收敛已完成；当前优先正式构建
+闭环，以 platform-only 例程完成 Android/iOS 真机安装、绘制与生命周期验收。
+GUI 触摸/滚动/编辑、IME 和 SafeArea 暂缓；已有 Android GUI 启动切片保留。
 
 ## 移动端构建基座与平台接入（2026-11-04）
 
@@ -39,8 +47,8 @@ Android 工厂与普通 GUI 窗口随后接通：API 30 ARM64/Software 1x 下文
 第三切片。同步修正 GUI Label 的无界轴测量转换；全仓隔离源码 3515 通过/10
 既有跳过，本机独立 X11 的桌面帧/Popover 回归通过。
 CoreText 共享初始化与 GLES 最小上下文随后完成，消费使用独立 NanoVGo 分支，
-尚未发布 tag。WrapChar、完整共同原生 Go 测试、iOS 工厂、触摸/IME、UI 标题与
-服务适配、原型目录迁移继续分阶段推进。原生 uintptr 诊断按用户要求不阻塞
+尚未发布 tag。iOS 工厂与原型目录迁移随后完成；WrapChar、完整共同原生 Go
+测试、触摸/IME、UI 标题与服务适配继续分阶段推进。原生 uintptr 诊断按用户要求不阻塞
 基础功能接入。可分发依赖和组件、正式 APK/IPA、真机/16 KiB
 及公开工具附件仍待验收；此项不改变现有桌面构建命令，也不是已发布的移动端承诺。
 
@@ -1252,3 +1260,39 @@ SVG 按控件需要安排；SplitView、TextView 分别独立交付，P4 按真�
 只有真实需求或性能数据证明收益后再进入正式切片。
 
 </details>
+
+
+### 移动正式平台入口收敛（2026-11-05）
+
+- [x] 迁移共享窗口/队列至 platform/internal/mobile，保持固定启动 ABI。
+- [x] 补齐 platform/darwin/ios 与正常平台工厂，复用既有排版和绘图。
+- [x] 通过正式工厂重新验证两端 Software/GLES 与目标生命周期。
+- [x] 将原生制作、无原生编译器消费、测试组包路径固化到仓库脚本。
+- SafeArea、原生触摸/IME、正式组件发布及真机验收继续独立推进。
+
+验收：独立 X11 受控副本全仓 3516 通过、10 既有跳过，mobile/mobilebase race 通过；
+远端 Mac 的 Android API30 1x 与 iOS26.3 Simulator 3x，Software/GLES 四条正式工厂
+路径及旋转/后台恢复通过，18 处原生截图采样通过。Windows/macOS 桌面仅编译，
+iOS device 仅链接。首次 Scene 前 GPU、触摸/IME、安全区和真机仍未完成。
+具体边界与材料见 DesignMobilePlatform 第 11 节；尚未提交。
+
+
+### 移动固定入口与 .syso 对照（2026-11-05）
+
+- [x] 在仓库外验证 Go 汇编入口及 .syso，区分原版/临时修改的 Go 链接器。
+- [x] 原版 Go 链接器 + 最小 .syso/Go 回调注册，在 Android/iOS Simulator 原生
+  ABI harness 验证初始化、线程、GC、栈增长和回调；iOS device 只链接。
+- [ ] 保持原版 Go 链接器，比较现有最小 cgo 导出归档与 .syso 的复杂度后确定入口。
+- [ ] 移除统一 C/Objective-C 窗口宿主模型依赖，平台适配回归 Android/iOS Go 包。
+
+本轮未改生产代码或依赖；实验结果不等同于真实移动窗口/生命周期验收。
+具体证据、失败与边界见 PlanMobileBuild 第 17 节。
+
+### 移动端基座收敛
+
+- Android/iOS 的窗口、系统主线程接入与软件呈现由平台 Go 包负责；EGL/EAGL
+  上下文实现归 graphics/opengl，通过小接口借用平台原生目标及生命周期许可。
+- 最小标准 cgo 入口归档、UIKit 协议元数据、Java Typography helper 分别归属，
+  原生源由 Go 生成器输出仓库外；消费端不安装原生编译链。
+- 验证进度见 [PlanMobileConvergence](PlanMobileConvergence.md)。后续仍需正式移动
+  组件分发、真机、触摸/IME、SafeArea、GUI/UI 集成及商店发布支持。

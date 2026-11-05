@@ -1,8 +1,10 @@
 # 移动端构建：最小预编译基座
 
-状态：基座、原生链接组件、移动 ARM64 FFI 修复和 Linux/Windows 消费构建
-四个阶段已完成，记录见第 13–16 节。普通 Go 依赖仍从源码编译；Android/iOS
-模拟器的 ABI 运行通过，iOS 真机和 Android 16 KiB 内核运行仍待验收。
+状态：基座、原生链接组件、移动 ARM64 FFI 修复、Linux/Windows 消费构建及
+Go 平台适配收敛已完成，历史实验见第 13–18 节，当前构建与运行路径见第 19 节。
+普通 Go 依赖仍从源码编译；Android/iOS 模拟器的 Software/GLES 与生命周期
+验证通过。Android/iOS 真机、Android 16 KiB 内核运行、正式组件分发和公开
+`goui build` 移动目标仍待完成，不能将已有维护者工具描述成正式使用流程。
 正式平台启动与生命周期另见 [DesignMobileLifecycle](DesignMobileLifecycle.md)。
 最新包结构、首版两端 GLES 和文字排版路线见 [DesignMobilePlatform](DesignMobilePlatform.md)。
 尚未接入 GOUI 移动 UI 或改变面向用户的桌面构建命令。
@@ -40,15 +42,15 @@ cgo 包和商店自动发布不是第一阶段承诺。
 | FFI 支持 | 复用 purego/goexlib 的符号调用与回调；仅其实际使用 cgo 的小包需要预编译 | 构建调度、平台生命周期、打包签名 |
 | 链接工具与目标输入 | LLVM 链接器、归档工具、必要的 CRT/系统库 stub/链接配置 | 原生 UI 适配和 GUI 策略 |
 | `goui/platform` | Android/iOS 原生事实、窗口/视图、线程归属、生命周期、输入、绘制与排版 | 构建工具、用户界面策略 |
-| 平台宿主产物 | platform 所属的少量必要 C/Objective-C/Java 接入代码，独立预编译 | 通用 runtime 初始化的重新实现 |
+| 平台辅助产物 | 固定入口、iOS 最小 main/SDK 协议元数据、Android 排版 Dex，按归属独立制作 | 窗口模型、生命周期、绘制或通用 runtime 初始化的重新实现 |
 | `cmd/goui` | 选择并校验组件，驱动 Go 构建及原生链接，生成资源、组装与签名 | 运行时 UI 差异、应用事件处理 |
 
 运行时基座应能用一个不依赖 GOUI 的普通 Go 程序验证。它不能导入
 `goui/platform`、`gui` 或 `ui`，也不包含应用 ID、图标、权限或业务代码。
 
-平台宿主即使随工具分发，源码和行为仍归 platform。Android NativeActivity
-入口、iOS 应用入口与 UIKit 适配不能因为需要预编译而移入通用基座。
-平台 UI 的变化只重建对应宿主组件，不应强制重建通用运行时支持。
+平台辅助产物即使随工具分发，其源码仍归 platform。固定入口只转交 Go，
+Android NativeActivity 与 UIKit 的行为适配由 Go 实现，不能因为需要预编译
+少量辅助代码而移入通用基座。平台辅助组件与 runtime 支持分别标记身份。
 
 ## 3. 最小化预编译内容
 
@@ -759,11 +761,11 @@ AVD、SDK 下载及验证材料仍保留在上述私有临时目录供复现。
 
 ### 13.1 代码归属
 
-- `internal/mobilebase`：维护者导出、组件清单、完整性与兼容性校验、窄范围
+- `platform/mobile/base`：维护者导出、组件清单、完整性与兼容性校验、窄范围
   `cmd/go` 构建驱动适配。只依赖标准库，不导入 platform、gui、ui 或 FFI。
 - `cmd/goui-base`：基座维护者入口，提供 `driver`、`export`、`verify`。
   它用于阶段性制作与验收，不替代面向应用开发者的 `goui build`。
-- `internal/mobilebase/testdata`：独立普通 Go 应用、固定 cgo 测试入口和 C 验证宿主。
+- `platform/mobile/base/testdata`：独立普通 Go 应用、固定 cgo 测试入口和 C 验证宿主。
   测试入口不是正式 platform 入口，不承担 Android/iOS 生命周期适配。
 
 本阶段无须 fork Go：维护者工具读取精确匹配的 Go 1.25.8 源码，校验
@@ -892,7 +894,7 @@ Android 安装验收还发现临时 ZIP 重组代码把 `resources.arsc` 错误�
 ### 14.1 范围与归属
 
 本阶段继续只开发构建基座，不修改 platform、gui、ui，不把 Activity/UIKit
-宿主或生命周期策略放入通用组件。实现位于 `internal/mobilebase/native_*.go`、
+宿主或生命周期策略放入通用组件。实现位于 `platform/mobile/base/native_*.go`、
 维护者命令 `cmd/goui-base` 和内部外部链接入口 `cmd/goui-link`。
 仍未改变面向应用的 `goui build` 桌面契约。
 
@@ -1120,7 +1122,7 @@ cgo 包；两种 iOS 各收集 bridge 与 runtime/cgo。基座消费仍由普通
 
 ### 16.1 本阶段边界
 
-将前三阶段已经验证的手工命令封装到 `internal/mobilebase.Build`，并由维护者
+将前三阶段已经验证的手工命令封装到 `platform/mobile/base` 包的 `mobilebase.Build`，并由维护者
 入口 `goui-base build` 调用。它输出 Android `.so` 或与显式宿主链接后的 iOS
 可执行文件；不是 APK/IPA，不提前改变 `cmd/goui build` 的桌面语义。
 基座、目标链接输入、宿主链接工具仍是独立组件，不引入包含 UI 的大基座。
@@ -1160,7 +1162,7 @@ cgo 包；两种 iOS 各收集 bridge 与 runtime/cgo。基座消费仍由普通
 
 ### 16.3 文件与验证
 
-实现主要在 `internal/mobilebase/build.go`、`build_test.go`、维护者 CLI 与测试
+实现主要在 `platform/mobile/base/build.go`、`build_test.go`、维护者 CLI 与测试
 fixture。逻辑测试覆盖组件不匹配、错误 Go 环境、argv/路径、取消、失败及
 输出不被覆盖；假构建器只验证进程编排，不作为 native ABI 的证据。
 
@@ -1227,3 +1229,194 @@ goui-base build -go /path/to/go1.25.8/bin/go \
 
 组件索引/认证分发、已修复 FFI 的公开版本、APK/IPA 组装签名、正式移动平台
 接入仍为后续阶段；没有将上述私有 SDK/工具二进制或个人签名材料加入仓库。
+
+
+## 17. 固定入口与 .syso 对照验证（2026-11-05）
+
+### 17.1 问题与结论边界
+
+本轮只在仓库外验证原生固定入口、Go ABI 接入与系统目标文件打包，不修改生产
+platform/mobile、Android/iOS、FFI、现有链接适配器或已安装的 Go 工具链。
+此前统一 goui_host_* 的 C/Objective-C 窗口宿主不是本实验的前提，也不是已证明
+不可替代的架构。窗口、生命周期、输入和图形适配应继续向各自 Go 平台包收敛。
+
+特别区分四个组成部分：
+
+| 部分 | 已实现的基座方案 | 本轮默认结论 |
+|---|---|---|
+| Go 编译器、汇编器和 runtime | 原版 Go 1.25.8 | 继续复用 |
+| Go 链接器 cmd/link | 原版 | 不把定制作为正式方案前置 |
+| Go 构建驱动 cmd/go | 窄范围适配预编译归档接入 | .syso 不自动替代这部分工作 |
+| 原生链接 | goui-link 参数适配 + 原版 LLVM LLD | 不等同于修改 Go 链接器 |
+
+### 17.2 对照方案
+
+1. **原版链接器 + 普通 Go 汇编固定符号**：Android 能输出 .so，但动态表中缺少
+   goui_run/ANativeActivity_onCreate，原生 dlsym 失败；iOS 原生调用方链接时报入口
+   未定义。普通 Go 汇编 TEXT 定义不等于原生符号的导出与保留元数据。
+2. **临时 Go 链接器元数据适配 + Go 汇编入口**：私有 overlay 只补充静态/动态
+   导出、存活根和私有 ELF 符号可见性；不修改 runtime。入口保存 C ABI 寄存器，
+   复用 _cgo_wait_runtime_init_done、crosscall2、_cgo_release_context。
+   通过静态顶层函数值取得 ABIInternal 入口 PC，依赖固定 Go 版本，不作为稳定 API。
+3. **临时元数据适配 + 原生汇编 .syso**：.syso 定义固定原生符号并转至 Go 汇编
+   网关。与方案 2 都完成运行验证；但恢复原版 Go 链接器后，.syso 对 Go 私有网关
+   的引用仍未定义，因此不能用这个结果证明“.syso 自动解决 Go 符号导出”。
+4. **原版 Go 链接器 + 最小入口 .syso + Go FFI 回调注册**：.syso 仅实现固定入口、
+   回调注册/等待，以及标准 runtime/cgo 初始化网关；不包含窗口、事件、UIKit、
+   JNI、EGL 或业务策略。Go init 使用现有 FFI 注册 callback，随后由正常 runtime
+   callback 路径进入 Go。消费端无 import C，不需要新的固定入口 Go 包归档。
+   本原型额外导出私有 goui_register_entry，通过 Dlsym 注册，不能描述成严格仅两个
+   导出符号，也不能不经设计就替换现有入口。
+
+方案 4 尝试过隐藏注册函数并用 Go 汇编取地址：原版 Go 链接器先报告 missing
+section；增加允许的 cgo_import_dynamic 声明后，仍报告 SDYNIMPORT 地址重定位
+不支持。失败消息及最后一次尝试的源码保留；最终测试没有伪造 cgo 生成文件名或修改 compiler 安全限制，
+而是明确使用可查询的私有注册符号。
+
+第一次临时导出适配还把私有 trampoline 带入 ELF 动态表；补上 hidden visibility
+后再验证固定入口与私有符号分离。相关失败与修正均属临时对照，不进入生产工具。
+
+### 17.3 实测与材料
+
+- 构建/消费：Linux amd64、Go 1.25.8。普通 Go 源码和 FFI 从源码构建，继续复用
+  已验证的 runtime/cgo 归档；Android 另需 purego/internal/cgo。没有复用旧 GOUI
+  goui_run 导出归档，没有安装消费端原生编译器。
+- 运行：远端 macOS 15.7.7 ARM64，Android 11/API30 ARM64 模拟器，以及 iOS26.3
+  ARM64 Simulator。使用独立原生 ABI harness（Android 命令行 dlopen、iOS simctl
+  spawn）；不是 NativeActivity/UIKit 窗口与生命周期验收，也不代表桌面 GUI 验收。
+- 方案 2、3、4 在两端各通过一次完整检查：每个进程 130 次入口调用与 130 次
+  Go→原生→Go 回调，覆盖原生测试进程主线程和 5 个外来 pthread；参数、返回值、
+  OS 线程归属、GC 与递归栈增长断言通过。
+- init 阶段由测试专用原生条件变量阻塞；调用方先请求入口，再放行 init。
+  入口不能提前返回，Go handler 必须看到包初始化完成；initCalls 始终为 1。
+  栈增长函数的反汇编确认每层约 8 KiB 栈帧，递归 41 层；不是只根据源代码猜测。
+- Android 原版汇编入口的负例通过：dlsym 缺入口，harness 按预期返回 4。
+  iOS 原版汇编和 Android .syso→Go 私有符号的链接失败也保留。
+- 三条成功路线的 iOS device ARM64 均只完成链接，未签名、未真机运行。
+  方案 2、4 另做 Android 冷缓存消费；系统编译器拒绝记录均零新增。运行测试的
+  原生 harness/入口 .syso 由维护者预先编译，不把这一阶段算作消费 Go 构建。
+- 方案 4 的入口对象为数 KiB 的独立目标文件；iOS Simulator/device 均为 ARM64，
+  必须由构建工具按 variant 选择，不能仅用 _ios_arm64.syso 文件名同时放入两者。
+
+源码、构建脚本、私有链接器 overlay/差异、负例、结果和反汇编保存在
+Linux/Mac `/tmp/goui-mobile-entry-f6t_8yof`，源码与日志归档为
+sources-and-logs.tar.gz，原生结果为 results.tar.gz。验证后专用模拟器、私有 ADB
+与 Android 临时目录均清理。安装的 Go 工具链与主会话工作区未修改。
+
+### 17.4 后续选择
+
+正式开发优先保持原版 Go 链接器。已有“最小 cgo 导出归档”本来就不需要修改
+cmd/link，应先将它与“大型原生窗口宿主”区分；前者可以保留，后者没有继续
+扩展的必要。
+
+.syso 是可用的原生对象接入方式，方案 4 证明它也能承载最小入口，但引入了私有
+回调注册和等待机制，未证明比现有生成式 cgo 入口更简单。暂不替换生产基座，
+不把临时链接器适配、静态函数值布局或第三个注册符号固化为公共契约。
+下一阶段先确定最小入口形式，再迁移 Android/iOS 平台适配至 Go，分别验证真实
+NativeActivity、UIKit 主线程、事件循环、目标生命周期与图形路径。
+
+文档交付前，对上一阶段受控源码副本在独立 Xvnc :78 会话执行
+`GOWORK=off go test -json ./...`（含 Go 缓存）：3516 项通过、10 项既有跳过，
+无失败。该副本不包含原工作区未跟踪旧例程，显式替换实验依赖；本轮生产源码未变。
+这项复核不替代入口实验，也不代表原目录或真机 GUI 通过。
+
+## 18. 基座职责收敛（2026-11-05）
+
+[PlanMobileConvergence](PlanMobileConvergence.md) 取代统一 C/Objective-C 窗口宿主路线。
+基座原生归档仅 runtime/cgo、purego 必需支持包及标准 cgo 固定入口；Android/iOS
+窗口、生命周期、呈现与 EGL/EAGL 回到 Go。iOS SDK 协议元数据独立属于 UIKit
+组件，不把动态协议声明或窗口行为放进 runtime 基座。原生源内嵌 Go 生成器，
+维护工具用 Go 实现 base/native/build/package，消费端不运行原生生成或编译。
+具体运行结果、源码冻结及未验范围见该计划；本章前文保留各历史阶段的原始证据。
+
+## 19. 当前纯 Go 应用的构建与运行路径（2026-11-05）
+
+### 19.1 使用者编写什么
+
+应用仍是普通 Go main 包，通过 platform.NewPlatform 创建平台对象，创建逻辑窗口、
+Painter 与文字资源，再进入平台 Run。构建工具通过临时 overlay 注册这个 main，
+不改写用户源文件，也不要求用户手写原生导出。平台例程 mobile_paint 已覆盖此路径。
+GUI、Widget、声明式 View、触摸和 IME 均不是本轮构建闭环的前置条件。
+
+“纯 Go”描述应用源码和使用者工具链要求；内部 CGO_ENABLED=1，以复用原版 Go
+runtime/cgo、FFI 和标准原生回调。构建时消费对应归档，不执行 C 编译或 cgo 代码生成。
+普通 Go 标准库、应用和依赖仍按源码构建；任意第三方 cgo 包不在当前支持范围。
+
+### 19.2 维护者预先制作什么
+
+| 组件 | 当前内容 | 制作与使用边界 |
+| --- | --- | --- |
+| 原生必需 Go 归档 | runtime/cgo、purego/internal/cgo、platform/mobile/internal/entry | 按精确 Go 版本、模块身份、目标、variant 和 ABI 校验；不预编译整个 GOUI |
+| 宿主工具 | 适配 cmd/go 的归档消费驱动、goui-link 和宿主 LLVM LLD | 原版 cmd/link 不修改；goui-link 只处理原生链接，不编译 C |
+| 目标链接输入 | CRT、系统库 stub、链接约束 | 与宿主工具分开；Android/iOS、device/simulator 不混用 |
+| Android 辅助资源 | Android Layout/Canvas 的排版 helper Dex | helper 由维护者从 Go 内嵌源码生成并编译；应用构建不需要 Java/D8 |
+| iOS 辅助对象 | 调用 goui_run 的最小 main、UIKit 两个 SDK 协议的 metadata | 窗口、delegate、IMP、生命周期和呈现仍为 Go；不是统一原生宿主 |
+| 组包与签名工具 | Android 资源工具、APK 签名；iOS bundle 与平台签名 | 独立于运行时基座；正式跨宿主分发、证书接入与最终 CLI 尚待开发 |
+
+维护源码仅保留 Go，必要的 C/Objective-C/Java 文本内嵌生成器，通过 go generate
+输出至仓库外。预编译组件允许带有原生产物，不表示要把 SDK、编译器或生成步骤
+交给使用者。工具与 Apple SDK 输入的分发还需分别完成许可和版本审核。
+
+### 19.3 应用怎样构建
+
+```text
+应用 main + 普通 Go 依赖 + platform 的 Go 实现
+                    │ 精确 Go 工具链、临时 main 注册 overlay
+                    ▼
+             Go 编译器 / 汇编器
+                    │ 原生必需包复用校验后的归档
+                    ▼
+             原版 Go cmd/link
+                    │ goui-link → 预制 LLD + 目标链接输入
+          ┌─────────┴──────────┐
+          ▼                    ▼
+Android c-shared          iOS c-archive
+    libgoui.so             Go 静态归档
+          │                    │ 最小 main + UIKit metadata
+          │                    ▼
+          │              Mach-O 可执行文件
+          ▼                    ▼
+资源 / Dex / manifest      Info.plist / 图标 / profile
+          ▼                    ▼
+     APK 对齐、签名       App 签名 → .app / IPA
+```
+
+因此两端并非一律“固定壳 dlopen Go 动态库”。Android 使用 NativeActivity 加载 Go
+共享库；当前 iOS 用原版 Go 的 c-archive 静态链接成主可执行文件，没有独立 Go
+framework，不需要另签一个 Go framework。将来如改变产物模型，须重新验证启动与签名。
+
+当前可执行工具为维护者 goui-base/goui-link 和
+[mobile_build](../tests/window/platform/mobile_build/README.md) 的
+base/native/build/package；公开 cmd/goui 仍只支持桌面，不应把上述 JSON 例程配置
+作为正式应用开发契约。下一阶段复用已有实现接入公开构建、打包、组件和签名流程。
+
+### 19.4 Android 怎样运行
+
+1. 系统启动 NativeActivity，加载 APK 内的 libgoui.so，调用固定导出
+   ANativeActivity_onCreate；原版 Go runtime 与包初始化由标准入口链路保证。
+2. 固定入口转交 Go 的 android.onCreate。原生主线程安装 NDK 回调、保留 JVM 等
+   必需数据，再启动锁定 OS 线程的 Go 应用入口；不让 main 阻塞系统 onCreate。
+3. main 使用普通 platform 工厂、逻辑 Window 和 Run。Go 实现 ALooper/eventfd、
+   生命周期、Software 呈现；OpenGL 包拥有 EGL/GLES context 与 drawable。
+4. 原生表面创建/销毁与逻辑窗口分离。销毁前同步撤销绘制租约，恢复后可重建
+   drawable；无需重新创建应用业务状态。进程被系统终止后的状态恢复仍由应用设计。
+
+### 19.5 iOS 怎样运行
+
+1. 系统进入最小原生 main，调用 goui_run，通过标准 Go 原生入口进入启动逻辑。
+2. 真正系统主线程由 Go 调用 UIApplicationMain，注册 Go 实现的 App/Scene
+   delegate 和 IMP。SDK 协议 metadata 只保证正式协议声明可被 runtime 找到。
+3. UIKit 启动回调安排应用 main 在独立、锁定 OS 线程的 GOUI 线程执行；UIKit
+   调用和事件通过主线程队列协调。LockOSThread 不能把工作线程变成系统主线程。
+4. Go 窗口适配管理 UIView/Scene/Software 呈现；OpenGL 包管理 EAGL/FBO。
+   进入后台前同步收回包括离屏目标在内的 GPU 许可，恢复后重建 drawable。
+
+### 19.6 可以确认到哪一步
+
+已实测 Linux/Windows 无消费端原生编译器的构建路径，以及 Android/iOS ARM64
+模拟器中的启动、排版、Software/GLES、旋转和前后台恢复。包迁移后重新通过
+冷缓存归档接入、桌面全仓回归及三目标消费链接，完整范围见 PlanMobileConvergence。
+
+尚不能宣称“使用正式 goui build 已生成真机正常运行的 App”：Android 真机、现代
+16 KiB 设备、iOS 设备签名/profile/安装、公开组件分发和正式 CLI 尚未验收。
+接下来先用 platform-only 例程补齐该闭环，再处理 GUI 触摸、IME、安全区域和 UI。

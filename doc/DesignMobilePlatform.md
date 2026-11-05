@@ -1,11 +1,15 @@
 # 移动端平台、绘图与文字排版
 
-状态：2026-11-04 更新的实施计划。基座、启动、逻辑窗口及 Software 已完成的
+状态：2026-11-05 更新的实施计划。基座、启动、逻辑窗口及 Software 已完成的
 范围见 [PlanMobileBuild](PlanMobileBuild.md) 与
 [DesignMobileLifecycle](DesignMobileLifecycle.md)。本篇规定后续结构与顺序，
-不表示完整目录迁移或全部移动能力已经实现。两端排版/绘图的最小切片见第 10 节；
-它不等同于完整 Platform 工厂、GUI/UI 或真机支持。Android 文字基础包装已实现，
+共享实现目录迁移与双端平台工厂见第 11 节历史记录；当前基座收敛见第 13 节。
+两端排版/绘图的最小切片见第 10 节，不等同于 GUI/UI 或真机支持。Android 文字基础包装已实现，
 当前限制与验收见 [DesignAndroidTypography](DesignAndroidTypography.md)。
+
+2026-11-05 补充：安全区域、屏幕圆角和条件布局的后续方向单列在
+[DesignSafeArea](DesignSafeArea.md)，本轮仅记录，不实施。当前优先完成平台
+基本可用性，完整避让与 GUI/UI 接入不作为这一切片的前置。
 
 ## 1. 目标与边界
 
@@ -39,7 +43,6 @@ platform/
   darwin/
     cocoa/                      既有 macOS AppKit 后端
     ios/                        iOS 平台后端，包名 ios
-      native/                   必需的 Objective-C 宿主
     frameworks/
       core_foundation/
       core_graphics/
@@ -48,9 +51,10 @@ platform/
       appkit/
       uikit/
       quartzcore/
+      opengles/
+    libs/dispatch/               原生主线程投递绑定
   android/                      Android 平台后端
     libs/                       按公开原生 API 组织绑定
-    native/                     必需的 NativeActivity/JNI 支持
   graphics/
     software/
     opengl/                     桌面 GL 与移动 GLES Painter
@@ -67,8 +71,7 @@ platform/
 Objective-C 支持，所以归于 darwin；Android 的 Bionic、Activity、JNI、生命周期
 不同于 Linux 桌面，独立于 linux/x11 与未来的 wayland。
 
-当前 platform/mobile 中的共享 Go 窗口/队列移至 internal/mobile；Android 与
-iOS 的宿主分别回到对应平台。mobile 保留构建工具生成文件使用的 RegisterMain
+共享 Go 窗口/队列位于 internal/mobile；Android 与 iOS 的原生适配由各自 Go 包负责。mobile 保留构建工具生成文件使用的 RegisterMain
 和最小固定入口，不再成为应用需要直接选择的另一套平台 API。正式使用仍从
 platform.NewPlatform/NewWindow/NewPainter/NewTypography 进入。
 
@@ -408,8 +411,13 @@ Painter，首个 Scene 前的 GPU 构造仍待工厂切片设计。真正的 EGL
 
 ### 10.2 NanoVGo 修正与失败证据
 
-独立 nanovgo-mobile 的 feature/mobile-base 分支基于 v0.0.10；主会话 nanovgo
-仓库未修改。当前消费使用显式 workspace，不把未发布分支写成正式 tag 依赖。
+前轮实测使用独立 nanovgo-mobile 的 feature/mobile-base 分支，基于 v0.0.10；
+当时主会话 nanovgo 仓库未修改。截至 2026-11-05，已按用户要求迁入原仓库
+`/data/xuyang8/repos/nanovgo` 的 feature/mobile-base，基于 main ba74253 得到
+8256df5，保留 main 的抗锯齿和独立阴影圆角改动。迁移后的隔离源码全包测试及
+本机 Mesa GLES 3 shader 编译/链接通过，没有重新执行 Android/iOS 原生验收。
+下文的移动原生结果仍对应 3a93aef，不据迁移推断新版已重复完成相同验收。
+消费使用显式 workspace，不把未发布分支写成正式 tag 依赖；尚未推送。
 
 - 移动 shader 使用 GLSL ES 300 与 GL3 路径，版本声明位于首行。Android 实际
   编译器拒绝原先的前置换行；旧 createInternal 忽略 renderCreate 错误，导致
@@ -481,3 +489,162 @@ GOUI 缺陷或所有 iOS 版本都如此。字体资产/原生参考及真机另
 主会话仓库或 cgo/purego 源码。iOS Scene 断开/重连、真机/16 KiB 内核、GPU
 性能/内存、真正的 context loss 恢复、正式工厂/绘图选择、目录迁移、触摸/IME
 及发布组件均未完成。后续先收敛平台工厂和组件选择，再按设计接 GUI 输入。
+
+
+## 11. 正式平台工厂与共享实现收敛（2026-11-05）
+
+共享事件队列、逻辑窗口、原生目标借用和共同宿主协议迁入
+`platform/internal/mobile`。`platform/mobile` 仅保留 RegisterMain、GOUI 线程启动
+及固定 ABI 入口；`platform/mobile/internal/entry` 的包身份和源码不变，已有基座
+归档继续校验复用。Android/iOS 宿主分别进入 `platform/android/native` 和
+`platform/darwin/ios/native`，共同 C ABI 头位于 `platform/internal/mobile/native`。
+目录迁移不改变宿主消息、线程、目标撤销或绘制许可行为。
+
+`platform/darwin/ios` 提供独立的 iOS Platform，复用内部移动实现、CoreText 和
+Software/GLES。DefaultName 报告 ios，Cocoa 平台工厂明确排除 ios。
+同一应用标识复用单例，单个事件队列及内容窗口；不实现 DesktopWindow。
+缺少宿主、不支持的操作与尚未就绪的目标保持显式错误，不伪造桌面能力。
+
+两端 NewPainter 默认 Software，支持显式 `GOUI_PLAT_PAINTER=opengl`；未知名称
+返回 ErrUnsupported，不静默降级。Software 可在 Run/原生目标就绪前构造；iOS
+GLES 仍须等前台绘制许可，不能把首帧构造成功描述成任意后台/首次 Scene 前
+GPU 构造通过。工厂在目标未就绪时立即返回 ErrUnavailable，不等待 UIKit。
+宿主按 Software/GLES 分别编译，不混用呈现层。
+
+平台验收程序改为通过 NewPlatform/NewWindow/NewTypography/NewPainter 进入，
+不从 tests 直接访问内部移动窗口。新增维护者 `mobile_paint/build.py`，显式分开
+native、build、package；配置和组件身份由维护者提供，不依赖固定临时路径。
+消费阶段不调用 SDK 或原生编译器。iOS 组包输出未签名 .app，正式 IPA、签名配置
+和组件分发仍待实现。
+
+构建预检同时修正 go env 查询 cgo flags 时的系统 CC 探测：最初的工具链查询
+即设置 CC/CXX 为链接前端，不只在后续 Go build 设置。现有 BuildPublication
+测试增加全步骤环境断言；旧实现被断言检出，修正后通过，调用方环境保持不变。
+
+
+### 本阶段验收
+
+- 共享 Go 窗口/队列、原生宿主迁移后，除 include 路径外逐字一致；固定入口归档的
+  包身份和源码不变。Android/iOS 四种绘制路径均从正式平台工厂进入。
+- 远端 macOS 15.7.7 ARM64：Android 11/API 30 ARM64 ATD、1x、CheckJNI，
+  Software 273 项、GLES 274 项通过；两次旋转和一次后台恢复，后台帧数保持不变，
+  原 PID/nonce、图片与布局保持有效，无 JNI/native 崩溃。
+- 同机 iOS 26.3 ARM64 Simulator、3x：Software 274 项、GLES 最终 276 项通过；
+  两路径各八次旋转和三次 Home/恢复，后台帧数不变，nonce、布局和图片保持有效。
+  GLES 最终额外覆盖首次 Run 前请求 GPU 立即返回 ErrUnavailable。
+- 两端共六张原生截图、18 处已知 DIP 色块内部采样通过；iOS LandscapeLeft 按
+  明确系统方向逆时针旋转 90° 归一。每通道误差上限 1，与原有 8-bit 量化规则一致；
+  未通过颜色猜测方向或移动采样点。当前顶端文本仍进入系统栏区域，SafeArea 未实现，
+  已知模拟器 Emoji LastResort 占位仍保留，不声称完整移动 UI/Emoji 通过。
+- Linux amd64 / Go 1.25.8，在独立 Xvnc :78 / Xfwm4 合成会话的受控源码副本，
+  显式替换三个实验依赖后执行 `GOWORK=off go test -json -count=1 ./...`：
+  最终 3516 项通过、10 项既有跳过、0 失败；原工作区未跟踪旧 example 不在副本内，
+  不把隔离结果描述成原目录直接全仓通过。
+- `go test -race ./platform/internal/mobile ./platform/mobile ./platform/mobile/base`
+  通过。Windows amd64/macOS arm64 的全仓 CGO_ENABLED=0 编译通过，测试使用
+  `-exec /usr/bin/true` 仅完成构建，没有执行对应平台原生测试。
+- 最终工具在 Linux 消费 Android Software/GLES、iOS Simulator/device 各两后端，
+  六次构建/链接通过；系统编译器拒绝记录零新增。此前 go env 的 CC 探测曾触发
+  拒绝脚本，修正前日志与回归失败保留，没有把尝试次数写成零。
+- mobile_start/mobile_surface 的 Android/iOS Simulator、android_text 的 Android
+  共五个原有例程调整后构建/链接通过；不以此代替旧例程操作流程的重新验收。
+- iOS device 仅链接通过，未签名或运行；正式 IPA、组件分发、真机、GPU 性能/内存、
+  原生触摸/IME、多 Scene 和真正 context loss 恢复均未在本阶段完成。
+
+日志、收据、构建和截图保存在 Linux/Mac 的 `/tmp/goui-ios-factory-h5vzeuvh`，
+原生运行材料归档为 evidence.tar.gz；专用模拟器、私有 ADB 与本机独立 X11 已清理。
+本阶段没有修改 cgo/purego/nanovgo 源码或主会话工作区，尚未提交。
+
+
+## 12. 固定入口路线复核（2026-11-05）
+
+现有预编译最小 cgo 导出归档 + 构建驱动/LLVM 适配器方案未修改 Go 链接器。
+Go/汇编直接导出与 .syso 的对照实验见 [PlanMobileBuild 第 17 节](PlanMobileBuild.md#17-固定入口与-syso-对照验证2026-11-05)。
+其中临时 cmd/link 修改只用于验证符号导出元数据，不进入正式路线。
+原版 Go 链接器配合最小 .syso/Go 回调注册也已运行通过，但多了一项私有注册
+机制，不能据此认定它优于既有最小导出归档。正式目标仍是用户无原生工具链、
+平台适配由 Go 完成；不为坚持某种入口写法而扩大工具链定制。
+
+第 11 节记录收敛前的共享窗口及 C/Objective-C 宿主验证；该宿主协议已由第 13 节
+的 Go 适配取代。入口实验中的私有 .syso 回调注册协议不进入生产路线。
+
+## 13. Go 平台适配与最小基座收敛（2026-11-05）
+
+实现与阶段验收记录见 [PlanMobileConvergence](PlanMobileConvergence.md)。仅维护 Go
+源文件；必要的 C/Objective-C/Java 参考或 helper 内嵌 Go 生成器，使用 go generate
+生成到仓库外。SDK 编译只发生在维护者制作组件阶段，使用方不运行生成器。
+
+### 职责与入口
+
+- platform/mobile/base（包名 base，调用方别名 mobilebase）：维护者导出、基座清单、构建驱动与链接工具
+  实现；与运行时启动分包，platform/mobile 不导入此子包。
+- platform/mobile：公开 RegisterMain，构建工具在临时 overlay 中生成注册；最小
+  标准 cgo 导出包把 goui_run 和 NativeActivity 创建参数交给 internal/mobileentry。
+- internal/mobileentry：一次性启动与 Go 线程附加；不处理窗口、绘图或原生事件。
+  iOS 的 NativeRun 由 ios 包安装，在真实系统主线程调用 UIApplicationMain；Android
+  由 android 包安装 NativeCreate，接收 ANativeActivity 后立即返回系统循环。
+- internal/mobile：共享 Go 队列、逻辑 Window、Source 和绘制租约。Source 是 Go 内部
+  观察入口，负责同步撤销许可并将窗口状态投递 Go 队列，不定义 C 事件包或窗口 ABI。
+- android：拥有 NativeActivity/Looper 回调、JNI 附加、Activity 重建与 NDK 软件提交。
+  libs/android、libs/libc、libs/egl、libs/jni 只表达原生 API。
+- darwin/ios：拥有 UIApplication/Scene delegate、UIKit 对象、主线程投递、CGImage
+  软件提交、drawable 层和 GPU 生命周期许可。原生绑定在 frameworks 中。
+- graphics/opengl：拥有 EGL/EAGL context、surface/framebuffer、当前绑定、交换和释放。
+  与 Linux GLX 相同，在绘制包内定义最小窗口接口，由平台 Window 实现；不导入具体
+  android/ios 窗口包，不再反向委托窗口 NewGLContext，也不查询私有宿主符号。
+
+生产中不再存在 goui_host_* C 窗口/图形协议。两端有自己的 Window/EventLoop 类型，
+共享部分不包含 UIKit、JNI、NDK、EGL 或 EAGL。UIKit 与 NativeActivity 系统线程不等待
+整个 Go main；应用 main 和绘图运行在锁定的 Go 工作线程。
+
+### 原生对象与资源
+
+Android callbacks 表仅包含长期有效的原生回调地址，不在 C 内存中保存 Go 指针。
+JNI 全局 ClassLoader 属于进程，Activity/Env 属于系统线程及当前 Activity。eventfd
+只唤醒 Go 管理的原生任务队列；输入队列仍报告未处理，不提前实现 GUI 触摸/IME。
+NDK 目标销毁或尺寸变化前同步撤销租约；EGLSurface 独立持有 ANativeWindow 引用，
+但旧目标撤销后不可再次绑定。context、FBO、图片继续由渲染线程拥有。
+
+iOS 主线程创建并显式释放 UIWindow、UIViewController、UIView 和 CAEAGLLayer。
+Software 使用普通 CALayer，GLES 使用其独立子层；不在 CAEAGLLayer 中混用 contents
+软件呈现。软件提交通过 CFData 复制输入、CGImage 保持原生引用，合并主线程提交，
+按 handle/generation 丢弃过期结果，持有绘制租约时不等待主线程。
+
+EAGL 执行许可覆盖窗口与离屏绘制。后台回调先关闭许可并等待已提交 GPU 工作完成，
+再撤销目标；不能仅停止可见绘制而继续执行 scratch GL。目标变化前先撤销借用，
+再修改 drawable 层；不能在原生线程重新绑定 Go 渲染线程的 context。
+
+移动绘制包通过 mobileNativeWindow 借用 NativeTarget。iOS 再通过 eaglNativeWindow
+取得 NativeEAGLLayer、准备层可见性及锁定 GPU 执行许可：PrepareEAGLLayer 只在
+上下文构造前执行，可能等待 UIKit 主线程，必须先于目标借用及 GPU 锁；后续层查询
+在目标租约保护下直接返回借用值，不做主线程等待。LockGPU 始终取得生命周期锁，
+返回值仅表示当前是否允许 GL；两种结果都必须 UnlockGPU。后台许可检查失败时也
+先释放锁，销毁则持锁判断是否允许 GL 清理，并最终释放线程拥有的 EAGL context。
+原生库绑定位置、同步撤销顺序及资源所有者不随目录迁移改变。
+
+
+### 维护者与消费构建
+
+[mobile_build](../tests/window/platform/mobile_build/README.md) 通过 Go 实现 base、
+native、build、package 四个独立阶段。最小基座仅包含原生必需包归档；普通 Go 包
+继续从源码编译，平台 UI 改动不要求把整个平台后端预编译进基座。
+
+iOS 原生 main 仅调用 goui_run，源码由 platform/mobile 的 Go 生成器提供。
+UIKit 绑定另有一个约 24 KiB 的 SDK 协议元数据对象：只以 @protocol 引用
+UIApplicationDelegate、UIWindowSceneDelegate（含继承协议），不定义宿主类或回调。
+Apple runtime 不保证只声明、未被使用的协议有运行时对象，直接 objc_getProtocol
+可能为空；这一点已在 iOS 26.3 Simulator 验证。metadata 源码内嵌 UIKit Go 生成器，
+与该 SDK/目标身份匹配，由维护者编译；它属于 UIKit 适配组件，不属于 runtime 基座。
+不手工复制 SDK 协议定义，也不伪造同名空协议。依据见
+[Apple Protocol Objects](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/ObjectiveC/Chapters/ocProtocols.html)。
+Java Typography helper 仍是独立组件，不混入 runtime 基座。测试 C/Objective-C
+参考也由 Go 生成器维护；Android 以 func_name=probe_onCreate 包装真实创建入口，
+不要求生产 API 暴露测试沙箱路径或 VM getter。
+
+沿用 stock 编译器、汇编器、runtime、cmd/link；目前仅保留既有窄 cmd/go 归档驱动
+和 LLVM 参数适配器。CGO_ENABLED 是内部构建细节，承诺是用户无需原生工具链，
+而不是禁止维护者复用标准 cgo 归档。正式组件分发、真机、触摸/IME 与商店验收尚未完成。
+
+原生约束依据：[NativeActivity 自定义入口](https://developer.android.com/reference/android/app/NativeActivity#META_DATA_FUNC_NAME)、
+[Apple OpenGL ES 线程约束](https://developer.apple.com/library/archive/documentation/3DDrawing/Conceptual/OpenGLES_ProgrammingGuide/ConcurrencyandOpenGLES/ConcurrencyandOpenGLES.html)。
+UIKit 对象按系统主线程调用；Go 运行验证结果与链接结果分别记录，不作跨设备推定。

@@ -9,11 +9,12 @@ NativeActivity 正式宿主和 Software。程序含 Java 测试 helper，所以�
 hasCode=true。Go 用户代码不使用 import C，不访问系统私有文字库或 DevServer。
 
 维护者准备：可使用 NDK 编译测试包装、Java 11 的 jdk.compiler 和 D8 制作 Dex；
-这些步骤与用户消费构建分开。Python 3 无第三方模块依赖，但参考生成需要
+这些步骤与用户消费构建分开。独立参考由 Go 维护工具生成，需要
 维护者系统安装的公共 HarfBuzz，以及含 ffi 连字/希伯来文/阿拉伯文的字体
 （例如 DejaVuSans.ttf）。字体只复制进本次临时 APK，不向仓库增加字体副本。
 
-构建：python3 build.py /仓库外/config.json。JSON 中全部路径由维护者显式提供：
+构建：使用 [mobile_build](../mobile_build/README.md)，fixture=android_text，
+依次执行 base/native/build/package。JSON 路径由维护者显式提供：
 
 ```json
 {
@@ -23,8 +24,10 @@ hasCode=true。Go 用户代码不使用 import C，不访问系统私有文字�
   "androidJar": "/工具/android.jar",
   "d8": "/工具/d8.jar",
   "cc": "/工具/android-clang",
-  "cgo": "/源码/cgo",
-  "purego": "/源码/purego",
+  "fixture": "android_text",
+  "target": "android",
+  "variant": "device",
+  "modules": ["/源码/cgo", "/源码/purego", "/源码/nanovgo"],
   "gouiBase": "/工具/goui-base",
   "go": "/工具/go1.25.8/bin/go",
   "driver": "/工具/go-mobile",
@@ -32,8 +35,6 @@ hasCode=true。Go 用户代码不使用 import C，不访问系统私有文字�
   "base": "/组件/base.json",
   "inputs": "/组件/inputs.json",
   "tools": "/组件/tools.json",
-  "host": "/组件/正式Android宿主.o",
-  "compileHost": true,
   "consumerPath": "/只含消费构建所需工具的目录",
   "aapt2": "/工具/aapt2",
   "signer": "/工具/apksign",
@@ -43,14 +44,9 @@ hasCode=true。Go 用户代码不使用 import C，不访问系统私有文字�
 }
 ```
 
-host 是 platform/mobile/native/android.c 以
--DANativeActivity_onCreate=goui_android_create 单独预编译的正式宿主；不把本例
-helper 并入 runtime/cgo 基座。签名仅用临时测试身份，不修改系统安全配置。
-build-receipt.json 和 consume.log 区分维护者编译与无原生编译器消费。
-compileHost=true 时在维护者阶段从当前正式源码生成输出目录的 host.o；false
-时复用 host 参数。宿主须包含 JavaVM/ClassLoader bootstrap，旧宿主不适用。
-维护者 Java 阶段同时编译 androidtext 的生产 helper 与本目录的独立参考，消费
-构建不运行 javac、D8 或 NDK。测试包仍不是公开移动构建命令。
+窗口和生命周期由 platform/android 的 Go 实现承担；原生测试参考与 Java helper
+内嵌 Go 生成器，通过 go generate 输出仓库外。NativeActivity 使用
+func_name=probe_onCreate 包装真实固定入口；不再编译单独的生产 C 宿主。
 
 启动：安装输出目录的 probe.apk，然后启动
 org.golanggui.androidtext/android.app.NativeActivity。初始画面是浅色背景的多语言

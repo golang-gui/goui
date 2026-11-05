@@ -1,5 +1,16 @@
 # Plan
 
+## 安全区域与条件布局（2026-11-05，仅设计）
+
+- [x] 将系统安全 Insets、缺口/圆角几何、窗口按钮局部占位与条件布局记录在
+  [DesignSafeArea](DesignSafeArea.md)。接口均为候选，尚未实现或冻结。
+- [ ] 平台查询/通知、GUI 局部计算、可选 SafeArea 与 UI 绑定留待后续独立启用；
+  完整嵌套消费、精确屏幕轮廓和类似媒体查询的设施不是当前前置。
+- 当前优先完成 Android/iOS 平台基本可用性，不据此推进 GUI/UI。
+- NanoVGo 已迁入原仓库 `/data/xuyang8/repos/nanovgo` 的 feature/mobile-base，
+  基于 main ba74253 得到 8256df5；迁移的全包测试及 Mesa GLES shader 检查通过，
+  未推送，也未重新执行移动端原生验收。旧 3a93aef 保留为前轮验证基线。
+
 ## 移动平台下一切片顺序（2026-11-04）
 
 - 触摸设计已写入 [DesignTouchInput](DesignTouchInput.md)，尚未实现。
@@ -14,8 +25,9 @@
 - [x] 隔离源码全仓 3516 通过/10 既有跳过，相关 race、独立 X11 Software/
   OpenGL 1x/2x 八次原生回归，Windows/macOS 全仓编译；macOS CoreText 51
   个原生通过项。消费构建零原生编译器调用；真机未执行。
-- [ ] iOS 工厂/正式绘图选择、原型目录迁移、safe area、组件分发；先完成平台
-  收敛再接 GUI。NanoVGo 使用独立分支 3a93aef，未发布依赖 tag。
+- [ ] iOS 工厂/正式绘图选择、原型目录迁移、组件分发；先完成平台收敛再接 GUI。
+  safe area 按上方 2026-11-05 记录后置。前轮 NanoVGo 验证基线为 3a93aef，
+  当前迁移分支为原仓库 8256df5，未发布依赖 tag。
 - [ ] 两端平台路径通过后再实施触摸事件、GUI 竞争/滚动/编辑，随后单独接 IME。
 - Android WrapChar 与完整移动能力另行排期；首轮不扩大 GUI 或 runtime 基座。
 - 结果、限制及首轮失败见 [DesignMobilePlatform 第 10 节](DesignMobilePlatform.md#10-两端-typography--graphics-最小实现2026-11-04)。
@@ -128,7 +140,7 @@
 
 - 设计及命令见 [PlanMobileBuild 第 16 节](PlanMobileBuild.md#16-第四阶段无原生编译器的消费构建编排2026-11-03)。
   第三阶段已提交：purego 4538144；cgo 2b9d16a、047c9b3；goui2 90db66c。均未推送。
-- [x] internal/mobilebase.Build 与 goui-base build：独立组件校验/目标匹配、版本和
+- [x] platform/mobile/base 包的 mobilebase.Build 与 goui-base build：独立组件校验/目标匹配、版本和
   flags 前置检查、受控子进程环境、Go 源码编译、原生链接、输出校验与原子发布。
   平台宿主对象/库/framework 显式提供，不引入 UI 依赖或安装包语义。
 - [x] CC/CXX 仅指向 goui-link；Android 复用 Go 的 CC→setextld 和 host response
@@ -230,7 +242,7 @@
 
 - 设计与当前边界见 [PlanMobileBuild 第 13 节](PlanMobileBuild.md#13-正式基座第一阶段冷缓存归档接入2026-11-03)。
   开发位于独立的 goui2 / feature/mobile-base；cgo 仓库同名分支已创建，尚未修改 FFI。
-- [x] 维护者工具 `cmd/goui-base` 与 `internal/mobilebase`：导出实际需要 cgo 的包、
+- [x] 维护者工具 `cmd/goui-base` 与 `platform/mobile/base`：导出实际需要 cgo 的包、
   组件清单、SHA-256、路径边界、选中源码、模块/Go 语言版本及依赖导出身份校验。
 - [x] 固定 Go 1.25.8，校验原始构建驱动源码后通过临时 overlay 构建独立 cmd/go。
   不更改用户 GOROOT 或 Go compiler/linker/runtime，不缓存分发整套标准库。
@@ -3924,3 +3936,52 @@ arm64 构建限制保留在原记录中；本轮未修改实现或复验这些�
 - 干净源码副本 `go test -json ./... -count=1`：2679 项测试／子测试通过、10 项既有
   跳过、0 失败。两个例程的 Windows amd64 / macOS arm64 `CGO_ENABLED=0 go build`
   通过，本轮未执行远端原生验证。产物在仓库外，验证后关闭本轮独立会话。
+
+
+### 移动正式平台入口收敛（2026-11-05）
+
+- [x] 迁移共享窗口/队列至 platform/internal/mobile，保持固定启动 ABI。
+- [x] 补齐 platform/darwin/ios 与正常平台工厂，复用既有排版和绘图。
+- [x] 通过正式工厂重新验证两端 Software/GLES 与目标生命周期。
+- [x] 将原生制作、无原生编译器消费、测试组包路径固化到仓库脚本。
+- SafeArea、原生触摸/IME、正式组件发布及真机验收继续独立推进。
+
+验收：独立 X11 受控副本全仓 3516 通过、10 既有跳过，mobile/mobilebase race 通过；
+远端 Mac 的 Android API30 1x 与 iOS26.3 Simulator 3x，Software/GLES 四条正式工厂
+路径及旋转/后台恢复通过，18 处原生截图采样通过。Windows/macOS 桌面仅编译，
+iOS device 仅链接。首次 Scene 前 GPU、触摸/IME、安全区和真机仍未完成。
+具体边界与材料见 DesignMobilePlatform 第 11 节；后续 Go 平台收敛见下文。
+
+
+### 移动固定入口与 .syso 对照（2026-11-05）
+
+- [x] 在仓库外验证 Go 汇编入口及 .syso，区分原版/临时修改的 Go 链接器。
+- [x] 原版 Go 链接器 + 最小 .syso/Go 回调注册，在 Android/iOS Simulator 原生
+  ABI harness 验证初始化、线程、GC、栈增长和回调；iOS device 只链接。
+- [x] 保持原版 Go 链接器，比较现有最小 cgo 导出归档与 .syso 后，继续使用最小标准 cgo 入口。
+- [x] 移除统一 C/Objective-C 窗口宿主模型依赖，平台适配回归 Android/iOS Go 包。
+
+本轮未改生产代码或依赖；实验结果不等同于真实移动窗口/生命周期验收。
+具体证据、失败与边界见 PlanMobileBuild 第 17 节。
+
+## 移动端基座职责收敛（2026-11-05）
+
+见 [PlanMobileConvergence](PlanMobileConvergence.md) 和
+[DesignMobilePlatform 第 13 节](DesignMobilePlatform.md#13-go-平台适配与最小基座收敛2026-11-05)。
+Android/iOS 适配迁回各自 Go 包，共享层仅保留队列、逻辑窗口和可撤销目标；移除
+统一 C 宿主窗口 ABI。原生测试与 Java helper 内嵌 Go 生成器，维护工具改为 Go。
+固定入口继续使用最小标准 cgo 归档与原版 Go runtime/cmd/link；UIKit 仅补充 SDK
+协议元数据，不把 UI 适配塞回 runtime 基座。验证和未验范围记录在切片计划中。
+
+移动 GLES 的包归属已按现有 GLX 方式修正：context 实现集中在 graphics/opengl，
+窗口只提供原生目标、iOS drawable 层与生命周期许可；取消 NewGLContext 反向委托。
+本机及 Android/iOS 模拟器复验结果见 PlanMobileConvergence 的包归属修正记录。
+
+移动构建工具实现已从根 internal 收拢到 platform/mobile/base，包名与目录统一为 base，调用方使用 mobilebase 导入别名；
+cmd/goui-base、cmd/goui-link 及文档已更新，新包与原运行时启动包独立。迁移后的冷缓存
+回归、三目标消费链接与全仓验证见 PlanMobileConvergence；本轮未改原生行为。
+
+下一阶段优先正式构建闭环：复用基座与现有 cmd/goui，设计组件选择、应用构建、
+APK/IPA 组包与签名，以仅使用 platform 的例程完成 Android/iOS 真机安装、绘制与
+前后台恢复。GUI 触摸、IME 和安全区域暂不实现。当前构建与启动解释见
+[PlanMobileBuild 第 19 节](PlanMobileBuild.md#19-当前纯-go-应用的构建与运行路径2026-11-05)。

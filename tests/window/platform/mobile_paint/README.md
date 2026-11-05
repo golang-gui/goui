@@ -4,35 +4,67 @@
 
 Android API 29+ ARM64，或 iOS ARM64 Simulator/device。固定 Go 1.25.8 与匹配的
 预编译基座、FFI 分支及链接输入；消费端不安装原生编译器。本例不导入 gui/ui，
-直接复用 `mobile.Window`、现有 Typography 和 Painter。模拟器通过不代表真机通过。
+通过 `platform.NewPlatform` 创建窗口、Typography 和 Painter，不直接选择共享移动实现。
+模拟器通过不代表真机通过。
 当前 GLES 依赖 nanovgo 的独立 `feature/mobile-base` 分支；未发布到正式依赖 tag。
 
-维护者制作组件时：
+维护者 Go 工具将三个阶段分开，配置文件与产物都放在仓库外：
 
-- Android：NDK 编译 `platform/mobile/native/android.c`，增加
-  `-DANativeActivity_onCreate=goui_android_create`；另编译本例 `native/android.c`。
-  使用 Software 时 `-DGOUI_GLES=0`，GLES 时 `-DGOUI_GLES=1`。
-  生产 `androidtext/java` helper 用 Android SDK 编译并经 D8 生成 Dex，放进 APK；
-  测试不另写一套文字引擎。链接输入需包含公开 NDK `android` 库，GLES 另需
-  `EGL`、`GLESv3`。Manifest 使用 `android.app.NativeActivity`，lib_name 为 goui，
-  `hasCode=true`、`debuggable=true`，测试包 ID 为 `org.golanggui.mobilepaint`。
-- iOS：按 Simulator/device 身份分别编译 `platform/mobile/native/ios.m` 与本例
-  `native/ios.m`，使用 ARC，Software/GLES 选择与 Android 相同。
-  链接 UIKit、Foundation、CoreGraphics、QuartzCore、objc；GLES 另链 OpenGLES。
-  Info.plist 的 Scene delegate 为 GoUIScene，启用横竖屏，测试包 ID 同上。
-  不调用 AppKit，不混用 Simulator 与 device 组件；真机使用自己的签名与 profile。
+```sh
+go run ./tests/window/platform/mobile_build native /absolute/path/config.json
+go run ./tests/window/platform/mobile_build build /absolute/path/config.json
+go run ./tests/window/platform/mobile_build package /absolute/path/config.json
+```
 
-消费步骤使用已验证的 `goui-base build -entry`：`-dir` 指向本目录，`-base`、
-`-inputs`、`-tools` 指向匹配组件清单，两个 `-object` 分别传宿主和测试 probe，
-按上面的目标传 `-library` / `-framework`。保留 `-x` 日志，确认固定入口归档被
-复用且没有运行 cgo 或原生编译器。Android 将输出 libgoui.so 与 Dex 组装、签名
-为 APK；iOS 将输出 Probe 与 Scene plist 组成 .app 后签名。组件制作、组包签名
-与消费 Go 构建分别记录，不能把维护者有 SDK 描述成用户必须安装 SDK。
-这些是维护者验证步骤，不代表正式 `cmd/goui` 的移动组件分发已经完成。
+`native` 仅由维护者使用 NDK/Xcode 制作 测试 `probe.o`、iOS 最小 `main.o`，Android 另制作 Dex。
+`build` 只需要 Go、Go driver、链接器、匹配基座和链接输入，不读取 `cc` 或调用 SDK；
+可以将上一步的对象/Dex 目录复制到其他主机，再执行该阶段。
+`package` 中 Android 使用指定资源工具和测试证书签名并验证 APK；iOS 只组装未签名
+`.app`，在 Mac 使用自己的签名身份签名后才能安装。device 构建和 Simulator 分开；
+脚本不生成正式 IPA，也不申请开发者凭据。
 
-测试按宿主是否导出 GLES 入口选择 Painter。两种宿主分别构建，不能将 GLES
-宿主的 ANativeWindow/CAEAGLLayer 与 Software 呈现混用。iOS 首版 GPU 测试在
-前台目标就绪后创建 Painter；首次 Scene 之前的 GPU 构造不属于本轮通过范围。
+配置全部使用绝对路径，共同字段示例（按目标选择，不把两种 variant 混用）：
+
+```json
+{
+  "target": "ios",
+  "variant": "simulator",
+  "painter": "software",
+  "output": "/absolute/validation/ios-sim-software",
+  "cc": "/absolute/maintainer/ios-sim-clang",
+  "go": "/absolute/go1.25.8/bin/go",
+  "gouiBase": "/absolute/tools/goui-base",
+  "driver": "/absolute/tools/go-mobile",
+  "linker": "/absolute/tools/goui-link",
+  "base": "/absolute/components/base-ios-sim/base.json",
+  "inputs": "/absolute/components/inputs-ios-sim/inputs.json",
+  "tools": "/absolute/components/host-tools/tools.json",
+  "consumerPath": "/absolute/consumer-bin-without-native-compilers",
+  "modules": ["/absolute/cgo", "/absolute/purego", "/absolute/nanovgo"]
+}
+```
+
+`cc` 可为可执行文件路径或 argv 数组；只在 native 阶段使用。`modules` 为可选的
+本地模块替换目录，当前实验依赖需要明确列出；不修改仓库 go.mod。
+Android 使用 `target=android`、`variant=device`，另提供 `java`、`androidJar`、`d8`、
+`aapt2`、`signer`、`key`、`cert`、`apksigner`：前四者分别为 Java、平台 jar、D8 jar
+和资源链接工具，`signer` 为接受 `-key/-cert/-in/-out` 的测试 APK 签名工具，
+`apksigner` 为 Android SDK 的验证 jar。证书/密钥不放入仓库。
+`painter` 仅控制测试 probe 的后端选择，生产窗口适配与上下文由 Go 实现；不存在两套原生宿主。
+
+每阶段单独写入 `*-receipt.json`、命令日志与产物 SHA-256；build 检查固定入口归档
+确实被使用且没有执行 cgo。保留消费 PATH 的拒绝编译器记录以独立确认没有调用
+原生编译器。组件发布/下载、许可审核和正式签名仍是后续工作。
+
+维护者制作、固定入口归档、Go 生成器、链接与签名的完整步骤见
+[mobile_build](../mobile_build/README.md)。Android 测试通过 NativeActivity 的
+func_name=probe_onCreate 包装真实入口，仅采集独立参考；iOS 最小 main 调用
+固定 goui_run，UIKit 类和 Scene 回调由 Go 注册。原生参考源内嵌 generate.go，
+通过 go generate 输出到仓库外，不再维护独立 C/Objective-C 文件或 Python 脚本。
+
+测试使用 probe_use_gles 返回编译配置，再通过正常 Painter 选项选择后端。
+iOS 首版 GPU 测试在前台目标就绪后创建 Painter；首次 Scene 前返回暂不可用。
+正式 cmd/goui 移动组件分发、真机签名和商店验收仍在后续路线。
 
 ## 初始状态与自动断言
 
@@ -40,6 +72,8 @@ Android API 29+ ARM64，或 iOS ARM64 Simulator/device。固定 Go 1.25.8 与匹
 输出缓冲复用和预乘约束；失败 panic，通过项写应用沙箱 `checks.json`。
 iOS 另断言 CoreText 初始化不加载 AppKit/桌面 OpenGL；两端检查 GOUI 线程与
 系统 UI 主线程分离、窗口回调固定 OS 线程、逻辑窗口创建不等待目标。
+另检查平台单例、默认平台名、拒绝第二个窗口/队列、拒绝未知 Painter；Software
+在 Run 和原生表面就绪前创建，首帧再执行离屏像素断言。GLES 显式请求在首帧创建。
 
 在同一 Painter 上以 1x/2x RenderImage，独立核对 Image.Update 后绘制、半透明
 合成、Transform、clip 内外、ClearPath 擦除和文字上传；GLES 查询实际版本。

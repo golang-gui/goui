@@ -38,7 +38,7 @@ separate components. This tool does not yet provide their distribution or a
 complete Android/iOS application build command.
 
 See [the design and validation record](../../doc/PlanMobileBuild.md#13-正式基座第一阶段冷缓存归档接入2026-11-03).
-Run `go test ./internal/mobilebase ./cmd/goui-base` for logic checks and the
+Run `go test ./platform/mobile/base ./cmd/goui-base` for logic checks and the
 Linux amd64 cold-build integration check. The latter requires Go 1.25.8, cc and ld
 for the maintainer/test harness, and does not require a desktop.
 

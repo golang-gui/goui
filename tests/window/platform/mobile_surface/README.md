@@ -4,14 +4,11 @@
 NativeActivity 或 iOS ARM64 Simulator/Device。维护者需要 NDK/Xcode 制作组件，
 消费端只需匹配基座、链接输入和工具；本例不是完整 GUI/UI 移动支持。
 
-构建：以本目录为 main 包导出基座，使用 goui-base build -entry。
-原生宿主取 platform/mobile/native/android.c 或 ios.m；Android 宿主编译时用
--DANativeActivity_onCreate=goui_android_create，与本例 native/android.c 一同
-链接，包装仅复制私有目录路径。iOS 链接 native/ios.m，使用 GoUIDelegate 与
-GoUIScene；Frameworks 包括 UIKit、Foundation、CoreGraphics、QuartzCore。
-Android 链接 android 库，NativeActivity lib_name=goui；目标安装包 ID 建议
-org.golanggui.mobilesurface，开启 debug/run-as。iOS 启用 Scene、支持横竖屏。
-组件、SDK、签名材料和安装包均放在仓库外临时目录。
+构建：使用 [mobile_build](../mobile_build/README.md)，fixture=mobile_surface。
+固定入口、FFI 和 runtime 基座独立制作；Go 平台包承担窗口及呈现。测试 probe
+内嵌本目录 generate.go，通过 go generate 输出到仓库外；Android 使用
+func_name=probe_onCreate 包装正式 NativeActivity 入口，iOS 使用最小 main 和
+GoUIScene。SDK、签名、组件和产物均放仓库外；消费构建不调用原生编译器。
 
 初始画面：浅色背景，左上蓝色圆角矩形，下方绿色缓存图片，右下红色标记。
 窗口、Painter、图片在 Run 前创建；尺寸取自原生事件。每 250ms 请求绘制，

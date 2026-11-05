@@ -55,16 +55,20 @@ OS 线程的 Go goroutine，调用用户 main；Application、Widget、布局、
 `mobile.RegisterMain(main)`。init 只注册，不进入 UI 循环。生成文件不写进项目，
 不覆盖已有文件，不改 GOROOT。不使用 go:linkname 访问 main.main。
 
-`platform/mobile/internal/entry` 提供固定 C ABI `int goui_run(void)`：完成正常
-Go 初始化后，仅调度 GOUI 线程并返回。返回 0 表示启动已接受（包括重复请求），
--1 表示入口未注册。包中不包含 Activity、Scene、Widget 或业务导出。
-这是独立且最小的原生支持归档，不把整个 platform/mobile 预编译。
+`platform/mobile/internal/entry` 提供标准 cgo 固定入口，等待正常 Go 包初始化后，
+仅把调用交给 internal/mobileentry。Android 的 ANativeActivity_onCreate 传递创建
+参数，由 android Go 包安装回调及主线程投递，再调度一次应用 main，及时返回
+系统循环。iOS 的 goui_run 从最小原生 main 调用一次，由 ios Go 包在真正主线程
+进入 UIApplicationMain；didFinishLaunching 回调只调度 Go main，不阻塞 UIKit。
+独立启动参考没有安装 UIKit Go 后端时，goui_run 仍只调度 main，并以 0/-1 报告
+是否接受注册入口。不能将这一参考路径的立即返回语义套用于正式 iOS 主入口。
+入口包不包含 Activity、Scene、Widget 或窗口协议；普通 Go 依赖从源码编译。
 
-main 每个进程执行一次；重入的 goui_run 不重新执行 main。应用函数不公开为
+main 每个进程执行一次；重复调度不重新执行 main。正式 iOS 原生 main 入口仅调用一次。应用函数不公开为
 动态符号；后续原生回调使用私有回调地址。Go runtime、注册表和回调必须比
 原生宿主长寿；Android c-shared 保留 stock Go 的 NODELETE 行为。
 
-原生入口允许等待 Go 初始化的必要过程，但不能等待用户 main 或 Run。应用
+Android 创建入口允许等待 Go 初始化的必要过程，但不能等待用户 main 或 Run。应用
 init 不应执行 GUI 操作或长时间业务初始化；冷启动验证应分别记录 Go 初始化
 与入口调度耗时，不把某次较快的启动作为任意 init 都不会触发 ANR 的保证。
 
@@ -121,7 +125,7 @@ context loss 需要明确资源恢复契约。graphics.Image 不保留源图片�
 
 ## 第一切片实现与验收（2026-11-04）
 
-实现位于 platform/mobile、其 internal/entry、internal/mobilebase 的 entry 文件
+实现位于 platform/mobile、其 internal/entry、platform/mobile/base 的 entry 文件
 和 goui-base build -entry。纯 Go 启动/队列源码正常编译；固定 ABI 叶包独立成
 原生归档，与 runtime/cgo、FFI 的归档一起在消费清单中逐包校验。通用 runtime
 不导入平台或 UI，入口归档不包含宿主/事件循环，清单聚合不改变资源职责。
@@ -175,19 +179,18 @@ ErrUnsupported，不伪造桌面能力。尚不注册为完整 Platform，也不
 的 attach/paint 使用目标与 generation 检查，不能复活失效目标。Software CPU
 栅格化可以结束，但 End 不得访问已撤销目标；失效请求保留至恢复后重绘。
 
-平台宿主源码位于 platform/mobile/native，独立于最小入口归档：
+当前平台实现已迁回 Android/iOS 各自 Go 包，详见
+[基座收敛计划](PlanMobileConvergence.md) 与 [平台设计第 13 节](DesignMobilePlatform.md#13-go-平台适配与最小基座收敛2026-11-05)。
 
-- Android：NativeActivity 回调、ALooper/eventfd 主线程命令、JNI decor view
-  可见性、ANativeWindow RGBX 呈现。销毁回调同步撤销；RedrawNeeded 等待
-  GOUI 绘制通知完成，期间 Go present 不等待 Android UI 线程。输入队列只排空
-  并返回未处理，避免阻塞系统；本切片不提供 Go 触摸/键盘语义。
-- iOS：UIKit Scene 与内容 view、尺寸/scale、CGImage 层呈现。Go 像素在 native
-  调用返回前复制，不异步保存 Go 内存；待呈现图片仅保留最新一张。主线程检查
-  generation/view 后才更新图层；断开时先撤销，再清理 pending image 与 view。
-
-native/host.h 是私有版本化 ABI；32 字节事实包在 Go 回调中立即复制，不保存
-原生栈指针。C/Objective-C 代码只作为 platform 宿主预编译，不并入 runtime
-策略；普通窗口/绘制许可、队列及 Software 继续从 Go 源码编译。
+- Android：Go 绑定 NativeActivity 回调、ALooper/eventfd、JNI 可见性与 NDK 软件提交；
+  EGL context 由 graphics/opengl 管理。销毁前同步撤销，RedrawNeeded 等待 Go 绘制
+  完成，期间 present 不等待原生 UI。
+- iOS：Go 注册 UIKit 类与协议，管理 Scene、CGImage 软件呈现与 GPU 生命周期许可；
+  EAGL context 由 graphics/opengl 管理。异步呈现只保留原生图片引用，不保存 Go
+  图像存储。后台关闭包含 scratch 在内的 GPU 许可。
+- 共享 Source 在 Go 内传递观察，绘制租约同步撤销，不再有 host.h/32 字节 C 事实包。
+- 原生启动参考、UIKit SDK 协议元数据与 Java helper 内嵌 Go 生成器，输出仓库外。
+  协议元数据不含平台行为，不进入 runtime 基座；普通平台 Go 代码仍从源码编译。
 
 tests/window/platform/mobile_surface 使用正式宿主和 Software Painter；测试包装
 仅提供应用私有状态路径。Run 前创建 Window/Painter/图片，周期重绘并记录
@@ -196,7 +199,7 @@ Android Activity 重建，检查窗口未 Destroy、图片未重建、状态未�
 撤销后的提交被拒绝。iOS Scene disconnect/reconnect 如未触发真实系统场景，
 必须标为逻辑测试覆盖、原生运行待验，不以后台返回替代断开验收。
 
-### 第二切片实现与验收
+### 第二切片实现与验收（收敛前的历史记录）
 
 2026-11-04，Go 1.25.8，使用第三阶段 purego/cgo 修复分支。正式宿主和验收
 程序分别位于 platform/mobile/native 与 tests/window/platform/mobile_surface；
@@ -321,3 +324,16 @@ Android 模拟器、私有 ADB、独立 X11 会话已结束，旋转设置已恢
 未实现：触摸、IME、GLES、标题/系统服务、完整 UI 接入，以及原型目录迁移。
 WrapChar 继续单独排期，不作为基础 GUI 接通的前置；按用户要求不为原生
 uintptr 静态诊断增加无关封装或阻塞本轮进度。
+
+
+## 正式工厂迁移补充（2026-11-05）
+
+上述阶段记录中的 platform/mobile.Window/EventLoop 现已迁入
+platform/internal/mobile。两端原生宿主分别归于 platform/android/native 与
+platform/darwin/ios/native；固定启动支持包和 goui_run ABI 保持不变。
+Android/iOS 通过 platform.NewPlatform 进入，原有 surface/text 验收例程相应
+改用正式工厂，不再调用已移除的公开 mobile.Window/EventLoop。
+最小 mobile_start 例程的专用宿主不实现正式窗口协议，因此仅用测试 channel
+转交验证消息；正式队列的覆盖仍由包内测试和 surface/paint 例程保留。
+当前入口、默认后端、前台 GPU 许可及最新验收见
+[DesignMobilePlatform 第 11 节](DesignMobilePlatform.md#11-正式平台工厂与共享实现收敛2026-11-05)。
