@@ -177,19 +177,20 @@ NDK AFontMatcher/AFont 提供字体匹配和字体信息，不是完整段落排
 
 2026-11-04 最新执行顺序：Android 文字与 GUI 启动切片完成后，暂停 GUI 扩展，
 先完成两端 Typography/Graphics 的平台层最小验证。先接 iOS CoreText/Software，
-再适配 GLES 3 与 Android EGL/iOS EAGL；全部通过后再实施
-[触摸设计](DesignTouchInput.md) 与后续 IME。以下列表保留总体能力依赖，不表示
-GUI 输入先于平台绘制验证。
+再适配 GLES 3 与 Android EGL/iOS EAGL。2026-11-05 调整：前四项及 Go 平台收敛
+已完成，先按 [DesignMobileBuild](DesignMobileBuild.md) 推进正式构建与真机闭环，
+[触摸设计](DesignTouchInput.md) 与后续 GUI/IME 暂缓。
 
 1. Android 的公开系统文字路线和正式 TextLayout 包装，保留能力边界。
 2. iOS CoreText 解除桌面初始化依赖，先用 Software 验证相同 API 与位图契约。
 3. GLES 3 NanoVGo、Android EGL 与 iOS EAGL；验证绘图、目标替换和后台保护。
 4. 不依赖 GUI 的双端排版/绘图验收通过后，再整理目标包结构、补齐 iOS 工厂和
    两端绘图选择；目录迁移与行为变化分开验证，不在原型上扩大另一套平台 API。
-5. 按 DesignTouchInput 接入原生触摸、GUI 指针/竞争/滚动/编辑，再单独接移动 IME。
-   UI、生命周期查询与退出按实际需求推进，不在移动端模拟桌面工作区/位置。
-6. cmd/goui 移动构建、组包签名与组件分发；真机、16 KiB Android 内核与正式
-   APK/IPA 另做发布验收。Metal、多 Scene、更广设备版本留在未来路线。
+5. cmd/goui 移动构建、组包签名与组件分发；使用 platform-only 例程验证物理设备、
+   16 KiB Android 内核及正式 APK/IPA，不能用模拟器或链接成功代替。
+6. 构建闭环后按 DesignTouchInput 接入原生触摸、GUI 指针/竞争/滚动/编辑，再单独
+   接移动 IME。UI、生命周期查询与退出按实际需求推进，不在移动端模拟桌面工作区/
+   位置。Metal、多 Scene、更广设备版本留在未来路线。
 
 ## 8. 参考与证据
 

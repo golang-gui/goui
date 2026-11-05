@@ -17,6 +17,8 @@
 
 首个切片实现 Windows EXE、macOS app、Linux dir；DEB/RPM 后续按实际需求
 接入 nFPM。暂不实现归档格式、AppImage、公证、上传、自动安装。
+Android/iOS 的下一阶段构建、签名与真机闭环另见
+[移动构建设计](DesignMobileBuild.md)；该设计尚未实现，不改变本篇已交付桌面行为。
 文件访问切片增补明确配置的 macOS 沙箱 Entitlements 与原生签名，详见
 [文件访问设计](DesignFileAccess.md)；不扩展为通用权限系统。
 不随包分发 GOUI 动态加载的系统库；用户仍须提供支持的桌面系统环境。
