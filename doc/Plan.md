@@ -1,5 +1,37 @@
 # Plan
 
+## Go 标准帧追踪（2026-11-05）
+
+- [x] 在 rootBase 的现有帧、回调、样式、布局、Painter.Begin／Paint／End 边界
+  接入 runtime/trace，固定类型 goui.frame 与六类阶段；goui.root 日志携带临时地址。
+  不扩公共接口、平台后端或最低 Go 版本，不自动启动采集、HTTP 或帧请求。
+  标准追踪与 Capture／HUD 独立，资源计数继续保留；见
+  [DesignDiagnostics](DesignDiagnostics.md#go-标准诊断工具接入2026-11-05)。
+- [x] 在既有 diagnostics_test.go 集中回归，通过子进程隔离全局 trace 状态，使用
+  go tool trace 实际解析并按 Task 检查阶段顺序、Begin／End 配对及根关联。覆盖未启动
+  Capture、组合采集、Popover、嵌套帧、回调取消／panic、布局／Begin／Paint／End panic、
+  帧中途开启与停止，以及关闭前后零分配。父测试自身使用 go test -trace 也通过。
+- [x] Ubuntu 22.04.5 amd64、Go 1.25.8、Xeon Gold 5318Y，count=5、200ms、
+  GOMAXPROCS=1：关闭态帧生命周期中位数 83.86 → 102.8 ns/op，均为零分配；
+  空后端完整帧 811.4 → 916.5 ns/op，前后均 240 B/op、3 allocs/op。
+  记录新增开销，不宣称 CPU 零成本，不据此推断实际界面帧率。
+- [x] 独立 Xvnc :90 1920×1200、xfwm4 合成开启：diagnostics 例程新增 -trace。
+  Software／OpenGL 各 1x／2x，原像素等值、离屏计数、空闲、停止冻结和后续绘制断言
+  均通过；每组标准 trace 中有两个根、六类阶段，所有帧任务闭合。探针核实实际后端与
+  PixelScale，OpenGL 为 llvmpipe，2x 为应用覆盖值。
+- [x] 同会话以 -auto=false -trace 运行，未启动 Capture；原生鼠标点击 Increment 后
+  截图确认 Count 0 → 1，Popup 正常展开。关闭后标准工具解析出 9 个闭合帧、2 个根，
+  验证追踪不依赖 Capture 或 DevServer。本轮窗口和独立会话均已停止。
+- [x] `DISPLAY=:90 XMODIFIERS=@im=none GOWORK=off go test -json -count=1 ./...`：
+  3984 项测试／子测试通过、15 项既有跳过、零失败，包含保留的未跟踪测试。
+  相关 GUI／HUD race（count=3）、vet、父测试 trace 兼容（count=3）通过；Windows
+  amd64／macOS arm64 的 GUI 测试与窗口例程 CGO_ENABLED=0 编译通过，未执行远端。
+- 初轮一次 gui.test 在测试入口前 SIGSEGV（PC 0x4024e0）；原临时二进制已被 Go 清理，
+  core 及后续产物地址反查日志保留。同源重建后的针对性 count=5、全仓、race、父测试
+  trace 和窗口复验均未复现。未将该次失败算作通过，也未定性为既有问题或修改绑定。
+- 验收产物：`/tmp/goui-runtime-trace-0osf8jui`，含基线源码、前后基准、全仓 JSON／
+  跳过清单、标准追踪与解析结果、原生输入截图、race／vet 和跨平台编译产物。
+
 ## 多语言词条读取优化（2026-11-05）
 
 - [x] 保持 mlang 公共 API、BCP 47 匹配／回退与同步通知契约。当前语言和 Getter
