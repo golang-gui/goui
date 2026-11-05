@@ -4,11 +4,10 @@
 Software 与 NativeActivity 宿主。它验证 GUI 接入，不替代移动输入或完整平台验收。
 
 环境：Go 1.25.8、Android API 29+ ARM64；首次运行记录实际 API、屏幕及比例。
-维护者使用 `python3 tests/window/platform/android_gui/build.py /tmp/配置.json` 制作
-APK。配置字段沿用 android_text/build.py：output、java、androidJar、d8、cc、cgo、
-purego、gouiBase、go、driver、linker、base、inputs、tools、consumerPath、aapt2、
-signer、key、cert、apksigner。路径均由维护者提供，不提交 SDK、签名材料或产物。
-Java/Dex 和原生宿主的预制作步骤单独记录；消费阶段 PATH 不含 C 编译器和 javac。
+维护者使用 [mobile_build](../mobile_build/README.md)，fixture=android_gui，
+依次执行 base/native/build/package。原生测试参考和 Java helper 从 Go 生成器
+输出仓库外；Go 平台包实现窗口和生命周期。消费阶段不运行 C 编译器或 javac。
+
 
 安装 `output/probe.apk`，启动 `org.golanggui.androidgui/android.app.NativeActivity`。
 初始出现标题、多语言文本、动态计数、按钮、输入框和绿色块。普通 Timer 更新文字，

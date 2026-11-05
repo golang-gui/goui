@@ -5,20 +5,19 @@ UIKit Scene（最低 iOS 15，Simulator/Device 分别制作原生组件）。需
 purego/cgo 的修复分支，通过显式开发 workspace 接入。需要可操作的
 模拟器或设备。此例程不依赖桌面 GOUI 后端，也不代表 GUI 控件已经移植。
 
-维护者先用对应 NDK/Xcode 编译 `native/android.c` 或 `native/ios.m`，以该 main
-包为根通过 `goui-base export` 制作最小原生支持归档。仅制作组件需要原生编译
-工具；消费时通过 `goui-base build -entry`，传入匹配的 base/inputs/tools、
-host object、Android 的 android 库或 iOS 的 UIKit/Foundation framework。
-不要手工添加 RegisterMain，入口注册必须由工具生成且不能写入源目录。
-
-安装包使用 NativeActivity 或包含 ProbeDelegate/ProbeScene 的 UIKit 模板；
-Android lib_name 为 goui；iOS Scene 类为 ProbeScene，注册 gouistart URL scheme。
-模板、私有调试签名和 SDK 文件放在仓库外临时目录。正式 cmd/goui 打包尚未接入。
+构建使用 [mobile_build](../mobile_build/README.md)，fixture=mobile_start。
+独立原生参考内嵌本目录 generate.go，通过 go generate 输出仓库外后编译。
+本例有意保留独立 UIKit/NativeActivity 参考，仅验证固定入口和线程，不替代
+正式平台适配。Android 使用 func_name=probe_onCreate；iOS 使用 ProbeScene
+并注册 gouistart URL scheme。goui-base build -entry 生成 main 注册，不改源目录。
+原生组件仅由维护者制作；消费阶段不运行原生编译器。正式移动打包尚未接入。
 
 操作及逐项预期：
 
 1. 安装并启动。Android 为浅色画面与中央色块，iOS 为计数文本和按钮。
-   Go main 在独立 OS 线程的 EventLoop.Run 中等待；原生界面仍能响应。
+   Go main 在独立 OS 线程等待测试消息；原生界面仍能响应。
+   此例仅验证启动 ABI，使用有界测试 channel，不依赖正式窗口宿主；队列溢出直接失败。
+   正式 EventLoop 的排序与退出由包内测试和 mobile_surface 例程覆盖。
 2. 连续点击十次。Android 点击应用内容，色块随 Go 计数奇偶改变；iOS 点击
    Increment on Go thread。等待 0.5 秒后 taps 应增加十次，threadFailures 为 0。
 3. Home 返回桌面再打开，重复至少三次。mainCalls 始终为 1，entries 持续增加，
@@ -32,7 +31,7 @@ Android lib_name 为 goui；iOS Scene 类为 ProbeScene，注册 gouistart URL s
    simctl openurl 成功不等于应用已经收到 URL，须先处理该提示再检查计数。
    Stop 仅用于验收，不定义正式 iOS Application.Quit 的语义。
 
-`native/ProbeUITests.m` 可放进独立 XCTest UI Testing Bundle，操作已经安装的
+生成的 `native/ProbeUITests.m` 可放进独立 XCTest UI Testing Bundle，操作已经安装的
 应用，覆盖十次真实按钮点击、三次 Home/返回、停止和重复启动。测试 runner
 与被测应用分开构建，不能把 runner 使用 Xcode 算作消费端需要原生编译器。
 
