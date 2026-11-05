@@ -17,6 +17,7 @@ type ShortcutView struct {
 	repeat     bool
 	onActivate func()
 	commandID  string
+	commandRef *gui.Command
 }
 
 // Shortcut declares an enabled binding with no modifiers and no auto-repeat.
@@ -44,6 +45,7 @@ func (s *ShortcutView) AutoRepeat(repeat bool) *ShortcutView {
 func (s *ShortcutView) OnActivate(fn func()) *ShortcutView {
 	s.onActivate = fn
 	s.commandID = ""
+	s.commandRef = nil
 	return s
 }
 
@@ -51,7 +53,16 @@ func (s *ShortcutView) OnActivate(fn func()) *ShortcutView {
 // It replaces OnActivate; an unresolved reference does not consume input.
 func (s *ShortcutView) Command(id string) *ShortcutView {
 	s.commandID = id
+	s.commandRef = nil
 	s.onActivate = nil
+	return s
+}
+
+// CommandRef borrows an external operation without requiring a CommandScope.
+// It replaces Command and OnActivate. Unmount only detaches this binding;
+// the caller retains ownership of the command and its activation handlers.
+func (s *ShortcutView) CommandRef(command *gui.Command) *ShortcutView {
+	s.commandRef, s.commandID, s.onActivate = command, "", nil
 	return s
 }
 
@@ -122,8 +133,13 @@ func (b *shortcutBindings) update(controller *gui.ShortcutController, views []*S
 		if !current() {
 			return
 		}
-		e.shortcut.SetEnabled(v.enabled && (v.onActivate != nil || v.commandID != ""))
-		e.command.update(ctx, v.commandID, e.shortcut.SetCommand)
+		e.shortcut.SetEnabled(v.enabled && (v.onActivate != nil || v.commandID != "" || v.commandRef != nil))
+		if v.commandRef != nil {
+			e.command.clear()
+			e.shortcut.SetCommand(v.commandRef)
+		} else {
+			e.command.update(ctx, v.commandID, e.shortcut.SetCommand)
+		}
 		if !current() {
 			return
 		}

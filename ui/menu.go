@@ -13,12 +13,13 @@ type MenuModel = gui.MenuModel
 // build a GUI menu model. Rebuild the descriptor each update (or each context
 // menu request) to reflect current state, e.g. Enabled(state.Get()).
 type MenuItemView struct {
-	label     string
-	action    func()
-	commandID string
-	enabled   bool
-	separator bool
-	submenu   []*MenuItemView // reserved for the future submenu slice
+	label      string
+	action     func()
+	commandID  string
+	commandRef *gui.Command
+	enabled    bool
+	separator  bool
+	submenu    []*MenuItemView // reserved for the future submenu slice
 }
 
 // MenuItem creates an enabled, single-selectable menu entry.
@@ -34,7 +35,17 @@ func MenuItem(label string, action ...func()) *MenuItemView {
 }
 
 // Command selects an operation from ancestor scopes instead of a direct action.
-func (m *MenuItemView) Command(id string) *MenuItemView { m.commandID = id; m.action = nil; return m }
+func (m *MenuItemView) Command(id string) *MenuItemView {
+	m.commandID, m.commandRef, m.action = id, nil, nil
+	return m
+}
+
+// CommandRef borrows an external operation without requiring a CommandScope.
+// It replaces Command and the direct action; the caller retains ownership.
+func (m *MenuItemView) CommandRef(command *gui.Command) *MenuItemView {
+	m.commandRef, m.commandID, m.action = command, "", nil
+	return m
+}
 
 // Enabled marks the item's enable state; re-evaluate each rebuild to react to
 // state changes (e.g. Enabled(canOpen.Get())).
@@ -135,6 +146,21 @@ func (v *MenuButtonView) Update(ctx BuildContext, widget gui.Widget) {
 		for i := range references {
 			references[i].reparent()
 		}
+		// Object identity is intentionally separate from the presentation
+		// signature. Swapping borrowed commands retains the open menu model.
+		index := 0
+		for _, item := range v.items {
+			if item == nil {
+				continue
+			}
+			if item.commandRef != nil && !item.separator {
+				if ctx.State() != s || button.Destroyed() {
+					return
+				}
+				s.button.Menu().ItemAt(index).SetCommand(item.commandRef)
+			}
+			index++
+		}
 		return
 	}
 	for i := range s.commands {
@@ -164,6 +190,11 @@ func (v *MenuButtonView) Update(ctx BuildContext, widget gui.Widget) {
 		if item.commandID != "" {
 			s.commands = append(s.commands, commandReference{})
 			s.commands[len(s.commands)-1].update(ctx, item.commandID, entry.SetCommand)
+		} else if item.commandRef != nil {
+			entry.SetCommand(item.commandRef)
+		}
+		if ctx.State() != s || button.Destroyed() {
+			return
 		}
 	}
 	s.lastSig = sig
@@ -204,7 +235,9 @@ func makeMenu(items ...*MenuItemView) *gui.Menu {
 			continue
 		}
 		mi := m.Append(it.label, it.action)
-		if it.commandID != "" {
+		if it.commandRef != nil {
+			mi.SetCommand(it.commandRef)
+		} else if it.commandID != "" {
 			missing := gui.NewCommand()
 			missing.SetEnabled(false)
 			mi.SetCommand(missing)
@@ -234,6 +267,11 @@ func signatureOf(items []*MenuItemView) string {
 		b = strAppendUint(b, uint64(len(it.commandID)))
 		b = append(b, ':')
 		b = append(b, it.commandID...)
+		if it.commandRef != nil {
+			b = append(b, 'r')
+		} else {
+			b = append(b, 'a')
+		}
 		b = strAppendUint(b, uint64(len(it.label)))
 		b = append(b, it.label...)
 		if it.enabled {

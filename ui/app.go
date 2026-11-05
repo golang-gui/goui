@@ -634,6 +634,7 @@ func (a *app) stop() {
 	// connections without taking the GUI window's ownership of its widget tree.
 	for _, mount := range a.windows {
 		mount.root.unmountForWindowDestroy()
+		mount.shortcuts.clear()
 	}
 }
 

@@ -295,3 +295,67 @@ func TestMenuButtonGroupDeclarationTransfersWithContent(t *testing.T) {
 		t.Fatal("完整组声明未在目标 Root 释放")
 	}
 }
+
+// 直接引用外部命令无需作用域，换对象时保留菜单模型且不修改外部状态。
+func TestMenuCommandRefOwnershipAndReplacement(t *testing.T) {
+	first, second := gui.NewCommand(), gui.NewCommand()
+	a, b := 0, 0
+	first.ConnectActivate(func() { a++ })
+	second.ConnectActivate(func() { b++ })
+	second.SetEnabled(false)
+	for _, model := range []MenuModel{
+		Menu(MenuItem("Run").CommandRef(first)),
+		MenuFor(nil, MenuItem("Run").CommandRef(first)),
+	} {
+		if model.ItemAt(0).Command() != first || model.ItemAt(0).Action() != nil {
+			t.Fatal("无上下文菜单没有借用外部命令")
+		}
+	}
+	r := newRoot()
+	defer r.unmountWindow()
+	build := func(command *gui.Command) View {
+		return MenuButton("Menu").Menu(MenuItem("Run").CommandRef(command))
+	}
+	button := r.update(build(first)).(*gui.MenuButton)
+	model := button.Menu()
+	r.update(build(second))
+	if button.Menu() != model || model.ItemAt(0).Command() != second || second.Enabled() == true || a != 0 || b != 0 {
+		t.Fatal("替换借用对象重建菜单、执行操作或修改了外部状态")
+	}
+	second.SetEnabled(true)
+	model.ItemAt(0).Command().Activate()
+	if a != 0 || b != 1 {
+		t.Fatal("菜单引用了旧操作")
+	}
+	// 普通函数、ID 和对象三种来源互斥，后设置者生效。
+	r.update(MenuButton("Menu").Menu(MenuItem("Run", func() { a += 10 })))
+	button.Menu().ItemAt(0).Action()()
+	if a != 10 || button.Menu().ItemAt(0).Command() != nil {
+		t.Fatal("外部命令未被普通回调替换")
+	}
+	if MenuItem("Run").CommandRef(first).Command("run").commandRef != nil || MenuItem("Run").Command("run").CommandRef(first).commandID != "" {
+		t.Fatal("ID 与对象模式未互斥")
+	}
+	r.update(build(first))
+	r.unmountWindow()
+	first.Activate()
+	second.Activate()
+	if a != 11 || b != 2 || !first.Enabled() || !second.Enabled() {
+		t.Fatal("卸载修改了外部命令或其处理者")
+	}
+}
+
+func TestMenuCommandRefNotificationCanUnmountOwner(t *testing.T) {
+	r := newRoot()
+	defer r.unmountWindow()
+	first, second := gui.NewCommand(), gui.NewCommand()
+	view := func(c *gui.Command) View {
+		return MenuButton("Menu").Menu(MenuItem("A").CommandRef(c), MenuItem("B").CommandRef(c))
+	}
+	button := r.update(view(first)).(*gui.MenuButton)
+	button.Menu().ConnectItems(func() { r.unmountWindow() })
+	r.update(view(second))
+	if r.root != nil || !first.Enabled() || !second.Enabled() {
+		t.Fatal("换目标通知没有安全卸载或影响了外部所有权")
+	}
+}
