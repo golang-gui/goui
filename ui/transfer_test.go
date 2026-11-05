@@ -76,11 +76,11 @@ func TestModifiedSubtreeTransferRetainsOwnerAndLocalUpdates(t *testing.T) {
 	})
 	a, b := rt.windows["source"].root, rt.windows["target"].root
 	from, to := fake.windows[0].Widget().(*gui.LinearBox), fake.windows[1].Widget().(*gui.LinearBox)
-	n := a.root.children[0].nodes[0]
+	n := windowContentNode(a).children[0].nodes[0]
 	w := n.widget
 	base := n.body.body.baseCtx
 	value.Set("queued before move")
-	if err := (&Coordinator{owner: a.root}).TransferChild(w, to, func() error {
+	if err := (&Coordinator{owner: windowContentNode(a)}).TransferChild(w, to, func() error {
 		from.RemoveChild(w)
 		to.AddChild(w)
 		value.Set("during move")

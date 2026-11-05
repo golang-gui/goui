@@ -71,7 +71,7 @@ func TestBuildTracksStateReadsAndBranches(t *testing.T) {
 			return Label(right.Get())
 		}))
 	})
-	n := rt.windows["main"].root.root
+	n := windowContentNode(rt.windows["main"].root)
 	left.Set("new left")
 	left.Set("latest left")
 	if len(fake.posts) != 1 || builds != 1 {
@@ -102,7 +102,7 @@ func TestBuildTracksStateReadsAndBranches(t *testing.T) {
 	}
 	show.Set(true)
 	fake.runPosted()
-	if builds != 6 || rt.windows["main"].root.root != n || fake.windows[0].Widget().(*gui.Label).Text() != "restored" {
+	if builds != 6 || windowContentNode(rt.windows["main"].root) != n || fake.windows[0].Widget().(*gui.Label).Text() != "restored" {
 		t.Fatal("空组合没有保留身份或恢复订阅")
 	}
 }
@@ -187,7 +187,7 @@ func TestAutomaticReadSharesPropertyBindingConnection(t *testing.T) {
 	})
 	source.Set("after")
 	fake.runPosted()
-	n := rt.windows["main"].root.root
+	n := windowContentNode(rt.windows["main"].root)
 	if builds != 2 || applies != 2 || source.connects != 1 || len(n.subscriptions) != 1 || updateKind(n.subscriptions[source].kind.Load()) != updateBuild|updateBindings {
 		t.Fatal("自动读取、Observe 和属性绑定重复订阅或重复应用")
 	}
@@ -508,10 +508,10 @@ func TestAutomaticReadNotificationsFollowTransfer(t *testing.T) {
 	})
 	a, b := rt.windows["source"].root, rt.windows["target"].root
 	from, to := fake.windows[0].Widget().(*gui.LinearBox), fake.windows[1].Widget().(*gui.LinearBox)
-	n := a.root.children[0].nodes[0]
+	n := windowContentNode(a).children[0].nodes[0]
 	label := from.Children()[0].(*gui.Label)
 	value.Set("before transfer")
-	if err := (&Coordinator{owner: a.root}).TransferChild(label, to, func() error {
+	if err := (&Coordinator{owner: windowContentNode(a)}).TransferChild(label, to, func() error {
 		from.RemoveChild(label)
 		to.AddChild(label)
 		value.Set("during transfer")
@@ -704,7 +704,10 @@ func TestBindingSourceReplacementAndStaticOverride(t *testing.T) {
 	if len(fake.posts) != 0 {
 		t.Fatal("已替换来源仍安排更新")
 	}
-	rt.windows["main"].root.updateWindow(fake.windows[0], Label().BindText(next).Text("fixed"))
+	mount := rt.windows["main"]
+	if err := mount.update(mount.view.Content(Label().BindText(next).Text("fixed"))); err != nil {
+		t.Fatal(err)
+	}
 	next.Set("ignored")
 	fake.runPosted()
 	if label.Text() != "fixed" || next.disconnects != 1 {
@@ -906,7 +909,7 @@ func TestPendingBindingFollowsTransferAndSourceWindowClose(t *testing.T) {
 	from, to := fake.windows[0].Widget().(*gui.LinearBox), fake.windows[1].Widget().(*gui.LinearBox)
 	label := from.Children()[0].(*gui.Label)
 	source.Set("queued before transfer")
-	if err := (&Coordinator{owner: a.root}).TransferChild(label, to, func() error {
+	if err := (&Coordinator{owner: windowContentNode(a)}).TransferChild(label, to, func() error {
 		from.RemoveChild(label)
 		to.AddChild(label)
 		source.Set("during transfer")

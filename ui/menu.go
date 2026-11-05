@@ -372,7 +372,7 @@ type scopedMenu struct {
 func (m *scopedMenu) refresh() {
 	for i := range m.targets {
 		target := &m.targets[i]
-		command, ok := FindCommand(m.ctx, target.id)
+		command, ok := findCommand(m.ctx, target.id)
 		if !ok {
 			if target.missing == nil {
 				target.missing = gui.NewCommand()

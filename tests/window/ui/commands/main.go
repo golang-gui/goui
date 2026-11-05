@@ -18,6 +18,9 @@
 //     声明不生成额外 Widget、空行或容器间距，也不依赖菜单是否打开。
 //  7. “External”菜单及窗口 F12 借用同一 gui.Command；F4 切换其启用状态，打开的
 //     菜单实时灰显，copy 不受影响。F12 和菜单各增加外部计数一次。
+//  8. 窗口默认分组不需要显式包裹 CommandGroup；“Window”操作在 Window.Commands
+//     声明，窗口 F3 和菜单按 ID 引用。F5 切换该命令启用状态，菜单实时更新。
+//     Check 使用 App.FindCommand(windowID, commandID) 查询，不要求 BuildContext。
 //
 // 自动场景还检查重复关联、最新操作回调、删除后的回退、重开菜单和绘图后端／倍率。
 // 自动派发不替代原生菜单 grab、IME 和桌面输入；不使用 DevServer 或语义动作捷径。
@@ -117,10 +120,12 @@ func main() {
 	flag.Parse()
 	enabled, shifted, override := ui.MakeState(true), ui.MakeState(false), ui.MakeState(true)
 	itemEnabled, bindingEnabled := ui.MakeState(true), ui.MakeState(true)
+	windowEnabled := ui.MakeState(true)
 	status := ui.MakeState("外层：0　局部：0")
 	outerCount, innerCount, global, local := 0, 0, 0, 0
 	externalCount, definitionBuilds, buildsBeforeAvailability := 0, 0, 0
 	buildsBeforeDefinition, definitionsBeforeUpdate := 0, 0
+	windowCount := 0
 	external := gui.NewCommand()
 	report := func() { status.Set(fmt.Sprintf("外层：%d　局部：%d", outerCount, innerCount)) }
 	external.ConnectActivate(func() {
@@ -128,6 +133,7 @@ func main() {
 		status.Set(fmt.Sprintf("外部：%d", externalCount))
 	})
 	toggleExternal := func() { external.SetEnabled(!external.Enabled()) }
+	toggleWindow := func() { windowEnabled.Set(!windowEnabled.Get()) }
 	p := new(painterProbe)
 	started, complete, step := false, false, 0
 	var app ui.App
@@ -144,11 +150,13 @@ func main() {
 		command := m.ItemAt(0).Command()
 		require(command != nil && (original == nil || original == command), "command identity changed")
 		require(len(command.Shortcuts()) == 1, "duplicate or missing shortcut association")
+		require(app.FindCommand("commands", "copy") == command, "public lookup did not resolve window default group")
+		require(app.FindCommand("commands", "window.run") == m.ItemAt(3).Command(), "public lookup did not resolve Window.Commands")
 		original = command
 		if originalModel == nil {
 			originalModel = m
 		}
-		fmt.Printf("CHECK global=%d local=%d definitions=%d outer=%d inner=%d external=%d enabled=%t\n", global, local, definitionBuilds, outerCount, innerCount, externalCount, command.Enabled())
+		fmt.Printf("CHECK global=%d local=%d definitions=%d outer=%d inner=%d external=%d enabled=%t window=%d\n", global, local, definitionBuilds, outerCount, innerCount, externalCount, command.Enabled(), windowCount)
 		for _, id := range []string{"edit", "inner", "enable", "gesture", "scope", "menu-entry", "binding", "check"} {
 			b := app.FindWidget("commands", id).Snapshot().Bounds
 			fmt.Printf("BOUNDS %s %.1f %.1f %.1f %.1f\n", id, b.X, b.Y, b.Width, b.Height)
@@ -250,6 +258,22 @@ func main() {
 						click(pop(), ext.Bounds.Center())
 					case 22:
 						require(externalCount == 2 && len(external.Shortcuts()) == 1, "external menu duplicated or lost operation")
+						key(w, events.KeyF3, 0)
+					case 23:
+						require(windowCount == 1, "window ID shortcut did not activate default command")
+						key(w, events.KeyF5, 0)
+					case 24:
+						click(w, menu("edit").Snapshot().Bounds.Center())
+					case 25:
+						item, ok := findRow(pop().Widget().Snapshot(), "Window")
+						require(ok && !item.Enabled && row().Enabled, "Window.Commands binding did not update independently")
+						key(w, events.KeyF5, 0)
+					case 26:
+						item, ok := findRow(pop().Widget().Snapshot(), "Window")
+						require(ok && item.Enabled, "window command did not reenable")
+						click(pop(), item.Bounds.Center())
+					case 27:
+						require(windowCount == 2 && global == 1 && local == 4, "window command rebuilt unrelated content or duplicated activation")
 						check()
 						require(p.backend != "", "no actual paint")
 						complete = true
@@ -275,8 +299,8 @@ func main() {
 				}
 				return ui.MenuButton("局部").ID("inner").Menu(item)
 			}))
-			return ui.CommandGroup(ui.VBox(
-				ui.HBox(ui.MenuButton("编辑").ID("edit").Menu(ui.MenuItem("Copy").Command("copy").Enabled(itemEnabled.Get()), ui.MenuItem("没有快捷键的长菜单项", func() {}), ui.MenuItem("External").CommandRef(external)), inner).Spacing(12),
+			return ui.VBox(
+				ui.HBox(ui.MenuButton("编辑").ID("edit").Menu(ui.MenuItem("Copy").Command("copy").Enabled(itemEnabled.Get()), ui.MenuItem("没有快捷键的长菜单项", func() {}), ui.MenuItem("External").CommandRef(external), ui.MenuItem("Window").Command("window.run")), inner).Spacing(12),
 				ui.Label("F6：操作启用　F7：按键　F9：局部定义"), ui.Label().BindText(&status),
 				ui.Button("切换操作启用").ID("enable").OnClick(toggle),
 				ui.Button("修改快捷键").ID("gesture").OnClick(change),
@@ -284,12 +308,16 @@ func main() {
 				ui.Button("切换菜单入口").ID("menu-entry").OnClick(toggleItem),
 				ui.Button("切换快捷键入口").ID("binding").OnClick(toggleBinding),
 				ui.Button("Check").ID("check").OnClick(check), newProbe(p),
-			).Spacing(10).Padding(16).Shortcuts(ui.Shortcut(ui.KeyC).Modifiers(mods).Enabled(bindingEnabled.Get()).DefineCommand(ui.Command("copy").BindEnabled(&enabled).OnActivate(func() { outerCount++; report() }))))
+			).Spacing(10).Padding(16).Shortcuts(ui.Shortcut(ui.KeyC).Modifiers(mods).Enabled(bindingEnabled.Get()).DefineCommand(ui.Command("copy").BindEnabled(&enabled).OnActivate(func() { outerCount++; report() })))
 		})
 		win := ui.Window("commands").Title("GOUI UI CommandGroup").Size(620, 490).Center(true).Content(content).Shortcuts(
 			ui.Shortcut(ui.KeyF6).OnActivate(toggle), ui.Shortcut(ui.KeyF7).OnActivate(change), ui.Shortcut(ui.KeyF8).OnActivate(check), ui.Shortcut(ui.KeyF9).OnActivate(toggleOverride), ui.Shortcut(ui.KeyF10).OnActivate(toggleItem), ui.Shortcut(ui.KeyF11).OnActivate(toggleBinding),
 			ui.Shortcut(ui.KeyF4).OnActivate(toggleExternal), ui.Shortcut(ui.KeyF12).CommandRef(external),
-		)
+			ui.Shortcut(ui.KeyF3).Command("window.run"), ui.Shortcut(ui.KeyF5).OnActivate(toggleWindow),
+		).Commands(ui.Command("window.run").BindEnabled(&windowEnabled).OnActivate(func() {
+			windowCount++
+			status.Set(fmt.Sprintf("窗口操作：%d", windowCount))
+		}))
 		root := ui.Root().Windows(win)
 		if !*basic {
 			root = root.StyleSheet(modern.Sheet(modern.Options{Dark: *dark}))

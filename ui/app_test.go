@@ -238,7 +238,7 @@ func TestWindowCompletionTransferDoesNotReapplyStaleSourceDeclaration(t *testing
 						return
 					}
 					source := rt.windows["source"].window.Widget().(*gui.LinearBox)
-					if err := (&Coordinator{owner: rt.windows["source"].root.root}).TransferChild(original, box, func() error {
+					if err := (&Coordinator{owner: windowContentNode(rt.windows["source"].root)}).TransferChild(original, box, func() error {
 						source.RemoveChild(original)
 						box.AddChild(original)
 						return nil
@@ -732,4 +732,13 @@ func TestWindowAfterPaintUsesLatestDeclaration(t *testing.T) {
 	if Window("custom").Transparent(true).Transparent(false).options.Transparent {
 		t.Fatal("false 未恢复默认值")
 	}
+}
+
+// 默认分组与窗口绑定各占一个非可视协调节点；原有测试需要检查内容节点时，
+// 越过这两层，继续对真实内容的订阅、身份和移交做原断言。
+func windowContentNode(r *root) *node {
+	if r.root == nil || r.root.body == nil {
+		return nil
+	}
+	return r.root.body.body
 }

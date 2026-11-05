@@ -52,23 +52,24 @@ func TestShortcutReconciliation(t *testing.T) {
 
 func TestWindowShortcutBindingsPreserveImperativeEntries(t *testing.T) {
 	w := newTestWindow()
-	m := &windowMount{window: w}
+	m := &windowMount{window: w, root: newRoot()}
+	defer m.root.unmountWindow()
 	defer m.disconnect()
 	imperative := gui.NewShortcut(gui.KeyGesture{Key: gui.KeyF6})
 	w.Shortcuts().AddShortcut(imperative)
 	n := 0
 	v := Window("keys").Shortcuts(Shortcut(KeyF5).OnActivate(func() { n++ }))
-	if err := m.applyWindowProperties(v); err != nil {
+	if err := updateShortcutWindow(m, v); err != nil {
 		t.Fatal(err)
 	}
 	first := m.shortcuts.entries[0].shortcut
-	if err := m.applyWindowProperties(v); err != nil {
+	if err := updateShortcutWindow(m, v); err != nil {
 		t.Fatal(err)
 	}
 	if len(m.shortcuts.entries) != 1 || m.shortcuts.entries[0].shortcut != first || n != 0 {
 		t.Fatal("rebuild recreated binding or called callback")
 	}
-	if err := m.applyWindowProperties(Window("keys")); err != nil {
+	if err := updateShortcutWindow(m, Window("keys")); err != nil {
 		t.Fatal(err)
 	}
 	// Route through the real dispatcher, placing the window controller on
@@ -229,10 +230,11 @@ func TestShortcutCommandRefOwnershipAndModes(t *testing.T) {
 
 func TestWindowShortcutCommandRef(t *testing.T) {
 	w := newTestWindow()
-	m := &windowMount{window: w}
+	m := &windowMount{window: w, root: newRoot()}
+	defer m.root.unmountWindow()
 	defer m.disconnect()
 	command := gui.NewCommand()
-	if err := m.applyWindowProperties(Window("keys").Shortcuts(Shortcut(KeyF5).CommandRef(command))); err != nil {
+	if err := updateShortcutWindow(m, Window("keys").Shortcuts(Shortcut(KeyF5).CommandRef(command))); err != nil {
 		t.Fatal(err)
 	}
 	if len(command.Shortcuts()) != 1 || command.Shortcuts()[0].Command() != command {
@@ -281,4 +283,14 @@ func TestWindowCommandRefReleasedWhenAppStops(t *testing.T) {
 	if !command.Enabled() || len(command.Shortcuts()) != 1 || command.Shortcuts()[0] != imperative || fake.windows[0].destroyed {
 		t.Fatal("App.stop 留下声明层关联、清除了外部关联或销毁了 GUI 窗口")
 	}
+}
+
+// 窗口快捷键现在经默认分组下的普通协调节点更新，保留原测试的事件路径及断言。
+func updateShortcutWindow(m *windowMount, view WindowView) error {
+	if err := m.applyWindowProperties(view); err != nil {
+		return err
+	}
+	m.view = view
+	m.root.updateWindow(m.window, m.contentView())
+	return nil
 }
