@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/golang-gui/goui/gui"
@@ -184,10 +185,12 @@ func TestCommandScopeNotifiesConsumersWithoutRebuildingThem(t *testing.T) {
 	// 仅更新作用域自己的声明，刻意不协调子节点，验证引用依赖集合通知而非重建副作用。
 	ctx := &buildContext{node: r.root.body}
 	CommandScope(inner.child).Build(ctx)
+	r.flushAfterUpdate() // 定义在本轮协调结束后发布，保留“不重建后代”的原断言。
 	if menu.Menu().ItemAt(0).Command() != outer || original.Enabled() {
 		t.Fatal("未重建的后代没有跟随定义移除回退")
 	}
 	CommandScope(inner.child).Commands(Command("copy")).Build(ctx)
+	r.flushAfterUpdate()
 	if menu.Menu().ItemAt(0).Command() == outer {
 		t.Fatal("未重建的后代没有跟随同名遮蔽恢复")
 	}
@@ -205,12 +208,14 @@ func TestCommandContextMenuTracksScopeWhileObserved(t *testing.T) {
 	h := model.ConnectItems(func() { n++ })
 	defer h.Disconnect()
 	CommandScope(child).Build(&buildContext{node: r.root.body})
+	r.flushAfterUpdate()
 	outer := r.root.state.(*commandScope).commands["copy"].command
 	if old.Enabled() || model.ItemAt(0).Command() != outer || n != 1 {
 		t.Fatal("已打开上下文菜单未跟随作用域移除回退")
 	}
 	h.Disconnect()
 	CommandScope(child).Commands(Command("copy")).Build(&buildContext{node: r.root.body})
+	r.flushAfterUpdate()
 	if n != 1 {
 		t.Fatal("解除模型观察后仍保留作用域通知")
 	}
@@ -254,7 +259,308 @@ func TestCommandReferenceLookupCanReleaseOwner(t *testing.T) {
 	armed = true
 	// 成员通知会重新解析引用；中间 ObjectView 回调释放 owner 后必须停止旧解析。
 	CommandScope(child).Build(ctx)
+	r.flushAfterUpdate()
 	if r.root != nil {
 		t.Fatal("查询回调没有完成卸载")
+	}
+}
+
+// 非可视声明不进入 Widget 子树；先引用后声明以及跨分支移动在同一轮提交。
+func TestCommandDescendantDefinitionsAndMoves(t *testing.T) {
+	r := newRoot()
+	defer r.unmountWindow()
+	calls := 0
+	build := func(left bool, callback func()) View {
+		var a, b View
+		if left {
+			a = Command("run").OnActivate(callback)
+		} else {
+			b = Command("run").OnActivate(callback)
+		}
+		return CommandScope(VBox(
+			MenuButton("Run").Menu(MenuItem("Run").Command("run")),
+			HBox(Label("left"), a).Spacing(20),
+			HBox(Label("right"), b).Spacing(20),
+		))
+	}
+	box := r.update(build(false, func() { calls++ })).(*gui.LinearBox)
+	menu := box.Children()[0].(*gui.MenuButton)
+	command, model := menu.Menu().ItemAt(0).Command(), menu.Menu()
+	if !command.Enabled() || len(box.Children()) != 3 || len(box.Children()[2].Children()) != 1 {
+		t.Fatal("非可视定义增加了 Widget／布局间距，或向前引用未解析")
+	}
+	command.Activate()
+	for _, left := range []bool{true, false, true} {
+		r.update(build(left, func() { calls += 10 }))
+		if menu.Menu() != model || menu.Menu().ItemAt(0).Command() != command || !command.Enabled() {
+			t.Fatal("同轮移动定义替换了对象或菜单")
+		}
+		command.Activate()
+	}
+	if calls != 31 {
+		t.Fatalf("回调不是最新声明或重复执行：%d", calls)
+	}
+	// Widget 隐藏不卸载其声明；只有移除定义才注销操作。
+	r.update(CommandScope(VBox(
+		MenuButton("Run").Menu(MenuItem("Run").Command("run")),
+		HBox(Command("run").OnActivate(func() { calls++ })).Visible(false),
+	)))
+	if menu.Menu().ItemAt(0).Command() != command || !command.Enabled() {
+		t.Fatal("隐藏子树注销了仍挂载的定义")
+	}
+	r.update(CommandScope(VBox(MenuButton("Run").Menu(MenuItem("Run").Command("run")))))
+	command.Activate()
+	if command.Enabled() || menu.Menu().ItemAt(0).Command().Enabled() || calls != 31 {
+		t.Fatal("卸载后操作或引用没有失效")
+	}
+}
+
+func TestCommandDescendantDefinitionErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		view View
+		want string
+	}{
+		{"outside-scope", Command("run"), "Command requires an ancestor CommandScope"},
+		{"siblings", CommandScope(VBox(HBox(Command("run")), HBox(Command("run")))), `duplicate command ID "run"`},
+		{"shorthand-and-descendant", CommandScope(VBox(Command("run"))).Commands(Command("run")), `duplicate command ID "run"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRoot()
+			defer r.unmountWindow()
+			defer func() {
+				if message, ok := recover().(string); !ok || !strings.Contains(message, tc.want) {
+					t.Fatalf("声明错误不符：%q，期望包含 %q", message, tc.want)
+				}
+			}()
+			r.update(tc.view)
+		})
+	}
+}
+
+func TestCommandBindEnabledDoesNotRebuildContent(t *testing.T) {
+	for _, shorthand := range []bool{false, true} {
+		t.Run(map[bool]string{false: "descendant", true: "shorthand"}[shorthand], func(t *testing.T) {
+			enabled, other := MakeState(true), MakeState(false)
+			source := &enabled
+			bound, direct := true, true
+			global, content := 0, 0
+			rt, fake := bindingApp(t, func() RootView {
+				global++
+				d := Command("run").Enabled(direct)
+				if bound {
+					d.BindEnabled(source)
+				}
+				child := Build(func() View { content++; return Label("editor") })
+				var definition View
+				if !shorthand {
+					definition = d
+				}
+				scope := CommandScope(VBox(
+					MenuButton("Run").Menu(MenuItem("Run").Command("run")), child, definition,
+				))
+				if shorthand {
+					scope.Commands(d)
+				}
+				return Window("main").Content(scope)
+			})
+			box := fake.windows[0].Widget()
+			menu := box.Children()[0].(*gui.MenuButton)
+			command, model := menu.Menu().ItemAt(0).Command(), menu.Menu()
+			notifications := 0
+			command.ConnectEnabled(func(bool) { notifications++ })
+			enabled.Set(false)
+			fake.runPosted()
+			if command.Enabled() || global != 1 || content != 1 || menu.Menu() != model || box.Children()[1].(*gui.Label).Text() != "editor" || notifications != 1 {
+				t.Fatal("绑定没有局部更新，或重建了编辑子树／菜单")
+			}
+			enabled.Set(true)
+			fake.runPosted()
+			if !command.Enabled() || global != 1 || content != 1 || notifications != 2 {
+				t.Fatal("恢复启用没有保持更新范围")
+			}
+			// 换源后旧来源不再投递；Enabled 恢复普通 setter 语义。
+			source = &other
+			if err := rt.rebuild(); err != nil {
+				t.Fatal(err)
+			}
+			enabled.Set(false)
+			if len(fake.posts) != 0 || command.Enabled() {
+				t.Fatal("换源未解绑旧状态")
+			}
+			other.Set(true)
+			fake.runPosted()
+			if !command.Enabled() || global != 2 || content != 2 {
+				t.Fatal("新来源未接管可用性")
+			}
+			bound, direct = false, false
+			if err := rt.rebuild(); err != nil {
+				t.Fatal(err)
+			}
+			other.Set(false)
+			if len(fake.posts) != 0 || command.Enabled() {
+				t.Fatal("取消绑定没有恢复直接声明")
+			}
+			rt.destroyAll()
+			other.Set(true)
+			if len(fake.posts) != 0 || command.Enabled() {
+				t.Fatal("销毁后仍有绑定或启用对象")
+			}
+		})
+	}
+	if Command("run").BindEnabled(new(State[bool])).Enabled(false).enabledSource != nil {
+		t.Fatal("Enabled 没有替换之前的 BindEnabled")
+	}
+}
+
+func TestCommandDescendantLocalAddRemoveAndFallback(t *testing.T) {
+	show := MakeState(false)
+	global, local := 0, 0
+	_, fake := bindingApp(t, func() RootView {
+		global++
+		return Window("main").Content(CommandScope(CommandScope(VBox(
+			MenuButton("Run").Menu(MenuItem("Run").Command("run")),
+			Build(func() View {
+				local++
+				if show.Get() {
+					return Command("run")
+				}
+				return nil
+			}),
+		))).Commands(Command("run")))
+	})
+	menu := fake.windows[0].Widget().Children()[0].(*gui.MenuButton)
+	outer := menu.Menu().ItemAt(0).Command()
+	show.Set(true)
+	fake.runPosted()
+	inner := menu.Menu().ItemAt(0).Command()
+	if inner == outer || !inner.Enabled() {
+		t.Fatal("局部新增定义未遮蔽外层")
+	}
+	show.Set(false)
+	fake.runPosted()
+	if menu.Menu().ItemAt(0).Command() != outer || inner.Enabled() || global != 1 || local != 3 {
+		t.Fatal("局部移除未回退，或重建了全局声明")
+	}
+}
+
+func TestCommandDescendantTransferMovesDefinitionAndReferences(t *testing.T) {
+	a, b := transferRoots()
+	defer a.unmountWindow()
+	defer b.unmountWindow()
+	calls := 0
+	source := a.update(CommandScope(VBox(
+		MenuButton("Source").Menu(MenuItem("Run").Command("run")),
+		VBox(Command("run").OnActivate(func() { calls++ }),
+			MenuButton("Moving").Menu(MenuItem("Run").Command("run")),
+		).ID("moving").Shortcuts(Shortcut(KeyF5).Command("run")),
+	))).(*gui.LinearBox)
+	target := b.update(CommandScope(VBox(MenuButton("Target").Menu(MenuItem("Run").Command("run"))))).(*gui.LinearBox)
+	moving := source.Children()[1]
+	old := source.Children()[0].(*gui.MenuButton).Menu().ItemAt(0).Command()
+	if err := (&Coordinator{owner: a.root.body}).TransferChild(moving, target, func() error {
+		source.RemoveChild(moving)
+		target.AddChild(moving)
+		return nil
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	next := target.Children()[0].(*gui.MenuButton).Menu().ItemAt(0).Command()
+	if old.Enabled() || next == old || !next.Enabled() || len(old.Shortcuts()) != 0 || len(next.Shortcuts()) != 1 || moving.Children()[0].(*gui.MenuButton).Menu().ItemAt(0).Command() != next {
+		t.Fatal("移交没有迁移定义、引用及快捷键关联")
+	}
+	next.Activate()
+	if calls != 1 {
+		t.Fatal("移交后没有使用原定义的业务回调")
+	}
+	// 源窗口销毁不应夺走已移交定义的所有权。
+	a.unmountWindow()
+	next.Activate()
+	if calls != 2 || !next.Enabled() {
+		t.Fatal("源窗口销毁影响了目标定义")
+	}
+	b.unmountWindow()
+	if next.Enabled() {
+		t.Fatal("目标卸载没有清理移交的操作")
+	}
+}
+
+func TestCommandBatchedPublicationCanUnmountScope(t *testing.T) {
+	r := newRoot()
+	defer r.unmountWindow()
+	build := func(enabled bool) View {
+		return CommandScope(VBox(Command("a").Enabled(enabled), Command("b").Enabled(enabled)))
+	}
+	r.update(build(true))
+	s := r.root.state.(*commandScope)
+	for _, entry := range s.commands {
+		entry.command.ConnectEnabled(func(bool) { r.unmountWindow() })
+	}
+	r.update(build(false))
+	if r.root != nil {
+		t.Fatal("命令状态通知没有完成卸载")
+	}
+}
+
+func TestCommandBindEnabledFollowsTransferredDefinition(t *testing.T) {
+	enabled := MakeState(true)
+	rt, fake := bindingApp(t, func() RootView {
+		return Root().Windows(
+			Window("source").Content(CommandScope(VBox(
+				VBox(Command("run").BindEnabled(&enabled), MenuButton("Moving").Menu(MenuItem("Run").Command("run"))).ID("moving"),
+			))),
+			Window("target").Content(CommandScope(VBox(MenuButton("Target").Menu(MenuItem("Run").Command("run"))))),
+		)
+	})
+	a, b := rt.windows["source"].root, rt.windows["target"].root
+	source, target := a.widget(), b.widget()
+	moving := source.Children()[0]
+	if err := (&Coordinator{owner: a.root.body}).TransferChild(moving, target, func() error {
+		source.(*gui.LinearBox).RemoveChild(moving)
+		target.(*gui.LinearBox).AddChild(moving)
+		return nil
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	command := target.Children()[0].(*gui.MenuButton).Menu().ItemAt(0).Command()
+	fake.windows[0].Destroy()
+	enabled.Set(false)
+	fake.runPosted()
+	if command.Enabled() || moving.Children()[0].(*gui.MenuButton).Menu().ItemAt(0).Command() != command {
+		t.Fatal("移交后绑定仍写旧作用域或因源窗口销毁失效")
+	}
+	enabled.Set(true)
+	fake.runPosted()
+	if !command.Enabled() {
+		t.Fatal("移交后的绑定无法恢复")
+	}
+}
+
+func TestCommandScopeTransferRetainsPendingDefinitions(t *testing.T) {
+	a, b := transferRoots()
+	defer a.unmountWindow()
+	defer b.unmountWindow()
+	// 模拟初次构建已完成、作用域的批次完成钩子尚未执行即发生移交。
+	a.reconcile(VBox(CommandScope(VBox(
+		MenuButton("Moving").Menu(MenuItem("Run").Command("run")), Command("run"),
+	)).ID("scope")))
+	source := a.widget().(*gui.LinearBox)
+	target := b.update(VBox()).(*gui.LinearBox)
+	moving := source.Children()[0]
+	if err := (&Coordinator{owner: a.root}).TransferChild(moving, target, func() error {
+		source.RemoveChild(moving)
+		target.AddChild(moving)
+		return nil
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	a.flushAfterUpdate() // 旧 root 的回调失效，目标必须主动完成发布。
+	command := moving.Children()[0].(*gui.MenuButton).Menu().ItemAt(0).Command()
+	if !command.Enabled() {
+		t.Fatal("作用域移交丢失待发布的定义")
+	}
+	b.flushAfterUpdate()
+	if moving.Children()[0].(*gui.MenuButton).Menu().ItemAt(0).Command() != command {
+		t.Fatal("目标后续完成钩子重复创建操作")
 	}
 }
