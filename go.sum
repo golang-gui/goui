@@ -4,10 +4,14 @@ github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/ebitengine/purego v0.10.0 h1:QIw4xfpWT6GWTzaW5XEKy3HXoqrJGx1ijYHzTF0/ISU=
 github.com/ebitengine/purego v0.10.0/go.mod h1:iIjxzd6CiRiOG0UyXP+V1+jWqUXVjPKLAI0mRfJZTmQ=
+github.com/ebitengine/purego v0.10.2 h1:W809HbnvzAxgdm+aOvlSekrM16wGCdT/e76+9tS7gzE=
+github.com/ebitengine/purego v0.10.2/go.mod h1:iIjxzd6CiRiOG0UyXP+V1+jWqUXVjPKLAI0mRfJZTmQ=
 github.com/godbus/dbus/v5 v5.2.4 h1:F2gUCy++NMIxGmo9J+z5le/+ZC8W1OgeR51P4i9ZB/U=
 github.com/godbus/dbus/v5 v5.2.4/go.mod h1:3AAv2+hPq5rdnr5txxxRwiGjPXamgoIHgz9FPBfOp3c=
 github.com/goexlib/cgo v0.1.1 h1:DdgwNGJc+SYz1/kniociF6ztU/3SDxJYBVKs63M63UE=
 github.com/goexlib/cgo v0.1.1/go.mod h1:7SF33pMm1GILhbtKQgyIrrAmy4oth8OW4/jAA3eH3Os=
+github.com/goexlib/cgo v0.1.2 h1:2zRvEnMBJ3GIC7tP3TmsnORHrECHQcgLmIkMEzF+A38=
+github.com/goexlib/cgo v0.1.2/go.mod h1:WjUdwTDJjhOhPNbNWfTfP4Qy92TflPkSjcDQ8Tp8g1s=
 github.com/goexlib/mathx v0.0.1 h1:6BWbJW+UYM6K5LrqnY8wK3wLobyO+71wEXGIur9hwmY=
 github.com/goexlib/mathx v0.0.1/go.mod h1:YifTEUIIVf2VJaclxuiRJENt24Njb0onUKjkjinit38=
 github.com/golang-gui/nanovgo v0.0.10 h1:JplfFc2omFnVVXZiHr/2mtvKqCGQjbfs4Hgq36C6UmM=
