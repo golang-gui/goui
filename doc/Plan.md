@@ -1,5 +1,46 @@
 # Plan
 
+## 窗口默认命令分组（2026-11-05）
+
+- [x] CommandScope／CommandScopeView 统一改名为 CommandGroup／CommandGroupView，
+  不保留别名，代码、当前设计和例程同步。GUI 仍直接关联 Command 对象，不增加 ID、
+  CommandGroup、命名注册、组级禁用或自动焦点路由。
+- [x] ui.Window 自动提供默认组；Window.Commands、Window.Shortcuts 与默认 Content
+  共享同一组，菜单和快捷键均可 DefineCommand。局部分组保留隔离和按祖先回退；
+  窗口级引用不向下搜索局部同名操作，内容换类型或变空仍保持默认组身份。
+- [x] 外部查询统一为 App.FindCommand(windowID, commandID) *gui.Command，缺失／空 ID、
+  卸载或停止返回 nil；支持按现有 Sync 契约跨线程查询，返回对象仍只在 GUI 线程使用。
+  原 FindCommand(ctx, id) 收为私有 findCommand，仅供 UI 内部解析，不导出上下文查询。
+- [x] 复用普通 ObjectView 组合和节点绑定生命周期，Root／BuildContext 未增加命令字段
+  或具体类型分支。原测试仅调整两层窗口适配下的内容节点定位及快捷键协调入口，保留
+  原订阅、复用、移交和输入断言，没有删断言或新增 skip。
+- [x] 回归覆盖三种定义宿主、首次菜单未打开时的窗口按键、启用绑定不重建、窗口／
+  局部分组边界、发布时机、内容类型替换与空内容、移除与重新声明、关闭／重建窗口、
+  后台查询执行／关闭／停止。独立例程新增 F3／F5、Window.Commands 和外部查询检查。
+- [x] 补清理重入回归：destroy／stop 路径解除 Shortcut 的通知中调用 Command.Activate，
+  初版均误执行业务回调。增加分组声明节点存活检查；窗口销毁先释放声明状态，再解除
+  绑定及调用用户回调，两项通过。前后日志保留，不靠断开全部信号或移除回归兜底。
+- [x] Ubuntu 22.04.5 amd64、Go 1.25.8，独立 Xvnc :90 1920×1200／xfwm4 4.16.1
+  合成开启：UI commands 的 Software 1x Basic、OpenGL 1x Modern 亮、Software 2x
+  Modern 暗、OpenGL 2x Modern 暗四组均通过 28 阶段及退出清理。实际 Image 类型和
+  PixelScale 核验后端／倍率；2x 是应用覆盖值，OpenGL 为 Mesa 23.2.1 llvmpipe。
+- [x] 同一独立会话的原生 xdotool 输入：打开菜单后 F6 灰显／恢复、F7 改键、F9 删除／
+  恢复局部定义，外层／局部／外部计数为 2／1／2；F3 执行窗口命令，F5 在菜单打开时
+  禁用／恢复，最终窗口计数为 2，local 始终 2、global 始终 1。截图确认 Window 行与 F3
+  实时灰显，其他行保持启用及列右对齐；正常关闭，没有使用 DevServer。
+- [x] `DISPLAY=:90 XMODIFIERS=@im=none GOWORK=off go test -json -count=1 ./...`：
+  3980 项测试／子测试通过、15 项既有跳过、零失败，包含保留的未跟踪测试。跳过仍为
+  macOS 签名及需显式开启的手工输入、剪贴板、GLX／透明、窗口状态和交互用例。
+  UI／widgets-ui 相关 Command／Shortcut／Menu／Object／Transfer／Binding／Automatic
+  race、相关包及窗口例程 vet 通过。
+- [x] Windows amd64／macOS arm64 的 UI、widgets-ui 测试目标以及 commands、temp、
+  demo 程序 CGO_ENABLED=0 编译通过；本轮没有远端原生运行，不将构建算作平台验收。
+- 验收产物：`/tmp/goui-window-command-group-x1cb0x59`，含全仓 JSON／跳过清单、race、
+  vet、交叉编译、四组逐阶段日志、清理重入失败对照和原生输入日志／截图。
+  本轮窗口正常关闭、独立会话已停止；example/temp/main.go 同步使用默认窗口组和
+  Window.Shortcuts，保留用户未跟踪状态，不纳入提交。下文是历史记录，旧名称以当时
+  已验收 API 为准，当前契约见 [DesignCommand](DesignCommand.md)。
+
 ## 菜单与快捷键入口定义命令（2026-11-05）
 
 - [x] Command 恢复为普通声明值，不实现 View；MenuItem／Shortcut.DefineCommand 同时
