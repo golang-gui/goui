@@ -17,6 +17,7 @@ type MenuItemView struct {
 	action     func()
 	commandID  string
 	commandRef *gui.Command
+	definition *CommandView
 	enabled    bool
 	separator  bool
 	submenu    []*MenuItemView // reserved for the future submenu slice
@@ -36,14 +37,25 @@ func MenuItem(label string, action ...func()) *MenuItemView {
 
 // Command selects an operation from ancestor scopes instead of a direct action.
 func (m *MenuItemView) Command(id string) *MenuItemView {
-	m.commandID, m.commandRef, m.action = id, nil, nil
+	m.commandID, m.commandRef, m.definition, m.action = id, nil, nil, nil
 	return m
 }
 
 // CommandRef borrows an external operation without requiring a CommandScope.
 // It replaces Command and the direct action; the caller retains ownership.
 func (m *MenuItemView) CommandRef(command *gui.Command) *MenuItemView {
-	m.commandRef, m.commandID, m.action = command, "", nil
+	m.commandRef, m.commandID, m.definition, m.action = command, "", nil, nil
+	return m
+}
+
+// DefineCommand supplies a scope-local definition and uses it for this entry.
+// It requires a mounted MenuButton below a CommandScope. Temporary Menu/MenuFor
+// models must use Command or CommandRef instead. nil clears the operation.
+func (m *MenuItemView) DefineCommand(command *CommandView) *MenuItemView {
+	m.definition, m.commandID, m.commandRef, m.action = command, "", nil, nil
+	if command != nil {
+		m.commandID = command.id
+	}
 	return m
 }
 
@@ -79,6 +91,7 @@ type menuButtonState struct {
 	onOpenError func(error)
 	handles     signal.Handles
 	commands    []commandReference
+	definitions commandDefinitions
 }
 
 // MenuButton creates a menu button. Like ui.Button, pass an optional label
@@ -137,6 +150,16 @@ func (v *MenuButtonView) Update(ctx BuildContext, widget gui.Widget) {
 		return
 	}
 	ctx.UpdateChild(button, v.child)
+	if ctx.State() != s || button.Destroyed() {
+		return
+	}
+	var definitions []*CommandView
+	for _, item := range v.items {
+		if item != nil && !item.separator && item.definition != nil {
+			definitions = append(definitions, item.definition)
+		}
+	}
+	s.definitions.update(ctx, nil, definitions, "menu-command:")
 	if ctx.State() != s || button.Destroyed() {
 		return
 	}
@@ -203,6 +226,7 @@ func (v *MenuButtonView) Update(ctx BuildContext, widget gui.Widget) {
 func (v *MenuButtonView) Unmount(ctx BuildContext, widget gui.Widget) {
 	if s, ok := ctx.State().(*menuButtonState); ok {
 		s.handles.Disconnect()
+		s.definitions.clear()
 		for i := range s.commands {
 			s.commands[i].clear()
 		}
@@ -233,6 +257,9 @@ func makeMenu(items ...*MenuItemView) *gui.Menu {
 		if it.separator {
 			m.AppendSeparator()
 			continue
+		}
+		if it.definition != nil {
+			panic("ui: MenuItem.DefineCommand requires a mounted MenuButton; temporary menus must reference a command")
 		}
 		mi := m.Append(it.label, it.action)
 		if it.commandRef != nil {
@@ -301,6 +328,7 @@ func strAppendUint(b []byte, v uint64) []byte {
 
 func (*MenuButtonView) Reparented(ctx BuildContext) {
 	if s, ok := ctx.State().(*menuButtonState); ok {
+		s.definitions.reparented()
 		references := s.commands
 		for i := range references {
 			references[i].reparent()

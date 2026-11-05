@@ -140,7 +140,11 @@ Enabled 仍表示入口自身值，绘制、导航、点击与 Snapshot 另组�
 空格或 Tab 作为布局语法。默认提示从 Command.Shortcuts 中首个有效 Gesture 获取。
 保持 160 DIP 最小主体和既有工作区／滚动限制，详见 [DesignCommand](DesignCommand.md)。
 
-UI 采用 CommandScope(...).Commands(Command("id")...)；MenuItem.Command("id") 与
-Shortcut.Command("id") 引用最近祖先定义。命令 ID 独立于 Widget ID，同一作用域内唯一。
-上下文菜单转换使用 MenuFor(ctx,...)，按模型观察生命期维持作用域引用。Button 保持
-普通回调，命令和快捷键不成为 Snapshot Widget 或自动化动作捷径。
+UI 使用 CommandScope 管理普通 Command 声明值，可通过 Scope.Commands 集中提供，
+也可在 MenuButton 的 MenuItem.DefineCommand 或后代 Shortcut.DefineCommand 中提供并
+使用；MenuItem.Command("id") 与 Shortcut.Command("id") 只引用最近祖先定义。
+CommandRef(object) 借用外部对象。命令 ID 独立于 Widget ID，同一作用域内只能有一份定义，
+与引用顺序无关。菜单定义在宿主协调时登记，不等待弹出，关闭菜单不撤销。
+上下文菜单转换使用 MenuFor(ctx,...)，按模型观察生命期维持作用域引用；临时模型没有
+定义宿主，不接受 DefineCommand。Button 保持普通回调，Command 不成为 View、
+Snapshot Widget 或自动化动作捷径。完整契约见 [DesignCommand](DesignCommand.md)。

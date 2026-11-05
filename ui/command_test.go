@@ -265,22 +265,23 @@ func TestCommandReferenceLookupCanReleaseOwner(t *testing.T) {
 	}
 }
 
-// 非可视声明不进入 Widget 子树；先引用后声明以及跨分支移动在同一轮提交。
+// 定义附着在已有入口上；先引用后声明以及跨分支移动在同一轮提交。
 func TestCommandDescendantDefinitionsAndMoves(t *testing.T) {
 	r := newRoot()
 	defer r.unmountWindow()
 	calls := 0
 	build := func(left bool, callback func()) View {
-		var a, b View
+		a, b := Label("left"), Label("right")
+		definition := Shortcut(KeyF5).DefineCommand(Command("run").OnActivate(callback))
 		if left {
-			a = Command("run").OnActivate(callback)
+			a.Shortcuts(definition)
 		} else {
-			b = Command("run").OnActivate(callback)
+			b.Shortcuts(definition)
 		}
 		return CommandScope(VBox(
 			MenuButton("Run").Menu(MenuItem("Run").Command("run")),
-			HBox(Label("left"), a).Spacing(20),
-			HBox(Label("right"), b).Spacing(20),
+			HBox(a).Spacing(20),
+			HBox(b).Spacing(20),
 		))
 	}
 	box := r.update(build(false, func() { calls++ })).(*gui.LinearBox)
@@ -303,7 +304,7 @@ func TestCommandDescendantDefinitionsAndMoves(t *testing.T) {
 	// Widget 隐藏不卸载其声明；只有移除定义才注销操作。
 	r.update(CommandScope(VBox(
 		MenuButton("Run").Menu(MenuItem("Run").Command("run")),
-		HBox(Command("run").OnActivate(func() { calls++ })).Visible(false),
+		HBox(Label("hidden").Shortcuts(Shortcut(KeyF5).DefineCommand(Command("run").OnActivate(func() { calls++ })))).Visible(false),
 	)))
 	if menu.Menu().ItemAt(0).Command() != command || !command.Enabled() {
 		t.Fatal("隐藏子树注销了仍挂载的定义")
@@ -321,9 +322,9 @@ func TestCommandDescendantDefinitionErrors(t *testing.T) {
 		view View
 		want string
 	}{
-		{"outside-scope", Command("run"), "Command requires an ancestor CommandScope"},
-		{"siblings", CommandScope(VBox(HBox(Command("run")), HBox(Command("run")))), `duplicate command ID "run"`},
-		{"shorthand-and-descendant", CommandScope(VBox(Command("run"))).Commands(Command("run")), `duplicate command ID "run"`},
+		{"outside-scope", MenuButton("Run").Menu(MenuItem("Run").DefineCommand(Command("run"))), "DefineCommand requires an ancestor CommandScope"},
+		{"siblings", CommandScope(VBox(MenuButton("A").Menu(MenuItem("Run").DefineCommand(Command("run"))), MenuButton("B").Menu(MenuItem("Run").DefineCommand(Command("run"))))), `duplicate command ID "run"`},
+		{"shorthand-and-descendant", CommandScope(MenuButton("Run").Menu(MenuItem("Run").DefineCommand(Command("run")))).Commands(Command("run")), `duplicate command ID "run"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRoot()
@@ -339,8 +340,8 @@ func TestCommandDescendantDefinitionErrors(t *testing.T) {
 }
 
 func TestCommandBindEnabledDoesNotRebuildContent(t *testing.T) {
-	for _, shorthand := range []bool{false, true} {
-		t.Run(map[bool]string{false: "descendant", true: "shorthand"}[shorthand], func(t *testing.T) {
+	for _, host := range []string{"menu", "shortcut", "scope"} {
+		t.Run(host, func(t *testing.T) {
 			enabled, other := MakeState(true), MakeState(false)
 			source := &enabled
 			bound, direct := true, true
@@ -352,14 +353,15 @@ func TestCommandBindEnabledDoesNotRebuildContent(t *testing.T) {
 					d.BindEnabled(source)
 				}
 				child := Build(func() View { content++; return Label("editor") })
-				var definition View
-				if !shorthand {
-					definition = d
+				item := MenuItem("Run").Command("run")
+				if host == "menu" {
+					item.DefineCommand(d)
 				}
-				scope := CommandScope(VBox(
-					MenuButton("Run").Menu(MenuItem("Run").Command("run")), child, definition,
-				))
-				if shorthand {
+				box := VBox(MenuButton("Run").Menu(item), child)
+				scope := CommandScope(box)
+				if host == "shortcut" {
+					box.Shortcuts(Shortcut(KeyF5).DefineCommand(d))
+				} else if host == "scope" {
 					scope.Commands(d)
 				}
 				return Window("main").Content(scope)
@@ -422,10 +424,11 @@ func TestCommandDescendantLocalAddRemoveAndFallback(t *testing.T) {
 			MenuButton("Run").Menu(MenuItem("Run").Command("run")),
 			Build(func() View {
 				local++
+				view := Label("definition host")
 				if show.Get() {
-					return Command("run")
+					view.Shortcuts(Shortcut(KeyF5).DefineCommand(Command("run")))
 				}
-				return nil
+				return view
 			}),
 		))).Commands(Command("run")))
 	})
@@ -451,9 +454,7 @@ func TestCommandDescendantTransferMovesDefinitionAndReferences(t *testing.T) {
 	calls := 0
 	source := a.update(CommandScope(VBox(
 		MenuButton("Source").Menu(MenuItem("Run").Command("run")),
-		VBox(Command("run").OnActivate(func() { calls++ }),
-			MenuButton("Moving").Menu(MenuItem("Run").Command("run")),
-		).ID("moving").Shortcuts(Shortcut(KeyF5).Command("run")),
+		VBox(MenuButton("Moving").Menu(MenuItem("Run").DefineCommand(Command("run").OnActivate(func() { calls++ })))).ID("moving").Shortcuts(Shortcut(KeyF5).Command("run")),
 	))).(*gui.LinearBox)
 	target := b.update(CommandScope(VBox(MenuButton("Target").Menu(MenuItem("Run").Command("run"))))).(*gui.LinearBox)
 	moving := source.Children()[1]
@@ -489,7 +490,7 @@ func TestCommandBatchedPublicationCanUnmountScope(t *testing.T) {
 	r := newRoot()
 	defer r.unmountWindow()
 	build := func(enabled bool) View {
-		return CommandScope(VBox(Command("a").Enabled(enabled), Command("b").Enabled(enabled)))
+		return CommandScope(MenuButton("Run").Menu(MenuItem("A").DefineCommand(Command("a").Enabled(enabled)), MenuItem("B").DefineCommand(Command("b").Enabled(enabled))))
 	}
 	r.update(build(true))
 	s := r.root.state.(*commandScope)
@@ -507,7 +508,7 @@ func TestCommandBindEnabledFollowsTransferredDefinition(t *testing.T) {
 	rt, fake := bindingApp(t, func() RootView {
 		return Root().Windows(
 			Window("source").Content(CommandScope(VBox(
-				VBox(Command("run").BindEnabled(&enabled), MenuButton("Moving").Menu(MenuItem("Run").Command("run"))).ID("moving"),
+				VBox(MenuButton("Moving").Menu(MenuItem("Run").DefineCommand(Command("run").BindEnabled(&enabled)))).ID("moving"),
 			))),
 			Window("target").Content(CommandScope(VBox(MenuButton("Target").Menu(MenuItem("Run").Command("run"))))),
 		)
@@ -542,7 +543,7 @@ func TestCommandScopeTransferRetainsPendingDefinitions(t *testing.T) {
 	defer b.unmountWindow()
 	// 模拟初次构建已完成、作用域的批次完成钩子尚未执行即发生移交。
 	a.reconcile(VBox(CommandScope(VBox(
-		MenuButton("Moving").Menu(MenuItem("Run").Command("run")), Command("run"),
+		MenuButton("Moving").Menu(MenuItem("Run").DefineCommand(Command("run"))),
 	)).ID("scope")))
 	source := a.widget().(*gui.LinearBox)
 	target := b.update(VBox()).(*gui.LinearBox)
@@ -562,5 +563,213 @@ func TestCommandScopeTransferRetainsPendingDefinitions(t *testing.T) {
 	b.flushAfterUpdate()
 	if moving.Children()[0].(*gui.MenuButton).Menu().ItemAt(0).Command() != command {
 		t.Fatal("目标后续完成钩子重复创建操作")
+	}
+}
+
+// 操作是普通声明数据；菜单和快捷键均可提供唯一的定义，且不依赖打开菜单。
+func TestCommandEntryDefinitionsShareOperation(t *testing.T) {
+	if _, ok := any(Command("run")).(View); ok {
+		t.Fatal("Command 不应作为普通 View 参与布局树")
+	}
+	for _, menuDefines := range []bool{false, true} {
+		t.Run(map[bool]string{false: "shortcut", true: "menu"}[menuDefines], func(t *testing.T) {
+			r := newRoot()
+			defer r.unmountWindow()
+			w := &overlayInputWindow{testWindow: newTestWindow()}
+			calls := 0
+			build := func(callback func(), menuEnabled, shortcutEnabled bool) View {
+				definition := Command("run").OnActivate(callback)
+				item := MenuItem("Run").Enabled(menuEnabled).Command("run")
+				shortcut := Shortcut(KeyF5).Enabled(shortcutEnabled).Command("run")
+				if menuDefines {
+					item.DefineCommand(definition)
+				} else {
+					shortcut.DefineCommand(definition)
+				}
+				return CommandScope(VBox(MenuButton("Menu").Menu(item), Label("editor")).Shortcuts(shortcut))
+			}
+			box := r.updateWindow(w, build(func() { calls++ }, false, true))
+			button := box.Children()[0].(*gui.MenuButton)
+			model := button.Menu()
+			command := model.ItemAt(0).Command()
+			press := func() {
+				t.Helper()
+				if err := w.DispatchEvent(events.KeyEvent{EventType: events.KeyDown, Key: events.KeyF5}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			press()
+			if command == nil || !command.Enabled() || calls != 1 || len(command.Shortcuts()) != 1 || model.ItemAt(0).Enabled() || button.Opened() {
+				t.Fatal("定义未在菜单打开前注册，或入口局部禁用影响了共享命令")
+			}
+			r.updateWindow(w, build(func() { calls += 10 }, false, true))
+			if button.Menu() != model || model.ItemAt(0).Command() != command {
+				t.Fatal("最新定义重建了未变化的模型或操作")
+			}
+			press()
+			if calls != 11 {
+				t.Fatal("定义使用了过期回调或重复执行业务")
+			}
+			r.updateWindow(w, build(func() { calls += 100 }, true, false))
+			press()
+			if calls != 11 || !command.Enabled() || !button.Menu().ItemAt(0).Enabled() {
+				t.Fatal("Shortcut 局部禁用影响了命令或菜单入口")
+			}
+		})
+	}
+}
+
+func TestCommandDefinitionEntryModes(t *testing.T) {
+	definition, external := Command("run"), gui.NewCommand()
+	item := MenuItem("Run", func() {}).CommandRef(external).DefineCommand(definition)
+	if item.definition != definition || item.commandID != "run" || item.commandRef != nil || item.action != nil {
+		t.Fatal("菜单定义未替换旧来源")
+	}
+	item.Command("other")
+	if item.definition != nil || item.commandID != "other" {
+		t.Fatal("菜单 ID 未替换定义")
+	}
+	item.DefineCommand(definition).CommandRef(external)
+	if item.definition != nil || item.commandRef != external {
+		t.Fatal("菜单对象未替换定义")
+	}
+	item.DefineCommand(definition).DefineCommand(nil)
+	if item.definition != nil || item.commandID != "" || item.commandRef != nil {
+		t.Fatal("菜单空定义未清除操作")
+	}
+	shortcut := Shortcut(KeyF5).CommandRef(external).DefineCommand(definition)
+	if shortcut.definition != definition || shortcut.commandID != "run" || shortcut.commandRef != nil || shortcut.onActivate != nil {
+		t.Fatal("快捷键定义未替换旧来源")
+	}
+	shortcut.Command("other")
+	if shortcut.definition != nil || shortcut.commandID != "other" {
+		t.Fatal("快捷键 ID 未替换定义")
+	}
+	shortcut.DefineCommand(definition).CommandRef(external)
+	if shortcut.definition != nil || shortcut.commandRef != external {
+		t.Fatal("快捷键对象未替换定义")
+	}
+	shortcut.DefineCommand(definition).OnActivate(func() {})
+	if shortcut.definition != nil || shortcut.commandID != "" || shortcut.onActivate == nil {
+		t.Fatal("快捷键回调未替换定义")
+	}
+	shortcut.DefineCommand(definition).DefineCommand(nil)
+	if shortcut.definition != nil || shortcut.commandID != "" || shortcut.onActivate != nil {
+		t.Fatal("快捷键空定义未清除操作")
+	}
+}
+
+func TestCommandDefinitionHostErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		run  func()
+		want string
+	}{
+		{"temporary-menu", func() { Menu(MenuItem("Run").DefineCommand(Command("run"))) }, "temporary menus must reference a command"},
+		{"temporary-context-menu", func() { MenuFor(nil, MenuItem("Run").DefineCommand(Command("run"))) }, "temporary menus must reference a command"},
+		{"window-shortcut", func() {
+			mount := &windowMount{window: newTestWindow()}
+			defer mount.disconnect()
+			_ = mount.applyWindowProperties(Window("main").Shortcuts(Shortcut(KeyF5).DefineCommand(Command("run"))))
+		}, "Window.Shortcuts cannot define scoped commands"},
+		{"shortcut-outside-scope", func() {
+			r := newRoot()
+			defer r.unmountWindow()
+			r.update(Label("editor").Shortcuts(Shortcut(KeyF5).DefineCommand(Command("run"))))
+		}, "DefineCommand requires an ancestor CommandScope"},
+		{"duplicate-menu-definitions", func() {
+			r := newRoot()
+			defer r.unmountWindow()
+			r.update(CommandScope(MenuButton("Menu").Menu(MenuItem("A").DefineCommand(Command("run")), MenuItem("B").DefineCommand(Command("run")))))
+		}, `duplicate or empty command ID "run"`},
+		{"duplicate-shortcut-definitions", func() {
+			r := newRoot()
+			defer r.unmountWindow()
+			r.update(CommandScope(Label("editor").Shortcuts(Shortcut(KeyF5).DefineCommand(Command("run")), Shortcut(KeyF6).DefineCommand(Command("run")))))
+		}, `duplicate or empty command ID "run"`},
+		{"duplicate-across-hosts", func() {
+			r := newRoot()
+			defer r.unmountWindow()
+			r.update(CommandScope(MenuButton("Menu").Menu(MenuItem("Run").DefineCommand(Command("run"))).Shortcuts(Shortcut(KeyF5).DefineCommand(Command("run")))))
+		}, `duplicate command ID "run"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if message, ok := recover().(string); !ok || !strings.Contains(message, tc.want) {
+					t.Fatalf("错误为 %q，期望包含 %q", message, tc.want)
+				}
+			}()
+			tc.run()
+		})
+	}
+}
+
+// 祖先对象查询允许用户代码销毁当前树，定义登记不能在释放后继续。
+func TestCommandDefinitionLookupCanReleaseHost(t *testing.T) {
+	for _, host := range []string{"menu", "shortcut"} {
+		t.Run(host, func(t *testing.T) {
+			r := newRoot()
+			defer r.unmountWindow()
+			armed := false
+			build := func() View {
+				item := MenuItem("Run").Command("run")
+				view := MenuButton("Menu")
+				if host == "menu" {
+					item.DefineCommand(Command("run"))
+				} else {
+					view.Shortcuts(Shortcut(KeyF5).DefineCommand(Command("run")))
+				}
+				view.Menu(item)
+				interceptor := objectScope("interceptor", view, func() any { return new(int) })
+				interceptor.read = func(BuildContext) any {
+					if armed {
+						armed = false
+						r.unmountWindow()
+					}
+					return new(int)
+				}
+				return CommandScope(interceptor)
+			}
+			r.update(build())
+			armed = true
+			r.update(build())
+			if r.root != nil {
+				t.Fatal("祖先查询没有安全释放声明宿主")
+			}
+		})
+	}
+}
+
+func TestShortcutDefinitionBindingFollowsTransfer(t *testing.T) {
+	enabled := MakeState(true)
+	rt, fake := bindingApp(t, func() RootView {
+		return Root().Windows(
+			Window("source").Content(CommandScope(VBox(
+				VBox(MenuButton("Moving").Menu(MenuItem("Run").Command("run"))).ID("moving").Shortcuts(Shortcut(KeyF5).DefineCommand(Command("run").BindEnabled(&enabled))),
+			))),
+			Window("target").Content(CommandScope(VBox(MenuButton("Target").Menu(MenuItem("Run").Command("run"))))),
+		)
+	})
+	a, b := rt.windows["source"].root, rt.windows["target"].root
+	source, target := a.widget().(*gui.LinearBox), b.widget().(*gui.LinearBox)
+	moving := source.Children()[0]
+	old := moving.Children()[0].(*gui.MenuButton).Menu().ItemAt(0).Command()
+	if err := (&Coordinator{owner: a.root.body}).TransferChild(moving, target, func() error { source.RemoveChild(moving); target.AddChild(moving); return nil }, nil); err != nil {
+		t.Fatal(err)
+	}
+	command := target.Children()[0].(*gui.MenuButton).Menu().ItemAt(0).Command()
+	if command == old || old.Enabled() || len(command.Shortcuts()) != 1 {
+		t.Fatal("快捷键定义没有重新归属")
+	}
+	fake.windows[0].Destroy()
+	enabled.Set(false)
+	fake.runPosted()
+	if command.Enabled() {
+		t.Fatal("快捷键定义的绑定仍停留在源窗口")
+	}
+	enabled.Set(true)
+	fake.runPosted()
+	if !command.Enabled() {
+		t.Fatal("快捷键定义的绑定未在目标恢复")
 	}
 }
