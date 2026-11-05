@@ -9,22 +9,22 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	ffi "github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
-	"github.com/golang-gui/goui/platform/graphics/opengl"
-	"github.com/golang-gui/goui/platform/graphics/software"
-	"github.com/golang-gui/goui/platform/mobile"
 	"github.com/golang-gui/goui/platform/typography"
 	"golang.org/x/image/font/gofont/goregular"
 )
@@ -62,7 +62,18 @@ func main() {
 		must(os.WriteFile(p+".tmp", data, 0600))
 		must(os.Rename(p+".tmp", p))
 	}
-	context, err := newTypography()
+	backend, err := platform.NewPlatform(platform.DefaultName(), "org.golanggui.mobilepaint")
+	must(err)
+	defer backend.Destroy()
+	expect("默认工厂使用实际移动平台", platform.DefaultName() == runtime.GOOS && backend.Name() == runtime.GOOS)
+	same, err := platform.NewPlatform(platform.DefaultName(), "org.golanggui.mobilepaint")
+	must(err)
+	expect("平台保持进程单例", same == backend)
+	other, err := platform.NewPlatform(platform.DefaultName(), "org.golanggui.other")
+	expect("不同应用标识不能重用平台单例", other == nil && err != nil)
+	_, err = backend.NewWindow(geometry.Size{Width: 320, Height: 480}, nil, common.WindowOptions{})
+	expect("逻辑窗口要求先创建事件队列", errors.Is(err, common.ErrUnavailable))
+	context, err := newTypography(backend)
 	must(err)
 	defer context.Destroy()
 	font := filepath.Join(directory, "Go-Regular.ttf")
@@ -70,33 +81,40 @@ func main() {
 	must(context.AddFont(font))
 	verifyTypography(context)
 	write("checks.json", checks)
-	loop := mobile.NewEventLoop()
+	loop, err := backend.NewEventLoop()
+	must(err)
+	extra, err := backend.NewEventLoop()
+	expect("平台不创建第二套事件队列", extra == nil && errors.Is(err, common.ErrUnsupported))
 	defer loop.Destroy()
 	var size events.SizeEvent
 	var painter graphics.Painter
 	var cached graphics.Image
-	var window *mobile.Window
+	var window common.Window
 	frames := 0
 	visible := false
 	nonce := time.Now().UnixNano()
-	gpu := false
-	if _, err := ffi.Dlsym(ffi.RTLD_DEFAULT, "goui_host_gles_create"); err == nil {
-		gpu = true
+	gpu := ffi.CallRet[int32](symbol("probe_use_gles")) != 0
+	painterName := "software"
+	if gpu {
+		painterName = "opengl"
 	}
+	// 测试宿主分别编译两种模式；通过正常环境选项请求对应后端。
+	must(os.Setenv("GOUI_PLAT_PAINTER", painterName))
+	graphicsChecked := false
 	start := time.Now()
 	report := func() {
 		if window != nil {
-			backend := ""
+			backendName := ""
 			if painter != nil {
-				backend = painter.Name()
+				backendName = painter.Name()
 			}
-			write("paint.json", map[string]any{"nonce": nonce, "visible": visible, "frames": frames, "width": size.Width, "height": size.Height, "scale": size.PixelWidth / max(size.Width, 1), "surface": window.SurfaceState(), "elapsed": time.Since(start).Seconds(), "checks": len(checks), "typography": context.Name(), "painter": backend})
+			write("paint.json", map[string]any{"platform": backend.Name(), "nonce": nonce, "visible": visible, "frames": frames, "width": size.Width, "height": size.Height, "scale": size.PixelWidth / max(size.Width, 1), "surface": window.SurfaceState(), "elapsed": time.Since(start).Seconds(), "checks": len(checks), "typography": context.Name(), "painter": backendName})
 		}
 	}
 	layout, err := context.NewTextLayout("GOUI mobile typography / graphics\n中文 日本語 한국어 العربية हिन्दी 👩‍💻\nCore layout + Go Painter", typography.TextFormat{Font: typography.FontInfo{Size: 18}, TextColor: color.NRGBA{R: 24, G: 48, B: 72, A: 255}, WrapMode: typography.WrapWordChar}, 320, 240)
 	must(err)
 	defer layout.Destroy()
-	window, err = mobile.NewWindow(loop, geometry.Size{Width: 320, Height: 480}, func(event events.Event) {
+	window, err = backend.NewWindow(geometry.Size{Width: 320, Height: 480}, func(event events.Event) {
 		if ffi.CallRet[uintptr](symbol("probe_thread")) != thread {
 			panic("窗口回调迁移了 OS 线程")
 		}
@@ -111,13 +129,12 @@ func main() {
 			layout.SetSize(max(1, e.Width-32), 240)
 		case events.PaintEvent:
 			if painter == nil {
-				if gpu {
-					painter, err = opengl.NewPainter(window)
-				} else {
-					painter, err = software.NewPainter(window)
-				}
+				painter, err = backend.NewPainter(window)
 				must(err)
+			}
+			if !graphicsChecked {
 				verifyGraphics(painter, context, gpu)
+				graphicsChecked = true
 				write("checks.json", checks)
 			}
 			if cached == nil {
@@ -146,6 +163,24 @@ func main() {
 	}, common.WindowOptions{})
 	must(err)
 	expect("逻辑窗口创建不等待绘制目标", !window.SurfaceState().Ready)
+	_, desktop := window.(common.DesktopWindow)
+	expect("移动窗口不伪造桌面能力", !desktop)
+	second, err := backend.NewWindow(geometry.Size{Width: 320, Height: 480}, nil, common.WindowOptions{})
+	expect("不创建第二个原生内容窗口", second == nil && errors.Is(err, common.ErrUnsupported))
+	must(os.Setenv("GOUI_PLAT_PAINTER", "unknown"))
+	rejected, err := backend.NewPainter(window)
+	expect("不支持的绘制后端不静默回退", rejected == nil && errors.Is(err, common.ErrUnsupported))
+	must(os.Setenv("GOUI_PLAT_PAINTER", painterName))
+	if gpu && runtime.GOOS == "ios" {
+		early, err := backend.NewPainter(window)
+		expect("iOS GPU 未就绪时立即报告不可用", early == nil && errors.Is(err, common.ErrUnavailable))
+	}
+	if !gpu {
+		// 回归普通 GUI 在 Run/Scene 就绪前构造 Painter 的顺序。
+		painter, err = backend.NewPainter(window)
+		must(err)
+		expect("Software 在原生目标就绪前构造", painter != nil && !window.SurfaceState().Ready)
+	}
 	defer window.Destroy()
 	defer func() {
 		if painter != nil {

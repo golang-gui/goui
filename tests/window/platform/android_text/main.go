@@ -14,13 +14,12 @@ import (
 
 	ffi "github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/software"
-	"github.com/golang-gui/goui/platform/mobile"
 	"github.com/golang-gui/goui/platform/typography"
-	"github.com/golang-gui/goui/platform/typography/androidtext"
 )
 
 type nativeBitmap struct {
@@ -78,7 +77,12 @@ func main() {
 	if err = os.WriteFile(filepath.Join(dir, "backend-go.json"), data, 0600); err != nil {
 		panic(err)
 	}
-	context, err := androidtext.NewContext()
+	backendPlatform, err := platform.NewPlatform(platform.DefaultName(), "org.golanggui.androidtext")
+	if err != nil {
+		panic(err)
+	}
+	defer backendPlatform.Destroy()
+	context, err := backendPlatform.NewTypography()
 	if err != nil {
 		panic(err)
 	}
@@ -89,12 +93,15 @@ func main() {
 		panic(err)
 	}
 	defer layout.Destroy()
-	loop := mobile.NewEventLoop()
+	loop, err := backendPlatform.NewEventLoop()
+	if err != nil {
+		panic(err)
+	}
 	defer loop.Destroy()
 	var painter graphics.Painter
 	var size events.SizeEvent
 	frames := 0
-	win, err := mobile.NewWindow(loop, geometry.Size{Width: 320, Height: 480}, func(event events.Event) {
+	win, err := backendPlatform.NewWindow(geometry.Size{Width: 320, Height: 480}, func(event events.Event) {
 		if ffi.CallRet[int32](thread) != owner {
 			panic("event changed GOUI thread")
 		}

@@ -1,7 +1,7 @@
 //go:build android || ios
 
 // 移动端逻辑窗口/Software 表面验收。构建与操作见 README.md；真实原生宿主
-// 使用 platform/mobile/native，不以测试宿主代替绘制实现。窗口和图片在 Run 前
+// 使用对应平台的正式宿主，不以测试宿主代替绘制实现。窗口和图片在 Run 前
 // 创建；周期请求绘制，旋转、后台返回和 Android Activity 重建后 nonce、图片
 // 与 Window 保持不变。表面暂时丢失不得发 Destroy，threadFailures 必须为零。
 package main
@@ -17,15 +17,15 @@ import (
 
 	ffi "github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/software"
-	"github.com/golang-gui/goui/platform/mobile"
 )
 
 type presentTarget struct {
-	win                    *mobile.Window
+	win                    common.Window
 	submitted, unavailable int
 }
 
@@ -49,7 +49,15 @@ func symbol(name string) uintptr {
 }
 
 func main() {
-	loop := mobile.NewEventLoop()
+	backend, err := platform.NewPlatform(platform.DefaultName(), "org.golanggui.mobilesurface")
+	if err != nil {
+		panic(err)
+	}
+	defer backend.Destroy()
+	loop, err := backend.NewEventLoop()
+	if err != nil {
+		panic(err)
+	}
 	defer loop.Destroy()
 	dir := ffi.GoString(ffi.Pointer(ffi.CallRet[uintptr](symbol("probe_data_dir"))))
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -62,7 +70,7 @@ func main() {
 	thread := symbol(threadName)
 	owner := ffi.CallRet[uint64](thread)
 	nonce := time.Now().UnixNano()
-	var win *mobile.Window
+	var win common.Window
 	var painter graphics.Painter
 	var icon graphics.Image
 	var size events.SizeEvent
@@ -80,8 +88,7 @@ func main() {
 			panic(err)
 		}
 	}
-	var err error
-	win, err = mobile.NewWindow(loop, geometry.Size{Width: 320, Height: 240}, func(e events.Event) {
+	win, err = backend.NewWindow(geometry.Size{Width: 320, Height: 240}, func(e events.Event) {
 		if ffi.CallRet[uint64](thread) != owner {
 			failures++
 		}

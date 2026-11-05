@@ -1,20 +1,23 @@
 //go:build android || ios
 
-// Package entry is the minimal precompiled C ABI support for mobile hosts.
+// Package entry provides the precompiled standard-cgo ABI entry support.
+// It has no native UI, window, event-loop or graphics responsibilities.
 package entry
 
+/*
+#include <stddef.h>
+*/
 import "C"
 
-var start func() bool
-
-// Register binds the pure Go startup implementation during package init. Native
-// exports wait for package initialization through the stock Go cgo wrapper.
-func Register(fn func() bool) { start = fn }
+import (
+	"github.com/golang-gui/goui/platform/internal/mobileentry"
+	"unsafe"
+)
 
 //export goui_run
-func goui_run() C.int {
-	if start == nil || !start() {
-		return -1
-	}
-	return 0
+func goui_run() C.int { return C.int(mobileentry.Run()) }
+
+//export ANativeActivity_onCreate
+func ANativeActivity_onCreate(activity unsafe.Pointer, saved unsafe.Pointer, size C.size_t) {
+	mobileentry.Create(uintptr(activity), uintptr(saved), uintptr(size))
 }
