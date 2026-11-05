@@ -1,5 +1,31 @@
 # Plan
 
+## 多语言词条读取优化（2026-11-05）
+
+- [x] 保持 mlang 公共 API、BCP 47 匹配／回退与同步通知契约。当前语言和 Getter
+  的单项缓存改为原子发布的不可变快照；命中免锁、无分配，失效时才加锁复查／匹配。
+  写入继续串行化，通知仍在锁外发送，不增加全局词条表、语言历史或逐词条订阅。
+- [x] 新增通知内缓存读取与重入、分阶段并发冷／热读取、零分配、并发同规范化语言
+  只通知一次的回归；保留所有原匹配与通知断言。设计见
+  [DesignLocalization](DesignLocalization.md#读取缓存2026-11-05)。
+- [x] Linux amd64、Go 1.25.8、Xeon Gold 5318Y：同一 BenchmarkString、200ms、
+  count=5、GOMAXPROCS=1，八语言缓存读取中位数 45.69 → 13.04 ns/op，约 3.5 倍，
+  前后均 0 B/op、0 allocs/op。8 个并发 worker 的平均每操作耗时中位数
+  247.4 → 1.675 ns/op，仅表示基准吞吐，不代表单次延迟或界面帧率收益。
+  Language 的规范化字符串读取中位数 37.11 → 0.5812 ns/op；资源创建、切换与通知
+  均不计入这些读取基准。
+- [x] `go test -race ./mlang ./internal/resource -count=10`、UI 的 TestLanguage
+  race（count=5）、mlang/resource vet 通过。独立 X11 下 `go test -json -count=1 ./...`
+  共 3983 项测试／子测试通过、15 项既有跳过、零失败，保留工作区原有未跟踪测试。
+- [x] 独立 Xvnc :90 1920×1200／xfwm4 合成开启：既有 UI mlang -auto 以
+  Software／OpenGL 配置、1x／2x 运行，四组各完成八语言及退出断言，Widget／图标
+  身份、编辑文本和选区保持。2x 为应用覆盖倍率，配置不冒充实际每帧后端探测。
+  全仓既有测试会创建窗口和图片，未在用户桌面运行，本轮独立会话已停止。
+- [x] Windows amd64／macOS arm64／Linux arm64 的 mlang 测试目标 CGO_ENABLED=0
+  交叉编译通过；未执行远端原生运行，本轮没有原生平台或绘制行为修改。
+- 验收产物：`/tmp/goui-mlang-optimization-2vwptje7`，含原始实现、前后完整基准、
+  race／vet、全仓 JSON、四组窗口日志与交叉编译产物。没有提交工作区原有未跟踪文件。
+
 ## 窗口默认命令分组（2026-11-05）
 
 - [x] CommandScope／CommandScopeView 统一改名为 CommandGroup／CommandGroupView，
