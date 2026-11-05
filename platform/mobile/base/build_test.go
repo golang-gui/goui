@@ -15,6 +15,20 @@ import (
 	"time"
 )
 
+func TestMobileBuildFlags(t *testing.T) {
+	if err := validateBuildFlags("demo", []string{"-s", "-w", "-X", "example.org/app.Version=hello world"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, flags := range [][]string{{"-extld=cc"}, {"-linkmode=internal"}, {"-X"}, {"-X", "missing-value"}} {
+		if err := validateBuildFlags("", flags); err == nil {
+			t.Fatalf("必须拒绝覆盖基座链接契约: %q", flags)
+		}
+	}
+	if err := validateBuildFlags("demo\nother", nil); err == nil {
+		t.Fatal("必须拒绝 tags 中的控制字符")
+	}
+}
+
 func buildTestOptions(t *testing.T, goos string) BuildOptions {
 	t.Helper()
 	root := t.TempDir()

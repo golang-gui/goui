@@ -30,6 +30,8 @@ type BuildOptions struct {
 	Libraries  []string
 	Frameworks []string
 	Verbose    bool
+	Tags       string
+	LDFlags    []string
 	// Entry registers the application's main for the fixed mobile ABI entry.
 	Entry bool
 }
@@ -39,6 +41,9 @@ type BuildOptions struct {
 // It never changes the process environment or publishes an incomplete output.
 func Build(ctx context.Context, options BuildOptions, out, errOut io.Writer) error {
 	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := validateBuildFlags(options.Tags, options.LDFlags); err != nil {
 		return err
 	}
 	if options.Output == "" || options.GoDriver == "" || options.Linker == "" {
@@ -121,6 +126,7 @@ func Build(ctx context.Context, options BuildOptions, out, errOut io.Writer) err
 	output := filepath.Join(temporary, filepath.Base(options.Output))
 	goOutput := output
 	flags := []string{"-linkmode=external"}
+	flags = append(flags, options.LDFlags...)
 	if inputs.GOOS == "android" {
 		// cmd/go already forwards CC/CXX to cmd/link's -extld. Supplying a
 		// compiler argv here avoids a second, lossy -ldflags quoting layer.
@@ -149,6 +155,9 @@ func Build(ctx context.Context, options BuildOptions, out, errOut io.Writer) err
 		return err
 	}
 	args := []string{"build", "-trimpath", "-pgo=off", "-buildmode=" + base.BuildMode, "-ldflags=" + encoded, "-o", goOutput}
+	if options.Tags != "" {
+		args = append(args, "-tags="+options.Tags)
+	}
 	if options.Entry {
 		overlay, err := createEntryOverlay(ctx, options, base.BuildMode, env, temporary)
 		if err != nil {
@@ -185,6 +194,25 @@ func Build(ctx context.Context, options BuildOptions, out, errOut io.Writer) err
 		return err
 	}
 	return os.Rename(output, options.Output)
+}
+
+func validateBuildFlags(tags string, flags []string) error {
+	if strings.ContainsAny(tags, "\x00\r\n") {
+		return fmt.Errorf("invalid build tags")
+	}
+	for i := 0; i < len(flags); i++ {
+		switch flags[i] {
+		case "-s", "-w":
+		case "-X":
+			i++
+			if i == len(flags) || !strings.Contains(flags[i], "=") || strings.ContainsAny(flags[i], "\x00\r\n") {
+				return fmt.Errorf("-X requires importpath.name=value")
+			}
+		default:
+			return fmt.Errorf("unsupported mobile Go linker flag %q (supported: -s, -w, -X)", flags[i])
+		}
+	}
+	return nil
 }
 
 func buildNativeExtras(options *BuildOptions, inputs *NativeInputs) ([]string, error) {

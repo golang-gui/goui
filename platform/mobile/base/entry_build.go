@@ -13,7 +13,11 @@ import (
 func createEntryOverlay(ctx context.Context, options BuildOptions, mode string, env []string, temporary string) (string, error) {
 	// Only locate this package. Resolving cgo imports through list would request
 	// auxiliary generated sources, which the archive consumer deliberately lacks.
-	command := exec.CommandContext(ctx, options.GoDriver, "list", "-find", "-json", "-trimpath", "-pgo=off", "-buildmode="+mode, options.Package)
+	args := []string{"list", "-find", "-json", "-trimpath", "-pgo=off", "-buildmode=" + mode}
+	if options.Tags != "" {
+		args = append(args, "-tags="+options.Tags)
+	}
+	command := exec.CommandContext(ctx, options.GoDriver, append(args, options.Package)...)
 	command.Dir, command.Env = options.Directory, env
 	var stderr bytes.Buffer
 	command.Stderr = &stderr
