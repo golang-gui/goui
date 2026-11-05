@@ -61,7 +61,7 @@ func (s *ShortcutView) Command(id string) *ShortcutView {
 	return s
 }
 
-// CommandRef borrows an external operation without requiring a CommandScope.
+// CommandRef borrows an external operation without requiring a CommandGroup.
 // It replaces Command and OnActivate. Unmount only detaches this binding;
 // the caller retains ownership of the command and its activation handlers.
 func (s *ShortcutView) CommandRef(command *gui.Command) *ShortcutView {
@@ -70,7 +70,7 @@ func (s *ShortcutView) CommandRef(command *gui.Command) *ShortcutView {
 }
 
 // DefineCommand supplies a scope-local definition and uses it for this binding.
-// It requires a view below a CommandScope; Window.Shortcuts has no such context.
+// It requires a view below a CommandGroup; Window.Shortcuts has no such context.
 // Binding Enabled remains independent of the command's availability.
 // nil clears the operation.
 func (s *ShortcutView) DefineCommand(command *CommandView) *ShortcutView {

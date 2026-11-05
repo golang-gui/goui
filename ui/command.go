@@ -8,7 +8,7 @@ import (
 	"github.com/golang-gui/goui/gui"
 )
 
-// CommandView describes an operation supplied to CommandScope.Commands or an
+// CommandView describes an operation supplied to CommandGroup.Commands or an
 // entry's DefineCommand. It is a declaration value, not a View. The nearest
 // scope owns the operation and its ID namespace, independently of Widget IDs.
 // Construct fresh values each build.
@@ -46,26 +46,26 @@ func (v *CommandView) BindEnabled(source ReadState[bool]) *CommandView {
 // OnActivate supplies the latest handler without invoking it during a build.
 func (v *CommandView) OnActivate(fn func()) *CommandView { v.onActivate = fn; return v }
 
-// CommandScopeView owns operations without creating a widget or layout boundary.
+// CommandGroupView owns operations without creating a widget or layout boundary.
 // Descendants resolve the nearest matching command ID, falling back to outer scopes.
-type CommandScopeView struct {
-	ComposeBase[CommandScopeView]
+type CommandGroupView struct {
+	ComposeBase[CommandGroupView]
 	child    View
 	commands []*CommandView
 }
 
-// CommandScope exposes commands to its content without adding layout or paint.
-func CommandScope(child View) *CommandScopeView {
-	v := &CommandScopeView{child: child}
+// CommandGroup exposes commands to its content without adding layout or paint.
+func CommandGroup(child View) *CommandGroupView {
+	v := &CommandGroupView{child: child}
 	v.Self = v
 	return v
 }
-func (v *CommandScopeView) Child(child View) *CommandScopeView { v.child = child; return v }
+func (v *CommandGroupView) Child(child View) *CommandGroupView { v.child = child; return v }
 
 // Commands replaces definitions attached directly to this scope. Nil entries
 // are ignored. IDs must be unique across this list and descendant menu/shortcut
 // definitions in the same scope. Nested scopes may shadow the same IDs.
-func (v *CommandScopeView) Commands(commands ...*CommandView) *CommandScopeView {
+func (v *CommandGroupView) Commands(commands ...*CommandView) *CommandGroupView {
 	v.commands = slices.Clone(commands)
 	return v
 }
@@ -75,13 +75,13 @@ type scopedCommand struct {
 	activate   signal.Handle
 	definition *commandDefinition
 }
-type commandScope struct {
+type commandGroup struct {
 	ctx          BuildContext
 	commands     map[string]*scopedCommand
 	definitions  map[*commandDefinition]struct{}
 	shorthand    commandDefinitions
 	dirty        bool
-	parent       *commandScope
+	parent       *commandGroup
 	parentHandle signal.Handle
 	changed      signal.Signal0
 	released     bool
@@ -90,13 +90,13 @@ type commandScope struct {
 // A definition belongs to its declaring menu, shortcut list or scope. All
 // hosts use the same registration and property binding paths.
 type commandDefinition struct {
-	scope    *commandScope
+	scope    *commandGroup
 	id       string
 	enabled  bool
 	callback func()
 }
 
-func (d *commandDefinition) attach(scope *commandScope) {
+func (d *commandDefinition) attach(scope *commandGroup) {
 	if d.scope != scope {
 		d.detach()
 		d.scope = scope
@@ -115,7 +115,7 @@ func (d *commandDefinition) detach() {
 		s.invalidate()
 	}
 }
-func (d *commandDefinition) update(ctx BuildContext, s *commandScope, v *CommandView, property string) {
+func (d *commandDefinition) update(ctx BuildContext, s *commandGroup, v *CommandView, property string) {
 	if v.id == "" {
 		panic("ui: empty command ID")
 	}
@@ -142,7 +142,7 @@ type commandDefinitions struct {
 	version uint64
 }
 
-func (d *commandDefinitions) update(ctx BuildContext, scope *commandScope, views []*CommandView, property string) {
+func (d *commandDefinitions) update(ctx BuildContext, scope *commandGroup, views []*CommandView, property string) {
 	seen := make(map[string]bool, len(views))
 	for _, view := range views {
 		if view == nil {
@@ -158,7 +158,7 @@ func (d *commandDefinitions) update(ctx BuildContext, scope *commandScope, views
 		return
 	}
 	if ctx == nil {
-		panic("ui: DefineCommand requires an ancestor CommandScope; Window.Shortcuts cannot define scoped commands")
+		panic("ui: DefineCommand requires an ancestor CommandGroup; Window.Shortcuts cannot define scoped commands")
 	}
 	d.version++
 	version := d.version
@@ -173,13 +173,13 @@ func (d *commandDefinitions) update(ctx BuildContext, scope *commandScope, views
 		return d.version == version && !owner.released && owner.root == root && root.epoch == epoch && owner.version == nodeVersion
 	}
 	if scope == nil {
-		scope, _ = FindAncestor[*commandScope](ctx)
+		scope, _ = FindAncestor[*commandGroup](ctx)
 	}
 	if !live() {
 		return
 	}
 	if scope == nil || scope.released {
-		panic("ui: DefineCommand requires an ancestor CommandScope")
+		panic("ui: DefineCommand requires an ancestor CommandGroup")
 	}
 	d.ctx = ctx
 	if d.entries == nil {
@@ -225,11 +225,11 @@ func (d *commandDefinitions) reparented() {
 	d.version++
 	version := d.version
 	ctx := d.ctx
-	scope, _ := FindAncestor[*commandScope](ctx)
+	scope, _ := FindAncestor[*commandGroup](ctx)
 	if d.version != version {
 		return
 	}
-	var previous *commandScope
+	var previous *commandGroup
 	for _, entry := range d.entries {
 		previous = entry.scope
 		entry.attach(scope)
@@ -245,14 +245,14 @@ func (d *commandDefinitions) reparented() {
 	})
 }
 
-func (v *CommandScopeView) Build(ctx BuildContext) View {
+func (v *CommandGroupView) Build(ctx BuildContext) View {
 	if ctx.State() == nil {
-		ctx.SetState(&commandScope{
+		ctx.SetState(&commandGroup{
 			commands:    make(map[string]*scopedCommand),
 			definitions: make(map[*commandDefinition]struct{}),
 		})
 	}
-	s := ctx.State().(*commandScope)
+	s := ctx.State().(*commandGroup)
 	s.ctx = ctx
 	s.reparent(ctx)
 	if s.released {
@@ -267,9 +267,9 @@ func (v *CommandScopeView) Build(ctx BuildContext) View {
 	s.invalidate()
 	return v.child
 }
-func (*CommandScopeView) Object(ctx BuildContext) any { return ctx.State() }
-func (*CommandScopeView) Release(ctx BuildContext) {
-	s, ok := ctx.State().(*commandScope)
+func (*CommandGroupView) Object(ctx BuildContext) any { return ctx.State() }
+func (*CommandGroupView) Release(ctx BuildContext) {
+	s, ok := ctx.State().(*commandGroup)
 	if !ok || s.released {
 		return
 	}
@@ -294,8 +294,8 @@ func (*CommandScopeView) Release(ctx BuildContext) {
 	}
 	s.changed.Emit()
 }
-func (*CommandScopeView) Reparented(ctx BuildContext) {
-	if s, ok := ctx.State().(*commandScope); ok {
+func (*CommandGroupView) Reparented(ctx BuildContext) {
+	if s, ok := ctx.State().(*commandGroup); ok {
 		s.ctx = ctx
 		s.reparent(ctx)
 		s.invalidate()
@@ -303,14 +303,14 @@ func (*CommandScopeView) Reparented(ctx BuildContext) {
 	}
 }
 
-func (s *commandScope) invalidate() {
+func (s *commandGroup) invalidate() {
 	if !s.released && s.ctx != nil {
 		s.dirty = true
 		s.ctx.AfterUpdate(s.commit)
 	}
 }
 
-func (s *commandScope) commit() {
+func (s *commandGroup) commit() {
 	if s.released || !s.dirty {
 		return
 	}
@@ -358,8 +358,8 @@ func (s *commandScope) commit() {
 		s.changed.Emit()
 	}
 }
-func (s *commandScope) reparent(ctx BuildContext) {
-	parent, _ := FindAncestor[*commandScope](ctx)
+func (s *commandGroup) reparent(ctx BuildContext) {
+	parent, _ := FindAncestor[*commandGroup](ctx)
 	if s.released {
 		return
 	}
@@ -380,7 +380,7 @@ func (s *commandScope) reparent(ctx BuildContext) {
 	}
 	s.changed.Emit()
 }
-func (s *commandScope) find(id string) *gui.Command {
+func (s *commandGroup) find(id string) *gui.Command {
 	for current := s; current != nil && !current.released; current = current.parent {
 		if entry := current.commands[id]; entry != nil {
 			return entry.command
@@ -397,7 +397,7 @@ func FindCommand(ctx BuildContext, id string) (*gui.Command, bool) {
 	if ctx == nil || id == "" {
 		return nil, false
 	}
-	scope, ok := FindAncestor[*commandScope](ctx)
+	scope, ok := FindAncestor[*commandGroup](ctx)
 	if !ok {
 		return nil, false
 	}
@@ -409,7 +409,7 @@ func FindCommand(ctx BuildContext, id string) (*gui.Command, bool) {
 // Its owner supplies the target setter and releases the reference on unmount.
 type commandReference struct {
 	ctx     BuildContext
-	scope   *commandScope
+	scope   *commandGroup
 	handle  signal.Handle
 	id      string
 	apply   func(*gui.Command)
@@ -424,9 +424,9 @@ func (r *commandReference) update(ctx BuildContext, id string, apply func(*gui.C
 }
 func (r *commandReference) reparent() {
 	version := r.version
-	var scope *commandScope
+	var scope *commandGroup
 	if r.ctx != nil && r.id != "" {
-		scope, _ = FindAncestor[*commandScope](r.ctx)
+		scope, _ = FindAncestor[*commandGroup](r.ctx)
 	}
 	if r.version != version {
 		return
