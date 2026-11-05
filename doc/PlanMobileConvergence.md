@@ -168,3 +168,98 @@ import mobilebase "github.com/golang-gui/goui/platform/mobile/base"
 真机安装、启动、绘制及前后台恢复验收。当前纯 Go 构建与运行说明见
 [PlanMobileBuild 第 19 节](PlanMobileBuild.md#19-当前纯-go-应用的构建与运行路径2026-11-05)。
 GUI 触摸、IME、SafeArea 和声明式适配继续后置，不将其作为构建验证的前置条件。
+
+## 正式构建与官方标准库 App（2026-11-05）
+
+### 本次实现
+
+- cmd/goui 增加 android/arm64、ios/arm64、明确的 simulator variant 和本地
+  mobile.json profile；校验文件摘要、原生目标、Go 版本及实际 cgo 依赖闭包。
+  消费编译复用 mobilebase.Build，支持普通 tags 与受限 -s/-w/-X。
+- build 仍输出原生二进制及摘要记录；package 不重新编译；显式 build -package
+  组合编译/组包。生产 APK 使用系统 NativeActivity 默认入口，包含原色图标和
+  正式排版 Dex，没有 probe_onCreate、probe_* 或统一 goui_host_* 窗口宿主。
+- Android 以 Go 生成并稳定复用本机开发证书，独立 Go 签名器/验签器组包；最终
+  APK 另经官方 SDK apksigner 验证 v3，并在显式 24–27 验签范围验证 v2。后者
+  是签名算法验证，不代表应用支持低于声明 min_sdk=29 的系统。
+- iOS 使用既有 Go c-archive 与最小 main/SDK metadata 输出 Mach-O、原色 PNG/
+  plist、app/IPA。用户确认云真机先重签，故显式 -unsigned 支持待重签 IPA；
+  没有签名时默认仍报错，不把 LLD ad-hoc 记录或模拟器签名当作设备授权。
+- Android 首次 onCreate 从真实 Context.getCacheDir 取得应用缓存路径；仅当
+  TMPDIR 未设置时在应用 main 前初始化，保证 os.TempDir/testing.T.TempDir
+  使用可写目录。不猜测 /data 路径，不把 HOME 指向临时测试目录。
+- 新增 mobile_std 维护者生成器，复制 Go 1.25.8 选定的完整外部测试源，保留
+  字节、断言、原 skip、版权及摘要。只用公开 platform 的 Go App 自动执行
+  testing.MainStart/M.Run，并保存完整日志、顶层结果和窗口状态，不导入 GUI/UI。
+  原生辅助/Java 仍由维护者预制；本次不改触摸、IME 或 Widget。
+
+### 源码与消费验证
+
+本机 Linux amd64 / Go 1.25.8，仓库外独立工作区与首次目标空缓存；PATH 只有 Go
+和会记录调用后失败的 cc/gcc/clang/java/javac/d8 等拒绝工具。三个正式 CLI 目标
+均通过，拒绝调用记录为零。维护者此前 NDK/Xcode 制作和本轮补充 net 归档、
+Security/resolv stub 不混入消费阶段。普通应用/平台 Go 代码仍从源码编译。
+
+现阶段使用本地移动版 cgo/purego/nanovgo 分支和私有组件；不宣称正式 tag、下载
+缓存、组件自动组合或 SDK 再分发许可已经完成。本地 profile 可包含 net 原生
+归档，未知 cgo 明确失败；Android os.UserCacheDir/UserConfigDir 的 HOME 语义
+尚未因此扩展，不将本例临时目录可用性概括为全部标准库能力已覆盖。
+
+| 验证 | 最终结果与边界 |
+| --- | --- |
+| 全仓 | 受控源码副本、独立 Xvnc :78/X11/Xfwm4；go test -json ./...：3531 通过、10 既有跳过、0 失败；883 个 Go 文件与交付源码一致 |
+| 竞态/静态 | cmd/goui、platform/mobile/base、mobile_std 的 race 和 vet 通过；生成器用临时错误用例证明失败 code 不被吞掉 |
+| 桌面目标 | Windows amd64/macOS arm64 的上述测试目标交叉编译通过，-exec /usr/bin/true 不算原生运行 |
+| Android | 远端 macOS15.7.7 ARM64 的专用 Android11/API30 ARM64 ATD、Software、1x；最终 134 项官方用例+4 项额外检查，PASS137/FAIL0/SKIP1、code0；CheckJNI 未报告错误；Home/返回后 nonce 不变，后台 frames 9→9，恢复增加到13 |
+| iOS | 同一 Mac 的专用 iOS26.3 ARM64 Simulator、Software、3x；同一 134+4 集，PASS137/FAIL0/SKIP1、code0；完成后持续呈现，截图确认状态及内容可读；本例本轮未重新验收 iOS 旋转/前后台组合 |
+| 原 skip | 两端均仅 path/TestCleanMallocs，由原始测试的 short 模式条件触发；报告/日志保留原因 |
+| APK 静态/签名 | 正式 NativeActivity 入口、没有测试宿主符号，四个 PT_LOAD 均 16384 对齐；Go 与官方 SDK 验签通过；16 KiB 内核运行仍未验收 |
+| 真机 IPA | 本机生成 arm64 device Mach-O，LC_BUILD_VERSION platform=2，Payload/app 布局及可执行权限正确；待云平台重签与真实 iPhone 安装/运行，未当作通过 |
+
+最初 Android 验收脚本继承旧 ANDROID_ADB_SERVER_PORT=5039，与新私有 ADB5043
+不一致，导致启动等待超时；日志保留，修正环境并清理本轮残留进程后完成最终
+验收，没有为此修改生产代码或跳过断言。首次 iOS 截图被系统状态栏覆盖，修正
+例程保守顶部留白；没有将其冒充 SafeArea 实现。
+
+构建/原始日志/源码清单/截图在 Linux/Mac 的 /tmp/goui-mobile-build-psdcikpx。
+交付 APK、待重签 IPA、Simulator 包、源清单和结果另保存到
+/data/xuyang8/artifacts/goui-mobile-stdlib-20261105；最终路径及 SHA-256 由该目录
+SHA256SUMS 记录。验证结束关闭专用 X11、ADB、Android 模拟器，
+删除专用 iOS Simulator；未修改主会话仓库、安全策略或用户未跟踪文件。
+
+仍待完成：物理 Android/iPhone 的同源产物验收、16 KiB 运行、更多标准库测试文件、
+正式自有证书签名、组件分发/许可、公开依赖版本。134 项顶层选择集不是 go test std
+全集；本地 HTTPS/localhost 不等于公网 DNS、代理与完整证书链环境已验证。
+
+## 同步主线后的回归（2026-11-05）
+
+feature/mobile-base 以 origin/main `af55926` 为新基线，保留原有职责提交。
+Plan/Roadmap 的双方新增段落均保留；rootBase 冲突按原语义合并：主线的帧追踪
+继续覆盖阶段，移动端在调用和提交前仍检查实时绘制许可。没有引入新公开接口。
+mobile_paint 的 DrawBoxShadow 参数同步为 geometry.UniformCornerRadius(12)，
+使其与主线四角圆角 API 一致；其余移动平台实现和预编译组件不变。
+
+验证使用 Linux amd64、Go 1.25.8，受控副本仅包含当前已跟踪源码，未复制或
+删除工作区原有未跟踪旧例程。独立 Xvnc :136、1280×960、xfwm4 合成开启，
+`GOWORK=off go test -json -count=1 ./...`：3891 项测试/子测试通过、10 项按
+原条件跳过、零失败。GUI、platform/internal/mobile、mobileentry 的 race，
+GUI/移动工具与支撑包的 vet 通过；定向构建工具、基座、生成器、圆角与阴影
+测试通过。既有测试生成的图片留在受控副本，不改用户工作区资源。
+
+消费者以显式仓库外 go.work 接入原移动版 cgo/purego/nanovgo，复用匹配组件；
+PATH 中原生编译器/JDK 为记录后拒绝执行的工具，消费调用记录为零。
+OpenGL 版 mobile_std 的 Android ARM64 APK、iOS ARM64 Simulator App 与
+device 待重签 IPA 构建通过；mobile_paint 的 Android 和 iOS Simulator 原生
+二进制链接通过。这里只是编译/组包结果，没有重新执行 App 或官方测试集，
+不覆盖此前模拟器实测，也不消除真机、签名与组件公开发布的验收缺口。
+
+桌面交叉编译：Windows amd64、macOS arm64 的全部适用非测试源码目标在
+CGO_ENABLED=0 下通过。初次直接 go build ./... 因 mobile_start/mobile_surface
+在桌面只有生成器、没有桌面 main 而失败；这两个目录在变基前已相同，按各自
+移动端使用边界排除，不修改旧入口。后续显式包清单初轮又包含仅有 _test.go
+的目录而失败，改为按 GoFiles/CgoFiles 筛选适用构建包后通过；不将前两次命令
+算作通过，也不将交叉编译描述为原生运行。未改测试断言或新增 skip。
+
+备份分支、range-diff、全仓 JSON/跳过清单、交叉编译日志和移动制品保存于
+`/tmp/goui-mobile-rebase-cxwm4jhr`；变基前的 25 个未跟踪文件摘要保持一致。
+独立 X11 会话已停止；没有修改主会话仓库或依赖仓库，也没有推送分支。
