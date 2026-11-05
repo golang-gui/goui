@@ -3,6 +3,8 @@ package android
 import (
 	"fmt"
 	"image"
+	"os"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -186,6 +188,17 @@ func onCreate(address, saved, size uintptr) {
 				panic("android: retain class loader")
 			}
 			androidruntime.Initialize(jni.VM(a.VM), global)
+			// Android does not provide a writable Unix /tmp. Use the actual
+			// Context cache directory before application main calls os.TempDir.
+			if os.Getenv("TMPDIR") == "" {
+				cache, err := activityCacheDirectory(env, jni.Object(a.Object))
+				if err != nil {
+					panic(err)
+				}
+				if err = os.Setenv("TMPDIR", cache); err != nil {
+					panic(err)
+				}
+			}
 			h.initCallbacks()
 			h.initialized = true
 		}
@@ -202,6 +215,57 @@ func onCreate(address, saved, size uintptr) {
 			panic("android: application main is not registered")
 		}
 	})
+}
+
+func activityCacheDirectory(env jni.Env, activity jni.Object) (string, error) {
+	class := env.ObjectClass(activity)
+	if err := env.Exception(); err != nil {
+		return "", err
+	}
+	if class == 0 {
+		return "", fmt.Errorf("android: Activity class unavailable")
+	}
+	defer env.DeleteLocalRef(class)
+	method := env.Method(class, "getCacheDir", "()Ljava/io/File;", false)
+	if err := env.Exception(); err != nil {
+		return "", err
+	}
+	file := env.CallObject(activity, method)
+	if err := env.Exception(); err != nil {
+		return "", err
+	}
+	if file == 0 {
+		return "", fmt.Errorf("android: cache directory unavailable")
+	}
+	defer env.DeleteLocalRef(file)
+	fileClass := env.ObjectClass(file)
+	if err := env.Exception(); err != nil {
+		return "", err
+	}
+	if fileClass == 0 {
+		return "", fmt.Errorf("android: File class unavailable")
+	}
+	defer env.DeleteLocalRef(fileClass)
+	absolute := env.Method(fileClass, "getAbsolutePath", "()Ljava/lang/String;", false)
+	if err := env.Exception(); err != nil {
+		return "", err
+	}
+	text := env.CallObject(file, absolute)
+	if err := env.Exception(); err != nil {
+		return "", err
+	}
+	if text == 0 {
+		return "", fmt.Errorf("android: cache path unavailable")
+	}
+	defer env.DeleteLocalRef(text)
+	path := env.String(text)
+	if err := env.Exception(); err != nil {
+		return "", err
+	}
+	if !filepath.IsAbs(path) {
+		return "", fmt.Errorf("android: invalid cache directory")
+	}
+	return path, nil
 }
 func (h *nativeState) configure() {
 	config := native.ConfigurationNew()
