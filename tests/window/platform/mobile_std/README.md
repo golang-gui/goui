@@ -29,7 +29,7 @@ DNS 使用系统 localhost 解析，HTTPS 使用本地 httptest 服务和专用�
 
 ## 生成工程
 
-在 goui2 的 feature/mobile-base 分支根执行，输出必须是仓库外不存在的目录：
+在包含本例的 GOUI 源码根目录执行，输出必须是仓库外不存在的目录：
 
 ```sh
 go run ./tests/window/platform/mobile_std -o /absolute/standard-app
@@ -37,9 +37,11 @@ go run ./tests/window/platform/mobile_std -o /absolute/standard-app
 ```
 
 输出包含普通 main.go、goui.toml、图标、suite runner、official 原始测试文件和
-official-sources.json。生成阶段不调用原生编译器或 SDK。开发分支尚未发布完整
-移动依赖，维护者必须显式用独立 go.work 连接该工程、goui2 与移动版 cgo/purego/
-nanovgo；不得偷偷修改主会话仓库或把原型 replace 描述成正式发布依赖。
+official-sources.json。生成阶段不调用原生编译器或 SDK。FFI/渲染依赖使用正式
+版本：goexlib/cgo v0.1.2、官方 purego v0.10.2、nanovgo v0.0.12，不需要这些
+依赖的本地源码分支或 replace。若生成工程使用尚未发布的 GOUI 功能，维护者只需
+用仓库外独立 go.work 连接生成工程与当前 GOUI 源码。预编译组件仍需单独准备，
+Go 依赖已发布不代表组件下载/许可审核或真机验收已经完成。
 
 ## 构建
 

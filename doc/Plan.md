@@ -1,5 +1,23 @@
 # Plan
 
+## 移动 FFI 依赖正式化（2026-11-05）
+
+- [x] goexlib/cgo v0.1.2 承担 ARM64 类型化调用与回调的参数/返回布局，复用
+  官方 purego v0.10.2 的公开原生栈桥；不再依赖实验 purego 分支或本地 replace。
+- [x] nanovgo 移动提交修正为 xuges <xuges@qq.com>，发布 v0.0.12；GOUI
+  go.mod/go.sum 直接使用已发布版本，不改写已推送的旧标签。
+- [x] 独立 C ABI 基准：Linux ARM64/QEMU、macOS ARM64、Android API30 ARM64
+  与 iOS26.3 ARM64 Simulator 均 28/28，8 原生线程 × 8 轮无重复失败。
+  macOS 包测试56通过/1项原始 CallRaw 限制跳过，Windows10 amd64 原生无头回归通过。
+- [x] Android/iOS Simulator 的正式 OpenGL ES App 均通过1x/2x FBO像素检查，
+  官方标准库选择集137通过/1项原始 short 条件跳过/零失败；Android后台恢复保留状态。
+- [x] 正式依赖下载后关闭 go.work/replace，独立 X11 全仓复跑4102通过、15项
+  原条件跳过、零失败；只用应用/GOUI workspace 的无原生编译器消费重新构建
+  Android APK、iOS Simulator App和device待重签IPA，三者通过。
+- CheckButtonGroup 本轮仅写设计，不修改 weak 或 Widget 生命周期；物理移动设备、
+  16 KiB 内核、正式签名和组件公开分发继续待验收。详细结果见
+  [PlanMobileConvergence](PlanMobileConvergence.md#移动-ffi-依赖正式化2026-11-05)。
+
 ## v0.7.0 Demo 准备（2026-11-05）
 
 - [x] 保留九类导航，菜单与主窗口 F6 共用 Command，Switch/F7 通过 BindEnabled

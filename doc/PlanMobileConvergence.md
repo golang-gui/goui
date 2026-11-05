@@ -263,3 +263,54 @@ CGO_ENABLED=0 下通过。初次直接 go build ./... 因 mobile_start/mobile_su
 备份分支、range-diff、全仓 JSON/跳过清单、交叉编译日志和移动制品保存于
 `/tmp/goui-mobile-rebase-cxwm4jhr`；变基前的 25 个未跟踪文件摘要保持一致。
 独立 X11 会话已停止；没有修改主会话仓库或依赖仓库，也没有推送分支。
+
+## 移动 FFI 依赖正式化（2026-11-05）
+
+### 实现与发布
+
+移动 ABI 支持收敛到 goexlib/cgo，保留官方 purego v0.10.2：purego 提供动态加载、
+原生栈切换和 runtime 回调桥，cgo 负责 ARM64 类型化参数、返回、结构体、HFA、
+栈布局与同步指针有效期。Call、CallRet、RegisterFunc、RegisterLibFunc 共享新路径；
+CallRaw 保留整数/地址契约，其他架构不改 ABI。平台绑定仍由 GOUI platform 负责。
+
+- cgo：7d333e0 共享 ARM64 分类；2855af7 类型化调用与回归；42c56df 设计及
+  验证记录。保留先前 Apple 回调修正与独立 C ABI 例程，main 发布 v0.1.2。
+- nanovgo：移动 GLES 提交仅修正作者/提交者为 xuges <xuges@qq.com>，得到
+  fce1712，main 发布 v0.0.12；未改写已有公开标签。
+- GOUI：在 /data/xuyang8/repos/goui 的 pre-release/v0.7 更新 go.mod/go.sum，
+  使用 cgo v0.1.2、purego v0.10.2、nanovgo v0.0.12。依赖模块均通过正常下载获取，
+  不再使用实验 purego 分支、未发布依赖源码或本地 replace。
+- CheckButtonGroup 仅记录确定生命周期设计，未修改 Widget、weak 或分组行为。
+
+### 验证结果与边界
+
+统一使用 Go 1.25.8，详细日志与制品位于构建机及专用 Mac 的
+/tmp/goui-ffi-stable-1dj6hiys。依赖发布后，额外核对模块缓存中的47份 cgo 已跟踪
+文件与验证提交一致；GOUI 全仓关闭 go.work、本地 replace 后在源码副本复跑。
+副本包含既有未跟踪测试，既有测试的窗口和图片副作用留在副本中，不修改用户资源。
+
+| 范围 | 环境与结果 |
+| --- | --- |
+| GOUI 全仓 | Linux amd64 / Xvnc :136 / 1280×960 / xfwm4 合成开启，GOWORK=off go test -json -count=1 ./...：4102通过、15项原条件跳过、零失败 |
+| cgo Linux | amd64 包测试与 race 通过；ARM64/QEMU6.2 类型化调用、回调、参数/返回、原生线程与 GC/栈增长检查通过 |
+| 独立 ABI | Linux ARM64/QEMU、macOS15.7.7 ARM64、Android API30 ARM64、iOS26.3 ARM64 Simulator 均28/28；8 pthread × 8轮，零重复失败 |
+| cgo macOS | 56通过、1项原始 CallRaw 紧凑 int32 栈参数限制跳过，race通过；原来两项类型化栈参数 skip 已恢复执行并通过 |
+| cgo Windows | Windows10 19045 amd64 原生无头测试通过，使用远端编译的独立 C fixture；不是桌面交互验收 |
+| 正式 GLES App | Android API30 ARM64/1x 与 iOS26.3 ARM64 Simulator/3x，确认实际 OpenGL Painter，1x/2x FBO 像素检查通过；134项官方测试加4项额外检查为137通过、1项原 short 条件跳过、零失败 |
+| 生命周期 | Android App 前后台往返保留 nonce、后台停止帧更新、恢复后继续；本轮未重跑 iOS 旋转/前后台组合 |
+| 消费构建 | Linux 上 Android APK、iOS Simulator App、device待重签IPA通过；PATH中的 C/C++/Java/JDK工具为拒绝执行工具，消费阶段未调用原生编译器 |
+
+cgo 完整 vet 仍报告 cast.go、extern.go、utils.go 的3项既有 unsafe.Pointer 诊断，
+不计为通过；Linux amd64/ARM64 的其他分析器在 -unsafeptr=false 下通过。
+没有增加忽略条件掩盖新增失败，也没有用 Go 往返测试替代独立 C ABI 参考。
+
+正式依赖下载后，另用只包含应用与 GOUI 的开发 workspace（不包含 cgo/purego/
+nanovgo 源码）重新构建上述三个目标，全部通过；模块解析确认三项依赖均为正式
+版本且无 Replace。先前模拟器验收使用与已发布模块一致的生产源码，本轮未为了
+依赖标签切换重复模拟器交互。
+
+预编译组件仍是维护者提供的本地只读组件，Android net 基座以官方 purego 模块身份
+重新导出后消费；这与 Go 模块依赖正式化是两件事。组件自动下载/许可审核、真实
+Android/iPhone、16 KiB内核运行、正式签名及云真机重签仍待验收。unsigned IPA
+不能宣称已可直接装机。独立模拟器、ADB和X11进程均只操作本轮实例并在结束后清理，
+未修改系统安全策略。
