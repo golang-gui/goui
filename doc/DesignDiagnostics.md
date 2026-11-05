@@ -42,6 +42,59 @@ Start／Snapshot／Stop 均在 GUI 线程使用，原生资源操作计数可来
 Snapshot 会整理缓存元数据并复制结果，建议按需或低频查询，不在每次 Paint 中查询。
 启用统计有开销，尤其逐 Widget 计数；不宣称零成本。
 
+## Go 标准诊断工具接入（2026-11-05）
+
+保持现有 Capture、HUD 和精确资源计数，补充 `runtime/trace` 的帧语义标记；
+公共 Widget／Root／Painter 接口、平台后端和 Go 1.24 最低版本不变。
+
+- 标准 CPU、堆、锁和阻塞分析继续使用 `runtime/pprof`；应用控制采集生命周期，
+  GOUI 不自动开启 CPU profiling、HTTP handler、监听端口或全局 trace。
+- `runtime/trace` 由应用调用 Start／Stop，或由 `go test -trace` 开启。其开关与
+  diagnostics.Capture 独立；只有 trace 开启时也能看到帧，不隐式开启逐 Widget 统计。
+- 每次被接受的窗口／Popover 帧尝试对应固定类型 `goui.frame` Task。阶段 Region 为
+  `goui.callbacks`、`goui.styles`、`goui.layout`、`goui.begin`、`goui.paint`、`goui.end`。
+  布局只在实际执行时记录，可一帧多次；Paint 包含内容、装饰和 AfterPaint，End 单列。
+  帧前的输入与等待、RenderWidget 离屏绘制不伪装成窗口帧；Task 结束不代表呈现成功。
+- `goui.root` 日志使用进程内 rootBase 地址区分根；不要求用户 ID，不引入全局编号表，
+  不调用窗口／Widget getter、不遍历树，也不把动态标识拼进 Task 或 Region 类型名。
+  地址在对象回收后可能复用；它只是追踪辅助信息，与 dev ref／Capture ref 无关，
+  不应持久化为应用身份。
+- 回调取消／销毁、布局或绘制 panic 均须结束已经开始的 Region／Task，不吞掉 panic，
+  不改变 Painter.End 的接收者或执行次数。不同根的同步嵌套帧保持同 goroutine 区域嵌套。
+  帧中途开启 trace 从下一帧标记；中途停止可能截断当前记录，正常清理仍继续执行。
+- 关闭路径先检查 trace.IsEnabled，不创建 Task／Context／格式化元数据；后续阶段仅
+  检查本帧的私有 trace 状态。Go 1.24 的 NewTask 在关闭时仍会分配，不能无条件调用。
+  不新增 trace Timer、goroutine、帧请求或默认逐 Widget／资源事件流。
+
+语义埋点放在 rootBase 已有阶段，私有记录辅助复用 gui/diagnostics.go。原资源计数
+继续用原子数值；`runtime/metrics` 只提供 Go 运行时指标，不作为自定义指标注册表。
+pprof 的自定义 Profile.Add 会保活登记值，不用于替代现有缓存／资源计数。
+Go 堆和调度数据不冒充原生库／GPU 显存或呈现时间。
+
+应用可写出标准 trace 文件并用 `go tool trace <path>` 分析。既有独立例程提供
+`-trace <path>`，例如：
+
+```bash
+go run ./tests/window/gui/diagnostics -trace /tmp/goui.trace
+go tool trace /tmp/goui.trace
+# 不启动 Capture，手工操作后正常关闭，同样记录窗口帧：
+go run ./tests/window/gui/diagnostics -auto=false -trace /tmp/goui.trace
+```
+
+验证包括标准工具实际解析输出、任务／阶段顺序及闭合、Window／Popover、独立与组合
+采集、取消／panic、采集中途启停、关闭时零额外分配与同条件前后基准。标准 trace
+测试在子进程中控制全局开关，不能与父测试的 `go test -trace` 冲突或通过 skip 绕过。
+实际执行范围记录在 [Plan](Plan.md)。
+
+依据：[Go 诊断文档](https://go.dev/doc/diagnostics)、
+[Go 1.24 trace 标记源码](https://github.com/golang/go/blob/go1.24.0/src/runtime/trace/annotation.go)、
+[runtime/metrics](https://pkg.go.dev/runtime/metrics@go1.24.0)。参考 GTK 4.18.0 的
+[GDK profiler](https://github.com/GNOME/gtk/blob/4.18.0/gdk/gdkprofilerprivate.h)、
+Qt 6.8.0 的 [tracepoint 开关](https://github.com/qt/qtbase/blob/v6.8.0/src/corelib/global/qtrace_p.h)、
+Flutter 3.32.0 的 [帧报告](https://github.com/flutter/flutter/blob/3.32.0/packages/flutter/lib/src/scheduler/binding.dart#L249)
+和 Avalonia 11.3.0 的 [阶段计时](https://github.com/AvaloniaUI/Avalonia/blob/11.3.0/src/Avalonia.Base/Diagnostics/Diagnostic.Metrics.cs#L59)。
+采用实际入口记录和按需开关，不引入这些框架的 tracing 后端、构建模式或完整工具体系。
+
 ## 分层与实现位置
 
 | 位置 | 职责 |
