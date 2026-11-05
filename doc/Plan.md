@@ -1,5 +1,30 @@
 # Plan
 
+## v0.7.0 Demo 准备（2026-11-05）
+
+- [x] 保留九类导航，菜单与主窗口 F6 共用 Command，Switch/F7 通过 BindEnabled
+  实时切换可用性；计数局部更新，主题、语言和页面切换保持状态。
+- [x] 图形页新增四角不同半径、统一描边与匹配 BoxShadow 的示例；使用当前
+  Painter 直接绘制，Widget 自己预留阴影空间，Snapshot 提供装饰图像语义。
+- [x] Demo 增加显式 -trace 文件输出，独立于 Capture/HUD，退出时停止并关闭；
+  默认不采集、不写文件、不增加刷新循环。TOML 为 0.7.0 / build 1，说明同步。
+- [x] 本机 Go 1.25.8 / Linux amd64，独立 Xvnc :139（2560×1800）/ xfwm4
+  合成会话：Software/OpenGL 各1x/2x通过。临时构建 overlay 在仓库外接入验收驱动，
+  通过 Window/Popover.DispatchEvent 检查菜单与快捷键各执行一次、打开菜单实时
+  禁用/恢复且保留对象、禁用输入无效、Modal 隔离、主题/语言/导航后命令保持、
+  四角预乘像素与真实后端/倍率。该临时驱动不进入正式 Demo。
+- [x] 普通 Demo 另用 xdotool 原生输入观察菜单 F6/F7、亮暗样式、820×600窗口
+  及中文/阿拉伯语内容。Go tool trace 解析四组追踪：全部 goui.frame Task 闭合，
+  各有3个绘制根及6类阶段；没有自动启用 Capture。普通 Demo 正常退出的追踪
+  也能解析，将 trace 输出路径指定为目录时正确报错退出。
+- [x] CGO_ENABLED=0 go test ./...：4102项通过、15项按原条件跳过、零失败；
+  跳过为 macOS 签名及原平台手工窗口用例。Demo/resource 的 race 与 vet 通过，
+  八语言资源检查通过；Windows amd64、macOS arm64 的 CGO_ENABLED=0 交叉编译
+  通过。本轮未执行远端桌面、真实HiDPI、移动模拟器或真机验收；OpenGL 为 llvmpipe，
+  不据此作 GPU 性能结论。材料留在 /tmp/goui-demo-v070-NQ7b3W。
+- [ ] Demo 提交后更新中英文项目 README：v0.7.0 新增能力及移动端准备边界；
+  当前下载和截图仍对应 v0.6.0，正式发布时再替换，不在本轮打标签或发布附件。
+
 ## 移动端分支同步主线（2026-11-05）
 
 - [x] feature/mobile-base 变基到 origin/main `af55926`，保留主线计划、圆角 API、

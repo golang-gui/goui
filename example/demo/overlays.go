@@ -17,11 +17,13 @@ import (
 // overlaysDemo owns this feature for the lifetime of the gallery.
 // host is borrowed for shared assets and application operations.
 type overlaysDemo struct {
-	host  *demo
-	panel ui.State[bool]
-	mask  ui.State[bool]
-	popup gui.Popover
-	toast wui.ToastHandle
+	host           *demo
+	panel          ui.State[bool]
+	mask           ui.State[bool]
+	popup          gui.Popover
+	toast          wui.ToastHandle
+	commandEnabled ui.State[bool]
+	commandCount   ui.State[int]
 }
 
 func (d *overlaysDemo) View() ui.View { return ui.Build(d.view) }
@@ -33,9 +35,16 @@ func (d *overlaysDemo) view() ui.View {
 	}
 	base := page("overlay-content", resource.Overlays(), resource.OverlaysHint(),
 		section("PopoverMenu",
-			ui.HWrap(ui.MenuButton(resource.ActionsMenu()).Menu(ui.MenuItem(resource.Execute(), func() { d.host.report(resource.MenuExecuted()) }), ui.MenuItem(resource.DisabledMenuItem(), nil).Enabled(false), ui.MenuSeparator(), ui.MenuItem(resource.ShowToast(), func() { d.showToast(resource.MenuToast()) })),
+			ui.HWrap(ui.MenuButton(resource.ActionsMenu()).ID("command-menu").Menu(ui.MenuItem(resource.Execute()).Command("demo.execute"), ui.MenuItem(resource.DisabledMenuItem(), nil).Enabled(false), ui.MenuSeparator(), ui.MenuItem(resource.ShowToast(), func() { d.showToast(resource.MenuToast()) })),
 				ui.MenuButton(resource.LongMenu()).Menu(long...),
-				ui.Button(resource.Popover()).ID("popover-anchor").OnClick(d.openPopover)).Spacing(12).LineSpacing(8)),
+				ui.Button(resource.Popover()).ID("popover-anchor").OnClick(d.openPopover)).Spacing(12).LineSpacing(8),
+			ui.Build(func() ui.View {
+				return wui.Switch(resource.CommandEnabled()).ID("command-enabled").Checked(d.commandEnabled.Get()).OnChange(d.commandEnabled.Set)
+			}),
+			ui.Build(func() ui.View {
+				return ui.Label(fmt.Sprintf(resource.CommandCount(), d.commandCount.Get())).ID("command-count")
+			}),
+			ui.Label(resource.CommandHint()).WrapMode(gui.WrapWordChar).Style(modern.MutedText)),
 		section("Overlay",
 			ui.HWrap(ui.Button(resource.SearchPanel()).ID("open-panel").OnClick(func() { d.panel.Set(!d.panel.Get()) }),
 				ui.Button(resource.MaskDialog()).ID("open-dialog").OnClick(func() {
@@ -125,4 +134,18 @@ func (d *overlaysDemo) showToast(text string) {
 	}
 }
 
-func newOverlaysDemo(host *demo) *overlaysDemo { return &overlaysDemo{host: host} }
+// The main window owns this command; menus and shortcuts only reference it.
+func (d *overlaysDemo) command() *ui.CommandView {
+	return ui.Command("demo.execute").BindEnabled(&d.commandEnabled).OnActivate(d.executeCommand)
+}
+
+func (d *overlaysDemo) executeCommand() {
+	d.commandCount.Update(func(value int) int { return value + 1 })
+	d.host.report(fmt.Sprintf(resource.CommandCount(), d.commandCount.Get()))
+}
+
+func (d *overlaysDemo) toggleCommand() { d.commandEnabled.Set(!d.commandEnabled.Get()) }
+
+func newOverlaysDemo(host *demo) *overlaysDemo {
+	return &overlaysDemo{host: host, commandEnabled: ui.MakeState(true)}
+}

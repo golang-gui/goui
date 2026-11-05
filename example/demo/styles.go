@@ -3,6 +3,7 @@ package main
 import (
 	"image/color"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/style"
 	"github.com/golang-gui/goui/theme/modern"
 	"github.com/golang-gui/goui/ui"
@@ -51,5 +52,20 @@ func (d *demo) styleRules(settings ui.Settings) []style.Rule {
 		style.Name("demo-cell-edit").State(style.Focused).BorderColor(accents[d.accent]).BorderWidth(1),
 	)
 
+	for _, sample := range []struct {
+		name   string
+		radius geometry.CornerRadius
+	}{
+		{"demo-corner-first", geometry.CornerRadius{TopLeft: 24, TopRight: 4, BottomRight: 24, BottomLeft: 4}},
+		{"demo-corner-second", geometry.CornerRadius{TopLeft: 4, TopRight: 24, BottomRight: 4, BottomLeft: 24}},
+	} {
+		fill, shadow := color.NRGBA{R: 237, G: 241, B: 248, A: 255}, color.NRGBA{A: 55}
+		if dark {
+			fill, shadow = color.NRGBA{R: 46, G: 52, B: 62, A: 255}, color.NRGBA{A: 130}
+		}
+		rules = append(rules, style.Name(sample.name).CornerRadius(sample.radius).
+			BackgroundColor(fill).BorderColor(accents[d.accent]).BorderWidth(2).
+			Shadow(style.Shadow{Color: shadow, Offset: geometry.Point{Y: 4}, BlurRadius: 12}))
+	}
 	return rules
 }
