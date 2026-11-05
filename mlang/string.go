@@ -3,6 +3,7 @@ package mlang
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"golang.org/x/text/language"
 )
@@ -16,6 +17,12 @@ type Getter func() string
 // helper such as En, ZhCN or Ja.
 // Its zero value represents an empty, language-neutral fallback.
 type Translation struct {
+	tag  language.Tag
+	text string
+}
+
+// stringCache publishes the language and its text together as an immutable pair.
+type stringCache struct {
 	tag  language.Tag
 	text string
 }
@@ -63,6 +70,7 @@ func Ar(text string) Translation { return Translation{tag: language.Arabic, text
 // Define resources outside repeated UI builds, like parsed SVG sources. No
 // global resource registry is maintained: the getter owns its immutable data and
 // bounded last-language cache, which are collected when the getter is released.
+// Cache hits do not acquire locks; matching is serialized on cache misses.
 func String(fallback Translation, translations ...Translation) Getter {
 	values := make([]Translation, 1, len(translations)+1)
 	values[0] = fallback
@@ -78,22 +86,25 @@ func String(fallback Translation, translations ...Translation) Getter {
 	}
 	matcher := language.NewMatcher(tags, language.PreferSameScript(true))
 	var mu sync.Mutex
-	var cachedTag language.Tag
-	var cachedText string
-	valid := false
+	var cache atomic.Pointer[stringCache]
 	return func() string {
-		current.RLock()
-		tag := current.tag
-		current.RUnlock()
+		tag := current.language.Load().tag
+		if cached := cache.Load(); cached != nil && cached.tag == tag {
+			return cached.text
+		}
 		mu.Lock()
 		defer mu.Unlock()
-		if !valid || cachedTag != tag {
-			_, index, confidence := matcher.Match(tag)
-			if tag == language.Und || confidence == language.No {
-				index = 0
-			}
-			cachedTag, cachedText, valid = tag, values[index].text, true
+		// A waiting reader may observe a newer language or another reader's match.
+		tag = current.language.Load().tag
+		if cached := cache.Load(); cached != nil && cached.tag == tag {
+			return cached.text
 		}
-		return cachedText
+		_, index, confidence := matcher.Match(tag)
+		if tag == language.Und || confidence == language.No {
+			index = 0
+		}
+		text := values[index].text
+		cache.Store(&stringCache{tag: tag, text: text})
+		return text
 	}
 }

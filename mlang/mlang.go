@@ -11,23 +11,32 @@ package mlang
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"github.com/golang-gui/goui/core/signal"
 	"golang.org/x/text/language"
 )
 
-var current = struct {
-	sync.RWMutex
-	tag     language.Tag
-	changed signal.Signal0
-}{tag: language.English}
+// languageState is immutable after publication.
+type languageState struct {
+	tag  language.Tag
+	name string
+}
+
+var current struct {
+	sync.Mutex
+	language atomic.Pointer[languageState]
+	changed  signal.Signal0
+}
+
+func init() {
+	current.language.Store(&languageState{tag: language.English, name: "en"})
+}
 
 // Language returns the canonical BCP 47 tag requested by SetLanguage, not a
 // particular resource's matched or fallback language.
 func Language() string {
-	current.RLock()
-	defer current.RUnlock()
-	return current.tag.String()
+	return current.language.Load().name
 }
 
 // SetLanguage changes the application language. Invalid tags return an error
@@ -41,11 +50,11 @@ func SetLanguage(tag string) error {
 		return err
 	}
 	current.Lock()
-	if current.tag == parsed {
+	if current.language.Load().tag == parsed {
 		current.Unlock()
 		return nil
 	}
-	current.tag = parsed
+	current.language.Store(&languageState{tag: parsed, name: parsed.String()})
 	current.Unlock()
 	current.changed.Emit()
 	return nil

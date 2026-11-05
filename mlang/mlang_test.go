@@ -2,7 +2,9 @@ package mlang_test
 
 import (
 	"fmt"
+	"runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/golang-gui/goui/mlang"
@@ -194,6 +196,110 @@ func TestConcurrentResourcesAndLanguageReads(t *testing.T) {
 	wg.Wait()
 }
 
+// 通知中的 Getter 必须看到已提交的语言；重入切换后不能继续返回旧缓存。
+func TestChangedReadsStringCache(t *testing.T) {
+	preserveLanguage(t)
+	setLanguage(t, "en")
+	text := mlang.String(mlang.En("English"), mlang.ZhCN("中文"), mlang.Ko(""))
+	if got := text(); got != "English" {
+		t.Fatal(got)
+	}
+	var observed []string
+	h := mlang.ConnectChanged(func() {
+		tag := mlang.Language()
+		observed = append(observed, tag)
+		want, ok := map[string]string{"zh-CN": "中文", "ko": ""}[tag]
+		if !ok || text() != want {
+			t.Fatalf("通知中读到旧缓存：language=%q text=%q", tag, text())
+		}
+		if tag == "zh-CN" {
+			setLanguage(t, "ko")
+			if got := text(); got != "" {
+				t.Fatalf("重入切换后缓存未更新：%q", got)
+			}
+		}
+	})
+	t.Cleanup(h.Disconnect)
+	setLanguage(t, "zh-CN")
+	if len(observed) != 2 || observed[0] != "zh-CN" || observed[1] != "ko" || text() != "" {
+		t.Fatalf("重入通知或缓存错误：notifications=%v text=%q", observed, text())
+	}
+}
+
+// 每轮等待全部读取完成再切换语言，明确断言切换后的结果，避免仅检查允许值集合。
+func TestConcurrentStringCacheAfterLanguageChange(t *testing.T) {
+	preserveLanguage(t)
+	first := mlang.String(mlang.En("Save"), mlang.ZhCN("保存"))
+	second := mlang.String(mlang.Ja("既定"), mlang.ZhCN(""), mlang.Ar("حفظ"))
+	for range 3 {
+		for _, tc := range []struct{ tag, first, second string }{
+			{"en", "Save", "既定"}, {"zh-CN", "保存", ""},
+			{"ar", "Save", "حفظ"}, {"und", "Save", "既定"},
+			{"en-US", "Save", "既定"},
+		} {
+			setLanguage(t, tc.tag)
+			var wg sync.WaitGroup
+			start := make(chan struct{})
+			for range 8 {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					<-start
+					for range 100 {
+						if a, b := first(), second(); a != tc.first || b != tc.second {
+							t.Errorf("%s：读到 %q/%q，预期 %q/%q", tc.tag, a, b, tc.first, tc.second)
+							return
+						}
+					}
+					if got := mlang.Language(); got != tc.tag {
+						t.Errorf("当前语言 %q，预期 %q", got, tc.tag)
+					}
+				}()
+			}
+			close(start)
+			wg.Wait()
+			if allocs := testing.AllocsPerRun(100, func() { _, _ = first(), second() }); allocs != 0 {
+				t.Fatalf("%s：缓存命中产生了分配：%g", tc.tag, allocs)
+			}
+		}
+	}
+}
+
+// 并发提交同一规范化语言仍只通知一次；写入串行化不应随免锁读取优化而丢失。
+func TestConcurrentEquivalentLanguageChanges(t *testing.T) {
+	preserveLanguage(t)
+	setLanguage(t, "en")
+	text := mlang.String(mlang.En("English"), mlang.De("Deutsch"))
+	_ = text()
+	var calls atomic.Int32
+	h := mlang.ConnectChanged(func() {
+		calls.Add(1)
+		if mlang.Language() != "de-DE-u-co-phonebk" || text() != "Deutsch" {
+			t.Error("并发提交的通知先于语言或匹配结果生效")
+		}
+	})
+	t.Cleanup(h.Disconnect)
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for _, tag := range []string{"de-DE-u-co-phonebk", "DE-de-u-co-phonebk"} {
+		for range 8 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				if err := mlang.SetLanguage(tag); err != nil {
+					t.Error(err)
+				}
+			}()
+		}
+	}
+	close(start)
+	wg.Wait()
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("同一规范化语言通知了 %d 次", got)
+	}
+}
+
 func TestParameterizedResource(t *testing.T) {
 	preserveLanguage(t)
 	format := mlang.String(mlang.En("%[2]s: %[1]d"), mlang.ZhCN("%[1]d 个%[2]s"))
@@ -206,4 +312,62 @@ func TestParameterizedResource(t *testing.T) {
 	if got := message(3, "文件"); got != "3 个文件" {
 		t.Fatal(got)
 	}
+}
+
+// 分别测量稳定语言下的单线程读取与并发读取；资源创建和语言切换不计入耗时。
+func BenchmarkString(b *testing.B) {
+	previous := mlang.Language()
+	b.Cleanup(func() { _ = mlang.SetLanguage(previous) })
+	if err := mlang.SetLanguage("zh-CN"); err != nil {
+		b.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name         string
+		translations []mlang.Translation
+	}{
+		{"SingleTranslation", []mlang.Translation{mlang.En("Save")}},
+		{"EightTranslations", []mlang.Translation{
+			mlang.En("Save"), mlang.ZhCN("保存"), mlang.Ja("保存"), mlang.Ko("저장"),
+			mlang.De("Speichern"), mlang.Fr("Enregistrer"), mlang.Ru("Сохранить"), mlang.Ar("حفظ"),
+		}},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			text := mlang.String(tc.translations[0], tc.translations[1:]...)
+			_ = text()
+			b.Run("Cached", func(b *testing.B) {
+				b.ReportAllocs()
+				var got string
+				for range b.N {
+					got = text()
+				}
+				runtime.KeepAlive(got)
+			})
+			b.Run("ParallelCached", func(b *testing.B) {
+				b.ReportAllocs()
+				b.RunParallel(func(pb *testing.PB) {
+					var got string
+					for pb.Next() {
+						got = text()
+					}
+					runtime.KeepAlive(got)
+				})
+			})
+		})
+	}
+}
+
+// Language 的规范化字符串读取单独测量，避免与词条匹配或信号开销混合。
+func BenchmarkLanguage(b *testing.B) {
+	previous := mlang.Language()
+	b.Cleanup(func() { _ = mlang.SetLanguage(previous) })
+	if err := mlang.SetLanguage("de-DE-u-co-phonebk"); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	var got string
+	for range b.N {
+		got = mlang.Language()
+	}
+	runtime.KeepAlive(got)
 }
