@@ -1,7 +1,9 @@
 package gui
 
 import (
+	"context"
 	"fmt"
+	"runtime/trace"
 	"sort"
 	"time"
 	"weak"
@@ -14,6 +16,49 @@ const (
 	diagnosticRoots   = 64
 	diagnosticWidgets = 4096
 )
+
+// frameTrace belongs to one accepted root frame, independently of Capture.
+// Sequential phases close before the next starts; layout uses its own scope.
+type frameTrace struct {
+	context context.Context
+	task    *trace.Task
+	phase   *trace.Region
+}
+
+func (b *rootBase) beginTraceFrame() bool {
+	if !trace.IsEnabled() {
+		return false
+	}
+	ctx, task := trace.NewTask(context.Background(), "goui.frame")
+	b.frameTrace = &frameTrace{context: ctx, task: task}
+	trace.Logf(ctx, "goui.root", "%p", b)
+	b.traceFramePhase("goui.callbacks")
+	return true
+}
+
+func (b *rootBase) traceFramePhase(name string) {
+	if f := b.frameTrace; f != nil {
+		f.nextPhase(name)
+	}
+}
+
+func (f *frameTrace) nextPhase(name string) {
+	if f.phase != nil {
+		f.phase.End()
+		f.phase = nil
+	}
+	if name != "" {
+		f.phase = trace.StartRegion(f.context, name)
+	}
+}
+
+func (b *rootBase) endTraceFrame() {
+	b.traceFramePhase("")
+	if f := b.frameTrace; f != nil {
+		b.frameTrace = nil
+		f.task.End()
+	}
+}
 
 // diagnosticCollector is the GUI's private weak-reference adapter. Control,
 // history and public reporting live outside gui; this adapter knows private GUI
@@ -212,17 +257,25 @@ func (d *diagnosticCollector) Snapshot(now time.Time) diagnostic.GUIData {
 type layoutObservation struct {
 	frame   *diagnostic.FrameRecord
 	started time.Time
+	region  *trace.Region
 }
 
 func (b *rootBase) observeLayout() layoutObservation {
+	var observation layoutObservation
 	if f := b.frameCapture; f != nil {
-		return layoutObservation{frame: f, started: time.Now()}
+		observation.frame, observation.started = f, time.Now()
 	}
-	return layoutObservation{}
+	if f := b.frameTrace; f != nil {
+		observation.region = trace.StartRegion(f.context, "goui.layout")
+	}
+	return observation
 }
 
 func (s layoutObservation) end() {
 	if s.frame != nil {
 		s.frame.Layout += time.Since(s.started)
+	}
+	if s.region != nil {
+		s.region.End()
 	}
 }
