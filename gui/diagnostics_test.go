@@ -1,8 +1,16 @@
 package gui
 
 import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"reflect"
+	"regexp"
 	"runtime"
+	"runtime/trace"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 	"weak"
@@ -412,5 +420,288 @@ func BenchmarkDiagnosticsMeasure(b *testing.B) {
 			}
 			b.StopTimer()
 		})
+	}
+}
+
+// 仅比较 trace 关闭时的相同帧工作，不把录制、文件写入或真实绘制后端计入基准。
+func BenchmarkDiagnosticsFrame(b *testing.B) {
+	b.Run("Lifecycle", func(b *testing.B) {
+		root := &rootBase{}
+		b.ReportAllocs()
+		for range b.N {
+			if !root.beginFrame() {
+				b.Fatal("帧被意外拒绝")
+			}
+			observation := root.observeLayout()
+			observation.end()
+			root.endFrame()
+		}
+	})
+	b.Run("Paint", func(b *testing.B) {
+		root := &rootBase{painter: &testGraphicsPainter{}, width: 20, height: 20}
+		widget := &mockWidget{size: geometry.Size{Width: 20, Height: 20}}
+		widget.Arrange(geometry.Rect(0, 0, 20, 20))
+		root.paintFrame(widget, style.Style{})
+		b.ReportAllocs()
+		b.ResetTimer()
+		for range b.N {
+			root.paintFrame(widget, style.Style{})
+		}
+	})
+}
+
+type traceTestPainter struct {
+	testGraphicsPainter
+	begin, end int
+	panicAt    string
+}
+
+func (p *traceTestPainter) Begin(float32, float32, float32) {
+	p.begin++
+	if p.panicAt == "begin" {
+		panic("trace test begin")
+	}
+}
+
+func (p *traceTestPainter) End() {
+	p.end++
+	if p.panicAt == "end" {
+		panic("trace test end")
+	}
+}
+
+type traceLayoutPanicWidget struct{ mockWidget }
+
+func (*traceLayoutPanicWidget) Arrange(geometry.Rectangle) { panic("trace test layout") }
+
+// 子进程独占标准库的全局 trace 开关，兼容父测试本身使用 go test -trace。
+// 使用标准工具解析文件，按 Task 校验真实 Region 顺序及闭合，不检查原始字节字符串。
+func TestDiagnosticsRuntimeTrace(t *testing.T) {
+	const child = "GOUI_TEST_RUNTIME_TRACE"
+	if os.Getenv(child) != "1" {
+		executable, err := os.Executable()
+		if err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(executable, "-test.run=^TestDiagnosticsRuntimeTrace$", "-test.v")
+		cmd.Env = append(os.Environ(), child+"=1")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("标准 trace 子进程失败：%v\n%s", err, output)
+		}
+		return
+	}
+	if trace.IsEnabled() || diagnostic.Current() != nil {
+		t.Fatal("子进程未隔离全局采集状态")
+	}
+	checkDisabled := func() {
+		root := &rootBase{}
+		if n := testing.AllocsPerRun(100, func() {
+			if root.beginFrame() {
+				observation := root.observeLayout()
+				observation.end()
+				root.endFrame()
+			}
+		}); n != 0 || root.frameTrace != nil {
+			t.Fatalf("trace 关闭时创建了状态或分配：%g", n)
+		}
+	}
+	checkDisabled()
+	// 先准备 Popover，避免把其初次定位所需的其它帧混进下面的独立预期。
+	popup, _, _, _ := placementFixture(t, geometry.Rect(0, 0, 1000, 1000))
+	if err := popup.Show(); err != nil {
+		t.Fatal(err)
+	}
+	settlePlacement(t, popup)
+	path := filepath.Join(t.TempDir(), "frames.trace")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = file.Close() })
+	t.Cleanup(trace.Stop)
+	// 开启发生在一帧回调内部：这一帧不产生半套标记，后续帧才完整记录。
+	starting := &rootBase{}
+	starting.ConnectFrame(func(time.Time) {
+		if err := trace.Start(file); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if !starting.beginFrame() {
+		t.Fatal("未能启动测试帧")
+	}
+	starting.endFrame()
+	if starting.frameTrace != nil {
+		t.Fatal("追踪在帧中途开启时创建了半帧状态")
+	}
+	full := []string{"goui.callbacks", "goui.styles", "goui.layout", "goui.begin", "goui.paint", "goui.end"}
+	expected := make(map[string][][]string)
+	var keep []*rootBase
+	run := func(stage string) *rootBase {
+		backend := &traceTestPainter{panicAt: stage}
+		root := &rootBase{painter: backend, width: 20, height: 20, layoutDirty: true}
+		widget := &diagnosticCallbackWidget{paint: func() {
+			if stage == "paint" {
+				panic("trace test paint")
+			}
+		}}
+		widget.size = geometry.Size{Width: 20, Height: 20}
+		var content Widget = widget
+		phases := full
+		if stage == "callbacks" || stage == "cancel" {
+			root.ConnectFrame(func(time.Time) {
+				if stage == "callbacks" {
+					panic("trace test callback")
+				}
+				root.destroyFrames()
+			})
+			phases = full[:1]
+			if stage == "cancel" {
+				phases = full[:2]
+			}
+		} else if stage == "begin" {
+			phases = full[:4]
+		} else if stage == "layout" {
+			content = &traceLayoutPanicWidget{}
+			phases = full[:3]
+		}
+		var recovered any
+		func() {
+			defer func() { recovered = recover() }()
+			root.paintFrame(content, style.Style{})
+		}()
+		wantPanic := stage != "normal" && stage != "cancel"
+		wantBegin, wantEnd := 1, 1
+		if stage == "callbacks" || stage == "cancel" || stage == "layout" {
+			wantBegin, wantEnd = 0, 0
+		} else if stage == "begin" {
+			wantEnd = 0
+		}
+		if (recovered != nil) != wantPanic || backend.begin != wantBegin || backend.end != wantEnd || root.frameTrace != nil {
+			t.Fatalf("%s：观测改变正常／异常路径：panic=%v begin=%d end=%d", stage, recovered, backend.begin, backend.end)
+		}
+		expected[fmt.Sprintf("%p", root)] = [][]string{phases}
+		keep = append(keep, root)
+		return root
+	}
+	for _, stage := range []string{"normal", "callbacks", "cancel", "layout", "begin", "paint", "end"} {
+		run(stage)
+	}
+	// Capture 开启与停止均不控制标准 trace；原有诊断记录仍正常产生。
+	session, app := startTestDiagnostics(t, false)
+	root := run("normal")
+	root.app, root.layoutDirty = app, true
+	root.paintFrame(nil, style.Style{})
+	if len(session.Snapshot().Frames) != 1 {
+		t.Fatal("标准 trace 干扰 Capture")
+	}
+	session.Stop()
+	// 同一根会有两次记录，分别按根内的帧顺序校验。
+	expected[fmt.Sprintf("%p", root)] = append(expected[fmt.Sprintf("%p", root)], append(slices.Clone(full[:2]), full[3:]...))
+	popup.layoutDirty = true
+	popup.paint()
+	expected[fmt.Sprintf("%p", &popup.rootBase)] = [][]string{full}
+	// 在回调中同步绘制另一个根，标准工具必须仍能解析合法的区域嵌套。
+	outer := &rootBase{painter: &traceTestPainter{}, width: 20, height: 20}
+	outer.ConnectFrame(func(time.Time) { run("normal") })
+	outer.paintFrame(nil, style.Style{})
+	expected[fmt.Sprintf("%p", outer)] = [][]string{append(slices.Clone(full[:2]), full[3:]...)}
+	keep = append(keep, outer)
+	trace.Stop()
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	checkDisabled()
+	checkTraceFrames(t, dumpRuntimeTrace(t, path), expected)
+	// 回调中停止采集可截断当前 Region，但不能阻止绘制、End 或私有状态清理。
+	partial := filepath.Join(t.TempDir(), "partial.trace")
+	partialFile, err := os.Create(partial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = partialFile.Close() })
+	if err := trace.Start(partialFile); err != nil {
+		t.Fatal(err)
+	}
+	backend := &traceTestPainter{}
+	stopping := &rootBase{painter: backend, width: 20, height: 20}
+	stopping.ConnectFrame(func(time.Time) { trace.Stop() })
+	stopping.paintFrame(nil, style.Style{})
+	if trace.IsEnabled() || stopping.frameTrace != nil || stopping.framePainting || backend.begin != 1 || backend.end != 1 {
+		t.Fatal("帧中停止追踪改变了正常绘制或残留了上下文")
+	}
+	if err := partialFile.Close(); err != nil {
+		t.Fatal(err)
+	}
+	partialOutput := dumpRuntimeTrace(t, partial)
+	if !strings.Contains(partialOutput, `Type="goui.frame"`) || !strings.Contains(partialOutput, `Type="goui.callbacks"`) || strings.Contains(partialOutput, " TaskEnd ") {
+		t.Fatal("中途停止的追踪未保留合法的截断记录")
+	}
+	checkDisabled()
+	runtime.KeepAlive(keep)
+}
+
+func dumpRuntimeTrace(t *testing.T, path string) string {
+	t.Helper()
+	help, _ := exec.Command("go", "tool", "trace", "-help").CombinedOutput()
+	mode := "-d=1" // Go 1.24 使用数值，较新版本使用命名模式。
+	if strings.Contains(string(help), "-d=mode") {
+		mode = "-d=parsed"
+	}
+	output, err := exec.Command("go", "tool", "trace", mode, path).CombinedOutput()
+	if err != nil {
+		t.Fatalf("标准工具无法解析追踪：%v\n%s", err, output)
+	}
+	return string(output)
+}
+
+func checkTraceFrames(t *testing.T, output string, expected map[string][][]string) {
+	t.Helper()
+	ids := regexp.MustCompile(` (?:ID|Task)=([0-9]+)`)
+	types := regexp.MustCompile(` Type="([^"]*)"`)
+	logs := regexp.MustCompile(` Message="([^"]*)"`)
+	tasks := make(map[string][]string)
+	roots := make(map[string]string)
+	ended := make(map[string]bool)
+	var order []string
+	for _, line := range strings.Split(output, "\n") {
+		id := ids.FindStringSubmatch(line)
+		if len(id) == 0 {
+			continue
+		}
+		kind := types.FindStringSubmatch(line)
+		switch {
+		case strings.Contains(line, " TaskBegin ") && len(kind) > 0 && kind[1] == "goui.frame":
+			tasks[id[1]] = nil
+			order = append(order, id[1])
+		case strings.Contains(line, " Category=\"goui.root\""):
+			if message := logs.FindStringSubmatch(line); len(message) > 0 {
+				roots[id[1]] = message[1]
+			}
+		case strings.Contains(line, " RegionBegin ") && len(kind) > 0:
+			tasks[id[1]] = append(tasks[id[1]], "+"+kind[1])
+		case strings.Contains(line, " RegionEnd ") && len(kind) > 0:
+			tasks[id[1]] = append(tasks[id[1]], "-"+kind[1])
+		case strings.Contains(line, " TaskEnd "):
+			ended[id[1]] = true
+		}
+	}
+	for _, id := range order {
+		root := roots[id]
+		if len(expected[root]) == 0 || !ended[id] {
+			t.Fatalf("未预期或未闭合的帧：task=%s root=%s ended=%v", id, root, ended[id])
+		}
+		var want []string
+		for _, phase := range expected[root][0] {
+			want = append(want, "+"+phase, "-"+phase)
+		}
+		if !slices.Equal(tasks[id], want) {
+			t.Fatalf("帧阶段不符：task=%s events=%v want=%v", id, tasks[id], want)
+		}
+		expected[root] = expected[root][1:]
+	}
+	for root, remaining := range expected {
+		if len(remaining) != 0 {
+			t.Fatalf("根 %s 缺少追踪阶段：%v", root, remaining)
+		}
 	}
 }

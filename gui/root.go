@@ -73,6 +73,7 @@ type rootBase struct {
 	frameEpoch     uint64
 	lastFrame      time.Time
 	frameCapture   *diagnostic.FrameRecord
+	frameTrace     *frameTrace
 	frameTimer     *Timer
 	frameRequester paintRequester
 
@@ -199,6 +200,7 @@ func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Sty
 	bounds := geometry.Rect(0, 0, size.Width, size.Height)
 	guiPainter := newPainter(b.painter, bounds, scale)
 	drawn := false
+	b.traceFramePhase("goui.begin")
 	if f := b.frameCapture; f != nil {
 		backend := b.painter // Preserve the receiver across user callbacks, like defer End below.
 		started := time.Now()
@@ -206,7 +208,7 @@ func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Sty
 		f.Begin += time.Since(started)
 		defer func() {
 			started := time.Now()
-			backend.End()
+			b.endPainter(backend)
 			f.End += time.Since(started)
 			f.EndReturned = true
 			f.Completed = drawn
@@ -215,8 +217,9 @@ func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Sty
 		defer func() { f.Paint += time.Since(started) }()
 	} else {
 		b.painter.Begin(pixelWidth, pixelHeight, scale)
-		defer b.painter.End()
+		defer b.endPainter(b.painter)
 	}
+	b.traceFramePhase("goui.paint")
 	if b.frameDestroyed || b.frameSuspended || b.surfaceEpoch != b.frameEpoch {
 		return
 	}
@@ -273,6 +276,16 @@ func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Sty
 		finish(guiPainter)
 	}
 	drawn = !b.frameDestroyed && !b.frameSuspended && b.surfaceEpoch == b.frameEpoch
+}
+
+func (b *rootBase) endPainter(backend graphics.Painter) {
+	if b.frameTrace == nil {
+		backend.End()
+		return
+	}
+	b.traceFramePhase("goui.end")
+	defer b.traceFramePhase("")
+	backend.End()
 }
 
 // ConnectAfterPaint observes the host's real presentation frame only.
@@ -386,21 +399,34 @@ func (b *rootBase) beginFrame() bool {
 	b.framePainting = true
 	b.lastFrame, b.frameEpoch = b.frameNow(), b.surfaceEpoch
 	b.frameCapture = b.beginDiagnosticFrame()
+	ready := false
+	if b.beginTraceFrame() {
+		// The caller only installs endFrame after beginFrame returns successfully.
+		defer func() {
+			if !ready {
+				b.endTraceFrame()
+			}
+		}()
+	}
 	if f := b.frameCapture; f != nil {
 		started := time.Now()
 		b.frames.Emit(b.lastFrame)
 		f.Callbacks = time.Since(started)
+		b.traceFramePhase("goui.styles")
 		started = time.Now()
 		b.updateStateStyles()
 		f.Styles = time.Since(started)
 	} else {
 		b.frames.Emit(b.lastFrame)
+		b.traceFramePhase("goui.styles")
 		b.updateStateStyles()
 	}
+	b.traceFramePhase("")
 	if b.frameDestroyed || b.frameSuspended || b.surfaceEpoch != b.frameEpoch {
 		b.endFrame()
 		return false
 	}
+	ready = true
 	return true
 }
 
@@ -409,6 +435,7 @@ func (b *rootBase) endFrame() {
 		b.frameCapture = nil
 		f.Finish()
 	}
+	b.endTraceFrame()
 	b.framePainting = false
 	if b.paintDirty && !b.frameDestroyed && !b.frameSuspended {
 		if err := b.requestPaint(b.frameRequester); err != nil {

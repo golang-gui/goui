@@ -16,10 +16,15 @@
 // POST {"enabled":false} 冻结。GET 本身不得开启采集或增加绘制帧。
 // FPS 是 CPU 完成帧间隔估计，不是 GPU／显示器刷新率；Direct2D 的文字位图计数可为零。
 // 像素比较只比较同后端、同次运行、同倍率的离屏结果，不作跨平台字体金图比较。
-// 副作用：创建一个窗口和短暂 Popover；协议模式开放指定的本机端口；不写文件。
+// 副作用：创建一个窗口和短暂 Popover；协议模式开放指定的本机端口；未指定 -trace 时不写文件。
 // 重启复位；自动模式输出 PASS 后退出，手工模式关闭主窗口退出。
 // -hud 切换到 HUD 专项：透传点击、连续帧、位置、闲置、离屏隔离和停止清理。
 // HUD 逐项操作及预期见 hud.go；可组合 -hud -auto=false 手工验证。
+// -trace /tmp/goui.trace 写出 Go 标准执行追踪，正常退出后用 go tool trace 打开；
+// 自动模式应包含 Capture 前、期间、停止后的窗口帧，以及独立 Popover 帧。
+// -auto=false -trace <path> 不开启 Capture，也应出现 goui.frame 与阶段 Region；
+// 手工点击 Increment／Popup 后关闭，检查不同 goui.root 标识及 layout/begin/paint/end。
+// 追踪副作用：向显式指定的文件写入诊断数据；不可把 Task 数当作成功呈现帧数。
 package main
 
 import (
@@ -31,6 +36,7 @@ import (
 	"log"
 	"os"
 	"reflect"
+	"runtime/trace"
 	"strings"
 	"time"
 
@@ -92,7 +98,16 @@ func total(s diagnostics.Snapshot) (n uint64) {
 func main() {
 	auto := flag.Bool("auto", true, "自动断言后退出")
 	hud := flag.Bool("hud", false, "验证显式性能浮层")
+	tracePath := flag.String("trace", "", "将 Go 标准执行追踪写入指定文件")
 	flag.Parse()
+	if *tracePath != "" {
+		file, err := os.Create(*tracePath)
+		must(err)
+		defer func() { must(file.Close()) }()
+		must(trace.Start(file))
+		defer trace.Stop()
+		fmt.Printf("TRACE path=%s\n", *tracePath)
+	}
 	app, err := gui.NewApplication("org.golang-gui.Diagnostics")
 	if err != nil {
 		log.Fatal(err)
