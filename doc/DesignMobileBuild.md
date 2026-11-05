@@ -1,6 +1,7 @@
 # GOUI 移动应用构建与打包
 
-状态：2026-11-05，下一阶段开发设计，尚未实现公开 CLI。现有基座、平台接入及
+状态：2026-11-05，正式 CLI 已接入本地组件、移动编译、开发签名 APK 与待重签
+iOS app/IPA；组件分发和完整自有证书签名尚未实现。现有基座、平台接入及
 模拟器结果见 [PlanMobileBuild](PlanMobileBuild.md) 和
 [PlanMobileConvergence](PlanMobileConvergence.md)。本篇描述下一阶段契约，不将
 维护者的 SDK、本地 replace 或测试宿主当作应用开发者的正常依赖。
@@ -43,11 +44,11 @@ Simulator 保留为明确 variant 的维护者回归目标，不能替代 device
 # 以下是拟实现的使用语法，当前版本尚不能执行。
 goui doctor -target android/arm64
 goui build -target android/arm64 -package apk -o dist/hello.apk
-goui build -target ios/arm64 -package ipa -o dist/hello.ipa
+goui build -target ios/arm64 -package ipa -unsigned -o dist/hello-resign.ipa
 
 # 编译与签名可以由不同机器/不同 CI 阶段负责。
 goui build -target ios/arm64
-goui package -target ios/arm64 -format ipa
+goui package -target ios/arm64 -format ipa -unsigned
 ```
 
 target 沿用 OS/ARCH，只增加 android/arm64、ios/arm64。ios 默认 device；维护者
@@ -87,10 +88,11 @@ debuggable = false
 [ios]
 minimum_version = "15.0"
 
-[ios.signing]
-profile = "/private/hello.mobileprovision"
-pkcs12 = "/private/ios-development.p12"
-password_env = "IOS_SIGN_PASSWORD"
+# 以下 iOS 签名字段仍为后续设计，当前 CLI 未接入。
+# [ios.signing]
+# profile = "/private/hello.mobileprovision"
+# pkcs12 = "/private/ios-development.p12"
+# password_env = "IOS_SIGN_PASSWORD"
 # macOS 原生对照可用 identity 替代 pkcs12/password_env；两种来源不能同时配置。
 # identity = "Apple Development: ..."
 ```
@@ -270,9 +272,10 @@ Team/App ID Prefix 和 entitlement；开发安装还检查目标设备是否被 
 entitlements 直接复制给 App。只生成本阶段必要授权并受 profile 约束，匹配错误
 在签名前报告；最终以设备安装/启动验证系统是否接受。
 
-device 的 package 默认要求签名材料；缺失即失败。可显式 -unsigned -format app
-导出中间 bundle，输出说明“不可据此安装真机”；不为未签名结果生成貌似可用
-的 IPA。IPA 使用 Payload/Hello.app 标准布局，不把 ZIP 后缀本身当作签名证明。
+device 的 package 默认要求签名材料；当前尚未接入时明确报错。2026-11-05 用户
+确认先提供云真机重签的 IPA，因此显式 -unsigned 可导出 app 或 IPA，命令输出
+明确说明仍须签名后安装；这是待重签产物，不冒充已签名真机包。IPA 使用
+Payload/Hello.app 标准布局，不把 ZIP 后缀本身当作签名证明。
 
 ### 6.3 跨宿主签名路线
 
@@ -315,6 +318,11 @@ entitlements 和资源封印作独立核对后，才交付 Windows/Linux 完整 
 安装产物，任何编译、签名或校验失败都保留原有最终包。
 
 ## 8. 分阶段实施与验收
+
+本次已实现 B1 的本地 profile/依赖检查、编译/记录/flags，以及 B2 的生产 APK 与
+B3 的未签名 bundle/IPA。Android 联网通过包含 net 归档的本地 profile 选择；尚未
+提供独立归档的自动组合、下载或公开 SDK 输入分发。iOS 自有证书/profile 签名、
+Android 16 KiB 运行及物理设备仍不得按模拟器结果标记完成。
 
 | 阶段 | 实现内容 | 完成标准 |
 | --- | --- | --- |
@@ -381,3 +389,34 @@ EventLoop 投递，不需要触摸控件即可观察变化。分别构建 Softwa
 - [zsign](https://github.com/zhlynn/zsign)：iOS 跨宿主签名候选，项目声明 MIT；
   [rcodesign](https://gregoryszorc.com/docs/apple-codesign/stable/)：签名结构/工具备选。
   两者文档能力不是 GOUI 的 iOS 真机运行证据，正式选型以后续实测与依赖审核为准。
+
+## 10. 首个本地 profile 的实际使用
+
+当前 CLI 已实现以下结构；不要求普通应用维护这些原生细节。维护者准备只读组件
+目录，-components 或 GOUI_MOBILE_COMPONENTS 指向其根目录：
+
+```text
+components/
+  android-arm64/mobile.json
+  ios-arm64/mobile.json
+  ios-arm64-simulator/mobile.json
+```
+
+每个 profile 内可分别含 base、inputs、tools、host、platform 目录。mobile.json
+的必要字段为 format=1、host_os、host_arch、target、variant、base、inputs、tools、
+driver、linker、files；objects/libraries/frameworks 为所选平台的显式链接要求。
+files 是每项实际输入相对 profile 目录的路径与 SHA-256。清单、子清单及其归档、
+工具、执行依赖和辅助资源均列入；越界、软链接、摘要/host/target/variant 不符时报错。
+
+Android 另使用 aapt2、android_jar、dex、signer、verifier 相对路径及 target_sdk
+能力上限；iOS 使用 main.o/uikit.o、objc/resolv 及 UIKit/Foundation/CoreGraphics/
+QuartzCore/OpenGLES/Security。SDK stub 只参与链接，不打入 App，不把完整 SDK
+目录传给消费者。工具选择不是自由配置脚本，消费阶段不会调用生成器或 C/Java 编译器。
+
+开发版本还需要显式 go.work 连接未发布的移动 FFI/渲染分支；当前不自动改 go.mod。
+Android net 的支持归档由维护者在 producer main 导入 net/http 后使用现有 export
+制作，仍只导出实际需要原生编译的包。正式依赖版本和自动组件分发在后续阶段。
+
+App 构建/运行的可复现入口见
+[mobile_std](../tests/window/platform/mobile_std/README.md)。产物与最终原生证据见
+[收敛计划](PlanMobileConvergence.md#正式构建与官方标准库-app2026-11-05)。

@@ -6,8 +6,14 @@
 → 正式 Android APK/16 KiB → iOS profile/签名/IPA → 一步构建与可分发组件。
 保持 build 编译与 package 组包的边界，显式 build -package 提供一条命令产出 App。
 以公开 platform API 的例程在物理 Android/iPhone 验证安装、绘制、前后台和更新；
-不以模拟器或签名器成功代替。当前仅完成该设计，正式 CLI 尚未实现，GUI 触摸/
-IME/SafeArea 后置；具体检查点见 Plan。
+不以模拟器或签名器成功代替。GUI 触摸/IME/SafeArea 后置；完整检查点见 Plan，
+当前首个实现范围及未完成部分见下文。
+
+2026-11-05 后续：正式 CLI 已接入本地组件移动编译、生产 APK 开发签名及待云平台
+重签的 iOS app/IPA，显式 build -package 提供一步构建。公开 platform 的标准库
+App 在 Android API30 ARM64/1x 与 iOS26.3 ARM64 Simulator/3x 的 Software 上
+均通过134项官方选择用例+4项额外检查（137通过/1原skip/0失败）。组件分发、
+自有证书签名、物理设备与16 KiB仍待验收，不把此进展算作完整移动端交付。
 
 ## 安全区域与条件布局：后续设计（2026-11-05）
 

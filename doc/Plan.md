@@ -1,5 +1,19 @@
 # Plan
 
+## 移动端分支同步主线（2026-11-05）
+
+- [x] feature/mobile-base 变基到 origin/main `af55926`，保留主线计划、圆角 API、
+  命令与诊断功能；rootBase 同时保留标准帧追踪和移动端实时绘制许可检查。
+- [x] mobile_paint 阴影例程迁移到 geometry.CornerRadius，未改动绘制语义。
+- [x] 独立 Xvnc :136 / X11 / xfwm4 的已跟踪源码副本：全仓 3891 项通过、
+  10 项原条件跳过、零失败；相关 GUI/移动状态 race 与 vet 通过。
+- [x] Linux amd64 / Go 1.25.8 无原生编译器消费：OpenGL 版标准库例程的
+  Android ARM64 APK、iOS ARM64 Simulator App/device 待重签 IPA 构建通过，
+  mobile_paint 两端消费编译通过。Windows amd64/macOS arm64 适用桌面目标
+  CGO_ENABLED=0 编译通过；两个仅供移动端运行的验收入口不算桌面目标。
+- 本轮只验证变基兼容性，未重复模拟器或真机操作。原有未跟踪文件保持不动，
+  详细范围及初轮交叉构建命令失败见 [PlanMobileConvergence](PlanMobileConvergence.md#同步主线后的回归2026-11-05)。
+
 ## 安全区域与条件布局（2026-11-05，仅设计）
 
 - [x] 将系统安全 Insets、缺口/圆角几何、窗口按钮局部占位与条件布局记录在
@@ -3988,15 +4002,27 @@ APK/IPA 组包与签名，以仅使用 platform 的例程完成 Android/iOS 真�
 
 ## 正式移动构建与真机闭环：开发设计（2026-11-05）
 
-见 [DesignMobileBuild](DesignMobileBuild.md)。本轮只完成设计，未修改公开 cmd/goui
-或宣称已有物理设备验收。保持 build/package 分工，拟新增显式 build -package
-组合入口；消费端只需 Go + goui + 开发者签名材料，原生组件由维护者预制。
+见 [DesignMobileBuild](DesignMobileBuild.md)。设计与首个本地组件实现分阶段推进，
+尚未宣称已有物理设备验收。保持 build/package 分工，显式 build -package 提供
+组合入口；目标是消费端只需 Go + goui + 开发者签名材料，原生组件由维护者预制。
 
 - [x] 固化构建/启动解释、组件职责、命令与配置、标准库差异和真机验收边界。
 - [ ] B1：本地组件索引、依赖选择、正式移动编译和构建记录；Android net 支持。
 - [ ] B2：无测试宿主的 APK、开发/自有签名、4/16 KiB、Android 真机操作验收。
 - [ ] B3：iOS bundle/profile/entitlements、Mac 参考与跨宿主签名、iPhone 真机验收。
 - [ ] B4：一步组合构建、组件分发/许可、依赖正式版本与干净消费环境验收。
+
+2026-11-05 已实现 B1 的本地 profile/原生依赖检查/正式编译和构建记录，B2 的生产
+APK/持久化开发签名，以及 B3 的待重签 app/IPA；build -package 的一步组合也已
+接入。独立消费环境三个目标通过，拒绝编译器零调用。B1 的自动归档组合、B2 的
+16 KiB/物理 Android、B3 的自有证书/物理 iPhone、B4 的公开分发尚未整体完成，
+上述阶段保持未勾选，不把部分交付等同于整阶段验收。
+
+mobile_std 以公开 platform API 执行 Go1.25.8 官方 134 项顶层用例和4项额外检查。
+最终 Android API30/Software/1x 与 iOS26.3 ARM64 Simulator/Software/3x 均为
+PASS137/FAIL0/SKIP1、code0；原 skip 为 short 模式的 path/TestCleanMallocs。
+独立 X11 全仓3531通过/10既有跳过，相关 race/vet/Windows/macOS 交叉编译通过。
+具体环境、原始失败、源码一致性、产物及未验范围见 PlanMobileConvergence。
 
 Go 1.25.8 下 iOS net、os/user、crypto/x509 的实际 CgoFiles 为空，仍需系统链接
 依赖；runtime/cgo 继续由基座提供。Android net 则需要按需标准库归档。包清单核对
