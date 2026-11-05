@@ -25,6 +25,13 @@
 - [ ] Demo 提交后更新中英文项目 README：v0.7.0 新增能力及移动端准备边界；
   当前下载和截图仍对应 v0.6.0，正式发布时再替换，不在本轮打标签或发布附件。
 
+## CheckButtonGroup 确定生命周期（2026-11-05，仅设计）
+
+- [x] 将普通选中指针、Widget 最终销毁通知和显式解除分组记录在
+  [DesignCheckButton](DesignCheckButton.md#待实施确定的分组生命周期2026-11-05)。
+- [ ] 补充 ConnectDestroy、分组清理和生命周期回归；本轮不实施，不用 GC 代替
+  业务生命周期，也不把 Unmount 等同于销毁。
+
 ## 移动端分支同步主线（2026-11-05）
 
 - [x] feature/mobile-base 变基到 origin/main `af55926`，保留主线计划、圆角 API、
