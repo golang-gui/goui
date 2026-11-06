@@ -1,5 +1,33 @@
 # Plan
 
+## 可选择边的矩形边框（2026-11-06）
+
+- [x] `style.BorderSides`：四个物理方向与BorderAll，未设置沿用四边，显式0
+  关闭；统一宽度／颜色，状态和Part整体覆盖。设计见[DesignBorderSides](DesignBorderSides.md)。
+- [x] graphics/utils生成选边外／内轮廓；连续启用边各自闭合，一次FillPath，
+  不用重合的外轮廓／孔洞表达缺边。复用GUI盒形绘制、Popover与ButtonGroup，
+  缺边背景保持原坐标；四边快捷路径与窗口装饰隔离保留。
+- [x] 超粗选边侵入对面圆角时作几何求交，避免越界；常用边宽仍使用曲线。
+  overlay关闭此修正后，回归在r12/w46/a128的(8,52)测得越界alpha32896；
+  正式实现通过相同断言，没有弱化AA容差或跳过条件。
+- [x] `go test ./...`通过。独立Xvnc :141／Xfwm4下再运行
+  `DISPLAY=:141 go test -json ./...`：4691通过、15原有条件跳过、0失败；
+  跳过包括原有手动输入／剪贴板／原生窗口专项及macOS签名测试。
+  style、graphics/utils、gui的race与vet及新窗口例程vet通过。
+  遗留包内窗口测试会短暂创建窗口；本轮独立例程及第二次全仓测试均在隔离会话。
+- [x] Linux amd64／Ubuntu22.04／Xvnc+Xfwm4合成／OpenGL llvmpipe与Software，
+  GOUI_PLAT_SCALE=1/2：border_sides与corner_radius全部自动断言通过。
+  原生鼠标切换透明度／圆角、显示三边Popover及调整大小后目视通过。
+- [x] Windows10 build19045 amd64／RDP交互会话／Direct2D与Software，1x/2x：
+  两例程全部自动断言通过；Direct2D原生鼠标切换、Popover保持打开时切换圆角
+  及关闭通过。macOS15.7.7 arm64／OpenGL与Software，1x/2x也全部通过。
+  远端二进制均校验SHA256；缩放使用GOUI_PLAT_SCALE，不修改系统DPI。
+- [ ] Windows OpenGL已交叉编译；RDP环境创建上下文报
+  `can not choose useful pixel format`，未执行该后端的绘制验收。
+- [ ] Linux arm64的style／graphics/utils测试目标交叉编译通过；窗口例程
+  仍受既有libc绑定的`syscall.SYS_PIPE`／`SYS_POLL`缺失阻断，未运行ARM64桌面。
+  `syscall_linux.go`与HEAD内容相同，本轮不扩展ARM64适配范围。
+
 ## 独立 Go 链接器正式接入（2026-11-06）
 
 - [x] 仓库外独立 golink Go 模块，GOUI 工具直接 import 并调用 Link；CLI/JSON
