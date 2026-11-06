@@ -1,18 +1,18 @@
 # 官方标准库移动 App 验收
 
-本例是维护者生成器，用固定 Go 1.25.8 的官方标准库测试源生成一个独立 Go 工程。
+本例是维护者生成器，用 Go 1.25.8、1.26.10 或1.27.3 的官方标准库测试源生成独立 Go 工程。
 生成的 App 只依赖公开 platform/graphics/typography 和 Go 标准库，不导入 gui/ui，
 不调用测试 probe，不需要触摸或 IME。
 
 ## 覆盖范围
 
 - 选取 12 个标准库包的完整外部测试文件：unicode/utf8、unicode、math、cmp、io、
-  path、strings、bytes、sync、sync/atomic、errors、reflect，共 134 项顶层测试。
+  path、strings、bytes、sync、sync/atomic、errors、reflect，Go1.25.8 共134项顶层测试；Go1.26.10／1.27.3 为130项。
 - 原文件逐字复制，只将文件名从 *_test.go 改为普通构建文件；不复制标准库实现，
   不删除或修改断言、原有 skip。生成清单记录来源文件、测试名和 SHA-256，附 Go LICENSE。
 - 另有 4 项明确标为 goui-platform 的运行检查：私有文件临时目录/读写/重命名、
   本地 HTTPS 与系统信任拒绝测试证书、localhost DNS、随机数/哈希/GC 活对象。
-- 使用 Go 1.25.8 自带 testing.MainStart / M.Run。适配器与 Go 版本一起固定，
+- 使用对应 Go 版本自带 testing.MainStart / M.Run。适配器与 Go 版本一起固定，
   不以 linkname 绕过内部包，不自行模拟 testing.T 或把用例改成日志检查。
 - 使用 test.short=true；例如 path/TestCleanMallocs 保留官方短模式 skip。
   用例内部的子测试照常执行，汇总 JSON 的 Results 按顶层测试计数。
@@ -45,8 +45,8 @@ Go 依赖已发布不代表 SDK 输入再分发审核或真机验收已经完成
 
 ## 构建
 
-使用 Go 1.25.8 和内置组件构建，不需要 SDK、NDK、JDK 或原生编译器。
-本例所需的 net cgo 归档、Security/resolv 链接输入已包含在对应目标中。
+使用匹配的受支持 Go 版本和内置组件构建，不需要 SDK、NDK、JDK 或原生编译器。
+本例所需的 net cgo 生成源码/原生对象、Security/resolv 链接输入已包含在对应目标中。
 维护者仍可用 -components 显式覆盖；组件边界和支持版本见
 [移动构建设计](../../../../doc/DesignMobileBuild.md)。
 
@@ -80,8 +80,9 @@ iOS device 默认拒绝没有签名材料的组包；显式 -unsigned 是本轮�
 
 1. 安装并启动。界面上方显示 Go/平台/后端和运行状态，用例自动开始；无需点击。
    例程保守保留 80 DIP 顶部留白以便读报告，不表示 SafeArea 已实现。
-2. 等待结束。初始选择集为 134 项官方测试 + 4 项平台检查；正常短模式结果为
-   PASS 137、FAIL 0、SKIP 1、code 0。若平台出现额外跳过或失败，按报告记录，
+2. 等待结束。Go1.25.8 选择集为134项官方测试+4项平台检查；正常短模式结果为
+   PASS137、FAIL0、SKIP1、code0。Go1.26.10／1.27.3为130+4项，
+   PASS133、FAIL0、SKIP1。若平台出现额外跳过或失败，按报告记录，
    不修改预期掩盖。发生失败时显示失败名称；panic 或测试超时同样属于失败。
 3. 等待数秒，frames 应增长；界面不随测试结束退出。旋转设备后报告仍可绘制，
    原 nonce 保持。横屏空间有限可能裁剪文本，完整结果以文件为准。
@@ -124,3 +125,25 @@ macOS 上通过 codesign 严格验签；模拟器安装另使用系统 ad-hoc bu
 这两项都不等于有效 Apple 开发身份在物理 iPhone 上安装通过。完整范围、预置
 体积与真机/16 KiB/再分发缺口见
 [移动构建设计第11节](../../../../doc/DesignMobileBuild.md#11-内置最小组件与纯-go-组包2026-11-06)。
+
+## 新 Go 版本与原生 CGO
+
+Go1.26.10／1.27.3 的 sync/waitgroup_test.go 整文件新增 internal/testenv 依赖，
+不能在外部模块逐字执行。生成器只对这两个版本排除整个文件，清单的 Excluded
+保留原始摘要和原因；不改写其中的断言，不影响 Go1.25.8 既有134项覆盖。
+这不是通过扩大运行时 skip 隐藏失败。testing 适配仍有失败注入的回归测试。
+
+维护者可添加真实用户 C 代码，验证显式 native 构建与用户宏参数：
+
+```sh
+go run ./tests/window/platform/mobile_std -painter opengl -cgo -o /absolute/native-app
+CGO_ENABLED=1 CC=/path/to/android-target-clang \
+CGO_CFLAGS='-O2 -g -DGOUI_NATIVE_SENTINEL=73' \
+goui build -config /absolute/native-app/goui.toml -target android/arm64 -cgo native \
+  -package apk -o /absolute/native.apk
+```
+
+原生用例增加一项 TestUserNativeCGO；宏73必须得到76，错误宏触发测试失败，
+缺少宏则编译失败。iOS 原生构建需有效目标 Apple SDK；macOS 未指定 SDKROOT
+时自动选择目标 SDK，显式 SDKROOT 保留。某些 Apple 工具启动器会注入 macOS
+SDKROOT；不能把这个路径当成 iOS SDK。预置模式完全不需要这些原生工具。

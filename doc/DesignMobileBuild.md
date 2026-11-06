@@ -1,10 +1,11 @@
 # GOUI 移动应用构建与打包
 
-状态：2026-11-05，正式 CLI 已接入本地组件、移动编译、开发签名 APK 与待重签
-iOS app/IPA；组件分发和完整自有证书签名尚未实现。现有基座、平台接入及
-模拟器结果见 [PlanMobileBuild](PlanMobileBuild.md) 和
-[PlanMobileConvergence](PlanMobileConvergence.md)。本篇描述下一阶段契约，不将
-维护者的 SDK、本地 replace 或测试宿主当作应用开发者的正常依赖。
+状态：本篇保留移动构建各阶段的设计记录，旧章节中的固定 Go1.25.8、完整 Go
+包归档及外置组件说明应结合后续阶段阅读。当前对象级基座、Go1.25.8／1.26.10／
+1.27.3、prebuilt/native 和内置数据契约以 [DesignMobileBase](DesignMobileBase.md)
+为准；阶段验收与未完成项见 [Plan](Plan.md)。维护者的 SDK、本地 replace 和测试
+宿主不是预置模式应用开发者的依赖。SDK 再分发审核、真实身份的物理设备安装与
+商店发布仍单独跟踪，构建和模拟器通过不代表这些事项完成。
 
 ## 1. 交付目标
 
