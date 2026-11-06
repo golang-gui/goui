@@ -24,6 +24,21 @@ var (
 		"Четыре независимых радиуса, единые ширина и цвет рамки и тень по контуру. Место для тени выделяет рисунок; оформление окна не меняется.",
 		"أربعة أنصاف أقطار مستقلة مع عرض ولون موحدين للحد وظل يطابق الشكل. يحجز الرسم مساحة للظل دون تغيير زخرفة النافذة.",
 	)
+	BorderTitle    = text("Selective borders", "可选择边框", "表示する辺の選択", "선택한 면의 테두리", "Ausgewählte Rahmenkanten", "Bordures au choix", "Выбор сторон рамки", "اختيار جوانب الحدود")
+	BorderBottom   = text("Bottom edge", "仅底边", "下辺のみ", "아래쪽만", "Nur unten", "Bord inférieur", "Только снизу", "الحافة السفلية")
+	BorderParallel = text("Parallel edges", "上下平行边", "上下の平行な辺", "위아래 평행선", "Oben und unten", "Bords parallèles", "Параллельные стороны", "حافتان متوازيتان")
+	BorderL        = text("L-shaped border", "L 形边框", "L字型の枠", "L자 테두리", "L-förmiger Rahmen", "Bordure en L", "Г-образная рамка", "حدود على شكل L")
+	BorderThree    = text("Three edges", "三边框", "三辺の枠", "세 면 테두리", "Drei Kanten", "Trois côtés", "Три стороны", "ثلاث حواف")
+	BorderHint     = text(
+		"BorderSides selects which edges to draw. These samples share a 4 DIP width, an accent color, and 16 DIP corners. At an omitted edge, the rounded border tapers away; layout and hit testing stay unchanged.",
+		"BorderSides 选择需要绘制的边。这些样例统一使用 4 DIP 边宽、主题色和 16 DIP 圆角；边框沿圆角自然收窄至缺边处，不改变布局或命中区域。",
+		"BorderSides で描画する辺を選択します。共通の幅は4 DIP、角丸は16 DIPで、アクセント色を使います。省略した辺に向かって枠が滑らかに細くなり、レイアウトとヒットテストは変わりません。",
+		"BorderSides로 그릴 면을 선택합니다. 모두 두께 4 DIP, 모서리 16 DIP와 강조색을 사용합니다. 생략한 면에서는 둥근 테두리가 자연스럽게 가늘어지며 배치와 적중 영역은 바뀌지 않습니다.",
+		"BorderSides wählt die gezeichneten Kanten. Alle Beispiele verwenden 4 DIP Breite, die Akzentfarbe und 16 DIP Eckradien. An ausgelassenen Kanten läuft der Rahmen weich aus; Layout und Trefferbereiche bleiben gleich.",
+		"BorderSides choisit les côtés à dessiner. Les exemples partagent une largeur de 4 DIP, la couleur d’accent et des coins de 16 DIP. La bordure s’affine vers les côtés omis, sans changer la disposition ni les zones de clic.",
+		"BorderSides выбирает стороны рамки. Во всех примерах ширина 4 DIP, радиус 16 DIP и акцентный цвет. У пропущенной стороны рамка плавно сужается; компоновка и области попадания не меняются.",
+		"يحدد BorderSides الحواف المرسومة. تستخدم الأمثلة عرضاً موحداً قدره 4 DIP ولون التمييز وزوايا بنصف قطر 16 DIP. تتضاءل الحدود تدريجياً عند الجانب المحذوف دون تغيير التخطيط أو مناطق التفاعل.",
+	)
 	TraceHint = text(
 		"Go execution tracing is independent of Capture and the HUD. Start with -trace goui.trace, close the demo normally, then run go tool trace goui.trace to inspect goui.frame tasks and layout/paint regions. The file is overwritten; it records runtime activity, not GPU presentation.",
 		"Go 执行追踪独立于采集和 HUD。使用 -trace goui.trace 启动，正常关闭后运行 go tool trace goui.trace，可查看 goui.frame 任务及布局、绘制阶段。指定文件会被覆盖；记录运行时活动，不代表 GPU 呈现。",

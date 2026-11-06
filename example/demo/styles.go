@@ -67,5 +67,14 @@ func (d *demo) styleRules(settings ui.Settings) []style.Rule {
 			BackgroundColor(fill).BorderColor(accents[d.accent]).BorderWidth(2).
 			Shadow(style.Shadow{Color: shadow, Offset: geometry.Point{Y: 4}, BlurRadius: 12}))
 	}
+	for _, example := range borderExamples {
+		fill := color.NRGBA{R: 237, G: 241, B: 248, A: 255}
+		if dark {
+			fill = color.NRGBA{R: 46, G: 52, B: 62, A: 255}
+		}
+		rules = append(rules, style.Name("demo-"+example.id).Radius(16).
+			BackgroundColor(fill).BorderColor(accents[d.accent]).BorderWidth(4).
+			BorderSides(example.sides))
+	}
 	return rules
 }
