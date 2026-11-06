@@ -1,5 +1,22 @@
 # Plan
 
+## iOS Mach-O 独立 Go 链接后端（2026-11-06）
+
+- [x] golink 功能包支持 iOS ARM64 device/simulator；GOUI 直接调用，不下载
+  独立链接器。保留预编译基座、Go pack、平台辅助对象和打包/签名职责边界。
+- [x] TBD v4 目标/重导出闭包/版本、ARM64重定位、dyld/初始化/展开信息、
+  只读常量及 ad-hoc 代码页签名。复用 Go BSD 签名实现并附许可证。
+- [x] 正式消费者在无原生编译器/LLD PATH、空缓存生成 Simulator App 与设备
+  待重签 IPA。与 LLD 对照平台/部署/SDK、初始化项、入口与库版本。
+- [x] 独立库单元/race/vet、GOUI base 针对性 race/vet 通过；Android 真实 ELF
+  样本输出仍逐字一致。冻结源码独立Xvnc/Xfwm4全仓4483通过、10原skip、零失败。
+- [x] 最终v0.2.1三宿主重放一致，macOS上的iOS26.3/iPhone16模拟器3x，
+  OpenGL ES与显式GC/标准库检查137通过、1原skip；1x/2x FBO像素通过。
+- [ ] 物理设备、证书/profile签名、更多Go/SDK版本和公开组件分发仍待验证；
+  不把模拟器或 unsigned IPA 当作真机验收。
+- 运行结果、跨宿主摘要与本地提交详见
+  [iOS 接入记录](PlanMobileConvergence.md#ios-mach-o-独立-go-链接后端2026-11-06)。
+
 ## 可选择边的矩形边框（2026-11-06）
 
 - [x] `style.BorderSides`：四个物理方向与BorderAll，未设置沿用四边，显式0
@@ -46,7 +63,8 @@
   GOUI 冻结源码在独立 Xvnc/Xfwm4 全仓测试3897通过、10原条件跳过、零失败。
 - [x] 测量完整预编译基座 gzip6：Android1051041字节、iOS device136416字节、
   Simulator135605字节；保留精确 Go 版本归档，现场生成作为后续可选优化。
-- [ ] iOS Mach-O 后端、公开组件发行、更多Go版本、真机/16KiB内核继续推进；
+- [ ] 公开组件发行、更多Go版本、真机/16KiB内核继续推进；iOS Mach-O 后端
+  已在后续切片完成。
   DWARF、通用TLS、分支跳板、符号版本、完整GNU归档语义未实现。详见
   [接入记录](PlanMobileConvergence.md#独立-go-链接器正式接入2026-11-06)。
 

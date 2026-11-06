@@ -200,7 +200,7 @@ Mach-O。参考或选择性复用 Go 链接器源码，不维护 Go 工具链补
 编译器、runtime 或 GC 元数据生成。该项目先限定受控输入，未知原生段/重定位
 明确拒绝；Android 先行、iOS 后续。它是现有最终原生链接步骤的可选替代，不是
 当前移动平台交付的前置。Android ELF 已从原型接入正式构建驱动，见下节；
-iOS Mach-O与通用原生链接器能力仍待实施。
+iOS ARM64 Mach-O 后端随后完成；通用原生链接器能力仍不属于当前承诺。
 
 ### 4.6 最小原生编译范围与独立Go链接器验证（2026-11-06）
 
@@ -238,7 +238,7 @@ Go链接的正式GLES标准库例程在Android模拟器通过137项/1原skip、�
 
 独立 `golink` 模块不依赖 GOUI，不解析 GUI、APK、IPA 或组件目录。它只消费
 显式原生输入并生成目标二进制；Go 编译、ABI/版本匹配、SDK 输入和签名仍由
-已有各层负责。当前实现只支持 Android ARM64 ELF，iOS 继续使用显式 LLD 组件。
+已有各层负责。当前实现支持 Android ARM64 ELF 与 iOS ARM64 Mach-O（设备/模拟器）；LLD 保留为显式可选组件。
 
 `NativeTools` format 1 保持现有 `lld` 可执行文件声明；format 2 使用 `golink`
 库版本字符串，不能同时配置非空 LLD，也不提供失败后静默回退。组件仍校验宿主
@@ -252,11 +252,11 @@ Go链接的正式GLES标准库例程在Android模拟器通过137项/1原skip、�
   "goarch": "amd64",
   "provenance": {
     "name": "golink",
-    "version": "0.1.0",
-    "source": "github.com/golang-gui/golink@v0.1.0",
+    "version": "0.2.1",
+    "source": "github.com/golang-gui/golink@v0.2.1",
     "license": "MIT"
   },
-  "golink": "0.1.0",
+  "golink": "0.2.1",
   "files": {}
 }
 ```
@@ -268,14 +268,44 @@ GOUI 工具直接 import `github.com/golang-gui/golink`，随工具一起编译�
 不属于 GOUI 使用者必需下载的构建组件。
 
 驱动沿用已有参数校验，将对象、归档、目标库和 symbolic/nodelete 等要求转为
-类型化 Request。不搜索宿主库，不传递 LLD 命令行。当前后端总是 eager binding、
+类型化 Request。不搜索宿主库，不传递 LLD 命令行。Android 后端总是 eager binding、
 GNU hash、RELRO、16 KiB LOAD 对齐并导出可见符号，省略非加载 DWARF；不支持
 的 build-id、压缩调试段等要求返回错误。链接库负责输入/重定位检查，GOUI 再
 检查输出 ELF，校验和取消检查通过后才替换已有产物。
 
 本轮正式驱动的空缓存 APK 构建、跨宿主链接与 Android 模拟器运行通过；公开
-组件分发、更多 Go 版本、真机/16 KiB 内核和 iOS Mach-O 尚未完成。完整证据见
+组件分发、更多 Go 版本和真机/16 KiB 内核尚未完成；iOS 运行验收见下节。完整证据见
 [接入记录](PlanMobileConvergence.md#独立-go-链接器正式接入2026-11-06)。
+
+### 4.8 iOS Mach-O 功能包后端（2026-11-06）
+
+GOUI 直接调用 golink v0.2.1 的 Link，传入目标 ios/arm64、IOSOptions
+（variant/minimum/sdk）、完整 Go c-archive、平台入口/协议对象和显式 TBD。
+原生 Go/FFI 支撑继续使用精确版本基座，不修改 runtime、UIKit、文字或 GUI。
+消费者不需要下载独立 golink、LLVM 或 Apple 编译器；标准 Go external-archive
+仍用 Go pack 写出，最终链接由 Go 功能包完成。
+
+TBD v4 根库通过 Libraries 明确传入，Reexports 只提供已封装 SDK 中的补充
+TBD，不形成额外根加载命令，不搜索本机 SDK/库。保留导出目标过滤、重导出
+闭包、Objective-C 名称和 current/compatibility 版本。模拟器 SDK 的三个宿主
+库平台标记采用 [LLD 22.1.8 的窄兼容规则](https://github.com/llvm/llvm-project/blob/llvmorg-22.1.8/lld/MachO/InputFiles.cpp)：
+仅 libsystem_kernel/platform/pthread 的 ARM64 macOS 标签可作为 iOS simulator
+的系统重导出；其他平台不混用。不是任意 YAML/TBD 版本的解析器。
+
+后端验证 ARM64 CPU 子类型、对象的平台/部署版本、段与重定位边界，支持当前
+Go/SDK 的 UNSIGNED、SUBTRACTOR、BRANCH26、PAGE21/PAGEOFF12、GOT 和 ADDEND
+组合。合并原生同名节，保留 Go 模块及 UIKit 初始化数组、Objective-C 元数据、
+只读重定位段、非惰性导入/桩、导出 trie、compact/DWARF 展开信息及确定的 UUID。
+未知 TLS、arm64e 指针认证、personality/LSDA、LTO 和分支溢出明确失败。
+
+输出是 PIE 可执行文件，LC_BUILD_VERSION 区分 device=2/simulator=7。
+复用 Go1.25.8 的 BSD ad-hoc 签名工具，许可证保存在独立模块，不维护工具链补丁。
+裸 Mach-O 的代码页签名不等于 App bundle 资源封印，也不能代替设备证书/profile；
+最终 App/IPA 签名仍由打包层或云真机重签负责。本轮生成待重签 IPA，不承诺已能
+在物理设备安装，也不将模拟器通过当作商店审核/真机验收。
+
+当前仅本地源码、提交和标签，不公开发布独立模块或 SDK 输入。运行与跨宿主
+验证见 [iOS 接入记录](PlanMobileConvergence.md#ios-mach-o-独立-go-链接后端2026-11-06)。
 
 ## 5. Android 构建、组包与签名
 
@@ -321,7 +351,7 @@ SVG/PNG 渲染；先提供传统 density 图标，adaptive icon 与商店素材�
 
 Android 15 起存在 16 KiB 内核设备。组件与应用的 ELF PT_LOAD 对齐、各 load 段
 的文件/虚拟地址关系及 runtime/FFI 的页大小假设均需检查；对齐通过不等于运行通过。
-LLD 参数参考官方要求，包括 max-page-size/common-page-size=16384；同时检查 Go
+Android 链接约束参考官方要求，LLD 对应 max-page-size/common-page-size=16384；同时检查 Go
 最终链接产物而非只检查几份 NDK .o。所有新产物仍须在 4 KiB 设备回归。
 
 先在独立 16 KiB 模拟器启动/后台/GC/栈增长验收，随后在可用的物理 16 KiB 设备
@@ -332,7 +362,7 @@ LLD 参数参考官方要求，包括 max-page-size/common-page-size=16384；同
 
 ### 6.1 产物模型
 
-复用 Go c-archive + LLD，链接为单个 Mach-O 主可执行文件。最小 native main 仅
+复用 Go c-archive + golink 功能包（可显式选择 LLD），链接为单个 Mach-O 主可执行文件。最小 native main 仅
 调用 goui_run；SDK 协议 metadata 与 Go 实现的 UIKit 类/IMP 配合。没有独立 Go
 framework，也不需要对不存在的 framework 先签名。生产 App 不包含测试 probe
 或 XCTest bundle。
