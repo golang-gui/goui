@@ -24,6 +24,11 @@ The current version provides the foundations and controls needed for small deskt
 The [demo](example/demo) brings together controls, text editing, layouts, data views, detachable
 tabs, overlays, graphics, animations, and system integration. Switch between light/dark appearances, accent colors, and eight UI languages.
 
+The current source prepares Demo **0.7.0 / build 1**, adding shared commands and menu shortcut
+columns, independent corner radii with box shadows, and optional Go execution tracing.
+See the [demo guide](example/demo/README.md) for controls and validation steps. The downloads
+and screenshots below remain the published v0.6.0 artifacts until the next release is available.
+
 | Platform | Demo download |
 | --- | --- |
 | Windows x64 | [Download EXE](https://github.com/golang-gui/goui/releases/download/v0.6.0/goui-demo-v0.6.0-windows-amd64.exe) |
@@ -55,7 +60,7 @@ CGO_ENABLED=0 go run ./example/demo
 
 ## Why GOUI?
 
-- **No cgo, no GCC.** Build with `CGO_ENABLED=0` using the Go toolchain, including cross-compilation for supported targets. Native APIs are bound at runtime; building your application does not require a C/C++ compiler.
+- **No cgo, no GCC.** Build desktop applications with `CGO_ENABLED=0` using the Go toolchain, including cross-compilation for supported targets. Native APIs are bound at runtime; building your desktop application does not require a C/C++ compiler.
 - **One binary, one app.** Embed icons and other assets with Go's `embed` package. Windows executables and Linux binaries can run directly; macOS can wrap the executable in an `.app` for application identity, icons, and signing.
 - **Modern appearance, native integration.** A consistent Modern stylesheet with light/dark modes and accent colors, paired with native window chrome, fonts, text layout, IME, clipboard, and file dialogs.
 - **AI-friendly.** Semantic snapshots describe the widget tree. The `gui/dev` adapter supports inspecting windows and popovers, dispatching input, and committing text for debugging and AI automation.
@@ -73,8 +78,6 @@ Rendering builds on native Direct2D/DirectWrite, Core Text, and Pango/Cairo, alo
 ## Size and memory
 
 GOUI is a lightweight native GUI framework. Actual executable size and runtime memory usage depend on the application and rendering backend.
-
-These are historical development-build measurements, not v0.6.0 release measurements.
 
 ### Executable size
 
@@ -107,22 +110,24 @@ RSS includes resident shared-library pages; PSS apportions shared pages between 
 | Layout | Constraint-based horizontal/vertical boxes, wrapping, baseline alignment, per-edge padding, scrolling, split views, and overlays. |
 | Data views | Virtualized lists, trees with reusable expanders, and tables with custom editable cells, column visibility/stretching, sorting, resizing, grid lines, and alternating row colors. |
 | Tabbed workspaces | Close requests and context menus, drag reordering, shrinking and overflow scrolling, cross-window transfer, and detaching into new windows. |
-| Menus and overlays | Menu buttons and coordinated menu groups, context menus, popovers, tooltips, modal input boundaries, in-window Dialogs, and Toasts. |
+| Menus and overlays | Menu buttons and coordinated menu groups, shared Commands with live availability and independent shortcut-text columns, context menus, popovers, tooltips, modal input boundaries, in-window Dialogs, and Toasts. |
 | Input | Shortcuts, Tab navigation and keyboard focus hints, event controllers, gesture competition, and drag and drop within and across applications. |
-| Graphics and appearance | Software/OpenGL/Direct2D backends, HiDPI, transforms, clipping and path erasure, transparency/shadows, SVG and style-aware icons, custom painting, cached DrawingArea rendering, and offscreen widget rendering. |
+| Graphics and appearance | Software/OpenGL/Direct2D backends, HiDPI, transforms, clipping and path erasure, transparency, independent corner radii with uniform borders and box shadows, SVG and style-aware icons, custom painting, cached DrawingArea rendering, and offscreen widget rendering. |
 | Themes and localization | Basic fallback and Modern themes, light/dark modes, accent and semantic colors, style scopes, system settings, localization resources, and built-in text in eight languages. |
 | Windows and system integration | Native/integrated/custom chrome, HeaderBar and window controls, transparent windows, positioning/initial centering, taskbar preferences, file dialogs and access credentials, clipboard, and opening URLs/files. |
-| Timing and developer tools | GUI-thread timers, frame-driven animation with custom interpolation/curves, semantic snapshots and input automation, opt-in CPU-frame/resource diagnostics, and build/package tools. |
+| Timing and developer tools | GUI-thread timers, frame-driven animation with custom interpolation/curves, drawable checks and clipping-based paint culling, semantic snapshots and input automation, opt-in CPU-frame/resource diagnostics and FPS HUD, standard Go execution tracing, and build/package tools. |
 
 Core controls live in `gui`, with declarative bindings in `ui`. Additional controls live in
-`widgets`, with their declarative bindings in `widgets/ui`. Platform behavior and validation
-limits are recorded in the [Roadmap](doc/Roadmap.md) and individual design documents.
+`widgets`, with their declarative bindings in `widgets/ui`.
 
-### v0.6.0 highlights
+### v0.7.0 highlights — release preparation
 
-- **Input policies and obscuring:** try username/digit limits, a small multiline limit, custom masking characters, and optional brief reveal in the demo's Text editing page. Programmatic assignments and history replay retain their own semantics.
-- **Optional diagnostics:** start a capture in Windows & inspection, explore other pages, then read or stop it. CPU-frame timings and resource operations are sampled explicitly; they are not GPU timings, monitor refresh rates, or memory-use measurements.
-- **Rendering stability:** preserve Label text caches across equivalent styles and measurement queries; keep allocated editor/table geometry stable during measurement, and fix popup hover state and dropdown scrollbar spacing.
+- **Shared operations:** menus and shortcuts can use one `Command`, with live enabled-state updates and aligned shortcut text. Declarative windows supply a default command group; local `CommandGroup` scopes, `DefineCommand`, and `BindEnabled` keep definitions and state updates explicit.
+- **Independent corner radii:** four-corner styles and matching BoxShadow contours work with a uniform border width and color across Software, OpenGL, and Direct2D.
+- **Less offscreen work:** painting skips subtrees fully outside the clip. Busy indicators and the demo's frame-driven DrawingArea stop requesting frames when fully clipped and resume when visible; business timers retain their own lifecycle.
+- **Frame inspection:** the optional FPS HUD shows 0 when idle. Go `runtime/trace` records frame tasks and layout/paint phases independently of diagnostic Capture. These are CPU/runtime observations, not monitor refresh rates or GPU presentation timings.
+- **Stability and resource use:** localization cache reads avoid repeated locking on the fast path; table trailing grid lines, row-decoration bounds, and variable-height scrolling have been corrected.
+- **Mobile preparation:** Android/iOS foundations have reached simulator validation; complete mobile support is in development.
 
 ## Build with an AI coding assistant
 
@@ -139,9 +144,6 @@ Installing the Skill does not install or upgrade your application's GOUI depende
 For code editor integration and customization, use the
 [SourceView application development Skill](https://github.com/golang-gui/goui-sourceview/blob/main/skills/goui-sourceview-app/SKILL.md),
 maintained in the SourceView repository with its own [installation guide](https://github.com/golang-gui/goui-sourceview/blob/main/skills/INSTALL.md).
-
-For reusable components and custom controls, see [Custom Widget and View](doc/CustomWidgetView.md)
-for composing, extending, and implementing both layers.
 
 ## Quick start
 
@@ -216,6 +218,8 @@ Views are ordinary Go values. `ui.Build` automatically tracks `State.Get()` read
 
 ## Platforms and dependencies
 
+The desktop application targets are:
+
 | Platform / current release target | Window system | Drawing backends | Text layout |
 | --- | --- | --- | --- |
 | Windows / amd64 | Win32 | Direct2D, OpenGL, Software | DirectWrite |
@@ -238,6 +242,12 @@ For example, build the demo and its platform resources:
 ```sh
 CGO_ENABLED=0 go run ./cmd/goui build -config example/demo/goui.toml -ldflags="-s -w"
 ```
+
+### Mobile support
+
+Android and iOS support is in development. Native windows, rendering, typography, and application
+builds have reached initial simulator validation; complete mobile UI and input support is still
+being developed. Desktop applications remain the current focus.
 
 ## Environment variables
 
@@ -303,6 +313,12 @@ The separate [`gui/diagnostics`](gui/diagnostics) package offers explicitly cont
 and resource captures without a development server. The dev adapter also exposes
 `/goui/dev/diagnostics` for starting, reading, and stopping a capture; reading alone never enables it.
 
+A capture can also show a click-through FPS HUD. Without a capture, standard Go
+`runtime/trace` still records `goui.frame` tasks and layout/paint phases when tracing is explicitly
+enabled. The demo provides `-trace <file>`; close it normally, then run `go tool trace <file>`.
+For CPU and allocation profiling, use Go's standard `pprof` tools. GOUI does not automatically
+start a profiler, HTTP server, or continuous redraw loop.
+
 ## A small, layered design
 
 ```text
@@ -315,8 +331,8 @@ Use only the layers you need. `animation`, `layout`, `style`, `icon`, and `mlang
 
 ## Roadmap
 
-- Add touch input and gestures while keeping mouse/keyboard use first-class.
-- Support more platforms, architectures, and window systems.
+- Continue Android/iOS support and add touch input while preserving the desktop experience.
+- Support more architectures, window systems, and rendering backends.
 - Add more purpose-built controls and reusable application components.
 - Keep optimizing performance and memory use, backed by reproducible measurements.
 

@@ -70,3 +70,21 @@ signing_identity = "Apple Development: ..." # 明确选择本机可用身份
 SVG 使用和 `cmd/svgpng` 相同的 GOUI 静态子集，按原色等比居中并保留透明。
 不支持的 SVG 应先按 [SVG 设计](../../doc/DesignSVG.md) 转为支持的内容或 PNG。
 可通过 `[windows].icon` / `[macos].icon` 使用已有 ICO / ICNS。
+
+## 移动端构建（实验阶段）
+
+Android arm64 与 iOS arm64 已接入本地预构建组件消费。当前需要精确 Go 1.25.8、
+匹配的本地组件目录，以及通过 go.work 接入尚未发布的移动依赖分支；普通桌面
+go build 或仅安装此命令不能自动补齐这些前置。准备方式见
+[移动构建设计第10节](../../doc/DesignMobileBuild.md#10-首个本地-profile-的实际使用)。
+
+```sh
+goui build -target android/arm64 -components /path/to/components -package apk -o dist/app.apk
+goui build -target ios/arm64 -components /path/to/components -package ipa -unsigned -o dist/app-resign.ipa
+```
+
+也可用 GOUI_MOBILE_COMPONENTS 指定组件根目录。build 编译、package 组包的职责
+不变，build -package 显式组合两者。Android APK 使用开发签名；iOS -unsigned
+产物仍需签名才能安装，不代表已签名真机包。内部以 CGO_ENABLED=1 消费预编译
+支持包，不在应用消费阶段运行 C/Java 编译器。组件公开分发、自有证书完整接入、
+物理设备及 Android 16 KiB 页大小仍待验收，模拟器结果不替代真机验证。
