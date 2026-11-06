@@ -48,10 +48,18 @@ func embeddedMobileComponent(ctx context.Context, version string, t target, vari
 		return nil, err
 	}
 	blobs, ok := mobileassets.Select(version, t.String(), variant)
+	if version == "" {
+		var b mobileassets.Blob
+		b, ok = mobileassets.Target(t.String(), variant)
+		blobs = []mobileassets.Blob{b}
+	}
 	if !ok {
 		return nil, fmt.Errorf("no embedded mobile base for %s %s %s; install a supported Go toolchain or supply -components", version, t, variant)
 	}
 	m := &mobileComponent{Format: 2, Target: t.String(), Variant: variant, Base: "base/base.json", Inputs: "inputs/inputs.json", GoLink: golink.Version, Files: map[string]string{}}
+	if version == "" {
+		m.Base = ""
+	}
 	if t.OS == "android" {
 		m.Dex, m.TargetSDK, m.Libraries = "platform/classes.dex", 35, []string{"android"}
 	} else {
@@ -125,6 +133,94 @@ func embeddedMobileComponent(ctx context.Context, version string, t target, vari
 		}
 	}
 	return m, validate()
+}
+
+func resolveMobileTarget(ctx context.Context, directory string, t target, variant string) (*mobileComponent, error) {
+	if directory != "" {
+		return openMobileProfile(directory, t, variant, false)
+	}
+	return embeddedMobileComponent(ctx, "", t, variant)
+}
+
+func mobileTargetDigest(m *mobileComponent) string {
+	files := map[string]string{}
+	for path, hash := range m.Files {
+		if strings.HasPrefix(path, "inputs/") || strings.HasPrefix(path, "platform/") {
+			files[path] = hash
+		}
+	}
+	data, _ := json.Marshal(struct {
+		Target, Variant string
+		SDK             int
+		Files           map[string]string
+	}{m.Target, m.Variant, m.TargetSDK, files})
+	return mobileDigest(data)
+}
+
+func validateMobileCgoEnvironment(ctx context.Context, c *config, mode string, flags map[string]string) error {
+	settings := map[string]string{}
+	for _, key := range []string{"CGO_ENABLED", "CC", "CXX", "CGO_CFLAGS", "CGO_CPPFLAGS", "CGO_CXXFLAGS", "CGO_FFLAGS", "CGO_LDFLAGS"} {
+		if value, ok := os.LookupEnv(key); ok {
+			settings[key] = value
+		}
+	}
+	if err := checkMobileCgoSettings(mode, settings, flags); err != nil {
+		return err
+	}
+	command := exec.CommandContext(ctx, "go", "env", "GOENV")
+	command.Dir = c.path(c.Main)
+	data, err := command.Output()
+	if err != nil {
+		return fmt.Errorf("inspect Go environment: %w", err)
+	}
+	path := strings.TrimSpace(string(data))
+	if path == "off" || path == "" {
+		return nil
+	}
+	data, err = os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		key, value, ok := strings.Cut(line, "=")
+		if _, present := settings[key]; ok && !present {
+			settings[key] = strings.TrimSuffix(value, "\r")
+		}
+	}
+	return checkMobileCgoSettings(mode, settings, flags)
+}
+
+func checkMobileCgoSettings(mode string, settings, flags map[string]string) error {
+	if mode != "prebuilt" && mode != "native" {
+		return fmt.Errorf("unsupported cgo strategy %q", mode)
+	}
+	if v := settings["CGO_ENABLED"]; v != "" && v != "0" && v != "1" {
+		return fmt.Errorf("invalid CGO_ENABLED value")
+	}
+	if settings["CGO_ENABLED"] == "0" {
+		return fmt.Errorf("mobile linking requires CGO_ENABLED=1; a prebuilt build avoids native compilers but does not disable Go's cgo semantics")
+	}
+	if mode == "native" {
+		return nil
+	}
+	for _, key := range []string{"CC", "CXX"} {
+		if settings[key] != "" {
+			return fmt.Errorf("explicit %s conflicts with prebuilt mobile support; use -cgo=native for a target toolchain", key)
+		}
+	}
+	for key, want := range flags {
+		value := settings[key]
+		if value == "" && key != "CGO_CPPFLAGS" {
+			value = "-O2 -g"
+		}
+		if value != want {
+			return fmt.Errorf("%s does not match prebuilt support; use -cgo=native", key)
+		}
+	}
+	return nil
 }
 
 func unpackMobile(ctx context.Context, directory string, blob mobileassets.Blob) error {

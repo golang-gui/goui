@@ -60,6 +60,9 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		fs.StringVar(&format, "format", "", "app for macOS, dir for Linux; defaults to target format")
 	}
 	var mobile mobileOptions
+	if command == "build" || command == "doctor" {
+		fs.StringVar(&mobile.CgoMode, "cgo", "prebuilt", "mobile cgo strategy: prebuilt support or native target toolchain")
+	}
 	fs.StringVar(&mobile.Components, "components", os.Getenv("GOUI_MOBILE_COMPONENTS"), "override embedded mobile components with a local directory")
 	fs.StringVar(&mobile.Variant, "variant", "", "mobile device or simulator variant (default: device)")
 	if command == "build" {
@@ -91,7 +94,7 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	usedMobileFlag := false
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
-		case "components", "variant", "package", "unsigned":
+		case "components", "variant", "package", "unsigned", "cgo":
 			usedMobileFlag = true
 		}
 	})
