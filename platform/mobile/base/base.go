@@ -59,7 +59,7 @@ func baseModuleMatches(p BasePackage, path, version, language string) bool {
 
 func supportedBaseVersion(version string) bool {
 	switch version {
-	case "go1.25.8", "go1.26.10", "go1.27.3":
+	case "go1.24.13", "go1.25.8", "go1.26.10", "go1.27.3":
 		return true
 	}
 	return false

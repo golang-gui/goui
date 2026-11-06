@@ -66,7 +66,7 @@ func generate(output, painter string) error {
 
 func generateWithCgo(output, painter string, native bool) error {
 	version := runtime.Version()
-	if version != "go1.25.8" && version != "go1.26.10" && version != "go1.27.3" {
+	if version != "go1.24.13" && version != "go1.25.8" && version != "go1.26.10" && version != "go1.27.3" {
 		return fmt.Errorf("unsupported official test source version %s", version)
 	}
 	if output == "" || !filepath.IsAbs(output) {
@@ -128,7 +128,7 @@ func generateWithCgo(output, painter string, native bool) error {
 			}
 			// 新版本的整文件依赖 internal/testenv，不能在外部模块中逐字执行。
 			// 仅改变新版本选择集，原 Go1.25.8 的完整文件和断言保持。
-			if version != "go1.25.8" && suite.Package == "sync" && file == "waitgroup_test.go" {
+			if (version == "go1.26.10" || version == "go1.27.3") && suite.Package == "sync" && file == "waitgroup_test.go" {
 				excluded = append(excluded, sourceRecord{Package: suite.Package, File: file, SHA256: fmt.Sprintf("%x", sha256.Sum256(data)), Excluded: "complete file imports internal/testenv; not portable outside GOROOT"})
 				continue
 			}
