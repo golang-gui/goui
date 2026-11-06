@@ -1,6 +1,6 @@
 // Go 官方标准库移动验收工程生成器，不依赖桌面。
 // 在仓库根执行 go run ./tests/window/platform/mobile_std -o /absolute/output。
-// 读取 Go 1.25.8 GOROOT 中明确列出的官方外部测试文件，保留原始断言与版权，
+// 读取受支持 Go 版本 GOROOT 中明确列出的官方外部测试文件，保留原始断言与版权，
 // 生成仓库外纯 Go 应用；不运行原生编译器，不修改 GOROOT。操作说明见 README.md。
 package main
 
@@ -46,21 +46,28 @@ var suites = []struct {
 type sourceRecord struct {
 	Package, File, SHA256 string
 	Tests                 []string
+	Excluded              string `json:",omitempty"`
 }
 
 func main() {
 	output := flag.String("o", "", "new generated application directory outside the repository")
 	painter := flag.String("painter", "software", "software or opengl")
+	native := flag.Bool("cgo", false, "add a real user CGO test requiring -DGOUI_NATIVE_SENTINEL=73")
 	flag.Parse()
-	if err := generate(*output, *painter); err != nil {
+	if err := generateWithCgo(*output, *painter, *native); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
 func generate(output, painter string) error {
-	if runtime.Version() != "go1.25.8" {
-		return fmt.Errorf("official test source requires go1.25.8, found %s", runtime.Version())
+	return generateWithCgo(output, painter, false)
+}
+
+func generateWithCgo(output, painter string, native bool) error {
+	version := runtime.Version()
+	if version != "go1.25.8" && version != "go1.26.10" && version != "go1.27.3" {
+		return fmt.Errorf("unsupported official test source version %s", version)
 	}
 	if output == "" || !filepath.IsAbs(output) {
 		return fmt.Errorf("-o must be an absolute directory")
@@ -105,11 +112,12 @@ func generate(output, painter string) error {
 		}
 		return os.WriteFile(path, []byte(source), 0644)
 	}
-	if err = write("go.mod", "module example.org/gouistd\ngo 1.25.8\n"); err != nil {
+	if err = write("go.mod", "module example.org/gouistd\ngo "+strings.TrimPrefix(version, "go")+"\n"); err != nil {
 		return err
 	}
 	var imports, appendTests strings.Builder
 	var records []sourceRecord
+	var excluded []sourceRecord
 	for i, suite := range suites {
 		var names []string
 		packageName := ""
@@ -117,6 +125,12 @@ func generate(output, painter string) error {
 			data, err := os.ReadFile(filepath.Join(runtime.GOROOT(), "src", suite.Package, file))
 			if err != nil {
 				return err
+			}
+			// 新版本的整文件依赖 internal/testenv，不能在外部模块中逐字执行。
+			// 仅改变新版本选择集，原 Go1.25.8 的完整文件和断言保持。
+			if version != "go1.25.8" && suite.Package == "sync" && file == "waitgroup_test.go" {
+				excluded = append(excluded, sourceRecord{Package: suite.Package, File: file, SHA256: fmt.Sprintf("%x", sha256.Sum256(data)), Excluded: "complete file imports internal/testenv; not portable outside GOROOT"})
+				continue
 			}
 			f, err := parser.ParseFile(token.NewFileSet(), file, data, 0)
 			if err != nil {
@@ -140,7 +154,7 @@ func generate(output, painter string) error {
 				}
 			}
 			names = append(names, tests...)
-			records = append(records, sourceRecord{suite.Package, file, fmt.Sprintf("%x", sha256.Sum256(data)), tests})
+			records = append(records, sourceRecord{Package: suite.Package, File: file, SHA256: fmt.Sprintf("%x", sha256.Sum256(data)), Tests: tests})
 			// 仅改文件名以参与普通构建，测试文件内容逐字保留。
 			path := filepath.Join(output, "official", fmt.Sprintf("pkg%02d", i), strings.TrimSuffix(file, "_test.go")+"_official.go")
 			if err = os.MkdirAll(filepath.Dir(path), 0755); err != nil {
@@ -151,6 +165,9 @@ func generate(output, painter string) error {
 			}
 		}
 		sort.Strings(names)
+		if packageName == "" {
+			continue
+		}
 		var bridge strings.Builder
 		fmt.Fprintf(&bridge, "package %s\nimport \"testing\"\nfunc Tests() []testing.InternalTest {return []testing.InternalTest{\n", packageName)
 		for _, name := range names {
@@ -167,7 +184,17 @@ func generate(output, painter string) error {
 	if err = write("suite/cases.go", registry); err != nil {
 		return err
 	}
-	if err = write("suite/runner.go", runnerSource); err != nil {
+	runner := runnerSource
+	if native {
+		if strings.Count(runner, "report.Official=len(tests)") != 1 {
+			return fmt.Errorf("native test insertion point changed")
+		}
+		runner = strings.Replace(runner, "report.Official=len(tests)", "report.Official=len(tests)\ntests=append(tests,testing.InternalTest{\"goui-platform/TestUserNativeCGO\",testUserNativeCGO})", 1)
+		if err = write("suite/native.go", nativeCgoSource); err != nil {
+			return err
+		}
+	}
+	if err = write("suite/runner.go", runner); err != nil {
 		return err
 	}
 	if err = write("main.go", strings.ReplaceAll(applicationSource, "GOUI_SELECTED_PAINTER", painter)); err != nil {
@@ -197,8 +224,9 @@ minimum_version = "15.0"
 	data, err := json.MarshalIndent(struct {
 		GoVersion string
 		Sources   []sourceRecord
+		Excluded  []sourceRecord
 		Scope     string
-	}{runtime.Version(), records, "Selected complete external test files; not go test std. Benchmarks, fuzzing and examples are not executed."}, "", "  ")
+	}{runtime.Version(), records, excluded, "Selected complete external test files; not go test std. Benchmarks, fuzzing and examples are not executed."}, "", "  ")
 	if err != nil {
 		return err
 	}
