@@ -36,16 +36,24 @@ type config struct {
 		Categories []string `toml:"categories"`
 	} `toml:"linux"`
 	Android struct {
-		MinSDK     int  `toml:"min_sdk"`
-		TargetSDK  int  `toml:"target_sdk"`
-		Internet   bool `toml:"internet"`
-		Debuggable bool `toml:"debuggable"`
+		MinSDK     int           `toml:"min_sdk"`
+		TargetSDK  int           `toml:"target_sdk"`
+		Internet   bool          `toml:"internet"`
+		Debuggable bool          `toml:"debuggable"`
+		Signing    mobileSigning `toml:"signing"`
 	} `toml:"android"`
 	IOS struct {
-		MinimumVersion string `toml:"minimum_version"`
+		MinimumVersion string        `toml:"minimum_version"`
+		Signing        mobileSigning `toml:"signing"`
 	} `toml:"ios"`
 
 	dir string
+}
+
+type mobileSigning struct {
+	PKCS12      string `toml:"pkcs12"`
+	PasswordEnv string `toml:"password_env"`
+	Profile     string `toml:"profile"`
 }
 
 type target struct{ OS, Arch string }

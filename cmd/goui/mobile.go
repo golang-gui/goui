@@ -22,28 +22,30 @@ import (
 // A component profile selects prepared inputs. Every path is relative to the
 // profile directory and every consumed file must have a declared digest.
 type mobileComponent struct {
-	Format     int               `json:"format"`
-	HostOS     string            `json:"host_os"`
-	HostArch   string            `json:"host_arch"`
-	Target     string            `json:"target"`
-	Variant    string            `json:"variant"`
-	Base       string            `json:"base"`
-	Inputs     string            `json:"inputs"`
-	Tools      string            `json:"tools"`
-	Driver     string            `json:"driver"`
-	Linker     string            `json:"linker"`
-	Objects    []string          `json:"objects"`
-	Libraries  []string          `json:"libraries"`
-	Frameworks []string          `json:"frameworks"`
-	Aapt2      string            `json:"aapt2,omitempty"`
-	AndroidJar string            `json:"android_jar,omitempty"`
-	Dex        string            `json:"dex,omitempty"`
-	Signer     string            `json:"signer,omitempty"`
-	Verifier   string            `json:"verifier,omitempty"`
-	TargetSDK  int               `json:"target_sdk,omitempty"`
-	Files      map[string]string `json:"files"`
-	root       string
-	digest     string
+	Format                int               `json:"format"`
+	HostOS                string            `json:"host_os"`
+	HostArch              string            `json:"host_arch"`
+	Target                string            `json:"target"`
+	Variant               string            `json:"variant"`
+	Base                  string            `json:"base"`
+	Inputs                string            `json:"inputs"`
+	Tools                 string            `json:"tools"`
+	Driver                string            `json:"driver"`
+	Linker                string            `json:"linker"`
+	Objects               []string          `json:"objects"`
+	Libraries             []string          `json:"libraries"`
+	Frameworks            []string          `json:"frameworks"`
+	Aapt2                 string            `json:"aapt2,omitempty"`
+	AndroidJar            string            `json:"android_jar,omitempty"`
+	Dex                   string            `json:"dex,omitempty"`
+	Signer                string            `json:"signer,omitempty"`
+	Verifier              string            `json:"verifier,omitempty"`
+	TargetSDK             int               `json:"target_sdk,omitempty"`
+	GoLink                string            `json:"golink,omitempty"`
+	Files                 map[string]string `json:"files"`
+	root                  string
+	digest                string
+	driver, linker, tools string
 }
 
 type mobileOptions struct {
@@ -164,7 +166,7 @@ func openMobileComponent(directory string, t target, variant string) (*mobileCom
 	if err = mobileReadJSON(path, &m); err != nil {
 		return nil, err
 	}
-	if m.Format != 1 || m.HostOS != runtime.GOOS || m.HostArch != runtime.GOARCH || m.Target != t.String() || m.Variant != variant {
+	if (m.Format != 1 && m.Format != 2) || m.Format == 1 && (m.HostOS != runtime.GOOS || m.HostArch != runtime.GOARCH) || m.Target != t.String() || m.Variant != variant {
 		return nil, fmt.Errorf("mobile component host/target/variant mismatch")
 	}
 	m.root = root
@@ -185,7 +187,11 @@ func openMobileComponent(directory string, t target, variant string) (*mobileCom
 			return nil, err
 		}
 	}
-	for _, name := range []string{m.Base, m.Inputs, m.Tools, m.Driver, m.Linker} {
+	manifests := []string{m.Base, m.Inputs}
+	if m.Format == 1 {
+		manifests = append(manifests, m.Tools, m.Driver, m.Linker)
+	}
+	for _, name := range manifests {
 		if _, err = m.file(name); err != nil {
 			return nil, err
 		}
@@ -214,6 +220,15 @@ func validateMobile(c *config, t target, o *mobileOptions) error {
 		return fmt.Errorf("unsupported mobile variant %q", o.Variant)
 	}
 	if t.OS == "android" {
+		if len(c.ID) > 127 {
+			return fmt.Errorf("android application ID must fit 127 characters")
+		}
+		if c.Android.Signing.Profile != "" {
+			return fmt.Errorf("android signing does not use provisioning profiles")
+		}
+		if c.Android.Signing.PasswordEnv != "" && c.Android.Signing.PKCS12 == "" {
+			return fmt.Errorf("android signing password_env requires pkcs12")
+		}
 		for _, part := range strings.Split(c.ID, ".") {
 			if strings.Contains(part, "-") {
 				return fmt.Errorf("android application ID requires Java identifiers without hyphens")
@@ -261,7 +276,13 @@ func mobileVersion(value string) ([3]int, error) {
 
 func (m *mobileComponent) options(c *config) (mobilebase.BuildOptions, error) {
 	o := mobilebase.BuildOptions{GoCommand: "go", Directory: c.path(c.Main), Package: ".", Entry: true, Libraries: m.Libraries, Frameworks: m.Frameworks}
-	for name, dest := range map[string]*string{m.Base: &o.Base, m.Inputs: &o.Inputs, m.Tools: &o.Tools, m.Driver: &o.GoDriver, m.Linker: &o.Linker} {
+	paths := map[string]*string{m.Base: &o.Base, m.Inputs: &o.Inputs}
+	if m.Format == 2 {
+		o.Tools, o.GoDriver, o.Linker = m.tools, m.driver, m.linker
+	} else {
+		paths[m.Tools], paths[m.Driver], paths[m.Linker] = &o.Tools, &o.GoDriver, &o.Linker
+	}
+	for name, dest := range paths {
 		value, err := m.file(name)
 		if err != nil {
 			return o, err
@@ -307,7 +328,7 @@ func mobileLDFlags(value string) ([]string, error) {
 
 func mobileEnvironment(t target, linker string) []string {
 	var env []string
-	values := map[string]string{"GOOS": t.OS, "GOARCH": t.Arch, "GOARM64": "v8.0", "GOEXPERIMENT": "", "CGO_ENABLED": "1", "GOFLAGS": "", "GOTOOLCHAIN": "local", "CC": strconv.Quote(linker), "CXX": strconv.Quote(linker)}
+	values := map[string]string{"GOOS": t.OS, "GOARCH": t.Arch, "GOARM64": "v8.0", "GOEXPERIMENT": "", "CGO_ENABLED": "1", "GOFLAGS": "", "GOTOOLCHAIN": "local", "CC": strconv.Quote(linker), "CXX": strconv.Quote(linker), "GOUI_LINK_COMMAND": "1"}
 	for _, item := range os.Environ() {
 		k, _, _ := strings.Cut(item, "=")
 		if _, ok := values[k]; !ok {
@@ -329,9 +350,12 @@ func checkMobileDependencies(ctx context.Context, c *config, t target, m *mobile
 	if err != nil {
 		return err
 	}
-	linker, err := m.file(m.Linker)
-	if err != nil {
-		return err
+	linker := m.linker
+	if m.Format != 2 {
+		linker, err = m.file(m.Linker)
+		if err != nil {
+			return err
+		}
 	}
 	version := exec.CommandContext(ctx, "go", "env", "GOVERSION")
 	version.Dir = c.path(c.Main)
@@ -481,11 +505,11 @@ func runMobile(ctx context.Context, command string, c *config, t target, o mobil
 		if command == "build" {
 			requested = o.Package
 		}
-		if _, err := mobilePackageFormat(t, o, requested); err != nil {
+		if _, err := mobilePackageFormat(c, t, o, requested); err != nil {
 			return err
 		}
 	}
-	m, err := openMobileComponent(o.Components, t, o.Variant)
+	m, err := resolveMobileComponent(ctx, c, o.Components, t, o.Variant)
 	if err != nil {
 		return err
 	}
@@ -517,6 +541,11 @@ func runMobile(ctx context.Context, command string, c *config, t target, o mobil
 			}
 		}
 	}
+	if m.Format == 2 && (command == "build" || command == "doctor") {
+		if err = prepareMobileTools(ctx, m, errOut); err != nil {
+			return err
+		}
+	}
 	if command == "doctor" {
 		if _, err = loadIcon(c); err != nil {
 			return err
@@ -524,7 +553,17 @@ func runMobile(ctx context.Context, command string, c *config, t target, o mobil
 		if err = checkMobileDependencies(ctx, c, t, m, tags); err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "OK: mobile configuration, local components and package dependencies (%s, %s). Device execution not checked.\n", t, o.Variant)
+		if t.OS == "android" && c.Android.Signing.PKCS12 != "" {
+			if _, _, err = mobileIdentity(c, c.Android.Signing); err != nil {
+				return err
+			}
+		}
+		if t.OS == "ios" && (c.IOS.Signing.PKCS12 != "" || c.IOS.Signing.Profile != "") {
+			if err = checkIOSSigning(c); err != nil {
+				return err
+			}
+		}
+		fmt.Fprintf(out, "OK: mobile configuration, components and package dependencies (%s, %s). Device execution not checked.\n", t, o.Variant)
 		return nil
 	}
 	if command == "generate" {
