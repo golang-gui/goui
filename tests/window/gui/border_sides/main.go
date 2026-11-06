@@ -13,6 +13,8 @@
 // 调整窗口大小后重复；Tab焦点与点击仍生效，Snapshot不新增装饰动作。
 // 自动：真实宿主RenderWidget在1x/2x逐一断言16种边的直边、中心及透明外部，
 // 覆盖透明合成、4／52DIP边宽、动态样式、圆角切换；通过Window.DispatchEvent点击Alpha，
+// 默认4DIP边框另单独测量圆角收尖与相邻外部像素，按椭圆方程积分比对覆盖率，
+// 不能出现高alpha的孤立亮点；尖端容差8级，包含末段弦近似与积分／量化误差。
 // 验证Popover显示／隐藏，输出后端及PASS后退出。颜色为预乘sRGB，满覆盖
 // 像素只允许2级8位量化差异；AA外缘不跨平台套用同一金图。
 // 平台差异：字体／AA曲线可略不同，系统窗口边框不受样式边集合影响。
@@ -27,6 +29,7 @@ import (
 	"image/color"
 	"image/draw"
 	"log"
+	"math"
 	"os"
 	"strings"
 	"time"
@@ -52,7 +55,10 @@ func check(ok bool, message string) {
 	}
 }
 
-type surfaces struct{ gui.WidgetBase }
+type surfaces struct {
+	gui.WidgetBase
+	borderOnly bool
+}
 
 func cellRect(n int) geometry.Rectangle {
 	return geometry.Rect(12+float32(n%4)*140, 8+float32(n/4)*72, 120, 56)
@@ -61,7 +67,11 @@ func cellRect(n int) geometry.Rectangle {
 func (s *surfaces) Paint(p gui.Painter) {
 	for n := 0; n < 16; n++ {
 		resolved := gui.ResolveStyle(fmt.Sprintf("border-%d", n), "", s.State())
-		gui.PaintStyledBox(p, cellRect(n), resolved)
+		if s.borderOnly {
+			gui.PaintStyledBorder(p, cellRect(n), resolved)
+		} else {
+			gui.PaintStyledBox(p, cellRect(n), resolved)
+		}
 	}
 }
 
@@ -161,6 +171,30 @@ func main() {
 		for _, scale := range []float32{1, 2} {
 			im, err := gui.RenderWidget(probe, scale)
 			must(err)
+			if rounded && width == 4 {
+				probe.borderOnly = true
+				border, err := gui.RenderWidget(probe, scale)
+				probe.borderOnly = false
+				must(err)
+				r := cellRect(1) // 仅上边框：TL的外圆16与内椭圆(16,12)在左侧相切。
+				const samples = 4096
+				var coverage float64
+				for i := 0; i < samples; i++ {
+					d := (float64(i) + .5) / samples / float64(scale)
+					coverage += 16 * (math.Sqrt(1-d*d/256) - math.Sqrt(1-d*d/144))
+				}
+				coverage *= float64(scale) / samples
+				x, y := int(r.X*scale), int((r.Y+16)*scale)-1
+				for _, point := range []struct {
+					x    int
+					want float64
+				}{{x, coverage * float64(alpha)}, {x - 1, 0}} {
+					_, _, _, a := border.At(point.x, y).RGBA()
+					got := float64(a) / 257
+					check(math.Abs(got-point.want) <= 8,
+						fmt.Sprintf("%gx圆角收尖(%d,%d)alpha=%g，面积参考%g", scale, point.x, y, got, point.want))
+				}
+			}
 			for n := 0; n < 16; n++ {
 				r := cellRect(n)
 				borderAt := func(x, y float32) bool {

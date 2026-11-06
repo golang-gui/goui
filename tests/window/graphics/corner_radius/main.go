@@ -10,6 +10,8 @@
 // 输出 PIXELS PASS、后端、系统与缩放。-auto 真实提交一帧后退出，不替代外观检查。
 // 平台差异：AA 曲线可略有差异，几何内外侧及预乘颜色必须一致；记录实际后端，
 // 不将后端回退、构建或仅窗口启动算作指定后端验收。
+// 选边圆角的收尖区域另按独立椭圆方程积分验证，覆盖1/1.25/1.5/2x、旋转、
+// clip、透明／不透明／渐变及ClearPath；尖端不能出现近乎不透明的孤立亮点。
 // 副作用：仅一个窗口与终端输出，不写文件／系统设置，不用 DevServer。
 // 复位：重启。退出：Escape／关闭；释放 Painter 后销毁窗口，提前失败返回非零。
 package main
@@ -158,7 +160,141 @@ func checkPixels(p graphics.Painter) error {
 			}
 		}
 	}
+	if err := checkTaperedBorders(p); err != nil {
+		return err
+	}
 	return checkShadows(p)
+}
+
+func checkTaperedBorders(p graphics.Painter) error {
+	rect := geometry.Rect(16, 16, 80, 56)
+	radius := geometry.UniformCornerRadius(16)
+	for _, scale := range []float32{1, 1.25, 1.5, 2} {
+		for _, angle := range []float32{0, 90} {
+			transform := geometry.Translate(64, 64).Multiply(geometry.Rotate(angle)).Multiply(geometry.Translate(-56, -44))
+			inverse := transform.Inverse()
+			for _, insets := range []geometry.Insets{{Top: 4}, {Top: 4, Bottom: 4}, {Top: 4, Bottom: 4, Left: 4}} {
+				for _, mode := range []string{"opaque", "translucent", "gradient", "erase"} {
+					base, foreground := graphics.Color{}, graphics.RGBA(200, 80, 40, 255)
+					if mode != "opaque" {
+						base, foreground = graphics.RGBA(32, 64, 96, 192), graphics.RGBA(200, 80, 40, 128)
+					}
+					clip := geometry.Rect(0, 0, 128, 64)
+					img, err := p.RenderImage(int(128*scale), int(128*scale), scale, func() {
+						p.Clear(base)
+						p.SetTransform(transform)
+						p.SetClipRect(clip)
+						path := utils.RoundRectBorderInsetsPath(rect, radius, insets)
+						if mode == "erase" {
+							p.ClearPath(path)
+						} else if mode == "gradient" {
+							p.FillPath(path, graphics.LinearGradient{
+								Start: geometry.Point{X: rect.X, Y: rect.Y}, End: geometry.Point{X: rect.X + rect.Width, Y: rect.Y},
+								StartColor: foreground, EndColor: graphics.RGBA(40, 180, 200, 128),
+							})
+						} else {
+							p.FillPath(path, foreground)
+						}
+						p.SetClipRect(geometry.Rectangle{})
+						p.SetTransform(geometry.Identity())
+						// 下一个普通调用不能继承覆盖边表或擦除合成模式。
+						p.FillRect(geometry.Rect(4, 4, 8, 8), graphics.RGBA(30, 180, 60, 128))
+					})
+					if err != nil {
+						return err
+					}
+					// 只测尖端前两行及紧邻的外部像素。独立面积积分结果约为0~十余级
+					// alpha；8级容差包含此处末段弦近似与64×64积分、8位量化误差，
+					// 旧实现会给出约240级，不能把它视作允许的AA曲线差异。
+					for _, point := range []geometry.Point{
+						{X: rect.X + rect.Width - .5/scale, Y: rect.Y + 16 - .5/scale},
+						{X: rect.X + rect.Width + .5/scale, Y: rect.Y + 16 - .5/scale},
+						{X: rect.X + rect.Width - .5/scale, Y: rect.Y + 16 - 1.5/scale},
+						{X: rect.X + rect.Width - .5/scale, Y: rect.Y + rect.Height - 16 + .5/scale},
+					} {
+						windowPoint := transform.TransformPoint(point)
+						x, y := int(math.Floor(float64(windowPoint.X*scale))), int(math.Floor(float64(windowPoint.Y*scale)))
+						coverage := taperedCoverage(rect, insets, inverse, clip, x, y, scale)
+						fg := foreground
+						if mode == "gradient" {
+							center := inverse.TransformPoint(geometry.Point{X: (float32(x) + .5) / scale, Y: (float32(y) + .5) / scale})
+							t := min(max((center.X-rect.X)/rect.Width, 0), 1)
+							end := graphics.RGBA(40, 180, 200, 128)
+							fg.R += (end.R - fg.R) * t
+							fg.G += (end.G - fg.G) * t
+							fg.B += (end.B - fg.B) * t
+						}
+						want := overCoverage(base, fg, coverage, mode == "erase")
+						if err := checkCoveragePixel(img, x, y, want, 8); err != nil {
+							return fmt.Errorf("尖端 %s/%gx/%g°/%v/%s coverage=%g: %w", p.Name(), scale, angle, insets, mode, coverage, err)
+						}
+					}
+					want := overCoverage(base, graphics.RGBA(30, 180, 60, 128), 1, false)
+					if err := checkCoveragePixel(img, int(6*scale), int(6*scale), want, 2); err != nil {
+						return fmt.Errorf("尖端绘制后状态泄漏: %w", err)
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func taperedCoverage(rect geometry.Rectangle, insets geometry.Insets, inverse geometry.Transform, clip geometry.Rectangle, x, y int, scale float32) float32 {
+	inside := func(pt geometry.Point, i geometry.Insets) bool {
+		left, top, right, bottom := rect.X+i.Left, rect.Y+i.Top, rect.X+rect.Width-i.Right, rect.Y+rect.Height-i.Bottom
+		if pt.X < left || pt.Y < top || pt.X > right || pt.Y > bottom {
+			return false
+		}
+		for _, c := range [][4]float32{
+			{pt.X - left, pt.Y - top, 16 - i.Left, 16 - i.Top},
+			{right - pt.X, pt.Y - top, 16 - i.Right, 16 - i.Top},
+			{right - pt.X, bottom - pt.Y, 16 - i.Right, 16 - i.Bottom},
+			{pt.X - left, bottom - pt.Y, 16 - i.Left, 16 - i.Bottom},
+		} {
+			if c[0] < c[2] && c[1] < c[3] {
+				u, v := (c[0]-c[2])/c[2], (c[1]-c[3])/c[3]
+				if u*u+v*v > 1 {
+					return false
+				}
+			}
+		}
+		return true
+	}
+	count := 0
+	const samples = 64
+	for sy := 0; sy < samples; sy++ {
+		for sx := 0; sx < samples; sx++ {
+			point := geometry.Point{X: (float32(x) + (float32(sx)+.5)/samples) / scale, Y: (float32(y) + (float32(sy)+.5)/samples) / scale}
+			if point.X < clip.X || point.Y < clip.Y || point.X >= clip.X+clip.Width || point.Y >= clip.Y+clip.Height {
+				continue
+			}
+			point = inverse.TransformPoint(point)
+			if inside(point, geometry.Insets{}) && !inside(point, insets) {
+				count++
+			}
+		}
+	}
+	return float32(count) / (samples * samples)
+}
+
+func overCoverage(base, fg graphics.Color, coverage float32, erase bool) graphics.Color {
+	if erase {
+		return graphics.Color{R: base.R * (1 - coverage), G: base.G * (1 - coverage), B: base.B * (1 - coverage), A: base.A * (1 - coverage)}
+	}
+	a := fg.A * coverage
+	return graphics.Color{R: fg.R*coverage + base.R*(1-a), G: fg.G*coverage + base.G*(1-a), B: fg.B*coverage + base.B*(1-a), A: a + base.A*(1-a)}
+}
+
+func checkCoveragePixel(img image.Image, x, y int, want graphics.Color, tolerance int) error {
+	got := color.RGBAModel.Convert(img.At(x, y)).(color.RGBA)
+	for i, c := range []byte{got.R, got.G, got.B, got.A} {
+		w := float64([]float32{want.R, want.G, want.B, want.A}[i] * 255)
+		if math.Abs(float64(c)-w) > float64(tolerance) {
+			return fmt.Errorf("像素(%d,%d)=%v，预期预乘RGBA%v", x, y, got, want)
+		}
+	}
+	return nil
 }
 
 // 独立的圆方程／矩形不等式参考，不调用 CornerRadius.Contains 或路径构造。
