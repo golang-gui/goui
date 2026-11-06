@@ -1,5 +1,31 @@
 # Plan
 
+## v0.7.0 正式发布（2026-11-06）
+
+- [x] 候选 main `33ce8a9e02f57364f2f18aaed1b36d4ca32ef127`，annotated tag
+  `v0.7.0` 已推送；Demo 0.7.0 / build 1，从干净快照及同源 cmd/goui 重建。
+- [x] Go1.25.8 / CGO_ENABLED=0，独立 Xvnc :147 / Xfwm4 全仓非缓存4508通过、
+  11项按原条件跳过、0失败；相关race/vet、三端桌面包构建及最终程序操作通过。
+  两个移动原生验收目录缺少桌面main的既有全量build阻断保留并在发布附件明确记录。
+- [x] Linux llvmpipe OpenGL／Software、Windows10 Direct2D、macOS15.7.7 默认
+  OpenGL，1x最终附件完成各自输入、菜单、窗口调整和圆角／选边框范围验收。
+  Windows以最大化／恢复验证窗口调整；未声称拖边缩放、Windows OpenGL、真实
+  混合DPI、全量IME／DnD或物理移动设备已在本轮验收。
+- [x] Mac Developer ID / runtime / timestamp，公证任务
+  `9e240d1c-d212-47ab-8d6a-4129e52a2eb1` Accepted；最终ZIP解压复核签名、
+  票据、Gatekeeper及启动通过。Windows版本资源0.7.0.1，未做Authenticode签名。
+- [x] 三端Demo、BUILD-INFO、SHA256SUMS共五份附件经Draft下载、服务端digest、
+  公开匿名下载及本地原件比较通过；Release正式发布并设为Latest。公开代理已解析标签，
+  独立Go1.24.13消费项目无replace／workspace，Linux/Windows/macOS目标编译通过。
+- [x] 双语README下载链接、Demo说明、Roadmap及ReleaseV070同步；截图仍标为v0.6.0。
+  发布后的文档提交不移动标签。临时测试桌面与本轮VNC／RDP客户端连接已关闭，
+  已有SSH及用户桌面保留。日志与产物在 `/tmp/goui-release-v070-a8zoxrl5`。
+- 工具记录：proxy包装器拆分含空格参数，使用Python传递gh参数列表后上传成功；
+  remote-computer-use动作返回只是投递确认，使用新画面复核几何，避免重复缩放。
+
+发布地址：https://github.com/golang-gui/goui/releases/tag/v0.7.0 。完整范围见
+[ReleaseV070](ReleaseV070.md)及Release的BUILD-INFO.md，不把跳过或编译当作原生通过。
+
 ## Go1.24 移动基座补齐（2026-11-06）
 
 - [x] 明确 Go1.24.13 使用 format2，独立驱动摘要与三目标描述，复用对象池和目标资源。

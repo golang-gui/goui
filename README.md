@@ -24,20 +24,20 @@ The current version provides the foundations and controls needed for small deskt
 The [demo](example/demo) brings together controls, text editing, layouts, data views, detachable
 tabs, overlays, graphics, animations, and system integration. Switch between light/dark appearances, accent colors, and eight UI languages.
 
-The current source prepares Demo **0.7.0 / build 1**, adding shared commands and menu shortcut
+Demo **0.7.0 / build 1** is available, adding shared commands and menu shortcut
 columns, independent corner radii with box shadows, selective borders, and optional Go execution tracing.
-See the [demo guide](example/demo/README.md) for controls and validation steps. The downloads
-and screenshots below remain the published v0.6.0 artifacts until the next release is available.
+See the [demo guide](example/demo/README.md) for controls and validation steps.
+The screenshots below were captured with Demo v0.6.0.
 
 | Platform | Demo download |
 | --- | --- |
-| Windows x64 | [Download EXE](https://github.com/golang-gui/goui/releases/download/v0.6.0/goui-demo-v0.6.0-windows-amd64.exe) |
-| macOS Apple Silicon | [Download .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.6.0/goui-demo-v0.6.0-darwin-arm64.zip) |
-| Linux x64 / X11 | [Download executable](https://github.com/golang-gui/goui/releases/download/v0.6.0/goui-demo-v0.6.0-linux-amd64) |
+| Windows x64 | [Download EXE](https://github.com/golang-gui/goui/releases/download/v0.7.0/goui-demo-v0.7.0-windows-amd64.exe) |
+| macOS Apple Silicon | [Download .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.7.0/goui-demo-v0.7.0-darwin-arm64.zip) |
+| Linux x64 / X11 | [Download executable](https://github.com/golang-gui/goui/releases/download/v0.7.0/goui-demo-v0.7.0-linux-amd64) |
 
-The downloads above are Demo **0.6.0 / build 1**. See the [release notes](https://github.com/golang-gui/goui/releases/tag/v0.6.0) and its BUILD-INFO.md / SHA256SUMS attachments for provenance and validation scope.
+The downloads above are Demo **0.7.0 / build 1**. See the [release notes](https://github.com/golang-gui/goui/releases/tag/v0.7.0) and its BUILD-INFO.md / SHA256SUMS attachments for provenance and validation scope.
 
-On Linux, run `chmod +x goui-demo-v0.6.0-linux-amd64` before launching it.
+On Linux, run `chmod +x goui-demo-v0.7.0-linux-amd64` before launching it.
 On macOS, extract and open `GOUI Demo.app`; the bundle is Developer ID signed and Apple-notarized.
 
 Windows — Direct2D, dark appearance
@@ -120,7 +120,7 @@ RSS includes resident shared-library pages; PSS apportions shared pages between 
 Core controls live in `gui`, with declarative bindings in `ui`. Additional controls live in
 `widgets`, with their declarative bindings in `widgets/ui`.
 
-### v0.7.0 highlights — release preparation
+### v0.7.0 highlights
 
 - **Shared operations:** menus and shortcuts can use one `Command`, with live enabled-state updates and aligned shortcut text. Declarative windows supply a default command group; local `CommandGroup` scopes, `DefineCommand`, and `BindEnabled` keep definitions and state updates explicit.
 - **Corners and borders:** four independent corner radii and matching BoxShadow contours work across Software, OpenGL, and Direct2D. `BorderSides` selects single, parallel, L-shaped, or three-sided borders with one width and color; the demo shows the rounded transitions at omitted edges.

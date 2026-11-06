@@ -24,20 +24,19 @@ GOUI 是纯Go实现的原生 GUI 框架。用 Go 编写界面与业务逻辑，�
 [Demo](../example/demo) 集中展示基础控件、文本编辑、布局、数据视图、可拖出的
 标签页、覆盖层、图形、动画和系统集成，支持切换亮暗模式、主题色和八种界面语言。
 
-当前源码准备为 **Demo 0.7.0 / build 1**，新增共享 Command 与菜单快捷键列、
+**Demo 0.7.0 / build 1** 已发布，新增共享 Command 与菜单快捷键列、
 四角独立圆角与盒形阴影、可选择边框，以及可选 Go 执行追踪。操作与验证步骤见
-[Demo 使用说明](../example/demo/README.md)。下方下载和截图仍对应已发布的
-v0.6.0 附件，新版本正式发布后再替换。
+[Demo 使用说明](../example/demo/README.md)。下方截图仍为 Demo v0.6.0 的展示。
 
 | 平台 | Demo 下载 |
 | --- | --- |
-| Windows x64 | [下载 EXE](https://github.com/golang-gui/goui/releases/download/v0.6.0/goui-demo-v0.6.0-windows-amd64.exe) |
-| macOS Apple Silicon | [下载 .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.6.0/goui-demo-v0.6.0-darwin-arm64.zip) |
-| Linux x64 / X11 | [下载可执行文件](https://github.com/golang-gui/goui/releases/download/v0.6.0/goui-demo-v0.6.0-linux-amd64) |
+| Windows x64 | [下载 EXE](https://github.com/golang-gui/goui/releases/download/v0.7.0/goui-demo-v0.7.0-windows-amd64.exe) |
+| macOS Apple Silicon | [下载 .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.7.0/goui-demo-v0.7.0-darwin-arm64.zip) |
+| Linux x64 / X11 | [下载可执行文件](https://github.com/golang-gui/goui/releases/download/v0.7.0/goui-demo-v0.7.0-linux-amd64) |
 
-上方为已发布的 **Demo 0.6.0 / build 1**。来源、摘要和验收范围见[发布说明](https://github.com/golang-gui/goui/releases/tag/v0.6.0)及其 BUILD-INFO.md / SHA256SUMS 附件。
+上方为已发布的 **Demo 0.7.0 / build 1**。来源、摘要和验收范围见[发布说明](https://github.com/golang-gui/goui/releases/tag/v0.7.0)及其 BUILD-INFO.md / SHA256SUMS 附件。
 
-Linux 下载后先执行 `chmod +x goui-demo-v0.6.0-linux-amd64`，再启动程序。
+Linux 下载后先执行 `chmod +x goui-demo-v0.7.0-linux-amd64`，再启动程序。
 macOS 解压后打开 `GOUI Demo.app`，已使用 Developer ID 签名并通过 Apple 公证。
 
 Windows — Direct2D，暗色外观
@@ -120,7 +119,7 @@ RSS 包含驻留的共享库页面，PSS 按进程分摊共享页面；由Linux 
 核心控件位于 `gui`，声明式绑定位于 `ui`；配套控件位于 `widgets`，对应绑定位于
 `widgets/ui`。
 
-### v0.7.0 主要变化（发布准备）
+### v0.7.0 主要变化
 
 - **共享操作：** 菜单和快捷键可共用一个 `Command`，启用状态实时同步，快捷键文本独立对齐。声明式窗口提供默认命令组，也支持局部 `CommandGroup`、就近 `DefineCommand` 和属性级 `BindEnabled`。
 - **圆角与边框：** 四个独立圆角半径及匹配轮廓的 BoxShadow，在 Software、OpenGL、Direct2D 三后端实现。`BorderSides` 可选择单边、平行边、L 形或三边，保持统一宽度和颜色；Demo 展示缺边处沿圆角自然收窄的效果。
