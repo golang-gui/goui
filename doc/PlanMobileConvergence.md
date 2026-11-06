@@ -314,3 +314,304 @@ nanovgo 源码）重新构建上述三个目标，全部通过；模块解析确
 Android/iPhone、16 KiB内核运行、正式签名及云真机重签仍待验收。unsigned IPA
 不能宣称已可直接装机。独立模拟器、ADB和X11进程均只操作本轮实例并在结束后清理，
 未修改系统安全策略。
+
+## LLD 静态组件体积验证（2026-11-06）
+
+### 范围与构建
+
+本轮只验证宿主链接工具的体积及构建兼容性，不修改 GOUI/Cgo/NanoVGo 生产代码，
+不替换既有共享组件。独立纯 Go 最小原生链接器保留为后续独立项目，参考/选择性
+复用 Go 链接器代码，消费官方 Go 工具链产生的原生目标文件；不维护 Go 工具链
+补丁。本轮未实现该链接器，边界见 DesignMobileBuild 第4.5节。
+
+验证环境：Linux amd64 / Ubuntu22.04 / GCC11.4 / CMake3.22.1 / Ninja1.10.1。
+官方 LLVM22.1.8 release 源码包的 SHA-256 与 GitHub release 元数据一致：
+922f1817a0df7b1489272d18134ee0087a8b068828f87ac63b9861b1a9965888。
+源码未打补丁，构建/制品/日志均在 /tmp/goui-lld-static-lt1uq41s。
+
+主要配置：MinSizeRel；BUILD_SHARED_LIBS=OFF、LLVM_BUILD_LLVM_DYLIB=OFF、
+LLVM_LINK_LLVM_DYLIB=OFF、LLVM_STATIC_LINK_CXX_STDLIB=ON；静态libgcc/zlib，
+启用函数/数据独立段和链接回收。完整命令保存为 cmake-command.json。
+LLVM_TARGETS_TO_BUILD=AArch64 只限定 LLVM 代码生成后端，不代表裁掉其他架构的
+普通原生链接能力；LLD上游 ELF/Mach-O/COFF/Wasm 驱动均保留，四种version调用
+通过。LLVM_ENABLE_LTO=OFF 指工具自身没有用LTO构建，不是删除工具的LTO输入
+处理；日志确认LLVMLTO被构建。未执行完整LLD测试集，不宣称其他格式已验收。
+
+首次编译在Mach-O阶段因精简解压漏掉libunwind/include而失败，保留初轮日志；
+从同一已校验源码包补齐头文件后增量构建通过，没有修改LLVM源码或弱化检查。
+
+### 体积与运行依赖
+
+| 项目 | 字节数 | MiB |
+| --- | ---: | ---: |
+| 新LLD，尚未strip | 65,691,896 | 62.649 |
+| 新LLD，strip --strip-unneeded | 48,394,872 | 46.153 |
+| 新工具组件，含许可证和清单 | 48,484,470 | 46.238 |
+| 新组件tar.gz，gzip6 | 18,827,789 | 17.956 |
+| 原Rust LLD+共享LLVM工具组件 | 211,437,566 | 201.643 |
+| 原组件tar.gz，同为gzip6 | 67,533,037 | 64.405 |
+
+组件解压体积减少77.07%，压缩体积减少72.12%。这不是严格单变量实验：上游来源、
+编译器/优化方式、代码生成后端与原Rust分发包不同，因此不能把全部差值归因于
+静态链接，也不据此推断链接性能。新工具仍保留插件支持，未继续裁剪其导出。
+
+readelf/ldd确认只需libm.so.6、libc.so.6和ld-linux-x86-64.so.2，不需要libLLVM、
+libstdc++、libgcc_s或libz共享库。最高引用GLIBC_2.34，尚未在其他宿主基线执行；
+正式Linux发布需在约定的最低宿主环境重建并验证。这里不是完全静态Linux程序。
+LLVM、GCC运行库和zlib声明已随测试包保留，正式再分发审核仍未完成。
+
+stripped LLD SHA-256：
+24c9bd9575bff25257b7182133f005327292c1ae44e41e1c96c1d39a2ef34155。
+工具包为 lld-static-linux-amd64.tar.gz；精确数据见 measurements.json。
+
+### 兼容验证与缺口
+
+只在仓库外以硬链接复制既有组件，替换副本tools并重新封装清单/摘要；原组件
+的6份profile/tools清单摘要前后保持一致。使用原有goui-link参数适配和校验，
+不绕过Go版本、归档身份、源码或原生格式检查。消费PATH仍为只提供Go及拒绝
+C/C++/Java编译的工具集，使用正式cgo/purego/nanovgo依赖。
+
+- 正式OpenGL ES标准库例程的Android ARM64 APK、iOS ARM64 Simulator App、
+  device待重签IPA均构建成功。输出及命令在mobile-build-results.json和各目标日志。
+- 独立读取APK内ELF，四个PT_LOAD均至少16KiB对齐；直接读取两份Mach-O，
+  LC_BUILD_VERSION平台分别为7/2。Simulator含ad-hoc签名记录，device保持显式
+  unsigned路径；不把16KiB静态检查当作16KiB内核运行，不把组包当作真机验收。
+- 已跟踪源码0cd2dc0的冻结副本在独立Xvnc :136 / 1280×960 / xfwm4合成开启、
+  Go1.25.8、CGO_ENABLED=0、GOWORK=off下，go test -p 4 -json -count=1 ./...：
+  3891通过、10项既有条件跳过、零失败。当前主会话并行修改和既有未跟踪测试
+  未纳入，既有测试的窗口/图片副作用留在副本，结束后停止本轮独立X11进程。
+
+本轮未在Android/iOS模拟器或物理设备运行新链接产物，未构建Windows/macOS宿主
+版本，未做性能比较或公开分发，也未替换正式组件。后续先补齐这些验证，再决定
+发行包切换；独立Go链接器继续作为后续计划，不作为本轮交付前置。
+
+## 独立Go链接器与原生编译边界验证（2026-11-06）
+
+用户明确目标：独立Go程序完成受控原生链接，参考/复用Go链接器代码，不维护Go
+工具链补丁；同时尽可能减少经过原生工具链编译的代码，而非只压缩整包Go归档。
+本轮原型均位于 /tmp/goui-minild-m8sb7mnp，未改GOUI生产实现或现有共享组件。
+
+### 预编译范围
+
+逐成员审计现有归档，区分Go导出数据、Go对象、Go汇编对象和原生ELF/Mach-O：
+
+| 目标/包 | 真正原生对象字节数 |
+| --- | ---: |
+| Android runtime/cgo | 82120 |
+| Android net | 23928 |
+| Android purego/internal/cgo | 10568 |
+| Android GOUI固定入口 | 5456 |
+| Android合计 | 122072 |
+| iOS device合计 | 56816 |
+| iOS Simulator合计 | 57352 |
+
+Android net归档约4MiB中的绝大部分是Go代码；runtime/cgo归档也主要是Go对象。
+这些内容不应因所在包包含少量C代码，就全部作为原生预编译产物按Go版本分发。
+直接拼接原生对象的gzip6大小分别为28409/17804/17838字节，仅用于内容量级统计，
+不是带完整元数据的可发行组件包。
+
+现场生成验证：以当前Go1.25.8 GOROOT为源，临时overlay保留runtime/cgo/cgo.go的
+普通Go定义、去除import C触发；CGO_ENABLED=0，以-shared的Go/汇编标志编译
+runtime/cgo，再用Go pack组合14个既有原生ELF对象。未编辑GOROOT，也没有运行
+C编译器。Go源码与Go汇编由当前Go编译，编译结果不是复用旧Go对象。最终应用
+构建仍使用原有CGO_ENABLED=1的外部链接流程，不宣称全链路CGO_ENABLED=0。
+
+首次链接因省略Cgo原本生成的-llog要求而缺__android_log_vprint；将原生库要求显式
+传给既有构建器后通过，保留两轮日志，没有弱化符号检查。这说明原生输入元数据
+必须独立保存链接要求，而不能依赖预编译Go对象碰巧带有Cgo指令。
+
+组合库由纯Go生成的小型AArch64原生宿主加载，Go init和runtime.GC完成，写入
+独立预期文本。该宿主只调用dlopen/sleep后退出，ELF对象及最终程序均由Go生成，
+不是用原生编译器临时做的消费者入口。原生支持对象仍来自此前维护者的NDK构建。
+
+这只证明当前Go版本的runtime/cgo拆分可行。完整net、FFI和固定入口的Go生成
+源码、依赖指纹、缓存与原生ABI版本契约仍需设计/实现；不能混用旧Go对象或删除
+Go版本校验冒充跨版本兼容。进一步移除线程/TLS等C代码要适配fakecgo的库初始化、
+Bionic pthread/TLS、外部线程销毁与GC。purego v0.10.2的原样无Cgo实验：Linux
+ARM64普通exe可编译；Android绑定缺少内部Cgo动态加载函数，c-shared以及iOS
+exe/c-archive被Go工具链的外部链接要求拒绝；保留fakecgo-probes.json。
+
+### 独立链接器
+
+只依赖Go标准库，读取官方Go链接器产生的原生对象及NDK链接输入；本轮未复制
+cmd/link内部包或修改Go工具链。输出支持范围为实际Android ARM64样本涉及的
+ELF共享库、57个动态导入/57个导出、GNU hash、GOT/PLT、RELRO、立即绑定、
+构造/析构数组、12种实际ARM64重定位及已知CFI编码的EH查询表。未知类型拒绝。
+
+正式GLES标准库例程的输入为27个原生对象、192699条加载段重定位，无TLS段；
+扫描既有builtins归档但实际无需装载成员。仅生成加载所需段，未保留非加载DWARF；
+所以较小APK不能作为与LLD等价的体积优化结论。通用TLS、分支跳板、符号版本、
+完整归档语义、C++/LTO、增量链接和Mach-O均不属于已完成承诺。
+
+测试接入没有改生产NativeTools：仓库外捕获包装器在Go模式返回明确标注的测试
+LLD版本兼容信息，真正链接交给Go原型，MINILD_REFERENCE_LLD指向不存在路径。
+未来正式接入必须定义真实后端身份和版本契约，不能沿用该测试适配方式。
+
+Linux/Windows/macOS的CGO_ENABLED=0工具原生重放同一输入，输出字节相同：
+5885b1d9a01affffa0d312f8b35e9c1e271c0b60e29bd423936f49999ecf77f3。
+Linux版本ldd确认不是动态可执行文件，不依赖glibc。Go1.25.8，-s -w大小如下：
+
+| 宿主 | 可执行文件字节数 | gzip6字节数 |
+| --- | ---: | ---: |
+| Linux amd64 | 2498744 | 1086930 |
+| Windows10 19045 amd64 | 2600960 | 1117735 |
+| macOS15.7.7 ARM64 | 2468722 | 1014797 |
+
+这只是受控ELF原型，不预测完整ELF+Mach-O链接器最终大小或性能。单元/race/vet
+通过：GNU hash直接对照NDK生成的表，检查输出段权限/入口和已知拒绝路径。
+重定位范围及源代码见原型README，正式化前仍需审查错误处理、输入限制与测试。
+
+### Android运行
+
+Mac上专用Android API30 ARM64 ATD、SwiftShader、1x、CheckJNI，私有ADB5059、
+模拟器端口5630。运行两条独立证明：现场Go部分组合库加载/GC，以及纯Go链接
+的生产OpenGL标准库APK。后者134项官方选择用例加4项检查，137通过、1项原始
+short条件跳过、零失败；GLES 1x/2x FBO像素检查、后台暂停帧及恢复后nonce保持
+通过。Windows/macOS这里只运行构建工具，不是移动App运行；未做iOS或物理设备
+验收。模拟器和私有ADB在finally中清理，没有修改用户安全设置或工作桌面。
+
+原型源码、可移植输入、三宿主工具、运行证据和SHA256清单已另存
+/data/xuyang8/artifacts/goui-minild-20261106-m8sb7mnp，source.tar.gz不包含LLVM或SDK
+工具，replay-inputs.tar.gz包含本轮私有验证的原生输入，未公开分发。
+
+最终已跟踪HEAD816a1b7的冻结副本在独立Xvnc :136 / xfwm4下执行
+CGO_ENABLED=0、GOWORK=off的go test -p 4 -json -count=1 ./...：3893通过、
+10项原条件跳过、零失败。未纳入用户未跟踪测试，窗口/图片副作用留在副本；
+停止本轮显示进程。此次仅更新设计/计划，未将原型集成到框架或提交生产代码。
+
+
+## 独立 Go 链接器正式接入（2026-11-06）
+
+本节先记录独立进程的验证阶段；最终接入已按后续确认改为直接引用 Go 功能包，
+不要求下载独立 golink 二进制，见文末“直接引用功能包并提交”。
+
+### 决策与职责
+
+本轮确认：如果每个 Go 版本的基座够小，就保留预编译产物。普通 Go 包仍现场
+编译；runtime/cgo、入口与必要的 net/FFI 归档继续严格匹配 Go1.25.8、目标、
+模块/源码身份及导出 ABI。前轮 runtime/cgo overlay 是可行性实验，不作为此次
+生产构建前置，也没有删除版本校验或尝试跨 Go 版本混用。
+
+独立模块位于 /data/xuyang8/repos/golink，只有标准库依赖、Go 源码和文档。
+它实现 native ELF 链接、版本和 request format 1 JSON；没有 GOUI、组件清单、
+SDK 探测、签名或 UI 策略依赖，不调用外部进程。不维护 Go 链接器补丁。
+GOUI 仅在 platform/mobile/base 接入组件 format 2 的 golink 选择和 JSON 转换，
+保留 format 1 LLD；未知目标与选项明确失败，无静默回退、无临时 LLD 版本模拟。
+消费者的 goui build 命令不增加后端特例开关，由已校验的组件决定。
+
+链接器仍是受控 Android ARM64 实现：没有 DWARF 输出、通用 TLS、分支跳板、
+符号版本、COMDAT 或完整 GNU 归档顺序语义。支持格式外的输入应报错。
+原生输入解析增加段/重定位界限、归档成员/尾部、CIE/FDE 和大小/对齐检查；
+库只将预期输入错误转为 error，不吞掉 runtime panic。最终结果先在临时文件
+完成，再发布；GOUI 另外保留格式/段约束检查和原产物保护。
+
+### 基座测量
+
+量取已验证的完整 base 目录，包含 base.json 和其全部归档，不只量 C 对象；
+以 tar+gzip6 压缩。原始归档、来源和严格兼容约束均未改动：
+
+| 目标 | 文件合计字节 | tar+gzip6字节 |
+| --- | ---: | ---: |
+| Android ARM64 | 4840219 | 1051041 |
+| iOS device ARM64 | 750792 | 136416 |
+| iOS Simulator ARM64 | 751331 | 135605 |
+
+不包括 host Go driver、golink/LLD、SDK stubs、资源、打包和签名工具，不能称为
+整个工具包下载大小。runtime 基座、Go driver、目标 SDK 输入与链接工具仍可按
+各自身份独立缓存/发布。现阶段只有 Go1.25.8，其他 Go 版本须各自制作与验证。
+
+### 验证过程与结果
+
+验证目录 /tmp/goui-golink-w9cbv3xn。冻结当前已跟踪 HEAD 加本轮文件 overlay，
+不纳入工作区原有未跟踪旧测试，未修改主会话业务代码。
+
+- 独立模块单元、race、vet 通过。测试用 Go 写 ELF/归档，不需要 NDK；覆盖
+  ABS64 动态重定位、CALL26 的固定机器码、COMMON、强弱符号、内存权限、
+  RELRO、确定性和失败保留。GNU hash 预期摘录自真实 NDK libc.so 表并记录摘要。
+- GOUI 新增正式协议与后端歧义/版本、失败退出、无效产物、未支持选项的回归。
+  第一轮测试 fixture 与工具清单共用目录触发 undeclared file，修正测试目录
+  隔离后通过；没有放宽组件完整性校验。构建脚本最初误找不存在的 cmd/go-mobile，
+  改为复用本次未改变的已验证版本 Go driver，不增加同名生产命令。
+- 正式 goui build + 精确匹配预编译基座 + golink 组件完成 Android APK；消费者
+  PATH 仅 Go 与拒绝 C/C++/JDK/LLD 的桩，独立空缓存构建和二次审计构建产生
+  字节一致 APK。拒绝桩主动调用自检能够记录/失败；实际构建调用记录为空。
+  无 LLVM 文件被放入新组件，所有组件文件与工具摘要继续校验。
+- APK v2/v3 验签通过；原签名器对没有 v1 MANIFEST 的提示保留。目标 minSdk29
+  不把缺少 v1 当作三平台运行失败，也不据签名结果宣称应用运行成功。
+- Android API30 ARM64 ATD、SwiftShader、1x、CheckJNI，安装并实际运行生成
+  APK：134项官方选择用例加4项额外检查，137通过、1原 short 条件跳过、零失败。
+  GLES Painter 的1x/2x FBO像素、后台停帧、恢复帧推进及 nonce 保持通过。
+  专用模拟器5630和ADB5059已清理，未操作用户桌面或修改安全设置。
+- 正式 Go CLI 在 Linux amd64、Windows10 19045 amd64、macOS15.7.7 ARM64
+  原生重放同一27对象/192699重定位输入；输出 SHA256 均为
+  5885b1d9a01affffa0d312f8b35e9c1e271c0b60e29bd423936f49999ecf77f3。
+  Windows/macOS 此处运行的是构建工具，不是 iOS 或物理移动 App。
+- GOUI 冻结源码在独立 Xvnc :136 / xfwm4 合成会话，CGO_ENABLED=0、GOWORK=off，
+  go test -p4 -json -count=1 ./...：3897通过、10项原条件跳过、零失败。
+  既有测试窗口和图片副作用留在副本，会话已停止；测试范围见 source-record.json。
+
+当前 APK SHA256：a5763604c4b40822342c15adaed48528a4a4350a6f1b46c8472d3cdefb0a5b04；
+原生 payload SHA256：3d13a065caf522575fc2322b78e42e735b99980dbdb22ca06ee2fd9782f24bef。
+捕获输入带显式 SONAME 的重放样本与正式构建无 SONAME 的 payload 不是同一
+输入，不要求它们互相等于；各自的重复输出/远端运行证据独立保留。
+
+### 剩余边界
+
+本轮只正式接入 Android。iOS Mach-O、更多 Go 版本、物理设备/16 KiB 内核、
+公开组件分发与稳定 golink 发布尚未完成。用户不需要原生编译器，但内部最终
+构建依然使用 Go external-link 和 CGO_ENABLED=1 来消费预编译支持；没有宣称
+所有移动构建模式已经支持 CGO_ENABLED=0。没有将 SDK、私有输入、产物或密钥
+提交到框架；本轮不打 tag、不推送独立仓库。下一阶段先补 Mach-O 后端和 iOS
+Simulator 运行，再制作可分发组件，不为缩小基座优先重写线程/TLS。
+
+
+独立工具使用 CGO_ENABLED=0、-trimpath、-s -w 构建：Linux amd64 2519224字节
+（gzip6 1100111），Windows amd64 2618880字节（1129447），macOS ARM64
+2469234字节（1023485）。Linux ldd 显示不是动态可执行文件，不依赖 glibc。
+最终补充归档尾部残缺检查后，三宿主再次重放保持同一 ELF，第三次空缓存 APK
+与已在模拟器运行的附件逐字一致；没有仅凭旧工具的运行结果推定新产物。
+
+源码归档、GOUI 切片补丁、三宿主工具、APK、运行/构建日志、冻结源码记录、
+尺寸和 SHA256 清单持久保存在
+/data/xuyang8/artifacts/goui-golink-20261106-w9cbv3xn。未公开发布或推送，仓库内
+只有构建接入、测试和文档；独立模块源码保存在 /data/xuyang8/repos/golink。
+
+
+### 直接引用功能包并提交（2026-11-06）
+
+最终确认：GOUI 不要求用户另行下载 golink 可执行程序。platform/mobile/base
+直接 import github.com/golang-gui/golink，调用 Link(Request)，随已有构建工具
+编译。删除此前 GOUI 侧重复的请求结构、JSON 临时文件及 golink 子进程调用。
+独立项目可选 CLI 仍可单独使用，不进入 GOUI 消费组件。
+
+NativeTools format 2 的 golink 是版本字符串 "0.1.0"，核对库 Version；没有
+file 字段，也不再执行 --version。只包含清单时 files 可为空，仍遍历拒绝未声明
+文件。format 1 的 LLD 可执行文件、摘要与版本校验不变；目标输入仍必须有文件。
+重复声明后端、错误版本、未支持目标、非法输入和取消都不发布结果。
+
+新增回归直接调用真实 Go 链接库：Go 创建 ARM64 对象及 stub，验证链接成功、
+请求数据完整、失败保留原结果、取消与版本匹配，不再使用假 golink 进程。
+先前加到假 LLD fixture 中的 JSON 分支已撤回。
+
+独立库 /data/xuyang8/repos/golink 的本地提交535077c，作者/提交者
+xuges <xuges@qq.com>，本地标签v0.1.0。GOUI go.mod/go.sum 固定该模块版本；
+没有提交本机绝对路径 replace。用户明确选择只提交本地、不发布，所以没有创建
+公开仓库、推送提交或标签；其他机器尚不能从公共模块源直接获取该新依赖。
+本地可以用临时 go.work 关联两个源码目录。为检查无 replace 的消费者，验证
+还从该提交制作本地模块代理，按正式 Go 模块规则生成并核对 go.sum；代理与
+GONOSUMDB 仅在测试进程环境使用，不修改用户或系统配置。
+
+直接引用后的验证目录 /tmp/goui-golink-library-0_aj1cue：
+
+- golink 的 race、vet 和 GOUI base 针对性 race/vet 通过；base、goui、goui-base
+  包测试通过。全部测试使用本地源码/提交，未声称依赖已公开发布。
+- 冻结HEAD816a1b7及本轮明确文件，在独立Xvnc :136/Xfwm4，CGO_ENABLED=0，
+  GOWORK=off，go test -p4 -json -count=1 ./...：3897通过、10项原条件跳过、
+  零失败。未纳入主会话并行修改或原有未跟踪文件，显示会话已清理。
+- 新组件 tools 目录只有 tools.json，没有 golink 二进制。重新编译 goui 和
+  goui-link，沿用版本匹配 Go driver，正式 goui build 在空缓存/拒绝编译器 PATH
+  完成 APK；C/C++/JDK/LLVM 调用零，APK v2/v3验签通过。
+- 新APK与上一阶段已经在Android API30 ARM64模拟器运行并通过137项/1原skip、
+  GLES像素及生命周期检查的APK逐字一致，SHA256仍为
+  a5763604c4b40822342c15adaed48528a4a4350a6f1b46c8472d3cdefb0a5b04。
+  因附件一致，没有重复启动模拟器。当前库接入不等于iOS后端已完成。

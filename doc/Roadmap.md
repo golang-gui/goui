@@ -24,6 +24,23 @@ App 在 Android API30 ARM64/1x 与 iOS26.3 ARM64 Simulator/3x 的 Software 上
 均通过134项官方选择用例+4项额外检查（137通过/1原skip/0失败）。组件分发、
 自有证书签名、物理设备与16 KiB仍待验收，不把此进展算作完整移动端交付。
 
+### 移动链接工具体积与独立链接器（2026-11-06）
+
+Linux amd64 的静态 LLVM/C++ LLD 已完成体积与三目标构建验证：工具组件46.2 MiB、
+gzip包18.0 MiB，保留官方 Go 工具链；其他宿主构建、最低宿主环境及新链接产物的
+模拟器/真机运行仍待验收，详见 [PlanMobileConvergence](PlanMobileConvergence.md#lld-静态组件体积验证2026-11-06)。
+后续保留独立纯 Go 最小原生链接器：参考/复用 Go 链接器代码，消费其原生目标文件
+及受控基座，先 Android ARM64 ELF、再 iOS ARM64 Mach-O；不维护 Go 工具链补丁，
+不作为当前移动端交付前置。Android ELF受控输入原型后续已验证，三个宿主生成
+相同输出，正式GLES App在Android模拟器运行通过；runtime/cgo的Go部分现场
+编译与小型原生对象组合也已通过加载/GC验证。Android 后续已接入正式构建驱动：
+直接引用独立 golink Go 功能包、组件 format 2 仅记录库版本、无独立链接器
+二进制下载或隐式 LLD 回退，空缓存 APK
+构建及模拟器运行通过。保留小型按 Go 版本匹配的预编译基座：当前 Android
+约1 MiB、iOS各约133 KiB（gzip6，不含宿主工具和SDK输入）。公开分发、更多
+Go版本、完整按需生成、跨版本支持ABI和iOS Mach-O仍待推进，边界见
+[DesignMobileBuild](DesignMobileBuild.md#45-链接工具体积与后续替代2026-11-06)。
+
 ## 安全区域与条件布局：后续设计（2026-11-05）
 
 [DesignSafeArea](DesignSafeArea.md) 记录了平台安全 Insets、屏幕缺口/圆角、

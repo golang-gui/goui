@@ -123,7 +123,7 @@ Go PKCS#12 实现前审核版本、许可证与测试，不自行实现密码学
 | Runtime base | 精确 Go 版本、目标、variant、Go ABI、原生最低版本；runtime/cgo 及固定入口等原生必需 Go 归档 |
 | 可选标准库支持 | 实际依赖是否含原生编译包；例如 Android net；不因联网需求预编译整个标准库 |
 | FFI 支持 | purego/goexlib 版本、源码摘要及 ABI；其普通 Go/汇编部分仍源码编译 |
-| Host link tools | 宿主 OS/ARCH、固定 LLD 与执行依赖；配套 goui-link 和归档消费驱动 |
+| Host link tools | 宿主 OS/ARCH、内置 golink 库版本或固定 LLD 及执行依赖；配套 goui-link 和归档消费驱动 |
 | Target inputs | 目标 OS/ARCH/variant、原生最低版本、CRT、系统库 stub、可用框架和链接约束 |
 | Platform auxiliary | Android 排版 Dex，iOS 最小 main 与 UIKit 协议 metadata；绑定到相关 platform 源码/组件 ABI |
 | Packaging/signing tools | 宿主资源工具、独立 APK/iOS 签名器；与 Go runtime base 分开更新 |
@@ -182,6 +182,100 @@ SDK 路径写进应用 goui.toml。goui-base 继续负责维护者导出/封装�
 和其他输入目前仅做过私有验证，provenance 中的 review status 不授予再分发权。
 公开分发前逐项审核来源、许可和附带声明；未完成时只宣布本地组件验证，不能
 宣称已解决所有平台的公开无 SDK 构建。组件的真实尺寸以打包实测记录，不预估承诺。
+
+### 4.5 链接工具体积与后续替代（2026-11-06）
+
+现有验证包复用 Rust 工具链的 LLD 22.1.8，动态依赖完整 libLLVM；其体积不是
+移动基座或链接流程的固有要求。本轮已在仓库外用官方同版本源码构建静态链接 LLVM
+组件的独立 LLD，记录构建参数、运行依赖、原始/strip/压缩尺寸，并通过既有 Android
+和 iOS 构建路径。首轮保留上游默认驱动，不为缩小体积维护源码裁剪补丁。
+这里的静态链接是工具自身的 LLVM/C++ 库组合，不改变 App 链接方式，也不自动
+承诺工具完全不依赖宿主 libc。Linux amd64 的工具组件由201.6 MiB降至46.2 MiB，
+gzip包由64.4 MiB降至18.0 MiB；其他宿主与新产物的原生运行待验收。配置、比较
+边界和原始证据见 [收敛计划](PlanMobileConvergence.md#lld-静态组件体积验证2026-11-06)。
+
+后续保留独立的纯 Go 最小原生链接器计划：消费官方 Go 工具链生成的原生目标
+文件、已知预编译基座和平台链接输入，输出 Android ARM64 ELF 或 iOS ARM64
+Mach-O。参考或选择性复用 Go 链接器源码，不维护 Go 工具链补丁，也不改变 Go
+编译器、runtime 或 GC 元数据生成。该项目先限定受控输入，未知原生段/重定位
+明确拒绝；Android 先行、iOS 后续。它是现有最终原生链接步骤的可选替代，不是
+当前移动平台交付的前置。Android ELF 已从原型接入正式构建驱动，见下节；
+iOS Mach-O与通用原生链接器能力仍待实施。
+
+### 4.6 最小原生编译范围与独立Go链接器验证（2026-11-06）
+
+目标是缩小必须经过NDK/Xcode/JDK等原生工具链编译的代码范围，而不是仅压缩
+预编译产物。普通 Go 包继续由用户工具链编译；原生必需包可以保留按精确 Go
+版本匹配的预编译归档，不为消除少量发行文件强制引入现场生成的复杂度。
+当前 Go 1.25.8 完整基座（包含归档及清单，不含宿主工具/SDK输入）的 gzip6
+包：Android 1051041 字节，iOS device 136416 字节、Simulator 135605 字节。
+这是本地组件测量，不代表包含完整构建工具的最终下载大小。
+
+已有包归档中的真正原生对象合计：Android122072字节，iOS device56816字节、
+Simulator57352字节；其余大部分为Go对象与导出数据。Android runtime/cgo的Go
+和Go汇编已通过临时源码overlay现场编译，再组合14个既有原生对象（82120字节）；
+整个消费者流程没有调用原生编译器。组合库在API30 ARM64模拟器中加载、执行
+Go init及GC通过。这是复用标准runtime/cgo原生桥的验证，不是完整fakecgo。
+
+现场生成保留为后续可选优化；固定 ABI 入口和 FFI 辅助可逐项评估 Go 汇编。
+现阶段保留标准 runtime/cgo 已验证的原生线程/TLS/栈支持，原生代码仍由维护者
+预编译，消费者不需要 NDK/Xcode。兼容 Go 版本须检查和验证，不能仅删除版本
+约束。当前只验证 Go1.25.8；完整的 net、FFI 与入口 Go 支持现场生成，以及跨
+Go 版本原生对象复用尚未实现。
+
+purego v0.10.2的Android动态加载绑定仍依赖cgo，iOS显式拒绝无cgo模式；其
+桌面fakecgo不能直接替代移动共享库初始化。优先保持已验证的线程、栈和TLS
+行为，进一步消除原生桥须单独验证库加载、外部线程回调和GC，不以零C为硬前置。
+
+独立纯Go ELF原型已消费官方Go链接器产生的27个原生对象、192699条加载段
+重定位，共12种类型。Linux/Windows/macOS宿主生成相同字节的Android ELF；
+Go链接的正式GLES标准库例程在Android模拟器通过137项/1原skip、像素及前后台
+检查。链接器只使用Go标准库，无Go工具链补丁；Android 已接入正式构建驱动，DWARF、
+通用TLS、分支跳板、符号版本、完整归档语义和Mach-O等仍非已支持承诺。详细
+源码、场景与边界见 [收敛计划](PlanMobileConvergence.md#独立go链接器与原生编译边界验证2026-11-06)。
+
+### 4.7 独立 Go 链接器接入（2026-11-06）
+
+独立 `golink` 模块不依赖 GOUI，不解析 GUI、APK、IPA 或组件目录。它只消费
+显式原生输入并生成目标二进制；Go 编译、ABI/版本匹配、SDK 输入和签名仍由
+已有各层负责。当前实现只支持 Android ARM64 ELF，iOS 继续使用显式 LLD 组件。
+
+`NativeTools` format 1 保持现有 `lld` 可执行文件声明；format 2 使用 `golink`
+库版本字符串，不能同时配置非空 LLD，也不提供失败后静默回退。组件仍校验宿主
+和已声明文件摘要；内置库不需要可执行文件，所以 format 2 的 files 可以为空。
+不再下载、执行独立 golink，也不模拟 LLD 版本：
+
+```json
+{
+  "format": 2,
+  "goos": "linux",
+  "goarch": "amd64",
+  "provenance": {
+    "name": "golink",
+    "version": "0.1.0",
+    "source": "github.com/golang-gui/golink@v0.1.0",
+    "license": "MIT"
+  },
+  "golink": "0.1.0",
+  "files": {}
+}
+```
+
+GOUI 工具直接 import `github.com/golang-gui/golink`，随工具一起编译，并调用
+`golink.Link(golink.Request{...})`。组件版本必须匹配编译进工具的 golink.Version。
+现有 goui-link 仍为 Go external-link 驱动，但它直接调用库，不再生成 JSON 临时
+文件或启动 golink 子进程。独立项目的可选 CLI/JSON 接口仅供单独使用和验证，
+不属于 GOUI 使用者必需下载的构建组件。
+
+驱动沿用已有参数校验，将对象、归档、目标库和 symbolic/nodelete 等要求转为
+类型化 Request。不搜索宿主库，不传递 LLD 命令行。当前后端总是 eager binding、
+GNU hash、RELRO、16 KiB LOAD 对齐并导出可见符号，省略非加载 DWARF；不支持
+的 build-id、压缩调试段等要求返回错误。链接库负责输入/重定位检查，GOUI 再
+检查输出 ELF，校验和取消检查通过后才替换已有产物。
+
+本轮正式驱动的空缓存 APK 构建、跨宿主链接与 Android 模拟器运行通过；公开
+组件分发、更多 Go 版本、真机/16 KiB 内核和 iOS Mach-O 尚未完成。完整证据见
+[接入记录](PlanMobileConvergence.md#独立-go-链接器正式接入2026-11-06)。
 
 ## 5. Android 构建、组包与签名
 
