@@ -258,3 +258,53 @@ func nativeTestObject(name string) []byte {
 	section(3, 3, 0, 120, 8, 1, 0, 0, 0)
 	return data
 }
+
+// 生成无导入的 ARM64 main 对象，供构建驱动测试真实 Mach-O 链接。
+func nativeTestMachOObject(platform uint32) []byte {
+	const commandSize = 152 + 24 + 24
+	const textOff = 32 + commandSize
+	const symOff = textOff + 8
+	const strOff = symOff + 16
+	b := make([]byte, strOff+7)
+	u16, u32, u64 := binary.LittleEndian.PutUint16, binary.LittleEndian.PutUint32, binary.LittleEndian.PutUint64
+	u32(b, 0xfeedfacf)
+	u32(b[4:], 0x100000c)
+	u32(b[12:], 1)
+	u32(b[16:], 3)
+	u32(b[20:], commandSize)
+	s := b[32:]
+	u32(s, 0x19)
+	u32(s[4:], 152)
+	u64(s[32:], 8)
+	u64(s[40:], textOff)
+	u64(s[48:], 8)
+	u32(s[64:], 1)
+	section := s[72:]
+	copy(section, "__text")
+	copy(section[16:], "__TEXT")
+	u64(section[40:], 8)
+	u32(section[48:], textOff)
+	u32(section[52:], 2)
+	u32(section[64:], 0x80000400)
+	tab := b[32+152:]
+	u32(tab, 2)
+	u32(tab[4:], 24)
+	u32(tab[8:], symOff)
+	u32(tab[12:], 1)
+	u32(tab[16:], strOff)
+	u32(tab[20:], 7)
+	version := b[32+152+24:]
+	u32(version, 0x32)
+	u32(version[4:], 24)
+	u32(version[8:], platform)
+	u32(version[12:], 15<<16)
+	u32(version[16:], 26<<16|2<<8)
+	u32(b[textOff:], 0x52800000)
+	u32(b[textOff+4:], 0xd65f03c0)
+	u32(b[symOff:], 1)
+	b[symOff+4] = 15
+	b[symOff+5] = 1
+	u16(b[symOff+6:], 0)
+	copy(b[strOff:], "\x00_main\x00")
+	return b
+}

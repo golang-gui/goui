@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -332,12 +333,28 @@ func RunNativeLink(ctx context.Context, inputPath, toolPath string, args []strin
 
 func nativeGoLinkRequest(inputs *NativeInputs, args []string, output string) (golink.Request, error) {
 	r := golink.Request{Format: 1, Target: inputs.GOOS + "/" + inputs.GOARCH, Output: output}
+	if inputs.GOOS == "ios" {
+		r.IOS = &golink.IOSOptions{Variant: inputs.Variant, MinimumVersion: inputs.MinimumVersion, SDKVersion: inputs.SDKVersion}
+	}
 	seen := map[string]bool{}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
-		case arg == "-flavor" || arg == "-m" || arg == "-o":
+		case arg == "-flavor" || arg == "-m" || arg == "-o" || arg == "-arch" || arg == "-syslibroot":
 			i++ // Values have already been checked by nativeLinkArguments.
+		case arg == "-platform_version":
+			i += 3
+		case arg == "-framework":
+			i++
+			name := inputs.IOS.Sysroot + "/System/Library/Frameworks/" + args[i] + ".framework/" + args[i] + ".tbd"
+			path, err := inputs.file(name)
+			if err != nil {
+				return r, err
+			}
+			if !seen[path] {
+				seen[path] = true
+				r.Libraries = append(r.Libraries, path)
+			}
 		case arg == "-z":
 			i++
 			if args[i] == "nodelete" {
@@ -358,16 +375,36 @@ func nativeGoLinkRequest(inputs *NativeInputs, args []string, output string) (go
 					r.Libraries = append(r.Libraries, path)
 				}
 			}
-		case strings.HasPrefix(arg, "-L"):
-		case arg == "-shared" || arg == "--export-dynamic" || arg == "--no-undefined" || arg == "--eh-frame-hdr" || arg == "--hash-style=gnu" || arg == "-s":
-			// Format 1 always uses eager binding, exports, GNU hash and unwind
-			// lookup data. Debug sections are omitted, including without -s.
+		case strings.HasPrefix(arg, "-L") || strings.HasPrefix(arg, "-F"):
+		case arg == "-shared" || arg == "--export-dynamic" || arg == "--no-undefined" || arg == "--eh-frame-hdr" || arg == "--hash-style=gnu" || arg == "-s" || arg == "-S" || arg == "-x" || arg == "-all_load" || arg == "-export_dynamic" || arg == "-Z":
+			// Both backends eagerly bind imports and preserve native exports
+			// and unwind data. ELF uses GNU hash; debug sections are omitted.
 		case strings.HasSuffix(arg, ".o"):
 			r.Objects = append(r.Objects, arg)
 		case strings.HasSuffix(arg, ".a"):
 			r.Archives = append(r.Archives, arg)
 		default:
 			return r, fmt.Errorf("golink does not support native option %q", arg)
+		}
+	}
+	if inputs.GOOS == "ios" {
+		// Reexport resolution is restricted to explicitly sealed target inputs.
+		// Extra TBDs supply symbols but do not become implicit load commands.
+		var names []string
+		for name := range inputs.Files {
+			if strings.HasSuffix(name, ".tbd") {
+				names = append(names, name)
+			}
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			path, err := inputs.file(name)
+			if err != nil {
+				return r, err
+			}
+			if !seen[path] {
+				r.Reexports = append(r.Reexports, path)
+			}
 		}
 	}
 	return r, nil

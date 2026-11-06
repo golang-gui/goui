@@ -328,7 +328,7 @@ func (m *NativeTools) validateLinker() error {
 }
 
 func (m *NativeTools) supports(inputs *NativeInputs) error {
-	if m.GoLink != "" && (inputs.GOOS != "android" || inputs.GOARCH != "arm64") {
+	if m.GoLink != "" && ((inputs.GOOS != "android" && inputs.GOOS != "ios") || inputs.GOARCH != "arm64") {
 		return fmt.Errorf("golink does not yet support %s/%s", inputs.GOOS, inputs.GOARCH)
 	}
 	return nil

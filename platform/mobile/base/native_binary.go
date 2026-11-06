@@ -72,7 +72,7 @@ func CheckNativeBinary(path string, inputs *NativeInputs) error {
 	}
 	for _, load := range file.Loads {
 		if segment, ok := load.(*macho.Segment); ok && segment.Name == "__DATA_CONST" && segment.Flag&0x10 == 0 {
-			return fmt.Errorf("Mach-O __DATA_CONST requires SG_READ_ONLY; use a supported LLD")
+			return fmt.Errorf("Mach-O __DATA_CONST requires SG_READ_ONLY")
 		}
 	}
 	return nil

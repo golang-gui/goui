@@ -284,8 +284,8 @@ func TestNativeGoLink(t *testing.T) {
 			}
 		})
 	}
-	if err = loaded.supports(&NativeInputs{GOOS: "ios", GOARCH: "arm64"}); err == nil {
-		t.Fatal("不能假装支持Mach-O")
+	if err = loaded.supports(&NativeInputs{GOOS: "windows", GOARCH: "amd64"}); err == nil {
+		t.Fatal("不能假装支持未实现的原生格式")
 	}
 	for _, bad := range []NativeTools{
 		{Format: 1, GoLink: m.GoLink},
@@ -304,5 +304,62 @@ func TestNativeGoLink(t *testing.T) {
 	}
 	if err = verifyNativeToolVersions(context.Background(), loaded); err == nil {
 		t.Fatal("版本必须精确匹配")
+	}
+}
+
+// 对设备和模拟器均通过库调用生成真实 Mach-O，不依赖桌面或 Apple 工具。
+func TestNativeGoLinkIOS(t *testing.T) {
+	for _, variant := range []string{"device", "simulator"} {
+		t.Run(variant, func(t *testing.T) {
+			inputs := nativeTestInputs(t, "ios", variant)
+			target := "arm64-ios"
+			platform := uint32(2)
+			if variant == "simulator" {
+				target += "-simulator"
+				platform = 7
+			}
+			for name := range inputs.Files {
+				path := filepath.Join(inputs.root, filepath.FromSlash(name))
+				text := fmt.Sprintf("--- !tapi-tbd\ntbd-version: 4\ntargets: [ %s ]\ninstall-name: '/%s'\nexports:\n  - targets: [ %s ]\n    symbols: []\n...\n", target, filepath.Base(name), target)
+				if err := os.WriteFile(path, []byte(text), 0600); err != nil {
+					t.Fatal(err)
+				}
+				var err error
+				inputs.Files[name], err = baseHash(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			inputPath := filepath.Join(inputs.root, "inputs.json")
+			nativeWriteSpec(t, inputPath, inputs)
+			root := t.TempDir()
+			toolsPath := filepath.Join(root, "tools.json")
+			m := NativeTools{Format: 2, GOOS: runtime.GOOS, GOARCH: runtime.GOARCH, Provenance: NativeProvenance{"golink", golink.Version, "Go module", "MIT and BSD"}, GoLink: golink.Version, Files: map[string]string{}}
+			nativeWriteSpec(t, toolsPath, m)
+			object := filepath.Join(t.TempDir(), "main.o")
+			if err := os.WriteFile(object, nativeTestMachOObject(platform), 0600); err != nil {
+				t.Fatal(err)
+			}
+			output := filepath.Join(t.TempDir(), "Application")
+			args := []string{"-o", output, object, "-framework", "UIKit"}
+			translated, _, err := nativeLinkArguments(inputs, args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request, err := nativeGoLinkRequest(inputs, translated, output)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if request.IOS == nil || request.IOS.Variant != variant || request.IOS.SDKVersion != inputs.SDKVersion || len(request.Reexports) != 1 {
+				t.Fatalf("iOS输入丢失: %+v", request)
+			}
+			var log bytes.Buffer
+			if err = RunNativeLink(context.Background(), inputPath, toolsPath, args, &log, &log); err != nil {
+				t.Fatal(err)
+			}
+			if err = CheckNativeBinary(output, inputs); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
