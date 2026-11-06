@@ -301,7 +301,7 @@ func TestEmbeddedMobileComponent(t *testing.T) {
 	default:
 		t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	}
-	for _, version := range []string{"go1.25.8", "go1.26.10", "go1.27.3"} {
+	for _, version := range []string{"go1.24.13", "go1.25.8", "go1.26.10", "go1.27.3"} {
 		for _, test := range []struct{ os, variant string }{{"android", "device"}, {"ios", "device"}, {"ios", "simulator"}} {
 			t.Run(version+"-"+test.os+"-"+test.variant, func(t *testing.T) {
 				m, err := embeddedMobileComponent(context.Background(), version, target{test.os, "arm64"}, test.variant)
