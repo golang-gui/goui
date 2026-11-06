@@ -14,6 +14,22 @@ import (
 	"time"
 )
 
+func TestBaseModuleIdentity(t *testing.T) {
+	source := BasePackage{ModulePath: "example.org/support", ModuleGoVersion: "1.24"}
+	if !baseModuleMatches(source, "example.org/support", "v0.1.0", "1.24") {
+		t.Fatal("源码归档不应因相同源码获得发布版本而失效；源码与 ABI 仍由构建驱动独立校验")
+	}
+	for _, args := range [][3]string{{"example.org/other", "v0.1.0", "1.24"}, {"example.org/support", "v0.1.0", "1.25"}} {
+		if baseModuleMatches(source, args[0], args[1], args[2]) {
+			t.Fatal("不能忽略模块路径或语言版本差异")
+		}
+	}
+	source.ModuleVersion = "v0.1.0"
+	if baseModuleMatches(source, "example.org/support", "v0.2.0", "1.24") {
+		t.Fatal("发布归档必须保持精确版本约束")
+	}
+}
+
 func TestBaseIntegrity(t *testing.T) {
 	root := t.TempDir()
 	archive := filepath.Join(root, "support.a")

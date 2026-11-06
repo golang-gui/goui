@@ -288,7 +288,7 @@ func buildEnvironment(ctx context.Context, options BuildOptions, base *BaseManif
 	}
 	env = buildEnv(env, map[string]string{
 		"GOROOT": values["GOROOT"], "GOOS": base.GOOS, "GOARCH": base.GOARCH, "GOARM64": base.Architecture, "GOEXPERIMENT": base.Experiment, "CGO_ENABLED": "1", "GOFLAGS": "",
-		"CC": compiler, "CXX": compiler, "GOUI_BASE": options.Base, "GOUI_LINK_INPUTS": options.Inputs, "GOUI_LINK_TOOLS": options.Tools, "GOUI_GO": options.GoCommand,
+		"CC": compiler, "CXX": compiler, "GOUI_BASE": options.Base, "GOUI_LINK_INPUTS": options.Inputs, "GOUI_LINK_TOOLS": options.Tools, "GOUI_GO": options.GoCommand, "GOUI_LINK_COMMAND": "1",
 	})
 	command = exec.CommandContext(ctx, options.GoDriver, "env", "GOVERSION")
 	command.Dir, command.Env = options.Directory, env
