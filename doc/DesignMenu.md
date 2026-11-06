@@ -114,12 +114,25 @@ Popover 提前关闭；[子菜单设计 §5](DesignMenuSubmenu.md#5-按键路由
 活动项以 MenuItem 身份保存，模型更新时重新核验；关闭、卸载和模型替换清空。
 选择后通过 ListView.Reveal 请求可见，滚动仍归 ScrollView。虚拟行 Bind 同步活动状态，
 解绑清理高亮，Snapshot.Selected 表示活动项。鼠标与键盘共用这一份活动项，
-行不另以物理 hover 驱动高亮，不手动覆盖 MotionEventController 的物理状态。
-行的 contains-enter 更新活动项，覆盖只派发 crossing 的原生 PointerEnter；
-移动监听使用 Bubble 阶段，覆盖内部 Label 被命中的情形，也允许键盘导航后在同一 Label
-内移动鼠标取回选择。指针进入禁用项/分隔线清空活动项；离开菜单保留当前项供键盘继续导航。
-同一活动项的重复移动不重新设置所有行。指针按下也接管活动项；按压样式仅用于仍为活动项的行，
-避免按住鼠标时键盘换行留下第二条强调。隐藏、解绑和重用清理状态，绘制与 Selected 始终一致。
+行不另以物理 hover 驱动高亮，不手动覆盖 WidgetBase 的物理悬停状态。
+2026-11-06：活动项的指针生命周期统一归 menuContent 的私有事件控制器管理。
+控制器在 Capture 阶段处理 PointerMove/PointerDown，通过控件局部位置和现有 Pick
+确定菜单行；命中 Label 或快捷键文本也回溯到其行。命中留白、滚动条、行尾间距、
+禁用项或分隔线清空活动项。只监听内容的 pointer/contains crossing，进入时直接
+按位置选择，覆盖没有普通 Motion 的原生 PointerEnter；离开时清空活动项，既处理
+原生 PointerLeave，也处理菜单抓取期间坐标移出内容的 PointerMove。
+
+物理 Hovered 仍由 EventDispatcher/WidgetBase 维护，不作为菜单第二个高亮来源。
+menuContent.active 是唯一活动项，delegate 不再保存副本；行的 Selected、绘制及
+Snapshot 是该活动项的投影。Selected 到 Hovered 的外观映射保留既有菜单样式兼容。
+行仅负责内容、按压和点击，不再各自创建 MotionEventController 或发出 onHover。
+同一活动项的重复移动不重新设置所有行；键盘导航不受指针静止、Reveal 或行复用影响，
+下一次指针移动或按下才按实际位置接管。活动项为空时，键盘沿现有首尾规则重新选择。
+按压样式仅用于仍为活动项的行，避免按住鼠标时键盘换行留下第二条强调。
+隐藏、卸载、输入重置和模型替换清空活动项；虚拟行解绑只清理其投影，重新 Bind
+从所属 menuContent 读取活动项，不将呈现资源复用解释为新的指针操作。
+上述规则限于当前单层菜单；未来子菜单的父项保留归菜单分支协调，不通过忽略 Leave
+模拟。本轮不改通用 Popover、EventDispatcher、样式公共接口或 DropDown 的实际选择值。
 不夺取主窗口原生焦点，不添加对外导航/执行测试接口，不据此声称已经支持子菜单。
 
 验证见 [菜单键盘验收](PlanMenuKeyboard.md)。
@@ -128,6 +141,13 @@ Popover 提前关闭；[子菜单设计 §5](DesignMenuSubmenu.md#5-按键路由
 集中替换 currentAction 并更新新旧行的源码行为一致；其键盘与鼠标路径均调用该入口。
 仅采用状态归属，不引入 Qt 的子菜单延迟、焦点或对象体系。该参考核对于 2026-10-16，
 是源码行为依据，不表示 GOUI 已通过 Qt 所支持的所有原生平台场景。
+
+离开语义另于2026-11-06核对：
+[GTK 4.18 GtkModelButton.pointer_cb](https://github.com/GNOME/gtk/blob/4.18.0/gtk/gtkmodelbutton.c#L1348)
+在 contains-pointer 退出时清空所属 PopoverMenu 的活动项；
+[Qt 6.8 QMenu.leaveEvent](https://github.com/qt/qtbase/blob/v6.8.0/src/widgets/widgets/qmenu.cpp#L3270)
+在没有活动子菜单时清空当前操作。GOUI 采用菜单层拥有活动项及完整退出规则，
+不照搬 GTK 焦点体系或 Qt 子菜单延时；这些是固定版本源码行为，原生运行结果另记 Plan。
 
 ## 共享命令与快捷键列（2026-11-04）
 

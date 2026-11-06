@@ -352,8 +352,7 @@ type menuContent struct {
 func newMenuContent(m MenuModel, maxHeight float32, activate func(*MenuItem)) *menuContent {
 	mc := &menuContent{model: m, maxHeight: maxHeight}
 	mc.SetMinSize(geometry.Size{Width: menuContentMinWidth})
-	mc.delegate = &menuItemDelegate{model: m, onActivate: activate, columns: &mc.columns}
-	mc.delegate.onHover = mc.selectItem
+	mc.delegate = &menuItemDelegate{content: mc, model: m, onActivate: activate, columns: &mc.columns}
 	mc.list = NewListView()
 	mc.list.SetDelegate(mc.delegate)
 	mc.sv = NewScrollView()
@@ -361,6 +360,7 @@ func newMenuContent(m MenuModel, maxHeight float32, activate func(*MenuItem)) *m
 	mc.WidgetBase.AddChild(mc, mc.sv)
 	mc.ConnectMount(mc.connectModel)
 	mc.ConnectUnmount(mc.disconnectModel)
+	mc.AddEventController(&menuPointerController{EventControllerBase: NewEventControllerBase(PhaseCapture), content: mc})
 	key := NewKeyEventController()
 	key.SetPhase(PhaseCapture)
 	key.ConnectKeyDown(func(ctx EventContext, event events.KeyEvent) {
@@ -398,6 +398,50 @@ func newMenuContent(m MenuModel, maxHeight float32, activate func(*MenuItem)) *m
 	return mc
 }
 
+// Pointer and keyboard input select the same menu-owned item. Rows only
+// project that selection; their physical hover and recycling are independent.
+type menuPointerController struct {
+	EventControllerBase
+	content *menuContent
+}
+
+func (c *menuPointerController) Reset() { c.content.selectItem(nil) }
+
+func (c *menuPointerController) HandleEvent(ctx EventContext) {
+	event, ok := ctx.Event().(events.PointerEvent)
+	if !ok || event.EventType != events.PointerMove && event.EventType != events.PointerDown {
+		return
+	}
+	if position, ok := ctx.Position(); ok {
+		c.content.selectPointer(position)
+	}
+}
+
+func (c *menuPointerController) HandleCrossing(ctx CrossingContext) {
+	if ctx.Type() != CrossingPointer || ctx.Mode() != CrossingContains {
+		return
+	}
+	if ctx.Direction() == CrossingLeave {
+		c.content.selectItem(nil)
+	} else if position, ok := ctx.Position(); ok {
+		// Native Enter delivers crossing without an ordinary pointer move.
+		c.content.selectPointer(position)
+	}
+}
+
+func (mc *menuContent) selectPointer(position geometry.Point) {
+	var item *MenuItem
+	for target := Pick(mc, position); target != nil && target != mc; target = target.Parent() {
+		if row, ok := target.(*menuItemRow); ok {
+			if IsEnabled(row) {
+				item = row.mi
+			}
+			break
+		}
+	}
+	mc.selectItem(item)
+}
+
 func (mc *menuContent) activeIndex() int {
 	if mc.active == nil || !mc.active.available() || !mc.active.Visible() || mc.active.Separator() || mc.model == nil {
 		return -1
@@ -411,13 +455,12 @@ func (mc *menuContent) activeIndex() int {
 }
 func (mc *menuContent) selectItem(item *MenuItem) {
 	if item != nil && (!item.available() || !item.Visible() || item.Separator()) {
-		return
+		item = nil
 	}
 	if mc.active == item {
 		return
 	}
 	mc.active = item
-	mc.delegate.active = item
 	for _, widget := range mc.list.items {
 		row := widget.(*menuItemRow)
 		row.SetState(style.Selected, row.mi == item && item != nil)
@@ -703,17 +746,15 @@ func (mc *menuContent) Snapshot() WidgetInfo {
 
 // menuItemDelegate renders model items into menuItemRow widgets.
 type menuItemDelegate struct {
+	content     *menuContent
 	model       MenuModel
 	onActivate  func(*MenuItem)
 	trailingGap float32
 	columns     *menuColumns
-	active      *MenuItem
-	onHover     func(*MenuItem)
 }
 
 func (d *menuItemDelegate) Setup() Widget {
 	r := newMenuItemRow(d.onActivate)
-	r.onHover = d.onHover
 	r.trailingGap = d.trailingGap
 	r.columns = d.columns
 	return r
@@ -728,7 +769,7 @@ func (d *menuItemDelegate) Bind(i int, w Widget) {
 		mi = d.model.ItemAt(i)
 	}
 	row.bind(mi)
-	row.SetState(style.Selected, mi != nil && mi == d.active && mi.available() && mi.Visible() && !mi.Separator())
+	row.SetState(style.Selected, mi != nil && mi == d.content.active && mi.available() && mi.Visible() && !mi.Separator())
 }
 
 func (d *menuItemDelegate) Unbind(i int, w Widget) { w.(*menuItemRow).bind(nil) }
@@ -744,8 +785,6 @@ type menuItemRow struct {
 	trailingGap         float32
 	mi                  *MenuItem
 	activate            func(*MenuItem)
-	onHover             func(*MenuItem)
-	motion              *MotionEventController
 	click               *ClickEventController
 }
 
@@ -768,26 +807,9 @@ func newMenuItemRow(activate func(*MenuItem)) *menuItemRow {
 	r.shortcut.SetVisible(false)
 	r.WidgetBase.AddChild(r, r.shortcut)
 
-	r.motion = NewMotionEventController()
-	// Motion must also reach the row when its Label is the picked target.
-	// Contains-enter covers native PointerEnter, which has no Motion delivery.
-	r.motion.SetPhase(PhaseBubble)
-	r.motion.ConnectContainsHover(func(inside bool) {
-		if inside {
-			r.selectPointer()
-		}
-	})
-	r.motion.ConnectMotion(func(MotionInfo) {
-		r.selectPointer()
-	})
-	r.AddEventController(r.motion)
-
 	r.click = NewClickEventController()
 	r.click.ConnectPressed(func(ctx EventContext, pressed bool) {
 		if r.mi != nil && r.mi.available() && !r.mi.Separator() {
-			if pressed {
-				r.selectPointer()
-			}
 			r.setPressed(pressed)
 		}
 	})
@@ -807,7 +829,6 @@ func (r *menuItemRow) bind(mi *MenuItem) {
 	r.label.releaseLayout()
 	r.shortcut.releaseLayout()
 	r.click.Reset()
-	r.motion.Reset()
 	r.SetState(style.Pressed|style.Selected, false)
 	r.mi = mi
 	r.label.SetText("")
@@ -983,17 +1004,6 @@ func (r *menuItemRow) resolvedStyle() style.Style {
 		}
 	}
 	return ResolveWidgetStyle(r, styleNameMenuItem, style.PartDefault, st)
-}
-
-func (r *menuItemRow) selectPointer() {
-	if r.onHover == nil {
-		return
-	}
-	item := r.mi
-	if item != nil && (!item.available() || !item.Visible() || item.Separator()) {
-		item = nil
-	}
-	r.onHover(item)
 }
 
 func (r *menuItemRow) setPressed(p bool) {
