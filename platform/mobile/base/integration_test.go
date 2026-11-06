@@ -26,8 +26,8 @@ func TestObjectColdBuild(t *testing.T) {
 }
 
 func testColdBuild(t *testing.T, format int) {
-	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" || runtime.Version() != baseGoVersion {
-		t.Skip("本验收针对 Linux amd64 / Go 1.25.8；其它平台需运行对应基座验收")
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" || runtime.Version() != baseGoVersion && !(format == 2 && runtime.Version() == "go1.24.13") {
+		t.Skip("本验收针对 Linux amd64 / Go1.25.8，Go1.24.13另支持对象模式；其它目标运行对应基座验收")
 	}
 	for _, tool := range []string{"cc", "ld"} {
 		if _, err := exec.LookPath(tool); err != nil {
@@ -40,6 +40,18 @@ func testColdBuild(t *testing.T, format int) {
 	source := filepath.Join(root, "src")
 	if err := os.CopyFS(source, os.DirFS("testdata/probe")); err != nil {
 		t.Fatal(err)
+	}
+	language := "1.25"
+	if runtime.Version() == "go1.24.13" {
+		language = "1.24"
+		path := filepath.Join(source, "go.mod")
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, bytes.Replace(data, []byte("go 1.25"), []byte("go "+language), 1), 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	driver := filepath.Join(root, "go-base")
 	var log bytes.Buffer
@@ -199,7 +211,11 @@ func testColdBuild(t *testing.T, format int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = os.WriteFile(moduleFile, bytes.Replace(moduleSource, []byte("go 1.25"), []byte("go 1.24"), 1), 0600); err != nil {
+	changedLanguage := "1.24"
+	if language == "1.24" {
+		changedLanguage = "1.23"
+	}
+	if err = os.WriteFile(moduleFile, bytes.Replace(moduleSource, []byte("go "+language), []byte("go "+changedLanguage), 1), 0600); err != nil {
 		t.Fatal(err)
 	}
 	checkFailure("module", manifest, "module identity mismatch")

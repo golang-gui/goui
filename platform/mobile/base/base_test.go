@@ -174,8 +174,8 @@ func TestNativeHostToolEnvironment(t *testing.T) {
 
 // 自动下载的 Go 位于模块缓存中；生成工具不能因此拒绝只读的 GOROOT overlay。
 func TestDriverToolchainInsideModuleCache(t *testing.T) {
-	if runtime.Version() != baseGoVersion {
-		t.Skip("本工具固定 Go 1.25.8")
+	if _, ok := driverProfiles[runtime.Version()]; !ok {
+		t.Skip("当前 Go 版本尚未提供构建驱动")
 	}
 	goName := "go"
 	if runtime.GOOS == "windows" {
@@ -196,7 +196,7 @@ func TestDriverToolchainInsideModuleCache(t *testing.T) {
 	}
 	cmd := exec.CommandContext(ctx, driver, "version")
 	cmd.Env = baseDriverEnv()
-	if output, err := cmd.CombinedOutput(); err != nil || !bytes.Contains(output, []byte(baseGoVersion)) {
+	if output, err := cmd.CombinedOutput(); err != nil || !bytes.Contains(output, []byte(runtime.Version())) {
 		t.Fatalf("driver: %v, %s", err, output)
 	}
 	after, err := os.ReadFile(filepath.Join(runtime.GOROOT(), "src/cmd/go/internal/work/exec.go"))

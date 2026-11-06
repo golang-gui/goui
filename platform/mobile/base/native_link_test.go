@@ -165,8 +165,8 @@ func TestNativeRunAndArchive(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Run("Go原生归档", func(t *testing.T) {
-		if runtime.Version() != baseGoVersion {
-			t.Skipf("归档委托需 %s，当前 %s", baseGoVersion, runtime.Version())
+		if !supportedBaseVersion(runtime.Version()) {
+			t.Skipf("当前 Go 版本尚未提供原生归档适配: %s", runtime.Version())
 		}
 		archive := filepath.Join(root, "native.a")
 		args := []string{"-q", "-c", "-s", archive, object}

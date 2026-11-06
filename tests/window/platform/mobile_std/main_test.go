@@ -14,7 +14,7 @@ import (
 )
 
 func TestGeneratedStandardTests(t *testing.T) {
-	expected, ok := map[string]int{"go1.25.8": 134, "go1.26.10": 130, "go1.27.3": 130}[runtime.Version()]
+	expected, ok := map[string]int{"go1.24.13": 133, "go1.25.8": 134, "go1.26.10": 130, "go1.27.3": 130}[runtime.Version()]
 	if !ok {
 		t.Skip("当前 Go 版本尚未提供官方源码选择集")
 	}
@@ -60,7 +60,11 @@ func TestGeneratedStandardTests(t *testing.T) {
 	if manifest.GoVersion != runtime.Version() || count != expected {
 		t.Fatalf("标准用例清单变化: version=%s count=%d", manifest.GoVersion, count)
 	}
-	if runtime.Version() == "go1.25.8" && len(manifest.Excluded) != 0 || runtime.Version() != "go1.25.8" && len(manifest.Excluded) != 1 {
+	excluded := 0
+	if runtime.Version() == "go1.26.10" || runtime.Version() == "go1.27.3" {
+		excluded = 1
+	}
+	if len(manifest.Excluded) != excluded {
 		t.Fatalf("整文件排除清单不符: %+v", manifest.Excluded)
 	}
 	for _, r := range manifest.Excluded {
@@ -113,7 +117,7 @@ func main(){r:=suite.Run(os.Args[1],func(string){});fmt.Printf("code=%d official
 }
 
 func TestGeneratedNativeCgoTests(t *testing.T) {
-	if runtime.Version() != "go1.25.8" && runtime.Version() != "go1.26.10" && runtime.Version() != "go1.27.3" {
+	if runtime.Version() != "go1.24.13" && runtime.Version() != "go1.25.8" && runtime.Version() != "go1.26.10" && runtime.Version() != "go1.27.3" {
 		t.Skip("当前Go版本尚未提供官方源码选择集")
 	}
 	cc, err := exec.LookPath("cc")
