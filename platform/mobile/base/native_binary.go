@@ -31,6 +31,17 @@ func nativeVersion(text string) (uint32, error) {
 // CheckNativeBinary verifies format/target and the output's native invariants.
 // It does not substitute for device execution, app signing or package validation.
 func CheckNativeBinary(path string, inputs *NativeInputs) error {
+	return checkNativeBinary(path, inputs, true)
+}
+
+// CheckNativeTarget validates a native-toolchain build without requiring the
+// SDK version embedded in the prebuilt link stubs. Its deployment version must
+// still meet the platform auxiliary objects' minimum.
+func CheckNativeTarget(path string, inputs *NativeInputs) error {
+	return checkNativeBinary(path, inputs, false)
+}
+
+func checkNativeBinary(path string, inputs *NativeInputs, exact bool) error {
 	if inputs.GOOS == "android" {
 		return checkAndroidBinary(path)
 	}
@@ -62,7 +73,8 @@ func CheckNativeBinary(path string, inputs *NativeInputs) error {
 				return fmt.Errorf("multiple Mach-O build-version commands")
 			}
 			found = true
-			if file.ByteOrder.Uint32(data[8:12]) != platform || file.ByteOrder.Uint32(data[12:16]) != minimum || file.ByteOrder.Uint32(data[16:20]) != sdk {
+			deployment, linkedSDK := file.ByteOrder.Uint32(data[12:16]), file.ByteOrder.Uint32(data[16:20])
+			if file.ByteOrder.Uint32(data[8:12]) != platform || deployment < minimum || exact && (deployment != minimum || linkedSDK != sdk) || !exact && linkedSDK < deployment {
 				return fmt.Errorf("Mach-O platform/deployment/SDK does not match component")
 			}
 		}

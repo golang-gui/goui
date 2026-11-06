@@ -38,8 +38,8 @@ func RunNativeArchive(ctx context.Context, goCommand string, args []string, out,
 	if err != nil {
 		return fmt.Errorf("inspect archive toolchain: %w", err)
 	}
-	if strings.TrimSpace(string(version)) != baseGoVersion {
-		return fmt.Errorf("native archive requires %s", baseGoVersion)
+	if !supportedBaseVersion(strings.TrimSpace(string(version))) {
+		return fmt.Errorf("unsupported native archive Go toolchain: %s", strings.TrimSpace(string(version)))
 	}
 	temp, err := os.CreateTemp(filepath.Dir(args[3]), ".goui-archive-*")
 	if err != nil {

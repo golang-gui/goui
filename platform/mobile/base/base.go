@@ -1,4 +1,4 @@
-// Package base manages versioned native support archives for Go builds.
+// Package base manages versioned native support inputs for Go builds.
 // It contains no windowing, event-loop, or application lifecycle policy.
 package base
 
@@ -16,8 +16,9 @@ import (
 	"strings"
 )
 
-// BaseManifest describes one target's native-required Go package archives.
-// Ordinary Go dependencies are identified but are never included as archives.
+// BaseManifest describes one target's native-required package inputs.
+// Format 2 records generated Go sources and native objects; format 1 retains
+// the original complete package archive protocol for existing components.
 type BaseManifest struct {
 	Format         int                    `json:"format"`
 	GoVersion      string                 `json:"go_version"`
@@ -29,25 +30,39 @@ type BaseManifest struct {
 	Variant        string                 `json:"variant"`
 	MinimumVersion string                 `json:"minimum_version"`
 	Packages       map[string]BasePackage `json:"packages"`
+	CgoFlags       map[string]string      `json:"cgo_flags,omitempty"`
+	ProducerTools  map[string]string      `json:"producer_tools,omitempty"`
+	root           string
 }
 
-// BasePackage records an archive, its selected source inputs and dependency ABI.
+// BasePackage records selected source inputs and their prepared native support.
 type BasePackage struct {
 	ModulePath string `json:"module_path,omitempty"`
-	// ModuleVersion pins a released dependency when nonempty. Source exports
-	// retain source, language and dependency-ABI checks without a release pin.
+	// ModuleVersion pins released archives in format 1. Format 2 uses exact
+	// source/language checks and compiles ordinary Go dependencies normally.
 	ModuleVersion   string            `json:"module_version,omitempty"`
 	ModuleGoVersion string            `json:"module_go_version,omitempty"`
-	Archive         string            `json:"archive"`
-	SHA256          string            `json:"sha256"`
+	Archive         string            `json:"archive,omitempty"`
+	SHA256          string            `json:"sha256,omitempty"`
 	SourceSHA256    string            `json:"source_sha256"`
-	BuildID         string            `json:"build_id"`
-	Imports         map[string]string `json:"imports"`
+	BuildID         string            `json:"build_id,omitempty"`
+	Imports         map[string]string `json:"imports,omitempty"`
+	GeneratedGo     []BaseFile        `json:"generated_go,omitempty"`
+	Objects         []BaseFile        `json:"objects,omitempty"`
+	Auxiliary       []BaseFile        `json:"auxiliary,omitempty"`
 }
 
 func baseModuleMatches(p BasePackage, path, version, language string) bool {
 	return p.ModulePath == path && p.ModuleGoVersion == language &&
 		(p.ModuleVersion == "" || p.ModuleVersion == version)
+}
+
+func supportedBaseVersion(version string) bool {
+	switch version {
+	case "go1.25.8", "go1.26.10", "go1.27.3":
+		return true
+	}
+	return false
 }
 
 // BaseOpen verifies a local component before it is used. This is an integrity
@@ -66,7 +81,7 @@ func BaseOpen(path string) (*BaseManifest, error) {
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		return nil, fmt.Errorf("base manifest: trailing data")
 	}
-	if m.Format != 1 || m.GoVersion != "go1.25.8" {
+	if (m.Format != 1 && m.Format != 2) || !supportedBaseVersion(m.GoVersion) || m.Format == 1 && m.GoVersion != "go1.25.8" {
 		return nil, fmt.Errorf("unsupported base format or Go version: %d / %s", m.Format, m.GoVersion)
 	}
 	if !((m.GOOS == "android" && m.GOARCH == "arm64" && m.BuildMode == "c-shared") || (m.GOOS == "ios" && m.GOARCH == "arm64" && m.BuildMode == "c-archive") || (m.GOOS == "linux" && (m.GOARCH == "arm64" || m.GOARCH == "amd64") && m.BuildMode == "c-shared")) {
@@ -78,11 +93,31 @@ func BaseOpen(path string) (*BaseManifest, error) {
 	if _, ok := m.Packages["runtime/cgo"]; !ok {
 		return nil, fmt.Errorf("base manifest: missing runtime/cgo")
 	}
+	if m.Format == 2 {
+		for _, key := range []string{"CGO_CFLAGS", "CGO_CPPFLAGS", "CGO_CXXFLAGS", "CGO_FFLAGS", "CGO_LDFLAGS"} {
+			if _, ok := m.CgoFlags[key]; !ok {
+				return nil, fmt.Errorf("base manifest: missing producer flag %s", key)
+			}
+		}
+		for _, key := range []string{"cgo", "CC", "CXX"} {
+			hash, err := hex.DecodeString(m.ProducerTools[key])
+			if err != nil || len(hash) != sha256.Size {
+				return nil, fmt.Errorf("base manifest: invalid producer tool %s", key)
+			}
+		}
+	}
 	root, err := filepath.Abs(filepath.Dir(path))
 	if err != nil {
 		return nil, err
 	}
+	m.root = root
 	for name, p := range m.Packages {
+		if m.Format == 2 {
+			if err := verifyRecipe(&m, name, p); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		if name == "" || len(p.SHA256) != 64 || len(p.SourceSHA256) != 64 || !strings.Contains(p.BuildID, "/") {
 			return nil, fmt.Errorf("base manifest: invalid package %q", name)
 		}

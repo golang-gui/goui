@@ -26,6 +26,7 @@ var hookSource = []byte(`package work
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sync"
 
@@ -48,7 +49,7 @@ func gouiSourceModule(path string) bool {
 	manifest := os.Getenv("GOUI_BASE")
 	if manifest == "" { return false }
 	gouiBaseOnce.Do(func() { gouiBaseManifest, gouiBaseError = BaseOpen(manifest) })
-	if gouiBaseError != nil { return false }
+	if gouiBaseError != nil || gouiBaseManifest.Format != 1 { return false }
 	for _, record := range gouiBaseManifest.Packages {
 		if record.ModulePath == path && record.ModuleVersion == "" { return true }
 	}
@@ -85,10 +86,18 @@ func (b *Builder) gouiBaseAction(a *Action) (bool, error) {
 		}
 	}
 	p := a.Package
+	if m.Format == 2 && !p.UsesCgo() && !p.UsesSwig() { return false, nil }
+	if m.Format == 2 {
+		for key, expected := range m.CgoFlags {
+			actual := cfg.Getenv(key)
+			if actual == "" && key != "CGO_CPPFLAGS" { actual = "-O2 -g" }
+			if actual != expected { return false, fmt.Errorf("object recipe does not match %s", key) }
+		}
+	}
 	record, found := m.Packages[p.ImportPath]
 	if !found {
 		if p.UsesCgo() || p.UsesSwig() {
-			return false, fmt.Errorf("native support archive missing for %s; this build never invokes a C compiler", p.ImportPath)
+			return false, fmt.Errorf("native support missing for %s; this build never invokes a C compiler", p.ImportPath)
 		}
 		return false, nil
 	}
@@ -107,7 +116,11 @@ func (b *Builder) gouiBaseAction(a *Action) (bool, error) {
 		moduleVersion = p.Module.Version
 		moduleGoVersion = p.Module.GoVersion
 	}
-	if !baseModuleMatches(record, modulePath, moduleVersion, moduleGoVersion) {
+	moduleRecord := record
+	// Object recipes compile all Go code now. Their producer release tag is
+	// provenance; source/language/native inputs define compatibility.
+	if m.Format == 2 { moduleRecord.ModuleVersion = "" }
+	if !baseModuleMatches(moduleRecord, modulePath, moduleVersion, moduleGoVersion) {
 		return true, fmt.Errorf("base %s: module identity mismatch", p.ImportPath)
 	}
 	source, err := BaseSourceHash(p.Dir, p.GoFiles, p.CgoFiles, p.CFiles, p.CXXFiles, p.MFiles, p.HFiles, p.FFiles, p.SFiles, p.SysoFiles, p.SwigFiles, p.SwigCXXFiles, p.EmbedFiles)
@@ -117,6 +130,7 @@ func (b *Builder) gouiBaseAction(a *Action) (bool, error) {
 	if source != record.SourceSHA256 {
 		return true, fmt.Errorf("base %s: selected source mismatch", p.ImportPath)
 	}
+	if m.Format == 2 { return false, nil }
 	for name, expected := range record.Imports {
 		var target string
 		for _, dep := range a.Deps {
@@ -163,6 +177,14 @@ const baseGoVersion = "go1.25.8"
 const execSourceSHA256 = "0bb5e63cec9ee583f15d5c20bdaf356df9059a1ca15b4d4177a46549594d86f1"
 const gcSourceSHA256 = "e2b4e705e110f7c78f9d64dbb85898a64dcc34e98a93e655726d1d39e33e3fd1"
 
+type driverProfile struct{ execHash, gcHash, actionHash string }
+
+var driverProfiles = map[string]driverProfile{
+	"go1.25.8":  {execSourceSHA256, gcSourceSHA256, ""},
+	"go1.26.10": {"7f3f0ddd8b29ca2cb5dcc7cca5396bc66bfb9f9e2d743b549eaf5555c943eae2", "7b91523777a11587412b7d4e35f965d771ca7bde60ca6d65d54206171544819f", "7a5819d218710e08a059946c9b0888d15d38724188b705d56ab8118254bab60b"},
+	"go1.27.3":  {"2a0a4595371bec5f40eea4c4712a4bd61cb5713556ad5a819c5b321ef445f526", "13359b8707e78300e8e0ec880b9a8d1af4bafdf32140b56df5f041a52fbc1325", "7e264948cdf181f50560cbb21c95b2c526611923ea2e11d859a60f0962e786ec"},
+}
+
 // BuildDriver builds the narrowly adapted cmd/go for the supplied toolchain.
 // Go's compiler, assembler, linker, runtime and ordinary build actions are intact.
 func BuildDriver(ctx context.Context, goCommand, output string, log io.Writer) error {
@@ -176,35 +198,45 @@ func BuildDriver(ctx context.Context, goCommand, output string, log io.Writer) e
 	if err = json.Unmarshal(data, &info); err != nil {
 		return err
 	}
-	if info.GOVERSION != baseGoVersion {
-		return fmt.Errorf("mobile base needs %s, found %s", baseGoVersion, info.GOVERSION)
+	profile, ok := driverProfiles[info.GOVERSION]
+	if !ok {
+		return fmt.Errorf("unsupported mobile Go driver version %s", info.GOVERSION)
 	}
+	split := profile.actionHash != ""
 	src := filepath.Join(info.GOROOT, "src/cmd/go/internal/work/exec.go")
 	data, err = os.ReadFile(src)
 	if err != nil {
 		return err
 	}
 	sum := sha256.Sum256(data)
-	if fmt.Sprintf("%x", sum) != execSourceSHA256 {
+	if fmt.Sprintf("%x", sum) != profile.execHash {
 		return fmt.Errorf("unsupported cmd/go source: %s", src)
 	}
 	marker := []byte("\tp := a.Package\n\tsh := b.Shell(a)\n\n\tbit := ")
+	replacement := []byte("\tp := a.Package\n\tif handled, err := b.gouiBaseAction(a); handled || err != nil { return err }\n\tsh := b.Shell(a)\n\n\tbit := ")
+	if split {
+		marker = []byte("\tp := buildAction.Package\n\tsh := b.Shell(a)\n")
+		replacement = []byte("\tp := buildAction.Package\n\tif _, err := b.gouiBaseAction(buildAction); err != nil { return nil, err }\n\tsh := b.Shell(a)\n")
+	}
 	if bytes.Count(data, marker) != 1 {
 		return fmt.Errorf("cmd/go build hook is ambiguous")
 	}
-	replacement := []byte("\tp := a.Package\n\tif handled, err := b.gouiBaseAction(a); handled || err != nil { return err }\n\tsh := b.Shell(a)\n\n\tbit := ")
 	cacheMarker := []byte(`fmt.Fprintf(h, "module %s@%s\n", p.Module.Path, p.Module.Version)`)
 	if bytes.Count(data, cacheMarker) != 1 {
 		return fmt.Errorf("cmd/go source-path cache hook is ambiguous")
 	}
 	data = bytes.Replace(data, cacheMarker, append(append([]byte(nil), cacheMarker...), []byte(`
 			if gouiSourceModule(p.Module.Path) { fmt.Fprintln(h, "goui source-module trimpath v1") }`)...), 1)
+	data, err = recipeDriverSource(data, split)
+	if err != nil {
+		return err
+	}
 	gcSource, err := os.ReadFile(filepath.Join(info.GOROOT, "src/cmd/go/internal/work/gc.go"))
 	if err != nil {
 		return err
 	}
 	gcHash := sha256.Sum256(gcSource)
-	if fmt.Sprintf("%x", gcHash) != gcSourceSHA256 {
+	if fmt.Sprintf("%x", gcHash) != profile.gcHash {
 		return fmt.Errorf("unsupported cmd/go compiler source")
 	}
 	gcMarker := []byte(`if m := a.Package.Module; m != nil && m.Version != "" {`)
@@ -218,11 +250,28 @@ func BuildDriver(ctx context.Context, goCommand, output string, log io.Writer) e
 	}
 	defer os.RemoveAll(temp)
 	files := map[string][]byte{
+		"goui_recipe.go":    bytes.Replace(recipeSource, []byte("package base"), []byte("package work"), 1),
 		"gc.go":             gcSource,
 		"exec.go":           bytes.Replace(data, marker, replacement, 1),
 		"goui_base.go":      bytes.Replace(baseSource, []byte("package base"), []byte("package work"), 1),
-		"goui_base_hook.go": hookSource,
+		"goui_base_hook.go": append(append([]byte(nil), hookSource...), recipeHook...),
 		"goui_entry.go":     bytes.Replace(entrySourceFile, []byte("package base"), []byte("package work"), 1),
+	}
+	if split {
+		action, err := os.ReadFile(filepath.Join(info.GOROOT, "src/cmd/go/internal/work/action.go"))
+		if err != nil {
+			return err
+		}
+		h := sha256.Sum256(action)
+		if fmt.Sprintf("%x", h) != profile.actionHash {
+			return fmt.Errorf("unsupported cmd/go action source")
+		}
+		if files["action.go"], err = recipeActionSource(action); err != nil {
+			return err
+		}
+		files["goui_base_hook.go"] = append(files["goui_base_hook.go"], splitRecipeHook...)
+		// Path normalization exists only for the legacy archive consumer.
+		delete(files, "gc.go")
 	}
 	overlay := struct{ Replace map[string]string }{make(map[string]string)}
 	for name, content := range files {
@@ -265,7 +314,7 @@ func baseDriverEnv() []string {
 	for _, item := range os.Environ() {
 		key, _, _ := bytes.Cut([]byte(item), []byte("="))
 		switch string(key) {
-		case "GOOS", "GOARCH", "GOARM64", "GOAMD64", "GOEXPERIMENT", "GOFLAGS", "GOWORK", "CGO_ENABLED", "GOTOOLCHAIN", "GOUI_BASE", "GOENV":
+		case "GOOS", "GOARCH", "GOARM64", "GOAMD64", "GOEXPERIMENT", "GOFLAGS", "GOWORK", "CGO_ENABLED", "GOTOOLCHAIN", "GOUI_BASE", "GOUI_RECORD_BASE", "GOENV":
 			continue
 		}
 		env = append(env, item)
