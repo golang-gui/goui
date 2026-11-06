@@ -12,15 +12,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/golang-gui/goui/gui"
-	"github.com/golang-gui/goui/icon/svg"
+	"github.com/golang-gui/oksvg"
 	"github.com/jackmordaunt/icns/v3"
 	"golang.org/x/image/draw"
 )
 
-// Reuse cmd/svgpng's checked SVG renderer, not a second SVG implementation.
+// Reuse the icon package's SVG renderer without loading a GUI platform.
 type appIcon struct {
-	svg *svg.Source
+	svg *oksvg.SvgIcon
 	png image.Image
 	raw []byte
 }
@@ -45,11 +44,14 @@ func loadIcon(c *config) (*appIcon, error) {
 	}
 	icon := &appIcon{raw: data}
 	if strings.ToLower(filepath.Ext(c.Icon)) == ".svg" {
-		source, err := svg.Parse(bytes.NewReader(data))
-		if err != nil {
-			return nil, err
+		if len(data) > 4<<20 {
+			return nil, fmt.Errorf("svg: document exceeds 4 MiB")
 		}
-		icon.svg = source.WithRawColors()
+		source, err := oksvg.ReadIconStream(bytes.NewReader(data), oksvg.StrictErrorMode)
+		if err != nil {
+			return nil, fmt.Errorf("svg: parse: %w", err)
+		}
+		icon.svg = source
 		return icon, nil
 	}
 	dimensions, err := png.DecodeConfig(bytes.NewReader(data))
@@ -65,7 +67,7 @@ func loadIcon(c *config) (*appIcon, error) {
 
 func (icon *appIcon) image(size int) image.Image {
 	if icon.svg != nil {
-		return icon.svg.Image(size, size, gui.Color{})
+		return icon.svg.Rasterize(size, size)
 	}
 	result := image.NewRGBA(image.Rect(0, 0, size, size))
 	b := icon.png.Bounds()

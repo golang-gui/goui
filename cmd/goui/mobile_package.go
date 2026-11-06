@@ -15,12 +15,13 @@ import (
 	"io"
 	"math/big"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/golang-gui/goui/cmd/goui/internal/androidres"
 )
 
 func mobileXML(value string) string {
@@ -107,24 +108,7 @@ func generateMobile(c *config, t target, m *mobileComponent, o mobileOptions, di
 	return result, nil
 }
 
-func mobileCommand(ctx context.Context, errOut io.Writer, path string, args ...string) error {
-	cmd := exec.CommandContext(ctx, path, args...)
-	var log bytes.Buffer
-	cmd.Stdout = &log
-	cmd.Stderr = &log
-	if err := cmd.Run(); err != nil {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		return fmt.Errorf("%s: %w\n%s", filepath.Base(path), err, &log)
-	}
-	if errOut != nil {
-		_, _ = errOut.Write(log.Bytes())
-	}
-	return nil
-}
-
-func mobilePackageFormat(t target, o mobileOptions, format string) (string, error) {
+func mobilePackageFormat(c *config, t target, o mobileOptions, format string) (string, error) {
 	if format == "" {
 		format = "apk"
 		if t.OS == "ios" {
@@ -137,14 +121,14 @@ func mobilePackageFormat(t target, o mobileOptions, format string) (string, erro
 	if format == "ipa" && o.Variant != "device" {
 		return "", fmt.Errorf("IPA requires iOS device variant")
 	}
-	if t.OS == "ios" && !o.Unsigned {
-		return "", fmt.Errorf("iOS signing is not configured; use -unsigned for a bundle/IPA that will be signed by your device testing service")
+	if t.OS == "ios" && !o.Unsigned && (c.IOS.Signing.PKCS12 == "" || c.IOS.Signing.Profile == "") {
+		return "", fmt.Errorf("iOS signing requires ios.signing.pkcs12 and profile; use -unsigned for subsequent signing")
 	}
 	return format, nil
 }
 
 func packageMobile(ctx context.Context, c *config, t target, m *mobileComponent, o mobileOptions, binary, format, output string, errOut io.Writer) (string, error) {
-	format, err := mobilePackageFormat(t, o, format)
+	format, err := mobilePackageFormat(c, t, o, format)
 	if err != nil {
 		return "", err
 	}
@@ -200,7 +184,11 @@ func packageMobile(ctx context.Context, c *config, t target, m *mobileComponent,
 	if err = copyFile(binary, filepath.Join(app, c.Executable), 0755); err != nil {
 		return "", err
 	}
-	if errOut != nil {
+	if !o.Unsigned {
+		if err = signIOS(ctx, c, app); err != nil {
+			return "", err
+		}
+	} else if errOut != nil {
 		fmt.Fprintln(errOut, "iOS output is unsigned and requires your own signing or cloud-device re-signing before device installation.")
 	}
 	if err = ctx.Err(); err != nil {
@@ -210,57 +198,78 @@ func packageMobile(ctx context.Context, c *config, t target, m *mobileComponent,
 		return output, os.Rename(app, output)
 	}
 	archive := filepath.Join(work, "application.ipa")
-	if err = mobileZipDirectory(filepath.Join(work, "Payload"), archive, "Payload"); err != nil {
+	if err = mobileZipDirectory(filepath.Join(work, "Payload"), archive, "Payload", filepath.Join(app, c.Executable)); err != nil {
 		return "", err
 	}
 	return output, os.Rename(archive, output)
 }
 
 func packageAndroid(ctx context.Context, c *config, m *mobileComponent, binary, resources, work string, errOut io.Writer) (string, error) {
-	tool, err := m.file(m.Aapt2)
+	manifest, err := androidres.Manifest(mobileManifest(c))
 	if err != nil {
 		return "", err
 	}
-	jar, err := m.file(m.AndroidJar)
+	table, err := androidres.Resources(c.ID)
 	if err != nil {
 		return "", err
 	}
-	compiled := filepath.Join(work, "resources.zip")
-	if err = mobileCommand(ctx, errOut, tool, "compile", "--dir", filepath.Join(resources, "res"), "-o", compiled); err != nil {
-		return "", err
-	}
-	unsigned := filepath.Join(work, "unsigned.apk")
-	if err = mobileCommand(ctx, errOut, tool, "link", "-I", jar, "--manifest", filepath.Join(resources, "AndroidManifest.xml"), "-o", unsigned, compiled); err != nil {
-		return "", err
+	for name, content := range map[string][]byte{"AndroidManifest.xml": manifest, "resources.arsc": table} {
+		if err = mobileWriteFile(filepath.Join(work, name), content); err != nil {
+			return "", err
+		}
 	}
 	dex, err := m.file(m.Dex)
 	if err != nil {
 		return "", err
 	}
-	if err = mobileZipAppend(unsigned, map[string]string{"lib/arm64-v8a/libgoui.so": binary, "classes.dex": dex}); err != nil {
-		return "", err
+	files := map[string]string{"lib/arm64-v8a/libgoui.so": binary, "classes.dex": dex, "AndroidManifest.xml": filepath.Join(work, "AndroidManifest.xml"), "resources.arsc": filepath.Join(work, "resources.arsc")}
+	for _, icon := range androidres.Icons {
+		files[icon.Path()] = filepath.Join(resources, filepath.FromSlash(icon.Path()))
 	}
-	signer, err := m.file(m.Signer)
+	unsigned := filepath.Join(work, "unsigned.apk")
+	archive, err := os.Create(unsigned)
 	if err != nil {
 		return "", err
 	}
-	verifier, err := m.file(m.Verifier)
-	if err != nil {
-		return "", err
+	w := zip.NewWriter(archive)
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
 	}
-	key, cert, err := androidDevelopmentKey()
+	sort.Strings(names)
+	for _, name := range names {
+		method := uint16(zip.Deflate)
+		if name == "resources.arsc" {
+			method = zip.Store
+		}
+		var entry io.Writer
+		entry, err = w.CreateHeader(&zip.FileHeader{Name: name, Method: method})
+		if err == nil {
+			var f *os.File
+			f, err = os.Open(files[name])
+			if err == nil {
+				_, err = io.Copy(entry, f)
+				if closeErr := f.Close(); err == nil {
+					err = closeErr
+				}
+			}
+		}
+		if err != nil {
+			break
+		}
+	}
+	if closeErr := w.Close(); err == nil {
+		err = closeErr
+	}
+	if closeErr := archive.Close(); err == nil {
+		err = closeErr
+	}
 	if err != nil {
 		return "", err
 	}
 	apk := filepath.Join(work, "application.apk")
-	if err = mobileCommand(ctx, errOut, signer, "-align", "-key", key, "-cert", cert, "-in", unsigned, "-out", apk); err != nil {
+	if err = signAndroid(ctx, c, unsigned, apk, errOut); err != nil {
 		return "", err
-	}
-	if err = mobileCommand(ctx, errOut, verifier, apk); err != nil {
-		return "", err
-	}
-	if errOut != nil {
-		fmt.Fprintln(errOut, "Android APK uses a persistent local development signing key.")
 	}
 	return apk, nil
 }
@@ -354,55 +363,6 @@ func checkAndroidKey(key, cert string) error {
 	return nil
 }
 
-func mobileZipAppend(path string, extra map[string]string) error {
-	r, err := zip.OpenReader(path)
-	if err != nil {
-		return err
-	}
-	defer r.Close()
-	f, err := os.CreateTemp(filepath.Dir(path), ".apk-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name())
-	w := zip.NewWriter(f)
-	for _, file := range r.File {
-		if _, ok := extra[file.Name]; ok {
-			w.Close()
-			f.Close()
-			return fmt.Errorf("duplicate APK entry %s", file.Name)
-		}
-		if err = w.Copy(file); err != nil {
-			w.Close()
-			f.Close()
-			return err
-		}
-	}
-	names := make([]string, 0, len(extra))
-	for name := range extra {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		if err = mobileZipFile(w, name, extra[name]); err != nil {
-			w.Close()
-			f.Close()
-			return err
-		}
-	}
-	if err = w.Close(); err != nil {
-		f.Close()
-		return err
-	}
-	if err = f.Close(); err != nil {
-		return err
-	}
-	if err = r.Close(); err != nil {
-		return err
-	}
-	return os.Rename(f.Name(), path)
-}
-
 func mobileZipFile(w *zip.Writer, name, path string) error {
 	f, err := os.Open(path)
 	if err != nil {
@@ -428,7 +388,7 @@ func mobileZipFile(w *zip.Writer, name, path string) error {
 	return err
 }
 
-func mobileZipDirectory(root, output, prefix string) error {
+func mobileZipDirectory(root, output, prefix, executable string) error {
 	f, err := os.Create(output)
 	if err != nil {
 		return err
@@ -447,6 +407,24 @@ func mobileZipDirectory(root, output, prefix string) error {
 		name, err := filepath.Rel(root, path)
 		if err != nil {
 			return err
+		}
+		if path == executable {
+			header := &zip.FileHeader{Name: prefix + "/" + filepath.ToSlash(name), Method: zip.Deflate}
+			header.SetMode(0755)
+			out, err := w.CreateHeader(header)
+			if err != nil {
+				return err
+			}
+			f, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			_, err = io.Copy(out, f)
+			closeErr := f.Close()
+			if err != nil {
+				return err
+			}
+			return closeErr
 		}
 		return mobileZipFile(w, prefix+"/"+filepath.ToSlash(name), path)
 	})

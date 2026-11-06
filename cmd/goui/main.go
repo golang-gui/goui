@@ -11,11 +11,20 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+
+	mobilebase "github.com/golang-gui/goui/platform/mobile/base"
 )
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+	if os.Getenv("GOUI_LINK_COMMAND") == "1" {
+		if err := mobilebase.RunLinkDriver(ctx, os.Args[1:], os.Stdout, os.Stderr); err != nil {
+			fmt.Fprintln(os.Stderr, "goui link:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(ctx, os.Args[1:], os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, "goui:", err)
 		os.Exit(1)
@@ -51,7 +60,7 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		fs.StringVar(&format, "format", "", "app for macOS, dir for Linux; defaults to target format")
 	}
 	var mobile mobileOptions
-	fs.StringVar(&mobile.Components, "components", os.Getenv("GOUI_MOBILE_COMPONENTS"), "prepared local mobile component directory")
+	fs.StringVar(&mobile.Components, "components", os.Getenv("GOUI_MOBILE_COMPONENTS"), "override embedded mobile components with a local directory")
 	fs.StringVar(&mobile.Variant, "variant", "", "mobile device or simulator variant (default: device)")
 	if command == "build" {
 		fs.StringVar(&mobile.Package, "package", "", "explicitly build and package a mobile app (apk, app, ipa)")

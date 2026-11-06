@@ -148,4 +148,9 @@ func TestInvalidResources(t *testing.T) {
 	if _, err := loadIcon(c); err == nil {
 		t.Fatal("accepted malformed SVG")
 	}
+	// 命令工具直接复用 SVG 栅格化库，仍保留原有的文档大小限制。
+	writeTestFile(t, c.path(c.Icon), bytes.Repeat([]byte(" "), (4<<20)+1))
+	if _, err := loadIcon(c); err == nil {
+		t.Fatal("accepted SVG larger than 4 MiB")
+	}
 }
