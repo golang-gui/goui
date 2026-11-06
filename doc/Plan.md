@@ -1,5 +1,17 @@
 # Plan
 
+## Go1.24 移动基座补齐（2026-11-06）
+
+- [x] 明确 Go1.24.13 使用 format2，独立驱动摘要与三目标描述，复用对象池和目标资源。
+- [x] 驱动、无原生编译器的冷构建、官方133项选择集及用户CGO回归。
+- [x] Android/iOS device/simulator基座、内嵌和仅Go构建；Android API30 1x、
+  iOS26.3 Simulator 3x的预置App各136pass/1原skip，native各137pass/1原skip。
+- [x] 独立X11全仓：Go1.24.13为4507pass/12skip，Go1.25.8为4508pass/11skip，
+  零失败；Go1.24额外skip是只支持Go1.25.8的旧format1冷构建。相关race/vet、
+  Windows10 amd64与macOS15.7.7 ARM64的Go1.24宿主构建及工具逻辑测试通过。
+- [x] 四版本内嵌gzip合计1,933,493字节，仅增加10,430字节；更新文档并拆分本地
+  提交，不推送。物理设备、正式签名安装、16KiB设备和SDK再分发审核仍待完成。
+
 ## 移动基座对象级构建与用户 CGO（2026-11-06）
 
 - [x] 设计写入 [DesignMobileBase](DesignMobileBase.md)，固定生成源码/原生对象、

@@ -1,13 +1,14 @@
 # 官方标准库移动 App 验收
 
-本例是维护者生成器，用 Go 1.25.8、1.26.10 或1.27.3 的官方标准库测试源生成独立 Go 工程。
+本例是维护者生成器，用 Go 1.24.13、1.25.8、1.26.10 或1.27.3 的官方标准库测试源生成独立 Go 工程。
 生成的 App 只依赖公开 platform/graphics/typography 和 Go 标准库，不导入 gui/ui，
 不调用测试 probe，不需要触摸或 IME。
 
 ## 覆盖范围
 
 - 选取 12 个标准库包的完整外部测试文件：unicode/utf8、unicode、math、cmp、io、
-  path、strings、bytes、sync、sync/atomic、errors、reflect，Go1.25.8 共134项顶层测试；Go1.26.10／1.27.3 为130项。
+  path、strings、bytes、sync、sync/atomic、errors、reflect。Go1.24.13为133项、
+  Go1.25.8为134项、Go1.26.10／1.27.3为130项顶层测试。
 - 原文件逐字复制，只将文件名从 *_test.go 改为普通构建文件；不复制标准库实现，
   不删除或修改断言、原有 skip。生成清单记录来源文件、测试名和 SHA-256，附 Go LICENSE。
 - 另有 4 项明确标为 goui-platform 的运行检查：私有文件临时目录/读写/重命名、
@@ -82,7 +83,7 @@ iOS device 默认拒绝没有签名材料的组包；显式 -unsigned 是本轮�
    例程保守保留 80 DIP 顶部留白以便读报告，不表示 SafeArea 已实现。
 2. 等待结束。Go1.25.8 选择集为134项官方测试+4项平台检查；正常短模式结果为
    PASS137、FAIL0、SKIP1、code0。Go1.26.10／1.27.3为130+4项，
-   PASS133、FAIL0、SKIP1。若平台出现额外跳过或失败，按报告记录，
+   PASS133、FAIL0、SKIP1。Go1.24.13为133+4项，PASS136、FAIL0、SKIP1。若平台出现额外跳过或失败，按报告记录，
    不修改预期掩盖。发生失败时显示失败名称；panic 或测试超时同样属于失败。
 3. 等待数秒，frames 应增长；界面不随测试结束退出。旋转设备后报告仍可绘制，
    原 nonce 保持。横屏空间有限可能裁剪文本，完整结果以文件为准。
@@ -147,3 +148,7 @@ goui build -config /absolute/native-app/goui.toml -target android/arm64 -cgo nat
 缺少宏则编译失败。iOS 原生构建需有效目标 Apple SDK；macOS 未指定 SDKROOT
 时自动选择目标 SDK，显式 SDKROOT 保留。某些 Apple 工具启动器会注入 macOS
 SDKROOT；不能把这个路径当成 iOS SDK。预置模式完全不需要这些原生工具。
+
+Go1.24.13 单独生成133项官方测试，完整保留其 waitgroup_test.go，未复用新版的
+排除规则。它的正常报告为137项（136pass/1原skip）；添加-cgo时为138项
+（137pass/1原skip）。Go1.24 native模式与其它版本相同，必须提供真实目标工具链。

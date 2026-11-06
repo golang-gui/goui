@@ -12,7 +12,7 @@ Go 汇编、导出数据和最终包归档均由使用者的当前 Go 工具链�
 CGO_ENABLED=1 是当前移动链接模型需要的 Go 构建选择，不表示必须在消费阶段
 运行 C 编译器。真正关闭 cgo 与免安装原生工具链是两个不同契约。
 
-当前支持 Go1.25.8（保留兼容）、Go1.26.10、Go1.27.3，目标为 Android ARM64、
+当前支持 Go1.24.13、Go1.25.8、Go1.26.10、Go1.27.3，目标为 Android ARM64、
 iOS ARM64 device 和 simulator。runtime/cgo、net、FFI 与固定入口使用对象级
 描述；旧 format1 组件只保留 Go1.25.8 兼容，不自动回退或跨格式拼接。
 
@@ -176,7 +176,7 @@ SDK/CRT 来源仍由目标 inputs.json 的 provenance 表达。生成源码与�
 目标数据，不要求安装生成原二进制的 Go；format2 构建记录固定实际 Go 版本、
 编译策略、目标数据身份与二进制摘要。旧 format1 构建记录仍须匹配原组件或重建。
 
-## 本轮验证记录（2026-11-06）
+## 首轮三版本验证记录（2026-11-06）
 
 - Linux amd64 / Go1.25.8、1.26.10、1.27.3：限定 PATH 只有对应 Go，三版本
   各构建 Android APK、待重签 device IPA、simulator App，共九份产物通过。
@@ -210,3 +210,35 @@ TestNativeIOSSDKSelection；后者已在远端macOS实际执行通过。冻结�
 源码加本轮新增文件，未纳入工作区历史未跟踪试验程序。既有离屏测试仍可能在
 该临时副本写出图片，窗口测试只作用于独立会话。cmd/goui、platform/mobile/base
 的 -race 和相关工具/生成器 go vet 均通过。
+
+## Go1.24 补齐切片（2026-11-06）
+
+Go1.24.13 沿用对象级 format2，不复用其它 Go 版本的已编译 Go 内容。保持独立
+cmd/go 源码摘要、cgo生成记录和原生目标校验，仍与其它版本共享内容摘要池及
+SDK/平台资源。Go1.24官方外部测试选择集为133项，完整保留waitgroup_test.go；
+Go1.25既有134项、新版本130项与失败注入覆盖不变。Go1.24 的普通 Go/汇编及
+导出数据同样现场编译，旧format1仍只兼容Go1.25.8，不将它用于新Go1.24输入。
+
+- 构建工具本身以CGO_ENABLED=0、Go1.24.13分别编译Linux/Windows/macOS版本。
+  Linux限定仅Go1.24.13的PATH，默认内置组件完成APK、待重签device IPA、
+  simulator App；用户C宏的native APK也已构建。Windows10 amd64与macOS15.7.7
+  ARM64使用Go1.24.13完成默认APK/IPA和cmd/goui逻辑测试；Mac native simulator
+  App从用户C源码经完整SDK链接。物理设备及正式签名安装仍未由这些构建结果覆盖。
+- 维护者使用Go1.24.13分别生产三目标format2。仍复用原平台输入和摘要对象池；
+  全部四版本内嵌gzip共1,933,493字节（约1.84MiB），较上轮仅增加10,430字节。
+  目标输入仍为1,740,410字节，四版本描述和去重对象池共193,083字节。
+- 版本独立的官方选择集为133项，原文件逐字保留；宿主验证成功/故意失败/错误宏/
+  缺少宏行为。Go1.24对象模式的冷构建实际执行512次外来线程回调及GC/栈增长，
+  消费阶段使用拒绝编译器；源码、模块语言变化、缓存和参数防护保持原覆盖。
+- 冻结已跟踪源码及本轮新增Go文件，在两个独立Xvnc/Xfwm4会话分别运行
+  go test -p 4 -json -count=1 ./...：Go1.24.13为4507通过、12skip、0失败，
+  Go1.25.8为4508通过、11skip、0失败。Go1.24额外skip是仅Go1.25.8支持的
+  format1冷构建；format2冷构建实际通过，原生归档测试也已按支持清单执行。
+  其它skip为原平台/手工场景和Linux不适用的iOS SDK测试。未纳入历史未跟踪用例，
+  既有输出图片/窗口只影响临时副本及独立会话。Go1.24相关race/vet通过。
+
+- Android API30 ARM64隔离只读AVD（SwiftShader、1x）与iOS26.3 ARM64独立
+  iPhone16 Simulator（3x），Go1.24.13预置App各136pass/1原skip，用户C宏的
+  native App各137pass/1原skip，0失败；包含133项官方选择集、文件、HTTPS/
+  证书信任、localhost DNS和GC，GLES FBO在1x/2x检查颜色、clip和Transform。
+  这四次运行均使用本轮Go1.24.13产物；验收后清理专属AVD进程和Simulator。
