@@ -38,34 +38,35 @@ go run ./tests/window/platform/mobile_std -o /absolute/standard-app
 
 输出包含普通 main.go、goui.toml、图标、suite runner、official 原始测试文件和
 official-sources.json。生成阶段不调用原生编译器或 SDK。FFI/渲染依赖使用正式
-版本：goexlib/cgo v0.1.2、官方 purego v0.10.2、nanovgo v0.0.12，不需要这些
-依赖的本地源码分支或 replace。若生成工程使用尚未发布的 GOUI 功能，维护者只需
-用仓库外独立 go.work 连接生成工程与当前 GOUI 源码。预编译组件仍需单独准备，
-Go 依赖已发布不代表组件下载/许可审核或真机验收已经完成。
+版本：goexlib/cgo v0.1.2、官方 purego v0.10.2、nanovgo v0.0.13，不需要这些
+依赖的本地源码分支或 replace。若生成工程使用尚未发布的 GOUI 功能，维护者可
+用仓库外独立 go.work 或仅替换 GOUI 模块来连接当前源码。命令默认使用内置组件；
+Go 依赖已发布不代表 SDK 输入再分发审核或真机验收已经完成。
 
 ## 构建
 
-先由维护者提供与宿主/目标/variant/Go 版本匹配的本地组件集。基础归档之外，
-本例的 Android net 需要相应标准库 cgo 归档；iOS 需要 Security、resolv 等链接输入。
-组件和用户构建的分离见 [移动构建设计](../../../../doc/DesignMobileBuild.md)。
+使用 Go 1.25.8 和内置组件构建，不需要 SDK、NDK、JDK 或原生编译器。
+本例所需的 net cgo 归档、Security/resolv 链接输入已包含在对应目标中。
+维护者仍可用 -components 显式覆盖；组件边界和支持版本见
+[移动构建设计](../../../../doc/DesignMobileBuild.md)。
 
 ```sh
 go build -o /absolute/tools/goui ./cmd/goui
 
-# 调用方只需匹配的 Go、goui 和预编译组件；以下步骤不调用 C/Java 编译器。
+# 调用方只需匹配的 Go 与 goui；以下步骤不调用 C/Java 编译器。
 goui doctor -config /absolute/standard-app/goui.toml \
-  -target android/arm64 -components /absolute/components
+  -target android/arm64
 goui build -config /absolute/standard-app/goui.toml \
-  -target android/arm64 -components /absolute/components \
+  -target android/arm64 \
   -package apk -o /absolute/artifacts/standard-tests.apk
 
 goui build -config /absolute/standard-app/goui.toml \
-  -target ios/arm64 -variant simulator -components /absolute/components \
+  -target ios/arm64 -variant simulator \
   -package app -unsigned -o /absolute/artifacts/StandardTests-Simulator.app
 
 # 真机 IPA 供测试平台重签；此文件不能直接安装到未授权设备。
 goui build -config /absolute/standard-app/goui.toml \
-  -target ios/arm64 -components /absolute/components \
+  -target ios/arm64 \
   -package ipa -unsigned -o /absolute/artifacts/standard-tests-resign.ipa
 ```
 
@@ -110,3 +111,16 @@ testing 的 code 0 代替窗口/生命周期验收。
 API30 ARM64/Software/1x、iOS26.3 ARM64 Simulator/Software/3x 运行通过。
 最终 DNS/系统信任补充、源码冻结、完整计数、全仓结果与真机缺口见
 [PlanMobileConvergence](../../../../doc/PlanMobileConvergence.md)。
+
+## 2026-11-06 内置组件验收
+
+Linux amd64、Windows10 amd64、macOS15.7.7 ARM64 均以 Go1.25.8、仅 Go PATH、
+无 -components 参数生成 APK 和待重签 IPA。Android API30 ARM64 / SwiftShader /
+OpenGL ES / 1x、iOS26.3 ARM64 Simulator / OpenGL ES / 3x 的最终构建均为
+137通过、1项官方 short 跳过、0失败；GLES 1x/2x FBO 像素检查通过。
+
+APK 资源与签名另用官方 aapt2/apksigner 检查。Go 签名器的合成身份测试 App 在
+macOS 上通过 codesign 严格验签；模拟器安装另使用系统 ad-hoc bundle 签名。
+这两项都不等于有效 Apple 开发身份在物理 iPhone 上安装通过。完整范围、预置
+体积与真机/16 KiB/再分发缺口见
+[移动构建设计第11节](../../../../doc/DesignMobileBuild.md#11-内置最小组件与纯-go-组包2026-11-06)。
