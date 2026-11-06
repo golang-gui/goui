@@ -3,8 +3,6 @@ package gui
 import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/layout"
-	"github.com/golang-gui/goui/platform/graphics"
-	"github.com/golang-gui/goui/platform/graphics/utils"
 	"github.com/golang-gui/goui/style"
 )
 
@@ -126,97 +124,13 @@ func paintButtonBox(p Painter, widget Widget, s style.Style, focus bool) {
 	if focus {
 		omitEdge = -1
 	}
-	if bg, ok := s.BackgroundColor(); ok && bg != nil {
-		fill := graphics.ColorOf(bg)
-		if fill.A > 0 {
-			background, backgroundRadius := rect, radius
-			if inset := opaqueBorderInset(s); inset > 0 {
-				background = buttonInsetRect(rect, inset, omitEdge)
-				backgroundRadius = radius.Inset(inset)
-			}
-			if !emptyRect(background) {
-				p.FillPath(buttonContour(background, backgroundRadius, corners, -1), fill)
-			}
-		}
-	}
-	width, _ := s.BorderWidth()
-	width = normalizeLayoutValue(width)
-	border, ok := s.BorderColor()
-	if !ok || border == nil || width <= 0 {
-		return
-	}
-	stroke := graphics.ColorOf(border)
-	if stroke.A == 0 {
-		return
-	}
-	if width >= min(rect.Width, rect.Height)/2 {
-		p.FillPath(buttonContour(rect, radius, corners, -1), stroke)
-		return
-	}
-	if omitEdge < 0 {
-		p.FillPath(utils.RoundRectBorderPath(rect, buttonCornerRadius(radius, corners), width), stroke)
-	} else {
-		outer := buttonContour(rect, radius, corners, omitEdge)
-		innerRect := buttonInsetRect(rect, width, omitEdge)
-		inner := buttonContourReverse(innerRect, radius.Inset(width).Normalize(innerRect.Size), corners, omitEdge)
-		inner.Range(func(op graphics.PathOperation, args []float32) bool {
-			switch op {
-			case graphics.PathMoveTo, graphics.PathLineTo:
-				outer = outer.LineTo(args[0], args[1])
-			case graphics.PathBezierTo:
-				outer = outer.BezierTo(args[0], args[1], args[2], args[3], args[4], args[5])
-			}
-			return false
-		})
-		p.FillPath(outer.Close(), stroke)
-	}
-}
-
-// An omitted edge must retain its coordinate in both contours, so the border
-// closes perpendicular to that edge instead of ending in a tapered notch.
-func buttonInsetRect(rect geometry.Rectangle, inset float32, omitEdge int) geometry.Rectangle {
-	left, top, right, bottom := inset, inset, inset, inset
+	sides := styledBorderSides(s)
 	if omitEdge == 1 {
-		right = 0
+		sides &^= style.BorderRight
 	} else if omitEdge == 2 {
-		bottom = 0
+		sides &^= style.BorderBottom
 	}
-	return rect.Insets(left, top, right, bottom)
-}
-
-// A closed contour walks clockwise. Starting after the omitted edge produces
-// an open three-sided stroke without clipping or repainting a sibling.
-func buttonContour(rect geometry.Rectangle, radius geometry.CornerRadius, corners buttonCorners, omitEdge int) graphics.Path {
-	x, y, right, bottom := rect.X, rect.Y, rect.X+rect.Width, rect.Y+rect.Height
-	radius = buttonCornerRadius(radius, corners).Normalize(rect.Size)
-	r := [4]float32{radius.TopLeft, radius.TopRight, radius.BottomRight, radius.BottomLeft}
-	starts := [4]geometry.Point{{X: x, Y: y + r[0]}, {X: right - r[1], Y: y}, {X: right, Y: bottom - r[2]}, {X: x + r[3], Y: bottom}}
-	ends := [4]geometry.Point{{X: x + r[0], Y: y}, {X: right, Y: y + r[1]}, {X: right - r[2], Y: bottom}, {X: x, Y: bottom - r[3]}}
-	const k float32 = 0.55228475
-	controls := [4][2]geometry.Point{
-		{{X: x, Y: y + r[0]*(1-k)}, {X: x + r[0]*(1-k), Y: y}},
-		{{X: right - r[1]*(1-k), Y: y}, {X: right, Y: y + r[1]*(1-k)}},
-		{{X: right, Y: bottom - r[2]*(1-k)}, {X: right - r[2]*(1-k), Y: bottom}},
-		{{X: x + r[3]*(1-k), Y: bottom}, {X: x, Y: bottom - r[3]*(1-k)}},
-	}
-	start := 0
-	if omitEdge >= 0 {
-		start = (omitEdge + 1) % 4
-	}
-	path := graphics.MoveTo(starts[start].X, starts[start].Y)
-	for step := 0; step < 4; step++ {
-		i := (start + step) % 4
-		if step > 0 {
-			path = path.LineTo(starts[i].X, starts[i].Y)
-		}
-		if r[i] > 0 {
-			path = path.BezierTo(controls[i][0].X, controls[i][0].Y, controls[i][1].X, controls[i][1].Y, ends[i].X, ends[i].Y)
-		}
-	}
-	if omitEdge < 0 {
-		path = path.Close()
-	}
-	return path
+	paintStyledBox(p, rect, s, radius, sides)
 }
 
 func buttonCornerRadius(r geometry.CornerRadius, corners buttonCorners) geometry.CornerRadius {
@@ -233,37 +147,4 @@ func buttonCornerRadius(r geometry.CornerRadius, corners buttonCorners) geometry
 		r.BottomLeft = 0
 	}
 	return r
-}
-
-// Reverse the open contour to close the border around the omitted shared edge.
-func buttonContourReverse(rect geometry.Rectangle, radius geometry.CornerRadius, corners buttonCorners, omitEdge int) graphics.Path {
-	path := buttonContour(rect, radius, corners, omitEdge)
-	type segment struct {
-		op   graphics.PathOperation
-		from geometry.Point
-		args [6]float32
-	}
-	segments := make([]segment, 0, 8)
-	var current geometry.Point
-	path.Range(func(op graphics.PathOperation, args []float32) bool {
-		if op == graphics.PathMoveTo {
-			current = geometry.Point{X: args[0], Y: args[1]}
-			return false
-		}
-		part := segment{op: op, from: current}
-		copy(part.args[:], args)
-		segments = append(segments, part)
-		current = geometry.Point{X: args[len(args)-2], Y: args[len(args)-1]}
-		return false
-	})
-	result := graphics.MoveTo(current.X, current.Y)
-	for i := len(segments) - 1; i >= 0; i-- {
-		part := segments[i]
-		if part.op == graphics.PathBezierTo {
-			result = result.BezierTo(part.args[2], part.args[3], part.args[0], part.args[1], part.from.X, part.from.Y)
-		} else {
-			result = result.LineTo(part.from.X, part.from.Y)
-		}
-	}
-	return result
 }

@@ -25,6 +25,9 @@ graphics.Painter／gui.Painter.DrawBoxShadow 的 radius 参数改为 CornerRadiu
 
 ## 路径和边框
 
+可选择边的扩展见[矩形边框设计](DesignBorderSides.md)。边宽／颜色仍统一，
+内轮廓可按选边非对称内缩；内部椭圆计算不改变CornerRadius的公共圆形半径模型。
+
 基础几何属于 geometry；graphics 保留绘制类型、接口和 Path 的指令记录／遍历能力。
 图形轮廓生成与曲线换算算法位于 graphics/utils，不由 graphics 包依赖这些工具。
 utils.RoundRectPath 是有效的闭合轮廓。utils.RoundRectBorderPath 是外轮廓减去

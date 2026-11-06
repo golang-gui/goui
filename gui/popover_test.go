@@ -817,6 +817,17 @@ func TestPopoverPlacementErrorsAreNotTransparencyFailures(t *testing.T) {
 	}
 }
 
+func TestPopoverSurfacePreservesBorderSides(t *testing.T) {
+	p, _, _, app := placementFixture(t, geometry.Rect(0, 0, 200, 150))
+	for _, sides := range []style.BorderSides{0, style.BorderTop | style.BorderBottom, style.BorderAll} {
+		app.style = style.Sheet(style.Name("popover").BorderWidth(2).BorderColor(color.Black).BorderSides(sides))
+		_, border, _ := p.surfaceStyle()
+		if got, set := border.BorderSides(); !set || got != sides {
+			t.Fatalf("宿主重建边框样式丢失边集合：%v/%v，期望%v", got, set, sides)
+		}
+	}
+}
+
 func TestPopoverPlacementConstrainsBeforeCreation(t *testing.T) {
 	p, _, plat, app := placementFixture(t, geometry.Rect(0, 0, 200, 150))
 	p.transparent = true
