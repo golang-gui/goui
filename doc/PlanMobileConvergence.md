@@ -615,3 +615,107 @@ GONOSUMDB 仅在测试进程环境使用，不修改用户或系统配置。
   GLES像素及生命周期检查的APK逐字一致，SHA256仍为
   a5763604c4b40822342c15adaed48528a4a4350a6f1b46c8472d3cdefb0a5b04。
   因附件一致，没有重复启动模拟器。当前库接入不等于iOS后端已完成。
+
+
+## iOS Mach-O 独立 Go 链接后端（2026-11-06）
+
+### 实现与边界
+
+独立 golink 增加 iOS ARM64 设备/模拟器后端，GOUI 仍直接 import 功能包并调用
+Link(Request)，不下载/执行独立 golink，也不在消费者调用 Apple/LLVM 编译器。
+标准 Go c-archive、Go pack、精确 Go1.25.8 基座和 UIKit 协议/入口预编译对象保持
+原有归属；本轮不修改 runtime、iOS 窗口/排版/图形实现或任何 GUI/UI 行为。
+
+Request 使用 IOSOptions 区分 variant/minimum/sdk；Libraries 为显式 TBD 根库，
+Reexports 为额外已封装 stub，只解析重导出闭包，不产生额外根加载或宿主搜索。
+TBD v4 的目标、导出、Objective-C 名称、库 current/compatibility 版本均保留。
+Simulator SDK 的三个宿主系统库标签按 LLD22.1.8 InputFiles.cpp 中确切列表适配；
+只放宽 arm64-ios-simulator 到这三个嵌入的 arm64-macos 文档，不放宽其他输入。
+
+Mach-O 合并同名原生节，处理当前输入的 ARM64 UNSIGNED、SUBTRACTOR、BRANCH26、
+PAGE21/PAGEOFF12、GOT_LOAD 与 ADDEND 组合，保留 dyld rebasing/eager binding、
+导出 trie、Go/UIKit 初始化数组、Objective-C 协议元数据、只读常量和展开信息。
+未知 CPU 子类型、平台/部署版本、越界、TLS、指针认证、LSDA/personality、LTO、
+branch 溢出等明确失败。私有 SDK 输入、签名材料和构建产物均不进入源码仓库。
+
+ad-hoc 代码页签名复用 Go1.25.8 cmd/internal/codesign 的 BSD 源码，去掉内部
+hash 常量依赖，保留版权、LICENSE 和 THIRD_PARTY.md。没有 Go 工具链补丁。
+裸 Mach-O 签名与 App 的 Info/资源封印是两个阶段；前者不替代设备证书/profile。
+当前生成 unsigned、可由用户或云真机重签的 IPA，不宣称已通过物理设备安装。
+
+### 真实输入与对照
+
+本轮捕获现有正式 Go/GLES 标准库例程的 LLD 输入，只在私有组件副本中保存归档
+和参数，未改变已有共享组件。Simulator 样本16个原生对象，原始重定位类型为
+0/1/2/3/4/5/6/10；DWARF 非加载段省略。设备和模拟器分别使用其已验证的基座、
+SDK stub、入口对象，禁止交叉混用。参考 SDK 为 Xcode26.3 / iOS SDK26.2。
+
+对同一输入核对 LLD 与 Go 输出：平台/最低版本/SDK、两个模块初始化指针、
+_main/goui_run/crosscall2 等关键导出、W^X，以及共同根 dylib 的版本一致。
+不同工具的 LC_BUILD_VERSION ntools 可以不同（LLD=1，独立 Go 不伪造工具 ID）；
+初轮比较误把这个调试元数据也要求相同，确认格式定义后只比较相同契约的字段。
+不把不同段布局、符号表或签名的字节差异当作链接失败，也不要求与 LLD 整文件相等。
+
+三宿主原生工具对同一捕获输入的最终输出字节一致：
+
+| 目标 | Linux amd64 / Windows10 19045 amd64 / macOS15.7.7 ARM64 共同 SHA256 |
+| --- | --- |
+| iOS Simulator | e267ae2adc659c97f7f6cc01da73a2c067a3672bb221b80f48d3da713e63c77e |
+| iOS device | 995fe0734cfb55ba74df2cfce445b8d4ccbd68754ba2534afc81f1abfb06f8c9 |
+
+macOS 原生 codesign --verify --strict 通过两份裸 Mach-O。Android 真实27对象样本
+重放仍为5885b1d9a01affffa0d312f8b35e9c1e271c0b60e29bd423936f49999ecf77f3，
+与上轮运行过的原型逐字一致；共用归档读取调整没有改变既有 Android 输出。
+
+### 最终构建与验证
+
+最终功能包 v0.2.1，构建验证位于 /tmp/goui-golink-ios-3d9t9uel：
+
+- 独立库单元/race/vet 通过。纯 Go 构造 Mach-O、TBD 与归档，不依赖 Xcode；
+  覆盖导入 stub、非惰性 GOT、指针 rebase/bind、入口、PIE/权限/只读常量、代码页
+  哈希、设备/模拟器、SDK版本、TBD目标/引号/重导出及拒绝越界/错误 CPU 等。
+  GOUI base 的实际库调用、两个 variant、声明输入完整性、取消与失败保留亦通过。
+- 维护者环境已有 SDK 输入；消费者 PATH 仅 Go 与拒绝 C/C++/JDK/LLD 的桩，
+  独立空 Go 缓存生成 Verified-Simulator.app 和 Verified-Resign.ipa；拒绝调用零。
+  仅复用版本匹配的 Go driver 和源代码包，不需要消费者 LLVM/Xcode 工具链。
+- 最终冻结源码为HEAD f4315d6及本轮明确文件，独立Xvnc :136 / Xfwm4 / Linux
+  amd64 / Go1.25.8，CGO_ENABLED=0、GOWORK=off，go test -p4 -json -count=1 ./...：
+  4483通过、10原条件跳过、零失败。该基线包含主会话已提交的边框更新，不与早前
+  3897项的范围混为同一次统计。未纳入主会话未提交内容和原有未跟踪测试。
+- 一轮全仓出现新私有模块缺少 go.sum 的 setup failure；补齐 v0.2.1 的选择后
+  校验项重新运行通过，没有放宽 skip/断言。使用从本地提交生成的私有模块代理
+  和进程范围 GONOSUMDB；不修改用户全局配置，也不宣称模块已公开发布。
+
+第一次真实样本暴露 Foundation TBD 大型 flow list 的重复扫描，改为增量扫描，
+不再每读一行扫描此前整个列表。第一轮签名测试在 .app 内直接验证未封印资源的
+可执行文件，命令按 bundle 解释而失败；改为裸文件验证代码页，再单独完成测试
+bundle 的 ad-hoc 资源签名，维持打包与链接职责边界。初始与最终版本分别验收，
+不以仅打开窗口或一次链接成功代替运行测试。
+
+设备 IPA 的 Mach-O header/metadata/签名已检查，真机与自有证书/profile安装未执行。
+Simulator 的包签名为测试机 ad-hoc，无开发者凭据和商店流程。SDK输入没有公开分发；
+后续仍需处理组件发行/许可证、更多 Go/SDK 版本与物理设备。
+
+本地提交：golink 2e9979d（输入/签名工具）、96b758b（iOS链接）、e466372（库版本
+元数据），最终本地标签v0.2.1；0.2.0是本轮保留的初始实现检查点，均未推送。
+GOUI 只更新功能包依赖与构建接入/测试/文档，不包含 SDK、私有捕获输入或 App。
+
+
+最终 v0.2.1 的模拟器复验：macOS15.7.7 ARM64 上专用 iPhone16 / iOS26.3
+Simulator，实际屏幕3x、OpenGL ES Painter；134项官方用例加4项检查，137通过、
+1项原 short 条件跳过、零失败。包含显式 runtime.GC 与 GLES 1x/2x FBO 像素检查。
+先在 bundle 外核对原始 Go ad-hoc 代码页签名，再用测试机 ad-hoc 封印 App 资源并
+核对严格签名。模拟器运行的是最终附件，不只重放初始样本；测试结束已关闭、
+删除本轮 UDID，没有操作用户桌面、钥匙串或已有模拟器。
+
+最终消费者 Simulator Mach-O：
+d76ca2355194aa1a206dc1b17c463282d0556130f7bcceeb0f27613991d27d47；
+设备 Mach-O：10524396fa41e2cd21bdb444b9c190db5866239eafe45358062bc11b2aff7cb9；
+Verified-Resign.ipa：54f8027b5ccdada83e67b53a5b67f7c98b1a2fb9448b02b7dac42a77a6ac3962。
+它们使用正式构建驱动，Go build ID 与早先捕获样本不同；跨宿主相等检查使用同一
+捕获输入，运行验收使用完整最终 App，不将不同输入的哈希混作不一致。
+
+可复现输入、独立库源码归档、最终 App/IPA、三宿主工具、构建/运行/失败日志及
+SHA256清单位于 /data/xuyang8/artifacts/goui-golink-ios-20261106-3d9t9uel。
+其中 replay-ios.tar.gz 含私有 SDK stub，仅本地验证保存，没有公开分发。
+GOUI 接入与设计记录继续分开本地提交；不推送源码、标签或附件。
