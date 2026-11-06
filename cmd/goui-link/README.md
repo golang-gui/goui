@@ -2,7 +2,7 @@
 
 This command is invoked by the mobile build pipeline, not by GUI applications.
 It uses only Go code and verified target inputs. Host tool manifest format 1
-selects LLD; format 2 selects the embedded `golink` Go library for Android ARM64.
+selects LLD; format 2 selects the embedded `golink` Go library for Android and iOS ARM64.
 There is no implicit fallback between backends.
 
 For Android, pass its absolute executable path as the Go linker's `-extld`.
@@ -21,7 +21,10 @@ DWARF sections; this limitation also applies when Go generates debug input.
 For iOS, use the command as `-extar` and set `GOUI_GO` to the matching Go 1.25.8
 executable. The command delegates archive writing to Go pack. Then invoke the
 command with `-o Probe go.a host.o ...` to link the independent native host.
-The native archive is consumed in full with `-all_load`; it has no symbol index
-for general-purpose native archive lookup.
+The native archive is consumed in full by the embedded library (or LLD with
+`-all_load`); it has no symbol index for general-purpose native archive lookup.
+The embedded Mach-O backend preserves initializers, Objective-C sections, dyld
+rebasing/binding and SDK library versions. It writes an ad-hoc executable
+signature; app bundle/device signing remains a separate packaging responsibility.
 
 See [the mobile build plan](../../doc/PlanMobileBuild.md#14-第二阶段独立链接组件和-go-链接驱动2026-11-03).
