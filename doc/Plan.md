@@ -4244,3 +4244,25 @@ Software=2，旧OpenGL=242，修正后OpenGL=4；相邻外部像素从239变为0
 RenderWidget（包含GPU读回），旧版两次总耗时455.58/458.70ms，新版718.68/760.91ms，
 约4.57→7.40ms/图。此为密集尖端场景，不是窗口FPS；普通路径保留原处理，
 没有据此声称整帧零成本。测试产物与日志在仓库外；发布模块已与远端验收源码核对一致。
+
+## 2026-11-06 README 与 Demo 可选择边框展示
+
+- [x] Demo 图形页保留独立四角圆角／BoxShadow，新增仅底边、上下平行边、L形、
+  三边框四组样例。统一4DIP边宽、主题色与16DIP圆角，直接使用BorderSides与
+  PaintStyledBox，不增加框架API、绘制后端分支或持续刷新。
+- [x] 复用正常Widget与View，Snapshot报告本地化图像名称、边界且无交互动作；
+  HWrap处理窄窗口，八语言资源、Demo操作说明与中英文README同步。
+  下载链接、发布截图与Demo版本保持现状，不将源码变化当成新发布附件。
+- [x] Linux amd64 / Go1.25.8，独立Xvnc :145 / Xfwm4合成会话，1600×1100：
+  OpenGL（llvmpipe）与Software、1x，通过原生鼠标导航／滚轮／主题切换／调整大小
+  复核四组边框、缺边收尖、亮暗与紫色主题；820×600窗口自动从三列换成两列，
+  装饰尺寸保持240×136DIP，内容可滚动访问。OpenGL另验证阿拉伯语可见文本与
+  Snapshot名称同步。只在临时overlay加只读快照观测，正式Demo无观测计时器；
+  未加观测的Software正式二进制另行复核。没有使用DevServer或修改系统设置。
+- [x] `CGO_ENABLED=0 go test -json ./...`：4694通过、15项按原条件跳过、0失败。
+  Demo与resource测试（含全部八语言）、`go test -race ./example/demo/...`、
+  `go vet ./example/demo/...`通过。race最初误带CGO_ENABLED=0，工具拒绝执行；
+  改用测试所需的默认CGO配置后通过，正式Demo仍以CGO_ENABLED=0构建。
+- [x] Windows amd64与macOS arm64的CGO_ENABLED=0 Demo交叉编译通过；本轮无远端
+  原生桌面、2x或移动设备验收，不复用上轮框架测试代替本轮Demo验收。
+  截图、日志、临时overlay和二进制保存在仓库外；保留已有移动端工作区改动。
