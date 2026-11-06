@@ -8,6 +8,35 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 )
 
+func TestBorderSidesAtomicOverride(t *testing.T) {
+	if _, set := (Style{}).BorderSides(); set {
+		t.Fatal("零样式不能把未设置与显式空集混淆")
+	}
+	base := Name("card").BorderWidth(2).BorderSides(BorderTop | BorderBottom)
+	sheet := Sheet(base, Name("card").State(Hovered).BorderSides(BorderLeft), Name("card").State(Pressed).BorderSides(0))
+	for state, want := range map[State]BorderSides{Normal: BorderTop | BorderBottom, Hovered: BorderLeft, Pressed: 0} {
+		got, set := sheet.Resolve(Sel{Name: "card", State: state}).BorderSides()
+		if !set || got != want {
+			t.Fatalf("状态%v：边集合=%v/%v，期望%v", state, got, set, want)
+		}
+	}
+	if got, _ := base.Style.BorderSides(); got != BorderTop|BorderBottom {
+		t.Fatal("按值规则被后续修改污染", got)
+	}
+	for _, rule := range []Rule{Name("card").BorderSides(0), Name("card").BorderSides(BorderAll), Name("card")} {
+		if SameRules([]Rule{base}, []Rule{rule}) {
+			t.Fatal("规则比较遗漏边集合或存在标志")
+		}
+	}
+	if !SameRules([]Rule{base}, []Rule{Name("card").BorderWidth(2).BorderSides(BorderTop | BorderBottom | 128)}) {
+		t.Fatal("未知边标志没有忽略")
+	}
+	part := Sheet(base, Name("card").Part("focus").BorderSides(BorderAll)).Resolve(Sel{Name: "card", Part: "focus"})
+	if got, _ := part.BorderSides(); got != BorderAll {
+		t.Fatal("Part未覆盖完整边集合", got)
+	}
+}
+
 func TestCornerRadiusAtomicOverride(t *testing.T) {
 	r := geometry.CornerRadius{TopLeft: 12, TopRight: 6, BottomRight: 3}
 	base := Name("card").Radius(8).CornerRadius(r)
