@@ -253,8 +253,8 @@ func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Sty
 	if bg, ok := background.BackgroundColor(); ok && bg != nil {
 		radius = radius.Normalize(body.Size)
 		if finish == nil {
-			inset := opaqueBorderInset(border)
-			paintRoundedBackground(guiPainter, body.Inset(inset), radius.Inset(inset), graphics.ColorOf(bg))
+			insets := borderInsets(styledBorderSides(border), opaqueBorderInset(border))
+			paintInsetBackground(guiPainter, body, radius, insets, graphics.ColorOf(bg))
 		} else {
 			guiPainter.FillRect(body, graphics.ColorOf(bg))
 		}
@@ -280,7 +280,7 @@ func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Sty
 			margin := 2 / scale
 			borderBounds = body.Inset(-margin)
 			color, _ := border.BorderColor()
-			border = style.Default().CornerRadius(radius.Inset(-margin)).BorderWidth(width + margin).BorderColor(color).Style
+			border = style.Default().CornerRadius(radius.Inset(-margin)).BorderWidth(width + margin).BorderColor(color).BorderSides(styledBorderSides(border)).Style
 		}
 	}
 	PaintStyledBorder(guiPainter, borderBounds, border)

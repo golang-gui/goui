@@ -66,6 +66,14 @@ retain the full background underneath them. The standalone background/border
 helpers preserve their separate contracts; no painter layers or resource caches
 are added. See the [background edge correction](DesignCornerRadius.md#不透明边框下的背景外缘2026-11-04).
 
+### Selected border sides
+
+`BorderSides` is an optional atomic physical-edge mask. Unset keeps all four
+edges; explicit zero disables the border. Width and color remain uniform.
+Partial borders reuse filled outer/inner contours, and opaque backgrounds inset
+only along the selected edges. Layout, hit testing and child clipping are unchanged.
+See [selective borders](DesignBorderSides.md) for the corner contract and tests.
+
 ### Box shadow and runtime updates
 
 `style.Shadow` is one optional, atomic style field containing a `color.Color`, a

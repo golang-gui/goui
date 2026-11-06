@@ -1032,7 +1032,7 @@ func (p *popover) surfaceStyle() (style.Style, style.Style, graphics.BoxShadow) 
 	}
 	width, _ := s.BorderWidth()
 	color, _ := s.BorderColor()
-	border := style.Name("").CornerRadius(radius).BorderWidth(normalizeLayoutValue(width)).BorderColor(color).Style
+	border := style.Name("").CornerRadius(radius).BorderWidth(normalizeLayoutValue(width)).BorderColor(color).BorderSides(styledBorderSides(s)).Style
 	var shadow graphics.BoxShadow
 	if p.transparent && p.insets != (popoverInsets{}) {
 		v, _ := s.Shadow()

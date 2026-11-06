@@ -102,10 +102,11 @@ func PaintWidgetStyle(p Painter, widget Widget, defaultName string) {
 // radius. Missing or transparent colors and empty rectangles emit no commands.
 // A rounded background does not clip children.
 func PaintStyledBackground(p Painter, rect geometry.Rectangle, s style.Style) {
-	paintStyledBackground(p, rect, s, 0)
+	radius, _ := s.CornerRadius()
+	paintStyledBackground(p, rect, s, radius, geometry.Insets{})
 }
 
-func paintStyledBackground(p Painter, rect geometry.Rectangle, s style.Style, inset float32) {
+func paintStyledBackground(p Painter, rect geometry.Rectangle, s style.Style, radius geometry.CornerRadius, insets geometry.Insets) {
 	if rect.Width <= 0 || rect.Height <= 0 {
 		return
 	}
@@ -117,12 +118,19 @@ func paintStyledBackground(p Painter, rect geometry.Rectangle, s style.Style, in
 	if fill.A == 0 {
 		return
 	}
-	radius, _ := s.CornerRadius()
-	if inset > 0 {
-		radius = radius.Normalize(rect.Size).Inset(inset)
-		rect = rect.Inset(inset)
+	paintInsetBackground(p, rect, radius, insets, fill)
+}
+
+func paintInsetBackground(p Painter, rect geometry.Rectangle, radius geometry.CornerRadius, insets geometry.Insets, brush graphics.Brush) {
+	if insets == geometry.UniformInsets(insets.Left) {
+		if insets.Left > 0 {
+			radius = radius.Normalize(rect.Size).Inset(insets.Left)
+			rect = rect.Inset(insets.Left)
+		}
+		paintRoundedBackground(p, rect, radius, brush)
+	} else {
+		p.FillPath(utils.RoundRectInsetPath(rect, radius, insets), brush)
 	}
-	paintRoundedBackground(p, rect, radius, fill)
 }
 
 func paintRoundedBackground(p Painter, rect geometry.Rectangle, radius geometry.CornerRadius, brush graphics.Brush) {
@@ -143,8 +151,36 @@ func paintRoundedBackground(p Painter, rect geometry.Rectangle, radius geometry.
 // the background's AA edge beneath its centerline. Translucent borders retain
 // the complete background beneath them. Shadow and text are separate operations.
 func PaintStyledBox(p Painter, rect geometry.Rectangle, s style.Style) {
-	paintStyledBackground(p, rect, s, opaqueBorderInset(s))
-	PaintStyledBorder(p, rect, s)
+	radius, _ := s.CornerRadius()
+	paintStyledBox(p, rect, s, radius, styledBorderSides(s))
+}
+
+func paintStyledBox(p Painter, rect geometry.Rectangle, s style.Style, radius geometry.CornerRadius, sides style.BorderSides) {
+	paintStyledBackground(p, rect, s, radius, borderInsets(sides, opaqueBorderInset(s)))
+	paintStyledBorder(p, rect, s, radius, sides)
+}
+
+func styledBorderSides(s style.Style) style.BorderSides {
+	if sides, set := s.BorderSides(); set {
+		return sides
+	}
+	return style.BorderAll
+}
+
+func borderInsets(sides style.BorderSides, width float32) (insets geometry.Insets) {
+	if sides&style.BorderTop != 0 {
+		insets.Top = width
+	}
+	if sides&style.BorderRight != 0 {
+		insets.Right = width
+	}
+	if sides&style.BorderBottom != 0 {
+		insets.Bottom = width
+	}
+	if sides&style.BorderLeft != 0 {
+		insets.Left = width
+	}
+	return
 }
 
 func opaqueBorderInset(s style.Style) float32 {
@@ -161,9 +197,15 @@ func opaqueBorderInset(s style.Style) float32 {
 
 // PaintStyledBorder paints an inset border without repainting the background.
 // It does not reserve layout space. Missing/transparent colors, nonpositive
-// widths and empty rectangles emit no commands.
+// widths, empty rectangles and an explicit empty BorderSides emit no commands.
+// Unset BorderSides paints all edges; selected edges share one width and color.
 func PaintStyledBorder(p Painter, rect geometry.Rectangle, s style.Style) {
-	if rect.Width <= 0 || rect.Height <= 0 {
+	radius, _ := s.CornerRadius()
+	paintStyledBorder(p, rect, s, radius, styledBorderSides(s))
+}
+
+func paintStyledBorder(p Painter, rect geometry.Rectangle, s style.Style, radius geometry.CornerRadius, sides style.BorderSides) {
+	if sides == 0 || rect.Width <= 0 || rect.Height <= 0 {
 		return
 	}
 	width, ok := s.BorderWidth()
@@ -179,8 +221,11 @@ func PaintStyledBorder(p Painter, rect geometry.Rectangle, s style.Style) {
 	if stroke.A == 0 {
 		return
 	}
-	radius, _ := s.CornerRadius()
 	radius = radius.Normalize(rect.Size)
+	if sides != style.BorderAll {
+		p.FillPath(utils.RoundRectBorderInsetsPath(rect, radius, borderInsets(sides, width)), stroke)
+		return
+	}
 	// Once the inner contour collapses, the border covers the whole shape.
 	if width >= min(rect.Width, rect.Height)/2 {
 		paintRoundedBackground(p, rect, radius, stroke)
