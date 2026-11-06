@@ -1,5 +1,26 @@
 # Plan
 
+## 移动基座对象级构建与用户 CGO（2026-11-06）
+
+- [x] 设计写入 [DesignMobileBase](DesignMobileBase.md)，固定生成源码/原生对象、
+  prebuilt/native、环境及缓存契约，不改变 GUI/UI 或原版 Go runtime。
+- [x] format2 记录 cgo 生成源码、原生 ELF/Mach-O 对象、辅助头、完整源码摘要、
+  生产工具与参数；Go/汇编/导出数据现场编译，保持 format1/Go1.25.8 兼容。
+- [x] Go1.25.8、1.26.10、1.27.3 三目标组件与匹配的构建 action，版本描述/对象
+  摘要池/共享目标数据分离，内置 gzip 合计1,923,063字节（约1.83MiB）。
+- [x] CLI 显式 -cgo=prebuilt|native，未知 cgo/冲突参数不静默调用编译器；native
+  保留用户CC/CXX/CGO参数、标准Go构建及目标完整链接，组包按实际构建记录选择。
+- [x] 三版本仅 Go PATH 九产物构建；Android API30 ARM64 1x、iOS26.3 ARM64
+  Simulator 3x，Go1.25.8 各137通过/1原skip，1.26.10与1.27.3 各133通过/1原skip，
+  GLES FBO 1x/2x通过。真实用户C宏的 native App两端各138通过/1原skip。
+- [x] Windows10 amd64、macOS15.7.7 ARM64 / Go1.25.8 默认APK/IPA构建及工具
+  逻辑测试；macOS原生SDK选择实际测试通过。未声称物理设备/正式签名验收。
+- [x] 冻结已跟踪源码及本轮新增文件，独立Xvnc/Xfwm4全仓4505通过/11skip/0失败；
+  10原skip+1 Linux不适用的iOS SDK测试；相关race/vet通过。按基础设施、CLI内嵌、
+  官方用例及文档拆分本地提交，不推送、不进行公开SDK输入分发。
+- [ ] 物理设备、Android16KiB设备、正式签名安装、SDK派生输入再分发审核、
+  附加动态库组包和更多Go补丁版本；macOS签名整合、触摸/IME/SafeArea另开切片。
+
 ## 移动构建内置最小组件与 Go 组包（2026-11-06）
 
 - [x] 内置精确 Go 1.25.8 基座，目标链接数据与 Go 版本分开；不包含宿主
