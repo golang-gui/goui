@@ -218,3 +218,43 @@ func TestNativeToolVersionIdentity(t *testing.T) {
 		}
 	}
 }
+
+// 极小的 ARM64 ET_REL，只包含 RET 和可选导出符号；无需原生编译器。
+func nativeTestObject(name string) []byte {
+	data := make([]byte, 128+4*64)
+	copy(data, []byte("\x7fELF\x02\x01\x01"))
+	u16, u32, u64 := binary.LittleEndian.PutUint16, binary.LittleEndian.PutUint32, binary.LittleEndian.PutUint64
+	u16(data[16:], 1)
+	u16(data[18:], 183)
+	u32(data[20:], 1)
+	u64(data[40:], 128)
+	u16(data[52:], 64)
+	u16(data[58:], 64)
+	u16(data[60:], 4)
+	u32(data[64:], 0xd65f03c0)
+	if name != "" {
+		u32(data[96:], 1)
+		data[100] = 0x12
+		u16(data[102:], 1)
+		u64(data[112:], 4)
+	}
+	if len(name) > 6 {
+		panic("fixture symbol too long")
+	}
+	copy(data[121:], name)
+	section := func(i int, kind uint32, flags, offset, size, align, entsize uint64, link, info uint32) {
+		s := data[128+i*64:]
+		u32(s[4:], kind)
+		u64(s[8:], flags)
+		u64(s[24:], offset)
+		u64(s[32:], size)
+		u32(s[40:], link)
+		u32(s[44:], info)
+		u64(s[48:], align)
+		u64(s[56:], entsize)
+	}
+	section(1, 1, 6, 64, 4, 4, 0, 0, 0)
+	section(2, 2, 0, 72, 48, 8, 24, 3, 1)
+	section(3, 3, 0, 120, 8, 1, 0, 0, 0)
+	return data
+}

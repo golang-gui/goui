@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/golang-gui/golink"
 )
 
 // NativeProvenance identifies the maintainer's original SDK or tool release.
@@ -57,13 +59,15 @@ type NativeTool struct {
 }
 
 // NativeTools contains the host executables and their declared runtime files.
-// LLD is the multi-flavor LLVM linker; archive construction reuses Go pack.
+// Format 1 selects LLD; format 2 selects the embedded Go linker library. Archive
+// construction reuses Go pack. A component never silently changes backends.
 type NativeTools struct {
 	Format     int               `json:"format"`
 	GOOS       string            `json:"goos"`
 	GOARCH     string            `json:"goarch"`
 	Provenance NativeProvenance  `json:"provenance"`
 	LLD        NativeTool        `json:"lld"`
+	GoLink     string            `json:"golink,omitempty"`
 	Files      map[string]string `json:"files"`
 	root       string
 }
@@ -85,9 +89,6 @@ func nativeReadJSON(path string, value any) error {
 }
 
 func nativeVerifyFiles(root string, files map[string]string, manifestName string) error {
-	if len(files) == 0 {
-		return fmt.Errorf("native component has no files")
-	}
 	for name, expected := range files {
 		path, err := baseFile(root, name)
 		if err != nil {
@@ -128,6 +129,9 @@ func nativeProvenanceValid(p NativeProvenance) bool {
 }
 
 func (m *NativeInputs) validate() error {
+	if len(m.Files) == 0 {
+		return fmt.Errorf("native input component has no files")
+	}
 	if m.Format != 1 || m.GOARCH != "arm64" || !nativeProvenanceValid(m.Provenance) {
 		return fmt.Errorf("invalid native input identity")
 	}
@@ -200,8 +204,11 @@ func OpenNativeTools(path string) (*NativeTools, error) {
 	if err := nativeReadJSON(path, &m); err != nil {
 		return nil, err
 	}
-	if m.Format != 1 || m.GOOS != runtime.GOOS || m.GOARCH != runtime.GOARCH || !nativeProvenanceValid(m.Provenance) {
+	if m.GOOS != runtime.GOOS || m.GOARCH != runtime.GOARCH || !nativeProvenanceValid(m.Provenance) {
 		return nil, fmt.Errorf("native tools do not match host %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+	if err := m.validateLinker(); err != nil {
+		return nil, err
 	}
 	var err error
 	m.root, err = filepath.Abs(filepath.Dir(path))
@@ -211,9 +218,9 @@ func OpenNativeTools(path string) (*NativeTools, error) {
 	if err = nativeVerifyFiles(m.root, m.Files, "tools.json"); err != nil {
 		return nil, err
 	}
-	for _, tool := range []NativeTool{m.LLD} {
-		if _, ok := m.Files[tool.File]; !ok || tool.Version == "" {
-			return nil, fmt.Errorf("native tool is not declared: %s", tool.File)
+	if m.GoLink == "" {
+		if _, ok := m.Files[m.LLD.File]; !ok || m.LLD.Version == "" {
+			return nil, fmt.Errorf("native tool is not declared: %s", m.LLD.File)
 		}
 	}
 	return &m, nil
@@ -289,6 +296,15 @@ func ExportNativeTools(ctx context.Context, specPath, source, output string) err
 }
 
 func verifyNativeToolVersions(ctx context.Context, tools *NativeTools) error {
+	if err := tools.validateLinker(); err != nil {
+		return err
+	}
+	if tools.GoLink != "" {
+		if tools.GoLink != golink.Version {
+			return fmt.Errorf("embedded golink version mismatch: require %s, compiled %s", tools.GoLink, golink.Version)
+		}
+		return nil
+	}
 	command := exec.CommandContext(ctx, filepath.Join(tools.root, filepath.FromSlash(tools.LLD.File)), "-flavor", "gnu", "--version")
 	data, err := command.CombinedOutput()
 	if err != nil {
@@ -296,6 +312,24 @@ func verifyNativeToolVersions(ctx context.Context, tools *NativeTools) error {
 	}
 	if !nativeLLDVersion(string(data), tools.LLD.Version) {
 		return fmt.Errorf("tool %s: version mismatch, expected %s", tools.LLD.File, tools.LLD.Version)
+	}
+	return nil
+}
+
+func (m *NativeTools) validateLinker() error {
+	switch {
+	case m.Format == 1 && m.GoLink == "" && m.LLD.File != "" && m.LLD.Version != "":
+		return nil
+	case m.Format == 2 && m.GoLink != "" && m.LLD == (NativeTool{}):
+		return nil
+	default:
+		return fmt.Errorf("native tools require exactly one linker matching format 1 (LLD) or 2 (embedded golink)")
+	}
+}
+
+func (m *NativeTools) supports(inputs *NativeInputs) error {
+	if m.GoLink != "" && (inputs.GOOS != "android" || inputs.GOARCH != "arm64") {
+		return fmt.Errorf("golink does not yet support %s/%s", inputs.GOOS, inputs.GOARCH)
 	}
 	return nil
 }

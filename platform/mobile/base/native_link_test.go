@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/golang-gui/golink"
 )
 
 func TestNativeArguments(t *testing.T) {
@@ -189,5 +191,118 @@ func TestNativeLLDQuoting(t *testing.T) {
 		if got := nativeLLDQuote(test.arg); got != test.want {
 			t.Fatalf("%q: %q, want %q", test.arg, got, test.want)
 		}
+	}
+}
+
+// 验证直接调用 Go 链接库，不提供 golink 可执行文件或模拟版本响应。
+func TestNativeGoLink(t *testing.T) {
+	root := t.TempDir()
+	toolRoot := filepath.Join(root, "tools")
+	if err := os.Mkdir(toolRoot, 0755); err != nil {
+		t.Fatal(err)
+	}
+	m := NativeTools{Format: 2, GOOS: runtime.GOOS, GOARCH: runtime.GOARCH,
+		Provenance: NativeProvenance{"golink", golink.Version, "Go module", "MIT"}, GoLink: golink.Version, Files: map[string]string{}}
+	toolsPath := filepath.Join(toolRoot, "tools.json")
+	nativeWriteSpec(t, toolsPath, m)
+	loaded, err := OpenNativeTools(toolsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = verifyNativeToolVersions(context.Background(), loaded); err != nil {
+		t.Fatal(err)
+	}
+	inputs := nativeTestInputs(t, "android", "device")
+	object, output := filepath.Join(root, "中文 object.o"), filepath.Join(root, "result.so")
+	if err = os.WriteFile(object, nativeTestObject("entry"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for name := range inputs.Files {
+		path := filepath.Join(inputs.root, filepath.FromSlash(name))
+		switch filepath.Ext(name) {
+		case ".o":
+			err = os.WriteFile(path, nativeTestObject(""), 0600)
+		case ".a":
+			err = os.WriteFile(path, []byte("!<arch>\n"), 0600)
+		case ".so":
+			err = golink.Link(golink.Request{Format: 1, Target: "android/arm64", Objects: []string{object}, Output: path, SONAME: filepath.Base(path)})
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		inputs.Files[name], err = baseHash(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	inputPath := filepath.Join(inputs.root, "inputs.json")
+	nativeWriteSpec(t, inputPath, inputs)
+	args := []string{"-shared", "-o", output, object, "-Wl,-z,nodelete", "-Wl,-Bsymbolic"}
+	translated, _, err := nativeLinkArguments(inputs, args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := nativeGoLinkRequest(inputs, translated, output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Format != 1 || r.Target != "android/arm64" || !r.NoDelete || !r.Symbolic || len(r.Libraries) != 3 || len(r.Archives) != 1 || len(r.Objects) != 3 || r.Objects[1] != object {
+		t.Fatalf("丢失输入: %+v", r)
+	}
+	var log bytes.Buffer
+	if err = RunNativeLink(context.Background(), inputPath, toolsPath, args, &log, &log); err != nil {
+		t.Fatal(err)
+	}
+	original, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, failure := range []string{"错误对象", "未支持选项", "取消"} {
+		t.Run(failure, func(t *testing.T) {
+			testArgs := append([]string(nil), args...)
+			ctx := context.Background()
+			switch failure {
+			case "错误对象":
+				bad := filepath.Join(root, "invalid.o")
+				if err := os.WriteFile(bad, []byte("invalid ELF"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				testArgs = append(testArgs, bad)
+			case "未支持选项":
+				testArgs = append(testArgs, "-Wl,--build-id=sha1")
+			case "取消":
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithCancel(ctx)
+				cancel()
+			}
+			if err := RunNativeLink(ctx, inputPath, toolsPath, testArgs, &log, &log); err == nil {
+				t.Fatal("不应成功")
+			}
+			actual, _ := os.ReadFile(output)
+			if !bytes.Equal(actual, original) {
+				t.Fatal("失败不能覆盖原产物")
+			}
+		})
+	}
+	if err = loaded.supports(&NativeInputs{GOOS: "ios", GOARCH: "arm64"}); err == nil {
+		t.Fatal("不能假装支持Mach-O")
+	}
+	for _, bad := range []NativeTools{
+		{Format: 1, GoLink: m.GoLink},
+		{Format: 2},
+		{Format: 2, GoLink: m.GoLink, LLD: NativeTool{"lld", "22"}},
+	} {
+		if err := bad.validateLinker(); err == nil {
+			t.Fatalf("有歧义的后端: %+v", bad)
+		}
+	}
+	m.GoLink = "0.1.00"
+	nativeWriteSpec(t, toolsPath, m)
+	loaded, err = OpenNativeTools(toolsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = verifyNativeToolVersions(context.Background(), loaded); err == nil {
+		t.Fatal("版本必须精确匹配")
 	}
 }
