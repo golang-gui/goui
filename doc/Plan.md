@@ -4209,3 +4209,38 @@ PASS137/FAIL0/SKIP1、code0；原 skip 为 short 模式的 path/TestCleanMallocs
 Go 1.25.8 下 iOS net、os/user、crypto/x509 的实际 CgoFiles 为空，仍需系统链接
 依赖；runtime/cgo 继续由基座提供。Android net 则需要按需标准库归档。包清单核对
 不等于 DNS/HTTPS/系统证书运行通过；联网和私有目录用例随 B1–B3 补齐。
+
+## 2026-11-06 OpenGL 选边圆角收尖覆盖率修正
+
+- [x] 复现 Linux llvmpipe / OpenGL / 1x 默认4DIP边框的异常亮点，修正 nanovgo。
+- [x] 新增独立面积参考的窗口回归，本机独立 X11 与 Windows/macOS 原生验证。
+- [x] nanovgo 提交 `4e8b4be`，发布并推送 `v0.0.13`，GOUI 使用正式 tag，无本地 replace。
+
+单上边、16DIP圆角的尖端像素：独立椭圆面积积分预期 alpha=2.069/255，
+Software=2，旧OpenGL=242，修正后OpenGL=4；相邻外部像素从239变为0。
+同一新增断言在旧依赖下失败、新依赖下通过。修正采用原填充／AA片元中的面积
+覆盖积分，不改GUI几何、样式或Painter接口，不增加pass、FBO或纹理。
+适用边界与原算法回退见 [DesignBorderSides](DesignBorderSides.md#opengl收尖覆盖率2026-11-06)。
+
+验证环境与结果：
+
+- Linux amd64 / Go1.25.8，独立Xvnc :143 / Xfwm4合成器 / llvmpipe：
+  graphics/corner_radius与gui/border_sides的Software/OpenGL、宿主1x/2x均通过；
+  尖端另覆盖1/1.25/1.5/2x、旋转、clip、透明／不透明／渐变、ClearPath及后续
+  普通绘制状态恢复。clear_path窗口回归的两个后端、1x/2x也通过，并复核实际窗口外观。
+- macOS15.7.7 arm64：上述两个窗口例程的Software/OpenGL、1x/2x共八次通过。
+- Windows10 19045 amd64：在交互桌面运行上述例程，Direct2D/Software、1x/2x
+  共八次通过。SSH Session0尝试Direct2D时实际回退Software，被例程拒绝，未算通过。
+  RDP的OpenGL像素格式限制仍在，本轮Windows OpenGL仅编译，未运行；移动GLES
+  与旧WebGL未执行设备验证，不以桌面OpenGL通过替代。
+- 正式tag下 `go test -json ./...`：4694通过、15项跳过、0失败；
+  `go test -race ./style ./platform/graphics/utils ./gui` 和相关OpenGL／窗口包vet通过。
+  nanovgo全仓test及race通过；vet仍有8项既有告警（unreachable与未命名字段），
+  已用修改前源码overlay核对相同告警，没有扩大skip或放宽既有断言。
+- 临时modfile曾因并行移动端提交后sum副本过期产生setup失败；同步最新sum后全仓
+  通过，正式tag复验也通过。graphics/alpha不支持`-auto`，该错误启动未计为验收。
+
+成本对照：同一llvmpipe/OpenGL/1x环境，16个选边图形，预热10次后100次
+RenderWidget（包含GPU读回），旧版两次总耗时455.58/458.70ms，新版718.68/760.91ms，
+约4.57→7.40ms/图。此为密集尖端场景，不是窗口FPS；普通路径保留原处理，
+没有据此声称整帧零成本。测试产物与日志在仓库外；发布模块已与远端验收源码核对一致。
