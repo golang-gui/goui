@@ -1,6 +1,6 @@
 package main
 
-// Go 1.25.8 testing.MainStart 的固定版本适配，仅用于验收工程。
+// 受支持 Go 版本 testing.MainStart 的固定版本适配，仅用于验收工程。
 // 不使用 linkname，不伪造 std 内部导入，也不改变官方用例断言。
 const runnerSource = `package suite
 
@@ -97,6 +97,7 @@ func testRuntimeGC(t *testing.T){
 type corpusEntry = struct {Parent string;Path string;Data []byte;Values []any;Generation int;IsSeed bool}
 type testDeps struct{}
 func (testDeps) ImportPath()string{return "goui-mobile-standard-tests"}
+func (testDeps) ModulePath()string{return "example.org/gouistd"}
 func (testDeps) MatchString(p,s string)(bool,error){return regexp.MatchString(p,s)}
 func (testDeps) SetPanicOnExit0(bool){}
 func (testDeps) StartCPUProfile(w io.Writer)error{return pprof.StartCPUProfile(w)}
@@ -111,4 +112,21 @@ func (testDeps) CheckCorpus([]any,[]reflect.Type)error{return errors.New("fuzz c
 func (testDeps) ResetCoverage(){}
 func (testDeps) SnapshotCoverage(){}
 func (testDeps) InitRuntimeCoverage()(string,func(string,string)(string,error),func()float64){return "",nil,nil}
+`
+
+// 原生模式用例通过真实 C 编译验证用户传入的宏，不使用预置结果。
+const nativeCgoSource = `package suite
+/*
+#ifndef GOUI_NATIVE_SENTINEL
+#error GOUI_NATIVE_SENTINEL must be supplied by the user toolchain
+#endif
+static int native_value(int x) { return GOUI_NATIVE_SENTINEL + x; }
+*/
+import "C"
+import "testing"
+func testUserNativeCGO(t *testing.T) {
+ if value := int(C.native_value(3)); value != 76 {
+  t.Fatalf("用户原生编译参数丢失: got %d, want 76",value)
+ }
+}
 `
