@@ -1,5 +1,33 @@
 # Plan
 
+## 菜单统一活动项的指针生命周期（2026-11-06）
+
+- [x] menuContent 的私有 Capture/crossing 控制器统一按局部坐标与 Pick 选择菜单项，
+  清理留白、禁用项、分隔线、滚动条、行尾间距与移出主体的活动项。原生 Enter 无
+  普通 Motion、抓取期间移出内容的 Motion 都走同一规则。
+- [x] active 只保存在 menuContent；移除行 Motion/onHover 和 delegate 活动项副本。
+  行的 Selected、绘制和 Snapshot 为同一投影，保留既有 Hovered 外观映射。
+  输入重置清空；键盘 Reveal/行复用不伪造鼠标操作，不改通用 Popover、事件分发、
+  公共样式接口或 DropDown 的实际选择值。设计依据见 [DesignMenu](DesignMenu.md)。
+- [x] 新增 Leave 后立即检查，及非零内容起点、行尾间距/滚动条、Reveal 和虚拟行
+  复用回归；旧实现的离开、留白断言先失败，修复后通过。滚动用例初轮漏执行
+  Reveal 约定的下一轮布局，补齐 Arrange 阶段后保留原断言通过。
+- [x] 本机 Linux amd64 / Go 1.25.8，CGO_ENABLED=0 go test ./...：
+  4104项通过、15项原条件跳过、零失败（包含既有未跟踪测试，与仅跟踪冻结副本范围不同）；
+  gui 菜单/Popover/Command 的 race
+  重复3次及 vet 通过。跳过为 macOS 签名与历史手工窗口条件，不记作通过。
+- [x] 独立 Xvnc :140（2560×1800）/ xfwm4 合成器，Software/OpenGL 各1x/2x，
+  窗口例程断言快照和实际后端像素通过，覆盖快捷键文本、离开/留白/阴影区域、
+  键盘接管、激活和重开。OpenGL 为 llvmpipe，不据此作 GPU 性能结论。
+- [x] OpenGL/1x 另用 xdotool 原生移动和按键补验：移出后高亮像素由4317变为0，
+  菜单仍显示；空白清空、键盘静止保持、指针接管、按钮重开及 Enter 激活通过。
+  脚本初轮使用有歧义的宿主坐标未点中重开按钮，改读 xwininfo 绝对坐标并检查
+  原生 MapState 后通过，没有修改窗口定位。例程说明为中文，按钮可反复打开。
+- [x] Windows amd64 / macOS arm64 的窗口程序与 gui 测试 CGO_ENABLED=0 交叉编译
+  通过；本轮未执行远端桌面、Direct2D 桌面或真实 HiDPI 验收，应用2x覆盖不替代硬件。
+- 验证材料位于 /tmp/goui-menu-active-EklMYy。实现/包内回归与窗口验收按两次提交
+  组织，第一份为748c265；同工作区的移动构建文档更新不属于本次菜单提交。
+
 ## 移动 FFI 依赖正式化（2026-11-05）
 
 - [x] goexlib/cgo v0.1.2 承担 ARM64 类型化调用与回调的参数/返回布局，复用
