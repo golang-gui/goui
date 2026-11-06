@@ -25,7 +25,7 @@ The [demo](example/demo) brings together controls, text editing, layouts, data v
 tabs, overlays, graphics, animations, and system integration. Switch between light/dark appearances, accent colors, and eight UI languages.
 
 The current source prepares Demo **0.7.0 / build 1**, adding shared commands and menu shortcut
-columns, independent corner radii with box shadows, and optional Go execution tracing.
+columns, independent corner radii with box shadows, selective borders, and optional Go execution tracing.
 See the [demo guide](example/demo/README.md) for controls and validation steps. The downloads
 and screenshots below remain the published v0.6.0 artifacts until the next release is available.
 
@@ -112,7 +112,7 @@ RSS includes resident shared-library pages; PSS apportions shared pages between 
 | Tabbed workspaces | Close requests and context menus, drag reordering, shrinking and overflow scrolling, cross-window transfer, and detaching into new windows. |
 | Menus and overlays | Menu buttons and coordinated menu groups, shared Commands with live availability and independent shortcut-text columns, context menus, popovers, tooltips, modal input boundaries, in-window Dialogs, and Toasts. |
 | Input | Shortcuts, Tab navigation and keyboard focus hints, event controllers, gesture competition, and drag and drop within and across applications. |
-| Graphics and appearance | Software/OpenGL/Direct2D backends, HiDPI, transforms, clipping and path erasure, transparency, independent corner radii with uniform borders and box shadows, SVG and style-aware icons, custom painting, cached DrawingArea rendering, and offscreen widget rendering. |
+| Graphics and appearance | Software/OpenGL/Direct2D backends, HiDPI, transforms, clipping and path erasure, transparency, independent corner radii, selective borders with a uniform width and color, box shadows, SVG and style-aware icons, custom painting, cached DrawingArea rendering, and offscreen widget rendering. |
 | Themes and localization | Basic fallback and Modern themes, light/dark modes, accent and semantic colors, style scopes, system settings, localization resources, and built-in text in eight languages. |
 | Windows and system integration | Native/integrated/custom chrome, HeaderBar and window controls, transparent windows, positioning/initial centering, taskbar preferences, file dialogs and access credentials, clipboard, and opening URLs/files. |
 | Timing and developer tools | GUI-thread timers, frame-driven animation with custom interpolation/curves, drawable checks and clipping-based paint culling, semantic snapshots and input automation, opt-in CPU-frame/resource diagnostics and FPS HUD, standard Go execution tracing, and build/package tools. |
@@ -123,7 +123,7 @@ Core controls live in `gui`, with declarative bindings in `ui`. Additional contr
 ### v0.7.0 highlights — release preparation
 
 - **Shared operations:** menus and shortcuts can use one `Command`, with live enabled-state updates and aligned shortcut text. Declarative windows supply a default command group; local `CommandGroup` scopes, `DefineCommand`, and `BindEnabled` keep definitions and state updates explicit.
-- **Independent corner radii:** four-corner styles and matching BoxShadow contours work with a uniform border width and color across Software, OpenGL, and Direct2D.
+- **Corners and borders:** four independent corner radii and matching BoxShadow contours work across Software, OpenGL, and Direct2D. `BorderSides` selects single, parallel, L-shaped, or three-sided borders with one width and color; the demo shows the rounded transitions at omitted edges.
 - **Less offscreen work:** painting skips subtrees fully outside the clip. Busy indicators and the demo's frame-driven DrawingArea stop requesting frames when fully clipped and resume when visible; business timers retain their own lifecycle.
 - **Frame inspection:** the optional FPS HUD shows 0 when idle. Go `runtime/trace` records frame tasks and layout/paint phases independently of diagnostic Capture. These are CPU/runtime observations, not monitor refresh rates or GPU presentation timings.
 - **Stability and resource use:** localization cache reads avoid repeated locking on the fast path; table trailing grid lines, row-decoration bounds, and variable-height scrolling have been corrected.
