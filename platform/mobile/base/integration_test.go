@@ -17,6 +17,15 @@ import (
 // 维护者阶段允许 C 编译；消费阶段使用独立空缓存、拒绝编译器和仅链接驱动。
 // 两版普通 Go 业务包共用相同基座，由独立 C 宿主验证回调、GC 和栈增长。
 func TestColdBuild(t *testing.T) {
+	testColdBuild(t, 1)
+}
+
+// TestObjectColdBuild 验证生成源码与原生对象的组合，消费阶段仍无原生编译。
+func TestObjectColdBuild(t *testing.T) {
+	testColdBuild(t, 2)
+}
+
+func testColdBuild(t *testing.T, format int) {
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" || runtime.Version() != baseGoVersion {
 		t.Skip("本验收针对 Linux amd64 / Go 1.25.8；其它平台需运行对应基座验收")
 	}
@@ -42,7 +51,7 @@ func TestColdBuild(t *testing.T) {
 		t.Setenv(key, value)
 	}
 	component := filepath.Join(root, "component")
-	if err := Export(ctx, ExportOptions{GoCommand: "go", Directory: source, Output: component, BuildMode: "c-shared", Variant: "test", MinimumVersion: "glibc"}, &log); err != nil {
+	if err := Export(ctx, ExportOptions{Format: format, GoCommand: "go", Directory: source, Output: component, BuildMode: "c-shared", Variant: "test", MinimumVersion: "glibc"}, &log); err != nil {
 		t.Fatalf("export: %v\n%s", err, &log)
 	}
 	manifest := filepath.Join(component, "base.json")
@@ -52,6 +61,23 @@ func TestColdBuild(t *testing.T) {
 	}
 	if len(m.Packages) != 2 {
 		t.Fatalf("基座只能包含运行时和固定入口，实际 %v", m.Packages)
+	}
+	if format == 2 {
+		goroot := runtime.GOROOT()
+		for name, p := range m.Packages {
+			if p.Archive != "" || len(p.GeneratedGo) == 0 || len(p.Objects) == 0 {
+				t.Fatalf("%s 不应携带 Go 归档", name)
+			}
+			for _, f := range p.GeneratedGo {
+				data, err := os.ReadFile(filepath.Join(component, f.Path))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if bytes.Contains(data, []byte(source)) || bytes.Contains(data, []byte(goroot)) {
+					t.Fatalf("生成源码泄露生产目录: %s/%s", name, f.Name)
+				}
+			}
+		}
 	}
 	before, err := os.ReadFile(manifest)
 	if err != nil {
@@ -111,7 +137,11 @@ func TestColdBuild(t *testing.T) {
 			t.Fatalf("cold build %s: %v\n%s", version, err, output)
 		}
 		text := string(output)
-		if strings.Contains(text, "/cgo -objdir") || !strings.Contains(text, "/compile ") || !strings.Contains(text, "# goui base: runtime/cgo") || !strings.Contains(text, "logic/logic.go") {
+		marker := "# goui base: runtime/cgo"
+		if format == 2 {
+			marker = "# goui recipe: runtime/cgo"
+		}
+		if strings.Contains(text, "/cgo -objdir") || !strings.Contains(text, "/compile ") || !strings.Contains(text, marker) || !strings.Contains(text, "logic/logic.go") {
 			t.Fatalf("未经过预期源码编译/基座接入路径:\n%s", output)
 		}
 		output, err = exec.CommandContext(ctx, host, filepath.Join(root, version+".so"), version).CombinedOutput()
@@ -153,7 +183,14 @@ func TestColdBuild(t *testing.T) {
 	if err = os.WriteFile(contract, bytes.Replace(contractSource, []byte("ABI = 1"), []byte("ABI = 2"), 1), 0600); err != nil {
 		t.Fatal(err)
 	}
-	checkFailure("dependency", manifest, "dependency ABI mismatch: example.com/baseprobe/contract")
+	if format == 1 {
+		checkFailure("dependency", manifest, "dependency ABI mismatch: example.com/baseprobe/contract")
+	} else {
+		// 依赖 Go 源码重新编译，不应被旧归档的 Go 导出数据锁住。
+		if output, err := build("dependency", manifest); err != nil {
+			t.Fatalf("对象级基座应允许普通 Go 依赖更新: %v\n%s", err, output)
+		}
+	}
 	if err = os.WriteFile(contract, contractSource, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -172,6 +209,9 @@ func TestColdBuild(t *testing.T) {
 	delete(m.Packages, "example.com/baseprobe/bridge")
 	// BaseOpen 返回绝对路径，保存回清单时恢复组件相对路径。
 	for name, p := range m.Packages {
+		if format == 2 {
+			continue
+		}
 		p.Archive, err = filepath.Rel(component, p.Archive)
 		if err != nil {
 			t.Fatal(err)
@@ -183,7 +223,7 @@ func TestColdBuild(t *testing.T) {
 	if err = os.WriteFile(missing, changed, 0600); err != nil {
 		t.Fatal(err)
 	}
-	checkFailure("missing", missing, "native support archive missing for example.com/baseprobe/bridge")
+	checkFailure("missing", missing, "native support missing for example.com/baseprobe/bridge")
 	path := filepath.Join(source, "bridge/bridge.go")
 	file, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0600)
 	file.WriteString("\n// 修改固定入口源码。\n")

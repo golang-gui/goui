@@ -303,3 +303,77 @@ func TestBuildCancellation(t *testing.T) {
 		t.Fatalf("取消未清理临时输出: %v", entries)
 	}
 }
+
+func TestNativeBuildEnvironment(t *testing.T) {
+	t.Setenv("CGO_ENABLED", "1")
+	t.Setenv("CC", "user-target-cc --target=aarch64-linux-android29")
+	t.Setenv("CGO_CFLAGS", "-O2 -DUSER_FLAG=73")
+	t.Setenv("GOUI_BASE", "unrelated-base")
+	t.Setenv("GOUI_RECORD_BASE", "unrelated-producer")
+	t.Setenv("GOUI_LINK_COMMAND", "1")
+	env, err := nativeBuildEnvironment(context.Background(), BuildOptions{}, &NativeInputs{GOOS: "android", GOARCH: "arm64"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]string{}
+	for _, entry := range env {
+		key, value, _ := strings.Cut(entry, "=")
+		values[key] = value
+	}
+	if values["CC"] != os.Getenv("CC") || values["CGO_CFLAGS"] != os.Getenv("CGO_CFLAGS") || values["GOOS"] != "android" || values["GOARCH"] != "arm64" {
+		t.Fatalf("原生编译环境被覆盖: CC=%q CFLAGS=%q GOOS=%q GOARCH=%q", values["CC"], values["CGO_CFLAGS"], values["GOOS"], values["GOARCH"])
+	}
+	for _, key := range []string{"GOUI_BASE", "GOUI_RECORD_BASE", "GOUI_LINK_COMMAND", "GOUI_LINK_INPUTS", "GOUI_LINK_TOOLS"} {
+		if values[key] != "" {
+			t.Fatalf("预置模式状态泄漏: %s", key)
+		}
+	}
+	t.Setenv("CGO_ENABLED", "0")
+	if _, err = nativeBuildEnvironment(context.Background(), BuildOptions{}, &NativeInputs{GOOS: "android", GOARCH: "arm64"}); err == nil {
+		t.Fatal("不得静默覆盖用户禁用CGO的选择")
+	}
+}
+
+func TestBuildWordQuoting(t *testing.T) {
+	want := []string{`C:\Program Files\工具\clang.exe`, "-target", "arm64-apple-ios15.0", "-DVALUE=hello world"}
+	encoded, err := buildQuoted(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := splitBuildWords(encoded)
+	if err != nil || strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("参数往返错误: %q, %v", got, err)
+	}
+	for _, value := range []string{`"unclosed`, `'quoted'joined`} {
+		if _, err := splitBuildWords(value); err == nil {
+			t.Fatalf("接受了错误引号: %s", value)
+		}
+	}
+}
+
+func TestNativeIOSSDKSelection(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("SDK选择验证仅适用于安装Xcode的macOS")
+	}
+	want, err := exec.Command("/usr/bin/xcrun", "--sdk", "iphonesimulator", "--show-sdk-path").Output()
+	if err != nil {
+		t.Skip("未安装iOS Simulator SDK")
+	}
+	t.Setenv("SDKROOT", "")
+	t.Setenv("CC", "/usr/bin/clang")
+	t.Setenv("CXX", "/usr/bin/clang++")
+	t.Setenv("CGO_ENABLED", "1")
+	goCmd := filepath.Join(runtime.GOROOT(), "bin/go")
+	env, err := nativeBuildEnvironment(context.Background(), BuildOptions{GoCommand: goCmd}, &NativeInputs{GOOS: "ios", GOARCH: "arm64", Variant: "simulator", MinimumVersion: "15.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]string{}
+	for _, entry := range env {
+		key, value, _ := strings.Cut(entry, "=")
+		values[key] = value
+	}
+	if values["SDKROOT"] != strings.TrimSpace(string(want)) || !strings.Contains(values["CC"], "arm64-apple-ios15.0-simulator") {
+		t.Fatalf("SDK或目标错误: sdk=%q cc=%q want=%q", values["SDKROOT"], values["CC"], want)
+	}
+}

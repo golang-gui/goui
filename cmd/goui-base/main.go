@@ -40,6 +40,7 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		return mobilebase.BuildDriver(ctx, *goCommand, *output, errOut)
 	case "export":
 		var options mobilebase.ExportOptions
+		fs.IntVar(&options.Format, "format", 2, "base format: generated sources/native objects (2), legacy archives (1)")
 		fs.StringVar(&options.GoCommand, "go", "go", "exact Go toolchain command")
 		fs.StringVar(&options.Directory, "dir", ".", "producer module directory")
 		fs.StringVar(&options.Output, "o", "", "new component directory")

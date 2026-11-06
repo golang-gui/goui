@@ -8,11 +8,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 )
 
 // ExportOptions describe a maintainer build. The environment selects the target
 // and real C compiler. Production is intentionally separate from consumption.
 type ExportOptions struct {
+	// Format selects package archives (1) or generated sources/native objects
+	// (2). Zero retains the original package archive API for existing callers.
+	Format         int
 	GoCommand      string
 	Directory      string
 	Output         string
@@ -31,6 +35,12 @@ type baseListedPackage struct {
 // Export builds and copies only packages that actually require cgo or SWIG.
 // Output must not exist; failed production leaves no partially valid component.
 func Export(ctx context.Context, options ExportOptions, log io.Writer) (err error) {
+	if options.Format == 0 {
+		options.Format = 1
+	}
+	if options.Format != 1 && options.Format != 2 {
+		return fmt.Errorf("unsupported base export format %d", options.Format)
+	}
 	if options.GoCommand == "" {
 		options.GoCommand = "go"
 	}
@@ -40,7 +50,7 @@ func Export(ctx context.Context, options ExportOptions, log io.Writer) (err erro
 	if options.Variant == "" || options.MinimumVersion == "" {
 		return fmt.Errorf("variant and minimum version are required provenance")
 	}
-	command := exec.CommandContext(ctx, options.GoCommand, "env", "-json", "GOVERSION", "GOOS", "GOARCH", "GOARM64", "GOAMD64", "GOEXPERIMENT", "CGO_ENABLED")
+	command := exec.CommandContext(ctx, options.GoCommand, "env", "-json", "GOVERSION", "GOOS", "GOARCH", "GOARM64", "GOAMD64", "GOEXPERIMENT", "CGO_ENABLED", "GOTOOLDIR", "CC", "CXX", "CGO_CFLAGS", "CGO_CPPFLAGS", "CGO_CXXFLAGS", "CGO_FFLAGS", "CGO_LDFLAGS")
 	command.Dir = options.Directory
 	data, err := command.Output()
 	if err != nil {
@@ -50,8 +60,8 @@ func Export(ctx context.Context, options ExportOptions, log io.Writer) (err erro
 	if err = json.Unmarshal(data, &env); err != nil {
 		return err
 	}
-	if env["GOVERSION"] != baseGoVersion || env["CGO_ENABLED"] != "1" {
-		return fmt.Errorf("base production requires %s and CGO_ENABLED=1", baseGoVersion)
+	if !supportedBaseVersion(env["GOVERSION"]) || env["CGO_ENABLED"] != "1" || options.Format == 1 && env["GOVERSION"] != baseGoVersion {
+		return fmt.Errorf("base production requires a supported Go version and CGO_ENABLED=1 (legacy archives: %s)", baseGoVersion)
 	}
 	if os.Getenv("GOUI_BASE") != "" || os.Getenv("GOFLAGS") != "" {
 		return fmt.Errorf("base production requires empty GOUI_BASE and GOFLAGS")
@@ -73,10 +83,27 @@ func Export(ctx context.Context, options ExportOptions, log io.Writer) (err erro
 		return err
 	}
 	defer os.RemoveAll(temp)
+	driver, records := options.GoCommand, ""
+	if options.Format == 2 {
+		records = filepath.Join(temp, "records")
+		if err = os.Mkdir(records, 0700); err != nil {
+			return err
+		}
+		driver = filepath.Join(temp, "go-record")
+		if runtime.GOOS == "windows" {
+			driver += ".exe"
+		}
+		if err = BuildDriver(ctx, options.GoCommand, driver, log); err != nil {
+			return err
+		}
+	}
 	if err = os.Mkdir(filepath.Join(temp, "packages"), 0755); err != nil {
 		return err
 	}
-	command = exec.CommandContext(ctx, options.GoCommand, "list", "-deps", "-export", "-compiled", "-json", "-trimpath", "-pgo=off", "-buildmode="+options.BuildMode, options.Package)
+	command = exec.CommandContext(ctx, driver, "list", "-deps", "-export", "-compiled", "-json", "-trimpath", "-pgo=off", "-buildmode="+options.BuildMode, options.Package)
+	if records != "" {
+		command.Env = buildEnv(os.Environ(), map[string]string{"GOUI_RECORD_BASE": records})
+	}
 	command.Dir = options.Directory
 	command.Stderr = log
 	stream, err := command.StdoutPipe()
@@ -107,7 +134,35 @@ func Export(ctx context.Context, options ExportOptions, log io.Writer) (err erro
 	if err = command.Wait(); err != nil {
 		return fmt.Errorf("produce native support: %w", err)
 	}
-	m := BaseManifest{Format: 1, GoVersion: env["GOVERSION"], GOOS: env["GOOS"], GOARCH: env["GOARCH"], Architecture: env["GOARM64"], Experiment: env["GOEXPERIMENT"], BuildMode: options.BuildMode, Variant: options.Variant, MinimumVersion: options.MinimumVersion, Packages: make(map[string]BasePackage)}
+	m := BaseManifest{Format: options.Format, GoVersion: env["GOVERSION"], GOOS: env["GOOS"], GOARCH: env["GOARCH"], Architecture: env["GOARM64"], Experiment: env["GOEXPERIMENT"], BuildMode: options.BuildMode, Variant: options.Variant, MinimumVersion: options.MinimumVersion, Packages: make(map[string]BasePackage)}
+	if options.Format == 2 {
+		m.CgoFlags, m.ProducerTools = map[string]string{}, map[string]string{}
+		for _, key := range []string{"CGO_CFLAGS", "CGO_CPPFLAGS", "CGO_CXXFLAGS", "CGO_FFLAGS", "CGO_LDFLAGS"} {
+			m.CgoFlags[key] = env[key]
+		}
+		name := "cgo"
+		if runtime.GOOS == "windows" {
+			name += ".exe"
+		}
+		m.ProducerTools["cgo"], err = baseHash(filepath.Join(env["GOTOOLDIR"], name))
+		if err != nil {
+			return err
+		}
+		for _, key := range []string{"CC", "CXX"} {
+			words, err := splitBuildWords(env[key])
+			if err != nil || len(words) == 0 {
+				return fmt.Errorf("invalid producer %s", key)
+			}
+			path, err := exec.LookPath(words[0])
+			if err != nil {
+				return err
+			}
+			m.ProducerTools[key], err = baseHash(path)
+			if err != nil {
+				return err
+			}
+		}
+	}
 	if m.GOARCH == "amd64" {
 		m.Architecture = env["GOAMD64"]
 	}
@@ -117,6 +172,36 @@ func Export(ctx context.Context, options ExportOptions, log io.Writer) (err erro
 		}
 		if pkg.Name == "main" {
 			return fmt.Errorf("cannot precompile application main; put fixed native entry in a support package")
+		}
+		if options.Format == 2 {
+			data, err := os.ReadFile(filepath.Join(records, recipeDigest([]byte(name))+".json"))
+			if err != nil {
+				return fmt.Errorf("read cgo producer record %s: %w", name, err)
+			}
+			var record cgoRecord
+			if err = json.Unmarshal(data, &record); err != nil {
+				return err
+			}
+			if record.Path != name {
+				return fmt.Errorf("cgo producer record identity mismatch: %s", name)
+			}
+			for _, files := range [][]BaseFile{record.Package.GeneratedGo, record.Package.Objects, record.Package.Auxiliary} {
+				for _, f := range files {
+					path := filepath.Join(temp, f.Path)
+					if err = os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+						return err
+					}
+					if _, err = os.Stat(path); os.IsNotExist(err) {
+						if err = baseCopy(filepath.Join(records, f.Path), path); err != nil {
+							return err
+						}
+					} else if err != nil {
+						return err
+					}
+				}
+			}
+			m.Packages[name] = record.Package
+			continue
 		}
 		record := BasePackage{BuildID: pkg.BuildID, Imports: make(map[string]string)}
 		if pkg.Module != nil {
@@ -159,6 +244,17 @@ func Export(ctx context.Context, options ExportOptions, log io.Writer) (err erro
 	}
 	if _, err = BaseOpen(path); err != nil {
 		return err
+	}
+	if records != "" {
+		if err = os.RemoveAll(records); err != nil {
+			return err
+		}
+		if err = os.Remove(driver); err != nil {
+			return err
+		}
+		if err = os.Remove(filepath.Join(temp, "packages")); err != nil {
+			return err
+		}
 	}
 	return os.Rename(temp, output)
 }

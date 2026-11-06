@@ -17,6 +17,9 @@ import (
 // platform host; they are never inferred from GUI types. Paths are relative to
 // the caller's current directory; Directory selects the Go package directory.
 type BuildOptions struct {
+	// CgoMode is prebuilt (the default) or native. Native uses the caller's
+	// target C/C++ toolchain and does not consume a support base or link driver.
+	CgoMode    string
 	GoCommand  string
 	GoDriver   string
 	Linker     string
@@ -36,8 +39,9 @@ type BuildOptions struct {
 	Entry bool
 }
 
-// Build compiles ordinary Go source with verified native support archives, then
-// links with the selected target inputs and host tools. No C compiler is used.
+// Build compiles Go source and links a mobile binary. Prebuilt mode consumes
+// verified support inputs without a C compiler. Native mode uses the caller's
+// configured target toolchain through the standard Go build.
 // It never changes the process environment or publishes an incomplete output.
 func Build(ctx context.Context, options BuildOptions, out, errOut io.Writer) error {
 	if err := ctx.Err(); err != nil {
@@ -45,6 +49,12 @@ func Build(ctx context.Context, options BuildOptions, out, errOut io.Writer) err
 	}
 	if err := validateBuildFlags(options.Tags, options.LDFlags); err != nil {
 		return err
+	}
+	if options.CgoMode == "native" {
+		return buildNative(ctx, options, out, errOut)
+	}
+	if options.CgoMode != "" && options.CgoMode != "prebuilt" {
+		return fmt.Errorf("unsupported cgo strategy %q", options.CgoMode)
 	}
 	if options.Output == "" || options.GoDriver == "" || options.Linker == "" {
 		return fmt.Errorf("build requires output, Go driver and link driver")
@@ -281,7 +291,13 @@ func buildEnvironment(ctx context.Context, options BuildOptions, base *BaseManif
 	if values["GOVERSION"] != base.GoVersion || values["GOROOT"] == "" {
 		return nil, fmt.Errorf("source build requires %s", base.GoVersion)
 	}
-	for key, want := range map[string]string{"GOFLAGS": "", "CGO_CFLAGS": "-O2 -g", "CGO_CPPFLAGS": "", "CGO_CXXFLAGS": "-O2 -g", "CGO_FFLAGS": "-O2 -g", "CGO_LDFLAGS": "-O2 -g"} {
+	expected := map[string]string{"GOFLAGS": "", "CGO_CFLAGS": "-O2 -g", "CGO_CPPFLAGS": "", "CGO_CXXFLAGS": "-O2 -g", "CGO_FFLAGS": "-O2 -g", "CGO_LDFLAGS": "-O2 -g"}
+	if base.Format == 2 {
+		for key, value := range base.CgoFlags {
+			expected[key] = value
+		}
+	}
+	for key, want := range expected {
 		if values[key] != want {
 			return nil, fmt.Errorf("native base build does not accept custom %s", key)
 		}
