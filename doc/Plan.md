@@ -1,5 +1,32 @@
 # Plan
 
+## 移动构建内置最小组件与 Go 组包（2026-11-06）
+
+- [x] 内置精确 Go 1.25.8 基座，目标链接数据与 Go 版本分开；不包含宿主
+  编译器、LLD、android.jar、aapt2 或预编译应用。TBD 只保留匹配目标的文档/
+  导出组，保留完整符号、重导出和库版本。
+- [x] 默认无需 -components，按嵌入摘要安装只读缓存；使用 Go 自动生成宿主
+  构建驱动，同一 goui 可执行文件提供链接/归档入口。未知 Go 版本明确失败。
+- [x] Go 编码 Android Manifest/五密度图标表；Go APK v2/v3 签名/验签，
+  支持用户 PKCS#12 和持久化开发身份。官方 aapt2/apksigner 独立检查通过。
+- [x] 源码导出归档复用保留模块路径/语言、源码和依赖 ABI 检查；仅将该模块的
+  调试/导出路径归一为工作区形式，并显式区分编译缓存，不修改原有 Go 工具链。
+- [x] Go iOS 签名代码、离线 Apple 信任链/profile 签发角色检查、最小授权及
+  程序/资源完整性校验；合成身份签名 App 的 macOS codesign --strict 通过。
+- [x] Linux 仅 Go PATH、无本地组件参数构建 APK/待重签 IPA/Simulator App。
+  远端 Android API30 ARM64 与 iOS26.3 ARM64 Simulator 的 OpenGL ES 上，
+  官方标准库选择集与补充检查均137通过、1原skip、0失败，GLES像素通过。
+- [x] Windows10 amd64、macOS15.7.7 ARM64 仅 Go PATH 默认组件构建 APK/待重签
+  IPA 及逻辑测试通过；Mac 签名测试样本经系统 codesign 严格验签。
+- [x] 构建工具图标栅格化不再引入桌面 GUI/FFI，Linux CGO_ENABLED=0 静态构建；
+  三目标基座加共享原生数据 gzip 合计3,076,433字节（约2.93MiB）。
+- [x] 冻结已跟踪源码加本轮改动，独立Xvnc/Xfwm4全仓4492通过、10原skip、
+  零失败；cmd/goui、androidres、mobile/base 的 race 和相关工具包 vet 通过。
+- [ ] 有效 Apple 身份的物理 iPhone 安装、Android 物理/16 KiB 设备、新 Go
+  版本基座与 SDK 输入再分发审核。它们不因模拟器、交叉编译或格式验签通过而完成。
+
+设计及复现入口见 [DesignMobileBuild](DesignMobileBuild.md#11-内置最小组件与纯-go-组包2026-11-06)。
+
 ## iOS Mach-O 独立 Go 链接后端（2026-11-06）
 
 - [x] golink 功能包支持 iOS ARM64 device/simulator；GOUI 直接调用，不下载

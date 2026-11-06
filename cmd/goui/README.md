@@ -73,18 +73,25 @@ SVG 使用和 `cmd/svgpng` 相同的 GOUI 静态子集，按原色等比居中�
 
 ## 移动端构建（实验阶段）
 
-Android arm64 与 iOS arm64 已接入本地预构建组件消费。当前需要精确 Go 1.25.8、
-匹配的本地组件目录，以及通过 go.work 接入尚未发布的移动依赖分支；普通桌面
-go build 或仅安装此命令不能自动补齐这些前置。准备方式见
-[移动构建设计第10节](../../doc/DesignMobileBuild.md#10-首个本地-profile-的实际使用)。
+Android arm64 与 iOS arm64 使用命令内置的精简基座与资源，目前支持 Go 1.25.8。
+无需安装 SDK、NDK、JDK、C 编译器或独立链接器，也无需手动准备组件目录。
+首次构建会使用本机 Go 自动生成并缓存构建驱动；实际支持与待验收项见
+[移动构建设计](../../doc/DesignMobileBuild.md)。
 
 ```sh
-goui build -target android/arm64 -components /path/to/components -package apk -o dist/app.apk
-goui build -target ios/arm64 -components /path/to/components -package ipa -unsigned -o dist/app-resign.ipa
+goui build -target android/arm64 -package apk -o dist/app.apk
+goui build -target ios/arm64 -package ipa -o dist/app.ipa
+# 尚未配置 iOS 签名材料时，可显式输出供云真机重签的 IPA：
+goui build -target ios/arm64 -package ipa -unsigned -o dist/app-resign.ipa
 ```
 
-也可用 GOUI_MOBILE_COMPONENTS 指定组件根目录。build 编译、package 组包的职责
-不变，build -package 显式组合两者。Android APK 使用开发签名；iOS -unsigned
-产物仍需签名才能安装，不代表已签名真机包。内部以 CGO_ENABLED=1 消费预编译
-支持包，不在应用消费阶段运行 C/Java 编译器。组件公开分发、自有证书完整接入、
-物理设备及 Android 16 KiB 页大小仍待验收，模拟器结果不替代真机验证。
+Android 未配置签名时使用本机持久化开发身份；正式分发配置自己的 PKCS#12。
+iOS 配置 `[ios.signing]` 的 `pkcs12`、`profile`、`password_env`，PKCS#12 包含
+私钥、证书及中间 CA。密码环境变量只存名称，工具不会上传私钥或自动续证。
+签名和验签在 Go 内完成；设备必须属于 profile 授权范围。
+
+`-components` 或 GOUI_MOBILE_COMPONENTS 仅供维护者覆盖。build 编译、package
+组包的职责不变，build -package 显式组合两者。内部以 CGO_ENABLED=1 消费原生
+必需支持包，应用只编写 Go，不执行 C/Java 编译器。iOS -unsigned 仍需重签才能
+安装。公开 SDK 输入再分发审核、物理设备及 Android 16 KiB 运行仍待验收，不能
+用模拟器或签名格式验证替代。

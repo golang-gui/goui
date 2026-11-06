@@ -24,8 +24,9 @@ GOOS=android GOARCH=arm64 CGO_ENABLED=1 CC=/path/to/ndk-clang \
 
 For iOS, use `GOOS=ios GOARCH=arm64`, `-buildmode c-archive` and separate device
 and simulator components. Production uses the appropriate Apple compiler/SDK.
-The base directory must not already exist. No SDK, native executable, or signing
-key is checked into this repository.
+The base directory must not already exist. The application builder embeds small
+verified target inputs as generated Go data; this command does not distribute a
+full SDK, native compiler, host linker executable, or signing key.
 
 The generated driver selects a local component through `GOUI_BASE=.../base.json`.
 It requires `-trimpath`, the matching target/build mode, unmodified selected

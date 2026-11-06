@@ -11,6 +11,13 @@ Android/iOS 的完整交付仍按下文推进。正式标签、附件和新截�
 
 ## 移动构建与真机闭环：当前下一阶段（2026-11-05）
 
+2026-11-06 收敛：命令默认内置少量目标数据和精确版本 Go 基座，不再要求使用者
+手动准备组件目录；不引入组件下载系统。Android 的 Manifest/图标表、APK 签名
+与 iOS 签名采用 Go 实现，宿主 Go 驱动现场生成。开发者自行提供正式签名材料。
+Linux/Windows/macOS 默认构建、Android/iOS 模拟器 GLES 与标准库检查已通过；
+预置数据合计约2.93MiB，不含宿主原生工具。真实签名身份的设备验收、新 Go 版本
+和 SDK 派生输入再分发审核分别跟踪，见 Plan。
+
 [DesignMobileBuild](DesignMobileBuild.md) 已细化公开构建工具：本地组件与依赖选择
 → 正式 Android APK/16 KiB → iOS profile/签名/IPA → 一步构建与可分发组件。
 保持 build 编译与 package 组包的边界，显式 build -package 提供一条命令产出 App。

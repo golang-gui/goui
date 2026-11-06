@@ -41,7 +41,8 @@ Simulator 保留为明确 variant 的维护者回归目标，不能替代 device
 桌面已有调用保持不变，组合入口复用相同函数，不复制另一条构建路径。
 
 ```sh
-# 以下命令需先准备第10节的本地组件及依赖；当前不代表真机验收已完成。
+# 默认使用内置组件；当前已验证的工具链为 Go 1.25.8。
+# iOS 正式签名需配置自己的 PKCS#12/profile；以下显式导出待重签包。
 goui doctor -target android/arm64
 goui build -target android/arm64 -package apk -o dist/hello.apk
 goui build -target ios/arm64 -package ipa -unsigned -o dist/hello-resign.ipa
@@ -88,13 +89,11 @@ debuggable = false
 [ios]
 minimum_version = "15.0"
 
-# 以下 iOS 签名字段仍为后续设计，当前 CLI 未接入。
+# 正式 iOS 签名：PKCS#12 包含私钥、证书及中间 CA；profile 匹配应用。
 # [ios.signing]
 # profile = "/private/hello.mobileprovision"
 # pkcs12 = "/private/ios-development.p12"
 # password_env = "IOS_SIGN_PASSWORD"
-# macOS 原生对照可用 identity 替代 pkcs12/password_env；两种来源不能同时配置。
-# identity = "Apple Development: ..."
 ```
 
 上述 API 29/iOS 15.0 与现有组件对齐，不意味着所有更高 target_sdk 已验证。
@@ -166,17 +165,17 @@ GOARCH=arm64、CGO_ENABLED=1 分别执行目标 go list std，并查看实际源
 C 编译器。反过来，检查 std 全集也不能替代应用实际依赖闭包。以上为固定版本的
 源码/包选择核对，尚非两端 HTTPS/DNS/系统证书的运行验收。
 
-### 4.4 本地组件先行，分发后置
+### 4.4 内置组件与维护者覆盖
 
-先支持本地只读组件集，通过工具参数 -components DIR 或宿主配置指定；不把本机
-SDK 路径写进应用 goui.toml。goui-base 继续负责维护者导出/封装，goui-link 继续
-负责链接适配。索引只声明以上有限类型、身份、相对文件和摘要，不做插件管理器。
+早期验证使用本地只读组件集。最终消费默认采用第11节的内置精简组件，通过
+-components DIR 或 GOUI_MOBILE_COMPONENTS 仅作维护者覆盖，不把本机 SDK 路径
+写进应用 goui.toml。goui-base 保留导出/封装职责，goui-link 保留独立调试入口。
+不再为当前数 MiB 的资源引入组件下载器、Release 索引或独立链接器下载。
 
-然后接入固定版本 Release 组件获取与用户缓存。Go 版本、GOUI/FFI 身份、宿主、
-目标及 variant 都是缓存键的一部分；普通 Go 编译缓存继续交给 Go。下载组件要
-以受信发布索引绑定版本和摘要，不能相信同一次任意下载附带的 SHA 就算认证。
-拒绝越界路径/软链接和未声明文件，校验后才允许执行工具；组件安装采用临时
-目录与最终发布，冲突/中断不破坏可用缓存。提供 -offline，缺组件时明确失败。
+缓存按输入摘要区分 Go 版本、目标、variant 和 ABI；宿主 Go 驱动另行缓存。
+拒绝越界路径、软链接及摘要不符；用临时目录和原子发布避免中断/并发破坏缓存。
+普通 Go 编译及模块下载继续交给 Go；内置组件无需联网，Go 模块的离线策略沿用
+标准 Go 工具，不增加一套框架依赖解析器。
 
 维护者可用 NDK/Xcode 制作；使用者消费阶段不包含 SDK 编译步骤。Apple SDK stub
 和其他输入目前仅做过私有验证，provenance 中的 review status 不授予再分发权。
@@ -304,7 +303,8 @@ Go/SDK 的 UNSIGNED、SUBTRACTOR、BRANCH26、PAGE21/PAGEOFF12、GOT 和 ADDEND
 最终 App/IPA 签名仍由打包层或云真机重签负责。本轮生成待重签 IPA，不承诺已能
 在物理设备安装，也不将模拟器通过当作商店审核/真机验收。
 
-当前仅本地源码、提交和标签，不公开发布独立模块或 SDK 输入。运行与跨宿主
+golink v0.2.1 已公开发布，并通过全新模块缓存下载核验。SDK 输入再分发仍须审核。
+运行与跨宿主
 验证见 [iOS 接入记录](PlanMobileConvergence.md#ios-mach-o-独立-go-链接后端2026-11-06)。
 
 ## 5. Android 构建、组包与签名
@@ -316,15 +316,16 @@ ANativeActivity_onCreate，生产 manifest 使用系统 NativeActivity 默认入
 测试 probe_onCreate、探针符号或测试 Activity。基础生产包结构为：
 
 ```text
-AndroidManifest.xml          # aapt2 编译的二进制 manifest
+AndroidManifest.xml          # Go 编码的二进制 manifest
 resources.arsc / res/        # 名称、图标、必要系统主题资源
 classes.dex                 # 实际使用 Android 排版时带 helper
 lib/arm64-v8a/libgoui.so
 META-INF/                   # 如签名方案需要
 ```
 
-aapt2 与必要平台资源符号输入由维护者提供，不要求用户安装 SDK。图标复用现有
-SVG/PNG 渲染；先提供传统 density 图标，adaptive icon 与商店素材后续单独设计。
+Manifest 及五种 density 图标资源表由 Go 编码，只支持框架明确生成的资源集合，
+不实现通用 Android 资源编译器。消费阶段不需要 aapt2 或 android.jar。图标复用
+现有 SVG/PNG 渲染；adaptive icon 与商店素材后续单独设计。
 所有 XML 属性正确转义，Android exported、native lib name、包 ID、版本、最低/
 目标 SDK 与选用组件保持一致。活动与 GOUI app ID 一致性仍由应用参数保证。
 
@@ -339,10 +340,10 @@ SVG/PNG 渲染；先提供传统 density 图标，adaptive icon 与商店素材�
 应用 debuggable 由配置独立决定，不以证书种类推导。正式签名显式使用开发者材料，
 支持同证书升级覆盖；换证书不伪装成兼容升级。
 
-已有私有验证使用 apksig-go 的 a0389a9d7f83032504713ac6052f85edfb52f64b
-生成 APK，并由 SDK apksigner 验签。后续优先评估复用该 Go 实现的签名能力，
-固定版本并审查错误/篡改、密钥格式、跨 API 签名验证；不自行编写 APK 签名算法。
-维护者以官方 apksigner 和不同系统安装结果交叉验证，使用者不需要 Java。
+当前直接集成 apksig-go v1.1.0 的 Go 库，生成 v2/v3 签名并验签；PKCS#12 由
+go-pkcs12 解码，密码只从指定环境变量读取。正式身份与开发身份分开报告，不启动
+外部签名/验签程序。维护者以官方 apksigner 和系统安装结果交叉验证，使用者不
+需要 Java；原生库压缩及资源表的四字节对齐保持明确。
 
 正式集成前将 min_sdk 对应的签名方案明确到包格式；不能仅凭某个 API 30 模拟器
 成功就承诺所有设备。签名、独立验签及最终结构检查通过后才发布 APK。
@@ -391,30 +392,40 @@ Simulator 可用显式 ad-hoc 签名，device 必须有有效的 Apple iOS 开�
 替代 iOS 材料。工具不申请账户、自动续证、猜选证书或向苹果上传用户私钥。
 
 签名前检查 profile 的 CMS 内容/签名、有效期、平台、App ID 匹配、授权证书、
-Team/App ID Prefix 和 entitlement；开发安装还检查目标设备是否被 profile 覆盖。
+Team/App ID Prefix 和 entitlement；安装目标必须处于 profile 的设备授权范围。
 不把 TeamIdentifier 与 AppIdentifierPrefix 无条件等同，不把 profile 中所有
 entitlements 直接复制给 App。只生成本阶段必要授权并受 profile 约束，匹配错误
 在签名前报告；最终以设备安装/启动验证系统是否接受。
 
-device 的 package 默认要求签名材料；当前尚未接入时明确报错。2026-11-05 用户
+device 的 package 默认要求签名材料，缺失时明确报错。2026-11-05 用户
 确认先提供云真机重签的 IPA，因此显式 -unsigned 可导出 app 或 IPA，命令输出
 明确说明仍须签名后安装；这是待重签产物，不冒充已签名真机包。IPA 使用
 Payload/Hello.app 标准布局，不把 ZIP 后缀本身当作签名证明。
 
-### 6.3 跨宿主签名路线
+### 6.3 跨宿主 Go 签名
 
-第一步用 macOS 系统 codesign 作独立参考，验证本方案 bundle/entitlements 与
-真实设备。其后优先验证预制 zsign 作为 Linux/Windows 的独立签名工具；它声明
-支持 iOS 和跨宿主签名，但本项目尚未实测，不能依据 README 就宣布该路线完成。
-rcodesign 可作结构检查或备选评估，不由其 macOS 能力推断 iOS device 已支持。
+直接使用 Go 库，不预置 zsign、OpenSSL 或原生 codesign 程序：go-macho 负责
+Mach-O 签名布局，go-codesign 的资源封印、profile/entitlement 格式辅助与
+go.mozilla.org/pkcs7、go-pkcs12 配合生成 SHA-256 CodeDirectory/CMS 签名。
+维护者使用 macOS codesign 作独立参考；用户构建不调用它。
 
-由 goui 内部固定工具版本和所需运行库；不让使用者安装 C++/OpenSSL 编译环境。
-不启用签名器的 dylib injection、任意 bundle 改写或历史缓存等无关能力。验证
-非 Mac 签名的 App 能在同一注册设备正常安装/更新/启动，并与 codesign 的签名、
-entitlements 和资源封印作独立核对后，才交付 Windows/Linux 完整 IPA 构建。
+内置 Apple 官方公开根证书，校验 PKCS#12 代码签名证书链和 profile 的 CMS
+信任链；不接受任意自签 CMS 作为 Apple 授权。中间 CA 随用户的 PKCS#12 提供，
+签名过程不自动联网补证书。授权只包含本阶段必要的应用/团队标识及受 profile
+约束的调试设置，wildcard App ID 按实际应用展开。用户私钥不上传、不导入系统
+钥匙串，密码不进入命令参数。打包不猜测具体设备，profile 的设备覆盖由使用者
+选择的安装目标决定；物理设备的安装、更新、启动仍是后续验收项。
 
-如签名工具不满足要求，保持已有链接结果，继续解决签名器或合法签名服务适配；
-明确标注未完成，不悄悄把“用户自行准备 Mac/Xcode”改成最终方案。
+profile 签名者还须符合 Apple 的独立签发角色，不能把一张普通开发者证书的
+Apple 信任链当作签发 profile 的权限。依据 Apple Security 源码中的
+[SecPolicyCreateiPhoneProvisioningProfileSigning](https://github.com/apple-oss-distributions/Security/blob/main/OSX/sec/Security/SecPolicy.c)
+核对 subject/issuer common name，并使用生产 Apple 根证书校验 CMS。离线构建不
+进行网络吊销查询，最终授权仍由设备系统验证。
+
+签名不得修改 load commands/签名区之外的原程序数据；签后检查代码页、CMS、
+特殊槽和实际资源。Windows 生成的 IPA 显式保存入口的 Unix 0755 权限，不依赖
+宿主文件系统能否表示该权限。合成材料的单元测试及 macOS 严格验签通过，不能
+替代有效 Apple 身份在真实设备上的安装验收。
 
 ## 7. 实现落点与构建记录
 
@@ -443,20 +454,19 @@ entitlements 和资源封印作独立核对后，才交付 Windows/Linux 完整 
 
 ## 8. 分阶段实施与验收
 
-本次已实现 B1 的本地 profile/依赖检查、编译/记录/flags，以及 B2 的生产 APK 与
-B3 的未签名 bundle/IPA。Android 联网通过包含 net 归档的本地 profile 选择；尚未
-提供独立归档的自动组合、下载或公开 SDK 输入分发。iOS 自有证书/profile 签名、
-Android 16 KiB 运行及物理设备仍不得按模拟器结果标记完成。
+当前已实现内置 profile、依赖检查、编译记录、Go 资源组包与 APK/iOS 签名代码。
+Android net 归档包含在内置基座中。新 Go 版本的基座、自有 Apple 身份的真机验收、
+Android 16 KiB 运行及 SDK 输入公开再分发审核仍须分别完成。
 
 | 阶段 | 实现内容 | 完成标准 |
 | --- | --- | --- |
 | B1 本地组件/编译 | 组件选择、配置、main overlay、移动 target、原始输出/记录；补充按需标准库支持 | Windows/Linux 无原生编译器、空缓存构建 platform-only 与联网 main；未知 cgo 明确失败 |
 | B2 Android 生产 APK | 正式 manifest/图标/Dex、签名与独立验签；16 KiB 构建和运行 | 不含测试宿主的 APK 在物理 Android 启动、绘制、旋转、前后台与覆盖更新；4/16 KiB 分别记录 |
 | B3 iOS 生产 bundle/IPA | 最小主程序资源、profile/entitlements、Mac 参考签名、跨宿主签名 | Linux/Windows 构建签名产物在物理 iPhone 安装/启动/前后台/更新；device 不混用 simulator |
-| B4 使用体验/分发 | build -package、可审核组件索引/缓存/offline、依赖正式版本、操作文档 | 干净消费环境只需匹配 Go + goui + 自有签名材料，无 SDK/JDK/编译器；公开组件许可审核通过 |
+| B4 使用体验/分发 | build -package、内置精简组件与缓存、依赖正式版本、操作文档 | 干净消费环境只需匹配 Go + goui + 自有签名材料，无 SDK/JDK/编译器；公开组件许可审核通过 |
 
-每阶段代码、逻辑测试及设计记录同步提交。先保持本地组件路径，避免组件下载
-成为真机证明的前置工程；也不以本地硬编码 /tmp 与 replace 作为正式交付终点。
+每阶段代码、逻辑测试及设计记录同步提交。不以本地硬编码 /tmp、未发布依赖或
+手动组件准备作为正式交付终点；尚未发布的 GOUI 改动可在维护者测试中使用源码替换。
 B2/B3 可以按可用设备并行推进验证准备，但不提前修改 GUI 输入体系。
 
 ### 8.1 无设备测试
@@ -503,21 +513,22 @@ EventLoop 投递，不需要触摸控件即可观察变化。分别构建 Softwa
   [apksigner](https://developer.android.com/tools/apksigner)：签名、验证及先对齐后签名。
 - [Android 16 KiB](https://developer.android.com/guide/practices/page-sizes)：ELF/ZIP
   对齐、运行时页大小与运行验收；本项目目前 API30 模拟器结果不能替代。
-- [apksig-go](https://github.com/agusibrahim/apksig-go)：已有私有签名原型使用上述
-  固定提交；项目声明 Apache-2.0，正式采用前仍需版本/质量及独立验证。
+- [apksig-go](https://github.com/agusibrahim/apksig-go)：当前固定 v1.1.0，复用 APK
+  对齐、v2/v3 签名及验证；另用官方 apksigner 作独立检查。项目采用 Apache-2.0。
 - [Apple development profile](https://developer.apple.com/help/account/provisioning-profiles/create-a-development-provisioning-profile/)、
   [TN2415](https://developer.apple.com/library/archive/technotes/tn2415/_index.html)：
   设备、App ID、证书、授权与签名约束；工具不替用户获得苹果开发资格。
 - [UILaunchScreen](https://developer.apple.com/documentation/bundleresources/information-property-list/uilaunchscreen)：
   优先评估字典式启动屏，仍须以目标真机验证。
-- [zsign](https://github.com/zhlynn/zsign)：iOS 跨宿主签名候选，项目声明 MIT；
-  [rcodesign](https://gregoryszorc.com/docs/apple-codesign/stable/)：签名结构/工具备选。
-  两者文档能力不是 GOUI 的 iOS 真机运行证据，正式选型以后续实测与依赖审核为准。
+- [go-macho](https://github.com/blacktop/go-macho)、
+  [go-codesign](https://github.com/aluedeke/go-codesign)：当前固定 v1.1.258/v0.0.6，
+  分别复用 Mach-O 签名和 profile/资源格式辅助；不用后者的完整原生签名入口。
+  两者均采用 MIT。Mac 原生 codesign 是本轮独立验签参考，真机授权仍待实测。
 
-## 10. 首个本地 profile 的实际使用
+## 10. 维护者本地 profile 覆盖
 
-当前 CLI 已实现以下结构；不要求普通应用维护这些原生细节。维护者准备只读组件
-目录，-components 或 GOUI_MOBILE_COMPONENTS 指向其根目录：
+默认构建使用内置组件。维护者可准备以下只读目录，通过 -components 或
+GOUI_MOBILE_COMPONENTS 覆盖；不要求普通应用维护这些原生细节：
 
 ```text
 components/
@@ -532,20 +543,111 @@ driver、linker、files；objects/libraries/frameworks 为所选平台的显式�
 files 是每项实际输入相对 profile 目录的路径与 SHA-256。清单、子清单及其归档、
 工具、执行依赖和辅助资源均列入；越界、软链接、摘要/host/target/variant 不符时报错。
 
-Android 另使用 aapt2、android_jar、dex、signer、verifier 相对路径及 target_sdk
-能力上限；iOS 使用 main.o/uikit.o、objc/resolv 及 UIKit/Foundation/CoreGraphics/
+旧 format 1 Android profile 可保留 aapt2、android_jar、signer、verifier 字段，
+当前组包不读取或执行它们；只消费 dex 和 target_sdk 能力上限。iOS 使用
+main.o/uikit.o、objc/resolv 及 UIKit/Foundation/CoreGraphics/
 QuartzCore/OpenGLES/Security。SDK stub 只参与链接，不打入 App，不把完整 SDK
 目录传给消费者。工具选择不是自由配置脚本，消费阶段不会调用生成器或 C/Java 编译器。
 
 移动 FFI/渲染依赖现已使用正式版本：goexlib/cgo v0.1.2、官方 purego v0.10.2、
-nanovgo v0.0.12。正常模块下载即可获取，不再需要移动版 purego 分支或依赖仓库的
+nanovgo v0.0.13。正常模块下载即可获取，不再需要移动版 purego 分支或依赖仓库的
 本地 replace/go.work。开发尚未发布的 GOUI 本身时，仍可显式用 go.work 连接应用与
 GOUI 源码；这不等于依赖私有 FFI 补丁。
 
 Android net 的支持归档由维护者在 producer main 导入 net/http 后使用现有 export
-制作，仍只导出实际需要原生编译的包。预编译组件继续由维护者显式提供；公开组件
-下载、缓存、再分发许可审核和真机验收尚未完成，不能与 Go 依赖发布混为一谈。
+制作，仍只导出实际需要原生编译的包。内置资源由这些经过校验的 profile 生成；
+再分发许可审核和真机验收不能与 Go 依赖发布混为一谈。
 
 App 构建/运行的可复现入口见
 [mobile_std](../tests/window/platform/mobile_std/README.md)。产物与最终原生证据见
 [收敛计划](PlanMobileConvergence.md#正式构建与官方标准库-app2026-11-05)。
+
+## 11. 内置最小组件与纯 Go 组包（2026-11-06）
+
+最终消费入口是一个 `goui` 命令。使用者安装 Go、配置应用及自己的签名材料后，
+执行 `goui build -target android/arm64 -package apk` 或对应的 iOS 命令；无需
+准备 SDK、NDK、JDK、LLD、原生编译器或 `-components`。本地组件参数保留给维护者
+和自定义组件使用，不能继续成为默认构建的前置条件。
+
+实现分三步，逐步记录验收结果：
+
+1. Android 固定宿主的资源结构由 Go 按二进制格式编码，包含 Manifest、资源表、
+   名称、版本、SDK 声明和图标；不需要预编译 APK 模板或二进制字符串替换。消费阶段不再
+   调用 aapt2 或读取 android.jar。APK 签名、对齐与验签采用已验证的 Go 实现。
+2. 原生必需 Go 归档、Dex、iOS 最小 main/协议对象及目标链接输入按职责拆分，
+   压缩嵌入 Go 源码。共同目标数据不随 Go 版本重复存储，不包含宿主工具或完整
+   SDK。固定输入的生成、来源、许可证及摘要随源码保留。Go 构建驱动以本机 Go
+   现场生成并缓存，原生链接由同一 goui 程序调用内置 golink 完成。
+3. iOS 的待重签 IPA 继续支持 `-unsigned`；正式签名已接入 Go 库，证书/profile
+   由使用者提供，完整核对资源封印、entitlements 和签名结果。未完成真机验收
+   前，不把 Mach-O ad-hoc 签名或模拟器通过当作已签名真机 IPA 的通过证据。
+
+后续维护目标是最近两个 Go 大版本各自最新且通过验证的补丁版本。组件选择按精确
+版本进行；当前已有验证基座仅为 Go 1.25.8，其他版本在补齐匹配归档、驱动源码
+校验和运行验收前明确报错，不删除版本防护以假装兼容。
+
+原生预编译范围沿用已验证边界，不把生命周期、窗口、图形或输入逻辑搬入预编译
+壳。SDK 输入优先投影为目标 ABI 所需的数据；保留系统库依赖、重导出及库版本
+信息，不能只因样例没有引用某个符号就删除其他受支持标准库所需的输入。
+SDK 派生输入的来源与再分发条款仍须逐项记录，内嵌不改变这一要求。
+
+基座的原生必需包按完整源码和依赖导出 ABI 校验。非空 module_version 表示发布
+归档，继续精确锁定依赖版本；从工作源码导出的空版本归档不绑定应用引用它时的
+发布标签，但模块路径和语言版本仍须相同。源码或依赖 ABI 不同仍拒绝消费，不能
+为了发布版本复用而跳过这些校验。这样相同的固定平台入口不必随 GOUI 标签复制。
+
+源码归档所在模块采用工作区形式的调试/导出路径，不附加模块版本后缀；实际模块
+版本、BuildInfo、源码与依赖 ABI 校验保持独立。构建驱动精确校验 cmd/go 的
+exec.go/gc.go 后应用临时 overlay，并为这种路径归一加入编译缓存标识；不修改
+用户 GOROOT、Go 编译器或 runtime，不接受自定义版本的 cmd/go 源码。
+
+资源模板参考 Go 官方 x/mobile 的二进制资源生成路径，格式依据 Android
+`ResourceTypes.h`；维护者以 aapt2 dump、官方 apksigner 和模拟器安装作为独立
+参考。消费验收使用空缓存和仅包含 Go/goui 的 PATH，禁止调用 C/Java 编译器、
+aapt2 或外部链接器，并分别记录 APK、iOS device/simulator 的构建和运行结果。
+
+### 11.1 预置数据体积与边界
+
+下表为本轮生成数据的实际 gzip 字节数，不包含可执行构建工具本身。共享目标输入
+不随 Go 版本复制；TBD 是目标系统库链接描述，不会放入 App。
+
+| 数据 | 压缩字节数 |
+| --- | ---: |
+| Go 1.25.8 Android ARM64 基座 | 1,063,742 |
+| Go 1.25.8 iOS ARM64 device 基座 | 135,385 |
+| Go 1.25.8 iOS ARM64 simulator 基座 | 136,896 |
+| Android 共享目标输入及 Dex | 234,595 |
+| iOS device 共享目标输入及入口对象 | 752,733 |
+| iOS simulator 共享目标输入及入口对象 | 753,082 |
+| 合计 | 3,076,433（约 2.93 MiB） |
+
+Android Dex 原始 18,848 字节，iOS 每个 variant 的两个入口/协议对象合计
+24,496 字节。原生平台生命周期、窗口、排版、绘图仍由 platform 中的 Go 实现。
+compiler-rt 保留经校验的归档，链接器按需抽取成员，不把整个归档装入 App；此轮
+不为进一步缩减归档增加另一套原生对象裁剪机制。
+
+命令的图标处理直接复用 oksvg，不导入 GUI、桌面窗口或 FFI 后端。Linux amd64
+CGO_ENABLED=0 构建的 goui 为静态可执行文件。目标输入、Go 基座、宿主生成工具
+各自缓存，校验失败就报错，不从已经修改的缓存重新生成可信摘要。
+
+### 11.2 验收范围
+
+Linux amd64 的冻结已跟踪源码加本轮改动，在独立 Xvnc/Xfwm4 会话运行
+`CGO_ENABLED=0 GOWORK=off go test -p 4 -json -count=1 ./...`：4492 通过，
+10 项原有条件跳过，零失败。未混入工作区的历史未跟踪测试和产物；源码清单及
+摘要保存在本轮仓库外验收记录。cmd/goui、androidres、mobile/base 的 race 和
+相关工具包 vet 通过。遗留包内窗口测试只在该独立显示会话创建窗口。
+
+Windows10 build19045 amd64 和 macOS15.7.7 ARM64 均使用 Go1.25.8，限定构建
+PATH 只含 Go，不提供 -components 或本地 FFI 分支，默认 APK/待重签 IPA 构建
+及组件缓存、APK/iOS 签名逻辑测试通过。签名测试不导出私钥；Mac 上同时运行
+系统 codesign 严格验签。未发布 GOUI 候选源码通过单一模块 replace 接入，不把
+这种源码替换说成已经发布的 Go 模块。
+
+Android API30 ARM64 / SwiftShader / GLES / 1x 和 iOS26.3 ARM64 Simulator /
+GLES / 3x 均为 137 通过、1 项官方 short 跳过、零失败；两端 GLES 1x/2x
+FBO 像素检查通过。APK 的资源与签名另经官方 aapt2/apksigner 检查。Go iOS
+签名使用合成测试身份，经 macOS codesign 严格验签；这不是 Apple 设备授权。
+
+物理 iPhone、真实开发证书/profile 的安装、Android 物理及 16 KiB 设备、更多
+Go 版本、SDK 派生输入的再分发审核仍待完成。此轮保持本地开发，不发布组件。
