@@ -41,6 +41,20 @@ var gouiEntryOnce sync.Once
 var gouiEntryDir string
 var gouiEntryError error
 
+// Source exports use workspace-style file paths for their whole module. This
+// changes debug/export paths only; actual module identity and build info remain
+// intact, and source/dependency ABI checks below are still mandatory.
+func gouiSourceModule(path string) bool {
+	manifest := os.Getenv("GOUI_BASE")
+	if manifest == "" { return false }
+	gouiBaseOnce.Do(func() { gouiBaseManifest, gouiBaseError = BaseOpen(manifest) })
+	if gouiBaseError != nil { return false }
+	for _, record := range gouiBaseManifest.Packages {
+		if record.ModulePath == path && record.ModuleVersion == "" { return true }
+	}
+	return false
+}
+
 func (b *Builder) gouiBaseAction(a *Action) (bool, error) {
 	path := os.Getenv("GOUI_BASE")
 	if path == "" {
@@ -93,7 +107,7 @@ func (b *Builder) gouiBaseAction(a *Action) (bool, error) {
 		moduleVersion = p.Module.Version
 		moduleGoVersion = p.Module.GoVersion
 	}
-	if modulePath != record.ModulePath || moduleVersion != record.ModuleVersion || moduleGoVersion != record.ModuleGoVersion {
+	if !baseModuleMatches(record, modulePath, moduleVersion, moduleGoVersion) {
 		return true, fmt.Errorf("base %s: module identity mismatch", p.ImportPath)
 	}
 	source, err := BaseSourceHash(p.Dir, p.GoFiles, p.CgoFiles, p.CFiles, p.CXXFiles, p.MFiles, p.HFiles, p.FFiles, p.SFiles, p.SysoFiles, p.SwigFiles, p.SwigCXXFiles, p.EmbedFiles)
@@ -147,6 +161,7 @@ var entrySourceFile []byte
 
 const baseGoVersion = "go1.25.8"
 const execSourceSHA256 = "0bb5e63cec9ee583f15d5c20bdaf356df9059a1ca15b4d4177a46549594d86f1"
+const gcSourceSHA256 = "e2b4e705e110f7c78f9d64dbb85898a64dcc34e98a93e655726d1d39e33e3fd1"
 
 // BuildDriver builds the narrowly adapted cmd/go for the supplied toolchain.
 // Go's compiler, assembler, linker, runtime and ordinary build actions are intact.
@@ -178,12 +193,32 @@ func BuildDriver(ctx context.Context, goCommand, output string, log io.Writer) e
 		return fmt.Errorf("cmd/go build hook is ambiguous")
 	}
 	replacement := []byte("\tp := a.Package\n\tif handled, err := b.gouiBaseAction(a); handled || err != nil { return err }\n\tsh := b.Shell(a)\n\n\tbit := ")
+	cacheMarker := []byte(`fmt.Fprintf(h, "module %s@%s\n", p.Module.Path, p.Module.Version)`)
+	if bytes.Count(data, cacheMarker) != 1 {
+		return fmt.Errorf("cmd/go source-path cache hook is ambiguous")
+	}
+	data = bytes.Replace(data, cacheMarker, append(append([]byte(nil), cacheMarker...), []byte(`
+			if gouiSourceModule(p.Module.Path) { fmt.Fprintln(h, "goui source-module trimpath v1") }`)...), 1)
+	gcSource, err := os.ReadFile(filepath.Join(info.GOROOT, "src/cmd/go/internal/work/gc.go"))
+	if err != nil {
+		return err
+	}
+	gcHash := sha256.Sum256(gcSource)
+	if fmt.Sprintf("%x", gcHash) != gcSourceSHA256 {
+		return fmt.Errorf("unsupported cmd/go compiler source")
+	}
+	gcMarker := []byte(`if m := a.Package.Module; m != nil && m.Version != "" {`)
+	if bytes.Count(gcSource, gcMarker) != 1 {
+		return fmt.Errorf("cmd/go trimpath hook is ambiguous")
+	}
+	gcSource = bytes.Replace(gcSource, gcMarker, []byte(`if m := a.Package.Module; m != nil && m.Version != "" && !gouiSourceModule(m.Path) {`), 1)
 	temp, err := os.MkdirTemp("", "goui-base-driver-*")
 	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(temp)
 	files := map[string][]byte{
+		"gc.go":             gcSource,
 		"exec.go":           bytes.Replace(data, marker, replacement, 1),
 		"goui_base.go":      bytes.Replace(baseSource, []byte("package base"), []byte("package work"), 1),
 		"goui_base_hook.go": hookSource,

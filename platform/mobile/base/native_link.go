@@ -244,6 +244,20 @@ func nativeLinkArguments(m *NativeInputs, args []string) ([]string, string, erro
 	return append(prefix, translated...), output, nil
 }
 
+// RunLinkDriver serves Go's external compiler/linker/archive invocations using
+// process-local GOUI_LINK_INPUTS, GOUI_LINK_TOOLS and GOUI_GO settings. Executable
+// frontends share this protocol; application code never invokes it directly.
+func RunLinkDriver(ctx context.Context, args []string, out, errOut io.Writer) error {
+	if len(args) > 0 && args[0] == "-q" {
+		return RunNativeArchive(ctx, os.Getenv("GOUI_GO"), args, out, errOut)
+	}
+	inputs, tools := os.Getenv("GOUI_LINK_INPUTS"), os.Getenv("GOUI_LINK_TOOLS")
+	if inputs == "" || tools == "" {
+		return fmt.Errorf("GOUI_LINK_INPUTS and GOUI_LINK_TOOLS are required")
+	}
+	return RunNativeLink(ctx, inputs, tools, args, out, errOut)
+}
+
 // RunNativeLink translates Go's external-link arguments and runs the selected
 // linker with verified target inputs. Output is replaced only after format
 // checks succeed; unsupported targets never fall back to another backend.

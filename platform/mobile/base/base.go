@@ -33,7 +33,9 @@ type BaseManifest struct {
 
 // BasePackage records an archive, its selected source inputs and dependency ABI.
 type BasePackage struct {
-	ModulePath      string            `json:"module_path,omitempty"`
+	ModulePath string `json:"module_path,omitempty"`
+	// ModuleVersion pins a released dependency when nonempty. Source exports
+	// retain source, language and dependency-ABI checks without a release pin.
 	ModuleVersion   string            `json:"module_version,omitempty"`
 	ModuleGoVersion string            `json:"module_go_version,omitempty"`
 	Archive         string            `json:"archive"`
@@ -41,6 +43,11 @@ type BasePackage struct {
 	SourceSHA256    string            `json:"source_sha256"`
 	BuildID         string            `json:"build_id"`
 	Imports         map[string]string `json:"imports"`
+}
+
+func baseModuleMatches(p BasePackage, path, version, language string) bool {
+	return p.ModulePath == path && p.ModuleGoVersion == language &&
+		(p.ModuleVersion == "" || p.ModuleVersion == version)
 }
 
 // BaseOpen verifies a local component before it is used. This is an integrity
