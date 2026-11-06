@@ -35,13 +35,13 @@ Simulator 保留为明确 variant 的维护者回归目标，不能替代 device
 | package | 消费二进制及其构建记录，生成并校验 APK、.app 或 IPA；不隐式编译 Go |
 | build -package FORMAT | 显式组合 build 与 package，在临时目录编译并组包，最终只发布所请求的应用产物 |
 
-最后一项是新拟定语法，以一个参数满足“一条命令构建 App”，避免在默认 build
+最后一项显式组合编译与组包，以一个参数满足“一条命令构建 App”，避免在默认 build
 中隐藏签名或安装行为。FORMAT 为 android 的 apk、ios 的 app/ipa；不增加 install
 或自动选择设备。普通 build 的 -o 表示二进制，带 -package 时表示最终应用产物。
 桌面已有调用保持不变，组合入口复用相同函数，不复制另一条构建路径。
 
 ```sh
-# 以下是拟实现的使用语法，当前版本尚不能执行。
+# 以下命令需先准备第10节的本地组件及依赖；当前不代表真机验收已完成。
 goui doctor -target android/arm64
 goui build -target android/arm64 -package apk -o dist/hello.apk
 goui build -target ios/arm64 -package ipa -unsigned -o dist/hello-resign.ipa
