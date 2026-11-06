@@ -48,3 +48,8 @@ GOUI_MOBILE_PROFILES=/absolute/profiles.json go generate ./cmd/goui/internal/mob
 The generator requires identical target resources across versions and stores
 identical object bytes once. It rejects incomplete version sets or complete Go
 archives. No compiler or producer directory is embedded in the generated input.
+
+Current embedded recipes cover Go 1.24.13, 1.25.8, 1.26.10 and 1.27.3 for Android
+ARM64, iOS ARM64 device and simulator. A different patch release is not assumed
+compatible. Adding a version requires verified producer records and build/runtime
+acceptance; identical files in its recipes reuse the existing target object pool.
