@@ -75,6 +75,7 @@ type Style struct {
 	foregroundColor color.Color
 	borderColor     color.Color
 	borderWidth     float32
+	borderSides     BorderSides
 	cornerRadius    geometry.CornerRadius
 	fontFamily      string
 	fontSize        float32
@@ -99,6 +100,7 @@ const (
 	fieldUnderline
 	fieldStrikethrough
 	fieldShadow
+	fieldBorderSides
 )
 
 func (s Style) BackgroundColor() (color.Color, bool) {
@@ -115,6 +117,12 @@ func (s Style) BorderColor() (color.Color, bool) {
 
 func (s Style) BorderWidth() (float32, bool) {
 	return s.borderWidth, s.fields.Check(fieldBorderWidth)
+}
+
+// BorderSides returns the selected edges and their presence. An unset value
+// means all four edges; an explicitly set zero means no border.
+func (s Style) BorderSides() (BorderSides, bool) {
+	return s.borderSides, s.fields.Check(fieldBorderSides)
 }
 
 // CornerRadius returns the complete four-corner value and its presence.
@@ -171,6 +179,11 @@ func (s *Style) setBorderWidth(width float32) {
 	s.fields.Set(fieldBorderWidth, true)
 }
 
+func (s *Style) setBorderSides(sides BorderSides) {
+	s.borderSides = sides & BorderAll
+	s.fields.Set(fieldBorderSides, true)
+}
+
 func (s *Style) setRadius(radius geometry.CornerRadius) {
 	s.cornerRadius = radius
 	s.fields.Set(fieldRadius, true)
@@ -203,6 +216,9 @@ func (s Style) merge(override Style) Style {
 	}
 	if override.fields.Check(fieldBorderWidth) {
 		s.setBorderWidth(override.borderWidth)
+	}
+	if override.fields.Check(fieldBorderSides) {
+		s.setBorderSides(override.borderSides)
 	}
 	if override.fields.Check(fieldRadius) {
 		s.setRadius(override.cornerRadius)
@@ -292,6 +308,13 @@ func (r Rule) BorderColor(c color.Color) Rule {
 
 func (r Rule) BorderWidth(width float32) Rule {
 	r.Style.setBorderWidth(width)
+	return r
+}
+
+// BorderSides replaces the selected edges as one style value. Unset means all
+// four edges; zero disables the border. This does not change layout or clipping.
+func (r Rule) BorderSides(sides BorderSides) Rule {
+	r.Style.setBorderSides(sides)
 	return r
 }
 
@@ -439,6 +462,7 @@ func sameStyle(a, b Style) bool {
 		colors.Equal(a.foregroundColor, b.foregroundColor) &&
 		colors.Equal(a.borderColor, b.borderColor) &&
 		a.borderWidth == b.borderWidth &&
+		a.borderSides == b.borderSides &&
 		a.cornerRadius == b.cornerRadius &&
 		a.fontFamily == b.fontFamily &&
 		a.fontSize == b.fontSize &&

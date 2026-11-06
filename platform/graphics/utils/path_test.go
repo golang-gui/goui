@@ -9,6 +9,60 @@ import (
 	"github.com/golang-gui/goui/platform/graphics"
 )
 
+func TestRoundRectInsetPaths(t *testing.T) {
+	rect := geometry.Rect(10, 20, 80, 60)
+	radius := geometry.UniformCornerRadius(12)
+	for _, width := range []float32{1, 6, 12, 30, 90} {
+		got := RoundRectBorderInsetsPath(rect, radius, geometry.UniformInsets(width))
+		want := RoundRectBorderPath(rect, radius, width)
+		if !slices.Equal(pathData(got), pathData(want)) {
+			t.Fatal("统一内缩改变了原有环带", width)
+		}
+	}
+	// 只内缩顶部4：TL内角中心仍为(22,32)，X半径12，Y半径8。
+	p := RoundRectBorderInsetsPath(rect, radius, geometry.Insets{Top: 4})
+	var inner []float32
+	p.Range(func(op graphics.PathOperation, args []float32) bool {
+		if op == graphics.PathHole {
+			t.Fatal("缺边轮廓不能生成接触外轮廓的孔洞")
+		} else if op == graphics.PathBezierTo && args[4] == 10 && args[5] == 32 {
+			inner = slices.Clone(args)
+		}
+		return false
+	})
+	const k float32 = .5522847498307936
+	want := []float32{22 - 12*k, 24, 10, 32 - 8*k, 10, 32}
+	if len(inner) != len(want) {
+		t.Fatal("缺少反向内轮廓", inner)
+	}
+	for i := range want {
+		if math.Abs(float64(inner[i]-want[i])) > 1e-5 {
+			t.Fatalf("内角控制点%d=%g，期望%g", i, inner[i], want[i])
+		}
+	}
+	if !slices.Equal(pathData(RoundRectBorderInsetsPath(rect, radius, geometry.Insets{Top: 60})), pathData(RoundRectPath(rect, radius))) {
+		t.Fatal("单边消耗完整高度后未填满外轮廓")
+	}
+	for _, insets := range []geometry.Insets{{Left: -1}, {Top: float32(math.NaN())}, {Bottom: float32(math.Inf(1))}, {Top: 3, Left: 4}} {
+		if len(pathData(RoundRectBorderInsetsPath(rect, radius, insets))) != 0 || len(pathData(RoundRectInsetPath(rect, radius, insets))) != 0 {
+			t.Fatal("无效内缩生成路径", insets)
+		}
+	}
+	if len(pathData(RoundRectBorderInsetsPath(rect, radius, geometry.Insets{}))) != 0 || len(pathData(RoundRectInsetPath(rect, radius, geometry.Insets{Top: 60}))) != 0 {
+		t.Fatal("空边集合或消失的内轮廓生成路径")
+	}
+}
+
+func pathData(p graphics.Path) []float32 {
+	var data []float32
+	p.Range(func(op graphics.PathOperation, args []float32) bool {
+		data = append(data, float32(op))
+		data = append(data, args...)
+		return false
+	})
+	return data
+}
+
 func TestRoundRectPaths(t *testing.T) {
 	rect := geometry.Rect(10, 20, 80, 60)
 	radius := geometry.CornerRadius{TopLeft: 12, BottomRight: 4, BottomLeft: 8}
