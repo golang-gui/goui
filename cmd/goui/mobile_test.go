@@ -32,6 +32,52 @@ import (
 	mobilebase "github.com/golang-gui/goui/platform/mobile/base"
 )
 
+func TestMobileCgoStrategies(t *testing.T) {
+	for _, mode := range []string{"prebuilt", "native"} {
+		if err := checkMobileCgoSettings(mode, map[string]string{"CGO_ENABLED": "1"}, nil); err != nil {
+			t.Fatal(err)
+		}
+		if err := checkMobileCgoSettings(mode, map[string]string{"CGO_ENABLED": "0"}, nil); err == nil {
+			t.Fatal("不得静默覆盖用户明确关闭的 cgo")
+		}
+	}
+	settings := map[string]string{"CC": "target-clang", "CGO_CFLAGS": "-DMOBILE_SENTINEL=73"}
+	if err := checkMobileCgoSettings("prebuilt", settings, nil); err == nil {
+		t.Fatal("预置模式不能静默忽略用户编译器或参数")
+	}
+	if err := checkMobileCgoSettings("native", settings, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkMobileCgoSettings("prebuilt", map[string]string{"CGO_CFLAGS": ""}, map[string]string{"CGO_CFLAGS": "-O2 -g"}); err != nil {
+		t.Fatal("Go 将空编译参数环境值解释为默认值", err)
+	}
+	flags := map[string]string{"CGO_CFLAGS": "-O2 -g -DCUSTOM=73"}
+	if err := checkMobileCgoSettings("prebuilt", map[string]string{"CGO_CFLAGS": flags["CGO_CFLAGS"]}, flags); err != nil {
+		t.Fatal("显式匹配自有基座参数应允许", err)
+	}
+	if err := checkMobileCgoSettings("prebuilt", nil, flags); err == nil {
+		t.Fatal("不得忽略自有基座参数不匹配")
+	}
+	ctx := context.Background()
+	for _, target := range []struct {
+		t       target
+		variant string
+	}{{target{"android", "arm64"}, "device"}, {target{"ios", "arm64"}, "device"}, {target{"ios", "arm64"}, "simulator"}} {
+		m, err := embeddedMobileComponent(ctx, "", target.t, target.variant)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m.Base != "" {
+			t.Fatal("目标资源不应选择 Go 基座")
+		}
+		hash := mobileTargetDigest(m)
+		m.Files["base/example"] = strings.Repeat("a", 64)
+		if mobileTargetDigest(m) != hash {
+			t.Fatal("目标身份不应随 Go 支持组件变化")
+		}
+	}
+}
+
 func TestIOSGoSigning(t *testing.T) {
 	// 使用合成证书和合成 profile 验证格式、密码、身份绑定及签名完整性；
 	// 不将这些材料当成 Apple 授权证书，不据此宣称能安装到真实 iPhone。
@@ -255,35 +301,42 @@ func TestEmbeddedMobileComponent(t *testing.T) {
 	default:
 		t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	}
-	for _, test := range []struct{ os, variant string }{{"android", "device"}, {"ios", "device"}, {"ios", "simulator"}} {
-		t.Run(test.os+"-"+test.variant, func(t *testing.T) {
-			m, err := embeddedMobileComponent(context.Background(), "go1.25.8", target{test.os, "arm64"}, test.variant)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if m.Format != 2 || m.HostOS != "" || m.HostArch != "" || m.Driver != "" || m.Linker != "" || m.Aapt2 != "" || m.AndroidJar != "" {
-				t.Fatal("内置组件不应携带宿主工具或完整 SDK")
-			}
-			basePath, _ := m.file(m.Base)
-			base, err := mobilebase.BaseOpen(basePath)
-			if err != nil || base.GoVersion != "go1.25.8" {
-				t.Fatalf("基座校验失败: %v", err)
-			}
-			inputPath, _ := m.file(m.Inputs)
-			if _, err := mobilebase.OpenNativeInputs(inputPath); err != nil {
-				t.Fatal(err)
-			}
-			next, err := embeddedMobileComponent(context.Background(), "go1.25.8", target{test.os, "arm64"}, test.variant)
-			if err != nil || next.root != m.root || next.digest != m.digest {
-				t.Fatalf("未复用相同缓存: %v", err)
-			}
-			if err := os.WriteFile(basePath, []byte("corrupted"), 0600); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := embeddedMobileComponent(context.Background(), "go1.25.8", target{test.os, "arm64"}, test.variant); err == nil {
-				t.Fatal("缓存篡改必须失败，不能重新计算摘要后接受")
-			}
-		})
+	for _, version := range []string{"go1.25.8", "go1.26.10", "go1.27.3"} {
+		for _, test := range []struct{ os, variant string }{{"android", "device"}, {"ios", "device"}, {"ios", "simulator"}} {
+			t.Run(version+"-"+test.os+"-"+test.variant, func(t *testing.T) {
+				m, err := embeddedMobileComponent(context.Background(), version, target{test.os, "arm64"}, test.variant)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if m.Format != 2 || m.HostOS != "" || m.HostArch != "" || m.Driver != "" || m.Linker != "" || m.Aapt2 != "" || m.AndroidJar != "" {
+					t.Fatal("内置组件不应携带宿主工具或完整 SDK")
+				}
+				basePath, _ := m.file(m.Base)
+				base, err := mobilebase.BaseOpen(basePath)
+				if err != nil || base.GoVersion != version || base.Format != 2 {
+					t.Fatalf("基座校验失败: %v", err)
+				}
+				for _, p := range base.Packages {
+					if p.Archive != "" || len(p.Objects) == 0 || len(p.GeneratedGo) == 0 {
+						t.Fatal("不得内置完整Go归档")
+					}
+				}
+				inputPath, _ := m.file(m.Inputs)
+				if _, err := mobilebase.OpenNativeInputs(inputPath); err != nil {
+					t.Fatal(err)
+				}
+				next, err := embeddedMobileComponent(context.Background(), version, target{test.os, "arm64"}, test.variant)
+				if err != nil || next.root != m.root || next.digest != m.digest {
+					t.Fatalf("未复用相同缓存: %v", err)
+				}
+				if err := os.WriteFile(basePath, []byte("corrupted"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := embeddedMobileComponent(context.Background(), version, target{test.os, "arm64"}, test.variant); err == nil {
+					t.Fatal("缓存篡改必须失败，不能重新计算摘要后接受")
+				}
+			})
+		}
 	}
 	if _, err := embeddedMobileComponent(context.Background(), "go1.25.9", target{"android", "arm64"}, "device"); err == nil {
 		t.Fatal("不能猜测使用其他 Go 版本的归档")
@@ -619,6 +672,50 @@ func TestAndroidDevelopmentIdentity(t *testing.T) {
 		info, _ := os.Stat(key)
 		if info.Mode().Perm() != 0600 {
 			t.Fatal("私钥权限必须是 0600")
+		}
+	}
+}
+
+func TestMobileNativeSharedDependencies(t *testing.T) {
+	// 最小 ELF 只表达独立的 DT_NEEDED；不作为可运行 App，也不绕过最终二进制校验。
+	for _, library := range []string{"libc.so", "libuser-private.so"} {
+		stringsData := append([]byte{0}, []byte(library+"\x00")...)
+		data := make([]byte, 256+len(stringsData)+32)
+		copy(data, "\x7fELF")
+		data[4], data[5], data[6] = 2, 1, 1
+		le := binary.LittleEndian
+		le.PutUint16(data[16:], 3)
+		le.PutUint16(data[18:], 183)
+		le.PutUint32(data[20:], 1)
+		le.PutUint64(data[40:], 64)
+		le.PutUint16(data[52:], 64)
+		le.PutUint16(data[58:], 64)
+		le.PutUint16(data[60:], 3)
+		str := data[128:192]
+		le.PutUint32(str[4:], 3)
+		le.PutUint64(str[24:], 256)
+		le.PutUint64(str[32:], uint64(len(stringsData)))
+		le.PutUint64(str[48:], 1)
+		dyn := data[192:256]
+		le.PutUint32(dyn[4:], 6)
+		le.PutUint64(dyn[24:], uint64(256+len(stringsData)))
+		le.PutUint64(dyn[32:], 32)
+		le.PutUint32(dyn[40:], 1)
+		le.PutUint64(dyn[48:], 8)
+		le.PutUint64(dyn[56:], 16)
+		copy(data[256:], stringsData)
+		le.PutUint64(data[256+len(stringsData):], 1)
+		le.PutUint64(data[264+len(stringsData):], 1)
+		path := filepath.Join(t.TempDir(), "app.so")
+		if err := os.WriteFile(path, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+		err := checkMobileNativeLibraries(path, target{"android", "arm64"}, &mobileComponent{Files: map[string]string{"inputs/lib/libc.so": "fixture"}})
+		if library == "libc.so" && err != nil {
+			t.Fatal(err)
+		}
+		if library != "libc.so" && (err == nil || !strings.Contains(err.Error(), "not included by mobile packaging")) {
+			t.Fatalf("未打包的动态依赖应明确失败: %v", err)
 		}
 	}
 }

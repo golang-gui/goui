@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"debug/buildinfo"
+	"debug/elf"
+	"debug/macho"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -50,6 +53,7 @@ type mobileComponent struct {
 
 type mobileOptions struct {
 	Components, Variant, Package string
+	CgoMode                      string
 	Unsigned                     bool
 }
 
@@ -60,6 +64,7 @@ type mobileReceipt struct {
 	SHA256        string `json:"sha256"`
 	ProfileSHA256 string `json:"profile_sha256"`
 	GoVersion     string `json:"go_version"`
+	CgoMode       string `json:"cgo_mode,omitempty"`
 }
 
 func (t target) mobile() bool { return t.OS == "android" || t.OS == "ios" }
@@ -150,6 +155,10 @@ func (m *mobileComponent) file(name string) (string, error) {
 }
 
 func openMobileComponent(directory string, t target, variant string) (*mobileComponent, error) {
+	return openMobileProfile(directory, t, variant, true)
+}
+
+func openMobileProfile(directory string, t target, variant string, support bool) (*mobileComponent, error) {
 	if directory == "" {
 		return nil, fmt.Errorf("mobile build requires -components pointing to a prepared local component set")
 	}
@@ -187,8 +196,11 @@ func openMobileComponent(directory string, t target, variant string) (*mobileCom
 			return nil, err
 		}
 	}
-	manifests := []string{m.Base, m.Inputs}
-	if m.Format == 1 {
+	manifests := []string{m.Inputs}
+	if support {
+		manifests = append(manifests, m.Base)
+	}
+	if m.Format == 1 && support {
 		manifests = append(manifests, m.Tools, m.Driver, m.Linker)
 	}
 	for _, name := range manifests {
@@ -196,23 +208,34 @@ func openMobileComponent(directory string, t target, variant string) (*mobileCom
 			return nil, err
 		}
 	}
-	basePath, _ := m.file(m.Base)
-	base, err := mobilebase.BaseOpen(basePath)
-	if err != nil {
-		return nil, err
-	}
 	inputsPath, _ := m.file(m.Inputs)
 	inputs, err := mobilebase.OpenNativeInputs(inputsPath)
 	if err != nil {
 		return nil, err
 	}
-	if base.GOOS != t.OS || base.GOARCH != t.Arch || base.Variant != variant || inputs.GOOS != t.OS || inputs.GOARCH != t.Arch || inputs.Variant != variant || inputs.MinimumVersion != base.MinimumVersion {
+	if inputs.GOOS != t.OS || inputs.GOARCH != t.Arch || inputs.Variant != variant {
 		return nil, fmt.Errorf("mobile profile/base/link inputs mismatch")
+	}
+	if support {
+		basePath, _ := m.file(m.Base)
+		base, err := mobilebase.BaseOpen(basePath)
+		if err != nil {
+			return nil, err
+		}
+		if base.GOOS != t.OS || base.GOARCH != t.Arch || base.Variant != variant || inputs.MinimumVersion != base.MinimumVersion {
+			return nil, fmt.Errorf("mobile profile/base/link inputs mismatch")
+		}
 	}
 	return &m, nil
 }
 
 func validateMobile(c *config, t target, o *mobileOptions) error {
+	if o.CgoMode == "" {
+		o.CgoMode = "prebuilt"
+	}
+	if o.CgoMode != "prebuilt" && o.CgoMode != "native" {
+		return fmt.Errorf("unsupported mobile cgo strategy %q", o.CgoMode)
+	}
 	if o.Variant == "" {
 		o.Variant = "device"
 	}
@@ -398,9 +421,25 @@ func checkMobileDependencies(ctx context.Context, c *config, t target, m *mobile
 		}
 		if len(p.CgoFiles)+len(p.SwigFiles)+len(p.SwigCXXFiles) > 0 {
 			if _, ok := base.Packages[p.ImportPath]; !ok {
-				return fmt.Errorf("native support archive missing for %s; prepare a matching component", p.ImportPath)
+				return fmt.Errorf("native support missing for %s; prepare a matching component or use -cgo=native", p.ImportPath)
 			}
 		}
+	}
+	return nil
+}
+
+func checkNativeMobileDependencies(ctx context.Context, c *config, t target, tags string) error {
+	args := []string{"list", "-deps", "-json"}
+	if tags != "" {
+		args = append(args, "-tags="+tags)
+	}
+	command := exec.CommandContext(ctx, "go", append(args, ".")...)
+	command.Dir = c.path(c.Main)
+	command.Env = append(os.Environ(), "GOOS="+t.OS, "GOARCH="+t.Arch, "CGO_ENABLED=1", "GOUI_BASE=", "GOUI_LINK_COMMAND=")
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
+	if _, err := command.Output(); err != nil {
+		return fmt.Errorf("inspect native mobile dependencies: %w\n%s", err, &stderr)
 	}
 	return nil
 }
@@ -414,7 +453,25 @@ func mobileBinary(c *config, t target, variant string) string {
 }
 
 func buildMobile(ctx context.Context, c *config, t target, m *mobileComponent, o mobileOptions, tags, ldflags, output string, out, errOut io.Writer) (string, error) {
-	options, err := m.options(c)
+	var options mobilebase.BuildOptions
+	var err error
+	if o.CgoMode == "native" {
+		options = mobilebase.BuildOptions{CgoMode: "native", GoCommand: "go", Directory: c.path(c.Main), Package: ".", Entry: true, Libraries: m.Libraries, Frameworks: m.Frameworks}
+		options.Inputs, err = m.file(m.Inputs)
+		if err != nil {
+			return "", err
+		}
+		for _, name := range m.Objects {
+			var path string
+			path, err = m.file(name)
+			if err != nil {
+				break
+			}
+			options.Objects = append(options.Objects, path)
+		}
+	} else {
+		options, err = m.options(c)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -423,7 +480,12 @@ func buildMobile(ctx context.Context, c *config, t target, m *mobileComponent, o
 	if err != nil {
 		return "", err
 	}
-	if err = checkMobileDependencies(ctx, c, t, m, tags); err != nil {
+	if o.CgoMode == "native" {
+		err = checkNativeMobileDependencies(ctx, c, t, tags)
+	} else {
+		err = checkMobileDependencies(ctx, c, t, m, tags)
+	}
+	if err != nil {
 		return "", err
 	}
 	if output == "" {
@@ -435,7 +497,7 @@ func buildMobile(ctx context.Context, c *config, t target, m *mobileComponent, o
 	if err = mobilebase.Build(ctx, options, out, errOut); err != nil {
 		return "", err
 	}
-	base, err := mobilebase.BaseOpen(options.Base)
+	info, err := buildinfo.ReadFile(output)
 	if err != nil {
 		return "", err
 	}
@@ -443,7 +505,7 @@ func buildMobile(ctx context.Context, c *config, t target, m *mobileComponent, o
 	if err != nil {
 		return "", err
 	}
-	receipt := mobileReceipt{1, t.String(), o.Variant, hash, m.digest, base.GoVersion}
+	receipt := mobileReceipt{Format: 2, Target: t.String(), Variant: o.Variant, SHA256: hash, ProfileSHA256: mobileTargetDigest(m), GoVersion: info.GoVersion, CgoMode: o.CgoMode}
 	data, err := json.MarshalIndent(receipt, "", "  ")
 	if err != nil {
 		return "", err
@@ -482,7 +544,11 @@ func checkMobileReceipt(binary string, t target, m *mobileComponent, o mobileOpt
 	if err != nil {
 		return err
 	}
-	if r.Format != 1 || r.Target != t.String() || r.Variant != o.Variant || r.SHA256 != hash || r.ProfileSHA256 != m.digest {
+	profile := m.digest
+	if r.Format == 2 {
+		profile = mobileTargetDigest(m)
+	}
+	if (r.Format != 1 && r.Format != 2) || r.Target != t.String() || r.Variant != o.Variant || r.SHA256 != hash || r.ProfileSHA256 != profile || r.Format == 2 && r.CgoMode != "prebuilt" && r.CgoMode != "native" {
 		return fmt.Errorf("mobile binary/build receipt/component mismatch")
 	}
 	inputs, err := m.file(m.Inputs)
@@ -493,7 +559,56 @@ func checkMobileReceipt(binary string, t target, m *mobileComponent, o mobileOpt
 	if err != nil {
 		return err
 	}
+	if r.CgoMode == "native" {
+		if err := checkMobileNativeLibraries(binary, t, m); err != nil {
+			return err
+		}
+		return mobilebase.CheckNativeTarget(binary, selected)
+	}
 	return mobilebase.CheckNativeBinary(binary, selected)
+}
+
+// Packaging currently carries one application binary. Additional native shared
+// libraries need an explicit packaging design rather than a silently broken app.
+func checkMobileNativeLibraries(path string, t target, m *mobileComponent) error {
+	var libraries []string
+	if t.OS == "android" {
+		file, err := elf.Open(path)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		libraries, err = file.ImportedLibraries()
+		if err != nil {
+			return err
+		}
+	} else {
+		file, err := macho.Open(path)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		libraries, err = file.ImportedLibraries()
+		if err != nil {
+			return err
+		}
+	}
+	for _, name := range libraries {
+		allowed := strings.HasPrefix(name, "/usr/lib/") || strings.HasPrefix(name, "/System/Library/Frameworks/")
+		if t.OS == "android" {
+			allowed = false
+			for path := range m.Files {
+				if strings.HasPrefix(path, "inputs/") && strings.HasSuffix(path, "/"+name) && !strings.Contains(name, "/") {
+					allowed = true
+					break
+				}
+			}
+		}
+		if !allowed {
+			return fmt.Errorf("native shared dependency %q is not included by mobile packaging; link it statically or supply matching target inputs", name)
+		}
+	}
+	return nil
 }
 
 func runMobile(ctx context.Context, command string, c *config, t target, o mobileOptions, output, tags, ldflags, binary, format string, out, errOut io.Writer) error {
@@ -509,9 +624,37 @@ func runMobile(ctx context.Context, command string, c *config, t target, o mobil
 			return err
 		}
 	}
-	m, err := resolveMobileComponent(ctx, c, o.Components, t, o.Variant)
+	var m *mobileComponent
+	var err error
+	if command == "build" || command == "doctor" {
+		if err = validateMobileCgoEnvironment(ctx, c, o.CgoMode, nil); err != nil {
+			return err
+		}
+	}
+	if o.CgoMode == "native" || command == "generate" || command == "package" {
+		m, err = resolveMobileTarget(ctx, o.Components, t, o.Variant)
+	} else {
+		m, err = resolveMobileComponent(ctx, c, o.Components, t, o.Variant)
+	}
 	if err != nil {
 		return err
+	}
+	if o.CgoMode == "prebuilt" && (command == "build" || command == "doctor") {
+		path, err := m.file(m.Base)
+		if err != nil {
+			return err
+		}
+		base, err := mobilebase.BaseOpen(path)
+		if err != nil {
+			return err
+		}
+		flags := base.CgoFlags
+		if base.Format == 1 {
+			flags = map[string]string{"CGO_CFLAGS": "-O2 -g", "CGO_CPPFLAGS": "", "CGO_CXXFLAGS": "-O2 -g", "CGO_FFLAGS": "-O2 -g", "CGO_LDFLAGS": "-O2 -g"}
+		}
+		if err := validateMobileCgoEnvironment(ctx, c, o.CgoMode, flags); err != nil {
+			return err
+		}
 	}
 	inputPath, _ := m.file(m.Inputs)
 	inputs, err := mobilebase.OpenNativeInputs(inputPath)
@@ -541,7 +684,7 @@ func runMobile(ctx context.Context, command string, c *config, t target, o mobil
 			}
 		}
 	}
-	if m.Format == 2 && (command == "build" || command == "doctor") {
+	if m.Format == 2 && o.CgoMode != "native" && (command == "build" || command == "doctor") {
 		if err = prepareMobileTools(ctx, m, errOut); err != nil {
 			return err
 		}
@@ -550,7 +693,12 @@ func runMobile(ctx context.Context, command string, c *config, t target, o mobil
 		if _, err = loadIcon(c); err != nil {
 			return err
 		}
-		if err = checkMobileDependencies(ctx, c, t, m, tags); err != nil {
+		if o.CgoMode == "native" {
+			err = checkNativeMobileDependencies(ctx, c, t, tags)
+		} else {
+			err = checkMobileDependencies(ctx, c, t, m, tags)
+		}
+		if err != nil {
 			return err
 		}
 		if t.OS == "android" && c.Android.Signing.PKCS12 != "" {
@@ -608,6 +756,18 @@ func runMobile(ctx context.Context, command string, c *config, t target, o mobil
 		binary = mobileBinary(c, t, o.Variant)
 	} else {
 		binary = c.path(binary)
+	}
+	if command == "package" && o.Components == "" {
+		var receipt mobileReceipt
+		if err = mobileReadJSON(binary+".goui.json", &receipt); err != nil {
+			return err
+		}
+		if receipt.Format == 1 {
+			m, err = embeddedMobileComponent(ctx, receipt.GoVersion, t, o.Variant)
+			if err != nil {
+				return fmt.Errorf("legacy build receipt requires matching -components or rebuilding the binary: %w", err)
+			}
+		}
 	}
 	if err = checkMobileReceipt(binary, t, m, o); err != nil {
 		return err
