@@ -1,5 +1,44 @@
 # Plan
 
+## 独立 Go 链接器正式接入（2026-11-06）
+
+- [x] 仓库外独立 golink Go 模块，GOUI 工具直接 import 并调用 Link；CLI/JSON
+  仅为独立项目的可选接口，不需要额外下载 golink 二进制。独立库无 GOUI
+  依赖、无外部链接器调用、无 SDK 探测、无 Go 工具链补丁。
+- [x] NativeTools format 2 明确选择内置 golink 库并核对版本；files 可为空，
+  format 1 LLD 保持。禁止后端
+  歧义与静默回退，执行前拒绝未支持的 iOS，不再模拟 LLD 版本。
+- [x] 正式 goui build 复用精确 Go1.25.8 基座，两次独立空缓存构建相同 APK；
+  C/C++/JDK/LLD 拒绝桩自检成功，实际消费调用为零，APK v2/v3 验签通过。
+- [x] Linux/Windows10 amd64、macOS15.7.7 ARM64 原生工具重放输出一致。
+  Android API30 ARM64 ATD / SwiftShader / 1x / CheckJNI：137通过、1原skip、
+  零失败；GLES 1x/2x像素、前后台停帧/恢复通过。没有进行移动真机验收。
+- [x] 原生 ELF/归档由纯 Go 测试 fixture 创建，覆盖 ABS64、CALL26、COMMON、
+  强弱符号、权限/RELRO、确定性与失败保留；单元/race/vet 通过。
+  GOUI 冻结源码在独立 Xvnc/Xfwm4 全仓测试3897通过、10原条件跳过、零失败。
+- [x] 测量完整预编译基座 gzip6：Android1051041字节、iOS device136416字节、
+  Simulator135605字节；保留精确 Go 版本归档，现场生成作为后续可选优化。
+- [ ] iOS Mach-O 后端、公开组件发行、更多Go版本、真机/16KiB内核继续推进；
+  DWARF、通用TLS、分支跳板、符号版本、完整GNU归档语义未实现。详见
+  [接入记录](PlanMobileConvergence.md#独立-go-链接器正式接入2026-11-06)。
+
+## 独立Go链接器与原生编译边界验证（2026-11-06）
+
+- [x] 仓库外独立Go ELF原型，无Go工具链补丁、无第三方Go依赖；处理实际
+  Android例程27个对象、192699条加载段重定位/12种类型。链接APK时LLVM路径
+  不存在，使用明确标注的测试版本适配器，不修改正式NativeTools身份契约。
+- [x] Linux amd64、Windows10 amd64、macOS15.7.7 ARM64原生工具重放相同输入，
+  输出SHA-256相同；各宿主工具约2.4 MiB、gzip约1 MiB，Linux无动态库依赖。
+- [x] 专用Android API30 ARM64 ATD / SwiftShader / 1x / CheckJNI：137通过、
+  1原始short跳过、零失败，GLES 1x/2x FBO、后台停帧及恢复保留状态通过。
+- [x] 当前Go1.25.8现场编译runtime/cgo的Go/Go汇编，组合14个既有原生对象
+  （82120字节），无原生编译器调用；Android加载、Go init和GC通过。
+- [x] 原型单元、race、vet通过；真实NDK GNU hash对照、内存权限、入口与拒绝
+  检查通过。原型源码和制品在仓库外，不把小体积当作完整链接能力已完成。
+- [ ] 正式按需生成net/FFI/入口的Go支持代码、原生支持ABI/跨Go版本验证、
+  iOS Mach-O和物理设备后续推进；Android后续正式接入见本页新切片，基座格式保持。
+  详细范围见 [PlanMobileConvergence](PlanMobileConvergence.md#独立go链接器与原生编译边界验证2026-11-06)。
+
 ## 菜单统一活动项的指针生命周期（2026-11-06）
 
 - [x] menuContent 的私有 Capture/crossing 控制器统一按局部坐标与 Pick 选择菜单项，
@@ -27,6 +66,22 @@
   通过；本轮未执行远端桌面、Direct2D 桌面或真实 HiDPI 验收，应用2x覆盖不替代硬件。
 - 验证材料位于 /tmp/goui-menu-active-EklMYy。实现/包内回归与窗口验收按两次提交
   组织，第一份为748c265；同工作区的移动构建文档更新不属于本次菜单提交。
+
+## LLD 静态组件体积验证（2026-11-06）
+
+- [x] 官方 LLVM 22.1.8 源码摘要核对，仓库外 MinSizeRel 构建，静态链接 LLVM、
+  C++运行库及zlib，无源码补丁；工具仅动态依赖 libc、libm和系统加载器。
+- [x] 含许可证和清单的 Linux amd64 组件：201.6→46.2 MiB；同为gzip6的包：
+  64.4→18.0 MiB。构建参数、来源和后端不同，不把差值全部归因于静态链接。
+- [x] 只替换临时组件副本，Android APK、iOS Simulator App、device待重签IPA
+  均构建通过；APK四个LOAD段16KiB对齐，Mach-O平台分别为7/2。
+- [x] 已跟踪源码0cd2dc0的冻结副本，独立Xvnc/Xfwm4，CGO_ENABLED=0全仓：
+  3891通过、10项既有跳过、零失败；未纳入主会话并行修改和既有未跟踪测试。
+- [ ] 新链接产物的模拟器/真机运行、Windows/macOS构建宿主、最低宿主环境及
+  组件公开分发仍待验收；未替换已有正式/共享组件，详见
+  [PlanMobileConvergence](PlanMobileConvergence.md#lld-静态组件体积验证2026-11-06)。
+- [ ] 保留独立纯Go最小原生链接器计划，参考/复用Go链接器代码，不修改Go
+  工具链；先Android ARM64 ELF、再iOS ARM64 Mach-O，本轮不实施。
 
 ## 移动 FFI 依赖正式化（2026-11-05）
 
