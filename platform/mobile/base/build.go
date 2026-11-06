@@ -90,6 +90,9 @@ func Build(ctx context.Context, options BuildOptions, out, errOut io.Writer) err
 	if err != nil {
 		return err
 	}
+	if err = tools.supports(inputs); err != nil {
+		return err
+	}
 	if base.GOOS != inputs.GOOS || base.GOARCH != inputs.GOARCH || base.Variant != inputs.Variant || base.MinimumVersion != inputs.MinimumVersion {
 		return fmt.Errorf("native base and link inputs target/variant/minimum mismatch")
 	}

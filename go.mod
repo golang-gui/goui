@@ -7,6 +7,7 @@ require (
 	github.com/godbus/dbus/v5 v5.2.4
 	github.com/goexlib/cgo v0.1.2
 	github.com/goexlib/mathx v0.0.1
+	github.com/golang-gui/golink v0.1.0
 	github.com/golang-gui/nanovgo v0.0.12
 	github.com/golang-gui/oksvg v0.1.0
 	github.com/golang-gui/rasterx v0.1.0

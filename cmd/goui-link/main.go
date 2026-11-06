@@ -1,4 +1,5 @@
-// Command goui-link adapts Go external-link arguments to a verified LLVM linker.
+// Command goui-link adapts Go external-link arguments to the embedded Go linker
+// or a verified LLVM linker.
 // Components are selected through process-local environment variables.
 package main
 

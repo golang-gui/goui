@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/golang-gui/golink"
 )
 
 // ErrNativeCompilation indicates a compiler/probe request, which this linker
@@ -241,8 +243,9 @@ func nativeLinkArguments(m *NativeInputs, args []string) ([]string, string, erro
 	return append(prefix, translated...), output, nil
 }
 
-// RunNativeLink translates Go's external-link arguments and invokes verified
-// LLD with target inputs. Output is replaced only after format checks succeed.
+// RunNativeLink translates Go's external-link arguments and runs the selected
+// linker with verified target inputs. Output is replaced only after format
+// checks succeed; unsupported targets never fall back to another backend.
 func RunNativeLink(ctx context.Context, inputPath, toolPath string, args []string, out, errOut io.Writer) error {
 	inputs, err := OpenNativeInputs(inputPath)
 	if err != nil {
@@ -254,6 +257,9 @@ func RunNativeLink(ctx context.Context, inputPath, toolPath string, args []strin
 	}
 	tools, err := OpenNativeTools(toolPath)
 	if err != nil {
+		return err
+	}
+	if err = tools.supports(inputs); err != nil {
 		return err
 	}
 	output, err = filepath.Abs(output)
@@ -269,6 +275,28 @@ func RunNativeLink(ctx context.Context, inputPath, toolPath string, args []strin
 	// Preserve that name while staging on the destination's filesystem.
 	temporary := filepath.Join(tempDir, filepath.Base(output))
 	translated = append(translated, "-o", temporary)
+	if tools.GoLink != "" {
+		if err = verifyNativeToolVersions(ctx, tools); err != nil {
+			return err
+		}
+		request, err := nativeGoLinkRequest(inputs, translated, temporary)
+		if err != nil {
+			return err
+		}
+		if err = ctx.Err(); err != nil {
+			return err
+		}
+		if err = golink.Link(request); err != nil {
+			return fmt.Errorf("golink %s/%s: %w", inputs.GOOS, inputs.GOARCH, err)
+		}
+		if err = ctx.Err(); err != nil {
+			return err
+		}
+		if err = CheckNativeBinary(temporary, inputs); err != nil {
+			return fmt.Errorf("verify native link output: %w", err)
+		}
+		return os.Rename(temporary, output)
+	}
 	// GNU-flavor LLD explicitly accepts POSIX quoting on every host. Mach-O LLD
 	// uses its GNU response tokenizer, independent of the build host.
 	if inputs.GOOS == "android" {
@@ -300,6 +328,49 @@ func RunNativeLink(ctx context.Context, inputPath, toolPath string, args []strin
 		return fmt.Errorf("verify native link output: %w", err)
 	}
 	return os.Rename(temporary, output)
+}
+
+func nativeGoLinkRequest(inputs *NativeInputs, args []string, output string) (golink.Request, error) {
+	r := golink.Request{Format: 1, Target: inputs.GOOS + "/" + inputs.GOARCH, Output: output}
+	seen := map[string]bool{}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "-flavor" || arg == "-m" || arg == "-o":
+			i++ // Values have already been checked by nativeLinkArguments.
+		case arg == "-z":
+			i++
+			if args[i] == "nodelete" {
+				r.NoDelete = true
+			}
+		case arg == "-Bsymbolic":
+			r.Symbolic = true
+		case strings.HasPrefix(arg, "-l"):
+			path, err := inputs.library(arg[2:])
+			if err != nil {
+				return r, err
+			}
+			if !seen[path] {
+				seen[path] = true
+				if strings.HasSuffix(path, ".a") {
+					r.Archives = append(r.Archives, path)
+				} else {
+					r.Libraries = append(r.Libraries, path)
+				}
+			}
+		case strings.HasPrefix(arg, "-L"):
+		case arg == "-shared" || arg == "--export-dynamic" || arg == "--no-undefined" || arg == "--eh-frame-hdr" || arg == "--hash-style=gnu" || arg == "-s":
+			// Format 1 always uses eager binding, exports, GNU hash and unwind
+			// lookup data. Debug sections are omitted, including without -s.
+		case strings.HasSuffix(arg, ".o"):
+			r.Objects = append(r.Objects, arg)
+		case strings.HasSuffix(arg, ".a"):
+			r.Archives = append(r.Archives, arg)
+		default:
+			return r, fmt.Errorf("golink does not support native option %q", arg)
+		}
+	}
+	return r, nil
 }
 
 // LLVM uses GNU response quoting, not Go string escape sequences. Preserve

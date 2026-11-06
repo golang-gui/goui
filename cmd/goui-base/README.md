@@ -53,6 +53,13 @@ seal separate target and host components. Source specs use the corresponding
 Sources, versions and license/review status are required provenance. Output must
 not exist. Host tools are checked by executing their declared version.
 
+Host format 1 uses the `lld` executable declaration. Format 2 uses a `golink`
+version string (currently `"0.1.0"`), checked against the library compiled into
+the existing tools. Its `files` map may be empty: no golink executable is
+downloaded or run. Configure exactly one backend for a component. The Go
+backend currently supports Android ARM64; iOS requires the existing LLD component. Native support archives retain exact Go version and ABI matching.
+Small version-specific bases remain a supported distribution choice.
+
 The internal `goui-link` command consumes `GOUI_LINK_INPUTS` and
 `GOUI_LINK_TOOLS`. It adapts a deliberately small set of external-link arguments,
 rejects compilation requests and unknown options, and verifies native outputs
