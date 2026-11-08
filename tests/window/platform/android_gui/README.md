@@ -1,5 +1,10 @@
 # Android GUI 首个窗口验收
 
+2026-11-08：本例保留旧双线程 GUI 原型的覆盖与操作步骤。平台接口拆分后，
+Android 基础宿主不实现 WindowManagement，`gui.Window.Show` 会返回不支持；
+本例须在后续 GUI Surface 切片迁移后恢复运行验收，不能算作当前移动 GUI 已通过。
+平台绘制原型继续使用 mobile_paint / mobile_surface 验证。
+
 本例从普通 `gui.NewApplication` 进入 Android 工厂，使用生产 Android Typography、
 Software 与 NativeActivity 宿主。它验证 GUI 接入，不替代移动输入或完整平台验收。
 

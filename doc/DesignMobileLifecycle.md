@@ -1,7 +1,16 @@
 # 移动端启动、线程与生命周期
 
+2026-11-08 设计边界更新：下文双线程、先创建逻辑窗口再 Run 等内容记录已有验证
+实现，不再作为新设计必须保留的约束。后续从移动原生使用场景复核入口、宿主及
+生命周期，方向是让 GUI 操作归属原生 UI 主线程；不因此强制桌面采用同一入口，
+新的启动方向为 NewApplication → ConnectActivate → Run，GUI Surface 与可管理 Window
+分开，具体见 [DesignPresentationHosts](DesignPresentationHosts.md)。共享范围以
+[核心设计原则](Design.md#cross-platform-scope) 为准，复核与待验证事项见
+[PlanMobileAPI](PlanMobileAPI.md)。本轮平台接口迁移不重写下文原型的线程实现。
+
 状态：第一切片启动/事件线程、第二切片逻辑窗口/Software 表面已实现并完成下述阶段验收；
-Android Platform/GUI 第三切片已接入；iOS 工厂与 GUI/UI 尚未接入。
+Android Platform/GUI 第三切片曾按旧接口接入；基础 Window 拆分后，旧 GUI Window
+演示须迁移到 Surface 再验收。此处仅保留阶段记录，不表示当前移动 GUI 可用。
 后续 Typography/GLES 最小后端、原生目标借用与 iOS 后台执行保护见
 [DesignMobilePlatform 第 10 节](DesignMobilePlatform.md#10-两端-typography--graphics-最小实现2026-11-04)。
 后续包结构、两端共用 OpenGL ES 和文字接入顺序以

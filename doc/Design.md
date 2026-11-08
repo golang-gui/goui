@@ -22,6 +22,42 @@ GTK, Qt, SwiftUI, Flutter, or the web. It may learn from them, but the final
 shape must fit Go's language model: explicit data flow, simple interfaces,
 ordinary values, and minimal hidden behavior.
 
+## Cross-platform Scope
+
+GOUI shares a GUI kernel and composable components across platforms. It does not
+promise that one application entry point, lifecycle, navigation model, or complete
+view tree will fit both desktop and mobile. Applications may provide separate
+desktop and mobile views while sharing business logic, state, and suitable
+components. Platform and window-size conditions are legitimate application design
+choices, not evidence that the framework has failed.
+
+Design from concrete native workflows in each environment before extracting a
+common contract. Mobile must not be an accumulation of exceptions to desktop
+interfaces. Desktop must not acquire unnecessary lifecycle or startup machinery
+solely to resemble mobile. Different entry points and presentation hosts may use
+the same widget tree, layout, painting, event interpretation, signals, and
+declarative reconciliation mechanisms.
+
+GUI adaptation should provide coherent shared semantics where they exist. It
+does not need to erase every platform difference. Window management, navigation,
+and application lifetime may have distinct APIs. Do not preserve a universal
+interface through empty implementations, fabricated success, or changed meaning;
+do not restrict all platforms to their lowest common denominator either.
+
+Reporting platform facts does not require exposing every native detail publicly.
+Keep implementation details inside native bindings and backends unless GUI or
+application code has a demonstrated need for them. Concentrate necessary
+adaptation at platform integration and interaction boundaries rather than making
+ordinary widgets repeatedly query platform names or capabilities.
+
+An unstable API may be redesigned when real workflows and native contracts show
+that its boundary is wrong. Existing code is not proof that a contract should
+remain, and hypothetical portability is not sufficient reason for a rewrite.
+Review changes from both desktop and mobile perspectives. Build, ABI, and runtime
+validation establish technical feasibility, not a complete mobile GUI product.
+Use a small real application to prove interaction and lifecycle behavior before
+making broader support commitments. See [Mobile API Review](PlanMobileAPI.md).
+
 ## Layer Responsibilities
 
 The platform layer exposes platform facts. It creates windows, event loops,

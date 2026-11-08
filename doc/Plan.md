@@ -1,5 +1,43 @@
 # Plan
 
+## 呈现宿主与窗口管理：平台接口切片（2026-11-08）
+
+- [x] [DesignPresentationHosts](DesignPresentationHosts.md) 记录基础 Window、同对象的
+  WindowManagement，以及 GUI Surface/Window、ConnectActivate 和原生 Popup 的分工。
+- [x] 基础 Window 保留绘制目标、事件契约与释放；主动管理迁入 WindowManagement。
+  三个桌面后端沿用实现，GUI 调用检查能力；DesktopWindow 暂保留弃用别名供迁移。
+- [x] Popup owner 仍为基础 Window；Android/iOS 不用空方法伪装窗口管理，暂保留旧
+  平台绘制原型的内部显示钩子。旧 android_gui 例程需等 GUI Surface 切片迁移。
+- [x] Go1.25.8 / Linux amd64 / CGO_ENABLED=0，已跟踪源码及本轮文档的临时副本，
+  独立 Xvnc/Xfwm4 `go test -json -count=1 ./...`：4508 通过、11 原条件跳过、0 失败。
+  新增断言覆盖基础宿主管理请求返回不支持、移动对象不伪装管理能力，以及基础接口
+  owner 的真实 Popup 定位/绘制；未纳入工作区既有未跟踪测试。临时桌面已关闭。
+- [x] GUI 与共享移动宿主 `go test -race` 通过；Windows amd64、macOS arm64 全仓
+  `go test -exec=/bin/true ./...` 通过，仅证明编译/链接，不代表远端原生运行验收。
+- [x] `cmd/goui build -package` 经内置基座生成 Android ARM64 开发签名 APK、iOS
+  ARM64 未签名 IPA；最小平台例程同时导入 widgets/ui，覆盖 GUI/UI/widgets 编译。
+  本轮未安装 App 或执行移动运行验收，IPA 需要开发者签名后才能安装。
+- [x] 普通 CGO_ENABLED=0 移动交叉构建仍受原版 purego/cgo 入口限制，正式路径使用
+  内置基座而非直接 go build。Linux ARM64 全仓编译另被既有 SYS_PIPE/SYS_POLL
+  阻断；从 HEAD 提取原 libc 文件、go.mod/go.sum 独立复现，不扩大本轮修复范围。
+  命令、日志、最小构建例程与产物位于 `/tmp/goui-window-management-51dvqxe5`。
+- [ ] 原生 UI 主线程、系统宿主交付、GUI/UI Surface/Window 与激活流程另行实现。
+- [ ] Android/iOS 原生 Popup、触摸、IME 与安全区域分别原生验证后接入。
+
+## 移动端接口复核与共享边界（2026-11-07）
+
+- [x] 在 AGENTS、Design 与跨层约定中明确共享 GUI 内核、不强求统一应用模型，
+  允许桌面/移动分别组织入口与视图；旧生命周期文档保留原型验收并标注后续复核。
+- [x] [PlanMobileAPI](PlanMobileAPI.md) 记录原生流程优先的方法、框架依据、接口清单
+  与真实应用验证方式；只修改文档，未冻结公共签名或改变移动线程模型。
+- [x] 新增本地文档链接 15 项及 diff 空白检查通过。Go1.25.8 / CGO_ENABLED=0，
+  已跟踪源码加本轮文档的临时副本，在独立 Xvnc/Xfwm4 中运行 `go test -json ./...`：
+  4508 通过、11 跳过、0 失败；未纳入工作区既有未跟踪测试，也未验收新的移动行为。
+  日志在 `/tmp/goui-mobile-api-docs-4r3qi56s`，临时桌面已关闭。
+- [x] 联合设计启动/线程与宿主/窗口/退出；确认方案及当前切片见上一节。
+- [ ] 分主题复核绘制恢复、触摸、文本输入、布局几何与原生服务，验证桌面回归，
+  不将已有构建/FFI/模拟器成果作为完整移动 GUI 支持承诺。
+
 ## v0.7.0 正式发布（2026-11-06）
 
 - [x] 候选 main `33ce8a9e02f57364f2f18aaed1b36d4ca32ef127`，annotated tag
