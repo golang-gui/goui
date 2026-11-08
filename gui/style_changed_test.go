@@ -49,7 +49,7 @@ func paintStyleTestWidget(w Widget) {
 func TestStyleChangedCoalescesBeforeMeasureAndPaint(t *testing.T) {
 	app := &application{}
 	useTestApplication(t, app)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	app.windows = []*window{win}
 	w := &styleProbe{}
 	w.SetStyleName("probe")
@@ -101,7 +101,7 @@ func TestStyleChangedLocalNameDoesNotPropagate(t *testing.T) {
 func TestStyleChangedReattachHiddenAndDestroyed(t *testing.T) {
 	app := &application{}
 	useTestApplication(t, app)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	app.windows = []*window{win}
 	w := &styleProbe{}
 	win.SetWidget(w)
@@ -143,7 +143,7 @@ func TestStyleChangedReattachHiddenAndDestroyed(t *testing.T) {
 }
 
 func TestStyleChangedIncludesWindowControls(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.controls = newWindowControls(win)
 	defer win.controls.release()
 	probe := &styleProbe{}
@@ -187,7 +187,7 @@ func TestStyleChangedRefreshesLabelAndTextInputResources(t *testing.T) {
 			typo := &styleTypography{}
 			app := &application{typo: typo, style: textStyleSheet(10, color.Black)}
 			useTestApplication(t, app)
-			win := &window{}
+			win := testWindowWithSurface(&window{})
 			app.windows = []*window{win}
 			var w Widget
 			var cached func() typography.TextLayout
@@ -259,7 +259,7 @@ func TestStyleChangedPopoverSizingAndRecreation(t *testing.T) {
 	plat := &stylePopupPlatform{}
 	app := &application{platform: plat, typo: &styleTypography{}, style: textStyleSheet(10, color.Black)}
 	useTestApplication(t, app)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	anchor := NewButton()
 	win.SetWidget(anchor)
 	p := &popover{anchor: anchor}
@@ -293,7 +293,7 @@ func TestStyleChangedMenuNaturalSizeReleasesTemporaryText(t *testing.T) {
 	useTestApplication(t, app)
 	model := NewSliceListModel([]*MenuItem{NewMenuItem("long menu label", nil)})
 	content := newMenuContent(model, 480, nil)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(content)
 	defer win.SetWidget(nil)
 	app.windows = []*window{win}
@@ -337,7 +337,7 @@ func TestStyleChangedScrollableInvalidatesSizesWithoutReload(t *testing.T) {
 	defer lv.modelHandle.Disconnect()
 	sv := NewScrollView()
 	sv.SetChild(lv)
-	win := &window{rootBase: rootBase{width: 120, height: 60}}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{width: 120, height: 60}}})
 	win.SetWidget(sv)
 	defer win.SetWidget(nil)
 	app.windows = []*window{win}
@@ -425,7 +425,7 @@ func TestStyleChangedLocalListRowRemeasures(t *testing.T) {
 	defer lv.modelHandle.Disconnect()
 	sv := NewScrollView()
 	sv.SetChild(lv)
-	win := &window{rootBase: rootBase{width: 120, height: 60}}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{width: 120, height: 60}}})
 	win.SetWidget(sv)
 	defer win.SetWidget(nil)
 	for range 3 {
@@ -484,9 +484,9 @@ func TestStyleChangedUpdatesPixelsAndReusesImageCache(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer backend.Destroy()
-	win := &window{rootBase: rootBase{
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{
 		painter: backend, transparent: true, width: 40, height: 20, pixelWidth: 40, pixelHeight: 20,
-	}}
+	}}})
 	label := NewLabel("text")
 	win.SetWidget(label)
 	defer win.SetWidget(nil)

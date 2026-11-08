@@ -38,6 +38,10 @@ type Application interface {
 	OpenPath(path string) error
 	StyleSheet() style.StyleSheet
 	SetStyleSheet(style.StyleSheet)
+	// NewSurface adopts the system-provided main host after Activate. It may
+	// precede native geometry or a drawable. Only one live system Surface is
+	// supported; backends without WindowSource return ErrUnsupported.
+	NewSurface() (Surface, error)
 	NewWindow(options *WindowOptions) (Window, error)
 	// NewTimer creates an inactive timer permanently bound to this application.
 	// Creation does not register a task or allocate waiting resources. Call on
@@ -63,6 +67,8 @@ type Application interface {
 	QuitOnLastWindowClosed() bool
 	SetQuitOnLastWindowClosed(bool)
 	Post(func())
+	// Surfaces returns borrowed live top-level hosts, including managed windows.
+	Surfaces() []Surface
 	Windows() []Window
 	Snapshot() ApplicationInfo
 }
@@ -95,18 +101,20 @@ func NewApplication(appId string) (Application, error) {
 }
 
 type application struct {
-	platform     platform.Platform
-	loop         platform.EventLoop
-	timers       *timerScheduler
-	typo         typography.Context
-	clipboard    Clipboard
-	settings     *settings
-	fileDialog   FileDialog
-	style        style.StyleSheet
-	styleChanged signal.Signal0 // internal host invalidation; no new public event API
-	windows      []*window
-	dragSession  *guiDragSession
-	nextDragID   uint64
+	platform      platform.Platform
+	loop          platform.EventLoop
+	timers        *timerScheduler
+	typo          typography.Context
+	clipboard     Clipboard
+	settings      *settings
+	fileDialog    FileDialog
+	style         style.StyleSheet
+	styleChanged  signal.Signal0 // internal host invalidation; no new public event API
+	windows       []*window
+	systemSurface *surface
+	windowSource  platform.WindowSource
+	dragSession   *guiDragSession
+	nextDragID    uint64
 
 	quitOnLastWindowClosed bool
 	activateSignal         signal.Signal0
@@ -144,7 +152,8 @@ func prepareApplication(plat platform.Platform) (*application, error) {
 		fileDialog:             newFileDialog(nil, loop, ErrAppNotReady),
 		quitOnLastWindowClosed: true,
 	}
-	if _, systemHosted := plat.(platform.WindowSource); !systemHosted {
+	app.windowSource, _ = plat.(platform.WindowSource)
+	if app.windowSource == nil {
 		app.uiThread = gothread.GetId()
 		if err := app.initializeServices(); err != nil {
 			loop.Destroy()
@@ -190,6 +199,14 @@ func (a *application) activate() {
 		a.Quit()
 		return
 	}
+	if a.windowSource != nil {
+		a.systemSurface = newSystemSurface(a)
+		if err := a.windowSource.SetWindowHandler(a.acceptSystemWindow); err != nil {
+			a.runError = fmt.Errorf("receive system surface: %w", err)
+			a.Quit()
+			return
+		}
+	}
 	a.stopSettings = a.settings.watch(a)
 	a.activateSignal.Emit()
 }
@@ -223,6 +240,12 @@ func (a *application) shutdown() {
 		a.stopSettings = nil
 	}
 	a.shutdownSignal.Emit()
+	if a.systemSurface != nil {
+		a.systemSurface.Destroy()
+	}
+	if a.windowSource != nil {
+		_ = a.windowSource.SetWindowHandler(nil)
+	}
 	if dialog, ok := a.fileDialog.(*fileDialog); ok {
 		dialog.close()
 	}
@@ -265,12 +288,12 @@ func (a *application) StyleSheet() style.StyleSheet {
 
 func (a *application) SetStyleSheet(sheet style.StyleSheet) {
 	a.style = sheet
-	for _, win := range a.windows {
-		invalidateStyleSubtree(win.Widget())
-		if win.controls != nil {
+	for _, host := range a.Surfaces() {
+		invalidateStyleSubtree(host.Widget())
+		if win, ok := host.(*window); ok && win.controls != nil {
 			invalidateStyleSubtree(win.controls)
 		}
-		win.requestLayout()
+		host.RequestLayout()
 	}
 	a.styleChanged.Emit()
 }
@@ -381,14 +404,78 @@ func (a *application) Windows() []Window {
 	return windows
 }
 
-func (a *application) Snapshot() ApplicationInfo {
-	info := ApplicationInfo{
-		Windows: make([]WindowInfo, 0, len(a.windows)),
+func (a *application) Surfaces() []Surface {
+	result := make([]Surface, 0, len(a.windows)+1)
+	for _, w := range a.windows {
+		if !w.destroyed {
+			result = append(result, w)
+		}
 	}
-	for _, win := range a.windows {
-		info.Windows = append(info.Windows, win.Snapshot())
+	if s := a.systemSurface; s != nil && s.claimed && !s.destroyed {
+		result = append(result, s)
+	}
+	return result
+}
+func (a *application) Snapshot() ApplicationInfo {
+	info := ApplicationInfo{Surfaces: make([]SurfaceInfo, 0)}
+	for _, s := range a.Surfaces() {
+		info.Surfaces = append(info.Surfaces, s.Snapshot())
 	}
 	return info
+}
+func (a *application) acceptSystemWindow(native platform.Window) platform.EventHandler {
+	s := a.systemSurface
+	if s == nil || s.destroyed || a.quitting.Load() {
+		native.Destroy()
+		return nil
+	}
+	s.bind(native)
+	return s.onEvent
+}
+func (a *application) NewSurface() (Surface, error) {
+	if a.quitting.Load() {
+		return nil, platform.ErrUnavailable
+	}
+	if !a.servicesReady {
+		return nil, ErrAppNotReady
+	}
+	if a.windowSource == nil {
+		return nil, platform.ErrUnsupported
+	}
+	s := a.systemSurface
+	if s != nil && s.claimed && !s.destroyed {
+		return nil, platform.ErrUnsupported
+	}
+	if s == nil || s.destroyed {
+		s = newSystemSurface(a)
+		a.systemSurface = s
+		if err := a.windowSource.SetWindowHandler(a.acceptSystemWindow); err != nil {
+			a.systemSurface = nil
+			return nil, err
+		}
+	}
+	s.claimed = true
+	if err := s.ensurePainter(); err != nil {
+		s.Destroy()
+		return nil, err
+	}
+	if s.visible {
+		s.resumeFrames(s.platformWindow)
+	}
+	s.RequestLayout()
+	return s, nil
+}
+func (a *application) removeSurface(host Surface) {
+	if win, ok := host.(*window); ok {
+		a.removeWindow(win)
+		return
+	}
+	if a.systemSurface == host {
+		a.systemSurface = nil
+		if a.windowSource != nil {
+			_ = a.windowSource.SetWindowHandler(nil)
+		}
+	}
 }
 
 func (a *application) removeWindow(win *window) {
@@ -396,7 +483,7 @@ func (a *application) removeWindow(win *window) {
 	if index >= 0 {
 		a.windows = slices.Delete(a.windows, index, index+1)
 	}
-	if a.quitOnLastWindowClosed && len(a.windows) == 0 {
+	if a.quitOnLastWindowClosed && len(a.windows) == 0 && (a.systemSurface == nil || !a.systemSurface.claimed || a.systemSurface.destroyed) {
 		a.Quit()
 	}
 }

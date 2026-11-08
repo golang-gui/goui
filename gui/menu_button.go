@@ -239,7 +239,7 @@ func (b *MenuButton) activeGroupMenu() *MenuButton {
 	if b.Group() == nil || b.Root() == nil {
 		return nil
 	}
-	owner, ok := anchorWindow(b)
+	owner, ok := anchorSurface(b)
 	if !ok {
 		return nil
 	}
@@ -259,11 +259,11 @@ func (b *MenuButton) switchMenu(next *MenuButton, fromInput bool) error {
 	if group == nil || b.Group() != group || !b.Opened() || next == nil || next == b || next.Group() != group || next.Root() != root || !IsEnabled(next) || !visibleInTree(next) || !next.hasMenu() {
 		return nil
 	}
-	owner, ok := anchorWindow(b)
+	owner, ok := anchorSurface(b)
 	if !ok {
 		return nil
 	}
-	w, _ := owner.(*window)
+	w := surfaceCore(owner)
 	shown := uint64(0)
 	if w != nil {
 		shown = w.popoversShown

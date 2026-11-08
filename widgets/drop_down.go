@@ -431,7 +431,7 @@ func (d *DropDown) Open() error {
 	if host, ok := d.popup.(gui.EventTarget); ok {
 		host.SetFocusedWidget(d.content)
 	}
-	if win := d.Window(); win != nil {
+	if win := d.Surface(); win != nil {
 		win.SetFocusedWidget(d)
 	}
 	if d.Destroyed() || revision != d.revision || !d.Opened() {

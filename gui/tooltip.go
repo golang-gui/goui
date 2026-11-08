@@ -21,7 +21,7 @@ const (
 // tooltipState belongs to one window, including its visible popovers. Widgets
 // carry only text; one application timer and one transient surface suffice.
 type tooltipState struct {
-	owner    *window
+	owner    *surfaceBase
 	host     EventTarget
 	target   Widget
 	blocked  Widget
@@ -36,12 +36,12 @@ type tooltipState struct {
 }
 
 func tooltipsFor(host EventTarget) *tooltipState {
-	var owner *window
-	switch h := host.(type) {
-	case *window:
-		owner = h
-	case *popover:
-		owner, _ = h.owner.(*window)
+	var owner *surfaceBase
+	if root, ok := host.(Root); ok {
+		owner = surfaceCore(root)
+	}
+	if popup, ok := host.(*popover); ok {
+		owner = surfaceCore(popup.owner)
 	}
 	if owner == nil {
 		return nil
@@ -54,7 +54,7 @@ func (t *tooltipState) eligible(host EventTarget) bool {
 	if t.owner == nil || t.owner.destroyed || !t.owner.focused || t.owner.frameSuspended {
 		return false
 	}
-	if host == t.owner {
+	if host == t.owner.owner() {
 		return t.owner.modalTarget == nil
 	}
 	p, ok := host.(*popover)
@@ -219,15 +219,15 @@ func (t *tooltipState) dismissOnEvent(host EventTarget, event events.Event) {
 	case events.WheelEvent, events.DragOfferEvent, events.DragSourceEvent:
 		t.dismiss(true)
 	case events.SizeEvent:
-		if host == t.host || host == t.owner {
+		if host == t.host || host == t.owner.owner() {
 			t.dismiss(true)
 		}
 	case events.FocusEvent:
-		if !e.Focused && (host == t.host || host == t.owner) {
+		if !e.Focused && (host == t.host || host == t.owner.owner()) {
 			t.dismiss(false)
 		}
 	case events.StateEvent:
-		if (host == t.host || host == t.owner) && (e.State == WindowStateHidden || e.State == WindowStateMinimized) {
+		if (host == t.host || host == t.owner.owner()) && (e.State == WindowStateHidden || e.State == WindowStateMinimized) {
 			t.dismiss(false)
 		}
 	}

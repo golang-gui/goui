@@ -272,7 +272,7 @@ func TestWindowControlsResizeFullscreenAndDisabled(t *testing.T) {
 	if win.Snapshot().Controls == nil {
 		t.Fatal("controls not restored")
 	}
-	disabled := &window{platformWindow: &chromeTestWindow{}}
+	disabled := testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: &chromeTestWindow{}}})
 	defer disabled.Destroy()
 	if disabled.controls != nil || !emptyRect(chromeInfo(disabled.Chrome()).ControlsBounds) {
 		t.Fatal("disabled service allocated controls")

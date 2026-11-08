@@ -16,7 +16,7 @@ func TestMenuKeyboardNavigationAndActivation(t *testing.T) {
 	last := m.Append("last", nil)
 	var activated *MenuItem
 	content := newMenuContent(m, 0, func(item *MenuItem) { activated = item })
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(content)
 	defer win.Destroy()
 	press := func(key events.Key) {

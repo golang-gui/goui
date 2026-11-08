@@ -24,7 +24,7 @@ type testDragOffer struct {
 
 func TestDragMotionLocalIsScopedToMatchingSessionAndFormat(t *testing.T) {
 	app := &application{}
-	win := &window{rootBase: rootBase{app: app}}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{app: app}}})
 	root := newTestWidget()
 	root.Arrange(geometry.Rect(0, 0, 100, 100))
 	win.SetWidget(root)
@@ -81,7 +81,7 @@ func TestLocalDropCommitSurvivesReentrantEnd(t *testing.T) {
 		for _, accepted := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/accepted=%t", stage, accepted), func(t *testing.T) {
 				app := &application{}
-				win := &window{rootBase: rootBase{app: app}}
+				win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{app: app}}})
 				root := newTestWidget()
 				root.Arrange(geometry.Rect(0, 0, 100, 100))
 				win.SetWidget(root)
@@ -141,7 +141,7 @@ func TestDragResultLocalDropIsDeliveryNotHover(t *testing.T) {
 	}{{"hover only", false, false}, {"local rejected", true, false}, {"foreign rejected", true, true}} {
 		t.Run(tc.name, func(t *testing.T) {
 			app := &application{}
-			win := &window{rootBase: rootBase{app: app}}
+			win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{app: app}}})
 			root := newTestWidget()
 			root.Arrange(geometry.Rect(0, 0, 100, 100))
 			win.SetWidget(root)
@@ -196,7 +196,7 @@ func TestDragResultForwardsFinalLocalTargetWithoutInventingDrop(t *testing.T) {
 }
 
 func TestDropTargetDispatchThroughWindowAndSemanticState(t *testing.T) {
-	win := &window{rootBase: rootBase{app: &application{}}}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{app: &application{}}}})
 	root := newTestWidget()
 	root.Arrange(geometry.Rect(0, 0, 300, 200))
 	child := newTestWidget()
@@ -252,7 +252,7 @@ func TestDropTargetDispatchThroughWindowAndSemanticState(t *testing.T) {
 }
 
 func TestDropTargetRemovedBeforeReadFinishesRejects(t *testing.T) {
-	win := &window{rootBase: rootBase{app: &application{}}}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{app: &application{}}}})
 	root := newTestWidget()
 	root.Arrange(geometry.Rect(0, 0, 200, 100))
 	win.SetWidget(root)
@@ -279,7 +279,7 @@ func TestDropTargetRemovedBeforeReadFinishesRejects(t *testing.T) {
 }
 
 func TestDropTargetHostCancellationFinishesPendingRead(t *testing.T) {
-	win := &window{rootBase: rootBase{app: &application{}}}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{app: &application{}}}})
 	root := newTestWidget()
 	root.Arrange(geometry.Rect(0, 0, 100, 100))
 	win.SetWidget(root)
@@ -325,7 +325,7 @@ func TestDragServiceRetriesAfterControllerConfigurationChanges(t *testing.T) {
 	root := newTestWidget()
 	root.Arrange(geometry.Rect(0, 0, 40, 40))
 	platformMock := &gestureDragPlatform{native: new(gestureDragNative), failures: 2}
-	win := &window{rootBase: rootBase{app: &application{platform: platformMock}, surface: &recordingPlatformPopup{}}}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{app: &application{platform: platformMock}, surface: &recordingPlatformPopup{}}}})
 	win.SetWidget(root)
 	defer win.Destroy()
 	source := NewDragSource()
@@ -369,7 +369,7 @@ func TestDragSourceFeedbackIsPerSessionAndPreservesCancellation(t *testing.T) {
 		request.Data.SetText("drag")
 	})
 	native := new(gestureDragNative)
-	win := &window{rootBase: rootBase{app: &application{platform: &gestureDragPlatform{native: native}}, surface: &recordingPlatformPopup{}}}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{app: &application{platform: &gestureDragPlatform{native: native}}, surface: &recordingPlatformPopup{}}}})
 	win.SetWidget(root)
 	defer win.Destroy()
 	var ended DragResult
@@ -407,7 +407,7 @@ func TestGestureDragSourceNilPrepareFallsBackToAncestor(t *testing.T) {
 	child.AddEventController(click)
 	platformNative := new(gestureDragNative)
 	app := &application{platform: &gestureDragPlatform{native: platformNative}}
-	win := &window{rootBase: rootBase{app: app, surface: &recordingPlatformPopup{}}}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{app: app, surface: &recordingPlatformPopup{}}}})
 	win.SetWidget(root)
 	defer win.Destroy()
 	prepared, clicked, began, ended := 0, 0, 0, 0

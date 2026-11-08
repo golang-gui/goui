@@ -15,7 +15,7 @@ func TestDragSourceHandoff(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			native := new(gestureDragNative)
 			app := &application{platform: &gestureDragPlatform{native: native}}
-			win := &window{rootBase: rootBase{app: app, surface: &recordingPlatformPopup{}}}
+			win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{app: app, surface: &recordingPlatformPopup{}}}})
 			root := newTestWidget()
 			root.Arrange(geometry.Rect(0, 0, 100, 100))
 			win.SetWidget(root)
@@ -110,7 +110,7 @@ func TestDragSourceHandoff(t *testing.T) {
 func TestDragHandoffValidationPreservesGesture(t *testing.T) {
 	native := new(gestureDragNative)
 	app := &application{platform: &gestureDragPlatform{native: native}}
-	win := &window{rootBase: rootBase{app: app, surface: &recordingPlatformPopup{}}}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{app: app, surface: &recordingPlatformPopup{}}}})
 	root := newTestWidget()
 	root.Arrange(geometry.Rect(0, 0, 100, 100))
 	win.SetWidget(root)

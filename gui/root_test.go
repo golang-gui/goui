@@ -28,7 +28,7 @@ func TestRootReplaceableSurface(t *testing.T) {
 	// 逻辑窗口先于 drawable；就绪、隐藏、丢失、恢复不卸载控件或丢弃脏状态。
 	surface := new(changingSurface)
 	native := new(showTestWindow)
-	w := &window{rootBase: rootBase{surface: surface}, platformWindow: native}
+	w := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{surface: surface}, platformWindow: native}})
 	child := newTestWidget()
 	w.SetWidget(child)
 	frames := 0
@@ -238,7 +238,7 @@ func (w *frameOrderWidget) Paint(Painter) { *w.trace = append(*w.trace, "paint")
 
 func TestWindowFrameUpdatesBeforeLayoutAndReplacesTree(t *testing.T) {
 	var trace []string
-	w := &window{rootBase: rootBase{painter: new(testGraphicsPainter), width: 100, height: 100}}
+	w := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{painter: new(testGraphicsPainter), width: 100, height: 100}}})
 	old := newTestWidget()
 	w.SetWidget(old)
 	newContent := &frameOrderWidget{trace: &trace}

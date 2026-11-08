@@ -33,7 +33,7 @@ func TestFileDialogResultsAndErrors(t *testing.T) {
 	for _, native := range []*dialogTestNative{{}, {err: failure}} {
 		loop := &settingsTestLoop{posts: make(chan func(), 1)}
 		dialog := newFileDialog(native, loop, nil)
-		for _, call := range []func(Window, DialogOptions, func([]FileAccess, error)){dialog.OpenFile, dialog.OpenDirectory, dialog.SaveFile} {
+		for _, call := range []func(Surface, DialogOptions, func([]FileAccess, error)){dialog.OpenFile, dialog.OpenDirectory, dialog.SaveFile} {
 			count := 0
 			call(nil, DialogOptions{}, func(result []FileAccess, err error) {
 				count++
@@ -64,7 +64,7 @@ func TestFileDialogResultsAndErrors(t *testing.T) {
 		if want == nil {
 			want = platform.ErrUnsupported
 		}
-		for _, call := range []func(Window, DialogOptions, func([]FileAccess, error)){dialog.OpenFile, dialog.OpenDirectory, dialog.SaveFile} {
+		for _, call := range []func(Surface, DialogOptions, func([]FileAccess, error)){dialog.OpenFile, dialog.OpenDirectory, dialog.SaveFile} {
 			call(nil, DialogOptions{}, func(result []FileAccess, err error) {
 				if len(result) != 0 || err != want {
 					t.Fatalf("creation failure swallowed: %v %v", result, err)

@@ -33,9 +33,9 @@ const (
 // exclusivity; AutoDismiss enables standard dismissal requests independently.
 // The control handles those requests and drives Show/Hide/Destroy.
 //
-// A Popover belongs to its anchor's window: the native surface is created on
-// Show, bound to that window, and released when the anchor unmounts or the
-// window is destroyed.
+// A Popover belongs to its anchor's Surface: the native surface is created on
+// Show, bound to that host, and released when the anchor unmounts or the
+// host is destroyed.
 type Popover interface {
 	Root
 
@@ -130,7 +130,7 @@ type popover struct {
 	position                  geometry.Point
 	placement                 PopoverPlacement
 	anchorArea                *geometry.Rectangle // optional anchor-local area for internal presentations
-	owner                     Window              // resolved from the anchor; only the public Window API is used
+	owner                     Surface             // resolved from the anchor; native creation uses its platform Window
 	platformPopup             platform.Popup
 	styleName                 string
 	insets                    popoverInsets
@@ -183,7 +183,8 @@ func (p *popover) CommitText(text string) error {
 }
 
 func (p *popover) ownsModalInput() bool {
-	owner, ok := p.owner.(*window)
+	owner := surfaceCore(p.owner)
+	ok := owner != nil
 	return ok && !owner.destroyed && !owner.frameSuspended && p.modal && owner.modalTarget == p
 }
 
@@ -297,7 +298,7 @@ func (p *popover) becomeModalTarget() {
 }
 
 func (p *popover) resignModalTarget() {
-	if owner, ok := p.owner.(*window); ok {
+	if owner := surfaceCore(p.owner); owner != nil {
 		if owner.modalTarget == p {
 			owner.SetModalTarget(nil)
 		}
@@ -340,7 +341,7 @@ func (p *popover) DispatchEvent(event events.Event) error {
 		if p.modal && p.owner != nil && !p.ownsModalInput() {
 			return fmt.Errorf("popover: does not own modal keyboard input")
 		}
-		if owner, ok := p.owner.(*window); ok && (owner.destroyed || owner.frameSuspended || owner.modalTarget != nil && owner.modalTarget != p) {
+		if owner := surfaceCore(p.owner); owner != nil && (owner.destroyed || owner.frameSuspended || owner.modalTarget != nil && owner.modalTarget != p) {
 			return fmt.Errorf("popover: owner keyboard input is unavailable")
 		}
 	}
@@ -392,11 +393,11 @@ func (p *popover) Show() error {
 	if p.destroyed {
 		return fmt.Errorf("popover: destroyed")
 	}
-	win, ok := anchorWindow(p.anchor)
+	win, ok := anchorSurface(p.anchor)
 	if !ok {
-		return fmt.Errorf("popover: anchor is not mounted in a window")
+		return fmt.Errorf("popover: anchor is not mounted in a Surface")
 	}
-	if owner, ok := win.(*window); ok && owner.destroyed {
+	if owner := surfaceCore(win); owner != nil && owner.destroyed {
 		return fmt.Errorf("popover: owner is destroyed")
 	}
 	if p.platformPopup != nil && p.owner != win {
@@ -435,7 +436,7 @@ func (p *popover) Show() error {
 		return fmt.Errorf("popover: released during Show")
 	}
 	p.visible = true
-	if owner, ok := p.owner.(*window); ok {
+	if owner := surfaceCore(p.owner); owner != nil {
 		owner.addPopover(p)
 	}
 	p.resumeFrames(p.platformPopup)
@@ -461,7 +462,7 @@ func (p *popover) Hide() {
 		return
 	}
 	p.visible = false
-	if owner, ok := p.owner.(*window); ok {
+	if owner := surfaceCore(p.owner); owner != nil {
 		owner.removePopover(p)
 	}
 	p.resetInput()
@@ -547,7 +548,7 @@ func (e *popoverCreationError) Unwrap() error { return e.error }
 
 // --- native resource lifecycle (belongs to the window) ---
 
-func (p *popover) createNative(win Window) error {
+func (p *popover) createNative(win Surface) error {
 	if App == nil {
 		return fmt.Errorf("popover: application is not created")
 	}
@@ -595,7 +596,7 @@ func (p *popover) createNative(win Window) error {
 		p.releaseNative()
 		return &popoverCreationError{fmt.Errorf("create platform popup: %w", err)}
 	}
-	currentOwner, mounted := anchorWindow(p.anchor)
+	currentOwner, mounted := anchorSurface(p.anchor)
 	if p.lifecycle != epoch || p.destroyed || !mounted || currentOwner != win {
 		pp.Destroy()
 		p.releaseNative()
@@ -607,7 +608,7 @@ func (p *popover) createNative(win Window) error {
 		p.releaseNative()
 		return &popoverCreationError{fmt.Errorf("create popover painter: %w", err)}
 	}
-	currentOwner, mounted = anchorWindow(p.anchor)
+	currentOwner, mounted = anchorSurface(p.anchor)
 	if p.lifecycle != epoch || p.destroyed || !mounted || currentOwner != win {
 		painter.Destroy()
 		pp.Destroy()
@@ -653,7 +654,7 @@ func (p *popover) releaseNative() {
 	p.surface = nil
 	wasVisible := p.visible
 	p.visible = false
-	if owner, ok := p.owner.(*window); ok {
+	if owner := surfaceCore(p.owner); owner != nil {
 		owner.removePopover(p)
 	}
 	p.resetInput()
@@ -766,7 +767,7 @@ func (p *popover) updateNaturalSize() error {
 		return fmt.Errorf("popover: placement changed during layout")
 	}
 	if p.owner != nil {
-		if win, ok := anchorWindow(p.anchor); !ok || win != p.owner {
+		if win, ok := anchorSurface(p.anchor); !ok || win != p.owner {
 			return fmt.Errorf("popover: anchor moved during layout")
 		}
 	}
@@ -944,11 +945,10 @@ func (p *popover) requestPaint() error {
 	return p.rootBase.requestPaint(p.platformPopup)
 }
 
-// anchorWindow resolves the *window hosting anchor, or false if anchor is not
-// mounted in a window.
-func anchorWindow(anchor Widget) (Window, bool) {
+// anchorSurface resolves the presentation host, following visible Popover owners.
+func anchorSurface(anchor Widget) (Surface, bool) {
 	for anchor != nil {
-		if win, ok := anchor.Root().(Window); ok {
+		if win, ok := anchor.Root().(Surface); ok {
 			return win, true
 		}
 		parent, ok := anchor.Root().(*popover)

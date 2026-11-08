@@ -18,6 +18,8 @@ type Widget interface {
 
 	Parent() Widget
 	Root() Root
+	// Surface returns the owning presentation host, including a Popover owner.
+	Surface() Surface
 	Window() Window
 
 	ID() string
@@ -337,6 +339,11 @@ func (w *WidgetBase) Children() []Widget {
 
 func (w *WidgetBase) Root() Root {
 	return w.root()
+}
+
+func (w *WidgetBase) Surface() Surface {
+	host, _ := anchorSurface(w)
+	return host
 }
 
 func (w *WidgetBase) Window() Window {

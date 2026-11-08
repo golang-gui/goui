@@ -25,7 +25,7 @@ type popoverMeasureWidget struct {
 func TestPopoverPlacementConfiguration(t *testing.T) {
 	root, anchor := newTestWidget(), newTestWidget()
 	root.AddChild(anchor)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(root)
 	anchor.Arrange(geometry.Rect(30, 40, 160, 32))
 	p := NewPopover(anchor, nil).(*popover)
@@ -85,7 +85,7 @@ func TestWindowPopoversFollowVisibleLifetime(t *testing.T) {
 	if err := p.Show(); err != nil {
 		t.Fatal(err)
 	}
-	other := &window{platformWindow: native}
+	other := testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: native}})
 	other.SetWidget(p.Anchor()) // unmount releases the old native surface
 	if len(w.Popovers()) != 0 {
 		t.Fatal("anchor migration left an old window entry")
@@ -151,7 +151,7 @@ func TestWindowPopoversExcludeFailedShowAndOwnerDestruction(t *testing.T) {
 func TestPopoverTabFocusAndModalIsolation(t *testing.T) {
 	ownerRoot := newTestWidget()
 	ownerRoot.SetFocusable(true)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(ownerRoot)
 	win.SetFocusedWidget(ownerRoot)
 	root, first, second := newTestWidget(), newTestWidget(), newTestWidget()
@@ -194,7 +194,7 @@ func TestPopoverFocusVisibleIsolationAndReset(t *testing.T) {
 		widget.SetFocusable(true)
 		widget.Arrange(geometry.Rect(0, 0, 100, 100))
 	}
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(ownerRoot)
 	p := &popover{rootBase: rootBase{width: 100, height: 100}, modal: true, autoDismiss: true, visible: true}
 	p.SetWidget(popupRoot)
@@ -277,7 +277,7 @@ func TestWindowForwardsToPopover(t *testing.T) {
 	winRoot.Arrange(geometry.Rect(0, 0, 100, 100))
 	var winCalls []string
 	winRoot.AddEventController(newRecordingController("win", PhaseTarget, &winCalls, nil))
-	win := &window{root: winRoot}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: winRoot}})
 
 	content := newTestWidget()
 	content.Arrange(geometry.Rect(0, 0, 60, 40))
@@ -372,7 +372,7 @@ func TestPopoverResizeKeepsAuthoritativeNativeSizeUntilSizeEvent(t *testing.T) {
 // A modal popover registers itself as the window's modal target and resigns when
 // it stops being modal — through the public Window.SetModalTarget API only.
 func TestPopoverModalTogglesWindowModalTarget(t *testing.T) {
-	win := &window{root: newTestWidget()}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: newTestWidget()}})
 	p := &popover{owner: win, visible: true}
 
 	p.becomeModalTarget()
@@ -386,7 +386,7 @@ func TestPopoverModalTogglesWindowModalTarget(t *testing.T) {
 }
 
 func TestPopoverSetWidgetMigratesFromWindow(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	content := newTestWidget()
 	win.SetWidget(content)
 
@@ -537,7 +537,7 @@ func placementFixture(t *testing.T, area geometry.Rectangle) (*popover, *placeme
 	plat := &placementPlatform{syncSize: true}
 	app := &application{platform: plat}
 	useTestApplication(t, app)
-	w := &window{platformWindow: native}
+	w := testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: native}})
 	app.windows = []*window{w}
 	anchor := NewButton()
 	w.SetWidget(anchor)
@@ -1173,7 +1173,7 @@ func TestPopoverModelessDismissalAndExplicitKeys(t *testing.T) {
 
 // 原生面被替换后，旧面的延迟释放不能撤销新的模态登记。
 func TestPopoverResignKeepsReplacementTarget(t *testing.T) {
-	w := &window{}
+	w := testWindowWithSurface(&window{})
 	old, next := &popover{owner: w}, &popover{owner: w}
 	w.SetModalTarget(next)
 	old.resignModalTarget()

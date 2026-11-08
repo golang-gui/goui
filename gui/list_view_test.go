@@ -29,7 +29,7 @@ func TestListViewRevealEndSurvivesPointerAndFocus(t *testing.T) {
 	lv.SetDelegate(d)
 	sv := NewScrollView()
 	sv.SetChild(lv)
-	win := &window{rootBase: rootBase{width: 320, height: 500}}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{width: 320, height: 500}}})
 	win.SetWidget(sv)
 	defer win.Destroy()
 	settle := func() {

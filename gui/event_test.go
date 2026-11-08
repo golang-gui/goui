@@ -10,7 +10,7 @@ import (
 )
 
 func TestEventDispatcherTabOrder(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	root, first, group, nested, hidden, last := newTestWidget(), newTestWidget(), newTestWidget(), newTestWidget(), newTestWidget(), newTestWidget()
 	root.AddChild(first)
 	root.AddChild(group)
@@ -81,7 +81,7 @@ func TestEventDispatcherTabFallback(t *testing.T) {
 			root, child := newTestWidget(), newTestWidget()
 			child.SetFocusable(true)
 			root.AddChild(child)
-			win := &window{}
+			win := testWindowWithSurface(&window{})
 			win.SetWidget(root)
 			handled := test.initialHandled
 			test.event.Handled = &handled
@@ -97,7 +97,7 @@ func TestEventDispatcherTabFallback(t *testing.T) {
 				root, child := newTestWidget(), newTestWidget()
 				child.SetFocusable(true)
 				root.AddChild(child)
-				win := &window{}
+				win := testWindowWithSurface(&window{})
 				win.SetWidget(root)
 				calls := 0
 				if mode == "shortcut" {
@@ -129,7 +129,7 @@ func TestEventDispatcherTabFallback(t *testing.T) {
 
 func TestEventDispatcherTabEmptyAndSingle(t *testing.T) {
 	root := newTestWidget()
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(root)
 	handled := false
 	e := shortcutPress(events.KeyTab, 0)
@@ -165,7 +165,7 @@ func TestEventDispatcherTabFocusCallbacks(t *testing.T) {
 				for _, w := range []Widget{a, b, c} {
 					w.SetFocusable(true)
 				}
-				win := &window{}
+				win := testWindowWithSurface(&window{})
 				win.SetWidget(root)
 				win.SetFocusedWidget(a)
 				change := func() {
@@ -229,7 +229,7 @@ func TestEventDispatcherFocusVisible(t *testing.T) {
 	root.Arrange(geometry.Rect(0, 0, 100, 100))
 	first.Arrange(geometry.Rect(0, 0, 100, 40))
 	second.Arrange(geometry.Rect(0, 50, 100, 40))
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(root)
 	t.Cleanup(func() { win.SetWidget(nil) })
 	changes := 0
@@ -285,7 +285,7 @@ func TestEventDispatcherFocusVisible(t *testing.T) {
 }
 
 func TestEventDispatcherTabDecorationTree(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	decoration := newTestWidget()
 	decoration.SetFocusable(true)
 	adoptWidget(decoration, win)
@@ -321,7 +321,7 @@ func TestEventDispatcherTabRevealsNestedScrollViews(t *testing.T) {
 	inner.SetChild(innerContent)
 	outerContent.WidgetBase.AddChild(outerContent, inner)
 	outer.SetChild(outerContent)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(outer)
 	outer.Measure(layout.Loose(geometry.Size{Width: 120, Height: 100}))
 	outer.Arrange(geometry.Rect(0, 0, 120, 100))
@@ -360,7 +360,7 @@ func TestEventDispatcherTabRevealsScrollableChild(t *testing.T) {
 	content.WidgetBase.AddChild(content, child)
 	scroll := NewScrollView()
 	scroll.SetChild(content)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(scroll)
 	scroll.Measure(layout.Loose(geometry.Size{Width: 200, Height: 100}))
 	scroll.Arrange(geometry.Rect(0, 0, 200, 100))
@@ -394,7 +394,7 @@ func TestEventDispatcherDispatchesPointerEventThroughThreePhases(t *testing.T) {
 	parent.AddEventController(newRecordingController("parent-bubble", PhaseBubble, &calls, nil))
 	root.AddEventController(newRecordingController("root-bubble", PhaseBubble, &calls, nil))
 
-	win := &window{root: root}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 	event := events.PointerEvent{
 		EventType: events.PointerDown,
 		Position:  geometry.Point{X: 20, Y: 20},
@@ -437,7 +437,7 @@ func TestEventDispatcherStopsPropagation(t *testing.T) {
 	target.AddEventController(newRecordingController("target", PhaseTarget, &calls, nil))
 	root.AddEventController(newRecordingController("root-bubble", PhaseBubble, &calls, nil))
 
-	win := &window{root: root}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 	event := events.PointerEvent{
 		EventType: events.PointerDown,
 		Position:  geometry.Point{X: 20, Y: 20},
@@ -471,7 +471,7 @@ func TestEventDispatcherHitTestUsesLastVisibleChild(t *testing.T) {
 	bottom.AddEventController(newRecordingController("bottom", PhaseTarget, &calls, nil))
 	top.AddEventController(newRecordingController("top", PhaseTarget, &calls, nil))
 
-	win := &window{root: root}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 	event := events.PointerEvent{
 		EventType: events.PointerDown,
 		Position:  geometry.Point{X: 20, Y: 20},
@@ -509,7 +509,7 @@ func TestEventDispatcherDispatchesWheelByPosition(t *testing.T) {
 	var calls []string
 	child.AddEventController(newRecordingController("child", PhaseTarget, &calls, nil))
 
-	win := &window{root: root}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 	event := events.WheelEvent{
 		Position: geometry.Point{X: 20, Y: 20},
 		DeltaY:   -1,
@@ -541,7 +541,7 @@ func TestEventContextPositionIsLocalToCurrentWidget(t *testing.T) {
 		positions = append(positions, position)
 	}))
 
-	win := &window{root: root}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 	if err := win.DispatchEvent(events.PointerEvent{
 		EventType: events.PointerDown,
 		Position:  geometry.Point{X: 15, Y: 27},
@@ -564,7 +564,7 @@ func TestEventContextPositionIsAbsentForKeyEvent(t *testing.T) {
 		}
 	}))
 
-	win := &window{root: root}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 	if err := win.DispatchEvent(events.KeyEvent{EventType: events.KeyDown}); err != nil {
 		t.Fatal(err)
 	}
@@ -588,7 +588,7 @@ func TestEventDispatcherDoesNotPropagatePointerCrossingAsPlatformEvents(t *testi
 	first.AddEventController(newRecordingController("first", PhaseTarget, &calls, nil))
 	second.AddEventController(newRecordingController("second", PhaseTarget, &calls, nil))
 
-	win := &window{root: root}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 	if err := win.DispatchEvent(events.PointerEvent{
 		EventType: events.PointerMove,
 		Position:  geometry.Point{X: 10, Y: 10},
@@ -638,7 +638,7 @@ func TestEventDispatcherUpdatesMotionHoverStates(t *testing.T) {
 	parent.AddEventController(parentMotion)
 	child.AddEventController(childMotion)
 
-	win := &window{root: root}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 	if err := win.DispatchEvent(events.PointerEvent{
 		EventType: events.PointerMove,
 		Position:  geometry.Point{X: 15, Y: 15},
@@ -690,7 +690,7 @@ func TestEventDispatcherHoverStateIgnoresStoppedPointerMove(t *testing.T) {
 		ctx.StopPropagation()
 	}))
 
-	win := &window{root: root}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 	if err := win.DispatchEvent(events.PointerEvent{
 		EventType: events.PointerMove,
 		Position:  geometry.Point{X: 20, Y: 20},
@@ -716,7 +716,7 @@ func TestEventDispatcherDispatchesKeyToFocusedWidget(t *testing.T) {
 	root.AddEventController(newRecordingController("root", PhaseTarget, &calls, nil))
 	child.AddEventController(newRecordingController("child", PhaseTarget, &calls, nil))
 
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(root)
 	win.SetFocusedWidget(child)
 	event := events.KeyEvent{
@@ -746,7 +746,7 @@ func TestEventDispatcherDispatchesKeyToRootWithoutFocusedWidget(t *testing.T) {
 	root.AddEventController(newRecordingController("root", PhaseTarget, &calls, nil))
 	child.AddEventController(newRecordingController("child", PhaseTarget, &calls, nil))
 
-	win := &window{root: root}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 	event := events.KeyEvent{
 		EventType: events.KeyDown,
 		Key:       events.KeyA,
@@ -777,7 +777,7 @@ func TestEventDispatcherDispatchesFocusCrossing(t *testing.T) {
 	parent.AddEventController(newCrossingRecordingController("parent", &calls))
 	child.AddEventController(newCrossingRecordingController("child", &calls))
 
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(root)
 	if !win.SetFocusedWidget(child) {
 		t.Fatal("focusable child should accept focus")
@@ -815,7 +815,7 @@ func TestEventDispatcherPointerDownFocusesNearestFocusableWidget(t *testing.T) {
 	parent.AddChild(child)
 	parent.SetFocusable(true)
 
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(root)
 
 	if err := win.DispatchEvent(events.PointerEvent{
@@ -848,7 +848,7 @@ func TestEventDispatcherNonFocusableTargetLeavesFocusForMenuBarScenario(t *testi
 	// steal focus from an editable field (e.g. a TextInput) when clicked to open
 	// a menu. GTK4/Flutter semantics: a click on a non-focusable surface does not
 	// clear or move window focus; the popover routes keyboard via the modal target.
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	root := newTestWidget()
 	root.Arrange(geometry.Rect(0, 0, 100, 100))
 	win.SetWidget(root)
@@ -889,7 +889,7 @@ func TestEventDispatcherIgnoresEventsWithoutTarget(t *testing.T) {
 	var calls []string
 	root.AddEventController(newRecordingController("root", PhaseTarget, &calls, nil))
 
-	win := &window{root: root}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 	event := events.PointerEvent{
 		EventType: events.PointerDown,
 		Position:  geometry.Point{X: 120, Y: 20},
@@ -1000,7 +1000,7 @@ func TestEventDispatcherCaptureRoutesMoveToCapturedWidget(t *testing.T) {
 	})
 	left.AddEventController(drag)
 
-	win := &window{root: root}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 
 	// Press on left widget → capture starts.
 	if err := win.DispatchEvent(events.PointerEvent{
@@ -1042,7 +1042,7 @@ func TestEventDispatcherCaptureReleasesOnPointerUp(t *testing.T) {
 	drag.ConnectEnd(func(geometry.Point, events.Modifiers) { ends++ })
 	left.AddEventController(drag)
 
-	win := &window{root: root}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 
 	// Press on left → capture.
 	_ = win.DispatchEvent(events.PointerEvent{
@@ -1092,7 +1092,7 @@ func TestEventDispatcherCaptureClearsOnWidgetHide(t *testing.T) {
 	drag := NewDragEventController()
 	left.AddEventController(drag)
 
-	win := &window{root: root}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 
 	// Press on left → capture.
 	_ = win.DispatchEvent(events.PointerEvent{
@@ -1132,7 +1132,7 @@ func TestEventDispatcherHoverUpdatesDuringCapture(t *testing.T) {
 	rightMotion := NewMotionEventController()
 	right.AddEventController(rightMotion)
 
-	win := &window{root: root}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 
 	// Press on left → capture.
 	_ = win.DispatchEvent(events.PointerEvent{

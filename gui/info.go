@@ -6,23 +6,30 @@ import (
 )
 
 type ApplicationInfo struct {
-	Windows []WindowInfo `json:"windows"`
+	Surfaces []SurfaceInfo `json:"surfaces"`
 }
 
-type WindowInfo struct {
-	ID     string             `json:"id"`
-	Title  string             `json:"title"`
-	Bounds geometry.Rectangle `json:"bounds"`
-	Widget WidgetInfo         `json:"widget"`
+// SurfaceInfo is a detached semantic host snapshot. Title and Controls are
+// optional metadata supplied only by managed Windows.
+type SurfaceInfo struct {
+	Visible bool               `json:"visible"`
+	Focused bool               `json:"focused"`
+	ID      string             `json:"id"`
+	Title   string             `json:"title,omitempty"`
+	Bounds  geometry.Rectangle `json:"bounds"`
+	Widget  WidgetInfo         `json:"widget"`
 	// Controls is the window-owned custom decoration tree, not an application
 	// child. Native buttons keep their OS semantics and are not duplicated.
 	Controls *WidgetInfo `json:"controls,omitempty"`
 }
 
+// WindowInfo is retained as an alias for window snapshot consumers.
+type WindowInfo = SurfaceInfo
+
 // WidgetInfo describes semantic content and state for inspection and input
 // planning, not an exhaustive layout or hit-test tree. Widgets may omit internal
 // structure (for example, ScrollView's viewport and scrollbars).
-// Operations must still be dispatched as input events through Window.DispatchEvent.
+// Operations must still be dispatched as input events through Surface.DispatchEvent.
 type WidgetInfo struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -33,7 +40,7 @@ type WidgetInfo struct {
 	Text string `json:"text"`
 	// Tooltip is supplementary plain-text help, even while its popup is hidden.
 	Tooltip string `json:"tooltip,omitempty"`
-	// Bounds is the layout rectangle in window-local DIP, before clipping or
+	// Bounds is the layout rectangle in root-local DIP, before clipping or
 	// occlusion. It does not guarantee that a point can receive pointer input.
 	Bounds geometry.Rectangle `json:"bounds"`
 	// Visible is the widget's own visibility flag, not effective visibility

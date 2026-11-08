@@ -476,7 +476,7 @@ func (t *textEditor) setReadOnly(value bool) {
 		return
 	}
 	if t.owner.Focused() {
-		if w, ok := t.owner.Window().(*window); ok {
+		if w := surfaceCore(t.owner.Surface()); w != nil {
 			w.updateInputMethod(t.owner)
 		}
 	}
@@ -1615,7 +1615,7 @@ const (
 )
 
 func (t *textEditor) connectInteractionTimers() {
-	if w := t.owner.Window(); w != nil && t.windowFocusHandle == nil {
+	if w := t.owner.Surface(); w != nil && t.windowFocusHandle == nil {
 		t.windowFocusHandle = w.ConnectFocus(func(focused bool) {
 			if !focused {
 				t.input.Reset()
@@ -1651,7 +1651,7 @@ func (t *textEditor) interactive() bool {
 	if t.owner.base().destroyed || t.suspended || !IsEnabled(t.owner) || !t.owner.Focused() || t.owner.Root() == nil || !visibleInTree(t.owner) {
 		return false
 	}
-	if w := t.owner.Window(); w != nil {
+	if w := t.owner.Surface(); w != nil {
 		return w.Focused()
 	}
 	return true
@@ -2034,7 +2034,7 @@ func (t *textEditor) runEditCommand(command textEditCommand) {
 // A nil point denotes keyboard invocation, positioned below the caret. Pointer
 // coordinates and PopoverMenu.ShowAt both use editor-local DIP.
 func (t *textEditor) showContextMenu(point *geometry.Point) {
-	if t.owner.base().destroyed || t.suspended || !IsEnabled(t.owner) || t.owner.Window() == nil {
+	if t.owner.base().destroyed || t.suspended || !IsEnabled(t.owner) || t.owner.Surface() == nil {
 		return
 	}
 	model, epoch := t.model, t.mountEpoch

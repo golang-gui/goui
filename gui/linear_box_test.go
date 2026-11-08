@@ -98,7 +98,7 @@ func TestLinearBoxPaddingInsetsContent(t *testing.T) {
 }
 
 func TestLinearBoxAlignRequestLayout(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	box := NewLinearBox(layout.DirectionHorizontal)
 	win.SetWidget(box)
 
@@ -232,7 +232,7 @@ func TestLinearBoxWeightedChildrenSplitFreeSpace(t *testing.T) {
 }
 
 func TestLinearBoxDirectionAndSpacingRequestLayout(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	box := NewLinearBox(layout.DirectionHorizontal)
 	win.SetWidget(box)
 
@@ -323,7 +323,7 @@ func TestLinearBoxCrossDefaultFollowsDirection(t *testing.T) {
 	box := NewLinearBox(layout.DirectionHorizontal)
 	child := newSizedWidget(geometry.Size{Width: 20, Height: 10})
 	box.AddChild(child)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(box)
 	cases := []struct {
 		direction layout.Direction

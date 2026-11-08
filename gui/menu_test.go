@@ -219,7 +219,7 @@ func TestPopoverMenuActivateRunsAction(t *testing.T) {
 }
 
 func TestPopoverMenuClosesBeforeRunningAction(t *testing.T) {
-	owner := &window{}
+	owner := testWindowWithSurface(&window{})
 	p := &popover{owner: owner, visible: true, modal: true}
 	owner.SetModalTarget(p)
 	pm := &PopoverMenu{popover: p}
@@ -306,7 +306,7 @@ func TestMenuButtonKeyboardUsesOpenPath(t *testing.T) {
 		menu := NewMenu()
 		menu.Append("Copy", func() {})
 		b.SetMenu(menu)
-		win := &window{}
+		win := testWindowWithSurface(&window{})
 		win.SetWidget(b)
 		_ = win.DispatchEvent(shortcutPress(events.KeyTab, 0))
 		_ = win.DispatchEvent(shortcutPress(key, 0))
@@ -563,7 +563,7 @@ func TestMenuButtonGroupInputErrorsAndIsolation(t *testing.T) {
 	if err := b[0].Open(); err != nil {
 		t.Fatal(err)
 	}
-	other := &window{platformWindow: &placementWindow{area: geometry.Rect(0, 0, 1000, 800)}}
+	other := testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: &placementWindow{area: geometry.Rect(0, 0, 1000, 800)}}})
 	candidate := NewMenuButton()
 	candidate.SetMenu(b[0].Menu())
 	otherGroup := NewMenuButtonGroup()
@@ -733,7 +733,7 @@ func TestMenuCommandLiveEnablementAndCancelledPress(t *testing.T) {
 			item.Command().Activate()
 		}
 	})
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(content)
 	defer win.Destroy()
 	content.observeCommands(true)
@@ -786,7 +786,7 @@ func TestMenuCommandColumnsAndLiveGesture(t *testing.T) {
 	model.Append("A longer title", nil).SetCommand(b)
 	model.Append("No shortcut", nil)
 	content := newMenuContent(model, 0, nil)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(content)
 	defer win.Destroy()
 	content.observeCommands(true)
@@ -839,7 +839,7 @@ func TestMenuCommandObservationFollowsVisibleModel(t *testing.T) {
 	m.Append("First", nil).SetCommand(a)
 	m.Append("Again", nil).SetCommand(a)
 	c := newMenuContent(m, 0, nil)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(c)
 	defer win.Destroy()
 	c.observeCommands(true)
@@ -877,7 +877,7 @@ func TestMenuCommandCloseCallbackInvalidatesActivation(t *testing.T) {
 			next.ConnectActivate(func() { n++ })
 			item := NewMenuItem("Run", nil)
 			item.SetCommand(old)
-			owner := &window{}
+			owner := testWindowWithSurface(&window{})
 			p := &popover{owner: owner, visible: true}
 			pm := &PopoverMenu{popover: p}
 			p.ConnectClosed(func() {

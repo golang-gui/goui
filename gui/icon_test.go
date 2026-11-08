@@ -86,7 +86,7 @@ func TestIconPaintBoundsAndReplacement(t *testing.T) {
 func TestIconForegroundAndStyleLifecycle(t *testing.T) {
 	app := &application{}
 	useTestApplication(t, app)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	app.windows = []*window{win}
 	var got Color
 	calls := 0
@@ -254,7 +254,7 @@ func TestIconSoftwareMatchesDirectTranslucentDrawing(t *testing.T) {
 
 func TestIconInvalidation(t *testing.T) {
 	i := NewIcon(iconTestDraw(func(Painter, geometry.Rectangle, Color) {}))
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(i)
 	defer win.SetWidget(nil)
 	win.layoutDirty, win.paintDirty = false, false
@@ -510,7 +510,7 @@ func TestIconImageSharingUnmountAndFrameReplacement(t *testing.T) {
 	n := 0
 	s := solidIconSource(&n)
 	a, b := NewIcon(s), NewIcon(s)
-	first, second := &window{}, &window{}
+	first, second := testWindowWithSurface(&window{}), testWindowWithSurface(&window{})
 	first.SetWidget(a)
 	second.SetWidget(b)
 	a.Arrange(geometry.Rect(0, 0, 16, 16))

@@ -579,7 +579,7 @@ func TestTextViewUndoRestoresInvokerSelectionAndSplitsEditors(t *testing.T) {
 	a, win, _ := newEditorFixture(t, "ab")
 	b := NewTextView()
 	b.SetModel(a.model)
-	other := &window{}
+	other := testWindowWithSurface(&window{})
 	other.SetWidget(b)
 	b.Arrange(geometry.Rect(0, 0, 209, 108))
 	t.Cleanup(func() { other.SetWidget(nil) })
@@ -617,7 +617,7 @@ func TestTextViewReentrantModelAndSelectionCallbacks(t *testing.T) {
 	})
 	editor := NewTextView()
 	editor.SetModel(m)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(editor)
 	t.Cleanup(func() { win.SetWidget(nil) })
 	editor.Arrange(geometry.Rect(0, 0, 209, 108))
@@ -691,7 +691,7 @@ func TestTextEditorCollapseSelectionVisually(t *testing.T) {
 						view.SetModel(NewTextModel(tc.text))
 						widget, editor = view, view.textEditor
 					}
-					win := &window{}
+					win := testWindowWithSurface(&window{})
 					win.SetWidget(widget)
 					t.Cleanup(func() { win.SetWidget(nil) })
 					widget.Arrange(geometry.Rect(0, 0, 200, 80))
@@ -1151,7 +1151,7 @@ func TestPlaceholderLayoutsBelongToEachView(t *testing.T) {
 	box := NewLinearBox(layout.DirectionHorizontal)
 	box.AddChild(a)
 	box.AddChild(b)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(box)
 	t.Cleanup(func() { win.SetWidget(nil) })
 	for _, w := range []*TextView{a, b} {
@@ -1468,7 +1468,7 @@ func TestTextEditorInputFiltersAndHistory(t *testing.T) {
 				w := NewTextView()
 				owner, editor = w, w.textEditor
 			}
-			win := &window{}
+			win := testWindowWithSurface(&window{})
 			win.SetWidget(owner)
 			owner.Arrange(geometry.Rect(0, 0, 220, 80))
 			win.SetFocusedWidget(owner)

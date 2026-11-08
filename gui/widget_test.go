@@ -45,7 +45,7 @@ func TestWidgetBaseZeroValueIsVisible(t *testing.T) {
 }
 
 func TestWidgetBaseStyleName(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	widget := newTestWidget()
 	win.SetWidget(widget)
 	win.layoutDirty = false
@@ -99,7 +99,7 @@ func TestWidgetBaseStructuralChildPreservesBinSlotAndLifecycle(t *testing.T) {
 	if internal.Parent() != parent || parent.Child() != content || len(parent.Children()) != 2 {
 		t.Fatal("structural mounting changed the public content slot")
 	}
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(parent)
 	if internal.Root() != win {
 		t.Fatal("structural child did not follow host ownership")
@@ -111,7 +111,7 @@ func TestWidgetBaseStructuralChildPreservesBinSlotAndLifecycle(t *testing.T) {
 }
 
 func TestWidgetBaseSetRootPropagatesToChildren(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	parent := newTestWidget()
 	child := newTestWidget()
 	parent.AddChild(child)
@@ -133,7 +133,7 @@ func TestWidgetBaseSetRootPropagatesToChildren(t *testing.T) {
 }
 
 func TestWidgetBaseRequestLayoutMarksWindowDirty(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	widget := newTestWidget()
 	win.SetWidget(widget)
 
@@ -238,7 +238,7 @@ func TestWidgetBaseEventControllers(t *testing.T) {
 }
 
 func TestWidgetBaseFocusStateAndSignal(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	widget := newTestWidget()
 	win.SetWidget(widget)
 
@@ -274,7 +274,7 @@ func TestWidgetBaseFocusStateAndSignal(t *testing.T) {
 }
 
 func TestWidgetBaseContainsFocusStateAndSignal(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	parent := newTestWidget()
 	child := newTestWidget()
 	child.SetFocusable(true)
@@ -321,7 +321,7 @@ func TestWidgetBaseContainsFocusStateAndSignal(t *testing.T) {
 }
 
 func TestWidgetBaseHidingFocusedSubtreeClearsFocus(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	root := newTestWidget()
 	parent := newTestWidget()
 	child := newTestWidget()
@@ -343,7 +343,7 @@ func TestWidgetBaseHidingFocusedSubtreeClearsFocus(t *testing.T) {
 
 func TestWidgetBaseLifecycleMountsAndUnmountsSubtree(t *testing.T) {
 	var calls []string
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	parent := newLifecycleWidget("parent", &calls)
 	child := newLifecycleWidget("child", &calls)
 	parent.AddChild(child)
@@ -394,7 +394,7 @@ func TestWidgetBaseLifecycleMountsAndUnmountsSubtree(t *testing.T) {
 
 func TestWidgetBaseLifecycleMountsChildAddedToMountedParent(t *testing.T) {
 	var calls []string
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	parent := newLifecycleWidget("parent", &calls)
 	child := newLifecycleWidget("child", &calls)
 	win.SetWidget(parent)
@@ -424,7 +424,7 @@ func TestWidgetBaseLifecycleMountsChildAddedToMountedParent(t *testing.T) {
 
 func TestAddChildReparentsWithinSameRootWithoutLifecycle(t *testing.T) {
 	var calls []string
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	root := newLifecycleWidget("root", &calls)
 	first := newLifecycleWidget("first", &calls)
 	second := newLifecycleWidget("second", &calls)
@@ -455,7 +455,7 @@ func TestAddChildReparentsWithinSameRootWithoutLifecycle(t *testing.T) {
 }
 
 func TestAddChildReparentsWithinSameRootKeepsFocus(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	root := newTestWidget()
 	first := newTestWidget()
 	second := newTestWidget()
@@ -478,7 +478,7 @@ func TestAddChildReparentsWithinSameRootKeepsFocus(t *testing.T) {
 }
 
 func TestRemoveChildClearsFocusedSubtreeAfterUnmount(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	parent := newTestWidget()
 	child := newTestWidget()
 	child.SetFocusable(true)
@@ -504,7 +504,7 @@ func TestRemoveChildClearsFocusedSubtreeAfterUnmount(t *testing.T) {
 
 func TestDestroyWidgetUnmountsAndClearsSubtreeOnce(t *testing.T) {
 	var calls []string
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	root := newLifecycleWidget("root", &calls)
 	child := newLifecycleWidget("child", &calls)
 	root.AddChild(child)
@@ -540,7 +540,7 @@ func TestDestroyWidgetUnmountsAndClearsSubtreeOnce(t *testing.T) {
 func TestWidgetReparentSurvivesLifecycleDestruction(t *testing.T) {
 	for _, endpoint := range []string{"child", "target", "source"} {
 		t.Run(endpoint, func(t *testing.T) {
-			sourceWindow, targetWindow := &window{}, &window{}
+			sourceWindow, targetWindow := testWindowWithSurface(&window{}), testWindowWithSurface(&window{})
 			source, target, child := newTestWidget(), newTestWidget(), newTestWidget()
 			source.AddChild(child)
 			sourceWindow.SetWidget(source)
@@ -655,7 +655,7 @@ func TestLayoutSettersNormalizeInvalidValuesBeforeInvalidating(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			win := &window{}
+			win := testWindowWithSurface(&window{})
 			win.SetWidget(tc.widget)
 			for _, invalid := range []float32{-1, float32(math.NaN()), float32(math.Inf(1)), float32(math.Inf(-1))} {
 				tc.set(6.5)
@@ -780,7 +780,7 @@ func TestRenderWidgetSubtree(t *testing.T) {
 	surface := &widgetRenderSurface{}
 	p, _ := software.NewPainter(surface)
 	defer p.Destroy()
-	w := &window{rootBase: rootBase{painter: p, width: 100, pixelWidth: 200}}
+	w := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{painter: p, width: 100, pixelWidth: 200}}})
 	parent := newPainterTestWidget(func(p Painter) { p.FillRect(geometry.Rect(0, 0, 100, 100), graphics.RGB(0, 255, 0)) })
 	child := newPainterTestWidget(func(p Painter) {
 		p.SetClipRect(geometry.Rect(1, 1, 4, 4))
@@ -842,7 +842,7 @@ func TestRenderWidgetSubtree(t *testing.T) {
 func TestRenderWidgetPreconditionsAndPanic(t *testing.T) {
 	p, _ := software.NewPainter(&widgetRenderSurface{})
 	defer p.Destroy()
-	w := &window{rootBase: rootBase{painter: p}}
+	w := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{painter: p}}})
 	child := newPainterTestWidget(nil)
 	if _, err := RenderWidget(nil, 1); err == nil {
 		t.Fatal("nil accepted")
@@ -886,7 +886,7 @@ func TestRenderWidgetPreconditionsAndPanic(t *testing.T) {
 }
 
 func TestWidgetIdentityAndRootLookup(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	overlay := NewOverlay()
 	main := NewLabel("main")
 	main.SetID("item")
@@ -948,7 +948,7 @@ func TestWidgetIdentityAndRootLookup(t *testing.T) {
 }
 
 func TestWidgetIDScopedToRoot(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	anchor := NewLabel("anchor")
 	anchor.SetID("shared")
 	win.SetWidget(anchor)
@@ -978,7 +978,7 @@ func TestWidgetIDScopedToRoot(t *testing.T) {
 }
 
 func TestWidgetBaseMoveChildPreservesMountedIdentity(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	parent := newTestWidget()
 	a, b, c := newTestWidget(), newTestWidget(), newTestWidget()
 	parent.AddChild(a)
@@ -1158,7 +1158,7 @@ func TestWidgetEnabledPropagationAndReparent(t *testing.T) {
 }
 
 func TestWidgetEnabledCancellationReentry(t *testing.T) {
-	win, root, child := &window{}, newTestWidget(), NewButton()
+	win, root, child := testWindowWithSurface(&window{}), newTestWidget(), NewButton()
 	root.AddChild(child)
 	win.SetWidget(root)
 	t.Cleanup(func() { win.SetWidget(nil) })
@@ -1190,7 +1190,7 @@ func TestWidgetEnabledCancellationReentry(t *testing.T) {
 }
 
 func TestWidgetEnabledPointerDoesNotPassThrough(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	root, back, front := newTestWidget(), NewButton(), NewButton()
 	root.AddChild(back)
 	root.AddChild(front)
@@ -1240,7 +1240,7 @@ func TestWidgetEnabledPointerDoesNotPassThrough(t *testing.T) {
 }
 
 func TestWidgetEnabledChildBlocksAncestorActivation(t *testing.T) {
-	win, button, label := &window{}, NewButton(), NewLabel("disabled part")
+	win, button, label := testWindowWithSurface(&window{}), NewButton(), NewLabel("disabled part")
 	button.SetChild(label)
 	label.SetEnabled(false)
 	win.SetWidget(button)
@@ -1258,7 +1258,7 @@ func TestWidgetEnabledChildBlocksAncestorActivation(t *testing.T) {
 }
 
 func TestWidgetEnabledFocusTabAndShortcuts(t *testing.T) {
-	win, root := &window{}, newTestWidget()
+	win, root := testWindowWithSurface(&window{}), newTestWidget()
 	group, first, next := newTestWidget(), NewButton(), NewButton()
 	root.AddChild(group)
 	group.AddChild(first)
@@ -1299,7 +1299,7 @@ func TestWidgetEnabledFocusTabAndShortcuts(t *testing.T) {
 }
 
 func TestWidgetEnabledWheelAndDispatchReentrancy(t *testing.T) {
-	win, root, child := &window{}, newTestWidget(), newTestWidget()
+	win, root, child := testWindowWithSurface(&window{}), newTestWidget(), newTestWidget()
 	root.AddChild(child)
 	win.SetWidget(root)
 	t.Cleanup(func() { win.SetWidget(nil) })
@@ -1448,7 +1448,7 @@ func TestWidgetEnabledRestoresStationaryHoverInEveryHost(t *testing.T) {
 		name string
 		root Root
 	}{
-		{"Window", &window{}},
+		{"Window", testWindowWithSurface(&window{})},
 		{"Popover", &popover{}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -1484,7 +1484,7 @@ func TestWidgetEnabledRestoresStationaryHoverInEveryHost(t *testing.T) {
 }
 
 func TestWidgetEnabledDragReadIsCanceled(t *testing.T) {
-	win := &window{rootBase: rootBase{app: &application{}}}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{app: &application{}}}})
 	root, child := newTestWidget(), newTestWidget()
 	root.AddChild(child)
 	win.SetWidget(root)
@@ -1519,7 +1519,7 @@ func TestWidgetEnabledDragReadIsCanceled(t *testing.T) {
 
 func TestWidgetEnabledCancelsManualDragSession(t *testing.T) {
 	app := &application{}
-	win := &window{rootBase: rootBase{app: app}}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{app: app}}})
 	root, child := newTestWidget(), newTestWidget()
 	root.AddChild(child)
 	win.SetWidget(root)
@@ -1535,7 +1535,7 @@ func TestWidgetEnabledCancelsManualDragSession(t *testing.T) {
 }
 
 func TestWidgetEnabledStopsStaleHoverAndClickCallbacks(t *testing.T) {
-	win, root, button := &window{}, newTestWidget(), NewButton()
+	win, root, button := testWindowWithSurface(&window{}), newTestWidget(), NewButton()
 	root.AddChild(button)
 	win.SetWidget(root)
 	t.Cleanup(func() { win.SetWidget(nil) })
@@ -1576,7 +1576,7 @@ func TestLayoutInsetsNormalizeEachEdge(t *testing.T) {
 	}
 
 	button.SetPadding(geometry.Insets{Bottom: 2.5})
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(button)
 	win.layoutDirty = false
 	button.SetPadding(geometry.Insets{Bottom: 2.5})
@@ -1587,7 +1587,7 @@ func TestLayoutInsetsNormalizeEachEdge(t *testing.T) {
 
 // 使用真实 GUI 分发路径，不创建原生窗口；父容器悬停、按钮按下与焦点可同时存在。
 func TestWidgetCombinedStateLifecycle(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	parent := NewLinearBox(layout.DirectionVertical)
 	button := NewButton()
 	parent.AddChild(button)
@@ -1739,7 +1739,7 @@ func TestWidgetStateDeferredGeometryAndLifecycle(t *testing.T) {
 		style.Name("state-probe").FontSize(10),
 		style.Name("state-probe").State(style.Checked).FontSize(20),
 	)})
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	w := new(stateStyleProbe)
 	win.SetWidget(w)
 	t.Cleanup(func() { win.SetWidget(nil) })
@@ -1797,7 +1797,7 @@ func TestButtonCombinedFocusPart(t *testing.T) {
 		style.Name("button").Part("focus").State(style.FocusVisible).BorderWidth(2).BorderColor(color.Black),
 		style.Name("button").Part("focus").State(style.Hovered|style.FocusVisible).BorderColor(color.White),
 	)})
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	b := NewButton()
 	win.SetWidget(b)
 	t.Cleanup(func() { win.SetWidget(nil) })

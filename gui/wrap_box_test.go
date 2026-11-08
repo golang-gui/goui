@@ -49,7 +49,7 @@ func TestWrapBoxTreeChangesAndSnapshot(t *testing.T) {
 
 func TestWrapBoxSettersInvalidateOnlyOnChange(t *testing.T) {
 	box := NewWrapBox(layout.DirectionHorizontal)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(box)
 	setters := []struct {
 		set func(float32)
@@ -98,7 +98,7 @@ func TestWrapBoxSettersInvalidateOnlyOnChange(t *testing.T) {
 func TestWrapBoxStyleChangeReflows(t *testing.T) {
 	app := &application{}
 	useTestApplication(t, app)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	app.windows = []*window{win}
 	box := NewWrapBox(layout.DirectionHorizontal)
 	a, b := &styleProbe{}, &styleProbe{}
@@ -171,7 +171,7 @@ func TestWrapBoxWindowExplicitMinimumAllowsReflow(t *testing.T) {
 		t.Fatalf("unbounded preferred width = %v, want 556", got)
 	}
 	native := &desktopTestWindow{}
-	win := &window{platformWindow: native}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: native}})
 	win.SetWidget(box)
 	t.Cleanup(win.Destroy)
 	minimum := geometry.Size{Width: 400, Height: 600}

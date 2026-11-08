@@ -11,7 +11,7 @@ import (
 func TestGestureThresholdMoveDeliveredAfterBegin(t *testing.T) {
 	root := newTestWidget()
 	root.Arrange(geometry.Rect(0, 0, 100, 100))
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(root)
 	drag := NewDragEventController()
 	drag.SetThreshold(4)
@@ -43,7 +43,7 @@ func TestGestureClickAndParentDrag(t *testing.T) {
 		click.ConnectClicked(func(EventContext) { clicks++ })
 		parentDrag.ConnectBegin(func(geometry.Point, events.Modifiers) { begins++ })
 		parentDrag.ConnectEnd(func(geometry.Point, events.Modifiers) { ends++ })
-		win := &window{root: root}
+		win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 		point := geometry.Point{X: 20, Y: 20}
 		_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonLeft, Position: point})
 		if !click.Pressed() || begins != 0 {
@@ -77,7 +77,7 @@ func TestGestureSecondClickCanBecomeDrag(t *testing.T) {
 	click.now = func() time.Time { return now }
 	var counts []int
 	click.ConnectClick(func(_ EventContext, count int) { counts = append(counts, count) })
-	win := &window{root: root}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 	press := func(x float32) {
 		_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonLeft, Position: geometry.Point{X: x, Y: 20}})
 	}
@@ -115,7 +115,7 @@ func TestGestureClickStopsAfterResultCallbackInvalidatesWidget(t *testing.T) {
 	results, compatibility := 0, 0
 	click.ConnectClick(func(EventContext, int) { results++; root.SetVisible(false) })
 	click.ConnectClicked(func(EventContext) { compatibility++ })
-	win := &window{root: root}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 	point := geometry.Point{X: 10, Y: 10}
 	_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonLeft, Position: point})
 	_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerUp, Button: events.PointerButtonLeft, Position: point})
@@ -131,7 +131,7 @@ func TestGestureLostObservedButtonCancelsPress(t *testing.T) {
 	root.AddEventController(click)
 	clicked := 0
 	click.ConnectClicked(func(EventContext) { clicked++ })
-	win := &window{root: root}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 	point := geometry.Point{X: 10, Y: 10}
 	_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonLeft,
 		Buttons: events.PointerButtonLeftDown, Position: point})
@@ -147,7 +147,7 @@ func TestGestureUnmountCancelsPressImmediately(t *testing.T) {
 	root.Arrange(geometry.Rect(0, 0, 40, 40))
 	click := NewClickEventController()
 	root.AddEventController(click)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(root)
 	_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown,
 		Button: events.PointerButtonLeft, Position: geometry.Point{X: 10, Y: 10}})
@@ -174,7 +174,7 @@ func TestGestureSameEventUsesDepthThenRegistrationOrder(t *testing.T) {
 	parent.ConnectBegin(func(geometry.Point, events.Modifiers) { counts[0]++ })
 	first.ConnectBegin(func(geometry.Point, events.Modifiers) { counts[1]++ })
 	second.ConnectBegin(func(geometry.Point, events.Modifiers) { counts[2]++ })
-	win := &window{root: root}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 	_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonLeft, Position: geometry.Point{X: 20, Y: 20}})
 	if counts != [3]int{0, 1, 0} {
 		t.Fatalf("winner = %v", counts)
@@ -212,7 +212,7 @@ func TestGestureWinnerInvalidatedByLoserCancellation(t *testing.T) {
 	parent.onCancel = func() { child.SetVisible(false) }
 	root.AddEventController(parent)
 	child.AddEventController(winner)
-	win := &window{root: root}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 	_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonLeft, Position: geometry.Point{X: 20, Y: 20}})
 	if parent.accepted != 0 || parent.canceled != 1 || winner.accepted != 0 || winner.canceled != 1 {
 		t.Fatalf("parent=%+v winner=%+v", parent, winner)

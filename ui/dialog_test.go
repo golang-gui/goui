@@ -42,12 +42,12 @@ func (a *dialogTestAccess) Close() error { a.calls++; a.closed = true; return ni
 type dialogTestService struct {
 	gui.FileDialog
 	access gui.FileAccess
-	owner  gui.Window
+	owner  gui.Surface
 	calls  int
 	err    error
 }
 
-func (d *dialogTestService) OpenFile(owner gui.Window, _ gui.DialogOptions, cb func([]gui.FileAccess, error)) {
+func (d *dialogTestService) OpenFile(owner gui.Surface, _ gui.DialogOptions, cb func([]gui.FileAccess, error)) {
 	d.owner = owner
 	d.calls++
 	if d.access == nil {

@@ -130,7 +130,7 @@ func TestOverlayPositionSignalsAndLayoutInvalidation(t *testing.T) {
 	b.SetMinSize(geometry.Size{Width: 5, Height: 5})
 	o.AddOverlay(a)
 	o.AddOverlay(b)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(o)
 	win.layoutDirty = false
 	var calls []string
@@ -202,7 +202,7 @@ func TestOverlayWindowResizeAndContentChanges(t *testing.T) {
 		queries++
 		*p = geometry.Point{X: available.Width - size.Width - margin, Y: margin}
 	})
-	win := &window{rootBase: rootBase{painter: new(testGraphicsPainter)}}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{painter: new(testGraphicsPainter)}}})
 	win.SetWidget(o)
 	paint := func() {
 		t.Helper()
@@ -392,7 +392,7 @@ func TestOverlayDispatchesToFloatingContentOrUnderlyingChild(t *testing.T) {
 	bar.AddChild(button)
 	o.AddOverlay(bar)
 	o.ConnectOverlayPosition(bar, func(_, _ geometry.Size, p *geometry.Point) { p.X, p.Y = 100, 10 })
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(o)
 	o.Arrange(geometry.Rect(0, 0, 300, 200))
 	overlayTestClick(t, win, geometry.Point{X: 10, Y: 10})
@@ -436,7 +436,7 @@ func TestOverlayNestedConfirmationLayer(t *testing.T) {
 		click.ConnectClicked(func(EventContext) { counts[child]++ })
 		child.AddEventController(click)
 	}
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(o)
 	o.Arrange(geometry.Rect(0, 0, 400, 300))
 	if confirm.Rect() != geometry.Rect(0, 0, 400, 300) || mask.Rect() != confirm.Rect() || panel.Rect() != geometry.Rect(140, 120, 120, 60) {
@@ -500,7 +500,7 @@ func TestOverlaySnapshotOcclusionDoesNotDisableContent(t *testing.T) {
 	mask := newTestWidget() // Even without a controller, the mask blocks picking.
 	o.AddOverlay(mask)
 	o.SetOverlayFill(mask, true)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(o)
 	o.Arrange(geometry.Rect(0, 0, 200, 100))
 	for _, visible := range []bool{true, false, true} {
@@ -535,7 +535,7 @@ func TestOverlayLifecycleAndDestroyedQueries(t *testing.T) {
 	o := NewOverlay()
 	o.AddOverlay(floating)
 	o.SetChild(main)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(o)
 	assertStrings(t, calls, []string{"main mount", "floating mount"})
 	calls = nil

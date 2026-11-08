@@ -171,7 +171,7 @@ func TestScrollViewDirectionOffsetsWheelAndSnapshot(t *testing.T) {
 	}
 	sv.Arrange(sv.Rect())
 	sv.SetScrollX(50)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(sv)
 	defer win.Destroy()
 	_ = win.DispatchEvent(events.WheelEvent{Position: geometry.Point{X: 20, Y: 20}, DeltaX: 40, DeltaY: 10, Mode: events.WheelDeltaPixel})
@@ -499,7 +499,7 @@ func TestScrollViewNestedWheelPropagation(t *testing.T) {
 			content.AddChild(content, inner)
 			outer := NewScrollView()
 			outer.SetChild(content)
-			win := &window{}
+			win := testWindowWithSurface(&window{})
 			win.SetWidget(outer)
 			defer win.Destroy()
 			outer.Arrange(geometry.Rect(0, 0, 300, 300))

@@ -765,7 +765,7 @@ func TestChromeDoesNotCountWidgetClickAsCaptionClick(t *testing.T) {
 }
 
 func TestDisabledChromeIsInert(t *testing.T) {
-	win := &window{platformWindow: &chromeTestWindow{}}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: &chromeTestWindow{}}})
 	defer win.Destroy()
 	service := win.Chrome()
 	info := chromeInfo(service)
@@ -788,7 +788,7 @@ func TestDisabledChromeIsInert(t *testing.T) {
 
 func TestWindowChromeKeepsCloseVeto(t *testing.T) {
 	native := &chromeTestWindow{}
-	win := &window{platformWindow: native}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: native}})
 	h := win.ConnectCloseRequest(func(allow *bool) { *allow = false })
 	_ = win.DispatchEvent(events.CloseEvent{})
 	if native.destroyed {
