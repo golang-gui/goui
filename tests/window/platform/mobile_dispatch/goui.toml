@@ -1,0 +1,10 @@
+id = "org.golanggui.MobileDispatch"
+name = "GOUI Mobile Dispatch"
+executable = "mobile-dispatch"
+main = "."
+version = "0.0.1"
+build = 1
+icon = "../../../../doc/logo/goui-mark.svg"
+
+[android]
+debuggable = true

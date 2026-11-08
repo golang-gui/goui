@@ -68,7 +68,8 @@ func main() {
 		threadName = "pthread_self"
 	}
 	thread := symbol(threadName)
-	owner := ffi.CallRet[uint64](thread)
+	startup := ffi.CallRet[uint64](thread)
+	var owner uint64
 	nonce := time.Now().UnixNano()
 	var win common.Window
 	var painter graphics.Painter
@@ -89,7 +90,17 @@ func main() {
 		}
 	}
 	win, err = backend.NewWindow(geometry.Size{Width: 320, Height: 240}, func(e events.Event) {
-		if ffi.CallRet[uint64](thread) != owner {
+		current := ffi.CallRet[uint64](thread)
+		if owner == 0 {
+			owner = current
+		}
+		main := false
+		if runtime.GOOS == "android" {
+			main = current == uint64(os.Getpid())
+		} else {
+			main = ffi.CallRet[int32](symbol("pthread_main_np")) != 0
+		}
+		if !main || current == startup || current != owner {
 			failures++
 		}
 		switch e := e.(type) {
