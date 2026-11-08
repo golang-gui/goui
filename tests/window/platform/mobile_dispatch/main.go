@@ -9,6 +9,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -29,26 +30,28 @@ import (
 var painterName = "software"
 
 type application struct {
-	backend platform.Platform
-	loop    platform.EventLoop
-	window  platform.Window
-	text    typography.Context
-	layout  typography.TextLayout
-	painter graphics.Painter
-	image   graphics.Image
-	dir     string
-	nonce   int64
-	startup uint64
-	ui      uint64
-	size    events.SizeEvent
-	frames  int
-	posts   int
-	lost    int
-	visible bool
-	stopped bool
-	gc      bool
-	done    chan struct{}
-	exited  atomic.Bool
+	backend    platform.Platform
+	loop       platform.EventLoop
+	window     platform.Window
+	text       typography.Context
+	layout     typography.TextLayout
+	painter    graphics.Painter
+	image      graphics.Image
+	dir        string
+	nonce      int64
+	startup    uint64
+	ui         uint64
+	size       events.SizeEvent
+	frames     int
+	posts      int
+	lost       int
+	visible    bool
+	focused    bool
+	stopped    bool
+	gc         bool
+	deliveries int
+	done       chan struct{}
+	exited     atomic.Bool
 }
 
 func must(err error) {
@@ -70,7 +73,14 @@ func main() {
 	must(err)
 	a.loop, err = a.backend.NewEventLoop()
 	must(err)
-	a.loop.Post(a.start)
+	source, ok := a.backend.(platform.WindowSource)
+	if !ok {
+		panic("移动平台缺少系统宿主交付能力")
+	}
+	must(source.SetWindowHandler(a.start))
+	if _, err := a.backend.NewWindow(geometry.Size{Width: 320, Height: 480}, nil, platform.WindowOptions{}); !errors.Is(err, platform.ErrUnsupported) {
+		panic(fmt.Sprintf("系统宿主交付模式仍接受 NewWindow：%v", err))
+	}
 	a.loop.Run()
 	a.loop.Destroy()
 	if !a.exited.Load() {
@@ -88,8 +98,13 @@ func (a *application) checkThread() {
 	a.ui = threadID()
 }
 
-func (a *application) start() {
+func (a *application) start(window platform.Window) platform.EventHandler {
 	a.checkThread()
+	a.deliveries++
+	if a.deliveries != 1 {
+		panic("同一逻辑宿主被重复交付")
+	}
+	a.window = window
 	var err error
 	a.text, err = a.backend.NewTypography()
 	must(err)
@@ -97,13 +112,14 @@ func (a *application) start() {
 		Font: typography.FontInfo{Size: 18}, TextColor: color.RGBA{R: 24, G: 40, B: 56, A: 255}, WrapMode: typography.WrapWordChar,
 	}, 320, 100)
 	must(err)
-	a.window, err = a.backend.NewWindow(geometry.Size{Width: 320, Height: 480}, a.event, platform.WindowOptions{})
-	must(err)
 	if _, managed := a.window.(platform.WindowManagement); managed {
 		panic("系统宿主不应伪造窗口管理能力")
 	}
-	// 旧平台内容显示钩子；正式 Surface/Activate 交付在后续切片接入。
-	must(a.window.(interface{ Show() error }).Show())
+	// 更换交付函数不得重新交付已有宿主，也不得更换现有事件处理函数。
+	source := a.backend.(platform.WindowSource)
+	must(source.SetWindowHandler(func(platform.Window) platform.EventHandler {
+		panic("重复交付现有宿主")
+	}))
 	a.save()
 	go func() {
 		ticker := time.NewTicker(100 * time.Millisecond)
@@ -117,6 +133,7 @@ func (a *application) start() {
 			}
 		}
 	}()
+	return a.event
 }
 
 func (a *application) event(event platform.Event) {
@@ -130,6 +147,8 @@ func (a *application) event(event platform.Event) {
 		a.layout.SetSize(max(1, e.Width-32), 100)
 	case events.VisibilityEvent:
 		a.visible = e.Visible
+	case events.FocusEvent:
+		a.focused = e.Focused
 	case events.SurfaceEvent:
 		if !e.State.Ready {
 			a.lost++
@@ -213,7 +232,7 @@ func (a *application) save() {
 		"nonce": a.nonce, "startupThread": a.startup, "uiThread": a.ui, "mainThread": mainThread(),
 		"frames": a.frames, "posts": a.posts, "lost": a.lost, "visible": a.visible, "stopped": a.stopped,
 		"surface": a.window.SurfaceState(), "size": a.size, "painter": painterName,
-		"gc": a.gc,
+		"gc": a.gc, "deliveries": a.deliveries, "focused": a.focused,
 	})
 }
 
