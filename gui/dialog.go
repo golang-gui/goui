@@ -28,15 +28,15 @@ type FileDialog interface {
 	// OpenFile opens a native file-selection dialog for selecting one or more files.
 	// owner is blocked until completion; nil opens an unowned dialog.
 	// Close each successful result after all file operations finish.
-	OpenFile(owner Window, opts DialogOptions, cb func([]FileAccess, error))
+	OpenFile(owner Surface, opts DialogOptions, cb func([]FileAccess, error))
 	// OpenDirectory opens a native dialog for selecting a directory.
 	// owner is blocked until completion; nil opens an unowned dialog.
 	// Close each successful result after all file operations finish.
-	OpenDirectory(owner Window, opts DialogOptions, cb func([]FileAccess, error))
+	OpenDirectory(owner Surface, opts DialogOptions, cb func([]FileAccess, error))
 	// SaveFile opens a native save-file dialog.
 	// owner is blocked until completion; nil opens an unowned dialog.
 	// Selection does not create or write the file.
-	SaveFile(owner Window, opts DialogOptions, cb func([]FileAccess, error))
+	SaveFile(owner Surface, opts DialogOptions, cb func([]FileAccess, error))
 	// RestoreAccess returns caller-owned access without showing a dialog.
 	// Persist its current Credential again to refresh stale native references.
 	RestoreAccess(credential []byte) (FileAccess, error)
@@ -58,24 +58,24 @@ func newFileDialog(dlg platform.FileDialog, loop platform.EventLoop, err error) 
 }
 
 // OpenFile opens an owner-modal or unowned native file picker.
-func (fd *fileDialog) OpenFile(owner Window, opts DialogOptions, cb func([]FileAccess, error)) {
+func (fd *fileDialog) OpenFile(owner Surface, opts DialogOptions, cb func([]FileAccess, error)) {
 	fd.open(owner, opts, cb, func(w platform.Window, o DialogOptions, done func([]FileAccess, error)) { fd.dlg.OpenFile(w, o, done) })
 }
 
-func (fd *fileDialog) OpenDirectory(owner Window, opts DialogOptions, cb func([]FileAccess, error)) {
+func (fd *fileDialog) OpenDirectory(owner Surface, opts DialogOptions, cb func([]FileAccess, error)) {
 	fd.open(owner, opts, cb, func(w platform.Window, o DialogOptions, done func([]FileAccess, error)) {
 		fd.dlg.OpenDirectory(w, o, done)
 	})
 }
 
-func (fd *fileDialog) SaveFile(owner Window, opts DialogOptions, cb func([]FileAccess, error)) {
+func (fd *fileDialog) SaveFile(owner Surface, opts DialogOptions, cb func([]FileAccess, error)) {
 	fd.open(owner, opts, cb, func(w platform.Window, o DialogOptions, done func([]FileAccess, error)) { fd.dlg.SaveFile(w, o, done) })
 }
 
 // ErrDialogBusy means this window already owns a file-selection operation.
 var ErrDialogBusy = errors.New("file dialog: owner already has an active dialog")
 
-func (fd *fileDialog) open(owner Window, opts DialogOptions, cb func([]FileAccess, error), start func(platform.Window, DialogOptions, func([]FileAccess, error))) {
+func (fd *fileDialog) open(owner Surface, opts DialogOptions, cb func([]FileAccess, error), start func(platform.Window, DialogOptions, func([]FileAccess, error))) {
 	if cb == nil {
 		panic("gui: nil file dialog callback")
 	}
@@ -84,10 +84,11 @@ func (fd *fileDialog) open(owner Window, opts DialogOptions, cb func([]FileAcces
 		fail(fd.err)
 		return
 	}
-	var w *window
+	var w *surfaceBase
 	if owner != nil {
 		var ok bool
-		w, ok = owner.(*window)
+		w = surfaceCore(owner)
+		ok = w != nil
 		if !ok {
 			fail(fmt.Errorf("file dialog: owner is not a GOUI window"))
 			return
@@ -96,11 +97,11 @@ func (fd *fileDialog) open(owner Window, opts DialogOptions, cb func([]FileAcces
 			fail(platform.ErrUnavailable)
 			return
 		}
-		if modalRootBlocked(w) {
+		if modalRootBlocked(w.owner()) {
 			fail(ErrDialogBusy)
 			return
 		}
-		blockModalInput(w)
+		blockModalInput(w.owner())
 	}
 	// Options outlive this call once startup has been posted.
 	opts.Filters = slices.Clone(opts.Filters)
@@ -129,7 +130,7 @@ func (fd *fileDialog) open(owner Window, opts DialogOptions, cb func([]FileAcces
 			access := result.access
 			result.access = nil
 			if w != nil {
-				unblockModalInput(w)
+				unblockModalInput(w.owner())
 				if w.destroyed {
 					if !errors.Is(err, platform.ErrUnavailable) {
 						err = errors.Join(err, platform.ErrUnavailable)

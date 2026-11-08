@@ -48,7 +48,7 @@ func testTextEditorNativeNavigation(t *testing.T, newContext func() (typography.
 				view.SetModel(NewTextModel("אבג"))
 				widget, editor = view, view.textEditor
 			}
-			win := &window{}
+			win := testWindowWithSurface(&window{})
 			win.SetWidget(widget)
 			defer win.SetWidget(nil) // all native layout cleanup precedes UnlockOSThread
 			widget.Arrange(geometry.Rect(0, 0, 200, 80))
@@ -106,7 +106,7 @@ func testTextViewNativeRevealEnd(t *testing.T, newContext func() (typography.Con
 	editor.SetModel(NewTextModel(text.String()))
 	scroll := NewScrollView()
 	scroll.SetChild(editor)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.width, win.height = 507, 590
 	win.SetWidget(scroll)
 	defer win.SetWidget(nil)
@@ -154,7 +154,7 @@ func testTextViewNativeResizeAnchor(t *testing.T, newContext func() (typography.
 	editor.SetModel(NewTextModel(text.String()))
 	scroll := NewScrollView()
 	scroll.SetChild(editor)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(scroll)
 	defer win.SetWidget(nil)
 	arrange := func(width float32) {
@@ -261,7 +261,7 @@ func testTextRasterViewport(t *testing.T, newContext func() (typography.Context,
 	for _, mode := range []string{"input", "nowrap", "wrapped"} {
 		func() {
 			text := strings.Repeat("abcdefghij", 8000)
-			win := &window{}
+			win := testWindowWithSurface(&window{})
 			win.width, win.height, win.painter = 600, 260, backend
 			var root Widget
 			var selectEnd func()

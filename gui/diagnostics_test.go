@@ -36,7 +36,7 @@ func startTestDiagnostics(t *testing.T, widgets bool) (*diagnostic.Session, *app
 
 func TestDiagnosticsCountsActualWorkAndFreezesCopies(t *testing.T) {
 	d, a := startTestDiagnostics(t, true)
-	w := &window{rootBase: rootBase{app: a}}
+	w := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{app: a}}})
 	widget := &mockWidget{size: geometry.Size{Width: 200, Height: 40}}
 	w.SetWidget(widget)
 	t.Cleanup(func() { w.SetWidget(nil) })
@@ -81,7 +81,7 @@ func TestDiagnosticsCountsActualWorkAndFreezesCopies(t *testing.T) {
 func TestDiagnosticsStartStopNeverSchedulesFrames(t *testing.T) {
 	a := &application{}
 	requester := &frameRequesterTest{}
-	w := &window{rootBase: rootBase{app: a, frameRequester: requester}}
+	w := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{app: a, frameRequester: requester}}})
 	a.windows = []*window{w}
 	b := &w.rootBase
 	d, err := diagnostic.StartCapture(a, diagnostic.Options{})
@@ -103,8 +103,8 @@ func TestDiagnosticsStartStopNeverSchedulesFrames(t *testing.T) {
 
 func TestDiagnosticsReadRootKeepsCompletedFrameAndIdentity(t *testing.T) {
 	d, a := startTestDiagnostics(t, true)
-	w := &window{rootBase: rootBase{app: a}}
-	other := &window{rootBase: rootBase{app: a}}
+	w := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{app: a}}})
+	other := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{app: a}}})
 	if _, ok := d.ReadRoot(w); ok || d.Source() != nil {
 		t.Fatal("单根查询提前创建了采集器")
 	}
@@ -132,7 +132,7 @@ func TestDiagnosticsReadRootKeepsCompletedFrameAndIdentity(t *testing.T) {
 	}
 	collector := d.Source().(*diagnosticCollector)
 	roots := len(collector.roots)
-	for _, target := range []any{nil, struct{}{}, &window{}, &window{rootBase: rootBase{app: a}}} {
+	for _, target := range []any{nil, struct{}{}, testWindowWithSurface(&window{}), testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{app: a}}})} {
 		if _, ok := d.ReadRoot(target); ok {
 			t.Fatal("读取了错误归属或没有记录的根")
 		}
@@ -196,7 +196,7 @@ func TestDiagnosticsRootBoundAndClosedMetadata(t *testing.T) {
 	session, a := startTestDiagnostics(t, false)
 	d := diagnosticCollectorFor(session)
 	for range diagnosticRoots {
-		w := &window{rootBase: rootBase{app: a}, id: "root", title: "diagnostic"}
+		w := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{app: a}, id: "root"}, title: "diagnostic"})
 		a.windows = append(a.windows, w)
 		d.root(&w.rootBase)
 	}
@@ -226,7 +226,7 @@ func (*diagnosticGetterWidget) Rect() geometry.Rectangle { panic("query called u
 func TestDiagnosticsMetadataUsesOnlyCachedFields(t *testing.T) {
 	s, app := startTestDiagnostics(t, true)
 	d := diagnosticCollectorFor(s)
-	root := &window{rootBase: rootBase{app: app}}
+	root := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{app: app}}})
 	parent, child := &diagnosticGetterWidget{}, &diagnosticGetterWidget{}
 	parent.parentRoot, parent.self, parent.rect = root, parent, geometry.Rect(20, 30, 100, 100)
 	child.parentWidget, child.self, child.rect = parent, child, geometry.Rect(3, 4, 10, 12)

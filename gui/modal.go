@@ -263,8 +263,10 @@ func ensureModal(host EventTarget) {
 		if b.dispatcher.pointerInside {
 			b.dispatcher.updateHover(host, host.Widget(), b.dispatcher.pointerEvent)
 		}
-		if window, ok := host.(*window); ok {
-			window.applyCursor()
+		if root, ok := host.(Root); ok {
+			if window := surfaceCore(root); window != nil {
+				window.applyCursor()
+			}
 		}
 	}
 }
@@ -276,14 +278,15 @@ func modalRootBlocked(host EventTarget) bool {
 	return ok && h.rootState().modal != nil && h.rootState().modal.blocked
 }
 
-func blockModalInput(w *window) {
+func blockModalInput(host Surface) {
+	w := surfaceCore(host)
 	b := w.rootState()
 	if b.modal == nil {
-		b.modal = &modalState{host: w, scopes: make(map[*ModalScope]struct{})}
+		b.modal = &modalState{host: w.owner().(modalHost), scopes: make(map[*ModalScope]struct{})}
 	}
 	b.modal.blocked = true
 	b.modal.revision++
-	resetModalInput(w)
+	resetModalInput(w.owner().(modalHost))
 	if !w.destroyed {
 		w.imReset()
 	}
@@ -293,7 +296,8 @@ func blockModalInput(w *window) {
 	}
 }
 
-func unblockModalInput(w *window) {
+func unblockModalInput(host Surface) {
+	w := surfaceCore(host)
 	if w.modal == nil {
 		return
 	}
@@ -302,13 +306,13 @@ func unblockModalInput(w *window) {
 	if w.destroyed {
 		return
 	}
-	ensureModal(w)
+	ensureModal(w.owner())
 	if w.destroyed {
 		return
 	}
 	w.imSetEnabled(w.activeIM != nil)
 	if w.dispatcher.pointerInside {
-		w.dispatcher.updateHover(w, w.Widget(), w.dispatcher.pointerEvent)
+		w.dispatcher.updateHover(w.owner(), w.Widget(), w.dispatcher.pointerEvent)
 	}
 	if !w.destroyed {
 		w.applyCursor()
@@ -336,21 +340,23 @@ func resetModalInput(h modalHost) {
 	if tips := tooltipsFor(host); tips != nil {
 		tips.dismiss(false)
 	}
-	if w, ok := host.(*window); ok {
-		if w.destroyed {
-			return
-		}
-		for _, p := range slices.Clone(w.popovers) {
-			if p.visible && !modalWidgetAllowed(p.anchor) {
-				p.Hide()
-			}
+	if root, ok := host.(Root); ok {
+		if w := surfaceCore(root); w != nil {
 			if w.destroyed {
 				return
 			}
-		}
-		if target := w.modalTarget; target != nil && !modalTargetAllowed(w, target) {
-			w.SetModalTarget(nil)
-			target.RequestDismiss()
+			for _, p := range slices.Clone(w.popovers) {
+				if p.visible && !modalWidgetAllowed(p.anchor) {
+					p.Hide()
+				}
+				if w.destroyed {
+					return
+				}
+			}
+			if target := w.modalTarget; target != nil && !modalTargetAllowed(w.owner(), target) {
+				w.SetModalTarget(nil)
+				target.RequestDismiss()
+			}
 		}
 	}
 }

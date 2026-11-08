@@ -1000,3 +1000,8 @@ func TestChildTargetsRejectUnstableIdentityAndMixedModes(t *testing.T) {
 func (w *testWindow) ConnectAfterPaint(fn func(gui.Painter, geometry.Rectangle)) signal.Handle {
 	return w.afterPaint.Connect(fn)
 }
+
+func (a *testApplication) NewSurface() (gui.Surface, error) { return nil, platform.ErrUnsupported }
+func (a *testApplication) Surfaces() []gui.Surface          { return nil }
+
+func (w *testWindow) Visible() bool { return w.shows > 0 && !w.destroyed }

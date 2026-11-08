@@ -17,7 +17,7 @@ import (
 )
 
 func TestLabelTextSnapshotAndRequestLayout(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	label := NewLabel("hello")
 	label.SetID("title")
 	label.Arrange(geometry.Rect(1, 2, 30, 40))
@@ -298,7 +298,7 @@ func TestLabelFormatStylesScopeAndCache(t *testing.T) {
 		)
 	}
 	scope.SetStyleSheet(sheet(24, color.RGBA{R: 180, A: 255}))
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(scope)
 	t.Cleanup(func() { win.SetWidget(nil) })
 	t.Cleanup(label.releaseLayout)
@@ -403,7 +403,7 @@ func labelSelectionFixture(t *testing.T, text string) (*Label, *window, *editorT
 	setTestApplication(t, typo)
 	label := NewLabel(text)
 	label.SetSelectable(true)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(label)
 	label.Arrange(geometry.Rect(0, 0, 200, 80))
 	if err := win.DispatchEvent(events.FocusEvent{Focused: true}); err != nil {
@@ -906,7 +906,7 @@ func TestLabelMeasurementRetriesFailureAndClearsOnUnmount(t *testing.T) {
 	typo := &labelFailTypography{}
 	setTestApplication(t, typo)
 	label := NewLabel("abc")
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(label)
 	t.Cleanup(func() { win.SetWidget(nil) })
 	label.Arrange(geometry.Rect(0, 0, 200, 80))

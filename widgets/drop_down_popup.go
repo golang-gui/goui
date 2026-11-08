@@ -79,7 +79,7 @@ func (c *dropDownContent) keyDown(ctx gui.EventContext, event events.KeyEvent) {
 	} else if plain(gui.KeyEscape) {
 		d.Close()
 	} else if plain(gui.KeyTab) || (gui.KeyGesture{Key: gui.KeyTab, Modifiers: gui.ModShift}).Matches(event) {
-		win := d.Window()
+		win := d.Surface()
 		d.Close()
 		ctx.StopPropagation()
 		event.PreventDefault()

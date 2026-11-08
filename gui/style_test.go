@@ -76,7 +76,7 @@ func TestApplicationStyleSheetDefaultsToNilAndRequestsLayoutOnSet(t *testing.T) 
 		t.Fatal("application style sheet should default to nil")
 	}
 
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	app.windows = []*window{win}
 	win.layoutDirty = false
 	win.paintDirty = false
@@ -97,7 +97,7 @@ func TestApplicationStyleSheetDefaultsToNilAndRequestsLayoutOnSet(t *testing.T) 
 
 func TestApplicationStyleSheetInvalidatesWidgetMeasurementSubtree(t *testing.T) {
 	app := &application{}
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	box := NewLinearBox(layout.DirectionHorizontal)
 	child := &countingMeasureWidget{size: geometry.Size{Width: 20, Height: 10}}
 	box.AddChild(child)

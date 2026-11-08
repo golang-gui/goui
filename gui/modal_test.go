@@ -27,7 +27,7 @@ func modalFixture(t *testing.T) (*window, *testWidget, *testWidget, *testWidget,
 	layer.SetVisible(false)
 	root.AddChild(back)
 	root.AddChild(layer)
-	w := &window{focused: true}
+	w := testWindowWithSurface(&window{surfaceBase: surfaceBase{focused: true}})
 	w.SetWidget(root)
 	w.SetFocusedWidget(back)
 	s := NewModalScope(layer)
@@ -352,7 +352,7 @@ func TestModalLifecycleAndRestoreInvalidFocus(t *testing.T) {
 		t.Fatal("不能恢复已移除的焦点")
 	}
 	layer.SetVisible(true)
-	other := &window{focused: true}
+	other := testWindowWithSurface(&window{surfaceBase: surfaceBase{focused: true}})
 	t.Cleanup(other.Destroy)
 	root.RemoveChild(layer)
 	other.SetWidget(layer)
@@ -398,7 +398,7 @@ func (p *modalLayoutProbe) Measure(c layout.Constraint) layout.Measurement {
 }
 
 func TestModalFocusCallbackStopsDestroyedLayout(t *testing.T) {
-	w := &window{focused: true}
+	w := testWindowWithSurface(&window{surfaceBase: surfaceBase{focused: true}})
 	t.Cleanup(w.Destroy)
 	root, back, layer := &modalLayoutProbe{}, newTestWidget(), newTestWidget()
 	back.SetFocusable(true)

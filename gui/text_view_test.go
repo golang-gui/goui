@@ -225,7 +225,7 @@ func TestTextViewSharedModelAndUnmount(t *testing.T) {
 	a, win, _ := newEditorFixture(t, "abc")
 	b := NewTextView()
 	b.SetModel(a.model)
-	other := &window{}
+	other := testWindowWithSurface(&window{})
 	other.SetWidget(b)
 	b.Arrange(geometry.Rect(0, 0, 209, 108))
 	t.Cleanup(func() { other.SetWidget(nil) })
@@ -282,7 +282,7 @@ func TestTextViewRevealEndAfterEstimatedHeightsBecomeWrapped(t *testing.T) {
 	editor.SetModel(NewTextModel(strings.Repeat(strings.Repeat("x", 60)+"\n", 1000)))
 	scroll := NewScrollView()
 	scroll.SetChild(editor)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(scroll)
 	t.Cleanup(func() { win.SetWidget(nil) })
 	box := geometry.Rect(0, 0, 220, 108)
@@ -306,7 +306,7 @@ func TestTextViewRevealEndUsesScheduledLayouts(t *testing.T) {
 	editor.SetModel(NewTextModel(strings.Repeat(strings.Repeat("x", 110)+"\n", 95000)))
 	scroll := NewScrollView()
 	scroll.SetChild(editor)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.width, win.height = 507, 590
 	win.SetWidget(scroll)
 	t.Cleanup(func() { win.SetWidget(nil) })
@@ -382,7 +382,7 @@ func BenchmarkTextViewScrollAndReflow(b *testing.B) {
 				editor.SetModel(NewTextModel(strings.Repeat(text, megabytes*1024*1024/len(text))))
 				scroll := NewScrollView()
 				scroll.SetChild(editor)
-				win := &window{}
+				win := testWindowWithSurface(&window{})
 				win.SetWidget(scroll)
 				defer win.SetWidget(nil)
 				box := geometry.Rect(0, 0, 500, 400)
@@ -496,7 +496,7 @@ func TestTextViewPreeditIsolationAndModelChangeCancels(t *testing.T) {
 	a, win, _ := newEditorFixture(t, "one\ntwo\nthree")
 	b := NewTextView()
 	b.SetModel(a.model)
-	other := &window{}
+	other := testWindowWithSurface(&window{})
 	other.SetWidget(b)
 	t.Cleanup(func() { other.SetWidget(nil) })
 	b.Arrange(geometry.Rect(0, 0, 209, 108))
@@ -592,7 +592,7 @@ func anchoredEditorFixture(t *testing.T, text string) (*TextView, *ScrollView, *
 	editor.SetModel(NewTextModel(text))
 	scroll := NewScrollView()
 	scroll.SetChild(editor)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(scroll)
 	t.Cleanup(func() { win.SetWidget(nil) })
 	scroll.Measure(layout.Tight(geometry.Size{Width: 220, Height: 108}))
@@ -767,7 +767,7 @@ func TestTextViewResizeKeepsAnchorRoundedAboveParagraph(t *testing.T) {
 	editor.SetModel(NewTextModel(strings.Repeat(strings.Repeat("x", 80)+"\n", 100)))
 	scroll := NewScrollView()
 	scroll.SetChild(editor)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(scroll)
 	defer win.SetWidget(nil)
 	arrange := func(width float32) {
@@ -805,7 +805,7 @@ func TestTextViewFractionalAnchorSettles(t *testing.T) {
 	editor.SetModel(NewTextModel(strings.Repeat(strings.Repeat("x", 80)+"\n", 100)))
 	scroll := NewScrollView()
 	scroll.SetChild(editor)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(scroll)
 	defer win.SetWidget(nil)
 	arrange := func(width float32) {
@@ -833,7 +833,7 @@ func TestTextViewFractionalRevealEndSettles(t *testing.T) {
 	editor.SetModel(NewTextModel(strings.Repeat("row\n", 100)))
 	scroll := NewScrollView()
 	scroll.SetChild(editor)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.width, win.height = 220, 108
 	win.SetWidget(scroll)
 	defer win.SetWidget(nil)
@@ -935,7 +935,7 @@ func testTextViewFastScrollCoverage(t *testing.T, ctx typography.Context) {
 	editor.SetModel(NewTextModel(text.String()))
 	scroll := NewScrollView()
 	scroll.SetChild(editor)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(scroll)
 	defer win.SetWidget(nil)
 	for _, size := range []geometry.Size{{Width: 220, Height: 108}, {Width: 499, Height: 590}, {Width: 1206, Height: 1200}} {
@@ -1214,7 +1214,7 @@ func TestTextViewReflowUpdatesOnlyOneSharedModelView(t *testing.T) {
 	left, _, _ := newEditorFixture(t, "abcdefghijklmnopqrst")
 	right := NewTextView()
 	right.SetModel(left.model)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(right)
 	t.Cleanup(func() { win.SetWidget(nil) })
 	right.Arrange(geometry.Rect(0, 0, 209, 108))

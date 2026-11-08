@@ -32,7 +32,7 @@ func TestScrollViewFrameContainsViewportAndBars(t *testing.T) {
 	content := &mockWidget{size: geometry.Size{Width: 200, Height: 300}}
 	sv.SetChild(content)
 	scope := scrollFrameScope(sv, 0)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(scope)
 	defer win.Destroy()
 	content.SetFocusable(true)
@@ -137,7 +137,7 @@ func TestScrollViewRoundedFramePixels(t *testing.T) {
 			sv := NewScrollView()
 			sv.SetChild(content)
 			scope := scrollFrameScope(sv, 12)
-			win := &window{rootBase: rootBase{painter: backend}}
+			win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{painter: backend}}})
 			win.SetWidget(scope)
 			defer win.Destroy()
 			// 固定不透明 sRGB 色，采样远离文字和抗锯齿边缘；角落应保持透明。

@@ -26,7 +26,7 @@ func (l *quitCountLoop) Post(fn func()) { fn() }
 
 func TestApplicationQuitsOnLastWindowClosed(t *testing.T) {
 	loop := &quitCountLoop{}
-	w1, w2 := &window{}, &window{}
+	w1, w2 := testWindowWithSurface(&window{}), testWindowWithSurface(&window{})
 	a := &application{loop: loop, windows: []*window{w1, w2}, quitOnLastWindowClosed: true}
 	q := newTimerTestQueue(t)
 	a.timers = q.s
@@ -44,7 +44,7 @@ func TestApplicationQuitsOnLastWindowClosed(t *testing.T) {
 
 func TestApplicationDoesNotQuitWhenDisabled(t *testing.T) {
 	loop := &quitCountLoop{}
-	w := &window{}
+	w := testWindowWithSurface(&window{})
 	a := &application{loop: loop, windows: []*window{w}, quitOnLastWindowClosed: false}
 
 	a.removeWindow(w)
@@ -242,6 +242,9 @@ func TestApplicationRejectsMissingNativeShutdown(t *testing.T) {
 		t.Fatalf("缺失原生退出未报告或访问了服务：err=%v calls=%v", err, backend.calls)
 	}
 }
+
+// testWindowWithSurface 为独立测试状态绑定真实的公共 Root 身份。
+func testWindowWithSurface(w *window) *window { w.host = w; w.claimed = true; return w }
 
 func TestApplicationStopsDiagnosticsOnUIThread(t *testing.T) {
 	runtime.LockOSThread()

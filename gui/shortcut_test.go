@@ -107,7 +107,7 @@ func shortcutPress(key events.Key, mods events.Modifiers) events.KeyEvent {
 }
 
 func TestShortcutMatchingAndRepeat(t *testing.T) {
-	w := &window{root: newTestWidget()}
+	w := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: newTestWidget()}})
 	s := NewShortcut(KeyGesture{Key: KeyS, Modifiers: ModPrimary})
 	n := 0
 	s.ConnectActivate(func() { n++ })
@@ -156,7 +156,7 @@ func TestShortcutMatchingAndRepeat(t *testing.T) {
 }
 
 func TestShortcutModifierSidesRemainEquivalent(t *testing.T) {
-	w := &window{root: newTestWidget()}
+	w := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: newTestWidget()}})
 	count := 0
 	s := NewShortcut(KeyGesture{Key: KeyControl})
 	s.ConnectActivate(func() { count++ })
@@ -187,7 +187,7 @@ func TestShortcutModifierSidesRemainEquivalent(t *testing.T) {
 func TestShortcutPropagationPriority(t *testing.T) {
 	root, child := newTestWidget(), newTestWidget()
 	root.AddChild(child)
-	w := &window{root: root, rootBase: rootBase{focusedWidget: child}}
+	w := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root, rootBase: rootBase{focusedWidget: child}}})
 	local, parent := NewShortcutController(), NewShortcutController()
 	child.AddEventController(local)
 	root.AddEventController(parent)
@@ -240,7 +240,7 @@ func TestShortcutEditorFirstAndCaptureOverride(t *testing.T) {
 }
 
 func TestShortcutLifetimeAndModal(t *testing.T) {
-	w := &window{root: newTestWidget()}
+	w := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: newTestWidget()}})
 	s := NewShortcut(KeyGesture{Key: KeyF5})
 	later := 0
 	s.ConnectActivate(func() { w.Destroy() })
@@ -254,7 +254,7 @@ func TestShortcutLifetimeAndModal(t *testing.T) {
 	if len(w.Shortcuts().shortcuts) != 0 {
 		t.Fatal("destroyed window accepted binding")
 	}
-	w = &window{root: newTestWidget()}
+	w = testWindowWithSurface(&window{surfaceBase: surfaceBase{root: newTestWidget()}})
 	s = NewShortcut(KeyGesture{Key: KeyF5})
 	s.ConnectActivate(func() { later++ })
 	w.Shortcuts().AddShortcut(s)

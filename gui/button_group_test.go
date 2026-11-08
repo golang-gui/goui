@@ -34,7 +34,7 @@ func TestButtonGroupSeamEnds(t *testing.T) {
 							scope.SetStyleSheet(style.Sheet(style.Name("seam").BorderColor(ink).BorderWidth(width).CornerRadius(radius)))
 							group := NewButtonGroup()
 							scope.SetChild(group)
-							win := &window{rootBase: rootBase{painter: backend}}
+							win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{painter: backend}}})
 							win.SetWidget(scope)
 							defer win.Destroy()
 							for range 3 {
@@ -146,7 +146,7 @@ func TestButtonGroupPixels(t *testing.T) {
 				scope.SetStyleSheet(style.Sheet(style.Name("button").BackgroundColor(bg).BorderColor(line).BorderWidth(1).Radius(8), style.Name("button").Part("focus").BorderColor(color.RGBA{R: 255, A: 255}).BorderWidth(2).Radius(8)))
 				group := NewButtonGroup()
 				scope.SetChild(group)
-				win := &window{rootBase: rootBase{painter: backend}}
+				win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{painter: backend}}})
 				win.SetWidget(scope)
 				defer win.Destroy()
 				for range 3 {

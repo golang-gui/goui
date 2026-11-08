@@ -299,7 +299,7 @@ func TestTextInputObscureCancelPreeditStopsAfterLayoutCallback(t *testing.T) {
 }
 
 func TestTextInputSetTextRequestsLayoutAndEmitsSignal(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	input := NewTextInput()
 	win.SetWidget(input)
 
@@ -362,7 +362,7 @@ func TestTextInputPaintDrawsChromeTextAndCaret(t *testing.T) {
 	}
 	setTestApplication(t, typo)
 
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	input := NewTextInput()
 	input.SetText("abc")
 	input.SetSelection(TextSelection{Anchor: len("ab"), Caret: len("ab")})
@@ -429,7 +429,7 @@ func TestTextInputPaintEmptyFocusedSkipsTextLayoutAndDrawsCaret(t *testing.T) {
 	typo := &testTypography{}
 	setTestApplication(t, typo)
 
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	input := NewTextInput()
 	input.Arrange(geometry.Rect(0, 0, 100, 24))
 	win.SetWidget(input)
@@ -505,7 +505,7 @@ func TestTextInputUsesStyleSheetForChromeAndText(t *testing.T) {
 }
 
 func TestTextInputNativeCommitDoesNotDuplicateKeyEvents(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	root := newTestWidget()
 	input := NewTextInput()
 	root.AddChild(input)
@@ -539,7 +539,7 @@ func TestTextInputEditingKeysMoveAndDeleteByCluster(t *testing.T) {
 	// These three runes are also three complete native Clusters. Navigation
 	// now requires typography, rather than assuming every rune is a Cluster.
 	setTestApplication(t, &editorTypography{})
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	input := NewTextInput()
 	input.SetText("a世b")
 	win.SetWidget(input)
@@ -574,7 +574,7 @@ func TestTextInputEditingKeysMoveAndDeleteByCluster(t *testing.T) {
 }
 
 func TestTextInputIgnoresShortcutModifiers(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	input := NewTextInput()
 	win.SetWidget(input)
 	if !win.SetFocusedWidget(input) {
@@ -596,7 +596,7 @@ func TestTextInputIgnoresShortcutModifiers(t *testing.T) {
 
 func TestTextInputStopsPropagationWhenEditing(t *testing.T) {
 	setTestApplication(t, &editorTypography{})
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	root := newTestWidget()
 	input := NewTextInput()
 	root.AddChild(input)
@@ -650,7 +650,7 @@ func TestTextInputNativeCharactersAndCommandKeys(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			win := &window{}
+			win := testWindowWithSurface(&window{})
 			input := NewTextInput()
 			win.SetWidget(input)
 			win.SetFocusedWidget(input)
@@ -826,7 +826,7 @@ func TestTextInputNeverSplitsSuppliedCluster(t *testing.T) {
 	setTestApplication(t, &combinedInputTypography{})
 	input := NewTextInput()
 	input.SetText("e\u0301x")
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(input)
 	t.Cleanup(func() { win.SetWidget(nil) })
 	win.SetFocusedWidget(input)
@@ -902,7 +902,7 @@ func TestTextInputCommandRespectsChangedFontClusters(t *testing.T) {
 			setTestApplication(t, typo)
 			input := NewTextInput()
 			input.SetText("fi")
-			win := &window{}
+			win := testWindowWithSurface(&window{})
 			win.SetWidget(input)
 			t.Cleanup(func() { win.SetWidget(nil) })
 			win.SetFocusedWidget(input)
@@ -1037,7 +1037,7 @@ func TestTextInputObscuredGeometryHistoryAndSnapshot(t *testing.T) {
 	input.SetObscured(true)
 	secret := "é中👨‍👩‍👧‍👦"
 	input.SetText(secret)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(input)
 	t.Cleanup(func() { win.SetWidget(nil) })
 	input.Arrange(geometry.Rect(0, 0, 160, 32))
@@ -1088,7 +1088,7 @@ func TestTextInputObscuredClipboardAndPreedit(t *testing.T) {
 	input := NewTextInput()
 	input.SetObscured(true)
 	input.SetText("é中")
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(input)
 	t.Cleanup(func() { win.SetWidget(nil) })
 	input.Arrange(geometry.Rect(0, 0, 160, 32))

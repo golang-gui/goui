@@ -32,7 +32,7 @@ func TestDragObserverTracksSubtreeIndependentlyOfAcceptance(t *testing.T) {
 	child.ConnectLeave(func() { childLeaves++ })
 	target := NewDropTarget(DragFormatText)
 	a.AddEventController(target)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(root)
 	defer win.Destroy()
 	offer := &testDragOffer{id: 1, formats: []dragdrop.Format{dragdrop.FormatText}}
@@ -55,7 +55,7 @@ func TestDragObserverReentrantDestroyStopsRemainingObservation(t *testing.T) {
 	first, second := NewDragMotionEventController(), NewDragMotionEventController()
 	root.AddEventController(first)
 	root.AddEventController(second)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(root)
 	first.ConnectEnter(func(geometry.Point) { win.Destroy() })
 	calls := 0
@@ -80,7 +80,7 @@ func TestDragAutoScrollStationaryPointerRenegotiatesAndStops(t *testing.T) {
 		row.AddEventController(target)
 		targets = append(targets, target)
 	}
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(sv)
 	defer win.Destroy()
 	sv.Measure(layout.Tight(geometry.Size{Width: 120, Height: 100}))
@@ -115,7 +115,7 @@ func TestDragAutoScrollNestedAxesAndFractionalBoundary(t *testing.T) {
 	outer.SetChild(content)
 	content.WidgetBase.AddChild(content, inner)
 	inner.SetChild(&mockWidget{size: geometry.Size{Width: 100, Height: 1000.5}})
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(outer)
 	defer win.Destroy()
 	outer.Measure(layout.Tight(geometry.Size{Width: 160, Height: 100}))
@@ -155,7 +155,7 @@ func TestDragAutoScrollRespectsNestedDirections(t *testing.T) {
 	outer.SetChild(content)
 	content.WidgetBase.AddChild(content, inner)
 	inner.SetChild(&extentScrollContent{size: geometry.Size{Width: 500, Height: 500}})
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(outer)
 	defer win.Destroy()
 	outer.Arrange(geometry.Rect(0, 0, 200, 100))

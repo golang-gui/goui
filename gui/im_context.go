@@ -49,15 +49,20 @@ type IMContext interface {
 	emitCommit(commit IMCommit)
 	emitPreedit(text string, caret int)
 	hasPreedit() bool
-	setWindow(w *window) // binds to the focused window; nil unbinds
+	setSurface(w inputMethodHost) // binds to the focused host; nil unbinds
+}
+
+type inputMethodHost interface {
+	imSetCaretRect(geometry.Rectangle)
+	imReset()
 }
 
 // imContext is the sole IMContext implementation.
 type imContext struct {
 	commit     signal.Signal1[IMCommit]
 	preedit    signal.Signal2[string, int]
-	window     *window // non-nil only while the owning widget is focused
-	preediting bool    // known native preedit; maintained before signal callbacks
+	host       inputMethodHost // non-nil only while the owning widget is focused
+	preediting bool            // known native preedit; maintained before signal callbacks
 }
 
 // NewIMContext creates an input-method context. A text widget owns one for its
@@ -75,15 +80,15 @@ func (c *imContext) ConnectPreedit(fn func(text string, caret int)) signal.Handl
 }
 
 func (c *imContext) SetCaretRect(rect geometry.Rectangle) {
-	if c.window != nil {
-		c.window.imSetCaretRect(rect)
+	if c.host != nil {
+		c.host.imSetCaretRect(rect)
 	}
 }
 
 func (c *imContext) Reset() {
 	c.preediting = false
-	if c.window != nil {
-		c.window.imReset()
+	if c.host != nil {
+		c.host.imReset()
 	}
 }
 
@@ -99,8 +104,8 @@ func (c *imContext) emitPreedit(text string, caret int) {
 
 func (c *imContext) hasPreedit() bool { return c.preediting }
 
-func (c *imContext) setWindow(w *window) {
-	c.window = w
+func (c *imContext) setSurface(w inputMethodHost) {
+	c.host = w
 	if w == nil {
 		c.preediting = false
 	}
@@ -137,12 +142,13 @@ func commitText(root Root, text string) error {
 func textInputFocus(root Root) (Widget, error) {
 	ensureModalRoot(root)
 	switch host := root.(type) {
-	case *window:
-		if host.destroyed || host.frameSuspended {
-			return nil, fmt.Errorf("commit text: window is unavailable")
+	case Surface:
+		core := surfaceCore(host)
+		if core == nil || core.destroyed || core.frameSuspended {
+			return nil, fmt.Errorf("commit text: surface is unavailable")
 		}
-		if modalRootBlocked(host) || host.modalTarget != nil {
-			return nil, fmt.Errorf("commit text: window input is blocked by a modal target")
+		if modalRootBlocked(core.owner()) || core.modalTarget != nil {
+			return nil, fmt.Errorf("commit text: surface input is blocked by a modal target")
 		}
 	case *popover:
 		if host.destroyed || !host.visible {

@@ -32,7 +32,7 @@ func (n *showTestWindow) RequestPaint() error { n.paints++; return nil }
 func TestWindowShow(t *testing.T) {
 	// 每次 Show 都提交原生请求；不直接伪造焦点或状态，不修改逻辑焦点。
 	native := &showTestWindow{}
-	w := &window{platformWindow: native}
+	w := testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: native}})
 	w.frameSuspended = true
 	w.focusedWidget = newTestWidget()
 	focused := w.focusedWidget
@@ -59,7 +59,7 @@ func TestWindowShow(t *testing.T) {
 
 func TestWindowShowDestroyedDuringActivation(t *testing.T) {
 	native := &showTestWindow{}
-	w := &window{platformWindow: native}
+	w := testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: native}})
 	native.show = func() error {
 		// Win32/AppKit 原生激活可同步回调到应用，应用允许在回调中销毁窗口。
 		w.Destroy()
@@ -74,7 +74,7 @@ func TestWindowShowDestroyedDuringActivation(t *testing.T) {
 }
 
 func TestWindowSetWidget(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	root := newTestWidget()
 
 	win.SetWidget(root)
@@ -93,7 +93,7 @@ func TestWindowSetWidget(t *testing.T) {
 }
 
 func TestWindowRequestPaintWithoutPlatformWindow(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 
 	if err := win.RequestPaint(); err != nil {
 		t.Fatal(err)
@@ -121,7 +121,7 @@ func TestWindowCapturedDragOwnsCursor(t *testing.T) {
 			motion := NewMotionEventController()
 			other.AddEventController(motion)
 			cursor := new(windowCursorRecorder)
-			win := &window{cursor: cursor}
+			win := testWindowWithSurface(&window{surfaceBase: surfaceBase{cursor: cursor}})
 			win.SetWidget(root)
 			t.Cleanup(win.Destroy)
 			pointer := func(kind events.EventType, x float32, down bool) {
@@ -173,7 +173,7 @@ func TestWindowCapturedDragOwnsCursor(t *testing.T) {
 }
 
 func TestWindowStyleNameOnlyInvalidatesOwnPaint(t *testing.T) {
-	win, other := &window{}, &window{}
+	win, other := testWindowWithSurface(&window{}), testWindowWithSurface(&window{})
 	root := newTestWidget()
 	root.SetStyleName("content-style")
 	win.SetWidget(root)
@@ -225,8 +225,8 @@ func TestWindowBackgroundStyleIsIsolated(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				w := &window{rootBase: rootBase{width: 80, height: 60,
-					pixelWidth: 80 * scale, pixelHeight: 60 * scale, transparent: true, painter: p}, clientChrome: framed}
+				w := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{width: 80, height: 60,
+					pixelWidth: 80 * scale, pixelHeight: 60 * scale, transparent: true, painter: p}}, clientChrome: framed})
 				w.SetWidget(newPainterTestWidget(func(p Painter) {
 					p.FillRect(geometry.Rect(16, 16, 48, 28), graphics.RGB(12, 34, 56))
 				}))
@@ -286,7 +286,7 @@ func TestWindowBackgroundStyleIsIsolated(t *testing.T) {
 }
 
 func TestWindowDispatchEventHandlesSize(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 
 	// SizeEvent carries both logical (DIP) and physical (pixel) size; scale is
 	// derived as PixelWidth/Width (here 2x).
@@ -308,7 +308,7 @@ func TestWindowDispatchEventHandlesSize(t *testing.T) {
 }
 
 func TestWindowDispatchEventHandlesFocus(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	var calls []bool
 	win.ConnectFocus(func(focused bool) {
 		calls = append(calls, focused)
@@ -337,7 +337,7 @@ func TestWindowDispatchEventHandlesFocus(t *testing.T) {
 }
 
 func TestWindowSetFocusedWidgetValidatesTarget(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	root := newTestWidget()
 	child := newTestWidget()
 	root.AddChild(child)
@@ -368,15 +368,14 @@ func TestWindowSetFocusedWidgetValidatesTarget(t *testing.T) {
 
 func TestWindowPaintPerformsPendingLayoutBeforePainting(t *testing.T) {
 	painter := new(testGraphicsPainter)
-	win := &window{
-		rootBase: rootBase{
-			painter:     painter,
-			width:       320,
-			height:      240,
-			pixelWidth:  640,
-			pixelHeight: 480,
-		},
-	}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{
+		painter:     painter,
+		width:       320,
+		height:      240,
+		pixelWidth:  640,
+		pixelHeight: 480,
+	}},
+	})
 	root := newLayoutPassWidget()
 	win.SetWidget(root)
 
@@ -423,7 +422,7 @@ func TestWindowPaintPerformsPendingLayoutBeforePainting(t *testing.T) {
 }
 
 func TestWindowCloseRequestCanPreventDestroy(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	destroyed := false
 
 	win.ConnectCloseRequest(func(allow *bool) {
@@ -446,7 +445,7 @@ func TestWindowCloseRequestCanPreventDestroy(t *testing.T) {
 }
 
 func TestWindowCloseRequestAllowsDestroy(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	destroyed := false
 
 	win.ConnectDestroy(func() {
@@ -467,7 +466,7 @@ func TestWindowCloseRequestAllowsDestroy(t *testing.T) {
 
 func TestWindowDestroyDestroysRootWidget(t *testing.T) {
 	var calls []string
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	root := newLifecycleWidget("root", &calls)
 	child := newLifecycleWidget("child", &calls)
 	root.AddChild(child)
@@ -486,14 +485,13 @@ func TestWindowDestroyDestroysRootWidget(t *testing.T) {
 }
 
 func TestWindowSnapshot(t *testing.T) {
-	win := &window{
-		id:    "main",
-		title: "Main",
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{id: "main",
+
 		rootBase: rootBase{
 			width:  320,
 			height: 240,
-		},
-	}
+		}}, title: "Main",
+	})
 	root := newTestWidget()
 	root.SetID("root")
 	win.SetWidget(root)
@@ -705,7 +703,7 @@ func (*desktopTestWindow) WorkAreaAt(geometry.Point) (geometry.Rectangle, error)
 
 func TestWindowPositionDelegation(t *testing.T) {
 	native, reference := &desktopTestWindow{}, &desktopTestWindow{}
-	w, ref := &window{platformWindow: native}, &window{platformWindow: reference}
+	w, ref := testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: native}}), testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: reference}})
 	p := geometry.Point{X: -20, Y: 40}
 	for _, relativeTo := range []Window{nil, ref, w} {
 		if err := w.SetPosition(relativeTo, p); err != nil {
@@ -730,7 +728,7 @@ func TestWindowPositionDelegation(t *testing.T) {
 	if err := w.SetPosition(ref, p); !errors.Is(err, platform.ErrUnavailable) {
 		t.Fatalf("accepted destroyed reference: %v", err)
 	}
-	if err := w.SetPosition(&window{}, p); !errors.Is(err, platform.ErrUnavailable) {
+	if err := w.SetPosition(testWindowWithSurface(&window{}), p); !errors.Is(err, platform.ErrUnavailable) {
 		t.Fatalf("nil reference handle became work-area positioning: %v", err)
 	}
 	w.destroyed = true
@@ -740,7 +738,7 @@ func TestWindowPositionDelegation(t *testing.T) {
 	if _, err := w.WorkAreaAt(p); !errors.Is(err, platform.ErrUnavailable) {
 		t.Fatal(err)
 	}
-	w = &window{platformWindow: &chromeTestWindow{}}
+	w = testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: &chromeTestWindow{}}})
 	if err := w.SetPosition(nil, p); !errors.Is(err, platform.ErrUnsupported) {
 		t.Fatal(err)
 	}
@@ -751,8 +749,8 @@ func TestWindowPositionDelegation(t *testing.T) {
 
 func TestWindowObservedPosition(t *testing.T) {
 	native := &desktopTestWindow{windowPosition: geometry.Point{X: -6, Y: -28}}
-	w := &window{platformWindow: native}
-	ref := &window{platformWindow: &desktopTestWindow{}}
+	w := testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: native}})
+	ref := testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: &desktopTestWindow{}}})
 	for _, relativeTo := range []Window{nil, ref, w} {
 		got, err := w.Position(relativeTo)
 		if err != nil || got != native.windowPosition {
@@ -780,7 +778,7 @@ func TestWindowObservedPosition(t *testing.T) {
 	native.queryError = nil
 	ref.destroyed = true // native object still present during destroy callbacks
 	var nilRef *window
-	for _, reference := range []Window{ref, &window{}, nilRef} {
+	for _, reference := range []Window{ref, testWindowWithSurface(&window{}), nilRef} {
 		if _, err := w.Position(reference); !errors.Is(err, platform.ErrUnavailable) {
 			t.Fatal("accepted unavailable reference", err)
 		}
@@ -789,7 +787,7 @@ func TestWindowObservedPosition(t *testing.T) {
 	if _, err := w.Position(nil); !errors.Is(err, platform.ErrUnavailable) {
 		t.Fatal("accepted destroyed target", err)
 	}
-	w = &window{platformWindow: &chromeTestWindow{}}
+	w = testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: &chromeTestWindow{}}})
 	if _, err := w.Position(nil); !errors.Is(err, platform.ErrUnsupported) {
 		t.Fatal("accepted non-desktop host", err)
 	}
@@ -797,7 +795,7 @@ func TestWindowObservedPosition(t *testing.T) {
 
 func TestWindowWorkAreaDelegation(t *testing.T) {
 	native := &placementWindow{area: geometry.Rect(-80, -40, 1000, 700)}
-	w := &window{platformWindow: native}
+	w := testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: native}})
 	p := geometry.Point{X: 200, Y: -10}
 	area, err := w.WorkAreaAt(p)
 	if err != nil || area != native.area || len(native.points) != 1 || native.points[0] != p {
@@ -811,7 +809,7 @@ func TestWindowWorkAreaDelegation(t *testing.T) {
 
 func TestDesktopRequestsDoNotPredictState(t *testing.T) {
 	native := &desktopTestWindow{state: WindowStateNormal}
-	win := &window{platformWindow: native}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: native}})
 	defer win.Destroy()
 	var changes []WindowState
 	win.ConnectState(func(s WindowState) { changes = append(changes, s) })
@@ -847,7 +845,7 @@ func TestDesktopRequestsDoNotPredictState(t *testing.T) {
 
 func TestNonDesktopWindowNeedsNoDesktopImplementation(t *testing.T) {
 	native := &chromeTestWindow{}
-	win := &window{platformWindow: native}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: native}})
 	defer win.Destroy()
 	if win.State() != WindowStateUnknown || win.Chrome() == nil {
 		t.Fatal("invalid non-desktop contract")
@@ -882,7 +880,7 @@ func TestWindowContentDoesNotDeclareMinimum(t *testing.T) {
 	for _, widgetMinimum := range []bool{false, true} {
 		t.Run(fmt.Sprintf("widgetMinimum=%t", widgetMinimum), func(t *testing.T) {
 			native := &desktopTestWindow{state: WindowStateNormal}
-			w := &window{platformWindow: native}
+			w := testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: native}})
 			t.Cleanup(w.Destroy)
 			w.width, w.height = 400, 300
 			var content Widget = &countingMeasureWidget{size: geometry.Size{Width: 1600, Height: 900}}
@@ -908,7 +906,7 @@ func TestWindowContentDoesNotDeclareMinimum(t *testing.T) {
 // 首次绘制前清除限制，也不能回落到内容测量；后续更新仍直接转发。
 func TestWindowMinimumUpdatesAndClears(t *testing.T) {
 	native := &desktopTestWindow{state: WindowStateNormal}
-	w := &window{platformWindow: native}
+	w := testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: native}})
 	t.Cleanup(w.Destroy)
 	w.width, w.height = 400, 300
 	w.SetWidget(&countingMeasureWidget{size: geometry.Size{Width: 1600, Height: 900}})
@@ -939,7 +937,7 @@ func TestWindowMinimumUpdatesAndClears(t *testing.T) {
 func TestContentMeasurementOnlyParticipatesInLayout(t *testing.T) {
 	size := geometry.Size{Width: 120, Height: 40}
 	child := &countingMeasureWidget{size: size}
-	win := &window{platformWindow: &chromeTestWindow{}, root: child}
+	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: &chromeTestWindow{}, root: child}})
 	win.SetMinSize(size)
 	if child.measures != 0 {
 		t.Fatal("non-desktop host measured desktop minimum")
@@ -950,7 +948,7 @@ func TestContentMeasurementOnlyParticipatesInLayout(t *testing.T) {
 	win.Destroy()
 	native := &desktopTestWindow{}
 	child = &countingMeasureWidget{size: size}
-	win = &window{platformWindow: native, root: child}
+	win = testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: native, root: child}})
 	win.SetMinSize(size)
 	if child.measures != 0 || !reflect.DeepEqual(native.minimums, []geometry.Size{size}) {
 		t.Fatal("显式窗口限制不应测量内容")
@@ -1412,7 +1410,7 @@ func TestWindowNativeTermination(t *testing.T) {
 			app := &application{loop: loop, quitOnLastWindowClosed: true}
 			native := &chromeTestWindow{}
 			backend := &lifecyclePainter{}
-			w := &window{platformWindow: native, rootBase: rootBase{app: app, width: 40, height: 30, pixelWidth: 40, pixelHeight: 30, painter: backend}}
+			w := testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: native, rootBase: rootBase{app: app, width: 40, height: 30, pixelWidth: 40, pixelHeight: 30, painter: backend}}})
 			app.windows = []*window{w}
 			root := newTestWidget()
 			w.SetWidget(root)

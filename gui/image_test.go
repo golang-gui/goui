@@ -56,7 +56,7 @@ func TestImageMeasureSkipsNilAndHiddenImage(t *testing.T) {
 }
 
 func TestImageSetImageRequestsLayout(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	view := NewImage(nil)
 	win.SetWidget(view)
 
@@ -132,7 +132,7 @@ func TestImageContentSize(t *testing.T) {
 }
 
 func TestImageContentSizeInvalidationAndResourceReuse(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	view := NewImage(image.NewRGBA(image.Rect(0, 0, 600, 285)))
 	win.SetWidget(view)
 	defer win.SetWidget(nil)
@@ -187,7 +187,7 @@ func TestImageContentSizePreservesRenderWidgetPreview(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		win := &window{rootBase: rootBase{painter: p, width: 100, pixelWidth: 100 * scale}}
+		win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{painter: p, width: 100, pixelWidth: 100 * scale}}})
 		source := newPainterTestWidget(func(p Painter) {
 			p.FillRect(geometry.Rect(0, 0, 24, 12), graphics.RGB(255, 0, 0))
 			p.FillRect(geometry.Rect(12, 0, 12, 12), graphics.RGB(0, 0, 255))
@@ -249,7 +249,7 @@ func TestImagePaintReusesResourceAndReleasesOnReplaceAndUnmount(t *testing.T) {
 		t.Fatal("replacement did not create a new resource")
 	}
 
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(view)
 	win.SetWidget(nil)
 	if !secondResource.destroyed {

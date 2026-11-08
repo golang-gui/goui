@@ -68,7 +68,7 @@ func TestCommandShortcutAssociations(t *testing.T) {
 }
 
 func TestCommandShortcutDispatchAndIndependentEnablement(t *testing.T) {
-	w := &window{root: newTestWidget()}
+	w := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: newTestWidget()}})
 	c := NewCommand()
 	n, fallback := 0, 0
 	c.ConnectActivate(func() { n++ })

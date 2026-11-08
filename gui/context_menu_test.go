@@ -88,7 +88,7 @@ func TestContextMenuBubblesAndKeyboardHasNoPosition(t *testing.T) {
 		}
 	})
 	parent.ConnectRequest(func(EventContext) { parentCalls++ })
-	w := &window{}
+	w := testWindowWithSurface(&window{})
 	w.SetWidget(root)
 	e := events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonRight, Position: geometry.Point{X: 15, Y: 27}}
 	_ = w.DispatchEvent(e)

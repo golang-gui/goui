@@ -303,9 +303,9 @@ func (pm *PopoverMenu) activate(mi *MenuItem) {
 	if command != nil {
 		commandRevision = command.revision
 	}
-	var owner *window
+	var owner *surfaceBase
 	if p, ok := pm.popover.(*popover); ok {
-		owner, _ = p.owner.(*window)
+		owner = surfaceCore(p.owner)
 	}
 	pm.Hide()
 	if owner != nil && owner.destroyed || pm.anchor != nil && pm.anchor.base().destroyed {

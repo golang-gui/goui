@@ -42,7 +42,7 @@ func TestScrollBarLargeRangeEndpoints(t *testing.T) {
 	for _, axis := range []layout.Direction{layout.DirectionHorizontal, layout.DirectionVertical} {
 		for _, tc := range []struct{ length, maximum float32 }{{760, 1005020544}, {800, 1000000000}} {
 			bar := NewScrollBar(axis)
-			win := &window{}
+			win := testWindowWithSurface(&window{})
 			win.SetWidget(bar)
 			bar.SetMax(tc.maximum)
 			var got float32

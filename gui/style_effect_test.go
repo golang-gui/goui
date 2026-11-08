@@ -512,7 +512,7 @@ func TestTextInputFocusedBorderFromApplicationStyleSheet(t *testing.T) {
 		),
 	})
 
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	input := NewTextInput()
 	win.SetWidget(input)
 	input.Arrange(geometry.Rect(0, 0, 100, 24))

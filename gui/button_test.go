@@ -43,7 +43,7 @@ func TestButtonKeyboardActivationAfterTab(t *testing.T) {
 	for _, key := range []events.Key{events.KeySpace, events.KeyEnter} {
 		t.Run(fmt.Sprint(key), func(t *testing.T) {
 			button := NewButton()
-			win := &window{}
+			win := testWindowWithSurface(&window{})
 			win.SetWidget(button)
 			t.Cleanup(win.Destroy)
 			clicks := 0
@@ -86,7 +86,7 @@ func TestButtonKeyboardDoesNotActivateFromEditableChild(t *testing.T) {
 	child := newTestWidget()
 	child.SetFocusable(true)
 	button.SetChild(child)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(button)
 	defer win.Destroy()
 	win.SetFocusedWidget(child)
@@ -113,7 +113,7 @@ func TestButtonFocusVisiblePixels(t *testing.T) {
 				}
 				defer backend.Destroy()
 				button := kind.new()
-				win := &window{rootBase: rootBase{painter: backend}}
+				win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{painter: backend}}})
 				win.SetWidget(button)
 				defer win.SetWidget(nil)
 				button.Arrange(geometry.Rect(0, 0, 80, 30))
@@ -394,7 +394,7 @@ func (w *wrappingButtonChild) Measure(c layout.Constraint) layout.Measurement {
 func TestButtonPaintsBackgroundForPointerStates(t *testing.T) {
 	button := NewButton()
 	button.Arrange(geometry.Rect(0, 0, 80, 30))
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(button)
 
 	painter := new(testButtonBackgroundPainter)
@@ -465,7 +465,7 @@ func TestButtonHoverUsesContainedChildHover(t *testing.T) {
 	button.SetChild(child)
 	button.Arrange(geometry.Rect(0, 0, 80, 30))
 	child.Arrange(geometry.Rect(0, 0, 80, 30))
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(button)
 
 	if err := win.DispatchEvent(events.PointerEvent{
@@ -485,7 +485,7 @@ func TestButtonHoverUsesContainedChildHover(t *testing.T) {
 func TestButtonClickedSignal(t *testing.T) {
 	button := NewButton()
 	button.Arrange(geometry.Rect(0, 0, 80, 30))
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(button)
 
 	clicked := 0
@@ -520,7 +520,7 @@ func TestButtonClickedSignalThroughChildContent(t *testing.T) {
 	button.SetChild(child)
 	button.Arrange(geometry.Rect(0, 0, 80, 30))
 	child.Arrange(geometry.Rect(0, 0, 80, 30))
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(button)
 
 	clicked := 0
@@ -555,7 +555,7 @@ func TestButtonClickHandlesChildDownAndButtonUp(t *testing.T) {
 	button.SetChild(child)
 	button.Arrange(geometry.Rect(0, 0, 80, 30))
 	child.Arrange(geometry.Rect(0, 0, 80, 30))
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(button)
 
 	clicked := 0
@@ -589,7 +589,7 @@ func TestButtonClickHandlesChildDownAndButtonUp(t *testing.T) {
 func TestButtonClickIsCanceledAfterPointerLeaves(t *testing.T) {
 	button := NewButton()
 	button.Arrange(geometry.Rect(0, 0, 80, 30))
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(button)
 
 	clicked := 0
@@ -635,7 +635,7 @@ func TestButtonClickIsCanceledAfterPointerLeaves(t *testing.T) {
 func TestButtonDoesNotClickWithoutPointerDown(t *testing.T) {
 	button := NewButton()
 	button.Arrange(geometry.Rect(0, 0, 80, 30))
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(button)
 
 	clicked := 0
@@ -659,7 +659,7 @@ func TestButtonDoesNotClickWithoutPointerDown(t *testing.T) {
 func TestButtonIgnoresNonLeftButton(t *testing.T) {
 	button := NewButton()
 	button.Arrange(geometry.Rect(0, 0, 80, 30))
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(button)
 
 	clicked := 0

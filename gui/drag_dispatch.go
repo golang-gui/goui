@@ -126,7 +126,7 @@ func updateDragHost(s *dragHostState, app *application, surface platform.Surface
 	}
 }
 
-func (w *window) dragControllersChanged() {
+func (w *surfaceBase) dragControllersChanged() {
 	if !w.destroyed {
 		if w.drag.native == nil && w.drag.err != nil {
 			w.drag.attempted = false

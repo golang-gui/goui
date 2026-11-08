@@ -16,7 +16,7 @@ import (
 	"github.com/golang-gui/goui/style"
 )
 
-// Root is the host a widget lives in — a window or a popover. Widgets reach it
+// Root is the host a widget lives in — a Surface or a Popover. Widgets reach it
 // via Root() and depend only on this interface, never on the concrete host type.
 type Root interface {
 	Widget() Widget

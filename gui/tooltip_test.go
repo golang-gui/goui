@@ -18,7 +18,7 @@ func tooltipFixture(t *testing.T) (*window, *testWidget, *testWidget, *testWidge
 	plat := &placementPlatform{syncSize: true}
 	app := &application{platform: plat, timers: q.s}
 	useTestApplication(t, app)
-	w := &window{platformWindow: &placementWindow{area: geometry.Rect(0, 0, 1000, 800)}, focused: true}
+	w := testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: &placementWindow{area: geometry.Rect(0, 0, 1000, 800)}, focused: true}})
 	w.app, w.width, w.height = app, 400, 300
 	app.windows = []*window{w}
 	root, a, b := newTestWidget(), newTestWidget(), newTestWidget()

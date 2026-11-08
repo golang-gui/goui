@@ -190,7 +190,7 @@ func TestDrawingAreaCallbackLifecycle(t *testing.T) {
 					a.base().destroy(a)
 				}
 			})
-			win := &window{}
+			win := testWindowWithSurface(&window{})
 			win.SetWidget(a)
 			t.Cleanup(win.Destroy)
 			a.Arrange(geometry.Rect(0, 0, 8, 5))
@@ -251,7 +251,7 @@ func TestDrawingAreaCallbackLifecycle(t *testing.T) {
 
 func TestDrawingAreaUnmountReentryAndPaintRequest(t *testing.T) {
 	target := &drawingAreaTarget{scale: 1}
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	calls := 0
 	var a *DrawingArea
 	a = NewDrawingArea(func(Painter, geometry.Size) { calls++; a.RequestPaint() })
@@ -327,7 +327,7 @@ func TestDrawingAreaPixelsClipScaleAndRetainedSize(t *testing.T) {
 				p.FillRect(geometry.Rect(0, 0, 9, 9), graphics.RGB(0, 0, 255))
 				p.Restore()
 			})
-			win := &window{rootBase: rootBase{painter: native}}
+			win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{painter: native}}})
 			win.SetWidget(a)
 			defer win.SetWidget(nil)
 			a.Arrange(geometry.Rect(0, 0, 6, 4))
@@ -430,7 +430,7 @@ func TestDrawingAreaUpdateFailureAndLifecycle(t *testing.T) {
 				calls++
 				p.FillRect(geometry.Rectangle{Size: size}, graphics.RGB(uint8(calls*40), 0, 0))
 			})
-			win := &window{}
+			win := testWindowWithSurface(&window{})
 			win.SetWidget(a)
 			t.Cleanup(win.Destroy)
 			a.Arrange(geometry.Rect(0, 0, 8, 6))

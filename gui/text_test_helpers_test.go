@@ -302,7 +302,7 @@ func newInputFixture(t *testing.T, text string) (*TextInput, *window, *editorTyp
 	setTestApplication(t, typo)
 	input := NewTextInput()
 	input.SetText(text)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(input)
 	t.Cleanup(func() { win.SetWidget(nil) })
 	input.Arrange(geometry.Rect(0, 0, 80, 40))
@@ -353,7 +353,7 @@ func newEditorFixture(t *testing.T, text string) (*TextView, *window, *editorTyp
 	setTestApplication(t, typo)
 	editor := NewTextView()
 	editor.SetModel(NewTextModel(text))
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(editor)
 	editor.Arrange(geometry.Rect(0, 0, 209, 108))
 	win.SetFocusedWidget(editor)
@@ -390,7 +390,7 @@ func timedEditorFixture(t *testing.T) (*TextView, *ScrollView, *window, *timerTe
 	editor.SetModel(NewTextModel(strings.Repeat("row\n", 100)))
 	scroll := NewScrollView()
 	scroll.SetChild(editor)
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(scroll)
 	t.Cleanup(func() { win.SetWidget(nil) })
 	box := geometry.Rect(0, 0, 220, 108)

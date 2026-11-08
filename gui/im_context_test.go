@@ -60,7 +60,7 @@ func TestIMContextCommitMetadataSurvivesReentry(t *testing.T) {
 }
 
 func TestWindowBindsAndRoutesIMEToFocusedTextInput(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	input := NewTextInput()
 	win.SetWidget(input)
 	if !win.SetFocusedWidget(input) {
@@ -102,7 +102,7 @@ func TestWindowBindsAndRoutesIMEToFocusedTextInput(t *testing.T) {
 }
 
 func TestWindowUnbindsIMEWhenFocusLeaves(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	input := NewTextInput()
 	win.SetWidget(input)
 	win.SetFocusedWidget(input)
@@ -246,7 +246,7 @@ func (w *reentrantIMClient) IMContext() IMContext {
 func TestCommitTextRechecksHostAfterIMClientQuery(t *testing.T) {
 	for _, action := range []string{"destroy", "modal", "change-focus"} {
 		t.Run(action, func(t *testing.T) {
-			win := &window{}
+			win := testWindowWithSurface(&window{})
 			input := &reentrantIMClient{im: NewIMContext()}
 			input.SetFocusable(true)
 			win.SetWidget(input)
@@ -272,7 +272,7 @@ func TestCommitTextRechecksHostAfterIMClientQuery(t *testing.T) {
 }
 
 func TestPopoverKeyboardRejectsLostModalOwnership(t *testing.T) {
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	first := &popover{owner: win, visible: true, modal: true}
 	second := &popover{owner: win, visible: true, modal: true}
 	win.SetModalTarget(second)

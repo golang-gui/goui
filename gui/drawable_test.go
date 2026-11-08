@@ -12,7 +12,7 @@ import (
 )
 
 func TestDrawableMatchesStructuralPaintWithoutContainerTypes(t *testing.T) {
-	w := &window{rootBase: rootBase{width: 80, height: 80, painter: &recordingPainterBackend{}}}
+	w := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{width: 80, height: 80, painter: &recordingPainterBackend{}}}})
 	root := &painterTestContainer{}
 	viewport := newPainterTestWidget(nil)
 	content := &painterTestContainer{}
@@ -77,7 +77,7 @@ func TestDrawableMatchesStructuralPaintWithoutContainerTypes(t *testing.T) {
 
 func TestDrawableFiltersOnlyStableWidgetPaintRequests(t *testing.T) {
 	d, app := startTestDiagnostics(t, true)
-	w := &window{rootBase: rootBase{app: app, width: 100, height: 80, painter: &recordingPainterBackend{}}}
+	w := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{app: app, width: 100, height: 80, painter: &recordingPainterBackend{}}}})
 	root := &painterTestContainer{}
 	child := newPainterTestWidget(nil)
 	root.AddChild(child)
@@ -149,7 +149,7 @@ func TestDrawableDoesNotRestrictRenderWidgetTarget(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer backend.Destroy()
-			w := &window{rootBase: rootBase{width: 30, height: 20, pixelWidth: 30 * scale, pixelHeight: 20 * scale, transparent: true, painter: backend}}
+			w := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{width: 30, height: 20, pixelWidth: 30 * scale, pixelHeight: 20 * scale, transparent: true, painter: backend}}})
 			root := &painterTestContainer{}
 			value := graphics.RGBA(60, 100, 180, 128)
 			child := newPainterTestWidget(func(p Painter) {

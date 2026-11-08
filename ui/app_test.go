@@ -668,15 +668,15 @@ func (a *windowTestApplication) Snapshot() gui.ApplicationInfo {
 
 type windowTestFileDialog struct{}
 
-func (f *windowTestFileDialog) OpenFile(owner gui.Window, opts gui.DialogOptions, cb func([]gui.FileAccess, error)) {
+func (f *windowTestFileDialog) OpenFile(owner gui.Surface, opts gui.DialogOptions, cb func([]gui.FileAccess, error)) {
 	cb(nil, nil)
 }
 
-func (f *windowTestFileDialog) OpenDirectory(owner gui.Window, opts gui.DialogOptions, cb func([]gui.FileAccess, error)) {
+func (f *windowTestFileDialog) OpenDirectory(owner gui.Surface, opts gui.DialogOptions, cb func([]gui.FileAccess, error)) {
 	cb(nil, nil)
 }
 
-func (f *windowTestFileDialog) SaveFile(owner gui.Window, opts gui.DialogOptions, cb func([]gui.FileAccess, error)) {
+func (f *windowTestFileDialog) SaveFile(owner gui.Surface, opts gui.DialogOptions, cb func([]gui.FileAccess, error)) {
 	cb(nil, nil)
 }
 
@@ -820,4 +820,15 @@ func TestRunBuildAndUnmountUseActivationThread(t *testing.T) {
 	default:
 		t.Fatal("Run 返回未通知等待者")
 	}
+}
+
+func (a *windowTestApplication) NewSurface() (gui.Surface, error) {
+	return nil, platform.ErrUnsupported
+}
+func (a *windowTestApplication) Surfaces() []gui.Surface {
+	var result []gui.Surface
+	for _, w := range a.Windows() {
+		result = append(result, w)
+	}
+	return result
 }

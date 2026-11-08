@@ -28,7 +28,7 @@ func TestMenuPointerAndKeyboardShareOneActiveItem(t *testing.T) {
 	m.Append("Last", nil)
 	var activated *MenuItem
 	content := newMenuContent(m, 0, func(item *MenuItem) { activated = item })
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(content)
 	defer win.Destroy()
 	size := content.Measure(layout.Unbounded()).Size
@@ -180,7 +180,7 @@ func TestMenuActiveItemAcrossScrollingAndRowReuse(t *testing.T) {
 		model.Append("Item", nil)
 	}
 	content := newMenuContent(model, 100, func(*MenuItem) {})
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(content)
 	defer win.Destroy()
 	size := content.Measure(layout.Unbounded()).Size
@@ -246,7 +246,7 @@ func TestMenuPointerSelectionWithContentOffset(t *testing.T) {
 	first := model.Append("First", nil)
 	second := model.Append("Second", nil)
 	content := newMenuContent(model, 0, func(*MenuItem) {})
-	win := &window{}
+	win := testWindowWithSurface(&window{})
 	win.SetWidget(content)
 	defer win.Destroy()
 	size := content.Measure(layout.Unbounded()).Size
