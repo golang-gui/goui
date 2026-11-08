@@ -1,6 +1,7 @@
 package test
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -14,9 +15,11 @@ import (
 	"github.com/golang-gui/goui/platform/graphics"
 )
 
-// TestPopup creates a borderless popup on an owner window, positions and sizes
-// it (owner-window-local coordinates), shows it, and verifies it receives a
-// paint event and can be drawn to.
+// popupOwner 只转发基础宿主，不向 Popup 暴露窗口管理接口。
+type popupOwner struct{ platform.Window }
+
+// TestPopup 验证不具备 WindowManagement 的 owner 也能创建、定位、显示和绘制 Popup。
+// 使用真实窗口的基础接口视图，避免把原生承载能力与主动管理权限混为一谈。
 func TestPopup(t *testing.T) {
 	skipWithoutDisplay(t)
 
@@ -49,7 +52,12 @@ func TestPopup(t *testing.T) {
 		}
 
 		var once sync.Once
-		popup, err = plat.NewPopup(owner, geometry.Size{Width: 120, Height: 80}, func(event platform.Event) {
+		baseOwner := popupOwner{owner}
+		if _, managed := any(baseOwner).(platform.WindowManagement); managed {
+			err = fmt.Errorf("Popup owner 不应暴露窗口管理能力")
+			return
+		}
+		popup, err = plat.NewPopup(baseOwner, geometry.Size{Width: 120, Height: 80}, func(event platform.Event) {
 			if _, ok := event.(events.PaintEvent); ok {
 				once.Do(func() {
 					img := image.NewRGBA(image.Rect(0, 0, 120, 80))
