@@ -226,6 +226,7 @@ func (a *application) shutdown() {
 	if dialog, ok := a.fileDialog.(*fileDialog); ok {
 		dialog.close()
 	}
+	diagnostic.StopOwner(a)
 }
 
 func (a *application) Platform() platform.Platform {
@@ -326,7 +327,6 @@ func (a *application) Run() error {
 	}
 	a.ran = true
 	defer a.quitting.Store(true)
-	defer diagnostic.StopOwner(a)
 	if a.timers != nil {
 		defer a.timers.finish()
 		a.timers.start()
