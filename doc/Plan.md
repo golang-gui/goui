@@ -1,5 +1,30 @@
 # Plan
 
+## GUI Surface 共享内核（2026-11-08）
+
+- [x] Window 嵌入 Surface，window/surface 组合 surfaceBase，共用既有 rootBase，
+  不复制事件/布局/绘制系统。NewSurface 在 Activate 后领取单一系统宿主，可早于
+  目标就绪；目标暂失保留控件、文字与逻辑焦点，显式 Destroy 及 Shutdown 最终释放。
+- [x] Widget.Surface、IME 绑定、Popover/FileDialog owner、菜单/DropDown/Modal
+  迁移公共宿主；装饰和窗口管理继续用 Widget.Window，不为移动实现空管理方法。
+- [x] Application.Surfaces、SurfaceInfo、Snapshot/dev 和 diagnostics/HUD 同步；
+  WindowInfo 保留别名，Windows 保留管理子集。dev JSON 顶层 windows 改 surfaces，
+  客户端需要迁移；仍自行维护 ref，输入经过正常 DispatchEvent/CommitText。
+- [x] 单独修正诊断 StopOwner 的线程：在 Shutdown UI 回调清理，而非 Run 返回的
+  启动线程；回归验证不同启动/UI 线程。Surface 同步/延后 Painter 创建失败均有断言。
+- [x] Go1.25.8 / CGO_ENABLED=0，独立 Xvnc/Xfwm4 的已跟踪源码及本轮新增文件副本
+  go test -json -count=1 ./...：4534 通过、11 原条件跳过、0 失败。工作区既有未跟踪
+  测试/产物不混入。GUI/dev/diagnostics/UI/Widgets 全包 race；新增 Surface/清理定向
+  race 连续 10 轮通过。既有测试只迁移私有构造字段，保留全部有效断言。
+- [x] 独立 X11 GUI/UI × Software/OpenGL × 应用缩放 1x/2x 八组通过；Windows amd64 /
+  macOS arm64 受影响包、demo 与例程仅编译通过，本轮未做两端桌面交互。
+- [x] Android API30 ARM64 1x / SwiftShader、iOS26.3 ARM64 Simulator 3x 的 Software/
+  GLES 四组通过真实控件树、实际后端、GC、合成点击和文本提交、两次后台恢复及退出；
+  Android 各四次旋转。每组 mounts/unmounts/destroys 各一次，替换目标不重挂控件。
+  用例、产物/证据与限制见 [DesignPresentationHosts 第 11 节](DesignPresentationHosts.md#11-gui-surface-共享内核2026-11-08已实现)。
+- [ ] 下一切片 ui.Surface 声明及协调；原生触摸/IME、移动 Popup、SafeArea、iOS 旋转、
+  真正 GPU 上下文丢失、多 Scene、物理设备及正式签名安装仍待验证。
+
 ## GUI 应用激活与退出（2026-11-08）
 
 - [x] ConnectActivate/ConnectShutdown 与 Run() error 接入。系统宿主平台延迟原生
@@ -14,8 +39,8 @@
 - [x] Android/iOS ARM64 模拟器 Software/GLES 四组通过原生线程、延迟服务、
   一次激活/退出、GC、后台停绘/恢复和释放；Android 另覆盖四次旋转。
   具体范围与证据见 [DesignPresentationHosts 第 10 节](DesignPresentationHosts.md#10-gui-启动与退出切片2026-11-08)。
-- [ ] GUI Surface/Window 内核拆分、Widget/IME/Popover 宿主查询、Snapshot/dev
-  迁移与 ui.Surface 仍待实现，不将本轮启动切片视为完整移动 GUI 支持。
+- [x] GUI Surface/Window、Widget/IME/Popover 宿主查询及 Snapshot/dev 已完成后续
+  切片，见本节之前记录；ui.Surface 仍待接入，不将启动切片视为完整移动 GUI 支持。
 
 ## 移动系统宿主交付（2026-11-08）
 
@@ -31,8 +56,9 @@
   恢复；iOS26.3 ARM64 Simulator 3x 两后端各两次后台恢复，四组均通过正式交付路径。
   本机生成 APK/Simulator App/device 未签名 IPA，验证范围与证据见
   [DesignPresentationHosts 第 9 节](DesignPresentationHosts.md#9-系统宿主交付切片2026-11-08)。
-- [ ] 后续 GUI Surface/Window 与 ui.Surface；ConnectActivate 已完成第 10 节切片。物理设备、iOS
-  旋转、多 Scene、触摸、IME、Popup、安全区域及桌面原生交互未在本轮验收。
+- [x] ConnectActivate 和 GUI Surface/Window 已分别完成第 10、11 节后续切片。
+- [ ] ui.Surface；物理设备、iOS 旋转、多 Scene、触摸、IME、Popup、安全区域及桌面
+  原生交互未在宿主交付切片验收。
 
 ## 移动原生 UI 主线程调度（2026-11-08）
 
@@ -54,7 +80,7 @@
 - [x] 正式 cmd/goui 生成两后端 APK/Simulator App，以及 device 未签名 IPA。
   证据与日志：`/tmp/goui-native-ui-qy_b8s2l`。iOS 旋转、多 Scene、物理设备、
   正式签名安装及本轮 Windows/macOS 桌面交互均未验收。
-- [x] 系统宿主交付已完成下一切片，见上方记录；GUI Surface/Window 与 ConnectActivate 待接入。
+- [x] 系统宿主交付、ConnectActivate 与 GUI Surface/Window 已完成后续切片，见上方记录；ui.Surface 待接入。
   旧 GUI Window 移动原型仍待迁移，不把平台实验视作 GUI/UI 已可用。
 
 ## 呈现宿主与窗口管理：平台接口切片（2026-11-08）
