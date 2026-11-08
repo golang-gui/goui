@@ -1,5 +1,14 @@
 # GOUI 实用化与未来路线
 
+## 移动主线程调度已验收（2026-11-08）
+
+平台 Post、观察与绘制统一到系统 UI 主线程；Go Run 仅等待，Android 进程级
+Looper 唤醒与 iOS 主队列复用一份任务队列。Android/iOS ARM64 模拟器的
+Software/GLES、GC、后台停绘/恢复及清理完成边界已验证，Android 另验证旋转。
+源码与验证范围见 [DesignPresentationHosts](DesignPresentationHosts.md#8-原生-ui-主线程调度切片2026-11-08)。
+下一步实现系统宿主交付和 GUI Surface/Activate，再接入 UI；触摸、IME、Popup、
+安全区域和物理设备仍分别推进，不将平台线程切片视为完整移动 GUI 支持。
+
 ## 呈现宿主与可选窗口管理（2026-11-08）
 
 按 [DesignPresentationHosts](DesignPresentationHosts.md) 先拆分平台 Window 与

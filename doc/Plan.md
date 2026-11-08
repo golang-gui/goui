@@ -1,5 +1,28 @@
 # Plan
 
+## 移动原生 UI 主线程调度（2026-11-08）
+
+- [x] [DesignPresentationHosts 第 8 节](DesignPresentationHosts.md#8-原生-ui-主线程调度切片2026-11-08)
+  固定 Flutter 合并 UI/platform 线程的适配方向：Go 启动只登记/等待，原生 UI 主循环
+  执行 Post、原生观察与绘制；不引入独立光栅线程或另一个 GUI 执行线程。
+- [x] 共享 EventLoop 对接后端 wake/线程查询；单任务队列，支持批次、跨线程投递、
+  原生观察同步交付、redraw 与重入 RunLoop 的 Quit 完成边界。Android 的 eventfd
+  改为进程级唤醒设施，iOS 去掉第二份函数队列与 syncMain 等待桥。
+- [x] 新增 platform-only [mobile_dispatch](../tests/window/platform/mobile_dispatch/README.md)，
+  资源在 UI 回调创建/释放，报告线程、GC、目标代次与回调退出；同步旧例程线程预期。
+- [x] Go1.25.8 / CGO_ENABLED=0，已跟踪源码及本轮新增文件的独立 Xvnc/Xfwm4 副本：
+  全仓 4514 通过、11 原条件跳过、0 失败；移动宿主 race 连续 10 轮通过。
+  Windows amd64 / macOS arm64 受影响包与测试目标编译通过。
+- [x] 远端 Mac15.7.7 ARM64：Android API30 ARM64 1x / SwiftShader 开启
+  GLESDynamicVersion，Software/GLES 各四次旋转与两次后台恢复；iOS26.3 ARM64
+  Simulator 3x 两后端各两次后台恢复。四组均通过主线程、显式 GC、目标更新、
+  UI 资源清理与 Quit 完成检查；包摘要和截图留证，专用模拟器/私有 ADB 已清理。
+- [x] 正式 cmd/goui 生成两后端 APK/Simulator App，以及 device 未签名 IPA。
+  证据与日志：`/tmp/goui-native-ui-qy_b8s2l`。iOS 旋转、多 Scene、物理设备、
+  正式签名安装及本轮 Windows/macOS 桌面交互均未验收。
+- [ ] 继续系统宿主交付、GUI Surface/Window 与 ConnectActivate，之后再接 UI。
+  旧 GUI Window 移动原型仍待迁移，不把平台实验视作 GUI/UI 已可用。
+
 ## 呈现宿主与窗口管理：平台接口切片（2026-11-08）
 
 - [x] [DesignPresentationHosts](DesignPresentationHosts.md) 记录基础 Window、同对象的
@@ -21,7 +44,8 @@
   内置基座而非直接 go build。Linux ARM64 全仓编译另被既有 SYS_PIPE/SYS_POLL
   阻断；从 HEAD 提取原 libc 文件、go.mod/go.sum 独立复现，不扩大本轮修复范围。
   命令、日志、最小构建例程与产物位于 `/tmp/goui-window-management-51dvqxe5`。
-- [ ] 原生 UI 主线程、系统宿主交付、GUI/UI Surface/Window 与激活流程另行实现。
+- [x] 原生 UI 主线程调度已阶段验收，见上一节；系统宿主交付、GUI/UI Surface/Window
+  与激活流程继续单独实现。
 - [ ] Android/iOS 原生 Popup、触摸、IME 与安全区域分别原生验证后接入。
 
 ## 移动端接口复核与共享边界（2026-11-07）
