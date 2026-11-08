@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/golang-gui/goui/platform"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -108,7 +109,7 @@ func TestHandlerSnapshotPreservesGUISemantics(t *testing.T) {
 		t.Fatalf("unexpected status %d: %s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.Bytes()
-	if !bytes.Contains(body, []byte(`"snapshot"`)) || !bytes.Contains(body, []byte(`"windows"`)) || bytes.Contains(body, []byte(`"Windows"`)) {
+	if !bytes.Contains(body, []byte(`"snapshot"`)) || !bytes.Contains(body, []byte(`"surfaces"`)) || bytes.Contains(body, []byte(`"Windows"`)) {
 		t.Fatalf("snapshot JSON should use protocol field names: %s", string(body))
 	}
 
@@ -119,10 +120,10 @@ func TestHandlerSnapshotPreservesGUISemantics(t *testing.T) {
 	if !response.OK {
 		t.Fatal("snapshot response was not ok")
 	}
-	if got := response.Snapshot.Windows[0].Widget.Bounds.X; got != 12 {
+	if got := response.Snapshot.Surfaces[0].Widget.Bounds.X; got != 12 {
 		t.Fatalf("unexpected widget bounds x %v", got)
 	}
-	attribute, ok := response.Snapshot.Windows[0].Widget.Attributes["acme.record"].(map[string]any)
+	attribute, ok := response.Snapshot.Surfaces[0].Widget.Attributes["acme.record"].(map[string]any)
 	if !ok || attribute["count"] != float64(3) {
 		t.Fatalf("unknown attribute was discarded or incorrectly decoded: %+v", attribute)
 	}
@@ -201,7 +202,7 @@ func TestHandlerDispatchesPointerEvent(t *testing.T) {
 		"button": "left",
 		"buttons": ["left"],
 		"modifiers": ["shift", "ctrl"]
-	}`, snapshot.Windows[0].Ref))
+	}`, snapshot.Surfaces[0].Ref))
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, EventPath, body)
 	handler.ServeHTTP(rec, req)
@@ -361,18 +362,18 @@ func TestReferencesIndependentOfGUIIDs(t *testing.T) {
 	app.windows = append(app.windows, second)
 	h := newHandler(func() gui.Application { return app })
 	snapshot := readSnapshot(t, h)
-	firstRef, secondRef := snapshot.Windows[0].Ref, snapshot.Windows[1].Ref
-	if firstRef == "" || firstRef == secondRef || firstRef == snapshot.Windows[0].Widget.Ref {
+	firstRef, secondRef := snapshot.Surfaces[0].Ref, snapshot.Surfaces[1].Ref
+	if firstRef == "" || firstRef == secondRef || firstRef == snapshot.Surfaces[0].Widget.Ref {
 		t.Fatal("missing or conflicting runtime refs")
 	}
 	for _, id := range []string{"duplicate", "renamed"} {
 		first.info.ID, second.info.ID = id, id
 		postInput(t, h, TextPath, map[string]any{"target": secondRef, "text": id}, http.StatusOK)
 		next := readSnapshot(t, h)
-		if next.Windows[0].Ref != firstRef || next.Windows[1].Ref != secondRef || next.Windows[0].ID != id {
+		if next.Surfaces[0].Ref != firstRef || next.Surfaces[1].Ref != secondRef || next.Surfaces[0].ID != id {
 			t.Fatal("GUI ID rename changed protocol identity")
 		}
-		if next.Windows[0].Widget.Ref == snapshot.Windows[0].Widget.Ref {
+		if next.Surfaces[0].Widget.Ref == snapshot.Surfaces[0].Widget.Ref {
 			t.Fatal("semantic nodes must not pretend to have permanent object identity")
 		}
 	}
@@ -383,7 +384,7 @@ func TestReferencesIndependentOfGUIIDs(t *testing.T) {
 	postInput(t, h, TextPath, map[string]any{"target": firstRef, "text": "stale"}, http.StatusBadRequest)
 	third := &testWindow{app: app, widget: gui.NewButton()}
 	app.windows = append(app.windows, third)
-	if readSnapshot(t, h).Windows[1].Ref == firstRef {
+	if readSnapshot(t, h).Surfaces[1].Ref == firstRef {
 		t.Fatal("new window reused a dead window reference")
 	}
 }
@@ -415,7 +416,7 @@ func TestPopoverReferencesAndInputRouting(t *testing.T) {
 	w.popovers = []gui.Popover{p}
 	h := newHandler(func() gui.Application { return app })
 	snapshot := readSnapshot(t, h)
-	popup := snapshot.Windows[0].Popovers[0]
+	popup := snapshot.Surfaces[0].Popovers[0]
 	postInput(t, h, EventPath, map[string]any{"target": popup.Ref, "type": "pointer_down", "x": 12, "y": 20}, http.StatusOK)
 	postInput(t, h, EventPath, map[string]any{"target": popup.Ref, "type": "wheel", "deltaY": 3}, http.StatusOK)
 	postInput(t, h, EventPath, map[string]any{"target": popup.Ref, "type": "key_down", "key": "down"}, http.StatusOK)
@@ -437,11 +438,11 @@ func TestPopoverReferencesAndInputRouting(t *testing.T) {
 	p.closed.Emit()
 	p.visible = true
 	postInput(t, h, TextPath, map[string]any{"target": popup.Ref, "text": "stale"}, http.StatusBadRequest)
-	if next := readSnapshot(t, h).Windows[0].Popovers[0]; next.Ref == popup.Ref {
+	if next := readSnapshot(t, h).Surfaces[0].Popovers[0]; next.Ref == popup.Ref {
 		t.Fatal("reopened popup reused a closed presentation ref")
 	}
 	p.visible = false // removal is checked even without a notification
-	if len(readSnapshot(t, h).Windows[0].Popovers) != 0 {
+	if len(readSnapshot(t, h).Surfaces[0].Popovers) != 0 {
 		t.Fatal("hidden popup remained in snapshot")
 	}
 }
@@ -458,7 +459,7 @@ func TestSnapshotReferencesPreserveFilteredSemantics(t *testing.T) {
 	w.info.Controls = &gui.WidgetInfo{Role: gui.RoleButton, Name: "window-close"}
 	h := newHandler(func() gui.Application { return app })
 	snapshot := readSnapshot(t, h)
-	root := snapshot.Windows[0]
+	root := snapshot.Surfaces[0]
 	seen := make(map[string]bool)
 	for _, ref := range []string{root.Ref, root.Widget.Ref, root.Controls.Ref, root.Widget.Children[0].Ref, root.Widget.Children[1].Ref} {
 		if ref == "" || seen[ref] {
@@ -476,7 +477,7 @@ func TestTextRequestValidationAndErrors(t *testing.T) {
 	app := newTestApplication()
 	w := app.windows[0].(*testWindow)
 	h := newHandler(func() gui.Application { return app })
-	ref := readSnapshot(t, h).Windows[0].Ref
+	ref := readSnapshot(t, h).Surfaces[0].Ref
 	for _, body := range []any{
 		map[string]any{"text": "missing target"},
 		map[string]any{"target": ref},
@@ -525,5 +526,40 @@ func TestCanceledQueuedCallDoesNotExecute(t *testing.T) {
 				t.Fatal("canceled request performed late GUI input")
 			}
 		})
+	}
+}
+
+func (a *testApplication) NewSurface() (gui.Surface, error) { return nil, platform.ErrUnsupported }
+func (a *testApplication) Surfaces() []gui.Surface {
+	var result []gui.Surface
+	for _, w := range a.Windows() {
+		result = append(result, w)
+	}
+	return result
+}
+
+// 接口包装仅作为测试替身：没有 Window 管理 API，仍须获得可失效的 dev 引用。
+type testSystemSurface struct {
+	gui.Surface
+	closed signal.Signal0
+}
+
+func (s *testSystemSurface) ConnectDestroy(fn func()) signal.Handle { return s.closed.Connect(fn) }
+func (s *testSystemSurface) Destroy()                               { s.closed.Emit() }
+
+func TestReferencesTrackUnmanagedSurface(t *testing.T) {
+	app := newTestApplication()
+	host := &testSystemSurface{Surface: app.windows[0]}
+	if _, managed := any(host).(gui.Window); managed {
+		t.Fatal("测试替身意外实现 Window")
+	}
+	refs := &references{}
+	ref := refs.add(host, nil).ref
+	if _, err := refs.resolve(ref); err != nil {
+		t.Fatal(err)
+	}
+	host.Destroy()
+	if _, err := refs.resolve(ref); err == nil {
+		t.Fatal("Surface 销毁后 dev 引用仍有效")
 	}
 }

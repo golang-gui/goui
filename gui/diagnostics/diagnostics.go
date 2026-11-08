@@ -40,7 +40,7 @@ type Snapshot = diagnostic.Snapshot
 // layout or painting; ShowHUD explicitly adds an on-screen observer.
 type Capture struct {
 	session *diagnostic.Session
-	huds    map[gui.Window]*HUD
+	huds    map[gui.Surface]*HUD
 	stopped signal.Handle
 }
 

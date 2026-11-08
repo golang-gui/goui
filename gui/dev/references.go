@@ -18,7 +18,7 @@ type inputHost interface {
 type rootReference struct {
 	ref    string
 	host   inputHost
-	owner  gui.Window // detects a popover being discovered under a different owner
+	owner  gui.Surface // detects a popover being discovered under a different owner
 	closed signal.Handle
 }
 
@@ -36,7 +36,7 @@ func (r *references) allocate() string {
 	return strconv.FormatUint(r.next, 10)
 }
 
-func (r *references) add(host inputHost, owner gui.Window) *rootReference {
+func (r *references) add(host inputHost, owner gui.Surface) *rootReference {
 	if entry := r.roots[host]; entry != nil {
 		if entry.owner == owner {
 			return entry
@@ -51,7 +51,7 @@ func (r *references) add(host inputHost, owner gui.Window) *rootReference {
 	r.roots[host], r.targets[entry.ref] = entry, entry
 	if p, ok := host.(gui.Popover); ok {
 		entry.closed = p.ConnectClosed(func() { r.remove(entry) })
-	} else if w, ok := host.(gui.Window); ok {
+	} else if w, ok := host.(gui.Surface); ok {
 		entry.closed = w.ConnectDestroy(func() { r.remove(entry) })
 	}
 	return entry
@@ -71,8 +71,8 @@ func (r *references) remove(entry *rootReference) {
 
 // refresh discovers public GUI surfaces afresh on every request. Close signals
 // also invalidate a hide/show cycle between requests, even on the same object.
-func (r *references) refresh(app gui.Application) []gui.Window {
-	windows := app.Windows()
+func (r *references) refresh(app gui.Application) []gui.Surface {
+	windows := app.Surfaces()
 	live := make(map[inputHost]bool)
 	for _, w := range windows {
 		r.add(w, nil)
@@ -96,15 +96,15 @@ func (r *references) resolve(ref string) (*rootReference, error) {
 	if entry := r.targets[ref]; entry != nil {
 		return entry, nil
 	}
-	return nil, fmt.Errorf("target ref %q is unavailable; use a current Window or Popover ref", ref)
+	return nil, fmt.Errorf("target ref %q is unavailable; use a current Surface or Popover ref", ref)
 }
 
 type applicationSnapshot struct {
-	Windows []windowSnapshot `json:"windows"`
+	Surfaces []surfaceSnapshot `json:"surfaces"`
 }
 
-type windowSnapshot struct {
-	gui.WindowInfo
+type surfaceSnapshot struct {
+	gui.SurfaceInfo
 	Ref      string            `json:"ref"`
 	Widget   *widgetSnapshot   `json:"widget"`
 	Controls *widgetSnapshot   `json:"controls,omitempty"`
@@ -134,15 +134,15 @@ func (r *references) widget(info gui.WidgetInfo) widgetSnapshot {
 	return node
 }
 
-func (r *references) snapshot(windows []gui.Window) applicationSnapshot {
-	result := applicationSnapshot{Windows: make([]windowSnapshot, 0, len(windows))}
+func (r *references) snapshot(windows []gui.Surface) applicationSnapshot {
+	result := applicationSnapshot{Surfaces: make([]surfaceSnapshot, 0, len(windows))}
 	for _, w := range windows {
 		info := w.Snapshot()
 		entry := r.roots[w]
 		if entry == nil { // A custom Snapshot may reenter and destroy its host.
 			continue
 		}
-		snapshot := windowSnapshot{WindowInfo: info, Ref: entry.ref}
+		snapshot := surfaceSnapshot{SurfaceInfo: info, Ref: entry.ref}
 		if w.Widget() != nil {
 			node := r.widget(info.Widget)
 			snapshot.Widget = &node
@@ -166,7 +166,7 @@ func (r *references) snapshot(windows []gui.Window) applicationSnapshot {
 			}
 		}
 		if r.roots[w] != nil {
-			result.Windows = append(result.Windows, snapshot)
+			result.Surfaces = append(result.Surfaces, snapshot)
 		}
 	}
 	return result

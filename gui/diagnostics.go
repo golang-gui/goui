@@ -166,14 +166,25 @@ func (b *rootBase) beginDiagnosticFrame() *diagnostic.FrameRecord {
 // Metadata reads cached GUI values, never native title/position APIs.
 func (d *diagnosticCollector) rootMetadata(b *rootBase, r *diagnostic.RootRecord) {
 	r.Size = geometry.Size{Width: b.width, Height: b.height}
-	for _, w := range d.app.windows {
-		if &w.rootBase == b {
-			r.Kind, r.ID, r.Title = "window", w.id, w.title
+	for _, host := range d.app.Surfaces() {
+		core := surfaceCore(host)
+		if core == nil {
+			continue
+		}
+		title := ""
+		if win := core.managed(); win != nil {
+			title = win.title
+		}
+		if &core.rootBase == b {
+			r.Kind, r.ID, r.Title = "surface", core.id, title
+			if core.managed() != nil {
+				r.Kind = "window"
+			}
 			return
 		}
-		for _, p := range w.popovers {
+		for _, p := range core.popovers {
 			if &p.rootBase == b {
-				r.Kind, r.Title = "popover", w.title
+				r.Kind, r.Title = "popover", title
 				return
 			}
 		}
