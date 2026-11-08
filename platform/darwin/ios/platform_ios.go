@@ -19,10 +19,12 @@ import (
 // Platform adopts the process's single iOS content host. Its resources belong
 // to the system UI thread; Run only waits on the Go startup thread.
 type Platform struct {
-	appID     string
-	loop      *EventLoop
-	window    *Window
-	destroyed bool
+	appID         string
+	loop          *EventLoop
+	window        *Window
+	destroyed     bool
+	systemHosted  bool
+	windowHandler func(common.Window) events.EventHandler
 }
 
 var instance *Platform
@@ -54,6 +56,8 @@ func (p *Platform) Destroy() {
 		return
 	}
 	p.destroyed = true
+	p.windowHandler = nil
+	iosHost.onHostReady = nil
 	if p.window != nil {
 		p.window.Destroy()
 	}
@@ -76,15 +80,67 @@ func (p *Platform) NewWindow(size geometry.Size, handler events.EventHandler, op
 	if p.destroyed || p.loop == nil {
 		return nil, common.ErrUnavailable
 	}
-	if p.window != nil || options.Chrome == common.WindowChromeIntegrated {
+	if p.systemHosted || p.window != nil || options.Chrome == common.WindowChromeIntegrated {
 		return nil, common.ErrUnsupported
 	}
-	w, err := newWindow(p.loop, size, handler, options)
+	if err := common.ValidateWindowSize(size); err != nil {
+		return nil, err
+	}
+	if err := options.Validate(); err != nil {
+		return nil, err
+	}
+	if options.Transparent {
+		return nil, common.ErrUnsupported
+	}
+	w, err := newWindow(p.loop, handler)
 	if err != nil {
 		return nil, err
 	}
 	p.window = w
+	w.bind(p.loop)
 	return w, nil
+}
+
+// SetWindowHandler registers future system-host deliveries. The callback runs
+// on the native UI thread and returns the host's event handler. Existing hosts
+// retain their handler when this callback changes. See platform.WindowSource.
+func (p *Platform) SetWindowHandler(handler func(common.Window) events.EventHandler) error {
+	if p.destroyed || p.loop == nil {
+		return common.ErrUnavailable
+	}
+	if !p.systemHosted {
+		if handler == nil {
+			return nil
+		}
+		if p.window != nil {
+			return common.ErrUnsupported
+		}
+		p.systemHosted = true
+	}
+	p.windowHandler = handler
+	p.loop.Post(func() {
+		if !p.destroyed {
+			iosHost.onHostReady = func() { p.loop.Deliver(p.offerWindow) }
+			p.offerWindow()
+		}
+	})
+	return nil
+}
+
+func (p *Platform) offerWindow() {
+	if p.destroyed || p.windowHandler == nil || iosHost.view.ID == 0 || (p.window != nil && !p.window.Destroyed()) {
+		return
+	}
+	w, err := newWindow(p.loop, nil)
+	if err != nil {
+		panic(err)
+	}
+	p.window = w
+	w.SetEventHandler(p.windowHandler(w))
+	if !w.Destroyed() {
+		iosHost.wanted.Store(true)
+		w.bind(p.loop)
+	}
 }
 
 func (*Platform) NewTypography() (typography.Context, error) { return coretext.NewContext() }

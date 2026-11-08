@@ -6,7 +6,6 @@ import (
 	"math"
 	"sync"
 
-	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 )
@@ -32,21 +31,12 @@ type Host interface {
 	Close()
 }
 
-// NewWindow creates a logical content window without waiting for native geometry
-// or a drawable. size is a validated preference, not an observed mobile size.
-// The initial implementation supports one opaque content window per process.
-func NewWindow(loop *EventLoop, size geometry.Size, handler events.EventHandler, options common.WindowOptions, host Host) (*Window, error) {
+// NewWindow creates the core adapter without requesting geometry or visibility.
+// The system supplies geometry later through Source. Calls after preparation
+// belong to the native UI thread.
+func NewWindow(loop *EventLoop, handler events.EventHandler, host Host) (*Window, error) {
 	if loop == nil {
 		return nil, fmt.Errorf("mobile: event loop is nil")
-	}
-	if err := common.ValidateWindowSize(size); err != nil {
-		return nil, err
-	}
-	if err := options.Validate(); err != nil {
-		return nil, err
-	}
-	if options.Transparent {
-		return nil, common.ErrUnsupported
 	}
 	if host == nil {
 		return nil, fmt.Errorf("mobile: nil platform adapter")
@@ -55,6 +45,17 @@ func NewWindow(loop *EventLoop, size geometry.Size, handler events.EventHandler,
 	w.source = &Source{window: w}
 	return w, nil
 }
+
+// SetEventHandler finishes system-host delivery before native observations are
+// bound. A factory that destroyed the adapter cannot install another handler.
+func (w *Window) SetEventHandler(handler events.EventHandler) {
+	if !w.destroyed {
+		w.handler = handler
+	}
+}
+
+// Destroyed lets the platform reject a delayed bind after a delivery callback.
+func (w *Window) Destroyed() bool { return w.destroyed }
 
 func (*Window) Parent() common.Window         { return nil }
 func (*Window) SetParent(common.Window) error { return common.ErrUnsupported }

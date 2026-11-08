@@ -1,19 +1,18 @@
 package mobile
 
 import (
-	"github.com/golang-gui/goui/core/geometry"
-	"github.com/golang-gui/goui/platform/common"
-	"github.com/golang-gui/goui/platform/events"
 	"image"
 	"testing"
 	"time"
+
+	"github.com/golang-gui/goui/platform/events"
 )
 
 func sourceWindow(t *testing.T) (*Window, *EventLoop) {
 	t.Helper()
 	loop := newTestEventLoop(t)
 	t.Cleanup(loop.Destroy)
-	w, err := NewWindow(loop, geometry.Size{Width: 10, Height: 10}, nil, common.WindowOptions{}, &testWindowHost{})
+	w, err := NewWindow(loop, nil, &testWindowHost{})
 	if err != nil {
 		t.Fatal(err)
 	}
