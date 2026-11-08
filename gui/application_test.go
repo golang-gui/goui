@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-gui/goui/internal/diagnostic"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/xuges/gothread"
@@ -239,5 +240,30 @@ func TestApplicationRejectsMissingNativeShutdown(t *testing.T) {
 	app.ConnectShutdown(func() { t.Error("启动线程伪装原生 UI 退出回调") })
 	if err = app.Run(); err == nil || !app.quitting.Load() || len(backend.calls) != 0 {
 		t.Fatalf("缺失原生退出未报告或访问了服务：err=%v calls=%v", err, backend.calls)
+	}
+}
+
+func TestApplicationStopsDiagnosticsOnUIThread(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	loop := &activationTestLoop{tasks: make(chan func(), 16), native: true}
+	backend := &activationTestPlatform{loop: loop}
+	app, err := prepareApplication(&activationTestSource{backend})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := diagnostic.StartCapture(app, diagnostic.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(session.Stop)
+	stopped, wrongThread := 0, false
+	session.ConnectStop(func() { stopped++; wrongThread = gothread.GetId() != loop.thread })
+	app.ConnectActivate(app.Quit)
+	if err := app.Run(); err != nil {
+		t.Fatal(err)
+	}
+	if stopped != 1 || wrongThread {
+		t.Fatalf("诊断资源不在 UI 退出阶段释放：count=%d wrongThread=%v", stopped, wrongThread)
 	}
 }
