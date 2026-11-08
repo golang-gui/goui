@@ -10,7 +10,6 @@ import (
 
 	"github.com/ebitengine/purego/objc"
 	"github.com/goexlib/cgo"
-	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/darwin/frameworks"
 	cf "github.com/golang-gui/goui/platform/darwin/frameworks/core_foundation"
@@ -65,6 +64,7 @@ type nativeState struct {
 	controller    ui.UIViewController
 	layer         qc.CALayer
 	bound         *Window
+	onHostReady   func()
 	width, height int32
 	scale         float32
 	generation    uint64
@@ -201,6 +201,9 @@ func (h *nativeState) connect(scene objc.ID) {
 	h.window.MakeKeyAndVisible()
 	h.target(true)
 	h.visibility()
+	if h.onHostReady != nil {
+		h.onHostReady()
+	}
 }
 func (h *nativeState) target(force bool) {
 	if h.view.ID == 0 {
@@ -284,15 +287,30 @@ func (h *nativeState) disconnect() {
 	h.window = ui.UIWindow{}
 	h.width, h.height = 0, 0
 }
-func newWindow(loop *EventLoop, size geometry.Size, handler events.EventHandler, options common.WindowOptions) (*Window, error) {
+func newWindow(loop *EventLoop, handler events.EventHandler) (*Window, error) {
 	w := &Window{state: &iosHost}
-	base, err := mobile.NewWindow(loop.EventLoop, size, handler, options, windowHost{w})
+	base, err := mobile.NewWindow(loop.EventLoop, handler, windowHost{w})
 	if err != nil {
 		return nil, err
 	}
 	w.Window = base
-	loop.Post(func() { w.state.bound = w; w.state.publishTarget(); w.state.visibility() })
 	return w, nil
+}
+
+// bind starts observations only after the consumer has returned its handler.
+func (w *Window) bind(loop *EventLoop) {
+	loop.Post(func() {
+		if w.Destroyed() {
+			return
+		}
+		w.state.bound = w
+		w.state.publishTarget()
+		// Target delivery may synchronously destroy the adapter.
+		if !w.Destroyed() {
+			w.state.visibility()
+			w.Source().Focused(w.state.window.ID != 0 && w.state.window.IsKeyWindow())
+		}
+	})
 }
 
 type windowHost struct{ window *Window }

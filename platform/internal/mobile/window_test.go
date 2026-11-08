@@ -187,3 +187,46 @@ func TestWindowDrawRequiresLiveVisibleTarget(t *testing.T) {
 		t.Fatalf("原生调用次数=%d", presents)
 	}
 }
+
+func TestWindowDeliveryHandler(t *testing.T) {
+	loop := newTestEventLoop(t)
+	defer loop.Destroy()
+	host := &testWindowHost{}
+	w, err := NewWindow(loop, nil, host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []events.EventType
+	w.SetEventHandler(func(e events.Event) { got = append(got, e.Type()) })
+	w.setVisible(true)
+	w.Destroy()
+	w.SetEventHandler(func(events.Event) { t.Fatal("销毁后重新安装了事件处理函数") })
+	w.attach(&surfaceTarget{handle: 3, generation: 1, alive: true}, 100, 80, 1)
+	w.setVisible(true)
+	w.emit(events.PaintEvent{})
+	if !w.Destroyed() || w.handler != nil || w.SurfaceState().Ready || host.closed != 1 {
+		t.Fatalf("交付回调销毁后复活：destroyed=%v state=%+v closed=%d", w.Destroyed(), w.SurfaceState(), host.closed)
+	}
+	if !reflect.DeepEqual(got, []events.EventType{events.Visibility, events.Destroy}) {
+		t.Fatalf("事件处理函数未安装或收到销毁后的事件：%v", got)
+	}
+}
+
+func TestWindowCoreConstructor(t *testing.T) {
+	loop := newTestEventLoop(t)
+	defer loop.Destroy()
+	if _, err := NewWindow(nil, nil, &testWindowHost{}); err == nil {
+		t.Fatal("缺失事件循环仍构造宿主")
+	}
+	if _, err := NewWindow(loop, nil, nil); err == nil {
+		t.Fatal("缺失原生适配仍构造宿主")
+	}
+	w, err := NewWindow(loop, nil, &testWindowHost{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Destroy()
+	if w.NativeHandle() != 0 || w.SurfaceState().Ready || w.visible {
+		t.Fatal("核心宿主构造伪造了可绘制目标或可见性")
+	}
+}

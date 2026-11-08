@@ -121,6 +121,21 @@ const (
 	CursorResizeBottomRight = common.CursorResizeBottomRight
 )
 
+// WindowSource delivers system-provided windows from this Platform. Discover it
+// on the Platform itself; it is not a separately owned service. NewEventLoop must
+// have succeeded before registration. Register before Run or on the UI thread;
+// delivery occurs on the native UI thread after Run starts, once a host exists.
+// The returned handler receives subsequent observations. Geometry and a drawing
+// target may arrive later. Target replacement does not deliver another Window.
+// Replacing or clearing the factory affects future deliveries only; it neither
+// replays nor destroys an existing window. Returning nil ignores its events.
+// Window.Destroy releases the adapter, not the system application. It is valid
+// inside the factory. A later native host can then be delivered as a new Window.
+// A backend may reject mixing this delivery mode with NewWindow.
+type WindowSource interface {
+	SetWindowHandler(func(Window) EventHandler) error
+}
+
 // Platform owns low-level operating-system resources. It and every object
 // created from it must be used on the UI thread, except for EventLoop.Post and
 // EventLoop.Quit. Mobile startup may prepare the platform and event loop before

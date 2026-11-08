@@ -11,7 +11,6 @@ import (
 	"unsafe"
 
 	"github.com/goexlib/cgo"
-	"github.com/golang-gui/goui/core/geometry"
 	native "github.com/golang-gui/goui/platform/android/libs/android"
 	"github.com/golang-gui/goui/platform/android/libs/jni"
 	"github.com/golang-gui/goui/platform/android/libs/libc"
@@ -42,7 +41,9 @@ type nativeState struct {
 	density                float32
 	started, initialized   bool
 	input                  uintptr
+	focused                bool
 	bound                  *Window
+	onHostReady            func()
 	wanted                 atomic.Bool
 	fd                     int32
 	loop                   atomic.Pointer[mobile.EventLoop]
@@ -79,8 +80,9 @@ func (h *nativeState) initCallbacks() {
 	})
 	h.callbacks.OnWindowFocusChanged = cgo.NewCallback(func(_ uintptr, focus int32) {
 		wrap(func() {
+			h.focused = focus != 0
 			if h.bound != nil {
-				h.bound.Source().Focused(focus != 0)
+				h.bound.Source().Focused(h.focused)
 			}
 		})
 	})
@@ -112,6 +114,7 @@ func (h *nativeState) initCallbacks() {
 				native.InputDetach(h.input)
 				h.input = 0
 			}
+			h.focused = false
 			h.activity = nil
 			h.started = false
 		})
@@ -194,6 +197,9 @@ func onCreate(address, saved, size uintptr) {
 		}
 		*a.Callbacks = h.callbacks
 		h.configure()
+		if h.onHostReady != nil {
+			h.onHostReady()
+		}
 		if !mobileentry.Start() {
 			panic("android: application main is not registered")
 		}
@@ -318,15 +324,30 @@ func (h *nativeState) visibility() {
 		h.bound.Source().Visible(h.started && shown)
 	}
 }
-func newWindow(loop *EventLoop, size geometry.Size, handler events.EventHandler, options common.WindowOptions) (*Window, error) {
+func newWindow(loop *EventLoop, handler events.EventHandler) (*Window, error) {
 	w := &Window{state: &androidHost}
-	base, err := mobile.NewWindow(loop.EventLoop, size, handler, options, windowHost{w})
+	base, err := mobile.NewWindow(loop.EventLoop, handler, windowHost{w})
 	if err != nil {
 		return nil, err
 	}
 	w.Window = base
-	loop.Post(func() { w.state.bound = w; w.state.publishTarget(); w.state.visibility() })
 	return w, nil
+}
+
+// bind starts observations only after the consumer has returned its handler.
+func (w *Window) bind(loop *EventLoop) {
+	loop.Post(func() {
+		if w.Destroyed() {
+			return
+		}
+		w.state.bound = w
+		w.state.publishTarget()
+		// Target delivery may synchronously destroy the adapter.
+		if !w.Destroyed() {
+			w.state.visibility()
+			w.Source().Focused(w.state.focused)
+		}
+	})
 }
 
 type windowHost struct{ window *Window }
