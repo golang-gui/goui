@@ -1,7 +1,7 @@
 # 呈现宿主与窗口管理
 
-状态：2026-11-08 确认分层方向，分阶段实施。第一阶段只迁移平台接口及其调用点，
-不重写原生线程、事件循环或移动宿主。GUI/UI 的 Surface 与激活流程属于后续计划。
+状态：2026-11-08。平台接口迁移与移动原生 UI 主线程调度已完成阶段验收。
+系统宿主交付、GUI/UI 的 Surface 与激活流程仍属后续计划。
 
 关联：[核心原则](Design.md#cross-platform-scope)、[移动接口复核](PlanMobileAPI.md)、
 [移动生命周期](DesignMobileLifecycle.md)、[Widget Painter](DesignWidgetPainter.md)。
@@ -185,3 +185,70 @@ widgets 依赖；不代表移动 GUI 或新生命周期已运行。旧 android_g
 
 Linux ARM64 的 SYS_PIPE/SYS_POLL 既有编译问题已用 HEAD 原文件复现，另行跟踪。
 完整命令及产物位置见 [Plan](Plan.md#呈现宿主与窗口管理平台接口切片2026-11-08)。
+
+## 8. 原生 UI 主线程调度切片（2026-11-08）
+
+参考 [Flutter 3.29 AndroidShellHolder](https://github.com/flutter/flutter/blob/3.29.0/engine/src/flutter/shell/platform/android/android_shell_holder.cc#L123)：
+合并模式让 UI 与 platform 共用原生线程的 task runner。GOUI 采用同一 UI 执行线程，
+不复制 Flutter 的 isolate、光栅线程或完整 task-runner 架构。
+
+Go 入口保留一个仅用于启动和等待的 goroutine，不能阻塞原生 onCreate/启动回调。
+移动 EventLoop.Run 在该 goroutine 等待，Post 的执行、原生事件、窗口观察及绘制
+归系统 UI 主线程。应用可在 Run 前登记 Post，首次任务在原生主循环中执行；
+后续 GUI Activate 将复用此机制，不在这里提前引入 GUI 信号或 Surface。
+
+具体实现：
+
+- 共享移动 EventLoop 只维护一份任务队列，通过后端 wake 函数唤醒原生主循环。
+  Android 由主 Looper 的 eventfd 回调取任务，iOS 由主 dispatch queue 回调取任务。
+  Run 不再消费任务或拥有另一个 GUI 线程。
+- 原生观察在所属 UI 线程直接交付；Run 前的观察仍排队。Android redraw 在当前
+  原生回调内完成绘制，禁止投递后等待同一线程，以免死锁。
+- Quit 丢弃待执行任务，经原生主循环确认后再让 Run 返回；已进入的 UI 回调必须
+  先返回。Quit 不表示退出 Activity/Scene，也不承诺系统会结束进程。
+- Android 唤醒描述符与主 Looper 绑定，生命周期属于进程启动设施，不随 Activity
+  重建撤销；否则旋转间隙 Post 会丢失。Activity 的窗口、输入队列仍逐次解绑。
+- iOS 不再保留另一份函数队列或同步等待主线程的桥。原生 UI 对象只在主线程
+  调用；已有后台 GPU 许可和目标租约保护先保留，不在本轮顺带改资源策略。
+
+平台 NewPlatform/NewEventLoop 允许启动阶段准备；窗口、Painter 等运行资源应在
+主线程 Post 回调中创建与释放。旧移动原型的 Run 前逻辑对象准备仅作为过渡路径，
+不作为未来 GUI Surface 契约。新验收程序显式在 UI 回调完成整个资源生命周期。
+
+验证先覆盖队列顺序、跨 goroutine Post、原生线程身份、redraw 同步完成、Quit 的
+回调完成边界，以及 Android/iOS Software/GLES 的启动、后台恢复和目标重建。
+新回调模型实测稳定后，再实施系统宿主交付及 GUI/UI 激活与 Surface 接入。
+
+### 本切片验证
+
+Go1.25.8，独立 Linux amd64 Xvnc/Xfwm4 的已跟踪源码与本轮新增例程副本：
+`go test -json -count=1 ./...` 为 4514 通过、11 原条件跳过、0 失败。
+共享移动宿主 `go test -race -count=10` 通过，包含原生观察重入 RunLoop 时的
+退出确认测试。Windows amd64、macOS arm64 受影响包及测试目标编译通过，
+未执行本轮 Windows/macOS 桌面窗口操作。
+
+远端 macOS15.7.7 ARM64 的独立环境：
+
+- Android API30 ARM64 AOSP_ATD / Emulator37.2.13 / SwiftShader / 1x：
+  Software、GLES 各通过原生主线程身份、显式 GC、四次旋转、两次后台停绘和恢复、
+  目标代次递增，以及在 UI 回调释放资源后 Quit 的完成确认。
+- iOS26.3 ARM64 Simulator / iPhone14 / 3x：Software、GLES 各通过原生主线程、
+  显式 GC、两次后台停绘和恢复、目标代次更换与同样的释放/退出确认。
+  本轮未执行 iOS 旋转、多 Scene、物理设备或正式签名安装。
+- 通过正式 cmd/goui 构建并核对最终包摘要；另构建 iOS device 未签名 IPA。
+  四组截图辅助检查文字与图像显示，不将其当作跨后端像素精确验收。
+
+Android 测试配置必须 debuggable 才能 run-as 读取自身沙箱；发布默认值未改变。
+当前模拟器配置的 GLESDynamicVersion 默认关闭，首次 GLES 创建正确报告不满足
+ES3 配置。使用启动参数 `-feature GLESDynamicVersion` 后重新完成两后端验收，
+没有修改 GOUI 的 ES3 要求或增加 ES2 fallback。该选项的作用见
+[Android Emulator 源码](https://android.googlesource.com/platform/external/qemu/+/595172be4b752e226bbc05f9e217bcdf7d8b3015/android/data/advancedFeatures.ini)。
+
+用例与操作流程见 [mobile_dispatch](../tests/window/platform/mobile_dispatch/README.md)。
+本地/远端证据目录 `/tmp/goui-native-ui-qy_b8s2l`：包摘要、四组生命周期 JSON、
+截图、构建及测试日志。本轮专用 iOS Simulator 已关闭删除，Android Emulator
+和私有 ADB server 已停止；未接管用户已有模拟器或修改系统配置。
+
+当前仅证明平台线程与调度路径。保留的启动线程 JNI 附着及旧预启动逻辑对象
+准备是过渡兼容，不再承担 GUI 任务；后续 GUI 原生服务创建移到 Activate。
+NewSurface、窗口来源交付、触摸、IME 和移动 Popup 不在已完成范围。
