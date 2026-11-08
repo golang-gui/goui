@@ -1,5 +1,15 @@
 # GOUI 实用化与未来路线
 
+## GUI 启动生命周期已接入（2026-11-08）
+
+Application 提供 ConnectActivate/ConnectShutdown 与 Run() error；移动原生服务
+在系统 UI 线程初始化，UI 首次构建及协调清理跟随生命周期。桌面保留 Run 前创建
+的迁移兼容路径。独立 X11 八组 GUI/UI 配置与 Android/iOS ARM64 两绘制后端的
+启动、GC、后台恢复和退出已验证，详见
+[DesignPresentationHosts 第 10 节](DesignPresentationHosts.md#10-gui-启动与退出切片2026-11-08)。
+下一切片提取 GUI Surface、迁移共享宿主依赖，再接 ui.Surface；移动控件、触摸、
+IME、Popup、安全区域和物理设备仍分别推进。
+
 ## 移动系统宿主交付已验收（2026-11-08）
 
 Platform 的可选 WindowSource 已接入 Android/iOS；系统 UI 主线程交付基础 Window，
@@ -7,7 +17,7 @@ Platform 的可选 WindowSource 已接入 Android/iOS；系统 UI 主线程交�
 两后端的单次交付、初始焦点、GC、后台恢复和释放已完成 ARM64 模拟器验证。
 本机全仓 4516 通过、11 原条件跳过；范围和未验收项见
 [DesignPresentationHosts 第 9 节](DesignPresentationHosts.md#9-系统宿主交付切片2026-11-08)。
-下一步接入 GUI Surface/Window 与 ConnectActivate，再推进 UI。
+ConnectActivate/Shutdown 已完成后续切片；下一步 GUI Surface/Window 与 ui.Surface。
 
 ## 移动主线程调度已验收（2026-11-08）
 
@@ -15,7 +25,7 @@ Platform 的可选 WindowSource 已接入 Android/iOS；系统 UI 主线程交�
 Looper 唤醒与 iOS 主队列复用一份任务队列。Android/iOS ARM64 模拟器的
 Software/GLES、GC、后台停绘/恢复及清理完成边界已验证，Android 另验证旋转。
 源码与验证范围见 [DesignPresentationHosts](DesignPresentationHosts.md#8-原生-ui-主线程调度切片2026-11-08)。
-系统宿主交付已完成后续切片；下一步 GUI Surface/Activate，再接入 UI。触摸、IME、Popup、
+系统宿主交付与 Activate 已完成后续切片；下一步 GUI Surface 与 ui.Surface。触摸、IME、Popup、
 安全区域和物理设备仍分别推进，不将平台线程切片视为完整移动 GUI 支持。
 
 ## 呈现宿主与可选窗口管理（2026-11-08）

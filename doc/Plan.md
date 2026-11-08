@@ -1,5 +1,22 @@
 # Plan
 
+## GUI 应用激活与退出（2026-11-08）
+
+- [x] ConnectActivate/ConnectShutdown 与 Run() error 接入。系统宿主平台延迟原生
+  服务到 UI 线程，桌面暂保留 Run 前创建兼容；服务初始化失败交给 Run 调用方。
+- [x] Quit 只提交一次 UI 清理；激活中的退出跳过后续激活监听者。UI 的首次构建、
+  设置/语言连接与协调清理移入生命周期信号，Sync 完成通知等原生回调结束。
+- [x] 新增 GUI/UI 独立线程生命周期回归和 [activation 窗口例程](../tests/window/gui/activation/README.md)。
+  既有窗口工厂替身显式标明服务已就绪，不削弱原有布局、窗口或样式断言。
+- [x] 独立 X11 的 GUI/UI × Software/OpenGL × 1x/2x 八组通过；全仓 4525 通过、
+  11 原条件跳过、0 失败。GUI/UI 全包 race 及新生命周期连续 10 轮 race 通过；
+  Windows/macOS 受影响 GUI/UI/Widgets、demo 与例程编译通过。
+- [x] Android/iOS ARM64 模拟器 Software/GLES 四组通过原生线程、延迟服务、
+  一次激活/退出、GC、后台停绘/恢复和释放；Android 另覆盖四次旋转。
+  具体范围与证据见 [DesignPresentationHosts 第 10 节](DesignPresentationHosts.md#10-gui-启动与退出切片2026-11-08)。
+- [ ] GUI Surface/Window 内核拆分、Widget/IME/Popover 宿主查询、Snapshot/dev
+  迁移与 ui.Surface 仍待实现，不将本轮启动切片视为完整移动 GUI 支持。
+
 ## 移动系统宿主交付（2026-11-08）
 
 - [x] 平台对象的可选 WindowSource 在原生 UI 线程交付核心 Window，消费方返回事件
@@ -14,7 +31,7 @@
   恢复；iOS26.3 ARM64 Simulator 3x 两后端各两次后台恢复，四组均通过正式交付路径。
   本机生成 APK/Simulator App/device 未签名 IPA，验证范围与证据见
   [DesignPresentationHosts 第 9 节](DesignPresentationHosts.md#9-系统宿主交付切片2026-11-08)。
-- [ ] 下一步 GUI Surface/Window 与 ConnectActivate，之后再接 UI；物理设备、iOS
+- [ ] 后续 GUI Surface/Window 与 ui.Surface；ConnectActivate 已完成第 10 节切片。物理设备、iOS
   旋转、多 Scene、触摸、IME、Popup、安全区域及桌面原生交互未在本轮验收。
 
 ## 移动原生 UI 主线程调度（2026-11-08）
