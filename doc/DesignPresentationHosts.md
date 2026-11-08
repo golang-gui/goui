@@ -1,7 +1,7 @@
 # 呈现宿主与窗口管理
 
 状态：2026-11-08。平台接口迁移、移动原生 UI 主线程调度已验收；系统宿主交付
-已完成阶段验收。GUI/UI 的 Surface 与激活流程仍属后续计划。
+已完成阶段验收。GUI/UI 激活与退出已接入；Surface 控件宿主仍属后续计划。
 
 关联：[核心原则](Design.md#cross-platform-scope)、[移动接口复核](PlanMobileAPI.md)、
 [移动生命周期](DesignMobileLifecycle.md)、[Widget Painter](DesignWidgetPainter.md)。
@@ -119,7 +119,7 @@ Snapshot 需统一基础宿主信息，并可携带窗口管理信息；不能�
 移动 `gui.Window` 原型不是可管理窗口；需要窗口管理的操作返回不支持，后续使用
 NewSurface 接入，不能给移动对象填充空方法来保留旧演示的成功表象。
 
-## 4. 启动与 UI 声明（待实现）
+## 4. 启动与 UI 声明（启动已接入，Surface 声明待实现）
 
 使用 GTK 风格的生命周期顺序：
 
@@ -317,3 +317,69 @@ Go 适配负责事件处理函数及自己的资源。原生事实依据 Android
 - iOS 旋转、多 Scene、物理设备、正式签名安装、触摸、IME、Popup、安全区域及
   GUI/UI Surface/Activate 未验收。构建命令首次漏传 `-package apk` 导致库文件
   被当作 APK 安装失败；修正命令后正式 APK 通过，原失败记录保留在证据目录。
+
+## 10. GUI 启动与退出切片（2026-11-08）
+
+Surface 提取前先稳定启动边界。Application 新增 ConnectActivate、ConnectShutdown，
+Run 返回 error。Activate 在原生 UI 线程初始化 Typography、Settings、Clipboard、
+FileDialog 后触发；初始化失败不触发 Activate，完成 UI 线程退出后由 Run 返回错误。
+这里只接入首次激活，不把焦点、目标重建或恢复当作应用激活，不新增手动 Activate。
+
+桌面暂兼容 Run 前创建资源：NewApplication 初始化服务，Run 后才发首次 Activate。
+系统宿主平台通过 WindowSource 能力识别，NewApplication 仅准备平台、事件循环与
+GUI 默认服务外观；原生服务延迟到 UI 回调。所有新代码在 Activate 后使用原生资源。
+这不是最终桌面迁移完成，也不表示 gui.Surface 已实现；不为此引入假的管理窗口。
+
+Quit 可以跨线程调用：停止计时调度、拒绝新 GUI Post，再投递 UI 线程的 Shutdown，
+通知使用方和 UI 层清理连接/资源，最后退出原生循环。回调中 Quit 不继续运行后续
+Activate 监听者。Shutdown 只触发一次，已开始的回调完成后 Run 才返回。
+桌面原生循环直接退出时，在同一 UI 线程完成 Shutdown；移动端循环由 GUI 的 Quit
+路径结束，异常缺失 UI 线程退出通知必须作为错误报告，不从启动线程伪装清理。
+本轮不改变应用/窗口既有最终资源所有权，也不在退出中提前释放仍有 Widget 借用的
+Typography。对象的原生资源仍在 UI 生命周期回调释放。
+
+ui.Run 把首次构建和设置/语言订阅移入 Activate；Shutdown 在 UI 线程解除订阅与
+声明式协调连接，Run 返回后仅完成纯 Go 的等待者通知。Sync 不能因 Quit 请求或
+Shutdown 提前返回到仍在执行的回调之外。UI 不导入 platform，不查询移动操作系统。
+
+参考 GTK 的 [activate 示例](https://www.gtk.org/docs/getting-started/hello-world) 和
+[shutdown 信号](https://docs.gtk.org/gio/signal.Application.shutdown.html)：采用原生就绪后
+构建、退出前通知的顺序，不引入其远程应用实例、D-Bus 或命令行注册系统。
+GUI Surface/Window、IME/Popover owner 与快照迁移放在下一切片。
+
+### 实现和验证
+
+- Activate 是应用构造时排入的首个任务，早于用户 Run 前 Post，确保服务就绪顺序。
+  系统宿主模式的 Typography 在激活前为 nil；Settings 保持同一 GUI 对象并先提供
+  GUI 默认值，再在 UI 线程绑定原生来源。NewWindow 未就绪返回 ErrAppNotReady。
+- Quit 以原子标记只提交一次 UI 线程退出，尚未开始的普通 Post 不再执行；每个
+  Activate 监听者再次检查退出状态，不通过 DisconnectAll 掩盖回调销毁/退出。
+  Shutdown 与计时停止、未交付文件访问资源清理均在 UI 线程完成。
+- ui.Run 的初始构建、设置/语言订阅、View Mount/Unmount 属于激活线程。协调释放
+  与纯 Go 的最终完成通知分开，Shutdown 不提前释放仍在执行回调的 Sync 等待者。
+  初始构建失败仍返回原错误并在 UI 线程清理；GUI 原生初始化错误由 Run 传递。
+- 包内独立固定线程模拟验证：服务只创建一次、Post 排序、启动失败、Run 前 Quit、
+  激活回调 Quit 后跳过后续监听者、一次 Shutdown、重复 Run，以及 UI 构建/挂载/
+  卸载归属激活线程。缺失移动 UI 退出确认返回错误，不能在启动线程伪装清理。
+- Go1.25.8 / Linux amd64 / CGO_ENABLED=0，已跟踪工作源码与本轮新例程的独立
+  Xvnc/Xfwm4 副本运行全仓测试，4525 通过、11 按原条件跳过、0 失败；
+  现有未跟踪测试不纳入该副本。
+  GUI/UI 全包 race 通过，新增跨线程生命周期另连续 10 轮 race 验证。
+- 独立 X11 的 GUI/UI × Software/OpenGL × 应用 scale 1x/2x 八组自动程序通过
+  激活线程、首次布局/Snapshot、UI 绑定更新及一次退出检查。首次驱动脚本清理
+  变量冲突已修正，八组重跑退出码均为 0，专用 X11 进程已清理。
+- Windows amd64/macOS arm64 的 GUI/UI/Widgets、demo 与验收目标编译通过；
+  本轮未做这两个桌面系统的窗口交互，也未将应用 2x 当作真实系统 HiDPI。
+- 远端 Mac15.7.7 ARM64：Android API30 AOSP_ATD ARM64 1x / SwiftShader
+  （GLESDynamicVersion）两后端各四次旋转、两次后台恢复；iOS26.3 ARM64
+  Simulator / iPhone14 / 3x 两后端各两次后台恢复。四组均检查初始服务延迟、
+  Activate=1、Shutdown=1、稳定的 UI 线程、GUI Timer、显式 GC 和 UI 线程资源
+  释放，恢复不重复激活。移动图形仍由平台 WindowSource 承载，不声称 GUI Surface
+  或移动控件树已完成。两后端 APK/Simulator App 及 device 未签名 IPA 已生成。
+- 例程和中文流程见 [gui/activation](../tests/window/gui/activation/README.md)。
+  产物摘要、JSON 报告和截图在 `/tmp/goui-activation-34l4ak0y`；专用模拟器和
+  私有 ADB 已停止，iOS 临时设备已删除，保留原 SSH 连接。物理设备、iOS 旋转、
+  多 Scene、正式签名、触摸、IME、Popup、安全区域及完整移动 GUI/UI 未验收。
+
+后续先提取 GUI Surface 的共享状态和行为，再迁移 Widget 宿主查询、IME/Popover、
+快照和开发适配，最后加入 ui.Surface；避免用包装假窗口或为移动补齐管理空方法。

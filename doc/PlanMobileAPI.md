@@ -2,7 +2,7 @@
 
 状态：2026-11-08。已确认共享边界与第一阶段平台接口迁移，具体方案见
 [呈现宿主与窗口管理](DesignPresentationHosts.md)。本文保留其余主题的复核计划，
-不是移动 GUI 已可交付的声明；原生主线程已验收，GUI/UI 接入仍待实施。
+不是移动 GUI 已可交付的声明；原生主线程和 GUI/UI 启动已接入，Surface 仍待实施。
 
 关联：[核心原则](Design.md#cross-platform-scope)、[跨层约定](DesignConventions.md)、
 [移动生命周期](DesignMobileLifecycle.md)、[移动平台](DesignMobilePlatform.md)、
@@ -113,6 +113,7 @@ NewApplication → ConnectActivate → Run，GUI 使用 NewSurface/Window 区分
   分工与 GTK 风格激活顺序。平台接口和原生 UI 线程切片已验收，系统宿主交付已完成模拟器验收。
 - [x] 原生主线程调度完成模拟器验收，详见 DesignPresentationHosts 第 8 节。
 - [x] 系统宿主交付完成 Android/iOS Software/GLES 模拟器验收，详见第 9 节。
-- [ ] 集成 GUI Surface/Window 与 ConnectActivate，再接 UI 并做桌面回归。
+- [x] GUI/UI ConnectActivate/Shutdown、服务初始化线程和 Run 错误传播完成阶段验收。
+- [ ] 集成 GUI Surface/Window、共享宿主依赖及 ui.Surface，再做完整桌面回归。
 - [ ] 按依赖推进绘制恢复、触摸、IME、几何与系统交互，逐项更新相关设计。
 - [ ] 用小型真实应用验证桌面/移动分别组织视图的使用体验，再确定移动支持承诺。
