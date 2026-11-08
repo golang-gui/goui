@@ -25,8 +25,9 @@ go run ./tests/window/gui/activation -ui
 
 ## Android/iOS
 
-移动部分暂以平台 WindowSource 承载验证图形，因为 gui.Surface 尚待下一切片。
-这仅验证 GUI 应用启动和退出，不代表移动 Widget 树、触摸或 IME 已可用。
+移动部分通过 Application.NewSurface 建立实际 GUI 控件树，包含 Label、TextInput、
+Button 和 LinearBox。没有 Show/窗口管理调用。原生触摸、IME 与 ui.Surface 声明
+仍待后续接入；本例的输入由正常 DispatchEvent/CommitText 路径注入，不绕过控件行为。
 
 ```sh
 go run ./cmd/goui build -config tests/window/gui/activation/goui.toml -target android/arm64 -package apk -o /tmp/gui-activation.apk
@@ -39,18 +40,23 @@ GLES3；AOSP_ATD 如仅开放 ES2，在其支持下使用 `-feature GLESDynamicV
 设备 IPA 改用 `-variant device -package ipa -unsigned`；必须自行签名/重签才能安装。
 本例 Android debuggable 和开发签名只用于读取自身沙箱报告，不用于发布。
 
-初始：多语言文字、绿色矩形和蓝色图片。启动线程不得初始化 Typography；
-Activate 初始化完成后才创建排版、订阅系统宿主和启动 GUI Timer。
+初始：多语言标题、编辑框、Increment 按钮和 Count 标签。启动线程不得初始化
+Typography；Activate 后领取 Surface、创建控件树和启动 GUI Timer。测试显式设置
+顶部留白，不代表已接入 SafeArea。首次有效绘制后自动提交文本并派发一次鼠标点击。
 
 1. `dispatch.json` 应有 activations=1、shutdowns=0、deliveries=1、mainThread=true、
-   uiThread≠startupThread。frames/posts 持续增长；首帧后的显式 GC 完成后 gc=true。
+   uiThread≠startupThread。frames/posts 持续增长；gc=true、inputVerified=true、count=1。
+   mounts=1、unmounts=0；编辑框为 initial committed。backend 必须是 Software/OpenGL，
+   该值由公开 diagnostics 帧记录核对，而不是只回显绘制偏好。
 2. Android 横竖屏往返四次：尺寸与目标代次改变，activations/deliveries 始终为 1，
-   文字和图形继续显示。不得因 Activity/目标重建重复初始化应用。
+   控件继续显示，文本、count 和 Widget 身份不变，mounts 仍为 1。
+   不得因 Activity/目标重建重复初始化应用或重新挂载子树。
 3. 两次后台/恢复：visible=false 后 frames 停止增长，posts 可增长；恢复后 frames
    继续，nonce 和 UI 线程不变。前台恢复不额外触发 Activate。
 4. 在报告目录创建空 stop 文件：Timer 请求 Application.Quit，Shutdown 在原生 UI
-   线程停止 Timer、释放排版/图像/Painter/窗口。最终报告 stopped=true、shutdowns=1、
-   surface.Ready=false；随后 completed.json 出现 callbackReturned=true，nonce 一致。
+   线程停止 Timer 并释放 Surface/控件及其绘制资源。最终报告 stopped=true、shutdowns=1、
+   surface.Ready=false、unmounts=1、destroys=1；随后 completed.json 出现
+   callbackReturned=true，nonce 一致。
 5. 检查 native 日志：不得有 JNI/线程异常、重复清理、退出死锁或静默绘图后端降级。
 
 Android 包 ID `org.golanggui.MobileActivation`，报告在 cache 目录：
@@ -74,4 +80,4 @@ Quit 停止 Go 调度，不命令操作系统结束 Activity/Scene，退出后�
 复位：清理本例报告后重启，或卸载重装本例。退出：桌面关闭窗口；Android
 force-stop、iOS Simulator terminate。只清理本轮自建模拟器、私有 ADB 和应用容器，
 保持用户已有设备、模拟器及系统配置不变。物理设备、iOS 旋转、多 Scene、
-SafeArea、移动 Popup、触摸、IME 和完整 GUI/UI Surface 不属于本例已验证范围。
+SafeArea、移动 Popup、原生触摸/IME 和 ui.Surface 声明接入不属于本例已验证范围。
