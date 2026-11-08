@@ -4,6 +4,7 @@ import (
 	"errors"
 	"image/color"
 	"math"
+	"runtime"
 	"testing"
 	"time"
 
@@ -168,11 +169,14 @@ func (l *settingsTestLoop) Post(fn func()) { l.posts <- fn }
 func (l *settingsTestLoop) Run()           { l.run() }
 
 func TestSettingsWatchBelongsToApplicationRun(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	source := &settingsTestSource{family: "Initial", size: 14}
 	s := newSettings(source)
 	loop := &settingsTestLoop{posts: make(chan func(), 4)}
 	var pending func()
 	loop.run = func() {
+		(<-loop.posts)() // 激活在 UI 线程启动原生设置轮询。
 		select {
 		case pending = <-loop.posts:
 		case <-time.After(5 * time.Second):
@@ -183,8 +187,11 @@ func TestSettingsWatchBelongsToApplicationRun(t *testing.T) {
 		}
 		// Return with this task still queued, as a native loop can do on quit.
 	}
-	a := &application{settings: s, loop: loop, timers: newTimerScheduler(loop.Post, time.Now)}
-	a.Run()
+	a := &application{settings: s, loop: loop, timers: newTimerScheduler(loop.Post, time.Now), servicesReady: true}
+	loop.Post(a.activate)
+	if err := a.Run(); err != nil {
+		t.Fatal(err)
+	}
 	source.family = "Changed after exit"
 	pending()
 	if source.reads != 5 || s.FontFamily() != "Initial" {

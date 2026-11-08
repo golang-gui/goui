@@ -31,8 +31,9 @@ var (
 )
 
 // Settings exposes a GUI-thread snapshot with per-field fallback values.
-// The initial snapshot is available before Run; later changes are polled while
-// the application event loop runs. Getters never query native APIs themselves.
+// Desktop preparation includes the native snapshot. System-host platforms use
+// GUI defaults until Activate initializes their native service. Later changes
+// are polled on the UI thread. Getters never query native APIs themselves.
 type Settings interface {
 	// Language is the system's preferred UI language (BCP 47), or "en" when
 	// unavailable/neutral. It does not change mlang's application language.

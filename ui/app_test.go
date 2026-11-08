@@ -4,14 +4,17 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"sync"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/style"
+	"github.com/xuges/gothread"
 )
 
 func TestAppMountsAndUpdatesWindow(t *testing.T) {
@@ -568,11 +571,13 @@ func TestAppHandleRunsThroughRuntime(t *testing.T) {
 }
 
 type windowTestApplication struct {
-	options []gui.WindowOptions
-	posts   []func()
-	windows []*testWindow
-	sheets  []style.StyleSheet
-	quits   int
+	activate signal.Signal0
+	shutdown signal.Signal0
+	options  []gui.WindowOptions
+	posts    []func()
+	windows  []*testWindow
+	sheets   []style.StyleSheet
+	quits    int
 }
 
 func newWindowTestApplication() *windowTestApplication {
@@ -627,7 +632,13 @@ func (a *windowTestApplication) NewWindow(request *gui.WindowOptions) (gui.Windo
 	return win, nil
 }
 
-func (a *windowTestApplication) Run() {}
+func (a *windowTestApplication) ConnectActivate(fn func()) signal.Handle {
+	return a.activate.Connect(fn)
+}
+func (a *windowTestApplication) ConnectShutdown(fn func()) signal.Handle {
+	return a.shutdown.Connect(fn)
+}
+func (a *windowTestApplication) Run() error { a.activate.Emit(); a.shutdown.Emit(); return nil }
 
 func (a *windowTestApplication) Quit() {
 	a.quits++
@@ -741,4 +752,72 @@ func windowContentNode(r *root) *node {
 		return nil
 	}
 	return r.root.body.body
+}
+
+// activationTestApplication 模拟启动线程等待、另一固定 UI 线程分发的原生循环。
+type activationTestApplication struct {
+	*windowTestApplication
+	tasks chan func()
+	quit  chan struct{}
+	once  sync.Once
+}
+
+func (a *activationTestApplication) Post(fn func()) { a.tasks <- fn }
+func (a *activationTestApplication) Quit()          { a.once.Do(func() { close(a.quit) }) }
+func (a *activationTestApplication) Run() error {
+	done := make(chan struct{})
+	go func() {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		defer close(done)
+		a.activate.Emit()
+		for {
+			select {
+			case fn := <-a.tasks:
+				fn()
+			case <-a.quit:
+				a.shutdown.Emit()
+				return
+			}
+		}
+	}()
+	<-done
+	return nil
+}
+
+type activationThreadView struct {
+	ViewBase[activationThreadView]
+	mounted, unmounted *int
+	afterUpdate        func()
+}
+
+func (v *activationThreadView) Mount(BuildContext) gui.Widget {
+	*v.mounted = gothread.GetId()
+	return gui.NewLabel("ready")
+}
+func (v *activationThreadView) Update(ctx BuildContext, _ gui.Widget) { ctx.AfterUpdate(v.afterUpdate) }
+func (v *activationThreadView) Unmount(BuildContext, gui.Widget)      { *v.unmounted = gothread.GetId() }
+
+func TestRunBuildAndUnmountUseActivationThread(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	startup := gothread.GetId()
+	backend := &activationTestApplication{windowTestApplication: newWindowTestApplication(), tasks: make(chan func(), 16), quit: make(chan struct{})}
+	built, mounted, unmounted := 0, 0, 0
+	view := &activationThreadView{mounted: &mounted, unmounted: &unmounted}
+	view.Self = view
+	var rt *app
+	rt = newApp(backend, func() RootView { built = gothread.GetId(); return Window("main").Content(view) })
+	view.afterUpdate = func() { rt.Post(rt.Quit) }
+	if err := rt.run(); err != nil {
+		t.Fatal(err)
+	}
+	if built == 0 || built == startup || mounted != built || unmounted != built {
+		t.Fatalf("构建/挂载/清理未归属 UI 线程：startup=%d build=%d mount=%d unmount=%d", startup, built, mounted, unmounted)
+	}
+	select {
+	case <-rt.finished:
+	default:
+		t.Fatal("Run 返回未通知等待者")
+	}
 }
