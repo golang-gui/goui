@@ -25,7 +25,7 @@ import (
 	"github.com/golang-gui/goui/platform/internal/mobileentry"
 )
 
-// EventLoop owns the Go application queue; UIKit owns the native main run loop.
+// EventLoop dispatches Go work through UIKit's native main run loop.
 type EventLoop struct{ *mobile.EventLoop }
 
 // Window adapts UIKit's content window without exposing a native host protocol.
@@ -34,20 +34,13 @@ type Window struct {
 	state *nativeState
 }
 
-// PrepareEAGLLayer makes the UIKit-owned drawable layer visible. Call this
-// before acquiring a drawing target or GPU lock: it may wait for the main thread.
+// PrepareEAGLLayer makes the UIKit drawable visible on the native UI thread.
 func (w *Window) PrepareEAGLLayer() error {
-	var result error
-	if err := w.state.syncMain(func() {
-		if w.state.layer.ID == 0 {
-			result = common.ErrUnavailable
-			return
-		}
-		w.state.layer.SetHidden(false)
-	}); err != nil {
-		return err
+	if !dispatch.IsMainThread() || w.state.layer.ID == 0 {
+		return common.ErrUnavailable
 	}
-	return result
+	w.state.layer.SetHidden(false)
+	return nil
 }
 
 // NativeEAGLLayer borrows the layer under an acquired native target lease.
@@ -78,9 +71,7 @@ type nativeState struct {
 	foreground    bool
 	wanted        atomic.Bool
 	running       atomic.Bool
-	queueMu       sync.Mutex
-	tasks         []func()
-	scheduled     bool
+	loop          atomic.Pointer[mobile.EventLoop]
 	callback      uintptr
 	// The GPU gate also covers offscreen work. Background entry drains it first.
 	gpu             sync.Mutex
@@ -96,31 +87,6 @@ var iosHost nativeState
 
 func init()                    { mobileentry.NativeRun = runNative }
 func onSystemThread(fn func()) { runtime.LockOSThread(); defer runtime.UnlockOSThread(); fn() }
-func (h *nativeState) post(fn func()) error {
-	if !h.running.Load() {
-		return common.ErrUnavailable
-	}
-	h.queueMu.Lock()
-	defer h.queueMu.Unlock()
-	h.tasks = append(h.tasks, fn)
-	if !h.scheduled {
-		h.scheduled = true
-		dispatch.MainAsync(h.callback)
-	}
-	return nil
-}
-func (h *nativeState) syncMain(fn func()) error {
-	if dispatch.IsMainThread() {
-		fn()
-		return nil
-	}
-	done := make(chan struct{})
-	if err := h.post(func() { defer close(done); fn() }); err != nil {
-		return err
-	}
-	<-done
-	return nil
-}
 func runNative() int {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -133,14 +99,9 @@ func runNative() int {
 	h := &iosHost
 	h.callback = cgo.NewCallback(func(uintptr) {
 		onSystemThread(func() {
-			h.queueMu.Lock()
-			tasks := h.tasks
-			h.tasks = nil
-			h.scheduled = false
-			h.queueMu.Unlock()
 			AutoReleasePool(func() {
-				for _, task := range tasks {
-					task()
+				if loop := h.loop.Load(); loop != nil {
+					loop.Dispatch()
 				}
 			})
 		})
@@ -330,9 +291,7 @@ func newWindow(loop *EventLoop, size geometry.Size, handler events.EventHandler,
 		return nil, err
 	}
 	w.Window = base
-	if err = w.state.post(func() { w.state.bound = w; w.state.publishTarget(); w.state.visibility() }); err != nil {
-		return nil, err
-	}
+	loop.Post(func() { w.state.bound = w; w.state.publishTarget(); w.state.visibility() })
 	return w, nil
 }
 
@@ -341,11 +300,12 @@ type windowHost struct{ window *Window }
 func (a windowHost) SetVisible(value bool) error {
 	w := a.window
 	w.state.wanted.Store(value)
-	return w.state.post(w.state.visibility)
+	w.state.loop.Load().Deliver(w.state.visibility)
+	return nil
 }
 func (a windowHost) Close() {
 	w := a.window
-	_ = w.state.post(func() {
+	w.state.loop.Load().Deliver(func() {
 		if w.state.bound == w {
 			w.state.bound = nil
 			w.state.wanted.Store(false)
@@ -393,16 +353,7 @@ func (h *nativeState) present(handle uintptr, generation uint64, img image.Image
 	h.imageScheduled = true
 	h.imageMu.Unlock()
 	if schedule {
-		if err := h.post(h.commitImage); err != nil {
-			h.imageMu.Lock()
-			h.imageScheduled = false
-			if h.pending != 0 {
-				cg.CGImageRelease(h.pending)
-				h.pending = 0
-			}
-			h.imageMu.Unlock()
-			return err
-		}
+		h.loop.Load().Post(h.commitImage)
 	}
 	return nil
 }

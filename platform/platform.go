@@ -14,8 +14,8 @@ import (
 
 func init() {
 	if runtime.GOOS == "android" || runtime.GOOS == "ios" {
-		// The mobile host enters the app on its own locked GOUI thread after
-		// runtime initialization. That thread is distinct from the system UI thread.
+		// Mobile main prepares startup and waits. Native callbacks and Post tasks
+		// run on the system UI thread rather than this startup goroutine.
 		return
 	}
 	// Keep main on the startup OS thread before application initialization.
@@ -122,8 +122,9 @@ const (
 )
 
 // Platform owns low-level operating-system resources. It and every object
-// created from it must be used on the same OS thread, except for EventLoop.Post
-// and EventLoop.Quit.
+// created from it must be used on the UI thread, except for EventLoop.Post and
+// EventLoop.Quit. Mobile startup may prepare the platform and event loop before
+// Run; runtime resources are created and released inside native UI callbacks.
 type Platform interface {
 	Destroy()
 	Name() string
@@ -183,8 +184,10 @@ var ErrUnavailable = common.ErrUnavailable
 // bare macOS executable into an application bundle.
 // Call from main and run the event loop on that same goroutine. Importing this
 // package locks desktop main to the startup OS thread. Mobile hosts invoke main
-// on their locked GOUI thread. Neither path dispatches calls from other
-// goroutines to that thread. Use EventLoop.Post for background work.
+// on a startup goroutine which may prepare this platform and its event loop.
+// Mobile EventLoop.Run waits there while Post executes on the native UI thread;
+// create runtime GUI resources in those callbacks. Other methods do not marshal
+// arbitrary callers onto the UI thread. Use EventLoop.Post for background work.
 // On failure, the returned Platform interface is nil.
 func NewPlatform(name, appId string) (Platform, error) {
 	if err := checkAppId(appId); err != nil {

@@ -13,8 +13,8 @@ import (
 
 // Window adopts the single content host provided by the mobile OS. Its lifetime
 // is independent of Activity/Scene attachment and native drawing targets. Calls
-// are confined to the GOUI thread; native ingress only revokes target leases and
-// posts observations to that thread.
+// are confined to the native UI thread after startup. Native ingress revokes
+// target leases and delivers observations on that same thread.
 type Window struct {
 	loop                                         *EventLoop
 	handler                                      events.EventHandler

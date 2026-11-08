@@ -17,7 +17,7 @@ import (
 )
 
 // Platform adopts the process's single Android content host. Its resources are
-// thread-affine to the GOUI thread; Android callbacks remain on the system thread.
+// used on the system UI thread; only startup and Run waiting use the Go entry thread.
 type Platform struct {
 	appID     string
 	loop      *EventLoop
@@ -27,7 +27,7 @@ type Platform struct {
 
 var instance *Platform
 
-// NewPlatform initializes Android support on the host's attached GOUI thread.
+// NewPlatform prepares Android support on the attached startup thread.
 // A matching native host and typography Dex component must be packaged in the
 // APK. Repeated creation returns the same live platform for the same identity.
 func NewPlatform(appID string) (*Platform, error) {
@@ -66,7 +66,9 @@ func (p *Platform) NewEventLoop() (common.EventLoop, error) {
 	if p.loop != nil {
 		return nil, common.ErrUnsupported
 	}
-	p.loop = &EventLoop{mobile.NewEventLoop()}
+	loop := mobile.NewEventLoop(androidHost.wake, androidHost.isCurrent)
+	androidHost.loop.Store(loop)
+	p.loop = &EventLoop{loop}
 	return p.loop, nil
 }
 

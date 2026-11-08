@@ -1,8 +1,11 @@
 package common
 
-// EventLoop runs native platform events and tasks posted to its owning thread.
+// EventLoop coordinates native platform events and tasks on the UI thread.
 //
-// Run and Destroy must be called on the thread that owns the platform.
+// Desktop Run drives native events on the calling UI thread. Mobile Run waits
+// on the startup goroutine while the system UI thread dispatches Post tasks and
+// native callbacks; it must not block that system thread. Destroy follows Run
+// on the same startup path and must not race other loop methods.
 // Post and Quit may be called from any goroutine while the loop is alive.
 // Destroy must not run concurrently with any other method.
 type EventLoop interface {
@@ -10,10 +13,11 @@ type EventLoop interface {
 	// active when it is called.
 	Destroy()
 
-	// Post schedules task for execution on the owning thread.
+	// Post schedules task for execution on the UI thread. Mobile startup may
+	// enqueue tasks before Run; they wait until native dispatch starts.
 	Post(task func())
 
-	// Run processes native events and posted tasks until Quit is requested.
+	// Run starts dispatch and waits until Quit has finished admitted callbacks.
 	Run()
 
 	// Quit requests Run to return and wakes the native event loop.
