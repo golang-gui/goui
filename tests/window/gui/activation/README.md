@@ -25,9 +25,8 @@ go run ./tests/window/gui/activation -ui
 
 ## Android/iOS
 
-移动部分通过 Application.NewSurface 建立实际 GUI 控件树，包含 Label、TextInput、
-Button 和 LinearBox。没有 Show/窗口管理调用。原生触摸、IME 与 ui.Surface 声明
-仍待后续接入；本例的输入由正常 DispatchEvent/CommitText 路径注入，不绕过控件行为。
+移动默认通过 Application.NewSurface 建立 GUI 控件树；UI 模式由 ui.Surface 协调
+同一类控件。两者包含 Label、TextInput、Button 和 LinearBox，没有 Show/窗口管理调用。原生触摸、IME 仍待后续接入；本例的输入由正常 DispatchEvent/CommitText 路径注入，不绕过控件行为。
 
 ```sh
 go run ./cmd/goui build -config tests/window/gui/activation/goui.toml -target android/arm64 -package apk -o /tmp/gui-activation.apk
@@ -80,4 +79,31 @@ Quit 停止 Go 调度，不命令操作系统结束 Activity/Scene，退出后�
 复位：清理本例报告后重启，或卸载重装本例。退出：桌面关闭窗口；Android
 force-stop、iOS Simulator terminate。只清理本轮自建模拟器、私有 ADB 和应用容器，
 保持用户已有设备、模拟器及系统配置不变。物理设备、iOS 旋转、多 Scene、
-SafeArea、移动 Popup、原生触摸/IME 和 ui.Surface 声明接入不属于本例已验证范围。
+SafeArea、移动 Popup 和原生触摸/IME 不属于本例已验证范围。
+
+
+## UI Surface 模式
+
+在上面任一移动构建命令追加 `-ldflags '-X main.viewMode=ui'`；GLES 使用
+`-ldflags '-X main.viewMode=ui -X main.painterName=opengl'`。换用独立输出路径，
+安装包 ID、报告位置和控制 stop 的方式不变。不要把两个 -ldflags 分别传入。
+
+初始标题为 GOUI UI Surface / main thread。输入框通过 BindText 绑定 ui.State，
+Count 标签在 ui.Build 中观察数值；Button.OnClick 只写状态。首次 AfterPaint
+查询已经挂载的宿主/控件，建立测试计时器与诊断；视图构建不创建原生资源。
+
+除前面的线程、绘制目标、旋转/后台和释放断言外，还要求：
+
+1. dispatch.json 的 viewMode=ui；FindSurface(main) 有值、FindWindow(main) 为 nil。
+   mounts=1，不因声明更新或绘制目标恢复重挂控件。实际 Backend 必须匹配要求。
+2. 自动 CommitText 与点击后，在后续 UI 更新批次完成再核对：绑定文本为
+   initial committed、Count: 1、globalBuilds=1、localBuilds=2。不能在写 State 的
+   同一事件回调中假设异步协调已完成，也不调用私有刷新方法强行同步。
+3. 后台/旋转期间保留相同 Widget、输入和数值；系统恢复不额外构建应用。
+4. stop 触发后，UI 先释放声明订阅，GUI 再销毁控件。最终 mounts/unmounts/destroys
+   各为 1。completed.json 额外报告 ui=true、globalBuilds=1、localBuilds=2、
+   uiDestroys=1；Run 不得早于 UI 清理回调返回。
+
+GUI 模式的原有断言继续保留。UI 模式不声称已经支持原生触摸/IME、移动 Popup、
+SafeArea、多 Scene 或物理设备。两个模式共用包 ID，安装前清空自己的报告或重装，
+不要并行运行到同一个设备/模拟器容器中。
