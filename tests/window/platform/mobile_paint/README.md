@@ -70,8 +70,8 @@ iOS 首版 GPU 测试在前台目标就绪后创建 Painter；首次 Scene 前�
 
 启动后检查注册字体、行/Cluster 范围、样式隔离、占位、1x/2x/3x 区域栅格、
 输出缓冲复用和预乘约束；失败 panic，通过项写应用沙箱 `checks.json`。
-iOS 另断言 CoreText 初始化不加载 AppKit/桌面 OpenGL；两端检查 GOUI 线程与
-系统 UI 主线程分离、窗口回调固定 OS 线程、逻辑窗口创建不等待目标。
+iOS 另断言 CoreText 初始化不加载 AppKit/桌面 OpenGL；两端检查启动 goroutine 与
+系统 UI 主线程分离、窗口回调运行于原生 UI 主线程、逻辑窗口创建不等待目标。
 另检查平台单例、默认平台名、拒绝第二个窗口/队列、拒绝未知 Painter；Software
 在 Run 和原生表面就绪前创建，首帧再执行离屏像素断言。GLES 显式请求在首帧创建。
 

@@ -102,8 +102,8 @@ func main() {
 	var size events.SizeEvent
 	frames := 0
 	win, err := backendPlatform.NewWindow(geometry.Size{Width: 320, Height: 480}, func(event events.Event) {
-		if ffi.CallRet[int32](thread) != owner {
-			panic("event changed GOUI thread")
+		if ffi.CallRet[int32](thread) != int32(os.Getpid()) {
+			panic("event did not enter the Android UI thread")
 		}
 		switch event := event.(type) {
 		case events.SizeEvent:
@@ -115,7 +115,7 @@ func main() {
 			painter.DrawTextLayout(graphics.Point{X: 16, Y: 16}, layout)
 			painter.End()
 			frames++
-			data, _ := json.Marshal(map[string]any{"frames": frames, "owner": owner, "nativeThread": b.Thread, "width": size.Width, "height": size.Height, "interactionFailures": interactions.Failures, "backendFailures": backend.Failures})
+			data, _ := json.Marshal(map[string]any{"frames": frames, "owner": ffi.CallRet[int32](thread), "startupThread": owner, "nativeThread": b.Thread, "width": size.Width, "height": size.Height, "interactionFailures": interactions.Failures, "backendFailures": backend.Failures})
 			if err := os.WriteFile(filepath.Join(dir, "go.json"), data, 0600); err != nil {
 				panic(err)
 			}

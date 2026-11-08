@@ -59,7 +59,8 @@ DrawTextLayout 绘制；files/text.png 保留独立系统 Canvas 参考图，不
 
 1. 等待画面出现，读取私有状态：
    adb shell run-as org.golanggui.androidtext cat files/report.json
-   以及 files/go.json、files/interaction-go.json。frames>0、owner=nativeThread，
+   以及 files/go.json、files/interaction-go.json。frames>0、owner=应用 PID（UI 主线程）、
+   startupThread=nativeThread（排版参考探针的启动线程），
    workerThread=true；interaction.cases 至少 18 项，不能因样本遗漏而误报通过。
 2. 检查每项 pass，不能只检查进程存活。coreFailures 应为 0；失败要保留具体
    输入。candidateFailures 可以非零，它只表示 cursor/非零 advance 不等价于
@@ -113,7 +114,7 @@ Android 11 ARM64/Software 1x 的实测材料与限制见 doc/DesignMobilePlatfor
 建议在本次专用模拟器启用 debug.checkjni，检查异常消费、UTF-16 中的 NUL/
 代理对和 JNI 参数；不得修改用户其他设备。原生头文件同时静态校验 JNI 表
 位置、jvalue 与 AndroidBitmapInfo 布局。旋转/Activity 重建及后台恢复后应继续
-绘制，进程/GOUI 线程不变，字体/布局不随 Activity 失效。复位设备旋转设置。
+绘制，进程/UI 主线程不变，字体/布局不随 Activity 失效。复位设备旋转设置。
 
 WrapChar 仍明确不支持，测试其失败反馈，不能计为字符换行已经验收。其余范围、
 内部子像素单位及已知系统差异见 doc/DesignAndroidTypography.md。本例的耗时/

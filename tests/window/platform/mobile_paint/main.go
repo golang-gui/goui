@@ -53,7 +53,7 @@ func expect(name string, good bool) {
 func main() {
 	directory := ffi.GoString(ffi.Pointer(ffi.CallRet[uintptr](symbol("probe_data_dir"))))
 	thread := ffi.CallRet[uintptr](symbol("probe_thread"))
-	expect("GOUI 不占用原生 UI 主线程", ffi.CallRet[int32](symbol("probe_is_main")) == 0)
+	expect("启动 goroutine 不占用原生 UI 主线程", ffi.CallRet[int32](symbol("probe_is_main")) == 0)
 	must(os.MkdirAll(directory, 0700))
 	write := func(name string, value any) {
 		data, err := json.MarshalIndent(value, "", "  ")
@@ -115,8 +115,8 @@ func main() {
 	must(err)
 	defer layout.Destroy()
 	window, err = backend.NewWindow(geometry.Size{Width: 320, Height: 480}, func(event events.Event) {
-		if ffi.CallRet[uintptr](symbol("probe_thread")) != thread {
-			panic("窗口回调迁移了 OS 线程")
+		if ffi.CallRet[int32](symbol("probe_is_main")) != 1 || ffi.CallRet[uintptr](symbol("probe_thread")) == thread {
+			panic("窗口回调没有进入原生 UI 主线程")
 		}
 		switch e := event.(type) {
 		case events.VisibilityEvent:
