@@ -19,14 +19,14 @@ const (
 	hudIdleInterval = time.Second
 )
 
-// HUD draws recent CPU-frame statistics over a window without taking input or
-// participating in layout. Its owner is the Capture; window destruction and
+// HUD draws recent CPU-frame statistics over a Surface without taking input or
+// participating in layout. Its owner is the Capture; Surface destruction and
 // capture stop release it automatically. All methods run on the GUI thread.
 // After one second without drawing, one repaint changes FPS to zero. The other
 // readings retain the last completed sample; no continuous frame loop is added.
 type HUD struct {
 	capture   *Capture
-	window    gui.Window
+	window    gui.Surface
 	position  geometry.Point
 	paint     signal.Handle
 	destroy   signal.Handle
@@ -41,29 +41,29 @@ type HUD struct {
 }
 
 // ShowHUD displays one overlay for window in this active capture. Repeated
-// calls return the existing HUD. The window must belong to the captured app.
+// calls return the existing HUD. The Surface must belong to the captured app.
 // The initial position is (12, 12) DIP; use SetPosition to avoid title controls.
-// Showing requests one repaint. Subsequent updates only use ordinary window
+// Showing requests one repaint. Subsequent updates only use ordinary host
 // frames, at most four text updates per second. A one-shot idle timer requests
 // one repaint to show zero FPS after a second without drawing.
 // Draw FPS measures CPU-frame completion, not GPU or display presentation.
-func (c *Capture) ShowHUD(window gui.Window) (*HUD, error) {
+func (c *Capture) ShowHUD(window gui.Surface) (*HUD, error) {
 	if c == nil || c.session == nil || !c.session.Active() {
 		return nil, errors.New("diagnostics HUD requires an active capture")
 	}
 	app, ok := c.session.Owner().(gui.Application)
 	if !ok || window == nil {
-		return nil, errors.New("diagnostics HUD requires a window from the captured application")
+		return nil, errors.New("diagnostics HUD requires a Surface from the captured application")
 	}
 	owned := false
-	for _, candidate := range app.Windows() {
+	for _, candidate := range app.Surfaces() {
 		if candidate == window {
 			owned = true
 			break
 		}
 	}
 	if !owned {
-		return nil, errors.New("diagnostics HUD window is unavailable or belongs to another application")
+		return nil, errors.New("diagnostics HUD Surface is unavailable or belongs to another application")
 	}
 	if h := c.huds[window]; h != nil {
 		return h, nil
@@ -75,7 +75,7 @@ func (c *Capture) ShowHUD(window gui.Window) (*HUD, error) {
 	h.timer = app.NewTimer()
 	h.timeout = h.timer.ConnectTimeout(h.onIdle)
 	if c.huds == nil {
-		c.huds = make(map[gui.Window]*HUD)
+		c.huds = make(map[gui.Surface]*HUD)
 	}
 	c.huds[window] = h
 	if c.stopped == nil {

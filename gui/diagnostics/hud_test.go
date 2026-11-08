@@ -308,3 +308,11 @@ func TestHUDIdleWaitsForRecentPaintAndCompletion(t *testing.T) {
 		t.Fatal("忽略了 AfterPaint 之后的帧完成时刻")
 	}
 }
+
+func (a *hudApplication) Surfaces() []gui.Surface {
+	var hosts []gui.Surface
+	for _, w := range a.windows {
+		hosts = append(hosts, w)
+	}
+	return hosts
+}
