@@ -92,7 +92,7 @@ func chromeFixture(t *testing.T, nativeButtons, nativeHit bool) (*window, *deskt
 	if !nativeHit {
 		native.hitError = platform.ErrUnsupported
 	}
-	app := &application{platform: &chromeTestPlatform{native: native, creationNotifications: true}}
+	app := &application{servicesReady: true, platform: &chromeTestPlatform{native: native, creationNotifications: true}}
 	result, err := app.NewWindow(&WindowOptions{Size: geometry.Size{Width: 640, Height: 400}, Chrome: WindowChromeIntegrated})
 	if err != nil {
 		t.Fatal(err)
@@ -134,7 +134,7 @@ func TestChromeNativeChangeCanDestroyWindow(t *testing.T) {
 func TestWindowCreationOptionsAndService(t *testing.T) {
 	for _, mode := range []WindowChromeMode{WindowChromeNative, WindowChromeNone} {
 		plat := &chromeTestPlatform{native: &chromeTestWindow{}, creationNotifications: true}
-		app := &application{platform: plat}
+		app := &application{servicesReady: true, platform: plat}
 		options := WindowOptions{Size: geometry.Size{Width: 320, Height: 200}, Chrome: mode}
 		win, err := app.NewWindow(&options)
 		if err != nil {
@@ -166,7 +166,7 @@ func TestWindowSkipTaskbarPreservedThroughChromeFallback(t *testing.T) {
 		for _, fallback := range []bool{false, true} {
 			native := &desktopTestWindow{chrome: platform.WindowChrome(chrome), state: WindowStateHidden}
 			plat := &chromeTestPlatform{native: native, unsupportedIntegrated: fallback}
-			app := &application{platform: plat}
+			app := &application{servicesReady: true, platform: plat}
 			options := WindowOptions{Chrome: chrome, SkipTaskbar: true}
 			win, err := app.NewWindow(&options)
 			if err != nil {
@@ -191,7 +191,7 @@ func TestNoneChromeResizeRegions(t *testing.T) {
 		if !nativeHit {
 			native.hitError = platform.ErrUnsupported
 		}
-		app := &application{platform: &chromeTestPlatform{native: native, creationNotifications: true}}
+		app := &application{servicesReady: true, platform: &chromeTestPlatform{native: native, creationNotifications: true}}
 		result, err := app.NewWindow(&WindowOptions{Chrome: WindowChromeNone, Transparent: true})
 		if err != nil {
 			t.Fatal(err)
@@ -261,7 +261,7 @@ func TestNoneChromeResizeRegions(t *testing.T) {
 func TestWindowCreationFallbackAndErrors(t *testing.T) {
 	for _, failure := range []error{nil, errors.New("creation failure")} {
 		plat := &chromeTestPlatform{native: &chromeTestWindow{}, unsupportedIntegrated: true, creationError: failure}
-		app := &application{platform: plat}
+		app := &application{servicesReady: true, platform: plat}
 		win, err := app.NewWindow(&WindowOptions{Chrome: WindowChromeIntegrated})
 		if failure != nil {
 			if win != nil || !errors.Is(err, failure) || plat.created != 1 {
@@ -279,7 +279,7 @@ func TestWindowCreationFallbackAndErrors(t *testing.T) {
 	}
 	winNative := &desktopTestWindow{chrome: platform.WindowChromeIntegrated}
 	plat := &chromeTestPlatform{native: winNative, painterError: platform.ErrUnsupported}
-	app := &application{platform: plat}
+	app := &application{servicesReady: true, platform: plat}
 	if win, err := app.NewWindow(&WindowOptions{Chrome: WindowChromeIntegrated}); win != nil || err == nil || plat.created != 1 || !winNative.destroyed || winNative.hitTest != nil {
 		t.Fatal("painter failure retried or leaked native callback")
 	}
@@ -287,7 +287,7 @@ func TestWindowCreationFallbackAndErrors(t *testing.T) {
 
 func TestWindowDefaultOptionsAndInvalidCreation(t *testing.T) {
 	plat := &chromeTestPlatform{native: &chromeTestWindow{}}
-	app := &application{platform: plat}
+	app := &application{servicesReady: true, platform: plat}
 	win, err := app.NewWindow(nil)
 	if err != nil || plat.options != defaultWindowOptions {
 		t.Fatal("native defaults changed")
@@ -341,7 +341,7 @@ func TestWindowInitialCenter(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			native := &centerTestWindow{area: tc.area}
 			plat := &chromeTestPlatform{native: native}
-			app := &application{platform: plat}
+			app := &application{servicesReady: true, platform: plat}
 			win, err := app.NewWindow(&tc.options)
 			if err != nil {
 				t.Fatal(err)
@@ -379,7 +379,7 @@ func TestWindowCenterFallbackAndFailures(t *testing.T) {
 			native.chrome = platform.WindowChromeNative
 		}
 		plat := &chromeTestPlatform{native: native, unsupportedIntegrated: fallback}
-		app := &application{platform: plat}
+		app := &application{servicesReady: true, platform: plat}
 		win, err := app.NewWindow(&WindowOptions{Chrome: WindowChromeIntegrated, Center: true, SkipTaskbar: true})
 		if err != nil {
 			t.Fatal(err)
@@ -410,7 +410,7 @@ func TestWindowCenterFallbackAndFailures(t *testing.T) {
 		{"position failure", &centerTestWindow{desktopTestWindow: desktopTestWindow{commandError: failure}, area: geometry.Rect(0, 0, 1920, 1040)}, failure},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			app := &application{platform: &chromeTestPlatform{native: tc.native}}
+			app := &application{servicesReady: true, platform: &chromeTestPlatform{native: tc.native}}
 			win, err := app.NewWindow(&WindowOptions{Center: true})
 			if tc.want == nil {
 				if err != nil || win == nil || len(app.Windows()) != 1 {
@@ -435,7 +435,7 @@ func TestWindowCenterFallbackAndFailures(t *testing.T) {
 	}
 	// A platform without desktop placement still supports the default option.
 	native := &centerTestWindow{areaError: platform.ErrUnsupported}
-	app := &application{platform: &chromeTestPlatform{native: native}}
+	app := &application{servicesReady: true, platform: &chromeTestPlatform{native: native}}
 	win, err := app.NewWindow(&WindowOptions{Center: false})
 	if err != nil || native.areaQueries != 0 || native.moves != 0 {
 		t.Fatalf("default creation unnecessarily required positioning: %v", err)

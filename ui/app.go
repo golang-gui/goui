@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -80,11 +81,12 @@ var (
 	ErrWindowDuplicate = errors.New("ui window id is duplicated")
 )
 
-// Run creates the application, mounts the declarative tree returned by build, and
-// runs the event loop until the app quits. build receives the App handle, which it
+// Run prepares the application and builds its initial declarative tree during
+// native UI activation. It waits until shutdown completes. build receives App, which it
 // may stash, capture in handlers, or call from other goroutines.
-// Call Run from main, not a background goroutine. Platform initialization already
-// keeps main on the startup OS thread. Use App.Post/Sync for background work.
+// Call Run from main. Desktop dispatch keeps its startup OS thread; mobile main
+// waits while native UI callbacks build and update views. Use App.Post/Sync for
+// background work. Initialization and declarative-build errors are returned.
 // System settings and mlang language changes automatically request a coalesced
 // rebuild. Resource getters should be called inside build, not resolved once
 // outside it. Change language on the UI thread, or inside App.Post.
@@ -109,25 +111,42 @@ func Run(appId string, build func(app App) RootView) error {
 	return a.run()
 }
 
-// run owns settings and language subscriptions, including the initial build's
-// failure path and native-loop exit (which need not pass through ui.App.Quit).
+// run binds native UI lifetimes before dispatch begins. Final waiter release
+// happens after Run returns, independently of the startup thread's identity.
 func (a *app) run() error {
-	defer a.stop()
-	languageHandle := mlang.ConnectChanged(a.RequestUpdate)
-	defer languageHandle.Disconnect()
-	if settings := a.gui.Settings(); settings != nil {
-		handle := settings.ConnectChanged(a.RequestUpdate)
-		defer handle.Disconnect()
-	}
-
-	if err := a.rebuild(); err != nil {
-		// Timers may already have been started by the initial build, before Run.
-		a.Quit()
-		a.destroyAll()
+	defer a.finish()
+	a.uiThread.Store(0)
+	var languageHandle, settingsHandle signal.Handle
+	activated := false
+	activate := a.gui.ConnectActivate(func() {
+		if activated || a.isStopping() {
+			return
+		}
+		activated = true
+		a.uiThread.Store(int64(gothread.GetId()))
+		languageHandle = mlang.ConnectChanged(a.RequestUpdate)
+		if settings := a.gui.Settings(); settings != nil {
+			settingsHandle = settings.ConnectChanged(a.RequestUpdate)
+		}
+		if err := a.rebuild(); err != nil {
+			a.fail(err)
+			a.destroyAll()
+		}
+	})
+	defer activate.Disconnect()
+	shutdown := a.gui.ConnectShutdown(func() {
+		if settingsHandle != nil {
+			settingsHandle.Disconnect()
+		}
+		if languageHandle != nil {
+			languageHandle.Disconnect()
+		}
+		a.release()
+	})
+	defer shutdown.Disconnect()
+	if err := a.gui.Run(); err != nil {
 		return err
 	}
-
-	a.gui.Run()
 	return a.error()
 }
 
@@ -228,7 +247,7 @@ type app struct {
 	stopping           bool
 	finished           chan struct{} // closed only after run returns, not on a Quit request
 	err                error
-	uiThread           int
+	uiThread           atomic.Int64
 }
 
 type windowMount struct {
@@ -268,17 +287,19 @@ func activeRun() error {
 }
 
 func newApp(guiApp gui.Application, build func() RootView) *app {
-	return &app{
+	a := &app{
 		gui:      guiApp,
 		build:    build,
 		windows:  make(map[string]*windowMount),
 		finished: make(chan struct{}),
-		uiThread: gothread.GetId(),
 	}
+	a.uiThread.Store(int64(gothread.GetId()))
+	return a
 }
 
 func (a *app) onUI() bool {
-	return a.uiThread != 0 && a.uiThread == gothread.GetId()
+	thread := a.uiThread.Load()
+	return thread != 0 && thread == int64(gothread.GetId())
 }
 
 func (a *app) postTask(f func()) bool {
@@ -631,32 +652,37 @@ func (a *app) isStopping() bool {
 	return a.stopping
 }
 
-// stop runs on the UI thread after run has finished, including initial-build
-// failure. It invalidates queued work and releases synchronous callers even when
-// the native loop exits without processing their posts. Quit must not close
-// finished: a currently executing callback may still be writing caller results.
-func (a *app) stop() {
+// release ends declarative lifetimes on the native UI thread. It does not
+// release Sync waiters: the callback causing shutdown may still be in progress.
+func (a *app) release() {
 	a.mu.Lock()
 	a.stopping = true
 	a.updatePending = false
 	a.fullUpdate = false
 	a.dirty = nil
 	a.dirtyOrder = nil
-	select {
-	case <-a.finished:
-		a.mu.Unlock()
-		return
-	default:
-		close(a.finished)
-	}
 	a.mu.Unlock()
-	// The loop may exit while native windows still exist. Release declarative
-	// connections without taking the GUI window's ownership of its widget tree.
 	for _, mount := range a.windows {
 		mount.root.unmountForWindowDestroy()
 		mount.shortcuts.clear()
 	}
 }
+
+// finish only touches Go synchronization. The native loop has acknowledged
+// callback completion, so it is safe to release waiters on the startup thread.
+func (a *app) finish() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.stopping = true
+	select {
+	case <-a.finished:
+	default:
+		close(a.finished)
+	}
+}
+
+// stop combines both boundaries for a runtime without a native Run lifecycle.
+func (a *app) stop() { a.release(); a.finish() }
 
 func (a *app) error() error {
 	a.mu.Lock()

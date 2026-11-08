@@ -126,7 +126,7 @@ func borderWindowFixture(t *testing.T, nativeHit bool) (*window, *desktopTestWin
 	if !nativeHit {
 		native.hitError = platform.ErrUnsupported
 	}
-	app := &application{platform: &chromeTestPlatform{native: native, creationNotifications: true}}
+	app := &application{servicesReady: true, platform: &chromeTestPlatform{native: native, creationNotifications: true}}
 	result, err := app.NewWindow(&WindowOptions{Size: geometry.Size{Width: 100, Height: 80}, Chrome: WindowChromeNone})
 	if err != nil {
 		t.Fatal(err)

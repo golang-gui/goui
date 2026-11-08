@@ -50,7 +50,14 @@ type settingsTestApplication struct {
 }
 
 func (a *settingsTestApplication) Settings() gui.Settings { return &a.settings }
-func (a *settingsTestApplication) Run()                   { a.run() }
+func (a *settingsTestApplication) Run() error {
+	a.activate.Emit()
+	if a.quits == 0 {
+		a.run()
+	}
+	a.shutdown.Emit()
+	return nil
+}
 
 func TestSettingsAutomaticallyRebuildAndDeduplicateSheet(t *testing.T) {
 	runtime.LockOSThread()

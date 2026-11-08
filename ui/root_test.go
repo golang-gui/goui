@@ -473,7 +473,9 @@ func useTestApplication(t *testing.T, app gui.Application) {
 }
 
 type testApplication struct {
-	posts []func()
+	activate signal.Signal0
+	shutdown signal.Signal0
+	posts    []func()
 }
 
 func (a *testApplication) NewTimer() *gui.Timer { panic("unexpected NewTimer") }
@@ -508,7 +510,9 @@ func (a *testApplication) NewWindow(*gui.WindowOptions) (gui.Window, error) {
 	return nil, nil
 }
 
-func (a *testApplication) Run() {}
+func (a *testApplication) ConnectActivate(fn func()) signal.Handle { return a.activate.Connect(fn) }
+func (a *testApplication) ConnectShutdown(fn func()) signal.Handle { return a.shutdown.Connect(fn) }
+func (a *testApplication) Run() error                              { a.activate.Emit(); a.shutdown.Emit(); return nil }
 
 func (a *testApplication) Quit() {}
 

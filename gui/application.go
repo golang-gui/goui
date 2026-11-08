@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sync/atomic"
 	"time"
 
 	"github.com/golang-gui/goui/core/signal"
@@ -11,12 +12,16 @@ import (
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/style"
+	"github.com/xuges/gothread"
 )
 
 type Application interface {
 	Platform() platform.Platform
+	// Typography is ready during Activate and subsequent UI callbacks. During
+	// mobile preparation it is nil; desktop pre-Run creation remains supported
+	// while callers migrate to ConnectActivate.
 	Typography() typography.Context
-	// Clipboard returns the system clipboard, or nil if it is unavailable.
+	// Clipboard returns a clipboard view; unavailable access reports an error.
 	Clipboard() Clipboard
 	// Settings returns system settings as usable values. Never nil.
 	Settings() Settings
@@ -38,10 +43,18 @@ type Application interface {
 	// Creation does not register a task or allocate waiting resources. Call on
 	// the GUI thread; the timer can be started before Run, but not after Quit.
 	NewTimer() *Timer
-	// Run processes native events and GUI timers on the main goroutine used to
-	// create the application. Returning from Run stops timer scheduling and waits
-	// for its background waiter to exit, but does not unlock the startup OS thread.
-	Run()
+	// ConnectActivate runs fn on the native UI thread after application services
+	// are ready. Connect before Run. The initial activation is asynchronous;
+	// focus changes and drawable replacement do not activate the application.
+	ConnectActivate(func()) signal.Handle
+	// ConnectShutdown runs once on the UI thread before event-loop exit. Release
+	// UI-owned connections and resources here. It is not a cancelable request.
+	ConnectShutdown(func()) signal.Handle
+	// Run starts UI dispatch and waits until shutdown callbacks have completed.
+	// Call from the startup goroutine used by NewApplication. On mobile this
+	// goroutine waits while native UI callbacks execute elsewhere. Initialization
+	// errors are returned without activating the application. Run is one-shot.
+	Run() error
 	// Quit stops timer scheduling and requests event-loop exit. It may be called
 	// from any goroutine; an already-started timer signal may finish.
 	Quit()
@@ -55,16 +68,19 @@ type Application interface {
 }
 
 var (
-	App       Application
-	ErrAppNil = errors.New("application is not created")
+	App            Application
+	ErrAppNil      = errors.New("application is not created")
+	ErrAppNotReady = errors.New("gui: application services are not ready")
+	ErrAppRunOnce  = errors.New("gui: application Run may be called only once")
 )
 
 // NewApplication creates the application with a stable, case-sensitive identity
 // such as "com.example.Editor". Empty leaves identity unspecified. The ID is
 // immutable and distinct from window IDs, titles and display names. Supplying an
 // ID does not install desktop entries, icons or an application bundle.
-// Call from main and use the application on that goroutine. The platform package
-// already locks main to the startup OS thread; background work uses Post.
+// Call from main, connect Activate, then Run. Desktop main keeps the startup
+// thread; mobile main only prepares startup. Runtime GUI work belongs to the
+// native UI thread delivered by Activate. Background work uses Post.
 func NewApplication(appId string) (Application, error) {
 	if App != nil {
 		return App, nil
@@ -93,6 +109,15 @@ type application struct {
 	nextDragID   uint64
 
 	quitOnLastWindowClosed bool
+	activateSignal         signal.Signal0
+	shutdownSignal         signal.Signal0
+	servicesReady          bool
+	shutdownDone           bool
+	ran                    bool
+	quitting               atomic.Bool
+	uiThread               int
+	runError               error
+	stopSettings           func()
 }
 
 func newApplication(appId string) (*application, error) {
@@ -101,45 +126,106 @@ func newApplication(appId string) (*application, error) {
 		return nil, fmt.Errorf("create platform: %w", err)
 	}
 
+	return prepareApplication(plat)
+}
+
+// prepareApplication keeps startup preparation separate from UI-owned services.
+func prepareApplication(plat platform.Platform) (*application, error) {
 	loop, err := plat.NewEventLoop()
 	if err != nil {
 		plat.Destroy()
 		return nil, fmt.Errorf("create event loop: %w", err)
 	}
 
-	typo, err := plat.NewTypography()
-	if err != nil {
-		loop.Destroy()
-		plat.Destroy()
-		return nil, fmt.Errorf("create typography: %w", err)
-	}
-
-	// Clipboard is optional: unlike typography, the application remains usable
-	// without one, so a creation failure is non-fatal — keep it nil and carry on.
-	platClip, clipErr := plat.NewClipboard()
-	if clipErr != nil {
-		// TODO: log the error once the framework has logging.
-	}
-
-	platSettings, settingsErr := plat.NewSettings()
-	if settingsErr != nil {
-		platSettings = nil // getters then always fall back
-	}
-
-	platFileDlg, fileDialogErr := plat.NewFileDialog()
-
 	app := &application{
-		platform:   plat,
-		loop:       loop,
-		timers:     newTimerScheduler(loop.Post, time.Now),
-		typo:       typo,
-		clipboard:  newClipboard(platClip),
-		settings:   newSettings(platSettings),
-		fileDialog: newFileDialog(platFileDlg, loop, fileDialogErr),
-
+		platform: plat, loop: loop,
+		timers:   newTimerScheduler(loop.Post, time.Now),
+		settings: newSettings(nil), clipboard: newClipboard(nil),
+		fileDialog:             newFileDialog(nil, loop, ErrAppNotReady),
 		quitOnLastWindowClosed: true,
 	}
+	if _, systemHosted := plat.(platform.WindowSource); !systemHosted {
+		app.uiThread = gothread.GetId()
+		if err := app.initializeServices(); err != nil {
+			loop.Destroy()
+			plat.Destroy()
+			return nil, err
+		}
+	}
+	// This is the first queued application task, ahead of pre-Run Post calls.
+	loop.Post(app.activate)
 	return app, nil
+}
+
+func (a *application) initializeServices() error {
+	if a.servicesReady {
+		return nil
+	}
+	typo, err := a.platform.NewTypography()
+	if err != nil {
+		return fmt.Errorf("create typography: %w", err)
+	}
+	a.typo = typo
+	clip, _ := a.platform.NewClipboard()
+	a.clipboard = newClipboard(clip)
+	nativeSettings, err := a.platform.NewSettings()
+	if err != nil {
+		nativeSettings = nil
+	}
+	a.settings.settings = nativeSettings
+	a.settings.current = a.settings.snapshot()
+	dialog, dialogErr := a.platform.NewFileDialog()
+	a.fileDialog = newFileDialog(dialog, a.loop, dialogErr)
+	a.servicesReady = true
+	return nil
+}
+
+func (a *application) activate() {
+	if a.quitting.Load() {
+		return
+	}
+	a.uiThread = gothread.GetId()
+	if err := a.initializeServices(); err != nil {
+		a.runError = err
+		a.Quit()
+		return
+	}
+	a.stopSettings = a.settings.watch(a)
+	a.activateSignal.Emit()
+}
+
+func (a *application) ConnectActivate(fn func()) signal.Handle {
+	if fn == nil || a.quitting.Load() {
+		return signal.Handles(nil)
+	}
+	return a.activateSignal.Connect(func() {
+		if !a.quitting.Load() {
+			fn()
+		}
+	})
+}
+
+func (a *application) ConnectShutdown(fn func()) signal.Handle {
+	if fn == nil || a.shutdownDone {
+		return signal.Handles(nil)
+	}
+	return a.shutdownSignal.Connect(fn)
+}
+
+func (a *application) shutdown() {
+	if a.shutdownDone {
+		return
+	}
+	a.shutdownDone = true
+	a.quitting.Store(true)
+	if a.stopSettings != nil {
+		a.stopSettings()
+		a.stopSettings = nil
+	}
+	a.shutdownSignal.Emit()
+	if dialog, ok := a.fileDialog.(*fileDialog); ok {
+		dialog.close()
+	}
 }
 
 func (a *application) Platform() platform.Platform {
@@ -189,6 +275,12 @@ func (a *application) SetStyleSheet(sheet style.StyleSheet) {
 }
 
 func (a *application) NewWindow(options *WindowOptions) (Window, error) {
+	if a.quitting.Load() {
+		return nil, platform.ErrUnavailable
+	}
+	if !a.servicesReady {
+		return nil, ErrAppNotReady
+	}
 	opt := defaultWindowOptions
 	if options != nil {
 		opt = *options
@@ -228,27 +320,39 @@ func (a *application) timerActive(t *Timer) bool {
 	return a.timers.active(t.run)
 }
 
-func (a *application) Run() {
-	defer diagnostic.StopOwner(a)
-	if dialog, ok := a.fileDialog.(*fileDialog); ok {
-		defer dialog.close()
+func (a *application) Run() error {
+	if a.ran {
+		return ErrAppRunOnce
 	}
+	a.ran = true
+	defer a.quitting.Store(true)
+	defer diagnostic.StopOwner(a)
 	if a.timers != nil {
 		defer a.timers.finish()
-	}
-	stop := a.settings.watch(a)
-	defer stop()
-	if a.timers != nil {
 		a.timers.start()
 	}
 	a.loop.Run()
+	if !a.shutdownDone {
+		if a.uiThread != gothread.GetId() {
+			return errors.Join(a.runError, errors.New("gui: native loop exited without UI-thread shutdown"))
+		}
+		// Desktop native exit is already on the owning UI thread.
+		a.shutdown()
+	}
+	return a.runError
 }
 
 func (a *application) Quit() {
+	if a.quitting.Swap(true) {
+		return
+	}
 	if a.timers != nil {
 		a.timers.close()
 	}
-	a.loop.Quit()
+	a.loop.Post(func() {
+		a.shutdown()
+		a.loop.Quit()
+	})
 }
 
 func (a *application) QuitOnLastWindowClosed() bool {
@@ -260,7 +364,13 @@ func (a *application) SetQuitOnLastWindowClosed(v bool) {
 }
 
 func (a *application) Post(task func()) {
-	a.loop.Post(task)
+	if task != nil && !a.quitting.Load() {
+		a.loop.Post(func() {
+			if !a.quitting.Load() {
+				task()
+			}
+		})
+	}
 }
 
 func (a *application) Windows() []Window {
