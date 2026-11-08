@@ -44,7 +44,7 @@ func TestPopup(t *testing.T) {
 		if err != nil {
 			return
 		}
-		if err = owner.Show(); err != nil {
+		if err = owner.(platform.WindowManagement).Show(); err != nil {
 			return
 		}
 
@@ -148,7 +148,7 @@ func TestPopupPainter(t *testing.T) {
 		if err != nil {
 			return
 		}
-		if err = owner.Show(); err != nil {
+		if err = owner.(platform.WindowManagement).Show(); err != nil {
 			return
 		}
 

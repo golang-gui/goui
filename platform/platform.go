@@ -32,6 +32,7 @@ type (
 	Surface            = common.Surface
 	SurfaceState       = common.SurfaceState
 	Window             = common.Window
+	WindowManagement   = common.WindowManagement
 	DesktopWindow      = common.DesktopWindow
 	WindowOptions      = common.WindowOptions
 	PopupOptions       = common.PopupOptions
@@ -142,10 +143,14 @@ type Platform interface {
 	// Chrome mode; GUI-drawn decoration is inside this client area.
 	// The authoritative client size arrives via SizeEvent. Initial notifications
 	// may arrive synchronously before NewWindow returns.
+	// A Window is not necessarily independently manageable. Assert
+	// WindowManagement on the result before issuing window-management requests.
 	NewWindow(size geometry.Size, handler EventHandler, options WindowOptions) (Window, error)
 	// NewPopup creates a borderless popup owned by owner. width/height is its
 	// requested logical (DIP) size; native pixel quantization may adjust it, and
 	// the authoritative logical and physical client size arrives via SizeEvent.
+	// The owner need not implement WindowManagement. Native popup support is a
+	// separate capability; unsupported hosts return ErrUnsupported.
 	NewPopup(owner Window, size geometry.Size, handler EventHandler, options PopupOptions) (Popup, error)
 	NewEventLoop() (EventLoop, error)
 	NewTypography() (typography.Context, error)

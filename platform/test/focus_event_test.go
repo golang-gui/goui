@@ -71,10 +71,10 @@ func TestFocusEventsManual(t *testing.T) {
 			return
 		}
 
-		if err = window.SetTitle("goui focus event test"); err != nil {
+		if err = window.(platform.WindowManagement).SetTitle("goui focus event test"); err != nil {
 			return
 		}
-		err = window.Show()
+		err = window.(platform.WindowManagement).Show()
 	})
 	if eventLoop != nil {
 		defer func() {

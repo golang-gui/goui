@@ -77,7 +77,7 @@ func run() error {
 						loop.Quit()
 						return
 					}
-					failure = ghost.Show()
+					failure = ghost.(platform.WindowManagement).Show()
 					if failure == nil {
 						failure = ghost.RequestPaint()
 					}
@@ -97,7 +97,7 @@ func run() error {
 		return err
 	}
 	defer painter.Destroy()
-	if err := win.Show(); err != nil {
+	if err := win.(platform.WindowManagement).Show(); err != nil {
 		return err
 	}
 	timer := time.AfterFunc(4*time.Second, func() { loop.Post(loop.Quit) })

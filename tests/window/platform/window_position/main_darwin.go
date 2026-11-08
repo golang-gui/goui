@@ -66,7 +66,7 @@ func run() error {
 	defer loop.Destroy()
 	var win platform.Window
 	var popup platform.Popup
-	var desktop platform.DesktopWindow
+	var desktop platform.WindowManagement
 	var painter graphics.Painter
 	var size events.SizeEvent
 	var result error
@@ -85,10 +85,10 @@ func run() error {
 	}
 	reshow := func() error {
 		before := nativeFrame(win)
-		if err := win.Hide(); err != nil {
+		if err := win.(platform.WindowManagement).Hide(); err != nil {
 			return err
 		}
-		if err := win.Show(); err != nil {
+		if err := win.(platform.WindowManagement).Show(); err != nil {
 			return err
 		}
 		if after := nativeFrame(win); after != before {
@@ -136,7 +136,7 @@ func run() error {
 		return err
 	}
 	defer win.Destroy()
-	desktop = win.(platform.DesktopWindow)
+	desktop = win.(platform.WindowManagement)
 	if err := checkDefault(win); err != nil {
 		return err
 	}
@@ -149,7 +149,7 @@ func run() error {
 	if frame := nativeFrame(popup); frame.Origin.X != 0 || frame.Origin.Y != 0 {
 		return fmt.Errorf("popup creation was repositioned: %v", frame)
 	}
-	if err := win.SetTitle("GOUI default position — F5 place / F6 reshow / F7 popup / Esc exit"); err != nil {
+	if err := win.(platform.WindowManagement).SetTitle("GOUI default position — F5 place / F6 reshow / F7 popup / Esc exit"); err != nil {
 		return err
 	}
 	if !*auto {
@@ -160,7 +160,7 @@ func run() error {
 		defer painter.Destroy()
 		fmt.Println("backend="+painter.Name(), "chrome="+*mode, "scale="+os.Getenv("GOUI_PLAT_SCALE"))
 	}
-	if err := win.Show(); err != nil {
+	if err := win.(platform.WindowManagement).Show(); err != nil {
 		return err
 	}
 	if frame := nativeFrame(win); frame != initial {

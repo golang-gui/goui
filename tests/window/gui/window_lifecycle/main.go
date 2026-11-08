@@ -122,7 +122,7 @@ func run() error {
 			return err
 		}
 		defer victim.Destroy()
-		victim.SetTitle("Native target — keep painting")
+		victim.(platform.WindowManagement).SetTitle("Native target — keep painting")
 		rawPaint, err = app.Platform().NewPainter(victim)
 		if err != nil {
 			return err
@@ -154,7 +154,7 @@ func run() error {
 			return err
 		}
 		defer rawPopupPaint.Destroy()
-		if err = victim.Show(); err != nil {
+		if err = victim.(platform.WindowManagement).Show(); err != nil {
 			return err
 		}
 		popup.SetPosition(30, 50)
@@ -190,7 +190,7 @@ func run() error {
 		}
 	}
 	if *noArea {
-		_, e := victim.(platform.DesktopWindow).WorkAreaAt(geometry.Point{})
+		_, e := victim.(platform.WindowManagement).WorkAreaAt(geometry.Point{})
 		if !errors.Is(e, platform.ErrUnsupported) {
 			return fmt.Errorf("显式 WorkAreaAt 应返回 ErrUnsupported，实际 %v", e)
 		}
@@ -201,7 +201,7 @@ func run() error {
 		b.ConnectClicked(f)
 		box.AddChild(b)
 	}
-	addButton("Request close", func() { victim.RequestClose() })
+	addButton("Request close", func() { victim.(platform.WindowManagement).RequestClose() })
 	addButton("Native close", func() {
 		if victim.NativeHandle() != 0 {
 			if e := destroyHost(victim.NativeHandle()); e != nil {
@@ -235,7 +235,7 @@ func run() error {
 			switch stage {
 			case 0:
 				check(paints > 0, "目标没有执行绘制")
-				victim.RequestClose()
+				victim.(platform.WindowManagement).RequestClose()
 				check(destroys == 0, "关闭请求销毁了被否决的窗口")
 				if pop != nil {
 					if e := pop.Show(); e != nil {

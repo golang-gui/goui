@@ -102,7 +102,7 @@ func run(name string, reverse bool) error {
 	report := func(message string) {
 		fmt.Println(message)
 		if w != nil {
-			_ = w.SetTitle("GOUI modifiers / " + name + " / " + message)
+			_ = w.(platform.WindowManagement).SetTitle("GOUI modifiers / " + name + " / " + message)
 		}
 	}
 	fail := func(message string) {
@@ -171,7 +171,7 @@ func run(name string, reverse bool) error {
 	}
 	defer w.Destroy()
 	report("F8 fresh / S held")
-	if err = w.Show(); err != nil {
+	if err = w.(platform.WindowManagement).Show(); err != nil {
 		return err
 	}
 	loop.Run()

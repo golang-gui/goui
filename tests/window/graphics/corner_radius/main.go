@@ -118,7 +118,7 @@ func run() error {
 		return err
 	}
 	defer win.Destroy()
-	_ = win.SetTitle("GOUI CornerRadius / BoxShadow")
+	_ = win.(platform.WindowManagement).SetTitle("GOUI CornerRadius / BoxShadow")
 	painter, err = plat.NewPainter(win)
 	if err != nil {
 		return err
@@ -127,7 +127,7 @@ func run() error {
 	if requested := os.Getenv("GOUI_PLAT_PAINTER"); requested != "" && !strings.EqualFold(requested, painter.Name()) {
 		return fmt.Errorf("请求后端%s，实际%s", requested, painter.Name())
 	}
-	if err = win.Show(); err != nil {
+	if err = win.(platform.WindowManagement).Show(); err != nil {
 		return err
 	}
 	loop.Run()

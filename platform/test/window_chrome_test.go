@@ -41,7 +41,7 @@ func TestWindowChromeCreation(t *testing.T) {
 					return
 				}
 				defer win.Destroy()
-				desktop, ok := win.(platform.DesktopWindow)
+				desktop, ok := win.(platform.WindowManagement)
 				if !ok {
 					queryErr = fmt.Errorf("desktop backend returned a base-only Window")
 					return
@@ -135,7 +135,7 @@ func TestWindowChromeIntegrated(t *testing.T) {
 	}
 	var loop platform.EventLoop
 	var win platform.Window
-	var desktop platform.DesktopWindow
+	var desktop platform.WindowManagement
 	var painter graphics.Painter
 	var size events.SizeEvent
 	var frames []events.SizeEvent
@@ -176,7 +176,7 @@ func TestWindowChromeIntegrated(t *testing.T) {
 				step++
 				loop.Post(func() {
 					if step == len(targets) {
-						testErr = win.RequestClose()
+						testErr = win.(platform.WindowManagement).RequestClose()
 					} else {
 						testErr = desktop.RequestState(targets[step])
 					}
@@ -192,7 +192,7 @@ func TestWindowChromeIntegrated(t *testing.T) {
 						testErr = fmt.Errorf("close request altered native window state/chrome")
 					}
 					loop.Post(func() {
-						if closeErr := win.RequestClose(); closeErr != nil {
+						if closeErr := win.(platform.WindowManagement).RequestClose(); closeErr != nil {
 							testErr = closeErr
 							loop.Quit()
 						}
@@ -205,14 +205,14 @@ func TestWindowChromeIntegrated(t *testing.T) {
 		if err != nil {
 			return
 		}
-		desktop = win.(platform.DesktopWindow)
+		desktop = win.(platform.WindowManagement)
 		desktop.SetMinSize(320, 200)
 		painter, err = plat.NewPainter(win)
 		if err != nil {
 			return
 		}
 		painterName = painter.Name()
-		err = win.Show()
+		err = win.(platform.WindowManagement).Show()
 	})
 	defer runOnMainThread(func() {
 		if painter != nil {
@@ -274,7 +274,7 @@ func TestWindowInteractionCapabilities(t *testing.T) {
 		if err != nil {
 			return
 		}
-		desktop := win.(platform.DesktopWindow)
+		desktop := win.(platform.WindowManagement)
 		moveErr = desktop.BeginMove()
 		resizeErr = desktop.BeginResize(platform.WindowEdgeBottomRight)
 		win.Destroy()
@@ -327,7 +327,7 @@ func testWindowStateTransitions(t *testing.T, targets []platform.WindowState) {
 	}
 	var loop platform.EventLoop
 	var win platform.Window
-	var desktop platform.DesktopWindow
+	var desktop platform.WindowManagement
 	var commandErr error
 	var observed []platform.WindowState
 	step := 0
@@ -370,8 +370,8 @@ func testWindowStateTransitions(t *testing.T, targets []platform.WindowState) {
 		if err != nil {
 			return
 		}
-		desktop = win.(platform.DesktopWindow)
-		err = win.Show()
+		desktop = win.(platform.WindowManagement)
+		err = win.(platform.WindowManagement).Show()
 	})
 	defer runOnMainThread(func() {
 		if win != nil {

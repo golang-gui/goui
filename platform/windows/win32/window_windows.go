@@ -56,7 +56,7 @@ type Window struct {
 	topBorder         winapi.LONG        // Integrated normal-state non-client top, in physical pixels
 }
 
-var _ common.DesktopWindow = (*Window)(nil)
+var _ common.WindowManagement = (*Window)(nil)
 
 func newWindow(size geometry.Size, onEvent events.EventHandler, options common.WindowOptions) (w *Window, err error) {
 	if err := common.ValidateWindowSize(size); err != nil {

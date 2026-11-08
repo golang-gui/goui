@@ -41,6 +41,7 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/ui"
 )
 
@@ -86,7 +87,7 @@ func run() error {
 				return
 			}
 			if redisplay {
-				if !check("hide", win.PlatformWindow().Hide()) || !check("show", win.Show()) {
+				if !check("hide", win.PlatformWindow().(platform.WindowManagement).Hide()) || !check("show", win.Show()) {
 					return
 				}
 			} else {
@@ -168,7 +169,7 @@ func run() error {
 					if !check("rebuild preserves position", checkPosition(win, geometry.Point{X: 100, Y: 60})) {
 						return
 					}
-					if !check("hide", win.PlatformWindow().Hide()) || !check("show again", win.Show()) {
+					if !check("hide", win.PlatformWindow().(platform.WindowManagement).Hide()) || !check("show again", win.Show()) {
 						return
 					}
 				case 3:

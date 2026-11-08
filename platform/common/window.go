@@ -7,14 +7,30 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 )
 
-// Window is thread-affine. All methods must be called on the thread that owns
-// the platform.
+// Window is a native presentation host. Geometry, focus, visibility and final
+// destruction are reported through the event handler supplied by its factory.
+// A drawing target may be replaced without destroying the host.
+//
+// Window does not imply authority to show, hide, position or close a system
+// host. Use WindowManagement when the same object provides those facilities.
+// All methods must be called on the thread that owns the platform.
 type Window interface {
 	// Surface provides NativeHandle and Draw: a Window is a paint target.
 	Surface
-	// Destroy closes the native window and releases its resources without
-	// sending a close request.
+	// Destroy releases the owned host and its resources without sending a close
+	// request. The backend defines ownership of the native host; releasing an
+	// adapter does not imply terminating an OS-managed application or process.
 	Destroy()
+}
+
+// WindowManagement is the optional window-management capability of a Window.
+// It is implemented by the same object, obtained with a type assertion, and
+// has no separate lifetime or event stream. Support depends on the host, not
+// on an operating-system classification. Individual native requests may return
+// ErrUnsupported. All calls are thread-affine.
+type WindowManagement interface {
+	Window
+
 	Parent() Window
 	SetParent(parent Window) error
 	Title() string
@@ -23,29 +39,15 @@ type Window interface {
 	// activation and restores a minimized window using native behavior.
 	// Maximized and fullscreen modes are preserved. Success means submitted,
 	// not that the system granted focus. Only native events report the result.
-	// Mobile hosts request visibility of their OS-managed content view; this
-	// does not bring the application to the foreground.
 	// A destroyed window returns ErrUnavailable. Popup has a separate,
 	// non-activating Show contract.
 	Show() error
 	// Hide unmaps the native window without destroying it, so it can be shown
-	// again later. On mobile it hides the owned content view without finishing
-	// the Activity/Scene or moving the application to the background.
+	// again later. Hiding only a child content view is not window management.
 	Hide() error
 	// RequestClose sends a close request notification. It does not destroy the
 	// window; the event handler decides whether to call Destroy.
 	RequestClose() error
-	// RequestPaint asks the platform to schedule a paint notification. It does
-	// not draw immediately, and multiple requests may be coalesced.
-	RequestPaint() error
-}
-
-// DesktopWindow extends the window host with desktop window-manager facilities.
-// An implementation may reject individual requests with ErrUnsupported. Mobile
-// hosts need not implement this interface. All calls are thread-affine.
-type DesktopWindow interface {
-	Window
-
 	// WorkAreaAt returns the available work area of the display containing point,
 	// or the nearest display if point is outside all displays. Both the point
 	// and result are relative to this window's client origin, in DIP (including
@@ -166,6 +168,10 @@ type DesktopWindow interface {
 	BeginResize(edge WindowEdge) error
 }
 
+// DesktopWindow is retained for source migration.
+// Deprecated: use WindowManagement; support is a property of the host, not its OS.
+type DesktopWindow = WindowManagement
+
 // WindowEdge identifies one resize edge or corner, not a native hit-test role.
 // Values cannot be combined as flags.
 type WindowEdge uint8
@@ -200,7 +206,7 @@ const (
 )
 
 // WindowChrome is a native decoration mode, not a GUI title-bar or button policy.
-// In WindowOptions it is a preference; DesktopWindow.Chrome reports observations.
+// In WindowOptions it is a preference; WindowManagement.Chrome reports observations.
 type WindowChrome uint8
 
 const (

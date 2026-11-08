@@ -225,7 +225,7 @@ func newWindow(app *application, options WindowOptions) (*window, error) {
 		win.Destroy()
 		return nil, fmt.Errorf("create painter: %w", err)
 	}
-	win.title = platformWindow.Title()
+	win.title = win.Title()
 	if options.Center {
 		area, err := win.WorkAreaAt(geometry.Point{})
 		if err == nil {
@@ -285,8 +285,8 @@ func (w *window) Title() string {
 	if w.title != "" {
 		return w.title
 	}
-	if w.platformWindow != nil {
-		return w.platformWindow.Title()
+	if native, err := w.windowManagement(); err == nil {
+		return native.Title()
 	}
 	return ""
 }
@@ -296,7 +296,11 @@ func (w *window) SetTitle(title string) error {
 		w.title = title
 		return nil
 	}
-	if err := w.platformWindow.SetTitle(title); err != nil {
+	native, err := w.windowManagement()
+	if err != nil {
+		return err
+	}
+	if err := native.SetTitle(title); err != nil {
 		return err
 	}
 	w.title = title
@@ -369,10 +373,11 @@ func (w *window) SetWidget(widget Widget) {
 }
 
 func (w *window) Show() error {
-	if w.destroyed || w.platformWindow == nil {
-		return platform.ErrUnavailable
+	native, err := w.windowManagement()
+	if err != nil {
+		return err
 	}
-	err := w.platformWindow.Show()
+	err = native.Show()
 	// Showing or activating can synchronously dispatch native callbacks, and
 	// application handlers may destroy the window before the request returns.
 	if w.destroyed || w.platformWindow == nil {
@@ -398,7 +403,11 @@ func (w *window) RequestClose() error {
 	if w.platformWindow == nil {
 		return nil
 	}
-	return w.platformWindow.RequestClose()
+	native, err := w.windowManagement()
+	if err != nil {
+		return err
+	}
+	return native.RequestClose()
 }
 
 func (w *window) Destroy() {
@@ -702,7 +711,7 @@ func (w *window) ConnectFocus(fn func(bool)) signal.Handle {
 }
 
 func (w *window) WorkAreaAt(point geometry.Point) (geometry.Rectangle, error) {
-	native, err := w.desktopWindow()
+	native, err := w.windowManagement()
 	if err != nil {
 		return geometry.Rectangle{}, err
 	}
@@ -710,7 +719,7 @@ func (w *window) WorkAreaAt(point geometry.Point) (geometry.Rectangle, error) {
 }
 
 func (w *window) SetPosition(relativeTo Window, position geometry.Point) error {
-	native, err := w.desktopWindow()
+	native, err := w.windowManagement()
 	if err != nil {
 		return err
 	}
@@ -722,7 +731,7 @@ func (w *window) SetPosition(relativeTo Window, position geometry.Point) error {
 }
 
 func (w *window) Position(relativeTo Window) (geometry.Point, error) {
-	native, err := w.desktopWindow()
+	native, err := w.windowManagement()
 	if err != nil {
 		return geometry.Point{}, err
 	}
@@ -748,7 +757,7 @@ func positionReference(relativeTo Window) (platform.Window, error) {
 }
 
 func (w *window) SetMinSize(size geometry.Size) {
-	if native, err := w.desktopWindow(); err == nil {
+	if native, err := w.windowManagement(); err == nil {
 		native.SetMinSize(size.Width, size.Height)
 	}
 }
@@ -1081,11 +1090,11 @@ func visibleInTree(widget Widget) bool {
 	return true
 }
 
-func (w *window) desktopWindow() (platform.DesktopWindow, error) {
+func (w *window) windowManagement() (platform.WindowManagement, error) {
 	if w.destroyed || w.platformWindow == nil {
 		return nil, platform.ErrUnavailable
 	}
-	native, ok := w.platformWindow.(platform.DesktopWindow)
+	native, ok := w.platformWindow.(platform.WindowManagement)
 	if !ok {
 		return nil, platform.ErrUnsupported
 	}
@@ -1093,7 +1102,7 @@ func (w *window) desktopWindow() (platform.DesktopWindow, error) {
 }
 
 func (w *window) State() WindowState {
-	native, err := w.desktopWindow()
+	native, err := w.windowManagement()
 	if err != nil {
 		return WindowStateUnknown
 	}
@@ -1102,7 +1111,7 @@ func (w *window) State() WindowState {
 
 // RequestState is best effort. Only actual native events change observations.
 func (w *window) RequestState(state WindowState) {
-	native, err := w.desktopWindow()
+	native, err := w.windowManagement()
 	if err != nil {
 		return
 	}

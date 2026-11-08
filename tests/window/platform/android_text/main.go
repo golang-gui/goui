@@ -129,7 +129,7 @@ func main() {
 		panic(err)
 	}
 	defer painter.Destroy()
-	if err := win.Show(); err != nil {
+	if err := win.(interface{ Show() error }).Show(); err != nil {
 		panic(err)
 	}
 	loop.Run()

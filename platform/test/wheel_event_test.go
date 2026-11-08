@@ -91,10 +91,10 @@ func TestWheelEventsManual(t *testing.T) {
 			return
 		}
 
-		if err = window.SetTitle("goui wheel event test"); err != nil {
+		if err = window.(platform.WindowManagement).SetTitle("goui wheel event test"); err != nil {
 			return
 		}
-		err = window.Show()
+		err = window.(platform.WindowManagement).Show()
 	})
 	if eventLoop != nil {
 		defer func() {

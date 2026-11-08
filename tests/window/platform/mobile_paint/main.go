@@ -163,7 +163,7 @@ func main() {
 	}, common.WindowOptions{})
 	must(err)
 	expect("逻辑窗口创建不等待绘制目标", !window.SurfaceState().Ready)
-	_, desktop := window.(common.DesktopWindow)
+	_, desktop := window.(common.WindowManagement)
 	expect("移动窗口不伪造桌面能力", !desktop)
 	second, err := backend.NewWindow(geometry.Size{Width: 320, Height: 480}, nil, common.WindowOptions{})
 	expect("不创建第二个原生内容窗口", second == nil && errors.Is(err, common.ErrUnsupported))
@@ -187,7 +187,9 @@ func main() {
 			painter.Destroy()
 		}
 	}()
-	must(window.Show())
+	// 仅供旧双线程原型验收：内部内容显示钩子不是 WindowManagement。
+	// 正式系统宿主交付与 GUI Surface 接入另行实现，不扩大基础 Window 的契约。
+	must(window.(interface{ Show() error }).Show())
 	// 测试持续请求绘制，以覆盖旋转撤销与后台停绘；不是生产帧调度实现。
 	ticker := time.NewTicker(40 * time.Millisecond)
 	defer ticker.Stop()

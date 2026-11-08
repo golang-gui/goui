@@ -1,6 +1,7 @@
 package main
 
-// 生成后的应用仅使用公开 platform API；没有 probe 符号、C 宿主或 GUI/UI 依赖。
+// 生成后的应用没有 probe 符号、C 宿主或 GUI/UI 依赖。
+// Show 接口断言仅用于旧移动宿主的内容显示钩子，待系统宿主交付切片替换。
 const applicationSource = `package main
 
 import (
@@ -65,7 +66,7 @@ func main(){
  },common.WindowOptions{});must(err)
  defer window.Destroy()
  defer func(){if painter!=nil{painter.Destroy()};if layout!=nil{layout.Destroy()}}()
- must(window.Show())
+ must(window.(interface{ Show() error }).Show())
  done:=make(chan struct{});defer close(done)
  go func(){ticker:=time.NewTicker(time.Second);defer ticker.Stop();for{select{case <-done:return;case <-ticker.C:loop.Post(func(){if visible && window.SurfaceState().Ready{update();must(window.RequestPaint())}})}}}()
  go func(){
