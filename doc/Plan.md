@@ -1,5 +1,23 @@
 # Plan
 
+## UI Surface 声明（2026-11-08）
+
+- [x] ui.Surface(id) 与 Root().Surface，保留 Window 的管理职责；共享 hostMount、
+  内容 Root、默认命令组、快捷键与局部更新。无系统宿主时正常报错，不模拟窗口。
+- [x] App.FindSurface 与 FindWidget/FindCommand/FileDialog 的通用宿主 ID 查询；
+  Window 查询保持管理子集，跨根协调纳入 Surface。销毁/退出结束订阅，GUI 仍拥有
+  Widget 最终释放。只对新管理窗口 Show，不主动显示/调整系统宿主。
+- [x] 隔离已跟踪源码及新增文件，独立 Xvnc/Xfwm4 的全仓测试 4544 通过、11 原条件
+  跳过、0 失败；UI/Widgets race、新增 Surface 回归连续 10 轮 race 通过。
+  桌面 GUI/UI × Software/OpenGL × 1x/2x 八组通过；Windows/macOS 受影响目标
+  仅编译，本轮未做两端桌面操作。
+- [x] 正式构建 UI APK/Simulator App 与未签名 device IPA；远端 Android/iOS ARM64
+  Software/GLES 四组通过。应用构建一次、计数局部构建两次，输入/身份/订阅与最终
+  释放符合预期；Android 四次旋转、两端两次后台恢复。初轮异步断言时序失败与最终
+  证据见 [DesignPresentationHosts 第 12 节](DesignPresentationHosts.md#12-ui-surface-声明2026-11-08已实现)。
+- [ ] 下一切片原生触摸事实与 GUI 手势分发；随后 IME。Popup/SafeArea、多 Scene、
+  iOS 旋转、上下文丢失、真机及正式签名分别验证，不以合成输入替代。
+
 ## GUI Surface 共享内核（2026-11-08）
 
 - [x] Window 嵌入 Surface，window/surface 组合 surfaceBase，共用既有 rootBase，
@@ -22,7 +40,8 @@
   GLES 四组通过真实控件树、实际后端、GC、合成点击和文本提交、两次后台恢复及退出；
   Android 各四次旋转。每组 mounts/unmounts/destroys 各一次，替换目标不重挂控件。
   用例、产物/证据与限制见 [DesignPresentationHosts 第 11 节](DesignPresentationHosts.md#11-gui-surface-共享内核2026-11-08已实现)。
-- [ ] 下一切片 ui.Surface 声明及协调；原生触摸/IME、移动 Popup、SafeArea、iOS 旋转、
+- [x] ui.Surface 声明及协调已完成后续切片，见上方记录。
+- [ ] 原生触摸/IME、移动 Popup、SafeArea、iOS 旋转、
   真正 GPU 上下文丢失、多 Scene、物理设备及正式签名安装仍待验证。
 
 ## GUI 应用激活与退出（2026-11-08）
@@ -40,7 +59,7 @@
   一次激活/退出、GC、后台停绘/恢复和释放；Android 另覆盖四次旋转。
   具体范围与证据见 [DesignPresentationHosts 第 10 节](DesignPresentationHosts.md#10-gui-启动与退出切片2026-11-08)。
 - [x] GUI Surface/Window、Widget/IME/Popover 宿主查询及 Snapshot/dev 已完成后续
-  切片，见本节之前记录；ui.Surface 仍待接入，不将启动切片视为完整移动 GUI 支持。
+  切片，见本节之前记录；ui.Surface 也已完成后续切片，不将启动切片视为完整移动 GUI 支持。
 
 ## 移动系统宿主交付（2026-11-08）
 
@@ -57,7 +76,8 @@
   本机生成 APK/Simulator App/device 未签名 IPA，验证范围与证据见
   [DesignPresentationHosts 第 9 节](DesignPresentationHosts.md#9-系统宿主交付切片2026-11-08)。
 - [x] ConnectActivate 和 GUI Surface/Window 已分别完成第 10、11 节后续切片。
-- [ ] ui.Surface；物理设备、iOS 旋转、多 Scene、触摸、IME、Popup、安全区域及桌面
+- [x] ui.Surface 已完成后续切片。
+- [ ] 物理设备、iOS 旋转、多 Scene、触摸、IME、Popup、安全区域及桌面
   原生交互未在宿主交付切片验收。
 
 ## 移动原生 UI 主线程调度（2026-11-08）

@@ -2,7 +2,7 @@
 
 状态：2026-11-08。平台接口迁移、移动原生 UI 主线程调度已验收；系统宿主交付
 已完成阶段验收。GUI/UI 激活与退出、GUI Surface 共享内核已接入并完成模拟器
-阶段验收；ui.Surface、原生触摸与 IME 仍待后续。
+阶段验收；ui.Surface 也已完成后续切片，原生触摸与 IME 仍待后续。
 
 关联：[核心原则](Design.md#cross-platform-scope)、[移动接口复核](PlanMobileAPI.md)、
 [移动生命周期](DesignMobileLifecycle.md)、[Widget Painter](DesignWidgetPainter.md)。
@@ -90,7 +90,7 @@ WorkAreaAt 暂随原有接口迁移，避免扩大改动。未来系统宿主的
 额外的只读几何，应在具体平台接入时设计，不能据此要求 owner 实现管理接口，
 也不能凭桌面 WorkArea 推断移动键盘遮挡、安全区域或可用布局尺寸。
 
-## 3. GUI 设计（待实现）
+## 3. GUI 设计（已接入，见第 11 节）
 
 ```text
 gui.Root                        控件使用的最小宿主协议，维持共享内核
@@ -120,7 +120,7 @@ Snapshot 需统一基础宿主信息，并可携带窗口管理信息；不能�
 移动 `gui.Window` 原型不是可管理窗口；需要窗口管理的操作返回不支持，后续使用
 NewSurface 接入，不能给移动对象填充空方法来保留旧演示的成功表象。
 
-## 4. 启动与 UI 声明（启动已接入，Surface 声明待实现）
+## 4. 启动与 UI 声明（已接入）
 
 使用 GTK 风格的生命周期顺序：
 
@@ -496,5 +496,93 @@ Flutter 引擎/隔离域或任意 View 重新附着能力，也不推断引擎�
   及清理结果在 /tmp/goui-surface-w1pyo_cn（本机/远端）。专用模拟器、私有 ADB 已
   停止，临时 iOS 设备已删除，未接管用户设备或修改系统设置。
 
-ui.Surface 声明、原生触摸/IME、移动 Popup、SafeArea、多 Scene、iOS 旋转、
-真正 GPU 上下文丢失、物理设备及正式签名安装仍待后续，不将本切片视为完整移动支持。
+ui.Surface 已完成第 12 节后续切片；原生触摸/IME、移动 Popup、SafeArea、
+多 Scene、iOS 旋转、真正 GPU 上下文丢失、物理设备及正式签名安装仍待后续。
+
+
+## 12. UI Surface 声明（2026-11-08，已实现）
+
+ui.Surface(id).Content(view) 是系统主宿主的 RootView，支持 Commands、Shortcuts、
+OnAfterPaint 和 OnDestroy；没有 Size、Show、Chrome、Center、Transparent 或状态请求。
+ui.Root().Surface(surface).StyleSheet(sheet) 可以声明应用样式，也可以同时声明 Windows；
+能否创建实际对象由 GUI/平台决定，不在 UI 层按操作系统推断或自动替换成其他宿主。
+RootNode 仅保留一个 Surface 声明槽，不提前引入 Scene 列表。
+
+ID 不能为空，Surface 与 Window 共用应用内的宿主 ID 命名空间。同 ID 的 Surface 更新
+复用原对象与协调节点；移除或换 ID 结束旧声明的生命周期，再领取新逻辑宿主。原生目标
+暂失或后台切换不改变声明，不重建树或丢失局部 State。领取失败正常交给 ui.Run，
+不能在不支持 WindowSource 的平台创建假窗口或静默忽略。
+
+内容继续使用现有 root/node 协调与批次调度；把 root 的挂载对象收敛为 gui.Surface，
+窗口与 Surface 仅保留各自创建/管理/信号胶水。默认 CommandGroup 和快捷键绑定共享，
+所有根更新完成后再执行 AfterUpdate，之后仅对新管理窗口 Show。ComposeView 的自动
+状态依赖与属性绑定仍沿既有路径，不因增加宿主建立另一份更新循环。
+
+App.FindSurface(id) 查询任意已挂载宿主；FindWindow 继续只返回管理窗口。
+FindWidget/FindCommand 的第一个参数改称 hostID，允许两类宿主，ID 规则不变。
+文件对话框同样用宿主 ID 解析 owner，不添加 Surface 专用的第二套文件接口。
+跨根协调搜索纳入系统 Surface；窗口管理类控件依旧依赖 gui.Window。
+
+UI 协调释放连接与订阅，GUI 宿主负责最终销毁 Widget。暂失绘制目标不触发 UI Release；
+真正 Destroy 后断开声明连接并从查询表移除。退出清理仍在原生 UI 线程；停止后排队的
+State 更新不得重建控件或重新领取宿主。
+
+实施涉及 ui/app.go、root.go、window.go、surface.go、transfer.go、dialog.go 及相关
+包内回归；窗口例程增加 UI Surface、绑定及局部构建状态保留验收。先执行无桌面逻辑、
+race/全仓和桌面回归，再在 Android/iOS Software/GLES 验证声明、正常输入路径、
+后台恢复、Android 旋转与 UI 线程退出，不把合成输入视为原生触摸/IME 支持。
+
+### 最小声明与共同协调
+
+```go
+count := ui.MakeState(0)
+err := ui.Run("org.example.mobile", func(app ui.App) ui.RootView {
+    return ui.Surface("main").Content(ui.VBox(
+        ui.Build(func() ui.View {
+            return ui.Label(fmt.Sprintf("Count: %d", count.Get()))
+        }),
+        ui.Button("Increment").OnClick(func() { count.Set(count.Get() + 1) }),
+    ))
+})
+```
+
+count 的所有者在 Run 外创建一次；事件写状态，Build 追踪读取并局部更新。不要在
+每次视图构建中重建 Model、启动计时器或创建原生对象。Surface 与 Window 共用
+hostMount 的默认命令组、快捷键、内容 Root 和连接管理；Window 仅附加创建选项、
+标题/最小尺寸/Show/关闭请求。没有第二个状态调度器，也没有向 BuildContext 添加
+Surface 特例。Root 的内部挂载方法由 Window 改称 Host，既有测试仅同步私有名称和
+公共状态的构造位置，保留原断言。
+
+### 本切片验证
+
+- Go1.25.8，Linux amd64 独立 Xvnc/Xfwm4，已跟踪源码与本轮新增文件的隔离副本：
+  CGO_ENABLED=0 go test -json -count=1 ./... 为 4544 通过、11 原条件跳过、0 失败。
+  工作区既有未跟踪实验/测试/产物未混入。UI 与 Widgets 全包 race 通过，新增 Surface
+  回归 race 连续 10 轮通过；race 使用宿主标准 CGO_ENABLED=1。
+- 新增断言覆盖局部 State/BindText、全量重建保留宿主/输入、移除/换 ID 的释放和
+  重领、销毁后订阅与查询失效、错误声明/不支持平台不回退、Run 传播领取失败、默认
+  命令组/快捷键、绘制回调不重复、跨根 AfterUpdate、文件对话框 Surface owner。
+- 本机独立 X11 的 GUI/UI × Software/OpenGL × 应用缩放 1x/2x 八组均通过，
+  桌面管理窗口仍通过普通 Show 显示。Windows amd64/macOS arm64 受影响 UI/Widgets、
+  例程与 demo 编译通过；本轮不宣称两端桌面原生交互已验收。
+- 正式 cmd/goui 在本机生成两组 UI APK、两组 Simulator App 及 device 未签名 IPA。
+  继续复用最小移动基座，消费构建未安装/调用移动原生编译器。IPA 仅构建，不视为
+  物理设备、签名安装或商店发布通过。
+- 远端 macOS15.7.7 ARM64 的专用模拟器：Android API30 ARM64 AOSP_ATD /
+  Emulator37.2.13 / SwiftShader / 1x，Software/GLES 各四次旋转、两次后台恢复；
+  iOS26.3 ARM64 Simulator / iPhone14 / 3x，两后端各两次后台恢复，四组通过。
+  普通事件路径完成文本提交和按钮点击，ui.State 的文本/数值与最终 Label 一致；
+  应用构建一次、计数区域局部构建两次。目标替换不重挂树，Widget 挂载/卸载/销毁各
+  一次，OnDestroy 一次；UI/GUI 在原生 UI 线程清理，Run 等待回调完成。
+- 初次移动例程在写 State 的同一 Timer 回调里断言协调后的 Label，触发断言导致
+  两端首帧后退出，驱动报等待超时。保留失败报告和 Android panic；改为后续回调
+  检查正常异步批次完成后的结果，所有原预期不变，重新构建并核对摘要后四组通过。
+  没有修改框架调度来强迫同步，也没有削弱失败条件或增加平台跳过。
+- 证据目录 /tmp/goui-ui-surface-zl4fu2jp（本机/远端）包含正式包摘要、全仓 JSON、
+  桌面八组、四组原生生命周期报告/截图和首轮失败。截图辅助复核布局与文字，不作为
+  抗锯齿金图或原生触摸/IME 验收。专用 iOS Simulator 已关闭删除、只读 Android
+  Emulator 和私有 ADB5059 已停止；未修改用户已有设备、应用或系统设置。
+
+完整命令与操作见 [activation 验收例程](../tests/window/gui/activation/README.md)。
+后续先推进触摸事实、取消与 GUI 手势分发，再独立接 IME；移动 Popup、安全区域、
+多 Scene、iOS 旋转、GPU 上下文丢失与物理设备继续按各自边界验证。

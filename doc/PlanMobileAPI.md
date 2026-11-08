@@ -3,7 +3,7 @@
 状态：2026-11-08。已确认共享边界与第一阶段平台接口迁移，具体方案见
 [呈现宿主与窗口管理](DesignPresentationHosts.md)。本文保留其余主题的复核计划，
 不是移动 GUI 已可交付的声明；原生主线程、GUI/UI 启动和 GUI Surface 共享内核
-已接入，ui.Surface 及原生输入仍待实施。
+及 ui.Surface 已接入，原生输入仍待实施。
 
 关联：[核心原则](Design.md#cross-platform-scope)、[跨层约定](DesignConventions.md)、
 [移动生命周期](DesignMobileLifecycle.md)、[移动平台](DesignMobilePlatform.md)、
@@ -118,6 +118,7 @@ NewApplication → ConnectActivate → Run，GUI 使用 NewSurface/Window 区分
 - [x] GUI/UI ConnectActivate/Shutdown、服务初始化线程和 Run 错误传播完成阶段验收。
 - [x] GUI Surface/Window、Widget/IME/Popover 宿主依赖及 Snapshot/dev/diagnostics
   已迁移；桌面八组及 Android/iOS Software/GLES 控件树验证见 DesignPresentationHosts 第 11 节。
-- [ ] ui.Surface 复用既有协调内核，独立进行声明、状态更新与退出清理验收。
+- [x] ui.Surface 复用既有协调内核，声明/局部状态/退出清理完成 Android/iOS 两后端
+  模拟器验证；桌面回归与首轮断言修正见 DesignPresentationHosts 第 12 节。
 - [ ] 按依赖推进绘制恢复、触摸、IME、几何与系统交互，逐项更新相关设计。
 - [ ] 用小型真实应用验证桌面/移动分别组织视图的使用体验，再确定移动支持承诺。
