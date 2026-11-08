@@ -152,7 +152,7 @@ func run(transparent bool) error {
 		return err
 	}
 	defer win.Destroy()
-	if err = win.SetTitle("GOUI premultiplied alpha — Esc exits"); err != nil {
+	if err = win.(platform.WindowManagement).SetTitle("GOUI premultiplied alpha — Esc exits"); err != nil {
 		return err
 	}
 	p, err = plat.NewPainter(win)
@@ -181,7 +181,7 @@ func run(transparent bool) error {
 	}
 	defer gradient.Destroy()
 	log.Printf("Painter=%s transparent=%v; Esc exits", p.Name(), transparent)
-	if err = win.Show(); err != nil {
+	if err = win.(platform.WindowManagement).Show(); err != nil {
 		return err
 	}
 	loop.Run()

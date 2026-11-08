@@ -105,13 +105,13 @@ func run() error {
 		return err
 	}
 	defer win.Destroy()
-	_ = win.SetTitle("GOUI ClearPath pixels")
+	_ = win.(platform.WindowManagement).SetTitle("GOUI ClearPath pixels")
 	painter, err = plat.NewPainter(win)
 	if err != nil {
 		return err
 	}
 	defer painter.Destroy()
-	if err = win.Show(); err != nil {
+	if err = win.(platform.WindowManagement).Show(); err != nil {
 		return err
 	}
 	loop.Run()

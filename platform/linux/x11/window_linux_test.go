@@ -185,7 +185,7 @@ func TestWindowApplicationClass(t *testing.T) {
 		}
 	}
 	check(p.appId)
-	win.SetTitle("A different title")
+	win.(common.WindowManagement).SetTitle("A different title")
 	runtime.GC()
 	check(p.appId)
 	// 直接验证未指定应用 ID 的回退，不另行创建平台单例。

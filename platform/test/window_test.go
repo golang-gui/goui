@@ -52,7 +52,7 @@ func TestWindow(t *testing.T) {
 
 					eventLoop.Post(func() {
 						closeSent++
-						if requestErr := window.RequestClose(); requestErr != nil {
+						if requestErr := window.(platform.WindowManagement).RequestClose(); requestErr != nil {
 							paintErr = requestErr
 							window.Destroy()
 							destroyed = true
@@ -65,7 +65,7 @@ func TestWindow(t *testing.T) {
 				if closeSeen == 1 {
 					eventLoop.Post(func() {
 						closeSent++
-						if requestErr := window.RequestClose(); requestErr != nil {
+						if requestErr := window.(platform.WindowManagement).RequestClose(); requestErr != nil {
 							paintErr = requestErr
 							window.Destroy()
 							destroyed = true
@@ -83,11 +83,11 @@ func TestWindow(t *testing.T) {
 			return
 		}
 
-		if err = window.SetTitle("goui platform test"); err != nil {
+		if err = window.(platform.WindowManagement).SetTitle("goui platform test"); err != nil {
 			return
 		}
-		title = window.Title()
-		err = window.Show()
+		title = window.(platform.WindowManagement).Title()
+		err = window.(platform.WindowManagement).Show()
 	})
 	if eventLoop != nil {
 		defer func() {
@@ -209,10 +209,10 @@ func TestWindowRequestPaint(t *testing.T) {
 			return
 		}
 
-		if err = window.SetTitle("goui request paint test"); err != nil {
+		if err = window.(platform.WindowManagement).SetTitle("goui request paint test"); err != nil {
 			return
 		}
-		err = window.Show()
+		err = window.(platform.WindowManagement).Show()
 	})
 	if eventLoop != nil {
 		defer func() {

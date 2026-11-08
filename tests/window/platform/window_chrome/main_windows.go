@@ -70,7 +70,7 @@ func run() error {
 	}
 	defer loop.Destroy()
 	var win platform.Window
-	var desktop platform.DesktopWindow
+	var desktop platform.WindowManagement
 	var painter graphics.Painter
 	var size events.SizeEvent
 	var result error
@@ -118,7 +118,7 @@ func run() error {
 		return err
 	}
 	defer win.Destroy()
-	desktop = win.(platform.DesktopWindow)
+	desktop = win.(platform.WindowManagement)
 	if desktop.Chrome() != chrome {
 		return fmt.Errorf("observed chrome %v, requested %v", desktop.Chrome(), chrome)
 	}
@@ -128,7 +128,7 @@ func run() error {
 	if *auto {
 		return nil
 	}
-	if err := win.SetTitle("GOUI Window Chrome — F6 check / F7 theme / F8 maximize / F9 normal / Esc exit"); err != nil {
+	if err := win.(platform.WindowManagement).SetTitle("GOUI Window Chrome — F6 check / F7 theme / F8 maximize / F9 normal / Esc exit"); err != nil {
 		return err
 	}
 	if chrome == platform.WindowChromeIntegrated {
@@ -147,14 +147,14 @@ func run() error {
 	}
 	defer painter.Destroy()
 	fmt.Printf("backend=%s\n", painter.Name()) // Native may defer WM_SIZE until Show.
-	if err := win.Show(); err != nil {
+	if err := win.(platform.WindowManagement).Show(); err != nil {
 		return err
 	}
 	loop.Run()
 	return result
 }
 
-func checkGeometry(win platform.DesktopWindow, size events.SizeEvent, initial bool) error {
+func checkGeometry(win platform.WindowManagement, size events.SizeEvent, initial bool) error {
 	hwnd := winapi.HWND(win.NativeHandle())
 	var outer, client winapi.RECT
 	if err := winapi.GetWindowRect(hwnd, &outer); err != nil {

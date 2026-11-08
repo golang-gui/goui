@@ -330,8 +330,8 @@ func main() {
 	panicIf(err)
 	defer img.Destroy()
 
-	win.SetTitle("Painter test")
-	win.Show()
+	win.(platform.WindowManagement).SetTitle("Painter test")
+	win.(platform.WindowManagement).Show()
 
 	eventLoop.Run()
 }

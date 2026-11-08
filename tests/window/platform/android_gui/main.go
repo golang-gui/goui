@@ -73,7 +73,7 @@ func main() {
 	win, err := app.NewWindow(&gui.WindowOptions{Size: geometry.Size{Width: 320, Height: 480}, Chrome: gui.WindowChromeIntegrated})
 	must(err)
 	native := win.PlatformWindow()
-	if _, desktop := native.(platform.DesktopWindow); desktop || native.SurfaceState().Ready {
+	if _, desktop := native.(platform.WindowManagement); desktop || native.SurfaceState().Ready {
 		panic("移动窗口伪造桌面能力或在 Run 前等待表面")
 	}
 	write("startup.json", map[string]any{"owner": owner, "nativeThread": nativeThread, "readyBeforeRun": false, "desktop": false})

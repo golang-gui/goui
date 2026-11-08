@@ -20,7 +20,7 @@ import (
 )
 
 type showTestWindow struct {
-	platform.Window
+	platform.WindowManagement
 	show   func() error
 	paints int
 }
@@ -605,6 +605,7 @@ type recordedControlsPosition struct {
 
 type desktopTestWindow struct {
 	chromeTestWindow
+	parent                                            platform.Window
 	chrome                                            platform.WindowChrome
 	state                                             WindowState
 	controls                                          geometry.Rectangle
@@ -621,6 +622,14 @@ type desktopTestWindow struct {
 	onMove                                            func()
 	onState                                           func()
 }
+
+func (w *desktopTestWindow) Parent() platform.Window { return w.parent }
+func (w *desktopTestWindow) SetParent(parent platform.Window) error {
+	w.parent = parent
+	return nil
+}
+func (*desktopTestWindow) SetTitle(string) error { return nil }
+func (*desktopTestWindow) Hide() error           { return nil }
 
 func (w *desktopTestWindow) Chrome() platform.WindowChrome { return w.chrome }
 func (w *desktopTestWindow) State() WindowState            { return w.state }
@@ -678,7 +687,7 @@ func (w *desktopTestWindow) BeginResize(edge platform.WindowEdge) error {
 	return w.commandError
 }
 
-var _ platform.DesktopWindow = (*desktopTestWindow)(nil)
+var _ platform.WindowManagement = (*desktopTestWindow)(nil)
 
 func (w *desktopTestWindow) SetPosition(reference platform.Window, position geometry.Point) error {
 	w.windowReference, w.windowPosition = reference, position

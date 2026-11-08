@@ -131,7 +131,7 @@ func run() error {
 		return err
 	}
 	defer win.Destroy()
-	_ = win.SetTitle("GOUI Image.Update")
+	_ = win.(platform.WindowManagement).SetTitle("GOUI Image.Update")
 	p, err = plat.NewPainter(win)
 	if err != nil {
 		return err
@@ -147,7 +147,7 @@ func run() error {
 		return err
 	}
 	defer b.Destroy()
-	if err = win.Show(); err != nil {
+	if err = win.(platform.WindowManagement).Show(); err != nil {
 		return err
 	}
 	loop.Run()

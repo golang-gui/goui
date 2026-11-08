@@ -24,6 +24,8 @@ type Surface interface {
 	// RGBA/BGRA pixels; the image's storage is not retained after Draw returns.
 	Draw(img image.Image) error
 
+	// RequestPaint schedules a paint notification. It does not draw immediately;
+	// multiple requests may be coalesced, including while a target is unavailable.
 	RequestPaint() error
 }
 

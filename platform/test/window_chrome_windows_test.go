@@ -44,7 +44,7 @@ func checkCustomWindowSize(plat platform.Platform, chrome platform.WindowChrome)
 		return err
 	}
 	defer win.Destroy()
-	desktop := win.(platform.DesktopWindow)
+	desktop := win.(platform.WindowManagement)
 	if desktop.Chrome() != chrome {
 		return fmt.Errorf("chrome=%v, want %v", desktop.Chrome(), chrome)
 	}
@@ -184,7 +184,7 @@ func checkIntegratedNativeGeometry(plat platform.Platform) error {
 		return err
 	}
 	defer win.Destroy()
-	desktop := win.(platform.DesktopWindow)
+	desktop := win.(platform.WindowManagement)
 	hwnd := winapi.HWND(win.NativeHandle())
 	var normal winapi.RECT
 	for _, state := range []platform.WindowState{platform.WindowStateNormal, platform.WindowStateMaximized, platform.WindowStateNormal} {

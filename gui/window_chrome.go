@@ -158,7 +158,7 @@ type chromeSignals struct {
 
 type windowChrome struct {
 	window          *window
-	native          platform.DesktopWindow
+	native          platform.WindowManagement
 	info            ChromeInfo
 	signals         *chromeSignals
 	closed          bool
@@ -223,7 +223,7 @@ func (c *windowChrome) initialize(mode WindowChromeMode) error {
 	if mode == WindowChromeNative {
 		return nil
 	}
-	native, err := c.window.desktopWindow()
+	native, err := c.window.windowManagement()
 	if err != nil {
 		if mode == WindowChromeNone {
 			return nil

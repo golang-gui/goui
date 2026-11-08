@@ -823,7 +823,7 @@ func (p *popover) queryPlacement() (popoverPlacementSnapshot, error) {
 	}
 	var err error = platform.ErrUnsupported
 	if p.owner != nil {
-		if desktop, ok := p.owner.PlatformWindow().(platform.DesktopWindow); ok {
+		if desktop, ok := p.owner.PlatformWindow().(platform.WindowManagement); ok {
 			snapshot.workArea, err = desktop.WorkAreaAt(point)
 		}
 	}
