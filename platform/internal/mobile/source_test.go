@@ -11,7 +11,7 @@ import (
 
 func sourceWindow(t *testing.T) (*Window, *EventLoop) {
 	t.Helper()
-	loop := NewEventLoop()
+	loop := newTestEventLoop(t)
 	t.Cleanup(loop.Destroy)
 	w, err := NewWindow(loop, geometry.Size{Width: 10, Height: 10}, nil, common.WindowOptions{}, &testWindowHost{})
 	if err != nil {
@@ -69,5 +69,31 @@ func TestSourceRevokeWaitsForLease(t *testing.T) {
 	}
 	if w.SurfaceState().Ready || w.NativeHandle() != 0 {
 		t.Fatal("不等待 Go 队列就应拒绝访问已撤销目标")
+	}
+}
+
+func TestSourceRedrawCompletesOnNativeThread(t *testing.T) {
+	w, loop := sourceWindow(t)
+	frames := 0
+	w.handler = func(e events.Event) {
+		if e.Type() == events.Paint {
+			frames++
+		}
+	}
+	loop.Post(func() {
+		w.Source().Attach(17, 1, 100, 80, 2, func(image.Image) error { return nil })
+		w.Source().Visible(true)
+		if !w.SurfaceState().Ready || !w.visible {
+			t.Error("原生观察应在当前 UI 回调立即生效")
+		}
+		w.Source().Redraw()
+		if frames != 1 {
+			t.Error("原生 redraw 返回前未完成绘制", frames)
+		}
+		loop.Quit()
+	})
+	loop.Run()
+	if frames != 1 {
+		t.Fatal("Quit 未丢弃已经排队的多余绘制", frames)
 	}
 }

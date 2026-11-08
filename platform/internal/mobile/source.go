@@ -7,8 +7,8 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 )
 
-// Source transfers platform observations to the Go window thread. Target
-// revocation is synchronous and independent of that thread's responsiveness.
+// Source delivers platform observations on the native UI thread. Target
+// revocation also rejects native access before a queued observation is delivered.
 // Platform adapters own native objects, callbacks, geometry and presentation.
 type Source struct {
 	window     *Window
@@ -35,7 +35,7 @@ func (s *Source) Attach(handle uintptr, generation uint64, width, height int32, 
 	s.current = target
 	s.generation = generation
 	s.mu.Unlock()
-	s.window.loop.Post(func() { s.window.attach(target, width, height, scale) })
+	s.window.loop.Deliver(func() { s.window.attach(target, width, height, scale) })
 }
 
 // Revoke rejects new borrowers and drains existing work before native release.
@@ -48,31 +48,25 @@ func (s *Source) Revoke() {
 	}
 	s.mu.Unlock()
 	if target != nil {
-		s.window.loop.Post(func() { s.window.detach(target) })
+		s.window.loop.Deliver(func() { s.window.detach(target) })
 	}
 }
 
-func (s *Source) Visible(value bool) { s.window.loop.Post(func() { s.window.setVisible(value) }) }
+func (s *Source) Visible(value bool) { s.window.loop.Deliver(func() { s.window.setVisible(value) }) }
 func (s *Source) Focused(value bool) {
-	s.window.loop.Post(func() { s.window.emit(events.FocusEvent{Focused: value}) })
+	s.window.loop.Deliver(func() { s.window.emit(events.FocusEvent{Focused: value}) })
 }
 
-// Redraw waits for a required native redraw boundary, without native UI calls
-// from the paint handler. Android uses it for onNativeWindowRedrawNeeded.
+// Redraw completes a required native redraw inline on the UI thread. It must
+// never wait for work posted to that same thread.
 func (s *Source) Redraw() {
-	done := make(chan struct{})
-	s.window.loop.Post(func() {
-		defer close(done)
+	s.window.loop.Deliver(func() {
 		w := s.window
 		if !w.destroyed && w.visible && w.SurfaceState().Ready {
 			w.paintDirty = false
 			w.emit(events.PaintEvent{})
 		}
 	})
-	select {
-	case <-done:
-	case <-s.window.loop.quit:
-	}
 }
 
 // Close permanently stops native observations before disconnecting the adapter.

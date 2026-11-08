@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sync"
 	"sync/atomic"
+	"syscall"
 	"unsafe"
 
 	"github.com/goexlib/cgo"
@@ -23,7 +23,7 @@ import (
 	"github.com/golang-gui/goui/platform/internal/mobileentry"
 )
 
-// EventLoop owns the application Go queue. Android retains its system looper.
+// EventLoop dispatches Go work through Android's system main looper.
 type EventLoop struct{ *mobile.EventLoop }
 
 // Window owns the Android adapter and composes the shared Go window state.
@@ -32,8 +32,8 @@ type Window struct {
 	state *nativeState
 }
 
-// nativeState's Activity fields are confined to Android's system main thread.
-// Only the command queue and desired visibility are accessed from GOUI threads.
+// Activity fields belong to Android's system main thread. The process dispatcher
+// survives Activity replacement; its queue is owned by the shared EventLoop.
 type nativeState struct {
 	activity               *native.Activity
 	window                 uintptr
@@ -44,9 +44,9 @@ type nativeState struct {
 	input                  uintptr
 	bound                  *Window
 	wanted                 atomic.Bool
-	mu                     sync.Mutex
 	fd                     int32
-	tasks                  []func()
+	loop                   atomic.Pointer[mobile.EventLoop]
+	thread                 atomic.Int64
 	callbacks              native.ActivityCallbacks
 	command, inputCallback uintptr
 }
@@ -58,15 +58,13 @@ func init() {
 	mobileentry.SetThread(androidruntime.EnterThread)
 }
 func onSystemThread(fn func()) { runtime.LockOSThread(); defer runtime.UnlockOSThread(); fn() }
-func (h *nativeState) post(fn func()) error {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if h.fd < 0 {
-		return common.ErrUnavailable
+
+func (h *nativeState) isCurrent() bool { return h.thread.Load() == int64(syscall.Gettid()) }
+
+func (h *nativeState) wake() {
+	if libc.Signal(h.fd) != 8 {
+		panic("android: wake system main looper")
 	}
-	h.tasks = append(h.tasks, fn)
-	libc.Signal(h.fd)
-	return nil
 }
 func (h *nativeState) initCallbacks() {
 	wrap := func(fn func()) { onSystemThread(fn) }
@@ -110,15 +108,6 @@ func (h *nativeState) initCallbacks() {
 			if h.bound != nil {
 				h.bound.Source().Visible(false)
 			}
-			h.mu.Lock()
-			fd := h.fd
-			h.fd = -1
-			h.tasks = nil
-			h.mu.Unlock()
-			if fd >= 0 {
-				native.LooperRemoveFd(native.LooperForThread(), fd)
-				libc.Close(fd)
-			}
 			if h.input != 0 {
 				native.InputDetach(h.input)
 				h.input = 0
@@ -156,12 +145,8 @@ func (h *nativeState) initCallbacks() {
 	h.command = cgo.NewCallback(func(fd int32, _ int32, _ uintptr) int32 {
 		wrap(func() {
 			libc.Drain(fd)
-			h.mu.Lock()
-			tasks := h.tasks
-			h.tasks = nil
-			h.mu.Unlock()
-			for _, task := range tasks {
-				task()
+			if loop := h.loop.Load(); loop != nil {
+				loop.Dispatch()
 			}
 		})
 		return 1
@@ -200,16 +185,14 @@ func onCreate(address, saved, size uintptr) {
 				}
 			}
 			h.initCallbacks()
+			h.thread.Store(int64(syscall.Gettid()))
+			h.fd = libc.EventFD()
+			if h.fd < 0 || native.LooperAddFd(native.LooperForThread(), h.fd, -2, 1, h.command, 0) < 0 {
+				panic("android: create native dispatcher")
+			}
 			h.initialized = true
 		}
 		*a.Callbacks = h.callbacks
-		h.mu.Lock()
-		h.fd = libc.EventFD()
-		fd := h.fd
-		h.mu.Unlock()
-		if fd < 0 || native.LooperAddFd(native.LooperForThread(), fd, -2, 1, h.command, 0) < 0 {
-			panic("android: create native dispatcher")
-		}
 		h.configure()
 		if !mobileentry.Start() {
 			panic("android: application main is not registered")
@@ -342,9 +325,7 @@ func newWindow(loop *EventLoop, size geometry.Size, handler events.EventHandler,
 		return nil, err
 	}
 	w.Window = base
-	if err = w.state.post(func() { w.state.bound = w; w.state.publishTarget(); w.state.visibility() }); err != nil {
-		return nil, err
-	}
+	loop.Post(func() { w.state.bound = w; w.state.publishTarget(); w.state.visibility() })
 	return w, nil
 }
 
@@ -353,11 +334,12 @@ type windowHost struct{ window *Window }
 func (a windowHost) SetVisible(value bool) error {
 	w := a.window
 	w.state.wanted.Store(value)
-	return w.state.post(w.state.visibility)
+	w.state.loop.Load().Deliver(w.state.visibility)
+	return nil
 }
 func (a windowHost) Close() {
 	w := a.window
-	_ = w.state.post(func() {
+	w.state.loop.Load().Deliver(func() {
 		if w.state.bound == w {
 			w.state.bound = nil
 			w.state.wanted.Store(false)

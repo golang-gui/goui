@@ -18,7 +18,7 @@ func (*testWindowHost) SetVisible(bool) error { return nil }
 func (h *testWindowHost) Close()              { h.closed++ }
 
 func TestWindowSurfaceLifecycle(t *testing.T) {
-	loop := NewEventLoop()
+	loop := newTestEventLoop(t)
 	defer loop.Destroy()
 	var types []events.EventType
 	var size events.SizeEvent
@@ -123,7 +123,7 @@ func TestNativeTargetLeaseRevocation(t *testing.T) {
 }
 
 func TestWindowDestroyFromCallback(t *testing.T) {
-	loop := NewEventLoop()
+	loop := newTestEventLoop(t)
 	defer loop.Destroy()
 	host := &testWindowHost{}
 	w := &Window{loop: loop, native: host}
@@ -146,7 +146,7 @@ func TestWindowDestroyFromCallback(t *testing.T) {
 }
 
 func TestRevokedQueuedTargetIsIgnored(t *testing.T) {
-	loop := NewEventLoop()
+	loop := newTestEventLoop(t)
 	defer loop.Destroy()
 	w := &Window{loop: loop, native: &testWindowHost{}, handler: func(events.Event) { t.Error("投递了已经撤销的目标") }}
 	target := &surfaceTarget{handle: 9, generation: 1, alive: true}
@@ -161,7 +161,7 @@ func TestRevokedQueuedTargetIsIgnored(t *testing.T) {
 }
 
 func TestWindowDrawRequiresLiveVisibleTarget(t *testing.T) {
-	loop := NewEventLoop()
+	loop := newTestEventLoop(t)
 	defer loop.Destroy()
 	w := &Window{loop: loop, native: &testWindowHost{}}
 	presents := 0

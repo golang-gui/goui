@@ -6,6 +6,7 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/common"
+	"github.com/golang-gui/goui/platform/darwin/libs/dispatch"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/opengl"
@@ -16,7 +17,7 @@ import (
 )
 
 // Platform adopts the process's single iOS content host. Its resources belong
-// to the GOUI thread; UIKit callbacks remain on the system main thread.
+// to the system UI thread; Run only waits on the Go startup thread.
 type Platform struct {
 	appID     string
 	loop      *EventLoop
@@ -26,7 +27,7 @@ type Platform struct {
 
 var instance *Platform
 
-// NewPlatform initializes iOS support on the host's locked GOUI thread.
+// NewPlatform prepares iOS support on the host's startup thread.
 // The native entry must initialize UIKit first. Repeated creation
 // returns the same live platform for the same application identity.
 func NewPlatform(appID string) (*Platform, error) {
@@ -65,7 +66,9 @@ func (p *Platform) NewEventLoop() (common.EventLoop, error) {
 	if p.loop != nil {
 		return nil, common.ErrUnsupported
 	}
-	p.loop = &EventLoop{mobile.NewEventLoop()}
+	loop := mobile.NewEventLoop(func() { dispatch.MainAsync(iosHost.callback) }, dispatch.IsMainThread)
+	iosHost.loop.Store(loop)
+	p.loop = &EventLoop{loop}
 	return p.loop, nil
 }
 
@@ -97,7 +100,7 @@ func (p *Platform) NewPainter(surface common.Surface) (graphics.Painter, error) 
 		return software.NewPainter(surface)
 	case "opengl":
 		// EAGL initialization requires the foreground Scene's drawing permit.
-		// Report unavailability rather than waiting for UIKit on the GOUI thread.
+		// Report unavailability rather than waiting for a foreground Scene.
 		if !p.window.SurfaceState().Ready {
 			return nil, common.ErrUnavailable
 		}

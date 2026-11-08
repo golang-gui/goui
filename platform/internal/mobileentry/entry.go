@@ -1,4 +1,4 @@
-// Package mobileentry coordinates native entry and the application Go thread.
+// Package mobileentry coordinates native entry and application bootstrap.
 package mobileentry
 
 import (
@@ -60,7 +60,8 @@ func (e *entryPoint) start() bool {
 var NativeRun func() int
 var NativeCreate func(activity, saved, size uintptr)
 
-// SetThread attaches platform facilities to the application Go thread.
+// SetThread attaches facilities needed during bootstrap. This is not the GUI
+// executor: mobile event loops dispatch runtime work on the native UI thread.
 func SetThread(enter func() func()) { enterThread = enter }
 
 // Start schedules application main once and never waits for it.
