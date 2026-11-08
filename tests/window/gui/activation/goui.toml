@@ -1,0 +1,10 @@
+id = "org.golanggui.MobileActivation"
+name = "GOUI GUI Activation"
+executable = "gui-activation"
+main = "."
+version = "0.0.1"
+build = 1
+icon = "../../../../doc/logo/goui-mark.svg"
+
+[android]
+debuggable = true
