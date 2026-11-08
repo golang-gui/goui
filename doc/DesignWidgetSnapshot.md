@@ -1,6 +1,7 @@
 # WidgetInfo 语义属性扩展
 
-状态：2026-10-05 按用户确认的 Attributes／SetAttribute 方案实现；本轮验证结果见 §9。
+状态：2026-10-05 实现 Attributes／SetAttribute；2026-11-08 宿主快照统一为
+SurfaceInfo / ApplicationInfo.Surfaces，公共宿主变更见下文，历史属性验收见 §9。
 
 ## 1. 定位与边界
 
@@ -14,9 +15,12 @@ Text 是显示内容的语义文字。Label 返回解析后的 PlainText，格�
 根据字符串前缀猜测其绘制方法。格式状态／诊断使用控件专属 Attributes。
 Snapshot 组装优先复用控件已有数据，不承担另一套格式解析与排版。
 
-保持 Widget.Snapshot() WidgetInfo、Window.Snapshot() WindowInfo 和
-Application.Snapshot() ApplicationInfo 不变。不引入注册表、属性绑定、自动类型
-恢复或新的 UI 协调机制；动作仍通过 Window.DispatchEvent 的正常输入路径执行。
+Widget.Snapshot() 返回 WidgetInfo；Surface（含 Window）返回 SurfaceInfo，
+WindowInfo 是其别名。ApplicationInfo.Surfaces / JSON surfaces 包含所有活的顶层
+宿主，Windows() 另保留管理窗口子集。SurfaceInfo 的 Visible/Focused 反映宿主事实，
+Title/Controls 仅管理 Window 提供；Widget Bounds 为所属 Root 的局部 DIP。
+不引入注册表、属性绑定、自动类型恢复或新的 UI 协调机制；动作仍通过
+Surface.DispatchEvent 的正常输入路径执行。
 
 参考官方公开契约（2026-10-05 核对）：Qt 6.12 的
 [QAccessibleInterface](https://doc.qt.io/qt-6/qaccessibleinterface.html) 区分公共信息

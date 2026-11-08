@@ -1,12 +1,15 @@
 # Dev 自动化：引用、Popover 与文本提交
 
-状态：2026-10-10，实现及本机、远端功能验收完成；Windows OpenGL 的远端启动限制见验证记录。编号、查找和协议状态属于 `gui/dev`，不进入 GUI 内核。
+状态：2026-10-10 完成原有验收；2026-11-08 公共宿主扩为 Surface，协议顶层
+windows 改为 surfaces。历史桌面验收范围保留，新增验证见 §7。编号、查找和协议状态
+属于 gui/dev，不进入 GUI 内核。
 
 ## 1. 边界
 
 - 保留现有 opt-in DevServer，继续使用 Snapshot 与真实输入路径；不新增 Inspector、截图、语义动作或平台注入机制。
-- Application 提供 `Windows()` / `Post()`；移除按程序 ID 寻址的 `DispatchWindowEvent`。Application 的普通 Snapshot 保持不变。
-- Window 增加 `Popovers() []Popover`、`CommitText(string) error`；Popover 公开已有的 `DispatchEvent`，并增加 `CommitText(string) error`。
+- Application 提供 `Surfaces()` / `Post()`；Windows() 保留管理窗口子集。
+  普通 ApplicationInfo 同样报告 Surfaces，不增加自动化派发捷径。
+- Surface（含 Window）提供 `Popovers() []Popover`、`CommitText(string) error`；Popover 公开已有的 `DispatchEvent`，并增加 `CommitText(string) error`。
 - GUI 不保存自动化编号，不认识 HTTP 或 dev，不给用户的 Window / Widget 自动设置 ID。
 - dev 枚举公开对象、包装 detached Snapshot、自行管理短期引用。UI 层无需修改。
 
@@ -17,18 +20,18 @@
 
 ## 2. ref
 
-所有返回的 Window、Popover、Widget 语义节点都有 dev 分配的字符串 `ref`，
+所有返回的 Surface、Popover、Widget 语义节点都有 dev 分配的字符串 `ref`，
 来自同一个服务内部的自增序列。GUI 原始 `id` 保留为描述信息，无论其是否为空、重复或改名，
 自动化输入只使用 `ref`。不调用 `SetID`，不修改 GUI 的 Info 类型。
 
-- Window / Popover 引用对应真实宿主；同一存活、可达对象保持编号。
-- 关闭、隐藏的 Popover 和销毁的 Window 失去输入引用；利用现有关闭/销毁信号及时清理，
+- Surface / Popover 引用对应真实宿主；同一存活、可达对象保持编号。
+- 关闭、隐藏的 Popover 和销毁的 Surface 失去输入引用；利用现有关闭/销毁信号及时清理，
   每次请求仍重新枚举，不能把缓存当作对象仍存活的证明。重新显示分配新引用。
 - 不复用已分配编号。服务或应用重启后引用不承诺有效。
 - Widget 引用属于本次发布的语义快照；下一次获取 Snapshot 后旧的节点引用失效。
   GUI Snapshot 会过滤结构节点，不能按 Children 下标与实际 Widget 树配对，
   也不能按角色、文字或坐标猜测永久身份。
-- 本轮输入请求的 target 必须是 Window / Popover 引用。Widget 引用用于理解、定位和比较，
+- 本轮输入请求的 target 必须是 Surface / Popover 引用。Widget 引用用于理解、定位和比较，
   根据 Bounds 在所属宿主发送坐标输入；不支持直接调用 Widget 动作。
 
 所有引用表访问、枚举、Snapshot 和输入派发在 `Application.Post` 的 GUI 线程回调中完成。
@@ -36,17 +39,17 @@ HTTP goroutine 只接触解析的请求及 detached 响应数据。
 
 ## 3. GUI 公开能力
 
-`Window.Popovers()` 返回当前成功显示、属于该窗口的 Popover 列表副本，按显示登记顺序。
+`Surface.Popovers()` 返回当前成功显示、属于该宿主的 Popover 列表副本，按显示登记顺序。
 对象是借用引用；隐藏、销毁、锚点卸载或换宿主时移除。未显示或 Show 失败不登记。
 登记只报告实际生命周期，不改变已有锚点/窗口对原生资源的清理机制。
 
-`Window.CommitText(text)` / `Popover.CommitText(text)`：
+`Surface.CommitText(text)` / `Popover.CommitText(text)`：
 
 - 必须在 GUI 线程调用；将 UTF-8 已确认文本发送给本宿主当前逻辑焦点的 IMClient。
 - 不改变焦点、激活窗口、调用 SetText、写剪贴板或伪造物理按键。
 - 和原生提交共享 IMContext 的 Commit 路径，保留控件的归一化、选区替换、撤销和信号。
 - 已销毁/隐藏宿主、无有效可编辑焦点、禁用/只读、无效 UTF-8，返回错误。
-- Window 被模态目标拦截时返回错误，不编辑底层字段、不自动转发到另一宿主。
+- Surface 被模态目标拦截时返回错误，不编辑底层字段、不自动转发到另一宿主。
   可见 Popover 必须是当前模态输入目标，不能向没有键盘输入权的 modeless 内容提交。
 - 已知的非空 preedit 存在时返回错误，不替用户取消或确认真实 IME 组合。
 - 空字符串在有效目标上是无操作，不删除选区。成功表示已经分发，不承诺随后布局/绘制完成。
@@ -59,19 +62,19 @@ Popover 的程序化文本提交不等同于原生输入法支持：当前原生
 
 沿用三个简单端点：
 
-- `GET /goui/dev/snapshot`：`{ok:true,snapshot:{windows:[...]}}`。
-  window 增加 ref 和 popovers，popover 报告 ref、modal 和 widget；所有语义节点增加 ref。
+- `GET /goui/dev/snapshot`：`{ok:true,snapshot:{surfaces:[...]}}`。
+  surface 增加 ref 和 popovers，popover 报告 ref、modal 和 widget；所有语义节点增加 ref。
   原有角色、文字、Bounds、Attributes 等不丢弃。Popover 的 Bounds 继续使用其 Widget
   的宿主局部 DIP，不用请求的 Position 冒充系统实际位置。
 - `POST /goui/dev/event`：`{target:"1",type:"pointer_down",x:80,y:24,button:"left"}`。
-  target 为 Window / Popover ref；坐标始终是该宿主局部 DIP。原有 key/wheel 解析保留。
+  target 为 Surface / Popover ref；坐标始终是该宿主局部 DIP。原有 key/wheel 解析保留。
   Popover 键盘请求进入其公开 DispatchEvent，并核对实际模态归属；不转给 owner 的
   另一个模态 Popover，不让 modeless Popover 偷走按键。真实原生按键仍由 owner 转发
   到相同的 Popover DispatchEvent，dev 不重新实现按键分发。
 - `POST /goui/dev/text`：`{target:"1",text:"你好，GOUI 👋"}`；调用目标宿主的 CommitText。
   不再支持 window 程序 ID 寻址。text 字段必须存在，允许显式空字符串。
 
-对象不存在或引用失效返回明确错误，不退回首个窗口。网络请求超时/取消后尚未开始的
+对象不存在或引用失效返回明确错误，不退回首个宿主。网络请求超时/取消后尚未开始的
 GUI 任务不再执行；已经开始的输入不能回滚，客户端不得自动重试非幂等输入。
 本切片不承诺画面完成等待、截图、批处理或完整原生 IME 测试。
 
@@ -128,3 +131,16 @@ GOUI_DEV_ADDR=:49381 GOUI_PLAT_PAINTER=software GOUI_PLAT_SCALE=1 \
 ```
 
 截图、系统无障碍桥接、原生 Popover IME 和跨进程永久引用不在本切片内。
+
+## 7. 公共 Surface 宿主迁移（2026-11-08）
+
+顶层 snapshot.surfaces 包含管理 Window 和已领取的系统 Surface；未领取或已销毁
+宿主不发布。共用 SurfaceInfo，管理窗口可带 Title/Controls，其余宿主不伪造。
+旧客户端必须将 snapshot.windows 改为 snapshot.surfaces；ref、event/text 请求及
+宿主局部 DIP 含义不变，不因 GUI API 扩展另建自动化编号或输入路径。
+
+本轮包内验证未管理 Surface 的稳定引用及销毁失效，保留原有 Window/Popover
+解析、超时和输入回归；gui/dev 全包 race 通过。Android/iOS 的实际 GUI 树使用
+正常 DispatchEvent/CommitText 验证，但未运行 HTTP 服务，不宣称完成移动网络
+DevServer 验收。详细环境、桌面编译与窗口范围见
+[DesignPresentationHosts 第 11 节](DesignPresentationHosts.md#11-gui-surface-共享内核2026-11-08已实现)。

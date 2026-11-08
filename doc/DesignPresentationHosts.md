@@ -1,7 +1,8 @@
 # 呈现宿主与窗口管理
 
 状态：2026-11-08。平台接口迁移、移动原生 UI 主线程调度已验收；系统宿主交付
-已完成阶段验收。GUI/UI 激活与退出已接入；Surface 控件宿主仍属后续计划。
+已完成阶段验收。GUI/UI 激活与退出、GUI Surface 共享内核已接入并完成模拟器
+阶段验收；ui.Surface、原生触摸与 IME 仍待后续。
 
 关联：[核心原则](Design.md#cross-platform-scope)、[移动接口复核](PlanMobileAPI.md)、
 [移动生命周期](DesignMobileLifecycle.md)、[Widget Painter](DesignWidgetPainter.md)。
@@ -383,3 +384,117 @@ GUI Surface/Window、IME/Popover owner 与快照迁移放在下一切片。
 
 后续先提取 GUI Surface 的共享状态和行为，再迁移 Widget 宿主查询、IME/Popover、
 快照和开发适配，最后加入 ui.Surface；避免用包装假窗口或为移动补齐管理空方法。
+
+## 11. GUI Surface 共享内核（2026-11-08，已实现）
+
+Window 嵌入 Surface 公共协议，分别由 window 与 surface 实现；两者组合共享的
+surfaceBase，继续复用 rootBase 的帧、事件、手势、焦点和资源内核，不保留两套
+绘制/输入实现。Window 只增加标题、状态、位置、装饰、关闭请求等主动管理。
+Surface 不实现 Window；不能靠隐藏管理方法的代理或伪造管理空方法冒充系统宿主。
+
+Application.NewSurface 在 Activate 后领取当前系统主宿主，当前仅支持一个；可先
+建立逻辑树，稍后绑定平台 WindowSource 交付的 Window。丢失目标只暂停帧并取消
+受影响输入，保留 Widget/模型/排版与可复用 Painter。首个目标就绪时创建 Painter，
+异步创建失败经 Application.Run 返回。显式 Destroy 结束逻辑树；不解释为关闭应用。
+
+应用准备一个未领取的系统宿主适配以保存初始尺寸、可见性、焦点；未领取不绘制
+或对外枚举。领取时使用实际状态启动绘制，不能补造请求尺寸。Shutdown 在 UI
+线程最终释放系统 Surface；桌面 Window 的既有生命周期暂不改。再次 NewSurface
+可以在旧 Surface 最终释放后重新领取，不引入多 Scene 选择或导航策略。
+
+Widget.Surface 获取所在的呈现宿主（含 Popover 的 owner）；Root 继续表示实际
+输入/绘图根。Widget.Window 只对直接桌面 Window 根返回管理窗口，装饰类控件
+继续使用它。文本、菜单、DropDown、焦点和 Modal 改为依赖公共 Surface 或最小
+内部宿主能力；HeaderBar、BorderBox 和标签拖出明确依赖 Window。
+
+Popover owner 扩大为 Surface，实际创建仍用基础 platform.Window，工作区查询
+继续按可选管理能力处理。移动 Popup 未实现就返回原错误，不转成 Overlay。
+FileDialog 的 GUI owner 同样接受 Surface，原生支持与输入隔离维持既有规则。
+
+统一 SurfaceInfo（暂保留 WindowInfo 别名）供所有宿主 Snapshot 使用；Title 和
+Controls 只作为 Window 的可选语义元数据，不扩大 Surface 管理接口。Application
+统一枚举 Surfaces，Windows 仍提供管理窗口子集。快照及 dev 引用遍历公共宿主，
+dev 自行维护 ref，执行仍通过 DispatchEvent/CommitText，不向 GUI 加自动化捷径。
+
+验证同时覆盖公共接口不具备管理能力、Root 身份、焦点/文字提交、目标暂失保持
+Widget 与状态、销毁重入、Popover/Modal、语义快照与引用；窗口例程增加真正的
+移动 GUI 控件树。桌面回归检查原生窗口、装饰和既有控件，不以编译替代交互验收。
+内部字段移动需同步包内构造器，保留已有测试的有效断言，不借机改变测试含义。
+
+### 使用方式与事实边界
+
+```go
+app, err := gui.NewApplication("org.example.mobile")
+if err != nil {
+    return err
+}
+app.ConnectActivate(func() {
+    host, err := app.NewSurface()
+    if err != nil {
+        // Handle the startup error and request Quit as appropriate.
+        app.Quit()
+        return
+    }
+    host.SetID("main")
+    host.SetWidget(gui.NewLabel("Hello"))
+})
+return app.Run()
+```
+
+NewSurface 不接受 WindowOptions，不调用 Show，也不在没有系统宿主的桌面平台
+合成窗口；重复领取同一个存活宿主返回不支持。领取可以早于原生绘制目标就绪，
+不能依赖此时存在有效尺寸。Visible 是最近一次原生可见性事实，Focused 是宿主
+焦点事实；两者与控件逻辑焦点分开。目标暂失保留逻辑焦点，但中断进行中的输入。
+最终 Destroy 不复活同一个逻辑宿主；再次领取建立新的逻辑根，不复用旧 Widget。
+
+普通 Application.Snapshot 的顶层字段改为 Surfaces / JSON surfaces。WindowInfo
+保留为 SurfaceInfo 别名，便于窗口 Snapshot 使用方迁移；不同时输出两份宿主列表。
+dev 同步使用 snapshot.surfaces，旧的 snapshot.windows 客户端需更新，ref 的分配、
+失效和正常输入路径不变。diagnostics 元数据、HUD 与文件对话框 owner 也支持公共
+Surface；普通控件不必猜测操作系统。HUD/诊断清理在 Shutdown 的 UI 回调中完成，
+不能等 Run 返回后在移动启动线程调用可能释放原生排版的回调。
+
+### 参考与取舍
+
+2026-11-08 核对 [Qt Quick 6.12.0 QQuickWindow](https://doc.qt.io/qt-6/qquickwindow.html)
+的图形资源释放与 sceneGraphInvalidated 契约：图形资源可用性有独立生命周期，
+不应据此销毁应用逻辑内容。[Flutter Android FlutterView](https://api.flutter.dev/javadoc/io/flutter/embedding/android/FlutterView.html)
+公开 attach/detach 引擎，并要求宿主接好
+[Activity 生命周期](https://docs.flutter.dev/add-to-app/android/add-flutter-view)。这些是
+参考框架的公开契约；GOUI 由此采用逻辑内容与原生目标分离，不引入 Qt 渲染线程、
+Flutter 引擎/隔离域或任意 View 重新附着能力，也不推断引擎必然跨 Activity 存活。
+下面是 GOUI 的实测范围，不是从参考资料推导的支持承诺。
+
+### 本切片验证
+
+- Go1.25.8 / CGO_ENABLED=0，Linux amd64 独立 Xvnc/Xfwm4：已跟踪源码及本轮
+  新增文件的副本执行 go test -json -count=1 ./...；最终计数见 Plan 本轮记录。
+  未混入工作区既有未跟踪测试、图像或实验目录。GUI/dev/diagnostics/UI/Widgets
+  全包 race 通过；Surface 与诊断 UI 清理定向 race 连续 10 轮通过。
+  race 使用宿主标准 CGO_ENABLED=1；初次 CGO_ENABLED=0 go test -race
+  -run '^TestApplicationStopsDiagnosticsOnUIThread$' -count=10 ./gui 被 Go 的
+  “-race requires cgo” 拒绝，未执行测试，调整后在独立暂存副本通过。普通全仓、
+  目标交叉编译与用户移动构建的无原生编译器契约没有改变。
+- 包内覆盖公共宿主不具备窗口管理能力、Widget.Root/Surface 身份、焦点/文字提交、
+  目标替换保留内容、显式销毁重入、Popover owner、枚举、语义快照和 dev 引用失效。
+  Painter 同步创建失败交调用方，延后创建失败交 Run，均验证资源释放。既有测试
+  仅迁移内部构造字段，保留原有布局、事件、样式和资源断言。
+- 独立 X11 的 GUI/UI × Software/OpenGL × 应用缩放 1x/2x 八组窗口验收通过。
+  Windows amd64 / macOS arm64 的 GUI/dev/diagnostics/UI/Widgets、demo 与
+  受影响例程编译通过；本轮没有 Windows/macOS 桌面交互验收。
+- 远端 macOS15.7.7 ARM64：Android API30 ARM64 AOSP_ATD / Emulator37.2.13 /
+  SwiftShader / 1x，Software/GLES 各通过四次旋转、两次后台恢复；iOS26.3
+  ARM64 Simulator / iPhone14 / 3x，两后端各通过两次后台恢复。
+  四组均实际建立 Label/TextInput/Button/LinearBox 控件树，显式 GC、按钮点击、
+  文本提交与正常退出通过；每组挂载/卸载/销毁各一次，目标更换不重挂树。
+  公开诊断核对实际 Backend，未静默降级；隐藏停绘/恢复、线程与原生适配身份稳定。
+- 输入通过 Surface.DispatchEvent/CommitText 正常路径注入，不绕过控件状态机，
+  但不等于原生触摸/IME 验收。截图辅助复核文字和布局，不作为跨后端像素金图。
+  顶部留白是例程明确设置，不代表 SafeArea 已接入。
+- 本机使用正式 cmd/goui 构建两组 APK、两组 Simulator App，另生成 device 未签名
+  IPA，仅验证构建；消费机未调用原生编译器。产物与摘要、包内测试、四组报告、截图
+  及清理结果在 /tmp/goui-surface-w1pyo_cn（本机/远端）。专用模拟器、私有 ADB 已
+  停止，临时 iOS 设备已删除，未接管用户设备或修改系统设置。
+
+ui.Surface 声明、原生触摸/IME、移动 Popup、SafeArea、多 Scene、iOS 旋转、
+真正 GPU 上下文丢失、物理设备及正式签名安装仍待后续，不将本切片视为完整移动支持。

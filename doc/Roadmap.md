@@ -1,5 +1,17 @@
 # GOUI 实用化与未来路线
 
+## GUI Surface 已接入（2026-11-08）
+
+系统管理的 Surface 与可管理的 Window 共用同一 rootBase 内核。Widget/IME、
+Popover owner、Modal、快照/dev 和 diagnostics 已迁移公共宿主；Window 保留
+主动管理与装饰，Surface 没有 Show 或请求尺寸。逻辑内容不随绘制目标暂失销毁。
+Android/iOS ARM64 的 Software/GLES 已验证控件树、合成输入、后台恢复及最终释放，
+Android 另验证旋转；桌面独立 X11 八组通过，全仓 4534 通过、11 既有跳过、0 失败。
+范围、协议 surfaces 字段迁移与证据见
+[DesignPresentationHosts 第 11 节](DesignPresentationHosts.md#11-gui-surface-共享内核2026-11-08已实现)。
+下一步 ui.Surface 复用协调机制；原生触摸/IME、Popup、安全区域、多 Scene、
+真正 GPU 上下文丢失与物理设备分别推进，不把合成输入验证等同于完整移动可用。
+
 ## GUI 启动生命周期已接入（2026-11-08）
 
 Application 提供 ConnectActivate/ConnectShutdown 与 Run() error；移动原生服务
@@ -7,8 +19,8 @@ Application 提供 ConnectActivate/ConnectShutdown 与 Run() error；移动原�
 的迁移兼容路径。独立 X11 八组 GUI/UI 配置与 Android/iOS ARM64 两绘制后端的
 启动、GC、后台恢复和退出已验证，详见
 [DesignPresentationHosts 第 10 节](DesignPresentationHosts.md#10-gui-启动与退出切片2026-11-08)。
-下一切片提取 GUI Surface、迁移共享宿主依赖，再接 ui.Surface；移动控件、触摸、
-IME、Popup、安全区域和物理设备仍分别推进。
+GUI Surface 与共享依赖已完成后续切片；下一步 ui.Surface。原生触摸、IME、
+Popup、安全区域和物理设备仍分别推进。
 
 ## 移动系统宿主交付已验收（2026-11-08）
 
@@ -17,7 +29,7 @@ Platform 的可选 WindowSource 已接入 Android/iOS；系统 UI 主线程交�
 两后端的单次交付、初始焦点、GC、后台恢复和释放已完成 ARM64 模拟器验证。
 本机全仓 4516 通过、11 原条件跳过；范围和未验收项见
 [DesignPresentationHosts 第 9 节](DesignPresentationHosts.md#9-系统宿主交付切片2026-11-08)。
-ConnectActivate/Shutdown 已完成后续切片；下一步 GUI Surface/Window 与 ui.Surface。
+ConnectActivate/Shutdown 与 GUI Surface 已完成后续切片；下一步 ui.Surface。
 
 ## 移动主线程调度已验收（2026-11-08）
 
@@ -25,16 +37,16 @@ ConnectActivate/Shutdown 已完成后续切片；下一步 GUI Surface/Window �
 Looper 唤醒与 iOS 主队列复用一份任务队列。Android/iOS ARM64 模拟器的
 Software/GLES、GC、后台停绘/恢复及清理完成边界已验证，Android 另验证旋转。
 源码与验证范围见 [DesignPresentationHosts](DesignPresentationHosts.md#8-原生-ui-主线程调度切片2026-11-08)。
-系统宿主交付与 Activate 已完成后续切片；下一步 GUI Surface 与 ui.Surface。触摸、IME、Popup、
+系统宿主交付、Activate 与 GUI Surface 已完成后续切片；下一步 ui.Surface。触摸、IME、Popup、
 安全区域和物理设备仍分别推进，不将平台线程切片视为完整移动 GUI 支持。
 
 ## 呈现宿主与可选窗口管理（2026-11-08）
 
 按 [DesignPresentationHosts](DesignPresentationHosts.md) 先拆分平台 Window 与
 WindowManagement，保留原生 Popup 及基础 Window owner，不重写原生实现。
-GUI/UI 下一步使用 Surface 和 Window 分别表达系统宿主与可管理窗口，采用
-NewApplication → ConnectActivate → Run；原生 UI 主线程及宿主恢复先在平台验证。
-现有移动 GUI Window 原型不作为新接口的支持承诺，需迁移到 Surface 后重新验收。
+GUI 使用 Surface 和 Window 分别表达系统宿主与可管理窗口，采用
+NewApplication → ConnectActivate → Run；原生 UI 主线程、宿主恢复和 GUI Surface
+已分别完成上述验收，ui.Surface 仍待接入。旧移动 GUI Window 原型不作为支持承诺。
 原生 Popup 不按操作系统名称降级为 Overlay；Android/iOS 尚未实现的能力继续
 明确返回不支持。触摸、IME、安全区域和完整移动应用适配仍按独立切片推进。
 
@@ -46,7 +58,8 @@ NewApplication → ConnectActivate → Run；原生 UI 主线程及宿主恢复�
 
 下一步按 [PlanMobileAPI](PlanMobileAPI.md) 从移动原生流程联合复核启动、线程、
 宿主、窗口与退出，再分主题审视输入、绘制、布局和服务。既有基座与平台验收记录
-保留，双线程原型不作为新设计的硬约束；原生 UI 主线程方向及新接口仍待实现与验证。
+保留，双线程原型不作为新设计的硬约束；平台线程、宿主与 GUI 启动已完成后续
+切片，其余主题继续按上述边界推进。
 
 ## v0.7.0 已发布（2026-11-06）
 

@@ -2,7 +2,8 @@
 
 状态：2026-11-08。已确认共享边界与第一阶段平台接口迁移，具体方案见
 [呈现宿主与窗口管理](DesignPresentationHosts.md)。本文保留其余主题的复核计划，
-不是移动 GUI 已可交付的声明；原生主线程和 GUI/UI 启动已接入，Surface 仍待实施。
+不是移动 GUI 已可交付的声明；原生主线程、GUI/UI 启动和 GUI Surface 共享内核
+已接入，ui.Surface 及原生输入仍待实施。
 
 关联：[核心原则](Design.md#cross-platform-scope)、[跨层约定](DesignConventions.md)、
 [移动生命周期](DesignMobileLifecycle.md)、[移动平台](DesignMobilePlatform.md)、
@@ -19,7 +20,8 @@
 - GUI 只集中适配具有共同语义的差异。平台事实有选择地公开，不建立万能能力表，
   不让普通控件反复查询 OS，不以空实现、伪造成功或隐藏失败维持形式一致。
 - 原生 UI 主线程承载 GUI；平台调度与系统宿主交付已完成模拟器阶段验收。
-  GUI/UI 激活、Surface 及完整控件交互仍待接入，不能将构建/平台通过当作完整 GUI 验收。
+  GUI/UI 激活与 GUI Surface 已完成后续切片；原生触摸/IME 和完整应用交互仍待接入，
+  不能将构建、平台或合成输入通过当作完整 GUI 验收。
 - 桌面保持当前产品重点；移动端保持实验性接入，通过真实应用逐步确定支持范围。
   已有构建、FFI 和链接工作独立保留，不因已经投入而扩大 GUI 功能承诺。
 
@@ -74,7 +76,7 @@ NewApplication → ConnectActivate → Run，GUI 使用 NewSurface/Window 区分
 | 顺序 | 主题与当前入口 | 从移动端提出的问题 | 应形成的决策 |
 | --- | --- | --- | --- |
 | 1 | 启动与线程：platform.NewPlatform、EventLoop、gui.NewApplication/Run、ui.Run、mobileentry | 系统何时允许构建界面？Run 由谁驱动？原生回调能否直接执行 GUI？服务在哪个阶段创建？ | 区分启动 goroutine 与原生 UI 主线程；判断移动与桌面入口是否需要不同契约，不预设统一 Run 或激活信号 |
-| 2 | 宿主、窗口与退出：Window、DesktopWindow、WindowOptions、gui.Window、Root | Activity/Scene、逻辑窗口、Widget 树是否同寿命？重建、暂时断开与永久结束如何识别？Show/Hide/Close/Quit 在各端到底请求什么？ | 明确所有者、可恢复状态与最终清理；决定哪些能力共享、哪些分开，避免仅隐藏内容 View 来模拟窗口呈现 |
+| 2 | 宿主、窗口与退出：Window、WindowManagement、WindowSource、gui.Surface/Window、Root | Activity/Scene、逻辑窗口、Widget 树是否同寿命？重建、暂时断开与永久结束如何识别？Show/Hide/Close/Quit 在各端到底请求什么？ | 明确所有者、可恢复状态与最终清理；决定哪些能力共享、哪些分开，避免仅隐藏内容 View 来模拟窗口呈现 |
 | 3 | 绘制与调度：Surface、SurfaceState、NativeTarget、Painter、Image、Root.ConnectFrame | Surface 丢失时保留什么？上下文丢失后谁重建图像？后台能否执行 GPU？帧需求如何接原生刷新回调？ | 区分绘制目标与上下文有效期，审视租约/锁/资源失效，保持 Painter 的通用性 |
 | 4 | 输入：PointerEvent、EventDispatcher、EventController、手势竞争 | 多指、取消、长按、滚动竞争和设备切换如何发生？鼠标和触摸能否同时存在？ | 平台保留输入事实；GUI 解释点击与拖动，不在平台伪造鼠标左键或仅按 OS 推断输入能力 |
 | 5 | 文本与键盘：InputMethod、Typography、TextInput、TextView | 原生需要查询和修改哪些文本范围？组合与选区怎样协作？系统键盘、硬件按键与输入动作如何区分？ | 建立编辑会话及范围转换契约，保留 Cluster 交互原则，避免复制整个文档或重复提交字符 |
@@ -114,6 +116,8 @@ NewApplication → ConnectActivate → Run，GUI 使用 NewSurface/Window 区分
 - [x] 原生主线程调度完成模拟器验收，详见 DesignPresentationHosts 第 8 节。
 - [x] 系统宿主交付完成 Android/iOS Software/GLES 模拟器验收，详见第 9 节。
 - [x] GUI/UI ConnectActivate/Shutdown、服务初始化线程和 Run 错误传播完成阶段验收。
-- [ ] 集成 GUI Surface/Window、共享宿主依赖及 ui.Surface，再做完整桌面回归。
+- [x] GUI Surface/Window、Widget/IME/Popover 宿主依赖及 Snapshot/dev/diagnostics
+  已迁移；桌面八组及 Android/iOS Software/GLES 控件树验证见 DesignPresentationHosts 第 11 节。
+- [ ] ui.Surface 复用既有协调内核，独立进行声明、状态更新与退出清理验收。
 - [ ] 按依赖推进绘制恢复、触摸、IME、几何与系统交互，逐项更新相关设计。
 - [ ] 用小型真实应用验证桌面/移动分别组织视图的使用体验，再确定移动支持承诺。
