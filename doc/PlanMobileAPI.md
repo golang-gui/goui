@@ -2,7 +2,7 @@
 
 状态：2026-11-08。已确认共享边界与第一阶段平台接口迁移，具体方案见
 [呈现宿主与窗口管理](DesignPresentationHosts.md)。本文保留其余主题的复核计划，
-不是移动 GUI 已可交付的声明；原生主线程及 GUI/UI 接入仍待实施。
+不是移动 GUI 已可交付的声明；原生主线程已验收，GUI/UI 接入仍待实施。
 
 关联：[核心原则](Design.md#cross-platform-scope)、[跨层约定](DesignConventions.md)、
 [移动生命周期](DesignMobileLifecycle.md)、[移动平台](DesignMobilePlatform.md)、
@@ -18,8 +18,8 @@
   声明式协调仍尽量共用。不为统一入口复制一套控件内核，也不让桌面无端迁就移动端。
 - GUI 只集中适配具有共同语义的差异。平台事实有选择地公开，不建立万能能力表，
   不让普通控件反复查询 OS，不以空实现、伪造成功或隐藏失败维持形式一致。
-- 原生 UI 主线程承载 GUI 是移动端下一步的设计方向；具体启动协议、回调时序与
-  清理方式必须原生验证。构建基座可行不等于该线程模型与完整 GUI 已通过验收。
+- 原生 UI 主线程承载 GUI；平台调度与系统宿主交付已完成模拟器阶段验收。
+  GUI/UI 激活、Surface 及完整控件交互仍待接入，不能将构建/平台通过当作完整 GUI 验收。
 - 桌面保持当前产品重点；移动端保持实验性接入，通过真实应用逐步确定支持范围。
   已有构建、FFI 和链接工作独立保留，不因已经投入而扩大 GUI 功能承诺。
 
@@ -110,7 +110,9 @@ NewApplication → ConnectActivate → Run，GUI 使用 NewSurface/Window 区分
 - [x] 建立原生流程优先的复核方法和跨层清单。
 - [x] 联合复核宿主与窗口管理，确认 [DesignPresentationHosts](DesignPresentationHosts.md)：
   同对象的可选 WindowManagement、基础 Window owner 的原生 Popup、GUI Surface/Window
-  分工与 GTK 风格激活顺序。当前先迁移平台接口，不调整原生线程或实现策略。
-- [ ] 平台接口验证完成后，推进原生主线程与系统宿主交付，再集成 GUI/UI 做桌面回归。
+  分工与 GTK 风格激活顺序。平台接口和原生 UI 线程切片已验收，系统宿主交付已完成模拟器验收。
+- [x] 原生主线程调度完成模拟器验收，详见 DesignPresentationHosts 第 8 节。
+- [x] 系统宿主交付完成 Android/iOS Software/GLES 模拟器验收，详见第 9 节。
+- [ ] 集成 GUI Surface/Window 与 ConnectActivate，再接 UI 并做桌面回归。
 - [ ] 按依赖推进绘制恢复、触摸、IME、几何与系统交互，逐项更新相关设计。
 - [ ] 用小型真实应用验证桌面/移动分别组织视图的使用体验，再确定移动支持承诺。

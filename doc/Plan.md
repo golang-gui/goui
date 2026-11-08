@@ -1,5 +1,22 @@
 # Plan
 
+## 移动系统宿主交付（2026-11-08）
+
+- [x] 平台对象的可选 WindowSource 在原生 UI 线程交付核心 Window，消费方返回事件
+  处理函数；尺寸、焦点、可见性和目标更新复用既有事件。不新增服务对象，不伪造管理能力。
+- [x] 消费方返回后再绑定，防护回调销毁；目标/Activity/Scene 替换不重复交付。
+  移动核心构造去掉请求尺寸/WindowOptions，旧工厂保持迁移用途并拒绝混合交付模式。
+- [x] mobile_dispatch 不再使用 NewWindow/Show 创建显示窗口；检查单次交付、更换
+  交付函数不重放、初始焦点及原有线程/GC/后台恢复/清理边界。
+- [x] 独立 Xvnc/Xfwm4 已跟踪源码副本全仓测试 4516 通过、11 原条件跳过、0 失败；
+  mobile race 10 轮通过，Windows amd64/macOS arm64 受影响包与例程仅编译通过。
+- [x] Android API30 ARM64 1x / SwiftShader 的 Software/GLES 各四次旋转、两次后台
+  恢复；iOS26.3 ARM64 Simulator 3x 两后端各两次后台恢复，四组均通过正式交付路径。
+  本机生成 APK/Simulator App/device 未签名 IPA，验证范围与证据见
+  [DesignPresentationHosts 第 9 节](DesignPresentationHosts.md#9-系统宿主交付切片2026-11-08)。
+- [ ] 下一步 GUI Surface/Window 与 ConnectActivate，之后再接 UI；物理设备、iOS
+  旋转、多 Scene、触摸、IME、Popup、安全区域及桌面原生交互未在本轮验收。
+
 ## 移动原生 UI 主线程调度（2026-11-08）
 
 - [x] [DesignPresentationHosts 第 8 节](DesignPresentationHosts.md#8-原生-ui-主线程调度切片2026-11-08)
@@ -20,7 +37,7 @@
 - [x] 正式 cmd/goui 生成两后端 APK/Simulator App，以及 device 未签名 IPA。
   证据与日志：`/tmp/goui-native-ui-qy_b8s2l`。iOS 旋转、多 Scene、物理设备、
   正式签名安装及本轮 Windows/macOS 桌面交互均未验收。
-- [ ] 继续系统宿主交付、GUI Surface/Window 与 ConnectActivate，之后再接 UI。
+- [x] 系统宿主交付已完成下一切片，见上方记录；GUI Surface/Window 与 ConnectActivate 待接入。
   旧 GUI Window 移动原型仍待迁移，不把平台实验视作 GUI/UI 已可用。
 
 ## 呈现宿主与窗口管理：平台接口切片（2026-11-08）
