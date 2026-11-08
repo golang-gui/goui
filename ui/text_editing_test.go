@@ -14,7 +14,7 @@ import (
 func TestTextDeclarationFlagsPreserveZeroValuesAndBaseModifiers(t *testing.T) {
 	t.Run("view", func(t *testing.T) {
 		r := newRoot()
-		t.Cleanup(r.unmountWindow)
+		t.Cleanup(r.unmountHost)
 		w := r.update(TextView().ID("editor").Text("abc").Selection(TextSelection{Anchor: 1, Caret: 2})).(*gui.TextView)
 		r.update(TextView().ID("editor").Text("").Selection(TextSelection{}).Padding(0).WrapMode(WrapNone))
 		if w.ID() != "editor" || w.Model().Text() != "" || w.Selection() != (TextSelection{}) || w.Padding() != (geometry.Insets{}) || w.WrapMode() != WrapNone {
@@ -29,7 +29,7 @@ func TestTextDeclarationFlagsPreserveZeroValuesAndBaseModifiers(t *testing.T) {
 	})
 	t.Run("input", func(t *testing.T) {
 		r := newRoot()
-		t.Cleanup(r.unmountWindow)
+		t.Cleanup(r.unmountHost)
 		w := r.update(TextInput().ID("input").Text("abc").Selection(TextSelection{Anchor: 1, Caret: 2})).(*gui.TextInput)
 		r.update(TextInput().ID("input").Text("").Selection(TextSelection{}).Padding(0))
 		if w.ID() != "input" || w.Text() != "" || w.Selection() != (TextSelection{}) || w.Padding() != (geometry.Insets{}) {
@@ -49,7 +49,7 @@ func TestTextValueBindingsEditingAndRebuild(t *testing.T) {
 	for _, multiline := range []bool{false, true} {
 		t.Run(map[bool]string{false: "input", true: "view"}[multiline], func(t *testing.T) {
 			r := newRoot()
-			t.Cleanup(r.unmountWindow)
+			t.Cleanup(r.unmountHost)
 			win := &overlayInputWindow{testWindow: newTestWindow()}
 			text := MakeState("abcd")
 			selection := MakeState(TextSelection{Anchor: 1, Caret: 3})
@@ -59,7 +59,7 @@ func TestTextValueBindingsEditingAndRebuild(t *testing.T) {
 				}
 				return TextInput().BindText(&text).BindSelection(&selection)
 			}
-			w := r.updateWindow(win, build())
+			w := r.updateHost(win, build())
 			w.Arrange(geometry.Rect(0, 0, 200, 80))
 			win.SetFocusedWidget(w)
 			key := func(k events.Key, modifiers events.Modifiers) {
@@ -72,7 +72,7 @@ func TestTextValueBindingsEditingAndRebuild(t *testing.T) {
 			if text.Get() != "ad" || selection.Get() != (TextSelection{Anchor: 1, Caret: 1}) {
 				t.Fatalf("delete writeback: %q %+v", text.Get(), selection.Get())
 			}
-			if r.updateWindow(win, build()) != w {
+			if r.updateHost(win, build()) != w {
 				t.Fatal("rebuild replaced widget")
 			}
 			modifier := events.ModifierControl
@@ -83,7 +83,7 @@ func TestTextValueBindingsEditingAndRebuild(t *testing.T) {
 			if text.Get() != "abcd" || selection.Get() != (TextSelection{Anchor: 1, Caret: 3}) {
 				t.Fatalf("undo after echo: %q %+v", text.Get(), selection.Get())
 			}
-			r.updateWindow(win, build())
+			r.updateHost(win, build())
 			key(events.KeyZ, modifier|events.ModifierShift)
 			if text.Get() != "ad" {
 				t.Fatalf("redo after echo: %q", text.Get())
@@ -94,7 +94,7 @@ func TestTextValueBindingsEditingAndRebuild(t *testing.T) {
 
 func TestTextViewValueReloadAndSelectionOrder(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	text := MakeState("abc")
 	selection := MakeState(TextSelection{Anchor: 1, Caret: 2})
 	sets := 0
@@ -161,13 +161,13 @@ func TestTextViewContentConflictBeforeMutation(t *testing.T) {
 		if w.Model() != m || m.Text() != "private" || shared.Text() != "shared" {
 			t.Fatal("conflict mutated a document")
 		}
-		r.unmountWindow()
+		r.unmountHost()
 	}
 }
 
 func TestTextViewTextCallbacksLifetime(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	m := NewTextModel("a")
 	first, second, changes := 0, 0, 0
 	r.update(TextView().Model(m).OnText(func(string) { first++ }))
@@ -176,7 +176,7 @@ func TestTextViewTextCallbacksLifetime(t *testing.T) {
 		if value != "ab" {
 			t.Fatalf("wrong current text: %q", value)
 		}
-		r.unmountWindow() // later signal slots must not call unmounted listeners
+		r.unmountHost() // later signal slots must not call unmounted listeners
 	}).OnChange(func(TextChange) { changes++ }))
 	_ = m.Replace(TextRange{Start: 1, End: 1}, "b")
 	_ = m.Replace(TextRange{Start: 2, End: 2}, "c")
@@ -196,7 +196,7 @@ func TestTextBindingSugarOverridesAndNil(t *testing.T) {
 	v.onSelection(TextSelection{})
 	// 绑定在应用时读取；以实际控件内容验证，不再要求构造时保存字符串快照。
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	editor := r.update(v).(*gui.TextView)
 	if text.Get() != "a" || selection.Get() != (TextSelection{Anchor: 1, Caret: 1}) || calls != 2 || editor.Model().Text() != "a" || !v.fields.Check(textViewText) {
 		t.Fatal("binding sugar silently composed or nil cleared declaration")
@@ -216,8 +216,8 @@ func TestTextBindingSugarOverridesAndNil(t *testing.T) {
 
 func TestTextViewSharedValueDoesNotShareDocument(t *testing.T) {
 	a, b := newRoot(), newRoot()
-	t.Cleanup(a.unmountWindow)
-	t.Cleanup(b.unmountWindow)
+	t.Cleanup(a.unmountHost)
+	t.Cleanup(b.unmountHost)
 	text := MakeState("ab")
 	build := func() View { return TextView().BindText(&text) }
 	left := a.update(build()).(*gui.TextView)
@@ -238,7 +238,7 @@ func TestTextViewSharedValueDoesNotShareDocument(t *testing.T) {
 
 func TestTextViewBindingRetainsModelAndSelection(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	m := NewTextModel("one\ntwo")
 	changes, selections := 0, 0
 	build := func() View {
@@ -276,7 +276,7 @@ func TestTextViewBindingRetainsModelAndSelection(t *testing.T) {
 
 func TestTextViewBindingDefaultsAndDeclarativeSignalBlocking(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	editor := r.update(TextView()).(*gui.TextView)
 	private := editor.Model()
 	private.SetText("private")
@@ -299,7 +299,7 @@ func TestTextViewBindingDefaultsAndDeclarativeSignalBlocking(t *testing.T) {
 
 func TestTextInputBindingKeepsUncontrolledTextAndEqualSelection(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	input := r.update(TextInput()).(*gui.TextInput)
 	input.SetText("typed value")
 	input.SetSelection(TextSelection{Anchor: 2, Caret: 5})
@@ -320,10 +320,10 @@ func TestTextInputBindingKeepsUncontrolledTextAndEqualSelection(t *testing.T) {
 
 func TestTextInputSubmitBindingUsesEventDispatcherAndLatestHandler(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	win := &overlayInputWindow{testWindow: newTestWindow()}
 	first, second := 0, 0
-	input := r.updateWindow(win, TextInput().OnSubmit(func() { first++ })).(*gui.TextInput)
+	input := r.updateHost(win, TextInput().OnSubmit(func() { first++ })).(*gui.TextInput)
 	input.Arrange(geometry.Rect(0, 0, 200, 40))
 	win.SetFocusedWidget(input)
 	enter := func() {
@@ -333,9 +333,9 @@ func TestTextInputSubmitBindingUsesEventDispatcherAndLatestHandler(t *testing.T)
 		}
 	}
 	enter()
-	r.updateWindow(win, TextInput().OnSubmit(func() { second++ }))
+	r.updateHost(win, TextInput().OnSubmit(func() { second++ }))
 	enter()
-	r.updateWindow(win, TextInput())
+	r.updateHost(win, TextInput())
 	enter()
 	if first != 1 || second != 1 || input.Text() != "" {
 		t.Fatalf("submit binding duplicated or retained handler: %d/%d", first, second)
@@ -345,7 +345,7 @@ func TestTextInputSubmitBindingUsesEventDispatcherAndLatestHandler(t *testing.T)
 // 函数策略用 setter 替换，不比较函数身份；省略恢复默认且不改状态源。
 func TestTextInputPolicyAndObscuringDeclaration(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	win := &overlayInputWindow{testWindow: newTestWindow()}
 	text := MakeState("original")
 	calls := 0
@@ -353,12 +353,12 @@ func TestTextInputPolicyAndObscuringDeclaration(t *testing.T) {
 	build := func() View {
 		return TextInput().ID("secret").BindText(&text).Obscured(true).ObscureChar('*').ObscureDelay(600 * time.Millisecond).InputFilter(filter)
 	}
-	w := r.updateWindow(win, build()).(*gui.TextInput)
+	w := r.updateHost(win, build()).(*gui.TextInput)
 	w.Arrange(geometry.Rect(0, 0, 200, 40))
 	win.SetFocusedWidget(w)
 	w.SetSelection(TextSelection{Anchor: len(w.Text()), Caret: len(w.Text())})
 	for range 4 {
-		r.updateWindow(win, build())
+		r.updateHost(win, build())
 	}
 	// 此替身无原生字体；用明确选区触发删除，不推测缺少 Cluster 的退格边界。
 	w.SetSelection(TextSelection{Anchor: 0, Caret: 1})
@@ -371,7 +371,7 @@ func TestTextInputPolicyAndObscuringDeclaration(t *testing.T) {
 	if calls != 1 || w.Text() != "original" || text.Get() != "original" {
 		t.Fatal("删除没有经过配置的策略")
 	}
-	r.updateWindow(win, TextInput().ID("secret").BindText(&text))
+	r.updateHost(win, TextInput().ID("secret").BindText(&text))
 	if w.Obscured() || w.ObscureChar() != '•' || w.ObscureDelay() != 0 || w.InputFilter() != nil || w.Text() != "original" {
 		t.Fatal("省略未恢复默认，或清除了正文")
 	}
@@ -385,7 +385,7 @@ func TestTextInputPolicyAndObscuringDeclaration(t *testing.T) {
 
 func TestTextViewInputPolicyDeclarationKeepsSharedHistory(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	m := NewTextModel("abc")
 	m.Replace(TextRange{Start: 3, End: 3}, "d")
 	filter := textedit.DigitsOnly()

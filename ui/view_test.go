@@ -12,7 +12,7 @@ import (
 
 func TestModifyMergesExplicitValuesAndRestoresContent(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	content := func() View {
 		return Label("content").ID("inside").Name("inside name").Tooltip("inside help").
 			Style("inside style").MinSize(100, 24).MaxSize(500, 80).
@@ -45,7 +45,7 @@ func TestModifyMergesExplicitValuesAndRestoresContent(t *testing.T) {
 
 func TestModifySharedContentMountsIndependently(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	shared := Label("shared").MainWeight(2).Style("original")
 	box := r.update(HBox(
 		Modify(shared).ID("a").Style("first").MainWeight(1),
@@ -69,7 +69,7 @@ func TestModifySharedContentMountsIndependently(t *testing.T) {
 
 func TestModifyBehaviorOverridesClearAndRestoreWithoutDuplicateControllers(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	host := &overlayInputWindow{testWindow: newTestWindow()}
 	inner, outer := 0, 0
 	content := func() View {
@@ -85,11 +85,11 @@ func TestModifyBehaviorOverridesClearAndRestoreWithoutDuplicateControllers(t *te
 			Shortcuts(Shortcut(KeyF5).OnActivate(func() { outer++ })).
 			DragSource(DragSource().Actions(DragMove)).DropTarget(DropTarget(DragFormatFiles))
 	}
-	w := r.updateWindow(host, declaration())
+	w := r.updateHost(host, declaration())
 	ctx := r.root.body.baseCtx
 	controllers := w.EventControllers()
 	for range 3 {
-		r.updateWindow(host, declaration())
+		r.updateHost(host, declaration())
 		if len(w.EventControllers()) != 4 || r.root.body.baseCtx != ctx {
 			t.Fatal("重复协调创建了多份控制器或连接上下文")
 		}
@@ -117,11 +117,11 @@ func TestModifyBehaviorOverridesClearAndRestoreWithoutDuplicateControllers(t *te
 	if inner != 0 || outer != 3 {
 		t.Fatalf("回调未替换：inner=%d outer=%d", inner, outer)
 	}
-	r.updateWindow(host, Modify(content()).OnFocus(nil).OnContextMenu(nil).Shortcuts().DragSource(nil).DropTarget(nil))
+	r.updateHost(host, Modify(content()).OnFocus(nil).OnContextMenu(nil).Shortcuts().DragSource(nil).DropTarget(nil))
 	if len(w.EventControllers()) != 0 || ctx.onFocus != nil || w.Snapshot().DragDrop != nil {
 		t.Fatal("显式 nil 或空列表未清除内层行为")
 	}
-	r.updateWindow(host, Modify(content()))
+	r.updateHost(host, Modify(content()))
 	if len(w.EventControllers()) != 4 || w.Snapshot().DragDrop.SourceActions != DragCopy {
 		t.Fatal("省略外层行为没有恢复当前内层声明")
 	}
@@ -131,7 +131,7 @@ func TestModifyBehaviorOverridesClearAndRestoreWithoutDuplicateControllers(t *te
 	if inner != 1 || outer != 3 {
 		t.Fatal("恢复后仍调用旧回调或重复执行")
 	}
-	r.unmountWindow()
+	r.unmountHost()
 	if len(w.EventControllers()) != 0 || len(ctx.handles) != 0 {
 		t.Fatal("释放后仍保留 UI 连接")
 	}
@@ -165,7 +165,7 @@ func (w *modifierReleaseLabel) SetEnabled(value bool) {
 
 func TestModifySetterMayReleaseOwner(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	w := &modifierReleaseLabel{Label: gui.NewLabel("release")}
 	makeView := func() *enabledWidgetView {
 		v := &enabledWidgetView{make: func() gui.Widget { return w }}
@@ -174,7 +174,7 @@ func TestModifySetterMayReleaseOwner(t *testing.T) {
 	}
 	r.update(Modify(makeView()).Focusable(true))
 	w.enabledCalls = 0
-	w.release = r.unmountWindow
+	w.release = r.unmountHost
 	if got := r.update(Modify(makeView()).Focusable(false).Enabled(false)); got != nil || w.enabledCalls != 0 {
 		t.Fatal("setter 释放节点后仍继续设置属性或复活输出")
 	}
@@ -182,7 +182,7 @@ func TestModifySetterMayReleaseOwner(t *testing.T) {
 
 func TestModifyControllerInstallationMayReleaseOwner(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	w := &modifierReleaseLabel{Label: gui.NewLabel("release")}
 	makeView := func() *enabledWidgetView {
 		v := &enabledWidgetView{make: func() gui.Widget { return w }}
@@ -193,7 +193,7 @@ func TestModifyControllerInstallationMayReleaseOwner(t *testing.T) {
 	ctx := r.root.body.baseCtx
 	w.onAdd = func(controller gui.EventController) {
 		if _, ok := controller.(*gui.ShortcutController); ok {
-			r.unmountWindow()
+			r.unmountHost()
 		}
 	}
 	got := r.update(Modify(makeView()).Shortcuts(Shortcut(KeyF5).OnActivate(func() { t.Fatal("已释放回调仍执行") })))
@@ -205,7 +205,7 @@ func TestModifyControllerInstallationMayReleaseOwner(t *testing.T) {
 // 共享修饰器遵循显式覆盖、空值清除和省略时恢复构造默认值的协调规则。
 func TestViewTooltipRestoresInitialValue(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	declaration := func() *enabledWidgetView {
 		v := &enabledWidgetView{make: func() gui.Widget {
 			w := gui.NewLabel("content")
@@ -242,7 +242,7 @@ func TestViewEnabledReconcilesOwnSettingsAndSubtrees(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			r := newRoot()
-			t.Cleanup(r.unmountWindow)
+			t.Cleanup(r.unmountHost)
 			declaration := func() *enabledWidgetView {
 				v := &enabledWidgetView{make: test.make}
 				v.Self = v
@@ -263,7 +263,7 @@ func TestViewEnabledReconcilesOwnSettingsAndSubtrees(t *testing.T) {
 		})
 	}
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	box := r.update(VBox(Label("explicit").Enabled(false), Label("inherited")).Enabled(false)).(*gui.LinearBox)
 	children := box.Children()
 	if children[0].Enabled() || !children[1].Enabled() || gui.IsEnabled(children[1]) {
@@ -313,7 +313,7 @@ func TestViewConstructorsWireSelf(t *testing.T) {
 
 func TestViewIDAndNameRemainIndependentAcrossUpdates(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	w := r.update(Label("content").ID("first").Name("natural").Style("label")).(*gui.Label)
 	if w.ID() != "first" || w.Name() != "natural" || w.StyleName() != "label" ||
 		w.Snapshot().Text != "content" {
@@ -356,7 +356,7 @@ func (v *initialIdentityView) Unmount(BuildContext, gui.Widget) {}
 
 func TestViewIdentityRestoresConstructorDefaults(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	w := r.update(newInitialIdentityView().ID("replacement").Name("renamed"))
 	if w.ID() != "replacement" || w.Name() != "renamed" {
 		t.Fatalf("declared identity: id=%q name=%q", w.ID(), w.Name())
@@ -490,7 +490,7 @@ func TestViewUnmountDisconnectsOnFocusHandle(t *testing.T) {
 		t.Fatal("setup: OnFocus handle not connected")
 	}
 
-	root.unmountWindow()
+	root.unmountHost()
 
 	if node.baseCtx == nil || len(node.baseCtx.handles) != 0 || node.baseCtx.onFocus != nil {
 		t.Fatal("OnFocus handle and callback should be cleared on unmount")
@@ -568,7 +568,7 @@ func TestLabelFormattedTextAndBinding(t *testing.T) {
 
 func TestLabelSelectableReconciliation(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	changes := 0
 	build := func() *LabelView {
 		return Label(`\{format\}A\{bold:中文\}`).Selectable(true).OnSelection(func(TextSelection) { changes++ })

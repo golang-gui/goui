@@ -9,13 +9,13 @@ import (
 
 func TestShortcutReconciliation(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	w := &overlayInputWindow{testWindow: newTestWindow()}
 	old, current := 0, 0
 	build := func(fn func(), enabled bool) *LabelView {
 		return Label("shortcut").Shortcuts(Shortcut(KeyF5).Enabled(enabled).OnActivate(fn))
 	}
-	r.updateWindow(w, build(func() { old++ }, true))
+	r.updateHost(w, build(func() { old++ }, true))
 	press := func() {
 		t.Helper()
 		if err := w.DispatchEvent(events.KeyEvent{EventType: events.KeyDown, Key: events.KeyF5}); err != nil {
@@ -27,18 +27,18 @@ func TestShortcutReconciliation(t *testing.T) {
 	}
 	press()
 	for i := 0; i < 3; i++ {
-		r.updateWindow(w, build(func() { current++ }, true))
+		r.updateHost(w, build(func() { current++ }, true))
 	}
 	press()
 	if old != 1 || current != 1 {
 		t.Fatalf("stale or duplicated callback: %d %d", old, current)
 	}
-	r.updateWindow(w, build(func() { current++ }, false))
+	r.updateHost(w, build(func() { current++ }, false))
 	press()
 	if current != 1 {
 		t.Fatal("disabled binding fired")
 	}
-	r.updateWindow(w, Label("shortcut"))
+	r.updateHost(w, Label("shortcut"))
 	press()
 	if current != 1 {
 		t.Fatal("removed declaration fired")
@@ -46,14 +46,14 @@ func TestShortcutReconciliation(t *testing.T) {
 	if len(w.Widget().EventControllers()) != 0 {
 		t.Fatal("empty declarative controller retained")
 	}
-	r.updateWindow(w, build(func() { r.unmountWindow() }, true))
+	r.updateHost(w, build(func() { r.unmountHost() }, true))
 	press() // reentrant unmount must not invoke a stale callback or panic.
 }
 
 func TestWindowShortcutBindingsPreserveImperativeEntries(t *testing.T) {
 	w := newTestWindow()
-	m := &windowMount{window: w, root: newRoot()}
-	defer m.root.unmountWindow()
+	m := &windowMount{hostMount: newHostMount(nil, w, SurfaceView{}), window: w}
+	defer m.root.unmountHost()
 	defer m.disconnect()
 	imperative := gui.NewShortcut(gui.KeyGesture{Key: gui.KeyF6})
 	w.Shortcuts().AddShortcut(imperative)
@@ -91,13 +91,13 @@ func TestWindowShortcutBindingsPreserveImperativeEntries(t *testing.T) {
 
 func TestShortcutDeclarationUpdates(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	w := &overlayInputWindow{testWindow: newTestWindow()}
 	n := 0
 	activate := func() { n++ }
 	update := func(bindings ...*ShortcutView) {
 		t.Helper()
-		r.updateWindow(w, Label("shortcut").Shortcuts(bindings...))
+		r.updateHost(w, Label("shortcut").Shortcuts(bindings...))
 	}
 	press := func(modifiers events.Modifiers, repeat bool, want int, consumed bool) {
 		t.Helper()
@@ -169,7 +169,7 @@ func TestShortcutDescriptorsReconcileByPosition(t *testing.T) {
 
 func TestShortcutCommandRefOwnershipAndModes(t *testing.T) {
 	r := newRoot()
-	defer r.unmountWindow()
+	defer r.unmountHost()
 	w := &overlayInputWindow{testWindow: newTestWindow()}
 	first, second := gui.NewCommand(), gui.NewCommand()
 	a, b, direct := 0, 0, 0
@@ -177,7 +177,7 @@ func TestShortcutCommandRefOwnershipAndModes(t *testing.T) {
 	second.ConnectActivate(func() { b++ })
 	update := func(s *ShortcutView) {
 		t.Helper()
-		r.updateWindow(w, Label("editor").Shortcuts(s))
+		r.updateHost(w, Label("editor").Shortcuts(s))
 	}
 	press := func() {
 		t.Helper()
@@ -218,7 +218,7 @@ func TestShortcutCommandRefOwnershipAndModes(t *testing.T) {
 		t.Fatal("空对象没有清除操作")
 	}
 	update(Shortcut(KeyF5).CommandRef(first))
-	r.unmountWindow()
+	r.unmountHost()
 	if len(first.Shortcuts()) != 0 || !first.Enabled() || second.Enabled() {
 		t.Fatal("卸载未解绑自有 Shortcut，或修改了外部 Enabled")
 	}
@@ -230,8 +230,8 @@ func TestShortcutCommandRefOwnershipAndModes(t *testing.T) {
 
 func TestWindowShortcutCommandRef(t *testing.T) {
 	w := newTestWindow()
-	m := &windowMount{window: w, root: newRoot()}
-	defer m.root.unmountWindow()
+	m := &windowMount{hostMount: newHostMount(nil, w, SurfaceView{}), window: w}
+	defer m.root.unmountHost()
 	defer m.disconnect()
 	command := gui.NewCommand()
 	if err := updateShortcutWindow(m, Window("keys").Shortcuts(Shortcut(KeyF5).CommandRef(command))); err != nil {
@@ -248,13 +248,13 @@ func TestWindowShortcutCommandRef(t *testing.T) {
 
 func TestShortcutCommandRefCanUnmountDuringReplacement(t *testing.T) {
 	r := newRoot()
-	defer r.unmountWindow()
+	defer r.unmountHost()
 	first, second := gui.NewCommand(), gui.NewCommand()
 	view := func(c *gui.Command) View {
 		return Label("editor").Shortcuts(Shortcut(KeyF5).CommandRef(c), Shortcut(KeyF6).CommandRef(c))
 	}
 	r.update(view(first))
-	first.ConnectShortcuts(func() { r.unmountWindow() })
+	first.ConnectShortcuts(func() { r.unmountHost() })
 	r.update(view(second))
 	if r.root != nil || len(first.Shortcuts()) != 0 || len(second.Shortcuts()) != 0 || !first.Enabled() || !second.Enabled() {
 		t.Fatal("通知重入卸载留下关联或改变外部命令")
@@ -291,6 +291,7 @@ func updateShortcutWindow(m *windowMount, view WindowView) error {
 		return err
 	}
 	m.view = view
-	m.root.updateWindow(m.window, m.contentView())
+	m.hostMount.view = view.commonView()
+	m.root.updateHost(m.window, m.contentView())
 	return nil
 }

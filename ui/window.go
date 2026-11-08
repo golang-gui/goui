@@ -6,43 +6,7 @@ import (
 	"github.com/golang-gui/goui/core/bits"
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
-	"github.com/golang-gui/goui/style"
 )
-
-// RootView is the root declarative view.
-type RootView interface {
-	rootView()
-}
-
-// RootNode is the optional application-level declarative node. It carries app-wide
-// declarations (currently the style sheet) plus the set of windows. Return it from
-// the Run build closure when you need app-level configuration; otherwise return a
-// WindowView directly.
-type RootNode struct {
-	styleSheet style.StyleSheet
-	windows    []WindowView
-}
-
-// Root creates an application-level root node.
-func Root() RootNode {
-	return RootNode{}
-}
-
-func (r RootNode) rootView() {}
-
-// StyleSheet sets the application style sheet. It is reconciled onto the running
-// application on each rebuild, so swapping it re-skins the app at runtime; a nil
-// sheet reverts to the built-in default.
-func (r RootNode) StyleSheet(sheet style.StyleSheet) RootNode {
-	r.styleSheet = sheet
-	return r
-}
-
-// Windows sets the top-level windows of the application.
-func (r RootNode) Windows(windows ...WindowView) RootNode {
-	r.windows = windows
-	return r
-}
 
 // WindowView describes one top-level window.
 type WindowView struct {
@@ -202,41 +166,4 @@ func (w WindowView) mergedMinSize() geometry.Size {
 		s.Height = w.minHeight
 	}
 	return s
-}
-
-// Window declarations are RootViews rather than ordinary Views. Adapt their
-// bindings through the same composition lifecycle as the projected content,
-// beneath a default CommandGroup. No widget or Root-specific lookup is needed.
-func (m *windowMount) contentView() View {
-	content := &windowContentView{mount: m, child: m.view.content, shortcuts: m.view.shortcuts}
-	content.Self = content
-	return CommandGroup(content).Commands(m.view.commands...)
-}
-
-type windowContentView struct {
-	ComposeBase[windowContentView]
-	mount     *windowMount
-	child     View
-	shortcuts []*ShortcutView
-}
-
-func (v *windowContentView) Build(ctx BuildContext) View {
-	ctx.SetState(v.mount)
-	v.mount.commands, _ = FindAncestor[*commandGroup](ctx)
-	if len(v.shortcuts) != 0 || v.mount.shortcuts.controller != nil {
-		v.mount.shortcuts.update(v.mount.window.Shortcuts(), v.shortcuts, ctx)
-	}
-	if ctx.State() != v.mount || v.mount.destroying {
-		return nil
-	}
-	return v.child
-}
-
-func (*windowContentView) Object(ctx BuildContext) any { return ctx.State() }
-
-func (*windowContentView) Release(ctx BuildContext) {
-	if mount, ok := ctx.State().(*windowMount); ok {
-		mount.commands = nil
-		mount.shortcuts.clear()
-	}
 }

@@ -17,6 +17,42 @@ import (
 	"github.com/xuges/gothread"
 )
 
+// RootView is the root declarative view.
+type RootView interface {
+	rootView()
+}
+
+// RootNode is the optional application-level declarative node. It carries app-wide
+// declarations (currently the style sheet) and presentation hosts. Return it from
+// the Run build closure when you need app-level configuration; otherwise return a
+// WindowView or SurfaceView directly.
+type RootNode struct {
+	styleSheet style.StyleSheet
+	windows    []WindowView
+	surface    *SurfaceView
+}
+
+// Root creates an application-level root node.
+func Root() RootNode {
+	return RootNode{}
+}
+
+func (r RootNode) rootView() {}
+
+// StyleSheet sets the application style sheet. It is reconciled onto the running
+// application on each rebuild, so swapping it re-skins the app at runtime; a nil
+// sheet reverts to the built-in default.
+func (r RootNode) StyleSheet(sheet style.StyleSheet) RootNode {
+	r.styleSheet = sheet
+	return r
+}
+
+// Windows sets the top-level windows of the application.
+func (r RootNode) Windows(windows ...WindowView) RootNode {
+	r.windows = windows
+	return r
+}
+
 // App is the running application handle passed into the Run build closure. It is
 // the running *app itself: valid for the whole run and safe to stash,
 // capture in handlers, or call from any goroutine. After Quit, work is not
@@ -41,14 +77,17 @@ type App interface {
 	// reference is not retargeted. A registered hidden window is discoverable
 	// during AfterUpdate, so it can be prepared before its first Show.
 	FindWindow(id string) gui.Window
-	// FindWidget borrows the currently mounted widget with id in a Window's
+	// FindSurface borrows any mounted host by ID, including a managed Window.
+	// Threading, identity and lifetime rules are the same as FindWindow.
+	FindSurface(id string) gui.Surface
+	// FindWidget borrows the currently mounted widget with id in a host's
 	// content tree. Missing IDs return nil
-	FindWidget(windowID, widgetID string) gui.Widget
-	// FindCommand borrows a published command from a window's default group.
+	FindWidget(hostID, widgetID string) gui.Widget
+	// FindCommand borrows a published command from a host's default group.
 	// It does not search descendant groups or create commands. Empty/missing IDs,
-	// an unmounting window or a stopped app return nil. The returned object stays
+	// an unmounting host or a stopped app return nil. The returned object stays
 	// GUI-thread-affine, like FindWidget; look it up again after definition changes.
-	FindCommand(windowID, commandID string) *gui.Command
+	FindCommand(hostID, commandID string) *gui.Command
 	// Clipboard returns the system clipboard view (never nil).
 	Clipboard() Clipboard
 	// Settings returns the system settings view (never nil).
@@ -77,6 +116,7 @@ var (
 	ErrAppStopped      = errors.New("ui: application has stopped")
 	ErrAppRunOnce      = errors.New("ui: Run may be called only once per process")
 	ErrAppBuildNil     = errors.New("ui app build function is nil")
+	ErrSurfaceIDEmpty  = errors.New("ui surface id is empty")
 	ErrWindowIDEmpty   = errors.New("ui window id is empty")
 	ErrWindowDuplicate = errors.New("ui window id is duplicated")
 )
@@ -209,60 +249,77 @@ func (a *app) FindWindow(id string) (window gui.Window) {
 	return
 }
 
-func (a *app) FindWidget(windowID, widgetID string) (widget gui.Widget) {
+// mountedHost is read only on the UI thread. IDs share one namespace.
+func (a *app) mountedHost(id string) *hostMount {
+	if id == "" {
+		return nil
+	}
+	if m := a.windows[id]; m != nil && !m.destroying {
+		return m.hostMount
+	}
+	if m := a.surface; m != nil && m.id == id && !m.destroying {
+		return m
+	}
+	return nil
+}
+
+func (a *app) FindSurface(id string) (host gui.Surface) {
 	a.Sync(func() {
-		if mount := a.windows[windowID]; mount != nil && mount.window != nil {
-			widget = gui.FindWidget(mount.window, widgetID)
+		if m := a.mountedHost(id); m != nil {
+			host = m.host
 		}
 	})
 	return
 }
 
-func (a *app) FindCommand(windowID, commandID string) (command *gui.Command) {
-	if windowID == "" || commandID == "" {
+func (a *app) FindWidget(hostID, widgetID string) (widget gui.Widget) {
+	a.Sync(func() {
+		if m := a.mountedHost(hostID); m != nil {
+			widget = gui.FindWidget(m.host, widgetID)
+		}
+	})
+	return
+}
+
+func (a *app) FindCommand(hostID, commandID string) (command *gui.Command) {
+	if hostID == "" || commandID == "" {
 		return nil
 	}
 	a.Sync(func() {
-		if mount := a.windows[windowID]; mount != nil && !mount.destroying && mount.commands != nil {
-			command = mount.commands.find(commandID)
+		if m := a.mountedHost(hostID); m != nil && m.commands != nil {
+			command = m.commands.find(commandID)
 		}
 	})
 	return
 }
 
 type app struct {
-	mu                 sync.Mutex
-	gui                gui.Application
-	build              func() RootView
-	windows            map[string]*windowMount
-	updatingWindows    bool // guards the whole batch, including completion callbacks and Show
-	reconcilingWindows bool // defer root completion callbacks until every window tree is updated
-	appliedSheet       style.StyleSheet
-	fullUpdate         bool
-	dirty              map[*node]updateKind
-	dirtyOrder         []*node
-	updateDepth        int
-	batch              uint64
-	updatePending      bool
-	stopping           bool
-	finished           chan struct{} // closed only after run returns, not on a Quit request
-	err                error
-	uiThread           atomic.Int64
+	mu               sync.Mutex
+	gui              gui.Application
+	build            func() RootView
+	windows          map[string]*windowMount
+	surface          *hostMount
+	updatingHosts    bool // guards the whole batch, including completion callbacks and Show
+	reconcilingHosts bool // defer completion callbacks until every host tree is updated
+	appliedSheet     style.StyleSheet
+	fullUpdate       bool
+	dirty            map[*node]updateKind
+	dirtyOrder       []*node
+	updateDepth      int
+	batch            uint64
+	updatePending    bool
+	stopping         bool
+	finished         chan struct{} // closed only after run returns, not on a Quit request
+	err              error
+	uiThread         atomic.Int64
 }
 
 type windowMount struct {
-	shortcuts        shortcutBindings
-	commands         *commandGroup
-	runtime          *app
-	id               string
-	window           gui.Window
-	root             *root
-	view             WindowView
-	appliedMinSize   geometry.Size // last min-size forwarded to the window; dedupes native calls
-	closeHandle      signal.Handle
-	afterPaintHandle signal.Handle
-	destroyHandle    signal.Handle
-	destroying       bool
+	*hostMount
+	window         gui.Window
+	view           WindowView
+	appliedMinSize geometry.Size // last explicit minimum forwarded; dedupes native calls
+	closeHandle    signal.Handle
 }
 
 var activeApp struct {
@@ -344,7 +401,7 @@ func (a *app) runPendingUpdate() {
 	if full {
 		err = a.rebuildWith(jobs)
 	} else if len(jobs) > 0 {
-		err = a.reconcileBatch(nil, jobs, false)
+		err = a.reconcileBatch(rootDeclaration{}, jobs, false)
 	}
 	if err != nil {
 		a.fail(err)
@@ -358,38 +415,47 @@ func (a *app) rebuildWith(jobs []nodeUpdate) error {
 	if a.build == nil {
 		return ErrAppBuildNil
 	}
-	windows, sheet, err := resolveRoot(a.build())
+	declaration, err := resolveRoot(a.build())
 	if err != nil {
 		return err
 	}
-	a.applyStyleSheet(sheet)
-	return a.reconcileBatch(windows, jobs, true)
+	a.applyStyleSheet(declaration.styleSheet)
+	return a.reconcileBatch(declaration, jobs, true)
 }
 
-// resolveRoot extracts the windows and the optional application style sheet from
-// the declarative root: a bare WindowView is one window with no app-level sheet; a
-// RootNode carries both.
-func resolveRoot(root RootView) ([]WindowView, style.StyleSheet, error) {
-	switch root := root.(type) {
+type rootDeclaration struct {
+	windows    []WindowView
+	surface    *SurfaceView
+	styleSheet style.StyleSheet
+}
+
+// resolveRoot reads application declarations without creating native resources.
+func resolveRoot(view RootView) (rootDeclaration, error) {
+	switch v := view.(type) {
 	case nil:
-		return nil, nil, nil
+		return rootDeclaration{}, nil
 	case WindowView:
-		return []WindowView{root}, nil, nil
+		return rootDeclaration{windows: []WindowView{v}}, nil
 	case *WindowView:
-		if root == nil {
-			return nil, nil, nil
+		if v != nil {
+			return resolveRoot(*v)
 		}
-		return []WindowView{*root}, nil, nil
+	case SurfaceView:
+		return rootDeclaration{surface: &v}, nil
+	case *SurfaceView:
+		if v != nil {
+			return resolveRoot(*v)
+		}
 	case RootNode:
-		return root.windows, root.styleSheet, nil
+		return rootDeclaration{windows: v.windows, surface: v.surface, styleSheet: v.styleSheet}, nil
 	case *RootNode:
-		if root == nil {
-			return nil, nil, nil
+		if v != nil {
+			return resolveRoot(*v)
 		}
-		return root.windows, root.styleSheet, nil
 	default:
-		return nil, nil, fmt.Errorf("unsupported ui root view %T", root)
+		return rootDeclaration{}, fmt.Errorf("unsupported ui root view %T", view)
 	}
+	return rootDeclaration{}, nil
 }
 
 // applyStyleSheet reconciles the application style sheet onto gui when it changed
@@ -411,9 +477,12 @@ func sameSheet(a, b style.StyleSheet) bool {
 	return reflect.DeepEqual(a, b)
 }
 
-func (a *app) reconcileWindows(views []WindowView) error { return a.reconcileBatch(views, nil, true) }
+func (a *app) reconcileWindows(views []WindowView) error {
+	return a.reconcileBatch(rootDeclaration{windows: views}, nil, true)
+}
 
-func (a *app) reconcileBatch(views []WindowView, jobs []nodeUpdate, full bool) error {
+func (a *app) reconcileBatch(declaration rootDeclaration, jobs []nodeUpdate, full bool) error {
+	views := declaration.windows
 	seen := make(map[string]WindowView, len(views))
 	for _, view := range views {
 		if view.id == "" {
@@ -425,13 +494,27 @@ func (a *app) reconcileBatch(views []WindowView, jobs []nodeUpdate, full bool) e
 		seen[view.id] = view
 	}
 
-	if a.updatingWindows {
-		return fmt.Errorf("ui: cannot nest window reconciliation; request a later update")
+	if v := declaration.surface; v != nil {
+		if v.id == "" {
+			return ErrSurfaceIDEmpty
+		}
+		if _, conflict := seen[v.id]; conflict {
+			return fmt.Errorf("ui: Surface and Window share host ID %q", v.id)
+		}
+	}
+
+	if a.updatingHosts {
+		return fmt.Errorf("ui: cannot nest host reconciliation; request a later update")
 	}
 	defer a.holdUpdates()()
 	a.batch++
-	a.updatingWindows, a.reconcilingWindows = true, true
-	defer func() { a.updatingWindows, a.reconcilingWindows = false, false }()
+	a.updatingHosts, a.reconcilingHosts = true, true
+	defer func() { a.updatingHosts, a.reconcilingHosts = false, false }()
+	if full && a.surface != nil && (declaration.surface == nil || a.surface.id != declaration.surface.id) {
+		old := a.surface
+		a.surface = nil
+		old.destroy()
+	}
 	mounted := make([]*windowMount, 0, len(views))
 	created := make([]*windowMount, 0, len(views))
 	for _, view := range views {
@@ -449,6 +532,20 @@ func (a *app) reconcileBatch(views []WindowView, jobs []nodeUpdate, full bool) e
 		mounted = append(mounted, mount)
 	}
 
+	var system *hostMount
+	if full && declaration.surface != nil {
+		system = a.surface
+		if system == nil {
+			var err error
+			system, err = a.createSurface(*declaration.surface)
+			if err != nil {
+				return err
+			}
+		} else {
+			system.update(*declaration.surface)
+		}
+	}
+
 	if full {
 		for id, mount := range a.windows {
 			if _, exists := seen[id]; exists {
@@ -461,7 +558,10 @@ func (a *app) reconcileBatch(views []WindowView, jobs []nodeUpdate, full bool) e
 	localRoots := a.processNodeUpdates(jobs)
 	// Completion callbacks can transfer nodes and update the declarations. No
 	// tree may still consume this rebuild's old declarations after that point.
-	a.reconcilingWindows = false
+	a.reconcilingHosts = false
+	if system != nil && !system.destroying {
+		system.root.flushAfterUpdate()
+	}
 	for _, mount := range mounted {
 		if !mount.destroying {
 			mount.root.flushAfterUpdate()
@@ -492,14 +592,7 @@ func (a *app) createWindow(view WindowView) (*windowMount, error) {
 		return nil, err
 	}
 
-	mount := &windowMount{
-		runtime: a,
-		id:      view.id,
-		window:  window,
-		root:    newRoot(),
-		view:    view,
-	}
-	mount.root.runtime = a
+	mount := &windowMount{hostMount: newHostMount(a, window, view.commonView()), window: window, view: view}
 
 	if err := mount.applyWindowProperties(view); err != nil {
 		window.Destroy()
@@ -510,26 +603,18 @@ func (a *app) createWindow(view WindowView) (*windowMount, error) {
 	// both need the same ordinary ID lookup and ownership as visible windows.
 	a.windows[view.id] = mount
 	mount.connect()
-	mount.root.mountWindow(window, func() View {
+	mount.root.mountHost(window, func() View {
 		return mount.contentView()
 	})
 	return mount, nil
 }
 
 func (m *windowMount) connect() {
-	m.afterPaintHandle = m.window.ConnectAfterPaint(func(p gui.Painter, bounds geometry.Rectangle) {
-		if fn := m.view.onAfterPaint; fn != nil {
-			fn(p, bounds)
-		}
-	})
+	m.hostMount.connect(func() { m.runtime.windowDestroyed(m) })
 	m.closeHandle = m.window.ConnectCloseRequest(func(allow *bool) {
-		if m.view.onCloseRequest == nil {
-			return
+		if fn := m.view.onCloseRequest; fn != nil {
+			fn(allow)
 		}
-		m.view.onCloseRequest(allow)
-	})
-	m.destroyHandle = m.window.ConnectDestroy(func() {
-		m.runtime.windowDestroyed(m)
 	})
 }
 
@@ -540,12 +625,8 @@ func (m *windowMount) update(view WindowView) error {
 	if err := m.applyWindowProperties(view); err != nil {
 		return err
 	}
-	paint := m.view.onAfterPaint != nil || view.onAfterPaint != nil
 	m.view = view
-	m.root.updateWindow(m.window, m.contentView())
-	if paint {
-		_ = m.window.RequestPaint()
-	}
+	m.hostMount.update(view.commonView())
 	return nil
 }
 
@@ -564,27 +645,11 @@ func (m *windowMount) applyWindowProperties(view WindowView) error {
 	return nil
 }
 
-func (m *windowMount) destroy() {
-	if m.destroying {
-		return
-	}
-	m.destroying = true
-	m.window.Destroy()
-}
-
 func (m *windowMount) disconnect() {
-	m.shortcuts.clear()
-	if m.afterPaintHandle != nil {
-		m.afterPaintHandle.Disconnect()
-		m.afterPaintHandle = nil
-	}
+	m.hostMount.disconnect()
 	if m.closeHandle != nil {
 		m.closeHandle.Disconnect()
 		m.closeHandle = nil
-	}
-	if m.destroyHandle != nil {
-		m.destroyHandle.Disconnect()
-		m.destroyHandle = nil
 	}
 }
 
@@ -597,7 +662,7 @@ func (a *app) windowDestroyed(mount *windowMount) {
 	// End declarative lifetimes before detaching window bindings or invoking
 	// user callbacks. Those notifications may try to activate a borrowed command.
 	if mount.root != nil {
-		mount.root.unmountForWindowDestroy()
+		mount.root.unmountForHostDestroy()
 	}
 	mount.disconnect()
 	if mount.view.onDestroy != nil {
@@ -608,6 +673,10 @@ func (a *app) windowDestroyed(mount *windowMount) {
 }
 
 func (a *app) destroyAll() {
+	if m := a.surface; m != nil {
+		a.surface = nil
+		m.destroy()
+	}
 	for id, mount := range a.windows {
 		delete(a.windows, id)
 		mount.destroy()
@@ -662,8 +731,12 @@ func (a *app) release() {
 	a.dirty = nil
 	a.dirtyOrder = nil
 	a.mu.Unlock()
+	if m := a.surface; m != nil {
+		m.root.unmountForHostDestroy()
+		m.shortcuts.clear()
+	}
 	for _, mount := range a.windows {
-		mount.root.unmountForWindowDestroy()
+		mount.root.unmountForHostDestroy()
 		mount.shortcuts.clear()
 	}
 }

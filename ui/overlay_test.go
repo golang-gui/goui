@@ -13,7 +13,7 @@ import (
 
 func TestOverlayReconcilesMainIndependently(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	build := func(main View, text string) *OverlayView {
 		return Overlay(main, OverlayItem(TextInput().Text(text).ID("find")))
 	}
@@ -47,7 +47,7 @@ func TestOverlayReconcilesMainIndependently(t *testing.T) {
 
 func TestOverlayReconcilesFloatingPositionsAndNilItems(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	builds := 0
 	empty := &testCompositionView{builds: &builds}
 	// 空组合节点现在保留声明位置；用明确 ID 验证插入它后仍保留已有视觉项。
@@ -79,7 +79,7 @@ func TestOverlayReconcilesFloatingPositionsAndNilItems(t *testing.T) {
 
 func TestOverlayIDReorderKeepsPlacementBindingsAndSnapshotOrder(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	o := r.update(Overlay(Label("main"), OverlayItem(Label("a").ID("a")), OverlayItem(Label("b").ID("b")))).(*gui.Overlay)
 	old := slices.Clone(o.Children())
 	s := r.root.state.(*overlayChildren)
@@ -92,7 +92,7 @@ func TestOverlayIDReorderKeepsPlacementBindingsAndSnapshotOrder(t *testing.T) {
 
 func TestOverlayPositionFillAndVisibilityUpdates(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	oldCalls, newCalls := 0, 0
 	oldPosition := func(_, _ geometry.Size, p *geometry.Point) { oldCalls++; p.X = 7 }
 	newPosition := func(available, size geometry.Size, p *geometry.Point) {
@@ -174,7 +174,7 @@ func TestOverlayReleaseOwnsEveryNodeAndSignal(t *testing.T) {
 			inner := outerChildren[1].(*gui.Overlay)
 			innerChildren := inner.Children()
 			if destroying {
-				r.unmountForWindowDestroy()
+				r.unmountForHostDestroy()
 				if !slices.Equal(o.Children(), outerChildren) || !slices.Equal(inner.Children(), innerChildren) {
 					t.Fatal("UI detached widgets before Window could destroy them")
 				}
@@ -189,7 +189,7 @@ func TestOverlayReleaseOwnsEveryNodeAndSignal(t *testing.T) {
 					}
 				}
 			}
-			r.unmountWindow()
+			r.unmountHost()
 			for _, tracker := range trackers {
 				if tracker.mounts != 1 || tracker.unmounts != 1 {
 					t.Fatalf("child was not released exactly once: %+v", tracker)
@@ -220,7 +220,7 @@ func (w *overlayInputWindow) DispatchEvent(event events.Event) error {
 
 func TestOverlayBindingSnapshotAndPointerRouting(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	win := &overlayInputWindow{testWindow: newTestWindow()}
 	background, floating, panel := 0, 0, 0
 	build := func(show bool) *OverlayView {
@@ -237,7 +237,7 @@ func TestOverlayBindingSnapshotAndPointerRouting(t *testing.T) {
 			).Visible(show)).Fill(true),
 		)
 	}
-	o := r.updateWindow(win, build(false)).(*gui.Overlay)
+	o := r.updateHost(win, build(false)).(*gui.Overlay)
 	o.Arrange(geometry.Rect(0, 0, 300, 200))
 	info := o.Snapshot()
 	if info.Role != gui.RoleBox || len(info.Children) != 3 || info.Children[1].Role != gui.RoleButton || info.Children[2].Visible {
@@ -256,7 +256,7 @@ func TestOverlayBindingSnapshotAndPointerRouting(t *testing.T) {
 	if background != 1 || floating != 1 {
 		t.Fatal("floating content/outside input routing failed")
 	}
-	r.updateWindow(win, build(true))
+	r.updateHost(win, build(true))
 	o.Arrange(geometry.Rect(0, 0, 300, 200))
 	info = o.Snapshot()
 	confirm := info.Children[2]
@@ -268,7 +268,7 @@ func TestOverlayBindingSnapshotAndPointerRouting(t *testing.T) {
 	if background != 1 || floating != 1 || panel != 1 {
 		t.Fatal("mask/panel did not block underlying siblings")
 	}
-	r.updateWindow(win, build(false))
+	r.updateHost(win, build(false))
 	click(geometry.Point{X: 10, Y: 10})
 	if background != 2 {
 		t.Fatal("hiding confirmation did not restore background input")
@@ -278,7 +278,7 @@ func TestOverlayBindingSnapshotAndPointerRouting(t *testing.T) {
 // 未 Show 的独立 Popover 是真实 GUI Root，不创建原生窗口或依赖桌面。
 func TestOverlayModalLifecycleAndFocus(t *testing.T) {
 	r, host := newRoot(), gui.NewPopover(nil, nil)
-	t.Cleanup(func() { r.unmountWindow(); host.Destroy() })
+	t.Cleanup(func() { r.unmountHost(); host.Destroy() })
 	focus := host.(gui.EventTarget)
 	build := func(show bool, item func(*OverlayItemView) *OverlayItemView) View {
 		floating := OverlayItem(VBox(Button().ID("first"), Button().ID("second")).ID("layer").Visible(show))
@@ -335,7 +335,7 @@ func TestOverlayModalLifecycleAndFocus(t *testing.T) {
 
 func TestOverlayModalInputWithoutFill(t *testing.T) {
 	r, host := newRoot(), gui.NewPopover(nil, nil)
-	t.Cleanup(func() { r.unmountWindow(); host.Destroy() })
+	t.Cleanup(func() { r.unmountHost(); host.Destroy() })
 	focus := host.(gui.EventTarget)
 	outside, inside, keys := 0, 0, 0
 	build := func(modal bool) View {
@@ -443,7 +443,7 @@ func TestOverlayDoesNotReleaseWidgetOwnedModal(t *testing.T) {
 	scope := gui.NewModalScope(child)
 	t.Cleanup(scope.Destroy)
 	r.update(Overlay(nil, OverlayItem(Label("updated"))))
-	r.unmountWindow()
+	r.unmountHost()
 	if _, exists := child.Snapshot().Attributes[gui.ModalInfoKey]; !exists {
 		t.Fatal("未声明 Modal 的覆盖项释放了控件自有的边界")
 	}
@@ -451,7 +451,7 @@ func TestOverlayDoesNotReleaseWidgetOwnedModal(t *testing.T) {
 
 func TestOverlayModalReorderAndWindowRelease(t *testing.T) {
 	r, host := newRoot(), gui.NewPopover(nil, nil)
-	t.Cleanup(func() { r.unmountWindow(); host.Destroy() })
+	t.Cleanup(func() { r.unmountHost(); host.Destroy() })
 	item := func(id string) *OverlayItemView { return OverlayItem(Button().ID(id)).Modal(true) }
 	o := r.update(Overlay(nil, item("a"), item("b"))).(*gui.Overlay)
 	host.SetWidget(o)
@@ -465,7 +465,7 @@ func TestOverlayModalReorderAndWindowRelease(t *testing.T) {
 	if state.items[a].scope != sa || state.items[b].scope != sb || !sa.Active() || sb.Active() {
 		t.Fatal("声明重排重新创建了 Scope 或未改变前台模态")
 	}
-	r.unmountForWindowDestroy()
+	r.unmountForHostDestroy()
 	if sa.Active() || sb.Active() || state.items != nil || !slices.Equal(o.Children(), []gui.Widget{b, a}) {
 		t.Fatal("窗口释放未清理 UI 关联，或提前拆走了 GUI 控件树")
 	}

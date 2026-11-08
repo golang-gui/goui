@@ -12,7 +12,7 @@ import (
 
 func TestCommandGroupSharesOperationAndRetainsIdentity(t *testing.T) {
 	r := newRoot()
-	defer r.unmountWindow()
+	defer r.unmountHost()
 	w := &overlayInputWindow{testWindow: newTestWindow()}
 	first, current := 0, 0
 	build := func(fn func(), enabled bool) *CommandGroupView {
@@ -21,7 +21,7 @@ func TestCommandGroupSharesOperationAndRetainsIdentity(t *testing.T) {
 			Label("editor"),
 		).Shortcuts(Shortcut(KeyF5).Command("copy"))).Commands(Command("copy").Enabled(enabled).OnActivate(fn))
 	}
-	box := r.updateWindow(w, build(func() { first++ }, true))
+	box := r.updateHost(w, build(func() { first++ }, true))
 	menu := box.Children()[0].(*gui.MenuButton)
 	command := menu.Menu().ItemAt(0).Command()
 	if command == nil || len(command.Shortcuts()) != 1 || first != 0 {
@@ -35,7 +35,7 @@ func TestCommandGroupSharesOperationAndRetainsIdentity(t *testing.T) {
 	}
 	press()
 	for range 3 {
-		r.updateWindow(w, build(func() { current++ }, true))
+		r.updateHost(w, build(func() { current++ }, true))
 	}
 	if menu.Menu().ItemAt(0).Command() != command || len(command.Shortcuts()) != 1 {
 		t.Fatal("重建替换操作或重复关联")
@@ -44,12 +44,12 @@ func TestCommandGroupSharesOperationAndRetainsIdentity(t *testing.T) {
 	if first != 1 || current != 1 {
 		t.Fatal("执行了过期或重复回调")
 	}
-	r.updateWindow(w, build(func() { current++ }, false))
+	r.updateHost(w, build(func() { current++ }, false))
 	press()
 	if command.Enabled() || current != 1 || !menu.Menu().ItemAt(0).Enabled() {
 		t.Fatal("命令禁用没有生效或覆盖了菜单局部设置")
 	}
-	r.unmountWindow()
+	r.unmountHost()
 	if command.Enabled() || len(command.Shortcuts()) != 0 {
 		t.Fatal("卸载未禁用旧操作或解除快捷键关联")
 	}
@@ -61,7 +61,7 @@ func TestCommandGroupSharesOperationAndRetainsIdentity(t *testing.T) {
 
 func TestCommandGroupShadowFallbackAndRemoval(t *testing.T) {
 	r := newRoot()
-	defer r.unmountWindow()
+	defer r.unmountHost()
 	makeInner := func(commands ...*CommandView) *CommandGroupView {
 		return CommandGroup(MenuButton("Inner").Menu(MenuItem("Copy").Command("copy"), MenuItem("Other").Command("other"))).Commands(commands...)
 	}
@@ -90,7 +90,7 @@ func TestCommandGroupShadowFallbackAndRemoval(t *testing.T) {
 
 func TestCommandGroupUpdatesRetainedDescendants(t *testing.T) {
 	r := newRoot()
-	defer r.unmountWindow()
+	defer r.unmountHost()
 	menuView := MenuButton("Edit").Menu(MenuItem("Copy").Command("copy"))
 	view := func(commands ...*CommandView) *CommandGroupView { return CommandGroup(menuView).Commands(commands...) }
 	menu := r.update(view(Command("copy"))).(*gui.MenuButton)
@@ -111,7 +111,7 @@ func TestCommandGroupRejectsDuplicateDefinitions(t *testing.T) {
 	for _, views := range [][]*CommandView{{Command("copy"), Command("copy")}, {{id: ""}}} {
 		func() {
 			r := newRoot()
-			defer r.unmountWindow()
+			defer r.unmountHost()
 			defer func() {
 				if recover() == nil {
 					t.Error("接受了重复或空命令定义")
@@ -124,7 +124,7 @@ func TestCommandGroupRejectsDuplicateDefinitions(t *testing.T) {
 
 func TestCommandGroupContextMenuAndDirectCallbackModes(t *testing.T) {
 	r := newRoot()
-	defer r.unmountWindow()
+	defer r.unmountHost()
 	var ctx BuildContext
 	probe := objectScope("probe", Label("probe"), func() any { return new(int) })
 	probe.read = func(owner BuildContext) any { ctx = owner; return new(int) }
@@ -145,7 +145,7 @@ func TestCommandGroupContextMenuAndDirectCallbackModes(t *testing.T) {
 	if _, ok := findCommand(ctx, "missing"); ok {
 		t.Fatal("未知 ID 错误解析")
 	}
-	r.unmountWindow()
+	r.unmountHost()
 	if _, ok := findCommand(ctx, "copy"); ok {
 		t.Fatal("过期上下文仍可解析")
 	}
@@ -153,8 +153,8 @@ func TestCommandGroupContextMenuAndDirectCallbackModes(t *testing.T) {
 
 func TestCommandGroupTransferRebindsMenuAndShortcut(t *testing.T) {
 	a, b := transferRoots()
-	defer a.unmountWindow()
-	defer b.unmountWindow()
+	defer a.unmountHost()
+	defer b.unmountHost()
 	first, second := 0, 0
 	source := a.update(CommandGroup(VBox(
 		MenuButton("Moving").ID("moving").Menu(MenuItem("Run").Command("run")).Shortcuts(Shortcut(KeyF5).Command("run")),
@@ -179,7 +179,7 @@ func TestCommandGroupTransferRebindsMenuAndShortcut(t *testing.T) {
 
 func TestCommandGroupNotifiesConsumersWithoutRebuildingThem(t *testing.T) {
 	r := newRoot()
-	defer r.unmountWindow()
+	defer r.unmountHost()
 	inner := CommandGroup(MenuButton("Inner").Menu(MenuItem("Copy").Command("copy"))).Commands(Command("copy"))
 	menu := r.update(CommandGroup(inner).Commands(Command("copy"))).(*gui.MenuButton)
 	original := menu.Menu().ItemAt(0).Command()
@@ -200,7 +200,7 @@ func TestCommandGroupNotifiesConsumersWithoutRebuildingThem(t *testing.T) {
 
 func TestCommandContextMenuTracksScopeWhileObserved(t *testing.T) {
 	r := newRoot()
-	defer r.unmountWindow()
+	defer r.unmountHost()
 	child := Label("content")
 	r.update(CommandGroup(CommandGroup(child).Commands(Command("copy"))).Commands(Command("copy")))
 	ctx := &buildContext{node: r.root.body.body}
@@ -225,7 +225,7 @@ func TestCommandContextMenuTracksScopeWhileObserved(t *testing.T) {
 
 func TestCommandShortcutNotificationCanUnmountOwner(t *testing.T) {
 	r := newRoot()
-	defer r.unmountWindow()
+	defer r.unmountHost()
 	view := func(key Key) *CommandGroupView {
 		return CommandGroup(Label("editor").Shortcuts(Shortcut(key).Command("run"), Shortcut(KeyF6).Command("run"))).Commands(Command("run"))
 	}
@@ -235,7 +235,7 @@ func TestCommandShortcutNotificationCanUnmountOwner(t *testing.T) {
 	command.ConnectShortcuts(func() {
 		if armed {
 			armed = false
-			r.unmountWindow()
+			r.unmountHost()
 		}
 	})
 	r.update(view(KeyF7))
@@ -246,13 +246,13 @@ func TestCommandShortcutNotificationCanUnmountOwner(t *testing.T) {
 
 func TestCommandReferenceLookupCanReleaseOwner(t *testing.T) {
 	r := newRoot()
-	defer r.unmountWindow()
+	defer r.unmountHost()
 	armed := false
 	child := objectScope("interceptor", MenuButton("Menu").Menu(MenuItem("Run").Command("run")), func() any { return new(int) })
 	child.read = func(BuildContext) any {
 		if armed {
 			armed = false
-			r.unmountWindow()
+			r.unmountHost()
 		}
 		return new(int)
 	}
@@ -270,7 +270,7 @@ func TestCommandReferenceLookupCanReleaseOwner(t *testing.T) {
 // 定义附着在已有入口上；先引用后声明以及跨分支移动在同一轮提交。
 func TestCommandDescendantDefinitionsAndMoves(t *testing.T) {
 	r := newRoot()
-	defer r.unmountWindow()
+	defer r.unmountHost()
 	calls := 0
 	build := func(left bool, callback func()) View {
 		a, b := Label("left"), Label("right")
@@ -330,7 +330,7 @@ func TestCommandDescendantDefinitionErrors(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRoot()
-			defer r.unmountWindow()
+			defer r.unmountHost()
 			defer func() {
 				if message, ok := recover().(string); !ok || !strings.Contains(message, tc.want) {
 					t.Fatalf("声明错误不符：%q，期望包含 %q", message, tc.want)
@@ -451,8 +451,8 @@ func TestCommandDescendantLocalAddRemoveAndFallback(t *testing.T) {
 
 func TestCommandDescendantTransferMovesDefinitionAndReferences(t *testing.T) {
 	a, b := transferRoots()
-	defer a.unmountWindow()
-	defer b.unmountWindow()
+	defer a.unmountHost()
+	defer b.unmountHost()
 	calls := 0
 	source := a.update(CommandGroup(VBox(
 		MenuButton("Source").Menu(MenuItem("Run").Command("run")),
@@ -477,12 +477,12 @@ func TestCommandDescendantTransferMovesDefinitionAndReferences(t *testing.T) {
 		t.Fatal("移交后没有使用原定义的业务回调")
 	}
 	// 源窗口销毁不应夺走已移交定义的所有权。
-	a.unmountWindow()
+	a.unmountHost()
 	next.Activate()
 	if calls != 2 || !next.Enabled() {
 		t.Fatal("源窗口销毁影响了目标定义")
 	}
-	b.unmountWindow()
+	b.unmountHost()
 	if next.Enabled() {
 		t.Fatal("目标卸载没有清理移交的操作")
 	}
@@ -490,14 +490,14 @@ func TestCommandDescendantTransferMovesDefinitionAndReferences(t *testing.T) {
 
 func TestCommandBatchedPublicationCanUnmountScope(t *testing.T) {
 	r := newRoot()
-	defer r.unmountWindow()
+	defer r.unmountHost()
 	build := func(enabled bool) View {
 		return CommandGroup(MenuButton("Run").Menu(MenuItem("A").DefineCommand(Command("a").Enabled(enabled)), MenuItem("B").DefineCommand(Command("b").Enabled(enabled))))
 	}
 	r.update(build(true))
 	s := r.root.state.(*commandGroup)
 	for _, entry := range s.commands {
-		entry.command.ConnectEnabled(func(bool) { r.unmountWindow() })
+		entry.command.ConnectEnabled(func(bool) { r.unmountHost() })
 	}
 	r.update(build(false))
 	if r.root != nil {
@@ -541,8 +541,8 @@ func TestCommandBindEnabledFollowsTransferredDefinition(t *testing.T) {
 
 func TestCommandGroupTransferRetainsPendingDefinitions(t *testing.T) {
 	a, b := transferRoots()
-	defer a.unmountWindow()
-	defer b.unmountWindow()
+	defer a.unmountHost()
+	defer b.unmountHost()
 	// 模拟初次构建已完成、作用域的批次完成钩子尚未执行即发生移交。
 	a.reconcile(VBox(CommandGroup(VBox(
 		MenuButton("Moving").Menu(MenuItem("Run").DefineCommand(Command("run"))),
@@ -576,7 +576,7 @@ func TestCommandEntryDefinitionsShareOperation(t *testing.T) {
 	for _, menuDefines := range []bool{false, true} {
 		t.Run(map[bool]string{false: "shortcut", true: "menu"}[menuDefines], func(t *testing.T) {
 			r := newRoot()
-			defer r.unmountWindow()
+			defer r.unmountHost()
 			w := &overlayInputWindow{testWindow: newTestWindow()}
 			calls := 0
 			build := func(callback func(), menuEnabled, shortcutEnabled bool) View {
@@ -590,7 +590,7 @@ func TestCommandEntryDefinitionsShareOperation(t *testing.T) {
 				}
 				return CommandGroup(VBox(MenuButton("Menu").Menu(item), Label("editor")).Shortcuts(shortcut))
 			}
-			box := r.updateWindow(w, build(func() { calls++ }, false, true))
+			box := r.updateHost(w, build(func() { calls++ }, false, true))
 			button := box.Children()[0].(*gui.MenuButton)
 			model := button.Menu()
 			command := model.ItemAt(0).Command()
@@ -604,7 +604,7 @@ func TestCommandEntryDefinitionsShareOperation(t *testing.T) {
 			if command == nil || !command.Enabled() || calls != 1 || len(command.Shortcuts()) != 1 || model.ItemAt(0).Enabled() || button.Opened() {
 				t.Fatal("定义未在菜单打开前注册，或入口局部禁用影响了共享命令")
 			}
-			r.updateWindow(w, build(func() { calls += 10 }, false, true))
+			r.updateHost(w, build(func() { calls += 10 }, false, true))
 			if button.Menu() != model || model.ItemAt(0).Command() != command {
 				t.Fatal("最新定义重建了未变化的模型或操作")
 			}
@@ -612,7 +612,7 @@ func TestCommandEntryDefinitionsShareOperation(t *testing.T) {
 			if calls != 11 {
 				t.Fatal("定义使用了过期回调或重复执行业务")
 			}
-			r.updateWindow(w, build(func() { calls += 100 }, true, false))
+			r.updateHost(w, build(func() { calls += 100 }, true, false))
 			press()
 			if calls != 11 || !command.Enabled() || !button.Menu().ItemAt(0).Enabled() {
 				t.Fatal("Shortcut 局部禁用影响了命令或菜单入口")
@@ -676,22 +676,22 @@ func TestCommandDefinitionHostErrors(t *testing.T) {
 		}, "DefineCommand requires a mounted command group"},
 		{"shortcut-outside-scope", func() {
 			r := newRoot()
-			defer r.unmountWindow()
+			defer r.unmountHost()
 			r.update(Label("editor").Shortcuts(Shortcut(KeyF5).DefineCommand(Command("run"))))
 		}, "DefineCommand requires an ancestor CommandGroup"},
 		{"duplicate-menu-definitions", func() {
 			r := newRoot()
-			defer r.unmountWindow()
+			defer r.unmountHost()
 			r.update(CommandGroup(MenuButton("Menu").Menu(MenuItem("A").DefineCommand(Command("run")), MenuItem("B").DefineCommand(Command("run")))))
 		}, `duplicate or empty command ID "run"`},
 		{"duplicate-shortcut-definitions", func() {
 			r := newRoot()
-			defer r.unmountWindow()
+			defer r.unmountHost()
 			r.update(CommandGroup(Label("editor").Shortcuts(Shortcut(KeyF5).DefineCommand(Command("run")), Shortcut(KeyF6).DefineCommand(Command("run")))))
 		}, `duplicate or empty command ID "run"`},
 		{"duplicate-across-hosts", func() {
 			r := newRoot()
-			defer r.unmountWindow()
+			defer r.unmountHost()
 			r.update(CommandGroup(MenuButton("Menu").Menu(MenuItem("Run").DefineCommand(Command("run"))).Shortcuts(Shortcut(KeyF5).DefineCommand(Command("run")))))
 		}, `duplicate command ID "run"`},
 	} {
@@ -711,7 +711,7 @@ func TestCommandDefinitionLookupCanReleaseHost(t *testing.T) {
 	for _, host := range []string{"menu", "shortcut"} {
 		t.Run(host, func(t *testing.T) {
 			r := newRoot()
-			defer r.unmountWindow()
+			defer r.unmountHost()
 			armed := false
 			build := func() View {
 				item := MenuItem("Run").Command("run")
@@ -726,7 +726,7 @@ func TestCommandDefinitionLookupCanReleaseHost(t *testing.T) {
 				interceptor.read = func(BuildContext) any {
 					if armed {
 						armed = false
-						r.unmountWindow()
+						r.unmountHost()
 					}
 					return new(int)
 				}

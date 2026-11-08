@@ -7,7 +7,7 @@ import (
 
 func TestBorderBoxReconciliation(t *testing.T) {
 	root := newRoot()
-	t.Cleanup(root.unmountWindow)
+	t.Cleanup(root.unmountHost)
 	b := root.update(BorderBox(Label("first"))).(*gui.BorderBox)
 	label := b.Child().(*gui.Label)
 	if !b.Resizable() || b.ResizeWidth() != 6 {

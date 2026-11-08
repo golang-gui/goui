@@ -22,6 +22,11 @@ func (c *Coordinator) find(widget gui.Widget) *node {
 		return n
 	}
 	if r.runtime != nil {
+		if m := r.runtime.surface; m != nil && !m.destroying && m.root != r {
+			if n := findNode(m.root.root, widget); n != nil {
+				return n
+			}
+		}
 		for _, mount := range r.runtime.windows {
 			if !mount.destroying && mount.root != r {
 				if n := findNode(mount.root.root, widget); n != nil {

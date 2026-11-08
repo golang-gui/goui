@@ -10,7 +10,7 @@ import (
 
 func TestContextMenuBindingReplacesCallbackAndRemovesController(t *testing.T) {
 	r := newRoot()
-	defer r.unmountWindow()
+	defer r.unmountHost()
 	first, second := 0, 0
 	w := r.update(Label("menu").OnContextMenu(func(ctx gui.EventContext) { first++; ctx.StopPropagation() }))
 	w.Arrange(geometry.Rect(0, 0, 100, 40))
@@ -39,7 +39,7 @@ func TestContextMenuBindingReplacesCallbackAndRemovesController(t *testing.T) {
 
 func TestLabelWrapModeBindingRestoresDefault(t *testing.T) {
 	r := newRoot()
-	defer r.unmountWindow()
+	defer r.unmountHost()
 	w := r.update(Label("wrapped").WrapMode(gui.WrapWordChar)).(*gui.Label)
 	if w.WrapMode() != gui.WrapWordChar {
 		t.Fatal(w.WrapMode())

@@ -10,7 +10,7 @@ import (
 // Ordinary nodes and mounting targets, without a display or native window.
 func transferRoots() (*root, *root) {
 	a, b := newRoot(), newRoot()
-	runtime := &app{windows: map[string]*windowMount{"a": {root: a}, "b": {root: b}}}
+	runtime := &app{windows: map[string]*windowMount{"a": {hostMount: &hostMount{root: a}}, "b": {hostMount: &hostMount{root: b}}}}
 	a.runtime, b.runtime = runtime, runtime
 	return a, b
 }
@@ -53,11 +53,11 @@ func TestCoordinatorTransferRetainsStateAndSurvivesBothUpdateOrders(t *testing.T
 			updateSource()
 			updateTarget()
 		}
-		a.unmountWindow()
+		a.unmountHost()
 		if target.Children()[0] != original || tracker.mounts != 1 || tracker.unmounts != 0 || tracker.updates != 2 || original.(*gui.Label).Text() != "after" || owner.find(original) != nil {
 			t.Fatalf("node did not survive update/source release: %+v", tracker)
 		}
-		b.unmountWindow()
+		b.unmountHost()
 		if tracker.unmounts != 1 || moved.find(original) != nil {
 			t.Fatal("destination did not release node exactly once")
 		}
@@ -137,8 +137,8 @@ func TestCoordinatorTransferFailureAndPanicRetainRecord(t *testing.T) {
 		if a.transferring || b.transferring || a.root.children[0].nodes[0] != n || n.root != a || len(b.root.children[0].nodes) != 0 || tracker.unmounts != 0 {
 			t.Fatal("failure lost ownership or left roots locked")
 		}
-		a.unmountWindow()
-		b.unmountWindow()
+		a.unmountHost()
+		b.unmountHost()
 	}
 }
 
@@ -168,8 +168,8 @@ func TestCoordinatorTransferValidatesBeforeMove(t *testing.T) {
 	if c.TransferChild(child, b.widget(), nil, nil) == nil {
 		t.Fatal("nil move accepted")
 	}
-	a.unmountWindow()
-	b.unmountWindow()
+	a.unmountHost()
+	b.unmountHost()
 }
 
 func TestCoordinatorEmptyPageIsStillAnOrdinaryNode(t *testing.T) {
@@ -188,8 +188,8 @@ func TestCoordinatorEmptyPageIsStillAnOrdinaryNode(t *testing.T) {
 	if target.Children()[0] != child {
 		t.Fatal("empty page had no retained node")
 	}
-	a.unmountWindow()
-	b.unmountWindow()
+	a.unmountHost()
+	b.unmountHost()
 }
 
 func TestCoordinatorSameRootAndSourceReleaseDuringMove(t *testing.T) {
@@ -211,7 +211,7 @@ func TestCoordinatorSameRootAndSourceReleaseDuringMove(t *testing.T) {
 			source.RemoveChild(n.widget)
 			target.AddChild(n.widget)
 			if !sameRoot {
-				a.unmountWindow()
+				a.unmountHost()
 			}
 			return nil
 		}, nil); err != nil {
@@ -220,8 +220,8 @@ func TestCoordinatorSameRootAndSourceReleaseDuringMove(t *testing.T) {
 		if targetNode.children[0].nodes[0] != n || tracker.mounts != 1 || tracker.unmounts != 0 {
 			t.Fatal("source release lost held node")
 		}
-		a.unmountWindow()
-		b.unmountWindow()
+		a.unmountHost()
+		b.unmountHost()
 		if tracker.unmounts != 1 {
 			t.Fatal("node not released exactly once")
 		}
@@ -235,8 +235,8 @@ func TestCoordinatorReleasesHeldRecordWhenBothRootsDie(t *testing.T) {
 	target := b.update(VBox())
 	child := a.widget().Children()[0]
 	if err := (&Coordinator{owner: a.root}).TransferChild(child, target, func() error {
-		a.unmountWindow()
-		b.unmountWindow()
+		a.unmountHost()
+		b.unmountHost()
 		return errors.New("both hosts destroyed")
 	}, nil); err == nil {
 		t.Fatal("destruction reported success")
@@ -259,8 +259,8 @@ func TestCoordinatorTransferRejectsNestedReconciliation(t *testing.T) {
 	if got == nil || a.transferring || b.transferring || b.widget() != target || len(a.root.children[0].nodes) != 1 {
 		t.Fatal("nested reconciliation damaged ownership")
 	}
-	a.unmountWindow()
-	b.unmountWindow()
+	a.unmountHost()
+	b.unmountHost()
 }
 
 func TestCoordinatorTransferChecksActualGUIOwnership(t *testing.T) {
@@ -285,8 +285,8 @@ func TestCoordinatorTransferChecksActualGUIOwnership(t *testing.T) {
 						panic("original panic")
 					}
 					if behavior == "destroyed" {
-						a.unmountWindow()
-						b.unmountWindow()
+						a.unmountHost()
+						b.unmountHost()
 					}
 					return nil
 				}, nil)
@@ -303,8 +303,8 @@ func TestCoordinatorTransferChecksActualGUIOwnership(t *testing.T) {
 					t.Fatal("orphan not released")
 				}
 			}
-			a.unmountWindow()
-			b.unmountWindow()
+			a.unmountHost()
+			b.unmountHost()
 		})
 	}
 }
@@ -332,6 +332,6 @@ func TestCoordinatorTransferPublishesAfterModelCommit(t *testing.T) {
 	if !published {
 		t.Fatal("deferred notification was lost")
 	}
-	a.unmountWindow()
-	b.unmountWindow()
+	a.unmountHost()
+	b.unmountHost()
 }

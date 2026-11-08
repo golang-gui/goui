@@ -17,7 +17,7 @@ type root struct {
 	reconciling   bool
 	mu            sync.Mutex
 	root          *node
-	window        gui.Window
+	host          gui.Surface
 	build         func() View
 	updatePending bool
 	destroyHandle signal.Handle
@@ -82,19 +82,19 @@ func (r *root) update(view View) gui.Widget {
 	return r.widget()
 }
 
-func (r *root) updateWindow(window gui.Window, view View) gui.Widget {
+func (r *root) updateHost(host gui.Surface, view View) gui.Widget {
 	epoch := r.epoch
 	r.reconcile(view)
 	widget := r.widget()
-	if window != nil && r.epoch == epoch {
-		window.SetWidget(widget)
+	if host != nil && r.epoch == epoch {
+		host.SetWidget(widget)
 	}
 	r.flushAfterUpdate()
 	return widget
 }
 
 func (r *root) flushAfterUpdate() {
-	if r.runtime != nil && r.runtime.reconcilingWindows {
+	if r.runtime != nil && r.runtime.reconcilingHosts {
 		return
 	}
 	calls := r.afterUpdate
@@ -106,18 +106,18 @@ func (r *root) flushAfterUpdate() {
 	}
 }
 
-func (r *root) mountWindow(window gui.Window, build func() View) {
+func (r *root) mountHost(host gui.Surface, build func() View) {
 	r.unmount(true)
 
 	var destroyHandle signal.Handle
-	if window != nil {
-		destroyHandle = window.ConnectDestroy(func() {
-			r.unmountForWindowDestroy()
+	if host != nil {
+		destroyHandle = host.ConnectDestroy(func() {
+			r.unmountForHostDestroy()
 		})
 	}
 
 	r.mu.Lock()
-	r.window = window
+	r.host = host
 	r.build = build
 	r.updatePending = false
 	r.destroyHandle = destroyHandle
@@ -153,7 +153,7 @@ func (r *root) updateNow() gui.Widget {
 	return r.updateMounted()
 }
 
-func (r *root) unmountWindow() {
+func (r *root) unmountHost() {
 	r.unmount(true)
 }
 
@@ -171,7 +171,7 @@ func (r *root) runPendingUpdate() {
 
 func (r *root) updateMounted() gui.Widget {
 	r.mu.Lock()
-	window := r.window
+	host := r.host
 	build := r.build
 	r.mu.Unlock()
 
@@ -179,23 +179,23 @@ func (r *root) updateMounted() gui.Widget {
 		return r.widget()
 	}
 	view := build()
-	if window != nil {
-		return r.updateWindow(window, view)
+	if host != nil {
+		return r.updateHost(host, view)
 	}
 	return r.update(view)
 }
 
-func (r *root) unmount(detachWindow bool) {
+func (r *root) unmount(detachHost bool) {
 	r.mu.Lock()
 	r.epoch++
-	window := r.window
+	host := r.host
 	destroyHandle := r.destroyHandle
 	oldRoot := r.root
 	var oldWidget gui.Widget
 	if oldRoot != nil {
 		oldWidget = oldRoot.widget
 	}
-	r.window = nil
+	r.host = nil
 	r.build = nil
 	r.updatePending = false
 	r.destroyHandle = nil
@@ -208,17 +208,17 @@ func (r *root) unmount(detachWindow bool) {
 	}
 	r.release(oldRoot, true)
 
-	if detachWindow && window != nil && oldWidget != nil && window.Widget() == oldWidget {
-		window.SetWidget(nil)
+	if detachHost && host != nil && oldWidget != nil && host.Widget() == oldWidget {
+		host.SetWidget(nil)
 	}
 }
 
-func (r *root) unmountForWindowDestroy() {
+func (r *root) unmountForHostDestroy() {
 	r.mu.Lock()
 	r.epoch++
 	destroyHandle := r.destroyHandle
 	oldRoot := r.root
-	r.window = nil
+	r.host = nil
 	r.build = nil
 	r.updatePending = false
 	r.destroyHandle = nil
@@ -715,7 +715,7 @@ func (ctx *buildContext) UpdateChildren(target Container, children []View, apply
 			}
 		}
 	}
-	// Relative moves preserve focus, mounts and window resources. Non-managed
+	// Relative moves preserve focus, mounts and host resources. Non-managed
 	// children remain owned by the target; only the managed list is ordered here.
 	var sibling gui.Widget
 	for i := len(next) - 1; i >= 0; i-- {
@@ -947,8 +947,8 @@ func (r *root) updateLocal(n *node) {
 	}
 	live := func() bool { return !output.released && output.root == r && r.epoch == epoch }
 	if output.target == nil {
-		if r.root == output && r.window != nil {
-			r.window.SetWidget(output.widget)
+		if r.root == output && r.host != nil {
+			r.host.SetWidget(output.widget)
 		}
 	} else if target := output.target; target.bin != nil {
 		target.bin.SetChild(output.widget)

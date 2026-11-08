@@ -14,7 +14,7 @@ func (drawingAreaQueryPainter) PixelScale() float32 { return 1 }
 
 func TestDrawingAreaLatestCallbacksAndSingleQueryConnection(t *testing.T) {
 	root := newRoot()
-	defer root.unmountWindow()
+	defer root.unmountHost()
 	generation, calls, got, queries := 1, 0, 0, 0
 	view := func() View {
 		captured := generation
@@ -46,7 +46,7 @@ func TestDrawingAreaUnmountClearsCallbacks(t *testing.T) {
 	called := 0
 	a := root.update(DrawingArea(func(Painter, geometry.Size) { called++ }).OnShouldDraw(func(v *bool) { called += 100; *v = false })).(*gui.DrawingArea)
 	a.Arrange(geometry.Rect(0, 0, 8, 5))
-	root.unmountWindow()
+	root.unmountHost()
 	// 脱离 UI 后借用旧 GUI 对象，代理不得再访问已释放的声明闭包。
 	a.DrawFunc()(nil, geometry.Size{Width: 8, Height: 5})
 	a.ConnectShouldDraw(func(v *bool) { *v = false })
@@ -58,8 +58,8 @@ func TestDrawingAreaUnmountClearsCallbacks(t *testing.T) {
 
 func TestDrawingAreaDeclarationTransfersLatestState(t *testing.T) {
 	a, b := transferRoots()
-	defer a.unmountWindow()
-	defer b.unmountWindow()
+	defer a.unmountHost()
+	defer b.unmountHost()
 	source := a.update(VBox(DrawingArea(func(Painter, geometry.Size) {}).ID("moving"))).(*gui.LinearBox)
 	target := b.update(VBox()).(*gui.LinearBox)
 	moving := source.Children()[0].(*gui.DrawingArea)
@@ -68,7 +68,7 @@ func TestDrawingAreaDeclarationTransfersLatestState(t *testing.T) {
 	}
 	called, queries := 0, 0
 	b.update(VBox(DrawingArea(func(Painter, geometry.Size) { called++ }).ID("moving").OnShouldDraw(func(v *bool) { queries++; *v = false })))
-	a.unmountWindow()
+	a.unmountHost()
 	moving.Arrange(geometry.Rect(0, 0, 8, 5))
 	moving.Paint(drawingAreaQueryPainter{})
 	moving.DrawFunc()(nil, geometry.Size{Width: 8, Height: 5})
