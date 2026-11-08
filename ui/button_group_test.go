@@ -8,7 +8,7 @@ import (
 
 func TestButtonGroupCoordinatesChildrenAndPreservesIdentity(t *testing.T) {
 	root := newRoot()
-	t.Cleanup(root.unmountWindow)
+	t.Cleanup(root.unmountHost)
 	group := root.update(ButtonGroup(Button("First").ID("first"), MenuButton("Menu").Menu(MenuItem("Open", nil)))).(*gui.ButtonGroup)
 	first, menu := group.Children()[0], group.Children()[1]
 	if first.Parent() != group || menu.Parent() != group || group.Direction() != layout.DirectionHorizontal {

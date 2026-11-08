@@ -10,7 +10,7 @@ import (
 
 func TestWrapUpdatesAndRestoresDefaults(t *testing.T) {
 	root := newRoot()
-	t.Cleanup(root.unmountWindow)
+	t.Cleanup(root.unmountHost)
 	box := root.update(HWrap(Label("first"), nil).Spacing(8).LineSpacing(6).Padding(12).MainAlign(layout.MainEnd).CrossAlign(layout.CrossBaseline)).(*gui.WrapBox)
 	if box.Spacing() != 8 || box.LineSpacing() != 6 || box.Padding() != geometry.UniformInsets(12) || box.MainAlign() != layout.MainEnd || box.CrossAlign() != layout.CrossBaseline || len(box.Children()) != 1 {
 		t.Fatal("modifiers not applied")
@@ -35,7 +35,7 @@ func TestWrapUpdatesAndRestoresDefaults(t *testing.T) {
 
 func TestWrapLayoutAndSnapshot(t *testing.T) {
 	root := newRoot()
-	t.Cleanup(root.unmountWindow)
+	t.Cleanup(root.unmountHost)
 	box := root.update(HWrap(VBox().MinSize(40, 10), VBox().MinSize(40, 20), VBox().MinSize(40, 10)).Spacing(5).LineSpacing(3)).(*gui.WrapBox)
 	box.Arrange(geometry.Rect(5, 6, 90, 100))
 	info := box.Snapshot()

@@ -151,7 +151,7 @@ func TestFileDialogResolvesOwnerAndReportsStoppedApp(t *testing.T) {
 	native := &dialogTestService{}
 	d := FileDialog{current: a, dlg: native}
 	w := newTestWindow()
-	a.windows["main"] = &windowMount{window: w, root: newRoot()}
+	a.windows["main"] = &windowMount{hostMount: newHostMount(a, w, Surface("main")), window: w}
 	count := 0
 	if err := d.OpenFile("main", DialogOptions{}, func([]FileAccess, error) { count++ }); err != nil {
 		t.Fatal(err)

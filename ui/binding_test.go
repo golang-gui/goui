@@ -299,7 +299,7 @@ func TestBuildPanicRestoresCaptureAndPreviousDependencies(t *testing.T) {
 	defer runtime.UnlockOSThread()
 	before, failed := &bindingSource{value: "before"}, &bindingSource{value: "failed"}
 	r := newRoot()
-	defer r.unmountWindow()
+	defer r.unmountHost()
 	v := Build(func() View { return Label(Read[string](before)) })
 	r.update(v)
 	n := r.root
@@ -438,7 +438,7 @@ func TestReadConnectMayReleaseOwner(t *testing.T) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	r, source := newRoot(), new(trackingSource)
-	defer r.unmountWindow()
+	defer r.unmountHost()
 	v := trackingView(func(ctx BuildContext) View {
 		source.onConnect = func() { r.release(ctx.Coordinator().owner, true) }
 		return Label(Read[string](source))
@@ -491,7 +491,7 @@ func BenchmarkCompositionReads(b *testing.B) {
 					r.update(v)
 				}
 				b.StopTimer()
-				r.unmountWindow()
+				r.unmountHost()
 			})
 		}
 	}
@@ -972,7 +972,7 @@ func TestBindingDeclarationPrecedenceAndConfiguration(t *testing.T) {
 	selection := MakeState(TextSelection{})
 	calls := 0
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	input := r.update(TextInput().BindText(&text).OnText(func(string) { calls++ })).(*gui.TextInput)
 	input.SetText("custom")
 	if calls != 1 || text.Get() != "source" {

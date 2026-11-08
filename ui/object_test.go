@@ -116,7 +116,7 @@ func (v *groupedCheckView) Reparented(ctx BuildContext) {
 
 func TestObjectTypedLookupUsesNearestCompatibleScope(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	var ctx BuildContext
 	check := namedCheck("auto", "", true)
 	check.auto, check.saved = true, &ctx
@@ -142,7 +142,7 @@ func TestObjectTypedLookupUsesNearestCompatibleScope(t *testing.T) {
 	if _, ok := FindAncestor[*widgets.CheckButtonGroup](ctx, ""); ok {
 		t.Fatal("显式空 ID 改变了原有查找语义")
 	}
-	r.unmountWindow()
+	r.unmountHost()
 	if _, ok := FindAncestor[*widgets.CheckButtonGroup](ctx); ok {
 		t.Fatal("已释放上下文仍可查询默认作用域")
 	}
@@ -150,8 +150,8 @@ func TestObjectTypedLookupUsesNearestCompatibleScope(t *testing.T) {
 
 func TestObjectTypedScopeFollowsTransfer(t *testing.T) {
 	a, b := transferRoots()
-	defer a.unmountWindow()
-	defer b.unmountWindow()
+	defer a.unmountHost()
+	defer b.unmountHost()
 	auto := func(id string, checked bool) *groupedCheckView {
 		v := namedCheck(id, "", checked)
 		v.auto = true
@@ -205,11 +205,11 @@ func TestObjectGroupReconcilesAcrossContainersAndIsolatesDeclarations(t *testing
 	if a.Group() != g || b.Group() != g || g.Checked() != b || changes != 0 || box.Children()[0].Children()[0] != a {
 		t.Fatal("重建替换了组/控件或静默同步发出了 Change")
 	}
-	r.unmountWindow()
+	r.unmountHost()
 	if a.Group() != nil || b.Group() != nil || g.Checked() != nil || !foreign.Checked() {
 		t.Fatal("卸载保留旧关联或影响其他声明树")
 	}
-	other.unmountWindow()
+	other.unmountHost()
 }
 
 func TestObjectLookupUsesOwnerContextAndNearestID(t *testing.T) {
@@ -228,7 +228,7 @@ func TestObjectLookupUsesOwnerContextAndNearestID(t *testing.T) {
 	if _, ok := FindAncestor[any](ctx, "absent"); ok {
 		t.Fatal("不存在的名字被隐式创建")
 	}
-	r.unmountWindow()
+	r.unmountHost()
 	if _, ok := FindAncestor[*widgets.CheckButtonGroup](ctx, "shared"); ok {
 		t.Fatal("释放的上下文仍能取得祖先对象")
 	}
@@ -257,8 +257,8 @@ func TestObjectGroupSurvivesEmptyContentAndReorder(t *testing.T) {
 	if resumed.Group() != g || created != 1 {
 		t.Fatal("恢复内容没有复用对象实例")
 	}
-	r.unmountWindow()
-	r.unmountWindow()
+	r.unmountHost()
+	r.unmountHost()
 	if released != 1 || resumed.Group() != nil {
 		t.Fatal("释放未解除成员或执行了多次")
 	}
@@ -278,12 +278,12 @@ func TestObjectGroupReleaseFollowsMemberDisconnect(t *testing.T) {
 		box := r.update(v).(*gui.LinearBox)
 		check := box.Children()[0]
 		if destroy {
-			r.unmountForWindowDestroy()
+			r.unmountForHostDestroy()
 			if len(box.Children()) != 1 || box.Children()[0] != check {
 				t.Fatal("窗口销毁的 UI 清理擅自拆除了 GUI 树")
 			}
 		} else {
-			r.unmountWindow()
+			r.unmountHost()
 			if len(box.Children()) != 0 {
 				t.Fatal("普通卸载未移除受管理的 GUI 内容")
 			}
@@ -327,8 +327,8 @@ func TestObjectGroupTransferRefreshesAssociationWithoutReplayingValues(t *testin
 		} else if err != nil || moving.Group() != destination || old.Checked() != nil {
 			t.Fatalf("移交未解除源关联：%v", err)
 		}
-		a.unmountWindow()
-		b.unmountWindow()
+		a.unmountHost()
+		b.unmountHost()
 		if moving.Group() != nil {
 			t.Fatal("移交后的释放遗留关联")
 		}
@@ -356,11 +356,11 @@ func TestObjectDeclarationMovesWithItsProjectedWidget(t *testing.T) {
 	if b.root.children[0].nodes[0] != declaration || check.Group() != g || created != 1 || released != 0 {
 		t.Fatal("只移交了内部 Widget，遗漏组合祖先或重新创建了对象")
 	}
-	a.unmountWindow()
+	a.unmountHost()
 	if check.Group() != g || released != 0 {
 		t.Fatal("源 Root 释放影响了已移交的对象")
 	}
-	b.unmountWindow()
+	b.unmountHost()
 	if released != 1 || check.Group() != nil {
 		t.Fatal("目标 Root 没有正确释放完整声明")
 	}
@@ -375,7 +375,7 @@ func TestObjectLookupRejectsResultsAfterCallbackDestruction(t *testing.T) {
 	r.update(scope)
 	scope.read = func(owner BuildContext) any {
 		value := owner.State().(*testObjectState).value
-		r.unmountWindow()
+		r.unmountHost()
 		return value
 	}
 	if _, ok := FindAncestor[*int](ctx, "object"); ok || r.root != nil {
@@ -407,7 +407,7 @@ func TestObjectGroupTransferBetweenScopesInSameRoot(t *testing.T) {
 	if moving.Group() != next || old.Checked() != nil || resident.Checked() || !moving.Checked() {
 		t.Fatal("同 Root 移交没有按新的声明祖先重新关联")
 	}
-	r.unmountWindow()
+	r.unmountHost()
 }
 
 func TestObjectReparentedCallbackDestructionStopsCommit(t *testing.T) {
@@ -415,7 +415,7 @@ func TestObjectReparentedCallbackDestructionStopsCommit(t *testing.T) {
 	released := 0
 	v := objectScope("moving", Label("content"), func() any { return new(int) })
 	v.released = &released
-	v.onMove = func(BuildContext) { b.unmountWindow() }
+	v.onMove = func(BuildContext) { b.unmountHost() }
 	source := a.update(VBox(v)).(*gui.LinearBox)
 	target := b.update(VBox()).(*gui.LinearBox)
 	child := source.Children()[0]
@@ -428,12 +428,12 @@ func TestObjectReparentedCallbackDestructionStopsCommit(t *testing.T) {
 	if err == nil || committed || released != 1 {
 		t.Fatal("祖先变化回调销毁目标后仍提交成功或未释放对象")
 	}
-	a.unmountWindow()
+	a.unmountHost()
 }
 
 func TestObjectLookupRejectsResultAfterCallerMovesWithinRoot(t *testing.T) {
 	r := newRoot()
-	defer r.unmountWindow()
+	defer r.unmountHost()
 	var ctx BuildContext
 	v := namedCheck("moving", "", false)
 	v.saved = &ctx

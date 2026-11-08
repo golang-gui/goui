@@ -35,7 +35,7 @@ func TestAfterUpdateSeesCompletedChildAndWindowMount(t *testing.T) {
 			t.Fatalf("callback observed incomplete child: %v", child)
 		}
 	}
-	r.updateWindow(win, probe)
+	r.updateHost(win, probe)
 	if called != 1 {
 		t.Fatalf("callback count = %d", called)
 	}

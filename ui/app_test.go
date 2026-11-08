@@ -174,7 +174,7 @@ func TestAfterUpdateCannotNestWindowBatch(t *testing.T) {
 	if err := rt.rebuild(); err != nil {
 		t.Fatal(err)
 	}
-	if calls != 1 || application.windows[0].shows != 1 || rt.updatingWindows || rt.reconcilingWindows {
+	if calls != 1 || application.windows[0].shows != 1 || rt.updatingHosts || rt.reconcilingHosts {
 		t.Fatal("batch guard prevented normal completion or leaked")
 	}
 	// The guard applies only to synchronous nesting, not the next update.

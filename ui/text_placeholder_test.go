@@ -9,7 +9,7 @@ import (
 func TestTextPlaceholderUpdateAndOmissionPreserveEditing(t *testing.T) {
 	t.Run("input", func(t *testing.T) {
 		r := newRoot()
-		t.Cleanup(r.unmountWindow)
+		t.Cleanup(r.unmountHost)
 		w := r.update(TextInput().Text("abc").Placeholder("first")).(*gui.TextInput)
 		w.SetSelection(TextSelection{Anchor: 1, Caret: 2})
 		changes := 0
@@ -26,7 +26,7 @@ func TestTextPlaceholderUpdateAndOmissionPreserveEditing(t *testing.T) {
 	})
 	t.Run("view", func(t *testing.T) {
 		r := newRoot()
-		t.Cleanup(r.unmountWindow)
+		t.Cleanup(r.unmountHost)
 		m := NewTextModel("abc")
 		w := r.update(TextView().Model(m).Placeholder("first")).(*gui.TextView)
 		w.SetSelection(TextSelection{Anchor: 1, Caret: 2})

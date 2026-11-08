@@ -33,28 +33,28 @@ func (a *app) FileDialog() FileDialog {
 	}
 }
 
-// OpenFile requests a file picker owned by windowID. Empty means unowned.
+// OpenFile requests a file picker owned by hostID. Empty means unowned.
 // It returns ErrAppStopped without calling cb if dispatch is not accepted.
 // Accepted requests deliver results on the UI thread while the app runs.
 // Late access during shutdown is released without calling cb. A missing nonempty ID
 // is reported to cb; it never falls back to an unowned picker.
-func (f FileDialog) OpenFile(windowID string, opts DialogOptions, cb func([]FileAccess, error)) error {
-	return f.open(windowID, opts, cb, func(w gui.Window, o DialogOptions, done func([]gui.FileAccess, error)) { f.dlg.OpenFile(w, o, done) })
+func (f FileDialog) OpenFile(hostID string, opts DialogOptions, cb func([]FileAccess, error)) error {
+	return f.open(hostID, opts, cb, func(w gui.Surface, o DialogOptions, done func([]gui.FileAccess, error)) { f.dlg.OpenFile(w, o, done) })
 }
 
 // OpenDirectory follows OpenFile's owner, dispatch and completion rules.
-func (f FileDialog) OpenDirectory(windowID string, opts DialogOptions, cb func([]FileAccess, error)) error {
-	return f.open(windowID, opts, cb, func(w gui.Window, o DialogOptions, done func([]gui.FileAccess, error)) {
+func (f FileDialog) OpenDirectory(hostID string, opts DialogOptions, cb func([]FileAccess, error)) error {
+	return f.open(hostID, opts, cb, func(w gui.Surface, o DialogOptions, done func([]gui.FileAccess, error)) {
 		f.dlg.OpenDirectory(w, o, done)
 	})
 }
 
 // SaveFile follows OpenFile's owner, dispatch and completion rules.
-func (f FileDialog) SaveFile(windowID string, opts DialogOptions, cb func([]FileAccess, error)) error {
-	return f.open(windowID, opts, cb, func(w gui.Window, o DialogOptions, done func([]gui.FileAccess, error)) { f.dlg.SaveFile(w, o, done) })
+func (f FileDialog) SaveFile(hostID string, opts DialogOptions, cb func([]FileAccess, error)) error {
+	return f.open(hostID, opts, cb, func(w gui.Surface, o DialogOptions, done func([]gui.FileAccess, error)) { f.dlg.SaveFile(w, o, done) })
 }
 
-func (f FileDialog) open(id string, opts DialogOptions, cb func([]FileAccess, error), start func(gui.Window, DialogOptions, func([]gui.FileAccess, error))) (err error) {
+func (f FileDialog) open(id string, opts DialogOptions, cb func([]FileAccess, error), start func(gui.Surface, DialogOptions, func([]gui.FileAccess, error))) (err error) {
 	if cb == nil {
 		panic("ui: nil file dialog callback")
 	}
@@ -68,11 +68,11 @@ func (f FileDialog) open(id string, opts DialogOptions, cb func([]FileAccess, er
 			cb(nil, fmt.Errorf("file dialog: unavailable"))
 			return
 		}
-		var owner gui.Window
+		var owner gui.Surface
 		if id != "" {
-			owner = f.current.FindWindow(id)
+			owner = f.current.FindSurface(id)
 			if owner == nil {
-				cb(nil, fmt.Errorf("file dialog: window %q is unavailable", id))
+				cb(nil, fmt.Errorf("file dialog: host %q is unavailable", id))
 				return
 			}
 		}

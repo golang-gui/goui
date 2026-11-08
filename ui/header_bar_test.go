@@ -11,7 +11,7 @@ import (
 
 func TestHeaderBarReconcilesChildAndDefaults(t *testing.T) {
 	root := newRoot()
-	t.Cleanup(root.unmountWindow)
+	t.Cleanup(root.unmountHost)
 	header := root.update(HeaderBar(Label("first"))).(*gui.HeaderBar)
 	label := header.Child().(*gui.Label)
 	defaults := gui.NewHeaderBar()
@@ -48,7 +48,7 @@ func TestHeaderBarReconcilesChildAndDefaults(t *testing.T) {
 // actual Chrome queries/occlusion; here we isolate declarative state and matching.
 func TestHeaderBarCaptionsReconcileAndMatchExactTarget(t *testing.T) {
 	root := newRoot()
-	t.Cleanup(root.unmountWindow)
+	t.Cleanup(root.unmountHost)
 	build := func(id string) *HeaderBarView {
 		return HeaderBar(HBox(Label("Title").ID(id).Name("shared"), Button("Save").ID("button-id").Name("shared")).ID("row-id"))
 	}
@@ -150,5 +150,5 @@ func TestHeaderBarUnmountDisconnectsCaptions(t *testing.T) {
 	if probe.calls != 1 || state.drag != nil || state.captionIDs != nil {
 		t.Fatal("unmount retained caption IDs or signal connection")
 	}
-	root.unmountWindow()
+	root.unmountHost()
 }

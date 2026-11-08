@@ -237,7 +237,7 @@ func TestSliceListHelper(t *testing.T) {
 
 func TestListViewRefreshUpdatesAlreadyRealizedRows(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	m := SliceList([]string{"a", "b"})
 	lv := r.update(ListView(m, func(_ int, text string) View { return Label(text).MinSize(20, 20) })).(*gui.ListView)
 	lv.LayoutVisible(geometry.Size{Width: 100, Height: 60}, geometry.Point{})
@@ -261,13 +261,13 @@ func TestListViewRetainedContextFollowsTransferAndExpires(t *testing.T) {
 	if err := (&Coordinator{owner: a.root}).TransferChild(lv, target, func() error { source.RemoveChild(lv); target.AddChild(lv); return nil }, nil); err != nil {
 		t.Fatal(err)
 	}
-	a.unmountWindow()
+	a.unmountHost()
 	shell := d.Setup().(*gui.LinearBox)
 	d.Bind(0, shell)
 	if len(shell.Children()) != 1 || d.ctx.(*buildContext).node.root != b {
 		t.Fatal("delayed build retained old root")
 	}
-	b.unmountWindow()
+	b.unmountHost()
 	d.Bind(0, shell)
 	if len(shell.Children()) != 0 {
 		t.Fatal("released context resurrected row")
@@ -290,7 +290,7 @@ func TestListViewDelayedAfterUpdateRunsAfterRowAttachment(t *testing.T) {
 	app := newWindowTestApplication()
 	useTestApplication(t, app)
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	calls := 0
 	lv := r.update(ListView(SliceList([]int{1}), func(int, int) View {
 		v := &afterRowView{after: func(w gui.Widget) {
@@ -312,7 +312,7 @@ func TestListViewDelayedAfterUpdateRunsAfterRowAttachment(t *testing.T) {
 	}
 	lv.Refresh()
 	lv.LayoutVisible(geometry.Size{Width: 100, Height: 40}, geometry.Point{})
-	r.unmountWindow()
+	r.unmountHost()
 	app.runPosted()
 	if calls != 1 {
 		t.Fatal("released owner received completion")
@@ -321,7 +321,7 @@ func TestListViewDelayedAfterUpdateRunsAfterRowAttachment(t *testing.T) {
 
 func TestListViewRebindReplacesAndClearsRows(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	model := SliceList([]int{1})
 	lv := r.update(ListView(model, func(int, int) View { return Label("first") })).(*gui.ListView)
 	d := lv.Delegate().(*uiItemDelegate[int])
@@ -343,7 +343,7 @@ func TestListViewRebindReplacesAndClearsRows(t *testing.T) {
 func TestListViewBuilderMayReleaseOwner(t *testing.T) {
 	r := newRoot()
 	lv := r.update(ListView(SliceList([]int{1}), func(int, int) View {
-		r.unmountWindow()
+		r.unmountHost()
 		return Label("must not be mounted")
 	})).(*gui.ListView)
 	d := lv.Delegate().(*uiItemDelegate[int])
@@ -367,9 +367,9 @@ func TestListViewRowsFollowRootTeardownMode(t *testing.T) {
 			rows := []gui.Widget{shells[0].Children()[0], shells[1].Children()[0]}
 			d := lv.Delegate().(*uiItemDelegate[int])
 			if destroying {
-				r.unmountForWindowDestroy()
+				r.unmountForHostDestroy()
 			} else {
-				r.unmountWindow()
+				r.unmountHost()
 			}
 			if !slices.Equal(lv.Children(), shells) {
 				t.Fatal("Root detached ListView-owned shells")
@@ -387,7 +387,7 @@ func TestListViewRowsFollowRootTeardownMode(t *testing.T) {
 				t.Fatalf("rows were not released exactly once: %+v", tracker)
 			}
 			d.Unbind(0, shells[0]) // A late delegate call cannot dismantle retained rows.
-			r.unmountWindow()
+			r.unmountHost()
 		})
 	}
 }

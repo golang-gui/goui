@@ -139,7 +139,7 @@ func TestMenuButtonResetMenuFromEmpty(t *testing.T) {
 // 显式组声明没有视觉包装；同名分支、重建与移除各自保持明确归属。
 func TestMenuButtonGroupDeclarationsAndLatestActions(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	generation, got := 1, 0
 	build := func() View {
 		captured := generation
@@ -183,7 +183,7 @@ func TestMenuButtonGroupDeclarationsAndLatestActions(t *testing.T) {
 
 func TestMenuButtonGroupNearestContainer(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	root := r.update(MenuButtonGroup(
 		MenuButton("Outer"),
 		MenuButtonGroup(MenuButton("Inner")),
@@ -208,8 +208,8 @@ func TestMenuButtonGroupTransferUpdatesAncestorWithoutReplacingState(t *testing.
 	for _, fail := range []bool{false, true} {
 		t.Run(map[bool]string{false: "成功", true: "回滚"}[fail], func(t *testing.T) {
 			a, b := transferRoots()
-			t.Cleanup(a.unmountWindow)
-			t.Cleanup(b.unmountWindow)
+			t.Cleanup(a.unmountHost)
+			t.Cleanup(b.unmountHost)
 			generation, called := 1, 0
 			declaration := func() *MenuButtonView {
 				captured := generation
@@ -251,7 +251,7 @@ func TestMenuButtonGroupTransferUpdatesAncestorWithoutReplacingState(t *testing.
 				MenuButton("Resident").ID("resident").Menu(MenuItem("Other", nil)),
 				declaration(),
 			))
-			a.unmountWindow()
+			a.unmountHost()
 			if moving.Group() != destination || moving.Menu() != model || target.Children()[1] != moving {
 				t.Fatal("移交后重建或源 Root 卸载改变了组、模型或 Widget")
 			}
@@ -259,7 +259,7 @@ func TestMenuButtonGroupTransferUpdatesAncestorWithoutReplacingState(t *testing.
 			if called != 2 {
 				t.Fatal("移交后仍执行源声明闭包", called)
 			}
-			b.unmountWindow()
+			b.unmountHost()
 			if moving.Group() != nil {
 				t.Fatal("目标释放后残留组关联")
 			}
@@ -269,8 +269,8 @@ func TestMenuButtonGroupTransferUpdatesAncestorWithoutReplacingState(t *testing.
 
 func TestMenuButtonGroupDeclarationTransfersWithContent(t *testing.T) {
 	a, b := transferRoots()
-	t.Cleanup(a.unmountWindow)
-	t.Cleanup(b.unmountWindow)
+	t.Cleanup(a.unmountHost)
+	t.Cleanup(b.unmountHost)
 	source := a.update(VBox(MenuButtonGroup(
 		MenuButton("File").Menu(MenuItem("Open", nil)),
 		MenuButton("Edit").Menu(MenuItem("Undo", nil)),
@@ -286,11 +286,11 @@ func TestMenuButtonGroupDeclarationTransfersWithContent(t *testing.T) {
 	}, nil); err != nil {
 		t.Fatal(err)
 	}
-	a.unmountWindow()
+	a.unmountHost()
 	if file.Group() != group || edit.Group() != group || target.Children()[0] != content {
 		t.Fatal("完整容器声明移交后组实例被重新创建或释放")
 	}
-	b.unmountWindow()
+	b.unmountHost()
 	if file.Group() != nil || edit.Group() != nil {
 		t.Fatal("完整组声明未在目标 Root 释放")
 	}
@@ -312,7 +312,7 @@ func TestMenuCommandRefOwnershipAndReplacement(t *testing.T) {
 		}
 	}
 	r := newRoot()
-	defer r.unmountWindow()
+	defer r.unmountHost()
 	build := func(command *gui.Command) View {
 		return MenuButton("Menu").Menu(MenuItem("Run").CommandRef(command))
 	}
@@ -337,7 +337,7 @@ func TestMenuCommandRefOwnershipAndReplacement(t *testing.T) {
 		t.Fatal("ID 与对象模式未互斥")
 	}
 	r.update(build(first))
-	r.unmountWindow()
+	r.unmountHost()
 	first.Activate()
 	second.Activate()
 	if a != 11 || b != 2 || !first.Enabled() || !second.Enabled() {
@@ -347,13 +347,13 @@ func TestMenuCommandRefOwnershipAndReplacement(t *testing.T) {
 
 func TestMenuCommandRefNotificationCanUnmountOwner(t *testing.T) {
 	r := newRoot()
-	defer r.unmountWindow()
+	defer r.unmountHost()
 	first, second := gui.NewCommand(), gui.NewCommand()
 	view := func(c *gui.Command) View {
 		return MenuButton("Menu").Menu(MenuItem("A").CommandRef(c), MenuItem("B").CommandRef(c))
 	}
 	button := r.update(view(first)).(*gui.MenuButton)
-	button.Menu().ConnectItems(func() { r.unmountWindow() })
+	button.Menu().ConnectItems(func() { r.unmountHost() })
 	r.update(view(second))
 	if r.root != nil || !first.Enabled() || !second.Enabled() {
 		t.Fatal("换目标通知没有安全卸载或影响了外部所有权")

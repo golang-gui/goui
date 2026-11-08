@@ -213,7 +213,7 @@ func TestButtonViewUpdatesClickHandlerThroughState(t *testing.T) {
 		t.Fatalf("handler was not updated through state: first=%d second=%d", firstCalls, secondCalls)
 	}
 
-	root.unmountWindow()
+	root.unmountHost()
 	triggerButtonClick(button)
 	if firstCalls != 1 || secondCalls != 1 {
 		t.Fatalf("unmounted click handler should be disconnected: first=%d second=%d", firstCalls, secondCalls)
@@ -350,7 +350,7 @@ func TestTextInputViewDisconnectsHandlerOnUnmount(t *testing.T) {
 		calls++
 	})).(*gui.TextInput)
 
-	root.unmountWindow()
+	root.unmountHost()
 	input.SetText("after-unmount")
 
 	if calls != 0 {
@@ -365,7 +365,7 @@ func TestRootUnmountClearsWidget(t *testing.T) {
 		t.Fatal("expected rendered widget")
 	}
 
-	root.unmountWindow()
+	root.unmountHost()
 	if root.widget() != nil {
 		t.Fatal("unmount should clear root widget")
 	}
@@ -746,7 +746,7 @@ func (c *testContainerTarget) MoveChildBefore(child, sibling gui.Widget) {
 
 func TestRootIDReorderRetainsNodeStateAndLifecycle(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	a, b := new(lifecycleTracker), new(lifecycleTracker)
 	box := r.update(VBox(transferView(a, "a"), Label("other").ID("other"))).(*gui.LinearBox)
 	old := slices.Clone(r.root.children[0].nodes)
@@ -770,7 +770,7 @@ func TestRootIDReorderRetainsNodeStateAndLifecycle(t *testing.T) {
 
 func TestRootIdentityChangeAndGUIRenameAreDistinct(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	tracker := new(lifecycleTracker)
 	original := r.update(transferView(tracker, "first"))
 	original.SetID("renamed-imperatively")
@@ -786,7 +786,7 @@ func TestRootIdentityChangeAndGUIRenameAreDistinct(t *testing.T) {
 
 func TestRootIDsMatchOnlyWithinTheirMountingTarget(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	tracker := new(lifecycleTracker)
 	r.update(HBox(VBox(transferView(tracker, "before")), VBox()))
 	old := r.root.children[0].nodes[0].children[0].nodes[0].widget
@@ -799,7 +799,7 @@ func TestRootIDsMatchOnlyWithinTheirMountingTarget(t *testing.T) {
 
 func TestRootIDAndTypeMustBothMatch(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	box := r.update(VBox(Label("a").ID("a"), Label("b").ID("b"))).(*gui.LinearBox)
 	old := slices.Clone(box.Children())
 	r.update(VBox(Button("new a").ID("a"), Label("B").ID("b")))
@@ -810,7 +810,7 @@ func TestRootIDAndTypeMustBothMatch(t *testing.T) {
 
 func TestRootRejectsDuplicateDeclarationIDsBeforeMutation(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	box := r.update(VBox(Label("original").ID("same"))).(*gui.LinearBox)
 	old := box.Children()[0].(*gui.Label)
 	defer func() {
@@ -827,7 +827,7 @@ func TestRootRejectsDuplicateDeclarationIDsBeforeMutation(t *testing.T) {
 
 func TestRootUnidentifiedNodesRemainPositional(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	box := r.update(VBox(Label("a"), Label("b"))).(*gui.LinearBox)
 	old := slices.Clone(box.Children())
 	r.update(VBox(Label("b"), Label("a")))
@@ -847,7 +847,7 @@ func (v *mountingView) Update(ctx BuildContext, _ gui.Widget) { v.update(ctx) }
 
 func TestChildTargetsAreIndependentAndOmittedCallsPreserveContent(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	a, b := new(testBinTarget), new(testBinTarget)
 	list := new(testContainerTarget)
 	update := func(fn func(BuildContext)) { r.update(&mountingView{update: fn}) }
@@ -896,7 +896,7 @@ func (*nilMountView) Unmount(BuildContext, gui.Widget) {}
 
 func TestChildTargetResultsPreserveDeclarationIndices(t *testing.T) {
 	r := newRoot()
-	t.Cleanup(r.unmountWindow)
+	t.Cleanup(r.unmountHost)
 	list := new(testContainerTarget)
 	bin := new(testBinTarget)
 	builds := 0
@@ -936,12 +936,12 @@ func TestChildTargetTeardownOnlyTouchesManagedChildren(t *testing.T) {
 			}})
 			child, children := bin.child, slices.Clone(list.children)
 			if destroy {
-				r.unmountForWindowDestroy()
+				r.unmountForHostDestroy()
 				if bin.child != child || !slices.Equal(list.children, children) || list.removes != 0 {
 					t.Fatal("window destruction detached the GUI tree")
 				}
 			} else {
-				r.unmountWindow()
+				r.unmountHost()
 				if bin.child != nil || !slices.Equal(list.children, []gui.Widget{unmanaged}) || list.removes != 1 {
 					t.Fatal("ordinary teardown did not detach only managed nodes")
 				}
@@ -953,7 +953,7 @@ func TestChildTargetTeardownOnlyTouchesManagedChildren(t *testing.T) {
 			if saved.UpdateChild(bin, Label("late")) != nil || saved.UpdateChildren(list, []View{Label("late")}) != nil {
 				t.Fatal("a released context mounted new children")
 			}
-			r.unmountWindow()
+			r.unmountHost()
 			if tracker.unmounts != 1 {
 				t.Fatal("duplicate teardown")
 			}
@@ -986,7 +986,7 @@ func TestChildTargetsRejectUnstableIdentityAndMixedModes(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			r := newRoot()
 			r.update(&mountingView{update: func(BuildContext) {}})
-			t.Cleanup(r.unmountWindow)
+			t.Cleanup(r.unmountHost)
 			defer func() {
 				if recover() == nil {
 					t.Fatal("invalid mounting target accepted")
