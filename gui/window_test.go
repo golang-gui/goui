@@ -846,7 +846,8 @@ func TestDesktopRequestsDoNotPredictState(t *testing.T) {
 }
 
 func TestNonDesktopWindowNeedsNoDesktopImplementation(t *testing.T) {
-	win := &window{platformWindow: &chromeTestWindow{}}
+	native := &chromeTestWindow{}
+	win := &window{platformWindow: native}
 	defer win.Destroy()
 	if win.State() != WindowStateUnknown || win.Chrome() == nil {
 		t.Fatal("invalid non-desktop contract")
@@ -858,6 +859,22 @@ func TestNonDesktopWindowNeedsNoDesktopImplementation(t *testing.T) {
 	}
 	win.RequestState(WindowStateNormal)
 	win.SetMinSize(geometry.Size{Width: 100, Height: 50})
+	// 基础宿主不因恰好存在个别旧方法而被视为可管理窗口。
+	if _, ok := any(native).(platform.WindowManagement); ok {
+		t.Fatal("基础宿主意外具有窗口管理能力")
+	}
+	for _, err := range []error{win.Show(), win.SetTitle("unsupported"), win.RequestClose()} {
+		if !errors.Is(err, platform.ErrUnsupported) {
+			t.Fatalf("主动管理应明确返回不支持：%v", err)
+		}
+	}
+	win.Destroy()
+	if !native.destroyed {
+		t.Fatal("基础宿主仍应由 GUI 释放")
+	}
+	if err := win.Show(); !errors.Is(err, platform.ErrUnavailable) {
+		t.Fatalf("已释放宿主应返回不可用：%v", err)
+	}
 }
 
 // 根的期望尺寸及 Widget.MinSize 都不能隐式变成原生窗口限制。

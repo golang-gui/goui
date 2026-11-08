@@ -24,6 +24,9 @@ func TestWindowSurfaceLifecycle(t *testing.T) {
 	var size events.SizeEvent
 	paints := 0
 	w := &Window{loop: loop, native: &testWindowHost{}}
+	if _, managed := any(w).(common.WindowManagement); managed {
+		t.Fatal("系统内容宿主不应伪造窗口管理能力")
+	}
 	w.handler = func(e events.Event) {
 		types = append(types, e.Type())
 		if e, ok := e.(events.SizeEvent); ok {
