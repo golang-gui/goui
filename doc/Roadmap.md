@@ -1,5 +1,25 @@
 # GOUI 实用化与未来路线
 
+## 呈现宿主与可选窗口管理（2026-11-08）
+
+按 [DesignPresentationHosts](DesignPresentationHosts.md) 先拆分平台 Window 与
+WindowManagement，保留原生 Popup 及基础 Window owner，不重写原生实现。
+GUI/UI 下一步使用 Surface 和 Window 分别表达系统宿主与可管理窗口，采用
+NewApplication → ConnectActivate → Run；原生 UI 主线程及宿主恢复先在平台验证。
+现有移动 GUI Window 原型不作为新接口的支持承诺，需迁移到 Surface 后重新验收。
+原生 Popup 不按操作系统名称降级为 Overlay；Android/iOS 尚未实现的能力继续
+明确返回不支持。触摸、IME、安全区域和完整移动应用适配仍按独立切片推进。
+
+## 桌面与移动的共享边界：接口复核（2026-11-07）
+
+桌面保持当前产品重点，移动端通过实验性接入逐步验证。共享 Widget、布局、绘制、
+事件与声明式协调，不承诺统一的应用入口、生命周期或完整 View 树；允许分别设计
+桌面与移动视图。接口可根据真实移动需求重新设计，不预先牺牲桌面语义。
+
+下一步按 [PlanMobileAPI](PlanMobileAPI.md) 从移动原生流程联合复核启动、线程、
+宿主、窗口与退出，再分主题审视输入、绘制、布局和服务。既有基座与平台验收记录
+保留，双线程原型不作为新设计的硬约束；原生 UI 主线程方向及新接口仍待实现与验证。
+
 ## v0.7.0 已发布（2026-11-06）
 
 本版本增加共享 Command 与菜单快捷键列、四角圆角、可选择边框及匹配盒形阴影、
