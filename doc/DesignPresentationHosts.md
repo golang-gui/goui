@@ -1,7 +1,7 @@
 # 呈现宿主与窗口管理
 
-状态：2026-11-08。平台接口迁移与移动原生 UI 主线程调度已完成阶段验收。
-系统宿主交付、GUI/UI 的 Surface 与激活流程仍属后续计划。
+状态：2026-11-08。平台接口迁移、移动原生 UI 主线程调度已验收；系统宿主交付
+已完成阶段验收。GUI/UI 的 Surface 与激活流程仍属后续计划。
 
 关联：[核心原则](Design.md#cross-platform-scope)、[移动接口复核](PlanMobileAPI.md)、
 [移动生命周期](DesignMobileLifecycle.md)、[Widget Painter](DesignWidgetPainter.md)。
@@ -12,8 +12,9 @@
 生命周期。应用可以明确选择自由管理的窗口，或受系统管理的呈现宿主。
 不按 Android/iOS/桌面名称推断窗口能力，也不以隐藏内容 View 模拟隐藏应用窗口。
 
-第一阶段保留已验证原生实现，仅调整接口边界。移动原型仍有独立 GOUI 线程、
-Run 前登记逻辑窗口以及内部 Show/Hide 方法；这些是现存实现，不是新设计的承诺。
+第一阶段仅调整接口边界，保留当时的独立 GOUI 线程和 Run 前登记窗口原型。
+后续原生线程与宿主交付进展分别见第 8、9 节；内部 Show/Hide 只保留为旧验证路径，
+不是系统宿主接口的承诺。
 不能把接口迁移或交叉编译通过当作原生 UI 主线程、移动 GUI 或 Popup 已验收。
 
 ## 2. 平台接口
@@ -68,7 +69,8 @@ Linux/macOS BeginMove/BeginResize 的差异保持不变，单项失败继续返�
 第一阶段保留 `Platform.NewWindow(...)(Window, error)` 签名，避免把类型迁移与
 系统宿主交付流程绑在一次实现中。桌面工厂继续返回实现 WindowManagement 的对象；
 移动原型返回基础 Window。GUI 的主动管理操作必须检查能力，不能重新扩大基础接口。
-正式的系统宿主交付及 GUI NewSurface 绑定在下一阶段完成；届时再收紧工厂职责。
+系统宿主交付通过第 9 节的可选 WindowSource 完成；GUI NewSurface 尚待接入。
+移动原型工厂暂保留给旧验证路径，不能与 WindowSource 模式混用。
 
 ### Popup 独立于窗口管理
 
@@ -252,3 +254,66 @@ ES3 配置。使用启动参数 `-feature GLESDynamicVersion` 后重新完成两
 当前仅证明平台线程与调度路径。保留的启动线程 JNI 附着及旧预启动逻辑对象
 准备是过渡兼容，不再承担 GUI 任务；后续 GUI 原生服务创建移到 Activate。
 NewSurface、窗口来源交付、触摸、IME 和移动 Popup 不在已完成范围。
+
+## 9. 系统宿主交付切片（2026-11-08）
+
+保持 Platform 的桌面窗口工厂，通过同一个 Platform 对象的可选接口发现系统宿主来源：
+
+```go
+type WindowSource interface {
+    SetWindowHandler(func(Window) EventHandler) error
+}
+```
+
+- NewEventLoop 后、Run 前可以登记，也可以在原生 UI 回调中更换处理函数；其他线程
+  通过 EventLoop.Post 投递。交付只发生在 Run 后的原生 UI 线程，回调返回该 Window
+  后续的事件处理函数。绘制目标和尺寸可能尚未就绪，等待正常的 Surface/Size 事件。
+- 首个回调登记选择系统宿主模式；不能与移动原型的 NewWindow 混用。桌面 NewWindow
+  保持原行为，移动 NewWindow 暂作旧验证路径，不让它充当系统宿主的创建契约。
+- 当前只交付一个主逻辑宿主。绘制目标代次变化、Activity/Scene 重建或前后台切换
+  不重复交付；已有事件处理函数继续接收观察。更换/清空交付函数只影响未来宿主，
+  不回放已有 Window，不转移其资源所有权。返回 nil 允许不监听后续事件。
+- Window.Destroy 释放 GOUI 适配与资源，不表示关闭系统应用。交付回调中可以销毁它
+  或 Platform；尚未执行的绑定不得复活已销毁对象。后续的宿主交付机会才可能重新交付。
+- 系统宿主没有 Show/Hide 等管理 API，内容初始绑定由适配完成；实际可见性仍由
+  原生生命周期决定。不通过伪造请求尺寸或 WindowOptions 来构造核心 Window。
+
+Android 以 NativeActivity 可用为交付机会，iOS 以 Scene 创建内容 View 后为交付机会。
+不把 ANativeWindow/CAEAGLLayer 替换误认为新逻辑宿主。系统负责 Activity/Scene，
+Go 适配负责事件处理函数及自己的资源。原生事实依据 Android NDK
+[Activity callbacks](https://developer.android.com/ndk/reference/struct/a-native-activity-callbacks)
+和 UIKit [Scene connect](https://developer.apple.com/documentation/uikit/uiscenedelegate/scene(_:willconnectto:options:))；
+“跨目标保留同一逻辑宿主”是 GOUI 的生命周期策略，不是两套原生 API 的自动等价。
+消费方返回处理函数后才安排绑定，随后报告实际尺寸、可见性和焦点；原生回调若
+已经观察到焦点，不能因注册晚于该回调而丢失初始状态。
+
+验证覆盖：正式交付路径、单次交付计数、不可管理能力、事件处理函数安装、回调销毁
+防复活，以及 Software/GLES 的 GC、目标重建和后台恢复。GUI/UI Surface 与 Activate
+属于下一切片；触摸、IME、Popup 和多 Scene 不在本轮承诺内。
+
+### 本切片验证
+
+- Go1.25.8 / Linux amd64 / CGO_ENABLED=0：仅已跟踪工作源码的仓库外独立
+  Xvnc/Xfwm4 副本执行 `go test -json -count=1 ./...`，4516 通过、11 按原条件
+  跳过、0 失败；现有未跟踪文件未纳入副本。共享 mobile 包 race 连续 10 轮通过。
+- Windows amd64 / macOS arm64：受影响 platform、共享 mobile、gui、ui 和验收目标
+  `go test -exec=/bin/true` 编译通过；本轮未执行这两个桌面平台的窗口交互。
+- 本机 cmd/goui 使用既有 prebuilt 模式输出 Android Software/GLES 开发签名 APK、
+  iOS 两后端 unsigned Simulator App 和 device 未签名 IPA。宿主 CLI 和桌面测试
+  使用 CGO_ENABLED=0；移动链接内部使用既有 CGO_ENABLED=1 语义及预编译支持，
+  未调用 Android/iOS 原生编译器，不能将其表述为移动链接禁用 cgo 语义。
+- 远端 Mac15.7.7 ARM64 的 Android API30 AOSP_ATD ARM64 / 480×800 / 1x /
+  SwiftShader（开启 GLESDynamicVersion）：两后端分别四次旋转、两次后台停绘和
+  恢复。iOS26.3 ARM64 Simulator / iPhone14 / 3x：两后端分别两次后台恢复。
+  四组均验证主线程与启动线程不同、初始焦点、显式 GC、单次宿主交付、替换交付
+  函数不重放、不具备 WindowManagement、禁用混合 NewWindow、资源释放及 Quit
+  回调完成边界。Android 旋转目标代次递增而逻辑交付仍为 1。
+- 包内测试覆盖事件处理函数安装、销毁后不能重新安装或复活，以及核心构造不伪造
+  几何、绘制目标和可见性。回调销毁后的延迟绑定由两后端显式生命周期检查防护。
+- 原生验证使用系统测试工具，不依赖 DevServer；仅操作专用模拟器及应用自身报告
+  文件。截图辅助检查文字、图形和图像，JSON 独立断言线程、状态和代次。
+  产物摘要、报告和截图在 `/tmp/goui-window-source-v0t9wwnd`，专用 iOS Simulator
+  已删除，Android Emulator 与私有 ADB server 已停止，原 SSH 连接保留。
+- iOS 旋转、多 Scene、物理设备、正式签名安装、触摸、IME、Popup、安全区域及
+  GUI/UI Surface/Activate 未验收。构建命令首次漏传 `-package apk` 导致库文件
+  被当作 APK 安装失败；修正命令后正式 APK 通过，原失败记录保留在证据目录。
