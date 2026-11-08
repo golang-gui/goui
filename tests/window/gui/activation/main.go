@@ -22,6 +22,7 @@ import (
 )
 
 var painterName = "software"
+var viewMode = "gui"
 
 type application struct {
 	app                                                                                  gui.Application
@@ -48,12 +49,16 @@ func must(err error) {
 	}
 }
 func main() {
+	if viewMode == "ui" {
+		mainUI()
+		return
+	}
 	if mainThread() {
 		panic("启动 goroutine 不应阻塞原生 UI 线程")
 	}
-	must(os.Setenv("GOUI_PLAT_PAINTER", painterName))
+	must(setPainter())
 	a := &application{nonce: time.Now().UnixNano(), startup: threadID(), dir: reportDirectory()}
-	must(os.MkdirAll(a.dir, 0700))
+	must(prepareReports(a.dir))
 	var err error
 	a.app, err = gui.NewApplication("org.golanggui.MobileActivation")
 	must(err)
@@ -205,7 +210,7 @@ func (a *application) save() {
 		"nonce": a.nonce, "startupThread": a.startup, "uiThread": a.ui, "mainThread": mainThread(),
 		"frames": a.frames, "posts": a.posts, "visible": a.host != nil && a.host.Visible(), "stopped": a.stopped, "focused": focused,
 		"surface": state, "size": map[string]any{"Width": bounds.Width, "Height": bounds.Height, "PixelWidth": bounds.Width * a.scale, "PixelHeight": bounds.Height * a.scale},
-		"painter": painterName, "backend": a.backend, "gc": a.gc, "activations": a.activations, "shutdowns": a.shutdowns, "deliveries": a.deliveries,
+		"viewMode": viewMode, "painter": painterName, "backend": a.backend, "gc": a.gc, "activations": a.activations, "shutdowns": a.shutdowns, "deliveries": a.deliveries,
 		"inputVerified": a.exercised, "count": a.count, "mounts": a.mounts, "unmounts": a.unmounts, "destroys": a.destroys,
 	})
 }
@@ -215,3 +220,6 @@ func write(path string, value any) {
 	must(os.WriteFile(path+".tmp", data, 0600))
 	must(os.Rename(path+".tmp", path))
 }
+
+func setPainter() error               { return os.Setenv("GOUI_PLAT_PAINTER", painterName) }
+func prepareReports(dir string) error { return os.MkdirAll(dir, 0700) }
