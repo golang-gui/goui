@@ -533,7 +533,7 @@ func TestDiagnosticsRuntimeTrace(t *testing.T) {
 	if starting.frameTrace != nil {
 		t.Fatal("追踪在帧中途开启时创建了半帧状态")
 	}
-	full := []string{"goui.callbacks", "goui.styles", "goui.layout", "goui.begin", "goui.paint", "goui.end"}
+	full := []string{"goui.callbacks", "goui.styles", "goui.layout", "goui.before-paint", "goui.begin", "goui.paint", "goui.end"}
 	expected := make(map[string][][]string)
 	var keep []*rootBase
 	run := func(stage string) *rootBase {
@@ -559,6 +559,9 @@ func TestDiagnosticsRuntimeTrace(t *testing.T) {
 				phases = full[:2]
 			}
 		} else if stage == "begin" {
+			phases = full[:5]
+		} else if stage == "before-paint" {
+			root.ConnectBeforePaint(func() { panic("trace test preparation") })
 			phases = full[:4]
 		} else if stage == "layout" {
 			content = &traceLayoutPanicWidget{}
@@ -571,7 +574,7 @@ func TestDiagnosticsRuntimeTrace(t *testing.T) {
 		}()
 		wantPanic := stage != "normal" && stage != "cancel"
 		wantBegin, wantEnd := 1, 1
-		if stage == "callbacks" || stage == "cancel" || stage == "layout" {
+		if stage == "callbacks" || stage == "cancel" || stage == "layout" || stage == "before-paint" {
 			wantBegin, wantEnd = 0, 0
 		} else if stage == "begin" {
 			wantEnd = 0
@@ -583,7 +586,7 @@ func TestDiagnosticsRuntimeTrace(t *testing.T) {
 		keep = append(keep, root)
 		return root
 	}
-	for _, stage := range []string{"normal", "callbacks", "cancel", "layout", "begin", "paint", "end"} {
+	for _, stage := range []string{"normal", "callbacks", "cancel", "layout", "before-paint", "begin", "paint", "end"} {
 		run(stage)
 	}
 	// Capture 开启与停止均不控制标准 trace；原有诊断记录仍正常产生。

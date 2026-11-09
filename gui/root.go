@@ -26,6 +26,13 @@ type Root interface {
 	// Connecting does not request drawing; request the first and subsequent
 	// frames with RequestPaint. The timestamp is shared by all frame listeners.
 	ConnectFrame(func(time.Time)) signal.Handle
+	// ConnectBeforePaint prepares derived drawing data on the GUI thread after
+	// this frame's layout and before Painter.Begin. It runs once per paint,
+	// including frames without layout. Do not draw, mutate the widget tree or
+	// synchronously rebuild UI here. RequestLayout and RequestPaint schedule
+	// later work; they do not restart the current frame. Connecting does not
+	// request frames, and RenderWidget does not emit this signal.
+	ConnectBeforePaint(func()) signal.Handle
 	// ConnectAfterPaint draws after the Widget trees and host decorations, before
 	// presentation. bounds is the complete surface in local DIP. Each callback
 	// starts with an identity transform and full clip; Save/Restore must balance.
@@ -65,6 +72,7 @@ type rootBase struct {
 	focusedWidget  Widget
 	focusVisible   bool // input-managed keyboard hint mode, independent per host
 	frames         signal.Signal1[time.Time]
+	beforePaint    signal.Signal0
 	afterPaint     signal.Signal2[*painter, geometry.Rectangle]
 	framePainting  bool
 	framePending   bool
@@ -199,7 +207,18 @@ func (b *rootBase) drawDecoratedFrame(content Widget, background, border style.S
 
 // Hosts supply geometry; the frame renderer knows neither menu nor chrome policy.
 func (b *rootBase) drawSurfaceFrame(content Widget, background, border style.Style, body, safe geometry.Rectangle, shadow graphics.BoxShadow, finish func(Painter), decorations ...Widget) {
-	if b.painter == nil || !b.surfaceReady() {
+	if b.painter == nil || b.frameDestroyed || b.frameSuspended || b.surfaceEpoch != b.frameEpoch || !b.surfaceReady() {
+		return
+	}
+	b.traceFramePhase("goui.before-paint")
+	if f := b.frameCapture; f != nil {
+		started := time.Now()
+		b.beforePaint.Emit()
+		f.Callbacks += time.Since(started)
+	} else {
+		b.beforePaint.Emit()
+	}
+	if b.painter == nil || b.frameDestroyed || b.frameSuspended || b.surfaceEpoch != b.frameEpoch || !b.surfaceReady() {
 		return
 	}
 	size := geometry.Size{Width: b.width, Height: b.height}
@@ -299,6 +318,18 @@ func (b *rootBase) endPainter(backend graphics.Painter) {
 	b.traceFramePhase("goui.end")
 	defer b.traceFramePhase("")
 	backend.End()
+}
+
+// ConnectBeforePaint observes the host's real presentation frame only.
+func (b *rootBase) ConnectBeforePaint(fn func()) signal.Handle {
+	if fn == nil || b.frameDestroyed {
+		return signal.Handles(nil)
+	}
+	return b.beforePaint.Connect(func() {
+		if !b.frameDestroyed && !b.frameSuspended && b.surfaceEpoch == b.frameEpoch && b.surfaceReady() {
+			fn()
+		}
+	})
 }
 
 // ConnectAfterPaint observes the host's real presentation frame only.

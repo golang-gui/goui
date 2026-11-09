@@ -162,6 +162,8 @@ func (r *progressTestRoot) ConnectFrame(fn func(time.Time)) signal.Handle {
 	return r.frames.Connect(fn)
 }
 
+func (*progressTestRoot) ConnectBeforePaint(func()) signal.Handle { return signal.Handles(nil) }
+
 type progressTestHost struct {
 	gui.WidgetBase
 	root *progressTestRoot

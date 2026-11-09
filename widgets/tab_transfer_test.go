@@ -81,6 +81,8 @@ func (*tabTransferRoot) RequestPaint() error                        { return nil
 func (*tabTransferRoot) RequestLayout()                             {}
 func (*tabTransferRoot) ConnectFrame(func(time.Time)) signal.Handle { return signal.Handles(nil) }
 
+func (*tabTransferRoot) ConnectBeforePaint(func()) signal.Handle { return signal.Handles(nil) }
+
 type tabTransferHost struct {
 	gui.WidgetBase
 	root *tabTransferRoot

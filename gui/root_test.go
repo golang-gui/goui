@@ -11,6 +11,7 @@ import (
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/graphics/software"
 	"github.com/golang-gui/goui/style"
 )
 
@@ -290,5 +291,236 @@ func TestPopoverFirstShowPausesSynchronousPaint(t *testing.T) {
 			t.Fatal("visible frame did not lay out")
 		}
 		p.Hide()
+	}
+}
+
+// 三种宿主共用绘制入口；测试替身不连接桌面或原生 GPU。
+type preparationHost interface {
+	Root
+	SetWidget(Widget)
+	Destroy()
+}
+
+func preparationFixture(t *testing.T, kind string) (preparationHost, *rootBase, func()) {
+	t.Helper()
+	switch kind {
+	case "window":
+		w := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{width: 120, height: 80}}})
+		t.Cleanup(w.Destroy)
+		return w, &w.rootBase, w.paint
+	case "surface":
+		s := newSystemSurface(nil)
+		s.claimed, s.frameSuspended = true, false
+		s.width, s.height = 120, 80
+		t.Cleanup(s.Destroy)
+		return s, &s.rootBase, s.paint
+	case "popover":
+		p, _, _, _ := placementFixture(t, geometry.Rect(0, 0, 1000, 1000))
+		if err := p.Show(); err != nil {
+			t.Fatal(err)
+		}
+		return p, &p.rootBase, p.paint
+	default:
+		t.Fatalf("未知宿主 %q", kind)
+		return nil, nil, nil
+	}
+}
+
+type preparationWidget struct{ frameOrderWidget }
+
+func (w *preparationWidget) Measure(c layout.Constraint) layout.Measurement {
+	*w.trace = append(*w.trace, "measure")
+	return layout.Measured(c.Clamp(geometry.Size{Width: 80, Height: 60}))
+}
+
+type preparationPainter struct {
+	testGraphicsPainter
+	trace *[]string
+}
+
+func (p *preparationPainter) Begin(width, height, scale float32) {
+	*p.trace = append(*p.trace, "begin")
+	p.testGraphicsPainter.Begin(width, height, scale)
+}
+
+func (p *preparationPainter) End() {
+	*p.trace = append(*p.trace, "end")
+	p.testGraphicsPainter.End()
+}
+
+func TestRootBeforePaintOrderAcrossHosts(t *testing.T) {
+	for _, kind := range []string{"window", "surface", "popover"} {
+		t.Run(kind, func(t *testing.T) {
+			host, base, paint := preparationFixture(t, kind)
+			var trace []string
+			content := &preparationWidget{frameOrderWidget{trace: &trace}}
+			host.SetWidget(content)
+			backend := &preparationPainter{trace: &trace}
+			base.painter = backend
+			content.RequestLayout()
+			trace = nil // Popup 的内容测量可能在设置时发生，下面只记录完整帧。
+			host.ConnectFrame(func(time.Time) { trace = append(trace, "frame") })
+			host.ConnectBeforePaint(func() {
+				if content.Rect().Width <= 0 || content.Rect().Height <= 0 || base.layoutDirty || backend.begins != backend.ends {
+					t.Fatal("准备先于布局完成，或发生在 Painter.Begin 之后")
+				}
+				trace = append(trace, "prepare")
+			})
+			host.ConnectAfterPaint(func(Painter, geometry.Rectangle) { trace = append(trace, "after") })
+			paint()
+			want := []string{"frame", "measure", "arrange", "prepare", "begin", "paint", "after", "end"}
+			if kind == "popover" {
+				// Popup 先按内容计算自然尺寸，再按最终窗口尺寸测量分配。
+				want = []string{"frame", "measure", "measure", "arrange", "prepare", "begin", "paint", "after", "end"}
+			}
+			if !reflect.DeepEqual(trace, want) {
+				t.Fatalf("布局与绘制顺序：%v，期望 %v", trace, want)
+			}
+			trace = nil
+			paint()
+			want = []string{"frame", "prepare", "begin", "paint", "after", "end"}
+			if !reflect.DeepEqual(trace, want) {
+				t.Fatalf("没有重新布局的帧仍应准备一次：%v", trace)
+			}
+		})
+	}
+}
+
+func TestRootBeforePaintRequestsWaitForNextFrame(t *testing.T) {
+	now := time.Unix(100, 0)
+	var posts []func()
+	scheduler := newTimerScheduler(func(fn func()) { posts = append(posts, fn) }, func() time.Time { return now })
+	base := &rootBase{app: &application{timers: scheduler}, painter: new(testGraphicsPainter), width: 100, height: 80, layoutDirty: true}
+	requester := new(frameRequesterTest)
+	content := newLayoutPassWidget()
+	called := 0
+	handle := base.ConnectBeforePaint(func() {
+		called++
+		base.requestLayout(requester)
+		_ = base.requestPaint(requester)
+		if requester.requests != 1 || content.arranges != 1 {
+			t.Fatal("准备回调同步重入布局或原生请求")
+		}
+	})
+	base.ConnectBeforePaint(nil).Disconnect()
+	if requester.requests != 0 || base.paintDirty || len(scheduler.queue) != 0 {
+		t.Fatal("连接准备信号主动安排了帧")
+	}
+	_ = base.requestPaint(requester)
+	base.paintFrame(content, style.Style{})
+	if called != 1 || content.arranges != 1 || content.paints != 1 || !base.layoutDirty || !base.paintDirty || len(scheduler.queue) != 1 {
+		t.Fatal("准备中的失效丢失，或在同帧反复布局")
+	}
+	handle.Disconnect()
+	now = now.Add(frameInterval)
+	scheduler.postDue()
+	if len(posts) != 1 {
+		t.Fatal("没有合并为一次后续帧请求")
+	}
+	posts[0]()
+	base.paintFrame(content, style.Style{})
+	if called != 1 || requester.requests != 2 || content.arranges != 2 || content.paints != 2 || base.layoutDirty || base.paintDirty || len(scheduler.queue) != 0 {
+		t.Fatal("后续帧没有完成失效或空闲后仍继续续帧")
+	}
+}
+
+func TestRootBeforePaintWaitsForChromeReservation(t *testing.T) {
+	w, _ := chromeFixture(t, false, true)
+	backend := new(testGraphicsPainter)
+	w.painter = backend
+	content := newLayoutPassWidget()
+	w.SetWidget(content)
+	// 模拟 HeaderBar 根据新的按钮占位请求重新分配，触发一次有界追加布局。
+	w.Chrome().ConnectInfo(func(ChromeInfo) { content.RequestLayout() })
+	w.Chrome().ConnectQueryControls(func(result *ChromeControls) { result.Height = 64 })
+	calls := 0
+	w.ConnectBeforePaint(func() {
+		calls++
+		if content.arranges != 2 || w.controls == nil || w.controls.Rect() != w.chrome.info.ControlsBounds || w.controls.Rect().Height != 64 || backend.begins != 0 {
+			t.Fatalf("准备先于追加布局或装饰分配：arranges=%d controls=%v", content.arranges, w.controls)
+		}
+	})
+	w.paint()
+	if calls != 1 || backend.begins != 1 || backend.ends != 1 {
+		t.Fatal("追加布局导致重复准备或跳过绘制")
+	}
+}
+
+func TestRootBeforePaintHandlesAndTargetValidity(t *testing.T) {
+	for _, reason := range []string{"suspend", "revoke", "replace", "destroy"} {
+		t.Run(reason, func(t *testing.T) {
+			surface := &changingSurface{state: platform.SurfaceState{Ready: true, Generation: 1}}
+			backend := new(testGraphicsPainter)
+			base := &rootBase{surface: surface, painter: backend, width: 20, height: 20}
+			first, later := 0, 0
+			handle := base.ConnectBeforePaint(func() {
+				first++
+				switch reason {
+				case "suspend":
+					base.suspendFrames()
+				case "revoke":
+					surface.state.Ready = false // 原生目标先撤销，事件尚未到达。
+				case "replace":
+					base.surfaceChanged()
+				case "destroy":
+					base.destroyFrames()
+				}
+			})
+			base.ConnectBeforePaint(func() { later++ })
+			handle.Block()
+			base.paintFrame(nil, style.Style{})
+			if first != 0 || later != 1 || backend.begins != 1 || backend.ends != 1 {
+				t.Fatal("Block 阻止了其它回调或正常绘制")
+			}
+			handle.Unblock()
+			base.paintFrame(nil, style.Style{})
+			if first != 1 || later != 1 || backend.begins != 1 || backend.ends != 1 || base.framePainting {
+				t.Fatal("失效后执行了后续准备/绘制，或没有完成帧清理")
+			}
+			handle.Disconnect()
+		})
+	}
+}
+
+func TestRootBeforePaintCanDestroyHosts(t *testing.T) {
+	for _, kind := range []string{"window", "surface", "popover"} {
+		t.Run(kind, func(t *testing.T) {
+			host, base, paint := preparationFixture(t, kind)
+			backend := new(testGraphicsPainter)
+			base.painter = backend
+			calls := 0
+			host.ConnectBeforePaint(func() { calls++; host.Destroy() })
+			host.ConnectBeforePaint(func() { t.Fatal("宿主销毁后执行了后续准备回调") })
+			paint()
+			if calls != 1 || !base.frameDestroyed || base.framePainting || backend.begins != 0 || backend.ends != 0 || base.painter != nil {
+				t.Fatal("准备回调销毁宿主后仍访问 Painter，或延迟清理未完成")
+			}
+			host.ConnectBeforePaint(func() { t.Fatal("已销毁宿主接受了新连接") }).Disconnect()
+			paint()
+		})
+	}
+}
+
+func TestRootBeforePaintExcludesOffscreenRendering(t *testing.T) {
+	output := new(transparentFrame)
+	backend, err := software.NewPainter(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer backend.Destroy()
+	base := &rootBase{painter: backend, width: 20, height: 20}
+	content := newTestWidget()
+	content.Arrange(geometry.Rect(0, 0, 20, 20))
+	calls := 0
+	base.ConnectBeforePaint(func() { calls++ })
+	if _, err := base.renderWidgetImage(content, 1); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 0 {
+		t.Fatal("RenderWidget 误触发 Root 的准备信号")
+	}
+	base.paintFrame(content, style.Style{})
+	if calls != 1 {
+		t.Fatal("实际绘制未执行准备回调")
 	}
 }

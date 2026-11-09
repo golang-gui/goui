@@ -603,6 +603,8 @@ func (w *testWindow) RequestLayout() {}
 
 func (w *testWindow) ConnectFrame(func(time.Time)) signal.Handle { return signal.Handles(nil) }
 
+func (w *testWindow) ConnectBeforePaint(func()) signal.Handle { return signal.Handles(nil) }
+
 func (w *testWindow) PlatformWindow() platform.Window {
 	return nil
 }
