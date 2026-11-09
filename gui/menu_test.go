@@ -898,3 +898,45 @@ func TestMenuCommandCloseCallbackInvalidatesActivation(t *testing.T) {
 		})
 	}
 }
+
+func TestMenuButtonFocusPoliciesPreservePointerOpening(t *testing.T) {
+	w, root, buttons, _ := menuButtonGroupFixture(t)
+	input := newTestWidget()
+	input.SetFocusable(true)
+	input.Arrange(geometry.Rect(350, 200, 80, 30))
+	root.AddChild(input)
+	w.SetFocusedWidget(input)
+	lost := 0
+	input.ConnectFocused(func(focused bool) {
+		if !focused {
+			lost++
+		}
+	})
+	for _, b := range buttons {
+		b.SetFocusOnPointer(false)
+	}
+	menuButtonClick(t, w, 50)
+	if !buttons[0].Opened() || w.FocusedWidget() != input || lost != 0 {
+		t.Fatal("菜单指针打开重复强制聚焦锚点")
+	}
+	menuButtonPointer(t, w, events.PointerMove, 150)
+	if buttons[0].Opened() || !buttons[1].Opened() || w.FocusedWidget() != input || lost != 0 {
+		t.Fatal("菜单悬停切换绕过指针聚焦设置")
+	}
+	if err := buttons[0].Open(); err != nil || w.FocusedWidget() != buttons[0] {
+		t.Fatal("显式Open被指针策略禁止", err)
+	}
+	menuButtonKey(t, w, events.KeyArrowRight)
+	if !buttons[1].Opened() || w.FocusedWidget() != buttons[1] {
+		t.Fatal("键盘菜单切换错误受指针策略限制")
+	}
+	buttons[0].Group().SetCanContainFocus(false)
+	if w.FocusedWidget() != nil || buttons[1].Opened() {
+		t.Fatal("关闭准入没有结束锚点焦点及其菜单")
+	}
+	w.SetFocusedWidget(input)
+	menuButtonClick(t, w, 250)
+	if !buttons[2].Opened() || w.FocusedWidget() != input {
+		t.Fatal("禁止锚点焦点错误禁止了鼠标打开菜单")
+	}
+}

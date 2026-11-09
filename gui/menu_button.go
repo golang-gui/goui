@@ -21,8 +21,10 @@ type MenuButtonInfo struct {
 	Grouped bool `json:"grouped"`
 }
 
-// MenuButton opens a modeless, automatically dismissed menu. It keeps logical
-// focus in the owner and forwards menu keys through the popover's event path.
+// MenuButton opens a modeless, automatically dismissed menu. When its anchor
+// holds focus, it forwards menu keys through the popover's event path. Pointer
+// opening respects FocusOnPointer; opening without anchor focus remains usable
+// by pointer and does not redirect the owner's keyboard input.
 // The nearest MenuButtonGroup ancestor provides local menu switching.
 type MenuButton struct {
 	WidgetBase
@@ -39,6 +41,14 @@ type MenuButton struct {
 	closed         signal.Signal1[uint64]
 	openError      signal.Signal2[error, uint64]
 }
+
+type menuOpenSource uint8
+
+const (
+	menuOpenExplicit menuOpenSource = iota
+	menuOpenKeyboard
+	menuOpenPointer
+)
 
 func NewMenuButton() *MenuButton {
 	b := &MenuButton{padding: geometry.UniformInsets(defaultButtonPadding)}
@@ -69,7 +79,7 @@ func NewMenuButton() *MenuButton {
 			return
 		}
 		if active := b.activeGroupMenu(); active != nil && active != b {
-			active.switchMenu(b, true)
+			active.switchMenu(b, menuOpenPointer)
 		}
 	})
 	b.AddEventController(b.motion)
@@ -79,7 +89,7 @@ func NewMenuButton() *MenuButton {
 		ctx.StopPropagation()
 	})
 	b.click.ConnectClicked(func(ctx EventContext) {
-		b.openMenu()
+		b.toggleMenu(menuOpenPointer)
 		ctx.StopPropagation()
 	})
 	b.AddEventController(b.click)
@@ -141,6 +151,10 @@ func (b *MenuButton) Opened() bool { return b.pm != nil && b.pm.Visible() }
 // Open shows an available menu and returns opening failures directly. Empty,
 // hidden or disabled buttons are a no-op. It does not emit OpenError.
 func (b *MenuButton) Open() error {
+	return b.open(menuOpenExplicit)
+}
+
+func (b *MenuButton) open(source menuOpenSource) error {
 	if b.Destroyed() {
 		return fmt.Errorf("menu-button: destroyed")
 	}
@@ -148,12 +162,12 @@ func (b *MenuButton) Open() error {
 		return nil
 	}
 	if previous := b.activeGroupMenu(); previous != nil && previous != b {
-		return previous.switchMenu(b, false)
+		return previous.switchMenu(b, source)
 	}
-	return b.showMenu()
+	return b.showMenu(source)
 }
 
-func (b *MenuButton) showMenu() error {
+func (b *MenuButton) showMenu(source menuOpenSource) error {
 	b.revision++
 	revision := b.revision
 	if b.pm == nil {
@@ -169,7 +183,7 @@ func (b *MenuButton) showMenu() error {
 		})
 	}
 	b.pm.SetMenu(b.menu)
-	if host, ok := b.Root().(EventTarget); ok {
+	if host, ok := b.Root().(EventTarget); ok && focusEligible(b) && (source != menuOpenPointer || b.FocusOnPointer()) {
 		if !host.SetFocusedWidget(b) {
 			return fmt.Errorf("menu-button: anchor cannot receive focus")
 		}
@@ -211,17 +225,21 @@ func (b *MenuButton) ConnectOpenError(fn func(error)) signal.Handle {
 		}
 	})
 }
-func (b *MenuButton) openFromInput() {
+func (b *MenuButton) openFromInput(source menuOpenSource) {
 	revision := b.revision
-	if err := b.Open(); err != nil && !b.Destroyed() && b.revision == revision+1 {
+	if err := b.open(source); err != nil && !b.Destroyed() && b.revision == revision+1 {
 		b.openError.Emit(err, b.revision)
 	}
 }
 func (b *MenuButton) openMenu() {
+	b.toggleMenu(menuOpenKeyboard)
+}
+
+func (b *MenuButton) toggleMenu(source menuOpenSource) {
 	if b.Opened() {
 		b.Close()
 	} else {
-		b.openFromInput()
+		b.openFromInput(source)
 	}
 }
 
@@ -254,7 +272,7 @@ func (b *MenuButton) activeGroupMenu() *MenuButton {
 
 // switchMenu closes the old surface before opening the candidate. A callback
 // that changes either endpoint or shows another surface cancels this switch.
-func (b *MenuButton) switchMenu(next *MenuButton, fromInput bool) error {
+func (b *MenuButton) switchMenu(next *MenuButton, source menuOpenSource) error {
 	group, root := b.linkedGroup, b.Root()
 	if group == nil || b.Group() != group || !b.Opened() || next == nil || next == b || next.Group() != group || next.Root() != root || !IsEnabled(next) || !visibleInTree(next) || !next.hasMenu() {
 		return nil
@@ -273,11 +291,11 @@ func (b *MenuButton) switchMenu(next *MenuButton, fromInput bool) error {
 	if b.Destroyed() || next.Destroyed() || b.revision != previous+1 || next.revision != candidate || b.Root() != root || next.Root() != root || b.Group() != group || next.Group() != group || w != nil && (w.destroyed || w.popoversShown != shown) {
 		return nil
 	}
-	if fromInput {
-		next.openFromInput()
+	if source != menuOpenExplicit {
+		next.openFromInput(source)
 		return nil
 	}
-	return next.Open()
+	return next.open(source)
 }
 
 func (b *MenuButton) neighbor(direction int) *MenuButton {
@@ -336,7 +354,7 @@ func (b *MenuButton) menuKey(ctx EventContext, event events.KeyEvent) {
 			direction = -1
 		}
 		if next := b.neighbor(direction); next != nil {
-			b.switchMenu(next, true)
+			b.switchMenu(next, menuOpenKeyboard)
 			handled = true
 		}
 	}

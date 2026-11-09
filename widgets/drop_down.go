@@ -75,7 +75,7 @@ func NewDropDown() *DropDown {
 	d.click.ConnectPressed(func(_ gui.EventContext, _ bool) { d.syncPressed() })
 	d.click.ConnectClicked(func(ctx gui.EventContext) {
 		ctx.StopPropagation()
-		d.openFromInput()
+		d.openFromInput(d.FocusOnPointer())
 	})
 	d.keys = gui.NewKeyEventController()
 	d.keys.ConnectKeyDown(d.keyDown)
@@ -432,6 +432,10 @@ func (d *DropDown) Opened() bool { return d.popup != nil && d.popup.Visible() }
 // Open lazily creates an owner-modal, no-native-focus Popover. Empty or fully
 // disabled lists and disabled controls are a no-op; an unmounted anchor fails.
 func (d *DropDown) Open() error {
+	return d.open(true)
+}
+
+func (d *DropDown) open(focusAnchor bool) error {
 	if d.Destroyed() {
 		return fmt.Errorf("drop-down: destroyed")
 	}
@@ -476,7 +480,7 @@ func (d *DropDown) Open() error {
 	if host, ok := d.popup.(gui.EventTarget); ok {
 		host.SetFocusedWidget(d.content)
 	}
-	if win := d.Surface(); win != nil {
+	if win := d.Surface(); win != nil && focusAnchor {
 		win.SetFocusedWidget(d)
 	}
 	if d.Destroyed() || revision != d.revision || !d.Opened() {
@@ -512,8 +516,8 @@ func (d *DropDown) ConnectOpenError(fn func(error)) signal.Handle {
 		}
 	})
 }
-func (d *DropDown) openFromInput() {
-	if err := d.Open(); err != nil && !d.Destroyed() {
+func (d *DropDown) openFromInput(focusAnchor bool) {
+	if err := d.open(focusAnchor); err != nil && !d.Destroyed() {
 		d.openError.Emit(err, d.revision)
 	}
 }
@@ -548,7 +552,7 @@ func (d *DropDown) keyDown(ctx gui.EventContext, event events.KeyEvent) {
 	plain := func(key gui.Key) bool { return (gui.KeyGesture{Key: key}).Matches(event) }
 	if plain(gui.KeyEnter) || plain(gui.KeySpace) || (gui.KeyGesture{Key: gui.KeyArrowDown, Modifiers: gui.ModAlt}).Matches(event) {
 		if !event.Repeat {
-			d.openFromInput()
+			d.openFromInput(true)
 		}
 	} else if plain(gui.KeyArrowDown) || plain(gui.KeyArrowUp) {
 		direction := 1
