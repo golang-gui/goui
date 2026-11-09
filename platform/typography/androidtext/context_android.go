@@ -41,16 +41,16 @@ func NewContext() (typography.Context, error) {
 	if e.PushLocalFrame(32) < 0 {
 		return nil, fmt.Errorf("androidtext: JNI local frame: %w", e.Exception())
 	}
-	defer e.PopLocalFrame()
+	defer e.PopLocalFrame(0)
 	class, err := androidruntime.LoadClass(e, "org.golanggui.typography.TextContext")
 	if err != nil {
 		return nil, err
 	}
-	constructor := e.Method(class, "<init>", "(I)V", false)
+	constructor := e.GetMethodID(class, "<init>", "(I)V")
 	if err = e.Exception(); err != nil {
 		return nil, err
 	}
-	peer := e.NewObject(class, constructor, jni.Int(1))
+	peer := e.NewObjectA(class, constructor, jni.Int(1))
 	if err = e.Exception(); err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ func NewContext() (typography.Context, error) {
 	}
 	c := &Context{methods: make(map[string]jni.Method), layoutMethods: make(map[string]jni.Method), files: make(map[string]bool)}
 	for name, signature := range map[string]string{"close": "()V", "addFont": "(Ljava/lang/String;[Ljava/lang/String;[I)V", "create": "(Ljava/lang/String;Ljava/lang/String;FIIIIIFFFI)Lorg/golanggui/typography/TextLayout;"} {
-		c.methods[name] = e.Method(class, name, signature, false)
+		c.methods[name] = e.GetMethodID(class, name, signature)
 		if err = e.Exception(); err != nil {
 			return nil, err
 		}
@@ -69,7 +69,7 @@ func NewContext() (typography.Context, error) {
 		return nil, err
 	}
 	for name, signature := range layoutSignatures {
-		c.layoutMethods[name] = e.Method(layoutClass, name, signature, false)
+		c.layoutMethods[name] = e.GetMethodID(layoutClass, name, signature)
 		if err = e.Exception(); err != nil {
 			return nil, err
 		}
@@ -89,7 +89,7 @@ func (c *Context) Destroy() {
 		return
 	}
 	e := environment()
-	e.CallVoid(c.peer, c.methods["close"])
+	e.CallVoidMethodA(c.peer, c.methods["close"])
 	check(e)
 	e.DeleteGlobalRef(c.peer)
 	c.peer = 0
@@ -137,7 +137,7 @@ func (c *Context) AddFont(path string) error {
 		metadata[i*2+1] = face.width
 	}
 	e := frame()
-	defer e.PopLocalFrame()
+	defer e.PopLocalFrame(0)
 	p := e.NewString(path)
 	if err = e.Exception(); err != nil {
 		return err
@@ -150,7 +150,7 @@ func (c *Context) AddFont(path string) error {
 	if err = e.Exception(); err != nil {
 		return err
 	}
-	e.CallVoid(c.peer, c.methods["addFont"], jni.Ref(p), jni.Ref(n), jni.Ref(m))
+	e.CallVoidMethodA(c.peer, c.methods["addFont"], jni.Ref(p), jni.Ref(n), jni.Ref(m))
 	if err = e.Exception(); err != nil {
 		return err
 	}
@@ -219,7 +219,7 @@ func (c *Context) NewTextLayout(text string, format typography.TextFormat, width
 		}
 	}
 	e := frame()
-	defer e.PopLocalFrame()
+	defer e.PopLocalFrame(0)
 	content := e.NewString(text)
 	if err = e.Exception(); err != nil {
 		return nil, err
@@ -228,7 +228,7 @@ func (c *Context) NewTextLayout(text string, format typography.TextFormat, width
 	if err = e.Exception(); err != nil {
 		return nil, err
 	}
-	peer := e.CallObject(c.peer, c.methods["create"], jni.Ref(content), jni.Ref(family), jni.Float(font.Size), jni.Int(int32(font.Weight)), jni.Int(int32(font.Width)), jni.Int(int32(font.Style)), jni.Int(int32(format.WrapMode)), jni.Int(int32(format.TextAlign)), jni.Float(width), jni.Float(height), jni.Float(format.TabWidth), jni.Int(argb(format.TextColor)))
+	peer := e.CallObjectMethodA(c.peer, c.methods["create"], jni.Ref(content), jni.Ref(family), jni.Float(font.Size), jni.Int(int32(font.Weight)), jni.Int(int32(font.Width)), jni.Int(int32(font.Style)), jni.Int(int32(format.WrapMode)), jni.Int(int32(format.TextAlign)), jni.Float(width), jni.Float(height), jni.Float(format.TabWidth), jni.Int(argb(format.TextColor)))
 	if err = e.Exception(); err != nil {
 		return nil, err
 	}
@@ -271,8 +271,8 @@ func (t *TextLayout) Destroy() {
 		return
 	}
 	e := frame()
-	defer e.PopLocalFrame()
-	e.CallVoid(t.peer, t.methods["close"])
+	defer e.PopLocalFrame(0)
+	e.CallVoidMethodA(t.peer, t.methods["close"])
 	check(e)
 	e.DeleteGlobalRef(t.peer)
 	t.peer = 0
@@ -287,8 +287,8 @@ func (t *TextLayout) ConnectChanged(fn func()) signal.Handle { return t.life.Con
 func (t *TextLayout) ConnectDestroy(fn func()) signal.Handle { return t.life.ConnectDestroy(fn) }
 func (t *TextLayout) invoke(name string, args ...jni.Value) {
 	e := frame()
-	defer e.PopLocalFrame()
-	e.CallVoid(t.peer, t.methods[name], args...)
+	defer e.PopLocalFrame(0)
+	e.CallVoidMethodA(t.peer, t.methods[name], args...)
 	check(e)
 }
 func (t *TextLayout) changed(metrics bool) {
@@ -356,10 +356,10 @@ func (t *TextLayout) SetTextFont(start, length int, font typography.FontInfo) {
 		panic(err)
 	}
 	e := frame()
-	defer e.PopLocalFrame()
+	defer e.PopLocalFrame(0)
 	family := e.NewString(font.Family)
 	check(e)
-	e.CallVoid(t.peer, t.methods["setFont"], a, b, jni.Ref(family), jni.Float(font.Size), jni.Int(int32(font.Weight)), jni.Int(int32(font.Width)), jni.Int(int32(font.Style)))
+	e.CallVoidMethodA(t.peer, t.methods["setFont"], a, b, jni.Ref(family), jni.Float(font.Size), jni.Int(int32(font.Weight)), jni.Int(int32(font.Width)), jni.Int(int32(font.Style)))
 	check(e)
 	t.changed(true)
 }
@@ -405,13 +405,13 @@ func (t *TextLayout) prepare() {
 		return
 	}
 	e := frame()
-	defer e.PopLocalFrame()
-	data := e.CallObject(t.peer, t.methods["metrics"])
+	defer e.PopLocalFrame(0)
+	data := e.CallObjectMethodA(t.peer, t.methods["metrics"])
 	check(e)
-	li := e.Ints(e.ArrayElement(data, 0))
-	lf := e.Floats(e.ArrayElement(data, 1))
-	ci := e.Ints(e.ArrayElement(data, 2))
-	cf := e.Floats(e.ArrayElement(data, 3))
+	li := e.Ints(e.GetObjectArrayElement(data, 0))
+	lf := e.Floats(e.GetObjectArrayElement(data, 1))
+	ci := e.Ints(e.GetObjectArrayElement(data, 2))
+	cf := e.Floats(e.GetObjectArrayElement(data, 3))
 	check(e)
 	if len(li)%2 != 0 || len(lf) != len(li)/2*5 || len(ci)%4 != 0 || len(ci) != len(cf) {
 		panic("androidtext: invalid metrics packet")
@@ -476,8 +476,8 @@ func (t *TextLayout) Rasterize(scale float32, region image.Rectangle, buf []byte
 		}
 	}
 	e := frame()
-	defer e.PopLocalFrame()
-	obj := e.CallObject(t.peer, t.methods["raster"], jni.Float(scale), jni.Int(int32(region.Min.X)), jni.Int(int32(region.Min.Y)), jni.Int(int32(w)), jni.Int(int32(h)))
+	defer e.PopLocalFrame(0)
+	obj := e.CallObjectMethodA(t.peer, t.methods["raster"], jni.Float(scale), jni.Int(int32(region.Min.X)), jni.Int(int32(region.Min.Y)), jni.Int(int32(w)), jni.Int(int32(h)))
 	if err = e.Exception(); err != nil {
 		return typography.TextBitmap{}, err
 	}

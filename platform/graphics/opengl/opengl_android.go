@@ -15,12 +15,15 @@ var glGetString = gles.NewSymbol("glGetString")
 type eglContext struct {
 	window mobileNativeWindow
 
-	display, config, context uintptr
-	scratch, surface, handle uintptr
-	generation               uint64
-	visual                   int32
-	target                   common.NativeTarget
-	current                  bool
+	display          egl.Display
+	config           egl.Config
+	context          egl.Context
+	scratch, surface egl.Surface
+	handle           uintptr
+	generation       uint64
+	visual           int32
+	target           common.NativeTarget
+	current          bool
 }
 
 func newContext(win NativeWindow, share Context, config Config) (Context, error) {
@@ -30,24 +33,25 @@ func newContext(win NativeWindow, share Context, config Config) (Context, error)
 	}
 	c := &eglContext{window: window}
 	c.display = egl.GetDisplay(0)
-	if c.display == 0 || egl.Initialize(c.display) == 0 {
-		return nil, fmt.Errorf("android: initialize EGL: %#x", egl.Error())
+	if c.display == 0 || egl.Initialize(c.display, nil, nil) == 0 {
+		return nil, fmt.Errorf("android: initialize EGL: %#x", egl.GetError())
 	}
-	attrs := []int32{0x3033, 5, 0x3040, 0x40, 0x3024, 8, 0x3023, 8, 0x3022, 8, 0x3021, 8, 0x3025, 24, 0x3026, 8, 0x3038}
-	chosen, count, ok := egl.ChooseConfig(c.display, attrs)
+	attrs := []int32{egl.SurfaceType, egl.WindowBit | egl.PbufferBit, egl.RenderableType, egl.OpenGLES3Bit, egl.RedSize, 8, egl.GreenSize, 8, egl.BlueSize, 8, egl.AlphaSize, 8, egl.DepthSize, 24, egl.StencilSize, 8, egl.None}
+	var chosen [1]egl.Config
+	count, ok := egl.ChooseConfig(c.display, attrs, chosen[:])
 	if ok == 0 || count != 1 {
-		return nil, fmt.Errorf("android: select EGL ES3 configuration: %#x", egl.Error())
+		return nil, fmt.Errorf("android: select EGL ES3 configuration: %#x", egl.GetError())
 	}
-	c.config = chosen
-	c.visual, ok = egl.ConfigAttrib(c.display, c.config, 0x302e)
+	c.config = chosen[0]
+	c.visual, ok = egl.GetConfigAttrib(c.display, c.config, egl.NativeVisualID)
 	if ok == 0 {
 		return nil, fmt.Errorf("android: EGL native visual unavailable")
 	}
-	c.context = egl.CreateContext(c.display, c.config, []int32{0x3098, 3, 0x3038})
-	c.scratch = egl.CreatePbuffer(c.display, c.config, []int32{0x3057, 1, 0x3056, 1, 0x3038})
+	c.context = egl.CreateContext(c.display, c.config, 0, []int32{egl.ContextClientVersion, 3, egl.None})
+	c.scratch = egl.CreatePbufferSurface(c.display, c.config, []int32{egl.Width, 1, egl.Height, 1, egl.None})
 	if c.context == 0 || c.scratch == 0 {
 		c.Destroy()
-		return nil, fmt.Errorf("android: create EGL context: %#x", egl.Error())
+		return nil, fmt.Errorf("android: create EGL context: %#x", egl.GetError())
 	}
 	return c, nil
 }
@@ -58,7 +62,7 @@ func (c *eglContext) dropSurface() {
 		c.surface = 0
 	}
 	if c.handle != 0 {
-		native.WindowRelease(c.handle)
+		native.NativeWindowRelease(c.handle)
 		c.handle = 0
 	}
 	c.generation = 0
@@ -80,14 +84,14 @@ func (c *eglContext) MakeCurrent() error {
 		handle, generation := target.NativeHandle(), target.Generation()
 		if c.surface == 0 || c.handle != handle || c.generation != generation {
 			c.dropSurface()
-			native.WindowAcquire(handle)
+			native.NativeWindowAcquire(handle)
 			c.handle = handle
 			c.generation = generation
-			if native.WindowGeometry(handle, 0, 0, c.visual) != 0 {
+			if native.NativeWindowSetBuffersGeometry(handle, 0, 0, c.visual) != 0 {
 				c.ClearCurrent()
 				return fmt.Errorf("android: set EGL buffer geometry")
 			}
-			c.surface = egl.CreateWindow(c.display, c.config, handle)
+			c.surface = egl.CreateWindowSurface(c.display, c.config, handle, nil)
 		}
 		surface = c.surface
 	}
@@ -96,7 +100,7 @@ func (c *eglContext) MakeCurrent() error {
 			c.target.Release()
 			c.target = nil
 		}
-		return fmt.Errorf("android: bind EGL context: %#x", egl.Error())
+		return fmt.Errorf("android: bind EGL context: %#x", egl.GetError())
 	}
 	c.current = true
 	return nil
@@ -106,7 +110,7 @@ func (c *eglContext) ClearCurrent() error {
 	if c.current {
 		cgo.Call(glFlush.Addr())
 		if egl.MakeCurrent(c.display, 0, 0, 0) == 0 {
-			err = fmt.Errorf("android: unbind EGL: %#x", egl.Error())
+			err = fmt.Errorf("android: unbind EGL: %#x", egl.GetError())
 		}
 		c.current = false
 	}
@@ -121,7 +125,7 @@ func (c *eglContext) SwapBuffers() error {
 		return ErrSurfaceUnavailable
 	}
 	if egl.SwapBuffers(c.display, c.surface) == 0 {
-		return fmt.Errorf("android: swap EGL: %#x", egl.Error())
+		return fmt.Errorf("android: swap EGL: %#x", egl.GetError())
 	}
 	return nil
 }
@@ -130,12 +134,12 @@ func (c *eglContext) SwapInterval(value int) error {
 		return common.ErrUnavailable
 	}
 	if egl.SwapInterval(c.display, int32(value)) == 0 {
-		return fmt.Errorf("android: EGL swap interval: %#x", egl.Error())
+		return fmt.Errorf("android: EGL swap interval: %#x", egl.GetError())
 	}
 	return nil
 }
 func (c *eglContext) GetProcAddress(name string) (uintptr, error) {
-	address := egl.Proc(name)
+	address := egl.GetProcAddress(name)
 	if address != 0 {
 		return address, nil
 	}
