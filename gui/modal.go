@@ -362,7 +362,7 @@ func resetModalInput(h modalHost) {
 }
 
 func firstModalFocus(w Widget) Widget {
-	if w == nil || w.base().destroyed || !w.Visible() || !IsEnabled(w) {
+	if w == nil || !focusContainmentAllowed(w) || !w.Visible() || !IsEnabled(w) {
 		return nil
 	}
 	if w.Focusable() {
@@ -378,8 +378,7 @@ func firstModalFocus(w Widget) Widget {
 
 func modalFocusable(host EventTarget, w Widget) bool {
 	root, ok := host.(Root)
-	return ok && w != nil && !w.base().destroyed && w.Root() == root && w.Focusable() &&
-		IsEnabled(w) && visibleInTree(w) && modalWidgetAllowed(w)
+	return ok && w != nil && w.Root() == root && focusEligible(w)
 }
 
 func modalWidgetAllowed(w Widget) bool {

@@ -414,14 +414,21 @@ func (d *EventDispatcher) target(host EventTarget, root Widget, event events.Eve
 // If no focusable widget is found, the current focus is left unchanged. A
 // click on a non-focusable surface — empty space, a :focusable=FALSE control
 // like a menu-bar button, a label wrapper — does not steal or clear focus.
-// Focusable applies only to the widget itself, not to its descendants.
+// Focusable and FocusOnPointer apply only to self. A closed containment gate
+// or a nearest candidate that declines pointer focus preserves current focus;
+// neither permits falling through to a more distant focusable ancestor.
 func focusNearest(host EventTarget, target Widget) {
+	if !focusContainmentAllowed(target) {
+		return
+	}
 	for widget := target; widget != nil; widget = widget.Parent() {
 		if !modalInputAllowed(host, widget) {
 			return
 		}
 		if IsEnabled(widget) && widget.Focusable() {
-			_ = host.SetFocusedWidget(widget)
+			if widget.FocusOnPointer() {
+				_ = host.SetFocusedWidget(widget)
+			}
 			return
 		}
 	}

@@ -283,3 +283,52 @@ func TestPopoverKeyboardRejectsLostModalOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestPointerFocusPolicyPreservesInputMethodAndSelection(t *testing.T) {
+	input, win, _ := newInputFixture(t, "before")
+	win.SetWidget(nil)
+	root := newTestWidget()
+	root.Arrange(geometry.Rect(0, 0, 300, 100))
+	root.AddChild(input)
+	button := NewButton()
+	button.SetFocusOnPointer(false)
+	root.AddChild(button)
+	win.SetWidget(root)
+	input.Arrange(geometry.Rect(0, 0, 80, 40))
+	button.Arrange(geometry.Rect(100, 0, 80, 40))
+	win.SetFocusedWidget(input)
+	input.SetSelection(TextSelection{Anchor: 2, Caret: 4})
+	win.onInputMethod(platform.InputMethodResult{Kind: platform.InputMethodPreedit, Text: "候选", Caret: len("候")})
+	preedit, selection, im := input.preedit, input.Selection(), win.activeIM
+	if preedit == nil {
+		t.Fatal("前置预编辑未建立")
+	}
+	lost, clicked := 0, 0
+	input.ConnectFocused(func(focused bool) {
+		if !focused {
+			lost++
+		}
+	})
+	button.ConnectClicked(func() { clicked++ })
+	for _, kind := range []events.EventType{events.PointerDown, events.PointerUp} {
+		if err := win.DispatchEvent(events.PointerEvent{EventType: kind, Button: events.PointerButtonLeft, Position: geometry.Point{X: 110, Y: 10}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if lost != 0 || clicked != 1 || win.FocusedWidget() != input || win.activeIM != im || input.preedit != preedit || input.Selection() != selection {
+		t.Fatal("点击期间切换了焦点、IME、预编辑或选区")
+	}
+	input.SetFocusOnPointer(false)
+	if win.FocusedWidget() != input || win.activeIM != im || lost != 0 {
+		t.Fatal("指针配置修改清除了已有焦点")
+	}
+	root.SetCanContainFocus(false)
+	if win.FocusedWidget() != nil || win.activeIM != nil || input.preedit != nil || lost != 1 {
+		t.Fatal("关闭准入没有正常解除IME和预编辑")
+	}
+	root.SetCanContainFocus(false)
+	root.SetCanContainFocus(true)
+	if lost != 1 || win.FocusedWidget() != nil {
+		t.Fatal("重复配置发送失焦，或恢复配置自动聚焦")
+	}
+}

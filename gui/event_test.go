@@ -1153,3 +1153,239 @@ func TestEventDispatcherHoverUpdatesDuringCapture(t *testing.T) {
 		t.Fatal("right widget should be hovered even during left's capture")
 	}
 }
+
+// 焦点能力、子树准入和指针默认聚焦分别生效，实际输入仍经 Window 分发。
+func TestEventDispatcherFocusPolicies(t *testing.T) {
+	for _, focusable := range []bool{false, true} {
+		for _, contain := range []bool{false, true} {
+			for _, pointer := range []bool{false, true} {
+				t.Run(fmt.Sprintf("focusable=%v/contain=%v/pointer=%v", focusable, contain, pointer), func(t *testing.T) {
+					root, input, branch := newTestWidget(), newTestWidget(), newTestWidget()
+					root.Arrange(geometry.Rect(0, 0, 300, 100))
+					input.Arrange(geometry.Rect(0, 0, 80, 30))
+					input.SetFocusable(true)
+					branch.Arrange(geometry.Rect(100, 0, 120, 40))
+					branch.SetCanContainFocus(contain)
+					button := NewButton()
+					button.Arrange(geometry.Rect(0, 0, 100, 30))
+					button.SetFocusable(focusable)
+					button.SetFocusOnPointer(pointer)
+					branch.AddChild(button)
+					root.AddChild(input)
+					root.AddChild(branch)
+					win := testWindowWithSurface(&window{})
+					win.SetWidget(root)
+					t.Cleanup(win.Destroy)
+					win.SetFocusedWidget(input)
+					lost, clicks := 0, 0
+					input.ConnectFocused(func(focused bool) {
+						if !focused {
+							lost++
+						}
+					})
+					button.ConnectClicked(func() { clicks++ })
+					for _, kind := range []events.EventType{events.PointerDown, events.PointerUp} {
+						if err := win.DispatchEvent(events.PointerEvent{EventType: kind, Button: events.PointerButtonLeft, Position: geometry.Point{X: 110, Y: 10}}); err != nil {
+							t.Fatal(err)
+						}
+					}
+					want := Widget(input)
+					if focusable && contain && pointer {
+						want = button
+					}
+					if win.FocusedWidget() != want || clicks != 1 || (lost != 0) != (want == button) {
+						t.Fatalf("点击改变焦点或行为错误：focus=%T want=%T lost=%d clicks=%d", win.FocusedWidget(), want, lost, clicks)
+					}
+					win.SetFocusedWidget(input)
+					if got := win.SetFocusedWidget(button); got != (focusable && contain) {
+						t.Fatal("主动聚焦未使用共同准入，或被指针设置限制")
+					}
+					win.SetFocusedWidget(input)
+					_ = win.DispatchEvent(shortcutPress(events.KeyTab, 0))
+					want = input
+					if focusable && contain {
+						want = button
+					}
+					if win.FocusedWidget() != want {
+						t.Fatalf("Tab目标错误：%T want=%T", win.FocusedWidget(), want)
+					}
+					if want == button {
+						for _, key := range []events.Key{events.KeySpace, events.KeyEnter} {
+							_ = win.DispatchEvent(shortcutPress(key, 0))
+						}
+						if clicks != 3 {
+							t.Fatal("Tab聚焦后空格/回车没有激活")
+						}
+						_ = win.DispatchEvent(shortcutPress(events.KeyTab, events.ModifierShift))
+						if win.FocusedWidget() != input {
+							t.Fatal("Shift+Tab未返回输入框")
+						}
+					}
+					info := button.Snapshot()
+					if info.Focusable != focusable || !info.CanContainFocus || info.FocusOnPointer != pointer || branch.Snapshot().CanContainFocus != contain {
+						t.Fatal("快照改写自身配置或丢失策略")
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestEventDispatcherPointerFocusStopsAtNearestCandidate(t *testing.T) {
+	root, outer, button, child, input := newTestWidget(), newTestWidget(), newTestWidget(), newTestWidget(), newTestWidget()
+	root.Arrange(geometry.Rect(0, 0, 300, 100))
+	outer.Arrange(geometry.Rect(100, 0, 100, 80))
+	button.Arrange(geometry.Rect(0, 0, 80, 60))
+	child.Arrange(geometry.Rect(0, 0, 40, 40))
+	input.Arrange(geometry.Rect(0, 0, 80, 30))
+	for _, w := range []*testWidget{outer, button, input} {
+		w.SetFocusable(true)
+	}
+	button.SetFocusOnPointer(false)
+	button.AddChild(child)
+	outer.AddChild(button)
+	root.AddChild(input)
+	root.AddChild(outer)
+	win := testWindowWithSurface(&window{})
+	win.SetWidget(root)
+	t.Cleanup(win.Destroy)
+	win.SetFocusedWidget(input)
+	press := func() {
+		t.Helper()
+		if err := win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Position: geometry.Point{X: 110, Y: 10}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	press()
+	if win.FocusedWidget() != input {
+		t.Fatal("跳过最近候选后错误聚焦到祖先")
+	}
+	child.SetFocusable(true)
+	press()
+	if win.FocusedWidget() != child {
+		t.Fatal("父级FocusOnPointer错误限制独立可聚焦子控件")
+	}
+	win.SetFocusedWidget(input)
+	button.SetCanContainFocus(false)
+	press()
+	if win.FocusedWidget() != input {
+		t.Fatal("关闭准入的分支没有保留外部焦点")
+	}
+	button.SetCanContainFocus(true)
+	child.SetFocusable(false)
+	child.SetFocusOnPointer(false)
+	button.SetFocusOnPointer(true)
+	press()
+	if win.FocusedWidget() != button {
+		t.Fatal("非聚焦候选的指针设置阻止了外层按钮")
+	}
+}
+
+// 同一Root迁移与三个宿主共用主动聚焦检查，Popover不从锚点继承限制。
+func TestFocusContainmentAcrossHostsAndReparenting(t *testing.T) {
+	type focusHost interface {
+		Root
+		EventTarget
+		SetWidget(Widget)
+		Destroy()
+	}
+	for _, kind := range []string{"window", "surface", "popover"} {
+		t.Run(kind, func(t *testing.T) {
+			var host focusHost
+			switch kind {
+			case "window":
+				host = testWindowWithSurface(&window{})
+			case "surface":
+				s := newSystemSurface(nil)
+				s.claimed = true
+				host = s
+			case "popover":
+				host = &popover{}
+			}
+			t.Cleanup(host.Destroy)
+			root, allowed, denied, child := newTestWidget(), newTestWidget(), newTestWidget(), newTestWidget()
+			denied.SetCanContainFocus(false)
+			child.SetFocusable(true)
+			allowed.AddChild(child)
+			root.AddChild(allowed)
+			root.AddChild(denied)
+			host.SetWidget(root)
+			if !host.SetFocusedWidget(child) {
+				t.Fatal("初始聚焦失败")
+			}
+			denied.AddChild(child)
+			if child.Root() != host || host.FocusedWidget() != nil || child.Focused() || allowed.ContainsFocus() || root.ContainsFocus() {
+				t.Fatal("同Root迁移留下无效焦点或旧路径")
+			}
+			if !child.CanContainFocus() || host.SetFocusedWidget(child) {
+				t.Fatal("改写后代配置，或后代绕过祖先限制")
+			}
+			allowed.AddChild(child)
+			if host.FocusedWidget() != nil || !host.SetFocusedWidget(child) {
+				t.Fatal("迁移恢复时自动聚焦，或未重新允许聚焦")
+			}
+			allowed.SetCanContainFocus(false)
+			if host.FocusedWidget() != nil || child.Focused() || root.ContainsFocus() {
+				t.Fatal("关闭祖先准入没有正常失焦")
+			}
+			allowed.SetCanContainFocus(true)
+			if host.FocusedWidget() != nil {
+				t.Fatal("恢复准入主动恢复了焦点")
+			}
+		})
+	}
+}
+
+func TestFocusContainmentChangeReentry(t *testing.T) {
+	for _, action := range []string{"redirect", "reopen", "destroy"} {
+		t.Run(action, func(t *testing.T) {
+			root, branch, child, other := newTestWidget(), newTestWidget(), newTestWidget(), newTestWidget()
+			child.SetFocusable(true)
+			other.SetFocusable(true)
+			branch.AddChild(child)
+			root.AddChild(branch)
+			root.AddChild(other)
+			win := testWindowWithSurface(&window{})
+			win.SetWidget(root)
+			t.Cleanup(win.Destroy)
+			win.SetFocusedWidget(child)
+			leaves := 0
+			child.ConnectFocused(func(focused bool) {
+				if focused || leaves != 0 {
+					return
+				}
+				leaves++
+				if branch.CanContainFocus() || win.SetFocusedWidget(child) {
+					t.Fatal("失焦通知前没有发布准入限制")
+				}
+				switch action {
+				case "redirect":
+					win.SetFocusedWidget(other)
+				case "reopen":
+					branch.SetCanContainFocus(true)
+					win.SetFocusedWidget(child)
+				case "destroy":
+					win.Destroy()
+				}
+			})
+			branch.SetCanContainFocus(false)
+			if leaves != 1 {
+				t.Fatalf("重复失焦：%d", leaves)
+			}
+			switch action {
+			case "redirect":
+				if win.FocusedWidget() != other || !other.Focused() {
+					t.Fatal("清除了回调转移到外部的焦点")
+				}
+			case "reopen":
+				if win.FocusedWidget() != child || !child.Focused() || !branch.CanContainFocus() {
+					t.Fatal("覆盖回调重新开放并聚焦的结果")
+				}
+			case "destroy":
+				if !child.Destroyed() || !branch.Destroyed() {
+					t.Fatal("销毁回调后继续复活子树")
+				}
+			}
+		})
+	}
+}

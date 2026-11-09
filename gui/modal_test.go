@@ -431,3 +431,34 @@ func TestModalBlockedPopoverStillReleasesDestroyedSurface(t *testing.T) {
 		t.Fatal("模态输入限制阻止了原生表面销毁清理")
 	}
 }
+
+func TestModalFocusPoliciesForInitialAndRestore(t *testing.T) {
+	w, root, back, layer, a, b, scope := modalFixture(t)
+	a.SetCanContainFocus(false)
+	b.SetFocusOnPointer(false)
+	layer.SetVisible(true)
+	if !scope.Active() || w.FocusedWidget() != b {
+		t.Fatal("模态初始焦点未跳过关闭准入的项，或错误受指针策略限制")
+	}
+	layer.SetVisible(false)
+	if w.FocusedWidget() != back {
+		t.Fatal("没有恢复原背景焦点")
+	}
+	// 激活期间关闭原背景分支，恢复时必须拒绝记忆中的旧焦点。
+	layer.SetVisible(true)
+	back.SetCanContainFocus(false)
+	layer.SetVisible(false)
+	if w.FocusedWidget() != nil {
+		t.Fatal("模态结束恢复到了禁止焦点的背景")
+	}
+	// Modal从自己的Widget开始遍历，也必须检查该Widget之外的祖先准入。
+	root.SetCanContainFocus(false)
+	layer.SetVisible(true)
+	if !scope.Active() {
+		t.Fatal("焦点限制错误撤销了模态边界")
+	}
+	modalKey(t, w, events.KeyTab)
+	if w.FocusedWidget() != nil || a.Focused() || b.Focused() {
+		t.Fatal("模态直接子树遍历绕过了祖先限制")
+	}
+}

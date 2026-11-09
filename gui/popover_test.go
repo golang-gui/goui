@@ -1602,3 +1602,25 @@ func TestPopoverNativeTerminationPreservesContent(t *testing.T) {
 func (*recordingPlatformPopup) SurfaceState() platform.SurfaceState {
 	return platform.SurfaceState{Ready: true, Generation: 1}
 }
+
+func TestPopoverFocusPolicyDoesNotInheritFromAnchor(t *testing.T) {
+	root, anchor := newTestWidget(), newTestWidget()
+	root.AddChild(anchor)
+	root.SetCanContainFocus(false)
+	win := testWindowWithSurface(&window{})
+	win.SetWidget(root)
+	p := &popover{anchor: anchor}
+	popupRoot, child := newTestWidget(), newTestWidget()
+	child.SetFocusable(true)
+	popupRoot.AddChild(child)
+	p.SetWidget(popupRoot)
+	t.Cleanup(p.Destroy)
+	t.Cleanup(win.Destroy)
+	if !p.SetFocusedWidget(child) {
+		t.Fatal("Popover从锚点错误继承了准入限制")
+	}
+	popupRoot.SetCanContainFocus(false)
+	if p.FocusedWidget() != nil || p.SetFocusedWidget(child) || child.Focused() || popupRoot.ContainsFocus() {
+		t.Fatal("Popover自身焦点准入没有生效")
+	}
+}

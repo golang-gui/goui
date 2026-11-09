@@ -49,14 +49,18 @@ type WidgetInfo struct {
 	// Enabled reports effective interaction, including ancestor restrictions.
 	// Controls may further restrict a record (for example, a disabled menu item).
 	// It is not the widget's own Enabled setting.
-	Enabled       bool `json:"enabled"`
-	Focusable     bool `json:"focusable"`
-	Focused       bool `json:"focused"`
-	FocusVisible  bool `json:"focusVisible"` // focused with a keyboard-navigation hint
-	Hovered       bool `json:"hovered,omitempty"`
-	Pressed       bool `json:"pressed,omitempty"`
-	Selected      bool `json:"selected,omitempty"`
-	ContainsFocus bool `json:"containsFocus"`
+	Enabled   bool `json:"enabled"`
+	Focusable bool `json:"focusable"`
+	// Focus policies are the widget's own settings. Ancestor restrictions and
+	// the ordinary enabled/visible/modal rules still govern actual focus.
+	CanContainFocus bool `json:"canContainFocus"`
+	FocusOnPointer  bool `json:"focusOnPointer"`
+	Focused         bool `json:"focused"`
+	FocusVisible    bool `json:"focusVisible"` // focused with a keyboard-navigation hint
+	Hovered         bool `json:"hovered,omitempty"`
+	Pressed         bool `json:"pressed,omitempty"`
+	Selected        bool `json:"selected,omitempty"`
+	ContainsFocus   bool `json:"containsFocus"`
 	// Actions describes supported actions, not guaranteed input reachability.
 	Actions []Action `json:"actions"`
 	// Children preserves back-to-front order for retained widget siblings.

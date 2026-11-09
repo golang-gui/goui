@@ -6,6 +6,28 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 )
 
+// focusContainmentAllowed reads the live parent chain. Permissions are local
+// settings; reparenting never publishes a cached or transient inherited value.
+func focusContainmentAllowed(widget Widget) bool {
+	if widget == nil {
+		return false
+	}
+	for current := widget; current != nil; current = current.Parent() {
+		if current.base().destroyed || !current.CanContainFocus() {
+			return false
+		}
+	}
+	return true
+}
+
+// focusEligible is shared by host requests and modal selection/restoration.
+// The requesting host separately checks ownership and its own lifetime.
+func focusEligible(widget Widget) bool {
+	return widget != nil && !widget.base().destroyed && widget.Root() != nil && widget.Focusable() &&
+		IsEnabled(widget) && visibleInTree(widget) && focusContainmentAllowed(widget) &&
+		modalWidgetAllowed(widget)
+}
+
 // setFocusVisible changes the host's input mode, not its logical focus. The
 // current widget needs repainting even when focus stays on the same target.
 func setFocusVisible(host EventTarget, visible bool) {
@@ -38,7 +60,7 @@ func (d *EventDispatcher) navigateTab(host EventTarget, event events.Event) {
 	var candidates []Widget
 	var visit func(Widget)
 	visit = func(widget Widget) {
-		if widget == nil || widget.base().destroyed || !widget.Visible() || !IsEnabled(widget) || widget.Root() == nil {
+		if widget == nil || widget.base().destroyed || !widget.Visible() || !IsEnabled(widget) || widget.Root() == nil || !widget.CanContainFocus() {
 			return
 		}
 		if widget.Focusable() {
@@ -49,7 +71,9 @@ func (d *EventDispatcher) navigateTab(host EventTarget, event events.Event) {
 		}
 	}
 	if scope := modalScopeOf(host); scope != nil {
-		visit(scope.widget)
+		if focusContainmentAllowed(scope.widget) {
+			visit(scope.widget)
+		}
 	} else {
 		visit(host.Widget())
 		visit(d.decoration)

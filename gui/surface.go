@@ -262,7 +262,7 @@ func (w *surfaceBase) SetFocusedWidget(widget Widget) bool {
 		w.setFocusedWidget(nil)
 		return true
 	}
-	if w.destroyed || widget.base().destroyed || widget.Root() != w.owner() || !widget.Focusable() || !IsEnabled(widget) || !visibleInTree(widget) || !modalWidgetAllowed(widget) {
+	if w.destroyed || widget.Root() != w.owner() || !focusEligible(widget) {
 		return false
 	}
 	if w.focusedWidget == widget {

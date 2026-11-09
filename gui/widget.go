@@ -46,6 +46,17 @@ type Widget interface {
 	Focusable() bool
 	// SetFocusable(false) also clears focus if this widget is currently focused.
 	SetFocusable(bool)
+	// CanContainFocus is this widget's own permission for focus to enter itself
+	// or its descendants. It defaults to true; ancestors can still deny focus.
+	CanContainFocus() bool
+	// SetCanContainFocus(false) clears focus within this subtree. Re-enabling
+	// it does not restore focus or change descendants' own settings.
+	SetCanContainFocus(bool)
+	// FocusOnPointer controls automatic focus on PointerDown, when this widget
+	// is the nearest focusable target. It defaults to true, affects only self,
+	// and does not restrict Tab navigation or explicit focus requests.
+	FocusOnPointer() bool
+	SetFocusOnPointer(bool)
 	Focused() bool
 	// FocusVisible reports logical focus with a keyboard-navigation hint. The
 	// host manages it: Tab enables hints, pointer presses disable them, and
@@ -118,8 +129,8 @@ type Widget interface {
 	// Default Tab navigation uses depth-first preorder (self, then children);
 	// Shift+Tab reverses that order. Layout managers may also use sibling order
 	// for placement; it is not a universal logical content index. An empty slice
-	// is a leaf. Focusable=false skips only self; hidden or disabled subtrees
-	// are skipped during focus navigation.
+	// is a leaf. Focusable=false skips only self; hidden, disabled, or
+	// CanContainFocus=false subtrees are skipped during focus navigation.
 	Children() []Widget
 
 	ConnectMount(func()) signal.Handle
@@ -165,6 +176,8 @@ type WidgetBase struct {
 	inheritedDisabled   bool
 	enabledRevision     uint64
 	focusable           bool
+	focusBlocked        bool
+	pointerFocusBlocked bool
 	state               style.State
 	rect                geometry.Rectangle
 	parentWidget        Widget
@@ -276,7 +289,7 @@ func (w *WidgetBase) Focusable() bool {
 }
 
 func (w *WidgetBase) SetFocusable(focusable bool) {
-	if w.focusable == focusable {
+	if w.destroyed || w.focusable == focusable {
 		return
 	}
 	w.focusable = focusable
@@ -287,6 +300,33 @@ func (w *WidgetBase) SetFocusable(focusable bool) {
 			}
 		}
 	}
+	w.requestSemanticUpdate()
+}
+
+func (w *WidgetBase) CanContainFocus() bool { return !w.focusBlocked }
+
+func (w *WidgetBase) SetCanContainFocus(allow bool) {
+	if w.destroyed || w.focusBlocked == !allow {
+		return
+	}
+	w.focusBlocked = !allow
+	if !allow {
+		if host, ok := w.root().(EventTarget); ok {
+			clearSubtreeFocus(host, w)
+		}
+	}
+	if !w.destroyed {
+		w.requestSemanticUpdate()
+	}
+}
+
+func (w *WidgetBase) FocusOnPointer() bool { return !w.pointerFocusBlocked }
+
+func (w *WidgetBase) SetFocusOnPointer(allow bool) {
+	if w.destroyed || w.pointerFocusBlocked == !allow {
+		return
+	}
+	w.pointerFocusBlocked = !allow
 	w.requestSemanticUpdate()
 }
 
@@ -525,20 +565,22 @@ func (w *WidgetBase) StyleChanged() {}
 func (w *WidgetBase) Snapshot() WidgetInfo {
 	state := w.State()
 	info := WidgetInfo{
-		ID:            w.ID(),
-		Name:          w.Name(),
-		Tooltip:       w.Tooltip(),
-		Role:          RoleWidget,
-		Bounds:        w.windowRect(),
-		Visible:       w.Visible(),
-		Enabled:       IsEnabled(w),
-		Focusable:     w.Focusable(),
-		Focused:       w.Focused(),
-		FocusVisible:  w.FocusVisible(),
-		ContainsFocus: w.ContainsFocus(),
-		Hovered:       state.Has(style.Hovered),
-		Pressed:       state.Has(style.Pressed),
-		Selected:      state.Has(style.Selected),
+		ID:              w.ID(),
+		Name:            w.Name(),
+		Tooltip:         w.Tooltip(),
+		Role:            RoleWidget,
+		Bounds:          w.windowRect(),
+		Visible:         w.Visible(),
+		Enabled:         IsEnabled(w),
+		Focusable:       w.Focusable(),
+		CanContainFocus: w.CanContainFocus(),
+		FocusOnPointer:  w.FocusOnPointer(),
+		Focused:         w.Focused(),
+		FocusVisible:    w.FocusVisible(),
+		ContainsFocus:   w.ContainsFocus(),
+		Hovered:         state.Has(style.Hovered),
+		Pressed:         state.Has(style.Pressed),
+		Selected:        state.Has(style.Selected),
 	}
 	if w.modal != nil {
 		info.SetAttribute(ModalInfoKey, ModalInfo{Active: w.modal.Active()})
@@ -929,7 +971,10 @@ func (w *WidgetBase) setParent(child, parent Widget) {
 	w.updateEnabled()
 	if !rootChanged && oldRoot != nil {
 		if h, ok := oldRoot.(EventTarget); ok && focusWithin(h, child.base()) {
-			h.SetFocusedWidget(h.FocusedWidget())
+			focused := h.FocusedWidget()
+			if !h.SetFocusedWidget(focused) && h.FocusedWidget() == focused {
+				h.SetFocusedWidget(nil)
+			}
 		}
 	}
 	if rootChanged && newRoot != nil && child.Root() == newRoot {
