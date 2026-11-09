@@ -22,6 +22,12 @@ Android 已按现有平台规范整理绑定、应用/事件/输入/窗口和像
 ARM64 模拟器，仍保留全 NULL 查询和解绑失败等缺口，见
 [Android 整理结果](PlanMobileAPI.md#10-android-组织与生命周期整理2026-11-09)。
 
+Android Typography 已完成 SDK/JNI、字体与批量布局、Go 栅格资源/Dex 三批整理，
+Context 释放后已有 Layout 的字体设施仍有效，Java 保留原生批量工作。API30 ARM64
+模拟器的独立参考、CheckJNI、Software/GLES 生命周期与组件混版错误验收通过；
+真机、更多版本和 WrapChar 不在本次完成范围，见
+[Typography 整理](PlanMobileAPI.md#11-android-typography-三批整理2026-11-09已完成)。
+
 触摸沿用既有 PointerEvent 扩展和 GTK4 Gesture 风格，统一 PointerType 命名，
 复用现有竞争协议；实施顺序和进入上层条件见
 [平台稳固计划](PlanMobileAPI.md#7-平台实现稳固优先2026-11-09)与

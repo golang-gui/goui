@@ -1,6 +1,7 @@
 # Android 原生绑定验收
 
-本例覆盖 NDK 布局、JNI 引用和参数、EGL 配置与 context 的原生调用。需要 Android
+本例覆盖 NDK 布局、JNI 引用和参数、SDK 文字/图形类、Typography 生命周期、
+EGL 配置与 context 的原生调用。需要 Android
 API 29+ ARM64 真机或模拟器、Go 和 `cmd/goui`，安装、取证使用 `adb`。模拟器须支持
 OpenGL ES 3；仅构建 APK 不算运行通过。所有临时工程和结果放在仓库外。
 
@@ -54,9 +55,31 @@ adb shell run-as org.golanggui.AndroidBindings cat cache/bindings.json
 CheckJNI/崩溃信息。阶段文件只是诊断证据，不代替最终断言。若设备驱动不支持某项
 合法 EGL 行为，保留阶段和原生日志，明确标注未通过，不删断言或由绑定静默改参数。
 
-默认 `check=all` 执行全部断言。可通过构建参数 `-ldflags '-X main.check=jni'`、
+默认 `check=all` 执行原有 JNI/EGL 断言。可通过构建参数 `-ldflags '-X main.check=jni'`、
 `-X main.check=egl`、`-X main.check=egl-null-query` 分开运行；每次按上述步骤停止、
 清空应用后重新安装、启动并检查结果，保存各轮日志。不能用部分检查代替 all。
+
+排版整理的专项检查另行选择，不要求 EGL 数量查询成功才能验证文字绑定：
+
+- `text-sdk`：直接使用 SDK 的 TextPaint、SpannableString、StaticLayout.Builder，
+  检查行宽/基线、LTR/RTL boolean，以及 Font、FontFamily、Typeface 原生调用。
+  Bitmap 的 ARGB=0x80ff0000 经 NDK 读出必须为预乘 RGBA=(128,0,0,128)，精确比较；
+  Canvas 覆盖浮点变换、clipRect 的 true/false、解绑后 recycle。无字体金图。
+- `text`：执行上述 SDK 检查、下述耗时观测及生命周期回归。Context.Destroy 后修改
+  已有 Layout 的字体/颜色，再按 1x/2x/1x 栅格化；预乘蓝通道必须等于 alpha，
+  0<alpha<=128，其余颜色为零。另一份 Layout 的图像必须逐字节不变；销毁一份后
+  另一份仍可设置装饰并绘制，重复 Destroy 安全。使用系统 Roboto-Regular.ttf。
+- `text-bench`：仅观测性能。固定重复八段 Latin/中文/阿拉伯/emoji，240 DIP 宽，
+  16pt；40 次创建+首次度量+销毁，1000 次命中缓存的度量，以及各 20 次预热后
+  1x/2x 栅格化。Context 创建不在计时范围内，栅格化复用输出缓冲。结果在 `text`
+  的 coldNs/cachedNs/rasterNs；不能将其解释为 FPS 或真机性能结论。
+- `text-component`：故意使用旧 Dex 的负向测试。Go 后端应明确返回含 component ABI
+  的错误，JNI 异常已经消费；不是成功创建排版 Context。仅用于维护者的混版验收，
+  需通过 `-components` 指定旧组件，正常组件运行该检查会按预期失败。
+
+专项均经 `platform.NewTypography` 和真实 UI 主线程调用；保存 check、passed 和日志。
+text-sdk 不经过 GOUI 的 Java LayoutEngine，text 的位图缓存按 Layout 隔离。
+完整文字几何/像素独立参考另运行 [android_text](../android_text/README.md)。
 
 2026-11-09 的 Android API30 ARM64 / AOSP ATD / SwiftShader 验收中，`jni` 和
 `egl` 可通过，但属性和输出数组同时为 NULL 的配置数量查询会在原生

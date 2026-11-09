@@ -443,3 +443,26 @@ UIKit，不引入新宿主管理框架，不扩展触摸、IME、多 Scene 或�
 - 真机、其他 Android 版本、多 Activity 的实际交错、真正 context loss、context/
   pbuffer 内存耗尽未验收。以上不足不由普通旋转、重复 EGLSurface 或 Go race 代替。
 - 触摸/IME、Popup、SafeArea 按独立计划推进；整个 P0 平台稳固仍未标记全部完成。
+
+
+## 11. Android Typography 三批整理（2026-11-09，已完成）
+
+详见 [DesignAndroidTypography](DesignAndroidTypography.md#2026-11-09三批职责整理)。
+按 SDK/JNI、字体与批量布局、栅格化与 Dex 三批推进；保留 Java 批量循环，原生
+标准 API 归 SDK，GOUI 私有 Java 桥接归 androidtext。不同 Layout 可变状态隔离，
+Context.Destroy 不关闭已有 Layout 的字体设施。只更新所需 Android Dex，不重制
+运行时基座或改动 GUI/UI；正式消费仍无需 Java/NDK。
+
+- [x] SDK/JNI 与 ART/CheckJNI 原生绑定验收，1495c7a。
+- [x] 字体/Layout 与生命周期回归，d508908；中间版本单独构建与实跑。
+- [x] Bitmap/Canvas 由 Go Layout 独立拥有，Java 保留批量绘制；Dex/Go ABI 3 同步，
+  正式默认组件与故意混用旧 ABI 2 组件的错误恢复通过，d05480a。
+- [x] API30 ARM64/SwiftShader/1x、CheckJNI：text 三轮、170项后端、18组/3814项
+  交互参考通过；Software/GLES 四次旋转、两次后台恢复及清理通过，EGL回滚通过。
+- [x] 独立 X11 已跟踪源码全仓4558项通过/11项既有跳过，相关race及Windows/macOS
+  编译通过；两版同环境各三轮耗时对照，无可宣称的显著提速或数量级退化。
+
+原工作区 go test ./... 仍因开始时未跟踪旧接口例程而失败，未删除或迁移；原生
+参考的过期VM测试符号、消费工具的format2日志断言已修正并保留覆盖。具体命令、
+取证、耗时范围与首轮失败见 DesignAndroidTypography。API29/31+、真机、16KiB、
+长期内存、WrapChar及既有全NULL EGL查询缺口仍保留；本三批不扩为完整移动支持。

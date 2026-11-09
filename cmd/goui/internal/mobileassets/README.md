@@ -53,3 +53,21 @@ Current embedded recipes cover Go 1.24.13, 1.25.8, 1.26.10 and 1.27.3 for Androi
 ARM64, iOS ARM64 device and simulator. A different patch release is not assumed
 compatible. Adding a version requires verified producer records and build/runtime
 acceptance; identical files in its recipes reuse the existing target object pool.
+
+When only the Android typography adapter changes, compile its generated Java
+sources with the verified Android API jar and D8 (minimum API 29), then replace
+only the target's Dex from this directory:
+
+```sh
+go run generate.go -android-dex /absolute/verified/classes.dex
+```
+
+This mode checks the existing target/archive digests and file list, replaces
+`platform/classes.dex`, and regenerates the target and file digests. It does not
+rebuild Go-version recipes, native objects, SDK interfaces, or iOS resources.
+The component cache key changes with the new content. Verify the Dex on ART
+before publishing it; a valid header alone does not prove ABI compatibility.
+The Go adapter and LayoutEngine currently require component ABI 3. The Go side
+checks the Java ABI before constructing a layout and reports a mismatched or
+missing adapter as an error. Update source, Go bridge and embedded Dex together;
+this maintainer operation never runs during an application build.

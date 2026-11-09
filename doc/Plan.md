@@ -4553,3 +4553,26 @@ RenderWidget（包含GPU读回），旧版两次总耗时455.58/458.70ms，新�
 - [x] Windows amd64与macOS arm64的CGO_ENABLED=0 Demo交叉编译通过；本轮无远端
   原生桌面、2x或移动设备验收，不复用上轮框架测试代替本轮Demo验收。
   截图、日志、临时overlay和二进制保存在仓库外；保留已有移动端工作区改动。
+
+## 2026-11-09 Android Typography 三批职责整理
+
+- [x] SDK/JNI 绑定独立于 androidtext；原生 TextPaint/StaticLayout、字体、Bitmap/
+  Canvas 使用显式 JNIEnv，类型和参数按 Android API。首批提交1495c7a。
+- [x] Context 与存活 Layout 共同持有字体注册/匹配缓存；可变 TextPaint、Span、
+  Layout 始终逐对象隔离，私有 Java 桥接与 SDK 分开。第二批提交d508908。
+- [x] Go TextLayout 管理可复用 Bitmap/Canvas，Java 保留段落/Tab/ICU/指标/绘制批处理。
+  维护者更新 Dex 与ABI3，消费者不增加Java/NDK依赖；旧组件明确返回ABI错误。
+  第三批提交d05480a。
+- [x] 远端Mac专用Android11/API30 ARM64 AOSP ATD、SwiftShader GLES3、1x、CheckJNI：
+  text专项三轮、170项后端/54项基础/18组3814项交互通过；旧实现生命周期回归失败
+  已保留。Software/GLES分别四次旋转、两次后台恢复与最终释放通过，EGL回滚通过。
+- [x] 本机Linux/Go1.25.8、独立Xvnc/Xfwm4已跟踪源码副本：全仓4558通过、11跳过、
+  0失败，相关race通过；Windows amd64/macOS arm64交叉编译通过，非桌面验收。
+  原工作区go test ./...因开始时已有的未跟踪旧例程/测试编译失败；未删除这些文件。
+- [x] 同环境两版各三轮耗时对照已记录，不宣称统计显著提速。修正旧测试VM符号和
+  消费工具对format2的证据断言，保留所有有效检查，不恢复生产测试入口。
+
+设计、数据与完整验证限制见 [DesignAndroidTypography](DesignAndroidTypography.md#2026-11-09三批职责整理)，
+后续范围见 [PlanMobileAPI](PlanMobileAPI.md#11-android-typography-三批整理2026-11-09已完成)。
+真机、API29/31+、16KiB、长期内存、WrapChar、真正context loss及既有全NULL EGL
+查询缺口均未计为本批完成。原始材料在两端仓库外/tmp/goui-android-text-refactor-05rmxhoz。
