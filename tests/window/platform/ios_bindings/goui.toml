@@ -1,0 +1,7 @@
+id = "org.golanggui.IOSBindings"
+name = "GOUI UIKit Bindings"
+executable = "ios-bindings"
+main = "."
+version = "0.0.1"
+build = 1
+icon = "../../../../doc/logo/goui-mark.svg"

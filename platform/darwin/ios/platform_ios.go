@@ -137,7 +137,7 @@ func (p *Platform) offerWindow() {
 	}
 	p.window = w
 	w.SetEventHandler(p.windowHandler(w))
-	if !w.Destroyed() {
+	if !p.destroyed && p.window == w && !w.Destroyed() {
 		iosHost.wanted.Store(true)
 		w.bind(p.loop)
 	}

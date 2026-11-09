@@ -47,8 +47,11 @@ func (w *Window) LockGPU() bool {
 // UnlockGPU releases the lifecycle gate after all submitted GPU work is drained.
 func (w *Window) UnlockGPU() { w.state.gpu.Unlock() }
 
+// nativeState owns the current Scene's UIKit objects and drawing target. All
+// native objects and geometry are main-thread-only. The logical Window can
+// outlive a Scene; generation rejects submissions from its previous target.
 type nativeState struct {
-	// UIKit objects and geometry belong exclusively to the system main thread.
+	scene         ui.UIWindowScene // Retained from connect until disconnect.
 	window        ui.UIWindow
 	view          ui.UIView
 	controller    ui.UIViewController
@@ -59,7 +62,8 @@ type nativeState struct {
 	generation    uint64
 	foreground    bool
 	wanted        atomic.Bool
-	// The GPU gate also covers offscreen work. Background entry drains it first.
+
+	// The GPU gate also covers offscreen work, which has no target lease.
 	gpu     sync.Mutex
 	allowed bool
 	image   pendingImage
@@ -74,7 +78,9 @@ func initWindow() (err error) {
 		ViewDidLayoutSubviews: func(self ui.UIViewController) {
 			onSystemThread(func() {
 				objc.SendSuper[uintptr](self.ID, ui.UIViewControllerSel.ViewDidLayoutSubviews)
-				h.target(false)
+				if h.controller.ID == self.ID {
+					h.target(false)
+				}
 			})
 		},
 	})
@@ -98,38 +104,65 @@ func initWindow() (err error) {
 			onSystemThread(func() { h.focus(scene, false) })
 		},
 		SceneDidDisconnect: func(_ ui.UIWindowSceneDelegate, scene ui.UIScene) {
-			onSystemThread(func() { h.disconnect() })
+			onSystemThread(func() {
+				if h.ownsScene(scene) {
+					h.disconnect()
+				}
+			})
 		},
 	})
 	return
 }
 
-func (h *nativeState) enterForeground(_ ui.UIScene) {
+func (h *nativeState) ownsScene(scene ui.UIScene) bool {
+	return scene.ID != 0 && scene.ID == h.scene.ID
+}
+
+func (h *nativeState) enterForeground(scene ui.UIScene) {
+	if !h.ownsScene(scene) {
+		return
+	}
 	h.foreground = true
 	h.gpu.Lock()
 	h.allowed = true
 	h.gpu.Unlock()
 	h.target(true)
-	h.visibility()
+	// Target delivery may disconnect or replace this Scene synchronously.
+	if h.ownsScene(scene) {
+		h.visibility()
+	}
 }
 
-func (h *nativeState) enterBackground(_ ui.UIScene) {
-	h.suspend()
+func (h *nativeState) enterBackground(scene ui.UIScene) {
+	if !h.ownsScene(scene) {
+		return
+	}
 	h.foreground = false
-	h.visibility()
+	h.suspend()
+	if h.ownsScene(scene) {
+		h.visibility()
+	}
 }
 
-func (h *nativeState) focus(_ ui.UIScene, active bool) {
-	if h.bound != nil {
+func (h *nativeState) focus(scene ui.UIScene, active bool) {
+	if h.ownsScene(scene) && h.bound != nil {
 		h.bound.Source().Focused(active && h.window.ID != 0 && h.window.IsKeyWindow())
 	}
 }
 
 func (h *nativeState) connect(scene ui.UIScene) {
-	if h.window.ID != 0 {
-		h.disconnect()
+	if scene.ID == 0 || h.ownsScene(scene) {
+		return
 	}
-	h.window = ui.UIWindowClassId.Alloc().InitWithWindowScene(Cast[ui.UIWindowScene](scene.ID))
+	if h.scene.ID != 0 {
+		h.disconnect()
+		if h.scene.ID != 0 {
+			return
+		}
+	}
+	h.scene = Cast[ui.UIWindowScene](scene.ID)
+	h.scene.Retain()
+	h.window = ui.UIWindowClassId.Alloc().InitWithWindowScene(h.scene)
 	h.controller = contentControllerClass.Alloc().Init()
 	h.view = ui.UIViewClassId.Alloc().InitWithFrame(cg.CGRect{})
 	h.view.SetBackgroundColor(ui.UIColorClassId.BlackColor())
@@ -141,17 +174,25 @@ func (h *nativeState) connect(scene ui.UIScene) {
 	Cast[qc.CALayer](h.view.Layer()).AddSublayer(h.layer)
 	h.width, h.height = 0, 0
 	h.window.MakeKeyAndVisible()
+	if !h.ownsScene(scene) {
+		return
+	}
 	h.target(true)
+	if !h.ownsScene(scene) {
+		return
+	}
 	h.visibility()
-	if iosApplication.onHostReady != nil {
+	if h.ownsScene(scene) && iosApplication.onHostReady != nil {
 		iosApplication.onHostReady()
 	}
 }
+
 func (h *nativeState) target(force bool) {
-	if h.view.ID == 0 {
+	if h.view.ID == 0 || h.layer.ID == 0 {
 		return
 	}
-	bounds := h.view.Bounds()
+	scene, view := h.scene, h.view
+	bounds := view.Bounds()
 	scale := h.window.Screen().Scale()
 	width, height := int32(math.Round(bounds.Size.Width*scale)), int32(math.Round(bounds.Size.Height*scale))
 	if width <= 0 || height <= 0 || scale <= 0 {
@@ -160,10 +201,16 @@ func (h *nativeState) target(force bool) {
 	if !force && width == h.width && height == h.height && float32(scale) == h.scale {
 		return
 	}
+	generation := h.generation + 1
 	h.revoke()
+	// Revoke delivers SurfaceEvent synchronously after Run. A callback may
+	// detach this View or publish another target before returning here.
+	if h.scene.ID != scene.ID || h.view.ID != view.ID || h.generation != generation {
+		return
+	}
 	h.width, h.height, h.scale = width, height, float32(scale)
-	h.view.SetContentScaleFactor(scale)
-	Cast[qc.CALayer](h.view.Layer()).SetContentsScale(scale)
+	view.SetContentScaleFactor(scale)
+	Cast[qc.CALayer](view.Layer()).SetContentsScale(scale)
 	qc.CATransactionClassId.Begin()
 	qc.CATransactionClassId.SetDisableActions(true)
 	h.layer.SetFrame(bounds)
@@ -171,21 +218,30 @@ func (h *nativeState) target(force bool) {
 	qc.CATransactionClassId.Commit()
 	h.publishTarget()
 }
+
 func (h *nativeState) publishTarget() {
-	if h.bound == nil || h.view.ID == 0 || h.width <= 0 || h.height <= 0 {
+	if h.bound == nil || h.bound.Destroyed() || h.view.ID == 0 || h.width <= 0 || h.height <= 0 {
 		return
 	}
 	handle, generation := uintptr(h.view.ID), h.generation
 	h.bound.Source().Attach(handle, generation, h.width, h.height, h.scale, func(img image.Image) error { return h.present(handle, generation, img) })
 }
+
 func (h *nativeState) revoke() {
+	h.generation++
+	h.clearImage()
 	if h.bound != nil {
 		h.bound.Source().Revoke()
 	}
-	h.clearImage()
-	h.generation++
 }
-func (h *nativeState) suspend() { h.gpu.Lock(); h.allowed = false; h.gpu.Unlock(); h.revoke() }
+
+func (h *nativeState) suspend() {
+	h.gpu.Lock()
+	h.allowed = false
+	h.gpu.Unlock()
+	h.revoke()
+}
+
 func (h *nativeState) visibility() {
 	if h.view.ID != 0 {
 		h.view.SetHidden(!h.wanted.Load())
@@ -194,33 +250,42 @@ func (h *nativeState) visibility() {
 		h.bound.Source().Visible(h.foreground && h.view.ID != 0 && !h.view.Hidden())
 	}
 }
+
 func (h *nativeState) disconnect() {
-	h.suspend()
-	h.foreground = false
-	h.visibility()
-	if h.window.ID != 0 {
-		h.window.SetHidden(true)
-		h.window.SetRootViewController(ui.UIViewController{})
+	h.gpu.Lock()
+	h.allowed = false
+	h.gpu.Unlock()
+	// Detach identity before notifying consumers. Late native callbacks and
+	// reentrant delivery cannot release a newly connected Scene's objects.
+	scene, window, controller, view, layer := h.scene, h.window, h.controller, h.view, h.layer
+	h.scene, h.window, h.controller, h.view, h.layer = ui.UIWindowScene{}, ui.UIWindow{}, ui.UIViewController{}, ui.UIView{}, qc.CALayer{}
+	h.width, h.height, h.foreground = 0, 0, false
+	h.revoke()
+	if h.scene.ID == 0 {
+		h.visibility()
 	}
-	if h.layer.ID != 0 {
-		h.layer.RemoveFromSuperlayer()
-		h.layer.Release()
+	if window.ID != 0 {
+		window.SetHidden(true)
+		window.SetRootViewController(ui.UIViewController{})
 	}
-	if h.view.ID != 0 {
-		h.view.Release()
+	if layer.ID != 0 {
+		layer.RemoveFromSuperlayer()
+		layer.Release()
 	}
-	if h.controller.ID != 0 {
-		h.controller.Release()
+	if view.ID != 0 {
+		view.Release()
 	}
-	if h.window.ID != 0 {
-		h.window.Release()
+	if controller.ID != 0 {
+		controller.Release()
 	}
-	h.layer = qc.CALayer{}
-	h.view = ui.UIView{}
-	h.controller = ui.UIViewController{}
-	h.window = ui.UIWindow{}
-	h.width, h.height = 0, 0
+	if window.ID != 0 {
+		window.Release()
+	}
+	if scene.ID != 0 {
+		scene.Release()
+	}
 }
+
 func newWindow(loop *EventLoop, handler events.EventHandler) (*Window, error) {
 	w := &Window{state: &iosHost}
 	base, err := mobile.NewWindow(loop.EventLoop, handler, windowHost{w})
@@ -240,9 +305,11 @@ func (w *Window) bind(loop *EventLoop) {
 		w.state.bound = w
 		w.state.publishTarget()
 		// Target delivery may synchronously destroy the adapter.
-		if !w.Destroyed() {
+		if !w.Destroyed() && w.state.bound == w {
 			w.state.visibility()
-			w.Source().Focused(w.state.window.ID != 0 && w.state.window.IsKeyWindow())
+			if !w.Destroyed() && w.state.bound == w {
+				w.Source().Focused(w.state.window.ID != 0 && w.state.window.IsKeyWindow())
+			}
 		}
 	})
 }
