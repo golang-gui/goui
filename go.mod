@@ -23,6 +23,7 @@ require (
 	go.mozilla.org/pkcs7 v0.9.0
 	golang.org/x/image v0.24.0
 	golang.org/x/text v0.22.0
+	golang.org/x/sys v0.30.0
 	howett.net/plist v1.0.1
 	software.sslmate.com/src/go-pkcs12 v0.7.1
 )
@@ -33,5 +34,4 @@ require (
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	golang.org/x/crypto v0.33.0 // indirect
 	golang.org/x/net v0.35.0 // indirect
-	golang.org/x/sys v0.30.0 // indirect
 )

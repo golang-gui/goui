@@ -6,7 +6,7 @@ import (
 )
 
 func nativeGLSymbol(name string) uintptr {
-	if address := egl.Proc(name); address != 0 {
+	if address := egl.GetProcAddress(name); address != 0 {
 		return address
 	}
 	library, err := cgo.Dlopen("libGLESv3.so", cgo.RTLD_NOW)

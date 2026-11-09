@@ -55,21 +55,21 @@ func verifyBackend(directory string) backendResult {
 	var result backendResult
 	result.run("jni", func() {
 		vm := jni.VM(ffi.CallRet[uintptr](symbol("goui_android_java_vm")))
-		e, status := vm.GetEnv()
+		e, status := vm.GetEnv(jni.Version16)
 		if status != 0 {
 			panic(status)
 		}
 		if e.PushLocalFrame(16) < 0 {
 			panic(e.Exception())
 		}
-		defer e.PopLocalFrame()
+		defer e.PopLocalFrame(0)
 		text := "a\x00😀"
 		value := e.NewString(text)
 		result.check("jni-utf16-roundtrip", e.String(value) == text, nil)
 		array := e.IntArray([]int32{-1, 0, 42, math.MaxInt32})
 		result.check("jni-int-array", reflect.DeepEqual(e.Ints(array), []int32{-1, 0, 42, math.MaxInt32}), nil)
-		class := e.ObjectClass(value)
-		method := e.Method(class, "gouiMissingMethod", "()V", false)
+		class := e.GetObjectClass(value)
+		method := e.GetMethodID(class, "gouiMissingMethod", "()V")
 		err := e.Exception()
 		result.check("jni-exception-converted", method == 0 && err != nil && !e.ExceptionCheck(), err)
 		after := e.NewString("after exception")

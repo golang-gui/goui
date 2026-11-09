@@ -40,18 +40,18 @@ func EnterThread() func() {
 	if err != nil {
 		panic(err)
 	}
-	_, status := vm.GetEnv()
-	if status == 0 {
+	_, status := vm.GetEnv(jni.Version16)
+	if status == jni.OK {
 		return func() {}
 	}
-	if status != -2 {
+	if status != jni.Detached {
 		panic(fmt.Sprintf("JNI GetEnv: %d", status))
 	}
-	if _, status = vm.AttachCurrentThreadAsDaemon(); status != 0 {
+	if _, status = vm.AttachCurrentThreadAsDaemon(nil); status != jni.OK {
 		panic(fmt.Sprintf("JNI attach: %d", status))
 	}
 	return func() {
-		if status := vm.DetachCurrentThread(); status != 0 {
+		if status := vm.DetachCurrentThread(); status != jni.OK {
 			panic(fmt.Sprintf("JNI detach: %d", status))
 		}
 	}
@@ -62,8 +62,8 @@ func Environment() (jni.Env, error) {
 	if err != nil {
 		return 0, err
 	}
-	env, status := vm.GetEnv()
-	if status != 0 {
+	env, status := vm.GetEnv(jni.Version16)
+	if status != jni.OK {
 		return 0, fmt.Errorf("Android JNI thread is not attached: %d", status)
 	}
 	return env, nil
@@ -75,15 +75,15 @@ func LoadClass(env jni.Env, name string) (jni.Object, error) {
 	if err != nil {
 		return 0, err
 	}
-	class := env.ObjectClass(loader)
+	class := env.GetObjectClass(loader)
 	defer env.DeleteLocalRef(class)
-	method := env.Method(class, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", false)
+	method := env.GetMethodID(class, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;")
 	if err := env.Exception(); err != nil {
 		return 0, err
 	}
 	text := env.NewString(name)
 	defer env.DeleteLocalRef(text)
-	result := env.CallObject(loader, method, jni.Ref(text))
+	result := env.CallObjectMethodA(loader, method, jni.Ref(text))
 	if err := env.Exception(); err != nil {
 		return 0, err
 	}

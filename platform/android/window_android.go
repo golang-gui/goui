@@ -13,11 +13,11 @@ import (
 	"github.com/goexlib/cgo"
 	native "github.com/golang-gui/goui/platform/android/libs/android"
 	"github.com/golang-gui/goui/platform/android/libs/jni"
-	"github.com/golang-gui/goui/platform/android/libs/libc"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/internal/androidruntime"
+	"github.com/golang-gui/goui/platform/internal/eventfd"
 	"github.com/golang-gui/goui/platform/internal/mobile"
 	"github.com/golang-gui/goui/platform/internal/mobileentry"
 )
@@ -45,14 +45,14 @@ type nativeState struct {
 	bound                  *Window
 	onHostReady            func()
 	wanted                 atomic.Bool
-	fd                     int32
+	wakeup                 *eventfd.EventFD
 	loop                   atomic.Pointer[mobile.EventLoop]
 	thread                 atomic.Int64
 	callbacks              native.ActivityCallbacks
 	command, inputCallback uintptr
 }
 
-var androidHost = nativeState{fd: -1, density: 1}
+var androidHost = nativeState{density: 1}
 
 func init() {
 	mobileentry.NativeCreate = onCreate
@@ -63,8 +63,8 @@ func onSystemThread(fn func()) { runtime.LockOSThread(); defer runtime.UnlockOST
 func (h *nativeState) isCurrent() bool { return h.thread.Load() == int64(syscall.Gettid()) }
 
 func (h *nativeState) wake() {
-	if libc.Signal(h.fd) != 8 {
-		panic("android: wake system main looper")
+	if err := h.wakeup.Signal(); err != nil {
+		panic(fmt.Errorf("android: wake system main looper: %w", err))
 	}
 }
 func (h *nativeState) initCallbacks() {
@@ -86,7 +86,12 @@ func (h *nativeState) initCallbacks() {
 			}
 		})
 	})
-	h.callbacks.OnNativeWindowCreated = cgo.NewCallback(func(_ uintptr, w uintptr) { wrap(func() { native.WindowGeometry(w, 0, 0, 2); h.target(w, false) }) })
+	h.callbacks.OnNativeWindowCreated = cgo.NewCallback(func(_ uintptr, w uintptr) {
+		wrap(func() {
+			native.NativeWindowSetBuffersGeometry(w, 0, 0, native.WindowFormatRGBX8888)
+			h.target(w, false)
+		})
+	})
 	h.callbacks.OnNativeWindowResized = cgo.NewCallback(func(_ uintptr, w uintptr) { wrap(func() { h.target(w, false) }) })
 	h.callbacks.OnNativeWindowRedrawNeeded = cgo.NewCallback(func(_ uintptr, w uintptr) {
 		wrap(func() {
@@ -111,7 +116,7 @@ func (h *nativeState) initCallbacks() {
 				h.bound.Source().Visible(false)
 			}
 			if h.input != 0 {
-				native.InputDetach(h.input)
+				native.InputQueueDetachLooper(h.input)
 				h.input = 0
 			}
 			h.focused = false
@@ -122,32 +127,37 @@ func (h *nativeState) initCallbacks() {
 	h.inputCallback = cgo.NewCallback(func(int32, int32, uintptr) int32 {
 		wrap(func() {
 			for h.input != 0 {
-				event, status := native.InputEvent(h.input)
+				event, status := native.InputQueueGetEvent(h.input)
 				if status < 0 {
 					break
 				}
-				if native.InputPreDispatch(h.input, event) != 0 {
+				if native.InputQueuePreDispatchEvent(h.input, event) != 0 {
 					continue
 				}
-				native.InputFinish(h.input, event, 0)
+				native.InputQueueFinishEvent(h.input, event, 0)
 			}
 		})
 		return 1
 	})
 	h.callbacks.OnInputQueueCreated = cgo.NewCallback(func(_ uintptr, q uintptr) {
-		wrap(func() { h.input = q; native.InputAttach(q, native.LooperForThread(), -2, h.inputCallback, 0) })
+		wrap(func() {
+			h.input = q
+			native.InputQueueAttachLooper(q, native.LooperForThread(), native.LooperPollCallback, h.inputCallback, 0)
+		})
 	})
 	h.callbacks.OnInputQueueDestroyed = cgo.NewCallback(func(_ uintptr, q uintptr) {
 		wrap(func() {
-			native.InputDetach(q)
+			native.InputQueueDetachLooper(q)
 			if h.input == q {
 				h.input = 0
 			}
 		})
 	})
-	h.command = cgo.NewCallback(func(fd int32, _ int32, _ uintptr) int32 {
+	h.command = cgo.NewCallback(func(_ int32, _ int32, _ uintptr) int32 {
 		wrap(func() {
-			libc.Drain(fd)
+			if err := h.wakeup.Drain(); err != nil {
+				panic(fmt.Errorf("android: drain main looper wakeup: %w", err))
+			}
 			if loop := h.loop.Load(); loop != nil {
 				loop.Dispatch()
 			}
@@ -163,9 +173,9 @@ func onCreate(address, saved, size uintptr) {
 		a := h.activity
 		if !h.initialized {
 			env := jni.Env(a.Env)
-			class := env.ObjectClass(jni.Object(a.Object))
-			get := env.Method(class, "getClassLoader", "()Ljava/lang/ClassLoader;", false)
-			loader := env.CallObject(jni.Object(a.Object), get)
+			class := env.GetObjectClass(jni.Object(a.Object))
+			get := env.GetMethodID(class, "getClassLoader", "()Ljava/lang/ClassLoader;")
+			loader := env.CallObjectMethodA(jni.Object(a.Object), get)
 			if err := env.Exception(); err != nil || loader == 0 {
 				panic(fmt.Sprintf("android: class loader: %v", err))
 			}
@@ -189,9 +199,15 @@ func onCreate(address, saved, size uintptr) {
 			}
 			h.initCallbacks()
 			h.thread.Store(int64(syscall.Gettid()))
-			h.fd = libc.EventFD()
-			if h.fd < 0 || native.LooperAddFd(native.LooperForThread(), h.fd, -2, 1, h.command, 0) < 0 {
-				panic("android: create native dispatcher")
+			var err error
+			h.wakeup, err = eventfd.New()
+			if err != nil {
+				panic(fmt.Errorf("android: create native dispatcher: %w", err))
+			}
+			if native.LooperAddFd(native.LooperForThread(), int32(h.wakeup.FD()), native.LooperPollCallback, native.LooperEventInput, h.command, 0) < 0 {
+				_ = h.wakeup.Close()
+				h.wakeup = nil
+				panic("android: register native dispatcher")
 			}
 			h.initialized = true
 		}
@@ -207,7 +223,7 @@ func onCreate(address, saved, size uintptr) {
 }
 
 func activityCacheDirectory(env jni.Env, activity jni.Object) (string, error) {
-	class := env.ObjectClass(activity)
+	class := env.GetObjectClass(activity)
 	if err := env.Exception(); err != nil {
 		return "", err
 	}
@@ -215,11 +231,11 @@ func activityCacheDirectory(env jni.Env, activity jni.Object) (string, error) {
 		return "", fmt.Errorf("android: Activity class unavailable")
 	}
 	defer env.DeleteLocalRef(class)
-	method := env.Method(class, "getCacheDir", "()Ljava/io/File;", false)
+	method := env.GetMethodID(class, "getCacheDir", "()Ljava/io/File;")
 	if err := env.Exception(); err != nil {
 		return "", err
 	}
-	file := env.CallObject(activity, method)
+	file := env.CallObjectMethodA(activity, method)
 	if err := env.Exception(); err != nil {
 		return "", err
 	}
@@ -227,7 +243,7 @@ func activityCacheDirectory(env jni.Env, activity jni.Object) (string, error) {
 		return "", fmt.Errorf("android: cache directory unavailable")
 	}
 	defer env.DeleteLocalRef(file)
-	fileClass := env.ObjectClass(file)
+	fileClass := env.GetObjectClass(file)
 	if err := env.Exception(); err != nil {
 		return "", err
 	}
@@ -235,11 +251,11 @@ func activityCacheDirectory(env jni.Env, activity jni.Object) (string, error) {
 		return "", fmt.Errorf("android: File class unavailable")
 	}
 	defer env.DeleteLocalRef(fileClass)
-	absolute := env.Method(fileClass, "getAbsolutePath", "()Ljava/lang/String;", false)
+	absolute := env.GetMethodID(fileClass, "getAbsolutePath", "()Ljava/lang/String;")
 	if err := env.Exception(); err != nil {
 		return "", err
 	}
-	text := env.CallObject(file, absolute)
+	text := env.CallObjectMethodA(file, absolute)
 	if err := env.Exception(); err != nil {
 		return "", err
 	}
@@ -261,8 +277,8 @@ func (h *nativeState) configure() {
 	if config == 0 {
 		panic("android: read configuration")
 	}
-	native.ConfigurationFromAssets(config, h.activity.AssetManager)
-	dpi := native.ConfigurationDensity(config)
+	native.ConfigurationFromAssetManager(config, h.activity.AssetManager)
+	dpi := native.ConfigurationGetDensity(config)
 	native.ConfigurationDelete(config)
 	density := float32(1)
 	if dpi > 0 && dpi < 0xfffe {
@@ -276,8 +292,8 @@ func (h *nativeState) configure() {
 func (h *nativeState) target(window uintptr, force bool) {
 	var width, height int32
 	if window != 0 {
-		width = native.WindowWidth(window)
-		height = native.WindowHeight(window)
+		width = native.NativeWindowGetWidth(window)
+		height = native.NativeWindowGetHeight(window)
 	}
 	if !force && window == h.window && width == h.width && height == h.height {
 		return
@@ -304,19 +320,19 @@ func (h *nativeState) visibility() {
 	if env.PushLocalFrame(12) < 0 {
 		panic("android: JNI local frame")
 	}
-	defer env.PopLocalFrame()
+	defer env.PopLocalFrame(0)
 	object := jni.Object(h.activity.Object)
-	class := env.ObjectClass(object)
-	win := env.CallObject(object, env.Method(class, "getWindow", "()Landroid/view/Window;", false))
-	wc := env.ObjectClass(win)
-	decor := env.CallObject(win, env.Method(wc, "getDecorView", "()Landroid/view/View;", false))
-	vc := env.ObjectClass(decor)
+	class := env.GetObjectClass(object)
+	win := env.CallObjectMethodA(object, env.GetMethodID(class, "getWindow", "()Landroid/view/Window;"))
+	wc := env.GetObjectClass(win)
+	decor := env.CallObjectMethodA(win, env.GetMethodID(wc, "getDecorView", "()Landroid/view/View;"))
+	vc := env.GetObjectClass(decor)
 	visibility := int32(4)
 	if h.wanted.Load() {
 		visibility = 0
 	}
-	env.CallVoid(decor, env.Method(vc, "setVisibility", "(I)V", false), jni.Int(visibility))
-	shown := env.CallInt(decor, env.Method(vc, "getVisibility", "()I", false)) == 0
+	env.CallVoidMethodA(decor, env.GetMethodID(vc, "setVisibility", "(I)V"), jni.Int(visibility))
+	shown := env.CallIntMethodA(decor, env.GetMethodID(vc, "getVisibility", "()I")) == 0
 	if err := env.Exception(); err != nil {
 		panic(err)
 	}
@@ -374,11 +390,11 @@ func present(window uintptr, img image.Image) (result error) {
 		pixels = graphics.CopyToBitmap(img, graphics.PixelFormatRGBA, nil)
 	}
 	var buffer native.WindowBuffer
-	if native.WindowLock(window, &buffer) != 0 {
+	if native.NativeWindowLock(window, &buffer, nil) != 0 {
 		return common.ErrUnavailable
 	}
 	defer func() {
-		if native.WindowUnlockAndPost(window) != 0 && result == nil {
+		if native.NativeWindowUnlockAndPost(window) != 0 && result == nil {
 			result = common.ErrUnavailable
 		}
 	}()
