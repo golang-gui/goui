@@ -584,5 +584,6 @@ Surface 特例。Root 的内部挂载方法由 Window 改称 Host，既有测试
   Emulator 和私有 ADB5059 已停止；未修改用户已有设备、应用或系统设置。
 
 完整命令与操作见 [activation 验收例程](../tests/window/gui/activation/README.md)。
-后续先推进触摸事实、取消与 GUI 手势分发，再独立接 IME；移动 Popup、安全区域、
-多 Scene、iOS 旋转、GPU 上下文丢失与物理设备继续按各自边界验证。
+2026-11-09 调整后续顺序：先按 [平台稳固计划](PlanMobileAPI.md#7-平台实现稳固优先2026-11-09)
+复核现有实现并验证原生触摸事实，通过后再继续 GUI 手势和控件。IME 独立推进；
+移动 Popup、安全区域、多 Scene、iOS 旋转、GPU 上下文丢失与物理设备继续分别验证。
