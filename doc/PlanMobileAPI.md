@@ -199,3 +199,84 @@ Destroy 放进启动 goroutine 的 defer。JNIEnv 按线程获取，原生引用
 - [ ] 完成现有平台实现复核，按证据修复并记录未覆盖项。
 - [ ] 完成 Android/iOS 原生输入事实与 platform-only 验收。
 - [ ] 达到上述条件后继续 GUI 触摸与控件适配；UI 仅按具体需要增加绑定。
+
+## 9. iOS UIKit 绑定与实现整理（2026-11-09）
+
+本批按 AppKit 既有 `ImplementNSView` / `ImplementNSWindowDelegate` 的模式整理
+UIKit，不引入新宿主管理框架，不扩展触摸、IME、多 Scene 或公共 Window 能力。
+
+### 职责与归属
+
+- `frameworks/uikit/uikit_ios.go` 按原生类型组织初始化、ClassId、selector、实例
+  方法与 Override；`ImplementUIApplicationDelegate`、`ImplementUIWindowSceneDelegate`
+  和 `ImplementUIViewController` 仅负责类/协议注册、ABI 及类型化参数转发。
+  nil override 不安装可选方法，不隐式补策略、不切换线程、不隐式调用 super。
+  UIApplicationMain 保持原生 C 函数形式；Foundation 的 NSDictionary 仅包装借用引用。
+- GOUI 类名与生命周期逻辑留在 `ios`。`application_ios.go` 拥有进程级入口、
+  UIApplication delegate、dispatch 回调、启动标记和 Go 事件循环引用；
+  `window_ios.go` 拥有 Scene、UIWindow/controller/view/EAGL layer、逻辑 Window
+  绑定、几何及目标代次；`present_ios.go` 拥有 Software 图像转换和最新图像提交。
+  Platform 工厂与服务继续在 `platform_ios.go`。
+- 当前原生宿主仍为单 Scene 模型，逻辑 Window 可跨 Scene 暂时断开继续存在。
+  connect 保存拥有引用的 Scene；disconnect 释放。controller class 保存注册返回值，
+  不按字符串重新查找。UIKit SDK 协议元数据仍由既有生成器保留，不移除或重编基座。
+- Scene 回调保留并核对来源；controller layout 只更新当前 controller 对应的目标。
+  onSystemThread 仅固定进入线程并断言系统主线程，不把 LockOSThread 当作线程切换。
+- GPU gate 先拒绝并排空工作，再撤销目标或释放原生对象；Software 提交保留
+  generation/handle 校验及 CGImage 释放。断开先移除当前身份，再发送可重入通知，
+  并用局部拥有引用释放旧对象，避免旧回调释放新 Scene 的资源。
+- Revoke 先更新代次、清理旧图像，再通知消费者；目标重建在回调后核对 Scene、View
+  与代次。bind 的目标/可见性通知后重新检查 Window 有效性；交付回调后检查 Platform
+  与 Window 身份。GUI/UI 与通用 mobile 机制不随本次结构调整重写。
+
+参考：[Apple UIWindowSceneDelegate](https://developer.apple.com/documentation/uikit/uiwindowscenedelegate)
+将 Scene delegate 定义为管理一个界面实例，继承 UISceneDelegate；
+[viewDidLayoutSubviews](https://developer.apple.com/documentation/uikit/uiviewcontroller/viewdidlayoutsubviews())
+报告 controller 根 View 的布局完成。对照 Apple 公开文档与当前源码，不把结构整理
+解释为 UIKit 的额外能力承诺。
+
+### 验收与边界
+
+- [x] 正式 cmd/goui 构建 iOS ARM64 Simulator Software/GLES 和未签名 device IPA。
+- [x] 新增 ios_bindings：协议/可选方法、参数/BOOL、super/重复注册、无关来源、
+  交付中销毁、撤销中销毁与重领、Platform 最终释放，两后端均实际运行通过。
+- [x] 既有 mobile_dispatch 两后端：各两次真实前后台、GC、停止与主线程释放。
+- [x] 独立 X11 的全仓测试、共享 mobile 逻辑 race 与受影响桌面目标编译。
+- [ ] Software 已观察一次竖屏到横屏；四次连续旋转与 GLES 旋转本轮未完成。
+- [ ] 真机、系统实际 Scene disconnect/reconnect、真正 context loss 未覆盖，分别记录。
+
+### 本轮验证结果
+
+- 本机 Go1.25.8 / Linux amd64：以 ff53223 的已跟踪源码叠加本轮 iOS 文件及新例程，
+  独立 Xvnc/Xfwm4 执行 `CGO_ENABLED=0 go test -json -count=1 ./...`，4551 项通过、
+  11 项原条件跳过、0 失败。此前包含当时 Android 待提交代码的副本为 4550 通过，
+  两次输入不同，不作性能或通过数量提升的对照。原有未跟踪文件未删除或迁移。
+- `CGO_ENABLED=1 go test -race -count=1 ./platform/internal/mobile ./platform/internal/mobileentry`
+  通过。Windows amd64/macOS arm64 的 `CGO_ENABLED=0 GOOS=... GOARCH=... go build
+  ./platform/... ./gui/... ./ui/... ./widgets/... ./example/demo` 通过；这是编译结果，
+  不表示重做了两端桌面操作。纯组织调整的中间版本也经正式 CLI 构建 Simulator App。
+- 正式构建命令以 `tests/window/platform/ios_bindings/goui.toml` 和既有
+  `mobile_dispatch/goui.toml` 为配置，使用 `go run ./cmd/goui build -target ios/arm64
+  -variant simulator -package app -unsigned`；GLES 加 `-ldflags '-X main.painterName=opengl'`。
+  device 使用 `-variant device -package ipa -unsigned`，只验证构建，不使用正式签名凭据。
+- 远端 macOS15.7.7 ARM64 / iOS26.3 ARM64 Simulator / 3x，专用 iPhone17 Pro：
+  ios_bindings 两后端各九项检查、三次交付、两次销毁及 Run 返回后 completed 均通过。
+  使用旧 window/platform 实现、仅适配类型化 InitWithWindowScene 后，同一例程明确
+  panic `无关 Scene 回调修改了当前目标`；修正后的两后端均通过，不是只检查截图。
+- mobile_dispatch Software/GLES 各两次启动系统 Settings 进入后台，再启动本例恢复。
+  后台报告 visible/Ready 均 false，间隔 1.3 秒 frames 不增长；恢复后代次与 frames
+  增长、nonce 与单次 delivery 不变，GC=true；stop 后 stopped 与 callbackReturned 均 true。
+  六个内部点检查绿色块、蓝色图像、背景：不透明 sRGB、预乘等同原值，3x 物理采样，
+  原生固定竖屏截图按已观察的横屏坐标换算，RGB 零误差。避开文字、圆角和系统区域。
+- Software 实际观察到一次竖屏转横屏和相应尺寸/代次变化。共享远端桌面后来出现
+  其他操作，停止鼠标键盘输入，未继续四次旋转或 GLES 旋转；不把命令返回成功或
+  未达预期的早期采样算通过。前后台验收使用专用模拟器系统命令，不占用共享桌面输入。
+- **原工作区全仓命令失败：** `go test ./...` 被本轮开始前已存在的未跟踪旧文件阻断。
+  例如 `example/plat_test`、`example/transparency`、`example/window_chrome`、
+  `platform/test`、`tests/window/graphics/image_lifetime`、旧 drag_end/dragdrop 仍调用
+  已迁移的 Window.Show/SetTitle；`ui/window_lookup_test.go` 仍使用 windowMount 的
+  旧 runtime/id 字段。错误清单与初始未跟踪状态对应；不通过修改这些文件掩盖结果。
+- 裸 `GOOS=ios GOARCH=arm64 CGO_ENABLED=0 go build ./platform/darwin/ios` 会遇到
+  purego 的 `_PUREGO_REQUIRES_CGO_ON_IOS` 构建限制，不能代替正式移动构建链；本轮
+  通过 cmd/goui 的预置基座与移动 Go 驱动完成构建和运行，未因此新增 cgo 要求。
+- 本轮专用 Simulator 验收后关闭并删除；保留已有远端 SSH、模拟器及其他应用。
