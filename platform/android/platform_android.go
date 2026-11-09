@@ -11,7 +11,6 @@ import (
 	"github.com/golang-gui/goui/platform/graphics/opengl"
 	"github.com/golang-gui/goui/platform/graphics/software"
 	"github.com/golang-gui/goui/platform/internal/androidruntime"
-	"github.com/golang-gui/goui/platform/internal/mobile"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/androidtext"
 )
@@ -57,7 +56,7 @@ func (p *Platform) Destroy() {
 	}
 	p.destroyed = true
 	p.windowHandler = nil
-	androidHost.onHostReady = nil
+	androidApplication.onHostReady = nil
 	if p.window != nil {
 		p.window.Destroy()
 	}
@@ -70,10 +69,12 @@ func (p *Platform) NewEventLoop() (common.EventLoop, error) {
 	if p.loop != nil {
 		return nil, common.ErrUnsupported
 	}
-	loop := mobile.NewEventLoop(androidHost.wake, androidHost.isCurrent)
-	androidHost.loop.Store(loop)
-	p.loop = &EventLoop{loop}
-	return p.loop, nil
+	loop, err := newEventLoop(&androidApplication.dispatcher)
+	if err != nil {
+		return nil, err
+	}
+	p.loop = loop
+	return loop, nil
 }
 
 func (p *Platform) NewWindow(size geometry.Size, handler events.EventHandler, options common.WindowOptions) (common.Window, error) {
@@ -97,7 +98,7 @@ func (p *Platform) NewWindow(size geometry.Size, handler events.EventHandler, op
 		return nil, err
 	}
 	p.window = w
-	w.bind(p.loop)
+	w.bind()
 	return w, nil
 }
 
@@ -120,7 +121,7 @@ func (p *Platform) SetWindowHandler(handler func(common.Window) events.EventHand
 	p.windowHandler = handler
 	p.loop.Post(func() {
 		if !p.destroyed {
-			androidHost.onHostReady = func() { p.loop.Deliver(p.offerWindow) }
+			androidApplication.onHostReady = func() { p.loop.Deliver(p.offerWindow) }
 			p.offerWindow()
 		}
 	})
@@ -128,7 +129,7 @@ func (p *Platform) SetWindowHandler(handler func(common.Window) events.EventHand
 }
 
 func (p *Platform) offerWindow() {
-	if p.destroyed || p.windowHandler == nil || androidHost.activity == nil || (p.window != nil && !p.window.Destroyed()) {
+	if p.destroyed || p.windowHandler == nil || androidApplication.activity == nil || (p.window != nil && !p.window.Destroyed()) {
 		return
 	}
 	w, err := newWindow(p.loop, nil)
@@ -138,8 +139,8 @@ func (p *Platform) offerWindow() {
 	p.window = w
 	w.SetEventHandler(p.windowHandler(w))
 	if !w.Destroyed() {
-		androidHost.wanted.Store(true)
-		w.bind(p.loop)
+		w.visible.Store(true)
+		w.bind()
 	}
 }
 
