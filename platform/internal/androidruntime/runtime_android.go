@@ -6,25 +6,30 @@ import (
 	"sync"
 
 	"github.com/golang-gui/goui/platform/android/libs/jni"
+	"github.com/golang-gui/goui/platform/android/sdk"
 )
 
 var host struct {
 	sync.RWMutex
 	vm     jni.VM
-	loader jni.Object
+	loader sdk.ClassLoader
 }
 
 // Initialize adopts the process VM and a retained application class loader.
 // The platform calls it on the native thread before starting application main.
-func Initialize(vm jni.VM, loader jni.Object) {
+func Initialize(vm jni.VM, loader sdk.ClassLoader) error {
+	if vm == 0 || loader == 0 {
+		return fmt.Errorf("Android Java bootstrap requires a VM and global class loader")
+	}
 	host.Lock()
 	defer host.Unlock()
 	if host.vm != 0 {
-		return
+		return fmt.Errorf("Android Java bootstrap is already initialized")
 	}
 	host.vm, host.loader = vm, loader
+	return nil
 }
-func bootstrap() (jni.VM, jni.Object, error) {
+func bootstrap() (jni.VM, sdk.ClassLoader, error) {
 	host.RLock()
 	defer host.RUnlock()
 	if host.vm == 0 || host.loader == 0 {
@@ -75,16 +80,8 @@ func LoadClass(env jni.Env, name string) (jni.Object, error) {
 	if err != nil {
 		return 0, err
 	}
-	class := env.GetObjectClass(loader)
-	defer env.DeleteLocalRef(class)
-	method := env.GetMethodID(class, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;")
-	if err := env.Exception(); err != nil {
-		return 0, err
-	}
-	text := env.NewString(name)
-	defer env.DeleteLocalRef(text)
-	result := env.CallObjectMethodA(loader, method, jni.Ref(text))
-	if err := env.Exception(); err != nil {
+	result, err := loader.LoadClass(env, name)
+	if err != nil {
 		return 0, err
 	}
 	if result == 0 {
