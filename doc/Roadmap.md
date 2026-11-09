@@ -7,10 +7,20 @@
 暂不继续扩展上层行为。已完成的 GUI/UI Surface 保留，已有合成输入结果仍按原范围
 记录，不能代替原生输入可用性的证明。
 
+Android 首批已整理 NDK/EGL/Bitmap/JNI 绑定与 eventfd 唤醒，完成独立 X11、
+Android JNI/EGL 常用参数及 Software/GLES 生命周期回归。API30 模拟器的全 NULL
+EGL 数量查询仍挂起，保留失败验收，不把本批视为 P0 全部完成；详见
+[首批结果](PlanMobileAPI.md#8-android-绑定稳固首批2026-11-09)。
+
 iOS 已整理 UIKit 类型化协议桥接、应用入口、Scene 窗口与图像提交职责；
 保留原生主线程、后台 GPU 屏障及目标代次。Simulator 的 Software/GLES 绑定、
 可重入销毁与前后台验收通过，真机及 Scene 实际断开重连仍待验证；范围见
 [iOS 整理计划](PlanMobileAPI.md#9-ios-uikit-绑定与实现整理2026-11-09)。
+
+Android 已按现有平台规范整理绑定、应用/事件/输入/窗口和像素呈现，完成 SDK
+异常恢复、重入销毁、Layout 隔离及 EGL 创建失败回滚验收；当前验收为 API30
+ARM64 模拟器，仍保留全 NULL 查询和解绑失败等缺口，见
+[Android 整理结果](PlanMobileAPI.md#10-android-组织与生命周期整理2026-11-09)。
 
 触摸沿用既有 PointerEvent 扩展和 GTK4 Gesture 风格，统一 PointerType 命名，
 复用现有竞争协议；实施顺序和进入上层条件见

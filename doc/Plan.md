@@ -1,5 +1,17 @@
 # Plan
 
+## Android 组织与资源整理（2026-11-09）
+
+- [x] 固定 Android 平台规范；eventfd 基于 x/sys/unix 封装 Signal/Drain；按既有
+  platform/application/event/input/window/present 组织，SDK 集中类型化 Java 绑定。
+- [x] 分清进程、Activity、逻辑 Window 和绘制目标；保护回调来源和重入。排版复用
+  只读具名方法表，可变状态独立；EGL 分步创建，保存原始错误并回滚自身资源。
+- [x] 独立 X11 全仓 4551 通过、11 既有跳过、0 失败；定向 race/vet 与两桌面目标
+  编译通过。API30 ARM64 1x / SwiftShader 的 Software/GLES 生命周期、JNI/SDK
+  异常恢复、事件内销毁/重领、双 Layout 隔离和 EGL 失败后读回像素通过；旧 EGL 对照失败。
+- [ ] 全 NULL EGL 查询、解绑错误传播、真机/其他系统/多 Activity 交错等分别待验；
+  触摸和 IME 不混入本轮。详见 [第 10 节](PlanMobileAPI.md#10-android-组织与生命周期整理2026-11-09)。
+
 ## iOS UIKit 绑定与实现整理（2026-11-09）
 
 - [x] UIKit 按原生类型组织初始化和类型化 Implement helper；GOUI delegate/Scene
@@ -13,6 +25,20 @@
 - [ ] Software 四次连续旋转、GLES 旋转、真机、系统实际 Scene 断开重连与 context
   loss 待验；原工作区旧未跟踪例程/测试仍导致全仓命令失败。详细范围、命令和缺口见
   [PlanMobileAPI 第 9 节](PlanMobileAPI.md#9-ios-uikit-绑定与实现整理2026-11-09)。
+
+## Android 原生绑定首批稳固（2026-11-09）
+
+- [x] NDK/EGL/Bitmap 按 API、类型、常量组织；保留原生参数与返回类型。JNI 用具名
+  槽位和 A-method 区分返回类型，Unicode/数组转换单独组织，异常消费后可恢复。
+- [x] eventfd 唤醒策略移出 libc 绑定，复用 Go syscall；进程级归属不随 Activity
+  更换结束，保留 EINTR/EAGAIN 语义与失败释放，补齐并发/耗尽/错误/CLOEXEC 断言。
+- [x] 独立 X11 隔离源码全仓 4550 通过、11 既有跳过、0 失败；Android 包 race/vet
+  通过。正式 APK 在 API30 ARM64 1x / SwiftShader 下通过 JNI/EGL 常用参数与
+  Software/GLES 旋转、后台恢复、GC 和清理；两桌面目标受影响包仅编译通过。
+- [ ] 同一模拟器全 NULL 的 EGL 配置数量查询原生挂起，保留完整断言和失败记录；
+  未证明其他 Android 版本或真机存在相同问题，不增加生产 workaround。
+- [ ] P0 其余资源/失败路径、原生触摸与 IME 仍待推进；本批不修改 GUI/UI。
+  命令、失败与边界见 [PlanMobileAPI 第 8 节](PlanMobileAPI.md#8-android-绑定稳固首批2026-11-09)。
 
 ## 移动平台稳固优先（2026-11-09）
 

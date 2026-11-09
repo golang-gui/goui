@@ -9,7 +9,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// EventFD owns a nonblocking, close-on-exec eventfd. Signal and Drain may run
+// EventFD owns a nonblocking, close-on-exec eventfd and must not be copied.
+// Signal and Drain may run
 // concurrently. The owner must stop both operations before Close; a closed or
 // zero EventFD is invalid. Native loops borrow the descriptor returned by FD.
 type EventFD struct {
