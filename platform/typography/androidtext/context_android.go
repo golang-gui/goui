@@ -10,21 +10,20 @@ import (
 
 	"github.com/golang-gui/goui/internal/diagnostic"
 	"github.com/golang-gui/goui/platform/android/libs/jni"
+	"github.com/golang-gui/goui/platform/android/sdk"
 	"github.com/golang-gui/goui/platform/internal/androidruntime"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/platform/typography/utils"
 )
 
 type Context struct {
-	peer          jni.Object
-	methods       contextMethods
-	layoutMethods *layoutMethods
-	files         map[string]bool
+	fonts *fontCollection
+	files map[string]bool
 }
 
-// NewContext creates a thread-affine Android typography context. Its owning
-// OS thread must be attached to the Java VM. API 29 or later and the
-// matching typography Dex component are required. WrapChar is not yet supported.
+// NewContext creates a thread-affine Android typography context. The current
+// OS thread must be attached to the VM. API 29 and component ABI 2 are required;
+// public Android Layout APIs do not supply a WrapChar strategy.
 func NewContext() (typography.Context, error) {
 	e, err := androidruntime.Environment()
 	if err != nil {
@@ -34,93 +33,24 @@ func NewContext() (typography.Context, error) {
 		return nil, fmt.Errorf("androidtext: JNI local frame: %w", e.Exception())
 	}
 	defer e.PopLocalFrame(0)
-	class, err := androidruntime.LoadClass(e, "org.golanggui.typography.TextContext")
-	if err != nil {
+	if err = sdk.InitText(e); err != nil {
 		return nil, err
 	}
-	constructor := e.GetMethodID(class, "<init>", "(I)V")
-	if err = e.Exception(); err != nil {
+	if err = initBridge(e); err != nil {
 		return nil, err
 	}
-	peer := e.NewObjectA(class, constructor, jni.Int(1))
-	if err = e.Exception(); err != nil {
-		return nil, err
-	}
-	if peer == 0 {
-		return nil, fmt.Errorf("androidtext: create Context failed")
-	}
-	c := &Context{files: make(map[string]bool), layoutMethods: new(layoutMethods)}
-	if err := bindMethods(e, class, []methodBinding{
-		{"close", "()V", &c.methods.close},
-		{"addFont", "(Ljava/lang/String;[Ljava/lang/String;[I)V", &c.methods.addFont},
-		{"create", "(Ljava/lang/String;Ljava/lang/String;FIIIIIFFFI)Lorg/golanggui/typography/TextLayout;", &c.methods.create},
-	}); err != nil {
-		return nil, err
-	}
-	layoutClass, err := androidruntime.LoadClass(e, "org.golanggui.typography.TextLayout")
-	if err != nil {
-		return nil, err
-	}
-	if err := bindMethods(e, layoutClass, []methodBinding{
-		{"close", "()V", &c.layoutMethods.close},
-		{"setSize", "(FF)V", &c.layoutMethods.setSize},
-		{"setAlignment", "(I)V", &c.layoutMethods.setAlignment},
-		{"setWrap", "(I)V", &c.layoutMethods.setWrap},
-		{"setTabWidth", "(F)V", &c.layoutMethods.setTabWidth},
-		{"setFont", "(IILjava/lang/String;FIII)V", &c.layoutMethods.setFont},
-		{"setColor", "(III)V", &c.layoutMethods.setColor},
-		{"setUnderline", "(IIZ)V", &c.layoutMethods.setUnderline},
-		{"setStrike", "(IIZ)V", &c.layoutMethods.setStrike},
-		{"setPlaceholder", "(IIFFF)V", &c.layoutMethods.setPlaceholder},
-		{"metrics", "()[Ljava/lang/Object;", &c.layoutMethods.metrics},
-		{"raster", "(FIIII)Landroid/graphics/Bitmap;", &c.layoutMethods.raster},
-	}); err != nil {
-		return nil, err
-	}
-	c.peer = e.NewGlobalRef(peer)
-	if err = e.Exception(); err != nil {
-		return nil, err
-	}
-	if c.peer == 0 {
-		return nil, fmt.Errorf("androidtext: retain Context failed")
-	}
-	return c, nil
+	return &Context{fonts: newFontCollection(), files: make(map[string]bool)}, nil
 }
 func (c *Context) Name() string { return "Android Layout" }
 func (c *Context) Destroy() {
-	if c.peer == 0 {
+	if c.fonts == nil {
 		return
 	}
 	e := environment()
-	e.CallVoidMethodA(c.peer, c.methods.close)
-	check(e)
-	e.DeleteGlobalRef(c.peer)
-	c.peer = 0
+	c.fonts.release(e)
+	c.fonts = nil
 	c.files = nil
-	c.methods = contextMethods{}
-	c.layoutMethods = nil
 }
-func environment() jni.Env {
-	e, err := androidruntime.Environment()
-	if err != nil {
-		panic(err)
-	}
-	return e
-}
-func check(e jni.Env) {
-	if err := e.Exception(); err != nil {
-		panic(err)
-	}
-}
-func frame() jni.Env {
-	e := environment()
-	if e.PushLocalFrame(32) < 0 {
-		check(e)
-		panic("androidtext: JNI local frame failed")
-	}
-	return e
-}
-
 func (c *Context) AddFont(path string) error {
 	path, err := filepath.Abs(path)
 	if err != nil {
@@ -133,29 +63,9 @@ func (c *Context) AddFont(path string) error {
 	if err != nil {
 		return err
 	}
-	names := make([]string, len(faces))
-	metadata := make([]int32, len(faces)*2)
-	for i, face := range faces {
-		names[i] = face.family
-		metadata[i*2] = face.index
-		metadata[i*2+1] = face.width
-	}
 	e := frame()
 	defer e.PopLocalFrame(0)
-	p := e.NewString(path)
-	if err = e.Exception(); err != nil {
-		return err
-	}
-	n := e.Strings(names)
-	if err = e.Exception(); err != nil {
-		return err
-	}
-	m := e.IntArray(metadata)
-	if err = e.Exception(); err != nil {
-		return err
-	}
-	e.CallVoidMethodA(c.peer, c.methods.addFont, jni.Ref(p), jni.Ref(n), jni.Ref(m))
-	if err = e.Exception(); err != nil {
+	if err = c.fonts.add(e, path, faces); err != nil {
 		return err
 	}
 	c.files[path] = true
@@ -210,6 +120,9 @@ func argb(value color.Color) int32 {
 }
 
 func (c *Context) NewTextLayout(text string, format typography.TextFormat, width, height float32) (typography.TextLayout, error) {
+	if c.fonts == nil {
+		return nil, fmt.Errorf("androidtext: Context is destroyed")
+	}
 	if !utf8.ValidString(text) {
 		return nil, fmt.Errorf("androidtext: text is not UTF-8")
 	}
@@ -228,55 +141,39 @@ func (c *Context) NewTextLayout(text string, format typography.TextFormat, width
 	if err = e.Exception(); err != nil {
 		return nil, err
 	}
-	family := e.NewString(font.Family)
+	face, err := c.fonts.resolve(e, font)
+	if err != nil {
+		return nil, err
+	}
+	paint, err := sdk.NewTextPaint(e, sdk.PaintAntiAliasFlag|sdk.PaintSubpixelTextFlag|sdk.PaintLinearTextFlag)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = sdk.Paint(paint).SetTypeface(e, face); err != nil {
+		return nil, err
+	}
+	if err = sdk.Paint(paint).SetTextSize(e, font.Size*96/72*nativeUnits); err != nil {
+		return nil, err
+	}
+	if err = sdk.Paint(paint).SetColor(e, argb(format.TextColor)); err != nil {
+		return nil, err
+	}
+	spans, err := sdk.NewSpannableString(e, content)
+	if err != nil {
+		return nil, err
+	}
+	peer := e.NewObjectA(javaLayout.class, javaLayout.constructor, jni.Int(componentABI), jni.Ref(jni.Object(spans)), jni.Ref(jni.Object(paint)), jni.Int(int32(format.WrapMode)), jni.Int(int32(format.TextAlign)), jni.Float(width*nativeUnits), jni.Float(height*nativeUnits), jni.Float(nativeTabWidth(format.TabWidth)))
 	if err = e.Exception(); err != nil {
 		return nil, err
 	}
-	peer := e.CallObjectMethodA(c.peer, c.methods.create, jni.Ref(content), jni.Ref(family), jni.Float(font.Size), jni.Int(int32(font.Weight)), jni.Int(int32(font.Width)), jni.Int(int32(font.Style)), jni.Int(int32(format.WrapMode)), jni.Int(int32(format.TextAlign)), jni.Float(width), jni.Float(height), jni.Float(format.TabWidth), jni.Int(argb(format.TextColor)))
-	if err = e.Exception(); err != nil {
+	global, err := retain(e, peer)
+	if err != nil {
 		return nil, err
 	}
-	if peer == 0 {
-		return nil, fmt.Errorf("androidtext: create TextLayout failed")
-	}
-	t := &TextLayout{text: text, format: format, width: width, height: height, positions: utils.CalcStringPosition(text), methods: c.layoutMethods}
-	t.peer = e.NewGlobalRef(peer)
-	if err = e.Exception(); err != nil {
-		return nil, err
-	}
-	if t.peer == 0 {
-		return nil, fmt.Errorf("androidtext: retain TextLayout failed")
-	}
+	c.fonts.owners++
+	t := &TextLayout{native: layoutPeer(global), fonts: c.fonts, text: text, format: format, width: width, height: height, positions: utils.CalcStringPosition(text)}
 	diagnostic.Record(diagnostic.LayoutCreate, 1)
 	return t, nil
-}
-
-// Method IDs are immutable after construction. Layouts share this table;
-// Java TextPaint, bitmap and mutable layout data remain owned by each layout.
-type contextMethods struct{ close, addFont, create jni.Method }
-type layoutMethods struct {
-	close                                                      jni.Method
-	setSize, setAlignment, setWrap, setTabWidth                jni.Method
-	setFont, setColor, setUnderline, setStrike, setPlaceholder jni.Method
-	metrics, raster                                            jni.Method
-}
-type methodBinding struct {
-	name, signature string
-	method          *jni.Method
-}
-
-func bindMethods(e jni.Env, class jni.Object, bindings []methodBinding) error {
-	for _, b := range bindings {
-		method := e.GetMethodID(class, b.name, b.signature)
-		if err := e.Exception(); err != nil {
-			return fmt.Errorf("androidtext: %s: %w", b.name, err)
-		}
-		if method == 0 {
-			return fmt.Errorf("androidtext: method %s unavailable", b.name)
-		}
-		*b.method = method
-	}
-	return nil
 }
 
 var _ typography.Context = (*Context)(nil)

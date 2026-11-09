@@ -77,7 +77,11 @@ const probeSource = `package main
 
 import (
  "bytes"
+ "image"
+ "image/color"
+ "time"
  "github.com/goexlib/cgo"
+ "github.com/golang-gui/goui/platform/typography"
  "github.com/golang-gui/goui/platform/android/libs/bitmap"
     "encoding/json"
     "fmt"
@@ -108,12 +112,14 @@ func main(){
     loop.Post(func(){
         expect(syscall.Gettid()==syscall.Getpid(),"not Android UI thread")
         expect(unsafe.Sizeof(native.Activity{})==80 && unsafe.Sizeof(native.WindowBuffer{})==48,"NDK ABI")
-        expect(check=="all" || check=="jni" || check=="egl" || check=="egl-null-query" || check=="text-sdk","unknown check %q",check)
+        expect(check=="all" || check=="jni" || check=="egl" || check=="egl-null-query" || check=="text-sdk" || check=="text" || check=="text-bench","unknown check %q",check)
         if check=="all" || check=="jni" {stage("jni");verifyJNI()}
-        if check=="text-sdk" {stage("text-sdk");verifyTextSDK()}
+        if check=="text-sdk" || check=="text" {stage("text-sdk");verifyTextSDK()}
+        if check=="text-bench" || check=="text" {stage("text-bench");verifyTextBench(p)}
+        if check=="text" {stage("text-lifetime");verifyTextLifetime(p)}
         if check=="all" || check=="egl" {stage("egl");verifyEGL()}
         if check=="all" || check=="egl-null-query" {stage("egl-null-query");verifyNullQuery()}
-        data,err:=json.Marshal(map[string]any{"passed":true,"check":check,"thread":syscall.Gettid(),"go":runtime.Version()});must(err)
+        data,err:=json.Marshal(map[string]any{"passed":true,"check":check,"thread":syscall.Gettid(),"go":runtime.Version(),"text":textReport});must(err)
         path:=filepath.Join(os.TempDir(),"bindings.json");must(os.WriteFile(path,data,0600))
         p.Destroy();loop.Quit()
     })
@@ -261,4 +267,51 @@ func verifyTextSDK() {
  must(canvas.SetBitmap(e,0));must(pixels.Recycle(e))
 }
 
+var textReport map[string]any
+func verifyTextBench(p platform.Platform) {
+ context,err:=p.NewTypography();must(err);defer context.Destroy()
+ content:=strings.Repeat("office 中文 العربية 👩‍💻\n",8)
+ format:=typography.TextFormat{Font:typography.FontInfo{Size:16},WrapMode:typography.WrapWordChar}
+ begin:=time.Now();units:=0
+ for i:=0;i<40;i++{
+  l,err:=context.NewTextLayout(content,format,240,0);must(err)
+  _,clusters:=l.MeasureMetrics();units+=len(clusters);l.Destroy()
+ }
+ cold:=time.Since(begin).Nanoseconds()/40
+ l,err:=context.NewTextLayout(content,format,240,0);must(err);defer l.Destroy()
+ l.MeasureMetrics();begin=time.Now()
+ for i:=0;i<1000;i++{_,clusters:=l.MeasureMetrics();units+=len(clusters)}
+ warm:=time.Since(begin).Nanoseconds()/1000
+ raster:=map[string]int64{}
+ for _,scale:=range []float32{1,2}{
+  region:=image.Rect(0,0,int(240*scale),int(180*scale));var pixels []byte
+  _,err=l.Rasterize(scale,region,nil);must(err);begin=time.Now()
+  for i:=0;i<20;i++{b,err:=l.Rasterize(scale,region,pixels);must(err);pixels=b.Pixels}
+  raster[fmt.Sprint(scale)]=time.Since(begin).Nanoseconds()/20
+ }
+ textReport=map[string]any{"coldNs":cold,"cachedNs":warm,"rasterNs":raster,"clustersVisited":units}
+}
+
+func verifyTextLifetime(p platform.Platform){
+ context,err:=p.NewTypography();must(err)
+ must(context.AddFont("/system/fonts/Roboto-Regular.ttf"))
+ format:=typography.TextFormat{Font:typography.FontInfo{Family:"Roboto",Size:16},TextColor:color.RGBA{R:255,A:128}}
+ a,err:=context.NewTextLayout("GO",format,240,80);must(err)
+ b,err:=context.NewTextLayout("GO",format,240,80);must(err)
+ before,err:=b.Rasterize(1,image.Rect(-8,-8,240,80),nil);must(err)
+ _,clusters:=b.MeasureMetrics();expect(len(clusters)>0,"initial metrics")
+ context.Destroy()
+ a.SetTextFont(0,2,typography.FontInfo{Family:"Roboto",Size:28,Weight:typography.FontWeightBold})
+ a.SetTextColor(0,2,color.RGBA{B:255,A:128})
+ w,h:=a.MeasureSize();expect(w>0 && h>0,"layout after Context.Destroy")
+ for _,scale:=range []float32{1,2,1}{
+  image,err:=a.Rasterize(scale,image.Rect(-8,-8,240,80),nil);must(err)
+  seen:=false
+  for i:=0;i<len(image.Pixels);i+=4{r,g,blue,alpha:=image.Pixels[i],image.Pixels[i+1],image.Pixels[i+2],image.Pixels[i+3];if alpha>0{seen=true;expect(r==0&&g==0&&blue==alpha&&alpha<=128,"layout color/alpha")}}
+  expect(seen,"empty raster")
+ }
+ after,err:=b.Rasterize(1,image.Rect(-8,-8,240,80),nil);must(err)
+ expect(bytes.Equal(before.Pixels,after.Pixels),"layout isolation after font/cache changes")
+ a.Destroy();a.Destroy();b.SetUnderline(0,2,true);b.Rasterize(1,image.Rect(0,0,240,80),nil);b.Destroy()
+}
 `
