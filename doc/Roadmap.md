@@ -48,6 +48,15 @@ Root 增加 ConnectBeforePaint，在本帧布局及窗口装饰分配后、Paint
 契约见 [Widget Painter](DesignWidgetPainter.md#布局后绘制准备2026-11-09)。
 移动平台稳固仍按上方优先级推进，通用 EGL/GLES 继续暂缓。
 
+## DropDown 弹窗内容宽度（2026-11-09）
+
+默认弹窗至少为控件宽度，并按首次有限视口的实测内容扩宽；widgets/UI 增加
+PopupMinWidth / PopupMaxWidth。控件自身测量保持独立，普通滚动和悬停不持续
+改变宽度，工作区与用户上限不足时仍允许水平滚动。不新增通用 Popover 选项或
+ListView API，不扫描全部模型；大字号、短列表和滚动条占位的契约与验收边界见
+[DesignDropDown](DesignDropDown.md)，分项进度见
+[Plan](Plan.md#dropdown-弹窗内容宽度2026-11-09)。
+
 ## UI Surface 已接入（2026-11-08）
 
 声明层用 ui.Surface 领取系统宿主，ui.Window 保留主动管理。共享内容协调、命令、

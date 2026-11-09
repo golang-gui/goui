@@ -1,5 +1,24 @@
 # Plan
 
+## DropDown 弹窗内容宽度（2026-11-09）
+
+- [x] 默认至少为控件宽度，按首次有限视口的真实行测量扩宽，包含勾选、对称
+  安全留白及需要的滚动条/间隔；收起控件独立测量，不扫描全模型。
+- [x] widgets 与 widgets/ui 提供 PopupMinWidth / PopupMaxWidth，0 保留默认策略；
+  上限及工作区限制优先，省略声明恢复默认值，Bottom 定位复用原有左对齐/退避。
+- [x] Open/Refresh 与实际行尺寸变化使自然宽度失效；分配尺寸变化细化有限行估计，
+  普通滚动/悬停不持续扩宽。受限宽度下单独预留水平条高度，避免额外垂直条。
+- [x] 不修改 gui ListView/ScrollView/Popover 的公共接口；保留已分配几何的测量纯度，
+  同步检查已有间隔、命中/快照和像素回归。新增 tests/window/widgets/drop_down_width
+  的中文操作说明与实际 Popup/ScrollView 自动尺寸断言。
+- [x] 最终已跟踪源码隔离副本、独立 Xvnc/Xfwm4 的全仓 4585 通过、11 既有跳过、
+  0 失败；DropDown 定向 race、相关 vet 与 Windows amd64/macOS arm64 交叉编译通过。
+- [x] 独立 X11 的 Software/OpenGL × 1x/2x，真实 Popup 自然宽度、用户约束及
+  大字号无多余条的自动断言通过；OpenGL 1x 另完成原生鼠标选择/重开/悬停/移出、
+  Esc 与退出，截图复核并检查选择信号仅一次。不使用 DevServer。
+- [ ] 本轮 Windows/macOS 原生桌面、硬件 GPU/混合 DPI 与移动 Popup 尚未验证；
+  验证副本、开发中失败及运行范围见 [DesignDropDown](DesignDropDown.md#执行记录)。
+
 ## Root 布局后绘制准备（2026-11-09）
 
 - [x] 增加 `Root.ConnectBeforePaint(func()) signal.Handle`；Window、系统 Surface、

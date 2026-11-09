@@ -1,5 +1,9 @@
 # DropDown
 
+> 2026-11-09：弹窗默认按首次有限视口的实际行内容扩宽，至少为控件宽度；新增
+> PopupMinWidth / PopupMaxWidth。收起尺寸、Popover 定位和 ListView 的公共接口不变。
+> 本轮验证范围见下方执行记录。
+
 > 2026-10-06：代码、本机及 Windows Direct2D / macOS OpenGL 1x/2x 指定桌面场景验收完成；
 > macOS 1x 短列表的原生尺寸取整回归已修复并复验。非编辑式单选控件位于 widgets，UI 使用
 > Selected / OnSelected；编辑、搜索、多选、分组不属于本切片。
@@ -17,8 +21,9 @@ UI 对同一个非 nil 模型指针跳过重装，查询和 Items 发布在 GUI 
 公开接口：Model / SetModel、Selected / SetSelected、Placeholder / SetPlaceholder、
 Enabled / SetEnabled、Padding / SetPadding、Open / Close / Opened、ConnectSelected、
 ConnectOpenError、Delegate / SetDelegate、SelectedDelegate / SetSelectedDelegate、
-Refresh、PopupMaxHeight / SetPopupMaxHeight。Open 返回失败；输入触发失败仅发出
-OpenError，不重复报告或默认弹窗。
+Refresh、PopupMaxHeight / SetPopupMaxHeight、PopupMinWidth / SetPopupMinWidth、
+PopupMaxWidth / SetPopupMaxWidth。Open 返回失败；输入触发失败仅发出 OpenError，
+不重复报告或默认弹窗。
 
 Enabled / SetEnabled 来自 Widget 公共接口；gui.IsEnabled 查询祖先限制后的结果。
 禁用保留选择和 Focusable，不自动抢回焦点，也不增加启用变化的关闭监听。
@@ -57,6 +62,8 @@ choice := wui.DropDown(model).Selected(selected).Placeholder("选择外观").OnS
 
 省略 Selected 时保留控件的用户选择；自定义 Item / SelectedItem 时自行为内容
 设置 StyleName，Disabled 等数据不会通过父控件隐式传递子样式。
+UI 通过 PopupMinWidth / PopupMaxWidth 配置独立的弹窗宽度，单位与命令层一致；
+省略后恢复挂载时的默认值，不将上一次声明的宽度约束遗留到新声明。
 
 ## 文本与语义
 
@@ -87,10 +94,29 @@ Popover 关闭时沿原命中路径发送 pointer crossing leave，再重置控�
 
 ## 尺寸、样式、快照
 
-收起按当前内容 / Placeholder、箭头、Padding 测量，不扫描全部文本。弹出内容
-等于控件宽度（工作区不足收窄），不随滚动改变宽度。短列表按实际高度撑开，
-长列表只创建可见行并沿用 ListView 高度估计。PopupMaxHeight 默认 320 DIP，0
-取消用户限高但仍受工作区限制；内部安全留白避让圆角和边框，不在阴影区绘制。
+收起按当前内容 / Placeholder、箭头、Padding 测量，不扫描全部文本。弹窗与收起
+尺寸独立：固定 110 DIP 的控件可以弹出更宽的列表，不反向撑开主窗口布局。
+默认取控件宽度与首次有限视口的自然内容宽度的较大值；实际行 Widget 的测量
+包含文本或自定义内容、勾选占位及行内边距，再加弹窗对称留白。需要垂直条时，
+其自身宽度和条前间隔各计入一次。不能按字符串长度猜测，也不枚举整个模型或
+创建全部行来保证全模型最大宽度。后续未测量的更宽内容仍可水平滚动。
+
+PopupMinWidth 默认 0，表示不额外增加控件宽度以外的下限；PopupMaxWidth 默认 0，
+表示不增加工作区以外的上限。两者均为不含阴影的主体 DIP，负值、非有限值归零。
+宽度先取控件、用户下限和自然内容的最大值，再应用用户上限和 Popover 的实际
+工作区约束；上限可以小于下限或控件宽度。上下限不改变原有 Bottom 定位，主体
+仍优先对齐控件左缘向下弹出，屏幕空间不足时沿既有定位规则退避。
+
+短列表按实际高度撑开，长列表只创建可见行并沿用 ListView 高度估计。
+PopupMaxHeight 默认 320 DIP，0 取消用户限高但仍受工作区限制；内部安全留白避让
+圆角和边框，不在阴影区绘制。被上限收窄时，为确实需要的水平条分配高度；若
+水平条又使内容超过限高，再计入垂直条占位，避免短列表出现多余的垂直条。
+
+自然宽度属于弹窗本次打开的缓存。Open 和显式 Refresh 重新估计；已测行的实际
+自然宽度改变时失效，例如字体或自定义 Widget 尺寸变化。分配尺寸变化时，允许
+由新视口显露的有限行细化当前估计，直到布局稳定。普通滚动只回收/绑定新行，
+不会因此重置宽度；悬停或仅颜色变化也不使它追随长行持续增大。控件宽度、
+用户上下限和工作区变化仍重新应用约束，不要求重新扫描模型。
 
 弹出主体的外围留白至少为 6 DIP，较大的圆角或边框要求更多安全空间时对称增大。
 无垂直滚动条时，选项与主体左右边缘留白一致；有垂直滚动条时，左边缘到选项、
@@ -98,11 +124,13 @@ Popover 关闭时沿原命中路径发送 pointer crossing leave，再重置控�
 选项背景、勾选、子控件布局、命中及快照使用实际缩窄的选项边界；尾部间隔属于
 ListView 的滚动占位，不通过增加文字 Padding 或只缩绘制背景制造空隙。
 宽内容的自然宽度包含尾部间隔，横向滚动到底后其右边缘与勾选仍完整可见。
-根据完成布局后的内容高度决定是否保留间隔，长短列表切换及行回收后重新计算。
+根据完成布局后的自然内容范围决定是否保留间隔，长短列表切换及行回收后重新计算。
+判断水平条是否确实需要时先扣除旧尾部间隔；否则间隔可能制造水平溢出，水平条
+再制造垂直溢出，使两条在字体或尺寸恢复后相互保留。
 
 Measure 只在尚无已实现行时预热一个有限视口，以取得首次弹出的高度估计。
-一旦列表已分配几何，测量只读取现有内容估计，不重新调用 LayoutVisible；新的
-宽度约束也不能改写当前行 Rect、滚动条或快照边界。样式与行高变化由实际
+一旦列表已分配几何，测量只查询现有行的自然测量和内容估计，不重新调用
+LayoutVisible；新的宽度约束也不能改写当前行 Rect、滚动条或快照边界。样式与行高变化由实际
 ScrollView.Arrange 在扣除滚动条的视口下细化，内容范围变化再请求后续布局。
 指针进出只引起颜色变化时，不得触发一次使用完整宽度的预热来覆盖原有间距。
 
@@ -129,6 +157,14 @@ theme/basic 已提供 GUI 自动使用的完整兜底，Modern 提供亮暗统�
   确认浏览项及 Tab 关闭后继续导航；不采用关闭时滚轮改变值。
 - [Qt QComboBox](https://doc.qt.io/qt-6/qcombobox.html)：索引选择及用户激活与程序
   同步的区别。setter 静默、Selected 命名遵循 GOUI 已确认值控件约定。
+- 2026-11-09 宽度设计参考：
+  [GTK 4.18.6 gtk_drop_down_size_allocate](https://github.com/GNOME/gtk/blob/4.18.6/gtk/gtkdropdown.c#L497)
+  给 popup 设置的是控件宽度的最小请求；
+  [Avalonia 11.3.0 Fluent ComboBox 模板](https://github.com/AvaloniaUI/Avalonia/blob/11.3.0/src/Avalonia.Themes.Fluent/Controls/ComboBox.xaml#L117)
+  将 Popup.MinWidth 绑定控件宽度。这是源码行为，不代表其所有主题及版本。
+  [Flutter DropdownButton.menuWidth](https://api.flutter.dev/flutter/material/DropdownButton/menuWidth.html)
+  文档则明确默认等于按钮宽、可单独配置。GOUI 采用前两者的宽度下限思路和明确
+  用户约束，同时保留自身 ListView 的有限行虚拟化；不引入全模型测宽或新 GUI API。
 
 ## 验证
 
@@ -140,6 +176,37 @@ theme/basic 已提供 GUI 自动使用的完整兜底，Modern 提供亮暗统�
 amd64 / macOS arm64 编译；原生桌面与编译分开记录。
 
 ### 执行记录
+
+- 2026-11-09 内容宽度与独立约束：仅修改 widgets 与 widgets/ui，新增命令层
+  PopupMinWidth/PopupMaxWidth 和对应链式声明。自然宽度使用已实现行的实际
+  Widget 测量；Open/Refresh 及实际尺寸变化失效，稳定滚动不扫描或扩建全模型。
+  默认控件尺寸、Bottom 定位、语义角色与输入路径保持既有契约。
+- 包内回归覆盖精确自然宽度、用户上下限优先级、工作区收窄、万行有限回收、
+  滚动宽度稳定、Refresh、字体/自定义内容变宽、失效值和 UI 省略重置；保留
+  测量不改行几何、对称间距与 1x/2x 像素断言。原有宽内容测试增加显式上限，
+  继续验证确实受限时的横向滚动，不删除有效覆盖。新增限高回归先复现条前间隔
+  为 0 而非 6 DIP，修正后验证水平条压缩视口时的对称间距。
+- 实际窗口中的字体放大曾暴露未完成的行宽缓存细化，另一次间隔修正暴露两条
+  相互保留；均由包内/窗口断言拒绝，未放宽断言或将超时记为通过。最终结果
+  以下方本轮全仓与窗口复验为准，开发中失败输出保留在仓库外临时目录。
+- 本轮最终源码在 Linux amd64 / Go 1.25.8、独立 Xvnc/Xfwm4 的已跟踪源隔离副本
+  执行 `CGO_ENABLED=0 GOWORK=off go test -json -count=1 ./...`：4585 项通过、
+  11 项既有跳过、0 失败。原工作区保留着旧 API 的未跟踪测试与例程，不将其
+  混入验证副本，也未删除或修复无关文件。定向 DropDown 的 widgets/widgets/ui
+  race 与相关包/新例程 vet 通过。
+- 独立 X11/Xfwm4 合成会话，Software/OpenGL（Mesa llvmpipe）配置、应用缩放
+  1x/2x 四组真实 Popup 尺寸验收通过：控件始终 110 DIP，12pt 时弹窗自然宽
+  244 DIP，最小宽度 300 生效，最大宽度 180 时只有所需水平条；改为 24pt 后
+  稳定为 445 DIP、无多余滚动条。保留布局细化中的中间状态日志，不把后续帧
+  完成的重排描述为同一帧原子更新。
+- OpenGL 配置 1x 另用原生鼠标输入打开、选最后一项、重开、悬停并移出、Esc 与
+  Exit；选择信号只通知索引 4 一次，截图复核左对齐、长文案完整、对称留白和移出
+  后仅保留选中项反馈。脚本首轮在独立会话结束后投递而无法连接显示，未算通过；
+  重启会话并按当前窗口局部坐标操作后完成。未使用 DevServer，不改变用户桌面。
+- `CGO_ENABLED=0` Windows amd64 / macOS arm64 的 widgets/...、Demo 与两个 DropDown
+  窗口例程交叉编译通过；本轮未执行这两平台原生桌面、硬件 OpenGL、系统混合 DPI
+  或移动端 Popup。2x 是应用覆盖，不能替代这些验收。日志、截图及隔离源码保存在
+  `/tmp/goui-dropdown-width-6r7vb7tu/`，测试进程和独立会话均已清理。
 
 - 选项留白调整：外围最小 6 DIP，出现垂直滚动条时增加等宽尾部间隔；仅调整
   widgets 的行测量/边界，不修改 GUI ScrollView/ListView/Painter 或 UI 接口。
