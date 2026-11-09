@@ -95,6 +95,9 @@ type (
 		Location NSUInteger
 		Length   NSUInteger
 	}
+
+	// NSDictionary wraps a Foundation dictionary without transferring ownership.
+	NSDictionary struct{ NSObject }
 )
 
 // NSNotFound is Foundation's sentinel for "not found" (NSIntegerMax).

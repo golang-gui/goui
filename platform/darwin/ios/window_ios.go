@@ -185,7 +185,7 @@ func (h *nativeState) connect(scene objc.ID) {
 	if h.window.ID != 0 {
 		h.disconnect()
 	}
-	h.window = ui.UIWindowClassId.Alloc().InitWithWindowScene(scene)
+	h.window = ui.UIWindowClassId.Alloc().InitWithWindowScene(Cast[ui.UIWindowScene](scene))
 	class := ui.UIViewControllerClass{}
 	class.Class = objc.GetClass("GoUIContent")
 	h.controller = Cast[ui.UIViewController](class.Alloc().Send(NSObjectSel.Init))
