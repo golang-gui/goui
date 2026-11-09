@@ -646,3 +646,125 @@ func TestLabelSelectionBindingAndTextReset(t *testing.T) {
 		t.Fatal("全量重建丢失选择或控件身份")
 	}
 }
+
+func TestViewFocusPoliciesRestoreConstructorDefaults(t *testing.T) {
+	for _, initial := range []bool{false, true} {
+		t.Run(map[bool]string{false: "自定义关闭", true: "默认开启"}[initial], func(t *testing.T) {
+			r := newRoot()
+			t.Cleanup(r.unmountHost)
+			declaration := func() *enabledWidgetView {
+				v := &enabledWidgetView{make: func() gui.Widget {
+					w := gui.NewButton()
+					w.SetCanContainFocus(initial)
+					w.SetFocusOnPointer(initial)
+					return w
+				}}
+				v.Self = v
+				return v
+			}
+			w := r.update(declaration())
+			if w.CanContainFocus() != initial || w.FocusOnPointer() != initial {
+				t.Fatal("省略修饰改写了构造默认值")
+			}
+			if got := r.update(declaration().CanContainFocus(!initial).FocusOnPointer(!initial)); got != w || w.CanContainFocus() == initial || w.FocusOnPointer() == initial {
+				t.Fatal("显式配置没有应用，或重新创建了Widget")
+			}
+			if got := r.update(declaration()); got != w || w.CanContainFocus() != initial || w.FocusOnPointer() != initial {
+				t.Fatal("省略没有恢复首次挂载的构造默认值")
+			}
+		})
+	}
+}
+
+func TestModifyMergesFocusPolicies(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountHost)
+	content := func() View { return Button("next").CanContainFocus(false).FocusOnPointer(false) }
+	w := r.update(Modify(content()).CanContainFocus(true).FocusOnPointer(true))
+	if !w.CanContainFocus() || !w.FocusOnPointer() {
+		t.Fatal("外层显式true没有覆盖内层false")
+	}
+	if got := r.update(Modify(content())); got != w || w.CanContainFocus() || w.FocusOnPointer() {
+		t.Fatal("省略外层没有恢复内层配置")
+	}
+	if got := r.update(Modify(Button("next"))); got != w || !w.CanContainFocus() || !w.FocusOnPointer() {
+		t.Fatal("内外均省略时没有恢复控件默认值")
+	}
+	info := w.Snapshot()
+	if !info.CanContainFocus || !info.FocusOnPointer {
+		t.Fatal("协调结果没有进入语义快照")
+	}
+}
+
+type focusPolicyReleaseWidget struct {
+	*gui.Label
+	release func()
+	on      string
+	calls   []string
+}
+
+func (w *focusPolicyReleaseWidget) SetFocusOnPointer(v bool) {
+	w.calls = append(w.calls, "pointer")
+	w.Label.SetFocusOnPointer(v)
+	if !v && w.on == "pointer" && w.release != nil {
+		w.release()
+	}
+}
+func (w *focusPolicyReleaseWidget) SetCanContainFocus(v bool) {
+	w.calls = append(w.calls, "contain")
+	w.Label.SetCanContainFocus(v)
+	if !v && w.on == "contain" && w.release != nil {
+		w.release()
+	}
+}
+func (w *focusPolicyReleaseWidget) SetFocusable(v bool) {
+	w.calls = append(w.calls, "focusable")
+	w.Label.SetFocusable(v)
+	if w.CanContainFocus() && !v && w.on == "order" {
+		panic("放宽准入早于收紧自身能力")
+	}
+}
+
+func TestViewFocusPolicySetterCanReleaseOwner(t *testing.T) {
+	for _, on := range []string{"pointer", "contain"} {
+		t.Run(on, func(t *testing.T) {
+			r := newRoot()
+			t.Cleanup(r.unmountHost)
+			w := &focusPolicyReleaseWidget{Label: gui.NewLabel("release")}
+			declaration := func() *enabledWidgetView {
+				v := &enabledWidgetView{make: func() gui.Widget { return w }}
+				v.Self = v
+				return v
+			}
+			r.update(declaration().Focusable(true))
+			w.calls = nil
+			w.on = on
+			w.release = r.unmountHost
+			if got := r.update(declaration().FocusOnPointer(false).CanContainFocus(false).Focusable(false)); got != nil {
+				t.Fatal("setter释放后重新发布了Widget")
+			}
+			for _, call := range w.calls {
+				if call == "focusable" {
+					t.Fatal("释放owner后继续调用后面的setter")
+				}
+			}
+		})
+	}
+}
+
+func TestViewFocusPoliciesRestrictBeforeReopening(t *testing.T) {
+	r := newRoot()
+	t.Cleanup(r.unmountHost)
+	w := &focusPolicyReleaseWidget{Label: gui.NewLabel("order")}
+	declaration := func() *enabledWidgetView {
+		v := &enabledWidgetView{make: func() gui.Widget { return w }}
+		v.Self = v
+		return v
+	}
+	r.update(declaration().CanContainFocus(false).Focusable(true))
+	w.on = "order"
+	r.update(declaration().CanContainFocus(true).Focusable(false))
+	if !w.CanContainFocus() || w.Focusable() {
+		t.Fatal("最终准入或自身能力配置错误")
+	}
+}

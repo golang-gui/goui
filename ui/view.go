@@ -207,25 +207,27 @@ func (v *ModifiedView) Build(BuildContext) View { return v.content }
 // reconciler reads it via View.base after each Update and writes it onto the
 // mounted widget, so controls never apply these themselves.
 type viewBase struct {
-	observables   []Observable // explicit composition dependencies
-	shortcuts     []*ShortcutView
-	dragSource    *DragSourceView
-	dropTarget    *DropTargetView
-	id            string
-	name          string
-	tooltip       string
-	styleName     string // semantic style name (Sel.Name); "" reverts to the widget's type default
-	minWidth      float32
-	minHeight     float32 // size preference; 0 = no min
-	maxWidth      float32
-	maxHeight     float32 // size preference; 0 = unbounded
-	mainWeight    float32 // main-axis extra-space share; 0 = hug
-	hidden        bool
-	enabled       bool
-	focusable     bool
-	cursor        Cursor
-	onFocus       func(focused bool) // fired when the mounted widget's focus state changes
-	onContextMenu func(gui.EventContext)
+	observables     []Observable // explicit composition dependencies
+	shortcuts       []*ShortcutView
+	dragSource      *DragSourceView
+	dropTarget      *DropTargetView
+	id              string
+	name            string
+	tooltip         string
+	styleName       string // semantic style name (Sel.Name); "" reverts to the widget's type default
+	minWidth        float32
+	minHeight       float32 // size preference; 0 = no min
+	maxWidth        float32
+	maxHeight       float32 // size preference; 0 = unbounded
+	mainWeight      float32 // main-axis extra-space share; 0 = hug
+	hidden          bool
+	enabled         bool
+	focusable       bool
+	canContainFocus bool
+	focusOnPointer  bool
+	cursor          Cursor
+	onFocus         func(focused bool) // fired when the mounted widget's focus state changes
+	onContextMenu   func(gui.EventContext)
 
 	fields bits.Bitmap[uint64]
 }
@@ -243,6 +245,8 @@ const (
 	viewHidden
 	viewEnabled
 	viewFocusable
+	viewCanContainFocus
+	viewFocusOnPointer
 	viewCursor
 	viewOnFocus
 	viewOnContextMenu
@@ -273,17 +277,19 @@ type viewBaseContext struct {
 	// Snapshot of the widget's initial values, captured once in mount before
 	// the first apply. Each field corresponds to a viewBase modifier; hidden
 	// is stored as the widget's Visible complement.
-	initID         string
-	initName       string
-	initTooltip    string
-	initStyleName  string
-	initMinSize    geometry.Size
-	initMaxSize    geometry.Size
-	initMainWeight float32
-	initHidden     bool
-	initEnabled    bool
-	initFocusable  bool
-	initCursor     Cursor
+	initID              string
+	initName            string
+	initTooltip         string
+	initStyleName       string
+	initMinSize         geometry.Size
+	initMaxSize         geometry.Size
+	initMainWeight      float32
+	initHidden          bool
+	initEnabled         bool
+	initFocusable       bool
+	initCanContainFocus bool
+	initFocusOnPointer  bool
+	initCursor          Cursor
 }
 
 func (b *viewBase) base() *viewBase { return b }
@@ -306,6 +312,8 @@ func (b *viewBase) mount(ctx *viewBaseContext, w gui.Widget) {
 	ctx.initHidden = !w.Visible()
 	ctx.initEnabled = w.Enabled()
 	ctx.initFocusable = w.Focusable()
+	ctx.initCanContainFocus = w.CanContainFocus()
+	ctx.initFocusOnPointer = w.FocusOnPointer()
 	ctx.initCursor = w.Cursor()
 	ctx.onFocus = b.onFocus
 	ctx.handles = append(ctx.handles, w.ConnectFocused(func(focused bool) {
@@ -395,6 +403,8 @@ func (b *viewBase) unmount(ctx *viewBaseContext, w gui.Widget) {
 	ctx.initHidden = false
 	ctx.initEnabled = false
 	ctx.initFocusable = false
+	ctx.initCanContainFocus = false
+	ctx.initFocusOnPointer = false
 	ctx.initCursor = nil
 }
 
@@ -532,6 +542,23 @@ func (b *ViewBase[T]) Focusable(focusable bool) *T {
 	return b.self()
 }
 
+// CanContainFocus allows focus in this widget and its subtree. False clears
+// focus within the subtree; omission restores the constructor setting.
+func (b *ViewBase[T]) CanContainFocus(allow bool) *T {
+	b.canContainFocus = allow
+	b.fields.Set(viewCanContainFocus, true)
+	return b.self()
+}
+
+// FocusOnPointer controls this widget's default focus on PointerDown. False
+// preserves current focus while retaining Tab navigation and explicit focus.
+// Omission restores the constructor setting; descendants use their own policy.
+func (b *ViewBase[T]) FocusOnPointer(allow bool) *T {
+	b.focusOnPointer = allow
+	b.fields.Set(viewFocusOnPointer, true)
+	return b.self()
+}
+
 // OnFocus registers a callback fired when the mounted widget's keyboard focus
 // state changes: true when it gains focus, false when it loses focus.
 func (b *ViewBase[T]) OnFocus(fn func(focused bool)) *T {
@@ -629,6 +656,29 @@ func (b *viewBase) apply(ctx *viewBaseContext, widget gui.Widget, live func() bo
 			return
 		}
 	}
+	if ctx != nil || b.fields.Check(viewFocusOnPointer) {
+		value := b.focusOnPointer
+		if ctx != nil && !b.fields.Check(viewFocusOnPointer) {
+			value = ctx.initFocusOnPointer
+		}
+		widget.SetFocusOnPointer(value)
+		if !live() {
+			return
+		}
+	}
+	applyContainFocus := ctx != nil || b.fields.Check(viewCanContainFocus)
+	containFocus := b.canContainFocus
+	if ctx != nil && !b.fields.Check(viewCanContainFocus) {
+		containFocus = ctx.initCanContainFocus
+	}
+	// Close a gate before focus/visibility notifications. Open it only after
+	// the other restrictions are applied, without restoring focus implicitly.
+	if applyContainFocus && !containFocus {
+		widget.SetCanContainFocus(false)
+		if !live() {
+			return
+		}
+	}
 	if ctx != nil || b.fields.Check(viewHidden) {
 		value := b.hidden
 		if ctx != nil && !b.fields.Check(viewHidden) {
@@ -669,6 +719,9 @@ func (b *viewBase) apply(ctx *viewBaseContext, widget gui.Widget, live func() bo
 			return
 		}
 	}
+	if applyContainFocus && containFocus {
+		widget.SetCanContainFocus(true)
+	}
 }
 
 // overlay combines explicit declarations without changing either input owner.
@@ -708,6 +761,12 @@ func (b *viewBase) overlay(outer *viewBase) {
 	}
 	if outer.fields.Check(viewFocusable) {
 		b.focusable = outer.focusable
+	}
+	if outer.fields.Check(viewCanContainFocus) {
+		b.canContainFocus = outer.canContainFocus
+	}
+	if outer.fields.Check(viewFocusOnPointer) {
+		b.focusOnPointer = outer.focusOnPointer
 	}
 	if outer.fields.Check(viewCursor) {
 		b.cursor = outer.cursor

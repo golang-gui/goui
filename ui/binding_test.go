@@ -1073,3 +1073,29 @@ func TestSharedValueBindingsKeepIndependentDocumentsAndUndo(t *testing.T) {
 		t.Fatal("值绑定回放破坏了源历史或共享了目标历史")
 	}
 }
+
+func TestLocalBuildUpdatesFocusPolicies(t *testing.T) {
+	restricted := MakeState(false)
+	global, local := 0, 0
+	_, fake := bindingApp(t, func() RootView {
+		global++
+		return Window("main").Content(Build(func() View {
+			local++
+			if restricted.Get() {
+				return Button("next").CanContainFocus(false).FocusOnPointer(false)
+			}
+			return Button("next")
+		}))
+	})
+	w := fake.windows[0].Widget()
+	restricted.Set(true)
+	fake.runPosted()
+	if global != 1 || local != 2 || fake.windows[0].Widget() != w || w.CanContainFocus() || w.FocusOnPointer() {
+		t.Fatal("局部更新没有应用焦点策略，或扩大为全局重建")
+	}
+	restricted.Set(false)
+	fake.runPosted()
+	if global != 1 || local != 3 || fake.windows[0].Widget() != w || !w.CanContainFocus() || !w.FocusOnPointer() {
+		t.Fatal("局部声明省略修饰后没有恢复默认值")
+	}
+}
