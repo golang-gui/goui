@@ -536,6 +536,181 @@ func dropDownVerticalBar(t *testing.T, c *dropDownContent) *gui.ScrollBar {
 	return nil
 }
 
+func settleDropDownPopup(t *testing.T, c *dropDownContent, constraint layout.Constraint) geometry.Size {
+	t.Helper()
+	for range 6 {
+		size := c.Measure(constraint).Size
+		c.Arrange(geometry.Rectangle{Size: size})
+		if c.Measure(constraint).Size == size {
+			return size
+		}
+	}
+	t.Fatal("弹窗宽高没有收敛")
+	return geometry.Size{}
+}
+
+func checkDropDownBars(t *testing.T, c *dropDownContent, horizontal, vertical bool) {
+	t.Helper()
+	for _, child := range c.scroll.Children() {
+		if bar, ok := child.(*gui.ScrollBar); ok {
+			want := horizontal
+			if bar.Orientation() == layout.DirectionVertical {
+				want = vertical
+			}
+			if bar.Visible() != want {
+				t.Fatalf("滚动条方向=%v visible=%v，期望=%v", bar.Orientation(), bar.Visible(), want)
+			}
+		}
+	}
+}
+
+func TestDropDownPopupNaturalWidthAndLimits(t *testing.T) {
+	for _, tc := range []struct {
+		name                          string
+		count                         int
+		minWidth, maxWidth, maxHeight float32
+		constraint                    layout.Constraint
+		want                          geometry.Size
+		horizontal, vertical          bool
+	}{
+		{"短列表自然宽度", 4, 0, 0, 320, layout.Unbounded(), geometry.Size{Width: 202, Height: 124}, false, false},
+		{"垂直条独立占位", 4, 0, 0, 96, layout.Unbounded(), geometry.Size{Width: 216, Height: 96}, false, true},
+		{"用户最小宽度", 4, 260, 0, 320, layout.Unbounded(), geometry.Size{Width: 260, Height: 124}, false, false},
+		{"用户最大宽度", 1, 0, 180, 320, layout.Unbounded(), geometry.Size{Width: 180, Height: 48}, true, false},
+		{"水平条压缩视口", 1, 0, 180, 44, layout.Unbounded(), geometry.Size{Width: 180, Height: 44}, true, true},
+		{"上限优先于下限", 1, 300, 180, 320, layout.Unbounded(), geometry.Size{Width: 180, Height: 48}, true, false},
+		{"工作区优先", 4, 300, 500, 320, layout.Loose(geometry.Size{Width: 100, Height: 70}), geometry.Size{Width: 100, Height: 70}, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d, _, _, _ := dropDownInput()
+			defer d.SetModel(nil)
+			d.Arrange(geometry.Rect(0, 0, 110, 32))
+			d.SetModel(gui.NewSliceListModel(make([]DropDownItem, tc.count)))
+			d.SetDelegate(&dropDownTestDelegate{width: 160})
+			d.SetPopupMinWidth(tc.minWidth)
+			d.SetPopupMaxWidth(tc.maxWidth)
+			d.SetPopupMaxHeight(tc.maxHeight)
+			c := newDropDownContent(d)
+			d.content = c
+			if got := settleDropDownPopup(t, c, tc.constraint); got != tc.want {
+				t.Fatalf("尺寸=%v，期望=%v", got, tc.want)
+			}
+			checkDropDownBars(t, c, tc.horizontal, tc.vertical)
+			if tc.vertical {
+				c.scroll.SetScrollX(c.scroll.Snapshot().MaxScrollX)
+				row := c.list.Children()[0]
+				bar := dropDownVerticalBar(t, c)
+				if gap := bar.Rect().X - row.Rect().X - row.Rect().Width; gap != c.padding {
+					t.Fatalf("垂直条前间隔=%g，期望=%g", gap, c.padding)
+				}
+			}
+			if d.Rect().Width != 110 {
+				t.Fatal("弹窗尺寸改变了收起控件宽度")
+			}
+		})
+	}
+}
+
+type varyingDropDownWidth struct{ dropDownTestDelegate }
+
+func (d *varyingDropDownWidth) Bind(index int, widget gui.Widget) {
+	d.binds++
+	w := widget.(*dropDownFixedContent)
+	w.width = 70
+	if index >= 50 {
+		w.width = 400
+	}
+	w.RequestLayout()
+}
+
+func TestDropDownPopupWidthRemainsStableWhileScrolling(t *testing.T) {
+	d, _, _, _ := dropDownInput()
+	defer d.SetModel(nil)
+	d.SetModel(gui.NewSliceListModel(make([]DropDownItem, 10000)))
+	delegate := new(varyingDropDownWidth)
+	d.SetDelegate(delegate)
+	d.SetPopupMaxHeight(96)
+	c := newDropDownContent(d)
+	d.content = c
+	initial := settleDropDownPopup(t, c, layout.Unbounded())
+	if initial.Width != 180 || delegate.setups > 20 || delegate.binds > 30 {
+		t.Fatal("首次打开扫描或创建了全部项目", initial, delegate.setups, delegate.binds)
+	}
+	c.scroll.SetScrollY(2800)
+	for range 3 {
+		c.StyleChanged() // 颜色变化不能使已展开弹窗追随新出现的长行扩宽。
+		if got := settleDropDownPopup(t, c, layout.Unbounded()); got != initial {
+			t.Fatal("滚动或悬停改变了弹窗尺寸", initial, got)
+		}
+	}
+	checkDropDownBars(t, c, true, true)
+	if delegate.setups > 20 || len(c.list.Children()) > 20 {
+		t.Fatal("宽度测量破坏了可见行回收")
+	}
+	d.Refresh()
+	if got := settleDropDownPopup(t, c, layout.Unbounded()); got.Width != 456 {
+		t.Fatal("显式 Refresh 没有更新自然宽度", got)
+	}
+	checkDropDownBars(t, c, false, true)
+}
+
+func TestDropDownPopupWidthTracksMeasuredContentChanges(t *testing.T) {
+	d, _, _, _ := dropDownInput()
+	defer d.SetModel(nil)
+	d.SetDelegate(new(dropDownTestDelegate))
+	c := newDropDownContent(d)
+	d.content = c
+	settleDropDownPopup(t, c, layout.Unbounded())
+	for _, widget := range c.list.Children() {
+		content := widget.(*dropDownRow).content.(*dropDownFixedContent)
+		content.width = 210
+		content.RequestLayout()
+	}
+	if got := settleDropDownPopup(t, c, layout.Unbounded()); got.Width != 252 {
+		t.Fatal("字体或自定义内容的宽度变化没有使缓存失效", got)
+	}
+	d.SetPopupMaxWidth(200)
+	if got := settleDropDownPopup(t, c, layout.Unbounded()); got.Width != 200 {
+		t.Fatal("最大宽度没有限制已存在的弹窗", got)
+	}
+	d.SetPopupMaxWidth(0)
+	d.SetPopupMinWidth(280)
+	if got := settleDropDownPopup(t, c, layout.Unbounded()); got.Width != 280 {
+		t.Fatal("最小宽度没有生效", got)
+	}
+	for _, value := range []float32{-1, float32(math.NaN()), float32(math.Inf(1)), float32(math.Inf(-1))} {
+		d.SetPopupMinWidth(value)
+		d.SetPopupMaxWidth(value)
+		if d.PopupMinWidth() != 0 || d.PopupMaxWidth() != 0 {
+			t.Fatal("无效宽度没有恢复为默认值")
+		}
+	}
+}
+
+func TestDropDownPopupWidthRefinesRowsAfterFontSizeChange(t *testing.T) {
+	d, _, _, _ := dropDownInput()
+	defer d.SetModel(nil)
+	d.SetModel(gui.NewSliceListModel(make([]DropDownItem, 5)))
+	d.SetDelegate(new(dropDownTestDelegate))
+	c := newDropDownContent(d)
+	d.content = c
+	settleDropDownPopup(t, c, layout.Unbounded())
+	for i, widget := range c.list.Children() {
+		content := widget.(*dropDownRow).content.(*dropDownFixedContent)
+		content.height, content.width = 40, 120
+		if i == 4 {
+			content.width = 400
+		}
+		content.RequestLayout()
+	}
+	// 最后一行会暂时离开旧视口；测试委托重绑时保留它的新尺寸。
+	c.Arrange(c.Rect())
+	if got := settleDropDownPopup(t, c, layout.Unbounded()); got.Width != 442 || got.Height != 272 {
+		t.Fatal("新分配显露的长行没有参与首次宽度细化", got)
+	}
+	checkDropDownBars(t, c, false, false)
+}
+
 func TestDropDownPopupGutters(t *testing.T) {
 	d, _, _, _ := dropDownInput()
 	defer d.SetModel(nil)
@@ -691,6 +866,8 @@ func TestDropDownPopupGutterPreservesWideContent(t *testing.T) {
 	d, _, _, _ := dropDownInput()
 	defer d.SetModel(nil)
 	d.SetDelegate(&dropDownTestDelegate{width: 400})
+	// 显式限宽保留横向滚动验收；默认现在会按已测量内容扩宽。
+	d.SetPopupMaxWidth(180)
 	d.SetPopupMaxHeight(96)
 	c := newDropDownContent(d)
 	d.content = c

@@ -23,6 +23,7 @@ type DropDownView struct {
 	placeholder        string
 	padding            geometry.Insets
 	maxHeight          float32
+	minWidth, maxWidth float32
 	fields             bits.Bitmap[uint8]
 	item, selectedItem func(int, DropDownItem) baseui.View
 	onSelected         func(int)
@@ -33,6 +34,8 @@ const (
 	dropDownSelected = iota
 	dropDownPadding
 	dropDownMaxHeight
+	dropDownMinWidth
+	dropDownMaxWidth
 )
 
 // DropDown accepts a typed option model. Reuse a non-nil model pointer to avoid
@@ -67,6 +70,16 @@ func (v *DropDownView) PopupMaxHeight(value float32) *DropDownView {
 	v.fields.Set(dropDownMaxHeight, true)
 	return v
 }
+func (v *DropDownView) PopupMinWidth(value float32) *DropDownView {
+	v.minWidth = value
+	v.fields.Set(dropDownMinWidth, true)
+	return v
+}
+func (v *DropDownView) PopupMaxWidth(value float32) *DropDownView {
+	v.maxWidth = value
+	v.fields.Set(dropDownMaxWidth, true)
+	return v
+}
 func (v *DropDownView) Item(builder func(int, DropDownItem) baseui.View) *DropDownView {
 	v.item = builder
 	return v
@@ -88,11 +101,12 @@ type dropDownState struct {
 	handles            signal.Handles
 	padding            geometry.Insets
 	maxHeight          float32
+	minWidth, maxWidth float32
 }
 
 func (v *DropDownView) Mount(ctx baseui.BuildContext) gui.Widget {
 	d := widgets.NewDropDown()
-	s := &dropDownState{ctx: ctx, widget: d, padding: d.Padding(), maxHeight: d.PopupMaxHeight()}
+	s := &dropDownState{ctx: ctx, widget: d, padding: d.Padding(), maxHeight: d.PopupMaxHeight(), minWidth: d.PopupMinWidth(), maxWidth: d.PopupMaxWidth()}
 	s.handles = signal.Handles{
 		d.ConnectSelected(func(index int) {
 			if s.onSelected != nil {
@@ -123,8 +137,17 @@ func (v *DropDownView) Update(ctx baseui.BuildContext, widget gui.Widget) {
 	if v.fields.Check(dropDownMaxHeight) {
 		maxHeight = v.maxHeight
 	}
+	minWidth, maxWidth := s.minWidth, s.maxWidth
+	if v.fields.Check(dropDownMinWidth) {
+		minWidth = v.minWidth
+	}
+	if v.fields.Check(dropDownMaxWidth) {
+		maxWidth = v.maxWidth
+	}
 	d.SetPadding(padding)
 	d.SetPopupMaxHeight(maxHeight)
+	d.SetPopupMinWidth(minWidth)
+	d.SetPopupMaxWidth(maxWidth)
 	if !identity.SamePointer(d.Model(), v.model) {
 		d.SetModel(v.model)
 	}

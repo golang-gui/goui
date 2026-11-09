@@ -38,29 +38,31 @@ type DropDownInfo struct {
 // Publish model changes on that thread, even when its storage is concurrency-safe.
 type DropDown struct {
 	gui.WidgetBase
-	model                      gui.ListData[DropDownItem]
-	modelHandle                signal.Handle
-	delegate, selectedDelegate gui.ListItemDelegate
-	displayDelegate            gui.ListItemDelegate
-	display                    gui.Widget
-	placeholderLabel           *gui.Label
-	placeholder                string
-	selected, current, bound   int
-	padding                    geometry.Insets
-	popupMaxHeight             float32
-	revision                   uint64
-	selectedSignal             signal.Signal2[int, uint64]
-	openError                  signal.Signal2[error, uint64]
-	popup                      gui.Popover
-	content                    *dropDownContent
-	motion                     *gui.MotionEventController
-	click                      *gui.ClickEventController
-	keys                       *gui.KeyEventController
+	model                        gui.ListData[DropDownItem]
+	modelHandle                  signal.Handle
+	delegate, selectedDelegate   gui.ListItemDelegate
+	displayDelegate              gui.ListItemDelegate
+	display                      gui.Widget
+	placeholderLabel             *gui.Label
+	placeholder                  string
+	selected, current, bound     int
+	padding                      geometry.Insets
+	popupMaxHeight               float32
+	popupMinWidth, popupMaxWidth float32
+	revision                     uint64
+	selectedSignal               signal.Signal2[int, uint64]
+	openError                    signal.Signal2[error, uint64]
+	popup                        gui.Popover
+	content                      *dropDownContent
+	motion                       *gui.MotionEventController
+	click                        *gui.ClickEventController
+	keys                         *gui.KeyEventController
 }
 
 // NewDropDown creates an enabled, focusable control with no selection, 6 DIP
 // padding on every edge and a 320 DIP maximum popup body height. Native resources
-// are lazy.
+// are lazy. The popup may grow beyond the control to fit initially measured rows;
+// scrolling does not scan unseen options or continuously widen the popup.
 func NewDropDown() *DropDown {
 	d := &DropDown{selected: -1, current: -1, bound: -1, padding: geometry.UniformInsets(6), popupMaxHeight: 320}
 	d.WidgetBase.SetFocusable(true)
@@ -259,6 +261,47 @@ func (d *DropDown) SetPopupMaxHeight(value float32) {
 	}
 }
 
+// PopupMinWidth returns the extra minimum popup body width in DIP.
+// Zero uses the control width as the minimum, subject to upper bounds.
+func (d *DropDown) PopupMinWidth() float32 { return d.popupMinWidth }
+
+// SetPopupMinWidth sets an additional minimum popup body width in DIP.
+// Zero removes the additional minimum; invalid extents normalize to zero.
+func (d *DropDown) SetPopupMinWidth(value float32) {
+	value = dropDownExtent(value)
+	if !d.Destroyed() && value != d.popupMinWidth {
+		d.popupMinWidth = value
+		if d.content != nil {
+			d.content.RequestLayout()
+		}
+	}
+}
+
+// PopupMaxWidth returns the popup body width limit in DIP, excluding shadow.
+// Zero adds no limit beyond the available work area. Upper bounds take priority
+// over both PopupMinWidth and the control width.
+func (d *DropDown) PopupMaxWidth() float32 { return d.popupMaxWidth }
+
+// SetPopupMaxWidth limits the popup body width independently of the control.
+// Zero removes this limit; invalid extents normalize to zero.
+func (d *DropDown) SetPopupMaxWidth(value float32) {
+	value = dropDownExtent(value)
+	if !d.Destroyed() && value != d.popupMaxWidth {
+		d.popupMaxWidth = value
+		if d.content != nil {
+			d.content.RequestLayout()
+		}
+	}
+}
+
+func (d *DropDown) Arrange(rect geometry.Rectangle) {
+	before := d.Rect().Width
+	d.WidgetBase.Arrange(rect)
+	if !d.Destroyed() && before != rect.Width && d.Opened() && d.content != nil {
+		d.content.RequestLayout()
+	}
+}
+
 func (d *DropDown) Delegate() gui.ListItemDelegate         { return d.delegate }
 func (d *DropDown) SelectedDelegate() gui.ListItemDelegate { return d.selectedDelegate }
 
@@ -377,6 +420,7 @@ func (d *DropDown) refreshDisplay() {
 func (d *DropDown) Refresh() {
 	d.refreshDisplay()
 	if d.content != nil {
+		d.content.invalidateWidth()
 		d.content.list.Refresh()
 		d.content.RequestLayout()
 	}
@@ -418,6 +462,7 @@ func (d *DropDown) Open() error {
 	}
 	d.popup.SetPlacement(gui.PopoverPlacementBottom)
 	d.current = index
+	d.content.invalidateWidth()
 	d.content.list.Refresh()
 	d.content.RequestLayout()
 	revision := d.revision

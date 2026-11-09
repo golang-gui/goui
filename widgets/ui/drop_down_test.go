@@ -26,12 +26,12 @@ func TestDropDownDeclarationAndLatestSignals(t *testing.T) {
 	m := &dropDownBindingModel{SliceListModel: gui.NewSliceListModel([]DropDownItem{{Text: "A"}, {Text: "B", Disabled: true}, {Text: "C"}})}
 	ctx := new(treeBindingContext)
 	first, latest, errorsSeen := 0, 0, 0
-	v := DropDown(m).Selected(0).Placeholder("choose").Padding(9).PopupMaxHeight(180).OnSelected(func(int) { first++ })
+	v := DropDown(m).Selected(0).Placeholder("choose").Padding(9).PopupMaxHeight(180).PopupMinWidth(240).PopupMaxWidth(420).OnSelected(func(int) { first++ })
 	d := v.Mount(ctx).(*widgets.DropDown)
 	defer d.SetModel(nil)
 	v.Update(ctx, d)
 	d.Arrange(geometry.Rect(0, 0, 180, 32))
-	if d.Selected() != 0 || d.Padding() != geometry.UniformInsets(9) || d.PopupMaxHeight() != 180 || d.Placeholder() != "choose" || first != 0 {
+	if d.Selected() != 0 || d.Padding() != geometry.UniformInsets(9) || d.PopupMaxHeight() != 180 || d.PopupMinWidth() != 240 || d.PopupMaxWidth() != 420 || d.Placeholder() != "choose" || first != 0 {
 		t.Fatal("initial declaration")
 	}
 	d.SetSelected(2)
@@ -39,7 +39,7 @@ func TestDropDownDeclarationAndLatestSignals(t *testing.T) {
 		v = DropDown(m).OnSelected(func(int) { latest++ }).OnOpenError(func(error) { errorsSeen++ })
 		v.Update(ctx, d)
 	}
-	if d.Selected() != 2 || m.connections != 1 || d.Padding() != geometry.UniformInsets(6) || d.PopupMaxHeight() != 320 || d.Placeholder() != "" {
+	if d.Selected() != 2 || m.connections != 1 || d.Padding() != geometry.UniformInsets(6) || d.PopupMaxHeight() != 320 || d.PopupMinWidth() != 0 || d.PopupMaxWidth() != 0 || d.Placeholder() != "" {
 		t.Fatal("rebuild reset state/model or retained optional overrides")
 	}
 	h := &checkInputHost{widget: d}

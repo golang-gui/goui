@@ -17,10 +17,13 @@ const dropDownPopupPadding = 6
 // Its ListView remains a layout/recycling mechanism; selection stays in owner.
 type dropDownContent struct {
 	gui.WidgetBase
-	owner   *DropDown
-	list    *gui.ListView
-	scroll  *gui.ScrollView
-	padding float32
+	owner        *DropDown
+	list         *gui.ListView
+	scroll       *gui.ScrollView
+	padding      float32
+	barSize      geometry.Size
+	naturalWidth float32
+	widthValid   bool
 }
 
 func newDropDownContent(owner *DropDown) *dropDownContent {
@@ -31,6 +34,16 @@ func newDropDownContent(owner *DropDown) *dropDownContent {
 	c.list.SetModel(owner.model)
 	c.scroll = gui.NewScrollView()
 	c.scroll.SetChild(c.list)
+	for _, child := range c.scroll.Children() {
+		if bar, ok := child.(*gui.ScrollBar); ok {
+			size := bar.Measure(layout.Unbounded()).Size
+			if bar.Orientation() == layout.DirectionVertical {
+				c.barSize.Width = size.Width
+			} else {
+				c.barSize.Height = size.Height
+			}
+		}
+	}
 	c.WidgetBase.AddChild(c, c.scroll)
 	c.AddEventController(&dropDownPopupInput{
 		EventControllerBase: gui.NewEventControllerBase(gui.PhaseCapture), owner: owner,
@@ -116,11 +129,12 @@ func (c *dropDownContent) keyDown(ctx gui.EventContext, event events.KeyEvent) {
 }
 
 func (c *dropDownContent) Measure(constraint layout.Constraint) layout.Measurement {
+	revision := c.owner.revision
 	s := gui.ResolveWidgetStyle(c, "drop-down-popup", style.PartDefault, style.Normal)
 	radius, _ := s.CornerRadius()
 	border, _ := s.BorderWidth()
 	c.padding = max(float32(dropDownPopupPadding), dropDownExtent(border), radius.Max()*(1-1/math.Sqrt2)+1)
-	width := constraint.Clamp(geometry.Size{Width: c.owner.Rect().Width}).Width
+	width := c.popupWidth(constraint, 0)
 	limit := constraint.Max.Height
 	if c.owner.popupMaxHeight > 0 {
 		limit = min(limit, c.owner.popupMaxHeight)
@@ -131,26 +145,92 @@ func (c *dropDownContent) Measure(constraint layout.Constraint) layout.Measureme
 	// the actual viewport width and requests layout when the extent changes.
 	warm := max(float32(0), min(limit, float32(320))-2*c.padding)
 	if len(c.list.Children()) == 0 {
+		c.widthValid = false
 		c.list.LayoutVisible(geometry.Size{Width: max(0, width-2*c.padding), Height: warm}, geometry.Point{X: c.scroll.ScrollX(), Y: c.scroll.ScrollY()})
 	}
-	height := min(c.list.ContentSize().Height+2*c.padding, limit)
+	if c.Destroyed() || c.owner.Destroyed() || revision != c.owner.revision {
+		return layout.Measurement{}
+	}
+	if !c.widthValid {
+		width, valid := c.measureWidth()
+		if !valid {
+			return layout.Measurement{}
+		}
+		c.naturalWidth, c.widthValid = width, true
+	}
+	contentHeight := c.list.ContentSize().Height
+	vertical := contentHeight > max(0, limit-2*c.padding)
+	width, horizontal := c.fittedWidth(constraint, vertical)
+	if !vertical && horizontal && contentHeight+c.barSize.Height > max(0, limit-2*c.padding) {
+		width, horizontal = c.fittedWidth(constraint, true)
+	}
+	height := contentHeight + 2*c.padding
+	if horizontal {
+		height += c.barSize.Height
+	}
+	height = min(height, limit)
 	return layout.Measured(constraint.Clamp(geometry.Size{Width: width, Height: height}))
 }
 
+func (c *dropDownContent) measureWidth() (float32, bool) {
+	revision := c.owner.revision
+	width := float32(0)
+	for _, widget := range c.list.Children() {
+		row := widget.(*dropDownRow)
+		measured := row.Measure(layout.Unbounded())
+		if c.Destroyed() || c.owner.Destroyed() || revision != c.owner.revision {
+			return 0, false
+		}
+		width = max(width, measured.Width-row.trailingGap)
+	}
+	return width, true
+}
+
+func (c *dropDownContent) popupWidth(constraint layout.Constraint, natural float32) float32 {
+	width := max(c.owner.Rect().Width, c.owner.popupMinWidth, natural)
+	if c.owner.popupMaxWidth > 0 {
+		width = min(width, c.owner.popupMaxWidth)
+	}
+	return constraint.Clamp(geometry.Size{Width: width}).Width
+}
+
+func (c *dropDownContent) fittedWidth(constraint layout.Constraint, vertical bool) (float32, bool) {
+	natural := c.naturalWidth + 2*c.padding
+	if vertical {
+		natural += c.barSize.Width + c.padding
+	}
+	width := c.popupWidth(constraint, natural)
+	return width, width < natural
+}
+
+func (c *dropDownContent) invalidateWidth() {
+	if c.widthValid {
+		c.widthValid = false
+		c.RequestLayout()
+	}
+}
+
 func (c *dropDownContent) Arrange(rect geometry.Rectangle) {
+	sizeChanged := c.Rect().Size != rect.Size
 	c.WidgetBase.Arrange(rect)
 	inner := geometry.Rect(0, 0, rect.Width, rect.Height).Inset(c.padding)
 	c.scroll.Measure(layout.Tight(inner.Size))
 	c.scroll.Arrange(inner)
 	// Keep the option-to-scrollbar gap equal to the leading surface padding.
-	// Use the completed content height, since virtualization refines estimates
-	// during Arrange. The gutter belongs to the row's scroll extent, outside its
+	// Exclude the existing gutter before checking horizontal overflow, or its
+	// extra width can retain both bars after the content fits again.
+	// The gutter belongs to the row's scroll extent, outside its
 	// painted/pickable bounds, so wide content remains reachable when scrolled.
+	delegate := c.list.Delegate().(*dropDownListDelegate)
+	content := c.list.ContentSize()
+	height := content.Height
+	if content.Width-delegate.trailingGap > inner.Width {
+		height += c.barSize.Height
+	}
 	gap := float32(0)
-	if c.list.ContentSize().Height > inner.Height {
+	if height > inner.Height {
 		gap = c.padding
 	}
-	delegate := c.list.Delegate().(*dropDownListDelegate)
 	if delegate.trailingGap != gap {
 		delegate.trailingGap = gap
 		for _, widget := range c.list.Children() {
@@ -161,6 +241,21 @@ func (c *dropDownContent) Arrange(rect geometry.Rectangle) {
 		c.list.StyleChanged()
 		c.scroll.Measure(layout.Tight(inner.Size))
 		c.scroll.Arrange(inner)
+	}
+	if sizeChanged || !c.widthValid {
+		// The final height can realize more rows than the old viewport after
+		// a font change. Refine this opening's bounded sample before freezing
+		// it; ordinary scrolling does not change the allocated size.
+		invalid := !c.widthValid
+		width, valid := c.measureWidth()
+		if !valid {
+			return
+		}
+		c.widthValid = true
+		if invalid || width > c.naturalWidth {
+			c.naturalWidth = width
+			c.RequestLayout()
+		}
 	}
 }
 
@@ -245,7 +340,7 @@ func (*dropDownListDelegate) Unbind(_ int, widget gui.Widget) {
 		return
 	}
 	index := r.index
-	r.bound, r.index = false, -1
+	r.bound, r.index, r.widthKnown = false, -1, false
 	r.SetState(style.Pressed, false)
 	r.click.Reset()
 	r.motion.Reset()
@@ -262,6 +357,8 @@ type dropDownRow struct {
 	index           int
 	trailingGap     float32
 	bound, disabled bool
+	naturalWidth    float32
+	widthKnown      bool
 	motion          *gui.MotionEventController
 	click           *gui.ClickEventController
 }
@@ -271,6 +368,14 @@ func (r *dropDownRow) Measure(constraint layout.Constraint) layout.Measurement {
 	inner.Min.Width = max(0, inner.Min.Width-r.trailingGap)
 	inner.Max.Width = max(0, inner.Max.Width-r.trailingGap)
 	measured := r.WidgetBase.Measure(inner)
+	if constraint.Min.Width == 0 && constraint.Max.Width == layout.Inf && r.bound {
+		// Binding a newly visible row must not grow an open popup. Changes to
+		// an already measured row (e.g. a font change) invalidate its estimate.
+		if r.widthKnown && r.naturalWidth != measured.Width && r.owner.content != nil {
+			r.owner.content.invalidateWidth()
+		}
+		r.naturalWidth, r.widthKnown = measured.Width, true
+	}
 	measured.Width += r.trailingGap
 	return measured
 }
