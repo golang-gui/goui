@@ -5,6 +5,7 @@
 ## 阅读路由
 
 - 涉及 Linux 原生调用：读 [Linux 规范](linux/AGENTS.md)。
+- 涉及 Android 原生调用：读 [Android 规范](android/AGENTS.md)。
 - 涉及 Windows 原生调用：读 [Windows 规范](windows/AGENTS.md)。
 - 涉及 macOS 原生调用：读 [macOS 规范](darwin/AGENTS.md)。
 - `graphics`、`typography`、平台入口和测试中的平台专属代码，同样遵守对应平台规范，不因目录不同而免除。
