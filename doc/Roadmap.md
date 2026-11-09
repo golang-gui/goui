@@ -38,6 +38,16 @@ Context 释放后已有 Layout 的字体设施仍有效，Java 保留原生批�
 以系统与可选外部实现共用的绘制边界为目标，ANGLE 仅是可选用途；不改变现有默认
 后端，不将桌面 GLES、绑定迁移或外部库分发扩为当前移动平台稳固的前置。
 
+## Widget 焦点准入与指针聚焦（2026-11-09）
+
+CanContainFocus 控制自身与实际 Widget 子树，FocusOnPointer 只控制自身的指针
+默认聚焦；都默认 true。关闭指针聚焦仍允许 Tab 与显式聚焦，关闭子树准入才
+排除整组。鼠标操作保持可用，不引入禁用样式或平台焦点 API。GUI/UI、弹层锚点和 Snapshot 已接入；查找栏例程覆盖焦点、
+选区、局部更新及重建。独立 X11 两后端 1x/2x 与远端 Windows/macOS 已验收，
+真实 IME/移动端等缺口见 [Plan](Plan.md#widget-焦点准入与指针聚焦2026-11-09)，
+契约及完整验证范围见 [焦点设计](DesignKeyboardNavigation.md#9-焦点准入与指针聚焦2026-11-09已实现)。
+本项不改变上方移动平台稳固的优先级。
+
 ## Root 布局后绘制准备（2026-11-09）
 
 Root 增加 ConnectBeforePaint，在本帧布局及窗口装饰分配后、Painter.Begin 前

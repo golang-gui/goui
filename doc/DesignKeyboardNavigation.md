@@ -1,9 +1,10 @@
 # 默认 Tab 焦点导航
 
-> 2026-10-05：已确认的最小切片。只实现控件之间的焦点转移，不扩展平台能力、
-> 公共焦点属性或控件内部键盘行为。FocusVisible 已实现；第 7 节保留历史验证，当前配色见第 8 节。
+> 2026-10-05：初始切片只实现控件之间的焦点转移。FocusVisible 已实现；
+> 第 7 节保留历史验证，当前配色见第 8 节。2026-11-09 已扩充自身/子树准入与
+> 指针聚焦配置，当前契约及验收见第 9 节，不扩展平台能力或控件内部键盘行为。
 
-## 1. 职责与范围
+## 1. 初始切片的职责与范围
 
 Tab 负责在当前 Widget 树中转移焦点，方向键、Enter、Space、编辑、选择等由
 具体控件自己的 EventController 处理。不因本切片修改 Button 激活、菜单导航、
@@ -288,3 +289,97 @@ Modern 普通按钮／Flat 使用柔化主题焦点色；仅 Primary 使用亮�
 具体规则见 [Modern 预设](DesignModernPresets.md) 与 theme/basic、theme/modern。
 
 上述是当前源码契约，不把第 7 节旧 Primary 配色的截图／像素结果追认为本轮验收。
+
+## 9. 焦点准入与指针聚焦（2026-11-09，已实现）
+
+新增两个 Widget 配置：CanContainFocus/SetCanContainFocus 控制自身及实际 Widget
+子树的焦点准入，FocusOnPointer/SetFocusOnPointer 控制自身在 PointerDown 时的
+默认聚焦；二者默认 true。Focusable 保留自身能力语义，Focused/ContainsFocus
+保留自身与子树的事实状态。不新增平台 API、焦点取消信号、FocusReason 或另一套
+焦点管理设施；历史第1节不增加焦点属性的限制由本节扩充。
+
+### 9.1 契约
+
+- 接收焦点需要自身 Focusable、自己及祖先 CanContainFocus，并满足原有生命周期、
+  Root、启用、可见与模态限制。getter 返回自身配置，不是有效状态查询。
+- Focusable=false 只排除自身。CanContainFocus=false 拒绝整棵子树的指针、Tab、
+  主动聚焦与模态初始/恢复聚焦；后代不能用 true 覆盖祖先限制，原配置保持不变。
+- 关闭准入先发布限制，再通过宿主已有入口清除子树中的焦点，正常发送焦点通知、
+  更新 IME。外部焦点不变；恢复准入不自动聚焦。相同值不重复通知。
+- FocusOnPointer 只影响自身，不继承、不清除已有焦点，也不限制 Tab/主动聚焦。
+  PointerDown 检查命中分支准入，再向上寻找最近 Focusable；该候选关闭指针聚焦
+  则保留当前焦点并停止，不能绕到外部祖先。CanContainFocus 关闭的分支同样停止。
+- 默认聚焦仍在宿主控制器后、普通捕获控制器前；不改传播顺序、按键或手势规则。
+  保留焦点不是指定输入框；此前 Tab 到按钮后，鼠标操作不会强制把焦点移回输入框。
+- 这两个设置不是 Disabled 或 Modal。限制准入不阻断鼠标/拖放、不添加禁用外观，
+  不禁用 Command/窗口快捷键、不撤销模态边界。独立 Popover Root 不经锚点继承。
+- 主动打开 Dialog/弹层可以按自身语义调整焦点，仍走统一准入。控件自身的指针
+  handler 不应重复强制聚焦锚点，绕过 FocusOnPointer；显式 Open 与键盘操作可请求
+  聚焦。菜单锚点无法聚焦时仍可鼠标操作，已有依赖锚点焦点的键盘路径不伪造焦点。
+
+### 9.2 实现边界
+
+WidgetBase 以反向私有 bool 保持默认 true，配置不依靠各构造器重复初始化。
+共享私有判断按当前祖先链检查，不增加继承缓存或公共有效状态辅助接口。Surface
+（含 Window）、Popover、Tab、Modal 的初始/恢复均使用同一准入规则。同 Root
+重新挂接使用最终父链重新验证；失败要清除无效焦点，不能忽略 SetFocusedWidget
+的 false。回调重入、改变配置、转移焦点或销毁时尊重最新状态。
+
+UI ViewBase 增加同名 bool 修饰，复用 bits.Bitmap、首次挂载默认值快照与 Modify
+合并；省略恢复构造默认值。先收紧准入再放宽，防止更新时临时开放焦点；setter
+后的存活检查保持。WidgetInfo 增加 canContainFocus/focusOnPointer，明确报告自身
+配置；现有 Focusable 和实际焦点状态不改。配置只请求语义更新，实际焦点变化
+复用已有样式/绘制失效，不因配置本身新增布局或样式状态。
+
+### 9.3 验证计划
+
+包内覆盖嵌套命中/祖先限制、Tab 正反序、主动聚焦、动态关闭及恢复、同 Root
+重新挂接、回调重入/销毁、模态初始/恢复、Popover 隔离、IME 预编辑和选区保持，
+以及声明式默认值/显式覆盖/省略恢复/局部更新。检查鼠标点击期间没有失焦通知，
+而不仅是点击后焦点又回来。空间/回车激活复用原有 Button/CheckButton 控制器。
+
+独立窗口例程按 tests/window 规范提供查找栏：普通按钮与 CheckButton 关闭指针
+聚焦，但可 Tab/Shift+Tab，Space/Enter 激活；另可切换整个按钮组的准入，确认
+指针仍有效。通过公共输入路径验收，不使用 DevServer。执行结果见下节。
+
+参考：GTK4 文档的 [can-focus](https://docs.gtk.org/gtk4/method.Widget.set_can_focus.html)
+与 [focus-on-click](https://docs.gtk.org/gtk4/property.Widget.focus-on-click.html)，以及
+[GTK4.20.0 Button 按下处理](https://github.com/GNOME/gtk/blob/4.20.0/gtk/gtkbutton.c#L325)。
+采用能力/子树准入/触发方式分离，沿用 GOUI PointerDown 与统一分发，不复制 GTK
+控件各自调用 grab_focus 的实现方式。
+
+### 9.4 执行记录（2026-11-09）
+
+实现位于 gui 的 Widget/焦点入口、MenuButton 与 widgets.DropDown 的输入路径，
+以及 ui 的公共修饰；没有修改 platform、事件传播顺序或控件内部键盘行为。
+`tests/window/ui/focus_policy` 提供中文操作说明，普通启动只设置初始焦点，
+`-auto` 在真实布局后经公共 DispatchEvent 验证，再断言退出；不使用 DevServer。
+
+- **逻辑测试通过**：最终已跟踪源码加本轮新增窗口例程的隔离副本，在 Linux amd64、
+  Go 1.25.8、独立 Xvnc/Xfwm4 会话执行
+  `CGO_ENABLED=0 go test -json -count=1 ./...`，4616 通过、11 既有跳过、0 失败。
+  `CGO_ENABLED=1 go test -race -count=1 ./gui ./ui ./widgets/...` 全部通过。
+- **旧行为负对照成立**：仅以 overlay 恢复原 gui/event.go，新回归的“最近候选不向外
+  回退”和“保留焦点、IME 预编辑、选区”两项明确失败；最终实现下通过。预编辑的
+  此项验证为包内状态断言，不冒充真实输入法桌面验收。
+- **本机窗口通过**：Linux/X11、Xvnc/Xfwm4 开启合成，Software/OpenGL llvmpipe、
+  1x/2x 四组自动断言通过。另在 OpenGL 1x 用 XTest 原生输入验证选中后点击四个
+  查找控件，失焦次数为 0；Tab/Shift+Tab、Space/Enter、准入切换、主动聚焦及重建
+  通过。原生输入 `native` 后全局重建仍保留文本与选区。
+- **远端窗口通过**：Windows 10 19045 amd64、Direct2D 1x；macOS 15.7.7 arm64、
+  OpenGL 1x。均在交互桌面运行最终窗口例程，十阶段自动断言和正常退出通过。
+  另用原生鼠标/键盘验证：全选后点击四个控件，输入框保持焦点、选区且无失焦；
+  Tab 后 Space/Enter 激活；输入 `native` 后全局重建仍保留文本和光标。
+  实际后端由 Painter 创建的 Image 类型与 PixelScale 确认，不把构建或 SSH 启动
+  当作桌面验收。
+- **原工作区全仓命令失败**：`go test ./...` 被本轮开始前已有、未跟踪的旧例程与
+  测试阻塞，包括旧 Window.Show/SetTitle 调用和已移除的 UI 私有字段。未修改、
+  删除或提交这些文件；上述全仓通过指排除它们后的已跟踪源码隔离副本。
+- **环境与未执行范围**：独立 X11 初始继承 `@im=fcitx`，该独立 display 没有 Fcitx
+  服务，原生字符未提交；仅对测试进程改用 `XMODIFIERS=@im=none` 后原生输入通过，
+  未改系统设置。真实中文输入法组合、触摸/笔、硬件 GPU/混合 DPI，以及移动端
+  原生运行未执行；共享内核的合成输入结果不代替这些验收。
+
+非模态 MenuButton 在锚点没有焦点时仅接受指针操作，不挪用输入框的按键。
+DropDown 自己的模态弹层保持独立 Root 的键盘/焦点语义；显式 Open 仍可请求
+锚点焦点。两者均不通过临时移走再还原焦点来伪造 FocusOnPointer=false。

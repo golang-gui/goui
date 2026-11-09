@@ -1,5 +1,21 @@
 # Plan
 
+## Widget 焦点准入与指针聚焦（2026-11-09）
+
+- [x] Widget 增加 CanContainFocus / FocusOnPointer，默认 true；前者控制自身及实际
+  子树，后者只限制自身的指针默认聚焦。Focusable 保持原有自身能力语义。
+- [x] Window/Surface/Popover、Tab、Modal 初始及恢复、同 Root 重新挂接共用准入；
+  关闭准入清除已有子树焦点，恢复不自动聚焦。保留回调重入/销毁的生命周期防护。
+- [x] MenuButton/DropDown 的指针打开不重复强制聚焦；显式 Open 与键盘语义保持。
+  UI 增加同名 bool 修饰，支持 Modify、局部更新与省略恢复；Snapshot 报告自身配置。
+- [x] 隔离的已跟踪源码全仓 4616 通过、11 既有跳过、0 失败；定向 race 通过。
+  恢复旧 event.go 的负对照明确复现焦点/IME/选区问题，最终实现通过。
+- [x] 独立 X11 的 Software/OpenGL × 1x/2x、Windows 10 Direct2D 1x、macOS 15
+  OpenGL 1x 自动断言通过；三平台另验证原生点击、Tab/Space/Enter、文本和重建。
+- [ ] 真实中文 IME、触摸/笔、硬件 GPU/混合 DPI 和移动端原生运行未验收。原工作区
+  `go test ./...` 被已有未跟踪旧文件阻塞，保留原文件；通过范围和环境问题见
+  [设计及执行记录](DesignKeyboardNavigation.md#9-焦点准入与指针聚焦2026-11-09已实现)。
+
 ## DropDown 弹窗内容宽度（2026-11-09）
 
 - [x] 默认至少为控件宽度，按首次有限视口的真实行测量扩宽，包含勾选、对称
