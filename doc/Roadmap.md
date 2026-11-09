@@ -34,6 +34,10 @@ Context 释放后已有 Layout 的字体设施仍有效，Java 保留原生批�
 [触摸设计](DesignTouchInput.md)。IME、Popup、SafeArea 等按独立专题推进，
 不把所有尚未支持的系统能力变成平台稳固的前置。
 
+通用 EGL/OpenGL ES 接入保留为[独立设计](DesignEGLGLES.md)，暂缓实现。
+以系统与可选外部实现共用的绘制边界为目标，ANGLE 仅是可选用途；不改变现有默认
+后端，不将桌面 GLES、绑定迁移或外部库分发扩为当前移动平台稳固的前置。
+
 ## UI Surface 已接入（2026-11-08）
 
 声明层用 ui.Surface 领取系统宿主，ui.Window 保留主动管理。共享内容协调、命令、
