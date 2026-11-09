@@ -42,7 +42,7 @@ func NewPlatform(appID string) (*Platform, error) {
 		}
 		return instance, nil
 	}
-	if !iosHost.running.Load() {
+	if !iosApplication.running.Load() {
 		return nil, common.ErrUnavailable
 	}
 	instance = &Platform{appID: appID}
@@ -57,7 +57,7 @@ func (p *Platform) Destroy() {
 	}
 	p.destroyed = true
 	p.windowHandler = nil
-	iosHost.onHostReady = nil
+	iosApplication.onHostReady = nil
 	if p.window != nil {
 		p.window.Destroy()
 	}
@@ -70,8 +70,8 @@ func (p *Platform) NewEventLoop() (common.EventLoop, error) {
 	if p.loop != nil {
 		return nil, common.ErrUnsupported
 	}
-	loop := mobile.NewEventLoop(func() { dispatch.MainAsync(iosHost.callback) }, dispatch.IsMainThread)
-	iosHost.loop.Store(loop)
+	loop := mobile.NewEventLoop(func() { dispatch.MainAsync(iosApplication.callback) }, dispatch.IsMainThread)
+	iosApplication.loop.Store(loop)
 	p.loop = &EventLoop{loop}
 	return p.loop, nil
 }
@@ -120,7 +120,7 @@ func (p *Platform) SetWindowHandler(handler func(common.Window) events.EventHand
 	p.windowHandler = handler
 	p.loop.Post(func() {
 		if !p.destroyed {
-			iosHost.onHostReady = func() { p.loop.Deliver(p.offerWindow) }
+			iosApplication.onHostReady = func() { p.loop.Deliver(p.offerWindow) }
 			p.offerWindow()
 		}
 	})

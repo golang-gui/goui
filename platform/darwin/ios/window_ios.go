@@ -1,31 +1,21 @@
 package ios
 
 import (
-	"fmt"
 	"image"
 	"math"
-	"runtime"
 	"sync"
 	"sync/atomic"
 
 	"github.com/ebitengine/purego/objc"
-	"github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/platform/common"
-	"github.com/golang-gui/goui/platform/darwin/frameworks"
-	cf "github.com/golang-gui/goui/platform/darwin/frameworks/core_foundation"
 	cg "github.com/golang-gui/goui/platform/darwin/frameworks/core_graphics"
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
 	qc "github.com/golang-gui/goui/platform/darwin/frameworks/quartzcore"
 	ui "github.com/golang-gui/goui/platform/darwin/frameworks/uikit"
 	"github.com/golang-gui/goui/platform/darwin/libs/dispatch"
 	"github.com/golang-gui/goui/platform/events"
-	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/internal/mobile"
-	"github.com/golang-gui/goui/platform/internal/mobileentry"
 )
-
-// EventLoop dispatches Go work through UIKit's native main run loop.
-type EventLoop struct{ *mobile.EventLoop }
 
 // Window adapts UIKit's content window without exposing a native host protocol.
 type Window struct {
@@ -64,131 +54,83 @@ type nativeState struct {
 	controller    ui.UIViewController
 	layer         qc.CALayer
 	bound         *Window
-	onHostReady   func()
 	width, height int32
 	scale         float32
 	generation    uint64
 	foreground    bool
 	wanted        atomic.Bool
-	running       atomic.Bool
-	loop          atomic.Pointer[mobile.EventLoop]
-	callback      uintptr
 	// The GPU gate also covers offscreen work. Background entry drains it first.
-	gpu             sync.Mutex
-	allowed         bool
-	imageMu         sync.Mutex
-	pending         cg.CGImageRef
-	imageGeneration uint64
-	imageHandle     uintptr
-	imageScheduled  bool
+	gpu     sync.Mutex
+	allowed bool
+	image   pendingImage
 }
 
 var iosHost nativeState
+var contentControllerClass ui.UIViewControllerClass
 
-func init()                    { mobileentry.NativeRun = runNative }
-func onSystemThread(fn func()) { runtime.LockOSThread(); defer runtime.UnlockOSThread(); fn() }
-func runNative() int {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	if !dispatch.IsMainThread() {
-		panic("ios: native entry must run on the system main thread")
-	}
-	if err := frameworks.InitIOS(); err != nil {
-		panic(err)
-	}
+func initWindow() (err error) {
 	h := &iosHost
-	h.callback = cgo.NewCallback(func(uintptr) {
-		onSystemThread(func() {
-			AutoReleasePool(func() {
-				if loop := h.loop.Load(); loop != nil {
-					loop.Dispatch()
-				}
+	contentControllerClass, err = ui.ImplementUIViewController("GoUIContent", ui.UIViewControllerOverride{
+		ViewDidLayoutSubviews: func(self ui.UIViewController) {
+			onSystemThread(func() {
+				objc.SendSuper[uintptr](self.ID, ui.UIViewControllerSel.ViewDidLayoutSubviews)
+				h.target(false)
 			})
-		})
+		},
 	})
-	if err := h.registerClasses(); err != nil {
-		panic(err)
+	if err != nil {
+		return
 	}
-	h.running.Store(true)
-	var result int
-	AutoReleasePool(func() {
-		name := NSStringClassId.Alloc().InitWithBytes([]byte("GoUIDelegate"), NSUTF8StringEncoding)
-		defer name.Release()
-		result = int(ui.UIApplicationMain(0, 0, NSString{}, name))
-	})
-	return result
-}
-func (h *nativeState) registerClasses() error {
-	register := func(name, super string, methods []objc.MethodDef) error {
-		var protocols []*objc.Protocol
-		protocol := ""
-		if name == "GoUIScene" {
-			protocol = "UIWindowSceneDelegate"
-		}
-		if name == "GoUIDelegate" {
-			protocol = "UIApplicationDelegate"
-		}
-		if protocol != "" {
-			p := objc.GetProtocol(protocol)
-			if p == nil {
-				return fmt.Errorf("ios: missing protocol %s", protocol)
-			}
-			protocols = []*objc.Protocol{p}
-		}
-		_, err := objc.RegisterClass(name, objc.GetClass(super), protocols, nil, methods)
-		return err
-	}
-	layout := objc.RegisterName("viewDidLayoutSubviews")
-	if err := register("GoUIContent", "UIViewController", []objc.MethodDef{{Cmd: layout, Fn: func(self objc.ID, cmd objc.SEL) {
-		onSystemThread(func() { objc.SendSuper[uintptr](self, cmd); h.target(false) })
-	}}}); err != nil {
-		return err
-	}
-	if err := register("GoUIDelegate", "UIResponder", []objc.MethodDef{{Cmd: objc.RegisterName("application:didFinishLaunchingWithOptions:"), Fn: func(objc.ID, objc.SEL, objc.ID, objc.ID) bool { return mobileentry.Start() }}}); err != nil {
-		return err
-	}
-	return register("GoUIScene", "UIResponder", []objc.MethodDef{
-		{Cmd: objc.RegisterName("scene:willConnectToSession:options:"), Fn: func(_ objc.ID, _ objc.SEL, scene objc.ID, _ objc.ID, _ objc.ID) {
+	_, err = ui.ImplementUIWindowSceneDelegate("GoUIScene", ui.UIWindowSceneDelegateOverride{
+		SceneWillConnectToSessionOptions: func(_ ui.UIWindowSceneDelegate, scene ui.UIScene, _ ui.UISceneSession, _ ui.UISceneConnectionOptions) {
 			onSystemThread(func() { h.connect(scene) })
-		}},
-		{Cmd: objc.RegisterName("sceneWillEnterForeground:"), Fn: func(objc.ID, objc.SEL, objc.ID) {
-			onSystemThread(func() {
-				h.foreground = true
-				h.gpu.Lock()
-				h.allowed = true
-				h.gpu.Unlock()
-				h.target(true)
-				h.visibility()
-			})
-		}},
-		{Cmd: objc.RegisterName("sceneDidEnterBackground:"), Fn: func(objc.ID, objc.SEL, objc.ID) {
-			onSystemThread(func() { h.suspend(); h.foreground = false; h.visibility() })
-		}},
-		{Cmd: objc.RegisterName("sceneDidBecomeActive:"), Fn: func(objc.ID, objc.SEL, objc.ID) {
-			onSystemThread(func() {
-				if h.bound != nil {
-					h.bound.Source().Focused(h.window.IsKeyWindow())
-				}
-			})
-		}},
-		{Cmd: objc.RegisterName("sceneWillResignActive:"), Fn: func(objc.ID, objc.SEL, objc.ID) {
-			onSystemThread(func() {
-				if h.bound != nil {
-					h.bound.Source().Focused(false)
-				}
-			})
-		}},
-		{Cmd: objc.RegisterName("sceneDidDisconnect:"), Fn: func(objc.ID, objc.SEL, objc.ID) { onSystemThread(func() { h.disconnect() }) }},
+		},
+		SceneWillEnterForeground: func(_ ui.UIWindowSceneDelegate, scene ui.UIScene) {
+			onSystemThread(func() { h.enterForeground(scene) })
+		},
+		SceneDidEnterBackground: func(_ ui.UIWindowSceneDelegate, scene ui.UIScene) {
+			onSystemThread(func() { h.enterBackground(scene) })
+		},
+		SceneDidBecomeActive: func(_ ui.UIWindowSceneDelegate, scene ui.UIScene) {
+			onSystemThread(func() { h.focus(scene, true) })
+		},
+		SceneWillResignActive: func(_ ui.UIWindowSceneDelegate, scene ui.UIScene) {
+			onSystemThread(func() { h.focus(scene, false) })
+		},
+		SceneDidDisconnect: func(_ ui.UIWindowSceneDelegate, scene ui.UIScene) {
+			onSystemThread(func() { h.disconnect() })
+		},
 	})
+	return
 }
-func (h *nativeState) connect(scene objc.ID) {
+
+func (h *nativeState) enterForeground(_ ui.UIScene) {
+	h.foreground = true
+	h.gpu.Lock()
+	h.allowed = true
+	h.gpu.Unlock()
+	h.target(true)
+	h.visibility()
+}
+
+func (h *nativeState) enterBackground(_ ui.UIScene) {
+	h.suspend()
+	h.foreground = false
+	h.visibility()
+}
+
+func (h *nativeState) focus(_ ui.UIScene, active bool) {
+	if h.bound != nil {
+		h.bound.Source().Focused(active && h.window.ID != 0 && h.window.IsKeyWindow())
+	}
+}
+
+func (h *nativeState) connect(scene ui.UIScene) {
 	if h.window.ID != 0 {
 		h.disconnect()
 	}
-	h.window = ui.UIWindowClassId.Alloc().InitWithWindowScene(Cast[ui.UIWindowScene](scene))
-	class := ui.UIViewControllerClass{}
-	class.Class = objc.GetClass("GoUIContent")
-	h.controller = Cast[ui.UIViewController](class.Alloc().Send(NSObjectSel.Init))
+	h.window = ui.UIWindowClassId.Alloc().InitWithWindowScene(Cast[ui.UIWindowScene](scene.ID))
+	h.controller = contentControllerClass.Alloc().Init()
 	h.view = ui.UIViewClassId.Alloc().InitWithFrame(cg.CGRect{})
 	h.view.SetBackgroundColor(ui.UIColorClassId.BlackColor())
 	h.controller.SetView(h.view)
@@ -201,8 +143,8 @@ func (h *nativeState) connect(scene objc.ID) {
 	h.window.MakeKeyAndVisible()
 	h.target(true)
 	h.visibility()
-	if h.onHostReady != nil {
-		h.onHostReady()
+	if iosApplication.onHostReady != nil {
+		iosApplication.onHostReady()
 	}
 }
 func (h *nativeState) target(force bool) {
@@ -235,14 +177,6 @@ func (h *nativeState) publishTarget() {
 	}
 	handle, generation := uintptr(h.view.ID), h.generation
 	h.bound.Source().Attach(handle, generation, h.width, h.height, h.scale, func(img image.Image) error { return h.present(handle, generation, img) })
-}
-func (h *nativeState) clearImage() {
-	h.imageMu.Lock()
-	if h.pending != 0 {
-		cg.CGImageRelease(h.pending)
-		h.pending = 0
-	}
-	h.imageMu.Unlock()
 }
 func (h *nativeState) revoke() {
 	if h.bound != nil {
@@ -318,12 +252,12 @@ type windowHost struct{ window *Window }
 func (a windowHost) SetVisible(value bool) error {
 	w := a.window
 	w.state.wanted.Store(value)
-	w.state.loop.Load().Deliver(w.state.visibility)
+	iosApplication.loop.Load().Deliver(w.state.visibility)
 	return nil
 }
 func (a windowHost) Close() {
 	w := a.window
-	w.state.loop.Load().Deliver(func() {
+	iosApplication.loop.Load().Deliver(func() {
 		if w.state.bound == w {
 			w.state.bound = nil
 			w.state.wanted.Store(false)
@@ -334,61 +268,4 @@ func (a windowHost) Close() {
 			w.state.visibility()
 		}
 	})
-}
-func (h *nativeState) present(handle uintptr, generation uint64, img image.Image) error {
-	bitmap, ok := graphics.ToBitmap(img, graphics.PixelFormatRGBA)
-	if !ok {
-		bitmap = graphics.CopyToBitmap(img, graphics.PixelFormatRGBA, nil)
-	}
-	data := cf.CFDataCreate(0, bitmap.Pixels)
-	if data == 0 {
-		return fmt.Errorf("ios: allocate image data")
-	}
-	defer cf.CFRelease(cf.CFTypeRef(data))
-	provider := cg.CGDataProviderCreateWithCFData(data)
-	if provider == 0 {
-		return fmt.Errorf("ios: allocate image provider")
-	}
-	defer cg.CGDataProviderRelease(provider)
-	space := cg.CGColorSpaceCreateDeviceRGB()
-	if space == 0 {
-		return fmt.Errorf("ios: allocate color space")
-	}
-	defer cg.CGColorSpaceRelease(space)
-	// Premultiplied RGBA bytes, big-endian component order. CFData copied the input.
-	image := cg.CGImageCreate(uint(bitmap.Width), uint(bitmap.Height), 8, 32, uint(bitmap.Stride), space, cg.CGBitmapInfo(0x4001), provider, nil, false, 0)
-	if image == 0 {
-		return fmt.Errorf("ios: create image")
-	}
-	h.imageMu.Lock()
-	if h.pending != 0 {
-		cg.CGImageRelease(h.pending)
-	}
-	h.pending = image
-	h.imageHandle = handle
-	h.imageGeneration = generation
-	schedule := !h.imageScheduled
-	h.imageScheduled = true
-	h.imageMu.Unlock()
-	if schedule {
-		h.loop.Load().Post(h.commitImage)
-	}
-	return nil
-}
-func (h *nativeState) commitImage() {
-	h.imageMu.Lock()
-	img, handle, generation := h.pending, h.imageHandle, h.imageGeneration
-	h.pending = 0
-	h.imageScheduled = false
-	h.imageMu.Unlock()
-	if img == 0 {
-		return
-	}
-	defer cg.CGImageRelease(img)
-	if h.bound != nil && h.view.ID != 0 && uintptr(h.view.ID) == handle && h.generation == generation {
-		qc.CATransactionClassId.Begin()
-		qc.CATransactionClassId.SetDisableActions(true)
-		Cast[qc.CALayer](h.view.Layer()).SetContents(objc.ID(img))
-		qc.CATransactionClassId.Commit()
-	}
 }
