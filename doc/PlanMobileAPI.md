@@ -200,6 +200,77 @@ Destroy 放进启动 goroutine 的 defer。JNIEnv 按线程获取，原生引用
 - [ ] 完成 Android/iOS 原生输入事实与 platform-only 验收。
 - [ ] 达到上述条件后继续 GUI 触摸与控件适配；UI 仅按具体需要增加绑定。
 
+
+## 8. Android 绑定稳固首批（2026-11-09）
+
+本批仅整理 Android 原生绑定与必要调用点，不接触摸、不改变 GUI/UI，也不改
+基座/链接器或 iOS 原生实现。已确认的首批问题：EGL 空属性切片被直接取首元素，
+会在进入原生前越界；部分 EGL/NativeWindow 方法省略原生参数；JNI 使用裸槽号且
+把 void/int 方法统一当 uintptr 返回；libc 包混入 eventfd 唤醒策略。
+
+- NDK/EGL/Bitmap 按现有平台习惯分开 API、类型和常量，保留原生参数/返回语义。
+  EGL 的 nil 属性列表显式传 NULL，配置缓冲区/共享 context/版本输出由调用方选择。
+- JNI 区分实例/静态方法查找，A-method 名称与真实返回类型对应；函数表槽用具名
+  常量标注。Go Unicode/数组转换与异常格式化属于明确的辅助函数，不混在裸调用里。
+- 当前 goexlib/cgo v0.1.2 的 ARM64 typed bridge 会保活/固定指针和切片；同步输出
+  直接传 Go 指针，不先丢成 uintptr 再逐处手工 Pinner。异步保留仍由资源所有者负责。
+- eventfd 属于 Android 主 Looper 唤醒适配，使用 Go syscall；保留进程级归属，
+  不随 Activity 销毁关闭。EINTR 重试，非阻塞 EAGAIN 表示已有唤醒；创建失败释放 fd。
+- 只机械更新 Android 排版/绘图消费者，不改变其算法。测试覆盖固定 ABI 布局、
+  eventfd 的累积/耗尽、EGL 空属性/显式参数及 JNI Unicode、数组、负 int/void、
+  异常后恢复；platform-only 原生验收另验证真实 ART/EGL 与 Software/GLES 生命周期。
+
+本批参考原生 API 的公开契约与头文件：
+
+- [Android NDK NativeActivity](https://developer.android.com/ndk/reference/group/native-activity)、
+  [NativeWindow](https://developer.android.com/ndk/reference/group/a-native-window)、
+  [Looper](https://developer.android.com/ndk/reference/group/looper)。
+- [JNI 函数表](https://docs.oracle.com/en/java/javase/25/docs/specs/jni/functions.html)
+  与 [Invocation](https://docs.oracle.com/en/java/javase/25/docs/specs/jni/invocation.html)：
+  参考其稳定槽位和所有权；代码仅使用 Android 已有 JNI 1.6 部分，不引入新版 JDK API。
+- [EGL 1.5 §3.4](https://registry.khronos.org/EGL/specs/eglspec.1.5.pdf)：允许
+  NULL 属性列表和 NULL configs 数量查询。原生参数合法与某台驱动实际可用分开记录。
+
+### 验证结果
+
+- **通过：** Go1.25.8，已跟踪源码与本轮新增文件的隔离副本，在独立 Xvnc/Xfwm4
+  执行 `CGO_ENABLED=0 go test -json -count=1 ./...`：4550 项通过、11 项原条件
+  跳过、0 失败。工作区原有未跟踪测试/图片/程序不混入副本；不迁移或删除它们。
+  `CGO_ENABLED=1 go test -race -count=1 ./platform/android/...` 五个包通过，
+  相同范围及新增验收生成器的 `go vet` 通过；包括 ABI、真实 eventfd、CLOEXEC、
+  并发累积、EAGAIN、耗尽与错误传播。
+- **通过：** 正式 `cmd/goui build` 构建 Android ARM64 APK。远端 macOS15.7.7
+  ARM64 上运行私有 API30 AOSP ATD、480×800、160dpi（1x）、SwiftShader ES3。
+  [android_bindings](../tests/window/platform/android_bindings/README.md) 的独立
+  JNI/EGL 检查通过；global 引用跨帧与 GC、local 引用提升、UTF-16/NUL/非 BMP、
+  jint/jfloat/void、异常消费后恢复、EGL 版本输出/共享 context/pbuffer/分别为 NULL
+  的参数均有实际断言。四个应用启动均启用 CheckJNI，最终日志 JNI error/warning 均为 0。
+- **通过：** 既有 platform-only mobile_dispatch 的 Software/GLES 两组，每组四次
+  旋转、两次后台停绘/恢复、GC、最终 UI 释放和 Run 返回边界均通过。宿主只交付一次，
+  两后端目标均到第 13 代，启动线程与 UI 线程不同；截图检查多语言文字、绿色块和
+  蓝色图片，不将其视为全面像素或透明合成验收。
+- **未通过：** 同一模拟器上 `eglChooseConfig(display, nil, nil)` 的全 NULL 组合
+  会挂起。首轮等待结果超时；再测阶段文件停在 egl-null-query，原生栈为
+  eglChooseConfig → rcChooseConfig_enc → qemu_pipe_read。分别传 NULL 可通过，
+  不能推出组合可通过。保留默认 all 与单独 egl-null-query 的断言，不改写生产参数，
+  也不把选跑 JNI/EGL 的成功记录成全部通过。故障位于进入原生后的调用链；尚未用
+  其他 Android 版本或真机确认原因和适用范围。
+- **编译通过：** Windows amd64/macOS arm64 的 platform、gui、ui、widgets、demo
+  及新验收生成器；没有重新执行两端桌面操作。初次直接 `go build ./...` 因既有
+  mobile_start/mobile_surface 在桌面目标无 main 而失败，随后按适用包编译，不改其断言。
+- **构建路径限制：** 裸 `CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build
+  ./platform/android/... ./platform/internal/androidruntime ./platform/typography/androidtext
+  ./platform/graphics/opengl` 在 purego 的 runtime/cgo.Dlopen/Dlsym/Dlclose 处失败。
+  该命令绕开预置基座，不是本项目的 Android 正式构建路径；正式 goui build 已通过，
+  没有为此改动 purego、goexlib/cgo、基座或依赖版本。
+- **清理：** 已停止并卸载本次两个测试应用、关闭本次只读模拟器和专用 adb 服务，
+  保留 SSH 和原有 SDK/AVD。结果、首轮失败日志、截图及清理记录保留在两端临时目录
+  `/tmp/goui-android-bindings-pz55zesc`，不提交二进制和日志到仓库。
+- **未执行：** 真机、其他 Android 版本、iOS 新一轮原生运行、原生触摸/IME、
+  真正 GPU context loss、透明合成/clip/Transform 全组合。本批不标记整个 P0 平台
+  稳固完成；剩余所有权/失败路径与输入事实仍按第 7 节继续核实。
+
+
 ## 9. iOS UIKit 绑定与实现整理（2026-11-09）
 
 本批按 AppKit 既有 `ImplementNSView` / `ImplementNSWindowDelegate` 的模式整理
@@ -280,3 +351,95 @@ UIKit，不引入新宿主管理框架，不扩展触摸、IME、多 Scene 或�
   purego 的 `_PUREGO_REQUIRES_CGO_ON_IOS` 构建限制，不能代替正式移动构建链；本轮
   通过 cmd/goui 的预置基座与移动 Go 驱动完成构建和运行，未因此新增 cgo 要求。
 - 本轮专用 Simulator 验收后关闭并删除；保留已有远端 SSH、模拟器及其他应用。
+
+
+## 10. Android 组织与生命周期整理（2026-11-09）
+
+以现有平台的绑定/适配边界和文件职责收敛实现，采用 Android 自身的生命周期，
+保留已验证的系统 UI 主线程、一份 Go 队列及逻辑宿主/绘制目标分离。规范见
+[Android AGENTS](../platform/android/AGENTS.md)。
+
+1. 固定规范；将 eventfd 变为基于 x/sys/unix 的独立唤醒对象，保留 Signal/Drain，
+   随 native Looper 连接现有 Go 队列，迁移既有 NDK/JNI/EGL 绑定及回归消费者。
+2. 按 platform/application/event/input/window/present 组织 Android；SDK 集中类型化
+   Java 方法和错误边界，JNIEnv 显式传入；androidruntime 保留进程 VM/类加载器及线程附着。
+   明确 Activity、输入队列、绘制目标和逻辑 Window 的寿命，保护实例替换与事件重入。
+3. Typography 固定方法改具名字段、保持每个 Layout 可变状态独立；EGL 分步初始化、
+   保存原始错误再回滚，核对解绑失败与绘制目标借用的关系。
+4. 每批完成逻辑/race、正式 Android 构建和适用原生验收后拆分提交；结构整理与行为
+   修复分清范围。最终全仓隔离 X11 回归，桌面受影响包编译；不覆盖其他会话的 iOS 改动。
+
+验收使用既有 Android binding/mobile_dispatch 程序，增加 SDK 异常恢复和回调中
+销毁/重新领取宿主用例。全 NULL EGL 查询仍单列失败，不删除断言或添加生产 workaround。
+本批已实现并完成以下验收；触摸/IME/UI 仍不在本轮范围。
+
+### 实现与所有权
+
+- 组织遵循 Android AGENTS：platform/application/event/input/window/present 各有
+  明确职责；SDK 按 app/view/java 组织内置 Java 类，JNIEnv 显式传入，初始化后共享
+  只读 method ID。SDK 的类 global ref 和 androidruntime 的应用 ClassLoader 由进程
+  持有；初始化失败回滚已创建的类引用。ClassLoader 初始化成功才转移调用方的 global ref。
+- nativeApplication 保留进程调度设施、原生回调和逻辑 Window 绑定；activityState
+  借用当前 ANativeActivity 与输入队列。回调核对来源，切换实例先撤销旧目标和输入，
+  代次持续递增；向消费者发事件或进入 Java 后重新核对当前 Activity/Window。
+  这仍是单内容宿主模型，不承诺多个独立 Activity 窗口同时可交互。
+- EventLoop 持有现有 mobile.EventLoop 队列，nativeDispatcher 只接 Looper 与
+  eventfd.Signal/Drain；Run 返回后的 Destroy 解除队列引用。唤醒 fd 属于进程，不随
+  Activity 或逻辑 Window 暂时断开关闭；没有额外 GUI goroutine 或第二任务队列。
+- Typography Context/TextLayout 按职责分文件，固定方法表替换字符串 map。
+  method ID 表为独立的只读对象，由同一 Context 创建的 Layout 共享；每个 Layout
+  的 TextPaint、SpannableString、Bitmap 和 Go 测量缓存仍独立。Context 释放自身的
+  表引用不会清空其他 Layout 正在持有的只读表；不按 Layout 复制整份方法表。
+- GLES 核心符号和库查询统一到 libs/gles，OpenGL 后端不再另建系统库绑定。
+- EGL context/pbuffer/窗口 surface 分步创建；先保存失败阶段和 EGL 错误，再释放
+  本次资源、目标借用与 NativeWindow 引用。默认 EGLDisplay 共享，不随单个失败
+  Painter 被 Terminate。资源回滚不破坏已有 Painter。
+
+### 命令、环境与结果
+
+- **通过：** Go1.25.8，独立 Xvnc/Xfwm4 源码副本执行
+  `CGO_ENABLED=0 go test -json -count=1 ./...`：4551 通过、11 原条件跳过、0 失败。
+  副本只合入本轮 Android 文件和此前已提交源码，不纳入工作区既有未跟踪测试/产物；
+  并行 iOS 工作保持其自身提交。未为本轮重写、删除或弱化既有测试。
+- **通过：** `CGO_ENABLED=1 go test -race -count=1` 覆盖 internal/eventfd、
+  internal/mobile、internal/mobileentry、Android ABI 包和 androidtext 纯 Go 字体逻辑。
+  对 eventfd、ABI 包与三个新验收程序运行 go vet 通过。race 结果不是 Android
+  原生代码已经通过 race 的证明；JNI/Activity 的线程有效期另由设备断言核实。
+- **通过：** 正式 cmd/goui 构建 ARM64 APK。远端 macOS15.7.7 ARM64 的私有
+  Android API30 AOSP ATD、480×800、160dpi（1x）、SwiftShader ES3，启用 CheckJNI。
+  整理前后逐批执行 mobile_dispatch；最终 Software/GLES 各四次旋转、两次后台
+  停绘/恢复、GC、一次宿主交付、最终 UI 释放和 Run 返回边界通过。
+- **通过：** android_bindings 的 JNI/EGL 分项；新增 SDK ClassLoader 不存在类的
+  异常消费与恢复、SDK File 中文路径往返。没有把选跑分项算成全 NULL 组合通过。
+- **通过：** [android_lifecycle](../tests/window/platform/android_lifecycle/README.md)：
+  第一次真实 SizeEvent 中释放并重领 Window，第二次事件中销毁平台；交付/尺寸/
+  销毁各 2 次，原生 UI 线程和回调返回边界断言通过。它不伪造旧 Activity 回调，
+  不能替代未覆盖的多实例交错验收。
+- **通过：** [android_rendering](../tests/window/platform/android_rendering/README.md)：
+  两个 Layout 的字号、测量与 RGBA 预乘颜色有独立预期；修改第二个 Layout 后，
+  第一个测量及位图不变。重复创建同一 NativeWindow 的 EGLSurface 触发 0x3003，
+  新错误保留 create EGL window surface 阶段，原 Painter 随后离屏读回
+  (32,144,96,255) 像素并完成两帧。最终 native 回归日志无 JNI warning/error。
+- **旧实现对照：** 隔离副本仅将 opengl_android.go 换回 387be30 的版本，并在同一
+  例程的阶段断言前写出错误作诊断，保留全部断言。旧版返回 bind EGL context: 0x3003，
+  阶段断言未通过，未生成成功报告；am start -W 等待超过 40 秒。保留该失败记录，
+  随后终止旧应用；最终重新安装新版本，全部断言通过。
+- **编译通过：** CGO_ENABLED=0 的 Windows amd64/macOS arm64，范围为 platform、
+  gui、ui、widgets、demo 及本轮三个独立验收程序；不把它当作桌面操作验收。
+- **首轮修正：** 拆分 Context/TextLayout 时遗留未使用 runtime 导入，Android 构建
+  失败，已移除并重新构建。一次复用输出路径被 cmd/goui 正常拒绝，随后使用新的
+  仓库外产物路径；不将这些失败记为通过。
+- **证据与清理：** 命令日志、APK SHA、JSON、截图、旧实现失败和清理记录位于
+  两端 `/tmp/goui-android-organize-oziqbx8f`。仅清理本次四个测试应用、只读模拟器
+  和专用 adb 服务，保留共享 SDK/AVD 与 SSH。不提交生成产物或系统日志。
+
+### 保留的缺口
+
+- 第 8 节的全 NULL EGL 查询在该模拟器原生挂起仍未解决；保留默认 all 和独立
+  egl-null-query 验收，不加入生产参数改写，也不把此轮分项成功当作它已通过。
+- EGL 解绑失败尚未注入/实测。源码还显示共享 OpenGL Painter.End 以 defer 调用
+  ClearCurrent 并忽略错误；仅在 Android 修改绑定标志或保持 lease 可能改变共同
+  错误契约或阻塞目标撤销。后续单独设计失败传播和资源终止；本次不引入推测性重试。
+- 真机、其他 Android 版本、多 Activity 的实际交错、真正 context loss、context/
+  pbuffer 内存耗尽未验收。以上不足不由普通旋转、重复 EGLSurface 或 Go race 代替。
+- 触摸/IME、Popup、SafeArea 按独立计划推进；整个 P0 平台稳固仍未标记全部完成。

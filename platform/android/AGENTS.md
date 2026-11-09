@@ -8,7 +8,7 @@
   接收原生入口与 Activity 生命周期；`event_android.go` 连接 Go 队列和 Android Looper；
   `input_android.go` 接收原生输入；`window_android.go` 管理 Window 适配与绘制目标；
   `present_android.go` 负责软件像素呈现。按已有平台的职责命名，不把它们集中在 Window。
-- `libs` 按原生库组织 NDK、EGL、Bitmap 与 JNI 绑定。绑定保留原生参数、类型、错误和
+- `libs` 按原生库组织 NDK、EGL、GLES、Bitmap 与 JNI 绑定。绑定保留原生参数、类型、错误和
   所有权，不夹带窗口策略。实际可跨目标验证的纯 Go 类型可以独立组织，不能为了测试改变 ABI。
 - Java 类绑定集中在 `sdk`，按实际原生包/类组织类型和方法；JNIEnv 由调用方显式传入，
   不保存跨线程 JNIEnv。类和 method ID 统一初始化；只绑定实际使用的 API，不建立完整 Android SDK。
