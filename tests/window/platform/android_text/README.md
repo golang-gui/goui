@@ -123,4 +123,11 @@ WrapChar 仍明确不支持，测试其失败反馈，不能计为字符换行�
 退出：系统返回/强制停止本测试应用；复位：清除本包数据或卸载。只使用专用
 模拟器和 ADB 端口，验收后清理本次设备，不接管用户其他设备。实验字体、APK、
 JSON、截图和日志放在仓库外；本例 helper 的进程级 Java 引用随测试进程结束。
-正式 JNI 后端仍需完整的对象释放、异常转换、状态失效与 TextLayout 测试。
+正式 JNI 后端的对象释放、异常转换和状态失效需要单独生命周期回归，
+不能仅凭本例的原生参考像素通过作出结论。
+
+2026-11-09 维护：JNI 子项从本测试包装保留的 NativeActivity JavaVM 获取当前 Env，
+不再查找已删除的生产导出 goui_android_java_vm；没有恢复生产测试入口或删除断言。
+Android API30 ARM64/Software/1x、CheckJNI 复验：170 项后端、18 组/3814 项交互、
+54 项基础检查通过，历史 9 项 shaping 差异独立保留。Context 先销毁、多布局和缓存
+生命周期专项见 [android_bindings](../android_bindings/README.md) 的 text 检查。

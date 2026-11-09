@@ -1,8 +1,8 @@
 # Android Typography
 
-状态：2026-11-04，基础包装已实现并通过 API 30 ARM64 验收；WrapChar、完整共同
-测试运行器及平台工厂接入仍待完成，不表示完整移动 Typography 已交付。前置实验见
-[DesignMobilePlatform](DesignMobilePlatform.md#95-最小交互单元实测2026-11-04)。
+状态：2026-11-09，Android Layout 已通过平台工厂接入，API 29+，支持 Software/GLES
+消费者。本轮按原生 SDK、GOUI 批量适配和 Go 资源归属整理；下方旧版本验收记录
+保留其原范围。WrapChar、真机与更多系统版本仍未完成。
 
 ## 边界
 
@@ -17,8 +17,8 @@ Java helper 是 Android 排版适配，不是 runtime/cgo 基座；维护者编�
 
 ## 对象与数据
 
-Context 拥有独立字体集合和 Java peer，每份 TextLayout 拥有独立 Spannable、
-TextPaint、StaticLayout、Bitmap/Canvas。Go 保留原文、公开格式/尺寸、UTF-8/
+Context 拥有独立字体集合，不再持有 Java TextContext。每份 TextLayout 拥有独立
+Java LayoutEngine、Spannable、TextPaint、StaticLayout、Bitmap/Canvas。Go 保留原文、公开格式/尺寸、UTF-8/
 UTF-16 映射、度量缓存与 lifecycle.Layout；Java 保存对应原生状态。setter 成功
 后同步失效、通知，连续设置不重复排版。颜色/装饰不重建度量；字体、尺寸、
 Tab、占位和换行使布局失效。Destroy 主动释放全局引用和位图，不靠终结器。
@@ -61,7 +61,7 @@ RGBA，原生 ARGB 非预乘颜色只在边界转换。scale 不改变排版；�
 入口为 androidtext.NewContext，名称为 Android Layout。当前支持 WrapNone/
 WrapWordChar、开始/结束/居中/两端对齐、TTF/TTC 族匹配及原生 fallback、完整
 字体范围替换、颜色/装饰、重复 Tab、占位、Changed/Destroy 与区域栅格化。
-不接入仍待迁移的 platform.NewTypography，不扩大成另一套移动 Platform。
+通过 platform.NewTypography 接入，沿用已有移动 Platform，不扩大为另一套宿主。
 
 内部使用 64 个原生单位对应一个逻辑单位：宽度向内取整，Tab/占位宽度按该
 网格量化，行高/基线上取整保证容纳内容。量化步长 1/64 DIP，最终还受 float32
@@ -126,8 +126,8 @@ SHA256：8a8fa6a7690d0550e371b08702d10a54cb00809a741a6adf4e436541897bb7af。
 
 ### 剩余范围
 
-WrapChar 创建返回错误、setter 明确失败；没有用 SIMPLE 冒充字符换行。不
-启用该后端为完整 GUI 工厂，直到此契约及平台接入确定。共同 typographytest
+WrapChar 创建返回错误、setter 明确失败；没有用 SIMPLE 冒充字符换行。平台工厂
+已接入，不代表移动 GUI 能力已经完整。共同 typographytest
 尚未通过 Android 的标准 Go 测试运行器执行，本轮是独立的原生窗口验收程序。
 API 29/31+、真机、16 KiB、长时间内存/性能、系统字体缩放策略、移动 GPU 及
 组件分发仍待验收，不将单版本通过推广为全部设备通过。
@@ -136,3 +136,101 @@ API 29/31+、真机、16 KiB、长时间内存/性能、系统字体缩放策略
 [StaticLayout](https://developer.android.com/reference/android/text/StaticLayout)、
 [LineBreaker](https://developer.android.com/reference/android/graphics/text/LineBreaker)、
 [Bitmap NDK](https://developer.android.com/ndk/reference/group/bitmap)。
+
+
+## 2026-11-09：三批职责整理
+
+本轮不以消除 Java 为目标。遵循 Android SDK/JNI 规范，原生类绑定与 GOUI 排版
+适配分开；保留原生批量循环，避免每个字素/段落跨 JNI。公共 Typography 接口不变。
+
+1. **SDK/JNI。** `android/sdk` 的 text/fonts/graphics 按原生类声明类型和方法；InitText
+   独立按需初始化、进程级保留 Class，JNIEnv 显式传入。实例/静态方法分别绑定，
+   复用既有 SDK 错误边界。JNI 增加 jboolean、静态对象字段等必要原语；不反向依赖
+   androidruntime 或 Typography。SDK 不绑定 org.golanggui 的自定义类。
+2. **字体与布局。** Go Context 拥有字体注册入口，fontCollection 保存原生 Font/Typeface
+   的拥有引用与匹配缓存，由 Context 和存活 Layout 共同持有。每个 Layout 独立持有
+   原生可变状态；Context.Destroy 只结束自身使用权，不关闭已有 Layout 的字体设施。
+   私有 bridge_android.go 统一 GOUI Java 类初始化、ABI 和批量结果解析；class/method
+   元数据只读共享，实例与 JNIEnv 不共享。SDK 绑定和组件桥接不能混在一起。
+3. **栅格化与组件。** 独立 raster_android.go 管理每个 Layout 的 Bitmap/Canvas 缓存、
+   请求区域、缩放、清空与 NDK 像素复制。先解除 Canvas 对旧 Bitmap 的使用再回收；
+   不重排已有效的 Layout。生成器按 LayoutEngine、TextSpans、LayoutMetrics 分开
+   Java 职责；批量段落、Tab、两端对齐和 ICU/Cluster 几何仍在 Java。它们接收原生
+   单位和 Typeface，不管理字体集合、DIP 或最终位图缓存。
+
+Go 保留 64 原生单位/DIP 与字号 96/72 的转换；批量结果为 UTF-16 范围和原生坐标，
+经具名 nativeMetrics 统一解码，再映射 UTF-8 和公开 Typography 类型。SDK 标准类
+通过 JNI 直接调用，必要的 Span 子类保留 Java，不引入 Go↔Java 的逐字回调系统。
+
+Java 为维护者生成的 Dex 组件，调用方不需要 Java/NDK。移动运行时基座不变；组件
+ABI、源码和内置 Android target 必须一起更新。维护者可使用 mobileassets 生成器的
+`-android-dex` 模式，仅替换已验证 Dex，核验原有 target 文件并更新摘要，不重制
+其他平台和 Go 版本的 native-support 对象。
+
+### 实施与验证进度
+
+- [x] 第一批 SDK/JNI，实际 ART/CheckJNI 的 StaticLayout、字体、boolean、常量和
+  预乘 Bitmap 像素检查通过；提交 1495c7a。
+- [x] 第二批字体/Layout：Context 销毁后继续修改已有 Layout 的回归与多 Layout 隔离，
+  中间版本单独 APK/ART 验证通过；提交 d508908。
+- [x] 第三批栅格缓存、Java/Dex ABI 3 同步及正式默认组件构建。旧 ABI 2 Dex 与新
+  Go 混用会明确返回组件 ABI 错误，消费并清除 JNI 异常；提交 d05480a。
+- [x] 既有独立原生参考、两后端生命周期、本机全仓/race、适用目标编译及同环境耗时对照。
+
+### 本轮验证结果
+
+- **Android 原生通过：** 远端 macOS15.7.7 ARM64 的专用 Android11/API30 ARM64
+  AOSP ATD，480×800、160dpi/1x，SwiftShader GLES3，Go1.25.8、CheckJNI。
+  `android_bindings` 的 SDK 专项通过；最终 `text` 连续三轮通过，含 Context 先
+  销毁、两个 Layout 的字体/颜色隔离、1x/2x/1x 栅格化和重复销毁。旧实现同一
+  生命周期检查确实报 TextContext is closed，不能用进程存活代替这项回归。
+- **独立参考通过：** `android_text` 170 项后端检查，4 组行/光标与 15 张完整 RGBA
+  参考包含 1x/1.5x/2x、TTF/TTC、装饰与半透明；基础 54 项及18组/3814项交互
+  通过。历史9项 shaping 等价差异继续保留，不算成交互失败，也不宣称等价成功。
+- **两后端通过：** `mobile_dispatch` Software/GLES 分别四次旋转、两次后台停绘/
+  恢复与 UI 回调最终释放；nonce/UI线程不变、交付始终一次，后台帧数不增长。
+  `android_rendering` 的多 Layout 隔离、重复 EGLSurface 创建失败回滚与离屏像素
+  继续通过；无 CheckJNI warning/error。实际 GPU context loss 不在此范围内。
+- **本机通过：** Linux amd64/Go1.25.8，已跟踪源码和本轮变更的独立副本，在
+  Xvnc :190/Xfwm4 会话运行 `CGO_ENABLED=0 go test -json -count=1 ./...`：4558项
+  通过、11项按原条件跳过、0失败；JNI/NDK、androidtext 与 mobile_build 的 race
+  通过。后续仅调整独立参考的旧测试符号，相关包测试和 Android 实跑再次通过。
+  Windows amd64/macOS arm64 的 platform/gui/ui/widgets/demo 交叉编译通过。
+  它们不是 Windows/macOS 桌面操作验收，本轮未修改这两个后端。
+- **原工作区失败：** `go test ./...` 仍被开始时已存在的未跟踪旧例程/测试阻断：
+  example/plat_test、transparency、window_chrome、platform/test、旧 image_lifetime/
+  drag_end/dragdrop，以及 ui/window_lookup_test 的旧接口。独立副本不含这些文件；
+  没有删除它们、扩大 skip 或把原工作区结果写成通过。
+- **测试维护：** 原独立参考仍查已删除的 goui_android_java_vm，首次报告167项、
+  JNI子项失败；改用测试包装自己保留的 NativeActivity JavaVM 后170项全过。
+  mobile_build 的旧归档日志断言也不识别现有 format2 recipe；现分格式校验入口，
+  format2 另要求 runtime/cgo，始终拒绝 cgo 编译器，并使用测试自有冷缓存取证。
+  保留负向单测，不恢复生产测试符号或放宽原生像素断言。
+
+同环境耗时对照使用 `android_bindings` 的固定八段多语言文本，40次冷构造/度量/
+销毁、1000次缓存度量、各20次1x/2x预热后栅格化；两版各3轮取中位数：
+
+| 范围 | 整理前 | 最终版本 |
+| --- | ---: | ---: |
+| 创建+首次度量+销毁 | 2.996 ms/op | 2.896 ms/op |
+| 命中缓存的度量 | 1.902 µs/op | 1.556 µs/op |
+| 1x 区域栅格化 | 151.152 µs/op | 140.506 µs/op |
+| 2x 区域栅格化 | 246.650 µs/op | 252.577 µs/op |
+
+Context 创建不在计时中，栅格化复用调用方缓冲；各轮有明显波动，样本不足以给出
+统计显著的提速结论，没有显示数量级退化。它不是帧率、真机或长时间内存测量。
+本轮收益是明确绑定、批量算法与资源归属，不以 Java 文件数量作为性能依据。
+
+材料位于两端仓库外 `/tmp/goui-android-text-refactor-05rmxhoz`，含分批APK、JSON、
+完整日志、独立参考图像、构建与失败记录。本轮只使用专用只读AVD/ADB端口，保持
+共享设备、个人签名与 SSH 不变；已卸载本轮四个测试应用，停止专用模拟器与ADB。
+API29/31+、真机、16KiB、长期内存、标准 Android
+Go测试运行器仍未执行；WrapChar 与 PlanMobileAPI 第10节既有全NULL EGL查询问题
+均未扩为本批任务。
+
+源码依据与原生契约：[StaticLayout.Builder](https://developer.android.com/reference/android/text/StaticLayout.Builder)、
+[ReplacementSpan](https://developer.android.com/reference/android/text/style/ReplacementSpan)、
+[Canvas](https://developer.android.com/reference/android/graphics/Canvas)、
+[JNI tips](https://developer.android.com/ndk/guides/jni-tips)。Builder 构建后不复用；
+JNI 参数/返回与引用有效期按原生 API 保留。性能结论必须区分首次构造、缓存读取和
+栅格化，不以绑定层减少 Java 文件数作为性能证据。
