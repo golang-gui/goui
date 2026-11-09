@@ -7,6 +7,11 @@
 暂不继续扩展上层行为。已完成的 GUI/UI Surface 保留，已有合成输入结果仍按原范围
 记录，不能代替原生输入可用性的证明。
 
+iOS 已整理 UIKit 类型化协议桥接、应用入口、Scene 窗口与图像提交职责；
+保留原生主线程、后台 GPU 屏障及目标代次。Simulator 的 Software/GLES 绑定、
+可重入销毁与前后台验收通过，真机及 Scene 实际断开重连仍待验证；范围见
+[iOS 整理计划](PlanMobileAPI.md#9-ios-uikit-绑定与实现整理2026-11-09)。
+
 触摸沿用既有 PointerEvent 扩展和 GTK4 Gesture 风格，统一 PointerType 命名，
 复用现有竞争协议；实施顺序和进入上层条件见
 [平台稳固计划](PlanMobileAPI.md#7-平台实现稳固优先2026-11-09)与

@@ -1,5 +1,19 @@
 # Plan
 
+## iOS UIKit 绑定与实现整理（2026-11-09）
+
+- [x] UIKit 按原生类型组织初始化和类型化 Implement helper；GOUI delegate/Scene
+  行为保留在 ios，入口、窗口/目标和 Software 提交按职责组织。
+- [x] Scene/controller 来源、可重入通知后的身份与有效期检查；保留 GPU gate、
+  target lease、代次与 CGImage 释放。GUI/UI 与公共 Window 契约不变。
+- [x] 独立 X11 全仓 4551 通过、11 原条件跳过，mobile/mobileentry race 与两桌面
+  目标编译通过；正式 Simulator 两后端及未签名 device IPA 构建通过。
+- [x] 远端 iOS26.3 ARM64 / 3x：两后端九项绑定/生命周期断言、各两次前后台停绘/
+  恢复、最终 UI 释放与 Run 边界通过；旧实现可复现来源断言失败，六个内部像素零误差。
+- [ ] Software 四次连续旋转、GLES 旋转、真机、系统实际 Scene 断开重连与 context
+  loss 待验；原工作区旧未跟踪例程/测试仍导致全仓命令失败。详细范围、命令和缺口见
+  [PlanMobileAPI 第 9 节](PlanMobileAPI.md#9-ios-uikit-绑定与实现整理2026-11-09)。
+
 ## 移动平台稳固优先（2026-11-09）
 
 - [x] 更新 [DesignTouchInput](DesignTouchInput.md)：沿用 PointerEvent 扩展及 GTK4
