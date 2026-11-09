@@ -36,6 +36,9 @@ func init() { mobileentry.NativeRun = runNative }
 func onSystemThread(fn func()) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	if !dispatch.IsMainThread() {
+		panic("ios: native callback outside the system main thread")
+	}
 	fn()
 }
 
@@ -59,8 +62,9 @@ func runNative() int {
 		})
 	})
 	_, err := ui.ImplementUIApplicationDelegate(applicationDelegateName, ui.UIApplicationDelegateOverride{
-		ApplicationDidFinishLaunchingWithOptions: func(ui.UIApplicationDelegate, ui.UIApplication, NSDictionary) bool {
-			return mobileentry.Start()
+		ApplicationDidFinishLaunchingWithOptions: func(ui.UIApplicationDelegate, ui.UIApplication, NSDictionary) (started bool) {
+			onSystemThread(func() { started = mobileentry.Start() })
+			return
 		},
 	})
 	if err != nil {
