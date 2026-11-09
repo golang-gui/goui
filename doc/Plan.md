@@ -1,5 +1,28 @@
 # Plan
 
+## Root 布局后绘制准备（2026-11-09）
+
+- [x] 增加 `Root.ConnectBeforePaint(func()) signal.Handle`；Window、系统 Surface、
+  Popover 在本帧布局和装饰分配后、Painter.Begin 前统一通知。没有布局失效也通知，
+  连接不主动续帧，RenderWidget 不触发，不扩充 Widget 或 UI 的生产接口。
+- [x] 回调中的布局/绘制请求保留到后续帧；逐回调检查销毁、暂停、目标撤销和代次，
+  无效后停止通知与 Begin。保留正常信号断开语义，不引入准备队列或清空所有连接。
+- [x] 包内回归覆盖三类宿主顺序、Chrome 有界追加布局、请求合并、Block/Disconnect、
+  回调中销毁、目标失效和离屏排除。标准 trace 增加 before-paint 阶段，Capture 的
+  Callbacks 合计两种准备回调；panic 清理与既有阶段断言保留。
+- [x] 已跟踪源码隔离副本、独立 Xvnc/Xfwm4：`CGO_ENABLED=0 go test -json -count=1 ./...`
+  4574 通过、11 既有跳过、0 失败；定向 `go test -race` 通过。
+- [x] 新增 `tests/window/gui/before_paint`，中文说明覆盖重绘、布局变化、调整大小和
+  Popup。独立 X11 的 Software/OpenGL × 1x/2x 自动验收通过；准备尺寸与 Paint
+  当前尺寸一致，窗口和 Popup 的线程/顺序断言通过，不使用 DevServer。
+- [x] Windows amd64、macOS arm64 的 GUI/UI/widgets 与窗口例程交叉编译通过；
+  正式 `cmd/goui` 构建 Android ARM64 APK、iOS ARM64 Simulator 未签名 app 通过。
+- [ ] 本轮未执行 Windows/macOS 原生窗口和 Android/iOS 新信号的真机/模拟器运行；
+  构建结果不替代这些验收。原工作区定向命令受未跟踪的旧 `ui/window_lookup_test.go`
+  阻塞：`windowMount` 的 `runtime`/`id` 字段已移除；未修改该文件，完整结果指上述
+  已跟踪源码隔离副本。设计与契约见
+  [Widget Painter](DesignWidgetPainter.md#布局后绘制准备2026-11-09)。
+
 ## Android 组织与资源整理（2026-11-09）
 
 - [x] 固定 Android 平台规范；eventfd 基于 x/sys/unix 封装 Signal/Drain；按既有

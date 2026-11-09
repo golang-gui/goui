@@ -52,8 +52,10 @@ Snapshot 会整理缓存元数据并复制结果，建议按需或低频查询�
 - `runtime/trace` 由应用调用 Start／Stop，或由 `go test -trace` 开启。其开关与
   diagnostics.Capture 独立；只有 trace 开启时也能看到帧，不隐式开启逐 Widget 统计。
 - 每次被接受的窗口／Popover 帧尝试对应固定类型 `goui.frame` Task。阶段 Region 为
-  `goui.callbacks`、`goui.styles`、`goui.layout`、`goui.begin`、`goui.paint`、`goui.end`。
+  `goui.callbacks`、`goui.styles`、`goui.layout`、`goui.before-paint`、`goui.begin`、`goui.paint`、`goui.end`。
   布局只在实际执行时记录，可一帧多次；Paint 包含内容、装饰和 AfterPaint，End 单列。
+  BeforePaint 在本帧布局完成后、Begin 之前记录；Capture 的 Callbacks 合计 Frame
+  与 BeforePaint 回调耗时，不将准备计入 Paint，不改变未启用观测时的调度。
   帧前的输入与等待、RenderWidget 离屏绘制不伪装成窗口帧；Task 结束不代表呈现成功。
 - `goui.root` 日志使用进程内 rootBase 地址区分根；不要求用户 ID，不引入全局编号表，
   不调用窗口／Widget getter、不遍历树，也不把动态标识拼进 Task 或 Region 类型名。

@@ -38,6 +38,16 @@ Context 释放后已有 Layout 的字体设施仍有效，Java 保留原生批�
 以系统与可选外部实现共用的绘制边界为目标，ANGLE 仅是可选用途；不改变现有默认
 后端，不将桌面 GLES、绑定迁移或外部库分发扩为当前移动平台稳固的前置。
 
+## Root 布局后绘制准备（2026-11-09）
+
+Root 增加 ConnectBeforePaint，在本帧布局及窗口装饰分配后、Painter.Begin 前
+准备派生绘制数据，Window/Surface/Popover 共用入口。保持显式 RequestPaint、
+后续帧失效和正常信号生命周期，不增加 Widget 钩子或另一套调度。
+隔离全仓测试、独立 X11 两后端 1x/2x、受影响桌面目标与移动正式构建已通过；
+原生运行与构建的边界见 [Plan](Plan.md#root-布局后绘制准备2026-11-09)，
+契约见 [Widget Painter](DesignWidgetPainter.md#布局后绘制准备2026-11-09)。
+移动平台稳固仍按上方优先级推进，通用 EGL/GLES 继续暂缓。
+
 ## UI Surface 已接入（2026-11-08）
 
 声明层用 ui.Surface 领取系统宿主，ui.Window 保留主动管理。共享内容协调、命令、

@@ -172,6 +172,43 @@ paintWidget(widget):
 生命周期回调。屏幕查询、请求过滤及 RenderWidget 的独立目标规则见
 [DesignDrawable](DesignDrawable.md)。
 
+### 布局后绘制准备（2026-11-09）
+
+Root 提供 `ConnectBeforePaint(func()) signal.Handle`，在 GUI 线程读取本帧布局结果，
+准备跨控件的几何关系或派生绘制缓存。Window、系统 Surface 与 Popover 共用入口；
+不扩充 Widget 接口，不增加准备队列，也不改变已有 Painter 的资源使用方式。
+
+```text
+ConnectFrame -> 样式更新 -> 本帧布局及窗口装饰分配
+             -> ConnectBeforePaint -> Painter.Begin
+             -> Widget/装饰绘制 -> ConnectAfterPaint -> Painter.End
+```
+
+- 每次有效的宿主绘制尝试通知一次，没有重新布局的帧也通知。连接本身不安排帧，
+  空闲时不会因存在连接而持续绘制；隐藏、销毁或原生目标不可用时不通知。
+- 这是本帧既定布局步骤之后的准备，不保证所有待处理失效都已消除；虚拟列表等
+  在布局中提出的后续请求仍保留，不引入反复布局直到收敛的循环。
+- 不传 Painter，不直接绘制，不同步重建声明式 UI 或修改控件树。准备只更新自身
+  的派生数据；测量与分配继续由 Measure/Arrange 负责。
+- 回调提出的 RequestLayout/RequestPaint 由现有机制合并到后续帧，不重入当前
+  布局或清掉请求。一个回调销毁宿主、隐藏或撤销目标后，后续回调和 Begin 停止。
+- 连接按既有信号顺序执行，支持 Block/Unblock/Disconnect。控件所有者在卸载时
+  断开自己的连接；销毁后的通知通过生命周期检查防护，不清空所有信号兜底。
+- RenderWidget 只执行离屏绘制，不触发宿主的 Frame/BeforePaint/AfterPaint。
+  依赖离屏尺寸的自身资源继续在控件现有的布局/绘制路径准备。
+- 准备回调被调用不表示 Painter.Begin、GPU 提交或最终呈现成功。准备 panic 继续
+  向上传播，正常完成帧清理，不在 Begin 前调用 End。
+
+ConnectFrame 位于布局之前，适合更新动画值；ui.BuildContext.AfterUpdate 仅表示
+声明式协调结束，不能替代此入口。资源的 NewImage/Update 和延迟释放契约不变。
+
+参考 Qt Quick 6.8 的 [updatePolish](https://doc.qt.io/qt-6.8/qquickitem.html#updatePolish)
+理解准备与绘制分离，但不照搬其可执行布局的阶段。GTK4 的
+[before-paint](https://docs.gtk.org/gdk4/signal.FrameClock.before-paint.html) 是帧开始，
+Flutter 的 [addPostFrameCallback](https://api.flutter.dev/flutter/scheduler/SchedulerBinding/addPostFrameCallback.html)
+位于流水线完成后，都不是 GOUI 本接口的时序。以上公开契约核对于 2026-11-09；
+GOUI 的实际阶段按上图与回归测试确定。
+
 ## 5. 坐标、Transform 与 Clip
 
 Painter 内部状态为：
