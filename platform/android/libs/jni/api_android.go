@@ -24,12 +24,15 @@ const (
 	slotGetObjectClass            = 31
 	slotGetMethodID               = 33
 	slotCallObjectMethodA         = 36
+	slotCallBooleanMethodA        = 39
 	slotCallIntMethodA            = 51
 	slotCallFloatMethodA          = 57
 	slotCallVoidMethodA           = 63
 	slotGetStaticMethodID         = 113
 	slotCallStaticObjectMethodA   = 116
 	slotCallStaticIntMethodA      = 131
+	slotGetStaticFieldID          = 144
+	slotGetStaticObjectField      = 145
 	slotNewString                 = 163
 	slotGetStringLength           = 164
 	slotGetArrayLength            = 171
@@ -84,6 +87,12 @@ func (e Env) GetMethodID(class Object, name, signature string) Method {
 func (e Env) GetStaticMethodID(class Object, name, signature string) Method {
 	return cgo.CallRet[Method](function(uintptr(e), slotGetStaticMethodID), e, class, cgo.CStringTemp(name), cgo.CStringTemp(signature))
 }
+func (e Env) GetStaticFieldID(class Object, name, signature string) Field {
+	return cgo.CallRet[Field](function(uintptr(e), slotGetStaticFieldID), e, class, cgo.CStringTemp(name), cgo.CStringTemp(signature))
+}
+func (e Env) GetStaticObjectField(class Object, field Field) Object {
+	return cgo.CallRet[Object](function(uintptr(e), slotGetStaticObjectField), e, class, field)
+}
 func (e Env) GetStringLength(text Object) int32 {
 	return cgo.CallRet[int32](function(uintptr(e), slotGetStringLength), e, text)
 }
@@ -113,6 +122,9 @@ func (e Env) CallStaticObjectMethodA(obj Object, method Method, args ...Value) O
 }
 func (e Env) CallIntMethodA(obj Object, method Method, args ...Value) int32 {
 	return cgo.CallRet[int32](function(uintptr(e), slotCallIntMethodA), e, obj, method, valuesPointer(args))
+}
+func (e Env) CallBooleanMethodA(obj Object, method Method, args ...Value) bool {
+	return cgo.CallRet[uint8](function(uintptr(e), slotCallBooleanMethodA), e, obj, method, valuesPointer(args)) != 0
 }
 func (e Env) CallFloatMethodA(obj Object, method Method, args ...Value) float32 {
 	return cgo.CallRet[float32](function(uintptr(e), slotCallFloatMethodA), e, obj, method, valuesPointer(args))

@@ -1,5 +1,6 @@
 // Package sdk binds the Java framework classes used by the Android adapters.
-// Init retains class references for the process. Methods take the caller's
+// Init and InitText retain their class references for the process. Text, font
+// and drawing bindings require InitText. Methods take the caller's
 // current JNIEnv explicitly; returned objects are local references unless noted.
 package sdk
 
@@ -10,28 +11,48 @@ import (
 	"github.com/golang-gui/goui/platform/android/libs/jni"
 )
 
-var initialization struct {
+type classBindings struct {
 	sync.Once
 	err     error
 	classes []jni.Object
 }
 
+var initialization classBindings
+var textInitialization classBindings
+
 func Init(env jni.Env) error {
-	initialization.Do(func() {
-		for _, initClass := range []func(jni.Env) (jni.Object, error){initActivity, initWindow, initView, initFile, initClassLoader} {
+	return initialization.init(env, initActivity, initWindow, initView, initFile, initClassLoader)
+}
+
+// InitText loads the public text, font and software drawing classes on demand.
+// It retains class references for the process, independently of Context lifetime.
+func InitText(env jni.Env) error {
+	if err := Init(env); err != nil {
+		return err
+	}
+	return textInitialization.init(env, initPaint, initTextPaint, initSpannableString,
+		initStaticLayout, initStaticLayoutBuilder, initLayoutAlignment,
+		initTypeface, initFont, initFontStyle, initFontBuilder,
+		initFontFamily, initFontFamilyBuilder, initTypefaceCustomFallbackBuilder,
+		initBitmap, initBitmapConfig, initCanvas)
+}
+
+func (b *classBindings) init(env jni.Env, classes ...func(jni.Env) (jni.Object, error)) error {
+	b.Do(func() {
+		for _, initClass := range classes {
 			class, err := initClass(env)
 			if err != nil {
-				for _, class := range initialization.classes {
+				for _, class := range b.classes {
 					env.DeleteGlobalRef(class)
 				}
-				initialization.classes = nil
-				initialization.err = err
+				b.classes = nil
+				b.err = err
 				return
 			}
-			initialization.classes = append(initialization.classes, class)
+			b.classes = append(b.classes, class)
 		}
 	})
-	return initialization.err
+	return b.err
 }
 
 type methodBinding struct {
@@ -39,7 +60,7 @@ type methodBinding struct {
 	method          *jni.Method
 }
 
-func bindClass(env jni.Env, name string, methods []methodBinding) (jni.Object, error) {
+func bindClass(env jni.Env, name string, methods []methodBinding, staticMethods ...[]methodBinding) (jni.Object, error) {
 	class := env.FindClass(name)
 	if err := env.Exception(); err != nil {
 		return 0, fmt.Errorf("android sdk: %s: %w", name, err)
@@ -48,15 +69,23 @@ func bindClass(env jni.Env, name string, methods []methodBinding) (jni.Object, e
 		return 0, fmt.Errorf("android sdk: class %s unavailable", name)
 	}
 	defer env.DeleteLocalRef(class)
-	for _, binding := range methods {
-		method := env.GetMethodID(class, binding.name, binding.signature)
-		if err := env.Exception(); err != nil {
-			return 0, fmt.Errorf("android sdk: %s.%s: %w", name, binding.name, err)
+	groups := append([][]methodBinding{methods}, staticMethods...)
+	for i, group := range groups {
+		for _, binding := range group {
+			var method jni.Method
+			if i == 0 {
+				method = env.GetMethodID(class, binding.name, binding.signature)
+			} else {
+				method = env.GetStaticMethodID(class, binding.name, binding.signature)
+			}
+			if err := env.Exception(); err != nil {
+				return 0, fmt.Errorf("android sdk: %s.%s: %w", name, binding.name, err)
+			}
+			if method == 0 {
+				return 0, fmt.Errorf("android sdk: method %s.%s unavailable", name, binding.name)
+			}
+			*binding.method = method
 		}
-		if method == 0 {
-			return 0, fmt.Errorf("android sdk: method %s.%s unavailable", name, binding.name)
-		}
-		*binding.method = method
 	}
 	global := env.NewGlobalRef(class)
 	if err := env.Exception(); err != nil {
@@ -66,4 +95,17 @@ func bindClass(env jni.Env, name string, methods []methodBinding) (jni.Object, e
 		return 0, fmt.Errorf("android sdk: retain class %s failed", name)
 	}
 	return global, nil
+}
+
+// staticObject returns a local reference to a named public constant.
+func staticObject(env jni.Env, class jni.Object, name, signature string) (jni.Object, error) {
+	field := env.GetStaticFieldID(class, name, signature)
+	if err := env.Exception(); err != nil {
+		return 0, err
+	}
+	if field == 0 {
+		return 0, fmt.Errorf("android sdk: field %s unavailable", name)
+	}
+	value := env.GetStaticObjectField(class, field)
+	return value, env.Exception()
 }
