@@ -1,0 +1,10 @@
+id = "org.golanggui.AndroidLifecycle"
+name = "GOUI Android Lifecycle"
+executable = "android-lifecycle"
+main = "."
+version = "0.0.1"
+build = 1
+icon = "../../../../doc/logo/goui-mark.svg"
+
+[android]
+debuggable = true
