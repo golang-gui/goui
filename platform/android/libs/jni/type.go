@@ -9,6 +9,7 @@ type VM uintptr
 type Env uintptr
 type Object uintptr
 type Method uintptr
+type Field uintptr
 
 // Value mirrors jvalue; A-method calls borrow its storage synchronously.
 type Value uint64
@@ -16,6 +17,12 @@ type Value uint64
 func Ref(v Object) Value    { return Value(v) }
 func Int(v int32) Value     { return Value(uint32(v)) }
 func Float(v float32) Value { return Value(math.Float32bits(v)) }
+func Bool(v bool) Value {
+	if v {
+		return 1
+	}
+	return 0
+}
 
 const (
 	Version16 int32 = 0x00010006

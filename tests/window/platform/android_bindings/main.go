@@ -76,6 +76,9 @@ func generate(output string) error {
 const probeSource = `package main
 
 import (
+ "bytes"
+ "github.com/goexlib/cgo"
+ "github.com/golang-gui/goui/platform/android/libs/bitmap"
     "encoding/json"
     "fmt"
     "math"
@@ -105,8 +108,9 @@ func main(){
     loop.Post(func(){
         expect(syscall.Gettid()==syscall.Getpid(),"not Android UI thread")
         expect(unsafe.Sizeof(native.Activity{})==80 && unsafe.Sizeof(native.WindowBuffer{})==48,"NDK ABI")
-        expect(check=="all" || check=="jni" || check=="egl" || check=="egl-null-query","unknown check %q",check)
+        expect(check=="all" || check=="jni" || check=="egl" || check=="egl-null-query" || check=="text-sdk","unknown check %q",check)
         if check=="all" || check=="jni" {stage("jni");verifyJNI()}
+        if check=="text-sdk" {stage("text-sdk");verifyTextSDK()}
         if check=="all" || check=="egl" {stage("egl");verifyEGL()}
         if check=="all" || check=="egl-null-query" {stage("egl-null-query");verifyNullQuery()}
         data,err:=json.Marshal(map[string]any{"passed":true,"check":check,"thread":syscall.Gettid(),"go":runtime.Version()});must(err)
@@ -205,4 +209,56 @@ func verifyNullQuery(){
     count,ok:=egl.ChooseConfig(display,nil,nil)
     expect(ok==egl.True && count>0,"NULL attributes/count query")
 }
+
+// verifyTextSDK 只调用公开 SDK；几何使用关系断言，不依赖固定字体金图。
+func verifyTextSDK() {
+ e,err:=androidruntime.Environment();must(err)
+ expect(e.PushLocalFrame(96)==jni.OK,"text local frame");defer e.PopLocalFrame(0)
+ must(sdk.InitText(e))
+ paint,err:=sdk.NewTextPaint(e,sdk.PaintAntiAliasFlag|sdk.PaintSubpixelTextFlag);must(err)
+ face,err:=sdk.CreateTypeface(e,"sans-serif",0);must(err)
+ face,err=sdk.CreateTypefaceWithWeight(e,face,400,false);must(err)
+ _,err=sdk.Paint(paint).SetTypeface(e,face);must(err)
+ must(sdk.Paint(paint).SetTextSize(e,20));must(sdk.Paint(paint).SetColor(e,-16777216))
+ text:=e.NewString("abc אבג");must(e.Exception())
+ spans,err:=sdk.NewSpannableString(e,text);must(err)
+ b,err:=sdk.StaticLayoutBuilderObtain(e,jni.Object(spans),0,e.GetStringLength(text),paint,400);must(err)
+ b,err=b.SetIncludePad(e,false);must(err)
+ align,err:=sdk.LayoutAlignNormal(e);must(err);b,err=b.SetAlignment(e,align);must(err)
+ l,err:=b.Build(e);must(err)
+ lines,err:=l.GetLineCount(e);must(err);expect(lines==1,"native line count %d",lines)
+ width,err:=l.GetLineWidth(e,0);must(err);expect(width>0 && width<400,"native line width %g",width)
+ baseline,err:=l.GetLineBaseline(e,0);must(err);expect(baseline>0,"native baseline")
+ rtl,err:=l.IsRtlCharAt(e,0);must(err);expect(!rtl,"Latin direction")
+ rtl,err=l.IsRtlCharAt(e,4);must(err);expect(rtl,"Hebrew direction")
+ file,err:=sdk.NewFile(e,"/system/fonts/Roboto-Regular.ttf");must(err)
+ fb,err:=sdk.NewFontBuilder(e,file);must(err);fb,err=fb.SetTtcIndex(e,0);must(err)
+ font,err:=fb.Build(e);must(err)
+ style,err:=font.GetStyle(e);must(err)
+ weight,err:=style.GetWeight(e);must(err);slant,err:=style.GetSlant(e);must(err)
+ expect(weight==400 && slant==sdk.FontSlantUpright,"font style %d/%d",weight,slant)
+ familyBuilder,err:=sdk.NewFontFamilyBuilder(e,font);must(err)
+ family,err:=familyBuilder.Build(e);must(err)
+ fallback,err:=sdk.NewTypefaceCustomFallbackBuilder(e,family);must(err)
+ fallback,err=fallback.SetSystemFallback(e,"sans-serif");must(err)
+ requested,err:=sdk.NewFontStyle(e,500,sdk.FontSlantItalic);must(err)
+ fallback,err=fallback.SetStyle(e,requested);must(err)
+ custom,err:=fallback.Build(e);must(err);expect(custom!=0,"custom typeface")
+ config,err:=sdk.BitmapARGB8888(e);must(err)
+ pixels,err:=sdk.CreateBitmap(e,8,8,config);must(err)
+ must(pixels.SetDensity(e,sdk.BitmapDensityNone));must(pixels.EraseColor(e,-2130771968))
+ info,status:=bitmap.GetInfo(e,jni.Object(pixels));must(e.Exception())
+ expect(status==0 && info.Width==8 && info.Height==8 && info.Format==bitmap.RGBA8888,"bitmap format: %+v",info)
+ address,status:=bitmap.LockPixels(e,jni.Object(pixels));must(e.Exception());expect(status==0,"bitmap lock")
+ sample:=append([]byte(nil),unsafe.Slice((*byte)(cgo.Pointer(address)),4)...)
+ status=bitmap.UnlockPixels(e,jni.Object(pixels));must(e.Exception());expect(status==0,"bitmap unlock")
+ expect(bytes.Equal(sample,[]byte{128,0,0,128}),"premultiplied SDK bitmap: %v",sample)
+ canvas,err:=sdk.NewCanvas(e);must(err);must(canvas.SetBitmap(e,pixels))
+ _,err=canvas.Save(e);must(err)
+ clipped,err:=canvas.ClipRect(e,0,0,4,4);must(err);expect(clipped,"nonempty clip")
+ clipped,err=canvas.ClipRect(e,8,8,16,16);must(err);expect(!clipped,"empty clip")
+ must(canvas.Translate(e,1.25,-2.5));must(canvas.Scale(e,2,2));must(canvas.Restore(e))
+ must(canvas.SetBitmap(e,0));must(pixels.Recycle(e))
+}
+
 `

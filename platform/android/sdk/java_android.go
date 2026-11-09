@@ -9,13 +9,17 @@ import (
 type File jni.Object
 type ClassLoader jni.Object
 
-var fileMethods struct{ getAbsolutePath jni.Method }
+var fileClass jni.Object
+var fileMethods struct{ constructor, getAbsolutePath jni.Method }
 var classLoaderMethods struct{ loadClass jni.Method }
 
 func initFile(env jni.Env) (jni.Object, error) {
-	return bindClass(env, "java/io/File", []methodBinding{
+	var err error
+	fileClass, err = bindClass(env, "java/io/File", []methodBinding{
+		{"<init>", "(Ljava/lang/String;)V", &fileMethods.constructor},
 		{"getAbsolutePath", "()Ljava/lang/String;", &fileMethods.getAbsolutePath},
 	})
+	return fileClass, err
 }
 func initClassLoader(env jni.Env) (jni.Object, error) {
 	return bindClass(env, "java/lang/ClassLoader", []methodBinding{
@@ -48,4 +52,14 @@ func (l ClassLoader) LoadClass(env jni.Env, name string) (jni.Object, error) {
 	defer env.DeleteLocalRef(text)
 	class := env.CallObjectMethodA(jni.Object(l), classLoaderMethods.loadClass, jni.Ref(text))
 	return class, env.Exception()
+}
+
+func NewFile(env jni.Env, path string) (File, error) {
+	text := env.NewString(path)
+	if err := env.Exception(); err != nil {
+		return 0, err
+	}
+	defer env.DeleteLocalRef(text)
+	value := env.NewObjectA(fileClass, fileMethods.constructor, jni.Ref(text))
+	return File(value), env.Exception()
 }
