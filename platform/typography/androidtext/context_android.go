@@ -22,7 +22,7 @@ type Context struct {
 }
 
 // NewContext creates a thread-affine Android typography context. The current
-// OS thread must be attached to the VM. API 29 and component ABI 2 are required;
+// OS thread must be attached to the VM. API 29 and component ABI 3 are required;
 // public Android Layout APIs do not supply a WrapChar strategy.
 func NewContext() (typography.Context, error) {
 	e, err := androidruntime.Environment()

@@ -10,10 +10,10 @@ import (
 )
 
 const nativeUnits float32 = 64
-const componentABI int32 = 2
+const componentABI int32 = 3
 
 // layoutPeer binds GOUI's batch adapter, not Android SDK classes. The adapter
-// owns native text/layout state and a transitional raster cache; font registration is Go-owned.
+// owns only native text/layout state; font registration and raster storage are Go-owned.
 type layoutPeer jni.Object
 
 var javaLayout struct {
@@ -22,7 +22,6 @@ var javaLayout struct {
 	class                                                                     jni.Object
 	constructor, close, setSize, setAlignment, setWrap, setTabWidth           jni.Method
 	setFont, setColor, setUnderline, setStrike, setPlaceholder, metrics, draw jni.Method
-	raster                                                                    jni.Method
 }
 
 func initBridge(e jni.Env) error {
@@ -33,6 +32,24 @@ func initBridge(e jni.Env) error {
 			return
 		}
 		defer e.DeleteLocalRef(class)
+		versionMethod := e.GetStaticMethodID(class, "abiVersion", "()I")
+		if err := e.Exception(); err != nil {
+			javaLayout.err = fmt.Errorf("androidtext: component ABI %d: %w", componentABI, err)
+			return
+		}
+		if versionMethod == 0 {
+			javaLayout.err = fmt.Errorf("androidtext: component ABI %d version method unavailable", componentABI)
+			return
+		}
+		version := e.CallStaticIntMethodA(class, versionMethod)
+		if err := e.Exception(); err != nil {
+			javaLayout.err = err
+			return
+		}
+		if version != componentABI {
+			javaLayout.err = fmt.Errorf("androidtext: component ABI mismatch: need %d, got %d", componentABI, version)
+			return
+		}
 		for _, binding := range []struct {
 			name, signature string
 			method          *jni.Method
@@ -44,7 +61,6 @@ func initBridge(e jni.Env) error {
 			{"setFont", "(IILandroid/graphics/Typeface;F)V", &javaLayout.setFont},
 			{"setColor", "(III)V", &javaLayout.setColor}, {"setUnderline", "(IIZ)V", &javaLayout.setUnderline},
 			{"setStrike", "(IIZ)V", &javaLayout.setStrike}, {"setPlaceholder", "(IIFFF)V", &javaLayout.setPlaceholder},
-			{"raster", "(FIIII)Landroid/graphics/Bitmap;", &javaLayout.raster},
 			{"metrics", "()[Ljava/lang/Object;", &javaLayout.metrics}, {"draw", "(Landroid/graphics/Canvas;)V", &javaLayout.draw},
 		} {
 			method := e.GetMethodID(class, binding.name, binding.signature)
@@ -187,9 +203,4 @@ func (p layoutPeer) metrics(e jni.Env) (out nativeMetrics, err error) {
 		}
 	}
 	return
-}
-
-func (p layoutPeer) raster(e jni.Env, scale float32, left, top, width, height int32) (jni.Object, error) {
-	object := e.CallObjectMethodA(jni.Object(p), javaLayout.raster, jni.Float(scale), jni.Int(left), jni.Int(top), jni.Int(width), jni.Int(height))
-	return object, e.Exception()
 }

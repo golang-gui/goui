@@ -9,9 +9,7 @@ func main() {
 	nativegen.Main("platform/typography/androidtext", map[string]string{
 		"java/org/golanggui/typography/LayoutEngine.java": `package org.golanggui.typography;
 
-import android.graphics.Bitmap;
 import android.graphics.Canvas;
-import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Typeface;
@@ -22,17 +20,13 @@ import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextDirectionHeuristics;
 import android.text.TextPaint;
-import android.text.style.ForegroundColorSpan;
-import android.text.style.MetricAffectingSpan;
-import android.text.style.ReplacementSpan;
-import android.text.style.StrikethroughSpan;
 import android.text.style.TabStopSpan;
-import android.text.style.UnderlineSpan;
 import java.util.ArrayList;
 import java.util.Locale;
 import java.util.TreeSet;
 
 public final class LayoutEngine {
+    public static int abiVersion() { return 3; }
     // Native batch work only. Go supplies all text sizes and geometry in native units.
     private static final float SPACING_PRECISION = 64;
     private final String original;
@@ -43,8 +37,6 @@ public final class LayoutEngine {
     private float width, height, tabWidth;
     private int wrap, alignment;
     private boolean dirty = true;
-    private Bitmap bitmap;
-    private Canvas canvas;
 
     static final class Paragraph {
         int start,end,separator;
@@ -53,14 +45,14 @@ public final class LayoutEngine {
     }
 
     public LayoutEngine(int version,SpannableString text,TextPaint paint,int wrap,int alignment,float width,float height,float tabWidth) {
-        if(version!=2)throw new IllegalArgumentException("Typography component ABI mismatch");
+        if(version!=3)throw new IllegalArgumentException("Typography component ABI mismatch");
         this.text=text;this.original=text.toString();this.paint=paint;
         this.width=width;this.height=height;this.tabWidth=tabWidth;this.wrap=wrap;this.alignment=alignment;
         BreakIterator iterator=BreakIterator.getCharacterInstance(Locale.ROOT);iterator.setText(original);
         for(int i=iterator.first();i!=BreakIterator.DONE;i=iterator.next())boundaries.add(i);
     }
 
-    public void close() { if(canvas!=null)canvas.setBitmap(null);if(bitmap!=null)bitmap.recycle();bitmap=null;canvas=null;paragraphs.clear(); }
+    public void close() { paragraphs.clear(); }
     public void setSize(float width,float height) { this.width=width;this.height=height;dirty=true; }
     public void setAlignment(int alignment) { this.alignment=alignment;dirty=true; }
     public void setWrap(int wrap) {
@@ -162,20 +154,6 @@ public final class LayoutEngine {
     }
 
     public Object[] metrics(){prepare();return LayoutMetrics.read(paragraphs,boundaries,text);}
-    public Bitmap raster(float scale,int left,int top,int width,int height){
-        prepare();
-        if(bitmap==null || bitmap.getWidth()<width || bitmap.getHeight()<height){
-            if(canvas!=null)canvas.setBitmap(null);
-            if(bitmap!=null)bitmap.recycle();bitmap=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);bitmap.setDensity(Bitmap.DENSITY_NONE);
-            if(canvas==null)canvas=new Canvas();canvas.setBitmap(bitmap);
-        }
-        bitmap.eraseColor(0);canvas.save();
-        try{
-            canvas.clipRect(0,0,width,height);canvas.translate(-(float)left,-(float)top);canvas.scale(scale,scale);
-            for(Paragraph p:paragraphs){canvas.save();canvas.translate(p.x,p.y);p.layout.draw(canvas);canvas.restore();}
-        }finally{canvas.restore();}
-        return bitmap;
-    }
     public void draw(Canvas canvas){
         prepare();
         for(Paragraph p:paragraphs){canvas.save();try{canvas.translate(p.x,p.y);p.layout.draw(canvas);}finally{canvas.restore();}}
@@ -183,11 +161,17 @@ public final class LayoutEngine {
 }
 `,
 		"java/org/golanggui/typography/TextSpans.java": `package org.golanggui.typography;
-import android.graphics.*;
-import android.text.*;
-import android.text.style.*;
-import android.icu.text.BreakIterator;
-import java.util.*;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.Typeface;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.TextPaint;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.MetricAffectingSpan;
+import android.text.style.ReplacementSpan;
+import android.text.style.StrikethroughSpan;
+import android.text.style.UnderlineSpan;
 
 final class TextSpans {
     interface CopySpan { Object copy(); }
@@ -237,11 +221,11 @@ final class TextSpans {
 }
 `,
 		"java/org/golanggui/typography/LayoutMetrics.java": `package org.golanggui.typography;
-import android.graphics.*;
-import android.text.*;
-import android.text.style.*;
-import android.icu.text.BreakIterator;
-import java.util.*;
+import android.graphics.Path;
+import android.graphics.RectF;
+import android.text.SpannableString;
+import android.text.StaticLayout;
+import java.util.ArrayList;
 
 final class LayoutMetrics {
     static Object[] read(ArrayList<LayoutEngine.Paragraph> paragraphs,ArrayList<Integer> boundaries,SpannableString text){

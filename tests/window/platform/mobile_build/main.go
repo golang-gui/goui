@@ -329,7 +329,17 @@ func (b *builder) build() error {
 	if err != nil {
 		return err
 	}
-	env := environment(map[string]string{"GOWORK": work, "GOTOOLCHAIN": "local", "GOFLAGS": "", "GOCACHE": filepath.Join(b.root, "consumer-cache"), "PATH": b.config.ConsumerPath})
+	// This checks native-support consumption on a cold build. A warm Go cache
+	// may skip the recipe hook entirely and cannot supply that evidence.
+	cacheRoot := filepath.Join(b.root, "consumer-cache")
+	if err = os.MkdirAll(cacheRoot, 0755); err != nil {
+		return err
+	}
+	cache, err := os.MkdirTemp(cacheRoot, "verify-")
+	if err != nil {
+		return err
+	}
+	env := environment(map[string]string{"GOWORK": work, "GOTOOLCHAIN": "local", "GOFLAGS": "", "GOCACHE": cache, "PATH": b.config.ConsumerPath})
 	binary := "Probe"
 	if b.config.Target == "android" {
 		binary = "libgoui.so"
@@ -353,11 +363,42 @@ func (b *builder) build() error {
 	if err != nil {
 		return err
 	}
-	if bytes.Contains(data, []byte("/cgo -objdir")) || !bytes.Contains(data, []byte("# goui base: github.com/golang-gui/goui/platform/mobile/internal/entry")) {
-		return fmt.Errorf("consumer did not reuse fixed entry archive")
+	var baseManifest struct {
+		Format int `json:"format"`
+	}
+	manifest, err := os.ReadFile(b.config.Base)
+	if err != nil {
+		return err
+	}
+	if err = json.Unmarshal(manifest, &baseManifest); err != nil {
+		return err
+	}
+	if err = verifyConsumerLog(data, baseManifest.Format); err != nil {
+		return err
 	}
 	if _, err = os.Stat(filepath.Join(b.fixture, "zz_goui_mobile_main.go")); !os.IsNotExist(err) {
 		return fmt.Errorf("consumer modified application source")
+	}
+	return nil
+}
+
+func verifyConsumerLog(data []byte, format int) error {
+	if bytes.Contains(data, []byte("/cgo -objdir")) {
+		return fmt.Errorf("consumer invoked the cgo compiler")
+	}
+	marker := "# goui base: "
+	switch format {
+	case 1:
+	case 2:
+		marker = "# goui recipe: "
+		if !bytes.Contains(data, []byte(marker+"runtime/cgo")) {
+			return fmt.Errorf("consumer did not reuse the runtime/cgo object recipe")
+		}
+	default:
+		return fmt.Errorf("unsupported base format %d", format)
+	}
+	if !bytes.Contains(data, []byte(marker+"github.com/golang-gui/goui/platform/mobile/internal/entry")) {
+		return fmt.Errorf("consumer did not reuse native entry support for base format %d", format)
 	}
 	return nil
 }
