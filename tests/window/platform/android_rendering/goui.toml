@@ -1,0 +1,10 @@
+id = "org.golanggui.AndroidRendering"
+name = "GOUI Android Rendering"
+executable = "android-rendering"
+main = "."
+version = "0.0.1"
+build = 1
+icon = "../../../../doc/logo/goui-mark.svg"
+
+[android]
+debuggable = true
