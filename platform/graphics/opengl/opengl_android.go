@@ -2,19 +2,17 @@ package opengl
 
 import (
 	"fmt"
-	"github.com/goexlib/cgo"
+
 	native "github.com/golang-gui/goui/platform/android/libs/android"
 	"github.com/golang-gui/goui/platform/android/libs/egl"
+	"github.com/golang-gui/goui/platform/android/libs/gles"
 	"github.com/golang-gui/goui/platform/common"
 )
-
-var gles = cgo.NewLazyLibrary("libGLESv3.so")
-var glFlush = gles.NewSymbol("glFlush")
-var glGetString = gles.NewSymbol("glGetString")
 
 type eglContext struct {
 	window mobileNativeWindow
 
+	// The default display is process-shared; this context never terminates it.
 	display          egl.Display
 	config           egl.Config
 	context          egl.Context
@@ -36,22 +34,35 @@ func newContext(win NativeWindow, share Context, config Config) (Context, error)
 	if c.display == 0 || egl.Initialize(c.display, nil, nil) == 0 {
 		return nil, fmt.Errorf("android: initialize EGL: %#x", egl.GetError())
 	}
-	attrs := []int32{egl.SurfaceType, egl.WindowBit | egl.PbufferBit, egl.RenderableType, egl.OpenGLES3Bit, egl.RedSize, 8, egl.GreenSize, 8, egl.BlueSize, 8, egl.AlphaSize, 8, egl.DepthSize, 24, egl.StencilSize, 8, egl.None}
+	attrs := []int32{
+		egl.SurfaceType, egl.WindowBit | egl.PbufferBit,
+		egl.RenderableType, egl.OpenGLES3Bit,
+		egl.RedSize, 8, egl.GreenSize, 8, egl.BlueSize, 8, egl.AlphaSize, 8,
+		egl.DepthSize, 24, egl.StencilSize, 8,
+		egl.None,
+	}
 	var chosen [1]egl.Config
 	count, ok := egl.ChooseConfig(c.display, attrs, chosen[:])
-	if ok == 0 || count != 1 {
+	if ok == 0 {
 		return nil, fmt.Errorf("android: select EGL ES3 configuration: %#x", egl.GetError())
+	}
+	if count != 1 {
+		return nil, fmt.Errorf("android: no matching EGL ES3 configuration")
 	}
 	c.config = chosen[0]
 	c.visual, ok = egl.GetConfigAttrib(c.display, c.config, egl.NativeVisualID)
 	if ok == 0 {
-		return nil, fmt.Errorf("android: EGL native visual unavailable")
+		return nil, fmt.Errorf("android: EGL native visual unavailable: %#x", egl.GetError())
 	}
 	c.context = egl.CreateContext(c.display, c.config, 0, []int32{egl.ContextClientVersion, 3, egl.None})
-	c.scratch = egl.CreatePbufferSurface(c.display, c.config, []int32{egl.Width, 1, egl.Height, 1, egl.None})
-	if c.context == 0 || c.scratch == 0 {
-		c.Destroy()
+	if c.context == 0 {
 		return nil, fmt.Errorf("android: create EGL context: %#x", egl.GetError())
+	}
+	c.scratch = egl.CreatePbufferSurface(c.display, c.config, []int32{egl.Width, 1, egl.Height, 1, egl.None})
+	if c.scratch == 0 {
+		err := fmt.Errorf("android: create EGL pbuffer: %#x", egl.GetError())
+		c.Destroy()
+		return nil, err
 	}
 	return c, nil
 }
@@ -88,19 +99,27 @@ func (c *eglContext) MakeCurrent() error {
 			c.handle = handle
 			c.generation = generation
 			if native.NativeWindowSetBuffersGeometry(handle, 0, 0, c.visual) != 0 {
-				c.ClearCurrent()
+				_ = c.ClearCurrent()
+				c.dropSurface()
 				return fmt.Errorf("android: set EGL buffer geometry")
 			}
 			c.surface = egl.CreateWindowSurface(c.display, c.config, handle, nil)
+			if c.surface == 0 {
+				err := fmt.Errorf("android: create EGL window surface: %#x", egl.GetError())
+				_ = c.ClearCurrent()
+				c.dropSurface()
+				return err
+			}
 		}
 		surface = c.surface
 	}
 	if surface == 0 || egl.MakeCurrent(c.display, surface, surface, c.context) == 0 {
+		err := fmt.Errorf("android: bind EGL context: %#x", egl.GetError())
 		if c.target != nil {
 			c.target.Release()
 			c.target = nil
 		}
-		return fmt.Errorf("android: bind EGL context: %#x", egl.GetError())
+		return err
 	}
 	c.current = true
 	return nil
@@ -108,7 +127,7 @@ func (c *eglContext) MakeCurrent() error {
 func (c *eglContext) ClearCurrent() error {
 	var err error
 	if c.current {
-		cgo.Call(glFlush.Addr())
+		gles.Flush()
 		if egl.MakeCurrent(c.display, 0, 0, 0) == 0 {
 			err = fmt.Errorf("android: unbind EGL: %#x", egl.GetError())
 		}
@@ -143,16 +162,13 @@ func (c *eglContext) GetProcAddress(name string) (uintptr, error) {
 	if address != 0 {
 		return address, nil
 	}
-	if err := gles.Load(); err != nil {
-		return 0, err
-	}
-	return cgo.Dlsym(gles.Handle(), name)
+	return gles.Lookup(name)
 }
 func (c *eglContext) GetExtensions() string {
 	if !c.current {
 		return ""
 	}
-	return cgo.GoString(cgo.Pointer(cgo.CallRet[uintptr](glGetString.Addr(), uint32(0x1f03))))
+	return gles.GetString(gles.Extensions)
 }
 func (c *eglContext) Destroy() {
 	_ = c.ClearCurrent()
