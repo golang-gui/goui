@@ -16,6 +16,7 @@ import (
 type TextLayout struct {
 	native        layoutPeer
 	fonts         *fontCollection
+	raster        textRaster
 	text          string
 	format        typography.TextFormat
 	width, height float32
@@ -33,6 +34,9 @@ func (t *TextLayout) Destroy() {
 	e := frame()
 	defer e.PopLocalFrame(0)
 	err := t.native.close(e)
+	if rasterErr := t.raster.destroy(e); err == nil {
+		err = rasterErr
+	}
 	e.DeleteGlobalRef(jni.Object(t.native))
 	t.native = 0
 	t.fonts.release(e)

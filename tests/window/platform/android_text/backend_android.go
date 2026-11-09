@@ -54,7 +54,7 @@ func (r *backendResult) run(name string, fn func()) {
 func verifyBackend(directory string) backendResult {
 	var result backendResult
 	result.run("jni", func() {
-		vm := jni.VM(ffi.CallRet[uintptr](symbol("goui_android_java_vm")))
+		vm := jni.VM(ffi.CallRet[uintptr](symbol("probe_java_vm")))
 		e, status := vm.GetEnv(jni.Version16)
 		if status != 0 {
 			panic(status)

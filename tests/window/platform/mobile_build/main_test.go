@@ -68,3 +68,26 @@ func TestShapingReference(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// 固定归档与对象 recipe 有不同证据；不能因入口 Go 源码恢复普通编译而跳过消费检查。
+func TestVerifyConsumerLog(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		format int
+		log    string
+		valid  bool
+	}{
+		{"archive", 1, "# goui base: github.com/golang-gui/goui/platform/mobile/internal/entry", true},
+		{"recipe", 2, "# goui recipe: runtime/cgo\n# goui recipe: github.com/golang-gui/goui/platform/mobile/internal/entry", true},
+		{"wrong-format", 2, "# goui base: github.com/golang-gui/goui/platform/mobile/internal/entry", false},
+		{"missing-runtime", 2, "# goui recipe: github.com/golang-gui/goui/platform/mobile/internal/entry", false},
+		{"native-compiler", 2, "/cgo -objdir /tmp\n# goui recipe: runtime/cgo\n# goui recipe: github.com/golang-gui/goui/platform/mobile/internal/entry", false},
+		{"unknown", 3, "", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := verifyConsumerLog([]byte(test.log), test.format); (err == nil) != test.valid {
+				t.Fatalf("消费证据错误：%v", err)
+			}
+		})
+	}
+}

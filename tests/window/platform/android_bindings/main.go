@@ -112,11 +112,12 @@ func main(){
     loop.Post(func(){
         expect(syscall.Gettid()==syscall.Getpid(),"not Android UI thread")
         expect(unsafe.Sizeof(native.Activity{})==80 && unsafe.Sizeof(native.WindowBuffer{})==48,"NDK ABI")
-        expect(check=="all" || check=="jni" || check=="egl" || check=="egl-null-query" || check=="text-sdk" || check=="text" || check=="text-bench","unknown check %q",check)
+        expect(check=="all" || check=="jni" || check=="egl" || check=="egl-null-query" || check=="text-sdk" || check=="text" || check=="text-bench" || check=="text-component","unknown check %q",check)
         if check=="all" || check=="jni" {stage("jni");verifyJNI()}
         if check=="text-sdk" || check=="text" {stage("text-sdk");verifyTextSDK()}
         if check=="text-bench" || check=="text" {stage("text-bench");verifyTextBench(p)}
         if check=="text" {stage("text-lifetime");verifyTextLifetime(p)}
+        if check=="text-component" {stage("text-component");_,err:=p.NewTypography();expect(err!=nil&&strings.Contains(err.Error(),"component ABI"),"component mismatch: %v",err);e,envErr:=androidruntime.Environment();must(envErr);expect(!e.ExceptionCheck(),"component exception leaked")}
         if check=="all" || check=="egl" {stage("egl");verifyEGL()}
         if check=="all" || check=="egl-null-query" {stage("egl-null-query");verifyNullQuery()}
         data,err:=json.Marshal(map[string]any{"passed":true,"check":check,"thread":syscall.Gettid(),"go":runtime.Version(),"text":textReport});must(err)
@@ -295,14 +296,14 @@ func verifyTextBench(p platform.Platform) {
 func verifyTextLifetime(p platform.Platform){
  context,err:=p.NewTypography();must(err)
  must(context.AddFont("/system/fonts/Roboto-Regular.ttf"))
- format:=typography.TextFormat{Font:typography.FontInfo{Family:"Roboto",Size:16},TextColor:color.RGBA{R:255,A:128}}
+ format:=typography.TextFormat{Font:typography.FontInfo{Family:"Roboto",Size:16},TextColor:color.RGBA{R:128,A:128}}
  a,err:=context.NewTextLayout("GO",format,240,80);must(err)
  b,err:=context.NewTextLayout("GO",format,240,80);must(err)
  before,err:=b.Rasterize(1,image.Rect(-8,-8,240,80),nil);must(err)
  _,clusters:=b.MeasureMetrics();expect(len(clusters)>0,"initial metrics")
  context.Destroy()
  a.SetTextFont(0,2,typography.FontInfo{Family:"Roboto",Size:28,Weight:typography.FontWeightBold})
- a.SetTextColor(0,2,color.RGBA{B:255,A:128})
+ a.SetTextColor(0,2,color.RGBA{B:128,A:128})
  w,h:=a.MeasureSize();expect(w>0 && h>0,"layout after Context.Destroy")
  for _,scale:=range []float32{1,2,1}{
   image,err:=a.Rasterize(scale,image.Rect(-8,-8,240,80),nil);must(err)

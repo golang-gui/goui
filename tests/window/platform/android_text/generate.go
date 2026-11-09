@@ -586,6 +586,8 @@ typedef struct {
 _Static_assert(sizeof(ProbeBitmap)==32 && offsetof(ProbeBitmap,pixels)==16,"test bitmap ABI");
 
 __attribute__((visibility("default"))) const char *probe_directory(void) { return directory; }
+// 测试自行保留 NativeActivity 交付的 VM，不依赖生产宿主的私有导出符号。
+__attribute__((visibility("default"))) JavaVM *probe_java_vm(void) { return vm; }
 __attribute__((visibility("default"))) int32_t probe_reference(void) {
     JNIEnv *env=NULL;
     if((*vm)->GetEnv(vm,(void**)&env,JNI_VERSION_1_6)!=JNI_OK)return -1;
