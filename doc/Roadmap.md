@@ -1,5 +1,18 @@
 # GOUI 实用化与未来路线
 
+## 当前优先：稳固移动平台（2026-11-09）
+
+先复核 Android/iOS 已有绑定、原生线程、系统宿主、绘制目标和资源生命周期，
+再用 platform-only 例程接入、验证原生触摸。以上验收后继续 GUI 手势和控件适配；
+暂不继续扩展上层行为。已完成的 GUI/UI Surface 保留，已有合成输入结果仍按原范围
+记录，不能代替原生输入可用性的证明。
+
+触摸沿用既有 PointerEvent 扩展和 GTK4 Gesture 风格，统一 PointerType 命名，
+复用现有竞争协议；实施顺序和进入上层条件见
+[平台稳固计划](PlanMobileAPI.md#7-平台实现稳固优先2026-11-09)与
+[触摸设计](DesignTouchInput.md)。IME、Popup、SafeArea 等按独立专题推进，
+不把所有尚未支持的系统能力变成平台稳固的前置。
+
 ## UI Surface 已接入（2026-11-08）
 
 声明层用 ui.Surface 领取系统宿主，ui.Window 保留主动管理。共享内容协调、命令、
@@ -8,8 +21,8 @@ Android/iOS ARM64 的 Software/GLES 已验证应用构建一次、计数局部�
 后台恢复与最终释放，Android 另覆盖旋转；桌面八组及全仓 4544 通过、11 既有
 跳过、0 失败。验证范围与首轮例程异步断言修正见
 [DesignPresentationHosts 第 12 节](DesignPresentationHosts.md#12-ui-surface-声明2026-11-08已实现)。
-下一步触摸事件与 GUI 手势，再独立接 IME；移动 Popup、SafeArea、真机和多 Scene
-按独立切片推进。合成输入不等于原生触摸、系统键盘或完整移动应用已经可用。
+2026-11-09 更新：先完成上方平台稳固与原生触摸验收，再进入 GUI 手势。IME、
+Popup、SafeArea、真机和多 Scene 独立推进；合成输入不等于原生触摸或系统键盘可用。
 
 ## GUI Surface 已接入（2026-11-08）
 

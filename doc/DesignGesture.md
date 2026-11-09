@@ -2,6 +2,10 @@
 
 > 状态：首版已接入 GUI 内核和内置控制器；跨平台原生接管与组合窗口场景仍需桌面验收。
 > 宿主公共状态保留 `rootBase` 名称，不引入新的公共 Root 对象。
+> 2026-11-09：下文已实现的单鼠标序列保持现状；触摸将沿用本协议，扩展为
+> 按接触路由、每个现有控制器实例同时一条序列。待实现方案见
+> [DesignTouchInput](DesignTouchInput.md)，当前先稳固平台并验证原生输入，
+> 不把该设计更新当作 GUI 已具备触摸支持。
 > 关联：[GUI 输入分发](../gui/event.go)、
 > [窗口 Chrome](DesignGUIWindowChrome.md)、[平台窗口交互接口](../platform/common/window.go)。
 

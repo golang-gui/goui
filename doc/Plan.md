@@ -1,5 +1,23 @@
 # Plan
 
+## 移动平台稳固优先（2026-11-09）
+
+- [x] 更新 [DesignTouchInput](DesignTouchInput.md)：沿用 PointerEvent 扩展及 GTK4
+  Gesture 方向，统一 PointerType 命名，补齐 Android/iOS 原生输入、主线程和取消
+  契约；GUI/UI 触摸仍为待实现方案，本轮仅修改文档。
+- [x] [PlanMobileAPI 第 7 节](PlanMobileAPI.md#7-平台实现稳固优先2026-11-09)
+  固定平台优先顺序与进入上层的条件；保留先前 GUI/UI Surface 成果作为回归消费者。
+- [x] 本轮仅文档：新增本地链接 13 项检查通过，git diff --check 通过；已跟踪源码
+  的独立 Xvnc/Xfwm4 副本执行 CGO_ENABLED=0 go test -json -count=1 ./...，
+  4544 通过、11 原条件跳过、0 失败。未执行新的原生触摸或远端验收。
+- [ ] 先复核现有绑定、线程、宿主/目标与资源生命周期，修复确定的问题并按职责整理。
+- [ ] 再接 PointerEvent 原生事实，用 platform-only 例程验收 Android/iOS 的阶段、
+  ID/索引、取消、坐标、原生线程及释放/恢复；两端 Software/GLES 与未覆盖项分别记录。
+- [ ] 平台验收后继续 GUI 按触点路由、单控制器单序列、点击/滚动竞争和触摸聚焦；
+  当前暂不开发这些上层行为或增加 UI 声明。
+- [ ] IME 另行设计，仍先验证平台事实；Popup/系统服务/SafeArea/真机等独立推进，
+  不把所有缺失能力都扩为本轮稳固前置。
+
 ## UI Surface 声明（2026-11-08）
 
 - [x] ui.Surface(id) 与 Root().Surface，保留 Window 的管理职责；共享 hostMount、
@@ -15,8 +33,9 @@
   Software/GLES 四组通过。应用构建一次、计数局部构建两次，输入/身份/订阅与最终
   释放符合预期；Android 四次旋转、两端两次后台恢复。初轮异步断言时序失败与最终
   证据见 [DesignPresentationHosts 第 12 节](DesignPresentationHosts.md#12-ui-surface-声明2026-11-08已实现)。
-- [ ] 下一切片原生触摸事实与 GUI 手势分发；随后 IME。Popup/SafeArea、多 Scene、
-  iOS 旋转、上下文丢失、真机及正式签名分别验证，不以合成输入替代。
+- [ ] 2026-11-09 调整：先稳固平台实现和原生触摸入口，验收后再做 GUI 手势；
+  随后独立推进 IME。Popup/SafeArea、多 Scene、iOS 旋转、上下文丢失、真机及
+  正式签名分别验证，不以合成输入替代。
 
 ## GUI Surface 共享内核（2026-11-08）
 
