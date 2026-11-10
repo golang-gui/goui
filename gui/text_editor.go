@@ -2047,7 +2047,10 @@ func (t *textEditor) showContextMenu(point *geometry.Point) {
 	position := geometry.Point{X: t.padding.Left, Y: t.padding.Top + t.lineHeight}
 	if point != nil {
 		position = *point
-		if !t.selectionContains(position) {
+		// The menu operates on the existing selection, even when requested at
+		// its trailing edge or elsewhere in this editor. Only an empty
+		// selection allows a pointer request to reposition the insertion point.
+		if t.selection.Anchor == t.selection.Caret {
 			t.moveTo(t.hitText(position), false)
 		}
 	} else if caret, ok := t.viewportCaret(t.displayLineAt(t.displayCaret().Offset), t.paragraphs[t.displayLineAt(t.displayCaret().Offset)]); ok {
@@ -2084,43 +2087,6 @@ func (t *textEditor) showContextMenu(point *geometry.Point) {
 	if err := menu.popup.ShowAt(position); err != nil {
 		log.Printf("goui: text context menu: %v", err)
 	}
-}
-
-// Hit the painted selection rather than the nearest caret: the last half of a
-// selected Cluster can map to its end boundary. Only shape the hit paragraph,
-// even if the selection spans a large document; bidi spans remain disjoint.
-func (t *textEditor) selectionContains(point geometry.Point) bool {
-	selected := t.selection.Range()
-	if selected.Start == selected.End {
-		return false
-	}
-	index := t.heights.At(point.Y + t.offset.Y - t.padding.Top)
-	rng := t.displayLineRange(index)
-	if selected.Start > rng.End || selected.End <= rng.Start {
-		return false
-	}
-	p := t.paragraph(index)
-	if p == nil {
-		return false
-	}
-	origin := t.paragraphOrigin(index, p)
-	point.X -= origin.X
-	point.Y -= origin.Y
-	g := p.editGeometry(t.lineHeight)
-	contains := func(rect geometry.Rectangle) bool {
-		return point.X >= rect.X && point.X < rect.X+rect.Width && point.Y >= rect.Y && point.Y < rect.Y+rect.Height
-	}
-	for _, rect := range g.Selection(TextRange{Start: selected.Start - rng.Start, End: selected.End - rng.Start}) {
-		if contains(rect) {
-			return true
-		}
-	}
-	if selected.End > rng.End && index+1 < t.displayLineCount() {
-		rect := g.Caret(textedit.Position{Offset: rng.End - rng.Start, Upstream: true})
-		rect.Width = max(1, t.lineHeight/3)
-		return contains(rect)
-	}
-	return false
 }
 
 func (t *textEditor) updateContextMenu() {

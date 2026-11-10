@@ -338,14 +338,21 @@ func TestTextEditorContextMenuPointerAndDismiss(t *testing.T) {
 	}
 	editorKey(t, win, events.KeyEscape, 0)
 	rightClick(54)
-	if editor.selection != (TextSelection{Anchor: 5, Caret: 5}) || !pm.Visible() || len(plat.natives) != 1 {
-		t.Fatal("right click outside selection did not position caret/reuse popup")
+	if editor.selection != (TextSelection{Anchor: 4, Caret: 1}) || !pm.Visible() || len(plat.natives) != 1 {
+		t.Fatal("选区外右键没有保留原选区或复用菜单")
 	}
 	// The first outside click only dismisses; it does not move the caret.
 	win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonLeft, Position: geometry.Point{X: 4, Y: 12}})
-	if pm.Visible() || editor.selection != (TextSelection{Anchor: 5, Caret: 5}) {
+	if pm.Visible() || editor.selection != (TextSelection{Anchor: 4, Caret: 1}) {
 		t.Fatal("outside click leaked into editor")
 	}
+	// 无选区时仍在右键位置定位，保留粘贴的插入位置语义。
+	editor.setSelectionValue(TextSelection{Anchor: 1, Caret: 1})
+	rightClick(54)
+	if editor.selection != (TextSelection{Anchor: 5, Caret: 5}) || !pm.Visible() || editor.contextMenu.items[textCopy].Enabled() {
+		t.Fatal("无选区右键未定位光标，或错误启用复制")
+	}
+	editorKey(t, win, events.KeyEscape, 0)
 	// Shift+F10 preserves the selection and anchors at the caret bottom.
 	editor.setSelectionValue(TextSelection{Anchor: 1, Caret: 3})
 	editorMenuOpen(t, editor, win)
@@ -355,6 +362,101 @@ func TestTextEditorContextMenuPointerAndDismiss(t *testing.T) {
 	win.DispatchEvent(events.FocusEvent{Focused: false})
 	if pm.Visible() || win.modalTarget != nil {
 		t.Fatal("window focus loss retained menu")
+	}
+}
+
+// 使用正常拖选与完整次键序列，不等待时间窗口。覆盖末端精确命中、微移、
+// 选区外文字和顶部留白；菜单复制应保留方向、快照与正文，且不产生选择通知。
+func TestTextEditorContextMenuPreservesDraggedSelection(t *testing.T) {
+	for _, singleLine := range []bool{false, true} {
+		for _, reverse := range []bool{false, true} {
+			for _, tc := range []struct {
+				name  string
+				point geometry.Point
+			}{
+				{"inside", geometry.Point{X: 24, Y: 12}},
+				{"leading-edge", geometry.Point{X: 14, Y: 12}},
+				{"trailing-edge", geometry.Point{X: 44, Y: 12}},
+				{"trailing-drift", geometry.Point{X: 45, Y: 12}},
+				{"other-text", geometry.Point{X: 54, Y: 12}},
+				{"empty-area", geometry.Point{X: 180, Y: 12}},
+				{"top-padding", geometry.Point{X: 24, Y: 1}},
+			} {
+				t.Run(fmt.Sprintf("single=%t/reverse=%t/%s", singleLine, reverse, tc.name), func(t *testing.T) {
+					editor, win, _, clip := newEditorMenuFixture(t, singleLine)
+					anchor, caret := editor.padding.Left+10, editor.padding.Left+40
+					point := tc.point
+					point.X += editor.padding.Left - 4
+					want := TextSelection{Anchor: 1, Caret: 4}
+					if reverse {
+						anchor, caret = caret, anchor
+						want = TextSelection{Anchor: 4, Caret: 1}
+					}
+					for _, event := range []events.PointerEvent{
+						{EventType: events.PointerDown, Button: events.PointerButtonLeft, Position: geometry.Point{X: anchor, Y: 12}},
+						{EventType: events.PointerMove, Buttons: events.PointerButtonLeftDown, Position: geometry.Point{X: caret, Y: 12}},
+						{EventType: events.PointerUp, Button: events.PointerButtonLeft, Position: geometry.Point{X: caret, Y: 12}},
+					} {
+						if err := win.DispatchEvent(event); err != nil {
+							t.Fatal(err)
+						}
+					}
+					if editor.selection != want || editor.input.CapturingPointer() {
+						t.Fatalf("拖选前置条件错误：%+v，预期 %+v", editor.selection, want)
+					}
+					changes := 0
+					editor.connectSelection(func(TextSelection) { changes++ })
+					for _, kind := range []events.EventType{events.PointerDown, events.PointerUp} {
+						if err := win.DispatchEvent(events.PointerEvent{EventType: kind, Button: events.PointerButtonRight, Position: point}); err != nil {
+							t.Fatal(err)
+						}
+						if editor.selection != want || changes != 0 {
+							t.Fatal("次键按下或抬起改变了已拖选的范围", editor.selection, changes)
+						}
+					}
+					menu := editor.contextMenu
+					if menu == nil || !menu.popup.Visible() || !menu.items[textCopy].Enabled() || menu.popup.popover.Position() != point {
+						t.Fatal("菜单未按次键位置打开或复制被禁用")
+					}
+					info := editor.owner.Snapshot()
+					if info.TextEditing == nil || info.TextEditing.Selection != want {
+						t.Fatal("快照没有保留拖选范围")
+					}
+					editorMenuClick(t, menu.popup, menu.items[textCopy].Label())
+					if clip.text != "bcd" || clip.pending != nil || editor.model.Text() != "abcdef" || editor.selection != want || changes != 0 || menu.popup.Visible() {
+						t.Fatal("菜单复制未精确复制原选区，或产生了编辑/选择副作用", clip.text, editor.selection, changes)
+					}
+				})
+			}
+		}
+	}
+}
+
+// 保留原有无选区右键定位：随后执行菜单粘贴，应插入右键位置而非旧光标。
+func TestTextEditorContextMenuEmptySelectionUsesPointerPosition(t *testing.T) {
+	for _, singleLine := range []bool{false, true} {
+		t.Run(fmt.Sprintf("single=%t", singleLine), func(t *testing.T) {
+			editor, win, _, clip := newEditorMenuFixture(t, singleLine)
+			editor.setSelectionValue(TextSelection{Anchor: 1, Caret: 1})
+			point := geometry.Point{X: editor.padding.Left + 50, Y: 12}
+			for _, kind := range []events.EventType{events.PointerDown, events.PointerUp} {
+				if err := win.DispatchEvent(events.PointerEvent{EventType: kind, Button: events.PointerButtonRight, Position: point}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			menu := editor.contextMenu
+			if editor.selection != (TextSelection{Anchor: 5, Caret: 5}) || menu == nil || !menu.popup.Visible() || menu.items[textCopy].Enabled() {
+				t.Fatal("无选区右键没有在指定位置打开菜单或复制状态错误")
+			}
+			editorMenuClick(t, menu.popup, menu.items[textPaste].Label())
+			if clip.pending == nil {
+				t.Fatal("菜单粘贴没有请求剪贴板")
+			}
+			clip.pending("+", nil)
+			if editor.model.Text() != "abcde+f" || editor.selection != (TextSelection{Anchor: 6, Caret: 6}) {
+				t.Fatal("粘贴没有使用右键定位的插入点", editor.model.Text(), editor.selection)
+			}
+		})
 	}
 }
 
@@ -1380,8 +1482,11 @@ func TestTextViewLongHorizontalHitAndCaret(t *testing.T) {
 	if caret, ok := v.viewportCaret(0, p); !ok || caret.X != 208 {
 		t.Fatal("光标位置与局部选区不一致", caret, ok)
 	}
-	if !v.selectionContains(geometry.Point{X: 15, Y: 14}) || v.selectionContains(geometry.Point{X: 215, Y: 14}) {
-		t.Fatal("选区命中使用了不同坐标系")
+	// 右键已不依赖选区命中；保留原来的大偏移覆盖，直接验证用于绘制的局部选区。
+	origin := v.paragraphOrigin(0, p)
+	rects := v.visibleSelection(p, TextRange{Start: first, End: first + 20}, origin)
+	if len(rects) != 1 || rects[0].Translate(origin) != geometry.Rect(8, 4, 200, 20) {
+		t.Fatal("选区绘制使用了不同坐标系", rects, origin)
 	}
 	v.longPending = false
 	editorKey(t, win, events.KeyEnd, 0)

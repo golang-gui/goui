@@ -57,9 +57,11 @@
 //     不包含预编辑、组合不被重建打断；提交后正文才增加，取消则正文不变。
 //     再次点击 Auto rebuild 停止计时；退出应用也自动停止。不要在组合过程中
 //     点击按钮换焦点，将焦点切换引起的取消误认为重建问题。
-//  10. 在单行框和 Notes 中分别选中一段文字，在高亮区域（包括末字符右半边）右键：
-//     出现 Undo/Redo、Cut/Copy/Paste/Delete、Select All，原选区不变。右键选区外
-//     移动插入点；macOS 同时验证 Control+左键。菜单沿用 modern 圆角、阴影与颜色。
+//  10. 在单行框和 Notes 中分别双向拖选一段文字，松开左键后立即在选区末端、
+//     选区外其他文字及控件留白处右键：出现 Undo/Redo、Cut/Copy/Paste/Delete、
+//     Select All，原选区及方向不变，Copy 精确复制拖选文字，不要求再次点击高亮。
+//     先左键收起选区，再在另一位置右键：插入点移到右键位置，Paste 从此处插入；
+//     macOS 同时验证 Control+左键。菜单沿用 modern 圆角、阴影与颜色。
 //     Copy 不改变文本；Cut/Delete 仅删除选区，Primary+Z 一次恢复文本和原选区；
 //     Paste 替换选区，单行中的换行变空格，Notes 保留换行；Undo/Redo 可互相恢复。
 //     无选区时 Cut/Copy/Delete 禁用；Readonly 时仅 Copy/Select All 可用。
