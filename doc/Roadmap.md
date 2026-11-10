@@ -307,6 +307,9 @@ Windows RDP OpenGL 缺口和实际测试范围见 [Plan](Plan.md)。详细契约
 不属于当前能力，按具体需求另行设计。
 
 ButtonGroup 的 C 形边框端点改为垂直封口，像素对齐的共享接缝已补回归。
+2026-11-10：同色不透明的完整边框与背景合并一次外轮廓填充，修正Modern选中／
+三态CheckButton角内漏像素；Software/OpenGL/Direct2D的指定宿主验证通过，
+没有修改主题或Painter接口。验证范围及未验收项见[圆角设计](DesignCornerRadius.md#同色不透明填充的圆角接缝2026-11-10)。
 待评估：独立 Path 在分数物理坐标相接时，AA 覆盖按 Over 合成可能产生细线；
 1.25x 下两个普通相邻矩形 Path 也能复现。像素对齐或联合覆盖需要单独设计，
 不能以按钮几何偏移、扩大绘制范围或降低断言掩盖；本轮不扩展 Painter。

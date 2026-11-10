@@ -79,6 +79,44 @@ PaintStyledBorder 仍只绘边框。ButtonGroup 只内缩实际拥有的边，�
 单独绘制的预乘 RGBA 比较；同时检查半透明层在直边满覆盖处和中心的 Over。
 窗口例程对同一蓝底／浅灰边框加1x／2x颜色断言，实际覆盖 OpenGL 的已报告场景。
 
+### 同色不透明填充的圆角接缝（2026-11-10）
+
+Modern选中／三态CheckButton的背景与1 DIP全边框同色。此前不透明边框的背景
+内缩与矩形像素对齐组合后，内背景与边框中心线可能分别取整，造成角内透明洞及
+右下轮廓不均。旧实现的Software 1x回归在形内像素得到RGBA(29,74,121,158)，
+独立几何预期为完全覆盖的(48,120,196,255)；修改控件颜色或半径不能修复该接缝。
+
+PaintStyledBox在全边框宽度有效、边框不透明、背景与边框完整RGBA值完全相同时，
+只填充一次原始外轮廓。比较复用core/colors.Equal的16位分量，支持不同color.Color
+实现，不能先量化8位或比较接口身份。保留原半径归一、像素对齐、Transform及clip，
+不改变样式参数、Painter接口或后端。异色、选边、透明、半透明组合及独立背景／
+边框helper仍走原有规则；本次不是任意两个AA覆盖层的合并方案。
+
+验证范围：
+
+- 包内指令回归覆盖等价颜色类型、16位微小差异、半透明、选边与零边宽；Software
+  独立圆方程验证1x/1.25x/1.5x/2x、小数平移、旋转、不同四角及粗细边框。
+  整颗形内像素须alpha=255，颜色仅容许1级量化差异；保留外缘AA。
+- Modern实际CheckButton覆盖亮暗、选中／三态、正常／悬停／按下／禁用；边缘使用
+  独立圆覆盖率，沿用Basic既有10级路径近似容差，角内不放宽alpha断言。既有异色、
+  半透明Over、选边及Basic像素回归保持通过。
+- 已跟踪源码及本次文件的隔离副本，独立Xvnc/Xfwm4全仓4805通过、11既有条件跳过、
+  0失败；定向gui/widgets/theme race与相关vet通过。原工作区`go test ./...`因已有
+  未跟踪旧例程的platform.Window接口和ui/window_lookup_test.go旧字段编译失败，
+  未删除或修改这些文件。受影响包、Demo及新窗口程序Windows amd64/macOS arm64
+  的CGO_ENABLED=0交叉编译通过。
+- 新增tests/window/widgets/check_button_corners，真实宿主RenderWidget检查Basic／
+  Modern亮暗、状态输入和Snapshot。Linux独立X11、Xfwm4合成、Software/OpenGL
+  宿主1x/1.25x/1.5x/2x，Windows 10 19045交互Session 1的Direct2D
+  同四档宿主缩放，以及macOS 15.7.7 arm64 OpenGL宿主1x/2x的自动断言通过。
+  每次还检查离屏1x/1.25x/1.5x/2x；应用缩放不等同于系统混合DPI。
+- Windows SSH Session 0的初次运行没有实际绘制记录，被测试拒绝，未计通过；
+  改用交互桌面执行后，已确认实际Direct2D，没有把Software回退计入。
+  Windows另在1x实际点击切换亮暗，截图复核选中／三态方框及单选轮廓，并正常关闭。
+  证据位于临时目录`/tmp/goui-check-corners-7nkpn2bm`；窗口和任务仅用于本次验证。
+- 未执行移动设备、Windows OpenGL、真实硬件GPU和系统混合DPI验收；本次不修复
+  异色细边框在任意分数坐标下的背景／描边联合覆盖问题，需另行设计与回归。
+
 ## 阴影与后端
 
 阴影先归一源轮廓，按 Offset 平移、Spread 扩缩后重新归一四角；无效原始阴影参数

@@ -1,5 +1,19 @@
 # Plan
 
+## 同色背景与边框的圆角接缝（2026-11-10）
+
+- [x] 复现Modern选中／三态CheckButton角内alpha仅158的漏像素；通用PaintStyledBox
+  对同色、不透明的全边框与背景只填充一次外轮廓，不改控件、主题或Painter接口。
+- [x] 颜色按完整16位RGBA比较；保留异色、半透明、选边和独立helper契约。新增
+  独立几何／颜色指令回归与真实控件的多状态、小数位置、Transform／缩放像素回归。
+- [x] 已跟踪源码隔离全仓4805通过、11既有跳过、0失败；定向race/vet及Windows／
+  macOS受影响目标编译通过。原工作区旧未跟踪测试编译失败，未改无关文件。
+- [x] 独立X11 Software/OpenGL与交互Windows Direct2D宿主1x/1.25x/1.5x/2x，
+  macOS OpenGL宿主1x/2x的真实宿主像素断言通过；窗口程序拒绝后端回退。
+- [ ] 移动设备、Windows OpenGL、硬件GPU和系统混合DPI未验收；异色细边框的
+  任意分数坐标联合覆盖另行设计。范围与失败记录见
+  [圆角接缝修正](DesignCornerRadius.md#同色不透明填充的圆角接缝2026-11-10)。
+
 ## 文本右键菜单保留选区（2026-11-10）
 
 - [x] TextInput/TextView 已有非空选区时，右键仅决定菜单位置，不因端点、轻微移动

@@ -61,7 +61,12 @@ See [CornerRadius](DesignCornerRadius.md) for geometry, painting and migration.
 
 `PaintStyledBox` keeps a background's AA boundary beneath an opaque border's
 centerline, reducing the background rectangle and corner radii by half the border
-width. The border's outer bounds and layout stay unchanged. Translucent borders
+width. When the background and full border have exactly the same opaque RGBA
+value, it paints their outer silhouette once instead; independently snapping the
+inset fill and stroke would otherwise leave holes at small rounded corners.
+The comparison uses full 16-bit RGBA values, regardless of color implementation.
+Different colors, partial borders, and translucent layers keep their existing
+composition. The border's outer bounds and layout stay unchanged. Translucent borders
 retain the full background underneath them. The standalone background/border
 helpers preserve their separate contracts; no painter layers or resource caches
 are added. See the [background edge correction](DesignCornerRadius.md#不透明边框下的背景外缘2026-11-04).
