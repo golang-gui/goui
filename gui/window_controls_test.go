@@ -94,24 +94,6 @@ func TestRectangularCaptionAppearance(t *testing.T) {
 						t.Fatal("ordinary caption hover must use a neutral translucent fill")
 					}
 				}
-				// Linux's circular presentation retains its independent palette.
-				button.circular = true
-				palette := win.decorationPalette(true)
-				for _, focused := range []bool{false, true} {
-					win.setFocused(focused)
-					for state, expected := range []color.Color{palette.button, palette.hovered, palette.pressed} {
-						button.updateState(style.Hovered, state == 1)
-						button.SetState(style.Pressed, state == 2)
-						s := button.decorationStyle()
-						circle, _ := s.BackgroundColor()
-						ink, _ := s.ForegroundColor()
-						radius, _ := s.CornerRadius()
-						if !colors.Equal(circle, expected) || !colors.Equal(ink, palette.foreground) ||
-							radius != geometry.UniformCornerRadius(circularControlDiameter/2) || button.decorationBrush(ink) != graphics.ColorOf(ink) {
-							t.Fatal("circular decoration appearance changed")
-						}
-					}
-				}
 			}
 			win.paintDirty = false
 			win.setFocused(false)
@@ -119,6 +101,125 @@ func TestRectangularCaptionAppearance(t *testing.T) {
 				t.Fatal("activation change did not repaint controls")
 			}
 		})
+	}
+}
+
+// Linux 的失活图形应减弱对比，不能冒充 Disabled；三种按钮保留独立的交互反馈。
+func TestCircularCaptionAppearance(t *testing.T) {
+	for _, tc := range []struct {
+		name                 string
+		window, active       uint8
+		background, inactive [3]uint8
+	}{
+		{"light", 245, 50, [3]uint8{232, 215, 195}, [3]uint8{141, 133, 123}},
+		{"dark", 32, 240, [3]uint8{64, 80, 48}, [3]uint8{152, 160, 144}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			useTestApplication(t, &application{style: style.Sheet(style.Name(styleNameWindow).BackgroundColor(color.Gray{tc.window}))})
+			win, _ := chromeFixture(t, false, true)
+			for _, b := range win.controls.buttons {
+				b.circular = true
+			}
+			for _, focused := range []bool{true, false, true} {
+				win.paintDirty = false
+				if err := win.DispatchEvent(events.FocusEvent{Focused: focused}); err != nil {
+					t.Fatal(err)
+				}
+				if !win.paintDirty {
+					t.Fatal("窗口焦点变化未请求装饰重绘")
+				}
+				for _, b := range win.controls.buttons {
+					bounds := b.Snapshot().Bounds
+					for state := range 3 {
+						b.updateState(style.Hovered, state == 1)
+						b.SetState(style.Pressed, state == 2)
+						s := b.decorationStyle()
+						bg, _ := s.BackgroundColor()
+						fg, _ := s.ForegroundColor()
+						want := tc.active
+						if !focused {
+							want = tc.inactive[state]
+						}
+						if !colors.Equal(bg, color.Gray{tc.background[state]}) || !colors.Equal(fg, color.Gray{want}) {
+							t.Fatalf("focus=%t state=%d: background=%v foreground=%v，预期 %d/%d", focused, state, bg, fg, tc.background[state], want)
+						}
+						if !b.Enabled() || b.State().Has(style.Disabled) || b.Snapshot().Bounds != bounds {
+							t.Fatal("失活外观改变了启用状态或命中区域")
+						}
+						if brush := b.decorationBrush(fg); brush != graphics.RGB(want, want, want) {
+							t.Fatal("失活图形画刷不应依赖半透明叠加")
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+// 1x 下在透明预乘 RGBA 目标逐像素核对独立的 2 DIP 几何掩码；整数直边应完全覆盖。
+// 最小化为 8×2 实心横线，最大化为外 8×8/内 4×4 方框；还原含完整的右上直角。
+// 灰度值允许 1/255 输出量化误差；关闭 X 的中心和远离交点处必须同色、不叠出深色。
+func TestCircularCaptionGlyphPixels(t *testing.T) {
+	useTestApplication(t, &application{style: style.Sheet(style.Name(styleNameWindow).BackgroundColor(color.Gray{245}))})
+	win, native := chromeFixture(t, false, true)
+	for _, b := range win.controls.buttons {
+		b.circular = true
+	}
+	backend, err := software.NewPainter(new(captionPixelTarget))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer backend.Destroy()
+	for _, focused := range []bool{true, false} {
+		win.setFocused(focused)
+		wantColor := uint8(50)
+		if !focused {
+			wantColor = 141
+		}
+		for _, state := range []WindowState{WindowStateNormal, WindowStateMaximized} {
+			native.state = state
+			for index := range 3 {
+				glyph := &captionIcon{controls: win.controls, index: index}
+				glyph.Arrange(geometry.Rect(8, 8, 12, 12))
+				img, err := backend.RenderImage(32, 32, 1, func() {
+					paintWidget(glyph, newPainter(backend, geometry.Rect(0, 0, 32, 32), 1))
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				check := func(x, y int, ink bool) {
+					t.Helper()
+					r, g, b, a := img.At(x, y).RGBA()
+					if !ink {
+						if a != 0 {
+							t.Fatalf("index=%d state=%v (%d,%d)：外侧或方框内应为空，alpha=%d", index, state, x, y, a)
+						}
+						return
+					}
+					if a != 65535 || r != g || g != b || math.Abs(float64(r)/257-float64(wantColor)) > 1 {
+						t.Fatalf("focus=%t index=%d state=%v (%d,%d)：RGBA=%d/%d/%d/%d，预期灰度 %d 且完全覆盖", focused, index, state, x, y, r, g, b, a, wantColor)
+					}
+				}
+				if index == 2 {
+					check(14, 14, true)
+					check(12, 12, true)
+					continue
+				}
+				for y := range 32 {
+					for x := range 32 {
+						ink := x >= 10 && x < 18 && y >= 13 && y < 15
+						if index == 1 && state == WindowStateNormal {
+							ink = x >= 10 && x < 18 && y >= 10 && y < 18 && !(x >= 12 && x < 16 && y >= 12 && y < 16)
+						} else if index == 1 {
+							front := x >= 10 && x < 16 && y >= 12 && y < 18 && !(x >= 12 && x < 14 && y >= 14 && y < 16)
+							back := x >= 13 && x < 18 && y >= 10 && y < 12 || x >= 16 && x < 18 && y >= 10 && y < 15
+							ink = front || back
+						}
+						check(x, y, ink)
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -498,12 +599,12 @@ func TestCloseCaptionGlyphDevicePlacement(t *testing.T) {
 				for _, scale := range []float32{0, 1, 1.25, 1.5, 1.75, 2} {
 					p := &captionPixelRecorder{scale: scale}
 					icon.Paint(p)
-					if len(p.points) != 4 || len(p.widths) != 2 || p.widths[0] != 1 || p.widths[1] != 1 {
-						t.Fatal("关闭图标必须仍为两条 1 DIP 斜线")
-					}
-					span := float32(10)
+					span, stroke := float32(10), float32(1)
 					if circular {
-						span = 8
+						span, stroke = 7, 2
+					}
+					if len(p.points) != 4 || len(p.widths) != 2 || p.widths[0] != stroke || p.widths[1] != stroke {
+						t.Fatalf("关闭图标必须为两条 %g DIP 斜线", stroke)
 					}
 					a, b, c, d := p.points[0], p.points[1], p.points[2], p.points[3]
 					if b.X-a.X != span || b.Y-a.Y != span || c.X != b.X || c.Y != a.Y || d.X != a.X || d.Y != b.Y {
@@ -547,6 +648,10 @@ func TestCloseCaptionGlyphPixelCoverage(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(backend.Destroy)
+		stroke := float64(1)
+		if circular {
+			stroke = 2
+		}
 		for _, scale := range []float32{1, 1.25, 1.5, 1.75, 2} {
 			var reference *image.RGBA
 			for _, x := range []float32{17, 17.25, 17.5} {
@@ -562,7 +667,7 @@ func TestCloseCaptionGlyphPixelCoverage(t *testing.T) {
 					cx := int(math.Floor(float64((x+6)*scale) + 0.5))
 					cy := int(math.Floor(float64(height*scale/2) + 0.5))
 					_, _, _, alpha := img.At(cx-2, cy-2).RGBA()
-					want := 1 - math.Pow(max(0, 1-float64(scale)/math.Sqrt2), 2)
+					want := 1 - math.Pow(max(0, 1-stroke*float64(scale)/math.Sqrt2), 2)
 					if math.Abs(float64(alpha)/65535-want) > 3.0/255 {
 						t.Fatalf("circular=%t scale=%g x=%g height=%g: 斜线覆盖率=%g，独立面积预期=%g", circular, scale, x, height, float64(alpha)/65535, want)
 					}

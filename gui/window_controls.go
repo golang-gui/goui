@@ -119,7 +119,13 @@ func (b *captionButton) decorationStyle() style.Style {
 	} else if b.State().Has(style.Hovered) {
 		background = palette.hovered
 	}
-	return style.Default().BackgroundColor(background).ForegroundColor(palette.foreground).
+	foreground := palette.foreground
+	if !b.window.Focused() {
+		// Equivalent to half-opacity ink over the opaque circle. Keep the brush
+		// opaque so intersecting strokes do not accumulate alpha at the close X.
+		foreground.Y = uint8((uint16(foreground.Y) + uint16(background.Y) + 1) / 2)
+	}
+	return style.Default().BackgroundColor(background).ForegroundColor(foreground).
 		Radius(circularControlDiameter / 2).Style
 }
 
@@ -142,9 +148,8 @@ func (b *captionButton) decorationBrush(c color.Color) graphics.Color {
 	if b.circular {
 		return graphics.ColorOf(c) // Preserve Linux's existing decoration path.
 	}
-	// Graphics brushes use straight alpha. ColorOf currently returns
-	// premultiplied RGB; feeding it translucent white applies alpha twice.
-	// Keep this correction local until the shared color contract is reconciled.
+	// Rectangular caption colors use byte precision. RGBA converts these
+	// straight components to the premultiplied brush required by Painter.
 	n := color.NRGBAModel.Convert(c).(color.NRGBA)
 	return graphics.RGBA(n.R, n.G, n.B, n.A)
 }
@@ -251,12 +256,12 @@ type captionIcon struct {
 func (i *captionIcon) Paint(p Painter) {
 	foreground, _ := i.controls.buttons[i.index].decorationStyle().ForegroundColor()
 	brush := i.controls.buttons[i.index].decorationBrush(foreground)
-	// Keep the 12 DIP icon allocation and 1 DIP stroke. Only the Linux
-	// circular presentation uses a smaller glyph; button hit boxes are unchanged.
-	left, right := float32(1), float32(11)
 	if i.controls.buttons[i.index].circular {
-		left, right = 2, 10
+		i.paintCircular(p, brush)
+		return
 	}
+	// Rectangular caption glyphs use a 1 DIP stroke in the 12 DIP allocation.
+	left, right := float32(1), float32(11)
 	span := right - left
 	switch i.index {
 	case 0:
@@ -273,14 +278,41 @@ func (i *captionIcon) Paint(p Painter) {
 		// Position the whole X on the device pixel grid. Centering in an odd
 		// titlebar height otherwise weakens both diagonals. Keep their slope,
 		// length and stroke width; only the glyph's visual center moves.
-		var offset geometry.Point
-		if scale := float64(p.PixelScale()); scale > 0 {
-			origin := i.windowRect().Pos
-			cx, cy := float64(origin.X)+6, float64(origin.Y)+6
-			offset.X = float32(math.Round(cx*scale)/scale - cx)
-			offset.Y = float32(math.Round(cy*scale)/scale - cy)
-		}
+		offset := i.glyphOffset(p)
 		p.DrawLine(geometry.Point{X: left, Y: left}.Add(offset), geometry.Point{X: right, Y: right}.Add(offset), 1, brush)
 		p.DrawLine(geometry.Point{X: right, Y: left}.Add(offset), geometry.Point{X: left, Y: right}.Add(offset), 1, brush)
 	}
+}
+
+// Circular controls use a 2 DIP stroke within an approximately 8 DIP silhouette.
+// Inset the square and shorten the X rather than expanding their visible bounds.
+func (i *captionIcon) paintCircular(p Painter, brush graphics.Color) {
+	offset := i.glyphOffset(p)
+	switch i.index {
+	case 0:
+		p.DrawLine(geometry.Point{X: 2, Y: 6}.Add(offset), geometry.Point{X: 10, Y: 6}.Add(offset), 2, brush)
+	case 1:
+		if i.controls.window.State() == WindowStateMaximized {
+			back := graphics.Path{}.Grow(9).MoveTo(5+offset.X, 3+offset.Y).
+				LineTo(9+offset.X, 3+offset.Y).LineTo(9+offset.X, 7+offset.Y)
+			p.DrawPath(back, 2, brush)
+			p.DrawRect(geometry.Rect(3+offset.X, 5+offset.Y, 4, 4), 2, brush)
+		} else {
+			p.DrawRect(geometry.Rect(3+offset.X, 3+offset.Y, 6, 6), 2, brush)
+		}
+	case 2:
+		p.DrawLine(geometry.Point{X: 2.5, Y: 2.5}.Add(offset), geometry.Point{X: 9.5, Y: 9.5}.Add(offset), 2, brush)
+		p.DrawLine(geometry.Point{X: 9.5, Y: 2.5}.Add(offset), geometry.Point{X: 2.5, Y: 9.5}.Add(offset), 2, brush)
+	}
+}
+
+// Align the glyph's complete visual center without changing its layout or hit box.
+func (i *captionIcon) glyphOffset(p Painter) (offset geometry.Point) {
+	if scale := float64(p.PixelScale()); scale > 0 {
+		origin := i.windowRect().Pos
+		cx, cy := float64(origin.X)+6, float64(origin.Y)+6
+		offset.X = float32(math.Round(cx*scale)/scale - cx)
+		offset.Y = float32(math.Round(cy*scale)/scale - cy)
+	}
+	return
 }

@@ -2,7 +2,7 @@
 //
 // 环境：Windows、Linux X11 或 macOS 桌面；记录 OS/WM、实际后端与缩放。
 // 启动：GOUI_PLAT_PAINTER=software GOUI_PLAT_SCALE=1 go run ./tests/window/ui/pixel_snap
-// 可选 -height 41 指定初始 HeaderBar 高度，-dark 以暗色启动。
+// 可选 -height 41 指定初始 HeaderBar 高度，-dark 以暗色启动；-peer 增加焦点对照窗口。
 // Windows PowerShell 先设置上述环境变量；另用 opengl/direct2d（仅 Windows）作对照。
 // 初始：Modern 亮色 Integrated 窗口，计数 0，HeaderBar 高度 40 DIP；
 // 第二排按钮高度为 35.25 DIP。终端输出实际高度请求、后端和 PixelScale。
@@ -18,13 +18,17 @@
 //     计数保留，普通/Primary 及小数高度按钮的边框均完整，无浅色带或漏背景。
 //  3. 拖动标题栏、改变窗口大小，再最大化/还原；控件保持可操作，边框不变虚。
 //     Windows 还应检查还原状态的重叠方框。macOS 原生红绿灯不属于 Software 绘制。
-//  4. 用 GOUI_PLAT_SCALE=1.25/1.5/2 重启。保留 1 DIP 宽度：非整数物理宽度
+//  4. 用 GOUI_PLAT_SCALE=1.25/1.5/2 重启。Windows 图形为 1 DIP、Linux 圆形图形为 2 DIP：非整数物理宽度
 //     的内边缘存在部分覆盖是预期；外边界应与背景一致。整数像素宽度不得分摊。
 //     环境变量只表示请求，终端输出实际图片后端与 PixelScale。
+//  5. Linux Integrated 用 -peer 启动，在两个窗口间点击切换焦点。主窗口激活时三个
+//     图形清晰、粗细协调，失活时均减弱为灰色；圆形仍可见，重新激活恢复原色。
+//     悬停/按下保留背景反馈；点击最大化切换后还原图形的右上直角完整，关闭仍有效。
+//     FOCUS 日志应对应实际焦点变化；改变高度后图形不膨胀，按钮仍居中。
 //
 // 本例用于桌面呈现/操作；精确覆盖率、负坐标、Path/变换保真在 Software 包内断言。
 // 副作用：仅创建窗口和输出日志，不改系统设置、文件或剪贴板。
-// 复位：重启程序。退出：关闭主窗口。
+// 复位：重启程序。退出：关闭主窗口；启用 -peer 时关闭两个窗口。
 package main
 
 import (
@@ -41,6 +45,7 @@ import (
 func main() {
 	heightFlag := flag.Float64("height", 40, "初始 HeaderBar 高度（DIP，至少 40）")
 	darkFlag := flag.Bool("dark", false, "以暗色启动")
+	peerFlag := flag.Bool("peer", false, "增加用于切换窗口焦点的对照窗口")
 	flag.Parse()
 	if math.IsNaN(*heightFlag) || math.IsInf(*heightFlag, 0) || *heightFlag < 40 || *heightFlag > math.MaxFloat32 {
 		panic("height must be finite and at least 40 DIP")
@@ -49,6 +54,7 @@ func main() {
 	height := float32(*heightFlag)
 	heights := []float32{40, 41, 48, 49, 40.5}
 	var reportedScale float32
+	var focusReported, lastFocus bool
 	if err := ui.Run("org.golang-gui.PixelSnap", func(app ui.App) ui.RootView {
 		fmt.Printf("STATE dark=%t clicks=%d height=%g\n", dark, clicks, height)
 		count := func() { clicks++; app.RequestUpdate() }
@@ -63,40 +69,53 @@ func main() {
 			height = next
 			app.RequestUpdate()
 		}
-		return ui.Root().StyleSheet(modern.Sheet(modern.Options{Dark: dark})).Windows(
-			ui.Window("pixel-snap").Title("GOUI pixel alignment").Size(720, 400).
-				Shortcuts(ui.Shortcut(ui.KeyF7).OnActivate(cycleHeight)).
-				Chrome(ui.WindowChromeIntegrated).Content(ui.VBox(
-				ui.HeaderBar(ui.Label(fmt.Sprintf("Pixel alignment | HeaderBar %g DIP", height))).
-					Padding(6).MinHeight(height).MaxHeight(height),
-				ui.VBox(
-					ui.Label("Compare straight bottom borders and caption symbols."),
-					ui.HBox(
-						ui.Button("Count").MinWidth(160).OnClick(count),
-						ui.Button("Primary").MinWidth(160).Style(modern.Primary).OnClick(count),
-						ui.Button("Theme").MinWidth(160).OnClick(func() { dark = !dark; app.RequestUpdate() }),
-						ui.Button("Height / F7").OnClick(cycleHeight),
-					).Spacing(12),
-					ui.HBox(
-						ui.Button("35.25 DIP").MinWidth(160).MinHeight(35.25).MaxHeight(35.25).OnClick(count),
-						ui.Button("35.25 DIP / Primary").MinWidth(210).MinHeight(35.25).MaxHeight(35.25).Style(modern.Primary).OnClick(count),
-					).Spacing(12),
-					ui.Label(fmt.Sprintf("Clicks: %d | dark: %t", clicks, dark)),
-					ui.Label("Corners and diagonal strokes must remain antialiased."),
-				).Padding(20).Spacing(13.25),
-			)).OnAfterPaint(func(p ui.Painter, _ geometry.Rectangle) {
-				if reportedScale == p.PixelScale() {
-					return
+		main := ui.Window("pixel-snap").Title("GOUI pixel alignment").Size(720, 400).
+			Shortcuts(ui.Shortcut(ui.KeyF7).OnActivate(cycleHeight)).
+			Chrome(ui.WindowChromeIntegrated).Content(ui.VBox(
+			ui.HeaderBar(ui.Label(fmt.Sprintf("Pixel alignment | HeaderBar %g DIP", height))).
+				Padding(6).MinHeight(height).MaxHeight(height),
+			ui.VBox(
+				ui.Label("Compare straight bottom borders and caption symbols."),
+				ui.HBox(
+					ui.Button("Count").MinWidth(160).OnClick(count),
+					ui.Button("Primary").MinWidth(160).Style(modern.Primary).OnClick(count),
+					ui.Button("Theme").MinWidth(160).OnClick(func() { dark = !dark; app.RequestUpdate() }),
+					ui.Button("Height / F7").OnClick(cycleHeight),
+				).Spacing(12),
+				ui.HBox(
+					ui.Button("35.25 DIP").MinWidth(160).MinHeight(35.25).MaxHeight(35.25).OnClick(count),
+					ui.Button("35.25 DIP / Primary").MinWidth(210).MinHeight(35.25).MaxHeight(35.25).Style(modern.Primary).OnClick(count),
+				).Spacing(12),
+				ui.Label(fmt.Sprintf("Clicks: %d | dark: %t", clicks, dark)),
+				ui.Label("Corners and diagonal strokes must remain antialiased."),
+			).Padding(20).Spacing(13.25),
+		)).OnAfterPaint(func(p ui.Painter, _ geometry.Rectangle) {
+			if win := app.FindWindow("pixel-snap"); win != nil {
+				focused := win.Focused()
+				if !focusReported || lastFocus != focused {
+					fmt.Printf("FOCUS main=%t\n", focused)
+					focusReported, lastFocus = true, focused
 				}
-				native, err := p.NewImage(image.NewRGBA(image.Rect(0, 0, 1, 1)))
-				if err != nil {
-					panic(err)
-				}
-				fmt.Printf("BACKEND %T scale=%g\n", native, p.PixelScale())
-				native.Destroy()
-				reportedScale = p.PixelScale()
-			}),
-		)
+			}
+			if reportedScale == p.PixelScale() {
+				return
+			}
+			native, err := p.NewImage(image.NewRGBA(image.Rect(0, 0, 1, 1)))
+			if err != nil {
+				panic(err)
+			}
+			fmt.Printf("BACKEND %T scale=%g\n", native, p.PixelScale())
+			native.Destroy()
+			reportedScale = p.PixelScale()
+		})
+		windows := []ui.WindowView{main}
+		if *peerFlag {
+			windows = append(windows, ui.Window("focus-peer").Title("GOUI focus peer").Size(320, 180).
+				Content(ui.VBox(ui.Label("Click here to switch focus."),
+					ui.Label("Main icons become gray."),
+					ui.Label("Click main to restore colors.")).Spacing(12).Padding(16)))
+		}
+		return ui.Root().StyleSheet(modern.Sheet(modern.Options{Dark: dark})).Windows(windows...)
 	}); err != nil {
 		panic(err)
 	}

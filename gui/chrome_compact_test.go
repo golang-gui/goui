@@ -60,6 +60,16 @@ func (p *captionIconRecorder) DrawRect(rect geometry.Rectangle, width float32, b
 	p.DrawLine(rect.Pos, geometry.Point{X: rect.X + rect.Width, Y: rect.Y + rect.Height}, width, brush)
 }
 
+func (p *captionIconRecorder) DrawPath(path graphics.Path, width float32, _ graphics.Brush) {
+	p.widths = append(p.widths, width)
+	path.Range(func(op graphics.PathOperation, args []float32) bool {
+		if op == graphics.PathMoveTo || op == graphics.PathLineTo {
+			p.points = append(p.points, geometry.Point{X: args[0], Y: args[1]})
+		}
+		return false
+	})
+}
+
 func TestCaptionGlyphSizeDoesNotChangeHitBox(t *testing.T) {
 	for _, circular := range []bool{false, true} {
 		win, _ := chromeFixture(t, false, true)
@@ -77,9 +87,15 @@ func TestCaptionGlyphSizeDoesNotChangeHitBox(t *testing.T) {
 				icon := button.content
 				p := &captionIconRecorder{}
 				icon.Paint(p)
-				low, high := float32(1), float32(11)
+				low, high, stroke := float32(1), float32(11), float32(1)
 				if circular {
-					low, high = 2, 10
+					low, high, stroke = 2, 10, 2
+					if index == 1 {
+						low, high = 3, 9
+					}
+					if index == 2 {
+						low, high = 2.5, 9.5
+					}
 					if button.Rect().Size != (geometry.Size{Width: 28, Height: 28}) {
 						t.Fatal("compact glyph changed the hit box")
 					}
@@ -101,8 +117,8 @@ func TestCaptionGlyphSizeDoesNotChangeHitBox(t *testing.T) {
 					t.Fatalf("circular=%v state=%v icon=%d: glyph bounds=(%v,%v)-(%v,%v)", circular, state, index, minX, minY, maxX, maxY)
 				}
 				for _, width := range p.widths {
-					if width != 1 {
-						t.Fatal("glyph stroke was scaled")
+					if width != stroke {
+						t.Fatalf("图形线宽：%g，预期 %g DIP", width, stroke)
 					}
 				}
 			}
