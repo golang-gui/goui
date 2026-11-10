@@ -1,5 +1,18 @@
 # Plan
 
+## 文本右键菜单保留选区（2026-11-10）
+
+- [x] TextInput/TextView 已有非空选区时，右键仅决定菜单位置，不因端点、轻微移动
+  或点击其他文字/留白收起选择；无选区仍允许右键定位后粘贴。不增加公共 API。
+- [x] 双向拖选后立即右键、真实菜单 Copy、无选区 Paste 和 Snapshot 回归通过；
+  删除无用的私有选区命中，原大偏移坐标断言改为绘制选区矩形，保留有效覆盖。
+- [x] 隔离全仓 4664 通过、11 既有跳过、0 失败；GUI/UI race 和旧源码负对照通过。
+  原工作区全仓命令受已有未跟踪旧文件阻塞，未修改这些文件。
+- [x] 本机独立 X11 OpenGL 1x、Windows Direct2D 1x、macOS OpenGL 1x，原生正向
+  拖选后右键 Copy/粘贴与反向选择保持通过；macOS Control+单击及远端菜单测试通过。
+- [ ] 本轮未重验真实中文 IME、混合 DPI、触摸/笔和移动端；完整范围与开发中
+  结果收集失败见[文本编辑设计](DesignTextEditing.md#右键选区保留调整与验收2026-11-10)。
+
 ## 列表增量更新与表格连续编辑（2026-11-10）
 
 - [x] 保留 ListModel，新增可选 ListModelChanges/ListChange；SliceListModel 共用

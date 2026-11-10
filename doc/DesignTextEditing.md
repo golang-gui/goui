@@ -396,9 +396,11 @@ TextView、TextInput 在私有 textEditor 中共用 PopoverMenu，不在 UI 层�
 文本控件驱动 PopoverMenu，将菜单操作关联到既有编辑动作；GOUI 采用这种归属，
 不照搬 GTK 的 action registry。菜单仍使用既有样式、透明能力降级与工作区退避。
 
-- 次键按下打开；macOS 另接受 Control+左键。命中现有选区时保留方向及边界，
-  否则将光标移到点击位置。命中依据当前段落的 Cluster 选区矩形（包含 LF 高亮），
-  不只比较最近插入点的字节偏移，避免选中末字符的右半边误清空选区。
+- 次键请求打开（Windows 抬起、其他桌面平台按下）；macOS 另接受 Control+左键。
+  2026-11-10 调整：已有非空选区时，在同一编辑器内右键始终保留方向及边界，
+  点击位置只决定菜单位置；无选区时才将插入点移到右键位置。单行和多行一致，
+  不再用选区高亮命中、像素容差或操作间隔决定是否丢弃选择。左键和键盘仍按
+  原有编辑规则定位/选择，遮蔽模式的复制限制不变。
 - 右键与 Shift+F10 共用 `ContextMenuEventController`；键盘请求在光标下方打开，位置为
   控件局部 DIP，扣除滚动偏移；不改变选区，不将窗口坐标再次应用到 ShowAt。
   本轮复用现有 Menu 输入能力，不扩展通用菜单方向键导航或快捷键文字显示。
@@ -446,6 +448,49 @@ tests/window/ui/textediting 的第 10–11 项。
 - 隔离 WM 未开启合成器，因此本次观察的是菜单不透明降级，不能据此宣称圆角/
   阴影合成、2x、OpenGL 或真实中文候选窗已重验。剪贴板仅属于隔离显示，未改用户
   桌面的布局/剪贴板；测试窗口和隔离显示已退出。
+
+### 右键选区保留调整与验收（2026-11-10）
+
+旧实现根据选区高亮矩形判断是否保留选择：右边界不包含端点，因此正向拖选后
+在末端立即右键可能收起选区，轻微移动到高亮外也有同样问题。现改为已有选区
+就保留，只有无选区才根据点击位置移动插入点；不增加延迟或模糊命中参数。
+TextInput/TextView 共用实现，菜单仍从实际请求位置弹出。移除不再使用的私有
+selectionContains；原大水平偏移测试改为直接断言绘制选区的局部矩形，保留坐标
+精度覆盖。没有修改 platform、EventDispatcher、剪贴板或公开 API。
+
+参考范围为 GTK 4.20.3 GtkText 的
+[上下文菜单分支](https://github.com/GNOME/gtk/blob/4.20.3/gtk/gtktext.c#L2745)
+和 Qt 6.10.0 QLineEdit 的
+[鼠标按下](https://github.com/qt/qtbase/blob/v6.10.0/src/widgets/widgets/qlineedit.cpp#L1499)
+与[菜单处理](https://github.com/qt/qtbase/blob/v6.10.0/src/widgets/widgets/qlineedit.cpp#L2193)：
+它们在右键请求中不根据点击位置重新建立选择。这是对应版本的源码行为，并非
+所有框架/编辑器统一承诺；GOUI 采用已有选区优先，同时保留无选区右键定位能力。
+
+- **包内回归通过**：TextInput/TextView 的正反向拖选经 Window.DispatchEvent 完成，
+  紧接着发送完整次键序列。在首尾端点、末端微移、其他文字、空白与顶部 padding
+  打开菜单均保持选区及方向，不发选择变化通知；菜单 Copy 精确得到 `bcd`，正文、
+  Snapshot 选区和剪贴板读取次数不变。无选区右键后的菜单 Paste 插入指定位置。
+  已有键盘菜单、滚动位置、只读/遮蔽及生命周期测试保持通过。
+- **负对照成立**：仅用 Go overlay 恢复旧 text_editor.go，新增拖选回归在末端、
+  其他文字和留白明确失败，观察到选区收起并发出选择通知；修正后通过。
+- **全仓与 race 通过范围**：Go 1.25.8、Linux amd64、独立 Xvnc/Xfwm4 的已跟踪
+  源码隔离副本，`CGO_ENABLED=0 go test -json -count=1 ./...` 为 4664 通过、
+  11 既有跳过、0 失败；`CGO_ENABLED=1 go test -race -count=1 ./gui ./ui` 通过。
+  原工作区 `CGO_ENABLED=0 go test ./...` 仍被已有未跟踪的旧例程/测试阻塞，
+  包括旧 Window.Show/SetTitle 调用与 UI 私有字段；未修改或提交这些文件。
+- **本机桌面通过**：Linux/X11、独立 Xvnc/Xfwm4 合成、OpenGL llvmpipe 1x、
+  XMODIFIERS=@im=none，运行 `tests/window/ui/textediting`。原生 XTest 正向拖选后
+  在末端立即右键，反向拖选后在其他文字处右键，菜单选区分别为 `{1,5}`/`{5,1}`；
+  实际点 Copy 后粘贴到另一个输入框得到 `earc`，原文本与方向保持。
+- **远端通过**：Windows 10 19045 amd64 / Direct2D 1x、macOS 15.7.7 arm64 /
+  OpenGL 1x。核对测试/窗口程序 SHA-256 后运行对应菜单包内测试通过；交互桌面
+  用实际拖选、右键菜单 Copy 和另一输入框粘贴核对，Windows 得 `earc`，macOS
+  得 `ear`，与可见选区一致；反向选择保留，macOS 另验 Control+单击。实际后端
+  与倍率由例程首帧日志确认，不把交叉编译或窗口启动当作操作通过。
+- **验证过程和边界**：远端 Windows 首次结果收集因 PowerShell 中文进度输出按
+  UTF-8 解码失败，未计通过；改用 CMD 直接执行测试并保存日志后通过。原生粘贴
+  等待异步回复后再读取截图。真实中文 IME、混合 DPI、触摸/笔与移动端未重验；
+  本轮没有修改这些路径，也不把桌面合成输入结果视为相应平台验收。
 
 ## 6. ScrollView、TextInput 与 UI
 
