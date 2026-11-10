@@ -17,6 +17,11 @@ import (
 
 type Application interface {
 	Platform() platform.Platform
+	// Composited queries the current environment's ability to composite surface
+	// alpha. Call on the GUI thread after Activate. Unavailable services or a
+	// failed query return false. True does not guarantee transparent creation.
+	// This does not change existing surfaces or schedule updates.
+	Composited() bool
 	// Typography is ready during Activate and subsequent UI callbacks. During
 	// mobile preparation it is nil; desktop pre-Run creation remains supported
 	// while callers migrate to ConnectActivate.
@@ -254,6 +259,14 @@ func (a *application) shutdown() {
 
 func (a *application) Platform() platform.Platform {
 	return a.platform
+}
+
+func (a *application) Composited() bool {
+	if !a.servicesReady || a.shutdownDone || a.platform == nil {
+		return false
+	}
+	composited, err := a.platform.Composited()
+	return err == nil && composited
 }
 
 func (a *application) Typography() typography.Context {

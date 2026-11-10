@@ -14,6 +14,44 @@ import (
 	"github.com/xuges/gothread"
 )
 
+type compositedTestPlatform struct {
+	platform.Platform
+	value bool
+	err   error
+	calls int
+}
+
+func (p *compositedTestPlatform) Composited() (bool, error) {
+	p.calls++
+	return p.value, p.err
+}
+
+// 每次调用读取最新平台结果；失败保守为 false，不把 true 与 error 组合视为成功。
+func TestApplicationCompositedQueriesCurrentPlatform(t *testing.T) {
+	p := &compositedTestPlatform{}
+	a := &application{platform: p, servicesReady: true}
+	for _, tc := range []struct {
+		value bool
+		err   error
+		want  bool
+	}{
+		{true, nil, true}, {false, nil, false}, {true, nil, true},
+		{true, errors.New("query failed"), false}, {false, platform.ErrUnavailable, false},
+	} {
+		p.value, p.err = tc.value, tc.err
+		before := p.calls
+		if got := a.Composited(); got != tc.want || p.calls != before+1 {
+			t.Fatalf("查询结果或调用次数错误：got=%t calls=%d，预期 %t/%d", got, p.calls, tc.want, before+1)
+		}
+	}
+	for _, inactive := range []*application{{}, {platform: p}, {platform: p, servicesReady: true, shutdownDone: true}} {
+		before := p.calls
+		if inactive.Composited() || p.calls != before {
+			t.Fatal("未就绪或已关闭应用调用了原生查询")
+		}
+	}
+}
+
 // quitCountLoop is a minimal EventLoop that only records Quit calls; removeWindow
 // touches nothing else on the loop.
 type quitCountLoop struct {

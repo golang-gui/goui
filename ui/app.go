@@ -92,6 +92,11 @@ type App interface {
 	Clipboard() Clipboard
 	// Settings returns the system settings view (never nil).
 	Settings() Settings
+	// Composited synchronously queries the GUI thread for current surface-alpha
+	// composition. False includes an unavailable/stopped app or a query failure.
+	// No change subscription or automatic rebuild is established. True does not
+	// guarantee that a particular transparent window can be created.
+	Composited() bool
 	// FileDialog returns the system file dialog view (never nil).
 	FileDialog() FileDialog
 	// OpenURL asks the system's registered handler to open an absolute URL,
@@ -223,6 +228,11 @@ func (a *app) Sync(f func()) {
 		// Run has returned, so no in-flight UI callback can still be writing
 		// results. Queued work that did not execute is discarded.
 	}
+}
+
+func (a *app) Composited() (composited bool) {
+	a.Sync(func() { composited = a.gui.Composited() })
+	return
 }
 
 func (a *app) OpenURL(rawURL string) (err error) {
