@@ -15,6 +15,114 @@ import (
 	"github.com/golang-gui/goui/style"
 )
 
+type styledBoxCommands struct {
+	styledCommandPainter
+	paths int
+}
+
+func (p *styledBoxCommands) FillPath(graphics.Path, graphics.Brush) { p.paths++ }
+
+func TestStyledOpaqueMatchingFillCommands(t *testing.T) {
+	ink := color.RGBA{48, 120, 196, 255}
+	rect := geometry.Rect(6, 6, 18, 18)
+	base := style.Default().BackgroundColor(ink).BorderColor(ink).BorderWidth(1).Radius(4)
+	for _, tc := range []struct {
+		name                  string
+		rule                  style.Rule
+		fills, borders, paths int
+	}{
+		{"同色不透明", base, 1, 0, 0},
+		{"不同颜色类型", base.BackgroundColor(color.NRGBA{48, 120, 196, 255}), 1, 0, 0},
+		{"等价16位颜色", base.BorderColor(color.RGBA64{48 * 257, 120 * 257, 196 * 257, 65535}), 1, 0, 0},
+		{"不同16位颜色", base.BorderColor(color.RGBA64{48*257 + 1, 120 * 257, 196 * 257, 65535}), 1, 1, 0},
+		{"异色边框", base.BorderColor(color.Black), 1, 1, 0},
+		{"同色半透明", base.BackgroundColor(color.NRGBA{48, 120, 196, 128}).BorderColor(color.NRGBA{48, 120, 196, 128}), 1, 1, 0},
+		{"半透明背景", base.BackgroundColor(color.NRGBA{48, 120, 196, 128}), 1, 1, 0},
+		{"独立选边", base.BorderSides(style.BorderTop), 0, 0, 2},
+		{"空边集合", base.BorderSides(0), 1, 0, 0},
+		{"零边宽", base.BorderWidth(0), 1, 0, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := new(styledBoxCommands)
+			PaintStyledBox(p, rect, tc.rule.Style)
+			if p.fills != tc.fills || p.borders != tc.borders || p.paths != tc.paths {
+				t.Fatal("样式绘制指令错误", p.fills, p.borders, p.paths)
+			}
+		})
+	}
+}
+
+// 预乘sRGB/RGBA8，独立圆方程检测整颗像素及0.05物理像素余量都处于形内。
+// 此区域必须完全不透明，只容许1级颜色量化误差，不能用AA容差掩盖角内漏像素。
+func TestStyledOpaqueMatchingFillPixels(t *testing.T) {
+	backend, err := software.NewPainter(&widgetRenderSurface{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer backend.Destroy()
+	rect := geometry.Rect(6, 6, 18, 18)
+	ink := color.RGBA{48, 120, 196, 255}
+	for _, scale := range []float32{1, 1.25, 1.5, 2} {
+		for _, offset := range []float32{0, .25, .5, .75} {
+			for _, radius := range []geometry.CornerRadius{geometry.UniformCornerRadius(4), {TopLeft: 4, TopRight: 2, BottomRight: 7, BottomLeft: 1}} {
+				for _, rotated := range []bool{false, true} {
+					transform := geometry.Translate(offset, offset)
+					if rotated {
+						transform = geometry.Translate(12+offset, 4+offset).Multiply(geometry.Rotate(14))
+					}
+					for _, width := range []float32{1, 2, 10} {
+						s := style.Default().BackgroundColor(ink).BorderColor(ink).BorderWidth(width).CornerRadius(radius).Style
+						im, err := backend.RenderImage(int(48*scale), int(48*scale), scale, func() {
+							p := newPainter(backend, geometry.Rect(0, 0, 48, 48), scale)
+							p.SetTransform(transform)
+							PaintStyledBox(p, rect, s)
+						})
+						if err != nil {
+							t.Fatal(err)
+						}
+						// 仅平移的等圆角原语按公开像素对齐契约取整外框；任意Path与旋转保留几何。
+						ref := rect
+						if radius.Uniform() && !rotated {
+							left := float32(math.Floor(float64((rect.X+offset)*scale)+.5))/scale - offset
+							top := float32(math.Floor(float64((rect.Y+offset)*scale)+.5))/scale - offset
+							right := float32(math.Floor(float64((rect.X+rect.Width+offset)*scale)+.5))/scale - offset
+							bottom := float32(math.Floor(float64((rect.Y+rect.Height+offset)*scale)+.5))/scale - offset
+							ref = geometry.Rect(left, top, right-left, bottom-top)
+						}
+						inverse := transform.Inverse()
+						inside, antialiased := 0, 0
+						for y := 0; y < im.Bounds().Dy(); y++ {
+							for x := 0; x < im.Bounds().Dx(); x++ {
+								got := color.RGBAModel.Convert(im.At(x, y)).(color.RGBA)
+								if got.A > 0 && got.A < 255 {
+									antialiased++
+								}
+								covered := true
+								for _, delta := range []geometry.Point{{X: -.05, Y: -.05}, {X: 1.05, Y: -.05}, {X: -.05, Y: 1.05}, {X: 1.05, Y: 1.05}} {
+									point := inverse.TransformPoint(geometry.Point{X: (float32(x) + delta.X) / scale, Y: (float32(y) + delta.Y) / scale})
+									if !borderSidesContains(ref, radius, 0, 0, point) {
+										covered = false
+										break
+									}
+								}
+								if covered {
+									inside++
+									if got.A != 255 || !closePixel(got, ink, 1) {
+										t.Fatalf("scale=%g offset=%g radius=%v rotated=%t width=%g pixel=(%d,%d)：角内%v，应为%v", scale, offset, radius, rotated, width, x, y, got, ink)
+									}
+								}
+							}
+						}
+						if inside < 100 || antialiased == 0 {
+							t.Fatal("缺少形内或抗锯齿边界采样", inside, antialiased)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
 // 独立用椭圆方程判断覆盖，不调用生产路径生成函数。采样距离轮廓至少
 // 1.5 DIP（含clip），排除平台AA曲线；满覆盖预乘颜色仅允许2级量化误差。
 func TestStyledBorderSidesPixels(t *testing.T) {

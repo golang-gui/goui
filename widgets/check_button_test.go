@@ -620,6 +620,87 @@ func TestCheckButtonModernSoftwarePixels(t *testing.T) {
 	}
 }
 
+// 以独立圆方程积分左上角，避开勾线和三态横线。透明底的预乘sRGB/RGBA8：
+// 圆内整颗像素必须完全不透明；边缘沿用Basic测试的10级路径近似/量化容差。
+func TestCheckButtonModernEdgeCoverage(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		for _, selection := range []CheckState{CheckChecked, CheckMixed} {
+			for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed, style.Disabled} {
+				for _, scale := range []float32{1, 1.25, 1.5, 2} {
+					for _, offset := range []float32{0, .25} {
+						t.Run(fmt.Sprintf("dark=%t/check=%d/state=%d/scale=%g/offset=%g", dark, selection, state, scale, offset), func(t *testing.T) {
+							useProgressApplication(t, &progressTestApplication{sheet: modern.Sheet(modern.Options{Dark: dark})})
+							b := NewCheckButton()
+							b.SetCheckState(selection)
+							b.Arrange(geometry.Rect(0, 0, 30, 30))
+							host, dispatcher := &tabInputHost{root: b, focus: b}, new(gui.EventDispatcher)
+							switch state {
+							case style.Hovered:
+								dispatchTabPointer(t, dispatcher, host, events.PointerMove, 15, 15)
+							case style.Pressed:
+								dispatchTabPointer(t, dispatcher, host, events.PointerDown, 15, 15)
+							case style.Disabled:
+								b.SetEnabled(false)
+							}
+							part := "indicator-checked"
+							if selection == CheckMixed {
+								part = "indicator-mixed"
+							}
+							resolved := gui.WidgetStyle(b, "check-button", part)
+							fill, _ := resolved.BackgroundColor()
+							ink := color.RGBAModel.Convert(fill).(color.RGBA)
+							if ink.A != 255 {
+								t.Fatal("本用例要求不透明的选中背景", ink)
+							}
+							out := new(progressPixelSurface)
+							native, err := software.NewPainter(out)
+							if err != nil {
+								t.Fatal(err)
+							}
+							defer native.Destroy()
+							native.Begin(32*scale, 32*scale, scale)
+							native.Clear(graphics.Color{})
+							native.SetTransform(geometry.Translate(offset, offset))
+							b.Paint(checkPixelPainter{native: native})
+							native.End()
+							radius := float64(4 * scale)
+							corner := math.Floor(float64((6+offset)*scale) + .5)
+							cx, cy := corner+radius, corner+radius
+							inside, edge := 0, 0
+							for y := int(corner); float64(y+1) <= cy; y++ {
+								for x := int(corner); float64(x+1) <= cx; x++ {
+									got := out.pixels.RGBAAt(x, y)
+									// 这一象限距圆心最远的是像素左上角；再留0.05物理像素余量。
+									if math.Hypot(float64(x)-cx-.05, float64(y)-cy-.05) < radius {
+										inside++
+										if got != ink {
+											t.Fatalf("角内漏像素(%d,%d)=%v，预期%v", x, y, got, ink)
+										}
+									}
+									coverage := switchCircleCoverage(x, y, cx, cy, radius)
+									if coverage <= 0 || coverage >= 1 {
+										continue
+									}
+									edge++
+									for i, channel := range [4]uint8{got.R, got.G, got.B, got.A} {
+										want := float64([4]uint8{ink.R, ink.G, ink.B, ink.A}[i]) * coverage
+										if math.Abs(float64(channel)-want) > 10 {
+											t.Fatalf("圆角边缘(%d,%d)通道%d=%d，预期%.2f", x, y, i, channel, want)
+										}
+									}
+								}
+							}
+							if inside == 0 || edge == 0 {
+								t.Fatal("缺少角内或边界采样", inside, edge)
+							}
+						})
+					}
+				}
+			}
+		}
+	}
+}
+
 func TestCheckButtonAsymmetricPadding(t *testing.T) {
 	b, child := NewCheckButton(), new(gui.WidgetBase)
 	child.SetLayoutManager(checkBaselineLayout{})

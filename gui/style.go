@@ -3,6 +3,7 @@ package gui
 import (
 	"sync"
 
+	"github.com/golang-gui/goui/core/colors"
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/utils"
@@ -147,16 +148,27 @@ func paintRoundedBackground(p Painter, rect geometry.Rectangle, radius geometry.
 	}
 }
 
-// PaintStyledBox paints the background then the border. An opaque border hides
+// PaintStyledBox paints a styled background and border. An opaque border hides
 // the background's AA edge beneath its centerline. Translucent borders retain
-// the complete background beneath them. Shadow and text are separate operations.
+// the complete background beneath them. A matching opaque background and full
+// border share one outer fill to avoid seams between their antialiased edges.
+// Shadow and text are separate operations.
 func PaintStyledBox(p Painter, rect geometry.Rectangle, s style.Style) {
 	radius, _ := s.CornerRadius()
 	paintStyledBox(p, rect, s, radius, styledBorderSides(s))
 }
 
 func paintStyledBox(p Painter, rect geometry.Rectangle, s style.Style, radius geometry.CornerRadius, sides style.BorderSides) {
-	paintStyledBackground(p, rect, s, radius, borderInsets(sides, opaqueBorderInset(s)))
+	inset := opaqueBorderInset(s)
+	if sides == style.BorderAll && inset > 0 {
+		background, _ := s.BackgroundColor()
+		border, _ := s.BorderColor()
+		if colors.Equal(background, border) {
+			paintStyledBackground(p, rect, s, radius, geometry.Insets{})
+			return
+		}
+	}
+	paintStyledBackground(p, rect, s, radius, borderInsets(sides, inset))
 	paintStyledBorder(p, rect, s, radius, sides)
 }
 
