@@ -1,19 +1,17 @@
 # Plan
 
-## 合成能力同步查询（2026-11-10）
+## 合成能力 Settings 接入（2026-11-10）
 
-- [x] platform.Platform.Composited 返回当前事实与错误；X11 缓存 screen atom、
-  实时查 owner，透明创建前复用；Windows 复用 DWM 及有文档依据的 manifest 兼容处理。
-  Cocoa/UIKit/Android 按系统合成模型报告，独立窗口透明支持仍由创建契约决定。
-- [x] gui.Application / ui.App 提供 bool 查询：失败/未就绪/停止保守为 false，
-  UI 复用 Sync；没有状态缓存、变化信号、轮询、自动重建或 Settings 扩展。
-- [x] 隔离全仓 4835 通过、11 既有跳过、0 失败；GUI/UI race 通过。独立 X11
-  Software/OpenGL × 合成器 on/off 自动断言通过，同进程原生 F6 验证 true/false/true。
-- [x] Windows Direct2D 1x、macOS OpenGL 1x 原生窗口自动验收及相关包内测试通过；
-  Android APK 与 iOS Simulator app 正式构建通过。原工作区仍受未跟踪旧文件阻塞。
-- [ ] 移动端原生运行、旧 Windows/更多 manifest 与辅助功能组合未验收。Tooltip /
-  DropDown 不透明降级缺口、X11 桌面 Visible 同步及运行期表面自动调整单独处理；
-  具体结果及开发中失败见[透明绘制设计](DesignTransparency.md#查询能力执行记录2026-11-10)。
+- [x] 合成查询迁入 platform.Settings / gui.Settings / ui.Settings，删除 Platform / Application / App 重复入口。
+- [x] GUI 纳入现有快照、两秒检查和 ConnectChanged；UI 复用 Sync 与 Settings 自动更新。
+- [x] X11 原生创建仍使用私有即时查询；Windows 保留 DWM manifest 兼容处理。
+  Android/iOS 提供仅接入 Composited 的部分 Settings，其他字段如实返回不支持。
+- [x] 隔离源码全仓 4836 通过、11 跳过；GUI/UI race、vet、独立 X11 两后端合成器
+  on/off 与快照自动更新验收通过。macOS OpenGL 1x 窗口及 Settings 包内测试通过，
+  Android APK / iOS Simulator app 正式构建通过，移动端原生运行未执行。
+- [ ] Windows 目标编译通过；Windows 10 远端安全中心阻止 EXE，原生验收待允许后继续。
+  原工作区旧未跟踪文件仍阻塞全仓测试，详细结果见[设计](DesignTransparency.md#settings-迁移执行记录)。
+- [ ] X11 Visible 事实同步、Tooltip/DropDown 不透明降级和运行期表面重建另行处理。
 
 ## 编辑光标空闲常亮（2026-11-10）
 

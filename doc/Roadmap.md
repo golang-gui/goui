@@ -1,12 +1,12 @@
 # GOUI 实用化与未来路线
 
-## 合成能力同步查询（2026-11-10）
+## 合成能力 Settings 接入（2026-11-10）
 
-Platform、GUI Application 和 UI App 已提供 Composited 显式查询，供自定义透明窗口
-创建前选择策略。它与表面的不可变 Transparent 配置分开，查询不建立订阅、轮询
-或自动重建。X11 有/无合成器、运行期再次查询及 Windows/macOS 桌面验证通过；
-移动端正式构建通过，原生运行和其他边界见[Plan](Plan.md#合成能力同步查询2026-11-10)
-与[设计](DesignTransparency.md#合成能力同步查询2026-11-10)。
+Composited 已迁入三层 Settings，与不可变 Transparent 配置分开。平台实时查询，
+GUI/UI 复用现有快照、检查、变化信号与自动更新，不增加独立通知或轮询设施。
+透明创建仍检查原生即时事实；已有表面不自动重建。本机与 macOS 验收通过，
+Windows 原生验收受远端安全策略阻塞。进度见
+[Plan](Plan.md#合成能力-settings-接入2026-11-10)与[设计](DesignTransparency.md#合成能力同步查询2026-11-10)。
 
 ## 编辑光标空闲常亮（2026-11-10）
 

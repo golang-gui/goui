@@ -1,6 +1,6 @@
 # GOUI Settings 设计
 
-> 状态：已实现外观、字体与首选 UI 语言的三层暴露；其他设置按实际需求评估，不是当前接口承诺。
+> 状态：已实现外观、字体、首选 UI 语言与透明合成能力的三层暴露；其他设置按实际需求评估，不是当前接口承诺。
 > 适用范围：`platform/`(只读事实)、`gui/`、`ui/`
 > 相关文档：`doc/DesignPlatformSettings.md`(平台边界)、`doc/PlatformDev.md`
 
@@ -29,6 +29,7 @@ Settings 是**通用系统设置**,不是"样式的东西"。让它可变(app �
 ```go
 // platform
 type Settings interface {
+    Composited() (bool, error)                        // 当前系统合成环境；不保证具体透明创建成功
     Language() (string, error)                        // 首选 UI 语言，BCP 47
     ColorScheme() (ColorScheme, error)
     AccentColor() (color.Color, error)
@@ -38,6 +39,7 @@ type Settings interface {
 
 // gui：Settings 是 gui 自有接口 + settings 具体（包装 platform、隐藏 error、补 gui fallback）；App.Settings() Settings（永不为 nil）
 type Settings interface {
+    Composited() bool                                // 快照；不可用时 false
     Language() string                                // 有效系统语言，否则 "en"
     ColorScheme() gui.ColorScheme                     // 系统值，否则 Light
     AccentColor() color.Color                         // 系统值，否则 defaultAccentColor(RGB 70,130,220)
@@ -47,6 +49,7 @@ type Settings interface {
 }
 
 // ui：ui.App.Settings() ui.Settings（永不为 nil，线程安全）
+func (Settings) Composited() bool                     // 线程安全读取 GUI 快照
 func (Settings) Language() string
 func (Settings) ColorScheme() ui.ColorScheme          // 内部 Sync 上 UI 线程
 func (Settings) AccentColor() color.Color
@@ -67,6 +70,20 @@ fallback 默认值是 **gui 自有常量**(`gui/settings.go`),不依赖 Label,�
 - **单一信号**(`Settings.ConnectChanged`,挂在 Settings 上而非外层 App):设置项增多时,一个 `func()` "变了,重读"即可,无需按项 diff;真出现具体的 per-setting 消费者再拆。
 - ui 层 getter 走 `App.Sync`(在 UI 线程直跑、否则投递并等待),读取始终线程安全。
 - ui 在首轮 build 前建立一条 Settings 变化连接，内部调用 RequestUpdate，与显式更新共用合并机制。初始化失败、更新失败及运行退出时断开；停止后的排队更新失效。用户在 build 中读取 Settings 即可，不必编写 OnSettingsChanged。固定主题参数仍可忽略系统值，相同样式表不重复下发到 GUI；普通应用状态仍须显式更新。
+
+## 合成环境
+
+`Composited` 是系统表面 alpha 能否被合成的事实，不是 GPU 加速状态、窗口的
+`Transparent()` 配置或创建透明资源必然成功的承诺。平台层实时查询，GUI/UI 的
+getter 只读快照，变化复用既有两秒检查、单一 ConnectChanged 与 UI 自动重建。
+不新增独立的合成轮询/信号，不在 getter 中引入实时查询特例；运行期变化可能
+要等到下一次检查才反映在 GUI/UI。失败使用 false，其他字段仍独立解析。
+
+X11 的 Settings 借用平台 display/atom；原生透明创建复用私有实时查询，不能依赖
+GUI 快照通过创建前检查。Android/iOS 当前只接入 Composited，其他设置继续返回
+ErrSettingUnsupported，由 GUI 兜底。服务在 Activate 初始化前使用 false；UI 停止
+后 getter 返回零值，GUI 已取得的 Settings 仍是最后快照，停止后不再访问原生资源。
+变化通知不承诺重建已经创建的 Window/Popup，详见[透明绘制设计](DesignTransparency.md)。
 
 ## 6. 验证
 

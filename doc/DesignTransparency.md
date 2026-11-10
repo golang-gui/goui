@@ -184,45 +184,46 @@ GUI 的旧 `example/gui_transparency` 已于2026-11-03移除。当前可运行 `
 
 ## 合成能力同步查询（2026-11-10）
 
-应用可能在创建自定义透明窗口前选择替代外观或提示用户，因此查询能力与框架内置
-弹层的降级策略分别存在。新增：
+应用可以在创建自定义透明窗口前选择替代外观或提示用户。该系统环境事实统一放在
+Settings，不新增能力集合、Display/显示器对象，也不在 Application/App 保留重复入口：
 
 ```go
-// platform.Platform
+// platform.Settings
 Composited() (bool, error)
 
-// gui.Application / ui.App
+// gui.Settings / ui.Settings
 Composited() bool
+
+// Application.Settings() / App.Settings() 返回对应的 Settings。
 ```
 
 Composited 表示当前窗口系统环境能够合成表面的 alpha，不是 GPU 加速、ARGB visual
-存在、某个 Window 的透明配置，也不保证任意 NewWindow/NewPopup/NewPainter 能创建
-透明资源。没有合成器为 false、nil；查询失败由平台返回错误，GUI 保守返回 false，
-不记录日志或弹窗。业务仍需处理实际透明创建失败。该查询不放进 Settings，不新增
-Display/显示器对象或能力集合。
+存在或某个 Window 的透明配置，也不保证任意 NewWindow/NewPopup/NewPainter 能创建
+透明资源。没有合成器为 false、nil；查询失败由平台返回错误，GUI 快照保守使用 false，
+不记录日志或弹窗，其他字段仍独立解析。业务仍需处理实际透明创建失败。
 
-- platform 在 UI 线程查询当前事实；X11 缓存 default screen 的 `_NET_WM_CM_Sn`
-  atom，每次查询 selection owner，不缓存状态，不根据 Xvnc/WM 名称猜测。原透明
-  Window/Popup 的创建前检查复用同一方法，不再临时 InternAtom。
+- platform.Settings 在 UI 线程查询当前事实。X11 的 Settings 借用 Platform，使用
+  已缓存的 default screen `_NET_WM_CM_Sn` atom，每次读 selection owner，不缓存状态。
+  Window/Popup 透明创建前复用平台私有即时查询，不依赖 GUI 快照，不反复 InternAtom。
 - Windows 复用已有 DwmIsCompositionEnabled 绑定，传播查询失败。API 返回 false
-  时复用原 OS build 查询：Windows 8 起 DWM 必须启用，无相应兼容 manifest 时
-  API 的 false 是历史兼容值；build >= 9200 据系统契约报告 true。只缓存不可变
-  OS build，不缓存合成状态，不改其他原生窗口样式或绘制调用。
-- 受支持的 Cocoa 环境始终由 WindowServer 合成。UIKit/Core Animation 与 Android
-  SurfaceFlinger 同样始终合成；移动后端仍可拒绝 Transparent 窗口或仅提供不透明
-  系统 Surface。Composited=true 不扩大这些窗口契约。
-- gui 在服务已就绪且未关闭时直接查询；未就绪、缺少平台或已关闭保守返回 false。
-  在 Activate 或之后的 GUI 回调使用；桌面已有初始化完成的 pre-Run 查询也有效。
-- ui 复用 App.Sync，后台调用只在 GUI 线程执行底层查询，停止后为 false。每次
-  显式调用读取最新值，不收集状态依赖，不增加轮询、信号、自动 RequestUpdate 或
-  透明窗口的自动重建。
+  时复用 OS build 查询：Windows 8 起 DWM 必须启用，无相应兼容 manifest 时的
+  false 是历史兼容值，build >= 9200 据系统契约报告 true。只缓存不可变 OS build。
+- Cocoa、UIKit 和 Android 系统环境始终合成。Android/iOS 增加只支持 Composited 的
+  Settings，其他设置返回 ErrSettingUnsupported，不能为它们捏造系统值。
+  Composited=true 不扩大移动端系统宿主或 Transparent 窗口的支持契约。
+- GUI 的 getter 只读快照，不直接查询原生状态。初始化、每两秒更新、整份比较与
+  发布后 ConnectChanged 完全复用 Settings；服务未就绪时为 false，Run 结束后停止
+  轮询，已经取得的 GUI Settings 保留最后快照，不访问失效原生资源。
+- UI 的 getter 通过 App.Sync 读取 GUI 快照，停止后返回 false。Settings 变化复用
+  现有唯一连接和 RequestUpdate 合并调度；不新增 ConnectComposited、计时器或订阅。
 
-Transparent() 继续报告不可变的表面创建配置。运行期启停合成器后再次查询能够
-观察当前值，但框架不承诺改造已经存在的 alpha 表面；若未来需要自动切换，需将
-通知与已有 Window/Popup 的处理策略一起设计，不能仅增加 ConnectComposited。
+运行期启停合成器后，平台查询立即反映事实，GUI/UI 最迟在下一次 Settings 检查后
+更新。因此三层可能短暂不同，不能把 GUI 快照当作透明创建的前置保证。
+Transparent() 仍是不可变的表面创建配置；Settings 自动重建声明式树不承诺替换
+已存在的透明 Window/Popup。如需动态切换外壳，须另行设计资源重建策略。
 
-参考与取舍：采用 GTK4 的“alpha 表面配置”与“合成环境”分离，保留 GOUI 的
-Application 查询入口和显式错误策略，不照搬 GdkDisplay、属性通知或显示器模型。
+参考与取舍：采用 GTK4 区分 alpha 表面与合成环境的语义；统一使用 GOUI 的 Settings
+入口、快照与错误策略，不照搬 GdkDisplay/显示器模型，也不把 getter 改成隐式原生访问。
 
 - [GDK is_composited](https://docs.gtk.org/gdk4/method.Display.is_composited.html)、
   [is_rgba](https://docs.gtk.org/gdk4/method.Display.is_rgba.html)：当前官方文档分别描述
@@ -237,49 +238,44 @@ Application 查询入口和显式错误策略，不照搬 GdkDisplay、属性通
 
 ### 验证计划
 
-包内覆盖 GUI 实时查询、true/false/错误、生命周期保守值，以及 UI Sync 的调用线程、
-无缓存/无重建和停止后行为。Windows 使用无兼容 manifest 的原生测试 EXE 检查 DWM
-报告，并保留已销毁平台错误语义。
+包内验证 GUI 快照初始化、getter 不查询、true/false/错误与逐字段兜底、变化去重，
+以及 UI 同步线程、停止后行为和复用 Settings 自动重建。已有定时器测试保持精确
+读取计数；加入第六项设置后每轮由五次改为六次，不放宽线程或取消检查。
+Windows 无兼容 manifest 测试通过公开 Settings 调用并检查销毁后错误。
 
-独立桌面入口为 `tests/window/ui/composited`，中文注释提供独立预期、原生按钮/F6
-查询、运行期合成器切换与菜单外壳观察。自动模式比较平台/GUI/UI 与外部指定预期，
-再经正常输入打开菜单、检查实际透明配置；不把三层彼此一致当作唯一正确性证据。
-运行期切换只在独立 X11 会话操作，关闭旧菜单后再查；不改用户桌面设置。
+独立入口 `tests/window/ui/composited` 以外部预期断言三层和实际菜单配置，通过正常
+PointerDown/Up 打开菜单，不把三层一致当作唯一证据。运行期切换只在独立 X11 会话
+执行：不点击 Query 也应在既有检查周期后更新快照文本、触发 UI 重建；平台即时值
+与 GUI 快照存在短暂差异属于契约。关闭旧菜单后再切换，不修改用户桌面配置。
 
-### 查询能力执行记录（2026-11-10）
+### Settings 迁移执行记录
 
-- Go 1.25.8、Linux amd64、独立 Xvnc/Xfwm4 的已跟踪源码隔离副本执行
-  `CGO_ENABLED=0 go test -json -count=1 ./...`：4835 通过、11 既有跳过、0 失败；
-  `CGO_ENABLED=1 go test -race -count=1 ./gui ./ui` 通过。原工作区
-  `CGO_ENABLED=0 go test ./...` 仍因已有未跟踪的旧 Window.Show/SetTitle 等调用
-  失败，未修改、删除或提交这些文件；全仓通过指前述隔离副本。
-- Xvnc/Xfwm4 1x，Software/OpenGL llvmpipe 两后端、合成器 on/off 四组窗口自动
-  断言通过。预期由外部核对 `_NET_WM_CM_S0` owner 得到，三层与预期一致；菜单
-  实际透明配置分别为 true/false。关闭合成器时原生鼠标打开菜单，直角矩形外壳
-  无外围阴影和透明黑边，未将截图或三层相等作为唯一断言。
-- 同一手动窗口进程在独立 WM on → off → on 后，用原生 F6 显式查询，依次得到
-  true → false → true；不查询时日志和界面不自动变化，构建次数保持一次。证明
-  没有缓存启动时的合成状态，也没有为本功能增加自动更新设施。只切换专用显示，
-  未修改用户桌面配置。
-- Windows 10 19045 amd64：GUI/UI 定向测试和无兼容 manifest 的 Win32 查询测试
-  原生通过；Direct2D 1x 交互桌面窗口自动断言通过，三层及菜单实际配置为 true。
-  macOS 15.7.7 arm64：GUI/UI 定向测试和 OpenGL 1x 交互桌面窗口自动断言通过，
-  三层及菜单实际配置为 true。传输后核对最终窗口程序 SHA-256，自动程序正常
-  退出，不能用这些结果推断未运行的旧系统或所有 manifest/辅助功能组合。
-- Android ARM64 APK、iOS ARM64 Simulator 未签名 app 经本轮 cmd/goui 正式内置
-  组件构建通过。仓库外消费者在 ui.Surface 中调用三层新接口；这是编译/打包验证，
-  本轮未启动移动设备或模拟器，不能当作移动端原生运行验收。
-- 开发中首次 GUI/UI 测试因已有测试替身尚未补充新接口而编译失败，补齐相关替身
-  后通过。窗口自动输入首轮在状态 Label 绑定引发布局前读取几何，未打开菜单；
-  保留断言，改在绑定更新后的下一绘制帧输入后四组通过，未添加生产重试或偏移。
-  曾用 Window.Visible 等待，但当前桌面 X11 已映射窗口仍报告 false，等待超时；
-  后续改用已完成绘制的几何，不将这个独立问题算作查询能力的修复。
+- Go 1.25.8、Linux amd64 的已跟踪源码隔离副本执行
+  `CGO_ENABLED=0 go test -json -count=1 ./...`：4836 通过、11 跳过、0 失败；
+  `CGO_ENABLED=1 go test -race -count=1 ./gui ./ui` 与 `go vet ./gui ./ui` 通过。
+  原工作区 `CGO_ENABLED=0 go test ./...` 仍因原有未跟踪旧 Window.Show/SetTitle、
+  windowMount 字段等调用编译失败；保留这些文件，全仓通过仅指隔离副本。
+- Xvnc/Xfwm4、1x、Software/OpenGL llvmpipe，两后端 × 合成器 on/off 四组通过；
+  外部 Xlib 查询 selection owner 作为独立预期，断言三层与实际菜单透明配置一致。
+  同一进程切换合成器后，不点击 Query，Settings 快照自动从 true 到 false 再到 true，
+  构建计数从 2 到 3 再到 4；原生 F6 确认更新后三层一致。截图检查快照行和旧查询
+  行彼此独立，未新增生产轮询或通知设施。
+- macOS 15.7.7 arm64：通过 SSH 原生运行 GUI/UI 的 TestSettings 定向测试；通过
+  交互桌面运行窗口自动验收，OpenGL 1x，三层/菜单透明为 true，正常退出为 0。
+  传输包 SHA-256 已核对，未把交叉编译当作窗口验收。
+- Windows amd64 的窗口、GUI/UI 与 Win32 测试目标编译通过；远端 Windows 10
+  19045 测试包 SHA-256 一致，但 SSH 与交互桌面均返回拒绝访问，安全中心明确提示
+  管理员阻止操作，窗口启动脚本退出码 5。尚未运行原生断言，不能记为通过；
+  已请求允许本轮测试程序，未关闭防护或尝试绕过策略。
+- Android ARM64 APK、iOS ARM64 Simulator 未签名 app 经 cmd/goui 正式组件构建
+  通过，仓库外消费者改用三层 Settings 接口；本轮未运行移动设备/模拟器。
+- 开发中共享计时器测试仍按五项设置计数而失败，现按六项设置精确更新，未放宽
+  派发前不查询与停止后失效检查。自动窗口首轮受状态文本引发布局变化影响未打开
+  菜单，将按钮排在动态文本上方保持命中位置稳定后，四组原断言通过。
+  本机截图工具缺失及窗口搜索命中隐藏辅助窗口仅影响验收脚本，分别使用现有
+  PIL 截图和仅搜索可见窗口修正，未修改生产窗口行为。
 
-后续独立处理：
+迁移前独立 Application 查询的结果不替代上述验收，旧入口不作为兼容 API 保留。
 
-- X11 的桌面 Window.Visible 事实同步：本轮观察到已映射/可见窗口仍为 false，
-  MapNotify 当前只触发 StateEvent，而 GUI 的 visible 字段只消费 VisibilityEvent。
-  需按桌面/系统 Surface 的既有语义统一检查，不能在本功能里直接伪造可见状态。
-- Tooltip 对 ErrUnavailable 的不透明重试、DropDown 的同等降级路径仍待补齐，
-  本轮仅新增合成能力查询及复用 X11 创建前检查。
-- 运行期合成器切换不自动重建已有透明窗口/弹层；未新增 ConnectComposited。
+后续独立处理：X11 桌面 Window.Visible 事实同步、Tooltip/DropDown 的不透明降级
+缺口、运行期透明资源重建。它们不在本次 Settings 迁移内。

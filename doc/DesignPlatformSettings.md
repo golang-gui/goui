@@ -1,6 +1,6 @@
 # GOUI Platform Settings Design
 
-This document records the platform boundary for system settings used by style.
+This document records the platform boundary for system settings used by the GUI and style.
 It is intentionally narrow. Platform settings are platform facts, not GUI
 policy.
 
@@ -28,6 +28,7 @@ capability. Some platforms may support only a subset:
 
 ```go
 type Settings interface {
+	Composited() (bool, error)
 	ColorScheme() (ColorScheme, error)
 	AccentColor() (color.Color, error)
 	Language() (string, error)
@@ -106,3 +107,17 @@ gui/style:
 
 This keeps platform factual and keeps style policy in the layer that owns
 styling.
+
+## Composition
+
+`Composited` queries whether the current environment can composite surface alpha.
+It is not the alpha configuration of a particular surface or a guarantee that
+transparent resource creation will succeed. X11 reads the compositor selection
+owner on each call; Windows queries DWM with its documented manifest compatibility
+handling. Supported Cocoa, UIKit and Android environments use system compositors.
+Android/iOS currently expose only this setting; other fields report unsupported.
+
+The GUI caches this fact in its normal settings snapshot, falls back to false,
+and uses the existing shared polling and notification cycle. Native transparent
+surface creation still uses an immediate backend query, independent of that cache.
+See [Settings](Settings.md) for notification and lifetime semantics.
