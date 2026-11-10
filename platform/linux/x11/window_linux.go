@@ -75,8 +75,11 @@ func newNativeWindow(onEvent events.EventHandler, overrideRedirect bool, width, 
 	}
 	fbConfig.Transparent = transparent
 	if transparent {
-		selection := platform.display.InternAtom(fmt.Sprintf("_NET_WM_CM_S%d", platform.display.DefaultScreen()), false)
-		if platform.display.GetSelectionOwner(selection) == 0 {
+		composited, err := platform.Composited()
+		if err != nil {
+			return nil, fmt.Errorf("query X11 composition: %w", err)
+		}
+		if !composited {
 			return nil, fmt.Errorf("transparent surface requires an X11 compositor: %w", common.ErrUnavailable)
 		}
 	}

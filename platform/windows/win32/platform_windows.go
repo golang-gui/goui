@@ -36,7 +36,7 @@ type Platform struct {
 	windowTitle      winapi.LPWSTR
 	eventLoop        *EventLoop
 	wakeHandler      func()
-	buildNumber      uint32 // cached on the first Integrated window request
+	buildNumber      uint32 // immutable OS build; queried by chrome and DWM compatibility checks
 }
 
 var platform *Platform
@@ -92,6 +92,28 @@ func (p *Platform) Destroy() {
 
 func (p *Platform) Name() string {
 	return "win32"
+}
+
+func (p *Platform) Composited() (bool, error) {
+	if p == nil || p.destroyed {
+		return false, common.ErrUnavailable
+	}
+	var enabled winapi.BOOL
+	if err := winapi.DwmIsCompositionEnabled(&enabled); err != nil {
+		return false, err
+	}
+	if enabled != winapi.FALSE {
+		return true, nil
+	}
+	// Windows 8+ always composites. Without a compatible application manifest,
+	// DwmIsCompositionEnabled may return FALSE for legacy high-contrast behavior.
+	// The existing registry build query avoids that compatibility view; only
+	// the immutable OS build is cached, never the observed composition state.
+	build, err := p.windowsBuild()
+	if err != nil {
+		return false, err
+	}
+	return build >= 9200, nil
 }
 
 func (p *Platform) NewEventLoop() (common.EventLoop, error) {
@@ -349,7 +371,8 @@ func (p *Platform) registerWindow() (err error) {
 const windows11Build = 22000
 
 // windowsBuild follows ModernWindow's registry query. Cache the observation
-// on Platform, not each Window; Native/None do not require a version query.
+// on Platform, not each Window. Composition queries need it only when DWM's
+// manifest-dependent result is FALSE.
 func (p *Platform) windowsBuild() (uint32, error) {
 	if p.buildNumber != 0 {
 		return p.buildNumber, nil

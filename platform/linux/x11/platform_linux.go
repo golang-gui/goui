@@ -36,6 +36,7 @@ type Platform struct {
 		WM_PROTOCOLS                 xlib.Atom
 		WM_DELETE_WINDOW             xlib.Atom
 		_NET_SUPPORTED               xlib.Atom
+		_NET_WM_CM_Sn                xlib.Atom // compositor selection for this display's default screen
 		_NET_ACTIVE_WINDOW           xlib.Atom
 		_NET_WM_STATE                xlib.Atom
 		_NET_WM_STATE_SKIP_TASKBAR   xlib.Atom
@@ -138,6 +139,7 @@ func NewPlatform(appId string) (_ *Platform, err error) {
 	p.initDragAtoms()
 
 	p.defScreen = p.display.DefaultScreenOfDisplay()
+	p.atoms._NET_WM_CM_Sn = p.display.InternAtom(fmt.Sprintf("_NET_WM_CM_S%d", p.display.DefaultScreen()), false)
 	p.resizeSyncAvailable = xsync.Initialize(p.display) == nil
 	p.numLockMask = p.detectNumLockMask()
 	p.refreshModifierMapping()
@@ -240,6 +242,15 @@ func (p *Platform) detectNumLockMask() uint32 {
 
 func (p *Platform) Name() string {
 	return "x11"
+}
+
+func (p *Platform) Composited() (bool, error) {
+	if p == nil || p.display == 0 || p.atoms._NET_WM_CM_Sn == 0 {
+		return false, common.ErrUnavailable
+	}
+	// The atom's existence is not evidence of a compositor. Query ownership
+	// each time so an explicit later check observes manager start/stop.
+	return p.display.GetSelectionOwner(p.atoms._NET_WM_CM_Sn) != 0, nil
 }
 
 func (p *Platform) Destroy() {

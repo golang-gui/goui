@@ -143,6 +143,12 @@ type WindowSource interface {
 type Platform interface {
 	Destroy()
 	Name() string
+	// Composited queries whether the current window-system environment can
+	// composite surface alpha. Call on the UI thread. This is a live observation,
+	// not a guarantee that a particular window or painter supports transparency.
+	// A false result with no error means composition is absent; query failures
+	// are returned separately. No state-change notifications are provided.
+	Composited() (bool, error)
 	// OpenURL asks the registered handler to open an absolute URL, including
 	// custom schemes. It does not infer a scheme or interpret filesystem paths.
 	// Invalid input and native request failures are returned. Success only means

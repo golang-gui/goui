@@ -51,6 +51,15 @@ func NewPlatform(appID string) (*Platform, error) {
 
 func (*Platform) Name() string { return "ios" }
 
+func (p *Platform) Composited() (bool, error) {
+	if p == nil || p.destroyed {
+		return false, common.ErrUnavailable
+	}
+	// UIKit uses the system layer compositor; the host's own alpha/opaque
+	// configuration and transparent-window support remain separate contracts.
+	return true, nil
+}
+
 func (p *Platform) Destroy() {
 	if p.destroyed {
 		return

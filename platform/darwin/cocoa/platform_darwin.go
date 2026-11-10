@@ -71,6 +71,15 @@ func (p *Platform) Name() string {
 	return "cocoa"
 }
 
+func (p *Platform) Composited() (bool, error) {
+	if p == nil {
+		return false, common.ErrUnavailable
+	}
+	// The supported Cocoa environment always uses the window server compositor.
+	// This does not describe an individual NSWindow's opaque/alpha configuration.
+	return true, nil
+}
+
 func (p *Platform) NewEventLoop() (common.EventLoop, error) {
 	return newEventLoop()
 }

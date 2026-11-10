@@ -50,6 +50,15 @@ func NewPlatform(appID string) (*Platform, error) {
 
 func (*Platform) Name() string { return "android" }
 
+func (p *Platform) Composited() (bool, error) {
+	if p == nil || p.destroyed {
+		return false, common.ErrUnavailable
+	}
+	// SurfaceFlinger composes Android surfaces. This does not imply that this
+	// backend's system host or NewWindow supports a transparent configuration.
+	return true, nil
+}
+
 func (p *Platform) Destroy() {
 	if p.destroyed {
 		return
