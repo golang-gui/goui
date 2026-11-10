@@ -8,6 +8,7 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 )
 
@@ -181,6 +182,11 @@ type listInstallModel struct {
 func (m *listInstallModel) ConnectItems(fn func()) signal.Handle {
 	m.connections++
 	return m.SliceListModel.ConnectItems(func() { m.deliveries++; fn() })
+}
+
+func (m *listInstallModel) ConnectItemsChanged(fn func(ListChange)) signal.Handle {
+	m.connections++
+	return m.SliceListModel.ConnectItemsChanged(func(change ListChange) { m.deliveries++; fn(change) })
 }
 
 // 显式重新设置同一模型必须重连、解绑，但只有一个有效订阅。
@@ -459,11 +465,222 @@ func TestListViewItemReuse(t *testing.T) {
 	}
 }
 
+// 追加项不解绑原行；插入/删除只平移保留行，不让焦点或声明子树离开原记录。
+func TestListViewIncrementalChangesPreserveRows(t *testing.T) {
+	model := NewSliceListModel([]int{1, 2, 3})
+	lv := NewListView()
+	d := newMockListDelegate(nil)
+	lv.SetModel(model)
+	lv.SetDelegate(d)
+	defer lv.SetModel(nil)
+	viewport := geometry.Size{Width: 100, Height: 100}
+	lv.LayoutVisible(viewport, geometry.Point{})
+	a, b, c := lv.items[0], lv.items[1], lv.items[2]
+	model.Append(4)
+	if lv.items[0] != a || lv.items[1] != b || lv.items[2] != c || len(d.unbinds) != 0 {
+		t.Fatal("追加行解绑了原有可见行")
+	}
+	lv.LayoutVisible(viewport, geometry.Point{})
+	model.Insert(1, 9)
+	if lv.items[0] != a || lv.items[2] != b || lv.items[3] != c || len(d.unbinds) != 0 {
+		t.Fatal("插入行没有平移保留项")
+	}
+	lv.LayoutVisible(viewport, geometry.Point{})
+	model.Remove(1)
+	if lv.items[0] != a || lv.items[1] != b || lv.items[2] != c || !slices.Equal(d.unbinds, []int{1}) {
+		t.Fatal("删除新增行影响了其他记录", d.unbinds)
+	}
+	lv.LayoutVisible(viewport, geometry.Point{})
+	if got := lv.Snapshot(); len(got.Children) != 4 || d.setups != 5 {
+		t.Fatal("增量更新后的子树或回收数量错误", len(got.Children), d.setups)
+	}
+}
+
+func TestSliceListModelChangeRanges(t *testing.T) {
+	m := NewSliceListModel([]int{1, 2})
+	var changes []ListChange
+	legacy := 0
+	m.ConnectItems(func() { legacy++ })
+	h := m.ConnectItemsChanged(func(change ListChange) { changes = append(changes, change) })
+	m.Append(3)
+	m.Insert(1, 4)
+	m.Remove(0)
+	m.Set(0, 5)
+	m.Modify(func(items []int) []int { return items })
+	m.SetItems([]int{6})
+	want := []ListChange{{Position: 2, Added: 1}, {Position: 1, Added: 1}, {Removed: 1},
+		{Removed: 1, Added: 1}, {Reset: true}, {Reset: true}}
+	if legacy != len(want) || !slices.Equal(changes, want) {
+		t.Fatal("旧订阅或精确通知范围错误", legacy, changes)
+	}
+	h.Disconnect()
+	m.Append(7)
+	if legacy != 7 || len(changes) != 6 {
+		t.Fatal("精确订阅断开影响旧订阅，或泄漏连接")
+	}
+	// 先连接的监听者同步修改模型，后连接者不能继续收到旧区间。
+	nested := NewSliceListModel([]int{1})
+	mutated := false
+	nested.ConnectItems(func() {
+		if !mutated {
+			mutated = true
+			nested.SetItems([]int{8, 9})
+		}
+	})
+	changes = nil
+	nested.ConnectItemsChanged(func(change ListChange) { changes = append(changes, change) })
+	nested.Append(2)
+	if !slices.Equal(changes, []ListChange{{Reset: true}, {Reset: true}}) {
+		t.Fatal("重入后向观察者交付了过期区间", changes)
+	}
+}
+
+func TestListViewIncrementalMeasurementsAndReveal(t *testing.T) {
+	m := NewSliceListModel(make([]int, 10))
+	lv := NewListView()
+	d := newMockListDelegate(map[int]float32{0: 10, 1: 20})
+	d.widths = map[int]float32{1: 500}
+	lv.SetModel(m)
+	lv.SetDelegate(d)
+	defer lv.SetModel(nil)
+	lv.LayoutVisible(geometry.Size{Width: 100, Height: 30}, geometry.Point{})
+	row := lv.items[1]
+	lv.Reveal(8)
+	m.Insert(0, 1)
+	if lv.items[2] != row || lv.heights[2] != 20 || lv.widths[2] != 500 || lv.revealIndex != 9 || !lv.revealPending {
+		t.Fatal("索引平移丢失行、尺寸缓存或Reveal目标")
+	}
+	m.Remove(0)
+	if lv.items[1] != row || lv.heights[1] != 20 || lv.revealIndex != 8 {
+		t.Fatal("删除前置项没有恢复保留索引")
+	}
+	m.Remove(8)
+	if lv.revealPending {
+		t.Fatal("已删除的Reveal目标被转移到另一条记录")
+	}
+	m.Remove(1)
+	if lv.ContentSize().Width != 100 {
+		t.Fatal("删除最宽项后仍保留错误的横向范围", lv.ContentSize())
+	}
+	// 错误或过期范围必须重载，不保留错误身份，也不能访问越界索引。
+	m.changed.Emit(ListChange{Position: 99, Added: 1}, m.revision)
+	if len(lv.Children()) != 0 || lv.modelCount != m.ItemsCount() {
+		t.Fatal("无法应用的范围未安全重载")
+	}
+}
+
+type changingListDelegate struct {
+	*mockListDelegate
+	unbind func()
+}
+
+func (d *changingListDelegate) Unbind(index int, widget Widget) {
+	d.mockListDelegate.Unbind(index, widget)
+	if d.unbind != nil {
+		fn := d.unbind
+		d.unbind = nil
+		fn()
+	}
+}
+
+func TestListViewIncrementalUnbindReentry(t *testing.T) {
+	for _, action := range []string{"reset", "model", "delegate"} {
+		t.Run(action, func(t *testing.T) {
+			m := NewSliceListModel([]int{1, 2, 3})
+			lv := NewListView()
+			d := &changingListDelegate{mockListDelegate: newMockListDelegate(nil)}
+			lv.SetModel(m)
+			lv.SetDelegate(d)
+			defer lv.SetModel(nil)
+			viewport := geometry.Size{Width: 100, Height: 100}
+			lv.LayoutVisible(viewport, geometry.Point{})
+			d.unbind = func() {
+				switch action {
+				case "reset":
+					m.SetItems([]int{4, 5})
+				case "model":
+					lv.SetModel(NewSliceListModel([]int{6, 7}))
+				case "delegate":
+					lv.SetDelegate(newMockListDelegate(nil))
+				}
+			}
+			m.Remove(0)
+			lv.LayoutVisible(viewport, geometry.Point{})
+			if len(lv.items) != 2 || len(lv.Children()) != 2 || lv.modelCount != 2 {
+				t.Fatal("回调重入后留下旧行或错误数量", lv.VisibleIndexes(), len(lv.Children()))
+			}
+			for _, index := range []int{0, 1, 2} {
+				count := 0
+				for _, previous := range d.unbinds {
+					if previous == index {
+						count++
+					}
+				}
+				if count != 1 {
+					t.Fatal("旧绑定未恰好解绑一次", d.unbinds)
+				}
+			}
+		})
+	}
+}
+
+type listEditorRecord struct{ text string }
+type listEditorDelegate struct {
+	model *SliceListModel[*listEditorRecord]
+}
+
+func (*listEditorDelegate) Setup() Widget { return NewTextInput() }
+func (d *listEditorDelegate) Bind(index int, widget Widget) {
+	widget.(*TextInput).SetText(d.model.ItemAt(index).text)
+}
+func (*listEditorDelegate) Unbind(int, Widget) {}
+
+// 真实输入分发和IME管理器替身；不创建原生窗口，不以重新Focus掩盖卸载。
+func TestListViewIncrementalEditorComposition(t *testing.T) {
+	_, win, _ := newInputFixture(t, "")
+	m := NewSliceListModel([]*listEditorRecord{{}})
+	lv := NewListView()
+	lv.SetModel(m)
+	lv.SetDelegate(&listEditorDelegate{model: m})
+	win.SetWidget(lv)
+	viewport := geometry.Size{Width: 200, Height: 200}
+	lv.LayoutVisible(viewport, geometry.Point{})
+	editor := lv.items[0].(*TextInput)
+	win.SetFocusedWidget(editor)
+	editor.ConnectText(func(text string) {
+		m.ItemAt(0).text = text
+		if m.ItemsCount() == 1 {
+			m.Append(&listEditorRecord{})
+		}
+	})
+	if err := win.CommitText("a"); err != nil {
+		t.Fatal(err)
+	}
+	lv.LayoutVisible(viewport, geometry.Point{})
+	if win.FocusedWidget() != editor || lv.items[0] != editor || m.ItemsCount() != 2 || editor.Text() != "a" {
+		t.Fatal("输入新增行后丢失原编辑器或焦点")
+	}
+	editor.SetSelection(TextSelection{Anchor: 0, Caret: 1})
+	win.onInputMethod(platform.InputMethodResult{Kind: platform.InputMethodPreedit, Text: "中", Caret: 3})
+	composition := editor.preedit
+	m.Append(&listEditorRecord{})
+	lv.LayoutVisible(viewport, geometry.Point{})
+	if composition == nil || editor.preedit != composition || editor.Selection() != (TextSelection{Anchor: 0, Caret: 1}) || win.FocusedWidget() != editor {
+		t.Fatal("追加其他行取消了已有预编辑或选区")
+	}
+	win.onInputMethod(platform.InputMethodResult{Kind: platform.InputMethodCommit, Text: "文"})
+	dispatchKey(t, win, events.KeyZ, textCommandModifier())
+	if editor.Text() != "a" || win.FocusedWidget() != editor {
+		t.Fatal("追加行丢失原编辑历史")
+	}
+}
+
 func TestListViewReloadOnModelChange(t *testing.T) {
 	model := NewSliceListModel(make([]int, 10))
 	lv := NewListView()
 	d := newMockListDelegate(nil)
-	lv.SetModel(model)
+	// 只公开旧通知接口，继续覆盖旧模型必须完整重载的兼容契约。
+	lv.SetModel(struct{ ListModel }{model})
 	lv.SetDelegate(d)
 
 	lv.LayoutVisible(geometry.Size{Width: 100, Height: 100}, geometry.Point{})

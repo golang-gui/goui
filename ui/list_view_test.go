@@ -20,6 +20,11 @@ func (m *listBindingModel) ConnectItems(fn func()) signal.Handle {
 	return m.SliceListModel.ConnectItems(func() { m.deliveries++; fn() })
 }
 
+func (m *listBindingModel) ConnectItemsChanged(fn func(gui.ListChange)) signal.Handle {
+	m.connections++
+	return m.SliceListModel.ConnectItemsChanged(func(change gui.ListChange) { m.deliveries++; fn(change) })
+}
+
 func TestListViewAdapterOnlyInstallsChangedModelPointers(t *testing.T) {
 	root := newRoot()
 	a := &listBindingModel{SliceListModel: gui.NewSliceListModel([]int{1, 2})}

@@ -123,7 +123,11 @@ func (m *Menu) AppendSeparator() *MenuItem {
 }
 
 func (m *Menu) appendItem(mi *MenuItem) {
-	mi.onChanged = m.changed.Emit
+	mi.onChanged = func() {
+		// Item properties can change visibility and size. Keep full-menu
+		// invalidation instead of treating them as index-preserving updates.
+		m.Modify(func(items []*MenuItem) []*MenuItem { return items })
+	}
 	m.SliceListModel.Append(mi)
 }
 

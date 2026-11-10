@@ -15,12 +15,12 @@ type ListItemDelegate interface {
 	// widget; reuse only calls Bind again.
 	Setup() Widget
 	// Bind attaches the data at index to the item widget. It is called on
-	// first use and on every scroll-back into view; the widget must reflect
-	// the current data afterwards.
+	// first use, scroll-back, and refresh after retained items change data or
+	// index. It can repeat without Unbind for a retained item.
 	Bind(index int, w Widget)
-	// Unbind detaches the item widget from index when it scrolls out of view
-	// or the list reloads. It is a lifecycle hook for delegates that connect
-	// signals inside Bind; simple delegates may leave it empty.
+	// Unbind detaches an item when it scrolls out, is removed/replaced, or the
+	// list reloads. Release per-item resources and signal connections here;
+	// simple delegates may leave it empty.
 	Unbind(index int, w Widget)
 }
 
@@ -47,8 +47,10 @@ type ListView struct {
 
 	contentWidth float32 // horizontal scroll extent = max measured row width
 
-	modelHandle signal.Handle // model.ConnectItems handle
-	reloading   bool          // guards reentrant reload from model events
+	modelHandle   signal.Handle // exactly one coarse or incremental subscription
+	reloading     bool          // guards reentrant model notifications
+	reloadPending bool
+	modelCount    int
 
 	scrollY  float32       // last LayoutVisible offset
 	scrollX  float32       // last LayoutVisible horizontal offset
@@ -94,7 +96,11 @@ func (lv *ListView) SetModel(m ListModel) {
 	}
 	lv.model = m
 	if m != nil {
-		lv.modelHandle = m.ConnectItems(lv.reload)
+		if changes, ok := m.(ListModelChanges); ok {
+			lv.modelHandle = changes.ConnectItemsChanged(lv.itemsChanged)
+		} else {
+			lv.modelHandle = m.ConnectItems(lv.reload)
+		}
 	}
 	lv.reload()
 }
@@ -111,8 +117,10 @@ func (lv *ListView) SetDelegate(d ListItemDelegate) {
 	if lv.Destroyed() {
 		return
 	}
+	lv.revision++
+	revision := lv.revision
 	lv.detachAll()
-	if lv.Destroyed() {
+	if lv.Destroyed() || revision != lv.revision {
 		return
 	}
 	// Shells belong to their creating delegate, never to its replacement.
@@ -197,15 +205,24 @@ func (lv *ListView) revealItem() {
 // reload unbinds items and drops index-based measurements. Shells remain
 // reusable with the same delegate even when the model's order changes.
 func (lv *ListView) reload() {
+	if lv.Destroyed() {
+		return
+	}
 	if lv.reloading {
+		lv.revision++
+		lv.reloadPending = true
 		return
 	}
 	lv.reloading = true
-	defer func() { lv.reloading = false }()
+	defer lv.finishModelChange()
 
 	lv.revision++
 	lv.revealPending = false
 	lv.detachAll()
+	if lv.Destroyed() {
+		return
+	}
+	lv.modelCount = lv.ItemsCount()
 	lv.heights = make(map[int]float32)
 	lv.widths = make(map[int]float32)
 	lv.first, lv.firstY = 0, 0
@@ -213,6 +230,82 @@ func (lv *ListView) reload() {
 	lv.contentWidth = 0
 	lv.lastContentHeight = 0
 	lv.RequestLayout()
+}
+
+func (lv *ListView) finishModelChange() {
+	lv.reloading = false
+	if lv.reloadPending {
+		lv.reloadPending = false
+		lv.reload()
+	}
+}
+
+// itemsChanged preserves mounted rows outside the replaced range. Unlike a
+// reload, insertion only remaps their indexes; Bind updates them on layout.
+func (lv *ListView) itemsChanged(change ListChange) {
+	if lv.Destroyed() {
+		return
+	}
+	if change.Reset || lv.reloading {
+		lv.reload()
+		return
+	}
+	count := lv.ItemsCount()
+	if change.Position < 0 || change.Position > lv.modelCount || change.Removed < 0 ||
+		change.Removed > lv.modelCount-change.Position || change.Added < 0 ||
+		change.Added != count-(lv.modelCount-change.Removed) {
+		// A stale/coalesced range cannot safely preserve item identities.
+		lv.reload()
+		return
+	}
+	if change.Removed == 0 && change.Added == 0 {
+		lv.Refresh()
+		return
+	}
+	lv.reloading = true
+	defer lv.finishModelChange()
+	lv.revision++
+	revision := lv.revision
+	lv.modelCount = count
+	end := change.Position + change.Removed
+	for _, index := range lv.VisibleIndexes() {
+		if index >= change.Position && index < end {
+			widget := lv.items[index]
+			delete(lv.items, index)
+			if !lv.releaseItem(index, widget) || lv.revision != revision {
+				return
+			}
+		}
+	}
+	lv.items = shiftListItems(lv.items, change)
+	lv.heights = shiftListItems(lv.heights, change)
+	lv.widths = shiftListItems(lv.widths, change)
+	if lv.revealPending {
+		if lv.revealIndex >= change.Position && lv.revealIndex < end {
+			lv.revealPending = false
+		} else if lv.revealIndex >= end {
+			lv.revealIndex += change.Added - change.Removed
+		}
+	}
+	lv.contentWidth = lv.viewport.Width
+	for _, width := range lv.widths {
+		lv.contentWidth = max(lv.contentWidth, width)
+	}
+	lv.first, lv.firstY = 0, 0
+	lv.Refresh()
+}
+
+func shiftListItems[T any](items map[int]T, change ListChange) map[int]T {
+	next := make(map[int]T, len(items))
+	end := change.Position + change.Removed
+	for index, item := range items {
+		if index < change.Position {
+			next[index] = item
+		} else if index >= end {
+			next[index+change.Added-change.Removed] = item
+		}
+	}
+	return next
 }
 
 // ContentSize implements Scrollable. Height combines the last measured sizes
@@ -420,24 +513,36 @@ func (lv *ListView) LayoutVisible(viewport geometry.Size, offset geometry.Point)
 
 // detachAll unbinds and detaches all realized rows using the current delegate.
 func (lv *ListView) detachAll() {
-	items := lv.items
-	lv.items = make(map[int]Widget)
-	if lv.delegate != nil {
-		for index, w := range items {
-			lv.delegate.Unbind(index, w)
-			if lv.Destroyed() {
-				return
-			}
-			lv.WidgetBase.RemoveChild(w)
-			lv.pool = append(lv.pool, w)
-		}
-	} else {
-		for _, w := range items {
-			lv.WidgetBase.RemoveChild(w)
+	for _, index := range lv.VisibleIndexes() {
+		widget := lv.items[index]
+		delete(lv.items, index)
+		if !lv.releaseItem(index, widget) {
+			return
 		}
 	}
-	lv.items = make(map[int]Widget)
 	lv.first, lv.firstY = 0, 0
+}
+
+// Remove the current registration before callbacks. A reentrant reload then
+// sees only remaining items and cannot unbind this one twice.
+func (lv *ListView) releaseItem(index int, widget Widget) bool {
+	revision := lv.revision
+	if lv.delegate != nil {
+		lv.delegate.Unbind(index, widget)
+	}
+	if lv.Destroyed() {
+		return false
+	}
+	if widget.Parent() == lv {
+		lv.WidgetBase.RemoveChild(widget)
+	}
+	if lv.Destroyed() || lv.revision != revision {
+		return false
+	}
+	if !widget.base().destroyed {
+		lv.pool = append(lv.pool, widget)
+	}
+	return true
 }
 
 // locateFirst finds the first visible index and its cumulative offset,
