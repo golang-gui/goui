@@ -383,6 +383,54 @@ Tab 默认不消费，AcceptsTab 显式开启插入 tab；不顺带实现全局 
 组合期间保持显示。窗口失焦、控件失焦或卸载停止计时。拖出视口时使用 40 ms
 GUI Timer 按越界距离滚动并扩选，释放捕获或卸载停止；不增加 Widget goroutine。
 
+#### 空闲光标常亮（2026-11-10）
+
+TextInput/TextView在共享textEditor中管理闪烁与10秒空闲截止时间，不增加公开API、
+第二个计时器或Widget goroutine。正常保持500 ms显隐周期；到期取消现有GUI Timer，
+光标常亮，仅在需要由隐藏转可见时请求最后一次绘制，之后不再产生光标周期重绘。
+窗口失焦仍保留逻辑焦点和常亮光标，不改为隐藏光标；控件失焦后的绘制规则不变。
+
+编辑/选区变化、文本按键、已处理的编辑或导航命令、实际点击定位/拖选以及窗口重新
+获得焦点重置截止时间。空文本行首的Home/左移、空边界删除和点击原位置也算交互；
+悬停、无关按键、布局、样式刷新、绘制以及相同选区的被动写入不重置空闲时间。
+组合期间继续常亮并停止计时，组合结束后按现有编辑规则恢复。
+
+截止判断使用time.Now携带的单调时间，不以20次回调计数；事件循环延迟或合并遗漏
+的tick不能延长空闲期。维护路径保留过期截止时间，不能因Timer已停止就重新启动。
+卸载取消计时及窗口焦点连接，重新挂载建立新周期；沿用原有重入/销毁防护。
+
+参考GTK4的[空闲超时设置](https://docs.gtk.org/gtk4/property.Settings.gtk-cursor-blink-timeout.html)
+（查阅4.24.1文档，默认10秒）及
+[4.20.2 GtkText的blink_cb](https://github.com/GNOME/gtk/blob/4.20.2/gtk/gtktext.c#L6419-L6462)：
+超时撤销回调并将光标恢复可见。GOUI采用这一空闲策略，继续使用自己的GUI Timer
+和离散显隐，不搬入GTK的帧回调/渐变动画或Settings接口。
+
+包内回归用可推进单调时钟覆盖两种控件的精确边界、延迟tick、到期时已经可见、
+维护不重启、原位/边界交互恢复、窗口失焦常亮、选择/文档/排版不变以及卸载清理。
+`tests/window/gui/caret_idle`在真实宿主等待完整10秒，使用可选diagnostics计数及
+空文本光标像素验证实际停止重绘、样式/布局维护和Home恢复；观察计时器不请求帧。
+
+本轮验证记录：
+
+- 旧实现的`go test ./gui -run '^TestTextEditorBlinkIdleStopsPaint$' -count=1`明确
+  失败于10秒后计时器仍活动；修复后单行/多行与原有焦点、IME、卸载回归通过。
+  测试时钟初次误接到非计时fixture产生q未定义的编译错误，已移到正确fixture。
+- 已跟踪源码及本轮文件的隔离副本，Go 1.25.8、CGO_ENABLED=0、独立Xvnc/Xfwm4
+  的`go test -json -count=1 ./...`为4833通过、11既有条件跳过、0失败；跳过集合
+  与修改前相同。GUI/UI race、相关vet和Windows amd64/macOS arm64受影响包、
+  Demo及新窗口程序编译通过，不把编译等同于原生验收。
+- 原工作区`go test ./...`仍被已有未跟踪旧例程的platform.Window方法与UI旧字段
+  编译错误阻塞，未改这些文件。该次Demo测试进程另有一次SIGSEGV，单独复跑通过，
+  修改前源码的Demo同环境也通过；此瞬时失败原因未定位，不宣称它已修复或属既有。
+- 原生自动程序：Linux独立X11/Xfwm4合成的Software/OpenGL、Windows 10 19045
+  交互Session 1的Direct2D、macOS 15.7.7 arm64的OpenGL，各应用1x/2x均通过。
+  每个配置两种控件均等待完整10秒，断言空闲及维护后PaintRequests/Completed
+  不再增长，光标在1x/2x离屏像素中可见，Home后重新产生闪烁重绘；检查实际后端，
+  不接受静默回退。Windows验证任务正常退出且已移除；不使用HUD或DevServer。
+- 本轮没有移动设备、混合DPI、真实中文IME或真实Alt+Tab失焦交互验收；窗口失焦
+  常亮/逻辑焦点保持和重新激活恢复由两种控件的包内事件路径覆盖。未修改平台层。
+  证据位于`/tmp/goui-caret-idle-uiteen9w`。
+
 普通输入使用原生字符提交；Windows 补 WM_CHAR 的 UTF-16 组装并处理 IMM32
 重复提交路径，核对 Linux/macOS 提交路径后移除 GUI 美式物理按键转换。
 [WM_CHAR](https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-char) 不与
