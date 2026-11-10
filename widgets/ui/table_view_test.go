@@ -68,6 +68,73 @@ func TestTableViewTextInputFillsCell(t *testing.T) {
 	check(200)
 }
 
+type editingTableRecord struct{ id, text string }
+type editingTableModel struct {
+	*gui.SliceListModel[editingTableRecord]
+}
+
+func (m *editingTableModel) RowID(index int) string { return m.ItemAt(index).id }
+
+// 绑定层保留原编辑器；完整UI协调和真实输入在table_editing窗口程序验证。
+func TestTableViewInputAppendsRowWithoutLosingBinding(t *testing.T) {
+	m := &editingTableModel{gui.NewSliceListModel([]editingTableRecord{{id: "first"}})}
+	ctx := new(treeBindingContext)
+	changes := 0
+	build := func() *TableViewView[editingTableRecord] {
+		return TableView(m, TableColumn("text", "Text", func(_ widgets.TableRow, record editingTableRecord) baseui.View {
+			return baseui.TextInput().Text(record.text).OnText(func(text string) {
+				changes++
+				m.Modify(func(rows []editingTableRecord) []editingTableRecord {
+					for i := range rows {
+						if rows[i].id == record.id {
+							rows[i].text = text
+							if i == len(rows)-1 && text != "" {
+								rows = append(rows, editingTableRecord{id: "next"})
+							}
+							break
+						}
+					}
+					return rows
+				})
+			})
+		}).Width(220))
+	}
+	v := build()
+	table := v.Mount(ctx).(*widgets.TableView)
+	v.Update(ctx, table)
+	host := gui.NewPopover(nil, nil)
+	host.SetWidget(table)
+	defer host.Destroy()
+	defer v.Unmount(ctx, table)
+	tableBindingArrange(table)
+	var editor *gui.TextInput
+	for _, widget := range ctx.widgets {
+		editor = widget.(*gui.TextInput)
+	}
+	focus := host.(gui.EventTarget)
+	if editor == nil || !focus.SetFocusedWidget(editor) {
+		t.Fatal("未建立首行编辑器及焦点")
+	}
+	editor.SetText("abcd")
+	editor.SetSelection(gui.TextSelection{Anchor: 1, Caret: 3})
+	v = build()
+	v.Update(ctx, table)
+	tableBindingArrange(table)
+	if focus.FocusedWidget() != editor || editor.Root() != host || len(ctx.widgets) != 2 || m.ItemsCount() != 2 || changes != 1 ||
+		editor.Selection() != (gui.TextSelection{Anchor: 1, Caret: 3}) {
+		t.Fatal("追加行或重建丢失原单元格、焦点、选区或重复回调")
+	}
+	editor.SetText("abcde")
+	tableBindingArrange(table)
+	if m.ItemsCount() != 2 || changes != 2 || m.ItemAt(0).text != "abcde" || focus.FocusedWidget() != editor {
+		t.Fatal("追加后的继续编辑失效或错误重复追加")
+	}
+	m.Remove(0)
+	if focus.FocusedWidget() != table || editor.Root() != nil {
+		t.Fatal("真实删除没有释放原绑定并移交焦点")
+	}
+}
+
 func TestTableViewColumnIdentityAndUncontrolledState(t *testing.T) {
 	m := newTableBindingModel()
 	ctx := new(treeBindingContext)

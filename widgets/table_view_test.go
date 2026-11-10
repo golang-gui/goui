@@ -896,6 +896,68 @@ func TestTableViewDelegateLifecycleAndFocus(t *testing.T) {
 		t.Fatal("column removal failed to unbind each cell exactly once")
 	}
 }
+
+func TestTableViewIncrementalRowsPreserveEditorFocus(t *testing.T) {
+	v, m, column, delegate := tableFixture(3)
+	delegate.setup = func() gui.Widget { return gui.NewTextInput() }
+	column.SetDelegate(delegate)
+	host := gui.NewPopover(nil, nil)
+	host.SetWidget(v)
+	defer host.Destroy()
+	tableArrange(v, 240, 260)
+	row := v.realized["r2"]
+	editor := row.cells[0].content.(*gui.TextInput)
+	editor.SetText("abc")
+	editor.SetSelection(gui.TextSelection{Anchor: 1, Caret: 2})
+	focus := host.(gui.EventTarget)
+	if !focus.SetFocusedWidget(editor) {
+		t.Fatal("未建立编辑焦点")
+	}
+	unbound := len(delegate.unbound)
+	check := func(index int) {
+		t.Helper()
+		if focus.FocusedWidget() != editor || v.realized["r2"] != row || row.cells[0].content != editor ||
+			editor.Selection() != (gui.TextSelection{Anchor: 1, Caret: 2}) || row.bound.Index != index ||
+			len(delegate.unbound) != unbound {
+			t.Fatal("未受影响的编辑器、焦点、选区或绑定身份丢失", row.bound, delegate.unbound)
+		}
+	}
+	m.Append(tableRecord{"new", 60, 20})
+	tableArrange(v, 240, 260)
+	check(2)
+	m.Insert(0, tableRecord{"prefix", 60, 20})
+	tableArrange(v, 240, 260)
+	check(3)
+	m.Remove(0)
+	unbound++
+	tableArrange(v, 240, 260)
+	check(2)
+	m.Remove(2)
+	if focus.FocusedWidget() != v || editor.Root() != nil {
+		t.Fatal("真正删除编辑行时未正常移交焦点")
+	}
+}
+
+func TestTableRowChangeRanges(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		before, after []string
+		want          gui.ListChange
+	}{
+		{"追加", []string{"a", "b"}, []string{"a", "b", "c"}, gui.ListChange{Position: 2, Added: 1}},
+		{"插入", []string{"a", "b"}, []string{"a", "c", "b"}, gui.ListChange{Position: 1, Added: 1}},
+		{"删除", []string{"a", "b", "c"}, []string{"a", "c"}, gui.ListChange{Position: 1, Removed: 1}},
+		{"替换", []string{"a", "b", "c"}, []string{"a", "x", "c"}, gui.ListChange{Position: 1, Removed: 1, Added: 1}},
+		{"重排", []string{"a", "b", "c", "d"}, []string{"a", "c", "b", "d"}, gui.ListChange{Position: 1, Removed: 2, Added: 2}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tableRowChange(tc.before, tc.after); got != tc.want {
+				t.Fatal("行结构范围错误", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestTableViewInputSortResizeAndContextMenu(t *testing.T) {
 	v, _, c, _ := tableFixture(8)
 	defer v.SetModel(nil)

@@ -46,7 +46,7 @@ type TableView struct {
 	realized                      map[string]*tableRow
 	revision                      uint64
 	synchronizing, syncPending    bool
-	items                         signal.Signal0
+	items                         signal.Signal1[gui.ListChange]
 	selection                     signal.Signal2[[]string, uint64]
 	currentSignal                 signal.Signal2[string, uint64]
 	activate                      signal.Signal2[string, uint64]
@@ -139,7 +139,12 @@ func (m *tableListModel) ItemsCount() int {
 	}
 	return len(m.view.rowIDs)
 }
-func (m *tableListModel) ConnectItems(fn func()) signal.Handle { return m.view.items.Connect(fn) }
+func (m *tableListModel) ConnectItems(fn func()) signal.Handle {
+	return m.view.items.Connect(func(gui.ListChange) { fn() })
+}
+func (m *tableListModel) ConnectItemsChanged(fn func(gui.ListChange)) signal.Handle {
+	return m.view.items.Connect(fn)
+}
 
 func (v *TableView) Model() TableModel { return v.model }
 
@@ -163,7 +168,7 @@ func (v *TableView) SetModel(model TableModel) {
 	v.reindex()
 	v.connectModel()
 	version := v.revision
-	v.items.Emit()
+	v.items.Emit(gui.ListChange{Reset: true})
 	if !v.valid(version) {
 		return
 	}
@@ -237,7 +242,7 @@ func (v *TableView) modelChanged() {
 		if slices.Equal(oldIDs, v.rowIDs) {
 			v.Refresh()
 		} else {
-			v.items.Emit()
+			v.items.Emit(tableRowChange(oldIDs, v.rowIDs))
 		}
 		if v.valid(version) {
 			if index, ok := v.indices[v.revealID]; ok {
@@ -251,6 +256,21 @@ func (v *TableView) modelChanged() {
 			return
 		}
 	}
+}
+
+// Retain the unchanged prefix and suffix. A general reorder may replace the
+// middle, but inserting or removing records preserves all other editors.
+func tableRowChange(before, after []string) gui.ListChange {
+	start := 0
+	for start < len(before) && start < len(after) && before[start] == after[start] {
+		start++
+	}
+	oldEnd, newEnd := len(before), len(after)
+	for oldEnd > start && newEnd > start && before[oldEnd-1] == after[newEnd-1] {
+		oldEnd--
+		newEnd--
+	}
+	return gui.ListChange{Position: start, Removed: oldEnd - start, Added: newEnd - start}
 }
 
 // Columns returns all configured columns in display order, including hidden ones.
@@ -322,7 +342,7 @@ func (v *TableView) SetColumns(columns ...*TableColumn) {
 	}
 	v.columnsChanged()
 	if wasEmpty || len(v.visibleColumns) == 0 {
-		v.items.Emit()
+		v.items.Emit(gui.ListChange{Reset: true})
 	}
 }
 
@@ -357,7 +377,7 @@ func (v *TableView) setColumnVisible(c *TableColumn, visible bool) {
 	}
 	v.columnsChanged()
 	if wasEmpty || len(v.visibleColumns) == 0 {
-		v.items.Emit()
+		v.items.Emit(gui.ListChange{Reset: true})
 	}
 }
 func (v *TableView) column(id string) *TableColumn {
