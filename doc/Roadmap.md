@@ -1,5 +1,13 @@
 # GOUI 实用化与未来路线
 
+## 合成能力同步查询（2026-11-10）
+
+Platform、GUI Application 和 UI App 已提供 Composited 显式查询，供自定义透明窗口
+创建前选择策略。它与表面的不可变 Transparent 配置分开，查询不建立订阅、轮询
+或自动重建。X11 有/无合成器、运行期再次查询及 Windows/macOS 桌面验证通过；
+移动端正式构建通过，原生运行和其他边界见[Plan](Plan.md#合成能力同步查询2026-11-10)
+与[设计](DesignTransparency.md#合成能力同步查询2026-11-10)。
+
 ## 编辑光标空闲常亮（2026-11-10）
 
 TextInput/TextView共用10秒空闲截止，停止500 ms闪烁计时器后保持常亮，减少静止

@@ -181,3 +181,105 @@ GUI 的旧 `example/gui_transparency` 已于2026-11-03移除。当前可运行 `
 - [GLFW Win32 framebuffer transparency](https://github.com/glfw/glfw/blob/master/src/win32_window.c)
 - [macOS OpenGL 窗口表面](https://developer.apple.com/library/archive/documentation/GraphicsImaging/Conceptual/OpenGL-MacProgGuide/opengl_contexts/opengl_contexts.html)
 - [X11 compositing manager selection](https://specifications.freedesktop.org/wm/latest/ar01s08.html)
+
+## 合成能力同步查询（2026-11-10）
+
+应用可能在创建自定义透明窗口前选择替代外观或提示用户，因此查询能力与框架内置
+弹层的降级策略分别存在。新增：
+
+```go
+// platform.Platform
+Composited() (bool, error)
+
+// gui.Application / ui.App
+Composited() bool
+```
+
+Composited 表示当前窗口系统环境能够合成表面的 alpha，不是 GPU 加速、ARGB visual
+存在、某个 Window 的透明配置，也不保证任意 NewWindow/NewPopup/NewPainter 能创建
+透明资源。没有合成器为 false、nil；查询失败由平台返回错误，GUI 保守返回 false，
+不记录日志或弹窗。业务仍需处理实际透明创建失败。该查询不放进 Settings，不新增
+Display/显示器对象或能力集合。
+
+- platform 在 UI 线程查询当前事实；X11 缓存 default screen 的 `_NET_WM_CM_Sn`
+  atom，每次查询 selection owner，不缓存状态，不根据 Xvnc/WM 名称猜测。原透明
+  Window/Popup 的创建前检查复用同一方法，不再临时 InternAtom。
+- Windows 复用已有 DwmIsCompositionEnabled 绑定，传播查询失败。API 返回 false
+  时复用原 OS build 查询：Windows 8 起 DWM 必须启用，无相应兼容 manifest 时
+  API 的 false 是历史兼容值；build >= 9200 据系统契约报告 true。只缓存不可变
+  OS build，不缓存合成状态，不改其他原生窗口样式或绘制调用。
+- 受支持的 Cocoa 环境始终由 WindowServer 合成。UIKit/Core Animation 与 Android
+  SurfaceFlinger 同样始终合成；移动后端仍可拒绝 Transparent 窗口或仅提供不透明
+  系统 Surface。Composited=true 不扩大这些窗口契约。
+- gui 在服务已就绪且未关闭时直接查询；未就绪、缺少平台或已关闭保守返回 false。
+  在 Activate 或之后的 GUI 回调使用；桌面已有初始化完成的 pre-Run 查询也有效。
+- ui 复用 App.Sync，后台调用只在 GUI 线程执行底层查询，停止后为 false。每次
+  显式调用读取最新值，不收集状态依赖，不增加轮询、信号、自动 RequestUpdate 或
+  透明窗口的自动重建。
+
+Transparent() 继续报告不可变的表面创建配置。运行期启停合成器后再次查询能够
+观察当前值，但框架不承诺改造已经存在的 alpha 表面；若未来需要自动切换，需将
+通知与已有 Window/Popup 的处理策略一起设计，不能仅增加 ConnectComposited。
+
+参考与取舍：采用 GTK4 的“alpha 表面配置”与“合成环境”分离，保留 GOUI 的
+Application 查询入口和显式错误策略，不照搬 GdkDisplay、属性通知或显示器模型。
+
+- [GDK is_composited](https://docs.gtk.org/gdk4/method.Display.is_composited.html)、
+  [is_rgba](https://docs.gtk.org/gdk4/method.Display.is_rgba.html)：当前官方文档分别描述
+  alpha 正确合成的环境与表面具有 alpha 的事实。
+- [EWMH compositor selection](https://specifications.freedesktop.org/wm/latest/ar01s08.html)：
+  compositor 必须持有对应 screen 的 manager selection；atom 存在不等于 owner 存在。
+- [Microsoft DwmIsCompositionEnabled](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/nf-dwmapi-dwmiscompositionenabled)：
+  明确 Windows 8+ 常开及 manifest 兼容返回；该例外有原生契约依据。
+- [Apple Core Animation](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/CoreAnimation_guide/CoreAnimationBasics/CoreAnimationBasics.html)、
+  [Android SurfaceFlinger](https://source.android.com/docs/core/graphics/surfaceflinger-windowmanager)：
+  系统图层/表面合成模型不意味着 GOUI 的具体顶层窗口支持透明。
+
+### 验证计划
+
+包内覆盖 GUI 实时查询、true/false/错误、生命周期保守值，以及 UI Sync 的调用线程、
+无缓存/无重建和停止后行为。Windows 使用无兼容 manifest 的原生测试 EXE 检查 DWM
+报告，并保留已销毁平台错误语义。
+
+独立桌面入口为 `tests/window/ui/composited`，中文注释提供独立预期、原生按钮/F6
+查询、运行期合成器切换与菜单外壳观察。自动模式比较平台/GUI/UI 与外部指定预期，
+再经正常输入打开菜单、检查实际透明配置；不把三层彼此一致当作唯一正确性证据。
+运行期切换只在独立 X11 会话操作，关闭旧菜单后再查；不改用户桌面设置。
+
+### 查询能力执行记录（2026-11-10）
+
+- Go 1.25.8、Linux amd64、独立 Xvnc/Xfwm4 的已跟踪源码隔离副本执行
+  `CGO_ENABLED=0 go test -json -count=1 ./...`：4835 通过、11 既有跳过、0 失败；
+  `CGO_ENABLED=1 go test -race -count=1 ./gui ./ui` 通过。原工作区
+  `CGO_ENABLED=0 go test ./...` 仍因已有未跟踪的旧 Window.Show/SetTitle 等调用
+  失败，未修改、删除或提交这些文件；全仓通过指前述隔离副本。
+- Xvnc/Xfwm4 1x，Software/OpenGL llvmpipe 两后端、合成器 on/off 四组窗口自动
+  断言通过。预期由外部核对 `_NET_WM_CM_S0` owner 得到，三层与预期一致；菜单
+  实际透明配置分别为 true/false。关闭合成器时原生鼠标打开菜单，直角矩形外壳
+  无外围阴影和透明黑边，未将截图或三层相等作为唯一断言。
+- 同一手动窗口进程在独立 WM on → off → on 后，用原生 F6 显式查询，依次得到
+  true → false → true；不查询时日志和界面不自动变化，构建次数保持一次。证明
+  没有缓存启动时的合成状态，也没有为本功能增加自动更新设施。只切换专用显示，
+  未修改用户桌面配置。
+- Windows 10 19045 amd64：GUI/UI 定向测试和无兼容 manifest 的 Win32 查询测试
+  原生通过；Direct2D 1x 交互桌面窗口自动断言通过，三层及菜单实际配置为 true。
+  macOS 15.7.7 arm64：GUI/UI 定向测试和 OpenGL 1x 交互桌面窗口自动断言通过，
+  三层及菜单实际配置为 true。传输后核对最终窗口程序 SHA-256，自动程序正常
+  退出，不能用这些结果推断未运行的旧系统或所有 manifest/辅助功能组合。
+- Android ARM64 APK、iOS ARM64 Simulator 未签名 app 经本轮 cmd/goui 正式内置
+  组件构建通过。仓库外消费者在 ui.Surface 中调用三层新接口；这是编译/打包验证，
+  本轮未启动移动设备或模拟器，不能当作移动端原生运行验收。
+- 开发中首次 GUI/UI 测试因已有测试替身尚未补充新接口而编译失败，补齐相关替身
+  后通过。窗口自动输入首轮在状态 Label 绑定引发布局前读取几何，未打开菜单；
+  保留断言，改在绑定更新后的下一绘制帧输入后四组通过，未添加生产重试或偏移。
+  曾用 Window.Visible 等待，但当前桌面 X11 已映射窗口仍报告 false，等待超时；
+  后续改用已完成绘制的几何，不将这个独立问题算作查询能力的修复。
+
+后续独立处理：
+
+- X11 的桌面 Window.Visible 事实同步：本轮观察到已映射/可见窗口仍为 false，
+  MapNotify 当前只触发 StateEvent，而 GUI 的 visible 字段只消费 VisibilityEvent。
+  需按桌面/系统 Surface 的既有语义统一检查，不能在本功能里直接伪造可见状态。
+- Tooltip 对 ErrUnavailable 的不透明重试、DropDown 的同等降级路径仍待补齐，
+  本轮仅新增合成能力查询及复用 X11 创建前检查。
+- 运行期合成器切换不自动重建已有透明窗口/弹层；未新增 ConnectComposited。

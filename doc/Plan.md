@@ -1,5 +1,20 @@
 # Plan
 
+## 合成能力同步查询（2026-11-10）
+
+- [x] platform.Platform.Composited 返回当前事实与错误；X11 缓存 screen atom、
+  实时查 owner，透明创建前复用；Windows 复用 DWM 及有文档依据的 manifest 兼容处理。
+  Cocoa/UIKit/Android 按系统合成模型报告，独立窗口透明支持仍由创建契约决定。
+- [x] gui.Application / ui.App 提供 bool 查询：失败/未就绪/停止保守为 false，
+  UI 复用 Sync；没有状态缓存、变化信号、轮询、自动重建或 Settings 扩展。
+- [x] 隔离全仓 4835 通过、11 既有跳过、0 失败；GUI/UI race 通过。独立 X11
+  Software/OpenGL × 合成器 on/off 自动断言通过，同进程原生 F6 验证 true/false/true。
+- [x] Windows Direct2D 1x、macOS OpenGL 1x 原生窗口自动验收及相关包内测试通过；
+  Android APK 与 iOS Simulator app 正式构建通过。原工作区仍受未跟踪旧文件阻塞。
+- [ ] 移动端原生运行、旧 Windows/更多 manifest 与辅助功能组合未验收。Tooltip /
+  DropDown 不透明降级缺口、X11 桌面 Visible 同步及运行期表面自动调整单独处理；
+  具体结果及开发中失败见[透明绘制设计](DesignTransparency.md#查询能力执行记录2026-11-10)。
+
 ## 编辑光标空闲常亮（2026-11-10）
 
 - [x] 共享textEditor增加10秒单调时间截止，复用500 ms GUI Timer，空闲停止并常亮；
