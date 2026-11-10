@@ -1,5 +1,14 @@
 # Plan
 
+## Dialog 顶部遮罩拖动（2026-11-11）
+
+- [x] `BackdropCaptionTop` 将卡片上方的遮罩用于窗口拖动，两侧及下方按
+  CloseOnOutside 处理。命令式和声明式入口已接入，原布尔入口映射到 All、None。
+- [x] 按下和松开均按区域判定，超过 4 DIP 的拖动取消关闭手势。区域、手势与协调
+  回归通过。隔离全仓 4852 项通过、11 项跳过，相关 race、vet 通过。
+- [x] 独立 Xvnc/Xfwm4 的 Software/OpenGL 1x 自动及原生输入验收通过。
+  Windows/macOS 窗口例程构建通过，原生交互待验收。详见 [Dialog 设计](DesignModal.md)。
+
 ## Linux Integrated 窗口按钮外观（2026-11-10）
 
 - [x] 圆形按钮采用 2 DIP 图形，收紧轮廓保留图标与点击尺寸；四种图形按整体中心对齐物理像素。

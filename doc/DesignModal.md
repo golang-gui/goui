@@ -105,27 +105,64 @@ WindowChrome 继续负责真实窗口控制和缩放。被覆盖的后台 Header
 Dialog 为可放入普通 Overlay 的单子 Widget，使用 Fill(true)，自身绘制遮罩和卡片，
 内容由正常遍历绘制。模态关联整个 Dialog：命令式按需 NewModalScope(dialog)，
 声明式由 OverlayItem.Modal 管理；Dialog 不重复创建边界。通过 Visible 开关展示。
-提供 Child、Padding（默认 24 DIP）、BackdropCaption（默认 false）、
+提供 Child、Padding（默认 24 DIP）、BackdropCaptionMode（默认 None）、
 CloseOnOutside（默认 false）和 CloseRequest 信号。不预置标题、操作按钮或业务结果。
 Escape 在内容/IME 未消费时请求关闭，遮罩完整左键点击可选请求关闭，不自动更改
 应用状态。卡片内容测量决定尺寸，父硬约束优先；宽高偏好放 Child 上，大内容可组合
 ScrollView。卡片默认居中，沿用结构矩形裁剪，不新增 Painter 能力。
 
-公开入口为 NewDialog、Child／SetChild、Padding／SetPadding、BackdropCaption／
-SetBackdropCaption、CloseOnOutside／SetCloseOnOutside 与 ConnectCloseRequest。
+公开入口为 NewDialog、Child／SetChild、Padding／SetPadding、BackdropCaptionMode／
+SetBackdropCaptionMode、CloseOnOutside／SetCloseOnOutside 与 ConnectCloseRequest。
 Padding 使用四边 Insets。卡片为 dialog 的 card Part，遮罩为 backdrop Part；
-阴影在自己的结构矩形内预留支持范围，背景不隐式传给 Child。Caption 为 true 时
-外部点击关闭让位于窗口拖动；现有窗口按钮和缩放区域仍保留原职责。
+阴影在自己的结构矩形内预留支持范围，背景不隐式传给 Child。
 
-UI 提供 `wui.Dialog(child)`、Child、Padding／Paddings、BackdropCaption、
-CloseOnOutside、OnCloseRequest，另复用 ViewBase 的 Visible／Style 等修饰符。
+BackdropCaptionMode 决定遮罩的窗口拖动范围。
+
+- `BackdropCaptionNone` 下，CloseOnOutside 适用于整片遮罩。
+- `BackdropCaptionAll` 将整片遮罩保留为 Caption。
+- `BackdropCaptionTop` 将卡片上边缘以上的遮罩保留为 Caption。与卡片顶部同高
+  的两侧和卡片下方按 CloseOnOutside 处理。区域随卡片布局更新。
+
+`SetBackdropCaption(true)` 和 `SetBackdropCaption(false)` 分别选择 All、None，
+`BackdropCaption()` 报告是否启用任一种 Caption 模式。未识别的枚举值选择 None。
+UI 提供同名模式常量及 `BackdropCaptionMode(mode)`，也支持布尔写法
+`BackdropCaption(bool)`。两种 setter 写入同一个模式。
+
+关闭手势复用 ClickEventController，按下和松开均须在可关闭的遮罩区。移动或松开
+时距按下位置超过 4 DIP 即取消这次点击，拖回起点也不会发出关闭请求。卡片本身、
+内边距和控件间隙是普通客户区。窗口按钮和缩放边缘保留优先级。窗口移动使用
+现有 Chrome 能力。宿主无法移动窗口时，Caption 仍是保留区。
+
+Qt Quick 用 closePolicy 配置外部关闭条件，Flutter 用 barrierDismissible 配置
+遮罩点击取消。这里沿用 GOUI 的 CloseRequest，并独立选择拖动区域。
+[Qt Popup](https://doc.qt.io/qt-6/qml-qtquick-controls-popup.html#closePolicy-prop)、
+[Flutter showDialog](https://api.flutter.dev/flutter/material/showDialog.html)
 
 ```go
 ui.OverlayItem(
     wui.Dialog(content).Visible(showDialog).
+        BackdropCaptionMode(wui.BackdropCaptionTop).
+        CloseOnOutside(true).
         OnCloseRequest(func() { showDialog = false; app.RequestUpdate() }),
 ).Fill(true).Modal(true)
 ```
+
+### 顶部遮罩策略验收（2026-11-11）
+
+- 包内断言覆盖左右和底部取消、卡片顶部边界、内边距、双向跨区松开和声明式模式
+  切换。补充位移判断前，侧边远处松开及拖远后回到起点都会误发关闭请求。保留这
+  两项回归断言，修正后通过。
+- 独立 Xvnc/Xfwm4 合成会话中，Software 和 OpenGL llvmpipe 1x 的
+  `tests/window/widgets/dialog_toast -auto` 均通过。两种后端用原生指针从卡片上方、
+  HeaderBar 下方拖动，窗口从 (220, 120) 移到 (290, 162)，尺寸保持 840×660，
+  Dialog 保持可见。卡片内边距和侧边拖动后保持原位置与可见状态。侧边、底部点击
+  各发出一次关闭请求。无后台 Toast 触发，测试窗口正常退出。
+- 隔离跟踪源码的 `CGO_ENABLED=0 go test -json -count=1 ./...` 通过 4852 项、
+  跳过 11 项、失败 0 项。`go test -race -count=1 ./widgets ./widgets/ui` 与
+  `go vet ./widgets ./widgets/ui ./tests/window/widgets/dialog_toast` 通过。
+  原工作区直接运行全仓测试仍受旧未跟踪例程和测试的编译错误阻塞。
+- Linux amd64、Windows amd64、macOS arm64 窗口例程构建通过。Windows 和
+  macOS 的原生窗口交互待验收。
 
 原生窗口 Destroy 通知与 UI 声明释放的先后不能凭用户 OnDestroy 回调推定；需要
 检查最终清理时，在声明 Release 完成或 ui.Run 返回后验证。
