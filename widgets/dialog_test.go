@@ -108,6 +108,68 @@ func TestDialogRequestsCloseThroughInput(t *testing.T) {
 	}
 }
 
+func TestDialogTopBackdropCaptionOutsideClicks(t *testing.T) {
+	d := NewDialog()
+	d.SetChild(splitTestChild(120, 60))
+	d.Arrange(geometry.Rect(0, 0, 400, 300))
+	d.SetBackdropCaptionMode(BackdropCaptionTop)
+	d.SetCloseOnOutside(true)
+	host := &tabInputHost{root: d}
+	dispatcher := new(gui.EventDispatcher)
+	closed := 0
+	d.ConnectCloseRequest(func() { closed++ })
+
+	// 跨界端点相距不足拖动阈值，验证按下和松开各自都受区域限制。
+	above := geometry.Point{X: 10, Y: d.card.Y - 0.5}
+	side := geometry.Point{X: 10, Y: d.card.Y}
+	below := geometry.Point{X: 200, Y: 290}
+	right := geometry.Point{X: 390, Y: d.card.Center().Y}
+	card := geometry.Point{X: d.card.X + 0.5, Y: d.card.Center().Y}
+	cardOutside := geometry.Point{X: d.card.X - 0.5, Y: card.Y}
+	sideFar := geometry.Point{X: side.X, Y: side.Y + 24}
+	for _, tc := range []struct {
+		name       string
+		down, up   geometry.Point
+		wantClosed bool
+		move       *geometry.Point
+	}{
+		{"顶部", above, above, false, nil},
+		{"卡片顶部同高的左侧", side, side, true, nil},
+		{"右侧", right, right, true, nil},
+		{"底部", below, below, true, nil},
+		{"卡片内边距", card, card, false, nil},
+		{"顶部按下侧边松开", above, side, false, nil},
+		{"侧边按下顶部松开", side, above, false, nil},
+		{"侧边按下卡片松开", cardOutside, card, false, nil},
+		{"卡片按下侧边松开", card, cardOutside, false, nil},
+		{"侧边在远处松开", side, sideFar, false, nil},
+		{"侧边拖远后回到起点", side, side, false, &sideFar},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			closed = 0
+			send := func(kind events.EventType, p geometry.Point) {
+				t.Helper()
+				if err := dispatcher.DispatchEvent(host, events.PointerEvent{EventType: kind, Position: p, Button: events.PointerButtonLeft}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			send(events.PointerDown, tc.down)
+			if tc.move != nil {
+				send(events.PointerMove, *tc.move)
+				send(events.PointerMove, tc.down)
+			}
+			send(events.PointerUp, tc.up)
+			want := 0
+			if tc.wantClosed {
+				want = 1
+			}
+			if closed != want || !d.Visible() {
+				t.Fatalf("关闭请求次数 %d，预期 %d，Dialog 可见 %t", closed, want, d.Visible())
+			}
+		})
+	}
+}
+
 func TestDialogCloseCallbacksStopAfterLifecycleChange(t *testing.T) {
 	for _, destroy := range []bool{false, true} {
 		d := NewDialog()

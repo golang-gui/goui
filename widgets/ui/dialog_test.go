@@ -17,8 +17,13 @@ func TestDialogDeclarationReconcile(t *testing.T) {
 	d := v.Mount(ctx).(*widgets.Dialog)
 	v.Update(ctx, d)
 	child := d.Child()
-	if child == nil || d.Padding() != geometry.UniformInsets(10) || !d.BackdropCaption() || !d.CloseOnOutside() {
+	if child == nil || d.Padding() != geometry.UniformInsets(10) || d.BackdropCaptionMode() != BackdropCaptionAll || !d.CloseOnOutside() {
 		t.Fatal("声明属性未应用")
+	}
+	v = Dialog(baseui.Label("top")).BackdropCaptionMode(BackdropCaptionTop).CloseOnOutside(true)
+	v.Update(ctx, d)
+	if d.Child() != child || d.BackdropCaptionMode() != BackdropCaptionTop || !d.BackdropCaption() || !d.CloseOnOutside() {
+		t.Fatal("顶部模式未应用到已有 Dialog")
 	}
 	v = Dialog(baseui.Label("updated")).OnCloseRequest(func() { latest++ })
 	v.Update(ctx, d)

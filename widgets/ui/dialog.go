@@ -9,14 +9,23 @@ import (
 	"github.com/golang-gui/goui/widgets"
 )
 
+type BackdropCaptionMode = widgets.BackdropCaptionMode
+
+const (
+	BackdropCaptionNone = widgets.BackdropCaptionNone
+	BackdropCaptionAll  = widgets.BackdropCaptionAll
+	BackdropCaptionTop  = widgets.BackdropCaptionTop
+)
+
 // DialogView declares card content, backdrop appearance and close requests.
 // Place it in baseui.OverlayItem(...).Fill(true).Modal(true) for modal use.
 type DialogView struct {
 	baseui.ViewBase[DialogView]
-	child                           baseui.View
-	padding                         optional.Optional[geometry.Insets]
-	backdropCaption, closeOnOutside bool
-	onCloseRequest                  func()
+	child           baseui.View
+	padding         optional.Optional[geometry.Insets]
+	backdropCaption BackdropCaptionMode
+	closeOnOutside  bool
+	onCloseRequest  func()
 }
 
 // Dialog declares a dialog with optional content; it adds no native window.
@@ -39,9 +48,25 @@ func (v *DialogView) Paddings(padding geometry.Insets) *DialogView {
 	v.padding.SetValue(padding)
 	return v
 }
-func (v *DialogView) BackdropCaption(caption bool) *DialogView { v.backdropCaption = caption; return v }
-func (v *DialogView) CloseOnOutside(close bool) *DialogView    { v.closeOnOutside = close; return v }
-func (v *DialogView) OnCloseRequest(fn func()) *DialogView     { v.onCloseRequest = fn; return v }
+
+// BackdropCaption selects the entire backdrop when true and clears the caption
+// region when false.
+func (v *DialogView) BackdropCaption(caption bool) *DialogView {
+	if caption {
+		return v.BackdropCaptionMode(BackdropCaptionAll)
+	}
+	return v.BackdropCaptionMode(BackdropCaptionNone)
+}
+
+// BackdropCaptionMode selects the part of the backdrop reserved for window
+// movement. CloseOnOutside applies to the remaining backdrop.
+func (v *DialogView) BackdropCaptionMode(mode BackdropCaptionMode) *DialogView {
+	v.backdropCaption = mode
+	return v
+}
+
+func (v *DialogView) CloseOnOutside(close bool) *DialogView { v.closeOnOutside = close; return v }
+func (v *DialogView) OnCloseRequest(fn func()) *DialogView  { v.onCloseRequest = fn; return v }
 
 type dialogState struct {
 	padding        geometry.Insets
@@ -64,7 +89,7 @@ func (v *DialogView) Update(ctx baseui.BuildContext, widget gui.Widget) {
 	d, s := widget.(*widgets.Dialog), ctx.State().(*dialogState)
 	s.onCloseRequest = v.onCloseRequest
 	d.SetPadding(v.padding.ValueOr(s.padding))
-	d.SetBackdropCaption(v.backdropCaption)
+	d.SetBackdropCaptionMode(v.backdropCaption)
 	d.SetCloseOnOutside(v.closeOnOutside)
 	ctx.UpdateChild(d, v.child)
 }

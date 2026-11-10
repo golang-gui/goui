@@ -8,19 +8,31 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 )
 
+// BackdropCaptionMode selects the part of a Dialog backdrop that acts as a
+// window caption.
+type BackdropCaptionMode uint8
+
+const (
+	BackdropCaptionNone BackdropCaptionMode = iota
+	BackdropCaptionAll
+	// BackdropCaptionTop uses the backdrop above the card's top edge.
+	BackdropCaptionTop
+)
+
 // Dialog displays a centered content card and a full-allocation backdrop.
 // Place it in an Overlay with Fill enabled. It does not install modality or
 // close itself: associate a gui.ModalScope and handle CloseRequest explicitly.
 // All operations belong to the GUI thread.
 type Dialog struct {
 	gui.WidgetBase
-	child                           gui.Widget
-	padding                         geometry.Insets
-	card                            geometry.Rectangle
-	backdropCaption, closeOnOutside bool
-	revision                        uint64
-	closeRequest                    signal.Signal1[func() bool]
-	chrome                          signal.Handle
+	child           gui.Widget
+	padding         geometry.Insets
+	card            geometry.Rectangle
+	backdropCaption BackdropCaptionMode
+	closeOnOutside  bool
+	revision        uint64
+	closeRequest    signal.Signal1[func() bool]
+	chrome          signal.Handle
 }
 
 // NewDialog creates a visible dialog with 24 DIP padding. Outside presses do
@@ -42,7 +54,7 @@ func NewDialog() *Dialog {
 	click := &dialogBackdropClick{ClickEventController: gui.NewClickEventController(), dialog: d}
 	click.SetPhase(gui.PhaseBubble)
 	click.ConnectClicked(func(ctx gui.EventContext) {
-		if p, ok := ctx.Position(); ok && d.closeOnOutside && !d.backdropCaption && !pointInRect(d.card, p) {
+		if p, ok := ctx.Position(); ok && d.closesAt(p) {
 			ctx.StopPropagation()
 			d.requestClose()
 		}
@@ -98,12 +110,31 @@ func (d *Dialog) SetPadding(padding geometry.Insets) {
 	}
 }
 
-func (d *Dialog) BackdropCaption() bool { return d.backdropCaption }
+// BackdropCaption reports whether any backdrop caption mode is enabled.
+func (d *Dialog) BackdropCaption() bool { return d.backdropCaption != BackdropCaptionNone }
 
-// SetBackdropCaption allows window movement through empty backdrop space.
-// The card, including its padding and gaps, remains a client region. Caption
-// handling takes precedence over CloseOnOutside. Native support follows Chrome.
-func (d *Dialog) SetBackdropCaption(caption bool) { d.backdropCaption = caption }
+// SetBackdropCaption selects the whole backdrop as caption when true and
+// clears the caption region when false.
+func (d *Dialog) SetBackdropCaption(caption bool) {
+	if caption {
+		d.SetBackdropCaptionMode(BackdropCaptionAll)
+	} else {
+		d.SetBackdropCaptionMode(BackdropCaptionNone)
+	}
+}
+
+func (d *Dialog) BackdropCaptionMode() BackdropCaptionMode { return d.backdropCaption }
+
+// SetBackdropCaptionMode selects the window drag region. The card, including
+// its padding and gaps, remains a client region. CloseOnOutside applies to the
+// remaining backdrop. Native movement follows the host's Chrome support.
+// Unrecognized modes select BackdropCaptionNone.
+func (d *Dialog) SetBackdropCaptionMode(mode BackdropCaptionMode) {
+	if mode > BackdropCaptionTop {
+		mode = BackdropCaptionNone
+	}
+	d.backdropCaption = mode
+}
 
 func (d *Dialog) CloseOnOutside() bool         { return d.closeOnOutside }
 func (d *Dialog) SetCloseOnOutside(close bool) { d.closeOnOutside = close }
@@ -158,12 +189,27 @@ func (d *Dialog) queryRegion(point geometry.Point, region *gui.ChromeRegion) {
 			return
 		}
 	}
-	p := localPoint(d, point)
-	if pointInRect(d.card, p) || !d.backdropCaption {
-		*region = gui.ChromeRegionClient
-	} else {
+	if d.captionAt(localPoint(d, point)) {
 		*region = gui.ChromeRegionCaption
+	} else {
+		*region = gui.ChromeRegionClient
 	}
+}
+
+func (d *Dialog) captionAt(p geometry.Point) bool {
+	switch d.backdropCaption {
+	case BackdropCaptionAll:
+		return !pointInRect(d.card, p)
+	case BackdropCaptionTop:
+		return p.Y < d.card.Y
+	default:
+		return false
+	}
+}
+
+func (d *Dialog) closesAt(p geometry.Point) bool {
+	return d.closeOnOutside && pointInRect(geometry.Rectangle{Size: d.Rect().Size}, p) &&
+		!pointInRect(d.card, p) && !d.captionAt(p)
 }
 
 func (d *Dialog) Paint(p gui.Painter) {
@@ -209,13 +255,29 @@ func (l dialogLayout) Arrange(children []layout.Child, rect geometry.Rectangle) 
 type dialogBackdropClick struct {
 	*gui.ClickEventController
 	dialog *Dialog
+	start  geometry.Point
 }
 
 func (c *dialogBackdropClick) HandleEvent(ctx gui.EventContext) {
-	if e, ok := ctx.Event().(events.PointerEvent); ok && e.EventType == events.PointerDown {
-		p, valid := ctx.Position()
-		if !valid || !c.dialog.closeOnOutside || c.dialog.backdropCaption || pointInRect(c.dialog.card, p) {
-			return
+	if e, ok := ctx.Event().(events.PointerEvent); ok {
+		switch e.EventType {
+		case events.PointerDown:
+			p, valid := ctx.Position()
+			if e.Button != c.Button() || !valid || !c.dialog.closesAt(p) {
+				return
+			}
+			c.start = e.Position
+		case events.PointerMove, events.PointerUp:
+			if c.Pressed() && (e.EventType == events.PointerMove || e.Button == c.Button()) {
+				// Backdrop dismissal requires a click even when no competing
+				// drag controller is present in this region.
+				const clickDistance float32 = 4 // DIP
+				dx, dy := e.Position.X-c.start.X, e.Position.Y-c.start.Y
+				if dx*dx+dy*dy > clickDistance*clickDistance {
+					c.Reset()
+					return
+				}
+			}
 		}
 	}
 	c.ClickEventController.HandleEvent(ctx)

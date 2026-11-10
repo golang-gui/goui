@@ -7,9 +7,10 @@
 //  1. 点 Open dialog：焦点进入内容，Tab/Shift+Tab 仅在内部循环；F5 不作用于后台。
 //     输入中文，点 Rebuild：内容、焦点范围与输入保留。Esc 提出关闭请求，由状态隐藏。
 //     打开、重建和关闭 Dialog 时，窗口按钮的大小和位置始终不变，仍在 HeaderBar 垂直居中。
-//  2. Caption 默认关闭，点击遮罩按 CloseOnOutside 提出关闭请求；卡片内边距和控件
-//     间隙不关闭。关闭后，打开 Caption 再开 Dialog：只有外部遮罩可拖动窗口，卡片
-//     空白不可拖动；Caption 不同时触发外部点击关闭。原生控制按钮仍可关闭窗口。
+//  2. Caption 按钮循环 Off、All、Top。Off 下点击遮罩请求关闭，All 下整片遮罩可拖动。
+//     选 Top 再打开 Dialog，从卡片上方拖动窗口，松手后 Dialog 保持打开。重新打开后
+//     分别点击卡片左右或下方的遮罩，每次应发出一次关闭请求。卡片内边距和间隙保留
+//     普通输入。跨区按下和松开不应误触取消。窗口控制按钮及缩放区域照常操作。
 //  3. 点 Timed toast：显示约 1 秒后隐藏。悬停或聚焦内容中的 Dismiss 按钮暂停；移出
 //     并转移焦点后按剩余时间继续。点 Persistent toast：不自动隐藏，Dismiss 关闭。
 //  4. 反复请求 Toast：替换当前内容并重新计时，不排队；旧超时不关闭新提示。
@@ -17,7 +18,8 @@
 //  5. Theme 在 Modern 亮／暗和 Basic 间切换：Dialog、Toast 均有背景、边框和圆角；
 //     阴影保留在自己的区域，内容文字和按钮维持自身样式。调整窗口大小应仍合理布局。
 //
-// -auto 覆盖窗口按钮位置、模态、文字、真实 Timer、悬停暂停、替换、关闭、普通重建与句柄释放。
+// -auto 覆盖窗口按钮位置、模态、文字、计时、声明释放，以及 Top 模式的区域点击。
+// 实际窗口移动通过手动拖动或 X11 原生输入验收。
 // 平台差异：Chrome 拖动遵循现有平台能力；CommitText 不模拟 IME 预编辑或候选窗。
 // Linux 无合成器而回退 Native 时，-auto 明确跳过 Integrated 按钮几何检查，其余检查继续。
 // 副作用：仅本进程窗口，不改系统设置或剪贴板。复位：重新启动。
@@ -53,7 +55,8 @@ func main() {
 	flag.Parse()
 	show, text := ui.MakeState(false), ui.MakeState("")
 	var toast wui.ToastHandle
-	started, caption := false, false
+	started := false
+	caption := wui.BackdropCaptionNone
 	mode, keys, closeRequests, step, builds := 0, 0, 0, 0, 0
 	var controlsBefore geometry.Rectangle
 	err := ui.Run("org.golang-gui.DialogToast", func(app ui.App) ui.RootView {
@@ -88,11 +91,11 @@ func main() {
 						panic(err)
 					}
 				}
-				click := func(id string) {
-					p := widget(id).Snapshot().Bounds.Center()
+				clickAt := func(p geometry.Point) {
 					pointer(events.PointerDown, p)
 					pointer(events.PointerUp, p)
 				}
+				click := func(id string) { clickAt(widget(id).Snapshot().Bounds.Center()) }
 				currentToast := func() *widgets.Toast {
 					for w := widget("toast-text"); w != nil; w = w.Parent() {
 						if t, ok := w.(*widgets.Toast); ok {
@@ -164,6 +167,35 @@ func main() {
 					click("toast-dismiss")
 				case 17:
 					require(currentToast() == nil, "dismiss did not release declaration content")
+					caption = wui.BackdropCaptionTop
+					show.Set(true)
+				case 18:
+					d := widget("dialog").(*widgets.Dialog)
+					require(d.Visible() && d.BackdropCaptionMode() == widgets.BackdropCaptionTop, "Top mode not applied")
+					bounds := d.Snapshot().Bounds
+					top := geometry.Point{X: bounds.Center().X, Y: bounds.Y + 24}
+					clickAt(top)
+					require(show.Get() && closeRequests == 1, "top click dismissed dialog")
+					child := d.Child().Snapshot().Bounds
+					side := geometry.Point{X: bounds.X + 24, Y: child.Y - d.Padding().Top + 0.25}
+					above := side
+					above.Y -= 0.5
+					pointer(events.PointerDown, side)
+					pointer(events.PointerUp, above)
+					require(show.Get() && closeRequests == 1, "cross-region release dismissed dialog")
+					pointer(events.PointerDown, side)
+					pointer(events.PointerMove, side.Add(geometry.Point{Y: 24}))
+					pointer(events.PointerUp, side)
+					require(show.Get() && closeRequests == 1, "side drag dismissed dialog")
+					clickAt(side)
+				case 19:
+					require(!show.Get() && closeRequests == 2, "side click did not dismiss dialog")
+					show.Set(true)
+				case 20:
+					bounds := widget("dialog").Snapshot().Bounds
+					clickAt(geometry.Point{X: bounds.Center().X, Y: bounds.Y + bounds.Height - 24})
+				case 21:
+					require(!show.Get() && closeRequests == 3, "bottom click did not dismiss dialog")
 					timer.Stop()
 					win.Destroy()
 				}
@@ -181,7 +213,10 @@ func main() {
 					ui.Label(fmt.Sprintf("Build %d | F5 %d | Close requests %d", builds, keys, closeRequests)),
 					ui.TextInput().ID("background").Text("background"),
 					ui.Button("Open dialog").ID("open").OnClick(func() { show.Set(true) }),
-					ui.Button(fmt.Sprintf("Backdrop Caption: %v", caption)).OnClick(func() { caption = !caption; app.RequestUpdate() }),
+					ui.Button("Backdrop Caption: "+[...]string{"Off", "All", "Top"}[caption]).OnClick(func() {
+						caption = (caption + 1) % 3
+						app.RequestUpdate()
+					}),
 					ui.Button("Timed toast").ID("timed").OnClick(func() { requestToast("Saved successfully", time.Second) }),
 					ui.Button("Persistent toast").ID("persistent").OnClick(func() { requestToast("Waiting for confirmation", 0) }),
 					ui.Button("Theme: Modern light / dark / Basic").ID("theme").OnClick(func() { mode = (mode + 1) % 3; app.RequestUpdate() }),
@@ -193,7 +228,7 @@ func main() {
 						ui.Button("Rebuild").ID("rebuild").OnClick(app.RequestUpdate),
 						ui.Button("Close dialog").ID("close").OnClick(func() { show.Set(false) }),
 					).Spacing(12).MinWidth(360).MaxWidth(520).CrossAlign(layout.CrossStretch)).ID("dialog").Visible(show.Get()).
-						BackdropCaption(caption).CloseOnOutside(true).OnCloseRequest(func() { closeRequests++; show.Set(false); app.RequestUpdate() })
+						BackdropCaptionMode(caption).CloseOnOutside(true).OnCloseRequest(func() { closeRequests++; show.Set(false); app.RequestUpdate() })
 				}).Observe(&show)).Fill(true).Modal(true),
 				ui.OverlayItem(wui.Toast(&toast).ID("notifications")).OnPosition(func(available, size geometry.Size, p *geometry.Point) {
 					*p = geometry.Point{X: (available.Width - size.Width) / 2, Y: available.Height - size.Height - 16}
@@ -204,7 +239,7 @@ func main() {
 		log.Fatal(err)
 	}
 	if *auto {
-		require(step >= 18, "window exited before checks completed")
+		require(step >= 22, "window exited before checks completed")
 		require(toast.Close() == wui.ErrToastUnavailable, "UI release did not unbind handle")
 		fmt.Printf("PASS Dialog Toast builds=%d\n", builds)
 	}
