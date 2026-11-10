@@ -6,10 +6,11 @@
 // 初始：不透明 Native 窗口，显示 platform、GUI、UI 三层查询结果及查询次数。
 //
 // 操作与预期：
-//  1. 点击 Query 或按 F6：三层结果一致。未切换环境时多次查询保持一致，查询不重建视图。
+//  1. 点击 Query 或按 F6：环境稳定时三层结果一致，读取本身不请求重建。
 //  2. 在独立 X11 会话分别以 xfwm4 --compositor=on/off 启动，预期 true/false。
-//     仅在独立会话中运行期切换合成器；关闭已有菜单后再查，应读到最新值，
-//     未点击 Query 时界面保持上次结果，没有自动通知/轮询或隐式更新。
+//     仅在独立会话中运行期切换合成器；平台立即读取事实，GUI/UI 在既有两秒
+//     Settings 检查后更新。即使不点击 Query，快照文本也应自动变化并重建视图；
+//     Query 行保留上次显式读取值。没有独立的合成计时器或变化信号。
 //  3. 点击 Menu：从启动即合成可用时为圆角/阴影菜单；不可用时为不透明直角菜单，
 //     不出现透明黑边。Escape 关闭菜单。已有弹层不承诺随运行期合成器切换重建。
 //  4. Windows 8+、受支持的 macOS 环境预期 true；true 不保证任意窗口/后端透明创建成功。
@@ -49,22 +50,24 @@ func main() {
 	started, inputStarted, done := false, false, false
 	err := ui.Run("org.golanggui.Composited", func(app ui.App) ui.RootView {
 		builds++
+		log.Printf("SNAPSHOT composited=%t builds=%d", app.Settings().Composited(), builds)
 		check := func() {
-			raw, err := gui.App.Platform().Composited()
-			g, u := gui.App.Composited(), app.Composited()
+			native, err := gui.App.Platform().NewSettings()
+			if err != nil {
+				log.Fatal(err)
+			}
+			raw, err := native.Composited()
+			g, u := gui.App.Settings().Composited(), app.Settings().Composited()
 			checks++
-			if g != u || g != (err == nil && raw) || *expect != "" && (err != nil || u != want) {
+			if g != u || *expect != "" && (err != nil || raw != want || u != want) {
 				log.Fatalf("composition mismatch: platform=%t/%v gui=%t ui=%t expected=%s", raw, err, g, u, *expect)
 			}
-			if builds != 1 {
-				log.Fatal("query unexpectedly rebuilt the application")
-			}
-			text := fmt.Sprintf("Query %d | platform=%t (%v) | gui=%t | ui=%t", checks, raw, err, g, u)
+			text := fmt.Sprintf("Query %d | platform=%t (%v) | gui=%t | ui=%t | builds=%d", checks, raw, err, g, u, builds)
 			log.Print(text)
 			status.Set(text)
 		}
 		return ui.Root().StyleSheet(modern.Sheet(modern.Options{})).Windows(
-			ui.Window("main").Title("GOUI Composited").Size(650, 200).
+			ui.Window("main").Title("GOUI Composited Settings").Size(720, 230).
 				Shortcuts(ui.Shortcut(ui.KeyF6).OnActivate(check)).
 				OnAfterPaint(func(p gui.Painter, _ geometry.Rectangle) {
 					if !started {
@@ -75,7 +78,7 @@ func main() {
 						}
 						log.Printf("BACKEND %T scale=%g", img, p.PixelScale())
 						img.Destroy()
-						// 首次查询会改变 Label 测量；先等其绑定更新和下一帧分配完成。
+						// 首次查询后在下一绘制帧输入；状态文本放在按钮下方，避免改变命中位置。
 						app.Post(func() {
 							check()
 							if *auto {
@@ -112,10 +115,10 @@ func main() {
 						})
 					})
 				}).Content(ui.VBox(
-				ui.Label("Surface alpha composition — explicit, current query"),
-				ui.Label().BindText(&status),
 				ui.HBox(ui.Button("Query (F6)").OnClick(check), ui.MenuButton("Menu").ID("menu").OnOpenError(func(err error) { log.Fatal(err) }).Menu(ui.MenuItem("Item", func() {}))),
-				ui.Label("Query explicitly; close menus before changing composition."),
+				ui.Label(fmt.Sprintf("Settings snapshot: composited=%t | builds=%d", app.Settings().Composited(), builds)).ID("snapshot"),
+				ui.Label().BindText(&status),
+				ui.Label("Platform queries immediately; Settings refreshes within its polling cycle."),
 			).Spacing(12).Padding(16)),
 		)
 	})

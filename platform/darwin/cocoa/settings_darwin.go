@@ -17,6 +17,10 @@ func newSettings() (common.Settings, error) {
 	return &Settings{}, nil
 }
 
+// Cocoa windows always use the WindowServer compositor. This does not
+// describe an individual window's opaque/alpha configuration.
+func (Settings) Composited() (bool, error) { return true, nil }
+
 func (Settings) Language() (string, error) {
 	languages := NSArray{NSObject: NSObject{ID: NSLocaleClassId.PreferredLanguages()}}
 	if languages.IsNil() || languages.Count() == 0 {

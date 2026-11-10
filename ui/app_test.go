@@ -6,7 +6,6 @@ import (
 	"runtime"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
@@ -17,60 +16,6 @@ import (
 	"github.com/golang-gui/goui/style"
 	"github.com/xuges/gothread"
 )
-
-type compositedTestApplication struct {
-	*windowTestApplication
-	tasks  chan func()
-	value  bool
-	calls  int
-	thread int
-}
-
-func (a *compositedTestApplication) Post(fn func()) { a.tasks <- fn }
-func (a *compositedTestApplication) Composited() bool {
-	a.calls++
-	if gothread.GetId() != a.thread {
-		panic("Composited query ran outside the UI thread")
-	}
-	return a.value
-}
-
-// 同步查询复用 Sync：后台调用投递到锁定的 UI 线程；不缓存、不请求重建，停止后返回 false。
-func TestAppCompositedUsesUIThreadAndDoesNotRebuild(t *testing.T) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	g := &compositedTestApplication{windowTestApplication: newWindowTestApplication(), tasks: make(chan func(), 1), value: true, thread: gothread.GetId()}
-	rt := newApp(g, func() RootView { t.Fatal("查询不应重建视图"); return nil })
-	if !rt.Composited() || g.calls != 1 {
-		t.Fatal("UI 线程内未直接读取 GUI 状态")
-	}
-	g.value = false
-	done := make(chan bool, 1)
-	go func() { done <- rt.Composited() }()
-	select {
-	case fn := <-g.tasks:
-		fn()
-	case <-time.After(time.Second):
-		t.Fatal("后台查询没有投递")
-	}
-	select {
-	case got := <-done:
-		if got || g.calls != 2 {
-			t.Fatal("后台查询没有读取最新状态")
-		}
-	case <-time.After(time.Second):
-		t.Fatal("后台查询没有返回")
-	}
-	select {
-	case <-g.tasks:
-		t.Fatal("查询额外安排了更新")
-	default:
-	}
-	rt.stop()
-	if rt.Composited() || g.calls != 2 {
-		t.Fatal("停止后仍调用 GUI 查询")
-	}
-}
 
 func TestAppMountsAndUpdatesWindow(t *testing.T) {
 	app := newWindowTestApplication()
@@ -638,8 +583,6 @@ type windowTestApplication struct {
 func newWindowTestApplication() *windowTestApplication {
 	return new(windowTestApplication)
 }
-
-func (a *windowTestApplication) Composited() bool { panic("unexpected Composited") }
 
 func (a *windowTestApplication) NewTimer() *gui.Timer { panic("unexpected NewTimer") }
 

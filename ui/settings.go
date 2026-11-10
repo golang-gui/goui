@@ -33,6 +33,16 @@ func (a *app) Settings() Settings {
 	}
 }
 
+// Composited reads the GUI settings snapshot on the UI thread, or returns false
+// after the app stops. Changes follow the existing Settings update cycle; this
+// is not an immediate native query or a guarantee of transparent creation.
+func (s Settings) Composited() (v bool) {
+	if s.current != nil {
+		s.current.Sync(func() { v = s.settings.Composited() })
+	}
+	return
+}
+
 // Language returns the cached system UI language, not mlang's application
 // language. Like the other Settings getters it synchronizes with the UI thread.
 func (s Settings) Language() (v string) {

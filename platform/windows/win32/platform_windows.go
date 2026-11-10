@@ -94,28 +94,6 @@ func (p *Platform) Name() string {
 	return "win32"
 }
 
-func (p *Platform) Composited() (bool, error) {
-	if p == nil || p.destroyed {
-		return false, common.ErrUnavailable
-	}
-	var enabled winapi.BOOL
-	if err := winapi.DwmIsCompositionEnabled(&enabled); err != nil {
-		return false, err
-	}
-	if enabled != winapi.FALSE {
-		return true, nil
-	}
-	// Windows 8+ always composites. Without a compatible application manifest,
-	// DwmIsCompositionEnabled may return FALSE for legacy high-contrast behavior.
-	// The existing registry build query avoids that compatibility view; only
-	// the immutable OS build is cached, never the observed composition state.
-	build, err := p.windowsBuild()
-	if err != nil {
-		return false, err
-	}
-	return build >= 9200, nil
-}
-
 func (p *Platform) NewEventLoop() (common.EventLoop, error) {
 	return newEventLoop(p)
 }
@@ -194,7 +172,7 @@ func (p *Platform) NewDragDrop(surface common.Surface) (common.DragDrop, error) 
 }
 
 func (p *Platform) NewSettings() (common.Settings, error) {
-	return newSettings()
+	return newSettings(p)
 }
 
 func (p *Platform) NewClipboard() (common.Clipboard, error) {

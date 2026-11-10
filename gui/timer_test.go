@@ -350,19 +350,20 @@ func TestSettingsUsesSharedTimer(t *testing.T) {
 	if len(q.s.queue) != 1 || q.s.queue[0].interval != 2*time.Second {
 		t.Fatal("settings did not register shared two-second timer")
 	}
+	// 六项设置（含合成能力）在初始化和每次 GUI 派发时各读取一次。
 	source.family = "After"
 	q.advance(2 * time.Second)
-	if source.reads != 5 {
+	if source.reads != 6 {
 		t.Fatal("native settings queried before GUI dispatch")
 	}
 	q.dispatch(t)
-	if s.FontFamily() != "After" || source.reads != 10 {
+	if s.FontFamily() != "After" || source.reads != 12 {
 		t.Fatal("settings not updated on dispatch")
 	}
 	q.advance(2 * time.Second)
 	stop()
 	q.dispatch(t)
-	if source.reads != 10 {
+	if source.reads != 12 {
 		t.Fatal("stopped settings watch queried native state")
 	}
 }

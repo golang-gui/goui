@@ -4,7 +4,18 @@ import (
 	"os"
 	"os/exec"
 	"testing"
+
+	"github.com/golang-gui/goui/platform/common"
 )
+
+// 无显示连接时如实报告不可用，不访问全局平台或尝试连接用户桌面。
+func TestSettingsCompositedWithoutDisplay(t *testing.T) {
+	for _, s := range []Settings{{}, {platform: new(Platform)}} {
+		if value, err := s.Composited(); value || err != common.ErrUnavailable {
+			t.Fatalf("无连接的合成查询结果：%t, %v", value, err)
+		}
+	}
+}
 
 func TestLocaleLanguage(t *testing.T) {
 	for _, tc := range []struct{ locale, want string }{

@@ -488,8 +488,6 @@ func (a *testApplication) Platform() platform.Platform {
 	return nil
 }
 
-func (a *testApplication) Composited() bool { return false }
-
 func (a *testApplication) Typography() typography.Context {
 	return nil
 }

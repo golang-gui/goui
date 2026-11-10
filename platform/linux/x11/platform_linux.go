@@ -244,15 +244,6 @@ func (p *Platform) Name() string {
 	return "x11"
 }
 
-func (p *Platform) Composited() (bool, error) {
-	if p == nil || p.display == 0 || p.atoms._NET_WM_CM_Sn == 0 {
-		return false, common.ErrUnavailable
-	}
-	// The atom's existence is not evidence of a compositor. Query ownership
-	// each time so an explicit later check observes manager start/stop.
-	return p.display.GetSelectionOwner(p.atoms._NET_WM_CM_Sn) != 0, nil
-}
-
 func (p *Platform) Destroy() {
 	if p.clipboard != nil {
 		p.clipboard.close()
@@ -327,7 +318,7 @@ func (p *Platform) NewDragDrop(surface common.Surface) (common.DragDrop, error) 
 }
 
 func (p *Platform) NewSettings() (common.Settings, error) {
-	return newSettings()
+	return newSettings(p)
 }
 
 func (p *Platform) NewClipboard() (common.Clipboard, error) {

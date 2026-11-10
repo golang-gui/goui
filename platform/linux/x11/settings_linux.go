@@ -15,7 +15,9 @@ import (
 	"golang.org/x/text/language"
 )
 
-type Settings struct{}
+type Settings struct {
+	platform *Platform
+}
 
 var gtkInit struct {
 	once sync.Once
@@ -23,8 +25,19 @@ var gtkInit struct {
 	err  error
 }
 
-func newSettings() (common.Settings, error) {
-	return &Settings{}, nil
+func newSettings(p *Platform) (common.Settings, error) {
+	return &Settings{platform: p}, nil
+}
+
+func (s Settings) Composited() (bool, error) { return s.platform.composited() }
+
+func (p *Platform) composited() (bool, error) {
+	if p == nil || p.display == 0 || p.atoms._NET_WM_CM_Sn == 0 {
+		return false, common.ErrUnavailable
+	}
+	// The atom's existence is not evidence of a compositor. Query ownership
+	// each time so an explicit later check observes manager start/stop.
+	return p.display.GetSelectionOwner(p.atoms._NET_WM_CM_Sn) != 0, nil
 }
 
 func (Settings) Language() (string, error) {

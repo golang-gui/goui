@@ -75,7 +75,7 @@ func newNativeWindow(onEvent events.EventHandler, overrideRedirect bool, width, 
 	}
 	fbConfig.Transparent = transparent
 	if transparent {
-		composited, err := platform.Composited()
+		composited, err := platform.composited()
 		if err != nil {
 			return nil, fmt.Errorf("query X11 composition: %w", err)
 		}

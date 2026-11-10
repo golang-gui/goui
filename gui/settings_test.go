@@ -13,13 +13,15 @@ import (
 )
 
 type settingsTestSource struct {
-	scheme   ColorScheme
-	accent   color.Color
-	family   string
-	language string
-	size     float32
-	err      error
-	reads    int
+	composited     bool
+	compositionErr error
+	scheme         ColorScheme
+	accent         color.Color
+	family         string
+	language       string
+	size           float32
+	err            error
+	reads          int
 }
 
 func TestSettingsLanguageFallbackAndApplicationIndependence(t *testing.T) {
@@ -55,6 +57,61 @@ func TestSettingsLanguageFallbackAndApplicationIndependence(t *testing.T) {
 	}
 }
 
+func (s *settingsTestSource) Composited() (bool, error) {
+	s.reads++
+	return s.composited, s.compositionErr
+}
+
+// 合成能力遵守快照契约：getter 不查询，发布完整快照后才发出唯一变化信号。
+func TestSettingsCompositedSnapshotAndFallback(t *testing.T) {
+	if newSettings(nil).Composited() {
+		t.Fatal("没有平台设置时应保守为 false")
+	}
+	source := &settingsTestSource{composited: true, family: "System", size: 14}
+	s := newSettings(source)
+	if !s.Composited() {
+		t.Fatal("初始快照丢失合成能力")
+	}
+	changes := 0
+	var want bool
+	s.ConnectChanged(func() {
+		changes++
+		if s.Composited() != want || s.FontFamily() != "System" {
+			t.Fatal("通知看到部分更新或合成查询失败污染其他设置")
+		}
+	})
+	for _, tc := range []struct {
+		value bool
+		err   error
+		want  bool
+	}{
+		{false, nil, false}, {false, nil, false}, {true, nil, true},
+		{true, errors.New("composition unavailable"), false},
+		{true, errors.New("composition still unavailable"), false}, {true, nil, true},
+	} {
+		before, reads, previous := changes, source.reads, s.Composited()
+		source.composited, source.compositionErr, want = tc.value, tc.err, tc.want
+		for range 10 {
+			if s.Composited() != previous {
+				t.Fatal("getter 绕过了快照")
+			}
+		}
+		if changes != before || source.reads != reads {
+			t.Fatal("getter 触发原生查询或通知")
+		}
+		s.checkChanged()
+		if s.Composited() != want {
+			t.Fatal("检查未更新快照")
+		}
+		if previous != want {
+			before++
+		}
+		if changes != before {
+			t.Fatalf("变化通知次数错误：%d，预期 %d", changes, before)
+		}
+	}
+}
+
 func (s *settingsTestSource) Language() (string, error) {
 	s.reads++
 	return s.language, s.err
@@ -82,7 +139,7 @@ func TestSettingsInitialSnapshotAndFirstChange(t *testing.T) {
 	source := &settingsTestSource{scheme: ColorSchemeDark, accent: accent, family: "First", size: 16, language: "zh-CN"}
 	s := newSettings(source)
 	initial := s.current
-	if source.reads != 5 || s.ColorScheme() != ColorSchemeDark || s.FontFamily() != "First" || s.FontSize() != 16 || s.Language() != "zh-CN" {
+	if source.reads != 6 || s.ColorScheme() != ColorSchemeDark || s.FontFamily() != "First" || s.FontSize() != 16 || s.Language() != "zh-CN" {
 		t.Fatalf("initial settings missing: %+v, reads=%d", initial, source.reads)
 	}
 	if initial.accent != color.RGBA64Model.Convert(accent) {
@@ -109,11 +166,11 @@ func TestSettingsInitialSnapshotAndFirstChange(t *testing.T) {
 			t.Fatal("getter queried native state or retained mutable platform color")
 		}
 	}
-	if source.reads != 5 {
+	if source.reads != 6 {
 		t.Fatal("getters performed native queries")
 	}
 	s.checkChanged()
-	if changes != 1 || source.reads != 10 {
+	if changes != 1 || source.reads != 12 {
 		t.Fatalf("first poll lost the change: changes=%d reads=%d", changes, source.reads)
 	}
 	// Equal colors with a different concrete Go type do not cause a notification.
@@ -182,7 +239,7 @@ func TestSettingsWatchBelongsToApplicationRun(t *testing.T) {
 		case <-time.After(5 * time.Second):
 			t.Fatal("Run did not start settings polling")
 		}
-		if source.reads != 5 {
+		if source.reads != 6 {
 			t.Fatal("timer queried native settings outside the event loop")
 		}
 		// Return with this task still queued, as a native loop can do on quit.
@@ -194,7 +251,7 @@ func TestSettingsWatchBelongsToApplicationRun(t *testing.T) {
 	}
 	source.family = "Changed after exit"
 	pending()
-	if source.reads != 5 || s.FontFamily() != "Initial" {
+	if source.reads != 6 || s.FontFamily() != "Initial" {
 		t.Fatal("stale poll queried native resources after Run returned")
 	}
 	// No-platform fallback needs neither a timer nor a usable event loop.

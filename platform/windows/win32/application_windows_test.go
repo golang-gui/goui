@@ -17,26 +17,6 @@ import (
 	"github.com/golang-gui/goui/platform/windows/sdk/winapi"
 )
 
-// Windows 8+ 始终启用 DWM，裸测试 EXE 不应因缺少兼容性 manifest 而误报 false。
-// 仅查询系统能力，不创建 HWND，也不改变 DWM 或用户设置。
-func TestCompositedWithoutApplicationManifest(t *testing.T) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	p := new(Platform)
-	build, err := p.windowsBuild()
-	if err != nil {
-		t.Fatal(err)
-	}
-	value, err := p.Composited()
-	if err != nil || build >= 9200 && !value {
-		t.Fatal("DWM 查询失败或受 manifest 兼容返回影响", build, value, err)
-	}
-	p.destroyed = true
-	if value, err := p.Composited(); value || err != common.ErrUnavailable {
-		t.Fatal("销毁后仍报告有效查询结果", value, err)
-	}
-}
-
 // 生成真实的多尺寸 ICO 验证原生图标提取，不依赖系统 DLL 资源或资源编译器。
 func writeTestIcon(t *testing.T) string {
 	t.Helper()

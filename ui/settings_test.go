@@ -2,6 +2,10 @@ package ui
 
 import (
 	"errors"
+	"fmt"
+	"time"
+
+	"github.com/xuges/gothread"
 	"image/color"
 	"runtime"
 	"testing"
@@ -12,6 +16,7 @@ import (
 )
 
 type testSettings struct {
+	composited             bool
 	changed                signal.Signal0
 	scheme                 gui.ColorScheme
 	family                 string
@@ -19,6 +24,7 @@ type testSettings struct {
 	connections, listeners int
 }
 
+func (s *testSettings) Composited() bool             { return s.composited }
 func (s *testSettings) ColorScheme() gui.ColorScheme { return s.scheme }
 func (s *testSettings) AccentColor() color.Color     { return color.Black }
 func (s *testSettings) FontFamily() string           { return s.family }
@@ -74,7 +80,7 @@ func TestSettingsAutomaticallyRebuildAndDeduplicateSheet(t *testing.T) {
 		// A new sheet is built each time; unrelated settings must not invalidate
 		// all GUI style caches when the resolved rules remain equal.
 		return Root().StyleSheet(style.Sheet(style.Name("window").BackgroundColor(background))).
-			Windows(Window("main").Content(Label(rt.Settings().FontFamily() + rt.Settings().Language())))
+			Windows(Window("main").Content(Label(fmt.Sprintf("%s%s/%t", rt.Settings().FontFamily(), rt.Settings().Language(), rt.Settings().Composited()))))
 	})
 	a.run = func() {
 		if builds != 1 || a.settings.connections != 1 || a.settings.listeners != 1 {
@@ -90,7 +96,7 @@ func TestSettingsAutomaticallyRebuildAndDeduplicateSheet(t *testing.T) {
 			t.Fatal("settings updates were not deferred/coalesced")
 		}
 		a.runPosted()
-		if builds != 2 || label.Text() != "Changedja" || len(a.sheets) != 2 || len(a.windows) != 1 {
+		if builds != 2 || label.Text() != "Changedja/false" || len(a.sheets) != 2 || len(a.windows) != 1 {
 			t.Fatal("settings did not reconcile existing content and changed sheet")
 		}
 		a.settings.family = "Unrelated to fixed font style"
@@ -98,6 +104,13 @@ func TestSettingsAutomaticallyRebuildAndDeduplicateSheet(t *testing.T) {
 		a.runPosted()
 		if builds != 3 || len(a.sheets) != 2 || a.settings.connections != 1 {
 			t.Fatal("equal rules reapplied the sheet or rebuild reconnected settings")
+		}
+		// 仅合成状态改变也复用同一订阅与更新调度。
+		a.settings.composited = true
+		a.settings.changed.Emit()
+		a.runPosted()
+		if builds != 4 || label.Text() != "Unrelated to fixed font styleja/true" || len(a.sheets) != 2 || a.settings.connections != 1 {
+			t.Fatal("合成能力变化未更新视图或重复应用样式/连接")
 		}
 		// Simulate native exit without ui.App.Quit, leaving an update queued.
 		a.settings.changed.Emit()
@@ -112,7 +125,7 @@ func TestSettingsAutomaticallyRebuildAndDeduplicateSheet(t *testing.T) {
 	a.settings.changed.Emit()
 	rt.RequestUpdate()
 	rt.Sync(func() { t.Fatal("Sync ran after exit") })
-	if builds != 3 || len(a.posts) != 0 || rt.updatePending {
+	if builds != 4 || len(a.posts) != 0 || rt.updatePending {
 		t.Fatal("late settings/update revived the stopped UI")
 	}
 	rt.destroyAll()
@@ -162,5 +175,66 @@ func TestSettingsListenerCleanupOnFailureAndQuit(t *testing.T) {
 			}
 			rt.destroyAll()
 		})
+	}
+}
+
+// 跨线程 getter 仅同步读取 GUI 快照，不直接请求构建；停止后不再读取。
+type compositedThreadSettings struct {
+	*testSettings
+	calls, thread int
+}
+
+func (s *compositedThreadSettings) Composited() bool {
+	s.calls++
+	if gothread.GetId() != s.thread {
+		panic("settings read outside the UI thread")
+	}
+	return s.composited
+}
+
+type compositedTestApplication struct {
+	*windowTestApplication
+	tasks    chan func()
+	settings compositedThreadSettings
+}
+
+func (a *compositedTestApplication) Post(fn func())         { a.tasks <- fn }
+func (a *compositedTestApplication) Settings() gui.Settings { return &a.settings }
+
+func TestSettingsCompositedUsesUIThread(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	g := &compositedTestApplication{windowTestApplication: newWindowTestApplication(), tasks: make(chan func(), 1)}
+	g.settings = compositedThreadSettings{testSettings: &testSettings{composited: true}, thread: gothread.GetId()}
+	rt := newApp(g, func() RootView { t.Fatal("读取不应重建视图"); return nil })
+	settings := rt.Settings()
+	if !settings.Composited() || g.settings.calls != 1 {
+		t.Fatal("UI 线程内读取失败")
+	}
+	g.settings.composited = false
+	done := make(chan bool, 1)
+	go func() { done <- settings.Composited() }()
+	select {
+	case fn := <-g.tasks:
+		fn()
+	case <-time.After(time.Second):
+		t.Fatal("后台读取没有投递")
+	}
+	select {
+	case got := <-done:
+		if got || g.settings.calls != 2 {
+			t.Fatal("未读取最新 GUI 快照")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("后台读取没有返回")
+	}
+	select {
+	case <-g.tasks:
+		t.Fatal("getter 额外安排了更新")
+	default:
+	}
+	rt.stop()
+	if settings.Composited() || g.settings.calls != 2 || (Settings{}).Composited() {
+		t.Fatal("停止后或零值仍读取设置")
 	}
 }

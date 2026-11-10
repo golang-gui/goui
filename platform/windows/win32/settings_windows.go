@@ -13,10 +13,36 @@ import (
 	"github.com/golang-gui/goui/platform/windows/sdk/winapi"
 )
 
-type Settings struct{}
+type Settings struct {
+	platform *Platform
+}
 
-func newSettings() (common.Settings, error) {
-	return &Settings{}, nil
+func newSettings(p *Platform) (common.Settings, error) {
+	return &Settings{platform: p}, nil
+}
+
+func (s Settings) Composited() (bool, error) { return s.platform.composited() }
+
+func (p *Platform) composited() (bool, error) {
+	if p == nil || p.destroyed {
+		return false, common.ErrUnavailable
+	}
+	var enabled winapi.BOOL
+	if err := winapi.DwmIsCompositionEnabled(&enabled); err != nil {
+		return false, err
+	}
+	if enabled != winapi.FALSE {
+		return true, nil
+	}
+	// Windows 8+ always composites. Without a compatible application manifest,
+	// DwmIsCompositionEnabled may return FALSE for legacy high-contrast behavior.
+	// The existing registry build query avoids that compatibility view; only
+	// the immutable OS build is cached, never the observed composition state.
+	build, err := p.windowsBuild()
+	if err != nil {
+		return false, err
+	}
+	return build >= 9200, nil
 }
 
 func (Settings) Language() (string, error) {

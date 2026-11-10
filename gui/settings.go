@@ -35,6 +35,10 @@ var (
 // GUI defaults until Activate initializes their native service. Later changes
 // are polled on the UI thread. Getters never query native APIs themselves.
 type Settings interface {
+	// Composited reports the snapshot's surface-alpha composition capability,
+	// or false when unavailable. True does not guarantee transparent creation.
+	// Like the other getters, it does not query native state itself.
+	Composited() bool
 	// Language is the system's preferred UI language (BCP 47), or "en" when
 	// unavailable/neutral. It does not change mlang's application language.
 	Language() string
@@ -61,6 +65,8 @@ func newSettings(platSettings platform.Settings) (s *settings) {
 
 func (s *settings) Language() string { return s.current.language }
 
+func (s *settings) Composited() bool { return s.current.composited }
+
 func (s *settings) ColorScheme() ColorScheme {
 	return s.current.scheme
 }
@@ -85,11 +91,12 @@ func (s *settings) ConnectChanged(fn func()) signal.Handle {
 
 // settingsSnapshot owns comparable values, including a copy of the accent color.
 type settingsSnapshot struct {
-	language string
-	scheme   ColorScheme
-	accent   color.RGBA64
-	family   string
-	size     float32
+	composited bool
+	language   string
+	scheme     ColorScheme
+	accent     color.RGBA64
+	family     string
+	size       float32
 }
 
 func (s *settings) snapshot() settingsSnapshot {
@@ -102,6 +109,9 @@ func (s *settings) snapshot() settingsSnapshot {
 	}
 	if s.settings == nil {
 		return next
+	}
+	if value, err := s.settings.Composited(); err == nil {
+		next.composited = value
 	}
 	if value, err := s.settings.Language(); err == nil {
 		if tag, err := language.Parse(value); err == nil && tag != language.Und {
