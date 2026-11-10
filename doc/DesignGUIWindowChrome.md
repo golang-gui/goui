@@ -12,6 +12,10 @@ OS input and accessibility; custom controls use ordinary Button controllers.
 The custom group is a separate window decoration tree, painted after application
 content and hit-tested first by the same EventDispatcher. Window.Widget remains
 exactly the application's root; no hidden root or reduced client rectangle.
+Linux circular caption glyph weight, inactive appearance and pixel placement
+follow the [WindowControls decoration policy](DesignWindowChrome.md#linux-circular-controls),
+independently of application Button styles or semantic Disabled state.
+
 Window snapshots expose custom controls separately, without inventing native
 button children. Window destruction releases both trees.
 

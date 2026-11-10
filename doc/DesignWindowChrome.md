@@ -99,7 +99,7 @@ existing vetoable RequestClose path. Maximize-related visuals change only
 after querying an authoritative native observation, not after issuing a request.
 Unsupported and unknown observations must not be rendered as confirmed false.
 
-Caption glyphs use vector primitives at a fixed logical size. The close X keeps
+Rectangular caption glyphs use vector primitives at a fixed logical size. Their close X keeps
 its 1 DIP stroke and diagonal geometry, but its complete visual center is aligned
 to the physical pixel grid using its window-local origin and the current paint
 scale. Each axis may move by at most half a physical pixel. This prevents odd or
@@ -113,6 +113,63 @@ native macOS controls remain owned and rendered by AppKit. Software pixel tests
 check an independent 45-degree coverage formula as well as placement stability.
 The desktop regression is `tests/window/ui/pixel_snap`, with Height/F7 cycling
 40, 41, 48, 49 and 40.5 DIP at different paint scales.
+
+### Linux circular controls
+
+Linux GUI Integrated uses 2 DIP glyph strokes in the existing 12 DIP icon
+allocation and 28 DIP hit boxes. The minimize bar remains 8 DIP long. The
+maximize square has an 8 DIP outer size with a 4 DIP opening; the restore glyph
+uses a joined back corner and a foreground square. The X shortens its diagonal
+centerlines to 7 DIP so the thicker stroke does not enlarge the glyph. All four
+glyphs align their complete visual center to the physical pixel grid, preserving
+stroke geometry across odd/fractional HeaderBar heights and fractional scales.
+Non-integral physical widths still use ordinary coverage antialiasing.
+
+Active glyphs use the existing neutral light/dark decoration palette. On window
+focus loss, each glyph color becomes the equal RGB blend of its active ink and
+its current opaque circular background (idle, hovered or pressed). The resulting
+brush stays opaque: intersecting X strokes cannot accumulate alpha and produce a
+darker crossing. Hover/press backgrounds remain distinguishable, and activation
+restores the active ink. This is appearance rather than Disabled or Widget focus.
+The existing Window.ConnectFocus repaint path handles the change; no new state,
+style selector, signal or public configuration is introduced. Layout, hit regions
+and semantic actions continue to describe the same enabled caption buttons.
+
+References: Adwaita icon theme 48.0 uses approximately 2px shapes in its
+[minimize/maximize icons](https://github.com/GNOME/adwaita-icon-theme/tree/48.0/Adwaita/symbolic/ui).
+libadwaita 1.8.0 applies a 50% opacity filter to an inactive headerbar's content
+([source](https://github.com/GNOME/libadwaita/blob/1.8.0/src/stylesheet/widgets/_header-bar.scss#L33)).
+GOUI adopts the compact weight and reduced inactive contrast, within its isolated
+window decoration policy; application HeaderBar content is not filtered.
+
+Regression coverage includes explicit light/dark state colors, focus-event
+repaint, enabled semantics, unchanged hit bounds, independent 1x glyph masks,
+uniform X crossing color, and existing multi-scale placement/coverage checks.
+`tests/window/ui/pixel_snap -peer` adds a native companion window for real focus
+switching; Theme and Height/F7 exercise the appearance in an isolated X11 session.
+
+Validation on 2026-11-10 (Go 1.25.8, Linux amd64):
+
+- Tracked-source isolation: `CGO_ENABLED=0 go test -json -count=1 ./...` passed
+  4840 tests, skipped 11, failed 0. `CGO_ENABLED=1 go test -race -count=1 ./gui`
+  and `go vet ./gui ./tests/window/ui/pixel_snap` passed. The original worktree's
+  `go test ./...` still fails to compile pre-existing untracked examples/tests
+  using old Window methods and windowMount fields; they were retained.
+- The new circular appearance and glyph-mask tests fail against the previous
+  painter, independently detecting unchanged inactive ink and the 1 DIP bar.
+  Existing rectangular-caption color, placement and coverage checks still pass.
+- A dedicated Xvnc/Xfwm4 composited session passed Software and OpenGL llvmpipe
+  at 1x, 1.5x and 2x. Real X11 input covered light/dark active/inactive/reactivation,
+  hover/press/cancel, all five example heights, maximize/restore and close. Root
+  screenshot samples confirmed all three glyphs use gray 50/141 in light mode
+  and 240/152 in dark mode for active/inactive idle states (1/255 tolerance).
+  EWMH observations confirmed maximize/restore; each program exited normally.
+- Windows amd64 and macOS arm64 GUI test targets compile. No remote native run
+  was performed for this Linux-only presentation change; mobile controls and
+  other window managers were not accepted by these results.
+- Test windows and the dedicated display, WM and session bus were cleaned up;
+  no user desktop settings were changed. The example emits a benign accessibility
+  bus connection warning in this minimal X11 session; all assertions still passed.
 
 ### Native mode
 

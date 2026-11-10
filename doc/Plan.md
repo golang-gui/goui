@@ -1,5 +1,17 @@
 # Plan
 
+## Linux Integrated 窗口按钮外观（2026-11-10）
+
+- [x] 圆形按钮采用 2 DIP 图形，收紧轮廓保留图标与点击尺寸；四种图形按整体中心对齐物理像素。
+- [x] 失活图形与当前圆形背景等量混合为不透明灰色；复用窗口焦点重绘，保持悬停、按下及启用语义。
+- [x] 更新受影响的尺寸/覆盖率预期，新增明确配色和独立像素掩码、X 交叉色回归。
+- [x] 隔离全仓 4840 通过、11 跳过；GUI race、相关 vet、Windows/macOS GUI 测试目标编译通过。
+- [x] 独立 Xvnc/Xfwm4、Software/OpenGL llvmpipe × 1x/1.5x/2x 六组原生输入验收通过，
+  覆盖亮暗色焦点切换、悬停/按下/取消、五种标题高度、最大化/还原/关闭及实际像素颜色。
+- [ ] 其他 WM/设备未验收，本轮未执行远端原生验证。原工作区旧未跟踪用例仍阻塞直接全仓测试。
+  设计、原生参考与完整记录见[WindowControls](DesignWindowChrome.md#linux-circular-controls)。
+
+
 ## 合成能力 Settings 接入（2026-11-10）
 
 - [x] 合成查询迁入 platform.Settings / gui.Settings / ui.Settings，删除 Platform / Application / App 重复入口。
