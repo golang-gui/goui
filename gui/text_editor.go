@@ -267,6 +267,8 @@ type textEditor struct {
 	nextCommitAtomic  bool
 	inputRevision     uint64
 	blinkTimer        *Timer
+	blinkDeadline     time.Time
+	blinkNow          func() time.Time
 	scrollTimer       *Timer
 	resizeTimer       *Timer
 	resizeWidth       float32
@@ -288,7 +290,7 @@ type textViewMeasureCache struct {
 }
 
 func newTextEditor(owner Widget, singleLine bool, padding geometry.Insets) *textEditor {
-	t := &textEditor{owner: owner, singleLine: singleLine, wrap: WrapWordChar, padding: padding, lineHeight: 20, editOwner: &textedit.EditSource{}, caretVisible: true, longBudget: 1}
+	t := &textEditor{owner: owner, singleLine: singleLine, wrap: WrapWordChar, padding: padding, lineHeight: 20, editOwner: &textedit.EditSource{}, caretVisible: true, blinkNow: time.Now, longBudget: 1}
 	if singleLine {
 		t.wrap = WrapNone
 	}
@@ -1610,8 +1612,9 @@ func (t *textEditor) emitReveal(rect geometry.Rectangle) {
 }
 
 const (
-	textCaretInterval  = 500 * time.Millisecond
-	textScrollInterval = 40 * time.Millisecond
+	textCaretInterval    = 500 * time.Millisecond
+	textCaretIdleTimeout = 10 * time.Second
+	textScrollInterval   = 40 * time.Millisecond
 )
 
 func (t *textEditor) connectInteractionTimers() {
@@ -1645,6 +1648,7 @@ func (t *textEditor) disconnectInteractionTimers() {
 	t.cancelResize()
 	t.resizeTimer = nil
 	t.caretVisible = true
+	t.blinkDeadline = time.Time{}
 }
 
 func (t *textEditor) interactive() bool {
@@ -1658,12 +1662,17 @@ func (t *textEditor) interactive() bool {
 }
 
 func (t *textEditor) syncBlink(restart bool) {
-	if restart {
+	now := t.blinkNow()
+	if restart || t.blinkDeadline.IsZero() {
+		t.blinkDeadline = now.Add(textCaretIdleTimeout)
+	}
+	stopped := !t.interactive() || t.preedit != nil || App == nil || !now.Before(t.blinkDeadline)
+	if (restart || stopped) && !t.caretVisible {
 		t.caretVisible = true
 		t.owner.RequestPaint()
 	}
-	if !t.interactive() || t.preedit != nil || App == nil {
-		if t.blinkTimer != nil {
+	if stopped {
+		if t.blinkTimer != nil && t.blinkTimer.Active() {
 			t.blinkTimer.Stop()
 		}
 		return
@@ -1671,14 +1680,16 @@ func (t *textEditor) syncBlink(restart bool) {
 	if t.blinkTimer == nil {
 		t.blinkTimer = App.NewTimer()
 		t.blinkTimer.ConnectTimeout(func() {
-			if !t.interactive() || t.preedit != nil {
-				t.syncBlink(true)
+			if !t.interactive() || t.preedit != nil || !t.blinkNow().Before(t.blinkDeadline) {
+				t.syncBlink(false)
 				return
 			}
 			t.caretVisible = !t.caretVisible
 			t.owner.RequestPaint() // No layout, metrics, model change or snapshot invalidation.
 		})
 	}
+	// Only interaction may extend the deadline. Layout/style maintenance can
+	// resume a temporarily paused timer, but cannot restart an expired caret.
 	if restart || !t.blinkTimer.Active() {
 		// Blink is best effort. After application shutdown a timer cannot start;
 		// the editor remains readable with its steady caret.
@@ -2261,6 +2272,7 @@ func (c *textEditController) beginSelection(ctx EventContext, event events.Point
 	if t.owner.base().destroyed || t.model != model || t.mountEpoch != epoch {
 		return
 	}
+	t.syncBlink(true) // Clicking the current position is interaction too.
 	now := time.Now()
 	double := !c.lastDown.IsZero() && now.Sub(c.lastDown) <= gestureClickInterval &&
 		!gestureMoved(point, c.lastPoint, gestureDefaultDistance)
@@ -2295,6 +2307,11 @@ func (c *textEditController) HandleEvent(ctx EventContext) {
 			// Reserve text for the focused editor, but allow the native text/IME
 			// path to commit it. Capture handlers can explicitly override this.
 			ctx.StopPropagation()
+		} else {
+			return
+		}
+		if !t.owner.base().destroyed && !t.suspended {
+			t.syncBlink(true) // Include navigation stopped at a document boundary.
 		}
 	case events.PointerEvent:
 		point, ok := ctx.Position()
@@ -2314,6 +2331,7 @@ func (c *textEditController) HandleEvent(ctx EventContext) {
 			c.beginSelection(ctx, event, point)
 		case events.PointerMove:
 			if c.dragging {
+				t.syncBlink(true)
 				c.dragPoint = point
 				ctx.StopPropagation()
 				t.moveTo(t.hitText(t.dragSelectionPoint()), true)

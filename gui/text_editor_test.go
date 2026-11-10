@@ -975,6 +975,155 @@ func TestTextViewBlinkOnlyPaintsAndStopsWithFocus(t *testing.T) {
 	}
 }
 
+// 两种控件使用相同的可推进单调时钟，不等待真实时间或导出生产内部状态。
+func timedCaretEditor(t *testing.T, single bool) (*textEditor, *window, *timerTestQueue, *editorTypography) {
+	t.Helper()
+	view, _, win, q, typo := timedEditorFixture(t)
+	if !single {
+		return view.textEditor, win, q, typo
+	}
+	input := NewTextInput()
+	input.blinkNow = q.s.now
+	win.SetWidget(input)
+	input.Arrange(geometry.Rect(0, 0, 220, 36))
+	win.SetFocusedWidget(input)
+	return input.textEditor, win, q, typo
+}
+
+func TestTextEditorBlinkIdleStopsPaint(t *testing.T) {
+	for _, single := range []bool{false, true} {
+		t.Run(fmt.Sprintf("single=%t", single), func(t *testing.T) {
+			editor, win, q, typo := timedCaretEditor(t, single)
+			metrics := len(typo.calls)
+			selection, revision := editor.selection, editor.model.Revision()
+			for range 19 {
+				q.advance(500 * time.Millisecond)
+				q.dispatch(t)
+			}
+			if editor.caretVisible || !editor.blinkTimer.Active() {
+				t.Fatal("空闲截止前应保持闪烁，本轮相位应为隐藏")
+			}
+			win.paintDirty, win.layoutDirty = false, false
+			q.advance(500 * time.Millisecond)
+			q.dispatch(t)
+			if editor.blinkTimer.Active() || !editor.caretVisible || !win.paintDirty {
+				t.Fatal("10秒空闲后必须停止计时并绘制常亮光标")
+			}
+			if win.layoutDirty || len(typo.calls) != metrics || editor.selection != selection || editor.model.Revision() != revision {
+				t.Fatal("闪烁或空闲停止改变了布局/度量/选区/文本")
+			}
+			win.paintDirty = false
+			q.advance(time.Minute)
+			if len(q.posts) != 0 || len(q.s.queue) != 0 || win.paintDirty {
+				t.Fatal("空闲后仍有周期唤醒或重绘")
+			}
+		})
+	}
+}
+
+func TestTextEditorBlinkIdleMaintenance(t *testing.T) {
+	for _, single := range []bool{false, true} {
+		t.Run(fmt.Sprintf("single=%t", single), func(t *testing.T) {
+			editor, win, q, _ := timedCaretEditor(t, single)
+			deadline := editor.blinkDeadline
+			maintain := func() {
+				win.Widget().Arrange(win.Widget().Rect())
+				editor.owner.StyleChanged()
+				editor.owner.Paint(new(testTextInputPainter))
+				editor.setSelection(editor.selection, editor.caretUpstream, false)
+				if editor.blinkDeadline != deadline {
+					t.Fatal("布局/样式/绘制/相同选区写入延长了空闲时间")
+				}
+			}
+			q.advance(9 * time.Second)
+			q.dispatch(t)
+			maintain()
+			q.advance(2 * time.Second) // 模拟丢失中间tick，不应按20次回调计时。
+			q.dispatch(t)
+			if editor.blinkTimer.Active() || !editor.caretVisible {
+				t.Fatal("延迟到达的tick没有按真实截止时间停止")
+			}
+			maintain()
+			if editor.blinkTimer.Active() || len(q.s.queue) != 0 {
+				t.Fatal("维护流程重新启动了空闲计时器")
+			}
+			win.paintDirty = false
+			q.advance(time.Minute)
+			if len(q.posts) != 0 || win.paintDirty {
+				t.Fatal("维护后又出现周期重绘")
+			}
+		})
+	}
+}
+
+func TestTextEditorBlinkIdleAlreadyVisible(t *testing.T) {
+	for _, single := range []bool{false, true} {
+		t.Run(fmt.Sprintf("single=%t", single), func(t *testing.T) {
+			editor, win, q, _ := timedCaretEditor(t, single)
+			win.paintDirty = false
+			q.advance(11 * time.Second)
+			q.dispatch(t)
+			if editor.blinkTimer.Active() || !editor.caretVisible || win.paintDirty {
+				t.Fatal("已可见光标的空闲停止不应新增重绘")
+			}
+		})
+	}
+}
+
+func TestTextEditorBlinkIdleInteraction(t *testing.T) {
+	for _, single := range []bool{false, true} {
+		for _, action := range []string{"原地点击", "行首Home", "文首左移", "删除空边界", "文字按键", "文本提交", "窗口重获焦点", "悬停", "其他按键"} {
+			t.Run(fmt.Sprintf("single=%t/%s", single, action), func(t *testing.T) {
+				editor, win, q, _ := timedCaretEditor(t, single)
+				editor.setModel(NewTextModel(""))
+				win.Widget().Arrange(win.Widget().Rect())
+				q.advance(11 * time.Second)
+				q.dispatch(t)
+				point := geometry.Point{X: editor.padding.Left + 1, Y: editor.padding.Top + 1}
+				switch action {
+				case "原地点击":
+					editorPointer(t, win, events.PointerDown, point, 0)
+					editorPointer(t, win, events.PointerUp, point, 0)
+				case "行首Home":
+					editorKey(t, win, events.KeyHome, 0)
+				case "文首左移":
+					editorKey(t, win, events.KeyArrowLeft, 0)
+				case "删除空边界":
+					editorKey(t, win, events.KeyBackspace, 0)
+				case "文字按键":
+					editorKey(t, win, events.KeyA, 0)
+				case "文本提交":
+					win.onInputMethod(platform.InputMethodResult{Kind: platform.InputMethodCommit, Text: "a"})
+				case "窗口重获焦点":
+					_ = win.DispatchEvent(events.FocusEvent{Focused: false})
+					if editor.blinkTimer.Active() || !editor.caretVisible || !editor.owner.Focused() {
+						t.Fatal("窗口失焦应停计时并常亮，保留控件逻辑焦点")
+					}
+					_ = win.DispatchEvent(events.FocusEvent{Focused: true})
+				case "悬停":
+					editorPointer(t, win, events.PointerMove, point, 0)
+				case "其他按键":
+					editorKey(t, win, events.KeyF5, 0)
+				}
+				if action == "悬停" || action == "其他按键" {
+					if editor.blinkTimer.Active() || len(q.s.queue) != 0 {
+						t.Fatal("非编辑交互重新启动了空闲闪烁")
+					}
+					return
+				}
+				if !editor.blinkTimer.Active() || !editor.caretVisible {
+					t.Fatal("编辑交互未恢复可见到闪烁周期")
+				}
+				q.advance(500 * time.Millisecond)
+				q.dispatch(t)
+				if editor.caretVisible {
+					t.Fatal("恢复后第一个周期未隐藏光标")
+				}
+			})
+		}
+	}
+}
+
 // Shared baseline and hit geometry.
 
 type sizingBaselineTypography struct{ editorTypography }

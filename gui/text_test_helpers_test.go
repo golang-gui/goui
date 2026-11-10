@@ -387,6 +387,7 @@ func timedEditorFixture(t *testing.T) (*TextView, *ScrollView, *window, *timerTe
 	App = q.app
 	t.Cleanup(func() { App = old })
 	editor := NewTextView()
+	editor.blinkNow = q.s.now
 	editor.SetModel(NewTextModel(strings.Repeat("row\n", 100)))
 	scroll := NewScrollView()
 	scroll.SetChild(editor)
