@@ -1,5 +1,13 @@
 # GOUI 实用化与未来路线
 
+## 表格连续编辑与列表增量更新（2026-11-10）
+
+ListModel 保留原接口，可选精确范围通知让 ListView 保持未受影响行的挂载、索引和
+尺寸缓存。TableView 利用已有 RowID 发布局部结构变化，末行输入追加空行不再卸载
+原 TextInput；UI 沿用原有协调，不增加焦点补偿或新身份概念。真实删除与视口回收
+仍正常结束编辑，复杂排序不承诺完整移动保留。设计与验证见
+[DesignListUpdates](DesignListUpdates.md)和 [TableView 第19节](DesignTableView.md#19-增量行更新与连续编辑2026-11-10)。
+
 ## 当前优先：稳固移动平台（2026-11-09）
 
 先复核 Android/iOS 已有绑定、原生线程、系统宿主、绘制目标和资源生命周期，

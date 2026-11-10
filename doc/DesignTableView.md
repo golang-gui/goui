@@ -8,6 +8,11 @@
 
 ## 1. 定位、范围与参考
 
+2026-11-10：末尾追加、局部插入/删除现在通过通用列表增量通知保留未受影响的
+单元格编辑器。以往结构变化会完整解绑；更新后的契约和验证见
+[第19节](#19-增量行更新与连续编辑2026-11-10)及
+[列表增量更新](DesignListUpdates.md)。
+
 TableView 面向文件列表和记录管理，不是电子表格。复杂控件留在 `widgets`，
 声明绑定放 `widgets/ui`，复用既有列表、滚动、输入、信号和协调机制。
 
@@ -232,7 +237,8 @@ SetModel 始终重新安装，包括同一对象：断开旧通知、取消待�
 - Current 被删除时，按旧位置寻找附近有效记录作为新 Current；是否补选遵循
   TreeView 已有删除当前项规则，单选／多选分别覆盖回归。
 - 无效锚点回退 Current；关闭依赖旧命中的菜单，按 ID 重新解析待 Reveal 目标。
-- 行顺序未变时刷新内容，顺序改变时重新绑定索引；同 Delegate 的行壳可复用。
+- 行 ID 序列未变时刷新内容；结构变化比较相同前后缀，对中间区间发送一次增量
+  替换，范围外的行壳/单元格保持挂载，重新 Bind 其索引。一般排序可能替换中间区间。
 - 选择成员不变时，不因排序改变索引或返回顺序而发送虚假的 Selection 变化。
 - 保留并钳制原滚动偏移；首版不承诺排序后追随 Current 或保持首个可见记录，
   应用可显式 Reveal。SetModel 的复位与普通 Items 通知的保留不是同一种操作。
@@ -365,6 +371,10 @@ Refresh 不重新安装 Model／Delegate，不通过伪造 Items 通知重建，
 先用普通 ListView 测试验证上述契约。若存在缺口，进行独立的缓存正确性修正，
 不导入 widgets、不识别 TableView 类型、不读取列配置，也不增加公开失效入口。
 既有 TreeView／菜单等调用方作为回归对象，而不是新增接口的迁移对象。
+
+2026-11-10补充：结构变更现在可通过 ListModelChanges 的精确范围维护已挂载行，
+这是独立于测量失效的通知能力；仍不公开缓存版本或增加 InvalidateMeasurements。
+未实现精确通知的旧模型保留完整重载。详见 [列表增量更新](DesignListUpdates.md)。
 
 至少覆盖局部 RequestLayout、整体 Refresh、重新绑定、样式、约束变化、离屏最宽
 行和滚动定位。测试应确认重新测量后的确定尺寸，不能仅比较两个都可能使用旧缓存
@@ -957,3 +967,28 @@ GUI／OpenGL 的 Modern 1x 亮暗切换，及 UI／Software 的 Basic 固定亮�
 编辑与空表。包内回归覆盖末列隐藏／恢复及末行增删，不依赖DevServer。
 实际屏幕采样与RenderWidget的Software离屏断言分开记录，平台及命令结果见
 [Plan](Plan.md#tableview-末项网格收口2026-11-04)。
+
+## 19. 增量行更新与连续编辑（2026-11-10）
+
+此前 TableView 对行 ID 序列变化发出普通 Items，内部 ListView 完整 Unbind。
+声明层因此清空单元格子树，末行输入中追加空行会卸载正在编辑的 TextInput，
+丢失焦点、预编辑与编辑历史。稳定 Model/RowID 或编辑器 Widget ID 无法避免这条路径。
+
+本轮内部模型采用可选 ListModelChanges；TableView 仍从普通业务 ConnectItems
+获得通知，比较旧/新 RowID 的共同前缀与后缀，发布 Position/Removed/Added。
+保留区间不 Unbind，不改列工厂、UI Root、BuildContext 或焦点策略。未变 ID 的
+数据修改继续 Refresh，SetModel、全部列隐藏/恢复保持原重装语义。
+
+末尾追加不影响已有单元格；前置插入/删除只平移保留项的索引。被删除、替换、滚出
+视口或移除列的编辑器仍正常卸载并移交焦点。本轮不是完整 keyed diff：排序导致的
+中间区间替换仍可能结束编辑。应用负责将编辑值保存到稳定业务 ID，不依赖回收壳。
+
+新增中文窗口例程 `tests/window/widgets/table_editing`：输入末行首字符自动追加空行，
+其后字符继续落入原格；可检查全局重建、选区、撤销/重做、前置插入/删除和再次编辑
+新的末行。-auto 使用正式 UI 协调与 Window.DispatchEvent/CommitText，另有原生
+键鼠和系统中文 IME 步骤。编辑器 ID 仅方便例程查找，不是框架保留身份的前提。
+
+包内回归集中在原有 ListView、TableView 和 UI 绑定测试，检查真实指针/焦点、
+范围、索引/尺寸缓存、Reveal、旧通知兼容、重入和资源释放；预编辑/撤销通过正常
+GUI 分发与 IME 替身验证。原生运行、源码负对照和结果边界统一记录在
+[列表更新验证](DesignListUpdates.md#验证记录2026-11-10)。

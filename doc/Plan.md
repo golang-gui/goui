@@ -1,5 +1,24 @@
 # Plan
 
+## 列表增量更新与表格连续编辑（2026-11-10）
+
+- [x] 保留 ListModel，新增可选 ListModelChanges/ListChange；SliceListModel 共用
+  单一底层信号发布精确增删/替换及 Reset，过期重入通知转为 Reset，不比较泛型值。
+- [x] ListView 平移保留行/尺寸缓存和 Reveal，范围外 Widget 不 Unbind；旧通知、
+  无效范围和无法应用的重入完整重载。保留正常视口回收，不重新恢复编辑焦点。
+- [x] TableView 根据已有 RowID 的共同前后缀发送范围变更，声明单元格沿用原协调。
+  包内覆盖追加/插删、真实编辑器/选区/IME替身/历史、旧接口、重入、绑定和快照。
+- [x] 新增 tests/window/widgets/table_editing；独立 X11 两后端×1x/2x自动流程及
+  OpenGL 1x 原生点击/键入、选区/重建、撤销/重做通过。旧 TableView 源码负对照在
+  首字符追加时丢失原编辑器，正式断言拒绝，不将负对照退出算作正常通过。
+- [x] 最终隔离全仓4632通过、11原条件跳过、0失败；定向race、相关vet与
+  Windows amd64/macOS arm64受影响包/Demo/新例程编译通过。正式移动构建链的
+  GUI/UI消费者APK与Simulator app构建通过，裸go build不代表正式移动链。
+  源码负对照、开发中失败及结果边界见
+  [DesignListUpdates](DesignListUpdates.md#验证记录2026-11-10)。
+- [ ] Windows/macOS 原生窗口、系统中文 IME、硬件 GPU/混合 DPI 和移动设备未验收；
+  复杂排序的编辑器移动保留不属于本轮承诺。
+
 ## Widget 焦点准入与指针聚焦（2026-11-09）
 
 - [x] Widget 增加 CanContainFocus / FocusOnPointer，默认 true；前者控制自身及实际
