@@ -684,6 +684,93 @@ func TestChromeMoveUsesEventController(t *testing.T) {
 	}
 }
 
+func TestChromeActivationPreservesCaptionPress(t *testing.T) {
+	for _, nativeButtons := range []bool{false, true} {
+		for _, order := range []string{"before-press", "during-press"} {
+			t.Run(fmt.Sprintf("native-buttons=%t/%s", nativeButtons, order), func(t *testing.T) {
+				win, native := chromeFixture(t, nativeButtons, false)
+				win.clientChrome = !nativeButtons
+				win.Chrome().ConnectQueryRegion(func(_ geometry.Point, r *ChromeRegion) { *r = ChromeRegionCaption })
+				win.RequestLayout()
+				win.paint()
+				bounds := win.chrome.info.ControlsBounds
+				if order == "before-press" {
+					_ = win.DispatchEvent(events.FocusEvent{Focused: true})
+				}
+				// 聚焦、按下、移动之间没有布局/绘制帧，直接经过正常事件分发。
+				_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonLeft,
+					Buttons: events.PointerButtonLeftDown, Position: geometry.Point{X: 100, Y: 20}})
+				if order == "during-press" {
+					_ = win.DispatchEvent(events.FocusEvent{Focused: true})
+				}
+				_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Buttons: events.PointerButtonLeftDown,
+					Position: geometry.Point{X: 120, Y: 20}})
+				_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerUp, Button: events.PointerButtonLeft,
+					Position: geometry.Point{X: 120, Y: 20}})
+				if native.moveRequests != 1 || !win.Focused() || win.layoutDirty || !win.paintDirty ||
+					win.chrome.info.ControlsBounds != bounds || win.dispatcher.gesture != nil {
+					t.Fatalf("聚焦阻断拖动或使几何失效：move=%d focused=%t dirty=%t bounds=%v", native.moveRequests,
+						win.Focused(), win.layoutDirty, win.chrome.info.ControlsBounds)
+				}
+			})
+		}
+	}
+}
+
+func TestChromeActivationRetainsGeometryAndFocusLossGuards(t *testing.T) {
+	for _, change := range []string{"focus-out", "size", "state", "native-controls", "focus-callback-layout"} {
+		t.Run(change, func(t *testing.T) {
+			win, native := chromeFixture(t, change == "native-controls", false)
+			win.clientChrome = change != "native-controls"
+			win.Chrome().ConnectQueryRegion(func(_ geometry.Point, r *ChromeRegion) { *r = ChromeRegionCaption })
+			win.RequestLayout()
+			win.paint()
+			_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonLeft,
+				Buttons: events.PointerButtonLeftDown, Position: geometry.Point{X: 100, Y: 20}})
+			switch change {
+			case "focus-out":
+				_ = win.DispatchEvent(events.FocusEvent{Focused: false})
+			case "size":
+				_ = win.DispatchEvent(events.SizeEvent{Width: 800, Height: 400, PixelWidth: 800, PixelHeight: 400})
+			case "state":
+				_ = win.DispatchEvent(events.StateEvent{State: WindowStateMaximized})
+			case "native-controls":
+				native.controls = geometry.Rect(12, 12, 56, 14)
+				_ = win.DispatchEvent(events.FocusEvent{Focused: true})
+				if !win.layoutDirty || win.chrome.info.ControlsBounds != native.controls {
+					t.Fatal("聚焦后原生按钮几何变化未保留布局保护")
+				}
+			case "focus-callback-layout":
+				win.ConnectFocus(func(bool) { win.RequestLayout() })
+				_ = win.DispatchEvent(events.FocusEvent{Focused: true})
+			}
+			_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Buttons: events.PointerButtonLeftDown,
+				Position: geometry.Point{X: 120, Y: 20}})
+			_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerUp, Button: events.PointerButtonLeft,
+				Position: geometry.Point{X: 120, Y: 20}})
+			if native.moveRequests != 0 || win.dispatcher.gesture != nil {
+				t.Fatal("失焦或几何失效后仍使用旧 Caption 命中")
+			}
+		})
+	}
+}
+
+func TestChromeFocusRefreshCanDestroyWindow(t *testing.T) {
+	win, native := chromeFixture(t, true, false)
+	armed := false
+	win.Chrome().ConnectInfo(func(ChromeInfo) {
+		if armed {
+			win.Destroy()
+		}
+	})
+	native.controls = geometry.Rect(12, 12, 56, 14)
+	armed = true
+	_ = win.DispatchEvent(events.FocusEvent{Focused: true})
+	if !win.destroyed || win.Focused() {
+		t.Fatal("按钮几何通知中销毁窗口后仍更新焦点")
+	}
+}
+
 // Window 拥有缩放边缘，不依赖应用树在那里命中 Widget。真实输入仍从
 // DispatchEvent 进入 host controller 和既有手势竞争，而不是直接调用 BeginResize。
 func TestIntegratedResizeWithoutWidgetHit(t *testing.T) {

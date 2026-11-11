@@ -305,6 +305,25 @@ func (c *windowChrome) nativeChanged() {
 	}
 }
 
+// Activation may precede the press that starts a native move. Preserve the
+// completed hit geometry unless refreshing native controls actually changes it.
+func (c *windowChrome) focusChanged() {
+	if !c.live() {
+		return
+	}
+	before := c.info.ControlsBounds
+	c.placementDirty = true
+	c.refresh()
+	if !c.live() {
+		return
+	}
+	if c.info.ControlsBounds != before {
+		c.window.RequestLayout()
+	} else {
+		_ = c.window.RequestPaint()
+	}
+}
+
 func (c *windowChrome) queryRegion(p geometry.Point) ChromeRegion {
 	if !c.live() || !c.info.Enabled || c.querying {
 		return ChromeRegionDefault

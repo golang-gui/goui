@@ -1,5 +1,38 @@
 # Plan
 
+## 失活窗口快速拖动 HeaderBar（2026-11-11）
+
+- [x] 独立 Xvnc/Xfwm4 原生事件追踪确认：FocusIn 先于 PointerDown，旧 GUI 强制
+  装饰布局失效，随后按下/移动被布局保护丢弃；原生 BeginMove 尚未调用。成功对照中
+  NotifyGrab/NotifyUngrab 出现在接管之后，X11 既有按压/按键清理保持不变。
+- [x] FocusIn 保留有效 Caption 候选；FocusOut、尺寸/窗口状态及模态变化继续取消。
+  聚焦刷新原生按钮并请求重绘，仅实际 ControlsBounds 变化请求布局，原生摆放重试
+  继续在绘制时处理。应用回调的布局失效和现有脏几何命中保护均保留，无新增公共 API。
+- [x] GUI 回归覆盖无中间绘制帧的聚焦→按下→移动、按下→聚焦→移动、自绘/原生
+  按钮、真失焦、尺寸/状态变化、原生按钮几何变化、聚焦回调请求布局及通知中销毁。
+  旧实现的三项激活序列与一项原生按钮几何断言明确失败，修正后通过；pixel_snap
+  -peer 的操作说明补充快速激活拖动及双击、缩放、按钮检查。
+- [x] 修复前 Software 1x：激活快速拖动 12/12，失活快速与按下停 180 ms 后拖动
+  均 0/12。修正版 Software/OpenGL × 亮暗色 × 1x/逻辑 2x 共八组，每组上述三类
+  各 12/12，共 288/288。终端实际 imageResource 类型和 PixelScale 确认后端与缩放。
+  独立 Xfwm4 4.16.1 合成会话，OpenGL 使用 Mesa 23.2.1 llvmpipe；只操作测试窗口。
+- [x] Software 亮色 1x、OpenGL 暗色 2x 补充原生输入通过：Count 恰好增加 2，
+  HeaderBar 双击最大化/还原，右下缩放，以及按住后切换到对照窗口会取消 Caption。
+  更紧凑 XTest 下旧版的停顿仍失败，不把该结果等同于用户全部手动慢拖时序。
+- [x] GUI/UI/widgets/widgets-ui race、相关 vet 通过。Go 1.25.8/linux amd64 下，另一
+  独立 X11 会话中隔离跟踪源码运行 `CGO_ENABLED=0 go test -json -count=1 ./...`：
+  4891 通过、11 既有跳过、0 失败。原工作区 `env -u DISPLAY go test ./...` 和包含
+  ui 的针对性测试仍被旧未跟踪例程/测试的已移除 API 引用阻塞，未修改无关文件。
+- [x] Windows amd64、macOS arm64 的 pixel_snap、GUI/UI 测试交叉编译通过。
+  审查 Win32 的原生 WM_NCHITTEST 和 Cocoa 的 GUI fallback 接入；本次仅修改 GUI。
+- [x] 验收窗口与两套专用 Xvnc/Xfwm4/会话总线均已清理，未操作用户桌面。日志、
+  事件追踪、截图、Qt 6.8.3 XCB 参考源码和构建保留于
+  `/tmp/goui-caption-activation-v6pwjikf`；既有全仓测试涉及独立剪贴板及临时源码副本
+  图片生成。
+- [ ] Windows/macOS 原生、其他 WM、真实混合 DPI 尚未验证；逻辑 2x 不代表真实
+  HiDPI。设计与参考见
+  [WindowChrome](DesignWindowChrome.md#activation-and-immediate-caption-drags-2026-11-11)。
+
 ## X11 最后一页转移后关闭源窗口的会话收尾（2026-11-11）
 
 - [x] X11 源服务 Destroy 显式结束本服务的活动会话；终态回调由会话保存，资源清理后

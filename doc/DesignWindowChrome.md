@@ -261,7 +261,44 @@ Validation on 2026-11-10 (Go 1.25.8, Linux amd64):
   no user desktop settings were changed. The example emits a benign accessibility
   bus connection warning in this minimal X11 session; all assertions still passed.
 
+#### Activation and immediate caption drags (2026-11-11)
+
+FocusIn preserves a pending caption press. FocusOut still resets it, including
+double-click history; size, window-state and modal transitions retain their
+existing cancellation rules. Focus updates refresh native controls and repaint.
+They request layout only when the observed ControlsBounds changes. Native
+placement retries remain scheduled for the next paint. Application callbacks
+can still invalidate layout, and the chrome controller keeps its existing
+guard against using incomplete or invalid geometry.
+
+An isolated Xvnc/Xfwm4 4.16.1 trace of the old code showed FocusIn arriving
+before PointerDown. FocusIn unconditionally requested chrome layout, so the
+same-frame press was discarded while layoutDirty was true; the later motion
+had no candidate to claim. A second invalidation path reset an existing press
+if FocusIn arrived between down and motion. Temporary FocusOut/NotifyGrab in
+the successful control run occurred after BeginMove, so native X11 grab and
+press cleanup are unchanged by this repair.
+
+The native handoff continues to use the existing platform contract. As source
+evidence, Qt 6.8.3's XCB
+[startSystemMoveResize](https://github.com/qt/qtbase/blob/v6.8.3/src/plugins/platforms/xcb/qxcbwindow.cpp#L2422-L2498)
+checks WM support, uses pointer coordinates, ungrabs and sends the EWMH request
+on its mouse path without waiting for an activation paint. GOUI keeps its own
+gesture arbitration and geometry validation; this reference does not establish
+equivalent focus-event ordering across backends.
+
+GUI tests cover focus before/during a press with no intervening paint, custom
+and native controls, genuine focus loss, size/state changes, native controls
+geometry changes, callback invalidation and destruction. The pixel_snap -peer
+window example documents repeated fast activation drags and the existing
+double-click/resize/button checks. Windows uses native WM_NCHITTEST; macOS
+also uses the GUI fallback, so its native timing remains a separate validation
+item. Measured results and platform gaps are recorded in [Plan](Plan.md).
+
 #### X11 focus during native move/resize (2026-11-11)
+
+Activation and immediate caption presses are covered separately above. Temporary
+Grab/Ungrab cleanup described here remains unchanged by that repair.
 
 X11 FocusIn/FocusOut include a mode. NotifyGrab/NotifyUngrab describe temporary
 keyboard redirection; they do not change the X focus window. The X11 adapter

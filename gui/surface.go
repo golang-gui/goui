@@ -484,8 +484,12 @@ func (w *surfaceBase) DispatchEvent(event events.Event) error {
 		defer w.applyCursor()
 	}
 	if controller := w.dispatcher.hostController; controller != nil {
-		switch event.(type) {
-		case events.FocusEvent, events.StateEvent, events.SizeEvent:
+		switch e := event.(type) {
+		case events.FocusEvent:
+			if !e.Focused {
+				controller.Reset()
+			}
+		case events.StateEvent, events.SizeEvent:
 			controller.Reset()
 		}
 		if w.modalTarget != nil {
@@ -534,7 +538,9 @@ func (w *surfaceBase) DispatchEvent(event events.Event) error {
 		w.requestLayout()
 		w.nativeChanged()
 	case events.FocusEvent:
-		w.nativeChanged()
+		if host := w.managed(); host != nil && host.chrome != nil {
+			host.chrome.focusChanged()
+		}
 		if w.destroyed {
 			return nil
 		}
