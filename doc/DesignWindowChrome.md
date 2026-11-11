@@ -116,14 +116,26 @@ The desktop regression is `tests/window/ui/pixel_snap`, with Height/F7 cycling
 
 ### Linux circular controls
 
-Linux GUI Integrated uses 2 DIP glyph strokes in the existing 12 DIP icon
-allocation and 28 DIP hit boxes. The minimize bar remains 8 DIP long. The
-maximize square has an 8 DIP outer size with a 4 DIP opening; the restore glyph
-uses a joined back corner and a foreground square. The X shortens its diagonal
-centerlines to 7 DIP so the thicker stroke does not enlarge the glyph. All four
-glyphs align their complete visual center to the physical pixel grid, preserving
-stroke geometry across odd/fractional HeaderBar heights and fractional scales.
-Non-integral physical widths still use ordinary coverage antialiasing.
+Linux GUI Integrated restores the original 1 DIP glyph strokes after user review
+(2026-11-11). The 12 DIP icon allocation and 28 DIP hit boxes stay
+unchanged. Glyph centerlines use the original 2..10 DIP coordinates: an 8 DIP
+minimize bar and square, and two rear lines plus a front square for restore.
+The X retains its original 8 DIP span and whole-glyph device-center alignment.
+Axis-aligned lines/rectangles use the Painter's existing pixel alignment;
+fractional widths and diagonals retain ordinary coverage antialiasing.
+The Paint implementation is restored directly from the parent of 43010bd.
+The current palette and inactive behavior below remain in place; earlier 2 DIP
+validation records are retained as history.
+
+Preview verification: original Paint text matches Git history exactly; the new
+1 DIP geometry/coverage checks fail against the 2 DIP implementation. Isolated
+tracked-source tests pass 4862 with 11 skips; relevant vet and Windows/macOS
+window-program builds pass. Dedicated Xvnc/Xfwm4 Software/OpenGL 1x light/dark
+checks pass for control interactions, inactive/reactivation, held move/resize,
+five HeaderBar heights and maximize/restore. The original worktree remains
+blocked by old untracked test APIs. Remote native and physical HiDPI acceptance
+are not claimed. The user accepted the restored geometry and inactive-circle
+follow-up described below.
 
 The current palette follows libadwaita 1.8.0 (updated 2026-11-11). Light mode uses
 straight RGB (0, 0, 6) at 80% alpha over a white reference surface; dark mode uses
@@ -134,14 +146,17 @@ circles darken in light mode and lighten in dark mode. The window background
 continues to select the light/dark palette; application HeaderBar/Button styles
 do not replace window-control colors or change the reference surface.
 
-Glyph ink is precomposited over its state-specific circle. On focus loss, both
-the completed circle and its glyph are independently blended at 50% over the
-reference surface, matching group-opacity semantics inside the controls. The
-brushes stay opaque: intersecting X strokes cannot accumulate alpha and produce
-a darker crossing. GOUI does not filter application HeaderBar content or change
-its background on focus loss; libadwaita's separate headerbar backdrop surface
-and transitions are not part of this adaptation. Hover/press backgrounds remain
-distinguishable, and activation restores their original colors.
+Glyph ink is precomposited over its state-specific circle. On focus loss, only
+the completed glyph color is blended at 50% over that circle. The circle keeps
+the same idle/hovered/pressed background colors regardless of window focus.
+Fading the whole circle over a white reference had produced #f5f5f5, almost
+indistinguishable from Modern's #f6f6f8 window background, so that earlier
+group-opacity adaptation is removed (2026-11-11, accepted after user review).
+The brushes stay opaque: intersecting X strokes cannot accumulate alpha and
+produce a darker crossing. GOUI does not filter application HeaderBar content
+or change its background on focus loss. libadwaita's group-opacity filter,
+separate backdrop surface and transitions are reference behavior, not copied
+as a whole. Activation restores the glyph's original color.
 This is appearance rather than Disabled or Widget focus.
 The existing Window.ConnectFocus repaint path handles the change; no new state,
 style selector, signal or public configuration is introduced. Layout, hit regions
@@ -158,9 +173,31 @@ GOUI retains its compact glyph geometry and isolated window-decoration policy.
 
 The implementation resolves each composition to rounded opaque RGB bytes.
 For example, active idle circle/ink are #ebebeb/#2f2f34 in light mode and
-#434347/#ffffff in dark mode; inactive idle circle/ink are #f5f5f5/#97979a
-and #39393d/#979799 respectively. This also keeps partially transparent or
+#434347/#ffffff in dark mode; inactive idle circle/ink are #ebebeb/#8d8d90
+and #434347/#a1a1a3 respectively. This also keeps partially transparent or
 custom-colored application windows predictable without sampling desktop pixels.
+
+Inactive-circle follow-up verification (2026-11-11):
+
+- Explicit light/dark RGB expectations keep all three circle backgrounds
+  identical across focus changes and verify the new inactive ink. The previous
+  group-fade implementation fails those assertions. The original 1 DIP Paint
+  remains byte-for-byte identical to its Git version.
+- The 1 DIP X overlap performs two 8-bit source-over operations. scanFT's
+  RGBAPainter truncates each result to bytes, so that sample permits 2/255 RGB
+  quantization error; single-operation samples retain 1/255. The independent
+  3/255 geometry coverage bound and opaque axis-aligned masks are unchanged.
+- Tracked-source isolation passes 4862 tests and skips 11; relevant vet passes.
+  The original worktree still fails on pre-existing untracked test APIs.
+- Dedicated Xvnc/Xfwm4 Software/OpenGL 1x light/dark checks pass: the sampled
+  circles retain their active RGB while the glyphs dim, and remain distinct
+  from the actual Modern window background. The old executable fails the same
+  inactive-circle pixel assertion. Hover, cancel, held move/resize, five title
+  heights and maximize/restore remain functional. One xdotool activation during
+  normal cleanup logged a transient missing _NET_ACTIVE_WINDOW property; both
+  processes exited normally and all interaction assertions passed.
+- The private display, WM, bus and test windows are cleaned up. No remote or
+  physical HiDPI acceptance is claimed. The user accepted the final appearance.
 
 Regression coverage includes explicit light/dark state colors, focus-event
 repaint, enabled semantics, unchanged hit bounds, independent 1x glyph masks,
