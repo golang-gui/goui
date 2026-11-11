@@ -1,5 +1,21 @@
 # Plan
 
+## X11 原生拖动期间的窗口焦点（2026-11-11）
+
+- [x] 独立 Xvnc/Xfwm4、OpenGL 1x 复现：抓取期间系统焦点与活动窗口仍为主窗口，
+  旧转换忽略 mode，将 NotifyGrab/NotifyUngrab 误报为失焦/聚焦，使按钮变灰。
+- [x] Xlib 补齐 FocusChangeEvent 与 mode 常量；X11 临时抓取不转换成 FocusEvent，
+  保留真实焦点变化、XIM 过滤及可能遗漏释放的输入状态清理。GUI 样式/API 不变。
+- [x] 八组模式与 ABI 回归通过，旧转换的四组 Grab/Ungrab 明确失败；相关 race/vet
+  通过。隔离已跟踪源码全仓 4862 通过、11 跳过；原工作区仍因旧未跟踪用例编译失败。
+- [x] 独立 Xvnc/Xfwm4 4.16.1、合成开启、Software/OpenGL llvmpipe 1x × 亮暗色：
+  持续移动/右下缩放、真实焦点切换、图形像素、点击及按住 F7 验收通过。
+  旧可执行文件在同一持续拖动像素断言上失败；原生事件和系统焦点属性已交叉核对。
+- [ ] Xlib ABI 测试目标 Linux arm64 编译通过；X11 arm64 被既有 libc 的
+  SYS_PIPE/SYS_POLL 阻塞，已独立确认，未扩大修复。其他 WM、真实中文输入法及
+  Windows/macOS 原生未验收。测试桌面及窗口已清理，原用户桌面设置不变。
+  设计及参考见 [WindowChrome](DesignWindowChrome.md#x11-focus-during-native-moveresize-2026-11-11)。
+
 ## Dialog 顶部遮罩拖动（2026-11-11）
 
 - [x] `BackdropCaptionTop` 将卡片上方的遮罩用于窗口拖动，两侧及下方按

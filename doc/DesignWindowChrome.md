@@ -171,6 +171,62 @@ Validation on 2026-11-10 (Go 1.25.8, Linux amd64):
   no user desktop settings were changed. The example emits a benign accessibility
   bus connection warning in this minimal X11 session; all assertions still passed.
 
+#### X11 focus during native move/resize (2026-11-11)
+
+X11 FocusIn/FocusOut include a mode. NotifyGrab/NotifyUngrab describe temporary
+keyboard redirection; they do not change the X focus window. The X11 adapter
+passes these events through XIM filtering but does not translate them into
+GOUI FocusEvent. NotifyNormal and NotifyWhileGrabbed still report actual focus
+changes, including a focus transfer while a grab exists. FocusOut continues to
+clear local key tracking and the native drag-press origin because releases can
+be delivered elsewhere during the grab. This does not add GUI moving state or
+change caption colors, public focus APIs, or native move/resize requests.
+
+The distinction follows the
+[Xlib focus-event modes](https://xorg.freedesktop.org/archive/current/doc/libX11/libX11/libX11.html#Input_Focus_Events).
+GTK 4.18.6 separately maintains the actual focus window and grab-sensitive input
+focus in
+[its XI2 adapter](https://github.com/GNOME/gtk/blob/4.18.6/gdk/x11/gdkdevicemanager-xi2.c#L1262-L1356).
+GOUI adopts the actual-focus distinction for its existing window FocusEvent;
+it does not copy GTK's additional device-focus state.
+
+In an isolated Xvnc/Xfwm4 OpenGL 1x reproduction, dragging produced
+FocusOut/NotifyGrab followed by FocusIn/NotifyUngrab. Throughout the held drag,
+XGetInputFocus, _NET_ACTIVE_WINDOW and _NET_WM_STATE_FOCUSED still identified the
+main window, while the old adapter emitted Focused=false and dimmed its buttons.
+The earlier appearance validation checked completed moves but missed the held
+grab. Regression coverage now checks focus modes, input cleanup, native held
+move/resize and real focus transfer in both light and dark mode.
+
+Validation on 2026-11-11 (Go 1.25.8, Linux amd64):
+
+- The eight focus-mode cases and the LP64 XFocusChangeEvent size/offset test
+  pass without DISPLAY. All four grab/ungrab cases failed against the old
+  event conversion. Native Xlib headers independently confirm size 48, mode
+  offset 40, detail offset 44 and mode values 0/1/2/3.
+- `go test -race -count=1 ./platform/linux/x11 ./platform/linux/libs/xlib` and
+  `go vet ./platform/linux/x11 ./platform/linux/libs/xlib ./tests/window/ui/pixel_snap`
+  pass. Tracked-source isolation with `CGO_ENABLED=0 go test -json -count=1 ./...`
+  on the dedicated display passes 4862 tests, skips 11, and fails 0. The original
+  worktree's `go test ./...` remains blocked by pre-existing untracked examples
+  using removed Window methods and old windowMount fields; those files are retained.
+- Independent Xvnc/Xfwm4 4.16.1 with composition enabled passes Software and
+  OpenGL (Mesa llvmpipe) at 1x in both light and dark mode. Actual held move and
+  bottom-right resize retain active glyph ink (50 light / 240 dark, per-channel
+  tolerance 1/255) and emit no false/true focus pair. Xev observes Grab/Ungrab,
+  while XGetInputFocus and both EWMH active/focused facts retain the main window.
+  Switching to the peer dims all three glyphs (141 light / 152 dark); returning
+  restores their ink. Pointer activation, a held F7 and normal close still work.
+  The same held-drag pixel assertion fails against the old executable.
+- The Xlib ABI test target compiles for Linux arm64. The X11 arm64 target is
+  blocked by existing `libc/syscall_linux.go` references to SYS_PIPE/SYS_POLL;
+  that unchanged dependency fails independently of this fix. No arm64 runtime,
+  other WM, real CJK IME or remote Windows/macOS acceptance is claimed.
+- Test windows, observers, display, WM and session bus are cleaned up. Native
+  tests change only the isolated desktop's pointer/focus. Existing full-suite
+  tests can touch its clipboard and write images in the temporary source copy;
+  the user desktop settings are unchanged.
+
 ### Native mode
 
 The native window retains ownership of its real buttons. WindowControls is a
