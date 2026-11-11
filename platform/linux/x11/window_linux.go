@@ -460,9 +460,11 @@ func handleEvent(event xlib.Event) {
 	// Entering a nested native dispatch expires any previous press context.
 	moveResizePress = nativePress{}
 	if event.Type == xlib.FocusOut {
+		// A keyboard grab can hide releases without changing X input focus.
 		if w := windowMap[event.AnyEvent().Window]; w != nil {
 			w.pressedKeys = [256]bool{}
 			w.modifierKeys = [32]byte{}
+			w.dragPress = false
 		}
 	}
 	if event.Type == xlib.KeymapNotify {
@@ -584,15 +586,15 @@ func handleEvent(event xlib.Event) {
 		if platform.clipboard != nil {
 			platform.clipboard.handleSelectionNotify(event.SelectionEvent())
 		}
-	case xlib.FocusIn:
-		ev := event.AnyEvent()
-		if window, ok := windowMap[ev.Window]; ok {
-			window.emitEvent(events.FocusEvent{Focused: true})
+	case xlib.FocusIn, xlib.FocusOut:
+		ev := event.FocusChangeEvent()
+		// Grab/ungrab notifications describe temporary input redirection, not
+		// a change of the focus window. Normal/WhileGrabbed report real changes.
+		if ev.Mode == xlib.NotifyGrab || ev.Mode == xlib.NotifyUngrab {
+			break
 		}
-	case xlib.FocusOut:
-		ev := event.AnyEvent()
 		if window, ok := windowMap[ev.Window]; ok {
-			window.emitEvent(events.FocusEvent{Focused: false})
+			window.emitEvent(events.FocusEvent{Focused: event.Type == xlib.FocusIn})
 		}
 	case xlib.MotionNotify:
 		ev := event.MotionEvent()

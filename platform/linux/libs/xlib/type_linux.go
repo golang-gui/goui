@@ -410,6 +410,10 @@ func (e *Event) CrossingEvent() *CrossingEvent {
 	return (*CrossingEvent)(cgo.Pointer(e))
 }
 
+func (e *Event) FocusChangeEvent() *FocusChangeEvent {
+	return (*FocusChangeEvent)(cgo.Pointer(e))
+}
+
 func (e *Event) SelectionClearEvent() *SelectionClearEvent {
 	return (*SelectionClearEvent)(cgo.Pointer(e))
 }
@@ -608,6 +612,24 @@ type CrossingEvent struct {
 	Focus      Bool
 	State      uint32
 }
+
+// FocusChangeEvent is XFocusChangeEvent, shared by FocusIn and FocusOut.
+type FocusChangeEvent struct {
+	Type      EventType
+	Serial    uint64
+	SendEvent Bool
+	Display   Display
+	Window    Window
+	Mode      int32
+	Detail    int32
+}
+
+const (
+	NotifyNormal       = 0
+	NotifyGrab         = 1
+	NotifyUngrab       = 2
+	NotifyWhileGrabbed = 3
+)
 
 type ClientMessageEvent struct {
 	Type        EventType

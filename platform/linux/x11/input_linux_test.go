@@ -168,6 +168,64 @@ func TestX11RepeatClearsOnFocusOut(t *testing.T) {
 	}
 }
 
+func TestX11FocusModes(t *testing.T) {
+	previousPlatform, previousWindows := platform, windowMap
+	t.Cleanup(func() { platform, windowMap = previousPlatform, previousWindows })
+	platform = nil
+	for _, mode := range []struct {
+		name   string
+		value  int32
+		notify bool
+	}{
+		{"Normal", xlib.NotifyNormal, true},
+		{"Grab", xlib.NotifyGrab, false},
+		{"Ungrab", xlib.NotifyUngrab, false},
+		{"WhileGrabbed", xlib.NotifyWhileGrabbed, true},
+	} {
+		for _, focused := range []bool{false, true} {
+			name := "Out/"
+			if focused {
+				name = "In/"
+			}
+			t.Run(name+mode.name, func(t *testing.T) {
+				var got []events.FocusEvent
+				w := &Window{wid: 1, dragPress: true, onEvent: func(event events.Event) {
+					focus, ok := event.(events.FocusEvent)
+					if !ok {
+						t.Fatalf("非焦点事件：%T", event)
+					}
+					got = append(got, focus)
+				}}
+				windowMap = map[xlib.Window]*Window{1: w}
+				w.trackKey(71, true, false)
+				w.modifierKeys[37/8] |= 1 << (37 % 8)
+				var event xlib.Event
+				event.Type = xlib.FocusOut
+				if focused {
+					event.Type = xlib.FocusIn
+				}
+				event.FocusChangeEvent().Window = w.wid
+				event.FocusChangeEvent().Mode = mode.value
+				handleEvent(event)
+				if mode.notify {
+					if len(got) != 1 || got[0].Focused != focused {
+						t.Fatalf("真实焦点变化上报为 %v，期望 Focused=%t", got, focused)
+					}
+				} else if len(got) != 0 {
+					t.Fatalf("临时抓取被误报为窗口焦点变化：%v", got)
+				}
+				// 抓取期间可能收不到释放，仍需清理按键和原生拖拽起点。
+				if !focused && (w.pressedKeys != [256]bool{} || w.modifierKeys != [32]byte{} || w.dragPress) {
+					t.Fatal("FocusOut 保留了可能遗漏释放的输入状态")
+				}
+				if focused && (!w.pressedKeys[71] || w.modifierKeys[37/8] == 0 || !w.dragPress) {
+					t.Fatal("FocusIn 意外清除了已有输入状态")
+				}
+			})
+		}
+	}
+}
+
 func TestX11SidedModifiers(t *testing.T) {
 	previous := platform
 	t.Cleanup(func() { platform = previous })
