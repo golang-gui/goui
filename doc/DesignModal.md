@@ -106,13 +106,15 @@ Dialog 为可放入普通 Overlay 的单子 Widget，使用 Fill(true)，自身�
 内容由正常遍历绘制。模态关联整个 Dialog：命令式按需 NewModalScope(dialog)，
 声明式由 OverlayItem.Modal 管理；Dialog 不重复创建边界。通过 Visible 开关展示。
 提供 Child、Padding（默认 24 DIP）、BackdropCaptionMode（默认 None）、
+BackdropCaptionHeight（默认 40 DIP，仅 Top 模式使用）、
 CloseOnOutside（默认 false）和 CloseRequest 信号。不预置标题、操作按钮或业务结果。
 Escape 在内容/IME 未消费时请求关闭，遮罩完整左键点击可选请求关闭，不自动更改
 应用状态。卡片内容测量决定尺寸，父硬约束优先；宽高偏好放 Child 上，大内容可组合
 ScrollView。卡片默认居中，沿用结构矩形裁剪，不新增 Painter 能力。
 
 公开入口为 NewDialog、Child／SetChild、Padding／SetPadding、BackdropCaptionMode／
-SetBackdropCaptionMode、CloseOnOutside／SetCloseOnOutside 与 ConnectCloseRequest。
+SetBackdropCaptionMode、BackdropCaptionHeight／SetBackdropCaptionHeight、
+CloseOnOutside／SetCloseOnOutside 与 ConnectCloseRequest。
 Padding 使用四边 Insets。卡片为 dialog 的 card Part，遮罩为 backdrop Part；
 阴影在自己的结构矩形内预留支持范围，背景不隐式传给 Child。
 
@@ -120,13 +122,21 @@ BackdropCaptionMode 决定遮罩的窗口拖动范围。
 
 - `BackdropCaptionNone` 下，CloseOnOutside 适用于整片遮罩。
 - `BackdropCaptionAll` 将整片遮罩保留为 Caption。
-- `BackdropCaptionTop` 将卡片上边缘以上的遮罩保留为 Caption。与卡片顶部同高
-  的两侧和卡片下方按 CloseOnOutside 处理。区域随卡片布局更新。
+- `BackdropCaptionTop` 只将 Dialog 自身局部坐标顶部默认 40 DIP 的窄带保留为
+  Caption；卡片始终排除在外。窄带下边界及其下方按 CloseOnOutside 处理，即使
+  仍在卡片上方也可以取消。实际区域限制在 Dialog 分配矩形内。
+
+`BackdropCaptionHeight` 与 HeaderBar 高度、卡片顶部位置无关，不读取窗口标题栏
+几何。允许零高度，此时 Top 没有 Caption 区域；负数、NaN、无穷大归零。
+高度大于分配高度时仍不越界、不覆盖卡片。修改只影响后续命中，不请求布局或
+重绘，也不为纯输入策略增加样式项。小窗口中卡片与窄带交叠时，卡片优先。
 
 `SetBackdropCaption(true)` 和 `SetBackdropCaption(false)` 分别选择 All、None，
 `BackdropCaption()` 报告是否启用任一种 Caption 模式。未识别的枚举值选择 None。
 UI 提供同名模式常量及 `BackdropCaptionMode(mode)`，也支持布尔写法
 `BackdropCaption(bool)`。两种 setter 写入同一个模式。
+声明式 `BackdropCaptionHeight(height)` 支持显式零值；重建时省略该属性恢复
+构造默认值 40 DIP，不遗留上一次高度。
 
 关闭手势复用 ClickEventController，按下和松开均须在可关闭的遮罩区。移动或松开
 时距按下位置超过 4 DIP 即取消这次点击，拖回起点也不会发出关闭请求。卡片本身、
@@ -142,12 +152,24 @@ Qt Quick 用 closePolicy 配置外部关闭条件，Flutter 用 barrierDismissib
 ui.OverlayItem(
     wui.Dialog(content).Visible(showDialog).
         BackdropCaptionMode(wui.BackdropCaptionTop).
+        BackdropCaptionHeight(40). // Optional; 40 DIP is the default.
         CloseOnOutside(true).
         OnCloseRequest(func() { showDialog = false; app.RequestUpdate() }),
 ).Fill(true).Modal(true)
 ```
 
-### 顶部遮罩策略验收（2026-11-11）
+### 顶部窄带验收（2026-11-11）
+
+默认范围收窄为顶部 40 DIP，Demo 沿用默认值，八语提示改为“顶部窄带”。
+`tests/window/widgets/dialog_toast` 提供 40/64 DIP 切换；自动流程检查高度更新、
+跨区松开及窄带下方但卡片上方的取消。独立 Xvnc/Xfwm4 4.16.1 合成会话下，
+Software/OpenGL llvmpipe 1x 的窗口自动流程、实际 Demo 亮暗四组原生输入均通过：
+顶部 20 DIP 位置可拖动，40 DIP 边界及 100 DIP 位置取消，卡片与侧边拖动不误关。
+单元测试在旧范围逻辑下可复现失败，修正后通过；完整结果见 [Plan](Plan.md)。
+
+### 顶部遮罩策略历史验收（2026-11-11）
+
+以下记录对应收窄前“卡片上方整片遮罩”的版本；当前范围以顶部窄带契约为准。
 
 Demo 的“菜单与覆盖层”确认框使用 BackdropCaptionTop + CloseOnOutside(true)，
 外层复用窗口级 OverlayItem.Modal(true)。八语提示说明上方拖动、两侧/下方点击
@@ -262,6 +284,10 @@ go test ./... 及风险相关 race/跨目标编译。未验收的平台单独记
   采用声明宿主并向持久对象提交请求；GOUI 使用 ToastHandle，不引入协程或隐式追踪。
 - Qt Quick 官方现行 [Popup.closePolicy](https://doc.qt.io/qt-6/qml-qtquick-controls-popup.html#closePolicy-prop)
   分别表达 Escape／外部点击等关闭条件；GOUI 采用小而独立的关闭请求，不引入 Popup 宿主。
+- GTK 4.24.1 [WindowHandle](https://docs.gtk.org/gtk4/class.WindowHandle.html) 以专门 Widget
+  定义窗口交互区域，Qt 6.12 [QWindow.startSystemMove](https://doc.qt.io/qt-6/qwindow.html#startSystemMove)
+  请求原生移动。GOUI 沿用既有 Chrome 查询与原生移动链路，Dialog 仅计算区域；
+  40 DIP 是 GOUI 的默认策略，不是这些框架的尺寸承诺。
 - libadwaita 1.10 的 [Toast](https://gnome.pages.gitlab.gnome.org/libadwaita/doc/1-latest/class.Toast.html)
   提供 timeout、dismissed 和自定义内容；GOUI 选择普通 Widget 与单条替换，保留已有 Overlay，
   不采用 ToastOverlay、优先级或队列管理。

@@ -24,6 +24,7 @@ type DialogView struct {
 	child           baseui.View
 	padding         optional.Optional[geometry.Insets]
 	backdropCaption BackdropCaptionMode
+	captionHeight   optional.Optional[float32]
 	closeOnOutside  bool
 	onCloseRequest  func()
 }
@@ -65,18 +66,27 @@ func (v *DialogView) BackdropCaptionMode(mode BackdropCaptionMode) *DialogView {
 	return v
 }
 
+// BackdropCaptionHeight sets the top caption strip's height in local DIP.
+// Omission restores the default of 40 DIP; zero disables the strip. It only
+// affects BackdropCaptionTop and never makes the card draggable.
+func (v *DialogView) BackdropCaptionHeight(height float32) *DialogView {
+	v.captionHeight.SetValue(height)
+	return v
+}
+
 func (v *DialogView) CloseOnOutside(close bool) *DialogView { v.closeOnOutside = close; return v }
 func (v *DialogView) OnCloseRequest(fn func()) *DialogView  { v.onCloseRequest = fn; return v }
 
 type dialogState struct {
 	padding        geometry.Insets
+	captionHeight  float32
 	close          signal.Handle
 	onCloseRequest func()
 }
 
 func (v *DialogView) Mount(ctx baseui.BuildContext) gui.Widget {
 	d := widgets.NewDialog()
-	s := &dialogState{padding: d.Padding()}
+	s := &dialogState{padding: d.Padding(), captionHeight: d.BackdropCaptionHeight()}
 	s.close = d.ConnectCloseRequest(func() {
 		if s.onCloseRequest != nil {
 			s.onCloseRequest()
@@ -90,6 +100,7 @@ func (v *DialogView) Update(ctx baseui.BuildContext, widget gui.Widget) {
 	s.onCloseRequest = v.onCloseRequest
 	d.SetPadding(v.padding.ValueOr(s.padding))
 	d.SetBackdropCaptionMode(v.backdropCaption)
+	d.SetBackdropCaptionHeight(v.captionHeight.ValueOr(s.captionHeight))
 	d.SetCloseOnOutside(v.closeOnOutside)
 	ctx.UpdateChild(d, v.child)
 }

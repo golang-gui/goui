@@ -13,21 +13,26 @@ import (
 func TestDialogDeclarationReconcile(t *testing.T) {
 	ctx := new(tabContext)
 	first, latest := 0, 0
-	v := Dialog(baseui.Label("body")).Padding(10).BackdropCaption(true).CloseOnOutside(true).OnCloseRequest(func() { first++ })
+	v := Dialog(baseui.Label("body")).Padding(10).BackdropCaption(true).BackdropCaptionHeight(64).CloseOnOutside(true).OnCloseRequest(func() { first++ })
 	d := v.Mount(ctx).(*widgets.Dialog)
 	v.Update(ctx, d)
 	child := d.Child()
-	if child == nil || d.Padding() != geometry.UniformInsets(10) || d.BackdropCaptionMode() != BackdropCaptionAll || !d.CloseOnOutside() {
+	if child == nil || d.Padding() != geometry.UniformInsets(10) || d.BackdropCaptionMode() != BackdropCaptionAll || !d.CloseOnOutside() || d.BackdropCaptionHeight() != 64 {
 		t.Fatal("声明属性未应用")
 	}
-	v = Dialog(baseui.Label("top")).BackdropCaptionMode(BackdropCaptionTop).CloseOnOutside(true)
+	v = Dialog(baseui.Label("top")).BackdropCaptionMode(BackdropCaptionTop).BackdropCaptionHeight(72).CloseOnOutside(true)
 	v.Update(ctx, d)
-	if d.Child() != child || d.BackdropCaptionMode() != BackdropCaptionTop || !d.BackdropCaption() || !d.CloseOnOutside() {
+	if d.Child() != child || d.BackdropCaptionMode() != BackdropCaptionTop || !d.BackdropCaption() || !d.CloseOnOutside() || d.BackdropCaptionHeight() != 72 {
 		t.Fatal("顶部模式未应用到已有 Dialog")
+	}
+	v = Dialog(baseui.Label("zero")).BackdropCaptionMode(BackdropCaptionTop).BackdropCaptionHeight(0)
+	v.Update(ctx, d)
+	if d.Child() != child || d.BackdropCaptionHeight() != 0 {
+		t.Fatal("显式零高度被当成未设置")
 	}
 	v = Dialog(baseui.Label("updated")).OnCloseRequest(func() { latest++ })
 	v.Update(ctx, d)
-	if d.Child() != child || d.Padding() != geometry.UniformInsets(24) || d.BackdropCaption() || d.CloseOnOutside() {
+	if d.Child() != child || d.Padding() != geometry.UniformInsets(24) || d.BackdropCaption() || d.CloseOnOutside() || d.BackdropCaptionHeight() != 40 {
 		t.Fatal("重建未复用内容或恢复默认值")
 	}
 	d.Arrange(geometry.Rect(0, 0, 500, 300))

@@ -15,7 +15,8 @@ type BackdropCaptionMode uint8
 const (
 	BackdropCaptionNone BackdropCaptionMode = iota
 	BackdropCaptionAll
-	// BackdropCaptionTop uses the backdrop above the card's top edge.
+	// BackdropCaptionTop uses a top strip of the backdrop, excluding the card.
+	// Its height is controlled by Dialog.BackdropCaptionHeight.
 	BackdropCaptionTop
 )
 
@@ -29,16 +30,17 @@ type Dialog struct {
 	padding         geometry.Insets
 	card            geometry.Rectangle
 	backdropCaption BackdropCaptionMode
+	captionHeight   float32
 	closeOnOutside  bool
 	revision        uint64
 	closeRequest    signal.Signal1[func() bool]
 	chrome          signal.Handle
 }
 
-// NewDialog creates a visible dialog with 24 DIP padding. Outside presses do
-// not close it and its backdrop is not a window drag region by default.
+// NewDialog creates a visible dialog with 24 DIP padding and a 40 DIP caption
+// height. Outside presses do not close it and backdrop caption mode is off.
 func NewDialog() *Dialog {
-	d := &Dialog{padding: geometry.UniformInsets(24)}
+	d := &Dialog{padding: geometry.UniformInsets(24), captionHeight: 40}
 	d.SetLayoutManager(dialogLayout{d})
 	keys := gui.NewKeyEventController()
 	keys.SetPhase(gui.PhaseBubble)
@@ -136,6 +138,19 @@ func (d *Dialog) SetBackdropCaptionMode(mode BackdropCaptionMode) {
 	d.backdropCaption = mode
 }
 
+// BackdropCaptionHeight returns the top caption strip's height in local DIP.
+func (d *Dialog) BackdropCaptionHeight() float32 { return d.captionHeight }
+
+// SetBackdropCaptionHeight sets the height used by BackdropCaptionTop. The
+// strip stays within the dialog bounds and excludes the card. Zero disables
+// the strip; negative or non-finite heights become zero. This changes input
+// regions only and does not affect layout or appearance.
+func (d *Dialog) SetBackdropCaptionHeight(height float32) {
+	if !d.Destroyed() {
+		d.captionHeight = normalizeInset(height)
+	}
+}
+
 func (d *Dialog) CloseOnOutside() bool         { return d.closeOnOutside }
 func (d *Dialog) SetCloseOnOutside(close bool) { d.closeOnOutside = close }
 
@@ -197,11 +212,14 @@ func (d *Dialog) queryRegion(point geometry.Point, region *gui.ChromeRegion) {
 }
 
 func (d *Dialog) captionAt(p geometry.Point) bool {
+	if !pointInRect(geometry.Rectangle{Size: d.Rect().Size}, p) || pointInRect(d.card, p) {
+		return false
+	}
 	switch d.backdropCaption {
 	case BackdropCaptionAll:
-		return !pointInRect(d.card, p)
+		return true
 	case BackdropCaptionTop:
-		return p.Y < d.card.Y
+		return p.Y < d.captionHeight
 	default:
 		return false
 	}

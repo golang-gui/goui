@@ -2,6 +2,7 @@ package widgets
 
 import (
 	"image/color"
+	"math"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -20,7 +21,7 @@ func TestDialogContentLayoutAndSnapshot(t *testing.T) {
 	d := NewDialog()
 	child := splitTestChild(120, 60)
 	d.SetChild(child)
-	if d.Padding() != geometry.UniformInsets(24) || d.CloseOnOutside() || d.BackdropCaption() {
+	if d.Padding() != geometry.UniformInsets(24) || d.CloseOnOutside() || d.BackdropCaption() || d.BackdropCaptionHeight() != 40 {
 		t.Fatal("默认参数不符合确认层约定")
 	}
 	m := d.Measure(layout.Loose(geometry.Size{Width: 400, Height: 300}))
@@ -120,8 +121,10 @@ func TestDialogTopBackdropCaptionOutsideClicks(t *testing.T) {
 	d.ConnectCloseRequest(func() { closed++ })
 
 	// 跨界端点相距不足拖动阈值，验证按下和松开各自都受区域限制。
-	above := geometry.Point{X: 10, Y: d.card.Y - 0.5}
-	side := geometry.Point{X: 10, Y: d.card.Y}
+	above := geometry.Point{X: 10, Y: d.BackdropCaptionHeight() - 0.5}
+	side := geometry.Point{X: 10, Y: d.BackdropCaptionHeight()}
+	cardTopSide := geometry.Point{X: 10, Y: d.card.Y}
+	aboveCard := geometry.Point{X: 200, Y: d.card.Y - 1}
 	below := geometry.Point{X: 200, Y: 290}
 	right := geometry.Point{X: 390, Y: d.card.Center().Y}
 	card := geometry.Point{X: d.card.X + 0.5, Y: d.card.Center().Y}
@@ -134,7 +137,9 @@ func TestDialogTopBackdropCaptionOutsideClicks(t *testing.T) {
 		move       *geometry.Point
 	}{
 		{"顶部", above, above, false, nil},
-		{"卡片顶部同高的左侧", side, side, true, nil},
+		{"窄带下边界", side, side, true, nil},
+		{"窄带下方但仍在卡片上方", aboveCard, aboveCard, true, nil},
+		{"卡片顶部同高的左侧", cardTopSide, cardTopSide, true, nil},
 		{"右侧", right, right, true, nil},
 		{"底部", below, below, true, nil},
 		{"卡片内边距", card, card, false, nil},
@@ -167,6 +172,52 @@ func TestDialogTopBackdropCaptionOutsideClicks(t *testing.T) {
 				t.Fatalf("关闭请求次数 %d，预期 %d，Dialog 可见 %t", closed, want, d.Visible())
 			}
 		})
+	}
+}
+
+func TestDialogBackdropCaptionHeight(t *testing.T) {
+	useProgressApplication(t, &progressTestApplication{sheet: style.Sheet(
+		style.Name("dialog").Part("card").BackgroundColor(color.White),
+	)})
+	d := NewDialog()
+	d.SetChild(splitTestChild(120, 60))
+	d.Arrange(geometry.Rect(9, 17, 400, 300))
+	d.SetBackdropCaptionMode(BackdropCaptionTop)
+	d.SetCloseOnOutside(true)
+	before, childBefore := d.Rect(), d.Child().Rect()
+	for _, height := range []float32{0, 24, 40, 64.5, 150, 1000} {
+		d.SetBackdropCaptionHeight(height)
+		if d.BackdropCaptionHeight() != height || d.Rect() != before || d.Child().Rect() != childBefore {
+			t.Fatalf("高度 %g 未保存或改变了布局", height)
+		}
+		for _, p := range []geometry.Point{
+			{X: 10, Y: 0}, {X: 10, Y: height - 0.25}, {X: 10, Y: height},
+			{X: 10, Y: 80}, {X: 200, Y: 80}, {X: 200, Y: 100},
+			{X: -1, Y: 10}, {X: 400, Y: 10}, {X: 10, Y: -1}, {X: 10, Y: 300},
+		} {
+			inside := p.X >= 0 && p.X < 400 && p.Y >= 0 && p.Y < 300
+			// 此例卡片固定为 (116,96)-(284,204)，独立于待测区域辅助函数。
+			inCard := p.X >= 116 && p.X < 284 && p.Y >= 96 && p.Y < 204
+			caption := inside && !inCard && p.Y < height
+			if d.captionAt(p) != caption || d.closesAt(p) != (inside && !inCard && !caption) {
+				t.Fatalf("height=%g point=%+v：Caption/关闭区域错误", height, p)
+			}
+		}
+	}
+	for _, invalid := range []float32{-1, float32(math.NaN()), float32(math.Inf(1)), float32(math.Inf(-1))} {
+		d.SetBackdropCaptionHeight(invalid)
+		if d.BackdropCaptionHeight() != 0 || d.captionAt(geometry.Point{X: 10, Y: 10}) {
+			t.Fatalf("非法高度 %g 未归零", invalid)
+		}
+	}
+	// 高度只影响 Top；None/All 及旧布尔入口的语义不变。
+	d.SetBackdropCaption(true)
+	if d.BackdropCaptionMode() != BackdropCaptionAll || !d.captionAt(geometry.Point{X: 10, Y: 100}) || d.captionAt(d.card.Center()) {
+		t.Fatal("All 受顶部高度影响或覆盖卡片")
+	}
+	d.SetBackdropCaption(false)
+	if d.captionAt(geometry.Point{X: 10, Y: 10}) || !d.closesAt(geometry.Point{X: 10, Y: 10}) {
+		t.Fatal("None 未恢复完整的外围取消区域")
 	}
 }
 
