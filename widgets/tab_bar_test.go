@@ -579,6 +579,90 @@ func TestTabCloseDisclosurePreservesCloseFocusOnly(t *testing.T) {
 	}
 }
 
+func TestInactiveTabCloseHidesAfterCanceledPointerPress(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		arrangeOnMove bool
+		leaveWindow   bool
+	}{
+		{"移出后布局", true, false},
+		{"松开后布局", false, false},
+		{"移出窗口", true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bar, view, pages := dragTestBar()
+			item := bar.items[pages[1]]
+			// 未显示的无锚点 Popover 只提供真实 GUI Root，不创建原生资源。
+			host := gui.NewPopover(nil, nil)
+			host.SetWidget(bar)
+			t.Cleanup(host.Destroy)
+			focusHost := host.(gui.EventTarget)
+			originalFocus := bar.items[pages[0]].body
+			if !focusHost.SetFocusedWidget(originalFocus) {
+				t.Fatal("无法建立原有标签焦点")
+			}
+			closed := 0
+			view.ConnectCloseRequest(func(page *TabPage) {
+				if page != pages[1] {
+					t.Fatal("关闭请求指向其他标签")
+				}
+				closed++
+			})
+			pointer := func(kind events.EventType, x, y float32) {
+				t.Helper()
+				buttons := events.PointerButtonLeftDown
+				if kind == events.PointerUp {
+					buttons = 0
+				}
+				if err := host.DispatchEvent(events.PointerEvent{EventType: kind,
+					Position: geometry.Point{X: x, Y: y}, Button: events.PointerButtonLeft, Buttons: buttons}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			labelRect := item.body.label.Rect()
+			pointer(events.PointerMove, 188, 20)
+			bar.Arrange(bar.Rect())
+			pointer(events.PointerDown, 188, 20)
+			if !item.close.Visible() || !item.close.State().Has(style.Pressed) {
+				t.Fatal("未按下已显示的关闭按钮")
+			}
+			if tc.leaveWindow {
+				pointer(events.PointerLeave, 350, 70)
+			} else {
+				pointer(events.PointerMove, 350, 20)
+			}
+			if tc.arrangeOnMove {
+				bar.Arrange(bar.Rect())
+				if item.close.Visible() {
+					t.Fatal("移出后的布局仍保留未选中标签的关闭按钮")
+				}
+			}
+			pointer(events.PointerUp, 350, 70)
+			bar.Arrange(bar.Rect())
+			if item.close.Visible() || item.close.Snapshot().Visible || item.close.State().Has(style.Pressed) || item.State().Has(style.Hovered) {
+				t.Fatal("取消按压后仍有关闭按钮或按压/悬停残留")
+			}
+			if focusHost.FocusedWidget() != originalFocus || !originalFocus.Focused() {
+				t.Fatal("关闭按钮的鼠标操作改变了原焦点")
+			}
+			if closed != 0 || view.Current() != pages[0] || !slices.Equal(view.Pages(), pages) || bar.dragPage != nil {
+				t.Fatal("取消关闭误触发关闭、选择或排序")
+			}
+			if item.body.label.Rect() != labelRect || gui.Pick(bar, geometry.Point{X: 188, Y: 20}) != item.body {
+				t.Fatal("关闭按钮隐藏后改变布局或仍拦截命中")
+			}
+			// 再次悬停并完成点击，确认取消后的下一次关闭仍只请求一次。
+			pointer(events.PointerMove, 188, 20)
+			bar.Arrange(bar.Rect())
+			pointer(events.PointerDown, 188, 20)
+			pointer(events.PointerUp, 188, 20)
+			if closed != 1 || view.Current() != pages[0] || focusHost.FocusedWidget() != originalFocus {
+				t.Fatal("后续关闭请求失效、重复或改变选择/焦点")
+			}
+		})
+	}
+}
+
 func TestInactiveTabCloseHidesAfterDrag(t *testing.T) {
 	for _, ending := range []string{"commit", "escape", "outside"} {
 		t.Run(ending, func(t *testing.T) {

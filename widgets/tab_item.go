@@ -46,6 +46,9 @@ func newTabItem(bar *TabBar, page *TabPage) *tabItem {
 	item.WidgetBase.AddChild(item, body)
 
 	closeButton := gui.NewButton()
+	// Pointer presses preserve the existing focus so a canceled close can hide
+	// on leave. Keyboard navigation can still focus and retain this button.
+	closeButton.SetFocusOnPointer(false)
 	closeButton.SetPadding(geometry.Insets{})
 	closeButton.SetMinSize(geometry.Size{Width: 24, Height: 24})
 	closeButton.SetMaxSize(geometry.Size{Width: 24, Height: 24})
