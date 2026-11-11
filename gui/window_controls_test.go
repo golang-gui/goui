@@ -104,27 +104,25 @@ func TestRectangularCaptionAppearance(t *testing.T) {
 	}
 }
 
-// 按 libadwaita 1.8 的 sRGB 前景/背景比例独立计算期望值；失活同时淡化圆形与图形。
+// 常态配色参考 libadwaita 1.8；失活只降低图形对比，圆形背景保持对应交互态的颜色。
 func TestCircularCaptionAppearance(t *testing.T) {
 	for _, tc := range []struct {
 		name               string
-		window             uint8
+		window             color.NRGBA
 		background, active [3]color.NRGBA
-		backdrop, inactive [3]color.NRGBA
+		inactive           [3]color.NRGBA
 	}{
-		{"light", 245,
+		{"light", color.NRGBA{246, 246, 248, 255},
 			[3]color.NRGBA{{235, 235, 235, 255}, {224, 224, 225, 255}, {194, 194, 195, 255}},
 			[3]color.NRGBA{{47, 47, 52, 255}, {45, 45, 50, 255}, {39, 39, 44, 255}},
-			[3]color.NRGBA{{245, 245, 245, 255}, {240, 240, 240, 255}, {225, 225, 225, 255}},
-			[3]color.NRGBA{{151, 151, 154, 255}, {150, 150, 153, 255}, {147, 147, 150, 255}}},
-		{"dark", 32,
+			[3]color.NRGBA{{141, 141, 144, 255}, {135, 135, 138, 255}, {117, 117, 120, 255}}},
+		{"dark", color.NRGBA{32, 32, 36, 255},
 			[3]color.NRGBA{{67, 67, 71, 255}, {77, 77, 81, 255}, {109, 109, 112, 255}},
 			[3]color.NRGBA{{255, 255, 255, 255}, {255, 255, 255, 255}, {255, 255, 255, 255}},
-			[3]color.NRGBA{{57, 57, 61, 255}, {62, 62, 66, 255}, {78, 78, 81, 255}},
-			[3]color.NRGBA{{151, 151, 153, 255}, {151, 151, 153, 255}, {151, 151, 153, 255}}},
+			[3]color.NRGBA{{161, 161, 163, 255}, {166, 166, 168, 255}, {182, 182, 184, 255}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			useTestApplication(t, &application{style: style.Sheet(style.Name(styleNameWindow).BackgroundColor(color.Gray{tc.window}))})
+			useTestApplication(t, &application{style: style.Sheet(style.Name(styleNameWindow).BackgroundColor(tc.window))})
 			win, _ := chromeFixture(t, false, true)
 			for _, b := range win.controls.buttons {
 				b.circular = true
@@ -147,7 +145,7 @@ func TestCircularCaptionAppearance(t *testing.T) {
 						fg, _ := s.ForegroundColor()
 						wantBG, wantFG := tc.background[state], tc.active[state]
 						if !focused {
-							wantBG, wantFG = tc.backdrop[state], tc.inactive[state]
+							wantFG = tc.inactive[state]
 						}
 						if !colors.Equal(bg, wantBG) || !colors.Equal(fg, wantFG) {
 							t.Fatalf("focus=%t state=%d: background=%v foreground=%v，预期 %v/%v", focused, state, bg, fg, wantBG, wantFG)
@@ -165,9 +163,11 @@ func TestCircularCaptionAppearance(t *testing.T) {
 	}
 }
 
-// 1x 下在透明预乘 RGBA 目标逐像素核对独立的 2 DIP 几何掩码；整数直边应完全覆盖。
-// 最小化为 8×2 实心横线，最大化为外 8×8/内 4×4 方框；还原含完整的右上直角。
-// RGB 每通道允许 1/255 输出量化误差；关闭 X 的中心和远离交点处必须同色、不叠出深色。
+// 1x 下在透明预乘 RGBA 目标逐像素核对原始 1 DIP 轮廓；整数直边应完全覆盖。
+// 最小化为 8×1 横线，方框中心线跨度为 8，像素对齐后外 9×9/内 7×7。
+// 每次 source-over 都在 scanFT.RGBAPainter 中截断到 8 位：单次 RGB 误差为 1/255，
+// X 交点两次合成累计为 2/255；几何覆盖率仍允许 3/255，沿用下方独立面积公式。
+// 相同不透明画刷的两条斜线在交点处应保持相同直通颜色，不因重复混合产生深色。
 func TestCircularCaptionGlyphPixels(t *testing.T) {
 	useTestApplication(t, &application{style: style.Sheet(style.Name(styleNameWindow).BackgroundColor(color.Gray{245}))})
 	win, native := chromeFixture(t, false, true)
@@ -183,7 +183,7 @@ func TestCircularCaptionGlyphPixels(t *testing.T) {
 		win.setFocused(focused)
 		wantColor := color.NRGBA{47, 47, 52, 255}
 		if !focused {
-			wantColor = color.NRGBA{151, 151, 154, 255}
+			wantColor = color.NRGBA{141, 141, 144, 255}
 		}
 		for _, state := range []WindowState{WindowStateNormal, WindowStateMaximized} {
 			native.state = state
@@ -196,36 +196,47 @@ func TestCircularCaptionGlyphPixels(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				check := func(x, y int, ink bool) {
+				check := func(x, y int, coverage float64, composites int) {
 					t.Helper()
 					r, g, b, a := img.At(x, y).RGBA()
-					if !ink {
+					if coverage == 0 {
 						if a != 0 {
 							t.Fatalf("index=%d state=%v (%d,%d)：外侧或方框内应为空，alpha=%d", index, state, x, y, a)
 						}
 						return
 					}
-					if a != 65535 || math.Abs(float64(r)/257-float64(wantColor.R)) > 1 ||
-						math.Abs(float64(g)/257-float64(wantColor.G)) > 1 || math.Abs(float64(b)/257-float64(wantColor.B)) > 1 {
-						t.Fatalf("focus=%t index=%d state=%v (%d,%d)：RGBA=%d/%d/%d/%d，预期 %v 且完全覆盖", focused, index, state, x, y, r, g, b, a, wantColor)
+					alpha := float64(a) / 65535
+					if coverage == 1 && a != 65535 || math.Abs(alpha-coverage) > 3.0/255 {
+						t.Fatalf("index=%d (%d,%d)：覆盖率 %g，预期 %g", index, x, y, alpha, coverage)
+					}
+					colorError := float64(composites)
+					if math.Abs(float64(r)/257-float64(wantColor.R)*alpha) > colorError ||
+						math.Abs(float64(g)/257-float64(wantColor.G)*alpha) > colorError || math.Abs(float64(b)/257-float64(wantColor.B)*alpha) > colorError {
+						t.Fatalf("focus=%t index=%d state=%v (%d,%d)：RGBA=%d/%d/%d/%d，预期直通色 %v", focused, index, state, x, y, r, g, b, a, wantColor)
 					}
 				}
 				if index == 2 {
-					check(14, 14, true)
-					check(12, 12, true)
+					line := 1 - math.Pow(1-1/math.Sqrt2, 2)
+					// 此像素中另一斜线覆盖 1/4 面积，两次 source-over 的总覆盖率如下。
+					check(14, 14, line+(1-line)/4, 2)
+					check(12, 12, line, 1)
 					continue
 				}
 				for y := range 32 {
 					for x := range 32 {
-						ink := x >= 10 && x < 18 && y >= 13 && y < 15
+						ink := x >= 10 && x < 18 && y == 14
 						if index == 1 && state == WindowStateNormal {
-							ink = x >= 10 && x < 18 && y >= 10 && y < 18 && !(x >= 12 && x < 16 && y >= 12 && y < 16)
+							ink = x >= 10 && x < 19 && y >= 10 && y < 19 && !(x >= 11 && x < 18 && y >= 11 && y < 18)
 						} else if index == 1 {
-							front := x >= 10 && x < 16 && y >= 12 && y < 18 && !(x >= 12 && x < 14 && y >= 14 && y < 16)
-							back := x >= 13 && x < 18 && y >= 10 && y < 12 || x >= 16 && x < 18 && y >= 10 && y < 15
+							front := x >= 10 && x < 17 && y >= 12 && y < 19 && !(x >= 11 && x < 16 && y >= 13 && y < 18)
+							back := x >= 12 && x < 18 && y == 10 || x == 18 && y >= 10 && y < 16
 							ink = front || back
 						}
-						check(x, y, ink)
+						coverage := float64(0)
+						if ink {
+							coverage = 1
+						}
+						check(x, y, coverage, 1)
 					}
 				}
 			}
@@ -611,7 +622,7 @@ func TestCloseCaptionGlyphDevicePlacement(t *testing.T) {
 					icon.Paint(p)
 					span, stroke := float32(10), float32(1)
 					if circular {
-						span, stroke = 7, 2
+						span = 8
 					}
 					if len(p.points) != 4 || len(p.widths) != 2 || p.widths[0] != stroke || p.widths[1] != stroke {
 						t.Fatalf("关闭图标必须为两条 %g DIP 斜线", stroke)
@@ -659,9 +670,6 @@ func TestCloseCaptionGlyphPixelCoverage(t *testing.T) {
 		}
 		t.Cleanup(backend.Destroy)
 		stroke := float64(1)
-		if circular {
-			stroke = 2
-		}
 		for _, scale := range []float32{1, 1.25, 1.5, 1.75, 2} {
 			var reference *image.RGBA
 			for _, x := range []float32{17, 17.25, 17.5} {
