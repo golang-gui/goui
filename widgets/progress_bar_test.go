@@ -441,6 +441,9 @@ func (s *progressPixelSurface) Draw(img image.Image) error {
 func (p *progressPixelPainter) FillRoundRect(rect geometry.Rectangle, radius float32, brush graphics.Brush) {
 	p.native.FillRoundRect(rect, radius, brush)
 }
+func (p *progressPixelPainter) FillRect(rect geometry.Rectangle, brush graphics.Brush) {
+	p.native.FillRect(rect, brush)
+}
 func (p *progressPixelPainter) FillPath(path graphics.Path, brush graphics.Brush) {
 	p.native.FillPath(path, brush)
 }

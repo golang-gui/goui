@@ -76,6 +76,7 @@ func WidgetRules() []style.Rule {
 	rules = append(rules, checkButtonRules()...)
 	rules = append(rules, dropDownRules()...)
 	rules = append(rules, switchRules()...)
+	rules = append(rules, listRowRules(family, size)...)
 	for _, name := range []string{"check-button-text", "switch-text", "drop-down-text", "drop-down-placeholder",
 		"table-header-text", "table-cell-text", "table-cell-icon", "tree-item-text", "tree-item-icon",
 		"tab-item-text", "tab-item-text-selected", "tab-item-icon", "tab-item-icon-selected", "tab-indicator-icon",

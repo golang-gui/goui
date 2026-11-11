@@ -313,6 +313,7 @@ func builtInRules(options Options) []style.Rule {
 	}
 	rules = append(rules, checkButtonRules(p, accent, tabFocus)...)
 	rules = append(rules, switchRules(p, accent, tabFocus)...)
+	rules = append(rules, listRowRules(p, tabFocus, options.FontFamily, size)...)
 	rules = append(rules, dropDownRules(p, tabFocus, options.FontFamily, size)...)
 	base := style.Sheet(rules...)
 	for _, part := range []string{"trough", "thumb"} {
