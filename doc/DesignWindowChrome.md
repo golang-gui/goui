@@ -125,12 +125,24 @@ glyphs align their complete visual center to the physical pixel grid, preserving
 stroke geometry across odd/fractional HeaderBar heights and fractional scales.
 Non-integral physical widths still use ordinary coverage antialiasing.
 
-Active glyphs use the existing neutral light/dark decoration palette. On window
-focus loss, each glyph color becomes the equal RGB blend of its active ink and
-its current opaque circular background (idle, hovered or pressed). The resulting
-brush stays opaque: intersecting X strokes cannot accumulate alpha and produce a
-darker crossing. Hover/press backgrounds remain distinguishable, and activation
-restores the active ink. This is appearance rather than Disabled or Widget focus.
+The current palette follows libadwaita 1.8.0 (updated 2026-11-11). Light mode uses
+straight RGB (0, 0, 6) at 80% alpha over a white reference surface; dark mode uses
+white over reference #2e2e32. Button circles use 10%, 15% and 30% of that
+foreground for idle, hovered and pressed. These are sRGB composites, retaining
+the foreground alpha: light-mode 10% strength means 8% actual coverage. Pressed
+circles darken in light mode and lighten in dark mode. The window background
+continues to select the light/dark palette; application HeaderBar/Button styles
+do not replace window-control colors or change the reference surface.
+
+Glyph ink is precomposited over its state-specific circle. On focus loss, both
+the completed circle and its glyph are independently blended at 50% over the
+reference surface, matching group-opacity semantics inside the controls. The
+brushes stay opaque: intersecting X strokes cannot accumulate alpha and produce
+a darker crossing. GOUI does not filter application HeaderBar content or change
+its background on focus loss; libadwaita's separate headerbar backdrop surface
+and transitions are not part of this adaptation. Hover/press backgrounds remain
+distinguishable, and activation restores their original colors.
+This is appearance rather than Disabled or Widget focus.
 The existing Window.ConnectFocus repaint path handles the change; no new state,
 style selector, signal or public configuration is introduced. Layout, hit regions
 and semantic actions continue to describe the same enabled caption buttons.
@@ -139,14 +151,55 @@ References: Adwaita icon theme 48.0 uses approximately 2px shapes in its
 [minimize/maximize icons](https://github.com/GNOME/adwaita-icon-theme/tree/48.0/Adwaita/symbolic/ui).
 libadwaita 1.8.0 applies a 50% opacity filter to an inactive headerbar's content
 ([source](https://github.com/GNOME/libadwaita/blob/1.8.0/src/stylesheet/widgets/_header-bar.scss#L33)).
-GOUI adopts the compact weight and reduced inactive contrast, within its isolated
-window decoration policy; application HeaderBar content is not filtered.
+Its [foreground/surface colors](https://github.com/GNOME/libadwaita/blob/1.8.0/src/stylesheet/_colors.scss)
+and [button percentages](https://github.com/GNOME/libadwaita/blob/1.8.0/src/stylesheet/widgets/_buttons.scss#L1-L3)
+are the palette reference, rather than an arbitrary reduction of gray levels.
+GOUI retains its compact glyph geometry and isolated window-decoration policy.
+
+The implementation resolves each composition to rounded opaque RGB bytes.
+For example, active idle circle/ink are #ebebeb/#2f2f34 in light mode and
+#434347/#ffffff in dark mode; inactive idle circle/ink are #f5f5f5/#97979a
+and #39393d/#979799 respectively. This also keeps partially transparent or
+custom-colored application windows predictable without sampling desktop pixels.
 
 Regression coverage includes explicit light/dark state colors, focus-event
 repaint, enabled semantics, unchanged hit bounds, independent 1x glyph masks,
 uniform X crossing color, and existing multi-scale placement/coverage checks.
 `tests/window/ui/pixel_snap -peer` adds a native companion window for real focus
 switching; Theme and Height/F7 exercise the appearance in an isolated X11 session.
+
+Validation of the libadwaita palette update (2026-11-11, Go 1.25.8, Linux amd64):
+
+- Explicit byte-color expectations for both modes, all three interaction states
+  and active/inactive/reactivation pass. The existing independent 2 DIP glyph
+  masks and opaque uniform-X pixel checks pass with the new RGB ink. These color
+  and pixel assertions fail against the preceding palette. Rectangular-caption
+  colors, translucent-brush behavior and existing placement tests still pass.
+- Tracked-source isolation with `CGO_ENABLED=0 go test -json -count=1 ./...`
+  passes 4862 tests, skips 11, and fails 0. `go test -race -count=1 ./gui` and
+  `go vet ./gui ./tests/window/ui/pixel_snap` pass. The original worktree's
+  `go test ./...` remains blocked by pre-existing untracked examples/tests using
+  removed Window methods and old windowMount fields; they are retained.
+- Independent Xvnc/Xfwm4 4.16.1 with composition enabled passes Software and
+  OpenGL (Mesa llvmpipe), light/dark, at actual 1x/1.5x/2x: 12 combinations.
+  Real input covers every control's hover/press/cancel, inactive idle and hover,
+  reactivation, held native move/resize, all five HeaderBar heights, maximize,
+  restore and normal close. Root screenshot samples of the circle interiors
+  and glyphs match independent RGB expectations within 1/255 per channel.
+  The old executable fails the same light-mode idle-circle pixel assertion.
+- One initial 2x driver attempt inspected the first 1x frame before the native
+  size/scale event; it failed its readiness assertion. Waiting for the requested
+  scale reported by OnAfterPaint completed the remaining checks at actual 2x.
+  No product code or color tolerance was changed for that driver correction.
+- Windows amd64 and macOS arm64 GUI test targets and pixel_snap programs compile.
+  No remote desktop, other WM or physical HiDPI device acceptance is claimed.
+  The Windows palette keeps its exact colors; macOS retains native AppKit buttons.
+- Test windows, observers, dedicated display, WM and session bus are cleaned up.
+  Full-suite tests can touch the isolated clipboard and write images in the
+  temporary source copy. Native operations change only that desktop's pointer
+  and focus; the user desktop settings are unchanged.
+
+The following 2026-11-10 color measurements describe the previous palette.
 
 Validation on 2026-11-10 (Go 1.25.8, Linux amd64):
 
