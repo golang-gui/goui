@@ -74,7 +74,9 @@ func (d *overlaysDemo) dialog() ui.View {
 		ui.TextInput().ID("dialog-input").Placeholder(resource.InputPlaceholder()),
 		ui.HBox(ui.Button(resource.Cancel()).ID("dialog-cancel").OnClick(d.closeDialog),
 			ui.Button().ID("dialog-confirm").Content(ui.Label(resource.Confirm()).Style(modern.PrimaryContent)).Style(modern.Primary).OnClick(func() { d.closeDialog(); d.showToast(resource.Confirmed()) })).Spacing(12).MainAlign(layout.MainEnd),
-	).Spacing(16).CrossAlign(layout.CrossStretch).MaxWidth(450)).Padding(24).OnCloseRequest(d.closeDialog).ID("demo-dialog")
+	).Spacing(16).CrossAlign(layout.CrossStretch).MaxWidth(450)).Padding(24).
+		BackdropCaptionMode(wui.BackdropCaptionTop).CloseOnOutside(true).
+		OnCloseRequest(d.closeDialog).ID("demo-dialog")
 }
 func (d *overlaysDemo) closeDialog() { d.mask.Set(false) }
 func (d *overlaysDemo) stop() {
