@@ -254,6 +254,7 @@ func builtInRules(options Options) []style.Rule {
 		text("tab-item-text-selected"),
 		style.Name("tab-item-icon").ForegroundColor(p.text),
 		style.Name("tab-item-icon-selected").ForegroundColor(p.text),
+		style.Name("tab-indicator-icon").ForegroundColor(p.text),
 		style.Name("tab-close-button").BackgroundColor(color.Transparent).Radius(4),
 		style.Name("tab-close-button").State(style.Hovered).BackgroundColor(p.menuHover),
 		style.Name("tab-close-button").State(style.Pressed).BackgroundColor(p.menuPressed),
@@ -326,7 +327,7 @@ func builtInRules(options Options) []style.Rule {
 	for _, name := range []string{"icon", AccentIcon, PrimaryContent, MutedText, Card, Sidebar, Warning, Error, Success, "check-button-text", "switch-text",
 		"drop-down-text", "drop-down-placeholder", "table-header-text", "table-cell-text", "table-cell-icon",
 		"tree-item-text", "tree-item-icon", "tab-item-text", "tab-item-text-selected", "tab-item-icon",
-		"tab-item-icon-selected", "tab-close-button-text", "tab-scroll-button-text"} {
+		"tab-item-icon-selected", "tab-indicator-icon", "tab-close-button-text", "tab-scroll-button-text"} {
 		rules = append(rules, style.Name(name).State(style.Disabled).ForegroundColor(p.disabled))
 	}
 	return rules

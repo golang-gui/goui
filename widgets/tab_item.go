@@ -17,6 +17,9 @@ type tabItem struct {
 	page           *TabPage
 	body           *tabBody
 	close          *gui.Button
+	end            *gui.Overlay
+	indicator      *gui.Icon
+	closeGlyph     *tabGlyph
 	width          float32
 	reservedHeight float32 // measured before hiding the native source
 	motion         tabMotion
@@ -33,10 +36,21 @@ func newTabItem(bar *TabBar, page *TabPage) *tabItem {
 	item := &tabItem{bar: bar, page: page}
 	item.SetMinSize(geometry.Size{Height: 32})
 	item.SetLayoutManager(tabItemLayout{})
+	item.indicator = gui.NewIcon(page.indicator)
+	item.indicator.SetStyleName("tab-indicator-icon")
+	item.closeGlyph = new(tabGlyph)
+	item.closeGlyph.SetMinSize(geometry.Size{Width: 16, Height: 16})
+	item.closeGlyph.SetStyleName("tab-close-button-text")
+	item.end = gui.NewOverlay()
+	item.end.SetMinSize(geometry.Size{Width: 16, Height: 16})
+	item.end.SetMaxSize(geometry.Size{Width: 16, Height: 16})
+	item.end.SetChild(item.closeGlyph)
+	item.end.AddOverlay(item.indicator)
+	item.end.SetOverlayFill(item.indicator, true)
 	body := &tabBody{label: gui.NewLabel(page.title), icon: gui.NewIcon(page.icon)}
 	body.SetFocusable(true)
 	body.SetMainWeight(1)
-	body.SetLayoutManager(tabBodyLayout{page: page})
+	body.SetLayoutManager(tabBodyLayout{page: page, end: item.end})
 	body.label.SetMainWeight(1)
 	body.icon.SetSize(16)
 	body.icon.SetVisible(page.icon != nil)
@@ -53,10 +67,7 @@ func newTabItem(bar *TabBar, page *TabPage) *tabItem {
 	closeButton.SetMinSize(geometry.Size{Width: 24, Height: 24})
 	closeButton.SetMaxSize(geometry.Size{Width: 24, Height: 24})
 	closeButton.SetStyleName("tab-close-button")
-	closeGlyph := new(tabGlyph)
-	closeGlyph.SetMinSize(geometry.Size{Width: 16, Height: 16})
-	closeGlyph.SetStyleName("tab-close-button-text")
-	closeButton.SetChild(closeGlyph)
+	closeButton.SetChild(item.end)
 	closeButton.ConnectClicked(func() {
 		if bar.view != nil {
 			bar.view.RequestClose(page)
@@ -112,6 +123,7 @@ func newTabItem(bar *TabBar, page *TabPage) *tabItem {
 		}
 	})
 	body.AddEventController(drag)
+	item.updateMetadata()
 	return item
 }
 
@@ -122,7 +134,19 @@ func (item *tabItem) updateMetadata() {
 	item.body.label.SetText(item.page.title)
 	item.body.icon.SetSource(item.page.icon)
 	item.body.icon.SetVisible(item.page.icon != nil)
-	item.body.RequestLayout() // closability changes its reserved trailing space
+	item.indicator.SetSource(item.page.indicator)
+	// Changing closability changes the slot's input owner. Hover/focus only
+	// changes child visibility, preserving the Icon and its native image cache.
+	if item.page.closable {
+		if item.end.Parent() != item.close {
+			item.body.WidgetBase.RemoveChild(item.end)
+			item.close.SetChild(item.end)
+		}
+	} else if item.end.Parent() != item.body {
+		item.close.SetChild(nil)
+		item.body.WidgetBase.AddChild(item.body, item.end)
+	}
+	item.body.RequestLayout() // metadata changes its reserved trailing space
 	item.updateSelection()
 }
 func (item *tabItem) updateSelection() {
@@ -149,10 +173,16 @@ func (item *tabItem) Arrange(rect geometry.Rectangle) {
 	// Pointer-down focuses the body even when the following drag does not
 	// select this page. Body focus alone must not keep an inactive close shown;
 	// retain it only when the close button itself owns keyboard focus.
-	show := item.page.closable && (selected || item.State().Has(style.Hovered) || item.close.ContainsFocus())
+	hasIndicator := item.page.indicator != nil
+	hoverOrFocus := item.State().Has(style.Hovered) || item.close.ContainsFocus()
+	show := item.page.closable && (hasIndicator || selected || hoverOrFocus)
 	// Do not introduce a sibling hit target underneath an ongoing body click.
 	// Its release must still select the tab even if a frame runs in between.
 	item.close.SetVisible(show && (!item.State().Has(style.Pressed) || item.close.Visible()))
+	showGlyph := item.close.Visible() && (!hasIndicator || hoverOrFocus)
+	item.closeGlyph.SetVisible(showGlyph)
+	item.indicator.SetVisible(hasIndicator && !showGlyph)
+	item.end.SetVisible(showGlyph || hasIndicator)
 	item.WidgetBase.Arrange(rect)
 }
 func (item *tabItem) Paint(p gui.Painter) {
@@ -201,6 +231,12 @@ func (item *tabItem) Snapshot() gui.WidgetInfo {
 	info := item.WidgetBase.Snapshot()
 	info.Role, info.Text = RoleTab, item.body.label.PlainText()
 	info.Selected = item.bar.view != nil && item.bar.view.Current() == item.page
+	info.SetAttribute(TabInfoKey, TabInfo{Closable: item.page.closable, IndicatorIcon: item.page.indicator != nil})
+	for i, child := range item.Children() {
+		if child == item.close {
+			info.Children[i].Name = resource.CloseTab()
+		}
+	}
 	if !item.Visible() {
 		info.Children = nil // the reserved slot has no clickable content
 	}

@@ -59,6 +59,7 @@ func WidgetRules() []style.Rule {
 		style.Name("tab-item-text-selected").ForegroundColor(color.Black).FontFamily(family).FontSize(size),
 		style.Name("tab-item-icon").ForegroundColor(color.Black),
 		style.Name("tab-item-icon-selected").ForegroundColor(color.Black),
+		style.Name("tab-indicator-icon").ForegroundColor(color.Black),
 		style.Name("tab-close-button").BackgroundColor(color.Transparent).Radius(4),
 		style.Name("tab-close-button-text").ForegroundColor(color.Black).FontFamily(family).FontSize(size),
 		style.Name("tab-scroll-button").BackgroundColor(color.Transparent).Radius(4).FontSize(size),
@@ -77,7 +78,7 @@ func WidgetRules() []style.Rule {
 	rules = append(rules, switchRules()...)
 	for _, name := range []string{"check-button-text", "switch-text", "drop-down-text", "drop-down-placeholder",
 		"table-header-text", "table-cell-text", "table-cell-icon", "tree-item-text", "tree-item-icon",
-		"tab-item-text", "tab-item-text-selected", "tab-item-icon", "tab-item-icon-selected",
+		"tab-item-text", "tab-item-text-selected", "tab-item-icon", "tab-item-icon-selected", "tab-indicator-icon",
 		"tab-close-button-text", "tab-scroll-button-text"} {
 		rules = append(rules, style.Name(name).State(style.Disabled).
 			ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}))

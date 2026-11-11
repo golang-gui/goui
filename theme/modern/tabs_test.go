@@ -57,7 +57,7 @@ func TestTabSurfacesAreNeutralAndReadable(t *testing.T) {
 					t.Fatalf("%s must use secondary foreground", name)
 				}
 			}
-			for _, name := range []string{"tab-item-text", "tab-item-icon", "tab-item-text-selected", "tab-item-icon-selected"} {
+			for _, name := range []string{"tab-item-text", "tab-item-icon", "tab-item-text-selected", "tab-item-icon-selected", "tab-indicator-icon"} {
 				fg, _ := sheet.Resolve(style.Sel{Name: name}).ForegroundColor()
 				if rgba(fg) != p.text {
 					t.Fatalf("%s must use normal foreground, not accent", name)

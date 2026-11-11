@@ -17,6 +17,25 @@ import (
 
 // 页面移交、原生拖放状态与占位预览。
 
+func TestTabIndicatorFollowsPageTransfer(t *testing.T) {
+	source, target := NewTabView(), NewTabView()
+	page := NewTabPage("editor", nil)
+	icon := new(tabTestIcon)
+	page.SetIndicatorIcon(icon)
+	page.SetClosable(true)
+	source.AppendPage(page)
+	a, b := NewTabBar(), NewTabBar()
+	a.SetView(source)
+	b.SetView(target)
+	if err := source.TransferPage(page, target, 0); err != nil {
+		t.Fatal(err)
+	}
+	if page.IndicatorIcon() != icon || a.items[page] != nil || b.items[page].indicator.Source() != icon ||
+		page.Snapshot().Attributes[TabInfoKey] != (TabInfo{Closable: true, IndicatorIcon: true}) {
+		t.Fatal("转移页面丢失或复制了状态图标元数据")
+	}
+}
+
 func TestTransferRequestRequiresCommitAndExpires(t *testing.T) {
 	for _, mode := range []string{"reject", "commit", "uncommitted", "target"} {
 		t.Run(mode, func(t *testing.T) {

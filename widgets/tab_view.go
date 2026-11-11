@@ -17,6 +17,7 @@ type TabPage struct {
 	title        string
 	plainTitle   string
 	icon         gui.IconSource
+	indicator    gui.IconSource
 	closable     bool
 	child        gui.Widget
 	view         *TabView
@@ -46,6 +47,23 @@ func (p *TabPage) SetIcon(source gui.IconSource) {
 	p.icon = source
 	p.changed()
 }
+
+// IndicatorIcon is the optional icon displayed in the tab's trailing slot.
+func (p *TabPage) IndicatorIcon() gui.IconSource { return p.indicator }
+
+// SetIndicatorIcon refreshes the trailing icon, including when source is the
+// same object. Sources may be shared and need not be comparable. On a closable
+// tab, hover or keyboard focus reveals the close glyph in its place; the slot
+// retains its close action. On a non-closable tab the icon is decorative. Nil
+// restores ordinary close-button disclosure. The application owns its meaning.
+func (p *TabPage) SetIndicatorIcon(source gui.IconSource) {
+	if p.Destroyed() {
+		return
+	}
+	p.indicator = source
+	p.changed()
+}
+
 func (p *TabPage) Closable() bool { return p.closable }
 func (p *TabPage) SetClosable(value bool) {
 	if p.closable != value {
@@ -76,6 +94,7 @@ func (p *TabPage) Snapshot() gui.WidgetInfo {
 	info := p.WidgetBase.Snapshot()
 	info.Role, info.Text = RoleTabPanel, p.plainTitle
 	info.Selected = p.view != nil && p.view.current == p
+	info.SetAttribute(TabInfoKey, TabInfo{Closable: p.closable, IndicatorIcon: p.indicator != nil})
 	return info
 }
 

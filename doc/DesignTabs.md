@@ -261,6 +261,39 @@ Esc 取消和栏外释放均如此。不通过清除焦点修饰外观。监听�
 不显示原本隐藏的按钮，防止两次输入之间的布局改变正在进行的点击目标；焦点或悬停
 变更只请求布局，复用标准事件/布局/绘制链路，不扩展公共 Widget 或 EventDispatcher。
 
+### 尾部状态图标
+
+`TabPage.IndicatorIcon()` / `SetIndicatorIcon(gui.IconSource)` 和声明式
+`TabPage(...).IndicatorIcon(source)` 提供可选尾部图标。默认 nil；清除或声明式省略
+恢复普通关闭按钮规则。同一源可以被多个页面/TabBar 共享，无须可比较。setter
+即使收到同一对象也显式刷新。业务含义、优先级及清除时机由应用决定，本次不引入
+Attention、Modified、Loading、IndicatorTooltip 或动画契约。
+
+- 有 Indicator 且可关闭时，尾部按钮始终保留关闭动作和 Tab 聚焦能力。静止时显示
+  状态图标，包括选中标签；整个标签悬停或关闭按钮自身取得焦点时显示叉号。
+  鼠标按压不夺取原焦点，移出后恢复图标，外部松开不触发关闭。
+- 不可关闭时，尾部是标签主体中的装饰，无独立动作或焦点；始终显示图标，点击
+  选择标签、拖动排序。Closable 改变时复用同一份内容，正常重新挂载到对应输入宿主。
+- 内部通过普通 Overlay 组合一个 Icon 与叉号，共用 16 DIP 内容区及 24+4 DIP
+  尾部槽位。悬停/焦点只改变可见性，不重新挂载、不重新设置源、不销毁图片缓存。
+  标题空间在关闭按钮/状态图标切换时保持稳定；不可关闭且无图标时不预留槽位。
+- 延续主体按压期间的命中保护：后台更新新增 Indicator，不在尚未结束的主体点击
+  下引入新的关闭按钮。释放仍完成原本的选择操作。
+- Indicator 使用自己的 `tab-indicator-icon` StyleName，Basic/Modern 提供正常和
+  禁用前景色；不继承父控件颜色。已有 IconSource 负责按请求生成像素，Icon 拥有
+  每个 TabBar 独立的原生图片缓存，随正常卸载释放。静态图标不创建帧连接或计时器。
+- `goui.tab` 属性保存 widgets 自有 `TabInfo{Closable, IndicatorIcon}`，同时出现在
+  tab 与 tabpanel 快照中。IndicatorIcon 只报告源是否存在，不猜测图像业务含义；
+  叉号显示期间仍保留该事实。尾部按钮继续报告本地化关闭名称和点击动作，装饰
+  只报告 Image 角色；不将 IconSource 序列化到快照，不扩展 gui.WidgetInfo 字段。
+
+参考 libadwaita 1.11.alpha 的
+[indicator-icon](https://gnome.pages.gitlab.gnome.org/libadwaita/doc/main/property.TabPage.indicator-icon.html)
+自定义图标入口；其默认位置在标签前部，与 GOUI 此处的尾部替换规则不同。
+Qt 6.12 [setTabButton](https://doc.qt.io/qt-6/qtabbar.html#setTabButton) 支持两侧任意
+Widget；GOUI 当前采用可共享的 IconSource，避免为状态图标增加任意控件的工厂和
+生命周期协调。以上为公开契约参考，具体显隐、命中和尺寸是 GOUI 自身的选择。
+
 参考 GTK4/libadwaita [AdwTabBar 的 inline 样式说明](https://gnome.pages.gitlab.gnome.org/libadwaita/doc/main/class.TabBar.html#style-classes)
 （查阅版本 1.11.alpha）：去掉栏背景可适用于不同宿主。GOUI 采用栏背景透明的方向，
 不引入 GTK CSS、平台主题依赖或新的标签显示模式；以上尺寸与配色是 GOUI 自身设计。

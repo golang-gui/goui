@@ -28,7 +28,16 @@ const (
 const (
 	TableInfoKey     = "goui.table"
 	HierarchyInfoKey = "goui.hierarchy"
+	TabInfoKey       = "goui.tab"
 )
+
+// TabInfo describes a tab's metadata on both its tab and tabpanel snapshots.
+// IndicatorIcon reports source presence, even while the close glyph is shown.
+// It does not infer a modified, loading or attention state from image content.
+type TabInfo struct {
+	Closable      bool `json:"closable"`
+	IndicatorIcon bool `json:"indicatorIcon"`
+}
 
 // TableInfo is stored as a value at TableInfoKey in gui.WidgetInfo.Attributes.
 // It uses one-based row/column positions. Zero means the table itself or a

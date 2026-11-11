@@ -67,7 +67,7 @@ func TestCompleteFallbackTextAndStates(t *testing.T) {
 			}
 		}
 	}
-	for _, name := range []string{"label", "icon", "check-button-text", "switch-text", "tree-item-text", "table-cell-text"} {
+	for _, name := range []string{"label", "icon", "check-button-text", "switch-text", "tree-item-text", "table-cell-text", "tab-indicator-icon"} {
 		fg, ok := sheet.Resolve(style.Sel{Name: name, State: style.Disabled}).ForegroundColor()
 		if !ok || !colors.Equal(fg, color.RGBA{R: 140, G: 140, B: 140, A: 255}) {
 			t.Errorf("%s disabled foreground=%v; want original neutral gray", name, fg)

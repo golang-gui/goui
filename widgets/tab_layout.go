@@ -2,6 +2,7 @@ package widgets
 
 import (
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
 )
 
@@ -49,11 +50,14 @@ func (tabItemLayout) Arrange(children []layout.Child, rect geometry.Rectangle) {
 
 // Horizontal padding is 10 DIP and vertical padding is 4 DIP. A weighted label
 // gives up width to the icon and close button, but keeps its natural line height.
-type tabBodyLayout struct{ page *TabPage }
+type tabBodyLayout struct {
+	page *TabPage
+	end  *gui.Overlay
+}
 
-func (l tabBodyLayout) closeSpace() float32 {
-	if l.page.closable {
-		return 24 + 4 // close target plus trailing space, even while hidden
+func (l tabBodyLayout) trailingSpace() float32 {
+	if l.page.closable || l.page.indicator != nil {
+		return tabButtonWidth + 4 // fixed slot plus trailing space, even while hidden
 	}
 	return 0
 }
@@ -63,8 +67,11 @@ func tabBodyRow() layout.LinearLayout {
 }
 
 func (l tabBodyLayout) Measure(children []layout.Child, c layout.Constraint) layout.Measurement {
+	if !l.page.closable && l.end.Visible() {
+		children = children[:len(children)-1] // the trailing decoration has its own fixed slot
+	}
 	inner := c
-	extra := 12 + l.closeSpace()
+	extra := 12 + l.trailingSpace()
 	inner.Min.Width = max(0, inner.Min.Width-extra)
 	if inner.Max.Width < layout.Inf {
 		inner.Max.Width = max(0, inner.Max.Width-extra)
@@ -76,6 +83,13 @@ func (l tabBodyLayout) Measure(children []layout.Child, c layout.Constraint) lay
 }
 
 func (l tabBodyLayout) Arrange(children []layout.Child, rect geometry.Rectangle) {
+	if !l.page.closable && l.end.Visible() {
+		end := children[len(children)-1]
+		children = children[:len(children)-1]
+		width := min(tabButtonWidth, max(0, rect.Width-4))
+		m := end.Measure(layout.Loose(geometry.Size{Width: width, Height: rect.Height}))
+		end.Arrange(geometry.Rect(max(0, rect.Width-4-width)+(width-m.Width)/2, (rect.Height-m.Height)/2, m.Width, m.Height))
+	}
 	row := tabBodyRow()
-	row.Arrange(children, geometry.Rect(min(6, rect.Width), 0, max(0, rect.Width-12-l.closeSpace()), rect.Height))
+	row.Arrange(children, geometry.Rect(min(6, rect.Width), 0, max(0, rect.Width-12-l.trailingSpace()), rect.Height))
 }

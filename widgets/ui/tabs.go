@@ -15,11 +15,12 @@ import (
 // the Root and retains the page and its content across local list reorders.
 type TabPageView struct {
 	baseui.ViewBase[TabPageView]
-	id       string
-	child    baseui.View
-	title    string
-	icon     gui.IconSource
-	closable bool
+	id        string
+	child     baseui.View
+	title     string
+	icon      gui.IconSource
+	indicator gui.IconSource
+	closable  bool
 }
 
 func TabPage(id string, child baseui.View) *TabPageView {
@@ -34,7 +35,14 @@ func (p *TabPageView) ID(id string) *TabPageView {
 }
 func (p *TabPageView) Title(value string) *TabPageView         { p.title = value; return p }
 func (p *TabPageView) Icon(source gui.IconSource) *TabPageView { p.icon = source; return p }
-func (p *TabPageView) Closable(value bool) *TabPageView        { p.closable = value; return p }
+
+// IndicatorIcon declares the optional trailing status icon. Omission or nil
+// restores ordinary close-button disclosure; it adds no business state.
+func (p *TabPageView) IndicatorIcon(source gui.IconSource) *TabPageView {
+	p.indicator = source
+	return p
+}
+func (p *TabPageView) Closable(value bool) *TabPageView { p.closable = value; return p }
 
 func (p *TabPageView) Mount(baseui.BuildContext) gui.Widget {
 	return widgets.NewTabPage(p.title, nil)
@@ -43,6 +51,7 @@ func (p *TabPageView) Update(ctx baseui.BuildContext, widget gui.Widget) {
 	page := widget.(*widgets.TabPage)
 	page.SetTitle(p.title)
 	page.SetIcon(p.icon)
+	page.SetIndicatorIcon(p.indicator)
 	page.SetClosable(p.closable)
 	ctx.UpdateChild(page, p.child)
 }

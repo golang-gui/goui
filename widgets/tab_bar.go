@@ -259,7 +259,6 @@ func (b *TabBar) syncItems() {
 			item = newTabItem(b, page)
 			b.items[page] = item
 			b.viewport.WidgetBase.AddChild(b.viewport, item)
-			item.updateMetadata()
 		}
 		item.updateSelection()
 		b.viewport.WidgetBase.MoveChildAfter(item, previous)

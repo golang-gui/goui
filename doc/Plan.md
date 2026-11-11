@@ -1,5 +1,30 @@
 # Plan
 
+## TabPage 自定义尾部图标（2026-11-11）
+
+- [x] 增加 IndicatorIcon 及声明绑定，复用固定尾部槽位；可关闭时在悬停/焦点下
+  切换叉号，不可关闭时保留主体选择/拖动。nil/省略恢复默认表现。
+- [x] IconSource 可共享且无须可比较；图标由页面携带，TabBar 各自缓存绘图资源。
+  增加 Basic/Modern 独立样式、TabInfo 快照和静态 Dot/Diamond 窗口验收入口。
+- [x] `env -u DISPLAY go test ./widgets ./widgets/ui ./theme/basic ./theme/modern -count=1`、
+  widgets/UI race 和相关 vet 通过。Go 1.25.8/linux amd64 下，独立 X11 会话中隔离
+  跟踪源码运行 `CGO_ENABLED=0 go test -json -count=1 ./...`：4875 通过、11 跳过、
+  0 失败。11 项为既有手工交互或宿主平台/SDK 限制，未新增跳过。原工作区直接全仓测试
+  仍因旧未跟踪例程/测试引用已移除 API 编译失败，见 workspace-full.log，未改无关文件。
+- [x] 独立 Xvnc/Xfwm4 4.16.1 合成会话：Software/OpenGL（Mesa 23.2.1 llvmpipe）
+  各完成 Modern 亮暗 1x、Basic 1x、Modern 亮色逻辑 2x，共八组原生输入验收。
+  Dot/Diamond/nil 切换、标题几何、按住移入内容区/移出窗口取消与输入焦点保留、
+  不可关闭图标的选择/排序，以及 Space/Enter、正常鼠标关闭均通过；拖动未移动窗口。
+  Basic 初次图像断言误计悬停背景色变化，改为逐点比较纯黑前景形状，并保留与叉号
+  图案不同的断言后通过；未修改产品配色或放宽图案相等条件。
+- [x] Windows amd64、macOS arm64 的窗口例程和 widgets/UI 测试交叉编译通过。
+  原生图片缓存隔离/悬停复用/清除释放、不可比较源、页面转移和声明式省略恢复均有
+  包内断言。日志、截图及临时构建保留于 `/tmp/goui-tab-indicator-5kvwaxqu`；
+  验收窗口、专用 WM、显示服务和会话总线均已清理，未操作用户桌面。既有全仓测试
+  涉及独立会话剪贴板及临时源码副本图片生成。
+- [ ] 未执行 Windows/macOS 原生交互、Direct2D、其他 WM、24pt 字号或真实混合 DPI
+  验收；逻辑 2x 不代表真实 HiDPI。测试产物不提交。
+
 ## 标签关闭按钮取消按压后隐藏（2026-11-11）
 
 - [x] 内部关闭按钮关闭 FocusOnPointer，鼠标按压保留原焦点，移出后正常隐藏；

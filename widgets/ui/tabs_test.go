@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"image"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -12,6 +13,31 @@ import (
 )
 
 // 声明协调、身份与移交。
+
+type tabDeclarationIcon []image.Image
+
+func (s tabDeclarationIcon) Image(int, int, gui.Color) image.Image { return s[0] }
+
+func TestTabPageIndicatorReconcilesAndClears(t *testing.T) {
+	ctx := new(tabContext)
+	source := tabDeclarationIcon{image.NewRGBA(image.Rect(0, 0, 8, 8))}
+	v := TabPage("document", baseui.Label("editor")).Title("main.go").Closable(true).IndicatorIcon(source)
+	page := v.Mount(ctx).(*widgets.TabPage)
+	v.Update(ctx, page)
+	child := page.Child()
+	if got, ok := page.IndicatorIcon().(tabDeclarationIcon); !ok || got[0] != source[0] {
+		t.Fatal("不可比较的图标源未协调到页面")
+	}
+	v.Update(ctx, page)
+	if page.Child() != child {
+		t.Fatal("重复声明图标替换了编辑内容")
+	}
+	v = TabPage("document", baseui.Label("retained")).Closable(true)
+	v.Update(ctx, page)
+	if page.IndicatorIcon() != nil || page.Child() != child {
+		t.Fatal("省略图标未恢复默认值或重建了编辑内容")
+	}
+}
 
 type tabContext struct {
 	state    any

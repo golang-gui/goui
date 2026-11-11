@@ -1,6 +1,7 @@
 package widgets
 
 import (
+	"encoding/json"
 	"image"
 	"image/color"
 	"math"
@@ -526,6 +527,254 @@ func TestTabCloseDisclosureKeepsGeometryAndSnapshot(t *testing.T) {
 	bar.Arrange(bar.Rect())
 	if !b.close.Visible() || b.Measure(layout.Unbounded()) != before {
 		t.Fatal("restoring closability did not restore button/geometry")
+	}
+}
+
+type tabIndicatorSource struct {
+	pixels image.Image
+	calls  int
+}
+
+func (s *tabIndicatorSource) Image(int, int, gui.Color) image.Image {
+	s.calls++
+	return s.pixels
+}
+
+// 使用切片验证 IconSource 无须可比较；状态图标不会通过接口相等判断刷新。
+type tabIndicatorSlice []image.Image
+
+func (s tabIndicatorSlice) Image(int, int, gui.Color) image.Image { return s[0] }
+
+func TestTabIndicatorDisclosureAndInput(t *testing.T) {
+	bar, view, pages := dragTestBar()
+	item := bar.items[pages[1]]
+	labelRect := item.body.label.Rect()
+	pages[1].SetIndicatorIcon(tabIndicatorSlice{image.NewRGBA(image.Rect(0, 0, 8, 8))})
+	host := gui.NewPopover(nil, nil)
+	host.SetWidget(bar)
+	t.Cleanup(host.Destroy)
+	focus := host.(gui.EventTarget)
+	originalFocus := bar.items[pages[0]].body
+	focus.SetFocusedWidget(originalFocus)
+	closed := 0
+	view.ConnectCloseRequest(func(p *TabPage) {
+		if p != pages[1] {
+			t.Fatal("状态槽位关闭了其他标签")
+		}
+		closed++
+	})
+	pointer := func(kind events.EventType, x float32) {
+		t.Helper()
+		buttons := events.PointerButtonLeftDown
+		if kind == events.PointerUp {
+			buttons = 0
+		}
+		if err := host.DispatchEvent(events.PointerEvent{EventType: kind, Position: geometry.Point{X: x, Y: 20},
+			Button: events.PointerButtonLeft, Buttons: buttons}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	check := func(glyph bool) {
+		t.Helper()
+		bar.Arrange(bar.Rect())
+		if !item.close.Visible() || item.closeGlyph.Visible() != glyph || item.indicator.Visible() == glyph || item.body.label.Rect() != labelRect {
+			t.Fatal("状态图标/叉号的显隐或标题几何错误")
+		}
+		if item.end.Parent() != item.close || item.end.Rect() != geometry.Rect(4, 4, 16, 16) {
+			t.Fatalf("尾部槽位未复用按钮的居中区域：%+v", item.end.Rect())
+		}
+		info := item.Snapshot()
+		if info.Attributes[TabInfoKey] != (TabInfo{Closable: true, IndicatorIcon: true}) || pages[1].Snapshot().Attributes[TabInfoKey] != info.Attributes[TabInfoKey] || info.Text != "B" {
+			t.Fatal("快照丢失图标元数据或擅自解释业务状态")
+		}
+		if close := info.Children[1]; close.Role != gui.RoleButton || close.Name == "" || !slices.Contains(close.Actions, gui.ActionClick) {
+			t.Fatal("显示自定义图标时丢失关闭名称或动作")
+		}
+		if _, err := json.Marshal(info); err != nil {
+			t.Fatalf("快照不应暴露 IconSource：%v", err)
+		}
+	}
+	for _, selected := range []*TabPage{pages[0], pages[1]} {
+		view.SetCurrent(selected)
+		pointer(events.PointerMove, 350)
+		check(false) // 选中本身不覆盖状态图标。
+		pointer(events.PointerMove, 130)
+		check(true)
+		pointer(events.PointerDown, 188)
+		pointer(events.PointerMove, 350)
+		check(false)
+		pointer(events.PointerUp, 350)
+		check(false)
+		if closed != 0 || view.Current() != selected || focus.FocusedWidget() != originalFocus || bar.dragPage != nil {
+			t.Fatal("取消按压改变了关闭、选择、焦点或拖动状态")
+		}
+	}
+	if !focus.SetFocusedWidget(item.close) {
+		t.Fatal("状态槽位不能通过正常焦点接口聚焦")
+	}
+	check(true)
+	if err := host.DispatchEvent(events.KeyEvent{EventType: events.KeyDown, Key: events.KeySpace}); err != nil {
+		t.Fatal(err)
+	}
+	if closed != 1 {
+		t.Fatal("键盘未通过关闭请求激活")
+	}
+	focus.SetFocusedWidget(originalFocus)
+	pointer(events.PointerMove, 130)
+	check(true)
+	pointer(events.PointerDown, 188)
+	pointer(events.PointerUp, 188)
+	if closed != 2 || focus.FocusedWidget() != originalFocus {
+		t.Fatal("正常鼠标关闭失效或抢占焦点")
+	}
+	view.SetCurrent(pages[0])
+	pointer(events.PointerMove, 350)
+	pages[1].SetIndicatorIcon(nil)
+	bar.Arrange(bar.Rect())
+	if item.close.Visible() || item.indicator.Visible() || item.Snapshot().Attributes[TabInfoKey] != (TabInfo{Closable: true}) {
+		t.Fatal("清除图标没有恢复未选中标签的隐藏规则")
+	}
+}
+
+func TestTabIndicatorNonClosableUsesBodyInput(t *testing.T) {
+	bar, view, pages := dragTestBar()
+	page, item := pages[1], bar.items[pages[1]]
+	page.SetClosable(false)
+	bar.Arrange(bar.Rect())
+	before := item.body.Measure(layout.Unbounded())
+	page.SetIndicatorIcon(tabTestIcon{})
+	bar.Arrange(bar.Rect())
+	if item.close.Visible() || !item.indicator.Visible() || item.closeGlyph.Visible() || item.end.Parent() != item.body || item.end.Rect() != geometry.Rect(76, 12, 16, 16) {
+		t.Fatal("不可关闭标签的图标未成为固定槽位的装饰")
+	}
+	if m := item.body.Measure(layout.Unbounded()); m.Width != before.Width+28 || m.Height != before.Height {
+		t.Fatal("装饰图标未使用同一份预留空间")
+	}
+	info := item.indicator.Snapshot()
+	if info.Role != gui.RoleImage || len(info.Actions) != 0 || info.Focusable {
+		t.Fatal("装饰图标伪造了可交互语义")
+	}
+	dispatcher := new(gui.EventDispatcher)
+	host := &tabInputHost{root: bar}
+	closed := 0
+	view.ConnectCloseRequest(func(*TabPage) { closed++ })
+	dispatchTabPointer(t, dispatcher, host, events.PointerDown, 188, 20)
+	dispatchTabPointer(t, dispatcher, host, events.PointerUp, 188, 20)
+	if closed != 0 || view.Current() != page {
+		t.Fatal("点装饰图标没有选择标签或误关闭")
+	}
+	view.SetCurrent(pages[0])
+	dispatchTabPointer(t, dispatcher, host, events.PointerDown, 188, 20)
+	dispatchTabPointer(t, dispatcher, host, events.PointerMove, 178, 20)
+	dispatchTabPointer(t, dispatcher, host, events.PointerMove, 30, 20)
+	dispatchTabPointer(t, dispatcher, host, events.PointerUp, 30, 20)
+	if closed != 0 || view.Current() != pages[0] || !slices.Equal(view.Pages(), []*TabPage{pages[1], pages[0], pages[2]}) {
+		t.Fatal("装饰图标未保留主体拖动排序行为")
+	}
+	page.SetClosable(true)
+	bar.Arrange(bar.Rect())
+	if item.end.Parent() != item.close || !item.close.Visible() {
+		t.Fatal("切换为可关闭时没有切换槽位输入归属")
+	}
+	page.SetClosable(false)
+	page.SetIndicatorIcon(nil)
+	bar.Arrange(bar.Rect())
+	if item.end.Visible() || item.body.Measure(layout.Unbounded()) != before {
+		t.Fatal("清除不可关闭标签图标仍留下预留空间")
+	}
+}
+
+func TestTabIndicatorAddedDuringBodyPressKeepsTarget(t *testing.T) {
+	bar, view, pages := dragTestBar()
+	item := bar.items[pages[1]]
+	dispatcher := new(gui.EventDispatcher)
+	host := &tabInputHost{root: bar}
+	closed := 0
+	view.ConnectCloseRequest(func(*TabPage) { closed++ })
+	dispatchTabPointer(t, dispatcher, host, events.PointerDown, 188, 20)
+	pages[1].SetIndicatorIcon(tabTestIcon{})
+	bar.Arrange(bar.Rect())
+	if item.close.Visible() || !item.indicator.Visible() {
+		t.Fatal("按住主体时新增状态图标引入了关闭命中目标")
+	}
+	dispatchTabPointer(t, dispatcher, host, events.PointerUp, 188, 20)
+	bar.Arrange(bar.Rect())
+	if closed != 0 || view.Current() != pages[1] || !item.close.Visible() || !item.closeGlyph.Visible() {
+		t.Fatal("新增图标后主体点击误关闭或未选择标签")
+	}
+}
+
+type tabIndicatorNativeImage struct {
+	graphics.Image
+	destroys int
+}
+
+func (*tabIndicatorNativeImage) Size() (int, int) { return 16, 16 }
+func (i *tabIndicatorNativeImage) Destroy()       { i.destroys++ }
+
+type tabIndicatorPainter struct {
+	gui.Painter
+	images []*tabIndicatorNativeImage
+}
+
+func (*tabIndicatorPainter) PixelScale() float32 { return 1 }
+func (p *tabIndicatorPainter) NewImage(image.Image) (graphics.Image, error) {
+	i := new(tabIndicatorNativeImage)
+	p.images = append(p.images, i)
+	return i, nil
+}
+func (*tabIndicatorPainter) DrawImage(geometry.Rectangle, graphics.Image) {}
+
+func TestTabIndicatorRefreshAndCacheIsolation(t *testing.T) {
+	view := NewTabView()
+	page := NewTabPage("cached", nil)
+	page.SetClosable(true)
+	source := &tabIndicatorSource{pixels: image.NewRGBA(image.Rect(0, 0, 16, 16))}
+	page.SetIndicatorIcon(source)
+	view.AppendPage(page)
+	a, b := NewTabBar(), NewTabBar()
+	a.SetView(view)
+	b.SetView(view)
+	box := gui.NewLinearBox(layout.DirectionVertical)
+	box.AddChild(a)
+	box.AddChild(b)
+	host := gui.NewPopover(nil, nil)
+	host.SetWidget(box)
+	t.Cleanup(host.Destroy)
+	box.Arrange(geometry.Rect(0, 0, 300, 80))
+	a.Arrange(geometry.Rect(0, 0, 300, 40))
+	b.Arrange(geometry.Rect(0, 40, 300, 40))
+	paint := new(tabIndicatorPainter)
+	a.items[page].indicator.Paint(paint)
+	b.items[page].indicator.Paint(paint)
+	if source.calls != 2 || len(paint.images) != 2 || a.items[page].indicator == b.items[page].indicator {
+		t.Fatal("多个 TabBar 未隔离 Icon 和原生图片缓存")
+	}
+	icon, parent := a.items[page].indicator, a.items[page].indicator.Parent()
+	for _, x := range []float32{30, 280, 30, 280} {
+		if err := host.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: geometry.Point{X: x, Y: 20}}); err != nil {
+			t.Fatal(err)
+		}
+		a.Arrange(a.Rect())
+		icon.Paint(paint)
+	}
+	if source.calls != 2 || len(paint.images) != 2 || icon.Parent() != parent {
+		t.Fatal("悬停切换重建图标、生成像素或上传原生图片")
+	}
+	page.SetIndicatorIcon(source) // 相同对象也显式刷新，原始像素未变可继续复用上传。
+	if page.IndicatorIcon() != source {
+		t.Fatal("属性未保存在页面上")
+	}
+	a.items[page].indicator.Paint(paint)
+	b.items[page].indicator.Paint(paint)
+	if source.calls != 4 || len(paint.images) != 2 {
+		t.Fatal("相同源未刷新，或相同像素重复上传")
+	}
+	page.SetIndicatorIcon(nil)
+	for _, img := range paint.images {
+		if img.destroys != 1 {
+			t.Fatal("清除源未释放每个 TabBar 自有的图片")
+		}
 	}
 }
 

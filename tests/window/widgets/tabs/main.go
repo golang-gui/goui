@@ -46,7 +46,14 @@
 //     不应遗留不可见却可点击的关闭区域。
 //     悬停未选中标签后，从其主体按 Tab 将焦点移到关闭按钮，再移开鼠标：按钮应
 //     保持显示，Space/Enter 仍可关闭；鼠标按压不会主动把焦点转给关闭按钮。
-//  5. 以 -fallback-style 重启，显式组合 GUI 与 widgets 兜底样式。
+//  5. Indicator 按钮循环 Off/Dot/Diamond：前导图标和标题不变，选中与未选中标签的
+//     尾部均显示自定义图标。悬停整个标签或 Tab 聚焦关闭按钮后切换叉号，移出后恢复
+//     图标；标题和标签位置不跳动，按住移出再松手不关闭，正常点击仍只关闭一次。
+//     切换 Closable 为 false：尾部图标始终显示，点击选择、拖动排序，不产生 close。
+//     改回 true 或清除 Indicator 后恢复对应行为。Rebuild 不重置输入和选择。
+//     Modern 亮暗/Basic 下单色状态图标跟随自己的 tab-indicator-icon 前景色；Text size
+//     24pt 与逻辑 2x 下仍居中。这里只显示静态图标，不模拟 Modified/Loading 业务状态。
+//  6. 以 -fallback-style 重启，显式组合 GUI 与 widgets 兜底样式。
 //     Toggle Dark/Text size 在此模式不改变样式；检查文字可读、选择/悬停表面、
 //     分隔线和关闭/滚动图标，以及前述选择/排序行为。
 //
@@ -68,9 +75,12 @@ import (
 	"log"
 	"slices"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/icon"
+	icondraw "github.com/golang-gui/goui/icon/draw"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/style"
 	"github.com/golang-gui/goui/theme/modern"
 	"github.com/golang-gui/goui/ui"
@@ -97,6 +107,19 @@ func main() {
 	dark, serial, rebuilds := false, 3, 0
 	fontSize := float32(14)
 	fixedWidth := false
+	indicatorMode, closable := 0, true
+	indicators := []gui.IconSource{nil,
+		&icondraw.Source{Draw: func(p graphics.Painter, size graphics.Size, foreground graphics.Color) {
+			p.FillEllipse(geometry.Point{X: size.Width / 2, Y: size.Height / 2}, size.Width/5, size.Height/5, foreground)
+		}},
+		&icondraw.Source{Draw: func(p graphics.Painter, size graphics.Size, foreground graphics.Color) {
+			path := graphics.MoveTo(size.Width/2, size.Height/5).
+				LineTo(size.Width*4/5, size.Height/2).
+				LineTo(size.Width/2, size.Height*4/5).
+				LineTo(size.Width/5, size.Height/2).Close()
+			p.FillPath(path, foreground)
+		}},
+	}
 	err = ui.Run("org.golang-gui.TabsProbe", func(app ui.App) ui.RootView {
 		minWidth := float32(112)
 		if fixedWidth {
@@ -106,7 +129,7 @@ func main() {
 		for _, key := range keys {
 			pages = append(pages, wui.TabPage(key,
 				ui.VBox(ui.Label("Page: "+key), ui.TextInput().ID("input-"+key)).Spacing(8).Padding(16),
-			).Title("Document "+key).Icon(iconSource).Closable(true))
+			).Title("Document "+key).Icon(iconSource).Closable(closable).IndicatorIcon(indicators[indicatorMode]))
 		}
 		sheet := modern.Sheet(modern.Options{Dark: dark, FontSize: fontSize})
 		if *fallbackStyle {
@@ -129,7 +152,7 @@ func main() {
 											view.RequestClose(page)
 										}
 									}
-								}),
+								}).Enabled(closable),
 							}
 						}).
 						OnContextMenuError(func(err error) { fmt.Printf("menu-error=%v\n", err) })).Padding(6),
@@ -155,6 +178,11 @@ func main() {
 					ui.HBox(
 						ui.Button("Width mode").OnClick(func() { fixedWidth = !fixedWidth; app.RequestUpdate() }),
 						ui.Label(fmt.Sprintf("Tab widths: %.0f..240 DIP", minWidth)),
+						ui.Button("Indicator: "+[...]string{"Off", "Dot", "Diamond"}[indicatorMode]).OnClick(func() {
+							indicatorMode = (indicatorMode + 1) % len(indicators)
+							app.RequestUpdate()
+						}),
+						ui.Button(fmt.Sprintf("Closable: %t", closable)).OnClick(func() { closable = !closable; app.RequestUpdate() }),
 					).Spacing(8).Padding(8),
 					ui.Label(fmt.Sprintf("Selected=%s | rebuilds=%d | order=%v", current, rebuilds, keys)),
 					wui.TabView(pages...).ID("documents").Current(current).
