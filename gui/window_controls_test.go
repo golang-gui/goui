@@ -104,15 +104,24 @@ func TestRectangularCaptionAppearance(t *testing.T) {
 	}
 }
 
-// Linux 的失活图形应减弱对比，不能冒充 Disabled；三种按钮保留独立的交互反馈。
+// 按 libadwaita 1.8 的 sRGB 前景/背景比例独立计算期望值；失活同时淡化圆形与图形。
 func TestCircularCaptionAppearance(t *testing.T) {
 	for _, tc := range []struct {
-		name                 string
-		window, active       uint8
-		background, inactive [3]uint8
+		name               string
+		window             uint8
+		background, active [3]color.NRGBA
+		backdrop, inactive [3]color.NRGBA
 	}{
-		{"light", 245, 50, [3]uint8{232, 215, 195}, [3]uint8{141, 133, 123}},
-		{"dark", 32, 240, [3]uint8{64, 80, 48}, [3]uint8{152, 160, 144}},
+		{"light", 245,
+			[3]color.NRGBA{{235, 235, 235, 255}, {224, 224, 225, 255}, {194, 194, 195, 255}},
+			[3]color.NRGBA{{47, 47, 52, 255}, {45, 45, 50, 255}, {39, 39, 44, 255}},
+			[3]color.NRGBA{{245, 245, 245, 255}, {240, 240, 240, 255}, {225, 225, 225, 255}},
+			[3]color.NRGBA{{151, 151, 154, 255}, {150, 150, 153, 255}, {147, 147, 150, 255}}},
+		{"dark", 32,
+			[3]color.NRGBA{{67, 67, 71, 255}, {77, 77, 81, 255}, {109, 109, 112, 255}},
+			[3]color.NRGBA{{255, 255, 255, 255}, {255, 255, 255, 255}, {255, 255, 255, 255}},
+			[3]color.NRGBA{{57, 57, 61, 255}, {62, 62, 66, 255}, {78, 78, 81, 255}},
+			[3]color.NRGBA{{151, 151, 153, 255}, {151, 151, 153, 255}, {151, 151, 153, 255}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			useTestApplication(t, &application{style: style.Sheet(style.Name(styleNameWindow).BackgroundColor(color.Gray{tc.window}))})
@@ -136,18 +145,18 @@ func TestCircularCaptionAppearance(t *testing.T) {
 						s := b.decorationStyle()
 						bg, _ := s.BackgroundColor()
 						fg, _ := s.ForegroundColor()
-						want := tc.active
+						wantBG, wantFG := tc.background[state], tc.active[state]
 						if !focused {
-							want = tc.inactive[state]
+							wantBG, wantFG = tc.backdrop[state], tc.inactive[state]
 						}
-						if !colors.Equal(bg, color.Gray{tc.background[state]}) || !colors.Equal(fg, color.Gray{want}) {
-							t.Fatalf("focus=%t state=%d: background=%v foreground=%v，预期 %d/%d", focused, state, bg, fg, tc.background[state], want)
+						if !colors.Equal(bg, wantBG) || !colors.Equal(fg, wantFG) {
+							t.Fatalf("focus=%t state=%d: background=%v foreground=%v，预期 %v/%v", focused, state, bg, fg, wantBG, wantFG)
 						}
 						if !b.Enabled() || b.State().Has(style.Disabled) || b.Snapshot().Bounds != bounds {
 							t.Fatal("失活外观改变了启用状态或命中区域")
 						}
-						if brush := b.decorationBrush(fg); brush != graphics.RGB(want, want, want) {
-							t.Fatal("失活图形画刷不应依赖半透明叠加")
+						if brush := b.decorationBrush(fg); brush != graphics.RGB(wantFG.R, wantFG.G, wantFG.B) {
+							t.Fatal("图形画刷不应依赖半透明叠加")
 						}
 					}
 				}
@@ -158,7 +167,7 @@ func TestCircularCaptionAppearance(t *testing.T) {
 
 // 1x 下在透明预乘 RGBA 目标逐像素核对独立的 2 DIP 几何掩码；整数直边应完全覆盖。
 // 最小化为 8×2 实心横线，最大化为外 8×8/内 4×4 方框；还原含完整的右上直角。
-// 灰度值允许 1/255 输出量化误差；关闭 X 的中心和远离交点处必须同色、不叠出深色。
+// RGB 每通道允许 1/255 输出量化误差；关闭 X 的中心和远离交点处必须同色、不叠出深色。
 func TestCircularCaptionGlyphPixels(t *testing.T) {
 	useTestApplication(t, &application{style: style.Sheet(style.Name(styleNameWindow).BackgroundColor(color.Gray{245}))})
 	win, native := chromeFixture(t, false, true)
@@ -172,9 +181,9 @@ func TestCircularCaptionGlyphPixels(t *testing.T) {
 	defer backend.Destroy()
 	for _, focused := range []bool{true, false} {
 		win.setFocused(focused)
-		wantColor := uint8(50)
+		wantColor := color.NRGBA{47, 47, 52, 255}
 		if !focused {
-			wantColor = 141
+			wantColor = color.NRGBA{151, 151, 154, 255}
 		}
 		for _, state := range []WindowState{WindowStateNormal, WindowStateMaximized} {
 			native.state = state
@@ -196,8 +205,9 @@ func TestCircularCaptionGlyphPixels(t *testing.T) {
 						}
 						return
 					}
-					if a != 65535 || r != g || g != b || math.Abs(float64(r)/257-float64(wantColor)) > 1 {
-						t.Fatalf("focus=%t index=%d state=%v (%d,%d)：RGBA=%d/%d/%d/%d，预期灰度 %d 且完全覆盖", focused, index, state, x, y, r, g, b, a, wantColor)
+					if a != 65535 || math.Abs(float64(r)/257-float64(wantColor.R)) > 1 ||
+						math.Abs(float64(g)/257-float64(wantColor.G)) > 1 || math.Abs(float64(b)/257-float64(wantColor.B)) > 1 {
+						t.Fatalf("focus=%t index=%d state=%v (%d,%d)：RGBA=%d/%d/%d/%d，预期 %v 且完全覆盖", focused, index, state, x, y, r, g, b, a, wantColor)
 					}
 				}
 				if index == 2 {

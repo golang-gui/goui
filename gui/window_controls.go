@@ -98,7 +98,7 @@ func (b *captionButton) decorationStyle() style.Style {
 			}
 		} else {
 			ink := uint8(0)
-			if palette.foreground.Y > 128 {
+			if palette.foreground.R > 128 {
 				ink = 255
 			}
 			if b.State().Has(style.Hovered) || b.State().Has(style.Pressed) {
@@ -119,14 +119,29 @@ func (b *captionButton) decorationStyle() style.Style {
 	} else if b.State().Has(style.Hovered) {
 		background = palette.hovered
 	}
-	foreground := palette.foreground
+	// Resolve the translucent foreground once. Opaque glyph ink prevents the
+	// two close-X strokes from accumulating alpha at their intersection.
+	foreground := captionComposite(palette.foreground, background, 100)
 	if !b.window.Focused() {
-		// Equivalent to half-opacity ink over the opaque circle. Keep the brush
-		// opaque so intersecting strokes do not accumulate alpha at the close X.
-		foreground.Y = uint8((uint16(foreground.Y) + uint16(background.Y) + 1) / 2)
+		// Match a 50% group opacity: fade the completed circle and glyph
+		// independently over the same reference surface, not over each other.
+		foreground = captionComposite(foreground, palette.surface, 50)
+		background = captionComposite(background, palette.surface, 50)
 	}
 	return style.Default().BackgroundColor(background).ForegroundColor(foreground).
 		Radius(circularControlDiameter / 2).Style
+}
+
+// captionComposite resolves a currentColor percentage in sRGB over an opaque
+// decoration surface. Keep the foreground's alpha in the percentage calculation
+// and round only the resulting byte; 80% ink at 10% strength has 8% coverage.
+func captionComposite(foreground, background color.NRGBA, percent uint32) color.NRGBA {
+	alpha := uint32(foreground.A) * percent
+	blend := func(f, b uint8) uint8 {
+		return uint8((uint32(f)*alpha + uint32(b)*(25500-alpha) + 12750) / 25500)
+	}
+	return color.NRGBA{R: blend(foreground.R, background.R), G: blend(foreground.G, background.G),
+		B: blend(foreground.B, background.B), A: 255}
 }
 
 func (b *captionButton) Paint(p Painter) {

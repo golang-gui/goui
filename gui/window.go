@@ -550,32 +550,38 @@ const (
 // Window decoration is GUI policy, not a set of application style selectors.
 // Native decorations remain OS-owned. Only the window background is themed.
 type windowDecorationPalette struct {
-	frame, foreground, button, hovered, pressed color.Gray
+	frame                                color.Gray
+	foreground, button, hovered, pressed color.NRGBA
+	surface                              color.NRGBA
 }
 
 func (w *window) decorationPalette(circular bool) windowDecorationPalette {
 	background := w.backgroundStyle()
-	if darkWindowBackground(background, w.transparent) {
-		if circular {
-			return windowDecorationPalette{
-				frame: color.Gray{90}, foreground: color.Gray{240},
-				button: color.Gray{64}, hovered: color.Gray{80}, pressed: color.Gray{48},
-			}
-		}
-		return windowDecorationPalette{
-			frame: color.Gray{90}, foreground: color.Gray{240},
-			button: color.Gray{50}, hovered: color.Gray{70}, pressed: color.Gray{35},
-		}
-	}
+	dark := darkWindowBackground(background, w.transparent)
 	if circular {
+		// libadwaita 1.8 headerbar colors. The reference surface keeps window
+		// controls independent of application HeaderBar/ordinary Button styles.
+		palette := windowDecorationPalette{
+			frame: color.Gray{165}, foreground: color.NRGBA{B: 6, A: 204},
+			surface: color.NRGBA{R: 255, G: 255, B: 255, A: 255},
+		}
+		if dark {
+			palette.frame = color.Gray{90}
+			palette.foreground = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
+			palette.surface = color.NRGBA{R: 46, G: 46, B: 50, A: 255}
+		}
+		palette.button = captionComposite(palette.foreground, palette.surface, 10)
+		palette.hovered = captionComposite(palette.foreground, palette.surface, 15)
+		palette.pressed = captionComposite(palette.foreground, palette.surface, 30)
+		return palette
+	}
+	if dark {
 		return windowDecorationPalette{
-			frame: color.Gray{165}, foreground: color.Gray{50},
-			button: color.Gray{232}, hovered: color.Gray{215}, pressed: color.Gray{195},
+			frame: color.Gray{90}, foreground: color.NRGBA{R: 240, G: 240, B: 240, A: 255},
 		}
 	}
 	return windowDecorationPalette{
-		frame: color.Gray{165}, foreground: color.Gray{0},
-		button: color.Gray{210}, hovered: color.Gray{230}, pressed: color.Gray{180},
+		frame: color.Gray{165}, foreground: color.NRGBA{A: 255},
 	}
 }
 
