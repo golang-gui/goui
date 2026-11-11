@@ -4,6 +4,7 @@ import (
 	"syscall"
 
 	"github.com/goexlib/cgo"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -26,10 +27,11 @@ func Close(fd int32) {
 }
 
 func Pipe(fds *[2]int32) error {
-	_, _, eno := syscall.RawSyscall(syscall.SYS_PIPE, uintptr(cgo.Pointer(fds)), 0, 0)
-	if eno != 0 {
-		return eno
+	var pair [2]int
+	if err := unix.Pipe(pair[:]); err != nil {
+		return err
 	}
+	fds[0], fds[1] = int32(pair[0]), int32(pair[1])
 	return nil
 }
 
@@ -49,15 +51,17 @@ func Fcntl(fd int32, cmd, arg uintptr) int {
 	return int(ret)
 }
 
-type PollFd struct {
-	Fd      int32
-	Events  int16
-	REvents int16
-}
+type PollFd = unix.PollFd
 
-const POLLIN = 0x0001
+const POLLIN = unix.POLLIN
 
 func Poll(fds []PollFd, timeout int) (ret int, eno syscall.Errno) {
-	r1, _, eno := syscall.Syscall(syscall.SYS_POLL, uintptr(cgo.CSlice(fds)), uintptr(len(fds)), uintptr(timeout))
-	return int(r1), eno
+	n, err := unix.Poll(fds, timeout)
+	if err == nil {
+		return n, 0
+	}
+	if errno, ok := err.(syscall.Errno); ok {
+		return n, errno
+	}
+	return n, syscall.EINVAL
 }
