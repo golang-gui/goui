@@ -1,5 +1,56 @@
 # Plan
 
+## ListRow 设置与操作条目（2026-11-11）
+
+- [x] 新增 widgets.ListRow：标题/说明、独立 Prefix/Suffix、内容驱动行高、48 DIP
+  默认最小高度及可调 Padding/Spacing。有限宽度填满，无限宽度按内容；尾部优先
+  测量，文字使用剩余宽度换行，极窄约束下间距/插槽不重叠。复用 Label/LinearBox，
+  不增加列表模型、选择、设置存储或平台能力。
+- [x] 默认不激活；显式 Activatable 接入已有 Click/Key/Motion 与 Focusable，
+  Enter/Space 首次按下激活、重复键不重复。子控件赢得点击后不激活父行，键盘
+  处理要求行自身焦点。信号检查 Root/准入，插槽 setter 检查重入代次/Root；
+  卸载中替换或释放宿主不会被过期操作覆盖。Snapshot 提供 listitem、显示文本、
+  有效 click 动作及前后真实语义子树，隐藏内部布局，不伪造 Switch 状态。
+- [x] widgets/ui.ListRow 使用稳定 Bin target 和既有 UpdateChild 分别协调插槽；
+  属性省略恢复默认、零值生效，闭包更新/Unmount 断开。Activatable 同时声明默认
+  Focusable，支持后续显式覆盖，无 Root/BuildContext 特例。Basic/Modern 提供行、
+  两个独立文字样式和 focus part。Demo 基础页增加八语言设置卡片、开关、操作行、
+  下拉与只读版本值；不进行实际网络/设置写入。
+- [x] 包内覆盖插槽归属/重入、约束、语义、禁用、键盘重复/移出取消、后代输入
+  隔离、UI 身份/默认恢复、主题和预乘 sRGB RGBA8 的 1x/2x 内部实色像素。
+  复用的测试 Painter 补齐 FillRect 转发，保留原 ProgressBar 断言。Linux Pango
+  14/26pt 真实换行在执行子测试内锁定 OS 线程，不依赖 DISPLAY。
+- [x] Linux amd64 / Go 1.25.8，独立 Xvnc / Xfwm4 4.16.1 合成会话，
+  Software/OpenGL × Native/Integrated × 1x/逻辑 2x 八组，另加两后端 Basic 1x 与
+  Modern 24pt 1x，共十二组、228 次 Check 断言通过。实际 imageResource 类型/
+  PixelScale 与无装饰回退已确认；输入仍为正常 XTest 鼠标/键盘。验证整行/子按钮/
+  开关各更新一次、真实输入框编辑/Enter 与下拉不激活父行、按住 Space 不重复、
+  Tab 导航、禁用、重建、移除/恢复插槽、亮暗、400 DIP 窄宽换行及正常销毁退出。
+  OpenGL 为 Mesa 23.2.1 llvmpipe，逻辑 2x 不等同真实 HiDPI。
+- [x] Software Native 1x、OpenGL Integrated 2x 另行复验 Tab/Shift+Tab，检查整行
+  键盘焦点边框与子按钮焦点切换；截图确认焦点框完整，计数/身份断言仍通过。
+- [x] 专用会话继承用户 fcitx 环境时，普通 TextInput 对照与行内 TextInput 都
+  收到按键但无提交；两者切换测试进程到 XMODIFIERS=@im=none 后实际键入
+  hello world 均通过，未修改输入框/IME 或用户会话设置。外部定位曾假定后端
+  提供 _NET_WM_PID，改为专用桌面上的精确标题并重跑；首帧快照等待有效布局。
+- [x] Demo OpenGL 1x 原生鼠标确认设置开关像素变化、操作行更新状态栏，
+  820×600 窄窗外观与正常退出。没有把启动成功或图片输出当成十二组行为验收。
+- [x] 隔离已跟踪源码 `CGO_ENABLED=0 go test -json -count=1 ./...`：4906 通过、
+  11 既有跳过、0 失败。widgets/widgets-ui/Basic/Modern/Demo 的完整 race、相关
+  vet 通过；Windows amd64/macOS arm64 的 widgets/widgets-ui、两主题、Demo 测试
+  目标及 ListRow 窗口程序交叉编译通过，未原生运行。
+- [ ] Windows/macOS 原生、Direct2D、硬件 OpenGL、真实混合 DPI 与移动原生触摸
+  未验收；文字支持不代表 RTL 整页镜像。设计/API/参考与具体用例见
+  [DesignListRow](DesignListRow.md) 和 tests/window/widgets/list_row。
+
+证据、失败命令与对照、截图/构建保留于 `/tmp/goui-list-row-5uzumlcg`。原工作区
+`env -u DISPLAY go test ./...` 仍因既有未跟踪旧例程/测试引用已移除 API 及
+Typography 桌面依赖失败，未手工修改这些旧源码。原工作区命令按既有测试行为
+更新未跟踪的 software/output.png、typography/utils/dst.png，不纳入提交；隔离全仓
+会操作专用会话剪贴板并在临时源码副本写图片，没有操作用户桌面。
+十二组验收及补充焦点检查正常退出；两套专用 Xvnc/Xfwm4、会话总线和所属辅助
+进程已清理，显示套接字已移除。最终源码全仓复查仍为 4906 通过、11 跳过、0 失败。
+
 ## ProgressBar 动画与完整圆环（2026-11-11）
 
 - [x] 修复 Surface 合并后桌面 Visible 未随 StateEvent 更新的问题；已知桌面状态
