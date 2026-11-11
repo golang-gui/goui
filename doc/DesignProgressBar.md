@@ -34,7 +34,9 @@ Value=0 只画轨道，Value=1 为完整闭合图形，不用接近一圈的弧�
 
 使用现有 FillRoundRect／FillPath，不修改 Painter 或 platform。圆环及圆头弧段
 由控件私有路径构造，单次填充同一前景，避免半透明端点被重复合成。
-圆头在近完整圆周相接时合为完整环；完整圆环用外顺向／内反向的单个闭合轮廓。
+圆头在近完整圆周相接时合为完整环；完整圆环用分别闭合的外顺向／内反向轮廓，
+内轮廓标记 `Path.Hole()`，一次 FillPath 填充。不用径向线连接内外圈，以免 OpenGL
+对该连接抗锯齿后露出底色；沿用 `graphics/utils.RoundRectBorderPath` 的路径契约。
 极小尺寸允许厚度收缩，内半径归零时退化为实心图形。
 
 长条忙等待为占轨道 30% 的单段胶囊，1.8 秒一周期。从左侧外部进入，始终
@@ -69,6 +71,9 @@ Overlay 组合，不引入文本格式、任务绑定、取消按钮或父子样
 frame 与 after-paint handle 一起释放。仅结构裁出时保留被动连接而不续帧，
 滚动／重新布局产生的正常帧会在布局完成后恢复；保留原始起始时间及业务状态，
 不补画离屏期间帧。RenderWidget 不发出上述 Root 信号，因此不会启动屏幕续帧。
+宿主的隐藏/最小化由 Root 暂停帧；恢复可见时重新安排布局，让首次显示前未连接、
+或隐藏期间已断开的控件动画按需重连。桌面可见观察与系统 Surface 的归一化边界
+见 [DesignAnimation](DesignAnimation.md#root-契约)。
 细节见 [DesignDrawable](DesignDrawable.md)。
 重新得到可绘制布局时按需连接。回调检查 Root 归属，跨窗口不沿用旧连接；
 重复声明不增加连接。请求绘制失败时停止，保留静态忙等待图形，不主动重试。
@@ -192,3 +197,39 @@ Integrated 装饰验收。使用原生鼠标／窗口事件，不依赖 DevServe
 未执行：Windows Direct2D／macOS OpenGL 原生桌面验收、硬件 OpenGL 和混合
 显示器 DPI 切换。交叉编译及本机 llvmpipe 不替代这些验收。首版动画不承诺
 vsync／最小化时停止唤醒；后续由独立动画系统处理。
+
+### 7.3 桌面可见性与完整圆环回归（2026-11-11）
+
+Surface 合并后，桌面 Window 继承的 Visible 只随 VisibilityEvent 更新，而
+X11/Win32/Cocoa 报告 StateEvent，导致真实窗口上的 canAnimate 持续拒绝启动；
+Mock Root 的 visible=true 掩盖了该缺陷。现在由 GUI 宿主边界同步已知原生状态，
+Unknown 保留观察，恢复可见时重新布局。系统 Surface 保留 VisibilityEvent 路径。
+完整圆环移除径向连接，使用独立闭合外圈与反向 Hole 内圈；部分圆头弧及运动公式
+保持原契约。OpenGL 使用 NanoVG Hole，Software/Direct2D 使用反向 winding；
+不修改绘图后端或公共 API。
+
+新增 `tests/window/widgets/progress_regression`：被动帧观察与 Timer 采样不请求绘制，
+逐阶段比较实际动画像素；RenderWidget 独立检查 0%、100%、半透明 99% 圆环的
+中心和四个轴向中线像素，覆盖旧连接点。预乘 sRGB RGBA8 允许 1 字节量化误差，
+不使用截图金图或平台字体结果。程序同时断言实际选中的装饰策略，回退不算通过。
+UI 例程的旧“两个活动 Timer”断言改为零，原因是控件已使用 Root 帧驱动；身份、
+进度/模式、语义与重建不新增 Timer 的有效检查继续保留。
+
+| 项目 | 结果 |
+| --- | --- |
+| 修复前 GUI 可见性/恢复布局回归 | 失败；真实桌面显示后 Visible/Snapshot 仍为 false |
+| 修复前 OpenGL 圆环回归 | 失败；右侧中线像素 alpha=0，独立预期为不透明轨道 |
+| 修复后独立窗口回归 | Software/OpenGL × Native/Integrated × 1x/2x 八组通过；圆环 1x/2x 像素与初显、祖先隐藏/恢复、原生隐藏/Show、最小化/Show、确定/忙等待切换全部通过 |
+| 无桌面 GUI/widgets 测试及相关 vet | 通过；含系统 Surface 可见性、Unknown 保留、请求不伪造观察及圆环软件像素 |
+| 隔离已跟踪源码 `CGO_ENABLED=0 go test -json -count=1 ./...` | 4893 通过、11 既有跳过、0 失败 |
+| GUI/UI/widgets/widgets-ui race | 完整组合重跑通过；首次组合中 GUI 段错误，GUI 单跑、基线单跑与组合重跑均未复现，原因未确认，保留原始失败日志 |
+| Windows amd64 / macOS arm64，CGO_ENABLED=0 | GUI/UI/widgets/widgets-ui 测试目标与三处 ProgressBar 窗口程序交叉编译通过；未原生运行 |
+
+环境：Go 1.25.8、Linux amd64、独立 Xvnc/Xfwm4 4.16.1 合成会话，Mesa 23.2.1
+llvmpipe。2x 是 GOUI_PLAT_SCALE 逻辑缩放，不代表真实 HiDPI。原工作区全仓命令
+仍因既有未跟踪旧例程/测试引用已移除 API 及桌面依赖而失败；未手工修改这些旧
+源码。全仓既有测试会操作专用会话剪贴板、在临时副本写图片；原工作区命令也
+更新既有未跟踪图片，见 Plan 的副作用记录，不纳入提交。证据、失败日志与程序
+位于 `/tmp/goui-progress-fix-8zagydc5`，进度及补充交互结果见 [Plan](Plan.md)。
+Windows/macOS 原生、Direct2D、其他 WM、硬件 OpenGL、真实混合 DPI 及移动设备
+生命周期未执行，不能以交叉编译或本机逻辑回归替代。

@@ -510,6 +510,18 @@ func TestProgressBarSoftwarePixels(t *testing.T) {
 			if pixel(img, 22, 14).A != 0 || pixel(img, 3, 3).A != 0 {
 				t.Fatal("circle was filled in or stretched to allocation")
 			}
+			if value == 0 || value == 1 {
+				// 环带中线上的四个轴向点覆盖完整轮廓的起止连接处，远离 AA 边缘。
+				want := blue
+				if value == 1 {
+					want = red
+				}
+				for _, point := range []image.Point{{32, 14}, {22, 24}, {12, 14}, {22, 4}} {
+					if got := pixel(img, point.X, point.Y); got != want {
+						t.Fatalf("完整圆环 %g / %gx 在 %v 有缺口：%v，预期 %v", value, scale, point, got, want)
+					}
+				}
+			}
 			for _, sample := range []struct {
 				x, y int
 				red  bool
@@ -582,7 +594,7 @@ func TestProgressBarSoftwareAlphaAndClip(t *testing.T) {
 			if !painted {
 				t.Fatal("arc did not paint a fully covered pixel")
 			}
-			if value == 1 {
+			if value >= .99 {
 				for _, pt := range []image.Point{{14, 4}, {24, 14}, {14, 24}, {4, 14}} {
 					c := color.RGBAModel.Convert(img.At(pt.X*int(scale), pt.Y*int(scale))).(color.RGBA)
 					if c.A < 127 {

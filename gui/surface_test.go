@@ -11,6 +11,76 @@ import (
 	"github.com/golang-gui/goui/platform/graphics"
 )
 
+func TestWindowObservedVisibility(t *testing.T) {
+	// 桌面后端报告 StateEvent；状态通知内、公开查询与快照应观察到同一可见性。
+	native := new(desktopTestWindow)
+	w := testWindowWithSurface(&window{surfaceBase: surfaceBase{
+		platformWindow: native, rootBase: rootBase{frameSuspended: true},
+	}})
+	if w.Visible() || w.Snapshot().Visible {
+		t.Fatal("首次原生观察前不应报告可见")
+	}
+	var notified bool
+	w.ConnectState(func(WindowState) {
+		notified = true
+		if w.Visible() != w.Snapshot().Visible || w.frameSuspended == w.Visible() {
+			t.Fatal("状态通知早于可见性/帧状态更新")
+		}
+	})
+	for _, step := range []struct {
+		state   WindowState
+		visible bool
+	}{
+		{WindowStateUnknown, false},
+		{WindowStateNormal, true},
+		{WindowStateUnknown, true},
+		{WindowStateMaximized, true},
+		{WindowStateMinimized, false},
+		{WindowStateUnknown, false},
+		{WindowStateMaximized, true},
+		{WindowStateHidden, false},
+		{WindowStateFullscreen, true},
+		{WindowStateNormal, true},
+	} {
+		wasVisible := w.Visible()
+		w.layoutDirty, notified = false, false
+		if err := w.DispatchEvent(events.StateEvent{State: step.state}); err != nil {
+			t.Fatal(err)
+		}
+		if !notified || w.Visible() != step.visible || w.Snapshot().Visible != step.visible || w.frameSuspended == step.visible {
+			t.Fatalf("状态 %v：visible=%v snapshot=%v suspended=%v notified=%v", step.state, w.Visible(), w.Snapshot().Visible, w.frameSuspended, notified)
+		}
+		if step.visible && !wasVisible && !w.layoutDirty {
+			t.Fatalf("状态 %v 恢复时未安排布局，已断开的控件动画无法重连", step.state)
+		}
+	}
+	w.Destroy()
+	_ = w.DispatchEvent(events.StateEvent{State: WindowStateNormal})
+	if w.Visible() || w.Snapshot().Visible {
+		t.Fatal("销毁后仍报告可见")
+	}
+}
+
+func TestSystemSurfaceObservedVisibility(t *testing.T) {
+	host := newSystemSurface(nil)
+	host.claimed = true
+	for _, visible := range []bool{true, false, true} {
+		host.layoutDirty = false
+		_ = host.DispatchEvent(events.VisibilityEvent{Visible: visible})
+		if host.Visible() != visible || host.Snapshot().Visible != visible || host.frameSuspended == visible {
+			t.Fatalf("系统宿主可见性未同步：visible=%v suspended=%v", host.Visible(), host.frameSuspended)
+		}
+		if visible && !host.layoutDirty {
+			t.Fatal("系统宿主恢复时未安排布局")
+		}
+		// 系统 Surface 不解释桌面窗口管理事件。
+		_ = host.DispatchEvent(events.StateEvent{State: WindowStateHidden})
+		if host.Visible() != visible {
+			t.Fatal("桌面状态改变了系统 Surface 的可见性")
+		}
+	}
+}
+
 func TestSurfaceIdentityAndTextLifetime(t *testing.T) {
 	host := newSystemSurface(nil)
 	host.claimed = true

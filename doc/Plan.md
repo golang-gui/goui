@@ -1,5 +1,44 @@
 # Plan
 
+## ProgressBar 动画与完整圆环（2026-11-11）
+
+- [x] 修复 Surface 合并后桌面 Visible 未随 StateEvent 更新的问题；已知桌面状态
+  在 GUI 宿主边界同步可见性与 Snapshot，Unknown 保留上次观察，请求不伪造成功。
+  系统 Surface 仍使用 VisibilityEvent；恢复可见时安排布局，让已断开的动画重连。
+- [x] 完整圆环改为分别闭合的外顺向/内反向 Hole 轮廓，一次填充；部分圆头弧、
+  长条 1.8s、圆形固定 90°/1.4s 运动契约保持不变，不修改平台或绘图后端。
+- [x] 新 GUI 状态/恢复布局回归在旧实现失败。独立 progress_regression 在旧构建
+  分别报 Visible=false 和 OpenGL 右侧中线 alpha=0；去掉恢复布局的临时变体能通过
+  初显，但隐藏期间重设忙等待后 Show 图像不再变化。修正后全部通过，未放宽预期。
+- [x] Linux amd64 / Go 1.25.8，独立 Xvnc / Xfwm4 4.16.1 合成会话，
+  Software/OpenGL × Native/Integrated × 1x/逻辑 2x 八组通过：实际后端类型/缩放
+  已记录，装饰模式无回退；0%/100%/半透明近满圆环两种缩放的中线与圆心像素、
+  连续活动图像变化、祖先/原生隐藏恢复、最小化恢复及模式切换均通过。观察 Timer
+  不续帧，隐藏/确定进度阶段无持续帧。OpenGL 为 Mesa 23.2.1 llvmpipe。
+- [x] 现有 GUI 例程 Software/OpenGL 1x、UI 例程 Software/OpenGL 各 1x/2x，
+  共六组原生鼠标/键盘验收通过：屏幕活动图像变化与停止、0%/100% 圆环接缝、
+  祖先隐藏恢复、亮暗/主题色、UI 身份/重建、语义与销毁检查。UI 的旧活动 Timer=2
+  改为帧驱动后的 0，保留不分配控件 Timer 的有效检查。外部驱动曾误采空行，且
+  mousemove --sync 在鼠标未移动时等待；修正驱动并串行重跑，未修改产品来绕过。
+- [x] 隔离已跟踪源码 `CGO_ENABLED=0 go test -json -count=1 ./...`：4893 通过、
+  11 既有跳过、0 失败。原工作区 `env -u DISPLAY go test ./...` 仍被旧未跟踪
+  例程/测试引用已移除 API 及既有桌面依赖阻塞；未手工修改这些旧源码。
+- [x] GUI/UI/widgets/widgets-ui race 完整组合重跑及相关 vet 通过。首次组合中 GUI
+  段错误；GUI 单跑、同一 HEAD 基线单跑、完整组合重跑均通过，未确认原因，
+  保留原始失败及重跑日志。Windows amd64/macOS arm64 的四个测试目标和三个
+  ProgressBar 窗口程序交叉编译通过，未原生运行。
+- [ ] Windows/macOS 原生、Direct2D、其他 WM/硬件 OpenGL、真实混合 DPI、移动
+  设备生命周期未验收；逻辑 2x 不等同真实 HiDPI。设计见
+  [DesignProgressBar](DesignProgressBar.md#73-桌面可见性与完整圆环回归2026-11-11)、
+  [DesignAnimation](DesignAnimation.md#root-契约) 与 DesignWindowManagement。
+
+构建、像素、截图、旧实现/临时变体、全仓及首次 race 失败日志在
+`/tmp/goui-progress-fix-8zagydc5`。全仓既有测试在专用会话操作剪贴板，并在临时
+源码副本写图片；原工作区无 DISPLAY 命令也按既有测试行为更新未跟踪的
+`platform/graphics/software/output.png`、`platform/typography/utils/dst.png`，不纳入
+提交。没有操作用户桌面。
+两套专用 Xvnc/Xfwm4/会话总线及所属辅助进程已清理，显示套接字已移除。
+
 ## 失活窗口快速拖动 HeaderBar（2026-11-11）
 
 - [x] 独立 Xvnc/Xfwm4 原生事件追踪确认：FocusIn 先于 PointerDown，旧 GUI 强制

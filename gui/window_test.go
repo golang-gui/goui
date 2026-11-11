@@ -45,7 +45,7 @@ func TestWindowShow(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if calls != 2 || w.Focused() || notifications != 0 || w.focusedWidget != focused || w.frameSuspended || native.paints == 0 {
+	if calls != 2 || w.Visible() || w.Focused() || notifications != 0 || w.focusedWidget != focused || w.frameSuspended || native.paints == 0 {
 		t.Fatalf("Show 未保留请求与观察的边界：calls=%d focus=%v notifications=%d paints=%d", calls, w.Focused(), notifications, native.paints)
 	}
 

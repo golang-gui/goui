@@ -301,7 +301,7 @@ func progressCircularMotion(elapsed time.Duration) (start, sweep float64) {
 	return -math.Pi/2 + 2*math.Pi*phase, math.Pi / 2
 }
 
-// A single closed contour includes both semicircular caps, so transparent
+// Partial arcs include both semicircular caps in one contour, so transparent
 // foregrounds are composited once. Near-full arcs join when their caps meet.
 func progressRingPath(center geometry.Point, outer, thickness float32, start, sweep float64) graphics.Path {
 	inner := max(0, outer-thickness)
@@ -314,18 +314,23 @@ func progressRingPath(center geometry.Point, outer, thickness float32, start, sw
 	first := progressCirclePoint(center, outer, start)
 	path := graphics.MoveTo(first.X, first.Y)
 	path = progressPathArc(path, center, outer, start, sweep)
-	end := progressCirclePoint(center, inner, start+sweep)
 	if full {
-		path = path.LineTo(end.X, end.Y)
-	} else {
-		path = path.ArcTo(half, half, 0, 0, 1, end.X, end.Y)
+		// Separate closed contours avoid an antialiased radial bridge. The
+		// inner contour is both marked as a hole and wound in reverse.
+		path = path.Close()
+		if inner > 0 {
+			point := progressCirclePoint(center, inner, start)
+			path = path.MoveTo(point.X, point.Y).Hole()
+			path = progressPathArc(path, center, inner, start, -sweep).Close()
+		}
+		return path
 	}
+	end := progressCirclePoint(center, inner, start+sweep)
+	path = path.ArcTo(half, half, 0, 0, 1, end.X, end.Y)
 	if inner > 0 {
 		path = progressPathArc(path, center, inner, start+sweep, -sweep)
 	}
-	if !full {
-		path = path.ArcTo(half, half, 0, 0, 1, first.X, first.Y)
-	}
+	path = path.ArcTo(half, half, 0, 0, 1, first.X, first.Y)
 	return path.Close()
 }
 

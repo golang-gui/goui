@@ -493,6 +493,16 @@ StateEvent carries an observation obtained in response to native events.
 Backends deduplicate equal observations. GUI delivers ConnectState through
 DispatchEvent. Queries and requests do not manufacture signals.
 
+GUI derives managed Surface visibility from known StateEvent observations:
+Normal/Maximized/Fullscreen are visible, Hidden/Minimized are not. Unknown
+preserves the last known visibility; before the first known observation it is
+false. This does not imply detection of occlusion or inactive workspaces.
+Surface.Visible and Snapshot agree, including inside ConnectState callbacks.
+A transition back to visible schedules layout and resumes frames, allowing
+widgets to reconnect animations even when the window geometry is unchanged.
+System-owned Surface visibility continues to use VisibilityEvent instead of
+desktop presentation states. Show/RequestState do not assign visibility.
+
 Window marks itself destroyed before notifying destruction. Each state, focus
 and close-request callback checks the window's lifetime at its own entry: if an
 earlier callback destroys the window, later ordinary callbacks are skipped.

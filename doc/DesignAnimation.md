@@ -51,6 +51,13 @@ GUI 主动请求按 time.Second/60 合并、节流；空闲首帧立即请求，
 旧表面的异步任务不能访问新表面。RequestPaint 返回调度受理结果，不承诺呈现；
 异步平台提交失败停止重试、保留 dirty，使用 GUI 既有诊断方式，不退出应用。
 
+Surface 的可见性由 GUI 在宿主边界维护：桌面管理窗口从原生 `StateEvent` 推导，
+Normal/Maximized/Fullscreen 为可见，Hidden/Minimized 为不可见，Unknown 保留
+上次观察；系统 Surface 继续使用 `VisibilityEvent`。初次有效可见观察前为 false，
+`Show`/`RequestState` 请求不直接更改可见观察，也不伪造状态事件。
+不可见→可见时将布局标为 dirty，再恢复帧，以便已断开的控件动画在 Arrange 中
+重新连接；不依赖装饰类型或尺寸变化。`Surface.Visible()` 与 Snapshot 共用此状态。
+
 ## animation API
 
 ```go

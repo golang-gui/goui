@@ -11,16 +11,13 @@
 //     固定 90° 圆头弧段，顺时针匀速旋转，1.4 秒一圈，不伸缩、停顿或跳变。
 //     Rebuild 仅请求 UI 重建，反复点击不使动画跳回起点，也不创建新的 Timer。
 //     Check 核对四个 ID 的 Widget 身份、形态、比例／忙等待和快照；
-//     旧 Timer 计数断言的限制见下方说明。多次 Check 不替代动画及像素观察。
+//     忙等待使用 Root 帧信号，不分配控件 Timer。多次 Check 不替代动画及像素观察。
 //  3. Busy 切换下方模式，切回确定进度时停止动画并显示保存值。Hide 隐藏共同祖先，
 //     恢复后正常动画，无残影，上方按钮始终可用。
 //  4. Dark／Accent 切换亮暗及蓝／红，轨道中性，前景跟随主题，不重置活动。
 //     调整窗口大小，圆形不变成椭圆、绘制不越界。
 //  5. 在 1x/2x 重复以上步骤，4 DIP 对应 4/8 物理像素，圆头无接缝／加深。
 //
-// 已知用例限制：Check 在 busy 且 visible 时仍期待两个活动 Timer，但 ProgressBar
-// 已改用 Root 帧信号驱动动画。该旧断言需修正后才能将此模式记为通过；隐藏或
-// 确定进度模式的旧断言期待零个 Timer。启动成功不能代替该项验收。
 // 平台差异：字体／装饰可不同，抗锯齿允许细微差别，不承诺刷新同步。
 // 副作用：窗口与日志，无系统设置／剪贴板／文件写入。
 // 复位：Reset 恢复比例，重启恢复全部状态。退出：关闭主窗口，先检查所有 Timer
@@ -97,11 +94,8 @@ func main() {
 					panic("progress snapshot incorrect: " + id)
 				}
 			}
-			want := 0
-			if busy && visible {
-				want = 2
-			}
-			monitor.checkTimers(want)
+			// 动画已迁移到 Root 帧信号；仍检查没有控件专属 Timer。
+			monitor.checkTimers(0)
 			fmt.Printf("ASSERT PASS value=%.2f busy=%v visible=%v dark=%v retained=true\n", value, busy, visible, dark)
 		}
 		row := func(text string, p *wui.ProgressBarView) ui.View {

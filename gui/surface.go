@@ -38,7 +38,9 @@ type Surface interface {
 	// runs after the focused widget's tree; modal targets receive input first.
 	Shortcuts() *ShortcutController
 
-	// Visible reports the latest native visibility observation.
+	// Visible reports the latest known native visibility. Managed desktop
+	// windows derive it from presentation state; Unknown preserves the last
+	// observation. It does not report occlusion or focus.
 	Visible() bool
 
 	Focused() bool
@@ -251,6 +253,21 @@ func (w *surfaceBase) backgroundStyle() style.Style {
 }
 
 func (w *surfaceBase) Visible() bool { return !w.destroyed && w.visible }
+
+func (w *surfaceBase) observeVisibility(visible bool) {
+	if visible && !w.visible {
+		// Widgets may have disconnected their frame listeners while hidden.
+		// Arrange them again before painting, even if geometry is unchanged.
+		w.layoutDirty = true
+	}
+	w.visible = visible
+	if visible && (w.claimed || w.managed() != nil) {
+		w.resumeFrames(w.platformWindow)
+	} else {
+		w.suspendFrames()
+		w.cancelInput(GestureInterrupted)
+	}
+}
 
 func (w *surfaceBase) Focused() bool {
 	return !w.destroyed && w.focused
@@ -515,13 +532,7 @@ func (w *surfaceBase) DispatchEvent(event events.Event) error {
 			w.requestLayout()
 		}
 	case events.VisibilityEvent:
-		w.visible = event.Visible
-		if event.Visible && (w.claimed || w.managed() != nil) {
-			w.resumeFrames(w.platformWindow)
-		} else {
-			w.suspendFrames()
-			w.cancelInput(GestureInterrupted)
-		}
+		w.observeVisibility(event.Visible)
 	case events.CloseEvent:
 		if host := w.managed(); host != nil {
 			allow := true
@@ -553,10 +564,11 @@ func (w *surfaceBase) DispatchEvent(event events.Event) error {
 		if w.managed() == nil {
 			return nil
 		}
-		if event.State == WindowStateHidden || event.State == WindowStateMinimized {
-			w.suspendFrames()
-		} else if event.State != WindowStateUnknown && w.frameSuspended {
-			w.resumeFrames(w.platformWindow)
+		switch event.State {
+		case WindowStateHidden, WindowStateMinimized:
+			w.observeVisibility(false)
+		case WindowStateNormal, WindowStateMaximized, WindowStateFullscreen:
+			w.observeVisibility(true)
 		}
 		w.nativeChanged()
 		if w.destroyed {
