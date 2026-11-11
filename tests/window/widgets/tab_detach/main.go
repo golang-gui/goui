@@ -49,6 +49,17 @@
 // 副作用：只创建、移动、销毁自身窗口，不改系统设置或剪贴板。
 // 复位：重启程序。退出：默认模式关闭全部窗口；严格模式 Verify 自动退出，直接关闭算未验收。
 // 本例只覆盖命令式窗口准备与移交；声明式子树协调另见 ../ui_tab_transfer。
+//
+// 源窗口关闭后的连续拖拽回归：-expect source-close-repeat（可组合 -chrome integrated）。
+// 初始 MAIN 有 B/C，DETACHED 只有 A，A 输入框为 retained A。先将 A 拖入 MAIN，
+// 预期空 DETACHED 在转移通知中同步销毁。点击 MAIN 的 New target，依次将 A 拖入
+// 新 TARGET、再拖回 MAIN；再点击 New target，重复一次往返。每次空源窗口都关闭。
+// 最后在 MAIN 点击 Verify and exit：断言五次转移、三次空源销毁、原页面/输入框身份、
+// 文本、归属、选择和六次 Mount/五次 Unmount；任何 TransferError 或提前关闭均失败。
+// 按 Esc 取消一次拖动不得改变计数；取消后继续上述步骤。此模式只创建自身窗口，
+// 不读取私有拖拽状态、不使用 DevServer；旧版可能在第一次关闭后报 application busy。
+// 追加 -native-source-close：在相同通知中直接销毁底层原生窗口，覆盖原生窗口 ID
+// 先失效再清理拖拽的顺序；仍须满足相同的五次转移与一次性收尾预期。
 package main
 
 import (
@@ -97,21 +108,28 @@ func main() {
 }
 
 func run() error {
-	expect := flag.String("expect", "interactive", "interactive, detached, canceled, rejected or prepare-failure")
+	expect := flag.String("expect", "interactive", "interactive, detached, canceled, rejected, prepare-failure or source-close-repeat")
 	rejectTarget := flag.Bool("reject-target", false, "also show a target rejecting native negotiation")
 	chrome := flag.String("chrome", "native", "native or integrated")
+	nativeSourceClose := flag.Bool("native-source-close", false, "destroy the native source first; requires source-close-repeat")
 	flag.Parse()
 	if *expect == "interactive" && *rejectTarget {
 		*expect = "detached"
 	}
-	if !slices.Contains([]string{"interactive", "detached", "canceled", "rejected", "prepare-failure"}, *expect) {
+	if !slices.Contains([]string{"interactive", "detached", "canceled", "rejected", "prepare-failure", "source-close-repeat"}, *expect) {
 		return fmt.Errorf("invalid expectation")
+	}
+	if *nativeSourceClose && *expect != "source-close-repeat" {
+		return fmt.Errorf("native-source-close requires source-close-repeat")
 	}
 	decoration := gui.WindowChromeNative
 	if *chrome == "integrated" {
 		decoration = gui.WindowChromeIntegrated
 	} else if *chrome != "native" {
 		return fmt.Errorf("invalid chrome")
+	}
+	if *expect == "source-close-repeat" {
+		return runSourceCloseRepeat(decoration, *nativeSourceClose)
 	}
 	if *expect == "interactive" {
 		return runInteractive(decoration)

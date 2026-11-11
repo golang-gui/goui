@@ -11,6 +11,7 @@
 > 第 10 节原先要求精确区分所有原生结束原因的实施门槛。
 > 第 13–25 节保留阶段记录，其“尚未完成”描述以当时为准；当前进度见 [Plan](Plan.md)。
 > 当前交互修订见第 28 节：推开式目标占位、隐藏源标签，以及单标签仍可转入已有窗口。
+> 最后一页转走并关闭空源窗口后的会话收尾修复见第 32 节。
 > 2026-10-01 当前 UI 身份／移交契约见第 29 节：页面是普通节点，ID 只在挂载目标内
 > 匹配，不再使用独立 key、页面双向映射或任意 State 查询。第 7、15 节的旧实现描述
 > 仅作阶段记录，其接口、身份规则与当前实现冲突时以第 29 节为准。
@@ -1764,3 +1765,36 @@ XTest，走正常原生事件链，不用 DevServer。首次隔离会话沿用 `
 `go test -race ./gui ./widgets ./widgets/ui ./ui` 通过。
 Windows amd64 / macOS arm64 的 `CGO_ENABLED=0 go test -exec=/bin/true ./...`
 全仓目标编译通过（仅编译）；`git diff --check` 通过。
+
+
+## 32. 最后一页转移后的源会话收尾（2026-11-11）
+
+v0.7.0 与修复前的当前分支中，X11 源服务 Destroy 仅调用 Cancel；若 Drop 已发出，
+Cancel 只记待取消，继续等待 XdndFinished。源窗口随后销毁，既无法正常接收该应答，
+结束路径也因窗口 ID 为零而跳过 DragSourceEnd。原生会话最终超时清理仍不能清除
+GUI 的 Application 会话，下一次跨窗接管因此报告 unavailable or busy。
+
+修复限定在 X11 源服务和终态通知的生命周期：
+
+- Destroy 先完成服务注销，再显式结束该服务拥有的源会话；正常 Cancel 在 Drop 后
+  等待完成的规则保持不变。结束先清除活动会话、计时器、传输、抓取及预览资源。
+- Begin 时保存原事件回调，End 在资源清理后发送一次，回调不依赖仍存活的窗口 ID。
+  迟到消息、重复销毁和旧终态不能结束新会话；继续使用正常宿主 DispatchEvent。
+- GUI 复用现有 Delivering/pendingEnd/committed 规则。同步转移通知中关闭源窗口，
+  原生终态等待当前 Drop 返回后再向源通知；已接受的 Move 保持成功，不回滚页面。
+  Drop 返回后才关闭源窗口同样保留已提交动作。无需更改 TabBar、UI 或公共 API。
+
+参考 [GTK 4.20.0 的 X11 拖拽实现](https://github.com/GNOME/gtk/blob/4.20.0/gdk/x11/gdkdrag-x11.c#L1886-L1946)：
+其会话使用独立 ipc_surface 作为协议窗口，并持有引用至 drop_done 后再释放；
+[finalize](https://github.com/GNOME/gtk/blob/4.20.0/gdk/x11/gdkdrag-x11.c#L204-L224)
+销毁协议/预览 surface。这是该版本 X11 后端的源码行为，不是通用平台承诺。
+GOUI 采用会话持有终态通知、显式解释资源寿命的原则；当前沿用 surface-scoped
+能力，在源服务销毁时结束跟踪，未新增独立 IPC 窗口或标签专属的全局会话。
+
+`gui/drag_dispatch_test.go` 覆盖 Drop 内/返回后源宿主销毁，接受/拒绝结果、终态一次、
+会话数据释放、正常指针输入启动下一会话以及迟到旧终态隔离。
+`tests/window/widgets/tab_detach -expect source-close-repeat` 在真实窗口中覆盖最后一页
+移入主窗口后同步销毁源，再进行两次往返；Verify 断言五次转移、三次空源关闭、
+原 page/input 身份、文本、归属和 Mount/Unmount=6/5。可加 `-native-source-close`
+覆盖原生窗口 ID 先归零的销毁顺序。操作、平台差异和副作用以入口注释为准。
+验证结果与剩余范围见 [Plan](Plan.md)。

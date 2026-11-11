@@ -132,7 +132,6 @@ func (d *dragService) Destroy() {
 	if w == nil {
 		return
 	}
-	d.Cancel()
 	offer := d.offer
 	if offer != nil && offer.dropped {
 		offer.finish(0)
@@ -142,12 +141,18 @@ func (d *dragService) Destroy() {
 	d.offer = nil
 	d.window = nil
 	w.dnd = nil
-	if offer != nil && !offer.dropped && offer.entered && w.wid != 0 {
-		w.emitEvent(events.DragOfferEvent{EventType: events.DragLeave, Offer: offer})
-	}
 	if w.wid != 0 {
 		d.platform.display.DeleteProperty(w.wid, d.platform.atoms.XdndAware)
 		d.platform.display.Flush()
+	}
+	if offer != nil && !offer.dropped && offer.entered && w.wid != 0 {
+		w.emitEvent(events.DragOfferEvent{EventType: events.DragLeave, Offer: offer})
+	}
+	if source := d.platform.dragSource; source != nil && source.service == d {
+		// Unlike Cancel, destruction cannot keep waiting for XdndFinished on
+		// a source window that is about to disappear. A synchronous local Drop
+		// may still commit; GUI preserves that result after its handler returns.
+		source.end(dragdrop.Result{Canceled: true})
 	}
 }
 
@@ -637,6 +642,7 @@ func (p *Platform) readDragBytes(w xlib.Window, property xlib.Atom) ([]byte, xli
 type xdndSource struct {
 	service         *dragService
 	window          *Window
+	onEvent         events.EventHandler // terminal delivery survives the source window
 	id              uint64
 	actions         dragdrop.Action
 	wire            map[xlib.Atom][]byte
@@ -703,7 +709,7 @@ func (d *dragService) beginSource(id uint64, data *dragdrop.Data, actions dragdr
 	if err != nil {
 		return err
 	}
-	s := &xdndSource{service: d, window: d.window, id: id, actions: actions,
+	s := &xdndSource{service: d, window: d.window, onEvent: d.window.onEvent, id: id, actions: actions,
 		feedback: feedback,
 		preview:  visual, cursors: make(map[dragdrop.Action]xlib.Cursor),
 		wire: wire, types: types, x: int(press.event.XRoot), y: int(press.event.YRoot),
@@ -1051,9 +1057,10 @@ func (s *xdndSource) end(result dragdrop.Result) {
 		p.display.DeleteProperty(s.window.wid, p.atoms.XdndActionList)
 	}
 	p.display.Flush()
-	if s.window.wid != 0 {
-		s.window.emitEvent(events.DragSourceEvent{EventType: events.DragSourceEnd,
-			ID: s.id, Result: result})
+	if notify := s.onEvent; notify != nil {
+		s.onEvent = nil
+		moveResizePress = nativePress{}
+		notify(events.DragSourceEvent{EventType: events.DragSourceEnd, ID: s.id, Result: result})
 	}
 }
 

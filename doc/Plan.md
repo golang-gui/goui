@@ -1,5 +1,36 @@
 # Plan
 
+## X11 最后一页转移后关闭源窗口的会话收尾（2026-11-11）
+
+- [x] X11 源服务 Destroy 显式结束本服务的活动会话；终态回调由会话保存，资源清理后
+  发送一次，不依赖有效窗口 ID。普通 Cancel 在 Drop 后等待结果的规则保持不变。
+  GUI 继续用同步提交保护保留成功 Move，无新增公共 API 或标签专属清理捷径。
+- [x] GUI 回归覆盖 Drop 内/返回后销毁源、接受/拒绝、正常事件通道的一次终态、
+  数据释放、下一次指针拖拽以及迟到旧终态隔离。增加 tab_detach 的
+  source-close-repeat 和 native-source-close 入口，断言五次转移、三次空源关闭、
+  原页面/输入框/文本/归属及 Mount/Unmount=6/5。
+- [x] 修复前二进制在普通关闭、原生先关闭两种顺序下均复现：首次转移成功，第二次
+  跨窗拖拽报告 `gui: drag application is unavailable or busy`。修正版独立 Xvnc/
+  Xfwm4 4.16.1 合成会话中，Software/OpenGL 各完成 Native/Integrated 1x、Integrated
+  逻辑 2x；另完成 Software Native、OpenGL Integrated 的原生先销毁 1x，共八组通过。
+  额外临时诊断构建在 Integrated 2x 原生先销毁场景观察到实际 OpenGL；环境为
+  Mesa 23.2.1 / llvmpipe（LLVM 15.0.7）。诊断打印只存在于仓库外副本。
+  初始驱动误用了外框坐标或 Integrated 窗口按钮区，修正客户区坐标/栏内落点后重跑；
+  未为驱动坐标问题更改产品，也未放宽窗口内断言。
+- [x] `env -u DISPLAY go test ./gui ./widgets ./widgets/ui ./platform/linux/x11 -count=1`、
+  对应 race 和相关 vet 通过。Go 1.25.8/linux amd64 下隔离跟踪源码运行
+  `CGO_ENABLED=0 go test -json -count=1 ./...`：4879 通过、11 既有跳过、0 失败。
+  原工作区 `env -u DISPLAY go test ./...` 仍被旧未跟踪例程/测试的已移除 API 引用
+  阻塞，未修改这些文件；命令和错误保留于 workspace-full.log。
+- [x] Windows amd64、macOS arm64 的窗口例程和 GUI 测试交叉编译通过；审查既有
+  OLE/AppKit 源终态保存/通知路径，未修改其后端实现。同步更新拖放/标签转移设计。
+- [x] 验收窗口、专用 WM、显示服务和会话总线已清理，未操作用户桌面。日志、截图
+  及基线/修正版构建位于 `/tmp/goui-drag-source-close-ugfnu071`；既有全仓测试操作
+  独立会话剪贴板，并在临时
+  源码副本生成图片。
+- [ ] Windows/macOS 原生交互、Direct2D、其他 WM、真实混合 DPI、外部进程已投递
+  后的源销毁仍未验收；逻辑 2x 不代表真实 HiDPI。
+
 ## TabPage 自定义尾部图标（2026-11-11）
 
 - [x] 增加 IndicatorIcon 及声明绑定，复用固定尾部槽位；可关闭时在悬停/焦点下

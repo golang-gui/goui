@@ -77,7 +77,7 @@ func (o *testDragOffer) Finish(a dragdrop.Action) error {
 }
 
 func TestLocalDropCommitSurvivesReentrantEnd(t *testing.T) {
-	for _, stage := range []string{"drop", "leave", "finish"} {
+	for _, stage := range []string{"drop", "leave", "finish", "source-destroy", "source-destroy-after-drop"} {
 		for _, accepted := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/accepted=%t", stage, accepted), func(t *testing.T) {
 				app := &application{}
@@ -88,19 +88,35 @@ func TestLocalDropCommitSurvivesReentrantEnd(t *testing.T) {
 				source := NewDragSource()
 				run := &guiDragSession{app: app, id: 42, source: source, data: new(DragData)}
 				app.dragSession = run
+				source.run = run
 				var results []DragResult
 				source.ConnectEnd(func(result DragResult) { results = append(results, result) })
+				var sourceWindow *window
 				end := func() {
-					app.dispatchDragSourceEvent(events.DragSourceEvent{EventType: events.DragSourceEnd, ID: run.id, Result: dragdrop.Result{Canceled: true}})
-					if len(results) != 0 {
+					event := events.DragSourceEvent{EventType: events.DragSourceEnd, ID: run.id, Result: dragdrop.Result{Canceled: true}}
+					if sourceWindow != nil {
+						// 即使源已销毁，终态仍须经过原宿主的正常事件通道。
+						_ = sourceWindow.DispatchEvent(event)
+					} else {
+						app.dispatchDragSourceEvent(event)
+					}
+					if run.delivering && len(results) != 0 {
 						t.Fatal("End was emitted before synchronous Drop/Finish returned")
 					}
+				}
+				if stage == "source-destroy" || stage == "source-destroy-after-drop" {
+					sourceWindow = testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{app: app}}})
+					sourceWindow.drag.native = &gestureDragNative{onDestroy: end}
+					defer sourceWindow.Destroy()
 				}
 				target := NewDropTarget(DragFormatText)
 				root.AddEventController(target)
 				target.ConnectDrop(func(e *DropRequest) {
 					if stage == "drop" {
 						end()
+					}
+					if stage == "source-destroy" {
+						sourceWindow.Destroy()
 					}
 					e.Accepted = accepted
 				})
@@ -121,13 +137,54 @@ func TestLocalDropCommitSurvivesReentrantEnd(t *testing.T) {
 				if err := win.DispatchEvent(events.DragDataEvent{OfferID: offer.id, Format: dragdrop.FormatText, Data: data}); err != nil {
 					t.Fatal(err)
 				}
+				if stage == "source-destroy-after-drop" {
+					if app.dragSession != run || len(results) != 0 {
+						t.Fatal("原生结束前提前释放了会话")
+					}
+					sourceWindow.Destroy()
+				}
 				want := DragAction(0)
 				if accepted {
 					want = DragCopy
 				}
+				if sourceWindow != nil && len(results) != 1 {
+					t.Fatal("源窗口销毁后未通过正常事件通道收到终态")
+				}
 				run.end(DragResult{Canceled: true}) // duplicate terminal callbacks are ignored
-				if len(results) != 1 || !results[0].LocalDrop || results[0].Action != want || results[0].Canceled == accepted || results[0].Validate() != nil || app.dragSession != nil || run.data != nil || !slices.Equal(offer.finished, []dragdrop.Action{want}) {
+				if len(results) != 1 || !results[0].LocalDrop || results[0].Action != want || results[0].Canceled == accepted || results[0].Validate() != nil || app.dragSession != nil || source.run != nil || run.data != nil || !slices.Equal(offer.finished, []dragdrop.Action{want}) {
 					t.Fatalf("results=%+v finish=%v session=%p data=%p", results, offer.finished, app.dragSession, run.data)
+				}
+				if sourceWindow != nil {
+					// 通过正常指针手势开始下一会话；旧终态不得清除新会话。
+					native := new(gestureDragNative)
+					win.drag.native = native
+					next := NewDragSource()
+					next.ConnectPrepare(func(request *DragPrepare) {
+						request.Data = new(DragData)
+						request.Data.SetText("next session")
+					})
+					root.AddEventController(next)
+					for _, event := range []events.PointerEvent{
+						{EventType: events.PointerDown, Position: geometry.Point{X: 20, Y: 20}},
+						{EventType: events.PointerMove, Position: geometry.Point{X: 40, Y: 20}},
+					} {
+						event.Button, event.Buttons = events.PointerButtonLeft, events.PointerButtonLeftDown
+						if err := win.DispatchEvent(event); err != nil {
+							t.Fatal(err)
+						}
+					}
+					if native.begin != 1 || app.dragSession == nil || next.run != app.dragSession {
+						t.Fatal("源窗口关闭后的下一次拖拽未启动")
+					}
+					id := app.dragSession.id
+					_ = sourceWindow.DispatchEvent(events.DragSourceEvent{EventType: events.DragSourceEnd, ID: run.id})
+					if app.dragSession == nil || app.dragSession.id != id || len(results) != 1 {
+						t.Fatal("迟到终态结束了新会话或重复通知旧源")
+					}
+					_ = win.DispatchEvent(events.DragSourceEvent{EventType: events.DragSourceEnd, ID: id, Result: dragdrop.Result{Canceled: true}})
+					if app.dragSession != nil || next.run != nil {
+						t.Fatal("下一会话未正常释放")
+					}
 				}
 			})
 		}
@@ -340,11 +397,12 @@ func TestDragServiceRetriesAfterControllerConfigurationChanges(t *testing.T) {
 }
 
 type gestureDragNative struct {
-	feedback dragdrop.Feedback
-	begin    int
-	cancels  int
-	onBegin  func(uint64)
-	beginErr error
+	feedback  dragdrop.Feedback
+	begin     int
+	cancels   int
+	onBegin   func(uint64)
+	onDestroy func()
+	beginErr  error
 }
 
 func (*gestureDragNative) SetFormats([]dragdrop.Format) error { return nil }
@@ -357,7 +415,12 @@ func (n *gestureDragNative) Begin(id uint64, _ *dragdrop.Data, _ dragdrop.Action
 	return n.beginErr
 }
 func (n *gestureDragNative) Cancel() { n.cancels++ }
-func (*gestureDragNative) Destroy()  {}
+func (n *gestureDragNative) Destroy() {
+	if fn := n.onDestroy; fn != nil {
+		n.onDestroy = nil
+		fn()
+	}
+}
 
 func TestDragSourceFeedbackIsPerSessionAndPreservesCancellation(t *testing.T) {
 	root := newTestWidget()
