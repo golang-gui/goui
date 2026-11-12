@@ -13,14 +13,18 @@ func (d *demo) styleRules(settings ui.Settings) []style.Rule {
 	dark := d.mode == 2 || d.mode == 0 && settings.ColorScheme() == ui.ColorSchemeDark
 	accents := []color.Color{settings.AccentColor(), color.NRGBA{R: 118, G: 74, B: 213, A: 255}, color.NRGBA{R: 30, G: 151, B: 99, A: 255}, color.NRGBA{R: 217, G: 115, B: 36, A: 255}}
 	rules := modern.Rules(modern.Options{Dark: dark, AccentColor: accents[d.accent], FontFamily: settings.FontFamily(), FontSize: settings.FontSize()})
-	// Copy the ordinary button rules and set a neutral selected background for
-	// the active category. The rules are independent values; they introduce no
-	// style inheritance and leave the child Label's foreground unchanged.
+	// Copy complete rules for custom names, including input selection, caret
+	// and placeholder parts. These independent values introduce no inheritance.
 	for _, rule := range rules {
-		if rule.Sel.Name == "button" {
+		switch rule.Sel.Name {
+		case "button":
 			rule.Sel.Name = "demo-nav-current"
-			rules = append(rules, rule)
+		case "text-input":
+			rule.Sel.Name = "demo-cell-edit"
+		default:
+			continue
 		}
+		rules = append(rules, rule)
 	}
 	selected := [3]color.NRGBA{{R: 208, G: 208, B: 214, A: 255}, {R: 200, G: 200, B: 207, A: 255}, {R: 189, G: 189, B: 197, A: 255}}
 	if dark {
