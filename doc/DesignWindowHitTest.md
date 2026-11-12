@@ -48,6 +48,14 @@ WindowControls may expose caption roles. Mere Widget presence or focusability
 does not distinguish draggable from interactive content. Modal, overlay and
 capture policy remain GUI decisions.
 
+GUI distinguishes a queued content relayout from unavailable chrome geometry.
+A pending `RequestLayout` alone keeps the last completed allocations usable;
+the query never consumes that request or synchronously runs layout. Initial or
+replaced content, host size/state changes and changed controls bounds defer to
+Default until content and controls layout complete. Queries during layout also
+defer. See [completed chrome geometry](DesignWindowChrome.md#completed-chrome-geometry-and-pending-content-layout-2026-11-12)
+for the GUI validity rules and regression coverage. This changes no platform API.
+
 ## Native input, not synthesized button behavior
 
 Returning a role never triggers an action during the query. Native drag/resize

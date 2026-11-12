@@ -268,8 +268,8 @@ double-click history; size, window-state and modal transitions retain their
 existing cancellation rules. Focus updates refresh native controls and repaint.
 They request layout only when the observed ControlsBounds changes. Native
 placement retries remain scheduled for the next paint. Application callbacks
-can still invalidate layout, and the chrome controller keeps its existing
-guard against using incomplete or invalid geometry.
+can still request layout; chrome now distinguishes that pending work from
+incomplete or invalid geometry as described below.
 
 An isolated Xvnc/Xfwm4 4.16.1 trace of the old code showed FocusIn arriving
 before PointerDown. FocusIn unconditionally requested chrome layout, so the
@@ -289,11 +289,53 @@ equivalent focus-event ordering across backends.
 
 GUI tests cover focus before/during a press with no intervening paint, custom
 and native controls, genuine focus loss, size/state changes, native controls
-geometry changes, callback invalidation and destruction. The pixel_snap -peer
+geometry changes, callback requests and destruction. The pixel_snap -peer
 window example documents repeated fast activation drags and the existing
 double-click/resize/button checks. Windows uses native WM_NCHITTEST; macOS
 also uses the GUI fallback, so its native timing remains a separate validation
 item. Measured results and platform gaps are recorded in [Plan](Plan.md).
+
+#### Completed chrome geometry and pending content layout (2026-11-12)
+
+Window-wide `layoutDirty` schedules the next layout; it does not by itself
+invalidate the last completed chrome allocation. A body widget can keep
+requesting layout from Arrange or BeforePaint while HeaderBar and TabBar blank
+space remain draggable. Native hit queries, GUI gesture admission and resize
+cursor queries use the same private geometry-validity state. Input never runs
+layout or clears the pending request.
+
+Geometry becomes unavailable on initial setup, root replacement, native host
+size/state/show changes, or changed ControlsBounds. These changes also cancel
+pending caption candidates. The paint path suspends queries while reconciling
+controls and arranging content, then commits geometry after the optional single
+reservation pass and custom-controls layout. It commits only if the root and
+geometry revision still match the completed pass; a callback cannot publish
+geometry for an obsolete root or host. Region answers are defensively discarded
+if a callback invalidates geometry; queries remain read-only by contract.
+Destruction clears the retained root.
+Ordinary subsequent layout requests preserve caption candidates and double-click
+history. Focus loss, modal input and gesture arbitration retain their rules.
+
+HeaderBar also requires an allocation from its current mount. Removing and
+reattaching a header cannot expose its retained rectangle before Arrange.
+Visibility, enabled state, covering children, Client overrides and controls
+reservation still participate in every hit query; this is not a cached hit map.
+
+As a limited reference, Flutter **3.35.0**
+[`RenderBox.hitTest`](https://github.com/flutter/flutter/blob/3.35.0/packages/flutter/lib/src/rendering/box.dart)
+requires an established size and documents that painting need not have occurred.
+This supports distinguishing completed geometry from paint scheduling; it does
+not promise that every dirty RenderBox is hittable. GOUI keeps its own window
+validity rules without adding a RenderObject abstraction or flushing layout
+from native queries.
+
+Package regressions exercise both native queries and GUI gestures, repeated
+pending requests, activation callbacks, partial-layout reentrancy, remounts and
+real invalidation. `tests/window/gui/chrome_layout` keeps the body pending on
+every Arrange and asserts actual window movement, unchanged tab selection,
+ordinary button delivery and semantic snapshots. Old code fails HeaderBar and
+TabBar blank-space drags on X11; measured backend/platform results and remaining
+coverage are recorded in [Plan](Plan.md).
 
 #### X11 focus during native move/resize (2026-11-11)
 

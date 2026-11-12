@@ -26,6 +26,12 @@ overridden by later subscribers. They must not mutate layout, dispatch events,
 destroy the window or retain result pointers. Native input never invokes GUI
 button commands directly. Modal input and existing pointer capture still apply.
 
+Input reads the last completed chrome geometry even when content has queued
+another layout. Host/root/controls changes and an in-progress layout still
+suspend queries; validity is committed after content and controls finish.
+See [pending content layout](DesignWindowChrome.md#completed-chrome-geometry-and-pending-content-layout-2026-11-12)
+for invalidation, callback and remount rules.
+
 ## Controls geometry
 
 ChromeInfo's only geometry field is ControlsBounds, the occupied button union

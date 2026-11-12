@@ -1,5 +1,49 @@
 # Plan
 
+## 正文待布局时保留标题栏拖动（2026-11-12）
+
+- [x] GUI 将下一帧 `layoutDirty` 与已完成的 chrome 几何分开；正文普通
+  RequestLayout 不再禁用 HeaderBar、标签栏空白拖动、双击历史或缩放光标。
+  根替换、窗口尺寸/状态/显示及 ControlsBounds 变化仍撤销几何和候选；正文、
+  有界 reservation 重排及自绘按钮全部布局完成后才提交有效几何。布局中查询、
+  回调中真正的几何失效和 HeaderBar 重新挂载仍受保护。无同步布局、新公共 API
+  或平台补偿，设计见 [DesignWindowChrome](DesignWindowChrome.md#completed-chrome-geometry-and-pending-content-layout-2026-11-12)。
+- [x] 新增包内回归覆盖 GUI 手势及原生命中两条入口：按下前/期间请求布局、
+  Arrange/BeforePaint/聚焦回调持续请求、重复拖动和双击、真正的失效与恢复、
+  布局期间重入和重新挂载。旧源码 overlay 下正向用例失败、保护用例通过；
+  修正后 GUI 完整测试通过。既有聚焦回调断言按新契约允许普通 RequestLayout，
+  保留 dirty 未被消费及失焦、尺寸、状态、原生按钮变化的拒绝断言。
+- [x] Linux amd64 / Go1.25.8，专用 Xvnc / Xfwm4 4.16.1 合成桌面：
+  `tests/window/gui/chrome_layout` 在 Software 1x、OpenGL 1x/2x 分别完成
+  HeaderBar、真实 TabBar 空白处拖动及 Count 按钮，共9组通过。每次正文
+  Arrange 都请求下一帧布局；断言实际窗口位移、计数、标签选择及 Snapshot，
+  核对实际后端资源类型和 PixelScale。旧源码在相同桌面的两种拖动均位移0、
+  退出1；修正后拖动移动窗口，按钮只计数且不移动。
+- [x] Windows10 build19045 amd64 / RDP / Direct2D 1x 和 macOS15.7.7
+  build24G720 arm64 / VNC / OpenGL 1x 各完成上述3组原生窗口操作，均退出0。
+  两平台各123项相关 GUI 测试及子用例原生通过、无跳过；上传二进制 SHA-256
+  已核对。Windows/macOS GUI 测试和新窗口程序交叉编译也通过。
+- [x] GUI/widgets/widgets-ui/Demo 定向测试、
+  `go test -race ./gui ./widgets ./widgets/ui`、
+  `go vet ./gui ./widgets ./widgets/ui ./tests/window/gui/chrome_layout`
+  及 `git diff --check` 通过。原工作区 `env -u DISPLAY go test ./...` 已执行但
+  失败：未跟踪旧 API 例程/测试和 Typography 无 DISPLAY；关键诊断去除耗时、
+  按多重集比较与上一轮一致，无新增诊断。保留这些文件和原有断言。
+- [x] 为覆盖被上述旧文件阻断的已跟踪源码，以 `git archive HEAD` 加本轮改动
+  在仓库外隔离副本、专用显示下执行 `CGO_ENABLED=0 go test -json -count=1 ./...`，
+  73个有测试包通过，5538项测试及子用例通过；11项按原条件跳过（手工输入/
+  窗口状态、跨应用剪贴板、macOS签名和iOS SDK），130个包无测试文件。
+  这不代表原工作区全仓通过，也不代表跳过的桌面场景已验收。
+- [ ] 其他 WM、Wayland、Windows11、非RDP Windows 会话、Windows/macOS
+  其他缩放/绘制后端及移动平台未执行；本轮没有改变平台输入或生命周期契约。
+
+证据在 `/tmp/goui-chrome-layout-fix-_cz5cziz`，包含旧实现失败、逻辑/race/vet、
+两种全仓结果、跨平台构建/原生测试及窗口日志和截图。Windows SFTP 使用相对
+home 路径；初次 PowerShell 测试参数被拆分，改为完整引用后通过，保留原始
+失败记录，未修改测试断言。原全仓旧测试按原行为重写未跟踪 PNG；隔离副本的
+旧测试也输出 PNG 并操作专用显示的剪贴板，不影响用户桌面。测试窗口、远端
+包装器及本轮专用 X11/WM/总线清理后释放输入并断开本轮 RDP/VNC，保留既有 SSH。
+
 ## Windows 鼠标消息补读 Alt（2026-11-12）
 
 - [x] Win32 客户区移动/进入、按下/抬起及横纵滚轮的修饰键转换，保留 wParam
