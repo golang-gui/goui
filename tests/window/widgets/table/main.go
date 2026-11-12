@@ -20,6 +20,9 @@
 //  2. 拖动表头各列右边缘改变宽度，光标为水平调整；说明随宽度重新换行，全部
 //     行和表头边界一致。名称最小 80、最大 480 DIP。拖动中按 Esc 恢复起始宽度，
 //     输出 resize 回退；松手不会排序，也不残留高亮。UI 重建后保留用户宽度。
+//     先拖Size右边缘，再拖Description右边缘：目标边缘跟手，目标左侧的列宽
+//     保持不变。拖宽先借右侧列的空间至MinWidth，仍不足允许横滚；拖窄先减少
+//     溢出，再恢复右侧基础宽度及伸展。松手、Refresh/Rebuild不得重新全表分配。
 //  3. 点击 Name 或 Size 表头，先升序后降序，输出 sort，箭头与实际数据一致；
 //     选中记录和 Current 按 ID 保留，不因排序改选别的记录。其他表头不可排序。
 //  4. 缩窄窗口并横向滚动，表头与正文同步；纵向滚动表头固定。快速滚动万行，
@@ -68,6 +71,8 @@
 //     宽度及伸展。关闭伸展只停止分配多余空间，不禁止空间不足时收缩。
 //     F6 输出每列 base/allocated；窗口缩放不输出 resize，用户拖动仍输出 resize，
 //     Esc 恢复拖动前的基础宽度与伸展。隐藏 Notes 后，其空间重新分给末列。
+//     手动缩窄开启Expand的末列可留下空白；配置不被关闭，真正改变表格分配尺寸
+//     或列宽配置后才恢复自动分配。只点击调整手柄不应改写基础宽度或输出resize。
 //     伸展后按 F6：无界测量前后的 Snapshot 必须完全一致，列宽、调整手柄范围与
 //     单元格编辑内容均保留；反复悬停、移出和重建也不能把伸展宽度重置为基础宽度。
 //  12. 用 -rows=3 -appearance=grid 启动，放大窗口至显示全部列。末行下边线和
@@ -356,7 +361,8 @@ func assertTable(table *widgets.TableView, m *model) {
 		if width < column.MinWidth() || !column.Expand() && width > column.Width() || column.MaxWidth() > 0 && width > max(column.MinWidth(), column.MaxWidth()) {
 			panic("column base/allocation contract")
 		}
-		fmt.Printf("column=%s base=%g allocated=%g\n", column.ID(), column.Width(), width)
+		bounds := info.Children[i].Bounds
+		fmt.Printf("column=%s base=%g allocated=%g header=(%g,%g,%g,%g)\n", column.ID(), column.Width(), width, bounds.X, bounds.Y, bounds.Width, bounds.Height)
 	}
 	start, end := 0, 0
 	if len(info.Children) > count {
