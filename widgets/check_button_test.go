@@ -355,6 +355,10 @@ type checkPixelPainter struct {
 	native graphics.Painter
 }
 
+func (p checkPixelPainter) SnapRect(r geometry.Rectangle) geometry.Rectangle {
+	return p.native.SnapRect(r)
+}
+
 func (p checkPixelPainter) FillRect(r geometry.Rectangle, b graphics.Brush) { p.native.FillRect(r, b) }
 func (p checkPixelPainter) FillRoundRect(r geometry.Rectangle, s float32, b graphics.Brush) {
 	p.native.FillRoundRect(r, s, b)

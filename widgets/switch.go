@@ -300,7 +300,12 @@ func (b *Switch) Paint(p gui.Painter) {
 	if b.checked {
 		suffix = "-checked"
 	}
-	track := b.trackRect()
+	// The capsule snaps its outer edges. Derive the thumb from that same
+	// frame, while keeping its circle and horizontal movement unquantized.
+	track := p.SnapRect(b.trackRect())
+	if track.Width <= 0 || track.Height <= 0 {
+		return
+	}
 	paintStyledBox(b, p, track, name, "track"+suffix, state)
 	diameter, gap := track.Height*.8, track.Height*.1
 	x := track.X + gap + diameter/2 + b.position*(track.Width-2*gap-diameter)
