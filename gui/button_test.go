@@ -761,6 +761,7 @@ type testButtonBackgroundPainter struct {
 	rect            geometry.Rectangle
 	radius          float32
 	brush           graphics.Brush
+	boxBrush        graphics.Brush
 	drawRect        geometry.Rectangle
 	drawRadius      float32
 	drawStrokeWidth float32
@@ -780,6 +781,7 @@ func (p *testButtonBackgroundPainter) SetClipRect(rect geometry.Rectangle) {}
 func (p *testButtonBackgroundPainter) FillRect(rect geometry.Rectangle, brush graphics.Brush) {
 	p.rect = rect
 	p.brush = brush
+	p.boxBrush = brush
 }
 
 func (p *testButtonBackgroundPainter) SnapRect(r geometry.Rectangle) geometry.Rectangle { return r }
@@ -788,6 +790,7 @@ func (p *testButtonBackgroundPainter) FillRoundRect(rect geometry.Rectangle, rad
 	p.rect = rect
 	p.radius = radius
 	p.brush = brush
+	p.boxBrush = brush
 }
 
 func (p *testButtonBackgroundPainter) FillEllipse(center geometry.Point, xRadius, yRadius float32, brush graphics.Brush) {

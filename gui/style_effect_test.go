@@ -34,8 +34,8 @@ func TestStyledOpaqueMatchingFillCommands(t *testing.T) {
 		{"同色不透明", base, 1, 0, 0},
 		{"不同颜色类型", base.BackgroundColor(color.NRGBA{48, 120, 196, 255}), 1, 0, 0},
 		{"等价16位颜色", base.BorderColor(color.RGBA64{48 * 257, 120 * 257, 196 * 257, 65535}), 1, 0, 0},
-		{"不同16位颜色", base.BorderColor(color.RGBA64{48*257 + 1, 120 * 257, 196 * 257, 65535}), 1, 1, 0},
-		{"异色边框", base.BorderColor(color.Black), 1, 1, 0},
+		{"不同16位颜色", base.BorderColor(color.RGBA64{48*257 + 1, 120 * 257, 196 * 257, 65535}), 1, 0, 1},
+		{"异色边框", base.BorderColor(color.Black), 1, 0, 1},
 		{"同色半透明", base.BackgroundColor(color.NRGBA{48, 120, 196, 128}).BorderColor(color.NRGBA{48, 120, 196, 128}), 1, 1, 0},
 		{"半透明背景", base.BackgroundColor(color.NRGBA{48, 120, 196, 128}), 1, 1, 0},
 		{"独立选边", base.BorderSides(style.BorderTop), 0, 0, 2},
@@ -372,7 +372,8 @@ func TestStyledBorderSidesThickCornerBounds(t *testing.T) {
 }
 
 // 预乘 sRGB RGBA：不透明边框的外缘只应含边框色，不能混入下方背景。
-// 独立绘制边框作为颜色参考；两张独立遮罩共同筛出外轮廓的部分覆盖像素，
+// 不透明组合用完整边框色填充作为参考，其余组合用独立边框；
+// 两张独立遮罩共同筛出外轮廓的部分覆盖像素，
 // 排除内边缘和中心，允许两级8位量化误差，不依赖后端AA曲线的具体形状。
 func TestStyledBoxOpaqueBorderOuterPixels(t *testing.T) {
 	backend, err := software.NewPainter(&widgetRenderSurface{})
@@ -396,7 +397,13 @@ func TestStyledBoxOpaqueBorderOuterPixels(t *testing.T) {
 								case 0:
 									PaintStyledBox(p, r, s)
 								case 1:
-									PaintStyledBorder(p, r, s)
+									if alpha == 255 {
+										// 不透明组合的外缘来自一次完整边框色填充。
+										// 不要求原生填充与中心线描边采用相同 AA 曲线。
+										PaintStyledBackground(p, r, style.Default().CornerRadius(radius).BackgroundColor(color.Gray{Y: 230}).Style)
+									} else {
+										PaintStyledBorder(p, r, s)
+									}
 								case 2:
 									PaintStyledBackground(p, r, s)
 								}
@@ -516,16 +523,17 @@ func TestApplicationStyleSheetChangesButtonPaint(t *testing.T) {
 	painter := new(testButtonBackgroundPainter)
 	button.Paint(painter)
 
-	// 背景退到不透明边框中线，边框外轮廓及控件布局不变。
-	if painter.rect != geometry.Rect(1, 1, 78, 28) || painter.radius != 5 {
+	// 两者不透明时先绘完整边框底色，再绘真实内轮廓；仍核对几何和两份颜色。
+	if painter.rect != geometry.Rect(0, 0, 80, 30) || painter.radius != 6 {
 		t.Fatalf("unexpected fill geometry: rect=%+v radius=%v", painter.rect, painter.radius)
 	}
 	if painter.brush != graphics.ColorOf(background) {
 		t.Fatalf("unexpected fill brush: %+v", painter.brush)
 	}
-	if painter.drawRect != geometry.Rect(1, 1, 78, 28) || painter.drawRadius != 5 || painter.drawStrokeWidth != 2 || painter.drawBrush != graphics.ColorOf(border) {
-		t.Fatalf("unexpected border: radius=%v width=%v brush=%+v", painter.drawRadius, painter.drawStrokeWidth, painter.drawBrush)
+	if painter.boxBrush != graphics.ColorOf(border) {
+		t.Fatalf("unexpected border underlay: %+v", painter.boxBrush)
 	}
+	assertInnerBoxContour(t, painter.fillPath, geometry.Rect(2, 2, 76, 26), 4)
 }
 
 func TestStyledBoxClampsBorderRadiusAfterInset(t *testing.T) {
@@ -627,8 +635,8 @@ func TestTextInputFocusedBorderFromApplicationStyleSheet(t *testing.T) {
 
 	painter := new(testTextInputPainter)
 	input.Paint(painter)
-	if painter.drawRectBrush != graphics.ColorOf(normalBorder) {
-		t.Fatalf("unfocused border should use the normal color: %+v", painter.drawRectBrush)
+	if painter.fillBrush != graphics.ColorOf(normalBorder) || painter.fillPathBrush != graphics.ColorOf(color.White) {
+		t.Fatalf("unfocused border/background should use normal colors: %+v / %+v", painter.fillBrush, painter.fillPathBrush)
 	}
 
 	if !win.SetFocusedWidget(input) {
@@ -636,8 +644,8 @@ func TestTextInputFocusedBorderFromApplicationStyleSheet(t *testing.T) {
 	}
 	painter = new(testTextInputPainter)
 	input.Paint(painter)
-	if painter.drawRectBrush != graphics.ColorOf(focusBorder) {
-		t.Fatalf("focused border should use the focused color: %+v", painter.drawRectBrush)
+	if painter.fillBrush != graphics.ColorOf(focusBorder) || painter.fillPathBrush != graphics.ColorOf(color.White) {
+		t.Fatalf("focused border/background should use focused colors: %+v / %+v", painter.fillBrush, painter.fillPathBrush)
 	}
 }
 

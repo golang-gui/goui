@@ -247,6 +247,8 @@ type testTextInputPainter struct {
 	fillRect            geometry.Rectangle
 	fillRadius          float32
 	fillBrush           graphics.Brush
+	fillPath            graphics.Path
+	fillPathBrush       graphics.Brush
 	fills               []geometry.Rectangle
 	clipRect            geometry.Rectangle
 	drawRect            geometry.Rectangle
@@ -265,6 +267,10 @@ func (p *testTextInputPainter) FillRect(rect geometry.Rectangle, brush graphics.
 		p.fillRect, p.fillBrush = rect, brush
 	}
 	p.fills = append(p.fills, rect)
+}
+
+func (p *testTextInputPainter) FillPath(path graphics.Path, brush graphics.Brush) {
+	p.fillPath, p.fillPathBrush = path, brush
 }
 
 func (p *testTextInputPainter) SetClipRect(rect geometry.Rectangle) { p.clipRect = rect }

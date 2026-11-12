@@ -148,10 +148,11 @@ func paintRoundedBackground(p Painter, rect geometry.Rectangle, radius geometry.
 	}
 }
 
-// PaintStyledBox paints a styled background and border. An opaque border hides
-// the background's AA edge beneath its centerline. Translucent borders retain
-// the complete background beneath them. A matching opaque background and full
-// border share one outer fill to avoid seams between their antialiased edges.
+// PaintStyledBox paints a styled background and border. An opaque border over a
+// translucent background hides the background's AA edge beneath its centerline.
+// Translucent borders retain the complete background. With an opaque background and full
+// opaque border, the border supplies the complete outer fill and the background
+// covers its inset interior. Matching colors need only one fill.
 // Shadow and text are separate operations.
 func PaintStyledBox(p Painter, rect geometry.Rectangle, s style.Style) {
 	radius, _ := s.CornerRadius()
@@ -166,6 +167,25 @@ func paintStyledBox(p Painter, rect geometry.Rectangle, s style.Style, radius ge
 		if colors.Equal(background, border) {
 			paintStyledBackground(p, rect, s, radius, geometry.Insets{})
 			return
+		}
+		if background != nil {
+			if _, _, _, alpha := background.RGBA(); alpha == 65535 {
+				// Derive both contours from the same outer frame. Insetting a
+				// background to the stroke centerline and snapping it separately
+				// leaves translucent gaps under thin antialiased borders.
+				if radius.Uniform() {
+					rect = p.SnapRect(rect)
+				}
+				radius = radius.Normalize(rect.Size)
+				paintRoundedBackground(p, rect, radius, graphics.ColorOf(border))
+				width := inset * 2
+				if width < min(rect.Width, rect.Height)/2 {
+					// Keep the inset contour in the outer frame's coordinate space;
+					// another rectangle snap would change fractional border widths.
+					p.FillPath(utils.RoundRectInsetPath(rect, radius, geometry.UniformInsets(width)), graphics.ColorOf(background))
+				}
+				return
+			}
 		}
 	}
 	paintStyledBackground(p, rect, s, radius, borderInsets(sides, inset))
