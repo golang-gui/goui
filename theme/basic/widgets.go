@@ -9,7 +9,8 @@ import (
 // WidgetRules returns the fallback rules for controls in package widgets.
 // Rules already includes these; this subset supports the legacy widgets/style API.
 func WidgetRules() []style.Rule {
-	label := style.Sheet(coreRules()...).Resolve(style.Sel{Name: "label"})
+	base := style.Sheet(coreRules()...)
+	label := base.Resolve(style.Sel{Name: "label"})
 	family, _ := label.FontFamily()
 	size, _ := label.FontSize()
 	rules := []style.Rule{
@@ -76,7 +77,7 @@ func WidgetRules() []style.Rule {
 	rules = append(rules, checkButtonRules()...)
 	rules = append(rules, dropDownRules()...)
 	rules = append(rules, switchRules()...)
-	rules = append(rules, listRowRules(family, size)...)
+	rules = append(rules, listRowRules(base)...)
 	for _, name := range []string{"check-button-text", "switch-text", "drop-down-text", "drop-down-placeholder",
 		"table-header-text", "table-cell-text", "table-cell-icon", "tree-item-text", "tree-item-icon",
 		"tab-item-text", "tab-item-text-selected", "tab-item-icon", "tab-item-icon-selected", "tab-indicator-icon",
