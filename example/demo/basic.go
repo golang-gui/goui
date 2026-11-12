@@ -36,20 +36,6 @@ func (d *basicDemo) view() ui.View {
 		tooltip = resource.TooltipDisabled()
 	}
 	return page("basic", resource.Basic(), resource.BasicHint(),
-		ui.VBox(
-			ui.Label(resource.SettingsRows()).Style("demo-subheading"),
-			ui.Label(resource.SettingsRowsHint()).WrapMode(gui.WrapWordChar).Style(modern.MutedText),
-			ui.VBox(
-				wui.ListRow(resource.AutomaticUpdates()).ID("settings-updates").Subtitle(resource.AutomaticUpdatesHint()).
-					Prefix(ui.Icon(d.host.icons[0]).Size(24).Style(modern.AccentIcon)).
-					Suffix(wui.Switch().ID("settings-updates-switch").Checked(d.switched.Get()).OnChange(func(v bool) { d.switched.Set(v) })),
-				wui.ListRow(resource.CheckUpdates()).ID("settings-action").Subtitle(resource.ListRowActionHint()).
-					Suffix(ui.Label("›").Style(modern.MutedText)).Activatable(true).OnActivate(func() { d.host.report(resource.ListRowActivated()) }),
-				wui.ListRow(resource.DropDownTitle()).ID("settings-dropdown").Suffix(
-					wui.DropDown(d.choices).Selected(d.drop.Get()).MaxWidth(200).OnSelected(func(i int) { d.drop.Set(i) }).OnOpenError(func(err error) { d.host.result(resource.OpenDropDown(), err) })),
-				wui.ListRow(resource.VersionTitle()).ID("settings-version").Suffix(ui.Label("0.7.0")),
-			).Spacing(8).CrossAlign(layout.CrossStretch),
-		).Spacing(12).CrossAlign(layout.CrossStretch),
 		section(resource.Buttons(),
 			wui.Switch(resource.EnableControls()).Checked(d.enabled.Get()).OnChange(func(v bool) { d.enabled.Set(v) }),
 			ui.HWrap(ui.Button(resource.NormalButton()).OnClick(func() { d.host.report(resource.NormalClicked()) }),
@@ -124,6 +110,20 @@ func (d *basicDemo) view() ui.View {
 			ui.TextInput().ID("binding-input").BindText(&d.host.input),
 			ui.Label().ID("binding-preview").BindText(&d.host.input).Selectable(true).WrapMode(gui.WrapWordChar),
 		),
+		ui.VBox(
+			ui.Label(resource.SettingsRows()).Style("demo-subheading"),
+			ui.Label(resource.SettingsRowsHint()).WrapMode(gui.WrapWordChar).Style(modern.MutedText),
+			ui.VBox(
+				wui.ListRow(resource.AutomaticUpdates()).ID("settings-updates").Subtitle(resource.AutomaticUpdatesHint()).
+					Prefix(ui.Icon(d.host.icons[0]).Size(24).Style(modern.AccentIcon)).
+					Suffix(wui.Switch().ID("settings-updates-switch").Checked(d.switched.Get()).OnChange(func(v bool) { d.switched.Set(v) })),
+				wui.ListRow(resource.CheckUpdates()).ID("settings-action").Subtitle(resource.ListRowActionHint()).
+					Suffix(ui.Label("›").Style(modern.MutedText)).Activatable(true).OnActivate(func() { d.host.report(resource.ListRowActivated()) }),
+				wui.ListRow(resource.DropDownTitle()).ID("settings-dropdown").Suffix(
+					wui.DropDown(d.choices).Selected(d.drop.Get()).MaxWidth(200).OnSelected(func(i int) { d.drop.Set(i) }).OnOpenError(func(err error) { d.host.result(resource.OpenDropDown(), err) })),
+				wui.ListRow(resource.VersionTitle()).ID("settings-version").Suffix(ui.Label("0.7.0")),
+			).Spacing(8).CrossAlign(layout.CrossStretch),
+		).Spacing(12).CrossAlign(layout.CrossStretch),
 	)
 }
 
