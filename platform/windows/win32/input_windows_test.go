@@ -1,12 +1,48 @@
 package win32
 
 import (
+	"fmt"
 	"runtime"
 	"testing"
 
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/windows/sdk/winapi"
 )
+
+// Shift/Ctrl 取消息位，Alt 取消息队列键态的高位；鼠标按钮与滚轮高字不贡献修饰键。
+func TestPointerModifiers(t *testing.T) {
+	for _, alt := range []struct {
+		state winapi.SHORT
+		mods  events.Modifiers
+	}{{0, 0}, {1, 0}, {-32768, events.ModifierAlt}, {-32767, events.ModifierAlt}} {
+		for _, keys := range []struct {
+			flags winapi.WPARAM
+			mods  events.Modifiers
+		}{
+			{0, 0},
+			{winapi.MK_SHIFT, events.ModifierShift},
+			{winapi.MK_CONTROL, events.ModifierControl},
+			{winapi.MK_SHIFT | winapi.MK_CONTROL, events.ModifierShift | events.ModifierControl},
+		} {
+			for _, high := range []winapi.WPARAM{0, 120 << 16, 0xff88 << 16, winapi.XBUTTON1 << 16, winapi.XBUTTON2 << 16} {
+				for _, buttons := range []winapi.WPARAM{0, winapi.MK_LBUTTON | winapi.MK_RBUTTON | winapi.MK_MBUTTON | winapi.MK_XBUTTON1 | winapi.MK_XBUTTON2} {
+					flags := keys.flags | buttons | high
+					t.Run(fmt.Sprintf("alt=%d/wParam=%x", alt.state, flags), func(t *testing.T) {
+						state := func(vk int) winapi.SHORT {
+							if vk != winapi.VK_MENU {
+								t.Fatalf("只应补读 VK_MENU，实际查询 %#x", vk)
+							}
+							return alt.state
+						}
+						if got, want := pointerModifiers(flags, state), keys.mods|alt.mods; got != want {
+							t.Fatalf("修饰键=%v，期望 %v", got, want)
+						}
+					})
+				}
+			}
+		}
+	}
+}
 
 func TestConsumedQueuedKey(t *testing.T) {
 	runtime.LockOSThread()

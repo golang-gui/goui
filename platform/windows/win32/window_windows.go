@@ -1181,10 +1181,7 @@ func nativePointerState() (events.PointerButtons, events.Modifiers) {
 			flags |= key.mask
 		}
 	}
-	mods := pointerModifiers(flags)
-	if winapi.GetKeyState(winapi.VK_MENU) < 0 {
-		mods |= events.ModifierAlt
-	}
+	mods := pointerModifiers(flags, winapi.GetKeyState)
 	if winapi.GetKeyState(winapi.VK_LWIN) < 0 || winapi.GetKeyState(winapi.VK_RWIN) < 0 {
 		mods |= events.ModifierWin
 	}

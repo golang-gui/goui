@@ -23,7 +23,7 @@ func (w *Window) handlePointerMove(wParam winapi.WPARAM, lParam winapi.LPARAM) {
 	defer func() { w.dragMotion = false }()
 	position := w.logicalPoint(clientPoint(lParam))
 	buttons := pointerButtons(wParam)
-	modifiers := pointerModifiers(wParam)
+	modifiers := pointerModifiers(wParam, winapi.GetKeyState)
 	w.cancelMouseLeave(true)
 	if !w.trackingMouse {
 		w.trackMouseLeave(false)
@@ -56,6 +56,7 @@ func (w *Window) handleTrackedPointerLeave(nonClient bool) {
 }
 
 func (w *Window) handlePointerButton(eventType events.EventType, button events.PointerButton, wParam winapi.WPARAM, lParam winapi.LPARAM) {
+	modifiers := pointerModifiers(wParam, winapi.GetKeyState)
 	if button == events.PointerButtonLeft {
 		w.dragPress = eventType == events.PointerDown
 	}
@@ -66,7 +67,7 @@ func (w *Window) handlePointerButton(eventType events.EventType, button events.P
 			winapi.ReleaseCapture()
 		}
 	}
-	w.emitPointer(eventType, button, w.logicalPoint(clientPoint(lParam)), pointerButtons(wParam), pointerModifiers(wParam))
+	w.emitPointer(eventType, button, w.logicalPoint(clientPoint(lParam)), pointerButtons(wParam), modifiers)
 }
 
 func (w *Window) handleWheel(horizontal bool, wParam winapi.WPARAM, lParam winapi.LPARAM) {
@@ -76,7 +77,7 @@ func (w *Window) handleWheel(horizontal bool, wParam winapi.WPARAM, lParam winap
 		Position:  position,
 		Mode:      events.WheelDeltaLine,
 		Buttons:   pointerButtons(wParam),
-		Modifiers: pointerModifiers(wParam),
+		Modifiers: pointerModifiers(wParam, winapi.GetKeyState),
 	}
 	if horizontal {
 		event.DeltaX = delta
@@ -219,13 +220,18 @@ func pointerButtons(wParam winapi.WPARAM) events.PointerButtons {
 	return buttons
 }
 
-func pointerModifiers(wParam winapi.WPARAM) events.Modifiers {
+// Mouse messages carry Shift/Ctrl in wParam, but omit Alt. GetKeyState supplies
+// the queued message's Alt state; the low toggle bit does not mean key-down.
+func pointerModifiers(wParam winapi.WPARAM, state func(int) winapi.SHORT) events.Modifiers {
 	var mods events.Modifiers
 	if wParam&winapi.MK_SHIFT != 0 {
 		mods |= events.ModifierShift
 	}
 	if wParam&winapi.MK_CONTROL != 0 {
 		mods |= events.ModifierControl
+	}
+	if state(winapi.VK_MENU) < 0 {
+		mods |= events.ModifierAlt
 	}
 	return mods
 }
