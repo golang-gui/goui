@@ -503,10 +503,11 @@ func (sv *ScrollView) scrollRange() geometry.Size {
 	return extent
 }
 
-// scrollExtent preserves the reachable far edge before narrowing a range.
+// scrollExtent contains the far edge on the whole-DIP scroll lattice. Directed
+// narrowing to float32 also preserves containment at large coordinates.
 // Editors which own or constrain an offset use the same range as ScrollView.
 func scrollExtent(content, viewport float32) float32 {
-	return ceilScrollCoordinate(max(0, float64(content)-float64(viewport)))
+	return ceilScrollCoordinate(math.Ceil(max(0, float64(content)-float64(viewport))))
 }
 
 // contentAreaRect returns the content area in ScrollView-local coordinates.
@@ -732,14 +733,14 @@ func (sv *ScrollView) syncBars() {
 // Whole-DIP boundaries keep ordinary content off fractional coordinates.
 func (sv *ScrollView) clampScroll() {
 	extent := sv.scrollRange()
-	maxY := mathx.Floor(extent.Height)
+	maxY := extent.Height
 	if sv.scrollY > maxY {
 		sv.scrollY = maxY
 	}
 	if sv.scrollY < 0 {
 		sv.scrollY = 0
 	}
-	maxX := mathx.Floor(extent.Width)
+	maxX := extent.Width
 	if sv.scrollX > maxX {
 		sv.scrollX = maxX
 	}

@@ -1213,8 +1213,8 @@ func (t *textEditor) layoutVisible(viewport geometry.Size, offset geometry.Point
 	// Ordinary browsing retains its offset; this only follows an existing
 	// far-edge position during this layout's extent refinement.
 	if !t.revealCaret && offset.X > 0 && beforeSize.Width != t.contentSize().Width &&
-		offset.X >= mathx.Floor(scrollExtent(beforeSize.Width, viewport.Width)) {
-		t.offset.X = mathx.Floor(scrollExtent(t.contentSize().Width, viewport.Width))
+		offset.X >= scrollExtent(beforeSize.Width, viewport.Width) {
+		t.offset.X = scrollExtent(t.contentSize().Width, viewport.Width)
 	}
 	// Measuring the overscan above the viewport must not move its top text.
 	if delta := t.heights.Top(anchor) - anchorTop; delta != 0 {
@@ -1224,7 +1224,7 @@ func (t *textEditor) layoutVisible(viewport geometry.Size, offset geometry.Point
 		// Match SetScrollY/clampScroll independently of the previous offset.
 		// Directional floor/ceil would alternate forever around fractional
 		// native line metrics; the maximum offset must also be integral.
-		t.offset.Y = min(mathx.Floor(scrollExtent(t.contentSize().Height, viewport.Height)),
+		t.offset.Y = min(scrollExtent(t.contentSize().Height, viewport.Height),
 			mathx.Round(t.offset.Y))
 	}
 	if t.offset == originalOffset {
@@ -1291,8 +1291,8 @@ func (t *textEditor) revealCaretRect(rect geometry.Rectangle) {
 	// Retain it until measuring the new viewport puts the actual caret in view.
 	// Match ScrollView's integral range, including fractional native metrics.
 	extent, viewport := t.contentSize(), t.viewport
-	x := min(max(0, revealOffset(t.offset.X, viewport.Width, target.X, target.Width)), mathx.Floor(scrollExtent(extent.Width, viewport.Width)))
-	y := min(max(0, revealOffset(t.offset.Y, viewport.Height, target.Y, target.Height)), mathx.Floor(scrollExtent(extent.Height, viewport.Height)))
+	x := min(max(0, revealOffset(t.offset.X, viewport.Width, target.X, target.Width)), scrollExtent(extent.Width, viewport.Width))
+	y := min(max(0, revealOffset(t.offset.Y, viewport.Height, target.Y, target.Height)), scrollExtent(extent.Height, viewport.Height))
 	visible := x == t.offset.X && y == t.offset.Y
 	t.revealCaret = !visible
 	if !visible {
@@ -1744,7 +1744,7 @@ func (t *textEditor) dragScrollOffset() geometry.Point {
 		if delta < 0 {
 			next = floorScrollCoordinate(value)
 		}
-		return min(max(0, next), mathx.Floor(scrollExtent(content, viewport)))
+		return min(max(0, next), scrollExtent(content, viewport))
 	}
 	dy := step(point.Y, t.padding.Top, t.padding.Bottom, t.viewport.Height)
 	next := geometry.Point{

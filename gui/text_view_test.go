@@ -842,8 +842,8 @@ func TestTextViewFractionalRevealEndSettles(t *testing.T) {
 		win.layoutContent()
 	}
 	// 101 rows of 20.5 DIP plus two 4 DIP padding edges, minus 108 DIP:
-	// the host's maximum integer scroll offset is floor(1970.5) = 1970.
-	if scroll.ScrollY() != 1970 || editor.offset.Y != 1970 || editor.revealCaret || editor.anchorPending || scroll.revealPending || win.layoutDirty {
+	// 保留整数DIP偏移，末端范围向外取整为ceil(1970.5)=1971，完整显示内容。
+	if scroll.ScrollY() != 1971 || editor.offset.Y != 1971 || editor.revealCaret || editor.anchorPending || scroll.revealPending || win.layoutDirty {
 		t.Fatalf("fractional reveal did not settle: host=%g editor=%g pending=%t/%t/%t/%t", scroll.ScrollY(), editor.offset.Y, editor.revealCaret, editor.anchorPending, scroll.revealPending, win.layoutDirty)
 	}
 }
