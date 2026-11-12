@@ -3,7 +3,8 @@
 // 独立 X11 会话没有输入法服务时，用 XMODIFIERS=@im=none 选择本地 XIM。
 // 启动：go run ./tests/window/widgets/list_row [-chrome=native|integrated] [-basic] [-large]
 // 后端：GOUI_PLAT_PAINTER=software/opengl（Windows 可 direct2d）；GOUI_PLAT_SCALE=1/2。
-// 初始：720×760 DIP，亮色 Modern，自动更新关闭，整行开关关闭，下拉选择 Default。
+// 初始：720×760 DIP，亮色 Modern，独立行表面与 8 DIP 行间距，自动更新关闭，
+// 整行开关关闭，下拉选择 Default。Basic 使用朴素中性边框，不跟随 Dark 切换。
 // 操作和预期：
 //  1. 独立 Switch 每点击一次只增加 changes 一次，不增加 actions；点所在行正文无效。
 //  2. Action 行正文/尾部 Button 各有独立计数。整行 Switch 的正文切换一次，
@@ -130,7 +131,7 @@ func main() {
 				wui.ListRow("Editable value").ID("input-row").Suffix(ui.TextInput().ID("input").BindText(&text).MaxWidth(220)).Activatable(true).OnActivate(func() { actions++; app.RequestUpdate() }),
 				wui.ListRow("Unavailable").ID("disabled").Suffix(ui.Button("Disabled").OnClick(func() { panic("禁用子控件被激活") })).Activatable(true).Enabled(false).OnActivate(func() { panic("禁用行被激活") }),
 				wui.ListRow("Application version").Suffix(ui.Label("0.7.0")),
-			).Spacing(2).Padding(12)).Direction(ui.ScrollVertical).MainWeight(1),
+			).Spacing(8).Padding(12)).Direction(ui.ScrollVertical).MainWeight(1),
 		)
 		if !attached {
 			attached = true

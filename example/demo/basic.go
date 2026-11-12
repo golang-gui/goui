@@ -36,7 +36,8 @@ func (d *basicDemo) view() ui.View {
 		tooltip = resource.TooltipDisabled()
 	}
 	return page("basic", resource.Basic(), resource.BasicHint(),
-		section(resource.SettingsRows(),
+		ui.VBox(
+			ui.Label(resource.SettingsRows()).Style("demo-subheading"),
 			ui.Label(resource.SettingsRowsHint()).WrapMode(gui.WrapWordChar).Style(modern.MutedText),
 			ui.VBox(
 				wui.ListRow(resource.AutomaticUpdates()).ID("settings-updates").Subtitle(resource.AutomaticUpdatesHint()).
@@ -47,7 +48,8 @@ func (d *basicDemo) view() ui.View {
 				wui.ListRow(resource.DropDownTitle()).ID("settings-dropdown").Suffix(
 					wui.DropDown(d.choices).Selected(d.drop.Get()).MaxWidth(200).OnSelected(func(i int) { d.drop.Set(i) }).OnOpenError(func(err error) { d.host.result(resource.OpenDropDown(), err) })),
 				wui.ListRow(resource.VersionTitle()).ID("settings-version").Suffix(ui.Label("0.7.0")),
-			).Style(modern.Card).Padding(4)),
+			).Spacing(8).CrossAlign(layout.CrossStretch),
+		).Spacing(12).CrossAlign(layout.CrossStretch),
 		section(resource.Buttons(),
 			wui.Switch(resource.EnableControls()).Checked(d.enabled.Get()).OnChange(func(v bool) { d.enabled.Set(v) }),
 			ui.HWrap(ui.Button(resource.NormalButton()).OnClick(func() { d.host.report(resource.NormalClicked()) }),
