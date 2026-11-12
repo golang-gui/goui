@@ -309,12 +309,11 @@ viewport 与滚动条通过 WidgetBase 的内部子树管理挂入；content 挂
 
 ```go
 func (sv *ScrollView) clampScroll() {
-	maxY := mathx.Floor(sv.contentHeight - sv.contentAreaSize().Height)
-	if maxY < 0 { maxY = 0 }
+	extent := sv.scrollRange()
+	maxY := extent.Height
 	if sv.scrollY > maxY { sv.scrollY = maxY }
 	if sv.scrollY < 0 { sv.scrollY = 0 }
-	maxX := mathx.Floor(sv.contentWidth - sv.contentAreaSize().Width)
-	if maxX < 0 { maxX = 0 }
+	maxX := extent.Width
 	if sv.scrollX > maxX { sv.scrollX = maxX }
 	if sv.scrollX < 0 { sv.scrollX = 0 }
 }
@@ -322,6 +321,19 @@ func (sv *ScrollView) clampScroll() {
 
 `SetScrollY`/`SetScrollX` 与 `Arrange` 后都调用。`contentAreaSize` 已扣除可见
 滚动条宽度，clamp 基于内容区而非整个控件矩形。
+
+2026-11-12：最大偏移在float64中计算`ceil(max(0, content-viewport))`，再向外转换
+到float32；clamp、滚动条、Snapshot、Reveal、拖选自动滚动及编辑器内部偏移共用
+此范围，不在消费处再floor。偏移继续按整数DIP取整，普通坐标末端可能保留不足
+1 DIP的空白，确保小数高度的末行/底线完整可达；大坐标仍遵循float32向外表示，
+不把超过一DIP的ULP误当作普通小数。内容尺寸、视口分配与网格线宽不因滚动修改。
+旧实现范围报告小数而clamp向下取整，导致尾部不可达且快照最大值与实际偏移不一致。
+
+无桌面回归覆盖普通内容/Scrollable、三种方向、setter/Reveal/正常事件分发滚轮，
+要求末端包含内容、普通坐标余白小于1 DIP、快照/滚动条与实际最大偏移一致；另有
+不足1 DIP溢出和五种小数表格视口的末行完整性断言。旧TextView尾部稳定性用例
+从1970更新为1971（1970.5向外取整），保留不振荡及无残留布局请求断言。
+
 
 ## 3. ListView（虚拟内容，实现 Scrollable）
 

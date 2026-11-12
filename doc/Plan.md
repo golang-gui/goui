@@ -23,6 +23,12 @@
   通过，暂未确认该次启动失败原因，不将组合执行记为全部通过。证据包括
   parts-before/targeted/race、parts-race-ui-final及label-part。
 - [ ] 第三批：单元格完整边缘与滚动末端可达性，含多后端/缩放窗口验收。
+- [x] 第三批滚动修正：ScrollView在float64中向外取整数DIP范围，再向外表示为
+  float32；滚动条、Snapshot、Reveal、编辑器及自动滚动统一范围，移除消费端
+  的二次floor。不改应用视口高度/内容尺寸。18组普通/虚拟内容×三方向×三入口
+  的旧行为回归失败；修正后GUI/widgets全子包/Demo通过，新增不足1DIP溢出及
+  五种小数表格视口末行断言。旧TextView末端稳定性仅改正确整数终点，保留稳定性
+  断言。证据为scroll-before-final/targeted/final日志。
 - [ ] 最终全仓、跨平台构建及原生窗口验证；分别记录通过、既有失败和未覆盖项。
 
 本轮证据目录：`/tmp/goui-table-improvements-y9t7wgls`。第一批记录为
