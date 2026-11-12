@@ -35,6 +35,12 @@ type Painter interface {
 	End()
 	SetClipRect(rect Rectangle)
 	SetTransform(transform geometry.Transform)
+	// SnapRect returns rect in local DIP with its edges rounded to the same
+	// device pixel boundaries used by FillRect and FillRoundRect. It includes
+	// the current translation and frame scale. User rotation, scale or shear
+	// leaves rect unchanged. This query does not draw or change painter state.
+	// Compound shapes can derive their contents from this shared outer frame.
+	SnapRect(rect Rectangle) Rectangle
 	Clear(color Color)
 	// ClearPath erases the filled path to transparent black under the current
 	// transform and clip. Antialias coverage attenuates all premultiplied RGBA

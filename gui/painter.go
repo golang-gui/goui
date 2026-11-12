@@ -37,6 +37,12 @@ type Painter interface {
 	// SetTransform replaces the current Widget-local drawing transform. It
 	// affects only the current Widget, not its descendants.
 	SetTransform(matrix geometry.Transform)
+	// SnapRect returns a Widget-local rectangle aligned to the device pixel
+	// grid, using the same rules as FillRect/FillRoundRect. Widget placement,
+	// the current translation and HiDPI are included. Other user transforms
+	// leave rect unchanged. It does not draw or change state; compound shapes
+	// can use the returned rectangle as their common geometry.
+	SnapRect(rect geometry.Rectangle) geometry.Rectangle
 	FillRect(rect geometry.Rectangle, brush graphics.Brush)
 	FillRoundRect(rect geometry.Rectangle, radius float32, brush graphics.Brush)
 	FillEllipse(center geometry.Point, xRadius, yRadius float32, brush graphics.Brush)
@@ -244,6 +250,10 @@ func (p *painter) Restore() {
 
 func (p *painter) NewImage(src image.Image) (graphics.Image, error) {
 	return p.base.NewImage(src)
+}
+
+func (p *painter) SnapRect(rect geometry.Rectangle) geometry.Rectangle {
+	return p.base.SnapRect(rect)
 }
 
 func (p *painter) PixelScale() float32 {

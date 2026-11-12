@@ -540,7 +540,8 @@ type testGraphicsPainter struct {
 	ends   int
 }
 
-func (p *testGraphicsPainter) Name() string { return "test" }
+func (p *testGraphicsPainter) Name() string                                     { return "test" }
+func (p *testGraphicsPainter) SnapRect(r geometry.Rectangle) geometry.Rectangle { return r }
 
 func (p *testGraphicsPainter) Destroy() {}
 func (p *testGraphicsPainter) RenderImage(int, int, float32, func()) (image.Image, error) {

@@ -782,6 +782,8 @@ func (p *testButtonBackgroundPainter) FillRect(rect geometry.Rectangle, brush gr
 	p.brush = brush
 }
 
+func (p *testButtonBackgroundPainter) SnapRect(r geometry.Rectangle) geometry.Rectangle { return r }
+
 func (p *testButtonBackgroundPainter) FillRoundRect(rect geometry.Rectangle, radius float32, brush graphics.Brush) {
 	p.rect = rect
 	p.radius = radius

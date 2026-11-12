@@ -538,6 +538,10 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 	p.DrawImage(textbitmap.DrawRect(origin, region, rasterScale), img)
 }
 
+func (p *Painter) SnapRect(rect graphics.Rectangle) graphics.Rectangle {
+	return pixelsnap.Rect(rect, p.transform, p.scale)
+}
+
 func (p *Painter) SetTransform(t geometry.Transform) {
 	p.transform = t
 	// NanoVG's SetTransform pre-multiplies the current transform. To set an

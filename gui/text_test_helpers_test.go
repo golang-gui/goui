@@ -178,6 +178,8 @@ type testLabelPainter struct {
 	textLayout typography.TextLayout
 }
 
+func (p *testLabelPainter) SnapRect(r geometry.Rectangle) geometry.Rectangle { return r }
+
 func (p *testLabelPainter) Save() {}
 
 func (p *testLabelPainter) Restore() {}

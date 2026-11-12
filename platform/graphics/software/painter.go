@@ -491,6 +491,10 @@ func (p *Painter) SetTransform(t geometry.Transform) {
 	p.transform = t
 }
 
+func (p *Painter) SnapRect(rect graphics.Rectangle) graphics.Rectangle {
+	return pixelsnap.Rect(rect, p.transform, p.scale)
+}
+
 func (p *Painter) setBrush(brush graphics.Brush) bool {
 	switch brush := brush.(type) {
 	case graphics.Color:
