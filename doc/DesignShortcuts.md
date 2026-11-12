@@ -174,6 +174,31 @@ window.Shortcuts().AddShortcut(shortcut)
 回来、XIM 过滤与回送、快照不污染 Repeat。无桌面逻辑在各平台 input 测试内，
 真实事件逐项断言入口为 `tests/window/platform/modifiers`。
 
+### Windows 鼠标消息的 Alt 状态（2026-11-12）
+
+Win32 客户区鼠标消息的 `wParam` 提供 Shift、Ctrl 和鼠标按钮位，不提供 Alt。
+`WM_MOUSEWHEEL` / `WM_MOUSEHWHEEL` 的高字另有增量，XBUTTON 消息的高字另有
+按钮标识，不能将其作为修饰位。移动/进入、按下/抬起及横纵滚轮统一通过
+`pointerModifiers` 保留消息中的 Shift/Ctrl，并用已有的
+`GetKeyState(VK_MENU) < 0` 补读消息队列对应的聚合 Alt 状态。低位切换标志不能
+表示按下，也不用 `GetAsyncKeyState` 的当前硬件状态替代排队输入。
+
+依据 Microsoft Learn 的
+[WM_LBUTTONDOWN](https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-lbuttondown)
+说明（页面更新于2025-07-14，核对于2026-11-12），其明确要求使用上述 Alt 查询；
+[GetKeyState](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getkeystate)
+规定高位为按下状态，VK_MENU 不区分左右。
+
+非客户区路径仍由原生键态构造按钮与 Shift/Ctrl 快照，再复用同一 Alt 转换，
+移除重复查询。按下/抬起在 SetCapture/ReleaseCapture 之前取修饰键，避免同步
+回调改变后续查询时机；leave 继续复用最近指针快照。修复只在 Win32 接入层，
+不改变事件枚举、GUI 输入策略、键盘映射或其他平台。
+
+纯映射回归位于 `platform/windows/win32/input_windows_test.go`，用显式键态覆盖
+Alt 高低位、Shift/Ctrl 组合、按钮位、滚轮和 XBUTTON 高字。真实桌面断言入口为
+`tests/window/platform/pointer_modifiers`，通过原生窗口接收移动、点击及滚轮，
+不依赖 Painter 或 DevServer；只有观察到要求的事件并全部匹配才输出 PASS。
+
 ### 当前验证与剩余工作
 
 UI 提供 `Shortcut(key).Modifiers(...).Enabled(...).AutoRepeat(...).OnActivate(...)`

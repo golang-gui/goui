@@ -1,5 +1,39 @@
 # Plan
 
+## Windows 鼠标消息补读 Alt（2026-11-12）
+
+- [x] Win32 客户区移动/进入、按下/抬起及横纵滚轮的修饰键转换，保留 wParam
+  中的 Shift/Ctrl，复用已有 GetKeyState(VK_MENU) 的高位补读聚合 Alt。按下/抬起
+  在捕获操作前取快照；非客户区复用同一路径并移除重复查询，leave 仍取最近
+  指针快照。无新绑定、事件 API 或 GUI/UI 策略变更，设计见
+  [DesignShortcuts](DesignShortcuts.md#windows-鼠标消息的-alt-状态2026-11-12)。
+- [x] 新增160组无桌面回归：Alt 的高低位、四种 Shift/Ctrl 组合、按钮位、
+  正负滚轮及 XBUTTON 高字。先仅调整可测入口、保留旧转换行为，在 Windows
+  原生运行得到80组 Alt 按下失败；补读后完整 Win32 包218项测试及子用例通过，
+  无失败或跳过。构建工具为 Linux amd64 / Go1.25.8，上传二进制 SHA-256 已核对。
+- [x] 新增 tests/window/platform/pointer_modifiers，严格检查实际输入及事件覆盖。
+  Windows10 / build19045 amd64、RDP Session1、Native 1x（720×420 DIP及
+  物理像素一致），四组 Alt/无修饰键/Shift+Ctrl+Alt/窗口外按住Alt再切入全部
+  通过，共60个 Pointer/Wheel 事件断言；每组均含左右中键、横纵滚轮、进入/
+  离开和正常退出。用未修改的旧 Win32 源码构建同一窗口用例，原生移动即报
+  modifiers=0、expected=4，退出1。该平台用例不创建 Painter，绘制后端不适用。
+- [x] Linux 的 platform/events 及新窗口程序包测试、Linux/Windows 窗口构建、
+  `git diff --check` 通过。`env -u DISPLAY go test ./...` 已执行但失败，关键错误
+  与上一轮相同：未跟踪旧 API 例程/测试，以及 Typography 无 DISPLAY。
+  Windows 目标 `go vet ./platform/windows/win32` 有42条既有 unsafe.Pointer
+  诊断；与旧源码 overlay 对照，仅将临时文件路径还原后逐项一致。
+- [ ] 物理键盘左右 Alt/AltGr 布局、XBUTTON 真机、Windows11、非客户区桌面路径、
+  其他缩放与非RDP会话未执行；纯映射及当前RDP结果不代替这些覆盖。macOS/Linux
+  输入实现未修改，不将其他平台编译算作 Windows 原生验收。
+
+证据在 `/tmp/goui-win-mouse-alt-h6qyfa50`，远端临时目录为
+`C:\Users\xuyang8\AppData\Local\Temp\goui-mouse-alt-h6qyfa50`。保留旧版失败、
+Win32 完整测试、桌面日志/截图、SHA-256、全仓及 vet 对照。早期驱动补齐窗口
+就绪等待，并改用未被控制台遮挡的标题栏切回焦点，未修改生产代码规避问题。
+全仓旧测试按原行为重写未跟踪 software/output.png、typography/utils/dst.png，
+不纳入提交。未修改系统配置或剪贴板；测试只创建自己的窗口、包装控制台和日志。
+已确认测试进程和包装控制台均退出，释放输入并断开本轮 RDP 连接，保留原有 SSH。
+
 ## Demo 表格文本选区高亮（2026-11-12）
 
 - [x] 定位 `demo-cell-edit` 只提供透明外框、未提供 selection 部件，导致选区
