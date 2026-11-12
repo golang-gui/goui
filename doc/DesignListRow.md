@@ -1,13 +1,13 @@
 # ListRow 设置与操作条目
 
-状态：2026-11-11 实现；验证范围记录在 [Plan](Plan.md)。
+状态：2026-11-11 实现；同日调整默认主题表面与示例层次。验证范围记录在 [Plan](Plan.md)。
 
 ## 契约与 API
 
 `widgets.ListRow` 是普通 Widget，可放入 VBox、ScrollView，或由 ListView delegate
 复用。它持有标题/说明和两个独立插槽；设置值、导航与业务动作仍由应用持有。
-不增加 ListView 模型、选择状态或窗口管理能力。设置页的分组标题、卡片背景与
-分隔线使用现有容器及样式组合。
+不增加 ListView 模型、选择状态或窗口管理能力。设置页的分组标题、间距与额外
+装饰使用现有容器及样式组合；默认行自身提供表面和边界。
 
 ```go
 row := widgets.NewListRow("Automatic updates")
@@ -40,8 +40,20 @@ WrapWordChar。窄到无法容纳全部内容时缩小插槽约束和间隔，�
 独立样式名为 `list-row`、`list-row-title`、`list-row-subtitle`，焦点使用行的
 `focus` part。Basic 和 Modern 都提供完整规则，作为 widgets 包的内置主题规则。
 内部 Label 通过自己的 StyleName 解析；前后插槽保持自己的样式，行的 StyleName
-不向子树隐式继承。行默认透明，可组合到 Card；说明使用次级前景色。非激活行
-不绘制悬停/按下背景；禁用、键盘焦点和主题变化沿用 GUI 的状态与失效机制。
+不向子树隐式继承。默认外观采用独立行表面，说明字号为标题的 90%；应用仍可
+通过这些独立样式名覆盖背景、边界与排版。非激活行保持常态表面，不绘制悬停/
+按下状态；禁用、键盘焦点和主题变化沿用 GUI 的状态与失效机制。
+
+- Basic 只提供清晰兜底：白色表面、1 DIP 灰色边框、2 DIP 黑色键盘焦点框及
+  2 DIP 圆角。颜色与字体从现有基础规则取得；主次文字共用黑色，通过字号区分。
+  悬停/按下复用 Button 的灰阶，不增加专用强调色，也不随系统明暗变化。
+- Modern 保持平台中立：复用当前调色板的 Button 表面、主/次文字色，1 DIP
+  中性边界与 8 DIP 圆角。悬停/按下与普通 Button 一样向前景混合 4%/8%，边界
+  混合 12%。禁用保留表面，只让文字和子控件按既有禁用样式呈现。焦点复用
+  focusColor，根据页面、常态、悬停及按下背景检查对比度，不新增全局色板。
+
+Demo 设置区直接排列这些独立行，行间距 8 DIP，标题区间距 12 DIP；不再用
+两层同色 Card 包围行。分组仍由应用组合，不新增设置页容器或主题匹配机制。
 
 ## 输入与生命周期
 
@@ -94,6 +106,13 @@ Snapshot.Role=listitem，Text 为显示标题和说明，以换行分隔；不�
   （查阅时库版本 1.10.0）：参考标题/说明与前后内容的组合。其源实现通过
   mnemonic-activate 激活目标 Widget；GOUI 使用显式业务回调和现有事件竞争，
   不引入 GTK 的类继承、CSS 或目标激活转发。
+- libadwaita **1.6.0** 的
+  [默认表面色](https://github.com/GNOME/libadwaita/blob/1.6.0/src/stylesheet/_defaults.scss)、
+  [列表样式](https://github.com/GNOME/libadwaita/blob/1.6.0/src/stylesheet/widgets/_lists.scss)
+  与 [状态色](https://github.com/GNOME/libadwaita/blob/1.6.0/src/stylesheet/_colors.scss)
+  是源码层面的外观参考：通过页面/条目表面、留白、主次排版和中性状态变化建立
+  层次。GOUI 采用这些设计方法，但复用自己的 Basic/Modern 颜色角色和 Button
+  状态比例，不复制 Adwaita 色值、CSS 类体系或特定平台外观。
 - [Flutter 3.35.0 ListTile 源码](https://github.com/flutter/flutter/blob/3.35.0/packages/flutter/lib/src/material/list_tile.dart)
   及 [ListTile 官方文档](https://api.flutter.dev/flutter/material/ListTile-class.html)：
   参考 leading/title/subtitle/trailing 的结构；GOUI 的行高由内容测量决定，不采用
@@ -104,7 +123,10 @@ Snapshot.Role=listitem，Text 为显示标题和说明，以换行分隔；不�
 
 以上分别是文档/源码参考与 GOUI 的设计取舍，不能代替本项目实测。包内测试覆盖
 约束、空槽位、语义、有效禁用、事件隔离、键盘重复/移出取消、资源回调重入、
-声明身份/默认恢复，以及 Basic/Modern 和 1x/2x 软件像素。Linux Pango 实测换行
+声明身份/默认恢复，以及 Basic/Modern 常态、悬停、按下、禁用的 1x/2x 软件表面/
+直边像素（预乘 sRGB RGBA8，允许 1 字节量化误差）。Modern 明暗主题在 125 种
+accent 下检查各行状态的文字对比度至少 4.5:1、焦点至少 3:1；这不表示边界或
+悬停色差也需达到文字的对比度。Linux Pango 实测换行
 和 14/26pt 字号不需要桌面，执行原生调用的子测试锁定 OS 线程。
 `tests/window/widgets/list_row` 使用正常桌面输入和只读 Snapshot 验收，不使用
 DevServer。Demo 基础页提供开关、整行动作、下拉与只读值的八语言设置样例。

@@ -1,5 +1,55 @@
 # Plan
 
+## ListRow 主题层次调整（2026-11-11）
+
+- [x] 参考 libadwaita 1.6.0 的表面、留白和主次排版设计，复用 GOUI 的颜色角色，
+  不复制 Adwaita 色值。Basic 使用已有黑白灰、1 DIP 边界和黑色焦点框兜底；
+  Modern 复用普通 Button 的中性表面及 4%/8% 状态变化，使用轻边界和既有主次
+  文字色。两主题说明字号为标题的 90%，禁用保持行表面；Modern 按行的各状态
+  背景检查焦点对比度。没有更改全局 palette、公共 API、行为或语义契约。
+- [x] Demo 设置区移除双重 Card，直接排列独立行，8 DIP 行间距、12 DIP 标题区
+  间距；同步窗口验收程序与 [DesignListRow](DesignListRow.md)。
+- [x] 新回归在原 HEAD 上失败，修正后通过：Basic 清晰边界、Modern 不透明表面/
+  文字层次，以及明暗主题 × 125 种 accent 的文字 ≥4.5:1、焦点 ≥3:1。新增真实
+  ListRow.Paint 的 Software 1x/2x 常态、悬停、按下、禁用表面与直边像素断言，
+  使用预乘 sRGB RGBA8，允许 1 字节量化误差；保留原有输入/语义/布局覆盖。
+- [x] Linux amd64 / Go 1.25.8，专用 Xvnc / Xfwm4 4.16.1 合成会话：
+  Software/OpenGL × Native/Integrated × 1x/逻辑 2x 八组，加两后端 Basic 1x、
+  Modern 24pt 1x，共十二组、230 次 Check 通过。正常 XTest 鼠标/键盘复验整行/
+  子控件隔离、Space/Enter、文本输入、下拉、禁用、重建、槽位替换、亮暗、窄窗
+  换行与正常销毁。实际 imageResource 类型、PixelScale 与无装饰回退已核对。
+- [x] 两后端 × 1x/逻辑 2x × Basic/Modern 亮色/暗色另十二组，桌面合成后 120 个
+  背景/直边采样通过；额外检查非激活行不悬停、键盘焦点边界与子按钮焦点切换，
+  原十二组也覆盖 Tab/Shift+Tab。实际
+  焦点与常态背景对比最低约 3.80:1；OpenGL 为 Mesa 23.2.1 llvmpipe。
+- [x] 同环境构建调整前/后 Demo，OpenGL 1x 亮暗截图对照；调整后行表面/边框
+  采样、开关像素变化、整行动作状态栏更新、820×600 窄窗与正常退出通过。
+- [x] 原工作区针对性命令
+  `env -u DISPLAY go test ./theme/basic ./theme/modern ./widgets ./widgets/ui ./example/demo/... -count=1`
+  通过。隔离的已跟踪源码加本轮改动与两个新测试文件，执行
+  `CGO_ENABLED=0 go test -json -count=1 ./...`：4913 通过、11 既有跳过、0 失败。
+  同一组受影响包的完整 race 与 vet 通过；Windows amd64/macOS arm64 的两主题、
+  widgets/widgets-ui、Demo 测试目标及 ListRow 窗口程序交叉编译通过。
+- [ ] Windows/macOS 原生、Direct2D、硬件 OpenGL、其他 WM、真实混合 DPI 与移动
+  触摸未执行；交叉编译与逻辑 2x 不代替这些验证。
+- [x] 2026-11-12 按用户授权分主题及回归测试、Demo 及窗口例程、设计及验证文档
+  三笔提交。Demo 的开关、整行动作、下拉与只读值已使用独立行表面；提交前复查
+  针对性包测试通过，源码与上述桌面验收版本一致。原工作区全仓复查失败详情
+  与前轮逐项相同，无新增失败；日志为 precommit-targeted.log 和
+  precommit-workspace-full.log。
+
+本轮证据在 `/tmp/goui-list-row-theme-t4muy86m`，含源码副本、回归旧版失败、
+full.jsonl、race/vet/cross 日志、窗口断言、状态采样及 Demo 调整前/后亮暗预览。
+原工作区 `env -u DISPLAY go test ./...` 仍失败：既有未跟踪旧例程/测试引用
+`Window.SetTitle/Show/RequestClose`、`windowMount.runtime/id` 等已移除 API，
+Typography 报 `can not open display`；完整失败保存在 workspace-full.log。
+未迁移或弱化旧测试；原命令按既有行为更新未跟踪 software/output.png、
+typography/utils/dst.png，不作为本轮改动。隔离全仓会操作专用会话剪贴板并在
+临时副本写图片。窗口定位驱动首次使用错误英文标题，后按实际 WM_CLASS 修正，
+正式 Demo 验证重跑通过。两套专用 Xvnc/Xfwm4、会话总线与所属辅助服务已清理，
+显示套接字已移除；辅助服务曾继承启动器 DISPLAY，清理按专用总线归属核对，
+鼠标/键盘与剪贴板测试均显式使用专用显示。
+
 ## ListRow 设置与操作条目（2026-11-11）
 
 - [x] 新增 widgets.ListRow：标题/说明、独立 Prefix/Suffix、内容驱动行高、48 DIP
