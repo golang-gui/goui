@@ -30,6 +30,7 @@ type TableView struct {
 	columnX                       []float32
 	columnWidth                   float32
 	columnViewportWidth           float32
+	columnViewportKnown           bool
 	rowIDs                        []string
 	indices                       map[string]int
 	selected                      map[string]bool
@@ -411,6 +412,9 @@ func (v *TableView) updateColumnGeometry() {
 		}
 	}
 	remaining := max(0, float64(v.columnViewportWidth)-width)
+	if v.columnViewportKnown && width > float64(v.columnViewportWidth) {
+		v.shrinkColumns(width - float64(v.columnViewportWidth))
+	}
 	for len(expanding) > 0 && remaining > 0 {
 		share := remaining / float64(len(expanding))
 		used := float64(0)
@@ -448,8 +452,43 @@ func (v *TableView) updateColumnGeometry() {
 	v.columnWidth = float32(width)
 }
 
+// Shrink equally from base allocations, redistributing a capped column's share.
+// The base preferences and user-resize signals are never changed by allocation.
+func (v *TableView) shrinkColumns(deficit float64) {
+	var shrinking []*TableColumn
+	for _, c := range v.visibleColumns {
+		if c.allocatedWidth > c.minWidth {
+			shrinking = append(shrinking, c)
+		}
+	}
+	for len(shrinking) > 0 && deficit > 0 {
+		share := deficit / float64(len(shrinking))
+		used := float64(0)
+		next := shrinking[:0]
+		for _, c := range shrinking {
+			target := max(float64(c.minWidth), float64(c.allocatedWidth)-share)
+			allocated := float32(target)
+			// Keep the sum within a fractional viewport without crossing MinWidth.
+			if float64(allocated) > target {
+				allocated = math.Nextafter32(allocated, 0)
+			}
+			allocated = max(c.minWidth, allocated)
+			used += float64(c.allocatedWidth) - float64(allocated)
+			c.allocatedWidth = allocated
+			if allocated > c.minWidth {
+				next = append(next, c)
+			}
+		}
+		deficit = max(0, deficit-used)
+		if len(next) == len(shrinking) || used <= 0 {
+			break
+		}
+		shrinking = next
+	}
+}
+
 func (v *TableView) setColumnViewportWidth(width float32) {
-	if v.columnViewportWidth == width {
+	if v.columnViewportKnown && v.columnViewportWidth == width {
 		return
 	}
 	old := make([]float32, len(v.visibleColumns))
@@ -457,6 +496,7 @@ func (v *TableView) setColumnViewportWidth(width float32) {
 		old[i] = c.allocatedWidth
 	}
 	v.columnViewportWidth = width
+	v.columnViewportKnown = true
 	v.updateColumnGeometry()
 	for i, c := range v.visibleColumns {
 		if old[i] != c.allocatedWidth {

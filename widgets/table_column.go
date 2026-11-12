@@ -61,7 +61,8 @@ func (c *TableColumn) SetVisible(visible bool) {
 func (c *TableColumn) Expand() bool { return c.expand }
 
 // SetExpand shares extra space equally among visible expanding columns, up to
-// MaxWidth. It does not shrink configured widths or emit Resize.
+// MaxWidth. All visible columns can shrink to MinWidth when space is short,
+// independently of Expand. Allocation does not change Width or emit Resize.
 func (c *TableColumn) SetExpand(expand bool) {
 	if c.expand == expand {
 		return
@@ -72,8 +73,8 @@ func (c *TableColumn) SetExpand(expand bool) {
 	}
 }
 
-// Width returns the configured base width. An expanding column's actual width
-// can be larger; use its header or cell Snapshot bounds for allocated geometry.
+// Width returns the configured base width. Actual width may shrink to MinWidth
+// or expand to MaxWidth; header and cell Snapshot bounds expose the allocation.
 func (c *TableColumn) Width() float32    { return c.width }
 func (c *TableColumn) MinWidth() float32 { return c.minWidth }
 func (c *TableColumn) MaxWidth() float32 { return c.maxWidth }

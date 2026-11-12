@@ -213,6 +213,9 @@ func TestTableViewDecorationLayout(t *testing.T) {
 	}
 	t.Run("scrolled header retains outer frame offset", func(t *testing.T) {
 		other.SetWidth(180)
+		// 此用例验证横向滚动与外框，显式保持基础列宽。
+		c.SetMinWidth(80)
+		other.SetMinWidth(180)
 		tableArrange(v, 200, 200)
 		v.scroll.SetScrollX(32)
 		tableArrange(v, 200, 200)
@@ -684,6 +687,7 @@ func TestTableViewColumnsAndIdentity(t *testing.T) {
 	t.Run("zero columns and empty model", func(t *testing.T) {
 		v, m, c, d := tableFixture(0)
 		c.SetWidth(500)
+		c.SetMinWidth(500) // 空模型仍须保留超出视口的最小列宽。
 		tableArrange(v, 200, 150)
 		if v.scroll.Snapshot().MaxScrollX <= 0 || d.setups != 0 {
 			t.Fatal("empty model lost column extent or realized rows")
@@ -761,6 +765,9 @@ func TestTableViewLayoutVirtualizationAndRefresh(t *testing.T) {
 	defer v.SetModel(nil)
 	second := NewTableColumn("other", "Other")
 	second.SetWidth(120)
+	// 固定宽度的虚拟化与横向滚动场景；收缩另有独立回归。
+	c.SetMinWidth(160)
+	second.SetMinWidth(120)
 	v.SetColumns(c, second)
 	m.Set(0, tableRecord{"r0", 360, 20})
 	tableArrange(v, 240, 180)
@@ -796,6 +803,7 @@ func TestTableViewLayoutVirtualizationAndRefresh(t *testing.T) {
 	tableArrange(v, 240, 180)
 	row = v.realized["r0"]
 	shell := row.cells[0].content
+	c.SetMinWidth(40)
 	c.SetWidth(80)
 	tableArrange(v, 240, 180)
 	if row.cells[0].content != shell || row.Rect().Height != 101 || row.cells[0].Rect().Height != 100 || row.cells[1].Rect().X != 80 {
@@ -1177,12 +1185,12 @@ func TestTableViewColumnVisibility(t *testing.T) {
 	v.SetSort("other", SortDescending)
 	v.SetSelection([]string{"r0"})
 	v.SetCurrent("r0")
-	tableArrange(v, 300, 180)
+	tableArrange(v, 320, 180)
 	retained := v.realized["r0"].cells[0]
 	first.SetWidth(180)
 	second.SetVisible(false)
 	second.SetVisible(false)
-	tableArrange(v, 300, 180)
+	tableArrange(v, 320, 180)
 	if !first.Visible() || second.Visible() || len(v.Columns()) != 2 || second.owner != v || second.Width() != 120 {
 		t.Fatal("隐藏列丢失了配置或归属")
 	}
@@ -1204,7 +1212,7 @@ func TestTableViewColumnVisibility(t *testing.T) {
 	// 已配置列顺序包含隐藏列；重新显示时使用其最新位置，索引连续。
 	v.SetColumns(second, first)
 	second.SetVisible(true)
-	tableArrange(v, 300, 180)
+	tableArrange(v, 320, 180)
 	row := v.realized["r0"]
 	if row.cells[0].column != second || row.cells[1] != retained || row.cells[1].Rect().X != 120 || row.cells[0].bound.ID != "r0" {
 		t.Fatal("重新显示后顺序、绑定或列宽不正确")
@@ -1215,12 +1223,12 @@ func TestTableViewColumnVisibility(t *testing.T) {
 	// 全部隐藏会回收已实现行，恢复一列后仍使用原模型及交互状态。
 	first.SetVisible(false)
 	second.SetVisible(false)
-	tableArrange(v, 300, 180)
+	tableArrange(v, 320, 180)
 	if v.list.ItemsCount() != 0 || len(v.realized) != 0 || len(v.Snapshot().Children) != 0 {
 		t.Fatal("全部隐藏后仍有可交互表头或单元格")
 	}
 	first.SetVisible(true)
-	tableArrange(v, 300, 180)
+	tableArrange(v, 320, 180)
 	if len(v.realized) == 0 || v.Model() != m || v.Current() != "r0" || !slices.Equal(v.Selection(), []string{"r0"}) {
 		t.Fatal("恢复列丢失模型或交互状态")
 	}
@@ -1297,8 +1305,8 @@ func TestTableViewColumnExpansionAllocation(t *testing.T) {
 		{"多列平分", 600, [3]bool{false, true, true}, [3]float32{}, [3]float32{100, 250, 250}},
 		{"上限重新分配", 600, [3]bool{false, true, true}, [3]float32{0, 120, 0}, [3]float32{100, 120, 380}},
 		{"全部达到上限", 600, [3]bool{false, true, true}, [3]float32{0, 120, 140}, [3]float32{100, 120, 140}},
-		{"空间不足不压缩", 200, [3]bool{true, true, true}, [3]float32{}, [3]float32{100, 100, 100}},
-		{"无界基础宽度", 0, [3]bool{true, true, true}, [3]float32{}, [3]float32{100, 100, 100}},
+		{"空间不足先收缩", 240, [3]bool{true, true, true}, [3]float32{}, [3]float32{80, 80, 80}},
+		{"无界基础宽度", -1, [3]bool{true, true, true}, [3]float32{}, [3]float32{100, 100, 100}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			v := NewTableView()
@@ -1309,7 +1317,9 @@ func TestTableViewColumnExpansionAllocation(t *testing.T) {
 				column.SetMaxWidth(tc.maximum[i])
 			}
 			v.SetColumns(columns...)
-			v.setColumnViewportWidth(tc.viewport)
+			if tc.viewport >= 0 {
+				v.setColumnViewportWidth(tc.viewport)
+			}
 			x := float32(0)
 			for i, column := range columns {
 				if column.allocatedWidth != tc.want[i] || column.Width() != 100 || v.columnX[i] != x {
@@ -1372,8 +1382,12 @@ func TestTableViewExpansionUsesActualViewport(t *testing.T) {
 		check(width)
 	}
 	tableArrange(v, 150, 180)
-	if first.allocatedWidth != 100 || last.allocatedWidth != 100 || v.scroll.Snapshot().MaxScrollX <= 0 {
-		t.Fatal("窄视口压缩了基础列宽或缺少横向滚动")
+	if v.columnWidth != v.body.Rect().Width || first.Width() != 100 || last.Width() != 100 || v.scroll.Snapshot().MaxScrollX != 0 {
+		t.Fatal("窄视口未先收缩或改写了基础列宽")
+	}
+	tableArrange(v, 70, 180)
+	if first.allocatedWidth != 40 || last.allocatedWidth != 40 || v.scroll.Snapshot().MaxScrollX <= 0 {
+		t.Fatal("达到最小列宽后没有横向滚动")
 	}
 	check(400)
 	last.SetMaxWidth(180)
@@ -1492,27 +1506,28 @@ func TestTableViewBalancedColumnWidthsAndNarrowViewport(t *testing.T) {
 	other.SetWidth(120)
 	v.SetColumns(c, other)
 	m.Set(0, tableRecord{"r0", 360, 20})
-	tableArrange(v, 280, 180)
+	// 290 DIP 扣除外框及滚动条后，列可用宽度恰为280。
+	tableArrange(v, 290, 180)
 	if v.realized["r0"].Rect().Height != 61 || v.realized["r0"].cells[0].Rect().Height != 60 {
 		t.Fatal("initial wrap")
 	}
 	c.SetWidth(100)
 	other.SetWidth(180)
-	tableArrange(v, 280, 180)
+	tableArrange(v, 290, 180)
 	if v.columnWidth != 280 || v.realized["r0"].Rect().Height != 81 || v.realized["r0"].cells[0].Rect().Height != 80 || v.realized["r0"].cells[1].Rect().X != 100 {
 		t.Fatal("same total width concealed per-column wrapping change")
 	}
 	v.scroll.SetScrollY(1500)
 	c.SetWidth(80)
 	other.SetWidth(200)
-	tableArrange(v, 280, 180)
+	tableArrange(v, 290, 180)
 	v.scroll.SetScrollY(0)
-	tableArrange(v, 280, 180)
+	tableArrange(v, 290, 180)
 	if v.realized["r0"].Rect().Height != 101 || v.realized["r0"].cells[0].Rect().Height != 100 {
 		t.Fatal("offscreen row retained old column measurements")
 	}
 	tableArrange(v, 1, 1)
-	tableArrange(v, 280, 180)
+	tableArrange(v, 290, 180)
 	if len(v.realized) == 0 {
 		t.Fatal("narrow viewport did not recover")
 	}

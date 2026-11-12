@@ -64,7 +64,8 @@
 //     再次点击 Notes，原列宽、文本和顺序恢复；隐藏列不触发正文菜单或保留焦点。
 //  11. 点击 Expand last，放大窗口至宽于列总基础宽度（约 1250 DIP）。末列填满
 //     剩余内容视口，右侧垂直滚动条不被覆盖，不因伸展出现横向滚动条。缩窄时
-//     各列不小于基础宽度，空间不足则横向滚动。关闭伸展恢复原基础列宽。
+//     各列先收缩至各自MinWidth，全部达到下限仍不足才横向滚动；放大后恢复基础
+//     宽度及伸展。关闭伸展只停止分配多余空间，不禁止空间不足时收缩。
 //     F6 输出每列 base/allocated；窗口缩放不输出 resize，用户拖动仍输出 resize，
 //     Esc 恢复拖动前的基础宽度与伸展。隐藏 Notes 后，其空间重新分给末列。
 //     伸展后按 F6：无界测量前后的 Snapshot 必须完全一致，列宽、调整手柄范围与
@@ -343,7 +344,7 @@ func assertTable(table *widgets.TableView, m *model) {
 	checkContent(table)
 	for i, column := range columns {
 		width := info.Children[i].Bounds.Width
-		if width < column.Width() || !column.Expand() && width != column.Width() || column.MaxWidth() > 0 && width > max(column.MinWidth(), column.MaxWidth()) {
+		if width < column.MinWidth() || !column.Expand() && width > column.Width() || column.MaxWidth() > 0 && width > max(column.MinWidth(), column.MaxWidth()) {
 			panic("column base/allocation contract")
 		}
 		fmt.Printf("column=%s base=%g allocated=%g\n", column.ID(), column.Width(), width)
