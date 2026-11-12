@@ -1,5 +1,17 @@
 # Plan
 
+## Demo ListRow 演示位置（2026-11-12）
+
+- [x] 将基础控件页的“设置条目”完整移到“文本布局”之后，作为页面最后一块；
+  区块内容及其余演示代码逐字保留，同步 Demo README。
+- [x] `env -u DISPLAY go test ./example/demo/... -count=1`、Demo 构建和
+  `git diff --check` 通过。Linux X11 / 专用 Xvnc、Xfwm4 / OpenGL 1x 实际窗口
+  复核首屏原有控件顺序及页面下部 ListRow 位置，正常退出通过。
+- [x] `env -u DISPLAY go test ./...` 已执行但失败；关键错误与上一轮逐项相同：
+  未跟踪旧例程/测试引用已移除 API，以及 Typography 无 DISPLAY。日志和截图
+  保存在 `/tmp/goui-demo-row-order-vf98dovr`。未新增或弱化测试。
+- [ ] Windows/macOS 原生及其他后端/缩放未执行；本轮仅调整 Demo 区块顺序。
+
 ## Switch 关闭态轨道漏底（2026-11-12）
 
 - [x] 复现关闭态细边框的形内透明缺口：旧 PaintStyledBox 在 Software 1x 的完全
