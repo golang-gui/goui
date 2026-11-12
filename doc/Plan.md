@@ -1,5 +1,60 @@
 # Plan
 
+## 表格手动列宽与自动分配（2026-11-12）
+
+- [x] 按已确认方案区分手调和自动分配：目标从当前实际边缘起算，左侧保持，
+  右侧按MinWidth借空间，释放空间先减少溢出、再恢复基础宽度及Expand。
+  只改目标基础Width／Resize；松手和普通重建保留结果。外部分配面积或列几何
+  配置变化恢复自动分配；显式程序写入使旧手势失效，Esc不能覆盖新值。
+  手调伸展末列允许留白或溢出，Expand不被关闭。设计见[TableView§7.2](DesignTableView.md#72-列宽拖动)。
+- [x] 旧源码overlay下的新事件分发／受控重建回归失败，包含收缩列实际宽度反向
+  变化、左侧列跳动和程序写入被旧手势覆盖。同一新窗口用例用旧源码构建，在
+  第一次Size拖动后报左侧列actual=190.125、want=181.5并退出1。修正后包内
+  回归覆盖连续拖动、右侧恢复／伸展、已有空白／溢出、上下限、原点、Esc、
+  水平偏移、滚动条占位、外部配置失效及相同基础宽度的有效实际变化。
+- [x] widgets全子包／Demo／原table程序定向测试通过，最终
+  `env -u DISPLAY go test -race ./widgets ./widgets/ui -count=1`、
+  `go vet ./gui ./widgets/... ./theme/... ./example/demo/... ./tests/window/widgets/table ./tests/window/widgets/table_resize`
+  和`git diff --check`通过。无新增公共API或平台代码变更，UI沿用已有协调。
+- [x] Linux amd64 / Go1.25.8，专用Xvnc / Xfwm4 4.16.1下，新窗口程序在
+  Software 1x、OpenGL 1x／2x各完成八步数值检查、正常退出0：Size→Description、
+  每次OnResize重建、普通Rebuild、Esc恢复上次手调、伸展末列手调及恢复自动
+  分配。最终源码重建复核三组全部通过，检查实际后端／PixelScale，保留原生
+  截图。原table程序GUI／UI入口的100行grid在Software 1x连续拖动Size +24、
+  Description -32 DIP，F6公开几何检查及正常退出0也通过。
+- [x] 原工作区`env -u DISPLAY go test ./...`已执行但失败：既有未跟踪旧API
+  例程／测试阻止编译、Typography无DISPLAY；21条关键诊断与上一轮按多重集
+  比较相同，无新增项，保留相关文件及原断言。不把该结果算作全仓通过。
+- [x] 已跟踪源码加本轮新增文件的仓库外隔离副本，在专用显示下执行
+  `CGO_ENABLED=0 go test -json -count=1 ./...`退出0：73个有测试包、5603项测试
+  及子用例通过，11项按原条件跳过，132个包无测试文件。最后补齐拖动准入的
+  生命周期／显隐检查后，更新隔离源码并执行`CGO_ENABLED=0 go test -json ./...`
+  再次退出0。跳过涉及手动输入／窗口状态、跨应用剪贴板、macOS签名和iOS SDK；
+  不代表这些场景已验收。旧测试修改了专用显示的剪贴板并生成PNG，不影响用户桌面。
+- [x] Windows amd64及macOS arm64的widgets／widgets-ui测试和新窗口程序
+  交叉编译通过，最终上传的五个二进制SHA-256均与远端相符。Windows10
+  build19045 amd64原生widgets／widgets-ui共945项测试及子用例通过，macOS
+  15.7.7 build24G720 arm64共948项通过，均无失败或跳过。Windows / RDP /
+  Direct2D 1x最终二进制重新完成八步原生检查、PASS及退出0，任务状态Ready、
+  LastTaskResult=0；交叉编译、原生包测试与窗口输入结果分别保留。
+- [ ] macOS15.7.7 arm64 / VNC桌面锁屏，用户明确选择本轮跳过窗口验证；不将
+  原生逻辑测试或交叉编译算作拖动场景通过。其他WM、Wayland、Windows11、
+  非RDP Windows、其他缩放／后端和移动端未执行。
+
+证据目录：`/tmp/goui-table-manual-o04wq978`。正式负对照为
+before-overlay-final.log和linux-old.log；逻辑／race／vet、两种全仓结果及原生
+检查日志分别保留。Windows包装器最初未引用测试参数而解析为-test，之后交互
+启动的账号名映射失败，分别通过引用参数、使用当前用户SID修正。最终复核首次
+仍用重启前窗口坐标，未命中Size手柄，phase1报告actual=81.5、want=105.5；
+按新原生截图坐标重新完整执行八步通过，没有放宽断言。原始记录保留在
+native-win-initial.log、native-win-account.log、windows-coordinate-miss-probe.log，
+最终原生结果为native-final-test-summary.json、windows-driver-final.log和
+windows-native-results.log。早期辅助代码／类型名编译诊断保留，不作为旧行为负对照。
+
+窗口、远端临时目录及Windows临时计划任务均已清理；释放输入并断开本轮创建的
+RDP/VNC客户端，保留原有SSH。专用X11、WM、总线及所属辅助服务清理后无残留。
+既有未跟踪文件保留，不纳入提交。
+
 ## 表格列分配、内部Part及完整内容边线（2026-11-12）
 
 - [x] 第一批：所有可见列在可用宽度不足时等量收缩至各自MinWidth，下限不足再

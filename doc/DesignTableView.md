@@ -157,7 +157,7 @@ Width 始终表示基础宽度（包括用户调整结果），不是随窗口�
 达到后允许空白。2026-11-12修订：空间不足时所有可见列平分缺口，到达MinWidth
 的列退出，缺口继续分给其余列；全部达到下限仍不足才横向滚动。无需Shrink开关，
 Expand仍只控制多余空间；Resizable只控制用户拖动。需要保持基础宽度的列可令
-MinWidth=Width。每次分配从基础宽度重新计算，恢复空间后恢复基础宽度及伸展；
+MinWidth=Width。自动分配从基础宽度重新计算，恢复空间后恢复基础宽度及伸展；
 不改写用户选择或发送Resize。首次尚无视口的列集合保留基础宽度，已知零宽视口
 则收缩至下限；无界测量不虚构额外空间，也不改写现有分配。
 
@@ -179,10 +179,10 @@ Measure 不调用实际列分配方法。无界宽度下，表头按基础宽度
 不得修改已实现单元格、网格／命中映射、调整手柄 Range 或语义快照。只有实际
 分配、模型／列配置或内容变更才沿对应既有路径失效，不让一次自然尺寸查询触发行重绑。
 
-伸展列保留 Resizable：拖动从当前实际分配边缘计算新的基础宽度，之后仍按 Expand
-分配额外空间；向左拖动可能因剩余空间补齐而不改变最终宽度。Esc 恢复拖动前的基础
-宽度，保留 Expand；仅按下／松开不应把实际分配宽度写回配置。Width 仍可由 OnResize
-控制，不在一次鼠标拖动中隐式关闭 Expand。
+伸展列保留 Resizable。2026-11-12修订：手动拖动从当前实际分配边缘起算，目标列
+左侧保持实际宽度，只向右侧借还空间；松手及普通重建保留结果。真正改变外部
+分配面积或列几何配置后才恢复全表自动分配。手调伸展末列可以留白或横向溢出，
+不隐式关闭Expand；Esc恢复原基础宽度和整组分配。完整交互契约见§7.2。
 
 该较小模型参考 GTK4 [ColumnViewColumn.set_expand](https://docs.gtk.org/gtk4/method.ColumnViewColumn.set_expand.html)
 （在线文档 4.23.x，2026-10-30 查阅）对额外空间的平均分配契约；没有引入权重列宽、
@@ -419,14 +419,51 @@ Widget 在下一记录上继承旧焦点。
 水平调整光标及 DragEventController。手柄不触发排序，首版不做边缘自动滚动。
 
 ```text
-newWidth = clamp(startWidth + pointerDeltaX, minWidth, maxWidth)
+newActualWidth = clamp(startActualWidth + contentPointerDeltaX, minWidth, maxWidth)
 ```
 
-宽度实际变化后更新列分配、按 §6 请求表现／布局更新，再发 Resize。不在 PointerMove
-中重新 SetModel／SetDelegate，不同步递归执行整个窗口布局。
-Esc／手势取消恢复起始宽度并通知 Resize，使 UI 受控值同步回退。列被删除／替换、
-窗口卸载时取消交互；外部回调后检查对象存活和列归属。松手后清理按下状态，hover
-由真实命中决定，不能因焦点停留保持拖动高亮。
+手动分配和自动分配共用数值分配方法、列坐标、表头／正文／网格／Snapshot，
+但手调不通过公共SetWidth再触发全表自动收缩。其优先级为：
+
+1. 按下记录整组实际宽度、目标列基础Width、实际视口及内容坐标；当前水平偏移
+   计入指针位移。目标左侧各列实际宽度保持不变，目标边缘按上式跟手。
+2. 拖宽先消耗起始空白，再仅将右侧列从起始实际宽度等量收缩至MinWidth；
+   到达下限仍不足时横向滚动。已有溢出不因第一次小幅移动突然重新分配。
+3. 拖窄先减少已有横向溢出，再让右侧受压缩列平分余量恢复到各自基础Width，
+   剩余空间由右侧Expand列平分至MaxWidth。Resizable仅控制直接拖动，不锁住
+   右侧列的自动分配。每次从起始快照和总位移求解，反向与回到起点保持连续。
+4. 只更新目标列基础Width，只为目标列发Resize；右侧变化不改偏好、不发Resize。
+   返回起始实际边缘时恢复原基础偏好，避免将原收缩／伸展分配写成新偏好。
+   没有有效位移，包括被上下限挡住时，不写偏好或发信号。
+5. 松手保留整组实际分配；Refresh、相同列配置／顺序的UI重建、OnResize受控
+   写回相同Width都不重算。表格外部分配面积（扣除外框）真正变化、列宽／上下限／
+   Expand／显隐／集合／顺序变化后恢复全表自动分配。拖动造成的内部滚动条
+   占位变化仍使用当前手调上下文向右侧调整，不能覆盖左侧和目标边缘。
+
+手调允许左侧列未达到MinWidth就横向滚动，也允许缩窄伸展末列后留白；Expand
+配置保留，下一次自动分配继续生效。Min／Max限制和滚动范围夹取边界可能限制
+屏幕边缘位移；普通滚动偏移变化使用内容坐标，不把窗口坐标与内容坐标混用。
+
+按§6请求表现／布局更新后发送Resize，不在PointerMove重装Model／Delegate或
+同步递归执行整个窗口布局。Esc／手势取消恢复原基础宽度及整组实际分配，再为
+目标列发回退通知，使UI受控值同步。连续手调后取消第二次，也恢复第一次的结果。
+移除／隐藏列前的既有取消回调仍在集合变更前完成并检查重入；应用显式改变几何
+配置后旧手势失效，后续移动／Esc不能覆盖新值。卸载／销毁清理上下文；外部回调
+后检查对象存活、列归属及上下文是否有效。松手清理按下状态，hover由实际命中决定。
+
+设计参考与取舍：Qt6.8的[公开ResizeMode契约](https://doc.qt.io/qt-6.8/qheaderview.html#ResizeMode-enum)
+明确区分Interactive与Stretch；[Qt6.8.3源码](https://github.com/qt/qtbase/blob/v6.8.3/src/widgets/itemviews/qheaderview.cpp#L2533-L2578)
+从当前sectionSize加总位移计算。采用实际边缘起算和职责划分，不采用禁止伸展列
+拖动的模式互斥。Avalonia DataGrid11.3.0的[Resize源码](https://github.com/AvaloniaUI/Avalonia.Controls.DataGrid/blob/11.3.0/src/Avalonia.Controls.DataGrid/DataGridColumn.cs#L956-L1039)
+在有限宽度且使用Star时向右侧列借还空间；其[手柄准入](https://github.com/AvaloniaUI/Avalonia.Controls.DataGrid/blob/11.3.0/src/Avalonia.Controls.DataGrid/DataGridColumnHeader.cs#L343-L358)
+限制末列拖动。GOUI保留默认全列自动收缩、允许末列手调，采用溢出／留白处理
+极限，不引入Star权重、模式枚举或新的Shrink开关。以上是共享控件层的官方契约／
+指定版本源码观察，不是对这些框架各原生平台的运行验证。
+
+回归覆盖实际边缘位移、Size→Description连续拖动、空白／已有溢出、右侧恢复／
+伸展／上下限、原点与点击、滚动条占位、受控重建、Esc及外部写入失效。
+`tests/window/widgets/table_resize`通过正常原生输入和公开Snapshot断言连续操作；
+验证结果、失败／跳过及平台范围见[Plan](Plan.md)。
 
 ## 8. 排序请求与菜单
 
