@@ -1,5 +1,31 @@
 # Plan
 
+## Demo 表格文本选区高亮（2026-11-12）
+
+- [x] 定位 `demo-cell-edit` 只提供透明外框、未提供 selection 部件，导致选区
+  背景也解析为透明。显式复制当前 Modern 的完整 text-input 规则，再保留原有
+  单元格外框覆盖；包含 caret/placeholder，不增加样式继承或修改编辑器内核。
+- [x] 新增明暗 × 四种主题色 × 六种状态共48组包内回归，检查选区不透明、
+  跟随标准输入框主题并区别行选择，以及 caret/placeholder、透明外框和边宽。
+  旧实现48组均失败，修正后通过；Demo 包测试与构建通过。
+- [x] Linux amd64 / Go 1.25.8，专用 Xvnc / Xfwm4 4.16.1、Integrated 1x：
+  Software 与默认优先 OpenGL 配置下，明暗主题的实际 Demo 拖选、Ctrl+A、
+  复制文字、行选择及共存高亮、单次替换的撤销/重做、翻页保留编辑和正常退出
+  共51项检查通过（含旧版无高亮对照）。sRGB RGB8 文字内区独立采样与主题填充
+  预期一致；旧版选区色像素为0，修正后全选777、部分拖选453。
+- [x] `env -u DISPLAY go test ./example/demo/... -count=1`、`git diff --check`
+  通过；Windows amd64 / macOS arm64 的 Demo 测试目标交叉编译通过。
+  `env -u DISPLAY go test ./...` 已执行但失败，关键错误与上一轮逐项相同：
+  未跟踪旧例程/测试使用已移除 API，以及 Typography 无 DISPLAY；无新增失败项。
+- [ ] Windows/macOS 原生、其他缩放与原生输入法未执行。交叉编译不代替原生验收，
+  默认配置允许 OpenGL 初始化失败后回退 Software，本轮未额外探测实际后端类型。
+
+日志、驱动和截图在 `/tmp/goui-demo-cell-selection-fb303loz`。早期窗口驱动修正了
+样例文字、行悬停颜色及多键输入撤销分组的预期，保留原始结果，最终用单次替换
+验证撤销/重做，未修改生产输入行为。鼠标/键盘及复制仅操作专用显示和剪贴板。
+专用显示、窗口管理器、总线及所属辅助服务已核对并清理。全仓旧测试按原行为
+重写未跟踪的 software/output.png、typography/utils/dst.png，不纳入本轮提交。
+
 ## Demo ListRow 演示位置（2026-11-12）
 
 - [x] 将基础控件页的“设置条目”完整移到“文本布局”之后，作为页面最后一块；
