@@ -173,13 +173,13 @@ func TestTableFallbackDecorationParts(t *testing.T) {
 		}
 	}
 	for part, want := range map[string]float32{"horizontal": 1, "vertical": 0} {
-		s := sheet.Resolve(basestyle.Sel{Name: "table-grid", Part: part})
+		s := sheet.Resolve(basestyle.Sel{Name: "table-view", Part: "grid-" + part})
 		width, _ := s.BorderWidth()
 		if ink, ok := s.BorderColor(); !ok || ink == nil || width != want {
 			t.Fatalf("missing grid style %s", part)
 		}
 	}
-	if width, _ := sheet.Resolve(basestyle.Sel{Name: "table-header", Part: "separator"}).BorderWidth(); width != 1 {
+	if width, _ := sheet.Resolve(basestyle.Sel{Name: "table-view", Part: "header-separator"}).BorderWidth(); width != 1 {
 		t.Fatal("header separator is not style controlled")
 	}
 }

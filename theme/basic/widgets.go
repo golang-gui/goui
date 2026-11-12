@@ -21,23 +21,24 @@ func WidgetRules() []style.Rule {
 		style.Name("progress-bar").BackgroundColor(color.RGBA{R: 225, G: 225, B: 225, A: 255}).
 			ForegroundColor(color.RGBA{R: 70, G: 130, B: 220, A: 255}).Radius(2),
 		style.Name("table-view").BackgroundColor(color.White).BorderColor(color.RGBA{R: 198, G: 198, B: 206, A: 255}).BorderWidth(1),
-		style.Name("table-grid").BorderColor(color.RGBA{R: 225, G: 225, B: 230, A: 255}).BorderWidth(0),
-		style.Name("table-grid").Part("horizontal").BorderWidth(1),
-		style.Name("table-header").BackgroundColor(color.RGBA{R: 245, G: 245, B: 245, A: 255}),
-		style.Name("table-header").State(style.Hovered).BackgroundColor(color.RGBA{R: 235, G: 235, B: 235, A: 255}),
-		style.Name("table-header").State(style.Pressed).BackgroundColor(color.RGBA{R: 225, G: 225, B: 225, A: 255}),
-		style.Name("table-header").Part("separator").ForegroundColor(color.RGBA{R: 198, G: 198, B: 206, A: 255}).BorderWidth(1),
-		style.Name("table-header").Part("sort").ForegroundColor(color.RGBA{R: 100, G: 110, B: 130, A: 255}),
-		style.Name("table-header-text").ForegroundColor(color.Black).FontFamily(family).FontSize(size),
+		style.Name("table-view").Part("grid-horizontal").BorderColor(color.RGBA{R: 225, G: 225, B: 230, A: 255}).BorderWidth(1),
+		style.Name("table-view").Part("grid-vertical").BorderColor(color.RGBA{R: 225, G: 225, B: 230, A: 255}).BorderWidth(0),
+		style.Name("table-view").Part("header").BackgroundColor(color.RGBA{R: 245, G: 245, B: 245, A: 255}).BorderWidth(0).Radius(0),
+		style.Name("table-view").Part("header").State(style.Hovered).BackgroundColor(color.RGBA{R: 235, G: 235, B: 235, A: 255}),
+		style.Name("table-view").Part("header").State(style.Pressed).BackgroundColor(color.RGBA{R: 225, G: 225, B: 225, A: 255}),
+		style.Name("table-view").Part("header-separator").ForegroundColor(color.RGBA{R: 198, G: 198, B: 206, A: 255}).BorderWidth(1),
+		style.Name("table-view").Part("header-sort").ForegroundColor(color.RGBA{R: 100, G: 110, B: 130, A: 255}),
+		style.Name("table-view").Part("header-text").ForegroundColor(color.Black).FontFamily(family).FontSize(size),
 		style.Name("table-cell-text").ForegroundColor(color.Black).FontFamily(family).FontSize(size),
 		style.Name("table-cell-icon").ForegroundColor(color.Black),
-		style.Name("table-row").BackgroundColor(color.Transparent).Radius(4),
-		style.Name("table-row").State(style.Hovered).BackgroundColor(color.RGBA{R: 235, G: 235, B: 235, A: 255}),
-		style.Name("table-row").State(style.Pressed).BackgroundColor(color.RGBA{R: 220, G: 220, B: 220, A: 255}),
-		style.Name("table-row").Part("selected").BackgroundColor(color.RGBA{R: 220, G: 220, B: 220, A: 255}),
-		style.Name("table-row").Part("selected").State(style.Hovered).BackgroundColor(color.RGBA{R: 210, G: 210, B: 210, A: 255}),
-		style.Name("table-row").Part("selected").State(style.Pressed).BackgroundColor(color.RGBA{R: 200, G: 200, B: 200, A: 255}),
-		style.Name("table-row").Part("current").BackgroundColor(color.Transparent).BorderColor(color.RGBA{R: 100, G: 110, B: 130, A: 255}).BorderWidth(1),
+		style.Name("table-view").Part("row").BackgroundColor(color.Transparent).BorderWidth(0).Radius(4),
+		style.Name("table-view").Part("row-alternate").BackgroundColor(color.Transparent).BorderWidth(0).Radius(4),
+		style.Name("table-view").Part("row").State(style.Hovered).BackgroundColor(color.RGBA{R: 235, G: 235, B: 235, A: 255}),
+		style.Name("table-view").Part("row").State(style.Pressed).BackgroundColor(color.RGBA{R: 220, G: 220, B: 220, A: 255}),
+		style.Name("table-view").Part("row-selected").BackgroundColor(color.RGBA{R: 220, G: 220, B: 220, A: 255}).BorderWidth(0).Radius(4),
+		style.Name("table-view").Part("row-selected").State(style.Hovered).BackgroundColor(color.RGBA{R: 210, G: 210, B: 210, A: 255}),
+		style.Name("table-view").Part("row-selected").State(style.Pressed).BackgroundColor(color.RGBA{R: 200, G: 200, B: 200, A: 255}),
+		style.Name("table-view").Part("row-current").BackgroundColor(color.Transparent).BorderColor(color.RGBA{R: 100, G: 110, B: 130, A: 255}).BorderWidth(1).Radius(4),
 		style.Name("tree-view").BackgroundColor(color.Transparent),
 		style.Name("tree-item").BackgroundColor(color.Transparent).Radius(4),
 		style.Name("tree-item").State(style.Hovered).BackgroundColor(color.RGBA{R: 235, G: 235, B: 235, A: 255}),
@@ -79,11 +80,12 @@ func WidgetRules() []style.Rule {
 	rules = append(rules, switchRules()...)
 	rules = append(rules, listRowRules(base)...)
 	for _, name := range []string{"check-button-text", "switch-text", "drop-down-text", "drop-down-placeholder",
-		"table-header-text", "table-cell-text", "table-cell-icon", "tree-item-text", "tree-item-icon",
+		"table-cell-text", "table-cell-icon", "tree-item-text", "tree-item-icon",
 		"tab-item-text", "tab-item-text-selected", "tab-item-icon", "tab-item-icon-selected", "tab-indicator-icon",
 		"tab-close-button-text", "tab-scroll-button-text"} {
 		rules = append(rules, style.Name(name).State(style.Disabled).
 			ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}))
 	}
+	rules = append(rules, style.Name("table-view").Part("header-text").State(style.Disabled).ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}))
 	return rules
 }

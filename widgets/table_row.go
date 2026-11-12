@@ -153,23 +153,23 @@ func (r *tableRow) Paint(p gui.Painter) {
 		return
 	}
 	state := r.State()
-	part := ""
+	part := "row"
 	if state.Has(style.Selected) {
-		part = "selected"
+		part = "row-selected"
 	} else if state&(style.Hovered|style.Pressed) == 0 && r.bound.Index%2 == 1 {
-		part = "alternate"
+		part = "row-alternate"
 	}
 	// ListView may allocate a viewport-wide shell. Row decoration follows the
 	// allocated columns, leaving the rest to the table's viewport background.
 	rect := geometry.Rect(0, 0, min(r.Rect().Width, r.view.columnWidth), r.Rect().Height)
-	paintStyledBox(r, p, rect, "table-row", part, state)
+	gui.PaintStyledBox(p, rect, r.view.partStyle(part, state))
 	r.paintGrid(p, rect)
 	if r.view.current == r.bound.ID && r.view.Focused() {
 		state |= style.Focused
 		if r.view.FocusVisible() {
 			state |= style.FocusVisible
 		}
-		paintStyledBorder(p, rect, gui.ResolveWidgetStyle(r, "table-row", "current", state))
+		paintStyledBorder(p, rect, r.view.partStyle("row-current", state))
 	}
 }
 func (r *tableRow) Snapshot() gui.WidgetInfo {

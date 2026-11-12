@@ -132,6 +132,26 @@ func NewTableView() *TableView {
 	return v
 }
 
+// SetStyleName selects this table's appearance, including its owned parts.
+// Application-provided cell contents retain their own style names.
+func (v *TableView) SetStyleName(name string) {
+	if v.Destroyed() || v.StyleName() == name {
+		return
+	}
+	v.WidgetBase.SetStyleName(name)
+	for _, h := range v.headers {
+		h.label.SetStyleName(v.styleName())
+		h.RequestLayout()
+	}
+	v.headerRow.RequestLayout()
+	for _, row := range v.realized {
+		for _, cell := range row.cells {
+			cell.RequestLayout()
+		}
+		row.RequestLayout()
+	}
+}
+
 type tableListModel struct{ view *TableView }
 
 func (m *tableListModel) ItemsCount() int {

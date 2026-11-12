@@ -146,24 +146,25 @@ func builtInRules(options Options) []style.Rule {
 		text("check-button-text"),
 		text("switch-text"),
 		style.Name("table-view").BackgroundColor(p.window).BorderColor(tableEdge).BorderWidth(1),
-		style.Name("table-grid").BorderColor(tableGrid).BorderWidth(0),
-		style.Name("table-grid").Part("horizontal").BorderWidth(1),
-		style.Name("table-header").BackgroundColor(mix(p.window, p.text, .02)),
-		style.Name("table-header").State(style.Hovered).BackgroundColor(mix(p.window, p.text, .05)),
-		style.Name("table-header").State(style.Pressed).BackgroundColor(mix(p.window, p.text, .08)),
-		style.Name("table-header").Part("separator").ForegroundColor(tableEdge).BorderWidth(1),
-		style.Name("table-header").Part("sort").ForegroundColor(p.muted),
-		text("table-header-text"),
+		style.Name("table-view").Part("grid-horizontal").BorderColor(tableGrid).BorderWidth(1),
+		style.Name("table-view").Part("grid-vertical").BorderColor(tableGrid).BorderWidth(0),
+		style.Name("table-view").Part("header").BackgroundColor(mix(p.window, p.text, .02)).BorderWidth(0).Radius(0),
+		style.Name("table-view").Part("header").State(style.Hovered).BackgroundColor(mix(p.window, p.text, .05)),
+		style.Name("table-view").Part("header").State(style.Pressed).BackgroundColor(mix(p.window, p.text, .08)),
+		style.Name("table-view").Part("header-separator").ForegroundColor(tableEdge).BorderWidth(1),
+		style.Name("table-view").Part("header-sort").ForegroundColor(p.muted),
+		text("table-view").Part("header-text"),
 		text("table-cell-text"),
 		style.Name("table-cell-icon").ForegroundColor(p.text),
-		style.Name("table-row").BackgroundColor(color.Transparent).BorderWidth(0).Radius(4),
-		style.Name("table-row").State(style.Hovered).BackgroundColor(mix(p.window, p.text, .04)),
-		style.Name("table-row").State(style.Pressed).BackgroundColor(mix(p.window, p.text, .08)),
-		style.Name("table-row").Part("selected").BackgroundColor(rowSelected),
-		style.Name("table-row").Part("selected").State(style.Hovered).BackgroundColor(mix(rowSelected, p.text, .04)),
-		style.Name("table-row").Part("selected").State(style.Pressed).BackgroundColor(mix(rowSelected, p.text, .08)),
-		style.Name("table-row").Part("current").BackgroundColor(color.Transparent).BorderColor(p.muted).BorderWidth(0),
-		style.Name("table-row").Part("current").State(style.FocusVisible).BorderWidth(1),
+		style.Name("table-view").Part("row").BackgroundColor(color.Transparent).BorderWidth(0).Radius(4),
+		style.Name("table-view").Part("row-alternate").BackgroundColor(color.Transparent).BorderWidth(0).Radius(4),
+		style.Name("table-view").Part("row").State(style.Hovered).BackgroundColor(mix(p.window, p.text, .04)),
+		style.Name("table-view").Part("row").State(style.Pressed).BackgroundColor(mix(p.window, p.text, .08)),
+		style.Name("table-view").Part("row-selected").BackgroundColor(rowSelected).BorderWidth(0).Radius(4),
+		style.Name("table-view").Part("row-selected").State(style.Hovered).BackgroundColor(mix(rowSelected, p.text, .04)),
+		style.Name("table-view").Part("row-selected").State(style.Pressed).BackgroundColor(mix(rowSelected, p.text, .08)),
+		style.Name("table-view").Part("row-current").BackgroundColor(color.Transparent).BorderColor(p.muted).BorderWidth(0).Radius(4),
+		style.Name("table-view").Part("row-current").State(style.FocusVisible).BorderWidth(1),
 		style.Name("tree-view").BackgroundColor(color.Transparent),
 		style.Name("tree-item").BackgroundColor(color.Transparent).BorderWidth(0).Radius(4),
 		style.Name("tree-item").State(style.Hovered).BackgroundColor(p.menuHover),
@@ -326,11 +327,12 @@ func builtInRules(options Options) []style.Rule {
 	// Each content widget resolves its own name; state is shared through the
 	// tree, but foreground rules are explicit rather than inherited colors.
 	for _, name := range []string{"icon", AccentIcon, PrimaryContent, MutedText, Card, Sidebar, Warning, Error, Success, "check-button-text", "switch-text",
-		"drop-down-text", "drop-down-placeholder", "table-header-text", "table-cell-text", "table-cell-icon",
+		"drop-down-text", "drop-down-placeholder", "table-cell-text", "table-cell-icon",
 		"tree-item-text", "tree-item-icon", "tab-item-text", "tab-item-text-selected", "tab-item-icon",
 		"tab-item-icon-selected", "tab-indicator-icon", "tab-close-button-text", "tab-scroll-button-text"} {
 		rules = append(rules, style.Name(name).State(style.Disabled).ForegroundColor(p.disabled))
 	}
+	rules = append(rules, style.Name("table-view").Part("header-text").State(style.Disabled).ForegroundColor(p.disabled))
 	return rules
 }
 

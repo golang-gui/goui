@@ -134,8 +134,8 @@ func tablePanic(t *testing.T, fn func()) {
 func TestTableViewCellContentFillsAllocation(t *testing.T) {
 	old := gui.App
 	gui.App = &separatorApp{sheet: style.Sheet(
-		style.Name("table-grid").Part("horizontal").BorderWidth(5),
-		style.Name("table-grid").Part("vertical").BorderWidth(7),
+		style.Name("table-view").Part("grid-horizontal").BorderWidth(5),
+		style.Name("table-view").Part("grid-vertical").BorderWidth(7),
 	)}
 	t.Cleanup(func() { gui.App = old })
 	v, m, column, _ := tableFixture(2)
@@ -178,9 +178,9 @@ func TestTableViewDecorationLayout(t *testing.T) {
 		style.Name("table-view").BorderWidth(2).BorderColor(color.Black),
 		style.Name("table-view").Part("outer-horizontal").BorderWidth(3),
 		style.Name("table-view").Part("outer-vertical").BorderWidth(5),
-		style.Name("table-grid").Part("horizontal").BorderWidth(6).BorderColor(color.Black),
-		style.Name("table-grid").Part("vertical").BorderWidth(12).BorderColor(color.Black),
-		style.Name("table-header").Part("separator").BorderWidth(3).ForegroundColor(color.Black),
+		style.Name("table-view").Part("grid-horizontal").BorderWidth(6).BorderColor(color.Black),
+		style.Name("table-view").Part("grid-vertical").BorderWidth(12).BorderColor(color.Black),
+		style.Name("table-view").Part("header-separator").BorderWidth(3).ForegroundColor(color.Black),
 	)}
 	gui.App = app
 	t.Cleanup(func() { gui.App = old })
@@ -228,7 +228,7 @@ func TestTableViewDecorationLayout(t *testing.T) {
 	})
 
 	t.Run("width changes remeasure but transparent color retains geometry", func(t *testing.T) {
-		app.sheet = style.Sheet(style.Name("table-grid").Part("vertical").BorderWidth(12).BorderColor(color.Transparent))
+		app.sheet = style.Sheet(style.Name("table-view").Part("grid-vertical").BorderWidth(12).BorderColor(color.Transparent))
 		// Production SetStyleSheet uses the existing style invalidation path.
 		// In this window-free fixture Refresh invalidates the bound cell layout.
 		v.Refresh()
@@ -236,7 +236,7 @@ func TestTableViewDecorationLayout(t *testing.T) {
 		if content.Rect().Width != 68 || row.Rect().Height != 32 {
 			t.Fatal("transparent color unexpectedly released line space")
 		}
-		app.sheet = style.Sheet(style.Name("table-grid").Part("vertical").BorderWidth(0))
+		app.sheet = style.Sheet(style.Name("table-view").Part("grid-vertical").BorderWidth(0))
 		v.Refresh()
 		tableArrange(v, 200, 200)
 		if content.Rect().Width != 80 || row.Rect().Height != 32 {
@@ -244,7 +244,7 @@ func TestTableViewDecorationLayout(t *testing.T) {
 		}
 	})
 	t.Run("extreme widths and tiny viewport", func(t *testing.T) {
-		app.sheet = style.Sheet(style.Name("table-view").BorderWidth(400), style.Name("table-grid").Part("vertical").BorderWidth(400))
+		app.sheet = style.Sheet(style.Name("table-view").BorderWidth(400), style.Name("table-view").Part("grid-vertical").BorderWidth(400))
 		v.Refresh()
 		tableArrange(v, 1, 1)
 		if v.scroll.Rect().Width != 0 || v.scroll.Rect().Height != 0 || v.headerViewport.Rect().Pos != (geometry.Point{X: .5, Y: .5}) {
@@ -311,9 +311,9 @@ func TestTableViewDecorationPixels(t *testing.T) {
 	for _, scale := range []float32{1, 2} {
 		t.Run(fmt.Sprintf("%gx", scale), func(t *testing.T) {
 			app.sheet = style.Sheet(
-				style.Name("table-row").BackgroundColor(color.Transparent),
-				style.Name("table-grid").Part("vertical").BorderWidth(12).BorderColor(color.NRGBA{R: 255, A: 128}),
-				style.Name("table-grid").Part("horizontal").BorderWidth(6).BorderColor(color.NRGBA{R: 255, A: 128}),
+				style.Name("table-view").Part("row").BackgroundColor(color.Transparent),
+				style.Name("table-view").Part("grid-vertical").BorderWidth(12).BorderColor(color.NRGBA{R: 255, A: 128}),
+				style.Name("table-view").Part("grid-horizontal").BorderWidth(6).BorderColor(color.NRGBA{R: 255, A: 128}),
 			)
 			v, _, c, _ := tableFixture(2)
 			c.SetWidth(80)
@@ -350,7 +350,7 @@ func TestTableViewDecorationPixels(t *testing.T) {
 				t.Fatalf("outer corner painted more than once: %v", got)
 			}
 			// Header vertical lines remain when the column is not resizable.
-			app.sheet = style.Sheet(style.Name("table-grid").Part("vertical").BorderWidth(12).BorderColor(color.Black))
+			app.sheet = style.Sheet(style.Name("table-view").Part("grid-vertical").BorderWidth(12).BorderColor(color.Black))
 			c.SetResizable(false)
 			h := v.headers[c]
 			pixels = tablePixels(t, h.Rect().Size, scale, func(p *tablePixelPainter) { h.Paint(p) })
@@ -378,9 +378,9 @@ func TestTableViewTrailingGrid(t *testing.T) {
 							green := color.RGBA{G: 255, A: 255}
 							blue := color.RGBA{B: 255, A: 255}
 							app.sheet = style.Sheet(
-								style.Name("table-grid").Part("vertical").BorderWidth(widths.Width).BorderColor(ink),
-								style.Name("table-grid").Part("horizontal").BorderWidth(widths.Height).BorderColor(ink),
-								style.Name("table-header").Part("separator").BorderWidth(2).ForegroundColor(blue),
+								style.Name("table-view").Part("grid-vertical").BorderWidth(widths.Width).BorderColor(ink),
+								style.Name("table-view").Part("grid-horizontal").BorderWidth(widths.Height).BorderColor(ink),
+								style.Name("table-view").Part("header-separator").BorderWidth(2).ForegroundColor(blue),
 							)
 							v, m, first, _ := tableFixture(rows)
 							defer v.SetModel(nil)
@@ -458,8 +458,8 @@ func TestTableViewTrailingGrid(t *testing.T) {
 func TestTableViewTrailingGridChanges(t *testing.T) {
 	old := gui.App
 	gui.App = &separatorApp{sheet: style.Sheet(
-		style.Name("table-grid").Part("vertical").BorderWidth(4),
-		style.Name("table-grid").Part("horizontal").BorderWidth(2),
+		style.Name("table-view").Part("grid-vertical").BorderWidth(4),
+		style.Name("table-view").Part("grid-horizontal").BorderWidth(2),
 	)}
 	t.Cleanup(func() { gui.App = old })
 	v, m, first, _ := tableFixture(2)
@@ -499,11 +499,11 @@ func TestTableViewCurrentFocusAppearance(t *testing.T) {
 	for _, scale := range []float32{1, 2} {
 		t.Run(fmt.Sprintf("%gx", scale), func(t *testing.T) {
 			rules := []style.Rule{
-				style.Name("table-row").BackgroundColor(color.White).BorderWidth(0).Radius(4),
-				style.Name("table-row").Part("selected").BackgroundColor(color.RGBA{G: 255, A: 255}),
+				style.Name("table-view").Part("row").BackgroundColor(color.White).BorderWidth(0).Radius(4),
+				style.Name("table-view").Part("row-selected").BackgroundColor(color.RGBA{G: 255, A: 255}),
 				// current 故意有不透明背景，不能覆盖选中底色。
-				style.Name("table-row").Part("current").BackgroundColor(color.RGBA{R: 255, A: 255}).BorderColor(color.RGBA{B: 255, A: 255}).BorderWidth(0),
-				style.Name("table-row").Part("current").State(style.FocusVisible).BorderWidth(1),
+				style.Name("table-view").Part("row-current").BackgroundColor(color.RGBA{R: 255, A: 255}).BorderColor(color.RGBA{B: 255, A: 255}).BorderWidth(0),
+				style.Name("table-view").Part("row-current").State(style.FocusVisible).BorderWidth(1),
 			}
 			app.sheet = style.Sheet(rules...)
 			v, _, column, _ := tableFixture(2)
@@ -562,7 +562,7 @@ func TestTableViewCurrentFocusAppearance(t *testing.T) {
 			check(0, green)
 			// The widget forwards state instead of prohibiting pointer outlines:
 			// applications may explicitly opt into their own current decoration.
-			app.sheet = style.Sheet(append(rules, style.Name("table-row").Part("current").BorderWidth(2))...)
+			app.sheet = style.Sheet(append(rules, style.Name("table-view").Part("row-current").BorderWidth(2))...)
 			check(1, blue)
 			check(int(v.columnWidth)-1, blue)
 			owner.(gui.EventTarget).SetFocusedWidget(nil)
@@ -574,11 +574,11 @@ func TestTableViewCurrentFocusAppearance(t *testing.T) {
 func TestTableViewAlternateRowsAndStatePriority(t *testing.T) {
 	old := gui.App
 	app := &separatorApp{sheet: style.Sheet(
-		style.Name("table-row").BackgroundColor(color.White),
-		style.Name("table-row").Part("alternate").BackgroundColor(color.RGBA{R: 220, G: 220, B: 220, A: 255}),
-		style.Name("table-row").State(style.Hovered).BackgroundColor(color.RGBA{B: 255, A: 255}),
-		style.Name("table-row").State(style.Pressed).BackgroundColor(color.RGBA{G: 255, A: 255}),
-		style.Name("table-row").Part("selected").BackgroundColor(color.RGBA{R: 255, A: 255}),
+		style.Name("table-view").Part("row").BackgroundColor(color.White),
+		style.Name("table-view").Part("row-alternate").BackgroundColor(color.RGBA{R: 220, G: 220, B: 220, A: 255}),
+		style.Name("table-view").Part("row").State(style.Hovered).BackgroundColor(color.RGBA{B: 255, A: 255}),
+		style.Name("table-view").Part("row").State(style.Pressed).BackgroundColor(color.RGBA{G: 255, A: 255}),
+		style.Name("table-view").Part("row-selected").BackgroundColor(color.RGBA{R: 255, A: 255}),
 	)}
 	gui.App = app
 	t.Cleanup(func() { gui.App = old })

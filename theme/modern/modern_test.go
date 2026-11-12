@@ -605,7 +605,7 @@ func TestTableStylesNeutralSelectionAndIndependentText(t *testing.T) {
 		for _, accent := range []color.Color{nil, color.Black, color.White, rgb(0xFF0000), rgb(0x0080FF)} {
 			sheet := Sheet(Options{Dark: dark, AccentColor: accent, FontFamily: "Table Font", FontSize: 17})
 			for i, state := range []style.State{style.Normal, style.Hovered, style.Pressed} {
-				selected := sheet.Resolve(style.Sel{Name: "table-row", Part: "selected", State: state})
+				selected := sheet.Resolve(style.Sel{Name: "table-view", Part: "row-selected", State: state})
 				bg, ok := selected.BackgroundColor()
 				if !ok || rgba(bg) != want[i] {
 					t.Fatalf("table selection dark=%v state=%v: %v", dark, state, bg)
@@ -617,15 +617,18 @@ func TestTableStylesNeutralSelectionAndIndependentText(t *testing.T) {
 				if contrast(rgba(fg), rgba(bg)) < 4.5 {
 					t.Fatal("table selection reduced text contrast below 4.5:1")
 				}
-				if width, _ := sheet.Resolve(style.Sel{Name: "table-row", Part: "current", State: state}).BorderWidth(); width != 0 {
+				if width, _ := sheet.Resolve(style.Sel{Name: "table-view", Part: "row-current", State: state}).BorderWidth(); width != 0 {
 					t.Fatal("pointer focus added a current outline")
 				}
 			}
-			if width, _ := sheet.Resolve(style.Sel{Name: "table-row", Part: "current", State: style.FocusVisible}).BorderWidth(); width != 1 {
+			if width, _ := sheet.Resolve(style.Sel{Name: "table-view", Part: "row-current", State: style.FocusVisible}).BorderWidth(); width != 1 {
 				t.Fatal("keyboard current lost its thin outline")
 			}
-			for _, name := range []string{"table-header-text", "table-cell-text"} {
-				s := resolved(sheet, name, style.Normal)
+			for _, name := range []string{"header-text", "cell-text"} {
+				s := resolved(sheet, "table-cell-text", style.Normal)
+				if name == "header-text" {
+					s = sheet.Resolve(style.Sel{Name: "table-view", Part: name})
+				}
 				family, _ := s.FontFamily()
 				size, _ := s.FontSize()
 				fg, ok := s.ForegroundColor()
@@ -633,8 +636,8 @@ func TestTableStylesNeutralSelectionAndIndependentText(t *testing.T) {
 					t.Fatal("table text depends on parent styling")
 				}
 			}
-			for _, part := range []string{"separator", "sort"} {
-				if _, ok := sheet.Resolve(style.Sel{Name: "table-header", Part: part}).ForegroundColor(); !ok {
+			for _, part := range []string{"header-separator", "header-sort"} {
+				if _, ok := sheet.Resolve(style.Sel{Name: "table-view", Part: part}).ForegroundColor(); !ok {
 					t.Fatal("missing header part")
 				}
 			}
@@ -648,23 +651,23 @@ func TestTableStylesNeutralSelectionAndIndependentText(t *testing.T) {
 				}
 			}
 			for part, wantWidth := range map[string]float32{"horizontal": 1, "vertical": 0} {
-				s := sheet.Resolve(style.Sel{Name: "table-grid", Part: part})
+				s := sheet.Resolve(style.Sel{Name: "table-view", Part: "grid-" + part})
 				width, ok := s.BorderWidth()
 				ink, hasColor := s.BorderColor()
 				if !ok || width != wantWidth || !hasColor || rgba(ink).A != 255 {
 					t.Fatalf("grid default %s: width=%g color=%v", part, width, ink)
 				}
 			}
-			bg, _ := sheet.Resolve(style.Sel{Name: "table-row", Part: "alternate"}).BackgroundColor()
+			bg, _ := sheet.Resolve(style.Sel{Name: "table-view", Part: "row-alternate"}).BackgroundColor()
 			if rgba(bg).A != 0 {
 				t.Fatal("zebra enabled without an application rule")
 			}
 			custom := style.Sheet(append(Rules(Options{Dark: dark}),
 				style.Name("table-view").Part("outer-horizontal").BorderWidth(0),
-				style.Name("table-grid").Part("vertical").BorderWidth(3),
-				style.Name("table-row").Part("alternate").BackgroundColor(color.White),
-				style.Name("table-row").Part("selected").BackgroundColor(rgb(0x123456)),
-				style.Name("table-row").Part("current").BorderColor(color.Black).BorderWidth(2),
+				style.Name("table-view").Part("grid-vertical").BorderWidth(3),
+				style.Name("table-view").Part("row-alternate").BackgroundColor(color.White),
+				style.Name("table-view").Part("row-selected").BackgroundColor(rgb(0x123456)),
+				style.Name("table-view").Part("row-current").BorderColor(color.Black).BorderWidth(2),
 			)...)
 			if w, _ := custom.Resolve(style.Sel{Name: "table-view", Part: "outer-horizontal"}).BorderWidth(); w != 0 {
 				t.Fatal("outer horizontal override ignored")
@@ -672,11 +675,11 @@ func TestTableStylesNeutralSelectionAndIndependentText(t *testing.T) {
 			if w, _ := custom.Resolve(style.Sel{Name: "table-view", Part: "outer-vertical"}).BorderWidth(); w != 1 {
 				t.Fatal("independent outer sides coupled")
 			}
-			if w, _ := custom.Resolve(style.Sel{Name: "table-grid", Part: "vertical"}).BorderWidth(); w != 3 {
+			if w, _ := custom.Resolve(style.Sel{Name: "table-view", Part: "grid-vertical"}).BorderWidth(); w != 3 {
 				t.Fatal("grid application override ignored")
 			}
-			bg, _ = custom.Resolve(style.Sel{Name: "table-row", Part: "selected"}).BackgroundColor()
-			current := custom.Resolve(style.Sel{Name: "table-row", Part: "current"})
+			bg, _ = custom.Resolve(style.Sel{Name: "table-view", Part: "row-selected"}).BackgroundColor()
+			current := custom.Resolve(style.Sel{Name: "table-view", Part: "row-current"})
 			ink, _ := current.BorderColor()
 			width, _ := current.BorderWidth()
 			if rgba(bg) != rgb(0x123456) || ink != color.Black || width != 2 {
@@ -702,15 +705,15 @@ func TestTableSurfaceHierarchy(t *testing.T) {
 			t.Fatalf("table surface dark=%v: background=%v edge=%v", dark, bg, border)
 		}
 		for i, state := range []style.State{style.Normal, style.Hovered, style.Pressed} {
-			bg, _ := resolved(sheet, "table-header", state).BackgroundColor()
-			separator := sheet.Resolve(style.Sel{Name: "table-header", Part: "separator", State: state})
+			bg, _ := sheet.Resolve(style.Sel{Name: "table-view", Part: "header", State: state}).BackgroundColor()
+			separator := sheet.Resolve(style.Sel{Name: "table-view", Part: "header-separator", State: state})
 			ink, _ := separator.ForegroundColor()
 			width, _ := separator.BorderWidth()
 			if rgba(bg) != header[i] || rgba(ink) != edge || width != 1 {
 				t.Fatalf("header hierarchy dark=%v state=%v: background=%v separator=%v/%g", dark, state, bg, ink, width)
 			}
 		}
-		ink, _ := sheet.Resolve(style.Sel{Name: "table-grid", Part: "horizontal"}).BorderColor()
+		ink, _ := sheet.Resolve(style.Sel{Name: "table-view", Part: "grid-horizontal"}).BorderColor()
 		if rgba(ink) != grid {
 			t.Fatalf("row separator dark=%v: %v, want %v", dark, ink, grid)
 		}

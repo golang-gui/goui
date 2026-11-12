@@ -27,14 +27,14 @@ func TestGridPaletteMatchesAlternateRows(t *testing.T) {
 				wantAlternate = color.RGBA{R: 43, G: 43, B: 47, A: 255}
 			}
 			for _, part := range []string{"horizontal", "vertical"} {
-				s := grid.Resolve(style.Sel{Name: "table-grid", Part: part})
+				s := grid.Resolve(style.Sel{Name: "table-view", Part: "grid-" + part})
 				ink, ok := s.BorderColor()
 				width, _ := s.BorderWidth()
 				if !ok || color.RGBAModel.Convert(ink) != wantLine || width != 1 {
 					t.Fatalf("网格与斑马配色未配套：fallback=%v dark=%v part=%s color=%v width=%g", fallback, dark, part, ink, width)
 				}
 			}
-			alternate, _ := grid.Resolve(style.Sel{Name: "table-row", Part: "alternate"}).BackgroundColor()
+			alternate, _ := grid.Resolve(style.Sel{Name: "table-view", Part: "row-alternate"}).BackgroundColor()
 			if color.RGBAModel.Convert(alternate) != wantAlternate {
 				t.Fatal("斑马背景没有通过对应的样式 Part 设置")
 			}
@@ -44,8 +44,8 @@ func TestGridPaletteMatchesAlternateRows(t *testing.T) {
 				t.Fatal("示例网格配色替换了实际主题的背景")
 			}
 			for _, mode := range []int{0, 1, 2} {
-				ink, _ := sheet(dark, fallback, mode).Resolve(style.Sel{Name: "table-grid"}).BorderColor()
-				original, _ := source.Resolve(style.Sel{Name: "table-grid"}).BorderColor()
+				ink, _ := sheet(dark, fallback, mode).Resolve(style.Sel{Name: "table-view", Part: "grid-horizontal"}).BorderColor()
+				original, _ := source.Resolve(style.Sel{Name: "table-view", Part: "grid-horizontal"}).BorderColor()
 				if color.RGBAModel.Convert(ink) != color.RGBAModel.Convert(original) {
 					t.Fatal("非 grid 模式被额外加深了网格颜色")
 				}

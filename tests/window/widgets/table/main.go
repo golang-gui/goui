@@ -219,20 +219,21 @@ func sheet(dark, fallback bool, appearance int) style.StyleSheet {
 		if dark && !fallback {
 			grid = color.RGBA{R: 58, G: 58, B: 64, A: 255}
 		}
-		rules = append(rules, style.Name("table-grid").BorderColor(grid))
+		rules = append(rules, style.Name("table-view").Part("grid-horizontal").BorderColor(grid), style.Name("table-view").Part("grid-vertical").BorderColor(grid))
 	}
 	if appearance == 4 {
 		h, w = 6, 12
 		rules = append(rules,
 			style.Name("table-view").Part("outer-horizontal").BorderWidth(3),
 			style.Name("table-view").Part("outer-vertical").BorderWidth(6),
-			style.Name("table-grid").BorderColor(color.NRGBA{R: 90, G: 110, B: 140, A: 140}),
+			style.Name("table-view").Part("grid-horizontal").BorderColor(color.NRGBA{R: 90, G: 110, B: 140, A: 140}),
+			style.Name("table-view").Part("grid-vertical").BorderColor(color.NRGBA{R: 90, G: 110, B: 140, A: 140}),
 		)
 	}
 	rules = append(rules,
-		style.Name("table-grid").Part("horizontal").BorderWidth(h),
-		style.Name("table-grid").Part("vertical").BorderWidth(w),
-		style.Name("table-row").Part("alternate").BackgroundColor(alternate).Radius(0),
+		style.Name("table-view").Part("grid-horizontal").BorderWidth(h),
+		style.Name("table-view").Part("grid-vertical").BorderWidth(w),
+		style.Name("table-view").Part("row-alternate").BackgroundColor(alternate).Radius(0),
 	)
 	return style.Sheet(rules...)
 }
@@ -277,7 +278,7 @@ func assertTable(table *widgets.TableView, m *model) {
 			}
 			if c.ColumnID == "note" {
 				input, found := editorInfo(cell)
-				line, _ := gui.ResolveStyle("table-grid", "vertical", style.Normal).BorderWidth()
+				line, _ := gui.ResolveStyle("table-view", "grid-vertical", style.Normal).BorderWidth()
 				want := cell.Bounds
 				want.Width = max(0, want.Width-line)
 				if !found || !input.Focusable || input.Bounds != want || input.Text != m.note(r.RowID) {

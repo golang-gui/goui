@@ -19,8 +19,12 @@ func tableLineWidth(s style.Style) float32 {
 	return w
 }
 
-func tableGridStyle(widget gui.Widget, part string) style.Style {
-	return gui.ResolveWidgetStyle(widget, "table-grid", part, style.Normal)
+func tableGridStyle(v *TableView, part string) style.Style {
+	return v.partStyle("grid-"+part, style.Normal)
+}
+
+func (v *TableView) partStyle(part string, state style.State) style.Style {
+	return gui.ResolveWidgetStyle(v, v.styleName(), part, state)
 }
 
 func (v *TableView) styleName() string {
@@ -49,7 +53,7 @@ func (r *tableRow) lineHeight() float32 {
 	if r.bound.ID == "" {
 		return 0
 	}
-	return tableLineWidth(tableGridStyle(r, "horizontal"))
+	return tableLineWidth(tableGridStyle(r.view, "horizontal"))
 }
 
 func tablePaintLine(p gui.Painter, rect geometry.Rectangle, s style.Style) {
@@ -63,16 +67,16 @@ func tablePaintLine(p gui.Painter, rect geometry.Rectangle, s style.Style) {
 
 func (r *tableRow) paintGrid(p gui.Painter, rect geometry.Rectangle) {
 	h := min(rect.Height, r.lineHeight())
-	vertical := tableGridStyle(r, "vertical")
+	vertical := tableGridStyle(r.view, "vertical")
 	for i, c := range r.view.visibleColumns {
 		w := r.view.columnLineWidth(c)
 		// Stop above the horizontal band: translucent intersections must not
 		// be painted twice. Content uses the same non-overlapping geometry.
 		tablePaintLine(p, geometry.Rect(r.view.columnX[i]+c.allocatedWidth-w, 0, w, max(0, rect.Height-h)), vertical)
 	}
-	tablePaintLine(p, geometry.Rect(0, rect.Height-h, min(rect.Width, r.view.columnWidth), h), tableGridStyle(r, "horizontal"))
+	tablePaintLine(p, geometry.Rect(0, rect.Height-h, min(rect.Width, r.view.columnWidth), h), tableGridStyle(r.view, "horizontal"))
 }
 
-func tableHeaderLineWidth(widget gui.Widget) float32 {
-	return tableLineWidth(gui.ResolveWidgetStyle(widget, "table-header", "separator", style.Normal))
+func tableHeaderLineWidth(v *TableView) float32 {
+	return tableLineWidth(v.partStyle("header-separator", style.Normal))
 }

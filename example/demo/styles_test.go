@@ -29,7 +29,7 @@ func TestDemoCellEditSelectionStyles(t *testing.T) {
 					if demoStyleColor(selection) != demoStyleColor(want) {
 						t.Fatalf("选区应跟随标准输入框主题：实际 %v，期望 %v", selection, want)
 					}
-					row, _ := sheet.Resolve(style.Sel{Name: "table-row", Part: "selected"}).BackgroundColor()
+					row, _ := sheet.Resolve(style.Sel{Name: "table-view", Part: "row-selected"}).BackgroundColor()
 					if demoStyleColor(selection) == demoStyleColor(row) {
 						t.Fatal("文本选区与表格行选中背景无法区分")
 					}

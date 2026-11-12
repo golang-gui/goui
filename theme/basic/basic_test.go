@@ -47,9 +47,22 @@ func TestCompleteFallbackTextAndStates(t *testing.T) {
 	case "windows":
 		wantFamily = "Segoe UI"
 	}
+	for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed, style.Disabled} {
+		s := sheet.Resolve(style.Sel{Name: "table-view", Part: "header-text", State: state})
+		size, hasSize := s.FontSize()
+		family, hasFamily := s.FontFamily()
+		ink, hasInk := s.ForegroundColor()
+		wantInk := color.Color(color.Black)
+		if state == style.Disabled {
+			wantInk = color.RGBA{R: 140, G: 140, B: 140, A: 255}
+		}
+		if !hasSize || size != 14 || !hasFamily || family != wantFamily || !hasInk || !colors.Equal(ink, wantInk) {
+			t.Fatalf("表头文字Part缺少完整兜底：state=%v size=%g family=%q ink=%v", state, size, family, ink)
+		}
+	}
 	for _, name := range []string{
 		"widget", "label", "button", "text-input", "text-view", "menu-item-text",
-		"check-button-text", "switch-text", "tree-item-text", "table-header-text", "table-cell-text",
+		"check-button-text", "switch-text", "tree-item-text", "table-cell-text",
 		"tab-item-text", "tab-item-text-selected", "tab-close-button-text", "tab-scroll-button-text",
 		"drop-down-text", "drop-down-item-text", "drop-down-placeholder",
 	} {
