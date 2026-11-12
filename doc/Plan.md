@@ -12,7 +12,16 @@
   既有固定宽度横向滚动场景显式设置MinWidth，保留原断言；可见列恢复场景留足
   视口以继续验证原顺序/身份，平衡宽度场景明确扣除外框/滚动条。测试期望调整
   是默认分配契约修订，不是删除覆盖。表格窗口F6按MinWidth校验实际列宽。
-- [ ] 第二批：表格内部外观迁移到所属StyleName的Part，文字参与正常样式失效和测量。
+- [x] 第二批：表头、表头文字/分隔线/排序、网格、行/条纹/选择/当前轮廓全部
+  迁移到所属StyleName的明确Part；无新局部样式系统，不保留旧全局选择器。
+  Label及ui.Label增加显式StylePart，复用字体度量/颜色缓存和StyleChanged。
+  Basic/Modern完整定义平级Part，默认配色/线宽/圆角不变；应用自建单元格样式
+  与内容绑定不受表格改名影响。相关主题、Demo断言、窗口例程样式同步迁移。
+- [x] 第二批旧表格实现不能通过独立Name/Part颜色及网格测量回归；修正后GUI、
+  widgets全子包、Basic/Modern、Demo、table窗口程序包及隔离副本UI包通过。
+  GUI/widgets race通过；widgets-ui组合race曾在启动时segfault，独立完整复核
+  通过，暂未确认该次启动失败原因，不将组合执行记为全部通过。证据包括
+  parts-before/targeted/race、parts-race-ui-final及label-part。
 - [ ] 第三批：单元格完整边缘与滚动末端可达性，含多后端/缩放窗口验收。
 - [ ] 最终全仓、跨平台构建及原生窗口验证；分别记录通过、既有失败和未覆盖项。
 

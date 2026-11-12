@@ -546,9 +546,39 @@ Setup／Bind／Unbind／业务信号返回后检查对象存活和绑定版本�
 
 ### 10.2 样式
 
-独立名称：table-view、table-grid、table-header、table-header-text、table-row、table-cell-text、
-table-cell-icon。表头分隔线／排序图标、行 selected／current 使用明确 Part。
-父控件不向内容子树隐式提供样式，自定义内容选择自己的 StyleName。
+2026-11-12修订：表格自有外观统一使用TableView的StyleName（未指定时为
+`table-view`）及明确Part。不同名称下同名Part独立，例如
+`orders-table/header-text`与`test-table/header`；不再使用全局table-header、
+table-header-text、table-row或table-grid选择器。
+
+Part包括`header`、`header-text`、`header-separator`、`header-sort`、
+`grid-horizontal`、`grid-vertical`、`row`、`row-alternate`、`row-selected`、
+`row-current`及既有`outer-horizontal`/`outer-vertical`。Part是平级选择器；
+row-selected不会自动继承row，主题分别提供完整的背景、边框和圆角默认值。
+表头文字通过普通Label的显式StyleName/StylePart解析，继续由StyleChanged管理
+字体/颜色缓存和测量。改TableView样式名会更新自有文字并使自有布局失效，不重绑
+业务内容；应用提供的单元格Widget仍自行选择StyleName，`table-cell-text`和
+`table-cell-icon`保留为应用可选的普通内容样式，不向子树隐式传色或改名。
+
+应用可在现有完整主题规则后覆盖指定Part。自定义表格名称需要显式提供或复制
+相应规则，不暗中继承table-view，也不安装新的局部样式表：
+
+```go
+rules := modern.Rules(options)
+for _, rule := range append([]style.Rule(nil), rules...) {
+    if rule.Sel.Name == "table-view" {
+        rule.Sel.Name = "orders-table"
+        rules = append(rules, rule)
+    }
+}
+rules = append(rules,
+    style.Name("orders-table").Part("header-text").FontWeight(style.FontWeightBold),
+)
+```
+
+参考Qt **6.8** [QHeaderView的section及排序指示部件](https://doc.qt.io/qt-6.8/stylesheet-reference.html#qheaderview-widget)
+的控件拥有子部件的公开语义。GOUI使用现有Name/Part/State值，不采用CSS、复杂
+选择器、继承或Qt的具体绘制路径；该引用不构成后端运行验收。
 
 完整兜底放 theme/basic，由 GUI 自动使用；modern 放 theme/modern，使用中性 hover／selected，
 不默认铺主题色，表头底部细分隔线，默认薄外框和低对比水平线，不默认画垂直网格
@@ -576,24 +606,24 @@ StyleChanged 使用现有失效路径，本轮不为行高和 padding 增加新�
 | table-view / 默认 | BackgroundColor 为全视口背景；BorderColor / BorderWidth 为外框默认值 |
 | table-view / outer-horizontal | 覆盖上、下外框颜色／宽度 |
 | table-view / outer-vertical | 覆盖左、右外框颜色／宽度 |
-| table-grid / horizontal | BorderColor / BorderWidth 为每行底线，包含末行 |
-| table-grid / vertical | BorderColor / BorderWidth 为每列右边线，包含末列；表头、正文共享 |
-| table-row / 默认 | 普通行 BackgroundColor |
-| table-row / alternate | 奇数零基模型索引的 BackgroundColor（第二、四……行） |
-| table-header / separator | ForegroundColor / BorderWidth 为表头底部分隔线 |
+| table-view / grid-horizontal | BorderColor / BorderWidth 为每行底线，包含末行 |
+| table-view / grid-vertical | BorderColor / BorderWidth 为每列右边线，包含末列；表头、正文共享 |
+| table-view / row | 普通行 BackgroundColor |
+| table-view / row-alternate | 奇数零基模型索引的 BackgroundColor（第二、四……行） |
+| table-view / header-separator | ForegroundColor / BorderWidth 为表头底部分隔线 |
 
-`table-grid` 的默认规则可同时设置两方向，Part 可分别覆盖；不从 table-view
-隐式继承外框配置。外框 Part 则按既有同名样式的 Part fallback 继承统一外框。
+网格两个方向各用明确Part，主题显式提供线色和线宽。外框Part按既有同名样式的
+Part fallback继承统一外框；表头与行的Part显式关闭边框，防止把视口外框画到每格。
 线宽为零关闭；负数、NaN、Inf 视为零。透明颜色不释放线宽所占空间，因此仅变色
 不改变布局。首版外框为矩形边线，不承诺圆角子树裁剪。
 
 ```go
 style.Name("table-view").BackgroundColor(background).BorderColor(border).BorderWidth(1)
 style.Name("table-view").Part("outer-vertical").BorderWidth(0) // 仅保留上下外框
-style.Name("table-grid").Part("horizontal").BorderColor(grid).BorderWidth(1)
-style.Name("table-grid").Part("vertical").BorderColor(grid).BorderWidth(1)
-style.Name("table-row").BackgroundColor(background)
-style.Name("table-row").Part("alternate").BackgroundColor(alternate).Radius(0)
+style.Name("table-view").Part("grid-horizontal").BorderColor(grid).BorderWidth(1)
+style.Name("table-view").Part("grid-vertical").BorderColor(grid).BorderWidth(1)
+style.Name("table-view").Part("row").BackgroundColor(background)
+style.Name("table-view").Part("row-alternate").BackgroundColor(alternate).Radius(0)
 ```
 
 - 外框向视口内部预留空间，覆盖区域包括滚动条；表头／ScrollView 位于框内。
