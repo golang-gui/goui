@@ -47,6 +47,14 @@ ScrollIntoView 仍接收未减滚动偏移的正文坐标。滚轮、拖动自�
 
 ## 参考与验证边界
 
+TableView已内置ScrollView，负责组合固定表头、正文滚动区及整体表格外框；
+它显式向内部宿主传递自己的有效StyleName，复用frame/trough/thumb，不改变
+ScrollView／ScrollBar的绘制分工。表格主题将内部frame明确设为透明、无边框、
+零圆角，整体外框仍由TableView独占。轨道采用与普通表头相同的方形底，滑块
+保留通用圆角和状态色；交汇角沿用已有背景，不增加专用Part或Widget。
+纵向槽上方的表头空位由TableView按已有表头样式补画，保留纯装饰语义。
+详细契约与验证见[TableView](DesignTableView.md)和[Plan](Plan.md)。
+
 - [GTK4 GtkScrolledWindow](https://docs.gtk.org/gtk4/class.ScrolledWindow.html)
   的文档提供可选 frame，并把 viewport、scrollbar 放在同一滚动容器下。
 - [Qt 6 QAbstractScrollArea](https://doc.qt.io/qt-6.10/qabstractscrollarea.html)

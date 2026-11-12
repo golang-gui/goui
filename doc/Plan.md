@@ -1,5 +1,49 @@
 # Plan
 
+## 表格内部滚动槽与样式归属（2026-11-12）
+
+- [x] 内部ScrollView／ScrollBar显式使用所属TableView的StyleName；复用已有
+  frame/trough/thumb，无新公共API、部件类型、专用corner Part或滚动状态。
+  Basic／Modern内部frame透明无框，轨道与普通表头同色并方形收口，滑块保留
+  通用状态色／圆角。整体外框归TableView，TextView和普通ScrollView未改变。
+- [x] 表头滚动槽补位仅绘背景和底部分隔线，不扩展单元格网格，不加语义节点或
+  动作。新增回归在旧源码下失败；修正后所属样式／状态像素、1x／2x半透明合成、
+  指针事件滚动及补位点击检查通过。既有外框fixture补frame无框规则以维持其
+  测试意图，原几何与滚动同步断言保留。widgets全子包／两主题／Demo定向、
+  widgets／widgets-ui／两主题race、受影响包vet及`git diff --check`通过。
+- [x] Linux amd64 / Go1.25.8，专用Xvnc / Xfwm4 4.16.1下，窗口程序在
+  Modern亮色Software 1x／2x、OpenGL 1x，以及Modern暗色OpenGL 2x、Basic
+  Software 1x五组完成断言、PASS和退出0。覆盖真实滑块拖动且不选中行、方形
+  轨道／表头补位像素、两张表样式隔离、列收缩／双轴滚动／恢复、声明式重建、
+  配色切换及小数视口末行完整显示；少量行的视口空白没有网格。
+- [x] Windows10 build19045 amd64 / RDP / Direct2D 1x完成相同窗口场景，
+  10次CHECK、PASS及退出0；计划任务最终Ready、LastTaskResult=0。Windows
+  amd64／macOS arm64的widgets、widgets-ui、两主题测试及窗口程序均交叉编译
+  通过；远端实际执行的测试二进制SHA-256与本地相符。
+- [x] Windows原生widgets／widgets-ui／Basic共961项测试及子用例通过，macOS
+  15.7.7 arm64对应964项通过，均无失败或跳过。两端Modern各65项通过，包含
+  本轮TestTableScrollParts，另有1项TestThirdPartyRegistrationStartup因环境
+  失败：Windows临时目录没有go.mod，macOS SSH会话PATH没有go。保留完整
+  失败日志；不将Modern整包算作通过。两端单独执行本轮Modern表格回归均通过，
+  未改断言、增加skip或安装工具链；该注册集成测试在本地定向及隔离全量通过。
+- [x] 原工作区`env -u DISPLAY go test ./...`已执行但失败：既有未跟踪旧API
+  例程／测试阻止编译、Typography无DISPLAY；21条关键诊断与上一轮按多重集
+  比较相同，无新增项，不把该结果算作全仓通过。
+- [x] 已跟踪源码加本轮三个新增回归文件的仓库外隔离副本，在专用显示下执行
+  `CGO_ENABLED=0 go test -json ./...`退出0：73个有测试包、5608项测试及子用例
+  通过，11项按原条件跳过，132个包无测试文件。跳过涉及手动输入／窗口状态、
+  跨应用剪贴板、macOS签名和iOS SDK，不代表这些场景已验收。旧测试修改了
+  专用显示的剪贴板并生成PNG，不影响用户桌面。10个本轮代码／测试文件与最终
+  工作区逐字节相同，既有未跟踪文件保留、不纳入隔离结果或提交。
+- [ ] macOS窗口沿用用户此前选择跳过；不将原生包测试或交叉编译算作窗口验收。
+  Wayland、其他WM、Windows11、非RDP Windows、其他后端／缩放及移动端未执行。
+
+设计见[TableView](DesignTableView.md)和[ScrollView外框](DesignScrollFrame.md)。
+证据目录：`/tmp/goui-table-scroll-style-qcema6gc`，保留旧源码负对照、定向／race／
+vet、五组Linux及Windows截图／检查日志、两种全仓结果、远端包测试与失败明细。
+临时原生测试目录、Windows计划任务与本轮RDP客户端已清理；专用X11、WM、
+总线及所属辅助进程无残留，保留既有SSH连接。
+
 ## 表格手动列宽与自动分配（2026-11-12）
 
 - [x] 按已确认方案区分手调和自动分配：目标从当前实际边缘起算，左侧保持，

@@ -643,6 +643,9 @@ StyleChanged 使用现有失效路径，本轮不为行高和 padding 增加新�
 | table-view / 默认 | BackgroundColor 为全视口背景；BorderColor / BorderWidth 为外框默认值 |
 | table-view / outer-horizontal | 覆盖上、下外框颜色／宽度 |
 | table-view / outer-vertical | 覆盖左、右外框颜色／宽度 |
+| table-view / frame | 内置ScrollView背景；默认透明、BorderWidth=0、Radius=0，避免第二层外框 |
+| table-view / trough | 内置滚动条轨道背景；默认与普通表头同色、方形、无边框 |
+| table-view / thumb | 内置滚动条滑块；复用通用滑块的圆角和Normal／Hovered／Pressed色阶 |
 | table-view / grid-horizontal | BorderColor / BorderWidth 为每行底线，包含末行 |
 | table-view / grid-vertical | BorderColor / BorderWidth 为每列右边线，包含末列；表头、正文共享 |
 | table-view / grid-top | BorderColor / BorderWidth 为实际表头单元格上边线 |
@@ -655,6 +658,26 @@ StyleChanged 使用现有失效路径，本轮不为行高和 padding 增加新�
 Part fallback继承统一外框；表头与行的Part显式关闭边框，防止把视口外框画到每格。
 线宽为零关闭；负数、NaN、Inf 视为零。透明颜色不释放线宽所占空间，因此仅变色
 不改变布局。首版外框为矩形边线，不承诺圆角子树裁剪。
+
+2026-11-12滚动槽整合：TableView显式将内置ScrollView的StyleName设为自己的
+有效样式名（未指定时为table-view），ScrollView继续将该名交给两条ScrollBar。
+创建、改名、清空恢复默认均走已有setter和样式失效流程；应用单元格的样式名不变。
+ScrollView管理范围、视口、裁剪及条布局，ScrollBar绘制轨道／滑块；TableView
+不重新实现滚动条。整体外框由TableView绘制，内部frame保持无框、透明和零圆角。
+自定义完整表格样式也应显式提供frame/trough/thumb，避免默认Part回退把外框
+传入内部宿主。普通ScrollView和TextView组合的样式与职责保持既有契约。
+
+Basic／Modern分别显式为header和trough提供相同中性色，滑块复制各自通用滑块
+状态色／圆角，不新增配色或交互模式。轨道方形收口，现有8 DIP占位与命中不变。
+表头右侧、纵向滚动槽上方的空位由TableView仅绘制该区域的普通header背景和
+header-separator，不重复覆盖已有表头。补位不绘grid-top／grid-vertical，不作为
+额外列，不增加Widget、Snapshot子节点或语义动作；双条角区继续由既有背景处理。
+关闭视口外框时仍只沿真实单元格绘制完整边线，无条时不虚构补位区。
+
+参考Qt6.8.9 [QAbstractScrollArea公开文档](https://doc.qt.io/qt-6.8/qabstractscrollarea.html#details)
+对视口、滚动条、边距和组合外框的职责划分，复用GOUI既有
+[ScrollView外框设计](DesignScrollFrame.md)，不引入继承体系、专用corner Part或浮层
+滚动机制。该参考为控件层文档契约，未对Qt各原生后端作像素对照。
 
 2026-11-12完整内容边缘：`grid-top`在表头中预留独立顶带，`grid-left`在首个
 可见列的既有列宽中预留左带；行底/列右仍沿用原独占线带。表头文字及首列自定义
