@@ -1,7 +1,7 @@
-// 表格收缩、所属Part和完整内容边线的声明式窗口回归，不使用DevServer。
+// 表格收缩、所属Part、完整内容边线及内部滚动槽的声明式窗口回归，不使用DevServer。
 //
 // 环境：Linux/X11（记录WM）、Windows或macOS桌面，记录实际后端与缩放。
-// 启动：go run ./tests/window/widgets/table_contracts [-dark]
+// 启动：go run ./tests/window/widgets/table_contracts [-dark] [-basic]
 // GOUI_PLAT_PAINTER=software/opengl（Windows另有direct2d），GOUI_PLAT_SCALE=2。
 // 初始：Native 820×620 DIP，两张不同StyleName的表；A有12行、145.5 DIP高，
 // B只有一行、100.25 DIP高。两表均关闭视口外框，只绘完整单元格网格。
@@ -9,11 +9,14 @@
 // 操作与逐项预期：
 //  1. 等READY，按F6；A表头字号大于B，两张表颜色独立；B右侧/下方留白没有网格。
 //     上边/首列左边及末行底边/末列右边完整，文字和内容不盖线。
+//     A表头右端接到滚动槽上方，轨道为方形底、滑块保留圆角；没有第二层外框。
+//     按住A右侧滑块向下拖24 DIP，松手按F7：正文确实滚动，没有选中／激活行。
 //  2. 点击Narrow，按F6：列收缩但不低于MinWidth，无横向滚动；基础宽度不变。
 //     点击Below min，按F6：列全部到达下限后才横向滚动。点击Wide，按F6：
 //     恢复基础宽度和末列伸展；这些操作不输出用户resize。
 //  3. 点击Rebuild、Palette后分别按F6：列和单元格身份保留，A文字度量/颜色改变，
 //     B保持自己的字体；两表背景按各自Part更新，实际内容框线仍完整。
+//     A滚动轨道和表头补位跟随其所属配色，不落回通用scroll-view样式。
 //  4. Wide状态点击A的正文行，按End，再按F6：末行完整位于小数视口内，
 //     ScrollY等于MaxScrollY，尾部余白小于1 DIP；应用没有调整表格高度。
 //  5. 点击Finish（或F8）：要求上述状态都已通过；输出PASS并退出0。
@@ -39,6 +42,7 @@ import (
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/style"
+	"github.com/golang-gui/goui/theme/basic"
 	"github.com/golang-gui/goui/theme/modern"
 	"github.com/golang-gui/goui/ui"
 	"github.com/golang-gui/goui/widgets"
@@ -53,8 +57,9 @@ var edge = color.RGBA{R: 90, G: 100, B: 110, A: 255}
 
 func main() {
 	dark := flag.Bool("dark", false, "use the dark Modern palette")
+	basicMode := flag.Bool("basic", false, "use the Basic fallback theme")
 	flag.Parse()
-	if err := run(*dark); err != nil {
+	if err := run(*dark, *basicMode); err != nil {
 		fmt.Fprintln(os.Stderr, "FAIL:", err)
 		os.Exit(1)
 	}
@@ -68,8 +73,11 @@ func palette(swapped bool) (color.RGBA, color.RGBA) {
 	return a, b
 }
 
-func sheet(dark, swapped bool) style.StyleSheet {
+func sheet(dark, swapped, basicMode bool) style.StyleSheet {
 	base := modern.Rules(modern.Options{Dark: dark})
+	if basicMode {
+		base = basic.Rules()
+	}
 	rules := slices.Clone(base)
 	a, b := palette(swapped)
 	for i, name := range []string{"orders", "test"} {
@@ -90,6 +98,7 @@ func sheet(dark, swapped bool) style.StyleSheet {
 			style.Name(name).BorderWidth(0),
 			style.Name(name).Part("outer-horizontal").BorderWidth(0), style.Name(name).Part("outer-vertical").BorderWidth(0),
 			style.Name(name).Part("header").BackgroundColor(bg).BorderWidth(0).Radius(0),
+			style.Name(name).Part("trough").BackgroundColor(bg).BorderWidth(0).Radius(0),
 			style.Name(name).Part("header-text").FontSize(font).ForegroundColor(color.RGBA{R: 30, G: 40, B: 50, A: 255}),
 			style.Name(name).Part("header-separator").BorderWidth(1).ForegroundColor(edge),
 			style.Name(name).Part("row").BorderWidth(0).Radius(0),
@@ -101,7 +110,7 @@ func sheet(dark, swapped bool) style.StyleSheet {
 	return style.Sheet(rules...)
 }
 
-func run(dark bool) error {
+func run(dark, basicMode bool) error {
 	values := make([]string, 12)
 	for i := range values {
 		values[i] = fmt.Sprintf("Row %02d", i)
@@ -183,6 +192,26 @@ func run(dark bool) error {
 				if got := point(x+header.Width-8, 8); got != want {
 					return fmt.Errorf("table %d header Part: %v want %v", index, got, want)
 				}
+				if data.MaxScrollY > 0 {
+					// 使用公开ScrollBar的自然宽度和表格快照，不读取内部视口结构。
+					bar := gui.NewScrollBar(layout.DirectionVertical)
+					barWidth := bar.Measure(layout.Unbounded()).Width
+					right := data.Bounds.Width - 1
+					if got := point(right, header.Height/2); got != want {
+						return fmt.Errorf("table %d header scroll gap: %v want %v", index, got, want)
+					}
+					bottom := data.Bounds.Height
+					if data.MaxScrollX > 0 {
+						bottom -= barWidth
+					}
+					trackY := bottom - 1
+					if data.ScrollY > data.MaxScrollY/2 {
+						trackY = header.Height + 1
+					}
+					if got := point(right, trackY); got != want {
+						return fmt.Errorf("table %d owned square trough: %v want %v", index, got, want)
+					}
+				}
 				if index == 1 {
 					bg, _ := gui.ResolveStyle("test", "", style.Normal).BackgroundColor()
 					expected := color.RGBAModel.Convert(bg).(color.RGBA)
@@ -224,7 +253,7 @@ func run(dark bool) error {
 				fail(err)
 				return
 			}
-			for _, s := range []string{"narrow", "tiny", "wide", "rebuild", "palette", "end"} {
+			for _, s := range []string{"narrow", "tiny", "wide", "rebuild", "palette", "end", "scrollbar"} {
 				if !seen[s] {
 					fail(fmt.Errorf("missing verified stage %s", s))
 					return
@@ -254,11 +283,23 @@ func run(dark bool) error {
 			ui.Label("B: one real row; blank space stays clear"), tableB,
 			ui.Label("F6 checks — click A then End — Finish requires every stage"),
 		).Spacing(12).Padding(16).CrossAlign(layout.CrossStart)
-		return ui.Root().StyleSheet(sheet(dark, swapped)).Windows(ui.Window("main").Title("GOUI Table contracts").Size(820, 620).Content(content).
+		return ui.Root().StyleSheet(sheet(dark, swapped, basicMode)).Windows(ui.Window("main").Title("GOUI Table contracts").Size(820, 620).Content(content).
 			Shortcuts(ui.Shortcut(ui.KeyF6).OnActivate(func() {
 				if err := verify(); err != nil {
 					fail(err)
 				}
+			}), ui.Shortcut(ui.KeyF7).OnActivate(func() {
+				if err := verify(); err != nil {
+					fail(err)
+					return
+				}
+				v := lookup("a")
+				if v.Snapshot().ScrollY <= 0 || v.Current() != "" || len(v.Selection()) != 0 {
+					fail(errors.New("scrollbar drag failed or selected a row"))
+					return
+				}
+				seen["scrollbar"] = true
+				fmt.Println("CHECK scrollbar-drag")
 			}), ui.Shortcut(ui.KeyF8).OnActivate(finish)).
 			OnAfterPaint(func(p gui.Painter, _ geometry.Rectangle) {
 				if ready {
@@ -281,6 +322,7 @@ func run(dark bool) error {
 				for _, id := range []string{"a", "b", "narrow", "tiny", "wide", "rebuild", "palette", "finish"} {
 					bounds[id] = app.FindWidget("main", id).Snapshot().Bounds
 				}
+				bounds["a-header"] = lookup("a").Snapshot().Children[0].Bounds
 				data, _ := json.Marshal(bounds)
 				fmt.Printf("READY backend=%T scale=%g dark=%t bounds=%s\n", resource, p.PixelScale(), dark, data)
 			}))
