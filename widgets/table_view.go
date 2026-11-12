@@ -75,6 +75,7 @@ func NewTableView() *TableView {
 	v.body = &tableBody{view: v}
 	v.body.WidgetBase.AddChild(v.body, v.list)
 	v.scroll = gui.NewScrollView()
+	v.scroll.SetStyleName(v.styleName())
 	v.scroll.SetChild(v.body)
 	v.WidgetBase.AddChild(v, v.headerViewport)
 	v.WidgetBase.AddChild(v, v.scroll)
@@ -142,6 +143,7 @@ func (v *TableView) SetStyleName(name string) {
 		return
 	}
 	v.WidgetBase.SetStyleName(name)
+	v.scroll.SetStyleName(v.styleName())
 	for _, h := range v.headers {
 		h.label.SetStyleName(v.styleName())
 		h.RequestLayout()
@@ -742,6 +744,7 @@ func (v *TableView) Paint(p gui.Painter) {
 	if bg, ok := s.BackgroundColor(); ok && bg != nil {
 		p.FillRect(r, graphics.ColorOf(bg))
 	}
+	v.paintHeaderScrollGap(p)
 	h, w := v.borderWidths()
 	h, w = min(h, r.Height/2), min(w, r.Width/2)
 	horizontal := gui.ResolveWidgetStyle(v, name, "outer-horizontal", style.Normal)

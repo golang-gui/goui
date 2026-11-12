@@ -21,6 +21,8 @@ func WidgetRules() []style.Rule {
 		style.Name("progress-bar").BackgroundColor(color.RGBA{R: 225, G: 225, B: 225, A: 255}).
 			ForegroundColor(color.RGBA{R: 70, G: 130, B: 220, A: 255}).Radius(2),
 		style.Name("table-view").BackgroundColor(color.White).BorderColor(color.RGBA{R: 198, G: 198, B: 206, A: 255}).BorderWidth(1),
+		style.Name("table-view").Part("frame").BackgroundColor(color.Transparent).BorderWidth(0).Radius(0),
+		style.Name("table-view").Part("trough").BackgroundColor(color.RGBA{R: 245, G: 245, B: 245, A: 255}).BorderWidth(0).Radius(0),
 		style.Name("table-view").Part("grid-horizontal").BorderColor(color.RGBA{R: 225, G: 225, B: 230, A: 255}).BorderWidth(1),
 		style.Name("table-view").Part("grid-vertical").BorderColor(color.RGBA{R: 225, G: 225, B: 230, A: 255}).BorderWidth(0),
 		style.Name("table-view").Part("grid-top").BorderColor(color.RGBA{R: 225, G: 225, B: 230, A: 255}).BorderWidth(0),
@@ -89,5 +91,11 @@ func WidgetRules() []style.Rule {
 			ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}))
 	}
 	rules = append(rules, style.Name("table-view").Part("header-text").State(style.Disabled).ForegroundColor(color.RGBA{R: 140, G: 140, B: 140, A: 255}))
+	// TableView explicitly owns its scroll host's existing style parts.
+	for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed} {
+		rule := style.Rule{Sel: style.Sel{Name: "table-view", Part: "thumb", State: state},
+			Style: base.Resolve(style.Sel{Name: styleNameScrollView, Part: stylePartThumb, State: state})}
+		rules = append(rules, rule.BorderWidth(0))
+	}
 	return rules
 }

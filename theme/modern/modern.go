@@ -146,6 +146,8 @@ func builtInRules(options Options) []style.Rule {
 		text("check-button-text"),
 		text("switch-text"),
 		style.Name("table-view").BackgroundColor(p.window).BorderColor(tableEdge).BorderWidth(1),
+		style.Name("table-view").Part("frame").BackgroundColor(color.Transparent).BorderWidth(0).Radius(0),
+		style.Name("table-view").Part("trough").BackgroundColor(mix(p.window, p.text, .02)).BorderWidth(0).Radius(0),
 		style.Name("table-view").Part("grid-horizontal").BorderColor(tableGrid).BorderWidth(1),
 		style.Name("table-view").Part("grid-vertical").BorderColor(tableGrid).BorderWidth(0),
 		style.Name("table-view").Part("grid-top").BorderColor(tableGrid).BorderWidth(0),
@@ -325,6 +327,11 @@ func builtInRules(options Options) []style.Rule {
 				Style: base.Resolve(style.Sel{Name: "scroll-view", Part: part, State: state})}
 			rules = append(rules, rule.BorderWidth(0))
 		}
+	}
+	for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed} {
+		rule := style.Rule{Sel: style.Sel{Name: "table-view", Part: "thumb", State: state},
+			Style: base.Resolve(style.Sel{Name: "scroll-view", Part: "thumb", State: state})}
+		rules = append(rules, rule.BorderWidth(0))
 	}
 	// Each content widget resolves its own name; state is shared through the
 	// tree, but foreground rules are explicit rather than inherited colors.

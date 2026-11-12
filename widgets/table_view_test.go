@@ -176,6 +176,8 @@ func TestTableViewDecorationLayout(t *testing.T) {
 	old := gui.App
 	app := &separatorApp{sheet: style.Sheet(
 		style.Name("table-view").BorderWidth(2).BorderColor(color.Black),
+		// 完整表格样式把内部滚动宿主留为无框背景，本组仅验证最外层边框。
+		style.Name("table-view").Part("frame").BackgroundColor(color.Transparent).BorderWidth(0).Radius(0),
 		style.Name("table-view").Part("outer-horizontal").BorderWidth(3),
 		style.Name("table-view").Part("outer-vertical").BorderWidth(5),
 		style.Name("table-view").Part("grid-horizontal").BorderWidth(6).BorderColor(color.Black),

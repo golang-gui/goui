@@ -91,3 +91,25 @@ func (r *tableRow) paintGrid(p gui.Painter, rect geometry.Rectangle) {
 func tableHeaderLineWidth(v *TableView) float32 {
 	return tableLineWidth(v.partStyle("header-separator", style.Normal))
 }
+
+// The vertical scrollbar leaves a non-interactive gap beside the fixed header.
+// Paint only that gap: existing headers own their backgrounds and cell edges.
+func (v *TableView) paintHeaderScrollGap(p gui.Painter) {
+	header := v.headerViewport.Rect()
+	_, border := v.borderWidths()
+	right := max(0, v.Rect().Width-border)
+	x := min(right, max(0, header.X+header.Width))
+	gap := geometry.Rect(x, header.Y, right-x, header.Height)
+	if gap.Width <= 0 || gap.Height <= 0 {
+		return
+	}
+	if bg, ok := v.partStyle("header", style.Normal).BackgroundColor(); ok && bg != nil {
+		p.FillRect(gap, graphics.ColorOf(bg))
+	}
+	line := min(gap.Height, tableHeaderLineWidth(v))
+	if line > 0 {
+		if ink, ok := v.partStyle("header-separator", style.Normal).ForegroundColor(); ok && ink != nil {
+			p.FillRect(geometry.Rect(gap.X, gap.Y+gap.Height-line, gap.Width, line), graphics.ColorOf(ink))
+		}
+	}
+}
