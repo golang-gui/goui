@@ -26,12 +26,17 @@ func TestGridPaletteMatchesAlternateRows(t *testing.T) {
 				wantLine = color.RGBA{R: 58, G: 58, B: 64, A: 255}
 				wantAlternate = color.RGBA{R: 43, G: 43, B: 47, A: 255}
 			}
-			for _, part := range []string{"horizontal", "vertical"} {
+			for _, part := range []string{"horizontal", "vertical", "top", "left"} {
 				s := grid.Resolve(style.Sel{Name: "table-view", Part: "grid-" + part})
 				ink, ok := s.BorderColor()
 				width, _ := s.BorderWidth()
 				if !ok || color.RGBAModel.Convert(ink) != wantLine || width != 1 {
 					t.Fatalf("网格与斑马配色未配套：fallback=%v dark=%v part=%s color=%v width=%g", fallback, dark, part, ink, width)
+				}
+			}
+			for _, part := range []string{"outer-horizontal", "outer-vertical"} {
+				if width, _ := grid.Resolve(style.Sel{Name: "table-view", Part: part}).BorderWidth(); width != 0 {
+					t.Fatal("完整内容网格模式不应绘制视口外框")
 				}
 			}
 			alternate, _ := grid.Resolve(style.Sel{Name: "table-view", Part: "row-alternate"}).BackgroundColor()

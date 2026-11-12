@@ -10,7 +10,7 @@
 // 例程追加的样式覆盖，并非 Modern 的默认外观。Basic 为固定亮色，Dark 不改变它。
 // GOUI_PLAT_PAINTER=software/opengl，Windows 另可 direct2d；GOUI_PLAT_SCALE=2
 // 请求 2x。初始：Native 880×620 DIP、Modern 亮色、10000 条内存记录、多选、
-// 五列固定宽度；名称和大小可排序，Notes 为单行编辑器，说明自动换行，部分
+// 五列基础宽度；名称和大小可排序，Notes 为单行编辑器，说明自动换行，部分
 // 操作单元格含 Inspect 按钮。正文内容填满单元格，普通文本自行用容器留白。
 //
 // 操作及预期：
@@ -74,7 +74,8 @@
 //     末列右边线应完整收口，表头末列同步有右边线；空白视口不延伸虚构网格。
 //     切换thick、亮暗、隐藏／恢复Notes列、横向滚动及Refresh/Rebuild后重复。
 //     编辑器仍填满扣除网格后的单元格，不被边线盖住。-rows=1仍有底线／右边线，
-//     -rows=0只有表头右边线和分隔线；外框独立包围整个视口。
+//     grid模式包含表头上边和首列左边，关闭视口外框，只包围已有单元格；
+//     -rows=0只保留表头边线，thick等其他模式仍可独立展示视口外框。
 //     普通／斑马、悬停／按下／选中背景及Current轮廓均止于末列，右侧保留统一
 //     视口背景；Expand last开启时随实际列宽填满，关闭后恢复右侧空白。
 //
@@ -220,6 +221,13 @@ func sheet(dark, fallback bool, appearance int) style.StyleSheet {
 			grid = color.RGBA{R: 58, G: 58, B: 64, A: 255}
 		}
 		rules = append(rules, style.Name("table-view").Part("grid-horizontal").BorderColor(grid), style.Name("table-view").Part("grid-vertical").BorderColor(grid))
+		rules = append(rules,
+			style.Name("table-view").Part("grid-top").BorderColor(grid).BorderWidth(1),
+			style.Name("table-view").Part("grid-left").BorderColor(grid).BorderWidth(1),
+			style.Name("table-view").Part("outer-horizontal").BorderWidth(0),
+			style.Name("table-view").Part("outer-vertical").BorderWidth(0),
+			style.Name("table-view").Part("header-separator").ForegroundColor(grid),
+		)
 	}
 	if appearance == 4 {
 		h, w = 6, 12
