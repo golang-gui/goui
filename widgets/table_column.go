@@ -61,8 +61,10 @@ func (c *TableColumn) SetVisible(visible bool) {
 func (c *TableColumn) Expand() bool { return c.expand }
 
 // SetExpand shares extra space equally among visible expanding columns, up to
-// MaxWidth. All visible columns can shrink to MinWidth when space is short,
-// independently of Expand. Allocation does not change Width or emit Resize.
+// MaxWidth during automatic allocation. All visible columns can shrink to
+// MinWidth when space is short, independently of Expand. Manual resizing keeps
+// earlier columns stable and distributes changes only to later columns.
+// Allocation does not change Width or emit Resize.
 func (c *TableColumn) SetExpand(expand bool) {
 	if c.expand == expand {
 		return
@@ -88,6 +90,9 @@ func (c *TableColumn) clamp(width float32) float32 {
 	}
 	return width
 }
+
+// SetWidth changes the base preference and resumes automatic column allocation.
+// Setting the current value is a no-op, including controlled resize writeback.
 func (c *TableColumn) SetWidth(width float32) {
 	width = c.clamp(width)
 	if c.width == width {

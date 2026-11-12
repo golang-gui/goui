@@ -138,11 +138,11 @@ func (l *tableHeaderCellLayout) Arrange(children []layout.Child, rect geometry.R
 
 type tableResizeHandle struct {
 	gui.WidgetBase
-	header         *tableHeader
-	drag           *gui.DragEventController
-	dragging       bool
-	before, startX float32
-	startWidth     float32
+	header   *tableHeader
+	drag     *gui.DragEventController
+	dragging bool
+	startX   float32
+	resize   *tableColumnResizeState
 }
 
 func newTableResizeHandle(header *tableHeader) *tableResizeHandle {
@@ -151,15 +151,26 @@ func newTableResizeHandle(header *tableHeader) *tableResizeHandle {
 	h.SetCursor(gui.CursorResizeHorizontal)
 	h.drag = gui.NewDragEventController()
 	h.drag.ConnectBegin(func(point geometry.Point, _ events.Modifiers) {
-		if header.view.Destroyed() || header.column.owner != header.view || !header.column.resizable {
+		if h.Destroyed() || header.view.Destroyed() || header.column.owner != header.view || !header.column.visible || !header.column.resizable {
 			h.drag.Reset()
 			return
 		}
-		h.dragging, h.before, h.startX = true, header.column.width, tablePoint(h, point, header.view).X
-		h.startWidth = header.column.allocatedWidth
+		h.dragging = true
+		h.startX = tablePoint(h, point, header.view).X + header.view.scroll.ScrollX()
+		h.resize = header.view.beginColumnResize(header.column)
 	})
 	h.drag.ConnectUpdate(func(point geometry.Point, _ events.Modifiers) { h.move(point) })
-	h.drag.ConnectEnd(func(point geometry.Point, _ events.Modifiers) { h.move(point); h.dragging = false })
+	h.drag.ConnectEnd(func(point geometry.Point, _ events.Modifiers) {
+		r := h.resize
+		h.move(point)
+		if r != nil && h.resize == r {
+			h.dragging, h.resize = false, nil
+			if r.width == r.widths[r.index] && r.column.width == r.before {
+				header.view.columnResize = r.previous
+			}
+			r.previous = nil
+		}
+	})
 	h.drag.ConnectCancel(h.cancel)
 	h.AddEventController(h.drag)
 	keys := gui.NewKeyEventController()
@@ -179,40 +190,51 @@ func (h *tableResizeHandle) move(point geometry.Point) {
 	if !h.dragging {
 		return
 	}
-	v, c := h.header.view, h.header.column
-	if v.Destroyed() || c.owner != v || !c.resizable {
+	v, c, r := h.header.view, h.header.column, h.resize
+	if v.Destroyed() || c.owner != v || !c.resizable || r == nil || v.columnResize != r {
 		h.cancel()
 		return
 	}
-	delta := tablePoint(h, point, v).X - h.startX
-	width := c.clamp(h.startWidth + delta)
-	if delta == 0 {
-		width = c.clamp(h.before)
+	delta := tablePoint(h, point, v).X + v.scroll.ScrollX() - h.startX
+	width := c.clamp(r.widths[r.index] + delta)
+	base := width
+	if width == r.widths[r.index] {
+		base = r.before
 	}
-	if width == c.width {
+	if width == r.width && base == c.width {
 		return
 	}
-	c.SetWidth(width)
-	if !v.Destroyed() && c.owner == v && c.width == width {
+	c.width, r.width = base, width
+	r.allocate(v)
+	v.columnResizeChanged()
+	if !v.Destroyed() && c.owner == v && v.columnResize == r && c.width == base {
 		c.emitResize()
 	}
+}
+func (h *tableResizeHandle) discard() {
+	h.dragging, h.resize = false, nil
+	h.drag.Reset()
 }
 func (h *tableResizeHandle) cancel() {
 	if !h.dragging {
 		return
 	}
-	h.dragging = false
-	h.drag.Reset()
-	v, c := h.header.view, h.header.column
-	if v.Destroyed() || c.owner != v {
+	v, c, r := h.header.view, h.header.column, h.resize
+	h.discard()
+	if v.Destroyed() || c.owner != v || r == nil || v.columnResize != r {
 		return
 	}
-	width := c.clamp(h.before)
-	if c.width == width {
-		return
+	changed := c.width != r.before || r.width != r.widths[r.index]
+	c.width = r.before
+	for i, column := range v.visibleColumns {
+		column.allocatedWidth = r.widths[i]
 	}
-	c.SetWidth(width)
-	if !v.Destroyed() && c.owner == v && c.width == width {
+	v.columnResize = r.previous
+	r.previous = nil
+	v.updateColumnPositions()
+	version := v.revision
+	v.columnResizeChanged()
+	if changed && v.valid(version) && c.owner == v && c.width == r.before {
 		c.emitResize()
 	}
 }

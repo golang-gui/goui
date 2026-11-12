@@ -31,6 +31,8 @@ type TableView struct {
 	columnWidth                   float32
 	columnViewportWidth           float32
 	columnViewportKnown           bool
+	columnLayoutSize              geometry.Size
+	columnResize                  *tableColumnResizeState
 	rowIDs                        []string
 	indices                       map[string]int
 	selected                      map[string]bool
@@ -111,6 +113,7 @@ func NewTableView() *TableView {
 	})
 	v.ConnectUnmount(func() {
 		v.revision++
+		v.invalidateColumnResize()
 		v.revealID = ""
 		if v.modelHandle != nil {
 			v.modelHandle.Disconnect()
@@ -415,6 +418,7 @@ func (v *TableView) columnsChanged() {
 	v.Refresh()
 }
 func (v *TableView) updateColumnGeometry() {
+	v.invalidateColumnResize()
 	v.visibleColumns = v.visibleColumns[:0]
 	for _, c := range v.columns {
 		if c.visible {
@@ -423,27 +427,41 @@ func (v *TableView) updateColumnGeometry() {
 	}
 	v.columnX = make([]float32, len(v.visibleColumns))
 	width := float64(0)
-	var expanding []*TableColumn
 	for _, c := range v.visibleColumns {
 		c.allocatedWidth = c.width
 		width += float64(c.width)
-		if c.expand && (c.maxWidth <= 0 || c.width < c.maxWidth) {
-			expanding = append(expanding, c)
-		}
 	}
 	remaining := max(0, float64(v.columnViewportWidth)-width)
 	if v.columnViewportKnown && width > float64(v.columnViewportWidth) {
-		v.shrinkColumns(width - float64(v.columnViewportWidth))
+		tableShrinkColumns(v.visibleColumns, width-float64(v.columnViewportWidth))
+	}
+	tableGrowColumns(v.visibleColumns, remaining, false)
+	v.updateColumnPositions()
+}
+
+// Grow towards base preferences first, or distribute surplus to expanding columns.
+func tableGrowColumns(columns []*TableColumn, remaining float64, restore bool) float64 {
+	limit := func(c *TableColumn) float64 {
+		if restore {
+			return float64(c.width)
+		}
+		if c.maxWidth > 0 {
+			return float64(max(c.minWidth, c.maxWidth))
+		}
+		return math.MaxFloat32
+	}
+	var expanding []*TableColumn
+	for _, c := range columns {
+		if (restore || c.expand) && float64(c.allocatedWidth) < limit(c) {
+			expanding = append(expanding, c)
+		}
 	}
 	for len(expanding) > 0 && remaining > 0 {
 		share := remaining / float64(len(expanding))
 		used := float64(0)
 		next := expanding[:0]
 		for _, c := range expanding {
-			target := float64(c.allocatedWidth) + share
-			if c.maxWidth > 0 {
-				target = min(target, float64(c.maxWidth))
-			}
+			target := min(float64(c.allocatedWidth)+share, limit(c))
 			allocated := float32(target)
 			// Round shares down: a subpixel rounding excess must not create
 			// a horizontal scrollbar when the columns fit the viewport.
@@ -452,7 +470,7 @@ func (v *TableView) updateColumnGeometry() {
 			}
 			used += float64(allocated) - float64(c.allocatedWidth)
 			c.allocatedWidth = allocated
-			if c.maxWidth <= 0 || c.allocatedWidth < c.maxWidth {
+			if float64(c.allocatedWidth) < limit(c) {
 				next = append(next, c)
 			}
 		}
@@ -464,7 +482,11 @@ func (v *TableView) updateColumnGeometry() {
 		}
 		expanding = next
 	}
-	width = 0
+	return remaining
+}
+
+func (v *TableView) updateColumnPositions() {
+	width := float64(0)
 	for i, c := range v.visibleColumns {
 		v.columnX[i] = float32(width)
 		width += float64(c.allocatedWidth)
@@ -472,11 +494,11 @@ func (v *TableView) updateColumnGeometry() {
 	v.columnWidth = float32(width)
 }
 
-// Shrink equally from base allocations, redistributing a capped column's share.
+// Shrink equally from current allocations, redistributing a capped column's share.
 // The base preferences and user-resize signals are never changed by allocation.
-func (v *TableView) shrinkColumns(deficit float64) {
+func tableShrinkColumns(columns []*TableColumn, deficit float64) {
 	var shrinking []*TableColumn
-	for _, c := range v.visibleColumns {
+	for _, c := range columns {
 		if c.allocatedWidth > c.minWidth {
 			shrinking = append(shrinking, c)
 		}
@@ -517,7 +539,11 @@ func (v *TableView) setColumnViewportWidth(width float32) {
 	}
 	v.columnViewportWidth = width
 	v.columnViewportKnown = true
-	v.updateColumnGeometry()
+	if v.columnResize != nil {
+		v.columnResize.allocate(v)
+	} else {
+		v.updateColumnGeometry()
+	}
 	for i, c := range v.visibleColumns {
 		if old[i] != c.allocatedWidth {
 			v.headerRow.RequestLayout()

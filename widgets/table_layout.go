@@ -44,6 +44,14 @@ func (l *tableLayout) Arrange(children []layout.Child, rect geometry.Rectangle) 
 	h, w := v.borderWidths()
 	h, w = min(h, rect.Height/2), min(w, rect.Width/2)
 	width, height := max(0, rect.Width-2*w), max(0, rect.Height-2*h)
+	size := geometry.Size{Width: width, Height: height}
+	if v.columnLayoutSize != size && v.columnResize != nil {
+		// A new externally allocated area starts automatic allocation again.
+		// Scrollbar changes inside this area retain the manual allocation context.
+		v.updateColumnGeometry()
+		v.list.Refresh()
+	}
+	v.columnLayoutSize = size
 	header := children[0].Measure(layout.Loose(geometry.Size{Width: width, Height: layout.Inf}))
 	headerHeight := min(height, header.Height)
 	v.headerViewport.Arrange(geometry.Rect(w, h, width, headerHeight))
