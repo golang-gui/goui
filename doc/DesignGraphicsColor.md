@@ -36,6 +36,11 @@ graphics.ColorOf(color.NRGBA{R:255, A:128})   // 接收标准 Go color.Color
 不透明原生目标可能忽略最终 alpha；窗口透明选项和平台呈现策略不由此新增归一化。
 半透明窗口的最终视觉仍需要原生合成器验收，离屏像素测试不代替桌面呈现验证。
 
+PaintStyledBox 在背景与完整边框均不透明时，用边框色填满外形，再在真实内轮廓
+填入背景色，使形内过渡保持不透明；同色只填一次。透明/半透明组合及独立背景/
+边框绘制沿用原有 SourceOver，不改变预乘颜色或图元契约。轮廓、AA 对照和适用
+条件见 [不透明异色细边框](DesignCornerRadius.md#不透明异色细边框2026-11-12)。
+
 Direct2D 原生参数依据：[画刷颜色](https://learn.microsoft.com/en-us/windows/win32/direct2d/direct2d-brushes-overview)、
 [Clear](https://learn.microsoft.com/en-us/windows/win32/api/d2d1/nf-d2d1-id2d1rendertarget-clear%28constd2d1_color_f%29)、
 [渐变端点](https://learn.microsoft.com/en-us/windows/win32/api/d2d1_1/nf-d2d1_1-id2d1devicecontext-creategradientstopcollection)。

@@ -1,5 +1,51 @@
 # Plan
 
+## Switch 关闭态轨道漏底（2026-11-12）
+
+- [x] 复现关闭态细边框的形内透明缺口：旧 PaintStyledBox 在 Software 1x 的完全
+  形内像素 alpha 最低为168/255；仅取消内背景单独取整仍有242/255。实际 Switch
+  的旧版窗口回归在 Software/OpenGL 分别得到189/188，预期255。
+- [x] GUI 对完整四边、背景/边框均不透明且异色的组合，先绘边框色完整外形，
+  再绘按完整边宽内缩的背景 Path；共用外框，不单独取整内轮廓，内部消失时保留
+  完整边框底色。同色仍单次填充，透明/半透明、选边、独立背景/边框与宿主分步
+  绘制保留既有语义；不改主题颜色、Switch 几何/动画/输入/语义或 Painter API。
+- [x] 新 GUI 回归384组：四档缩放、四种分数平移、两类圆角、纯平移/旋转/
+  非均匀缩放、.5/1/2/10 DIP 边宽及 clip，用独立物理边界/圆方程要求形内
+  alpha=255。实际 Switch 新增96组 Basic/Modern 明暗、开/关、正常/悬停/按下/
+  禁用及四档缩放；两组回归在旧实现失败，修正后通过，未放宽形内 alpha。
+- [x] 保留半透明 Over、选边、外缘、文字、光标和焦点断言；不透明绘制指令预期
+  更新为外形底色加内轮廓，增加内轮廓边界/起点/圆角检查。外缘参考在两色不透明
+  情况下改为同几何的单次边框色填充，不要求原生填充与中心线描边使用同一 AA
+  曲线；其余仍对照独立描边。颜色容差保持1/2字节，不修改既有圆弧容差。
+- [x] Linux amd64 / Go 1.25.8，专用 Xvnc / Xfwm4 4.16.1 合成会话：
+  Software/OpenGL × Native/Integrated × 1/1.25/1.5/2x 共16组新窗口回归通过。
+  每组在四种离屏缩放下覆盖96种主题/状态组合，共1536组；检查完全覆盖区域
+  alpha=255、外缘单次覆盖率/颜色、轨道核心颜色、Snapshot 和取消按压不发信号。
+  实际后端、PixelScale 与装饰均已核对；OpenGL 为 Mesa23.2.1 llvmpipe。
+- [x] CheckButton圆角、CornerRadius容器/按钮组/Popover、BorderSides 共12组既有
+  窗口验收通过；另六组 Switch 真实 XTest 输入共168项状态断言、四组双向动画
+  采样和 OpenGL 2x 的通知中销毁通过。ListRow 1x 截图复核开/关圆点中心保持，
+  Demo 的亮暗、开关/整行动作、820×600窄窗及正常退出通过。
+- [x] 隔离的已跟踪源码加本轮改动
+  `CGO_ENABLED=0 go test -json -count=1 ./...`：5460通过、11既有跳过、0失败。
+  最终源码复查结果相同。
+  GUI/widgets/widgets-ui/两主题/Demo 的完整 race 与相关 vet 通过；Windows amd64/
+  macOS arm64 的受影响测试目标与窗口例程交叉编译通过，包含 Windows Direct2D
+  测试目标。没有把编译记为原生运行。
+- [ ] Windows/macOS 原生、Direct2D 原生像素、硬件 OpenGL、真实混合 DPI 与移动
+  设备未执行。上述逻辑缩放不等同真实 HiDPI。设计与参考见
+  [DesignCornerRadius](DesignCornerRadius.md#不透明异色细边框2026-11-12)、
+  [DesignGraphicsColor](DesignGraphicsColor.md) 和 [DesignSwitch](DesignSwitch.md)。
+
+证据在 `/tmp/goui-switch-off-fix-sbskln9c`：旧版失败/候选对照、源码副本、全仓与
+race/vet/cross 日志、覆盖率/消费者/交互矩阵及 ListRow/Demo 前后截图。原工作区
+`env -u DISPLAY go test ./...` 仍因既有未跟踪旧 API 测试及 Typography 无 DISPLAY
+失败，失败详情与前轮相同，无新增失败。旧测试按既有行为更新未跟踪的
+software/output.png、typography/utils/dst.png，不纳入本轮提交；隔离测试在临时
+源码副本写图片，并操作专用显示的剪贴板。没有迁移或弱化既有测试。
+两套专用 Xvnc/Xfwm4、会话总线及所属辅助服务已按专用总线归属核对并清理，
+显示套接字已移除。鼠标/键盘及剪贴板测试均使用专用显示，没有操作用户桌面。
+
 ## Switch 轨道与滑块共心（2026-11-12）
 
 - [x] 1x 截图及源码确认：FillRoundRect 对齐最终像素外框，旧 Switch 的圆点仍从
