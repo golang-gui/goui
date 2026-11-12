@@ -66,8 +66,12 @@ func (h *tableHeader) Paint(p gui.Painter) {
 	r := geometry.Rect(0, 0, h.Rect().Width, h.Rect().Height)
 	gui.PaintStyledBox(p, r, h.view.partStyle("header", state))
 	line := min(r.Height, tableHeaderLineWidth(h.view))
+	top := min(max(0, r.Height-line), tableLineWidth(tableGridStyle(h.view, "top")))
 	w := h.view.columnLineWidth(h.column)
-	tablePaintLine(p, geometry.Rect(r.Width-w, 0, w, max(0, r.Height-line)), tableGridStyle(h.view, "vertical"))
+	left := h.view.columnLeadingWidth(h.column)
+	tablePaintLine(p, geometry.Rect(0, 0, r.Width, top), tableGridStyle(h.view, "top"))
+	tablePaintLine(p, geometry.Rect(0, top, left, max(0, r.Height-line-top)), tableGridStyle(h.view, "left"))
+	tablePaintLine(p, geometry.Rect(r.Width-w, top, w, max(0, r.Height-line-top)), tableGridStyle(h.view, "vertical"))
 	if color, ok := h.view.partStyle("header-separator", state).ForegroundColor(); ok && color != nil {
 		p.FillRect(geometry.Rect(0, r.Height-line, r.Width, line), graphics.ColorOf(color))
 	}
@@ -109,23 +113,26 @@ func (h *tableHeader) Snapshot() gui.WidgetInfo {
 type tableHeaderCellLayout struct{ header *tableHeader }
 
 func (l *tableHeaderCellLayout) Measure(children []layout.Child, c layout.Constraint) layout.Measurement {
-	reserve := tableHeaderPadding.Horizontal() + l.header.view.columnLineWidth(l.header.column)
+	reserve := tableHeaderPadding.Horizontal() + l.header.view.columnLineWidth(l.header.column) + l.header.view.columnLeadingWidth(l.header.column)
 	if l.header.column.sortable {
 		reserve += 16
 	}
 	m := children[0].Measure(layout.Loose(geometry.Size{Width: max(0, c.Max.Width-reserve), Height: layout.Inf}))
-	return layout.Measured(c.Clamp(geometry.Size{Width: l.header.column.allocatedWidth, Height: max(tableMinHeight, m.Height+tableHeaderPadding.Vertical()) + tableHeaderLineWidth(l.header.view)}))
+	return layout.Measured(c.Clamp(geometry.Size{Width: l.header.column.allocatedWidth, Height: max(tableMinHeight, m.Height+tableHeaderPadding.Vertical()) + tableHeaderLineWidth(l.header.view) + tableLineWidth(tableGridStyle(l.header.view, "top"))}))
 }
 func (l *tableHeaderCellLayout) Arrange(children []layout.Child, rect geometry.Rectangle) {
-	reserve := tableHeaderPadding.Horizontal() + l.header.view.columnLineWidth(l.header.column)
+	left := l.header.view.columnLeadingWidth(l.header.column)
+	reserve := tableHeaderPadding.Horizontal() + l.header.view.columnLineWidth(l.header.column) + left
 	if l.header.column.sortable {
 		reserve += 16
 	}
-	height := max(0, rect.Height-tableHeaderLineWidth(l.header.view))
-	available := max(0, rect.Width-l.header.view.columnLineWidth(l.header.column))
+	separator := min(rect.Height, tableHeaderLineWidth(l.header.view))
+	top := min(max(0, rect.Height-separator), tableLineWidth(tableGridStyle(l.header.view, "top")))
+	height := max(0, rect.Height-separator-top)
+	available := max(0, rect.Width-left-l.header.view.columnLineWidth(l.header.column))
 	m := children[0].Measure(layout.Loose(geometry.Size{Width: max(0, rect.Width-reserve), Height: max(0, height-tableHeaderPadding.Vertical())}))
-	children[0].Arrange(geometry.Rect(min(tableHeaderPadding.Left, available),
-		tableHeaderPadding.Top+max(0, (height-tableHeaderPadding.Vertical()-m.Height)/2), m.Width, m.Height))
+	children[0].Arrange(geometry.Rect(left+min(tableHeaderPadding.Left, available),
+		top+tableHeaderPadding.Top+max(0, (height-tableHeaderPadding.Vertical()-m.Height)/2), m.Width, m.Height))
 	l.header.handle.Arrange(geometry.Rect(max(0, rect.Width-8), 0, min(8, rect.Width), rect.Height))
 }
 

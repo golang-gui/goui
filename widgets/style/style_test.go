@@ -172,7 +172,7 @@ func TestTableFallbackDecorationParts(t *testing.T) {
 			t.Fatal("outer frame default missing")
 		}
 	}
-	for part, want := range map[string]float32{"horizontal": 1, "vertical": 0} {
+	for part, want := range map[string]float32{"horizontal": 1, "vertical": 0, "top": 0, "left": 0} {
 		s := sheet.Resolve(basestyle.Sel{Name: "table-view", Part: "grid-" + part})
 		width, _ := s.BorderWidth()
 		if ink, ok := s.BorderColor(); !ok || ink == nil || width != want {

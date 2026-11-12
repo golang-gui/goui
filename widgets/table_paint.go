@@ -49,6 +49,13 @@ func (v *TableView) columnLineWidth(c *TableColumn) float32 {
 	return min(c.allocatedWidth, tableLineWidth(tableGridStyle(v, "vertical")))
 }
 
+func (v *TableView) columnLeadingWidth(c *TableColumn) float32 {
+	if len(v.visibleColumns) == 0 || v.visibleColumns[0] != c {
+		return 0
+	}
+	return min(max(0, c.allocatedWidth-v.columnLineWidth(c)), tableLineWidth(tableGridStyle(v, "left")))
+}
+
 func (r *tableRow) lineHeight() float32 {
 	if r.bound.ID == "" {
 		return 0
@@ -68,6 +75,10 @@ func tablePaintLine(p gui.Painter, rect geometry.Rectangle, s style.Style) {
 func (r *tableRow) paintGrid(p gui.Painter, rect geometry.Rectangle) {
 	h := min(rect.Height, r.lineHeight())
 	vertical := tableGridStyle(r.view, "vertical")
+	if len(r.view.visibleColumns) > 0 {
+		left := r.view.columnLeadingWidth(r.view.visibleColumns[0])
+		tablePaintLine(p, geometry.Rect(0, 0, left, max(0, rect.Height-h)), tableGridStyle(r.view, "left"))
+	}
 	for i, c := range r.view.visibleColumns {
 		w := r.view.columnLineWidth(c)
 		// Stop above the horizontal band: translucent intersections must not

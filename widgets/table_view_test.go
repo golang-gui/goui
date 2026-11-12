@@ -180,6 +180,9 @@ func TestTableViewDecorationLayout(t *testing.T) {
 		style.Name("table-view").Part("outer-vertical").BorderWidth(5),
 		style.Name("table-view").Part("grid-horizontal").BorderWidth(6).BorderColor(color.Black),
 		style.Name("table-view").Part("grid-vertical").BorderWidth(12).BorderColor(color.Black),
+		// 本组只验证视口外框；完整内容边缘在独立回归中启用。
+		style.Name("table-view").Part("grid-top").BorderWidth(0),
+		style.Name("table-view").Part("grid-left").BorderWidth(0),
 		style.Name("table-view").Part("header-separator").BorderWidth(3).ForegroundColor(color.Black),
 	)}
 	gui.App = app

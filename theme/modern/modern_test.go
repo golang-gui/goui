@@ -650,7 +650,7 @@ func TestTableStylesNeutralSelectionAndIndependentText(t *testing.T) {
 					t.Fatal("missing thin outer frame")
 				}
 			}
-			for part, wantWidth := range map[string]float32{"horizontal": 1, "vertical": 0} {
+			for part, wantWidth := range map[string]float32{"horizontal": 1, "vertical": 0, "top": 0, "left": 0} {
 				s := sheet.Resolve(style.Sel{Name: "table-view", Part: "grid-" + part})
 				width, ok := s.BorderWidth()
 				ink, hasColor := s.BorderColor()

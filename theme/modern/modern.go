@@ -148,6 +148,8 @@ func builtInRules(options Options) []style.Rule {
 		style.Name("table-view").BackgroundColor(p.window).BorderColor(tableEdge).BorderWidth(1),
 		style.Name("table-view").Part("grid-horizontal").BorderColor(tableGrid).BorderWidth(1),
 		style.Name("table-view").Part("grid-vertical").BorderColor(tableGrid).BorderWidth(0),
+		style.Name("table-view").Part("grid-top").BorderColor(tableGrid).BorderWidth(0),
+		style.Name("table-view").Part("grid-left").BorderColor(tableGrid).BorderWidth(0),
 		style.Name("table-view").Part("header").BackgroundColor(mix(p.window, p.text, .02)).BorderWidth(0).Radius(0),
 		style.Name("table-view").Part("header").State(style.Hovered).BackgroundColor(mix(p.window, p.text, .05)),
 		style.Name("table-view").Part("header").State(style.Pressed).BackgroundColor(mix(p.window, p.text, .08)),
