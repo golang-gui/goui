@@ -303,6 +303,9 @@ func (w *surfaceBase) SetWidget(widget Widget) {
 	if widget != nil && widget.base().destroyed {
 		return
 	}
+	if host := w.managed(); host != nil && host.chrome != nil {
+		host.chrome.invalidateGeometry()
+	}
 	if w.root != nil {
 		w.root.base().detachRoot(w.root)
 	}

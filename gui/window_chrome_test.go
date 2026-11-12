@@ -748,8 +748,16 @@ func TestChromeActivationRetainsGeometryAndFocusLossGuards(t *testing.T) {
 				Position: geometry.Point{X: 120, Y: 20}})
 			_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerUp, Button: events.PointerButtonLeft,
 				Position: geometry.Point{X: 120, Y: 20}})
-			if native.moveRequests != 0 || win.dispatcher.gesture != nil {
-				t.Fatal("失焦或几何失效后仍使用旧 Caption 命中")
+			wantMoves := 0
+			if change == "focus-callback-layout" {
+				// 普通 RequestLayout 只安排下一帧，不再撤销已完成的命中几何。
+				wantMoves = 1
+				if !win.layoutDirty {
+					t.Fatal("输入消费了焦点回调发出的布局请求")
+				}
+			}
+			if native.moveRequests != wantMoves || win.dispatcher.gesture != nil {
+				t.Fatalf("失焦/几何保护或普通布局请求行为错误：move=%d，期望 %d", native.moveRequests, wantMoves)
 			}
 		})
 	}

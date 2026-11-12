@@ -219,7 +219,7 @@ func (h *HeaderBar) queryControls(result *ChromeControls) {
 
 func (h *HeaderBar) queryRegion(p geometry.Point, result *ChromeRegion) {
 	win := h.Window()
-	if win == nil || !visibleInTree(h) || !IsEnabled(h) {
+	if win == nil || !h.arranged || !visibleInTree(h) || !IsEnabled(h) {
 		return
 	}
 	// Integrated's GUI-drawn frame has the same precedence over the automatic

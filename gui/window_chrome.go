@@ -157,19 +157,22 @@ type chromeSignals struct {
 }
 
 type windowChrome struct {
-	window          *window
-	native          platform.WindowManagement
-	info            ChromeInfo
-	signals         *chromeSignals
-	closed          bool
-	nativeHit       bool
-	querying        bool
-	syncing         bool
-	placementDirty  bool
-	controlsHeight  float32         // last valid query answer, not a window property
-	lastPosition    *geometry.Point // last native request, including failures
-	nativeAvailable bool
-	positioned      bool
+	window           *window
+	native           platform.WindowManagement
+	info             ChromeInfo
+	signals          *chromeSignals
+	closed           bool
+	nativeHit        bool
+	querying         bool
+	syncing          bool
+	placementDirty   bool
+	controlsHeight   float32         // last valid query answer, not a window property
+	lastPosition     *geometry.Point // last native request, including failures
+	nativeAvailable  bool
+	positioned       bool
+	geometryReady    bool
+	geometryRoot     Widget
+	geometryRevision uint64
 }
 
 func (w *window) Chrome() WindowChrome {
@@ -289,6 +292,7 @@ func (c *windowChrome) refresh() {
 
 func (c *windowChrome) publish(bounds geometry.Rectangle) {
 	if bounds != c.info.ControlsBounds {
+		c.invalidateGeometry()
 		c.info.ControlsBounds = bounds
 		c.signals.changed.Emit(c.info)
 	}
@@ -298,6 +302,7 @@ func (c *windowChrome) nativeChanged() {
 	if !c.live() {
 		return
 	}
+	c.invalidateGeometry()
 	c.placementDirty = true
 	c.refresh()
 	if c.live() && c.window.clientChrome {
@@ -324,6 +329,28 @@ func (c *windowChrome) focusChanged() {
 	}
 }
 
+// A queued relayout does not revoke completed allocations. Only changes to
+// the host, content root or controls invalidate this chrome geometry lease.
+func (c *windowChrome) invalidateGeometry() {
+	c.geometryReady = false
+	c.geometryRoot = nil
+	c.geometryRevision++
+	if c.live() && c.window.dispatcher.hostController != nil {
+		c.window.dispatcher.hostController.Reset()
+	}
+}
+
+func (c *windowChrome) geometryUsable() bool {
+	return c.live() && c.geometryReady && !c.syncing && !c.window.layingOut && c.geometryRoot == c.window.Widget()
+}
+
+func (c *windowChrome) completeLayout(root Widget, revision uint64) {
+	if c.live() && !c.syncing && !c.window.layingOut && revision == c.geometryRevision && root == c.window.Widget() {
+		c.geometryRoot = root
+		c.geometryReady = true
+	}
+}
+
 func (c *windowChrome) queryRegion(p geometry.Point) ChromeRegion {
 	if !c.live() || !c.info.Enabled || c.querying {
 		return ChromeRegionDefault
@@ -334,6 +361,7 @@ func (c *windowChrome) queryRegion(p geometry.Point) ChromeRegion {
 	}
 	c.querying = true
 	defer func() { c.querying = false }()
+	revision := c.geometryRevision
 	result := ChromeRegionDefault
 	c.signals.region.Emit(p, &result)
 	if modalScopeOf(w) != nil && (result == ChromeRegionCaption || result == ChromeRegionClient) {
@@ -342,14 +370,14 @@ func (c *windowChrome) queryRegion(p geometry.Point) ChromeRegion {
 			result = ChromeRegionClient
 		}
 	}
-	if !c.live() || result > ChromeRegionBottomRight {
+	if !c.live() || revision != c.geometryRevision || result > ChromeRegionBottomRight {
 		return ChromeRegionDefault
 	}
 	return result
 }
 
 func (c *windowChrome) nativeRegion(p geometry.Point) platform.WindowHit {
-	if !c.live() || c.syncing || c.window.layoutDirty || c.window.layingOut {
+	if !c.geometryUsable() {
 		return platform.WindowHitDefault
 	}
 	switch c.queryRegion(p) {
@@ -390,6 +418,10 @@ func (c *windowChrome) beforeLayout() {
 	if !c.live() || !c.info.Enabled || c.syncing {
 		return
 	}
+	if c.geometryRoot != c.window.Widget() {
+		c.invalidateGeometry()
+	}
+	c.geometryReady = false
 	c.syncing = true
 	defer func() { c.syncing = false }()
 	c.refresh()
@@ -475,6 +507,8 @@ func (c *windowChrome) destroy() {
 		return
 	}
 	c.closed = true
+	c.geometryReady = false
+	c.geometryRoot = nil
 	if c.nativeHit {
 		_ = c.native.SetHitTest(nil)
 	}
@@ -519,7 +553,7 @@ func (controller *chromeInteractionController) HandleEvent(ctx EventContext) {
 
 func (controller *chromeInteractionController) handleGesture(ctx EventContext, now time.Time) {
 	c := controller.chrome
-	if !c.live() || c.nativeHit || !c.info.Enabled || c.window.modalTarget != nil || c.syncing || c.window.layoutDirty || c.window.layingOut {
+	if !c.geometryUsable() || c.nativeHit || !c.info.Enabled || c.window.modalTarget != nil {
 		controller.Reset()
 		return
 	}

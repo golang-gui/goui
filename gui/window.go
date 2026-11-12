@@ -327,11 +327,11 @@ func (w *window) paint() {
 		return
 	}
 	laidOut := w.layoutDirty
-	w.layoutContent()
+	root, geometryRevision := w.layoutContent()
 	if w.chrome != nil && w.chrome.afterLayout() && !w.destroyed {
 		// Notifications only invalidate. Apply changed reservations once in
 		// this frame, without asking for height again or running a fixed point.
-		w.layoutContent()
+		root, geometryRevision = w.layoutContent()
 	}
 	if w.destroyed {
 		return
@@ -351,6 +351,9 @@ func (w *window) paint() {
 		w.controls.layout()
 		controls = w.controls
 	}
+	if w.chrome != nil {
+		w.chrome.completeLayout(root, geometryRevision)
+	}
 	border := w.frameStyle()
 	bounds := w.contentBounds()
 	var finish func(Painter)
@@ -360,10 +363,16 @@ func (w *window) paint() {
 	w.drawSurfaceFrame(w.root, w.backgroundStyle(), border, bounds, bounds, graphics.BoxShadow{}, finish, controls)
 }
 
-func (w *window) layoutContent() {
+func (w *window) layoutContent() (Widget, uint64) {
+	root := w.root
+	var revision uint64
+	if w.chrome != nil {
+		revision = w.chrome.geometryRevision
+	}
 	w.layingOut = true
 	defer func() { w.layingOut = false }()
-	w.layoutFrameIn(w.root, w.contentBounds())
+	w.layoutFrameIn(root, w.contentBounds())
+	return root, revision
 }
 
 // Content uses the complete client area; resize hit zones are input only.
@@ -441,7 +450,7 @@ func (w *window) floatingFrame() bool {
 // Only GUI-drawn Integrated owns automatic resize feedback. None callers keep
 // control of their cursor, and native frames keep their OS cursor behavior.
 func (w *window) frameCursor() CursorShape {
-	if !w.clientChrome || !w.cursorInside || w.chrome == nil || w.layoutDirty || w.layingOut || w.State() != WindowStateNormal {
+	if !w.clientChrome || !w.cursorInside || w.chrome == nil || !w.chrome.geometryUsable() || w.State() != WindowStateNormal {
 		return CursorDefault
 	}
 	// Use the final ordered query, including Client overrides, modal input and
