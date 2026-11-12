@@ -1,5 +1,54 @@
 # Plan
 
+## Switch 轨道与滑块共心（2026-11-12）
+
+- [x] 1x 截图及源码确认：FillRoundRect 对齐最终像素外框，旧 Switch 的圆点仍从
+  未对齐轨道计算，可能偏上约 0.5 物理像素。新增 graphics/gui Painter.SnapRect
+  无副作用查询，复用 Software/OpenGL/Direct2D 的既有规则；Switch 从同一外框
+  计算圆心、直径和移动端点，空外框不绘制。椭圆/动画位置不独立取整，配色、
+  Measure/Arrange、输入、语义与状态机不变。第三方 Painter 须实现新增方法。
+- [x] 新包内回归在旧版失败：四种缩放 × 三种高度 × 四种分数平移 × 五个移动位置，
+  共 240 幅 Software 预乘 sRGB RGBA8 图像，用独立边界公式与蓝通道面积重心
+  检查圆心（误差 ≤0.03 px）、圆盘二阶矩检查大小与圆形。新增 15 组 GUI 作用域
+  测试覆盖父/子偏移、纯平移、旋转、非均匀缩放、错切、幂等和空 clip/Save/Restore。
+  原有胶囊覆盖率、变换、裁剪、输入及语义断言保持，未扩大既有容差。
+- [x] 新增 tests/window/widgets/switch_geometry：实际宿主及后端 RenderWidget，
+  保留子控件分数平移；独立物理边界公式验证圆心（≤0.08 px），再与同后端公共
+  FillEllipse 按独立预期几何绘制的标准圆比较蓝通道（≤2/255），防止改变大小或
+  变形。旧 Software/OpenGL 均因圆心错误失败。
+- [x] Linux amd64 / Go 1.25.8，专用 Xvnc/Xfwm4 4.16.1 合成会话：
+  Software/OpenGL × Native/Integrated × 1/1.25/1.5/2x 共 16 组通过；每组额外以
+  四种离屏缩放检查 96 幅控件图像及对应标准圆，共 1536 组图像断言。通过实际
+  imageResource/PixelScale 核对后端及缩放，不接受装饰回退；OpenGL 为 Mesa
+  23.2.1 llvmpipe。首次帧可能仍为初始化 1x，程序等观察到 -expect-scale 后验收，
+  3s 未观察到即失败。逻辑缩放不等同真实 HiDPI。
+- [x] 同环境 ListRow 1x 桌面截图前后对照：两后端、开启/关闭均从约 -0.5 px
+  变为 0～-0.01 px；不是仅检查离屏图像。六组 Switch 正常 XTest 输入共 168 项
+  状态断言通过，覆盖点击、拖动/中点/取消、子控件隔离、禁用、键盘、重建、
+  Basic/Modern、亮暗及正常销毁；四组双向动画采样存在中间帧且单调到达端点，
+  OpenGL 2x 的通知中销毁检查也通过。动画仍使用既有 ConnectFrame，不新增 Timer。
+- [x] 隔离已跟踪源码加本轮改动 `CGO_ENABLED=0 go test -json -count=1 ./...`：
+  4978 通过、11 既有跳过、0 失败；最终复查相同。GUI/Software/OpenGL/widgets/
+  widgets-ui/Demo 的完整 race、相关 vet 通过。Windows amd64/macOS arm64 的
+  受影响测试目标与三个窗口例程交叉编译通过，含 Windows Direct2D 测试目标。
+- [ ] Windows/macOS 原生、Direct2D 原生像素、硬件 OpenGL、真实混合 DPI 与移动
+  触摸未执行；此前远端验收不代替本轮验证。设计/API/参考见
+  [DesignSwitch](DesignSwitch.md)、[DesignWidgetPainter](DesignWidgetPainter.md) 与
+  [DesignGraphicsColor](DesignGraphicsColor.md)。
+
+证据在 `/tmp/goui-switch-align-1__0wo9o`，含旧版失败、完整源码副本、full-final.jsonl、
+race/vet/cross 日志、几何/交互矩阵、动画及桌面截图。原工作区
+`env -u DISPLAY go test ./...` 仍因既有未跟踪旧 API 测试及 Typography 无 DISPLAY
+失败，失败详情与前轮逐项相同，无新增失败。未迁移/弱化旧测试；旧测试按既有行为
+更新未跟踪 software/output.png、typography/utils/dst.png，不纳入本次提交；隔离
+全仓在临时源码副本写图片并操作专用显示剪贴板。
+首版原生形状检查将理想圆盘方差当作 OpenGL AA 预期，整数基线也不满足；已改为
+同后端标准圆逐像素对照，保留独立圆心断言与 Software 独立面积矩检查。原始失败
+保留于 initial-* 日志。动画旧驱动的同批快速下/上抬起在 Software 2x 未产生移动，
+同一 HEAD 的旧构建也复现；改用 20ms 正常按压后完整矩阵通过，未修改输入代码。
+两套专用 Xvnc/Xfwm4、会话总线及按专用总线归属核对的辅助服务已清理，显示
+套接字已移除；鼠标/键盘与剪贴板测试均使用专用显示，没有操作用户桌面。
+
 ## ListRow 主题层次调整（2026-11-11）
 
 - [x] 参考 libadwaita 1.6.0 的表面、留白和主次排版设计，复用 GOUI 的颜色角色，

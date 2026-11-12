@@ -46,6 +46,10 @@ Enabled 复用 Widget 的自身设置；gui.IsEnabled 查询祖先限制后的�
 上报 Child 的真实 baseline。轨道不随多余空间拉伸；硬约束不足时等比例缩小。
 Padding 属于控件。可选 Child 独立解析自身样式。
 
+绘制时先用 Painter.SnapRect 取得最终轨道外框，再由同一外框计算滑块直径、
+圆心及移动端点。控件的布局/命中/语义边界仍为逻辑 DIP；像素对齐包含窗口内
+平移和帧缩放。滑块圆形及移动位置不独立取整，旋转/缩放/错切时保留原始几何。
+
 样式名 `switch`；Parts 为 track、track-checked、thumb、thumb-checked、focus。
 默认关闭轨道为中性灰色、弱轮廓，开启轨道为主题色，滑块为无描边的白色圆形；
 Modern 校正过亮主题色以确保滑块可辨。不增加阴影。轨道为胶囊、滑块保持圆形。
@@ -199,3 +203,27 @@ Software 离屏实测可复现：理论覆盖率约 59% 的圆弧像素，填充
 未执行本轮 Windows／macOS 原生桌面、Direct2D、硬件 OpenGL、分数缩放窗口
 与物理 HiDPI 验收。此前远端通过的结果不代替本轮复验。测试窗口正常退出，
 隔离桌面已停止；日志、前后截图与采样脚本位于 `/tmp/goui-switch-fix.5fbec5/`。
+
+### 2026-11-12 轨道与滑块共心
+
+用户的 1x 截图中，开启轨道的可见外框中心为 y=31，而白色圆点中心为 y=30.5；
+关闭状态也有相同约 0.5 物理像素上偏。源码确认 Software/OpenGL/Direct2D 的
+FillRoundRect 使用包含平移和帧缩放的 pixelsnap.Rect，而 FillEllipse 保留原始
+坐标。旧 Switch 从取整前的 trackRect 计算圆点，因此轨道和圆点可能不再共心。
+这属于复合几何的基准问题，不改变椭圆图元或加入固定方向的偏移。
+
+新增 graphics.Painter/gui.Painter.SnapRect 作为无副作用的局部 DIP 几何查询，
+复用三后端已有规则。Switch 先取得实际对齐外框，再计算直径、圆心和移动端点；
+空外框不绘制。原语默认行为、配色、布局、手势、动画进度和 Snapshot 均不变。
+第三方 Painter 实现须补齐查询方法，契约见 [DesignWidgetPainter](DesignWidgetPainter.md)。
+
+- Flutter **3.35.0** 的
+  [CupertinoSwitch 源码](https://github.com/flutter/flutter/blob/3.35.0/packages/flutter/lib/src/cupertino/switch.dart#L1099)
+  由同一个 trackPaintOffset 计算轨道和滑块位置；参考其共同几何基准，不采用其
+  Cupertino 尺寸、按压形变、阴影或状态机。
+- Apple 归档文档 [High Resolution Guidelines for OS X](https://developer.apple.com/library/archive/documentation/GraphicsAnimation/Conceptual/HighResolutionOSX/APIs/APIs.html)
+  的 backingAlignedRect 说明使用实际 backing 坐标往返并返回局部矩形。GOUI 的
+  查询采用既有最近像素规则，不引入可选取整策略，不把 NSView 或原生变换暴露给控件。
+
+以上为源码/文档参考；GOUI 的当前实测结果、独立圆心断言、后端标准圆对照和
+平台缺口见 [Plan](Plan.md)。原有圆弧覆盖率测试与容差保持不变。

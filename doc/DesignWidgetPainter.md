@@ -29,6 +29,7 @@ type Painter interface {
     SetClipRect(rect geometry.Rectangle)
     ClearPath(path graphics.Path)
     SetTransform(matrix geometry.Transform)
+    SnapRect(rect geometry.Rectangle) geometry.Rectangle
 
     FillRect(rect geometry.Rectangle, brush graphics.Brush)
     FillRoundRect(rect geometry.Rectangle, radius float32, brush graphics.Brush)
@@ -61,6 +62,15 @@ PixelScale 返回物理像素/DIP 比例：surface HiDPI 乘当前变换的最�
 
 内部 `newPainter(base, bounds, scale)` 显式接收本帧的基础缩放比例，与平台
 Painter.Begin 使用同一个值；构造后不再修改。普通测试显式传 `1`。
+
+`SnapRect` 查询与 FillRect/FillRoundRect 相同的外框对齐结果，输入/输出均为
+Widget 局部 DIP，包含控件在窗口内的平移、当前用户平移和帧缩放。四边分别取
+最近物理像素，复用各后端的 pixelsnap.Rect；用户旋转、缩放、错切时原样返回。
+查询不绘制、不修改状态，也不受 clip 是否为空影响。复合图形可以先求共同外框，
+再从中计算内部圆心等几何；不能仅按 PixelScale 取整局部位置，因为它不包含平移。
+平台 graphics.Painter 提供同名契约，gui.Painter 在已有绘制作用域内转发，不公开
+原生变换或 backend 对象。第三方 Painter 实现须补齐此方法。任意 Path/椭圆及
+动画位置不因此自动取整，原有绘制图元行为不变。
 
 图片的帧内释放属于 platform Painter 的资源生命周期：Image.Destroy 立即逻辑失效，
 底层资源延迟到 End 消费或丢弃命令后释放。gui.Painter 不提供 AfterFrame，控件
