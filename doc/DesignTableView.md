@@ -552,7 +552,7 @@ Setup／Bind／Unbind／业务信号返回后检查对象存活和绑定版本�
 table-header-text、table-row或table-grid选择器。
 
 Part包括`header`、`header-text`、`header-separator`、`header-sort`、
-`grid-horizontal`、`grid-vertical`、`row`、`row-alternate`、`row-selected`、
+`grid-horizontal`、`grid-vertical`、`grid-top`、`grid-left`、`row`、`row-alternate`、`row-selected`、
 `row-current`及既有`outer-horizontal`/`outer-vertical`。Part是平级选择器；
 row-selected不会自动继承row，主题分别提供完整的背景、边框和圆角默认值。
 表头文字通过普通Label的显式StyleName/StylePart解析，继续由StyleChanged管理
@@ -608,6 +608,8 @@ StyleChanged 使用现有失效路径，本轮不为行高和 padding 增加新�
 | table-view / outer-vertical | 覆盖左、右外框颜色／宽度 |
 | table-view / grid-horizontal | BorderColor / BorderWidth 为每行底线，包含末行 |
 | table-view / grid-vertical | BorderColor / BorderWidth 为每列右边线，包含末列；表头、正文共享 |
+| table-view / grid-top | BorderColor / BorderWidth 为实际表头单元格上边线 |
+| table-view / grid-left | BorderColor / BorderWidth 为首个可见列的左边线，表头、正文共享 |
 | table-view / row | 普通行 BackgroundColor |
 | table-view / row-alternate | 奇数零基模型索引的 BackgroundColor（第二、四……行） |
 | table-view / header-separator | ForegroundColor / BorderWidth 为表头底部分隔线 |
@@ -616,6 +618,31 @@ StyleChanged 使用现有失效路径，本轮不为行高和 padding 增加新�
 Part fallback继承统一外框；表头与行的Part显式关闭边框，防止把视口外框画到每格。
 线宽为零关闭；负数、NaN、Inf 视为零。透明颜色不释放线宽所占空间，因此仅变色
 不改变布局。首版外框为矩形边线，不承诺圆角子树裁剪。
+
+2026-11-12完整内容边缘：`grid-top`在表头中预留独立顶带，`grid-left`在首个
+可见列的既有列宽中预留左带；行底/列右仍沿用原独占线带。表头文字及首列自定义
+内容在扣除对应线带后测量/分配，不靠绘制覆盖内容。横线拥有角点，竖线只画两条
+横线之间，半透明交点不重复合成；极窄列先保留右带，左带钳制到剩余宽度。
+隐藏/重排列后左带随新的首个可见列更新。上边止于实际列宽，左边止于实际行，
+滚动时随相应内容裁剪，不把视口截断边缘伪装成数据边缘；空模型只保留表头。
+
+仅包围已有单元格的完整网格可以这样配置（颜色可使用主题已有的网格色）：
+
+```go
+style.Name("table-view").Part("outer-horizontal").BorderWidth(0)
+style.Name("table-view").Part("outer-vertical").BorderWidth(0)
+style.Name("table-view").Part("grid-horizontal").BorderWidth(1)
+style.Name("table-view").Part("grid-vertical").BorderWidth(1)
+style.Name("table-view").Part("grid-top").BorderWidth(1)
+style.Name("table-view").Part("grid-left").BorderWidth(1)
+```
+
+Basic/Modern显式提供top/left的中性网格色，默认宽度0，保持主题默认的视口框与
+细行线设计；例程grid模式开启完整内容边缘并关闭视口框，thick可单独展示视口框。
+参考Flutter **3.35.0**
+[TableBorder内外边界](https://github.com/flutter/flutter/blob/3.35.0/packages/flutter/lib/src/rendering/table_border.dart)
+的公开分类，采用单元格边缘与内部线的区分，不复制其Border对象、绘制顺序或
+圆角算法。GOUI沿既有Part及独占色带实现；像素/窗口结果另行记录。
 
 ```go
 style.Name("table-view").BackgroundColor(background).BorderColor(border).BorderWidth(1)

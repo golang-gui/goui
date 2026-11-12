@@ -22,7 +22,12 @@
   GUI/widgets race通过；widgets-ui组合race曾在启动时segfault，独立完整复核
   通过，暂未确认该次启动失败原因，不将组合执行记为全部通过。证据包括
   parts-before/targeted/race、parts-race-ui-final及label-part。
-- [ ] 第三批：单元格完整边缘与滚动末端可达性，含多后端/缩放窗口验收。
+- [x] 第三批完整边缘：新增所属表格的grid-top/grid-left，表头上方及首个可见列
+  预留独立色带，末行/末列沿用独占底/右带；横线拥有角点，半透明交点只合成一次。
+  首列随显隐/顺序更新，内容不盖线，空模型只画表头；默认主题仍为视口框/细行线，
+  例程grid模式改为完整单元格边缘并关闭视口框。旧实现的新布局/像素/空表回归
+  失败，修正后widgets全子包/主题/Demo/table程序包通过；新增1x/2x预乘RGBA
+  断言，容差1字节。既有外框专用fixture显式关闭新增首端边线，保留几何断言。
 - [x] 第三批滚动修正：ScrollView在float64中向外取整数DIP范围，再向外表示为
   float32；滚动条、Snapshot、Reveal、编辑器及自动滚动统一范围，移除消费端
   的二次floor。不改应用视口高度/内容尺寸。18组普通/虚拟内容×三方向×三入口
@@ -30,6 +35,14 @@
   五种小数表格视口末行断言。旧TextView末端稳定性仅改正确整数终点，保留稳定性
   断言。证据为scroll-before-final/targeted/final日志。
 - [ ] 最终全仓、跨平台构建及原生窗口验证；分别记录通过、既有失败和未覆盖项。
+
+独立声明式窗口`tests/window/widgets/table_contracts`已在专用Xvnc/Xfwm4下完成
+Software 1x、OpenGL 1x及OpenGL 2x暗色三组：收缩→最小宽度横滚→恢复伸展、
+重建、切换独立表头配色/字体度量、End定位小数视口末行及正常退出，每组8次检查。
+另核对实际后端/PixelScale、原生截图首端边线与空白区域sRGB RGB8像素（精确相等）。
+最终GUI/widgets/widgets-ui组合race和定向vet通过；早期widgets-ui race启动异常
+独立及最终组合复核均通过，原因未确认，保留原始失败。原工作区全仓已执行，
+失败诊断按去除耗时的多重集与上一轮一致；隔离副本全仓及远端验收仍在进行。
 
 本轮证据目录：`/tmp/goui-table-improvements-y9t7wgls`。第一批记录为
 `shrink-before-final.log`、`shrink-final.log`及`shrink-race.log`；早期新测试中
