@@ -11,6 +11,7 @@ type LabelView struct {
 	text            string
 	textSource      ReadState[string]
 	wrapMode        gui.WrapMode
+	stylePart       string
 	selectable      bool
 	selection       TextSelection
 	selectionSource BindState[TextSelection]
@@ -59,6 +60,13 @@ func (v *LabelView) BindText(source ReadState[string]) *LabelView {
 
 func (v *LabelView) WrapMode(mode gui.WrapMode) *LabelView {
 	v.wrapMode = mode
+	return v
+}
+
+// StylePart selects the base text part under this label's own Style name.
+// Omission restores the default part; it does not inherit a parent's style.
+func (v *LabelView) StylePart(part string) *LabelView {
+	v.stylePart = part
 	return v
 }
 
@@ -171,6 +179,7 @@ func (v *LabelView) Update(ctx BuildContext, widget gui.Widget) {
 		label.SetText(v.text)
 	}
 	label.SetWrapMode(v.wrapMode)
+	label.SetStylePart(v.stylePart)
 	if v.selectionSource != nil {
 		BindValue(ctx, "selection", v.selectionSource, func(value TextSelection) {
 			state.handles.Block()

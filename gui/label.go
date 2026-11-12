@@ -55,6 +55,7 @@ type Label struct {
 	formatErr   error
 	wrapMode    WrapMode
 	textAlign   TextAlign
+	stylePart   string
 	selectState *labelSelection
 
 	// Resolved text values belong to this label, independently of native range
@@ -139,6 +140,21 @@ func (l *Label) SetWrapMode(mode WrapMode) {
 	l.textStyleValid = false
 	l.clearMeasurements()
 	l.invalidateSelectionGeometry()
+	l.RequestLayout()
+}
+
+// StylePart is the part used for the base text under this label's StyleName.
+func (l *Label) StylePart() string { return l.stylePart }
+
+// SetStylePart selects an explicit text part without reading a parent's style.
+// Empty selects the default part. Inline named ranges and selection/caret
+// decoration parts retain their own selectors.
+func (l *Label) SetStylePart(part string) {
+	if l.destroyed || l.stylePart == part {
+		return
+	}
+	l.stylePart = part
+	l.styleValid = false
 	l.RequestLayout()
 }
 
@@ -413,8 +429,12 @@ func (l *Label) resolvedTextFormat() typography.TextFormat { return l.resolvedTe
 func (l *Label) resolvedTextStyle() labelTextStyle {
 	value := labelTextStyle{format: typography.TextFormat{WrapMode: l.wrapMode, TextAlign: l.textAlign}}
 	value = value.with(ResolveWidgetStyle(l, styleNameLabel, style.PartDefault, l.State()))
-	if name := l.StyleName(); name != "" && name != styleNameLabel {
-		value = value.with(ResolveWidgetStyle(l, name, style.PartDefault, l.State()))
+	name := l.StyleName()
+	if name == "" {
+		name = styleNameLabel
+	}
+	if name != styleNameLabel || l.stylePart != "" {
+		value = value.with(ResolveWidgetStyle(l, name, l.stylePart, l.State()))
 	}
 	return value
 }

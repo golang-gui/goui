@@ -115,6 +115,15 @@ false 可取消外层格式，未设置则保留。style 不导入 platform，GU
 外到内的次序逐字段组合。这是同一控件内的默认值和局部覆盖，不给子 Widget 传递样式，
 不改 StyleSheet 的 selector/fallback 规则。
 
+2026-11-12：`Label.StylePart/SetStylePart` 与 `ui.Label(...).StylePart(part)`
+明确选择自身StyleName下的基础文字Part；空串或声明式省略恢复默认Part。
+解析顺序为作用域内label默认文字、指定Name/Part、显式内联命名范围。
+此入口供复合控件的自有文字部件使用，不读取父控件样式；内联范围、selection/caret
+继续使用各自选择器，不引入嵌套Part或隐式继承。变更沿StyleChanged使字号/度量
+缓存失效，纯颜色更新仍复用已有布局；不会在setter中调用原生文字接口。
+GUI回归以独立字体度量与资源释放断言覆盖Name/Part隔离、切换、作用域与禁用态，
+声明式回归验证原控件复用及省略恢复；GUI完整包及隔离源码副本UI包通过。
+
 Basic 提供最小 bold/italic/underline/strikethrough 规则，Modern 复用，可由应用覆盖。
 bold 只设置字重，italic 只设置斜体。Modern 的 warning/error/success/muted-text 等
 文字颜色预设仅覆盖颜色，默认字体来自 Label 基础格式。二者必须同步修改，保证原有
