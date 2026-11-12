@@ -644,6 +644,12 @@ Basic/Modern显式提供top/left的中性网格色，默认宽度0，保持主�
 的公开分类，采用单元格边缘与内部线的区分，不复制其Border对象、绘制顺序或
 圆角算法。GOUI沿既有Part及独占色带实现；像素/窗口结果另行记录。
 
+独立验收入口为`go run ./tests/window/widgets/table_contracts [-dark]`，覆盖声明式
+收缩/恢复、两个Name的独立表头Part、完整单元格边缘、小数视口End定位及重建。
+`tests/window/widgets/table -appearance=grid -rows=3`继续展示可编辑单元格、排序、
+条纹及显隐；`-rows=0`检查空表，`-gui`切换命令式入口。操作说明与明确断言在
+各程序入口，实际OS/后端/缩放、原有失败及剩余覆盖见[Plan](Plan.md)。
+
 ```go
 style.Name("table-view").BackgroundColor(background).BorderColor(border).BorderWidth(1)
 style.Name("table-view").Part("outer-vertical").BorderWidth(0) // 仅保留上下外框

@@ -34,19 +34,47 @@
   的旧行为回归失败；修正后GUI/widgets全子包/Demo通过，新增不足1DIP溢出及
   五种小数表格视口末行断言。旧TextView末端稳定性仅改正确整数终点，保留稳定性
   断言。证据为scroll-before-final/targeted/final日志。
-- [ ] 最终全仓、跨平台构建及原生窗口验证；分别记录通过、既有失败和未覆盖项。
+- [x] 最终`go test -race ./gui ./widgets ./widgets/ui -count=1`及
+  `go vet ./gui ./widgets/... ./theme/... ./example/demo/... ./tests/window/widgets/table ./tests/window/widgets/table_contracts`
+  通过，`git diff --check`通过。原工作区`env -u DISPLAY go test ./...`已执行但
+  失败：未跟踪旧API例程/测试、Typography无DISPLAY；关键诊断去掉耗时按多重集
+  与上一轮完全一致，保留这些文件及其原断言，没有把环境失败算作通过。
+- [x] 已跟踪源码及本轮新增文件组成的仓库外隔离副本，专用显示下执行
+  `CGO_ENABLED=0 go test -json -count=1 ./...`退出0：73个有测试包、5579项测试
+  及子用例通过；11项按原条件跳过（手工输入/窗口状态、跨应用剪贴板、macOS
+  签名、iOS SDK），131个包无测试文件。源码清单与完整JSON日志保留；这不代表
+  原工作区全仓通过，也不代表跳过的场景已验收。
+- [x] Windows amd64/macOS arm64交叉编译GUI/widgets/widgets-ui测试及新窗口
+  程序通过。Windows10 build19045 amd64 / RDP / Direct2D 1x、macOS15.7.7
+  build24G720 arm64 / VNC / OpenGL 1x各完成同一声明式窗口的8次检查、正常
+  退出0；各947项相关GUI及完整widgets/widgets-ui测试和子用例原生通过，无跳过。
+  八个上传二进制SHA-256已核对；交叉编译与原生结果分别保留。
+- [ ] 其他WM、Wayland、Windows11、非RDP Windows会话、Windows/macOS其他
+  缩放/绘制后端、移动端未执行。未以RDP传输截图作逐像素色准结论；原生窗口
+  外观观察与Software重绘子树的像素断言分开记录。
 
 独立声明式窗口`tests/window/widgets/table_contracts`已在专用Xvnc/Xfwm4下完成
 Software 1x、OpenGL 1x及OpenGL 2x暗色三组：收缩→最小宽度横滚→恢复伸展、
 重建、切换独立表头配色/字体度量、End定位小数视口末行及正常退出，每组8次检查。
 另核对实际后端/PixelScale、原生截图首端边线与空白区域sRGB RGB8像素（精确相等）。
-最终GUI/widgets/widgets-ui组合race和定向vet通过；早期widgets-ui race启动异常
-独立及最终组合复核均通过，原因未确认，保留原始失败。原工作区全仓已执行，
-失败诊断按去除耗时的多重集与上一轮一致；隔离副本全仓及远端验收仍在进行。
+旧table窗口程序的UI三行grid及GUI空表grid在Software配置下F6断言、外观及
+正常退出也通过。Linux构建/验证环境为amd64、Go1.25.8、Xfwm4 4.16.1。
+
+早期widgets-ui race曾在进程启动时segfault；独立完整复核和最终组合race通过，
+另对修改前基线及当前源码分别启动三次widgets-ui race，六次均通过，未重现。
+原因未确认，不归类为已证实的既有失败，也不将原组合执行记为全部通过；保留
+`parts-race.log`、`parts-race-ui-final.log`、`final-race.log`及
+`race-startup-comparison.json`。测试窗口、包装器、专用显示/WM/总线及所属辅助
+服务均核对并清理；释放输入并断开本轮RDP/VNC，保留原有SSH连接。隔离全仓的
+旧测试操作了专用剪贴板并输出PNG；原工作区旧测试也按原行为重写未跟踪PNG，
+均未纳入提交，不影响用户桌面或系统配置。
 
 本轮证据目录：`/tmp/goui-table-improvements-y9t7wgls`。第一批记录为
-`shrink-before-final.log`、`shrink-final.log`及`shrink-race.log`；早期新测试中
-Rectangle.Right方法拼写修正后才运行旧行为对照，保留初始编译诊断。
+`shrink-before-final.log`、`shrink-final.log`及`shrink-race.log`；Part、滚动、完整
+边线分别保留before/targeted/final日志，原生结果见linux-native-results.json、
+native-tests-summary.json和两个远端contracts.log/exit。早期新测试辅助代码的
+API拼写修正后才运行正式旧行为对照；窗口用例按实际非零完整分配判断READY，
+不把初始零尺寸帧当就绪。保留初始诊断，未修改生产路径掩盖断言。
 
 ## 正文待布局时保留标题栏拖动（2026-11-12）
 
