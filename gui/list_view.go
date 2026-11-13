@@ -24,6 +24,17 @@ type ListItemDelegate interface {
 	Unbind(index int, w Widget)
 }
 
+// ListItemLayoutDelegate optionally controls item allocation after measurement.
+// The default allocation uses each item's natural width, at least the viewport
+// width. bounds is that default rectangle in ListView-local DIP, including the
+// scroll offset. viewport excludes scrollbars; offset is the host's scroll
+// position. Implementations can keep a row in the viewport and scroll its child
+// content instead. They must arrange item and must not change the model or view.
+// Measurement, recycling and semantic ownership remain with ListView.
+type ListItemLayoutDelegate interface {
+	ArrangeItem(index int, item Widget, bounds geometry.Rectangle, viewport geometry.Size, offset geometry.Point)
+}
+
 // ListView is a virtualized list: it implements Scrollable and keeps only the
 // items visible in the viewport attached to the tree. It must be wrapped in a
 // ScrollView, which owns the scroll offset, wheel input and scrollbar.
@@ -40,7 +51,7 @@ type ListView struct {
 	items   map[int]Widget  // index -> attached widget (visible only)
 	pool    []Widget        // detached shells, ready to be re-bound (reuse pool)
 	heights map[int]float32 // index -> last measured height; offscreen values are estimates
-	widths  map[int]float32 // index -> last measured row width (natural, >= viewport)
+	widths  map[int]float32 // index -> last measured natural width; offscreen values are estimates
 
 	estimate   float32 // estimated height of unmeasured items
 	seedHeight float32 // first measured height after Bind (estimate seed)
@@ -389,13 +400,13 @@ func (lv *ListView) LayoutVisible(viewport geometry.Size, offset geometry.Point)
 	// A viewport width change can rewrap text, so cached heights are stale;
 	// re-measure everything. During an unchanged-width scroll the heights stay
 	// cached and re-scrolling the same items skips the (expensive text)
-	// measurement. Width changes also reset the horizontal scroll extent.
+	// measurement. Natural widths remain estimates across a viewport resize;
+	// forgetting an offscreen wide item would unexpectedly clamp horizontal scroll.
 	if lv.lastViewportWidth != viewport.Width {
 		lv.lastViewportWidth = viewport.Width
 		lv.heights = make(map[int]float32)
-		lv.widths = make(map[int]float32)
 		lv.estimate = lv.seedHeight
-		lv.contentWidth = viewport.Width
+		lv.recomputeContentWidth()
 		lv.first, lv.firstY = 0, 0
 	}
 
@@ -444,23 +455,25 @@ func (lv *ListView) LayoutVisible(viewport geometry.Size, offset geometry.Point)
 			if oldWidth == lv.contentWidth && lv.widths[last] < oldWidth {
 				// The previous widest row shrank. Other cached rows still count
 				// toward the extent, including rows outside the viewport.
-				lv.contentWidth = viewport.Width
-				for _, width := range lv.widths {
-					lv.contentWidth = max(lv.contentWidth, width)
-				}
+				lv.recomputeContentWidth()
 			}
 		}
 		if lv.Destroyed() || revision != lv.revision {
 			return
 		}
-		rowW := lv.widths[last]
-		if rowW <= 0 {
-			rowW = viewport.Width
-		}
+		rowW := max(lv.widths[last], viewport.Width)
 		if rowW > lv.contentWidth {
 			lv.contentWidth = rowW
 		}
-		w.Arrange(geometry.Rect(-lv.scrollX, y-lv.scrollY, rowW, h))
+		bounds := geometry.Rect(-lv.scrollX, y-lv.scrollY, rowW, h)
+		if d, ok := lv.delegate.(ListItemLayoutDelegate); ok {
+			d.ArrangeItem(last, w, bounds, viewport, offset)
+		} else {
+			w.Arrange(bounds)
+		}
+		if lv.Destroyed() || revision != lv.revision {
+			return
+		}
 		y += h
 		last++
 	}
@@ -625,8 +638,8 @@ func (lv *ListView) itemAt(index int) Widget {
 // measureItem measures the item at unbounded width and height: an item is laid
 // out at its natural width (never wrapped to the viewport), so wide content
 // overflows horizontally and is reachable via the horizontal scrollbar. It
-// records both the height and the row width (natural width, flushed to at
-// least the viewport width), and returns the height.
+// records both the height and the natural width, independently of the viewport,
+// and returns the height. Allocation applies the viewport minimum separately.
 func (lv *ListView) measureItem(index int, w Widget) float32 {
 	if !w.Visible() {
 		lv.widths[index] = 0
@@ -639,10 +652,15 @@ func (lv *ListView) measureItem(index int, w Widget) float32 {
 	if size.Height <= 0 {
 		size.Height = lv.estimate
 	}
-	if rowW := max(size.Width, lv.viewport.Width); rowW > 0 {
-		lv.widths[index] = rowW
-	}
+	lv.widths[index] = max(0, size.Width)
 	return size.Height
+}
+
+func (lv *ListView) recomputeContentWidth() {
+	lv.contentWidth = lv.viewport.Width
+	for _, width := range lv.widths {
+		lv.contentWidth = max(lv.contentWidth, width)
+	}
 }
 
 // VisibleIndexes returns the currently attached item indices in ascending
