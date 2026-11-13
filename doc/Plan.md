@@ -1,5 +1,57 @@
 # Plan
 
+## 原生拖拽预览失败降级（2026-11-14）
+
+- [x] 明确有效预览为尽力反馈，失败不进入DragResult.Err；非法参数及真正的数据／
+  原生会话错误保留。X11继续无预览XDND；Windows隔离Shell helper部分SetData，
+  释放旧对象后从原始载荷重建；macOS保留pasteboard项目、有限frame和无图像provider。
+  GUI仅补充DragPreview注释，不新增手势重试或第二套会话；设计及原生依据见
+  [DesignDragAndDrop§4.1](DesignDragAndDrop.md#41-预览失败与操作结果2026-11-14)。
+- [x] Windows新增无窗口回归验证有效图片的本机尺寸转换失败后，原载荷、COM锚点和
+  引用释放正确；原有预览、数据对象、格式及反馈测试保留。独立窗口程序与inject.py
+  覆盖创建前／分配后／部分写入后的失败，不增加生产故障开关。旧X11源码在相同
+  create注入下第一次手势即报告错误并退出1；当前实现完成同一次投递并退出0。
+- [x] Linux amd64／Go1.25.8，专用Xvnc／Xfwm4 4.16.1：Software 1x／2x及
+  OpenGL 1x／2x完成相应故障流程；OpenGL为Mesa llvmpipe，不作GPU性能结论。
+  覆盖预览窗口创建、分配后绘制失败、对象／文本、显式手势交接、Esc后再拖、源窗
+  销毁；draw注入确认预览窗口退出windowMap。正常预览通过；非法Scale及注入的
+  XGrabPointer会话错误仍报错、无原生Begin。最终fixture另通过Software 1x文本交接。
+- [x] Windows 10 19045 amd64／RDP 1600×900／Direct2D 1x：bitmap、helper及
+  partial三类注入均通过对象投递、Esc取消和再次投递；partial另通过文本与显式
+  手势交接，断言旧COM对象不再锚定、原wire不含辅助格式。helper失败后源窗销毁、
+  非法Scale及正常预览通过。TestOLE与TestDragSourceIdentity在原机运行通过。
+  窗口程序由专用Interactive任务启动，未将SSH会话0窗口启动算作桌面验收。
+- [x] macOS 15.7.7 arm64／VNC 1650×1050／OpenGL 1x／ad-hoc测试.app：
+  无效原生图像解码和编码后失败两类注入均完成本地对象投递、Esc后再次投递；
+  encode另通过文本与显式手势交接，image另通过源窗销毁。正常预览的对象及文本
+  交接、非法Scale通过；TestMacDrag在原机通过。全无图像源并未替换为透明位图。
+- [x] 原工作区`env -u DISPLAY GOMAXPROCS=4 go test -p 2 ./...`已执行，退出1；
+  关键诊断与上一轮完全相同，无新增诊断。仍为未跟踪旧API用例、ui旧字段和
+  Typography缺显示；未改这些用例或扩大skip。定向widgets／theme／gui／x11／
+  dragdrop及窗口目标通过；x11／dragdrop race、GUI拖放范围race及涉及包vet通过。
+- [x] 已跟踪文件加本轮新Go用例的隔离副本，在另一专用显示执行
+  `GOMAXPROCS=4 CGO_ENABLED=0 go test -p 2 -json -count=1 ./...`退出0：5773项
+  测试及子用例通过、11项既有跳过，73个有测试包、140个包无测试。生产Go源码
+  与通过的副本一致；最终窗口fixture补跑编译／原生操作。旧测试会改专用剪贴板
+  并在副本生成PNG，不把这些产物纳入提交。
+- [x] ApiBox移除previewUsed／previewOff，保留文字生成失败时省略图片和所有终态
+  清理目标提示；使用仓库外Go工作区指向本次GOUI，应用全仓测试、拖放race与vet
+  通过。应用原有空窗口功能改动已由其他工作提交，本轮不混入；go.mod仍为v0.7.0，
+  发布应用时需实际接入含修复的GOUI。应用与框架分别提交。
+- [ ] Windows／macOS 2x、其他OS版本、Wayland、无合成器及移动端本轮未执行。
+
+证据目录`/data/xuyang8/goui-drag-preview-tq4nqzgt`保存源码清单、overlay、旧实现
+负对照、日志及截图。一次GUI整包race及首次隔离全仓收到SIGTERM（退出143），
+未算通过；隔离全仓重跑通过，GUI拖放范围race单独通过。早期驱动的Linux未稳定位、
+macOS画面／目标未就绪均未算通过；现先确认实际窗口并等待TARGET回调再释放。
+macOS误投到后方GoLand的两段测试文字已精确移除，远端测试模块go.mod与原版本
+一致；未确认的撤销对话框已取消。早期.app标识不匹配已修正，裸程序诊断不作为.app
+流程通过。无删除断言、放宽容差或静默跳过。
+两套专用Xvnc／WM／总线及辅助进程已清理，Windows专用Interactive任务和原生测试
+进程已清理；测试.app的LaunchServices注册已移除，释放输入并关闭本轮建立的VNC／
+RDP连接。原有SSH连接、其他工作文件及未跟踪产物保留，按契约／平台／窗口／文档
+及应用清理独立提交。
+
 ## 树行连续选区与独立边框（2026-11-13）
 
 - [x] TreeRow增加PreviousSelected／NextSelected，按展开后的完整逻辑序列读取

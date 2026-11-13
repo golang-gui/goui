@@ -193,8 +193,41 @@ Prepare.Data 初始 nil。信号按连接顺序执行，后连接者可覆盖结
 - 图片 Bounds 非零原点在复制时归零；Hotspot 是相对预览左上角的 DIP，允许在图外，不静默钳制。
 - 启动时复制像素并按 graphics 预乘契约转换；不依赖源/目标 Painter，不随 Motion 重画。
 - 不自动调用 RenderWidget。其导出失败由 Prepare 处理者决定是否省略预览，不自动取消拖拽。
-- 图片参数无效属于启动错误。图片有效而原生仅自定义预览不可用时允许退回默认反馈，
-  但不能把整个 DnD 初始化失败也作为“预览问题”吞掉。
+- 图片参数无效属于启动错误。图片有效而原生预览不可用时，继续同一次原生启动，
+  使用默认反馈，不将该降级写入DragResult.Err；整个DnD初始化失败仍照常上报。
+
+### 4.1 预览失败与操作结果（2026-11-14）
+
+预览是尽力而为的视觉反馈，不决定载荷、允许动作或最终是否投递成功。Scale、Hotspot
+及图片Bounds仍先按Preview.Validate校验；校验通过后，后端图像转换限制、原生窗口／
+位图／预览helper创建错误只影响该次预览。数据转换、指针获取、selection所有权、
+OLE／AppKit会话启动等真正使拖放无法继续的错误仍返回，不按错误字符串猜测类型。
+不在GUI交接后重新派发按下，不重复Prepare或Begin，不新增公开重试入口，也不在应用
+保存“曾经预览失败”状态来禁用后续预览。Begin／End及操作结果沿现有原生事件路径。
+
+- X11：newXDNDPreview负责释放构造到一半的资源，beginSource可持有nil预览继续
+  XDND及动作光标。无Shape时原有省略预览行为不变；指针／selection错误不被吞掉。
+- Windows：Shell helper可能先调用IDataObject.SetData再返回失败。预览使用原始
+  wire map的独立副本；失败后释放该对象及所拥有介质，从未污染的原始载荷创建
+  无预览对象，再调用DoDragDrop。DIB返回部分资源时也清理；正常路径保留所有权约定。
+- macOS：图片失败仍建立原来的pasteboard／NSDraggingItem，使用鼠标位置处有限的
+  view-local frame，并清空imageComponentsProvider；不再分配第二张兜底图片。
+  未提供图片时原有默认图标仍保留，该图标创建失败也走无图像路径。
+
+参考[Microsoft DoDragDrop](https://learn.microsoft.com/en-us/windows/win32/api/ole2/nf-ole2-dodragdrop)
+与[IDragSourceHelper](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nn-shobjidl_core-idragsourcehelper)：
+图像helper与核心OLE会话分离，helper会向数据对象写入私有格式。Apple的
+[imageComponentsProvider](https://developer.apple.com/documentation/appkit/nsdraggingitem/imagecomponentsprovider)
+说明nil表示无图像，但同时指出通常由目标端用于部分项目，不能由此直接推导全无图像源
+已经可用。Qt 6.8.3 [Cocoa源码](https://github.com/qt/qtbase/blob/v6.8.3/src/plugins/platforms/cocoa/qcocoadrag.mm#L176)
+也将项目与图像分开组织，部分项目可用nil；采用此分离原则，不照搬Qt抽象。
+本次另在macOS 15.7.7 arm64的测试.app中实测全无图像源的本地对象／文本投递、
+取消后再拖拽及源窗口销毁；这些是实测结果，不将文档或交叉编译当成桌面验收。
+
+回归程序为tests/window/gui/drag_preview。inject.py通过Go overlay精确替换预览
+构造步骤，可注入X11 create／draw、Windows bitmap／helper／partial、macOS
+image／encode，以及用于反证的X11 session错误。overlay只用于测试构建，无生产
+故障开关；--source可加载旧实现作为负对照。验证记录见[Plan](Plan.md#原生拖拽预览失败降级2026-11-14)。
 
 ```go
 source := gui.NewDragSource()
