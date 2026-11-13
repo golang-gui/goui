@@ -182,6 +182,7 @@ func builtInRules(options Options) []style.Rule {
 		style.Name("tree-item").Part("selected").State(style.Pressed).BackgroundColor(mix(rowSelected, p.text, .08)),
 		style.Name("tree-item").Part("current").BackgroundColor(color.Transparent).BorderColor(p.muted).BorderWidth(0),
 		style.Name("tree-item").Part("current").State(style.FocusVisible).BorderWidth(1),
+		style.Name("tree-item").Part("content").BackgroundColor(color.Transparent).BorderWidth(0).Radius(0),
 		style.Name("tree-expander").ForegroundColor(p.muted).BackgroundColor(color.Transparent).Radius(4),
 		style.Name("tree-expander").State(style.Hovered).ForegroundColor(p.text).BackgroundColor(p.menuHover),
 		style.Name("tree-expander").State(style.Pressed).ForegroundColor(p.text).BackgroundColor(p.menuPressed),

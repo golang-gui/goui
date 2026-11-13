@@ -963,6 +963,8 @@ func TestTreeViewCurrentOnlyPaintsOutlineAndDisclosureUsesOwnState(t *testing.T)
 		style.Name("tree-item").Radius(4).BackgroundColor(color.White),
 		style.Name("tree-item").Part("selected").BackgroundColor(color.Black),
 		style.Name("tree-item").Part("current").BorderWidth(1).BorderColor(color.Black),
+		// 完整自定义行样式显式关闭新增装饰Part，保留本组原有背景／焦点断言。
+		style.Name("tree-item").Part("content").BackgroundColor(color.Transparent).BorderWidth(0).Radius(0),
 		style.Name("tree-expander").ForegroundColor(color.Black),
 		style.Name("tree-expander").State(style.Hovered).ForegroundColor(color.RGBA{R: 255, A: 255}),
 		style.Name("tree-expander").State(style.Pressed).ForegroundColor(color.RGBA{B: 255, A: 255}),

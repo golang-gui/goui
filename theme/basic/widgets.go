@@ -55,6 +55,7 @@ func WidgetRules() []style.Rule {
 		style.Name("tree-item").Part("selected").State(style.Hovered).BackgroundColor(color.RGBA{R: 199, G: 209, B: 223, A: 255}),
 		style.Name("tree-item").Part("selected").State(style.Pressed).BackgroundColor(color.RGBA{R: 188, G: 200, B: 216, A: 255}),
 		style.Name("tree-item").Part("current").BackgroundColor(color.Transparent).BorderColor(color.RGBA{R: 100, G: 110, B: 130, A: 255}).BorderWidth(1),
+		style.Name("tree-item").Part("content").BackgroundColor(color.Transparent).BorderWidth(0).Radius(0),
 		style.Name("tree-expander").ForegroundColor(color.Black).BackgroundColor(color.Transparent).Radius(4),
 		style.Name("tree-expander").State(style.Hovered).BackgroundColor(color.RGBA{R: 235, G: 235, B: 235, A: 255}),
 		style.Name("tree-expander").State(style.Pressed).BackgroundColor(color.RGBA{R: 220, G: 220, B: 220, A: 255}),

@@ -23,6 +23,8 @@ type TreeViewView[T any] struct {
 	selection, expanded []string
 	current             string
 	indentation         float32
+	rowStyle            func(widgets.TreeRow, T) string
+	rowContentDepth     func(widgets.TreeRow, T) (int, bool)
 	fields              bits.Bitmap[uint8]
 	onSelection         func([]string)
 	onCurrent           func(string)
@@ -56,6 +58,22 @@ func (v *TreeViewView[T]) Model(model widgets.TreeData[T]) *TreeViewView[T] {
 }
 func (v *TreeViewView[T]) Item(item func(widgets.TreeRow, T) baseui.View) *TreeViewView[T] {
 	v.item = item
+	return v
+}
+
+// RowStyle names the outer row style, including selected, current and content
+// parts. Empty names or an omitted callback restore "tree-item". Content
+// Widgets keep their own styles. The callback follows normal row binding.
+func (v *TreeViewView[T]) RowStyle(fn func(widgets.TreeRow, T) string) *TreeViewView[T] {
+	v.rowStyle = fn
+	return v
+}
+
+// RowContentDepth overrides only the content part's paint depth. Return
+// (depth, true) to override, including zero; false or omission uses row.Depth.
+// Content layout, full-row background and keyboard focus geometry are unchanged.
+func (v *TreeViewView[T]) RowContentDepth(fn func(widgets.TreeRow, T) (int, bool)) *TreeViewView[T] {
+	v.rowContentDepth = fn
 	return v
 }
 func (v *TreeViewView[T]) SelectionMode(mode widgets.SelectionMode) *TreeViewView[T] {
@@ -105,17 +123,20 @@ func (v *TreeViewView[T]) OnContextMenuError(fn func(error)) *TreeViewView[T] {
 }
 
 type treeState[T any] struct {
-	ctx         baseui.BuildContext
-	model       widgets.TreeData[T]
-	item        func(widgets.TreeRow, T) baseui.View
-	handles     signal.Handles
-	onSelection func([]string)
-	onCurrent   func(string)
-	onExpanded  func(string, bool)
-	onActivate  func(string)
-	contextMenu func(string) []*baseui.MenuItemView
-	onError     func(error)
-	tree        *widgets.TreeView
+	ctx             baseui.BuildContext
+	model           widgets.TreeData[T]
+	item            func(widgets.TreeRow, T) baseui.View
+	rowStyle        func(widgets.TreeRow, T) string
+	rowContentDepth func(widgets.TreeRow, T) (int, bool)
+	version         uint64
+	handles         signal.Handles
+	onSelection     func([]string)
+	onCurrent       func(string)
+	onExpanded      func(string, bool)
+	onActivate      func(string)
+	contextMenu     func(string) []*baseui.MenuItemView
+	onError         func(error)
+	tree            *widgets.TreeView
 }
 
 func (v *TreeViewView[T]) Mount(ctx baseui.BuildContext) gui.Widget {
@@ -155,11 +176,33 @@ func (v *TreeViewView[T]) Mount(ctx baseui.BuildContext) gui.Widget {
 	}
 	ctx.SetState(state)
 	tree.SetDelegate(state)
+	tree.SetRowStyle(func(row widgets.TreeRow) string {
+		fn, model, version := state.rowStyle, state.model, state.version
+		if state.ctx != nil && model != nil && fn != nil {
+			value := model.Item(row.ID)
+			if state.ctx != nil && state.version == version && !tree.Destroyed() {
+				return fn(row, value)
+			}
+		}
+		return ""
+	})
+	tree.SetRowContentDepth(func(row widgets.TreeRow) (int, bool) {
+		fn, model, version := state.rowContentDepth, state.model, state.version
+		if state.ctx != nil && model != nil && fn != nil {
+			value := model.Item(row.ID)
+			if state.ctx != nil && state.version == version && !tree.Destroyed() {
+				return fn(row, value)
+			}
+		}
+		return 0, false
+	})
 	return tree
 }
 func (v *TreeViewView[T]) Update(ctx baseui.BuildContext, widget gui.Widget) {
 	tree, state := widget.(*widgets.TreeView), ctx.State().(*treeState[T])
+	state.version++
 	state.model, state.item = v.model, v.item
+	state.rowStyle, state.rowContentDepth = v.rowStyle, v.rowContentDepth
 	state.onSelection, state.onCurrent = v.onSelection, v.onCurrent
 	state.onExpanded, state.onActivate = v.onExpanded, v.onActivate
 	state.contextMenu, state.onError = v.contextMenu, v.onContextMenuError
@@ -185,12 +228,17 @@ func (v *TreeViewView[T]) Update(ctx baseui.BuildContext, widget gui.Widget) {
 	}
 	tree.Refresh()
 }
-func (*TreeViewView[T]) Unmount(ctx baseui.BuildContext, _ gui.Widget) {
+func (*TreeViewView[T]) Unmount(ctx baseui.BuildContext, widget gui.Widget) {
 	state := ctx.State().(*treeState[T])
+	state.version++
 	state.handles.Disconnect()
 	state.ctx, state.model, state.item = nil, nil, nil
 	state.onSelection, state.onCurrent, state.onExpanded, state.onActivate = nil, nil, nil, nil
 	state.contextMenu, state.onError = nil, nil
+	state.rowStyle, state.rowContentDepth = nil, nil
+	tree := widget.(*widgets.TreeView)
+	tree.SetRowStyle(nil)
+	tree.SetRowContentDepth(nil)
 }
 
 type treeContent struct {

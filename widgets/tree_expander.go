@@ -173,7 +173,7 @@ func (e *TreeExpander) Snapshot() gui.WidgetInfo {
 type treeExpanderLayout struct{ e *TreeExpander }
 
 func (l *treeExpanderLayout) prefix() float32 {
-	return treeRowPadding.Left + float32(l.e.depth)*l.e.indentation + treeExpanderSize
+	return treeContentStart(l.e.depth, l.e.indentation)
 }
 func (l *treeExpanderLayout) Measure(children []layout.Child, c layout.Constraint) layout.Measurement {
 	w, h := l.prefix()+treeRowPadding.Right, treeRowMinHeight

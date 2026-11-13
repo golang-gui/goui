@@ -15,6 +15,10 @@ const (
 
 var treeRowPadding = geometry.UniformInsets(4)
 
+func treeContentStart(depth int, indentation float32) float32 {
+	return treeRowPadding.Left + float32(max(0, depth))*indentation + treeExpanderSize
+}
+
 type treeListDelegate struct {
 	view     *TreeView
 	delegate TreeItemDelegate
@@ -69,12 +73,40 @@ func (d *treeListDelegate) Bind(index int, widget gui.Widget) {
 	}
 	flat := v.rows[index]
 	row := v.rowState(flat)
+	version := v.revision
 	if r.bound.ID != "" && r.bound.ID != row.ID {
 		d.Unbind(index, widget)
+		if !v.valid(version) || r.Destroyed() {
+			return
+		}
 	}
+	r.binding++
+	binding := r.binding
 	r.bound, r.flat = row, flat
 	r.SetState(style.Selected, row.Selected)
 	v.realized[row.ID] = r
+	current := func() bool {
+		return v.valid(version) && !r.Destroyed() && r.binding == binding &&
+			r.bound == row && v.realized[row.ID] == r && v.rowState(flat) == row
+	}
+	name, depth := "", row.Depth
+	if v.rowStyle != nil {
+		name = v.rowStyle(row)
+		if !current() {
+			return
+		}
+	}
+	if v.rowContentDepth != nil {
+		if value, override := v.rowContentDepth(row); override {
+			depth = max(0, value)
+		}
+		if !current() {
+			return
+		}
+	}
+	r.SetStyleName(name)
+	r.contentDepth = depth
+	r.RequestPaint()
 	r.RequestLayout()
 	if r.delegate != nil && r.content != nil {
 		r.delegate.Bind(row, r.content)
@@ -87,6 +119,9 @@ func (d *treeListDelegate) Unbind(_ int, widget gui.Widget) {
 		return
 	}
 	r.bound = TreeRow{}
+	r.binding++
+	r.SetStyleName("")
+	r.contentDepth = 0
 	r.SetState(style.Selected, false)
 	if d.view.realized[old.ID] == r {
 		delete(d.view.realized, old.ID)
@@ -107,13 +142,15 @@ func (v *TreeView) rowState(flat flatTreeRow) TreeRow {
 
 type treeRow struct {
 	gui.WidgetBase
-	view     *TreeView
-	delegate TreeItemDelegate
-	bound    TreeRow
-	flat     flatTreeRow
-	content  gui.Widget
-	motion   *gui.MotionEventController
-	click    *gui.ClickEventController
+	view         *TreeView
+	delegate     TreeItemDelegate
+	bound        TreeRow
+	flat         flatTreeRow
+	content      gui.Widget
+	motion       *gui.MotionEventController
+	click        *gui.ClickEventController
+	binding      uint64
+	contentDepth int
 }
 
 func (r *treeRow) Paint(p gui.Painter) {
@@ -121,6 +158,13 @@ func (r *treeRow) Paint(p gui.Painter) {
 		return
 	}
 	state := r.State()
+	focused := !state.Has(style.Disabled) && r.view.current == r.bound.ID && r.view.Focused()
+	if focused {
+		state |= style.Focused
+		if r.view.FocusVisible() {
+			state |= style.FocusVisible
+		}
+	}
 	name := r.StyleName()
 	if name == "" {
 		name = "tree-item"
@@ -131,12 +175,14 @@ func (r *treeRow) Paint(p gui.Painter) {
 	}
 	rect := geometry.Rect(0, 0, r.Rect().Width, r.Rect().Height)
 	paintStyledBox(r, p, rect, name, part, state)
-	if r.view.current == r.bound.ID && r.view.Focused() {
-		state |= style.Focused
-		if r.view.FocusVisible() {
-			state |= style.FocusVisible
-		}
+	if focused {
 		paintStyledBorder(p, rect, gui.ResolveWidgetStyle(r, name, "current", state))
+	}
+	// The content part decorates the full-height strip after the disclosure
+	// slot, including application icons. It does not move or style children.
+	start := min(rect.Width, treeContentStart(r.contentDepth, r.view.indentation))
+	if start < rect.Width {
+		paintStyledBox(r, p, geometry.Rect(start, 0, rect.Width-start, rect.Height), name, "content", state)
 	}
 }
 func (r *treeRow) Snapshot() gui.WidgetInfo {

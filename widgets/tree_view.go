@@ -61,6 +61,8 @@ type TreeView struct {
 	current, anchor               string
 	mode                          SelectionMode
 	indentation                   float32
+	rowStyle                      func(TreeRow) string
+	rowContentDepth               func(TreeRow) (int, bool)
 	realized                      map[string]*treeRow
 	loads                         map[string]bool
 	revision                      uint64 // lifecycle/model/row-binding generation
@@ -316,6 +318,34 @@ func (v *TreeView) SetIndentation(value float32) {
 		return
 	}
 	v.indentation = value
+	v.Refresh()
+}
+
+// SetRowStyle chooses each outer row's style name. An empty name or nil callback
+// uses "tree-item". The name applies to its default, selected, current and
+// content parts; child Widgets keep their own styles. Callbacks run during
+// binding, not painting, and must not mutate the tree or model. Call Refresh
+// when external callback inputs change. Setting a callback also refreshes rows.
+func (v *TreeView) SetRowStyle(fn func(TreeRow) string) {
+	if v.Destroyed() {
+		return
+	}
+	v.rowStyle = fn
+	v.revision++
+	v.Refresh()
+}
+
+// SetRowContentDepth optionally overrides the depth used to paint each row's
+// content part. Return (depth, true) to override, including root depth zero;
+// false or a nil callback uses the bound row's depth. Negative depths become
+// zero. This changes neither content layout nor full-row selection and focus
+// geometry. Callback lifetime and refresh rules are the same as SetRowStyle.
+func (v *TreeView) SetRowContentDepth(fn func(TreeRow) (int, bool)) {
+	if v.Destroyed() {
+		return
+	}
+	v.rowContentDepth = fn
+	v.revision++
 	v.Refresh()
 }
 
