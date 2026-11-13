@@ -301,7 +301,10 @@ func makeMacDragItems(data *dragdrop.Data, preview dragdrop.Preview, w *Window) 
 	}
 	image, frame, err := macPreview(preview, w)
 	if err != nil {
-		return nil, err
+		// Keep the pasteboard items even when optional image creation fails.
+		// Use a finite view-local frame without allocating a replacement image.
+		point := w.view.ConvertPointFromView(w.dragDown.LocationInWindow(), NSView{})
+		frame = NSMakeRect(point.X, point.Y-1, 1, 1)
 	}
 	defer image.Release()
 	for i := 0; i < count; i++ {
@@ -355,6 +358,9 @@ func makeMacDragItems(data *dragdrop.Data, preview dragdrop.Preview, w *Window) 
 			return nil, fmt.Errorf("cocoa dragdrop: cannot create dragging item")
 		}
 		item.SetFrame(frame, image)
+		if !image.Valid() {
+			item.SetImageComponentsProvider(0)
+		}
 		items = append(items, item)
 	}
 	return items, nil

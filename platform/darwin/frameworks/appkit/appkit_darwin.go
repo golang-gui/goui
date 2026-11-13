@@ -460,13 +460,15 @@ func initNSDraggingItem() {
 	NSDraggingItemClassId.Class = objc.GetClass("NSDraggingItem")
 	NSDraggingItemSel.InitWithPasteboardWriter = objc.RegisterName("initWithPasteboardWriter:")
 	NSDraggingItemSel.SetDraggingFrame = objc.RegisterName("setDraggingFrame:contents:")
+	NSDraggingItemSel.SetImageComponentsProvider = objc.RegisterName("setImageComponentsProvider:")
 }
 
 var (
 	NSDraggingItemClassId NSDraggingItemClass
 	NSDraggingItemSel     struct {
-		InitWithPasteboardWriter objc.SEL
-		SetDraggingFrame         objc.SEL
+		InitWithPasteboardWriter   objc.SEL
+		SetDraggingFrame           objc.SEL
+		SetImageComponentsProvider objc.SEL
 	}
 )
 
@@ -485,6 +487,11 @@ func (i DraggingItem) Init(writer PasteboardItem) DraggingItem {
 
 func (i DraggingItem) SetFrame(frame NSRect, image NativeImage) {
 	i.Send(NSDraggingItemSel.SetDraggingFrame, frame, image)
+}
+
+// SetImageComponentsProvider accepts a native block or zero for no image.
+func (i DraggingItem) SetImageComponentsProvider(provider objc.ID) {
+	i.Send(NSDraggingItemSel.SetImageComponentsProvider, provider)
 }
 
 // NSColor
