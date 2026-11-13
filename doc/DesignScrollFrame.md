@@ -51,8 +51,11 @@ TableView已内置ScrollView，负责组合固定表头、正文滚动区及整�
 它显式向内部宿主传递自己的有效StyleName，复用frame/trough/thumb，不改变
 ScrollView／ScrollBar的绘制分工。表格主题将内部frame明确设为透明、无边框、
 零圆角，整体外框仍由TableView独占。轨道采用与普通表头相同的方形底，滑块
-保留通用圆角和状态色；交汇角沿用已有背景，不增加专用Part或Widget。
+保留通用圆角和状态色；交汇角沿用trough底色，不增加专用Part或Widget。
 纵向槽上方的表头空位由TableView按已有表头样式补画，保留纯装饰语义。
+2026-11-13补充：TableView另有独立的outline-horizontal/vertical，用来包围
+可见单元格与固定滚动槽的组合；整体外框、数据四边、内部网格仍分别控制。
+outline线带由TableView在ScrollView外侧预留，不改变通用滚动行为。
 详细契约与验证见[TableView](DesignTableView.md)和[Plan](Plan.md)。
 
 - [GTK4 GtkScrolledWindow](https://docs.gtk.org/gtk4/class.ScrolledWindow.html)

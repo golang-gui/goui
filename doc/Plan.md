@@ -1,5 +1,60 @@
 # Plan
 
+## 表格边框范围与固定滚动槽（2026-11-13）
+
+- [x] 整体外框、内部网格、数据四边及含滚动槽的紧包围轮廓分别控制。
+  grid-horizontal/vertical只画内部线；新增grid-bottom/right独立控制末项，
+  grid-top/left继续控制数据首边。新增outline-horizontal/vertical包围可见
+  数据与固定槽位，无条时紧包数据、有条时包围内部视口。均使用既有Style／Part，
+  无新增公共方法、控件模式或声明式协调状态。Basic／Modern沿用中性色。
+- [x] 斑马色只覆盖实际单元格；当前Grid保留框外滚动条，也可只画数据轮廓、
+  只画含槽轮廓、只画内部线或叠加整体外框。短表横滚仍固定在视口底部，框内空白
+  不补网格。轮廓线带在布局中预留，交点不重复合成；交汇角沿用trough底色。
+  增删末行时失效相关已实现行，空／非空切换失效表头，保留单元格身份和虚拟化。
+- [x] 旧源码overlay下最终新增回归明确失败，覆盖独立末边、仅内部线、五种滚动
+  /空表组合、增删末行及交汇角；并非编译失败。修正后1x／2x预乘RGBA像素、
+  线带避让、极小分配、背景范围与语义计数断言通过。旧fixture显式补bottom/right，
+  保留原末项、几何和像素断言；空表底边改由明确grid-bottom配置，不削弱覆盖。
+- [x] `env -u DISPLAY go test ./widgets/... ./theme/... ./example/demo/... ./tests/window/widgets/table -count=1`
+  及新增窗口程序编译通过；`env -u DISPLAY go test -race ./widgets ./widgets/ui ./theme/basic ./theme/modern -count=1`、
+  受影响包／Demo／三个表格窗口程序的go vet及git diff --check通过。
+- [x] Linux amd64 / Go1.25.8，专用Xvnc / Xfwm4 4.16.1：新table_borders程序
+  完成Modern亮色Software 1x／2x、OpenGL 1x、Modern暗色OpenGL 2x及Basic
+  Software 1x五组，最终源码各9次CHECK、PASS和退出0。覆盖五种边框组合、
+  三张表的无条／仅横条／双条、真实双向拖动不选行、重建、配色及原生截图。
+  原table程序GUI／UI入口各以3行的grid、outline-scroll启动，Software 1x
+  的F6公开几何／内容像素断言、截图及正常退出0也通过。
+- [x] Windows10 build19045 amd64 / RDP / Direct2D 1x用最终二进制完成同样
+  新窗口流程，9次CHECK、PASS、退出0，任务最终Ready、LastTaskResult=0。
+  Windows amd64／macOS arm64的widgets、widgets-ui、两主题测试和新窗口
+  程序交叉编译通过；实际执行的测试／Windows窗口二进制SHA-256与本地相符。
+- [x] Windows10与macOS15.7.7 arm64原生各通过widgets 920项、widgets-ui
+  42项、Basic 13项、Modern表格定向3项测试及子用例，无失败或跳过。Windows
+  最终使用cmd保留原始UTF-8日志，避免PowerShell重定向损坏中文用例名；
+  原始记录保留。Modern其余原生测试本轮未执行，不把定向结果称为整包通过。
+- [x] 原工作区最终`env -u DISPLAY go test ./...`仍失败：未跟踪旧例程／测试
+  使用已移除的SetTitle／Show等API，ui旧测试结构字段过时，Typography缺少
+  DISPLAY；关键诊断与上一轮一致。未修改这些文件、删断言或扩大skip。
+- [x] 已跟踪源码加本轮两个新增Go文件的仓库外副本，在专用显示下执行
+  `CGO_ENABLED=0 go test -json -count=1 ./...`退出0：73个有测试包，5619项测试
+  及子用例通过、11项按原条件跳过，133个包无测试。最终窗口采样点修正后更新
+  副本并执行`CGO_ENABLED=0 go test -json ./...`再次退出0，Go源码逐字节与
+  最终工作区一致。跳过为既有手动窗口／输入、跨应用剪贴板、macOS签名及iOS
+  SDK条件，不代表场景通过；旧测试仅改专用显示剪贴板并在副本生成PNG。
+- [ ] macOS窗口沿用此前选择跳过；其他WM、Wayland、Windows11、非RDP
+  Windows、其他缩放／后端及移动端未执行，原生包测试不代替窗口验收。
+
+设计与样式示例见[TableView](DesignTableView.md)和[滚动外框](DesignScrollFrame.md)。
+证据目录：`/tmp/goui-table-borders-_30192gy`。before-final.log为正式旧源码负对照；
+保留定向／race／vet、两种全仓结果、跨平台元数据、原生包日志及原生输入截图。
+窗口用例初始READY早于完整分配，现以有效窗口局部位置判定；早期记录保留。
+Windows最初在小数行高边界取样读到行背景，最终取2 DIP线带内部，未放宽颜色
+容差；修正后Linux和Windows窗口重新执行完整流程通过。以上属于窗口检查修正，生产代码
+未因平台采样差异增加偏移、延时或分支。
+
+远端临时测试目录、Windows计划任务和本轮RDP客户端已清理，保留既有SSH连接；
+专用X11、WM、总线及辅助进程已退出，原有未跟踪文件未纳入提交。
+
 ## 表格内部滚动槽与样式归属（2026-11-12）
 
 - [x] 内部ScrollView／ScrollBar显式使用所属TableView的StyleName；复用已有

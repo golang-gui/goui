@@ -646,10 +646,14 @@ StyleChanged 使用现有失效路径，本轮不为行高和 padding 增加新�
 | table-view / frame | 内置ScrollView背景；默认透明、BorderWidth=0、Radius=0，避免第二层外框 |
 | table-view / trough | 内置滚动条轨道背景；默认与普通表头同色、方形、无边框 |
 | table-view / thumb | 内置滚动条滑块；复用通用滑块的圆角和Normal／Hovered／Pressed色阶 |
-| table-view / grid-horizontal | BorderColor / BorderWidth 为每行底线，包含末行 |
-| table-view / grid-vertical | BorderColor / BorderWidth 为每列右边线，包含末列；表头、正文共享 |
+| table-view / grid-horizontal | BorderColor / BorderWidth 为非末行的内部横线 |
+| table-view / grid-vertical | BorderColor / BorderWidth 为非末列的内部竖线；表头、正文共享 |
 | table-view / grid-top | BorderColor / BorderWidth 为实际表头单元格上边线 |
 | table-view / grid-left | BorderColor / BorderWidth 为首个可见列的左边线，表头、正文共享 |
+| table-view / grid-bottom | BorderColor / BorderWidth 为末行底边；空表时为表头底边 |
+| table-view / grid-right | BorderColor / BorderWidth 为末列右边，表头、正文共享 |
+| table-view / outline-horizontal | 包含固定滚动槽的紧包围轮廓，上／下边的颜色和线宽，默认0 |
+| table-view / outline-vertical | 包含固定滚动槽的紧包围轮廓，左／右边的颜色和线宽，默认0 |
 | table-view / row | 普通行 BackgroundColor |
 | table-view / row-alternate | 奇数零基模型索引的 BackgroundColor（第二、四……行） |
 | table-view / header-separator | ForegroundColor / BorderWidth 为表头底部分隔线 |
@@ -659,13 +663,55 @@ Part fallback继承统一外框；表头与行的Part显式关闭边框，防止
 线宽为零关闭；负数、NaN、Inf 视为零。透明颜色不释放线宽所占空间，因此仅变色
 不改变布局。首版外框为矩形边线，不承诺圆角子树裁剪。
 
+2026-11-13边框分工（取代下列2026-11-12记录中的末项共用线带约定）：
+
+- 整体外框`outer-horizontal/vertical`始终包围控件完整分配区域。
+- 内部网格`grid-horizontal/vertical`不再同时控制末行／末列的外边线。
+  数据四边分别由`grid-top/bottom/left/right`控制；它们随实际单元格滚动和裁剪，
+  不覆盖滚动槽、空白视口或虚构单元格。表头与正文之间仍由`header-separator`
+  单独控制，空表的表头底边使用`grid-bottom`。
+- `outline-horizontal/vertical`包围可见表头、单元格和固定滚动槽的矩形包络。
+  无条时紧贴实际列宽及已分配行高；有任意滚动条时，固定槽位沿视口跨度展开，
+  包络因而扩展到内部视口分配边界。短表需要横滚时条仍在视口底部，数据到条之间
+  的空白位于包络内，但没有网格／斑马色。没有可见列时不生成这层轮廓。
+
+这些都是独立Style Part，无新增控件模式、公开setter或声明式协调状态。
+数据轮廓关闭时也可保留内部网格，内部网格关闭时也可单独保留任一种轮廓；
+现有grid用例继续用数据四边把滚动条留在框外。需要框内滚动条时启用outline，
+按需另开整体外框；同时启用数据边线和outline会明确得到两层边界。
+默认两主题保持末行1 DIP底边、末列0 DIP右边及outline=0；自定义线宽应分别指定
+内部线与末项边线，旧的grid-horizontal/vertical覆盖不再隐式修改末项。
+
+整体外框与outline各自预留独立布局线带，后者位于前者内侧，正文／表头／滑块
+不会覆盖它。outline绘制使用已分配数据高度缓存，不在Paint扫描或实现全部记录。
+增删末行时仅失效受影响的已实现行，空／非空切换失效表头度量；保留增量单元格身份。
+双条交汇角沿用trough底色，不增加corner Part、Widget或业务行列语义。
+整体框与outline的交点各由横边独占，数据边线的横／竖带同样不重叠，避免重复
+半透明合成。线宽参与正常布局，颜色透明不释放线带。ScrollView仍拥有范围、
+固定槽位、输入、裁剪及滚动同步，TableView只组合布局及绘制自身装饰。
+
+仅绘数据轮廓、不绘内部网格，可将grid-horizontal/vertical及header-separator
+宽度设为0，grid-top/bottom/left/right设为所需线宽；整体外框独立选用。
+仅绘包含滚动槽的轮廓，则把六个grid Part和header-separator设为0，启用
+outline-horizontal/vertical。普通网格可再开启两个内部Part，不必补绘空白区域。
+
+参考Qt **6.8.3** [QTableView::paintEvent](https://github.com/qt/qtbase/blob/v6.8.3/src/widgets/itemviews/qtableview.cpp#L1498)
+在viewport绘制网格，以及[QAbstractScrollArea::layoutChildren_helper](https://github.com/qt/qtbase/blob/v6.8.3/src/widgets/widgets/qabstractscrollarea.cpp#L295)
+独立安排外框／视口／滚动槽；Qt会按style hint改变外框与槽位关系，不据此宣称
+各后端像素一致。GTK **4.18.6** [Default主题非overlay滚动条与junction](https://github.com/GNOME/gtk/blob/4.18.6/gtk/theme/Default/_common.scss#L2387)
+提供槽边和交汇角衔接的源码参考。GOUI采用职责分离与明确线带，紧包围包络是本库
+按已确认需求作出的选择，不复制Qt样式提示、GTK CSS或overlay机制。上述为源码
+证据；本库像素、原生交互及平台缺口另见[Plan](Plan.md)。
+
 2026-11-12滚动槽整合：TableView显式将内置ScrollView的StyleName设为自己的
 有效样式名（未指定时为table-view），ScrollView继续将该名交给两条ScrollBar。
 创建、改名、清空恢复默认均走已有setter和样式失效流程；应用单元格的样式名不变。
 ScrollView管理范围、视口、裁剪及条布局，ScrollBar绘制轨道／滑块；TableView
 不重新实现滚动条。整体外框由TableView绘制，内部frame保持无框、透明和零圆角。
 自定义完整表格样式也应显式提供frame/trough/thumb，避免默认Part回退把外框
-传入内部宿主。普通ScrollView和TextView组合的样式与职责保持既有契约。
+传入内部宿主。2026-11-13新增的outline-horizontal/vertical也应在自定义完整
+Name下显式提供（不启用时宽度0），避免Part回退继承整体外框。普通ScrollView
+和TextView组合的样式与职责保持既有契约。
 
 Basic／Modern分别显式为header和trough提供相同中性色，滑块复制各自通用滑块
 状态色／圆角，不新增配色或交互模式。轨道方形收口，现有8 DIP占位与命中不变。
@@ -695,6 +741,8 @@ style.Name("table-view").Part("grid-horizontal").BorderWidth(1)
 style.Name("table-view").Part("grid-vertical").BorderWidth(1)
 style.Name("table-view").Part("grid-top").BorderWidth(1)
 style.Name("table-view").Part("grid-left").BorderWidth(1)
+style.Name("table-view").Part("grid-bottom").BorderWidth(1)
+style.Name("table-view").Part("grid-right").BorderWidth(1)
 ```
 
 Basic/Modern显式提供top/left的中性网格色，默认宽度0，保持主题默认的视口框与
