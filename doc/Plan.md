@@ -1,5 +1,66 @@
 # Plan
 
+## 树行声明式外观与content装饰（2026-11-13）
+
+- [x] GUI新增SetRowStyle／SetRowContentDepth，widgets/ui提供typed RowStyle／
+  RowContentDepth。空名／省略恢复tree-item，false使用本行深度，显式0为根、
+  负值归零。content为展开槽之后、包含业务图标的整高装饰区域；与TreeExpander
+  共用起点算法，超出行宽裁空。Basic／Modern默认透明、无边框、零圆角。
+- [x] 样式不移动内容、改变整行选中或current轮廓，不向子控件传递；全部Part
+  通过ResolveWidgetStyle。绑定执行回调、回收先清外观、失效后不提交旧结果；
+  UI沿既有委托／更新协调使用最新回调并在解绑释放捕获。焦点状态只在绘制解析
+  投影，真实焦点仍在树或子控件；Snapshot不增加装饰节点或动作。
+- [x] 只读核对apibox的sidebar_tree_width.go、sidebar_drop_indicator.go和
+  sidebar_view.go：应用原先通过内容Parent换私有行样式、独立计算目标深度及
+  自绘线条；after可由下一可见行承载，但目标深度须保留。本轮不改应用文件、
+  依赖或迁移策略；不新增DropStyle／DropIndicator，视口外提示、最小线段和
+  平滑压缩留在应用。GTK生命周期与Qt插入几何参考见DesignTreeView §7.1.1。
+- [x] 新增20项测试及子用例：1x／2x预乘半透明、独立像素预期、整线扫描、
+  根／负／更深覆盖与裁空、绑定回收、Selected／Current、函数替换／省略、
+  模型／委托／宿主失效、真实焦点及两主题默认值。旧生产源码overlay下三组
+  回归均断言失败并退出1，非编译失败（before-widgets／ui／themes.log）。
+  原完整自定义样式fixture显式补content空装饰，保留原有背景／焦点断言。
+- [x] `env -u DISPLAY go test ./widgets/... ./theme/... ./tests/window/widgets/tree_row_style -count=1`
+  通过；widgets、widgets/ui、Basic、Modern的race及同范围go vet通过。
+  新包内用例不创建桌面窗口；焦点输入经Popover正常DispatchEvent。gofmt与
+  git diff --check通过。窗口程序为独立入口，不使用DevServer。
+- [x] Linux amd64／Go1.25.8，独占Xvnc／Xfwm4 4.16.1：Modern亮色Software
+  1x／2x、OpenGL 1x、Modern暗色OpenGL 2x、Basic Software 1x，最终五组
+  均15次F6 CHECK及拖放检查、PASS、退出0。真实输入覆盖before／after／into、
+  根／本行／更深起点、
+  省略恢复、行回收／返回、重建、亮暗切换、树键盘提示、子按钮焦点、原生
+  拖放及结束清理；F6检查公开几何、像素和Snapshot，截图核对外观。
+- [x] Windows amd64／macOS arm64的widgets、widgets/ui、两主题测试和窗口
+  程序交叉编译通过。Windows10 build19045／macOS15.7.7原生各通过widgets
+  整包967项、widgets/ui整包46项、Basic树定向1项、Modern树定向3项测试及
+  子用例，无失败或跳过；不称为两主题整包原生测试。执行文件SHA-256相符，
+  Windows用cmd保留原始UTF-8日志。
+- [x] Windows10／RDP／Direct2D 1x完成完整窗口流程，PASS、退出0，计划任务
+  Ready／LastTaskResult=0。使用Computer Use真实键鼠，不以窗口启动代替验收。
+- [x] 原工作区`env -u DISPLAY go test ./...`执行失败：既有未跟踪旧API例程／
+  测试、ui/window_lookup_test.go过时字段，以及Typography无DISPLAY。
+  关键诊断去除耗时后与上轮多重集相同（workspace-comparison.json），未删除
+  断言或扩大skip。旧绘图／位图测试会重写原有PNG，未纳入本轮提交。
+- [x] 已跟踪文件加本轮5个新Go文件的隔离副本，在专用显示运行
+  `GOMAXPROCS=4 CGO_ENABLED=0 go test -p 2 -json -count=1 ./...`退出0：
+  73个有测试包、5712项测试及子用例通过，11项按既有条件跳过，135个包无测试。
+  跳过包含手动输入／窗口状态、跨应用剪贴板、macOS签名和iOS SDK条件，不
+  代表这些场景通过。旧全量测试会改专用显示剪贴板并在副本生成PNG。
+- [ ] macOS窗口沿用用户此前选择，本轮跳过；Wayland、其他WM、Windows11、
+  非RDP Windows、其他缩放／后端及移动端未执行，不以编译／包测试代替。
+
+证据目录：`/tmp/goui-tree-row-style-f62y6p2g`，保留负对照、定向／race／vet、
+原工作区与隔离全仓结果、哈希、原生包日志、窗口CHECK与截图。窗口fixture首轮
+Basic在Far后以部分可见行的中心命中，中心可能在裁剪区外；改为可见交集中心。
+Windows首轮after采样用整数截断行高，点落在底部2 DIP实线之外；改为采样线内，
+保留原1级8位颜色容差。均保留原失败记录，未因此修改生产代码或放宽断言。
+
+设计／用法见[DesignTreeView](DesignTreeView.md#711-按行外观与装饰深度2026-11-13)，
+独立窗口入口为`tests/window/widgets/tree_row_style`。本轮按实现与包内回归、
+窗口用例、文档分开提交；隔离副本1045个Go文件与最终源码逐字节一致。
+独占X11／WM／总线及所属辅助进程、远端目录、Windows计划任务和本轮RDP客户端
+已清理，保留本地证据及既有SSH连接；原有未跟踪文件未纳入提交。
+
 ## TextInput／TextView三击选行（2026-11-13）
 
 - [x] 共享textEditController按下时识别单／双／三击，第四击重新定位。

@@ -3,6 +3,7 @@
 > 状态：2026-10-03 首版代码、声明绑定、样式、语义和测试已实现。
 > 本机 Linux/X11/Xfwm4 已完成 Software 1x UI、OpenGL 2x GUI 核心交互验证；
 > Windows amd64／macOS arm64 编译通过，原生桌面验收尚未执行。详细记录见 §9.4。
+> 2026-11-13 新增按行外观及 content 装饰深度，契约见 §7.1.1；本轮验证见 Plan。
 
 ## 1. 范围与架构
 
@@ -192,6 +193,8 @@ func (v *TreeView) ExpandedIDs() []string
 func (v *TreeView) SetExpandedIDs([]string)
 func (v *TreeView) Indentation() float32
 func (v *TreeView) SetIndentation(float32)
+func (v *TreeView) SetRowStyle(func(TreeRow) string)
+func (v *TreeView) SetRowContentDepth(func(TreeRow) (int, bool))
 func (v *TreeView) Reveal(id string)
 func (v *TreeView) Refresh()
 func (v *TreeView) RowAt(geometry.Point) (TreeRow, geometry.Rectangle, bool)
@@ -495,6 +498,8 @@ func TreeView[T any](
 - 数据与构建：`Model(...)`、`Item(...)`。
 - 状态：`SelectionMode(...)`、`Selection(...)`、`Current(...)`、`Expanded(...)`。
 - 布局：`Indentation(...)`，以及通用 View 修饰方法。
+- 行外观：`RowStyle(func(widgets.TreeRow, T) string)`、
+  `RowContentDepth(func(widgets.TreeRow, T) (int, bool))`，见 §7.1.1。
 - 通知：`OnSelection(...)`、`OnCurrent(...)`、`OnExpanded(...)`、`OnActivate(...)`。
 - 菜单：`ContextMenu(func(id string) []*ui.MenuItemView)`、`OnContextMenuError(...)`。
 
@@ -591,6 +596,7 @@ ui.ListView 与 widgets/ui.TreeView 共用上述机制。回归覆盖同模型�
 | `tree-item` | 行背景、边框、圆角、普通／悬停／按下状态 |
 | `tree-item` 的 `selected` Part | 选中外观 |
 | `tree-item` 的 `current` Part | 当前项指示 |
+| `tree-item` 的 `content` Part | 展开槽之后、包含业务图标的整高装饰区域 |
 | `tree-expander` | 展开图标和命中槽 |
 | `tree-item-text` | 默认文本内容显式使用的样式 |
 | `tree-item-icon` | 图标内容显式使用的样式 |
@@ -615,6 +621,82 @@ selected Part 显式提供 Normal／Hovered／Pressed；展开箭头使用自己
 样式继承到不透明背景也不能覆盖已选行。行最小高度 28 DIP、内边距 4 DIP、展开槽
 20 DIP 是集中定义的布局常量，不新增样式尺寸系统。盒子绘制辅助放在 widgets 私有
 通用 helper 中，TreeView 不再依赖以 Tab 命名的绘制函数；TabBar 绘制语义不变。
+
+#### 7.1.1 按行外观与装饰深度（2026-11-13）
+
+`SetRowStyle`／声明式 `RowStyle` 为真正的外层行指定样式名；空名、nil 或声明省略
+恢复 `tree-item`。该名称同时解析默认、selected、current 和 content Part，不向内容
+子树传递样式。应用无需从内容的 Parent 查找私有 treeRow。
+
+`content` 是一条整行高度的绘制区域，从展开箭头槽之后延伸到行右侧，包含业务图标、
+文字和徽标。默认起点为 `4 + row.Depth * Indentation + 20` DIP，与 TreeExpander
+内容起点共用计算；不是文字专用区域，也不是从展开箭头开始。Basic／Modern 默认
+透明、无边框、零圆角，不改变已有外观。
+
+应用可用该 Part 的背景、颜色、边宽、BorderSides 和状态画排序线等装饰。
+`RowContentDepth` 返回 `(depth, true)` 覆盖绘制深度，显式零表示根级，负值归零；
+false、nil 或省略使用本行 Depth。超出行宽时区域裁为空，不画最小长度替代线段。
+它只改变装饰起点，不移动内容、不改变测量、整行选中背景或 current 轮廓。
+绘制顺序为整行背景／边框、current 边框、content 装饰，再由GUI正常绘制内容子树。
+子控件如自行覆盖此区域，应用应协调其外观。
+
+排序提示的逻辑目标深度不一定等于承载行深度。例如将 after 转为下一可见行的顶部
+边框时，应保留原逻辑目标深度。应用决定 before／after／into、合法性、离开／取消／
+成功后的清理，再通过 RowStyle 和 RowContentDepth 提交外观；框架不增加 DropStyle、
+DropIndicator 或另一套拖放状态。视口外提示、窄视口最小线段和平滑压缩仍由应用决定。
+
+样式系统按既有 Part fallback 规则解析：缺失的 content 属性可能回退到同名普通样式。
+完整自定义行样式应从主题的完整 tree-item 规则派生，或显式提供透明 content Part；
+只给新样式名加一条边框规则不会自动继承 tree-item 的 selected／current 外观。例如：
+
+```go
+rules := modern.Rules(modern.Options{})
+for _, rule := range append([]style.Rule(nil), rules...) {
+    if rule.Sel.Name == "tree-item" {
+        rule.Sel.Name = "resource-before"
+        rules = append(rules, rule)
+    }
+}
+rules = append(rules, style.Name("resource-before").Part("content").
+    BackgroundColor(color.Transparent).BorderColor(color.Gray{Y: 110}).
+    BorderWidth(2).BorderSides(style.BorderTop).Radius(0))
+sheet := style.Sheet(rules...)
+```
+
+将 sheet 安装到应用或显式 StyleScope；行的全部 Part 通过 ResolveWidgetStyle 解析。
+声明式用法中，`entryView`、`targetID`、`targetDepth` 及反馈状态由应用提供：
+
+```go
+wui.TreeView(store, entryView).
+    RowStyle(func(row widgets.TreeRow, entry Entry) string {
+        if showBefore && row.ID == targetID {
+            return "resource-before"
+        }
+        return ""
+    }).
+    RowContentDepth(func(row widgets.TreeRow, entry Entry) (int, bool) {
+        return targetDepth, showBefore && row.ID == targetID
+    })
+```
+
+回调在绑定时执行，收到当前 TreeRow 快照（含 Selected／Current）；不在 Paint 中执行，
+不得修改模型或祖先控件树。GUI 外部输入变化后调用 Refresh；设置回调本身也刷新。
+UI 沿用现有更新请求和稳定委托，重建使用最新函数，省略后恢复默认，不比较函数身份。
+同 ID 刷新保留行壳及内容身份；回收／解绑先清除旧样式和深度，再调用内容 Unbind。
+回调使绑定失效或宿主销毁时不提交旧结果；UI 解绑释放捕获函数。
+
+行自身始终不获得真实焦点。树实际聚焦且该行是 Current 时，样式解析才投影 Focused／
+FocusVisible；真实焦点转入子按钮后，不把 ContainsFocus 当成树的键盘焦点。
+Snapshot 保持原 TreeItem 角色、子树和动作，content 不产生语义节点。
+
+参考：GTK4 [SignalListItemFactory 文档](https://docs.gtk.org/gtk4/class.SignalListItemFactory.html)
+（查阅页面标注库版本4.24.1）明确 setup／bind／unbind／teardown 分工，解绑应撤销
+上一项的绑定；采用此生命周期边界，未引入其对象／属性系统。
+Qt 6.8.3 [QAbstractItemView 源码](https://github.com/qt/qtbase/blob/v6.8.3/src/widgets/itemviews/qabstractitemview.cpp#L2084)
+将插入提示几何与项目内容分开处理；这是控件层源码参考，不是跨平台原生行为承诺。
+GOUI 只提供行外观和绘制深度，不照搬 Qt 的内置排序提示状态机。
+
+回归及窗口验收记录见 [Plan](Plan.md#树行声明式外观与content装饰2026-11-13)。
 
 ### 7.2 Snapshot
 
