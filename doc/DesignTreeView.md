@@ -195,6 +195,8 @@ func (v *TreeView) Indentation() float32
 func (v *TreeView) SetIndentation(float32)
 func (v *TreeView) SetRowStyle(func(TreeRow) string)
 func (v *TreeView) SetRowContentDepth(func(TreeRow) (int, bool))
+func (v *TreeView) SetRowInsets(left, right float32)
+func (v *TreeView) RowInsets() (left, right float32)
 func (v *TreeView) Reveal(id string)
 func (v *TreeView) Refresh()
 func (v *TreeView) RowAt(geometry.Point) (TreeRow, geometry.Rectangle, bool)
@@ -411,12 +413,68 @@ TreeExpander 默认布局参数：根深度为 0，水平内边距 4 DIP，每�
 叶子也保留同宽占位；行最小高度 28 DIP，上下内边距各 4 DIP。内容和展开图标垂直居中，
 行高允许随字体、多行内容及自定义控件增长。
 
-行选中／悬停背景覆盖包括缩进在内的完整行宽。缩进是布局状态，不是向子树传递样式。
+行选中／悬停背景覆盖包括缩进在内的视口行区域；水平滚动只移动内部内容。
+缩进是布局状态，不是向子树传递样式。
 测量、排列通过现有布局辅助机制执行，不能直接调用子控件 Measure 绕过样式和测量缓存。
 
 保留内容自然宽度，允许 ScrollView 水平滚动；不强制所有内容按视口宽度换行。
 应用可通过内容的宽度约束控制换行。颜色、圆角等按第 7 节解析，不能从行向 Label
 隐式继承样式。
+
+#### 5.2.1 横向内容、视口行区域与内缩（2026-11-13）
+
+树行自然宽度用于估算横向滚动范围，最终行外壳按实际视口宽度分配。外壳负责
+背景、边框、current轮廓、事件命中及treeitem语义；展开槽、层级缩进、图标和
+业务内容在外壳内部横向移动，并由GUI正常的父子边界裁剪。滚到右侧后，即使
+短行文字已离开视口，行空白仍能选择、打开菜单或作为稳定树拖拽源的起点。
+RowAt与正常Pick／事件分发使用相同的实际行几何，不增加语义动作捷径。
+
+```go
+tree.SetRowInsets(12, 18) // fixed left/right viewport margins, in DIP
+left, right := tree.RowInsets()
+
+wui.TreeView(model, buildRow).RowInsets(12, 18)
+```
+
+RowInsets默认零，负值或非有限值归零，声明式省略恢复零。它将行背景、焦点框、
+命中区域及内容视口一起内缩，固定在视口两侧，不随横向滚动移动，也不代替
+Indentation。两侧内缩总和超过视口时行宽裁为零，不能命中。内缩占用空间计入
+自然宽度贡献，末尾内容仍可滚入；没有隐式截断、强制换行或宽度上限。
+内缩外仍是树的空白区域，沿用普通空白点击等行为。
+
+RowStyle控制相同行外壳的各Part；content的逻辑起点继续按RowContentDepth计算，
+再减去水平偏移，并在行视口内裁剪。已滚出左侧的content左边框不钉到视口边缘。
+改变装饰深度继续只影响绘制，不移动内容或改写展开／选择／真实焦点。
+
+ListView新增可选ListItemLayoutDelegate.ArrangeItem分配入口，提供索引、Widget、
+默认行矩形、实际视口及滚动偏移。测量、绑定、池化及回收仍由ListView负责；
+TreeView的内部委托实现该入口，再由私有行布局排列内容。普通ListView未启用该
+委托时仍按各行自然宽度（至少视口宽）分配，不统一拉伸至最宽行。TableView继续
+使用自己的列几何和原有分配路径；不让树的背景或选择策略进入GUI内核。
+
+横向范围的虚拟化契约：
+
+- 缓存每行最后测得的自然宽度，与视口撑宽后的分配值分开；范围是当前视口宽度
+  与已测自然宽度的最大值。从未实现的行宽未知，首次遇到长行时范围可以扩大。
+- 行离屏后保留历史宽度；调整视口宽度时仍保留它作为估计，可见行会重新测量。
+  不能把旧视口宽度作为短行自然宽度，也不为了求精确最大值创建全量行Widget。
+- 局部RequestLayout、Refresh、字体／样式／RowInsets变化使可见行重测，离屏历史
+  值暂作估计，重新实现后修正。最宽行实际变窄后，按其余缓存重新计算范围。
+- 索引增量删除移除对应缓存，插入平移保留项；模型／委托重装和树平铺结构重置
+  清理旧索引测量。范围变化仍交ScrollView钳制偏移，不另建水平滚动状态所有者。
+
+TreeExpander通过Constraint.Insets扣除前缀及内边距，保留无界轴的layout.Inf。
+深层节点的前缀不能把无界约束变成接近1e9的有限值，诱使有限约束撑满型子项
+产生虚假横向范围；有限约束仍正常扣减并在空间不足时归零。
+
+参考与取舍：GTK 4.18.6的
+[ListView分配源码](https://github.com/GNOME/gtk/blob/4.18.6/gtk/gtklistview.c#L565)
+区分列表宽度、已知行测量与未知行估计，采用统一list_width分配；GOUI采用测量
+与分配分离的原则，保留普通列表既有自然宽度契约。Qt 6.8.3的
+[sizeHintForColumn](https://github.com/qt/qtbase/blob/v6.8.3/src/widgets/itemviews/qtreeview.cpp#L2741)
+受resizeContentsPrecision约束，说明求内容宽度可以明确限制测量范围；该源码
+行为不等同于承诺所有框架都会提前知道全量最大宽度。GOUI不引入Qt列／header
+抽象或全量预扫描。独立窗口验证见tests/window/widgets/tree_horizontal。
 
 展开平铺重建复杂度为 O(展开后的逻辑行数)，首版不实现专用平衡树。
 Widget 数量受虚拟化实现范围和复用池约束，一万个节点不能创建一万个行 Widget。
@@ -666,7 +724,7 @@ selected Part 显式提供 Normal／Hovered／Pressed；展开箭头使用自己
 子树传递样式。应用无需从内容的 Parent 查找私有 treeRow。
 
 `content` 是一条整行高度的绘制区域，从展开箭头槽之后延伸到行右侧，包含业务图标、
-文字和徽标。默认起点为 `4 + row.Depth * Indentation + 20` DIP，与 TreeExpander
+文字和徽标。未横向滚动时起点为 `4 + row.Depth * Indentation + 20` DIP，与 TreeExpander
 内容起点共用计算；不是文字专用区域，也不是从展开箭头开始。Basic／Modern 默认
 透明、无边框、零圆角，不改变已有外观。
 

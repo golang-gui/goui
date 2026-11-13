@@ -1,5 +1,62 @@
 # Plan
 
+## 虚拟化树行宽度与横向滚动（2026-11-13）
+
+- [x] TreeExpander用Constraint.Insets扣除缩进／展开槽与内边距，保留两个轴的
+  无界哨兵。新增有限约束下撑满型子项回归，覆盖双轴无界、混合轴及有限不足；
+  旧生产文件overlay下两个无界场景返回近1e9宽度并断言失败，非编译失败。
+- [x] ListView新增可选ListItemLayoutDelegate.ArrangeItem，提供默认行矩形、
+  视口与滚动偏移；不改变普通列表的每行自然宽度分配。宽度缓存改存未被视口
+  撑宽的自然值，视口调整保留离屏估计；最宽行重测／删除时重新计算。行分配
+  回调后检查销毁／revision，不继续处理失效批次。未改变TableView列分配策略。
+- [x] TreeView内部委托启用视口行分配，外壳保有背景、current框、命中、RowAt
+  与treeitem边界；内容保持自然宽度并在外壳内部滚动／裁剪。RowInsets默认零、
+  非法归零，改变外壳和内容视口；声明式省略恢复零，不重装模型或行委托。
+  content Part起点减去scrollX，保留已经移出左侧的边框裁剪，不钉回视口。
+  无新增全量测量、树选择策略或UI状态机；apibox文件及依赖未修改。
+- [x] 新增16项测试及子用例：无界约束、默认／可选分配、原始自然测量、视口
+  调整／最宽项删除、分配期间重入／销毁、最右侧短行正常点击、内缩与窄视口
+  裁空、RowAt／Pick／Snapshot一致、content整线1x／2x独立像素预期、声明更新
+  与省略复位及行身份／选择／展开保持。旧ListView overlay下分配／缓存／树行
+  回归断言失败；像素不使用跨字体金图。原有断言保留，没有扩大skip。
+- [x] `env -u DISPLAY go test ./gui/... ./widgets/... ./theme/... ./tests/window/widgets/tree_horizontal -count=1`
+  通过，包含现有表格、行样式、焦点和拖拽生命周期回归；gui／widgets／widgets/ui
+  的race、涉及包go vet、gofmt与git diff --check通过。测试的惰性Popover宿主
+  不创建桌面窗口，点击经正常DispatchEvent。
+- [x] 独立窗口用例tests/window/widgets/tree_horizontal：Linux amd64／Go1.25.8，
+  独占Xvnc／Xfwm4 4.16.1，Modern亮色Software 1x／2x、Modern暗色OpenGL 1x、
+  Modern亮色OpenGL 2x、Basic Software 1x五组均PASS、退出0；OpenGL实际为
+  Mesa 23.2.1 llvmpipe，不作硬件GPU性能结论。每组完成真实水平条拖动、最右
+  短行空白选择、RowInsets启用／省略、输入全选后重建／亮暗切换、末尾长行首次
+  扩范围／离屏保留／变窄后重新测量收缩、回顶部及短行空白起拖并成功原生Drop。
+  五组都保持行几何与Snapshot一致，屏幕截图和RenderWidget断言分开核对。
+- [x] Windows amd64／macOS arm64的gui、widgets、widgets/ui测试目标和新窗口
+  交叉编译通过；未原生运行，不将构建结果当成其他桌面平台交互验收。
+- [x] 原工作区go test ./...首次执行受共享/tmp满盘影响，链接器报No space left
+  on device；保留workspace-full.log及isolated-full-initial.jsonl。只移动本轮
+  构建产物到数据盘，未清理其他任务目录；后续子进程显式使用数据盘TMPDIR／
+  GOTMPDIR。重跑`GOMAXPROCS=4 go test -p 2 ./...`（无DISPLAY）仍因既有
+  未跟踪旧API例程／测试、ui/window_lookup_test.go旧字段、Typography缺显示
+  失败；关键诊断去耗时后与上一轮多重集相同，无新增诊断。
+- [x] 已跟踪文件加本轮四个新Go文件的隔离副本，在另一专用显示执行
+  `GOMAXPROCS=4 CGO_ENABLED=0 go test -p 2 -json -count=1 ./...`退出0：73个有
+  测试包、5755项测试及子用例通过，11项既有跳过、138个包无测试。跳过为手动
+  输入／窗口状态、跨应用剪贴板、macOS签名及iOS SDK条件，不算交互通过。
+  1054个Go文件与最终源码逐字节一致；旧测试改专用显示剪贴板并在副本生成PNG，
+  原工作区既有PNG输出未纳入提交。
+- [ ] Windows／macOS原生桌面、Wayland、其他WM、混合DPI与移动端本轮未执行。
+
+设计与GTK 4.18.6／Qt 6.8.3参考见[TreeView§5.2.1](DesignTreeView.md#521-横向内容视口行区域与内缩2026-11-13)。
+证据目录`/tmp/goui-tree-horizontal-ci0xu20o`，交叉编译产物移至
+`/data/xuyang8/goui-tree-horizontal-artifacts-4ny229pz`，原路径保留符号链接。初次
+测试fixture的有限高度预期、复用壳宽度重置及多余import已修正；首次窗口独立启动
+后等待操作过久，工具终止进程，未记录为退出通过，后用同一启动器持有窗口并立即
+完成输入／退出检查。退出时可见request frame: timer: scheduler has closed日志，
+五组实际退出码均为0，本轮未改应用计时器。没有放宽生产约束或测试容差。
+两个专用Xvnc／WM／总线及所属辅助进程已清理，未修改用户桌面设置或剪贴板；
+本批按无界测量、ListView分配／缓存、树行几何、声明式入口、窗口用例及文档拆分
+提交，保留原工作区未跟踪文件。
+
 ## X11运行期系统主题读取（2026-11-13）
 
 - [x] 根因对照确认GTK 3.24.33的X11 Settings缓存依赖原生事件分发；旧构建不运行
