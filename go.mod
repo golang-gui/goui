@@ -22,7 +22,6 @@ require (
 	github.com/xuges/gothread v0.0.1
 	go.mozilla.org/pkcs7 v0.9.0
 	golang.org/x/image v0.24.0
-	golang.org/x/sys v0.30.0
 	golang.org/x/text v0.22.0
 	golang.org/x/sys v0.30.0
 	howett.net/plist v1.0.1
