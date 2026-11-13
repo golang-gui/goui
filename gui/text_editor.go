@@ -300,7 +300,7 @@ func newTextEditor(owner Widget, singleLine bool, padding geometry.Insets) *text
 	t.im = NewIMContext()
 	t.im.ConnectCommit(t.onCommit)
 	t.im.ConnectPreedit(t.onPreedit)
-	t.input = &textEditController{EventControllerBase: NewEventControllerBase(PhaseTarget), view: t}
+	t.input = &textEditController{EventControllerBase: NewEventControllerBase(PhaseTarget), view: t, now: time.Now}
 	t.owner.AddEventController(t.input)
 	menu := NewContextMenuEventController()
 	menu.ConnectRequest(func(ctx EventContext) {
@@ -368,6 +368,12 @@ func (t *textEditor) setModel(model *TextModel) {
 	t.cancelPreedit(true)
 	if t.owner.base().destroyed || t.model != previous || t.mountEpoch != epoch {
 		return
+	}
+	if t.input != nil {
+		t.input.Reset()
+		if t.owner.base().destroyed || t.model != previous || t.mountEpoch != epoch {
+			return
+		}
 	}
 	oldSelection := t.selection
 	if t.model != nil {
@@ -1785,7 +1791,7 @@ func (t *textEditor) autoScroll() {
 	if t.owner.base().destroyed || t.suspended || t.model != model || t.mountEpoch != epoch {
 		return
 	}
-	t.moveTo(t.hitText(t.dragSelectionPoint()), true)
+	t.input.updateSelection()
 	if !t.owner.base().destroyed && !t.suspended && t.model == model && t.mountEpoch == epoch {
 		t.syncAutoScroll()
 	}
@@ -2209,7 +2215,14 @@ type textEditController struct {
 	gesture   *GestureParticipation
 	lastDown  time.Time
 	lastPoint geometry.Point
-	dragPoint geometry.Point
+	clicks    int
+	now       func() time.Time
+	model     *TextModel
+	revision  uint64
+
+	lineSelection bool
+	lineAnchor    TextRange
+	dragPoint     geometry.Point
 }
 
 func (c *textEditController) CapturingPointer() bool { return c.dragging }
@@ -2218,7 +2231,9 @@ func (c *textEditController) Reset() {
 	c.gesture = nil
 	gesture.Reject()
 	c.dragging = false
-	c.lastDown = time.Time{}
+	c.resetClicks()
+	c.model = nil
+	c.lineSelection = false
 	if c.view.scrollTimer != nil {
 		c.view.scrollTimer.Stop()
 	}
@@ -2258,34 +2273,103 @@ func (c *textEditController) GestureAccepted(ctx EventContext) {
 func (c *textEditController) GestureCanceled(GestureCancelReason) {
 	c.gesture = nil
 	c.dragging = false
+	c.resetClicks()
+	c.model = nil
+	c.lineSelection = false
 	if c.view.scrollTimer != nil {
 		c.view.scrollTimer.Stop()
 	}
 }
 
+func (c *textEditController) resetClicks() {
+	c.lastDown = time.Time{}
+	c.clicks = 0
+}
+
 func (c *textEditController) beginSelection(ctx EventContext, event events.PointerEvent, point geometry.Point) {
 	t := c.view
 	t.hasDesiredX = false
+	model, epoch, revision := t.model, t.mountEpoch, t.model.Revision()
+	enabled := t.owner.base().enabledRevision
+	current := func() bool {
+		return !t.owner.base().destroyed && !t.suspended && IsEnabled(t.owner) &&
+			t.owner.base().enabledRevision == enabled && t.model == model &&
+			t.mountEpoch == epoch && model.Revision() == revision
+	}
 	position := t.hitText(point)
-	model, epoch := t.model, t.mountEpoch
+	if !current() {
+		c.Reset()
+		return
+	}
 	t.cancelPreedit(true)
-	if t.owner.base().destroyed || t.model != model || t.mountEpoch != epoch {
+	if !current() {
+		c.Reset()
 		return
 	}
 	t.syncBlink(true) // Clicking the current position is interaction too.
-	now := time.Now()
-	double := !c.lastDown.IsZero() && now.Sub(c.lastDown) <= gestureClickInterval &&
-		!gestureMoved(point, c.lastPoint, gestureDefaultDistance)
-	c.lastDown, c.lastPoint, c.dragging = now, point, true
+	now := c.now()
+	count := 1
+	if c.clicks < 3 && c.model == model && c.revision == revision && !c.lastDown.IsZero() &&
+		now.Sub(c.lastDown) >= 0 && now.Sub(c.lastDown) <= gestureClickInterval &&
+		!gestureMoved(event.Position, c.lastPoint, gestureDefaultDistance) {
+		count = c.clicks + 1
+	}
+	c.lastDown, c.lastPoint, c.dragging = now, event.Position, true
+	c.clicks, c.model, c.revision = count, model, revision
+	c.lineSelection = count == 3
 	c.dragPoint = point
 	ctx.StopPropagation()
-	if double {
-		c.lastDown = time.Time{}
+	switch count {
+	case 3:
+		c.lineAnchor = t.logicalLineAt(position.Offset)
+		t.setSelection(TextSelection{Anchor: c.lineAnchor.Start, Caret: c.lineAnchor.End}, false, true)
+	case 2:
 		rng := t.wordAt(position.Offset)
-		t.setSelection(TextSelection{Anchor: rng.Start, Caret: rng.End}, false, true)
-	} else {
+		if current() {
+			t.setSelection(TextSelection{Anchor: rng.Start, Caret: rng.End}, false, true)
+		}
+	default:
 		t.moveTo(position, event.Modifiers&events.ModifierShift != 0)
 	}
+}
+
+// Logical lines include their LF, so copying or replacing a selected line
+// preserves its boundary. Soft wraps never create an additional document line.
+func (t *textEditor) logicalLineAt(offset int) TextRange {
+	index := t.model.LineAt(offset)
+	rng, _ := t.model.LineRange(index)
+	if index+1 < t.model.LineCount() {
+		rng.End++
+	}
+	return rng
+}
+
+// Pointer movement and timer-driven scrolling share the same selection unit.
+// The original triple-clicked line always remains part of a line selection.
+func (c *textEditController) updateSelection() {
+	t := c.view
+	current := func() bool {
+		return c.dragging && !t.owner.base().destroyed && !t.suspended &&
+			IsEnabled(t.owner) && t.model == c.model && t.model.Revision() == c.revision
+	}
+	if !current() {
+		c.Reset()
+		return
+	}
+	position := t.hitText(t.dragSelectionPoint())
+	if !current() {
+		return
+	}
+	if !c.lineSelection {
+		t.moveTo(position, true)
+		return
+	}
+	rng := t.logicalLineAt(position.Offset)
+	selection := TextSelection{Anchor: c.lineAnchor.Start, Caret: max(c.lineAnchor.End, rng.End)}
+	if rng.Start < c.lineAnchor.Start {
+		selection = TextSelection{Anchor: c.lineAnchor.End, Caret: rng.Start}
+	}
+	t.setSelection(selection, false, true)
 }
 
 func (c *textEditController) HandleEvent(ctx EventContext) {
@@ -2295,11 +2379,15 @@ func (c *textEditController) HandleEvent(ctx EventContext) {
 	}
 	switch event := ctx.Event().(type) {
 	case events.WheelEvent:
+		c.resetClicks()
 		// User browsing supersedes a pending keyboard reveal; the parent
 		// ScrollView still receives and applies the wheel event normally.
 		t.revealCaret = false
 		t.anchorPending = false
 	case events.KeyEvent:
+		if event.EventType == events.KeyDown {
+			c.resetClicks()
+		}
 		if event.EventType == events.KeyDown && t.editingKey(event) {
 			event.PreventDefault()
 			ctx.StopPropagation()
@@ -2321,6 +2409,7 @@ func (c *textEditController) HandleEvent(ctx EventContext) {
 		switch event.EventType {
 		case events.PointerDown:
 			if !primaryPointer(event) {
+				c.resetClicks()
 				return
 			}
 			if gesture := JoinGesture(ctx); gesture != nil {
@@ -2331,10 +2420,13 @@ func (c *textEditController) HandleEvent(ctx EventContext) {
 			c.beginSelection(ctx, event, point)
 		case events.PointerMove:
 			if c.dragging {
+				if gestureMoved(event.Position, c.lastPoint, gestureDefaultDistance) {
+					c.resetClicks()
+				}
 				t.syncBlink(true)
 				c.dragPoint = point
 				ctx.StopPropagation()
-				t.moveTo(t.hitText(t.dragSelectionPoint()), true)
+				c.updateSelection()
 				if !t.owner.base().destroyed {
 					t.syncAutoScroll()
 				}
