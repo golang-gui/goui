@@ -23,7 +23,7 @@ func (p *Platform) newCursor(window common.Window) (*cursor, error) {
 	}
 	win.cursor = c
 	if p.cursorTheme == nil {
-		p.cursorTheme = newCursorTheme(p.display)
+		p.cursorTheme = newCursorTheme(p.desktopSettings())
 	}
 	c.theme = p.cursorTheme
 	c.theme.cursors[c] = struct{}{}
@@ -87,7 +87,6 @@ func (c *cursor) Destroy() {
 	if c.theme != nil {
 		delete(c.theme.cursors, c)
 		if len(c.theme.cursors) == 0 {
-			c.theme.destroy()
 			if platform != nil && platform.cursorTheme == c.theme {
 				platform.cursorTheme = nil
 			}

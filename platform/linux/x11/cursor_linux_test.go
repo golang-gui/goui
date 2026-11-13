@@ -166,14 +166,15 @@ func TestNativeCursorThemeLifecycle(t *testing.T) {
 	defer d.DestroyWindow(root)
 	defer d.DestroyWindow(window)
 	theme := &cursorTheme{
-		display: d, root: root, available: true, defaultSize: 24,
-		selection: d.InternAtom("GOUI_TEST_CURSOR_SELECTION", false),
-		settings:  d.InternAtom("_XSETTINGS_SETTINGS", false),
-		manager:   d.InternAtom("MANAGER", false),
+		xSettings: &xSettings{display: d, root: root,
+			selection: d.InternAtom("GOUI_TEST_CURSOR_SELECTION", false),
+			settings:  d.InternAtom("_XSETTINGS_SETTINGS", false), manager: d.InternAtom("MANAGER", false)},
+		available: true, defaultSize: 24,
 		resources: d.InternAtom("RESOURCE_MANAGER", false),
 		cursors:   make(map[*cursor]struct{}),
 	}
 	theme.rootMask = theme.subscribe(root)
+	defer theme.xSettings.destroy()
 	d.SetSelectionOwner(theme.selection, owner, 0)
 	write := func(w xlib.Window, property, kind xlib.Atom, data []byte) {
 		d.ChangeProperty(w, property, kind, 8, xlib.PropModeReplace, cgo.CSlice(data), len(data))
@@ -247,6 +248,11 @@ func TestNativeCursorThemeLifecycle(t *testing.T) {
 	if len(theme.cursors) != 0 || c.display != 0 {
 		t.Fatal("cursor not detached")
 	}
+	// 共享订阅属于平台读取层；最后一个光标释放后仍服务Settings，平台清理才释放。
+	if value, err := theme.xSettings.string("Gtk/CursorThemeName"); err != nil || value != "default" {
+		t.Fatalf("最后一个光标销毁后共享设置不可读：%q, %v", value, err)
+	}
+	theme.xSettings.destroy()
 	var attributes xlib.WindowAttributes
 	d.GetWindowAttributes(root, &attributes)
 	if attributes.YourEventMask != theme.rootMask {

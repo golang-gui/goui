@@ -85,6 +85,7 @@ type Platform struct {
 	eventLoop           *EventLoop
 	fileChooser         *portal.FileChooser
 	cursorTheme         *cursorTheme
+	xsettings           *xSettings
 	nextDragOfferID     uint64
 	dragSource          *xdndSource
 	lastUserTime        xlib.Time // latest native button/key press, including XIM-filtered input
@@ -245,6 +246,10 @@ func (p *Platform) Name() string {
 }
 
 func (p *Platform) Destroy() {
+	if p.xsettings != nil {
+		p.xsettings.destroy()
+		p.xsettings = nil
+	}
 	if p.clipboard != nil {
 		p.clipboard.close()
 	}

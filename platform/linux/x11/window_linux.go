@@ -454,8 +454,12 @@ func handleEvent(event xlib.Event) {
 		}
 		return
 	}
-	if platform != nil && platform.cursorTheme != nil {
-		platform.cursorTheme.handleEvent(&event)
+	if platform != nil {
+		if platform.cursorTheme != nil {
+			platform.cursorTheme.handleEvent(&event)
+		} else if platform.xsettings != nil {
+			platform.xsettings.handleEvent(&event)
+		}
 	}
 	// Entering a nested native dispatch expires any previous press context.
 	moveResizePress = nativePress{}
