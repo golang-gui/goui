@@ -43,6 +43,8 @@ func TestTableHeaderScrollGapPixels(t *testing.T) {
 	gui.App = &separatorApp{sheet: style.Sheet(
 		style.Name("table-view").BackgroundColor(color.Transparent).BorderWidth(0),
 		style.Name("table-view").Part("frame").BackgroundColor(color.Transparent).BorderWidth(0).Radius(0),
+		// 本组验证有包围框时的槽位补画；框外范围在独立端点回归中覆盖。
+		style.Name("table-view").Part("outline-vertical").BorderWidth(1),
 		style.Name("table-view").Part("header").BackgroundColor(color.NRGBA{R: 255, A: 128}).BorderWidth(0),
 		style.Name("table-view").Part("header-separator").ForegroundColor(color.NRGBA{B: 255, A: 128}).BorderWidth(2),
 	)}

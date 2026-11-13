@@ -109,6 +109,11 @@ func tableHeaderLineWidth(v *TableView) float32 {
 }
 
 func tablePaintHeaderLine(p gui.Painter, rect geometry.Rectangle, v *TableView, state style.State) {
+	// A disabled separator must emit no primitive. In particular, a zero-height
+	// rectangle can still produce a fill fringe in an antialiased path backend.
+	if rect.Width <= 0 || rect.Height <= 0 {
+		return
+	}
 	if len(v.rowIDs) == 0 {
 		tablePaintLine(p, rect, tableGridStyle(v, "bottom"))
 		return
@@ -154,12 +159,30 @@ func (v *TableView) paintOutline(p gui.Painter) {
 	tablePaintLine(p, geometry.Rect(r.X+r.Width-ow, r.Y+oh, ow, max(0, r.Height-2*oh)), v.partStyle("outline-vertical", style.Normal))
 }
 
-// The vertical scrollbar leaves a non-interactive gap beside the fixed header.
-// Paint only that gap: existing headers own their backgrounds and cell edges.
+// Decorate only unused header space. An enclosing vertical frame connects the
+// separator across that space and the scroll slot; a data-only outline does not.
+// Real headers retain their own state colors and exclusive paint ownership.
 func (v *TableView) paintHeaderScrollGap(p gui.Painter) {
+	if len(v.visibleColumns) == 0 {
+		return
+	}
 	header := v.headerViewport.Rect()
 	right := max(0, v.scroll.Rect().X+v.scroll.Rect().Width)
 	x := min(right, max(0, header.X+header.Width))
+	_, outer := v.borderWidths()
+	_, outline := v.outlineWidths()
+	enclosed := outer > 0 || outline > 0
+	if outline > 0 && !v.scroll.Scrollable() && v.columnWidth <= v.body.Rect().Width {
+		// With no bars the nearer outline hugs the data, even if the overall
+		// viewport frame is also enabled. Do not cross that inner boundary.
+		right = min(right, header.X+v.columnWidth)
+		x = min(x, right)
+	}
+	if outer > 0 || outline > 0 && v.scroll.Scrollable() {
+		// A short data header can leave blank space before the scrollbar. Fill
+		// that gap too, without repainting or assigning semantics to a data cell.
+		x = min(x, max(header.X, header.X+v.columnWidth-v.scroll.ScrollX()))
+	}
 	gap := geometry.Rect(x, header.Y, right-x, header.Height)
 	if gap.Width <= 0 || gap.Height <= 0 {
 		return
@@ -168,7 +191,7 @@ func (v *TableView) paintHeaderScrollGap(p gui.Painter) {
 		p.FillRect(gap, graphics.ColorOf(bg))
 	}
 	line := min(gap.Height, tableHeaderLineWidth(v))
-	if line > 0 {
+	if enclosed && line > 0 {
 		tablePaintHeaderLine(p, geometry.Rect(gap.X, gap.Y+gap.Height-line, gap.Width, line), v, style.Normal)
 	}
 }
