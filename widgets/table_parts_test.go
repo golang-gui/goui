@@ -54,7 +54,9 @@ func TestTableStyleNameUpdatesOwnedPartsWithoutRebindingContent(t *testing.T) {
 	old := gui.App
 	gui.App = &separatorApp{sheet: style.Sheet(
 		style.Name("orders").Part("grid-vertical").BorderWidth(3),
+		style.Name("orders").Part("grid-right").BorderWidth(3),
 		style.Name("other").Part("grid-vertical").BorderWidth(7),
+		style.Name("other").Part("grid-right").BorderWidth(7),
 	)}
 	t.Cleanup(func() { gui.App = old })
 	v, _, c, d := tableFixture(4)

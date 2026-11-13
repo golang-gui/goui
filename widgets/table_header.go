@@ -71,10 +71,8 @@ func (h *tableHeader) Paint(p gui.Painter) {
 	left := h.view.columnLeadingWidth(h.column)
 	tablePaintLine(p, geometry.Rect(0, 0, r.Width, top), tableGridStyle(h.view, "top"))
 	tablePaintLine(p, geometry.Rect(0, top, left, max(0, r.Height-line-top)), tableGridStyle(h.view, "left"))
-	tablePaintLine(p, geometry.Rect(r.Width-w, top, w, max(0, r.Height-line-top)), tableGridStyle(h.view, "vertical"))
-	if color, ok := h.view.partStyle("header-separator", state).ForegroundColor(); ok && color != nil {
-		p.FillRect(geometry.Rect(0, r.Height-line, r.Width, line), graphics.ColorOf(color))
-	}
+	tablePaintLine(p, geometry.Rect(r.Width-w, top, w, max(0, r.Height-line-top)), h.view.columnLineStyle(h.column))
+	tablePaintHeaderLine(p, geometry.Rect(0, r.Height-line, r.Width, line), h.view, state)
 	if h.view.sortColumn == h.column.id && h.view.sortOrder != SortNone {
 		if color, ok := h.view.partStyle("header-sort", state).ForegroundColor(); ok && color != nil {
 			x, y := max(0, r.Width-w-20), max(0, r.Height-line)/2

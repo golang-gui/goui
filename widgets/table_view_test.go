@@ -135,7 +135,9 @@ func TestTableViewCellContentFillsAllocation(t *testing.T) {
 	old := gui.App
 	gui.App = &separatorApp{sheet: style.Sheet(
 		style.Name("table-view").Part("grid-horizontal").BorderWidth(5),
+		style.Name("table-view").Part("grid-bottom").BorderWidth(5),
 		style.Name("table-view").Part("grid-vertical").BorderWidth(7),
+		style.Name("table-view").Part("grid-right").BorderWidth(7),
 	)}
 	t.Cleanup(func() { gui.App = old })
 	v, m, column, _ := tableFixture(2)
@@ -178,10 +180,14 @@ func TestTableViewDecorationLayout(t *testing.T) {
 		style.Name("table-view").BorderWidth(2).BorderColor(color.Black),
 		// 完整表格样式把内部滚动宿主留为无框背景，本组仅验证最外层边框。
 		style.Name("table-view").Part("frame").BackgroundColor(color.Transparent).BorderWidth(0).Radius(0),
+		style.Name("table-view").Part("outline-horizontal").BorderWidth(0),
+		style.Name("table-view").Part("outline-vertical").BorderWidth(0),
 		style.Name("table-view").Part("outer-horizontal").BorderWidth(3),
 		style.Name("table-view").Part("outer-vertical").BorderWidth(5),
 		style.Name("table-view").Part("grid-horizontal").BorderWidth(6).BorderColor(color.Black),
+		style.Name("table-view").Part("grid-bottom").BorderWidth(6).BorderColor(color.Black),
 		style.Name("table-view").Part("grid-vertical").BorderWidth(12).BorderColor(color.Black),
+		style.Name("table-view").Part("grid-right").BorderWidth(12).BorderColor(color.Black),
 		// 本组只验证视口外框；完整内容边缘在独立回归中启用。
 		style.Name("table-view").Part("grid-top").BorderWidth(0),
 		style.Name("table-view").Part("grid-left").BorderWidth(0),
@@ -318,7 +324,9 @@ func TestTableViewDecorationPixels(t *testing.T) {
 			app.sheet = style.Sheet(
 				style.Name("table-view").Part("row").BackgroundColor(color.Transparent),
 				style.Name("table-view").Part("grid-vertical").BorderWidth(12).BorderColor(color.NRGBA{R: 255, A: 128}),
+				style.Name("table-view").Part("grid-right").BorderWidth(12).BorderColor(color.NRGBA{R: 255, A: 128}),
 				style.Name("table-view").Part("grid-horizontal").BorderWidth(6).BorderColor(color.NRGBA{R: 255, A: 128}),
+				style.Name("table-view").Part("grid-bottom").BorderWidth(6).BorderColor(color.NRGBA{R: 255, A: 128}),
 			)
 			v, _, c, _ := tableFixture(2)
 			c.SetWidth(80)
@@ -384,9 +392,18 @@ func TestTableViewTrailingGrid(t *testing.T) {
 							blue := color.RGBA{B: 255, A: 255}
 							app.sheet = style.Sheet(
 								style.Name("table-view").Part("grid-vertical").BorderWidth(widths.Width).BorderColor(ink),
+								style.Name("table-view").Part("grid-right").BorderWidth(widths.Width).BorderColor(ink),
 								style.Name("table-view").Part("grid-horizontal").BorderWidth(widths.Height).BorderColor(ink),
+								style.Name("table-view").Part("grid-bottom").BorderWidth(widths.Height).BorderColor(ink),
 								style.Name("table-view").Part("header-separator").BorderWidth(2).ForegroundColor(blue),
 							)
+							if rows == 0 {
+								app.sheet = style.Sheet(
+									style.Name("table-view").Part("grid-vertical").BorderWidth(widths.Width).BorderColor(ink),
+									style.Name("table-view").Part("grid-right").BorderWidth(widths.Width).BorderColor(ink),
+									style.Name("table-view").Part("grid-bottom").BorderWidth(2).BorderColor(blue),
+								)
+							}
 							v, m, first, _ := tableFixture(rows)
 							defer v.SetModel(nil)
 							all := []*TableColumn{first}
@@ -464,7 +481,9 @@ func TestTableViewTrailingGridChanges(t *testing.T) {
 	old := gui.App
 	gui.App = &separatorApp{sheet: style.Sheet(
 		style.Name("table-view").Part("grid-vertical").BorderWidth(4),
+		style.Name("table-view").Part("grid-right").BorderWidth(4),
 		style.Name("table-view").Part("grid-horizontal").BorderWidth(2),
+		style.Name("table-view").Part("grid-bottom").BorderWidth(2),
 	)}
 	t.Cleanup(func() { gui.App = old })
 	v, m, first, _ := tableFixture(2)

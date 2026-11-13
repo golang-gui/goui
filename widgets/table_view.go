@@ -212,6 +212,11 @@ func (v *TableView) connectModel() {
 	}
 }
 func (v *TableView) reindex() {
+	oldLast := ""
+	if len(v.rowIDs) > 0 {
+		oldLast = v.rowIDs[len(v.rowIDs)-1]
+	}
+	wasEmpty := len(v.rowIDs) == 0
 	ids := []string(nil)
 	indices := make(map[string]int)
 	if v.model != nil {
@@ -228,6 +233,26 @@ func (v *TableView) reindex() {
 		}
 	}
 	v.rowIDs, v.indices = ids, indices
+	if wasEmpty != (len(ids) == 0) {
+		// An empty header owns the data bottom outline instead of an internal
+		// header separator. Its measurement can therefore change with the model.
+		for _, header := range v.headers {
+			header.RequestLayout()
+		}
+	}
+	newLast := ""
+	if len(ids) > 0 {
+		newLast = ids[len(ids)-1]
+	}
+	if oldLast != newLast {
+		// Keep incremental row identities while remeasuring the two live rows
+		// whose trailing band changes between an internal line and an outline.
+		for _, id := range []string{oldLast, newLast} {
+			if row := v.realized[id]; row != nil {
+				row.RequestLayout()
+			}
+		}
+	}
 }
 func (v *TableView) modelChanged() {
 	v.revision++
@@ -745,6 +770,8 @@ func (v *TableView) Paint(p gui.Painter) {
 		p.FillRect(r, graphics.ColorOf(bg))
 	}
 	v.paintHeaderScrollGap(p)
+	v.paintScrollCorner(p)
+	v.paintOutline(p)
 	h, w := v.borderWidths()
 	h, w = min(h, r.Height/2), min(w, r.Width/2)
 	horizontal := gui.ResolveWidgetStyle(v, name, "outer-horizontal", style.Normal)

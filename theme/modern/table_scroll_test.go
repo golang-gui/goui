@@ -13,6 +13,14 @@ func TestTableScrollParts(t *testing.T) {
 	for _, dark := range []bool{false, true} {
 		sheet := Sheet(Options{Dark: dark})
 		for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed, style.Focused, style.Disabled} {
+			for _, part := range []string{"grid-right", "outline-horizontal", "outline-vertical"} {
+				if width, _ := sheet.Resolve(style.Sel{Name: "table-view", Part: part, State: state}).BorderWidth(); width != 0 {
+					t.Fatal("默认轮廓覆盖了独立的内线或整体外框")
+				}
+			}
+			if width, _ := sheet.Resolve(style.Sel{Name: "table-view", Part: "grid-bottom", State: state}).BorderWidth(); width != 1 {
+				t.Fatal("拆分末行边线后丢失默认底边")
+			}
 			frame := sheet.Resolve(style.Sel{Name: "table-view", Part: "frame", State: state})
 			bg, _ := frame.BackgroundColor()
 			width, _ := frame.BorderWidth()

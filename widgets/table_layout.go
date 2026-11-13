@@ -15,6 +15,8 @@ type tableLayout struct{ view *TableView }
 
 func (l *tableLayout) Measure(children []layout.Child, c layout.Constraint) layout.Measurement {
 	h, w := l.view.borderWidths()
+	oh, ow := l.view.outlineWidths()
+	h, w = h+oh, w+ow
 	width, height := c.Max.Width, c.Max.Height
 	// Inf is a finite sentinel. Preserve it when reserving the frame/header,
 	// otherwise ScrollView mistakes an unbounded axis for a huge viewport.
@@ -41,8 +43,7 @@ func (l *tableLayout) Measure(children []layout.Child, c layout.Constraint) layo
 }
 func (l *tableLayout) Arrange(children []layout.Child, rect geometry.Rectangle) {
 	v := l.view
-	h, w := v.borderWidths()
-	h, w = min(h, rect.Height/2), min(w, rect.Width/2)
+	h, w := v.layoutInsets(rect.Size)
 	width, height := max(0, rect.Width-2*w), max(0, rect.Height-2*h)
 	size := geometry.Size{Width: width, Height: height}
 	if v.columnLayoutSize != size && v.columnResize != nil {
@@ -87,7 +88,8 @@ func (l *tableHeaderLayout) Arrange(children []layout.Child, rect geometry.Recta
 
 type tableBody struct {
 	gui.WidgetBase
-	view *TableView
+	view          *TableView
+	contentHeight float32 // last arranged data extent, avoiding an O(rows) paint query
 }
 
 func (b *tableBody) ContentSize() geometry.Size {
@@ -126,6 +128,7 @@ func (b *tableBody) LayoutVisible(viewport geometry.Size, offset geometry.Point)
 	if !v.valid(version) {
 		return
 	}
+	b.contentHeight = v.list.ContentSize().Height
 	if v.menuID != "" && v.realized[v.menuID] == nil {
 		v.closeMenu()
 	}
