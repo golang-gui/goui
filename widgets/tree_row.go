@@ -27,7 +27,7 @@ type treeListDelegate struct {
 func (d *treeListDelegate) Setup() gui.Widget {
 	r := &treeRow{view: d.view, delegate: d.delegate}
 	r.SetMinSize(geometry.Size{Height: treeRowMinHeight})
-	r.SetLayoutManager(layout.NewFillLayout())
+	r.SetLayoutManager(&treeRowLayout{row: r})
 	if d.delegate != nil {
 		r.content = d.delegate.Setup()
 	}
@@ -64,6 +64,13 @@ func (d *treeListDelegate) Setup() gui.Widget {
 	// clears bound before detaching, so this never calls Unbind twice.
 	r.ConnectUnmount(func() { d.Unbind(0, r) })
 	return r
+}
+
+func (d *treeListDelegate) ArrangeItem(_ int, widget gui.Widget, bounds geometry.Rectangle, viewport geometry.Size, offset geometry.Point) {
+	r := widget.(*treeRow)
+	r.scrollX = offset.X
+	left := min(d.view.rowInsetLeft, max(0, viewport.Width))
+	r.Arrange(geometry.Rect(left, bounds.Y, max(0, viewport.Width-left-d.view.rowInsetRight), bounds.Height))
 }
 func (d *treeListDelegate) Bind(index int, widget gui.Widget) {
 	r := widget.(*treeRow)
@@ -122,6 +129,7 @@ func (d *treeListDelegate) Unbind(_ int, widget gui.Widget) {
 	r.binding++
 	r.SetStyleName("")
 	r.contentDepth = 0
+	r.scrollX = 0
 	r.SetState(style.Selected, false)
 	if d.view.realized[old.ID] == r {
 		delete(d.view.realized, old.ID)
@@ -151,6 +159,28 @@ type treeRow struct {
 	click        *gui.ClickEventController
 	binding      uint64
 	contentDepth int
+	scrollX      float32
+}
+
+// The row is a viewport-sized clip and interaction surface. Its child retains
+// natural width and scrolls inside it; the list's extent includes outer margins.
+type treeRowLayout struct{ row *treeRow }
+
+func (l *treeRowLayout) Measure(children []layout.Child, c layout.Constraint) layout.Measurement {
+	insets := geometry.Insets{Left: l.row.view.rowInsetLeft, Right: l.row.view.rowInsetRight}
+	size := geometry.Size{}
+	if len(children) > 0 {
+		size = children[0].Measure(layout.Loose(c.Insets(insets).Max)).Size
+	}
+	size.Width += insets.Horizontal()
+	return layout.Measured(c.Clamp(size))
+}
+
+func (l *treeRowLayout) Arrange(children []layout.Child, rect geometry.Rectangle) {
+	if len(children) > 0 {
+		size := children[0].Measure(layout.Unbounded()).Size
+		children[0].Arrange(geometry.Rect(rect.X-l.row.scrollX, rect.Y, max(rect.Width, size.Width), rect.Height))
+	}
 }
 
 func (r *treeRow) Paint(p gui.Painter) {
@@ -180,7 +210,7 @@ func (r *treeRow) Paint(p gui.Painter) {
 	}
 	// The content part decorates the full-height strip after the disclosure
 	// slot, including application icons. It does not move or style children.
-	start := min(rect.Width, treeContentStart(r.contentDepth, r.view.indentation))
+	start := treeContentStart(r.contentDepth, r.view.indentation) - r.scrollX
 	if start < rect.Width {
 		paintStyledBox(r, p, geometry.Rect(start, 0, rect.Width-start, rect.Height), name, "content", state)
 	}

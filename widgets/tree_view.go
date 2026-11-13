@@ -61,6 +61,7 @@ type TreeView struct {
 	current, anchor               string
 	mode                          SelectionMode
 	indentation                   float32
+	rowInsetLeft, rowInsetRight   float32
 	rowStyle                      func(TreeRow) string
 	rowContentDepth               func(TreeRow) (int, bool)
 	realized                      map[string]*treeRow
@@ -318,6 +319,33 @@ func (v *TreeView) SetIndentation(value float32) {
 		return
 	}
 	v.indentation = value
+	v.Refresh()
+}
+
+// RowInsets returns the fixed left and right viewport margins of each row.
+func (v *TreeView) RowInsets() (left, right float32) {
+	return v.rowInsetLeft, v.rowInsetRight
+}
+
+// SetRowInsets sets fixed horizontal viewport margins in DIP. They inset row
+// backgrounds, focus, hit bounds and the scrolling content viewport together.
+// The default is zero. Negative and non-finite values become zero. Indentation
+// remains relative to the scrolling content, independently of these margins.
+func (v *TreeView) SetRowInsets(left, right float32) {
+	if v.Destroyed() {
+		return
+	}
+	normalize := func(value float32) float32 {
+		if math.IsNaN(float64(value)) || math.IsInf(float64(value), 0) {
+			return 0
+		}
+		return max(0, value)
+	}
+	left, right = normalize(left), normalize(right)
+	if left == v.rowInsetLeft && right == v.rowInsetRight {
+		return
+	}
+	v.rowInsetLeft, v.rowInsetRight = left, right
 	v.Refresh()
 }
 
