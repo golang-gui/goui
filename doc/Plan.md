@@ -1,5 +1,60 @@
 # Plan
 
+## 虚拟化树拖拽源生命周期（2026-11-13）
+
+- [x] 正式明确既有DragSource归属：稳定TreeView持有源，OnPrepare通过RowAt取
+  起始节点，载荷保存稳定ID；行回收／换绑后保持会话。树真正卸载或源移除／
+  禁用时请求取消，原生终态前保留数据。当前内核已经支持该路径，本批补API
+  注释、包内回归、可执行窗口用法与设计说明，没有新增Owner／KeepAlive开关、
+  改变普通源卸载取消规则或修改平台实现。apibox应用文件和依赖未修改。
+- [x] 新增10项测试及子用例，正常Pointer／DragOffer／DragSource事件都经Window
+  DispatchEvent：稳定视图与行源负对照、移除并换绑同一行Widget、冻结Data映射／
+  传输值、DragDrop快照归属、子行回收后本地Drop、所属视图卸载／源移除／禁用、
+  终态前持有与终态后释放、恰好一次End、再启动及迟到旧终态隔离。同步Drop内
+  卸载源的接收／拒绝两种结果均覆盖，保留已有提交保护。替身不创建桌面窗口。
+- [x] `env -u DISPLAY go test ./gui/... ./widgets/... ./theme/... ./tests/window/widgets/tree_drag_lifetime -count=1`
+  通过；`env -u DISPLAY go test -race ./gui ./widgets ./widgets/ui -count=1`、
+  GUI／widgets／新窗口范围go vet、gofmt及git diff --check通过。
+- [x] 原生负对照采用同一窗口程序的`-row-source`，将源挂到每行Label；Linux
+  X11／Software 1x真实拖动触发自动滚动，在scrollY=37 DIP时取消、退出1，
+  日志为negative-final.log。该结果说明旧行源用法的生命周期边界，不把默认取消
+  行为当成已修改的框架缺陷，也不把失败写成通过。
+- [x] Linux amd64／Go1.25.8，独占Xvnc／Xfwm4 4.16.1：Modern亮色Software
+  1x／2x、OpenGL 1x、Modern暗色OpenGL 2x、Basic Software 1x，五组均PASS、
+  退出0。每组由真实键鼠完成三个原生会话：①边缘自动滚动，确认原ID离屏且同一
+  行壳已绑定另一个节点，自动重建后树及源控制器身份保持，Drop仍收到原ID且
+  End使用最新声明回调；②拖动中应用更新真正移除树，取消一次，旧UI OnEnd不
+  回调，应用级GUI探针观察终态；③恢复树后再次成功Drop，证明会话已释放。
+  不用滚轮／Reveal／SetScrollY或额外计时器替代自动滚动，不使用DevServer。
+- [x] Windows amd64／macOS arm64的GUI测试二进制和新窗口交叉编译通过；
+  Windows10 build19045与macOS15.7.7原生分别通过134项GUI拖放定向测试及
+  子用例，无失败或跳过，包含全部新增10项；不称为整包原生测试。执行二进制
+  SHA-256与本地一致，Windows用cmd保留原始UTF-8日志。
+- [x] Windows10／RDP／Direct2D 1x完成相同三个真实拖拽会话，源行壳在自动
+  滚动scrollY=35 DIP时确认复用；重建、成功Drop、真正卸载取消及下一会话均
+  PASS，退出0。计划任务Ready、LastTaskResult=0；窗口启动不单独算场景通过。
+- [x] 原工作区`env -u DISPLAY go test ./...`已执行但失败：既有未跟踪旧API
+  例程／测试、ui/window_lookup_test.go旧字段和Typography无DISPLAY；关键
+  诊断去掉耗时后与上一轮多重集相同（workspace-comparison.json）。没有修改
+  这些测试、删断言或扩大skip。旧绘图／位图测试重写原有PNG，未纳入本批提交。
+- [x] 已跟踪文件加本轮两个新Go文件的隔离副本，在专用显示执行
+  `GOMAXPROCS=4 CGO_ENABLED=0 go test -p 2 -json -count=1 ./...`退出0：73个
+  有测试包、5722项测试及子用例通过，11项既有跳过，136个包无测试。跳过为
+  手动输入／窗口状态、跨应用剪贴板、macOS签名和iOS SDK条件，不算场景通过。
+  1047个Go文件与最终源码逐字节一致；旧测试会改专用显示剪贴板并在副本生成PNG。
+- [ ] macOS窗口沿用用户此前选择，本轮跳过；Wayland、其他WM、Windows11、
+  非RDP Windows、其他缩放／后端与移动端未执行，不以编译／包测试代替。
+
+契约、用法及Qt／GTK依据见[拖放设计§9.3](DesignDragAndDrop.md#93-虚拟化内容的拖拽源归属2026-11-13)
+及[TreeView§5.4](DesignTreeView.md#54-虚拟化行与拖拽会话2026-11-13)。证据目录为
+`/tmp/goui-tree-drag-lifetime-200gr3rg`：保留定向／race／vet、两类全仓结果、哈希、
+原生包日志、负对照与五组Linux／Windows窗口日志和截图。窗口fixture初次READY
+读到未完成分配的零宽树，后来增加公开几何就绪条件；首个负对照驱动器从Label外
+行体起拖，未命中行源而超时，后来改为文字内部起点。保留初始记录，没有修改生产
+行为、阈值或通过放宽断言解决用例问题。本批按API注释与包内回归、窗口用例、文档
+分开提交。独占X11／WM／总线及所属辅助进程、远端目录、Windows计划任务与本轮
+RDP客户端已清理；保留本地证据及既有SSH连接，原有未跟踪文件未纳入提交。
+
 ## 树行声明式外观与content装饰（2026-11-13）
 
 - [x] GUI新增SetRowStyle／SetRowContentDepth，widgets/ui提供typed RowStyle／

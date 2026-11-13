@@ -482,6 +482,43 @@ TreeView 保存待 Reveal 的 ID，平铺变化后重新解析索引，不能把
 模型更新后的数值偏移保留及范围钳制仍由 ScrollView 完成；首版不承诺大规模重排时
 精确保持原视口节点的像素锚点。
 
+### 5.4 虚拟化行与拖拽会话（2026-11-13）
+
+将DragSource声明放在TreeView上，OnPrepare用RowAt解析起始节点；行回收不卸载树，
+因此原生会话可以继续。树真正卸载、源被移除或禁用时仍请求取消，UI解绑后不调用旧
+OnEnd，原生终态负责释放会话。普通重建保留TreeView和源控制器，更新最新回调。
+
+以下`app`、`store`、`entryView`和`handleDragEnd`由应用提供；main是窗口ID。
+行构建器只声明内容，拖拽数据保留稳定节点ID：
+
+```go
+wui.TreeView(store, entryView).ID("resource-tree").
+    DragSource(ui.DragSource().Actions(ui.DragMove).
+        OnPrepare(func(r *ui.DragPrepare) {
+            tree, ok := app.FindWidget("main", "resource-tree").(*widgets.TreeView)
+            if !ok {
+                return
+            }
+            row, _, ok := tree.RowAt(r.Position)
+            if !ok {
+                return
+            }
+            data := new(ui.DragData)
+            data.SetLocal("node", row.ID)
+            r.Data = data
+        }).
+        OnEnd(handleDragEnd))
+```
+
+RowAt不实现离屏行、不触发加载；拖动开始后不重新从可见行推断源节点。Local值不深
+拷贝，不保存可复用Widget作为业务载荷。选择组合、模型变更后的有效性、排序、目标
+反馈及其清理由应用负责，树不自动移动模型。content Part与RowContentDepth只画反馈。
+
+把源直接声明在每行内容上仍表示普通行Widget源，行卸载时会取消；框架不会隐式把
+源及其回调移交给祖先。完整数据／生命周期契约见
+[拖放设计§9.3](DesignDragAndDrop.md#93-虚拟化内容的拖拽源归属2026-11-13)，
+窗口验收入口为`tests/window/widgets/tree_drag_lifetime`。
+
 ## 6. UI 声明绑定
 
 ### 6.1 使用方式与接口

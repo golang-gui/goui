@@ -11,6 +11,8 @@ Window/Popover 复用 rootBase；不读取数据或替应用决定放下策略�
 2026-09-24：§10 确定单条 UI 声明路径：DragSource.Data 预置数据，OnPrepare
 按需补充；DropEvent 更名为 DropRequest。ID 查询预览路径已加入窗口用例，
 真实桌面验收另行记录。
+2026-11-13：§9.3 明确虚拟化内容的源归属：稳定视图持有DragSource，Prepare解析节点，
+数据／会话不依赖行Widget；自动滚动回收与真正卸载的验收分别记录在Plan。
 
 ## 1. 目标与取舍
 
@@ -562,6 +564,69 @@ X11 的源服务 Destroy 与普通 Cancel 有不同的收尾条件：Cancel 在�
 
 目标读取错误只发目标 Error，本进程源得到 Action=0 的普通结果，不复制同一错误重复报告；
 源启动/传输故障走 End.Err。无目标、不兼容、正常拒绝不是错误，不默认打印日志或弹窗。
+
+### 9.3 虚拟化内容的拖拽源归属（2026-11-13）
+
+会话属于挂载DragSource的Widget。普通源卸载时请求取消的规则不变；虚拟化列表、
+树或表格应把源声明放在稳定视图上，在Prepare中解析起始数据项。行只承担临时呈现，
+其解绑、销毁或换绑不能决定模型数据拖拽的存续。GUI通过命中路径上的Capture控制器
+及既有手势竞争启动源，不转发或合成另一条输入路径，不保持离屏行来延长会话。
+
+TreeView已有RowAt入口，参数与DragPrepare.Position同为树局部DIP。只在Prepare读取
+起始节点；原生拖拽开始后，指针位置和可见行都会变化，不能继续用RowAt猜测源节点。
+多选数据组合、节点移除／模型替换后的有效性及最终业务操作由应用决定。
+
+| 生命周期变化 | 契约 |
+| --- | --- |
+| 视图的子行滚出视口、解绑、销毁或换绑 | 视图源会话继续，数据保持原始节点身份 |
+| 同一视图保留源声明并普通重建 | 复用源控制器，UI更新后续回调，不重新Prepare |
+| 移除／禁用源控制器、真正卸载所属视图 | 请求原生取消；原生终态前保留会话与数据 |
+| UI所属声明卸载 | 断开其回调，旧OnEnd不再执行；GUI仍完成内部收尾 |
+| 取消终态完成后重新挂载并拖动 | 可以启动新会话，迟到旧终态不能结束新会话 |
+| 本地同步Drop已确认接收后卸载视图 | 沿用§5.3提交保护，保留成功结果 |
+
+原生终态恰好一次，ConnectEnd可以早于原生Begin返回；不能以Begin返回推断会话已经
+结束。应用如果确实需要观察移除源后的最终结果，可在应用生命周期内显式持有GUI源
+及信号连接，按原生终态释放；这不恢复已卸载的UI声明回调。临时外观在应用移除视图
+时也应清理，不能依赖已经断开的行OnEnd。
+
+Data在Prepare边界复制传输表示与Local映射。Local中的对象仍是应用拥有的共享引用，
+不深拷贝；推荐载荷为稳定模型ID或明确拥有的业务快照。预览在Prepare中生成独立图像，
+不把行Widget当作业务载荷或延后读取的图像来源。行回收后复用为其他ID时，原数据不能
+变成新行的数据；模型中原ID是否仍有效，应由Drop处理者重新校验。
+
+命令式使用方式：
+
+```go
+source := gui.NewDragSource()
+source.SetActions(gui.DragMove)
+source.ConnectPrepare(func(r *gui.DragPrepare) {
+    row, _, ok := tree.RowAt(r.Position)
+    if !ok {
+        return
+    }
+    data := new(gui.DragData)
+    data.SetLocal("node", row.ID)
+    r.Data = data
+})
+tree.AddEventController(source)
+```
+
+声明式使用同一个既有入口，见[TreeView §5.4](DesignTreeView.md#54-虚拟化行与拖拽会话2026-11-13)。
+不增加Owner、KeepAlive或通用卸载取消开关，也不向Root／BuildContext增加控件特例。
+
+参考与边界：Qt 6.8在线文档（查阅时6.8.9）的
+[startDrag](https://doc.qt.io/qt-6.8/qabstractitemview.html#startDrag)描述视图发起拖拽；
+固定[Qt 6.8.3源码](https://github.com/qt/qtbase/blob/v6.8.3/src/widgets/itemviews/qabstractitemview.cpp#L3856)
+先从模型生成MIME数据，再使用`new QDrag(this)`，源对象是视图。
+采用稳定视图与模型数据分工，不引入Qt的索引／内置重排体系。
+GTK4 [DragSource::prepare文档](https://docs.gtk.org/gtk4/signal.DragSource.prepare.html)
+（页面库版本4.24.1）提供起始坐标并允许返回空数据；GOUI已有同一准备边界。
+这些是文档承诺／源码观察，不表示其他框架承诺所有行回收场景，也不代替GOUI原生验收。
+
+独立回归为`tests/window/widgets/tree_drag_lifetime`：正常模式必须在自动滚动中确认
+原行壳已复用后仍能Drop；`-row-source`是行源用法负对照，回收时应取消并退出1。
+实际通过、失败及未执行范围见[Plan](Plan.md#虚拟化树拖拽源生命周期2026-11-13)。
 
 ## 10. UI 与语义快照
 
