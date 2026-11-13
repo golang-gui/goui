@@ -1,11 +1,15 @@
 package x11
 
 import (
+	"image/color"
 	"os"
 	"os/exec"
+	"runtime"
 	"testing"
 
 	"github.com/golang-gui/goui/platform/common"
+	"github.com/golang-gui/goui/platform/linux/libs/gtk"
+	"github.com/golang-gui/goui/platform/linux/libs/pango"
 )
 
 // 无显示连接时如实报告不可用，不访问全局平台或尝试连接用户桌面。
@@ -55,6 +59,51 @@ func TestSettingsLanguageNative(t *testing.T) {
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("%q: %v\n%s", tc.preference, err, output)
+		}
+	}
+}
+
+func TestXSettingsUnavailableWithoutPlatform(t *testing.T) {
+	s := Settings{}
+	if _, err := s.ColorScheme(); err != common.ErrUnavailable {
+		t.Fatal("无连接明暗查询没有返回不可用", err)
+	}
+	if _, err := s.AccentColor(); err != common.ErrUnavailable {
+		t.Fatal("无连接取色没有返回不可用", err)
+	}
+}
+
+func TestGTKAccentColorIsPremultiplied(t *testing.T) {
+	for _, tc := range []struct {
+		value gtk.RGBA
+		want  color.RGBA64
+	}{
+		{gtk.RGBA{Red: 1, Green: 0.5, Blue: 0.25, Alpha: 0.5}, color.RGBA64{R: 32768, G: 16384, B: 8192, A: 32768}},
+		{gtk.RGBA{Red: 1, Green: 1, Blue: 1, Alpha: 0}, color.RGBA64{}},
+	} {
+		got := color.RGBA64Model.Convert(gtkAccentColor(tc.value)).(color.RGBA64)
+		if got != tc.want {
+			t.Fatalf("GdkRGBA直通道转换：%v，预期预乘%v", got, tc.want)
+		}
+	}
+}
+
+func TestXSettingsFontUnits(t *testing.T) {
+	// Pango原生调用在实际执行它的goroutine中锁线程；无需桌面连接。
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	for _, tc := range []struct {
+		name, family string
+		size         float32
+	}{{"Serif Bold 15", "Serif", 15}, {"Sans 10.5", "Sans", 10.5}, {"Serif 20px", "Serif", 0}} {
+		desc := pango.FontDescriptionFromString(tc.name)
+		if desc == 0 {
+			t.Fatal("字体描述未创建")
+		}
+		family, size, err := fontFromDescription(desc)
+		desc.Free()
+		if err != nil || family != tc.family || size != tc.size {
+			t.Fatalf("%q解析为%q/%g/%v，预期%q/%g pt", tc.name, family, size, err, tc.family, tc.size)
 		}
 	}
 }

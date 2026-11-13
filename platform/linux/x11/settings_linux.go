@@ -74,61 +74,72 @@ func localeLanguage(locale string) (string, error) {
 	return tag.String(), nil
 }
 
-func (Settings) ColorScheme() (common.ColorScheme, error) {
-	settings, err := gtkSettings()
-	if err != nil {
-		return 0, err
+func (s Settings) settingString(name string) (string, error) {
+	if s.platform == nil || s.platform.display == 0 {
+		return "", common.ErrUnavailable
 	}
+	return s.platform.desktopSettings().string(name)
+}
 
-	dark, err := settings.BoolProperty("gtk-application-prefer-dark-theme")
+func (s Settings) ColorScheme() (common.ColorScheme, error) {
+	name, err := s.settingString("Net/ThemeName")
 	if err != nil {
 		return 0, err
 	}
-	if dark {
-		return common.ColorSchemeDark, nil
-	}
-
-	theme, err := settings.StringProperty("gtk-theme-name")
-	if err != nil {
-		return 0, err
-	}
-	if strings.Contains(strings.ToLower(theme), "dark") {
+	// Preserve the existing GTK theme-name convention. XSETTINGS has no
+	// standardized independent light/dark preference field.
+	if strings.Contains(strings.ToLower(name), "dark") {
 		return common.ColorSchemeDark, nil
 	}
 	return common.ColorSchemeLight, nil
 }
 
-func (Settings) AccentColor() (color.Color, error) {
-	if _, err := gtkSettings(); err != nil {
-		return graphics.Color{}, err
+func (s Settings) AccentColor() (color.Color, error) {
+	name, err := s.settingString("Net/ThemeName")
+	if err != nil {
+		return nil, err
 	}
-
+	if err := initGTK(); err != nil {
+		return nil, err
+	}
+	// Providers are GTK-owned, keyed by name, and borrowed. The new local
+	// context owns its provider reference; no GtkSettings object is modified.
+	provider, err := gtk.CssProviderGetNamed(name, "")
+	if err != nil {
+		return nil, err
+	}
+	if provider.IsNull() {
+		return nil, common.ErrSettingUnsupported
+	}
 	context, err := gtk.StyleContextNew()
 	if err != nil {
-		return graphics.Color{}, err
+		return nil, err
 	}
 	if context.IsNull() {
-		return graphics.Color{}, common.ErrSettingUnsupported
+		return nil, common.ErrSettingUnsupported
 	}
 	defer context.Unref()
-
+	if err := context.AddProvider(provider, gtk.StyleProviderPriorityApplication); err != nil {
+		return nil, err
+	}
 	rgba, ok, err := context.LookupColor("theme_selected_bg_color")
 	if err != nil {
-		return graphics.Color{}, err
+		return nil, err
 	}
 	if !ok {
-		return graphics.Color{}, common.ErrSettingUnsupported
+		return nil, common.ErrSettingUnsupported
 	}
-	return graphics.Color{
-		R: float32(rgba.Red),
-		G: float32(rgba.Green),
-		B: float32(rgba.Blue),
-		A: float32(rgba.Alpha),
-	}, nil
+	return gtkAccentColor(rgba), nil
 }
 
-func (Settings) FontFamily() (string, error) {
-	family, _, err := queryFont()
+func gtkAccentColor(rgba gtk.RGBA) graphics.Color {
+	// GdkRGBA is straight-alpha; graphics.Color is always premultiplied.
+	a := float32(rgba.Alpha)
+	return graphics.Color{R: float32(rgba.Red) * a, G: float32(rgba.Green) * a, B: float32(rgba.Blue) * a, A: a}
+}
+
+func (s Settings) FontFamily() (string, error) {
+	family, _, err := s.queryFont()
 	if err != nil {
 		return "", err
 	}
@@ -138,8 +149,8 @@ func (Settings) FontFamily() (string, error) {
 	return family, nil
 }
 
-func (Settings) FontSize() (float32, error) {
-	_, size, err := queryFont()
+func (s Settings) FontSize() (float32, error) {
+	_, size, err := s.queryFont()
 	if err != nil {
 		return 0, err
 	}
@@ -149,50 +160,22 @@ func (Settings) FontSize() (float32, error) {
 	return size, nil
 }
 
-func gtkSettings() (gtk.Settings, error) {
+func initGTK() error {
 	gtkInit.once.Do(func() {
 		gtkInit.ok, gtkInit.err = gtk.InitCheck()
 		if gtkInit.err == nil && !gtkInit.ok {
 			gtkInit.err = common.ErrSettingUnsupported
 		}
 	})
-	if gtkInit.err != nil {
-		return gtk.Settings{}, gtkInit.err
-	}
-
-	settings, err := gtk.SettingsGetDefault()
-	if err != nil {
-		return gtk.Settings{}, err
-	}
-	if settings.IsNull() {
-		return gtk.Settings{}, common.ErrSettingUnsupported
-	}
-	return settings, nil
+	return gtkInit.err
 }
 
-func queryFont() (family string, size float32, err error) {
-	family, size, err = queryGTKFont()
-	if err == nil && (family != "" || size > 0) {
-		return family, size, nil
-	}
-	return queryPangoFont()
-}
-
-func queryGTKFont() (family string, size float32, err error) {
-	settings, err := gtkSettings()
+func (s Settings) queryFont() (family string, size float32, err error) {
+	name, err := s.settingString("Gtk/FontName")
 	if err != nil {
-		return "", 0, err
+		return queryPangoFont()
 	}
-
-	fontName, err := settings.StringProperty("gtk-font-name")
-	if err != nil {
-		return "", 0, err
-	}
-	if fontName == "" {
-		return "", 0, common.ErrSettingUnsupported
-	}
-
-	desc := pango.FontDescriptionFromString(fontName)
+	desc := pango.FontDescriptionFromString(name)
 	if desc == 0 {
 		return "", 0, common.ErrSettingUnsupported
 	}
@@ -223,7 +206,7 @@ func queryPangoFont() (family string, size float32, err error) {
 func fontFromDescription(desc pango.FontDescription) (family string, size float32, err error) {
 	family = desc.GetFamily()
 	rawSize := desc.GetSize()
-	if rawSize > 0 {
+	if rawSize > 0 && !desc.GetSizeIsAbsolute() {
 		size = float32(rawSize) / pango.Scale
 	}
 	if family == "" && size <= 0 {

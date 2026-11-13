@@ -16,3 +16,8 @@ type RGBA struct {
 	Blue  float64
 	Alpha float64
 }
+
+// CssProvider may be owned or borrowed as specified by its constructor.
+type CssProvider struct{ glib.Object }
+
+const StyleProviderPriorityApplication uint32 = 600

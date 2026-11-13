@@ -1,16 +1,18 @@
 package x11
 
 import (
+	"math"
 	"os"
 	"strconv"
 	"sync"
 
 	"github.com/golang-gui/goui/platform/common"
+	"github.com/golang-gui/goui/platform/linux/libs/xlib"
 )
 
 // X11 has no per-window scale factor. We derive a single display-global scale
 // and cache it. Dynamic changes (XSETTINGS/Xft.dpi updates) are not yet
-// applied to window geometry. Cursor settings have their own X11 subscription;
+// applied to window geometry. Settings and cursors share an X11 subscription;
 // TODO(hidpi): dynamic scale change -> synthesize SizeEvent.
 var scaleCache struct {
 	once  sync.Once
@@ -45,12 +47,20 @@ func detectScale() float32 {
 		}
 	}
 
-	// GNOME/mutter communicates the effective scale to non-scaling X11 apps via
-	// Xft.dpi, surfaced by GTK as the gtk-xft-dpi setting (DPI * 1024).
-	if settings, err := gtkSettings(); err == nil {
-		if dpi, err := settings.IntProperty("gtk-xft-dpi"); err == nil && dpi > 0 {
-			if scale := float32(dpi) / 1024 / 96; scale > 0 {
-				return scale
+	// Read native XSETTINGS directly. Window scale remains a startup snapshot;
+	// dynamic geometry scaling is a separate contract.
+	if platform != nil && platform.display != 0 {
+		if dpi, err := platform.desktopSettings().integer("Xft/DPI"); err == nil && dpi > 0 {
+			return float32(dpi) / 1024 / 96
+		}
+		resources := platform.display.InternAtom("RESOURCE_MANAGER", false)
+		data := cursorProperty(platform.display, platform.display.DefaultRootWindow(), resources, xlib.AtomString)
+		if db := xlib.GetStringDatabase(string(data)); db != 0 {
+			defer db.Destroy()
+			if value, ok := db.GetResource("Xft.dpi", "Xft.Dpi"); ok {
+				if dpi, err := strconv.ParseFloat(value, 32); err == nil && dpi > 0 && !math.IsInf(dpi, 0) {
+					return float32(dpi) / 96
+				}
 			}
 		}
 	}

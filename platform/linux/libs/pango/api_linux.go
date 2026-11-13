@@ -94,6 +94,7 @@ var (
 	pangoFontDescriptionSetSize               = libpango.NewSymbol("pango_font_description_set_size")
 	pangoFontDescriptionSetAbsoluteSize       = libpango.NewSymbol("pango_font_description_set_absolute_size")
 	pangoFontDescriptionGetFamily             = libpango.NewSymbol("pango_font_description_get_family")
+	pangoFontDescriptionGetSizeIsAbsolute     = libpango.NewSymbol("pango_font_description_get_size_is_absolute")
 	pangoFontDescriptionGetSize               = libpango.NewSymbol("pango_font_description_get_size")
 	pangoFontDescribe                         = libpango.NewSymbol("pango_font_describe")
 	pangoFontGetFace                          = libpango.NewSymbol("pango_font_get_face")
@@ -850,4 +851,9 @@ func (fm FontMap) SetConfig(config fontconfig.Config) {
 // GetSerial changes whenever the layout or its PangoContext changes.
 func (l Layout) GetSerial() uint32 {
 	return cgo.CallRet[uint32](pangoLayoutGetSerial.Addr(), l.GObject)
+}
+
+// GetSizeIsAbsolute reports whether GetSize is in device units instead of points.
+func (fd FontDescription) GetSizeIsAbsolute() bool {
+	return cgo.CallRet[int32](pangoFontDescriptionGetSizeIsAbsolute.Addr(), fd) != 0
 }
