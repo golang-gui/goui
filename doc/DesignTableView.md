@@ -716,9 +716,23 @@ Name下显式提供（不启用时宽度0），避免Part回退继承整体外�
 Basic／Modern分别显式为header和trough提供相同中性色，滑块复制各自通用滑块
 状态色／圆角，不新增配色或交互模式。轨道方形收口，现有8 DIP占位与命中不变。
 表头右侧、纵向滚动槽上方的空位由TableView仅绘制该区域的普通header背景和
-header-separator，不重复覆盖已有表头。补位不绘grid-top／grid-vertical，不作为
-额外列，不增加Widget、Snapshot子节点或语义动作；双条角区继续由既有背景处理。
-关闭视口外框时仍只沿真实单元格绘制完整边线，无条时不虚构补位区。
+按包围范围延续的header-separator，不重复覆盖已有表头。补位不绘grid-top／
+grid-vertical，不作为额外列，不增加Widget、Snapshot子节点或语义动作；双条
+角区继续由既有背景处理。无条时不虚构滚动槽补位区。
+
+2026-11-13表头接缝修正：仅有数据边线或内部网格时，分隔线止于实际单元格的
+裁剪范围，不能伸入框外纵向槽。启用`outer-vertical`，或有条且启用
+`outline-vertical`时，普通表头背景和分隔线补齐到包围框内缘；列未填满视口时，
+包括末列与纵向槽之间的空白。仅启用水平方向框线不延续接缝。无条且启用紧包围
+轮廓时，即使还开启整体外框，也止于较近的数据轮廓。补位只绘未使用区域，真实
+表头保留自身状态色，半透明背景不重复合成；正文空白仍没有网格和斑马色。
+
+分隔线线宽为0或几何为空时不提交绘制命令，与普通网格线采用同一约定。
+NanoVG **0.0.13** 的[Rect](https://github.com/golang-gui/nanovgo/blob/v0.0.13/nanovgo.go#L642)
+会构建退化路径，[Fill](https://github.com/golang-gui/nanovgo/blob/v0.0.13/nanovgo.go#L723)
+仍按抗锯齿设置扩展fringe；这是源码行为。本库旧源码在Linux/X11、OpenGL 1x
+关闭分隔线后留下局部细线，Software对照无此残线，是本轮窗口负对照实测。
+修正位于TableView装饰入口，不改变公共Painter或各平台退化路径的通用契约。
 
 参考Qt6.8.9 [QAbstractScrollArea公开文档](https://doc.qt.io/qt-6.8/qabstractscrollarea.html#details)
 对视口、滚动条、边距和组合外框的职责划分，复用GOUI既有

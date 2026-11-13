@@ -1,5 +1,59 @@
 # Plan
 
+## 表头分隔线端点与样式切换（2026-11-13）
+
+- [x] 修正表头补位无条件延续分隔线，导致Data网格突出到框外纵向槽的问题。
+  有竖向整体框或含槽轮廓包围时，补齐末列、表头空白与槽位接缝；仅水平框线
+  不延续，无条时优先止于较近的紧包围轮廓。补位不重画真实表头或添加语义节点。
+- [x] 用户补充的“切换后左侧缺一截”在Outline下实际为已关闭分隔线留下的
+  局部细线。零高度矩形仍提交给NanoVG 0.0.13抗锯齿路径，OpenGL出现fringe；
+  在TableView入口跳过空几何，不改平台Painter，不增加主题色或公共API。
+- [x] 新单元回归在旧源码下断言失败；新窗口断言配合旧生产源码overlay，分别
+  在Linux/X11 OpenGL 1x复现Data槽位突出和Outline残线，并明确退出1。
+  记录为before.log、before-protrusion.log和before-disabled-line.log及截图。
+- [x] 修正后覆盖零几何无绘制命令、五种边框范围×两种列宽×三种滚动偏移、
+  1x／2x预乘半透明像素及较近紧包围边界。旧补位fixture显式开启包围竖框，
+  保留原有几何、半透明像素和输入断言，框外范围由新增独立回归覆盖。
+- [x] `env -u DISPLAY go test ./widgets/... ./theme/... ./example/demo/... ./tests/window/widgets/table ./tests/window/widgets/table_borders ./tests/window/widgets/table_contracts -count=1`
+  通过；widgets／widgets-ui／Basic／Modern的race、受影响包与Demo／三个
+  表格窗口程序的go vet、gofmt检查及git diff --check通过。
+- [x] Linux amd64 / Go1.25.8，专用Xvnc / Xfwm4 4.16.1：Modern亮色
+  Software 1x／2x、OpenGL 1x、Modern暗色OpenGL 2x及Basic Software 1x
+  五组均19次CHECK、PASS、退出0。覆盖整条分隔线及两端扫描、先横滚再切
+  五种样式、每种模式双条／仅纵条切换、真实双向滑块拖动、重建和亮暗切换。
+  关闭分隔线时单独检查不得残留线色，原生截图同步核对，不用DevServer。
+- [x] Windows amd64与macOS arm64的widgets、widgets-ui、两主题测试及
+  table_borders程序交叉编译通过。Windows10 build19045、macOS15.7.7
+  原生各通过widgets 953项、widgets-ui 42项、Basic 13项、Modern表格定向
+  3项测试及子用例，无失败或跳过；实际执行二进制SHA-256与本地相符。
+  Windows使用cmd保留原始UTF-8日志；Modern其余原生测试本轮未执行。
+- [x] Windows10 / RDP / Direct2D 1x完整窗口流程通过，19次CHECK、PASS、
+  退出0；任务最终Ready、LastTaskResult=0。初次包装器缺少重定向前空格，
+  退出码文件为空；修正后按新截图坐标完整重跑通过，退出码按整数读取，
+  保留原始失败记录。没有因验收脚本问题修改生产代码或放宽像素断言。
+- [x] 原工作区`env -u DISPLAY go test ./...`仍失败：既有未跟踪旧API
+  例程／测试、过时ui测试结构字段及Typography无DISPLAY；关键诊断与上一轮
+  按多重集比较相同。未修改这些文件、删断言或扩大skip。
+- [x] 已跟踪文件加本轮新增回归文件的隔离副本，使用专用显示执行
+  `CGO_ENABLED=0 go test -json -count=1 ./...`最终退出0：73个有测试包，
+  5652项测试及子用例通过，11项按既有条件跳过，133个包无测试。1038个Go
+  文件与最终工作区逐字节一致，包含本轮全部33项新增测试及子用例。
+  首轮TestDriverToolchainInsideModuleCache在1分钟限制内报告inspect Go
+  toolchain: signal: killed；同时运行的交叉编译结束后，未改源码或测试，
+  完整复跑通过。保留首轮失败，不能据此把资源争用推断写成已确认原因。
+  跳过涉及手动输入／窗口状态、跨应用剪贴板、macOS签名和iOS SDK；旧测试
+  仅修改专用显示的剪贴板并在副本生成PNG，不代表跳过场景通过。
+- [ ] macOS窗口沿用用户此前选择跳过；Wayland、其他WM、Windows11、
+  非RDP Windows、其他后端／缩放和移动端未执行，不以编译或包测试代替。
+
+设计见[TableView](DesignTableView.md)及[滚动外框](DesignScrollFrame.md)。
+证据目录：`/tmp/goui-table-line-ends-rk_doldc`，保留负对照、定向／race／vet、
+两种全仓结果、首次隔离失败及复跑、跨平台哈希、原生包和窗口日志／截图。
+
+专用X11、WM、总线及所属辅助进程已清理。远端临时测试目录、Windows计划
+任务及本轮RDP客户端已清理，保留原有SSH与既有未跟踪文件，不纳入提交。
+原工作区旧软件绘图／位图测试重写了原有PNG产物，未顺带修改这些测试。
+
 ## 表格边框范围与固定滚动槽（2026-11-13）
 
 - [x] 整体外框、内部网格、数据四边及含滚动槽的紧包围轮廓分别控制。

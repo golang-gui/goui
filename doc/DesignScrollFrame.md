@@ -56,6 +56,9 @@ ScrollView／ScrollBar的绘制分工。表格主题将内部frame明确设为�
 2026-11-13补充：TableView另有独立的outline-horizontal/vertical，用来包围
 可见单元格与固定滚动槽的组合；整体外框、数据四边、内部网格仍分别控制。
 outline线带由TableView在ScrollView外侧预留，不改变通用滚动行为。
+表头分隔线仅在竖向整体框或含槽轮廓包围时延续到槽位；框外滚动槽不接入
+数据分隔线。有包围框且列较窄时同时补齐表头空白，无条时优先止于较近的紧包围
+轮廓；补位不覆盖真实表头。关闭分隔线不提交空矩形，避免路径抗锯齿残线。
 详细契约与验证见[TableView](DesignTableView.md)和[Plan](Plan.md)。
 
 - [GTK4 GtkScrolledWindow](https://docs.gtk.org/gtk4/class.ScrolledWindow.html)
