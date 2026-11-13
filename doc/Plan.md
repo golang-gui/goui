@@ -1,5 +1,58 @@
 # Plan
 
+## TextInput／TextView三击选行（2026-11-13）
+
+- [x] 共享textEditController按下时识别单／双／三击，第四击重新定位。
+  三击选LF分隔的逻辑行并包含现有LF，自动折行不分段；末行、空行、末尾空行
+  和空文档按真实字节范围处理。TextInput三击全选，包含只读和遮蔽字段。
+- [x] 整行拖选保留原始行和方向，指针移动／自动滚动共用扩选入口；释放、失焦、
+  禁用、卸载和取消清理捕获与计时器。模型替换重置控制器，不保留旧模型；
+  revision变化、IME回调改模型、选择回调失效后不继续旧选择。复用500ms／4 DIP，
+  不改平台事件、通用ClickEventController、Label或公共API，ui自动获得同一行为。
+- [x] 旧生产源码overlay下，普通／只读／密码及多行、LF、软换行的新回归断言
+  失败（before-final.log，明确退出1）；旧源码窗口构建先通过双击检查，随后
+  三击全选检查失败并退出1（before-native.log），不是编译失败或仅视觉猜测。
+- [x] 新增40项测试及子用例，覆盖单／双／三／四击、信号及Snapshot、500ms／
+  4 DIP边界、时钟回退、拖动返回、键盘／滚轮／次键／焦点／生命周期中断、
+  模型变化、整行双向拖动、越界自动滚动、取消及重入。临时旧测试副本只用于
+  负对照，不删除或弱化已有断言；固定时钟不导出生产私有状态。
+- [x] `env -u DISPLAY go test ./gui/... ./theme/... ./tests/window/gui/text_multiclick -count=1`
+  通过；最终源码的`env -u DISPLAY go test -race ./gui ./gui/textedit -count=1`、
+  同范围go vet、gofmt检查及git diff --check通过。扩大到ui的初始检查被既有
+  未跟踪window_lookup_test.go的旧runtime/id字段阻止，gui与主题部分通过。
+- [x] Linux amd64 / Go1.25.8，专用Xvnc / Xfwm4 4.16.1，Modern亮色
+  Software 1x／2x、OpenGL 1x、Modern暗色OpenGL 2x及Basic Software 1x
+  五组最终各10次CHECK、PASS、退出0。真实输入覆盖双击选词、三击全文／逻辑
+  行／只读空行／无LF末行、反向／正向整行拖选及越界自动滚动；逐项核对原生
+  高亮、换行标记和裁剪。用例以ui声明，F6触发重建，各阶段检查选区与模型身份。
+- [x] Windows amd64／macOS arm64的gui、ui测试及新窗口程序交叉编译通过。
+  Windows10 build19045、macOS15.7.7原生各通过GUI编辑器定向350项、UI
+  编辑器定向11项测试及子用例，包含全部新增40项，均无失败或跳过；不称为
+  整包原生测试。执行二进制SHA-256与本地相符，Windows保留cmd原始UTF-8日志。
+- [x] Windows10 / RDP / Direct2D 1x完成同样10项窗口检查，PASS、退出0，
+  计划任务最终Ready、LastTaskResult=0；输入通过Computer Use，不用DevServer。
+- [x] 原工作区`env -u DISPLAY go test ./...`已执行但失败：既有未跟踪旧API
+  例程／测试、过时ui字段和Typography无DISPLAY；关键诊断与上一轮多重集相同。
+  已跟踪文件加两个新增Go文件的隔离副本，在专用显示下执行
+  `GOMAXPROCS=4 CGO_ENABLED=0 go test -p 2 -json -count=1 ./...`退出0：73个
+  有测试包、5692项测试及子用例通过，11项按原有条件跳过，134个包无测试。
+  跳过为既有手动输入／窗口状态、跨应用剪贴板、macOS签名和iOS SDK条件，
+  不代表这些场景通过。旧全量测试修改专用显示剪贴板并在副本生成PNG。
+- [ ] macOS窗口未执行，沿用此前用户选择；Wayland、其他WM、Windows11、
+  非RDP Windows、其他缩放／后端及移动端未执行，不以编译或包测试代替。
+
+设计与框架源码依据见[DesignTextEditing](DesignTextEditing.md#连续点击与整行拖选2026-11-13)。
+证据目录：`/tmp/goui-text-multiclick-uwnzgzrc`，保留两类负对照、定向／race／
+vet、两种全仓结果、跨平台哈希、原生包及窗口日志／截图。首次Software 1x
+窗口与全量检查同时运行时，三击被识别为单击；保留linux-concurrent-full-probe
+记录，确切来源尚未定位。没有修改判定阈值或添加延时补偿；全量结束后，同一
+生产源码的诊断构建及最终五组独占桌面窗口流程均通过。
+
+隔离副本1040个Go文件与最终工作区逐字节一致。专用X11、WM、总线及所属
+辅助进程、远端临时目录、Windows计划任务和本轮RDP客户端均已清理，保留
+原有SSH及既有未跟踪文件。原工作区旧绘图／位图测试重写了原有PNG产物，
+未顺带修改旧测试或将其产物纳入提交。
+
 ## 表头分隔线端点与样式切换（2026-11-13）
 
 - [x] 修正表头补位无条件延续分隔线，导致Data网格突出到框外纵向槽的问题。

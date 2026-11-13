@@ -363,7 +363,7 @@ Padding 是物理 left/top/right/bottom 布局值，不从 style 读取。
 半开区间。`SetSelection` 钳制文档范围并按视图 Cluster 校正，`ConnectSelection`
 报告方向保留的选区；`ConnectChange` 报告模型增量。命令式视图不拥有模型的生命周期。
 
-首版包括单击定位、拖选、Shift 扩选、双击选词、拖出视口自动滚动；方向键、
+首版包括单击定位、拖选、Shift 扩选、双击选词、三击选逻辑行、拖出视口自动滚动；方向键、
 Home/End、PageUp/PageDown、全选、剪切复制粘贴、undo/redo。Enter 插入 LF。
 Tab 默认不消费，AcceptsTab 显式开启插入 tab；不顺带实现全局 Tab 焦点遍历。
 只读仍可导航、选择、复制，但不启用 IME。光标闪烁和拖选自动滚动复用 GUI Timer。
@@ -539,6 +539,35 @@ selectionContains；原大水平偏移测试改为直接断言绘制选区的局
   UTF-8 解码失败，未计通过；改用 CMD 直接执行测试并保存日志后通过。原生粘贴
   等待异步回复后再读取截图。真实中文 IME、混合 DPI、触摸/笔与移动端未重验；
   本轮没有修改这些路径，也不把桌面合成输入结果视为相应平台验收。
+
+### 连续点击与整行拖选（2026-11-13）
+
+TextInput／TextView在私有`textEditController`统一识别主键单击、双击和三击，
+各次按下立即定位、选词或选行；第四击重新按单击处理。复用GUI既有500ms和
+4 DIP判定，相邻按下的距离使用窗口局部DIP，超时、时间回退、实际拖动、次键、
+键盘、滚轮及手势取消均重置连续点击。失焦、禁用和卸载沿既有Reset清理；
+替换模型同时释放旧模型的点击／拖动状态，正文revision变化也不能沿用旧序列。
+
+三击范围按LF分隔的逻辑行确定，包含存在的终止LF；末行没有LF就止于文档末尾。
+空行选择它的LF，末尾空行和空文档为空选区。自动折行不会分割这条逻辑行，
+TextInput因只有一条逻辑行而选择全文，包括只读和遮蔽字段。模型`LineRange`
+继续排除LF，选行在控件层扩展边界，不改变模型公共契约或UTF-8字节单位。
+
+第三次按下后拖动以整行为单位扩选，原始行完整保留；向上拖动保留反向Anchor／
+Caret。回到原始行恢复原始整行范围，行内轻微移动不折叠选区。指针移动和GUI
+Timer驱动的越界自动滚动共用同一扩选入口，释放／取消后停止捕获和计时器。
+单击拖选、Shift扩选和双击选词继续沿原有行为；选择只更新Selection信号及
+TextEditing Snapshot，不修改正文、共享模型、编辑历史内容或只读／密码策略。
+命中、IME取消和选择通知可重入，旧模型／revision或已失效控件不能继续旧手势。
+
+源码参考：Qt **6.8.3** [QWidgetTextControl三击](https://github.com/qt/qtbase/blob/v6.8.3/src/widgets/widgets/qwidgettextcontrol.cpp#L1599)
+以StartOfBlock、EndOfBlock及NextCharacter选中段落和分隔符；GTK **4.18.6**
+[GtkTextView](https://github.com/GNOME/gtk/blob/4.18.6/gtk/gtktextview.c#L7669)默认按
+display line扩展，[GtkText单行选择](https://github.com/GNOME/gtk/blob/4.18.6/gtk/gtktext.c#L5490)
+则覆盖全部内容。这些是所列版本桌面Widget的源码行为，未进行跨框架窗口实测。
+GOUI采用逻辑行，使已有选区不随视口宽度变化；采用整行拖选，不复制Qt的计时器
+或GTK的选择信号扩展体系。平台继续报告原始输入，ui复用gui行为，无新增公共API。
+验证与平台缺口见[Plan](Plan.md)。
 
 ## 6. ScrollView、TextInput 与 UI
 
