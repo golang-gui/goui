@@ -15,6 +15,10 @@
 //     外边线；outline仅包数据且没有内部网格；scroll仅画包含滚动槽的紧包围
 //     轮廓；all再绘内部线及整个TableView外框。fit轮廓紧包数据，horizontal／both
 //     轮廓包含固定槽位；数据到条之间的空白不画网格／斑马色；交汇角与轨道同色。
+//     每种模式下按F9缩窄both的列，再按F6：仅剩纵条，表头分隔线的范围仍正确；
+//     再按F9、F6恢复双条。切换模式前再次横向拖动，检查表头线左端没有缺口。
+//     data／inner的表头线止于数据视口，不能突出到框外槽位；all须接到含槽轮廓。
+//     outline／scroll已关闭分隔线，表头底部不得出现退化填充造成的残留细线。
 //  4. 点击Rebuild和Dark，各按F6：列／单元格身份、滚动位置保留，样式与几何
 //     按模式更新。Basic固定亮色。观察原生边线完整、表头对齐、滑块圆角和状态。
 //  5. F8：要求五种模式、双向拖动、重建和亮暗检查都完成，PASS并退出0。
@@ -32,6 +36,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"math"
 	"os"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -106,6 +111,7 @@ func run(dark, fallback bool) error {
 		models[id] = &rows{gui.NewSliceListModel(values)}
 	}
 	mode, generation := 0, 0
+	narrow := false
 	ready, finished := false, false
 	seen := map[string]bool{}
 	original := map[string][]*widgets.TableColumn{}
@@ -130,7 +136,7 @@ func run(dark, fallback bool) error {
 				if columns[0] != original[id][0] || columns[1] != original[id][1] || info.ItemCount != models[id].ItemsCount() {
 					return errors.New("column identity or row count changed")
 				}
-				if (info.MaxScrollX > 0) != (id != "fit") || (info.MaxScrollY > 0) != (id == "both") {
+				if (info.MaxScrollX > 0) != (id != "fit" && !(id == "both" && narrow)) || (info.MaxScrollY > 0) != (id == "both") {
 					return fmt.Errorf("%s scroll ranges=%g,%g", id, info.MaxScrollX, info.MaxScrollY)
 				}
 				img, err := gui.RenderWidget(table, 1)
@@ -148,6 +154,56 @@ func run(dark, fallback bool) error {
 				background := color.RGBAModel.Convert(bg).(color.RGBA)
 				header := info.Children[0].Bounds
 				x, y := header.X-info.Bounds.X, header.Y-info.Bounds.Y
+				// 检查整条表头线及其端点，不仅检查框角。使用公共快照推导视口，
+				// 正线宽为2 DIP，在带内取样；关闭时允许两个背景色之间的AA混合，
+				// 但任何越出背景通道范围的线色都失败，不能把幽灵细线当作有效网格。
+				start := x + info.ScrollX
+				end := info.Bounds.Width - start
+				barWidth := gui.NewScrollBar(layout.DirectionVertical).Measure(layout.Unbounded()).Width
+				if info.MaxScrollY > 0 {
+					end -= barWidth
+				}
+				lastHeader := info.Children[len(columns)-1].Bounds
+				dataEnd := lastHeader.X + lastHeader.Width - info.Bounds.X
+				lineEnd := min(end, dataEnd)
+				if name == "all" && id != "fit" {
+					lineEnd = info.Bounds.Width - start
+				}
+				lineY := y + header.Height - 1
+				positive := name == "data" || name == "inner" || name == "all"
+				headerInk, _ := gui.ResolveStyle("table-view", "header", style.Normal).BackgroundColor()
+				headerColor := color.RGBAModel.Convert(headerInk).(color.RGBA)
+				for px := int(math.Ceil(float64(start))); px < int(info.Bounds.Width-start); px++ {
+					if positive && float32(px) < lineEnd {
+						if err := check(float32(px), lineY, edge); err != nil {
+							return err
+						}
+						continue
+					}
+					// 数据轮廓的竖边或紧包围竖边可以穿过当前扫描带。
+					nearEdge := false
+					for _, h := range info.Children[:len(columns)] {
+						for _, bound := range []float32{h.Bounds.X - info.Bounds.X, h.Bounds.X + h.Bounds.Width - info.Bounds.X} {
+							if math.Abs(float64(float32(px)-bound)) < 3 {
+								nearEdge = true
+							}
+						}
+					}
+					if nearEdge {
+						continue
+					}
+					got := pixel(float32(px), lineY)
+					for channel, value := range []uint8{got.R, got.G, got.B} {
+						lo := []uint8{background.R, background.G, background.B}[channel]
+						hi := []uint8{headerColor.R, headerColor.G, headerColor.B}[channel]
+						if lo > hi {
+							lo, hi = hi, lo
+						}
+						if int(value) < int(lo)-1 || int(value) > int(hi)+1 {
+							return fmt.Errorf("%s/%s unexpected header line at (%d,%g): %v", name, id, px, lineY, got)
+						}
+					}
+				}
 				if id == "fit" {
 					last := info.Children[len(info.Children)-1].Bounds
 					bottom := last.Y + last.Height - info.Bounds.Y
@@ -214,6 +270,9 @@ func run(dark, fallback bool) error {
 				}
 			}
 			seen[modes[mode]] = true
+			if narrow {
+				seen["narrow:"+modes[mode]] = true
+			}
 			if generation > 0 {
 				seen["rebuild"] = true
 			}
@@ -222,13 +281,13 @@ func run(dark, fallback bool) error {
 				bounds[id] = app.FindWidget("main", id).Snapshot().Bounds
 			}
 			data, _ := json.Marshal(bounds)
-			fmt.Printf("CHECK mode=%s generation=%d dark=%t bounds=%s\n", modes[mode], generation, dark, data)
+			fmt.Printf("CHECK mode=%s generation=%d dark=%t narrow=%t bounds=%s\n", modes[mode], generation, dark, narrow, data)
 			return nil
 		}
 		panels := make([]ui.View, 0, 3)
 		for _, id := range []string{"fit", "horizontal", "both"} {
 			width := float32(200)
-			if id == "fit" {
+			if id == "fit" || id == "both" && narrow {
 				width = 80
 			}
 			column := func(key string) *wui.TableColumnView[string] {
@@ -258,6 +317,7 @@ func run(dark, fallback bool) error {
 				seen["drag"] = true
 				fmt.Println("CHECK drag")
 			}),
+			ui.Shortcut(ui.KeyF9).OnActivate(func() { narrow = !narrow; app.RequestUpdate() }),
 			ui.Shortcut(ui.KeyF8).OnActivate(func() {
 				if err := verify(); err != nil {
 					fail(err)
@@ -266,6 +326,12 @@ func run(dark, fallback bool) error {
 				for _, key := range append(append([]string{}, modes...), "drag", "rebuild", "palette") {
 					if !seen[key] {
 						fail(fmt.Errorf("missing stage %s", key))
+						return
+					}
+				}
+				for _, name := range modes {
+					if !seen["narrow:"+name] {
+						fail(fmt.Errorf("missing narrow stage %s", name))
 						return
 					}
 				}
