@@ -808,7 +808,8 @@ func TestTreeViewStateRefreshRetainsMeasurementsAndBindings(t *testing.T) {
 	}
 	v.SetSelection([]string{"10"})
 	arrange()
-	if d.binds-before != 1 || v.realized["10"] != row || s.ScrollX() != 80 {
+	// 10的Selected及11的PreviousSelected改变；9离屏，不为邻接信息额外实现它。
+	if d.binds-before != 2 || v.realized["10"] != row || !v.realized["11"].bound.PreviousSelected || s.ScrollX() != 80 {
 		t.Fatalf("selection rebuilt rows or lost width: binds=%d x=%g", d.binds-before, s.ScrollX())
 	}
 	before = d.binds

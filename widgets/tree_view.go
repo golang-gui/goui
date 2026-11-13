@@ -31,6 +31,10 @@ type TreeRow struct {
 	ID                                      string
 	Depth                                   int
 	Expandable, Expanded, Selected, Current bool
+	// PreviousSelected and NextSelected describe the adjacent rows in expanded
+	// logical order, including offscreen rows. Missing neighbors are false.
+	// These facts are independent of this row's own Selected state and depth.
+	PreviousSelected, NextSelected bool
 }
 
 // TreeItemDelegate constructs full-row content. Compose a TreeExpander for

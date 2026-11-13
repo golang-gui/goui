@@ -142,10 +142,19 @@ func (d *treeListDelegate) Unbind(_ int, widget gui.Widget) {
 }
 
 func (v *TreeView) rowState(flat flatTreeRow) TreeRow {
-	return TreeRow{
+	row := TreeRow{
 		ID: flat.id, Depth: flat.depth, Expandable: v.model.Expandable(flat.id),
 		Expanded: v.expanded[flat.id], Selected: v.selected[flat.id], Current: v.current == flat.id,
 	}
+	if index, ok := v.indices[flat.id]; ok {
+		if index > 0 {
+			row.PreviousSelected = v.selected[v.rows[index-1].id]
+		}
+		if index+1 < len(v.rows) {
+			row.NextSelected = v.selected[v.rows[index+1].id]
+		}
+	}
+	return row
 }
 
 type treeRow struct {
@@ -204,7 +213,29 @@ func (r *treeRow) Paint(p gui.Painter) {
 		part = "selected"
 	}
 	rect := geometry.Rect(0, 0, r.Rect().Width, r.Rect().Height)
-	paintStyledBox(r, p, rect, name, part, state)
+	appearance := gui.ResolveWidgetStyle(r, name, part, state)
+	radius, _ := appearance.CornerRadius()
+	radius = radius.Normalize(rect.Size)
+	joined := radius
+	if state.Has(style.Selected) {
+		if r.bound.PreviousSelected {
+			joined.TopLeft, joined.TopRight = 0, 0
+		}
+		if r.bound.NextSelected {
+			joined.BottomLeft, joined.BottomRight = 0, 0
+		}
+	}
+	if joined == radius {
+		gui.PaintStyledBox(p, rect, appearance)
+	} else {
+		// Join only the selection background. The original radius and edges
+		// still describe this row's independent border, including drag feedback.
+		background := (style.Rule{Style: appearance}).CornerRadius(joined).Style
+		// Round shared edges on the same device grid even when one member
+		// uses a path and its neighbor uses the rectangular fill fast path.
+		gui.PaintStyledBackground(p, p.SnapRect(rect), background)
+		gui.PaintStyledBorder(p, rect, appearance)
+	}
 	if focused {
 		paintStyledBorder(p, rect, gui.ResolveWidgetStyle(r, name, "current", state))
 	}
