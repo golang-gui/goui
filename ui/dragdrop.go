@@ -34,6 +34,9 @@ type DropRequest = gui.DropRequest
 
 // DragSourceView declares one optional drag source controller on a widget.
 // Rebuilding the descriptor only updates its controller; it does not start a drag.
+// For virtualized rows, declare the source on the stable list or tree and resolve
+// the item in OnPrepare. Removing the source or its owning view cancels the
+// session; removing or recycling the owner's children does not.
 type DragSourceView struct {
 	enabled bool
 	actions DragAction

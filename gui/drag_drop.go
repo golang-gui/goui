@@ -219,6 +219,11 @@ type DropRequest struct {
 // DragSource is a Capture-phase controller. It only registers a candidate
 // during a native left press; the dispatcher coordinates gesture competition
 // after ordinary event propagation has finished.
+//
+// A started session belongs to the Widget carrying this controller and requests
+// cancellation when that Widget unmounts. For virtualized content, attach the
+// source to the stable view and resolve the item from DragPrepare.Position.
+// Store model IDs or application-owned data, not recyclable row Widgets.
 type DragSource struct {
 	owner           Widget
 	run             *guiDragSession

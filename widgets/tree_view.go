@@ -352,6 +352,8 @@ func (v *TreeView) SetRowContentDepth(fn func(TreeRow) (int, bool)) {
 // RowAt queries a laid-out visible row using TreeView-local DIP, including
 // indentation and row whitespace. Bounds are the full row and may be partially
 // clipped. It never realizes rows or loads children; requery after layout.
+// A DragSource attached to the TreeView can pass DragPrepare.Position here to
+// choose the source node without tying the session to a recyclable row Widget.
 func (v *TreeView) RowAt(point geometry.Point) (TreeRow, geometry.Rectangle, bool) {
 	if v.Destroyed() || point.X < 0 || point.Y < 0 || point.X >= v.Rect().Width || point.Y >= v.Rect().Height {
 		return TreeRow{}, geometry.Rectangle{}, false
