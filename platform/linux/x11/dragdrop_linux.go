@@ -705,10 +705,9 @@ func (d *dragService) beginSource(id uint64, data *dragdrop.Data, actions dragdr
 	if err != nil {
 		return err
 	}
-	visual, err := newXDNDPreview(preview)
-	if err != nil {
-		return err
-	}
+	// A valid preview is optional feedback. Its constructor releases partial
+	// resources on failure; XDND and the action cursor can continue without it.
+	visual, _ := newXDNDPreview(preview)
 	s := &xdndSource{service: d, window: d.window, onEvent: d.window.onEvent, id: id, actions: actions,
 		feedback: feedback,
 		preview:  visual, cursors: make(map[dragdrop.Action]xlib.Cursor),
