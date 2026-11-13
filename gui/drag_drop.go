@@ -156,6 +156,8 @@ func (d *DragData) selected(format DragFormat) *DragData {
 	return selected
 }
 
+// DragPreview supplies optional feedback. Invalid parameters are startup
+// errors; native preview creation failure continues with default feedback.
 type DragPreview struct {
 	Image   image.Image
 	Scale   float32

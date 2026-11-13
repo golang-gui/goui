@@ -236,7 +236,10 @@ func (d *Data) Validate() error {
 }
 
 // Preview is a caller-owned image until Begin copies it. Scale is pixels per
-// DIP; zero requests the source surface's current scale.
+// DIP; zero requests the source surface's current scale. Invalid parameters
+// reject Begin. A valid image is optional feedback: native image or preview
+// surface creation failure falls back to feedback without a custom image and
+// does not fail the drag session. Data and native session errors still fail it.
 type Preview struct {
 	Image   image.Image
 	Scale   float32
