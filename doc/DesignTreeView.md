@@ -374,12 +374,10 @@ TreeView 拥有用于本控件的 PopoverMenu，沿用 TabBar／TabView 的查�
 
 ```go
 type TreeRow struct {
-    ID         string
-    Depth      int
-    Expandable bool
-    Expanded   bool
-    Selected   bool
-    Current    bool
+    ID                                      string
+    Depth                                   int
+    Expandable, Expanded, Selected, Current bool
+    PreviousSelected, NextSelected          bool
 }
 
 type TreeItemDelegate interface {
@@ -699,7 +697,8 @@ ui.ListView 与 widgets/ui.TreeView 共用上述机制。回归覆盖同模型�
 兜底样式在 `theme/basic`，Modern 样式在 `theme/modern`。父行不隐式为 Label／Icon
 提供前景色；内容选择自己的 StyleName，状态需要区别时通过行构建器明确表达。
 
-Modern 使用中性悬停色、可辨认的中性灰选中背景、4 DIP 行圆角；树选中背景和当前项
+Modern 使用中性悬停色、可辨认的中性灰选中背景、4 DIP 外缘圆角；连续选中行接合处
+的背景角归零，单行边框保持完整轮廓（见§7.1.2）。树选中背景和当前项
 边框只随亮暗模式切换，不随主题色变化。选中底色复用菜单按下色，悬停／按下分别向
 文字色混入 4%／8%，形成轻微加深（亮色）或提亮（暗色）。默认只有树持有真实
 焦点且 FocusVisible 生效时，当前项显示 1 DIP 中性色边框，用于区分“当前但未选中”。不把 Current 伪装为
@@ -732,7 +731,7 @@ selected Part 显式提供 Normal／Hovered／Pressed；展开箭头使用自己
 `RowContentDepth` 返回 `(depth, true)` 覆盖绘制深度，显式零表示根级，负值归零；
 false、nil 或省略使用本行 Depth。超出行宽时区域裁为空，不画最小长度替代线段。
 它只改变装饰起点，不移动内容、不改变测量、整行选中背景或 current 轮廓。
-绘制顺序为整行背景／边框、current 边框、content 装饰，再由GUI正常绘制内容子树。
+绘制顺序为行背景、独立单行边框、current 边框、content 装饰，再由GUI正常绘制内容子树。
 子控件如自行覆盖此区域，应用应协调其外观。
 
 排序提示的逻辑目标深度不一定等于承载行深度。例如将 after 转为下一可见行的顶部
@@ -774,7 +773,7 @@ wui.TreeView(store, entryView).
     })
 ```
 
-回调在绑定时执行，收到当前 TreeRow 快照（含 Selected／Current）；不在 Paint 中执行，
+回调在绑定时执行，收到当前 TreeRow 快照（含 Selected／Current及相邻选中信息）；不在 Paint 中执行，
 不得修改模型或祖先控件树。GUI 外部输入变化后调用 Refresh；设置回调本身也刷新。
 UI 沿用现有更新请求和稳定委托，重建使用最新函数，省略后恢复默认，不比较函数身份。
 同 ID 刷新保留行壳及内容身份；回收／解绑先清除旧样式和深度，再调用内容 Unbind。
@@ -792,6 +791,57 @@ Qt 6.8.3 [QAbstractItemView 源码](https://github.com/qt/qtbase/blob/v6.8.3/src
 GOUI 只提供行外观和绘制深度，不照搬 Qt 的内置排序提示状态机。
 
 回归及窗口验收记录见 [Plan](Plan.md#树行声明式外观与content装饰2026-11-13)。
+
+#### 7.1.2 连续选区与独立单行边框（2026-11-13）
+
+TreeRow.PreviousSelected／NextSelected分别报告展开后逻辑序列中前一行／后一行
+的选中事实，序列边界为false。它们独立于本行Selected，也不要求邻居与本行同级。
+该序列包含离屏行，排除折叠后代；仅凭索引和选择集合即可计算，不为邻接查询创建
+离屏Widget。窗口顶部／底部的虚拟化边界不会被当成选区边界。
+
+本行Selected为true时，两个事实对应如下外观：
+
+| PreviousSelected | NextSelected | 连续区位置 | 选中背景保留的圆角 |
+| --- | --- | --- | --- |
+| false | false | 单行 | 四角 |
+| false | true | 首行 | 上方两角 |
+| true | true | 中间行 | 无 |
+| true | false | 末行 | 下方两角 |
+
+selected Part继续提供背景色及圆角。绘制先按行尺寸归一化样式圆角，再将接合处
+的角归零；不会因为另一端被去掉而增大外缘半径。背景通过现有Painter.SnapRect
+对齐同一设备像素网格，使圆角路径与矩形填充在小数行高／HiDPI下共用接合边界，
+半透明背景不会在该处留缝或叠加两次。Basic／Modern保留原有颜色与外缘半径。
+
+单行边框使用未接合的原样式、BorderSides及完整行轮廓，绘制在选中背景之上；
+current框和content装饰继续独立叠加。只有背景几何需要接合时才分开背景／边框
+两次绘制；其余路径保留原PaintStyledBox。样式值按值派生，不修改共享样式表。
+应用以RowStyle切换拖放目标的边框即可同时保留连续选区，仍可使用content和
+RowContentDepth表达缩进插入线，无需增加拖放状态机或一组组与拖放位置交叉的
+选区样式名。样式名继承规则仍见§7.1.1，完整自定义外观应包含对应Part。
+
+例如，在已有完整drop-row规则上追加：
+
+```go
+style.Name("drop-row").Part("selected").
+    BorderColor(color.RGBA{R: 220, G: 50, B: 40, A: 255}).BorderWidth(2).Radius(8)
+```
+
+行在连续区中间时，背景四角接合，红框仍是完整的8 DIP圆角单行框。未选中目标
+可按同名普通Part设置边框；current仍只表达真实树焦点，不能用来伪装拖放状态。
+
+行内容构建器、RowStyle、RowContentDepth及RowAt都获得同一事实模型。选择变化
+会使邻接快照改变的已实现行重新绑定，即使该行自身Selected没有变化；普通Current
+变化不影响邻接。模型结构变更按新逻辑顺序计算，解绑清零；外部回调改变邻接后
+不能提交旧绑定结果。应用保存的TreeRow仍是独立值快照，后续刷新不改写旧值。
+声明式层复用既有委托／协调；Snapshot继续逐行报告Selected、原角色、层级、边界
+与动作，连续区不引入额外语义对象或输入捷径。
+
+参考Qt 6.8.3
+[QCommonStyle源码](https://github.com/qt/qtbase/blob/v6.8.3/src/widgets/styles/qcommonstyle.cpp#L673)：
+项目拖放提示与选中面板是独立绘制分支。采用该分层原则，未引入Qt StyleOption或
+通用选区selector；本次只增加两个行事实及控件自己的背景几何处理。实际像素、
+绑定、虚拟化与窗口验证见[Plan](Plan.md#树行连续选区与独立边框2026-11-13)。
 
 ### 7.2 Snapshot
 

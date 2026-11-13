@@ -1,5 +1,69 @@
 # Plan
 
+## 树行连续选区与独立边框（2026-11-13）
+
+- [x] TreeRow增加PreviousSelected／NextSelected，按展开后的完整逻辑序列读取
+  相邻选择事实，包含离屏行、跨层级，序列边界为false；与本行Selected独立。
+  沿用绑定快照比较，使自身Selected未变但邻接改变的已实现行重新绑定；RowAt、
+  声明式构建器、RowStyle与RowContentDepth得到同样的事实。解绑清零，回调中
+  改变邻接后不提交旧结果，快照仍为独立值，不为此创建离屏行或语义分组对象。
+- [x] selected背景先归一化样式圆角，再仅保留连续区的外缘角；完整单行边框、
+  current和content独立叠加，现有RowStyle可组合拖放外框，不增加DropStyle、
+  通用状态位或分组selector。背景／边框几何相同时保留原PaintStyledBox；
+  分层时派生Style副本，不修改共享值，Basic／Modern原有颜色与外缘半径保持。
+- [x] 小数行高回归在首次实现发现圆角FillPath与中间行矩形快路径的接缝alpha
+  降到64（预期128）。使用已有Painter.SnapRect对齐共享设备边缘后，31.5 DIP
+  行高在1x／2x的接合色带逐像素通过；边框保持原单行几何，不使用布局偏移补偿。
+- [x] 新增18项测试及子用例，覆盖首／中／末／单行、分组选区、未选中行邻居事实、
+  跨层级／折叠／删除、视口边界与池化、精确受影响绑定数、重入结果失效、原角色／
+  Selected／动作／真实焦点、1x／2x预乘半透明背景、巨圆角归一化、半透明／不透明
+  单行边框及current／content叠加、声明回调与身份保持。既有宽度／绑定回归将
+  选择变化绑定数从1改为2，覆盖ID为11的行PreviousSelected变化；其余宽度、
+  滚动位置和身份断言保留，没有扩大skip。
+- [x] 旧tree_row.go生产文件overlay下，邻接、绑定、虚拟化、声明回调和凹口像素
+  回归断言失败；同一窗口程序在旧文件构建下启动成功，真实F6检查报告首行
+  NextSelected=false而期望true，退出1。负对照不是编译失败；保留before-unit
+  和before-window日志及截图。初始半透明边框用例误将蓝通道四舍五入为64，核对
+  标准库image/draw.Over独立结果为63后改正固定预期，保持精确断言与原容差。
+- [x] `env -u DISPLAY go test ./widgets/... ./theme/... ./tests/window/widgets/tree_selection -count=1`
+  通过；widgets／widgets/ui／Basic／Modern完整race通过，新增选区范围在最终
+  用例下补跑race通过，涉及包go vet、gofmt及git diff --check通过。纯逻辑／像素
+  用例不创建桌面窗口，焦点键盘经惰性Popover正常DispatchEvent。
+- [x] Linux amd64／Go1.25.8，独占Xvnc／Xfwm4 4.16.1：Modern亮色Software
+  1x／2x／1.5x、Modern暗色OpenGL 1x、Modern亮色OpenGL 2x、Basic Software
+  1x六组完整窗口流程PASS、退出0。OpenGL实际为Mesa 23.2.1 llvmpipe，不作
+  硬件GPU性能结论。每组检查单行／跨层连续区／分组、All后滚出首屏／返回、
+  折叠／展开、真实Shift点击范围选择、重建／明暗切换、完整单行圆角框与连续
+  背景并存、原生拖放一次成功且原选区保留。公开RowAt、绑定回调和Snapshot
+  一致，重建保留树及行身份。fixture将Hovered／Pressed选中色固定为主题Normal
+  色以隔离几何；库主题规则未修改。
+- [x] 每组实际屏幕初始截图在三个行接缝、左／中／右三列、上下五个物理像素取样，
+  共270点通过；不以RenderWidget替代屏幕合成检查。RenderWidget另外验证圆角
+  外缘与单行框颜色。接合色带不透明sRGB只允许1级8位舍入，半透明包内覆盖使用
+  独立精确预期。六组含35.5 DIP行高，1.5x同时覆盖非整数物理边界。
+- [x] Windows amd64／macOS arm64的widgets、widgets/ui测试目标和新窗口程序
+  交叉编译通过；本轮未原生运行，不将构建结果当成其他平台窗口验收。
+- [x] 原工作区`GOMAXPROCS=4 go test -p 2 ./...`（无DISPLAY，临时构建使用数据盘）
+  已执行，仍因既有未跟踪旧API例程／测试、ui/window_lookup_test.go旧字段及
+  Typography缺显示失败；关键诊断去耗时后与上一轮多重集相同，无新增诊断。
+  原有PNG测试输出未纳入提交，也未修改这些旧用例。
+- [x] 已跟踪文件加本轮三个新Go文件的隔离副本，在另一专用显示执行
+  `GOMAXPROCS=4 CGO_ENABLED=0 go test -p 2 -json -count=1 ./...`退出0：73个有
+  测试包、5773项测试及子用例通过，11项既有跳过、139个包无测试；跳过为手动
+  输入／窗口状态、跨应用剪贴板、macOS签名及iOS SDK条件，不算交互通过。
+  1057个Go文件与最终源码逐字节一致。旧测试改专用显示剪贴板并在副本生成PNG。
+- [ ] Windows／macOS原生窗口、Wayland、其他WM、混合DPI及移动端本轮未执行。
+
+设计与Qt 6.8.3绘制分层依据见[TreeView§7.1.2](DesignTreeView.md#712-连续选区与独立单行边框2026-11-13)。
+证据目录`/data/xuyang8/goui-tree-selection-vps137po`保留日志、截图、旧源码负对照、
+独立SourceOver参考、两类全仓结果、源码清单及哈希。早期复用测试误把反向滚动
+壳身份当成保证，已改为检查前向回收后的同壳新绑定；初次声明测试的多余import
+已移除。未用放宽断言／容差或丢弃绑定覆盖掩盖失败；apibox文件与依赖未修改。
+窗口退出仍有既有request frame: timer: scheduler has closed日志，六组退出码均为0，
+本轮未修改应用计时器。两个专用Xvnc／WM／总线及所属辅助进程已清理，未修改
+用户桌面设置或剪贴板。本批按核心实现与回归、声明式回归、窗口用例及文档分批
+提交，保留原工作区未跟踪文件。
+
 ## 虚拟化树行宽度与横向滚动（2026-11-13）
 
 - [x] TreeExpander用Constraint.Insets扣除缩进／展开槽与内边距，保留两个轴的
