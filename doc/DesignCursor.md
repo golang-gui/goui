@@ -39,12 +39,15 @@ Linux GUI 自绘 Integrated 对最终 `ChromeRegion` 结果进行光标映射，
   `Gtk/CursorThemeSize`，缺失时读取 X Resources 的 `Xcursor.theme/size`。
   显式 `XCURSOR_THEME/SIZE` 环境变量优先；仍缺失时使用默认主题与 libXcursor 初始尺寸。
 - 使用 GOUI 自身 X11 事件循环监听设置属性、根窗口 RESOURCE_MANAGER 和 MANAGER 通知，
-  支持设置服务退出、重启；不驱动额外 GTK/GLib 主循环，不轮询设置。
+  支持设置服务退出、重启；不驱动额外 GTK/GLib 主循环。光标由原生事件更新，
+  Settings的GUI变化检测仍使用既有两秒轮询。
 - 选择区 owner 查询、订阅及属性读取在短暂 XGrabServer 内完成，防止 owner 在查询后销毁。
   解析、磁盘资源加载与光标更新在释放 server grab 后执行；此机制不参与窗口缩放同步。
 - 配置由同一 display 的 Cursor 共用，资源仍由各 Cursor 缓存和释放。配置改变后清缓存、
   重新应用当前形状，鼠标静止和 GUI 同形状去重都不会阻止更新；隐藏光标保持隐藏。
-  最后一个 Cursor 销毁后取消当前设置窗口和根窗口订阅。
+  XSETTINGS读取层归平台display所有，独立于libXcursor及光标数量；最后一个
+  Cursor销毁后仍可查询Settings，平台销毁时恢复当前owner和根窗口原事件mask。
+  主题、字体与启动DPI共享读取层，详见[平台设置设计](DesignPlatformSettings.md#x11-desktop-settings-without-a-gtk-event-loop)。
 - 测试覆盖两种字节序、截断/非法 XSETTINGS、名称回退、真实属性通知、服务重启、
   资源重载与销毁。测试使用私有选择区和窗口，不修改用户桌面设置。
 

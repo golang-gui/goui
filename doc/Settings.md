@@ -66,7 +66,7 @@ fallback 默认值是 **gui 自有常量**(`gui/settings.go`),不依赖 Label,�
 
 - **快照初始化**：创建 GUI Settings 时就在 GUI 线程读取首份解析快照，getter 只读快照、不直接查询平台；无效值和查询失败逐字段使用 GUI fallback。颜色复制为自有 RGBA64 值，不保留平台可变对象。变化时先替换完整快照再通知，首次轮询即可与初始快照比较。
 - **变化检测由 gui 在 UI 线程上驱动**。`Application.Run` 启动 `Settings.watch`，通过 `Application.NewTimer()` 每两秒在 GUI 线程读取、比较并通知；共用应用计时器调度器，不额外为 Settings 创建 ticker goroutine。Run 返回时停止计时器，过期回调不再查询或通知。创建应用但尚未 Run 时不轮询。
-- **platform 层不含 `NewSettings(onChanged)` 或后台 watcher**。当前为同步查询；原生设置变化通知替代轮询属于 [待评估方向](Roadmap.md#future-settings-hidpi)，不能把轮询写成即时通知。
+- **platform 层不含 `NewSettings(onChanged)` 或后台 watcher**。当前为同步查询；X11内部复用原生事件处理光标设置，并不向GUI增加变化回调。原生设置变化通知替代GUI轮询属于 [待评估方向](Roadmap.md#future-settings-hidpi)，不能把轮询写成即时通知。
 - **单一信号**(`Settings.ConnectChanged`,挂在 Settings 上而非外层 App):设置项增多时,一个 `func()` "变了,重读"即可,无需按项 diff;真出现具体的 per-setting 消费者再拆。
 - ui 层 getter 走 `App.Sync`(在 UI 线程直跑、否则投递并等待),读取始终线程安全。
 - ui 在首轮 build 前建立一条 Settings 变化连接，内部调用 RequestUpdate，与显式更新共用合并机制。初始化失败、更新失败及运行退出时断开；停止后的排队更新失效。用户在 build 中读取 Settings 即可，不必编写 OnSettingsChanged。固定主题参数仍可忽略系统值，相同样式表不重复下发到 GUI；普通应用状态仍须显式更新。
@@ -89,3 +89,23 @@ ErrSettingUnsupported，由 GUI 兜底。服务在 Activate 初始化前使用 f
 
 - 三 GOOS 交叉编译;`gui`/`ui` 单测;`platform/test` 的 `TestSettings` 仍覆盖平台层事实读取。
 - Modern 路线第 4 步已通过 `go test ./...`、`go test -race ./gui ./ui -run TestSettings -count=1`，以及 Windows amd64／macOS arm64 的 GUI／UI 测试目标交叉编译；原生系统设置切换仍需真机验收，轮询不是即时通知。
+
+## X11运行期主题与字体（2026-11-13）
+
+X11直接读取当前XSETTINGS的`Net/ThemeName`及`Gtk/FontName`，不再查询启动时
+缓存的GtkSettings，不接入或推进GTK/GLib事件循环。强调色按当前主题名加载GTK
+局部CSS Provider，查询`theme_selected_bg_color`，不修改全局主题。GUI仍按原有
+两秒周期读取完整快照、比较、发送Changed；UI监听该信号自动重建，应用在build
+中使用`modern.FromSettings(app.Settings())`即可随系统值更新。
+
+明暗沿用主题名包含`dark`的既有约定，不承诺所有Linux桌面的独立明暗偏好或
+portal语义。无manager、主题项缺失或数据错误时明暗／强调色使用GUI fallback，
+不保留上一次主题；字体仍可查询原生Pango默认值。绝对像素字体不冒充pt，只有
+family可用时FontSize独立兜底。GTK settings.ini及GTK_THEME不属于新的动态查询
+来源；同名CSS文件原地编辑的缓存失效也不在本次支持范围。
+
+光标与Settings共用平台XSETTINGS读取层；最后一个光标销毁不影响Settings。
+启动缩放也从XSETTINGS／X Resources读取，保持既有进程环境覆盖优先级，运行期
+DPI变化不调整窗口几何。平台来源、资源归属和参考证据见
+[平台设置设计](DesignPlatformSettings.md#x11-desktop-settings-without-a-gtk-event-loop)，
+实际验收范围见[Plan](Plan.md#x11运行期系统主题读取2026-11-13)。

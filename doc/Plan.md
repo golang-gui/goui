@@ -1,5 +1,64 @@
 # Plan
 
+## X11运行期系统主题读取（2026-11-13）
+
+- [x] 根因对照确认GTK 3.24.33的X11 Settings缓存依赖原生事件分发；旧构建不运行
+  GTK事件循环时始终保留启动主题／字体。仅诊断构建推进GLib后可更新，最终实现
+  不包含该路径，也不在getter中泵GTK事件。参考XSETTINGS v0.5、Qt 6.8.3 XCB
+  与GTK官方Provider所有权，具体源码／契约见[平台设置设计](DesignPlatformSettings.md#x11-desktop-settings-without-a-gtk-event-loop)。
+- [x] 从光标配置提取display所有的共享XSETTINGS客户端，支持无窗口／无光标时
+  查询、服务退出／重启／替换、完整快照验证及限长原生读取。最后一个光标释放
+  不关闭Settings订阅；平台销毁恢复root／当前owner原mask。保留原有光标缓存、
+  X Resources／进程环境优先级及原生通知更新，旧解析／原生生命周期断言保留。
+- [x] 明暗读Net/ThemeName，字体读Gtk/FontName并由Pango解析；强调色按当前
+  主题名借用GTK CSS Provider，在局部context取色，不修改GtkSettings／screen。
+  同时修正半透明GdkRGBA到预乘颜色的转换；绝对像素字体不冒充pt。主题源失效
+  不保留旧值，GUI按字段兜底，字体保留原生Pango fallback。API与GUI两秒轮询、
+  Changed及UI自动重建不变；未修改apibox文件或依赖。
+- [x] 启动scale去掉GtkSettings依赖，读取XSETTINGS Xft/DPI，再X Resources
+  Xft.dpi；既有GOUI_PLAT_SCALE／GDK_SCALE覆盖优先，窗口几何仍是启动快照。
+  没有扩展动态DPI、portal、GTK_THEME／settings.ini或同名CSS文件热更新契约。
+- [x] 包内回归包含固定大小端资源、三种类型、负整数、所有截断点、重复／非法
+  名称、超长／未知类型、整份失败不发布部分值、无平台查询、半透明颜色及字体
+  单位。`env -u DISPLAY go test ./platform/linux/... ./gui/... ./widgets/... ./theme/... ./tests/window/platform/xsettings -count=1`
+  通过；x11／gui／widgets／widgets/ui的race、涉及包go vet、gofmt和diff检查通过。
+  解析器10秒fuzz完成347928次执行，无失败；不据此作性能结论。
+- [x] 新独立窗口用例先查询原生Settings，再启动正常ui.Run。按钮仅发布X属性，
+  不主动RequestUpdate；F6检查GUI值、控件／窗口身份、文字／焦点／选区及GTK
+  缓存仍为初始值。固定红／绿主题提供独立RGBA64预期，红色含半透明通道。
+  F8要求各阶段完成并正常退出。旧settings／scale生产文件overlay在Dark后
+  报native scheme disagrees with published theme并退出1，负对照没有编译失败。
+- [x] Linux amd64／Go1.25.8，独占Xvnc／Xfwm4 4.16.1、GTK 3.24.33：Software
+  1x／2x与OpenGL 1x／2x均完成明暗互切、Serif 15、红绿往返、缺项／错误类型／
+  截断、owner销毁／重启／保留旧窗口换主、光标属性与未映射动画设置检查，
+  PASS且退出0。OpenGL实际为Mesa 23.2.1 llvmpipe，非硬件GPU性能验收。
+  截图复核整体主题、字体与选区；未映射Gtk/EnableAnimations变化不触发UI重建，
+  不将其描述为已公开的GUI设置。独立原生光标生命周期回归再次通过。
+- [x] 启动DPI另验证：GOUI_PLAT_SCALE=1覆盖GDK_SCALE=2及288 DPI；
+  GDK_SCALE=1覆盖192 DPI；无环境覆盖时192 DPI得到实际2x；缺DPI项时专用
+  显示的X Resources 144 DPI得到1.5x，并完成相同窗口流程后恢复资源属性。
+  1.5x与最后1x用xwininfo客户区尺寸独立核对Painter倍率。
+- [x] 原工作区`env -u DISPLAY go test ./...`执行失败：既有未跟踪旧API例程／
+  测试、ui/window_lookup_test.go旧字段及Typography无DISPLAY。关键诊断去
+  耗时后与上一轮多重集相同（workspace-comparison.json），没有修改旧测试或
+  扩大skip。原有图像测试重写的PNG没有纳入本批提交。
+- [x] 已跟踪文件加本轮新Go／二进制fixture／CSS资源的隔离副本，在另一专用
+  显示执行`GOMAXPROCS=4 CGO_ENABLED=0 go test -p 2 -json -count=1 ./...`退出0：
+  73个有测试包、5739项测试及子用例通过，11项既有跳过、137个包无测试。
+  跳过为手动输入／窗口状态、跨应用剪贴板、macOS签名及iOS SDK条件，不算
+  场景通过。1050个Go文件与最终源码逐字节一致；旧测试改专用显示剪贴板并在
+  副本生成PNG。Linux arm64的x11测试目标、Windows amd64与macOS arm64的
+  example/demo交叉编译通过；没有用交叉编译代替原生运行。
+- [ ] Wayland、其他WM／GTK主题、多screen／混合DPI、移动端及Windows／macOS
+  原生桌面本轮未执行；本批生产变更限定Linux/X11及Linux原生绑定。
+
+证据目录`/tmp/goui-xsettings-1nra3i6y`保留诊断、旧源码负对照、窗口日志／截图、
+两类全仓结果、源码清单及哈希。初次窗口fixture误用未公开TextInput.Model，修正
+为公开Text／Selection；初次退出等待脚本超时，后由同一启动器持有窗口进程并检查
+退出码，完整流程正常收尾。未放宽生产阈值／断言解决用例问题；本批按共享读取层、
+设置查询、独立窗口用例和文档拆分提交，原有未跟踪文件保留。两个专用Xvnc／WM／
+总线及其辅助进程已清理，本轮未改变用户桌面设置或剪贴板。
+
 ## 虚拟化树拖拽源生命周期（2026-11-13）
 
 - [x] 正式明确既有DragSource归属：稳定TreeView持有源，OnPrepare通过RowAt取
@@ -5095,7 +5154,8 @@ arm64 构建限制保留在原记录中；本轮未修改实现或复验这些�
 - [x] 3. 窗口装饰隔离，应用样式仅控制窗口背景；私有亮暗配色、装饰像素／几何回归及 Windows／macOS GUI 交叉编译
 - [ ] 第 3 步三平台装饰与窗口交互真机验收
 - [x] 4. GUI Settings 首份快照及 Run 轮询生命周期；UI 自动 RequestUpdate、合并、相同样式去重、监听清理与过期任务失效
-- [ ] 第 4 步系统设置变化自动更新真机验收
+- [ ] 第 4 步Windows／macOS系统设置变化自动更新真机验收；Linux/X11主题／字体
+  已完成指定后端与缩放验收，见[本轮记录](#x11运行期系统主题读取2026-11-13)
 - [x] 5. 显式启用 theme/modern：亮暗、主题色、字体与完整菜单阴影规则；按钮默认焦点边框为 0，保留样式扩展入口；nil sheet 保留 GUI 兜底；Modern 示例及对比度／规则回归
 - [ ] 第 5 步 Modern 示例三平台外观验收
 - [x] 6. PopoverMenu 样式驱动外壳、菜单行文字、定位、输入、透明降级及生命周期

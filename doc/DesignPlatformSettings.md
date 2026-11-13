@@ -84,8 +84,9 @@ level, not by failing a whole settings snapshot.
 
 ## Ownership
 
-`color.Color` is the standard-library color interface; conversion to the drawing
-backend's premultiplied `graphics.Color` occurs at the rendering boundary.
+`color.Color` follows the standard-library premultiplied `RGBA()` contract.
+Native straight-alpha values must be converted before constructing a
+premultiplied `graphics.Color`, including the X11 GTK accent-color query.
 `Language` reports the first preferred UI language as a BCP 47 tag, not regional
 formatting preferences. Unsupported or failed queries return an error; GUI
 normalization and the fallback `"en"` are described in
@@ -121,3 +122,60 @@ The GUI caches this fact in its normal settings snapshot, falls back to false,
 and uses the existing shared polling and notification cycle. Native transparent
 surface creation still uses an immediate backend query, independent of that cache.
 See [Settings](Settings.md) for notification and lifetime semantics.
+
+## X11 desktop settings without a GTK event loop
+
+The display owns one native XSETTINGS client, independent of libXcursor and the
+number of windows or cursors. Settings getters read the current selection owner
+and property synchronously, including before GOUI's event loop starts. GOUI's
+existing X11 event dispatch also handles MANAGER, PropertyNotify and
+DestroyNotify for cursor refresh. No getter or event handler iterates a GTK or
+GLib main context. The GUI still polls its settings every two seconds; this is
+not a new public native-change notification API.
+
+| Field | X11 source and limits |
+| --- | --- |
+| ColorScheme | `Net/ThemeName`; the existing case-insensitive `dark` theme-name convention. XSETTINGS defines no separate standard light/dark preference. |
+| AccentColor | The same theme name selects a borrowed `gtk_css_provider_get_named` provider. A new local GtkStyleContext looks up `theme_selected_bg_color`; it does not change GtkSettings or install a screen-wide provider. |
+| FontFamily / FontSize | `Gtk/FontName`, parsed by Pango. Missing/unreadable settings retain the native Pango font-map fallback. Sizes expressed in absolute device units do not masquerade as points: family remains available, FontSize reports unsupported. |
+| Startup scale | `GOUI_PLAT_SCALE`, then `GDK_SCALE`, then XSETTINGS `Xft/DPI` (1024 units per DPI), then X Resources `Xft.dpi`, then the existing 96-DPI baseline. Window geometry remains a startup snapshot. |
+
+Missing manager/field, wrong types and malformed properties do not retain an old
+theme. Color queries return errors and GUI applies its existing per-field
+fallback. Font fallback is a native font query, not a platform-invented family or
+point size. This source contract does not reproduce GTK's complete settings.ini,
+GTK_THEME or portal precedence. CSS lookup still requires GTK 3; a missing named
+theme follows GTK's own provider fallback. Editing the files of a cached theme
+in place is outside this runtime theme-name switching contract.
+
+The client grabs the X server only for owner discovery, subscription and bounded
+property reads (at most 1 MiB). It releases the grab before parsing, CSS loading
+or cursor reloading. The parser validates a complete typed snapshot before
+publishing it; errors discard the whole snapshot. Cursor resources remain owned
+by each cursor. Releasing the last cursor keeps the display's shared settings
+subscription alive; platform destruction restores the root/current-owner masks.
+
+References and their role:
+
+- [XSETTINGS v0.5](https://specifications.freedesktop.org/xsettings/latest/)
+  specifies selection discovery, server-grab protection, manager changes and
+  complete property snapshots.
+- [Qt 6.8.3 XCB client](https://github.com/qt/qtbase/blob/v6.8.3/src/plugins/platforms/xcb/qxcbxsettings.cpp)
+  demonstrates a toolkit-owned native XSETTINGS reader. GOUI reuses its existing
+  Xlib connection rather than adding Qt's abstraction or a second event loop.
+- GTK 3.24.33's
+  [X11 settings client](https://gitlab.gnome.org/GNOME/gtk/-/blob/3.24.33/gdk/x11/xsettings-client.c)
+  updates its cache from native events. The original GOUI query observed the
+  startup GtkSettings cache when GTK dispatch was absent; a diagnostic GLib pump
+  confirmed the cause but is not part of the implementation.
+- GTK 3 documents the borrowed ownership of
+  [CssProvider.get_named](https://docs.gtk.org/gtk3/type_func.CssProvider.get_named.html)
+  and the context-local scope of
+  [StyleContext.add_provider](https://docs.gtk.org/gtk3/method.StyleContext.add_provider.html).
+  This narrowly preserves GTK CSS color interpretation without adopting GTK
+  widgets, global styling or its event loop.
+
+The executable regression is `tests/window/platform/xsettings`; its entry
+comment describes source errors, manager replacement, automatic UI rebuilds,
+focus/selection retention and startup-scale checks. Measured environment and
+verification limits are recorded in [Plan](Plan.md).

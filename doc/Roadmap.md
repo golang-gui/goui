@@ -1,5 +1,13 @@
 # GOUI 实用化与未来路线
 
+## X11运行期系统主题（2026-11-13）
+
+Settings与光标共用平台原生XSETTINGS客户端，主题／字体不再依赖GtkSettings
+启动缓存；强调色使用当前主题的局部GTK CSS Provider，不运行GTK/GLib事件循环。
+GUI沿用两秒检查、单一Changed及声明式自动重建。启动DPI读取同一原生来源，
+动态窗口缩放仍待评估。明暗互切、字体、颜色、源失效／重启及完整回归范围见
+[Plan](Plan.md#x11运行期系统主题读取2026-11-13)。
+
 ## 虚拟化树拖拽源归属（2026-11-13）
 
 正式明确稳定TreeView持有DragSource、Prepare解析节点ID的既有用法。回收行后会话
@@ -658,8 +666,9 @@ Label 已修正等价样式及测量查询导致的资源失效，TextView／Tab
 ### 设置通知与动态 HiDPI：待评估
 
 当前 GUI Settings 在 Run 期间用 Application.NewTimer 每两秒轮询；UI 已自动请求更新。
-X11 scale 按 GOUI_PLAT_SCALE／GDK_SCALE／gtk-xft-dpi 查询一次并缓存；没有动态
-monitor-scale 监听。Cursor 的 XSETTINGS 订阅只服务光标主题，不能当作窗口 DPI 能力。
+X11 scale 按 GOUI_PLAT_SCALE／GDK_SCALE／XSETTINGS Xft/DPI／X Resources
+Xft.dpi 查询一次并缓存；没有动态monitor-scale监听。XSETTINGS读取层由Settings
+与光标共用，已有原生事件订阅不能当作窗口动态DPI能力。
 
 原生设置变化通知、X11 动态 scale／混合 DPI 和通用像素布局取整分别评估；若实现，
 必须一起更新 SizeEvent、surface、输入和坐标转换。不能先引入显示器管理模型再寻找
