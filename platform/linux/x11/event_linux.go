@@ -195,7 +195,7 @@ func (l *EventLoop) wait() bool {
 			return false
 		}
 		for _, pfd := range fds {
-			if pfd.REvents&libc.POLLIN != 0 {
+			if pfd.Revents&libc.POLLIN != 0 {
 				return true
 			}
 		}
