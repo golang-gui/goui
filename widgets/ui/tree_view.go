@@ -23,6 +23,8 @@ type TreeViewView[T any] struct {
 	selection, expanded []string
 	current             string
 	indentation         float32
+	rowInsetLeft        float32
+	rowInsetRight       float32
 	rowStyle            func(widgets.TreeRow, T) string
 	rowContentDepth     func(widgets.TreeRow, T) (int, bool)
 	fields              bits.Bitmap[uint8]
@@ -98,6 +100,13 @@ func (v *TreeViewView[T]) Expanded(ids []string) *TreeViewView[T] {
 func (v *TreeViewView[T]) Indentation(value float32) *TreeViewView[T] {
 	v.indentation = value
 	v.fields.Set(treeIndentation, true)
+	return v
+}
+
+// RowInsets declares fixed left and right viewport margins in DIP. Omission
+// restores zero; row backgrounds, focus, hit bounds and content are inset together.
+func (v *TreeViewView[T]) RowInsets(left, right float32) *TreeViewView[T] {
+	v.rowInsetLeft, v.rowInsetRight = left, right
 	return v
 }
 func (v *TreeViewView[T]) OnSelection(fn func([]string)) *TreeViewView[T] {
@@ -217,6 +226,7 @@ func (v *TreeViewView[T]) Update(ctx baseui.BuildContext, widget gui.Widget) {
 		indentation = v.indentation
 	}
 	tree.SetIndentation(indentation)
+	tree.SetRowInsets(v.rowInsetLeft, v.rowInsetRight)
 	if v.fields.Check(treeExpanded) {
 		tree.SetExpandedIDs(v.expanded)
 	}
