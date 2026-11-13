@@ -9,6 +9,43 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 )
 
+type treeConstraintProbe struct {
+	gui.WidgetBase
+	constraint layout.Constraint
+}
+
+func (w *treeConstraintProbe) Measure(c layout.Constraint) layout.Measurement {
+	w.constraint = c
+	width := float32(80)
+	if c.Max.Width < layout.Inf {
+		width = c.Max.Width // 模拟有限约束下主动撑满的容器。
+	}
+	return layout.Measured(c.Clamp(geometry.Size{Width: width, Height: 20}))
+}
+
+func TestTreeExpanderPreservesUnboundedConstraints(t *testing.T) {
+	for _, tc := range []struct {
+		name                  string
+		max, childMax, wanted geometry.Size
+	}{
+		{"双轴无界", geometry.Size{Width: layout.Inf, Height: layout.Inf}, geometry.Size{Width: layout.Inf, Height: layout.Inf}, geometry.Size{Width: 156, Height: 28}},
+		{"横轴无界", geometry.Size{Width: layout.Inf, Height: 60}, geometry.Size{Width: layout.Inf, Height: 52}, geometry.Size{Width: 156, Height: 28}},
+		{"纵轴无界", geometry.Size{Width: 200, Height: layout.Inf}, geometry.Size{Width: 124, Height: layout.Inf}, geometry.Size{Width: 200, Height: 28}},
+		{"有限不足", geometry.Size{Width: 20, Height: 10}, geometry.Size{Height: 2}, geometry.Size{Width: 20, Height: 10}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			child := new(treeConstraintProbe)
+			e := NewTreeExpander()
+			e.SetDepth(3)
+			e.SetChild(child)
+			got := e.Measure(layout.Loose(tc.max))
+			if child.constraint.Max != tc.childMax || got.Size != tc.wanted {
+				t.Fatalf("子约束=%v 尺寸=%v，预期%v/%v", child.constraint, got.Size, tc.childMax, tc.wanted)
+			}
+		})
+	}
+}
+
 func TestTreeExpanderCompositionToggleAndSemantics(t *testing.T) {
 	e := NewTreeExpander()
 	child := splitTestChild(80, 20)

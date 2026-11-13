@@ -178,7 +178,9 @@ func (l *treeExpanderLayout) prefix() float32 {
 func (l *treeExpanderLayout) Measure(children []layout.Child, c layout.Constraint) layout.Measurement {
 	w, h := l.prefix()+treeRowPadding.Right, treeRowMinHeight
 	if len(children) > 1 {
-		m := children[1].Measure(layout.Loose(geometry.Size{Width: max(0, c.Max.Width-w), Height: max(0, c.Max.Height-treeRowPadding.Vertical())}))
+		inner := c.Insets(geometry.Insets{Left: l.prefix(), Right: treeRowPadding.Right,
+			Top: treeRowPadding.Top, Bottom: treeRowPadding.Bottom})
+		m := children[1].Measure(layout.Loose(inner.Max))
 		w += m.Width
 		h = max(h, m.Height+treeRowPadding.Vertical())
 	}
