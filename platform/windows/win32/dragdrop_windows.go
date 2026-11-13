@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"maps"
 	"math"
 	"runtime"
 	"slices"
@@ -588,7 +589,10 @@ func initializeOLEPreview(data *oleDataObject, preview dragdrop.Preview, physica
 	var bits unsafe.Pointer
 	bitmap, err := winapi.CreateDIBSection(&bmi, &bits)
 	if err != nil || bitmap == 0 || bits == nil {
-		return fmt.Errorf("win32 dragdrop: CreateDIBSection: %w", err)
+		if bitmap != 0 {
+			winapi.DeleteObject(winapi.HGDIOBJ(bitmap))
+		}
+		return fmt.Errorf("win32 dragdrop: CreateDIBSection returned bitmap=%#x pixels=%p: %v", bitmap, bits, err)
 	}
 	output := unsafe.Slice((*byte)(bits), width*height*4)
 	for y := 0; y < height; y++ {
@@ -616,6 +620,20 @@ func initializeOLEPreview(data *oleDataObject, preview dragdrop.Preview, physica
 	}
 	// On success, the Shell helper takes ownership of the HBITMAP.
 	return nil
+}
+
+func newOLESourceData(wire map[uint16][]byte, preview dragdrop.Preview, scale float32) *oleDataObject {
+	if preview.Image == nil {
+		return newOLEDataObject(wire)
+	}
+	// The helper can call SetData before failing. Isolate those private formats
+	// and owned media from the portable payload so fallback starts clean.
+	data := newOLEDataObject(maps.Clone(wire))
+	if err := initializeOLEPreview(data, preview, scale); err != nil {
+		data.releaseRef()
+		return newOLEDataObject(wire)
+	}
+	return data
 }
 
 type oleSourceSession struct {
@@ -716,13 +734,7 @@ func (d *oleDragService) Begin(id uint64, data *dragdrop.Data, actions dragdrop.
 		return err
 	}
 	session := &oleSourceSession{service: d, window: d.window, id: id, feedback: feedback}
-	session.data = newOLEDataObject(wire)
-	if preview.Image != nil {
-		if err := initializeOLEPreview(session.data, preview, hwndScale(d.window.hwnd)); err != nil {
-			session.data.releaseRef()
-			return err
-		}
-	}
+	session.data = newOLESourceData(wire, preview, hwndScale(d.window.hwnd))
 	session.source = newOLESourceObject(session)
 	d.source, activeOLESource = session, session
 	d.window.dragPress = false
