@@ -3,8 +3,8 @@
 // 环境：Linux/X11、Windows 或 macOS 可交互桌面；记录 OS、Linux WM、实际
 // 后端与缩放。仓库根目录运行 go run ./tests/window/widgets/table；默认 UI，
 // -gui 使用命令式 GUI，-fallback-style 显式组合兜底样式。
-// -appearance=plain/zebra/rows/grid/thick 指定初始外观，默认 plain；Appearance
-// 按钮循环切换以上模式。thick 为粗线与自定义 Widget 内容避让的专项检查。
+// -appearance=plain/zebra/rows/grid/thick/inner/outline/outline-scroll/grid-scroll/all 指定初始外观，默认 plain；Appearance
+// 按钮循环切换以上模式；后五种分别展示内线、数据轮廓、含滚动槽轮廓、含槽网格及整体外框组合。thick 为粗线与自定义 Widget 内容避让的专项检查。
 // -rows=3 改用少量数据检查网格收口，-rows=0 检查仅表头；默认仍为10000条。
 // 状态文本显示实际主题、亮暗与外观模式。默认已应用 Modern；这些外观模式是
 // 例程追加的样式覆盖，并非 Modern 的默认外观。Basic 为固定亮色，Dark 不改变它。
@@ -85,6 +85,13 @@
 //     视口背景；Expand last开启时随实际列宽填满，关闭后恢复右侧空白。
 //     滚动槽复用表格StyleName的frame/trough/thumb：内部无第二层框，轨道为
 //     方形底，滑块仍有圆角和悬停／按下反馈；表头右端补位与表头底线连续。
+//  13. -appearance=inner只画内部行列线，不画末行底边／末列右边或数据轮廓；
+//     -appearance=outline只包实际单元格，不画内部线，滚动条仍在框外。
+//     -appearance=outline-scroll只画含滚动槽的紧包围轮廓；grid-scroll另加内部线，
+//     all另加整个TableView外框。少量行且无条时轮廓随实际单元格收口。
+//     需要横滚时条仍固定在视口底部，数据与条之间的空白不画网格／斑马色。
+//     双条交汇角与轨道同色。切换模式／亮暗、Rebuild和调整列宽后不出现双线，
+//     编辑器与表头文字避让各自线带；F6几何／像素断言通过。
 //
 // 平台差异：Primary、右键触发时机按现有事件规则转换。默认 Tab 仅遍历已挂载
 // 控件，不保证跨虚拟记录导航；首版没有列重排或表格编辑事务。副作用仅测试窗口、
@@ -175,7 +182,7 @@ func (m *model) remove(id string) {
 	})
 }
 
-var appearances = []string{"plain", "zebra", "rows", "grid", "thick"}
+var appearances = []string{"plain", "zebra", "rows", "grid", "thick", "inner", "outline", "outline-scroll", "grid-scroll", "all"}
 
 func appearanceStatus(dark, fallback bool, appearance int) string {
 	theme := "Modern light"
@@ -206,48 +213,64 @@ func sheet(dark, fallback bool, appearance int) style.StyleSheet {
 		style.Name("table-cell-input").BackgroundColor(color.Transparent).BorderWidth(0).Radius(0),
 		style.Name("table-cell-input").State(style.Focused).BorderWidth(2).Radius(0),
 	)
-	h, w := float32(0), float32(0)
-	if appearance >= 2 {
-		h = 1
-	}
-	if appearance >= 3 {
-		w = 1
+	mode := appearances[appearance]
+	h, w, bottom, right, top, left := float32(0), float32(0), float32(0), float32(0), float32(0), float32(0)
+	outerH, outerW, outline := float32(1), float32(1), float32(0)
+	separator := float32(1)
+	switch mode {
+	case "rows":
+		h, bottom = 1, 1
+	case "grid":
+		h, w, bottom, right, top, left = 1, 1, 1, 1, 1, 1
+		outerH, outerW = 0, 0
+	case "thick":
+		h, w, bottom, right = 6, 12, 6, 12
+		outerH, outerW = 3, 6
+	case "inner":
+		h, w, outerH, outerW = 1, 1, 0, 0
+	case "outline":
+		bottom, right, top, left, outerH, outerW, separator = 1, 1, 1, 1, 0, 0, 0
+	case "outline-scroll":
+		outline, outerH, outerW, separator = 1, 0, 0, 0
+	case "grid-scroll", "all":
+		h, w, outline = 1, 1, 1
+		if mode == "grid-scroll" {
+			outerH, outerW = 0, 0
+		}
 	}
 	alternate := color.Color(color.Transparent)
-	if appearance == 1 || appearance >= 3 {
+	if mode == "zebra" || mode == "grid" || mode == "thick" || mode == "grid-scroll" || mode == "all" {
 		alternate = color.RGBA{R: 235, G: 235, B: 239, A: 255}
 		if dark && !fallback {
 			alternate = color.RGBA{R: 43, G: 43, B: 47, A: 255}
 		}
 	}
-	if appearance == 3 {
-		// The example's zebra surface needs a matching grid palette. Keep
-		// Modern's default subtle separators unchanged in other modes.
-		grid := color.RGBA{R: 220, G: 220, B: 225, A: 255}
+	// The example's grid palette remains distinct from both zebra surfaces.
+	if appearance >= 3 {
+		grid := color.Color(color.RGBA{R: 220, G: 220, B: 225, A: 255})
 		if dark && !fallback {
 			grid = color.RGBA{R: 58, G: 58, B: 64, A: 255}
 		}
-		rules = append(rules, style.Name("table-view").Part("grid-horizontal").BorderColor(grid), style.Name("table-view").Part("grid-vertical").BorderColor(grid))
-		rules = append(rules,
-			style.Name("table-view").Part("grid-top").BorderColor(grid).BorderWidth(1),
-			style.Name("table-view").Part("grid-left").BorderColor(grid).BorderWidth(1),
-			style.Name("table-view").Part("outer-horizontal").BorderWidth(0),
-			style.Name("table-view").Part("outer-vertical").BorderWidth(0),
-			style.Name("table-view").Part("header-separator").ForegroundColor(grid),
-		)
-	}
-	if appearance == 4 {
-		h, w = 6, 12
-		rules = append(rules,
-			style.Name("table-view").Part("outer-horizontal").BorderWidth(3),
-			style.Name("table-view").Part("outer-vertical").BorderWidth(6),
-			style.Name("table-view").Part("grid-horizontal").BorderColor(color.NRGBA{R: 90, G: 110, B: 140, A: 140}),
-			style.Name("table-view").Part("grid-vertical").BorderColor(color.NRGBA{R: 90, G: 110, B: 140, A: 140}),
-		)
+		if mode == "thick" {
+			grid = color.NRGBA{R: 90, G: 110, B: 140, A: 140}
+		}
+		for _, part := range []string{"grid-horizontal", "grid-vertical", "grid-top", "grid-bottom", "grid-left", "grid-right", "outline-horizontal", "outline-vertical"} {
+			rules = append(rules, style.Name("table-view").Part(part).BorderColor(grid))
+		}
+		rules = append(rules, style.Name("table-view").Part("header-separator").ForegroundColor(grid))
 	}
 	rules = append(rules,
 		style.Name("table-view").Part("grid-horizontal").BorderWidth(h),
 		style.Name("table-view").Part("grid-vertical").BorderWidth(w),
+		style.Name("table-view").Part("grid-top").BorderWidth(top),
+		style.Name("table-view").Part("grid-bottom").BorderWidth(bottom),
+		style.Name("table-view").Part("grid-left").BorderWidth(left),
+		style.Name("table-view").Part("grid-right").BorderWidth(right),
+		style.Name("table-view").Part("outline-horizontal").BorderWidth(outline),
+		style.Name("table-view").Part("outline-vertical").BorderWidth(outline),
+		style.Name("table-view").Part("outer-horizontal").BorderWidth(outerH),
+		style.Name("table-view").Part("outer-vertical").BorderWidth(outerW),
+		style.Name("table-view").Part("header-separator").BorderWidth(separator),
 		style.Name("table-view").Part("row-alternate").BackgroundColor(alternate).Radius(0),
 	)
 	return style.Sheet(rules...)
@@ -293,7 +316,11 @@ func assertTable(table *widgets.TableView, m *model) {
 			}
 			if c.ColumnID == "note" {
 				input, found := editorInfo(cell)
-				line, _ := gui.ResolveStyle("table-view", "grid-vertical", style.Normal).BorderWidth()
+				part := "grid-vertical"
+				if i == len(columns)-1 {
+					part = "grid-right"
+				}
+				line, _ := gui.ResolveStyle("table-view", part, style.Normal).BorderWidth()
 				want := cell.Bounds
 				want.Width = max(0, want.Width-line)
 				if !found || !input.Focusable || input.Bounds != want || input.Text != m.note(r.RowID) {
@@ -402,7 +429,7 @@ func menuItems(m *model, row, column string) []*ui.MenuItemView {
 func main() {
 	guiMode := flag.Bool("gui", false, "use imperative GUI")
 	fallback := flag.Bool("fallback-style", false, "compose fallback style")
-	appearance := flag.String("appearance", "plain", "plain/zebra/rows/grid/thick")
+	appearance := flag.String("appearance", "plain", "plain/zebra/rows/grid/thick/inner/outline/outline-scroll/grid-scroll/all")
 	rows := flag.Int("rows", 10000, "记录数量，少量数据用于验证末行／末列网格")
 	flag.Parse()
 	look := slices.Index(appearances, *appearance)

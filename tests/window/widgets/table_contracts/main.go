@@ -103,7 +103,7 @@ func sheet(dark, swapped, basicMode bool) style.StyleSheet {
 			style.Name(name).Part("header-separator").BorderWidth(1).ForegroundColor(edge),
 			style.Name(name).Part("row").BorderWidth(0).Radius(0),
 		)
-		for _, part := range []string{"grid-horizontal", "grid-vertical", "grid-top", "grid-left"} {
+		for _, part := range []string{"grid-horizontal", "grid-vertical", "grid-top", "grid-bottom", "grid-left", "grid-right"} {
 			rules = append(rules, style.Name(name).Part(part).BorderColor(edge).BorderWidth(1))
 		}
 	}

@@ -26,7 +26,7 @@ func TestGridPaletteMatchesAlternateRows(t *testing.T) {
 				wantLine = color.RGBA{R: 58, G: 58, B: 64, A: 255}
 				wantAlternate = color.RGBA{R: 43, G: 43, B: 47, A: 255}
 			}
-			for _, part := range []string{"horizontal", "vertical", "top", "left"} {
+			for _, part := range []string{"horizontal", "vertical", "top", "bottom", "left", "right"} {
 				s := grid.Resolve(style.Sel{Name: "table-view", Part: "grid-" + part})
 				ink, ok := s.BorderColor()
 				width, _ := s.BorderWidth()
