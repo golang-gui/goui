@@ -1,5 +1,24 @@
 # Plan
 
+## 拖拽验证脚本使用Go生成器保存（2026-11-14）
+
+- [x] 移除独立提交的inject.py，将其作为静态字符串放入带ignore构建约束的
+  tests/window/gui/drag_preview/generate.go；main.go声明go:generate。沿用
+  internal/nativegen及GOUI_GENERATE_DIR，脚本只生成到仓库外目录，普通窗口程序
+  构建不依赖Python，也不执行生成器。未修改用户正在编辑的AGENTS.md。
+- [x] 生成脚本用--repo明确源码根目录，不再按脚本所在目录推导；overlay输出也
+  拒绝源码树内路径，避免迁移后定位错误或将验证产物写回仓库。八种故障注入主体
+  与原脚本一致，生成的八份Go源码与此前原生验收构建逐字节相同。
+- [x] go generate成功，X11 create／draw／session、Windows bitmap／helper／
+  partial、macOS image／encode八个注入窗口目标分别在Linux amd64、Windows amd64、
+  macOS arm64编译通过。缺少生成目录、生成到源码树、缺少--repo、overlay位于
+  源码树四种错误调用都明确失败，源码树没有生成Python或JSON文件。
+- [x] `go test ./internal/nativegen ./tests/window/gui/drag_preview -count=1`通过；
+  生成器及涉及包vet、gofmt、diff检查通过。工作区全仓测试已执行，仍为上一轮
+  相同的既有旧API用例、ui旧字段和Typography缺显示诊断，无新增诊断。
+- 未重跑桌面场景：本轮不改变拖放实现或故障注入步骤；注入源码与前一轮的原生
+  验收版本一致。证据目录`/data/xuyang8/goui-drag-preview-go-generator-n4wg0vgc`。
+
 ## 原生拖拽预览失败降级（2026-11-14）
 
 - [x] 明确有效预览为尽力反馈，失败不进入DragResult.Err；非法参数及真正的数据／

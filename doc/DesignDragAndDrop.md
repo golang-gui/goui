@@ -224,8 +224,13 @@ OLE／AppKit会话启动等真正使拖放无法继续的错误仍返回，不�
 本次另在macOS 15.7.7 arm64的测试.app中实测全无图像源的本地对象／文本投递、
 取消后再拖拽及源窗口销毁；这些是实测结果，不将文档或交叉编译当成桌面验收。
 
-回归程序为tests/window/gui/drag_preview。inject.py通过Go overlay精确替换预览
-构造步骤，可注入X11 create／draw、Windows bitmap／helper／partial、macOS
+回归程序为tests/window/gui/drag_preview。验证脚本以静态字符串保存在generate.go，
+设置GOUI_GENERATE_DIR为仓库外绝对目录后，执行
+`go generate ./tests/window/gui/drag_preview`，沿用internal/nativegen输出
+`GOUI_GENERATE_DIR/tests/window/gui/drag_preview/inject.py`；源码库只提交Go文件。
+运行生成脚本时用`--repo /GOUI仓库绝对路径`指定源码根目录，overlay及构建产物也放在
+仓库之外。脚本通过Go overlay精确替换预览构造步骤，可注入X11 create／draw、
+Windows bitmap／helper／partial、macOS
 image／encode，以及用于反证的X11 session错误。overlay只用于测试构建，无生产
 故障开关；--source可加载旧实现作为负对照。验证记录见[Plan](Plan.md#原生拖拽预览失败降级2026-11-14)。
 
