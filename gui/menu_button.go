@@ -62,7 +62,7 @@ func NewMenuButton() *MenuButton {
 	b.SetLayoutManager(buttonContentLayout{})
 	b.motion = &menuButtonMotionController{MotionEventController: NewMotionEventController(), button: b}
 	b.motion.SetPhase(PhaseBubble)
-	b.motion.ConnectMotion(func(info MotionInfo) {
+	b.motion.ConnectMotion(func(_ EventContext, info MotionInfo) {
 		if b.Destroyed() {
 			return
 		}
@@ -84,11 +84,9 @@ func NewMenuButton() *MenuButton {
 	})
 	b.AddEventController(b.motion)
 	b.click = NewClickEventController()
-	b.click.ConnectPressed(func(ctx EventContext, pressed bool) {
-		b.setPressed(pressed)
-		ctx.StopPropagation()
-	})
-	b.click.ConnectClicked(func(ctx EventContext) {
+	b.click.ConnectPressedChanged(b.setPressed)
+	b.click.ConnectPressed(func(ctx EventContext, _ ClickInfo) { ctx.StopPropagation() })
+	b.click.ConnectClicked(func(ctx EventContext, _ ClickInfo) {
 		b.toggleMenu(menuOpenPointer)
 		ctx.StopPropagation()
 	})

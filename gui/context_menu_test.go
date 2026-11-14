@@ -29,7 +29,9 @@ func TestContextMenuTimingAndCancellation(t *testing.T) {
 			c := NewContextMenuEventController()
 			c.goos = goos
 			calls := 0
-			c.ConnectRequest(func(EventContext) { calls++ })
+			c.ConnectRequest(func(_ EventContext, _ ContextMenuInfo) {
+				calls++
+			})
 			e := events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonRight}
 			c.HandleEvent(&eventContext{event: e})
 			want := 1
@@ -53,7 +55,9 @@ func TestContextMenuTimingAndCancellation(t *testing.T) {
 	c := NewContextMenuEventController()
 	c.goos = "windows"
 	calls := 0
-	c.ConnectRequest(func(EventContext) { calls++ })
+	c.ConnectRequest(func(_ EventContext, _ ContextMenuInfo) {
+		calls++
+	})
 	for _, cancel := range []func(){c.Reset, func() { c.HandleCrossing(&crossingContext{direction: CrossingLeave}) }, func() {
 		c.HandleEvent(&eventContext{event: events.PointerEvent{EventType: events.PointerMove, Position: geometry.Point{X: 100}}})
 	}} {
@@ -78,7 +82,7 @@ func TestContextMenuBubblesAndKeyboardHasNoPosition(t *testing.T) {
 	child.AddEventController(local)
 	parentCalls, localCalls := 0, 0
 	consume := false
-	local.ConnectRequest(func(ctx EventContext) {
+	local.ConnectRequest(func(ctx EventContext, _ ContextMenuInfo) {
 		localCalls++
 		if p, ok := ctx.Position(); ok && p != (geometry.Point{X: 5, Y: 7}) {
 			t.Fatal(p)
@@ -87,7 +91,9 @@ func TestContextMenuBubblesAndKeyboardHasNoPosition(t *testing.T) {
 			ctx.StopPropagation()
 		}
 	})
-	parent.ConnectRequest(func(EventContext) { parentCalls++ })
+	parent.ConnectRequest(func(_ EventContext, _ ContextMenuInfo) {
+		parentCalls++
+	})
 	w := testWindowWithSurface(&window{})
 	w.SetWidget(root)
 	e := events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonRight, Position: geometry.Point{X: 15, Y: 27}}
@@ -98,7 +104,7 @@ func TestContextMenuBubblesAndKeyboardHasNoPosition(t *testing.T) {
 		t.Fatal(localCalls, parentCalls)
 	}
 	w.SetFocusedWidget(child)
-	local.ConnectRequest(func(ctx EventContext) {
+	local.ConnectRequest(func(ctx EventContext, _ ContextMenuInfo) {
 		if _, ok := ctx.Position(); ok {
 			t.Fatal("keyboard request has a position")
 		}

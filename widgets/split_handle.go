@@ -28,7 +28,8 @@ func newSplitHandle(view *SplitView) *splitHandle {
 	h.AddEventController(motion)
 	h.ConnectFocused(func(bool) { h.RequestPaint() })
 	h.drag = gui.NewDragEventController()
-	h.drag.ConnectBegin(func(point geometry.Point, _ events.Modifiers) {
+	h.drag.ConnectBegin(func(_ gui.EventContext, inputInfo gui.DragInfo) {
+		point := inputInfo.Position
 		if view.Destroyed() || !view.active() {
 			h.drag.Reset()
 			return
@@ -38,8 +39,12 @@ func newSplitHandle(view *SplitView) *splitHandle {
 		h.grabOffset = view.point(point.Add(h.Rect().Pos)) - view.startSize
 		h.RequestPaint()
 	})
-	h.drag.ConnectUpdate(func(point geometry.Point, _ events.Modifiers) { h.move(point) })
-	h.drag.ConnectEnd(func(point geometry.Point, _ events.Modifiers) {
+	h.drag.ConnectUpdate(func(_ gui.EventContext, inputInfo gui.DragInfo) {
+		point := inputInfo.Position
+		h.move(point)
+	})
+	h.drag.ConnectEnd(func(_ gui.EventContext, inputInfo gui.DragInfo) {
+		point := inputInfo.Position
 		h.move(point)
 		if h.Destroyed() {
 			return
@@ -48,7 +53,9 @@ func newSplitHandle(view *SplitView) *splitHandle {
 		h.dragging = false
 		h.RequestPaint()
 	})
-	h.drag.ConnectCancel(h.cancel)
+	h.drag.ConnectCanceled(func(_ gui.GestureCancelReason) {
+		h.cancel()
+	})
 	h.AddEventController(h.drag)
 	h.ConnectUnmount(h.cancel)
 	key := gui.NewKeyEventController()
@@ -73,7 +80,7 @@ func (h *splitHandle) cancel() {
 		return
 	}
 	h.SetState(style.Pressed, false)
-	h.dragging = false // Reset may recursively deliver ConnectCancel.
+	h.dragging = false // Reset may recursively deliver ConnectCanceled.
 	h.drag.Reset()
 	v := h.view
 	if v.Destroyed() || h.Destroyed() {

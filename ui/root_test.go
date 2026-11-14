@@ -392,22 +392,22 @@ func (c *testEventContext) PropagationStopped() bool {
 	return c.stopped
 }
 
+// 类型化按下信息要求有效坐标；通过正常分发验证声明式连接，而非伪造无坐标的控制器回调。
 func triggerButtonClick(button *gui.Button) {
-	for _, controller := range button.EventControllers() {
-		click, ok := controller.(*gui.ClickEventController)
-		if !ok {
-			continue
-		}
-		click.HandleEvent(&testEventContext{event: events.PointerEvent{
-			EventType: events.PointerDown,
-			Button:    events.PointerButtonLeft,
-			Buttons:   events.PointerButtonLeftDown,
-		}})
-		click.HandleEvent(&testEventContext{event: events.PointerEvent{
-			EventType: events.PointerUp,
-			Button:    events.PointerButtonLeft,
-		}})
+	if button.Destroyed() {
 		return
+	}
+	if button.Rect().Width <= 0 || button.Rect().Height <= 0 {
+		button.Arrange(geometry.Rect(0, 0, 120, 40))
+	}
+	host := newTestWindow()
+	host.SetWidget(button)
+	dispatcher := new(gui.EventDispatcher)
+	for _, kind := range []events.EventType{events.PointerDown, events.PointerUp} {
+		if err := dispatcher.DispatchEvent(host, events.PointerEvent{EventType: kind,
+			Button: events.PointerButtonLeft, Position: button.Snapshot().Bounds.Center()}); err != nil {
+			panic(err)
+		}
 	}
 }
 

@@ -111,7 +111,9 @@ func main() {
 	probe := new(painterProbe)
 	box.AddChild(probe)
 	wheel := gui.NewWheelEventController()
-	wheel.ConnectScroll(func(gui.EventContext, events.WheelEvent) { wheels++ })
+	wheel.ConnectScroll(func(gui.EventContext, gui.WheelInfo) {
+		wheels++
+	})
 	box.AddEventController(wheel)
 	win.SetWidget(box)
 	must(win.Show())

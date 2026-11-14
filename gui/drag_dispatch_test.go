@@ -481,7 +481,9 @@ func TestGestureDragSourceNilPrepareFallsBackToAncestor(t *testing.T) {
 		data.SetText("drag")
 		request.Data = data
 	})
-	click.ConnectClicked(func(EventContext) { clicked++ })
+	click.ConnectClicked(func(_ EventContext, _ ClickInfo) {
+		clicked++
+	})
 	outer.ConnectBegin(func() { began++ })
 	outer.ConnectEnd(func(DragResult) { ended++ })
 	platformNative.onBegin = func(id uint64) {

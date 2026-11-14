@@ -995,7 +995,8 @@ func TestEventDispatcherCaptureRoutesMoveToCapturedWidget(t *testing.T) {
 
 	drag := NewDragEventController()
 	var updates []geometry.Point
-	drag.ConnectUpdate(func(p geometry.Point, _ events.Modifiers) {
+	drag.ConnectUpdate(func(_ EventContext, inputInfo DragInfo) {
+		p := inputInfo.Position
 		updates = append(updates, p)
 	})
 	left.AddEventController(drag)
@@ -1039,7 +1040,9 @@ func TestEventDispatcherCaptureReleasesOnPointerUp(t *testing.T) {
 
 	drag := NewDragEventController()
 	ends := 0
-	drag.ConnectEnd(func(geometry.Point, events.Modifiers) { ends++ })
+	drag.ConnectEnd(func(_ EventContext, _ DragInfo) {
+		ends++
+	})
 	left.AddEventController(drag)
 
 	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})

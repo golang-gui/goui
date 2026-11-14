@@ -67,21 +67,26 @@ func NewSwitch() *Switch {
 	b.ConnectFocused(func(bool) { b.RequestPaint() })
 	b.motion = gui.NewMotionEventController()
 	b.click = gui.NewClickEventController()
-	b.click.ConnectPressed(func(_ gui.EventContext, _ bool) { b.syncPressed() })
-	b.click.ConnectClicked(func(ctx gui.EventContext) {
+	b.click.ConnectPressedChanged(func(_ bool) { b.syncPressed() })
+	b.click.ConnectClicked(func(ctx gui.EventContext, _ gui.ClickInfo) {
 		ctx.StopPropagation()
 		b.setChecked(!b.checked, true)
 	})
 	b.drag = &switchDrag{DragEventController: gui.NewDragEventController(), owner: b}
 	b.drag.SetThreshold(4)
-	b.drag.ConnectBegin(func(p geometry.Point, _ events.Modifiers) {
+	b.drag.ConnectBegin(func(_ gui.EventContext, inputInfo gui.DragInfo) {
+		p := inputInfo.Position
 		b.stopAnimation()
 		b.dragX, b.dragPosition = p.X, b.position
 		b.syncPressed()
 		b.RequestPaint()
 	})
-	b.drag.ConnectUpdate(func(p geometry.Point, _ events.Modifiers) { b.dragTo(p) })
-	b.drag.ConnectEnd(func(p geometry.Point, _ events.Modifiers) {
+	b.drag.ConnectUpdate(func(_ gui.EventContext, inputInfo gui.DragInfo) {
+		p := inputInfo.Position
+		b.dragTo(p)
+	})
+	b.drag.ConnectEnd(func(_ gui.EventContext, inputInfo gui.DragInfo) {
+		p := inputInfo.Position
 		b.dragTo(p)
 		checked := b.checked
 		if b.position != .5 {
@@ -90,7 +95,11 @@ func NewSwitch() *Switch {
 		b.syncPressed()
 		b.setChecked(checked, true)
 	})
-	b.drag.ConnectCancel(func() { b.syncPressed(); b.moveToTarget(); b.RequestPaint() })
+	b.drag.ConnectCanceled(func(_ gui.GestureCancelReason) {
+		b.syncPressed()
+		b.moveToTarget()
+		b.RequestPaint()
+	})
 	b.keys = gui.NewKeyEventController()
 	b.keys.ConnectKeyDown(func(ctx gui.EventContext, e events.KeyEvent) {
 		if (gui.KeyGesture{Key: gui.KeyEscape}).Matches(e) && (b.drag.armed || b.State().Has(style.Pressed)) {

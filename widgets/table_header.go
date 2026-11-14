@@ -30,8 +30,11 @@ func newTableHeader(v *TableView, c *TableColumn) *tableHeader {
 	motion := gui.NewMotionEventController()
 	h.AddEventController(motion)
 	click := gui.NewClickEventController()
-	click.ConnectPressed(func(_ gui.EventContext, pressed bool) { h.SetState(style.Pressed, pressed) })
-	click.ConnectClicked(func(ctx gui.EventContext) { ctx.StopPropagation(); v.requestSort(c) })
+	click.ConnectPressedChanged(func(pressed bool) { h.SetState(style.Pressed, pressed) })
+	click.ConnectClicked(func(ctx gui.EventContext, _ gui.ClickInfo) {
+		ctx.StopPropagation()
+		v.requestSort(c)
+	})
 	h.AddEventController(click)
 	keys := gui.NewKeyEventController()
 	keys.SetPhase(gui.PhaseTarget)
@@ -148,7 +151,8 @@ func newTableResizeHandle(header *tableHeader) *tableResizeHandle {
 	h.SetFocusable(true)
 	h.SetCursor(gui.CursorResizeHorizontal)
 	h.drag = gui.NewDragEventController()
-	h.drag.ConnectBegin(func(point geometry.Point, _ events.Modifiers) {
+	h.drag.ConnectBegin(func(_ gui.EventContext, inputInfo gui.DragInfo) {
+		point := inputInfo.Position
 		if h.Destroyed() || header.view.Destroyed() || header.column.owner != header.view || !header.column.visible || !header.column.resizable {
 			h.drag.Reset()
 			return
@@ -157,8 +161,12 @@ func newTableResizeHandle(header *tableHeader) *tableResizeHandle {
 		h.startX = tablePoint(h, point, header.view).X + header.view.scroll.ScrollX()
 		h.resize = header.view.beginColumnResize(header.column)
 	})
-	h.drag.ConnectUpdate(func(point geometry.Point, _ events.Modifiers) { h.move(point) })
-	h.drag.ConnectEnd(func(point geometry.Point, _ events.Modifiers) {
+	h.drag.ConnectUpdate(func(_ gui.EventContext, inputInfo gui.DragInfo) {
+		point := inputInfo.Position
+		h.move(point)
+	})
+	h.drag.ConnectEnd(func(_ gui.EventContext, inputInfo gui.DragInfo) {
+		point := inputInfo.Position
 		r := h.resize
 		h.move(point)
 		if r != nil && h.resize == r {
@@ -169,7 +177,9 @@ func newTableResizeHandle(header *tableHeader) *tableResizeHandle {
 			r.previous = nil
 		}
 	})
-	h.drag.ConnectCancel(h.cancel)
+	h.drag.ConnectCanceled(func(_ gui.GestureCancelReason) {
+		h.cancel()
+	})
 	h.AddEventController(h.drag)
 	keys := gui.NewKeyEventController()
 	keys.SetPhase(gui.PhaseTarget)

@@ -43,7 +43,7 @@ func TestMotionEventControllerEmitsMotionInfo(t *testing.T) {
 	widget := newTestWidget()
 	widget.Arrange(geometry.Rect(10, 20, 30, 40))
 	var motions []MotionInfo
-	controller.ConnectMotion(func(info MotionInfo) {
+	controller.ConnectMotion(func(_ EventContext, info MotionInfo) {
 		motions = append(motions, info)
 	})
 
@@ -80,10 +80,10 @@ func TestClickEventControllerTracksPressAndClick(t *testing.T) {
 	controller := NewClickEventController()
 	var pressed []bool
 	clicks := 0
-	controller.ConnectPressed(func(ctx EventContext, value bool) {
+	controller.ConnectPressedChanged(func(value bool) {
 		pressed = append(pressed, value)
 	})
-	controller.ConnectClicked(func(ctx EventContext) {
+	controller.ConnectClicked(func(ctx EventContext, _ ClickInfo) {
 		clicks++
 	})
 
@@ -111,12 +111,8 @@ func TestClickEventControllerTracksPressAndClick(t *testing.T) {
 
 func TestClickEventControllerSignalsCanStopPropagation(t *testing.T) {
 	controller := NewClickEventController()
-	controller.ConnectPressed(func(ctx EventContext, pressed bool) {
-		if pressed {
-			ctx.StopPropagation()
-		}
-	})
-	controller.ConnectClicked(func(ctx EventContext) {
+	controller.ConnectPressed(func(ctx EventContext, _ ClickInfo) { ctx.StopPropagation() })
+	controller.ConnectClicked(func(ctx EventContext, _ ClickInfo) {
 		ctx.StopPropagation()
 	})
 
@@ -142,7 +138,7 @@ func TestClickEventControllerSignalsCanStopPropagation(t *testing.T) {
 func TestClickEventControllerIgnoresOtherButtons(t *testing.T) {
 	controller := NewClickEventController()
 	clicks := 0
-	controller.ConnectClicked(func(ctx EventContext) {
+	controller.ConnectClicked(func(ctx EventContext, _ ClickInfo) {
 		clicks++
 	})
 
@@ -179,7 +175,7 @@ func TestClickEventControllerDefaultsToBubblePhaseAndCanSetPhase(t *testing.T) {
 func TestClickEventControllerResetClearsPress(t *testing.T) {
 	controller := NewClickEventController()
 	var pressed []bool
-	controller.ConnectPressed(func(ctx EventContext, value bool) {
+	controller.ConnectPressedChanged(func(value bool) {
 		pressed = append(pressed, value)
 	})
 
@@ -201,14 +197,14 @@ func TestClickEventControllerCancelPointerReleasesWithoutClick(t *testing.T) {
 	controller := NewClickEventController()
 	var pressed []bool
 	clicks := 0
-	controller.ConnectPressed(func(_ EventContext, value bool) { pressed = append(pressed, value) })
-	controller.ConnectClicked(func(EventContext) { clicks++ })
+	controller.ConnectPressedChanged(func(value bool) { pressed = append(pressed, value) })
+	controller.ConnectClicked(func(_ EventContext, _ ClickInfo) {
+		clicks++
+	})
 	controller.HandleEvent(&eventContext{event: events.PointerEvent{
 		EventType: events.PointerDown, Button: events.PointerButtonLeft,
 	}})
-	controller.CancelPointer(&eventContext{event: events.PointerEvent{
-		EventType: events.PointerMove, Buttons: events.PointerButtonLeftDown,
-	}})
+	controller.CancelPointer()
 	controller.HandleEvent(&eventContext{event: events.PointerEvent{
 		EventType: events.PointerUp, Button: events.PointerButtonLeft,
 	}})
@@ -220,7 +216,7 @@ func TestClickEventControllerCancelPointerReleasesWithoutClick(t *testing.T) {
 func TestClickEventControllerResetsPressOnPointerContainsLeave(t *testing.T) {
 	controller := NewClickEventController()
 	var pressed []bool
-	controller.ConnectPressed(func(ctx EventContext, value bool) {
+	controller.ConnectPressedChanged(func(value bool) {
 		pressed = append(pressed, value)
 	})
 
@@ -309,15 +305,21 @@ func TestDragEventControllerLifecycle(t *testing.T) {
 	controller := NewDragEventController()
 	var begins, updates, ends []geometry.Point
 	var beginMods, updateMods, endMods []events.Modifiers
-	controller.ConnectBegin(func(p geometry.Point, m events.Modifiers) {
+	controller.ConnectBegin(func(_ EventContext, inputInfo DragInfo) {
+		p := inputInfo.Position
+		m := inputInfo.Modifiers
 		begins = append(begins, p)
 		beginMods = append(beginMods, m)
 	})
-	controller.ConnectUpdate(func(p geometry.Point, m events.Modifiers) {
+	controller.ConnectUpdate(func(_ EventContext, inputInfo DragInfo) {
+		p := inputInfo.Position
+		m := inputInfo.Modifiers
 		updates = append(updates, p)
 		updateMods = append(updateMods, m)
 	})
-	controller.ConnectEnd(func(p geometry.Point, m events.Modifiers) {
+	controller.ConnectEnd(func(_ EventContext, inputInfo DragInfo) {
+		p := inputInfo.Position
+		m := inputInfo.Modifiers
 		ends = append(ends, p)
 		endMods = append(endMods, m)
 	})
@@ -404,7 +406,7 @@ func TestDragEventControllerLifecycle(t *testing.T) {
 func TestDragEventControllerIgnoresOtherButtons(t *testing.T) {
 	controller := NewDragEventController()
 	begins := 0
-	controller.ConnectBegin(func(geometry.Point, events.Modifiers) {
+	controller.ConnectBegin(func(_ EventContext, _ DragInfo) {
 		begins++
 	})
 

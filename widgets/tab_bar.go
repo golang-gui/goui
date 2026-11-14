@@ -96,7 +96,7 @@ func NewTabBar() *TabBar {
 // passive so HeaderBar can classify their unoccupied area as Caption.
 func (b *TabBar) addWheel(widget gui.Widget) {
 	wheel := gui.NewWheelEventController()
-	wheel.ConnectScroll(func(ctx gui.EventContext, e events.WheelEvent) {
+	wheel.ConnectScroll(func(ctx gui.EventContext, e gui.WheelInfo) {
 		delta := e.DeltaX
 		if delta == 0 {
 			delta = e.DeltaY

@@ -85,7 +85,10 @@ func NewTableView() *TableView {
 	keys.ConnectKeyDown(v.keyDown)
 	v.AddEventController(keys)
 	blank := gui.NewClickEventController()
-	blank.ConnectClicked(func(ctx gui.EventContext) { ctx.StopPropagation(); v.SetSelection(nil) })
+	blank.ConnectClicked(func(ctx gui.EventContext, _ gui.ClickInfo) {
+		ctx.StopPropagation()
+		v.SetSelection(nil)
+	})
 	v.body.AddEventController(blank)
 	menu := gui.NewContextMenuEventController()
 	menu.ConnectRequest(v.contextMenuRequested)
@@ -93,9 +96,9 @@ func NewTableView() *TableView {
 	// Keyboard menu requests target the focused table, not its body.
 	keyboardMenu := gui.NewContextMenuEventController()
 	keyboardMenu.SetPhase(gui.PhaseTarget)
-	keyboardMenu.ConnectRequest(func(ctx gui.EventContext) {
-		if _, pointer := ctx.Position(); !pointer {
-			v.contextMenuRequested(ctx)
+	keyboardMenu.ConnectRequest(func(ctx gui.EventContext, inputInfo gui.ContextMenuInfo) {
+		if !inputInfo.HasPosition {
+			v.contextMenuRequested(ctx, inputInfo)
 		}
 	})
 	v.AddEventController(keyboardMenu)

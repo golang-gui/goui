@@ -444,8 +444,8 @@ func TestWheelEventControllerPublic(t *testing.T) {
 	// WheelEventController is a public, reusable controller (like
 	// MotionEventController): connect via signal, drive via HandleEvent.
 	controller := NewWheelEventController()
-	var got events.WheelEvent
-	controller.ConnectScroll(func(_ EventContext, e events.WheelEvent) {
+	var got WheelInfo
+	controller.ConnectScroll(func(_ EventContext, e WheelInfo) {
 		got = e
 	})
 	ctx := &eventContext{event: events.WheelEvent{DeltaY: 5, Mode: events.WheelDeltaPixel}}
@@ -509,7 +509,9 @@ func TestScrollViewNestedWheelPropagation(t *testing.T) {
 			inner.SetScrollX(tc.initial.X)
 			inner.SetScrollY(tc.initial.Y)
 			outerReceived := false
-			outer.wheel.ConnectScroll(func(EventContext, events.WheelEvent) { outerReceived = true })
+			outer.wheel.ConnectScroll(func(EventContext, WheelInfo) {
+				outerReceived = true
+			})
 			if err := win.DispatchEvent(events.WheelEvent{
 				Position: geometry.Point{X: 50, Y: 50}, DeltaX: tc.delta.X, DeltaY: tc.delta.Y,
 				Mode: events.WheelDeltaPixel, Modifiers: tc.modifiers,

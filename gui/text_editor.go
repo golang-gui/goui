@@ -303,10 +303,10 @@ func newTextEditor(owner Widget, singleLine bool, padding geometry.Insets) *text
 	t.input = &textEditController{EventControllerBase: NewEventControllerBase(PhaseTarget), view: t, now: time.Now}
 	t.owner.AddEventController(t.input)
 	menu := NewContextMenuEventController()
-	menu.ConnectRequest(func(ctx EventContext) {
+	menu.ConnectRequest(func(ctx EventContext, inputInfo ContextMenuInfo) {
 		ctx.StopPropagation()
-		if point, ok := ctx.Position(); ok {
-			t.showContextMenu(&point)
+		if inputInfo.HasPosition {
+			t.showContextMenu(&inputInfo.Position)
 		} else {
 			t.showContextMenu(nil)
 		}
@@ -2213,9 +2213,8 @@ type textEditController struct {
 	view      *textEditor
 	dragging  bool
 	gesture   *GestureParticipation
-	lastDown  time.Time
+	sequence  clickSequence
 	lastPoint geometry.Point
-	clicks    int
 	now       func() time.Time
 	model     *TextModel
 	revision  uint64
@@ -2282,8 +2281,7 @@ func (c *textEditController) GestureCanceled(GestureCancelReason) {
 }
 
 func (c *textEditController) resetClicks() {
-	c.lastDown = time.Time{}
-	c.clicks = 0
+	c.sequence.reset()
 }
 
 func (c *textEditController) beginSelection(ctx EventContext, event events.PointerEvent, point geometry.Point) {
@@ -2307,15 +2305,12 @@ func (c *textEditController) beginSelection(ctx EventContext, event events.Point
 		return
 	}
 	t.syncBlink(true) // Clicking the current position is interaction too.
-	now := c.now()
-	count := 1
-	if c.clicks < 3 && c.model == model && c.revision == revision && !c.lastDown.IsZero() &&
-		now.Sub(c.lastDown) >= 0 && now.Sub(c.lastDown) <= gestureClickInterval &&
-		!gestureMoved(event.Position, c.lastPoint, gestureDefaultDistance) {
-		count = c.clicks + 1
+	if c.sequence.count >= 3 || c.model != model || c.revision != revision {
+		c.sequence.reset()
 	}
-	c.lastDown, c.lastPoint, c.dragging = now, event.Position, true
-	c.clicks, c.model, c.revision = count, model, revision
+	count := c.sequence.press(c.now(), event.Position, event.Button)
+	c.lastPoint, c.dragging = event.Position, true
+	c.model, c.revision = model, revision
 	c.lineSelection = count == 3
 	c.dragPoint = point
 	ctx.StopPropagation()

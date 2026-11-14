@@ -33,8 +33,8 @@ func NewTreeExpander() *TreeExpander {
 	e.button = &treeDisclosure{expander: e}
 	e.button.click = gui.NewClickEventController()
 	e.button.motion = gui.NewMotionEventController()
-	e.button.click.ConnectPressed(func(_ gui.EventContext, v bool) { e.button.SetState(style.Pressed, v) })
-	e.button.click.ConnectClicked(func(ctx gui.EventContext) {
+	e.button.click.ConnectPressedChanged(func(v bool) { e.button.SetState(style.Pressed, v) })
+	e.button.click.ConnectClicked(func(ctx gui.EventContext, _ gui.ClickInfo) {
 		ctx.StopPropagation()
 		if !e.Destroyed() && e.expandable {
 			e.toggle.Emit()

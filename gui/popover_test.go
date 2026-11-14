@@ -1407,7 +1407,7 @@ func TestPopoverModalShowReentryDoesNotOwnReplacement(t *testing.T) {
 		t.Fatal("anchor controller missing")
 	}
 	reentered := false
-	click.ConnectPressed(func(_ EventContext, pressed bool) {
+	click.ConnectPressedChanged(func(pressed bool) {
 		if !pressed && !reentered {
 			reentered = true
 			if err := replacement.Show(); err != nil {

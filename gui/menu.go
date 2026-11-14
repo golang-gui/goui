@@ -777,12 +777,12 @@ func newMenuItemRow(activate func(*MenuItem)) *menuItemRow {
 	r.WidgetBase.AddChild(r, r.shortcut)
 
 	r.click = NewClickEventController()
-	r.click.ConnectPressed(func(ctx EventContext, pressed bool) {
+	r.click.ConnectPressedChanged(func(pressed bool) {
 		if r.mi != nil && r.mi.available() && !r.mi.Separator() {
 			r.setPressed(pressed)
 		}
 	})
-	r.click.ConnectClicked(func(ctx EventContext) {
+	r.click.ConnectClicked(func(ctx EventContext, _ ClickInfo) {
 		if r.mi == nil || !r.mi.available() || r.mi.Separator() {
 			return // separators and unbound rows are not actions
 		}

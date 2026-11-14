@@ -75,13 +75,19 @@ func TestModifyBehaviorOverridesClearAndRestoreWithoutDuplicateControllers(t *te
 	content := func() View {
 		return Label("content").Focusable(true).
 			OnFocus(func(bool) { inner++ }).
-			OnContextMenu(func(ctx gui.EventContext) { inner++; ctx.StopPropagation() }).
+			OnContextMenu(func(ctx gui.EventContext, _ gui.ContextMenuInfo) {
+				inner++
+				ctx.StopPropagation()
+			}).
 			Shortcuts(Shortcut(KeyF5).OnActivate(func() { inner++ })).
 			DragSource(DragSource().Actions(DragCopy)).DropTarget(DropTarget(DragFormatText))
 	}
 	declaration := func() *ModifiedView {
 		return Modify(content()).OnFocus(func(bool) { outer++ }).
-			OnContextMenu(func(ctx gui.EventContext) { outer++; ctx.StopPropagation() }).
+			OnContextMenu(func(ctx gui.EventContext, _ gui.ContextMenuInfo) {
+				outer++
+				ctx.StopPropagation()
+			}).
 			Shortcuts(Shortcut(KeyF5).OnActivate(func() { outer++ })).
 			DragSource(DragSource().Actions(DragMove)).DropTarget(DropTarget(DragFormatFiles))
 	}

@@ -54,8 +54,8 @@ func NewListRow(title string) *ListRow {
 	r.ConnectFocused(func(bool) { r.RequestPaint() })
 	r.motion = gui.NewMotionEventController()
 	r.click = gui.NewClickEventController()
-	r.click.ConnectPressed(func(_ gui.EventContext, pressed bool) { r.SetState(style.Pressed, pressed) })
-	r.click.ConnectClicked(func(ctx gui.EventContext) {
+	r.click.ConnectPressedChanged(func(pressed bool) { r.SetState(style.Pressed, pressed) })
+	r.click.ConnectClicked(func(ctx gui.EventContext, _ gui.ClickInfo) {
 		ctx.StopPropagation()
 		r.activate()
 	})

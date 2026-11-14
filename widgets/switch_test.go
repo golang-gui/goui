@@ -188,7 +188,9 @@ func TestSwitchContentAndReentry(t *testing.T) {
 	child.SetLayoutManager(checkBaselineLayout{})
 	clicks := 0
 	click := gui.NewClickEventController()
-	click.ConnectClicked(func(gui.EventContext) { clicks++ })
+	click.ConnectClicked(func(_ gui.EventContext, _ gui.ClickInfo) {
+		clicks++
+	})
 	child.AddEventController(click)
 	b.SetChild(child)
 	b.Arrange(geometry.Rect(0, 0, 120, 32))

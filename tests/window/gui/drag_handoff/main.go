@@ -34,7 +34,6 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
-	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/theme/modern"
 )
 
@@ -116,12 +115,14 @@ func run() error {
 	drag := gui.NewDragEventController()
 	drag.SetThreshold(4)
 	var hotspot geometry.Point
-	drag.ConnectBegin(func(p geometry.Point, _ events.Modifiers) {
+	drag.ConnectBegin(func(_ gui.EventContext, inputInfo gui.DragInfo) {
+		p := inputInfo.Position
 		localBegins++
 		hotspot = p
 		fmt.Println("local Begin")
 	})
-	drag.ConnectUpdate(func(p geometry.Point, _ events.Modifiers) {
+	drag.ConnectUpdate(func(_ gui.EventContext, inputInfo gui.DragInfo) {
+		p := inputInfo.Position
 		if p.X >= 0 && p.Y >= 0 && p.X < button.Rect().Width && p.Y < button.Rect().Height {
 			return
 		}
@@ -136,8 +137,13 @@ func run() error {
 			fail(err)
 		}
 	})
-	drag.ConnectEnd(func(geometry.Point, events.Modifiers) { localEnds++; finish() })
-	drag.ConnectCancel(func() { localCancels++ })
+	drag.ConnectEnd(func(_ gui.EventContext, _ gui.DragInfo) {
+		localEnds++
+		finish()
+	})
+	drag.ConnectCanceled(func(_ gui.GestureCancelReason) {
+		localCancels++
+	})
 	button.AddEventController(drag)
 	target := gui.NewDropTarget(gui.LocalFormat("handoff"))
 	target.SetActions(gui.DragMove)

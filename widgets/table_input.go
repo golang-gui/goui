@@ -159,8 +159,8 @@ func (v *TableView) showMenu(row, column string, position geometry.Point) {
 		v.menuError.Emit(err)
 	}
 }
-func (v *TableView) contextMenuRequested(ctx gui.EventContext) {
-	point, pointer := ctx.Position()
+func (v *TableView) contextMenuRequested(ctx gui.EventContext, inputInfo gui.ContextMenuInfo) {
+	point, pointer := inputInfo.Position, inputInfo.HasPosition
 	if !pointer {
 		if v.current != "" {
 			ctx.StopPropagation()

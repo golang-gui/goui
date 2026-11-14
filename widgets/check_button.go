@@ -88,8 +88,11 @@ func NewCheckButton() *CheckButton {
 	b.ConnectFocused(func(bool) { b.RequestPaint() })
 	b.motion = gui.NewMotionEventController()
 	b.click = gui.NewClickEventController()
-	b.click.ConnectPressed(func(_ gui.EventContext, v bool) { b.SetState(style.Pressed, v) })
-	b.click.ConnectClicked(func(ctx gui.EventContext) { ctx.StopPropagation(); b.activate() })
+	b.click.ConnectPressedChanged(func(v bool) { b.SetState(style.Pressed, v) })
+	b.click.ConnectClicked(func(ctx gui.EventContext, _ gui.ClickInfo) {
+		ctx.StopPropagation()
+		b.activate()
+	})
 	b.keys = gui.NewKeyEventController()
 	b.keys.ConnectKeyDown(func(ctx gui.EventContext, e events.KeyEvent) {
 		for _, key := range []gui.Key{gui.KeySpace, gui.KeyEnter} {

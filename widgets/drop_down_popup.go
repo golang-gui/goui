@@ -298,8 +298,8 @@ func (d *dropDownListDelegate) Setup() gui.Widget {
 	r.AddEventController(r.motion)
 	r.AddEventController(&dropDownDisabledInput{EventControllerBase: gui.NewEventControllerBase(gui.PhaseCapture), row: r})
 	r.click = gui.NewClickEventController()
-	r.click.ConnectPressed(func(_ gui.EventContext, pressed bool) { r.SetState(style.Pressed, pressed) })
-	r.click.ConnectClicked(func(ctx gui.EventContext) {
+	r.click.ConnectPressedChanged(func(pressed bool) { r.SetState(style.Pressed, pressed) })
+	r.click.ConnectClicked(func(ctx gui.EventContext, _ gui.ClickInfo) {
 		if r.bound && !r.disabled {
 			ctx.StopPropagation()
 			r.owner.choose(r.index)

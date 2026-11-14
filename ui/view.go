@@ -227,7 +227,7 @@ type viewBase struct {
 	focusOnPointer  bool
 	cursor          Cursor
 	onFocus         func(focused bool) // fired when the mounted widget's focus state changes
-	onContextMenu   func(gui.EventContext)
+	onContextMenu   func(gui.EventContext, gui.ContextMenuInfo)
 
 	fields bits.Bitmap[uint64]
 }
@@ -272,7 +272,7 @@ type viewBaseContext struct {
 	onFocus           func(focused bool) // effective OnFocus callback, refreshed on every update
 	contextMenu       *gui.ContextMenuEventController
 	contextMenuHandle signal.Handle
-	onContextMenu     func(gui.EventContext)
+	onContextMenu     func(gui.EventContext, gui.ContextMenuInfo)
 
 	// Snapshot of the widget's initial values, captured once in mount before
 	// the first apply. Each field corresponds to a viewBase modifier; hidden
@@ -330,9 +330,9 @@ func (b *viewBase) update(ctx *viewBaseContext, w gui.Widget, live func() bool) 
 	ctx.onContextMenu = b.onContextMenu
 	if b.onContextMenu != nil && ctx.contextMenu == nil {
 		ctx.contextMenu = gui.NewContextMenuEventController()
-		ctx.contextMenuHandle = ctx.contextMenu.ConnectRequest(func(event gui.EventContext) {
+		ctx.contextMenuHandle = ctx.contextMenu.ConnectRequest(func(event gui.EventContext, inputInfo gui.ContextMenuInfo) {
 			if ctx.onContextMenu != nil {
-				ctx.onContextMenu(event)
+				ctx.onContextMenu(event, inputInfo)
 			}
 		})
 		w.AddEventController(ctx.contextMenu)
@@ -417,7 +417,7 @@ func (b *ViewBase[T]) self() *T {
 
 // OnContextMenu observes a request. Consume it with StopPropagation; keyboard
 // requests have no pointer position and should use the control's current item.
-func (b *ViewBase[T]) OnContextMenu(fn func(gui.EventContext)) *T {
+func (b *ViewBase[T]) OnContextMenu(fn func(gui.EventContext, gui.ContextMenuInfo)) *T {
 	b.onContextMenu = fn
 	b.fields.Set(viewOnContextMenu, true)
 	return b.self()

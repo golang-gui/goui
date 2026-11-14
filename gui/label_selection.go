@@ -61,11 +61,11 @@ func (l *Label) SetSelectable(value bool) {
 		if s.controller == nil {
 			s.controller = &labelSelectionController{EventControllerBase: NewEventControllerBase(PhaseBubble), state: s, now: time.Now}
 			s.context = NewContextMenuEventController()
-			s.context.ConnectRequest(func(ctx EventContext) {
+			s.context.ConnectRequest(func(ctx EventContext, inputInfo ContextMenuInfo) {
 				if !s.interactive() {
 					return
 				}
-				point, pointer := ctx.Position()
+				point, pointer := inputInfo.Position, inputInfo.HasPosition
 				if !pointer {
 					if g := s.metrics(); g != nil {
 						r := g.Caret(textedit.Position{Offset: s.value.Caret, Upstream: s.upstream})

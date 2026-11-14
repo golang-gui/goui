@@ -29,14 +29,21 @@ func TestDragSourceHandoff(t *testing.T) {
 			data := new(DragData)
 			data.SetLocal("page", root)
 			clicks, pointerEnds, pointerCancels, prepares, begins, ends := 0, 0, 0, 0, 0, 0
-			click.ConnectClicked(func(EventContext) { clicks++ })
-			drag.ConnectEnd(func(geometry.Point, events.Modifiers) { pointerEnds++ })
-			drag.ConnectCancel(func() { pointerCancels++ })
+			click.ConnectClicked(func(_ EventContext, _ ClickInfo) {
+				clicks++
+			})
+			drag.ConnectEnd(func(_ EventContext, _ DragInfo) {
+				pointerEnds++
+			})
+			drag.ConnectCanceled(func(_ GestureCancelReason) {
+				pointerCancels++
+			})
 			source.ConnectPrepare(func(*DragPrepare) { prepares++ })
 			source.ConnectBegin(func() { begins++ })
 			source.ConnectEnd(func(DragResult) { ends++ })
 			var beginErr error
-			drag.ConnectUpdate(func(point geometry.Point, _ events.Modifiers) {
+			drag.ConnectUpdate(func(_ EventContext, inputInfo DragInfo) {
+				point := inputInfo.Position
 				if point.X < 40 {
 					return
 				}
@@ -118,8 +125,10 @@ func TestDragHandoffValidationPreservesGesture(t *testing.T) {
 	drag, source := NewDragEventController(), NewDragSource()
 	root.AddEventController(drag)
 	ends, checks := 0, 0
-	drag.ConnectEnd(func(geometry.Point, events.Modifiers) { ends++ })
-	drag.ConnectUpdate(func(geometry.Point, events.Modifiers) {
+	drag.ConnectEnd(func(_ EventContext, _ DragInfo) {
+		ends++
+	})
+	drag.ConnectUpdate(func(_ EventContext, _ DragInfo) {
 		checks++
 		if source.Begin(drag, nil, DragPreview{}) == nil || !drag.Dragging() {
 			t.Fatal("invalid data consumed local gesture")

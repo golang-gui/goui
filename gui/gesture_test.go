@@ -17,8 +17,14 @@ func TestGestureThresholdMoveDeliveredAfterBegin(t *testing.T) {
 	drag.SetThreshold(4)
 	root.AddEventController(drag)
 	var points []geometry.Point
-	drag.ConnectBegin(func(p geometry.Point, _ events.Modifiers) { points = append(points, p) })
-	drag.ConnectUpdate(func(p geometry.Point, _ events.Modifiers) { points = append(points, p) })
+	drag.ConnectBegin(func(_ EventContext, inputInfo DragInfo) {
+		p := inputInfo.Position
+		points = append(points, p)
+	})
+	drag.ConnectUpdate(func(_ EventContext, inputInfo DragInfo) {
+		p := inputInfo.Position
+		points = append(points, p)
+	})
 	start, far := geometry.Point{X: 10, Y: 10}, geometry.Point{X: 200, Y: 150}
 	_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonLeft,
 		Buttons: events.PointerButtonLeftDown, Position: start})
@@ -40,9 +46,15 @@ func TestGestureClickAndParentDrag(t *testing.T) {
 		parentDrag.SetThreshold(4)
 		root.AddEventController(parentDrag)
 		clicks, begins, ends := 0, 0, 0
-		click.ConnectClicked(func(EventContext) { clicks++ })
-		parentDrag.ConnectBegin(func(geometry.Point, events.Modifiers) { begins++ })
-		parentDrag.ConnectEnd(func(geometry.Point, events.Modifiers) { ends++ })
+		click.ConnectClicked(func(_ EventContext, _ ClickInfo) {
+			clicks++
+		})
+		parentDrag.ConnectBegin(func(_ EventContext, _ DragInfo) {
+			begins++
+		})
+		parentDrag.ConnectEnd(func(_ EventContext, _ DragInfo) {
+			ends++
+		})
 		win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 		point := geometry.Point{X: 20, Y: 20}
 		_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonLeft, Position: point})
@@ -76,7 +88,10 @@ func TestGestureSecondClickCanBecomeDrag(t *testing.T) {
 	now := time.Unix(100, 0)
 	click.now = func() time.Time { return now }
 	var counts []int
-	click.ConnectClick(func(_ EventContext, count int) { counts = append(counts, count) })
+	click.ConnectClicked(func(_ EventContext, inputInfo ClickInfo) {
+		count := inputInfo.Count
+		counts = append(counts, count)
+	})
 	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 	press := func(x float32) {
 		_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonLeft, Position: geometry.Point{X: x, Y: 20}})
@@ -113,8 +128,13 @@ func TestGestureClickStopsAfterResultCallbackInvalidatesWidget(t *testing.T) {
 	click := NewClickEventController()
 	root.AddEventController(click)
 	results, compatibility := 0, 0
-	click.ConnectClick(func(EventContext, int) { results++; root.SetVisible(false) })
-	click.ConnectClicked(func(EventContext) { compatibility++ })
+	click.ConnectClicked(func(_ EventContext, _ ClickInfo) {
+		results++
+		root.SetVisible(false)
+	})
+	click.ConnectClicked(func(_ EventContext, _ ClickInfo) {
+		compatibility++
+	})
 	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 	point := geometry.Point{X: 10, Y: 10}
 	_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonLeft, Position: point})
@@ -130,7 +150,9 @@ func TestGestureLostObservedButtonCancelsPress(t *testing.T) {
 	click := NewClickEventController()
 	root.AddEventController(click)
 	clicked := 0
-	click.ConnectClicked(func(EventContext) { clicked++ })
+	click.ConnectClicked(func(_ EventContext, _ ClickInfo) {
+		clicked++
+	})
 	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 	point := geometry.Point{X: 10, Y: 10}
 	_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonLeft,
@@ -171,9 +193,15 @@ func TestGestureSameEventUsesDepthThenRegistrationOrder(t *testing.T) {
 	child.AddEventController(first)
 	child.AddEventController(second)
 	counts := [3]int{}
-	parent.ConnectBegin(func(geometry.Point, events.Modifiers) { counts[0]++ })
-	first.ConnectBegin(func(geometry.Point, events.Modifiers) { counts[1]++ })
-	second.ConnectBegin(func(geometry.Point, events.Modifiers) { counts[2]++ })
+	parent.ConnectBegin(func(_ EventContext, _ DragInfo) {
+		counts[0]++
+	})
+	first.ConnectBegin(func(_ EventContext, _ DragInfo) {
+		counts[1]++
+	})
+	second.ConnectBegin(func(_ EventContext, _ DragInfo) {
+		counts[2]++
+	})
 	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: root}})
 	_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonLeft, Position: geometry.Point{X: 20, Y: 20}})
 	if counts != [3]int{0, 1, 0} {

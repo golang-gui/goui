@@ -72,8 +72,8 @@ func NewDropDown() *DropDown {
 	d.WidgetBase.AddChild(d, d.placeholderLabel)
 	d.motion = gui.NewMotionEventController()
 	d.click = gui.NewClickEventController()
-	d.click.ConnectPressed(func(_ gui.EventContext, _ bool) { d.syncPressed() })
-	d.click.ConnectClicked(func(ctx gui.EventContext) {
+	d.click.ConnectPressedChanged(func(_ bool) { d.syncPressed() })
+	d.click.ConnectClicked(func(ctx gui.EventContext, _ gui.ClickInfo) {
 		ctx.StopPropagation()
 		d.openFromInput(d.FocusOnPointer())
 	})

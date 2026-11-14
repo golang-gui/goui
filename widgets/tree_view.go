@@ -136,7 +136,9 @@ func NewTreeView() *TreeView {
 	keys.ConnectKeyDown(v.keyDown)
 	v.AddEventController(keys)
 	blank := gui.NewClickEventController()
-	blank.ConnectClicked(func(gui.EventContext) { v.SetSelection(nil) })
+	blank.ConnectClicked(func(_ gui.EventContext, _ gui.ClickInfo) {
+		v.SetSelection(nil)
+	})
 	v.AddEventController(blank)
 	menu := gui.NewContextMenuEventController()
 	menu.ConnectRequest(v.contextMenuRequested)
@@ -924,8 +926,8 @@ func (v *TreeView) showMenu(id string, position geometry.Point) {
 	}
 }
 
-func (v *TreeView) contextMenuRequested(ctx gui.EventContext) {
-	point, ok := ctx.Position()
+func (v *TreeView) contextMenuRequested(ctx gui.EventContext, inputInfo gui.ContextMenuInfo) {
+	point, ok := inputInfo.Position, inputInfo.HasPosition
 	if !ok {
 		if v.current != "" {
 			ctx.StopPropagation()

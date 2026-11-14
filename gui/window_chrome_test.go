@@ -211,7 +211,9 @@ func TestNoneChromeResizeRegions(t *testing.T) {
 		win.Chrome().ConnectQueryRegion(func(_ geometry.Point, r *ChromeRegion) { *r = region })
 		clicks := 0
 		click := NewClickEventController()
-		click.ConnectClicked(func(EventContext) { clicks++ })
+		click.ConnectClicked(func(_ EventContext, _ ClickInfo) {
+			clicks++
+		})
 		root.AddEventController(click)
 		hits := []platform.WindowHit{platform.WindowHitTop, platform.WindowHitBottom, platform.WindowHitLeft, platform.WindowHitRight,
 			platform.WindowHitTopLeft, platform.WindowHitTopRight, platform.WindowHitBottomLeft, platform.WindowHitBottomRight}
@@ -650,7 +652,9 @@ func TestChromeMoveCaptureFailureAndReentrantDestroy(t *testing.T) {
 	native.commandError = platform.ErrUnavailable
 	click := NewClickEventController()
 	clicked := 0
-	click.ConnectClicked(func(EventContext) { clicked++ })
+	click.ConnectClicked(func(_ EventContext, _ ClickInfo) {
+		clicked++
+	})
 	win.Widget().AddEventController(click)
 	dragCaptionAt(win, geometry.Point{X: 20, Y: 20})
 	if clicked != 0 || native.moveRequests != 1 {
@@ -670,7 +674,9 @@ func TestChromeMoveUsesEventController(t *testing.T) {
 		win.Chrome().ConnectQueryRegion(func(_ geometry.Point, r *ChromeRegion) { *r = ChromeRegionCaption })
 		clicks := 0
 		click := NewClickEventController()
-		click.ConnectClicked(func(EventContext) { clicks++ })
+		click.ConnectClicked(func(_ EventContext, _ ClickInfo) {
+			clicks++
+		})
 		win.Widget().AddEventController(click)
 		dragCaptionAt(win, geometry.Point{X: 20, Y: 20})
 		if nativeHit {
@@ -789,7 +795,9 @@ func TestIntegratedResizeWithoutWidgetHit(t *testing.T) {
 			win.Chrome().ConnectQueryRegion(win.chrome.queryFrameRegion)
 			clicks := 0
 			click := NewClickEventController()
-			click.ConnectClicked(func(EventContext) { clicks++ })
+			click.ConnectClicked(func(_ EventContext, _ ClickInfo) {
+				clicks++
+			})
 			win.Widget().AddEventController(click)
 			if content == "empty" {
 				win.SetWidget(nil)
@@ -850,7 +858,9 @@ func TestChromeDoesNotCountWidgetClickAsCaptionClick(t *testing.T) {
 	click := NewClickEventController()
 	child.AddEventController(click)
 	clicked := 0
-	click.ConnectClicked(func(EventContext) { clicked++ })
+	click.ConnectClicked(func(_ EventContext, _ ClickInfo) {
+		clicked++
+	})
 	clickAt(win, geometry.Point{X: 20, Y: 20})
 	now = now.Add(100 * time.Millisecond)
 	clickAt(win, geometry.Point{X: 100, Y: 20})

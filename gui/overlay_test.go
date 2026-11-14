@@ -377,11 +377,15 @@ func TestOverlayDispatchesToFloatingContentOrUnderlyingChild(t *testing.T) {
 	main := newTestWidget()
 	mainClicks, buttonClicks := 0, 0
 	mainClick := NewClickEventController()
-	mainClick.ConnectClicked(func(EventContext) { mainClicks++ })
+	mainClick.ConnectClicked(func(_ EventContext, _ ClickInfo) {
+		mainClicks++
+	})
 	main.AddEventController(mainClick)
 	wheelEvents := 0
 	wheel := NewWheelEventController()
-	wheel.ConnectScroll(func(EventContext, events.WheelEvent) { wheelEvents++ })
+	wheel.ConnectScroll(func(EventContext, WheelInfo) {
+		wheelEvents++
+	})
 	main.AddEventController(wheel)
 	o.SetChild(main)
 	bar := NewLinearBox(layout.DirectionHorizontal)
@@ -433,7 +437,9 @@ func TestOverlayNestedConfirmationLayer(t *testing.T) {
 	counts := make(map[Widget]int)
 	for _, child := range []Widget{main, mask, panel} {
 		click := NewClickEventController()
-		click.ConnectClicked(func(EventContext) { counts[child]++ })
+		click.ConnectClicked(func(_ EventContext, _ ClickInfo) {
+			counts[child]++
+		})
 		child.AddEventController(click)
 	}
 	win := testWindowWithSurface(&window{})

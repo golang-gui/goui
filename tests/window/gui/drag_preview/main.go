@@ -43,7 +43,6 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
-	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/theme/modern"
 )
 
@@ -173,13 +172,17 @@ func run() error {
 	if *handoff {
 		gesture := gui.NewDragEventController()
 		gesture.SetThreshold(4)
-		gesture.ConnectUpdate(func(geometry.Point, events.Modifiers) {
+		gesture.ConnectUpdate(func(_ gui.EventContext, _ gui.DragInfo) {
 			if err := source.Begin(gesture, data, preview); err != nil {
 				fail(err)
 			}
 		})
-		gesture.ConnectEnd(func(geometry.Point, events.Modifiers) { pointerEnds++ })
-		gesture.ConnectCancel(func() { pointerCancels++ })
+		gesture.ConnectEnd(func(_ gui.EventContext, _ gui.DragInfo) {
+			pointerEnds++
+		})
+		gesture.ConnectCanceled(func(_ gui.GestureCancelReason) {
+			pointerCancels++
+		})
 		button.AddEventController(gesture)
 	} else {
 		button.AddEventController(source)

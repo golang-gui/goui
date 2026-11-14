@@ -18,7 +18,7 @@ type ContextMenuEventController struct {
 	armed      bool
 	press      geometry.Point
 	button     events.PointerButton
-	request    signal.Signal2[EventContext, uint64]
+	request    signal.Signal2[inputNotification, ContextMenuInfo]
 	generation uint64
 }
 
@@ -26,16 +26,19 @@ func NewContextMenuEventController() *ContextMenuEventController {
 	return &ContextMenuEventController{EventControllerBase: NewEventControllerBase(PhaseBubble), goos: runtime.GOOS}
 }
 
-func (c *ContextMenuEventController) ConnectRequest(fn func(EventContext)) signal.Handle {
-	return c.request.Connect(func(ctx EventContext, generation uint64) {
-		if generation != c.generation {
-			return
+// ConnectRequest reports typed input information. Keyboard requests have no
+// position; consuming the request still uses ctx.StopPropagation.
+func (c *ContextMenuEventController) ConnectRequest(fn func(EventContext, ContextMenuInfo)) signal.Handle {
+	return c.request.Connect(func(n inputNotification, info ContextMenuInfo) {
+		if n.valid() {
+			fn(n.ctx, info)
 		}
-		if e, ok := ctx.(*eventContext); ok && e.alive != nil && !e.alive() {
-			return
-		}
-		fn(ctx)
 	})
+}
+func (c *ContextMenuEventController) emitRequest(ctx EventContext, modifiers events.Modifiers) {
+	position, hasPosition := ctx.Position()
+	epoch := c.generation
+	c.request.Emit(newInputNotification(ctx, func() bool { return c.generation == epoch }), ContextMenuInfo{Position: position, HasPosition: hasPosition, Modifiers: modifiers})
 }
 
 func (c *ContextMenuEventController) Reset()           { c.armed = false; c.generation++ }
@@ -63,7 +66,7 @@ func (c *ContextMenuEventController) HandleEvent(ctx EventContext) {
 				c.armed, c.press, c.button = true, e.Position, e.Button
 				return
 			}
-			c.request.Emit(ctx, c.generation)
+			c.emitRequest(ctx, e.Modifiers)
 		case events.PointerMove:
 			if c.armed && gestureMoved(e.Position, c.press, gestureDefaultDistance) {
 				c.Reset()
@@ -72,14 +75,14 @@ func (c *ContextMenuEventController) HandleEvent(ctx EventContext) {
 			armed := c.armed && e.Button == c.button && !gestureMoved(e.Position, c.press, gestureDefaultDistance)
 			c.Reset()
 			if armed {
-				c.request.Emit(ctx, c.generation)
+				c.emitRequest(ctx, e.Modifiers)
 			}
 		case events.PointerLeave:
 			c.Reset()
 		}
 	case events.KeyEvent:
 		if e.EventType == events.KeyDown && !e.Repeat && (e.Key == events.KeyF10 && e.Modifiers == events.ModifierShift || e.Key == events.KeyMenu && e.Modifiers == 0) {
-			c.request.Emit(ctx, c.generation)
+			c.emitRequest(ctx, e.Modifiers)
 			if ctx.PropagationStopped() {
 				e.PreventDefault()
 			}

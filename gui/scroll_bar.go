@@ -4,7 +4,6 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/layout"
-	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/style"
 )
 
@@ -40,11 +39,13 @@ func NewScrollBar(ori layout.Direction) *ScrollBar {
 	b.drag.ConnectBegin(b.onDragBegin)
 	b.drag.ConnectUpdate(b.onDragUpdate)
 	b.drag.ConnectEnd(b.onDragEnd)
-	b.drag.ConnectCancel(b.finishDrag)
+	b.drag.ConnectCanceled(func(_ GestureCancelReason) {
+		b.finishDrag()
+	})
 	b.AddEventController(b.drag)
 
 	b.motion = NewMotionEventController()
-	b.motion.ConnectMotion(func(mi MotionInfo) {
+	b.motion.ConnectMotion(func(_ EventContext, mi MotionInfo) {
 		b.setThumbHovered(containsPoint(b.thumbRect(), mi.Position))
 	})
 	b.motion.ConnectHover(func(hovered bool) {
@@ -222,7 +223,8 @@ func (b *ScrollBar) pointOnThumb(pos geometry.Point) bool {
 
 // --- drag interaction (jump-then-drag) ---
 
-func (b *ScrollBar) onDragBegin(pos geometry.Point, _ events.Modifiers) {
+func (b *ScrollBar) onDragBegin(_ EventContext, inputInfo DragInfo) {
+	pos := inputInfo.Position
 	if b.max <= 0 {
 		return
 	}
@@ -239,11 +241,12 @@ func (b *ScrollBar) onDragBegin(pos geometry.Point, _ events.Modifiers) {
 	b.RequestPaint()
 }
 
-func (b *ScrollBar) onDragUpdate(pos geometry.Point, _ events.Modifiers) {
+func (b *ScrollBar) onDragUpdate(_ EventContext, inputInfo DragInfo) {
+	pos := inputInfo.Position
 	b.emitValueFromPos(pos)
 }
 
-func (b *ScrollBar) onDragEnd(_ geometry.Point, _ events.Modifiers) {
+func (b *ScrollBar) onDragEnd(_ EventContext, _ DragInfo) {
 	b.finishDrag()
 }
 

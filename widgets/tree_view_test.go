@@ -530,7 +530,9 @@ func TestTreeViewInteractiveContentAndDragCompetition(t *testing.T) {
 				if dragging {
 					w := splitTestChild(100, 20)
 					controller := gui.NewDragEventController()
-					controller.ConnectBegin(func(geometry.Point, events.Modifiers) { drags++ })
+					controller.ConnectBegin(func(_ gui.EventContext, _ gui.DragInfo) {
+						drags++
+					})
 					w.AddEventController(controller)
 					return w
 				}

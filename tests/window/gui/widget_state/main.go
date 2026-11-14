@@ -50,8 +50,8 @@ func newBadge() *badge {
 	b := new(badge)
 	b.SetFocusable(true)
 	click := gui.NewClickEventController()
-	click.ConnectPressed(func(_ gui.EventContext, v bool) { b.SetState(style.Pressed, v) })
-	click.ConnectClicked(func(gui.EventContext) {
+	click.ConnectPressedChanged(func(v bool) { b.SetState(style.Pressed, v) })
+	click.ConnectClicked(func(_ gui.EventContext, _ gui.ClickInfo) {
 		v := !b.State().Has(style.Checked)
 		b.SetState(style.Checked|style.Selected, v)
 		fmt.Printf("badge-click checked=%v\n", v)

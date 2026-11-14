@@ -33,10 +33,10 @@ func NewButton() *Button {
 	button.AddEventController(button.motion)
 
 	button.click = NewClickEventController()
-	button.click.ConnectPressed(func(_ EventContext, pressed bool) {
+	button.click.ConnectPressedChanged(func(pressed bool) {
 		button.setPressed(pressed)
 	})
-	button.click.ConnectClicked(func(_ EventContext) {
+	button.click.ConnectClicked(func(_ EventContext, _ ClickInfo) {
 		button.emitClicked()
 	})
 	button.AddEventController(button.click)

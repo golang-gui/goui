@@ -12,7 +12,13 @@ func TestContextMenuBindingReplacesCallbackAndRemovesController(t *testing.T) {
 	r := newRoot()
 	defer r.unmountHost()
 	first, second := 0, 0
-	w := r.update(Label("menu").OnContextMenu(func(ctx gui.EventContext) { first++; ctx.StopPropagation() }))
+	w := r.update(Label("menu").OnContextMenu(func(ctx gui.EventContext, inputInfo gui.ContextMenuInfo) {
+		first++
+		if inputInfo.HasPosition || inputInfo.Modifiers != events.ModifierShift {
+			t.Fatal(inputInfo)
+		}
+		ctx.StopPropagation()
+	}))
 	w.Arrange(geometry.Rect(0, 0, 100, 40))
 	dispatcher, host := new(gui.EventDispatcher), newTestWindow()
 	host.SetWidget(w)
@@ -20,7 +26,10 @@ func TestContextMenuBindingReplacesCallbackAndRemovesController(t *testing.T) {
 	w.SetFocusable(true)
 	host.SetFocusedWidget(w)
 	_ = dispatcher.DispatchEvent(host, request)
-	w2 := r.update(Label("menu").OnContextMenu(func(ctx gui.EventContext) { second++; ctx.StopPropagation() }))
+	w2 := r.update(Label("menu").OnContextMenu(func(ctx gui.EventContext, _ gui.ContextMenuInfo) {
+		second++
+		ctx.StopPropagation()
+	}))
 	_ = dispatcher.DispatchEvent(host, request)
 	if w2 != w || first != 1 || second != 1 {
 		t.Fatal(first, second)

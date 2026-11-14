@@ -210,7 +210,10 @@ func (d *demo) build(app ui.App) ui.RootView {
 							app.FindWindow("main").Destroy()
 						}
 					}).
-					OnContextMenu(func(ctx gui.EventContext) { increment(&d.menus); ctx.StopPropagation() }).
+					OnContextMenu(func(ctx gui.EventContext, _ gui.ContextMenuInfo) {
+						increment(&d.menus)
+						ctx.StopPropagation()
+					}).
 					Shortcuts(ui.Shortcut(ui.KeyF8).OnActivate(func() { increment(&d.keys) }))
 			})).MainWeight(1).Spacing(16).CrossAlign(layout.CrossStretch),
 			ui.Label("Cycle: Label → TextInput → empty. Focus output: F8 / Shift+F10. F6 checks."),

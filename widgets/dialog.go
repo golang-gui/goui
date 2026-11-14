@@ -55,7 +55,7 @@ func NewDialog() *Dialog {
 	d.AddEventController(keys)
 	click := &dialogBackdropClick{ClickEventController: gui.NewClickEventController(), dialog: d}
 	click.SetPhase(gui.PhaseBubble)
-	click.ConnectClicked(func(ctx gui.EventContext) {
+	click.ConnectClicked(func(ctx gui.EventContext, _ gui.ClickInfo) {
 		if p, ok := ctx.Position(); ok && d.closesAt(p) {
 			ctx.StopPropagation()
 			d.requestClose()

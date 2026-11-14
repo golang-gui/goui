@@ -161,7 +161,10 @@ func TestCheckButtonChildCompetition(t *testing.T) {
 	child := splitTestChild(60, 20)
 	click := gui.NewClickEventController()
 	clicks := 0
-	click.ConnectClicked(func(ctx gui.EventContext) { clicks++; ctx.StopPropagation() })
+	click.ConnectClicked(func(ctx gui.EventContext, _ gui.ClickInfo) {
+		clicks++
+		ctx.StopPropagation()
+	})
 	child.AddEventController(click)
 	b.SetChild(child)
 	b.Measure(layout.Tight(geometry.Size{Width: 120, Height: 32}))

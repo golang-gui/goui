@@ -58,7 +58,9 @@ func TestModalShortcutsAllPhasesAndPointerOcclusion(t *testing.T) {
 			root.AddChild(front)
 			clicked := 0
 			c1 := NewClickEventController()
-			c1.ConnectClicked(func(EventContext) { clicked++ })
+			c1.ConnectClicked(func(_ EventContext, _ ClickInfo) {
+				clicked++
+			})
 			a.AddEventController(c1)
 			for _, kind := range []events.EventType{events.PointerDown, events.PointerUp} {
 				_ = w.DispatchEvent(events.PointerEvent{EventType: kind, Position: geometry.Point{X: 110, Y: 10}, Button: events.PointerButtonLeft})
@@ -76,7 +78,9 @@ func TestModalPreventsBackgroundHoverWheelAndDrop(t *testing.T) {
 	back.AddEventController(motion)
 	wheelCalls, drops := 0, 0
 	wheel := NewWheelEventController()
-	wheel.ConnectScroll(func(EventContext, events.WheelEvent) { wheelCalls++ })
+	wheel.ConnectScroll(func(EventContext, WheelInfo) {
+		wheelCalls++
+	})
 	back.AddEventController(wheel)
 	target := NewDropTarget(DragFormatText)
 	target.ConnectEnter(func(*DragMotion) { drops++ })
@@ -225,7 +229,9 @@ func TestModalInputFocusAndPropagation(t *testing.T) {
 	keys.ConnectKeyDown(func(EventContext, events.KeyEvent) { inside++ })
 	a.AddEventController(keys)
 	click := NewClickEventController()
-	click.ConnectClicked(func(EventContext) { outside++ })
+	click.ConnectClicked(func(_ EventContext, _ ClickInfo) {
+		outside++
+	})
 	back.AddEventController(click)
 	layer.SetVisible(true)
 	if !scope.Active() || w.FocusedWidget() != a {
@@ -369,7 +375,9 @@ func TestModalCancelsBackgroundPress(t *testing.T) {
 	w, _, back, layer, _, _, _ := modalFixture(t)
 	click := NewClickEventController()
 	clicks := 0
-	click.ConnectClicked(func(EventContext) { clicks++ })
+	click.ConnectClicked(func(_ EventContext, _ ClickInfo) {
+		clicks++
+	})
 	back.AddEventController(click)
 	point := geometry.Point{X: 20, Y: 20}
 	_ = w.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonLeft, Position: point})

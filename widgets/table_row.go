@@ -5,7 +5,6 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
-	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/style"
 )
 
@@ -17,19 +16,18 @@ func (d *tableListDelegate) Setup() gui.Widget {
 	r.motion = gui.NewMotionEventController()
 	r.AddEventController(r.motion)
 	r.click = gui.NewClickEventController()
-	r.click.ConnectPressed(func(_ gui.EventContext, pressed bool) { r.SetState(style.Pressed, pressed) })
-	r.click.ConnectClick(func(ctx gui.EventContext, count int) {
+	r.click.ConnectPressedChanged(func(pressed bool) { r.SetState(style.Pressed, pressed) })
+	r.click.ConnectClicked(func(ctx gui.EventContext, inputInfo gui.ClickInfo) {
+		count := inputInfo.Count
 		if r.bound.ID == "" || r.view.Destroyed() {
 			return
 		}
 		ctx.StopPropagation()
 		id, version := r.bound.ID, r.view.revision
-		if e, ok := ctx.Event().(events.PointerEvent); ok {
-			primary, shift := treeModifiers(e.Modifiers)
-			r.view.choose(id, primary, shift)
-			if count == 2 && r.view.valid(version) && r.bound.ID == id {
-				r.view.activate.Emit(id, version)
-			}
+		primary, shift := treeModifiers(inputInfo.Modifiers)
+		r.view.choose(id, primary, shift)
+		if count == 2 && r.view.valid(version) && r.bound.ID == id {
+			r.view.activate.Emit(id, version)
 		}
 	})
 	r.AddEventController(r.click)

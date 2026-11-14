@@ -192,7 +192,9 @@ func TestTooltipDisabledAncestorAndClickPropagation(t *testing.T) {
 	a.SetEnabled(true)
 	clicks := 0
 	c := NewClickEventController()
-	c.ConnectClicked(func(EventContext) { clicks++ })
+	c.ConnectClicked(func(_ EventContext, _ ClickInfo) {
+		clicks++
+	})
 	a.AddEventController(c)
 	for _, kind := range []events.EventType{events.PointerDown, events.PointerUp} {
 		if err := w.DispatchEvent(events.PointerEvent{EventType: kind, Position: geometry.Point{X: 80, Y: 40}, Button: events.PointerButtonLeft}); err != nil {

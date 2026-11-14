@@ -6,7 +6,6 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/internal/resource"
-	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/style"
 )
@@ -78,8 +77,8 @@ func newTabItem(bar *TabBar, page *TabPage) *tabItem {
 	item.WidgetBase.AddChild(item, closeButton)
 	menu := gui.NewContextMenuEventController()
 	menu.SetPhase(gui.PhaseCapture)
-	menu.ConnectRequest(func(ctx gui.EventContext) {
-		point, ok := ctx.Position()
+	menu.ConnectRequest(func(ctx gui.EventContext, inputInfo gui.ContextMenuInfo) {
+		point, ok := inputInfo.Position, inputInfo.HasPosition
 		if !ok {
 			point.Y = item.Rect().Height
 		}
@@ -93,11 +92,11 @@ func newTabItem(bar *TabBar, page *TabPage) *tabItem {
 	motion.ConnectContainsHover(func(bool) { item.RequestLayout() })
 	item.AddEventController(motion)
 	click := gui.NewClickEventController()
-	click.ConnectPressed(func(_ gui.EventContext, v bool) {
+	click.ConnectPressedChanged(func(v bool) {
 		item.SetState(style.Pressed, v)
 		item.RequestLayout() // close disclosure depends on an ongoing body press
 	})
-	click.ConnectClicked(func(_ gui.EventContext) {
+	click.ConnectClicked(func(_ gui.EventContext, _ gui.ClickInfo) {
 		if bar.view != nil {
 			bar.view.SetCurrent(page)
 		}
@@ -105,19 +104,22 @@ func newTabItem(bar *TabBar, page *TabPage) *tabItem {
 	body.AddEventController(click)
 	drag := gui.NewDragEventController()
 	drag.SetThreshold(4)
-	drag.ConnectBegin(func(point geometry.Point, _ events.Modifiers) {
+	drag.ConnectBegin(func(_ gui.EventContext, inputInfo gui.DragInfo) {
+		point := inputInfo.Position
 		bar.beginDrag(page, item.barPoint(point))
 	})
-	drag.ConnectUpdate(func(point geometry.Point, _ events.Modifiers) {
+	drag.ConnectUpdate(func(_ gui.EventContext, inputInfo gui.DragInfo) {
+		point := inputInfo.Position
 		point = item.barPoint(point)
 		if !bar.handoff(page, drag, point) {
 			bar.updateDrag(page, point)
 		}
 	})
-	drag.ConnectEnd(func(point geometry.Point, _ events.Modifiers) {
+	drag.ConnectEnd(func(_ gui.EventContext, inputInfo gui.DragInfo) {
+		point := inputInfo.Position
 		bar.endDrag(page, item.barPoint(point))
 	})
-	drag.ConnectCancel(func() {
+	drag.ConnectCanceled(func(_ gui.GestureCancelReason) {
 		if bar.dragPage == page {
 			bar.cancelDrag()
 		}

@@ -4,7 +4,6 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
-	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/style"
 )
 
@@ -37,19 +36,16 @@ func (d *treeListDelegate) Setup() gui.Widget {
 	r.motion = gui.NewMotionEventController()
 	r.AddEventController(r.motion)
 	r.click = gui.NewClickEventController()
-	r.click.ConnectPressed(func(_ gui.EventContext, pressed bool) { r.SetState(style.Pressed, pressed) })
-	r.click.ConnectClick(func(ctx gui.EventContext, count int) {
+	r.click.ConnectPressedChanged(func(pressed bool) { r.SetState(style.Pressed, pressed) })
+	r.click.ConnectClicked(func(ctx gui.EventContext, inputInfo gui.ClickInfo) {
+		count := inputInfo.Count
 		if r.bound.ID == "" || r.view.Destroyed() {
 			return
 		}
 		ctx.StopPropagation()
 		id := r.bound.ID
 		version := r.view.modelRevision
-		e, ok := ctx.Event().(events.PointerEvent)
-		if !ok {
-			return
-		}
-		primary, shift := treeModifiers(e.Modifiers)
+		primary, shift := treeModifiers(inputInfo.Modifiers)
 		r.view.choose(id, primary, shift)
 		if !r.view.validModel(version) {
 			return

@@ -111,7 +111,7 @@ func NewScrollView() *ScrollView {
 	sv.hbar.base().setParent(sv.hbar, sv)
 
 	sv.wheel = NewWheelEventController()
-	sv.wheel.ConnectScroll(func(ctx EventContext, e events.WheelEvent) {
+	sv.wheel.ConnectScroll(func(ctx EventContext, e WheelInfo) {
 		dx, dy := e.DeltaX, e.DeltaY
 		if dy != 0 && e.Modifiers&events.ModifierShift != 0 {
 			dx, dy = dy, 0

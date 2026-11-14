@@ -186,7 +186,9 @@ func TestTabBarWheelPropagation(t *testing.T) {
 			defer bar.SetView(nil)
 			parentReceived := false
 			wheel := gui.NewWheelEventController()
-			wheel.ConnectScroll(func(gui.EventContext, events.WheelEvent) { parentReceived = true })
+			wheel.ConnectScroll(func(gui.EventContext, gui.WheelInfo) {
+				parentReceived = true
+			})
 			root.AddEventController(wheel)
 			d := new(gui.EventDispatcher)
 			if err := d.DispatchEvent(&tabInputHost{root: root}, events.WheelEvent{
