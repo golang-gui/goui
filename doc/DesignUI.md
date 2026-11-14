@@ -384,7 +384,10 @@ dismiss 回写及生命周期边界集中记录在 [未来路线](Roadmap.md#fut
 
 窗口内查找栏／遮罩 Dialog／Toast 使用 [普通 Overlay](DesignOverlay.md) 组合。
 菜单使用 ui.MenuButton／ui.MenuItem；应用也可通过 OnContextMenu 处理 GUI 的
-同步菜单请求。通用原生 Popover 目前仍是 GUI 命令式底座，不展示尚不存在的链式 API。
+同步菜单请求：`OnContextMenu(func(ctx gui.EventContext, info gui.ContextMenuInfo))`，
+用 info.HasPosition 区分指针／键盘，用 info.Position 取得局部 DIP 坐标；
+modifier 也通过 info 提供。详见 [控制器输入回调](DesignInputCallbacks.md)。
+通用原生 Popover 目前仍是 GUI 命令式底座，不展示尚不存在的链式 API。
 
 ## 6. 影响面
 

@@ -566,7 +566,9 @@ TextEditing Snapshot，不修改正文、共享模型、编辑历史内容或只
 display line扩展，[GtkText单行选择](https://github.com/GNOME/gtk/blob/4.18.6/gtk/gtktext.c#L5490)
 则覆盖全部内容。这些是所列版本桌面Widget的源码行为，未进行跨框架窗口实测。
 GOUI采用逻辑行，使已有选区不随视口宽度变化；采用整行拖选，不复制Qt的计时器
-或GTK的选择信号扩展体系。平台继续报告原始输入，ui复用gui行为，无新增公共API。
+或GTK的选择信号扩展体系。平台继续报告原始输入，ui复用gui行为。2026-11-14 起，文本与 Click 控制器共用
+私有计数算法，仍保留文本的四击复位与模型失效规则；本节原有整行选择行为不变。
+公共控制器回调的 ClickInfo 与取消拆分见 [控制器输入回调](DesignInputCallbacks.md)。
 验证与平台缺口见[Plan](Plan.md)。
 
 ## 6. ScrollView、TextInput 与 UI

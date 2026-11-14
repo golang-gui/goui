@@ -1,5 +1,53 @@
 # Plan
 
+## 控制器类型化输入与即时连续按下（2026-11-14）
+
+- [x] ClickInfo 在真实 Down 立即报告 Count、局部 DIP 坐标、按钮和 modifier；
+  连续次数可为 1、2、3、4……，不延迟已完成单击。Released 只代表真实抬起，
+  Clicked 代表完成点击，Canceled 报告取消原因，PressedChanged 只报告外观状态。
+  删除重复的旧完成接口，不伪造取消时的输入坐标；Button／UI OnClick 业务信号不变。
+- [x] Motion／Drag／Wheel／ContextMenu 和 UI OnContextMenu 使用类型化信息，
+  EventContext 继续承担同步传播控制。Drag Begin 保留原始按下信息，阈值 Move
+  在同一分发继续 Update；原生接管仍只允许获胜 Drag 的 Update 同步范围。
+  控件、已有测试与窗口例程同步迁移，树／表格不再从点击 ctx 解包原始事件。
+- [x] 通知逐个检查代次和对象生命周期，覆盖 Reset、销毁、卸载、禁用及回调重入。
+  SetButton 保留取消回调中较晚的修改；释放回调取消后续 Clicked 不重复报告取消。
+  文本编辑继续独立控制选择，仅共用私有计数算法，保留三击逻辑行／第四击重启策略。
+- [x] 新增包内回归与 tests/window/gui/input_callbacks；通过正常分发核对即时次数、
+  阶段顺序、局部坐标、Buttons／modifier、时间／距离／按钮边界、第三击转拖动、
+  真实外部释放、Reset、状态与重入。将计数限制为两击的负对照按预期失败。
+  UI 原点击夹具没有有效位置，现改为经过 EventDispatcher 的有布局输入，保留
+  原声明式绑定替换与卸载断言，不放宽测试条件。
+- [x] Linux amd64／Go1.25.8：gui／widgets 定向测试与 race、已跟踪 ui 测试与 race、
+  涉及包与窗口用例 vet 通过。只含已跟踪源码及本次新增文件的隔离副本执行
+  `go test -json ./...`：5805 项通过、11 项既有跳过、零失败。原工作区执行
+  `go test ./...` 仍因既有未跟踪旧平台例程／测试及 ui/window_lookup_test.go 编译
+  失败，诊断与前轮基线完全相同，无新增。相关的未跟踪 example/gui_test/main.go
+  仅迁移滚轮回调签名并删除无用 import，保持未跟踪，不纳入本轮提交。
+- [x] 原生真实输入：独立 Xvnc :180／Xfwm4／Linux X11，Software 1x、OpenGL 2x
+  （Mesa llvmpipe）；Windows 10 19045／Direct2D 1x；macOS 15.7.7 arm64／OpenGL
+  1x。四组均核对第三次 Down 尚未抬起即 Count=3、取消后继续拖动、外部释放、
+  Reset、Shift 滚轮、指针／键盘菜单及三击选行后双向整行拖选；最终 Destroy／Exit
+  均通过。正常 Button 无参数业务回调与语义按压状态也通过。Demo 与受影响的
+  窗口目标 Windows amd64／macOS arm64 交叉编译通过，不以编译替代上述原生验收。
+- [x] 当前源码补测共享浮层：Linux Software 1x、Windows Direct2D 1x、macOS OpenGL
+  1x 各 40 次借用，Popup／句柄／Painter 身份不变，单次创建／销毁及菜单、列表、
+  Tooltip、普通 Popover 共存通过。首次 macOS 补测混入前轮追加日志，资源次数断言
+  失败；调查时中断 Windows 首轮。保留失败记录，清空本任务日志并重新启动窗口后
+  两端复跑通过；该日志问题未作为框架缺陷或通过结果。
+
+本轮不新增平台时间戳或计数字段、不合并输入、不扩展手势仲裁，也不将鼠标计数
+契约作为触摸支持承诺。计数采用 GUI 处理输入的单调时间，间隔不超过 500 ms、
+相邻按下距离不超过 4 DIP；未分发原生队列的时间间隔仍无法还原。Windows／macOS
+2x、移动设备及触摸未执行；键盘输入仍沿用现有 KeyEvent。设计、迁移及参考版本见
+[DesignInputCallbacks](DesignInputCallbacks.md)。
+
+证据目录：`/data/xuyang8/goui-input-callbacks-bzOIUeXO`，含全仓／race／vet、负对照、
+原生结果、截图、首轮失败与复跑日志。专用 Linux 桌面、WM、总线和辅助进程已清理；
+两个 Windows 临时计划任务已删除，本任务远端桌面连接及持有输入已释放，原有 SSH
+连接和用户应用保留。工作区已有 Typography 测试会刷新源码目录内原有未跟踪 PNG，
+这些产物及所有仓库外驱动均不纳入提交。
+
 ## 窗口内置浮层持续复用（2026-11-14）
 
 - [x] 新增显式 NewTransientPopover。每个 owner Surface 惰性持有同一原生 Popup

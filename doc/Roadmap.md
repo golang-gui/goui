@@ -1,5 +1,16 @@
 # GOUI 实用化与未来路线
 
+## 控制器类型化输入与即时连续按下（2026-11-14）
+
+Click 的真实按下、抬起和完成回调统一携带 ClickInfo，按下立即报告连续次数；
+取消原因与按压外观状态独立。Motion／Drag／Wheel／ContextMenu 及 UI 菜单回调
+同步使用类型化信息，控件内位置均为局部 DIP。现有控件与例程完成迁移，Button
+和 UI OnClick 业务信号不变；文本编辑保留独立选择控制器与三击整行拖选。
+全仓隔离副本、相关 race／vet 及 Linux／Windows／macOS 原生输入流程通过，
+原工作区既有未跟踪旧测试仍阻塞全仓。具体结果与限制见 [Plan](Plan.md)，
+契约与迁移见 [DesignInputCallbacks](DesignInputCallbacks.md)。
+平台事件时间戳、通用手势扩展与移动触摸继续独立设计，不由本轮接口调整承诺。
+
 ## 窗口内置浮层共享宿主（2026-11-14）
 
 菜单、DropDown 与 Tooltip 通过 NewTransientPopover 共用同窗的一套原生 Popup 和
