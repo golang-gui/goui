@@ -179,3 +179,10 @@ The executable regression is `tests/window/platform/xsettings`; its entry
 comment describes source errors, manager replacement, automatic UI rebuilds,
 focus/selection retention and startup-scale checks. Measured environment and
 verification limits are recorded in [Plan](Plan.md).
+
+The fixed GTK CSS themes are Go strings in `themes_linux.go`. The executable
+writes them to its private temporary data directory; it does not require a
+generation step. For independent inspection, set `GOUI_GENERATE_DIR` to an
+absolute directory outside the repository and run
+`go generate ./tests/window/platform/xsettings`. The generator uses the same
+strings and writes the CSS beneath that output directory through `nativegen`.

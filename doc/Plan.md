@@ -1,5 +1,27 @@
 # Plan
 
+## 清理独立CSS与Shell测试源码（2026-11-14）
+
+- [x] 将XSETTINGS窗口用例的两个GTK测试主题移入themes_linux.go；测试运行时与
+  go generate共用同一份Go静态数据。运行时仍写进程私有临时目录，不依赖生成步骤；
+  生成器沿用internal/nativegen，只将CSS输出到仓库外GOUI_GENERATE_DIR。
+- [x] 未跟踪的example/ui_test/build.sh也迁入该目录的Go生成器；原main.go仅追加
+  go:generate指令，原例程内容保留。对应Go文件继续未跟踪，不将旧例程加入提交。
+  三份生成内容与原CSS／Shell文件逐字节一致，Shell语法检查通过；未构建旧API例程。
+- [x] 两个go generate入口成功，生成器vet通过；两处源码树内生成请求均明确拒绝。
+  internal/nativegen、XSETTINGS目标、x11包定向测试及涉及包vet通过。工作区全仓
+  测试已执行，退出1，关键诊断与前轮完全相同，没有新增失败或修改旧测试断言。
+- [x] Linux amd64／Go1.25.8，专用Xvnc／Xfwm4 4.16.1：Software 1x及OpenGL
+  2x完成完整XSETTINGS窗口流程，PASS、退出0；OpenGL为Mesa llvmpipe。两轮都
+  覆盖明暗互切、字体、红绿主题往返、缺项／错误类型／截断、owner退出／重启／替换、
+  光标及未映射布尔设置，保持窗口／输入／焦点／选区。固定红绿CSS的独立16位预乘
+  颜色断言未改，不运行或推进GTK事件循环；Windows／macOS不适用本Linux用例。
+
+证据目录`/data/xuyang8/goui-go-only-test-assets-mq6lyivi`保存原文件、生成结果、
+比较、全仓诊断及窗口日志／截图。仅迁移测试素材，不改平台设置读取或GUI行为。
+专用Xvnc／WM／总线及辅助进程已清理，两次运行的私有主题目录均由程序正常删除。
+保留用户AGENTS.md改动及其他未跟踪文件，代码迁移与文档独立提交。
+
 ## 拖拽验证脚本使用Go生成器保存（2026-11-14）
 
 - [x] 移除独立提交的inject.py，将其作为静态字符串放入带ignore构建约束的
