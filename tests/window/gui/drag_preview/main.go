@@ -1,10 +1,14 @@
+//go:generate go run generate.go
+
 // 原生预览失败降级验收，不使用DevServer。
 //
 // 环境：Linux/X11、Windows、macOS可交互桌面；记录后端、WM和倍率。
 // 启动：go run ./tests/window/gui/drag_preview [-handoff] [-close-source] [-invalid]
 // 默认两个窗口，左SOURCE有蓝色矩形预览，右TARGET接受同一Go对象；
 // -text独立验证便携文本，目标仅接收当前协商格式。
-// 使用inject.py生成Go overlay，分别模拟预览创建失败与部分资源创建后失败；
+// 设置GOUI_GENERATE_DIR为仓库外绝对路径，执行go generate ./tests/window/gui/drag_preview。
+// 然后运行生成目录/tests/window/gui/drag_preview/inject.py，并用--repo指定GOUI仓库。
+// 该脚本生成Go overlay，分别模拟预览创建失败与部分资源创建后失败；
 // 正常构建、故障构建均执行相同步骤，不设置生产环境故障开关。
 //
 // 操作与逐项预期：

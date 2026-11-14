@@ -1,7 +1,17 @@
-#!/usr/bin/env python3
+//go:build ignore
+
+// 生成窗口验收辅助脚本；输出由GOUI_GENERATE_DIR限定在源码仓库之外。
+package main
+
+import "github.com/golang-gui/goui/internal/nativegen"
+
+func main() {
+	nativegen.Main("tests/window/gui/drag_preview", map[string]string{
+		"inject.py": `#!/usr/bin/env python3
 """创建只用于窗口验收的Go源码overlay，不修改生产源码。
 
-示例：python3 tests/window/gui/drag_preview/inject.py x11 draw /绝对路径/输出目录
+先在GOUI仓库执行go generate ./tests/window/gui/drag_preview（设置GOUI_GENERATE_DIR）。
+示例：python3 /生成目录/tests/window/gui/drag_preview/inject.py x11 draw /绝对路径/输出目录 --repo /GOUI仓库
 随后go build -overlay=/绝对路径/输出目录/overlay.json ./tests/window/gui/drag_preview
 故障点通过精确源码匹配定位；源码变化后必须人工复核，不静默跳过注入。
 可用--source传入旧版本同名源码，验证旧实现确实不能完成同一次拖放。
@@ -16,8 +26,13 @@ parser.add_argument("backend", choices=["x11", "win32", "cocoa"])
 parser.add_argument("fault")
 parser.add_argument("output", type=Path)
 parser.add_argument("--source", type=Path)
+parser.add_argument("--repo", type=Path, required=True, help="GOUI仓库根目录")
 args = parser.parse_args()
-root = Path(__file__).resolve().parents[4]
+root = args.repo.resolve()
+if not (root / "go.mod").is_file():
+    parser.error("--repo必须指向GOUI仓库根目录")
+if args.output.resolve() == root or root in args.output.resolve().parents:
+    parser.error("故障构建输出必须在GOUI仓库之外")
 paths = {"x11": "platform/linux/x11/dragdrop_linux.go",
          "win32": "platform/windows/win32/dragdrop_windows.go",
          "cocoa": "platform/darwin/cocoa/dragdrop_darwin.go"}
@@ -116,3 +131,6 @@ subprocess.run(["gofmt", "-w", str(output)], check=True)
 overlay = args.output.resolve() / "overlay.json"
 overlay.write_text(json.dumps({"Replace": {str(target): str(output)}}, indent=2) + "\n")
 print(overlay)
+`,
+	})
+}
