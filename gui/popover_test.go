@@ -487,10 +487,11 @@ type placementNative struct {
 	onSize    func()
 	destroyed bool
 	shows     int
+	showErr   error
 	paints    int
 }
 
-func (p *placementNative) Show() error         { p.shows++; return nil }
+func (p *placementNative) Show() error         { p.shows++; return p.showErr }
 func (p *placementNative) RequestPaint() error { p.paints++; return nil }
 func (p *placementNative) SetPosition(x, y float32) {
 	p.positions = append(p.positions, geometry.Point{X: x, Y: y})

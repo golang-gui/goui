@@ -35,12 +35,14 @@ const (
 //
 // A Popover belongs to its anchor's Surface: the native surface is created on
 // Show, bound to that host, and released when the anchor unmounts or the
-// host is destroyed.
+// host is destroyed. NewTransientPopover instead borrows owner-cached native
+// resources and returns them on Hide, Destroy or anchor unmount.
 type Popover interface {
 	Root
 
 	Visible() bool
-	// Transparent reports the immutable configuration, including before Show.
+	// Transparent reports the native configuration. NewTransientPopover selects
+	// its shared mode on Show; ordinary NewPopover options are immutable.
 	Transparent() bool
 	// StyleName is explicit; an empty name resolves the "popover" style.
 	StyleName() string
@@ -123,8 +125,26 @@ func NewPopover(anchor Widget, options *PopoverOptions) Popover {
 	return p
 }
 
+// NewTransientPopover creates a presenter using its owner's shared native Popup
+// and Painter. Menus, drop-down lists and tooltips use this single slot; showing
+// another transient closes the previous one. Hide and Destroy release only the
+// presenter, retaining the native resources until the owner is destroyed.
+// Ordinary NewPopover surfaces remain independent and may coexist.
+//
+// The shared surface prefers transparency, falling back to opaque creation when
+// alpha is unsupported or unavailable. Transparent reports the selected mode
+// after Show. The anchor need not be mounted until Show.
+func NewTransientPopover(anchor Widget) Popover {
+	p := NewPopover(anchor, &PopoverOptions{Transparent: true}).(*popover)
+	p.transient = true
+	return p
+}
+
 type popover struct {
 	rootBase
+	transient                 bool
+	tooltipPresentation       bool
+	transientHost             *transientPopup
 	anchor                    Widget
 	widget                    Widget // content
 	position                  geometry.Point
@@ -453,6 +473,10 @@ func (p *popover) Show() error {
 }
 
 func (p *popover) Hide() {
+	if p.transient {
+		p.releaseNative()
+		return
+	}
 	cancelTooltipHost(p)
 	p.suspendFrames()
 	p.lifecycle++
@@ -573,6 +597,10 @@ func (p *popover) createNative(win Surface) error {
 		return fmt.Errorf("popover: destroyed during measurement")
 	}
 
+	if p.transient {
+		return p.acquireTransient(win)
+	}
+
 	// Platform + typography come from the app (global escape hatches); the owner
 	// platform window comes from the host's PlatformWindow escape hatch.
 	epoch := p.lifecycle
@@ -635,6 +663,10 @@ func (p *popover) createNative(win Surface) error {
 }
 
 func (p *popover) releaseNative() {
+	if p.transient {
+		p.releaseTransient()
+		return
+	}
 	if p.releasing {
 		return
 	}
@@ -700,6 +732,15 @@ func (p *popover) releaseNative() {
 }
 
 func (p *popover) finishRelease() {
+	var owner *surfaceBase
+	if p.transientHost != nil {
+		owner = p.transientHost.owner
+	}
+	defer func() {
+		if owner != nil {
+			owner.finishDestroy()
+		}
+	}()
 	if p.releasePending && !p.framePainting {
 		p.releaseNative()
 	}

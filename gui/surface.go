@@ -97,6 +97,7 @@ type surfaceBase struct {
 	host           Surface
 	claimed        bool
 	visible        bool
+	transient      *transientPopup
 	tooltip        tooltipState
 	id             string
 	styleName      string
@@ -330,15 +331,21 @@ func (w *surfaceBase) Destroy() {
 	w.destroyed = true
 	w.destroyPending = true
 	w.destroyFrames()
+	if w.transient != nil && w.transient.active != nil {
+		w.transient.active.suspendFrames()
+	}
 	w.finishDestroy()
 }
 
 func (w *surfaceBase) finishDestroy() {
-	if !w.destroyPending || w.framePainting {
+	if !w.destroyPending || w.framePainting || w.transient != nil && (w.transient.busy || w.transient.painting()) {
 		return
 	}
 	w.destroyPending = false
 	w.tooltip.dismiss(false)
+	if w.transient != nil {
+		w.transient.destroy()
+	}
 	w.cancelInput(GestureHostClosed)
 	w.drag.destroy()
 	if c := w.dispatcher.shortcuts; c != nil {

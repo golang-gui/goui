@@ -545,8 +545,8 @@ func TestTextEditorContextMenuLifecycle(t *testing.T) {
 			case "unmount":
 				pm.ConnectClosed(func() { win.SetWidget(nil) })
 				editorMenuClick(t, pm, "Delete")
-				if editor.model.Text() != "abcdef" || !plat.natives[0].destroyed || win.modalTarget != nil {
-					t.Fatal("activation after unmount or popup resource leak")
+				if editor.model.Text() != "abcdef" || plat.natives[0].destroyed || win.modalTarget != nil || win.transient.active != nil || pm.popover.(*popover).platformPopup != nil {
+					t.Fatal("卸载后执行了旧操作，或没有归还可复用浮窗")
 				}
 			case "replace-model":
 				model := NewTextModel("replacement")

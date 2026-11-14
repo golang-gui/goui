@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"errors"
 	"image/color"
 	"testing"
 	"time"
@@ -284,8 +285,17 @@ func TestTooltipReentrantPreparationAndFailedCreation(t *testing.T) {
 			t.Fatal("工作区查询回调取消后仍创建了提示")
 		}
 	})
+	t.Run("fatal-creation", func(t *testing.T) {
+		w, _, _, _, q, plat := tooltipFixture(t)
+		plat.transparentErr = errors.New("不可恢复的创建故障")
+		tooltipMove(t, w, 40, 40)
+		tooltipAdvance(t, q, tooltipDelay)
+		if len(w.Popovers()) != 0 || w.tooltip.target != nil || w.tooltip.timer.Active() || len(plat.options) != 1 {
+			t.Fatal("不可恢复的故障未取消等待状态，或错误地重试创建")
+		}
+	})
 	for _, unavailable := range []bool{false, true} {
-		t.Run(map[bool]string{false: "opaque-fallback", true: "failure"}[unavailable], func(t *testing.T) {
+		t.Run(map[bool]string{false: "opaque-fallback", true: "opaque-unavailable"}[unavailable], func(t *testing.T) {
 			w, _, _, _, q, plat := tooltipFixture(t)
 			plat.transparentErr = platform.ErrUnsupported
 			if unavailable {
@@ -293,12 +303,8 @@ func TestTooltipReentrantPreparationAndFailedCreation(t *testing.T) {
 			}
 			tooltipMove(t, w, 40, 40)
 			tooltipAdvance(t, q, tooltipDelay)
-			if unavailable {
-				if len(w.Popovers()) != 0 || w.tooltip.target != nil || w.tooltip.timer.Active() || len(plat.options) != 1 {
-					t.Fatal("失败没有释放状态或错误地重复创建")
-				}
-			} else if len(w.Popovers()) != 1 || w.tooltip.popup.Transparent() || len(plat.options) != 2 {
-				t.Fatal("不支持 alpha 时没有明确降级为不透明提示")
+			if len(w.Popovers()) != 1 || w.tooltip.popup.Transparent() || len(plat.options) != 2 {
+				t.Fatal("共享宿主不支持或无法创建 alpha 时没有降级为不透明提示")
 			}
 		})
 	}

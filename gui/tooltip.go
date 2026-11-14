@@ -1,14 +1,12 @@
 package gui
 
 import (
-	"errors"
 	"time"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui/textformat"
 	"github.com/golang-gui/goui/layout"
-	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/style"
 )
@@ -52,6 +50,9 @@ func tooltipsFor(host EventTarget) *tooltipState {
 
 func (t *tooltipState) eligible(host EventTarget) bool {
 	if t.owner == nil || t.owner.destroyed || !t.owner.focused || t.owner.frameSuspended {
+		return false
+	}
+	if h := t.owner.transient; h != nil && h.active != nil && !h.active.tooltipPresentation {
 		return false
 	}
 	if host == t.owner.owner() {
@@ -151,37 +152,32 @@ func (t *tooltipState) show() {
 		return
 	}
 	epoch, target := t.epoch, t.target
-	for _, transparent := range []bool{true, false} {
-		p := NewPopover(target, &PopoverOptions{Transparent: transparent}).(*popover)
-		p.SetStyleName("tooltip")
-		p.SetPlacement(PopoverPlacementBottom)
-		area := t.bounds
-		origin := target.base().windowRect().Pos
-		area.X -= origin.X
-		area.Y -= origin.Y
-		p.anchorArea = &area
-		p.SetWidget(newTooltipContent(target, t.text))
-		t.popup = p
-		p.ConnectClosed(func() {
-			if t.popup == p {
-				t.dismiss(true)
-			}
-		})
-		err := p.Show()
-		if t.epoch != epoch || t.popup != p || !t.current() {
-			p.Destroy()
-			return
+	p := NewTransientPopover(target).(*popover)
+	p.tooltipPresentation = true
+	p.SetStyleName("tooltip")
+	p.SetPlacement(PopoverPlacementBottom)
+	area := t.bounds
+	origin := target.base().windowRect().Pos
+	area.X -= origin.X
+	area.Y -= origin.Y
+	p.anchorArea = &area
+	p.SetWidget(newTooltipContent(target, t.text))
+	t.popup = p
+	p.ConnectClosed(func() {
+		if t.popup == p {
+			t.dismiss(true)
 		}
-		if err == nil {
-			return
-		}
-		t.popup = nil
+	})
+	err := p.Show()
+	if t.epoch != epoch || t.popup != p || !t.current() {
 		p.Destroy()
-		var creation *popoverCreationError
-		if !transparent || !errors.As(err, &creation) || !errors.Is(err, platform.ErrUnsupported) {
-			break
-		}
+		return
 	}
+	if err == nil {
+		return
+	}
+	t.popup = nil
+	p.Destroy()
 	t.dismiss(true)
 }
 

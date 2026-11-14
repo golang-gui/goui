@@ -1,13 +1,9 @@
 package gui
 
 import (
-	"errors"
-	"fmt"
-
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/layout"
-	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/style"
@@ -144,7 +140,6 @@ type PopoverMenu struct {
 	model     ListData[*MenuItem]
 	content   *menuContent
 	closed    signal.Signal0
-	hClosed   signal.Handle
 	maxHeight float32
 	modal     bool
 }
@@ -210,60 +205,30 @@ func (pm *PopoverMenu) show(placement PopoverPlacement, pos geometry.Point) erro
 	if pm.content == nil {
 		pm.content = newMenuContent(pm.model, pm.maxHeight, pm.activate)
 	}
-	// Reuse an opaque fallback until its native surface is released; a new
-	// surface must probe transparency again (e.g. after anchor migration).
-	if p, ok := pm.popover.(*popover); ok && !p.transparent && p.platformPopup == nil {
-		pm.replacePopover(true)
-	}
 	if pm.popover == nil {
-		pm.replacePopover(true)
+		p := NewTransientPopover(pm.anchor)
+		p.SetStyleName(styleNameMenu)
+		p.SetModal(pm.modal)
+		p.SetAutoDismiss(true)
+		p.ConnectDismissRequest(pm.Hide)
+		p.ConnectClosed(func() {
+			if pm.content != nil && pm.popover == p && !p.Visible() {
+				pm.content.observeCommands(false)
+			}
+			pm.closed.Emit()
+		})
+		pm.popover = p
+		p.SetWidget(pm.content)
 	}
-	show := func() error {
-		pm.popover.SetPosition(pos)
-		pm.popover.SetPlacement(placement)
-		pm.content.observeCommands(true)
-		err := pm.popover.Show()
-		if err != nil {
-			pm.content.observeCommands(false)
-		}
+	pm.popover.SetPosition(pos)
+	pm.popover.SetPlacement(placement)
+	pm.content.observeCommands(true)
+	if err := pm.popover.Show(); err != nil {
+		pm.content.observeCommands(false)
+		pm.popover.(*popover).releaseNative()
 		return err
-	}
-	err := show()
-	var creation *popoverCreationError
-	if !pm.popover.Transparent() || !errors.As(err, &creation) || (!errors.Is(err, platform.ErrUnsupported) && !errors.Is(err, platform.ErrUnavailable)) {
-		if err != nil {
-			pm.popover.(*popover).releaseNative()
-		}
-		return err
-	}
-	pm.replacePopover(false)
-	if retry := show(); retry != nil {
-		pm.popover.Destroy()
-		return fmt.Errorf("menu popup: transparent: %w; opaque: %w", err, retry)
 	}
 	return nil
-}
-
-func (pm *PopoverMenu) replacePopover(transparent bool) {
-	if pm.hClosed != nil {
-		pm.hClosed.Disconnect()
-	}
-	if pm.popover != nil {
-		pm.popover.Destroy()
-	}
-	p := NewPopover(pm.anchor, &PopoverOptions{Transparent: transparent})
-	p.SetStyleName(styleNameMenu)
-	p.SetModal(pm.modal)
-	p.SetAutoDismiss(true)
-	p.ConnectDismissRequest(pm.Hide)
-	pm.hClosed = p.ConnectClosed(func() {
-		if pm.content != nil && pm.popover == p && !p.Visible() {
-			pm.content.observeCommands(false)
-		}
-		pm.closed.Emit()
-	})
-	pm.popover = p
-	p.SetWidget(pm.content)
 }
 
 func (pm *PopoverMenu) Hide() {

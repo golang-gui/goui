@@ -549,7 +549,7 @@ func TestMenuButtonGroupInputErrorsAndIsolation(t *testing.T) {
 	if err := b[0].Open(); err != nil {
 		t.Fatal(err)
 	}
-	platform.transparentErr = errors.New("native popup failure")
+	platform.natives[0].showErr = errors.New("native popup failure")
 	errorsSeen := 0
 	b[1].ConnectOpenError(func(error) { errorsSeen++ })
 	menuButtonPointer(t, w, events.PointerMove, 150)
@@ -559,7 +559,7 @@ func TestMenuButtonGroupInputErrorsAndIsolation(t *testing.T) {
 	if err := b[1].Open(); err == nil || errorsSeen != 1 {
 		t.Fatal("同步失败没有返回错误，或重复发信号")
 	}
-	platform.transparentErr = nil
+	platform.natives[0].showErr = nil
 	if err := b[0].Open(); err != nil {
 		t.Fatal(err)
 	}
