@@ -1,3 +1,5 @@
+//go:generate go run generate.go themes_linux.go
+
 // X11原生XSETTINGS与GUI/UI自动更新验收。整个应用不运行或推进GTK/GLib事件循环。
 //
 // 环境：仅Linux/X11，必须使用没有XSETTINGS manager的独立Xvnc+WM会话；若已有
@@ -8,7 +10,9 @@
 // GOUI_PLAT_SCALE > GDK_SCALE > XSETTINGS Xft/DPI > X Resources Xft.dpi；
 // X Resources测试只在专用会话使用xrdb设置，退出后由启动者恢复。
 // 初始：本例在独立X连接上发布Adwaita、Sans 10和24 px光标；先查询平台设置，
-// 再创建GUI窗口。GUI仍沿用2秒轮询。两个固定CSS主题解压到进程私有临时目录。
+// 再创建GUI窗口。GUI仍沿用2秒轮询。两个固定CSS主题从Go静态数据写入进程私有
+// 临时目录，无需先执行生成器。另可设置仓库外绝对路径GOUI_GENERATE_DIR，再执行
+// go generate ./tests/window/platform/xsettings，将同一份CSS输出到仓库外供检查。
 //
 // 操作与逐项预期：
 //  1. 点击输入框、Ctrl+A，F6；记住输入身份、焦点与选区。后续按钮不抢焦点。
@@ -31,7 +35,6 @@
 package main
 
 import (
-	"embed"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -39,7 +42,6 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"io/fs"
 	"math"
 	"os"
 	"path/filepath"
@@ -56,9 +58,6 @@ import (
 	"github.com/golang-gui/goui/theme/modern"
 	"github.com/golang-gui/goui/ui"
 )
-
-//go:embed testdata/themes
-var themes embed.FS
 
 const appID = "org.golanggui.XSettings"
 
@@ -186,25 +185,14 @@ func run() error {
 		return err
 	}
 	defer os.RemoveAll(dir)
-	err = fs.WalkDir(themes, "testdata", func(name string, item fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if item.IsDir() {
-			return nil
-		}
-		data, err := themes.ReadFile(name)
-		if err != nil {
-			return err
-		}
-		out := filepath.Join(dir, strings.TrimPrefix(name, "testdata/"))
+	for name, data := range themeSources {
+		out := filepath.Join(dir, name)
 		if err := os.MkdirAll(filepath.Dir(out), 0755); err != nil {
 			return err
 		}
-		return os.WriteFile(out, data, 0644)
-	})
-	if err != nil {
-		return err
+		if err := os.WriteFile(out, []byte(data), 0644); err != nil {
+			return err
+		}
 	}
 	if err := os.Setenv("XDG_DATA_HOME", dir); err != nil {
 		return err
