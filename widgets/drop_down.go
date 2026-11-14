@@ -456,7 +456,7 @@ func (d *DropDown) open(focusAnchor bool) error {
 		d.content = newDropDownContent(d)
 	}
 	if d.popup == nil {
-		d.popup = gui.NewPopover(d, &gui.PopoverOptions{Transparent: true})
+		d.popup = gui.NewTransientPopover(d)
 		d.popup.SetStyleName("drop-down-popup")
 		d.popup.SetModal(true)
 		d.popup.SetAutoDismiss(true)
