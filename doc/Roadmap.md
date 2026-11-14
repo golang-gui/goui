@@ -1,5 +1,14 @@
 # GOUI 实用化与未来路线
 
+## 窗口内置浮层共享宿主（2026-11-14）
+
+菜单、DropDown 与 Tooltip 通过 NewTransientPopover 共用同窗的一套原生 Popup 和
+Painter，关闭、控件切换及卸载均归还资源，窗口销毁统一释放。普通用户 Popover 继续
+独立；Tooltip 不抢占菜单／列表。四组 Linux Software／OpenGL、Windows Direct2D、
+macOS OpenGL 原生真实输入均完成 40 次身份与创建次数验证。完整契约见
+[Popup](DesignPopup.md#窗口内置浮层的共享宿主2026-11-14)，验证与范围见 [Plan](Plan.md)。
+级联子菜单另行设计，不把窗口共享宿主扩成应用级池或模态栈。
+
 ## 原生拖拽预览失败降级（2026-11-14）
 
 X11、Windows及macOS将有效预览的原生创建失败作为视觉降级，继续同一次拖放；

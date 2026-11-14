@@ -1,5 +1,43 @@
 # Plan
 
+## 窗口内置浮层持续复用（2026-11-14）
+
+- [x] 新增显式 NewTransientPopover。每个 owner Surface 惰性持有同一原生 Popup
+  与同一 Painter，菜单（含文本编辑右键菜单）、DropDown、Tooltip 轮流借用；
+  Hide、逻辑 Destroy、控件卸载只归还，窗口销毁统一释放。普通用户 Popover 独立。
+- [x] 逻辑内容、样式、输入和焦点隔离；当前使用者接收原生事件。继承实际 DIP／像素
+  尺寸，旧对象清理不影响后来者；关闭回调重入以较晚请求为准，活动绘制帧／切换期间
+  延后窗口销毁。DragSource 终态仍按应用会话投递。Tooltip 不抢占菜单或列表，排队的
+  提示在打开菜单／列表时取消。首次 alpha 创建不支持或不可用时清理候选并尝试 opaque，
+  成功后不重建、不重新探测；其他故障返回，原生 Show 故障不降级。
+- [x] 包内回归核对 30 个 presenter 各开关三次时 Popup／Painter 的身份及创建次数，
+  覆盖窗口隔离、普通 Popover 共存、卸载／迁窗、相同尺寸不再通知、旧事件、Closed
+  重入、创建和焦点回调销毁、帧内销毁、Painter fallback、Tooltip 优先级和过期通知。
+  禁用共享的负对照按预期失败。原测试的卸载销毁断言改为归还并保留物理资源；菜单
+  失败测试改在复用的 native Show 注入故障，保留返回错误、单次通知和输入隔离断言。
+- [x] 新增 tests/window/gui/transient_popup，三列 TextInput／MenuButton／DropDown／
+  Tooltip 与普通 Popover。Go generator 只在仓库外生成日志 overlay，输出每次借用的
+  原生句柄、Popup、Painter 身份和创建／销毁；源码树内生成请求明确拒绝。
+- [x] Go1.25.8：GUI／widgets 定向测试、两包 race、新增生命周期与 Tooltip 定向 race、
+  涉及包及窗口用例 vet 通过。工作区执行 go test ./... 失败，编译诊断与前轮旧例程、
+  未跟踪旧测试完全相同，无新增；只含已跟踪源码与本轮新增文件的隔离副本在专用
+  DISPLAY 执行完整 go test -json ./...，5790 项通过、11 项既有跳过、零失败。
+- [x] 原生真实输入：Linux X11／Xvnc／Xfwm4 4.16.1，Software 1x、OpenGL 2x
+  （Mesa 23.2.1 llvmpipe）；Windows 10 19045／Direct2D 1x；macOS 15.7.7 arm64／
+  OpenGL 1x。每组 40 次借用仅创建一套共享 Popup／Painter，所有资源身份不变，
+  关闭 owner 仅释放一次；验证菜单 Esc、列表浏览确认、Tooltip 延迟、普通 Popover
+  共存和各控件语义／选择隔离。Windows／macOS 窗口目标亦交叉编译通过。
+
+本轮没有基于 RSS 作内存结论：各控件仍可保留自己的轻量内容与排版缓存，共享资源
+按窗口持续保留，明确减少的是每个已打开控件单独持有的原生面和绘图上下文。
+真实不支持 alpha 环境的降级依靠包内注入覆盖；Windows／macOS 2x 未在本轮重跑。
+不引入应用级池或级联子菜单。参考 Qt6.8.3 的复用职责划分和完整契约见 DesignPopup。
+证据目录：`/data/xuyang8/goui-shared-popup-gOWqh9PE`，含全仓日志、负对照、资源身份、
+窗口截图和原生结果。原生验证只创建本任务窗口，未修改用户应用数据或系统设置。
+专用 Linux 桌面／WM／总线和辅助进程已清理，Windows 临时计划任务已删除，
+本轮远端桌面连接已释放；原有 SSH 连接、用户应用和未跟踪文件保持原归属。工作区全仓中的既有 Typography
+像素测试会写入源码目录内原有未跟踪 PNG，这些测试产物没有纳入提交。
+
 ## 清理独立CSS与Shell测试源码（2026-11-14）
 
 - [x] 将XSETTINGS窗口用例的两个GTK测试主题移入themes_linux.go；测试运行时与
