@@ -5,9 +5,11 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/example/demo/resource"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/mlang"
 	"github.com/golang-gui/goui/ui"
 	"github.com/golang-gui/goui/widgets"
 	wui "github.com/golang-gui/goui/widgets/ui"
@@ -29,7 +31,18 @@ type dataDemo struct {
 	dataStart, dataRatio float32
 	showKind             ui.State[bool]
 	expandName           ui.State[bool]
+	tableLook            ui.State[int]
 }
+
+const (
+	tableLookDefault = iota
+	tableLookGrid
+	tableLookCells
+	tableLookOutline
+	tableLookGridOutline
+)
+
+var tableLookNames = []mlang.Getter{resource.TableDefault, resource.TableCellGrid, resource.TableCellOutline, resource.TableScrollOutline, resource.TableScrollGrid}
 
 type record struct {
 	ID, Name, Kind, Note string
@@ -109,7 +122,9 @@ func (d *dataDemo) View() ui.View { return ui.Build(d.view) }
 func (d *dataDemo) view() ui.View {
 	tree := wui.TreeView(d.tree, func(row widgets.TreeRow, value string) ui.View {
 		return ui.HBox(ui.Icon(d.host.icons[1]).Size(16).Style("tree-item-icon"), ui.Label(value).Style("tree-item-text")).Spacing(8)
-	}).ID("project-tree").Expanded(d.expanded.Get()).Selection(d.treeSelection.Get()).SelectionMode(widgets.SelectionMultiple).
+	}).ID("project-tree").RowInsets(4, 4).
+		RowStyle(func(widgets.TreeRow, string) string { return "demo-tree-row" }).
+		Expanded(d.expanded.Get()).Selection(d.treeSelection.Get()).SelectionMode(widgets.SelectionMultiple).
 		OnExpanded(func(id string, expanded bool) {
 			d.expanded.Set(setMember(d.expanded.Get(), id, expanded))
 		}).
@@ -132,12 +147,12 @@ func (d *dataDemo) view() ui.View {
 		}).OnContextMenuError(func(e error) { d.host.result(resource.TreeMenu(), e) })
 	table := wui.TableView(d.table,
 		wui.TableColumn("name", resource.Name(), func(_ widgets.TableRow, r record) ui.View { return ui.HBox(ui.Label(r.Name)).Padding(8) }).Width(d.tableWidths[0]).OnResize(func(width float32) { d.tableWidths[0] = width }).MinWidth(100).Resizable(true).Sortable(true).Expand(d.expandName.Get()),
-		wui.TableColumn("kind", resource.Kind(), func(_ widgets.TableRow, r record) ui.View { return ui.HBox(ui.Label(r.Kind)).Padding(8) }).Width(d.tableWidths[1]).OnResize(func(width float32) { d.tableWidths[1] = width }).Resizable(true).Sortable(true).Visible(d.showKind.Get()),
-		wui.TableColumn("size", resource.SizeKB(), func(_ widgets.TableRow, r record) ui.View { return ui.HBox(ui.Label(fmt.Sprint(r.Size))).Padding(8) }).Width(d.tableWidths[2]).OnResize(func(width float32) { d.tableWidths[2] = width }).Resizable(true).Sortable(true),
+		wui.TableColumn("kind", resource.Kind(), func(_ widgets.TableRow, r record) ui.View { return ui.HBox(ui.Label(r.Kind)).Padding(8) }).Width(d.tableWidths[1]).OnResize(func(width float32) { d.tableWidths[1] = width }).MinWidth(72).Resizable(true).Sortable(true).Visible(d.showKind.Get()),
+		wui.TableColumn("size", resource.SizeKB(), func(_ widgets.TableRow, r record) ui.View { return ui.HBox(ui.Label(fmt.Sprint(r.Size))).Padding(8) }).Width(d.tableWidths[2]).OnResize(func(width float32) { d.tableWidths[2] = width }).MinWidth(72).Resizable(true).Sortable(true),
 		wui.TableColumn("note", resource.Note(), func(_ widgets.TableRow, r record) ui.View {
 			return ui.TextInput().Style("demo-cell-edit").Text(r.Note).OnText(func(value string) { d.table.setNote(r.ID, value) })
-		}).Width(d.tableWidths[3]).OnResize(func(width float32) { d.tableWidths[3] = width }).Resizable(true),
-	).ID("records-table").SelectionMode(widgets.SelectionMultiple).Selection(d.tableSelection.Get()).Sort(d.sortColumn.Get(), d.sortOrder.Get()).
+		}).Width(d.tableWidths[3]).OnResize(func(width float32) { d.tableWidths[3] = width }).MinWidth(120).Resizable(true),
+	).ID("records-table").Style("demo-records").SelectionMode(widgets.SelectionMultiple).Selection(d.tableSelection.Get()).Sort(d.sortColumn.Get(), d.sortOrder.Get()).
 		OnSelection(func(ids []string) {
 			d.tableSelection.Set(slices.Clone(ids))
 			d.host.report(fmt.Sprintf(resource.TableSelected(), len(ids)))
@@ -151,11 +166,26 @@ func (d *dataDemo) view() ui.View {
 			return []*ui.MenuItemView{ui.MenuItem(resource.ViewRowID(), func() { d.host.report(fmt.Sprintf(resource.RowColumn(), id, column)) }), ui.MenuItem(resource.ResetNote(), func() { d.table.resetNote(id) })}
 		}).
 		OnContextMenuError(func(e error) { d.host.result(resource.TableMenu(), e) })
-	left := ui.VBox(ui.Label(resource.TreeActions()), ui.ScrollView(tree).MainWeight(1)).CrossAlign(layout.CrossStretch).Spacing(8).MinWidth(160)
-	right := ui.VBox(ui.Label(resource.TableActions()), table.MainWeight(1)).CrossAlign(layout.CrossStretch).Spacing(8).MinWidth(250)
-	return fullPage("data", resource.Data(), resource.DataHint(),
-		ui.HWrap(wui.Switch(resource.KindColumn()).ID("table-kind").Checked(d.showKind.Get()).OnChange(d.showKind.Set), wui.Switch(resource.ExpandColumn()).ID("table-expand").Checked(d.expandName.Get()).OnChange(d.expandName.Set)).Spacing(16).LineSpacing(8),
-		wui.VSplit(wui.HSplit(left, right).StartSize(d.dataStart).OnResize(func(start, _ float32) { d.dataStart = start }),
+	left := ui.VBox(ui.Label("TreeView").Tooltip(resource.TreeActions()), ui.ScrollView(tree).MainWeight(1)).CrossAlign(layout.CrossStretch).Spacing(8).MinWidth(160)
+	right := ui.VBox(ui.Label("TableView").Tooltip(resource.TableActions()), table.MainWeight(1)).CrossAlign(layout.CrossStretch).Spacing(8).MinWidth(250)
+	// Keep scrollbars clear of the splitter's larger pointer target.
+	upper := ui.VBox(wui.HSplit(left, right).StartSize(d.dataStart).
+		OnResize(func(start, _ float32) { d.dataStart = start }).MainWeight(1)).
+		CrossAlign(layout.CrossStretch).Paddings(geometry.Insets{Bottom: 8})
+	looks := make([]*ui.MenuItemView, len(tableLookNames))
+	for i, name := range tableLookNames {
+		looks[i] = ui.MenuItem(name(), func() {
+			d.tableLook.Set(i)
+			d.host.app.RequestUpdate() // The root owns the stylesheet.
+		})
+	}
+	return fullPage("data", resource.Data(), resource.DataHint()+" "+resource.DataPresentationHint(),
+		ui.HWrap(wui.Switch(resource.KindColumn()).ID("table-kind").Checked(d.showKind.Get()).OnChange(d.showKind.Set),
+			wui.Switch(resource.ExpandColumn()).ID("table-expand").Checked(d.expandName.Get()).OnChange(d.expandName.Set),
+			ui.MenuButton(fmt.Sprintf(resource.TableLookFormat(), tableLookNames[d.tableLook.Get()]())).ID("table-look").Menu(looks...).
+				OnOpenError(func(err error) { d.host.result(resource.TableMenu(), err) }),
+		).Spacing(16).LineSpacing(8),
+		wui.VSplit(upper,
 			ui.VBox(ui.Label(resource.ListRows()), ui.ScrollView(ui.ListView(d.list, func(i int, text string) ui.View {
 				return ui.Button(text).OnClick(func() { d.host.report(fmt.Sprintf(resource.ListSelected(), i+1)) })
 			})).MainWeight(1)).CrossAlign(layout.CrossStretch).Spacing(8)).Ratio(d.dataRatio).
@@ -187,6 +217,7 @@ func newDataDemo(host *demo) *dataDemo {
 	d.tree.Append("src", "view", "view.go")
 	d.tree.Append("project", "assets", "assets")
 	d.tree.Append("assets", "logo", "logo.svg")
+	d.tree.Append("assets", "guide", "component-styles-and-layout.md")
 	d.tree.Append("project", "readme", "README.md")
 	rows := make([]string, 1000)
 	for i := range rows {

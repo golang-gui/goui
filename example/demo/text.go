@@ -43,7 +43,7 @@ func (d *textDemo) view() ui.View {
 	if d.wrap.Get() {
 		wrap = ui.WrapWordChar
 	}
-	return fullPage("text", resource.Text(), resource.TextHint()+" "+resource.PlaceholderHint(),
+	return fullPage("text", resource.Text(), resource.TextHint()+" "+resource.TextMultiClickHint()+" "+resource.PlaceholderHint(),
 		wui.HSplit(
 			ui.ScrollView(d.inputs.View()).Direction(ui.ScrollVertical).ID("input-examples-scroll").MinWidth(220),
 			d.editorView(model, labels, items, wrap),
