@@ -1,5 +1,47 @@
 # Plan
 
+## v0.8.0 正式发布（2026-11-15）
+
+- [x] PR #113 合入 main 后冻结 `bc47eb006836fce9fed3cfe695f6345995513199`，annotated tag v0.8.0 的远端
+  peeled SHA 一致。Demo 0.8.0 / build 1，构建工具与三端程序均来自候选 git archive。
+- [x] Go1.25.8／no-cgo／trimpath／-s -w，独立 Xvnc :180／Xfwm4 4.16.1 合成桌面，
+  全仓非缓存 5816 pass／11 原 skip／0 fail；Demo 及 style／gui／ui／widgets／mlang
+  相关 race、vet 通过。Go1.24.13 三目标 Demo 编译通过，不以编译代替原生验收。
+- [x] 三目标全量 build 的两个既有移动目录缺桌面 main 例外保留，排除后 211／204／202
+  个桌面包构建通过。原工作区 `go test ./...` 退出 1，旧未跟踪例程／测试及
+  ui/window_lookup_test.go 编译诊断与准备阶段相同，无新增。干净归档全仓通过。
+- [x] 最终附件真实输入、不使用 DevServer 或观察 overlay：Linux amd64／Xvnc／
+  Xfwm4／Mesa llvmpipe OpenGL 1x；Windows10 19045／Direct2D 1x；macOS15.7.7
+  arm64／OpenGL／默认原生缩放（无 GOUI override，逻辑单位为 AppKit point）。
+  HUD 核对实际后端；启动、按钮、文本输入提交、三击第三按下即选行、上下整行
+  拖选、五种表格边框、备注和连续树选区保持、末行完整、菜单／下拉、边缘缩放
+  恢复、基础页底部版本／Switch／DropDown／行操作及关闭通过。Windows 原生退出 0。
+- [x] Windows VersionInfo 0.8.0.1，EXE 摘要与本地相同，未做 Authenticode；
+  macOS Developer ID／runtime／timestamp，公证 4147ea42-173d-4fb8-b9bf-ddca94023432
+  Accepted；最终 ditto ZIP 解压后 0.8.0／1、严格签名、票据、Gatekeeper
+  Notarized Developer ID 和实际窗口操作通过，ZIP 回传摘要一致。
+- [x] BUILD-INFO、SHA256SUMS 与双语 Release Notes 完成；五附件服务端 digest、
+  Draft 下载和原件比较通过。正式版本设为 Latest，匿名公开下载、哈希与字节比较通过。
+- [x] Go proxy 解析 v0.8.0，Origin Hash 与候选一致；公开模块 1067 份 Go 源文件与
+  冻结归档一致。独立 README 计数器消费项目在 Go1.24.13 下，关闭 workspace、
+  无 replace，Linux／Windows／macOS 三目标编译通过。
+- [x] 双语 README 下载入口与 Demo 说明同步，本记录和 Roadmap 更新；旧截图继续
+  标 v0.6.0。文档收尾不改动已发布标签或附件。代码改动已在发布前冻结。
+
+最终附件未重跑 Software／2x、Windows OpenGL、混合 DPI／Retina 像素、全量
+IME／DnD、Linux ARM64 桌面或物理移动设备，不补写为通过。准备阶段更广的状态、
+列宽／树横滚和多语言检查仍作为独立证据保留，不代替最终程序的本节验收。
+驱动首轮的 xdotool LF、持有输入时换页、远端旧帧等问题已保留截图并串行复跑；
+Go1.24 的 go list 未输出可选 Origin，另取公开代理 info 并逐文件核对模块源码。
+所有发布二进制保持原字节，不为诊断修改源码或注入观察代码。
+
+证据与产物：`/data/xuyang8/goui-release-v080-osbiq391`，含测试／构建／签名／公证日志、真实输入截图、
+Draft／公开下载原件及消费项目。专用 Xvnc／WM／总线和辅助进程已停止；Windows
+临时任务已删除，VNC／RDP 持有输入及本轮连接已释放；已有 SSH、用户应用和未跟踪
+文件保留。原工作区既有 Typography 测试刷新未跟踪 PNG，未提交这些产物或仓库外脚本。
+
+发布地址：https://github.com/golang-gui/goui/releases/tag/v0.8.0 。
+
 ## v0.8.0 Demo 与发布准备（2026-11-15）
 
 本阶段在 `pre-release/v0.8` 准备版本、例程、测试和文档，基线为

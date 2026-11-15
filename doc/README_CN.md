@@ -24,20 +24,19 @@ GOUI 是纯Go实现的原生 GUI 框架。用 Go 编写界面与业务逻辑，�
 [Demo](../example/demo) 集中展示基础控件、文本编辑、布局、数据视图、可拖出的
 标签页、覆盖层、图形、动画和系统集成，支持切换亮暗模式、主题色和八种界面语言。
 
-当前源码准备 **Demo 0.8.0 / build 1**，展示设置条目、表格边框与列收缩、树连续选区
-及文本三击选行。变化与 API 迁移见 [v0.8.0 发布准备](ReleaseV080.md)，操作步骤见
-[Demo 使用说明](../example/demo/README.md)。新版本验收发布前，下方下载仍为已发布的
-**0.7.0 / build 1**；截图仍为 Demo v0.6.0。
+**Demo 0.8.0 / build 1** 已发布，展示设置条目、表格边框与列收缩、树连续选区
+及文本三击选行。变化与 API 迁移见 [v0.8.0 发布说明](ReleaseV080.md)，操作步骤见
+[Demo 使用说明](../example/demo/README.md)。下方为本版本正式附件；截图仍为 Demo v0.6.0。
 
 | 平台 | Demo 下载 |
 | --- | --- |
-| Windows x64 | [下载 EXE](https://github.com/golang-gui/goui/releases/download/v0.7.0/goui-demo-v0.7.0-windows-amd64.exe) |
-| macOS Apple Silicon | [下载 .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.7.0/goui-demo-v0.7.0-darwin-arm64.zip) |
-| Linux x64 / X11 | [下载可执行文件](https://github.com/golang-gui/goui/releases/download/v0.7.0/goui-demo-v0.7.0-linux-amd64) |
+| Windows x64 | [下载 EXE](https://github.com/golang-gui/goui/releases/download/v0.8.0/goui-demo-v0.8.0-windows-amd64.exe) |
+| macOS Apple Silicon | [下载 .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.8.0/goui-demo-v0.8.0-darwin-arm64.zip) |
+| Linux x64 / X11 | [下载可执行文件](https://github.com/golang-gui/goui/releases/download/v0.8.0/goui-demo-v0.8.0-linux-amd64) |
 
-上方为已发布的 **Demo 0.7.0 / build 1**。来源、摘要和验收范围见[发布说明](https://github.com/golang-gui/goui/releases/tag/v0.7.0)及其 BUILD-INFO.md / SHA256SUMS 附件。
+上方为已发布的 **Demo 0.8.0 / build 1**。来源、摘要和验收范围见[发布说明](https://github.com/golang-gui/goui/releases/tag/v0.8.0)及其 BUILD-INFO.md / SHA256SUMS 附件。
 
-Linux 下载后先执行 `chmod +x goui-demo-v0.7.0-linux-amd64`，再启动程序。
+Linux 下载后先执行 `chmod +x goui-demo-v0.8.0-linux-amd64`，再启动程序。
 macOS 解压后打开 `GOUI Demo.app`，已使用 Developer ID 签名并通过 Apple 公证。
 
 Windows — Direct2D，暗色外观
@@ -89,7 +88,7 @@ GOUI 是原生GUI框架，资源占用较小，但具体可执行文件大小与
 | macOS arm64 | 6.05 MiB | 10.54 MiB |
 | Linux amd64 | 6.51 MiB | 11.79 MiB |
 
-完整 Demo 包含 Logo、SVG 图标、八语言资源和九个功能页面；Windows 包含生成的图标及版本资源。数据来自 v0.8.0 准备构建，最小应用为下文计数器，并非已经发布的下载产物；不包含 `.app`元数据、安装包／压缩包开销或系统库。
+完整 Demo 包含 Logo、SVG 图标、八语言资源和九个功能页面；Windows 包含生成的图标及版本资源。数据来自 v0.8.0 开发构建，最小应用为下文计数器，并非已经发布的下载产物；不包含 `.app`元数据、安装包／压缩包开销或系统库。
 
 ### 进程内存占用
 

@@ -1,5 +1,13 @@
 # GOUI 实用化与未来路线
 
+## v0.8.0 已发布（2026-11-15）
+
+Demo 0.8.0 / build 1 的 Windows amd64、Linux amd64/X11 与公证后的 macOS arm64
+附件已从同一冻结 main 提交发布，双语 README 下载入口更新。全仓、race／vet、
+最终程序原生操作、Draft／公开下载与 Go1.24.13 独立消费验证完成，已知构建例外和
+未验收组合见 [ReleaseV080](ReleaseV080.md)／[Plan](Plan.md)。移动端完整交付与
+Linux ARM64 原生桌面仍按专项计划推进，不扩大本版本分发承诺。
+
 ## v0.8.0 发布准备（2026-11-15）
 
 Demo 更新为 0.8.0 / build 1，展示表格五种边框与列收缩、树行局部外观和连续选区、

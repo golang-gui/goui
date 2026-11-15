@@ -24,22 +24,21 @@ The current version provides the foundations and controls needed for small deskt
 The [demo](example/demo) brings together controls, text editing, layouts, data views, detachable
 tabs, overlays, graphics, animations, and system integration. Switch between light/dark appearances, accent colors, and eight UI languages.
 
-The current source prepares Demo **0.8.0 / build 1**, with settings rows, table border
-choices, responsive columns, continuous tree selection, and triple-click text selection.
-See the [v0.8.0 preparation notes](doc/ReleaseV080.md) for changes and API migration.
-The downloads below remain the published **0.7.0 / build 1** until the new release is verified.
+Demo **0.8.0 / build 1** is available, with settings rows, table border choices,
+responsive columns, continuous tree selection, and triple-click text selection.
+See the [v0.8.0 release notes](doc/ReleaseV080.md) for changes and API migration.
 See the [demo guide](example/demo/README.md) for controls and validation steps.
 The screenshots below were captured with Demo v0.6.0.
 
 | Platform | Demo download |
 | --- | --- |
-| Windows x64 | [Download EXE](https://github.com/golang-gui/goui/releases/download/v0.7.0/goui-demo-v0.7.0-windows-amd64.exe) |
-| macOS Apple Silicon | [Download .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.7.0/goui-demo-v0.7.0-darwin-arm64.zip) |
-| Linux x64 / X11 | [Download executable](https://github.com/golang-gui/goui/releases/download/v0.7.0/goui-demo-v0.7.0-linux-amd64) |
+| Windows x64 | [Download EXE](https://github.com/golang-gui/goui/releases/download/v0.8.0/goui-demo-v0.8.0-windows-amd64.exe) |
+| macOS Apple Silicon | [Download .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.8.0/goui-demo-v0.8.0-darwin-arm64.zip) |
+| Linux x64 / X11 | [Download executable](https://github.com/golang-gui/goui/releases/download/v0.8.0/goui-demo-v0.8.0-linux-amd64) |
 
-The downloads above are Demo **0.7.0 / build 1**. See the [release notes](https://github.com/golang-gui/goui/releases/tag/v0.7.0) and its BUILD-INFO.md / SHA256SUMS attachments for provenance and validation scope.
+The downloads above are Demo **0.8.0 / build 1**. See the [release notes](https://github.com/golang-gui/goui/releases/tag/v0.8.0) and its BUILD-INFO.md / SHA256SUMS attachments for provenance and validation scope.
 
-On Linux, run `chmod +x goui-demo-v0.7.0-linux-amd64` before launching it.
+On Linux, run `chmod +x goui-demo-v0.8.0-linux-amd64` before launching it.
 On macOS, extract and open `GOUI Demo.app`; the bundle is Developer ID signed and Apple-notarized.
 
 Windows — Direct2D, dark appearance
@@ -91,7 +90,7 @@ Built with Go 1.25.8, `CGO_ENABLED=0`, `-trimpath`, and `-ldflags="-s -w"`, with
 | macOS arm64 | 6.05 MiB | 10.54 MiB |
 | Linux amd64 | 6.51 MiB | 11.79 MiB |
 
-The full demo includes its logo, SVG icons, eight-language resources, and nine feature pages. Windows includes generated icon and version resources. These figures are from v0.8.0 preparation builds; the minimal app is the counter below. They are not published release artifacts; `.app` metadata, installer/archive overhead, and system libraries are not included.
+The full demo includes its logo, SVG icons, eight-language resources, and nine feature pages. Windows includes generated icon and version resources. These figures are from v0.8.0 development builds; the minimal app is the counter below. They are not published release artifacts; `.app` metadata, installer/archive overhead, and system libraries are not included.
 
 ### Process memory usage
 
