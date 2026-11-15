@@ -24,8 +24,10 @@ The current version provides the foundations and controls needed for small deskt
 The [demo](example/demo) brings together controls, text editing, layouts, data views, detachable
 tabs, overlays, graphics, animations, and system integration. Switch between light/dark appearances, accent colors, and eight UI languages.
 
-Demo **0.7.0 / build 1** is available, adding shared commands and menu shortcut
-columns, independent corner radii with box shadows, selective borders, and optional Go execution tracing.
+The current source prepares Demo **0.8.0 / build 1**, with settings rows, table border
+choices, responsive columns, continuous tree selection, and triple-click text selection.
+See the [v0.8.0 preparation notes](doc/ReleaseV080.md) for changes and API migration.
+The downloads below remain the published **0.7.0 / build 1** until the new release is verified.
 See the [demo guide](example/demo/README.md) for controls and validation steps.
 The screenshots below were captured with Demo v0.6.0.
 
@@ -85,11 +87,11 @@ Built with Go 1.25.8, `CGO_ENABLED=0`, `-trimpath`, and `-ldflags="-s -w"`, with
 
 | Target | Minimal app | Demo |
 | --- | ---: | ---: |
-| Windows amd64 | 4.58 MiB | 8.56 MiB |
-| macOS arm64 | 4.75 MiB | 8.26 MiB |
-| Linux amd64 | 4.46 MiB | 8.43 MiB |
+| Windows amd64 | 6.02 MiB | 11.01 MiB |
+| macOS arm64 | 6.05 MiB | 10.54 MiB |
+| Linux amd64 | 6.51 MiB | 11.79 MiB |
 
-The full demo includes its logo, SVG icons, eight-language resources, and nine feature pages. Windows includes generated icon and version resources. These figures are from development builds, not published release artifacts; `.app` metadata, installer/archive overhead, and system libraries are not included.
+The full demo includes its logo, SVG icons, eight-language resources, and nine feature pages. Windows includes generated icon and version resources. These figures are from v0.8.0 preparation builds; the minimal app is the counter below. They are not published release artifacts; `.app` metadata, installer/archive overhead, and system libraries are not included.
 
 ### Process memory usage
 
@@ -98,20 +100,20 @@ The full demo includes its logo, SVG icons, eight-language resources, and nine f
 | Minimal app | 58.8 MiB | 28.6 MiB |
 | Demo | 78.5 MiB | 46.2 MiB |
 
-RSS includes resident shared-library pages; PSS apportions shared pages between processes. The figures are summed from Linux `/proc/<pid>/smaps` and are provided for reference; results on other platforms may differ.
+RSS includes resident shared-library pages; PSS apportions shared pages between processes. The figures are historical development measurements summed from Linux `/proc/<pid>/smaps`, not remeasured for v0.8.0; results on other platforms may differ.
 
 ## What you can build with today
 
 | Area | Supported capabilities |
 | --- | --- |
 | Declarative UI | State and property bindings, local dependency tracking and subtree updates, composed views, common view modifiers, and custom Widgets/Views. |
-| Controls | Buttons and connected button groups, images/icons, check/radio/toggle buttons and groups, switches, dropdowns, and linear/circular progress indicators. |
-| Text | Formatted and selectable Labels; Unicode single-line/multiline editing, native window IME, selection, clipboard, undo/redo, placeholders, configurable obscuring, brief last-grapheme reveal, and composable input filters. |
+| Controls | Buttons and connected button groups, images/icons, check/radio/toggle buttons and groups, switches, dropdowns, composable settings/action ListRows, and linear/circular progress indicators. |
+| Text | Formatted and selectable Labels; Unicode single-line/multiline editing, native window IME, word and triple-click logical-line selection with dragging, clipboard, undo/redo, placeholders, configurable obscuring, brief last-grapheme reveal, and composable input filters. |
 | Layout | Constraint-based horizontal/vertical boxes, wrapping, baseline alignment, per-edge padding, scrolling, split views, and overlays. |
-| Data views | Virtualized lists, trees with reusable expanders, and tables with custom editable cells, column visibility/stretching, sorting, resizing, grid lines, and alternating row colors. |
+| Data views | Virtualized lists; trees with viewport-sized rows, local row styles and continuous selection backgrounds; tables with editable cells, independent stretch/shrink allocation, stable manual sizing, sorting, owned style parts, and separate cell, scrollbar-outline and viewport borders. |
 | Tabbed workspaces | Close requests and context menus, drag reordering, shrinking and overflow scrolling, cross-window transfer, and detaching into new windows. |
 | Menus and overlays | Menu buttons and coordinated menu groups, shared Commands with live availability and independent shortcut-text columns, context menus, popovers, tooltips, modal input boundaries, in-window Dialogs, and Toasts. |
-| Input | Shortcuts, Tab navigation and keyboard focus hints, event controllers, gesture competition, and drag and drop within and across applications. |
+| Input | Shortcuts, Tab navigation and keyboard focus hints, typed controller callbacks with immediate consecutive-press counts, gesture competition, and drag and drop within and across applications. |
 | Graphics and appearance | Software/OpenGL/Direct2D backends, HiDPI, transforms, clipping and path erasure, transparency, independent corner radii, selective borders with a uniform width and color, box shadows, SVG and style-aware icons, custom painting, cached DrawingArea rendering, and offscreen widget rendering. |
 | Themes and localization | Basic fallback and Modern themes, light/dark modes, accent and semantic colors, style scopes, system settings, localization resources, and built-in text in eight languages. |
 | Windows and system integration | Native/integrated/custom chrome, HeaderBar and window controls, transparent windows, positioning/initial centering, taskbar preferences, file dialogs and access credentials, clipboard, and opening URLs/files. |
@@ -120,14 +122,14 @@ RSS includes resident shared-library pages; PSS apportions shared pages between 
 Core controls live in `gui`, with declarative bindings in `ui`. Additional controls live in
 `widgets`, with their declarative bindings in `widgets/ui`.
 
-### v0.7.0 highlights
+### v0.8.0 highlights
 
-- **Shared operations:** menus and shortcuts can use one `Command`, with live enabled-state updates and aligned shortcut text. Declarative windows supply a default command group; local `CommandGroup` scopes, `DefineCommand`, and `BindEnabled` keep definitions and state updates explicit.
-- **Corners and borders:** four independent corner radii and matching BoxShadow contours work across Software, OpenGL, and Direct2D. `BorderSides` selects single, parallel, L-shaped, or three-sided borders with one width and color; the demo shows the rounded transitions at omitted edges.
-- **Less offscreen work:** painting skips subtrees fully outside the clip. Busy indicators and the demo's frame-driven DrawingArea stop requesting frames when fully clipped and resume when visible; business timers retain their own lifecycle.
-- **Frame inspection:** the optional FPS HUD shows 0 when idle. Go `runtime/trace` records frame tasks and layout/paint phases independently of diagnostic Capture. These are CPU/runtime observations, not monitor refresh rates or GPU presentation timings.
-- **Stability and resource use:** localization cache reads avoid repeated locking on the fast path; table trailing grid lines, row-decoration bounds, and variable-height scrolling have been corrected.
-- **Mobile preparation:** Android/iOS foundations have reached simulator validation; complete mobile support is in development.
+- **Settings pages:** `ListRow` combines leading content, a title, a multiline subtitle, and independent trailing controls, with Basic and Modern appearances.
+- **Tables:** columns shrink to `MinWidth` before scrolling, while `Expand` distributes spare width. Manual resizing remains stable across neighboring-column changes and declarative rebuilds. Owned style parts independently control headers, scrollbars, grid lines, cell outlines, and the viewport frame.
+- **Trees:** row styles and content-decoration depth are declarative. Backgrounds and hit areas fit the viewport while content scrolls horizontally; adjacent selected rows form a continuous group. A tree-owned drag source can outlive recycled rows.
+- **Input and editing:** typed callbacks carry local coordinates, buttons and modifiers; consecutive counts are available on press. Text editors support triple-click line selection followed by whole-line dragging. See the [migration notes](doc/ReleaseV080.md#api-migration).
+- **Popup and desktop behavior:** built-in menus, dropdowns and tooltips reuse one native popup and painter per owning surface. X11 appearance changes no longer require GTK event dispatch. Native drag-preview creation can degrade to a drag without a preview.
+- **Stability and mobile foundations:** fixes cover X11 window activation/dragging and drag-session cleanup, Win32 Alt modifiers, progress animation and Switch pixel alignment. Shared Surface hosting and Android/iOS lifecycle/rendering work continue; complete mobile input, IME and device delivery remain in development.
 
 ## Build with an AI coding assistant
 
@@ -227,7 +229,8 @@ The desktop application targets are:
 | Linux / amd64 | X11 | OpenGL, Software | Pango / Cairo |
 
 On Windows and macOS, native frameworks are supplied by the operating system. On Linux, the current backend needs an X11 display server; Wayland sessions need XWayland, and window behavior still needs validation on the target desktop. Runtime libraries include X11/Xext/Xrender/Xrandr/Xcursor, GL/GLX, GLib/GIO, Fontconfig, and Pango/Cairo.
-Settings integration and native file dialogs use GTK. No development headers or C compiler are needed.
+Appearance settings use XSETTINGS; GTK supplies theme accent colors and native file dialogs.
+Reading settings does not require a GTK event loop. No development headers or C compiler are needed.
 Linux Integrated decoration additionally needs a compositor; otherwise GOUI can fall back to native decoration.
 
 You can select a drawing backend with `GOUI_PLAT_PAINTER=software` or `opengl`; Windows also accepts `direct2d`. See the [demo guide](example/demo/README.md) for platform details.

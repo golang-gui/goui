@@ -31,8 +31,9 @@ Linux 单文件未默认嵌入 TOML 版本，不能承诺存在 `--version` 接�
 候选轮次；GitHub 标记 Prerelease，不设置为 Latest。
 
 当前正式附件基线为 Windows amd64、Linux amd64/X11、macOS arm64。
-Linux arm64 仍有全仓构建阻塞，见 [适配计划](PlanLinuxArm64.md)；工具接受目标名
-不等于已经支持发布。新增架构必须先补齐对应运行证据，再扩大发布列表。
+Linux arm64 的 pipe／poll 编译修正已合入，但尚未完成专项原生桌面验收，见
+[适配计划](PlanLinuxArm64.md)；工具接受目标名不等于已经支持发布。
+新增架构必须先补齐对应运行证据，再扩大发布列表。
 
 ## 2. 准备与冻结源码
 

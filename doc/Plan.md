@@ -1,5 +1,60 @@
 # Plan
 
+## v0.8.0 Demo 与发布准备（2026-11-15）
+
+本阶段在 `pre-release/v0.8` 准备版本、例程、测试和文档，基线为
+`538ed4fa2d677249094eb2891dbd3b1497e53bc3`，比较版本 v0.7.0。
+由维护者发起合入 main 的 PR；合并后再冻结候选 SHA、重建并验收正式分发附件。
+本节的预览验证不代表已经发布，迁移和后续门槛见 [ReleaseV080](ReleaseV080.md)。
+
+- [x] Demo 配置与基础页底部版本值更新为 0.8.0 / build 1，保留九页及原基础布局。
+  数据页新增五种表格外观、明确 MinWidth、完整所属 Part 样式、树 RowStyle／
+  RowInsets、长叶子与连续选区。表头说明移到 Tooltip，滚动条与分割线留出 8 DIP。
+  八语言说明和文本三击／整行拖选提示同步更新，不改变用户模型及状态归属。
+- [x] 独立样式回归覆盖明暗两类、五种边框组合及表头／滚动条／选区状态；已有语言
+  保持用例增加外观模式。双语 README 区分当前源码与公开 v0.7.0 下载，旧截图仍
+  标为 v0.6.0。按 Go1.25.8／CGO_ENABLED=0／trimpath／-s -w 重测计数器与 Demo
+  体积，Windows 含 GUI／图标／版本资源；旧内存数字仅标为历史参考，本轮未重测。
+- [x] 基线归档加本次明确文件的隔离源码，执行非缓存 `go test -count=1 -json ./...`：
+  **5816 通过／11 既有跳过／0 失败**。`go test -race ./example/demo/...` 与
+  `go vet ./example/demo/...` 通过，`go mod verify` 及同源 cmd/goui 构建通过。
+  最终代码和配置逐字节核对与测试快照一致，临时观察 overlay 不进入源码和普通构建。
+- [x] 原工作区执行 `go test ./...`，退出 1：既有未跟踪旧平台例程／测试和
+  `ui/window_lookup_test.go` 编译失败；首尾两次诊断集合一致，无新增或删除。
+  保留旧文件和有效断言，未将环境跳过、编译失败计为通过。
+- [x] 同源 CLI 的 Linux amd64、Windows amd64、macOS arm64 Demo 预览构建通过。
+  三目标 `go build ./...` 均被既有 `mobile_start`／`mobile_surface` 窗口程序缺少
+  桌面 main 阻塞；未改动基线可独立复现。排除这两个移动专用入口及无生产源码的
+  测试目录后，211／204／202 个桌面包分别构建通过，保留全量失败日志。
+- [x] 正常平台输入、不使用 DevServer：Linux amd64／独立 Xvnc :180／Xfwm4／
+  OpenGL 1x，Windows 10 19045／Direct2D 1x，macOS 15.7.7 arm64／OpenGL 1x。
+  只读快照与实际 Painter 日志 overlay 核对五种边框、备注编辑选区、相邻列手调、
+  收缩至最小后横滚、恢复视口自动分配、树横滚后短行命中、排序备注身份、末行
+  完整可见、八语言／明暗／F5 状态保持。三击第三次按下即选行，继续向上／下
+  整行拖选、单行全选、编辑提交、撤销重做，以及底部版本／Switch／DropDown／
+  整行操作隔离、基础按钮／滚动和原生窗口缩放恢复均通过。
+- [x] 三平台另用不含 overlay 的普通预览补测启动、基础按钮、文本输入提交、
+  表格菜单切换及滚动。Windows 实际文件／产品版本为 0.8.0.1，Mac Info.plist
+  为 0.8.0／1；Mac 预览仅 ad-hoc 签名，未使用 Developer ID 或请求公证。
+
+验证过程的首轮失败保留在证据目录：独立 X11 误继承 fcitx、Mac 临时 Bundle ID
+与应用 ID 不符、Windows 观察文件读写冲突、过期快照／不足的快照等待、单次撤销
+分组假设、滚轮命令参数上限、虚拟化 overscan／末行索引和 Win32 可见内容外的
+原生缩放边界。分别核对原因并修正仓库外驱动／观察层后复跑，不将这些失败当作
+框架通过结果。视口变化后的列宽按现有自动分配契约检查，不承诺永远保持手调像素值。
+
+未执行：正式 main 候选冻结、最终附件重建与完整验收、Developer ID／公证／
+Gatekeeper、标签／Draft／发布／公开下载与 Go proxy 消费验证。本轮没有重新执行
+Windows OpenGL、Software／2x、混合 DPI／Retina、全量 IME／DnD、移动设备或
+Linux ARM64 桌面验收；不扩大发布目标。Linux ARM64 pipe／poll 首个编译阻塞
+已由 PR #111 修正，专项原生验收仍未完成。
+
+证据目录：`/data/xuyang8/goui-v080-prep-mp571lsl`，含源码文件摘要、预览摘要、
+全仓／race／vet／构建日志、原生输入结果、截图及失败复跑记录。所有 Python／
+PowerShell 驱动位于仓库外，不纳入提交；已有 Typography 测试刷新原未跟踪 PNG。
+本轮测试窗口已关闭，专用 Xvnc／WM／总线及辅助进程已停止，Windows 四个临时
+计划任务已删除；两个远端桌面连接及持有输入已释放，原有 SSH 和用户应用保留。
+
 ## 控制器类型化输入与即时连续按下（2026-11-14）
 
 - [x] ClickInfo 在真实 Down 立即报告 Count、局部 DIP 坐标、按钮和 modifier；
