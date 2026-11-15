@@ -21,6 +21,10 @@ func (d *demo) styleRules(settings ui.Settings) []style.Rule {
 			rule.Sel.Name = "demo-nav-current"
 		case "text-input":
 			rule.Sel.Name = "demo-cell-edit"
+		case "table-view":
+			rule.Sel.Name = "demo-records"
+		case "tree-item":
+			rule.Sel.Name = "demo-tree-row"
 		default:
 			continue
 		}
@@ -55,6 +59,10 @@ func (d *demo) styleRules(settings ui.Settings) []style.Rule {
 		style.Name("demo-cell-edit").ForegroundColor(fg).FontFamily(settings.FontFamily()).FontSize(fontSize).BackgroundColor(color.Transparent).Radius(0).BorderWidth(0),
 		style.Name("demo-cell-edit").State(style.Focused).BorderColor(accents[d.accent]).BorderWidth(1),
 	)
+	rules = append(rules, style.Name("demo-tree-row").Part("selected").Radius(6))
+	if d.data != nil {
+		rules = append(rules, tableLookRules(d.data.tableLook.Get())...)
+	}
 
 	for _, sample := range []struct {
 		name   string
