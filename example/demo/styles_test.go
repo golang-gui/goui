@@ -70,3 +70,61 @@ func demoStyleColor(c color.Color) color.NRGBA {
 	}
 	return color.NRGBAModel.Convert(c).(color.NRGBA)
 }
+
+// 边线开关不能通过样式回退把外框复制到内部宿主；切换外观后表头、滚动条和选区仍完整。
+func TestDemoTableBorderScopesAndOwnedParts(t *testing.T) {
+	for _, mode := range []int{1, 2} {
+		for _, tc := range []struct {
+			look                        int
+			outer, horizontal, vertical float32
+			top, bottom, left, right    float32
+			outline, separator          float32
+		}{
+			{tableLookDefault, 1, 1, 0, 0, 1, 0, 0, 0, 1},
+			{tableLookGrid, 0, 1, 1, 1, 1, 1, 1, 0, 1},
+			{tableLookCells, 0, 0, 0, 1, 1, 1, 1, 0, 0},
+			{tableLookOutline, 0, 0, 0, 0, 0, 0, 0, 1, 0},
+			{tableLookGridOutline, 0, 1, 1, 0, 0, 0, 0, 1, 1},
+		} {
+			t.Run(fmt.Sprintf("mode=%d/look=%d", mode, tc.look), func(t *testing.T) {
+				d := &demo{mode: mode, data: &dataDemo{tableLook: ui.MakeState(tc.look)}}
+				sheet := style.Sheet(d.styleRules(ui.Settings{})...)
+				resolve := func(name, part string, state style.State) style.Style {
+					return sheet.Resolve(style.Sel{Name: name, Part: part, State: state})
+				}
+				for part, want := range map[string]float32{
+					"outer-horizontal": tc.outer, "outer-vertical": tc.outer,
+					"grid-horizontal": tc.horizontal, "grid-vertical": tc.vertical,
+					"grid-top": tc.top, "grid-bottom": tc.bottom, "grid-left": tc.left, "grid-right": tc.right,
+					"outline-horizontal": tc.outline, "outline-vertical": tc.outline,
+					"header-separator": tc.separator, "frame": 0, "trough": 0,
+				} {
+					if got, ok := resolve("demo-records", part, style.Normal).BorderWidth(); !ok || got != want {
+						t.Errorf("%s 宽度 = %g/%v，期望 %g", part, got, ok, want)
+					}
+				}
+				for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed, style.Disabled, style.FocusVisible} {
+					for _, part := range []string{"header", "header-text", "header-sort", "trough", "thumb", "row-selected", "row-current"} {
+						got, want := resolve("demo-records", part, state), resolve("table-view", part, state)
+						bg, _ := got.BackgroundColor()
+						wantBG, _ := want.BackgroundColor()
+						fg, _ := got.ForegroundColor()
+						wantFG, _ := want.ForegroundColor()
+						if demoStyleColor(bg) != demoStyleColor(wantBG) || demoStyleColor(fg) != demoStyleColor(wantFG) {
+							t.Errorf("%s 状态 %d 丢失 Modern 部件颜色", part, state)
+						}
+					}
+				}
+				text := resolve("demo-records", "header-text", style.Normal)
+				if size, ok := text.FontSize(); !ok || size <= 0 {
+					t.Fatal("自定义表格名没有完整表头文字样式")
+				}
+				header, _ := resolve("demo-records", "header", style.Normal).BackgroundColor()
+				trough, _ := resolve("demo-records", "trough", style.Normal).BackgroundColor()
+				if demoStyleColor(header) != demoStyleColor(trough) {
+					t.Fatal("滚动槽与表头失去统一底色")
+				}
+			})
+		}
+	}
+}

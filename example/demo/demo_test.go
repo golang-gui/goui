@@ -525,6 +525,7 @@ func TestLanguageChangePreservesDemoModelsAndState(t *testing.T) {
 	d.basic.fancyDrop.Set(1)
 	d.page.Set(1)
 	d.data.tableWidths[0] = 257
+	d.data.tableLook.Set(tableLookGridOutline)
 	d.data.table.setNote("file-000", "edited note")
 	d.data.table.sort("size", widgets.SortDescending)
 	firstRow := d.data.table.RowID(0)
@@ -543,7 +544,7 @@ func TestLanguageChangePreservesDemoModelsAndState(t *testing.T) {
 		}
 		if d.input.Get() != "user input" || d.layout.username.Get() != "user name" || model.Text() != "user editor text" || model.CanUndo() != canUndo ||
 			d.editor.selection.Get() != (ui.TextSelection{Anchor: 1, Caret: 5}) || d.page.Get() != 1 || d.basic.drop.Get() != 3 || d.basic.fancyDrop.Get() != 1 ||
-			d.data.tableWidths[0] != 257 || d.data.table.RowID(0) != firstRow || d.tabs.documents["document-1"].Text() != "edited document" ||
+			d.data.tableWidths[0] != 257 || d.data.tableLook.Get() != tableLookGridOutline || d.data.table.RowID(0) != firstRow || d.tabs.documents["document-1"].Text() != "edited document" ||
 			d.tabs.tabWindows[0].current != "document-2" {
 			t.Fatal("translation overwrote user state")
 		}
