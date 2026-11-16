@@ -51,8 +51,19 @@ func (p *Popup) Show() error {
 		return common.ErrUnavailable
 	}
 	AutoReleasePool(func() {
-		p.win.window.OrderFront(0)
+		window := p.win.window
+		window.Retain()
+		defer window.Release()
+		window.OrderFront(0)
+		if !p.win.closed {
+			// AppKit lazily creates the window's backing hierarchy here. Merely
+			// displaying the content view cannot initialize that hierarchy.
+			window.Display()
+		}
 	})
+	if p.win.closed || !p.win.window.Valid() {
+		return common.ErrUnavailable
+	}
 	return nil
 }
 
@@ -84,6 +95,46 @@ func (p *Popup) SetSize(width, height float32) {
 	AutoReleasePool(func() {
 		p.win.window.SetContentSize(popupContentSize(p.win.window, width, height))
 	})
+}
+
+func (p *Popup) ClientSize() (logical, pixels geometry.Size, err error) {
+	if p.win.closed || !p.win.window.Valid() || !p.win.view.Valid() {
+		return logical, pixels, common.ErrUnavailable
+	}
+	var size events.SizeEvent
+	AutoReleasePool(func() { size = makeSizeEvent(p.win.view) })
+	return geometry.Size{Width: size.Width, Height: size.Height}, geometry.Size{Width: size.PixelWidth, Height: size.PixelHeight}, nil
+}
+
+func (p *Popup) Repaint() error {
+	if p.win.closed || !p.win.window.Valid() {
+		return common.ErrUnavailable
+	}
+	AutoReleasePool(func() {
+		view := p.win.view
+		view.Retain()
+		defer view.Release()
+		view.SetNeedsDisplay(true)
+		// Enter AppKit's display traversal first: it may create a backing layer
+		// on the first display without calling drawRect yet.
+		view.DisplayRectIgnoringOpacity(view.Bounds())
+		if p.win.closed || !p.win.window.Valid() {
+			return
+		}
+		// AppKit may defer NSView display to a backing layer, even when the
+		// view's wantsLayer is false. Display the actual backing synchronously;
+		// its delegate installs the CGContext required by software painting.
+		if layer := view.Layer(); layer.Valid() {
+			layer.Retain()
+			defer layer.Release()
+			layer.SetNeedsDisplay()
+			layer.DisplayIfNeeded()
+		}
+	})
+	if p.win.closed || !p.win.window.Valid() {
+		return common.ErrUnavailable
+	}
+	return nil
 }
 
 func popupContentSize(window NSWindow, width, height float32) NSSize {

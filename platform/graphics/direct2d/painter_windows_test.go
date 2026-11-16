@@ -7,6 +7,8 @@ import (
 	"image/color"
 	"math"
 	"runtime"
+	"slices"
+	"syscall"
 	"testing"
 	"unsafe"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/golang-gui/goui/platform/windows/sdk/com"
 	"github.com/golang-gui/goui/platform/windows/sdk/d2d1"
 	"github.com/golang-gui/goui/platform/windows/sdk/d3d11"
+	"github.com/golang-gui/goui/platform/windows/sdk/dcomp"
 	"github.com/golang-gui/goui/platform/windows/sdk/dxgi"
 )
 
@@ -786,5 +789,61 @@ func TestBoxShadowTransparentDoesNotDraw(t *testing.T) {
 		if b != 255 {
 			t.Fatal("zero-alpha shadow changed the white target")
 		}
+	}
+}
+
+// 用真实 COM ABI 调用受控 vtable，不创建窗口或依赖 DWM/桌面。
+func TestInvalidateCompositionPresentation(t *testing.T) {
+	for _, failure := range []string{"", "detach", "commit", "wait", "active"} {
+		t.Run(failure, func(t *testing.T) {
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+			var calls []string
+			result := func(stage string) uintptr {
+				calls = append(calls, stage)
+				if stage == failure {
+					return 0x80004005
+				}
+				return 0
+			}
+			visualClass := dcomp.VisualClass{SetContent: cgo.Symbol(syscall.NewCallback(func(_ uintptr, content uintptr) uintptr {
+				if content != 0 {
+					t.Error("失效时重新挂上了旧 swap chain")
+				}
+				return result("detach")
+			}))}
+			deviceClass := dcomp.DeviceClass{
+				Commit:                  cgo.Symbol(syscall.NewCallback(func(uintptr) uintptr { return result("commit") })),
+				WaitForCommitCompletion: cgo.Symbol(syscall.NewCallback(func(uintptr) uintptr { return result("wait") })),
+			}
+			visual := &dcomp.Visual{Unknown: com.Unknown{Class: unsafe.Pointer(&visualClass)}}
+			device := &dcomp.Device{Unknown: com.Unknown{Class: unsafe.Pointer(&deviceClass)}}
+			var pin runtime.Pinner
+			pin.Pin(&visualClass)
+			pin.Pin(&deviceClass)
+			pin.Pin(visual)
+			pin.Pin(device)
+			defer pin.Unpin()
+			p := &Painter{composition: device, compositionVisual: visual, activeFrame: failure == "active"}
+			err := p.InvalidatePresentation()
+			want := []string{"detach", "commit", "wait"}
+			switch failure {
+			case "detach":
+				want = want[:1]
+			case "commit":
+				want = want[:2]
+			case "active":
+				want = nil
+			}
+			if !slices.Equal(calls, want) || (err == nil) != (failure == "") {
+				t.Fatalf("失效调用顺序或错误结果：calls=%v want=%v err=%v", calls, want, err)
+			}
+			if p.composition != device || p.compositionVisual != visual {
+				t.Fatal("失效重建了 compositor 对象")
+			}
+			if failure == "" && !p.compositionDetached {
+				t.Fatal("新帧完成前没有保留 detached 状态")
+			}
+		})
 	}
 }

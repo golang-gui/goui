@@ -9,6 +9,7 @@ import (
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/core_text"
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/opengl"
+	. "github.com/golang-gui/goui/platform/darwin/frameworks/quartzcore"
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/security"
 )
 
@@ -63,6 +64,10 @@ func Init() (err error) {
 		return
 	}
 	err = InitAppKit()
+	if err != nil {
+		return
+	}
+	err = InitQuartzCore()
 	if err != nil {
 		return
 	}

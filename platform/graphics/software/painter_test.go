@@ -1759,3 +1759,40 @@ func TestImageUpdateBeforeDraw(t *testing.T) {
 		}
 	}
 }
+
+type invalidatingDrawer struct {
+	renderImageSurface
+	invalidations int
+	failure       error
+}
+
+func (d *invalidatingDrawer) InvalidatePresentation() error { d.invalidations++; return d.failure }
+func TestInvalidateRetainedNativeUpload(t *testing.T) {
+	d := &invalidatingDrawer{}
+	painter, err := NewPainter(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer painter.Destroy()
+	p := painter.(*Painter)
+	img, err := p.NewImage(image.NewRGBA(image.Rect(0, 0, 2, 2)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer img.Destroy()
+	if err := p.InvalidatePresentation(); err != nil || d.invalidations != 1 {
+		t.Fatal("没有转发 native upload 的呈现失效", err)
+	}
+	if width, height := img.Size(); width != 2 || height != 2 {
+		t.Fatal("失效销毁了图片资源")
+	}
+	d.failure = errors.New("invalidate failed")
+	if err := p.InvalidatePresentation(); !errors.Is(err, d.failure) {
+		t.Fatal("丢失 native 呈现失效错误", err)
+	}
+	p.Begin(2, 2, 1)
+	if err := p.InvalidatePresentation(); err == nil || d.invalidations != 2 {
+		t.Fatal("允许在活动帧中失效呈现")
+	}
+	p.End()
+}

@@ -7,6 +7,15 @@ import (
 	"github.com/golang-gui/goui/platform/typography"
 )
 
+// PresentationInvalidator is implemented by painters that retain an external
+// compositor presentation. InvalidatePresentation detaches the previous frame
+// until a newly completed frame can be presented, retaining drawing resources.
+// It must run outside a frame on the painter's owning thread. Other backends
+// clear their drawable through its normal paint context before reuse.
+type PresentationInvalidator interface {
+	InvalidatePresentation() error
+}
+
 // Painter is thread-affine and not safe for concurrent use.
 type Painter interface {
 	Name() string

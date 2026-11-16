@@ -1,12 +1,14 @@
 package x11
 
 import (
+	"fmt"
 	"image"
 	"math"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/platform/common"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/internal/xerrors"
 
 	"github.com/golang-gui/goui/platform/linux/libs/glx"
 	"github.com/golang-gui/goui/platform/linux/libs/xlib"
@@ -67,6 +69,39 @@ func (p *Popup) SetSize(width, height float32) {
 	h := popupPhysicalExtent(height, scale)
 	platform.display.ResizeWindow(p.win.wid, uint(w), uint(h))
 	platform.display.Flush()
+}
+
+func (p *Popup) ClientSize() (logical, pixels geometry.Size, err error) {
+	if p.win.wid == 0 {
+		return logical, pixels, common.ErrUnavailable
+	}
+	var attrs xlib.WindowAttributes
+	var missing bool
+	trap := xerrors.Begin(platform.display, []xlib.ID{xlib.ID(p.win.wid)}, &missing, xlib.BadWindow, xlib.BadDrawable)
+	status := platform.display.GetWindowAttributes(p.win.wid, &attrs)
+	trap.End()
+	if status == 0 || missing {
+		return logical, pixels, fmt.Errorf("query popup client size: %w", common.ErrUnavailable)
+	}
+	// This reply is newer than queued ConfigureNotify events. Do not let those
+	// old observations resize/reposition a different presenter after Show.
+	p.win.geometrySerial = uint64(platform.display.LastKnownRequestProcessed())
+	p.win.width, p.win.height = attrs.Width, attrs.Height
+	scale := currentScale()
+	return geometry.Size{Width: float32(attrs.Width) / scale, Height: float32(attrs.Height) / scale},
+		geometry.Size{Width: float32(attrs.Width), Height: float32(attrs.Height)}, nil
+}
+
+func (p *Popup) Repaint() error {
+	if p.win.wid == 0 {
+		return common.ErrUnavailable
+	}
+	p.win.emitEvent(events.PaintEvent{})
+	if p.win.wid == 0 {
+		return common.ErrUnavailable
+	}
+	platform.display.Flush()
+	return nil
 }
 
 // popupPhysicalExtent rounds outward so the native client area can contain
