@@ -192,7 +192,10 @@ func main() {
 	if *auto {
 		timer := app.NewTimer()
 		timer.ConnectTimeout(func() {
-			pop := func() gui.Popover { require(len(win.Popovers()) == 1, "expected one menu"); return win.Popovers()[0] }
+			pop := func() gui.PopoverTarget {
+				require(len(win.Popovers()) == 1, "expected one menu")
+				return win.Popovers()[0]
+			}
 			menuRows := func() []gui.WidgetInfo { return rows(pop().Widget().Snapshot()) }
 			savedRow := func() gui.WidgetInfo {
 				for _, r := range menuRows() {

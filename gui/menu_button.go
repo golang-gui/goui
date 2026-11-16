@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -225,7 +226,7 @@ func (b *MenuButton) ConnectOpenError(fn func(error)) signal.Handle {
 }
 func (b *MenuButton) openFromInput(source menuOpenSource) {
 	revision := b.revision
-	if err := b.open(source); err != nil && !b.Destroyed() && b.revision == revision+1 {
+	if err := b.open(source); err != nil && !errors.Is(err, ErrPopoverSuperseded) && !b.Destroyed() && b.revision == revision+1 {
 		b.openError.Emit(err, b.revision)
 	}
 }

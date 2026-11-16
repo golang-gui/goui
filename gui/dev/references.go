@@ -49,7 +49,7 @@ func (r *references) add(host inputHost, owner gui.Surface) *rootReference {
 	}
 	entry := &rootReference{ref: r.allocate(), host: host, owner: owner}
 	r.roots[host], r.targets[entry.ref] = entry, entry
-	if p, ok := host.(gui.Popover); ok {
+	if p, ok := host.(gui.PopoverTarget); ok {
 		entry.closed = p.ConnectClosed(func() { r.remove(entry) })
 	} else if w, ok := host.(gui.Surface); ok {
 		entry.closed = w.ConnectDestroy(func() { r.remove(entry) })
@@ -175,7 +175,7 @@ func (r *references) snapshot(windows []gui.Surface) applicationSnapshot {
 func (entry *rootReference) dispatch(event events.Event) error {
 	if entry.owner != nil {
 		if _, key := event.(events.KeyEvent); key {
-			p := entry.host.(gui.Popover)
+			p := entry.host.(gui.PopoverTarget)
 			if !p.Modal() {
 				return fmt.Errorf("popover does not own modal keyboard input")
 			}

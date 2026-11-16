@@ -177,13 +177,13 @@ func editorMenuOpen(t *testing.T, editor *textEditor, win *window) *PopoverMenu 
 		t.Fatal("Shift+F10 did not open the context menu")
 	}
 	pm := editor.contextMenu.popup
-	settlePlacement(t, pm.popover.(*popover))
+	settlePlacement(t, testSharedCore(pm.popover))
 	return pm
 }
 
 func editorMenuClick(t *testing.T, pm *PopoverMenu, label string) {
 	t.Helper()
-	p := pm.popover.(*popover)
+	p := testSharedCore(pm.popover)
 	settlePlacement(t, p)
 	for _, widget := range pm.content.list.items {
 		row := widget.(*menuItemRow)
@@ -275,7 +275,7 @@ func TestTextEditorContextMenuLanguageAndLifecycle(t *testing.T) {
 		if err := mlang.SetLanguage(tc.tag); err != nil {
 			t.Fatal(err)
 		}
-		settlePlacement(t, pm.popover.(*popover))
+		settlePlacement(t, testSharedCore(pm.popover))
 		if !pm.Visible() || pm.Menu() != model || editor.contextMenu.items[textCopy] != copyItem ||
 			copyItem.Label() != tc.copy || editor.selection != (TextSelection{Anchor: 1, Caret: 4}) || editor.model.Text() != "abcdef" {
 			t.Fatalf("%s: translation recreated menu or changed editor state", tc.tag)
@@ -545,7 +545,7 @@ func TestTextEditorContextMenuLifecycle(t *testing.T) {
 			case "unmount":
 				pm.ConnectClosed(func() { win.SetWidget(nil) })
 				editorMenuClick(t, pm, "Delete")
-				if editor.model.Text() != "abcdef" || plat.natives[0].destroyed || win.modalTarget != nil || win.transient.active != nil || pm.popover.(*popover).platformPopup != nil {
+				if editor.model.Text() != "abcdef" || plat.natives[0].destroyed || win.modalTarget != nil || win.shared.active != nil || pm.popover.Visible() {
 					t.Fatal("卸载后执行了旧操作，或没有归还可复用浮窗")
 				}
 			case "replace-model":

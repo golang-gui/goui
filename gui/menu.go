@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"errors"
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/layout"
@@ -136,7 +137,7 @@ func (m *Menu) appendItem(mi *MenuItem) {
 // Renderer internals (menuContent/ScrollView/ListView) are not public.
 type PopoverMenu struct {
 	anchor    Widget
-	popover   Popover
+	popover   SharedPopover
 	model     ListData[*MenuItem]
 	content   *menuContent
 	closed    signal.Signal0
@@ -206,7 +207,7 @@ func (pm *PopoverMenu) show(placement PopoverPlacement, pos geometry.Point) erro
 		pm.content = newMenuContent(pm.model, pm.maxHeight, pm.activate)
 	}
 	if pm.popover == nil {
-		p := NewTransientPopover(pm.anchor)
+		p := NewSharedPopover(pm.anchor)
 		p.SetStyleName(styleNameMenu)
 		p.SetModal(pm.modal)
 		p.SetAutoDismiss(true)
@@ -224,8 +225,14 @@ func (pm *PopoverMenu) show(placement PopoverPlacement, pos geometry.Point) erro
 	pm.popover.SetPlacement(placement)
 	pm.content.observeCommands(true)
 	if err := pm.popover.Show(); err != nil {
+		if errors.Is(err, ErrPopoverSuperseded) {
+			if !pm.Visible() {
+				pm.content.observeCommands(false)
+			}
+			return err
+		}
 		pm.content.observeCommands(false)
-		pm.popover.(*popover).releaseNative()
+		pm.popover.Hide()
 		return err
 	}
 	return nil
@@ -273,8 +280,8 @@ func (pm *PopoverMenu) activate(mi *MenuItem) {
 		commandRevision = command.revision
 	}
 	var owner *surfaceBase
-	if p, ok := pm.popover.(*popover); ok {
-		owner = surfaceCore(p.owner)
+	if surface, ok := anchorSurface(pm.anchor); ok {
+		owner = surfaceCore(surface)
 	}
 	pm.Hide()
 	if owner != nil && owner.destroyed || pm.anchor != nil && pm.anchor.base().destroyed {

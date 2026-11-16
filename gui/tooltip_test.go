@@ -255,7 +255,7 @@ func TestTooltipTextScopeAndClipping(t *testing.T) {
 	if p == nil || w.tooltip.bounds != geometry.Rect(20, 20, 50, 40) {
 		t.Fatal("提示没有使用目标的可见区域")
 	}
-	bg, _ := p.resolvedStyle().BackgroundColor()
+	bg, _ := testSharedCore(p).resolvedStyle().BackgroundColor()
 	if bg != (color.RGBA{R: 21, A: 255}) {
 		t.Fatal("提示没有使用目标的样式作用域")
 	}
@@ -305,7 +305,7 @@ func TestTooltipReentrantPreparationAndFailedCreation(t *testing.T) {
 			}
 			tooltipMove(t, w, 40, 40)
 			tooltipAdvance(t, q, tooltipDelay)
-			if len(w.Popovers()) != 1 || w.tooltip.popup.Transparent() || len(plat.options) != 2 {
+			if len(w.Popovers()) != 1 || testSharedCore(w.tooltip.popup).Transparent() || len(plat.options) != 2 {
 				t.Fatal("共享宿主不支持或无法创建 alpha 时没有降级为不透明提示")
 			}
 		})
@@ -334,7 +334,7 @@ func TestTooltipInsideModalPopoverUsesOwnerCoordinates(t *testing.T) {
 	}
 	tooltipAdvance(t, q, tooltipDelay)
 	tip := w.tooltip.popup
-	if tip == nil || !tip.Visible() || tip.owner != w || tip.placementSnapshot.anchor != geometry.Rect(230, 110, 40, 20) {
+	if tip == nil || !tip.Visible() || testSharedCore(tip).owner != w || testSharedCore(tip).placementSnapshot.anchor != geometry.Rect(230, 110, 40, 20) {
 		t.Fatalf("嵌套提示没有转换为原生所有者坐标: %v", tip)
 	}
 	parent.Hide()

@@ -67,11 +67,11 @@ func TestWindowPopoversFollowVisibleLifetime(t *testing.T) {
 	if err := p.Show(); err != nil {
 		t.Fatal(err)
 	}
-	if got := w.Popovers(); len(got) != 1 || got[0] != p {
+	if got := w.Popovers(); len(got) != 1 || got[0].Widget() != p.Widget() {
 		t.Fatalf("shown popovers=%v", got)
 	} else {
 		got[0] = nil
-		if w.Popovers()[0] != p {
+		if w.Popovers()[0].Widget() != p.Widget() {
 			t.Fatal("Popovers exposed the internal slice")
 		}
 	}
@@ -159,7 +159,7 @@ func TestPopoverTabFocusAndModalIsolation(t *testing.T) {
 	second.SetFocusable(true)
 	root.AddChild(first)
 	root.AddChild(second)
-	p := &popover{modal: true, autoDismiss: true, visible: true}
+	p := &popover{popoverHost: popoverHost{modal: true, autoDismiss: true, visible: true}}
 	p.SetWidget(root)
 	win.SetModalTarget(p)
 	var changes []bool
@@ -196,7 +196,7 @@ func TestPopoverFocusVisibleIsolationAndReset(t *testing.T) {
 	}
 	win := testWindowWithSurface(&window{})
 	win.SetWidget(ownerRoot)
-	p := &popover{rootBase: rootBase{width: 100, height: 100}, modal: true, autoDismiss: true, visible: true}
+	p := &popover{popoverHost: popoverHost{rootBase: rootBase{width: 100, height: 100}, modal: true, autoDismiss: true, visible: true}}
 	p.SetWidget(popupRoot)
 	t.Cleanup(func() { p.SetWidget(nil); win.SetWidget(nil) })
 	_ = win.DispatchEvent(shortcutPress(events.KeyTab, 0))
@@ -289,7 +289,7 @@ func TestWindowForwardsToPopover(t *testing.T) {
 	var popCalls []string
 	content.AddEventController(newRecordingController("pop", PhaseTarget, &popCalls, nil))
 
-	p := &popover{modal: true, autoDismiss: true} // 明确启用菜单式关闭，Modal 只指定输入独占。
+	p := &popover{popoverHost: popoverHost{modal: true, autoDismiss: true}} // 明确启用菜单式关闭，Modal 只指定输入独占。
 	p.SetWidget(content)
 	p.visible = true
 	win.SetModalTarget(p) // what Show() does for a modal popover
@@ -354,10 +354,9 @@ func TestPopoverHostsWidgetForRepaintAndLayout(t *testing.T) {
 
 func TestPopoverResizeKeepsAuthoritativeNativeSizeUntilSizeEvent(t *testing.T) {
 	native := &recordingPlatformPopup{}
-	p := &popover{
-		rootBase:      rootBase{width: 120, height: 50, pixelWidth: 120, pixelHeight: 50},
+	p := &popover{popoverHost: popoverHost{rootBase: rootBase{width: 120, height: 50, pixelWidth: 120, pixelHeight: 50},
 		platformPopup: native,
-		widget:        &popoverMeasureWidget{size: geometry.Size{Width: 120, Height: 49.65625}},
+		widget:        &popoverMeasureWidget{size: geometry.Size{Width: 120, Height: 49.65625}}},
 	}
 
 	p.measureAndSize()
@@ -378,7 +377,7 @@ func TestPopoverResizeKeepsAuthoritativeNativeSizeUntilSizeEvent(t *testing.T) {
 // it stops being modal — through the public Window.SetModalTarget API only.
 func TestPopoverModalTogglesWindowModalTarget(t *testing.T) {
 	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: newTestWidget()}})
-	p := &popover{owner: win, visible: true}
+	p := &popover{popoverHost: popoverHost{owner: win, visible: true}}
 
 	p.becomeModalTarget()
 	if win.modalTarget == nil {
@@ -529,6 +528,7 @@ func (p *placementPlatform) NewPopup(_ platform.Window, size geometry.Size, hand
 		return nil, p.transparentErr
 	}
 	n := &placementNative{handler: handler, syncSize: p.syncSize}
+	n.recordingPlatformPopup.SetSize(size.Width, size.Height)
 	p.natives, p.created = append(p.natives, n), append(p.created, size)
 	if p.syncSize {
 		handler(events.SizeEvent{Width: size.Width, Height: size.Height, PixelWidth: size.Width, PixelHeight: size.Height})
@@ -556,7 +556,8 @@ func placementFixture(t *testing.T, area geometry.Rectangle) (*popover, *placeme
 	return p, native, plat, app
 }
 
-func settlePlacement(t *testing.T, p *popover) {
+func settlePlacement(t *testing.T, root interface{ popoverCore() *popoverHost }) {
+	p := root.popoverCore()
 	t.Helper()
 	for range 8 {
 		p.paint()
@@ -711,7 +712,7 @@ func TestMenuPlacementFallbackAndModeSwitch(t *testing.T) {
 			if err := pm.show(placement, pos); err != nil {
 				t.Fatal(err)
 			}
-			menu := pm.popover.(*popover)
+			menu := testSharedCore(pm.popover)
 			settlePlacement(t, menu)
 			if menu.Transparent() || menu.Placement() != placement || menu.Position() != pos || len(plat.options) != 2 || !plat.options[0].Transparent || plat.options[1].Transparent {
 				t.Fatal("opaque retry changed placement request", plat.options)
@@ -909,7 +910,7 @@ func TestMenuPlacementScreenLimitAndInput(t *testing.T) {
 	if err := pm.show(PopoverPlacementBottom, geometry.Point{}); err != nil {
 		t.Fatal(err)
 	}
-	menu := pm.popover.(*popover)
+	menu := testSharedCore(pm.popover)
 	settlePlacement(t, menu)
 	if w.points[0] != (geometry.Point{X: 90, Y: 85}) {
 		t.Fatal("rectangle reference is not anchor center", w.points)
@@ -981,7 +982,7 @@ func TestMenuPlacementMinimumWidth(t *testing.T) {
 			if err := pm.ShowAt(geometry.Point{}); err != nil {
 				t.Fatal(err)
 			}
-			menu := pm.popover.(*popover)
+			menu := testSharedCore(pm.popover)
 			settlePlacement(t, menu)
 			if menu.bodyRect().Size != (geometry.Size{Width: tt.bodyWidth, Height: 40}) || plat.created[0].Width != tt.surfaceW {
 				t.Fatalf("body = %v, created surface = %v", menu.bodyRect(), plat.created[0])
@@ -1024,7 +1025,7 @@ func TestMenuPlacementLabelChangesResizeBody(t *testing.T) {
 	if err := pm.ShowAt(geometry.Point{}); err != nil {
 		t.Fatal(err)
 	}
-	menu := pm.popover.(*popover)
+	menu := testSharedCore(pm.popover)
 	for _, tt := range []struct {
 		label string
 		width float32
@@ -1182,7 +1183,9 @@ func TestPopoverModelessDismissalAndExplicitKeys(t *testing.T) {
 // 原生面被替换后，旧面的延迟释放不能撤销新的模态登记。
 func TestPopoverResignKeepsReplacementTarget(t *testing.T) {
 	w := testWindowWithSurface(&window{})
-	old, next := &popover{owner: w}, &popover{owner: w}
+	old, next := &popover{popoverHost: popoverHost{owner: w}}, &popover{popoverHost: popoverHost{owner: w}}
+	old.bind()
+	next.bind()
 	w.SetModalTarget(next)
 	old.resignModalTarget()
 	if w.modalTarget != next {
@@ -1617,7 +1620,7 @@ func TestPopoverFocusPolicyDoesNotInheritFromAnchor(t *testing.T) {
 	root.SetCanContainFocus(false)
 	win := testWindowWithSurface(&window{})
 	win.SetWidget(root)
-	p := &popover{anchor: anchor}
+	p := &popover{popoverHost: popoverHost{anchor: anchor}}
 	popupRoot, child := newTestWidget(), newTestWidget()
 	child.SetFocusable(true)
 	popupRoot.AddChild(child)

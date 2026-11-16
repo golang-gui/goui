@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"errors"
 	"log"
 	"runtime"
 	"strings"
@@ -2101,7 +2102,7 @@ func (t *textEditor) showContextMenu(point *geometry.Point) {
 		menu.items[command] = item
 	}
 	menu.popup.SetMenu(items)
-	if err := menu.popup.ShowAt(position); err != nil {
+	if err := menu.popup.ShowAt(position); err != nil && !errors.Is(err, ErrPopoverSuperseded) {
 		log.Printf("goui: text context menu: %v", err)
 	}
 }

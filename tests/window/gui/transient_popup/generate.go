@@ -26,17 +26,30 @@ func main() {
 	sources := make(map[string]string)
 	replace := make(map[string]string)
 	for file, patches := range map[string][][2]string{
-		"transient_popup.go": {
-			{`h.native, h.painter, h.transparent = native, painter, transparent`, `h.native, h.painter, h.transparent = native, painter, transparent
-                fmt.Printf("TRACE CREATE shared native=%p handle=%x painter=%p backend=%s\n", native, native.NativeHandle(), painter, painter.Name())`},
-			{`p.platformPopup, p.surface, p.painter = h.native, h.native, h.painter`, `p.platformPopup, p.surface, p.painter = h.native, h.native, h.painter
-            fmt.Printf("TRACE LEASE native=%p handle=%x painter=%p style=%s\n", h.native, h.native.NativeHandle(), h.painter, p.StyleName())`},
-			{"h.closed = true", `h.closed = true
-            fmt.Printf("TRACE DESTROY native=%p painter=%p\n", h.native, h.painter)`},
+		"shared_popover.go": {
+			{"\treturn nil\n}\n\nfunc (h *sharedPopoverHost) closeClient", `
+            fmt.Printf("TRACE LEASE root=%p native=%p handle=%x painter=%p style=%s\n", h.host, h.platformPopup, h.platformPopup.NativeHandle(), h.painter, p.StyleName())
+            return nil
+}
+
+func (h *sharedPopoverHost) closeClient`},
 		},
-		"popover.go": {
-			{`p.platformPopup = pp`, `fmt.Printf("TRACE CREATE independent native=%p handle=%x painter=%p backend=%s\n", pp, pp.NativeHandle(), painter, painter.Name())
+		"popover_host.go": {
+			{`"math"`, `"math"
+            "os"
+            "strconv"
+            "time"`},
+			{`// Commit visibility and modal ownership before allowing frame callbacks.`, `if delay,err:=strconv.Atoi(os.Getenv("GOUI_VERIFY_SLOW_MS"));err==nil && delay>0 {
+                fmt.Printf("TRACE SLOW root=%p delay=%dms\n", p.rootHost(),delay)
+                time.Sleep(time.Duration(delay)*time.Millisecond)
+            }
+            // Commit visibility and modal ownership before allowing frame callbacks.`},
+			{`p.platformPopup = pp`, `kind := "independent"
+            if _, ok := p.rootHost().(*sharedPopoverHost); ok { kind = "shared" }
+            fmt.Printf("TRACE CREATE %s root=%p native=%p handle=%x painter=%p backend=%s\n", kind, p.rootHost(), pp, pp.NativeHandle(), painter, painter.Name())
             p.platformPopup = pp`},
+			{`p.painter.Destroy()`, `fmt.Printf("TRACE DESTROY root=%p native=%p painter=%p\n", p.rootHost(), p.platformPopup, p.painter)
+            p.painter.Destroy()`},
 		},
 	} {
 		data, err := os.ReadFile(filepath.Join(repo, "gui", file))
