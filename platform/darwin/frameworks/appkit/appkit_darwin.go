@@ -7,6 +7,7 @@ import (
 
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/core_graphics"
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/foundation"
+	"github.com/golang-gui/goui/platform/darwin/frameworks/quartzcore"
 	"github.com/golang-gui/goui/platform/darwin/frameworks/utils"
 
 	"github.com/ebitengine/purego/objc"
@@ -807,6 +808,8 @@ func initNSView() {
 	NSViewSel.ConvertRectToBacking = objc.RegisterName("convertRectToBacking:")
 	NSViewSel.ConvertPointFromView = objc.RegisterName("convertPoint:fromView:")
 	NSViewSel.SetNeedsDisplay = objc.RegisterName("setNeedsDisplay:")
+	NSViewSel.DisplayRectIgnoringOpacity = objc.RegisterName("displayRectIgnoringOpacity:")
+	NSViewSel.Layer = objc.RegisterName("layer")
 	NSViewSel.SetWantsBestResolutionOpenGLSurface = objc.RegisterName("setWantsBestResolutionOpenGLSurface:")
 	NSViewSel.AddTrackingArea = objc.RegisterName("addTrackingArea:")
 	NSViewSel.RemoveTrackingArea = objc.RegisterName("removeTrackingArea:")
@@ -860,6 +863,8 @@ var (
 		ConvertRectToBacking                objc.SEL
 		ConvertPointFromView                objc.SEL
 		SetNeedsDisplay                     objc.SEL
+		DisplayRectIgnoringOpacity          objc.SEL
+		Layer                               objc.SEL
 		SetWantsBestResolutionOpenGLSurface objc.SEL
 		AddTrackingArea                     objc.SEL
 		RemoveTrackingArea                  objc.SEL
@@ -1328,6 +1333,14 @@ func (v NSView) SetNeedsDisplay(needsDisplay bool) {
 	v.Send(NSViewSel.SetNeedsDisplay, needsDisplay)
 }
 
+func (v NSView) DisplayRectIgnoringOpacity(rect NSRect) {
+	v.Send(NSViewSel.DisplayRectIgnoringOpacity, rect)
+}
+
+func (v NSView) Layer() quartzcore.CALayer {
+	return Cast[quartzcore.CALayer](v.Send(NSViewSel.Layer))
+}
+
 // SetWantsBestResolutionOpenGLSurface makes an OpenGL-backed view render at the
 // full backing (Retina) pixel resolution instead of a point-sized surface that
 // the window server would upscale.
@@ -1441,6 +1454,7 @@ func initNSWindow() {
 	NSWindowSel.MakeFirstResponder = objc.RegisterName("makeFirstResponder:")
 	NSWindowSel.MakeKeyAndOrderFront = objc.RegisterName("makeKeyAndOrderFront:")
 	NSWindowSel.OrderFront = objc.RegisterName("orderFront:")
+	NSWindowSel.Display = objc.RegisterName("display")
 	NSWindowSel.OrderOut = objc.RegisterName("orderOut:")
 	NSWindowSel.AddChildWindow = objc.RegisterName("addChildWindow:ordered:")
 	NSWindowSel.RemoveChildWindow = objc.RegisterName("removeChildWindow:")
@@ -1496,6 +1510,7 @@ var (
 		MakeFirstResponder                objc.SEL
 		MakeKeyAndOrderFront              objc.SEL
 		OrderFront                        objc.SEL
+		Display                           objc.SEL
 		OrderOut                          objc.SEL
 		AddChildWindow                    objc.SEL
 		RemoveChildWindow                 objc.SEL
@@ -1653,6 +1668,10 @@ func (w NSWindow) MakeKeyAndOrderFront(sender objc.ID) {
 
 func (w NSWindow) OrderFront(sender objc.ID) {
 	w.Send(NSWindowSel.OrderFront, sender)
+}
+
+func (w NSWindow) Display() {
+	w.Send(NSWindowSel.Display)
 }
 
 func (w NSWindow) OrderOut(sender objc.ID) {

@@ -57,6 +57,13 @@ func (d *Device) Commit() com.HRESULT {
 	return com.HRESULT(ret)
 }
 
+// WaitForCommitCompletion waits until the composition engine has processed
+// preceding commits. It does not wait for those frames to reach the display.
+func (d *Device) WaitForCommitCompletion() com.HRESULT {
+	ret, _, _ := (*DeviceClass)(d.Class).WaitForCommitCompletion.CallRaw(uintptr(cgo.Pointer(d)))
+	return com.HRESULT(ret)
+}
+
 func (d *Device) CreateTargetForHwnd(hwnd uintptr, topmost bool) (target *Target, hr com.HRESULT) {
 	ret, _, _ := (*DeviceClass)(d.Class).CreateTargetForHwnd.CallRaw(
 		uintptr(cgo.Pointer(d)), hwnd, uintptr(cgo.CBool(topmost)), uintptr(cgo.Pointer(&target)))

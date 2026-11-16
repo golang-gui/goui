@@ -30,6 +30,7 @@ type Window struct {
 	closed            bool
 	destroying        bool
 	parent            common.Window
+	scaleOwner        common.Window // popups share the owner's DIP unit for geometry and input
 	onEvent           events.EventHandler
 	trackingMouse     bool
 	trackingNonClient bool
@@ -37,7 +38,7 @@ type Window struct {
 	lastPointerY      float32
 	lastButtons       events.PointerButtons
 	lastModifiers     events.Modifiers
-	scale             float32      // cached device scale; updated on WM_SIZE
+	scale             float32      // cached logical-unit scale; updated on WM_SIZE
 	inSizeMove        bool         // inside the modal move/resize loop
 	resizedInSizeMove bool         // whether that loop delivered an authoritative WM_SIZE
 	noActivate        bool         // popups: decline activation/focus on click (WM_MOUSEACTIVATE)
@@ -289,9 +290,12 @@ func (w *Window) Draw(img image.Image) error {
 	return w.drawImage(bmp)
 }
 
-// scaleFactor returns the window scale, falling back to 1 on error. Used to
-// normalize physical pixels (client rect, pointer coords) to logical (DIP).
+// scaleFactor returns the logical-unit scale, falling back to 1 on error.
+// Popup geometry and input share their owner's DIP unit.
 func (w *Window) scaleFactor() float32 {
+	if w.scaleOwner != nil {
+		return hwndScale(winapi.HWND(w.scaleOwner.NativeHandle()))
+	}
 	return hwndScale(w.hwnd)
 }
 
@@ -492,6 +496,20 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		return 0
 
 	case winapi.WM_DPICHANGED:
+		if window.scaleOwner != nil {
+			// Popup position, size and input all use owner DIP. The suggested
+			// top-level rectangle must not replace explicit owner-local requests.
+			// Report the current client geometry in its current logical unit;
+			// the popup host decides whether another layout/size request is needed.
+			var rect winapi.RECT
+			if err := winapi.GetClientRect(hwnd, &rect); err == nil {
+				pw, ph := float32(rect.Right-rect.Left), float32(rect.Bottom-rect.Top)
+				scale := window.scaleFactor()
+				window.scale = scale
+				window.onEvent(events.SizeEvent{Width: pw / scale, Height: ph / scale, PixelWidth: pw, PixelHeight: ph})
+			}
+			return 0
+		}
 		// Resize to the suggested rect; the resulting WM_SIZE carries the new
 		// scale (logical + physical) via SizeEvent.
 		rect := (*winapi.RECT)(unsafe.Pointer(uintptr(lParam)))

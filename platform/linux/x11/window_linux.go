@@ -38,6 +38,7 @@ type Window struct {
 	onEvent          events.EventHandler
 	width            int32
 	height           int32
+	geometrySerial   uint64 // popup geometry query supersedes older native configurations
 	title            string
 	gc               xlib.GC
 	buttons          events.PointerButtons
@@ -524,6 +525,9 @@ func handleEvent(event xlib.Event) {
 	case xlib.ConfigureNotify:
 		ev := event.ConfigureEvent()
 		if window, ok := windowMap[ev.Window]; ok {
+			if window.geometrySerial != 0 && ev.Serial < window.geometrySerial && ev.SendEvent == 0 {
+				return
+			}
 			sizeChanged := ev.Width != window.width || ev.Height != window.height
 			if sizeChanged {
 				window.width, window.height = ev.Width, ev.Height

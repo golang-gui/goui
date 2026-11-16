@@ -1014,3 +1014,15 @@ func (p *Painter) RenderImage(width, height int, scale float32, draw func()) (im
 	}
 	return result, nil
 }
+
+// InvalidatePresentation forwards invalidation of compositor-retained uploads
+// to their native owner. CPU raster buffers and image resources remain usable.
+func (p *Painter) InvalidatePresentation() error {
+	if p.activeFrame {
+		return fmt.Errorf("software: invalidate presentation during active frame")
+	}
+	if target, ok := p.drawable.(graphics.PresentationInvalidator); ok {
+		return target.InvalidatePresentation()
+	}
+	return nil
+}

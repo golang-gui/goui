@@ -251,6 +251,11 @@ func (*recordingPlatformPopup) SetPosition(float32, float32)    {}
 func (p *recordingPlatformPopup) SetSize(width, height float32) { p.width, p.height = width, height }
 func (*recordingPlatformPopup) Show() error                     { return nil }
 func (*recordingPlatformPopup) Hide() error                     { return nil }
+func (p *recordingPlatformPopup) ClientSize() (geometry.Size, geometry.Size, error) {
+	size := geometry.Size{Width: p.width, Height: p.height}
+	return size, size, nil
+}
+func (*recordingPlatformPopup) Repaint() error { return nil }
 
 // absOrigin sums each widget's parent-relative rect origin up the parent chain.
 func TestPopoverAbsOrigin(t *testing.T) {
@@ -497,6 +502,7 @@ func (p *placementNative) SetPosition(x, y float32) {
 	p.positions = append(p.positions, geometry.Point{X: x, Y: y})
 }
 func (p *placementNative) SetSize(w, h float32) {
+	p.recordingPlatformPopup.SetSize(w, h)
 	p.sizes = append(p.sizes, geometry.Size{Width: w, Height: h})
 	if p.onSize != nil {
 		p.onSize()
@@ -505,7 +511,8 @@ func (p *placementNative) SetSize(w, h float32) {
 		p.handler(events.SizeEvent{Width: w, Height: h, PixelWidth: w, PixelHeight: h})
 	}
 }
-func (p *placementNative) Destroy() { p.destroyed = true }
+func (p *placementNative) Repaint() error { p.handler(events.PaintEvent{}); return nil }
+func (p *placementNative) Destroy()       { p.destroyed = true }
 
 type placementPlatform struct {
 	platform.Platform

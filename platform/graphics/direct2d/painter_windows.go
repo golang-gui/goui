@@ -64,10 +64,11 @@ type Painter struct {
 	swapChainFlags       uint32
 	frameLatencyWaitable winapi.HANDLE
 
-	transparent       bool
-	composition       *dcomp.Device
-	compositionTarget *dcomp.Target
-	compositionVisual *dcomp.Visual
+	transparent         bool
+	composition         *dcomp.Device
+	compositionDetached bool
+	compositionTarget   *dcomp.Target
+	compositionVisual   *dcomp.Visual
 }
 
 type NativeWindow interface {
@@ -682,7 +683,17 @@ func (p *Painter) End() {
 		p.handleDeviceFailure(hr)
 		return
 	}
-	p.processPresentResult(p.swapChain.Present(frameSyncInterval, 0))
+	if p.processPresentResult(p.swapChain.Present(frameSyncInterval, 0)) && p.compositionDetached {
+		if hr := p.compositionVisual.SetContent(&p.swapChain.Unknown); hr.Failed() {
+			p.handleDeviceFailure(hr)
+			return
+		}
+		if hr := p.composition.Commit(); hr.Failed() {
+			p.handleDeviceFailure(hr)
+			return
+		}
+		p.compositionDetached = false
+	}
 }
 
 func (p *Painter) processPresentResult(hr com.HRESULT) bool {
@@ -1302,7 +1313,30 @@ func (p *Painter) createComposition() error {
 	return nil
 }
 
+// InvalidatePresentation removes the retained swap-chain image while keeping
+// the compositor and all drawing resources. A new completed frame reattaches it.
+func (p *Painter) InvalidatePresentation() error {
+	if p.activeFrame {
+		return fmt.Errorf("direct2d: invalidate presentation during active frame")
+	}
+	if p.compositionVisual == nil {
+		return nil
+	}
+	if hr := p.compositionVisual.SetContent(nil); hr.Failed() {
+		return fmt.Errorf("discard composition content: %v", hr)
+	}
+	if hr := p.composition.Commit(); hr.Failed() {
+		return fmt.Errorf("commit discarded composition: %v", hr)
+	}
+	p.compositionDetached = true
+	if hr := p.composition.WaitForCommitCompletion(); hr.Failed() {
+		return fmt.Errorf("wait for discarded composition: %v", hr)
+	}
+	return nil
+}
+
 func (p *Painter) releaseComposition() {
+	p.compositionDetached = false
 	if p.compositionTarget != nil {
 		p.compositionTarget.SetRoot(nil)
 		if p.composition != nil {

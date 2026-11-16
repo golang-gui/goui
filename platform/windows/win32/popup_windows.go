@@ -1,6 +1,7 @@
 package win32
 
 import (
+	"fmt"
 	"image"
 	"runtime"
 	"unsafe"
@@ -29,6 +30,7 @@ func newPopup(owner common.Window, size geometry.Size, onEvent events.EventHandl
 	}
 	win := &Window{
 		onEvent:     onEvent,
+		scaleOwner:  owner,
 		scale:       1,
 		transparent: options.Transparent,
 		noActivate:  true, // clicking the popup must not steal focus from its owner
@@ -102,6 +104,39 @@ func (p *Popup) SetSize(width, height float32) {
 		winapi.SWP_NOMOVE|winapi.SWP_NOZORDER|winapi.SWP_NOACTIVATE)
 }
 
+func (p *Popup) ClientSize() (logical, pixels geometry.Size, err error) {
+	if p.win.NativeHandle() == 0 {
+		return logical, pixels, common.ErrUnavailable
+	}
+	var rect winapi.RECT
+	if err := winapi.GetClientRect(p.win.hwnd, &rect); err != nil {
+		return logical, pixels, err
+	}
+	w, h := float32(rect.Right-rect.Left), float32(rect.Bottom-rect.Top)
+	scale := p.win.scaleFactor()
+	// A reuse may keep the same physical size and receive no WM_SIZE. Keep
+	// native pointer conversion in the same DIP unit as this observation.
+	p.win.scale = scale
+	return geometry.Size{Width: w / scale, Height: h / scale}, geometry.Size{Width: w, Height: h}, nil
+}
+
+func (p *Popup) Repaint() error {
+	if p.win.NativeHandle() == 0 {
+		return common.ErrUnavailable
+	}
+	if err := winapi.InvalidateRect(p.win.hwnd, nil, winapi.FALSE); err != nil {
+		return err
+	}
+	updated := winapi.UpdateWindow(p.win.hwnd)
+	if p.win.NativeHandle() == 0 {
+		return common.ErrUnavailable
+	}
+	if updated == 0 {
+		return fmt.Errorf("repaint popup: UpdateWindow failed")
+	}
+	return nil
+}
+
 // popupPhysicalExtent converts a requested logical extent to the minimum
 // integer pixel extent that can contain it. Truncation (or rounding down) makes
 // the native client area smaller than its measured Direct2D/DirectWrite content
@@ -122,4 +157,13 @@ func (p *Popup) ownerScale() float32 {
 
 func (p *Popup) SurfaceState() common.SurfaceState {
 	return common.SurfaceState{Ready: p.NativeHandle() != 0, Generation: 1}
+}
+
+// InvalidatePresentation discards the native software-upload presentation.
+// Direct2D painters own and invalidate their composition tree themselves.
+func (p *Popup) InvalidatePresentation() error {
+	if reset, ok := p.win.uploadPainter.(interface{ InvalidatePresentation() error }); ok {
+		return reset.InvalidatePresentation()
+	}
+	return nil
 }
