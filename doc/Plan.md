@@ -1,5 +1,112 @@
 # Plan
 
+## SharedPopover 与真实共享 GUI 宿主（2026-11-16）
+
+本节替代下面旧方案的“仅共享物理 Popup/Painter”设计；旧验证结果仅说明当时的断言范围，
+不能证明真实首帧正确。当前契约见 [DesignSharedPopover](DesignSharedPopover.md)。
+
+- [x] 写入确认的 API、唯一 Root、生命周期、重入、输入目标及首帧设计。
+- [x] 实现 NewSharedPopover，普通 Popover 与共享客户端并列；唯一私有宿主复用
+  popoverHost 机制。Hide 保留一份挂载树，换内容卸载；消费者与声明式现有路径迁移。
+- [x] Surface.Popovers 改为当次显示的 PopoverTarget，失效目标拒绝输入；dev 同步迁移。
+- [x] GLX 帧外资源初始化、创建/更新/销毁及 RenderImage 使用同 Context 的固定 pbuffer。
+  FBConfig 明确要求 pbuffer 支持，不为已失效宿主另建清理目标。
+- [x] 相关包回归、新客户端/目标隔离回归通过。原生旧 Painter 负对照在首帧完整坐标断言
+  明确失败（81×36 的红角标出现在 y=10，独立预期 y=11），保留负对照日志。
+- [x] Linux X11（OpenGL 使用软件光栅化），Software/OpenGL
+  各 1x/1.5x/2x：原生两种表面各 16 次含帧外资源操作及首帧逐像素断言通过；每组
+  六控件 60 次正常输入交替通过。观察 overlay 同时记录 Root/Popup/Painter 身份。
+- [x] 最终原生组合共 14 组：Linux X11 Software/OpenGL 各 1x/1.5x/2x；Windows amd64
+  Direct2D/Software 各 1x/2x；macOS arm64 Software/OpenGL
+  各 1x/2x。每组两种原生表面各 16 次尺寸/资源/同步绘制检查、六控件 60 次交替通过。
+  逐组解析日志断言仅一个 Root/Popup/Painter 身份、创建一次、最终销毁一次。Linux
+  额外逐像素检查每组 32 个原生首帧，GLX 创建失败作用域复核后再跑 OpenGL 1x/2x。
+- [x] Windows Direct2D 1x 的 3 秒慢绘制注入真实复现旧菜单残留；隐藏清屏的单独原型
+  仍失败。由 Painter 解除旧 DirectComposition 内容、提交并等待处理，完成新帧后再
+  挂接；Software 的原生上传复用同一失效能力。保留修正前/后截图和失败原型记录。
+  GUI 回归断言显示前像素已清除，失效失败不 Map、不发 Closed，并原样保留错误；
+  清除期间取消不得留下孤立可见窗口。Windows COM vtable 的真实 ABI 回调覆盖
+  detach/commit/wait 顺序和逐项失败，原生运行通过，不依赖桌面或真实 DWM 对象。
+- [x] macOS OpenGL 1x 以同一 3 秒注入检查大小菜单切换：等待期间无旧内容，随后
+  正确显示当前菜单。真实鼠标选择列表第二项、Tooltip、输入框右键菜单、普通 Popover
+  与共享菜单共存均通过；资源日志始终为同一共享 Root/Popup/Painter，独立 Popover
+  单独创建。验证程序提供 go generate 的 GOUI_VERIFY_SLOW_MS 可复查入口。
+- [x] ApiBox cmd/apibox 的 HTTP 方法列表与 URL 右键菜单经 XTest 原生输入交替 24 次，
+  3438 次原生像素/几何采样未出现几何或可见内容位置跳动，始终同一原生句柄。
+  数据目录用仓库外 Go overlay 隔离。其 goui-sourceview v0.6.0 使用旧 API，集成时在
+  临时 workspace 的依赖副本中迁移字段和构造函数；没有修改应用文件或模块缓存。
+  旧依赖需独立升级，见 DesignSharedPopover 的迁移说明。
+- [x] GUI/widgets/dev、OpenGL/Software/X11 的 race 通过；相关 vet（-composites=false）
+  及 Windows amd64/macOS arm64 的 Demo、受影响窗口程序编译通过。仅按已跟踪文件及
+  本轮新增文件组成的隔离副本执行 go test ./... 通过；原工作区同命令仍为基线的 23 条
+  未跟踪旧例程/旧测试编译诊断，无新增诊断。未删除、跳过或迁移这些无关用例。
+- [x] 最终审阅修正公共宿主 Reset 遍历的 Root 身份比较；新增回归经正常 DispatchEvent
+  建立父/子自定义控制器的按压状态，普通/共享两种宿主在修正前均失败、修正后通过。
+  再跑完整隔离测试、相关 race、Windows/macOS 编译及 Linux Software/OpenGL 1x
+  各 60 次切换通过，资源身份仍唯一、最终销毁一次。
+- [x] macOS 人工窗口正常退出并记录 DESTROY PASS。
+- [x] 完成最终审阅，按设计文档、GLX、原生几何/呈现、GUI/API/消费者及验收记录
+  拆分独立提交。原生接口提交的暂存副本 go test ./... 通过；最终暂存的 1082 份 Go
+  源码及模块文件逐一与完整测试通过的隔离副本比对一致。
+
+Windows OpenGL 在主窗口 Painter 创建时报告 `can not choose useful pixel format`，
+该后端未完成原生验收，不算通过。真实混合 DPI 多屏迁移、所有驱动和合成器扫描时刻
+不由上述矩阵承诺。全仓既有排版/像素测试会生成 PNG，隔离副本承接了本轮完整重跑产物。
+
+## 共享浮层的几何与首帧修正（2026-11-16）
+
+- [x] 检查 X11／Win32／Cocoa 的 Popup、Software／OpenGL／Direct2D 呈现，以及
+  Android／iOS 工厂（均明确不支持 Popup）。共性修正位于 GUI 共享宿主，不按平台为
+  菜单或下拉框添加坐标补偿。平台新增 ClientSize 实际尺寸查询及 Repaint 同步绘制分发。
+- [x] 瞬态 Show 在隐藏阶段细化布局、确认实际 DIP／像素尺寸并定位；隐藏移动改变
+  backing scale 时重新定尺。显示成功、枚举和模态归属提交后同步处理首帧；原生绘制
+  上下文尚在分发时禁止重入借用，帧回调取消／销毁不会返回成功。资源仍由同一窗口持有。
+- [x] X11 用查询回复 serial 排除更旧的排队 ConfigureNotify；Win32 在 WM_PAINT 内
+  同步绘制。macOS Software 原生用例发现首次 NSView display 未调用 drawRect：
+  实测 NSWindow.display 建立 backing layer 后，同步 layer.displayIfNeeded 才进入
+  正确 CGContext。按该原生流程修正，并 retain 原生对象跨越重入；保留失败记录。
+- [x] Windows 复核发现 Popup 请求采用 owner scale，尺寸／指针原先采用本 HWND scale。
+  统一为 owner DIP，ClientSize 同步指针缓存；Popup WM_DPICHANGED 仅报告实际尺寸，
+  保留显式几何。真实 HWND 消息回归在关闭该分支的负对照中，将 80×35 改成了 153×82，
+  明确失败；修正后 Direct2D／Software 各 1x／2x，两种表面全部 DPI PASS，且各自再次
+  完成 60 次交替弹出。此消息注入不修改系统 DPI，不视为真实混合 DPI 多屏迁移通过。
+- [x] 新回归在旧实现上明确失败（初始内容未 Arrange）；修正后同步／异步／无新通知、
+  1x／1.5x／2x、右下边缘大小交替、移动改变 scale、首帧像素、语义边界、查询失败、
+  不收敛、卸载／关闭／销毁及原生绘制重入断言通过。原生命周期测试计数改为保留每次
+  Show 的 Begin／End，并继续断言 Hide 不销毁缓存、owner 最终恰好销毁一次。
+- [x] 窗口例程增加 -verify-reuse：两类原生 Popup 各 16 次查询／重绘，六个菜单／
+  列表控件经普通 DispatchEvent 交替 60 次，并在普通位置和工作区右下方移动测试窗口。
+  断言当次已有布局、重开已有同步首帧、下一轮几何稳定；普通人工操作入口继续可用。
+- [x] GUI／widgets 包测试及 GUI／widgets／X11 的 race 通过；Linux X11 定向回归、涉及包 vet
+  （-composites=false）通过。Windows amd64／macOS arm64 受影响目标交叉编译通过；
+  macOS Cocoa／AppKit／QuartzCore 及窗口用例 vet 通过。
+  Windows 窗口用例单独 vet 通过；Windows 包内完整 vet 的既有诊断另列于下方。
+- [x] 工作区 go test ./... 已执行，失败来自原有未跟踪旧例程／测试的 Window 管理 API
+  调用和 ui/window_lookup_test.go 的旧字段；用 HEAD 覆盖本次改动、移除本轮新增文件
+  的只读 Go overlay 执行全仓编译，得到相同 23 条编译诊断。未修改这些用例或删除断言。
+- [x] 最终源码完成下表 12 组窗口复跑，全部通过原生两种表面各 16 次查询／绘制、六个
+  控件 60 次交替及普通／右下位置移动后的重开断言。Linux 额外通过生成的观察 overlay
+  核对 60 次借用始终同一 Popup／句柄／Painter，创建一次、owner 退出销毁一次。
+- [x] Windows Direct2D／macOS OpenGL 的 1x 真实鼠标补验：长短菜单切换、打开十项
+  列表、Esc、选择第二项及其它控件选择隔离；截图和操作日志保留。边缘移动由上述
+  自动程序的 SetPosition 场景覆盖；未用静态截图冒充首帧时间或 compositor 扫描验证。
+- [x] 两端人工窗口正常退出，Windows exit=0、macOS DESTROY PASS。
+  全仓包含会向源码目录写图片的既有排版用例，相关产物不纳入源码。
+
+最终窗口矩阵：Linux amd64／X11（OpenGL 使用软件光栅化），Software
+1x／1.5x、OpenGL 1x／2x；Windows，Direct2D／Software 各
+1x／2x；macOS arm64，Software／OpenGL 各 1x／2x。缩放为 GOUI_PLAT_SCALE
+进程配置，不修改桌面系统设置。Windows amd64、macOS arm64／amd64 编译通过，
+macOS amd64 未原生运行；回归在 HEAD overlay 下仍失败，修正源码下通过。
+
+未通过／未覆盖：Windows OpenGL 在主窗口 Painter 创建阶段报
+“can not choose useful pixel format”，尚未进入 Popup；Android／iOS 的 no-cgo 裸编译
+分别被 purego 的 cgo 动态库符号和 iOS cgo 要求阻塞，不将其记为移动构建验证通过。
+两端 Popup 运行验证不适用。Windows 交叉 vet 有既有 dragdrop／window 的 unsafe.Pointer
+诊断，未按完整 vet 通过记录。真实混合 DPI 多屏迁移仍未验收，scale 改变由包内替身覆盖。
+
+设计、官方契约和参考框架版本见 [DesignPopup](DesignSharedPopover.md)。
+
 ## v0.8.0 正式发布（2026-11-15）
 
 - [x] PR #113 合入 main 后冻结 `bc47eb006836fce9fed3cfe695f6345995513199`，annotated tag v0.8.0 的远端
