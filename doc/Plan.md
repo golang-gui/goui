@@ -1221,6 +1221,48 @@ Typography 桌面依赖失败，未手工修改这些旧源码。原工作区命
 十二组验收及补充焦点检查正常退出；两套专用 Xvnc/Xfwm4、会话总线和所属辅助
 进程已清理，显示套接字已移除。最终源码全仓复查仍为 4906 通过、11 跳过、0 失败。
 
+## ListRowGroup 连接分组（2026-11-17）
+
+- [x] 新增 widgets.ListRowGroup：纵向线性容器，间距固定 0、交叉轴拉伸、无内边距，
+  只连接直接相邻的可见 ListRow。连接几何在每次绘制时由实际可见子控件推导，
+  不保存成员注册表：共享边归后一行，前一行省略底边并交出下圆角，首/末可见行
+  保留上/下圆角，中间行四角为直角；非行内容截断链条，单行分组保持完整轮廓。
+  组不增加选择、动作或焦点，行仍解析自己的样式/状态/输入/语义。
+- [x] ListRow.Paint 改为经分组几何绘制：默认 part 与 focus part 都只取行自身
+  解析出的样式，focus 重复共享边以保持闭合但保留相同暴露外角。未声明
+  BorderSides 与 BorderAll 等价；不改 Painter、三后端、主题规则或行行为。
+  无 `list-row-group` 默认规则，避免组背景画在行下面形成第二条轮廓。
+- [x] widgets/ui.ListRowGroup 为普通 WidgetView：Mount 创建容器，Update 用既有
+  BuildContext.UpdateChildren 协调声明列表，nil 声明省略，按 ID/位置保持行
+  身份；Unmount 不改变已挂载行。不新增 Root/BuildContext 特例或对象作用域。
+- [x] 包内回归：无间距堆叠/宽度拉伸/隐藏行不占位、非行内容截断、单行不连接、
+  圆角与边集推导、焦点补齐共享边、独立行不受影响、组不扩散悬停与点击归属。
+  像素回归在 Basic/Modern 明暗之外用显式探针样式（不透明白底、2 DIP 半透明
+  红边、8 DIP 圆角）在 1x/2x 断言：外边框与两条共享接缝均为单次绘制的颜色、
+  外侧四角透明、内侧接缝两端直角且边框连续、行内部为表面色；预乘 sRGB RGBA8
+  允许 2 字节误差。改回不做分组几何时该用例失败，确认能复现旧问题。
+- [x] 新增 tests/window/widgets/list_row_group 桌面验收（中文操作说明，正常输入
+  分发，不使用 DevServer）：连接布局与语义、点击归属、悬停不扩散、禁用行、
+  隐藏后重算接缝、声明重排保持实例、Tab 焦点轮廓、主题与明暗切换，逐步断言
+  后输出 AUTO PASS；失败 panic。Software 后端、1x/2x、Modern 亮暗与 Basic
+  六组均通过。
+- [x] Demo 设置区由独立行 VBox 改为一个 ListRowGroup，共享接缝替代 8 DIP
+  行间距；四行内容、ID 与回调逐字保留。同步新增
+  [DesignListRowGroup](DesignListRowGroup.md)，并更新 DesignListRow、README 与
+  双语能力表。
+- [x] Linux amd64 / Go 1.25.8：`go test ./widgets/... ./theme/... ./ui/ ./gui/
+  ./example/demo/` 与排除既有未跟踪 `example/*_test` 目录后的全仓
+  `go test ./...` 通过；widgets/widgets-ui 的 `-race` 与相关 vet 通过；
+  windows/amd64、darwin/arm64 的窗口例程与 widgets/widgets-ui 测试目标
+  交叉编译通过。`gofmt` 无差异。
+- [ ] Windows/macOS 原生、OpenGL/Direct2D 原生像素、真实混合 DPI 与移动触摸
+  未执行。逻辑缩放与交叉编译不代替原生验收；分组几何与行自身 AA 一样，仍受
+  独立图层分数像素拼接的限制（见 Roadmap）。
+
+证据：本机 Software 1x/2x 桌面截图（连接行、隐藏后接缝重算、Basic/Modern）
+保存在 `/tmp` 下的临时捕获文件；未写入源码目录。全仓测试中原有失败项
+（未跟踪 example/*_test 旧 API、无 DISPLAY 的 Typography）与本轮无关。
+
 ## ProgressBar 动画与完整圆环（2026-11-11）
 
 - [x] 修复 Surface 合并后桌面 Visible 未随 StateEvent 更新的问题；已知桌面状态

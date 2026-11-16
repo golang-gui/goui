@@ -106,7 +106,7 @@ RSS includes resident shared-library pages; PSS apportions shared pages between 
 | Area | Supported capabilities |
 | --- | --- |
 | Declarative UI | State and property bindings, local dependency tracking and subtree updates, composed views, common view modifiers, and custom Widgets/Views. |
-| Controls | Buttons and connected button groups, images/icons, check/radio/toggle buttons and groups, switches, dropdowns, composable settings/action ListRows, and linear/circular progress indicators. |
+| Controls | Buttons and connected button groups, images/icons, check/radio/toggle buttons and groups, switches, dropdowns, composable settings/action ListRows with connected row groups, and linear/circular progress indicators. |
 | Text | Formatted and selectable Labels; Unicode single-line/multiline editing, native window IME, word and triple-click logical-line selection with dragging, clipboard, undo/redo, placeholders, configurable obscuring, brief last-grapheme reveal, and composable input filters. |
 | Layout | Constraint-based horizontal/vertical boxes, wrapping, baseline alignment, per-edge padding, scrolling, split views, and overlays. |
 | Data views | Virtualized lists; trees with viewport-sized rows, local row styles and continuous selection backgrounds; tables with editable cells, independent stretch/shrink allocation, stable manual sizing, sorting, owned style parts, and separate cell, scrollbar-outline and viewport borders. |
@@ -123,7 +123,7 @@ Core controls live in `gui`, with declarative bindings in `ui`. Additional contr
 
 ### v0.8.0 highlights
 
-- **Settings pages:** `ListRow` combines leading content, a title, a multiline subtitle, and independent trailing controls, with Basic and Modern appearances.
+- **Settings pages:** `ListRow` combines leading content, a title, a multiline subtitle, and independent trailing controls, with Basic and Modern appearances. `ListRowGroup` stacks rows into one visually connected block: neighbours share a single border and only the outer corners stay rounded.
 - **Tables:** columns shrink to `MinWidth` before scrolling, while `Expand` distributes spare width. Manual resizing remains stable across neighboring-column changes and declarative rebuilds. Owned style parts independently control headers, scrollbars, grid lines, cell outlines, and the viewport frame.
 - **Trees:** row styles and content-decoration depth are declarative. Backgrounds and hit areas fit the viewport while content scrolls horizontally; adjacent selected rows form a continuous group. A tree-owned drag source can outlive recycled rows.
 - **Input and editing:** typed callbacks carry local coordinates, buttons and modifiers; consecutive counts are available on press. Text editors support triple-click line selection followed by whole-line dragging. See the [migration notes](doc/ReleaseV080.md#api-migration).
