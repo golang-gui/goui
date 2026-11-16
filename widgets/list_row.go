@@ -218,6 +218,11 @@ func (r *ListRow) activate() {
 	}
 }
 
+// Paint resolves the row's own style and paints it with the geometry its
+// parent ListRowGroup requires. A connected row keeps only its exposed outer
+// corners and drops the border shared with the next row; the row still resolves
+// its own background, border and focus rules. Nested groups stay independent
+// because only a direct ListRowGroup parent contributes geometry.
 func (r *ListRow) Paint(p gui.Painter) {
 	name := r.StyleName()
 	if name == "" {
@@ -228,9 +233,12 @@ func (r *ListRow) Paint(p gui.Painter) {
 	if !r.activatable {
 		state &^= style.Hovered | style.Pressed
 	}
-	paintStyledBox(r, p, rect, name, style.PartDefault, state)
+	segment := listRowSegmentOf(r)
+	paintListRowBox(p, rect, gui.ResolveWidgetStyle(r, name, style.PartDefault, state), segment)
 	if r.activatable && r.FocusVisible() {
-		paintStyledBox(r, p, rect, name, "focus", r.State())
+		// The focus decoration is an independent, complete ring: it repeats the
+		// shared edge and keeps the same exposed outer corners as the row box.
+		paintListRowBox(p, rect, gui.ResolveWidgetStyle(r, name, "focus", r.State()), segment.complete())
 	}
 }
 
