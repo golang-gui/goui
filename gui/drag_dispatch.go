@@ -135,14 +135,14 @@ func (w *surfaceBase) dragControllersChanged() {
 	}
 }
 
-func (p *popover) dragControllersChanged() {
+func (p *popoverHost) dragControllersChanged() {
 	if p.destroyed {
 		return
 	}
 	if p.drag.native == nil && p.drag.err != nil {
 		p.drag.attempted = false
 	}
-	app := dragAppOf(p)
+	app := dragAppOf(p.rootHost())
 	updateDragHost(&p.drag, app, p.surface, p.Widget())
 }
 

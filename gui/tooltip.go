@@ -30,7 +30,7 @@ type tooltipState struct {
 	epoch    uint64
 	timer    *Timer
 	unmount  signal.Handle
-	popup    *popover
+	popup    *sharedPopover
 }
 
 func tooltipsFor(host EventTarget) *tooltipState {
@@ -38,7 +38,7 @@ func tooltipsFor(host EventTarget) *tooltipState {
 	if root, ok := host.(Root); ok {
 		owner = surfaceCore(root)
 	}
-	if popup, ok := host.(*popover); ok {
+	if popup := popoverCore(host); popup != nil {
 		owner = surfaceCore(popup.owner)
 	}
 	if owner == nil {
@@ -52,15 +52,15 @@ func (t *tooltipState) eligible(host EventTarget) bool {
 	if t.owner == nil || t.owner.destroyed || !t.owner.focused || t.owner.frameSuspended {
 		return false
 	}
-	if h := t.owner.transient; h != nil && h.active != nil && !h.active.tooltipPresentation {
+	if h := t.owner.shared; h != nil && h.active != nil && !h.active.tooltip {
 		return false
 	}
 	if host == t.owner.owner() {
 		return t.owner.modalTarget == nil
 	}
-	p, ok := host.(*popover)
-	return ok && p != t.popup && !p.destroyed && p.visible &&
-		(t.owner.modalTarget == nil || t.owner.modalTarget == p)
+	p := popoverCore(host)
+	return p != nil && (t.popup == nil || t.popup.host == nil || p != &t.popup.host.popoverHost) && !p.destroyed && p.visible &&
+		(t.owner.modalTarget == nil || t.owner.modalTarget == p.modalHost())
 }
 
 func tooltipAncestor(widget Widget) Widget {
@@ -152,8 +152,8 @@ func (t *tooltipState) show() {
 		return
 	}
 	epoch, target := t.epoch, t.target
-	p := NewTransientPopover(target).(*popover)
-	p.tooltipPresentation = true
+	p := NewSharedPopover(target).(*sharedPopover)
+	p.tooltip = true
 	p.SetStyleName("tooltip")
 	p.SetPlacement(PopoverPlacementBottom)
 	area := t.bounds
@@ -286,7 +286,10 @@ func (t *tooltipState) refresh(layoutChanged bool) {
 		area.Y -= origin.Y
 		t.popup.anchorArea = &area
 		invalidateStyleSubtree(t.popup.Widget())
-		t.popup.RequestLayout()
+		if t.popup.host != nil {
+			t.popup.host.anchorArea = &area
+			t.popup.host.RequestLayout()
+		}
 	} else {
 		t.bounds = bounds
 	}

@@ -22,18 +22,18 @@ func (p *transientTestPlatform) NewPainter(platform.Surface) (graphics.Painter, 
 	return backend, nil
 }
 
-func transientFixture(t *testing.T) (*window, *transientTestPlatform, func(Widget) *popover) {
+func transientFixture(t *testing.T) (*window, *transientTestPlatform, func(Widget) *sharedPopover) {
 	t.Helper()
 	base, _, native, app := placementFixture(t, geometry.Rect(0, 0, 1000, 800))
 	plat := &transientTestPlatform{placementPlatform: native}
 	app.platform = plat
 	w := app.windows[0]
 	t.Cleanup(w.Destroy)
-	return w, plat, func(anchor Widget) *popover {
+	return w, plat, func(anchor Widget) *sharedPopover {
 		if anchor == nil {
 			anchor = base.anchor
 		}
-		p := NewTransientPopover(anchor).(*popover)
+		p := NewSharedPopover(anchor).(*sharedPopover)
 		p.SetWidget(&popoverMeasureWidget{size: geometry.Size{Width: 100, Height: 40}})
 		t.Cleanup(p.Destroy)
 		return p
@@ -44,6 +44,7 @@ func TestTransientPopupRetainsNativeAndPainterAcrossPresenters(t *testing.T) {
 	w, plat, makePopup := transientFixture(t)
 	var native platform.Popup
 	var painter graphics.Painter
+	frames := 0
 	for range 30 {
 		p := makePopup(nil)
 		for range 3 {
@@ -51,20 +52,22 @@ func TestTransientPopupRetainsNativeAndPainterAcrossPresenters(t *testing.T) {
 				t.Fatal(err)
 			}
 			if native == nil {
-				native, painter = p.platformPopup, p.painter
+				native, painter = testSharedCore(p).platformPopup, testSharedCore(p).painter
 			}
-			if p.platformPopup != native || p.painter != painter || len(plat.natives) != 1 || len(plat.painters) != 1 {
+			if testSharedCore(p).platformPopup != native || testSharedCore(p).painter != painter || len(plat.natives) != 1 || len(plat.painters) != 1 {
 				t.Fatal("切换或重新打开创建了新的 Popup/Painter")
 			}
+			frames++ // 每次 Show 现在同步完成首帧，Hide 不应新增绘制或销毁。
+			calls := len(plat.painters[0].calls)
 			p.Hide()
-			if p.Visible() || p.platformPopup != nil || p.painter != nil || len(w.Popovers()) != 0 || w.transient.active != nil || plat.natives[0].destroyed || len(plat.painters[0].calls) != 0 {
+			if p.Visible() || len(w.Popovers()) != 0 || w.shared.active != nil || plat.natives[0].destroyed || len(plat.painters[0].calls) != calls {
 				t.Fatal("关闭未归还宿主或销毁了缓存资源")
 			}
 		}
 		p.Destroy()
 	}
 	w.Destroy()
-	if !plat.natives[0].destroyed || len(plat.painters[0].calls) != 1 || plat.painters[0].calls[0] != "destroy" {
+	if !plat.natives[0].destroyed || len(plat.painters[0].calls) != frames*4+1 || plat.painters[0].calls[frames*4] != "destroy" {
 		t.Fatal("窗口销毁没有恰好释放一次共享资源")
 	}
 }
@@ -80,12 +83,12 @@ func TestTransientPopupOrdinaryAndWindowIsolation(t *testing.T) {
 	other.SetWidget(anchor)
 	t.Cleanup(other.Destroy)
 	q := makePopup(anchor)
-	for _, presenter := range []*popover{ordinary, p, q} {
+	for _, presenter := range []interface{ Show() error }{ordinary, p, q} {
 		if err := presenter.Show(); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if len(plat.natives) != 3 || len(plat.painters) != 3 || len(w.Popovers()) != 2 || len(other.Popovers()) != 1 || p.platformPopup == q.platformPopup || p.painter == q.painter {
+	if len(plat.natives) != 3 || len(plat.painters) != 3 || len(w.Popovers()) != 2 || len(other.Popovers()) != 1 || testSharedCore(p).platformPopup == testSharedCore(q).platformPopup || testSharedCore(p).painter == testSharedCore(q).painter {
 		t.Fatal("普通 Popover 或不同窗口错误共用宿主")
 	}
 	p.Destroy()
@@ -113,7 +116,7 @@ func TestTransientPopupClosedReentryKeepsLatestPresentation(t *testing.T) {
 					t.Fatal(err)
 				}
 			})
-			if err := second.Show(); err == nil || second.Visible() || !latest.Visible() || w.transient.active != latest {
+			if err := second.Show(); err == nil || second.Visible() || !latest.Visible() || w.shared.active != latest {
 				t.Fatal("旧 Show 覆盖了关闭回调打开的新浮窗")
 			}
 			second.Destroy()
@@ -132,27 +135,27 @@ func TestTransientPopupUnmountMigrationAndGeometry(t *testing.T) {
 	if err := p.Show(); err != nil {
 		t.Fatal(err)
 	}
-	native, painter := p.platformPopup, p.painter
+	native, painter := testSharedCore(p).platformPopup, testSharedCore(p).painter
 	p.Hide()
 	// 不改变原生尺寸、也不再发送 SizeEvent；新 presenter 必须继承实际像素尺寸。
 	plat.natives[0].syncSize = false
 	q := makePopup(nil)
-	if err := q.Show(); err != nil || q.width != 100 || q.height != 40 || q.pixelWidth != 100 || q.pixelHeight != 40 {
-		t.Fatalf("复用未继承实际尺寸：%v DIP=(%g,%g) pixels=(%g,%g)", err, q.width, q.height, q.pixelWidth, q.pixelHeight)
+	if err := q.Show(); err != nil || testSharedCore(q).width != 100 || testSharedCore(q).height != 40 || testSharedCore(q).pixelWidth != 100 || testSharedCore(q).pixelHeight != 40 {
+		t.Fatalf("复用未继承实际尺寸：%v DIP=(%g,%g) pixels=(%g,%g)", err, testSharedCore(q).width, testSharedCore(q).height, testSharedCore(q).pixelWidth, testSharedCore(q).pixelHeight)
 	}
 	anchor := p.anchor
 	w.SetWidget(nil)
-	if q.Visible() || plat.natives[0].destroyed || w.transient.active != nil {
+	if q.Visible() || plat.natives[0].destroyed || w.shared.active != nil {
 		t.Fatal("源控件卸载没有归还宿主或销毁了缓存")
 	}
 	w.SetWidget(anchor)
-	if err := p.Show(); err != nil || p.platformPopup != native || p.painter != painter {
+	if err := p.Show(); err != nil || testSharedCore(p).platformPopup != native || testSharedCore(p).painter != painter {
 		t.Fatalf("同窗重新挂载没有复用：%v", err)
 	}
 	other := testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: &placementWindow{area: geometry.Rect(0, 0, 1000, 800)}}})
 	t.Cleanup(other.Destroy)
 	other.SetWidget(anchor)
-	if err := p.Show(); err != nil || p.platformPopup == native || p.painter == painter || len(plat.natives) != 2 || plat.natives[0].destroyed {
+	if err := p.Show(); err != nil || testSharedCore(p).platformPopup == native || testSharedCore(p).painter == painter || len(plat.natives) != 2 || plat.natives[0].destroyed {
 		t.Fatalf("迁窗没有隔离资源：%v", err)
 	}
 }
@@ -161,7 +164,7 @@ func TestTransientPopupRoutesEventsToCurrentContent(t *testing.T) {
 	_, plat, makePopup := transientFixture(t)
 	first, second := makePopup(nil), makePopup(nil)
 	calls := [2][]string{}
-	for i, p := range []*popover{first, second} {
+	for i, p := range []*sharedPopover{first, second} {
 		content := newTestWidget()
 		content.AddEventController(newRecordingController("pointer", PhaseTarget, &calls[i], nil))
 		p.SetWidget(content)
@@ -175,7 +178,7 @@ func TestTransientPopupRoutesEventsToCurrentContent(t *testing.T) {
 		t.Fatalf("复用后输入误投旧内容：%v", calls)
 	}
 	first.Destroy()
-	if !second.Visible() || second.platformPopup == nil {
+	if !second.Visible() || testSharedCore(second).platformPopup == nil {
 		t.Fatal("旧 presenter 销毁影响新内容")
 	}
 }
@@ -186,14 +189,15 @@ func TestTransientPopupDefersOwnerDestroyUntilFrameEnds(t *testing.T) {
 	if err := p.Show(); err != nil {
 		t.Fatal(err)
 	}
+	calls := len(plat.painters[0].calls)
 	plat.painters[0].onBegin = func() {
 		w.Destroy()
-		if plat.natives[0].destroyed || w.platformWindow == nil || len(plat.painters[0].calls) != 1 {
+		if plat.natives[0].destroyed || w.platformWindow == nil || len(plat.painters[0].calls) != calls+1 {
 			t.Fatal("活动帧中提前销毁共享资源或 owner")
 		}
 	}
-	p.paint()
-	if !plat.natives[0].destroyed || w.platformWindow != nil || p.Visible() || w.transient.active != nil {
+	testSharedCore(p).paint()
+	if !plat.natives[0].destroyed || w.platformWindow != nil || p.Visible() || w.shared.active != nil {
 		t.Fatal("帧结束后未完成 owner 与宿主销毁")
 	}
 }
@@ -207,7 +211,7 @@ func TestTransientPopupFallbackOnceAndUnknownFailure(t *testing.T) {
 				p := makePopup(nil)
 				err := p.Show()
 				if errors.Is(failure, platform.ErrUnsupported) || errors.Is(failure, platform.ErrUnavailable) {
-					if err != nil || p.Transparent() || len(plat.options) != 2 || len(plat.painters) != 1 {
+					if err != nil || testSharedCore(p).Transparent() || len(plat.options) != 2 || len(plat.painters) != 1 {
 						t.Fatalf("没有稳定复用不透明 fallback：%v", err)
 					}
 				} else if !errors.Is(err, failure) || len(plat.natives) != 0 || len(plat.painters) != 0 {
@@ -232,7 +236,7 @@ func TestTransientPopupTooltipNeverPreemptsMenu(t *testing.T) {
 		q.dispatch(t)
 	}
 	tooltipAdvance(t, q, 2*time.Second)
-	if !menu.Visible() || w.tooltip.target != nil || w.tooltip.popup != nil || len(plat.natives) != 1 || w.transient.active != menu.popover {
+	if !menu.Visible() || w.tooltip.target != nil || w.tooltip.popup != nil || len(plat.natives) != 1 || w.shared.active != menu.popover {
 		t.Fatal("过期 Tooltip 抢占了菜单")
 	}
 	menu.Hide()
@@ -273,18 +277,18 @@ func TestTransientPopupPainterFallbackRetainsOnlySuccessfulResources(t *testing.
 	creation := &transientCreationPlatform{transientTestPlatform: plat, failFirst: true}
 	App.(*application).platform = creation
 	p := makePopup(nil)
-	if err := p.Show(); err != nil || p.Transparent() || len(plat.natives) != 2 || len(plat.painters) != 1 || !plat.natives[0].destroyed {
+	if err := p.Show(); err != nil || testSharedCore(p).Transparent() || len(plat.natives) != 2 || len(plat.painters) != 1 || !plat.natives[0].destroyed {
 		t.Fatalf("Painter fallback 没有清理失败候选：%v", err)
 	}
 	// 失败候选的迟到尺寸和销毁通知不能落到当前 presenter。
 	plat.natives[0].handler(events.SizeEvent{Width: 888, Height: 888})
 	plat.natives[0].handler(events.DestroyEvent{})
-	if !p.Visible() || p.width != 100 || p.height != 40 || w.transient.active != p {
+	if !p.Visible() || testSharedCore(p).width != 100 || testSharedCore(p).height != 40 || w.shared.active != p {
 		t.Fatal("失败候选的旧回调污染了已选中的共享宿主")
 	}
 	p.Hide()
 	q := makePopup(nil)
-	if err := q.Show(); err != nil || creation.attempts != 2 || q.painter != plat.painters[0] {
+	if err := q.Show(); err != nil || creation.attempts != 2 || testSharedCore(q).painter != plat.painters[0] {
 		t.Fatalf("后续 presenter 再次尝试或创建 Painter：%v", err)
 	}
 }
@@ -294,7 +298,7 @@ func TestTransientPopupOwnerDestroyedDuringCreation(t *testing.T) {
 	creation := &transientCreationPlatform{transientTestPlatform: plat, onPainter: w.Destroy}
 	App.(*application).platform = creation
 	p := makePopup(nil)
-	if err := p.Show(); err == nil || p.Visible() || p.platformPopup != nil || p.painter != nil || w.platformWindow != nil {
+	if err := p.Show(); err == nil || p.Visible() || testSharedCore(p).platformPopup != nil || testSharedCore(p).painter != nil || w.platformWindow != nil {
 		t.Fatal("创建回调销毁 owner 后仍成功显示或残留借用资源")
 	}
 	if len(plat.natives) != 1 || !plat.natives[0].destroyed || len(plat.painters) != 1 || len(plat.painters[0].calls) != 1 || plat.painters[0].calls[0] != "destroy" {
@@ -321,7 +325,15 @@ func TestTransientPopupOwnerDestroyedDuringFocusCleanup(t *testing.T) {
 		}
 	})
 	p.Hide()
-	if !plat.natives[0].destroyed || w.platformWindow != nil || w.transient.active != nil || p.FocusedWidget() != nil {
+	if !plat.natives[0].destroyed || w.platformWindow != nil || w.shared.active != nil || p.FocusedWidget() != nil {
 		t.Fatal("焦点回调结束后未完成窗口清理")
 	}
+}
+
+// 只供断言读取当前实际宿主；未取得宿主的轻量对象没有 GUI 运行状态。
+func testSharedCore(p SharedPopover) *popoverHost {
+	if p := p.(*sharedPopover); p.host != nil {
+		return &p.host.popoverHost
+	}
+	return &popoverHost{}
 }

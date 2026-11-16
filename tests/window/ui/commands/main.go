@@ -171,7 +171,7 @@ func main() {
 				var timer *ui.Timer
 				timer = app.TickFunc(400*time.Millisecond, func() {
 					w := app.FindWindow("commands")
-					pop := func() gui.Popover { require(len(w.Popovers()) == 1, "expected one menu"); return w.Popovers()[0] }
+					pop := func() gui.PopoverTarget { require(len(w.Popovers()) == 1, "expected one menu"); return w.Popovers()[0] }
 					row := func() gui.WidgetInfo {
 						r, ok := findRow(pop().Widget().Snapshot(), "Copy")
 						require(ok, "missing Copy row")

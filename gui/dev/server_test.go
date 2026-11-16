@@ -295,15 +295,17 @@ type testWindow struct {
 	app       *testApplication
 	info      gui.WindowInfo
 	widget    gui.Widget
-	popovers  []gui.Popover
+	popovers  []gui.PopoverTarget
 	destroy   signal.Signal0
 	commits   []string
 	commitErr error
 }
 
-func (w *testWindow) Snapshot() gui.WindowInfo               { return w.info }
-func (w *testWindow) Widget() gui.Widget                     { return w.widget }
-func (w *testWindow) Popovers() []gui.Popover                { return append([]gui.Popover(nil), w.popovers...) }
+func (w *testWindow) Snapshot() gui.WindowInfo { return w.info }
+func (w *testWindow) Widget() gui.Widget       { return w.widget }
+func (w *testWindow) Popovers() []gui.PopoverTarget {
+	return append([]gui.PopoverTarget(nil), w.popovers...)
+}
 func (w *testWindow) ConnectDestroy(fn func()) signal.Handle { return w.destroy.Connect(fn) }
 func (w *testWindow) CommitText(text string) error {
 	if w.commitErr != nil {
@@ -413,7 +415,7 @@ func TestPopoverReferencesAndInputRouting(t *testing.T) {
 	app := newTestApplication()
 	w := app.windows[0].(*testWindow)
 	p := &testPopover{visible: true, modal: true, widget: gui.NewLabel("popup")}
-	w.popovers = []gui.Popover{p}
+	w.popovers = []gui.PopoverTarget{p}
 	h := newHandler(func() gui.Application { return app })
 	snapshot := readSnapshot(t, h)
 	popup := snapshot.Surfaces[0].Popovers[0]

@@ -98,7 +98,7 @@ func main() {
 	menu.SetMenu(model)
 	must(win.Show())
 	win.SetFocusedWidget(anchor)
-	var popup gui.Popover
+	var popup gui.PopoverTarget
 	key := func(k events.Key) {
 		for _, kind := range []events.EventType{events.KeyDown, events.KeyUp} {
 			must(win.DispatchEvent(events.KeyEvent{EventType: kind, Key: k}))

@@ -1,6 +1,7 @@
 package widgets
 
 import (
+	"errors"
 	"fmt"
 	"math"
 
@@ -52,7 +53,7 @@ type DropDown struct {
 	revision                     uint64
 	selectedSignal               signal.Signal2[int, uint64]
 	openError                    signal.Signal2[error, uint64]
-	popup                        gui.Popover
+	popup                        gui.SharedPopover
 	content                      *dropDownContent
 	motion                       *gui.MotionEventController
 	click                        *gui.ClickEventController
@@ -456,7 +457,7 @@ func (d *DropDown) open(focusAnchor bool) error {
 		d.content = newDropDownContent(d)
 	}
 	if d.popup == nil {
-		d.popup = gui.NewTransientPopover(d)
+		d.popup = gui.NewSharedPopover(d)
 		d.popup.SetStyleName("drop-down-popup")
 		d.popup.SetModal(true)
 		d.popup.SetAutoDismiss(true)
@@ -471,7 +472,9 @@ func (d *DropDown) open(focusAnchor bool) error {
 	d.content.RequestLayout()
 	revision := d.revision
 	if err := d.popup.Show(); err != nil {
-		d.Close()
+		if !errors.Is(err, gui.ErrPopoverSuperseded) || !d.Opened() {
+			d.Close()
+		}
 		return err
 	}
 	if d.Destroyed() || revision != d.revision || !d.Opened() {
@@ -517,7 +520,7 @@ func (d *DropDown) ConnectOpenError(fn func(error)) signal.Handle {
 	})
 }
 func (d *DropDown) openFromInput(focusAnchor bool) {
-	if err := d.open(focusAnchor); err != nil && !d.Destroyed() {
+	if err := d.open(focusAnchor); err != nil && !errors.Is(err, gui.ErrPopoverSuperseded) && !d.Destroyed() {
 		d.openError.Emit(err, d.revision)
 	}
 }

@@ -75,9 +75,10 @@ type Surface interface {
 	CommitText(text string) error
 
 	// Popovers returns a copy of the currently shown popovers owned by this
-	// window, in registration order. These are borrowed GUI-thread objects;
-	// hiding/releasing a popover removes it without changing its ownership.
-	Popovers() []Popover
+	// Surface, in registration order. Each borrowed GUI-thread target belongs to
+	// one visible occurrence and expires on close, including a hide/show cycle
+	// on the same Popover or SharedPopover. It exposes no host ownership.
+	Popovers() []PopoverTarget
 
 	// ConnectDestroy runs once, after the host is marked destroyed and before
 	// its resources are released. Reentrant Destroy calls do not interrupt the
@@ -97,7 +98,7 @@ type surfaceBase struct {
 	host           Surface
 	claimed        bool
 	visible        bool
-	transient      *transientPopup
+	shared         *sharedPopoverHost
 	tooltip        tooltipState
 	id             string
 	styleName      string
@@ -111,11 +112,11 @@ type surfaceBase struct {
 	cursorPosition geometry.Point       // last client-local pointer position for chrome queries
 	cursorInside   bool
 	destroyed      bool
-	destroyPending bool        // resource cleanup waits for a reentered frame to finish
-	inputBlocked   bool        // private host input boundary during an owned native dialog
-	modalTarget    ModalTarget // the modal element intercepting this host's input; nil when none
-	popoversShown  uint64      // changes whenever an owned surface is shown
-	popovers       []*popover  // currently shown surfaces; lifecycle stays with each popover
+	destroyPending bool           // resource cleanup waits for a reentered frame to finish
+	inputBlocked   bool           // private host input boundary during an owned native dialog
+	modalTarget    ModalTarget    // the modal element intercepting this host's input; nil when none
+	popoversShown  uint64         // changes whenever an owned surface is shown
+	popovers       []*popoverHost // currently shown surfaces; lifecycle stays with each popover
 	destroy        signal.Signal0
 	focusChanged   signal.Signal1[bool]
 }
@@ -331,20 +332,20 @@ func (w *surfaceBase) Destroy() {
 	w.destroyed = true
 	w.destroyPending = true
 	w.destroyFrames()
-	if w.transient != nil && w.transient.active != nil {
-		w.transient.active.suspendFrames()
+	if w.shared != nil && w.shared.active != nil {
+		w.shared.suspendFrames()
 	}
 	w.finishDestroy()
 }
 
 func (w *surfaceBase) finishDestroy() {
-	if !w.destroyPending || w.framePainting || w.transient != nil && (w.transient.busy || w.transient.painting()) {
+	if !w.destroyPending || w.framePainting || w.shared != nil && (w.shared.busy || w.shared.hiding || w.shared.releasing || w.shared.painting()) {
 		return
 	}
 	w.destroyPending = false
 	w.tooltip.dismiss(false)
-	if w.transient != nil {
-		w.transient.destroy()
+	if w.shared != nil {
+		w.shared.destroy()
 	}
 	w.cancelInput(GestureHostClosed)
 	w.drag.destroy()
@@ -413,24 +414,26 @@ func (w *surfaceBase) Snapshot() SurfaceInfo {
 	return info
 }
 
-func (w *surfaceBase) Popovers() []Popover {
-	result := make([]Popover, 0, len(w.popovers))
+func (w *surfaceBase) Popovers() []PopoverTarget {
+	result := make([]PopoverTarget, 0, len(w.popovers))
 	if !w.destroyed {
 		for _, p := range w.popovers {
-			result = append(result, p)
+			if p.target != nil {
+				result = append(result, p.target)
+			}
 		}
 	}
 	return result
 }
 
-func (w *surfaceBase) addPopover(p *popover) {
+func (w *surfaceBase) addPopover(p *popoverHost) {
 	w.popoversShown++
 	if !w.destroyed && !slices.Contains(w.popovers, p) {
 		w.popovers = append(w.popovers, p)
 	}
 }
 
-func (w *surfaceBase) removePopover(p *popover) {
+func (w *surfaceBase) removePopover(p *popoverHost) {
 	if i := slices.Index(w.popovers, p); i >= 0 {
 		w.popovers = slices.Delete(w.popovers, i, i+1)
 	}
@@ -687,7 +690,7 @@ func (w *surfaceBase) dismissPopovers(event events.Event) bool {
 	}
 	shown := w.popoversShown
 	type entry struct {
-		surface   *popover
+		surface   *popoverHost
 		lifecycle uint64
 	}
 	entries := make([]entry, 0, len(w.popovers))

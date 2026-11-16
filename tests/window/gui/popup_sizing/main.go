@@ -125,10 +125,10 @@ func main() {
 	}
 	menu := gui.NewPopoverMenu(anchor)
 	menu.SetMenu(model)
-	var menuPopup gui.Popover
+	var menuPopup gui.PopoverTarget
 	frames, usedFrame, stage := 0, 0, 0
 	presentation := 0
-	observe := func(p gui.Popover) {
+	observe := func(p gui.Root) {
 		p.ConnectFrame(func(time.Time) { frames++ })
 		presentation = frames
 	}
@@ -171,9 +171,9 @@ func main() {
 		}
 		// ConnectFrame 在布局前发出，跨两个实际绘制帧再读取最终分配。
 		if stage != 12 {
-			active := popup
+			var active gui.Root = popup
 			if stage >= 5 {
-				active = menuPopup
+				active = menuPopup.Widget().Root()
 			}
 			must(active.RequestPaint())
 			if frames <= presentation+1 || frames == usedFrame {
@@ -193,7 +193,7 @@ func main() {
 			must(menu.ShowAt(geometry.Point{X: 20, Y: 36}))
 			check(len(win.Popovers()) == 1, "menu did not replace size probe")
 			menuPopup = win.Popovers()[0]
-			observe(menuPopup)
+			observe(menuPopup.Widget().Root())
 		case 5:
 			verifyMenu(false, false)
 			long.SetLabel("Duplicate selected lines below the current line")

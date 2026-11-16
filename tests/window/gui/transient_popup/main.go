@@ -16,6 +16,16 @@
 //     TRACE CREATE 每窗口只能一条共享 Popup 和一条共享 Painter，所有 TRACE LEASE
 //     的 native、handle、painter 必须相同，且只在窗口关闭时出现 TRACE DESTROY。
 //     普通 Popover 的 CREATE 标注 independent，单独计数。不能仅按同时存活数量验收。
+//     用该 overlay 构建后设置 GOUI_VERIFY_SLOW_MS=3000：打开 Menu 3、Esc、再开 Menu 1
+//     或输入框右键菜单。等待期间只能为空白/透明或本次背景，不得显示上一个菜单的文字；
+//     3 秒后内容应正确且窗口几何不跳动。这是故障放大，不是生产框架的延迟。
+//  5. go run ./tests/window/gui/transient_popup -verify-reuse 自动派发普通鼠标／Esc 输入：
+//     三列不同宽高的菜单和列表交替 60 次，断言 Show 当次已有布局、重开已有同步首帧、
+//     下一轮事件循环几何不再跳动；测试窗口每 18 次在普通位置和工作区右下方切换。
+//     另检查透明／不透明原生 Popup 的隐藏尺寸查询、
+//     小数尺寸、同尺寸重复请求、同步绘制和销毁后错误。PASS 后自动关闭；失败退出非零。
+//     Windows 另向真实 HWND 派发 WM_DPICHANGED，验证建议矩形不覆盖显式 Popup 几何；
+//     不修改系统 DPI，此消息回归不等于真实混合 DPI 多屏迁移验收。
 //
 // 副作用：只创建窗口与日志，不改文件、剪贴板或系统设置。复位：重启。退出：关闭主窗口。
 package main
@@ -23,6 +33,7 @@ package main
 //go:generate go run generate.go
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"runtime"
@@ -43,6 +54,8 @@ func must(err error) {
 }
 
 func main() {
+	verify := flag.Bool("verify-reuse", false, "run popup reuse assertions and exit")
+	flag.Parse()
 	app, err := gui.NewApplication("org.golang-gui.SharedPopupVerification")
 	must(err)
 	sheet := modern.Sheet(modern.Options{})
@@ -73,11 +86,23 @@ func main() {
 		column.AddChild(inputs[i])
 		menus[i] = gui.NewMenuButton()
 		menus[i].SetChild(gui.NewLabel(fmt.Sprintf("Menu %d", i+1)))
-		menus[i].SetMenu(gui.NewSliceListModel([]*gui.MenuItem{gui.NewMenuItem(fmt.Sprintf("Action %d", i+1), func() { log.Printf("ACTION %d", i+1) })}))
+		var items []*gui.MenuItem
+		for j := range 1 + i*3 {
+			label := fmt.Sprintf("Action %d-%d", i+1, j+1)
+			if i == 1 {
+				label += " with a longer label"
+			}
+			items = append(items, gui.NewMenuItem(label, func() { log.Printf("ACTION %d-%d", i+1, j+1) }))
+		}
+		menus[i].SetMenu(gui.NewSliceListModel(items))
 		menus[i].ConnectOpenError(func(err error) { log.Fatal(err) })
 		column.AddChild(menus[i])
 		lists[i] = widgets.NewDropDown()
-		lists[i].SetModel(gui.NewSliceListModel([]widgets.DropDownItem{{Text: fmt.Sprintf("Choice %d-A", i+1)}, {Text: fmt.Sprintf("Choice %d-B", i+1)}}))
+		var choices []widgets.DropDownItem
+		for j := range 2 + i*4 {
+			choices = append(choices, widgets.DropDownItem{Text: fmt.Sprintf("Choice %d-%d", i+1, j+1)})
+		}
+		lists[i].SetModel(gui.NewSliceListModel(choices))
 		lists[i].SetSelected(0)
 		lists[i].ConnectOpenError(func(err error) { log.Fatal(err) })
 		column.AddChild(lists[i])
@@ -106,7 +131,7 @@ func main() {
 		}
 		transients := 0
 		for _, p := range win.Popovers() {
-			if p != ordinary {
+			if p.Widget() != ordinary.Widget() {
 				transients++
 				log.Printf("VISIBLE style=%s role=%s text=%q", p.StyleName(), p.Widget().Snapshot().Role, p.Widget().Snapshot().Text)
 			}
@@ -129,7 +154,7 @@ func main() {
 		state := ""
 		count := 0
 		for _, p := range win.Popovers() {
-			if p != ordinary {
+			if p.Widget() != ordinary.Widget() {
 				count++
 				state = p.StyleName()
 			}
@@ -151,6 +176,10 @@ func main() {
 			}
 		}
 		log.Printf("READY OS=%s typography=%s", runtime.GOOS, app.Typography().Name())
+		if *verify {
+			verifyNativeReuse(app, win)
+			startReuseVerification(app, win, menus, lists)
+		}
 	})
 	must(ready.StartOnce(500 * time.Millisecond))
 	win.ConnectDestroy(func() { log.Print("DESTROY PASS") })

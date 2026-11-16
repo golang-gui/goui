@@ -220,7 +220,7 @@ func TestPopoverMenuActivateRunsAction(t *testing.T) {
 
 func TestPopoverMenuClosesBeforeRunningAction(t *testing.T) {
 	owner := testWindowWithSurface(&window{})
-	p := &popover{owner: owner, visible: true, modal: true}
+	p := &popover{popoverHost: popoverHost{owner: owner, visible: true, modal: true}}
 	owner.SetModalTarget(p)
 	pm := &PopoverMenu{popover: p}
 	closed := 0
@@ -878,8 +878,11 @@ func TestMenuCommandCloseCallbackInvalidatesActivation(t *testing.T) {
 			item := NewMenuItem("Run", nil)
 			item.SetCommand(old)
 			owner := testWindowWithSurface(&window{})
-			p := &popover{owner: owner, visible: true}
-			pm := &PopoverMenu{popover: p}
+			p := &popover{popoverHost: popoverHost{owner: owner, visible: true}}
+			anchor := newTestWidget()
+			owner.SetWidget(anchor)
+			p.anchor = anchor
+			pm := &PopoverMenu{popover: p, anchor: anchor}
 			p.ConnectClosed(func() {
 				switch mode {
 				case "replace":

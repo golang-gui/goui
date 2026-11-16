@@ -696,8 +696,8 @@ func (w *testWindow) DispatchEvent(events.Event) error {
 	return nil
 }
 
-func (w *testWindow) CommitText(string) error { panic("unexpected CommitText") }
-func (w *testWindow) Popovers() []gui.Popover { return nil }
+func (w *testWindow) CommitText(string) error       { panic("unexpected CommitText") }
+func (w *testWindow) Popovers() []gui.PopoverTarget { return nil }
 
 func (w *testWindow) ConnectCloseRequest(fn func(*bool)) signal.Handle {
 	return w.closeRequest.Connect(fn)
