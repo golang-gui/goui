@@ -26,11 +26,13 @@ type glxNativeWindow interface {
 }
 
 type glxContext struct {
-	drawable glx.Window
-	handle   glx.Context
-	window   NativeWindow
-	native   xlib.Window // cleanup/error matching only; never an availability test
-	lost     bool
+	drawable     glx.Window
+	resource     glx.Pbuffer
+	handle       glx.Context
+	window       NativeWindow
+	native       xlib.Window // cleanup/error matching only; never an availability test
+	lost         bool
+	resourceLost bool
 }
 
 func (*glxContext) isGLXContext() {}
@@ -46,6 +48,9 @@ func newContext(win NativeWindow, share Context, _ Config) (_ Context, err error
 	fbConfig := native.NativeFBConfig()
 	if fbConfig == 0 {
 		return nil, errors.New("native window has no GLX FBConfig")
+	}
+	if getGLXFBConfigAttrib(fbConfig, glx.GLX_DRAWABLE_TYPE)&glx.GLX_PBUFFER_BIT == 0 {
+		return nil, errors.New("GLX FBConfig does not support a resource pbuffer")
 	}
 
 	var shareHandle glx.Context
@@ -82,17 +87,40 @@ func newContext(win NativeWindow, share Context, _ Config) (_ Context, err error
 			return nil, errors.New("create GLX window failed")
 		}
 
-		return &glxContext{
+		c := &glxContext{
 			drawable: drawable,
 			handle:   ctx,
 			window:   win,
 			native:   xWindow,
-		}, nil
+		}
+		// Resource uploads and deletion must not bind the window before its
+		// next frame: the window may be resized between those operations.
+		// CreatePbuffer may report an asynchronous allocation error before the
+		// first bind. Keep that request scoped as well as the later binding.
+		resources := []xlib.ID{0, 0, xlib.ID(getGLXFBConfigAttrib(fbConfig, glx.GLX_FBCONFIG_ID))}
+		trap := xerrors.Begin(platform.display, resources, &c.resourceLost,
+			xlib.BadAlloc, xlib.BadMatch, xlib.BadValue, platform.errorBase+glx.BadFBConfig)
+		c.resource = glx.CreatePbuffer(platform.display, fbConfig, []int32{
+			glx.GLX_PBUFFER_WIDTH, 1, glx.GLX_PBUFFER_HEIGHT, 1, 0,
+		})
+		resources[1] = xlib.ID(c.resource)
+		trap.End()
+		if c.resource == 0 || c.resourceLost {
+			c.Destroy()
+			return nil, errors.New("create GLX resource pbuffer failed")
+		}
+		return c, nil
 	}
 	return nil, errors.New("can not create GLX context")
 }
 
 func (c *glxContext) Destroy() {
+	if c.resource != 0 {
+		trap := c.beginResourceCall()
+		glx.DestroyPbuffer(platform.display, c.resource)
+		trap.End()
+		c.resource = 0
+	}
 	if c.drawable != 0 {
 		trap := c.beginSurfaceCall()
 		glx.DestroyWindow(platform.display, c.drawable)
@@ -105,6 +133,29 @@ func (c *glxContext) Destroy() {
 	c.handle = 0
 	c.window = nil
 	c.native = 0
+}
+
+func (c *glxContext) beginResourceCall() *xerrors.Trap {
+	return xerrors.Begin(platform.display, []xlib.ID{xlib.ID(c.resource)}, &c.resourceLost,
+		xlib.BadDrawable, platform.errorBase+glx.BadDrawable,
+		platform.errorBase+glx.BadCurrentDrawable, platform.errorBase+glx.BadPbuffer)
+}
+
+func (c *glxContext) makeResourceCurrent() error {
+	if c != nil && (c.lost || c.window != nil && c.window.NativeHandle() == 0) {
+		return ErrSurfaceUnavailable
+	}
+	if c == nil || c.handle == 0 || c.resource == 0 || c.resourceLost {
+		return errors.New("GLX resource target is unavailable")
+	}
+	trap := c.beginResourceCall()
+	drawable := xlib.Drawable(c.resource)
+	ok := glx.MakeContextCurrent(platform.display, drawable, drawable, c.handle)
+	trap.End()
+	if !ok || c.resourceLost {
+		return errors.New("make GLX resource context current failed")
+	}
+	return nil
 }
 
 func (c *glxContext) beginSurfaceCall() *xerrors.Trap {
@@ -198,6 +249,9 @@ func chooseGLXFBConfig(desired FBConfig) (glx.FBConfig, error) {
 	for _, n := range nativeConfigs {
 
 		if getGLXFBConfigAttrib(n, glx.GLX_RENDER_TYPE)&glx.GLX_RGBA_BIT == 0 {
+			continue
+		}
+		if getGLXFBConfigAttrib(n, glx.GLX_DRAWABLE_TYPE)&glx.GLX_PBUFFER_BIT == 0 {
 			continue
 		}
 

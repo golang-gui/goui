@@ -3,21 +3,28 @@ package glx
 // GLX protocol errors are offsets from the server's GLX error base.
 const (
 	BadDrawable        = 2
+	BadFBConfig        = 9
 	BadCurrentDrawable = 11
 	BadWindow          = 12
+	BadPbuffer         = 13
 )
 
 type (
 	FBConfig uintptr
 	Context  uintptr
 	Window   uintptr
+	Pbuffer  uintptr
 )
 
 const (
 	GLX_VENDOR           = 1
 	GLX_RGBA_BIT         = 0x00000001
 	GLX_WINDOW_BIT       = 0x00000001
+	GLX_PBUFFER_BIT      = 0x00000004
+	GLX_PBUFFER_HEIGHT   = 0x8040
+	GLX_PBUFFER_WIDTH    = 0x8041
 	GLX_DRAWABLE_TYPE    = 0x8010
+	GLX_FBCONFIG_ID      = 0x8013
 	GLX_RENDER_TYPE      = 0x8011
 	GLX_RGBA_TYPE        = 0x8014
 	GLX_DOUBLEBUFFER     = 5

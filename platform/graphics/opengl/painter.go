@@ -98,7 +98,7 @@ func NewPainter(win NativeWindow) (_ graphics.Painter, err error) {
 		return nil, fmt.Errorf("create opengl context err: %v", err)
 	}
 
-	if err = p.ctx.MakeCurrent(); err != nil {
+	if err = makeResourceCurrent(p.ctx); err != nil {
 		p.ctx.Destroy()
 		return nil, fmt.Errorf("make current err: %v", err)
 	}
@@ -128,7 +128,7 @@ func (p *Painter) Destroy() {
 		panic("opengl: destroy painter during active frame")
 	}
 	if p.vg != nil {
-		current := p.ctx.MakeCurrent() == nil
+		current := makeResourceCurrent(p.ctx) == nil
 		for img := range p.images {
 			if !img.destroyed {
 				diagnostic.Record(diagnostic.ImageDestroy, 1)
@@ -179,7 +179,7 @@ func (p *Painter) NewImage(src image.Image) (graphics.Image, error) {
 	bitmap := imageUploadBitmap(src)
 	madeCurrent := !p.activeFrame
 	if madeCurrent {
-		if err := p.ctx.MakeCurrent(); err != nil {
+		if err := makeResourceCurrent(p.ctx); err != nil {
 			return nil, fmt.Errorf("opengl: make context current for image: %w", err)
 		}
 		defer p.ctx.ClearCurrent()
@@ -218,7 +218,7 @@ func (p *Painter) updateImage(img *imageResource, src image.Image) error {
 	}
 	bitmap := imageUploadBitmap(src)
 	if !p.activeFrame {
-		if err := p.ctx.MakeCurrent(); err != nil {
+		if err := makeResourceCurrent(p.ctx); err != nil {
 			return fmt.Errorf("opengl: make context current to update image: %w", err)
 		}
 		defer p.ctx.ClearCurrent()
@@ -257,7 +257,7 @@ func (p *Painter) destroyImage(img *imageResource) {
 		return
 	}
 	if img.handle != 0 && p.vg != nil {
-		if err := p.ctx.MakeCurrent(); err != nil {
+		if err := makeResourceCurrent(p.ctx); err != nil {
 			if errors.Is(err, ErrSurfaceUnavailable) {
 				p.finishImageDestroy(img)
 				return
@@ -767,7 +767,7 @@ func (p *Painter) RenderImage(width, height int, scale float32, draw func()) (im
 	if err := offscreen.Validate(width, height, scale, draw); err != nil {
 		return nil, err
 	}
-	if err := p.ctx.MakeCurrent(); err != nil {
+	if err := makeResourceCurrent(p.ctx); err != nil {
 		return nil, fmt.Errorf("opengl: render image: %w", err)
 	}
 	defer p.ctx.ClearCurrent()

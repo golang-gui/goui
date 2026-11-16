@@ -27,6 +27,16 @@ type NativeWindow interface {
 	Transparent() bool
 }
 
+// makeResourceCurrent binds a target suitable for resource work outside a
+// window frame. Backends without a distinct resource target retain their
+// existing binding and native-target lifetime rules.
+func makeResourceCurrent(ctx Context) error {
+	if resource, ok := ctx.(interface{ makeResourceCurrent() error }); ok {
+		return resource.makeResourceCurrent()
+	}
+	return ctx.MakeCurrent()
+}
+
 func NewContext(win NativeWindow, share Context, config Config) (Context, error) {
 	return newContext(win, share, config)
 }

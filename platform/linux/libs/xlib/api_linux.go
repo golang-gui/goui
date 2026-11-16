@@ -62,6 +62,7 @@ var (
 	xCreatePixmap            = libx11.NewSymbol("XCreatePixmap")
 	xFreePixmap              = libx11.NewSymbol("XFreePixmap")
 	xCreateImage             = libx11.NewSymbol("XCreateImage")
+	xGetImage                = libx11.NewSymbol("XGetImage")
 	xDestroyImage            = libx11.NewSymbol("XDestroyImage")
 	xPutImage                = libx11.NewSymbol("XPutImage")
 	xFree                    = libx11.NewSymbol("XFree")
@@ -436,6 +437,16 @@ func (d Display) PutImage(drawable Drawable, gc GC, image *Image, srcX, srcY, ds
 
 func (img *Image) Destroy() {
 	xDestroyImage.CallRaw(uintptr(cgo.Pointer(img)))
+}
+
+// GetImage returns a client-owned copy of a drawable's pixels. The caller must
+// call Destroy on the result. Coordinates and extents are native pixels.
+func (d Display) GetImage(drawable Drawable, x, y, width, height int, planeMask uint64, format int) *Image {
+	return cgo.CallRet[*Image](xGetImage.Addr(), d, drawable, int32(x), int32(y), uint32(width), uint32(height), planeMask, int32(format))
+}
+
+func (img *Image) Pixel(x, y int) uint64 {
+	return cgo.CallRet[uint64](img.Funcs.GetPixel, img, int32(x), int32(y))
 }
 
 func Free[T any](p *T) {
