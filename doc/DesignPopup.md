@@ -16,7 +16,7 @@
 ## 2. 分层职责
 
 - **platform**：提供**能力/事实**——无边框、可**相对 owner 窗口定位定尺**、置顶不进任务栏的原生浮层 + show/hide + 普通输入/paint 事件。**不决定何时关闭、不做指针 grab。**
-- **gui**：锚点定位、样式外壳、工作区退避、模态输入与关闭策略；普通 Popover 管理独立原生资源；内置瞬态浮层借用 owner 的共享宿主，不建应用级 popup-manager。
+- **gui**：锚点定位、样式外壳、工作区退避、模态输入与关闭策略；普通 Popover 管理独立原生资源；SharedPopover 使用 owner 的唯一共享 GUI 宿主，不建应用级 popup-manager。
 - **ui**：菜单／DropDown 的薄声明式绑定；通用附着浮层尚未实现。
 
 ## 3. 关键决策(已定)
@@ -51,8 +51,10 @@ type Popup interface {
     Destroy()
     SetPosition(x, y float32)      // 相对 owner 窗口内容原点(窗口内逻辑坐标)
     SetSize(width, height float32)  // 逻辑尺寸
+    ClientSize() (logical, pixels geometry.Size, err error) // 即时原生实际尺寸
     Show() error
     Hide() error                    // 菜单/下拉反复开关,show/hide 复用
+    Repaint() error                  // 在合法原生绘制上下文内同步派发一次绘制
     RequestPaint() error
     // 事件经 NewPopup 的 handler：pointer / key / focus / paint / size(同 Window 事件模型)
 }
@@ -141,7 +143,7 @@ type Popover interface {
   `Widget.Measure(layout.Loose(available)).Size` 的返回即尺寸。
 - **widget 宿主**:`popover` 有自己的 root + `EventDispatcher` + painter,与 `gui.window` 同构。
 - **明确区分资源归属**：普通 `NewPopover` 惰性持有独立原生面；菜单、DropDown、
-  Tooltip 使用 `NewTransientPopover`，共用 owner 的同一 Popup 与 Painter，见下节。
+  Tooltip 使用 `NewSharedPopover`，共用 owner 的实际 GUI 宿主，见下节。
 
 - **透明与背景分离**：nil options 默认不透明；透明创建失败不退回不透明。
   `"popover"` 样式控制主体背景，默认白色；透明选项不自动移除背景。
@@ -179,8 +181,8 @@ Esc 时请求关闭。子菜单需要的内容优先、活动层路由和逐层�
 **分层解耦原则(本轮重构确立)**:
 - 公开协议按实际替换需求设计；Widget／IMContext 等有明确约束的封印接口不被一概否定。共享 rootBase 是宿主的内部状态 helper，不是另一套公开控件体系。
 - 控件只依赖 **`Root`**(`Widget()`/`RequestPaint()`/`RequestLayout()`),绝不碰具体 `*window`/`*popover`;焦点相关经 `EventTarget`。
-- **依赖方向**:`Window→Popover` 经 `ModalTarget`(输入,宿主→内容的自然向);`Popover→Window` 经公开 `Window`(`SetModalTarget` 登记 + `PlatformWindow()` 逃生口建面 + `ConnectDestroy` 生命周期)。普通 Popover 自持原生面，经 anchor 登记；内置瞬态面由 owner 持有一份物理宿主，
-  Popover 只借用，平台层不识别菜单或 Tooltip。
+- **依赖方向**:`Window→Popover` 经 `ModalTarget`(输入,宿主→内容的自然向);`Popover→Window` 经公开 `Window`(`SetModalTarget` 登记 + `PlatformWindow()` 逃生口建面 + `ConnectDestroy` 生命周期)。普通 Popover 自持原生面，经 anchor 登记；SharedPopover 的实际 GUI 宿主由
+  owner 唯一持有，平台层不识别菜单或 Tooltip。
 - `Window` 增逃生口 **`PlatformWindow() platform.Window`**(类比 `NativeHandle`);platform/typography 从全局 `App` 取。
 - 宿主的 root 被销毁后经 **`liveRoot`**(查 widget 的 `destroyed` 终态)在 `Widget()`/`paint()` 惰性丢弃——不需要宿主回调接口。
 
@@ -193,41 +195,16 @@ Menu／MenuItem 和声明绑定、Point／Bottom 定位及工作区退避已实�
 
 > Window／Popover 已共享内部 rootBase，统一帧、分发、手势和拖放状态，但保留各自原生宿主与模态策略。普通鼠标仍由各自表面处理，不全量转换成 owner 事件。
 
-## 窗口内置浮层的共享宿主（2026-11-14）
+## 窗口级共享 GUI 宿主（2026-11-16）
 
-`NewTransientPopover(anchor)` 是显式参与入口，不依据样式名、Modal 或 AutoDismiss
-推断。PopoverMenu（含 MenuButton 与文本编辑右键菜单）、DropDown、Tooltip 使用它。
-普通 `NewPopover` 的透明选项、独立资源、多实例和既有输入策略保持原契约。
+`NewSharedPopover(anchor)` 返回独立轻量客户端，共享实际 GUI Root、布局、输入、焦点、
+帧状态及 Popup/Painter。普通 `NewPopover` 保持独立资源。Hide 保留至多一份挂载树；
+切换内容时才卸载旧树。它替代旧的 `NewTransientPopover` 物理资源借用方案。
 
-- owner Surface 首次成功使用时保留一套 `platform.Popup` 和 `graphics.Painter`。
-  Hide、Destroy、控件卸载只隐藏原生面并归还使用权；不同控件轮流使用时不销毁重建。
-  原生回调转发给当前逻辑 Popover，每个逻辑对象仍隔离内容、样式、布局和输入状态。
-- 同一窗口只有一个内置瞬态面；Show 关闭原使用者后再借用。Closed 回调若打开了
-  后来的面，旧 Show 返回状态变化错误，不覆盖新面。关闭前先失效输入与旧借用指针，
-  旧对象 Destroy 或 anchor 卸载不能隐藏后来者。活动帧内不把 Painter 借给另一对象。
-- Tooltip 优先级最低。菜单或列表打开时取消已排队提示，并抑制它们内部的提示；
-  普通 Popover 中的提示仍借用所属窗口的宿主。提示自身的关闭不释放物理资源。
-- 缓存按 owner 隔离，不能跨窗口借用。anchor 迁窗后归还旧窗口资源，使用新窗口的缓存；
-  旧窗口缓存继续保留。owner 销毁时先解绑逻辑使用者，依次销毁 Painter、Popup、owner
-  原生窗口。若销毁重入 popup 绘制或资源切换，等当前帧／切换退出再释放。
-- 首次创建统一优先 alpha；Popup 或 Painter 创建返回 ErrUnsupported／ErrUnavailable
-  才清理失败候选并尝试 opaque。其他错误直接返回；Show 错误不重试。成功后在该 owner
-  生命周期内保持所选模式，不因菜单、列表或提示切换重新探测。普通 NewPopover 不降级。
-- 复用同一物理尺寸时原生端可能不再发送 SizeEvent，借用方先继承缓存的实际 DIP／像素
-  尺寸，再提交自己的请求。失败候选的迟到通知通过物理代次隔离；DragSource 终态始终
-  按应用拖放会话投递，不绑定已关闭的行或 presenter。
-
-参考 Qt **6.8.3** 的 [qtooltip.cpp:178](https://github.com/qt/qtbase/blob/v6.8.3/src/widgets/kernel/qtooltip.cpp#L178)
-及 [showText 调用:452](https://github.com/qt/qtbase/blob/v6.8.3/src/widgets/kernel/qtooltip.cpp#L452)：
-源码中的 QTipLabel 实例和 reuseTip 将当前目标／内容与呈现实例分开。这里借鉴职责分离，
-但 GOUI 按已确认需求使用窗口级宿主并与菜单、列表共用；不照搬 Qt 的应用级静态实例，
-也不声称 Qt 保证隐藏后永远保留同一实例。此段是源码参考，GOUI 的保留期限以本节为准。
-
-包内回归检查资源身份、工厂次数、窗口隔离、回调重入、焦点清理、失败候选和帧内销毁。
-`tests/window/gui/transient_popup` 提供三类内置浮层与普通 Popover 的真实输入场景；
-Go generator 仅在仓库外生成资源日志 overlay，不为验证导出生产私有状态。验收核对每次
-借用的原生句柄、Popup、Painter 身份及创建次数，不能只看同时存活数量或 RSS。
-级联子菜单需要另行设计，不属于这个单槽契约。
+完整 API、所有权、重入与失效、首帧及 GLX 资源目标契约见
+[SharedPopover 设计](DesignSharedPopover.md)。平台 Popup 的 ClientSize 查询实际尺寸，
+Repaint 同步进入合法原生绘制上下文；后者本身不证明合成器从未观察旧 backing。
+实际首帧与三平台验证范围记录在 [Plan](Plan.md)。
 
 ## 9. Overlay 与原生 Popover 的当前边界
 
@@ -244,8 +221,9 @@ MenuButton／MenuItem、DropDown、Overlay 和 OnContextMenu 已有声明式入�
 
 ## 11. 语义与宿主枚举
 
-Popover 是独立 Root，不伪装成 anchor 的子控件。Window.Popovers 枚举当前可见
-浮层，dev 自己为宿主及 Widget 分配 ref；Snapshot.Attributes 支持具名值扩展，
+普通 Popover 是独立 Root；SharedPopover 内容挂在唯一共享 Root，均不伪装成 anchor
+的子控件。Surface.Popovers 返回绑定当次显示的 PopoverTarget，关闭/重开使旧目标失效；
+dev 为这些目标及 Widget 分配 ref；Snapshot.Attributes 支持具名值扩展，
 不靠为每种浮层修改 gui.Info。输入仍走 DispatchEvent／CommitText，没有动作旁路。
 详见 [自动化](DesignDevAutomation.md) 与 [Widget Snapshot](DesignWidgetSnapshot.md)。
 

@@ -57,7 +57,10 @@ Popover 对象；之后 Show 可以重新创建表面。已有 `surfaceEpoch` �
   销毁 Painter 前先作废图片包装，再释放文字图片缓存。控件卸载可能先释放缓存图片，
   这条路径也不能重新绑定失效的宿主。
 - 只有成功绑定 Context 才执行 GL 删除；否则释放 Go 引用并销毁独占 Context，由其回收
-  GPU 资源。不建立隐藏清理 drawable，不在错误的当前 Context 中执行删除。
+  GPU 资源。不为失效宿主另建兜底清理 drawable，不在错误的当前 Context 中执行删除。
+- GLX 的正常帧外资源操作使用 Context 所有、与实际 FBConfig 兼容的固定 pbuffer；
+  窗口 drawable 只在窗口帧绑定。该资源目标不延长宿主寿命，已观察到宿主失效时不执行
+  GPU 工作。绑定解除后释放 drawable/Context，见 [SharedPopover](DesignSharedPopover.md)。
 - Software 只对 `ErrUnavailable` 的呈现失败丢弃本帧，意外错误仍报告。
 - Direct2D 平衡已经开始的 EndDraw，但不再向已终止的 HWND Present 或安排重绘。
 
