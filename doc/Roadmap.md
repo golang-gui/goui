@@ -1,15 +1,23 @@
 # GOUI 实用化与未来路线
 
-## ListRow 连接分组（2026-11-17）
+## SharedPopover 与实际共享 GUI 宿主（2026-11-16）
 
-新增 `widgets.ListRowGroup` 与 `widgets/ui.ListRowGroup`：把直接包含的 ListRow
-零间距连成一体，相邻行共用一条边框，只有外侧圆角保留，隐藏、重排和混排其他
-内容后按实际可见子控件重新推导。行自身样式、状态、输入与语义不变，组不增加
-选择或动作。Demo 设置区改为一个分组。契约与参考见
-[DesignListRowGroup](DesignListRowGroup.md)，验证范围见 [Plan](Plan.md)。
-遗留限制：分组不合并行的 AA 图层，分数像素上相邻行的接缝仍可能出现一次独立
-合成（与 ButtonGroup 记录的同类限制一致）；虚拟化 ListView 尚未提供分隔线或
-分组选项，本轮只做显式容器。
+NewSharedPopover 返回可复用的独立客户端，Surface 唯一宿主统一布局、事件、焦点、帧及
+原生资源。Hide 保留一份挂载内容，换内容才卸载；旧客户端和当次显示目标均不能操作
+后来的内容。GLX 帧外资源使用固定 pbuffer，避免提前绑定待缩放窗口；DirectComposition
+在显示前使旧呈现失效，新帧完成后重新挂接，避免慢绘制暴露上次内容。
+设计见 [DesignSharedPopover](DesignSharedPopover.md)，14 组原生验证与环境缺口见 [Plan](Plan.md)。
+
+
+## 共享浮层的几何与首帧修正（2026-11-16）
+
+共享 Popover 在显示前以原生实际尺寸完成布局和定位，移动改变 backing scale 时重新
+定尺；提交可见性与输入归属后同步派发本次首帧。平台 Popup 增加 ClientSize／Repaint，
+X11 隔离旧 ConfigureNotify，Windows 使用 WM_PAINT 上下文，macOS 完成 window／
+view／backing layer 的原生显示流程。普通输入、快照和窗口级共享资源归属保持同一路径。
+Windows Popup 同时统一 owner-DIP 尺寸／输入，避免 WM_DPICHANGED 建议矩形覆盖显式几何。
+当前设计见 [SharedPopover](DesignSharedPopover.md)，各平台验证及缺口见
+[Plan](Plan.md#共享浮层的几何与首帧修正2026-11-16)。
 
 ## v0.8.0 已发布（2026-11-15）
 
@@ -40,11 +48,11 @@ Click 的真实按下、抬起和完成回调统一携带 ClickInfo，按下立�
 
 ## 窗口内置浮层共享宿主（2026-11-14）
 
-菜单、DropDown 与 Tooltip 通过 NewTransientPopover 共用同窗的一套原生 Popup 和
+菜单、DropDown 与 Tooltip 最初通过 NewTransientPopover 共用同窗的一套原生 Popup 和
 Painter，关闭、控件切换及卸载均归还资源，窗口销毁统一释放。普通用户 Popover 继续
 独立；Tooltip 不抢占菜单／列表。四组 Linux Software／OpenGL、Windows Direct2D、
 macOS OpenGL 原生真实输入均完成 40 次身份与创建次数验证。完整契约见
-[Popup](DesignPopup.md#窗口内置浮层的共享宿主2026-11-14)，验证与范围见 [Plan](Plan.md)。
+[Popup](DesignSharedPopover.md)，验证与范围见 [Plan](Plan.md)。
 级联子菜单另行设计，不把窗口共享宿主扩成应用级池或模态栈。
 
 ## 原生拖拽预览失败降级（2026-11-14）
