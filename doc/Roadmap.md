@@ -1,5 +1,16 @@
 # GOUI 实用化与未来路线
 
+## ListRow 连接分组（2026-11-17）
+
+新增 `widgets.ListRowGroup` 与 `widgets/ui.ListRowGroup`：把直接包含的 ListRow
+零间距连成一体，相邻行共用一条边框，只有外侧圆角保留，隐藏、重排和混排其他
+内容后按实际可见子控件重新推导。行自身样式、状态、输入与语义不变，组不增加
+选择或动作。Demo 设置区改为一个分组。契约与参考见
+[DesignListRowGroup](DesignListRowGroup.md)，验证范围见 [Plan](Plan.md)。
+遗留限制：分组不合并行的 AA 图层，分数像素上相邻行的接缝仍可能出现一次独立
+合成（与 ButtonGroup 记录的同类限制一致）；虚拟化 ListView 尚未提供分隔线或
+分组选项，本轮只做显式容器。
+
 ## v0.8.0 已发布（2026-11-15）
 
 Demo 0.8.0 / build 1 的 Windows amd64、Linux amd64/X11 与公证后的 macOS arm64
