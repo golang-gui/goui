@@ -40,11 +40,11 @@ WidgetBase 只保存文字，未挂载设置不创建计时器或原生对象。
 样式环境用于提示，不改变普通 Popover 默认使用应用样式的规则。主题改变复用
 既有样式失效及宿主布局通知。
 
-窗口私有状态拥有目标、触发来源、代次、一个 GUI Timer 和一个当前 Popover。
+窗口私有状态拥有目标、触发来源、代次、一个 GUI Timer 和一个当前 SharedPopover。
 Timer 使用 StartOnce，不创建独立线程；到期检查目标、代次、Root、窗口状态和
-输入位置。切换与取消先失效旧状态，再销毁逻辑 Popover 并归还宿主；Popup 和 Painter
+输入位置。切换与取消先失效旧状态，再销毁轻量 SharedPopover 并卸载其缓存内容；Popup 和 Painter
 保留到 owner 销毁。菜单／下拉框会取消提示并占用同一宿主，Tooltip 不能抢占；普通
-用户 Popover 保持独立。回调返回后再次检查代次，详见 [共享宿主](DesignPopup.md#窗口内置浮层的共享宿主2026-11-14)。
+用户 Popover 保持独立。回调返回后再次检查代次，详见 [共享宿主](DesignSharedPopover.md)。
 关闭／销毁窗口停止计时并清除引用，Tooltip 不延长控件或旧 Root 的生命周期。
 
 原生 Tooltip 表面创建时自身的 Hidden／失焦通知，不作为锚点窗口的生命周期事件。

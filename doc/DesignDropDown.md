@@ -86,10 +86,10 @@ Window.DispatchEvent 导航，不绕过正常路径。关闭时滚轮不改值�
 按上述输入入口规则拒绝操作并关闭。相同 Selected
 声明同步不打断浏览。信号、Delegate、原生操作可能重入或销毁，后续检查版本及
 生命周期。控件负责关闭 / 释放其逻辑 Popover，UI 只释放自己的协调状态和连接。
-DropDown 使用 NewTransientPopover，与同窗菜单和 Tooltip 共用一套 Popup／Painter。
+DropDown 使用 NewSharedPopover，与同窗菜单和 Tooltip 共用同一 GUI Root／Popup／Painter。
 关闭、控件卸载不销毁共享原生资源；切换内容保留 selected 并重置浏览与输入状态。
 窗口销毁统一释放物理资源，普通用户 Popover 不参与互斥。详见
-[共享宿主](DesignPopup.md#窗口内置浮层的共享宿主2026-11-14)。
+[共享宿主](DesignSharedPopover.md)。
 
 Popover 关闭时沿原命中路径发送 pointer crossing leave，再重置控制器和分发器，
 同步清除 Widget 的 Hovered 与语义快照。DropDown 可以继续复用选项行；不在行的
