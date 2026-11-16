@@ -24,6 +24,8 @@ var (
 	glXCreateNewContext      = libgl.NewSymbol("glXCreateNewContext")
 	glXCreateWindow          = libgl.NewSymbol("glXCreateWindow")
 	glXDestroyWindow         = libgl.NewSymbol("glXDestroyWindow")
+	glXCreatePbuffer         = libgl.NewSymbol("glXCreatePbuffer")
+	glXDestroyPbuffer        = libgl.NewSymbol("glXDestroyPbuffer")
 	glXGetVisualFromFBConfig = libgl.NewSymbol("glXGetVisualFromFBConfig")
 	glXGetProcAddress        = libgl.NewSymbol("glXGetProcAddress")
 	glXGetProcAddressARB     = libgl.NewSymbol("glXGetProcAddressARB")
@@ -137,6 +139,18 @@ func CreateWindow(display xlib.Display, config FBConfig, win xlib.Window) Window
 func DestroyWindow(display xlib.Display, win Window) {
 	//void(Display dpy, GLXWindow win)
 	glXDestroyWindow.CallRaw(uintptr(display), uintptr(win))
+}
+
+// CreatePbuffer creates an offscreen drawable using config. attrs is a
+// zero-terminated list of GLX attribute/value pairs, copied by GLX.
+func CreatePbuffer(display xlib.Display, config FBConfig, attrs []int32) Pbuffer {
+	ret := cgo.CallRet[Pbuffer](glXCreatePbuffer.Addr(), display, config, cgo.CSlice(attrs))
+	runtime.KeepAlive(attrs)
+	return ret
+}
+
+func DestroyPbuffer(display xlib.Display, pbuffer Pbuffer) {
+	glXDestroyPbuffer.CallRaw(uintptr(display), uintptr(pbuffer))
 }
 
 func GetVisualFromFBConfig(display xlib.Display, config FBConfig) *xlib.VisualInfo {

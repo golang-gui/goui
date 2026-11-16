@@ -33,8 +33,11 @@ type ErrorEvent struct {
 type ErrorHandler uintptr
 
 const (
+	BadValue         = 2
 	BadWindow        = 3
+	BadMatch         = 8
 	BadDrawable      = 9
+	BadAlloc         = 11
 	RequestSendEvent = 25
 )
 
