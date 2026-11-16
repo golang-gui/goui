@@ -113,7 +113,7 @@ func (d *basicDemo) view() ui.View {
 		ui.VBox(
 			ui.Label(resource.SettingsRows()).Style("demo-subheading"),
 			ui.Label(resource.SettingsRowsHint()).WrapMode(gui.WrapWordChar).Style(modern.MutedText),
-			ui.VBox(
+			wui.ListRowGroup(
 				wui.ListRow(resource.AutomaticUpdates()).ID("settings-updates").Subtitle(resource.AutomaticUpdatesHint()).
 					Prefix(ui.Icon(d.host.icons[0]).Size(24).Style(modern.AccentIcon)).
 					Suffix(wui.Switch().ID("settings-updates-switch").Checked(d.switched.Get()).OnChange(func(v bool) { d.switched.Set(v) })),
@@ -122,7 +122,7 @@ func (d *basicDemo) view() ui.View {
 				wui.ListRow(resource.DropDownTitle()).ID("settings-dropdown").Suffix(
 					wui.DropDown(d.choices).Selected(d.drop.Get()).MaxWidth(200).OnSelected(func(i int) { d.drop.Set(i) }).OnOpenError(func(err error) { d.host.result(resource.OpenDropDown(), err) })),
 				wui.ListRow(resource.VersionTitle()).ID("settings-version").Suffix(ui.Label("0.8.0")),
-			).Spacing(8).CrossAlign(layout.CrossStretch),
+			),
 		).Spacing(12).CrossAlign(layout.CrossStretch),
 	)
 }
