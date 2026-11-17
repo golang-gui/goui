@@ -806,6 +806,11 @@ func (p *popover) finishRelease() {
 // measureAndSize requests an intrinsic content size plus shadow allocation.
 func (p *popover) measureAndSize() {
 	p.layoutDirty = true
+	// Hidden instances may retain native resources after their anchor unmounts
+	// or changes Surface. Show resolves the next anchor before measuring them.
+	if !p.visible || p.destroyed {
+		return
+	}
 	if err := p.updateNaturalSize(); err != nil {
 		log.Printf("goui: popup layout: %v", err)
 	}
@@ -949,7 +954,9 @@ func (p *popover) queryPlacement() (popoverPlacementSnapshot, error) {
 }
 
 func (p *popover) reposition() {
-	if p.platformPopup == nil || p.preparing {
+	// Late size notifications still update the observed size while hidden,
+	// but only an active presentation may apply its placement snapshot.
+	if p.platformPopup == nil || p.preparing || (!p.visible && !p.showing) {
 		return
 	}
 	p.applyPosition()

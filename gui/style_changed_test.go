@@ -246,8 +246,8 @@ type stylePopupPlatform struct {
 	popup *recordingPlatformPopup
 }
 
-func (p *stylePopupPlatform) NewPopup(platform.Window, geometry.Size, platform.EventHandler, platform.PopupOptions) (platform.Popup, error) {
-	p.popup = &recordingPlatformPopup{}
+func (p *stylePopupPlatform) NewPopup(_ platform.Window, size geometry.Size, _ platform.EventHandler, _ platform.PopupOptions) (platform.Popup, error) {
+	p.popup = &recordingPlatformPopup{width: size.Width, height: size.Height}
 	return p.popup, nil
 }
 
@@ -262,12 +262,13 @@ func TestStyleChangedPopoverSizingAndRecreation(t *testing.T) {
 	win := testWindowWithSurface(&window{})
 	anchor := NewButton()
 	win.SetWidget(anchor)
-	p := &popover{anchor: anchor}
+	p := NewPopover(anchor, nil).(*popover)
 	p.SetWidget(NewLabel("hello"))
 	defer p.Destroy()
-	p.measureAndSize()
+	// 保留创建前旧样式的测量缓存，再通过正常 Show 验证可见更新与资源重建。
+	measureWidget(p.Widget(), layout.Unbounded())
 	app.SetStyleSheet(textStyleSheet(20, color.White))
-	if err := p.createNative(win); err != nil {
+	if err := p.Show(); err != nil {
 		t.Fatal(err)
 	}
 	if p.width != 100 || p.height != 20 {
@@ -279,7 +280,7 @@ func TestStyleChangedPopoverSizingAndRecreation(t *testing.T) {
 	}
 	p.releaseNative()
 	app.SetStyleSheet(textStyleSheet(40, color.White))
-	if err := p.createNative(win); err != nil {
+	if err := p.Show(); err != nil {
 		t.Fatal(err)
 	}
 	if p.width != 200 || p.height != 40 {
