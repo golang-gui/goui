@@ -1,5 +1,14 @@
 # GOUI 实用化与未来路线
 
+## Popover 与 SharedPopover 收敛（2026-11-17）
+
+以普通 Popover 作为唯一实际弹层 Root，Surface 共享槽缓存普通实例，SharedPopover 只
+协调抢占和客户端隔离。SetAnchor 结束旧显示；普通实例同 Surface 复用、跨 Surface 重建，
+共享客户端跨窗改用目标缓存。锚点卸载只关闭，Surface 最终清理隐藏资源。普通与缓存
+实例共用显示几何和首帧流程，原生后端不承载共享策略。当前设计与验收见
+[DesignSharedPopover](DesignSharedPopover.md)／[Plan](Plan.md)。
+
+
 ## SharedPopover 与实际共享 GUI 宿主（2026-11-16）
 
 NewSharedPopover 返回可复用的独立客户端，Surface 唯一宿主统一布局、事件、焦点、帧及
