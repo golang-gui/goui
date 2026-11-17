@@ -35,13 +35,22 @@
   每组核对实际后端、Root/Popup/Painter 身份与创建／销毁配对，无跳过或 popup layout
   错误；复用用例每组 60 次正常鼠标／Esc 输入，透明／不透明原生表面检查均通过。
   与前面 Linux、Windows 合计 42 组矩阵验证通过，无需追加实现修改。
-- [ ] macOS 外观截图与人工窗口交互尚未验收；原生自动回归不替代桌面外观验收。
+- [x] 同一 macOS、CoreText，Software/OpenGL 各强制 1x/2x，通过真实鼠标／Esc
+  输入和桌面截图完成窗口外观验收：
+  Menu 3→Menu 1、输入框右键菜单、下拉选择 Choice 2-2、Tooltip 2、独立 Popover
+  宽内容→Small，以及独立 Popover 与共享菜单共存均通过。
+- [x] Software/OpenGL 各 1x 注入 3 秒绘制延迟，分别观察
+  大菜单→小菜单、独立宽内容→Small：等待阶段无旧内容，完成后仅显示当前内容，
+  尺寸和位置正确。截图结论限于采样时刻，不覆盖所有合成帧。
+- [x] macOS 七次窗口运行的资源检查通过：
+  断言共享／独立 Root、Popup、Painter 各创建一次、最终释放一次；共享认领保持
+  同一组资源身份，无 popup layout 错误，无需追加实现修改。
 - [x] ApiBox cmd/apibox/main.go 在隔离数据、项目目录与临时 workspace 中复验：
   GET 改 POST → History Tooltip 显示并关闭 → Save Success → 下拉再次打开，
   持久化文件的 method 为 POST，控制台无 popup layout 日志。未修改应用源码；
   SourceView 依赖使用前轮仓库外的 API 适配副本。
-- [x] 记录未执行：Windows OpenGL、真实混合 DPI 多屏迁移和其他驱动／合成器；
-  macOS 外观目视／截图验收尚未完成。
+- [x] 记录未执行：Windows OpenGL、真实混合 DPI 多屏迁移和其他驱动／合成器。
+  本轮 Mac 交互入口为 transient_popup 窗口用例，未追加 ApiBox 的 Mac 应用流程；
   未把跨平台编译或无桌面逻辑测试算作这些场景的原生窗口通过。
 
 ## Popover 与 SharedPopover 收敛（2026-11-17）
