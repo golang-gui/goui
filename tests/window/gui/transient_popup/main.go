@@ -38,6 +38,11 @@
 //     ANCHOR PASS 后自动退出。搭配观察 overlay：ordinary 同一 Root 两次 CREATE，
 //     两个 Surface 的 shared 各一次 CREATE；最终四次 DESTROY，无额外资源分配。
 //
+//  7. -verify-invalidation 自动检查普通／共享弹窗可见更新尺寸、隐藏内容、空闲缓存、
+//     卸载／重挂锚点期间切换样式：隐藏时无测量、绘制或 popup layout 日志，重开采用
+//     新样式尺寸并复用共享 Root。观察 overlay 仅有一次 independent 和一次 shared
+//     CREATE，最终各释放一次。INVALIDATION PASS 后自动退出；失败退出非零。
+//
 // 副作用：只创建窗口与日志，不改文件、剪贴板或系统设置。复位：重启。退出：关闭主窗口。
 package main
 
@@ -67,6 +72,7 @@ func must(err error) {
 func main() {
 	verify := flag.Bool("verify-reuse", false, "run popup reuse assertions and exit")
 	verifyAnchor := flag.Bool("verify-anchor", false, "run anchor and Surface migration assertions and exit")
+	verifyInvalidation := flag.Bool("verify-invalidation", false, "run hidden popup invalidation assertions and exit")
 	flag.Parse()
 	app, err := gui.NewApplication("org.golang-gui.SharedPopupVerification")
 	must(err)
@@ -197,7 +203,9 @@ func main() {
 			}
 		}
 		log.Printf("READY OS=%s typography=%s", runtime.GOOS, app.Typography().Name())
-		if *verifyAnchor {
+		if *verifyInvalidation {
+			startInvalidationVerification(app, win, ordinary, inputs[0], inputs[1])
+		} else if *verifyAnchor {
 			startAnchorVerification(app, win, inputs[0], inputs[1])
 		} else if *verify {
 			verifyNativeReuse(app, win)
