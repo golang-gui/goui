@@ -91,3 +91,10 @@ Windows 的 RequestClose 异步投递 WM_CLOSE，用例在下一阶段检查计�
 - [Win32 WM_DESTROY](https://learn.microsoft.com/en-us/windows/win32/winmsg/wm-destroy)、[WM_NCDESTROY](https://learn.microsoft.com/en-us/windows/win32/winmsg/wm-ncdestroy)：分别用于停止使用和完成原生关联清理。
 - [AppKit close](https://developer.apple.com/documentation/appkit/nswindow/close())：与关闭请求不同，明确引用归属和回调期间的有效期。
 - [GLX 1.4，3.3.4/3.3.7/3.3.10](https://registry.khronos.org/OpenGL/specs/gl/glx1.4.pdf)：区分 GLX drawable 和底层 X Window，限定宿主丢失错误。
+
+## Popover 的 Surface 资源登记（2026-11-17）
+
+锚点卸载只结束显示；普通 Popover 的隐藏原生资源仍登记到 Surface，直到显式 Destroy、
+原生终止、跨 Surface 迁移或 owner 结束。Surface 清理包括隐藏实例，并等待其活动帧、
+原生绘制及内容变更回调安全退出。先卸载绘制资源再释放 Painter，最后释放原生 Popup。
+普通 Go 对象可在新 Surface 重新显示；共享槽的专用普通 Popover 则随 Surface 最终 Destroy。

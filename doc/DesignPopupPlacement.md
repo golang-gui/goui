@@ -357,7 +357,7 @@ ShowAt 不沿用先前的 Bottom 模式。已有四候选、阴影、负工作�
 ### 7.4 SizeEvent 与取整
 
 - SizeEvent 和 Popup.ClientSize 提供实际逻辑／物理表面尺寸；请求尺寸不能覆盖实际观察。
-- 共享瞬态面显示前通过 ClientSize 完成当前内容布局与隐藏定位，移动改变 scale 时
+- 普通与缓存 Popover 显示前通过 ClientSize 完成当前内容布局与隐藏定位，移动改变 scale 时
   重新定尺；不能用上一使用者的缓存尺寸先显示，再等下一帧修正。详见
   [共享宿主首帧](DesignSharedPopover.md)。
 - 根据实际表面尺寸复核边缘位置，必要时修正位置。
@@ -452,8 +452,11 @@ ShowAt 不沿用先前的 Bottom 模式。已有四候选、阴影、负工作�
   Dock／面板配置及真实弹出外观仍需分别验证。X11 始终保留前述保守交集限制。
 
 
-## 共享宿主的隐藏准备（2026-11-16）
+## Popover 的通用隐藏准备（2026-11-17）
 
 SharedPopover 在隐藏阶段用 Popup.ClientSize 的实际 DIP/backing 像素完成布局与定位；
 移动导致 scale 变化时重新提交尺寸，布局不收敛则保持隐藏并失败。复用同一 Root 不
 复用上次内容的几何有效性。完整契约见 [DesignSharedPopover](DesignSharedPopover.md)。
+
+SetAnchor 结束当前显示并配置下一次定位；同 Surface 不重建 Popup/Painter，跨 Surface
+由下一次 Show 释放旧资源并重新创建。SharedPopover 则选择目标 Surface 已有缓存。

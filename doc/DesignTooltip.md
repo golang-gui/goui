@@ -30,7 +30,7 @@ WidgetBase 只保存文字，未挂载设置不创建计时器或原生对象。
 
 ## 呈现与资源
 
-通过非模态 NewTransientPopover 借用 owner 的共享宿主，不新增输入穿透、焦点或原生 Tooltip 接口。提示优先位于目标
+通过非模态 NewSharedPopover 使用 owner 缓存的普通 Popover，不新增输入穿透、焦点或原生 Tooltip 接口。提示优先位于目标
 可见区域下方；工作区不足时使用已有 Bottom 定位的翻转／平移。提示不获取焦点，
 点击提示自身仅关闭提示，不承诺把该次点击递交给它下面的控件。
 
