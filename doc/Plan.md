@@ -1,5 +1,47 @@
 # Plan
 
+## Popover 与 SharedPopover 收敛（2026-11-17）
+
+本节替代下方 2026-11-16 的独立共享 Root 结构；历史原生证据仅代表当时源码。
+确认的接口、资源迁移、共享槽及重入规则见 [DesignSharedPopover](DesignSharedPopover.md)。
+
+- [x] 写入两个公开概念、SetAnchor、当前 Surface 归属和缓存/客户端隔离设计。
+- [x] 实际宿主统一为普通 *popover，移除 popoverHost/sharedPopoverHost 及 Root 回指，
+  IME、模态、拖放恢复识别普通 Popover。共享槽仅包含缓存和协调状态，不实现 Root。
+- [x] 普通实例同 Surface 换锚点保留 Root/Popup/Painter，跨 Surface 释放重建并重新登记；
+  锚点卸载只 Hide，隐藏资源由 Surface 最终清理。SharedPopover 迁窗改用目标缓存。
+- [x] 普通与缓存实例共用几何准备、实际尺寸查询、呈现失效和首帧流程；本轮未改动
+  platform/Painter 后端，保留已有 GLX、DirectComposition 及三平台原生几何修正。
+- [x] 新增同/跨 Surface 锚点、卸载重挂、源 Surface 销毁隔离、准备失败保留资源、
+  锚点循环及共享目标缓存回归。普通/共享首帧像素回归均覆盖同步/异步通知和
+  1x/1.5x/2x。旧尺寸替身明确区分请求与实际观察，原绘制顺序测试按统一 Show 契约更新。
+- [x] 卸载回调销毁 Surface 的增强断言在修正前失败：回调未退出已释放原生资源。
+  Popover 内容变更安全退出后再清理；跨宿主释放先卸载绘制资源再 Destroy Painter。
+- [x] Linux X11（OpenGL 使用软件光栅化），
+  Software/OpenGL 各 1x/1.5x/2x，共六组 -verify-reuse 和六组 -verify-anchor 通过。
+  每组复用检查含原生透明/不透明各 16 次尺寸/资源/首帧像素断言、六控件 60 次正常输入。
+- [x] Windows amd64，Direct2D/Software 各 1x/2x，共四组
+  -verify-reuse 和四组 -verify-anchor 通过。两平台合计 20 次窗口程序运行，逐组解析
+  TRACE：共享切换仅一个 Root/Popup/Painter，60 次认领后销毁一次；迁移用例普通
+  同一 Root 两次原生创建，两个共享 Surface 各一个缓存，最终恰好四次释放。
+- [x] Windows Direct2D 1x 的 3 秒诊断绘制延迟：共享 Menu 3→Menu 1、独立不透明
+  Popover 宽内容→Small，等待阶段无旧文字，之后内容正确。真实鼠标选择 Choice 2-2、
+  Tooltip 2、输入框右键菜单与独立普通 Popover 共存通过。注入仅在仓库外生成的 Go overlay。
+- [x] ApiBox cmd/apibox HTTP 方法列表与 URL 右键菜单原生输入交替 24 次，3394 次
+  原生像素/几何采样稳定且始终一个句柄。使用隔离数据目录和临时 workspace 中的
+  SourceView v0.6.0 适配副本；未修改应用文件、模块缓存或外部依赖仓库。
+- [x] Go1.25.8：gui/widgets/dev 全包及 race、相关 vet（-composites=false）通过。
+  tracked 源码加本轮新增文件的隔离副本 go test ./... 通过；原工作区仍为基线同样的
+  23 条未跟踪旧例程/旧测试编译诊断，无新增诊断。未删除、跳过或迁移无关测试。
+- [x] Windows amd64/macOS arm64 的窗口用例、Demo 及 gui/widgets 测试可执行文件
+  交叉编译通过。macOS 原生窗口验证未执行，
+  未把此前版本的运行记录或本轮编译算作本轮原生验收。
+- [x] Windows OpenGL 本轮仍在主窗口 Painter 创建时报 can not choose useful pixel format，
+  不算原生通过。真实混合 DPI 多屏迁移、其他驱动/合成器仍不由当前矩阵承诺。
+- [x] 人工窗口正常退出，Windows 退出 0、两份 Root 最终各释放一次。
+- [x] 完成最终审阅，按设计、核心实现、窗口回归和验收记录独立提交；核心提交的
+  暂存副本相关包测试通过，最终所有 Go 源码及模块文件与全仓测试通过的隔离副本一致。
+
 ## SharedPopover 与真实共享 GUI 宿主（2026-11-16）
 
 本节替代下面旧方案的“仅共享物理 Popup/Painter”设计；旧验证结果仅说明当时的断言范围，

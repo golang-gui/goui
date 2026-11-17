@@ -181,7 +181,7 @@ Esc 时请求关闭。子菜单需要的内容优先、活动层路由和逐层�
 **分层解耦原则(本轮重构确立)**:
 - 公开协议按实际替换需求设计；Widget／IMContext 等有明确约束的封印接口不被一概否定。共享 rootBase 是宿主的内部状态 helper，不是另一套公开控件体系。
 - 控件只依赖 **`Root`**(`Widget()`/`RequestPaint()`/`RequestLayout()`),绝不碰具体 `*window`/`*popover`;焦点相关经 `EventTarget`。
-- **依赖方向**:`Window→Popover` 经 `ModalTarget`(输入,宿主→内容的自然向);`Popover→Window` 经公开 `Window`(`SetModalTarget` 登记 + `PlatformWindow()` 逃生口建面 + Surface 资源登记与最终清理)。普通 Popover 自持原生面，经 anchor 登记；SharedPopover 的实际 GUI 宿主由
+- **依赖方向**:`Window→Popover` 经 `ModalTarget`(输入,宿主→内容的自然向);`Popover→Window` 经公开 `Window`(`SetModalTarget` 登记 + `PlatformWindow()` 逃生口建面 + Surface 资源登记与最终清理)。普通 Popover 自持原生面并向当前 Surface 登记；SharedPopover 的普通 Popover 缓存由
   owner 唯一持有，平台层不识别菜单或 Tooltip。
 - `Window` 增逃生口 **`PlatformWindow() platform.Window`**(类比 `NativeHandle`);platform/typography 从全局 `App` 取。
 - 宿主的 root 被销毁后经 **`liveRoot`**(查 widget 的 `destroyed` 终态)在 `Widget()`/`paint()` 惰性丢弃——不需要宿主回调接口。
@@ -189,7 +189,7 @@ Esc 时请求关闭。子菜单需要的内容优先、活动层路由和逐层�
 **生命周期(两条,信号桥接)**:
 - **句柄**(`Popover` 对象):控件所有,`NewPopover`..`Destroy`(可选);跨 unmount 复用。
 - **普通 Popover 原生资源**(`platform.Popup`+painter):**归 Window**,首次 `Show` 建(绑当前 owner)、`Hide` 保留复用、**owner Surface 销毁**/ `Destroy` 时释放；anchor 卸载只 Hide,**永不悬空**(x11 override-redirect 的 X 父是 root,不随 owner 级联销毁,必须显式收)。`Show` 若发现 anchor 换了窗口则释放旧的重建。
-- **Widget 不加 Destroy 信号**(谁调用语义模糊);popover 靠 unmount 结束显示，由 Surface 兜底释放原生面,句柄由控件按需 `Destroy` 或随 GC。
+- **Widget 不加 Destroy 信号**(谁调用语义模糊);popover 靠 unmount 结束显示，由 Surface 兜底释放原生面,已创建原生资源的实例由 Surface 保留；不再使用时显式 `Destroy`，不能依赖 GC 提前回收原生资源。
 
 Menu／MenuItem 和声明绑定、Point／Bottom 定位及工作区退避已实现。子菜单与原生 Popover IME 的缺口见 [未来路线](Roadmap.md)；不因此承诺模态栈、自动 Modal 推导、应用级 Popup 池或新位置 getter。
 
