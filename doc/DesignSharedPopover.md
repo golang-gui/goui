@@ -1,153 +1,122 @@
-# SharedPopover 与窗口级共享宿主
+# Popover 与 SharedPopover
 
-本文记录 2026-11-16 确认的设计。实现和验收进度见 [Plan](Plan.md)。
+本文记录 2026-11-17 确认的收敛设计，替代上一版的独立共享 Root 结构。
+实现与验证进度见 [Plan](Plan.md)。
 
-## 公开对象与归属
+## 两个概念和唯一实际宿主
 
-`gui.NewSharedPopover(anchor) SharedPopover` 创建调用者独立持有、可反复使用的
-轻量对象。它保存内容引用、样式、位置、输入策略和信号，不实现 Root，也不包含
-rootBase、分发器、焦点、Painter 或原生 Popup。构造和 SetWidget 不挂载内容；anchor
-可以尚未挂载，Show 才解析其所属 Surface。
+Popover 是完整的 GUI 弹层，拥有 Root、控件树、布局、输入、焦点、帧、原生 Popup 和
+Painter。SharedPopover 是轻量客户端，仅保存配置与内容引用，并协调使用 Surface 缓存。
+不增加 ReusedPopover 或另一种实际 Root。
 
-每个 Surface 内部拥有一个私有共享 GUI 宿主。该宿主实现 Root/EventTarget，负责
-唯一的内容挂载位置、布局、焦点、事件、帧和原生资源。内容的 Widget.Root() 返回它。
-普通 NewPopover 保持独立宿主和多实例契约，不负责共享仲裁；两种宿主组合复用内部
-基础机制，不通过包装完整普通 Popover 复制状态。
+Surface 的私有共享槽缓存一个普通 `*popover`，协调状态不实现 Root、不嵌入 rootBase。
+独立创建的普通 Popover 不占共享槽，可以与共享弹层同时显示。每个 Surface 的共享
+Root、Popup 和 Painter 在正常反复显示和客户端切换中保持同一身份。
 
-SharedPopover 提供 Widget/SetWidget、Anchor、StyleName/SetStyleName、
-Placement/SetPlacement、Position/SetPosition、Modal/SetModal、
-AutoDismiss/SetAutoDismiss、Visible、FocusedWidget/SetFocusedWidget、
-DispatchEvent、CommitText、Show/Hide/Destroy 和 ConnectDismissRequest/ConnectClosed。
-Modal 和 AutoDismiss 默认 false，保持独立。它不公开 Root 的帧连接、原生透明配置、
-Painter 或共享宿主的销毁入口。隐藏对象的配置不改变别人的显示。
+`Widget.Root()` 返回实际普通 Popover。它是借用对象；能进行类型断言不等于取得缓存
+宿主的所有权。SharedPopover 句柄不实现 Root，Destroy 永远不销毁共享宿主。
 
-## 生命周期与缓存
+## 公开接口
 
-- New 只创建轻量对象。首次 Show 按需建立所属 Surface 的宿主、Popup、Painter，
-  挂载本次内容。正常 Hide/Show、内容切换不销毁重建这些资源。
-- Hide 只结束自身显示，撤销输入、焦点和帧调度，保留至多一份挂载内容。
-  同一对象重开复用该树；隐藏期间失效只记录，不持续绘制。
-- B 替换 A 时先关闭 A，再卸载旧内容和挂载 B。旧 Widget 按既有所有权规则卸载，
-  不隐式 Destroy；调用者仍可保留并再次显示。
-- Destroy 只关闭自身，卸载仍属于自己的缓存内容并释放引用、连接，不销毁共享宿主。
-  anchor 卸载同样结束自身显示并清除挂载缓存；轻量对象可在 anchor 再挂载后使用。
-- 共享按 Surface 隔离。迁窗后使用新 Surface 的宿主，旧宿主保持隐藏供旧窗口复用。
-- Surface 销毁时先使显示和回调失效，再清理内容、Painter、Popup，最后释放 owner
-  原生窗口。若同步重入绘制，等 End/原生绘制调用退出后再释放资源。
-- 原生目标真正终止时结束本次显示；按既有失效契约清理，并允许后续 Show 重新创建。
-  正常复用和设备/原生资源失效恢复必须分开统计。
+保留 `NewPopover(anchor, options)` 和 `NewSharedPopover(anchor)`；两者增加 SetAnchor。
+构造、SetAnchor 不创建原生资源，锚点可为 nil 或尚未挂载，Show 校验并返回失败。
+其他内容、样式、位置、Placement、Modal、AutoDismiss、输入和信号接口保持原有用途。
 
-隐藏内容不接受输入、不进入可见语义快照。缓存不按每个菜单长期保留独立挂载树。
+SetAnchor 设置不同锚点时先更新请求配置，再结束旧显示，不自动重新显示。Closed 回调
+可以显式 Show，此时使用新配置；旧清理不得覆盖回调产生的新显示。相同锚点不操作。
+不重置 Position、Placement、样式和内容。解除旧锚点的卸载连接。
 
-## 仲裁与重入
+## Popover 的资源归属
 
-每个 Surface 同时只有一个 SharedPopover 显示。菜单和下拉框替换当前显示；Tooltip
-优先级最低，不能抢占它们，且打开菜单/列表取消待显示提示。普通 Popover 可以独立
-共存。新 anchor 若属于即将被替换、卸载的共享内容则 Show 失败；单槽不表达级联菜单。
+首次有效 Show 解析当前锚点的 Surface。归属是当前原生资源的归属，不永久绑定 Go 对象。
 
-内部同时校验对象身份、显示代次和原生代次。A 被 B 替换后，A 的 Hide、Destroy、
-卸载通知和旧事件不能改变 B。同一个对象重开也不能接受上次显示遗留的内部回调。
-清理输入、焦点和可见状态后再发 Closed，每次可见结束最多一次；准备失败不伪造关闭。
+- 同 Surface 的 Hide/Show 或更换锚点复用实际 Root、Popup、Painter 和挂载内容。
+- 锚点卸载只结束显示和输入，不释放有效原生资源；同窗重新挂载后可继续使用。
+- 更换到另一 Surface 后，下次 Show 先卸载依赖旧 Painter 的内容，释放旧原生资源、
+  撤销旧 Surface 登记，再在目标 Surface 创建并重新挂载。Go 对象继续使用。
+- Surface 保存所有已归属 Popover，包含隐藏实例，独立于可见枚举；销毁时统一释放。
+  普通 Popover 对象与内容按既有卸载契约保留，之后可换到新 Surface。
+- 显式 Destroy 永久终止对象，释放资源、连接和引用。Surface 的专用缓存最终 Destroy。
+- 原生 Popup 意外终止释放本次资源；后续 Show 可重建。创建失败清理部分资源。
+- 显示前的查询/布局失败保持隐藏，保留仍有效的资源；不把普通错误当作重建理由。
 
-A.Closed 回调若打开 C，原本打开 B 的调用不得覆盖 C，返回可用 errors.Is 判断的
-ErrPopoverSuperseded。内置控件将其视作显示请求取消；真实原生错误仍保留原因。
-所有外部回调返回后重新检查生命周期。绘制中的树变更仍遵守现有绘制回调约束。
+资源释放遵守线程亲和和既有 native/surface 代次，旧 Surface 的回调不能影响迁移后资源。
+锚点不能直接或间接形成循环；解析失败而非无限追溯。
 
-## 几何与首帧
+## 共享槽与仲裁
 
-每次显示在隐藏阶段测量当前内容、样式和工作区，提交尺寸，再用 Popup.ClientSize
-读取实际 DIP/backing 像素并 Arrange。布局细化须有限收敛；定位造成 scale 变化后重新
-确认尺寸。位置始终按本次 anchor 和实际尺寸求解，不能把上次请求当系统观察。
+共享槽记录缓存 Popover、当前客户端、保留内容的客户端、请求代次和过渡状态。首次
+SharedPopover.Show 才创建。每次显示都完整设置当前内容、锚点和全部配置，含默认值。
 
-出现时位置和大小已经确定，旧内容不得作为新内容短暂显示。可延后内容显示；若平台
-必须先建立可见绘制上下文，期间仅能呈现本次干净背景或透明内容。Show 后同步 Repaint
-不自动证明合成器未观察旧 backing，需要原生首帧断言和桌面验证。查询/布局失败保持
-隐藏并返回错误。可见内容的尺寸更新也统一处理几何、布局与像素有效性。
+B 替换 A：校验目标和模态准入 → Hide A → 完成关闭通知 → 检查代次 → 卸载旧内容 →
+应用 B 配置及内容 → 调用普通 Popover.Show。若 A.Closed 打开 C，B 取消并保留 C。
+返回可用 errors.Is 判断的 ErrPopoverSuperseded；真实原生错误保留原因。
 
-## 合成器保留内容的失效
+Hide 只结束自身显示，保留至多一份挂载树；同客户端重开不重复挂载。换客户端才卸载。
+Destroy、锚点卸载或替换已缓存的内容只移除自身缓存和连接，不销毁原生资源。旧客户端
+的设置、输入、焦点、Hide/Destroy 不能影响后来客户端。内容卸载不隐式 Destroy Widget。
 
-慢绘制验证在 Windows Direct2D 中明确复现：大菜单切小菜单后，新尺寸/位置已正确，
-但首帧提交前仍出现旧菜单文字。隐藏阶段 Repaint 清屏本身不能保证修正，因为原生隐藏
-绘制可被延后，DirectComposition 仍持有之前的 swap-chain 图像。
+SharedPopover 迁窗时改用目标 Surface 的缓存，源缓存留下；不同于普通 Popover 跨窗
+释放重建自己的一套资源。即将被替换内容不能充当新共享客户端的锚点。
+Tooltip 不抢占菜单和列表，后两者打开时取消待显示提示。级联菜单不在单槽契约内。
 
-持有外部合成呈现的后端实现 graphics.PresentationInvalidator。Direct2D 通过现有 Visual
-的 SetContent(nil)、Commit 和 WaitForCommitCompletion 使旧图像失效，保留 Device、
-Visual、SwapChain、Painter；成功完成下一次 Present 后才重新挂接内容。Software 的
-Windows 透明上传同样通过其原生所有者的 Direct2D Painter 失效，普通 CPU 图片不销毁。
+所有外部回调后复核生命周期、请求和原生代次。共享槽内部关闭观察者先撤销旧身份，
+再转发客户端关闭；已完成清理后允许 Closed 重入。绘制或不安全过渡中的同步抢占
+返回错误。保留普通 Popover 既有合法的焦点/悬停关闭重入，不清空全部信号掩盖问题。
 
-GUI 在隐藏阶段请求合成呈现失效，并经合法原生绘制入口清除 drawable；清除不运行
-Widget.Paint、布局或用户帧信号。然后固定几何显示，再正常绘制本次内容。隐藏 backing
-尚不存在的平台允许延后清除，但不得重新挂接已失效的旧合成图像。失效失败保持隐藏，
-返回原错误，不按透明能力降级重试。此操作不是反复绘制内容来掩盖错误。
+## 通用显示与平台职责
 
-Windows Direct2D 的同一 3 秒慢绘制放大验证中，修正前出现 Action 3-1/3-2，修正后
-等待期间透明，最终只出现当前 Action 1-1。该证据不代表所有后端的桌面合成已验收。
+普通与缓存 Popover 使用同一个 Show，不再有 show(false)/show(true) 两条路径。
+隐藏阶段 Measure → 提交尺寸 → ClientSize 查询实际 DIP/像素 → Arrange → 按锚点与
+工作区定位。移动改变 backing scale 时有限地重新确认尺寸，未收敛不得显示。
 
-原生契约：[IDCompositionDevice::WaitForCommitCompletion](https://learn.microsoft.com/en-us/windows/win32/api/dcomp/nf-dcomp-idcompositiondevice-waitforcommitcompletion)
-等待前一次 Commit 被合成引擎处理，不承诺扫描显示完成；GOUI 只用于显示前的内容失效。
+显示前旧 backing 必须清除或失效；清除不执行 Widget.Paint 或用户帧信号。显示提交
+可见性和输入归属后，经合法原生 Repaint 处理首帧。允许内容绘制慢，但位置/大小已稳定，
+等待期间只允许干净背景或透明内容。Repaint 不承诺合成器扫描显示完成。
 
-## GLX 帧外资源目标
+保留已验证的通用后端修复：GLX 同 Context 的固定 pbuffer 承担帧外资源操作；
+DirectComposition 解除旧 Visual 内容并 Commit/WaitForCommitCompletion，成功 Present
+后重新挂接；Software 转发其原生上传呈现失效。后端不感知 SharedPopover 或抢占。
+不以等待、坐标补偿、反复重绘或重建原生窗口代替资源与呈现正确性。
 
-Linux X11/OpenGL 软件光栅化、1x 的原生实验中，窗口 Map 前
-几何已正确；旧内容卸载释放纹理时提前绑定窗口 drawable，随后扩大窗口的首帧仍可能
-沿用旧缓冲范围。固定离屏资源目标原型通过 60/60 次完整坐标断言；这不是所有驱动或
-三平台已验收的结论。
+共享缓存首次创建沿用透明能力协商，仅创建阶段的 Unsupported/Unavailable 能力失败
+允许改为不透明配置；布局、定位和普通 Show 错误不得触发能力降级。
 
-GLX 使用同一 Context 和实际兼容的 FBConfig 创建固定 pbuffer，供帧外图片创建、更新、
-销毁、Painter 初始化及 RenderImage 使用。窗口 drawable 只用于真正窗口帧。资源目标
-归 Context 所有，不随菜单切换重建，不绕过宿主有效性检查；创建失败保留真实原因。
-销毁先在有效 Context 中释放 GPU 对象，解除绑定，再释放 drawable/Context。
-WGL/AppKit/GLES 保留其原生有效期及线程约束，不因 GLX 问题机械增加离屏资源。
+## 输入、快照与消费者
 
-这将 [窗口生命周期](DesignWindowLifecycle.md) 中不建立隐藏清理 drawable 的约束
-细化为：不为失效宿主另建兜底清理目标；正常帧外资源目标仍受所属宿主有效性约束。
+内容通过实际 Popover 的原有 EventDispatcher/Controller 处理；SharedPopover 只在自身
+持有当前使用权时转发。隐藏已呈现的宿主不接收输入或非 nil 焦点，也不持续调度帧。
+保留无锚点、从未显示的惰性 Root 的无桌面测试能力。
 
-## 输入、快照和声明式接入
+Surface.Popovers 继续返回绑定每次显示的 PopoverTarget，结束或重开使旧目标失效；
+其内部直接指向普通 Popover。它是枚举/输入视图，不是额外宿主。
+菜单、DropDown、Tooltip 只配置并使用共享句柄，不参与原生借用、回收、首帧准备。
+IME、模态、拖放统一识别普通 Popover；ui 不另建调度或宿主体系。
 
-原生事件进入实际宿主，经现有 EventDispatcher/Controller 处理。SharedPopover 的输入、
-焦点方法检查当前身份及内容边界后转交，不另建事件路径。隐藏/失效目标拒绝输入。
+## 验收与迁移
 
-Surface.Popovers 改为返回 []PopoverTarget，普通和共享弹层均返回绑定当次显示的受限
-目标，提供枚举、快照、正常事件投递及关闭通知，不提供配置、Show/Hide/Destroy。
-一次显示结束后目标失效，同一对象重开也产生新身份，避免旧 DevServer 引用操作新树。
-该协议服务现有枚举，不增加供控件管理的 Presentation 类型。
+包内覆盖同/跨 Surface 换锚点、卸载重挂、隐藏资源最终清理、共享迁窗、配置/输入隔离、
+Closed/焦点/悬停重入、帧中销毁、失败、原生失效和几何/像素。旧的“实际 Root 不实现
+Popover”断言改为“实际 Root 是缓存普通 Popover，SharedPopover 句柄不实现 Root”，
+继续保留过期输入目标和所有权隔离断言。
 
-PopoverMenu、MenuButton/文本右键菜单、DropDown、Tooltip 改用 NewSharedPopover；
-完成迁移后移除 NewTransientPopover。ui 继续协调既有控件和信号，不增加独立宿主体系。
-归属以 Surface 为边界；移动端呈现和原生输入效果仍须按移动复核流程单独验收。
+原生验收：Linux X11 Software/OpenGL 各 1x/1.5x/2x；Windows Direct2D/Software
+各 1x/2x，OpenGL 单独记录可用性；macOS Software/OpenGL 各 1x/2x。包含大小菜单、
+下拉/右键/Tooltip、普通弹层共存、屏幕边缘、慢绘制、锚点切换和跨 Surface 迁移。
+复用按资源身份和创建/销毁计数判断，不以进程 RSS 必须回落替代资源断言。
+执行完整 go test ./...，分别记录通过、失败、跳过和环境缺口，不弱化旧断言。
 
-## 参考与适用条件
+NewTransientPopover 仍已移除。外部旧依赖需将该构造及字段一并迁移为 SharedPopover；
+不修改外部仓库或模块缓存来伪造兼容。
 
-- Qt 6.8.3 [QTipLabel::reuseTip](https://github.com/qt/qtbase/blob/v6.8.3/src/widgets/kernel/qtooltip.cpp#L178)
-  和 [showText](https://github.com/qt/qtbase/blob/v6.8.3/src/widgets/kernel/qtooltip.cpp#L439)：
-  参考 Tooltip 的内容与既有宿主复用，不声称 Qt 全部浮层共用或 Hide 后永久保留。
-- Flutter [OverlayEntry 契约](https://api.flutter.dev/flutter/widgets/OverlayEntry-class.html)
-  及 [3.24.5 源码](https://github.com/flutter/flutter/blob/3.24.5/packages/flutter/lib/src/widgets/overlay.dart#L205)：
-  参考宿主与独立操作对象分工，不引入多层 Overlay 模型。
-- Qt 6.8.3 [QOffscreenSurface](https://github.com/qt/qtbase/blob/v6.8.3/src/gui/kernel/qoffscreensurface.cpp#L20)
-  说明纹理/FBO 资源目标及实际格式兼容要求。
-- GTK 4.16.13 [GLX make-current](https://github.com/GNOME/gtk/blob/4.16.13/gdk/x11/gdkglcontext-glx.c#L228)
-  的帧外 leader surface 是资源与窗口帧目标分离的源码参考，不照搬 GTK 事件循环。
+## 参考与证据
 
-## 验收
-
-包内回归覆盖宿主身份、挂载次数、隐藏调度、配置/焦点隔离、重入、失败、窗口隔离和
-当次显示目标失效。桌面验证在 tests/window 下独立运行，检查原生首帧完整坐标、资源
-身份/创建次数、大小内容交替、慢绘制、主窗移动/屏幕边缘及缩放。
-
-Linux Software/OpenGL、Windows Software/OpenGL/Direct2D、macOS Software/OpenGL
-分别记录原生结果；编译不代替运行。ApiBox HTTP 方法下拉框与 URL 输入框右键菜单
-交替作为应用回归。交付执行 go test ./...，通过、失败、跳过和未执行分别记录。
-
-
-## 现有调用方迁移
-
-`NewTransientPopover` 已移除。保存该返回值的字段也应从 `gui.Popover` 改为
-`gui.SharedPopover`，不能只替换构造函数名。内容需要帧/布局宿主时通过挂载后的
-Widget.Root() 访问；Surface.Popovers 的元素改为 PopoverTarget，不再是可配置宿主。
-
-ApiBox 当前使用的 goui-sourceview v0.6.0 在 sourceview/completion.go 保存了
-`popup gui.Popover` 并调用旧构造函数，需要同时迁移这两处。仓库内没有修改外部依赖
-或模块缓存；应用集成验证通过仓库外临时 workspace 使用依赖副本中的这份适配，
-数据目录另由 Go overlay 隔离。外部库应独立更新依赖
-后消费新的 GOUI API，不能把该验证记录当作旧模块版本直接兼容的承诺。
+- Qt 6.8.3 [QComboBoxPrivate::viewContainer](https://github.com/qt/qtbase/blob/v6.8.3/src/widgets/widgets/qcombobox.cpp#L1058)
+  缓存既有 Popup 容器，Hide/Show 沿用宿主；不声称 Qt 采用 GOUI 的 Surface 单槽。
+- GTK 4.16.13 [Popover realize/unmap](https://github.com/GNOME/gtk/blob/4.16.13/gtk/gtkpopover.c#L1010)
+  区分原生资源和可见映射；不引入 GTK 事件循环。
+- GTK 4.16.13 [GLX 帧外目标](https://github.com/GNOME/gtk/blob/4.16.13/gdk/x11/gdkglcontext-glx.c#L228)、
+  Qt 6.8.3 [QOffscreenSurface](https://github.com/qt/qtbase/blob/v6.8.3/src/gui/kernel/qoffscreensurface.cpp#L20)
+  是帧外目标和实际格式兼容的参考。
+- Microsoft [WaitForCommitCompletion](https://learn.microsoft.com/en-us/windows/win32/api/dcomp/nf-dcomp-idcompositiondevice-waitforcommitcompletion)
+  等待合成引擎处理先前 Commit，不保证扫描显示完成。

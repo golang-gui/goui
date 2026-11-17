@@ -16,7 +16,7 @@
 ## 2. 分层职责
 
 - **platform**：提供**能力/事实**——无边框、可**相对 owner 窗口定位定尺**、置顶不进任务栏的原生浮层 + show/hide + 普通输入/paint 事件。**不决定何时关闭、不做指针 grab。**
-- **gui**：锚点定位、样式外壳、工作区退避、模态输入与关闭策略；普通 Popover 管理独立原生资源；SharedPopover 使用 owner 的唯一共享 GUI 宿主，不建应用级 popup-manager。
+- **gui**：锚点定位、样式外壳、工作区退避、模态输入与关闭策略；普通 Popover 管理独立原生资源；SharedPopover 协调使用 owner 缓存的普通 Popover，不建应用级 popup-manager。
 - **ui**：菜单／DropDown 的薄声明式绑定；通用附着浮层尚未实现。
 
 ## 3. 关键决策(已定)
@@ -126,7 +126,7 @@ type Popover interface {
     Transparent() bool // immutable creation option, independent of owner
     Visible() bool
     SetWidget(Widget)
-    Anchor() Widget
+    Anchor() Widget; SetAnchor(Widget)
     Position() geometry.Point; SetPosition(geometry.Point)   // 相对 anchor 原点
     Modal() bool; SetModal(bool)                             // 是否独占 owner 输入，默认 false
     AutoDismiss() bool; SetAutoDismiss(bool)                 // 标准自动关闭请求，默认 false
@@ -181,24 +181,24 @@ Esc 时请求关闭。子菜单需要的内容优先、活动层路由和逐层�
 **分层解耦原则(本轮重构确立)**:
 - 公开协议按实际替换需求设计；Widget／IMContext 等有明确约束的封印接口不被一概否定。共享 rootBase 是宿主的内部状态 helper，不是另一套公开控件体系。
 - 控件只依赖 **`Root`**(`Widget()`/`RequestPaint()`/`RequestLayout()`),绝不碰具体 `*window`/`*popover`;焦点相关经 `EventTarget`。
-- **依赖方向**:`Window→Popover` 经 `ModalTarget`(输入,宿主→内容的自然向);`Popover→Window` 经公开 `Window`(`SetModalTarget` 登记 + `PlatformWindow()` 逃生口建面 + `ConnectDestroy` 生命周期)。普通 Popover 自持原生面，经 anchor 登记；SharedPopover 的实际 GUI 宿主由
+- **依赖方向**:`Window→Popover` 经 `ModalTarget`(输入,宿主→内容的自然向);`Popover→Window` 经公开 `Window`(`SetModalTarget` 登记 + `PlatformWindow()` 逃生口建面 + Surface 资源登记与最终清理)。普通 Popover 自持原生面，经 anchor 登记；SharedPopover 的实际 GUI 宿主由
   owner 唯一持有，平台层不识别菜单或 Tooltip。
 - `Window` 增逃生口 **`PlatformWindow() platform.Window`**(类比 `NativeHandle`);platform/typography 从全局 `App` 取。
 - 宿主的 root 被销毁后经 **`liveRoot`**(查 widget 的 `destroyed` 终态)在 `Widget()`/`paint()` 惰性丢弃——不需要宿主回调接口。
 
 **生命周期(两条,信号桥接)**:
 - **句柄**(`Popover` 对象):控件所有,`NewPopover`..`Destroy`(可选);跨 unmount 复用。
-- **普通 Popover 原生资源**(`platform.Popup`+painter):**归 Window**,首次 `Show` 建(绑当前 owner)、`Hide` 保留复用、**anchor 卸载**(`anchor.ConnectUnmount`)/ **owner 窗口销毁**(`window.ConnectDestroy`)/ `Destroy` 时释放,**永不悬空**(x11 override-redirect 的 X 父是 root,不随 owner 级联销毁,必须显式收)。`Show` 若发现 anchor 换了窗口则释放旧的重建。
-- **Widget 不加 Destroy 信号**(谁调用语义模糊);popover 靠 unmount 自动收原生面,句柄由控件按需 `Destroy` 或随 GC。
+- **普通 Popover 原生资源**(`platform.Popup`+painter):**归 Window**,首次 `Show` 建(绑当前 owner)、`Hide` 保留复用、**owner Surface 销毁**/ `Destroy` 时释放；anchor 卸载只 Hide,**永不悬空**(x11 override-redirect 的 X 父是 root,不随 owner 级联销毁,必须显式收)。`Show` 若发现 anchor 换了窗口则释放旧的重建。
+- **Widget 不加 Destroy 信号**(谁调用语义模糊);popover 靠 unmount 结束显示，由 Surface 兜底释放原生面,句柄由控件按需 `Destroy` 或随 GC。
 
 Menu／MenuItem 和声明绑定、Point／Bottom 定位及工作区退避已实现。子菜单与原生 Popover IME 的缺口见 [未来路线](Roadmap.md)；不因此承诺模态栈、自动 Modal 推导、应用级 Popup 池或新位置 getter。
 
 > Window／Popover 已共享内部 rootBase，统一帧、分发、手势和拖放状态，但保留各自原生宿主与模态策略。普通鼠标仍由各自表面处理，不全量转换成 owner 事件。
 
-## 窗口级共享 GUI 宿主（2026-11-16）
+## Surface 缓存普通 Popover（2026-11-17）
 
-`NewSharedPopover(anchor)` 返回独立轻量客户端，共享实际 GUI Root、布局、输入、焦点、
-帧状态及 Popup/Painter。普通 `NewPopover` 保持独立资源。Hide 保留至多一份挂载树；
+`NewSharedPopover(anchor)` 返回独立轻量客户端，通过 Surface 的共享槽使用缓存普通 Popover 的
+Root、布局、输入、焦点、帧及 Popup/Painter。没有另一种共享 Root，普通 `NewPopover` 保持独立资源。Hide 保留至多一份挂载树；
 切换内容时才卸载旧树。它替代旧的 `NewTransientPopover` 物理资源借用方案。
 
 完整 API、所有权、重入与失效、首帧及 GLX 资源目标契约见
@@ -221,7 +221,7 @@ MenuButton／MenuItem、DropDown、Overlay 和 OnContextMenu 已有声明式入�
 
 ## 11. 语义与宿主枚举
 
-普通 Popover 是独立 Root；SharedPopover 内容挂在唯一共享 Root，均不伪装成 anchor
+普通 Popover 是独立 Root；SharedPopover 内容挂在 Surface 缓存的普通 Popover Root，均不伪装成 anchor
 的子控件。Surface.Popovers 返回绑定当次显示的 PopoverTarget，关闭/重开使旧目标失效；
 dev 为这些目标及 Widget 分配 ref；Snapshot.Attributes 支持具名值扩展，
 不靠为每种浮层修改 gui.Info。输入仍走 DispatchEvent／CommitText，没有动作旁路。
@@ -290,3 +290,7 @@ focus grab 或 Flutter 的 Overlay／手势对象体系。跨平台运行结果�
 阴影留白，主体仍贴住锚点边缘，其他方向阴影保留。透明像素同样属于原生
 输入面，不能让这块留白挡住按钮；上下方向在一次测量中确定，原生尺寸取整
 复用该决定。Point、模态面及必须跨越锚点的超高内容沿用既有退避规则。
+
+SetAnchor 先更新锚点并结束旧显示，下次 Show 决定资源归属；同 Surface 复用，跨 Surface
+释放重建。普通与缓存 Popover 共用隐藏几何准备和首帧流程。锚点卸载保留有效资源，
+Surface 记录隐藏实例并最终清理，详见 [两个概念的设计](DesignSharedPopover.md)。
