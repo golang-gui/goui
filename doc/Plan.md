@@ -30,12 +30,18 @@
 - [x] Windows amd64，Direct2D/Software 各 1x/2x，三类用例共
   12 轮通过，资源身份与创建／销毁计数正确。Windows 与 macOS arm64 的相关 GUI
   逻辑测试在各自原生主机运行通过，两个平台的窗口用例与 GUI 测试可执行文件编译通过。
+- [x] macOS arm64 原生补测：裸可执行文件、CoreText，
+  Software/OpenGL 各 1x/2x，invalidation、reuse、anchor 共 12 组原生自动回归通过。
+  每组核对实际后端、Root/Popup/Painter 身份与创建／销毁配对，无跳过或 popup layout
+  错误；复用用例每组 60 次正常鼠标／Esc 输入，透明／不透明原生表面检查均通过。
+  与前面 Linux、Windows 合计 42 组矩阵验证通过，无需追加实现修改。
+- [ ] macOS 外观截图与人工窗口交互尚未验收；原生自动回归不替代桌面外观验收。
 - [x] ApiBox cmd/apibox/main.go 在隔离数据、项目目录与临时 workspace 中复验：
   GET 改 POST → History Tooltip 显示并关闭 → Save Success → 下拉再次打开，
   持久化文件的 method 为 POST，控制台无 popup layout 日志。未修改应用源码；
   SourceView 依赖使用前轮仓库外的 API 适配副本。
-- [x] 记录未执行：macOS 原生窗口验证；
-  Windows OpenGL、真实混合 DPI 多屏迁移和其他驱动／合成器未在本轮运行。
+- [x] 记录未执行：Windows OpenGL、真实混合 DPI 多屏迁移和其他驱动／合成器；
+  macOS 外观目视／截图验收尚未完成。
   未把跨平台编译或无桌面逻辑测试算作这些场景的原生窗口通过。
 
 ## Popover 与 SharedPopover 收敛（2026-11-17）
