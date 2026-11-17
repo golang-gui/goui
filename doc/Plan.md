@@ -1,5 +1,43 @@
 # Plan
 
+## Popover 隐藏失效与迟到尺寸通知（2026-11-17）
+
+本轮在不改变公开 API、原生资源归属和 Painter 的前提下，检查隐藏缓存及锚点迁移路径。
+契约补充见 [DesignSharedPopover](DesignSharedPopover.md#隐藏期间的失效与原生通知)。
+
+- [x] 复现 ApiBox HTTP 保存后样式更新触发空闲共享缓存定位错误；确认保存成功，
+  后续下拉仍能复用资源。另复现隐藏普通 Popover 的 SizeEvent 使用旧快照提交位置。
+- [x] 隐藏样式更新只标记失效，推迟工作区查询、内容测量和原生尺寸操作至 Show；
+  迟到 SizeEvent 保留实际尺寸与待布局状态，不按旧快照定位。
+- [x] 检查 SetAnchor、内容／样式／位置／Placement 更新、共享归还与迁移、隐藏帧、
+  原生通知和关闭重入路径；同类改动集中在 measureAndSize 与 reposition 的状态判断。
+  可见样式更新仍调整尺寸，真实工作区查询错误仍报告，资源归属和输入路径保持原契约。
+- [x] 修正前七种隐藏状态及隐藏尺寸通知回归失败；修正后通过。新增配置失效、最新
+  样式重开、同 Surface 复用／跨 Surface 重建、可见尺寸更新与查询失败断言。
+  原有两项替身分别补齐 visible 状态、原生创建实际尺寸并走正常 Show，保留原尺寸
+  权威性、创建前旧样式缓存和释放后重建断言，没有删除断言或扩大跳过。
+- [x] 新增 -verify-invalidation：九阶段检查可见样式更新、隐藏内容、空闲共享缓存、
+  锚点卸载重挂和后续复用，隐藏阶段无测量、绘制或 popup layout 日志。
+  旧核心的 X11/OpenGL 1x 负对照明确在 stage=2 失败：隐藏更新仍执行测量或绘制。
+- [x] Go1.25.8：tracked 源码与本轮两个新增 Go 文件的隔离副本 go test ./... 通过；
+  gui/widgets/widgets-ui/ui/dev race、相关 vet（-composites=false）通过。原工作区
+  go test ./... 仍为基线同样的 23 条未跟踪旧例程／旧测试编译诊断，无新增失败。
+  未清理或迁移无关测试；原工作区测试未产生额外文件，已有产物原样保留。
+- [x] Linux X11（OpenGL 使用软件光栅化），
+  Software/OpenGL 各 1x/1.5x/2x：invalidation、reuse、anchor 各六组，共 18 轮通过。
+  逐组解析 TRACE，普通／共享缓存各创建一次、最终释放一次；原有 60 次正常输入
+  交替、原生首帧像素和两窗口迁移回归继续通过。
+- [x] Windows amd64，Direct2D/Software 各 1x/2x，三类用例共
+  12 轮通过，资源身份与创建／销毁计数正确。Windows 与 macOS arm64 的相关 GUI
+  逻辑测试在各自原生主机运行通过，两个平台的窗口用例与 GUI 测试可执行文件编译通过。
+- [x] ApiBox cmd/apibox/main.go 在隔离数据、项目目录与临时 workspace 中复验：
+  GET 改 POST → History Tooltip 显示并关闭 → Save Success → 下拉再次打开，
+  持久化文件的 method 为 POST，控制台无 popup layout 日志。未修改应用源码；
+  SourceView 依赖使用前轮仓库外的 API 适配副本。
+- [x] 记录未执行：macOS 原生窗口验证；
+  Windows OpenGL、真实混合 DPI 多屏迁移和其他驱动／合成器未在本轮运行。
+  未把跨平台编译或无桌面逻辑测试算作这些场景的原生窗口通过。
+
 ## Popover 与 SharedPopover 收敛（2026-11-17）
 
 本节替代下方 2026-11-16 的独立共享 Root 结构；历史原生证据仅代表当时源码。
