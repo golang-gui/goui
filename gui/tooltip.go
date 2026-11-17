@@ -38,7 +38,7 @@ func tooltipsFor(host EventTarget) *tooltipState {
 	if root, ok := host.(Root); ok {
 		owner = surfaceCore(root)
 	}
-	if popup := popoverCore(host); popup != nil {
+	if popup, ok := host.(*popover); ok {
 		owner = surfaceCore(popup.owner)
 	}
 	if owner == nil {
@@ -52,15 +52,15 @@ func (t *tooltipState) eligible(host EventTarget) bool {
 	if t.owner == nil || t.owner.destroyed || !t.owner.focused || t.owner.frameSuspended {
 		return false
 	}
-	if h := t.owner.shared; h != nil && h.active != nil && !h.active.tooltip {
+	if h := t.owner.shared; h != nil && h.current != nil && !h.current.tooltip {
 		return false
 	}
 	if host == t.owner.owner() {
 		return t.owner.modalTarget == nil
 	}
-	p := popoverCore(host)
-	return p != nil && (t.popup == nil || t.popup.host == nil || p != &t.popup.host.popoverHost) && !p.destroyed && p.visible &&
-		(t.owner.modalTarget == nil || t.owner.modalTarget == p.modalHost())
+	p, popup := host.(*popover)
+	return popup && (t.popup == nil || t.popup.slot == nil || p != t.popup.slot.popup) && !p.destroyed && p.visible &&
+		(t.owner.modalTarget == nil || t.owner.modalTarget == p)
 }
 
 func tooltipAncestor(widget Widget) Widget {
@@ -286,9 +286,9 @@ func (t *tooltipState) refresh(layoutChanged bool) {
 		area.Y -= origin.Y
 		t.popup.anchorArea = &area
 		invalidateStyleSubtree(t.popup.Widget())
-		if t.popup.host != nil {
-			t.popup.host.anchorArea = &area
-			t.popup.host.RequestLayout()
+		if t.popup.slot != nil {
+			t.popup.slot.popup.anchorArea = &area
+			t.popup.slot.popup.RequestLayout()
 		}
 	} else {
 		t.bounds = bounds

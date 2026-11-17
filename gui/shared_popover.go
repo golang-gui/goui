@@ -14,12 +14,13 @@ import (
 // It is a canceled request, rather than a native popup failure.
 var ErrPopoverSuperseded = errors.New("popover: show request superseded")
 
-// SharedPopover configures one reusable client of its anchor Surface's shared
-// GUI host. It is not a Root. Construction and SetWidget do not mount content.
-// All methods belong to the GUI thread. Hide and Destroy affect only this client;
-// the Surface owns the shared host, painter and native popup until destruction.
+// SharedPopover configures one reusable client of its anchor Surface's cache.
+// It is not a Root and owns no native resources. All methods use the GUI thread.
 type SharedPopover interface {
 	Anchor() Widget
+	// SetAnchor ends this occurrence and configures the next Show.
+	// Moving between Surfaces selects their separate cached popovers.
+	SetAnchor(Widget)
 	Widget() Widget
 	SetWidget(Widget)
 	StyleName() string
@@ -37,21 +38,18 @@ type SharedPopover interface {
 	SetFocusedWidget(Widget) bool
 	DispatchEvent(events.Event) error
 	CommitText(string) error
-	// Show replaces the current shared popup after closing it. A callback that
-	// opens another popup supersedes this request. Repeated Show while visible
-	// is a no-op; setters invalidate an existing presentation normally.
+	// Show replaces the current shared client. A later operation supersedes it.
 	Show() error
-	// Hide retains the host and at most one mounted content tree for reuse.
+	// Hide retains the Surface's popover and at most one mounted content tree.
 	Hide()
-	// Destroy releases this client's bindings and references, never the host.
+	// Destroy releases this client, never the Surface's cached popover.
 	Destroy()
 	ConnectDismissRequest(func()) signal.Handle
 	ConnectClosed(func()) signal.Handle
 }
 
-// NewSharedPopover creates an independent client of a window-shared GUI host.
-// The anchor may be unmounted until Show. Its owning Surface determines the
-// shared slot. Native resources are allocated lazily and reused across clients.
+// NewSharedPopover creates a lightweight, independent client. The anchor may be
+// unmounted until Show, which selects its current Surface's shared cache.
 func NewSharedPopover(anchor Widget) SharedPopover { return &sharedPopover{anchor: anchor} }
 
 type sharedPopover struct {
@@ -64,7 +62,7 @@ type sharedPopover struct {
 	tooltip            bool
 	anchorArea         *geometry.Rectangle
 	destroyed          bool
-	host               *sharedPopoverHost
+	slot               *sharedPopoverSlot
 	unmount            signal.Handle
 	closed             signal.Signal0
 	dismissRequest     signal.Signal0
@@ -78,26 +76,38 @@ func (p *sharedPopover) Position() geometry.Point    { return p.position }
 func (p *sharedPopover) Modal() bool                 { return p.modal }
 func (p *sharedPopover) AutoDismiss() bool           { return p.autoDismiss }
 func (p *sharedPopover) Visible() bool {
-	return !p.destroyed && p.host != nil && p.host.active == p && p.host.visible
+	return !p.destroyed && p.slot != nil && !p.slot.owner.destroyed && p.slot.current == p && p.slot.popup.Visible()
 }
 func (p *sharedPopover) ConnectClosed(fn func()) signal.Handle { return p.closed.Connect(fn) }
 func (p *sharedPopover) ConnectDismissRequest(fn func()) signal.Handle {
 	return p.dismissRequest.Connect(fn)
+}
+func (p *sharedPopover) SetAnchor(anchor Widget) {
+	if p.destroyed || p.anchor == anchor {
+		return
+	}
+	if p.unmount != nil {
+		p.unmount.Disconnect()
+		p.unmount = nil
+	}
+	p.anchor, p.anchorArea = anchor, nil
+	if slot := p.slot; slot != nil {
+		slot.evict(p)
+	}
 }
 func (p *sharedPopover) SetWidget(w Widget) {
 	if p.destroyed || p.widget == w || w != nil && w.base().destroyed {
 		return
 	}
 	p.widget = w
-	if h := p.host; h != nil {
+	if s := p.slot; s != nil {
 		if p.Visible() {
-			wasBusy := h.busy
-			h.busy = true
-			h.setWidget(w)
-			h.busy = wasBusy
-			h.surfaceOwner.finishDestroy()
+			previous := s.transitioning
+			s.transitioning = true
+			defer func() { s.transitioning = previous; s.owner.finishDestroy() }()
+			s.popup.SetWidget(w)
 		} else {
-			h.evict(p)
+			s.evict(p)
 		}
 	}
 }
@@ -107,7 +117,7 @@ func (p *sharedPopover) SetStyleName(v string) {
 	}
 	p.styleName = v
 	if p.Visible() {
-		p.host.setStyleName(v)
+		p.slot.popup.SetStyleName(v)
 	}
 }
 func (p *sharedPopover) SetPlacement(v PopoverPlacement) {
@@ -119,7 +129,7 @@ func (p *sharedPopover) SetPlacement(v PopoverPlacement) {
 	}
 	p.placement = v
 	if p.Visible() {
-		p.host.setPlacement(v)
+		p.slot.popup.SetPlacement(v)
 	}
 }
 func (p *sharedPopover) SetPosition(v geometry.Point) {
@@ -128,7 +138,7 @@ func (p *sharedPopover) SetPosition(v geometry.Point) {
 	}
 	p.position = v
 	if p.Visible() {
-		p.host.setPosition(v)
+		p.slot.popup.SetPosition(v)
 	}
 }
 func (p *sharedPopover) SetModal(v bool) {
@@ -137,7 +147,7 @@ func (p *sharedPopover) SetModal(v bool) {
 	}
 	p.modal = v
 	if p.Visible() {
-		p.host.setModal(v)
+		p.slot.popup.SetModal(v)
 	}
 }
 func (p *sharedPopover) SetAutoDismiss(v bool) {
@@ -146,33 +156,33 @@ func (p *sharedPopover) SetAutoDismiss(v bool) {
 	}
 	p.autoDismiss = v
 	if p.Visible() {
-		p.host.setAutoDismiss(v)
+		p.slot.popup.SetAutoDismiss(v)
 	}
 }
 func (p *sharedPopover) FocusedWidget() Widget {
 	if p.Visible() {
-		return p.host.FocusedWidget()
+		return p.slot.popup.FocusedWidget()
 	}
 	return nil
 }
 func (p *sharedPopover) SetFocusedWidget(w Widget) bool {
-	return p.Visible() && p.host.SetFocusedWidget(w)
+	return p.Visible() && p.slot.popup.SetFocusedWidget(w)
 }
 func (p *sharedPopover) DispatchEvent(e events.Event) error {
 	if !p.Visible() {
 		return fmt.Errorf("shared popover: input target is unavailable")
 	}
-	return p.host.DispatchEvent(e)
+	return p.slot.popup.DispatchEvent(e)
 }
 func (p *sharedPopover) CommitText(s string) error {
 	if !p.Visible() {
 		return fmt.Errorf("shared popover: input target is unavailable")
 	}
-	return p.host.CommitText(s)
+	return p.slot.popup.CommitText(s)
 }
 func (p *sharedPopover) Hide() {
-	if h := p.host; h != nil {
-		h.closeClient(p)
+	if s := p.slot; s != nil {
+		s.closeClient(p)
 	}
 }
 func (p *sharedPopover) Destroy() {
@@ -180,42 +190,40 @@ func (p *sharedPopover) Destroy() {
 		return
 	}
 	p.destroyed = true
-	if h := p.host; h != nil {
-		h.evict(p)
+	if s := p.slot; s != nil {
+		s.evict(p)
 	}
 	p.widget = nil
 }
 
-// sharedPopoverHost is the sole live GUI root for all clients of one Surface.
-// popoverHost supplies mechanics only; arbitration stays here.
-type sharedPopoverHost struct {
-	popoverHost
-	surfaceOwner   *surfaceBase
-	active, cached *sharedPopover
-	epoch          uint64
-	busy           bool
-	closed         bool
+// sharedPopoverSlot arbitrates clients; its ordinary popover is the only Root.
+type sharedPopoverSlot struct {
+	owner                 *surfaceBase
+	popup                 *popover
+	current, retained     *sharedPopover
+	revision              uint64
+	transitioning, closed bool
 }
 
-func newSharedPopoverHost(owner *surfaceBase) *sharedPopoverHost {
-	h := &sharedPopoverHost{surfaceOwner: owner, popoverHost: popoverHost{rootBase: rootBase{app: owner.app, frameSuspended: true}}}
-	h.host = h
-	h.dismissRequest.Connect(func() {
-		if p := h.active; p != nil && p.Visible() {
+func newSharedPopoverSlot(owner *surfaceBase, anchor Widget) *sharedPopoverSlot {
+	s := &sharedPopoverSlot{owner: owner, popup: NewPopover(anchor, &PopoverOptions{Transparent: true}).(*popover)}
+	s.popup.app = owner.app
+	// Register before the cached root can be borrowed. Internal identity is
+	// cleared before any client or occurrence-level closing callback can reenter.
+	s.popup.ConnectClosed(func() {
+		p := s.current
+		s.current = nil
+		s.revision++
+		if p != nil {
+			p.closed.Emit()
+		}
+	})
+	s.popup.ConnectDismissRequest(func() {
+		if p := s.current; p != nil && p.Visible() {
 			p.dismissRequest.Emit()
 		}
 	})
-
-	h.onClosing = func() func() {
-		if p := h.active; p != nil {
-			h.active = nil
-			h.epoch++
-			return p.closed.Emit
-		}
-		return nil
-	}
-
-	return h
+	return s
 }
 
 func (p *sharedPopover) Show() error {
@@ -234,82 +242,80 @@ func (p *sharedPopover) Show() error {
 		return fmt.Errorf("shared popover: owner is unavailable")
 	}
 	if core.shared == nil {
-		core.shared = newSharedPopoverHost(core)
+		core.shared = newSharedPopoverSlot(core, p.anchor)
 	}
-	h := core.shared
-	if h.closed || h.busy || h.hiding || h.releasing || h.framePainting || h.paintDepth != 0 || h.showing {
+	s := core.shared
+	if s.closed || s.transitioning || s.popup.transitioning() {
 		return fmt.Errorf("shared popover: host transition in progress")
 	}
-	if popoverCore(p.anchor.Root()) == &h.popoverHost {
+	if p.anchor.Root() == s.popup {
 		return fmt.Errorf("shared popover: anchor belongs to the replaced shared content")
 	}
-	if p.tooltip && h.active != nil && !h.active.tooltip {
+	if p.tooltip && s.current != nil && !s.current.tooltip {
 		return ErrPopoverSuperseded
 	}
-	if !p.tooltip {
-		core.tooltip.dismiss(false)
-	}
-	if previous := h.active; previous != nil {
-		epoch := h.epoch
-		h.closeClient(previous)
-		if h.epoch != epoch+1 || h.active != nil {
+	if previous := s.current; previous != nil {
+		revision := s.revision
+		s.closeClient(previous)
+		if s.revision != revision+1 || s.current != nil {
 			return ErrPopoverSuperseded
 		}
 	}
-	if old := p.host; old != nil && old != h {
+	revision := s.revision
+	if !p.tooltip {
+		core.tooltip.dismiss(false)
+	}
+	if old := p.slot; old != nil && old != s {
 		old.evict(p)
 	}
-	if h.closed || core.destroyed || p.destroyed {
-		return ErrPopoverSuperseded
-	}
-	if h.cached != p {
-		h.evict(h.cached)
+	if s.retained != p {
+		s.evict(s.retained)
 	}
 	ownerNow, valid := anchorSurface(p.anchor)
-	if !valid || ownerNow != owner || h.closed || core.destroyed || p.destroyed {
+	if !valid || ownerNow != owner || s.closed || core.destroyed || p.destroyed || s.revision != revision || s.current != nil {
 		return ErrPopoverSuperseded
 	}
-	h.busy = true
-	defer func() { h.busy = false; core.finishDestroy() }()
-	h.active, h.cached, p.host = p, p, h
-	h.epoch++
-	epoch := h.epoch
-	current := func() bool { return !p.destroyed && !h.closed && !core.destroyed && h.active == p && h.epoch == epoch }
-	h.owner = owner
-	h.anchor = p.anchor
-	h.anchorArea = p.anchorArea
-	h.styleName, h.position, h.placement = p.styleName, p.position, p.placement
-	h.modal, h.autoDismiss = p.modal, p.autoDismiss
+	s.transitioning = true
+	defer func() { s.transitioning = false; core.finishDestroy() }()
+	s.current, s.retained, p.slot = p, p, s
+	s.revision++
+	revision = s.revision
+	current := func() bool {
+		return !p.destroyed && !s.closed && !core.destroyed && s.current == p && s.revision == revision
+	}
 	if p.unmount == nil {
 		p.unmount = p.anchor.ConnectUnmount(func() {
-			if p.host == h {
-				h.evict(p)
+			if p.slot == s {
+				s.evict(p)
 			}
 		})
 	}
-	h.setWidget(p.Widget())
+	popup := s.popup
+	popup.SetAnchor(p.anchor)
+	popup.anchorArea = p.anchorArea
+	popup.SetStyleName(p.styleName)
+	popup.SetPosition(p.position)
+	popup.SetPlacement(p.placement)
+	popup.SetModal(p.modal)
+	popup.SetAutoDismiss(p.autoDismiss)
+	popup.SetWidget(p.Widget())
 	if !current() {
 		return ErrPopoverSuperseded
 	}
-	invalidateStyleSubtree(h.Widget())
-	h.layoutDirty = true
-	h.requestedSize = geometry.Size{}
-	// A shared host chooses its native transparency once; unsupported alpha may
-	// fall back only during creation, never for layout or ordinary Show errors.
-	if h.platformPopup == nil {
-		h.transparent = true
-	}
-	err := h.show(true)
+	invalidateStyleSubtree(popup.Widget())
+	popup.layoutDirty = true
+	popup.requestedSize = geometry.Size{}
+	err := popup.Show()
 	var creation *popoverCreationError
-	if err != nil && current() && h.transparent && errors.As(err, &creation) &&
+	if err != nil && current() && popup.transparent && errors.As(err, &creation) &&
 		(errors.Is(err, platform.ErrUnsupported) || errors.Is(err, platform.ErrUnavailable)) {
-		h.owner = owner
-		h.transparent = false
-		err = h.show(true)
+		// Native transparency becomes fixed when a configuration succeeds.
+		popup.transparent = false
+		err = popup.Show()
 	}
 	if err != nil {
-		h.closeClient(p)
-		if !current() && (errors.Is(err, ErrPopoverSuperseded) || p.destroyed || core.destroyed) {
+		s.closeClient(p)
+		if errors.Is(err, ErrPopoverSuperseded) || p.destroyed || core.destroyed {
 			return ErrPopoverSuperseded
 		}
 		return err
@@ -320,68 +326,42 @@ func (p *sharedPopover) Show() error {
 	return nil
 }
 
-func (h *sharedPopoverHost) closeClient(p *sharedPopover) {
-	defer h.surfaceOwner.finishDestroy()
-	if p == nil || h.active != p {
+func (s *sharedPopoverSlot) closeClient(p *sharedPopover) {
+	defer s.owner.finishDestroy()
+	if p == nil || s.current != p {
 		return
 	}
-	wasVisible := h.visible
-	h.active = nil
-	h.epoch++
-	h.hide()
-	if wasVisible {
-		p.closed.Emit()
+	if !s.popup.visible {
+		s.current = nil
+		s.revision++
 	}
+	s.popup.Hide()
 }
-
-func (h *sharedPopoverHost) evict(p *sharedPopover) {
-	defer h.surfaceOwner.finishDestroy()
-	if p == nil || h.cached != p {
+func (s *sharedPopoverSlot) evict(p *sharedPopover) {
+	defer s.owner.finishDestroy()
+	if p == nil || s.retained != p {
 		return
 	}
-	h.closeClient(p)
-	// Closed may have installed a later client, including this same object.
-	if h.cached != p || h.active != nil {
+	s.closeClient(p)
+	if s.retained != p || s.current != nil {
 		return
 	}
-	h.busy = true
-	h.cached = nil
-	p.host = nil
+	previous := s.transitioning
+	s.transitioning = true
+	defer func() { s.transitioning = previous }()
+	s.retained, p.slot = nil, nil
 	if p.unmount != nil {
 		p.unmount.Disconnect()
 		p.unmount = nil
 	}
-	h.setWidget(nil)
-	h.anchor = nil
-	h.anchorArea = nil
-	h.busy = false
+	s.popup.SetWidget(nil)
+	s.popup.SetAnchor(nil)
 }
-
-func (h *sharedPopoverHost) painting() bool { return h.framePainting || h.paintDepth != 0 }
-func (h *sharedPopoverHost) destroy() {
-	if h.closed {
+func (s *sharedPopoverSlot) destroy() {
+	if s.closed {
 		return
 	}
-	h.closed = true
-	h.evict(h.cached)
-	h.popoverHost.destroy()
-}
-
-func (h *sharedPopoverHost) DispatchEvent(e events.Event) error {
-	switch e.(type) {
-	case events.DestroyEvent, events.DragSourceEvent:
-	default:
-		if !h.visible {
-			return fmt.Errorf("shared popover: input target is unavailable")
-		}
-	}
-	return h.popoverHost.DispatchEvent(e)
-}
-
-// Retained hidden content remains mounted, but cannot acquire logical focus.
-func (h *sharedPopoverHost) SetFocusedWidget(w Widget) bool {
-	if w != nil && (!h.visible || h.active == nil) {
-		return false
-	}
-	return h.popoverHost.SetFocusedWidget(w)
+	s.closed = true
+	s.evict(s.retained)
+	s.popup.Destroy()
 }

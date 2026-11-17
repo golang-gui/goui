@@ -283,12 +283,14 @@ func TestPopoverFirstShowPausesSynchronousPaint(t *testing.T) {
 		if err := p.Show(); err != nil {
 			t.Fatal(err)
 		}
-		if frames != before || !p.layoutDirty || p.app != app {
-			t.Fatal("native Show consumed initial layout/frame or lost owner application")
+		// 原生 Show 内的绘制仍暂停；提交可见性后，同步 Repaint 完成一个用户帧。
+		if frames != before+1 || p.layoutDirty || p.app != app {
+			t.Fatal("Show 未在提交可见性后完成首帧，或原生 Show 提前消耗了帧")
 		}
+		p.RequestPaint()
 		p.paint()
-		if frames != before+1 || p.layoutDirty {
-			t.Fatal("visible frame did not lay out")
+		if frames != before+2 || p.layoutDirty {
+			t.Fatal("后续可见帧未正常执行")
 		}
 		p.Hide()
 	}

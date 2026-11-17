@@ -262,7 +262,7 @@ func TestStyleChangedPopoverSizingAndRecreation(t *testing.T) {
 	win := testWindowWithSurface(&window{})
 	anchor := NewButton()
 	win.SetWidget(anchor)
-	p := &popover{popoverHost: popoverHost{anchor: anchor}}
+	p := &popover{anchor: anchor}
 	p.SetWidget(NewLabel("hello"))
 	defer p.Destroy()
 	p.measureAndSize()

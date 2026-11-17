@@ -27,28 +27,28 @@ func main() {
 	replace := make(map[string]string)
 	for file, patches := range map[string][][2]string{
 		"shared_popover.go": {
-			{"\treturn nil\n}\n\nfunc (h *sharedPopoverHost) closeClient", `
-            fmt.Printf("TRACE LEASE root=%p native=%p handle=%x painter=%p style=%s\n", h.host, h.platformPopup, h.platformPopup.NativeHandle(), h.painter, p.StyleName())
+			{"\treturn nil\n}\n\nfunc (s *sharedPopoverSlot) closeClient", `
+            fmt.Printf("TRACE LEASE root=%p native=%p handle=%x painter=%p style=%s\n", s.popup, s.popup.platformPopup, s.popup.platformPopup.NativeHandle(), s.popup.painter, p.StyleName())
             return nil
 }
 
-func (h *sharedPopoverHost) closeClient`},
+func (s *sharedPopoverSlot) closeClient`},
 		},
-		"popover_host.go": {
+		"popover.go": {
 			{`"math"`, `"math"
             "os"
             "strconv"
             "time"`},
 			{`// Commit visibility and modal ownership before allowing frame callbacks.`, `if delay,err:=strconv.Atoi(os.Getenv("GOUI_VERIFY_SLOW_MS"));err==nil && delay>0 {
-                fmt.Printf("TRACE SLOW root=%p delay=%dms\n", p.rootHost(),delay)
+                fmt.Printf("TRACE SLOW root=%p delay=%dms\n", p,delay)
                 time.Sleep(time.Duration(delay)*time.Millisecond)
             }
             // Commit visibility and modal ownership before allowing frame callbacks.`},
 			{`p.platformPopup = pp`, `kind := "independent"
-            if _, ok := p.rootHost().(*sharedPopoverHost); ok { kind = "shared" }
-            fmt.Printf("TRACE CREATE %s root=%p native=%p handle=%x painter=%p backend=%s\n", kind, p.rootHost(), pp, pp.NativeHandle(), painter, painter.Name())
+            if owner := surfaceCore(p.owner); owner != nil && owner.shared != nil && owner.shared.popup == p { kind = "shared" }
+            fmt.Printf("TRACE CREATE %s root=%p native=%p handle=%x painter=%p backend=%s\n", kind, p, pp, pp.NativeHandle(), painter, painter.Name())
             p.platformPopup = pp`},
-			{`p.painter.Destroy()`, `fmt.Printf("TRACE DESTROY root=%p native=%p painter=%p\n", p.rootHost(), p.platformPopup, p.painter)
+			{`p.painter.Destroy()`, `fmt.Printf("TRACE DESTROY root=%p native=%p painter=%p\n", p, p.platformPopup, p.painter)
             p.painter.Destroy()`},
 		},
 	} {

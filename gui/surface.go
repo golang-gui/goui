@@ -98,7 +98,8 @@ type surfaceBase struct {
 	host           Surface
 	claimed        bool
 	visible        bool
-	shared         *sharedPopoverHost
+	shared         *sharedPopoverSlot
+	ownedPopovers  map[*popover]struct{}
 	tooltip        tooltipState
 	id             string
 	styleName      string
@@ -112,11 +113,11 @@ type surfaceBase struct {
 	cursorPosition geometry.Point       // last client-local pointer position for chrome queries
 	cursorInside   bool
 	destroyed      bool
-	destroyPending bool           // resource cleanup waits for a reentered frame to finish
-	inputBlocked   bool           // private host input boundary during an owned native dialog
-	modalTarget    ModalTarget    // the modal element intercepting this host's input; nil when none
-	popoversShown  uint64         // changes whenever an owned surface is shown
-	popovers       []*popoverHost // currently shown surfaces; lifecycle stays with each popover
+	destroyPending bool        // resource cleanup waits for a reentered frame to finish
+	inputBlocked   bool        // private host input boundary during an owned native dialog
+	modalTarget    ModalTarget // the modal element intercepting this host's input; nil when none
+	popoversShown  uint64      // changes whenever an owned surface is shown
+	popovers       []*popover  // currently shown surfaces; lifecycle stays with each popover
 	destroy        signal.Signal0
 	focusChanged   signal.Signal1[bool]
 }
@@ -332,20 +333,31 @@ func (w *surfaceBase) Destroy() {
 	w.destroyed = true
 	w.destroyPending = true
 	w.destroyFrames()
-	if w.shared != nil && w.shared.active != nil {
-		w.shared.suspendFrames()
+	for p := range w.ownedPopovers {
+		p.suspendFrames()
+	}
+	if w.shared != nil {
+		w.shared.popup.suspendFrames()
 	}
 	w.finishDestroy()
 }
 
 func (w *surfaceBase) finishDestroy() {
-	if !w.destroyPending || w.framePainting || w.shared != nil && (w.shared.busy || w.shared.hiding || w.shared.releasing || w.shared.painting()) {
+	if !w.destroyPending || w.framePainting || w.shared != nil && w.shared.transitioning {
 		return
+	}
+	for p := range w.ownedPopovers {
+		if p.transitioning() {
+			return
+		}
 	}
 	w.destroyPending = false
 	w.tooltip.dismiss(false)
 	if w.shared != nil {
 		w.shared.destroy()
+	}
+	for p := range w.ownedPopovers {
+		p.releaseNative()
 	}
 	w.cancelInput(GestureHostClosed)
 	w.drag.destroy()
@@ -426,14 +438,23 @@ func (w *surfaceBase) Popovers() []PopoverTarget {
 	return result
 }
 
-func (w *surfaceBase) addPopover(p *popoverHost) {
+// ownPopover retains hidden native resources until release or Surface cleanup.
+func (w *surfaceBase) ownPopover(p *popover) {
+	if w.ownedPopovers == nil {
+		w.ownedPopovers = make(map[*popover]struct{})
+	}
+	w.ownedPopovers[p] = struct{}{}
+}
+func (w *surfaceBase) disownPopover(p *popover) { delete(w.ownedPopovers, p) }
+
+func (w *surfaceBase) addPopover(p *popover) {
 	w.popoversShown++
 	if !w.destroyed && !slices.Contains(w.popovers, p) {
 		w.popovers = append(w.popovers, p)
 	}
 }
 
-func (w *surfaceBase) removePopover(p *popoverHost) {
+func (w *surfaceBase) removePopover(p *popover) {
 	if i := slices.Index(w.popovers, p); i >= 0 {
 		w.popovers = slices.Delete(w.popovers, i, i+1)
 	}
@@ -690,7 +711,7 @@ func (w *surfaceBase) dismissPopovers(event events.Event) bool {
 	}
 	shown := w.popoversShown
 	type entry struct {
-		surface   *popoverHost
+		surface   *popover
 		lifecycle uint64
 	}
 	entries := make([]entry, 0, len(w.popovers))

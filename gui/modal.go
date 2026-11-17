@@ -347,7 +347,7 @@ func resetModalInput(h modalHost) {
 			}
 			for _, p := range slices.Clone(w.popovers) {
 				if p.visible && !modalWidgetAllowed(p.anchor) {
-					p.hide()
+					p.Hide()
 				}
 				if w.destroyed {
 					return
@@ -406,8 +406,8 @@ func modalWidgetAllowed(w Widget) bool {
 		if scope := modalScopeOf(host); scope != nil && !w.base().isDescendant(w, scope.widget) {
 			return false
 		}
-		p := popoverCore(root)
-		if p == nil || p.anchor == nil {
+		p, popup := root.(*popover)
+		if !popup || p.anchor == nil {
 			return true
 		}
 		w = p.anchor
