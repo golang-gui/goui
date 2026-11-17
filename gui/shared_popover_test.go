@@ -81,8 +81,8 @@ func TestSharedPopoverOwnsOnlyClientState(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := a.Root()
-	if _, ok := root.(Popover); ok {
-		t.Fatal("实际共享 Root 暴露了普通 Popover 的所有权 API")
+	if actual, ok := root.(*popover); !ok || actual != w.shared.popup {
+		t.Fatal("共享内容没有使用 Surface 缓存的普通 Popover")
 	}
 	native, painter := testSharedCore(p).platformPopup, testSharedCore(p).painter
 	p.Hide()
@@ -112,7 +112,7 @@ func TestSharedPopoverOwnsOnlyClientState(t *testing.T) {
 	p.SetAutoDismiss(true)
 	p.SetPosition(geometry.Point{X: 90, Y: 90})
 	p.SetPlacement(PopoverPlacementBottom)
-	if !q.Visible() || testSharedCore(q).styleName != "" || q.host.modal || q.host.position != (geometry.Point{}) {
+	if !q.Visible() || testSharedCore(q).styleName != "" || q.slot.popup.modal || q.slot.popup.position != (geometry.Point{}) {
 		t.Fatal("失活客户端的配置污染当前显示")
 	}
 	p.Hide()
@@ -255,7 +255,7 @@ func TestSharedPopoverUnmountCallbackDestroysOwner(t *testing.T) {
 					t.Fatal("卸载回调结束 owner 后仍显示成功")
 				}
 			}
-			if w.platformWindow != nil || !plat.natives[0].destroyed || w.shared.cached != nil || w.shared.active != nil {
+			if w.platformWindow != nil || !plat.natives[0].destroyed || w.shared.retained != nil || w.shared.current != nil {
 				t.Fatal("卸载回调结束后遗留窗口或共享宿主")
 			}
 		})

@@ -159,7 +159,7 @@ func TestPopoverTabFocusAndModalIsolation(t *testing.T) {
 	second.SetFocusable(true)
 	root.AddChild(first)
 	root.AddChild(second)
-	p := &popover{popoverHost: popoverHost{modal: true, autoDismiss: true, visible: true}}
+	p := &popover{modal: true, autoDismiss: true, visible: true}
 	p.SetWidget(root)
 	win.SetModalTarget(p)
 	var changes []bool
@@ -196,7 +196,7 @@ func TestPopoverFocusVisibleIsolationAndReset(t *testing.T) {
 	}
 	win := testWindowWithSurface(&window{})
 	win.SetWidget(ownerRoot)
-	p := &popover{popoverHost: popoverHost{rootBase: rootBase{width: 100, height: 100}, modal: true, autoDismiss: true, visible: true}}
+	p := &popover{rootBase: rootBase{width: 100, height: 100}, modal: true, autoDismiss: true, visible: true}
 	p.SetWidget(popupRoot)
 	t.Cleanup(func() { p.SetWidget(nil); win.SetWidget(nil) })
 	_ = win.DispatchEvent(shortcutPress(events.KeyTab, 0))
@@ -238,8 +238,8 @@ func (w *popoverMeasureWidget) Measure(layout.Constraint) layout.Measurement {
 }
 
 type recordingPlatformPopup struct {
-	width  float32
-	height float32
+	width, height float32
+	observed      *geometry.Size
 }
 
 func (*recordingPlatformPopup) NativeHandle() uintptr           { return 1 }
@@ -253,6 +253,9 @@ func (*recordingPlatformPopup) Show() error                     { return nil }
 func (*recordingPlatformPopup) Hide() error                     { return nil }
 func (p *recordingPlatformPopup) ClientSize() (geometry.Size, geometry.Size, error) {
 	size := geometry.Size{Width: p.width, Height: p.height}
+	if p.observed != nil {
+		size = *p.observed
+	}
 	return size, size, nil
 }
 func (*recordingPlatformPopup) Repaint() error { return nil }
@@ -289,7 +292,7 @@ func TestWindowForwardsToPopover(t *testing.T) {
 	var popCalls []string
 	content.AddEventController(newRecordingController("pop", PhaseTarget, &popCalls, nil))
 
-	p := &popover{popoverHost: popoverHost{modal: true, autoDismiss: true}} // 明确启用菜单式关闭，Modal 只指定输入独占。
+	p := &popover{modal: true, autoDismiss: true} // 明确启用菜单式关闭，Modal 只指定输入独占。
 	p.SetWidget(content)
 	p.visible = true
 	win.SetModalTarget(p) // what Show() does for a modal popover
@@ -352,12 +355,12 @@ func TestPopoverHostsWidgetForRepaintAndLayout(t *testing.T) {
 	}
 }
 
-func TestPopoverResizeKeepsAuthoritativeNativeSizeUntilSizeEvent(t *testing.T) {
-	native := &recordingPlatformPopup{}
-	p := &popover{popoverHost: popoverHost{rootBase: rootBase{width: 120, height: 50, pixelWidth: 120, pixelHeight: 50},
+func TestPopoverResizeKeepsObservedNativeSizeUntilSizeEvent(t *testing.T) {
+	// 原生按整数像素向外取整；请求高度变化，查询和通知仍报告实际 50 DIP。
+	native := &recordingPlatformPopup{observed: &geometry.Size{Width: 120, Height: 50}}
+	p := &popover{rootBase: rootBase{width: 120, height: 50, pixelWidth: 120, pixelHeight: 50},
 		platformPopup: native,
-		widget:        &popoverMeasureWidget{size: geometry.Size{Width: 120, Height: 49.65625}}},
-	}
+		widget:        &popoverMeasureWidget{size: geometry.Size{Width: 120, Height: 49.65625}}}
 
 	p.measureAndSize()
 	if native.width != 120 || native.height != 49.65625 {
@@ -377,7 +380,7 @@ func TestPopoverResizeKeepsAuthoritativeNativeSizeUntilSizeEvent(t *testing.T) {
 // it stops being modal — through the public Window.SetModalTarget API only.
 func TestPopoverModalTogglesWindowModalTarget(t *testing.T) {
 	win := testWindowWithSurface(&window{surfaceBase: surfaceBase{root: newTestWidget()}})
-	p := &popover{popoverHost: popoverHost{owner: win, visible: true}}
+	p := &popover{owner: win, visible: true}
 
 	p.becomeModalTarget()
 	if win.modalTarget == nil {
@@ -556,8 +559,7 @@ func placementFixture(t *testing.T, area geometry.Rectangle) (*popover, *placeme
 	return p, native, plat, app
 }
 
-func settlePlacement(t *testing.T, root interface{ popoverCore() *popoverHost }) {
-	p := root.popoverCore()
+func settlePlacement(t *testing.T, p *popover) {
 	t.Helper()
 	for range 8 {
 		p.paint()
@@ -817,6 +819,8 @@ func TestPopoverPlacementErrorsAreNotTransparencyFailures(t *testing.T) {
 	if len(n.positions) != positions || len(n.sizes) != sizes || p.bodyRect() != body || p.insets != insets {
 		t.Fatal("failed update partially committed")
 	}
+	// 可见时 Show 幂等；开始新显示后仍必须报告查询错误。
+	p.Hide()
 	if err := p.Show(); !errors.Is(err, platform.ErrUnavailable) {
 		t.Fatal(err)
 	}
@@ -1183,9 +1187,7 @@ func TestPopoverModelessDismissalAndExplicitKeys(t *testing.T) {
 // 原生面被替换后，旧面的延迟释放不能撤销新的模态登记。
 func TestPopoverResignKeepsReplacementTarget(t *testing.T) {
 	w := testWindowWithSurface(&window{})
-	old, next := &popover{popoverHost: popoverHost{owner: w}}, &popover{popoverHost: popoverHost{owner: w}}
-	old.bind()
-	next.bind()
+	old, next := &popover{owner: w}, &popover{owner: w}
 	w.SetModalTarget(next)
 	old.resignModalTarget()
 	if w.modalTarget != next {
@@ -1620,7 +1622,7 @@ func TestPopoverFocusPolicyDoesNotInheritFromAnchor(t *testing.T) {
 	root.SetCanContainFocus(false)
 	win := testWindowWithSurface(&window{})
 	win.SetWidget(root)
-	p := &popover{popoverHost: popoverHost{anchor: anchor}}
+	p := &popover{anchor: anchor}
 	popupRoot, child := newTestWidget(), newTestWidget()
 	child.SetFocusable(true)
 	popupRoot.AddChild(child)

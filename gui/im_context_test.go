@@ -200,7 +200,7 @@ func TestCommitTextAllowsDestructionDuringNotification(t *testing.T) {
 func TestPopoverCommitTextUsesModalLogicalFocus(t *testing.T) {
 	_, win, _ := newEditorFixture(t, "owner")
 	App.(*application).timers = newTimerTestQueue(t).s
-	p := &popover{popoverHost: popoverHost{owner: win, modal: true, visible: true}}
+	p := &popover{owner: win, modal: true, visible: true}
 	input := NewTextInput()
 	input.SetText("abc")
 	p.SetWidget(input)
@@ -273,8 +273,8 @@ func TestCommitTextRechecksHostAfterIMClientQuery(t *testing.T) {
 
 func TestPopoverKeyboardRejectsLostModalOwnership(t *testing.T) {
 	win := testWindowWithSurface(&window{})
-	first := &popover{popoverHost: popoverHost{owner: win, visible: true, modal: true}}
-	second := &popover{popoverHost: popoverHost{owner: win, visible: true, modal: true}}
+	first := &popover{owner: win, visible: true, modal: true}
+	second := &popover{owner: win, visible: true, modal: true}
 	win.SetModalTarget(second)
 	if err := first.DispatchEvent(events.KeyEvent{EventType: events.KeyDown, Key: events.KeyArrowDown}); err == nil {
 		t.Fatal("old modal popup accepted keyboard input belonging to another popup")

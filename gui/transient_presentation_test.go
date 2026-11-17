@@ -127,56 +127,81 @@ func (w *presentationWidget) Paint(p Painter) {
 	p.FillRect(geometry.Rectangle{Size: w.Rect().Size}, graphics.ColorOf(w.color))
 }
 
+type testPopoverPresentation interface {
+	Widget() Widget
+	SetWidget(Widget)
+	SetModal(bool)
+	SetPlacement(PopoverPlacement)
+	Show() error
+	Hide()
+	Destroy()
+}
+
+func testPresentationCore(p testPopoverPresentation) *popover {
+	if ordinary, ok := p.(*popover); ok {
+		return ordinary
+	}
+	return testSharedCore(p.(SharedPopover))
+}
+
 func TestTransientPresentationGeometryAndFirstFrame(t *testing.T) {
-	for _, synchronous := range []bool{false, true} {
-		for _, scale := range []float32{1, 1.5, 2} {
-			t.Run(fmt.Sprintf("sync=%t/scale=%g", synchronous, scale), func(t *testing.T) {
-				base, _, plat, app := placementFixture(t, geometry.Rect(0, 0, 500, 400))
-				w := app.windows[0]
-				t.Cleanup(w.Destroy)
-				base.anchor.Arrange(geometry.Rect(460, 340, 30, 20))
-				backend := &presentationPlatform{placementPlatform: plat, scale: scale, syncSize: synchronous}
-				app.platform = backend
-				var current *sharedPopover
-				var content *presentationWidget
-				var wantPosition geometry.Point
-				backend.onShow = func() {
-					n := backend.native
-					if n.image == nil || color.RGBAModel.Convert(n.image.At(n.image.Bounds().Dx()/2, n.image.Bounds().Dy()/2)).(color.RGBA) != (color.RGBA{}) {
-						t.Fatal("原生显示前没有丢弃旧内容；慢绘制会暴露上次像素")
-					}
-					if testSharedCore(current).requestedPosition != wantPosition || n.position != wantPosition || content.Rect().Size != (geometry.Size{Width: n.actual.Width, Height: n.actual.Height}) {
-						t.Fatalf("显示前仍有旧几何：position=%v native=%v want=%v content=%v actual=%v", testSharedCore(current).requestedPosition, n.position, wantPosition, content.Rect(), n.actual)
-					}
+	for _, shared := range []bool{false, true} {
+		t.Run(fmt.Sprintf("shared=%t", shared), func(t *testing.T) {
+			for _, synchronous := range []bool{false, true} {
+				for _, scale := range []float32{1, 1.5, 2} {
+					t.Run(fmt.Sprintf("sync=%t/scale=%g", synchronous, scale), func(t *testing.T) {
+						base, _, plat, app := placementFixture(t, geometry.Rect(0, 0, 500, 400))
+						w := app.windows[0]
+						t.Cleanup(w.Destroy)
+						base.anchor.Arrange(geometry.Rect(460, 340, 30, 20))
+						backend := &presentationPlatform{placementPlatform: plat, scale: scale, syncSize: synchronous}
+						app.platform = backend
+						var current testPopoverPresentation
+						var content *presentationWidget
+						var wantPosition geometry.Point
+						backend.onShow = func() {
+							n := backend.native
+							if n.image == nil || color.RGBAModel.Convert(n.image.At(n.image.Bounds().Dx()/2, n.image.Bounds().Dy()/2)).(color.RGBA) != (color.RGBA{}) {
+								t.Fatal("原生显示前没有丢弃旧内容；慢绘制会暴露上次像素")
+							}
+							if testPresentationCore(current).requestedPosition != wantPosition || n.position != wantPosition || content.Rect().Size != (geometry.Size{Width: n.actual.Width, Height: n.actual.Height}) {
+								t.Fatalf("显示前仍有旧几何：position=%v native=%v want=%v content=%v actual=%v", testPresentationCore(current).requestedPosition, n.position, wantPosition, content.Rect(), n.actual)
+							}
+						}
+						// 独立预期：小面可在下方右对齐，大面只能在上方右对齐。
+						for i, size := range []geometry.Size{{Width: 100, Height: 30}, {Width: 220, Height: 150}, {Width: 100, Height: 30}, {Width: 100, Height: 30}} {
+							if shared {
+								current = NewSharedPopover(base.anchor)
+							} else if current == nil {
+								current = NewPopover(base.anchor, &PopoverOptions{Transparent: true})
+							}
+							t.Cleanup(current.Destroy)
+							content = &presentationWidget{size: size, color: color.RGBA{R: uint8(30 + i*40), G: 80, B: 160, A: 255}}
+							current.SetWidget(content)
+							current.SetModal(true)
+							current.SetPlacement(PopoverPlacementBottom)
+							wantPosition = geometry.Point{X: 490 - size.Width, Y: 360}
+							if i == 1 {
+								wantPosition.Y = 340 - size.Height
+							}
+							if err := current.Show(); err != nil {
+								t.Fatal(err)
+							}
+							n := backend.native
+							if n.queries == 0 || n.repaints != (i+1)*2 || n.image == nil {
+								t.Fatal("Show 返回时没有查询实际尺寸并完成当前内容首帧")
+							}
+							// 软件像素采用预乘 RGBA，采样主体中心；不涉及边缘抗锯齿，无容差。
+							got := color.RGBAModel.Convert(n.image.At(n.image.Bounds().Dx()/2, n.image.Bounds().Dy()/2)).(color.RGBA)
+							if got != content.color || current.Widget().Snapshot().Bounds.Size != content.Rect().Size {
+								t.Fatalf("首帧或语义仍属旧控件：pixel=%v want=%v snapshot=%v", got, content.color, current.Widget().Snapshot().Bounds)
+							}
+							current.Hide()
+						}
+					})
 				}
-				// 独立预期：小面可在下方右对齐，大面只能在上方右对齐。
-				for i, size := range []geometry.Size{{Width: 100, Height: 30}, {Width: 220, Height: 150}, {Width: 100, Height: 30}, {Width: 100, Height: 30}} {
-					current = NewSharedPopover(base.anchor).(*sharedPopover)
-					t.Cleanup(current.Destroy)
-					content = &presentationWidget{size: size, color: color.RGBA{R: uint8(30 + i*40), G: 80, B: 160, A: 255}}
-					current.SetWidget(content)
-					current.SetModal(true)
-					current.SetPlacement(PopoverPlacementBottom)
-					wantPosition = geometry.Point{X: 490 - size.Width, Y: 360}
-					if i == 1 {
-						wantPosition.Y = 340 - size.Height
-					}
-					if err := current.Show(); err != nil {
-						t.Fatal(err)
-					}
-					n := backend.native
-					if n.queries == 0 || n.repaints != (i+1)*2 || n.image == nil {
-						t.Fatal("Show 返回时没有查询实际尺寸并完成当前内容首帧")
-					}
-					// 软件像素采用预乘 RGBA，采样主体中心；不涉及边缘抗锯齿，无容差。
-					got := color.RGBAModel.Convert(n.image.At(n.image.Bounds().Dx()/2, n.image.Bounds().Dy()/2)).(color.RGBA)
-					if got != content.color || current.Widget().Snapshot().Bounds.Size != content.Rect().Size {
-						t.Fatalf("首帧或语义仍属旧控件：pixel=%v want=%v snapshot=%v", got, content.color, current.Widget().Snapshot().Bounds)
-					}
-					current.Hide()
-				}
-			})
-		}
+			}
+		})
 	}
 }
 
@@ -259,7 +284,7 @@ func TestTransientPresentationFirstFrameCancellation(t *testing.T) {
 			p.Hide()
 		})
 	})
-	if err := p.Show(); err == nil || p.Visible() || w.shared.active != nil || len(w.Popovers()) != 0 {
+	if err := p.Show(); err == nil || p.Visible() || w.shared.current != nil || len(w.Popovers()) != 0 {
 		t.Fatalf("首帧取消后仍报告显示成功或保留借用：%v", err)
 	}
 }

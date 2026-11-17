@@ -150,11 +150,8 @@ func textInputFocus(root Root) (Widget, error) {
 		if modalRootBlocked(core.owner()) || core.modalTarget != nil {
 			return nil, fmt.Errorf("commit text: surface input is blocked by a modal target")
 		}
-	default:
-		popup := popoverCore(root)
-		if popup == nil {
-			break
-		}
+	case *popover:
+		popup := host
 		if popup.destroyed || !popup.visible {
 			return nil, fmt.Errorf("commit text: popover is unavailable")
 		}

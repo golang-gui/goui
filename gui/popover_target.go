@@ -25,7 +25,7 @@ type PopoverTarget interface {
 }
 
 type popoverTarget struct {
-	host   *popoverHost
+	host   *popover
 	anchor Widget
 	closed signal.Signal0
 }
