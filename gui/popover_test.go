@@ -356,10 +356,11 @@ func TestPopoverHostsWidgetForRepaintAndLayout(t *testing.T) {
 }
 
 func TestPopoverResizeKeepsObservedNativeSizeUntilSizeEvent(t *testing.T) {
-	// 原生按整数像素向外取整；请求高度变化，查询和通知仍报告实际 50 DIP。
+	// 可见实例提交尺寸：原生按整数像素向外取整，查询和通知仍报告实际 50 DIP。
 	native := &recordingPlatformPopup{observed: &geometry.Size{Width: 120, Height: 50}}
 	p := &popover{rootBase: rootBase{width: 120, height: 50, pixelWidth: 120, pixelHeight: 50},
 		platformPopup: native,
+		visible:       true,
 		widget:        &popoverMeasureWidget{size: geometry.Size{Width: 120, Height: 49.65625}}}
 
 	p.measureAndSize()

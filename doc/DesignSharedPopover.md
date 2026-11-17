@@ -82,6 +82,24 @@ DirectComposition 解除旧 Visual 内容并 Commit/WaitForCommitCompletion，�
 共享缓存首次创建沿用透明能力协商，仅创建阶段的 Unsupported/Unavailable 能力失败
 允许改为不透明配置；布局、定位和普通 Show 错误不得触发能力降级。
 
+## 隐藏期间的失效与原生通知
+
+隐藏实例保留原生资源，不代表仍有可用锚点。共享客户端归还后锚点可以为空；普通
+Popover 的锚点也可以卸载、重新挂载或改到另一 Surface。样式、内容和位置变更在
+隐藏期间只更新配置并标记失效，不测量内容、不查询工作区、不提交原生尺寸或位置。
+下一次 Show 先解析当前锚点与资源归属，再按最新样式测量、查询实际尺寸和定位。
+
+隐藏期间收到原生 SizeEvent 仍记录实际 DIP／像素尺寸并标记待布局，但不能按旧定位
+快照移动窗口或调度隐藏帧。Show 准备阶段的原生尺寸与定位仍遵循上面的通用显示流程。
+可见实例继续响应样式变化并报告真实工作区查询错误；不能通过忽略所有布局错误，
+或销毁缓存资源来处理隐藏锚点暂不可用的正常状态。
+
+参考 Qt 6.8.3 桌面 Widgets 的
+[QWidgetPrivate::update](https://github.com/qt/qtbase/blob/v6.8.3/src/widgets/kernel/qwidget.cpp#L11292)：
+不可见 Widget 不提交 backing store 更新，renderToTexture 分支仅保留失效标记。
+这里采用隐藏失效与原生提交分开的原则；Popover 的锚点、工作区查询和重新显示顺序
+仍由 GOUI 自己的 Surface／Show 契约决定。
+
 ## 输入、快照与消费者
 
 内容通过实际 Popover 的原有 EventDispatcher/Controller 处理；SharedPopover 只在自身
