@@ -3,12 +3,17 @@
 // 启动：go run ./tests/window/gui/transient_popup；GOUI_PLAT_PAINTER 选择后端。
 // 初始：三列各有 TextInput、MenuButton、DropDown 和 Tooltip 按钮；另有普通 Popover。
 // 操作与预期：
+//
 //  1. 依次右击三个 TextInput，每次 Esc 关闭；菜单内容、输入焦点不串到其他输入框。
 //     依次打开三个 MenuButton 和 DropDown，Esc 关闭，再选择某个选项；状态和快照一致。
+//
 //  2. 依次悬停三个 Tooltip 按钮 1 秒；提示文字分别为对应列号，移出关闭。
 //     打开菜单或下拉框后等待 1 秒，不得出现 Tooltip。重复以上步骤三轮。
-//  3. 点击 Ordinary 显示用户 Popover，它可以与菜单／下拉框／Tooltip 共存；
+//
+//  3. 点击 Ordinary 显示不透明用户 Popover，它可以与菜单／下拉框／Tooltip 共存；
+//     用 Ordinary hide 关闭后重新打开，内容在宽行与 Small 之间交替；慢绘制期间不得残留旧字。
 //     点击 Ordinary hide 只关闭普通 Popover。关闭主窗口后没有残留浮窗。
+//
 //  4. F6 断言最多一个内置浮层可见，并输出当前角色／文字和展开状态；Esc 不修改选择。
 //     若需严格核对资源身份和工厂次数，先 go generate，再使用输出的 overlay 构建：
 //     GOUI_GENERATE_DIR=/absolute/out go generate ./tests/window/gui/transient_popup
@@ -19,6 +24,7 @@
 //     用该 overlay 构建后设置 GOUI_VERIFY_SLOW_MS=3000：打开 Menu 3、Esc、再开 Menu 1
 //     或输入框右键菜单。等待期间只能为空白/透明或本次背景，不得显示上一个菜单的文字；
 //     3 秒后内容应正确且窗口几何不跳动。这是故障放大，不是生产框架的延迟。
+//
 //  5. go run ./tests/window/gui/transient_popup -verify-reuse 自动派发普通鼠标／Esc 输入：
 //     三列不同宽高的菜单和列表交替 60 次，断言 Show 当次已有布局、重开已有同步首帧、
 //     下一轮事件循环几何不再跳动；测试窗口每 18 次在普通位置和工作区右下方切换。
@@ -26,6 +32,11 @@
 //     小数尺寸、同尺寸重复请求、同步绘制和销毁后错误。PASS 后自动关闭；失败退出非零。
 //     Windows 另向真实 HWND 派发 WM_DPICHANGED，验证建议矩形不覆盖显式 Popup 几何；
 //     不修改系统 DPI，此消息回归不等于真实混合 DPI 多屏迁移验收。
+//
+//  6. -verify-anchor 自动创建第二窗口，检查 SetAnchor 结束显示、同窗复用、旧锚点卸载、
+//     共享客户端使用目标缓存且源缓存可继续使用、普通跨窗重建及源窗销毁隔离。
+//     ANCHOR PASS 后自动退出。搭配观察 overlay：ordinary 同一 Root 两次 CREATE，
+//     两个 Surface 的 shared 各一次 CREATE；最终四次 DESTROY，无额外资源分配。
 //
 // 副作用：只创建窗口与日志，不改文件、剪贴板或系统设置。复位：重启。退出：关闭主窗口。
 package main
@@ -55,6 +66,7 @@ func must(err error) {
 
 func main() {
 	verify := flag.Bool("verify-reuse", false, "run popup reuse assertions and exit")
+	verifyAnchor := flag.Bool("verify-anchor", false, "run anchor and Surface migration assertions and exit")
 	flag.Parse()
 	app, err := gui.NewApplication("org.golang-gui.SharedPopupVerification")
 	must(err)
@@ -118,7 +130,16 @@ func main() {
 	ordinary := gui.NewPopover(ordinaryButton, nil)
 	ordinary.SetPosition(geometry.Point{X: 460, Y: 0})
 	ordinary.SetWidget(gui.NewLabel("Independent user Popover"))
-	ordinaryButton.ConnectClicked(func() { must(ordinary.Show()) })
+	ordinaryOpens := 0
+	ordinaryButton.ConnectClicked(func() {
+		ordinaryOpens++
+		text := "Independent user Popover with wider content"
+		if ordinaryOpens%2 == 0 {
+			text = "Small"
+		}
+		ordinary.SetWidget(gui.NewLabel(text))
+		must(ordinary.Show())
+	})
 	root.AddChild(ordinaryButton)
 	hide := gui.NewButton()
 	hide.SetChild(gui.NewLabel("Ordinary hide"))
@@ -176,7 +197,9 @@ func main() {
 			}
 		}
 		log.Printf("READY OS=%s typography=%s", runtime.GOOS, app.Typography().Name())
-		if *verify {
+		if *verifyAnchor {
+			startAnchorVerification(app, win, inputs[0], inputs[1])
+		} else if *verify {
 			verifyNativeReuse(app, win)
 			startReuseVerification(app, win, menus, lists)
 		}
