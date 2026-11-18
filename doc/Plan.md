@@ -1,5 +1,37 @@
 # Plan
 
+## Tooltip 格式文本（2026-11-18）
+
+- [x] Tooltip 正文直接复用 Label 的显式格式前缀、命名样式、嵌套范围和错误回退；
+  普通文案保持字面显示，格式源码可用 textformat.Literal 显式转义，没有新增公共 API。
+  Widget.Tooltip 保留源字符串，SetTooltip 缓存显示文字，语义快照只读取纯文本。
+- [x] 格式空文案不弹出空框；仅格式变化也使旧提示失效，重新等待 700 ms，底层 Popup
+  继续复用。格式文字使用锚点样式环境，不增加 Tooltip 专属解析器或样式机制。
+- [x] 新回归在旧实现上失败，修正后通过；覆盖格式／嵌套／未知样式／错误语法／转义、
+  锚点与提示节点纯文本、仅格式更新、等待边界、资源复用及实际 UTF-8 排版范围。
+  声明式修饰器覆盖源文、显式清空、恢复初始提示和控件身份。
+- [x] Go 1.25.8：已跟踪源码的隔离副本 `go test ./...` 通过；
+  `go test -race ./gui ./ui ./widgets/...` 与相关 vet（`-composites=false`）通过。
+  原工作区 `go test ./...` 仍有基线相同的 23 条未跟踪旧测试／例程编译诊断，
+  没有新增诊断，也没有修改这些文件。Windows amd64／macOS arm64 的 gui／ui
+  及两个 Tooltip 窗口程序构建通过。
+- [x] Linux X11、Xfwm4（compositor 开启）、Pango：Software／OpenGL 各
+  1x／1.5x／2x，共六组原生自动通过；macOS 15 arm64、CoreText：Software／OpenGL
+  各 1x／2x，共四组通过；Windows 10 amd64、DirectWrite：Software／Direct2D 各
+  1x，共两组通过。逐组核对实际 Painter 和缩放，合计 12 组通过。
+- [x] 真实指针与截图确认 Linux OpenGL／1x 的 Basic／Modern 亮暗提示格式、折行、
+  声明式版本更新、清空与恢复默认值；example/temp 的格式 Tooltip 正确显示，未修改
+  该例程。macOS OpenGL／1x、Windows Direct2D／2x 的 Modern 亮暗提示显示粗体与
+  warning 颜色，点击目标正常计数，未被提示吞掉。
+- [x] 单独保留失败：Windows Software／2x 自动检查报 `tooltip missing or stole focus`，
+  同环境旧实现、旧窗口例程在同一检查失败；没有调整窗口尺寸、弱化断言或记为通过。
+  Direct2D／2x 仅完成上述真实输入验收，没有执行该组自动用例。
+- [x] 两个 Linux 长轮手工进程结束状态为 143；同一新版声明式窗口短轮关闭为 0。
+  长轮的功能断言与截图已经完成，但不将其退出状态记为正常关闭通过。
+- [ ] Windows OpenGL、多屏及跨屏 DPI 未执行；其余后端／缩放的真实指针外观未覆盖，
+  不以自动矩阵或交叉编译代替这些验收。
+- [x] 同步 Label、Tooltip 和语义快照设计文档；实现、窗口例程与验证记录独立提交。
+
 ## Popover 主体贴边与窗口实现归并（2026-11-18）
 
 - [x] Cocoa／Win32 的全屏实现归入各自 window 文件；移动的声明逐字节一致，
