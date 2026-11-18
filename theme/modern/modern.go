@@ -274,6 +274,12 @@ func builtInRules(options Options) []style.Rule {
 		style.Name("tab-scroll-button").State(style.Pressed).BackgroundColor(p.menuPressed),
 		text("tab-scroll-button-text").ForegroundColor(p.muted),
 	}
+	for _, name := range []string{"tab-item", "tab-close-button", "tab-scroll-button"} {
+		rules = append(rules,
+			style.Name(name).Part("focus").BackgroundColor(color.Transparent).BorderWidth(0),
+			style.Name(name).Part("focus").State(style.FocusVisible).BorderColor(tabFocus).BorderWidth(2),
+		)
+	}
 	for _, button := range []struct {
 		name string
 		bg   [3]color.Color

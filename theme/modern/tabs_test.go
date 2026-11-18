@@ -74,3 +74,34 @@ func TestTabSurfacesAreNeutralAndReadable(t *testing.T) {
 		}
 	}
 }
+
+func TestTabKeyboardFocusParts(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		for _, accent := range []color.Color{nil, color.Black, color.White, rgb(0x0080ff)} {
+			sheet := Sheet(Options{Dark: dark, AccentColor: accent})
+			buttonFocus, _ := sheet.Resolve(style.Sel{Name: "button", Part: "focus", State: style.FocusVisible}).BorderColor()
+			for _, control := range []struct {
+				name   string
+				radius float32
+			}{{"tab-item", 6}, {"tab-close-button", 4}, {"tab-scroll-button", 4}} {
+				for _, state := range []style.State{style.Normal, style.Focused, style.FocusVisible, style.FocusVisible | style.Hovered, style.FocusVisible | style.Pressed, style.FocusVisible | style.Disabled} {
+					s := sheet.Resolve(style.Sel{Name: control.name, Part: "focus", State: state})
+					width, _ := s.BorderWidth()
+					want := float32(0)
+					if state.Has(style.FocusVisible) && !state.Has(style.Disabled) {
+						want = 2
+						ink, _ := s.BorderColor()
+						if ink == nil || rgba(ink) != rgba(buttonFocus) || rgba(ink).A != 255 {
+							t.Fatalf("dark=%v %s 未沿用现有键盘边框颜色：%v", dark, control.name, ink)
+						}
+					}
+					background, _ := s.BackgroundColor()
+					radius, _ := s.CornerRadius()
+					if width != want || background == nil || rgba(background).A != 0 || radius != geometry.UniformCornerRadius(control.radius) {
+						t.Fatalf("dark=%v %s state=%v：width=%g background=%v radius=%v", dark, control.name, state, width, background, radius)
+					}
+				}
+			}
+		}
+	}
+}
