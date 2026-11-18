@@ -1,5 +1,35 @@
 # Plan
 
+## ListRowGroup 统一自然行高（2026-11-18）
+
+- [x] 增加 `UniformRows()` / `SetUniformRows(bool)` 与声明式 `.UniformRows(true)`，
+  默认 false，省略声明恢复 false；开关更新不替换行实例。
+- [x] 按当次可用宽度测量可见直接 ListRow，采用最高自然高度；不改写行尺寸或权重。
+  统一布局忽略行 MainWeight，不均分剩余空间，非行内容与嵌套组保留自身布局。
+  关闭后恢复原自然测量与 MainWeight；内容、宽度、样式、可见性及成员变化复用既有失效。
+- [x] 实现只涉及 widgets 布局与 widgets/ui 薄封装，不修改 gui／layout／platform。
+  设计文档补齐最终分配、有限／无界宽度、溢出、嵌套隔离和语义边界契约，记录
+  GTK4 SizeGroup／Box 与 Qt6 uniformItemSizes 的官方文档及采用范围。
+- [x] 包内回归覆盖换行、隐藏最高行、动态内容、增删重排、开关恢复、尺寸属性、
+  MainWeight、额外／不足高度、非行／嵌套隔离、有限最小宽度及无界宽度；
+  正常事件分发验证加高区域、共享边界和尾部留白命中，快照使用实际分配与父级偏移。
+  Linux Pango 另验证真实文字换行与字号变化后的缓存失效，不依赖桌面。
+- [x] Go 1.25.8：已跟踪源码与本轮新增 Go 文件的隔离副本 `go test ./...` 通过；
+  `go test -race ./widgets ./widgets/ui`、相关 vet（`-composites=false`）通过。
+  原工作区 `go test ./...` 仍为基线相同的 23 条未跟踪旧测试／例程编译诊断，
+  没有修改、迁移或跳过这些文件。Windows amd64／macOS arm64 的 widgets 包、
+  测试可执行文件与 ListRowGroup 窗口程序交叉编译通过。
+- [x] `tests/window/widgets/list_row_group -uniform -auto`：Linux X11、Xfwm4
+  （compositor 开启）、Pango，Software／OpenGL 各 1x／1.5x／2x，共六组通过。
+  各阶段使用正常鼠标事件点击行和按钮，核对动态尺寸、身份、语义及实际 Painter／缩放。
+  原有默认连接／像素窗口 `-auto` 在 OpenGL／1x 通过；统一行高场景通过单独参数选择。
+- [x] Linux OpenGL／1x 真实指针与截图确认：加高区域及共享边界附近点击分别命中本行，
+  收窄后两行同步增高；内容及字号更新后重新计算，隐藏最高行后收缩；关闭后恢复
+  48／93 DIP 自然高度，重新开启为 93／93 DIP。Basic 和 Modern 亮暗外观检查通过。
+  首次长轮手工进程退出状态 143，不计正常关闭通过；重启后完成后续操作与断言。
+- [ ] 本轮未执行 Windows／macOS 原生窗口及移动触摸验证；改动不涉及平台层，
+  按本轮确认范围使用本地测试与交叉编译，不将交叉编译记为原生验收。
+
 ## Tooltip 格式文本（2026-11-18）
 
 - [x] Tooltip 正文直接复用 Label 的显式格式前缀、命名样式、嵌套范围和错误回退；
