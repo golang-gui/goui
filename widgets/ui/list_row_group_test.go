@@ -159,3 +159,27 @@ func TestListRowGroupViewChildrenReplaceDeclaration(t *testing.T) {
 		t.Fatal("再次声明未收缩行列表")
 	}
 }
+
+func TestListRowGroupViewUniformRowsReconcilesWithoutRemount(t *testing.T) {
+	c := new(listRowGroupContext)
+	declaration := func() *ListRowGroupView {
+		return ListRowGroup(newGroupRow("a", "A"), newGroupRow("b", "B"))
+	}
+	v := declaration()
+	group := v.Mount(c).(*widgets.ListRowGroup)
+	v.Update(c, group)
+	rows := group.Children()
+	if group.UniformRows() {
+		t.Fatal("声明式统一行高应默认关闭")
+	}
+	for _, enabled := range []bool{true, false, true} {
+		declaration().UniformRows(enabled).Update(c, group)
+		if group.UniformRows() != enabled || c.mounts != 2 || group.Children()[0] != rows[0] || group.Children()[1] != rows[1] {
+			t.Fatal("切换统一行高未协调属性或重建了行")
+		}
+	}
+	declaration().Update(c, group)
+	if group.UniformRows() || c.mounts != 2 || group.Children()[0] != rows[0] {
+		t.Fatal("省略修饰器没有恢复默认 false 或替换了行")
+	}
+}

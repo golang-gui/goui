@@ -11,7 +11,8 @@ import (
 // input and semantics, and the group adds no action of its own.
 type ListRowGroupView struct {
 	baseui.ViewBase[ListRowGroupView]
-	children []baseui.View
+	children    []baseui.View
+	uniformRows bool
 }
 
 // ListRowGroup stacks its rows without a gap so they read as one control. Only
@@ -29,12 +30,21 @@ func (v *ListRowGroupView) Children(children ...baseui.View) *ListRowGroupView {
 	return v
 }
 
+// UniformRows gives visible direct ListRow children the tallest row's natural
+// height at the available width. Omitting it restores the default false.
+func (v *ListRowGroupView) UniformRows(uniform bool) *ListRowGroupView {
+	v.uniformRows = uniform
+	return v
+}
+
 func (v *ListRowGroupView) Mount(baseui.BuildContext) gui.Widget {
 	return widgets.NewListRowGroup()
 }
 
 func (v *ListRowGroupView) Update(ctx baseui.BuildContext, widget gui.Widget) {
-	ctx.UpdateChildren(widget.(*widgets.ListRowGroup), v.children)
+	g := widget.(*widgets.ListRowGroup)
+	g.SetUniformRows(v.uniformRows)
+	ctx.UpdateChildren(g, v.children)
 }
 
 func (*ListRowGroupView) Unmount(baseui.BuildContext, gui.Widget) {}
