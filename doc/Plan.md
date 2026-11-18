@@ -1,5 +1,33 @@
 # Plan
 
+## Popover 主体贴边与窗口实现归并（2026-11-18）
+
+- [x] Cocoa／Win32 的全屏实现归入各自 window 文件；移动的声明逐字节一致，
+  只补充 Win32 原文件需要的 errors 导入，不改变窗口状态、资源或回调行为。
+- [x] Popover 以主体进行容纳、翻转、平移和尺寸约束，再按工作区剩余空间裁去
+  不可见阴影占位；非模态 Bottom 仍排除锚点侧阴影。未增加平台定位偏移或公共 API。
+- [x] 旧实现的四边贴合、仅阴影越界时不翻转、重开刷新裁剪回归失败；旧核心的
+  独立全屏窗口回归明确在首菜单失败，主体局部 x 为 25，不能与屏幕左缘对齐。
+- [x] 新增几何、正常输入命中、语义边界、负工作区、重开复用和原生取整断言。
+  原有限宽测试按主体上限更新，保留滚动条和行宽断言；原向上弹出用例将锚点
+  放低到主体本身越界的位置，继续保留原生阴影不得遮挡锚点的检查。
+- [x] Go 1.25.8：tracked 源码与新增回归文件的隔离副本 `go test ./...` 通过；
+  gui／widgets／ui 的 race、相关 vet（`-composites=false`）通过。
+  原工作区完整测试仍为基线相同的 23 条未跟踪旧测试／例程编译诊断，没有新增诊断。
+  Windows amd64／macOS arm64 的 platform／gui／ui／widgets 及全屏窗口程序构建通过。
+- [x] Linux X11、Xfwm4 4.16.1（compositor 开启），Software／OpenGL 各
+  1x／1.5x／2x、三种装饰共 18 组通过；Windows 10 amd64，Software／Direct2D
+  各 1x／2x、三种装饰共 12 组通过；macOS 15 arm64 裸可执行文件，Software／OpenGL
+  各 1x／2x、三种装饰共 12 组通过。逐组核对实际 Painter／缩放与首菜单主体原点；
+  macOS None 的 zoom／miniaturization 按既有能力记为不适用，其余全屏流程均执行。
+- [x] 真实指针及截图确认：Linux OpenGL／1x 的 example/temp 全屏 File 菜单、
+  DropDown 和 Tooltip 主体可贴左边缘，选择 Item2 生效，Normal 恢复正常；
+  Windows Direct2D／1x、macOS OpenGL／1x 的 Integrated 全屏首菜单均贴左边缘，
+  菜单动作命中及 Normal 恢复通过。例程只运行验证，没有修改其源码。
+- [ ] 多屏、跨屏 DPI、Windows OpenGL 和其余后端／缩放的真实指针外观未执行；
+  原生自动矩阵不替代这些人工场景的验收。
+- [x] 完成提交整理；文件归并与主体贴边修复分别提交。
+
 ## 全屏呈现与窗口可用区域（2026-11-18）
 
 - [x] 明确 WorkAreaAt 随实际窗口呈现变化：普通／最大化使用桌面工作区，
