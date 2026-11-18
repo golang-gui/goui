@@ -45,8 +45,10 @@ type Window interface {
 	// platform.ErrUnavailable. Call on the GUI thread, including repeated requests.
 	Show() error
 
-	// WorkAreaAt returns the work area containing point (or the nearest one),
-	// in this window's client-local DIP. Unsupported hosts return ErrUnsupported.
+	// WorkAreaAt returns the area available to this window at point (or on the
+	// nearest display), in client-local DIP. Actual fullscreen presentation uses
+	// its fullscreen area; ordinary windows use the desktop work area.
+	// Unsupported hosts return ErrUnsupported.
 	WorkAreaAt(point geometry.Point) (geometry.Rectangle, error)
 
 	// SetPosition requests the client-area top-left in relativeTo's client DIP.
