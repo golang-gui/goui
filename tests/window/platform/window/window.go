@@ -1,11 +1,11 @@
-package test
+package main
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
 	"sync"
-	"testing"
 	"time"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -13,13 +13,8 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 )
 
-func TestWindow(t *testing.T) {
-	skipWithoutDisplay(t)
-
-	plat, err := getPlatform()
-	if err != nil {
-		t.Fatal(err)
-	}
+func checkWindow(plat platform.Platform) {
+	var err error
 
 	var (
 		eventLoop platform.EventLoop
@@ -32,7 +27,7 @@ func TestWindow(t *testing.T) {
 		title     string
 	)
 
-	runOnMainThread(func() {
+	func() {
 		eventLoop, err = plat.NewEventLoop()
 		if err != nil {
 			return
@@ -88,17 +83,17 @@ func TestWindow(t *testing.T) {
 		}
 		title = window.(platform.WindowManagement).Title()
 		err = window.(platform.WindowManagement).Show()
-	})
+	}()
 	if eventLoop != nil {
 		defer func() {
-			runOnMainThread(eventLoop.Destroy)
+			eventLoop.Destroy()
 		}()
 	}
 	if err != nil {
 		if window != nil {
-			runOnMainThread(window.Destroy)
+			window.Destroy()
 		}
-		t.Fatal(err)
+		panic(err)
 	}
 
 	runFinished := make(chan struct{})
@@ -112,39 +107,34 @@ func TestWindow(t *testing.T) {
 		}
 	}()
 
-	runOnMainThread(eventLoop.Run)
+	eventLoop.Run()
 	close(runFinished)
 
 	if !destroyed {
-		runOnMainThread(window.Destroy)
+		window.Destroy()
 	}
 	if title != "goui platform test" {
-		t.Fatalf("unexpected window title: %q", title)
+		panic(fmt.Errorf("unexpected window title: %q", title))
 	}
 	if !painted {
-		t.Fatal("window did not receive a paint event")
+		panic("window did not receive a paint event")
 	}
 	if closeSent != 2 {
-		t.Fatalf("expected 2 window close requests, got %d", closeSent)
+		panic(fmt.Errorf("expected 2 window close requests, got %d", closeSent))
 	}
 	if closeSeen != 2 {
-		t.Fatalf("expected 2 close request events, got %d", closeSeen)
+		panic(fmt.Errorf("expected 2 close request events, got %d", closeSeen))
 	}
 	if !destroyed {
-		t.Fatal("window was not destroyed after the close request")
+		panic("window was not destroyed after the close request")
 	}
 	if paintErr != nil {
-		t.Fatal(paintErr)
+		panic(paintErr)
 	}
 }
 
-func TestWindowRequestPaint(t *testing.T) {
-	skipWithoutDisplay(t)
-
-	plat, err := getPlatform()
-	if err != nil {
-		t.Fatal(err)
-	}
+func checkWindowRequestPaint(plat platform.Platform) {
+	var err error
 
 	var (
 		eventLoop         platform.EventLoop
@@ -156,7 +146,7 @@ func TestWindowRequestPaint(t *testing.T) {
 		paintAfterRequest int
 	)
 
-	runOnMainThread(func() {
+	func() {
 		eventLoop, err = plat.NewEventLoop()
 		if err != nil {
 			return
@@ -213,17 +203,17 @@ func TestWindowRequestPaint(t *testing.T) {
 			return
 		}
 		err = window.(platform.WindowManagement).Show()
-	})
+	}()
 	if eventLoop != nil {
 		defer func() {
-			runOnMainThread(eventLoop.Destroy)
+			eventLoop.Destroy()
 		}()
 	}
 	if err != nil {
 		if window != nil {
-			runOnMainThread(window.Destroy)
+			window.Destroy()
 		}
-		t.Fatal(err)
+		panic(err)
 	}
 
 	runFinished := make(chan struct{})
@@ -237,22 +227,22 @@ func TestWindowRequestPaint(t *testing.T) {
 		}
 	}()
 
-	runOnMainThread(eventLoop.Run)
+	eventLoop.Run()
 	close(runFinished)
 
 	if !destroyed {
-		runOnMainThread(window.Destroy)
+		window.Destroy()
 	}
 	if paintErr != nil {
-		t.Fatal(paintErr)
+		panic(paintErr)
 	}
 	if !requestScheduled {
-		t.Fatal("window did not receive an initial paint event")
+		panic("window did not receive an initial paint event")
 	}
 	if !requestSent {
-		t.Fatal("RequestPaint was not sent")
+		panic("RequestPaint was not sent")
 	}
 	if paintAfterRequest == 0 {
-		t.Fatal("window did not receive a paint event after RequestPaint")
+		panic("window did not receive a paint event after RequestPaint")
 	}
 }

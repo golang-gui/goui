@@ -1,12 +1,10 @@
-package test
+package main
 
 import (
 	"errors"
 	"fmt"
 	"math"
-	"os"
 	"runtime"
-	"testing"
 	"time"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -15,21 +13,17 @@ import (
 	"github.com/golang-gui/goui/platform/graphics"
 )
 
-func TestWindowChromeCreation(t *testing.T) {
-	skipWithoutDisplay(t)
-	plat, err := getPlatform()
-	if err != nil {
-		t.Fatal(err)
-	}
+func checkWindowChromeCreation(plat platform.Platform) {
 	for _, chrome := range []platform.WindowChrome{platform.WindowChromeNative, platform.WindowChromeNone, platform.WindowChromeIntegrated} {
-		t.Run(fmt.Sprint(chrome), func(t *testing.T) {
+		func() {
+			fmt.Println("CHECK", fmt.Sprint(chrome))
 			var win platform.Window
 			actual := platform.WindowChromeUnknown
 			state := platform.WindowStateUnknown
 			var createErr, queryErr, staleErr error
 			var size events.SizeEvent
 			notified := 0
-			runOnMainThread(func() {
+			func() {
 				win, createErr = plat.NewWindow(geometry.Size{Width: 320, Height: 200},
 					func(event platform.Event) {
 						notified++
@@ -80,59 +74,51 @@ func TestWindowChromeCreation(t *testing.T) {
 						queryErr = fmt.Errorf("dead SetControlsPosition: %v, want unavailable", err)
 					}
 				}
-			})
+			}()
 			if chrome == platform.WindowChromeIntegrated && runtime.GOOS == "linux" {
 				if win != nil || !errors.Is(createErr, platform.ErrUnsupported) || notified != 0 {
-					t.Fatalf("unsupported integration: %v %v %d", win, createErr, notified)
+					panic(fmt.Errorf("unsupported integration: %v %v %d", win, createErr, notified))
 				}
 				return
 			}
 			if chrome == platform.WindowChromeIntegrated && runtime.GOOS == "windows" &&
 				errors.Is(createErr, platform.ErrUnsupported) && win == nil && notified == 0 {
-				t.Skipf("native composition unavailable: %v", createErr)
+				panic(fmt.Errorf("native composition unavailable: %v", createErr))
 			}
 			if createErr != nil || queryErr != nil {
-				t.Fatalf("create %v; query %v", createErr, queryErr)
+				panic(fmt.Errorf("create %v; query %v", createErr, queryErr))
 			}
 			if actual != platform.WindowChromeUnknown && actual != chrome {
-				t.Fatalf("chrome %v want %v", actual, chrome)
+				panic(fmt.Errorf("chrome %v want %v", actual, chrome))
 			}
 			if chrome == platform.WindowChromeIntegrated {
 				if actual != chrome {
-					t.Fatalf("integrated creation did not establish the native frame: %v", actual)
+					panic(fmt.Errorf("integrated creation did not establish the native frame: %v", actual))
 				}
 				if size.PixelWidth <= 0 || size.PixelHeight <= 0 || size.Width <= 0 || size.Height <= 0 {
-					t.Fatalf("missing initial client extent: %+v", size)
+					panic(fmt.Errorf("missing initial client extent: %+v", size))
 				}
 				scale := float64(size.PixelWidth / size.Width)
 				if math.Abs(float64(size.Width-320))*scale > 1 || math.Abs(float64(size.Height-200))*scale > 1 {
-					t.Fatalf("requested client 320x200 DIP, got %+v", size)
+					panic(fmt.Errorf("requested client 320x200 DIP, got %+v", size))
 				}
 			}
 			if state != platform.WindowStateHidden {
-				t.Fatalf("unshown window state: %v", state)
+				panic(fmt.Errorf("unshown window state: %v", state))
 			}
 			if !errors.Is(staleErr, platform.ErrUnavailable) {
-				t.Fatalf("dead controls query: %v", staleErr)
+				panic(fmt.Errorf("dead controls query: %v", staleErr))
 			}
-		})
+		}()
 	}
 }
 
-// Run on a real desktop with GOUI_TEST_WINDOW_CHROME=1. Select the renderer with
-// GOUI_PLAT_PAINTER and repeat with GOUI_PLAT_SCALE=1 / 2. This checks native
-// geometry and rendering/lifetime integration, not pixels in the compositor.
-func TestWindowChromeIntegrated(t *testing.T) {
+func checkWindowChromeIntegrated(plat platform.Platform) {
 	if runtime.GOOS != "windows" && runtime.GOOS != "darwin" {
-		t.Skip("no native Integrated chrome on this backend")
+		panic("no native Integrated chrome on this backend")
 	}
-	if os.Getenv("GOUI_TEST_WINDOW_CHROME") == "" {
-		t.Skip("set GOUI_TEST_WINDOW_CHROME=1 for visible native integration")
-	}
-	plat, err := getPlatform()
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	var err error
 	var loop platform.EventLoop
 	var win platform.Window
 	var desktop platform.WindowManagement
@@ -144,7 +130,7 @@ func TestWindowChromeIntegrated(t *testing.T) {
 	var painterName string
 	targets := []platform.WindowState{platform.WindowStateNormal, platform.WindowStateMaximized, platform.WindowStateNormal}
 	step, closeRequests := 0, 0
-	runOnMainThread(func() {
+	func() {
 		loop, err = plat.NewEventLoop()
 		if err != nil {
 			return
@@ -186,7 +172,7 @@ func TestWindowChromeIntegrated(t *testing.T) {
 				})
 			case events.CloseEvent:
 				closeRequests++
-				// Veto the first close and verify that the native window survives.
+
 				if closeRequests == 1 {
 					if desktop.State() != platform.WindowStateNormal || desktop.Chrome() != platform.WindowChromeIntegrated {
 						testErr = fmt.Errorf("close request altered native window state/chrome")
@@ -213,8 +199,8 @@ func TestWindowChromeIntegrated(t *testing.T) {
 		}
 		painterName = painter.Name()
 		err = win.(platform.WindowManagement).Show()
-	})
-	defer runOnMainThread(func() {
+	}()
+	defer func() {
 		if painter != nil {
 			painter.Destroy()
 		}
@@ -224,50 +210,46 @@ func TestWindowChromeIntegrated(t *testing.T) {
 		if loop != nil {
 			loop.Destroy()
 		}
-	})
+	}()
 	if err != nil {
-		t.Fatal(err)
+		panic(err)
 	}
 	timer := time.AfterFunc(8*time.Second, loop.Quit)
-	runOnMainThread(loop.Run)
+	loop.Run()
 	timer.Stop()
 	if testErr != nil {
-		t.Fatal(testErr)
+		panic(testErr)
 	}
 	if step != len(targets) || closeRequests != 2 {
-		t.Fatalf("native integration stalled: frames=%v close requests=%d", frames, closeRequests)
+		panic(fmt.Errorf("native integration stalled: frames=%v close requests=%d", frames, closeRequests))
 	}
 	for i, r := range controls {
 		if runtime.GOOS == "windows" {
 			if r != (geometry.Rectangle{}) {
-				t.Fatalf("Integrated has no native Windows caption controls: %v", r)
+				panic(fmt.Errorf("Integrated has no native Windows caption controls: %v", r))
 			}
 		} else if r.X < 0 || r.Y < 0 || r.Width <= 0 || r.Height <= 0 ||
 			r.X+r.Width > frames[i].Width || r.Y+r.Height > frames[i].Height {
-			t.Fatalf("AppKit buttons outside full-size client: controls=%v size=%+v", r, frames[i])
+			panic(fmt.Errorf("AppKit buttons outside full-size client: controls=%v size=%+v", r, frames[i]))
 		}
 	}
 	if frames[0] != frames[len(frames)-1] {
-		t.Fatalf("restored client differs: before=%+v after=%+v", frames[0], frames[len(frames)-1])
+		panic(fmt.Errorf("restored client differs: before=%+v after=%+v", frames[0], frames[len(frames)-1]))
 	}
 	if runtime.GOOS == "darwin" {
 		i := 0
 		scale := float64(frames[i].PixelWidth / frames[i].Width)
 		if math.Abs(float64(frames[i].Width-640))*scale > 1 || math.Abs(float64(frames[i].Height-400))*scale > 1 {
-			t.Fatalf("normal client after transition: %+v, want 640x400 DIP", frames[i])
+			panic(fmt.Errorf("normal client after transition: %+v, want 640x400 DIP", frames[i]))
 		}
 	}
-	t.Logf("painter=%s; client extents=%+v; native controls=%v", painterName, frames, controls)
+	fmt.Printf("painter=%s; client extents=%+v; native controls=%v\n", painterName, frames, controls)
 }
 
-func TestWindowInteractionCapabilities(t *testing.T) {
-	skipWithoutDisplay(t)
-	plat, err := getPlatform()
-	if err != nil {
-		t.Fatal(err)
-	}
+func checkWindowInteractionCapabilities(plat platform.Platform) {
+	var err error
 	var moveErr, resizeErr, deadMoveErr, deadResizeErr, deadHitErr error
-	runOnMainThread(func() {
+	func() {
 		win, createErr := plat.NewWindow(geometry.Size{Width: 320, Height: 200},
 			func(platform.Event) {}, platform.WindowOptions{})
 		err = createErr
@@ -281,9 +263,9 @@ func TestWindowInteractionCapabilities(t *testing.T) {
 		deadMoveErr = desktop.BeginMove()
 		deadResizeErr = desktop.BeginResize(platform.WindowEdgeBottomRight)
 		deadHitErr = desktop.SetHitTest(nil)
-	})
+	}()
 	if err != nil {
-		t.Fatal(err)
+		panic(err)
 	}
 	wantMove, wantResize := platform.ErrUnavailable, platform.ErrUnavailable
 	if runtime.GOOS == "windows" {
@@ -291,47 +273,40 @@ func TestWindowInteractionCapabilities(t *testing.T) {
 		wantResize = platform.ErrUnsupported
 	}
 	if !errors.Is(moveErr, wantMove) || !errors.Is(resizeErr, wantResize) {
-		t.Fatalf("without input: move=%v want %v, resize=%v want %v", moveErr, wantMove, resizeErr, wantResize)
+		panic(fmt.Errorf("without input: move=%v want %v, resize=%v want %v", moveErr, wantMove, resizeErr, wantResize))
 	}
 	for _, err := range []error{deadMoveErr, deadResizeErr, deadHitErr} {
 		if !errors.Is(err, platform.ErrUnavailable) {
-			t.Fatalf("destroyed window: %v", err)
+			panic(fmt.Errorf("destroyed window: %v", err))
 		}
 	}
 }
 
-func TestWindowStateMinimizeTransitions(t *testing.T) {
-	testWindowStateTransitions(t, []platform.WindowState{platform.WindowStateNormal, platform.WindowStateMinimized,
+func checkWindowStateMinimizeTransitions(plat platform.Platform) {
+	testWindowStateTransitions(plat, []platform.WindowState{platform.WindowStateNormal, platform.WindowStateMinimized,
 		platform.WindowStateNormal, platform.WindowStateHidden, platform.WindowStateNormal})
 }
-func TestWindowStateMaximizeTransitions(t *testing.T) {
-	// Normal must exit maximization even when minimizing preserved a native
-	// restore-to-maximized flag. It is not a Restore command.
-	testWindowStateTransitions(t, []platform.WindowState{platform.WindowStateNormal, platform.WindowStateMaximized,
+func checkWindowStateMaximizeTransitions(plat platform.Platform) {
+	testWindowStateTransitions(plat, []platform.WindowState{platform.WindowStateNormal, platform.WindowStateMaximized,
 		platform.WindowStateMinimized, platform.WindowStateNormal, platform.WindowStateHidden, platform.WindowStateNormal})
 }
-func TestWindowStateFullscreenTransitions(t *testing.T) {
-	testWindowStateTransitions(t, []platform.WindowState{platform.WindowStateNormal, platform.WindowStateFullscreen,
+func checkWindowStateFullscreenTransitions(plat platform.Platform) {
+	testWindowStateTransitions(plat, []platform.WindowState{platform.WindowStateNormal, platform.WindowStateFullscreen,
 		platform.WindowStateMaximized, platform.WindowStateNormal})
 }
 
-func testWindowStateTransitions(t *testing.T, targets []platform.WindowState) {
-	t.Helper()
-	skipWithoutDisplay(t)
-	if os.Getenv("GOUI_TEST_WINDOW_STATE") == "" {
-		t.Skip("set GOUI_TEST_WINDOW_STATE=1 for native transitions")
-	}
-	plat, err := getPlatform()
-	if err != nil {
-		t.Fatal(err)
-	}
+func testWindowStateTransitions(plat platform.Platform, targets []platform.WindowState) {
+	func() {
+	}()
+
+	var err error
 	var loop platform.EventLoop
 	var win platform.Window
 	var desktop platform.WindowManagement
 	var commandErr error
 	var observed []platform.WindowState
 	step := 0
-	runOnMainThread(func() {
+	func() {
 		loop, err = plat.NewEventLoop()
 		if err != nil {
 			return
@@ -372,38 +347,38 @@ func testWindowStateTransitions(t *testing.T, targets []platform.WindowState) {
 		}
 		desktop = win.(platform.WindowManagement)
 		err = win.(platform.WindowManagement).Show()
-	})
-	defer runOnMainThread(func() {
+	}()
+	defer func() {
 		if win != nil {
 			win.Destroy()
 		}
 		if loop != nil {
 			loop.Destroy()
 		}
-	})
+	}()
 	if err != nil {
-		t.Fatal(err)
+		panic(err)
 	}
 	timer := time.AfterFunc(8*time.Second, loop.Quit)
-	runOnMainThread(loop.Run)
+	loop.Run()
 	timer.Stop()
 	if errors.Is(commandErr, platform.ErrUnsupported) {
-		t.Skipf("unsupported native transition: %v", commandErr)
+		panic(fmt.Errorf("unsupported native transition: %v", commandErr))
 	}
 	if commandErr != nil {
-		t.Fatal(commandErr)
+		panic(commandErr)
 	}
 	if step != len(targets) {
-		t.Fatalf("stalled at %d/%d; observed %v", step, len(targets), observed)
+		panic(fmt.Errorf("stalled at %d/%d; observed %v", step, len(targets), observed))
 	}
 	var controls geometry.Rectangle
 	var controlsErr error
-	runOnMainThread(func() { controls, controlsErr = desktop.ControlsRect() })
+	controls, controlsErr = desktop.ControlsRect()
 	if !errors.Is(controlsErr, platform.ErrUnsupported) {
 		if controlsErr != nil || controls.Width <= 0 || controls.Height <= 0 {
-			t.Fatalf("visible Native controls: %v, %v", controls, controlsErr)
+			panic(fmt.Errorf("visible Native controls: %v, %v", controls, controlsErr))
 		}
-		t.Logf("native controls in client DIP: %v", controls)
+		fmt.Printf("native controls in client DIP: %v\n", controls)
 	}
-	t.Logf("observed native states: %v", observed)
+	fmt.Printf("observed native states: %v\n", observed)
 }

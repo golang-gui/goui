@@ -1,4 +1,4 @@
-package test
+package main
 
 import (
 	"fmt"
@@ -6,7 +6,6 @@ import (
 	"image/color"
 	"image/draw"
 	"sync"
-	"testing"
 	"time"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -15,18 +14,10 @@ import (
 	"github.com/golang-gui/goui/platform/graphics"
 )
 
-// popupOwner 只转发基础宿主，不向 Popup 暴露窗口管理接口。
 type popupOwner struct{ platform.Window }
 
-// TestPopup 验证不具备 WindowManagement 的 owner 也能创建、定位、显示和绘制 Popup。
-// 使用真实窗口的基础接口视图，避免把原生承载能力与主动管理权限混为一谈。
-func TestPopup(t *testing.T) {
-	skipWithoutDisplay(t)
-
-	plat, err := getPlatform()
-	if err != nil {
-		t.Fatal(err)
-	}
+func checkPopup(plat platform.Platform) {
+	var err error
 
 	var (
 		eventLoop platform.EventLoop
@@ -37,7 +28,7 @@ func TestPopup(t *testing.T) {
 		drawErr   error
 	)
 
-	runOnMainThread(func() {
+	func() {
 		eventLoop, err = plat.NewEventLoop()
 		if err != nil {
 			return
@@ -77,21 +68,21 @@ func TestPopup(t *testing.T) {
 		popup.SetSize(120, 80)
 		popup.SetPosition(20, 20)
 		err = popup.Show()
-	})
+	}()
 
 	if eventLoop != nil {
-		defer runOnMainThread(eventLoop.Destroy)
+		defer eventLoop.Destroy()
 	}
 	if err != nil {
-		runOnMainThread(func() {
+		func() {
 			if popup != nil {
 				popup.Destroy()
 			}
 			if owner != nil {
 				owner.Destroy()
 			}
-		})
-		t.Fatal(err)
+		}()
+		panic(err)
 	}
 
 	runFinished := make(chan struct{})
@@ -104,39 +95,31 @@ func TestPopup(t *testing.T) {
 		case <-runFinished:
 		}
 	}()
-	runOnMainThread(eventLoop.Run)
+	eventLoop.Run()
 	close(runFinished)
 
-	runOnMainThread(func() {
+	func() {
 		if popup != nil {
 			popup.Destroy()
 		}
 		if owner != nil {
 			owner.Destroy()
 		}
-	})
+	}()
 
 	if handle == 0 {
-		t.Fatal("popup NativeHandle is 0")
+		panic("popup NativeHandle is 0")
 	}
 	if !painted {
-		t.Fatal("popup did not receive a paint event")
+		panic("popup did not receive a paint event")
 	}
 	if drawErr != nil {
-		t.Fatal(drawErr)
+		panic(drawErr)
 	}
 }
 
-// TestPopupPainter verifies a Painter can be created for a Popup (not only a
-// Window) and drives one paint frame through the popup's native surface. This
-// exercises the widened NewPainter(Surface) contract end-to-end.
-func TestPopupPainter(t *testing.T) {
-	skipWithoutDisplay(t)
-
-	plat, err := getPlatform()
-	if err != nil {
-		t.Fatal(err)
-	}
+func checkPopupPainter(plat platform.Platform) {
+	var err error
 
 	var (
 		eventLoop platform.EventLoop
@@ -147,7 +130,7 @@ func TestPopupPainter(t *testing.T) {
 		painted   bool
 	)
 
-	runOnMainThread(func() {
+	func() {
 		eventLoop, err = plat.NewEventLoop()
 		if err != nil {
 			return
@@ -179,7 +162,6 @@ func TestPopupPainter(t *testing.T) {
 			return
 		}
 
-		// The point of this test: NewPainter accepts a Popup, not only a Window.
 		painter, err = plat.NewPainter(popup)
 		if err != nil {
 			return
@@ -188,13 +170,13 @@ func TestPopupPainter(t *testing.T) {
 		popup.SetSize(120, 80)
 		popup.SetPosition(20, 20)
 		err = popup.Show()
-	})
+	}()
 
 	if eventLoop != nil {
-		defer runOnMainThread(eventLoop.Destroy)
+		defer eventLoop.Destroy()
 	}
 	if err != nil {
-		runOnMainThread(func() {
+		func() {
 			if painter != nil {
 				painter.Destroy()
 			}
@@ -204,8 +186,8 @@ func TestPopupPainter(t *testing.T) {
 			if owner != nil {
 				owner.Destroy()
 			}
-		})
-		t.Fatal(err)
+		}()
+		panic(err)
 	}
 
 	runFinished := make(chan struct{})
@@ -218,10 +200,10 @@ func TestPopupPainter(t *testing.T) {
 		case <-runFinished:
 		}
 	}()
-	runOnMainThread(eventLoop.Run)
+	eventLoop.Run()
 	close(runFinished)
 
-	runOnMainThread(func() {
+	func() {
 		if painter != nil {
 			painter.Destroy()
 		}
@@ -231,9 +213,9 @@ func TestPopupPainter(t *testing.T) {
 		if owner != nil {
 			owner.Destroy()
 		}
-	})
+	}()
 
 	if !painted {
-		t.Fatal("popup painter did not run a paint frame")
+		panic("popup painter did not run a paint frame")
 	}
 }

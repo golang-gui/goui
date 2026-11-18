@@ -56,15 +56,15 @@ tests/window/
     └── overlay/
 ```
 
-以上仅为目录示意，按新增场景建立，不预先创建空目录。首次新增窗口验证程序时再增加 `tests/window/README.md`，用于列出主题、入口与适用环境；具体操作步骤以源码注释为准，不维护两份流程。
+以上仅为目录示意，按新增场景建立，不预先创建空目录。入口索引见 `tests/window/README.md`，用于列出主题、入口与适用环境；具体操作步骤以源码注释为准，不维护两份流程。
 
 独立启动示例：
 
 ```bash
-go run ./tests/window/gui/overlay
+go run ./tests/window/ui/overlay
 ```
 
-该命令是未来目录的使用示意，不表示本次已经新增此程序。
+该入口提供声明式 Overlay、遮罩、布局和状态保留的实际操作步骤。
 
 - `go test ./...` 可以编译这些命令包，但不会执行 `main`。窗口、平台和事件循环的初始化应由运行入口显式发起，不在 `init` 中自动启动。
 - 通过公共 `platform`／`gui`／`ui` 启动的程序已由 `platform.go` 的 `init()` 保留启动线程，直接在 `main` 中创建应用并运行，不必重复锁定。仅使用底层原生绑定且需要真正主线程的程序自行在 `init()` 中保留线程；不能把 `main` 内才调用 LockOSThread 当作主线程保证，也不能把 AppKit 工作搬到后台 goroutine。
@@ -83,7 +83,7 @@ go run ./tests/window/gui/overlay
 // Overlay 窗口验证
 //
 // 环境：记录操作系统、桌面环境、绘制后端及缩放比例。
-// 启动：go run ./tests/window/gui/overlay
+// 启动：go run ./tests/window/ui/overlay
 // 初始：背景和面板计数均为 0，浮动面板可见，遮罩未显示。
 //
 // 操作与预期：
@@ -242,3 +242,57 @@ go run ./tests/window/ui/timer -scenario=initial-failure
 State 写入触发全应用重建”预期改为“不重建”，另测显式 RequestUpdate 并等待构建通知。
 初次声明失败时，用公共 GUI Timer 检查同一调度器已关闭，不让 UI Active 的保护掩盖
 底层任务泄漏，不为此暴露生产私有状态。操作、超时及退出码见程序入口中文注释。
+
+## 2026-11-18 全仓测试整理
+
+本轮在原工作区整理已跟踪和未跟踪的测试，不使用仅含已跟踪源码的副本替代全仓结果。
+原 23 条编译诊断中，21 条是旧窗口验证调用已从 Window 拆出的管理方法，改为
+WindowManagement 能力调用；2 条是 FindWindow 测试仍构造旧 windowMount，已并入
+ui/app_test.go 并按现有 hostMount 生命周期构造。未恢复旧生产接口。
+
+原 11 项条件跳过的归属：
+
+| 原测试 | 当前入口／执行条件 |
+| --- | --- |
+| TestClipboardPasteFromApp | tests/window/platform/clipboard，使用 -expect 明确核对外部文本及恰好一次回调 |
+| TestFocusEventsManual、TestKeyEventsManual、TestPointerEventsManual、TestWheelEventsManual | tests/window/platform/input，指定类型、数量、期限；焦点重复通知仍记录但不重复计为状态转换 |
+| TestWindowChromeIntegrated | tests/window/platform/window -scenario=integrated，Windows/macOS 原生装饰验收 |
+| 三项 TestWindowState*Transitions | 同入口 -scenario=states，保留原状态序列、原生观察与超时断言 |
+| TestMacOSSigning | cmd/goui/signing_darwin_test.go，macOS 上调用真实 codesign |
+| TestNativeIOSSDKSelection | platform/mobile/base/sdk_darwin_test.go，macOS + iOS Simulator SDK；缺 SDK 时仍明确跳过 |
+
+其余窗口断言同步从 platform/test 移至独立入口，不再由默认测试启动：
+
+| 原覆盖 | 当前覆盖 |
+| --- | --- |
+| 应用身份、Post/Quit/销毁、无效外部打开参数 | platform/application；主线程直接执行原生操作，跨线程投递有五秒上限 |
+| Window 标题/首帧/关闭否决、主动重绘、装饰/生命周期、无输入移动拒绝、工作区 | platform/window -scenario=basic；保留各项断言 |
+| Windows 客户区/最小尺寸/NCCALCSIZE、macOS 按钮组平移/隔离/恢复与原生 zoom | platform/window -scenario=native；过时的“macOS 全屏不支持”预期由公共 states 场景替代 |
+| Popup 基础 owner、直接 Draw、NewPainter(Popup) | platform/popup；保留句柄、首帧、五秒期限与资源释放顺序 |
+| Settings 枚举/颜色/字体/字号 | platform/settings；保留单项不支持与全部不支持的区别 |
+| 剪贴板同进程 ASCII/Unicode/多行/覆盖 | 既有 platform/clipboard -write，保留同步且恰好一次回调与确值检查 |
+| GLX 绑定/最大化、透明呈现与原生 framebuffer/扩展样式、X11 真实移动/缩放 | platform/glx、transparency、window_interaction；保留量化容差与一次性输入会话断言 |
+| Xlib 原生属性查询 | platform/xlib_queries；ABI 断言仍留原生绑定包，移除 t.Run 导致的跨线程原生调用 |
+| Key/Pointer/Wheel/Focus 事件值 | platform/events/input_event_test.go，继续由默认 go test 执行 |
+
+未跟踪测试按价值纳入已有主题：应用 ID/Sync/FindWindow 并入 gui、ui 的 application/app
+测试；图标上传复用保留独立外部包测试；Modern 图标/选区对比度并入主题测试；
+SVG 重复 arc 的着色覆盖并入现有解析圆回归，保留原 1.25 物理像素边界，不放宽容差。
+原生 ABI、资源所有权与排版 cluster/分隔符/alpha/属性替换测试归入各后端。
+
+platform/typography/test 的叶子测试各自锁线程并直接创建排版 Context，不再为离屏排版
+创建原生 Platform 或显示连接；字体和 Painter 都按明确生命周期释放。
+PNG 编码检查改写 t.TempDir；bitmap 复制/通道交换改为内存中精确像素断言。
+未被引用的 SavePng 临时辅助函数不进入生产包。
+
+旧例程中的 Overlay、原生装饰/Surface/透明窗口、外部打开及菜单编辑器移至对应窗口
+主题并保留有效布局/状态断言；image_lifetime、drag_end、dragdrop、ui/window_position
+纳入版本管理。重复的 gui_test/ui_test、旧自绘进度安装器及最小 hello 原型已清除，
+相关能力分别由 Demo、tree_view/composited/textediting、progress_bar 与 README 示例覆盖。
+生成的 PNG、可执行文件和旧运行产物已清除；静态 testdata 保留，原件备份在仓库外。
+
+当前仍有 X11 包内的两个历史原生私有状态测试：TestWindowApplicationClass 与
+TestNativeCursorThemeLifecycle。它们继续使用原有 DISPLAY 条件和有效断言；
+无显示会话时跳过，不能声称默认测试已在所有无桌面环境完整执行。
+本轮 Linux/X11 全仓结果为零失败、零条件跳过；macOS 的 codesign/SDK 与两个非本机
+排版后端仅完成目标编译，本轮未执行原生运行。详细验证结果见 Plan。

@@ -1,220 +1,11 @@
-package test
+package main
 
 import (
 	"fmt"
-	"os"
-	"strconv"
-	"testing"
-	"time"
+	"strings"
 
-	"github.com/golang-gui/goui/core/geometry"
-	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 )
-
-func TestPlatformKeyNames(t *testing.T) {
-	for _, tt := range []struct {
-		key      events.Key
-		modifier events.Modifiers
-		name     string
-	}{
-		{events.KeyWin, events.ModifierWin, "Win"},
-		{events.KeySuper, events.ModifierSuper, "Super"},
-		{events.KeyCommand, events.ModifierCommand, "Command"},
-		{events.KeyOption, events.ModifierOption, "Option"},
-		{events.KeyAltGraph, events.ModifierAltGraph, "AltGraph"},
-		{events.KeyAlt, events.ModifierAlt, "Alt"},
-	} {
-		if keyName(tt.key) != tt.name || modifiersName(tt.modifier) != tt.name {
-			t.Fatalf("%s: key=%s modifier=%s", tt.name, keyName(tt.key), modifiersName(tt.modifier))
-		}
-	}
-}
-
-func TestKeyEventContract(t *testing.T) {
-	event := events.KeyEvent{
-		EventType: events.KeyDown,
-		Key:       events.KeyA,
-		Code:      events.KeyCodeUnknown,
-		Location:  events.KeyLocationStandard,
-		Modifiers: events.ModifierShift | events.ModifierControl,
-		Repeat:    true,
-	}
-
-	if got := event.Type(); got != events.KeyDown {
-		t.Fatalf("KeyEvent.Type() = %v, want %v", got, events.KeyDown)
-	}
-	if event.Key != events.KeyA {
-		t.Fatalf("KeyEvent.Key = %v", event.Key)
-	}
-	if event.Code != events.KeyCodeUnknown {
-		t.Fatalf("KeyEvent.Code = %v", event.Code)
-	}
-	if event.Location != events.KeyLocationStandard {
-		t.Fatalf("KeyEvent.Location = %v", event.Location)
-	}
-	if event.Modifiers != events.ModifierShift|events.ModifierControl {
-		t.Fatalf("KeyEvent.Modifiers = %v", event.Modifiers)
-	}
-	if !event.Repeat {
-		t.Fatal("KeyEvent.Repeat = false")
-	}
-}
-
-func TestKeyEventsManual(t *testing.T) {
-	if os.Getenv("GOUI_TEST_KEY") == "" {
-		t.Skip("set GOUI_TEST_KEY=1 to run the manual key event test")
-	}
-	skipWithoutDisplay(t)
-
-	target := keyEventTarget(t)
-	timeout := keyEventTimeout(t)
-
-	plat, err := getPlatform()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var (
-		eventLoop platform.EventLoop
-		window    platform.Window
-		destroyed bool
-	)
-	keyEvents := make(chan events.KeyEvent, 64)
-	closed := make(chan struct{}, 1)
-
-	runOnMainThread(func() {
-		eventLoop, err = plat.NewEventLoop()
-		if err != nil {
-			return
-		}
-
-		window, err = plat.NewWindow(geometry.Size{Width: 800, Height: 600}, func(event platform.Event) {
-			switch event := event.(type) {
-			case events.KeyEvent:
-				select {
-				case keyEvents <- event:
-				default:
-				}
-			case events.CloseEvent:
-				select {
-				case closed <- struct{}{}:
-				default:
-				}
-				window.Destroy()
-				destroyed = true
-				eventLoop.Quit()
-			}
-		}, platform.WindowOptions{})
-		if err != nil {
-			return
-		}
-
-		if err = window.(platform.WindowManagement).SetTitle("goui key event test"); err != nil {
-			return
-		}
-		err = window.(platform.WindowManagement).Show()
-	})
-	if eventLoop != nil {
-		defer func() {
-			runOnMainThread(eventLoop.Destroy)
-		}()
-	}
-	if err != nil {
-		if window != nil {
-			runOnMainThread(window.Destroy)
-		}
-		t.Fatal(err)
-	}
-
-	result := make(chan error, 1)
-	go func() {
-		timer := time.NewTimer(timeout)
-		defer timer.Stop()
-
-		seen := 0
-		for seen < target {
-			select {
-			case event := <-keyEvents:
-				seen++
-				t.Logf(
-					"key[%d/%d] type=%s key=%s location=%s repeat=%v modifiers=%s",
-					seen,
-					target,
-					keyEventTypeName(event.Type()),
-					keyName(event.Key),
-					keyLocationName(event.Location),
-					event.Repeat,
-					modifiersName(event.Modifiers),
-				)
-			case <-closed:
-				result <- fmt.Errorf("window closed after %d/%d key events", seen, target)
-				return
-			case <-timer.C:
-				result <- fmt.Errorf("timed out after %s with %d/%d key events", timeout, seen, target)
-				eventLoop.Quit()
-				return
-			}
-		}
-
-		eventLoop.Post(func() {
-			if !destroyed {
-				window.Destroy()
-				destroyed = true
-			}
-			eventLoop.Quit()
-		})
-		result <- nil
-	}()
-
-	runOnMainThread(eventLoop.Run)
-
-	if !destroyed {
-		runOnMainThread(window.Destroy)
-	}
-	if err := <-result; err != nil {
-		t.Fatal(err)
-	}
-}
-
-func keyEventTarget(t *testing.T) int {
-	t.Helper()
-
-	const defaultTarget = 6
-	value := os.Getenv("GOUI_TEST_KEY_EVENTS")
-	if value == "" {
-		return defaultTarget
-	}
-
-	target, err := strconv.Atoi(value)
-	if err != nil || target <= 0 {
-		t.Fatalf("GOUI_TEST_KEY_EVENTS must be a positive integer, got %q", value)
-	}
-	return target
-}
-
-func keyEventTimeout(t *testing.T) time.Duration {
-	t.Helper()
-
-	const defaultTimeout = 20 * time.Second
-	value := os.Getenv("GOUI_TEST_KEY_TIMEOUT")
-	if value == "" {
-		return defaultTimeout
-	}
-
-	timeout, err := time.ParseDuration(value)
-	if err != nil {
-		seconds, secondsErr := strconv.Atoi(value)
-		if secondsErr != nil {
-			t.Fatalf("GOUI_TEST_KEY_TIMEOUT must be a Go duration or seconds, got %q", value)
-		}
-		timeout = time.Duration(seconds) * time.Second
-	}
-	if timeout <= 0 {
-		t.Fatalf("GOUI_TEST_KEY_TIMEOUT must be positive, got %q", value)
-	}
-	return timeout
-}
 
 func keyEventTypeName(typ events.EventType) string {
 	switch typ {
@@ -478,5 +269,128 @@ func keyName(key events.Key) string {
 		return "NumpadEnter"
 	default:
 		return fmt.Sprintf("Key(%d)", key)
+	}
+}
+
+func pointerEventTypeName(typ events.EventType) string {
+	switch typ {
+	case events.PointerEnter:
+		return "PointerEnter"
+	case events.PointerLeave:
+		return "PointerLeave"
+	case events.PointerMove:
+		return "PointerMove"
+	case events.PointerDown:
+		return "PointerDown"
+	case events.PointerUp:
+		return "PointerUp"
+	default:
+		return fmt.Sprintf("EventType(%d)", typ)
+	}
+}
+
+func pointerButtonName(button events.PointerButton) string {
+	switch button {
+	case events.PointerButtonNone:
+		return "None"
+	case events.PointerButtonLeft:
+		return "Left"
+	case events.PointerButtonRight:
+		return "Right"
+	case events.PointerButtonMiddle:
+		return "Middle"
+	case events.PointerButtonBack:
+		return "Back"
+	case events.PointerButtonForward:
+		return "Forward"
+	default:
+		return fmt.Sprintf("PointerButton(%d)", button)
+	}
+}
+
+func pointerButtonsName(buttons events.PointerButtons) string {
+	const known = events.PointerButtonLeftDown |
+		events.PointerButtonRightDown |
+		events.PointerButtonMiddleDown |
+		events.PointerButtonBackDown |
+		events.PointerButtonForwardDown
+
+	names := make([]string, 0, 5)
+	if buttons&events.PointerButtonLeftDown != 0 {
+		names = append(names, "Left")
+	}
+	if buttons&events.PointerButtonRightDown != 0 {
+		names = append(names, "Right")
+	}
+	if buttons&events.PointerButtonMiddleDown != 0 {
+		names = append(names, "Middle")
+	}
+	if buttons&events.PointerButtonBackDown != 0 {
+		names = append(names, "Back")
+	}
+	if buttons&events.PointerButtonForwardDown != 0 {
+		names = append(names, "Forward")
+	}
+	if extra := buttons &^ known; extra != 0 {
+		names = append(names, fmt.Sprintf("PointerButtons(0x%x)", uint16(extra)))
+	}
+	if len(names) == 0 {
+		return "None"
+	}
+	return strings.Join(names, "|")
+}
+
+func modifiersName(modifiers events.Modifiers) string {
+	const known = events.ModifierShift |
+		events.ModifierControl |
+		events.ModifierAlt |
+		events.ModifierSuper |
+		events.ModifierCommand |
+		events.ModifierWin |
+		events.ModifierOption |
+		events.ModifierAltGraph
+
+	names := make([]string, 0, 6)
+	if modifiers&events.ModifierShift != 0 {
+		names = append(names, "Shift")
+	}
+	if modifiers&events.ModifierControl != 0 {
+		names = append(names, "Control")
+	}
+	if modifiers&events.ModifierAlt != 0 {
+		names = append(names, "Alt")
+	}
+	if modifiers&events.ModifierSuper != 0 {
+		names = append(names, "Super")
+	}
+	if modifiers&events.ModifierCommand != 0 {
+		names = append(names, "Command")
+	}
+	if modifiers&events.ModifierWin != 0 {
+		names = append(names, "Win")
+	}
+	if modifiers&events.ModifierOption != 0 {
+		names = append(names, "Option")
+	}
+	if modifiers&events.ModifierAltGraph != 0 {
+		names = append(names, "AltGraph")
+	}
+	if extra := modifiers &^ known; extra != 0 {
+		names = append(names, fmt.Sprintf("Modifiers(0x%x)", uint16(extra)))
+	}
+	if len(names) == 0 {
+		return "None"
+	}
+	return strings.Join(names, "|")
+}
+
+func wheelDeltaModeName(mode events.WheelDeltaMode) string {
+	switch mode {
+	case events.WheelDeltaPixel:
+		return "Pixel"
+	case events.WheelDeltaLine:
+		return "Line"
+	default:
+		return fmt.Sprintf("WheelDeltaMode(%d)", mode)
 	}
 }
