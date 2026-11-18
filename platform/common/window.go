@@ -48,9 +48,12 @@ type WindowManagement interface {
 	// RequestClose sends a close request notification. It does not destroy the
 	// window; the event handler decides whether to call Destroy.
 	RequestClose() error
-	// WorkAreaAt returns the available work area of the display containing point,
-	// or the nearest display if point is outside all displays. Both the point
-	// and result are relative to this window's client origin, in DIP (including
+	// WorkAreaAt returns the area available to this window on the display
+	// containing point, or the nearest display if point is outside all displays.
+	// Ordinary windows use the desktop work area. Actual fullscreen presentation
+	// uses the fullscreen area on displays occupied by this window, retaining
+	// native content/safe-area constraints. Requested states are not observations.
+	// Both the point and result are relative to the client origin, in DIP (including
 	// the application scale override). Negative result coordinates are valid.
 	// This is an immediate, thread-affine query, not a placement policy.
 	// Unsupported facilities return ErrUnsupported; destroyed windows or missing

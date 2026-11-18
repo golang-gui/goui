@@ -543,26 +543,73 @@ hit testing, not only state.
 
 - Windows: observe visibility, iconification and maximization. Normal uses an
   explicit SW_SHOWNORMAL request rather than exposing a generic restore command.
-  Fullscreen is not inferred from monitor-sized geometry; fullscreen requests
-  remain unsupported until a managed transition is implemented.
+  Fullscreen is an owned borderless presentation: save the normal placement and
+  window style, remove decoration, and cover the current monitor rectangle.
+  State checks the owned mode together with actual native style and geometry;
+  an unrelated monitor-sized window is not inferred to be fullscreen. Hidden
+  and minimized states take precedence, while Show preserves the owned mode.
+  Normal restores ordinary placement, including when fullscreen began maximized;
+  an explicit Maximized target restores the style and then maximizes.
 - macOS: observe visibility, miniaturization, native fullscreen and AppKit
   isZoomed. Zoom maps to Maximized: this means the platform's enlarged state,
   not necessarily a frame filling the work area. RequestState(Maximized) only
   calls zoom when not already zoomed; Normal unzooms after unhiding/restoring.
   AppKit owns restoration geometry. Native resize callbacks and a final native
-  observation publish actual state, never a predicted target. Reentrant state
-  requests during the native operation return ErrUnavailable. None windows
-  without native Resizable support reject Maximized rather than synthesizing it.
-  Fullscreen remains distinct and its unsupported requests still return errors.
+  observation publish actual state, never a predicted target. Fullscreen and
+  miniaturization transitions wait for their native completion notifications;
+  repeated or reentrant requests replace the pending target without toggling
+  twice. Exiting fullscreen precedes a Normal, Maximized or Minimized target.
+  Show restores fullscreen after minimization; the saved mode does not change
+  observed State, and explicit Normal/Maximized targets supersede restoration.
+  Failure stops the rejected transition rather than retrying indefinitely.
+  None windows without native Resizable support reject Maximized rather than
+  synthesizing it.
+  Borderless fullscreen temporarily enables native Resizable support and restores
+  the original style on exit. Popups use fullscreen-auxiliary collection behavior
+  so they remain in the fullscreen window's Space without becoming key windows.
+- X11: distinguish withdrawal from iconification using ICCCM WM_STATE and
+  interpret EWMH presentation flags. UnmapNotify alone does not mean Hidden.
+  Submit EWMH requests to the WM; never write WM-owned mapped-window properties.
+  Show plus explicit presentation requests must not become an ambiguous restore.
 
 macOS zoom regression: `GOUI_TEST_WINDOW_CHROME=1 go test ./platform/test -run 'TestMacOSZoomState|TestWindowChromeIntegrated' -count=1`.
 Native/Integrated requests, duplicate requests, native zoom observation, original
 frame restoration, hidden zoom restoration and destruction during notification
 are covered. Execution requires a macOS desktop; cross-compilation is not visual validation.
-- X11: distinguish withdrawal from iconification using ICCCM WM_STATE and
-  interpret EWMH presentation flags. UnmapNotify alone does not mean Hidden.
-  Submit EWMH requests to the WM; never write WM-owned mapped-window properties.
-  Show plus explicit presentation requests must not become an ambiguous restore.
+
+## Work area and observed presentation
+
+WorkAreaAt reports the area available to this window on the display selected by
+the reference point, in window-client DIP. It is not a global desktop rectangle.
+Ordinary and maximized windows use the desktop work area; actual fullscreen uses
+the fullscreen area on displays occupied by the window. Native content and safe
+areas still apply. Other displays retain their ordinary work areas. A pending
+fullscreen request alone never changes the query result.
+
+Position(nil) and SetPosition(nil, point) use the current WorkAreaAt(Point{})
+origin, sampled for that operation. The reference therefore changes with actual
+presentation, consistently in both directions. Explicit window references remain
+client-relative. Initial centering uses the ordinary work area before Show.
+Fullscreen transitions obtain monitor geometry privately in each backend;
+they do not use SetPosition(nil, point) to enter fullscreen through the old area.
+
+X11 uses RandR monitor geometry when the observed EWMH presentation is fullscreen;
+ordinary queries still intersect the desktop work area. Withdrawal can discard
+WM presentation flags, so Show resubmits the last observed enlarged mode without
+returning that saved mode from State. Explicit state targets supersede that record.
+Windows selects rcMonitor for its observed fullscreen display and rcWork otherwise.
+AppKit selects the fullscreen display's frame intersected with actual content;
+ordinary queries use visibleFrame. Popover continues to use WorkAreaAt without
+adding its own fullscreen policy or coordinate corrections.
+
+Native references: [EWMH fullscreen](https://specifications.freedesktop.org/wm-spec/1.5/ar01s05.html),
+[MONITORINFO](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-monitorinfo),
+[AppKit toggleFullScreen](https://developer.apple.com/documentation/appkit/nswindow/togglefullscreen(_:)).
+Qt 6.8.3 provides implementation references for
+[Win32 style/placement transitions](https://github.com/qt/qtbase/blob/v6.8.3/src/plugins/platforms/windows/qwindowswindow.cpp#L2631)
+and [Cocoa asynchronous state changes](https://github.com/qt/qtbase/blob/v6.8.3/src/plugins/platforms/cocoa/qcocoawindow.mm#L767).
+GOUI keeps its existing mutually exclusive state and explicit Normal contract;
+it does not adopt Qt's combinable public state flags.
 
 ## Verification
 

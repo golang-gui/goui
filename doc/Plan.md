@@ -1,5 +1,39 @@
 # Plan
 
+## 全屏呈现与窗口可用区域（2026-11-18）
+
+- [x] 明确 WorkAreaAt 随实际窗口呈现变化：普通／最大化使用桌面工作区，
+  全屏使用该窗口占用显示器的全屏可用区域；Position(nil) 与 SetPosition(nil)
+  使用相同的当次原点，不增加屏幕查询公共 API 或 GUI 坐标补偿。
+- [x] 旧实现的独立窗口回归确认：Linux 全屏区域仍扣除桌面保留区域；
+  Windows／macOS 的全屏请求返回不支持。保留失败预期与原生独立查询断言。
+- [x] 补齐 Windows 样式／普通位置保存恢复、原生几何观察、全屏边框和 DPI 接入；
+  macOS 按原生通知处理转换、重复目标、失败及全屏辅助弹层；Linux 修正全屏
+  区域并在退出隐藏时重提此前观察到的全屏／最大化模式。
+- [x] Go 1.25.8：tracked 源码与本轮新增 Go 文件的隔离副本 `go test ./...` 通过；
+  workarea／X11／gui／ui 的 race、相关 vet（`-composites=false`）通过。
+  原工作区完整测试仍为基线相同的 23 条未跟踪旧测试／例程编译诊断，无新增诊断；
+  未修改、移除或迁移这些文件。
+- [x] Windows amd64 与 macOS arm64 的 platform／gui／ui／widgets 及受影响窗口
+  程序构建通过。额外尝试 `go build ./...`，因已有 mobile_start、mobile_surface
+  桌面占位包没有 main 而失败；这两个目录本轮没有改动，不将该命令记为通过。
+  WinAPI placement ABI／无效句柄、Win32 全屏样式／范围原生测试及 Cocoa 包测试通过。
+- [x] Linux X11、Xfwm4 4.16.1（compositor 开启），Software／OpenGL 各
+  1x／1.5x／2x、Native／Integrated／None，共 18 组窗口回归通过。
+  保留桌面顶部区域时，旧实现的全屏查询仍扣除该区域，新实现使用完整显示器。
+- [x] Windows 10 amd64，Software／Direct2D 各 1x／2x、三种装饰共 12 组通过；
+  macOS 15 arm64 裸可执行文件，Software／OpenGL 各 1x／2x、三种装饰共 12 组通过。
+  逐组核对实际 Painter 与缩放；覆盖重复全屏、普通位置恢复、最大化转全屏、
+  全屏最小化后 Show、隐藏后 Show，以及快速反向目标。macOS 另验证实际全屏通知
+  内请求 Normal，待原生完成后退出；允许尚未进入全屏的请求被最后目标合并。
+- [x] macOS None 不具备原生 zoom／miniaturization 能力，对应分支明确记为不适用，
+  其余全屏流程均执行。三平台 Integrated／1x 的真实指针验收通过：进入全屏、
+  长菜单切短菜单、Esc 关闭、Normal 恢复；Linux／macOS 使用 OpenGL，Windows 使用
+  Direct2D，菜单主体紧贴菜单栏，没有桌面保留区造成的额外退避。
+- [ ] 多显示器、跨屏 DPI／显示器拓扑改变、带相机安全区域的显示器、原生全屏失败
+  回调注入、Windows OpenGL 尚未执行；本轮结果不覆盖这些场景。
+- [x] 完成审阅，按原生绑定、平台实现、窗口回归和契约文档独立提交。
+
 ## Popover 隐藏失效与迟到尺寸通知（2026-11-17）
 
 本轮在不改变公开 API、原生资源归属和 Painter 的前提下，检查隐藏缓存及锚点迁移路径。

@@ -41,7 +41,7 @@
 在 `platform/common.DesktopWindow` 增加：
 
 ```go
-// WorkAreaAt returns the available work area of the display containing point.
+// WorkAreaAt returns the area available to the window at its observed presentation.
 // Coordinates are relative to this window's client origin, in DIP.
 // If point is outside all displays, the nearest display is selected.
 WorkAreaAt(point geometry.Point) (geometry.Rectangle, error)
@@ -103,7 +103,7 @@ width/height 是原生窗口内部的整数尺寸。向上对齐是 GOUI 在逻�
 
 1. 将窗口客户区参考点转换为原生屏幕坐标。
 2. 使用 `MonitorFromPoint(..., MONITOR_DEFAULTTONEAREST)` 选择显示器。
-3. 使用 `GetMonitorInfo` 取得 `rcWork`。
+3. 使用 `GetMonitorInfo` 取得 `rcWork`；该窗口实际全屏占用的显示器改用 `rcMonitor`。
 4. 将矩形转换回所属窗口客户区 DIP。
 
 不使用 `MonitorFromWindow` 替代按锚点选屏，也不使用主屏工作区代替目标显示器。
@@ -116,7 +116,8 @@ width/height 是原生窗口内部的整数尺寸。向上对齐是 GOUI 在逻�
 
 1. 根据现有窗口坐标转换关系，得到参考点的屏幕位置。
 2. 枚举 `NSScreen`，选择包含参考点的屏幕；否则选择最近屏幕。
-3. 查询目标屏幕的 `visibleFrame`。
+3. 普通模式查询目标屏幕的 `visibleFrame`；实际全屏占用的屏幕使用 `frame`
+   与窗口实际内容区域的交集，保留系统安全区域约束。
 4. 处理原点方向和项目逻辑缩放，返回窗口客户区 DIP。
 
 `visibleFrame` 排除当前 Dock、菜单栏占用区域，并随界面设置变化，不应长期缓存。
@@ -135,6 +136,11 @@ width/height 是原生窗口内部的整数尺寸。向上对齐是 GOUI 在逻�
 2. 查询当前虚拟桌面的工作区，正确处理该属性及桌面 viewport 的坐标约定。
 3. 返回工作区与目标显示器的交集，并转换为 owner 客户区 DIP。
 4. 缺少必要能力或数据时返回明确错误，不把根窗口大小直接当成工作区。
+
+窗口实际处于 EWMH 全屏时，其占用显示器使用 RandR 的完整边界；对其他显示器
+仍查询普通工作区。判断依据是原生状态与几何，不是最近提交的全屏请求。
+`Position(nil)` 和 `SetPosition(nil, …)` 同步使用当次区域原点，Popover 无须
+增加全屏特例或偏移。完整窗口状态契约见 [窗口管理](DesignWindowManagement.md#work-area-and-observed-presentation)。
 
 实现使用 RandR 1.5 `XRRGetMonitors` 查询活动显示器；缺少该版本或必要 EWMH
 能力时返回 `ErrUnsupported`，声明支持但数据缺失／无效时返回错误。
