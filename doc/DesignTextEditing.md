@@ -764,14 +764,17 @@ ui.ScrollView(ui.TextView().BindText(&text).BindSelection(&selection)).Style("te
 | `gui/text_editor_test.go` | 共享编辑行为、菜单、双向导航、剪贴板与历史、预编辑提交分组、Placeholder、共同基线和选区绘制 |
 | `gui/text_input_test.go` | 单行模型和编辑约束、Submit、水平滚动、baseline、绘制、样式与 Snapshot |
 | `gui/text_view_test.go` | 多行视图、共享模型、预编辑投影、段落／宽度／历史缓存、测量边界、重排和锚定、自动滚动与性能基准 |
-| `gui/text_native_test.go` | 不依赖桌面的原生导航、定位、锚定和可见区光栅化验证 helper，不导入具体后端 |
-| `gui/text_native_{linux,darwin,windows}_test.go` | 各平台原生排版入口，以及只适用于该平台的回归用例 |
+| `gui/text_context_test.go` | 用确定性排版契约数据验证导航、定位、锚定、宽度缓存和可见区位图请求，不创建原生后端 |
+| `tests/integration/typography` | 真实字体与公开 GUI／textedit／widgets 接口的跨层集成；后端工厂只在此目录按平台选择 |
 
-Pango、CoreText、DirectWrite 由平台后缀文件选择，继续在执行原生调用的
-goroutine 中锁定 OS 线程；Linux 的完整原生上下文／宽度缓存回归保持 Linux
-范围，不因归并文件扩展到其他平台。共用替身与原生验证 helper 分开，但都属于
-包内测试；它们不创建原生窗口、不要求桌面会话。仅一个用例使用的 fixture
-就近保留，不为归并文件建立新框架。`label_test.go` 保留 Label 行为测试；
+2026-11-18 起，上层包内不再创建 Pango、CoreText 或 DirectWrite。原生工厂集中于
+`tests/integration/typography/context_{linux,darwin,windows}_test.go`，在实际调用的叶子
+测试 goroutine 中锁定线程，先释放控件／排版，再释放 Context 并解锁。
+私有缓存、pending 状态、巨大坐标和销毁重入仍用确定性输入留在 gui；真实字体集成通过
+公开控件树、选择、绘制、几何及 Context 装饰器保留验证，不导出生产私有状态。
+具体对应关系和无事件循环限制见 [Testing](Testing.md#原生排版跨层集成)。
+以下按日期记录的旧文件组织与执行命令只代表当时版本。
+`label_test.go` 保留 Label 行为测试；
 通用 ScrollView 测量期间替换内容的回归归入 `scroll_view_test.go`，
 TextView 的滚动集成仍在 `text_view_test.go`。
 `im_context_test.go` 保留 IMContext 和 Window 输入路由测试。
