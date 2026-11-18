@@ -136,6 +136,32 @@ func TestCompleteFallbackGeometryAndSurfaces(t *testing.T) {
 	}
 }
 
+func TestTabKeyboardFocusParts(t *testing.T) {
+	sheet := Sheet()
+	for _, control := range []struct {
+		name   string
+		radius float32
+	}{{"tab-item", 6}, {"tab-close-button", 4}, {"tab-scroll-button", 4}} {
+		for _, state := range []style.State{style.Normal, style.Focused, style.FocusVisible, style.FocusVisible | style.Hovered, style.FocusVisible | style.Pressed, style.FocusVisible | style.Disabled} {
+			s := sheet.Resolve(style.Sel{Name: control.name, Part: "focus", State: state})
+			width, _ := s.BorderWidth()
+			want := float32(0)
+			if state.Has(style.FocusVisible) && !state.Has(style.Disabled) {
+				want = 2
+				ink, _ := s.BorderColor()
+				if !colors.Equal(ink, color.RGBA{R: 102, G: 147, B: 217, A: 255}) {
+					t.Fatalf("%s 的键盘边框未沿用 Basic 焦点颜色：%v", control.name, ink)
+				}
+			}
+			background, _ := s.BackgroundColor()
+			radius, _ := s.CornerRadius()
+			if width != want || !colors.Equal(background, color.Transparent) || radius != geometry.UniformCornerRadius(control.radius) {
+				t.Fatalf("%s state=%v：width=%g background=%v radius=%v", control.name, state, width, background, radius)
+			}
+		}
+	}
+}
+
 func TestMenuButtonExpandedAppearance(t *testing.T) {
 	sheet := Sheet()
 	for _, tc := range []struct {

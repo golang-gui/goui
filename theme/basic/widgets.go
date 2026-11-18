@@ -13,6 +13,7 @@ func WidgetRules() []style.Rule {
 	label := base.Resolve(style.Sel{Name: "label"})
 	family, _ := label.FontFamily()
 	size, _ := label.FontSize()
+	focus, _ := base.Resolve(style.Sel{Name: "button", Part: "focus", State: style.FocusVisible}).BorderColor()
 	rules := []style.Rule{
 		style.Name("tab-bar").BackgroundColor(color.Transparent),
 		style.Name("check-button").FontFamily(family).FontSize(size),
@@ -83,6 +84,12 @@ func WidgetRules() []style.Rule {
 		style.Name("toast").BackgroundColor(color.White).
 			BorderColor(color.RGBA{R: 190, G: 190, B: 198, A: 255}).BorderWidth(1).Radius(8).
 			Shadow(style.Shadow{Color: color.NRGBA{A: 40}, BlurRadius: 12}),
+	}
+	for _, name := range []string{"tab-item", "tab-close-button", "tab-scroll-button"} {
+		rules = append(rules,
+			style.Name(name).Part("focus").BackgroundColor(color.Transparent).BorderWidth(0),
+			style.Name(name).Part("focus").State(style.FocusVisible).BorderColor(focus).BorderWidth(2),
+		)
 	}
 	rules = append(rules, checkButtonRules()...)
 	rules = append(rules, dropDownRules()...)
