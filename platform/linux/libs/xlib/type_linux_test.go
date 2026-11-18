@@ -36,3 +36,59 @@ func TestFocusChangeEventABI(t *testing.T) {
 		t.Fatalf("焦点事件 union 读取错误：%+v", got)
 	}
 }
+
+// Linux amd64/arm64 的 LP64 XErrorEvent 布局，不是线上协议错误包布局。
+func TestErrorEventABI(t *testing.T) {
+	if unsafe.Sizeof(uintptr(0)) != 8 {
+		t.Skip("LP64 ABI assertions")
+	}
+	for _, tc := range []struct {
+		name      string
+		got, want uintptr
+	}{
+		{"size", unsafe.Sizeof(ErrorEvent{}), 40},
+		{"display", unsafe.Offsetof(ErrorEvent{}.Display), 8},
+		{"resource", unsafe.Offsetof(ErrorEvent{}.ResourceID), 16},
+		{"serial", unsafe.Offsetof(ErrorEvent{}.Serial), 24},
+		{"error", unsafe.Offsetof(ErrorEvent{}.ErrorCode), 32},
+		{"request", unsafe.Offsetof(ErrorEvent{}.RequestCode), 33},
+		{"minor", unsafe.Offsetof(ErrorEvent{}.MinorCode), 34},
+	} {
+		if tc.got != tc.want {
+			t.Errorf("%s = %d, want %d", tc.name, tc.got, tc.want)
+		}
+	}
+}
+
+func TestXIMDestroyCallbackWithoutInputMethod(t *testing.T) {
+	if XIM(0).SetDestroyCallback(XIMCallback{}) {
+		t.Fatal("missing XIM accepted a destroy callback")
+	}
+}
+
+// Linux amd64/arm64 共用的 LP64 Xlib.h 布局，不连接显示服务器。
+func TestXIMCallbackABI(t *testing.T) {
+	if unsafe.Sizeof(uintptr(0)) != 8 {
+		t.Skip("LP64 ABI assertions")
+	}
+	checks := []struct {
+		name      string
+		got, want uintptr
+	}{
+		{"styles size", unsafe.Sizeof(XIMStyles{}), 16},
+		{"styles pointer", unsafe.Offsetof(XIMStyles{}.SupportedStyles), 8},
+		{"callback size", unsafe.Sizeof(XIMCallback{}), 16},
+		{"text size", unsafe.Sizeof(XIMText{}), 32},
+		{"text feedback", unsafe.Offsetof(XIMText{}.Feedback), 8},
+		{"text encoding", unsafe.Offsetof(XIMText{}.EncodingIsWchar), 16},
+		{"text string", unsafe.Offsetof(XIMText{}.String), 24},
+		{"draw size", unsafe.Sizeof(XIMPreeditDrawCallbackStruct{}), 24},
+		{"draw text", unsafe.Offsetof(XIMPreeditDrawCallbackStruct{}.Text), 16},
+		{"caret size", unsafe.Sizeof(XIMPreeditCaretCallbackStruct{}), 12},
+	}
+	for _, check := range checks {
+		if check.got != check.want {
+			t.Errorf("%s: %d want %d", check.name, check.got, check.want)
+		}
+	}
+}
