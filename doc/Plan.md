@@ -6580,3 +6580,40 @@ RenderWidget（包含GPU读回），旧版两次总耗时455.58/458.70ms，新�
 后续范围见 [PlanMobileAPI](PlanMobileAPI.md#11-android-typography-三批整理2026-11-09已完成)。
 真机、API29/31+、16KiB、长期内存、WrapChar、真正context loss及既有全NULL EGL
 查询缺口均未计为本批完成。原始材料在两端仓库外/tmp/goui-android-text-refactor-05rmxhoz。
+
+## 2026-11-18 全仓测试与未跟踪用例整理
+
+- [x] 修复原工作区 23 条编译诊断，按当前 WindowManagement 与 UI hostMount 契约
+  调整测试；不修改生产接口。纯事件值、GUI/UI 生命周期、图标与主题断言归入已有主题。
+- [x] 审查未跟踪用例：纳入原生 ABI/资源所有权、三后端离屏排版及有效窗口回归；
+  重复原型和测试输出在仓库外备份后清除，保留 testdata 与无关设计草稿/IDE 配置。
+  归并、迁移与替代覆盖表见 [Testing](Testing.md#2026-11-18-全仓测试整理)。
+- [x] 原 platform/test 的桌面场景改为显式 main 程序，保留状态序列、关闭否决、首帧、
+  资源释放和错误断言；输入数量/期限检查显式运行。macOS 签名与 SDK 检查使用
+  darwin 文件入口；缺 iOS SDK 的原有跳过条件保留，不伪造工具链可用。
+- [x] 离屏排版不再创建原生 Platform；叶子测试独立锁线程和释放 Context/Painter。
+  PNG 编码写入 t.TempDir，bitmap 复制/通道交换用内存像素断言，不再污染源码目录。
+- [x] Linux amd64 / Go1.25.8：原工作区 `go test -count=1 -json ./...`，
+  6108 项通过（含子测试）、0 失败、0 条件跳过；随后原样 `go test ./...` 退出 0。
+  `[no test files]` 的命令包不是条件跳过或窗口场景通过；两项历史 X11 私有状态测试
+  在本轮显示会话实际执行。另运行 `env -u DISPLAY go test -json ./...`，退出 0，
+  6106 项通过，仅这两项按原条件跳过，未计为通过。
+- [x] `go test -race ./gui ./ui ./icon/... ./theme/modern ./platform/typography/utils`
+  通过。Windows amd64、macOS arm64 的 `CGO_ENABLED=0 go test -exec=/bin/true ./...`
+  全仓目标编译通过；该命令不执行目标二进制，不算原生运行通过。
+- [x] Linux/X11、Xfwm4 合成环境、1x、OpenGL（llvmpipe）/Software：显式执行
+  platform/window 的 basic/states、application、popup、settings、glx、xlib_queries、
+  transparency、window_interaction 与 clipboard -write，均通过各自自动断言。
+  GLX 完成 12 轮最大化/恢复、75 帧；X11 移动/缩放按实际映射、输入回调和原生几何
+  推进，不把固定等待当作操作完成。透明 framebuffer 保留 8 位量化容差。
+- [x] platform/input 的 pointer/key/wheel/focus 均完成指定数量断言，焦点场景实际
+  观察获取/失去/获取，重复通知不重复计数；无输入的 100ms 超时以非零退出，未误报通过。
+- [ ] 本轮未执行 Windows/macOS 原生窗口、codesign/iOS SDK、非本机排版后端运行，
+  也未将 GUI 例程启动、2x 或人工视觉场景计为通过；按入口注释后续验收。
+
+整理期间的失败与修正：初次独立显示会话启动不完整导致原生连接失败，恢复有效会话后
+重新执行；透明用例旧输入按非预乘颜色构造，与现行契约不符，改用合法预乘 RGBA 后
+原读回断言通过，未放宽容差；目标编译发现 CoreText 测试缺少原生绑定导入及迁移文件
+的导入/变量问题，已修正。补充例程错误处理时曾把无返回值的 GUI RequestState 用作
+error，原样全仓命令报编译失败；恢复其既有尽力而为调用后最终全仓命令退出 0。
+这些是测试/例程输入与组织问题，不作为新增框架功能或生产缺陷修复记录。
