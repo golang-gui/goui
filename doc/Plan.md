@@ -6628,3 +6628,23 @@ error，原样全仓命令报编译失败；恢复其既有尽力而为调用后
 - [x] Windows amd64：`CGO_ENABLED=0 go test -exec=/bin/true ./platform/windows/sdk/... ./platform/windows/win32 ./platform/typography/directwrite`
   目标编译通过；macOS arm64 的 CoreText 测试包按同样方式编译通过。
   本轮未执行这两个平台的原生测试；文件归并不涉及生产实现或窗口行为变更。
+
+## 2026-11-18 标签键盘焦点反馈
+
+- [x] tabBody 按实际焦点绘制 `tab-item / focus`；Basic 与 Modern 为主体、关闭按钮及
+  滚动箭头提供 2 DIP 键盘焦点框，普通鼠标焦点默认无框。保持选择背景、关闭显隐、
+  布局及 Snapshot 的真实焦点归属；样式范围可覆盖颜色、宽度或关闭提示。
+  设计与 Qt 6.8.0 源码参考见 [DesignTabs](DesignTabs.md#键盘焦点)。
+- [x] 旧实现通过新增回归复现主体缺框；修正后正常事件分发、1x/2x 离屏像素、
+  鼠标/键盘切换、未选中标签、样式覆盖、禁用及卸载清理均通过。主题测试覆盖
+  明暗、主题色及 Hovered/Pressed/Disabled 组合；全仓 `go test ./...` 通过，
+  `go test -json ./...` 共 6113 项通过（含子测试）、0 失败、0 条件跳过。
+- [x] `go test -race ./widgets ./theme/basic ./theme/modern` 通过；Windows amd64 与
+  macOS arm64 的受影响包及 tabs 窗口程序交叉编译通过，未执行这两个平台的原生窗口。
+- [x] 本机 Linux amd64 / X11、Xfwm4 合成环境：OpenGL（llvmpipe）1x 验证 Modern
+  亮暗、选中/未选中主体、关闭按钮、溢出箭头、悬停保留、点击清除及键盘关闭无残留；
+  Software 1x 验证 Basic 主体/关闭按钮及输入模式切换，Software 2x 验证 Modern
+  亮暗主体/关闭按钮。按实际焦点及桌面像素推进，截图复核轮廓、选择背景和内容位置。
+  入口与操作步骤见 `tests/window/widgets/tabs`，不将其余操作或平台计为本轮通过。
+- [ ] 本机验证另外观察到既有导航问题：未溢出时，零宽滚动箭头仍可进入 Tab 顺序；
+  本轮只修复焦点外观，未调整箭头的布局及焦点资格。

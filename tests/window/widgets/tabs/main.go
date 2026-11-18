@@ -56,6 +56,13 @@
 //  6. 以 -fallback-style 重启，显式组合 GUI 与 widgets 兜底样式。
 //     Toggle Dark/Text size 在此模式不改变样式；检查文字可读、选择/悬停表面、
 //     分隔线和关闭/滚动图标，以及前述选择/排序行为。
+//  7. 从当前页输入框反复按 Tab/Shift+Tab，把焦点移到标签主体、关闭按钮和溢出箭头。
+//     主体有键盘焦点时只有该标签轮廓显示 2 DIP 提示，选中底色不改变；关闭按钮或
+//     滚动箭头聚焦时只有该按钮显示焦点框，不能同时把整个标签标成聚焦。
+//     单纯悬停保留提示；鼠标点击清除键盘提示，即使实际焦点仍在同一个主体上。
+//     在已选中/未选中标签、Modern 亮暗/Basic、1x/2x 下重复，文字/按钮位置不跳动。
+//     F6 记录实际焦点、所属标签的选择态和窗口局部边界，不改变焦点或选择；
+//     标签主体的 FocusVisible 不应伪装成父标签的 Focused，关闭聚焦标签后不留旧框。
 //
 // 可选逻辑 2x：POSIX 使用 GOUI_PLAT_SCALE=2 go run ./tests/window/widgets/tabs；
 // PowerShell 先设 $env:GOUI_PLAT_SCALE='2' 再启动，结束后恢复该变量原值。
@@ -213,10 +220,33 @@ func main() {
 							}
 						}),
 				).CrossAlign(layout.CrossStretch),
-			),
+			).Shortcuts(ui.Shortcut(ui.KeyF6).OnActivate(func() { reportTabFocus(app) })),
 		)
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+// 手工检查的只读观测；仍通过真实 Tab/指针事件操作，不提供焦点动作捷径。
+func reportTabFocus(app ui.App) {
+	window := app.FindWindow("tabs")
+	if window == nil {
+		return
+	}
+	focused := window.FocusedWidget()
+	if focused == nil {
+		fmt.Println("focus=nil")
+		return
+	}
+	var tab string
+	var selected bool
+	for owner := focused; owner != nil; owner = owner.Parent() {
+		if info := owner.Snapshot(); info.Role == widgets.RoleTab {
+			tab, selected = info.Text, info.Selected
+			break
+		}
+	}
+	fmt.Printf("focus=%T style=%q focus-visible=%t bounds=%v tab=%q selected=%t\n",
+		focused, focused.StyleName(), focused.FocusVisible(), focused.Snapshot().Bounds, tab, selected)
 }

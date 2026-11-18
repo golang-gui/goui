@@ -53,7 +53,7 @@
 | 原生拖放结束、取消/释放/拒绝及位置 | [platform/drag_end](platform/drag_end/main.go) | 三平台公开事件断言；受控目标、准确 payload、Begin/End 次数、结束结果及最终本地注册窗口命中；`-min-duration 35s` 验证长拖动，Linux 另验无应答目标；不依赖私有 trace，位置需结合实际输入核对 |
 | 五种独立 DnD 数据源/接收区、预览、跨窗口/Popover 与文件互操作 | [gui/dragdrop](gui/dragdrop/main.go) | 三平台；默认自建临时文件，可重复 -file，支持 -large-text/-preview/-actions |
 | DnD 声明式重建、回调更新、禁用及移除/恢复绑定 | [ui/dragdrop](ui/dragdrop/main.go) | 三平台；窗口显示信号计数、最后接收值及 FAIL 数，退出检查失败 |
-| 标签页基础交互、栏内排序与样式 | [widgets/tabs](widgets/tabs/main.go) | 三平台桌面；Integrated、Modern/兜底样式；人工或 Computer Use 观察 |
+| 标签页基础交互、栏内排序、样式与键盘焦点 | [widgets/tabs](widgets/tabs/main.go) | 三平台桌面；Integrated、Modern/兜底样式；F6 只读焦点观测；人工或 Computer Use 观察 |
 | 两态开关、水平拖动、动画及声明协调 | [widgets/switch](widgets/switch/main.go) | 三平台；Modern/显式兜底，Software/OpenGL、Windows 另可 Direct2D；1x/2x；包含取消、子按钮、重建及 Timer 清理断言 |
 | 已获胜本地拖动接管原生 DnD | [gui/drag_handoff](gui/drag_handoff/main.go) | 三平台；接受、Esc、未接受、本地拖动、短点击；对象身份及一次终态断言 |
 | 命令式标签跨窗口移交与取消 | [widgets/tab_transfer](widgets/tab_transfer/main.go) | 默认连续体验推开占位、源标签隐藏、单标签转移；`-expect accepted` 等严格模式自动断言；编辑页步骤见 editor.go |
