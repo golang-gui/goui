@@ -6,7 +6,8 @@
 // 初始：Integrated 800×560 DIP、Basic 样式、显式提示、目标已挂载且可见。
 //
 // 操作与逐项预期：
-//  1. 悬停“提示目标”约 700 ms，出现多行提示；Tab 到目标也能显示提示。
+//  1. 悬停“提示目标”约 700 ms，出现多行提示；版本为粗体，Modern 下说明使用 warning 色，
+//     格式标记不显示；Tab 到目标也能显示提示。
 //     切换目标或离开后重新进入也等待 700 ms。分别停在按钮文字和四周留白，
 //     每处保持三秒，提示与 Hover 应保持稳定；Modern 亮暗均为无阴影圆角边框。
 //     Escape 关闭；点击目标只增加一次计数，提示不抢焦点或阻断点击。
@@ -87,7 +88,8 @@ func main() {
 	tooltipText := func() string {
 		switch mode {
 		case 0:
-			return fmt.Sprintf("声明式提示，版本 %d。\n点击目标增加计数；提示不阻止正常输入。这是一段用于检查自动折行的较长说明文字。", revision)
+			return fmt.Sprintf(`\{format\}声明式提示，\{bold:版本 %d\}。
+\{warning:点击目标增加计数；提示不阻止正常输入。这是一段用于检查自动折行的较长说明文字。\}`, revision)
 		case 2:
 			return defaultTooltip
 		}
@@ -99,6 +101,15 @@ func main() {
 			if mounted {
 				if w == nil || w.Tooltip() != tooltipText() || target != nil && target != w || w == removed {
 					panic("目标文字、身份或重新挂载不符合预期")
+				}
+				plain := ""
+				if mode == 0 {
+					plain = fmt.Sprintf("声明式提示，版本 %d。\n点击目标增加计数；提示不阻止正常输入。这是一段用于检查自动折行的较长说明文字。", revision)
+				} else if mode == 2 {
+					plain = defaultTooltip
+				}
+				if w.Snapshot().Tooltip != plain {
+					panic("提示快照没有提供显示纯文本")
 				}
 				target = w
 			} else if w != nil {
