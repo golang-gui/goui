@@ -1,32 +1,24 @@
-package widgets
+//go:build linux || windows || darwin
+
+package typography_test
 
 import (
-	"runtime"
-	"strings"
-	"testing"
-
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
-	"github.com/golang-gui/goui/platform/typography/pango"
 	"github.com/golang-gui/goui/theme/modern"
+	"github.com/golang-gui/goui/widgets"
+	"strings"
+	"testing"
 )
 
 // 原生换行与字号失效不依赖桌面；原生创建、测量与释放在同一锁定线程完成。
 func TestListRowGroupUniformRowsNativeWrappingAndStyle(t *testing.T) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	context, err := pango.NewContext()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer context.Destroy()
-	previous := gui.App
-	gui.App = &tabTypographyApp{context: context}
-	defer func() { gui.App = previous }()
-	group := NewListRowGroup()
+	context := nativeContext(t)
+	useTypography(t, context, nil)
+	group := widgets.NewListRowGroup()
 	group.SetUniformRows(true)
-	short, long := NewListRow("Updates"), NewListRow("Details")
+	short, long := widgets.NewListRow("Updates"), widgets.NewListRow("Details")
 	long.SetSubtitle(strings.Repeat("下载更新后保留设置，preserve user choices. ", 4))
 	group.AddChild(short)
 	group.AddChild(long)

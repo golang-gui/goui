@@ -134,8 +134,9 @@ Snapshot.Role=listitem，Text 为显示标题和说明，以换行分隔；不�
 声明身份/默认恢复，以及 Basic/Modern 常态、悬停、按下、禁用的 1x/2x 软件表面/
 直边像素（预乘 sRGB RGBA8，允许 1 字节量化误差）。Modern 明暗主题在 125 种
 accent 下检查各行状态的文字对比度至少 4.5:1、焦点至少 3:1；这不表示边界或
-悬停色差也需达到文字的对比度。Linux Pango 实测换行
-和 14/26pt 字号不需要桌面，执行原生调用的子测试锁定 OS 线程。
+悬停色差也需达到文字的对比度。真实换行和 14/26pt 字号的无桌面验证位于
+`tests/integration/typography/list_row_test.go`，原生工厂由独立测试入口选择，
+执行原生调用的子测试锁定 OS 线程，widgets 包内不依赖具体排版后端。
 `tests/window/widgets/list_row` 使用正常桌面输入和只读 Snapshot 验收，不使用
 DevServer。Demo 基础页提供开关、整行动作、下拉与只读值的八语言设置样例。
 桌面缩放、原生后端和移动触摸的实际验证边界见 Plan。
