@@ -1,6 +1,6 @@
 # ListRowGroup 连接分组
 
-状态：2026-11-17 实现；同日接入 Demo 设置区与窗口验收。验证范围记录在 [Plan](Plan.md)。
+状态：2026-11-17 实现；2026-11-18 增加可选统一自然行高。验证范围记录在 [Plan](Plan.md)。
 
 ## 契约与 API
 
@@ -13,6 +13,7 @@ group := widgets.NewListRowGroup()
 group.AddChild(updatesRow)  // 直接子行才会相连
 group.AddChild(actionRow)
 group.AddChild(versionRow)
+group.SetUniformRows(true) // optional; false by default
 ```
 
 对应声明式接口：
@@ -23,18 +24,43 @@ wui.ListRowGroup(
     wui.ListRow("Automatic updates").Suffix(wui.Switch()),
     wui.ListRow("Check for updates").Activatable(true).OnActivate(check),
     wui.ListRow("Version").Suffix(ui.Label("0.8.0")),
-).Children(more...)
+).Children(more...).UniformRows(true)
 ```
 
-`ListRowGroup` 没有样式名以外的配置：方向固定纵向，间距固定为 0，交叉轴默认
-拉伸，无内边距。它继承 `WidgetBase` 的普通容器能力（`AddChild`、`RemoveChild`、
-`MoveChildBefore`），由 `LinearLayout` 完成测量与排布。组本身不可聚焦、无点击
-动作，`Snapshot.Role=vbox`。
+`UniformRows() bool` / `SetUniformRows(bool)` 控制统一行高，默认 false。
+其余布局方向固定纵向，间距固定为 0，交叉轴默认拉伸，无内边距。
+它继承 `WidgetBase` 的普通容器能力（`AddChild`、`RemoveChild`、`MoveChildBefore`），
+由分组布局复用 `LinearLayout` 完成测量与排布。组本身不可聚焦、无点击动作，
+`Snapshot.Role=vbox`。
 
 ## 布局与连接几何
 
-子行上下紧贴、左右同宽，行高仍由各行内容与 MinSize 决定；组不强制统一行高。
+子行上下紧贴、左右同宽，默认行高仍由各行内容与 MinSize 决定。
 隐藏的子行不占位，也不保留接缝：隐藏中间行后，其上下两行立即贴合。
+
+### 可选统一自然行高
+
+开启 UniformRows 后，只对当前可见的直接子 `*ListRow` 执行以下规则：
+
+- 按交叉轴拉伸后的实际可用宽度、无界高度测量每行，取最高的自然高度，统一分配。
+  文字换行、插槽和各行尺寸偏好均参与自然测量；不使用单行的 MainWeight 分配高度。
+- 同组的直接行即使被非行内容隔开，仍共享这个高度；连接边框继续遵循相邻行规则。
+  非 ListRow 子控件与嵌套分组不参与最大值计算，保留自身布局与 MainWeight。
+  嵌套组可以独立开启 UniformRows，不把开关传播给后代。
+- 不均分组的额外高度，不将统一值写回行的 MinSize、MaxSize、MainWeight 或布局管理器。
+  行的尺寸偏好约束自然测量，最终统一分配仍由父布局决定。组高度不足时，行保留统一
+  自然高度并沿用既有溢出／裁剪规则；组自身 Measure 结果仍遵守父约束。
+- 每次 Measure／Arrange 都按当次宽度建立局部测量计划，不缓存共同高度或成员列表。
+  内容、样式、可见性、增删及宽度变化复用已有 RequestLayout 和测量失效路径。
+  Arrange 使用最终宽度重算，即使此前测量采用另一宽度，也不会沿用旧折行高度。
+- 关闭后恢复普通 LinearLayout 行为：各行独立自然高度，原有 MainWeight 重新生效。
+  无界宽度不被改成很大的有限值；存在有限最小宽度时按 CrossStretch 的既有规则测量。
+
+实现集中在 `widgets/list_row_group_layout.go`：只在开启时将直接行的测量适配为共同高度、
+权重 0，再交给原 LinearLayout。保留 GUI 提供的 layout.Child 适配器，因此样式通知与
+测量缓存仍走现有内核，不直接调用子 Widget 绕过缓存，不增加通用布局或 GUI 特例。
+
+### 连接几何
 
 连接关系在**每次绘制**时由实际的可见直接子控件推导，与 `ButtonGroup` 相同：
 
@@ -85,7 +111,8 @@ Motion/Click/Key 控制器处理，命中测试与事件传播不经过组。悬
 ## UI 与语义
 
 `widgets/ui.ListRowGroup` 是普通 WidgetView：`Mount` 创建
-`widgets.NewListRowGroup()`，`Update` 用既有 `BuildContext.UpdateChildren`
+`widgets.NewListRowGroup()`，`Update` 协调 UniformRows（省略恢复 false），并用既有
+`BuildContext.UpdateChildren`
 协调子声明列表，`Unmount` 不改变已挂载的行。子声明按 ID 或位置保持身份，
 重排只调整顺序而不重建行；`nil` 声明是省略项，不产生空行；空列表清空托管行。
 
@@ -95,6 +122,7 @@ Switch/DropDown 等后代保留自己的状态与动作。
 Snapshot：组的 `Role=vbox`、无 `Actions`、`Focusable=false`；`Children` 是各
 行的真实快照（`Role=listitem`、自身文本、前缀/尾部的角色与窗口局部边界、可
 激活时的一个 click 动作）。分组不伪造 selected/checked，也不合并行的文本。
+统一行高只改变实际分配：绘制、命中与快照继续读取同一个 Rect，不额外扩大交互区域。
 
 ## 参考与验证
 
@@ -111,6 +139,13 @@ Snapshot：组的 `Role=vbox`、无 `Actions`、`Focusable=false`；`Children` �
   `shape` 只描述单个 tile 的轮廓，相邻 tile 的连接由外层的
   `ListView.separated` 或 `Card` 组合完成。GOUI 同样把连接交给显式容器，
   不把分组语义塞进行本身。
+- [GTK4 SizeGroup 文档](https://docs.gtk.org/gtk4/class.SizeGroup.html)（查阅时库版本 4.24.1）
+  承诺协调尺寸请求，并明确说明它不控制最终分配、height-for-width 支持有限，建议在
+  可能时使用容器专属机制；[Box homogeneous 属性](https://docs.gtk.org/gtk4/property.Box.homogeneous.html)
+  描述容器将子控件等尺寸分配。GOUI 由分组同时负责按宽测量和最终行高，不另建跨树尺寸组。
+- [Qt 6 QListView uniformItemSizes 文档](https://doc.qt.io/qt-6/qlistview.html#uniformItemSizes-prop)
+  要求应用预先保证条目等尺寸，开关用于性能优化；这与本功能计算最高自然行高的契约不同，
+  因此不采用首行代表全体或跳过其他行测量的假设。
 - 上述分别是文档/源码参考与 GOUI 的取舍，不能代替本项目实测。
 
 包内测试覆盖：无间距堆叠与宽度拉伸、隐藏行不占位与接缝重算、非行内容截断、
@@ -121,3 +156,8 @@ Snapshot：组的 `Role=vbox`、无 `Actions`、`Focusable=false`；`Children` �
 允许 2 字节误差。`tests/window/widgets/list_row_group` 用正常桌面输入验收连接、
 隐藏、重排、Tab 焦点和主题切换，不使用 DevServer。桌面缩放、原生后端与移动
 触摸的验证边界见 Plan。
+
+统一行高的包内回归另覆盖换行、隐藏最高行、内容与字号动态更新、增删重排、有限／无界宽度、
+关闭恢复、非行与嵌套隔离、额外／不足高度、原始尺寸属性、加高区域命中和实际语义边界。
+Linux Pango 测试不需要桌面，验证真实文字及样式失效；窗口入口加 `-uniform [-auto]`
+验收声明式更新、真实排版和正常事件分发，默认连接／像素场景保留。
