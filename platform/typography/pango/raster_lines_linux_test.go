@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"math"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -12,6 +14,7 @@ import (
 	"github.com/goexlib/cgo"
 	"github.com/golang-gui/goui/platform/linux/libs/pango_cairo"
 	"github.com/golang-gui/goui/platform/typography"
+	"github.com/golang-gui/goui/platform/typography/internal/typographytest"
 )
 
 // Compare region pixels with the original native whole-layout renderer. Both
@@ -171,5 +174,77 @@ func TestRasterLinesFollowNativeContextSerial(t *testing.T) {
 	want := rasterWholeNative(t, whole, 1, region)
 	if !bytes.Equal(got.Pixels, want.Pixels) {
 		t.Fatal("native context invalidation changed raster output")
+	}
+}
+
+// 光栅化应绘制已测量的显示行，不按设备缩放重新换行；逐行设红色，其余文字透明，
+// 检查所有墨迹落在该行垂直带内。依赖原生库但不依赖桌面，RGBA 字节为预乘值；
+// 1 个物理像素容差仅覆盖逻辑行盒的光栅取整，不能包含第二行文字。
+func TestTextLayoutRasterPreservesMeasuredLines(t *testing.T) {
+	for _, scale := range []float32{1, 1.5, 2} {
+		for width := float32(430); width <= 620; width += 5 {
+			t.Run(fmt.Sprintf("scale=%g/width=%g", scale, width), func(t *testing.T) {
+				runtime.LockOSThread()
+				defer runtime.UnlockOSThread()
+				ctx, err := NewContext()
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer ctx.Destroy()
+				text := "[000005:start] text editing, viewport layout; [000005:middle] selection and undo; [000005:end] 中文测试。"
+				l, err := ctx.NewTextLayout(text, typography.TextFormat{
+					Font:     typography.FontInfo{Family: "sans", Size: 18},
+					WrapMode: typography.WrapWordChar, TextColor: color.Transparent,
+				}, width, 1000)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer l.Destroy()
+				lines, _ := l.MeasureMetrics()
+				if len(lines) < 2 {
+					t.Fatal("fixture did not wrap")
+				}
+				for i, line := range lines {
+					colored, err := ctx.NewTextLayout(text, l.Format(), width, 1000)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer colored.Destroy()
+					colored.SetTextColor(line.Start, line.Length, color.RGBA{R: 255, A: 255})
+					beforeLines, beforeClusters := colored.MeasureMetrics()
+					bitmap, err := colored.Rasterize(scale, typographytest.RasterRegion(colored, scale), nil)
+					if err != nil {
+						t.Fatal(err)
+					}
+					afterLines, afterClusters := colored.MeasureMetrics()
+					if !reflect.DeepEqual(beforeLines, afterLines) || !reflect.DeepEqual(beforeClusters, afterClusters) {
+						for j := range min(len(beforeClusters), len(afterClusters)) {
+							if beforeClusters[j] != afterClusters[j] {
+								t.Fatalf("rasterization changed cluster %d: before=%+v after=%+v", j, beforeClusters[j], afterClusters[j])
+							}
+						}
+						t.Fatalf("rasterization changed lines: before=%+v after=%+v", beforeLines, afterLines)
+					}
+					minY := int(math.Floor(float64(line.Y*scale))) - 1
+					maxY := int(math.Ceil(float64((line.Y+line.Height)*scale))) + 1
+					ink := 0
+					for y := 0; y < bitmap.Height; y++ {
+						for x := 0; x < bitmap.Width; x++ {
+							o := y*bitmap.Stride + 4*x
+							if bitmap.Pixels[o+3] == 0 {
+								continue
+							}
+							ink++
+							if y < minY || y >= maxY {
+								t.Fatalf("line %d [%d,%d) painted at y=%d outside measured band [%d,%d)", i, line.Start, line.Start+line.Length, y, minY, maxY)
+							}
+						}
+					}
+					if ink == 0 {
+						t.Fatalf("line %d was not painted", i)
+					}
+				}
+			})
+		}
 	}
 }

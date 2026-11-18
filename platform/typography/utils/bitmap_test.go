@@ -1,11 +1,7 @@
 package utils
 
 import (
-	"bytes"
-	"image"
 	"image/color"
-	"image/png"
-	"os"
 	"testing"
 
 	"github.com/golang-gui/goui/platform/typography"
@@ -29,15 +25,25 @@ func TestCopyBitmap(t *testing.T) {
 		}
 	}
 
-	err := savePng("src.png", &src)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	dst := CopyBitmap(src, 80, 80, nil)
-	err = savePng("dst.png", &dst)
-	if err != nil {
-		t.Fatal(err)
+	if dst.Width != 80 || dst.Height != 80 || dst.Stride != 320 || len(dst.Pixels) != 25600 {
+		t.Fatalf("裁剪结果尺寸错误：%+v", dst)
+	}
+	// 内存为预乘 RGBA；不采样抗锯齿边缘，逐像素精确检查原有交替色行。
+	for y := range dst.Height {
+		want := color.RGBA{R: 255, A: 255}
+		if y%2 != 0 {
+			want = color.RGBA{G: 255, A: 255}
+		}
+		for x := range dst.Width {
+			if got := dst.At(x, y); got != want {
+				t.Fatalf("裁剪像素 (%d,%d)=%v，期望 %v", x, y, got, want)
+			}
+		}
+	}
+	dst.Pixels[0] = 0
+	if src.Pixels[0] != 255 {
+		t.Fatal("裁剪结果与源位图共享像素")
 	}
 }
 
@@ -47,14 +53,11 @@ func TestReverseBitmap(t *testing.T) {
 	bitmap.Height = 1
 	bitmap.Stride = bitmap.Width * 4
 	bitmap.Pixels = makeLine(bitmap.Stride, color.RGBA{R: 255, A: 255})
-	err := savePng("red.png", &bitmap)
-	if err != nil {
-		t.Fatal(err)
-	}
 	ReverseBitmap(bitmap)
-	err = savePng("blue.png", &bitmap)
-	if err != nil {
-		t.Fatal(err)
+	for x := range bitmap.Width {
+		if got := bitmap.At(x, 0); got != (color.RGBA{B: 255, A: 255}) {
+			t.Fatalf("交换后的像素 %d=%v，期望不透明蓝色", x, got)
+		}
 	}
 }
 
@@ -68,12 +71,4 @@ func makeLine(stride int, c color.Color) []byte {
 		line[i+3] = rgba.A
 	}
 	return line
-}
-
-func savePng(filename string, img image.Image) error {
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, img); err != nil {
-		return err
-	}
-	return os.WriteFile(filename, buf.Bytes(), 0666)
 }
