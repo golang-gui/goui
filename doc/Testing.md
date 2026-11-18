@@ -294,5 +294,6 @@ PNG 编码检查改写 t.TempDir；bitmap 复制/通道交换改为内存中精�
 当前仍有 X11 包内的两个历史原生私有状态测试：TestWindowApplicationClass 与
 TestNativeCursorThemeLifecycle。它们继续使用原有 DISPLAY 条件和有效断言；
 无显示会话时跳过，不能声称默认测试已在所有无桌面环境完整执行。
-本轮 Linux/X11 全仓结果为零失败、零条件跳过；macOS 的 codesign/SDK 与两个非本机
+本轮 Linux/X11 全仓结果为零失败、零条件跳过；取消 DISPLAY 后全仓命令仍退出 0，
+6106 项通过，只有上述两项按原条件跳过，未计为通过。macOS 的 codesign/SDK 与两个非本机
 排版后端仅完成目标编译，本轮未执行原生运行。详细验证结果见 Plan。
