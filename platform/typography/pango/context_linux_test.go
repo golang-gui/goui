@@ -5,6 +5,8 @@ import (
 	"image/color"
 	"image/png"
 	"os"
+	"path/filepath"
+	"reflect"
 	"runtime"
 	"testing"
 
@@ -176,7 +178,9 @@ func Test_TextLayout(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	os.WriteFile("text.png", buf.Bytes(), 0666)
+	if err := os.WriteFile(filepath.Join(t.TempDir(), "text.png"), buf.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestTextLayoutEmptyMeasureMetrics(t *testing.T) {
@@ -333,3 +337,189 @@ func assertSameBitmap(t *testing.T, want, got typography.TextBitmap) {
 
 // 原生资源统计不能改变创建、重排、栅格化和幂等销毁的契约。
 func TestDiagnosticsResources(t *testing.T) { typographytest.Diagnostics(t, NewContext) }
+
+// 离屏文字栅格化只依赖原生库；以通道/alpha 不变量为参考，不使用平台字形金图。
+// 保留 8 位覆盖率/颜色量化容差：R 与 A 相差最多 1/255，最大 alpha 相差最多 2/255。
+func TestTextPremultipliedAlpha(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ctx, err := NewContext()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctx.Destroy()
+	for _, scale := range []float32{1, 2} {
+		for _, ranged := range []bool{false, true} {
+			ink := color.NRGBA{R: 255, A: 128}
+			format := typography.TextFormat{Font: typography.FontInfo{Family: "sans", Size: 48}, TextColor: ink}
+			if ranged {
+				format.TextColor = color.NRGBA{B: 255, A: 64}
+			}
+			layout, err := ctx.NewTextLayout("MMMM", format, 400, 100)
+			if err != nil {
+				t.Fatal(err)
+			}
+			func() {
+				defer layout.Destroy()
+				check := func(alpha byte) {
+					t.Helper()
+					bmp, err := layout.Rasterize(scale, typographytest.RasterRegion(layout, scale), nil)
+					if err != nil {
+						t.Fatal(err)
+					}
+					maximum := byte(0)
+					for y := 0; y < bmp.Height; y++ {
+						for x := 0; x < bmp.Width; x++ {
+							i := y*bmp.Stride + x*4
+							r, g, b, a := bmp.Pixels[i], bmp.Pixels[i+1], bmp.Pixels[i+2], bmp.Pixels[i+3]
+							if int(r)-int(a) < -1 || int(r)-int(a) > 1 || g != 0 || b != 0 || a > alpha+1 && alpha < 255 {
+								t.Fatalf("scale=%g ranged=%v alpha=%d: invalid red pixel %v", scale, ranged, alpha, bmp.Pixels[i:i+4])
+							}
+							maximum = max(maximum, a)
+						}
+					}
+					if int(maximum)-int(alpha) < -2 || int(maximum)-int(alpha) > 2 {
+						t.Fatalf("scale=%g ranged=%v max alpha=%d want %d", scale, ranged, maximum, alpha)
+					}
+				}
+				if ranged {
+					// 重复范围更新同时替换 RGB 和 alpha，覆盖全透明后恢复不透明的路径。
+					for _, alpha := range []byte{128, 0, 255, 64} {
+						layout.SetTextColor(0, 4, color.NRGBA{R: 255, A: alpha})
+						check(alpha)
+					}
+				} else {
+					check(128)
+				}
+			}()
+		}
+	}
+}
+
+// 新范围替换旧范围，即使旧范围起点更晚；以独立构造的最终样式为参考，字体和缩放相同。
+func TestTextAttributesReplaceNestedRanges(t *testing.T) {
+	for _, property := range []string{"color", "font", "underline", "strikethrough"} {
+		t.Run(property, func(t *testing.T) {
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+			ctx, err := NewContext()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer ctx.Destroy()
+			font := typography.FontInfo{Family: "sans", Size: 32}
+			format := typography.TextFormat{Font: font, TextColor: color.NRGBA{R: 255, A: 128}}
+			actual, err := ctx.NewTextLayout("MMMM", format, 500, 200)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer actual.Destroy()
+			want, err := ctx.NewTextLayout("MMMM", format, 500, 200)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer want.Destroy()
+			switch property {
+			case "color":
+				actual.SetTextColor(1, 2, color.NRGBA{B: 255, A: 255})
+				actual.SetTextColor(0, 4, format.TextColor)
+			case "font":
+				actual.SetTextFont(1, 2, typography.FontInfo{Family: "monospace", Size: 48})
+				actual.SetTextFont(0, 4, font)
+			case "underline":
+				actual.SetUnderline(1, 2, true)
+				actual.SetUnderline(0, 4, false)
+			case "strikethrough":
+				actual.SetStrikethrough(1, 2, true)
+				actual.SetStrikethrough(0, 4, false)
+			}
+			gotLines, gotClusters := actual.MeasureMetrics()
+			wantLines, wantClusters := want.MeasureMetrics()
+			if !reflect.DeepEqual(gotLines, wantLines) || !reflect.DeepEqual(gotClusters, wantClusters) {
+				t.Fatal("replaced range retains old font metrics")
+			}
+			for _, scale := range []float32{1, 2} {
+				gotBitmap, err := actual.Rasterize(scale, typographytest.RasterRegion(actual, scale), nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				wantBitmap, err := want.Rasterize(scale, typographytest.RasterRegion(want, scale), nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				assertSameBitmap(t, wantBitmap, gotBitmap)
+			}
+		})
+	}
+}
+
+func TestTextColorClearOverlappingRanges(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ctx, err := NewContext()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctx.Destroy()
+	l, err := ctx.NewTextLayout("MMMM", typography.TextFormat{
+		Font: typography.FontInfo{Family: "sans", Size: 32}, TextColor: color.Transparent,
+	}, 500, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Destroy()
+	for _, scale := range []float32{1, 2} {
+		l.SetTextColor(1, 2, color.NRGBA{B: 255, A: 255})
+		l.SetTextColor(2, 2, color.NRGBA{G: 255, A: 64})
+		l.SetTextColor(0, 4, color.Transparent)
+		bmp, err := l.Rasterize(scale, typographytest.RasterRegion(l, scale), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, channel := range bmp.Pixels {
+			if channel != 0 {
+				t.Fatalf("scale=%g: clearing all text left pixel channel %d=%d", scale, i, channel)
+			}
+		}
+	}
+}
+
+func TestTextColorOverlapPreservesOutsideRange(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ctx, err := NewContext()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctx.Destroy()
+	red := color.NRGBA{R: 255, A: 128}
+	blue := color.NRGBA{B: 255, A: 255}
+	green := color.NRGBA{G: 255, A: 64}
+	format := typography.TextFormat{Font: typography.FontInfo{Family: "sans", Size: 32}, TextColor: red}
+	actual, err := ctx.NewTextLayout("MMMM", format, 500, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer actual.Destroy()
+	actual.SetTextColor(1, 2, blue)
+	actual.SetTextColor(2, 2, green)
+	// 用互不重叠的范围独立构造最终预期样式。
+	want, err := ctx.NewTextLayout("MMMM", format, 500, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer want.Destroy()
+	want.SetTextColor(1, 1, blue)
+	want.SetTextColor(2, 2, green)
+	for _, scale := range []float32{1, 2} {
+		gotBitmap, err := actual.Rasterize(scale, typographytest.RasterRegion(actual, scale), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantBitmap, err := want.Rasterize(scale, typographytest.RasterRegion(want, scale), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertSameBitmap(t, wantBitmap, gotBitmap)
+	}
+}

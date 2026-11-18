@@ -2,35 +2,40 @@ package test
 
 import (
 	"bytes"
-	"github.com/golang-gui/goui/platform/typography/internal/typographytest"
 	"image"
 	"image/color"
 	"image/png"
 	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 
-	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/software"
 	"github.com/golang-gui/goui/platform/typography"
+	"github.com/golang-gui/goui/platform/typography/internal/typographytest"
 )
 
+func TestMain(m *testing.M) { os.Exit(typographytest.Main(m)) }
+
+// 每个叶子测试在实际调用原生 API 的 goroutine 锁线程，并独立拥有排版上下文。
+// 字体来自固定 testdata，不连接桌面，也不让父测试的线程锁掩盖子测试的问题。
+func newTestContext(t *testing.T) typography.Context {
+	t.Helper()
+	runtime.LockOSThread()
+	t.Cleanup(runtime.UnlockOSThread)
+	ctx, err := newContext()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(ctx.Destroy)
+	if err := ctx.AddFont("testdata/MiSansLatin-Normal.ttf"); err != nil {
+		t.Fatal(err)
+	}
+	return ctx
+}
+
 func TestTypography(t *testing.T) {
-	plat, err := platform.NewPlatform(platform.DefaultName(), "")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ctx, err := plat.NewTypography()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ctx.Destroy()
-
-	err = ctx.AddFont("testdata/MiSansLatin-Normal.ttf")
-	if err != nil {
-		t.Log(err)
-	}
 
 	red := graphics.RGB(180, 0, 0)
 	green := graphics.RGB(0, 180, 0)
@@ -43,6 +48,7 @@ func TestTypography(t *testing.T) {
 	align := typography.TextAlignEnd
 
 	t.Run("rasterize", func(t *testing.T) {
+		ctx := newTestContext(t)
 		layout, err := newRichTextLayout(ctx, 200, 100, fontName, wrap, align, white)
 		if err != nil {
 			t.Fatal(err)
@@ -97,6 +103,7 @@ func TestTypography(t *testing.T) {
 	})
 
 	t.Run("lifecycle", func(t *testing.T) {
+		ctx := newTestContext(t)
 		layout, err := ctx.NewTextLayout("lifecycle", typography.TextFormat{
 			Font:      typography.FontInfo{Family: fontName, Size: 12},
 			WrapMode:  typography.WrapNone,
@@ -133,6 +140,7 @@ func TestTypography(t *testing.T) {
 	})
 
 	t.Run("text", func(t *testing.T) {
+		ctx := newTestContext(t)
 		layout, err := newRichTextLayout(ctx, 200, 100, fontName, wrap, align, white)
 		if err != nil {
 			t.Fatal(err)
@@ -144,7 +152,7 @@ func TestTypography(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = savePng("text-1x.png", bitmap)
+		err = savePng(filepath.Join(t.TempDir(), "text-1x.png"), bitmap)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -154,13 +162,14 @@ func TestTypography(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = savePng("text-2x.png", bitmap)
+		err = savePng(filepath.Join(t.TempDir(), "text-2x.png"), bitmap)
 		if err != nil {
 			t.Fatal(err)
 		}
 	})
 
 	t.Run("normal", func(t *testing.T) {
+		ctx := newTestContext(t)
 		layout, err := newRichTextLayout(ctx, 200, 100, fontName, wrap, align, white)
 		if err != nil {
 			t.Fatal(err)
@@ -172,7 +181,7 @@ func TestTypography(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = savePng("normal-text.png", bitmap)
+		err = savePng(filepath.Join(t.TempDir(), "normal-text.png"), bitmap)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -182,17 +191,19 @@ func TestTypography(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		defer painter.Destroy()
 		painter.Begin(200, 100, 1.0)
 		drawLayoutMetrics(painter, layout, green, blue, gray, red)
 		painter.End()
 
-		err = savePng("normal-output.png", painter.result)
+		err = savePng(filepath.Join(t.TempDir(), "normal-output.png"), painter.result)
 		if err != nil {
 			t.Fatal(err)
 		}
 	})
 
 	t.Run("small", func(t *testing.T) {
+		ctx := newTestContext(t)
 		layout, err := newRichTextLayout(ctx, 200, 20, fontName, wrap, align, white)
 		if err != nil {
 			t.Fatal(err)
@@ -204,7 +215,7 @@ func TestTypography(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = savePng("small-text.png", bitmap)
+		err = savePng(filepath.Join(t.TempDir(), "small-text.png"), bitmap)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -214,17 +225,19 @@ func TestTypography(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		defer painter.Destroy()
 		painter.Begin(200, 100, 1.0)
 		drawLayoutMetrics(painter, layout, green, blue, gray, red)
 		painter.End()
 
-		err = savePng("small-output.png", painter.result)
+		err = savePng(filepath.Join(t.TempDir(), "small-output.png"), painter.result)
 		if err != nil {
 			t.Fatal(err)
 		}
 	})
 
 	t.Run("large", func(t *testing.T) {
+		ctx := newTestContext(t)
 		layout, err := newRichTextLayout(ctx, 400, 400, fontName, wrap, align, white)
 		if err != nil {
 			t.Fatal(err)
@@ -236,7 +249,7 @@ func TestTypography(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = savePng("large-text.png", bitmap)
+		err = savePng(filepath.Join(t.TempDir(), "large-text.png"), bitmap)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -246,11 +259,12 @@ func TestTypography(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		defer painter.Destroy()
 		painter.Begin(400, 400, 1.0)
 		drawLayoutMetrics(painter, layout, green, blue, gray, red)
 		painter.End()
 
-		err = savePng("large-output.png", painter.result)
+		err = savePng(filepath.Join(t.TempDir(), "large-output.png"), painter.result)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -10,6 +10,7 @@ import (
 	"image/png"
 	"math"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -858,6 +859,7 @@ func TestPainter(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	defer painter.Destroy()
 	painter.Begin(800, 600, 2.0)
 	painter.Clear(graphics.RGBA(90, 160, 200, 255))
 	painter.FillRoundRect(graphics.Rect(50, 50, 100, 60), 12, graphics.RGBA(90, 50, 50, 255))
@@ -877,7 +879,9 @@ func TestPainter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	os.WriteFile("output.png", buf.Bytes(), 0666)
+	if err := os.WriteFile(filepath.Join(t.TempDir(), "output.png"), buf.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 type renderImageSurface struct{ presents int }
