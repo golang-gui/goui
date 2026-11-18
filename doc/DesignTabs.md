@@ -222,7 +222,7 @@ Selected 状态；真实输入仍经过 Window.DispatchEvent。过渡使用实�
 
 ## 样式与资源
 
-标签使用 `tab-bar`、`tab-item`（`selected` / `dragging` part）、`tab-item-text`、
+标签使用 `tab-bar`、`tab-item`（`selected` / `dragging` / `focus` part）、`tab-item-text`、
 `tab-item-icon`、`tab-close-button`、`tab-scroll-button` 名称；选择态的标题、
 图标分别使用 `-selected` 名称。子控件自己解析 StyleName，不继承父样式。
 兜底规则由 `theme/basic` 自动提供，Modern 规则保留在主题入口。IconSource 可在页面间共享，
@@ -260,6 +260,33 @@ Esc 取消和栏外释放均如此。不通过清除焦点修饰外观。监听�
 中立即改变命中，避免 PointerDown 先更新 hover 后重新命中时误关。主体按下期间
 不显示原本隐藏的按钮，防止两次输入之间的布局改变正在进行的点击目标；焦点或悬停
 变更只请求布局，复用标准事件/布局/绘制链路，不扩展公共 Widget 或 EventDispatcher。
+
+### 键盘焦点
+
+标签主体由内部 tabBody 接收真实焦点，并在自身 Paint 中解析 `tab-item / focus`。
+父标签继续独立绘制普通、selected、dragging 表面，不把 ContainsFocus 当作 FocusVisible，
+不伪造父项的 Focused，也不新增后代焦点状态或 UI/平台接口。主体覆盖完整标签几何；
+仅在其实际持有焦点且可见、有效启用时绘制焦点部件。默认鼠标焦点无描边，键盘
+FocusVisible 为 2 DIP 内描边，悬停不清除提示，指针按下沿宿主既有策略清除提示。
+同一主体的焦点不变时，宿主输入模式切换也沿既有状态失效流程重绘。
+
+`tab-close-button / focus` 和 `tab-scroll-button / focus` 复用 Button 的独立焦点绘制，
+使用各按钮自身状态；关闭按钮聚焦时只显示按钮提示，主体不再显示焦点框。
+Basic 复用普通按钮的键盘边框色，Modern 复用既有柔化主题色，不增加标签选择色。
+焦点 Part 的 Normal 显式透明且零边宽，避免继承普通表面后覆盖选择背景；
+圆角分别沿用标签的 6 DIP 和按钮的 4 DIP，边框不参与测量，不改变文字或关闭槽位。
+应用可通过相应名称的 `Part("focus").State(style.FocusVisible)` 覆盖颜色、宽度，
+以 BorderWidth(0) 关闭提示；需要鼠标焦点反馈时可另外定义 Focused 规则。
+上述规则遵循正常 StyleScope 与 Part 隔离，不向文字/图标继承父样式。
+
+Snapshot 保持实际焦点归属：父项表达 RoleTab、Selected、ContainsFocus，主体与按钮
+各自报告 Focused/FocusVisible；不因焦点装饰增加语义节点或动作。关闭按钮显隐、
+键盘选择、原生拖动和滚动行为仍沿原有契约。
+
+参考 Qt 6.8.0 [QTabBar 的状态构造](https://github.com/qt/qtbase/blob/v6.8.0/src/widgets/widgets/qtabbar.cpp#L135)
+及 [QCommonStyle 的标签焦点装饰](https://github.com/qt/qtbase/blob/v6.8.0/src/widgets/styles/qcommonstyle.cpp#L2046)：
+源码把 Selected 与 HasFocus 分开，焦点装饰独立绘制。GOUI 沿用自身 FocusVisible 与
+可组合子控件机制，不采用整栏持有焦点的 Qt 焦点归属。
 
 ### 尾部状态图标
 
