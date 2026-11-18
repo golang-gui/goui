@@ -35,6 +35,8 @@ var (
 	procUpdateWindow             = user32Dll.NewProc("UpdateWindow")
 	procSetParent                = user32Dll.NewProc("SetParent")
 	procGetWindowRect            = user32Dll.NewProc("GetWindowRect")
+	procGetWindowPlacement       = user32Dll.NewProc("GetWindowPlacement")
+	procSetWindowPlacement       = user32Dll.NewProc("SetWindowPlacement")
 	procSetWindowPos             = user32Dll.NewProc("SetWindowPos")
 	procGetWindowTextW           = user32Dll.NewProc("GetWindowTextW")
 	procGetWindowTextLengthW     = user32Dll.NewProc("GetWindowTextLengthW")
@@ -325,6 +327,22 @@ func IsIconic(wnd HWND) BOOL {
 func IsZoomed(wnd HWND) BOOL {
 	ret, _, _ := syscall.SyscallN(procIsZoomed.Addr(), uintptr(wnd))
 	return BOOL(ret)
+}
+
+func GetWindowPlacement(wnd HWND, placement *WINDOWPLACEMENT) error {
+	ret, _, err := syscall.SyscallN(procGetWindowPlacement.Addr(), uintptr(wnd), uintptr(unsafe.Pointer(placement)))
+	if ret == FALSE {
+		return err
+	}
+	return nil
+}
+
+func SetWindowPlacement(wnd HWND, placement *WINDOWPLACEMENT) error {
+	ret, _, err := syscall.SyscallN(procSetWindowPlacement.Addr(), uintptr(wnd), uintptr(unsafe.Pointer(placement)))
+	if ret == FALSE {
+		return err
+	}
+	return nil
 }
 
 // GetWindowLong reads a 32-bit window value, not a pointer-sized field.
