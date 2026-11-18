@@ -53,6 +53,7 @@ type Window struct {
 	moveResize       bool // a WM interaction was requested; a raced release must cancel it
 	dragPress        bool // an original left press may start moving on native motion
 	state            common.WindowState
+	hiddenMode       common.WindowState // last observed mode, used only when showing a withdrawn window
 	overrideRedirect bool
 }
 
@@ -285,7 +286,15 @@ func (w *Window) SetTitle(title string) (err error) {
 }
 
 func (w *Window) Show() error {
-	if err := w.mapWindow(); err != nil {
+	var err error
+	if w.hiddenMode == common.WindowStateFullscreen || w.hiddenMode == common.WindowStateMaximized {
+		mode := w.hiddenMode
+		w.hiddenMode = common.WindowStateNormal
+		err = w.RequestState(mode)
+	} else {
+		err = w.mapWindow()
+	}
+	if err != nil {
 		return err
 	}
 	// The WM owns stacking, deiconification and focus policy. CurrentTime (0)
@@ -326,8 +335,13 @@ func (w *Window) Hide() error {
 	}
 	if w.overrideRedirect {
 		platform.display.UnmapWindow(w.wid)
-	} else if platform.display.WithdrawWindow(w.wid, platform.display.DefaultScreen()) == 0 {
-		return fmt.Errorf("XWithdrawWindow failed")
+	} else {
+		if state := w.State(); state == common.WindowStateFullscreen || state == common.WindowStateMaximized {
+			w.hiddenMode = state
+		}
+		if platform.display.WithdrawWindow(w.wid, platform.display.DefaultScreen()) == 0 {
+			return fmt.Errorf("XWithdrawWindow failed")
+		}
 	}
 	platform.display.Flush()
 	return nil
@@ -933,9 +947,7 @@ func (w *Window) RequestState(state common.WindowState) error {
 	case common.WindowStateHidden:
 		return w.Hide()
 	case common.WindowStateMinimized:
-		if w.State() == state {
-			return nil
-		}
+		w.hiddenMode = common.WindowStateNormal
 		if platform.display.IconifyWindow(w.wid, platform.display.DefaultScreen()) == 0 {
 			return fmt.Errorf("XIconifyWindow failed")
 		}
@@ -957,9 +969,10 @@ func (w *Window) RequestState(state common.WindowState) error {
 		(state == common.WindowStateFullscreen && !fullSupported) {
 		return common.ErrUnsupported
 	}
-	if w.State() == state {
-		return nil
-	}
+	w.hiddenMode = common.WindowStateNormal
+	// ADD/REMOVE are idempotent, unlike TOGGLE. Submit the explicit target even
+	// when it matches today's observation: an earlier request may still be
+	// queued at the WM and must not override this newer target.
 	// Validate support before mapping. X requests stay ordered: map/deiconify
 	// first, then request the explicit target rather than historical restore.
 	if err := w.mapWindow(); err != nil {
@@ -1166,6 +1179,18 @@ func (w *Window) WorkAreaAt(point geometry.Point) (geometry.Rectangle, error) {
 	index := workarea.Nearest(bounds, point)
 	if index < 0 {
 		return geometry.Rectangle{}, common.ErrUnavailable
+	}
+	if w.State() == common.WindowStateFullscreen {
+		var attrs xlib.WindowAttributes
+		if d.GetWindowAttributes(w.wid, &attrs) == 0 {
+			return geometry.Rectangle{}, common.ErrUnavailable
+		}
+		client := geometry.Rect(0, 0, float32(attrs.Width)/scale, float32(attrs.Height)/scale)
+		// Fullscreen bypasses desktop struts only on displays occupied by this
+		// window. Queries on another display retain its ordinary work area.
+		if index == workarea.Nearest(bounds, client.Center()) || bounds[index].Intersect(client) == bounds[index] {
+			return bounds[index], nil
+		}
 	}
 	supported, err := windowProperty32(d, root, platform.atoms._NET_SUPPORTED, xlib.AtomAtom, 4096)
 	if err != nil {
