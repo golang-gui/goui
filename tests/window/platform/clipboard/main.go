@@ -62,7 +62,7 @@ func run(write bool, expect, expectError string, quitAfter time.Duration) error 
 	}
 	fmt.Printf("platform=%s scale=N/A renderer=N/A\n", p.Name())
 	if write {
-		for _, text := range []string{"", "你好 🧧 é", "one\ntwo\tend"} {
+		for _, text := range []string{"", "Hello, clipboard!", "你好，剪贴板 🧧 çà", "line one\nline two\ttabbed", "first value", "second value"} {
 			if err := c.SetText(text); err != nil {
 				return fmt.Errorf("write: %w", err)
 			}

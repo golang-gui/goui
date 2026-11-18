@@ -1,11 +1,9 @@
-package test
+package main
 
 import (
 	"errors"
 	"fmt"
-	"os"
 	"runtime"
-	"testing"
 	"unsafe"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -15,21 +13,19 @@ import (
 	"github.com/golang-gui/goui/platform/windows/sdk/winapi"
 )
 
-func TestWindowChromeCustomSize(t *testing.T) {
-	plat, err := getPlatform()
-	if err != nil {
-		t.Fatal(err)
-	}
+func checkWindowChromeCustomSize(plat platform.Platform) {
+	var err error
 	for _, chrome := range []platform.WindowChrome{platform.WindowChromeNative, platform.WindowChromeNone, platform.WindowChromeIntegrated} {
-		t.Run(fmt.Sprint(chrome), func(t *testing.T) {
-			runOnMainThread(func() { err = checkCustomWindowSize(plat, chrome) })
+		func() {
+			fmt.Println("CHECK", fmt.Sprint(chrome))
+			err = checkCustomWindowSize(plat, chrome)
 			if chrome == platform.WindowChromeIntegrated && errors.Is(err, platform.ErrUnsupported) {
-				t.Skipf("native composition unavailable: %v", err)
+				panic(fmt.Errorf("native composition unavailable: %v", err))
 			}
 			if err != nil {
-				t.Fatal(err)
+				panic(err)
 			}
-		})
+		}()
 	}
 }
 
@@ -63,8 +59,7 @@ func checkCustomWindowSize(plat platform.Platform, chrome platform.WindowChrome)
 	if client.Right != winapi.LONG(640*scale) || client.Bottom != winapi.LONG(400*scale) {
 		return fmt.Errorf("requested client 640x400 DIP: client=%+v outer=%+v scale=%g", client, outer, scale)
 	}
-	// A hidden Native window may not produce WM_SIZE until Show. Custom chrome
-	// recalculation does; when a notification exists it must match GetClientRect.
+
 	if chrome != platform.WindowChromeNative || size.Width > 0 {
 		if size.PixelWidth != float32(client.Right) || size.PixelHeight != float32(client.Bottom) {
 			return fmt.Errorf("SizeEvent disagrees with native client: event=%+v client=%+v", size, client)
@@ -80,8 +75,7 @@ func checkCustomWindowSize(plat platform.Platform, chrome platform.WindowChrome)
 		if err != nil {
 			return err
 		}
-		// The version/style boundary is covered in win32's unit tests. Here
-		// verify the installed frame, including the retained Win11 caption style.
+
 		if style&winapi.WS_CAPTION == 0 {
 			topBorder = 1
 		}
@@ -92,8 +86,7 @@ func checkCustomWindowSize(plat platform.Platform, chrome platform.WindowChrome)
 	if chrome == platform.WindowChromeNone && (origin.X != outer.Left || origin.Y != outer.Top || client.Right != outer.Right-outer.Left || client.Bottom != outer.Bottom-outer.Top) {
 		return fmt.Errorf("None retained non-client insets: outer=%+v client=%+v origin=%+v", outer, client, origin)
 	}
-	// wParam == 0 must be exactly User32's ordinary RECT calculation, not
-	// reinterpreted as NCCALCSIZE_PARAMS or given the integrated top adjustment.
+
 	actual, expected := outer, outer
 	var pin runtime.Pinner
 	defer pin.Unpin()
@@ -107,8 +100,6 @@ func checkCustomWindowSize(plat platform.Platform, chrome platform.WindowChrome)
 		return fmt.Errorf("WM_NCCALCSIZE(false): got %+v/%d, want %+v/%d", actual, result, expected, wantResult)
 	}
 	if chrome == platform.WindowChromeIntegrated {
-		// The normal true branch changes only the top inset. Preserve User32's
-		// other rectangles and return flags, with a real WINDOWPOS argument.
 		pos := winapi.WINDOWPOS{Hwnd: hwnd, X: outer.Left, Y: outer.Top, CX: outer.Right - outer.Left, CY: outer.Bottom - outer.Top}
 		oldClient := winapi.RECT{Left: origin.X, Top: origin.Y, Right: origin.X + client.Right, Bottom: origin.Y + client.Bottom}
 		want := winapi.NCCALCSIZE_PARAMS{Rects: [3]winapi.RECT{outer, outer, oldClient}, WindowPos: &pos}
@@ -126,8 +117,7 @@ func checkCustomWindowSize(plat platform.Platform, chrome platform.WindowChrome)
 			return fmt.Errorf("normal WM_NCCALCSIZE(true): got %+v/%d, want %+v/%d", got.Rects, result, want.Rects, wantResult)
 		}
 	}
-	// Minimum hints describe the client. Derive expected frame compensation
-	// from observed native geometry, not the production size calculation.
+
 	desktop.SetMinSize(320, 200)
 	mmi := winapi.MINMAXINFO{}
 	pin.Pin(&mmi)
@@ -159,17 +149,11 @@ func checkCustomWindowSize(plat platform.Platform, chrome platform.WindowChrome)
 	return nil
 }
 
-func TestWindowChromeIntegratedNativeGeometry(t *testing.T) {
-	if os.Getenv("GOUI_TEST_WINDOW_CHROME") == "" {
-		t.Skip("set GOUI_TEST_WINDOW_CHROME=1 for native maximize/normal geometry")
-	}
-	plat, err := getPlatform()
+func checkWindowChromeIntegratedNativeGeometry(plat platform.Platform) {
+	var err error
+	err = checkIntegratedNativeGeometry(plat)
 	if err != nil {
-		t.Fatal(err)
-	}
-	runOnMainThread(func() { err = checkIntegratedNativeGeometry(plat) })
-	if err != nil {
-		t.Fatal(err)
+		panic(err)
 	}
 }
 
@@ -222,8 +206,7 @@ func checkIntegratedNativeGeometry(plat platform.Platform) error {
 		if client != monitor.Work {
 			return fmt.Errorf("maximized client=%+v, work area=%+v", client, monitor.Work)
 		}
-		// Exercise the true branch directly too: it must return zero and copy
-		// the work area, with no normal top border or second DefWindowProc pass.
+
 		nc := winapi.NCCALCSIZE_PARAMS{Rects: [3]winapi.RECT{monitor.Monitor}}
 		var pin runtime.Pinner
 		pin.Pin(&nc)
@@ -235,4 +218,9 @@ func checkIntegratedNativeGeometry(plat platform.Platform) error {
 		}
 	}
 	return nil
+}
+
+func checkNativeGeometry(plat platform.Platform) {
+	checkWindowChromeCustomSize(plat)
+	checkWindowChromeIntegratedNativeGeometry(plat)
 }
