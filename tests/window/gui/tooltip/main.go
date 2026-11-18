@@ -9,8 +9,11 @@
 // 提示不应追随同一按钮内的小幅移动；移出、点击或按键后关闭，不应吞掉原控件操作。
 // 每次显示均等待 700 ms。Modern 亮暗提示无阴影；分别悬停按钮四周留白三秒，
 // 提示与按钮 Hover 应保持稳定，尤其检查按钮底部而不仅是文字中部。
+// 三组主按钮的提示应隐藏格式标记，UTF-8 为粗体；Modern 的第二行为 warning 色。
+// Basic 未定义 warning 色时使用正文颜色。提示及锚点的 Snapshot 均只包含显示文字。
 // 不要求点击提示自身穿透到下方控件，不模拟重放输入。真实桌面观察补充合成与系统事件路径。
-// -manual 从启动起只接受真实桌面输入，不运行模拟输入断言，也不输出 PASS；按上述步骤验收。
+// -manual 从启动起只接受真实桌面输入；定时只读断言可见提示的格式/语义，输出 VERIFIED，
+// 不运行模拟输入，也不输出整体验收 PASS；按上述步骤验收字体、颜色和实际输入。
 // Windows 原生 Popup 显示可能生成当前位置的鼠标事件，覆盖模拟位置；不要把真实光标和模拟
 // 光标不一致导致的自动失败算作通过，必要时使用 -manual 独立验证真实操作并分别记录结果。
 // 不改系统设置、文件或剪贴板；重启复位。默认成功自动关闭，-inspect 关闭窗口退出；
@@ -62,6 +65,7 @@ func main() {
 	var buttons, disabled [3]*gui.Button
 	var fields [3]*gui.TextInput
 	var originalTips [3]string
+	var plainTips [3]string
 	clicks, wheels := 0, 0
 	status := gui.NewLabel("Hover a button; Tab shows keyboard help.")
 	for i, name := range []string{"Basic", "Modern Light", "Modern Dark"} {
@@ -73,8 +77,10 @@ func main() {
 		b := gui.NewButton()
 		b.SetName(name + " action")
 		b.SetChild(gui.NewLabel("Open document"))
-		b.SetTooltip(name + ": Open a UTF-8 document.\nThis is a multiline tooltip with normal word wrapping.")
+		b.SetTooltip(fmt.Sprintf(`\{format\}%s: Open a \{bold:UTF-8\} document.
+\{warning:Save changes before opening another file.\}`, name))
 		originalTips[i] = b.Tooltip()
+		plainTips[i] = name + ": Open a UTF-8 document.\nSave changes before opening another file."
 		b.ConnectClicked(func() { clicks++; status.SetText(fmt.Sprintf("Clicks: %d", clicks)) })
 		box.AddChild(b)
 		buttons[i] = b
@@ -129,6 +135,30 @@ func main() {
 		for _, p := range win.Popovers() {
 			if hasRole(p.Widget().Snapshot(), gui.RoleTooltip) {
 				check(!p.Modal() && !p.Widget().Focusable(), "tooltip became interactive/modal")
+				want, formatted := p.Anchor().Tooltip(), false
+				for i, b := range buttons {
+					if p.Anchor() == b && b.Tooltip() == originalTips[i] {
+						want, formatted = plainTips[i], true
+					}
+				}
+				check(p.Anchor().Snapshot().Tooltip == want, "anchor tooltip semantics contain source markup")
+				found := 0
+				var inspect func(gui.WidgetInfo)
+				inspect = func(info gui.WidgetInfo) {
+					if info.Role == gui.RoleTooltip || info.Role == gui.RoleLabel {
+						found++
+						check(info.Text == want, "displayed tooltip text differs from expected plain text")
+						if info.Role == gui.RoleLabel {
+							meta, _ := info.Attributes[gui.LabelInfoKey].(gui.LabelInfo)
+							check(meta.Formatted == formatted && meta.FormatError == "", "tooltip did not use Label format parsing")
+						}
+					}
+					for _, child := range info.Children {
+						inspect(child)
+					}
+				}
+				inspect(p.Widget().Snapshot())
+				check(found == 2, "tooltip or Label semantic node missing")
 				return true
 			}
 		}
@@ -136,10 +166,24 @@ func main() {
 	}
 	if *manual {
 		ready := app.NewTimer()
+		logged := false
+		var last gui.PopoverTarget
 		ready.ConnectTimeout(func() {
-			log.Printf("READY manual Tooltip; OS=%s typography=%s painter=%s scale=%g", runtime.GOOS, app.Typography().Name(), probe.painter, probe.scale)
+			if !logged {
+				logged = true
+				log.Printf("READY manual Tooltip; OS=%s typography=%s painter=%s scale=%g", runtime.GOOS, app.Typography().Name(), probe.painter, probe.scale)
+			}
+			if visibleTip() {
+				current := win.Popovers()[0]
+				if current != last {
+					log.Printf("VERIFIED visible Tooltip format and semantics: %q", current.Anchor().Snapshot().Tooltip)
+				}
+				last = current
+			} else {
+				last = nil
+			}
 		})
-		must(ready.StartOnce(200 * time.Millisecond))
+		must(ready.Start(200 * time.Millisecond))
 		app.Run()
 		ready.Stop()
 		return
