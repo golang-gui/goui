@@ -280,6 +280,15 @@ type MONITORINFO struct {
 	Flags   DWORD
 }
 
+type WINDOWPLACEMENT struct {
+	Length         UINT
+	Flags          UINT
+	ShowCmd        UINT
+	MinPosition    POINT
+	MaxPosition    POINT
+	NormalPosition RECT
+}
+
 type MARGINS struct {
 	CXLeftWidth, CXRightWidth   INT
 	CYTopHeight, CYBottomHeight INT
