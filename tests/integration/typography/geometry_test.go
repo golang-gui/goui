@@ -1,6 +1,6 @@
 //go:build linux || windows || darwin
 
-package textedit_test
+package typography_test
 
 import (
 	"fmt"
@@ -12,11 +12,10 @@ import (
 	"testing"
 )
 
-// A numerical match alone is insufficient: rounding different expressions
-// for the shared edge can introduce a second visual stop at the same byte.
-// One key in an ordinary ASCII line must advance by exactly one character.
-func verifyNativeCharacterNavigation(t *testing.T, newContext func() (typography.Context, error), families []string) {
-	for _, family := range families {
+// 原生字体度量与 textedit 跨层集成：共享边界的浮点舍入不能产生重复光标停靠点，
+// 普通 ASCII 行每次向左必须恰好前进一个字符；无需桌面，不与上层包内单元测试混放。
+func TestNativeCharacterNavigation(t *testing.T) {
+	for _, family := range nativeFamilies {
 		for _, width := range []float32{173, 1090, 1 << 24} {
 			t.Run(fmt.Sprintf("%s/%v", family, width), func(t *testing.T) {
 				runtime.LockOSThread()

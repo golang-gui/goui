@@ -2,7 +2,6 @@ package gui
 
 import (
 	"math"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -100,8 +99,8 @@ func (c *paragraphBoundContext) NewTextLayout(text string, f typography.TextForm
 	return native, err
 }
 
-// 用原生完整段落作独立参考，检查连续块的真实软折点及跨块复杂文本上下文。
-func testParagraphLayoutNative(t *testing.T, factory func() (typography.Context, error)) {
+// 给定固定度量检查连续块的分页、上下文与重入；真实字体参考另在集成测试中保留。
+func TestParagraphLayoutProvidedMetrics(t *testing.T) {
 	for _, tc := range []struct{ name, text string }{
 		{"ASCII", strings.Repeat("a9+Z/Bh4q2AZbng7 latencyword ", 4000)},
 		{"Unicode", strings.Repeat("中文 e\u0301 ffi 👩‍💻 word 123 \t", 2400)},
@@ -110,12 +109,7 @@ func testParagraphLayoutNative(t *testing.T, factory func() (typography.Context,
 		{"Override", "start \u202e" + strings.Repeat("abc 123 العربية עברית e\u0301 ffi \t ", 1800) + "END\u202c"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			runtime.LockOSThread()
-			defer runtime.UnlockOSThread()
-			context, err := factory()
-			if err != nil {
-				t.Fatal(err)
-			}
+			context, _ := newContractContext()
 			defer context.Destroy()
 			model := textedit.NewModel(tc.text)
 			format := typography.TextFormat{Font: typography.FontInfo{Family: "monospace", Size: 12}, WrapMode: typography.WrapWordChar, TabWidth: 32}
@@ -207,15 +201,10 @@ func (p *paragraphPaintPositions) DrawTextLayout(at geometry.Point, _ typography
 	p.points = append(p.points, at)
 }
 
-func testParagraphCoordinatesNative(t *testing.T, factory func() (typography.Context, error)) {
+func TestParagraphCoordinatesProvidedMetrics(t *testing.T) {
 	for _, family := range []string{"monospace", "sans"} {
 		t.Run(family, func(t *testing.T) {
-			runtime.LockOSThread()
-			defer runtime.UnlockOSThread()
-			context, err := factory()
-			if err != nil {
-				t.Fatal(err)
-			}
+			context, _ := newContractContext()
 			defer context.Destroy()
 			const index = 16384
 			const base = index * paragraphBlockBytes
