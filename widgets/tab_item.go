@@ -199,6 +199,15 @@ func (item *tabItem) Paint(p gui.Painter) {
 	paintStyledBox(item, p, geometry.Rect(0, 0, item.Rect().Width, item.Rect().Height), "tab-item", part, state)
 }
 
+// The body owns logical focus; the item's selected surface is a separate pass.
+// Keeping this decoration on the focused widget also follows host input-mode
+// changes without propagating synthetic focus state to its parent.
+func (body *tabBody) Paint(p gui.Painter) {
+	if body.Visible() && gui.IsEnabled(body) && body.Focused() {
+		paintStyledBox(body, p, geometry.Rectangle{Size: body.Rect().Size}, "tab-item", "focus", body.State())
+	}
+}
+
 // Content-space positions keep scrolling independent of the slide animation.
 // Retargeting begins at the current position, including when direction reverses.
 type tabMotion struct {

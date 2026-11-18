@@ -2,6 +2,7 @@ package widgets
 
 import (
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/color"
 	"math"
@@ -827,6 +828,139 @@ func TestTabCloseDisclosurePreservesCloseFocusOnly(t *testing.T) {
 	focus(b.body) // focus remains within the same item
 	if b.close.Visible() || b.close.Snapshot().Visible {
 		t.Fatal("moving focus back to body did not hide inactive close")
+	}
+}
+
+// 使用正常事件分发和惰性宿主验证焦点来源；Software 仅作跨平台离屏像素参考。
+func TestTabKeyboardFocusAppearance(t *testing.T) {
+	old := gui.App
+	gui.App = &separatorApp{}
+	t.Cleanup(func() { gui.App = old })
+	white, green := color.RGBA{255, 255, 255, 255}, color.RGBA{G: 255, A: 255}
+	blue, red := color.RGBA{B: 255, A: 255}, color.RGBA{R: 255, A: 255}
+	hover := color.RGBA{210, 210, 210, 255}
+	rules := []style.Rule{
+		style.Name("tab-item").BackgroundColor(white).BorderWidth(0).Radius(0),
+		style.Name("tab-item").State(style.Hovered).BackgroundColor(hover),
+		style.Name("tab-item").Part("selected").BackgroundColor(green),
+		style.Name("tab-item").Part("focus").BackgroundColor(color.Transparent).BorderWidth(0),
+		style.Name("tab-item").Part("focus").State(style.FocusVisible).BorderColor(blue).BorderWidth(2),
+		style.Name("tab-close-button").BackgroundColor(white).BorderWidth(0).Radius(0),
+		style.Name("tab-close-button").Part("focus").BackgroundColor(color.Transparent).BorderWidth(0),
+		style.Name("tab-close-button").Part("focus").State(style.FocusVisible).BorderColor(red).BorderWidth(2),
+	}
+	for _, scale := range []float32{1, 2} {
+		t.Run(fmt.Sprintf("%gx", scale), func(t *testing.T) {
+			bar, view, pages := dragTestBar()
+			scope := gui.NewStyleScope()
+			scope.SetStyleSheet(style.Sheet(rules...))
+			scope.SetChild(bar)
+			host := gui.NewPopover(nil, nil)
+			host.SetWidget(scope)
+			t.Cleanup(host.Destroy)
+			scope.Arrange(geometry.Rect(0, 0, 400, 40))
+			bar.Arrange(geometry.Rect(0, 0, 400, 40))
+			a, b := bar.items[pages[0]], bar.items[pages[1]]
+			labelRect, bodyRect, closeRect := b.body.label.Rect(), b.body.Rect(), a.close.Rect()
+			measured := b.Measure(layout.Unbounded())
+			dispatch := func(e events.Event) {
+				t.Helper()
+				if err := host.DispatchEvent(e); err != nil {
+					t.Fatal(err)
+				}
+				bar.Arrange(bar.Rect())
+			}
+			key := func(mod events.Modifiers) {
+				dispatch(events.KeyEvent{EventType: events.KeyDown, Key: events.KeyTab, Modifiers: mod})
+			}
+			click := func(x float32) {
+				dispatch(events.PointerEvent{EventType: events.PointerDown, Position: geometry.Point{X: x, Y: 20}, Button: events.PointerButtonLeft, Buttons: events.PointerButtonLeftDown})
+				dispatch(events.PointerEvent{EventType: events.PointerUp, Position: geometry.Point{X: x, Y: 20}, Button: events.PointerButtonLeft})
+			}
+			checkBody := func(item *tabItem, edge, inside color.RGBA, width int) {
+				t.Helper()
+				pixels := tablePixels(t, item.Rect().Size, scale, func(p *tablePixelPainter) {
+					item.Paint(p)
+					item.body.Paint(p)
+				})
+				// 在无圆角直边和内部采样不透明预乘 sRGB；1x/2x 整数像素带无需容差。
+				for x := 0; x <= width*int(scale); x++ {
+					want := inside
+					if x < width*int(scale) {
+						want = edge
+					}
+					if got := pixels.RGBAAt(x, 20*int(scale)); got != want {
+						t.Fatalf("主体边缘 x=%d=%v，期望 %v；FocusVisible=%v", x, got, want, item.body.FocusVisible())
+					}
+				}
+				if got := pixels.RGBAAt(50*int(scale), 20*int(scale)); got != inside {
+					t.Fatalf("焦点部件覆盖了标签底色：%v，期望 %v", got, inside)
+				}
+			}
+			checkClose := func(item *tabItem, edge color.RGBA) {
+				t.Helper()
+				pixels := tablePixels(t, item.close.Rect().Size, scale, func(p *tablePixelPainter) { item.close.Paint(p) })
+				if got := pixels.RGBAAt(0, 12*int(scale)); got != edge {
+					t.Fatalf("关闭按钮边缘=%v，期望 %v", got, edge)
+				}
+			}
+			click(20)
+			if !a.body.Focused() || a.body.FocusVisible() {
+				t.Fatal("鼠标聚焦主体不应显示键盘提示")
+			}
+			checkBody(a, green, green, 0)
+			key(0)
+			if !a.close.FocusVisible() || a.body.Focused() || !a.close.Snapshot().FocusVisible {
+				t.Fatal("Tab 没有将实际焦点移到关闭按钮")
+			}
+			checkBody(a, green, green, 0)
+			checkClose(a, red)
+			key(events.ModifierShift)
+			if !a.body.FocusVisible() || a.Focused() || !a.ContainsFocus() || a.Snapshot().FocusVisible || !a.body.Snapshot().FocusVisible {
+				t.Fatal("主体／父项焦点归属或语义快照错误")
+			}
+			checkBody(a, blue, green, 2)
+			checkClose(a, white)
+			key(0)
+			key(0)
+			if !b.body.FocusVisible() || b.close.Visible() || view.Current() != pages[0] {
+				t.Fatal("未选中标签的主体焦点改变了选择或关闭按钮显隐")
+			}
+			checkBody(b, blue, white, 2)
+			dispatch(events.PointerEvent{EventType: events.PointerMove, Position: geometry.Point{X: 130, Y: 20}})
+			checkBody(b, blue, hover, 2)
+			focused := 0
+			b.body.ConnectFocused(func(bool) { focused++ })
+			click(130)
+			if !b.body.Focused() || b.body.FocusVisible() || focused != 0 {
+				t.Fatal("同一主体的鼠标按下未只清除提示，或重复发送焦点通知")
+			}
+			checkBody(b, green, green, 0)
+			key(events.ModifierShift)
+			key(0)
+			checkBody(b, blue, green, 2)
+			for _, width := range []float32{0, 3} {
+				scope.SetStyleSheet(style.Sheet(append(slices.Clone(rules), style.Name("tab-item").Part("focus").State(style.FocusVisible).BorderColor(red).BorderWidth(width))...))
+				checkBody(b, red, green, int(width))
+			}
+			if b.body.label.Rect() != labelRect || b.body.Rect() != bodyRect || b.close.Rect() != closeRect || b.Measure(layout.Unbounded()) != measured {
+				t.Fatal("焦点绘制或样式覆盖改变了标签几何")
+			}
+			b.SetEnabled(false)
+			checkBody(b, green, green, 0)
+			if b.body.FocusVisible() {
+				t.Fatal("禁用标签仍有键盘焦点提示")
+			}
+			b.SetEnabled(true)
+			if b.body.Focused() {
+				t.Fatal("重新启用恢复了旧焦点")
+			}
+			host.(gui.EventTarget).SetFocusedWidget(b.body)
+			view.RemovePage(pages[1])
+			if b.body.Focused() || b.body.FocusVisible() || host.(gui.EventTarget).FocusedWidget() == b.body {
+				t.Fatal("卸载标签后保留了旧焦点")
+			}
+		})
 	}
 }
 
