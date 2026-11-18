@@ -2,6 +2,7 @@ package coretext
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -9,9 +10,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 	"unsafe"
 
 	. "github.com/golang-gui/goui/platform/darwin/frameworks/core_foundation"
@@ -555,4 +559,462 @@ func TestTextPremultipliedAlpha(t *testing.T) {
 			}()
 		}
 	}
+}
+
+// A retained typesetter can create a finite line from the complete attributed
+// paragraph. Unlike an independently allocated substring it retains native
+// paragraph analysis. This probe does not establish safe arbitrary cut points.
+func TestContextualSubstringShaping(t *testing.T) {
+	for _, tc := range []struct{ text, target string }{
+		{"start \u202e" + strings.Repeat("abcd 1234 ", 410) + "TARGET text\u202c end", "TARGET"},
+		{"אבג \u202d" + strings.Repeat("abcd 1234 ", 410) + "TARGET text\u202c סוף", "TARGET"},
+		{"start \u2067" + strings.Repeat("עברית العربية 123 ", 180) + "TARGET text\u2069 end", "TARGET"},
+		{strings.Repeat("中文 e\u0301 ffi 👩‍💻 العربية עברית\t ", 130) + "TARGET text", "TARGET"},
+		{strings.Repeat("العربية 中文 ", 300) + "العربية", "العربية"},
+		{strings.Repeat("office ", 600) + "office", "ffi"},
+		{strings.Repeat("text ", 900) + "e\u0301 end", "e\u0301"},
+	} {
+		t.Run(fmt.Sprintf("%q", tc.text[:min(len(tc.text), 16)]), func(t *testing.T) {
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+			ctx, err := NewContext()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer ctx.Destroy()
+			l, err := ctx.NewTextLayout(tc.text, typography.TextFormat{Font: typography.FontInfo{Family: "Arial", Size: 12}}, 1<<24, 1<<24)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer l.Destroy()
+			whole := l.(*TextLayout)
+			l.MeasureSize()
+			if len(whole.lines) != 1 {
+				t.Fatalf("reference lines=%d", len(whole.lines))
+			}
+			setter := CTTypesetterCreateWithAttributedString(whole.attrString)
+			if setter == 0 {
+				t.Fatal("create typesetter failed")
+			}
+			defer CFRelease(setter)
+			start := strings.LastIndex(tc.text, tc.target)
+			r := CFRangeMake(whole.position.ToUtf16(start), whole.position.ToUtf16(start+len(tc.target))-whole.position.ToUtf16(start))
+			line := CTTypesetterCreateLine(setter, r)
+			if line == 0 {
+				t.Fatal("create range line failed")
+			}
+			defer CFRelease(line)
+			got, want := nativeGlyphFacts(line, r), nativeGlyphFacts(whole.lines[0].line, r)
+			if len(got) == 0 || !reflect.DeepEqual(got, want) {
+				t.Fatalf("range glyph facts=%+v full paragraph=%+v", got, want)
+			}
+		})
+	}
+}
+
+type glyphFact struct {
+	glyph   uint16
+	index   CFIndex
+	advance CGSize
+	rtl     bool
+}
+
+func nativeGlyphFacts(line CTLineRef, r CFRange) []glyphFact {
+	var result []glyphFact
+	runs := CTLineGetGlyphRuns(line)
+	for i := 0; i < CFArrayGetCount(runs); i++ {
+		run := CFArrayGetValueAtIndex(runs, i)
+		n := CTRunGetGlyphCount(run)
+		glyphs := make([]uint16, n)
+		advances := make([]CGSize, n)
+		indices := make([]CFIndex, n)
+		CTRunGetGlyphs(run, CFRange{}, glyphs)
+		CTRunGetAdvances(run, CFRange{}, advances)
+		CTRunGetStringIndices(run, CFRange{}, indices)
+		for j, index := range indices {
+			if int(index) >= r.Location && int(index) < r.Location+r.Length {
+				result = append(result, glyphFact{glyphs[j], index, advances[j], CTRunGetStatus(run)&KCTRunStatusRightToLeft != 0})
+			}
+		}
+	}
+	return result
+}
+
+// 离屏原生排版不创建窗口或显示连接；字节范围和视觉顺序预期不依赖字形光栅化或 hinting。
+func TestTextMetricsClusterRanges(t *testing.T) {
+	for _, text := range []string{"abc", "中", "a\n中", "e\u0301 office", "abc אבג xyz", "a\u200bb", "a😀👩‍💻z"} {
+		t.Run(text, func(t *testing.T) {
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+			ctx, err := NewContext()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer ctx.Destroy()
+			layout, err := ctx.NewTextLayout(text, typography.TextFormat{
+				Font: typography.FontInfo{Family: "Arial", Size: 14}, WrapMode: typography.WrapWordChar,
+			}, 500, 500)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer layout.Destroy()
+			lines, flat := layout.MeasureMetrics()
+			if len(lines) == 0 {
+				t.Fatal("nonempty text has no lines")
+			}
+			count := 0
+			for li, line := range lines {
+				end := line.Start + line.Length
+				at := line.Start
+				if line.Width < 0 || line.Height <= 0 {
+					t.Errorf("invalid line bounds: %+v", line)
+				}
+				for _, cluster := range line.Clusters {
+					if cluster.Start != at || cluster.Length <= 0 || cluster.Start+cluster.Length > end {
+						t.Errorf("line %d: cluster %+v, expected next start %d and positive in-line length", li, cluster, at)
+					}
+					if cluster.Start >= 0 && cluster.Start+cluster.Length <= len(text) && !utf8.ValidString(text[cluster.Start:cluster.Start+cluster.Length]) {
+						t.Errorf("cluster splits UTF-8: %+v", cluster)
+					}
+					if cluster.Direction != typography.TextLeftToRight && cluster.Direction != typography.TextRightToLeft {
+						t.Errorf("invalid direction: %+v", cluster)
+					}
+					if cluster.LineIndex != li || cluster.Width < 0 || cluster.Height <= 0 {
+						t.Errorf("invalid cluster geometry: %+v", cluster)
+					}
+					at = cluster.Start + cluster.Length
+					count++
+				}
+				if at != end {
+					t.Errorf("line %d clusters stop at %d, want %d", li, at, end)
+				}
+			}
+			if count != len(flat) {
+				t.Fatalf("line clusters=%d, flat=%d", count, len(flat))
+			}
+			if text == "a\n中" && (len(lines) != 2 || lines[0].Length != 1 || lines[1].Start != 2 || lines[1].Length != 3) {
+				t.Fatalf("newline was included in content: %+v", lines)
+			}
+			if lines[len(lines)-1].Start+lines[len(lines)-1].Length != len(text) {
+				t.Fatal("last line does not cover end of text")
+			}
+		})
+	}
+}
+
+func TestTextMetricsRTLVisualOrder(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ctx, err := NewContext()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctx.Destroy()
+	layout, err := ctx.NewTextLayout("אבג", typography.TextFormat{
+		Font: typography.FontInfo{Family: "Arial", Size: 14},
+	}, 200, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer layout.Destroy()
+	lines, clusters := layout.MeasureMetrics()
+	if len(lines) != 1 || len(clusters) != 3 {
+		t.Fatalf("Hebrew: lines=%d clusters=%d", len(lines), len(clusters))
+	}
+	for i, cluster := range clusters {
+		if cluster.Start != i*2 || cluster.Length != 2 || cluster.Direction != typography.TextRightToLeft {
+			t.Errorf("Hebrew cluster %d = %+v", i, cluster)
+		}
+		if i > 0 && cluster.X >= clusters[i-1].X {
+			t.Errorf("logical RTL cluster %d must be left of its predecessor", i)
+		}
+	}
+	if lines[0].Width <= 0 {
+		t.Fatalf("RTL line width = %v", lines[0].Width)
+	}
+}
+
+// 原生库对空段落/末尾段落的行数行为不同；不在此合成编辑器光标行。
+// 所有报告范围必须有效，非分隔符字节恰好覆盖一次，分隔符不属于正文。
+func TestTextMetricsParagraphSeparators(t *testing.T) {
+	for _, text := range []string{"", "\n", "\n\n", "a\n", "a\n\n中\n", "a\r\n\r\n中\r\n", "\n😀\n"} {
+		t.Run(text, func(t *testing.T) {
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+			ctx, err := NewContext()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer ctx.Destroy()
+			layout, err := ctx.NewTextLayout(text, typography.TextFormat{
+				Font:     typography.FontInfo{Family: "Arial", Size: 14},
+				WrapMode: typography.WrapWordChar,
+			}, 500, 500)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer layout.Destroy()
+			lines, clusters := layout.MeasureMetrics()
+			covered := make([]bool, len(text))
+			for _, line := range lines {
+				if line.Start < 0 || line.Length < 0 || line.Start+line.Length > len(text) {
+					t.Fatalf("invalid line range: %+v, text length %d", line, len(text))
+				}
+				content := text[line.Start : line.Start+line.Length]
+				if !utf8.ValidString(content) {
+					t.Fatalf("line splits UTF-8: %+v", line)
+				}
+				for _, r := range content {
+					if r == '\r' || r == '\n' {
+						t.Fatalf("separator included in line content: %+v", line)
+					}
+				}
+			}
+			for _, cluster := range clusters {
+				end := cluster.Start + cluster.Length
+				if cluster.Start < 0 || cluster.Length <= 0 || end > len(text) ||
+					cluster.LineIndex < 0 || cluster.LineIndex >= len(lines) {
+					t.Fatalf("invalid cluster: %+v", cluster)
+				}
+				line := lines[cluster.LineIndex]
+				if cluster.Start < line.Start || end > line.Start+line.Length ||
+					!utf8.ValidString(text[cluster.Start:end]) {
+					t.Fatalf("cluster escapes line or splits UTF-8: %+v", cluster)
+				}
+				for i := cluster.Start; i < end; i++ {
+					if covered[i] || text[i] == '\r' || text[i] == '\n' {
+						t.Fatalf("byte %d duplicated or separator included: %+v", i, cluster)
+					}
+					covered[i] = true
+				}
+			}
+			for i := range len(text) {
+				if text[i] != '\r' && text[i] != '\n' && !covered[i] {
+					t.Fatalf("nonseparator byte %d has no cluster", i)
+				}
+			}
+		})
+	}
+}
+
+// Preserve the previous native export as a reference. This test compares every
+// line/cluster value; sharing scratch storage must not change shaping or output.
+func metricsWithPerRunStorage(t *TextLayout) (lines []typography.TextLine, clusters []typography.TextCluster) {
+	t.ensureFrame()
+
+	if len(t.lines) == 0 {
+		return
+	}
+
+	// 坐标先以原生精度转换；这里仍保留逐 run 分配作为 scratch 复用的参考。
+	height := t.layoutSize.Height
+	lines = make([]typography.TextLine, 0, len(t.lines))
+	clusters = make([]typography.TextCluster, 0, t.textLength)
+
+	for lineIndex, li := range t.lines {
+		baseline := float32(height - li.origin.Y)
+		lineX := float32(li.origin.X)
+		lineY := float32(height - (li.origin.Y + li.ascent + li.leading))
+		lineWidth := float32(li.width)
+		lineHeight := float32(li.ascent + li.descent + li.leading)
+
+		u8Start := t.position.ToUtf8(li.u16Start)
+		u8End := t.position.ToUtf8(li.u16Start + li.u16Length)
+		if u8End < 0 {
+			u8End = len(t.text)
+		}
+		// CoreText includes the paragraph separator in a line's string range.
+		// Keep it out of visible clusters, as in Pango and DirectWrite.
+		u8End = u8Start + len(strings.TrimRight(t.text[u8Start:u8End], "\r\n\u2028\u2029"))
+
+		line := typography.TextLine{
+			Start:    u8Start,
+			Length:   u8End - u8Start,
+			X:        lineX,
+			Y:        lineY,
+			Width:    lineWidth,
+			Height:   lineHeight,
+			Baseline: baseline,
+		}
+
+		clustersBeg := len(clusters)
+		clusterByIndex := make(map[int]int)
+
+		// Get clusters from runs
+		runs := CTLineGetGlyphRuns(li.line)
+		runCount := CFArrayGetCount(runs)
+		for ri := 0; ri < runCount; ri++ {
+			run := CFArrayGetValueAtIndex(runs, ri)
+			status := CTRunGetStatus(run)
+			isRTL := (status & KCTRunStatusRightToLeft) != 0
+
+			glyphCount := CTRunGetGlyphCount(run)
+			if glyphCount == 0 {
+				continue
+			}
+
+			positions := make([]CGPoint, glyphCount)
+			CTRunGetPositions(run, CFRangeMake(0, 0), positions)
+			advances := make([]CGSize, glyphCount)
+			CTRunGetAdvances(run, CFRangeMake(0, 0), advances)
+
+			indices := make([]CFIndex, glyphCount)
+			CTRunGetStringIndices(run, CFRangeMake(0, 0), indices)
+
+			// A string index may map to several positioned glyphs. Group by
+			// that index (not glyph order), preserving native advance geometry.
+			for gi := 0; gi < glyphCount; gi++ {
+				u16Idx := int(indices[gi])
+				u8Pos := t.position.ToUtf8(u16Idx)
+				if u8Pos < u8Start || u8Pos >= u8End {
+					continue
+				}
+				x0 := lineX + float32(positions[gi].X)
+				x1 := x0 + float32(advances[gi].Width)
+				left, right := min(x0, x1), max(x0, x1)
+				if ci, ok := clusterByIndex[u8Pos]; ok {
+					cluster := &clusters[ci]
+					right = max(right, cluster.X+cluster.Width)
+					cluster.X = min(left, cluster.X)
+					cluster.Width = right - cluster.X
+					continue
+				}
+
+				cluster := typography.TextCluster{
+					Start:     u8Pos,
+					X:         left,
+					Y:         lineY,
+					Width:     right - left,
+					Height:    lineHeight,
+					LineIndex: lineIndex,
+				}
+				if placeholder, ok := t.placeholders[u8Pos]; ok {
+					cluster.Y, cluster.Height = line.Baseline-placeholder.Baseline, placeholder.Height
+				}
+				if isRTL {
+					cluster.Direction = typography.TextRightToLeft
+				}
+				clusterByIndex[u8Pos] = len(clusters)
+				clusters = append(clusters, cluster)
+			}
+		}
+
+		line.Clusters = clusters[clustersBeg:]
+		slices.SortFunc(line.Clusters, func(a, b typography.TextCluster) int {
+			return a.Start - b.Start
+		})
+		for i := range line.Clusters {
+			end := u8End
+			if i+1 < len(line.Clusters) {
+				end = line.Clusters[i+1].Start
+			}
+			line.Clusters[i].Length = end - line.Clusters[i].Start
+		}
+		lines = append(lines, line)
+	}
+	return
+}
+
+func TestMetricsScratchPreservesNativeGeometry(t *testing.T) {
+	for _, text := range []string{"", "Aé中", "a\n\nb\n", "a\u2028\u2029b", "abc\tdef\t", "office e\u0301 👩‍👩‍👦 عربى אבג xyz", strings.Repeat("one two אבג e\u0301 \u2067RTL\u2069 word ", 100), "abc \u202eאבג (123)\u202c xyz", "a\ufffcb"} {
+		for _, width := range []float32{31, 317, 1 << 20} {
+			t.Run(fmt.Sprintf("%q/%g", text[:min(20, len(text))], width), func(t *testing.T) {
+				runtime.LockOSThread()
+				defer runtime.UnlockOSThread()
+				ctx, err := NewContext()
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer ctx.Destroy()
+				layout, err := ctx.NewTextLayout(text, typography.TextFormat{Font: typography.FontInfo{Family: "Arial", Size: 14}, WrapMode: typography.WrapWordChar, TabWidth: 32}, width, 1<<20)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer layout.Destroy()
+				if text == "a\ufffcb" {
+					layout.SetPlaceholder(1, &typography.PlaceholderMetrics{Width: 17, Height: 21, Baseline: 16})
+				}
+				if len(text) > 0 {
+					layout.SetTextColor(0, 1, color.RGBA{R: 160, A: 255})
+				}
+				native := layout.(*TextLayout)
+				wantLines, wantClusters := metricsWithPerRunStorage(native)
+				gotLines, gotClusters := layout.MeasureMetrics()
+				if !reflect.DeepEqual(gotLines, wantLines) || !reflect.DeepEqual(gotClusters, wantClusters) {
+					t.Fatal("scratch reuse changed native line or cluster metrics")
+				}
+				if text == "Aé中" && width > 100 {
+					if len(gotClusters) != 3 {
+						t.Fatalf("UTF-8 clusters = %d", len(gotClusters))
+					}
+					for i, start := range []int{0, 1, 3} {
+						if gotClusters[i].Start != start || gotClusters[i].Length != i+1 {
+							t.Fatalf("cluster %d = %+v", i, gotClusters[i])
+						}
+					}
+				}
+				// A subsequent call and changed width may reuse local buffers, but must
+				// never mutate ordinary values already returned to an upper-layer cache.
+				layout.SetSize(47, 1<<20)
+				layout.MeasureMetrics()
+				if !reflect.DeepEqual(gotLines, wantLines) || !reflect.DeepEqual(gotClusters, wantClusters) {
+					t.Fatal("later measurement mutated returned metrics")
+				}
+			})
+		}
+	}
+}
+
+func BenchmarkMetricsScratch(b *testing.B) {
+	text := strings.Repeat("alpha beta gamma delta ", 8192)
+	for _, reuse := range []bool{false, true} {
+		b.Run(fmt.Sprint(reuse), func(b *testing.B) {
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+			ctx, err := NewContext()
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer ctx.Destroy()
+			layout, err := ctx.NewTextLayout(text, typography.TextFormat{Font: typography.FontInfo{Family: "Arial", Size: 14}, WrapMode: typography.WrapWordChar}, 1000, 1<<24)
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer layout.Destroy()
+			layout.MeasureSize() // Compare export only, after the same native shaping.
+			native := layout.(*TextLayout)
+			b.ReportAllocs()
+			b.SetBytes(int64(len(text)))
+			b.ResetTimer()
+			for range b.N {
+				if reuse {
+					layout.MeasureMetrics()
+				} else {
+					metricsWithPerRunStorage(native)
+				}
+			}
+		})
+	}
+}
+
+func TestRasterRegions(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ctx, err := NewContext()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctx.Destroy()
+	typographytest.RasterRegions(t, ctx)
+}
+
+func TestTabWidth(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ctx, err := NewContext()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctx.Destroy()
+	typographytest.Tabs(t, ctx)
 }
