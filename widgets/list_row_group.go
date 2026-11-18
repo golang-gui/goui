@@ -15,17 +15,33 @@ import (
 // itself, so nested containers and non-row children stay independent.
 type ListRowGroup struct {
 	gui.WidgetBase
-	layout *layout.LinearLayout
+	uniformRows bool
 }
 
 // NewListRowGroup creates a vertical group with no spacing or padding and
 // stretched cross-axis alignment. Hidden children leave no gap and do not keep
 // a seam; the visible first and last rows own the outer contour.
 func NewListRowGroup() *ListRowGroup {
-	g := &ListRowGroup{layout: layout.NewLinearLayout(layout.DirectionVertical)}
-	g.layout.CrossAlign = layout.CrossStretch
-	g.SetLayoutManager(g.layout)
+	g := &ListRowGroup{}
+	g.SetLayoutManager(listRowGroupLayout{group: g, LinearLayout: layout.LinearLayout{
+		Direction: layout.DirectionVertical, CrossAlign: layout.CrossStretch,
+	}})
 	return g
+}
+
+// UniformRows reports whether visible direct ListRow children share the tallest
+// row's natural height at the available width. The default is false.
+func (g *ListRowGroup) UniformRows() bool { return g.uniformRows }
+
+// SetUniformRows enables equal natural row heights without changing the rows'
+// size properties. Enabled rows ignore MainWeight; other children keep their
+// normal layout. Disabling it restores the ordinary per-child layout.
+func (g *ListRowGroup) SetUniformRows(uniform bool) {
+	if g.Destroyed() || g.uniformRows == uniform {
+		return
+	}
+	g.uniformRows = uniform
+	g.RequestLayout()
 }
 
 func (g *ListRowGroup) AddChild(child gui.Widget) { g.WidgetBase.AddChild(g, child) }
