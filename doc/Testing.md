@@ -297,3 +297,21 @@ TestNativeCursorThemeLifecycle。它们继续使用原有 DISPLAY 条件和有�
 本轮 Linux/X11 全仓结果为零失败、零条件跳过；取消 DISPLAY 后全仓命令仍退出 0，
 6106 项通过，只有上述两项按原条件跳过，未计为通过。macOS 的 codesign/SDK 与两个非本机
 排版后端仅完成目标编译，本轮未执行原生运行。详细验证结果见 Plan。
+
+## 2026-11-18 测试文件归并
+
+在既有包内继续归并小型测试文件，不改变测试分类或运行条件：
+
+| 所属包 | 归并位置 |
+| --- | --- |
+| Linux GLib、Pango、Xlib 绑定 | pointer、type、strings 测试并入各包 api_linux_test.go |
+| Windows DirectWrite SDK | hit_position、typography 测试并入 api_windows_test.go |
+| Windows Shell、WinAPI SDK | dialog、window_placement 测试并入各包 abi_windows_test.go |
+| CoreText、DirectWrite、Pango 排版后端 | shaping、metrics、region、tabs、raster 等测试并入各后端 context 测试文件 |
+| Win32 | drag_preview、fullscreen 测试分别并入 dragdrop、window 测试文件 |
+
+涉及的 10 个包由 45 个测试文件归并为 16 个。归一化导入别名后，150 个函数、类型与
+变量声明的 AST 全部保留且一致，其中 63 个声明仅改变所在文件；不改变断言、输入、
+线程锁定、资源释放、skip 条件或基准循环。platform/common/env_test.go 是其所属包的
+唯一测试文件，继续独立保留缩放环境变量的无效输入和正数覆盖，不属于冗余文件。
+验证结果见 Plan 的同日归并复核记录。

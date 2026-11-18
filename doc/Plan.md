@@ -6617,3 +6617,14 @@ RenderWidget（包含GPU读回），旧版两次总耗时455.58/458.70ms，新�
 的导入/变量问题，已修正。补充例程错误处理时曾把无返回值的 GUI RequestState 用作
 error，原样全仓命令报编译失败；恢复其既有尽力而为调用后最终全仓命令退出 0。
 这些是测试/例程输入与组织问题，不作为新增框架功能或生产缺陷修复记录。
+
+## 2026-11-18 测试文件归并复核
+
+- [x] 复核原生绑定、三种排版后端及 Win32 的包内文件归并；45 个测试文件减少为
+  16 个，150 个声明的 AST 一致，63 个声明仅迁移文件。保留 common 的唯一 env 测试，
+  未减少有效断言或扩大跳过条件；位置对应关系见 [Testing](Testing.md#2026-11-18-测试文件归并)。
+- [x] Linux amd64 / Go1.25.8、现有 X11 会话：`go test -json ./...` 共 6108 项通过
+  （含子测试）、0 失败、0 条件跳过；`go test ./...` 亦通过。
+- [x] Windows amd64：`CGO_ENABLED=0 go test -exec=/bin/true ./platform/windows/sdk/... ./platform/windows/win32 ./platform/typography/directwrite`
+  目标编译通过；macOS arm64 的 CoreText 测试包按同样方式编译通过。
+  本轮未执行这两个平台的原生测试；文件归并不涉及生产实现或窗口行为变更。
