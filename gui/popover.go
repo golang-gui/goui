@@ -839,7 +839,7 @@ func (p *popover) updateNaturalSize() error {
 		insets = popoverShadowInsets(size, radius.Max(), shadow)
 	}
 	if snapshot.constrained {
-		limit, err := snapshot.bodyLimit(insets)
+		limit, err := snapshot.bodyLimit()
 		if err != nil {
 			return err
 		}
@@ -857,6 +857,7 @@ func (p *popover) updateNaturalSize() error {
 	if !p.modal && placement == PopoverPlacementBottom {
 		insets = snapshot.trimAnchorShadow(size, insets)
 	}
+	insets = snapshot.trimWorkAreaShadow(size, insets)
 	// Keep conservative natural shadow allocation during shrinking: negative
 	// spread may erase the smaller mask, but must not cause a sizing oscillation.
 	width, height := size.Width+insets.left+insets.right, size.Height+insets.top+insets.bottom
@@ -1221,10 +1222,10 @@ func validPopupRect(r geometry.Rectangle) bool {
 		finitePopup(r.Width) && finitePopup(r.Height) && finitePopup(r.X+r.Width) && finitePopup(r.Y+r.Height)
 }
 
-func (s popoverPlacementSnapshot) bodyLimit(insets popoverInsets) (geometry.Size, error) {
-	size := geometry.Size{Width: s.workArea.Width - insets.left - insets.right, Height: s.workArea.Height - insets.top - insets.bottom}
+func (s popoverPlacementSnapshot) bodyLimit() (geometry.Size, error) {
+	size := s.workArea.Size
 	if !finitePopup(size.Width) || !finitePopup(size.Height) || size.Width < 1 || size.Height < 1 {
-		return geometry.Size{}, fmt.Errorf("popover: shadow leaves no usable body in work area")
+		return geometry.Size{}, fmt.Errorf("popover: work area leaves no usable body")
 	}
 	return size, nil
 }
@@ -1234,65 +1235,87 @@ func (s popoverPlacementSnapshot) bodyLimit(insets popoverInsets) (geometry.Size
 // allocate only the outward-facing vertical shadow, without moving the body.
 // Oversized surfaces that must overlap the anchor keep normal workarea sliding.
 func (s *popoverPlacementSnapshot) trimAnchorShadow(body geometry.Size, insets popoverInsets) popoverInsets {
-	if !s.constrained || s.anchor.Y+s.anchor.Height+body.Height+insets.bottom <= s.workArea.Y+s.workArea.Height {
+	if !s.constrained || s.anchor.Y+s.anchor.Height+body.Height <= s.workArea.Y+s.workArea.Height {
 		s.anchorSide = 1
 		insets.top = 0
-	} else if s.anchor.Y-body.Height-insets.top >= s.workArea.Y {
+	} else if s.anchor.Y-body.Height >= s.workArea.Y {
 		s.anchorSide = -1
 		insets.bottom = 0
 	}
 	return insets
 }
 
+// trimWorkAreaShadow allocates only decoration that fits around the resolved
+// body. It cannot move or shrink content, and keeps invisible shadow pixels
+// from occupying native input space beyond the work area.
+func (s popoverPlacementSnapshot) trimWorkAreaShadow(body geometry.Size, insets popoverInsets) popoverInsets {
+	if !s.constrained {
+		return insets
+	}
+	origin := s.bodyPosition(body)
+	x, y := origin.X, origin.Y
+	a := s.workArea
+	insets.left = min(insets.left, max(0, x-a.X))
+	insets.top = min(insets.top, max(0, y-a.Y))
+	insets.right = min(insets.right, max(0, a.X+a.Width-x-body.Width))
+	insets.bottom = min(insets.bottom, max(0, a.Y+a.Height-y-body.Height))
+	return insets
+}
+
 // position returns the full surface origin. Alignment is against the body,
-// containment against the surface. Oversized actual native sizes anchor at the
+// as is containment. Oversized actual native bodies anchor at the
 // workarea origin rather than generating resize feedback loops.
 func (s popoverPlacementSnapshot) position(surface geometry.Size, insets popoverInsets) geometry.Point {
-	a := s.anchor
 	body := geometry.Size{Width: max(0, surface.Width-insets.left-insets.right), Height: max(0, surface.Height-insets.top-insets.bottom)}
-	preferred := geometry.Point{X: a.X - insets.left, Y: a.Y - insets.top}
+	origin := s.bodyPosition(body)
+	return geometry.Point{X: origin.X - insets.left, Y: origin.Y - insets.top}
+}
+
+func (s popoverPlacementSnapshot) bodyPosition(body geometry.Size) geometry.Point {
+	a := s.anchor
+	preferred := a.Pos
 	if s.placement == PopoverPlacementBottom {
 		preferred.Y += a.Height
 	}
 	if s.anchorSide < 0 {
-		preferred.Y = a.Y - body.Height - insets.top
+		preferred.Y = a.Y - body.Height
 	}
 	if !s.constrained {
 		return preferred
 	}
 	area := s.workArea
 	fits := func(p geometry.Point) bool {
-		return p.X >= area.X && p.Y >= area.Y && p.X+surface.Width <= area.X+area.Width && p.Y+surface.Height <= area.Y+area.Height
+		return p.X >= area.X && p.Y >= area.Y && p.X+body.Width <= area.X+area.Width && p.Y+body.Height <= area.Y+area.Height
+	}
+	slide := func() geometry.Point {
+		return geometry.Point{
+			X: min(max(preferred.X, area.X), max(area.X, area.X+area.Width-body.Width)),
+			Y: min(max(preferred.Y, area.Y), max(area.Y, area.Y+area.Height-body.Height)),
+		}
 	}
 	if s.anchorSide != 0 {
 		// The side is fixed for this measurement, including native rounding.
 		// Horizontal alignment can still slide into the workarea.
-		for _, candidate := range [...]geometry.Point{preferred, {X: a.X + a.Width - body.Width - insets.left, Y: preferred.Y}} {
+		for _, candidate := range [...]geometry.Point{preferred, {X: a.X + a.Width - body.Width, Y: preferred.Y}} {
 			if fits(candidate) {
 				return candidate
 			}
 		}
-		return geometry.Point{
-			X: min(max(preferred.X, area.X), max(area.X, area.X+area.Width-surface.Width)),
-			Y: min(max(preferred.Y, area.Y), max(area.Y, area.Y+area.Height-surface.Height)),
-		}
+		return slide()
 	}
 	if s.placement == PopoverPlacementBottom {
 		for _, p := range [...]geometry.Point{
 			preferred,
-			{X: a.X + a.Width - body.Width - insets.left, Y: preferred.Y},
-			{X: preferred.X, Y: a.Y - body.Height - insets.top},
-			{X: a.X + a.Width - body.Width - insets.left, Y: a.Y - body.Height - insets.top},
+			{X: a.X + a.Width - body.Width, Y: preferred.Y},
+			{X: preferred.X, Y: a.Y - body.Height},
+			{X: a.X + a.Width - body.Width, Y: a.Y - body.Height},
 		} {
 			if fits(p) {
 				return p
 			}
 		}
 	}
-	return geometry.Point{
-		X: min(max(preferred.X, area.X), max(area.X, area.X+area.Width-surface.Width)),
-		Y: min(max(preferred.Y, area.Y), max(area.Y, area.Y+area.Height-surface.Height)),
-	}
+	return slide()
 }
 
 func (p *popover) prepareShow() error {
