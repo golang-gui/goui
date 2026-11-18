@@ -310,7 +310,7 @@ BuildContext 或同步启动嵌套协调。没有给 Root 增加 Tab 专用分�
 - `widgets/tab_view_test.go`：页面管理、选择、顺序和关闭请求。
 - `widgets/tab_bar_test.go`：布局、溢出、输入、排序、关闭按钮、分隔线、菜单与快照。
 - `widgets/tab_transfer_test.go`：页面移交、拖放占位及拖出请求的生命周期。
-- `widgets/tab_bar_linux_test.go`：不依赖桌面的 Pango 字体测量，保留平台限定和线程亲和。
+- `tests/integration/typography/tab_bar_test.go`：不依赖桌面的真实字体集成；原生工厂在独立测试目录选择，widgets 包内不导入具体后端。
 - `widgets/test_helpers_test.go`：多文件共用的固定布局和正常输入派发替身；单文件专用 helper 就近保留。
 - `widgets/ui/tabs_test.go`：声明协调、身份、移交、菜单构建与信号清理。
 - `theme/basic/basic_test.go`：完整兜底；widgets/style 测试只检查兼容入口。
@@ -320,7 +320,7 @@ BuildContext 或同步启动嵌套协调。没有给 Root 增加 Tab 专用分�
 
 包内测试覆盖页面选择、删除退避、关闭请求、真实子节点重排、溢出布局、
 输入分发下的拖动提交/取消、跟手位置、让位与反向过渡、空白命中路径、
-Snapshot 和 AfterUpdate 时序。Linux 下使用不依赖桌面的真实 Pango 度量
+Snapshot 和 AfterUpdate 时序。独立集成测试使用不依赖桌面的真实字体度量
 验证 14pt/24pt 标题的完整行高与窄栏关闭区域，不能用缺少 Typography 时
 返回零尺寸的 Label 代替文字布局验收。依赖桌面的点击、关闭、拖动取消、窄窗口、
 HeaderBar 和缩放验收见 `tests/window/widgets/tabs` 的入口注释。执行

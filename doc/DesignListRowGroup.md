@@ -56,7 +56,7 @@ wui.ListRowGroup(
 - 关闭后恢复普通 LinearLayout 行为：各行独立自然高度，原有 MainWeight 重新生效。
   无界宽度不被改成很大的有限值；存在有限最小宽度时按 CrossStretch 的既有规则测量。
 
-实现集中在 `widgets/list_row_group_layout.go`：只在开启时将直接行的测量适配为共同高度、
+实现集中在 `widgets/list_row_group.go`：只在开启时将直接行的测量适配为共同高度、
 权重 0，再交给原 LinearLayout。保留 GUI 提供的 layout.Child 适配器，因此样式通知与
 测量缓存仍走现有内核，不直接调用子 Widget 绕过缓存，不增加通用布局或 GUI 特例。
 
@@ -159,5 +159,6 @@ Snapshot：组的 `Role=vbox`、无 `Actions`、`Focusable=false`；`Children` �
 
 统一行高的包内回归另覆盖换行、隐藏最高行、内容与字号动态更新、增删重排、有限／无界宽度、
 关闭恢复、非行与嵌套隔离、额外／不足高度、原始尺寸属性、加高区域命中和实际语义边界。
-Linux Pango 测试不需要桌面，验证真实文字及样式失效；窗口入口加 `-uniform [-auto]`
+`tests/integration/typography/list_row_group_test.go` 不需要桌面，验证真实文字及样式失效，
+具体排版后端由独立测试入口选择；窗口入口加 `-uniform [-auto]`
 验收声明式更新、真实排版和正常事件分发，默认连接／像素场景保留。
