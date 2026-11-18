@@ -979,3 +979,55 @@ func TestQuantizedContrastAcrossAccentCube(t *testing.T) {
 		}
 	}
 }
+
+func TestIconColors(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		p := colorsFor(dark)
+		var previous color.RGBA
+		for _, accent := range []color.Color{rgb(0x0080FF), rgb(0xE03080), color.White, color.Black} {
+			sheet := Sheet(Options{Dark: dark, AccentColor: accent})
+			fg, ok := resolved(sheet, "icon", style.Normal).ForegroundColor()
+			if !ok || rgba(fg) != p.text {
+				t.Fatalf("normal icon does not use text palette: %v", fg)
+			}
+			fg, ok = resolved(sheet, AccentIcon, style.Normal).ForegroundColor()
+			if !ok {
+				t.Fatal("missing accent icon color")
+			}
+			for _, bg := range []color.RGBA{p.window, p.surface, p.button} {
+				if contrast(rgba(fg), bg) < 3 {
+					t.Fatalf("insufficient icon contrast: dark=%v fg=%v bg=%v", dark, fg, bg)
+				}
+			}
+			if previous == rgba(fg) {
+				t.Fatal("accent change did not change icon foreground")
+			}
+			previous = rgba(fg)
+		}
+	}
+}
+
+func TestEditingPartsFollowThemeWithReadableUnchangedForeground(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		for _, accent := range []color.Color{nil, color.Black, color.White, rgb(0xffff00), rgb(0x0080ff)} {
+			sheet := Sheet(Options{Dark: dark, AccentColor: accent})
+			p := colorsFor(dark)
+			for _, name := range []string{"text-input", "text-view"} {
+				base := sheet.Resolve(style.Sel{Name: name})
+				bg, _ := base.BackgroundColor()
+				fg, _ := base.ForegroundColor()
+				caret, _ := sheet.Resolve(style.Sel{Name: name, Part: "caret"}).ForegroundColor()
+				selection := sheet.Resolve(style.Sel{Name: name, Part: "selection"})
+				selectedBG, _ := selection.BackgroundColor()
+				selectedFG, _ := selection.ForegroundColor()
+				if rgba(bg) != p.surface || rgba(fg) != p.text || rgba(caret) != p.text || rgba(selectedFG) != p.text {
+					t.Fatalf("dark=%t %s: inconsistent editing parts", dark, name)
+				}
+				// 选中文字保留正文颜色；极端主题色下选区背景仍须保持 4.5:1 对比度。
+				if ratio := contrast(rgba(selectedBG), p.text); ratio < 4.5 {
+					t.Fatalf("dark=%t accent=%v %s: selection contrast=%g", dark, accent, name, ratio)
+				}
+			}
+		}
+	}
+}

@@ -382,25 +382,39 @@ func TestRepeatedArcParameters(t *testing.T) {
 		"M10 4a6 6 0 1 1 0 12 6 6 0 0 1 0-12z",
 		"M10 4A6 6 0 1 1 10 16 6 6 0 0 1 10 4z",
 	} {
-		source, err := Parse(strings.NewReader(`<svg viewBox="0 0 20 20"><path fill="red" d="` + path + `"/></svg>`))
+		source, err := Parse(strings.NewReader(`<svg viewBox="0 0 20 20"><path fill="#ff0000" d="` + path + `"/></svg>`))
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, size := range []int{40, 80} {
-			img := source.WithRawColors().Image(size, size, gui.Color{})
-			center, radius := float64(size)/2, float64(size)*.3
-			for y := 0; y < size; y++ {
-				for x := 0; x < size; x++ {
-					distance := math.Hypot(float64(x)+.5-center, float64(y)+.5-center)
-					if math.Abs(distance-radius) <= 1.25 {
-						continue
-					}
-					want := color.RGBA{}
-					if distance < radius {
-						want = color.RGBA{R: 255, A: 255}
-					}
-					if got := color.RGBAModel.Convert(img.At(x, y)); got != want {
-						t.Fatalf("%s size=%d (%d,%d)=%v，期望 %v", path, size, x, y, got, want)
+		for _, mode := range []struct {
+			name   string
+			source *Source
+			inside color.RGBA
+		}{
+			{"raw", source.WithRawColors(), color.RGBA{R: 255, A: 255}},
+			{"tinted", source, color.RGBA{G: 128, A: 128}},
+		} {
+			for _, size := range []int{40, 80} {
+				img := mode.source.Image(size, size, gui.Color{G: .5, A: .5})
+				if img == nil {
+					t.Fatal("missing image")
+				}
+				center, radius := float64(size)/2, float64(size)*.3
+				for y := 0; y < size; y++ {
+					for x := 0; x < size; x++ {
+						d := math.Hypot(float64(x)+.5-center, float64(y)+.5-center)
+						// 排除解析圆周附近 1.25 个物理像素；与原断言相同。
+						// 其余像素逐通道核对预乘 sRGB，着色同时检查 alpha。
+						if math.Abs(d-radius) <= 1.25 {
+							continue
+						}
+						want := color.RGBA{}
+						if d < radius {
+							want = mode.inside
+						}
+						if got := color.RGBAModel.Convert(img.At(x, y)); got != want {
+							t.Fatalf("%s %s size=%d (%d,%d): %v, want %v", path, mode.name, size, x, y, got, want)
+						}
 					}
 				}
 			}
