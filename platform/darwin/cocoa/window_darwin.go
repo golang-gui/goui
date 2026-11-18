@@ -36,10 +36,18 @@ type Window struct {
 	minWidth  float32
 	minHeight float32
 
-	im           *inputMethod // this window's IME (nil when none); keyDown routes to it
-	cursor       *cursor      // this window's cursor capability (nil when none)
-	state        common.WindowState
-	stateRequest bool // guard reentrant target-state requests during native callbacks
+	im                  *inputMethod // this window's IME (nil when none); keyDown routes to it
+	cursor              *cursor      // this window's cursor capability (nil when none)
+	state               common.WindowState
+	stateRequest        bool // guard reentrant target-state requests during native callbacks
+	stateTarget         common.WindowState
+	statePending        bool
+	stateAwaiting       bool // native fullscreen/miniaturization completion is asynchronous
+	stateAwaitingTarget common.WindowState
+	minimizedFullscreen bool // restoration bookkeeping, never an observed state
+	stateRevision       uint64
+	stateQueued         bool
+	fullscreenStyle     *NSWindowStyleMask // temporary native Resizable support for borderless fullscreen
 
 	controlsPosition             *windowControlsPosition // value-only preference/defaults; no retained NSButton references
 	controlsFullscreenTransition bool                    // native will/did/failure notifications, not requested state
@@ -232,7 +240,12 @@ func (w *Window) Show() (err error) {
 		native := w.window
 		native.Retain()
 		defer native.Release()
-		if native.IsMiniaturized() {
+		if w.minimizedFullscreen {
+			err = w.RequestState(common.WindowStateFullscreen)
+			if err != nil {
+				return
+			}
+		} else if native.IsMiniaturized() {
 			native.Deminiaturize(0)
 		}
 		if w.closed || !w.window.Valid() {
@@ -359,8 +372,8 @@ func initWindowClass() (err error) {
 		WindowDidResize:                windowDidResize,
 		WindowDidBecomeKey:             windowDidBecomeKey,
 		WindowDidResignKey:             windowDidResignKey,
-		WindowDidMiniaturize:           windowDidChangeManagement,
-		WindowDidDeminiaturize:         windowDidChangeManagement,
+		WindowDidMiniaturize:           windowDidChangePresentation,
+		WindowDidDeminiaturize:         windowDidChangePresentation,
 		WindowWillEnterFullScreen:      windowWillChangeFullscreen,
 		WindowWillExitFullScreen:       windowWillChangeFullscreen,
 		WindowDidEnterFullScreen:       windowDidChangeFullscreen,
@@ -794,6 +807,12 @@ func (w *Window) WorkAreaAt(point geometry.Point) (result geometry.Rectangle, er
 		var screen NSScreen
 		screen.ID = screens.ObjectAtIndex(uintptr(index))
 		result = toClient(screen.VisibleFrame())
+		if w.State() == common.WindowStateFullscreen && screen.ID == w.window.Screen().ID {
+			// AppKit owns fullscreen content geometry, including displays whose
+			// camera/safe area is outside the actual window content rectangle.
+			client := geometry.Rect(0, 0, float32(content.Size.Width/scale), float32(content.Size.Height/scale))
+			result = toClient(screen.Frame()).Intersect(client)
+		}
 		if !workarea.Valid(result) {
 			result, err = geometry.Rectangle{}, common.ErrUnavailable
 		}
@@ -829,74 +848,27 @@ func (w *Window) RequestState(state common.WindowState) error {
 	if w.closed || !w.window.Valid() {
 		return common.ErrUnavailable
 	}
-	if w.stateRequest {
-		return common.ErrUnavailable
-	}
 	switch state {
-	case common.WindowStateHidden:
-		return w.Hide()
-	case common.WindowStateFullscreen:
-		// A fullscreen target needs in-flight/failure tracking, not a toggle.
-		return common.ErrUnsupported
-	case common.WindowStateNormal, common.WindowStateMinimized, common.WindowStateMaximized:
+	case common.WindowStateNormal, common.WindowStateHidden, common.WindowStateMinimized, common.WindowStateMaximized, common.WindowStateFullscreen:
 	default:
 		return fmt.Errorf("invalid window state: %d", state)
 	}
-	if w.window.StyleMask()&NSWindowStyleMaskFullScreen != 0 {
+	mask := w.window.StyleMask()
+	if w.fullscreenStyle != nil {
+		mask = *w.fullscreenStyle
+	}
+	if state == common.WindowStateMinimized && mask&NSWindowStyleMaskMiniaturizable == 0 {
 		return common.ErrUnsupported
 	}
-	if w.State() == state {
-		return nil
-	}
-	w.stateRequest = true
-	defer func() { w.stateRequest = false }()
-	native := w.window
-	native.Retain()
-	defer native.Release()
-	if state == common.WindowStateMinimized {
-		if w.window.StyleMask()&NSWindowStyleMaskMiniaturizable == 0 {
-			return common.ErrUnsupported
-		}
-		AutoReleasePool(func() { w.window.Miniaturize(0) })
-		return nil
-	}
-	// None has no native resize/zoom decoration. Do not invent a maximized
-	// frame for windows for which AppKit cannot perform native zoom.
-	if state == common.WindowStateMaximized && native.StyleMask()&NSWindowStyleMaskResizable == 0 {
+	if state == common.WindowStateMaximized && mask&NSWindowStyleMaskResizable == 0 {
 		return common.ErrUnsupported
 	}
-	var err error
-	AutoReleasePool(func() {
-		if native.IsMiniaturized() {
-			native.Deminiaturize(0)
-		}
-		if w.closed || !w.window.Valid() {
-			err = common.ErrUnavailable
-			return
-		}
-		if !native.IsVisible() {
-			native.MakeKeyAndOrderFront(0)
-		}
-		if w.closed || !w.window.Valid() {
-			err = common.ErrUnavailable
-			return
-		}
-		wantZoom := state == common.WindowStateMaximized
-		if native.StyleMask()&NSWindowStyleMaskResizable != 0 && native.IsZoomed() != wantZoom {
-			native.Zoom(0)
-		}
-		if w.closed || !w.window.Valid() {
-			err = common.ErrUnavailable
-			return
-		}
-		// Resize notifications can run before zoom settles. Re-read the native
-		// state after the operation; notifyState deduplicates actual observations.
-		w.notifyState()
-		if w.closed || !w.window.Valid() {
-			err = common.ErrUnavailable
-		}
-	})
-	return err
+	if state == common.WindowStateNormal || state == common.WindowStateMaximized || state == common.WindowStateFullscreen {
+		w.minimizedFullscreen = false
+	}
+	w.stateTarget, w.statePending = state, true
+	w.stateRevision++
+	return w.applyStateRequest()
 }
 
 func (w *Window) notifyState() {
@@ -1124,9 +1096,7 @@ func windowDidChangeFullscreen(self NSWindowDelegate, notification NSNotificatio
 	self.Retain()
 	defer self.Release()
 	if w := windowMap[Cast[NSWindow](notification.Object())]; w != nil {
-		w.controlsFullscreenTransition = false
-		w.updateControlsPosition()
-		w.notifyState()
+		w.finishStateRequest(true, false)
 	}
 }
 
@@ -1134,9 +1104,7 @@ func windowDidFailChangeFullscreen(self NSWindowDelegate, window NSWindow) {
 	self.Retain()
 	defer self.Release()
 	if w := windowMap[window]; w != nil {
-		w.controlsFullscreenTransition = false
-		w.updateControlsPosition()
-		w.notifyState()
+		w.finishStateRequest(true, true)
 	}
 }
 

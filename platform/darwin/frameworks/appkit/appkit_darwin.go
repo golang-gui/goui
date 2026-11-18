@@ -1474,6 +1474,8 @@ func initNSWindow() {
 	NSWindowSel.SetLevel = objc.RegisterName("setLevel:")
 	NSWindowSel.ConvertRectToScreen = objc.RegisterName("convertRectToScreen:")
 	NSWindowSel.StyleMask = objc.RegisterName("styleMask")
+	NSWindowSel.SetStyleMask = objc.RegisterName("setStyleMask:")
+	NSWindowSel.Screen = objc.RegisterName("screen")
 	NSWindowSel.IsVisible = objc.RegisterName("isVisible")
 	NSWindowSel.IsMiniaturized = objc.RegisterName("isMiniaturized")
 	NSWindowSel.IsZoomed = objc.RegisterName("isZoomed")
@@ -1530,6 +1532,8 @@ var (
 		SetLevel                          objc.SEL
 		ConvertRectToScreen               objc.SEL
 		StyleMask                         objc.SEL
+		SetStyleMask                      objc.SEL
+		Screen                            objc.SEL
 		IsVisible                         objc.SEL
 		IsMiniaturized                    objc.SEL
 		IsZoomed                          objc.SEL
@@ -1728,6 +1732,13 @@ func (w NSWindow) SetLevel(level NSInteger) {
 
 func (w NSWindow) StyleMask() NSWindowStyleMask {
 	return objc.Send[NSWindowStyleMask](w.ID, NSWindowSel.StyleMask)
+}
+
+func (w NSWindow) SetStyleMask(mask NSWindowStyleMask) { w.Send(NSWindowSel.SetStyleMask, mask) }
+
+func (w NSWindow) Screen() (screen NSScreen) {
+	screen.ID = w.Send(NSWindowSel.Screen)
+	return
 }
 
 func (w NSWindow) IsVisible() bool {
