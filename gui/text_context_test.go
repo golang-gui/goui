@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"runtime"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/gui/textedit"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics/software"
@@ -16,12 +17,10 @@ import (
 	"github.com/golang-gui/goui/style"
 )
 
-// Native bidi and cluster navigation.
+// 给定排版结果的双向文字、组合字符与事件分发。
 
-// Native shaping without a display: verify editing through the normal dispatcher
-// using real native clusters. Assertions are byte boundaries and visual ordering,
-// not font-dependent pixel widths. This is not a native window/IME acceptance test.
-func testTextEditorNativeNavigation(t *testing.T, newContext func() (typography.Context, error)) {
+// 只使用排版契约替身；真实字体与跨层结果另在 tests/integration/typography 验证。
+func testTextEditorContextNavigation(t *testing.T, newContext func() (typography.Context, error)) {
 	t.Helper()
 	for _, single := range []bool{false, true} {
 		name := "multiline"
@@ -29,8 +28,6 @@ func testTextEditorNativeNavigation(t *testing.T, newContext func() (typography.
 			name = "singleline"
 		}
 		t.Run(name, func(t *testing.T) {
-			runtime.LockOSThread()
-			defer runtime.UnlockOSThread()
 			typo, err := newContext()
 			if err != nil {
 				t.Fatal(err)
@@ -50,7 +47,7 @@ func testTextEditorNativeNavigation(t *testing.T, newContext func() (typography.
 			}
 			win := testWindowWithSurface(&window{})
 			win.SetWidget(widget)
-			defer win.SetWidget(nil) // all native layout cleanup precedes UnlockOSThread
+			defer win.SetWidget(nil) // 卸载释放排版资源。
 			widget.Arrange(geometry.Rect(0, 0, 200, 80))
 			win.SetFocusedWidget(widget)
 			editor.setSelectionValue(TextSelection{Anchor: 0, Caret: 6})
@@ -76,22 +73,20 @@ func testTextEditorNativeNavigation(t *testing.T, newContext func() (typography.
 			editor.setSelectionValue(TextSelection{Anchor: 0, Caret: 0})
 			editorKey(t, win, events.KeyArrowRight, 0)
 			if editor.selection.Caret != 3 {
-				t.Fatalf("navigation split native combining cluster: %+v", editor.selection)
+				t.Fatalf("给定组合 cluster 被导航拆分：%+v", editor.selection)
 			}
 			editorKey(t, win, events.KeyBackspace, 0)
 			if editor.model.Text() != "x" {
-				t.Fatalf("deletion split native combining cluster: %q", editor.model.Text())
+				t.Fatalf("给定组合 cluster 被删除拆分：%q", editor.model.Text())
 			}
 		})
 	}
 }
 
-// Native reveal and resize anchor geometry.
+// 给定度量的滚动显示与宽度变化锚点。
 
-func testTextViewNativeRevealEnd(t *testing.T, newContext func() (typography.Context, error)) {
+func testTextViewContextRevealEnd(t *testing.T, newContext func() (typography.Context, error)) {
 	t.Helper()
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	typo, err := newContext()
 	if err != nil {
 		t.Fatal(err)
@@ -115,7 +110,7 @@ func testTextViewNativeRevealEnd(t *testing.T, newContext func() (typography.Con
 			win.layoutContent()
 		}
 		if win.layoutDirty {
-			t.Fatal("native layout requests did not settle")
+			t.Fatal("排版请求未收敛")
 		}
 	}
 	settle()
@@ -132,14 +127,12 @@ func testTextViewNativeRevealEnd(t *testing.T, newContext func() (typography.Con
 	settle()
 	caret, ok := editor.caretRect()
 	if !ok || editor.offset.Y != scroll.ScrollY() || caret.Y < editor.offset.Y || caret.Y+caret.Height > editor.offset.Y+editor.viewport.Height || editor.revealCaret || editor.anchorPending || scroll.revealPending {
-		t.Fatalf("native scheduled layouts stopped before revealing caret: caret=%v scroll=%g viewport=%v pending=%t/%t/%t", caret, scroll.ScrollY(), editor.viewport, editor.revealCaret, editor.anchorPending, scroll.revealPending)
+		t.Fatalf("排版在显示光标前停止：caret=%v scroll=%g viewport=%v pending=%t/%t/%t", caret, scroll.ScrollY(), editor.viewport, editor.revealCaret, editor.anchorPending, scroll.revealPending)
 	}
 }
 
-func testTextViewNativeResizeAnchor(t *testing.T, newContext func() (typography.Context, error)) {
+func testTextViewContextResizeAnchor(t *testing.T, newContext func() (typography.Context, error)) {
 	t.Helper()
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	typo, err := newContext()
 	if err != nil {
 		t.Fatal(err)
@@ -169,11 +162,9 @@ func testTextViewNativeResizeAnchor(t *testing.T, newContext func() (typography.
 		arrange(507)
 		scroll.SetScrollY(0)
 		scroll.SetScrollY(offset)
-		// Paint clips at padding, and translates text by padding-offset:
-		// the first visible content coordinate is therefore offset, not
-		// offset-padding. Native metrics are local to the paragraph layout,
-		// whose painted origin also includes the baseline's textOffset.
-		// Derive the anchor from those metrics, not editor.anchor.
+		// 绘制按 padding-offset 平移，因此首个可见内容坐标为 offset。
+		// 排版度量属于段落局部坐标，还需扣除基线的 textOffset；独立计算预期，
+		// 不读取被测 editor.anchor 作为参考。
 		oldIndex := editor.heights.At(scroll.ScrollY())
 		oldRange, _ := editor.model.LineRange(oldIndex)
 		oldParagraph := editor.paragraph(oldIndex)
@@ -184,9 +175,7 @@ func testTextViewNativeResizeAnchor(t *testing.T, newContext func() (typography.
 			oldLine++
 		}
 		old := textViewportAnchor{offset: oldRange.Start + oldLines[oldLine].Start, within: oldY - oldLines[oldLine].Y}
-		// Retain the original model character for the whole resize sequence.
-		// Re-sampling each new display line would reproduce the drift bug in
-		// the expected value and miss loss of position on a width round trip.
+		// 整个宽度往返固定同一模型字符；逐次重新采样显示行会掩盖累计漂移。
 		for _, width := range []float32{457, 441, 482, 532, 591, 532, 482, 441, 507} {
 			arrange(width)
 			index := editor.model.LineAt(old.offset)
@@ -198,8 +187,7 @@ func testTextViewNativeResizeAnchor(t *testing.T, newContext func() (typography.
 				line++
 			}
 			want := editor.heights.Top(index) + p.textOffset + lines[line].Y + old.within
-			// ScrollView rounds to integral DIP. Native line metrics need not be
-			// integral, but a whole line/paragraph jump is never rounding error.
+			// 保留原有 1 DIP 容差；整行或整段跳动不属于取整误差。
 			if abs32(scroll.ScrollY()-want) > 1 {
 				t.Fatalf("width=%g old=%+v new=%+v scroll=%g want=%g", width, old, editor.anchor, scroll.ScrollY(), want)
 			}
@@ -210,7 +198,7 @@ func testTextViewNativeResizeAnchor(t *testing.T, newContext func() (typography.
 	}
 }
 
-// Native viewport rasterization through the software painter.
+// 给定有色文字位图的视口裁剪与栅格请求上限。
 
 type rasterContext struct {
 	typography.Context
@@ -238,13 +226,10 @@ func (l *rasterLayout) Rasterize(scale float32, region image.Rectangle, buf []by
 	return l.TextLayout.Rasterize(scale, region, buf)
 }
 
-// A narrow wrapped view used to request a surface taller than Cairo supports;
-// a long input/no-wrap view requested an unsupported full-width surface. Paint
-// repeatedly through the real GUI painter, including the far end of each view.
+// 长文本曾请求无界位图；通过 GUI 自身 Painter 重复绘制首尾视口，
+// 排版替身仅提供固定有色位图，真实字形与原生限制由集成测试检查。
 func testTextRasterViewport(t *testing.T, newContext func() (typography.Context, error)) {
 	t.Helper()
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ctx, err := newContext()
 	if err != nil {
 		t.Fatal(err)
@@ -336,7 +321,147 @@ func testTextRasterViewport(t *testing.T, newContext func() (typography.Context,
 	}
 	for _, r := range traced.requests {
 		if r.Dx() > 1024 || r.Dy() > 1024 {
-			t.Fatal("GUI requested an unbounded native bitmap", r)
+			t.Fatal("GUI 请求了无界文字位图", r)
 		}
 	}
+}
+
+// 排版契约的宽度缓存、完整上下文与资源归属回归。
+
+// 只观察既有 Context/TextLayout 契约，宽度缓存不依赖额外的可选接口。
+type widthCacheContext struct {
+	typography.Context
+	text  string
+	calls widthCacheCalls
+}
+
+type widthCacheCalls struct{ created, sizes, metrics, resizes, destroyed int }
+
+func (c *widthCacheContext) NewTextLayout(text string, format typography.TextFormat, width, height float32) (typography.TextLayout, error) {
+	l, err := c.Context.NewTextLayout(text, format, width, height)
+	if err != nil || text != c.text {
+		return l, err
+	}
+	c.calls.created++
+	return &widthCacheLayout{TextLayout: l, owner: c}, nil
+}
+
+type widthCacheLayout struct {
+	typography.TextLayout
+	owner *widthCacheContext
+}
+
+func (l *widthCacheLayout) MeasureSize() (float32, float32) {
+	l.owner.calls.sizes++
+	return l.TextLayout.MeasureSize()
+}
+
+func (l *widthCacheLayout) MeasureMetrics() ([]typography.TextLine, []typography.TextCluster) {
+	l.owner.calls.metrics++
+	return l.TextLayout.MeasureMetrics()
+}
+
+func (l *widthCacheLayout) SetSize(width, height float32) {
+	l.owner.calls.resizes++
+	l.TextLayout.SetSize(width, height)
+}
+
+func (l *widthCacheLayout) Destroy() {
+	l.owner.calls.destroyed++
+	l.TextLayout.Destroy()
+}
+
+func TestTextViewContextWidthCacheKeepsCompleteContext(t *testing.T) {
+	native, _ := newContractContext()
+	defer native.Destroy()
+	text := "start \u202e" + strings.Repeat("abc 123 العربية עברית e\u0301 ffi 👩‍💻\t ", 600) + "END\u202c"
+	if len(text) < 32768 {
+		t.Fatal("fixture must cover the removed long-paragraph branch")
+	}
+	ctx := &widthCacheContext{Context: native, text: text}
+	setTestApplication(t, ctx)
+	v := NewTextView()
+	defer v.releaseParagraphs()
+	v.SetWrapMode(WrapWordChar)
+	v.Model().SetText(text)
+	show := func(width, height float32) *textParagraph {
+		v.Arrange(geometry.Rect(0, 0, width, height))
+		return v.paragraph(0)
+	}
+	a := show(240, 200)
+	if a == nil || len(a.lines) < 100 {
+		t.Fatal("缺少完整的给定排版")
+	}
+	a.editGeometry(v.lineHeight)
+	fragment := a.fragment
+	position := textedit.Position{Offset: strings.Index(text, "END")}
+	wantCaret := a.geometry.Caret(position)
+	// 相同有效宽度下的完整输入作为参考。
+	w, h := a.layout.Size()
+	reference, err := native.NewTextLayout(text, a.layout.Format(), w, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reference.Destroy()
+	rw, rh := reference.MeasureSize()
+	ls, cs := reference.MeasureMetrics()
+	want, err := textedit.NewFragment(textedit.Range{End: len(text)}, geometry.Size{Width: rw, Height: rh}, ls, cs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotLines, gotClusters := fragment.Metrics()
+	wantLines, wantClusters := want.Metrics()
+	if !reflect.DeepEqual(gotLines, wantLines) || !reflect.DeepEqual(gotClusters, wantClusters) {
+		t.Fatal("缓存度量与完整给定段落不同")
+	}
+	covered := 0
+	for _, c := range gotClusters {
+		if c.Start < position.Offset+3 && c.Start+c.Length > position.Offset {
+			if c.Direction != typography.TextRightToLeft {
+				t.Fatal("RLO context was lost across a long paragraph")
+			}
+			covered += min(c.Start+c.Length, position.Offset+3) - max(c.Start, position.Offset)
+		}
+	}
+	if covered != 3 {
+		t.Fatal("RLO target is not completely covered", covered)
+	}
+	b := show(310, 200)
+	if b == a || b.layout == a.layout {
+		t.Fatal("不同宽度共享了可变排版")
+	}
+	before := ctx.calls
+	for range 3 {
+		if show(240, 280) != a || show(310, 320) != b || ctx.calls != before {
+			t.Fatal("恢复宽度或改变高度重复了排版工作", before, ctx.calls)
+		}
+	}
+	other := NewTextView()
+	defer other.releaseParagraphs()
+	other.SetWrapMode(WrapWordChar)
+	other.Model().SetText(text)
+	other.Arrange(geometry.Rect(0, 0, 240, 200))
+	if other.paragraph(0).layout == a.layout || ctx.calls.created != 3 {
+		t.Fatal("不同视图共享了排版资源")
+	}
+	other.releaseParagraphs()
+	v.releaseParagraphs()
+	if ctx.calls.created != ctx.calls.destroyed {
+		t.Fatal("宽度缓存没有配对释放排版资源", ctx.calls)
+	}
+	g := fragment.Geometry(v.lineHeight)
+	if g.Caret(position) != wantCaret {
+		t.Fatal("销毁排版后普通度量失效")
+	}
+}
+
+func TestTextEditorContextNavigation(t *testing.T) {
+	testTextEditorContextNavigation(t, newContractContext)
+}
+func TestTextViewContextRevealEnd(t *testing.T) { testTextViewContextRevealEnd(t, newContractContext) }
+func TestTextViewContextResizeAnchor(t *testing.T) {
+	testTextViewContextResizeAnchor(t, newContractContext)
+}
+func TestTextRasterViewportWithProvidedBitmap(t *testing.T) {
+	testTextRasterViewport(t, newContractContext)
 }

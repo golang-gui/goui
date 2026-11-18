@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"strings"
 	"testing"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -13,6 +14,7 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/typography"
+	"github.com/rivo/uniseg"
 )
 
 // Shared typography and painter doubles.
@@ -444,3 +446,75 @@ func editorPointer(t *testing.T, win *window, kind events.EventType, point geome
 }
 
 func (p *testLabelPainter) ClearPath(path graphics.Path) {}
+
+// 固定 10 DIP 字格、20 DIP 行高的输入，不承担系统字体匹配或原生 shaping。
+func newContractContext() (typography.Context, error) { return &contractTypography{}, nil }
+
+type contractTypography struct{ testTypography }
+
+func (c *contractTypography) NewTextLayout(text string, format typography.TextFormat, width, height float32) (typography.TextLayout, error) {
+	l, err := c.testTypography.NewTextLayout(text, format, width, height)
+	if err != nil {
+		return nil, err
+	}
+	p := l.(*testTextLayout)
+	p.resized = func() { layoutContractText(p) }
+	layoutContractText(p)
+	return &contractTextLayout{p}, nil
+}
+
+func layoutContractText(p *testTextLayout) {
+	p.lines, p.clusters = nil, nil
+	x, y, start := float32(0), float32(0), 0
+	finish := func(end int) {
+		p.lines = append(p.lines, typography.TextLine{Start: start, Length: end - start, Width: x, Y: y, Height: 20, Baseline: y + 15})
+		start, x, y = end, 0, y+20
+	}
+	rtl := strings.Contains(p.text, "\u202e")
+	g := uniseg.NewGraphemes(p.text)
+	for g.Next() {
+		at, end := g.Positions()
+		r, _ := utf8.DecodeRuneInString(g.Str())
+		advance := float32(10)
+		if unicode.Is(unicode.Cf, r) {
+			advance = 0
+		}
+		if x+advance > p.width && x > 0 && p.format.WrapMode != WrapNone {
+			finish(at)
+		}
+		cluster := typography.TextCluster{Start: at, Length: end - at, X: x, Y: y, Width: advance, Height: 20, LineIndex: len(p.lines)}
+		if rtl || p.text == "אבג" || p.text == "אב" {
+			cluster.Direction = typography.TextRightToLeft
+		}
+		p.clusters = append(p.clusters, cluster)
+		x += advance
+	}
+	if p.text == "אבג" || p.text == "אב" {
+		for i := range p.clusters {
+			p.clusters[i].X = x - p.clusters[i].X - p.clusters[i].Width
+		}
+	}
+	p.measureSize = geometry.Size{Width: x, Height: y + 20}
+	finish(len(p.text))
+}
+
+type contractTextLayout struct{ *testTextLayout }
+
+// 有色位图只用来检查视口请求和合成，不模拟系统字形；格式色和预乘契约保持一致。
+func (l *contractTextLayout) Rasterize(_ float32, region image.Rectangle, buf []byte) (typography.TextBitmap, error) {
+	count := region.Dx() * region.Dy() * 4
+	if cap(buf) < count {
+		buf = make([]byte, count)
+	} else {
+		buf = buf[:count]
+	}
+	ink := l.format.TextColor
+	if ink == nil {
+		ink = color.Black
+	}
+	r, g, b, a := ink.RGBA()
+	for i := 0; i < len(buf); i += 4 {
+		buf[i], buf[i+1], buf[i+2], buf[i+3] = byte(r>>8), byte(g>>8), byte(b>>8), byte(a>>8)
+	}
+	return typography.TextBitmap{Width: region.Dx(), Height: region.Dy(), Stride: region.Dx() * 4, Pixels: buf}, nil
+}
