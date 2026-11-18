@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
@@ -831,4 +833,242 @@ func (a *windowTestApplication) Surfaces() []gui.Surface {
 		result = append(result, w)
 	}
 	return result
+}
+
+func TestRunPassesApplicationIdentityBeforeBuild(t *testing.T) {
+	t.Cleanup(func() {
+		activeApp.Lock()
+		activeApp.ran = false
+		activeApp.Unlock()
+	})
+	// 无效 ID 不会创建原生应用；在独立 goroutine 中尝试 Run，隔离其线程锁定。
+	result := make(chan error, 1)
+	go func() {
+		result <- Run("invalid application id", func(App) RootView {
+			panic("build ran before application identity validation")
+		})
+	}()
+	if err := <-result; err == nil || !strings.Contains(err.Error(), "invalid application id") {
+		t.Fatalf("Run did not forward identity to GUI creation: %v", err)
+	}
+}
+
+// 使用真实任务队列边界，不启动原生事件循环；工作线程投递，由锁定的测试线程显式执行。
+type syncTestApplication struct {
+	*windowTestApplication
+	tasks chan func()
+}
+
+func (a *syncTestApplication) Post(fn func()) { a.tasks <- fn }
+
+func TestAppSyncWaitsForExecutionOrExit(t *testing.T) {
+	for _, mode := range []string{"execute", "quit", "native exit"} {
+		t.Run(mode, func(t *testing.T) {
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+			guiApp := &syncTestApplication{newWindowTestApplication(), make(chan func(), 1)}
+			a := newApp(guiApp, nil)
+			defer a.stop()
+			result := make(chan bool, 1)
+			go func() {
+				executed := false
+				a.Sync(func() { executed = true })
+				result <- executed
+			}()
+			var task func()
+			select {
+			case task = <-guiApp.tasks:
+			case <-time.After(time.Second):
+				t.Fatal("Sync did not enqueue work")
+			}
+			select {
+			case <-result:
+				t.Fatal("Sync returned before its queued operation")
+			default:
+			}
+			if mode == "execute" {
+				task()
+			} else {
+				if mode == "quit" {
+					a.Quit()
+				}
+				a.stop() // Run 退出时不排空尚未执行的任务。
+			}
+			select {
+			case executed := <-result:
+				if executed != (mode == "execute") {
+					t.Fatalf("unexpected execution: %v", executed)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("Sync was not released")
+			}
+			if mode != "execute" {
+				task() // 过期任务不能在调用返回后写结果。
+			}
+		})
+	}
+}
+
+func TestAppSyncQuitDuringCallback(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	guiApp := &syncTestApplication{newWindowTestApplication(), make(chan func(), 1)}
+	a := newApp(guiApp, nil)
+	defer a.stop()
+	result := make(chan int, 1)
+	go func() {
+		value := 0
+		a.Sync(func() {
+			a.Sync(func() { value = 1 }) // 同线程 Sync 必须立即执行。
+			a.Quit()
+			select {
+			case <-a.finished:
+				t.Error("Quit completed the app while a callback was still running")
+			default:
+			}
+			value = 2 // 必须先让调用方观察到最终值，再解除等待。
+		})
+		result <- value
+	}()
+	select {
+	case task := <-guiApp.tasks:
+		task()
+	case <-time.After(time.Second):
+		t.Fatal("Sync did not enqueue work")
+	}
+	select {
+	case value := <-result:
+		if value != 2 {
+			t.Fatalf("Sync returned an unfinished result: %d", value)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Sync did not finish after its callback")
+	}
+}
+
+func TestAppFindWindowLifecycle(t *testing.T) {
+	for _, removal := range []string{"declaration", "native close"} {
+		t.Run(removal, func(t *testing.T) {
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+			a := newApp(newWindowTestApplication(), nil)
+			defer a.stop()
+			defer a.destroyAll()
+			if a.FindWindow("main") != nil || a.FindWindow("") != nil {
+				t.Fatal("lookup created a window before mounting")
+			}
+			views := []WindowView{Window("main"), Window("other")}
+			if err := a.reconcileWindows(views); err != nil {
+				t.Fatal(err)
+			}
+			first, other := a.FindWindow("main"), a.FindWindow("other")
+			if first == nil || other == nil || first == other || a.FindWindow("absent") != nil {
+				t.Fatal("lookup did not resolve exact window IDs")
+			}
+			views[0] = views[0].Title("updated")
+			if err := a.reconcileWindows(views); err != nil {
+				t.Fatal(err)
+			}
+			if a.FindWindow("main") != first || first.Title() != "updated" {
+				t.Fatal("ordinary rebuild replaced the borrowed window")
+			}
+			if removal == "declaration" {
+				if err := a.reconcileWindows(views[1:]); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := first.RequestClose(); err != nil {
+				t.Fatal(err)
+			}
+			if a.FindWindow("main") != nil || !first.(*testWindow).destroyed {
+				t.Fatal("removed window remained discoverable")
+			}
+			if err := a.reconcileWindows(views); err != nil {
+				t.Fatal(err)
+			}
+			second := a.FindWindow("main")
+			if second == nil || second == first || a.FindWindow("other") != other {
+				t.Fatal("recreated ID did not resolve to a new object")
+			}
+			if !first.(*testWindow).destroyed {
+				t.Fatal("old borrowed reference was retargeted")
+			}
+			a.Quit()
+			// 清理前 mount 仍存在，但已停止的应用不能再暴露窗口。
+			if a.FindWindow("main") != nil {
+				t.Fatal("lookup returned a window after Quit")
+			}
+		})
+	}
+}
+
+func TestAppFindWindowDuringUnmount(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	a := newApp(newWindowTestApplication(), nil)
+	defer a.stop()
+	w := newTestWindow()
+	// 检查 UI 自身的销毁监听器删除映射之前的解绑区间。
+	w.ConnectDestroy(func() {
+		if a.FindWindow("main") != nil {
+			t.Error("unmounting window remained discoverable")
+		}
+	})
+	mount := &windowMount{hostMount: newHostMount(a, w, Surface("main")), window: w}
+	a.windows["main"] = mount
+	mount.connect()
+	mount.destroy()
+}
+
+func TestAppFindWindowFromWorker(t *testing.T) {
+	for _, mode := range []string{"execute", "removed", "exit"} {
+		t.Run(mode, func(t *testing.T) {
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+			guiApp := &syncTestApplication{newWindowTestApplication(), make(chan func(), 1)}
+			a := newApp(guiApp, nil)
+			defer a.stop()
+			defer a.destroyAll()
+			if err := a.reconcileWindows([]WindowView{Window("main")}); err != nil {
+				t.Fatal(err)
+			}
+			want := a.FindWindow("main")
+			result := make(chan gui.Window, 1)
+			go func() { result <- a.FindWindow("main") }()
+			var task func()
+			select {
+			case task = <-guiApp.tasks:
+			case <-time.After(time.Second):
+				t.Fatal("worker lookup did not dispatch to the UI thread")
+			}
+			select {
+			case <-result:
+				t.Fatal("lookup completed before UI dispatch")
+			default:
+			}
+			switch mode {
+			case "removed":
+				if err := a.reconcileWindows(nil); err != nil {
+					t.Fatal(err)
+				}
+				want = nil
+				task()
+			case "exit":
+				want = nil
+				a.stop()
+			default:
+				task()
+			}
+			select {
+			case got := <-result:
+				if got != want {
+					t.Fatalf("lookup did not observe execution-time mount: got %v, want %v", got, want)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("lookup did not finish")
+			}
+			if mode == "exit" {
+				task() // 被丢弃的任务不能在退出后再写返回结果。
+			}
+		})
+	}
 }

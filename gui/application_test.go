@@ -270,3 +270,25 @@ func TestApplicationStopsDiagnosticsOnUIThread(t *testing.T) {
 		t.Fatalf("诊断资源不在 UI 退出阶段释放：count=%d wrongThread=%v", stopped, wrongThread)
 	}
 }
+
+func TestNewApplicationReturnsExistingSingleton(t *testing.T) {
+	oldApp := App
+	t.Cleanup(func() { App = oldApp })
+	existing := &application{}
+	App = existing
+	for _, id := range []string{"", "com.example.Editor", "com.example.Other", "invalid"} {
+		got, err := NewApplication(id)
+		if err != nil || got != existing || App != existing {
+			t.Fatalf("existing application with argument %q: %v, %v", id, got, err)
+		}
+	}
+}
+
+func TestInvalidApplicationIdentityBeforePlatformCreation(t *testing.T) {
+	oldApp := App
+	App = nil
+	t.Cleanup(func() { App = oldApp })
+	if got, err := NewApplication("bad id"); got != nil || err == nil {
+		t.Fatalf("invalid identity: %v, %v", got, err)
+	}
+}
