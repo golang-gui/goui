@@ -5,9 +5,16 @@ Tooltip 是 Widget 的简短说明，由 GUI 根据鼠标停留或键盘导航�
 
 ## 公开接口
 
-`Widget.Tooltip() string` / `SetTooltip(string)` 保存普通文字；空字符串移除提示。
-WidgetBase 只保存文字，未挂载设置不创建计时器或原生对象。Name 表示名称，Tooltip
-表示补充说明，二者互不推导。调用方负责本地化，语言改变后重新设置普通字符串。
+`Widget.Tooltip() string` / `SetTooltip(string)` 保存说明源字符串，采用 Label 的格式规则：
+只有开头为 `\{format\}` 才解释命名文字样式；普通文案原样显示。错误语法完整原样
+显示，未知样式名沿用 Label 的样式解析规则。需要显示格式源码时可用
+`gui/textformat.Literal` 转义。空字符串或解析后为空的文案不触发提示。
+WidgetBase 在设置文案时缓存显示纯文本，Snapshot 只读取缓存，未挂载设置不创建
+计时器、原生对象或排版。Name 表示名称，Tooltip 表示补充说明，二者互不推导。
+调用方负责本地化，语言改变后重新设置源字符串。
+
+例如 `\{format\}请先\{bold:保存\}。\{warning:未保存的修改会丢失。\}`。
+不增加独立的 markup setter、格式开关或内容构建 API。
 
 声明式共享 `.Tooltip(text)` 只协调文字。沿用 Name 的初始值快照：显式空值清除；
 省略修饰器恢复挂载时的控件默认值。没有可见性绑定、Tooltip Widget 或内容构建回调。
@@ -34,7 +41,8 @@ WidgetBase 只保存文字，未挂载设置不创建计时器或原生对象。
 可见区域下方；工作区不足时使用已有 Bottom 定位的翻转／平移。提示不获取焦点，
 点击提示自身仅关闭提示，不承诺把该次点击递交给它下面的控件。
 
-正文使用 Label 的原生排版，支持换行与自动折行，最大宽度 360 DIP，尺寸受工作区
+正文将源字符串直接交给 Label，复用其格式解析、范围样式与原生排版；不在 Tooltip
+中创建另一套格式运行时。支持换行与自动折行，最大宽度 360 DIP，尺寸受工作区
 约束，不增加滚动条。Basic / Modern 提供 `tooltip`（表面）和 `tooltip-text`
 （文字）规则；两种主题均使用无阴影的圆角边框，留白为布局值。GUI 显式将目标的
 样式环境用于提示，不改变普通 Popover 默认使用应用样式的规则。主题改变复用
@@ -55,7 +63,9 @@ Timer 使用 StartOnce，不创建独立线程；到期检查目标、代次、R
 
 ## 语义
 
-WidgetInfo.Tooltip 保存说明文字，提示未显示时也可读；不替代 Name。
+WidgetInfo.Tooltip 保存显示纯文本，提示未显示时也可读；Widget.Tooltip 保留源文。
+格式本身改变、显示文字未变时也按源文更新使旧会话失效，重新等待后显示新样式。
+语义读取不解析格式、不创建排版，也不替代 Name。
 可见提示子树使用 tooltip 角色、真实文字及边界，没有 Click / Focus 动作。
 使用 Window.Popovers 枚举显示的提示，不增加自动化执行接口。
 
@@ -65,6 +75,9 @@ WidgetInfo.Tooltip 保存说明文字，提示未显示时也可读；不替代 
   与 Qt 6 的 [QToolTip](https://doc.qt.io/qt-6/qtooltip.html)：采用控件上的简单文字入口。
   GTK 的 [query-tooltip](https://docs.gtk.org/gtk4/signal.Widget.query-tooltip.html)
   提供按区域查询；本轮不引入动态内容协议。
+- GTK4 的 [tooltip-markup](https://docs.gtk.org/gtk4/property.Widget.tooltip-markup.html)
+  明确支持 Pango markup，Qt 6 QToolTip 文档允许富文本提示。采用提示可包含格式文字的
+  能力；GOUI 复用 Label 的显式前缀和命名样式，不引入 Pango XML、HTML 或自动检测。
 - Qt 6 [qtooltip.cpp](https://code.qt.io/cgit/qt/qtbase.git/tree/src/widgets/kernel/qtooltip.cpp?h=6.10)
   使用延时、事件过滤和关闭管理提示。借鉴延迟与取消的职责划分，不照搬全局对象。
 - Qt 6.10.0 [QCommonStyle](https://github.com/qt/qtbase/blob/v6.10.0/src/widgets/styles/qcommonstyle.cpp)
@@ -88,6 +101,9 @@ Linux、macOS、Windows 记录后端与缩放；交叉编译不代替原生运�
 隐藏／卸载和重新挂载用于核对生命周期。切换主题时复用已有控件，不重建另一套提示机制。
 真实桌面检查按钮文字及四周留白的提示触发；Modern 亮暗下各停留三秒，
 核对无阴影、提示不重开以及 Hover 不闪烁，不能仅验证文字中心位置。
-GUI 窗口程序的 `-manual` 仅提供真实桌面操作，不运行模拟断言或输出 PASS。Windows 原生
+GUI 窗口程序的 `-manual` 仅接受真实桌面操作，定时只读核对已显示提示与 Label 的
+纯文本、格式状态和锚点语义，输出 VERIFIED；不运行模拟输入或输出整体验收 PASS。
+主按钮提供粗体与 warning 格式提示，分别核对 Basic／Modern 亮暗的字体、颜色与折行。
+Windows 原生
 Popup 显示可能重新报告真实鼠标位置；真实与模拟位置不一致时，后来的系统输入应生效，
 不能为了测试丢弃真实移动。自动输入与真实桌面验收分开记录，不把失败改记为通过。
