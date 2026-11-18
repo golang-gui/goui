@@ -1,5 +1,6 @@
 // ListRowGroup 连接分组窗口验收，需要真实桌面、系统字体和绘图后端，不使用 DevServer。
 // 启动：go run ./tests/window/widgets/list_row_group [-auto]；可加 -basic、-dark。
+// -uniform 改为统一行高场景，步骤和预期见 uniform.go；可组合 -auto。
 // 后端：GOUI_PLAT_PAINTER=software/opengl（Windows 可 direct2d），GOUI_PLAT_SCALE=1/2。
 // 独立 X11 会话没有输入法服务时，用 XMODIFIERS=@im=none 选择本地 XIM。
 // 初始：亮色 Modern，两组行。设置组四行（开关行、动作行、禁用行、版本行）上下相连，
@@ -60,7 +61,12 @@ func main() {
 	auto := flag.Bool("auto", false, "通过正常事件分发自动验收")
 	basicTheme := flag.Bool("basic", false, "使用 Basic")
 	dark := flag.Bool("dark", false, "Modern 暗色")
+	uniform := flag.Bool("uniform", false, "验证统一自然行高")
 	flag.Parse()
+	if *uniform {
+		runUniformRows(*auto, *basicTheme, *dark)
+		return
+	}
 	hidden, reverse, started, complete := false, false, false, false
 	activations, switchChanges, step, tabSteps := [3]int{}, 0, 0, 0
 	switched := false
