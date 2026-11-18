@@ -6,9 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-gui/goui/core/colors"
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/gui/textformat"
+	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/style"
 )
 
@@ -63,21 +67,38 @@ func TestTooltipTextIsIndependentAndDetached(t *testing.T) {
 	}
 }
 
-func TestTooltipMarkupIsLiteralInDisplayAndSnapshot(t *testing.T) {
-	for _, source := range []string{`\{format\}\{bold:帮助\}`, `\{format\}\{bold:未闭合`, `普通 <>& \{bold:字面值\}`} {
+func TestTooltipFormattedDisplayAndSnapshot(t *testing.T) {
+	for _, tc := range []struct {
+		source, plain      string
+		formatted, invalid bool
+	}{
+		{`\{format\}\{bold:帮助\}`, "帮助", true, false},
+		{`\{format\}先\{warning:保存\{bold:修改\}\}。`, "先保存修改。", true, false},
+		{`\{format\}\{unknown:帮助\}`, "帮助", true, false},
+		{`\{format\}\{bold:未闭合`, `\{format\}\{bold:未闭合`, false, true},
+		{`普通 <>& \{bold:字面值\}`, `普通 <>& \{bold:字面值\}`, false, false},
+		{`\{format\}`, "", true, false},
+		{textformat.Literal(`\{format\}\{bold:源码\}`), `\{format\}\{bold:源码\}`, true, false},
+	} {
 		w := newTestWidget()
-		w.SetTooltip(source)
-		if w.Tooltip() != source || w.Snapshot().Tooltip != source {
-			t.Fatalf("Tooltip 属性或语义解释了格式：%q", source)
+		w.SetTooltip(tc.source)
+		if w.Tooltip() != tc.source || w.Snapshot().Tooltip != tc.plain {
+			t.Fatalf("Tooltip 源文/语义错误：%q / %q，期望 %q / %q", w.Tooltip(), w.Snapshot().Tooltip, tc.source, tc.plain)
 		}
-		content := newTooltipContent(w, source)
+		content := newTooltipContent(w, tc.source)
 		found := 0
 		var inspect func(WidgetInfo)
 		inspect = func(info WidgetInfo) {
 			if info.Role == RoleTooltip || info.Role == RoleLabel {
 				found++
-				if info.Text != source {
-					t.Fatalf("%s 显示语义=%q，期望字面值=%q", info.Role, info.Text, source)
+				if info.Text != tc.plain {
+					t.Fatalf("%s 显示语义=%q，期望=%q", info.Role, info.Text, tc.plain)
+				}
+				if info.Role == RoleLabel {
+					meta, _ := info.Attributes[LabelInfoKey].(LabelInfo)
+					if meta.Formatted != tc.formatted || (meta.FormatError != "") != tc.invalid {
+						t.Fatal("提示没有沿用 Label 的格式状态/错误回退", tc.source, meta)
+					}
 				}
 			}
 			for _, child := range info.Children {
@@ -87,6 +108,68 @@ func TestTooltipMarkupIsLiteralInDisplayAndSnapshot(t *testing.T) {
 		inspect(content.Snapshot())
 		if found != 2 {
 			t.Fatal("没有验证 Tooltip 和实际 Label 两个节点")
+		}
+	}
+}
+
+func TestTooltipFormatOnlyUpdateAndEmptyDisplay(t *testing.T) {
+	w, _, a, _, q, plat := tooltipFixture(t)
+	first := `\{format\}\{warning:help\}`
+	second := `\{format\}\{bold:help\}`
+	a.SetTooltip(first)
+	tooltipMove(t, w, 40, 40)
+	tooltipAdvance(t, q, tooltipDelay)
+	previous := w.tooltip.popup
+	if previous == nil || a.Snapshot().Tooltip != "help" {
+		t.Fatal("格式提示没有显示或隐藏语义错误")
+	}
+	a.SetTooltip(second)
+	if !previous.destroyed || len(w.Popovers()) != 0 || a.Tooltip() != second || a.Snapshot().Tooltip != "help" {
+		t.Fatal("仅格式改变没有使旧提示失效，或改写了源文/纯文本语义")
+	}
+	tooltipAdvance(t, q, tooltipDelay-time.Millisecond)
+	if len(w.Popovers()) != 0 {
+		t.Fatal("仅格式更新跳过了等待")
+	}
+	tooltipAdvance(t, q, time.Millisecond)
+	if w.tooltip.popup == nil || w.tooltip.text != second || len(plat.natives) != 1 {
+		t.Fatal("格式更新未显示或重建了底层 Popup", len(plat.natives))
+	}
+	a.SetTooltip(`\{format\}`)
+	tooltipAdvance(t, q, tooltipDelay)
+	if a.Tooltip() != `\{format\}` || a.Snapshot().Tooltip != "" || len(w.Popovers()) != 0 || w.tooltip.timer.Active() {
+		t.Fatal("格式化空文案显示了空提示或丢失了源文")
+	}
+}
+
+func TestTooltipFormattedRangesUseAnchorStyleScope(t *testing.T) {
+	w, root, anchor, _, _, _ := tooltipFixture(t)
+	typo := &labelFormatTypography{}
+	w.app.typo = typo
+	w.app.style = style.Sheet(style.Name("tooltip-text").FontFamily("Wrong Global Family").FontSize(99))
+	scope := NewStyleScope()
+	scope.SetStyleSheet(style.Sheet(
+		style.Name("tooltip-text").FontFamily("Tooltip Family").FontSize(14).ForegroundColor(color.Black),
+		style.Name("warning").ForegroundColor(color.RGBA{R: 180, A: 255}),
+		style.Name("bold").FontWeight(style.FontWeightBold),
+	))
+	root.RemoveChild(anchor)
+	scope.SetChild(anchor)
+	root.AddChild(scope)
+	content := newTooltipContent(anchor, `\{format\}Tip \{warning:危险\} \{bold:save\}`).(*StyleScope).Child().(*tooltipContent)
+	t.Cleanup(content.label.releaseLayout)
+	measureWidget(content.label, layout.Loose(geometry.Size{Width: 200, Height: 100}))
+	if len(typo.records) != 1 || len(typo.records[0].fonts) != 2 {
+		t.Fatal("提示没有通过 Label 的同一排版对象设置格式范围", typo.records)
+	}
+	r := typo.records[0]
+	if r.fonts[0].start != 4 || r.fonts[0].length != 6 || !colors.Equal(r.ink[0], color.RGBA{R: 180, A: 255}) ||
+		r.fonts[1].start != 11 || r.fonts[1].length != 4 || r.fonts[1].font.Weight != typography.FontWeightBold {
+		t.Fatal("提示的 UTF-8 范围、颜色或字重没有应用到排版", r.fonts, r.ink)
+	}
+	for _, run := range r.fonts {
+		if run.font.Family != "Tooltip Family" || run.font.Size != 14 {
+			t.Fatal("提示格式文字未使用锚点的局部样式", run.font)
 		}
 	}
 }

@@ -440,8 +440,8 @@ func (b *ViewBase[T]) Name(name string) *T {
 	return b.self()
 }
 
-// Tooltip assigns supplementary plain-text help. Empty removes the help;
-// omitting the modifier on a later update restores the widget's initial value.
+// Tooltip assigns supplementary help using Label's format syntax. Empty removes
+// the help; omitting the modifier on a later update restores the initial source.
 func (b *ViewBase[T]) Tooltip(text string) *T {
 	b.tooltip = text
 	b.fields.Set(viewTooltip, true)

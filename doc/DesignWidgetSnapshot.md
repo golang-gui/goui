@@ -11,7 +11,9 @@ Snapshot 是用于理解界面和规划输入的时点数据，不是活体 Widg
 
 Text 是显示内容的语义文字。Label 返回解析后的 PlainText，格式源码由 Label.Text()
 保留；消费者不解释或剥离格式。编辑器正在展示的格式源码本身也是文档文字，必须
-保留。Tooltip 是纯文本帮助。自定义 Widget 应明确提供自己的语义文字，不能由上层
+保留。WidgetInfo.Tooltip 是显示纯文本，Widget.Tooltip getter 保留格式源文；
+WidgetBase 在 SetTooltip 时保存纯文本，快照读取不重新解析。自定义 Widget 应明确提供
+自己的语义文字，不能由上层
 根据字符串前缀猜测其绘制方法。格式状态／诊断使用控件专属 Attributes。
 Snapshot 组装优先复用控件已有数据，不承担另一套格式解析与排版。
 

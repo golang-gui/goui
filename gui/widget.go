@@ -8,6 +8,7 @@ import (
 
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
+	"github.com/golang-gui/goui/gui/textformat"
 	"github.com/golang-gui/goui/internal/diagnostic"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/style"
@@ -26,7 +27,8 @@ type Widget interface {
 	SetID(string)
 	Name() string
 	SetName(string)
-	// Tooltip is supplementary plain text, independent of Name. Empty disables it.
+	// Tooltip returns supplementary help source, independent of Name. It uses
+	// Label's format syntax; an empty display string disables the help.
 	Tooltip() string
 	SetTooltip(string)
 	// State returns simultaneous effective states, without constructing a snapshot.
@@ -170,6 +172,7 @@ type WidgetBase struct {
 	id                  string
 	name                string
 	tooltip             string
+	tooltipPlain        string // display text cached by SetTooltip for semantic snapshots
 	styleName           string // style override; "" = the control resolves with its own default name
 	hidden              bool
 	disabled            bool
@@ -233,16 +236,18 @@ func (w *WidgetBase) SetName(name string) {
 	}
 }
 
-// Tooltip returns the supplementary plain-text help associated with the widget.
+// Tooltip returns the original supplementary help source, including format syntax.
 func (w *WidgetBase) Tooltip() string { return w.tooltip }
 
-// SetTooltip changes supplementary help. Empty removes it. Setting detached
-// widgets allocates no timer or native surface; callers supply translated text.
+// SetTooltip changes the help source using Label's format syntax. Empty display
+// text removes the help. Setting detached widgets allocates no timer or native
+// surface; callers supply translated text.
 func (w *WidgetBase) SetTooltip(text string) {
 	if w.destroyed || w.tooltip == text {
 		return
 	}
 	w.tooltip = text
+	w.tooltipPlain = textformat.PlainText(text)
 	w.requestSemanticUpdate()
 	tooltipChanged(w.root(), w.self)
 }
@@ -567,7 +572,7 @@ func (w *WidgetBase) Snapshot() WidgetInfo {
 	info := WidgetInfo{
 		ID:              w.ID(),
 		Name:            w.Name(),
-		Tooltip:         w.Tooltip(),
+		Tooltip:         w.tooltipPlain,
 		Role:            RoleWidget,
 		Bounds:          w.windowRect(),
 		Visible:         w.Visible(),

@@ -363,8 +363,8 @@ func TestLabelFormattedSnapshotFallbackAndEmptyBaseline(t *testing.T) {
 	w := newTestWidget()
 	help := `\{format\}\{bold:帮助\}`
 	w.SetTooltip(help)
-	if w.Tooltip() != help || w.Snapshot().Tooltip != help {
-		t.Fatal("Tooltip 纯文本契约不应自动解释格式语法")
+	if w.Tooltip() != help || w.Snapshot().Tooltip != "帮助" {
+		t.Fatal("Tooltip 应保留格式源文，并提供纯文本语义")
 	}
 	input := NewTextInput()
 	input.SetText(`\{format\}\{bold:原样\}`)

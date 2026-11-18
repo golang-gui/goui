@@ -38,7 +38,9 @@ type WidgetInfo struct {
 	// characters may still be document or application content. Consumers must
 	// not interpret formatting syntax in this field.
 	Text string `json:"text"`
-	// Tooltip is supplementary plain-text help, even while its popup is hidden.
+	// Tooltip is supplementary display text, even while its popup is hidden.
+	// The widget's Tooltip getter retains the source; snapshot consumers must not
+	// interpret this field as formatting syntax.
 	Tooltip string `json:"tooltip,omitempty"`
 	// Bounds is the layout rectangle in root-local DIP, before clipping or
 	// occlusion. It does not guarantee that a point can receive pointer input.

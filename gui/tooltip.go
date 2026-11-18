@@ -68,11 +68,20 @@ func tooltipAncestor(widget Widget) Widget {
 		if !modalWidgetAllowed(w) {
 			return nil
 		}
-		if w.Tooltip() != "" {
+		if tooltipDisplayText(w) != "" {
 			return w
 		}
 	}
 	return nil
+}
+
+func tooltipDisplayText(widget Widget) string {
+	source := widget.Tooltip()
+	if b := widget.base(); source == b.tooltip {
+		return b.tooltipPlain
+	}
+	// A custom widget may provide help independently of WidgetBase's setter.
+	return textformat.PlainText(source)
 }
 
 func (t *tooltipState) candidate(host EventTarget, keyboard bool, pos geometry.Point) Widget {
@@ -363,7 +372,7 @@ type tooltipContent struct {
 }
 
 func newTooltipContent(anchor Widget, text string) Widget {
-	b := &tooltipContent{label: NewLabel(textformat.Literal(text))}
+	b := &tooltipContent{label: NewLabel(text)}
 	l := layout.NewLinearLayout(layout.DirectionVertical)
 	l.Padding = geometry.UniformInsets(8)
 	b.SetLayoutManager(l)

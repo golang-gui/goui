@@ -9,7 +9,8 @@ Label 是小段展示文本。格式化不需要新增控件类型、格式模�
 已实现格式字符串、命名文字样式、嵌套范围、主题失效、纯文本语义及可选的单 Label 选择。
 可选择切片复用原生 Cluster 与已有 GUI 交互机制，不接入编辑模型。
 TextInput/TextView 的正文和 Placeholder 始终是纯文本，包括只读状态。
-Tooltip、窗口标题、ID、Name 等纯文本入口不解释格式。首版不包含链接、图片、内嵌 Widget、
+Tooltip 复用 Label 的格式源字符串与样式规则；窗口标题、ID、Name 等纯文本入口不解释格式。
+首版不包含链接、图片、内嵌 Widget、
 跨控件选择、富文本编辑或 HTML/Markdown。
 
 参考证据：Pango 1.58.2 文档说明将格式与整句翻译一起保存可以避免维护字符下标；
@@ -169,8 +170,9 @@ TabPage 标题明确承载 Label 源码，构造／SetTitle 时使用 gui/textfo
 Snapshot 只读取结果。
 业务模型和源字符串 getter 不改，Snapshot 消费方不再解释格式，且不创建原生资源。
 
-Tooltip 保留既有纯文本契约：WidgetInfo.Tooltip 原样返回；内部 Label 通过 Literal
-保护字面值，tooltipContent 从实际 Label 读取文字。TextInput/TextView 展示的格式源码
+Tooltip 的 getter 保留源文，SetTooltip 使用 gui/textformat.PlainText 缓存显示文字，
+WidgetInfo.Tooltip 直接读取缓存；内部 Label 接收源文，tooltipContent 从该 Label 读取
+显示文字。TextInput/TextView 展示的格式源码
 仍是文档内容，不因 Snapshot 使用纯文本语义就删除其中标记。
 
 DropDown 默认展示 Label、占位 Label 直接读取 PlainText。自定义 Delegate 的内容
