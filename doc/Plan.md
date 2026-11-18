@@ -1,5 +1,29 @@
 # Plan
 
+## 上层测试与原生排版集成分离（2026-11-18）
+
+- [x] 检查 gui、ui、widgets、theme、icon 等共享层测试，将九个平台后缀文件及其
+  原生排版入口迁出；具体后端统一由 `tests/integration/typography` 选择。
+  正常的平台策略测试逐字节保持不变，跨平台 Software 离屏像素测试保留原位置。
+- [x] gui 的分页私有状态、巨大坐标、销毁重入、完整上下文缓存、pending 状态和
+  RenderWidget 视口断言保留为确定性契约测试；真实排版通过公开接口验证。
+  未改生产代码、未导出私有状态、未增加 skip，断言对应关系见
+  [Testing](Testing.md#原生排版跨层集成)。
+- [x] 十一个原生集成测试覆盖 ListRow／ListRowGroup／TabBar、字体导航、复杂文本
+  分页参考、接缝命中／选区／绘制、95,000 行末尾定位、九次宽度往返锚定、完整 RLO
+  上下文宽度缓存，以及 input／nowrap／wrapped 首尾的 1x／1.25x／2x 光栅化。
+  原有 1 DIP 锚定容差、0.05／0.1 DIP 几何容差及 8192 字节／1024 像素上限保留。
+- [x] Go 1.25.8、Linux amd64／Pango／Software：定向、隔离已跟踪源码的全量测试、
+  gui／textedit／ui／widgets／原生集成的 race，以及相关 vet（`-composites=false`）通过。
+  原工作区 `go test ./...` 仍为基线相同的 23 条未跟踪旧测试／例程编译诊断。
+  全量测试另有 11 项按平台／手动条件跳过，未计为验收通过；既有 platform/test
+  会短暂开窗并占用 X11 剪贴板选择，测试结束后释放自身窗口和资源，本轮未改这些用例。
+- [x] Windows amd64／macOS arm64 的 gui、textedit、widgets、ui 和原生集成测试
+  可执行文件编译通过；原生运行未执行。本轮不修改平台实现，未额外运行独立窗口程序；
+  无桌面集成的通过不代表窗口事件循环、桌面合成或 IME 验收通过。
+- [x] 更新 AGENTS、Testing 及相关控件／编辑器设计中的当前测试路径；历史按日期的
+  运行记录保留，原工作区未跟踪文件未修改。
+
 ## ListRowGroup 统一自然行高（2026-11-18）
 
 - [x] 增加 `UniformRows()` / `SetUniformRows(bool)` 与声明式 `.UniformRows(true)`，
