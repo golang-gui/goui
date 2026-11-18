@@ -55,6 +55,8 @@ type Window struct {
 	integrated        bool               // custom non-client calculation is installed, not a creation preference
 	frameExtended     bool               // last DWM frame-extension call succeeded
 	topBorder         winapi.LONG        // Integrated normal-state non-client top, in physical pixels
+	fullscreen        *fullscreenWindow  // owned borderless presentation; State still observes native geometry
+	stateRequest      bool               // native style/placement calls may reenter application callbacks
 }
 
 var _ common.WindowManagement = (*Window)(nil)
@@ -232,6 +234,11 @@ func (w *Window) Show() error {
 	if w.NativeHandle() == 0 {
 		return common.ErrUnavailable
 	}
+	if w.fullscreen != nil {
+		if err := w.fitFullscreen(); err != nil {
+			return err
+		}
+	}
 	// SW_SHOW alone does not reliably foreground an already visible window.
 	// A refusal is normal foreground-lock policy, not a LastError failure.
 	winapi.SetForegroundWindow(w.hwnd)
@@ -335,6 +342,9 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 	}
 	switch message {
 	case winapi.WM_NCCALCSIZE:
+		if window.fullscreen != nil && wParam != 0 {
+			return 0 // the entire native rectangle is fullscreen client content
+		}
 		if window.integrated && wParam != 0 {
 			return window.calculateClient(wParam, lParam)
 		}
@@ -510,6 +520,18 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 			}
 			return 0
 		}
+		if window.fullscreen != nil {
+			// The suggested rectangle identifies the destination display. The
+			// old frame may still identify the previous monitor at this point.
+			r := (*winapi.RECT)(unsafe.Pointer(uintptr(lParam)))
+			point := winapi.POINT{X: r.Left + (r.Right-r.Left)/2, Y: r.Top + (r.Bottom-r.Top)/2}
+			monitor := winapi.MonitorFromPoint(point, winapi.MONITOR_DEFAULTTONEAREST)
+			info := winapi.MONITORINFO{Size: winapi.DWORD(unsafe.Sizeof(winapi.MONITORINFO{}))}
+			if monitor != 0 && winapi.GetMonitorInfo(monitor, &info) == nil {
+				_ = window.fitFullscreenBounds(info.Monitor)
+			}
+			return 0
+		}
 		// Resize to the suggested rect; the resulting WM_SIZE carries the new
 		// scale (logical + physical) via SizeEvent.
 		rect := (*winapi.RECT)(unsafe.Pointer(uintptr(lParam)))
@@ -528,6 +550,13 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 		}
 
 	case winapi.WM_GETMINMAXINFO:
+		if window.fullscreen != nil {
+			if monitor, err := window.monitorInfo(); err == nil {
+				mmi := (*winapi.MINMAXINFO)(unsafe.Pointer(uintptr(lParam)))
+				setFullscreenBounds(mmi, monitor.Monitor)
+				return 0
+			}
+		}
 		if window.integrated || window.minW > 0 || window.minH > 0 {
 			mmi := (*winapi.MINMAXINFO)(unsafe.Pointer(uintptr(lParam)))
 			if window.integrated {
@@ -564,6 +593,11 @@ func windowProc(hwnd winapi.HWND, message winapi.UINT, wParam winapi.WPARAM, lPa
 				}
 			}
 			return 0
+		}
+
+	case winapi.WM_DISPLAYCHANGE:
+		if window.fullscreen != nil && winapi.IsWindowVisible(hwnd) != winapi.FALSE && winapi.IsIconic(hwnd) == winapi.FALSE {
+			_ = window.fitFullscreen()
 		}
 
 	case winapi.WM_MOUSEMOVE:
@@ -825,6 +859,9 @@ func (w *Window) extendFrame() error {
 	// This is separate from the one-pixel non-client top border. DWM also
 	// extends one pixel into the client, retaining native border highlighting.
 	margins := winapi.MARGINS{CYTopHeight: 1}
+	if w.fullscreen != nil {
+		margins.CYTopHeight = 0
+	}
 	err := winapi.DwmExtendFrameIntoClientArea(w.hwnd, &margins)
 	w.frameExtended = err == nil
 	return err
@@ -864,6 +901,9 @@ func (w *Window) Chrome() common.WindowChrome {
 	style, err := winapi.GetWindowLong(w.hwnd, winapi.GWL_STYLE)
 	if err != nil {
 		return common.WindowChromeUnknown
+	}
+	if w.fullscreen != nil && winapi.DWORD(style)&(winapi.WS_CAPTION|winapi.WS_THICKFRAME) == 0 {
+		return common.WindowChromeNone
 	}
 	if w.integrated {
 		const frameMask = winapi.WS_POPUP | winapi.WS_CAPTION | winapi.WS_SYSMENU |
@@ -1219,7 +1259,10 @@ func (w *Window) State() common.WindowState {
 	if winapi.IsZoomed(w.hwnd) != winapi.FALSE {
 		return common.WindowStateMaximized
 	}
-	// There is no universal Win32 fullscreen flag. Do not infer it from size.
+	if w.fullscreen != nil && w.observedFullscreen() {
+		return common.WindowStateFullscreen
+	}
+	// An unrelated monitor-sized borderless window remains ordinary.
 	return common.WindowStateNormal
 }
 
@@ -1227,6 +1270,11 @@ func (w *Window) RequestState(state common.WindowState) error {
 	if w.closed || w.hwnd == 0 {
 		return common.ErrUnavailable
 	}
+	if w.stateRequest {
+		return common.ErrUnavailable
+	}
+	w.stateRequest = true
+	defer func() { w.stateRequest = false }()
 	var command int
 	switch state {
 	case common.WindowStateHidden:
@@ -1238,9 +1286,12 @@ func (w *Window) RequestState(state common.WindowState) error {
 	case common.WindowStateMaximized:
 		command = winapi.SW_SHOWMAXIMIZED
 	case common.WindowStateFullscreen:
-		return common.ErrUnsupported
+		return w.enterFullscreen()
 	default:
 		return fmt.Errorf("invalid window state: %d", state)
+	}
+	if w.fullscreen != nil && (state == common.WindowStateNormal || state == common.WindowStateMaximized) {
+		return w.leaveFullscreen(state)
 	}
 	if w.State() != state {
 		// Submit the explicit show target; only native messages report the result.
@@ -1436,6 +1487,9 @@ func (w *Window) WorkAreaAt(point geometry.Point) (geometry.Rectangle, error) {
 		return geometry.Rectangle{}, err
 	}
 	r := info.Work
+	if w.State() == common.WindowStateFullscreen && monitor == winapi.MonitorFromWindow(w.hwnd, winapi.MONITOR_DEFAULTTONEAREST) {
+		r = info.Monitor
+	}
 	result := geometry.Rect(float32(int64(r.Left)-int64(origin.X))/scale, float32(int64(r.Top)-int64(origin.Y))/scale,
 		float32(int64(r.Right)-int64(r.Left))/scale, float32(int64(r.Bottom)-int64(r.Top))/scale)
 	if !workarea.Valid(result) {
