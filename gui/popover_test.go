@@ -446,7 +446,7 @@ func TestPopoverPlacementGeometry(t *testing.T) {
 		{"above right", geometry.Rect(80, 85, 20, 10), geometry.Size{Width: 30, Height: 20}, PopoverPlacementBottom, popoverInsets{}, geometry.Point{X: 70, Y: 65}},
 		{"slide before shrink", geometry.Rect(40, 40, 20, 20), geometry.Size{Width: 90, Height: 90}, PopoverPlacementBottom, popoverInsets{}, geometry.Point{X: 10, Y: 10}},
 		{"shadow body alignment", geometry.Rect(10, 10, 20, 10), geometry.Size{Width: 38, Height: 30}, PopoverPlacementBottom, popoverInsets{3, 4, 5, 6}, geometry.Point{X: 7, Y: 16}},
-		{"shadow containment flips", geometry.Rect(10, 70, 20, 10), geometry.Size{Width: 38, Height: 30}, PopoverPlacementBottom, popoverInsets{3, 4, 5, 6}, geometry.Point{X: 7, Y: 46}},
+		{"shadow alone does not flip", geometry.Rect(10, 70, 20, 10), geometry.Size{Width: 38, Height: 30}, PopoverPlacementBottom, popoverInsets{3, 4, 5, 6}, geometry.Point{X: 7, Y: 76}},
 		{"actual rounded oversized", geometry.Rect(90, 90, 0, 0), geometry.Size{Width: 100.5, Height: 100.5}, PopoverPlacementPoint, popoverInsets{}, geometry.Point{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -462,10 +462,11 @@ func TestPopoverPlacementGeometry(t *testing.T) {
 	if got := s.position(geometry.Size{Width: 50, Height: 40}, popoverInsets{}); got != (geometry.Point{X: -100, Y: -50}) {
 		t.Fatal("negative workarea lost", got)
 	}
-	if limit, err := s.bodyLimit(popoverInsets{10, 20, 30, 40}); err != nil || limit != (geometry.Size{Width: 260, Height: 140}) {
+	if limit, err := s.bodyLimit(); err != nil || limit != (geometry.Size{Width: 300, Height: 200}) {
 		t.Fatal(limit, err)
 	}
-	if _, err := s.bodyLimit(popoverInsets{200, 0, 100, 0}); err == nil {
+	s.workArea.Width = .5
+	if _, err := s.bodyLimit(); err == nil {
 		t.Fatal("accepted no body space")
 	}
 }
@@ -850,17 +851,21 @@ func TestPopoverPlacementConstrainsBeforeCreation(t *testing.T) {
 	if err := p.Show(); err != nil {
 		t.Fatal(err)
 	}
-	if plat.created[0] != (geometry.Size{Width: 200, Height: 150}) || p.insets != (popoverInsets{16, 16, 16, 16}) {
+	if plat.created[0] != (geometry.Size{Width: 200, Height: 150}) || p.insets != (popoverInsets{}) {
 		t.Fatal(plat.created, p.insets)
 	}
 	settlePlacement(t, p)
-	if p.widget.Rect().Size != (geometry.Size{Width: 168, Height: 118}) {
+	if p.widget.Rect().Size != (geometry.Size{Width: 200, Height: 150}) {
 		t.Fatal(p.widget.Rect())
 	}
 	p.Hide()
 	app.style = style.Sheet(style.Name("popover").Shadow(style.Shadow{Color: color.Black, BlurRadius: 1000}))
-	if err := p.Show(); err == nil {
-		t.Fatal("accepted shadow larger than workarea")
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	settlePlacement(t, p)
+	if p.insets != (popoverInsets{}) || p.widget.Rect().Size != (geometry.Size{Width: 200, Height: 150}) || p.width != 200 || p.height != 150 {
+		t.Fatal("放不下的阴影挤占主体或扩大原生表面", p.insets, p.widget.Rect(), p.width, p.height)
 	}
 }
 
@@ -963,8 +968,8 @@ func TestMenuPlacementMinimumWidth(t *testing.T) {
 	}{
 		{"short Chinese", "复制", 240, false, 160, 160},
 		{"narrow work area", "复制", 100, false, 100, 100},
-		{"shadow excluded", "复制", 240, true, 160, 192},
-		{"narrow with shadow", "Copy", 100, true, 68, 100},
+		{"shadow excluded", "复制", 240, true, 160, 176},
+		{"narrow with shadow", "Copy", 100, true, 100, 100},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			p, _, plat, app := placementFixture(t, geometry.Rect(0, 0, tt.areaWidth, 180))
@@ -1541,7 +1546,7 @@ func TestPopoverModelessNativeShadowDoesNotCoverAnchor(t *testing.T) {
 			app.style = style.Sheet(style.Name("popover").Shadow(style.Shadow{Color: color.Black, BlurRadius: 16, Offset: geometry.Point{Y: 4}}))
 			anchor := geometry.Rect(80, 40, 60, 32)
 			if above {
-				anchor.Y = 240
+				anchor.Y = 260 // 主体本身放不下时才翻转，不能再依赖阴影触发。
 			}
 			p.anchor.Arrange(anchor)
 			p.SetPlacement(PopoverPlacementBottom)

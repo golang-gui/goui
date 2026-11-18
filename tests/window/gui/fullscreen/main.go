@@ -5,6 +5,7 @@
 //
 // 操作与预期：
 //  1. View/Fullscreen 进入全屏，再打开三个菜单：菜单正文紧贴菜单栏底边，
+//     首个菜单主体左缘与窗口/按钮左缘对齐，不为阴影预留横向空隙；
 //     不留下桌面面板高度的空隙；长短交替及 Esc 关闭不残留旧内容。
 //  2. View/Normal 退出：恢复普通窗口装饰、大小和位置；再进入全屏仍正常。
 //  3. 全屏中重复 Fullscreen、Show：保持全屏。Hide 后 Show 恢复显示。
@@ -14,7 +15,8 @@
 //  6. 分别用三种 Chrome、1x/2x 重复；多屏时在各显示器重复并检查边缘退避。
 //
 // -auto 在 GUI 线程请求状态并等待实际观察，独立查询原生屏幕/客户区核对
-// WorkAreaAt、Position(nil)、普通位置恢复和正常输入路径打开的菜单。
+// WorkAreaAt、Position(nil)、普通位置恢复、正常输入路径打开的菜单及
+// 首菜单在屏幕左边界的主体局部原点；屏幕实际位置仍须外观验收。
 // 自动输入经过 Window.DispatchEvent；不替代原生指针、外观或多屏验收。
 // 不支持全屏、超时、观察不符或提前关闭均非零退出，不记为跳过或通过。
 // 副作用：只创建/激活自身窗口、菜单并改变其状态；不改系统设置或剪贴板。
@@ -224,6 +226,12 @@ func run() error {
 		}, func() bool { return b.Opened() }, func() error {
 			if len(w.Popovers()) != 1 {
 				return fmt.Errorf("应仅有一个共享菜单")
+			}
+			if b == buttons[0] {
+				body := w.Popovers()[0].Widget().Snapshot().Bounds
+				if body.X != 0 {
+					return fmt.Errorf("屏幕左边缘仍为阴影预留空隙：主体局部 x=%g", body.X)
+				}
 			}
 			return checkFull()
 		}})
