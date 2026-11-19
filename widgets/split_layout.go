@@ -56,14 +56,14 @@ func (l *splitLayout) Measure(children []layout.Child, c layout.Constraint) layo
 	s, e := l.natural(children, c.Max)
 	main := v.axis(s.Size) + v.axis(e.Size)
 	if v.active() {
-		main++
+		main += v.handleSize
 	}
 	cross := max(v.cross(s.Size), v.cross(e.Size))
 	result := c.Clamp(v.size(main, cross))
 	// Re-measure at the allocated width/height for wrapping content. This is
 	// observational: Measure must not establish or overwrite the saved ratio.
 	if v.active() {
-		a := max(0, v.axis(result)-1)
+		a := max(0, v.axis(result)-v.handleSize)
 		position := splitAllocate(a, v.preference, v.axis(s.Size), v.axis(e.Size), v.start.limits(v), v.end.limits(v))
 		s = children[0].Measure(layout.Constraint{Min: v.size(position, 0), Max: v.size(position, v.cross(c.Max))})
 		e = children[1].Measure(layout.Constraint{Min: v.size(a-position, 0), Max: v.size(a-position, v.cross(c.Max))})
@@ -80,7 +80,7 @@ func (l *splitLayout) Arrange(children []layout.Child, rect geometry.Rectangle) 
 	}
 	start, end, gap := float32(0), float32(0), float32(0)
 	if v.active() {
-		gap = min(1, main)
+		gap = min(v.handleSize, main)
 		a := main - gap
 		if v.preference.mode == splitAuto && a > 0 {
 			ratio := float32(.5)
@@ -113,8 +113,8 @@ func (l *splitLayout) Arrange(children []layout.Child, rect geometry.Rectangle) 
 		v.handle.cancel()
 		return
 	}
-	// Only the actual gap participates in picking. The parent offers a
-	// thresholded fallback gesture without covering neighboring controls.
+	// The entire painted handle occupies this gap. Neither pane is covered
+	// by an extra hit region.
 	position, extent := start, gap
 	handleRect := geometry.Rectangle{Size: v.size(extent, cross)}
 	if v.direction == layout.DirectionVertical {
