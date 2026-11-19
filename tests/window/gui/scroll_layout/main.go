@@ -9,14 +9,15 @@
 //     应保持一致，不能因滚动多占用或少占用一条滚动条宽度。
 //     滚到底部，能完整看到 END 标记；拖滑块回顶部。
 //  2. 右侧 Both 样例是 100×100 DIP 视口中的 96×200 DIP 图片。
-//     应同时显示两条滚动条，内容区 92×92，最大偏移 X=4、Y=108。
+//     应同时显示两条滚动条，默认内容区 88×88，最大偏移 X=8、Y=112。
 //     拖动两条滑块，边界完整且可命中；仅看窗口启动不算通过。
 //  3. Horizontal 样例只能横滚；Shift+滚轮可移动图片，普通竖滚轮不移动它。
 //     左侧输入框能正常输入，聚焦后滚动条仍可拖动，焦点不改变滚动方向。
 //  4. F7 切换短/长表单：短内容应无滚动条，恢复长内容后重新出现；再滚到底。
 //     F8 最大化、F9 恢复，换行和滚动范围更新，不保留旧的多余滚动条。
 //  5. 每项操作后按 F6，输出 SCROLL LAYOUT PASS 和各视口/偏移的公开几何断言。
-//     F11 切换亮暗后重复检查；1x/2x 分别验收，8 DIP 滚动条宽为 8/16 像素。
+//     F11 切换亮暗后重复检查；1x/2x 分别验收，12 DIP 轨道为 12/24 像素，
+//     8 DIP 滑块为 8/16 像素，轨道两侧各有 2 DIP 留白。
 //  6. F10 定位到表单中的 Nested CrossStretch 面板，按 F6 记录外层偏移和内层 bounds。
 //     将鼠标置于内层列表中滚动，再按 F6：仅 nested 偏移改变，form 不变。
 //     滚到内层首尾后继续滚动，form 仍不变。鼠标移到面板左侧文字后滚动，
@@ -25,6 +26,12 @@
 //  7. F5 只查询表单在当前紧约束及其他宽松约束下的测量结果，不安排新尺寸；
 //     应输出 REMEASURE PASS，视口、内容及滚动范围不变。再滚动并按 F6，
 //     右边距仍不变。窗口变宽/变窄、F11 切换亮暗后重复此项。
+//  8. F3 循环 Both 样例的默认、自定义、Hidden、Always 配置，每次 F6。
+//     自定义横条 10/6/3 DIP、纵条 20/8/4 DIP（轨道/滑块/额外间距），
+//     内容区 76×87；轨道和间距不盖内容。拖两轴滑块含留白区域，F6 输出偏移。
+//     Hidden 无条和占位但滚轮仍有效；Always 即使 F2 切到 20×20 短图片也有
+//     双条和完整滑块，点击不滚动。Auto 配合短图片无条。F2 恢复长图片。
+//     拖动中保持按下并按 F3，之后移动/释放不能再用旧抓取位置改变偏移。
 //
 // 平台差异：字体影响换行阈值；Linux 无桌面合成时 Integrated 回退 Native。
 // 副作用：窗口和日志，不读写剪贴板/文件、不启动 DevServer、不改系统设置。
@@ -171,7 +178,8 @@ func main() {
 	both.SetMainWeight(0)
 	both.SetMinSize(geometry.Size{Width: 100, Height: 100})
 	both.SetMaxSize(geometry.Size{Width: 100, Height: 100})
-	both.SetChild(gui.NewImage(picture(96, 200)))
+	bothImage := gui.NewImage(picture(96, 200))
+	both.SetChild(bothImage)
 	right.AddChild(both)
 	right.AddChild(gui.NewLabel("Horizontal: Shift+wheel"))
 	horizontal := gui.NewScrollView()
@@ -192,6 +200,32 @@ func main() {
 		s.ConnectActivate(fn)
 		win.Shortcuts().AddShortcut(s)
 	}
+	barMode, shortPicture := 0, false
+	bind(gui.KeyF2, func() {
+		shortPicture = !shortPicture
+		width, height := 96, 200
+		if shortPicture {
+			width, height = 20, 20
+		}
+		bothImage.SetImage(picture(width, height))
+		fmt.Printf("short-picture=%t\n", shortPicture)
+	})
+	bind(gui.KeyF3, func() {
+		barMode = (barMode + 1) % 4
+		h, v := gui.ScrollBarOptions{}, gui.ScrollBarOptions{}
+		switch barMode {
+		case 1:
+			h = gui.ScrollBarOptions{Thickness: 10, ThumbThickness: 6, Spacing: 3}
+			v = gui.ScrollBarOptions{Thickness: 20, ThumbThickness: 8, Spacing: 4}
+		case 2:
+			h.Policy, v.Policy = gui.ScrollBarHidden, gui.ScrollBarHidden
+		case 3:
+			h.Policy, v.Policy = gui.ScrollBarAlways, gui.ScrollBarAlways
+		}
+		both.SetHScrollBarOptions(h)
+		both.SetVScrollBarOptions(v)
+		fmt.Printf("bar-mode=%d h=%+v v=%+v\n", barMode, both.HScrollBarOptions(), both.VScrollBarOptions())
+	})
 	nestedShort := false
 	bind(gui.KeyF4, func() {
 		nestedShort = !nestedShort
@@ -212,17 +246,30 @@ func main() {
 	})
 	bind(gui.KeyF6, func() {
 		b := both.Snapshot()
-		if b.MaxScrollX != 4 || b.MaxScrollY != 108 {
-			panic(fmt.Sprintf("coupled bars: max=%g/%g, want 4/108", b.MaxScrollX, b.MaxScrollY))
+		viewport := geometry.Size{Width: 88, Height: 88}
+		if barMode == 1 {
+			viewport = geometry.Size{Width: 76, Height: 87}
 		}
+		if barMode == 2 || shortPicture && barMode != 3 {
+			viewport = geometry.Size{Width: 100, Height: 100}
+		}
+		width, height := float32(96), float32(200)
+		if shortPicture {
+			width, height = 20, 20
+		}
+		g := both.ScrollGeometry()
+		if b.MaxScrollX != max(0, width-viewport.Width) || b.MaxScrollY != max(0, height-viewport.Height) || g.Viewport != (geometry.Rectangle{Size: viewport}) {
+			panic(fmt.Sprintf("coupled bars: mode=%d short=%t geometry=%+v max=%g/%g", barMode, shortPicture, g, b.MaxScrollX, b.MaxScrollY))
+		}
+		fmt.Printf("OPTIONS PASS mode=%d short=%t geometry=%+v offset=%g/%g\n", barMode, shortPicture, g, b.ScrollX, b.ScrollY)
 		f := form.Snapshot()
 		wantWidth := form.Rect().Width
 		for _, child := range form.Children() {
 			if bar, ok := child.(*gui.ScrollBar); ok && bar.Visible() {
-				if bar.Orientation() != layout.DirectionVertical || bar.Rect().Width != 8 {
+				if bar.Orientation() != layout.DirectionVertical || bar.Rect().Width != 12 {
 					panic("vertical form exposed a horizontal bar or wrong width")
 				}
-				wantWidth -= 8
+				wantWidth -= 12
 			}
 		}
 		if f.MaxScrollX != 0 || content.Rect().Width != wantWidth || math.Abs(float64(tail.Rect().Y+tail.Rect().Height+12-content.Rect().Height)) > 0.001 || panel.Rect().Height != 110 {
@@ -262,6 +309,17 @@ func main() {
 	bind(gui.KeyF11, func() {
 		dark = !dark
 		app.SetStyleSheet(modern.Sheet(modern.Options{Dark: dark}))
+	})
+	presented := ""
+	win.ConnectAfterPaint(func(_ gui.Painter, _ geometry.Rectangle) {
+		if form.Rect().Width <= 0 {
+			return
+		}
+		state := fmt.Sprintf("mode=%d short=%t form=%v dark=%t nested-short=%t geometry=%+v", barMode, shortPicture, form.Rect().Size, dark, nestedShort, both.ScrollGeometry())
+		if state != presented {
+			presented = state
+			fmt.Println("PRESENT", state)
+		}
 	})
 	win.ConnectDestroy(app.Quit)
 	if err := win.Show(); err != nil {

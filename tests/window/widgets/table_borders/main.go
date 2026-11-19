@@ -2,6 +2,7 @@
 //
 // 环境：Linux/X11（记录WM）、Windows、macOS桌面；记录后端和实际缩放。
 // 启动：go run ./tests/window/widgets/table_borders [-dark] [-basic]
+// -bars=default/custom/hidden/always 选择初始配置；F4 循环切换同一组配置。
 // 可设置GOUI_PLAT_PAINTER=software/opengl/direct2d、GOUI_PLAT_SCALE=1/2。
 // 初始：1120×420 DIP窗口，三张340×220 DIP表；fit仅两行且无滚动条，horizontal
 // 仅两行且横滚，both二十行且双轴滚动。列禁止用户调整，模式data。
@@ -22,6 +23,10 @@
 //  4. 点击Rebuild和Dark，各按F6：列／单元格身份、滚动位置保留，样式与几何
 //     按模式更新。Basic固定亮色。观察原生边线完整、表头对齐、滑块圆角和状态。
 //  5. F8：要求五种模式、双向拖动、重建和亮暗检查都完成，PASS并退出0。
+//  6. 每种框线模式下 F4/F6 循环全部配置：custom 的横条 10/6/3、纵条 20/8/4
+//     DIP（轨道/滑块/间距），表头正文边界同步；间距不延伸网格或斑马色。
+//     Hidden 仍可滚轮和键盘滚动，scroll 轮廓不包含不存在的槽位；Always 在
+//     fit 中也占双槽，完整滑块无无效反馈。F8 要求每种框线覆盖全部四项配置。
 //
 // F6通过公开快照和RenderWidget断言几何及像素，不替代上述原生外观观察。
 // 平台差异：macOS可能需要Fn+功能键；拖动距离按实际PixelScale换成物理像素。
@@ -51,7 +56,21 @@ import (
 )
 
 var modes = []string{"data", "inner", "outline", "scroll", "all"}
+var barModes = []string{"default", "custom", "hidden", "always"}
 var edge = color.RGBA{R: 90, G: 100, B: 110, A: 255}
+
+func barOptions(mode string) (h, v ui.ScrollBarOptions) {
+	switch mode {
+	case "custom":
+		h = ui.ScrollBarOptions{Thickness: 10, ThumbThickness: 6, Spacing: 3}
+		v = ui.ScrollBarOptions{Thickness: 20, ThumbThickness: 8, Spacing: 4}
+	case "hidden":
+		h.Policy, v.Policy = ui.ScrollBarHidden, ui.ScrollBarHidden
+	case "always":
+		h.Policy, v.Policy = ui.ScrollBarAlways, ui.ScrollBarAlways
+	}
+	return
+}
 
 type rows struct{ *gui.SliceListModel[string] }
 
@@ -90,14 +109,24 @@ func sheet(mode string, dark, fallback bool) style.StyleSheet {
 
 func main() {
 	dark, fallback := flag.Bool("dark", false, "dark Modern palette"), flag.Bool("basic", false, "Basic fallback theme")
+	bars := flag.String("bars", "default", "default/custom/hidden/always scrollbar options")
 	flag.Parse()
-	if err := run(*dark, *fallback); err != nil {
+	if err := run(*dark, *fallback, *bars); err != nil {
 		fmt.Fprintln(os.Stderr, "FAIL:", err)
 		os.Exit(1)
 	}
 }
 
-func run(dark, fallback bool) error {
+func run(dark, fallback bool, initialBars string) error {
+	barMode := -1
+	for i, name := range barModes {
+		if name == initialBars {
+			barMode = i
+		}
+	}
+	if barMode < 0 {
+		return fmt.Errorf("unknown scrollbar options %q", initialBars)
+	}
 	models := map[string]*rows{}
 	for _, id := range []string{"fit", "horizontal", "both"} {
 		n := 2
@@ -113,10 +142,13 @@ func run(dark, fallback bool) error {
 	mode, generation := 0, 0
 	narrow := false
 	ready, finished := false, false
+	presented := ""
 	seen := map[string]bool{}
 	original := map[string][]*widgets.TableColumn{}
 	var failure error
 	err := ui.Run("org.golanggui.TableBorders", func(app ui.App) ui.RootView {
+		// 标记本次声明所描述的帧，避免旧回调读取新状态后误报协调已经完成。
+		frameState := fmt.Sprintf("mode=%s bars=%s generation=%d dark=%t narrow=%t", modes[mode], barModes[barMode], generation, dark, narrow)
 		lookup := func(id string) *widgets.TableView { return app.FindWidget("main", id).(*widgets.TableView) }
 		fail := func(err error) {
 			if failure == nil {
@@ -139,6 +171,13 @@ func run(dark, fallback bool) error {
 				if (info.MaxScrollX > 0) != (id != "fit" && !(id == "both" && narrow)) || (info.MaxScrollY > 0) != (id == "both") {
 					return fmt.Errorf("%s scroll ranges=%g,%g", id, info.MaxScrollX, info.MaxScrollY)
 				}
+				hOptions, vOptions := table.HScrollBarOptions(), table.VScrollBarOptions()
+				hSlot := hOptions.Policy == gui.ScrollBarAlways || hOptions.Policy == gui.ScrollBarAuto && info.MaxScrollX > 0
+				vSlot := vOptions.Policy == gui.ScrollBarAlways || vOptions.Policy == gui.ScrollBarAuto && info.MaxScrollY > 0
+				vSpace := float32(0)
+				if vSlot {
+					vSpace = vOptions.Thickness + vOptions.Spacing
+				}
 				img, err := gui.RenderWidget(table, 1)
 				if err != nil {
 					return err
@@ -159,14 +198,11 @@ func run(dark, fallback bool) error {
 				// 但任何越出背景通道范围的线色都失败，不能把幽灵细线当作有效网格。
 				start := x + info.ScrollX
 				end := info.Bounds.Width - start
-				barWidth := gui.NewScrollBar(layout.DirectionVertical).Measure(layout.Unbounded()).Width
-				if info.MaxScrollY > 0 {
-					end -= barWidth
-				}
+				end -= vSpace
 				lastHeader := info.Children[len(columns)-1].Bounds
 				dataEnd := lastHeader.X + lastHeader.Width - info.Bounds.X
 				lineEnd := min(end, dataEnd)
-				if name == "all" && id != "fit" {
+				if name == "all" && (id != "fit" || hSlot || vSlot) {
 					lineEnd = info.Bounds.Width - start
 				}
 				lineY := y + header.Height - 1
@@ -204,7 +240,7 @@ func run(dark, fallback bool) error {
 						}
 					}
 				}
-				if id == "fit" {
+				if id == "fit" && !hSlot && !vSlot {
 					last := info.Children[len(info.Children)-1].Bounds
 					bottom := last.Y + last.Height - info.Bounds.Y
 					headerBG, _ := gui.ResolveStyle("table-view", "header", style.Normal).BackgroundColor()
@@ -242,10 +278,23 @@ func run(dark, fallback bool) error {
 						inset = 2
 					}
 					if name == "scroll" || name == "all" {
-						if err := check(339-inset, 10, edge); err != nil {
+						right, bottom := float32(339)-inset, float32(219)-inset
+						if !hSlot && !vSlot {
+							if id == "fit" || id == "both" && narrow {
+								right = start + 160 + 1
+								if err := check(300, 150, background); err != nil {
+									return err
+								}
+							}
+							if id != "both" {
+								last := info.Children[len(info.Children)-1].Bounds
+								bottom = last.Y + last.Height - info.Bounds.Y + 1
+							}
+						}
+						if err := check(right, 10, edge); err != nil {
 							return err
 						}
-						if err := check(10, 219-inset, edge); err != nil {
+						if err := check(10, bottom, edge); err != nil {
 							return err
 						}
 					}
@@ -254,9 +303,9 @@ func run(dark, fallback bool) error {
 							return err
 						}
 					}
-					if id == "both" {
+					if hSlot && vSlot {
 						track, _ := gui.ResolveStyle("table-view", "trough", style.Normal).BackgroundColor()
-						if err := check(335-(x+info.ScrollX), 215-y, color.RGBAModel.Convert(track).(color.RGBA)); err != nil {
+						if err := check(340-start-vOptions.Thickness/2, 220-start-hOptions.Thickness/2, color.RGBAModel.Convert(track).(color.RGBA)); err != nil {
 							return err
 						}
 					}
@@ -270,6 +319,7 @@ func run(dark, fallback bool) error {
 				}
 			}
 			seen[modes[mode]] = true
+			seen[modes[mode]+":"+barModes[barMode]] = true
 			if narrow {
 				seen["narrow:"+modes[mode]] = true
 			}
@@ -281,7 +331,7 @@ func run(dark, fallback bool) error {
 				bounds[id] = app.FindWidget("main", id).Snapshot().Bounds
 			}
 			data, _ := json.Marshal(bounds)
-			fmt.Printf("CHECK mode=%s generation=%d dark=%t narrow=%t bounds=%s\n", modes[mode], generation, dark, narrow, data)
+			fmt.Printf("CHECK mode=%s bars=%s generation=%d dark=%t narrow=%t bounds=%s\n", modes[mode], barModes[barMode], generation, dark, narrow, data)
 			return nil
 		}
 		panels := make([]ui.View, 0, 3)
@@ -293,16 +343,18 @@ func run(dark, fallback bool) error {
 			column := func(key string) *wui.TableColumnView[string] {
 				return wui.TableColumn(key, key, func(_ widgets.TableRow, text string) ui.View { return ui.Label(text) }).Width(width).MinWidth(width).Resizable(false)
 			}
-			table := wui.TableView(models[id], column("Name"), column("Value")).ID(id).MainWeight(0).MinWidth(340).MaxWidth(340).MinHeight(220).MaxHeight(220)
+			h, v := barOptions(barModes[barMode])
+			table := wui.TableView(models[id], column("Name"), column("Value")).HScrollBarOptions(h).VScrollBarOptions(v).ID(id).MainWeight(0).MinWidth(340).MaxWidth(340).MinHeight(220).MaxHeight(220)
 			panels = append(panels, ui.VBox(ui.Label(id), table).Spacing(8).CrossAlign(layout.CrossStart))
 		}
 		content := ui.VBox(ui.HBox(
 			ui.Button("Next").ID("next").OnClick(func() { mode = (mode + 1) % len(modes); app.RequestUpdate() }),
 			ui.Button("Rebuild").ID("rebuild").OnClick(func() { generation++; app.RequestUpdate() }),
 			ui.Button("Dark").ID("dark").OnClick(func() { dark = !dark; seen["palette"] = true; app.RequestUpdate() }),
-			ui.Label(modes[mode]),
+			ui.Label(modes[mode]+" / bars: "+barModes[barMode]+" (F4)"),
 		).Spacing(8), ui.HBox(panels...).Spacing(12), ui.Label("F6 checks; drag both scrollbars then F7; Next + F6 through all modes; Rebuild/Dark + F6; F8 finish")).Spacing(12).Padding(16).CrossAlign(layout.CrossStart)
 		return ui.Root().StyleSheet(sheet(modes[mode], dark, fallback)).Windows(ui.Window("main").Title("GOUI Table borders").Size(1120, 420).Content(content).Shortcuts(
+			ui.Shortcut(ui.KeyF4).OnActivate(func() { barMode = (barMode + 1) % len(barModes); app.RequestUpdate() }),
 			ui.Shortcut(ui.KeyF6).OnActivate(func() {
 				if err := verify(); err != nil {
 					fail(err)
@@ -330,6 +382,12 @@ func run(dark, fallback bool) error {
 					}
 				}
 				for _, name := range modes {
+					for _, bars := range barModes {
+						if !seen[name+":"+bars] {
+							fail(fmt.Errorf("missing stage %s:%s", name, bars))
+							return
+						}
+					}
 					if !seen["narrow:"+name] {
 						fail(fmt.Errorf("missing narrow stage %s", name))
 						return
@@ -340,7 +398,15 @@ func run(dark, fallback bool) error {
 				app.Quit()
 			}),
 		).OnAfterPaint(func(p gui.Painter, _ geometry.Rectangle) {
-			if info := lookup("fit").Snapshot(); ready || info.Bounds.Width != 340 || info.Bounds.X <= 0 {
+			state := frameState
+			if ready {
+				if state != presented {
+					presented = state
+					fmt.Println("PRESENT", state)
+				}
+				return
+			}
+			if info := lookup("fit").Snapshot(); info.Bounds.Width != 340 || info.Bounds.X <= 0 {
 				return
 			}
 			resource, err := p.NewImage(image.NewRGBA(image.Rect(0, 0, 1, 1)))
@@ -361,7 +427,9 @@ func run(dark, fallback bool) error {
 			}
 			data, _ := json.Marshal(bounds)
 			ready = true
+			presented = state
 			fmt.Printf("READY backend=%T scale=%g bounds=%s\n", resource, p.PixelScale(), data)
+			fmt.Println("PRESENT", state)
 		}))
 	})
 	if err != nil {

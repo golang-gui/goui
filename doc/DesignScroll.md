@@ -3,6 +3,9 @@
 > 2026-10-07 补齐 ScrollView.Direction（默认 Both，Vertical/Horizontal 为单轴），
 > 修正双条相互占位。普通内容单轴测量、输入与虚拟内容的最新契约见
 > [滚动布局切片](DesignScrollLayout.md)，本文件的历史实现示意不覆盖该契约。
+> 2026-11-19 内外滚动条演进见 [滚动条设计](DesignScrollBars.md)。首批已实现
+> HScrollBarOptions / VScrollBarOptions，覆盖 ScrollView、TableView 和 UI；
+> 外部协议后续实现，当前不引入独立滚动模型。
 
 ## 目标
 
@@ -42,7 +45,11 @@ RequestLayout、重新Bind及视口宽度变化决定是否重测；离屏历史
 **共同点**：滚动位置是共享状态；内容知道自己的总尺寸并能按偏移只布局可见
 部分；宿主（滚动条/裁剪）与内容（布局/绘制）解耦。
 
-## 后续扩展优先评估：独立滚动模型
+## 独立滚动模型的历史评估
+
+2026-11-19 决策：本次滚动条定制采用既有 ScrollView 状态、小客户端协议和可选
+外部连接，不实施独立模型。以下保留为后续锚定／同步需求的评估依据，不构成本轮
+API 或实施前置条件；已确认的阶段、接口与约束以 [滚动条设计](DesignScrollBars.md) 为准。
 
 当前保留 `Scrollable` 和 `ScrollIntoViewRequester`，不在本轮修改公共接口。
 后续扩展滚动同步、可变高度虚拟化、视口锚定或自动滚动时，优先评估独立滚动
@@ -131,7 +138,10 @@ ScrollView 持有偏移、视口和内容范围；内部 viewport 是内容的�
 
 SetScrollX／SetScrollY 将偏移取整到整数 DIP，并钳制至实际范围，变化时沿正常
 布局／绘制失效路径更新。SetLineHeight 提供 WheelDeltaLine 的步进。
-滚动条宽度 12 DIP、胶囊半径 6 DIP、最短 thumb 20 DIP；实际命中宽度与绘制宽度一致。
+滚动槽默认 12 DIP，滑块默认 8 DIP并居中，最短 thumb 为 20 DIP。逐轴 Options
+控制轨道、滑块、间距及 Auto/Always/Hidden，颜色、边框和圆角继续属于样式。
+组合控件读取 ScrollGeometry 的实际槽位，不以滚动范围或固定宽度猜测占位。
+外部控制协议的后续目标见 [滚动条设计](DesignScrollBars.md)。
 
 固定字段布局不作为公共契约，缓存／失效细节以源码为准；不保留过时 struct 副本。
 

@@ -1,5 +1,9 @@
 # ScrollView 外框与编辑器组合
 
+> 2026-11-19 已实现 [内外滚动条与 Options](DesignScrollBars.md) 的首批能力：
+> 实际布局几何、逐轴 Options、ScrollView 通用交汇角，以及 TableView 表头／框线适配。
+> 外部控制协议仍待后续实现。
+
 ## 职责
 
 ScrollView 拥有完整滚动区域的外框，正文视口、横纵滚动条和交汇角都在外框
@@ -33,7 +37,8 @@ StyleChanged 从 Normal、Focused、FocusVisible、Disabled 四个状态计算
 沿既有失效机制重算。边框宽度和圆角归一化为非负有限值。边距为
 `border + max(0, radius-border)*(1-1/sqrt(2)) + 1`（有圆角时），
 无圆角则为 border。额外 1 DIP 隔开圆角抗锯齿边缘。所有正文和滚动条使用
-同一矩形内区，不需要新增圆角裁剪接口；交汇角由 frame 背景填充。
+同一矩形内区，不需要新增圆角裁剪接口。ScrollView 按 trough 背景绘制一次交汇角，
+Spacing 保留 frame／容器背景，不计入轨道或正文。
 
 焦点或禁用状态变化不会改变安全边距，因此不会重新换行、改变滚动范围或
 移动正文。主题实际变化可以改变内区，正常请求重排。

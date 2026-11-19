@@ -1,5 +1,15 @@
 # GOUI 实用化与未来路线
 
+## 内外滚动条与布局配置（2026-11-19，首批完成）
+
+ScrollView 内置条已逐轴提供 HScrollBarOptions / VScrollBarOptions，区分条厚、
+滑块厚度、额外间距及 Auto/Always/Hidden。默认轨道12 DIP、居中滑块8 DIP；
+首批覆盖 TableView 与两层 UI 入口。表格按 ScrollGeometry 的真实槽位适配紧包围、
+表头接缝与交汇角，保留手动列宽和基础宽度，不再猜测固定厚度。
+后续再交付非 Widget 的外部控制协议及声明式外部条，外部对象不归宿主布局／销毁，
+不引入共享滚动模型。完整设计与阶段验收见 [DesignScrollBars](DesignScrollBars.md)，
+进度及本机逻辑／窗口验证范围见 [Plan](Plan.md#2026-11-19-内外滚动条设计与首批-options)。
+
 ## Popover 与 SharedPopover 收敛（2026-11-17）
 
 以普通 Popover 作为唯一实际弹层 Root，Surface 共享槽缓存普通实例，SharedPopover 只
@@ -685,7 +695,7 @@ BuildContext.UpdateOverlays 或 WidgetBase 具体浮层特例。旧草案不算�
 共享模型；不是已经确定要替换现有接口。须区分目标可见性、主动位置控制、范围
 更新与锚点修正，说明所有权、双向通知／重入、布局时序及嵌套边界。
 固定行高选项、增量模型通知／diff 与 delegate 简化也按测量／真实需求决定。
-参考和取舍见 [DesignScroll](DesignScroll.md#后续扩展优先评估独立滚动模型)。
+参考和取舍见 [DesignScroll](DesignScroll.md#独立滚动模型的历史评估)。
 
 <a id="future-clipping"></a>
 
