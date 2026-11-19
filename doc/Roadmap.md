@@ -3,7 +3,7 @@
 ## 内外滚动条与布局配置（2026-11-19，首批完成）
 
 ScrollView 内置条已逐轴提供 HScrollBarOptions / VScrollBarOptions，区分条厚、
-滑块厚度、额外间距及 Auto/Always/Hidden。默认轨道12 DIP、居中滑块8 DIP；
+滑块厚度、额外间距及 Auto/Always/Hidden。默认轨道和滑块都为8 DIP、间距0，延续既有外观；
 首批覆盖 TableView 与两层 UI 入口。表格按 ScrollGeometry 的真实槽位适配紧包围、
 表头接缝与交汇角，保留手动列宽和基础宽度，不再猜测固定厚度。
 后续再交付非 Widget 的外部控制协议及声明式外部条，外部对象不归宿主布局／销毁，

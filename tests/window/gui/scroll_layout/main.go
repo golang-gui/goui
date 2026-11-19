@@ -9,15 +9,15 @@
 //     应保持一致，不能因滚动多占用或少占用一条滚动条宽度。
 //     滚到底部，能完整看到 END 标记；拖滑块回顶部。
 //  2. 右侧 Both 样例是 100×100 DIP 视口中的 96×200 DIP 图片。
-//     应同时显示两条滚动条，默认内容区 88×88，最大偏移 X=8、Y=112。
+//     应同时显示两条滚动条，默认内容区 92×92，最大偏移 X=4、Y=108。
 //     拖动两条滑块，边界完整且可命中；仅看窗口启动不算通过。
 //  3. Horizontal 样例只能横滚；Shift+滚轮可移动图片，普通竖滚轮不移动它。
 //     左侧输入框能正常输入，聚焦后滚动条仍可拖动，焦点不改变滚动方向。
 //  4. F7 切换短/长表单：短内容应无滚动条，恢复长内容后重新出现；再滚到底。
 //     F8 最大化、F9 恢复，换行和滚动范围更新，不保留旧的多余滚动条。
 //  5. 每项操作后按 F6，输出 SCROLL LAYOUT PASS 和各视口/偏移的公开几何断言。
-//     F11 切换亮暗后重复检查；1x/2x 分别验收，12 DIP 轨道为 12/24 像素，
-//     8 DIP 滑块为 8/16 像素，轨道两侧各有 2 DIP 留白。
+//     F11 切换亮暗后重复检查；1x/2x 分别验收，默认轨道与滑块都为8 DIP，
+//     对应8/16物理像素，没有额外的两侧留白。
 //  6. F10 定位到表单中的 Nested CrossStretch 面板，按 F6 记录外层偏移和内层 bounds。
 //     将鼠标置于内层列表中滚动，再按 F6：仅 nested 偏移改变，form 不变。
 //     滚到内层首尾后继续滚动，form 仍不变。鼠标移到面板左侧文字后滚动，
@@ -246,7 +246,7 @@ func main() {
 	})
 	bind(gui.KeyF6, func() {
 		b := both.Snapshot()
-		viewport := geometry.Size{Width: 88, Height: 88}
+		viewport := geometry.Size{Width: 92, Height: 92}
 		if barMode == 1 {
 			viewport = geometry.Size{Width: 76, Height: 87}
 		}
@@ -266,10 +266,10 @@ func main() {
 		wantWidth := form.Rect().Width
 		for _, child := range form.Children() {
 			if bar, ok := child.(*gui.ScrollBar); ok && bar.Visible() {
-				if bar.Orientation() != layout.DirectionVertical || bar.Rect().Width != 12 {
+				if bar.Orientation() != layout.DirectionVertical || bar.Rect().Width != 8 {
 					panic("vertical form exposed a horizontal bar or wrong width")
 				}
-				wantWidth -= 12
+				wantWidth -= 8
 			}
 		}
 		if f.MaxScrollX != 0 || content.Rect().Width != wantWidth || math.Abs(float64(tail.Rect().Y+tail.Rect().Height+12-content.Rect().Height)) > 0.001 || panel.Rect().Height != 110 {
