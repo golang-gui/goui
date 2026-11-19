@@ -5,11 +5,16 @@ import (
 )
 
 type ScrollDirection = gui.ScrollDirection
+type ScrollBarOptions = gui.ScrollBarOptions
+type ScrollBarPolicy = gui.ScrollBarPolicy
 
 const (
 	ScrollBoth       = gui.ScrollBoth
 	ScrollVertical   = gui.ScrollVertical
 	ScrollHorizontal = gui.ScrollHorizontal
+	ScrollBarAuto    = gui.ScrollBarAuto
+	ScrollBarAlways  = gui.ScrollBarAlways
+	ScrollBarHidden  = gui.ScrollBarHidden
 )
 
 // ScrollViewView is the declarative wrapper of gui.ScrollView. It hosts a
@@ -21,6 +26,8 @@ type ScrollViewView struct {
 	child          View
 	direction      ScrollDirection
 	dragAutoScroll bool
+	hScrollBar     ScrollBarOptions
+	vScrollBar     ScrollBarOptions
 }
 
 // ScrollView wraps content in a viewport. Its default MainWeight is 1;
@@ -47,6 +54,20 @@ func (v *ScrollViewView) Direction(direction ScrollDirection) *ScrollViewView {
 	return v
 }
 
+// HScrollBarOptions configures the built-in horizontal bar. Omission restores
+// default geometry and Auto visibility on the next update.
+func (v *ScrollViewView) HScrollBarOptions(options ScrollBarOptions) *ScrollViewView {
+	v.hScrollBar = options
+	return v
+}
+
+// VScrollBarOptions configures the built-in vertical bar. Hidden retains
+// scrolling without reserving a built-in bar or spacing.
+func (v *ScrollViewView) VScrollBarOptions(options ScrollBarOptions) *ScrollViewView {
+	v.vScrollBar = options
+	return v
+}
+
 // Child sets the scrollable content (a ui.ListView or any widget tree).
 func (v *ScrollViewView) Child(child View) *ScrollViewView {
 	v.child = child
@@ -60,6 +81,8 @@ func (v *ScrollViewView) Mount(BuildContext) gui.Widget {
 func (v *ScrollViewView) Update(ctx BuildContext, widget gui.Widget) {
 	widget.(*gui.ScrollView).SetDirection(v.direction)
 	widget.(*gui.ScrollView).SetDragAutoScroll(v.dragAutoScroll)
+	widget.(*gui.ScrollView).SetHScrollBarOptions(v.hScrollBar)
+	widget.(*gui.ScrollView).SetVScrollBarOptions(v.vScrollBar)
 	ctx.UpdateChild(widget.(*gui.ScrollView), v.child)
 }
 

@@ -25,6 +25,34 @@ func TestScrollViewDragAutoScrollDefaultsAndUpdates(t *testing.T) {
 	}
 }
 
+func TestScrollViewBarOptionsUpdateAndRestore(t *testing.T) {
+	r := newRoot()
+	defer r.update(nil)
+	h := ScrollBarOptions{Policy: ScrollBarAlways, Thickness: 10, ThumbThickness: 6, Spacing: 3}
+	v := ScrollBarOptions{Policy: ScrollBarHidden, Thickness: 20, ThumbThickness: 8, Spacing: 4}
+	build := func() *ScrollViewView {
+		return ScrollView(Label("保留内容")).HScrollBarOptions(h).VScrollBarOptions(v)
+	}
+	sv := r.update(build()).(*gui.ScrollView)
+	children, content := sv.Children(), sv.Child()
+	if sv.HScrollBarOptions() != h || sv.VScrollBarOptions() != v {
+		t.Fatal("声明未应用到两轴配置")
+	}
+	if r.update(build()) != sv || sv.Child() != content {
+		t.Fatal("相同声明重建了滚动宿主或内容")
+	}
+	r.update(ScrollView(Label("保留内容")))
+	want := ScrollBarOptions{Thickness: 12, ThumbThickness: 8}
+	if sv.HScrollBarOptions() != want || sv.VScrollBarOptions() != want {
+		t.Fatal("省略配置没有恢复默认")
+	}
+	for i, child := range sv.Children() {
+		if child != children[i] {
+			t.Fatal("切换配置重建了内部结构控件")
+		}
+	}
+}
+
 func TestScrollViewDirectionUpdatesAndRestoresDefault(t *testing.T) {
 	root := newRoot()
 	sv := root.update(ScrollView(Label("content")).Direction(ScrollVertical)).(*gui.ScrollView)

@@ -32,6 +32,32 @@ func tableBindingArrange(v *widgets.TableView) {
 	v.Arrange(geometry.Rectangle{Size: size})
 }
 
+func TestTableViewBarOptionsUpdateAndRestore(t *testing.T) {
+	m, ctx := newTableBindingModel(), new(treeBindingContext)
+	build := func() *TableViewView[string] {
+		return TableView(m, TableColumn("value", "Value", func(_ widgets.TableRow, value string) baseui.View { return baseui.Label(value) }).Width(200))
+	}
+	h := baseui.ScrollBarOptions{Policy: baseui.ScrollBarHidden, Thickness: 10, ThumbThickness: 6, Spacing: 3}
+	v := baseui.ScrollBarOptions{Policy: baseui.ScrollBarAlways, Thickness: 20, ThumbThickness: 8, Spacing: 4}
+	declaration := build().HScrollBarOptions(h).VScrollBarOptions(v)
+	table := declaration.Mount(ctx).(*widgets.TableView)
+	defer table.SetModel(nil)
+	defer declaration.Unmount(ctx, table)
+	declaration.Update(ctx, table)
+	tableBindingArrange(table)
+	column, connections := table.Columns()[0], m.connections
+	if table.HScrollBarOptions() != h || table.VScrollBarOptions() != v {
+		t.Fatal("表格声明没有转发两轴配置")
+	}
+	declaration.Update(ctx, table)
+	build().Update(ctx, table)
+	tableBindingArrange(table)
+	want := baseui.ScrollBarOptions{Thickness: 12, ThumbThickness: 8}
+	if table.HScrollBarOptions() != want || table.VScrollBarOptions() != want || table.Columns()[0] != column || m.connections != connections {
+		t.Fatal("省略配置没有恢复默认，或重新安装了列／模型")
+	}
+}
+
 func TestTableViewTextInputFillsCell(t *testing.T) {
 	m := newTableBindingModel()
 	ctx := new(treeBindingContext)
