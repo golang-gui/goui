@@ -5,7 +5,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/example/demo/resource"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
@@ -168,10 +167,8 @@ func (d *dataDemo) view() ui.View {
 		OnContextMenuError(func(e error) { d.host.result(resource.TableMenu(), e) })
 	left := ui.VBox(ui.Label("TreeView").Tooltip(resource.TreeActions()), ui.ScrollView(tree).MainWeight(1)).CrossAlign(layout.CrossStretch).Spacing(8).MinWidth(160)
 	right := ui.VBox(ui.Label("TableView").Tooltip(resource.TableActions()), table.MainWeight(1)).CrossAlign(layout.CrossStretch).Spacing(8).MinWidth(250)
-	// Keep scrollbars clear of the splitter's larger pointer target.
-	upper := ui.VBox(wui.HSplit(left, right).StartSize(d.dataStart).
-		OnResize(func(start, _ float32) { d.dataStart = start }).MainWeight(1)).
-		CrossAlign(layout.CrossStretch).Paddings(geometry.Insets{Bottom: 8})
+	upper := wui.HSplit(left, right).StartSize(d.dataStart).
+		OnResize(func(start, _ float32) { d.dataStart = start }).MainWeight(1)
 	looks := make([]*ui.MenuItemView, len(tableLookNames))
 	for i, name := range tableLookNames {
 		looks[i] = ui.MenuItem(name(), func() {

@@ -6708,4 +6708,22 @@ B/C 仍为后续工作，不阻塞 A 的应用定制能力；本轮没有交付�
 ## 分隔区域与裁剪分析（2026-11-19）
 
 - [x] 保存 [小数裁剪分析](PlanFractionalClipping.md)，本轮暂缓后端修改。
-- [ ] SplitView：默认3 DIP实际分隔区域、HandleSize、三个样式Part及本地独立会话验收。
+- [x] SplitView：默认3 DIP实际分隔区域、HandleSize 及声明式薄封装；
+  handle-start／handle-end／separator 三个样式Part独立控制两侧背景和中线。
+  布局、绘制、语义边界及整个区域的调整光标／拖动使用同一矩形，移除区域外的后备
+  拖动；侧栏异色背景可直接衔接。Demo 删除原先避让重叠命中的8 DIP留白。
+  接口、迁移和参考见 [DesignSplitView](DesignSplitView.md)。
+- [x] `go test ./... -count=1 -json`：Linux amd64 / X11 独立会话中，6221项
+  测试／子测试通过，0失败、0条件跳过；155个无测试文件的包另计。
+  既有X11包内验证使用私有窗口／selection，不改变桌面设置。
+  `env -u DISPLAY go test -race ./widgets ./widgets/ui ./theme/basic ./theme/modern -count=1`
+  全部通过。Software离屏像素覆盖双向、整数／小数位置、1／1.25／1.5／2x、
+  半透明两侧背景及线宽钳制；事件回归覆盖区域内外命中、焦点、取消和动态厚度。
+- [x] 本机 Linux amd64 / X11、Xfwm4 合成开启：Software 1x GUI Modern／Basic、
+  Software 1.25x UI Modern、OpenGL（Mesa llvmpipe）1x UI Modern／2x GUI Modern
+  完成窗口操作。逐物理像素检查默认分隔区的光标，验证两轴及留白拖动、相邻滚动条、
+  3／5／9／1.5 DIP切换、隐藏／恢复细线、拖动中改配置取消、Modern亮暗及Basic兜底。
+  Snapshot的实际后端像素及公开几何断言通过；Demo数据页双向拖动和滚动条光标复核通过。
+- [x] Windows amd64、macOS arm64 的受影响控件、主题、窗口入口与 Demo 交叉编译
+  通过；未执行这两个平台的原生窗口验证。本轮仅修改共享控件／主题／声明式封装，
+  不改平台、命中分发或绘制后端；小数裁剪修复仍按上方计划暂缓。
