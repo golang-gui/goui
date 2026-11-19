@@ -6704,3 +6704,8 @@ B/C 仍为后续工作，不阻塞 A 的应用定制能力；本轮没有交付�
 
 四项独立修复分支及暂缓的 macOS 文件过滤见 [PlanFrameworkGapFixes](PlanFrameworkGapFixes.md)。
 实施与验收结果在该文档统一维护。
+
+## 分隔区域与裁剪分析（2026-11-19）
+
+- [x] 保存 [小数裁剪分析](PlanFractionalClipping.md)，本轮暂缓后端修改。
+- [ ] SplitView：默认3 DIP实际分隔区域、HandleSize、三个样式Part及本地独立会话验收。

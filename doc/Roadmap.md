@@ -1684,3 +1684,7 @@ iOS device 仅链接。首次 Scene 前 GPU、触摸/IME、安全区和真机仍
 
 四项独立修复分支及暂缓的 macOS 文件过滤见 [PlanFrameworkGapFixes](PlanFrameworkGapFixes.md)。
 实施与验收结果在该文档统一维护。
+
+### 小数位置裁剪
+
+分析和实施前验收见 [PlanFractionalClipping](PlanFractionalClipping.md)；目前暂缓，尚未修复。
