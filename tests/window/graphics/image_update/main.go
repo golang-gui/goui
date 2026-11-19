@@ -10,6 +10,8 @@
 //  2. 点击窗口或按空格，两侧色块保持位置，左侧红蓝切换，右侧保持绿色；每帧输出
 //     FRAME PASS。更新发生在 Begin/End 内，不能出现 context 丢失、崩溃或消失。
 //  3. 以各后端和 1x/2x 重启；透明合成、Transform、clip 由离屏像素断言核验。
+//     SAMPLING PASS 独立检查 1x/1.25x/1.5x/2x 整数与小数定位的图片缩放中间值；
+//     下方两条黑白渐变只因 .25 DIP 位移有轻微差异，不能一条变成硬边。
 //     -auto 在两个原生帧提交及其间离屏检查后退出，不代替步骤 2 的视觉验收。
 //
 // 平台差异：窗口装饰使用原生样式；不依赖透明窗口或桌面合成器。
@@ -54,7 +56,7 @@ func run() error {
 	var p graphics.Painter
 	var size events.SizeEvent
 	var failure error
-	var a, b graphics.Image
+	var a, b, gradient graphics.Image
 	frames := 0
 	paint := func() {
 		if p == nil || size.Width <= 0 || failure != nil {
@@ -83,6 +85,8 @@ func run() error {
 				return
 			}
 			p.DrawImage(graphics.Rect(220, 20, 180, 120), b)
+			p.DrawImage(graphics.Rect(20, 160, 360, 32), gradient)
+			p.DrawImage(graphics.Rect(20.25, 208, 360, 32), gradient)
 			failure = rejected(a, solid(ink))
 		}()
 		if failure != nil {
@@ -106,7 +110,7 @@ func run() error {
 			}
 		}
 	}
-	win, err = plat.NewWindow(geometry.Size{Width: 420, Height: 170}, func(event platform.Event) {
+	win, err = plat.NewWindow(geometry.Size{Width: 420, Height: 270}, func(event platform.Event) {
 		switch e := event.(type) {
 		case events.SizeEvent:
 			size = e
@@ -147,6 +151,11 @@ func run() error {
 		return err
 	}
 	defer b.Destroy()
+	gradient, err = p.NewImage(samplingSource())
+	if err != nil {
+		return err
+	}
+	defer gradient.Destroy()
 	if err = win.(platform.WindowManagement).Show(); err != nil {
 		return err
 	}
@@ -263,7 +272,7 @@ func checkPixels(p graphics.Painter) error {
 		}
 	}
 	fmt.Printf("PIXELS PASS painter=%s scales=1,1.5,2\n", p.Name())
-	return nil
+	return checkSampling(p)
 }
 
 func abs(n int) int {
@@ -271,4 +280,40 @@ func abs(n int) int {
 		return -n
 	}
 	return n
+}
+
+func samplingSource() image.Image {
+	src := image.NewRGBA(image.Rect(0, 0, 2, 1))
+	src.SetRGBA(0, 0, color.RGBA{A: 255})
+	src.SetRGBA(1, 0, color.RGBA{255, 255, 255, 255})
+	return src
+}
+
+func checkSampling(p graphics.Painter) error {
+	im, err := p.NewImage(samplingSource())
+	if err != nil {
+		return err
+	}
+	defer im.Destroy()
+	for _, scale := range []float32{1, 1.25, 1.5, 2} {
+		for _, offset := range []float32{0, .25} {
+			result, err := p.RenderImage(40, 12, scale, func() {
+				p.Clear(graphics.Color{})
+				p.DrawImage(graphics.Rect(offset, 0, 32, 8), im)
+			})
+			if err != nil {
+				return err
+			}
+			x, y := int(16*scale), int(4*scale)
+			// 独立像素中心映射；预乘 sRGB 通道插值，2级误差覆盖 GPU 纹理插值和量化。
+			weight := ((float64(x)+.5)/float64(scale)-float64(offset))/16 - .5
+			want := int(weight*255 + .5)
+			r, g, b, a := result.At(x, y).RGBA()
+			if abs(int(r>>8)-want) > 2 || abs(int(g>>8)-want) > 2 || abs(int(b>>8)-want) > 2 || a != 65535 {
+				return fmt.Errorf("sampling scale=%g offset=%g got=%d,%d,%d,%d want=%d", scale, offset, r>>8, g>>8, b>>8, a>>8, want)
+			}
+		}
+	}
+	fmt.Printf("SAMPLING PASS painter=%s scales=1,1.25,1.5,2\n", p.Name())
+	return nil
 }
