@@ -555,8 +555,155 @@ func TestImageResourceSnapshotsReusesAndCompositesPixels(t *testing.T) {
 	painter.End()
 
 	assertColorNear(t, d.result.At(0, 0), color.RGBA{R: 128, B: 127, A: 255}, 1)
-	assertColorNear(t, d.result.At(2, 0), color.RGBA{G: 255, A: 255}, 1)
+	// 像素中心映射到源 x=.75；预乘红/绿插值后，再与蓝色背景合成。
+	assertColorNear(t, d.result.At(2, 0), color.RGBA{R: 32, G: 191, B: 32, A: 255}, 1)
 	assertColorNear(t, d.result.At(3, 0), color.RGBA{B: 255, A: 255}, 1)
+}
+
+func TestDrawImageAlignedScaleUsesBilinear(t *testing.T) {
+	p, err := NewPainter(new(testDrawer))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Destroy()
+	src := image.NewRGBA(image.Rect(0, 0, 2, 1))
+	src.SetRGBA(0, 0, color.RGBA{A: 255})
+	src.SetRGBA(1, 0, color.RGBA{255, 255, 255, 255})
+	im, err := p.NewImage(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer im.Destroy()
+	for _, tc := range []struct {
+		x    float32
+		gray uint8
+	}{{0, 135}, {.25, 131}} {
+		result, err := p.RenderImage(40, 10, 1, func() { p.Clear(graphics.Color{}); p.DrawImage(graphics.Rect(tc.x, 0, 32, 8), im) })
+		if err != nil {
+			t.Fatal(err)
+		}
+		// 设备像素中心 16.5 对应源 x=.53125 或 .515625；8位预乘 sRGB
+		// 通道线性插值，容差 1 只覆盖舍入，不覆盖采样模式差异。
+		assertColorNear(t, result.At(16, 4), color.RGBA{tc.gray, tc.gray, tc.gray, 255}, 1)
+	}
+}
+
+func TestDrawImageSamplingGeometryAndPremultipliedAlpha(t *testing.T) {
+	p, err := NewPainter(new(testDrawer))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Destroy()
+	src := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	pixels := [4]color.RGBA{{}, {R: 128, A: 128}, {G: 64, A: 64}, {B: 255, A: 255}}
+	for i, c := range pixels {
+		src.SetRGBA(i%2, i/2, c)
+	}
+	im, err := p.NewImage(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer im.Destroy()
+	for _, scale := range []float32{1, 1.25, 1.5, 2} {
+		for _, mode := range []string{"aligned", "fractional", "mirror-x", "mirror-y", "shear"} {
+			t.Run(fmt.Sprintf("%g/%s", scale, mode), func(t *testing.T) {
+				transform := geometry.Identity()
+				if mode == "fractional" {
+					transform = geometry.Translate(.25, .25)
+				}
+				if mode == "mirror-x" {
+					transform = geometry.Translate(24, 0).Scale(-1, 1)
+				}
+				if mode == "mirror-y" {
+					transform = geometry.Translate(0, 24).Scale(1, -1)
+				}
+				if mode == "shear" {
+					transform.A12 = .25
+				}
+				result, err := p.RenderImage(40, 32, scale, func() {
+					p.Clear(graphics.Color{})
+					p.SetClipRect(graphics.Rect(6, 6, 14, 14))
+					p.SetTransform(transform)
+					p.DrawImage(graphics.Rect(4, 4, 16, 16), im)
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				// 独立反算设备像素中心，双线性仅作用于预乘的8位通道，
+				// 不用 painter 的 inverse 或 sampler 生成预期。采样远离多边形边缘。
+				for _, pos := range []image.Point{{9, 9}, {12, 12}, {15, 9}, {9, 15}} {
+					x, y := int(float32(pos.X)*scale), int(float32(pos.Y)*scale)
+					lx, ly := (float64(x)+.5)/float64(scale), (float64(y)+.5)/float64(scale)
+					switch mode {
+					case "fractional":
+						lx -= .25
+						ly -= .25
+					case "mirror-x":
+						lx = 24 - lx
+					case "mirror-y":
+						ly = 24 - ly
+					case "shear":
+						lx -= .25 * ly
+					}
+					tx, ty := min(1., max(0., (lx-4)/8-.5)), min(1., max(0., (ly-4)/8-.5))
+					var out [4]uint8
+					for channel := range 4 {
+						var value float64
+						for i, c := range pixels {
+							weightX, weightY := 1-tx, 1-ty
+							if i%2 == 1 {
+								weightX = tx
+							}
+							if i/2 == 1 {
+								weightY = ty
+							}
+							value += float64([4]uint8{c.R, c.G, c.B, c.A}[channel]) * weightX * weightY
+						}
+						out[channel] = uint8(math.Round(value))
+					}
+					assertColorNear(t, result.At(x, y), color.RGBA{out[0], out[1], out[2], out[3]}, 1)
+				}
+				assertColorNear(t, result.At(int(5*scale), int(10*scale)), color.RGBA{}, 0)
+			})
+		}
+	}
+}
+
+func TestDrawImageAlignedOneToOnePreservesPixels(t *testing.T) {
+	p, err := NewPainter(new(testDrawer))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Destroy()
+	src := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	colors := []color.RGBA{{R: 43, A: 57}, {G: 127, A: 128}, {B: 255, A: 255}, {}}
+	for i, c := range colors {
+		src.SetRGBA(i%2, i/2, c)
+	}
+	im, err := p.NewImage(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer im.Destroy()
+	for _, mirror := range []bool{false, true} {
+		result, err := p.RenderImage(4, 4, 1, func() {
+			p.Clear(graphics.Color{})
+			if mirror {
+				p.SetTransform(geometry.Translate(2, 2).Scale(-1, -1))
+			}
+			p.DrawImage(graphics.Rect(0, 0, 2, 2), im)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, c := range colors {
+			x, y := i%2, i/2
+			if mirror {
+				x, y = 1-x, 1-y
+			}
+			assertColorNear(t, result.At(x, y), c, 0)
+		}
+	}
 }
 
 func TestImageResourceRejectsWrongPainterAndDestroyedResource(t *testing.T) {

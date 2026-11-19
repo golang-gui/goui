@@ -761,6 +761,23 @@ func (p *Painter) drawAxisAlignedBitmap(rect graphics.Rectangle, bitmap graphics
 	srcBounds := bitmap.Bounds()
 	srcW, srcH := float32(srcBounds.Dx()), float32(srcBounds.Dy())
 	deviceW, deviceH := x1-x0, y1-y0
+	if float32(right-left) != srcW || float32(bottom-top) != srcH {
+		// Use the same pixel-center mapping and premultiplied interpolation as
+		// the affine path. Integer placement must not select nearest-neighbor.
+		var sample [4]byte
+		for y := clip.Min.Y; y < clip.Max.Y; y++ {
+			by := float32(srcBounds.Min.Y) + (float32(y)+.5-y0)/deviceH*srcH - .5
+			for x := clip.Min.X; x < clip.Max.X; x++ {
+				bx := float32(srcBounds.Min.X) + (float32(x)+.5-x0)/deviceW*srcW - .5
+				c := sampleBitmapBilinear(bitmap, bx, by)
+				sample = [4]byte{c.R, c.G, c.B, c.A} // sampler returns BGRA
+				di := p.bgra.PixOffset(x, y)
+				compositePremultipliedBGRA(p.bgra.Pix[di:di+4], sample[:])
+			}
+		}
+		return true
+	}
+	// Preserve byte-exact aligned 1:1 copies, including reflected axes.
 	for y := clip.Min.Y; y < clip.Max.Y; y++ {
 		v := (float32(y) + 0.5 - y0) / deviceH * srcH
 		sy := int(v)
