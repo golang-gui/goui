@@ -14,7 +14,8 @@
 //
 // 操作与预期：
 //  1. 在左右分隔线以及左右 4 DIP 内按住拖动；两侧实时分配且线跟随，无初始
-//     跳动或拖动中重布局回弹。悬停显示缩放光标；默认分隔线始终为 1 DIP 中性色。
+//     跳动或拖动中重布局回弹。实际线悬停显示调整光标；扩展空白区移动至少 4 DIP
+//     后才认领。默认分隔线始终为 1 DIP 中性色。滚动条和文本拖选等子级手势优先。
 //     上下分隔条同理，拖到容器外再松手不继续拖动。内容互不越过分区裁剪。
 //     Windows 回归：持续快速左右往返拖动至少 20 秒，再操作上下分隔条；窗口
 //     应持续响应，不出现 0xC0000005。松手后点 Snapshot，几何断言仍应通过。
@@ -30,7 +31,9 @@
 //     点 Rebuild 不重置非受控比例、输入文字、选择或 ScrollView 的位置。
 //  5. 点 Hide/Show 隐藏左侧：右侧填满、外层线消失；再显示恢复尺寸策略。
 //     Toggle Dark 切换亮暗主题的中性色分隔条，不改变比例或内容。
-//  6. 点 Snapshot：终端打印两侧实际大小及 separator 范围；assertions 检查
+//  6. 在左面板右侧滚动条靠近分隔线的 4 DIP 内拖动滑块：只滚动内容，分隔不移动。
+//     对上下分隔线旁的横滚动条同样检查；邻近按钮点击仍激活。
+//  7. 点 Snapshot：终端打印两侧实际大小及 separator 范围；assertions 检查
 //     两侧之和加 1 DIP 等于容器主轴，真实内容子树与 separator 的边界及范围。
 //     显示 ASSERT PASS 仅代表这些几何断言，不能代替上述桌面输入／外观验收。
 //
@@ -107,7 +110,7 @@ func assertSplit(view *widgets.SplitView) {
 		if view.Direction() == layout.DirectionVertical {
 			hitWidth = bounds.Height
 		}
-		if hitWidth < 0 || hitWidth > 9.01 || separator.Range.Direction != view.Direction() {
+		if hitWidth < 0 || hitWidth > 1.01 || separator.Range.Direction != view.Direction() {
 			panic("separator hit width/direction incorrect")
 		}
 		fmt.Printf("separator bounds=%v range=%+v\n", separator.Bounds, *separator.Range)
@@ -119,7 +122,7 @@ func runUI(fallback bool) error {
 	mode, dark, hidden, rebuilds := 0, false, false, 0
 	startSize, endSize, ratio, terminal := float32(220), float32(400), float32(.5), float32(140)
 	return ui.Run("org.golang-gui.SplitViewProbe", func(app ui.App) ui.RootView {
-		left := ui.VBox(ui.Label("Sidebar / left"), ui.TextInput().ID("sidebar-input"), ui.Label("Minimum: 120 DIP")).Padding(12).Spacing(8).MinSize(120, 0).Hidden(hidden)
+		left := ui.VBox(ui.Label("Sidebar / left"), ui.TextInput().ID("sidebar-input"), ui.Label("Minimum: 120 DIP"), ui.ScrollView(ui.Label(strings.Repeat("Side row\n", 100))).ID("sidebar-scroll")).Spacing(8).MinSize(120, 0).Hidden(hidden)
 		right := wui.VSplit(
 			ui.ScrollView(ui.TextView().ID("editor").Model(model)).Style("text-view").MinSize(0, 100),
 			ui.ScrollView(ui.Label(strings.Repeat("Terminal output\n", 40))).MinSize(0, 60),
@@ -155,6 +158,7 @@ func runUI(fallback bool) error {
 						ui.Button("Snapshot").OnClick(func() {
 							assertSplit(app.FindWidget("split", "outer").(*widgets.SplitView))
 							assertSplit(app.FindWidget("split", "inner").(*widgets.SplitView))
+							fmt.Printf("SIDEBAR SCROLL y=%g\n", app.FindWidget("split", "sidebar-scroll").(*gui.ScrollView).ScrollY())
 						}),
 					).Spacing(8).Padding(8),
 					ui.Label(fmt.Sprintf("%s | Rebuilds=%d | Drag; arrows / Shift / Home / End / Esc", modeNames[mode], rebuilds)),
@@ -180,12 +184,15 @@ func runGUI(fallback bool) error {
 	}
 	window.SetMinSize(geometry.Size{Width: 360, Height: 260})
 	left := gui.NewLinearBox(layout.DirectionVertical)
-	left.SetPadding(geometry.UniformInsets(12))
 	left.SetSpacing(8)
 	left.SetMinSize(geometry.Size{Width: 120})
 	left.AddChild(gui.NewLabel("Sidebar / left"))
 	left.AddChild(gui.NewTextInput())
 	left.AddChild(gui.NewLabel("Minimum: 120 DIP"))
+	sideScroll := gui.NewScrollView()
+	sideScroll.SetDirection(gui.ScrollVertical)
+	sideScroll.SetChild(gui.NewLabel(strings.Repeat("Side row\n", 100)))
+	left.AddChild(sideScroll)
 	editor := gui.NewTextView()
 	editor.SetModel(gui.NewTextModel(document))
 	scroll := gui.NewScrollView()
@@ -244,7 +251,11 @@ func runGUI(fallback bool) error {
 	})
 	button("Hide/Show", func() { left.SetVisible(!left.Visible()) })
 	button("Toggle Dark", func() { dark = !dark; app.SetStyleSheet(sheet(dark, fallback)) })
-	button("Snapshot", func() { assertSplit(outer); assertSplit(inner) })
+	button("Snapshot", func() {
+		assertSplit(outer)
+		assertSplit(inner)
+		fmt.Printf("SIDEBAR SCROLL y=%g\n", sideScroll.ScrollY())
+	})
 	root.AddChild(toolbar)
 	root.AddChild(status)
 	root.AddChild(outer)
