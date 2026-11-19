@@ -6,12 +6,12 @@
 
 ## 分支与交付
 
-| 项目 | 修复分支 | 初始状态 |
+| 项目 | 修复分支 | 交付提交 |
 | --- | --- | --- |
-| 显式滚动覆盖旧 Reveal | `fix/scroll-intent-order` | 待实现 |
-| 聚焦控件输入法重绑定 | `fix/ime-context-refresh` | 待实现；SourceView 同名配套分支 |
-| 分隔条与滚动条输入冲突 | `fix/split-scrollbar-input` | 待实现 |
-| Software 图片缩放采样 | `fix/software-image-sampling` | 待实现 |
+| 显式滚动覆盖旧 Reveal | `fix/scroll-intent-order` | `5871f608` 实现；`50d954cd` 窗口用例 |
+| 聚焦控件输入法重绑定 | `fix/ime-context-refresh` | `462096b3`；SourceView 配套 `7695230` / `d017aaa` |
+| 分隔条与滚动条输入冲突 | `fix/split-scrollbar-input` | `8233578a` 实现；`b1a699cb` 窗口用例 |
+| Software 图片缩放采样 | `fix/software-image-sampling` | `d4ca809d` 实现；`3661ec4b` 窗口用例 |
 
 每项的实现、相关逻辑回归一起提交；窗口用例和设计文档按实际独立性拆分。
 本文末尾统一记录分支交付情况。生产代码保留在各自分支，应用集成按依赖顺序验证。
@@ -113,4 +113,46 @@ Apple 的 [allowedFileTypes 契约](https://developer.apple.com/documentation/ap
 共享逻辑优先无桌面回归，原生输入和后端风险追加针对性窗口验证；
 通过、失败、跳过、未执行分别记录。临时日志和诊断脚本保留在仓库外。
 
-实施结果待各分支完成后补充。
+### 交付结果（2026-11-19）
+
+四项均已按上述契约实现并独立提交；GOUI main 仅维护总计划，生产修复留在各分支。
+SourceView 的同名配套分支负责调用新入口及原生输入验收，不改变应用业务代码。
+
+| 分支 | `go test ./... -count=1 -json` 测试／子测试通过数 | 失败 | 条件跳过 |
+| --- | ---: | ---: | ---: |
+| `fix/scroll-intent-order` | 6157 | 0 | 0 |
+| `fix/ime-context-refresh` | 6149 | 0 | 0 |
+| `fix/split-scrollbar-input` | 6149 | 0 | 0 |
+| `fix/software-image-sampling` | 6160 | 0 | 0 |
+
+每次有 81 个测试包通过；另有 155 个无测试文件的包，不算条件跳过。
+全仓运行环境为 Linux amd64 / X11 / Xfwm4 的独立桌面会话。
+两项既有 X11 包内测试创建私有窗口及 selection，不改系统主题；窗口验收只修改本例内存内容。
+
+- 无显示会话的 race：滚动及输入法分支 `go test -race ./gui -count=1`，
+  分隔条分支 `go test -race ./widgets -count=1`（补充嵌套／Esc 后再次运行 TestSplitView），
+  图片分支 `go test -race ./platform/graphics/software -count=1`，均通过。
+- 滚动窗口：Software 1x，通过布局中的新旧意图断言；真实滚轮移动表单、双轴滑块到末端，
+  然后再次运行意图回归，偏移及实际槽位检查通过。未把用例注释中的其余完整矩阵计为通过。
+- 输入法：SourceView 在 Software 1x 上先以只读状态取得焦点，再保持焦点恢复编辑，
+  普通 XIM 键入恢复。相同窗口用例连接未修改的 SourceView 时重现原生键入无效；配套分支接受文字。
+  同时验证可编辑→只读拒绝输入→恢复键入。OpenGL 1x 的既有自动编辑、焦点、重挂载、
+  导航及语义检查通过；这些自动 CommitText 检查不算原生组合输入验证。
+- 分隔条窗口：Software 1x，分隔线旁滚动条的末侧 4 DIP 内真实拖动使偏移从 0 到 774，
+  分栏尺寸不变；空白扩展区域拖动后 Esc 恢复偏好，Snapshot 几何检查通过。
+  双向、子级拖动、按钮点击、嵌套优先级及键盘由正常事件分发的逻辑断言补充。
+- 图片窗口：Software / OpenGL（llvmpipe）分别在原生 1x、2x 提交帧并通过断言；
+  离屏采样逐项检查 1x / 1.25x / 1.5x / 2x 的整数和小数位置。
+  Software 1x 实际窗口的两条渐变均平滑。预乘透明、镜像、shear、裁剪及精确拷贝由独立像素预期验证。
+- Windows amd64 / macOS arm64：受影响的 GUI、widgets、绘图包及窗口入口交叉构建通过；
+  Direct2D 仅适用于 Windows。SourceView 配套编辑器及 ui 同样通过两目标构建。
+
+**独立依赖限制**：SourceView 的临时双仓工作区 `go test ./... -count=1` 及
+`go test -race ./sourceview` 通过；未提交工作区或 replace。
+`GOWORK=off go test ./...` 失败：声明的 GOUI v0.8.0 缺少 RefreshInputMethod，
+并已有 SharedPopover、NewSharedPopover、ErrPopoverSuperseded 的依赖缺口。
+发布或独立消费前需更新到实际包含这些 API 的 GOUI 版本，不能把本地联调算作独立发布通过。
+
+**未执行**：Windows / macOS 原生输入及窗口操作、Direct2D 桌面采样、真实 CJK 服务的组合／候选窗回归。
+本轮没有改动三平台 IME 或 Direct2D/OpenGL 的实现，源码核对与交叉构建不代替这些验收。
+macOS 文件过滤继续暂缓；没有顺带修复该项。
