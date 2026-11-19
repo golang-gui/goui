@@ -85,6 +85,8 @@ type TableViewView[T any] struct {
 	onSortRequest         func(string, widgets.SortOrder)
 	contextMenu           func(string, string) []*baseui.MenuItemView
 	onContextMenuError    func(error)
+	hScrollBar            baseui.ScrollBarOptions
+	vScrollBar            baseui.ScrollBarOptions
 }
 
 const (
@@ -108,6 +110,21 @@ func (v *TableViewView[T]) Columns(columns ...*TableColumnView[T]) *TableViewVie
 	v.columns = slices.Clone(columns)
 	return v
 }
+
+// HScrollBarOptions configures the table's built-in horizontal scrollbar.
+// Omission restores the default geometry and Auto visibility.
+func (v *TableViewView[T]) HScrollBarOptions(options baseui.ScrollBarOptions) *TableViewView[T] {
+	v.hScrollBar = options
+	return v
+}
+
+// VScrollBarOptions configures the table's built-in vertical scrollbar.
+// Hidden preserves wheel, keyboard and programmatic scrolling.
+func (v *TableViewView[T]) VScrollBarOptions(options baseui.ScrollBarOptions) *TableViewView[T] {
+	v.vScrollBar = options
+	return v
+}
+
 func (v *TableViewView[T]) SelectionMode(mode widgets.SelectionMode) *TableViewView[T] {
 	v.mode = mode
 	return v
@@ -223,6 +240,8 @@ func (v *TableViewView[T]) Update(ctx baseui.BuildContext, widget gui.Widget) {
 	s.onError = v.onContextMenuError
 	s.handles.Block()
 	defer s.handles.Unblock()
+	table.SetHScrollBarOptions(v.hScrollBar)
+	table.SetVScrollBarOptions(v.vScrollBar)
 	var next []*widgets.TableColumn
 	var blocked signal.Handles
 	defer func() { blocked.Unblock() }()
