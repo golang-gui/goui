@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"fmt"
 	"math"
 	"testing"
 
@@ -747,6 +748,121 @@ type mockScrollContent struct {
 	WidgetBase
 	height      float32
 	layoutCalls []geometry.Point
+}
+
+// 回调只用于在正常布局边界重入，不直接修改 ScrollView 私有状态。
+type intentScrollContent struct {
+	WidgetBase
+	onLayout func()
+	onSize   func()
+}
+
+func (c *intentScrollContent) ContentSize() geometry.Size {
+	if fn := c.onSize; fn != nil {
+		c.onSize = nil
+		fn()
+	}
+	return geometry.Size{Width: 1000, Height: 1000}
+}
+func (c *intentScrollContent) LayoutVisible(geometry.Size, geometry.Point) {
+	if fn := c.onLayout; fn != nil {
+		c.onLayout = nil
+		fn()
+	}
+}
+
+func TestScrollViewLatestPositionIntent(t *testing.T) {
+	for _, axis := range []string{"X", "Y"} {
+		for _, value := range []float32{0, -10, 20, 9999} {
+			t.Run(fmt.Sprintf("%s/%g", axis, value), func(t *testing.T) {
+				sv := NewScrollView()
+				content := &intentScrollContent{}
+				sv.SetChild(content)
+				content.onLayout = func() {
+					sv.ScrollIntoView(geometry.Rect(700, 700, 1, 1))
+					if axis == "X" {
+						sv.SetScrollX(value)
+					} else {
+						sv.SetScrollY(value)
+					}
+				}
+				sv.Arrange(geometry.Rect(0, 0, 100, 100))
+				want := min(float32(908), max(float32(0), value))
+				x, y := want, float32(0)
+				if axis == "Y" {
+					x, y = y, x
+				}
+				if sv.ScrollX() != x || sv.ScrollY() != y {
+					t.Fatalf("旧 Reveal 覆盖新偏移：(%g,%g)，预期 (%g,%g)", sv.ScrollX(), sv.ScrollY(), x, y)
+				}
+			})
+		}
+	}
+}
+
+func TestScrollViewRevealOrdering(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		action func(*ScrollView)
+		want   float32
+	}{
+		{"新Reveal", func(s *ScrollView) { s.SetScrollY(0); s.ScrollIntoView(geometry.Rect(0, 400, 1, 1)) }, 309},
+		{"NaN", func(s *ScrollView) { s.SetScrollY(float32(math.NaN())) }, 609},
+		{"Inf", func(s *ScrollView) { s.SetScrollY(float32(math.Inf(1))) }, 609},
+		{"禁用轴", func(s *ScrollView) { s.SetDirection(ScrollVertical); s.SetScrollX(0) }, 609},
+		{"布局钳制", func(s *ScrollView) { s.clampScroll() }, 609},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sv := NewScrollView()
+			content := &intentScrollContent{}
+			sv.SetChild(content)
+			content.onLayout = func() {
+				sv.ScrollIntoView(geometry.Rect(0, 700, 1, 1))
+				tc.action(sv)
+			}
+			sv.Arrange(geometry.Rect(0, 0, 100, 100))
+			want := tc.want
+			if tc.name == "禁用轴" {
+				want = 601
+			}
+			if sv.ScrollY() != want {
+				t.Fatalf("偏移=%g，预期 %g", sv.ScrollY(), want)
+			}
+		})
+	}
+}
+
+func TestScrollViewRevealReentrantContentSize(t *testing.T) {
+	for _, action := range []string{"position", "reveal", "replace", "destroy"} {
+		t.Run(action, func(t *testing.T) {
+			sv := NewScrollView()
+			content := &intentScrollContent{}
+			sv.SetChild(content)
+			sv.Arrange(geometry.Rect(0, 0, 100, 100))
+			content.onSize = func() {
+				switch action {
+				case "position":
+					sv.SetScrollY(0)
+				case "reveal":
+					sv.ScrollIntoView(geometry.Rect(0, 400, 1, 1))
+				case "replace":
+					sv.SetChild(nil)
+				case "destroy":
+					sv.base().destroy(sv)
+				}
+			}
+			sv.ScrollIntoView(geometry.Rect(0, 700, 1, 1))
+			if action == "reveal" {
+				// 替代请求留到下次布局，不递归用户回调。
+				sv.Arrange(sv.Rect())
+				if sv.ScrollY() != 309 {
+					t.Fatalf("新 Reveal 丢失：%g", sv.ScrollY())
+				}
+			} else if sv.ScrollY() != 0 {
+				t.Fatalf("过期 Reveal 被应用：%g", sv.ScrollY())
+			}
+		})
+	}
 }
 
 func (m *mockScrollContent) Measure(c layout.Constraint) layout.Measurement {

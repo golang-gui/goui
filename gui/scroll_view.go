@@ -76,6 +76,7 @@ type ScrollView struct {
 	revealHandle   signal.Handle
 	revealRect     geometry.Rectangle
 	revealPending  bool
+	scrollIntent   uint64 // invalidates requests across external content callbacks
 	layoutDepth    int
 	revealing      bool
 	dragAutoScroll bool
@@ -328,6 +329,11 @@ func (sv *ScrollView) disconnectReveal() {
 		sv.revealHandle.Disconnect()
 		sv.revealHandle = nil
 	}
+	sv.cancelReveal()
+}
+
+func (sv *ScrollView) cancelReveal() {
+	sv.scrollIntent++
 	sv.revealPending = false
 }
 
@@ -335,6 +341,7 @@ func (sv *ScrollView) disconnectReveal() {
 // coordinates. For a rectangle larger than the viewport its leading edge is
 // preferred. Invalid rectangles are ignored. During layout only the latest
 // request is retained and applied after the content extent has been refreshed.
+// A later valid SetScrollX/Y cancels an older request, even at the same offset.
 // Large coordinate conversions round toward keeping the target visible.
 func (sv *ScrollView) ScrollIntoView(rect geometry.Rectangle) {
 	if sv.destroyed || sv.content == nil || rect.Width < 0 || rect.Height < 0 {
@@ -345,6 +352,7 @@ func (sv *ScrollView) ScrollIntoView(rect geometry.Rectangle) {
 			return
 		}
 	}
+	sv.scrollIntent++
 	sv.revealRect, sv.revealPending = rect, true
 	sv.flushReveal()
 }
@@ -358,10 +366,19 @@ func (sv *ScrollView) flushReveal() {
 		return // retain until the first allocation
 	}
 	sv.revealing = true
-	defer func() { sv.revealing = false }()
+	defer func() {
+		sv.revealing = false
+		// A callback may replace this request. Never recurse into user layout.
+		if sv.revealPending && !sv.destroyed {
+			sv.RequestLayout()
+		}
+	}()
+	intent, rect := sv.scrollIntent, sv.revealRect
 	extentChanged := sv.refreshContentSize()
+	if sv.destroyed || sv.content == nil || intent != sv.scrollIntent {
+		return
+	}
 	area = sv.contentAreaSize()
-	rect := sv.revealRect
 	sv.revealPending = false
 	oldX, oldY := sv.scrollX, sv.scrollY
 	sv.scrollX = revealOffset(oldX, area.Width, rect.X, rect.Width)
@@ -370,11 +387,6 @@ func (sv *ScrollView) flushReveal() {
 	if extentChanged || oldX != sv.scrollX || oldY != sv.scrollY {
 		sv.Arrange(sv.Rect())
 		sv.RequestPaint()
-	}
-	// A layout may revise its request after measuring new content. Process it
-	// on the next layout, not recursively on this stack.
-	if sv.revealPending {
-		sv.RequestLayout()
 	}
 }
 
@@ -448,10 +460,12 @@ func (sv *ScrollView) wheelDelta(delta float32, mode events.WheelDeltaMode) floa
 }
 
 // SetScrollY sets the vertical scroll offset, rounded to whole logical pixels.
+// A valid request cancels any older pending ScrollIntoView, even at the same offset.
 func (sv *ScrollView) SetScrollY(y float32) {
-	if !sv.canScrollY() {
+	if sv.destroyed || !sv.canScrollY() || math.IsNaN(float64(y)) || math.IsInf(float64(y), 0) {
 		return
 	}
+	sv.cancelReveal()
 	y = mathx.Round(y)
 	if sv.scrollY == y {
 		return
@@ -468,10 +482,12 @@ func (sv *ScrollView) ScrollY() float32 {
 }
 
 // SetScrollX sets the horizontal scroll offset, rounded to whole logical pixels.
+// A valid request cancels any older pending ScrollIntoView, even at the same offset.
 func (sv *ScrollView) SetScrollX(x float32) {
-	if !sv.canScrollX() {
+	if sv.destroyed || !sv.canScrollX() || math.IsNaN(float64(x)) || math.IsInf(float64(x), 0) {
 		return
 	}
+	sv.cancelReveal()
 	x = mathx.Round(x)
 	if sv.scrollX == x {
 		return
@@ -756,6 +772,9 @@ func (sv *ScrollView) refreshContentSize() bool {
 		return false
 	}
 	size := sc.ContentSize()
+	if sv.destroyed || sv.content != sc || sc.base().destroyed {
+		return false
+	}
 	if size.Width == sv.contentWidth && size.Height == sv.contentHeight {
 		return false
 	}
