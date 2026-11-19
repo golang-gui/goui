@@ -4,34 +4,46 @@
 // 启动：go run ./tests/window/gui/scroll_layout；可指定 GOUI_PLAT_PAINTER 和
 // GOUI_PLAT_SCALE=1/2。初始为长表单、浅色、Integrated 窗口。
 // 操作与预期：
+//
 //  1. 左侧表单仅有竖滚动条；缩窄/放宽窗口，文字和按钮按视口宽度换行，
 //     不出现横滚动条。真实拖动窗口边框后先按 F6，再滚动并按 F6：内容右边距
 //     应保持一致，不能因滚动多占用或少占用一条滚动条宽度。
 //     滚到底部，能完整看到 END 标记；拖滑块回顶部。
+//
 //  2. 右侧 Both 样例是 100×100 DIP 视口中的 96×200 DIP 图片。
 //     应同时显示两条滚动条，默认内容区 92×92，最大偏移 X=4、Y=108。
 //     拖动两条滑块，边界完整且可命中；仅看窗口启动不算通过。
+//
 //  3. Horizontal 样例只能横滚；Shift+滚轮可移动图片，普通竖滚轮不移动它。
 //     左侧输入框能正常输入，聚焦后滚动条仍可拖动，焦点不改变滚动方向。
+//
 //  4. F7 切换短/长表单：短内容应无滚动条，恢复长内容后重新出现；再滚到底。
 //     F8 最大化、F9 恢复，换行和滚动范围更新，不保留旧的多余滚动条。
+//
 //  5. 每项操作后按 F6，输出 SCROLL LAYOUT PASS 和各视口/偏移的公开几何断言。
 //     F11 切换亮暗后重复检查；1x/2x 分别验收，默认轨道与滑块都为8 DIP，
 //     对应8/16物理像素，没有额外的两侧留白。
+//
 //  6. F10 定位到表单中的 Nested CrossStretch 面板，按 F6 记录外层偏移和内层 bounds。
 //     将鼠标置于内层列表中滚动，再按 F6：仅 nested 偏移改变，form 不变。
 //     滚到内层首尾后继续滚动，form 仍不变。鼠标移到面板左侧文字后滚动，
 //     form 应正常滚动。F4 将内层切为短内容，F10 重新定位并按 F6 记录；
 //     在内层短内容上滚动，form 应改变，nested 保持 0。F4 恢复长内容。
+//
 //  7. F5 只查询表单在当前紧约束及其他宽松约束下的测量结果，不安排新尺寸；
 //     应输出 REMEASURE PASS，视口、内容及滚动范围不变。再滚动并按 F6，
 //     右边距仍不变。窗口变宽/变窄、F11 切换亮暗后重复此项。
+//
 //  8. F3 循环 Both 样例的默认、自定义、Hidden、Always 配置，每次 F6。
 //     自定义横条 10/6/3 DIP、纵条 20/8/4 DIP（轨道/滑块/额外间距），
 //     内容区 76×87；轨道和间距不盖内容。拖两轴滑块含留白区域，F6 输出偏移。
 //     Hidden 无条和占位但滚轮仍有效；Always 即使 F2 切到 20×20 短图片也有
 //     双条和完整滑块，点击不滚动。Auto 配合短图片无条。F2 恢复长图片。
 //     拖动中保持按下并按 F3，之后移动/释放不能再用旧抓取位置改变偏移。
+//
+//  9. F1 临时替换 Both 内容，在真实布局中先请求远处 Reveal，再 SetScrollY(0)。
+//     下一事件循环应输出 SCROLL INTENT PASS 并恢复原内容；视口不能被旧请求拉走。
+//     若 5 秒内没有结果，视为失败，不把 READY／窗口启动算作通过。
 //
 // 平台差异：字体影响换行阈值；Linux 无桌面合成时 Integrated 回退 Native。
 // 副作用：窗口和日志，不读写剪贴板/文件、不启动 DevServer、不改系统设置。
@@ -84,6 +96,22 @@ func picture(width, height int) image.Image {
 		}
 	}
 	return img
+}
+
+// 在真实分配期间发起导航和显式滚动；不接触 ScrollView 私有状态。
+type scrollOrderContent struct {
+	gui.WidgetBase
+	once func()
+}
+
+func (c *scrollOrderContent) ContentSize() geometry.Size {
+	return geometry.Size{Width: 50, Height: 1000}
+}
+func (c *scrollOrderContent) LayoutVisible(geometry.Size, geometry.Point) {
+	if fn := c.once; fn != nil {
+		c.once = nil
+		fn()
+	}
 }
 
 func main() {
@@ -200,6 +228,28 @@ func main() {
 		s.ConnectActivate(fn)
 		win.Shortcuts().AddShortcut(s)
 	}
+	checkingIntent := false
+	bind(gui.KeyF1, func() {
+		if checkingIntent {
+			return
+		}
+		checkingIntent = true
+		original := both.Child()
+		probe := new(scrollOrderContent)
+		probe.once = func() {
+			both.ScrollIntoView(geometry.Rect(0, 700, 1, 1))
+			both.SetScrollY(0)
+			app.Post(func() {
+				if both.ScrollY() != 0 {
+					log.Fatalf("旧 Reveal 覆盖新偏移：%g", both.ScrollY())
+				}
+				fmt.Println("SCROLL INTENT PASS")
+				both.SetChild(original)
+				checkingIntent = false
+			})
+		}
+		both.SetChild(probe)
+	})
 	barMode, shortPicture := 0, false
 	bind(gui.KeyF2, func() {
 		shortPicture = !shortPicture
@@ -245,6 +295,10 @@ func main() {
 		fmt.Println("REMEASURE PASS")
 	})
 	bind(gui.KeyF6, func() {
+		if checkingIntent {
+			fmt.Println("SCROLL INTENT 正在等待布局")
+			return
+		}
 		b := both.Snapshot()
 		viewport := geometry.Size{Width: 92, Height: 92}
 		if barMode == 1 {
