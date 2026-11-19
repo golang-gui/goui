@@ -13,7 +13,6 @@ type splitHandle struct {
 	gui.WidgetBase
 	view       *SplitView
 	drag       *gui.DragEventController
-	edge       *splitEdgeDrag
 	dragging   bool
 	before     splitPreference
 	grabOffset float32
@@ -21,7 +20,6 @@ type splitHandle struct {
 
 func newSplitHandle(view *SplitView) *splitHandle {
 	h := &splitHandle{view: view}
-	h.SetStyleName("split-handle")
 	h.SetFocusable(true)
 	h.SetVisible(false)
 	h.updateCursor()
@@ -29,12 +27,8 @@ func newSplitHandle(view *SplitView) *splitHandle {
 	h.AddEventController(motion)
 	h.ConnectFocused(func(bool) { h.RequestPaint() })
 	h.drag = gui.NewDragEventController()
-	h.connectDrag(h.drag, func(p geometry.Point) geometry.Point { return p.Add(h.Rect().Pos) })
+	h.connectDrag()
 	h.AddEventController(h.drag)
-	h.edge = &splitEdgeDrag{DragEventController: gui.NewDragEventController(), view: view}
-	h.edge.SetThreshold(4)
-	h.connectDrag(h.edge.DragEventController, func(p geometry.Point) geometry.Point { return p })
-	view.AddEventController(h.edge)
 	h.ConnectUnmount(h.cancel)
 	key := gui.NewKeyEventController()
 	key.ConnectKeyDown(h.keyDown)
@@ -49,33 +43,15 @@ func (h *splitHandle) updateCursor() {
 	h.SetCursor(cursor)
 }
 
-// splitEdgeDrag offers the old extended grab area through normal bubbling,
-// leaving child hit testing and deeper gesture claims intact.
-type splitEdgeDrag struct {
-	*gui.DragEventController
-	view *SplitView
-}
-
-func (c *splitEdgeDrag) HandleEvent(ctx gui.EventContext) {
-	if e, ok := ctx.Event().(events.PointerEvent); ok && e.EventType == events.PointerDown {
-		p, valid := ctx.Position()
-		v := c.view
-		if !valid || v.Destroyed() || !v.active() || v.point(p) < v.startSize-4 || v.point(p) >= v.startSize+5 {
-			return
-		}
-	}
-	c.DragEventController.HandleEvent(ctx)
-}
-
-func (h *splitHandle) connectDrag(drag *gui.DragEventController, local func(geometry.Point) geometry.Point) {
-	view := h.view
+func (h *splitHandle) connectDrag() {
+	view, drag := h.view, h.drag
 	drag.ConnectBegin(func(_ gui.EventContext, info gui.DragInfo) {
 		if view.Destroyed() || !view.active() {
 			drag.Reset()
 			return
 		}
 		h.dragging, h.before = true, view.preference
-		h.grabOffset = view.point(local(info.Position)) - view.startSize
+		h.grabOffset = view.point(info.Position.Add(h.Rect().Pos)) - view.startSize
 		h.SetState(style.Pressed, true)
 		if host, ok := view.Root().(gui.EventTarget); ok {
 			host.SetFocusedWidget(h)
@@ -88,7 +64,7 @@ func (h *splitHandle) connectDrag(drag *gui.DragEventController, local func(geom
 	})
 	move := func(info gui.DragInfo) {
 		if h.dragging {
-			view.adjust(view.point(local(info.Position)) - h.grabOffset)
+			view.adjust(view.point(info.Position.Add(h.Rect().Pos)) - h.grabOffset)
 		}
 	}
 	drag.ConnectUpdate(func(_ gui.EventContext, info gui.DragInfo) { move(info) })
@@ -108,9 +84,6 @@ func (h *splitHandle) cancel() {
 	wasDragging := h.dragging
 	h.dragging = false // Reset may recursively deliver ConnectCanceled.
 	h.drag.Reset()
-	if h.edge != nil {
-		h.edge.Reset()
-	}
 	if !wasDragging {
 		return
 	}
@@ -183,25 +156,56 @@ func (h *splitHandle) keyDown(ctx gui.EventContext, event events.KeyEvent) {
 		}
 	}
 }
-func (h *splitHandle) Paint(p gui.Painter) {
-	const width float32 = 1
+func (h *splitHandle) paintState() style.State {
 	state := h.State() &^ (style.Focused | style.FocusVisible | style.ContainsFocus)
-	// Keyboard focus does not keep the pointer's visual feedback active.
-	s := gui.ResolveWidgetStyle(h, h.StyleName(), "", state)
-	ink, ok := s.ForegroundColor()
-	if !ok || ink == nil {
+	if !gui.IsEnabled(h) {
+		return style.Disabled
+	}
+	if h.FocusVisible() {
+		state |= style.Focused | style.FocusVisible
+	}
+	return state
+}
+
+func (v *SplitView) partStyle(part string, state style.State) style.Style {
+	name := v.StyleName()
+	if name == "" {
+		name = "split-view"
+	}
+	return gui.ResolveWidgetStyle(v, name, part, state)
+}
+
+func (h *splitHandle) Paint(p gui.Painter) {
+	v, state := h.view, h.paintState()
+	main, cross := v.axis(h.Rect().Size), v.cross(h.Rect().Size)
+	if main <= 0 || cross <= 0 {
 		return
 	}
-	// Use the real gap center, even when the hit rectangle is clipped near an
-	// edge. A centered line avoids the half-pixel inset of an outlined shape.
-	center := h.view.startSize + .5 - h.view.point(h.Rect().Pos)
-	var rect geometry.Rectangle
-	if h.view.direction == layout.DirectionVertical {
-		rect = geometry.Rect(0, center-width/2, h.Rect().Width, width)
-	} else {
-		rect = geometry.Rect(center-width/2, 0, width, h.Rect().Height)
+	// The halves share one boundary and are painted once, without a common
+	// background underneath. Transparent parts retain normal source-over rules.
+	region := func(pos, extent float32) geometry.Rectangle {
+		r := geometry.Rectangle{Size: v.size(extent, cross)}
+		if v.direction == layout.DirectionVertical {
+			r.Y = pos
+		} else {
+			r.X = pos
+		}
+		return r
 	}
-	p.FillRect(rect, graphics.ColorOf(ink))
+	for i, part := range []string{"handle-start", "handle-end"} {
+		if ink, ok := v.partStyle(part, state).BackgroundColor(); ok && ink != nil {
+			p.FillRect(region(float32(i)*main/2, main/2), graphics.ColorOf(ink))
+		}
+	}
+	s := v.partStyle("separator", state)
+	width, _ := s.BorderWidth()
+	if !splitFinite(width) || width <= 0 {
+		return
+	}
+	width = min(width, main)
+	if ink, ok := s.ForegroundColor(); ok && ink != nil {
+		p.FillRect(region((main-width)/2, width), graphics.ColorOf(ink))
+	}
 }
 func (h *splitHandle) Snapshot() gui.WidgetInfo {
 	info := h.WidgetBase.Snapshot()
