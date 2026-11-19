@@ -236,6 +236,170 @@ type reentrantIMClient struct {
 	query func()
 }
 
+// 用可观察的原生能力替身检查绑定，而非用 CommitText 绕过绑定结果。
+type refreshIMProbe struct {
+	shortcutIMEProbe
+	reset func()
+}
+
+func (p *refreshIMProbe) Reset() {
+	p.resets++
+	if p.reset != nil {
+		p.reset()
+	}
+}
+
+// 应用可以嵌入封印接口；动态值含 slice 时不能直接比较 interface。
+type wrappedIMContext struct {
+	IMContext
+	extra []string
+}
+
+func refreshIMFixture(t *testing.T) (*window, *reentrantIMClient, *refreshIMProbe) {
+	t.Helper()
+	win := testWindowWithSurface(&window{})
+	probe := new(refreshIMProbe)
+	win.inputMethod = probe
+	input := &reentrantIMClient{im: NewIMContext()}
+	input.SetFocusable(true)
+	win.SetWidget(input)
+	win.SetFocusedWidget(input)
+	t.Cleanup(win.Destroy)
+	return win, input, probe
+}
+
+func TestRefreshInputMethodBindingAndIdentity(t *testing.T) {
+	win, input, probe := refreshIMFixture(t)
+	im := input.im
+	im.emitPreedit("shi", 3)
+	input.im = wrappedIMContext{im, []string{"wrapper"}}
+	RefreshInputMethod(input)
+	RefreshInputMethod(input)
+	if probe.resets != 0 || !probe.enabled || !im.hasPreedit() || !sameIMContext(win.activeIM, im) {
+		t.Fatal("相同底层上下文被重置")
+	}
+	win.onInputMethod(platform.InputMethodResult{Kind: platform.InputMethodPreedit, Text: "ni", Caret: 2})
+	input.im = nil
+	RefreshInputMethod(input)
+	if probe.resets != 1 || probe.enabled || win.activeIM != nil || im.hasPreedit() {
+		t.Fatal("禁用未释放输入绑定")
+	}
+	input.im = im
+	RefreshInputMethod(input)
+	if !probe.enabled || !sameIMContext(win.activeIM, im) {
+		t.Fatal("保持焦点恢复编辑未绑定")
+	}
+	input.im = NewIMContext()
+	RefreshInputMethod(input)
+	if probe.resets != 2 || win.activeIM != input.im {
+		t.Fatal("新上下文没有替换旧绑定")
+	}
+}
+
+func TestRefreshInputMethodIgnoresOtherRootsAndFocus(t *testing.T) {
+	win, input, probe := refreshIMFixture(t)
+	RefreshInputMethod(nil)
+	other := &reentrantIMClient{im: NewIMContext()}
+	RefreshInputMethod(other)
+	other.SetFocusable(true)
+	popup := &popover{owner: win, visible: true}
+	popup.SetWidget(other)
+	popup.SetFocusedWidget(other)
+	RefreshInputMethod(other)
+	popup.Destroy()
+	if win.activeIM != input.im || probe.resets != 0 || win.FocusedWidget() != input {
+		t.Fatal("其他宿主刷新污染了当前输入绑定")
+	}
+	win.SetFocusedWidget(nil)
+	RefreshInputMethod(input)
+	if win.activeIM != nil || probe.enabled {
+		t.Fatal("未聚焦控件重新启用了输入法")
+	}
+	win.SetWidget(nil)
+	RefreshInputMethod(input)
+	win.Destroy()
+	RefreshInputMethod(input)
+}
+
+func TestRefreshInputMethodReentrantQuery(t *testing.T) {
+	for _, action := range []string{"focus", "unmount", "destroy", "refresh"} {
+		t.Run(action, func(t *testing.T) {
+			win, input, probe := refreshIMFixture(t)
+			input.query = func() {
+				input.query = nil
+				switch action {
+				case "focus":
+					win.SetFocusedWidget(nil)
+				case "unmount":
+					win.SetWidget(nil)
+				case "destroy":
+					win.Destroy()
+				case "refresh":
+					input.im = NewIMContext()
+					RefreshInputMethod(input)
+				}
+			}
+			RefreshInputMethod(input)
+			if action == "refresh" {
+				if win.activeIM != input.im || !probe.enabled {
+					t.Fatal("新绑定被外层查询覆盖")
+				}
+			} else if !win.destroyed && (win.activeIM != nil || probe.enabled) {
+				t.Fatal("失去焦点或挂载后仍保留绑定")
+			}
+		})
+	}
+}
+
+func TestRefreshInputMethodReentrantReset(t *testing.T) {
+	for _, action := range []string{"refresh", "focus", "destroy"} {
+		t.Run(action, func(t *testing.T) {
+			win, input, probe := refreshIMFixture(t)
+			old := input.im
+			oldCommits := 0
+			old.ConnectCommit(func(IMCommit) { oldCommits++ })
+			input.im = NewIMContext()
+			probe.reset = func() {
+				win.onInputMethod(platform.InputMethodResult{Kind: platform.InputMethodCommit, Text: "tail"})
+				switch action {
+				case "refresh":
+					RefreshInputMethod(input)
+				case "focus":
+					win.SetFocusedWidget(nil)
+				case "destroy":
+					win.Destroy()
+				}
+			}
+			RefreshInputMethod(input)
+			if probe.resets != 1 || oldCommits != 1 {
+				t.Fatalf("Reset 递归或尾随提交路由错误：%d/%d", probe.resets, oldCommits)
+			}
+			if action == "refresh" {
+				if win.activeIM != input.im || !probe.enabled {
+					t.Fatal("重入的新绑定被覆盖")
+				}
+			} else if !win.destroyed && (win.activeIM != nil || probe.enabled) {
+				t.Fatal("过期请求恢复了绑定")
+			}
+		})
+	}
+}
+
+func TestRefreshInputMethodDuringFocusNotification(t *testing.T) {
+	win, input, probe := refreshIMFixture(t)
+	win.SetFocusedWidget(nil)
+	input.ConnectFocused(func(focused bool) {
+		if focused {
+			input.im = nil
+			RefreshInputMethod(input)
+		}
+	})
+	win.SetFocusedWidget(input)
+	if win.activeIM != nil || probe.enabled || win.FocusedWidget() != input {
+		t.Fatal("焦点通知后的只读策略未生效")
+	}
+}
+
 func (w *reentrantIMClient) IMContext() IMContext {
 	if w.query != nil {
 		w.query()

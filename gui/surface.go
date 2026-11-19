@@ -106,6 +106,10 @@ type surfaceBase struct {
 	platformWindow platform.Window
 	root           Widget
 	focused        bool
+	imWidget       Widget // owner of the current binding, independent of pending focus
+	imRevision     uint64 // invalidates reentrant binding requests
+	imBinding      uint64 // changes only when a binding actually changes
+	imResetting    bool
 	activeIM       IMContext            // the focused text widget's context bound to the native IME; nil when none
 	inputMethod    platform.InputMethod // this host's native IME; nil when unsupported
 	cursor         platform.Cursor      // this host's cursor capability; nil when unsupported
@@ -189,6 +193,9 @@ func (w *surfaceBase) bind(native platform.Window) {
 	w.cursor = cursor
 	if w.focusedWidget != nil {
 		w.updateInputMethod(w.focusedWidget)
+		if !w.destroyed {
+			w.imSetEnabled(w.activeIM != nil)
+		}
 	}
 }
 func (w *surfaceBase) paint() {
@@ -211,9 +218,9 @@ func (w *surfaceBase) paint() {
 // onInputMethod is the window's platform.InputMethodHandler: it routes native
 // input-method output to the focused widget's IMContext (see doc/DesignIME.md §3).
 func (w *surfaceBase) onInputMethod(r platform.InputMethodResult) {
-	previous := w.activeIM
+	previous := w.imBinding
 	ensureModal(w.owner())
-	if w.destroyed || w.activeIM == nil || previous != w.activeIM {
+	if w.destroyed || w.activeIM == nil || previous != w.imBinding {
 		return
 	}
 	// A modal target owns keyboard input. A trailing native result must not
@@ -352,6 +359,12 @@ func (w *surfaceBase) finishDestroy() {
 		}
 	}
 	w.destroyPending = false
+	w.imRevision++
+	w.imBinding++
+	if w.activeIM != nil {
+		w.activeIM.setSurface(nil)
+	}
+	w.activeIM, w.imWidget = nil, nil
 	w.tooltip.dismiss(false)
 	if w.shared != nil {
 		w.shared.destroy()
@@ -809,27 +822,43 @@ func (w *surfaceBase) setFocusedWidget(widget Widget) {
 	w.requestPaint()
 }
 
-// updateInputMethod rebinds the window's single native IME to the newly focused
-// widget. The outgoing context is finished and unbound first (so a trailing
-// commit lands on the old widget), then the incoming widget's IMContext — if it
-// is an IMClient — is bound and the IME enabled; a non-text widget just disables
-// it. Widget authors do nothing here (see doc/DesignIME.md §5).
+// updateInputMethod queries before disturbing the old binding. Queries and
+// native reset may call application code; a newer request owns the result.
 func (w *surfaceBase) updateInputMethod(focused Widget) {
-	if w.activeIM != nil {
-		w.imReset()
-		w.activeIM.setSurface(nil)
-		w.activeIM = nil
-	}
+	w.imRevision++
+	revision := w.imRevision
 	im := imContextOf(focused)
-	if im == nil {
-		w.imSetEnabled(false)
+	if w.destroyed || revision != w.imRevision || w.focusedWidget != focused {
 		return
 	}
-	w.activeIM = im
-	im.setSurface(w.owner().(inputMethodHost))
-	w.imSetEnabled(true)
-	// The caret rect is pushed by the focused widget's next paint (setFocusedWidget
-	// requests one), so the window need not read it back here.
+	if focused != nil && (focused.base().destroyed || focused.Root() != w.owner()) {
+		return
+	}
+	if w.imWidget == focused && sameIMContext(w.activeIM, im) {
+		return
+	}
+	if w.activeIM != nil {
+		w.imReset()
+		if w.destroyed || revision != w.imRevision {
+			return
+		}
+		w.activeIM.setSurface(nil)
+	}
+	w.imBinding++
+	w.activeIM, w.imWidget = im, focused
+	if im != nil {
+		im.setSurface(w.owner().(inputMethodHost))
+	}
+	w.imSetEnabled(im != nil)
+}
+
+// IMContext can be embedded in non-comparable application wrappers. Compare
+// the sealed context identity, never the interface's dynamic wrapper value.
+func sameIMContext(a, b IMContext) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return a.contextIdentity() == b.contextIdentity()
 }
 
 func (w *surfaceBase) imSetEnabled(enabled bool) {
@@ -855,7 +884,9 @@ func (w *surfaceBase) imSetCaretRect(local geometry.Rectangle) {
 
 // imReset asks the platform to cancel any in-progress composition.
 func (w *surfaceBase) imReset() {
-	if w.inputMethod != nil {
+	if w.inputMethod != nil && !w.imResetting {
+		w.imResetting = true
+		defer func() { w.imResetting = false }()
 		w.inputMethod.Reset()
 	}
 }
