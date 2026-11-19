@@ -4,11 +4,60 @@ import (
 	"image/color"
 	"testing"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/style"
 )
+
+func TestTableBarOptionsGeometryAndInput(t *testing.T) {
+	tableBorderApp(t)
+	v, _, first, _ := tableFixture(20)
+	defer v.SetModel(nil)
+	last := NewTableColumn("last", "Last")
+	for _, c := range []*TableColumn{first, last} {
+		c.SetMinWidth(140)
+		c.SetWidth(140)
+	}
+	v.SetColumns(first, last)
+	notifications := 0
+	first.ConnectResize(func(float32) { notifications++ })
+	last.ConnectResize(func(float32) { notifications++ })
+	h := gui.ScrollBarOptions{Thickness: 10, ThumbThickness: 6, Spacing: 3}
+	vertical := gui.ScrollBarOptions{Thickness: 20, ThumbThickness: 8, Spacing: 4}
+	v.SetHScrollBarOptions(h)
+	v.SetVScrollBarOptions(vertical)
+	tableArrange(v, 240, 180)
+	if v.HScrollBarOptions() != (gui.ScrollBarOptions{Thickness: 10, ThumbThickness: 6, Spacing: 3}) || v.VScrollBarOptions() != vertical {
+		t.Fatal("表格没有转发配置")
+	}
+	want := gui.ScrollGeometry{Viewport: geometry.Rect(0, 0, 216, 135), HScrollBar: geometry.Rect(0, 138, 216, 10), VScrollBar: geometry.Rect(220, 0, 20, 135), Corner: geometry.Rect(220, 138, 20, 10)}
+	if g := v.scroll.ScrollGeometry(); g != want || v.headerViewport.Rect() != geometry.Rect(0, 0, 216, 32) {
+		t.Fatalf("自定义槽位造成表头／正文不齐：geometry=%+v header=%v", g, v.headerViewport.Rect())
+	}
+	for _, row := range v.realized {
+		for i, cell := range row.cells {
+			if cell.Rect().X != v.headers[v.visibleColumns[i]].Rect().X || cell.Rect().Width != 140 {
+				t.Fatal("单元格没有沿用表头的实际列几何")
+			}
+		}
+	}
+	v.SetSelection([]string{"r0"})
+	v.SetCurrent("r0")
+	d, host := new(gui.EventDispatcher), &tabInputHost{root: v}
+	// 正文右侧间距：视口止于216，轨道始于220，不能清选、排序或激活。
+	dispatchTabPointer(t, d, host, events.PointerDown, 218, 50)
+	dispatchTabPointer(t, d, host, events.PointerUp, 218, 50)
+	if len(v.Selection()) != 1 || v.Current() != "r0" {
+		t.Fatal("间距被当成正文点击")
+	}
+	v.SetVScrollBarOptions(gui.ScrollBarOptions{Policy: gui.ScrollBarHidden})
+	tableArrange(v, 240, 180)
+	if v.scroll.ScrollGeometry().VScrollBar != (geometry.Rectangle{}) || v.scroll.Snapshot().MaxScrollY == 0 || first.Width() != 140 || last.Width() != 140 || notifications != 0 {
+		t.Fatal("隐藏内置条改变了基础列宽／通知，或禁止了滚动")
+	}
+}
 
 func tableVerticalBar(t *testing.T, v *TableView) *gui.ScrollBar {
 	t.Helper()

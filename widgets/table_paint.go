@@ -136,6 +136,11 @@ func (v *TableView) layoutInsets(size geometry.Size) (horizontal, vertical float
 	return min(size.Height/2, h+oh), min(size.Width/2, w+ow)
 }
 
+func (v *TableView) hasScrollSlots() bool {
+	g := v.scroll.ScrollGeometry()
+	return g.VScrollBar.Width > 0 || g.HScrollBar.Height > 0
+}
+
 // The tight outline encloses visible data together with the fixed scroll slots.
 // A visible bar spans an allocated viewport axis, so their rectangular envelope
 // fills the inner allocation. With neither bar it hugs the measured data only.
@@ -149,7 +154,7 @@ func (v *TableView) paintOutline(p gui.Painter) {
 	h, w = min(h, size.Height/2), min(w, size.Width/2)
 	r := geometry.Rect(w, h, max(0, size.Width-2*w), max(0, size.Height-2*h))
 	oh, ow = min(oh, r.Height/2), min(ow, r.Width/2)
-	if !v.scroll.Scrollable() && v.columnWidth <= v.body.Rect().Width {
+	if !v.hasScrollSlots() {
 		r.Width = min(r.Width, min(v.headerViewport.Rect().Width, v.columnWidth)+2*ow)
 		r.Height = min(r.Height, v.headerViewport.Rect().Height+min(v.body.contentHeight, v.body.Rect().Height)+2*oh)
 	}
@@ -172,13 +177,13 @@ func (v *TableView) paintHeaderScrollGap(p gui.Painter) {
 	_, outer := v.borderWidths()
 	_, outline := v.outlineWidths()
 	enclosed := outer > 0 || outline > 0
-	if outline > 0 && !v.scroll.Scrollable() && v.columnWidth <= v.body.Rect().Width {
+	if outline > 0 && !v.hasScrollSlots() {
 		// With no bars the nearer outline hugs the data, even if the overall
 		// viewport frame is also enabled. Do not cross that inner boundary.
 		right = min(right, header.X+v.columnWidth)
 		x = min(x, right)
 	}
-	if outer > 0 || outline > 0 && v.scroll.Scrollable() {
+	if outer > 0 || outline > 0 && v.scroll.ScrollGeometry().VScrollBar.Width > 0 {
 		// A short data header can leave blank space before the scrollbar. Fill
 		// that gap too, without repainting or assigning semantics to a data cell.
 		x = min(x, max(header.X, header.X+v.columnWidth-v.scroll.ScrollX()))
@@ -193,18 +198,5 @@ func (v *TableView) paintHeaderScrollGap(p gui.Painter) {
 	line := min(gap.Height, tableHeaderLineWidth(v))
 	if enclosed && line > 0 {
 		tablePaintHeaderLine(p, geometry.Rect(gap.X, gap.Y+gap.Height-line, gap.Width, line), v, style.Normal)
-	}
-}
-
-// The junction belongs to the fixed scroll slots, never to an extra data cell.
-func (v *TableView) paintScrollCorner(p gui.Painter) {
-	if !v.scroll.Scrollable() || v.columnWidth <= v.body.Rect().Width {
-		return
-	}
-	scroll, body := v.scroll.Rect(), v.body.Rect()
-	corner := geometry.Rect(scroll.X+body.Width, scroll.Y+body.Height,
-		max(0, scroll.Width-body.Width), max(0, scroll.Height-body.Height))
-	if ink, ok := v.partStyle("trough", style.Normal).BackgroundColor(); ok && ink != nil {
-		p.FillRect(corner, graphics.ColorOf(ink))
 	}
 }

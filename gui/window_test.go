@@ -991,8 +991,8 @@ func TestIntegratedContentLayoutFillsResizeEdges(t *testing.T) {
 					if !bar.Visible() || r.Intersect(want) != r || hitTest(scroll, r.Center()) != bar {
 						t.Fatalf("state=%v: scrollbar painted/hit outside content: %v", state, r)
 					}
-					if bar == scroll.vbar && (r.Width != 8 || r.X+r.Width != want.X+want.Width) ||
-						bar == scroll.hbar && (r.Height != 8 || r.Y+r.Height != want.Y+want.Height) {
+					if bar == scroll.vbar && (r.Width != 12 || r.X+r.Width != want.X+want.Width) ||
+						bar == scroll.hbar && (r.Height != 12 || r.Y+r.Height != want.Y+want.Height) {
 						t.Fatalf("scrollbar is not full-width and flush with content: %v", r)
 					}
 				}
@@ -1048,13 +1048,14 @@ func TestIntegratedMinimumOnlyUsesExplicitCalls(t *testing.T) {
 	}
 }
 
-// 在滑块中段采样，避开圆角 AA；分配仍为 8 DIP，外围 1 DIP 窗口边框
-// 在内容之上绘制。逐物理像素核对两者的颜色，不再期待四边背景留白。
+// 在滑块中段采样避开圆角 AA；轨道12 DIP、滑块8 DIP，两侧各2 DIP。
+// 逐物理像素验证滑块、轨道留白及覆盖在最外沿的1 DIP窗口边框。
 func TestIntegratedScrollbarPixelsKeepFullWidth(t *testing.T) {
 	for _, scale := range []float32{1, 2} {
 		t.Run(fmt.Sprintf("%gx", scale), func(t *testing.T) {
 			useTestApplication(t, &application{style: style.Sheet(
 				style.Name("window").BackgroundColor(color.White),
+				style.Name("scroll-view").Part("trough").BackgroundColor(color.RGBA{R: 230, G: 230, B: 230, A: 255}).Radius(0),
 				style.Name("scroll-view").Part("thumb").BackgroundColor(color.RGBA{R: 40, G: 100, B: 200, A: 255}).Radius(4),
 			)})
 			w, _ := chromeFixture(t, false, false)
@@ -1091,11 +1092,21 @@ func TestIntegratedScrollbarPixelsKeepFullWidth(t *testing.T) {
 					}
 					got := color.RGBAModel.Convert(output.image.At(x, y)).(color.RGBA)
 					expected := want
-					if n >= end-int(scale) {
-						expected = color.RGBA{165, 165, 165, 255}
-					}
 					if got != expected {
 						t.Fatalf("bar=%v pixel=(%d,%d): %v, want %v", bar.Orientation(), x, y, got, expected)
+					}
+				}
+				outer := bar.windowRect()
+				for _, band := range []struct {
+					inset float32
+					want  color.RGBA
+				}{{2, color.RGBA{230, 230, 230, 255}}, {1, color.RGBA{165, 165, 165, 255}}} {
+					x, y := int((outer.X+outer.Width-band.inset)*scale), fixed
+					if bar == scroll.hbar {
+						x, y = fixed, int((outer.Y+outer.Height-band.inset)*scale)
+					}
+					if got := color.RGBAModel.Convert(output.image.At(x, y)).(color.RGBA); got != band.want {
+						t.Fatalf("轨道／窗口边框像素(%d,%d)=%v，预期%v", x, y, got, band.want)
 					}
 				}
 			}

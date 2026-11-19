@@ -591,6 +591,9 @@ func anchoredEditorFixture(t *testing.T, text string) (*TextView, *ScrollView, *
 	editor := NewTextView()
 	editor.SetModel(NewTextModel(text))
 	scroll := NewScrollView()
+	// 此锚点场景固定轨道输入，保留原来的字符和行高断言。
+	scroll.SetVScrollBarOptions(ScrollBarOptions{Thickness: 8, ThumbThickness: 8})
+	scroll.SetHScrollBarOptions(ScrollBarOptions{Thickness: 8, ThumbThickness: 8})
 	scroll.SetChild(editor)
 	win := testWindowWithSurface(&window{})
 	win.SetWidget(scroll)
@@ -766,6 +769,9 @@ func TestTextViewResizeKeepsAnchorRoundedAboveParagraph(t *testing.T) {
 	editor := NewTextView()
 	editor.SetModel(NewTextModel(strings.Repeat(strings.Repeat("x", 80)+"\n", 100)))
 	scroll := NewScrollView()
+	// 此锚点场景固定轨道输入，保留原来的字符和行高断言。
+	scroll.SetVScrollBarOptions(ScrollBarOptions{Thickness: 8, ThumbThickness: 8})
+	scroll.SetHScrollBarOptions(ScrollBarOptions{Thickness: 8, ThumbThickness: 8})
 	scroll.SetChild(editor)
 	win := testWindowWithSurface(&window{})
 	win.SetWidget(scroll)

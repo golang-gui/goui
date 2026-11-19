@@ -574,11 +574,11 @@ func TestDropDownPopupNaturalWidthAndLimits(t *testing.T) {
 		horizontal, vertical          bool
 	}{
 		{"短列表自然宽度", 4, 0, 0, 320, layout.Unbounded(), geometry.Size{Width: 202, Height: 124}, false, false},
-		{"垂直条独立占位", 4, 0, 0, 96, layout.Unbounded(), geometry.Size{Width: 216, Height: 96}, false, true},
+		{"垂直条独立占位", 4, 0, 0, 96, layout.Unbounded(), geometry.Size{Width: 220, Height: 96}, false, true},
 		{"用户最小宽度", 4, 260, 0, 320, layout.Unbounded(), geometry.Size{Width: 260, Height: 124}, false, false},
-		{"用户最大宽度", 1, 0, 180, 320, layout.Unbounded(), geometry.Size{Width: 180, Height: 48}, true, false},
+		{"用户最大宽度", 1, 0, 180, 320, layout.Unbounded(), geometry.Size{Width: 180, Height: 52}, true, false},
 		{"水平条压缩视口", 1, 0, 180, 44, layout.Unbounded(), geometry.Size{Width: 180, Height: 44}, true, true},
-		{"上限优先于下限", 1, 300, 180, 320, layout.Unbounded(), geometry.Size{Width: 180, Height: 48}, true, false},
+		{"上限优先于下限", 1, 300, 180, 320, layout.Unbounded(), geometry.Size{Width: 180, Height: 52}, true, false},
 		{"工作区优先", 4, 300, 500, 320, layout.Loose(geometry.Size{Width: 100, Height: 70}), geometry.Size{Width: 100, Height: 70}, true, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -648,7 +648,7 @@ func TestDropDownPopupWidthRemainsStableWhileScrolling(t *testing.T) {
 		t.Fatal("宽度测量破坏了可见行回收")
 	}
 	d.Refresh()
-	if got := settleDropDownPopup(t, c, layout.Unbounded()); got.Width != 456 {
+	if got := settleDropDownPopup(t, c, layout.Unbounded()); got.Width != 460 {
 		t.Fatal("显式 Refresh 没有更新自然宽度", got)
 	}
 	checkDropDownBars(t, c, false, true)
@@ -902,6 +902,9 @@ func TestDropDownPopupGutterPixels(t *testing.T) {
 		d.Arrange(geometry.Rect(0, 0, 180, 32))
 		d.SetPopupMaxHeight(96)
 		c := newDropDownContent(d)
+		// 本用例固定 x=[160,166) 的间隔输入，继续核对相同的独立像素。
+		c.scroll.SetVScrollBarOptions(gui.ScrollBarOptions{Thickness: 8, ThumbThickness: 8})
+		c.scroll.SetHScrollBarOptions(gui.ScrollBarOptions{Thickness: 8, ThumbThickness: 8})
 		d.content = c
 		size := c.Measure(layout.Unbounded()).Size
 		c.Arrange(geometry.Rectangle{Size: size})

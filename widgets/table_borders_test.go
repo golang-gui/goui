@@ -193,7 +193,12 @@ func TestTableOutlineCornerAndZebraStayInTheirAreas(t *testing.T) {
 	v.SetColumns(first, last)
 	tableArrange(v, 240, 180)
 	for _, scale := range []float32{1, 2} {
-		pixels := tablePixels(t, v.Rect().Size, scale, func(p *tablePixelPainter) { v.Paint(p) })
+		pixels := tablePixels(t, v.Rect().Size, scale, func(p *tablePixelPainter) {
+			v.Paint(p)
+			// 角区属于内部 ScrollView；模拟其真实局部变换，不再要求父表格重画。
+			p.native.SetTransform(geometry.Translate(v.scroll.Rect().X, v.scroll.Rect().Y))
+			v.scroll.Paint(p)
+		})
 		checkTableEdgePixel(t, pixels.RGBAAt(235*int(scale), 175*int(scale)), color.RGBA{R: 128, A: 128})
 		checkTableEdgePixel(t, pixels.RGBAAt(239*int(scale), 179*int(scale)), color.RGBA{B: 128, A: 128})
 	}
@@ -210,6 +215,54 @@ func TestTableOutlineCornerAndZebraStayInTheirAreas(t *testing.T) {
 	checkTableEdgePixel(t, pixels.RGBAAt(160, 10), color.RGBA{})
 	if v.Snapshot().MaxScrollX != 0 || v.Snapshot().MaxScrollY != 0 {
 		t.Fatal("数据缩小后滚动槽没有释放")
+	}
+}
+
+// Hidden 有范围却没有槽，Always 无范围却有槽；不能继续按 MaxScroll 判断包络。
+func TestTableBarOptionsDriveOutline(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		rows          int
+		column        float32
+		policy        gui.ScrollBarPolicy
+		width, height float32
+		wantX, wantY  bool
+	}{
+		{"隐藏横条不包底部空白", 2, 140, gui.ScrollBarHidden, 240, 100, true, false},
+		{"隐藏纵条不包右侧空白", 20, 70, gui.ScrollBarHidden, 144, 180, false, true},
+		{"Always无范围也包固定槽", 2, 70, gui.ScrollBarAlways, 240, 180, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ink := color.NRGBA{R: 255, A: 128}
+			tableBorderApp(t,
+				style.Name("table-view").Part("outline-horizontal").BorderWidth(2).BorderColor(ink),
+				style.Name("table-view").Part("outline-vertical").BorderWidth(2).BorderColor(ink))
+			v, _, first, _ := tableFixture(tc.rows)
+			defer v.SetModel(nil)
+			first.SetMinWidth(tc.column)
+			first.SetWidth(tc.column)
+			last := NewTableColumn("last", "Last")
+			last.SetMinWidth(tc.column)
+			last.SetWidth(tc.column)
+			v.SetColumns(first, last)
+			v.SetHScrollBarOptions(gui.ScrollBarOptions{Policy: tc.policy})
+			v.SetVScrollBarOptions(gui.ScrollBarOptions{Policy: tc.policy})
+			tableArrange(v, 240, 180)
+			info := v.Snapshot()
+			if (info.MaxScrollX > 0) != tc.wantX || (info.MaxScrollY > 0) != tc.wantY {
+				t.Fatalf("范围错误：%g/%g", info.MaxScrollX, info.MaxScrollY)
+			}
+			for _, scale := range []float32{1, 1.5, 2} {
+				pixels := tablePixels(t, v.Rect().Size, scale, func(p *tablePixelPainter) { v.Paint(p) })
+				for _, point := range []geometry.Point{{X: tc.width - 1, Y: 10}, {X: 10, Y: tc.height - 1}, {X: tc.width - 1, Y: tc.height - 1}} {
+					checkTableEdgePixel(t, pixels.RGBAAt(int(point.X*scale), int(point.Y*scale)), color.RGBA{R: 128, A: 128})
+				}
+				if tc.width < 240 && pixels.RGBAAt(239*int(scale), 10*int(scale)) != (color.RGBA{}) ||
+					tc.height < 180 && pixels.RGBAAt(10*int(scale), 179*int(scale)) != (color.RGBA{}) {
+					t.Fatal("不存在的内置槽位扩大了紧包围轮廓")
+				}
+			}
+		})
 	}
 }
 

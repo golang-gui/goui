@@ -38,11 +38,11 @@ func TestScrollViewFrameContainsViewportAndBars(t *testing.T) {
 	content.SetFocusable(true)
 	sv.Measure(layout.Tight(geometry.Size{Width: 100, Height: 100}))
 	sv.Arrange(geometry.Rect(10, 20, 100, 100))
-	want := geometry.Rect(2, 2, 88, 88)
-	if sv.viewport.Rect() != want || sv.vbar.Rect() != geometry.Rect(90, 2, 8, 88) || sv.hbar.Rect() != geometry.Rect(2, 90, 88, 8) {
+	want := geometry.Rect(2, 2, 84, 84)
+	if sv.viewport.Rect() != want || sv.vbar.Rect() != geometry.Rect(86, 2, 12, 84) || sv.hbar.Rect() != geometry.Rect(2, 86, 84, 12) {
 		t.Fatalf("frame geometry: viewport=%v vbar=%v hbar=%v", sv.viewport.Rect(), sv.vbar.Rect(), sv.hbar.Rect())
 	}
-	if info := sv.Snapshot(); info.MaxScrollX != 112 || info.MaxScrollY != 212 || len(info.Children) != 1 {
+	if info := sv.Snapshot(); info.MaxScrollX != 116 || info.MaxScrollY != 216 || len(info.Children) != 1 {
 		t.Fatalf("frame range or semantic children: %+v", info)
 	}
 	win.SetFocusedWidget(content)
@@ -51,7 +51,7 @@ func TestScrollViewFrameContainsViewportAndBars(t *testing.T) {
 		t.Fatal("focus moved viewport")
 	}
 	sv.ScrollIntoView(geometry.Rect(199, 299, 1, 1))
-	if sv.ScrollX() != 112 || sv.ScrollY() != 212 || content.Rect().Pos != (geometry.Point{X: -112, Y: -212}) {
+	if sv.ScrollX() != 116 || sv.ScrollY() != 216 || content.Rect().Pos != (geometry.Point{X: -116, Y: -216}) {
 		t.Fatal("framed reveal used outer coordinates")
 	}
 	sv.SetEnabled(false)
@@ -110,16 +110,78 @@ func TestScrollViewFrameScrollableMeasurement(t *testing.T) {
 	defer scope.destroy(scope)
 	m := sv.Measure(layout.Loose(geometry.Size{Width: 100, Height: 100}))
 	// 子项得到扣除稳定外框后的宽度；横条占高，基线仅增加顶部边距。
-	if m.Size != (geometry.Size{Width: 100, Height: 32}) || !m.HasBaseline || m.Baseline != 14 || content.constraint.Min.Width != 96 || content.constraint.Max.Width != 96 {
+	if m.Size != (geometry.Size{Width: 100, Height: 36}) || !m.HasBaseline || m.Baseline != 14 || content.constraint.Min.Width != 96 || content.constraint.Max.Width != 96 {
 		t.Fatalf("virtual frame measurement: result=%+v constraint=%+v", m, content.constraint)
 	}
 	sv.Arrange(geometry.Rect(0, 0, 100, 100))
-	if content.viewport != (geometry.Size{Width: 88, Height: 88}) || content.Rect().Pos != (geometry.Point{}) {
+	if content.viewport != (geometry.Size{Width: 84, Height: 84}) || content.Rect().Pos != (geometry.Point{}) {
 		t.Fatalf("virtual content did not retain viewport-local coordinates: area=%v rect=%v", content.viewport, content.Rect())
 	}
 	m = sv.Measure(layout.Unbounded())
 	if content.constraint.Max != (geometry.Size{Width: layout.Inf, Height: layout.Inf}) || m.Size != (geometry.Size{Width: 34, Height: 24}) || m.Baseline != 14 {
 		t.Fatalf("unbounded virtual frame: result=%+v constraint=%+v", m, content.constraint)
+	}
+}
+
+// 在无圆角的不透明预乘 sRGB 色带内部取样；整数和分数缩放均不使用容差。
+// 角区改用半透明轨道另验一次合成，Spacing 不得误画成轨道或正文。
+func TestScrollViewOptionsPixels(t *testing.T) {
+	for _, scale := range []float32{1, 1.5, 2} {
+		t.Run(fmt.Sprintf("%gx", scale), func(t *testing.T) {
+			setTestApplication(t, nil)
+			backend, err := software.NewPainter(&widgetRenderSurface{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer backend.Destroy()
+			sv := NewScrollView()
+			sv.SetStyleName("options")
+			sv.SetHScrollBarOptions(ScrollBarOptions{Thickness: 10, ThumbThickness: 6, Spacing: 3})
+			sv.SetVScrollBarOptions(ScrollBarOptions{Thickness: 20, ThumbThickness: 8, Spacing: 4})
+			content := newPainterTestWidget(func(p Painter) { p.FillRect(geometry.Rect(0, 0, 300, 300), graphics.RGB(255, 0, 255)) })
+			content.SetMinSize(geometry.Size{Width: 300, Height: 300})
+			sv.SetChild(content)
+			scope := NewStyleScope()
+			scope.SetChild(sv)
+			win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{painter: backend}}})
+			win.SetWidget(scope)
+			defer win.Destroy()
+			for _, translucent := range []bool{false, true} {
+				track := color.Color(color.RGBA{G: 200, A: 255})
+				wantTrack := color.RGBA{G: 200, A: 255}
+				if translucent {
+					track = color.NRGBA{R: 255, A: 128}
+					wantTrack = color.RGBA{R: 255, G: 127, B: 127, A: 255}
+				}
+				scope.SetStyleSheet(style.Sheet(
+					style.Name("options").Part("frame").BackgroundColor(color.White).BorderWidth(0).Radius(0),
+					style.Name("options").Part("trough").BackgroundColor(track).BorderWidth(0).Radius(0),
+					style.Name("options").Part("thumb").BackgroundColor(color.RGBA{B: 255, A: 255}).BorderWidth(0).Radius(0),
+				))
+				scope.Arrange(geometry.Rect(0, 0, 100, 100))
+				img, err := RenderWidget(sv, scale)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, sample := range []struct {
+					x, y float32
+					want color.RGBA
+				}{
+					{10, 10, color.RGBA{R: 255, B: 255, A: 255}},
+					{78, 10, color.RGBA{255, 255, 255, 255}},
+					{82, 10, wantTrack}, {96, 10, wantTrack},
+					{88, 10, color.RGBA{B: 255, A: 255}},
+					{10, 88, color.RGBA{255, 255, 255, 255}},
+					{10, 90, wantTrack}, {10, 94, color.RGBA{B: 255, A: 255}},
+					{78, 88, color.RGBA{255, 255, 255, 255}}, {85, 95, wantTrack},
+				} {
+					got := color.RGBAModel.Convert(img.At(int(sample.x*scale), int(sample.y*scale))).(color.RGBA)
+					if got != sample.want {
+						t.Fatalf("半透明=%t (%g,%g)=%v，预期%v", translucent, sample.x, sample.y, got, sample.want)
+					}
+				}
+			}
+		})
 	}
 }
 

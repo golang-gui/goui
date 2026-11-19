@@ -23,7 +23,7 @@ func newVerticalBar(t *testing.T, max float32) *ScrollBar {
 }
 
 func TestScrollBarDefaultThickness(t *testing.T) {
-	const want float32 = 8
+	const want float32 = 12
 
 	vertical := NewScrollBar(layout.DirectionVertical)
 	if got := vertical.Measure(layout.Unbounded()).Width; got != want {
@@ -33,6 +33,30 @@ func TestScrollBarDefaultThickness(t *testing.T) {
 	horizontal := NewScrollBar(layout.DirectionHorizontal)
 	if got := horizontal.Measure(layout.Unbounded()).Height; got != want {
 		t.Fatalf("horizontal scrollbar height: want %v, got %v", want, got)
+	}
+}
+
+func TestScrollBarThicknessConstraints(t *testing.T) {
+	for _, axis := range []layout.Direction{layout.DirectionHorizontal, layout.DirectionVertical} {
+		bar := NewScrollBar(axis)
+		bar.SetThickness(20)
+		bar.SetThumbThickness(30)
+		constraint := layout.Loose(geometry.Size{Width: 10, Height: 10})
+		measured := bar.Measure(constraint)
+		bar.Arrange(geometry.Rect(0, 0, 80, 10))
+		cross, thumb := measured.Height, bar.thumbRect().Height
+		if axis == layout.DirectionVertical {
+			bar.Arrange(geometry.Rect(0, 0, 10, 80))
+			cross, thumb = measured.Width, bar.thumbRect().Width
+		}
+		if cross != 10 || thumb != 10 || bar.Thickness() != 20 || bar.ThumbThickness() != 30 {
+			t.Fatal("父约束或滑块钳制改写了期望尺寸")
+		}
+		bar.SetThickness(float32(math.NaN()))
+		bar.SetThumbThickness(-1)
+		if bar.Thickness() != 12 || bar.ThumbThickness() != 8 {
+			t.Fatal("独立条的非法尺寸没有恢复默认")
+		}
 	}
 }
 
@@ -100,8 +124,8 @@ func TestScrollBarThumbRect(t *testing.T) {
 	b := newVerticalBar(t, 400)
 	b.SetValue(100)
 	rect := b.thumbRect()
-	if rect.X != 0 || rect.Width != scrollbarWidth {
-		t.Fatalf("vertical thumb rect X/Width: want (0, %v), got (%v, %v)", scrollbarWidth, rect.X, rect.Width)
+	if rect.X != 2 || rect.Width != 8 {
+		t.Fatalf("vertical thumb rect X/Width: want (2, 8); track=%v, got (%v, %v)", scrollbarWidth, rect.X, rect.Width)
 	}
 	if !approxEq(rect.Y, b.thumbStart()) || !approxEq(rect.Height, b.thumbLen()) {
 		t.Fatalf("thumb rect Y/H mismatch: got %+v", rect)
@@ -116,8 +140,8 @@ func TestScrollBarHorizontalGeometry(t *testing.T) {
 
 	// Same math as vertical, just along X.
 	rect := b.thumbRect()
-	if rect.Y != 0 || rect.Height != scrollbarWidth {
-		t.Fatalf("horizontal thumb rect Y/Height: want (0, %v), got (%v, %v)", scrollbarWidth, rect.Y, rect.Height)
+	if rect.Y != 2 || rect.Height != 8 {
+		t.Fatalf("horizontal thumb rect Y/Height: want (2, 8); track=%v, got (%v, %v)", scrollbarWidth, rect.Y, rect.Height)
 	}
 	if !approxEq(rect.X, 66.6667) || !approxEq(rect.Width, 66.6667) {
 		t.Fatalf("horizontal thumb X/W: want 66.67, got (%v, %v)", rect.X, rect.Width)
@@ -291,8 +315,8 @@ func TestScrollBarStyleParts(t *testing.T) {
 	if r != 0 || g != 0 || bl != 0 || a != 24*0x101 {
 		t.Fatalf("trough bg: want rgba(0,0,0,24), got r=%d g=%d b=%d a=%d", r, g, bl, a)
 	}
-	if radius, ok := trough.CornerRadius(); !ok || radius != geometry.UniformCornerRadius(scrollbarWidth/2) {
-		t.Fatalf("trough radius: want %v, got %v (set=%v)", scrollbarWidth/2, radius, ok)
+	if radius, ok := trough.CornerRadius(); !ok || radius != geometry.UniformCornerRadius(4) {
+		t.Fatalf("trough radius: want %v, got %v (set=%v)", float32(4), radius, ok)
 	}
 
 	// Thumb normal state.
@@ -305,8 +329,8 @@ func TestScrollBarStyleParts(t *testing.T) {
 	if r != 140*0x101 || g != 140*0x101 || bl != 140*0x101 {
 		t.Fatalf("thumb normal bg: want rgb(140,140,140), got r=%d g=%d b=%d a=%d", r, g, bl, a)
 	}
-	if radius, ok := thumb.CornerRadius(); !ok || radius != geometry.UniformCornerRadius(scrollbarWidth/2) {
-		t.Fatalf("thumb radius: want %v, got %v (set=%v)", scrollbarWidth/2, radius, ok)
+	if radius, ok := thumb.CornerRadius(); !ok || radius != geometry.UniformCornerRadius(4) {
+		t.Fatalf("thumb radius: want %v, got %v (set=%v)", float32(4), radius, ok)
 	}
 
 	// Thumb pressed state (dragging).

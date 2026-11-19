@@ -329,9 +329,8 @@ func TestEventDispatcherTabRevealsNestedScrollViews(t *testing.T) {
 	inner.Arrange(geometry.Rect(170, 400, 100, 80))
 	win.SetFocusedWidget(first)
 	_ = win.DispatchEvent(shortcutPress(events.KeyTab, 0))
-	// Independent expected geometry, including the 8 DIP scrollbar space:
-	// inner viewport 92x72, outer viewport 112x92, target size 30x20.
-	if inner.ScrollX() != 88 || inner.ScrollY() != 298 || outer.ScrollX() != 150 || outer.ScrollY() != 380 {
+	// 独立预期包含12 DIP滚动条占位：内视口88×68，外视口108×88，目标30×20。
+	if inner.ScrollX() != 92 || inner.ScrollY() != 302 || outer.ScrollX() != 150 || outer.ScrollY() != 380 {
 		t.Fatalf("inner=(%g,%g), outer=(%g,%g)", inner.ScrollX(), inner.ScrollY(), outer.ScrollX(), outer.ScrollY())
 	}
 	if win.FocusedWidget() != last || !last.Focused() {
