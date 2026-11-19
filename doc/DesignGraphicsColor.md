@@ -152,3 +152,15 @@ TextFormat.TextColor 和 SetTextColor 使用标准 Go color.Color，而不是 gr
   graphics/Software/OpenGL/GUI 测试目标、独立窗口程序交叉编译通过；原生运行尚未执行。
 - `go test ./...` 已运行；唯一失败仍为既有 `platform/test.TestApplicationIdentity`
   的冲突 AppID 判空测试，本次未修改该无关路径。
+
+## 图片缩放采样
+
+Software 的整数对齐缩放和通用仿射路径均按设备像素中心映射到源像素中心，
+对预乘的 8 位 sRGB 通道做双线性插值，源图边缘钳制；镜像遵守相同映射。
+对齐 1:1 绘制保留精确拷贝，不因位置是否整数切换缩放采样模式。
+已有资源快照测试的中间样本相应改为独立计算的插值及背景合成值，保留快照／裁剪断言。
+
+后端源码核对：Direct2D 的 DrawBitmap 使用 D2D1_BITMAP_INTERPOLATION_MODE_LINEAR；
+OpenGL 创建图片只指定 ImagePreMultiplied，nanovgo v0.0.13 的 gl_backend.go
+在未指定 ImageNearest 时使用 GL_LINEAR。此修复不添加采样选项或改变这两条路径。
+离屏与窗口用例覆盖整数／小数定位、预乘透明、裁剪和缩放；离屏像素通过不代替桌面呈现验收。
