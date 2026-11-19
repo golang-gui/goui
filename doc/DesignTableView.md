@@ -5,6 +5,9 @@
 > 边框／背景／斑马色及自定义内容安全区域已补齐，方案见 §10.2，验证见 §14。
 > 本文包含后续确认的 ListView 稳定性修正：不增加 InvalidateMeasurements 等公开接口。
 > 先验证既有 RequestLayout／Refresh 与虚拟行缓存的契约，再组合实现 TableView。
+> 2026-11-19 已实现的滚动条扩展见 [内外滚动条设计](DesignScrollBars.md)。
+> 已暴露 HScrollBarOptions / VScrollBarOptions 及对应 setter 和声明式链式方法，
+> 按实际内置槽位适配表头、紧包围与交汇角；外部绑定分后续阶段，不阻塞布局定制。
 
 ## 1. 定位、范围与参考
 
@@ -632,6 +635,11 @@ StyleChanged 使用现有失效路径，本轮不为行高和 padding 增加新�
 
 #### 边框、背景与斑马色（2026-10-05 补充）
 
+2026-11-19 适配：下述框线职责保持；内置条是否占位读取实际
+ScrollGeometry，不能再由 Scrollable() 或滚动范围推断。Hidden 不产生槽位，Always
+无范围也可有槽；外部条不计入表格包络。通用角区移交 ScrollView，表头补位仍由表格
+负责。完整规则与首批验收见 [滚动条设计 §4](DesignScrollBars.md#4-tableview选项暴露与边框适配)。
+
 参考 GTK4 在线文档（查阅时 4.23.4）的
 [行分隔线](https://docs.gtk.org/gtk4/method.ColumnView.set_show_row_separators.html)、
 [列分隔线](https://docs.gtk.org/gtk4/method.ColumnView.set_show_column_separators.html)，
@@ -716,11 +724,12 @@ Name下显式提供（不启用时宽度0），避免Part回退继承整体外�
 和TextView组合的样式与职责保持既有契约。
 
 Basic／Modern分别显式为header和trough提供相同中性色，滑块复制各自通用滑块
-状态色／圆角，不新增配色或交互模式。轨道方形收口，现有8 DIP占位与命中不变。
+状态色／圆角，不新增配色或交互模式。轨道方形收口，厚度和间距由Options控制，
+默认12 DIP轨道中居中绘制8 DIP滑块，整个轨道保持命中能力。
 表头右侧、纵向滚动槽上方的空位由TableView仅绘制该区域的普通header背景和
 按包围范围延续的header-separator，不重复覆盖已有表头。补位不绘grid-top／
 grid-vertical，不作为额外列，不增加Widget、Snapshot子节点或语义动作；双条
-角区继续由既有背景处理。无条时不虚构滚动槽补位区。
+角区由ScrollView按trough背景绘制一次。无条时不虚构滚动槽补位区。
 
 2026-11-13表头接缝修正：仅有数据边线或内部网格时，分隔线止于实际单元格的
 裁剪范围，不能伸入框外纵向槽。启用`outer-vertical`，或有条且启用

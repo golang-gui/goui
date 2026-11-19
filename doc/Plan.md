@@ -6053,7 +6053,7 @@ arm64 构建限制保留在原记录中；本轮未修改实现或复验这些�
 - [x] TextView 多行布局、选择、Clipboard、IME、滚动和 undo/redo（开发实现及本机验证；其他平台窗口验收单列）
   - [x] 视口段落缓存、Cluster 光标/选区、增量模型绑定、只读、基础编辑/剪贴板、撤销选区恢复、范围标记 Snapshot；逻辑与 race 测试通过
   - [x] ScrollIntoView 通用信号与布局后合并；远距离导航在实际高度修正后继续保证光标可见
-  - [ ] 后续扩展滚动能力时优先评估独立共享滚动模型：参考 GTK4 Adjustment，区分目标可见性、锚点修正与主动滚动；当前接口保持不变，见 [滚动设计](DesignScroll.md#后续扩展优先评估独立滚动模型)
+  - [ ] 后续扩展滚动能力时优先评估独立共享滚动模型：参考 GTK4 Adjustment，区分目标可见性、锚点修正与主动滚动；当前接口保持不变，见 [滚动设计](DesignScroll.md#独立滚动模型的历史评估)
   - [x] tests/window/gui/textview 独立用例；Linux Software 1x 的 ASCII/Enter、Shift 选区及首尾导航验证
   - [x] IME 预编辑投影/取消/原子提交、Timer 闪烁/自动滚动、模型编辑及重排锚定；包内回归与 race 通过
   - [x] TextInput/TextView modern 正文、selection/caret 样式；亮暗和极端主题色对比度测试
@@ -6648,3 +6648,36 @@ error，原样全仓命令报编译失败；恢复其既有尽力而为调用后
   入口与操作步骤见 `tests/window/widgets/tabs`，不将其余操作或平台计为本轮通过。
 - [ ] 本机验证另外观察到既有导航问题：未溢出时，零宽滚动箭头仍可进入 Tab 顺序；
   本轮只修复焦点外观，未调整箭头的布局及焦点资格。
+
+## 2026-11-19 内外滚动条设计与首批 Options
+
+- [x] 完整设计写入 [DesignScrollBars](DesignScrollBars.md)，统一采用
+  HScrollBarOptions / VScrollBarOptions 及对应 setter、声明式方法；共用
+  ScrollBarOptions，不保留长名称别名。同步更新滚动、外框、表格设计与 Roadmap 的入口。
+- [x] A（优先）：ScrollView 与 ScrollBar 的尺寸、滑块、间距和 Auto/Always/Hidden，
+  实际 ScrollGeometry、双轴占位和通用交汇角；不依赖后续外部协议。
+- [x] A（同批必需）：TableView 的 H/V Options 转发及 widgets/ui、ui 薄封装，
+  按实际槽位修正紧包围、表头补位与角区；保留基础列宽、手动调整和独立框线契约。
+- [x] A 验收：扩展已有逻辑／像素／声明式回归与窗口用例，覆盖不同尺寸／间距、
+  双轴策略、显隐切换、列分配、全部框线组合及默认恢复；按设计执行全仓与本机验证。
+- [ ] B：ScrollBarClient、PageSize、BindScrollBar 与 TableView 转发；验证内外同步、
+  无回声、重入及连接释放。客户端不要求 Widget，外部对象不归宿主管理布局或销毁。
+- [ ] C：外部标准条的 ui.ScrollBar / Target 入口及生命周期回归，复用已有协调机制。
+
+首批验证结果：
+
+- `go test ./... -count=1 -json`：本机独立 Linux/X11 会话中，6137 项测试通过，
+  零失败、零条件跳过；155 个无测试文件的包不计为测试通过或条件跳过。
+  两项既有 X11 包内验证使用私有窗口／selection，不改变桌面主题。
+- `env -u DISPLAY go test -race ./gui ./ui ./widgets ./widgets/ui`：全部通过。
+  Software 离屏像素覆盖 1x／1.5x／2x、半透明角区单次合成、轨道／滑块／间距边界；
+  保留原编辑器锚点与列调整断言，对固定几何输入显式配置原尺寸。
+- `tests/window/widgets/table_borders`：Linux/X11、xfwm4 合成开启，Software 和
+  OpenGL 各在 1x／2x 完成 34 组断言、真实双轴拖动、五种框线与四种 Options、
+  窄列切换、重建及亮暗检查。结合实际窗口检查间距、收口、表头对齐及空白区域。
+- `tests/window/gui/scroll_layout`：同会话 OpenGL 1x 完成 20 组检查，实际验证
+  双轴拖动、Hidden 滚轮、Always 短内容、拖动中切配置、末端、缩窄、独立重测和暗色。
+- Windows/amd64、macOS/arm64 的 GUI／UI／widgets、Demo 及两项窗口入口
+  `go build` 通过。未执行这两个平台的原生窗口操作；本批未修改平台层或后端契约。
+
+B/C 仍为后续工作，不阻塞 A 的应用定制能力；本轮没有交付外部绑定或 ui.ScrollBar。
