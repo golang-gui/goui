@@ -46,15 +46,15 @@ X11 使用 XIM/XIC，Windows 使用 WM_CHAR／IMM32，macOS 使用 NSTextInputCl
 
 ### 2.1 `IMContext` 是封印接口
 
-`IMContext` 是**接口**,实现是未导出的 `imContext`,只由 `NewIMContext()` 产出。它和 `gui.Settings`/`gui.Clipboard` 那种"纯外部访问、无替换点"的公开接口不同:`IMContext` 由 `IMClient.IMContext()` **交回给 window**,有被替换的机会。所以接口带一组未导出方法(`emitCommit`/`emitPreedit`/`setWindow`)把它**封印**——和本仓库 `events.Event.isEvent()`、`ui.RootView.rootView()` 同一手法。由此得到三条边界:
+`IMContext` 是**接口**,实现是未导出的 `imContext`,只由 `NewIMContext()` 产出。它和 `gui.Settings`/`gui.Clipboard` 那种"纯外部访问、无替换点"的公开接口不同:`IMContext` 由 `IMClient.IMContext()` **交回给 window**,有被替换的机会。所以接口带一组未导出方法(`emitCommit`/`emitPreedit`/`setSurface`)把它**封印**——和本仓库 `events.Event.isEvent()`、`ui.RootView.rootView()` 同一手法。由此得到三条边界:
 
 | 场景 | 结果 |
 |---|---|
 | 凭空从零实现一个 `IMContext` | ❌ 编译期挡掉(写不出跨包的未导出 `emitCommit`)→ 强制走 `NewIMContext` |
 | 嵌入真货装饰 `ConnectCommit`/`SetCaretRect` 等监听信号 | ✅ 允许(Go 嵌入接口会提升全部方法,含未导出的,故 wrapper 仍满足接口) |
-| 篡改内部 `emitCommit`/`setWindow` 管线 | ❌ 挡掉(跨包同名未导出方法不覆盖提升来的 `gui.emitCommit`,框架管线不可劫持) |
+| 篡改内部 `emitCommit`/`setSurface` 管线 | ❌ 挡掉(跨包同名未导出方法不覆盖提升来的 `gui.emitCommit`,框架管线不可劫持) |
 
-即:用户能装饰**公开面**、动不了**框架内部管线**。公开面 4 个(`ConnectCommit`/`ConnectPreedit`/`SetCaretRect`/`Reset`);封印方法包含 `emitCommit`、`emitPreedit`、`hasPreedit`、`setWindow(*window)`（nil 解绑）。`SetCaretRect` 是纯转发(active 时给平台),不缓存——聚焦后的 caret 由控件下一帧 paint 推给平台,window 无需读回。
+即:用户能装饰**公开面**、动不了**框架内部管线**。公开面 4 个(`ConnectCommit`/`ConnectPreedit`/`SetCaretRect`/`Reset`);封印方法包含 `contextIdentity`、`emitCommit`、`emitPreedit`、`hasPreedit`、`setSurface(inputMethodHost)`（nil 解绑）。`SetCaretRect` 是纯转发(active 时给平台),不缓存——聚焦后的 caret 由控件下一帧 paint 推给平台,window 无需读回。
 
 ### 2.2 平台层:IME 是可选能力,不是 Window 方法、不是总线事件
 
@@ -115,7 +115,7 @@ win32(IMM 组合消息 vs 普通 `WM_KEYDOWN`)、cocoa(`interpretKeyEvents:` 消
 1. **旧控件**：调用原生 InputMethod.Reset 收尾，再解绑旧 IMContext；原生尾随输出不能误投新控件。
 2. **新控件**：实现 IMClient 且返回非 nil 时绑定 activeIM，并请求启用输入法；存在 modal target 时仍保持原生 IME 禁用。caret 由随后 Paint 推送，不从不存在的缓存 getter 读回。非文本控件清空路由并禁用。
 
-**次序**:先收尾旧、再改绑新,否则收尾 commit 会落错控件。控件作者对这套**零参与**。同控件=no-op;焦点清空/转非文本=收尾旧 + 关 IME;整窗口失焦=同样在窗口级"收尾+关闭"。
+**次序**:先收尾旧、再改绑新,否则收尾 commit 会落错控件。控件作者不管理原生绑定。相同控件、相同底层上下文=no-op;焦点清空/转非文本=收尾旧 + 关 IME;整窗口失焦=同样在窗口级"收尾+关闭"。
 
 ### 5.1 跨宿主：原生 Popover IME（未实现）
 
@@ -246,3 +246,19 @@ IMContext 仅记录已知 preedit 状态，先更新状态再通知；不替代�
 不能靠销毁通知宣称这个竞态已修复；不在另一 goroutine 操作线程亲和的 XIC、
 不使用任意超时后的继续访问、不伪造协议回复。采用其他输入法传输或上游改进属于
 后续方案，当前作为已知限制记录。
+
+## 聚焦期间的输入策略刷新
+
+第三方控件的只读／可编辑状态改变后，在 GUI 线程调用 `gui.RefreshInputMethod(widget)`。
+框架重新查询当前焦点的 IMContext，不重新聚焦或激活窗口。nil、未挂载、销毁、
+非当前焦点或没有原生绑定能力的宿主不做操作；Popover 原生 IME 仍未实现。
+内部文本编辑器和第三方控件使用同一路径，不给 WidgetBase 或 ui 增加特例。
+
+相同底层上下文重复刷新不调用 Reset，保留组合输入。封印上下文允许应用嵌入包装，
+身份使用内部上下文指针，不比较可能含 slice 的应用 interface 值。实际切换或禁用时
+先 Reset 旧上下文，再解绑并绑定新上下文。Reset 尾随输出仍投旧上下文；重入的查询、
+焦点切换或销毁会使外层请求过期。原生 Reset 的重入不再次调用原生 Reset。
+请求代次与实际绑定代次分开，幂等刷新不会丢弃合法的原生输出。
+
+Qt 6.8.3 的 [QInputMethod::update](https://github.com/qt/qtbase/blob/v6.8.3/src/gui/kernel/qinputmethod.cpp#L279)
+同样提供重新查询焦点输入能力的入口。GOUI 采用单一函数，不引入多标志查询协议。

@@ -484,10 +484,9 @@ func (t *textEditor) setReadOnly(value bool) {
 	if t.owner.base().destroyed || t.model != model || t.mountEpoch != epoch {
 		return
 	}
-	if t.owner.Focused() {
-		if w := surfaceCore(t.owner.Surface()); w != nil {
-			w.updateInputMethod(t.owner)
-		}
+	RefreshInputMethod(t.owner)
+	if t.owner.base().destroyed || t.model != model || t.mountEpoch != epoch {
+		return
 	}
 	t.model.BreakUndoGroup()
 	t.owner.RequestPaint()

@@ -11,7 +11,7 @@ import (
 // IMClient is implemented by widgets that accept text input. On every focus
 // change the window asks the newly focused widget for its IMContext and, when
 // present, binds it to the window's native input method for the duration of
-// focus.
+// focus. Call RefreshInputMethod after changing the context while focused.
 type IMClient interface {
 	IMContext() IMContext
 }
@@ -46,10 +46,30 @@ type IMContext interface {
 	Reset()
 
 	// Framework-internal
+	contextIdentity() *imContext
 	emitCommit(commit IMCommit)
 	emitPreedit(text string, caret int)
 	hasPreedit() bool
 	setSurface(w inputMethodHost) // binds to the focused host; nil unbinds
+}
+
+// RefreshInputMethod re-queries a focused widget's IMContext after its input
+// policy changes, for example when toggling read-only mode. Call it on the GUI
+// thread. It does not move focus or activate a surface. Unmounted, destroyed,
+// unfocused widgets and hosts without native input-method binding are ignored.
+// Refreshing the same underlying context preserves any active composition.
+func RefreshInputMethod(widget Widget) {
+	if widget == nil || widget.base().destroyed {
+		return
+	}
+	w := surfaceCore(widget.Root())
+	if w == nil || w.destroyed || w.focusedWidget != widget {
+		return
+	}
+	w.updateInputMethod(widget)
+	if !w.destroyed {
+		w.requestPaint()
+	}
 }
 
 type inputMethodHost interface {
@@ -103,6 +123,8 @@ func (c *imContext) emitPreedit(text string, caret int) {
 }
 
 func (c *imContext) hasPreedit() bool { return c.preediting }
+
+func (c *imContext) contextIdentity() *imContext { return c }
 
 func (c *imContext) setSurface(w inputMethodHost) {
 	c.host = w
