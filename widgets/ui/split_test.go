@@ -21,7 +21,8 @@ func TestSplitViewBindingsAndStableSlots(t *testing.T) {
 	if start == nil || end == nil || start == end || len(c.children) != 2 {
 		t.Fatal("two independent slots not mounted")
 	}
-	size := geometry.Size{Width: 401, Height: 100}
+	// 总宽403：默认3 DIP分隔区域之外保留原有400 DIP面板分配断言。
+	size := geometry.Size{Width: 403, Height: 100}
 	w.Measure(layout.Tight(size))
 	w.Arrange(geometry.Rectangle{Size: size})
 	if s, e := w.Sizes(); s != 120 || e != 280 {
@@ -49,7 +50,7 @@ func TestSplitViewUncontrolledAndControlledUpdates(t *testing.T) {
 	// 固定布局尺寸，避免将绑定测试变成字体排版测试。
 	w.StartChild().SetMinSize(geometry.Size{Width: 1, Height: 1})
 	w.EndChild().SetMinSize(geometry.Size{Width: 1, Height: 1})
-	size := geometry.Size{Width: 401, Height: 100}
+	size := geometry.Size{Width: 403, Height: 100}
 	arrange := func() { w.Measure(layout.Tight(size)); w.Arrange(geometry.Rectangle{Size: size}) }
 	arrange()
 	v = HSplit(baseui.Label("a"), baseui.Label("b")).OnResize(func(float32, float32) { latest++ })
@@ -89,4 +90,32 @@ func TestSplitViewUncontrolledAndControlledUpdates(t *testing.T) {
 	if latest != 1 {
 		t.Fatal("unmounted adapter still invoked callback")
 	}
+}
+
+func TestSplitViewHandleSizeBindingAndReset(t *testing.T) {
+	c := new(tabContext)
+	v := HSplit(baseui.Label("a"), baseui.Label("b")).StartSize(100).HandleSize(9)
+	w := v.Mount(c).(*widgets.SplitView)
+	v.Update(c, w)
+	arrange := func() {
+		size := geometry.Size{Width: 209, Height: 80}
+		w.Measure(layout.Tight(size))
+		w.Arrange(geometry.Rectangle{Size: size})
+	}
+	arrange()
+	if a, b := w.Sizes(); w.HandleSize() != 9 || a != 100 || b != 100 {
+		t.Fatal("声明厚度未生效")
+	}
+	v = HSplit(baseui.Label("a"), baseui.Label("b")).StartSize(100)
+	v.Update(c, w)
+	arrange()
+	if a, b := w.Sizes(); w.HandleSize() != 3 || a != 100 || b != 106 {
+		t.Fatal("移除声明没有恢复默认，或改写面板尺寸偏好")
+	}
+	v = VSplit(baseui.Label("a"), baseui.Label("b")).HandleSize(5)
+	v.Update(c, w)
+	if w.Direction() != layout.DirectionVertical || w.HandleSize() != 5 {
+		t.Fatal("方向／厚度未同步")
+	}
+	v.Unmount(c, w)
 }
