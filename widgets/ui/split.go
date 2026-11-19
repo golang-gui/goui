@@ -14,6 +14,7 @@ import (
 type SplitViewView struct {
 	baseui.ViewBase[SplitViewView]
 	direction  layout.Direction
+	handleSize float32
 	start, end baseui.View
 	sizing     uint8
 	value      float32
@@ -39,6 +40,10 @@ func (v *SplitViewView) End(child baseui.View) *SplitViewView   { v.end = child;
 func (v *SplitViewView) StartSize(size float32) *SplitViewView { v.sizing, v.value = 1, size; return v }
 func (v *SplitViewView) EndSize(size float32) *SplitViewView   { v.sizing, v.value = 2, size; return v }
 func (v *SplitViewView) Ratio(ratio float32) *SplitViewView    { v.sizing, v.value = 3, ratio; return v }
+
+// HandleSize configures the separator region thickness in DIP; zero uses 3.
+func (v *SplitViewView) HandleSize(size float32) *SplitViewView { v.handleSize = size; return v }
+
 func (v *SplitViewView) OnResize(fn func(start, end float32)) *SplitViewView {
 	v.onResize = fn
 	return v
@@ -78,6 +83,7 @@ func (v *SplitViewView) Update(ctx baseui.BuildContext, widget gui.Widget) {
 	view, state := widget.(*widgets.SplitView), ctx.State().(*splitState)
 	state.onResize = v.onResize
 	view.SetDirection(v.direction)
+	view.SetHandleSize(v.handleSize)
 	switch v.sizing {
 	case 1:
 		view.SetStartSize(v.value)
