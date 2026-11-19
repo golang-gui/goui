@@ -18,11 +18,11 @@ func TestScrollViewCoupledBarsAndResize(t *testing.T) {
 		sv.SetChild(&mockWidget{size: size})
 		sv.Measure(layout.Tight(geometry.Size{Width: 100, Height: 100}))
 		sv.Arrange(geometry.Rect(0, 0, 100, 100))
-		if !sv.vbar.Visible() || !sv.hbar.Visible() || sv.viewport.Rect() != geometry.Rect(0, 0, 88, 88) {
+		if !sv.vbar.Visible() || !sv.hbar.Visible() || sv.viewport.Rect() != geometry.Rect(0, 0, 92, 92) {
 			t.Fatalf("bar-induced overflow not resolved: size=%v viewport=%v", size, sv.viewport.Rect())
 		}
 		info := sv.Snapshot()
-		if info.MaxScrollX != size.Width-88 || info.MaxScrollY != size.Height-88 {
+		if info.MaxScrollX != size.Width-92 || info.MaxScrollY != size.Height-92 {
 			t.Fatalf("snapshot ranges disagree with viewport: %+v", info)
 		}
 		sv.SetScrollX(1000)
@@ -47,17 +47,17 @@ func TestScrollViewBarOptionsGeometry(t *testing.T) {
 		maximum   geometry.Point
 	}{
 		{"默认", ScrollBarOptions{}, ScrollBarOptions{}, ScrollBoth, geometry.Size{Width: 200, Height: 300},
-			ScrollGeometry{geometry.Rect(0, 0, 88, 88), geometry.Rect(0, 88, 88, 12), geometry.Rect(88, 0, 12, 88), geometry.Rect(88, 88, 12, 12)}, geometry.Point{X: 112, Y: 212}},
+			ScrollGeometry{geometry.Rect(0, 0, 92, 92), geometry.Rect(0, 92, 92, 8), geometry.Rect(92, 0, 8, 92), geometry.Rect(92, 92, 8, 8)}, geometry.Point{X: 108, Y: 208}},
 		{"两轴独立厚度和间距", customH, customV, ScrollBoth, geometry.Size{Width: 200, Height: 300},
 			ScrollGeometry{geometry.Rect(0, 0, 76, 87), geometry.Rect(0, 90, 76, 10), geometry.Rect(80, 0, 20, 87), geometry.Rect(80, 90, 20, 10)}, geometry.Point{X: 124, Y: 213}},
 		{"隐藏不禁止滚动", ScrollBarOptions{Policy: ScrollBarHidden, Spacing: 20}, ScrollBarOptions{Policy: ScrollBarHidden, Spacing: 20}, ScrollBoth, geometry.Size{Width: 200, Height: 300},
 			ScrollGeometry{Viewport: geometry.Rect(0, 0, 100, 100)}, geometry.Point{X: 100, Y: 200}},
 		{"无范围仍占位", ScrollBarOptions{Policy: ScrollBarAlways}, ScrollBarOptions{Policy: ScrollBarAlways}, ScrollBoth, geometry.Size{Width: 20, Height: 20},
-			ScrollGeometry{geometry.Rect(0, 0, 88, 88), geometry.Rect(0, 88, 88, 12), geometry.Rect(88, 0, 12, 88), geometry.Rect(88, 88, 12, 12)}, geometry.Point{}},
+			ScrollGeometry{geometry.Rect(0, 0, 92, 92), geometry.Rect(0, 92, 92, 8), geometry.Rect(92, 0, 8, 92), geometry.Rect(92, 92, 8, 8)}, geometry.Point{}},
 		{"Always迫使另一轴溢出", ScrollBarOptions{Policy: ScrollBarAlways}, ScrollBarOptions{}, ScrollBoth, geometry.Size{Width: 80, Height: 95},
-			ScrollGeometry{geometry.Rect(0, 0, 88, 88), geometry.Rect(0, 88, 88, 12), geometry.Rect(88, 0, 12, 88), geometry.Rect(88, 88, 12, 12)}, geometry.Point{Y: 7}},
+			ScrollGeometry{geometry.Rect(0, 0, 92, 92), geometry.Rect(0, 92, 92, 8), geometry.Rect(92, 0, 8, 92), geometry.Rect(92, 92, 8, 8)}, geometry.Point{Y: 3}},
 		{"禁止轴优先于Always", ScrollBarOptions{Policy: ScrollBarAlways}, ScrollBarOptions{}, ScrollVertical, geometry.Size{Width: 200, Height: 300},
-			ScrollGeometry{Viewport: geometry.Rect(0, 0, 88, 100), VScrollBar: geometry.Rect(88, 0, 12, 100)}, geometry.Point{Y: 200}},
+			ScrollGeometry{Viewport: geometry.Rect(0, 0, 92, 100), VScrollBar: geometry.Rect(92, 0, 8, 100)}, geometry.Point{Y: 200}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			sv := NewScrollView()
@@ -85,7 +85,7 @@ func TestScrollViewBarOptionsGeometry(t *testing.T) {
 func TestScrollViewBarOptionsNormalizeAndClamp(t *testing.T) {
 	sv := NewScrollView()
 	sv.SetHScrollBarOptions(ScrollBarOptions{Policy: 255, Thickness: float32(math.NaN()), ThumbThickness: float32(math.Inf(1)), Spacing: -3})
-	want := ScrollBarOptions{Thickness: 12, ThumbThickness: 8}
+	want := ScrollBarOptions{Thickness: 8, ThumbThickness: 8}
 	if sv.HScrollBarOptions() != want || sv.VScrollBarOptions() != want {
 		t.Fatalf("默认或非法输入未归一化：%+v / %+v", sv.HScrollBarOptions(), sv.VScrollBarOptions())
 	}
@@ -144,6 +144,8 @@ func TestScrollViewHiddenBarsKeepInputAndReveal(t *testing.T) {
 
 func TestScrollViewOptionsCancelActiveBarDrag(t *testing.T) {
 	sv := NewScrollView()
+	// 显式留出两侧各2 DIP，继续验证滑块外的轨道带可以抓取并取消。
+	sv.SetVScrollBarOptions(ScrollBarOptions{Thickness: 12})
 	sv.SetChild(&mockWidget{size: geometry.Size{Width: 500, Height: 500}})
 	win := testWindowWithSurface(&window{})
 	win.SetWidget(sv)
@@ -228,7 +230,7 @@ func TestScrollViewSingleAxisMeasuresActualViewport(t *testing.T) {
 		}
 		sv.Measure(layout.Tight(size))
 		sv.Arrange(geometry.Rectangle{Size: size})
-		wantContent, wantArea := geometry.Size{Width: 88, Height: 100}, geometry.Size{Width: 88, Height: 60}
+		wantContent, wantArea := geometry.Size{Width: 92, Height: 100}, geometry.Size{Width: 92, Height: 60}
 		if horizontal {
 			wantContent.Width, wantContent.Height = wantContent.Height, wantContent.Width
 			wantArea.Width, wantArea.Height = wantArea.Height, wantArea.Width
@@ -237,8 +239,8 @@ func TestScrollViewSingleAxisMeasuresActualViewport(t *testing.T) {
 			t.Fatalf("single-axis layout: direction=%v content=%v viewport=%v", direction, content.Rect(), sv.viewport.Rect())
 		}
 		last := content.constraints[len(content.constraints)-1]
-		if !horizontal && (last.Min.Width != 88 || last.Max.Width != 88 || last.Max.Height != layout.Inf) ||
-			horizontal && (last.Min.Height != 88 || last.Max.Height != 88 || last.Max.Width != layout.Inf) {
+		if !horizontal && (last.Min.Width != 92 || last.Max.Width != 92 || last.Max.Height != layout.Inf) ||
+			horizontal && (last.Min.Height != 92 || last.Max.Height != 92 || last.Max.Width != layout.Inf) {
 			t.Fatalf("not measured at bar-reduced cross extent: %+v", last)
 		}
 		// Reveal requests, including an overflowing cross-axis rectangle, may
@@ -264,7 +266,7 @@ func TestScrollViewSingleAxisMeasuresActualViewport(t *testing.T) {
 }
 
 // Measure 可以被父布局或状态样式比较单独调用，不能覆盖已排列的范围。
-// 400 DIP 内容每行/列 20 DIP；长内容的交叉轴须始终扣除 12 DIP 滚动条。
+// 400 DIP 内容每行/列 20 DIP；长内容的交叉轴须始终扣除 8 DIP 滚动条。
 func TestScrollViewRemeasurePreservesArrangedGeometry(t *testing.T) {
 	for _, direction := range []ScrollDirection{ScrollVertical, ScrollHorizontal} {
 		t.Run(map[ScrollDirection]string{ScrollVertical: "vertical", ScrollHorizontal: "horizontal"}[direction], func(t *testing.T) {
@@ -277,7 +279,7 @@ func TestScrollViewRemeasurePreservesArrangedGeometry(t *testing.T) {
 				size := geometry.Size{Width: cross, Height: 60}
 				area := size
 				if cross < 400 {
-					area.Width -= 12
+					area.Width -= 8
 				}
 				extent := geometry.Size{Width: area.Width, Height: 20 * float32(math.Ceil(400/float64(area.Width)))}
 				if horizontal {
@@ -357,9 +359,9 @@ func TestScrollViewUnboundedCrossAxisAndOwnMaximum(t *testing.T) {
 		t.Fatalf("unbounded viewport invented a cross size: %v", got)
 	}
 	sv.SetMaxSize(geometry.Size{Width: 100})
-	// 最大外宽100，Auto纵条占12，最后一次换行测量必须使用88。
+	// 最大外宽100，Auto纵条占8，最后一次换行测量必须使用92。
 	content.constraints = nil
-	if got := sv.Measure(layout.Loose(geometry.Size{Width: 200, Height: 60})).Width; got != 100 || content.constraints[0].Max.Width != 100 || content.constraints[len(content.constraints)-1].Max.Width != 88 {
+	if got := sv.Measure(layout.Loose(geometry.Size{Width: 200, Height: 60})).Width; got != 100 || content.constraints[0].Max.Width != 100 || content.constraints[len(content.constraints)-1].Max.Width != 92 {
 		t.Fatalf("own maximum did not reach content measurement: width=%g", got)
 	}
 }
@@ -405,12 +407,12 @@ func TestScrollViewVirtualExtentAndDisabledAxis(t *testing.T) {
 	sv.SetChild(content)
 	sv.Measure(layout.Tight(geometry.Size{Width: 100, Height: 100}))
 	sv.Arrange(geometry.Rect(0, 0, 100, 100))
-	if len(content.viewports) != 2 || content.Rect() != geometry.Rect(0, 0, 88, 88) || content.viewports[1] != (geometry.Size{Width: 88, Height: 88}) {
+	if len(content.viewports) != 2 || content.Rect() != geometry.Rect(0, 0, 92, 92) || content.viewports[1] != (geometry.Size{Width: 92, Height: 92}) {
 		t.Fatalf("lazy extent did not update the actual viewport: %v / %v", content.viewports, content.Rect())
 	}
 	sv.SetDirection(ScrollVertical)
 	sv.Arrange(sv.Rect())
-	if content.ContentSize().Width != 96 || sv.Snapshot().MaxScrollX != 0 || sv.hbar.Visible() || content.Rect() != geometry.Rect(0, 0, 88, 100) {
+	if content.ContentSize().Width != 96 || sv.Snapshot().MaxScrollX != 0 || sv.hbar.Visible() || content.Rect() != geometry.Rect(0, 0, 92, 100) {
 		t.Fatal("host changed virtual content policy instead of disabling its scroll axis")
 	}
 }
@@ -424,11 +426,11 @@ func TestScrollViewVirtualRemeasurePreservesArrangedExtent(t *testing.T) {
 	sv.Arrange(geometry.Rect(0, 0, 100, 100))
 	content.size = geometry.Size{Width: 400, Height: 500}
 	sv.Measure(layout.Tight(geometry.Size{Width: 100, Height: 100}))
-	if info := sv.Snapshot(); info.MaxScrollX != 112 || info.MaxScrollY != 212 {
+	if info := sv.Snapshot(); info.MaxScrollX != 108 || info.MaxScrollY != 208 {
 		t.Fatalf("重测提前发布了虚拟内容范围：%g/%g", info.MaxScrollX, info.MaxScrollY)
 	}
 	sv.Arrange(sv.Rect())
-	if info := sv.Snapshot(); info.MaxScrollX != 312 || info.MaxScrollY != 412 || content.Rect().Size != (geometry.Size{Width: 88, Height: 88}) {
+	if info := sv.Snapshot(); info.MaxScrollX != 308 || info.MaxScrollY != 408 || content.Rect().Size != (geometry.Size{Width: 92, Height: 92}) {
 		t.Fatalf("重新排列没有发布新范围：%g/%g，content=%v", info.MaxScrollX, info.MaxScrollY, content.Rect())
 	}
 	content.size = geometry.Size{Width: 80, Height: 80}
@@ -476,8 +478,8 @@ func TestScrollViewClamp(t *testing.T) {
 
 	sv.SetScrollY(1000)
 	// The vertical bar reduces width below 100, requiring a horizontal bar too.
-	if got := sv.ScrollY(); got != 312 {
-		t.Fatalf("SetScrollY(1000) should clamp to 312, got %v", got)
+	if got := sv.ScrollY(); got != 308 {
+		t.Fatalf("SetScrollY(1000) should clamp to 308, got %v", got)
 	}
 
 	sv.SetScrollY(-50)
@@ -582,7 +584,7 @@ func TestScrollViewViewportDrivesPaintClipAndHitTesting(t *testing.T) {
 	if len(backend.fills) != 2 {
 		t.Fatalf("期望角区与正文各一次填充，实际 %d 次", len(backend.fills))
 	}
-	if backend.fills[0].rect != geometry.Rect(88, 88, 12, 12) {
+	if backend.fills[0].rect != geometry.Rect(92, 92, 8, 8) {
 		t.Fatalf("角区未使用实际槽位：%v", backend.fills[0].rect)
 	}
 	fill := backend.fills[1]
@@ -733,8 +735,8 @@ func TestScrollViewWheel(t *testing.T) {
 
 	// Clamp at the end.
 	sv.wheel.HandleEvent(&eventContext{event: events.WheelEvent{DeltaY: 10000, Mode: events.WheelDeltaPixel}})
-	if got := sv.ScrollY(); got != 412 {
-		t.Fatalf("wheel should clamp to 412 with both bars, got %v", got)
+	if got := sv.ScrollY(); got != 408 {
+		t.Fatalf("wheel should clamp to 408 with both bars, got %v", got)
 	}
 }
 
@@ -791,10 +793,10 @@ func TestScrollViewScrollableContentMode(t *testing.T) {
 		t.Fatalf("offset should be 100, got %v", content.layoutCalls[1])
 	}
 
-	// 钳制：内容高500、视口高88，最大偏移412。
+	// 钳制：内容高500、视口高92，最大偏移408。
 	sv.SetScrollY(999)
-	if got := content.layoutCalls[len(content.layoutCalls)-1].Y; got != 412 {
-		t.Fatalf("offset should clamp to 412, got %v", got)
+	if got := content.layoutCalls[len(content.layoutCalls)-1].Y; got != 408 {
+		t.Fatalf("offset should clamp to 408, got %v", got)
 	}
 }
 
@@ -825,8 +827,8 @@ func TestScrollViewSnapshot(t *testing.T) {
 	if info.ScrollY != 50 {
 		t.Fatalf("scrollY should be 50, got %v", info.ScrollY)
 	}
-	if info.MaxScrollY != 312 {
-		t.Fatalf("maxScrollY should be 312 with both bars, got %v", info.MaxScrollY)
+	if info.MaxScrollY != 308 {
+		t.Fatalf("maxScrollY should be 308 with both bars, got %v", info.MaxScrollY)
 	}
 }
 
@@ -977,8 +979,8 @@ func TestScrollViewScrollXClamp(t *testing.T) {
 
 	// The horizontal bar reduces height below 100, requiring a vertical bar.
 	sv.SetScrollX(1000)
-	if got := sv.ScrollX(); got != 312 {
-		t.Fatalf("SetScrollX(1000) should clamp to 312, got %v", got)
+	if got := sv.ScrollX(); got != 308 {
+		t.Fatalf("SetScrollX(1000) should clamp to 308, got %v", got)
 	}
 	sv.SetScrollX(-50)
 	if got := sv.ScrollX(); got != 0 {
@@ -1123,8 +1125,8 @@ func TestScrollViewSnapshotScrollX(t *testing.T) {
 	if info.ScrollX != 50 {
 		t.Fatalf("scrollX should be 50, got %v", info.ScrollX)
 	}
-	if info.MaxScrollX != 312 {
-		t.Fatalf("maxScrollX should be 312 with both bars, got %v", info.MaxScrollX)
+	if info.MaxScrollX != 308 {
+		t.Fatalf("maxScrollX should be 308 with both bars, got %v", info.MaxScrollX)
 	}
 	// Snapshot children filter out scrollbars.
 	for _, c := range info.Children {

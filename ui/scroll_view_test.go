@@ -42,7 +42,7 @@ func TestScrollViewBarOptionsUpdateAndRestore(t *testing.T) {
 		t.Fatal("相同声明重建了滚动宿主或内容")
 	}
 	r.update(ScrollView(Label("保留内容")))
-	want := ScrollBarOptions{Thickness: 12, ThumbThickness: 8}
+	want := ScrollBarOptions{Thickness: 8, ThumbThickness: 8}
 	if sv.HScrollBarOptions() != want || sv.VScrollBarOptions() != want {
 		t.Fatal("省略配置没有恢复默认")
 	}

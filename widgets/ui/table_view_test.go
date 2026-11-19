@@ -52,7 +52,7 @@ func TestTableViewBarOptionsUpdateAndRestore(t *testing.T) {
 	declaration.Update(ctx, table)
 	build().Update(ctx, table)
 	tableBindingArrange(table)
-	want := baseui.ScrollBarOptions{Thickness: 12, ThumbThickness: 8}
+	want := baseui.ScrollBarOptions{Thickness: 8, ThumbThickness: 8}
 	if table.HScrollBarOptions() != want || table.VScrollBarOptions() != want || table.Columns()[0] != column || m.connections != connections {
 		t.Fatal("省略配置没有恢复默认，或重新安装了列／模型")
 	}

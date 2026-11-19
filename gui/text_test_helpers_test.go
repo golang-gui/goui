@@ -400,9 +400,6 @@ func timedEditorFixture(t *testing.T) (*TextView, *ScrollView, *window, *timerTe
 	editor.blinkNow = q.s.now
 	editor.SetModel(NewTextModel(strings.Repeat("row\n", 100)))
 	scroll := NewScrollView()
-	// 固定 8 DIP 轨道以保留原字符／视口预期；默认几何由滚动条专项覆盖。
-	scroll.SetVScrollBarOptions(ScrollBarOptions{Thickness: 8, ThumbThickness: 8})
-	scroll.SetHScrollBarOptions(ScrollBarOptions{Thickness: 8, ThumbThickness: 8})
 	scroll.SetChild(editor)
 	win := testWindowWithSurface(&window{})
 	win.SetWidget(scroll)
