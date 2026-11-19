@@ -139,6 +139,36 @@ func NewTableView() *TableView {
 	return v
 }
 
+// HScrollBarOptions returns the normalized built-in horizontal bar options.
+func (v *TableView) HScrollBarOptions() gui.ScrollBarOptions {
+	return v.scroll.HScrollBarOptions()
+}
+
+// SetHScrollBarOptions configures horizontal bar layout without changing column
+// base widths or emitting user resize notifications.
+func (v *TableView) SetHScrollBarOptions(options gui.ScrollBarOptions) {
+	before := v.scroll.HScrollBarOptions()
+	v.scroll.SetHScrollBarOptions(options)
+	if !v.Destroyed() && before != v.scroll.HScrollBarOptions() {
+		v.Refresh()
+	}
+}
+
+// VScrollBarOptions returns the normalized built-in vertical bar options.
+func (v *TableView) VScrollBarOptions() gui.ScrollBarOptions {
+	return v.scroll.VScrollBarOptions()
+}
+
+// SetVScrollBarOptions configures vertical bar layout without changing column
+// base widths or emitting user resize notifications.
+func (v *TableView) SetVScrollBarOptions(options gui.ScrollBarOptions) {
+	before := v.scroll.VScrollBarOptions()
+	v.scroll.SetVScrollBarOptions(options)
+	if !v.Destroyed() && before != v.scroll.VScrollBarOptions() {
+		v.Refresh()
+	}
+}
+
 // SetStyleName selects this table's appearance, including its owned parts.
 // Application-provided cell contents retain their own style names.
 func (v *TableView) SetStyleName(name string) {
@@ -773,7 +803,6 @@ func (v *TableView) Paint(p gui.Painter) {
 		p.FillRect(r, graphics.ColorOf(bg))
 	}
 	v.paintHeaderScrollGap(p)
-	v.paintScrollCorner(p)
 	v.paintOutline(p)
 	h, w := v.borderWidths()
 	h, w = min(h, r.Height/2), min(w, r.Width/2)

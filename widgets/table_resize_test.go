@@ -64,6 +64,45 @@ func TestTableResizeSequentialShrunkColumns(t *testing.T) {
 	}
 }
 
+// 条的外观或槽位变化沿现有视口分配处理，不能抹掉已经确认的手动列边缘。
+func TestTableResizeSurvivesBarOptions(t *testing.T) {
+	v, _, first, _ := tableFixture(100)
+	defer v.SetModel(nil)
+	middle, last := NewTableColumn("middle", "Middle"), NewTableColumn("last", "Last")
+	for _, column := range []*TableColumn{first, middle, last} {
+		column.SetWidth(100)
+		column.SetMinWidth(60)
+	}
+	v.SetColumns(first, middle, last)
+	tableArrange(v, 314, 180)
+	d, host := new(gui.EventDispatcher), &tabInputHost{root: v}
+	x := v.headers[middle].Snapshot().Bounds.X + middle.allocatedWidth - 4
+	dispatchTabPointer(t, d, host, events.PointerDown, x, 16)
+	dispatchTabPointer(t, d, host, events.PointerMove, x+20, 16)
+	dispatchTabPointer(t, d, host, events.PointerUp, x+20, 16)
+	tableArrange(v, 314, 180)
+	tableCheckWidths(t, v, []float32{100, 120, 80})
+	for _, column := range []*TableColumn{first, middle, last} {
+		column.ConnectResize(func(float32) { t.Fatal("更改滚动条配置产生用户Resize") })
+	}
+	for _, tc := range []struct {
+		options gui.ScrollBarOptions
+		want    []float32
+	}{
+		{gui.ScrollBarOptions{ThumbThickness: 6}, []float32{100, 120, 80}},
+		{gui.ScrollBarOptions{Thickness: 20, Spacing: 4}, []float32{100, 120, 68}},
+		{gui.ScrollBarOptions{Policy: gui.ScrollBarHidden}, []float32{100, 120, 92}},
+		{gui.ScrollBarOptions{}, []float32{100, 120, 80}},
+	} {
+		v.SetVScrollBarOptions(tc.options)
+		tableArrange(v, 314, 180)
+		tableCheckWidths(t, v, tc.want)
+		if first.Width() != 100 || middle.Width() != 120 || last.Width() != 100 {
+			t.Fatal("自动分配改写了基础宽度")
+		}
+	}
+}
+
 func TestTableResizeRightAllocationAndCancel(t *testing.T) {
 	for _, expand := range []bool{false, true} {
 		t.Run(map[bool]string{false: "保留空白", true: "右侧伸展"}[expand], func(t *testing.T) {
@@ -79,7 +118,7 @@ func TestTableResizeRightAllocationAndCancel(t *testing.T) {
 			last.SetExpand(expand)
 			last.SetResizable(false) // 间接分配不受直接拖动开关影响。
 			v.SetColumns(first, middle, last)
-			tableArrange(v, 310, 180)
+			tableArrange(v, 314, 180)
 			tableCheckWidths(t, v, []float32{100, 100, 100})
 			var notifications []float32
 			middle.ConnectResize(func(width float32) { notifications = append(notifications, width) })
@@ -99,11 +138,11 @@ func TestTableResizeRightAllocationAndCancel(t *testing.T) {
 				{12, []float32{100, 112, 90}},
 			} {
 				dispatchTabPointer(t, d, host, events.PointerMove, x+step.delta, 16)
-				tableArrange(v, 310, 180)
+				tableArrange(v, 314, 180)
 				tableCheckWidths(t, v, step.want)
 			}
 			tableKey(t, d, host, events.KeyEscape, 0)
-			tableArrange(v, 310, 180)
+			tableArrange(v, 314, 180)
 			tableCheckWidths(t, v, []float32{100, 100, 100})
 			if !slices.Equal(notifications, []float32{130, 105, 80, 100, 112, 100}) || last.Width() != 100 {
 				t.Fatalf("通知或右侧基础宽度错误：%v/%g", notifications, last.Width())

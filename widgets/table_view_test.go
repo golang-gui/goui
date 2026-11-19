@@ -1451,7 +1451,7 @@ func TestTableViewMeasurePreservesColumnAllocation(t *testing.T) {
 	last.SetDelegate(&tableTestDelegate{model: m})
 	v.SetColumns(first, last)
 	tableArrange(v, 400, 180)
-	if first.allocatedWidth != 195 || last.allocatedWidth != 195 {
+	if first.allocatedWidth != 193 || last.allocatedWidth != 193 {
 		t.Fatal("未建立扣除外框与滚动条的两列伸展场景")
 	}
 	before, binds := v.Snapshot(), delegate.binds
@@ -1460,8 +1460,8 @@ func TestTableViewMeasurePreservesColumnAllocation(t *testing.T) {
 		layout.Tight(geometry.Size{Width: 400, Height: 180}),
 	} {
 		v.Measure(constraint)
-		if first.allocatedWidth != 195 || last.allocatedWidth != 195 || v.columnX[1] != 195 ||
-			v.realized["r0"].cells[1].Rect().X != 195 {
+		if first.allocatedWidth != 193 || last.allocatedWidth != 193 || v.columnX[1] != 193 ||
+			v.realized["r0"].cells[1].Rect().X != 193 {
 			t.Fatal("测量覆盖了已分配的列宽或命中坐标")
 		}
 		after, _ := json.Marshal(v.Snapshot())
@@ -1530,28 +1530,28 @@ func TestTableViewBalancedColumnWidthsAndNarrowViewport(t *testing.T) {
 	other.SetWidth(120)
 	v.SetColumns(c, other)
 	m.Set(0, tableRecord{"r0", 360, 20})
-	// 290 DIP 扣除外框及滚动条后，列可用宽度恰为280。
-	tableArrange(v, 290, 180)
+	// 294 DIP 扣除外框及滚动条后，列可用宽度恰为280。
+	tableArrange(v, 294, 180)
 	if v.realized["r0"].Rect().Height != 61 || v.realized["r0"].cells[0].Rect().Height != 60 {
 		t.Fatal("initial wrap")
 	}
 	c.SetWidth(100)
 	other.SetWidth(180)
-	tableArrange(v, 290, 180)
+	tableArrange(v, 294, 180)
 	if v.columnWidth != 280 || v.realized["r0"].Rect().Height != 81 || v.realized["r0"].cells[0].Rect().Height != 80 || v.realized["r0"].cells[1].Rect().X != 100 {
 		t.Fatal("same total width concealed per-column wrapping change")
 	}
 	v.scroll.SetScrollY(1500)
 	c.SetWidth(80)
 	other.SetWidth(200)
-	tableArrange(v, 290, 180)
+	tableArrange(v, 294, 180)
 	v.scroll.SetScrollY(0)
-	tableArrange(v, 290, 180)
+	tableArrange(v, 294, 180)
 	if v.realized["r0"].Rect().Height != 101 || v.realized["r0"].cells[0].Rect().Height != 100 {
 		t.Fatal("offscreen row retained old column measurements")
 	}
 	tableArrange(v, 1, 1)
-	tableArrange(v, 290, 180)
+	tableArrange(v, 294, 180)
 	if len(v.realized) == 0 {
 		t.Fatal("narrow viewport did not recover")
 	}

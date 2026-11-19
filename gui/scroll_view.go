@@ -70,6 +70,9 @@ type ScrollView struct {
 	wheel          *WheelEventController
 	vbar           *ScrollBar // vertical scrollbar (right column)
 	hbar           *ScrollBar // horizontal scrollbar (bottom row)
+	hOptions       ScrollBarOptions
+	vOptions       ScrollBarOptions
+	geometry       ScrollGeometry
 	revealHandle   signal.Handle
 	revealRect     geometry.Rectangle
 	revealPending  bool
@@ -87,14 +90,57 @@ type scrollViewport struct {
 	WidgetBase
 }
 
-const scrollbarWidth = 8
-const scrollbarRadius = scrollbarWidth / 2
-const scrollbarMinThumb = 20
+// ScrollGeometry describes the last completed allocation in ScrollView-local
+// DIP. Hidden bars and an absent junction have empty rectangles. Extra spacing
+// is outside the bar rectangles and Corner. Measure does not change this value.
+type ScrollGeometry struct {
+	Viewport   geometry.Rectangle
+	HScrollBar geometry.Rectangle
+	VScrollBar geometry.Rectangle
+	Corner     geometry.Rectangle
+}
+
+// ScrollGeometry returns the last completed allocation without forcing layout.
+func (sv *ScrollView) ScrollGeometry() ScrollGeometry { return sv.geometry }
+
+// HScrollBarOptions returns the normalized horizontal bar configuration.
+func (sv *ScrollView) HScrollBarOptions() ScrollBarOptions { return sv.hOptions }
+
+// SetHScrollBarOptions configures horizontal occupancy and thumb geometry.
+// Hiding the bar leaves horizontal scrolling available when Direction allows it.
+func (sv *ScrollView) SetHScrollBarOptions(options ScrollBarOptions) {
+	sv.setScrollBarOptions(sv.hbar, &sv.hOptions, options)
+}
+
+// VScrollBarOptions returns the normalized vertical bar configuration.
+func (sv *ScrollView) VScrollBarOptions() ScrollBarOptions { return sv.vOptions }
+
+// SetVScrollBarOptions configures vertical occupancy and thumb geometry.
+// Hiding the bar leaves vertical scrolling available when Direction allows it.
+func (sv *ScrollView) SetVScrollBarOptions(options ScrollBarOptions) {
+	sv.setScrollBarOptions(sv.vbar, &sv.vOptions, options)
+}
+
+func (sv *ScrollView) setScrollBarOptions(bar *ScrollBar, current *ScrollBarOptions, options ScrollBarOptions) {
+	options = options.normalized()
+	if sv.Destroyed() || *current == options {
+		return
+	}
+	cancelGestureController(sv.Root(), bar.drag)
+	if sv.Destroyed() {
+		return
+	}
+	*current = options
+	bar.SetThickness(options.Thickness)
+	bar.SetThumbThickness(options.ThumbThickness)
+	sv.RequestLayout()
+}
 
 // NewScrollView creates a viewport with MainWeight 1 so it shares a linear
 // parent's remaining space. SetMainWeight(0) opts out of that allocation.
 func NewScrollView() *ScrollView {
 	sv := &ScrollView{dragAutoScroll: true}
+	sv.hOptions, sv.vOptions = (ScrollBarOptions{}).normalized(), (ScrollBarOptions{}).normalized()
 	sv.SetMainWeight(1)
 
 	sv.viewport = new(scrollViewport)
@@ -195,6 +241,11 @@ func (sv *ScrollView) Paint(p Painter) {
 		PaintStyledBox(p, r, s)
 	} else {
 		PaintStyledBorder(p, r, s)
+	}
+	if corner := sv.geometry.Corner; corner.Width > 0 && corner.Height > 0 {
+		if ink, ok := sv.vbar.troughStyle().BackgroundColor(); ok && ink != nil {
+			p.FillRect(corner, graphics.ColorOf(ink))
+		}
 	}
 }
 
@@ -454,30 +505,41 @@ func (sv *ScrollView) hScrollable() bool {
 	return horizontal
 }
 
-// scrollGeometry resolves the two bars together, starting without bars so a
-// previous allocation cannot keep unnecessary bars alive. Each step can only
-// add a bar; two axes need at most three evaluations to settle their occupancy.
 func (sv *ScrollView) scrollGeometry() (area geometry.Size, horizontal, vertical bool) {
-	size := sv.innerRect().Size
+	return sv.scrollGeometryFor(sv.innerRect().Size, geometry.Size{Width: sv.contentWidth, Height: sv.contentHeight})
+}
+
+// Resolve both bars from their policies, independently of their old visibility.
+// Each pass can only add an Auto bar, so three evaluations settle both axes.
+// Measure uses local content metrics; it must not publish a new scroll range.
+func (sv *ScrollView) scrollGeometryFor(size, content geometry.Size) (area geometry.Size, horizontal, vertical bool) {
+	horizontal = sv.canScrollX() && sv.hOptions.Policy == ScrollBarAlways
+	vertical = sv.canScrollY() && sv.vOptions.Policy == ScrollBarAlways
 	for range 3 {
-		area = scrollArea(size, horizontal, vertical)
-		h := horizontal || sv.content != nil && sv.canScrollX() && sv.contentWidth > area.Width
-		v := vertical || sv.content != nil && sv.canScrollY() && sv.contentHeight > area.Height
+		area = sv.scrollArea(size, horizontal, vertical)
+		h := horizontal || sv.canScrollX() && sv.hOptions.Policy == ScrollBarAuto && content.Width > area.Width
+		v := vertical || sv.canScrollY() && sv.vOptions.Policy == ScrollBarAuto && content.Height > area.Height
 		if h == horizontal && v == vertical {
 			return
 		}
 		horizontal, vertical = h, v
 	}
-	area = scrollArea(size, horizontal, vertical)
+	area = sv.scrollArea(size, horizontal, vertical)
 	return
 }
 
-func scrollArea(size geometry.Size, horizontal, vertical bool) geometry.Size {
+func (sv *ScrollView) scrollArea(size geometry.Size, horizontal, vertical bool) geometry.Size {
 	if horizontal {
-		size.Height -= scrollbarWidth
+		space, _ := sv.hOptions.space(size.Height)
+		if size.Height < layout.Inf {
+			size.Height -= space
+		}
 	}
 	if vertical {
-		size.Width -= scrollbarWidth
+		space, _ := sv.vOptions.space(size.Width)
+		if size.Width < layout.Inf {
+			size.Width -= space
+		}
 	}
 	size.Width = max(0, size.Width)
 	size.Height = max(0, size.Height)
@@ -564,8 +626,14 @@ func (sv *ScrollView) Measure(c layout.Constraint) layout.Measurement {
 			width = measured.Width
 		}
 		height := measured.Height
-		if sv.canScrollX() && childConstraint.Max.Width < layout.Inf && size.Width > width {
-			height += scrollbarWidth
+		_, horizontal, vertical := sv.scrollGeometryFor(inner.Max, size)
+		if horizontal {
+			space, _ := sv.hOptions.space(inner.Max.Height)
+			height += space
+		}
+		if vertical && inner.Max.Width >= layout.Inf {
+			space, _ := sv.vOptions.space(inner.Max.Width)
+			width += space
 		}
 		measured.Size = sv.constrain(c, geometry.Size{Width: width + 2*inset, Height: height + 2*inset})
 		if measured.HasBaseline {
@@ -574,6 +642,14 @@ func (sv *ScrollView) Measure(c layout.Constraint) layout.Measurement {
 		return measured
 	}
 	contentSize := sv.measureContent(inner.Max)
+	if sv.direction != ScrollBoth {
+		// A reserved bar changes wrapping on the non-scrolling axis. Measure
+		// that axis at the same width/height Arrange will give the content.
+		area, _, _ := sv.scrollGeometryFor(inner.Max, contentSize)
+		if area != inner.Max {
+			contentSize = sv.measureContent(area)
+		}
+	}
 	size := contentSize
 	if sv.direction == ScrollVertical {
 		if inner.Max.Width < layout.Inf {
@@ -583,8 +659,14 @@ func (sv *ScrollView) Measure(c layout.Constraint) layout.Measurement {
 	if sv.direction == ScrollHorizontal {
 		size.Width, size.Height = sv.viewportWidth(inner), contentSize.Height
 	}
-	if sv.canScrollX() && contentSize.Width > inner.Max.Width {
-		size.Height += scrollbarWidth
+	_, horizontal, vertical := sv.scrollGeometryFor(inner.Max, contentSize)
+	if horizontal {
+		space, _ := sv.hOptions.space(inner.Max.Height)
+		size.Height += space
+	}
+	if vertical && sv.vOptions.Policy == ScrollBarAlways {
+		space, _ := sv.vOptions.space(inner.Max.Width)
+		size.Width += space
 	}
 	size.Width += 2 * inset
 	size.Height += 2 * inset
@@ -699,23 +781,33 @@ func (sv *ScrollView) arrangeContent() {
 // layoutScrollBars positions the scrollbars and toggles their visibility
 // based on scrollability. A hidden bar is arranged to a zero-size rect.
 func (sv *ScrollView) layoutScrollBars(rect geometry.Rectangle) {
-	barW := float32(scrollbarWidth)
 	area, hScroll, vScroll := sv.scrollGeometry()
+	g := ScrollGeometry{Viewport: geometry.Rectangle{Pos: rect.Pos, Size: area}}
 
 	if vScroll {
+		_, thickness := sv.vOptions.space(rect.Width)
+		g.VScrollBar = geometry.Rect(rect.X+rect.Width-thickness, rect.Y, thickness, area.Height)
 		sv.vbar.SetVisible(true)
-		sv.vbar.Arrange(geometry.Rect(rect.X+max(0, rect.Width-barW), rect.Y, min(barW, rect.Width), area.Height))
+		sv.vbar.Arrange(g.VScrollBar)
 	} else {
 		sv.vbar.SetVisible(false)
 		sv.vbar.Arrange(geometry.Rect(0, 0, 0, 0))
 	}
 
 	if hScroll {
+		_, thickness := sv.hOptions.space(rect.Height)
+		g.HScrollBar = geometry.Rect(rect.X, rect.Y+rect.Height-thickness, area.Width, thickness)
 		sv.hbar.SetVisible(true)
-		sv.hbar.Arrange(geometry.Rect(rect.X, rect.Y+max(0, rect.Height-barW), area.Width, min(barW, rect.Height)))
+		sv.hbar.Arrange(g.HScrollBar)
 	} else {
 		sv.hbar.SetVisible(false)
 		sv.hbar.Arrange(geometry.Rect(0, 0, 0, 0))
+	}
+	if hScroll && vScroll {
+		g.Corner = geometry.Rect(g.VScrollBar.X, g.HScrollBar.Y, g.VScrollBar.Width, g.HScrollBar.Height)
+	}
+	if !sv.Destroyed() {
+		sv.geometry = g
 	}
 }
 
