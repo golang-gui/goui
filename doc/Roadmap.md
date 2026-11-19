@@ -1679,3 +1679,8 @@ iOS device 仅链接。首次 Scene 前 GPU、触摸/IME、安全区和真机仍
   原生源由 Go 生成器输出仓库外；消费端不安装原生编译链。
 - 验证进度见 [PlanMobileConvergence](PlanMobileConvergence.md)。后续仍需正式移动
   组件分发、真机、触摸/IME、SafeArea、GUI/UI 集成及商店发布支持。
+
+## 应用反馈缺口修复（2026-11-19）
+
+四项独立修复分支及暂缓的 macOS 文件过滤见 [PlanFrameworkGapFixes](PlanFrameworkGapFixes.md)。
+实施与验收结果在该文档统一维护。
