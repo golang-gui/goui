@@ -23,7 +23,7 @@ func newVerticalBar(t *testing.T, max float32) *ScrollBar {
 }
 
 func TestScrollBarDefaultThickness(t *testing.T) {
-	const want float32 = 12
+	const want float32 = 8
 
 	vertical := NewScrollBar(layout.DirectionVertical)
 	if got := vertical.Measure(layout.Unbounded()).Width; got != want {
@@ -54,7 +54,7 @@ func TestScrollBarThicknessConstraints(t *testing.T) {
 		}
 		bar.SetThickness(float32(math.NaN()))
 		bar.SetThumbThickness(-1)
-		if bar.Thickness() != 12 || bar.ThumbThickness() != 8 {
+		if bar.Thickness() != 8 || bar.ThumbThickness() != 8 {
 			t.Fatal("独立条的非法尺寸没有恢复默认")
 		}
 	}
@@ -124,8 +124,8 @@ func TestScrollBarThumbRect(t *testing.T) {
 	b := newVerticalBar(t, 400)
 	b.SetValue(100)
 	rect := b.thumbRect()
-	if rect.X != 2 || rect.Width != 8 {
-		t.Fatalf("vertical thumb rect X/Width: want (2, 8); track=%v, got (%v, %v)", scrollbarWidth, rect.X, rect.Width)
+	if rect.X != 0 || rect.Width != 8 {
+		t.Fatalf("默认竖向滑块应铺满8 DIP轨道，得到 (%v, %v)", rect.X, rect.Width)
 	}
 	if !approxEq(rect.Y, b.thumbStart()) || !approxEq(rect.Height, b.thumbLen()) {
 		t.Fatalf("thumb rect Y/H mismatch: got %+v", rect)
@@ -140,8 +140,8 @@ func TestScrollBarHorizontalGeometry(t *testing.T) {
 
 	// Same math as vertical, just along X.
 	rect := b.thumbRect()
-	if rect.Y != 2 || rect.Height != 8 {
-		t.Fatalf("horizontal thumb rect Y/Height: want (2, 8); track=%v, got (%v, %v)", scrollbarWidth, rect.Y, rect.Height)
+	if rect.Y != 0 || rect.Height != 8 {
+		t.Fatalf("默认横向滑块应铺满8 DIP轨道，得到 (%v, %v)", rect.Y, rect.Height)
 	}
 	if !approxEq(rect.X, 66.6667) || !approxEq(rect.Width, 66.6667) {
 		t.Fatalf("horizontal thumb X/W: want 66.67, got (%v, %v)", rect.X, rect.Width)

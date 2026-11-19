@@ -7,7 +7,7 @@ import (
 	"github.com/golang-gui/goui/style"
 )
 
-const scrollbarWidth float32 = 12
+const scrollbarWidth float32 = 8
 const scrollbarThumbWidth float32 = 8
 const scrollbarMinThumb float32 = 20
 
@@ -22,7 +22,7 @@ const (
 )
 
 // ScrollBarOptions configures built-in scrollbar geometry in DIP. A zero value
-// selects Auto, 12 DIP thickness, an 8 DIP thumb, and no extra spacing.
+// selects Auto, 8 DIP thickness, an 8 DIP thumb, and no extra spacing.
 // Colors, borders and radii remain style values.
 type ScrollBarOptions struct {
 	Policy         ScrollBarPolicy
@@ -125,7 +125,7 @@ func (b *ScrollBar) SetOrientation(ori layout.Direction) {
 func (b *ScrollBar) Thickness() float32 { return b.thickness }
 
 // SetThickness sets the preferred cross-axis size. Non-positive or non-finite
-// values restore 12 DIP. Widget size constraints and parent limits still apply.
+// values restore 8 DIP. Widget size constraints and parent limits still apply.
 func (b *ScrollBar) SetThickness(value float32) {
 	value = scrollBarThickness(value, scrollbarWidth)
 	if b.Destroyed() || b.thickness == value {

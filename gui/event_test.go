@@ -329,8 +329,8 @@ func TestEventDispatcherTabRevealsNestedScrollViews(t *testing.T) {
 	inner.Arrange(geometry.Rect(170, 400, 100, 80))
 	win.SetFocusedWidget(first)
 	_ = win.DispatchEvent(shortcutPress(events.KeyTab, 0))
-	// 独立预期包含12 DIP滚动条占位：内视口88×68，外视口108×88，目标30×20。
-	if inner.ScrollX() != 92 || inner.ScrollY() != 302 || outer.ScrollX() != 150 || outer.ScrollY() != 380 {
+	// 独立预期包含8 DIP滚动条占位：内视口92×72，外视口112×92，目标30×20。
+	if inner.ScrollX() != 88 || inner.ScrollY() != 298 || outer.ScrollX() != 150 || outer.ScrollY() != 380 {
 		t.Fatalf("inner=(%g,%g), outer=(%g,%g)", inner.ScrollX(), inner.ScrollY(), outer.ScrollX(), outer.ScrollY())
 	}
 	if win.FocusedWidget() != last || !last.Focused() {

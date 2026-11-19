@@ -991,8 +991,8 @@ func TestIntegratedContentLayoutFillsResizeEdges(t *testing.T) {
 					if !bar.Visible() || r.Intersect(want) != r || hitTest(scroll, r.Center()) != bar {
 						t.Fatalf("state=%v: scrollbar painted/hit outside content: %v", state, r)
 					}
-					if bar == scroll.vbar && (r.Width != 12 || r.X+r.Width != want.X+want.Width) ||
-						bar == scroll.hbar && (r.Height != 12 || r.Y+r.Height != want.Y+want.Height) {
+					if bar == scroll.vbar && (r.Width != 8 || r.X+r.Width != want.X+want.Width) ||
+						bar == scroll.hbar && (r.Height != 8 || r.Y+r.Height != want.Y+want.Height) {
 						t.Fatalf("scrollbar is not full-width and flush with content: %v", r)
 					}
 				}
@@ -1048,8 +1048,8 @@ func TestIntegratedMinimumOnlyUsesExplicitCalls(t *testing.T) {
 	}
 }
 
-// 在滑块中段采样避开圆角 AA；轨道12 DIP、滑块8 DIP，两侧各2 DIP。
-// 逐物理像素验证滑块、轨道留白及覆盖在最外沿的1 DIP窗口边框。
+// 在滑块中段采样避开圆角 AA；默认轨道与滑块都为8 DIP，没有两侧留白。
+// 逐物理像素验证滑块及覆盖在最外沿的1 DIP窗口边框。
 func TestIntegratedScrollbarPixelsKeepFullWidth(t *testing.T) {
 	for _, scale := range []float32{1, 2} {
 		t.Run(fmt.Sprintf("%gx", scale), func(t *testing.T) {
@@ -1092,6 +1092,9 @@ func TestIntegratedScrollbarPixelsKeepFullWidth(t *testing.T) {
 					}
 					got := color.RGBAModel.Convert(output.image.At(x, y)).(color.RGBA)
 					expected := want
+					if n >= end-int(scale) {
+						expected = color.RGBA{165, 165, 165, 255}
+					}
 					if got != expected {
 						t.Fatalf("bar=%v pixel=(%d,%d): %v, want %v", bar.Orientation(), x, y, got, expected)
 					}
@@ -1100,7 +1103,7 @@ func TestIntegratedScrollbarPixelsKeepFullWidth(t *testing.T) {
 				for _, band := range []struct {
 					inset float32
 					want  color.RGBA
-				}{{2, color.RGBA{230, 230, 230, 255}}, {1, color.RGBA{165, 165, 165, 255}}} {
+				}{{2, want}, {1, color.RGBA{165, 165, 165, 255}}} {
 					x, y := int((outer.X+outer.Width-band.inset)*scale), fixed
 					if bar == scroll.hbar {
 						x, y = fixed, int((outer.Y+outer.Height-band.inset)*scale)

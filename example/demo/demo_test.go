@@ -1179,13 +1179,13 @@ func TestFormScrollViewConstrainsWidthAndScrollsHeight(t *testing.T) {
 	child := new(layoutProbe)
 	w.SetChild(child)
 	w.Measure(layout.Loose(geometry.Size{Width: 500, Height: 300}))
-	// 500 DIP 外宽扣除默认12 DIP纵条，内容在488 DIP换行。
-	if child.constraint.Max.Width != 488 || child.constraint.Max.Height != layout.Inf {
+	// 500 DIP 外宽扣除默认8 DIP纵条，内容在492 DIP换行。
+	if child.constraint.Max.Width != 492 || child.constraint.Max.Height != layout.Inf {
 		t.Fatal("form children need finite width and unbounded height")
 	}
 	w.Arrange(geometry.Rect(0, 0, 480, 300))
 	w.SetScrollY(70)
-	if got := child.Rect(); got != geometry.Rect(0, -70, 468, 450) {
+	if got := child.Rect(); got != geometry.Rect(0, -70, 472, 450) {
 		t.Fatalf("arranged %v", got)
 	}
 	if info := w.Snapshot(); info.Role != gui.RoleScrollView || len(info.Children) != 1 || info.MaxScrollY != 150 || info.MaxScrollX != 0 {
@@ -1252,15 +1252,15 @@ func TestBodyUsesAllocatedContentEdges(t *testing.T) {
 					bar = b
 				}
 			}
-			if bar == nil || !bar.Visible() || bar.Rect().Width != 12 {
-				t.Fatal("应保留完整的12 DIP纵条占位")
+			if bar == nil || !bar.Visible() || bar.Rect().Width != 8 {
+				t.Fatal("应保留完整的8 DIP纵条占位")
 			}
-			want := geometry.Rect(test.bounds.X+test.bounds.Width-12, test.bounds.Y, 12, test.bounds.Height)
+			want := geometry.Rect(test.bounds.X+test.bounds.Width-8, test.bounds.Y, 8, test.bounds.Height)
 			if got := bar.Snapshot().Bounds; got != want {
 				t.Fatalf("scrollbar bounds %v, want %v at the allocated right edge", got, want)
 			}
 			// 检查左右两个边缘都能命中完整滚动条，而不只是中心可点。
-			for _, x := range []float32{test.bounds.Width - 11.5, test.bounds.Width - .5} {
+			for _, x := range []float32{test.bounds.Width - 7.5, test.bounds.Width - .5} {
 				if got := gui.Pick(body, geometry.Point{X: x, Y: test.bounds.Height / 2}); got != bar {
 					t.Fatalf("scrollbar edge x=%v picked %T, want the scrollbar", x, got)
 				}

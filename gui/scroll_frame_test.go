@@ -38,11 +38,11 @@ func TestScrollViewFrameContainsViewportAndBars(t *testing.T) {
 	content.SetFocusable(true)
 	sv.Measure(layout.Tight(geometry.Size{Width: 100, Height: 100}))
 	sv.Arrange(geometry.Rect(10, 20, 100, 100))
-	want := geometry.Rect(2, 2, 84, 84)
-	if sv.viewport.Rect() != want || sv.vbar.Rect() != geometry.Rect(86, 2, 12, 84) || sv.hbar.Rect() != geometry.Rect(2, 86, 84, 12) {
+	want := geometry.Rect(2, 2, 88, 88)
+	if sv.viewport.Rect() != want || sv.vbar.Rect() != geometry.Rect(90, 2, 8, 88) || sv.hbar.Rect() != geometry.Rect(2, 90, 88, 8) {
 		t.Fatalf("frame geometry: viewport=%v vbar=%v hbar=%v", sv.viewport.Rect(), sv.vbar.Rect(), sv.hbar.Rect())
 	}
-	if info := sv.Snapshot(); info.MaxScrollX != 116 || info.MaxScrollY != 216 || len(info.Children) != 1 {
+	if info := sv.Snapshot(); info.MaxScrollX != 112 || info.MaxScrollY != 212 || len(info.Children) != 1 {
 		t.Fatalf("frame range or semantic children: %+v", info)
 	}
 	win.SetFocusedWidget(content)
@@ -51,7 +51,7 @@ func TestScrollViewFrameContainsViewportAndBars(t *testing.T) {
 		t.Fatal("focus moved viewport")
 	}
 	sv.ScrollIntoView(geometry.Rect(199, 299, 1, 1))
-	if sv.ScrollX() != 116 || sv.ScrollY() != 216 || content.Rect().Pos != (geometry.Point{X: -116, Y: -216}) {
+	if sv.ScrollX() != 112 || sv.ScrollY() != 212 || content.Rect().Pos != (geometry.Point{X: -112, Y: -212}) {
 		t.Fatal("framed reveal used outer coordinates")
 	}
 	sv.SetEnabled(false)
@@ -110,11 +110,11 @@ func TestScrollViewFrameScrollableMeasurement(t *testing.T) {
 	defer scope.destroy(scope)
 	m := sv.Measure(layout.Loose(geometry.Size{Width: 100, Height: 100}))
 	// 子项得到扣除稳定外框后的宽度；横条占高，基线仅增加顶部边距。
-	if m.Size != (geometry.Size{Width: 100, Height: 36}) || !m.HasBaseline || m.Baseline != 14 || content.constraint.Min.Width != 96 || content.constraint.Max.Width != 96 {
+	if m.Size != (geometry.Size{Width: 100, Height: 32}) || !m.HasBaseline || m.Baseline != 14 || content.constraint.Min.Width != 96 || content.constraint.Max.Width != 96 {
 		t.Fatalf("virtual frame measurement: result=%+v constraint=%+v", m, content.constraint)
 	}
 	sv.Arrange(geometry.Rect(0, 0, 100, 100))
-	if content.viewport != (geometry.Size{Width: 84, Height: 84}) || content.Rect().Pos != (geometry.Point{}) {
+	if content.viewport != (geometry.Size{Width: 88, Height: 88}) || content.Rect().Pos != (geometry.Point{}) {
 		t.Fatalf("virtual content did not retain viewport-local coordinates: area=%v rect=%v", content.viewport, content.Rect())
 	}
 	m = sv.Measure(layout.Unbounded())
