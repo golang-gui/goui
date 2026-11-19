@@ -725,7 +725,7 @@ Name下显式提供（不启用时宽度0），避免Part回退继承整体外�
 
 Basic／Modern分别显式为header和trough提供相同中性色，滑块复制各自通用滑块
 状态色／圆角，不新增配色或交互模式。轨道方形收口，厚度和间距由Options控制，
-默认12 DIP轨道中居中绘制8 DIP滑块，整个轨道保持命中能力。
+默认轨道和滑块均为8 DIP，保持原有外观；显式增宽轨道时滑块居中，整个轨道保持命中能力。
 表头右侧、纵向滚动槽上方的空位由TableView仅绘制该区域的普通header背景和
 按包围范围延续的header-separator，不重复覆盖已有表头。补位不绘grid-top／
 grid-vertical，不作为额外列，不增加Widget、Snapshot子节点或语义动作；双条

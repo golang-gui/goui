@@ -138,7 +138,7 @@ ScrollView 持有偏移、视口和内容范围；内部 viewport 是内容的�
 
 SetScrollX／SetScrollY 将偏移取整到整数 DIP，并钳制至实际范围，变化时沿正常
 布局／绘制失效路径更新。SetLineHeight 提供 WheelDeltaLine 的步进。
-滚动槽默认 12 DIP，滑块默认 8 DIP并居中，最短 thumb 为 20 DIP。逐轴 Options
+滚动槽与滑块默认都为 8 DIP，没有额外间距或两侧留白，最短 thumb 为 20 DIP。逐轴 Options
 控制轨道、滑块、间距及 Auto/Always/Hidden，颜色、边框和圆角继续属于样式。
 组合控件读取 ScrollGeometry 的实际槽位，不以滚动范围或固定宽度猜测占位。
 外部控制协议的后续目标见 [滚动条设计](DesignScrollBars.md)。
