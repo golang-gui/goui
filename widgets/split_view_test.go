@@ -1,6 +1,7 @@
 package widgets
 
 import (
+	"fmt"
 	"image/color"
 	"math"
 	"testing"
@@ -150,11 +151,15 @@ func TestSplitViewHiddenReplacementAndSnapshot(t *testing.T) {
 		t.Fatalf("semantic subtree=%+v", info)
 	}
 	handle := info.Children[2]
-	if handle.Role != RoleSeparator || handle.Bounds != geometry.Rect(206, 20, 9, 200) || handle.Range.Value != 200 || handle.Range.Max != 800 || len(handle.Actions) != 1 {
+	if handle.Role != RoleSeparator || handle.Bounds != geometry.Rect(210, 20, 1, 200) || handle.Range.Value != 200 || handle.Range.Max != 800 || len(handle.Actions) != 1 {
 		t.Fatalf("separator=%+v", handle)
 	}
-	if gui.Pick(v, geometry.Point{X: 197, Y: 50}) != v.handle {
-		t.Fatal("wide separator did not win picking")
+	// 扩展抓取区不再成为覆盖面板的 Widget，实际线仍能直接命中。
+	if gui.Pick(v, geometry.Point{X: 200, Y: 50}) != v.handle {
+		t.Fatal("实际分隔线不能命中")
+	}
+	if gui.Pick(v, geometry.Point{X: 197, Y: 50}) == v.handle {
+		t.Fatal("扩展区覆盖了子控件")
 	}
 	if gui.Pick(v, geometry.Point{X: 190, Y: 50}) == v.handle {
 		t.Fatal("separator stole pane input")
@@ -203,7 +208,8 @@ func TestSplitViewDragRearrangeKeyboardAndCancel(t *testing.T) {
 		host := &tabInputHost{root: v}
 		dispatcher := new(gui.EventDispatcher)
 		point := func(kind events.EventType, main float32) {
-			x, y := main, float32(50)
+			// 使用线的中心，避免比例计算的 float32 边界误差。
+			x, y := main+.5, float32(50)
 			if direction == layout.DirectionVertical {
 				x, y = y, x
 			}
@@ -211,15 +217,15 @@ func TestSplitViewDragRearrangeKeyboardAndCancel(t *testing.T) {
 		}
 		notifications := 0
 		v.ConnectResize(func(float32, float32) { notifications++ })
-		point(events.PointerDown, 242)
+		point(events.PointerDown, 240)
 		if host.focus != v.handle || !v.handle.dragging {
 			t.Fatal("handle did not focus/capture")
 		}
 		point(events.PointerMove, 292)
-		checkSplit(t, v, 290, 510)
+		checkSplit(t, v, 292, 508)
 		arrangeSplit(v, 801, 200)
 		point(events.PointerMove, 312)
-		checkSplit(t, v, 310, 490)
+		checkSplit(t, v, 312, 488)
 		arrangeSplit(v, 801, 200)
 		point(events.PointerUp, 312)
 		if v.handle.dragging || notifications != 2 {
@@ -241,11 +247,11 @@ func TestSplitViewDragRearrangeKeyboardAndCancel(t *testing.T) {
 			increase = gui.KeyArrowDown
 		}
 		key(increase, 0)
-		checkSplit(t, v, 311, 489)
+		checkSplit(t, v, 313, 487)
 		key(increase, gui.ModShift)
-		checkSplit(t, v, 321, 479)
+		checkSplit(t, v, 323, 477)
 		key(increase, gui.ModControl)
-		checkSplit(t, v, 321, 479)
+		checkSplit(t, v, 323, 477)
 		key(gui.KeyHome, 0)
 		checkSplit(t, v, 0, 800)
 		key(gui.KeyEnd, 0)
@@ -289,6 +295,163 @@ func TestSplitViewCancellationDirectionAndChildChange(t *testing.T) {
 	v.SetStartChild(nil)
 	if v.handle.dragging || v.preference.value != 560 {
 		t.Fatal("child change did not restore preference")
+	}
+}
+
+func TestSplitViewEdgeGesturePriority(t *testing.T) {
+	for _, direction := range []layout.Direction{layout.DirectionHorizontal, layout.DirectionVertical} {
+		for _, childGesture := range []string{"blank", "click", "drag", "scrollbar"} {
+			t.Run(fmt.Sprintf("%d/%s", direction, childGesture), func(t *testing.T) {
+				v := NewSplitView(direction)
+				var child gui.Widget = new(gui.WidgetBase)
+				clicks, childDrags := 0, 0
+				if childGesture == "click" {
+					b := gui.NewButton()
+					b.ConnectClicked(func() { clicks++ })
+					child = b
+				}
+				if childGesture == "drag" {
+					drag := gui.NewDragEventController()
+					drag.ConnectBegin(func(gui.EventContext, gui.DragInfo) { childDrags++ })
+					child.AddEventController(drag)
+				}
+				var scroll *gui.ScrollView
+				if childGesture == "scrollbar" {
+					scroll = gui.NewScrollView()
+					if direction == layout.DirectionHorizontal {
+						scroll.SetDirection(gui.ScrollVertical)
+					} else {
+						scroll.SetDirection(gui.ScrollHorizontal)
+					}
+					scroll.SetChild(splitTestChild(1000, 1000))
+					child = scroll
+				}
+				v.SetStartChild(child)
+				v.SetEndChild(new(gui.WidgetBase))
+				v.SetStartSize(100)
+				owner := gui.NewPopover(nil, nil)
+				owner.SetWidget(v)
+				defer owner.Destroy()
+				arrangeSplit(v, 201, 100)
+				d := new(gui.EventDispatcher)
+				point := func(kind events.EventType, main, cross float32) {
+					p := geometry.Point{X: main, Y: cross}
+					if direction == layout.DirectionVertical {
+						p.X, p.Y = p.Y, p.X
+					}
+					dispatchSplitPointer(t, d, owner.(gui.EventTarget), kind, p.X, p.Y)
+				}
+				// 距线 2 DIP 的点属于子控件，不能命中 separator。
+				pick := geometry.Point{X: 98, Y: 5}
+				if direction == layout.DirectionVertical {
+					pick.X, pick.Y = pick.Y, pick.X
+				}
+				if got := gui.Pick(v, pick); got == v.handle {
+					t.Fatal("分隔条覆盖子控件")
+				}
+				point(events.PointerDown, 98, 5)
+				if v.handle.dragging {
+					t.Fatal("扩展候选在按下时抢占")
+				}
+				if childGesture == "click" {
+					point(events.PointerUp, 98, 5)
+					if clicks != 1 {
+						t.Fatal("父级候选取消了普通点击")
+					}
+					return
+				}
+				point(events.PointerMove, 118, 55)
+				if childGesture == "blank" {
+					checkSplit(t, v, 120, 80)
+					if !v.handle.dragging || !v.handle.edge.Dragging() || owner.(gui.EventTarget).FocusedWidget() != v.handle || v.Cursor() != v.handle.Cursor() {
+						t.Fatal("空白扩展拖动未认领／聚焦")
+					}
+				} else {
+					checkSplit(t, v, 100, 100)
+					if v.handle.dragging {
+						t.Fatal("父级抢占子级拖动")
+					}
+					if childGesture == "drag" && childDrags != 1 {
+						t.Fatal("子级未接收拖动")
+					}
+					if scroll != nil && scroll.ScrollX()+scroll.ScrollY() <= 0 {
+						t.Fatal("相邻滚动条未改变偏移")
+					}
+				}
+				point(events.PointerUp, 118, 55)
+				if v.handle.dragging || v.handle.edge.Dragging() {
+					t.Fatal("释放后残留拖动")
+				}
+			})
+		}
+	}
+}
+
+func TestSplitViewEdgePendingAndActiveCancellation(t *testing.T) {
+	for _, move := range []bool{false, true} {
+		v := splitFixture(layout.DirectionHorizontal)
+		v.SetStartSize(240)
+		owner := gui.NewPopover(nil, nil)
+		owner.SetWidget(v)
+		defer owner.Destroy()
+		arrangeSplit(v, 801, 100)
+		d := new(gui.EventDispatcher)
+		host := owner.(gui.EventTarget)
+		dispatchSplitPointer(t, d, host, events.PointerDown, 238, 50)
+		if move {
+			dispatchSplitPointer(t, d, host, events.PointerMove, 280, 50)
+		}
+		v.SetDirection(layout.DirectionVertical)
+		dispatchSplitPointer(t, d, host, events.PointerMove, 350, 50)
+		dispatchSplitPointer(t, d, host, events.PointerUp, 350, 50)
+		if v.handle.dragging || v.handle.edge.Dragging() || v.preference != (splitPreference{mode: splitStart, value: 240}) {
+			t.Fatal("方向变化未清理候选／恢复偏好")
+		}
+	}
+}
+
+func TestSplitViewNestedHandleWinsOverOuterEdge(t *testing.T) {
+	inner := splitFixture(layout.DirectionVertical)
+	inner.SetStartSize(50)
+	outer := NewSplitView(layout.DirectionHorizontal)
+	outer.SetStartChild(inner)
+	outer.SetEndChild(new(gui.WidgetBase))
+	outer.SetStartSize(100)
+	owner := gui.NewPopover(nil, nil)
+	owner.SetWidget(outer)
+	defer owner.Destroy()
+	arrangeSplit(outer, 201, 101)
+	d := new(gui.EventDispatcher)
+	host := owner.(gui.EventTarget)
+	dispatchSplitPointer(t, d, host, events.PointerDown, 98, 50.5)
+	dispatchSplitPointer(t, d, host, events.PointerMove, 120, 70.5)
+	checkSplit(t, outer, 100, 100)
+	checkSplit(t, inner, 70, 30)
+	if outer.handle.dragging || !inner.handle.dragging {
+		t.Fatal("外层扩展候选抢占嵌套分隔条")
+	}
+	dispatchSplitPointer(t, d, host, events.PointerUp, 120, 70.5)
+}
+
+func TestSplitViewEdgeEscapeRestoresPreference(t *testing.T) {
+	v := splitFixture(layout.DirectionHorizontal)
+	v.SetStartSize(240)
+	owner := gui.NewPopover(nil, nil)
+	owner.SetWidget(v)
+	defer owner.Destroy()
+	arrangeSplit(v, 801, 100)
+	d := new(gui.EventDispatcher)
+	host := owner.(gui.EventTarget)
+	dispatchSplitPointer(t, d, host, events.PointerDown, 238, 50)
+	dispatchSplitPointer(t, d, host, events.PointerMove, 280, 50)
+	checkSplit(t, v, 282, 518)
+	if err := d.DispatchEvent(host, events.KeyEvent{EventType: events.KeyDown, Key: events.KeyEscape}); err != nil {
+		t.Fatal(err)
+	}
+	dispatchSplitPointer(t, d, host, events.PointerUp, 280, 50)
+	checkSplit(t, v, 240, 560)
+	if v.handle.dragging || v.handle.edge.Dragging() || v.preference != (splitPreference{mode: splitStart, value: 240}) {
+		t.Fatal("扩展拖动 Esc 未恢复首选尺寸")
 	}
 }
 
@@ -349,20 +512,20 @@ func TestSplitViewHandleIndependentStyleAndGeometry(t *testing.T) {
 		p := new(splitPaintRecorder)
 		v.handle.Paint(p)
 		ink, _ := app.sheet.Resolve(style.Sel{Name: "split-handle"}).ForegroundColor()
-		if p.rect != geometry.Rect(4, 0, 1, 100) || p.brush != graphics.ColorOf(ink) {
+		if p.rect != geometry.Rect(0, 0, 1, 100) || p.brush != graphics.ColorOf(ink) {
 			t.Fatalf("normal separator paint=%v %v", p.rect, p.brush)
 		}
 		testWidgetHover(t, v.handle, true)
 		v.handle.Paint(p)
 		active, _ := app.sheet.Resolve(style.Sel{Name: "split-handle", State: style.Hovered}).ForegroundColor()
-		if p.rect != geometry.Rect(4, 0, 1, 100) || p.brush != graphics.ColorOf(active) || !colorEqual(ink, active) {
+		if p.rect != geometry.Rect(0, 0, 1, 100) || p.brush != graphics.ColorOf(active) || !colorEqual(ink, active) {
 			t.Fatal("default hover changed the neutral 1 DIP separator")
 		}
 		v.SetRatio(0)
 		arrangeSplit(v, 801, 100)
 		testWidgetHover(t, v.handle, false)
 		v.handle.Paint(p)
-		if v.handle.Rect().Width != 5 || p.rect.X != 0 {
+		if v.handle.Rect().Width != 1 || p.rect.X != 0 {
 			t.Fatal("edge hit clipping moved visible gap center")
 		}
 	}
@@ -417,9 +580,9 @@ func TestSplitViewHandlePointerFeedbackAndFocus(t *testing.T) {
 						t.Helper()
 						p := new(splitPaintRecorder)
 						v.handle.Paint(p)
-						wantRect := geometry.Rect(4, 0, 1, 100)
+						wantRect := geometry.Rect(0, 0, 1, 100)
 						if direction == layout.DirectionVertical {
-							wantRect = geometry.Rect(0, 4, 100, 1)
+							wantRect = geometry.Rect(0, 0, 100, 1)
 						}
 						if p.rect != wantRect || p.brush != graphics.ColorOf(want) {
 							t.Fatalf("separator paint=%v %v, want 1 DIP color=%v", p.rect, p.brush, want)
@@ -431,9 +594,9 @@ func TestSplitViewHandlePointerFeedbackAndFocus(t *testing.T) {
 						if down {
 							buttons = events.PointerButtonLeftDown
 						}
-						position := geometry.Point{X: main, Y: 50}
+						position := geometry.Point{X: main + .5, Y: 50}
 						if direction == layout.DirectionVertical {
-							position = geometry.Point{X: 50, Y: main}
+							position = geometry.Point{X: 50, Y: main + .5}
 						}
 						if err := dispatcher.DispatchEvent(host, events.PointerEvent{EventType: kind, Position: position,
 							Button: events.PointerButtonLeft, Buttons: buttons}); err != nil {
@@ -463,8 +626,8 @@ func TestSplitViewHandlePointerFeedbackAndFocus(t *testing.T) {
 						t.Fatal("pointer exit did not clear feedback while retaining semantic focus")
 					}
 					paint(ink)
-					if v.axis(v.handle.Rect().Size) != 9 {
-						t.Fatal("1 DIP separator changed the 9 DIP hit area")
+					if v.axis(v.handle.Rect().Size) != 1 {
+						t.Fatal("separator bounds must match the 1 DIP gap")
 					}
 					key := events.KeyArrowRight
 					if direction == layout.DirectionVertical {
@@ -483,4 +646,15 @@ func colorEqual(a, b color.Color) bool {
 	ar, ag, ab, aa := a.RGBA()
 	br, bg, bb, ba := b.RGBA()
 	return ar == br && ag == bg && ab == bb && aa == ba
+}
+
+func dispatchSplitPointer(t *testing.T, d *gui.EventDispatcher, host gui.EventTarget, kind events.EventType, x, y float32) {
+	t.Helper()
+	buttons := events.PointerButtonLeftDown
+	if kind == events.PointerUp {
+		buttons = 0
+	}
+	if err := d.DispatchEvent(host, events.PointerEvent{EventType: kind, Position: geometry.Point{X: x, Y: y}, Button: events.PointerButtonLeft, Buttons: buttons}); err != nil {
+		t.Fatal(err)
+	}
 }

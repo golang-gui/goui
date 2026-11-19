@@ -113,8 +113,9 @@ func (l *splitLayout) Arrange(children []layout.Child, rect geometry.Rectangle) 
 		v.handle.cancel()
 		return
 	}
-	// Wide hit area overlaps both panes; the actual separator occupies one DIP.
-	position, extent := max(0, start-4), min(main, start+gap+4)-max(0, start-4)
+	// Only the actual gap participates in picking. The parent offers a
+	// thresholded fallback gesture without covering neighboring controls.
+	position, extent := start, gap
 	handleRect := geometry.Rectangle{Size: v.size(extent, cross)}
 	if v.direction == layout.DirectionVertical {
 		handleRect.Y = position

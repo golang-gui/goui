@@ -70,8 +70,10 @@ end = a-start
 
 ## 输入、外观与语义
 
-分隔条是实际最上层 Widget：所有状态的视觉线宽均为 1 DIP；命中
-宽度 9 DIP，居中覆盖两侧各 4 DIP，边界处裁到容器范围。不会用装饰 Widget 抢占更大区域。
+分隔条是实际最上层 Widget：视觉及直接命中均为 1 DIP，与面板之间的实际空隙一致。
+两侧各 4 DIP 通过 SplitView 的 bubble 拖动候选保留扩展抓取能力，不覆盖子控件。
+候选移动至少 4 DIP 才认领，子级滚动条、文本拖选等按现有手势深度仲裁优先。
+普通点击保持子级语义；悬停光标来自实际命中控件，候选获胜后才使用调整光标。
 独立使用 `split-handle` StyleName，ForegroundColor 控制线色；Modern 和 widgets 兜底
 默认使用中性色，不随悬停、拖动或焦点改变。应用可覆盖 Hovered／Pressed 的颜色来
 启用指针反馈，线宽仍为 1 DIP，不新增高亮开关或专用宽度 API。
@@ -86,7 +88,7 @@ end = a-start
 活动拖动。回调可能销毁控件，后续操作检查生命周期。
 
 Snapshot 的根 Role 为 `splitview`，只列真实内容和可见 `separator`，不暴露 pane 包装。
-separator Bounds 是实际命中区域，记录 Focusable／Focused 和 ActionFocus；通用可选
+separator Bounds 是 1 DIP 实际分隔线区域，记录 Focusable／Focused 和 ActionFocus；通用可选
 `WidgetInfo.Range` 提供 Value／Min／Max（DIP）及值增加的 Direction，不是线的朝向。
 不添加绕过正常输入派发的“调整值”动作。本切片未引入全局 Tab 键焦点导航或 OS 无障碍桥接。
 
@@ -208,7 +210,7 @@ min/max 冲突、单侧与嵌套、Snapshot、命中、真实派发路径拖动�
   焦点保留键盘与 Snapshot 语义，不参与分隔线的绘制状态选择。
 - `TestSplitViewHandlePointerFeedbackAndFocus` 经 EventDispatcher 验证悬停、按下、
   拖动、松开、移出及后续键盘调整；覆盖亮暗 Modern、兜底样式、两种方向和
-  自定义颜色。移出后仍有焦点但恢复普通颜色，命中宽度仍为 9 DIP。
+  自定义颜色。移出后仍有焦点但恢复普通颜色，扩展拖动范围仍为线两侧各 4 DIP，实际 Widget 边界为 1 DIP。
 - `go test ./...` 和 `go test -race ./widgets/... ./theme/modern` 通过。
 - 本机 Linux amd64、独立 Xvnc/X11、Xfwm4 合成开启、Software 1x、Native 装饰：
   UI 水平拖动后移出，线保持细中性色；随后方向键仍调整 1 DIP，几何断言通过。
@@ -238,3 +240,10 @@ min/max 冲突、单侧与嵌套、Snapshot、命中、真实派发路径拖动�
   不在 SplitView 切片中修改核心绑定。
 - 窗口验收只操作独立测试桌面，不操作用户应用或剪贴板。产物留在仓库外临时目录；
   既有全仓测试的图片输出仍按现有行为执行，没有迁移或清理用户文件。
+
+### 相邻控件输入回归
+
+扩展候选不在按下时抢占；获胜后复用 handle 的调整、聚焦、Esc 回滚和生命周期取消。
+方向、首选尺寸或子项变更时同时清理待认领和活动手势；滚动条默认几何不变。
+逻辑用例独立检查双向相邻滚动条、按钮点击、子级拖动、空白扩展拖动和取消。
+Qt 的小尺寸 handle 会扩展抓取区，但这不是相邻输入安全的保证；GOUI 采用已有仲裁。

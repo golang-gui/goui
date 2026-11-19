@@ -54,6 +54,15 @@ func NewSplitView(direction layout.Direction) *SplitView {
 	return v
 }
 
+// Cursor uses the resize cursor while the parent fallback owns a drag. Child
+// controls keep their own cursor while hovering or handling their gestures.
+func (v *SplitView) Cursor() gui.Cursor {
+	if v.handle != nil && v.handle.edge.Dragging() {
+		return v.handle.Cursor()
+	}
+	return v.WidgetBase.Cursor()
+}
+
 func (v *SplitView) Direction() layout.Direction { return v.direction }
 func (v *SplitView) SetDirection(direction layout.Direction) {
 	if v.Destroyed() || (direction != layout.DirectionHorizontal && direction != layout.DirectionVertical) || v.direction == direction {

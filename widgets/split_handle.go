@@ -13,6 +13,7 @@ type splitHandle struct {
 	gui.WidgetBase
 	view       *SplitView
 	drag       *gui.DragEventController
+	edge       *splitEdgeDrag
 	dragging   bool
 	before     splitPreference
 	grabOffset float32
@@ -28,35 +29,12 @@ func newSplitHandle(view *SplitView) *splitHandle {
 	h.AddEventController(motion)
 	h.ConnectFocused(func(bool) { h.RequestPaint() })
 	h.drag = gui.NewDragEventController()
-	h.drag.ConnectBegin(func(_ gui.EventContext, inputInfo gui.DragInfo) {
-		point := inputInfo.Position
-		if view.Destroyed() || !view.active() {
-			h.drag.Reset()
-			return
-		}
-		h.dragging, h.before = true, view.preference
-		h.SetState(style.Pressed, true)
-		h.grabOffset = view.point(point.Add(h.Rect().Pos)) - view.startSize
-		h.RequestPaint()
-	})
-	h.drag.ConnectUpdate(func(_ gui.EventContext, inputInfo gui.DragInfo) {
-		point := inputInfo.Position
-		h.move(point)
-	})
-	h.drag.ConnectEnd(func(_ gui.EventContext, inputInfo gui.DragInfo) {
-		point := inputInfo.Position
-		h.move(point)
-		if h.Destroyed() {
-			return
-		}
-		h.SetState(style.Pressed, false)
-		h.dragging = false
-		h.RequestPaint()
-	})
-	h.drag.ConnectCanceled(func(_ gui.GestureCancelReason) {
-		h.cancel()
-	})
+	h.connectDrag(h.drag, func(p geometry.Point) geometry.Point { return p.Add(h.Rect().Pos) })
 	h.AddEventController(h.drag)
+	h.edge = &splitEdgeDrag{DragEventController: gui.NewDragEventController(), view: view}
+	h.edge.SetThreshold(4)
+	h.connectDrag(h.edge.DragEventController, func(p geometry.Point) geometry.Point { return p })
+	view.AddEventController(h.edge)
 	h.ConnectUnmount(h.cancel)
 	key := gui.NewKeyEventController()
 	key.ConnectKeyDown(h.keyDown)
@@ -70,18 +48,73 @@ func (h *splitHandle) updateCursor() {
 	}
 	h.SetCursor(cursor)
 }
-func (h *splitHandle) move(point geometry.Point) {
-	if h.dragging {
-		h.view.adjust(h.view.point(point.Add(h.Rect().Pos)) - h.grabOffset)
-	}
+
+// splitEdgeDrag offers the old extended grab area through normal bubbling,
+// leaving child hit testing and deeper gesture claims intact.
+type splitEdgeDrag struct {
+	*gui.DragEventController
+	view *SplitView
 }
+
+func (c *splitEdgeDrag) HandleEvent(ctx gui.EventContext) {
+	if e, ok := ctx.Event().(events.PointerEvent); ok && e.EventType == events.PointerDown {
+		p, valid := ctx.Position()
+		v := c.view
+		if !valid || v.Destroyed() || !v.active() || v.point(p) < v.startSize-4 || v.point(p) >= v.startSize+5 {
+			return
+		}
+	}
+	c.DragEventController.HandleEvent(ctx)
+}
+
+func (h *splitHandle) connectDrag(drag *gui.DragEventController, local func(geometry.Point) geometry.Point) {
+	view := h.view
+	drag.ConnectBegin(func(_ gui.EventContext, info gui.DragInfo) {
+		if view.Destroyed() || !view.active() {
+			drag.Reset()
+			return
+		}
+		h.dragging, h.before = true, view.preference
+		h.grabOffset = view.point(local(info.Position)) - view.startSize
+		h.SetState(style.Pressed, true)
+		if host, ok := view.Root().(gui.EventTarget); ok {
+			host.SetFocusedWidget(h)
+		}
+		if h.Destroyed() || view.Destroyed() || !view.active() || !h.dragging {
+			drag.Reset()
+			return
+		}
+		h.RequestPaint()
+	})
+	move := func(info gui.DragInfo) {
+		if h.dragging {
+			view.adjust(view.point(local(info.Position)) - h.grabOffset)
+		}
+	}
+	drag.ConnectUpdate(func(_ gui.EventContext, info gui.DragInfo) { move(info) })
+	drag.ConnectEnd(func(_ gui.EventContext, info gui.DragInfo) {
+		move(info)
+		if h.Destroyed() {
+			return
+		}
+		h.dragging = false
+		h.SetState(style.Pressed, false)
+		h.RequestPaint()
+	})
+	drag.ConnectCanceled(func(gui.GestureCancelReason) { h.cancel() })
+}
+
 func (h *splitHandle) cancel() {
-	if !h.dragging {
+	wasDragging := h.dragging
+	h.dragging = false // Reset may recursively deliver ConnectCanceled.
+	h.drag.Reset()
+	if h.edge != nil {
+		h.edge.Reset()
+	}
+	if !wasDragging {
 		return
 	}
 	h.SetState(style.Pressed, false)
-	h.dragging = false // Reset may recursively deliver ConnectCanceled.
-	h.drag.Reset()
 	v := h.view
 	if v.Destroyed() || h.Destroyed() {
 		return
