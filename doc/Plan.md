@@ -6836,3 +6836,22 @@ B/C 仍为后续工作，不阻塞 A 的应用定制能力；本轮没有交付�
   `6b8f29c`；GOUI固定正式版本，无本地replace。正式依赖全仓6246项及模块校验
   通过，Linux OpenGL覆盖率344阶段与history亮暗三态尺寸检查通过。
 - [ ] 跨平台原生窗口及Direct2D独立质量差异继续保留，不算本轮通过。
+
+## ScrollView交汇角样式（2026-11-20）
+
+- [x] 增加独立corner Part，按所属StyleName与外框状态绘制背景、边框及圆角；
+  仅双条均占位且角区为正面积时绘制，不包含Spacing，不改变布局、输入和语义子树。
+- [x] Basic／Modern普通ScrollView与text-view组合默认透明；TableView主题显式保留
+  同轨道的方形底色，自定义表格可独立覆盖。既有完整样式名与Part回退规则不变。
+  设计和Qt6.8.3／GTK4.18.0源码参考见[DesignScrollFrame](DesignScrollFrame.md)。
+- [x] 旧实现默认角区在1x／1.5x／2x回归上明确失败；新实现验证独立颜色、圆角边框、
+  半透明单次合成、间距留白及表格StyleName切换。原有正文裁剪、命中和轮廓断言保留。
+- [x] `go test ./... -count=1 -json`：6246项测试／子测试通过，0失败、0条件跳过；
+  154个无测试文件包另计。既有X11包内测试使用私有窗口／selection。
+  `env -u DISPLAY go test -race ./gui ./widgets ./theme/basic ./theme/modern -count=1`通过。
+- [x] Linux amd64／X11／Xfwm4合成开启／Pango：OpenGL（Mesa llvmpipe）与Software
+  各1x／2x窗口通过F12角区样式、亮暗、Options间距、Hidden／Always／短内容切换和
+  F6像素／几何断言；Software 1x另验真实拖动及角区点击不改变偏移。表格双轴角区连续底色与
+  F6快照通过。所有窗口正常关闭；窗口入口沿用scroll_layout，不新增验证框架。
+- [x] Windows amd64／macOS arm64受影响包与窗口入口交叉编译通过；本轮未执行这两个
+  系统的原生窗口验收，改动不涉及平台层或绘制后端。
