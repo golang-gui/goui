@@ -11,7 +11,7 @@ require (
 	github.com/goexlib/cgo v0.1.2
 	github.com/goexlib/mathx v0.0.1
 	github.com/golang-gui/golink v0.2.1
-	github.com/golang-gui/nanovgo v0.0.14
+	github.com/golang-gui/nanovgo v0.0.15
 	github.com/golang-gui/oksvg v0.1.0
 	github.com/golang-gui/rasterx v0.1.0
 	github.com/golang-gui/scanFT v0.1.0
@@ -22,8 +22,8 @@ require (
 	github.com/xuges/gothread v0.0.1
 	go.mozilla.org/pkcs7 v0.9.0
 	golang.org/x/image v0.24.0
-	golang.org/x/text v0.22.0
 	golang.org/x/sys v0.30.0
+	golang.org/x/text v0.22.0
 	howett.net/plist v1.0.1
 	software.sslmate.com/src/go-pkcs12 v0.7.1
 )

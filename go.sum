@@ -24,6 +24,8 @@ github.com/golang-gui/nanovgo v0.0.13 h1:tqcSaolHbRC2zmP4mJPuDKEX6W1MoaJB6S46gfe
 github.com/golang-gui/nanovgo v0.0.13/go.mod h1:a4771IpfgcWEFQfKXuA7sQ2GvsYPDxpohrU8lzeymUo=
 github.com/golang-gui/nanovgo v0.0.14 h1:MDcjN+5Gjood2+OpCnkJvk6UrQ3x6R1vrEEb0BlfEzU=
 github.com/golang-gui/nanovgo v0.0.14/go.mod h1:a4771IpfgcWEFQfKXuA7sQ2GvsYPDxpohrU8lzeymUo=
+github.com/golang-gui/nanovgo v0.0.15 h1:fPVQofD1fJg3IjYFYoDVxisMvzvlAmUrVxVdmCe4Ju4=
+github.com/golang-gui/nanovgo v0.0.15/go.mod h1:a4771IpfgcWEFQfKXuA7sQ2GvsYPDxpohrU8lzeymUo=
 github.com/golang-gui/oksvg v0.1.0 h1:ox8xVGvW2VvczIL3WaN+hUHt/RN3uuwicIQfdH6SCSU=
 github.com/golang-gui/oksvg v0.1.0/go.mod h1:96DI1Fx9zNwaonAHXuzkok9uNM2Ark75WkMaClPU/kk=
 github.com/golang-gui/rasterx v0.1.0 h1:DuZ9K72Z0DwmZ5URKN7BtJrGf3Zfb6dOVYlkRgsBMZU=
