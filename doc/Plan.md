@@ -6776,3 +6776,24 @@ B/C 仍为后续工作，不阻塞 A 的应用定制能力；本轮没有交付�
   状态切换不移动抓取区，以及恢复0圆角后的连续交点。实际后端离屏四角alpha和桌面
   角部像素检查通过，窗口正常关闭。本轮未执行Windows／macOS原生窗口验证，
   未修改绘制后端或此前暂缓的小数裁剪行为。
+
+### 小数物理像素裁剪（2026-11-20）
+
+- [x] Software／OpenGL／Direct2D 对最终逻辑交集统一使用保守像素包络，区分取消
+  裁剪、零面积裁剪和极小正面积裁剪。GUI 保留布局空间交集与结构边界，不对控件
+  位置或路径增加补偿。契约和参考见 [PlanFractionalClipping](PlanFractionalClipping.md)。
+- [x] 修正 NanoVG 的 AA fringe 模板清理范围，独立提交并发布 v0.0.14 标签，GOUI
+  固定引用该版本。旧裁剪、旧模板清理分别在新增回归上失败，新实现均通过。
+- [x] `go test ./... -count=1 -json`：6245项测试／子测试通过，0失败、0条件跳过；
+  155个无测试文件的包另计。像素换算／Software／GUI 无显示会话 race、NanoVG
+  全仓及 race、Direct2D WARP 原生全包测试、`go mod verify` 通过。
+- [x] 本机 Linux amd64 / X11 / Xfwm4 合成开启：Software 和 OpenGL 各24组矩阵，
+  含48／64 DIP、小数位置、四倍率、亮暗、半透明和固定圆弧；覆盖嵌套、滚动视口、
+  普通边框、相邻填充、空裁剪恢复与绘制变换。最终标签构建的 OpenGL 1x／2x、
+  Software 1.25x 再次通过，桌面截图半像素边缘保留约半覆盖；原有动画／显隐恢复
+  和 Software 1.25x 普通按钮的亮暗／高度更新复核通过。
+- [x] Windows 10 x64 的 Direct2D／Software 1x 窗口各24组矩阵及桌面呈现通过。
+  Windows amd64、macOS arm64／amd64 受影响绘制包、GUI 和窗口入口交叉编译通过。
+- [ ] Windows OpenGL 像素格式不可用、macOS 无登录桌面，尚未完成对应原生窗口
+  验收。移动后端的无cgo交叉构建未通过依赖要求，未计为图形验收；失败命令、
+  关键信息和适用范围见上述独立文档，不改变移动端支持承诺。

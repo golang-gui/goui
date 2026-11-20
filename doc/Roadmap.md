@@ -1687,4 +1687,7 @@ iOS device 仅链接。首次 Scene 前 GPU、触摸/IME、安全区和真机仍
 
 ### 小数位置裁剪
 
-分析和实施前验收见 [PlanFractionalClipping](PlanFractionalClipping.md)；目前暂缓，尚未修复。
+Software／OpenGL／Direct2D 统一保守像素包络，NanoVG v0.0.14 修正 AA 模板清理；
+Linux 两后端及 Windows Direct2D／Software 原生回归通过。Windows OpenGL 原生
+像素格式不可用、macOS 无登录桌面的窗口验收仍有缺口；契约和验证见
+[PlanFractionalClipping](PlanFractionalClipping.md)。

@@ -1,7 +1,8 @@
 // ProgressBar 桌面回归：实际帧驱动、宿主可见性及完整圆环接缝，不依赖 DevServer。
 // 环境：桌面事件循环；记录 OS、WM、实际 Painter 与缩放，OpenGL 需要原生显示连接。
 // 启动：go run ./tests/window/widgets/progress_regression -chrome=native -case=all
-// 参数：-chrome=native/integrated；-case=all/animation/ring。
+// 参数：-chrome=native/integrated；-case=all/animation/ring/clip。
+// clip 单独验证小数位置裁剪；步骤和断言见 clip.go，-hold 保留完成后的完整圆环窗口。
 // 请求的装饰模式必须实际选中，不能把 Native 回退计为 Integrated 通过。
 // 后端：GOUI_PLAT_PAINTER=software/opengl（Windows 另可 direct2d），GOUI_PLAT_SCALE=1/2。
 // 初始：三个 48 DIP 圆环（0%、100%、半透明 99%），下方为长条/圆形忙等待。
@@ -39,13 +40,18 @@ import (
 
 func main() {
 	chromeFlag := flag.String("chrome", "native", "native/integrated")
-	scenario := flag.String("case", "all", "all/animation/ring")
+	scenario := flag.String("case", "all", "all/animation/ring/clip")
+	hold := flag.Bool("hold", false, "裁剪验证完成后保留窗口")
 	flag.Parse()
 	chrome := gui.WindowChromeNative
 	if *chromeFlag == "integrated" {
 		chrome = gui.WindowChromeIntegrated
 	} else if *chromeFlag != "native" {
 		log.Fatal("未知 chrome 参数")
+	}
+	if *scenario == "clip" {
+		runClip(chrome, *hold)
+		return
 	}
 	if *scenario != "all" && *scenario != "animation" && *scenario != "ring" {
 		log.Fatal("未知 case 参数")
