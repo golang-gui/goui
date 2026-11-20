@@ -1691,3 +1691,11 @@ Software／OpenGL／Direct2D 统一保守像素包络，NanoVG v0.0.14 修正 AA
 Linux 两后端及 Windows Direct2D／Software 原生回归通过。Windows OpenGL 原生
 像素格式不可用、macOS 无登录桌面的窗口验收仍有缺口；契约和验证见
 [PlanFractionalClipping](PlanFractionalClipping.md)。
+
+### 旋转圆弧质量
+
+NanoVG v0.0.15 修正填充接合点覆盖率，统一1/16物理像素的曲线细分容差，并保留
+加密尖端的面积覆盖。Linux OpenGL／Software 七角度、四倍率、亮暗和透明合成
+矩阵及 ApiBox 实际动画复核通过；成本与完整证据见上述文档。
+Direct2D 新圆弧质量预算揭示的既有边缘覆盖差异待独立分析；Windows OpenGL、
+macOS 及移动端原生验证缺口仍保留。

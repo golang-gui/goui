@@ -6797,3 +6797,26 @@ B/C 仍为后续工作，不阻塞 A 的应用定制能力；本轮没有交付�
 - [ ] Windows OpenGL 像素格式不可用、macOS 无登录桌面，尚未完成对应原生窗口
   验收。移动后端的无cgo交叉构建未通过依赖要求，未计为图形验收；失败命令、
   关键信息和适用范围见上述独立文档，不改变移动端支持承诺。
+
+### 旋转圆弧质量（2026-11-20）
+
+- [x] 修正 NanoVG 填充AA接合点的非对称边带坐标，统一1/16物理像素的曲线
+  细分容差，保留闭合／折返及细分上限的终点。面积覆盖预算增至192边，保持
+  加密尖端的质量且满足GL3.3／ES3.0最低uniform保证。两项独立提交发布为
+  v0.0.15，GOUI 固定该正式tag，无本地replace。
+- [x] 新接合坐标、曲线物理误差和144边尖端回归在对应旧实现上明确失败；
+  NanoVG 全仓及race通过。GOUI正式依赖下 `go test ./... -count=1 -json`：
+  6245项测试／子测试通过，0失败、0条件跳过；155个无测试文件包另计。
+  `go mod verify` 及无显示会话的Software／GUI／widgets race通过；Windows
+  amd64、macOS arm64／amd64绘制包、GUI、widgets和两个受影响窗口入口交叉编译通过。
+- [x] 复用 `progress_regression -case=arc`：七角度、四倍率、48／64 DIP、
+  三种像素相位、亮暗与透明合成。Linux X11／Xfwm4合成开启，OpenGL
+  （Mesa llvmpipe）与Software各56阶段通过，正式tag的原生2x窗口再次通过；
+  原有动画显隐恢复、完整圆环，
+  OpenGL小数裁剪和圆角／尖端／渐变／擦除回归通过，未放宽原断言。
+- [x] ApiBox实际入口亮暗动画及三态尺寸复核通过。固定73度的最大RGB误差
+  22.76→10.99；CPU细分成本、顶点数和整窗离屏创建／绘制／读回的受控对照
+  见 [PlanFractionalClipping](PlanFractionalClipping.md)，不外推为屏幕帧性能。
+- [ ] Windows 10 x64 / Direct2D / 1x 新圆弧预算的首阶段失败，旧v0.0.14
+  对照给出完全相同像素，确认为既有独立差异；保留断言，后续单独分析。
+  Windows OpenGL、macOS和移动端原生窗口验收缺口仍保留。
