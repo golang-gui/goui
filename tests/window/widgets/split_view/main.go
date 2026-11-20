@@ -46,10 +46,15 @@
 //     两侧之和加常态线宽等于容器主轴，separator语义边界只表示实际抓取带。
 //     显示 ASSERT PASS 仅代表这些几何断言，不能代替上述桌面输入／外观验收。
 //
-//  8. Handle 按钮循环5／9／1.5／3 DIP；Line循环1／0／3 DIP。每次等待PRESENT
+//  8. Handle 按钮循环5／9／1.5／3 DIP；Line循环1／0／3／12 DIP。每次等待PRESENT
 //     后点Snapshot：尺寸、语义和1／1.25／1.5／2x的像素断言必须通过。线宽与抓取
 //     宽度独立，隐藏线后面板相接，抓取仍有效。拖动中按F7切换厚度，旧手势取消。
 //     Rebuild、亮暗、隐藏／恢复后重复；1x、2x分别检查两侧没有第三色窄条或接缝。
+//
+//  9. 默认Radius为0，横竖交点连续。Line切到12 DIP后，Radius按钮循环0／统一6／
+//     左上及右下6；每次点Snapshot，四角alpha断言应通过。圆角端部允许出现收口，
+//     不要求相交处仍为完整直角。圆角不改变占位、抓取和语义范围，透明角仍可拖动；
+//     恢复Radius=0、Line=1后应重新通过连续交点检查，Modern亮暗和Basic同样检查。
 //
 // 平台差异：本例不扩展窗口装饰，macOS 需先激活窗口；Tab 沿用框架焦点遍历。
 // 副作用：仅本例窗口、内存文字和日志；不写业务文件，不操作剪贴板或系统设置。
@@ -103,7 +108,7 @@ func splitColors(dark bool) (start, end, line color.RGBA) {
 	}
 	return color.RGBA{235, 237, 241, 255}, color.RGBA{255, 255, 255, 255}, color.RGBA{196, 199, 206, 255}
 }
-func sheet(dark, fallback bool, lineWidth float32) style.StyleSheet {
+func sheet(dark, fallback bool, lineWidth float32, roundMode int) style.StyleSheet {
 	var rules []style.Rule
 	if fallback {
 		rules = append(gui.DefaultStyleRules(), widgetstyle.Rules()...)
@@ -116,10 +121,22 @@ func sheet(dark, fallback bool, lineWidth float32) style.StyleSheet {
 		style.Name("content-pane").BackgroundColor(end),
 	)
 	for _, name := range []string{"sidebar-split", "editor-split"} {
-		rules = append(rules, style.Name(name).Part("separator").ForegroundColor(line).BorderWidth(lineWidth),
+		rules = append(rules, style.Name(name).Part("separator").ForegroundColor(line).BorderWidth(lineWidth).CornerRadius(separatorRadius(roundMode)),
 			style.Name(name).Part("separator").State(style.FocusVisible).ForegroundColor(color.RGBA{70, 130, 220, 255}))
 	}
 	return style.Sheet(rules...)
+}
+
+// 四角按物理位置指定，不随分割方向旋转。
+func separatorRadius(mode int) geometry.CornerRadius {
+	switch mode {
+	case 1:
+		return geometry.UniformCornerRadius(6)
+	case 2:
+		return geometry.CornerRadius{TopLeft: 6, BottomRight: 6}
+	default:
+		return geometry.CornerRadius{}
+	}
 }
 func cycleHandle(size float32) float32 {
 	switch size {
@@ -139,6 +156,9 @@ func cycleLine(width float32) float32 {
 	}
 	if width == 0 {
 		return 3
+	}
+	if width == 3 {
+		return 12
 	}
 	return 1
 }
@@ -223,7 +243,39 @@ func checkJunction(outer, inner *widgets.SplitView, dark, fallback bool, lineWid
 	}
 	fmt.Println("JUNCTION PIXELS PASS")
 }
-func present(p gui.Painter, outer, inner *widgets.SplitView, controls map[string]gui.Widget, last *string, dark bool, lineWidth float32) {
+
+// 12 DIP宽时检查首个完整角像素。圆角6的弧线不覆盖这些像素；
+// 未圆角的角为不透明线色。RenderWidget的透明底排除窗口底色影响。
+func checkCaps(view *widgets.SplitView, lineWidth float32, roundMode int) {
+	if lineWidth != 12 || len(view.Snapshot().Children) != 3 {
+		return
+	}
+	a, _ := view.Sizes()
+	r := geometry.Rect(a, 0, lineWidth, view.Rect().Height)
+	if view.Direction() == layout.DirectionVertical {
+		r = geometry.Rect(0, a, view.Rect().Width, lineWidth)
+	}
+	for _, scale := range []float32{1, 1.25, 1.5, 2} {
+		img, err := gui.RenderWidget(view, scale)
+		if err != nil {
+			panic(err)
+		}
+		x0, y0 := int(math.Ceil(float64(r.X*scale))), int(math.Ceil(float64(r.Y*scale)))
+		x1, y1 := int(math.Floor(float64((r.X+r.Width)*scale)))-1, int(math.Floor(float64((r.Y+r.Height)*scale)))-1
+		for i, p := range [][2]int{{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}} {
+			_, _, _, alpha := img.At(p[0], p[1]).RGBA()
+			want := uint32(65535)
+			if roundMode == 1 || roundMode == 2 && (i == 0 || i == 2) {
+				want = 0
+			}
+			if alpha != want {
+				panic(fmt.Sprintf("圆角端部 %s mode=%d scale=%g corner%d alpha=%d want=%d", view.ID(), roundMode, scale, i, alpha, want))
+			}
+		}
+	}
+	fmt.Printf("CAP PIXELS PASS %s mode=%d\n", view.ID(), roundMode)
+}
+func present(p gui.Painter, outer, inner *widgets.SplitView, controls map[string]gui.Widget, last *string, dark bool, lineWidth float32, roundMode int) {
 	bounds := make(map[string]geometry.Rectangle)
 	for name, w := range controls {
 		if w != nil {
@@ -237,7 +289,7 @@ func present(p gui.Painter, outer, inner *widgets.SplitView, controls map[string
 		}
 	}
 	encoded, _ := json.Marshal(bounds)
-	state := fmt.Sprintf("dark=%t handle=%g line=%g bounds=%s", dark, outer.HandleSize(), lineWidth, encoded)
+	state := fmt.Sprintf("round=%d dark=%t handle=%g line=%g bounds=%s", roundMode, dark, outer.HandleSize(), lineWidth, encoded)
 	if state == *last {
 		return
 	}
@@ -285,6 +337,7 @@ func runUI(fallback bool) error {
 	model := ui.NewTextModel(document)
 	mode, dark, hidden, rebuilds := 0, false, false, 0
 	handleSize, lineWidth := float32(5), float32(1)
+	roundMode := 0
 	lastReport := ""
 	startSize, endSize, ratio, terminal := float32(220), float32(400), float32(.5), float32(140)
 	return ui.Run("org.golang-gui.SplitViewProbe", func(app ui.App) ui.RootView {
@@ -314,7 +367,7 @@ func runUI(fallback bool) error {
 		case 3:
 			split.Ratio(ratio)
 		}
-		return ui.Root().StyleSheet(sheet(dark, fallback, lineWidth)).Windows(
+		return ui.Root().StyleSheet(sheet(dark, fallback, lineWidth, roundMode)).Windows(
 			ui.Window("split").Title("GOUI SplitView UI").Size(900, 600).MinSize(360, 260).
 				Shortcuts(ui.Shortcut(ui.KeyF7).OnActivate(func() { handleSize = cycleHandle(handleSize); app.RequestUpdate() })).
 				OnAfterPaint(func(p ui.Painter, _ geometry.Rectangle) {
@@ -322,8 +375,8 @@ func runUI(fallback bool) error {
 					inner, _ := app.FindWidget("split", "inner").(*widgets.SplitView)
 					if outer != nil && inner != nil {
 						present(p, outer, inner, map[string]gui.Widget{
-							"snapshot": app.FindWidget("split", "snapshot"), "handle": app.FindWidget("split", "handle"), "line": app.FindWidget("split", "line"), "dark": app.FindWidget("split", "dark"), "sidebar-scroll": app.FindWidget("split", "sidebar-scroll"),
-						}, &lastReport, dark, lineWidth)
+							"snapshot": app.FindWidget("split", "snapshot"), "handle": app.FindWidget("split", "handle"), "line": app.FindWidget("split", "line"), "dark": app.FindWidget("split", "dark"), "radius": app.FindWidget("split", "radius"), "sidebar-scroll": app.FindWidget("split", "sidebar-scroll"),
+						}, &lastReport, dark, lineWidth, roundMode)
 					}
 				}).Content(
 				ui.VBox(
@@ -334,12 +387,17 @@ func runUI(fallback bool) error {
 						ui.Button("Toggle Dark").ID("dark").OnClick(func() { dark = !dark; app.RequestUpdate() }),
 						ui.Button("Handle").ID("handle").OnClick(func() { handleSize = cycleHandle(handleSize); app.RequestUpdate() }),
 						ui.Button("Line").ID("line").OnClick(func() { lineWidth = cycleLine(lineWidth); app.RequestUpdate() }),
+						ui.Button("Radius").ID("radius").OnClick(func() { roundMode = (roundMode + 1) % 3; app.RequestUpdate() }),
 						ui.Button("Snapshot").ID("snapshot").OnClick(func() {
 							assertSplit(app.FindWidget("split", "outer").(*widgets.SplitView), lineWidth)
 							assertSplit(app.FindWidget("split", "inner").(*widgets.SplitView), lineWidth)
 							checkPixels(app.FindWidget("split", "outer").(*widgets.SplitView), dark, fallback, lineWidth)
 							checkPixels(app.FindWidget("split", "inner").(*widgets.SplitView), dark, fallback, lineWidth)
-							checkJunction(app.FindWidget("split", "outer").(*widgets.SplitView), app.FindWidget("split", "inner").(*widgets.SplitView), dark, fallback, lineWidth)
+							if roundMode == 0 {
+								checkJunction(app.FindWidget("split", "outer").(*widgets.SplitView), app.FindWidget("split", "inner").(*widgets.SplitView), dark, fallback, lineWidth)
+							}
+							checkCaps(app.FindWidget("split", "outer").(*widgets.SplitView), lineWidth, roundMode)
+							checkCaps(app.FindWidget("split", "inner").(*widgets.SplitView), lineWidth, roundMode)
 							fmt.Printf("SIDEBAR SCROLL y=%g\n", app.FindWidget("split", "sidebar-scroll").(*gui.ScrollView).ScrollY())
 						}),
 					).Spacing(8).Padding(8),
@@ -355,7 +413,7 @@ func runGUI(fallback bool) error {
 	if err != nil {
 		return err
 	}
-	app.SetStyleSheet(sheet(false, fallback, 1))
+	app.SetStyleSheet(sheet(false, fallback, 1, 0))
 	window, err := app.NewWindow(&gui.WindowOptions{Size: geometry.Size{Width: 900, Height: 600}})
 	if err != nil {
 		return err
@@ -414,6 +472,7 @@ func runGUI(fallback bool) error {
 	toolbar.SetSpacing(8)
 	mode, dark, rebuilds := 0, false, 0
 	lineWidth := float32(1)
+	roundMode := 0
 	controls := make(map[string]gui.Widget)
 	lastReport := ""
 	status := gui.NewLabel(modeNames[0])
@@ -447,7 +506,7 @@ func runGUI(fallback bool) error {
 		root.RequestLayout()
 	})
 	button("Hide/Show", func() { left.SetVisible(!left.Visible()) })
-	button("Toggle Dark", func() { dark = !dark; app.SetStyleSheet(sheet(dark, fallback, lineWidth)) })
+	button("Toggle Dark", func() { dark = !dark; app.SetStyleSheet(sheet(dark, fallback, lineWidth, roundMode)) })
 	avoid := func() {
 		inset := max(float32(0), (outer.HandleSize()-lineWidth)/2)
 		left.SetPadding(geometry.Insets{Right: inset})
@@ -462,16 +521,28 @@ func runGUI(fallback bool) error {
 		avoid()
 	}
 	button("Handle", cycle)
-	button("Line", func() { lineWidth = cycleLine(lineWidth); avoid(); app.SetStyleSheet(sheet(dark, fallback, lineWidth)) })
+	button("Line", func() {
+		lineWidth = cycleLine(lineWidth)
+		avoid()
+		app.SetStyleSheet(sheet(dark, fallback, lineWidth, roundMode))
+	})
 	shortcut := gui.NewShortcut(gui.KeyGesture{Key: gui.KeyF7})
 	shortcut.ConnectActivate(cycle)
 	window.Shortcuts().AddShortcut(shortcut)
+	button("Radius", func() {
+		roundMode = (roundMode + 1) % 3
+		app.SetStyleSheet(sheet(dark, fallback, lineWidth, roundMode))
+	})
 	button("Snapshot", func() {
 		assertSplit(outer, lineWidth)
 		assertSplit(inner, lineWidth)
 		checkPixels(outer, dark, fallback, lineWidth)
 		checkPixels(inner, dark, fallback, lineWidth)
-		checkJunction(outer, inner, dark, fallback, lineWidth)
+		if roundMode == 0 {
+			checkJunction(outer, inner, dark, fallback, lineWidth)
+		}
+		checkCaps(outer, lineWidth, roundMode)
+		checkCaps(inner, lineWidth, roundMode)
 		fmt.Printf("SIDEBAR SCROLL y=%g\n", sideScroll.ScrollY())
 	})
 	root.AddChild(toolbar)
@@ -480,7 +551,7 @@ func runGUI(fallback bool) error {
 	window.SetWidget(root)
 	controls["sidebar-scroll"] = sideScroll
 	window.ConnectAfterPaint(func(p gui.Painter, _ geometry.Rectangle) {
-		present(p, outer, inner, controls, &lastReport, dark, lineWidth)
+		present(p, outer, inner, controls, &lastReport, dark, lineWidth, roundMode)
 	})
 	if err = window.Show(); err != nil {
 		return err
