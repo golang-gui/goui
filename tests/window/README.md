@@ -31,7 +31,7 @@
 | Dev ref、已确认文本与模态 Popover 输入 | [gui/dev](gui/dev/main.go) | 三平台桌面；无应用 ID、Unicode/选区/撤销/只读/多行、旧引用失效及内置菜单；设置 GOUI_DEV_ADDR，可加 -verify；Software/OpenGL（Windows 另有 Direct2D）、1x/2x；不验收原生 Popover IME |
 | 多语言资源、命令式 translateUI 与声明式自动协调 | [ui/mlang](ui/mlang/main.go) | 三平台桌面；八语言、SVG 主题色、编辑菜单实时切换、Widget/编辑状态保留；-auto 验证语言/资源/离屏像素，1x/2x |
 | Integrated 四边布局、滚动条、标题及控制按钮居中 | [gui/integrated_layout](gui/integrated_layout/main.go) | Linux X11 合成桌面；无根 Padding，1x/2x、双向滚动、标题高度、最大化/全屏/恢复及 F6 公开边界断言；其他平台不自动内缩 |
-| 滚动方向、布局、双条占位与嵌套滚轮消费 | [gui/scroll_layout](gui/scroll_layout/main.go) | 三平台；1x/2x、Shift 横滚、响应式表单、F10 定位内层列表／F4 切换长短，F6 几何及偏移日志；具体操作见入口注释 |
+| 滚动方向、布局、双条占位与嵌套滚轮消费 | [gui/scroll_layout](gui/scroll_layout/main.go) | 三平台；1x/2x、Shift 横滚、响应式表单、F10 定位内层列表／F4 切换长短，F12切换corner外观，F6几何／偏移／角区像素断言；具体操作见入口注释 |
 | 非编辑式下拉单选、浏览确认与实际内容协调 | [widgets/drop_down](widgets/drop_down/main.go) | 三平台；默认 UI、-gui 命令式、Modern/显式兜底；1x/2x、长列表、Tab、退避、重建、Snapshot 与回调销毁 |
 | CheckButton 三态、互斥、按钮式外观与声明协调 | [widgets/check_button](widgets/check_button/main.go) | 三平台；Modern/显式兜底、Software/OpenGL（Windows 另有 Direct2D）；有效释放/取消、子按钮竞争、Tab/键盘、主题/重建/快照/销毁；1x/2x |
 | 默认 Tab / Shift+Tab 焦点导航 | [gui/tab_navigation](gui/tab_navigation/main.go) | 三平台；树顺序、消费优先、滚动与模态 Popover；FocusVisible 2 DIP 边框、键鼠切换、F8 亮暗/F9 主题色/F10 Primary；1x/2x |

@@ -45,6 +45,10 @@
 //     下一事件循环应输出 SCROLL INTENT PASS 并恢复原内容；视口不能被旧请求拉走。
 //     若 5 秒内没有结果，视为失败，不把 READY／窗口启动算作通过。
 //
+//  10. F12循环Both交汇角的默认透明、蓝色实心、蓝底红边圆角样式；每次F6输出
+//     CORNER PASS。默认角落透出容器底色，圆角不出现方形补块；轨道外观不变。
+//     配合F3的不同宽度／间隔、Hidden及F2短内容检查角区出现／消失，再F11切换亮暗。
+//
 // 平台差异：字体影响换行阈值；Linux 无桌面合成时 Integrated 回退 Native。
 // 副作用：窗口和日志，不读写剪贴板/文件、不启动 DevServer、不改系统设置。
 // 复位：F9 恢复普通状态，F7 恢复长表单，F4 恢复长内层列表；重启复位偏移。
@@ -63,6 +67,7 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/style"
 	"github.com/golang-gui/goui/theme/modern"
 )
 
@@ -294,6 +299,18 @@ func main() {
 		}
 		fmt.Println("REMEASURE PASS")
 	})
+	cornerMode, dark := 0, false
+	applyTheme := func() {
+		rules := modern.Rules(modern.Options{Dark: dark})
+		corner := style.Name("scroll-view").Part("corner").BackgroundColor(color.RGBA{B: 200, A: 255}).BorderWidth(0).Radius(0)
+		if cornerMode == 2 {
+			corner = corner.BorderColor(color.RGBA{R: 200, A: 255}).BorderWidth(1).Radius(4)
+		}
+		if cornerMode != 0 {
+			rules = append(rules, corner)
+		}
+		app.SetStyleSheet(style.Sheet(rules...))
+	}
 	bind(gui.KeyF6, func() {
 		if checkingIntent {
 			fmt.Println("SCROLL INTENT 正在等待布局")
@@ -316,6 +333,22 @@ func main() {
 			panic(fmt.Sprintf("coupled bars: mode=%d short=%t geometry=%+v max=%g/%g", barMode, shortPicture, g, b.MaxScrollX, b.MaxScrollY))
 		}
 		fmt.Printf("OPTIONS PASS mode=%d short=%t geometry=%+v offset=%g/%g\n", barMode, shortPicture, g, b.ScrollX, b.ScrollY)
+		if corner := g.Corner; corner.Width > 0 && corner.Height > 0 {
+			img, err := gui.RenderWidget(both, 0)
+			if err != nil {
+				panic(err)
+			}
+			scale := float32(img.Bounds().Dx()) / both.Rect().Width
+			got := color.RGBAModel.Convert(img.At(int((corner.X+corner.Width/2)*scale), int((corner.Y+corner.Height/2)*scale))).(color.RGBA)
+			want := color.RGBA{}
+			if cornerMode != 0 {
+				want = color.RGBA{B: 200, A: 255}
+			}
+			if got != want {
+				panic(fmt.Sprintf("corner mode=%d color=%v want=%v", cornerMode, got, want))
+			}
+		}
+		fmt.Printf("CORNER PASS mode=%d rect=%v\n", cornerMode, g.Corner)
 		f := form.Snapshot()
 		wantWidth := form.Rect().Width
 		for _, child := range form.Children() {
@@ -347,7 +380,7 @@ func main() {
 			fmt.Printf("BOUNDS %s %g %g %g %g\n", item.name, r.X, r.Y, r.Width, r.Height)
 		}
 	})
-	short, dark := false, false
+	short := false
 	bind(gui.KeyF7, func() {
 		short = !short
 		for _, label := range longRows {
@@ -362,14 +395,19 @@ func main() {
 	bind(gui.KeyF10, func() { form.ScrollIntoView(panel.Rect()) })
 	bind(gui.KeyF11, func() {
 		dark = !dark
-		app.SetStyleSheet(modern.Sheet(modern.Options{Dark: dark}))
+		applyTheme()
+	})
+	bind(gui.KeyF12, func() {
+		cornerMode = (cornerMode + 1) % 3
+		applyTheme()
+		fmt.Printf("corner-mode=%d\n", cornerMode)
 	})
 	presented := ""
 	win.ConnectAfterPaint(func(_ gui.Painter, _ geometry.Rectangle) {
 		if form.Rect().Width <= 0 {
 			return
 		}
-		state := fmt.Sprintf("mode=%d short=%t form=%v dark=%t nested-short=%t geometry=%+v", barMode, shortPicture, form.Rect().Size, dark, nestedShort, both.ScrollGeometry())
+		state := fmt.Sprintf("mode=%d corner=%d short=%t form=%v dark=%t nested-short=%t geometry=%+v", barMode, cornerMode, shortPicture, form.Rect().Size, dark, nestedShort, both.ScrollGeometry())
 		if state != presented {
 			presented = state
 			fmt.Println("PRESENT", state)
