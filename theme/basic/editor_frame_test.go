@@ -1,6 +1,7 @@
 package basic
 
 import (
+	"image/color"
 	"reflect"
 	"testing"
 
@@ -23,7 +24,7 @@ func TestEditorFrameParts(t *testing.T) {
 			t.Fatal("TextInput lost its own frame")
 		}
 	}
-	for _, part := range []string{"trough", "thumb"} {
+	for _, part := range []string{"trough", "thumb", "corner"} {
 		for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed} {
 			got := sheet.Resolve(style.Sel{Name: "text-view", Part: part, State: state})
 			want := sheet.Resolve(style.Sel{Name: "scroll-view", Part: part, State: state})
@@ -37,6 +38,18 @@ func TestEditorFrameParts(t *testing.T) {
 			}
 		}
 	}
+	for _, name := range []string{"scroll-view", "text-view"} {
+		for _, state := range []style.State{style.Normal, style.Focused, style.FocusVisible, style.Disabled} {
+			corner := sheet.Resolve(style.Sel{Name: name, Part: "corner", State: state})
+			bg, _ := corner.BackgroundColor()
+			width, _ := corner.BorderWidth()
+			radius, _ := corner.CornerRadius()
+			if bg == nil || color.RGBAModel.Convert(bg).(color.RGBA).A != 0 || width != 0 || radius.Max() != 0 {
+				t.Fatalf("默认角区未保持透明／无装饰：name=%s state=%v style=%+v", name, state, corner)
+			}
+		}
+	}
+
 	plain := sheet.Resolve(style.Sel{Name: "scroll-view", Part: "frame"})
 	if width, _ := plain.BorderWidth(); width != 0 {
 		t.Fatal("ordinary scroll view acquired an editor frame")

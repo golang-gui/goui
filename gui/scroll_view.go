@@ -57,6 +57,8 @@ const (
 // ScrollView is a Bin: SetChild/Child manage the content slot. The two
 // ScrollBars and the content viewport are internal structural children; they
 // are not exposed through Child/SetChild.
+// The shared StyleName resolves frame, trough, thumb and corner parts. The
+// corner decorates only the intersection of two visible bars, excluding gaps.
 type ScrollView struct {
 	WidgetBase
 	content        Widget
@@ -188,7 +190,7 @@ func NewScrollView() *ScrollView {
 func (sv *ScrollView) StyleChanged() {
 	sv.frameInset = 0
 	for _, state := range []style.State{style.Normal, style.Focused, style.FocusVisible, style.Disabled} {
-		s := sv.frameStyle(state)
+		s := sv.partStyle("frame", state)
 		border, _ := s.BorderWidth()
 		radius, _ := s.CornerRadius()
 		border = normalizeLayoutValue(border)
@@ -203,12 +205,12 @@ func (sv *ScrollView) StyleChanged() {
 	}
 }
 
-func (sv *ScrollView) frameStyle(state style.State) style.Style {
+func (sv *ScrollView) partStyle(part string, state style.State) style.Style {
 	name := sv.StyleName()
 	if name == "" {
 		name = styleNameScrollView
 	}
-	return ResolveWidgetStyle(sv, name, "frame", state)
+	return ResolveWidgetStyle(sv, name, part, state)
 }
 
 func (sv *ScrollView) contentInset() float32 {
@@ -236,7 +238,7 @@ func (sv *ScrollView) Paint(p Painter) {
 			}
 		}
 	}
-	s := sv.frameStyle(state)
+	s := sv.partStyle("frame", state)
 	r := geometry.Rectangle{Size: sv.Rect().Size}
 	if bg, ok := s.BackgroundColor(); ok && bg != nil && graphics.ColorOf(bg).A > 0 {
 		PaintStyledBox(p, r, s)
@@ -244,9 +246,7 @@ func (sv *ScrollView) Paint(p Painter) {
 		PaintStyledBorder(p, r, s)
 	}
 	if corner := sv.geometry.Corner; corner.Width > 0 && corner.Height > 0 {
-		if ink, ok := sv.vbar.troughStyle().BackgroundColor(); ok && ink != nil {
-			p.FillRect(corner, graphics.ColorOf(ink))
-		}
+		PaintStyledBox(p, corner, sv.partStyle("corner", state))
 	}
 }
 

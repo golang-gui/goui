@@ -2,6 +2,7 @@ package gui
 
 import (
 	"fmt"
+	"image/color"
 	"math"
 	"testing"
 
@@ -567,6 +568,11 @@ func TestScrollViewChildrenContainStructuralViewport(t *testing.T) {
 
 func TestScrollViewViewportDrivesPaintClipAndHitTesting(t *testing.T) {
 	sv := NewScrollView()
+	// 本组继续检查角区几何与正文裁剪，显式选择有底色的corner Part。
+	scope := NewStyleScope()
+	scope.SetStyleSheet(style.Sheet(style.Name("scroll-view").Part("corner").BackgroundColor(color.Black)))
+	scope.SetChild(sv)
+	defer scope.destroy(scope)
 	content := &mockPaintWidget{mockWidget: mockWidget{
 		size: geometry.Size{Width: 100, Height: 500},
 	}}

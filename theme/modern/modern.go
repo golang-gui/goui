@@ -148,6 +148,7 @@ func builtInRules(options Options) []style.Rule {
 		style.Name("table-view").BackgroundColor(p.window).BorderColor(tableEdge).BorderWidth(1),
 		style.Name("table-view").Part("frame").BackgroundColor(color.Transparent).BorderWidth(0).Radius(0),
 		style.Name("table-view").Part("trough").BackgroundColor(mix(p.window, p.text, .02)).BorderWidth(0).Radius(0),
+		style.Name("table-view").Part("corner").BackgroundColor(mix(p.window, p.text, .02)).BorderWidth(0).Radius(0),
 		style.Name("table-view").Part("grid-horizontal").BorderColor(tableGrid).BorderWidth(1),
 		style.Name("table-view").Part("grid-bottom").BorderColor(tableGrid).BorderWidth(1),
 		style.Name("table-view").Part("grid-vertical").BorderColor(tableGrid).BorderWidth(0),
@@ -236,6 +237,7 @@ func builtInRules(options Options) []style.Rule {
 		style.Name("text-view").Part("placeholder").ForegroundColor(p.muted),
 		style.Name("text-view").Part("placeholder").State(style.Disabled).ForegroundColor(p.disabled),
 		text("scroll-view").BackgroundColor(color.Transparent),
+		style.Name("scroll-view").Part("corner").BackgroundColor(color.Transparent).BorderWidth(0).Radius(0),
 		style.Name("scroll-view").Part("trough").BackgroundColor(mix(p.window, p.text, .08)).Radius(4),
 		style.Name("scroll-view").Part("thumb").BackgroundColor(mix(p.window, p.text, .42)).Radius(4),
 		style.Name("scroll-view").Part("thumb").State(style.Hovered).BackgroundColor(mix(p.window, p.text, .55)),
@@ -334,7 +336,7 @@ func builtInRules(options Options) []style.Rule {
 	rules = append(rules, listRowRules(p, accent, options.FontFamily, size)...)
 	rules = append(rules, dropDownRules(p, tabFocus, options.FontFamily, size)...)
 	base := style.Sheet(rules...)
-	for _, part := range []string{"trough", "thumb"} {
+	for _, part := range []string{"trough", "thumb", "corner"} {
 		for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed} {
 			rule := style.Rule{Sel: style.Sel{Name: "text-view", Part: part, State: state},
 				Style: base.Resolve(style.Sel{Name: "scroll-view", Part: part, State: state})}

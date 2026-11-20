@@ -124,7 +124,7 @@ func TestScrollViewFrameScrollableMeasurement(t *testing.T) {
 }
 
 // 在无圆角的不透明预乘 sRGB 色带内部取样；整数和分数缩放均不使用容差。
-// 角区改用半透明轨道另验一次合成，Spacing 不得误画成轨道或正文。
+// 角区独立于轨道，默认留白；半透明角区只合成一次，Spacing 不得误画成角区。
 func TestScrollViewOptionsPixels(t *testing.T) {
 	for _, scale := range []float32{1, 1.5, 2} {
 		t.Run(fmt.Sprintf("%gx", scale), func(t *testing.T) {
@@ -146,38 +146,55 @@ func TestScrollViewOptionsPixels(t *testing.T) {
 			win := testWindowWithSurface(&window{surfaceBase: surfaceBase{rootBase: rootBase{painter: backend}}})
 			win.SetWidget(scope)
 			defer win.Destroy()
-			for _, translucent := range []bool{false, true} {
-				track := color.Color(color.RGBA{G: 200, A: 255})
-				wantTrack := color.RGBA{G: 200, A: 255}
-				if translucent {
-					track = color.NRGBA{R: 255, A: 128}
-					wantTrack = color.RGBA{R: 255, G: 127, B: 127, A: 255}
-				}
-				scope.SetStyleSheet(style.Sheet(
-					style.Name("options").Part("frame").BackgroundColor(color.White).BorderWidth(0).Radius(0),
-					style.Name("options").Part("trough").BackgroundColor(track).BorderWidth(0).Radius(0),
-					style.Name("options").Part("thumb").BackgroundColor(color.RGBA{B: 255, A: 255}).BorderWidth(0).Radius(0),
-				))
-				scope.Arrange(geometry.Rect(0, 0, 100, 100))
-				img, err := RenderWidget(sv, scale)
-				if err != nil {
-					t.Fatal(err)
-				}
-				for _, sample := range []struct {
-					x, y float32
-					want color.RGBA
-				}{
-					{10, 10, color.RGBA{R: 255, B: 255, A: 255}},
-					{78, 10, color.RGBA{255, 255, 255, 255}},
-					{82, 10, wantTrack}, {96, 10, wantTrack},
-					{88, 10, color.RGBA{B: 255, A: 255}},
-					{10, 88, color.RGBA{255, 255, 255, 255}},
-					{10, 90, wantTrack}, {10, 94, color.RGBA{B: 255, A: 255}},
-					{78, 88, color.RGBA{255, 255, 255, 255}}, {85, 95, wantTrack},
-				} {
-					got := color.RGBAModel.Convert(img.At(int(sample.x*scale), int(sample.y*scale))).(color.RGBA)
-					if got != sample.want {
-						t.Fatalf("半透明=%t (%g,%g)=%v，预期%v", translucent, sample.x, sample.y, got, sample.want)
+			for _, corner := range []struct {
+				name                  string
+				rule                  style.Rule
+				center, topLeft, left color.RGBA
+			}{
+				{"unset", style.Rule{}, color.RGBA{255, 255, 255, 255}, color.RGBA{255, 255, 255, 255}, color.RGBA{255, 255, 255, 255}},
+				{"solid", style.Name("options").Part("corner").BackgroundColor(color.RGBA{B: 255, A: 255}).BorderWidth(0).Radius(0), color.RGBA{B: 255, A: 255}, color.RGBA{B: 255, A: 255}, color.RGBA{B: 255, A: 255}},
+				{"alpha", style.Name("options").Part("corner").BackgroundColor(color.NRGBA{R: 255, A: 128}).BorderWidth(0).Radius(0), color.RGBA{255, 127, 127, 255}, color.RGBA{255, 127, 127, 255}, color.RGBA{255, 127, 127, 255}},
+				// 4 DIP圆角使首个物理像素完全在圆外，避免把AA过渡误当成纯背景。
+				{"rounded-border", style.Name("options").Part("corner").BackgroundColor(color.RGBA{B: 255, A: 255}).BorderColor(color.RGBA{R: 255, A: 255}).BorderWidth(1).Radius(4), color.RGBA{B: 255, A: 255}, color.RGBA{255, 255, 255, 255}, color.RGBA{R: 255, A: 255}},
+			} {
+				for _, translucent := range []bool{false, true} {
+					track := color.Color(color.RGBA{G: 200, A: 255})
+					wantTrack := color.RGBA{G: 200, A: 255}
+					if translucent {
+						track = color.NRGBA{R: 255, A: 128}
+						wantTrack = color.RGBA{R: 255, G: 127, B: 127, A: 255}
+					}
+					rules := []style.Rule{
+						style.Name("options").Part("frame").BackgroundColor(color.White).BorderWidth(0).Radius(0),
+						style.Name("options").Part("trough").BackgroundColor(track).BorderWidth(0).Radius(0),
+						style.Name("options").Part("thumb").BackgroundColor(color.RGBA{B: 255, A: 255}).BorderWidth(0).Radius(0),
+					}
+					if corner.name != "unset" {
+						rules = append(rules, corner.rule)
+					}
+					scope.SetStyleSheet(style.Sheet(rules...))
+					scope.Arrange(geometry.Rect(0, 0, 100, 100))
+					img, err := RenderWidget(sv, scale)
+					if err != nil {
+						t.Fatal(err)
+					}
+					for _, sample := range []struct {
+						x, y float32
+						want color.RGBA
+					}{
+						{10, 10, color.RGBA{R: 255, B: 255, A: 255}},
+						{78, 10, color.RGBA{255, 255, 255, 255}},
+						{82, 10, wantTrack}, {96, 10, wantTrack},
+						{88, 10, color.RGBA{B: 255, A: 255}},
+						{10, 88, color.RGBA{255, 255, 255, 255}},
+						{10, 90, wantTrack}, {10, 94, color.RGBA{B: 255, A: 255}},
+						{78, 88, color.RGBA{255, 255, 255, 255}}, {85, 95, corner.center},
+						{80, 90, corner.topLeft}, {80, 95, corner.left},
+					} {
+						got := color.RGBAModel.Convert(img.At(int(sample.x*scale), int(sample.y*scale))).(color.RGBA)
+						if got != sample.want {
+							t.Fatalf("角区=%s 半透明轨道=%t (%g,%g)=%v，预期%v", corner.name, translucent, sample.x, sample.y, got, sample.want)
+						}
 					}
 				}
 			}

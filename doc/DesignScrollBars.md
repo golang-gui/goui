@@ -83,7 +83,7 @@ Spacing 负值或非有限时取 0；非法 Policy 归一化为 Auto。
 getter 返回存储的归一化配置，不返回父布局钳制后的实际矩形。
 滑块绘制厚度最终钳制到实际条厚，极窄分配不能越界。
 
-这是布局参数，不加入 style.Style。颜色、边框、圆角继续由 trough/thumb Part 决定，
+这是布局参数，不加入 style.Style。颜色、边框、圆角继续由 trough/thumb/corner Part 决定，
 Basic 与 Modern 使用相同默认几何。悬停、按下只改变既有外观，不改变视口占位。
 
 ### 2.2 策略
@@ -142,9 +142,14 @@ func (sv *ScrollView) ScrollGeometry() ScrollGeometry
 TableView 在布局中继续使用 LayoutVisible 得到的实际视口；绘制读取已提交结果。
 不能从 MaxScrollX/Y、Scrollable() 或某个固定尺寸反推槽位是否存在。
 
-通用交汇角由 ScrollView 在自己的 Paint 中按有效样式名的 trough Part 绘制一次，
-与 frame/条的区域分离，不增加 corner Part、Widget 或语义动作。Spacing 保留
-容器背景。只有正面积才提交绘制，避免退化矩形的抗锯齿残线。
+通用交汇角由ScrollView在自己的Paint中按有效样式名的 `corner` Part绘制一次，
+支持背景、边框及圆角，与frame/条/Spacing的区域分离。Basic／Modern的普通
+ScrollView与text-view组合默认透明；TableView主题显式提供与trough一致的方形底色，
+应用可分别定制。角区没有Widget或语义动作，样式不改变布局、命中或滚动范围。
+只有正面积才提交绘制，避免退化矩形的抗锯齿残线。
+
+只覆盖trough不再改变交汇角。自定义完整样式名遵循既有Part默认值规则；需要留白时
+显式为corner设置透明背景、BorderWidth=0及Radius=0，需要连续底色时单独指定背景。
 
 ## 4. TableView：选项暴露与边框适配
 
