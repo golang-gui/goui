@@ -36,6 +36,7 @@
 | CheckButton 三态、互斥、按钮式外观与声明协调 | [widgets/check_button](widgets/check_button/main.go) | 三平台；Modern/显式兜底、Software/OpenGL（Windows 另有 Direct2D）；有效释放/取消、子按钮竞争、Tab/键盘、主题/重建/快照/销毁；1x/2x |
 | 默认 Tab / Shift+Tab 焦点导航 | [gui/tab_navigation](gui/tab_navigation/main.go) | 三平台；树顺序、消费优先、滚动与模态 Popover；FocusVisible 2 DIP 边框、键鼠切换、F8 亮暗/F9 主题色/F10 Primary；1x/2x |
 | 进度条／圆环、单向忙等待与动画生命周期 | [widgets/progress_bar](widgets/progress_bar/main.go) | 三平台；Software / OpenGL，Windows 另有 Direct2D；0/25/50/75/100%、祖先隐藏、主题切换、Snapshot、Timer 启停与销毁；1x/2x |
+| 进度条帧驱动、小数裁剪与覆盖率回归 | [widgets/progress_regression](widgets/progress_regression/main.go) | `all`检查真实动画生命周期；`clip`／`arc`／`arc-motion`检查像素及连续角度；`coverage`专项验证OpenGL轮廓面积与相邻样本差值；具体预算与平台范围见入口注释 |
 | 声明式进度显示与重建连续性 | [widgets/ui_progress_bar](widgets/ui_progress_bar/main.go) | 三平台；四种模式、单向忙等待、隐藏恢复、亮暗／主题色、ID 身份与重建不重启 Timer；1x/2x |
 | 窗口工作区 / 相对定位与实际位置查询 | [gui/window_position](gui/window_position/main.go) | 三平台；`-auto` 无装饰位置断言，`-chrome=native/integrated` 人工核对外框、客户区与手动移动后 Position；1x/2x |
 | UI 窗口 ID 查询 / 定位 / 重建与同 ID 重建窗口 | [ui/window_position](ui/window_position/main.go) | 三平台；Native 装饰、按钮/F1–F6 与 F8；定位后另行查询，重建不重置用户移动的位置；1x/2x |

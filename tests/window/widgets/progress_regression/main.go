@@ -1,9 +1,10 @@
 // ProgressBar 桌面回归：实际帧驱动、宿主可见性及完整圆环接缝，不依赖 DevServer。
 // 环境：桌面事件循环；记录 OS、WM、实际 Painter 与缩放，OpenGL 需要原生显示连接。
 // 启动：go run ./tests/window/widgets/progress_regression -chrome=native -case=all
-// 参数：-chrome=native/integrated；-case=all/animation/ring/clip/arc。
+// 参数：-chrome=native/integrated；-case=all/animation/ring/clip/arc/arc-motion/coverage。
 // clip 单独验证小数位置裁剪；步骤和断言见 clip.go，-hold 保留完成后的完整圆环窗口。
 // arc 验证旋转圆弧的全部边缘及圆端帽，步骤和覆盖率预期同见 clip.go。
+// arc-motion 增加完整旋转及相邻角度；coverage另验OpenGL面积积分与样本差值。
 // clip/arc 为独立模式；all 保留原完整圆环和动画生命周期检查。
 // 请求的装饰模式必须实际选中，不能把 Native 回退计为 Integrated 通过。
 // 后端：GOUI_PLAT_PAINTER=software/opengl（Windows 另可 direct2d），GOUI_PLAT_SCALE=1/2。
@@ -42,7 +43,7 @@ import (
 
 func main() {
 	chromeFlag := flag.String("chrome", "native", "native/integrated")
-	scenario := flag.String("case", "all", "all/animation/ring/clip/arc")
+	scenario := flag.String("case", "all", "all/animation/ring/clip/arc/arc-motion/coverage")
 	hold := flag.Bool("hold", false, "裁剪／圆弧验证完成后保留窗口")
 	flag.Parse()
 	chrome := gui.WindowChromeNative
@@ -51,8 +52,8 @@ func main() {
 	} else if *chromeFlag != "native" {
 		log.Fatal("未知 chrome 参数")
 	}
-	if *scenario == "clip" || *scenario == "arc" {
-		runClip(chrome, *hold, *scenario == "arc")
+	if *scenario == "clip" || *scenario == "arc" || *scenario == "arc-motion" || *scenario == "coverage" {
+		runClip(chrome, *hold, *scenario != "clip", *scenario == "arc-motion" || *scenario == "coverage", *scenario == "coverage")
 		return
 	}
 	if *scenario != "all" && *scenario != "animation" && *scenario != "ring" {

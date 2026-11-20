@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -29,20 +30,35 @@ import (
 // 旋转使用普通Painter变换，保持结构clip；-hold最终保留73度圆弧供桌面检查。
 // 此模式的质量预算已在Linux OpenGL／Software通过；Direct2D的既有差异见
 // doc/PlanFractionalClipping.md，失败仍正常报告，不据此放宽断言。
-func runClip(chrome gui.WindowChromeMode, hold, arcs bool) {
+// arc-motion遍历整周并在44..46、72..74度逐.25度采样，保留原圆面积断言。
+// coverage额外绘制三个半透明凹多边形，要求原始浮点轮廓的矩形像素面积积分，
+// 容差2级；相邻直边样本的差值误差不超过两次量化容差之和4级。
+// 此专项验证OpenGL的新覆盖率算法；Software的26.6及扫描转换精度使用arc-motion
+// 单独对照，不将其计为2级面积专项通过。实际动画另由all模式观察。
+func runClip(chrome gui.WindowChromeMode, hold, arcs, motion, coverage bool) {
 	app, err := gui.NewApplication("org.golang-gui.ClipRegression")
 	must(err)
 	win, err := app.NewWindow(&gui.WindowOptions{Size: geometry.Size{Width: 820, Height: 500}, Chrome: chrome})
 	must(err)
 	defer win.Destroy()
 	must(win.SetTitle("GOUI fractional clipping regression"))
-	scene := newClipScene(arcs)
+	scene := newClipScene(arcs, coverage)
 	win.SetWidget(scene)
 	stage, painted := 0, -1
 	var nativeScale float32
 	scales := []float32{1, 1.25, 1.5, 2}
 	values := []float32{1, .25, .75}
 	angles := []float64{0, 22.5, 45, 73, 135, 223, 315}
+	if motion {
+		for a := 0; a < 360; a += 15 {
+			angles = append(angles, float64(a))
+		}
+		for i := 0; i <= 8; i++ {
+			angles = append(angles, 44+float64(i)/4, 72+float64(i)/4)
+		}
+		slices.Sort(angles)
+		angles = slices.Compact(angles)
+	}
 	stages := 24
 	if arcs {
 		stages = len(angles) * 8
@@ -102,7 +118,11 @@ func runClip(chrome gui.WindowChromeMode, hold, arcs bool) {
 		must(err)
 		if arcs {
 			err := scene.checkArcs(img)
-			fmt.Printf("ARC CASE PASS scale=%g dark=%t angle=%g max-error=%.3f\n", scene.scale, scene.dark, scene.angle, err)
+			fmt.Printf("ARC CASE PASS scale=%g dark=%t angle=%g max-error=%.3f", scene.scale, scene.dark, scene.angle, err)
+			if len(scene.edges) > 0 {
+				fmt.Printf(" edge-error=%.3f motion-error=%.3f", scene.edgeError, scene.motionError)
+			}
+			fmt.Println()
 		} else {
 			scene.check(img, values[stage/8])
 			fmt.Printf("CLIP CASE PASS scale=%g dark=%t value=%g\n", scene.scale, scene.dark, values[stage/8])
@@ -147,17 +167,19 @@ type clipRing struct {
 }
 type clipScene struct {
 	gui.WidgetBase
-	rings              []clipRing
-	scale              float32
-	arcs, dark         bool
-	angle              float64
-	revision, arranged int
-	probes             []*clipProbe
-	scroll             *gui.ScrollView
-	viewport           *gui.WidgetBase
+	rings                  []clipRing
+	scale                  float32
+	arcs, dark             bool
+	angle                  float64
+	revision, arranged     int
+	probes                 []*clipProbe
+	scroll                 *gui.ScrollView
+	viewport               *gui.WidgetBase
+	edges                  []*clipEdge
+	edgeError, motionError float64
 }
 
-func newClipScene(arcs bool) *clipScene {
+func newClipScene(arcs, coverage bool) *clipScene {
 	s := &clipScene{scale: 1, arranged: -1, arcs: arcs}
 	for _, size := range []float32{48, 64} {
 		for _, phase := range []float32{0, .25, .5} {
@@ -199,6 +221,13 @@ func newClipScene(arcs bool) *clipScene {
 	scroll.SetDirection(gui.ScrollBoth)
 	s.scroll = scroll
 	s.WidgetBase.AddChild(s, scroll)
+	if coverage {
+		for _, angle := range []float64{22.5, 45, 67.5} {
+			e := &clipEdge{scene: s, offset: angle}
+			s.edges = append(s.edges, e)
+			s.WidgetBase.AddChild(s, e)
+		}
+	}
 	s.SetLayoutManager(&clipSceneLayout{scene: s})
 	return s
 }
@@ -223,6 +252,9 @@ func (l *clipSceneLayout) Arrange(children []layout.Child, _ geometry.Rectangle)
 	}
 	place(n+4, geometry.Rect(620+.5/s.scale, 365+.5/s.scale, 24, 24))
 	place(n+5, geometry.Rect(680+.5/s.scale, 365+.5/s.scale, 64, 64))
+	for i := range s.edges {
+		place(n+6+i, geometry.Rect(24+float32(i)*180+.5/s.scale, 400+.25/s.scale, 96, 72))
+	}
 	s.arranged = s.revision
 }
 
@@ -398,7 +430,146 @@ func (s *clipScene) checkArcs(img image.Image) float64 {
 		}
 	}
 	s.checkProbes(img)
+	s.edgeError, s.motionError = 0, 0
+	for _, e := range s.edges {
+		static, motion := e.check(img)
+		s.edgeError, s.motionError = max(s.edgeError, static), max(s.motionError, motion)
+	}
 	return maxError
+}
+
+type edgePoint struct{ x, y float64 }
+
+type edgeKey struct {
+	scale float32
+	dark  bool
+}
+
+type edgeSample struct {
+	angle     float64
+	pixels    []color.RGBA
+	reference [][4]float32
+}
+
+type clipEdge struct {
+	gui.WidgetBase
+	scene    *clipScene
+	offset   float64
+	previous map[edgeKey]edgeSample
+}
+
+func (e *clipEdge) Paint(p gui.Painter) {
+	// 凹轮廓进入通用填充路径；用普通Painter变换旋转，保持结构裁剪不变。
+	p.SetTransform(geometry.Translate(44, 36).Multiply(geometry.Rotate(-float32(e.scene.angle + e.offset))).Multiply(geometry.Translate(-44, -36)))
+	path := graphics.MoveTo(24, 20).LineTo(64, 20).LineTo(64, 52).LineTo(48, 52).LineTo(48, 36).LineTo(24, 36).Close()
+	p.FillPath(path, graphics.RGBA(180, 60, 220, 128))
+}
+
+func (e *clipEdge) check(img image.Image) (float64, float64) {
+	scale, r := float64(e.scene.scale), e.Rect()
+	angle := (e.scene.angle + e.offset) * math.Pi / 180
+	sn, cs := math.Sin(angle), math.Cos(angle)
+	polygon := [6]edgePoint{{24, 20}, {64, 20}, {64, 52}, {48, 52}, {48, 36}, {24, 36}}
+	for i, p := range polygon {
+		x, y := p.x-44, p.y-36
+		polygon[i] = edgePoint{(float64(r.X) + 44 + x*cs - y*sn) * scale, (float64(r.Y) + 36 + x*sn + y*cs) * scale}
+	}
+	bounds := pixelEnvelope(r, e.scene.scale)
+	key := edgeKey{e.scene.scale, e.scene.dark}
+	if e.previous == nil {
+		e.previous = make(map[edgeKey]edgeSample)
+	}
+	previous, exists := e.previous[key]
+	count := bounds.Dx() * bounds.Dy()
+	if !exists {
+		previous.pixels = make([]color.RGBA, count)
+		previous.reference = make([][4]float32, count)
+	}
+	adjacent := exists && e.scene.angle > previous.angle && e.scene.angle-previous.angle <= .251
+	maxError, maxMotion := float64(0), float64(0)
+	i := 0
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			got := rgbaAt(img, x, y)
+			values := [4]uint8{got.R, got.G, got.B, got.A}
+			old := previous.pixels[i]
+			oldValues := [4]uint8{old.R, old.G, old.B, old.A}
+			area := polygonPixelArea(polygon, x, y)
+			want := [4]float64{180 * 128 / 255.0 * area, 60 * 128 / 255.0 * area, 220 * 128 / 255.0 * area, 128 * area}
+			for j, v := range values {
+				err := math.Abs(float64(v) - want[j])
+				maxError = max(maxError, err)
+				if err > 2 {
+					panic(fmt.Sprintf("直边 scale=%g angle=%g offset=%g pixel(%d,%d)=%v want=%v", scale, e.scene.angle, e.offset, x, y, got, want))
+				}
+				if adjacent {
+					delta := math.Abs(float64(int(v)-int(oldValues[j])) - (want[j] - float64(previous.reference[i][j])))
+					maxMotion = max(maxMotion, delta)
+					if delta > 4.0001 {
+						panic(fmt.Sprintf("相邻角度覆盖不连续：scale=%g %g→%g pixel(%d,%d) channel=%d error=%g", scale, previous.angle, e.scene.angle, x, y, j, delta))
+					}
+				}
+				previous.reference[i][j] = float32(want[j])
+			}
+			previous.pixels[i] = got
+			i++
+		}
+	}
+	previous.angle = e.scene.angle
+	e.previous[key] = previous
+	return maxError, maxMotion
+}
+
+// 用Sutherland-Hodgman裁切到像素方形，再以鞋带公式求面积；不复用GPU逐边积分。
+func polygonPixelArea(polygon [6]edgePoint, x, y int) float64 {
+	var a, b [24]edgePoint
+	copy(a[:], polygon[:])
+	count := len(polygon)
+	for side := 0; side < 4; side++ {
+		limit := float64(x + side%2)
+		if side >= 2 {
+			limit = float64(y + side%2)
+		}
+		coordinate := func(p edgePoint) float64 {
+			if side < 2 {
+				return p.x
+			}
+			return p.y
+		}
+		inside := func(v float64) bool {
+			if side%2 == 0 {
+				return v >= limit
+			}
+			return v <= limit
+		}
+		if count == 0 {
+			return 0
+		}
+		previous, next := a[count-1], 0
+		for _, current := range a[:count] {
+			pv, cv := coordinate(previous), coordinate(current)
+			if inside(pv) != inside(cv) {
+				t := (limit - pv) / (cv - pv)
+				b[next] = edgePoint{previous.x + t*(current.x-previous.x), previous.y + t*(current.y-previous.y)}
+				next++
+			}
+			if inside(cv) {
+				b[next] = current
+				next++
+			}
+			previous = current
+		}
+		a, b, count = b, a, next
+	}
+	area := float64(0)
+	if count > 0 {
+		previous := a[count-1]
+		for _, current := range a[:count] {
+			area += previous.x*current.y - previous.y*current.x
+			previous = current
+		}
+	}
+	return min(1, math.Abs(area)/2)
 }
 
 // 点到单位像素方形的最近／最远平方距离，可直接判定完全内／外区域。
