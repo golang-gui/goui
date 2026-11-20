@@ -24,21 +24,21 @@ GOUI 是纯Go实现的原生 GUI 框架。用 Go 编写界面与业务逻辑，�
 [Demo](../example/demo) 集中展示基础控件、文本编辑、布局、数据视图、可拖出的
 标签页、覆盖层、图形、动画和系统集成，支持切换亮暗模式、主题色和八种界面语言。
 
-Demo 源码已更新为 **0.8.1 / build 1**，准备发布以修复为主的 v0.8.1，重点处理
+Demo **0.8.1 / build 1** 已随修复版本 v0.8.1 发布，重点处理
 弹层复用、全屏、滚动、分隔条、键盘焦点和绘制质量。修复与必要的 API 迁移见
 [v0.8.1 发布说明](ReleaseV081.md)，示例操作见 [Demo 使用说明](../example/demo/README.md)。
 
-v0.8.1 正式发布前，下方下载继续提供已发布的 **v0.8.0**；截图仍为 Demo v0.6.0。
+下方下载为 **v0.8.1**；截图仍为 Demo v0.6.0。
 
 | 平台 | Demo 下载 |
 | --- | --- |
-| Windows x64 | [下载 EXE](https://github.com/golang-gui/goui/releases/download/v0.8.0/goui-demo-v0.8.0-windows-amd64.exe) |
-| macOS Apple Silicon | [下载 .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.8.0/goui-demo-v0.8.0-darwin-arm64.zip) |
-| Linux x64 / X11 | [下载可执行文件](https://github.com/golang-gui/goui/releases/download/v0.8.0/goui-demo-v0.8.0-linux-amd64) |
+| Windows x64 | [下载 EXE](https://github.com/golang-gui/goui/releases/download/v0.8.1/goui-demo-v0.8.1-windows-amd64.exe) |
+| macOS Apple Silicon | [下载 .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.8.1/goui-demo-v0.8.1-darwin-arm64.zip) |
+| Linux x64 / X11 | [下载可执行文件](https://github.com/golang-gui/goui/releases/download/v0.8.1/goui-demo-v0.8.1-linux-amd64) |
 
-上方为已发布的 **Demo 0.8.0 / build 1**。来源、摘要和验收范围见[发布说明](https://github.com/golang-gui/goui/releases/tag/v0.8.0)及其 BUILD-INFO.md / SHA256SUMS 附件。
+上方为已发布的 **Demo 0.8.1 / build 1**。来源、摘要和验收范围见[发布说明](https://github.com/golang-gui/goui/releases/tag/v0.8.1)及其 BUILD-INFO.md / SHA256SUMS 附件。
 
-Linux 下载后先执行 `chmod +x goui-demo-v0.8.0-linux-amd64`，再启动程序。
+Linux 下载后先执行 `chmod +x goui-demo-v0.8.1-linux-amd64`，再启动程序。
 macOS 解压后打开 `GOUI Demo.app`，已使用 Developer ID 签名并通过 Apple 公证。
 
 Windows — Direct2D，暗色外观
@@ -121,7 +121,7 @@ RSS 包含驻留的共享库页面，PSS 按进程分摊共享页面；数据为
 核心控件位于 `gui`，声明式绑定位于 `ui`；配套控件位于 `widgets`，对应绑定位于
 `widgets/ui`。
 
-### v0.8.1 修复版本（准备中）
+### v0.8.1 修复版本
 
 - **弹层稳定性：** 共享菜单、下拉框与 Tooltip 在显示前稳定大小和位置，清除上次内容，修正隐藏更新及锚点变化；共享客户端不再拥有实际宿主。
 - **桌面交互：** 修复全屏进入／退出与菜单定位，补足标签的可见键盘焦点，支持聚焦的自定义文本控件在输入能力改变后刷新输入法绑定。

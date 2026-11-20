@@ -1,9 +1,51 @@
 # Plan
 
+## v0.8.1 正式发布（2026-11-20）
+
+- [x] main 合入后冻结 `a8c1dbde75abc6a0317e75126af0265767192e85`，构建工具和
+  三平台正式 Demo 均来自该提交的干净 git archive；annotated tag v0.8.1 的远端
+  peeled SHA 与候选一致。Demo 0.8.1 / build 1，NanoVG v0.0.16，无本地 replace。
+- [x] Go1.25.8／no-cgo／trimpath／-s -w。冻结源码全仓非缓存测试6246通过、0失败、
+  0条件跳过，82个有测试包，另154个无测试文件包；相关gui／ui／widgets／Software
+  race和Demo／gui／ui／widgets／style／mlang的vet通过，`go mod verify`通过。
+- [x] `GOOS=linux GOARCH=amd64 go build ./...` 仍因两个移动专用入口
+  `tests/window/platform/mobile_start`、`mobile_surface` 缺桌面main失败：
+  `runtime.main_main·f: function main is undeclared in the main package`。
+  两目录从v0.8.0至候选未改，旧版BUILD-INFO已记录同一例外；排除它们及仅测试目录后，
+  Linux／Windows／macOS的232／222／221个桌面包构建通过，未修改冻结源码或弱化测试。
+- [x] 最终程序不通过DevServer验收：Linux amd64／X11／Xfwm4合成／Mesa23.2.1
+  llvmpipe OpenGL、Windows10 19045 amd64／Direct2D、macOS15.7.7 arm64／OpenGL，
+  均为1x。公共HUD核对实际后端；启动、按钮、单行提交／多行编辑／右键菜单、表格备注
+  跨滚动条布局保持、隐藏后滚轮、全屏菜单定位与普通状态恢复、版本、UniformRows
+  开关、DropDown／Switch及正常关闭通过。
+- [x] Linux边缘缩放1120→1001→1121、退出码0；独立桌面使用本地XIM，未改用户设置。
+  Windows原生最大化／恢复通过，Alt+F4后窗口与进程退出；未取得退出码，不宣称边缘
+  拖动验证通过。macOS边缘缩放1120→1000、拖动滚动条和不同帧的圆环动画通过；关闭
+  按钮使窗口与进程退出，未取得退出码。Cmd+Q未退出Demo，未列为通过的退出绑定。
+- [x] Windows正式EXE的文件／产品版本0.8.1.1；未做Authenticode签名。
+  macOS正式ZIP的plist为0.8.1／1，Developer ID／runtime／安全时间戳，公证
+  `b42ba831-f032-4bf7-b15d-4651063d5680` Accepted；最终ZIP解压后的严格签名、
+  票据、Gatekeeper Notarized Developer ID及上述交互通过。
+- [x] 五份正式附件的名称、大小和服务端digest匹配；Draft下载与本地原件逐字节一致后
+  发布并设为Latest，匿名公开下载再次通过SHA256SUMS和五份原件比较。
+- [x] Go proxy解析v0.8.1，Origin Hash与候选一致；公开模块1128份Go源码与候选一致。
+  模块归档按Go规则排除嵌套测试模块`platform/mobile/base/testdata/probe`的4份Go文件。
+  独立消费项目无workspace／replace，README计数器和修复API使用Go1.24.13通过三目标编译。
+- [x] 双语README、Demo说明、ReleaseV081和Roadmap同步正式入口，历史截图仍标v0.6.0；
+  收尾仅改文档，不移动标签或替换附件。测试应用、本轮独立桌面及客户端会话已清理，
+  用户应用、已有连接与未跟踪文件保留。
+
+最终附件未重跑真实Retina／混合DPI、多显示器迁移、Windows OpenGL、完整三平台
+后端视觉矩阵、复杂IME、原生拖放失败注入或移动设备流程；Direct2D严格旋转圆弧
+像素等价仍为独立质量项。不扩大Linux ARM64桌面与移动端分发承诺。
+完整构建来源、验证边界和文件摘要见Release的BUILD-INFO.md／SHA256SUMS。
+
+发布地址：https://github.com/golang-gui/goui/releases/tag/v0.8.1 。
+
 ## v0.8.1 发布准备（2026-11-20）
 
 版本定位：修复 v0.8.0 的弹层复用、桌面交互、滚动与绘制问题；必要的公共接口
-变更集中说明迁移，不作为新一轮功能扩展发布。当前分支为 `pre-release/v0.8.1`。
+变更集中说明迁移，不作为新一轮功能扩展发布。准备分支为 `pre-release/v0.8.1`。
 
 - [x] Demo 更新为0.8.1 / build 1，九页导航保持；在基础／数据／窗口原页面补充
   等高行、滚动条布局、格式化Tooltip及全屏操作，八语言同步。
@@ -17,9 +59,9 @@
 - [x] `CGO_ENABLED=0`／`-trimpath`／`-s -w`，通过构建工具完成Linux amd64、
   Windows amd64、macOS arm64 Demo预检；Windows文件／产品版本0.8.1.1，
   macOS预览包0.8.1／1。预览未签名，不作为冻结后的正式附件或原生三平台验收。
-- [ ] 维护者合入main后冻结候选，从同一源码重建正式三平台附件并完成原生操作验收。
-- [ ] macOS正式签名、公证及最终ZIP验收；Draft下载校验、正式tag／Release发布和
-  公开下载复核，按[发布流程](Release.md)执行。当前未创建GOUI v0.8.1标签或Release。
+- [x] 维护者合入main后冻结候选，从同一源码重建正式三平台附件并完成原生操作验收。
+- [x] macOS正式签名、公证及最终ZIP验收、Draft下载校验、正式tag／Release发布和
+  公开下载复核已按[发布流程](Release.md)完成，结果见上方正式发布记录。
 
 ## 上层测试与原生排版集成分离（2026-11-18）
 

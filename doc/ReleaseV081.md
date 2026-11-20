@@ -1,7 +1,7 @@
 # GOUI v0.8.1 发布说明
 
-状态：发布准备。Demo 源码为 **0.8.1 / build 1**；当前公开下载仍为
-[v0.8.0](https://github.com/golang-gui/goui/releases/tag/v0.8.0)。
+状态：**2026-11-20 已发布**。Demo **0.8.1 / build 1** 的三平台附件与校验文件见
+[正式 Release](https://github.com/golang-gui/goui/releases/tag/v0.8.1)。
 
 本版本以修复 v0.8.0 的桌面交互、弹层和绘制问题为主。公共 API 的调整用于明确
 资源归属、修正输入边界及补齐应用无法自行处理的布局入口；升级时请检查下方迁移项。
@@ -32,8 +32,8 @@
 Tooltip 示例展示粗体与斜体；窗口页提供全屏请求，并可通过“请求普通状态”退出。
 新文案随八种语言切换。菜单、文本、分割与动画继续通过原有页面体验。
 
-详细操作见 [Demo 使用说明](../example/demo/README.md#v081-修复展示)。公开附件
-发布前，README 保留 v0.8.0 的有效下载入口，不将旧程序标为 v0.8.1。
+详细操作见 [Demo 使用说明](../example/demo/README.md#v081-修复展示)。双语 README
+下载入口已更新至本次正式附件，历史截图与资源测量继续保留原版本标注。
 
 <a id="api-migration"></a>
 
@@ -95,7 +95,7 @@ DIP／物理尺寸，后者在原生绘制上下文中处理首帧，不等同�
 
 v0.8.1 is a repair release for popup reuse, desktop input, layout and rendering.
 API adjustments clarify ownership and expose controls needed to correct these behaviors.
-The source demo is **0.8.1 / build 1**; published downloads remain v0.8.0 until release.
+Released on **2026-11-20**, including Demo **0.8.1 / build 1** for all three targets.
 
 - Reuse one actual Popover, native popup and painter per Surface for built-in
   menus, dropdowns and tooltips. Stabilize geometry before showing, invalidate
@@ -132,3 +132,26 @@ Migration from v0.8.0:
 The demo retains nine pages and adds equal-row-height, scrollbar-layout,
 formatted-tooltip and fullscreen examples in their existing pages. All new
 labels support the existing eight languages.
+
+## 下载与验收范围 / Downloads and validation scope
+
+从 [v0.8.1 Release](https://github.com/golang-gui/goui/releases/tag/v0.8.1) 下载 Windows x64
+EXE、Linux x64/X11 程序或 macOS Apple Silicon ZIP。Linux 首次启动前执行
+`chmod +x goui-demo-v0.8.1-linux-amd64`；macOS 解压后打开 `GOUI Demo.app`。
+macOS 已完成 Developer ID 签名与 Apple 公证；Windows EXE 未做 Authenticode 签名。
+库升级使用 `go get github.com/golang-gui/goui@v0.8.1`。
+
+正式程序已在 Linux/X11 OpenGL、Windows Direct2D、macOS OpenGL 的 1x 环境完成
+输入、滚动、弹层、全屏和窗口调整操作验收。不据此承诺所有后端、真实 Retina／混合
+DPI 或移动设备均已验收。来源、摘要、详细范围和限制见 Release 的 BUILD-INFO.md；
+SHA256SUMS 用于下载校验。
+
+Download the Windows x64 EXE, Linux x64/X11 binary or macOS Apple Silicon ZIP from
+the release above. Mark the Linux binary executable with the command above; on macOS,
+extract and open `GOUI Demo.app`. The macOS app is Developer ID signed and Apple-notarized;
+the Windows EXE is not Authenticode-signed. Upgrade the module with the `go get` command above.
+
+Final programs passed interactive checks on Linux/X11 OpenGL, Windows Direct2D and
+macOS OpenGL at 1x. This does not cover every backend, physical Retina/mixed-DPI or mobile
+devices. See the release's BUILD-INFO.md for provenance, validation scope and limitations,
+and SHA256SUMS for download integrity.

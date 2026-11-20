@@ -24,23 +24,22 @@ The current version provides the foundations and controls needed for small deskt
 The [demo](example/demo) brings together controls, text editing, layouts, data views, detachable
 tabs, overlays, graphics, animations, and system integration. Switch between light/dark appearances, accent colors, and eight UI languages.
 
-The source demo is **0.8.1 / build 1**, prepared for a repair release covering
+The published demo is **0.8.1 / build 1**, a repair release covering
 popup reuse, fullscreen behavior, scrolling, split handles, keyboard focus and
 rendering quality. See the [v0.8.1 release notes](doc/ReleaseV081.md) for fixes
 and required API migration, and the [demo guide](example/demo/README.md) for examples.
 
-The downloads below remain **v0.8.0** until v0.8.1 is published.
 The screenshots were captured with Demo v0.6.0.
 
 | Platform | Demo download |
 | --- | --- |
-| Windows x64 | [Download EXE](https://github.com/golang-gui/goui/releases/download/v0.8.0/goui-demo-v0.8.0-windows-amd64.exe) |
-| macOS Apple Silicon | [Download .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.8.0/goui-demo-v0.8.0-darwin-arm64.zip) |
-| Linux x64 / X11 | [Download executable](https://github.com/golang-gui/goui/releases/download/v0.8.0/goui-demo-v0.8.0-linux-amd64) |
+| Windows x64 | [Download EXE](https://github.com/golang-gui/goui/releases/download/v0.8.1/goui-demo-v0.8.1-windows-amd64.exe) |
+| macOS Apple Silicon | [Download .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.8.1/goui-demo-v0.8.1-darwin-arm64.zip) |
+| Linux x64 / X11 | [Download executable](https://github.com/golang-gui/goui/releases/download/v0.8.1/goui-demo-v0.8.1-linux-amd64) |
 
-The downloads above are Demo **0.8.0 / build 1**. See the [release notes](https://github.com/golang-gui/goui/releases/tag/v0.8.0) and its BUILD-INFO.md / SHA256SUMS attachments for provenance and validation scope.
+The downloads above are Demo **0.8.1 / build 1**. See the [release notes](https://github.com/golang-gui/goui/releases/tag/v0.8.1) and its BUILD-INFO.md / SHA256SUMS attachments for provenance and validation scope.
 
-On Linux, run `chmod +x goui-demo-v0.8.0-linux-amd64` before launching it.
+On Linux, run `chmod +x goui-demo-v0.8.1-linux-amd64` before launching it.
 On macOS, extract and open `GOUI Demo.app`; the bundle is Developer ID signed and Apple-notarized.
 
 Windows — Direct2D, dark appearance
@@ -123,7 +122,7 @@ RSS includes resident shared-library pages; PSS apportions shared pages between 
 Core controls live in `gui`, with declarative bindings in `ui`. Additional controls live in
 `widgets`, with their declarative bindings in `widgets/ui`.
 
-### v0.8.1 repair release — in preparation
+### v0.8.1 repair release
 
 - **Popup stability:** stabilize size and position before showing reused menus, dropdowns and tooltips; clear retained contents and handle anchor changes without giving clients ownership of the shared host.
 - **Desktop behavior:** repair fullscreen transitions and menu placement, provide visible keyboard focus for tabs, and refresh focused custom text widgets after their input capability changes.

@@ -43,7 +43,7 @@ Linux 查询进程 locale 环境，中立 C/POSIX 由 GUI 默认英文；不修�
 ## v0.8.1 修复展示
 
 保留九类导航，桌面 Demo 不作为移动端适配完成的示例。源码构建配置为
-**0.8.1 / build 1**。当前为发布准备，公开下载仍是 v0.8.0；新版本的修复与 API 迁移见
+**0.8.1 / build 1**，三平台正式附件已发布；修复与 API 迁移见
 [v0.8.1 发布说明](../../doc/ReleaseV081.md)。
 
 - 基础页最下方增加“统一行高”，默认关闭。开启后四个直接子 ListRow 按当前宽度的
@@ -161,8 +161,8 @@ SplitView不为抓取带额外留白；Demo显式内缩相邻滚动控件，数�
 
 页面整体可纵向滚动，JSON 预览保留320 DIP阅读高度并独立滚动；窄窗口下仍可访问全部操作。
 
-当前公开附件仍为 Demo 0.8.0 / build 1，变化、迁移及验收边界见
-[v0.8.0 发布说明](../../doc/ReleaseV080.md)和该 Release 的 BUILD-INFO.md／SHA256SUMS。
+当前公开附件为 Demo 0.8.1 / build 1，变化、迁移及验收边界见
+[v0.8.1 发布说明](../../doc/ReleaseV081.md)和该 [Release](https://github.com/golang-gui/goui/releases/tag/v0.8.1) 的 BUILD-INFO.md／SHA256SUMS。
 三份附件来自同一 main 候选；macOS ZIP 已通过 Developer ID 签名、公证和最终解压验收。
 
 ## 代码组织与状态更新
