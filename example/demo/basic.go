@@ -24,6 +24,7 @@ type basicDemo struct {
 	radio         ui.State[int]
 	drop          ui.State[int]
 	fancyDrop     ui.State[int]
+	uniformRows   ui.State[bool]
 	choices       *gui.SliceListModel[widgets.DropDownItem]
 	baselineInput sampleInput
 }
@@ -113,6 +114,7 @@ func (d *basicDemo) view() ui.View {
 		ui.VBox(
 			ui.Label(resource.SettingsRows()).Style("demo-subheading"),
 			ui.Label(resource.SettingsRowsHint()).WrapMode(gui.WrapWordChar).Style(modern.MutedText),
+			wui.Switch(resource.UniformRows()).ID("settings-uniform").Checked(d.uniformRows.Get()).OnChange(d.uniformRows.Set),
 			wui.ListRowGroup(
 				wui.ListRow(resource.AutomaticUpdates()).ID("settings-updates").Subtitle(resource.AutomaticUpdatesHint()).
 					Prefix(ui.Icon(d.host.icons[0]).Size(24).Style(modern.AccentIcon)).
@@ -121,8 +123,8 @@ func (d *basicDemo) view() ui.View {
 					Suffix(ui.Label("›").Style(modern.MutedText)).Activatable(true).OnActivate(func() { d.host.report(resource.ListRowActivated()) }),
 				wui.ListRow(resource.DropDownTitle()).ID("settings-dropdown").Suffix(
 					wui.DropDown(d.choices).Selected(d.drop.Get()).MaxWidth(200).OnSelected(func(i int) { d.drop.Set(i) }).OnOpenError(func(err error) { d.host.result(resource.OpenDropDown(), err) })),
-				wui.ListRow(resource.VersionTitle()).ID("settings-version").Suffix(ui.Label("0.8.0")),
-			),
+				wui.ListRow(resource.VersionTitle()).ID("settings-version").Suffix(ui.Label("0.8.1")),
+			).ID("settings-rows").UniformRows(d.uniformRows.Get()),
 		).Spacing(12).CrossAlign(layout.CrossStretch),
 	)
 }

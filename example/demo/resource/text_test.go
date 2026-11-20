@@ -84,25 +84,39 @@ func TestEightLanguageResources(t *testing.T) {
 }
 
 // 八种译文必须保留同样的样式语义，显示文本中不应泄漏控制字符串。
-func TestFormattedLabelTranslations(t *testing.T) {
+func TestFormattedTranslations(t *testing.T) {
 	previous := mlang.Language()
 	t.Cleanup(func() { _ = mlang.SetLanguage(previous) })
 	for _, language := range []string{"en", "zh-CN", "ja", "ko", "de", "fr", "ru", "ar"} {
 		if err := mlang.SetLanguage(language); err != nil {
 			t.Fatal(err)
 		}
-		parsed, err := textformat.Parse(FormattedLabel())
-		if err != nil || !parsed.Formatted || strings.Contains(parsed.Plain, `\{`) {
-			t.Fatal(language, parsed, err)
-		}
-		found := map[string]bool{}
-		for _, run := range parsed.Runs {
-			for _, name := range run.Styles {
-				found[name] = true
+		for _, sample := range []struct {
+			name   string
+			text   mlang.Getter
+			styles []string
+		}{
+			{"Label", FormattedLabel, []string{"bold", "italic", "demo-accent-text"}},
+			{"Tooltip", TooltipText, []string{"bold", "italic"}},
+		} {
+			parsed, err := textformat.Parse(sample.text())
+			if err != nil || !parsed.Formatted || strings.Contains(parsed.Plain, `\{`) {
+				t.Fatal(sample.name, language, parsed, err)
 			}
-		}
-		if len(found) != 3 || !found["bold"] || !found["italic"] || !found["demo-accent-text"] {
-			t.Fatal("翻译改变了样式含义", language, found)
+			found := map[string]bool{}
+			for _, run := range parsed.Runs {
+				for _, name := range run.Styles {
+					found[name] = true
+				}
+			}
+			if len(found) != len(sample.styles) {
+				t.Fatal("翻译改变了样式数量", sample.name, language, found)
+			}
+			for _, name := range sample.styles {
+				if !found[name] {
+					t.Fatal("翻译丢失样式", sample.name, language, name)
+				}
+			}
 		}
 	}
 }
