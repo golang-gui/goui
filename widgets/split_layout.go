@@ -56,14 +56,14 @@ func (l *splitLayout) Measure(children []layout.Child, c layout.Constraint) layo
 	s, e := l.natural(children, c.Max)
 	main := v.axis(s.Size) + v.axis(e.Size)
 	if v.active() {
-		main += v.handleSize
+		main += v.lineWidth()
 	}
 	cross := max(v.cross(s.Size), v.cross(e.Size))
 	result := c.Clamp(v.size(main, cross))
 	// Re-measure at the allocated width/height for wrapping content. This is
 	// observational: Measure must not establish or overwrite the saved ratio.
 	if v.active() {
-		a := max(0, v.axis(result)-v.handleSize)
+		a := max(0, v.axis(result)-v.lineWidth())
 		position := splitAllocate(a, v.preference, v.axis(s.Size), v.axis(e.Size), v.start.limits(v), v.end.limits(v))
 		s = children[0].Measure(layout.Constraint{Min: v.size(position, 0), Max: v.size(position, v.cross(c.Max))})
 		e = children[1].Measure(layout.Constraint{Min: v.size(a-position, 0), Max: v.size(a-position, v.cross(c.Max))})
@@ -80,7 +80,7 @@ func (l *splitLayout) Arrange(children []layout.Child, rect geometry.Rectangle) 
 	}
 	start, end, gap := float32(0), float32(0), float32(0)
 	if v.active() {
-		gap = min(v.handleSize, main)
+		gap = min(v.lineWidth(), main)
 		a := main - gap
 		if v.preference.mode == splitAuto && a > 0 {
 			ratio := float32(.5)
@@ -109,20 +109,26 @@ func (l *splitLayout) Arrange(children []layout.Child, rect geometry.Rectangle) 
 		children[i].Arrange(childRect)
 	}
 	v.handle.SetVisible(v.active())
+	v.separator.SetVisible(v.active())
 	if !v.active() {
 		v.handle.cancel()
 		return
 	}
-	// The entire painted handle occupies this gap. Neither pane is covered
-	// by an extra hit region.
-	position, extent := start, gap
-	handleRect := geometry.Rectangle{Size: v.size(extent, cross)}
-	if v.direction == layout.DirectionVertical {
-		handleRect.Y = position
-	} else {
-		handleRect.X = position
+	axisRect := func(position, extent float32) geometry.Rectangle {
+		r := geometry.Rectangle{Size: v.size(extent, cross)}
+		if v.direction == layout.DirectionVertical {
+			r.Y = position
+		} else {
+			r.X = position
+		}
+		return r
 	}
-	v.handle.Arrange(handleRect)
+	v.separator.Arrange(axisRect(start, gap))
+	// Clip, rather than shift, the centered grab band at container edges.
+	// Its last-child order owns the covered pane edges, including intersections.
+	left := max(0, start+gap/2-v.handleSize/2)
+	right := min(main, start+gap/2+v.handleSize/2)
+	v.handle.Arrange(axisRect(left, max(0, right-left)))
 }
 func (v *SplitView) cross(size geometry.Size) float32 {
 	if v.direction == layout.DirectionVertical {

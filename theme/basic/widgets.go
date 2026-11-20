@@ -14,7 +14,6 @@ func WidgetRules() []style.Rule {
 	family, _ := label.FontFamily()
 	size, _ := label.FontSize()
 	focus, _ := base.Resolve(style.Sel{Name: "button", Part: "focus", State: style.FocusVisible}).BorderColor()
-	background, _ := base.Resolve(style.Sel{Name: "window"}).BackgroundColor()
 	rules := []style.Rule{
 		style.Name("tab-bar").BackgroundColor(color.Transparent),
 		style.Name("check-button").FontFamily(family).FontSize(size),
@@ -77,8 +76,6 @@ func WidgetRules() []style.Rule {
 		style.Name("tab-close-button-text").ForegroundColor(color.Black).FontFamily(family).FontSize(size),
 		style.Name("tab-scroll-button").BackgroundColor(color.Transparent).Radius(4).FontSize(size),
 		style.Name("tab-scroll-button-text").ForegroundColor(color.Black).FontFamily(family).FontSize(size),
-		style.Name("split-view").Part("handle-start").BackgroundColor(background),
-		style.Name("split-view").Part("handle-end").BackgroundColor(background),
 		style.Name("split-view").Part("separator").ForegroundColor(color.RGBA{R: 198, G: 198, B: 206, A: 255}).BorderWidth(1),
 		style.Name("split-view").Part("separator").State(style.FocusVisible).ForegroundColor(focus),
 		style.Name("dialog").Part("backdrop").BackgroundColor(color.NRGBA{A: 110}),
