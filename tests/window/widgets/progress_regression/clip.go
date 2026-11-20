@@ -23,27 +23,46 @@ import (
 // 任一断言失败panic；完成输出CLIP REGRESSION PASS并退出。-hold改为真实窗口倍率的
 // 完整圆环并保留窗口；按48/64 DIP、0/.25/.5相位、255/128透明度顺序每行排列四个。
 // 可截图检查顶部／左侧圆弧与滚动视口；关闭退出。副作用仅本例窗口和日志，不改系统设置。
-func runClip(chrome gui.WindowChromeMode, hold bool) {
+// -case=arc复用场景，改为7个旋转角度的四分之一圆弧叠加轨道。
+// 每个相交像素按64x64独立面积预期检查预乘RGBA，不只检查四个轴向位置。
+// 覆盖0/22.5/45/73/135/223/315度，1/1.25/1.5/2x、亮暗轨道、128/255前景alpha。
+// 旋转使用普通Painter变换，保持结构clip；-hold最终保留73度圆弧供桌面检查。
+// 此模式的质量预算已在Linux OpenGL／Software通过；Direct2D的既有差异见
+// doc/PlanFractionalClipping.md，失败仍正常报告，不据此放宽断言。
+func runClip(chrome gui.WindowChromeMode, hold, arcs bool) {
 	app, err := gui.NewApplication("org.golang-gui.ClipRegression")
 	must(err)
 	win, err := app.NewWindow(&gui.WindowOptions{Size: geometry.Size{Width: 820, Height: 500}, Chrome: chrome})
 	must(err)
 	defer win.Destroy()
 	must(win.SetTitle("GOUI fractional clipping regression"))
-	scene := newClipScene()
+	scene := newClipScene(arcs)
 	win.SetWidget(scene)
 	stage, painted := 0, -1
 	var nativeScale float32
 	scales := []float32{1, 1.25, 1.5, 2}
 	values := []float32{1, .25, .75}
+	angles := []float64{0, 22.5, 45, 73, 135, 223, 315}
+	stages := 24
+	if arcs {
+		stages = len(angles) * 8
+	}
 	configure := func() {
 		s := scales[stage%4]
 		dark := stage/4%2 == 1
-		value := values[stage/8]
+		value := float32(1)
+		if arcs {
+			scene.angle = angles[stage/8]
+		} else {
+			value = values[stage/8]
+		}
+		scene.dark = dark
 		scene.scale = s
 		scene.revision = stage
 		for _, r := range scene.rings {
-			r.bar.SetValue(value)
+			if r.bar != nil {
+				r.bar.SetValue(value)
+			}
 		}
 		foreground := color.Black
 		background := color.White
@@ -81,19 +100,31 @@ func runClip(chrome gui.WindowChromeMode, hold bool) {
 		}
 		img, err := gui.RenderWidget(scene, scene.scale)
 		must(err)
-		scene.check(img, values[stage/8])
-		fmt.Printf("CLIP CASE PASS scale=%g dark=%t value=%g\n", scene.scale, stage/4%2 == 1, values[stage/8])
+		if arcs {
+			err := scene.checkArcs(img)
+			fmt.Printf("ARC CASE PASS scale=%g dark=%t angle=%g max-error=%.3f\n", scene.scale, scene.dark, scene.angle, err)
+		} else {
+			scene.check(img, values[stage/8])
+			fmt.Printf("CLIP CASE PASS scale=%g dark=%t value=%g\n", scene.scale, scene.dark, values[stage/8])
+		}
 		stage++
-		if stage == 24 {
+		if stage == stages {
 			timer.Stop()
-			fmt.Println("CLIP REGRESSION PASS")
+			if arcs {
+				fmt.Println("ARC REGRESSION PASS")
+			} else {
+				fmt.Println("CLIP REGRESSION PASS")
+			}
 			if !hold {
 				win.Destroy()
 			} else {
-				// 保留真实窗口倍率下的完整圆环，便于检查半像素位置的桌面呈现。
+				// 保留真实窗口倍率的完整环或73度圆弧，检查半像素位置的桌面呈现。
 				scene.scale, scene.revision = nativeScale, stage
+				scene.angle = 73
 				for _, r := range scene.rings {
-					r.bar.SetValue(1)
+					if r.bar != nil {
+						r.bar.SetValue(1)
+					}
 				}
 				scene.RequestLayout()
 			}
@@ -109,6 +140,7 @@ func runClip(chrome gui.WindowChromeMode, hold bool) {
 }
 
 type clipRing struct {
+	widget      gui.Widget
 	bar         *widgets.ProgressBar
 	size, phase float32
 	alpha       uint8
@@ -117,26 +149,34 @@ type clipScene struct {
 	gui.WidgetBase
 	rings              []clipRing
 	scale              float32
+	arcs, dark         bool
+	angle              float64
 	revision, arranged int
 	probes             []*clipProbe
 	scroll             *gui.ScrollView
 	viewport           *gui.WidgetBase
 }
 
-func newClipScene() *clipScene {
-	s := &clipScene{scale: 1, arranged: -1}
+func newClipScene(arcs bool) *clipScene {
+	s := &clipScene{scale: 1, arranged: -1, arcs: arcs}
 	for _, size := range []float32{48, 64} {
 		for _, phase := range []float32{0, .25, .5} {
 			for _, alpha := range []uint8{255, 128} {
-				p := widgets.NewProgressBar()
-				p.SetShape(widgets.ProgressCircular)
-				p.SetThickness(4)
-				p.SetStyleName("clip-ring")
-				if alpha == 128 {
-					p.SetStyleName("clip-alpha")
+				r := clipRing{size: size, phase: phase, alpha: alpha}
+				if arcs {
+					r.widget = &clipArc{scene: s, alpha: alpha}
+				} else {
+					p := widgets.NewProgressBar()
+					p.SetShape(widgets.ProgressCircular)
+					p.SetThickness(4)
+					p.SetStyleName("clip-ring")
+					if alpha == 128 {
+						p.SetStyleName("clip-alpha")
+					}
+					r.widget, r.bar = p, p
 				}
-				s.rings = append(s.rings, clipRing{p, size, phase, alpha})
-				s.WidgetBase.AddChild(s, p)
+				s.rings = append(s.rings, r)
+				s.WidgetBase.AddChild(s, r.widget)
 			}
 		}
 	}
@@ -240,8 +280,8 @@ func (s *clipScene) check(img image.Image, value float32) {
 		for _, pt := range samples {
 			coverage := ringPixelArea(pt, cx, cy, rad, rad-float64(4*scale), float64(value))
 			got := rgbaAt(img, pt.X, pt.Y)
-			// NanoVG默认曲线离散精度0.25物理像素；允许相应覆盖率差，加2级量化。
-			// 半像素处完整圆环应约半覆盖，旧裁剪将其变成0，仍明确超出此误差界限。
+			// 此模式检查clip是否保留轴向半覆盖，保留25%覆盖差及2级量化预算。
+			// 旧裁剪将半覆盖变成0；完整轮廓的更严格质量断言由arc模式执行。
 			want := coverage * float64(v.alpha)
 			tolerance := float64(v.alpha)*.25 + 2
 			if math.Abs(float64(got.A)-want) > tolerance || absByte(got.R, got.A) > 1 || got.G != 0 || got.B != 0 {
@@ -257,6 +297,11 @@ func (s *clipScene) check(img image.Image, value float32) {
 			}
 		}
 	}
+	s.checkProbes(img)
+}
+
+func (s *clipScene) checkProbes(img image.Image) {
+	scale := s.scale
 	// 显式裁剪、空裁剪／恢复：独立逻辑区域再求物理包络。
 	r := s.probes[0].Rect()
 	c := geometry.Rect(r.X+2.5/scale, r.Y+3.25/scale, 3/scale, 2.5/scale)
@@ -287,6 +332,130 @@ func (s *clipScene) check(img image.Image, value float32) {
 		}
 	}
 }
+
+type clipArc struct {
+	gui.WidgetBase
+	scene *clipScene
+	alpha uint8
+}
+
+func (a *clipArc) Paint(p gui.Painter) {
+	radius := a.Rect().Width / 2
+	track := a.scene.trackColor()
+	p.FillPath(qualityRingPath(radius, radius-4, true), graphics.RGB(track.R, track.G, track.B))
+	// 面积参考从顶部向右递增，显式按仿射矩阵的旋转方向换算。
+	p.SetTransform(geometry.Translate(radius, radius).Multiply(geometry.Rotate(-float32(a.scene.angle))).Multiply(geometry.Translate(-radius, -radius)))
+	p.FillPath(qualityRingPath(radius, radius-4, false), graphics.RGBA(69, 128, 217, a.alpha))
+}
+
+func (s *clipScene) trackColor() color.RGBA {
+	if s.dark {
+		return color.RGBA{R: 70, G: 70, B: 74, A: 255}
+	}
+	return color.RGBA{R: 225, G: 225, B: 227, A: 255}
+}
+
+// 通过公开Path表达标准圆与圆端帽；预期用下面的独立圆面积积分计算。
+func qualityRingPath(outer, inner float32, full bool) graphics.Path {
+	p := graphics.MoveTo(outer, 0)
+	if full {
+		return p.ArcTo(outer, outer, 0, 0, 1, outer, 2*outer).
+			ArcTo(outer, outer, 0, 0, 1, outer, 0).Close().
+			MoveTo(outer, outer-inner).Hole().
+			ArcTo(inner, inner, 0, 0, 0, outer, outer+inner).
+			ArcTo(inner, inner, 0, 0, 0, outer, outer-inner).Close()
+	}
+	half := (outer - inner) / 2
+	return p.ArcTo(outer, outer, 0, 0, 1, 2*outer, outer).
+		ArcTo(half, half, 0, 0, 1, outer+inner, outer).
+		ArcTo(inner, inner, 0, 0, 0, outer, outer-inner).
+		ArcTo(half, half, 0, 0, 1, outer, 0).Close()
+}
+
+func (s *clipScene) checkArcs(img image.Image) float64 {
+	track := s.trackColor()
+	maxError := float64(0)
+	for _, ring := range s.rings {
+		r := ring.widget.Rect().Scale(s.scale)
+		cx, cy, outer := float64(r.X+r.Width/2), float64(r.Y+r.Height/2), float64(r.Width/2)
+		bounds := pixelEnvelope(r.Inset(-1), 1)
+		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+			for x := bounds.Min.X; x < bounds.Max.X; x++ {
+				t, f := arcPixelAreas(image.Pt(x, y), cx, cy, outer, outer-float64(4*s.scale), s.angle*math.Pi/180)
+				f *= float64(ring.alpha) / 255
+				want := [4]float64{69*f + float64(track.R)*t*(1-f), 128*f + float64(track.G)*t*(1-f), 217*f + float64(track.B)*t*(1-f), 255 * (f + t*(1-f))}
+				got := rgbaAt(img, x, y)
+				for i, value := range [4]uint8{got.R, got.G, got.B, got.A} {
+					err := math.Abs(float64(value) - want[i])
+					maxError = max(maxError, err)
+					// 1/16物理像素的曲线误差、线性AA与面积覆盖的差别及2级量化。
+					// 此边缘用例保留12%覆盖差预算；精确clip／边框仍使用原1级容差。
+					if err > 255*.12+2 {
+						panic(fmt.Sprintf("圆弧 size=%g phase=%g alpha=%d scale=%g angle=%g (%d,%d)=%v want=%v", ring.size, ring.phase, ring.alpha, s.scale, s.angle, x, y, got, want))
+					}
+				}
+			}
+		}
+	}
+	s.checkProbes(img)
+	return maxError
+}
+
+// 点到单位像素方形的最近／最远平方距离，可直接判定完全内／外区域。
+func diskPixelBounds(pt image.Point, cx, cy float64) (float64, float64) {
+	dx, dy := math.Abs(float64(pt.X)+.5-cx), math.Abs(float64(pt.Y)+.5-cy)
+	return math.Pow(max(0, dx-.5), 2) + math.Pow(max(0, dy-.5), 2), (dx+.5)*(dx+.5) + (dy+.5)*(dy+.5)
+}
+
+func arcPixelAreas(pt image.Point, cx, cy, outer, inner, angle float64) (float64, float64) {
+	sn, cs := math.Sin(angle), math.Cos(angle)
+	middle, half := (outer+inner)/2, (outer-inner)/2
+	sx, sy, ex, ey := cx+middle*sn, cy-middle*cs, cx+middle*cs, cy+middle*sn
+	near, far := diskPixelBounds(pt, cx, cy)
+	t, f := float64(-1), float64(-1)
+	if near >= outer*outer || far <= inner*inner {
+		t = 0
+	} else if near >= inner*inner && far <= outer*outer {
+		t = 1
+	}
+	ns, fs := diskPixelBounds(pt, sx, sy)
+	ne, fe := diskPixelBounds(pt, ex, ey)
+	dx, dy := float64(pt.X)+.5-cx, float64(pt.Y)+.5-cy
+	dot1, dot2, reach := dx*sn-dy*cs, dx*cs+dy*sn, .5*(math.Abs(sn)+math.Abs(cs))
+	if t == 1 && dot1 >= reach && dot2 >= reach || fs <= half*half || fe <= half*half {
+		f = 1
+	} else if (t == 0 || dot1+reach <= 0 || dot2+reach <= 0) && ns >= half*half && ne >= half*half {
+		f = 0
+	}
+	if t >= 0 && f >= 0 {
+		return t, f
+	}
+	const samples = 64
+	trackCount, arcCount := 0, 0
+	for y := 0; y < samples; y++ {
+		for x := 0; x < samples; x++ {
+			px, py := float64(pt.X)+(float64(x)+.5)/samples, float64(pt.Y)+(float64(y)+.5)/samples
+			dx, dy := px-cx, py-cy
+			r2 := dx*dx + dy*dy
+			inRing := r2 >= inner*inner && r2 <= outer*outer
+			if inRing {
+				trackCount++
+			}
+			if inRing && dx*sn-dy*cs >= 0 && dx*cs+dy*sn >= 0 ||
+				(px-sx)*(px-sx)+(py-sy)*(py-sy) <= half*half || (px-ex)*(px-ex)+(py-ey)*(py-ey) <= half*half {
+				arcCount++
+			}
+		}
+	}
+	if t < 0 {
+		t = float64(trackCount) / (samples * samples)
+	}
+	if f < 0 {
+		f = float64(arcCount) / (samples * samples)
+	}
+	return t, f
+}
+
 func ringPixelArea(pt image.Point, cx, cy, outer, inner, value float64) float64 {
 	const n = 64
 	middle, half := (outer+inner)/2, (outer-inner)/2
