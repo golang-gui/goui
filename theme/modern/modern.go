@@ -188,8 +188,6 @@ func builtInRules(options Options) []style.Rule {
 		style.Name("tree-expander").State(style.Pressed).ForegroundColor(p.text).BackgroundColor(p.menuPressed),
 		text("tree-item-text"),
 		style.Name("tree-item-icon").ForegroundColor(p.text),
-		style.Name("split-view").Part("handle-start").BackgroundColor(p.window),
-		style.Name("split-view").Part("handle-end").BackgroundColor(p.window),
 		style.Name("split-view").Part("separator").ForegroundColor(mix(p.window, p.text, .18)).BorderWidth(1),
 		style.Name("split-view").Part("separator").State(style.FocusVisible).ForegroundColor(accent),
 		style.Name("split-view").Part("separator").State(style.Disabled).ForegroundColor(p.disabled),

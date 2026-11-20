@@ -9,17 +9,21 @@ import (
 	"github.com/golang-gui/goui/layout"
 )
 
-const defaultSplitHandleSize float32 = 3
+const defaultSplitHandleSize float32 = 5
 
 // SplitView lays out two independently styled panes separated by a draggable
 // handle. Horizontal means left/right, Vertical means top/bottom. Nest views
-// for more panes. All operations and signals belong to the GUI thread.
+// for more panes. Only the normal separator part's BorderWidth reserves space.
+// The transparent handle overlaps pane edges and has pointer/drag priority over
+// their contents, including nested handles. Applications must inset competing
+// controls themselves. All operations and signals belong to the GUI thread.
 type SplitView struct {
 	gui.WidgetBase
 	direction          layout.Direction
 	handleSize         float32
 	start, end         *splitPane
 	handle             *splitHandle
+	separator          *splitSeparator
 	preference         splitPreference
 	startSize, endSize float32
 	resize             signal.Signal3[float32, float32, func() bool]
@@ -47,8 +51,12 @@ func NewSplitView(direction layout.Direction) *SplitView {
 	v := &SplitView{direction: layout.DirectionHorizontal, handleSize: defaultSplitHandleSize}
 	v.start, v.end = newSplitPane(), newSplitPane()
 	v.handle = newSplitHandle(v)
+	v.separator = &splitSeparator{view: v}
 	v.WidgetBase.AddChild(v, v.start)
 	v.WidgetBase.AddChild(v, v.end)
+	v.WidgetBase.AddChild(v, v.separator)
+	// Last-child picking gives the handle the same priority for hover, cursor
+	// selection and pointer down, without a parent fallback gesture.
 	v.WidgetBase.AddChild(v, v.handle)
 	v.SetLayoutManager(&splitLayout{view: v})
 	v.SetMainWeight(1)
@@ -71,14 +79,16 @@ func (v *SplitView) SetDirection(direction layout.Direction) {
 	v.RequestLayout()
 }
 
-// HandleSize returns the preferred separator region thickness in DIP.
+// HandleSize returns the preferred pointer grab thickness in DIP.
 // It is a width for left/right panes and a height for top/bottom panes.
 func (v *SplitView) HandleSize() float32 { return v.handleSize }
 
-// SetHandleSize sets the space reserved for painting and dragging the handle.
-// Zero restores the default of 3 DIP; negative and non-finite values are ignored.
-// A hard parent constraint may reduce the allocation without changing this value.
-// The separator line's appearance is independent and comes from style parts.
+// SetHandleSize sets the transparent pointer grab thickness, not pane spacing.
+// Zero restores the default of 5 DIP; negative and non-finite values are ignored.
+// The grab rectangle is centered on the line and clipped to this SplitView.
+// It wins pointer targeting over covered pane contents. Applications must inset
+// competing buttons, scrollbars and text interactions; no padding is added here.
+// The separator part independently controls line width and color.
 func (v *SplitView) SetHandleSize(size float32) {
 	if v.Destroyed() || !splitFinite(size) || size < 0 {
 		return
@@ -163,8 +173,8 @@ func (v *SplitView) setChild(pane *splitPane, child gui.Widget) {
 func (v *SplitView) SetStartSize(size float32) { v.setPreference(splitStart, size) }
 func (v *SplitView) SetEndSize(size float32)   { v.setPreference(splitEnd, size) }
 
-// SetRatio keeps the preferred start share of the space excluding the handle
-// region. Values are clamped to [0,1]; non-finite values are ignored.
+// SetRatio keeps the preferred start share of the space excluding the normal
+// separator line width. Values are clamped to [0,1]; non-finite values are ignored.
 // Without any sizing setter, the initial share comes from child measurement.
 func (v *SplitView) SetRatio(ratio float32) { v.setPreference(splitRatio, ratio) }
 func (v *SplitView) setPreference(mode splitSizing, value float32) {
@@ -224,7 +234,20 @@ func (v *SplitView) point(point geometry.Point) float32 {
 func (v *SplitView) limits(available float32) (float32, float32) {
 	return splitBounds(available, v.start.limits(v), v.end.limits(v))
 }
-func (v *SplitView) available() float32 { return max(0, v.axis(v.Rect().Size)-v.handleSize) }
+func (v *SplitView) available() float32 { return max(0, v.axis(v.Rect().Size)-v.lineWidth()) }
+
+// State-dependent color is feedback; width always comes from Normal so hover,
+// press and keyboard focus cannot move the panes or their nested intersections.
+func (v *SplitView) lineWidth() float32 {
+	width, ok := v.partStyle("separator", 0).BorderWidth()
+	if !ok {
+		return 1
+	}
+	if !splitFinite(width) || width < 0 {
+		return 0
+	}
+	return width
+}
 
 func (v *SplitView) adjust(start float32) {
 	if v.Destroyed() || !v.active() {

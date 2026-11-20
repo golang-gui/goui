@@ -2,11 +2,11 @@
 
 ## 范围与归属
 
-命令式控件位于 widgets，声明式薄封装位于 widgets/ui，Basic 与 Modern 提供完整样式。
-两区可嵌套；Horizontal 表示左右、Vertical 表示上下，Start 为左／上，End 为右／下。
-不修改平台、GUI 命中、手势优先级或 Root，不引入 Docking、吸附和持久化。
+命令式控件位于widgets，声明式薄封装位于widgets/ui；Basic和Modern提供线条样式。
+Horizontal表示左右、Vertical表示上下，Start为左／上，End为右／下。允许嵌套。
+本控件只调整自己的布局和子控件顺序，不修改platform、全局命中、光标或手势仲裁。
 
-## 接口与尺寸偏好
+## 公共接口与尺寸偏好
 
 ```go
 func NewSplitView(direction layout.Direction) *SplitView
@@ -25,106 +25,110 @@ func (*SplitView) Sizes() (start, end float32)
 func (*SplitView) ConnectResize(func(start, end float32)) signal.Handle
 ```
 
-HandleSize 是真实分隔区域沿分割主轴的厚度，单位 DIP，默认3。0恢复默认，负数及
-非有限值忽略，正数允许小数。左右分区占宽，上下分区占高。硬父约束可以减少实际
-分配，不改写期望值。单侧缺失／隐藏时不显示或占位，恢复后继续采用原尺寸偏好。
+HandleSize仅表示指针抓取带的期望厚度，单位DIP，默认5。0恢复默认；负数和非有限值
+忽略，正小数有效。抓取带以分隔线为中心，受本SplitView边界裁剪，不平移补足。
+它不增加面板间距，也不限制线宽。线宽可大于抓取宽度；额外线条没有拖动动作。
 
-StartSize／EndSize／Ratio 互斥，最后 setter 生效。固定尺寸表示面板本身，不包含
-分隔区域；比例只针对扣除分隔区域后的可用空间。负面板尺寸归零，比例钳制到0..1，
-非有限值忽略。Sizes 是当前分配结果。首选尺寸与实际分配分开，约束解除后恢复。
+StartSize／EndSize／Ratio互斥，最后setter生效；固定尺寸指面板自身，Ratio只针对
+扣除常态线宽后的可用空间。负面板尺寸归零，比例钳制到0..1，非有限值忽略。
+Sizes返回当前分配；首选值独立保存，约束解除后恢复。Measure不提交或重置比例；
+首次双侧非空Arrange按两侧自然测量建立比例，两侧均零则取0.5。
 
-没有尺寸声明时，首次非空双侧 Arrange 按两侧 Loose 测量主轴尺寸建立比例；两侧
-均零时取0.5。Measure、内容重测、样式及窗口缩放不改写已经建立的偏好。
-拖动按当前模式更新比例或固定尺寸。只有用户调整和取消拖动的恢复发送 Resize；
-配置、Measure、Arrange 不发送。修改 HandleSize、方向或内容时先按原规则取消拖动，
-取消导致的恢复通知仍保留。回调可能卸载或销毁，继续访问前须重新检查有效期。
+仅用户拖动、键盘调整及取消时恢复大小发送Resize。程序配置、测量、样式、窗口变化
+不发送用户调整；修改方向、HandleSize或内容时先取消活动拖动。回调可以卸载或销毁
+控件，之后检查生命周期和Root，不用清空信号代替保护，不递归发送取消恢复通知。
+新内容须未挂载、未销毁且不能形成循环；替换只卸载旧内容，不销毁它。
 
-新子控件须未挂载、未销毁且不能形成循环；替换只卸载旧内容，不销毁。内容子树与
-结构 pane 不混为样式继承体系；私有 pane 提供布局和裁剪，应用内容保留自身样式。
+## 面板布局与抓取几何
 
-## 布局、绘制与输入使用同一个区域
-
-双侧存在时：g=min(HandleSize, max(0, extent))，a=max(0, extent-g)。分配关系为
-[start pane][handle g DIP][end pane]。三个矩形不重叠，覆盖整个主轴。
+设主轴尺寸为m，常态线宽为w，g=min(w,max(0,m))，a=max(0,m-g)：
 
 ```text
-lo = max(startMin, a-endMax)
-hi = min(startMax, a-endMin)
-start = clamp(preferredStart, lo, hi)
-end = a-start
+[start pane][line g DIP][end pane]
+center = start + g/2
+handleStart = max(0, center-HandleSize/2)
+handleEnd   = min(m, center+HandleSize/2)
 ```
 
-主轴约束来自两侧内容根控件的 MinSize／MaxSize，MaxSize 的0表示无上限；自然测量
-尺寸不是硬最小值。最小尺寸之和超过空间时同比例压缩，父约束优先；最大尺寸之和不足时放松上限并填满。
-单侧 min 大于 max 时以 min 为下限。交叉轴填满；先自然测量，再按实际主轴分配重测。
-默认 MainWeight=1。布局继续经过 layout.Child，保留测量缓存和样式失效机制。
+默认w=1、HandleSize=5，抓取带覆盖两侧面板各2 DIP。改变HandleSize不减少面板空间。
+线宽0时两侧直接相接，透明抓取带仍有效；单侧缺失或隐藏时，线和把手均隐藏且不占位，
+剩余面板填满。恢复双侧后继续使用原尺寸偏好。
 
-整个 handle 矩形都是可拖动区域，包括线两侧的背景。悬停立即显示方向对应的调整
-光标；按下经既有 DragEventController 立即认领，保留抓取偏移；捕获后移出仍可拖动。
-删除原来扩出布局的命中范围、父级后备手势及依赖该手势的 Cursor 覆盖。
-滚动条、按钮、文本拖选在各自面板内正常接收输入，不按控件类型设置特殊优先级。
+主轴约束来自内容根控件的MinSize／MaxSize，MaxSize的0表示无上限；自然测量不是
+硬最小值。最小值之和超过空间时同比例压缩，父约束优先；最大值不足时放松并填满。
+交叉轴填满；先自然测量，再按实际主轴分配重测。默认MainWeight=1。
+私有pane维持内容裁剪，通过layout.Child保留测量缓存和样式失效路径。
 
-方向键1 DIP、Shift方向键10 DIP，Home／End 到有效范围端点，Esc 恢复拖动前偏好。
-卸载、丢失捕获、方向或尺寸配置变化都会清理活动拖动；松手不重新应用取消的位置。
-Snapshot 保留一个 RoleSeparator，其 Bounds 就是完整 handle，含焦点、范围和 Focus
-动作。两色背景和细线都是绘制 Part，不增加语义节点或交互动作。
+**SplitView不会为了抓取带给面板增加Padding、缩小内容或移动滚动条。**
+需要完整接收指针的按钮、滚动条、编辑器或其他拖动目标，由应用显式避让抓取带。
+默认可以在对应面板内侧留2 DIP；非默认配置按实际线宽和抓取带计算。
+只内缩内容，不给嵌套SplitView整体加空槽，才能保持其分隔线与外层线直接相接。
 
-## 三个样式 Part
+## 输入所有权与嵌套交点
 
-默认样式名 split-view。自定义 StyleName 同时选择三个 Part；通过 ResolveWidgetStyle
-遵守最近的 StyleScope，不读取或继承面板控件的背景。不再使用旧的 split-handle 规则。
+抓取带是最后一个内部子控件，沿正常逆序命中获得本SplitView内最高目标优先级。
+同一矩形决定光标、Hover、指针按下和Drag；覆盖区不穿透激活下面的按钮，不向下面
+的滚动条或文本拖选让步。按下经既有DragEventController立即认领，保留抓取偏移。
+没有父级后备候选、额外阈值或按控件类型判断的特殊优先级。
 
-| Part | 字段 | 几何 |
-| --- | --- | --- |
-| handle-start | BackgroundColor | 起始侧半区 |
-| handle-end | BackgroundColor | 结束侧半区 |
-| separator | ForegroundColor、BorderWidth | 居中的细线 |
+嵌套交点的重叠区域由外层把手优先命中。已经从内层或其他控件开始的捕获仍属于
+原目标，移动经过交点不抢夺、不切换方向；这不是跨窗口或高于模态层的全局优先级。
+方向键移动1 DIP、Shift方向键10 DIP，Home／End到有效端点，Esc恢复拖动前偏好。
+卸载、捕获丢失或相关配置改变取消拖动，松手不重新应用已取消的位置。
 
-两个半区共用同一个中心边界，直接各绘制一次，没有 handle 底色和隐式回退层。
-统一背景时配置相同颜色；侧栏场景复用应用的侧栏／内容背景色，各自填满半区，
-中间细线最后覆盖。半透明颜色按 source-over 合成，透明度不影响命中。
+内层横线延伸到其面板边界，与外层竖线的实际边缘相接，反向嵌套同理；左右两侧
+横线对齐时可组成十字。框架不自动联动两个独立分隔位置，也不提供同时拖动两轴的手柄。
 
-默认线宽1 DIP。默认3 DIP区域下，线两侧各有1 DIP可见背景。实际线宽钳制到区域
-厚度内；0、负值或非有限线宽不绘制细线，但不改变分隔占位或拖动范围。
-样式中的线宽只影响绘制，不参与面板布局。半区只消费背景色，separator 只消费
-线色和线宽，不借用 BorderSides、Shadow 或 Radius 扩展范围。
+Snapshot保留两个真实内容子树和一个RoleSeparator；其Bounds为实际抓取带，允许
+与内容边界重叠，保留焦点、范围及Focus动作。私有线条绘制节点无额外交互语义。
+线条与抓取使用不同内部节点，线宽不会被抓取矩形裁去，抓取带也不绘制背景。
 
-三个 Part 使用同一 handle 的 Hovered／Pressed／Disabled／FocusVisible 状态。
-普通鼠标焦点不保留高亮；键盘焦点通过 separator 的 FocusVisible 色提供反馈。
-Basic 两侧用已有窗口底色和中性线，Modern 用窗口底色、分隔色与已有焦点色；默认
-悬停／按下不增加新配色，应用可按 Part 状态覆盖。侧栏的两侧背景不被统一底色盖住。
+## 单一separator Part
+
+默认StyleName为split-view；自定义StyleName同时选择separator，遵守最近StyleScope。
+不读取或继承内容背景，不提供handle-start／handle-end Part或公共背景填充层。
+
+| 字段 | 契约 |
+| --- | --- |
+| BorderWidth（Normal） | 实际线宽及布局占位；默认1 DIP。0隐藏，负数／非有限值按0处理；缺省使用1 DIP。 |
+| ForegroundColor（状态） | 线条颜色，使用把手的Hovered／Pressed／Disabled／FocusVisible状态。 |
+
+BorderWidth只读取Normal；状态规则里的线宽不改变布局或绘制厚度，防止反馈造成位移。
+Basic与Modern默认使用中性色，FocusVisible使用已有焦点色；普通鼠标焦点不保留高亮。
+Hover／Pressed默认不变色，应用可以覆盖。隐藏线条时应用需另行提供所需的焦点提示。
 
 ```go
-wui.HSplit(sidebar, content).HandleSize(3).Style("sidebar-split")
+wui.HSplit(sidebar, content).HandleSize(5).Style("sidebar-split")
 
-style.Name("sidebar-split").Part("handle-start").BackgroundColor(sidebarBackground)
-style.Name("sidebar-split").Part("handle-end").BackgroundColor(contentBackground)
 style.Name("sidebar-split").Part("separator").ForegroundColor(separatorColor).BorderWidth(1)
+style.Name("sidebar-split").Part("separator").State(style.Hovered).ForegroundColor(hoverColor)
 ```
 
 ## 声明式与迁移
 
-widgets/ui 增加 HandleSize，Update 调用相同 setter；省略或0恢复3 DIP，不引入另一套
-状态机。Start／End 双 Bin、OnResize 连接和受控／非受控尺寸契约不变。应用受控
-尺寸仍应在 OnResize 更新模型，重建不声明面板尺寸时保留用户调整。
+widgets/ui的HandleSize只转发相同setter；省略或0恢复5 DIP。Start／End双Bin、
+OnResize连接、受控／非受控尺寸行为不变，应用受控尺寸仍应随OnResize更新模型。
 
-旧1 DIP占位改为默认3 DIP，面板可用空间因此减少2 DIP；应用需要其他厚度时显式设置。
-旧 split-handle.ForegroundColor 样式迁到 split-view 的 separator Part，并配置
-两个背景 Part。不保留两套样式名称查找路径。
+原先整个3／5 DIP分隔带占位的规则改为仅常态线宽占位，移除两侧背景Part。
+应用迁移到separator线色／线宽，并显式避让有指针交互的相邻控件。
+不保留旧split-handle样式名、两背景Part或自动保护相邻控件的兼容路径。
 
 ## 参考与验证
 
-Qt 6.8.3 的 [handleWidth](https://github.com/qt/qtbase/blob/v6.8.3/src/widgets/widgets/qsplitter.cpp#L1604)
-区分把手布局厚度，0／1的 tiny 模式另有重叠抓取。GOUI 采用实际占位、自定义外观的
-思路，默认3 DIP是本项目的取舍，不采用越过布局边界的重叠抓取，也不复制 Qt 子类接口。
+Qt 6.8的[handleWidth公开契约](https://doc.qt.io/qt-6.8/qsplitter.html#handleWidth-prop)
+允许0／1宽度时扩大实际抓取区；[Qt 6.8.3源码](https://github.com/qt/qtbase/blob/v6.8.3/src/widgets/widgets/qsplitter.cpp#L204)
+通过内容边距和mask区分绘制与抓取。GTK 4.18.6的
+[get_handle_area](https://github.com/GNOME/gtk/blob/4.18.6/gtk/gtkpaned.c#L303)
+在非wide-handle模式扩大拖动判断范围。以上为公开契约及源码行为，未在本轮运行这些框架。
+GOUI采用细占位与宽抓取分开的思路，使用本身的Widget子序及事件捕获，不移植原生mask
+或修改全局事件系统；默认5 DIP抓取宽度和明确的应用避让是本项目的选择。
 
-widgets/split_view_test.go 保留1 DIP显式配置下既有分配／约束／键盘断言，另独立覆盖
-默认3 DIP、1／1.5／3／5／9厚度、全区域命中与区域外输入、双向及嵌套、动态取消、
-焦点、语义和三Part作用域。Software 以独立物理边界和预乘合成公式覆盖整数／小数
-位置及1／1.25／1.5／2x，不能只比较两条可能同时出错的渲染路径。
-widgets/ui/split_test.go 验证厚度声明及默认恢复，并保留稳定子树与受控／非受控行为。
-窗口入口 tests/window/widgets/split_view 覆盖 GUI／UI、侧栏异色、动态厚度、细线、
-两侧滚动和真实悬停光标；本轮结果见 Plan，不把编译或仅窗口启动记为操作验收。
+包内回归保留布局、约束、测量缓存、键盘、取消、生命周期和声明式协调覆盖；新增
+抓取覆盖优先、区域外控件独立操作、嵌套交点及跨交点捕获、线宽和抓取独立、零线宽、
+极小父约束和样式反馈不移动布局的断言。Software离屏验证预乘RGBA、透明抓取带、
+整数／小数位置和1／1.25／1.5／2x。窗口入口tests/window/widgets/split_view通过
+真实输入检查光标、动态配置、显式避让，并对实际后端及桌面交点做像素检查。
+本轮结果见Plan；编译、离屏绘制或仅启动窗口均不代替桌面操作验收。
 
 ## 历史记录
 

@@ -175,36 +175,26 @@ func (v *SplitView) partStyle(part string, state style.State) style.Style {
 	return gui.ResolveWidgetStyle(v, name, part, state)
 }
 
-func (h *splitHandle) Paint(p gui.Painter) {
-	v, state := h.view, h.paintState()
-	main, cross := v.axis(h.Rect().Size), v.cross(h.Rect().Size)
-	if main <= 0 || cross <= 0 {
+// The line and grab band have separate bounds: neither clips nor enlarges the
+// other. This decoration is omitted from SplitView's semantic snapshot.
+type splitSeparator struct {
+	gui.WidgetBase
+	view *SplitView
+}
+
+func (s *splitSeparator) Paint(p gui.Painter) {
+	v := s.view
+	if s.Rect().Width <= 0 || s.Rect().Height <= 0 {
 		return
 	}
-	// The halves share one boundary and are painted once, without a common
-	// background underneath. Transparent parts retain normal source-over rules.
-	region := func(pos, extent float32) geometry.Rectangle {
-		r := geometry.Rectangle{Size: v.size(extent, cross)}
-		if v.direction == layout.DirectionVertical {
-			r.Y = pos
-		} else {
-			r.X = pos
-		}
-		return r
+	if ink, ok := v.partStyle("separator", v.handle.paintState()).ForegroundColor(); ok && ink != nil {
+		p.FillRect(geometry.Rectangle{Size: s.Rect().Size}, graphics.ColorOf(ink))
 	}
-	for i, part := range []string{"handle-start", "handle-end"} {
-		if ink, ok := v.partStyle(part, state).BackgroundColor(); ok && ink != nil {
-			p.FillRect(region(float32(i)*main/2, main/2), graphics.ColorOf(ink))
-		}
-	}
-	s := v.partStyle("separator", state)
-	width, _ := s.BorderWidth()
-	if !splitFinite(width) || width <= 0 {
-		return
-	}
-	width = min(width, main)
-	if ink, ok := s.ForegroundColor(); ok && ink != nil {
-		p.FillRect(region((main-width)/2, width), graphics.ColorOf(ink))
+}
+
+func (h *splitHandle) StyleChanged() {
+	if h.view.separator != nil {
+		h.view.separator.RequestPaint()
 	}
 }
 func (h *splitHandle) Snapshot() gui.WidgetInfo {
