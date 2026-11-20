@@ -1,11 +1,39 @@
 package pixelsnap
 
 import (
+	"image"
 	"math"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
 )
+
+func TestClipConservativePixelEnvelope(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		rect  geometry.Rectangle
+		scale float32
+		want  image.Rectangle
+	}{
+		{"integer", geometry.Rect(2, 3, 4, 5), 1, image.Rect(2, 3, 6, 8)},
+		{"fraction", geometry.Rect(10.5, 20.25, 3.5, 1.25), 1, image.Rect(10, 20, 14, 22)},
+		{"negative", geometry.Rect(-1.5, -.5, 1.5, 1.5), 1, image.Rect(-2, -1, 0, 1)},
+		{"fractional-scale", geometry.Rect(.2, .4, .8, .4), 1.25, image.Rect(0, 0, 2, 1)},
+		{"decimal-endpoint", geometry.Rect(.2, .2, .8, .8), 1, image.Rect(0, 0, 1, 1)},
+		{"tiny", geometry.Rect(1, 1, math.SmallestNonzeroFloat32, math.SmallestNonzeroFloat32), 1, image.Rect(1, 1, 2, 2)},
+		{"empty-fraction", geometry.Rect(.5, .5, 0, 2), 1, image.Rectangle{}},
+		{"inverted", geometry.Rect(2, 3, -1, 2), 1, image.Rectangle{}},
+		{"invalid", geometry.Rect(float32(math.NaN()), 0, 1, 2), 1, image.Rectangle{}},
+		{"invalid-scale", geometry.Rect(0, 0, 1, 2), float32(math.Inf(1)), image.Rectangle{}},
+		{"huge", geometry.Rect(-1e20, 0, 2e20, 1), 1, image.Rect(-math.MaxInt32, 0, math.MaxInt32, 1)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := Clip(tc.rect, tc.scale); got != tc.want {
+				t.Fatalf("像素包络=%v，预期%v", got, tc.want)
+			}
+		})
+	}
+}
 
 func TestFillAndStrokeShareDeviceEdges(t *testing.T) {
 	for _, scale := range []float32{1, 1.25, 1.5, 1.75, 2} {

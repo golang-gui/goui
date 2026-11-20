@@ -42,6 +42,7 @@ type Painter struct {
 	scale         float32
 	transform     geometry.Transform
 	clip          image.Rectangle
+	clipActive    bool
 	frameID       uint64
 	activeFrame   bool
 	transparent   bool
@@ -180,6 +181,7 @@ func (p *Painter) Begin(width, height, scale float32) {
 	p.stroker.Clear()
 	p.transform = geometry.Identity()
 	p.clip = image.Rectangle{}
+	p.clipActive = false
 	p.activeFrame = true
 }
 
@@ -330,7 +332,7 @@ func (p *Painter) ClearPath(path graphics.Path) {
 		p.filler.Stop(true)
 	}
 	bounds = bounds.Intersect(p.bgra.Rect)
-	if p.clip != (image.Rectangle{}) {
+	if p.clipActive {
 		bounds = bounds.Intersect(p.clip)
 	}
 	if bounds.Empty() {
@@ -464,7 +466,7 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 	// Snap the complete layout once. Every region shares this pixel grid.
 	origin = textbitmap.SnapOrigin(origin, p.transform, p.scale)
 	clip := p.bgra.Rect
-	if p.clip != (image.Rectangle{}) {
+	if p.clipActive {
 		clip = clip.Intersect(p.clip)
 	}
 	region := textbitmap.Region(layout, origin, p.transform, p.scale, rasterScale, clip)
@@ -643,15 +645,10 @@ func (p *Painter) DrawImage(rect graphics.Rectangle, img graphics.Image) {
 }
 
 func (p *Painter) SetClipRect(rect graphics.Rectangle) {
-	rect = rect.Scale(p.scale)
 	p.clip = image.Rectangle{}
-	if rect.X != 0 || rect.Y != 0 || rect.Width != 0 || rect.Height != 0 {
-		p.clip = image.Rect(
-			int(math.Floor(float64(rect.X))),
-			int(math.Floor(float64(rect.Y))),
-			int(math.Ceil(float64(rect.X+rect.Width))),
-			int(math.Ceil(float64(rect.Y+rect.Height))),
-		)
+	p.clipActive = rect != (graphics.Rectangle{})
+	if p.clipActive {
+		p.clip = pixelsnap.Clip(rect, p.scale)
 	}
 	p.restoreClip()
 }
@@ -660,7 +657,7 @@ func (p *Painter) SetClipRect(rect graphics.Rectangle) {
 // cannot affect the clip. scanFT treats a zero-size clip as "unclipped", so an
 // empty intersection must never be passed through as a drawable region.
 func (p *Painter) setShapeClip(clip image.Rectangle) bool {
-	if p.clip != (image.Rectangle{}) {
+	if p.clipActive {
 		clip = clip.Intersect(p.clip)
 	}
 	if clip.Empty() {
@@ -751,7 +748,7 @@ func (p *Painter) drawAxisAlignedBitmap(rect graphics.Rectangle, bitmap graphics
 	left, right := int(math.Round(float64(min(x0, x1)))), int(math.Round(float64(max(x0, x1))))
 	top, bottom := int(math.Round(float64(min(y0, y1)))), int(math.Round(float64(max(y0, y1))))
 	clip := image.Rect(left, top, right, bottom).Intersect(p.bgra.Rect)
-	if p.clip != (image.Rectangle{}) {
+	if p.clipActive {
 		clip = clip.Intersect(p.clip)
 	}
 	if clip.Empty() {
@@ -1011,7 +1008,7 @@ func (p *Painter) RenderImage(width, height int, scale float32, draw func()) (im
 	bgra, line, viewport := p.bgra, p.line, p.viewport
 	scanner, filler, stroker := p.scanner, p.filler, p.stroker
 	pixels, lines := p.pixelBuf, p.lineBuf
-	oldScale, transform, clip := p.scale, p.transform, p.clip
+	oldScale, transform, clip, clipActive := p.scale, p.transform, p.clip, p.clipActive
 	defer func() {
 		p.activeFrame = false
 		p.flushPendingImages()
@@ -1019,6 +1016,7 @@ func (p *Painter) RenderImage(width, height int, scale float32, draw func()) (im
 		p.scanner, p.filler, p.stroker = scanner, filler, stroker
 		p.pixelBuf, p.lineBuf = pixels, lines
 		p.scale, p.transform, p.clip = oldScale, transform, clip
+		p.clipActive = clipActive
 	}()
 	// Force Begin to allocate an isolated, zero-filled raster target.
 	p.viewport.Width = 0

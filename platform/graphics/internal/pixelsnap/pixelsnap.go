@@ -3,9 +3,47 @@
 package pixelsnap
 
 import (
+	"image"
+	"math"
+
 	"github.com/goexlib/mathx"
 	"github.com/golang-gui/goui/core/geometry"
 )
+
+// Clip returns the conservative device-pixel envelope of a window-local DIP
+// rectangle. It is independent of the drawing transform. Callers distinguish
+// an active empty clip from the all-zero rectangle used to reset clipping.
+// Round the final logical intersection only, never its ancestors separately.
+func Clip(rect geometry.Rectangle, scale float32) image.Rectangle {
+	if rect.Width <= 0 || rect.Height <= 0 || scale <= 0 {
+		return image.Rectangle{}
+	}
+	for _, v := range []float32{rect.X, rect.Y, rect.Width, rect.Height, scale} {
+		if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
+			return image.Rectangle{}
+		}
+	}
+	// Keep the same float32 edge arithmetic as the public geometry model.
+	// Saturation avoids integer overflow for unbounded but finite coordinates.
+	edge := func(v float32, upper bool) int {
+		x := min(float64(math.MaxInt32), max(-float64(math.MaxInt32), float64(v)))
+		if upper {
+			return int(math.Ceil(x))
+		}
+		return int(math.Floor(x))
+	}
+	left, top := edge(rect.X*scale, false), edge(rect.Y*scale, false)
+	right, bottom := edge((rect.X+rect.Width)*scale, true), edge((rect.Y+rect.Height)*scale, true)
+	// Positive subpixel extents can collapse during float32 addition, but
+	// still intersect the pixel beginning at an exactly integral lower edge.
+	if right == left && left < math.MaxInt32 {
+		right++
+	}
+	if bottom == top && top < math.MaxInt32 {
+		bottom++
+	}
+	return image.Rectangle{Min: image.Pt(left, top), Max: image.Pt(right, bottom)}
+}
 
 func canSnap(t geometry.Transform, scale float32) bool {
 	return scale > 0 && t.A11 == 1 && t.A22 == 1 && t.A12 == 0 && t.A21 == 0

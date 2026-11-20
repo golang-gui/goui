@@ -1072,22 +1072,16 @@ func (p *Painter) SetClipRect(rect graphics.Rectangle) {
 		p.clipActive = false
 	}
 	if rect.X != 0 || rect.Y != 0 || rect.Width != 0 || rect.Height != 0 {
-		p.clip.Left = rect.X
-		p.clip.Top = rect.Y
-		p.clip.Right = rect.X + rect.Width
-		p.clip.Bottom = rect.Y + rect.Height
-		// Use the same edge rounding as UI rectangles. Direct2D's aliased
-		// clip tie-breaking can otherwise cut off the final row/column when
-		// the logical boundary lands on a physical half-pixel.
-		if p.scale > 0 {
-			p.clip.Left = pixelsnap.Edge(p.clip.Left, 0, p.scale)
-			p.clip.Top = pixelsnap.Edge(p.clip.Top, 0, p.scale)
-			p.clip.Right = pixelsnap.Edge(p.clip.Right, 0, p.scale)
-			p.clip.Bottom = pixelsnap.Edge(p.clip.Bottom, 0, p.scale)
+		bounds := pixelsnap.Clip(rect, p.scale)
+		// Identity transform plus integer physical edges gives a hard clip
+		// without truncating an unsnapped path's boundary coverage.
+		p.clip = d2d1.RectF{
+			Left: float32(bounds.Min.X) / p.scale, Top: float32(bounds.Min.Y) / p.scale,
+			Right: float32(bounds.Max.X) / p.scale, Bottom: float32(bounds.Max.Y) / p.scale,
 		}
 		p.render.PushAxisAlignedClip(&p.clip, d2d1.D2D1_ANTIALIAS_MODE_ALIASED)
-		// Even a nonzero logical clip that rounds to an empty device rect
-		// must be popped before another clip is installed or EndDraw is called.
+		// An active empty clip must also be popped before replacing it or
+		// calling EndDraw.
 		p.clipActive = true
 	}
 

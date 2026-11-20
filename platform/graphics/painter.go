@@ -42,6 +42,13 @@ type Painter interface {
 	// number of physical pixels per DIP; subsequent drawing coordinates are DIP.
 	Begin(width, height, scale float32)
 	End()
+	// SetClipRect replaces clipping in window-local DIP, independently of the
+	// current drawing transform. The final logical intersection retains every
+	// intersecting physical pixel (floor minima, ceil maxima), without clip AA.
+	// Boundary pixels may be shared by adjacent logical clips; this is not a
+	// subpixel mask. Exactly Rectangle{} resets clipping; other empty rectangles
+	// disable drawing until a nonempty clip or reset is installed. ClearPath
+	// and drawing primitives respect clipping.
 	SetClipRect(rect Rectangle)
 	SetTransform(transform geometry.Transform)
 	// SnapRect returns rect in local DIP with its edges rounded to the same
