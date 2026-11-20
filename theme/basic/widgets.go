@@ -24,6 +24,7 @@ func WidgetRules() []style.Rule {
 		style.Name("table-view").BackgroundColor(color.White).BorderColor(color.RGBA{R: 198, G: 198, B: 206, A: 255}).BorderWidth(1),
 		style.Name("table-view").Part("frame").BackgroundColor(color.Transparent).BorderWidth(0).Radius(0),
 		style.Name("table-view").Part("trough").BackgroundColor(color.RGBA{R: 245, G: 245, B: 245, A: 255}).BorderWidth(0).Radius(0),
+		style.Name("table-view").Part("corner").BackgroundColor(color.RGBA{R: 245, G: 245, B: 245, A: 255}).BorderWidth(0).Radius(0),
 		style.Name("table-view").Part("grid-horizontal").BorderColor(color.RGBA{R: 225, G: 225, B: 230, A: 255}).BorderWidth(1),
 		style.Name("table-view").Part("grid-bottom").BorderColor(color.RGBA{R: 225, G: 225, B: 230, A: 255}).BorderWidth(1),
 		style.Name("table-view").Part("grid-vertical").BorderColor(color.RGBA{R: 225, G: 225, B: 230, A: 255}).BorderWidth(0),

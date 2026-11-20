@@ -181,6 +181,8 @@ func TestTableOutlineCornerAndZebraStayInTheirAreas(t *testing.T) {
 		style.Name("table-view").Part("outline-horizontal").BorderWidth(2).BorderColor(color.NRGBA{B: 255, A: 128}),
 		style.Name("table-view").Part("outline-vertical").BorderWidth(2).BorderColor(color.NRGBA{B: 255, A: 128}),
 		style.Name("table-view").Part("trough").BackgroundColor(color.NRGBA{R: 255, A: 128}),
+		// 交汇角现在显式使用独立Part，保留原有半透明合成与区域断言。
+		style.Name("table-view").Part("corner").BackgroundColor(color.NRGBA{R: 255, A: 128}),
 		style.Name("table-view").Part("row-alternate").BackgroundColor(color.NRGBA{G: 255, A: 128}),
 	)
 	v, _, first, _ := tableFixture(20)

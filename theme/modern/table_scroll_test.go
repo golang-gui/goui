@@ -36,6 +36,14 @@ func TestTableScrollParts(t *testing.T) {
 			if !reflect.DeepEqual(bg, header) || radius != (geometry.CornerRadius{}) || width != 0 {
 				t.Fatal("轨道未复用表头中性色或没有方形收口")
 			}
+			corner := sheet.Resolve(style.Sel{Name: "table-view", Part: "corner", State: state})
+			bg, _ = corner.BackgroundColor()
+			width, _ = corner.BorderWidth()
+			radius, _ = corner.CornerRadius()
+			if !reflect.DeepEqual(bg, header) || width != 0 || radius != (geometry.CornerRadius{}) {
+				t.Fatal("表格角区未显式保留与轨道一致的方形底色")
+			}
+
 			thumb := sheet.Resolve(style.Sel{Name: "table-view", Part: "thumb", State: state})
 			want := sheet.Resolve(style.Sel{Name: "scroll-view", Part: "thumb", State: state})
 			bg, _ = thumb.BackgroundColor()

@@ -71,8 +71,23 @@ func tableVerticalBar(t *testing.T, v *TableView) *gui.ScrollBar {
 }
 
 func TestTableScrollStyleNameFollowsOwner(t *testing.T) {
-	v, _, _, _ := tableFixture(100)
+	old := gui.App
+	want := map[string]color.RGBA{
+		"table-view": {R: 200, A: 255},
+		"orders":     {G: 200, A: 255},
+		"test":       {B: 200, A: 255},
+	}
+	var rules []style.Rule
+	for name, ink := range want {
+		rules = append(rules, style.Name(name).Part("corner").BackgroundColor(ink).BorderWidth(0).Radius(0))
+	}
+	rules = append(rules, style.Name("scroll-view").Part("corner").BackgroundColor(color.RGBA{R: 255, B: 255, A: 255}))
+	gui.App = &separatorApp{sheet: style.Sheet(rules...)}
+	t.Cleanup(func() { gui.App = old })
+	v, _, column, _ := tableFixture(100)
 	defer v.SetModel(nil)
+	column.SetMinWidth(300)
+	column.SetWidth(300)
 	for _, name := range []string{"table-view", "orders", "test", "table-view"} {
 		if name == "table-view" {
 			v.SetStyleName("")
@@ -82,6 +97,15 @@ func TestTableScrollStyleNameFollowsOwner(t *testing.T) {
 		tableArrange(v, 240, 180)
 		if v.scroll.StyleName() != name || tableVerticalBar(t, v).StyleName() != name {
 			t.Fatalf("内部滚动部件未随所属表格切换：scroll=%q bar=%q want=%q", v.scroll.StyleName(), tableVerticalBar(t, v).StyleName(), name)
+		}
+		corner := v.scroll.ScrollGeometry().Corner
+		if corner.Width <= 0 || corner.Height <= 0 {
+			t.Fatal("未建立双轴交汇角")
+		}
+		pixels := tablePixels(t, v.scroll.Rect().Size, 1, func(p *tablePixelPainter) { v.scroll.Paint(p) })
+		got := pixels.RGBAAt(int(corner.X+corner.Width/2), int(corner.Y+corner.Height/2))
+		if got != want[name] {
+			t.Fatalf("corner未使用所属样式或未随Name切换：name=%s got=%v want=%v", name, got, want[name])
 		}
 	}
 }

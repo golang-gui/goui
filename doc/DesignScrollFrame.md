@@ -21,7 +21,7 @@ scroll.SetChild(gui.NewTextView())
 
 Basic / Modern 的 `text-view` 默认 part 保留背景、字体、前景及选区等文本
 样式，BorderWidth 为 0；`frame` part 提供背景、边框和圆角。`trough`、
-`thumb` part 明确提供滚动条外观，不把 frame 边框传播给滚动条。
+`thumb` part 明确提供滚动条外观，`corner` part 单独绘制双条交汇角，不把 frame 边框传播给这些装饰。
 TextInput 保留自身外框。直接使用 TextView 得到无框正文；需要统一外框时
 显式组合带 `text-view` 样式的 ScrollView。已有自绘外框的查找框等组合保持
 各自样式，不因正文使用 TextView 而自动增加外框。
@@ -37,8 +37,10 @@ StyleChanged 从 Normal、Focused、FocusVisible、Disabled 四个状态计算
 沿既有失效机制重算。边框宽度和圆角归一化为非负有限值。边距为
 `border + max(0, radius-border)*(1-1/sqrt(2)) + 1`（有圆角时），
 无圆角则为 border。额外 1 DIP 隔开圆角抗锯齿边缘。所有正文和滚动条使用
-同一矩形内区，不需要新增圆角裁剪接口。ScrollView 按 trough 背景绘制一次交汇角，
-Spacing 保留 frame／容器背景，不计入轨道或正文。
+同一矩形内区，不需要新增圆角裁剪接口。ScrollView 用自身有效StyleName的 `corner`
+Part绘制一次交汇角，支持背景、边框及圆角，状态与frame保持一致；仅双条均占位
+且角区为正面积时绘制。Basic／Modern 的普通ScrollView及text-view组合默认透明、
+无边框、零圆角，不读取trough颜色。Spacing保留frame／容器背景，不计入角区、轨道或正文。
 
 焦点或禁用状态变化不会改变安全边距，因此不会重新换行、改变滚动范围或
 移动正文。主题实际变化可以改变内区，正常请求重排。
@@ -53,10 +55,11 @@ ScrollIntoView 仍接收未减滚动偏移的正文坐标。滚轮、拖动自�
 ## 参考与验证边界
 
 TableView已内置ScrollView，负责组合固定表头、正文滚动区及整体表格外框；
-它显式向内部宿主传递自己的有效StyleName，复用frame/trough/thumb，不改变
+它显式向内部宿主传递自己的有效StyleName，复用frame/trough/thumb/corner，不改变
 ScrollView／ScrollBar的绘制分工。表格主题将内部frame明确设为透明、无边框、
 零圆角，整体外框仍由TableView独占。轨道采用与普通表头相同的方形底，滑块
-保留通用圆角和状态色；交汇角沿用trough底色，不增加专用Part或Widget。
+保留通用圆角和状态色；两主题显式给corner提供同色方形底，自定义表格可独立覆盖。
+corner仍是装饰，不产生Widget、命中目标、焦点或语义动作。
 纵向槽上方的表头空位由TableView按已有表头样式补画，保留纯装饰语义。
 2026-11-13补充：TableView另有独立的outline-horizontal/vertical，用来包围
 可见单元格与固定滚动槽的组合；整体外框、数据四边、内部网格仍分别控制。
@@ -66,6 +69,11 @@ outline线带由TableView在ScrollView外侧预留，不改变通用滚动行为
 轮廓；补位不覆盖真实表头。关闭分隔线不提交空矩形，避免路径抗锯齿残线。
 详细契约与验证见[TableView](DesignTableView.md)和[Plan](Plan.md)。
 
+- GTK **4.18.0** 的 [junction实现](https://github.com/GNOME/gtk/blob/4.18.0/gtk/gtkscrolledwindow.c#L1937)
+  按独立样式节点绘制交汇角背景和边框，非overlay且双条可见时使用；Qt **6.8.3**
+  的 [交汇角绘制](https://github.com/qt/qtbase/blob/v6.8.3/src/widgets/widgets/qabstractscrollarea.cpp#L916)
+  交给主题的独立primitive，并公开 `QAbstractScrollArea::corner` 样式入口。
+  GOUI采用独立装饰Part，默认透明是本库胶囊轨道的主题选择，不推断其他主题默认透明。
 - [GTK4 GtkScrolledWindow](https://docs.gtk.org/gtk4/class.ScrolledWindow.html)
   的文档提供可选 frame，并把 viewport、scrollbar 放在同一滚动容器下。
 - [Qt 6 QAbstractScrollArea](https://doc.qt.io/qt-6.10/qabstractscrollarea.html)

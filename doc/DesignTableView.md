@@ -695,7 +695,8 @@ Part fallback继承统一外框；表头与行的Part显式关闭边框，防止
 整体外框与outline各自预留独立布局线带，后者位于前者内侧，正文／表头／滑块
 不会覆盖它。outline绘制使用已分配数据高度缓存，不在Paint扫描或实现全部记录。
 增删末行时仅失效受影响的已实现行，空／非空切换失效表头度量；保留增量单元格身份。
-双条交汇角沿用trough底色，不增加corner Part、Widget或业务行列语义。
+双条交汇角由内部ScrollView使用所属样式名的corner Part绘制；主题显式提供与
+trough相同底色，应用可独立覆盖，不增加Widget或业务行列语义。
 整体框与outline的交点各由横边独占，数据边线的横／竖带同样不重叠，避免重复
 半透明合成。线宽参与正常布局，颜色透明不释放线带。ScrollView仍拥有范围、
 固定槽位、输入、裁剪及滚动同步，TableView只组合布局及绘制自身装饰。
@@ -718,18 +719,18 @@ outline-horizontal/vertical。普通网格可再开启两个内部Part，不必�
 创建、改名、清空恢复默认均走已有setter和样式失效流程；应用单元格的样式名不变。
 ScrollView管理范围、视口、裁剪及条布局，ScrollBar绘制轨道／滑块；TableView
 不重新实现滚动条。整体外框由TableView绘制，内部frame保持无框、透明和零圆角。
-自定义完整表格样式也应显式提供frame/trough/thumb，避免默认Part回退把外框
+自定义完整表格样式也应显式提供frame/trough/thumb/corner，避免默认Part回退把外框
 传入内部宿主。2026-11-13新增的outline-horizontal/vertical也应在自定义完整
 Name下显式提供（不启用时宽度0），避免Part回退继承整体外框。普通ScrollView
 和TextView组合的样式与职责保持既有契约。
 
-Basic／Modern分别显式为header和trough提供相同中性色，滑块复制各自通用滑块
+Basic／Modern分别显式为header、trough和corner提供相同中性色，滑块复制各自通用滑块
 状态色／圆角，不新增配色或交互模式。轨道方形收口，厚度和间距由Options控制，
 默认轨道和滑块均为8 DIP，保持原有外观；显式增宽轨道时滑块居中，整个轨道保持命中能力。
 表头右侧、纵向滚动槽上方的空位由TableView仅绘制该区域的普通header背景和
 按包围范围延续的header-separator，不重复覆盖已有表头。补位不绘grid-top／
 grid-vertical，不作为额外列，不增加Widget、Snapshot子节点或语义动作；双条
-角区由ScrollView按trough背景绘制一次。无条时不虚构滚动槽补位区。
+角区由ScrollView按corner样式绘制一次。无条时不虚构滚动槽补位区。
 
 2026-11-13表头接缝修正：仅有数据边线或内部网格时，分隔线止于实际单元格的
 裁剪范围，不能伸入框外纵向槽。启用`outer-vertical`，或有条且启用
@@ -747,7 +748,7 @@ NanoVG **0.0.13** 的[Rect](https://github.com/golang-gui/nanovgo/blob/v0.0.13/n
 
 参考Qt6.8.9 [QAbstractScrollArea公开文档](https://doc.qt.io/qt-6.8/qabstractscrollarea.html#details)
 对视口、滚动条、边距和组合外框的职责划分，复用GOUI既有
-[ScrollView外框设计](DesignScrollFrame.md)，不引入继承体系、专用corner Part或浮层
+[ScrollView外框设计](DesignScrollFrame.md)，不引入继承体系或浮层
 滚动机制。该参考为控件层文档契约，未对Qt各原生后端作像素对照。
 
 2026-11-12完整内容边缘：`grid-top`在表头中预留独立顶带，`grid-left`在首个

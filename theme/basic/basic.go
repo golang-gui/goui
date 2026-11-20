@@ -165,6 +165,8 @@ func coreRules() []style.Rule {
 		style.Name(styleNameScrollView).
 			BackgroundColor(color.Transparent).
 			ForegroundColor(color.RGBA{R: 120, G: 120, B: 120, A: 255}),
+		style.Name(styleNameScrollView).Part("corner").
+			BackgroundColor(color.Transparent).BorderWidth(0).Radius(0),
 
 		// ScrollBar parts (resolved under the same "scroll-view" name; ScrollView
 		// and ScrollBar are one unit in the style system). Normal Part defaults let
@@ -206,7 +208,7 @@ func coreRules() []style.Rule {
 	}
 	// The scroll host and its bars explicitly share the editor's style name.
 	base := style.Sheet(rules...)
-	for _, part := range []string{stylePartTrough, stylePartThumb} {
+	for _, part := range []string{stylePartTrough, stylePartThumb, "corner"} {
 		for _, state := range []style.State{style.Normal, style.Hovered, style.Pressed} {
 			rule := style.Rule{Sel: style.Sel{Name: styleNameTextView, Part: part, State: state},
 				Style: base.Resolve(style.Sel{Name: styleNameScrollView, Part: part, State: state})}
