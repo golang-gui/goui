@@ -10,14 +10,15 @@
 // -fallback-style 改用显式 GUI+widgets 兜底样式；环境变量只代表请求。
 // 初始：Native 900×600 DIP 窗口，Modern 亮色；左侧最小 120 DIP，右侧最小
 // 240 DIP，编辑区与终端上下分区，终端初始固定 140 DIP。左侧有输入框和滚动列表。
-// 分隔区初始3 DIP，线1 DIP；侧栏和终端使用同色背景，正文使用另一背景。
+// 透明抓取带初始5 DIP，线1 DIP；抓取带向两侧面板各覆盖2 DIP。
+// 本例显式内缩相邻滚动控件，侧栏和终端使用同色背景，正文使用另一背景。
 // 默认外层以两侧测量初始化比例，不保证居中；窗口最小提示为 360×260 DIP。
 //
 // 操作与预期：
 //
-//  1. 在默认3 DIP分隔区域的两侧留白和中线分别悬停、按下拖动：整个区域
-//     都应立即显示调整光标并开始拖动，没有区域外的隐藏抓取带。线默认1 DIP，
-//     两侧背景分别衔接侧栏和正文；区域外的滚动条、按钮及文本拖选正常工作。
+//  1. 在默认5 DIP分隔区域的两侧留白和中线分别悬停、按下拖动：整个区域
+//     都应立即显示调整光标并开始拖动。抓取带覆盖区优先归把手，其他控件须显式
+//     退避；区域外的滚动条、按钮及文本拖选正常工作。横竖线交点不得有背景断口。
 //     上下分隔条同理，拖到容器外再松手不继续拖动。内容互不越过分区裁剪。
 //     Windows 回归：持续快速左右往返拖动至少 20 秒，再操作上下分隔条；窗口
 //     应持续响应，不出现 0xC0000005。松手后点 Snapshot，几何断言仍应通过。
@@ -38,16 +39,16 @@
 //  5. 点 Hide/Show 隐藏左侧：右侧填满、外层线消失；再显示恢复尺寸策略。
 //     Toggle Dark 在Modern下切换亮暗；Basic兜底保持亮色，不改变比例或内容。
 //
-//  6. 在左面板右侧滚动条靠近分隔线的 4 DIP 内拖动滑块：只滚动内容，分隔不移动。
-//     对上下分隔线旁的横滚动条同样检查；邻近按钮点击仍激活。
+//  6. 相邻滚动条已经由本例按(HandleSize-LineWidth)/2内缩，拖动其最外缘应只滚动。
+//     横竖交点重叠处外层把手优先；从内层非交点开始拖动，经过交点仍保持原捕获。
 //
 //  7. 点 Snapshot：终端打印两侧实际大小及 separator 范围；assertions 检查
-//     两侧之和加实际分隔区域厚度 等于容器主轴，真实内容子树与 separator 的边界及范围。
+//     两侧之和加常态线宽等于容器主轴，separator语义边界只表示实际抓取带。
 //     显示 ASSERT PASS 仅代表这些几何断言，不能代替上述桌面输入／外观验收。
 //
-//  8. Handle 按钮循环3／5／9／1.5 DIP；Line循环1／0／3 DIP。每次等待PRESENT
-//     后点Snapshot：尺寸、语义和1／1.25／1.5／2x的像素断言必须通过。线宽钳制
-//     在区域内，隐藏线后仍是连续的两色背景。拖动中按F7切换厚度，旧手势取消。
+//  8. Handle 按钮循环5／9／1.5／3 DIP；Line循环1／0／3 DIP。每次等待PRESENT
+//     后点Snapshot：尺寸、语义和1／1.25／1.5／2x的像素断言必须通过。线宽与抓取
+//     宽度独立，隐藏线后面板相接，抓取仍有效。拖动中按F7切换厚度，旧手势取消。
 //     Rebuild、亮暗、隐藏／恢复后重复；1x、2x分别检查两侧没有第三色窄条或接缝。
 //
 // 平台差异：本例不扩展窗口装饰，macOS 需先激活窗口；Tab 沿用框架焦点遍历。
@@ -113,10 +114,6 @@ func sheet(dark, fallback bool, lineWidth float32) style.StyleSheet {
 	rules = append(rules,
 		style.Name("sidebar-pane").BackgroundColor(start),
 		style.Name("content-pane").BackgroundColor(end),
-		style.Name("sidebar-split").Part("handle-start").BackgroundColor(start),
-		style.Name("sidebar-split").Part("handle-end").BackgroundColor(end),
-		style.Name("editor-split").Part("handle-start").BackgroundColor(end),
-		style.Name("editor-split").Part("handle-end").BackgroundColor(start),
 	)
 	for _, name := range []string{"sidebar-split", "editor-split"} {
 		rules = append(rules, style.Name(name).Part("separator").ForegroundColor(line).BorderWidth(lineWidth),
@@ -167,13 +164,15 @@ func checkPixels(view *widgets.SplitView, dark, fallback bool, lineWidth float32
 			main, cross, extent, crossExtent = handle.Y, handle.X, handle.Height, handle.Width
 		}
 		edge := func(value float32) int { return int(math.Floor(float64(value*scale) + .5)) }
-		first, mid, last := edge(main), edge(main+extent/2), edge(main+extent)
-		width := min(extent, max(0, lineWidth))
-		lineFirst, lineLast := edge(main+(extent-width)/2), edge(main+(extent+width)/2)
+		first, last := edge(main), edge(main+extent)
+		a, _ := view.Sizes()
+		center := a + lineWidth/2
+		width := max(0, lineWidth)
+		lineFirst, lineLast := edge(center-width/2), edge(center+width/2)
 		y := edge(cross + crossExtent/2)
 		for x := first; x < last; x++ {
 			want := start
-			if x >= mid {
+			if x >= lineLast {
 				want = end
 			}
 			if width > 0 && x >= lineFirst && x < lineLast {
@@ -193,6 +192,36 @@ func checkPixels(view *widgets.SplitView, dark, fallback bool, lineWidth float32
 		}
 	}
 	fmt.Printf("PART PIXELS PASS %s handle=%g line=%g dark=%t\n", view.ID(), view.HandleSize(), lineWidth, dark)
+}
+
+// 检查外层竖线与内层横线相接的像素；不借用把手边界推导线宽。
+func checkJunction(outer, inner *widgets.SplitView, dark, fallback bool, lineWidth float32) {
+	if lineWidth <= 0 || outer.StartChild() == nil || !outer.StartChild().Visible() {
+		return
+	}
+	_, _, line := splitColors(dark && !fallback)
+	a, _ := outer.Sizes()
+	b, _ := inner.Sizes()
+	root, nested := outer.Snapshot().Bounds, inner.Snapshot().Bounds
+	for _, scale := range []float32{1, 1.25, 1.5, 2} {
+		img, err := gui.RenderWidget(outer, scale)
+		if err != nil {
+			panic(err)
+		}
+		edge := func(n float32) int { return int(math.Floor(float64(n*scale) + .5)) }
+		for y := edge(nested.Y - root.Y + b); y < edge(nested.Y-root.Y+b+lineWidth); y++ {
+			for x := edge(a); x < edge(a+lineWidth+6); x++ {
+				got := color.RGBAModel.Convert(img.At(x, y)).(color.RGBA)
+				for channel, value := range []uint8{got.R, got.G, got.B, got.A} {
+					want := [4]uint8{line.R, line.G, line.B, line.A}[channel]
+					if math.Abs(float64(value)-float64(want)) > 1 {
+						panic(fmt.Sprintf("交点断口 scale=%g (%d,%d)=%v want=%v", scale, x, y, got, line))
+					}
+				}
+			}
+		}
+	}
+	fmt.Println("JUNCTION PIXELS PASS")
 }
 func present(p gui.Painter, outer, inner *widgets.SplitView, controls map[string]gui.Widget, last *string, dark bool, lineWidth float32) {
 	bounds := make(map[string]geometry.Rectangle)
@@ -221,7 +250,7 @@ func present(p gui.Painter, outer, inner *widgets.SplitView, controls map[string
 	resource.Destroy()
 }
 
-func assertSplit(view *widgets.SplitView) {
+func assertSplit(view *widgets.SplitView, lineWidth float32) {
 	a, b := view.Sizes()
 	extent := view.Rect().Width
 	if view.Direction() == layout.DirectionVertical {
@@ -230,7 +259,7 @@ func assertSplit(view *widgets.SplitView) {
 	info := view.Snapshot()
 	active := view.StartChild() != nil && view.StartChild().Visible() && view.EndChild() != nil && view.EndChild().Visible()
 	if active {
-		if math.Abs(float64(a+b+min(view.HandleSize(), extent)-extent)) > .01 || a < 0 || b < 0 {
+		if math.Abs(float64(a+b+min(lineWidth, extent)-extent)) > .01 || a < 0 || b < 0 {
 			panic("split allocation does not fill view")
 		}
 		separator := info.Children[len(info.Children)-1]
@@ -245,7 +274,7 @@ func assertSplit(view *widgets.SplitView) {
 		if view.Direction() == layout.DirectionVertical {
 			hitWidth = bounds.Height
 		}
-		if hitWidth < 0 || math.Abs(float64(hitWidth-min(view.HandleSize(), extent))) > .01 || separator.Range.Direction != view.Direction() {
+		if hitWidth < 0 || math.Abs(float64(hitWidth-(min(extent, a+lineWidth/2+view.HandleSize()/2)-max(0, a+lineWidth/2-view.HandleSize()/2)))) > .01 || separator.Range.Direction != view.Direction() {
 			panic("separator hit width/direction incorrect")
 		}
 		fmt.Printf("separator bounds=%v range=%+v\n", separator.Bounds, *separator.Range)
@@ -255,14 +284,15 @@ func assertSplit(view *widgets.SplitView) {
 func runUI(fallback bool) error {
 	model := ui.NewTextModel(document)
 	mode, dark, hidden, rebuilds := 0, false, false, 0
-	handleSize, lineWidth := float32(3), float32(1)
+	handleSize, lineWidth := float32(5), float32(1)
 	lastReport := ""
 	startSize, endSize, ratio, terminal := float32(220), float32(400), float32(.5), float32(140)
 	return ui.Run("org.golang-gui.SplitViewProbe", func(app ui.App) ui.RootView {
-		left := ui.VBox(ui.Label("Sidebar / left"), ui.TextInput().ID("sidebar-input"), ui.Label("Minimum: 120 DIP"), ui.ScrollView(ui.Label(strings.Repeat("Side row\n", 100))).ID("sidebar-scroll")).Spacing(8).CrossAlign(layout.CrossStretch).Style("sidebar-pane").MinSize(120, 0).Hidden(hidden)
+		inset := max(float32(0), (handleSize-lineWidth)/2)
+		left := ui.VBox(ui.Label("Sidebar / left"), ui.TextInput().ID("sidebar-input"), ui.Label("Minimum: 120 DIP"), ui.ScrollView(ui.Label(strings.Repeat("Side row\n", 100))).ID("sidebar-scroll")).Spacing(8).CrossAlign(layout.CrossStretch).Style("sidebar-pane").Paddings(geometry.Insets{Right: inset}).MinSize(120, 0).Hidden(hidden)
 		right := wui.VSplit(
-			ui.VBox(ui.ScrollView(ui.TextView().ID("editor").Model(model))).Style("content-pane").CrossAlign(layout.CrossStretch).MinSize(0, 100),
-			ui.VBox(ui.ScrollView(ui.Label(strings.Repeat("Terminal output\n", 40)))).Style("sidebar-pane").CrossAlign(layout.CrossStretch).MinSize(0, 60),
+			ui.VBox(ui.ScrollView(ui.TextView().ID("editor").Model(model))).Style("content-pane").Paddings(geometry.Insets{Left: inset, Bottom: inset}).CrossAlign(layout.CrossStretch).MinSize(0, 100),
+			ui.VBox(ui.ScrollView(ui.Label(strings.Repeat("Terminal output\n", 40)))).Style("sidebar-pane").Paddings(geometry.Insets{Left: inset, Top: inset}).CrossAlign(layout.CrossStretch).MinSize(0, 60),
 		).ID("inner").Style("editor-split").HandleSize(handleSize).MinSize(240, 0).EndSize(terminal).OnResize(func(_, end float32) { terminal = end; app.RequestUpdate() })
 		split := wui.HSplit(left, right).ID("outer").Style("sidebar-split").HandleSize(handleSize).OnResize(func(start, end float32) {
 			switch mode {
@@ -305,10 +335,11 @@ func runUI(fallback bool) error {
 						ui.Button("Handle").ID("handle").OnClick(func() { handleSize = cycleHandle(handleSize); app.RequestUpdate() }),
 						ui.Button("Line").ID("line").OnClick(func() { lineWidth = cycleLine(lineWidth); app.RequestUpdate() }),
 						ui.Button("Snapshot").ID("snapshot").OnClick(func() {
-							assertSplit(app.FindWidget("split", "outer").(*widgets.SplitView))
-							assertSplit(app.FindWidget("split", "inner").(*widgets.SplitView))
+							assertSplit(app.FindWidget("split", "outer").(*widgets.SplitView), lineWidth)
+							assertSplit(app.FindWidget("split", "inner").(*widgets.SplitView), lineWidth)
 							checkPixels(app.FindWidget("split", "outer").(*widgets.SplitView), dark, fallback, lineWidth)
 							checkPixels(app.FindWidget("split", "inner").(*widgets.SplitView), dark, fallback, lineWidth)
+							checkJunction(app.FindWidget("split", "outer").(*widgets.SplitView), app.FindWidget("split", "inner").(*widgets.SplitView), dark, fallback, lineWidth)
 							fmt.Printf("SIDEBAR SCROLL y=%g\n", app.FindWidget("split", "sidebar-scroll").(*gui.ScrollView).ScrollY())
 						}),
 					).Spacing(8).Padding(8),
@@ -417,17 +448,30 @@ func runGUI(fallback bool) error {
 	})
 	button("Hide/Show", func() { left.SetVisible(!left.Visible()) })
 	button("Toggle Dark", func() { dark = !dark; app.SetStyleSheet(sheet(dark, fallback, lineWidth)) })
-	cycle := func() { next := cycleHandle(outer.HandleSize()); outer.SetHandleSize(next); inner.SetHandleSize(next) }
+	avoid := func() {
+		inset := max(float32(0), (outer.HandleSize()-lineWidth)/2)
+		left.SetPadding(geometry.Insets{Right: inset})
+		editorPane.SetPadding(geometry.Insets{Left: inset, Bottom: inset})
+		terminalPane.SetPadding(geometry.Insets{Left: inset, Top: inset})
+	}
+	avoid()
+	cycle := func() {
+		next := cycleHandle(outer.HandleSize())
+		outer.SetHandleSize(next)
+		inner.SetHandleSize(next)
+		avoid()
+	}
 	button("Handle", cycle)
-	button("Line", func() { lineWidth = cycleLine(lineWidth); app.SetStyleSheet(sheet(dark, fallback, lineWidth)) })
+	button("Line", func() { lineWidth = cycleLine(lineWidth); avoid(); app.SetStyleSheet(sheet(dark, fallback, lineWidth)) })
 	shortcut := gui.NewShortcut(gui.KeyGesture{Key: gui.KeyF7})
 	shortcut.ConnectActivate(cycle)
 	window.Shortcuts().AddShortcut(shortcut)
 	button("Snapshot", func() {
-		assertSplit(outer)
-		assertSplit(inner)
+		assertSplit(outer, lineWidth)
+		assertSplit(inner, lineWidth)
 		checkPixels(outer, dark, fallback, lineWidth)
 		checkPixels(inner, dark, fallback, lineWidth)
+		checkJunction(outer, inner, dark, fallback, lineWidth)
 		fmt.Printf("SIDEBAR SCROLL y=%g\n", sideScroll.ScrollY())
 	})
 	root.AddChild(toolbar)
