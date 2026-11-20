@@ -41,7 +41,9 @@ func (v *SplitViewView) StartSize(size float32) *SplitViewView { v.sizing, v.val
 func (v *SplitViewView) EndSize(size float32) *SplitViewView   { v.sizing, v.value = 2, size; return v }
 func (v *SplitViewView) Ratio(ratio float32) *SplitViewView    { v.sizing, v.value = 3, ratio; return v }
 
-// HandleSize configures the separator region thickness in DIP; zero uses 3.
+// HandleSize configures pointer grab thickness in DIP; zero uses 5. The grab
+// band overlays pane edges with priority; inset competing controls explicitly.
+// Pane spacing comes only from the normal separator part's line width.
 func (v *SplitViewView) HandleSize(size float32) *SplitViewView { v.handleSize = size; return v }
 
 func (v *SplitViewView) OnResize(fn func(start, end float32)) *SplitViewView {
