@@ -32,6 +32,7 @@ type dataDemo struct {
 	showKind             ui.State[bool]
 	expandName           ui.State[bool]
 	tableLook            ui.State[int]
+	scrollBars           ui.State[int]
 }
 
 const (
@@ -43,6 +44,8 @@ const (
 )
 
 var tableLookNames = []mlang.Getter{resource.TableDefault, resource.TableCellGrid, resource.TableCellOutline, resource.TableScrollOutline, resource.TableScrollGrid}
+
+var scrollBarNames = []mlang.Getter{resource.TableDefault, resource.SpacedScrollBars, resource.HiddenScrollBars}
 
 type record struct {
 	ID, Name, Kind, Note string
@@ -152,7 +155,8 @@ func (d *dataDemo) view() ui.View {
 		wui.TableColumn("note", resource.Note(), func(_ widgets.TableRow, r record) ui.View {
 			return ui.TextInput().Style("demo-cell-edit").Text(r.Note).OnText(func(value string) { d.table.setNote(r.ID, value) })
 		}).Width(d.tableWidths[3]).OnResize(func(width float32) { d.tableWidths[3] = width }).MinWidth(120).Resizable(true),
-	).ID("records-table").Style("demo-records").SelectionMode(widgets.SelectionMultiple).Selection(d.tableSelection.Get()).Sort(d.sortColumn.Get(), d.sortOrder.Get()).
+	).ID("records-table").Style("demo-records").HScrollBarOptions(d.scrollBarOptions()).VScrollBarOptions(d.scrollBarOptions()).
+		SelectionMode(widgets.SelectionMultiple).Selection(d.tableSelection.Get()).Sort(d.sortColumn.Get(), d.sortOrder.Get()).
 		OnSelection(func(ids []string) {
 			d.tableSelection.Set(slices.Clone(ids))
 			d.host.report(fmt.Sprintf(resource.TableSelected(), len(ids)))
@@ -181,10 +185,16 @@ func (d *dataDemo) view() ui.View {
 			d.host.app.RequestUpdate() // The root owns the stylesheet.
 		})
 	}
+	bars := make([]*ui.MenuItemView, len(scrollBarNames))
+	for i, name := range scrollBarNames {
+		bars[i] = ui.MenuItem(name(), func() { d.scrollBars.Set(i) })
+	}
 	return fullPage("data", resource.Data(), resource.DataHint()+" "+resource.DataPresentationHint(),
 		ui.HWrap(wui.Switch(resource.KindColumn()).ID("table-kind").Checked(d.showKind.Get()).OnChange(d.showKind.Set),
 			wui.Switch(resource.ExpandColumn()).ID("table-expand").Checked(d.expandName.Get()).OnChange(d.expandName.Set),
 			ui.MenuButton(fmt.Sprintf(resource.TableLookFormat(), tableLookNames[d.tableLook.Get()]())).ID("table-look").Menu(looks...).
+				OnOpenError(func(err error) { d.host.result(resource.TableMenu(), err) }),
+			ui.MenuButton(fmt.Sprintf(resource.ScrollBarsFormat(), scrollBarNames[d.scrollBars.Get()]())).ID("table-scrollbars").Menu(bars...).
 				OnOpenError(func(err error) { d.host.result(resource.TableMenu(), err) }),
 		).Spacing(16).LineSpacing(8),
 		wui.VSplit(upper,
@@ -197,6 +207,17 @@ func (d *dataDemo) view() ui.View {
 				}
 			}).MainWeight(1),
 	)
+}
+
+func (d *dataDemo) scrollBarOptions() ui.ScrollBarOptions {
+	switch d.scrollBars.Get() {
+	case 1:
+		return ui.ScrollBarOptions{Thickness: 14, ThumbThickness: 8, Spacing: 2}
+	case 2:
+		return ui.ScrollBarOptions{Policy: ui.ScrollBarHidden}
+	default:
+		return ui.ScrollBarOptions{}
+	}
 }
 func setMember(ids []string, id string, present bool) []string {
 	out := slices.Clone(ids)

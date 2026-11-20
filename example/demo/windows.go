@@ -61,6 +61,10 @@ func (d *windowsDemo) inspectorView() ui.View {
 			d.host.app.FindWindow("main").RequestState(gui.WindowStateMaximized)
 			d.host.report(resource.MaximizeRequested())
 		}),
+			ui.Button(resource.Fullscreen()).ID("fullscreen").OnClick(func() {
+				d.host.app.FindWindow("main").RequestState(gui.WindowStateFullscreen)
+				d.host.report(resource.FullscreenRequested())
+			}),
 			ui.Button(resource.NormalState()).OnClick(func() {
 				d.host.app.FindWindow("main").RequestState(gui.WindowStateNormal)
 				d.host.report(resource.NormalRequested())
