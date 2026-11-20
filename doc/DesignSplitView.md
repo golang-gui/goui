@@ -76,8 +76,8 @@ handleEnd   = min(m, center+HandleSize/2)
 方向键移动1 DIP、Shift方向键10 DIP，Home／End到有效端点，Esc恢复拖动前偏好。
 卸载、捕获丢失或相关配置改变取消拖动，松手不重新应用已取消的位置。
 
-内层横线延伸到其面板边界，与外层竖线的实际边缘相接，反向嵌套同理；左右两侧
-横线对齐时可组成十字。框架不自动联动两个独立分隔位置，也不提供同时拖动两轴的手柄。
+默认零圆角时，内层横线延伸到其面板边界，与外层竖线的实际边缘相接，反向嵌套同理；
+左右两侧横线对齐时可组成十字。框架不自动联动两个独立分隔位置，也不提供同时拖动两轴的手柄。
 
 Snapshot保留两个真实内容子树和一个RoleSeparator；其Bounds为实际抓取带，允许
 与内容边界重叠，保留焦点、范围及Focus动作。私有线条绘制节点无额外交互语义。
@@ -92,16 +92,30 @@ Snapshot保留两个真实内容子树和一个RoleSeparator；其Bounds为实�
 | --- | --- |
 | BorderWidth（Normal） | 实际线宽及布局占位；默认1 DIP。0隐藏，负数／非有限值按0处理；缺省使用1 DIP。 |
 | ForegroundColor（状态） | 线条颜色，使用把手的Hovered／Pressed／Disabled／FocusVisible状态。 |
+| Radius／CornerRadius（状态） | 填充轮廓的统一／独立四角半径，单位DIP，默认0；不影响布局和矩形抓取。 |
 
 BorderWidth只读取Normal；状态规则里的线宽不改变布局或绘制厚度，防止反馈造成位移。
 Basic与Modern默认使用中性色，FocusVisible使用已有焦点色；普通鼠标焦点不保留高亮。
 Hover／Pressed默认不变色，应用可以覆盖。隐藏线条时应用需另行提供所需的焦点提示。
+
+Radius是CornerRadius的统一半径简写，沿用样式系统的完整四角替换规则。四角按物理
+左上、右上、右下、左下解释，不随HSplit／VSplit方向旋转。负数及非有限半径按0处理，
+超大半径按实际分配尺寸归一化；均匀半径不超过短边的一半，非均匀半径同比例缩小
+直至相邻圆角适合边长。状态可以改变圆角和颜色，BorderWidth仍只读取Normal。
+
+圆角仅改变可见填充，不将透明角排除在抓取矩形之外，也不产生新的语义节点或动作。
+复用GUI的圆角背景绘制路径，以ForegroundColor作为填充；BorderWidth只表示条带厚度，
+不作为矩形描边再次绘制，不读取BackgroundColor／BorderColor。0半径仍沿用原矩形绘制路径。
+默认0半径维持横竖线完整衔接；显式圆角会使端部收口，不承诺任意嵌套交点仍无缺口。
 
 ```go
 wui.HSplit(sidebar, content).HandleSize(5).Style("sidebar-split")
 
 style.Name("sidebar-split").Part("separator").ForegroundColor(separatorColor).BorderWidth(1)
 style.Name("sidebar-split").Part("separator").State(style.Hovered).ForegroundColor(hoverColor)
+
+// An optional wide rounded separator; the grab band remains independent.
+style.Name("rounded-split").Part("separator").ForegroundColor(separatorColor).BorderWidth(6).Radius(3)
 ```
 
 ## 声明式与迁移
@@ -122,6 +136,10 @@ Qt 6.8的[handleWidth公开契约](https://doc.qt.io/qt-6.8/qsplitter.html#handl
 在非wide-handle模式扩大拖动判断范围。以上为公开契约及源码行为，未在本轮运行这些框架。
 GOUI采用细占位与宽抓取分开的思路，使用本身的Widget子序及事件捕获，不移植原生mask
 或修改全局事件系统；默认5 DIP抓取宽度和明确的应用避让是本项目的选择。
+
+圆角外观另参考[Avalonia 11.3.9 Fluent GridSplitter模板](https://github.com/AvaloniaUI/Avalonia/blob/11.3.9/src/Avalonia.Themes.Fluent/Controls/GridSplitter.xaml)
+将CornerRadius用于可见轮廓的源码做法。本轮未运行Avalonia；GOUI沿用自己的
+ForegroundColor填充和BorderWidth厚度契约，不引入其完整Border模板或新handle Part。
 
 包内回归保留布局、约束、测量缓存、键盘、取消、生命周期和声明式协调覆盖；新增
 抓取覆盖优先、区域外控件独立操作、嵌套交点及跨交点捕获、线宽和抓取独立、零线宽、

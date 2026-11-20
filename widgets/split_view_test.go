@@ -493,14 +493,25 @@ func (a *splitStyleApp) StyleSheet() style.StyleSheet { return a.sheet }
 
 type splitPaintRecorder struct {
 	gui.Painter
-	rect  geometry.Rectangle
-	brush graphics.Brush
-	fills []geometry.Rectangle
+	rect   geometry.Rectangle
+	brush  graphics.Brush
+	fills  []geometry.Rectangle
+	round  bool
+	radius float32
+	paths  int
 }
 
 func (p *splitPaintRecorder) FillRect(r geometry.Rectangle, b graphics.Brush) {
 	p.rect, p.brush = r, b
 	p.fills = append(p.fills, r)
+}
+func (p *splitPaintRecorder) FillRoundRect(r geometry.Rectangle, radius float32, b graphics.Brush) {
+	p.FillRect(r, b)
+	p.round, p.radius = true, radius
+}
+func (p *splitPaintRecorder) FillPath(_ graphics.Path, b graphics.Brush) {
+	p.brush = b
+	p.paths++
 }
 func TestSplitViewHandleIndependentStyleAndGeometry(t *testing.T) {
 	old := gui.App
@@ -1070,5 +1081,125 @@ func TestSplitViewSeparatorFeedbackDoesNotRelayout(t *testing.T) {
 	v.separator.Paint(p)
 	if v.handle.Rect() != before || p.rect.Width != 1 || p.brush != graphics.ColorOf(color.White) {
 		t.Fatal("反馈改变布局或未改变线色")
+	}
+}
+
+func TestSplitViewSeparatorRadiusKeepsGeometryAndInput(t *testing.T) {
+	v := NewSplitView(layout.DirectionHorizontal)
+	v.SetStyleName("rounded-split")
+	v.SetHandleSize(20)
+	v.SetStartChild(new(gui.WidgetBase))
+	v.SetEndChild(new(gui.WidgetBase))
+	v.SetStartSize(40)
+	scope := gui.NewStyleScope()
+	scope.SetStyleSheet(style.Sheet(
+		style.Name("rounded-split").Part("separator").BorderWidth(16).ForegroundColor(color.Black),
+		style.Name("rounded-split").Part("separator").State(style.Hovered).Radius(1000).ForegroundColor(color.White),
+	))
+	scope.SetChild(v)
+	owner := gui.NewPopover(nil, nil)
+	owner.SetWidget(scope)
+	defer owner.Destroy()
+	scope.Measure(layout.Tight(geometry.Size{Width: 116, Height: 48}))
+	scope.Arrange(geometry.Rect(0, 0, 116, 48))
+	before := v.Snapshot().Children[2]
+	changes := 0
+	v.ConnectResize(func(float32, float32) { changes++ })
+	p := new(splitPaintRecorder)
+	v.separator.Paint(p)
+	if p.round || p.paths != 0 || len(p.fills) != 1 {
+		t.Fatal("默认圆角没有保持矩形绘制")
+	}
+	d := new(gui.EventDispatcher)
+	host := owner.(gui.EventTarget)
+	// 左上角在半径8的轮廓之外，但仍在矩形抓取带中。
+	dispatchSplitPointer(t, d, host, events.PointerMove, 40.5, .5)
+	p = new(splitPaintRecorder)
+	v.separator.Paint(p)
+	if !p.round || p.radius != 8 || p.brush != graphics.ColorOf(color.White) {
+		t.Fatal("状态圆角／颜色未生效，或超大半径未按实际尺寸归一化")
+	}
+	arrangeSplit(v, 116, 48)
+	checkSplit(t, v, 40, 60)
+	after := v.Snapshot().Children[2]
+	if after.Bounds != before.Bounds || *after.Range != *before.Range || changes != 0 {
+		t.Fatal("圆角反馈改变了布局、语义范围或发送了调整信号")
+	}
+	if gui.Pick(v, geometry.Point{X: 40.5, Y: .5}) != v.handle {
+		t.Fatal("透明圆角改变了抓取命中")
+	}
+	dispatchSplitPointer(t, d, host, events.PointerDown, 40.5, .5)
+	dispatchSplitPointer(t, d, host, events.PointerMove, 45.5, .5)
+	dispatchSplitPointer(t, d, host, events.PointerUp, 45.5, .5)
+	checkSplit(t, v, 45, 55)
+	if changes != 1 || v.handle.dragging {
+		t.Fatal("透明圆角起始的拖动或释放错误")
+	}
+}
+
+// 采样完整落入／落出轮廓的像素，不把平台AA过渡压成金图。
+// 16×48 DIP的圆角8：首个完整角像素距圆心最小也大于8，必为透明；
+// 未圆角的物理角及内部像素为预乘RGBA实色，通道容差1用于整数舍入。
+func TestSplitViewSeparatorRoundedPixels(t *testing.T) {
+	old := gui.App
+	defer func() { gui.App = old }()
+	native, err := software.NewPainter(new(progressPixelSurface))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer native.Destroy()
+	ink := color.RGBA{R: 80, G: 40, B: 20, A: 128}
+	for _, tc := range []struct {
+		name   string
+		radius geometry.CornerRadius
+		clear  [4]bool
+	}{
+		{"square", geometry.CornerRadius{}, [4]bool{}},
+		{"uniform", geometry.UniformCornerRadius(8), [4]bool{true, true, true, true}},
+		{"oversized", geometry.UniformCornerRadius(1000), [4]bool{true, true, true, true}},
+		{"individual", geometry.CornerRadius{TopLeft: 8, BottomRight: 8}, [4]bool{true, false, true, false}},
+		{"invalid", geometry.CornerRadius{TopLeft: -1, TopRight: float32(math.NaN()), BottomRight: float32(math.Inf(1))}, [4]bool{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gui.App = &splitStyleApp{sheet: style.Sheet(style.Name("split-view").Part("separator").BorderWidth(16).ForegroundColor(ink).CornerRadius(tc.radius))}
+			for _, direction := range []layout.Direction{layout.DirectionHorizontal, layout.DirectionVertical} {
+				v := NewSplitView(direction)
+				v.SetStartChild(new(gui.WidgetBase))
+				v.SetEndChild(new(gui.WidgetBase))
+				arrangeSplit(v, 116, 48)
+				size := v.separator.Rect().Size
+				for _, scale := range []float32{1, 1.25, 2} {
+					for _, phase := range []float32{0, .5} {
+						offset := float32(8) + phase/scale
+						img, err := native.RenderImage(160, 160, scale, func() {
+							native.Clear(graphics.Color{})
+							native.SetTransform(geometry.Translate(offset, offset))
+							v.separator.Paint(&progressPixelPainter{native: native})
+						})
+						if err != nil {
+							t.Fatal(err)
+						}
+						x0 := int(math.Ceil(float64(offset * scale)))
+						y0 := x0
+						x1 := int(math.Floor(float64((offset+size.Width)*scale))) - 1
+						y1 := int(math.Floor(float64((offset+size.Height)*scale))) - 1
+						points := [][2]int{{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}, {(x0 + x1) / 2, (y0 + y1) / 2}, {x0 - 2, (y0 + y1) / 2}}
+						for i, point := range points {
+							want := ink
+							if i == 5 || i < 4 && tc.clear[i] {
+								want = color.RGBA{}
+							}
+							got := color.RGBAModel.Convert(img.At(point[0], point[1])).(color.RGBA)
+							for channel, value := range []uint8{got.R, got.G, got.B, got.A} {
+								expected := [4]uint8{want.R, want.G, want.B, want.A}[channel]
+								if math.Abs(float64(value)-float64(expected)) > 1 {
+									t.Fatalf("%d/%gx/phase%g sample%d=%v want=%v", direction, scale, phase, i, got, want)
+								}
+							}
+						}
+					}
+				}
+			}
+		})
 	}
 }

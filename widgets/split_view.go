@@ -14,6 +14,7 @@ const defaultSplitHandleSize float32 = 5
 // SplitView lays out two independently styled panes separated by a draggable
 // handle. Horizontal means left/right, Vertical means top/bottom. Nest views
 // for more panes. Only the normal separator part's BorderWidth reserves space.
+// Its Radius/CornerRadius shapes the visible fill without changing input bounds.
 // The transparent handle overlaps pane edges and has pointer/drag priority over
 // their contents, including nested handles. Applications must inset competing
 // controls themselves. All operations and signals belong to the GUI thread.

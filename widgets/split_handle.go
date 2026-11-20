@@ -5,7 +5,6 @@ import (
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/events"
-	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/style"
 )
 
@@ -176,7 +175,9 @@ func (v *SplitView) partStyle(part string, state style.State) style.Style {
 }
 
 // The line and grab band have separate bounds: neither clips nor enlarges the
-// other. This decoration is omitted from SplitView's semantic snapshot.
+// other. Radius/CornerRadius shape only the painted line; rounded corners never
+// change its rectangular grab band or layout. Zero radius keeps nested lines
+// continuous. This decoration is omitted from SplitView's semantic snapshot.
 type splitSeparator struct {
 	gui.WidgetBase
 	view *SplitView
@@ -187,8 +188,12 @@ func (s *splitSeparator) Paint(p gui.Painter) {
 	if s.Rect().Width <= 0 || s.Rect().Height <= 0 {
 		return
 	}
-	if ink, ok := v.partStyle("separator", v.handle.paintState()).ForegroundColor(); ok && ink != nil {
-		p.FillRect(geometry.Rectangle{Size: s.Rect().Size}, graphics.ColorOf(ink))
+	appearance := v.partStyle("separator", v.handle.paintState())
+	if ink, ok := appearance.ForegroundColor(); ok && ink != nil {
+		radius, _ := appearance.CornerRadius()
+		// BorderWidth already defines the line's allocation, not a box stroke.
+		fill := style.Default().BackgroundColor(ink).CornerRadius(radius).Style
+		gui.PaintStyledBackground(p, geometry.Rectangle{Size: s.Rect().Size}, fill)
 	}
 }
 
