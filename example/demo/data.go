@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/example/demo/resource"
 	"github.com/golang-gui/goui/gui"
 	"github.com/golang-gui/goui/layout"
@@ -165,8 +166,12 @@ func (d *dataDemo) view() ui.View {
 			return []*ui.MenuItemView{ui.MenuItem(resource.ViewRowID(), func() { d.host.report(fmt.Sprintf(resource.RowColumn(), id, column)) }), ui.MenuItem(resource.ResetNote(), func() { d.table.resetNote(id) })}
 		}).
 		OnContextMenuError(func(e error) { d.host.result(resource.TableMenu(), e) })
-	left := ui.VBox(ui.Label("TreeView").Tooltip(resource.TreeActions()), ui.ScrollView(tree).MainWeight(1)).CrossAlign(layout.CrossStretch).Spacing(8).MinWidth(160)
-	right := ui.VBox(ui.Label("TableView").Tooltip(resource.TableActions()), table.MainWeight(1)).CrossAlign(layout.CrossStretch).Spacing(8).MinWidth(250)
+	// The default 5 DIP grab band overlaps pane edges by 2 DIP. Keep scrollbars
+	// and editors outside it explicitly; the split lines still meet at the corner.
+	left := ui.VBox(ui.Label("TreeView").Tooltip(resource.TreeActions()), ui.ScrollView(tree).MainWeight(1)).CrossAlign(layout.CrossStretch).Spacing(8).
+		Paddings(geometry.Insets{Right: 2, Bottom: 2}).MinWidth(160)
+	right := ui.VBox(ui.Label("TableView").Tooltip(resource.TableActions()), table.MainWeight(1)).CrossAlign(layout.CrossStretch).Spacing(8).
+		Paddings(geometry.Insets{Left: 2, Bottom: 2}).MinWidth(250)
 	upper := wui.HSplit(left, right).StartSize(d.dataStart).
 		OnResize(func(start, _ float32) { d.dataStart = start }).MainWeight(1)
 	looks := make([]*ui.MenuItemView, len(tableLookNames))
@@ -185,7 +190,7 @@ func (d *dataDemo) view() ui.View {
 		wui.VSplit(upper,
 			ui.VBox(ui.Label(resource.ListRows()), ui.ScrollView(ui.ListView(d.list, func(i int, text string) ui.View {
 				return ui.Button(text).OnClick(func() { d.host.report(fmt.Sprintf(resource.ListSelected(), i+1)) })
-			})).MainWeight(1)).CrossAlign(layout.CrossStretch).Spacing(8)).Ratio(d.dataRatio).
+			})).MainWeight(1)).CrossAlign(layout.CrossStretch).Spacing(8).Paddings(geometry.Insets{Top: 2})).Ratio(d.dataRatio).
 			OnResize(func(start, end float32) {
 				if start+end > 0 {
 					d.dataRatio = start / (start + end)

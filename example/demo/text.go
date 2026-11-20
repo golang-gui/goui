@@ -45,7 +45,9 @@ func (d *textDemo) view() ui.View {
 	}
 	return fullPage("text", resource.Text(), resource.TextHint()+" "+resource.TextMultiClickHint()+" "+resource.PlaceholderHint(),
 		wui.HSplit(
-			ui.ScrollView(d.inputs.View()).Direction(ui.ScrollVertical).ID("input-examples-scroll").MinWidth(220),
+			// Keep the scrollbar clear of the split handle's 2 DIP overlap.
+			ui.VBox(ui.ScrollView(d.inputs.View()).Direction(ui.ScrollVertical).ID("input-examples-scroll")).
+				CrossAlign(layout.CrossStretch).Paddings(geometry.Insets{Right: 2}).MinWidth(220),
 			d.editorView(model, labels, items, wrap),
 		).ID("text-panes").StartSize(d.inputWidth).OnResize(func(start, _ float32) { d.inputWidth = start }).MainWeight(1),
 	)
