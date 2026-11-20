@@ -1694,9 +1694,9 @@ Linux 两后端及 Windows Direct2D／Software 原生回归通过。Windows Open
 
 ### 旋转圆弧质量
 
-NanoVG v0.0.15 降低了误差，但history仍反馈锯齿。后续本地修复在通用填充边界
-按轮廓面积合成，使用Context复用的行表纹理，保留凸轮廓快路；细分容差经实际
+NanoVG v0.0.15 降低了误差，但history仍反馈锯齿。后续修复由v0.0.16提供，在通用
+填充边界按轮廓面积合成，使用Context复用的行表纹理，保留凸轮廓快路；细分容差经实际
 视觉与成本对照选为1/32，与覆盖率修复独立提交。Linux覆盖率及连续角度回归、
-history帧率对照通过，暂不发布新标签；GOUI正式依赖仍为v0.0.15。
+history帧率对照通过，GOUI已固定正式依赖v0.0.16，无本地replace。
 成本、Software严格直边差异和完整范围见上述文档。Direct2D独立质量问题、
 Windows OpenGL／macOS及移动端原生窗口验收缺口仍保留。
