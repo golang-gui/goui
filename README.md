@@ -24,11 +24,13 @@ The current version provides the foundations and controls needed for small deskt
 The [demo](example/demo) brings together controls, text editing, layouts, data views, detachable
 tabs, overlays, graphics, animations, and system integration. Switch between light/dark appearances, accent colors, and eight UI languages.
 
-Demo **0.8.0 / build 1** is available, with settings rows, table border choices,
-responsive columns, continuous tree selection, and triple-click text selection.
-See the [v0.8.0 release notes](doc/ReleaseV080.md) for changes and API migration.
-See the [demo guide](example/demo/README.md) for controls and validation steps.
-The screenshots below were captured with Demo v0.6.0.
+The source demo is **0.8.1 / build 1**, prepared for a repair release covering
+popup reuse, fullscreen behavior, scrolling, split handles, keyboard focus and
+rendering quality. See the [v0.8.1 release notes](doc/ReleaseV081.md) for fixes
+and required API migration, and the [demo guide](example/demo/README.md) for examples.
+
+The downloads below remain **v0.8.0** until v0.8.1 is published.
+The screenshots were captured with Demo v0.6.0.
 
 | Platform | Demo download |
 | --- | --- |
@@ -121,14 +123,14 @@ RSS includes resident shared-library pages; PSS apportions shared pages between 
 Core controls live in `gui`, with declarative bindings in `ui`. Additional controls live in
 `widgets`, with their declarative bindings in `widgets/ui`.
 
-### v0.8.0 highlights
+### v0.8.1 repair release — in preparation
 
-- **Settings pages:** `ListRow` combines leading content, a title, a multiline subtitle, and independent trailing controls, with Basic and Modern appearances. `ListRowGroup` stacks rows into one visually connected block: neighbours share a single border and only the outer corners stay rounded.
-- **Tables:** columns shrink to `MinWidth` before scrolling, while `Expand` distributes spare width. Manual resizing remains stable across neighboring-column changes and declarative rebuilds. Owned style parts independently control headers, scrollbars, grid lines, cell outlines, and the viewport frame.
-- **Trees:** row styles and content-decoration depth are declarative. Backgrounds and hit areas fit the viewport while content scrolls horizontally; adjacent selected rows form a continuous group. A tree-owned drag source can outlive recycled rows.
-- **Input and editing:** typed callbacks carry local coordinates, buttons and modifiers; consecutive counts are available on press. Text editors support triple-click line selection followed by whole-line dragging. See the [migration notes](doc/ReleaseV080.md#api-migration).
-- **Popup and desktop behavior:** built-in menus, dropdowns and tooltips reuse one native popup and painter per owning surface. X11 appearance changes no longer require GTK event dispatch. Native drag-preview creation can degrade to a drag without a preview.
-- **Stability and mobile foundations:** fixes cover X11 window activation/dragging and drag-session cleanup, Win32 Alt modifiers, progress animation and Switch pixel alignment. Shared Surface hosting and Android/iOS lifecycle/rendering work continue; complete mobile input, IME and device delivery remain in development.
+- **Popup stability:** stabilize size and position before showing reused menus, dropdowns and tooltips; clear retained contents and handle anchor changes without giving clients ownership of the shared host.
+- **Desktop behavior:** repair fullscreen transitions and menu placement, provide visible keyboard focus for tabs, and refresh focused custom text widgets after their input capability changes.
+- **Scrolling and splits:** let explicit scrolling override an older reveal, configure scrollbar spacing and thickness while preserving default geometry, and align SplitView cursors with its grab area. Separator styling and grab thickness are independent.
+- **Rendering and settings:** preserve fractional-pixel edges, improve rotated ring coverage and Software image scaling, support formatted tooltips, and group settings rows with optional equal heights.
+
+The demo retains nine pages and adds controls for equal row heights, scrollbar layouts and fullscreen. Public API changes needed for these repairs are listed in the [migration notes](doc/ReleaseV081.md#api-migration).
 
 ## Build with an AI coding assistant
 
