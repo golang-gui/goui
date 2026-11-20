@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"image"
-	"math"
 	"sync"
 
 	"github.com/goexlib/cgo"
@@ -33,6 +32,7 @@ type Painter struct {
 	transform     geometry.Transform
 	viewport      image.Rectangle
 	clip          image.Rectangle
+	clipActive    bool
 
 	frameID      uint64
 	activeFrame  bool
@@ -328,6 +328,7 @@ func (p *Painter) Begin(width, height, scale float32) {
 	p.scale = scale
 	p.viewport = image.Rect(0, 0, int(width), int(height))
 	p.clip = image.Rectangle{}
+	p.clipActive = false
 	p.SetTransform(geometry.Identity())
 }
 
@@ -515,7 +516,7 @@ func (p *Painter) DrawTextLayout(origin graphics.Point, layout typography.TextLa
 	// Snap the complete layout once. Every region shares this pixel grid.
 	origin = textbitmap.SnapOrigin(origin, p.transform, p.scale)
 	clip := p.viewport
-	if p.clip != (image.Rectangle{}) {
+	if p.clipActive {
 		clip = clip.Intersect(p.clip)
 	}
 	region := textbitmap.Region(layout, origin, p.transform, p.scale, rasterScale, clip)
@@ -577,6 +578,7 @@ func (p *Painter) DrawImage(rect graphics.Rectangle, img graphics.Image) {
 
 func (p *Painter) SetClipRect(rect graphics.Rectangle) {
 	p.clip = image.Rectangle{}
+	p.clipActive = rect != (graphics.Rectangle{})
 	// NanoVG's Scissor is transformed by the current transform. Since the
 	// clip rect is already in window-local coordinates (the transform's
 	// offset has been applied by the GUI layer), we must set the scissor in
@@ -585,13 +587,12 @@ func (p *Painter) SetClipRect(rect graphics.Rectangle) {
 	xform := p.vg.CurrentTransform()
 	p.vg.ResetTransform()
 	p.vg.ResetScissor()
-	if rect.X != 0 || rect.Y != 0 || rect.Width != 0 || rect.Height != 0 {
+	if p.clipActive {
 		// NanoVG's scissor has a one-device-pixel AA fringe. Put its edges on
-		// the same pixel boundaries as the fill/stroke so it cannot attenuate
-		// the widget border a second time. Keep rounded-corner AA enabled.
-		rect = pixelsnap.Rect(rect, geometry.Identity(), p.scale)
-		p.clip = image.Rect(int(math.Floor(float64(rect.X*p.scale))), int(math.Floor(float64(rect.Y*p.scale))), int(math.Ceil(float64((rect.X+rect.Width)*p.scale))), int(math.Ceil(float64((rect.Y+rect.Height)*p.scale))))
-		p.vg.Scissor(rect.X*p.scale, rect.Y*p.scale, rect.Width*p.scale, rect.Height*p.scale)
+		// conservative pixel envelope, retaining path edge coverage without
+		// multiplying it by fractional clip AA. Do not snap the logical rect.
+		p.clip = pixelsnap.Clip(rect, p.scale)
+		p.vg.Scissor(float32(p.clip.Min.X), float32(p.clip.Min.Y), float32(max(0, p.clip.Dx())), float32(max(0, p.clip.Dy())))
 	}
 	p.vg.SetTransformByValue(xform[0], xform[1], xform[2], xform[3], xform[4], xform[5])
 }
@@ -808,12 +809,13 @@ func (p *Painter) RenderImage(width, height int, scale float32, draw func()) (im
 	if status := cgo.CallRet[uint32](procGLCheckFramebufferStatus, uint32(gl.FRAMEBUFFER)); status != gl.FRAMEBUFFER_COMPLETE {
 		return nil, fmt.Errorf("opengl: incomplete offscreen framebuffer %#x", status)
 	}
-	oldScale, oldTransform, oldViewport, oldClip := p.scale, p.transform, p.viewport, p.clip
+	oldScale, oldTransform, oldViewport, oldClip, oldClipActive := p.scale, p.transform, p.viewport, p.clip, p.clipActive
 	defer func() {
 		p.vg.CancelFrame()
 		p.activeFrame = false
 		p.flushPendingImages()
 		p.scale, p.transform, p.viewport, p.clip = oldScale, oldTransform, oldViewport, oldClip
+		p.clipActive = oldClipActive
 	}()
 	gl.Viewport(0, 0, width, height)
 	gl.Disable(gl.SCISSOR_TEST)

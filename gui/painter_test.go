@@ -148,6 +148,30 @@ func TestPainterStructuralViewportClipDoesNotMoveWithContent(t *testing.T) {
 	}
 }
 
+// 先求完整逻辑交集；各层分别扩大到像素会让本已分离的子项重新变成可绘制。
+func TestPainterKeepsFractionalIntersectionsUntilBackend(t *testing.T) {
+	backend := new(recordingPainterBackend)
+	parent := newPainterTestWidget(nil)
+	child := newPainterTestWidget(func(p Painter) {
+		p.SetClipRect(geometry.Rect(.75, 0, 5, 8))
+		p.FillRect(geometry.Rect(0, 0, 20, 20), graphics.RGB(255, 0, 0))
+	})
+	outside := newPainterTestWidget(fillAt(2))
+	parent.Arrange(geometry.Rect(10.25, 20.25, 10.5, 10.5))
+	child.Arrange(geometry.Rect(-.5, .5, 11.5, 11.5))
+	outside.Arrange(geometry.Rect(10.625, 0, .125, 1))
+	parent.AddChild(child)
+	parent.AddChild(outside)
+
+	paintWidget(parent, newPainter(backend, geometry.Rect(0, 0, 100, 100), 1.25))
+	if len(backend.fills) != 1 || outside.paints != 0 {
+		t.Fatalf("逻辑分离的子项不应绘制：fills=%d outside=%d", len(backend.fills), outside.paints)
+	}
+	if got, want := backend.fills[0].clip, geometry.Rect(10.5, 20.75, 5, 8); got != want {
+		t.Fatalf("后端应接收未取整的最终交集：%v，预期%v", got, want)
+	}
+}
+
 func TestPainterSuppressesEmptyClipAndCanSetAnotherClip(t *testing.T) {
 	backend := new(recordingPainterBackend)
 	bounds := geometry.Rect(0, 0, 100, 100)

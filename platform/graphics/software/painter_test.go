@@ -1947,3 +1947,57 @@ func TestInvalidateRetainedNativeUpload(t *testing.T) {
 	}
 	p.End()
 }
+
+// 硬裁剪保留与逻辑交集相交的完整物理像素，不额外乘一次边缘覆盖率。
+func TestFractionalClipEnvelopeAndEmptyRestore(t *testing.T) {
+	renderClip := func(scale float32, clip graphics.Rectangle, draw func(graphics.Painter)) image.Image {
+		p, err := NewPainter(new(testDrawer))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer p.Destroy()
+		img, err := p.RenderImage(12, 12, scale, func() { p.SetClipRect(clip); draw(p) })
+		if err != nil {
+			t.Fatal(err)
+		}
+		return img
+	}
+
+	for _, scale := range []float32{1, 1.25, 1.5, 2} {
+		for _, clip := range []graphics.Rectangle{
+			graphics.Rect(2.5/scale, 3.25/scale, 3/scale, 2.5/scale),
+			graphics.Rect(-.5/scale, -.5/scale, 2/scale, 2/scale),
+			graphics.Rect(1/scale, 1/scale, .1/scale, .1/scale),
+			graphics.Rect(.5/scale, .5/scale, 0, 2/scale),
+		} {
+			img := renderClip(scale, clip, func(p graphics.Painter) {
+				// 修改图元变换不能移动窗口局部裁剪。
+				p.SetTransform(geometry.Translate(-4, -4))
+				p.FillRect(graphics.Rect(0, 0, 30, 30), graphics.RGBA(255, 0, 0, 128))
+			})
+			left, top := int(math.Floor(float64(clip.X*scale))), int(math.Floor(float64(clip.Y*scale)))
+			right, bottom := int(math.Ceil(float64((clip.X+clip.Width)*scale))), int(math.Ceil(float64((clip.Y+clip.Height)*scale)))
+			for y := 0; y < 12; y++ {
+				for x := 0; x < 12; x++ {
+					want := color.RGBA{}
+					if clip.Width > 0 && clip.Height > 0 && x >= left && x < right && y >= top && y < bottom {
+						want = color.RGBA{R: 128, A: 128}
+					}
+					assertColorNear(t, img.At(x, y), want, 1)
+				}
+			}
+		}
+	}
+	img := renderClip(1, graphics.Rectangle{}, func(p graphics.Painter) {
+		p.SetClipRect(graphics.Rect(.5, .5, 0, 4))
+		p.FillRect(graphics.Rect(0, 0, 12, 12), graphics.RGB(255, 0, 0))
+		p.SetClipRect(graphics.Rectangle{})
+		p.FillRect(graphics.Rect(2, 2, 2, 2), graphics.RGB(0, 255, 0))
+		p.SetClipRect(graphics.Rect(8.1, 8.1, .1, .1))
+		p.FillRect(graphics.Rect(0, 0, 12, 12), graphics.RGB(0, 0, 255))
+	})
+	assertColorNear(t, img.At(0, 0), color.RGBA{}, 0)
+	assertColorNear(t, img.At(2, 2), color.RGBA{G: 255, A: 255}, 0)
+	assertColorNear(t, img.At(8, 8), color.RGBA{B: 255, A: 255}, 0)
+	assertColorNear(t, img.At(9, 8), color.RGBA{}, 0)
+}

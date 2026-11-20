@@ -176,8 +176,9 @@ func TestFractionalDIPBorderKeepsStrokeCoverage(t *testing.T) {
 	}
 }
 
-func TestEmptyRoundedClipCanBeReplaced(t *testing.T) {
-	img := renderTestImage(t, 1, geometry.Identity(), graphics.Rect(0, 0, 0.2, 0.2), func(p *Painter) {
+func TestEmptyClipCanBeReplaced(t *testing.T) {
+	// 正面积小裁剪现在保留边界像素；用真正零宽矩形继续覆盖空栈项的替换。
+	img := renderTestImage(t, 1, geometry.Identity(), graphics.Rect(.2, .2, 0, .2), func(p *Painter) {
 		p.FillRect(graphics.Rect(0, 0, 20, 20), graphics.RGB(0, 0, 0))
 		p.SetClipRect(graphics.Rectangle{})
 		p.FillRect(graphics.Rect(4, 4, 2, 2), graphics.RGB(0, 0, 0))
@@ -845,5 +846,46 @@ func TestInvalidateCompositionPresentation(t *testing.T) {
 				t.Fatal("新帧完成前没有保留 detached 状态")
 			}
 		})
+	}
+}
+
+func TestFractionalClipEnvelopeAndEmptyRestore(t *testing.T) {
+	for _, scale := range []float32{1, 1.25, 1.5, 2} {
+		clip := graphics.Rect(2.5/scale, 3.25/scale, 3/scale, 2.5/scale)
+		img := renderAlphaTestImage(t, scale, geometry.Identity(), clip, func(p *Painter) {
+			p.SetTransform(geometry.Translate(-4, -4))
+			p.FillRect(graphics.Rect(0, 0, 30, 30), graphics.RGBA(255, 0, 0, 128))
+		})
+		for y := 0; y < 12; y++ {
+			for x := 0; x < 12; x++ {
+				want := color.RGBA{}
+				if x >= 2 && x < 6 && y >= 3 && y < 6 {
+					want = color.RGBA{R: 128, A: 128}
+				}
+				got := img.RGBAAt(x, y)
+				if math.Abs(float64(got.R)-float64(want.R)) > 1 || math.Abs(float64(got.A)-float64(want.A)) > 1 || got.G != 0 || got.B != 0 {
+					t.Fatalf("%gx (%d,%d)=%v want=%v", scale, x, y, got, want)
+				}
+			}
+		}
+	}
+	img := renderAlphaTestImage(t, 1, geometry.Identity(), graphics.Rectangle{}, func(p *Painter) {
+		p.SetClipRect(graphics.Rect(.5, .5, 0, 4))
+		p.FillRect(graphics.Rect(0, 0, 12, 12), graphics.RGB(255, 0, 0))
+		if !p.clipActive {
+			t.Fatal("空裁剪丢失原生栈状态")
+		}
+		p.SetClipRect(graphics.Rectangle{})
+		p.FillRect(graphics.Rect(2, 2, 2, 2), graphics.RGB(0, 255, 0))
+		p.SetClipRect(graphics.Rect(8.1, 8.1, .1, .1))
+		p.FillRect(graphics.Rect(0, 0, 12, 12), graphics.RGB(0, 0, 255))
+	})
+	for _, tc := range []struct {
+		x, y int
+		want color.RGBA
+	}{{0, 0, color.RGBA{}}, {2, 2, color.RGBA{G: 255, A: 255}}, {8, 8, color.RGBA{B: 255, A: 255}}, {9, 8, color.RGBA{}}} {
+		if got := img.RGBAAt(tc.x, tc.y); got != tc.want {
+			t.Fatalf("空裁剪／恢复(%d,%d)=%v want=%v", tc.x, tc.y, got, tc.want)
+		}
 	}
 }

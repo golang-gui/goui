@@ -32,7 +32,9 @@ type Painter interface {
 	// A zero result means the scale is degenerate or non-finite.
 	PixelScale() float32
 	// SetClipRect replaces the current explicit clip within the Widget's
-	// structural bounds. rect is in Widget-local layout coordinates.
+	// structural bounds. rect is in Widget-local layout coordinates. Logical
+	// intersections precede conservative rounding to intersecting physical
+	// pixels; adjacent clips can share a boundary pixel. Path AA is preserved.
 	SetClipRect(rect geometry.Rectangle)
 	// SetTransform replaces the current Widget-local drawing transform. It
 	// affects only the current Widget, not its descendants.
