@@ -773,6 +773,18 @@ func TestTreeSelectionColorsIgnoreAccent(t *testing.T) {
 
 func TestMenuInteractionColorsIgnoreAccent(t *testing.T) {
 	for _, dark := range []bool{false, true} {
+		sheet := Sheet(Options{Dark: dark})
+		for _, state := range []style.State{style.Normal, style.Checked | style.Hovered, style.Checked | style.Disabled} {
+			name := "menu-item-text"
+			if state.Has(style.Disabled) {
+				name = "menu-item-text-disabled"
+			}
+			want, _ := sheet.Resolve(style.Sel{Name: name}).ForegroundColor()
+			fg, ok := sheet.Resolve(style.Sel{Name: "menu-item", Part: "indicator", State: state}).ForegroundColor()
+			if !ok || rgba(fg) != rgba(want) {
+				t.Fatalf("勾号与菜单文字的明暗／禁用颜色不一致：dark=%v state=%v", dark, state)
+			}
+		}
 		want := []color.RGBA{rgb(0xE6E6E6), rgb(0xD1D1D1)}
 		if dark {
 			want = []color.RGBA{rgb(0x3E3E42), rgb(0x4F4F53)}

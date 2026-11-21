@@ -9,6 +9,9 @@ import (
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/events"
+	"github.com/golang-gui/goui/platform/graphics"
+	"github.com/golang-gui/goui/platform/graphics/software"
+	"github.com/golang-gui/goui/style"
 )
 
 var layoutLooseFull = layout.Constraint{Min: geometry.Size{}, Max: geometry.Size{Width: layout.Inf, Height: layout.Inf}}
@@ -830,6 +833,173 @@ func TestMenuCommandColumnsAndLiveGesture(t *testing.T) {
 	}
 	if got := first.Snapshot().Attributes[MenuItemInfoKey].(MenuItemInfo).Shortcut; got != x.Gesture().DisplayText() {
 		t.Fatal("快照未反映最新提示")
+	}
+}
+
+func TestMenuCheckedCommandColumnsAndProjection(t *testing.T) {
+	useTestApplication(t, &application{typo: &styleTypography{}, style: textStyleSheet(10, color.Black)})
+	command := NewCommand()
+	model := NewMenu()
+	model.Append("Long ordinary title", nil)
+	model.Append("Check", nil).SetCommand(command)
+	model.Append("Again", nil).SetCommand(command)
+	content := newMenuContent(model, 0, nil)
+	win := testWindowWithSurface(&window{})
+	win.SetWidget(content)
+	defer win.Destroy()
+	content.observeCommands(true)
+	arrange := func() {
+		size := content.Measure(layout.Unbounded()).Size
+		content.Arrange(geometry.Rect(0, 0, size.Width, size.Height))
+	}
+	arrange()
+	before := content.naturalW
+	first, checked := content.list.items[0].(*menuItemRow), content.list.items[1].(*menuItemRow)
+	command.SetCheckable(true)
+	if content.valid {
+		t.Fatal("增加勾选能力没有失效菜单列宽")
+	}
+	arrange()
+	// 指示列固定 16 DIP，后跟 8 DIP 间隔；不以被测宽度函数作为预期。
+	if content.naturalW != before+24 || first.label.Rect().X != 32 || checked.label.Rect().X != 32 {
+		t.Fatal("混合菜单没有预留一致的指示列", content.naturalW, first.label.Rect(), checked.label.Rect())
+	}
+	content.selectItem(model.ItemAt(1))
+	command.SetChecked(true)
+	info := checked.Snapshot()
+	state := info.Attributes[MenuItemInfoKey].(MenuItemInfo)
+	if !content.valid || !info.Selected || info.Role != RoleMenuItemCheckbox || !state.Checkable || !state.Checked || !checked.State().Has(style.Checked) {
+		t.Fatal("仅更新勾选值重排菜单、丢失活动项或没有投影状态", info)
+	}
+	command.SetEnabled(false)
+	if info = checked.Snapshot(); info.Enabled || !info.Attributes[MenuItemInfoKey].(MenuItemInfo).Checked || info.Selected {
+		t.Fatal("禁用项丢失勾选值或残留导航高亮", info)
+	}
+	command.SetEnabled(true)
+	command.SetCheckable(false)
+	arrange()
+	if content.naturalW != before || checked.Snapshot().Role != RoleMenuItem || checked.State().Has(style.Checked) {
+		t.Fatal("去掉勾选能力没有恢复普通菜单")
+	}
+	command.SetCheckable(true)
+	command.SetChecked(true)
+	model.ItemAt(1).SetVisible(false)
+	model.ItemAt(2).SetVisible(false)
+	arrange()
+	if content.naturalW != before {
+		t.Fatal("隐藏勾选项仍参与指示列计算")
+	}
+	row := newMenuItemRow(nil)
+	row.bind(model.ItemAt(1))
+	row.bind(model.ItemAt(0))
+	if row.State().Has(style.Checked) || row.Snapshot().Role != RoleMenuItem {
+		t.Fatal("复用行保留了前一条目的勾选状态")
+	}
+	content.observeCommands(false)
+	if len(content.commands) != 0 {
+		t.Fatal("隐藏呈现后仍订阅命令状态")
+	}
+}
+
+func TestMenuCheckedCommandActivationUsesBusinessHandler(t *testing.T) {
+	command := NewCommand()
+	command.SetCheckable(true)
+	activated, accept := 0, false
+	command.ConnectActivate(func() {
+		activated++
+		if accept {
+			command.SetChecked(!command.Checked())
+		}
+	})
+	model := NewMenu()
+	item := model.Append("Check", nil)
+	item.SetCommand(command)
+	pm := NewPopoverMenu(nil)
+	pm.SetMenu(model)
+	content := newMenuContent(model, 0, pm.activate)
+	win := testWindowWithSurface(&window{})
+	win.SetWidget(content)
+	defer win.Destroy()
+	press := func(key events.Key) {
+		t.Helper()
+		if err := win.DispatchEvent(shortcutPress(key, 0)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	press(events.KeyHome)
+	press(events.KeyEnter)
+	if activated != 1 || command.Checked() {
+		t.Fatal("菜单替业务处理函数提交了未接受的勾选值")
+	}
+	accept = true
+	press(events.KeySpace)
+	if activated != 2 || !command.Checked() {
+		t.Fatal("菜单重复执行或没有使用业务提交结果")
+	}
+	shortcut := NewShortcut(KeyGesture{Key: KeyF5})
+	shortcut.SetCommand(command)
+	defer shortcut.SetCommand(nil)
+	win.Shortcuts().AddShortcut(shortcut)
+	press(events.KeyF5)
+	if activated != 3 || command.Checked() {
+		t.Fatal("快捷键与菜单没有共享同一激活路径")
+	}
+	command.SetChecked(true)
+	if activated != 3 {
+		t.Fatal("程序更新状态触发了业务操作")
+	}
+}
+
+func TestMenuCheckIndicatorPartAndBounds(t *testing.T) {
+	// Software 输出是预乘 RGBA。只核对有覆盖像素的通道比例和指示区域边界，
+	// 不约束斜线抗锯齿的具体覆盖值，也不依赖字体或平台金图。
+	useTestApplication(t, &application{style: style.Sheet(
+		style.Name(styleNameMenuItem).Part("indicator").ForegroundColor(color.RGBA{R: 255, A: 255}),
+		style.Name(styleNameMenuItem).Part("indicator").State(style.Disabled).ForegroundColor(color.RGBA{B: 255, A: 255}),
+	)})
+	command := NewCommand()
+	command.SetCheckable(true)
+	item := NewMenuItem("", nil)
+	item.SetCommand(command)
+	row := newMenuItemRow(nil)
+	row.bind(item)
+	row.Arrange(geometry.Rect(0, 0, 80, 28))
+	for _, checked := range []bool{false, true} {
+		command.SetChecked(checked)
+		for _, disabled := range []bool{false, true} {
+			command.SetEnabled(!disabled)
+			for _, scale := range []float32{1, 2} {
+				out := new(transparentFrame)
+				backend, err := software.NewPainter(out)
+				if err != nil {
+					t.Fatal(err)
+				}
+				backend.Begin(80*scale, 28*scale, scale)
+				backend.Clear(graphics.Color{})
+				row.Paint(newPainter(backend, geometry.Rect(0, 0, 80, 28), scale))
+				backend.End()
+				ink := 0
+				for y := 0; y < int(28*scale); y++ {
+					for x := 0; x < int(80*scale); x++ {
+						r, g, b, a := out.image.At(x, y).RGBA()
+						if a == 0 {
+							continue
+						}
+						ink++
+						if !checked || float32(x) < 8*scale || float32(x) >= 24*scale || float32(y) < 6*scale || float32(y) >= 22*scale {
+							t.Fatalf("勾号越出指示区域或未勾选仍有绘制：checked=%v scale=%g pixel=%d,%d", checked, scale, x, y)
+						}
+						if g != 0 || !disabled && (r != a || b != 0) || disabled && (b != a || r != 0) {
+							t.Fatal("indicator Part 或 Disabled 前景色没有生效")
+						}
+					}
+				}
+				backend.Destroy()
+				if checked && ink == 0 {
+					t.Fatal("已勾选项缺少矢量指示")
+				}
+			}
+		}
 	}
 }
 

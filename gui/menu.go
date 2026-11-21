@@ -546,6 +546,16 @@ func (mc *menuContent) syncCommands() {
 					mc.refreshCommand(command, true)
 				}
 			}),
+			command.ConnectCheckable(func(bool) {
+				if mc.observing {
+					mc.refreshCommand(command, true)
+				}
+			}),
+			command.ConnectChecked(func(bool) {
+				if mc.observing {
+					mc.refreshCommand(command, false)
+				}
+			}),
 		}
 	}
 }
@@ -633,13 +643,13 @@ func (mc *menuContent) Measure(c layout.Constraint) layout.Measurement {
 	return layout.Measured(mc.constrain(c, geometry.Size{Width: w, Height: h}))
 }
 
-type menuColumns struct{ title, shortcut float32 }
+type menuColumns struct{ title, shortcut, indicator float32 }
 
 func (c menuColumns) width() float32 {
 	if c.shortcut > 0 {
-		return c.title + menuShortcutGap + c.shortcut
+		return c.indicator + c.title + menuShortcutGap + c.shortcut
 	}
-	return c.title
+	return c.indicator + c.title
 }
 
 func (mc *menuContent) measureNatural() {
@@ -657,6 +667,9 @@ func (mc *menuContent) measureNatural() {
 				if row.mi.Separator() {
 					h += menuSeparatorHeight
 				} else {
+					if row.checkable() {
+						columns.indicator = menuIndicatorSize + menuIndicatorGap
+					}
 					title, hint := row.textMeasurements()
 					columns.title = max(columns.title, title.Width)
 					columns.shortcut = max(columns.shortcut, hint.Width)
@@ -771,6 +784,8 @@ const (
 	menuItemMinHeight   = 28
 	menuShortcutGap     = 24
 	menuSeparatorHeight = 9
+	menuIndicatorSize   = 16
+	menuIndicatorGap    = 8
 )
 
 func newMenuItemRow(activate func(*MenuItem)) *menuItemRow {
@@ -805,7 +820,7 @@ func (r *menuItemRow) bind(mi *MenuItem) {
 	r.label.releaseLayout()
 	r.shortcut.releaseLayout()
 	r.click.Reset()
-	r.SetState(style.Pressed|style.Selected, false)
+	r.SetState(style.Pressed|style.Selected|style.Checked, false)
 	r.mi = mi
 	r.label.SetText("")
 	r.label.SetVisible(mi != nil && mi.Visible() && !mi.Separator())
@@ -849,6 +864,7 @@ func (r *menuItemRow) refreshPresentation() bool {
 		r.SetState(style.Selected, false)
 	}
 	r.presentationEnabled = enabled
+	r.SetState(style.Checked, r.checkable() && r.mi.command.Checked())
 	r.RequestPaint()
 	r.requestSemanticUpdate()
 	return changed
@@ -878,7 +894,7 @@ func (r *menuItemRow) Measure(c layout.Constraint) layout.Measurement {
 		return layout.Measured(r.constrain(c, geometry.Size{Height: menuSeparatorHeight}))
 	}
 	title, hint := r.textMeasurements()
-	columns := menuColumns{title.Width, hint.Width}
+	columns := menuColumns{title: title.Width, shortcut: hint.Width, indicator: r.indicatorWidth()}
 	if r.columns != nil {
 		columns.title = max(columns.title, r.columns.title)
 		columns.shortcut = max(columns.shortcut, r.columns.shortcut)
@@ -899,6 +915,8 @@ func (r *menuItemRow) Arrange(rect geometry.Rectangle) {
 		hintWidth = max(hintWidth, r.columns.shortcut)
 	}
 	width := max(0, rect.Width-2*menuItemPadding)
+	leading := min(width, r.indicatorWidth())
+	width -= leading
 	hintWidth = min(width, hintWidth)
 	gap := float32(0)
 	if hintWidth > 0 {
@@ -915,12 +933,12 @@ func (r *menuItemRow) Arrange(rect geometry.Rectangle) {
 		titleY += (height - title.Height) / 2
 		hintY += (height - hint.Height) / 2
 	}
-	r.label.Arrange(geometry.Rect(menuItemPadding, titleY, max(0, width-hintWidth-gap), min(title.Height, rect.Height)))
+	r.label.Arrange(geometry.Rect(menuItemPadding+leading, titleY, max(0, width-hintWidth-gap), min(title.Height, rect.Height)))
 	if r.shortcut.Visible() {
 		// Align the widget's natural text box, rather than relying on paragraph
 		// alignment in an unwrapped text layout. The shared column remains reserved.
 		textWidth := min(hintWidth, hint.Width)
-		r.shortcut.Arrange(geometry.Rect(menuItemPadding+width-textWidth, hintY, textWidth, min(hint.Height, rect.Height)))
+		r.shortcut.Arrange(geometry.Rect(menuItemPadding+leading+width-textWidth, hintY, textWidth, min(hint.Height, rect.Height)))
 	}
 }
 
@@ -938,6 +956,31 @@ func (r *menuItemRow) Paint(p Painter) {
 		return
 	}
 	PaintStyledBox(p, rect, r.resolvedStyle())
+	if r.checkable() {
+		size := min(float32(menuIndicatorSize), max(0, rect.Width-2*menuItemPadding), rect.Height)
+		indicator := geometry.Rect(menuItemPadding, (rect.Height-size)/2, size, size)
+		s := ResolveWidgetStyle(r, styleNameMenuItem, "indicator", r.presentationState())
+		PaintStyledBox(p, indicator, s)
+		if fg, ok := s.ForegroundColor(); ok && fg != nil && size > 0 && r.mi.command.Checked() {
+			p.DrawPath(graphics.MoveTo(indicator.X+size*.1875, indicator.Y+size*.5).
+				LineTo(indicator.X+size*.4375, indicator.Y+size*.75).
+				LineTo(indicator.X+size*.8125, indicator.Y+size*.25), size*.125, graphics.ColorOf(fg))
+		}
+	}
+}
+
+func (r *menuItemRow) checkable() bool {
+	return r.mi != nil && !r.mi.Separator() && r.mi.command != nil && r.mi.command.Checkable()
+}
+
+func (r *menuItemRow) indicatorWidth() float32 {
+	if r.columns != nil {
+		return r.columns.indicator
+	}
+	if r.checkable() {
+		return menuIndicatorSize + menuIndicatorGap
+	}
+	return 0
 }
 
 func (r *menuItemRow) Snapshot() WidgetInfo {
@@ -950,7 +993,11 @@ func (r *menuItemRow) Snapshot() WidgetInfo {
 	if r.mi != nil {
 		info.Text = r.label.PlainText()
 		if r.mi.command != nil {
-			info.SetAttribute(MenuItemInfoKey, MenuItemInfo{Shortcut: r.mi.command.shortcutText()})
+			checkable := r.checkable()
+			info.SetAttribute(MenuItemInfoKey, MenuItemInfo{Shortcut: r.mi.command.shortcutText(), Checkable: checkable, Checked: checkable && r.mi.command.Checked()})
+			if checkable {
+				info.Role = RoleMenuItemCheckbox
+			}
 		}
 		if r.mi.Separator() {
 			info.Role = RoleMenuSeparator
@@ -965,13 +1012,17 @@ func (r *menuItemRow) Snapshot() WidgetInfo {
 // current item; they expose Disabled without changing that navigation policy.
 func (r *menuItemRow) State() style.State {
 	state := r.WidgetBase.State()
+	state &^= style.Checked
+	if r.checkable() && r.mi.command.Checked() {
+		state |= style.Checked
+	}
 	if r.mi != nil && !r.mi.available() {
 		state = (state | style.Disabled).Normalized() &^ style.DropActive
 	}
 	return state
 }
 
-func (r *menuItemRow) resolvedStyle() style.Style {
+func (r *menuItemRow) presentationState() style.State {
 	st := r.State() &^ (style.Hovered | style.Pressed)
 	if st.Has(style.Selected) {
 		st |= style.Hovered
@@ -979,7 +1030,11 @@ func (r *menuItemRow) resolvedStyle() style.Style {
 			st |= style.Pressed
 		}
 	}
-	return ResolveWidgetStyle(r, styleNameMenuItem, style.PartDefault, st)
+	return st
+}
+
+func (r *menuItemRow) resolvedStyle() style.Style {
+	return ResolveWidgetStyle(r, styleNameMenuItem, style.PartDefault, r.presentationState())
 }
 
 func (r *menuItemRow) setPressed(p bool) {
@@ -989,7 +1044,10 @@ func (r *menuItemRow) setPressed(p bool) {
 // MenuItemInfoKey names detached menu presentation data in a semantic snapshot.
 const MenuItemInfoKey = "goui.menu-item"
 
-// MenuItemInfo describes a configured shortcut hint, not current key reachability.
+// MenuItemInfo describes shared operation state and a configured shortcut hint,
+// not current key reachability. Checked is meaningful only when Checkable is true.
 type MenuItemInfo struct {
-	Shortcut string `json:"shortcut,omitempty"`
+	Shortcut  string `json:"shortcut,omitempty"`
+	Checkable bool   `json:"checkable,omitempty"`
+	Checked   bool   `json:"checked,omitempty"`
 }
