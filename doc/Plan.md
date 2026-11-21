@@ -7014,3 +7014,21 @@ B/C 仍为后续工作，不阻塞 A 的应用定制能力；本轮没有交付�
   F6快照通过。所有窗口正常关闭；窗口入口沿用scroll_layout，不新增验证框架。
 - [x] Windows amd64／macOS arm64受影响包与窗口入口交叉编译通过；本轮未执行这两个
   系统的原生窗口验收，改动不涉及平台层或绘制后端。
+
+## 菜单勾选项与共享命令状态（2026-11-21）
+
+- [x] Command 增加 Checkable／Checked 和状态通知；Activate 保留单一业务入口，
+  由处理函数显式提交实际值。程序发布、禁用期间更新及通知重入不产生额外激活。
+- [x] 菜单投影共享状态，统一指示列并用 indicator Part 绘制矢量勾号，接入 Basic／
+  Modern、禁用外观和 menuitemcheckbox 语义。值更新保持尺寸及导航，能力变化重测。
+- [x] UI 增加 Checkable／Checked／BindChecked，复用现有属性绑定和作用域发布；
+  验证换源、卸载、跨窗口移交及外部 CommandRef 所有权。设计及参考见
+  [DesignCommand](DesignCommand.md)、[DesignMenu](DesignMenu.md)。
+- [x] `go test ./... -count=1 -json`：6272项测试／子测试通过，0失败、0条件跳过；
+  154个无测试文件包另计。gui／ui／Basic／Modern race通过；既有X11测试使用
+  独立会话中的私有窗口与selection，没有修改日常桌面或系统设置。
+- [x] 扩展既有 ui/commands 窗口入口：Linux amd64／X11／Xfwm4合成开启／Pango，
+  OpenGL（Mesa llvmpipe）Basic 1x、Modern亮暗1x及亮色2x、Software暗色1x自动
+  场景通过；真实鼠标与键盘复核勾选、禁用、实时发布和关闭行为，外观列对齐。
+- [x] Windows amd64／macOS arm64受影响包与窗口入口交叉编译通过；本轮未执行
+  两者原生窗口验收，改动不涉及平台层或绘制后端。
