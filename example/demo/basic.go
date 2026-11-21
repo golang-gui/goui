@@ -120,7 +120,7 @@ func (d *basicDemo) view() ui.View {
 					Prefix(ui.Icon(d.host.icons[0]).Size(24).Style(modern.AccentIcon)).
 					Suffix(wui.Switch().ID("settings-updates-switch").Checked(d.switched.Get()).OnChange(func(v bool) { d.switched.Set(v) })),
 				wui.ListRow(resource.CheckUpdates()).ID("settings-action").Subtitle(resource.ListRowActionHint()).
-					Suffix(ui.Label("›").Style(modern.MutedText)).Activatable(true).OnActivate(func() { d.host.report(resource.ListRowActivated()) }),
+					Suffix(ui.Icon(d.host.rowArrow).Size(16).Style(modern.MutedText)).Activatable(true).OnActivate(func() { d.host.report(resource.ListRowActivated()) }),
 				wui.ListRow(resource.DropDownTitle()).ID("settings-dropdown").Suffix(
 					wui.DropDown(d.choices).Selected(d.drop.Get()).MaxWidth(200).OnSelected(func(i int) { d.drop.Set(i) }).OnOpenError(func(err error) { d.host.result(resource.OpenDropDown(), err) })),
 				wui.ListRow(resource.VersionTitle()).ID("settings-version").Suffix(ui.Label("0.8.1")),

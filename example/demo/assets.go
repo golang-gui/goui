@@ -19,6 +19,11 @@ func (d *demo) loadAssets() error {
 	// Branding always keeps its original colors, independently of icon styles.
 	// Never add a tintable copy of the logo to the ordinary icon samples.
 	d.logo = logo.WithRawColors()
+	rowArrow, err := svg.Parse(strings.NewReader(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9 6L15 12L9 18" fill="none" stroke="#303840" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`))
+	if err != nil {
+		return err
+	}
+	d.rowArrow = rowArrow
 	paths := []string{
 		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M6 3H14L19 8V21H6Z M14 3V8H19 M9 12H16 M9 16H16" fill="none" stroke="#303840" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 5H10L12 7H22V20H2Z" fill="#e0ac42"/><path d="M3 9H21V19H3Z" fill="#f4cd6b"/></svg>`,
