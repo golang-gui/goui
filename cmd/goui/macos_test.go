@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"crypto"
@@ -277,6 +278,74 @@ func TestMacOSGoSigning(t *testing.T) {
 		t.Fatal("验签必须校验时间戳信任链")
 	}
 
+	ticket := []byte("archive preserves opaque ticket bytes; this fixture is not notarized")
+	if err = os.WriteFile(filepath.Join(app, "Contents", "CodeResources"), ticket, 0644); err != nil {
+		t.Fatal(err)
+	}
+	outputZip := filepath.Join(c.dir, "result.zip")
+	if err = archiveMacOS(ctx, app, outputZip); err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.OpenReader(outputZip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seenExecutable, seenTicket := false, false
+	for _, file := range zr.File {
+		if strings.HasSuffix(file.Name, "/Contents/MacOS/"+c.Executable) {
+			seenExecutable = true
+			if file.Mode().Perm() != 0755 {
+				t.Fatal("ZIP 必须显式保留可执行权限")
+			}
+			r, err := file.Open()
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := io.ReadAll(r)
+			r.Close()
+			if err != nil || !bytes.Equal(data, signed) {
+				t.Fatal("归档不得改写已签名程序", err)
+			}
+		}
+		if strings.HasSuffix(file.Name, "/Contents/CodeResources") {
+			seenTicket = true
+			r, err := file.Open()
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := io.ReadAll(r)
+			r.Close()
+			if err != nil || !bytes.Equal(data, ticket) {
+				t.Fatal("归档必须保留票据", err)
+			}
+		}
+	}
+	zr.Close()
+	if !seenExecutable || !seenTicket {
+		t.Fatal("ZIP 缺少程序或票据")
+	}
+	if err = archiveMacOS(ctx, app, outputZip); err == nil {
+		t.Fatal("归档不能覆盖已有输出")
+	}
+	insideZip := filepath.Join(app, "Contents", "Resources", "archive.zip")
+	if err = archiveMacOS(ctx, app, insideZip); err == nil {
+		t.Fatal("不能向输入 Bundle 内写入归档")
+	}
+	if _, err = os.Stat(insideZip); !os.IsNotExist(err) {
+		t.Fatal("拒绝后不能修改 Bundle", err)
+	}
+	canceled, stop := context.WithCancel(ctx)
+	stop()
+	canceledZip := filepath.Join(c.dir, "canceled.zip")
+	if err = archiveMacOS(canceled, app, canceledZip); err == nil {
+		t.Fatal("归档必须响应取消")
+	}
+	if _, err = os.Stat(canceledZip); !os.IsNotExist(err) {
+		t.Fatal("取消后不能发布归档", err)
+	}
+	if err = os.Remove(filepath.Join(app, "Contents", "CodeResources")); err != nil {
+		t.Fatal(err)
+	}
 	c.MacOS.Signing.PKCS12 = filepath.Join(c.dir, "missing.p12")
 	output := filepath.Join(c.dir, "Failure.app")
 	if _, err = packageApp(ctx, c, target{"darwin", "arm64"}, "app", "", output); err == nil {
@@ -326,12 +395,16 @@ func TestMacOSDistributionConfig(t *testing.T) {
 [macos.signing]
 pkcs12 = 'developer.p12'
 password_env = 'GOUI_MAC_TEST_PASSWORD'
+[macos.notary]
+private_key = 'AuthKey.p8'
+key_id = 'KEY123'
+issuer_id = '11111111-2222-3333-4444-555555555555'
 `))
 	loaded, err := loadConfig(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.MacOS.Signing.PKCS12 != "developer.p12" || loaded.MacOS.Signing.PasswordEnv != "GOUI_MAC_TEST_PASSWORD" {
+	if loaded.MacOS.Signing.PKCS12 != "developer.p12" || loaded.MacOS.Signing.PasswordEnv != "GOUI_MAC_TEST_PASSWORD" || loaded.MacOS.Notary.PrivateKey != "AuthKey.p8" || loaded.MacOS.Notary.KeyID != "KEY123" || loaded.MacOS.Notary.IssuerID != "11111111-2222-3333-4444-555555555555" {
 		t.Fatal("签名和公证配置未正确解码")
 	}
 	loaded.MacOS.Sandbox = true

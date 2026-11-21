@@ -5,6 +5,7 @@ go 1.24
 require (
 	github.com/agusibrahim/apksig-go v1.1.0
 	github.com/aluedeke/go-codesign v0.0.6
+	github.com/aws/aws-sdk-go-v2 v1.36.3
 	github.com/blacktop/go-macho v1.1.258
 	github.com/digitorus/pkcs7 v0.0.0-20230713084857-e76b763bdc49
 	github.com/digitorus/timestamp v0.0.0-20231217203849-220c5c2851b7
@@ -32,6 +33,7 @@ require (
 
 require (
 	github.com/akavel/rsrc v0.10.2 // indirect
+	github.com/aws/smithy-go v1.22.2 // indirect
 	github.com/blacktop/go-dwarf v1.0.14 // indirect
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	golang.org/x/crypto v0.33.0 // indirect

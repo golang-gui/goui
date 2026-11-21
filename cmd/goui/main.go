@@ -33,11 +33,14 @@ func main() {
 
 func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	if len(args) == 0 || args[0] == "help" || args[0] == "-h" || args[0] == "--help" {
-		fmt.Fprintln(out, "usage: goui <doctor|generate|build|package> [-config goui.toml] [-target OS/ARCH]")
+		fmt.Fprintln(out, "usage: goui <doctor|generate|build|package|archive|notarize|staple> [-config goui.toml] [-target OS/ARCH]")
 		fmt.Fprintln(out, "build outputs a binary; package consumes it (macOS: -format app, Linux: -format dir).")
 		return nil
 	}
 	command := args[0]
+	if command == "archive" || command == "notarize" || command == "staple" {
+		return runMacOSDistribution(ctx, command, args[1:], out, errOut)
+	}
 	if command != "doctor" && command != "generate" && command != "build" && command != "package" {
 		return fmt.Errorf("unknown command %q", command)
 	}

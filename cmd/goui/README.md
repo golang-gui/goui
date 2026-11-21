@@ -45,7 +45,7 @@ categories = ["Utility"]
 不要同时使用另一套 main 包资源 syso；console 配置控制 Windows GUI/CUI 子系统。
 
 `build` 总是生成裸二进制；`package` 从不重新编译。Windows EXE 可以直接分发；
-macOS app 提供 Bundle 身份和图标，可显式配置签名；公证仍由应用发行流程负责。Linux dir 是安装目录树，
+macOS app 提供 Bundle 身份和图标，可显式配置签名、公证和票据装订。Linux dir 是安装目录树，
 不是自动注册的便携应用；二进制可独立运行，桌面图标需要安装 desktop/hicolor 文件。
 不生成 DEB/RPM/AppImage，不自动申请权限、安装或复制系统库。
 
@@ -60,7 +60,8 @@ signing_identity = "Apple Development: ..." # 明确选择本机可用身份
 ```
 
 `generate` 将 Entitlements.plist 单独生成在资源目录，不混入 Info.plist；
-`package` 必须在 macOS 执行，调用系统 codesign 签入并校验，失败不发布 .app。
+使用 `signing_identity` 时，`package` 必须在 macOS 执行，调用系统 codesign 签入并校验；
+也可使用下述跨平台 PKCS#12 入口。签名失败不发布 .app。
 开发可显式用 `signing_identity = "-"`，但 ad-hoc 不保证跨构建的身份稳定；
 保存凭据使用稳定签名，并在用户选择文件后取得 FileAccess.Credential。
 原始二进制不因 `build` 而成为可分发的沙箱应用，必须完成 package。
@@ -70,6 +71,45 @@ signing_identity = "Apple Development: ..." # 明确选择本机可用身份
 SVG 使用和 `cmd/svgpng` 相同的 GOUI 静态子集，按原色等比居中并保留透明。
 不支持的 SVG 应先按 [SVG 设计](../../doc/DesignSVG.md) 转为支持的内容或 PNG。
 可通过 `[windows].icon` / `[macos].icon` 使用已有 ICO / ICNS。
+
+## macOS 跨平台分发
+
+Linux、Windows、macOS 均可为现有 darwin/arm64 二进制组包、签名、公证、装订
+并归档，无需宿主 Xcode。签名复用 iOS 的 PKCS#12 与 Mach-O/CMS 实现，但需要
+**Developer ID Application** 身份；iOS 证书和 provisioning profile 不能代替它。
+首期支持单个主程序及普通资源，不支持 Universal、嵌套代码、Framework 或符号链接。
+
+```toml
+[macos.signing]
+pkcs12 = "private/developer-id.p12" # 私钥、证书及中间链
+password_env = "MACOS_SIGN_PASSWORD" # 环境变量名，不是密码
+
+[macos.notary]
+private_key = "private/AuthKey.p8" # App Store Connect 团队 API 密钥
+key_id = "KEYID"
+issuer_id = "11111111-2222-3333-4444-555555555555"
+```
+
+`macos.signing` 与 `macos.signing_identity` 二选一。PKCS#12 入口始终开启
+Hardened Runtime 与 Apple 安全时间戳；时间戳需要网络，失败不会降级成未签名产物。
+工具不导出钥匙串私钥，也不转换已有 notarytool profile；后者仍可配合 Apple 工具使用。
+
+```sh
+goui build -target darwin/arm64
+goui package -target darwin/arm64 -format app
+goui notarize -app "dist/darwin-arm64/便笺.app" -o notary.json -wait
+# 超时后按同一 ID 续查，不重复上传：
+goui notarize -submission <ID> -o notary.json -wait
+goui staple -app "dist/darwin-arm64/便笺.app"
+goui archive -app "dist/darwin-arm64/便笺.app" -o Notes.zip
+```
+
+这些分发命令默认目标为 darwin/arm64；也支持 `-config`。`notarize` 显式上传并保存
+任务收据；`-history` 查询历史，`-wait`／`-timeout` 控制等待。`staple` 校验 Apple
+票据与当前代码摘要再写入，`archive` 保留票据与 Unix 执行权限，并拒绝覆盖已有 ZIP。
+归档不会重新签名，也不代表公证通过。正式分发仍须在 macOS 对最终 ZIP 解压产物
+做原生验签、票据、Gatekeeper 与窗口验收，见[完整设计](../../doc/DesignMacOSDistribution.md)
+和[发布流程](../../doc/Release.md)。
 
 ## 移动端构建（实验阶段）
 
