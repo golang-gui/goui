@@ -299,6 +299,8 @@ func TestMenuButtonGroupDeclarationTransfersWithContent(t *testing.T) {
 // 直接引用外部命令无需作用域，换对象时保留菜单模型且不修改外部状态。
 func TestMenuCommandRefOwnershipAndReplacement(t *testing.T) {
 	first, second := gui.NewCommand(), gui.NewCommand()
+	first.SetCheckable(true)
+	first.SetChecked(true)
 	a, b := 0, 0
 	first.ConnectActivate(func() { a++ })
 	second.ConnectActivate(func() { b++ })
@@ -340,7 +342,7 @@ func TestMenuCommandRefOwnershipAndReplacement(t *testing.T) {
 	r.unmountHost()
 	first.Activate()
 	second.Activate()
-	if a != 11 || b != 2 || !first.Enabled() || !second.Enabled() {
+	if a != 11 || b != 2 || !first.Enabled() || !second.Enabled() || !first.Checkable() || !first.Checked() || second.Checkable() {
 		t.Fatal("卸载修改了外部命令或其处理者")
 	}
 }

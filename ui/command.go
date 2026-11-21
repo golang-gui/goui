@@ -16,6 +16,9 @@ type CommandView struct {
 	id            string
 	enabled       bool
 	enabledSource ReadState[bool]
+	checkable     bool
+	checked       bool
+	checkedSource ReadState[bool]
 	onActivate    func()
 }
 
@@ -39,6 +42,29 @@ func (v *CommandView) BindEnabled(source ReadState[bool]) *CommandView {
 	if source != nil {
 		validateObservable(source)
 		v.enabledSource = source
+	}
+	return v
+}
+
+// Checkable declares whether this operation publishes a boolean state.
+// Activation still invokes OnActivate without implicitly changing that state.
+func (v *CommandView) Checkable(checkable bool) *CommandView {
+	v.checkable = checkable
+	return v
+}
+
+// Checked publishes actual state for a checkable operation. It replaces BindChecked.
+func (v *CommandView) Checked(checked bool) *CommandView {
+	v.checked, v.checkedSource = checked, nil
+	return v
+}
+
+// BindChecked follows committed state without rebuilding surrounding views.
+// A later Checked replaces the binding. nil is a no-op.
+func (v *CommandView) BindChecked(source ReadState[bool]) *CommandView {
+	if source != nil {
+		validateObservable(source)
+		v.checkedSource = source
 	}
 	return v
 }
@@ -76,24 +102,27 @@ type scopedCommand struct {
 	definition *commandDefinition
 }
 type commandGroup struct {
-	ctx          BuildContext
-	commands     map[string]*scopedCommand
-	definitions  map[*commandDefinition]struct{}
-	shorthand    commandDefinitions
-	dirty        bool
-	parent       *commandGroup
-	parentHandle signal.Handle
-	changed      signal.Signal0
-	released     bool
+	ctx            BuildContext
+	commands       map[string]*scopedCommand
+	definitions    map[*commandDefinition]struct{}
+	shorthand      commandDefinitions
+	dirty          bool
+	commitRevision uint64
+	parent         *commandGroup
+	parentHandle   signal.Handle
+	changed        signal.Signal0
+	released       bool
 }
 
 // A definition belongs to its declaring menu, shortcut list or scope. All
 // hosts use the same registration and property binding paths.
 type commandDefinition struct {
-	scope    *commandGroup
-	id       string
-	enabled  bool
-	callback func()
+	scope     *commandGroup
+	id        string
+	enabled   bool
+	checkable bool
+	checked   bool
+	callback  func()
 }
 
 func (d *commandDefinition) attach(scope *commandGroup) {
@@ -120,15 +149,28 @@ func (d *commandDefinition) update(ctx BuildContext, s *commandGroup, v *Command
 		panic("ui: empty command ID")
 	}
 	d.id, d.callback = v.id, v.onActivate
+	d.checkable = v.checkable
 	d.attach(s)
 	if v.enabledSource != nil {
 		BindValue(ctx, property, v.enabledSource, d.setEnabled)
 	} else {
 		d.setEnabled(v.enabled)
 	}
+	if v.checkedSource != nil {
+		BindValue(ctx, "checked:"+property, v.checkedSource, d.setChecked)
+	} else {
+		d.setChecked(v.checked)
+	}
 }
 func (d *commandDefinition) setEnabled(enabled bool) {
 	d.enabled = enabled
+	if d.scope != nil {
+		d.scope.invalidate()
+	}
+}
+
+func (d *commandDefinition) setChecked(checked bool) {
+	d.checked = checked
 	if d.scope != nil {
 		d.scope.invalidate()
 	}
@@ -322,6 +364,8 @@ func (s *commandGroup) commit() {
 	if !s.live() || !s.dirty {
 		return
 	}
+	s.commitRevision++
+	revision := s.commitRevision
 	definitions := make(map[string]*commandDefinition, len(s.definitions))
 	for d := range s.definitions {
 		if definitions[d.id] != nil {
@@ -357,12 +401,24 @@ func (s *commandGroup) commit() {
 		}
 	}
 	for _, entry := range next {
-		if !s.live() {
+		definition := entry.definition
+		live := func() bool {
+			return s.live() && s.commitRevision == revision && entry.definition == definition && definition != nil
+		}
+		if !live() {
 			return
 		}
-		entry.command.SetEnabled(entry.definition.enabled)
+		entry.command.SetEnabled(definition.enabled)
+		if !live() {
+			return
+		}
+		entry.command.SetCheckable(definition.checkable)
+		if !live() {
+			return
+		}
+		entry.command.SetChecked(definition.checked)
 	}
-	if changed && s.live() {
+	if changed && s.live() && s.commitRevision == revision {
 		s.changed.Emit()
 	}
 }
