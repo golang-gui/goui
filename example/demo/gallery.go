@@ -28,6 +28,7 @@ type demo struct {
 	input    sampleInput
 	language string
 	icons    []gui.IconSource
+	rowArrow gui.IconSource
 	logo     gui.IconSource
 	wordmark *svg.Source
 	bitmap   image.Image
