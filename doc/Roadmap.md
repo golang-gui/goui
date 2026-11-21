@@ -9,16 +9,19 @@ Demo更新为0.8.1 / build 1，补充必要的修复相关布局入口；双语R
 Go1.24.13独立消费验证已完成，README下载入口同步。既有构建例外与未验收组合见
 [Plan](Plan.md#v081-正式发布2026-11-20)及Release的BUILD-INFO.md，不扩大发布目标。
 
-## 内外滚动条与布局配置（2026-11-19，首批完成）
+## 内外滚动条与布局配置（2026-11-21，分组与外部控制完成）
 
 ScrollView 内置条已逐轴提供 HScrollBarOptions / VScrollBarOptions，区分条厚、
 滑块厚度、额外间距及 Auto/Always/Hidden。默认轨道和滑块都为8 DIP、间距0，延续既有外观；
 首批覆盖 TableView 与两层 UI 入口。表格按 ScrollGeometry 的真实槽位适配紧包围、
 表头接缝与交汇角，保留手动列宽和基础宽度，不再猜测固定厚度。
 交汇角通过独立corner Part装饰：普通滚动容器默认透明，TableView主题显式保留轨道底色。
-后续再交付非 Widget 的外部控制协议及声明式外部条，外部对象不归宿主布局／销毁，
-不引入共享滚动模型。完整设计与阶段验收见 [DesignScrollBars](DesignScrollBars.md)，
-进度及本机逻辑／窗口验证范围见 [Plan](Plan.md#2026-11-19-内外滚动条设计与首批-options)。
+ScrollBarClient／BindScrollBar 支持非 Widget 控制端；PageSize 与轨道长度独立，
+TableView 薄转发绑定。声明式 ScrollGroup 通过 ObjectView 与成员生命周期关联
+ScrollView／TableView 和独立 ScrollBar，覆盖局部替换、嵌套隔离及移交；不引入
+独立滚动模型或窗口隐式组。外部对象不归宿主布局／销毁，不进入表格包络。
+完整设计见 [DesignScrollBars](DesignScrollBars.md)，进度与验证范围见
+[Plan](Plan.md#外部滚动控制与声明式-scrollgroup2026-11-21)。
 
 ## Popover 与 SharedPopover 收敛（2026-11-17）
 
