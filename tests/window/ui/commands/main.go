@@ -21,6 +21,9 @@
 //  8. 窗口默认分组不需要显式包裹 CommandGroup；“Window”操作在 Window.Commands
 //     声明，窗口 F3 和菜单按 ID 引用。F5 切换该命令启用状态，菜单实时更新。
 //     Check 使用 App.FindCommand(windowID, commandID) 查询，不要求 BuildContext。
+//  9. External 与 Window 初始未勾选；菜单、F12／F3 均由同一处理函数提交勾选状态。
+//     禁用后保留勾号；F2 直接发布 Window 状态，打开菜单实时更新且不增加执行计数。
+//     普通项与勾选项标题对齐，勾号不随字体改变，切换状态不改变菜单宽度。
 //
 // 自动场景还检查重复关联、最新操作回调、删除后的回退、重开菜单和绘图后端／倍率。
 // 自动派发不替代原生菜单 grab、IME 和桌面输入；不使用 DevServer 或语义动作捷径。
@@ -66,7 +69,7 @@ func key(target inputTarget, k events.Key, mods events.Modifiers) {
 	must(target.DispatchEvent(events.KeyEvent{EventType: events.KeyDown, Key: k, Modifiers: mods}))
 }
 func findRow(info gui.WidgetInfo, text string) (gui.WidgetInfo, bool) {
-	if info.Role == gui.RoleMenuItem && info.Text == text {
+	if (info.Role == gui.RoleMenuItem || info.Role == gui.RoleMenuItemCheckbox) && info.Text == text {
 		return info, true
 	}
 	for _, child := range info.Children {
@@ -121,19 +124,23 @@ func main() {
 	enabled, shifted, override := ui.MakeState(true), ui.MakeState(false), ui.MakeState(true)
 	itemEnabled, bindingEnabled := ui.MakeState(true), ui.MakeState(true)
 	windowEnabled := ui.MakeState(true)
+	windowChecked := ui.MakeState(false)
 	status := ui.MakeState("外层：0　局部：0")
 	outerCount, innerCount, global, local := 0, 0, 0, 0
 	externalCount, definitionBuilds, buildsBeforeAvailability := 0, 0, 0
 	buildsBeforeDefinition, definitionsBeforeUpdate := 0, 0
 	windowCount := 0
 	external := gui.NewCommand()
+	external.SetCheckable(true)
 	report := func() { status.Set(fmt.Sprintf("外层：%d　局部：%d", outerCount, innerCount)) }
 	external.ConnectActivate(func() {
 		externalCount++
+		external.SetChecked(!external.Checked())
 		status.Set(fmt.Sprintf("外部：%d", externalCount))
 	})
 	toggleExternal := func() { external.SetEnabled(!external.Enabled()) }
 	toggleWindow := func() { windowEnabled.Set(!windowEnabled.Get()) }
+	publishWindow := func() { windowChecked.Set(!windowChecked.Get()) }
 	p := new(painterProbe)
 	started, complete, step := false, false, 0
 	var app ui.App
@@ -156,7 +163,7 @@ func main() {
 		if originalModel == nil {
 			originalModel = m
 		}
-		fmt.Printf("CHECK global=%d local=%d definitions=%d outer=%d inner=%d external=%d enabled=%t window=%d\n", global, local, definitionBuilds, outerCount, innerCount, externalCount, command.Enabled(), windowCount)
+		fmt.Printf("CHECK global=%d local=%d definitions=%d outer=%d inner=%d external=%d checked=%t enabled=%t window=%d checked=%t\n", global, local, definitionBuilds, outerCount, innerCount, externalCount, external.Checked(), command.Enabled(), windowCount, app.FindCommand("commands", "window.run").Checked())
 		for _, id := range []string{"edit", "inner", "enable", "gesture", "scope", "menu-entry", "binding", "check"} {
 			b := app.FindWidget("commands", id).Snapshot().Bounds
 			fmt.Printf("BOUNDS %s %.1f %.1f %.1f %.1f\n", id, b.X, b.Y, b.Width, b.Height)
@@ -169,7 +176,11 @@ func main() {
 			started = true
 			if *auto {
 				var timer *ui.Timer
+				var checkBounds geometry.Rectangle
+				var checkModel gui.MenuModel
+				deadline := time.Now().Add(45 * time.Second)
 				timer = app.TickFunc(400*time.Millisecond, func() {
+					require(time.Now().Before(deadline), "automatic verification timed out")
 					w := app.FindWindow("commands")
 					pop := func() gui.PopoverTarget { require(len(w.Popovers()) == 1, "expected one menu"); return w.Popovers()[0] }
 					row := func() gui.WidgetInfo {
@@ -180,6 +191,9 @@ func main() {
 					fmt.Printf("STEP %d popovers=%d edit=%t inner=%t\n", step, len(w.Popovers()), menu("edit").Opened(), menu("inner").Opened())
 					switch step {
 					case 0:
+						if p.backend == "" || menu("edit").Snapshot().Bounds.Width <= 0 {
+							return
+						}
 						check()
 						click(w, menu("edit").Snapshot().Bounds.Center())
 					case 1:
@@ -244,20 +258,21 @@ func main() {
 						require(outerCount == 5 && innerCount == 1 && global == 1, "incorrect counts or global rebuild")
 						key(w, events.KeyF12, 0)
 					case 18:
-						require(externalCount == 1, "window shortcut did not borrow external command")
+						require(externalCount == 1 && external.Checked(), "window shortcut did not publish external state")
 						click(w, menu("edit").Snapshot().Bounds.Center())
 					case 19:
 						key(w, events.KeyF4, 0)
 					case 20:
 						ext, ok := findRow(pop().Widget().Snapshot(), "External")
 						require(ok && !ext.Enabled && row().Enabled, "external enabled state did not update independently")
+						require(ext.Role == gui.RoleMenuItemCheckbox && ext.Attributes[gui.MenuItemInfoKey].(gui.MenuItemInfo).Checked, "disabled external lost checked state")
 						key(w, events.KeyF4, 0)
 					case 21:
 						ext, ok := findRow(pop().Widget().Snapshot(), "External")
 						require(ok && ext.Enabled, "external menu did not reenable")
 						click(pop(), ext.Bounds.Center())
 					case 22:
-						require(externalCount == 2 && len(external.Shortcuts()) == 1, "external menu duplicated or lost operation")
+						require(externalCount == 2 && !external.Checked() && len(external.Shortcuts()) == 1, "external menu duplicated or lost state publication")
 						key(w, events.KeyF3, 0)
 					case 23:
 						require(windowCount == 1, "window ID shortcut did not activate default command")
@@ -267,6 +282,7 @@ func main() {
 					case 25:
 						item, ok := findRow(pop().Widget().Snapshot(), "Window")
 						require(ok && !item.Enabled && row().Enabled, "Window.Commands binding did not update independently")
+						require(item.Role == gui.RoleMenuItemCheckbox && item.Attributes[gui.MenuItemInfoKey].(gui.MenuItemInfo).Checked, "disabled window lost bound checked state")
 						key(w, events.KeyF5, 0)
 					case 26:
 						item, ok := findRow(pop().Widget().Snapshot(), "Window")
@@ -274,6 +290,29 @@ func main() {
 						click(pop(), item.Bounds.Center())
 					case 27:
 						require(windowCount == 2 && global == 1 && local == 4, "window command rebuilt unrelated content or duplicated activation")
+						require(!app.FindCommand("commands", "window.run").Checked(), "menu activation did not commit bound state")
+						click(w, menu("edit").Snapshot().Bounds.Center())
+					case 28:
+						if len(w.Popovers()) != 1 || !menu("edit").Opened() {
+							return
+						}
+						checkBounds = pop().Widget().Snapshot().Bounds
+						checkModel = menu("edit").Menu()
+						key(w, events.KeyF2, 0)
+					case 29:
+						item, ok := findRow(pop().Widget().Snapshot(), "Window")
+						if !ok || !item.Attributes[gui.MenuItemInfoKey].(gui.MenuItemInfo).Checked {
+							return
+						}
+						require(windowCount == 2 && global == 1 && local == 4, "program publication activated or rebuilt content")
+						require(pop().Widget().Snapshot().Bounds == checkBounds && menu("edit").Menu() == checkModel, fmt.Sprintf("checked publication changed geometry or model: before=%v after=%v same-model=%t", checkBounds, pop().Widget().Snapshot().Bounds, menu("edit").Menu() == checkModel))
+						key(w, events.KeyEscape, 0)
+						key(w, events.KeyF3, 0)
+					case 30:
+						if app.FindCommand("commands", "window.run").Checked() {
+							return
+						}
+						require(windowCount == 3 && global == 1 && local == 4, "shortcut did not use shared checked operation")
 						check()
 						require(p.backend != "", "no actual paint")
 						complete = true
@@ -301,7 +340,7 @@ func main() {
 			}))
 			return ui.VBox(
 				ui.HBox(ui.MenuButton("编辑").ID("edit").Menu(ui.MenuItem("Copy").Command("copy").Enabled(itemEnabled.Get()), ui.MenuItem("没有快捷键的长菜单项", func() {}), ui.MenuItem("External").CommandRef(external), ui.MenuItem("Window").Command("window.run")), inner).Spacing(12),
-				ui.Label("F6：操作启用　F7：按键　F9：局部定义"), ui.Label().BindText(&status),
+				ui.Label("F2：发布勾选　F3/F12：勾选操作　F5/F4：启用"), ui.Label().BindText(&status),
 				ui.Button("切换操作启用").ID("enable").OnClick(toggle),
 				ui.Button("修改快捷键").ID("gesture").OnClick(change),
 				ui.Button("切换局部定义").ID("scope").OnClick(toggleOverride),
@@ -314,8 +353,10 @@ func main() {
 			ui.Shortcut(ui.KeyF6).OnActivate(toggle), ui.Shortcut(ui.KeyF7).OnActivate(change), ui.Shortcut(ui.KeyF8).OnActivate(check), ui.Shortcut(ui.KeyF9).OnActivate(toggleOverride), ui.Shortcut(ui.KeyF10).OnActivate(toggleItem), ui.Shortcut(ui.KeyF11).OnActivate(toggleBinding),
 			ui.Shortcut(ui.KeyF4).OnActivate(toggleExternal), ui.Shortcut(ui.KeyF12).CommandRef(external),
 			ui.Shortcut(ui.KeyF3).Command("window.run"), ui.Shortcut(ui.KeyF5).OnActivate(toggleWindow),
-		).Commands(ui.Command("window.run").BindEnabled(&windowEnabled).OnActivate(func() {
+			ui.Shortcut(ui.KeyF2).OnActivate(publishWindow),
+		).Commands(ui.Command("window.run").BindEnabled(&windowEnabled).Checkable(true).BindChecked(&windowChecked).OnActivate(func() {
 			windowCount++
+			windowChecked.Set(!windowChecked.Get())
 			status.Set(fmt.Sprintf("窗口操作：%d", windowCount))
 		}))
 		root := ui.Root().Windows(win)
@@ -327,6 +368,6 @@ func main() {
 	must(err)
 	if *auto {
 		require(complete, "automatic verification exited early")
-		require(external.Enabled() && len(external.Shortcuts()) == 0, "unmount mutated or retained external command association")
+		require(external.Enabled() && external.Checkable() && !external.Checked() && len(external.Shortcuts()) == 0, "unmount mutated or retained external command association")
 	}
 }
