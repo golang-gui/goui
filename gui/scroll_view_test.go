@@ -8,6 +8,7 @@ import (
 
 	"github.com/goexlib/mathx"
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
@@ -1317,5 +1318,221 @@ func TestScrollViewLargeRangeContainsContentEnd(t *testing.T) {
 	sv.SetScrollY(math.MaxFloat32)
 	if float64(sv.ScrollX())+float64(area.Width) < float64(content.size.Width) || float64(sv.ScrollY())+float64(area.Height) < float64(content.size.Height) {
 		t.Fatal("范围钳制隐藏内容末端", sv.ScrollX(), sv.ScrollY(), area, content.size)
+	}
+}
+
+// 非 Widget 客户端保留实际状态，也能在同步中触发外部回调。
+type scrollClientProbe struct {
+	maximum, page, value float32
+	change               signal.Signal1[float32]
+	onSet                func(string)
+	values               int
+	onConnect            func()
+}
+
+func (p *scrollClientProbe) SetMax(v float32) {
+	p.maximum = v
+	if p.onSet != nil {
+		p.onSet("max")
+	}
+}
+func (p *scrollClientProbe) SetPageSize(v float32) {
+	p.page = v
+	if p.onSet != nil {
+		p.onSet("page")
+	}
+}
+func (p *scrollClientProbe) SetValue(v float32) {
+	p.value = v
+	p.values++
+	if p.onSet != nil {
+		p.onSet("value")
+	}
+}
+func (p *scrollClientProbe) ConnectChange(fn func(float32)) signal.Handle {
+	if p.onConnect != nil {
+		p.onConnect()
+	}
+	return p.change.Connect(fn)
+}
+
+func TestScrollViewExternalClients(t *testing.T) {
+	sv := NewScrollView()
+	sv.SetChild(&mockWidget{size: geometry.Size{Width: 500, Height: 1000}})
+	sv.SetHScrollBarOptions(ScrollBarOptions{Policy: ScrollBarHidden})
+	sv.SetVScrollBarOptions(ScrollBarOptions{Policy: ScrollBarHidden})
+	sv.Arrange(geometry.Rect(0, 0, 100, 100))
+	x, y, other := new(scrollClientProbe), new(scrollClientProbe), new(scrollClientProbe)
+	hx := sv.BindScrollBar(layout.DirectionHorizontal, x)
+	hy := sv.BindScrollBar(layout.DirectionVertical, y)
+	ho := sv.BindScrollBar(layout.DirectionVertical, other)
+	defer signal.Handles{hx, hy, ho}.Disconnect()
+	if x.maximum != 400 || x.page != 100 || y.maximum != 900 || y.page != 100 {
+		t.Fatal("外部状态没有使用内容视口", x, y)
+	}
+	y.value = 10.4 // 模拟先改变自身显示值的数值控件。
+	y.change.Emit(10.4)
+	if sv.ScrollY() != 10 || y.value != 10 || other.value != 10 || x.value != 0 {
+		t.Fatal("请求没有回传实际值或串扰其他轴")
+	}
+	y.value = 10.2
+	y.change.Emit(10.2)
+	if y.value != 10 {
+		t.Fatal("位置未改变时没有纠正客户端")
+	}
+	y.change.Emit(float32(math.NaN()))
+	if y.value != 10 {
+		t.Fatal("非有限请求污染实际状态")
+	}
+	x.change.Emit(9999)
+	if x.value != 400 || sv.ScrollX() != 400 {
+		t.Fatal("没有钳制到末端")
+	}
+	sv.ScrollIntoView(geometry.Rect(0, 999, 1, 1))
+	if y.value != 900 || other.value != 900 {
+		t.Fatal("Reveal 没有同步外部条")
+	}
+	sv.Arrange(geometry.Rect(0, 0, 200, 300))
+	if y.page != 300 || y.maximum != 700 || y.value != 700 || x.page != 200 || x.maximum != 300 {
+		t.Fatal("重布局没有更新范围、页面或末端位置", x, y)
+	}
+	sv.SetDirection(ScrollHorizontal)
+	y.change.Emit(70)
+	if y.value != 0 || y.maximum != 0 || sv.ScrollY() != 0 {
+		t.Fatal("禁止轴仍接受外部请求")
+	}
+	sv.SetChild(nil)
+	if x.maximum != 0 || x.value != 0 || y.maximum != 0 {
+		t.Fatal("清除内容后保留旧状态")
+	}
+}
+
+func TestScrollViewExternalBindingLifetime(t *testing.T) {
+	sv := NewScrollView()
+	sv.SetChild(&mockWidget{size: geometry.Size{Width: 100, Height: 1000}})
+	win := testWindowWithSurface(&window{})
+	win.SetWidget(sv)
+	defer win.Destroy()
+	sv.Arrange(geometry.Rect(0, 0, 100, 100))
+	client := new(scrollClientProbe)
+	h := sv.BindScrollBar(layout.DirectionVertical, client)
+	h.Block()
+	h.Block()
+	sv.SetScrollY(50)
+	client.change.Emit(80)
+	if sv.ScrollY() != 50 || client.value != 0 {
+		t.Fatal("Block没有暂停双向关联")
+	}
+	h.Unblock()
+	if client.value != 0 {
+		t.Fatal("嵌套Block提前恢复")
+	}
+	h.Unblock()
+	if client.value != 50 {
+		t.Fatal("恢复关联时没有补发实际状态")
+	}
+	h.Disconnect()
+	h.Disconnect()
+	client.change.Emit(90)
+	sv.SetScrollY(60)
+	if client.value != 50 || sv.ScrollY() != 60 || len(sv.barBindings) != 0 {
+		t.Fatal("解绑后仍有连接")
+	}
+	h = sv.BindScrollBar(layout.DirectionVertical, client)
+	win.Destroy()
+	if len(sv.barBindings) != 0 {
+		t.Fatal("宿主销毁后仍保留连接，不能依赖调用方再次解绑")
+	}
+	client.change.Emit(100)
+	h.Unblock()
+	h.Disconnect()
+	if len(sv.barBindings) != 0 {
+		t.Fatal("宿主销毁未清除连接")
+	}
+}
+
+func TestScrollViewExternalSyncReentrancy(t *testing.T) {
+	sv := NewScrollView()
+	sv.SetChild(&mockWidget{size: geometry.Size{Width: 100, Height: 1000}})
+	sv.Arrange(geometry.Rect(0, 0, 100, 100))
+	first, second := new(scrollClientProbe), new(scrollClientProbe)
+	h := sv.BindScrollBar(layout.DirectionVertical, first)
+	defer h.Disconnect()
+	sv.BindScrollBar(layout.DirectionVertical, second)
+	once := false
+	first.onSet = func(stage string) {
+		if stage == "max" && !once {
+			once = true
+			sv.SetScrollY(80)
+		}
+		// 即使错误的适配器在接收状态时回发请求，也不能产生回声。
+		first.change.Emit(500)
+	}
+	sv.SetScrollY(40)
+	if !once || sv.ScrollY() != 80 || first.value != 80 || second.value != 80 {
+		t.Fatal("旧同步覆盖重入后的状态", sv.ScrollY(), first, second)
+	}
+	first.onSet = func(stage string) {
+		if stage == "max" {
+			h.Disconnect()
+		}
+	}
+	before := first.values
+	sv.SetScrollY(90)
+	if first.values != before || second.value != 90 {
+		t.Fatal("解绑回调后仍调用客户端")
+	}
+}
+
+func TestScrollViewExternalSyncUnchangedReentrantLayout(t *testing.T) {
+	sv := NewScrollView()
+	sv.SetChild(&mockWidget{size: geometry.Size{Width: 100, Height: 1000}})
+	sv.Arrange(geometry.Rect(0, 0, 100, 100))
+	client := new(scrollClientProbe)
+	h := sv.BindScrollBar(layout.DirectionVertical, client)
+	defer h.Disconnect()
+	client.onSet = func(stage string) {
+		if stage == "max" {
+			sv.Arrange(sv.Rect())
+		}
+	}
+	sv.SetScrollY(40)
+	if client.value != 40 || sv.ScrollY() != 40 {
+		t.Fatal("同值重入布局阻止提交实际偏移")
+	}
+}
+
+func TestScrollViewExternalCallbackDestroysHost(t *testing.T) {
+	for _, phase := range []string{"connect", "page", "deferred-page"} {
+		t.Run(phase, func(t *testing.T) {
+			sv := NewScrollView()
+			sv.SetChild(&mockWidget{size: geometry.Size{Width: 100, Height: 1000}})
+			win := testWindowWithSurface(&window{})
+			win.SetWidget(sv)
+			defer win.Destroy()
+			sv.Arrange(geometry.Rect(0, 0, 100, 100))
+			client := new(scrollClientProbe)
+			if phase == "deferred-page" {
+				win.framePainting = true
+			}
+			if phase == "connect" {
+				client.onConnect = win.Destroy
+			} else {
+				client.onSet = func(stage string) {
+					if stage == "page" {
+						win.Destroy()
+					}
+				}
+			}
+			if h := sv.BindScrollBar(layout.DirectionVertical, client); h != nil || len(sv.barBindings) != 0 || client.values != 0 {
+				t.Fatalf("宿主在外部回调中销毁后仍完成了绑定或写入值：handle=%v bindings=%d values=%d destroyed=%t", h, len(sv.barBindings), client.values, sv.Destroyed())
+			}
+			win.framePainting = false
+			win.finishDestroy()
+			client.change.Emit(90)
+			if sv.ScrollY() != 0 {
+				t.Fatal("销毁后的客户端仍请求滚动")
+			}
+		})
 	}
 }

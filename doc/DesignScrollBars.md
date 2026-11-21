@@ -1,8 +1,8 @@
 # ScrollView 内外滚动条与布局配置
 
-> 状态：2026-11-19 首批 A 已实现 ScrollBarOptions，包括 ScrollView、TableView 的
-> 命令式与声明式入口，以及表格边框适配。外部控制协议和外部滚动条声明式入口
-> 仍为 B/C 阶段目标，不作为首批的前置条件；验证范围见 Plan。
+> 状态：2026-11-19 首批 A 已交付 ScrollBarOptions、TableView 转发和边框适配。
+> 2026-11-21 补充外部 GUI 绑定、PageSize、TableView 与声明式 ScrollGroup／ScrollBar
+> 的完整契约及分批实施；实际交付进度与验证范围见 Plan。
 
 ## 1. 目标与边界
 
@@ -220,9 +220,9 @@ wui.TableView(model, columns...).
 应用可以先定制条宽、滑块与间距，或隐藏默认条并使用已有程序滚动入口；
 不必等待后续外部绑定功能。TableView 仍只暴露必要转发，不公开完整内部 ScrollView。
 
-## 6. 后续外部控制协议
+## 6. 外部控制协议
 
-本节及第 7 节尚未实现，下列接口仅用于指导后续 B/C 阶段。
+本节为外部 GUI 绑定契约，第 7 节为声明式分组契约。
 
 ```go
 type ScrollBarClient interface {
@@ -240,7 +240,7 @@ func (sv *ScrollView) BindScrollBar(
 
 该接口不包含 Widget。现有 *ScrollBar 保持为具体控件，只增加必要的 PageSize
 输入；TableView 薄转发 BindScrollBar。合法方向为 Horizontal/Vertical，
-非法方向作为 API 误用处理；nil 客户端或已销毁宿主不建立连接，返回 nil。
+非法方向作为 API 误用触发 panic；nil 客户端或已销毁宿主不建立连接，返回 nil。
 
 ### 6.1 状态与请求
 
@@ -250,7 +250,7 @@ ConnectChange 表达用户位置请求，统一进入 ScrollView 的有限值检
 
 范围或视口改变，即使位置不变也同步；Direction、SetChild(nil)、Reveal、
 布局后钳制及程序 SetScrollX/Y 均覆盖。内置条与外部客户端使用同一同步路径。
-支持多个客户端连接同一轴；一个客户端只关联一个轴，调用者避免重复建立相同关联。
+支持多个客户端连接同一轴；一个客户端只关联一个宿主轴，调用者避免重复建立相同关联。
 所有操作在 GUI 线程进行，非 Widget 客户端不意味着允许跨线程调用。
 
 标准 ScrollBar 的比例使用 PageSize / (Max + PageSize)，再按自身轨道长度计算
@@ -265,35 +265,48 @@ ConnectChange 表达用户位置请求，统一进入 ScrollView 的有限值检
 
 同步基于已提交的几何和连接快照；每次外部调用后检查宿主及连接版本。客户端
 可以解绑、重入或销毁宿主，旧同步不能继续覆盖更新后的状态，不靠清空全部信号
-代替生命周期保护。标准 Widget 客户端卸载时的连接释放由其关联适配器负责。
+代替生命周期保护。标准 Widget 客户端卸载时的连接释放由其关联适配器负责。失去滚动范围会通过
+ScrollBar 自身的手势取消路径结束旧拖动，不临时改写 Visible 或触发隐藏／显示。
 
-## 7. 后续外部滚动条声明
+## 7. 声明式 ScrollGroup 与外部滚动条
 
-外部标准条作为普通 View 放在任意容器中，布局与关联分别声明，语法目标为：
+ScrollGroup 是 ObjectView 作用域，不生成布局 Widget。最近显式组就是成员的
+默认组；没有窗口隐式组。其子树使用任意普通布局，外部条不需要 Target ID。
+GUI 保留 BindScrollBar 直接关联入口；组只管理连接，不保存第二份滚动状态。
 
 ```go
-ui.ScrollView(content).ID("document").
-    VScrollBarOptions(ui.ScrollBarOptions{Policy: ui.ScrollBarHidden})
-
-ui.ScrollBar(layout.DirectionVertical).
-    Target("document").
-    Thickness(16).
-    ThumbThickness(8).
-    Style("document-scrollbar")
+ui.ScrollGroup(
+    ui.HBox(
+        ui.ScrollView(content).
+            VScrollBarOptions(ui.ScrollBarOptions{Policy: ui.ScrollBarHidden}),
+        ui.ScrollBar(layout.DirectionVertical).Thickness(14).ThumbThickness(8),
+    ).Spacing(6),
+)
 ```
 
-Target 在同一宿主内按 Widget ID 解析，参考已有 TabBar 到 TabView 的关联方式，
-使用 AfterUpdate 和适配器私有连接状态；只要求目标提供 BindScrollBar 能力，
-不为 ScrollView/TableView 向 Root 或 BuildContext 增加类型分支。
+同组允许一个 ScrollView 或 TableView 宿主，及任意数量、任意方向的外部条。
+宿主在其声明节点挂载／更新时登记，卸载时退出；内部未声明的 ScrollView 不
+重复登记。最近组形成隔离边界，嵌套滚动区域应分别分组。组暂时无宿主时，条
+接收零范围／页面／偏移；最终同时存在多个宿主是 API 误用，在协调提交时报错，
+不能猜测首个目标。隐藏宿主不解除成员关系，显隐不是对象生命周期。
 
-相同目标不重复连接；目标／方向声明变化、卸载或目标失效时解除旧连接。
-找不到目标时保持无效关联，不能继续控制旧目标；后续声明更新重新解析。
-同批先后挂载、局部替换、目标晚出现、移除及显式移交的边界须在本阶段测试和
-操作说明中明确，不承诺一个新的全局、隐式 ID 追踪系统。
-自定义 WidgetView 可直接使用 GUI BindScrollBar，并按自身生命周期释放句柄。
+成员变化主动向组登记 AfterUpdate；回调归属于组的声明节点。整树／局部更新、
+目标晚出现、条件删除／重建均能重新配对，不要求外部条参与重建。同轮替换只
+处理最终成员集合。相同宿主与轴保持既有连接；切换宿主先解除旧绑定，清除旧
+拖动，再建立新绑定。条方向改变也结束旧手势并重新绑定。卸载／显式移交时
+成员退出旧组，按最新声明祖先加入新组；组释放在成员释放之后兜底断开连接。
+AfterUpdate 保持一次性语义，不引入持续 ID 观察或额外协调器。
 
-外部条出现在自己的 Widget 树位置和 Snapshot 中，不进入目标 ScrollView 或
-TableView 的结构子树、紧包围轮廓或外框。真实或模拟操作仍经正常事件分发。
+ui.ScrollBar 暴露 Orientation、Thickness、ThumbThickness 和普通样式／尺寸修饰器，
+方向对应目标轴。未分组时无关联，普通条不复制 Value／Max 的声明式状态；独立
+数值控制仍可用 GUI ScrollBar。目标条的颜色、大小和可见性归应用声明管理，
+绑定不自动修改宿主的 Options。外部条按自己的树位置出现在 Snapshot 中，报告
+Range 数值和方向；组本身不产生语义节点或动作。输入继续正常派发。
+
+TableView 与第三方宿主通过 ui.ScrollHost 小接口及 ui.ScrollGroupBinding helper
+加入最近组；helper 的 Update 在普通协调及 Reparented 中调用，Disconnect 在
+Unmount 中调用。标准 ScrollView 也使用相同 helper。不向 Root／BuildContext
+增加具体控件特例；ScrollGroupBinding 只保留成员身份，不取得 Widget 所有权。
 
 ## 8. 分阶段实施与验收
 
@@ -319,8 +332,8 @@ Auto/Always/Hidden、允许轴变化、双条相互占位、极小分配、末�
 
 ### C. 外部标准条的声明式入口
 
-增加 ui.ScrollBar 与 Target 关联，复用已有协调扩展，不创建共享滚动模型。
-验证连接次数、目标切换／缺失／替换、释放、独立样式和实际输入，补充操作示例。
+增加 ui.ScrollGroup 与 ui.ScrollBar，复用 ObjectView、成员生命周期和 AfterUpdate。
+验证局部目标切换／缺失／替换、嵌套隔离、同轴多条、歧义、移交与释放，补充操作示例。
 
 ### 8.1 测试组织与交付
 
@@ -339,7 +352,8 @@ widgets/ui/table_view_test.go。共享层使用公共契约与必要替身，不
 首批 A 的实际测试、窗口操作及跨平台验证边界见 Plan，不将 B/C 记为已交付。
 
 提交按可独立审查的层次拆分，相关回归与文档随实现提交。A 可按 GUI、widgets、
-UI 与窗口用例组织，不机械增加“记录验证”提交；B/C 不阻塞 A 面向应用交付。
+UI 与窗口用例组织，不机械增加“记录验证”提交；B/C 按 GUI、TableView、声明式
+和窗口用例拆分，回归及对应设计随实现提交。
 
 ## 9. 参考与取舍
 

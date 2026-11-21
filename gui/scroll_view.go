@@ -84,6 +84,11 @@ type ScrollView struct {
 	dragAutoScroll bool
 	dragMotion     *DragMotionEventController
 	frameInset     float32
+	barBindings    []*scrollBarBinding
+	barRevision    uint64
+	barStates      [2]scrollBarState
+	barSyncing     bool
+	barPending     bool
 }
 
 // scrollViewport gives scrolling content a real structural clipping boundary.
@@ -181,6 +186,14 @@ func NewScrollView() *ScrollView {
 	sv.AddEventController(sv.dragMotion)
 	sv.ConnectMount(sv.connectReveal)
 	sv.ConnectUnmount(sv.disconnectReveal)
+	sv.ConnectUnmount(func() {
+		// Surface destruction detaches its root before destroying widgets.
+		if !sv.scrollBindingAvailable() {
+			for _, binding := range append([]*scrollBarBinding(nil), sv.barBindings...) {
+				binding.Disconnect()
+			}
+		}
+	})
 	sv.ConnectContainsFocus(func(bool) { sv.RequestPaint() })
 	return sv
 }
@@ -270,6 +283,7 @@ func (sv *ScrollView) SetDirection(direction ScrollDirection) {
 		sv.scrollY = 0
 	}
 	sv.RequestLayout()
+	sv.syncBars()
 }
 
 func (sv *ScrollView) canScrollX() bool { return sv.direction != ScrollVertical }
@@ -308,6 +322,9 @@ func (sv *ScrollView) SetChild(content Widget) {
 	}
 	sv.connectReveal()
 	sv.RequestLayout()
+	if content == nil {
+		sv.syncBars()
+	}
 }
 
 func (sv *ScrollView) connectReveal() {
@@ -372,6 +389,7 @@ func (sv *ScrollView) flushReveal() {
 		if sv.revealPending && !sv.destroyed {
 			sv.RequestLayout()
 		}
+		sv.syncBars()
 	}()
 	intent, rect := sv.scrollIntent, sv.revealRect
 	extentChanged := sv.refreshContentSize()
@@ -421,6 +439,9 @@ func floorScrollCoordinate(value float64) float32 {
 func (sv *ScrollView) finishContentLayout() {
 	sv.layoutDepth--
 	sv.flushReveal()
+	if sv.layoutDepth == 0 {
+		sv.syncBars()
+	}
 }
 
 // Child returns the scrollable content, or nil.
@@ -833,11 +854,42 @@ func (sv *ScrollView) layoutScrollBars(rect geometry.Rectangle) {
 // syncBars pushes the current scroll state into the scrollbars so their thumbs
 // reflect the actual offset and range.
 func (sv *ScrollView) syncBars() {
-	extent := sv.scrollRange()
-	sv.vbar.SetMax(extent.Height)
-	sv.vbar.SetValue(sv.scrollY)
-	sv.hbar.SetMax(extent.Width)
-	sv.hbar.SetValue(sv.scrollX)
+	sv.barPending = true
+	if sv.layoutDepth != 0 || sv.revealing || !sv.scrollBindingAvailable() {
+		return
+	}
+	extent, area := sv.scrollRange(), sv.contentAreaSize()
+	states := [2]scrollBarState{{extent.Width, area.Width, sv.scrollX}, {extent.Height, area.Height, sv.scrollY}}
+	if sv.barStates != states {
+		sv.barStates = states
+		sv.barRevision++
+	}
+	if sv.barSyncing {
+		return
+	}
+	sv.barSyncing = true
+	defer func() { sv.barSyncing = false }()
+	for sv.barPending && sv.scrollBindingAvailable() {
+		sv.barPending = false
+		revision := sv.barRevision
+		h, v := sv.barStates[0], sv.barStates[1]
+		sv.hbar.SetMax(h.max)
+		sv.hbar.SetPageSize(h.page)
+		sv.hbar.SetValue(h.value)
+		sv.vbar.SetMax(v.max)
+		sv.vbar.SetPageSize(v.page)
+		sv.vbar.SetValue(v.value)
+		for _, binding := range append([]*scrollBarBinding(nil), sv.barBindings...) {
+			state := v
+			if binding.axis == layout.DirectionHorizontal {
+				state = h
+			}
+			binding.sync(state, revision)
+			if !sv.scrollBindingAvailable() || sv.barRevision != revision {
+				break
+			}
+		}
+	}
 }
 
 // clampScroll keeps offsets within the outward, representable scroll range.
