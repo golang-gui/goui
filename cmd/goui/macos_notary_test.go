@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
@@ -22,6 +23,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -73,7 +76,7 @@ func TestNotaryProtocol(t *testing.T) {
 			if body["submissionName"] != "Test.app.zip" || body["sha256"] != strings.Repeat("a", 64) {
 				t.Error("上传名称或摘要不正确")
 			}
-			_, _ = io.WriteString(w, `{"data":{"id":"`+id+`","attributes":{"awsAccessKeyId":"UPLOAD_ID","awsSecretAccessKey":"UPLOAD_SECRET","awsSessionToken":"UPLOAD_TOKEN","bucket":"notary-test-bucket","object":"app with spaces.zip"}}}`)
+			_, _ = io.WriteString(w, `{"data":{"id":"`+id+`","attributes":{"awsAccessKeyId":"UPLOAD_ID","awsSecretAccessKey":"UPLOAD_SECRET","awsSessionToken":"UPLOAD_TOKEN","bucket":"notary-test-bucket","object":"prod/role:session+ space/%2F/文件.zip"}}}`)
 		case r.URL.Path == "/submissions/"+id:
 			state := "In Progress"
 			if statusCalls.Add(1) > 1 {
@@ -99,9 +102,11 @@ func TestNotaryProtocol(t *testing.T) {
 		case "notary-test-bucket.s3.us-west-2.amazonaws.com":
 			uploadSeen = true
 			data, _ := io.ReadAll(r.Body)
-			if string(data) != "archive fixture" || r.URL.Path != "/app with spaces.zip" || r.Header.Get("X-Amz-Security-Token") != "UPLOAD_TOKEN" || !strings.Contains(r.Header.Get("Authorization"), "Credential=UPLOAD_ID/") || strings.Contains(r.Header.Get("Authorization"), "Bearer") {
+			const canonicalURI = "/prod/role%3Asession%2B%20space/%252F/%E6%96%87%E4%BB%B6.zip"
+			if string(data) != "archive fixture" || r.URL.Path != "/prod/role:session+ space/%2F/文件.zip" || r.URL.EscapedPath() != canonicalURI || r.Header.Get("X-Amz-Security-Token") != "UPLOAD_TOKEN" || !strings.Contains(r.Header.Get("Authorization"), "Credential=UPLOAD_ID/") || strings.Contains(r.Header.Get("Authorization"), "Bearer") {
 				t.Error("S3 上传必须使用临时凭据并保留归档字节")
 			}
+			notaryTestUploadSignature(t, r, canonicalURI)
 			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("")), Header: make(http.Header)}, nil
 		case "notary-test.s3.us-west-2.amazonaws.com":
 			logSeen = true
@@ -161,6 +166,55 @@ func TestNotaryProtocol(t *testing.T) {
 	receipt.ID = "aaaaaaaa-2222-3333-4444-555555555555"
 	if err = saveNotaryReceipt(path, &receipt, false); err == nil {
 		t.Fatal("不能覆盖另一个任务的收据")
+	}
+}
+
+// 按 AWS SigV4 文档独立验算，预期 URI 是明确字面量，不复用生产编码器或签名器。
+func notaryTestUploadSignature(t *testing.T, r *http.Request, canonicalURI string) {
+	t.Helper()
+	fields := map[string]string{}
+	for _, part := range strings.Split(strings.TrimPrefix(r.Header.Get("Authorization"), "AWS4-HMAC-SHA256 "), ", ") {
+		key, value, ok := strings.Cut(part, "=")
+		if !ok {
+			t.Fatal("无效的 SigV4 授权格式")
+		}
+		fields[key] = value
+	}
+	date := r.Header.Get("X-Amz-Date")
+	if len(date) != 16 || r.URL.RawQuery != "" || fields["Credential"] != "UPLOAD_ID/"+date[:8]+"/us-west-2/s3/aws4_request" {
+		t.Fatal("无效的签名日期、区域或服务范围")
+	}
+	names := strings.Split(fields["SignedHeaders"], ";")
+	if !sort.StringsAreSorted(names) || !strings.Contains(";"+fields["SignedHeaders"]+";", ";x-amz-security-token;") {
+		t.Fatal("签名头必须排序，并涵盖临时会话 token")
+	}
+	var headers strings.Builder
+	for _, name := range names {
+		value := strings.Join(r.Header.Values(name), ",")
+		switch name {
+		case "host":
+			value = r.URL.Host
+		case "content-length":
+			value = strconv.FormatInt(r.ContentLength, 10)
+		}
+		fmt.Fprintf(&headers, "%s:%s\n", name, strings.Join(strings.Fields(value), " "))
+	}
+	payload := sha256.Sum256([]byte("archive fixture"))
+	canonical := strings.Join([]string{"PUT", canonicalURI, "", headers.String(), fields["SignedHeaders"], hex.EncodeToString(payload[:])}, "\n")
+	digest := sha256.Sum256([]byte(canonical))
+	scope := date[:8] + "/us-west-2/s3/aws4_request"
+	toSign := "AWS4-HMAC-SHA256\n" + date + "\n" + scope + "\n" + hex.EncodeToString(digest[:])
+	sign := func(key []byte, value string) []byte {
+		hash := hmac.New(sha256.New, key)
+		_, _ = hash.Write([]byte(value))
+		return hash.Sum(nil)
+	}
+	key := sign([]byte("AWS4UPLOAD_SECRET"), date[:8])
+	for _, part := range []string{"us-west-2", "s3", "aws4_request"} {
+		key = sign(key, part)
+	}
+	if fields["Signature"] != hex.EncodeToString(sign(key, toSign)) {
+		t.Error("上传签名与 AWS 规范的独立预期不一致")
 	}
 }
 

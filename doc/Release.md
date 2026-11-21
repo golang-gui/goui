@@ -255,9 +255,10 @@ goui archive -config example/demo/goui.toml -app "<已装订的 .app>" -o "<最�
 ```
 
 仅在配置了正式 Developer ID PKCS#12 和 Notary API 团队密钥时使用该路径；
-不得把合成证书测试或 Apple 工具的成功当作 REST 正式认证验收。当前 REST 正式
-认证与上传仍待具备团队 API 密钥的发行验收；此前正式发布继续使用已验收的
-钥匙串路径。
+不得把合成证书测试或 Apple 工具的成功当作 REST 正式认证验收。Linux 与 macOS
+宿主已使用独立正式 PKCS#12／团队 API 密钥验证签名、REST 上传、公证、装订与
+ZIP 路径；Windows 的原生全流程仍待验收。每次正式发布仍须冻结本轮源码并检查
+对应最终附件，不能用既往验收代替。
 
 以下变量属于 macOS shell：
 

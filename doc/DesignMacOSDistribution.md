@@ -74,6 +74,10 @@ critical 扩展继续拒绝；不修改原始证书。离线验签不代替系�
 使用返回的短期凭据上传 S3，按 ID 获取状态和日志。网络失败报告所在阶段与已知 ID，
 不打印带凭据的 URL。Invalid 返回失败并保留诊断；未知状态不能伪造 Accepted。
 
+上传对象键按 S3 SigV4 规则进行 UTF-8 字节编码，保留路径分隔斜线，将冒号、
+加号和空格等编码为百分号序列。实际请求路径与签名的 canonical URI 使用同一份
+编码，不依赖 Go URL 对保留字符的默认处理，也不在签名时重复编码。
+
 票据交付与票据格式没有 Apple 公共稳定 API 承诺，按独立边界处理：参考 Apple
 开源的 Bundle 票据位置及 rcodesign 的 CloudKit 查询；仅接受实际支持的票据版本、
 Apple 签名和当前 cdhash。未知版本、错误目标、损坏或非 Apple 签名均拒绝装订。
@@ -99,3 +103,4 @@ Apple 签名和当前 cdhash。未知版本、错误目标、损坏或非 Apple 
 - [Apple Security notarization.cpp](https://github.com/apple-oss-distributions/Security/blob/main/OSX/libsecurity_codesigning/lib/notarization.cpp)：Bundle 票据位置的源码行为。
 - [rcodesign 0.29.0](https://gregoryszorc.com/docs/apple-codesign/stable/)：跨平台实现参考，不引入 Rust 工具依赖，也不据此承诺完整复刻 Apple 工具。
 - [Wails v3.1.0 internal/notaryticket](https://github.com/wailsapp/wails/tree/v3.1.0/v3/internal/notaryticket)：s8ch/v1、g8tk/v2 的字段与 ECDSA 签名范围参考；GOUI 独立校验 Apple 证书角色、链和当前代码摘要。
+- [AWS Smithy Go v1.22.2 路径编码](https://github.com/aws/smithy-go/blob/v1.22.2/encoding/httpbinding/path_replace.go)：复用 SDK 的 UTF-8 百分号编码；测试以明确 URI 字面量和独立 SigV4 验算验证请求与签名一致。
