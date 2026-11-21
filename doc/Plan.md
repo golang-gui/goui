@@ -4,9 +4,8 @@
 
 - [x] GUI：ScrollBarClient、BindScrollBar、PageSize；内外统一同步、请求纠正、重入与释放。
 - [x] TableView：薄转发外部绑定，保持表头／正文及边框归属。
-- [ ] UI：ObjectView 分组、成员登记、局部宿主替换、嵌套／多条／移交与歧义检查。
+- [x] UI：ObjectView 分组、成员登记、局部宿主替换、嵌套／多条／移交与歧义检查。
 - [ ] 全仓测试、针对性 race、桌面目标编译与本机独立窗口验证；不修改平台契约。
-
 
 ## macOS 独立凭据验收与 S3 路径编码（2026-11-21）
 

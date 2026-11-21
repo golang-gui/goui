@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"image"
 	"testing"
 
@@ -178,5 +179,216 @@ func TestScrollViewSplitsTwoVBoxViewportsByDefault(t *testing.T) {
 	}
 	if children[0].Rect().Width != 100 || children[1].Rect().Width != 100 {
 		t.Fatalf("VBox ScrollViews should preserve their content widths, got %v and %v", children[0].Rect(), children[1].Rect())
+	}
+}
+
+func scrollGroupImage(height int) View {
+	return Image(image.NewRGBA(image.Rect(0, 0, 600, height)))
+}
+
+func arrangeScrollGroup(widget gui.Widget) {
+	widget.Measure(layout.Tight(geometry.Size{Width: 240, Height: 160}))
+	widget.Arrange(geometry.Rect(0, 0, 240, 160))
+}
+
+func TestScrollGroupReusesBindingsAndIndependentLayout(t *testing.T) {
+	r := newRoot()
+	defer r.update(nil)
+	build := func() View {
+		return ScrollGroup(HBox(
+			ScrollView(scrollGroupImage(1000)).HScrollBarOptions(ScrollBarOptions{Policy: ScrollBarHidden}).VScrollBarOptions(ScrollBarOptions{Policy: ScrollBarHidden}),
+			ScrollBar(layout.DirectionVertical).Thickness(14).ThumbThickness(6).MaxSize(14, 100).Style("external"),
+			ScrollBar(layout.DirectionVertical),
+		).Spacing(6).CrossAlign(layout.CrossStart))
+	}
+	widget := r.update(build())
+	arrangeScrollGroup(widget)
+	sv := widget.Children()[0].(*gui.ScrollView)
+	bar := widget.Children()[1].(*gui.ScrollBar)
+	other := widget.Children()[2].(*gui.ScrollBar)
+	g := r.root.state.(*scrollGroupState)
+	connection := g.members[1].binding
+	if len(widget.Children()) != 3 || len(g.members) != 3 {
+		t.Fatal("分组增加了布局Widget或成员丢失")
+	}
+	bar.Arrange(geometry.Rect(0, 0, 14, 100))
+	sv.SetScrollY(60)
+	if bar.Snapshot().Range.Value != 60 || other.Snapshot().Range.Value != 60 || bar.PageSize() != sv.ScrollGeometry().Viewport.Height || bar.StyleName() != "external" || bar.Thickness() != 14 || bar.ThumbThickness() != 6 {
+		t.Fatal("组内同步改变独立布局或样式")
+	}
+	for range 3 {
+		r.update(build())
+		arrangeScrollGroup(widget)
+	}
+	if g.members[1].binding != connection || widget.Children()[1] != bar || sv.ScrollY() != 60 {
+		t.Fatal("普通重建重复绑定或重置偏移")
+	}
+	if len(widget.Snapshot().Children) != 3 || widget.Snapshot().Children[1].Role != gui.RoleScrollBar || widget.Snapshot().Children[1].Range == nil {
+		t.Fatal("外部条没有出现在自己的语义树位置")
+	}
+	r.update(nil)
+	sv.SetScrollY(80)
+	if len(g.members) != 0 || !g.released || bar.Snapshot().Range.Max != 0 {
+		t.Fatal("释放组后仍保留关联")
+	}
+}
+
+func TestScrollGroupLocalHostReplacement(t *testing.T) {
+	version := MakeState(0)
+	outerBuilds, sourceBuilds := 0, 0
+	rt, fake := bindingApp(t, func() RootView {
+		outerBuilds++
+		return Window("main").Content(ScrollGroup(HBox(
+			Build(func() View {
+				sourceBuilds++
+				v := version.Get()
+				if v < 0 {
+					return nil
+				}
+				return ScrollView(scrollGroupImage(1000)).ID(fmt.Sprintf("source-%d", v))
+			}),
+			ScrollBar(layout.DirectionVertical).ID("external"),
+		).CrossAlign(layout.CrossStretch)))
+	})
+	host := rt.windows["main"].host
+	root := host.Widget()
+	arrangeScrollGroup(root)
+	first := gui.FindWidget(host, "source-0").(*gui.ScrollView)
+	bar := gui.FindWidget(host, "external").(*gui.ScrollBar)
+	first.SetScrollY(50)
+	if bar.Snapshot().Range.Value != 50 {
+		t.Fatal("初始宿主未绑定")
+	}
+	version.Set(-1)
+	fake.runPosted()
+	if bar.Snapshot().Range.Max != 0 || bar.PageSize() != 0 {
+		t.Fatal("局部移除后保留旧范围")
+	}
+	first.SetScrollY(90)
+	if bar.Snapshot().Range.Value != 0 {
+		t.Fatal("旧宿主继续控制外部条")
+	}
+	version.Set(1)
+	fake.runPosted()
+	arrangeScrollGroup(root)
+	second := gui.FindWidget(host, "source-1").(*gui.ScrollView)
+	second.SetScrollY(70)
+	if outerBuilds != 1 || sourceBuilds != 3 || gui.FindWidget(host, "external") != bar || first == second || bar.Snapshot().Range.Value != 70 {
+		t.Fatal("局部晚出现宿主需要重建外部条才能关联", outerBuilds, sourceBuilds)
+	}
+	version.Set(2)
+	fake.runPosted()
+	arrangeScrollGroup(root)
+	third := gui.FindWidget(host, "source-2").(*gui.ScrollView)
+	third.SetScrollY(100)
+	second.SetScrollY(120)
+	if bar.Snapshot().Range.Value != 100 || outerBuilds != 1 {
+		t.Fatal("同轮替换没有按最终宿主关联")
+	}
+}
+
+func TestScrollGroupIsolationAndAmbiguity(t *testing.T) {
+	r := newRoot()
+	defer r.update(nil)
+	root := r.update(VBox(
+		ScrollBar(layout.DirectionVertical),
+		ScrollGroup(VBox(
+			ScrollView(scrollGroupImage(1000)), ScrollBar(layout.DirectionVertical),
+			ScrollGroup(VBox(ScrollView(scrollGroupImage(800)), ScrollBar(layout.DirectionVertical))),
+		)),
+	))
+	outer := root.Children()[1]
+	inner := outer.Children()[2]
+	first, second := outer.Children()[0].(*gui.ScrollView), inner.Children()[0].(*gui.ScrollView)
+	first.Arrange(geometry.Rect(0, 0, 100, 100))
+	second.Arrange(geometry.Rect(0, 0, 100, 100))
+	first.SetScrollY(40)
+	second.SetScrollY(90)
+	if outer.Children()[1].Snapshot().Range.Value != 40 || inner.Children()[1].Snapshot().Range.Value != 90 || root.Children()[0].Snapshot().Range.Max != 0 {
+		t.Fatal("嵌套组或无默认组边界错误")
+	}
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("多个宿主没有报告歧义")
+			}
+		}()
+		r.update(ScrollGroup(VBox(ScrollView(nil), ScrollView(nil), ScrollBar(layout.DirectionVertical))))
+	}()
+}
+
+func TestScrollGroupMemberTransfer(t *testing.T) {
+	a, b := transferRoots()
+	defer a.update(nil)
+	defer b.update(nil)
+	view := ScrollView(scrollGroupImage(1000)).ID("moved")
+	source := a.update(ScrollGroup(VBox(view))).(*gui.LinearBox)
+	target := b.update(ScrollGroup(VBox(ScrollBar(layout.DirectionVertical)))).(*gui.LinearBox)
+	sv := source.Children()[0].(*gui.ScrollView)
+	bar := target.Children()[0].(*gui.ScrollBar)
+	coordinator := &Coordinator{owner: findNode(a.root, source)}
+	if err := coordinator.TransferChild(sv, target, func() error {
+		source.RemoveChild(sv)
+		target.AddChild(sv)
+		return nil
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	a.flushAfterUpdate()
+	b.flushAfterUpdate()
+	sv.Arrange(geometry.Rect(0, 0, 100, 100))
+	sv.SetScrollY(65)
+	if bar.Snapshot().Range.Value != 65 || len(a.root.state.(*scrollGroupState).members) != 0 || len(b.root.state.(*scrollGroupState).members) != 2 {
+		t.Fatal("移交后没有采用新的最近组")
+	}
+}
+
+func TestScrollGroupLocalBarAxisChange(t *testing.T) {
+	axis := MakeState(layout.DirectionVertical)
+	rt, fake := bindingApp(t, func() RootView {
+		return Window("main").Content(ScrollGroup(HBox(
+			ScrollView(scrollGroupImage(1000)).ID("source"),
+			Build(func() View { return ScrollBar(axis.Get()).ID("bar") }),
+		).CrossAlign(layout.CrossStretch)))
+	})
+	host := rt.windows["main"].host
+	arrangeScrollGroup(host.Widget())
+	sv := gui.FindWidget(host, "source").(*gui.ScrollView)
+	bar := gui.FindWidget(host, "bar").(*gui.ScrollBar)
+	sv.SetScrollX(50)
+	sv.SetScrollY(80)
+	if bar.Snapshot().Range.Value != 80 {
+		t.Fatal("竖向关联错误")
+	}
+	axis.Set(layout.DirectionHorizontal)
+	fake.runPosted()
+	if gui.FindWidget(host, "bar") != bar || bar.Snapshot().Range.Direction != layout.DirectionHorizontal || bar.Snapshot().Range.Value != 50 || bar.PageSize() != sv.ScrollGeometry().Viewport.Width {
+		t.Fatal("局部改变方向没有保留控件并切换目标轴")
+	}
+	sv.SetScrollY(100)
+	if bar.Snapshot().Range.Value != 50 {
+		t.Fatal("旧轴仍控制滚动条")
+	}
+}
+
+func TestScrollGroupWholeScopeTransfer(t *testing.T) {
+	a, b := transferRoots()
+	defer a.update(nil)
+	defer b.update(nil)
+	source := a.update(VBox(ScrollGroup(HBox(ScrollView(scrollGroupImage(1000)), ScrollBar(layout.DirectionVertical))).ID("group"))).(*gui.LinearBox)
+	target := b.update(VBox()).(*gui.LinearBox)
+	groupWidget := source.Children()[0]
+	sv := groupWidget.Children()[0].(*gui.ScrollView)
+	bar := groupWidget.Children()[1].(*gui.ScrollBar)
+	coordinator := &Coordinator{owner: a.root}
+	if err := coordinator.TransferChild(groupWidget, target, func() error { source.RemoveChild(groupWidget); target.AddChild(groupWidget); return nil }, nil); err != nil {
+		t.Fatal(err)
+	}
+	a.flushAfterUpdate()
+	b.flushAfterUpdate()
+	sv.Arrange(geometry.Rect(0, 0, 100, 100))
+	sv.SetScrollY(85)
+	if bar.Snapshot().Range.Value != 85 {
+		t.Fatal("整组移交破坏既有关联")
 	}
 }
