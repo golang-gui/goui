@@ -12,6 +12,10 @@ GOUI is a native GUI framework written entirely in Go. Build both your interface
 
 The current version provides the foundations and controls needed for small desktop applications; public APIs are still evolving.
 
+GOUI is currently in `v0.x`; API and behavior changes may require migration even
+between iteration releases. Version scope, compatibility and maintenance are defined
+in the [release policy](doc/Release.md#1-版本与发布范围).
+
 ## Related projects
 
 | Project | Purpose |
