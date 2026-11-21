@@ -4,12 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto"
-	"crypto/sha1"
-	"crypto/sha256"
 	"crypto/x509"
-	"debug/macho"
-	"encoding/asn1"
-	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,12 +12,8 @@ import (
 	"time"
 
 	"github.com/aluedeke/go-codesign/pkg/codesign"
-	gomacho "github.com/blacktop/go-macho"
-	machosign "github.com/blacktop/go-macho/pkg/codesign"
-	machotypes "github.com/blacktop/go-macho/pkg/codesign/types"
 	"github.com/golang-gui/goui/cmd/goui/internal/applecerts"
 	"go.mozilla.org/pkcs7"
-	appleplist "howett.net/plist"
 )
 
 func iosSigningIdentity(c *config, roots *x509.CertPool) (*codesign.SigningIdentity, []byte, []byte, error) {
@@ -176,208 +167,9 @@ func signIOSMachO(app, executable string, identity *codesign.SigningIdentity, en
 	if err != nil {
 		return err
 	}
-	ent, err := codesign.ParseEntitlementsXML(entitlements)
-	if err != nil {
-		return err
-	}
-	der, err := codesign.EntitlementsToDER(ent)
-	if err != nil {
-		return err
-	}
-	path := filepath.Join(app, executable)
-	m, err := gomacho.Open(path)
-	if err != nil {
-		return err
-	}
-	defer m.Close()
-	before, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	if len(before) < 32 || m.CodeSignature() == nil {
-		return fmt.Errorf("iOS signing requires a linked ARM64 executable with a signature slot")
-	}
-	headerEnd := uint64(32) + uint64(binary.LittleEndian.Uint32(before[20:]))
-	signatureOffset := uint64(m.CodeSignature().Offset)
-	hash := sha256.Sum256(resources)
-	config := &machosign.Config{ID: id, TeamID: identity.TeamID, InfoPlist: info, Entitlements: entitlements, EntitlementsDER: der, ResourceDirSlotHash: hash[:], CertChain: identity.CertChain, SpecialSlots: []machotypes.SpecialSlot{}}
-	config.SignerFunction = func(directory []byte) ([]byte, error) {
-		signed, err := pkcs7.NewSignedData(directory)
-		if err != nil {
-			return nil, err
-		}
-		signed.SetDigestAlgorithm(pkcs7.OIDDigestAlgorithmSHA256)
-		digest := sha256.Sum256(directory)
-		plistHash, err := appleplist.Marshal(map[string]interface{}{"cdhashes": [][]byte{digest[:20]}}, appleplist.XMLFormat)
-		if err != nil {
-			return nil, err
-		}
-		hashSequence, err := asn1.Marshal(struct {
-			Algorithm asn1.ObjectIdentifier
-			Digest    []byte
-		}{asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}, digest[:]})
-		if err != nil {
-			return nil, err
-		}
-		attributes := []pkcs7.Attribute{{Type: asn1.ObjectIdentifier{1, 2, 840, 113635, 100, 9, 1}, Value: plistHash}, {Type: asn1.ObjectIdentifier{1, 2, 840, 113635, 100, 9, 2}, Value: asn1.RawValue{FullBytes: hashSequence}}}
-		if err = signed.AddSignerChain(identity.Certificate, identity.PrivateKey, identity.CertChain[1:], pkcs7.SignerInfoConfig{ExtraSignedAttributes: attributes}); err != nil {
-			return nil, err
-		}
-		signed.Detach()
-		return signed.Finish()
-	}
-	if err = m.CodeSign(config); err != nil {
-		return err
-	}
-	var output bytes.Buffer
-	if err = m.SaveBuffer(&output); err != nil {
-		return err
-	}
-	if headerEnd > signatureOffset || signatureOffset > uint64(len(before)) || signatureOffset > uint64(output.Len()) || !bytes.Equal(before[headerEnd:signatureOffset], output.Bytes()[headerEnd:signatureOffset]) {
-		return fmt.Errorf("iOS signer changed executable data outside load commands and signature")
-	}
-	return os.WriteFile(path, output.Bytes(), 0755)
+	return signAppleMachO(filepath.Join(app, executable), id, info, resources, entitlements, identity, false, nil)
 }
 
 func verifyIOSSignature(app, executable string, certificate *x509.Certificate) error {
-	path := filepath.Join(app, executable)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	m, err := macho.NewFile(bytes.NewReader(data))
-	if err != nil {
-		return err
-	}
-	defer m.Close()
-	var offset, size uint32
-	for _, load := range m.Loads {
-		raw := load.Raw()
-		if len(raw) >= 16 && binary.LittleEndian.Uint32(raw) == 0x1d {
-			offset, size = binary.LittleEndian.Uint32(raw[8:]), binary.LittleEndian.Uint32(raw[12:])
-		}
-	}
-	if size < 12 || uint64(offset)+uint64(size) > uint64(len(data)) {
-		return fmt.Errorf("invalid Mach-O signature bounds")
-	}
-	super := data[offset : offset+size]
-	count := binary.BigEndian.Uint32(super[8:])
-	if uint64(count)*8+12 > uint64(len(super)) {
-		return fmt.Errorf("invalid signature index")
-	}
-	blobs := map[uint32][]byte{}
-	for i := uint32(0); i < count; i++ {
-		slot, at := binary.BigEndian.Uint32(super[12+8*i:]), binary.BigEndian.Uint32(super[16+8*i:])
-		if uint64(at)+8 > uint64(len(super)) {
-			return fmt.Errorf("invalid signature blob")
-		}
-		n := binary.BigEndian.Uint32(super[at+4:])
-		if n < 8 || uint64(at)+uint64(n) > uint64(len(super)) {
-			return fmt.Errorf("invalid signature blob size")
-		}
-		blobs[slot] = super[at : at+n]
-	}
-	if len(blobs[0]) == 0 || len(blobs[0x10000]) < 8 {
-		return fmt.Errorf("missing code directory or CMS signature")
-	}
-	cms, err := pkcs7.Parse(blobs[0x10000][8:])
-	if err != nil {
-		return err
-	}
-	cms.Content = blobs[0]
-	if err = cms.Verify(); err != nil {
-		return err
-	}
-	if signer := cms.GetOnlySigner(); signer == nil || !signer.Equal(certificate) {
-		return fmt.Errorf("unexpected iOS signature certificate")
-	}
-	info, err := codesign.ParseSignature(path)
-	if err != nil {
-		return err
-	}
-	for _, cd := range info.CodeDirs {
-		if cd.CodeLimit != offset || cd.PageSize == 0 || uint64(len(cd.CodeHashes)) != (uint64(cd.CodeLimit)+uint64(cd.PageSize)-1)/uint64(cd.PageSize) {
-			return fmt.Errorf("invalid signed code range")
-		}
-		for i, want := range cd.CodeHashes {
-			start := uint64(i) * uint64(cd.PageSize)
-			end := min(start+uint64(cd.PageSize), uint64(cd.CodeLimit))
-			if start >= end || !iosHashEqual(data[start:end], want, cd.HashType) {
-				return fmt.Errorf("iOS code page %d checksum mismatch", i)
-			}
-		}
-		for slot, want := range cd.SpecialHashes {
-			var b []byte
-			switch slot {
-			case -1:
-				b, err = os.ReadFile(filepath.Join(app, "Info.plist"))
-			case -3:
-				b, err = os.ReadFile(filepath.Join(app, "_CodeSignature", "CodeResources"))
-			default:
-				b = blobs[uint32(-slot)]
-			}
-			if err != nil {
-				return err
-			}
-			if len(b) == 0 && bytes.Equal(want, make([]byte, len(want))) {
-				continue
-			}
-			if !iosHashEqual(b, want, cd.HashType) {
-				return fmt.Errorf("iOS special slot %d checksum mismatch", slot)
-			}
-		}
-	}
-	raw, err := os.ReadFile(filepath.Join(app, "_CodeSignature", "CodeResources"))
-	if err != nil {
-		return err
-	}
-	var seal struct {
-		Files map[string]struct {
-			Hash  []byte `plist:"hash"`
-			Hash2 []byte `plist:"hash2"`
-		} `plist:"files2"`
-	}
-	if _, err = appleplist.Unmarshal(raw, &seal); err != nil {
-		return err
-	}
-	return filepath.WalkDir(app, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if d.Name() == "_CodeSignature" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		rel, err := filepath.Rel(app, path)
-		if err != nil {
-			return err
-		}
-		rel = filepath.ToSlash(rel)
-		if rel == executable || rel == "Info.plist" {
-			return nil
-		}
-		b, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		entry, ok := seal.Files[rel]
-		if !ok || !iosHashEqual(b, entry.Hash2, 2) {
-			return fmt.Errorf("iOS resource checksum mismatch: %s", rel)
-		}
-		return nil
-	})
-}
-
-func iosHashEqual(data, want []byte, kind uint8) bool {
-	switch kind {
-	case 1:
-		sum := sha1.Sum(data)
-		return bytes.Equal(sum[:], want)
-	case 2:
-		sum := sha256.Sum256(data)
-		return bytes.Equal(sum[:], want)
-	}
-	return false
+	return verifyAppleBundleSignature(app, executable, certificate, false)
 }

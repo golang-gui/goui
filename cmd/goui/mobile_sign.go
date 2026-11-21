@@ -25,15 +25,22 @@ func mobileIdentity(c *config, config mobileSigning) (crypto.PrivateKey, []*x509
 	if config.PKCS12 == "" {
 		return nil, nil, fmt.Errorf("signing requires pkcs12")
 	}
+	return loadSigningIdentity(c.path(config.PKCS12), config.PasswordEnv)
+}
+
+func loadSigningIdentity(path, passwordEnv string) (crypto.PrivateKey, []*x509.Certificate, error) {
+	if path == "" {
+		return nil, nil, fmt.Errorf("signing requires pkcs12")
+	}
 	password := ""
-	if config.PasswordEnv != "" {
+	if passwordEnv != "" {
 		var ok bool
-		password, ok = os.LookupEnv(config.PasswordEnv)
+		password, ok = os.LookupEnv(passwordEnv)
 		if !ok {
-			return nil, nil, fmt.Errorf("signing password environment variable %q is unset", config.PasswordEnv)
+			return nil, nil, fmt.Errorf("signing password environment variable %q is unset", passwordEnv)
 		}
 	}
-	data, err := os.ReadFile(c.path(config.PKCS12))
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, nil, err
 	}

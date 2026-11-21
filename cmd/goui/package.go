@@ -1,15 +1,19 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 )
 
-// Packaging deliberately has no context/Go command dependency: it consumes a
-// complete binary and creates an application layout, never builds implicitly.
-func packageApp(c *config, t target, format, binaryPath, output string) (string, error) {
+// Packaging consumes a complete binary and creates an application layout;
+// cancellation also covers signing, but it never builds implicitly.
+func packageApp(ctx context.Context, c *config, t target, format, binaryPath, output string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if t.OS == "windows" {
 		return "", fmt.Errorf("Windows build already produces the distributable EXE; no Windows package format is implemented")
 	}
@@ -88,10 +92,13 @@ func packageApp(c *config, t target, format, binaryPath, output string) (string,
 	if err := copyFile(binaryPath, filepath.Join(work, executable), 0755); err != nil {
 		return "", err
 	}
-	if t.OS == "darwin" && c.MacOS.SigningIdentity != "" {
-		if err := signMacOS(c, work); err != nil {
+	if t.OS == "darwin" && (c.MacOS.SigningIdentity != "" || c.MacOS.Signing.PKCS12 != "") {
+		if err := signMacOS(ctx, c, work); err != nil {
 			return "", err
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
 	}
 	if err := os.Rename(work, output); err != nil {
 		return "", err

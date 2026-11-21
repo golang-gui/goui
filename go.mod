@@ -6,6 +6,8 @@ require (
 	github.com/agusibrahim/apksig-go v1.1.0
 	github.com/aluedeke/go-codesign v0.0.6
 	github.com/blacktop/go-macho v1.1.258
+	github.com/digitorus/pkcs7 v0.0.0-20230713084857-e76b763bdc49
+	github.com/digitorus/timestamp v0.0.0-20231217203849-220c5c2851b7
 	github.com/ebitengine/purego v0.10.2
 	github.com/godbus/dbus/v5 v5.2.4
 	github.com/goexlib/cgo v0.1.2

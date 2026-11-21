@@ -130,7 +130,7 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		}
 	case "package":
 		var file string
-		file, err = packageApp(c, target, format, binaryPath, output)
+		file, err = packageApp(ctx, c, target, format, binaryPath, output)
 		if err == nil {
 			fmt.Fprintln(out, file)
 		}

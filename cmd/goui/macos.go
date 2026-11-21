@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/xml"
 	"fmt"
 	"os"
@@ -36,7 +37,10 @@ func plist(c *config) []byte {
 // Entitlements are separate from Info.plist and bundle assets. They become
 // effective only when attached to the executable's signature by codesign.
 func macOSEntitlements(c *config) []byte {
-	keys := []string{"com.apple.security.app-sandbox"}
+	var keys []string
+	if c.MacOS.Sandbox {
+		keys = append(keys, "com.apple.security.app-sandbox")
+	}
 	if c.MacOS.UserFiles != "" {
 		keys = append(keys, "com.apple.security.files.user-selected."+c.MacOS.UserFiles)
 	}
@@ -52,7 +56,10 @@ func macOSEntitlements(c *config) []byte {
 	return []byte(body.String())
 }
 
-func signMacOS(c *config, bundle string) error {
+func signMacOS(ctx context.Context, c *config, bundle string) error {
+	if c.MacOS.Signing.PKCS12 != "" {
+		return signMacOSPKCS12(ctx, c, bundle)
+	}
 	if runtime.GOOS != "darwin" {
 		return fmt.Errorf("macOS signing requires packaging on macOS with codesign")
 	}
@@ -70,10 +77,10 @@ func signMacOS(c *config, bundle string) error {
 		args = append(args, "--entitlements", path)
 	}
 	args = append(args, bundle)
-	if output, err := exec.Command("/usr/bin/codesign", args...).CombinedOutput(); err != nil {
+	if output, err := exec.CommandContext(ctx, "/usr/bin/codesign", args...).CombinedOutput(); err != nil {
 		return fmt.Errorf("codesign: %w: %s", err, strings.TrimSpace(string(output)))
 	}
-	if output, err := exec.Command("/usr/bin/codesign", "--verify", "--strict", bundle).CombinedOutput(); err != nil {
+	if output, err := exec.CommandContext(ctx, "/usr/bin/codesign", "--verify", "--strict", bundle).CombinedOutput(); err != nil {
 		return fmt.Errorf("verify signature: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 	return nil

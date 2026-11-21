@@ -31,6 +31,10 @@ type config struct {
 		UserFiles       string `toml:"user_files"`
 		PersistAccess   bool   `toml:"persist_access"`
 		SigningIdentity string `toml:"signing_identity"`
+		Signing         struct {
+			PKCS12      string `toml:"pkcs12"`
+			PasswordEnv string `toml:"password_env"`
+		} `toml:"signing"`
 	} `toml:"macos"`
 	Linux struct {
 		Categories []string `toml:"categories"`
@@ -146,8 +150,14 @@ func (c *config) validate() error {
 	if strings.TrimSpace(identity) != identity || strings.IndexFunc(identity, unicode.IsControl) >= 0 {
 		return fmt.Errorf("macos.signing_identity must not contain surrounding whitespace or control characters")
 	}
-	if c.MacOS.Sandbox && identity == "" {
-		return fmt.Errorf("macos.sandbox requires an explicit signing_identity (use '-' only for development)")
+	if identity != "" && c.MacOS.Signing.PKCS12 != "" {
+		return fmt.Errorf("macos.signing.pkcs12 and signing_identity are mutually exclusive")
+	}
+	if c.MacOS.Signing.PasswordEnv != "" && c.MacOS.Signing.PKCS12 == "" {
+		return fmt.Errorf("macos.signing.password_env requires pkcs12")
+	}
+	if c.MacOS.Sandbox && identity == "" && c.MacOS.Signing.PKCS12 == "" {
+		return fmt.Errorf("macos.sandbox requires signing.pkcs12 or signing_identity (use '-' only for development)")
 	}
 	if c.Metadata != "" {
 		path := filepath.Clean(c.Metadata)

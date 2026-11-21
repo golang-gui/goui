@@ -19,7 +19,7 @@ func TestMacOSSigning(t *testing.T) {
 	if _, err := build(context.Background(), c, target, "", "", "", io.Discard, io.Discard); err != nil {
 		t.Fatal(err)
 	}
-	app, err := packageApp(c, target, "app", "", "")
+	app, err := packageApp(context.Background(), c, target, "app", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +29,7 @@ func TestMacOSSigning(t *testing.T) {
 	}
 	c.MacOS.SigningIdentity = "goui-nonexistent-test-signing-identity"
 	output := filepath.Join(c.dir, "Failure.app")
-	if _, err := packageApp(c, target, "app", "", output); err == nil {
+	if _, err := packageApp(context.Background(), c, target, "app", "", output); err == nil {
 		t.Fatal("bad identity succeeded")
 	}
 	if _, err := os.Stat(output); !os.IsNotExist(err) {

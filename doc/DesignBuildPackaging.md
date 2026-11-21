@@ -1,5 +1,8 @@
 # GOUI 构建与打包工具
 
+macOS 跨平台 Developer ID 签名、公证、票据装订及 ZIP 的新增契约见
+[macOS 分发设计](DesignMacOSDistribution.md)；下文首个切片的范围保留作历史记录。
+
 ## 定位与边界
 
 `cmd/goui` 是可选命令，不是运行时服务。复用 Go 构建工具、GOUI 的静态 SVG

@@ -58,7 +58,7 @@ func main() { println(appinfo.ID, appinfo.Name, appinfo.Version, appinfo.Build) 
 				t.Fatal("accepted binary for wrong target")
 			}
 			if target.OS == "windows" {
-				if _, err := packageApp(c, target, "exe", "", ""); err == nil {
+				if _, err := packageApp(context.Background(), c, target, "exe", "", ""); err == nil {
 					t.Fatal("meaningless EXE package accepted")
 				}
 				c.Windows.Console = true
@@ -77,11 +77,11 @@ func main() { println(appinfo.ID, appinfo.Name, appinfo.Version, appinfo.Build) 
 				// Empty PATH makes an accidental go build during package fail.
 				t.Setenv("PATH", t.TempDir())
 				if target.OS == "darwin" {
-					if _, err := packageApp(c, target, "app", "", "NotAnApp"); err == nil {
+					if _, err := packageApp(context.Background(), c, target, "app", "", "NotAnApp"); err == nil {
 						t.Fatal("accepted a macOS bundle without .app suffix")
 					}
 				}
-				app, err := packageApp(c, target, "", "", "")
+				app, err := packageApp(context.Background(), c, target, "", "", "")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -116,7 +116,7 @@ func main() { println(appinfo.ID, appinfo.Name, appinfo.Version, appinfo.Build) 
 				if err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0755) {
 					t.Fatal("executable permissions lost", err)
 				}
-				if _, err := packageApp(c, target, "", "", ""); err == nil {
+				if _, err := packageApp(context.Background(), c, target, "", "", ""); err == nil {
 					t.Fatal("overwrote existing package")
 				}
 			}
