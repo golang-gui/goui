@@ -7,8 +7,8 @@ import (
 	"github.com/golang-gui/goui/ui"
 )
 
-// ScrollBar has no dedicated public UI declaration. Use the standard
-// WidgetView as a local thin binding.
+// This standalone numeric example uses a WidgetView. ui.ScrollBar instead
+// receives its value and range from a ScrollGroup host.
 type barView struct {
 	ui.ViewBase[barView]
 	value   float32
@@ -27,6 +27,7 @@ func scrollBar(value float32, changed func(float32)) *barView {
 func (*barView) Mount(ctx ui.BuildContext) gui.Widget {
 	w := gui.NewScrollBar(layout.DirectionHorizontal)
 	w.SetMax(100)
+	w.SetPageSize(100)
 	s := new(barBinding)
 	s.handle = w.ConnectChange(func(value float32) {
 		if s.changed != nil {

@@ -19,6 +19,7 @@ func newVerticalBar(t *testing.T, max float32) *ScrollBar {
 	b := NewScrollBar(layout.DirectionVertical)
 	b.Arrange(geometry.Rect(0, 0, scrollbarWidth, 200))
 	b.SetMax(max)
+	b.SetPageSize(200)
 	return b
 }
 
@@ -69,6 +70,7 @@ func TestScrollBarLargeRangeEndpoints(t *testing.T) {
 			win := testWindowWithSurface(&window{})
 			win.SetWidget(bar)
 			bar.SetMax(tc.maximum)
+			bar.SetPageSize(tc.length)
 			var got float32
 			bar.ConnectChange(func(value float32) { got = value; bar.SetValue(value) })
 			size := geometry.Size{Width: tc.length, Height: scrollbarWidth}
@@ -136,6 +138,7 @@ func TestScrollBarHorizontalGeometry(t *testing.T) {
 	b := NewScrollBar(layout.DirectionHorizontal)
 	b.Arrange(geometry.Rect(0, 0, 200, scrollbarWidth))
 	b.SetMax(400)
+	b.SetPageSize(200)
 	b.SetValue(200)
 
 	// Same math as vertical, just along X.
@@ -367,5 +370,37 @@ func TestScrollBarSnapshot(t *testing.T) {
 	info := b.Snapshot()
 	if info.Role != RoleScrollBar {
 		t.Fatalf("role should be scrollbar, got %q", info.Role)
+	}
+}
+
+func TestScrollBarIndependentPageSize(t *testing.T) {
+	for _, axis := range []layout.Direction{layout.DirectionHorizontal, layout.DirectionVertical} {
+		bar := NewScrollBar(axis)
+		bar.SetMax(900)
+		bar.SetPageSize(300)
+		size := geometry.Size{Width: 120, Height: 8}
+		if axis == layout.DirectionVertical {
+			size.Width, size.Height = size.Height, size.Width
+		}
+		bar.Arrange(geometry.Rectangle{Size: size})
+		if bar.thumbLen() != 30 {
+			t.Fatalf("120 DIP轨道、300/1200可见比例的滑块应为30，得到%g", bar.thumbLen())
+		}
+		bar.SetValue(900)
+		if bar.thumbStart() != 90 {
+			t.Fatal("不同长度的外部条不能准确到达末端")
+		}
+		info := bar.Snapshot()
+		if info.Range == nil || info.Range.Max != 900 || info.Range.Value != 900 || info.Range.Direction != axis || len(info.Actions) != 0 {
+			t.Fatal("外部滚动条的语义范围不正确", info)
+		}
+		bar.SetPageSize(float32(math.NaN()))
+		if bar.PageSize() != 0 || bar.thumbLen() != 20 {
+			t.Fatal("零页面没有保留最小滑块")
+		}
+		bar.SetMax(0)
+		if bar.thumbLen() != 120 {
+			t.Fatal("无范围时滑块没有铺满轨道")
+		}
 	}
 }

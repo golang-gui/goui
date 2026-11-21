@@ -209,3 +209,27 @@ func TestTableScrollBarUsesOwnerPartsAndPointerStates(t *testing.T) {
 		t.Fatal("切换所属表格样式后，滚动条仍使用旧Name或全局Part")
 	}
 }
+
+func TestTableExternalScrollBarKeepsHeaderAndBodyAligned(t *testing.T) {
+	tableBorderApp(t)
+	v, _, first, _ := tableFixture(30)
+	defer v.SetModel(nil)
+	first.SetMinWidth(400)
+	first.SetWidth(400)
+	v.SetHScrollBarOptions(gui.ScrollBarOptions{Policy: gui.ScrollBarHidden})
+	v.SetVScrollBarOptions(gui.ScrollBarOptions{Policy: gui.ScrollBarHidden})
+	tableArrange(v, 240, 180)
+	h, vertical := gui.NewScrollBar(layout.DirectionHorizontal), gui.NewScrollBar(layout.DirectionVertical)
+	handle := v.BindScrollBar(layout.DirectionHorizontal, h)
+	defer handle.Disconnect()
+	handleY := v.BindScrollBar(layout.DirectionVertical, vertical)
+	defer handleY.Disconnect()
+	v.scroll.SetScrollX(80)
+	v.scroll.SetScrollY(100)
+	if h.Snapshot().Range.Value != 80 || vertical.Snapshot().Range.Value != 100 || h.PageSize() != 240 || vertical.PageSize() != 148 {
+		t.Fatal("表格外部条没有按正文视口同步")
+	}
+	if v.headerRow.Rect().X != -80 || v.scroll.ScrollGeometry().HScrollBar.Width != 0 || v.scroll.ScrollGeometry().VScrollBar.Height != 0 || first.Width() != 400 {
+		t.Fatal("外部关联改变表头对齐、列宽或隐藏槽位")
+	}
+}

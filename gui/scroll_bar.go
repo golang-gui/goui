@@ -73,6 +73,7 @@ type ScrollBar struct {
 	thumbWidth   float32
 	value        float32 // current scroll offset (driven by the owning ScrollView)
 	max          float32 // scrollable range (max <= 0 means not scrollable)
+	pageSize     float32 // viewport length, independent of this control's track
 	grabOffset   float32 // press-to-thumb-start offset (keeps the thumb from jumping to the pointer center)
 	thumbHovered bool
 	change       signal.Signal1[float32] // requested new value; the consumer clamps/rounds
@@ -159,7 +160,7 @@ func (b *ScrollBar) SetThumbThickness(value float32) {
 // SetValue sets the current scroll offset. The owning ScrollView calls this
 // after clamping/rounding to sync the bar's visual.
 func (b *ScrollBar) SetValue(v float32) {
-	if b.value == v {
+	if b.Destroyed() || b.value == v {
 		return
 	}
 	b.value = v
@@ -169,14 +170,35 @@ func (b *ScrollBar) SetValue(v float32) {
 // SetMax sets the scrollable range. max <= 0 means the axis is not scrollable;
 // a visible bar then paints a full thumb without producing value requests.
 func (b *ScrollBar) SetMax(m float32) {
-	if b.max == m {
+	m = normalizeLayoutValue(m)
+	if b.Destroyed() || b.max == m {
 		return
+	}
+	if m == 0 {
+		cancelGestureController(b.Root(), b.drag)
+		if b.Destroyed() {
+			return
+		}
 	}
 	b.max = m
 	if m <= 0 {
 		b.setThumbHovered(false)
 	}
 	b.RequestPaint()
+}
+
+// PageSize returns the visible content length in DIP, independently of the track.
+func (b *ScrollBar) PageSize() float32 { return b.pageSize }
+
+// SetPageSize supplies the viewport length used to size the thumb. Standalone
+// bars must set it explicitly. Negative or non-finite values select zero.
+// Like SetMax and SetValue, this does not emit a value request.
+func (b *ScrollBar) SetPageSize(size float32) {
+	size = normalizeLayoutValue(size)
+	if !b.Destroyed() && b.pageSize != size {
+		b.pageSize = size
+		b.RequestPaint()
+	}
 }
 
 // ConnectChange subscribes to value requests produced by thumb dragging or
@@ -217,6 +239,7 @@ func (b *ScrollBar) Paint(p Painter) {
 func (b *ScrollBar) Snapshot() WidgetInfo {
 	info := b.WidgetBase.Snapshot()
 	info.Role = RoleScrollBar
+	info.Range = &RangeInfo{Value: b.value, Max: b.max, Direction: b.orientation}
 	return info
 }
 
@@ -275,15 +298,14 @@ func (b *ScrollBar) mainCoord(pos geometry.Point) float32 {
 }
 
 // thumbLen is the thumb length along the main axis. It reflects the visible
-// fraction: viewport² / content, with a minimum so very long content still
+// fraction: track * viewport / content, with a minimum so very long content still
 // keeps the thumb grabbable.
 func (b *ScrollBar) thumbLen() float32 {
 	ml := b.mainLen()
-	content := b.max + ml // content = scrollable range + viewport
-	if content <= 0 {
+	if b.max <= 0 {
 		return ml
 	}
-	t := ml * ml / content
+	t := float32(float64(ml) * float64(b.pageSize) / (float64(b.max) + float64(b.pageSize)))
 	if t < scrollbarMinThumb {
 		t = scrollbarMinThumb
 	}
