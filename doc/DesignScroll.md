@@ -5,7 +5,8 @@
 > [滚动布局切片](DesignScrollLayout.md)，本文件的历史实现示意不覆盖该契约。
 > 2026-11-19 内外滚动条演进见 [滚动条设计](DesignScrollBars.md)。首批已实现
 > HScrollBarOptions / VScrollBarOptions，覆盖 ScrollView、TableView 和 UI；
-> 外部协议后续实现，当前不引入独立滚动模型。
+> 2026-11-21 补齐 BindScrollBar、PageSize 与声明式 ScrollGroup／ScrollBar，
+> 外部条独立布局，滚动状态仍由 ScrollView 持有。
 
 ## 目标
 
