@@ -22,6 +22,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/smithy-go/encoding/httpbinding"
 )
 
 const notaryAPIURL = "https://appstoreconnect.apple.com/notary/v2"
@@ -160,6 +161,10 @@ func (c *notaryClient) upload(ctx context.Context, submission notarySubmission, 
 		return err
 	}
 	endpoint := url.URL{Scheme: "https", Host: info.Bucket + ".s3.us-west-2.amazonaws.com", Path: "/" + info.Object}
+	// S3 canonical URIs encode reserved bytes such as ':' and '+', while Go's
+	// default URL path escaping preserves them. Use the same escaped path on
+	// the wire and in SigV4; signing must not apply the encoding a second time.
+	endpoint.RawPath = httpbinding.EscapePath(endpoint.Path, false)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, endpoint.String(), file)
 	if err != nil {
 		return err

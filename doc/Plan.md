@@ -1,5 +1,26 @@
 # Plan
 
+## macOS 独立凭据验收与 S3 路径编码（2026-11-21）
+
+- [x] 使用独立的正式 Developer ID PKCS#12（含证书链）与 Developer 角色团队
+  API 密钥，在 Linux amd64 和 macOS 15.7.7 arm64 分别执行 `package`、
+  `notarize -wait`、`staple`、`archive`；全程不调用系统签名／公证工具代办。
+- [x] 真实上传暴露 S3 `SignatureDoesNotMatch`：对象键含冒号，Go URL 默认路径
+  编码与 S3 canonical URI 不一致。复用 AWS 字节编码并保持线上与签名路径一致；
+  既有协议用例覆盖保留字符、空格、百分号和中文，独立 HMAC 验算在修复前失败、
+  修复后通过。不记录临时凭据或带凭据的请求内容。
+- [x] 两项 REST 公证均为 Accepted，日志 `issues: null`；相互按 ID 续查通过，
+  没有重新上传。
+- [x] 两份最终 ZIP 在 macOS 解压后通过严格签名、票据和 Gatekeeper
+  `accepted / Notarized Developer ID`，主程序权限为 0755，传递前后 SHA256 一致。
+- [x] 两来源最终 ZIP 解压产物的启动、按钮激活、文本编辑、下拉菜单与页面切换
+  均通过；macOS 15.7.7 arm64／OpenGL／应用默认 1×。关闭按钮使窗口与进程退出，
+  未取得进程退出码。
+- [x] `go test -json ./... -count=1`：6261 项通过，无失败或条件跳过；命令包 race／vet、
+  依赖校验及 macOS／Windows 工具编译通过。路径修复前，macOS 的 10 项签名与
+  协议原生测试通过；修复后由上述 macOS 正式文件全流程验证上传。
+- [ ] Windows 原生文件凭据与 NTFS 全流程本轮暂缓；目标编译通过，不作为原生验收。
+
 ## macOS 跨平台分发（2026-11-21）
 
 - [x] 写入[分发设计](DesignMacOSDistribution.md)，明确共享签名、Developer ID
@@ -26,11 +47,9 @@
   最终 ZIP 的窗口启动、按钮激活、文本编辑、下拉菜单与页面切换通过；
   macOS 15.7.7 arm64／OpenGL／应用默认 1×；关闭按钮使窗口与进程退出，
   未取得进程退出码。
-- [ ] Notary REST 正式团队密钥认证／上传、正式 PKCS#12 全流程尚无可用材料，
-  目前仅完成协议与合成身份验证。既有 notarytool 凭据和正式公证历史已确认可用，
-  不能将其替代为 REST 正式认证通过。
-- [ ] Windows 原生 NTFS 归档与签名运行未执行；验证环境不可用，保留为验收缺口，
-  不将目标编译当作原生通过。
+- [x] 独立正式 PKCS#12／团队 API 密钥的 Linux 与 macOS 全流程已在后续完成，
+  见上方“独立凭据验收与 S3 路径编码”；不再保留初期材料缺失的验收缺口。
+- [ ] Windows 原生 NTFS 归档与签名运行待验收，本轮仅完成工具目标编译。
 
 ## Windows 全屏直接转最大化验证（2026-11-21）
 
